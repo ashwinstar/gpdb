@@ -23,6 +23,20 @@
 #include "nodes/params.h"
 #include "cdb/cdbplan.h"
 
+/*
+ * An ApplyMotionState holds state for the recursive apply_motion_mutator().
+ * It is externalized here to make it shareable by helper code in other 
+ * modules, e.g., cdbaggmutate.c.
+ */
+typedef struct ApplyMotionState
+{
+	int nextMotionID;  
+	
+	/* TODO Finish the mutator which will eventually need some state:
+	 *      At a minimum, a range table, and perhaps more.
+	 */
+} ApplyMotionState;
+
 extern Plan *apply_motion(Plan* plan, Query* query);
 
 typedef enum HashMotionInfoType

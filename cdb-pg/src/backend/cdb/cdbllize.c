@@ -1126,14 +1126,16 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 	List *strategies;
 	ListCell *cell;
 	CdbAggStrategy *strategy;
+	Agg *agg;
 	Plan *child;
 	
 	/* Argument is a prescaned plan. */
 	child = outerPlan((Node*)plan);
 	Assert( is_plan_node((Node*)child) && child->flow != NULL  );
+	agg = (Agg*)plan;
 	
 	/* Now get the stategy list. */
-	strategies = getAggStrategyList((Agg*)plan);
+	strategies = getAggStrategyList(agg);
 
 	/* Use the first strategy we know how to implement. */
 	strategy = NULL;
@@ -1174,22 +1176,53 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 			return false;
 			
 		case MOVEMENT_BROADCAST: 
-			child->flow = makeFlow(FLOW_REPLICATED);
-			child->flow->req_move = strategy->leftmove;
+			/* Broadcast motion required. */
+			if ( IsA(child,Sort) )
+			{
+				broadcastSort((Sort*)child, context);
+			}
+			else
+			{
+				child->flow = makeFlow(FLOW_REPLICATED);
+				child->flow->req_move = strategy->leftmove;
+			}
 			noteFlow(child->flow, context);
 			break;
 		
 		case MOVEMENT_FOCUS:
-			child->flow = makeFlow(FLOW_SINGLETON);  /* Focus on a segment. */
-			child->flow->req_move = strategy->leftmove;
+			/* Focus motion required */
+			if ( IsA(child, Sort) )
+			{
+				focusSort((Sort*)child, context);
+			}
+			else
+			{
+				child->flow = makeFlow(FLOW_SINGLETON);  /* Focus on a segment. */
+				child->flow->req_move = strategy->leftmove;
+			}
 			noteFlow(child->flow, context);
 			break;
 			
 		case MOVEMENT_REPARTITION:
-			child->flow = makeFlow(FLOW_PARTITIONED);
-			child->flow->req_move = strategy->leftmove;
-			child->flow->hashExpr = strategy->hashexprs;
-			child->flow->hashOp = strategy->hashtypes;
+			/* Repartition motion required */
+			if ( IsA(child, Sort) )
+			{
+				repartitionSort((Sort*)child, 
+					strategy->hashexprs, 
+					strategy->hashtypes, 
+					context);
+			}
+			else
+			{
+				child->flow = makeFlow(FLOW_PARTITIONED);
+				child->flow->req_move = strategy->leftmove;
+				child->flow->hashExpr = strategy->hashexprs;
+				child->flow->hashOp = strategy->hashtypes;
+			}
+			/* TODO: If the Agg was AGG_SORT, preserve the sorted
+			   character of the output.  (In the hope that this will
+			   serve to keep sorted output at the top.)
+			 */
 			noteFlow(child->flow, context);
 			break;
 		
@@ -1199,7 +1232,9 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 	}
 
 	
-	/* Adopt flow characteristics of strategy for the Nestloop. */
+	/* Set the flow characteristics of the result based on the strategy
+	 * we ultimately adopted and the flow characteristics of the child. 
+	 */
 	/* TODO We could do better, e.g., track partition expressions. */
 	plan->flow = makeFlow(strategy->resultflowtype);
 	noteFlow(plan->flow, context);

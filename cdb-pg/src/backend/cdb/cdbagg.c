@@ -126,10 +126,12 @@ static bool analyzeAggExpr_walker (Node *node, void *context)
 				state->ndistinct++;
 				if ( state->ndistinct == 1 )
 				{
+					/* Copy 1st DISTINCT arg expr to state. */
 					state->aggref_distinct = copyObject(aggref->target);
 				}
 				if ( state->ndistinct > 1 && state->aggref_distinct != NULL )
 				{
+					/* If there's a 2nd DISTINCT, bail.  We're not that smart. */
 					pfree( state->aggref_distinct );
 					state->aggref_distinct = NULL;
 				}
@@ -181,6 +183,7 @@ static bool analyzeAggExpr_walker (Node *node, void *context)
 List *getAggStrategyList(Agg* agg)
 {
 	int i, g, n, tleidx;
+	ListCell *cell;
 	TargetEntry *tle;
 	CdbAggStrategy *as;
 	
@@ -203,17 +206,20 @@ List *getAggStrategyList(Agg* agg)
 	/* 
 	 * Find grouping expressions in our target list that correspond to the 
 	 * grouping expression in our argument (child) plan's target list.
-	 * They should be appear there even if they aren't included in the
-	 * non-junk attributes.
+	 * They should appear there even if they aren't included in the
+	 * non-junk attributes -- they should appear as simple Var expressions 
+	 * whose varattno is in the list of grouping columns.
 	 */
 	 if ( agg->aggstrategy == AGG_SORTED || agg->aggstrategy == AGG_HASHED )
 	 {
-		n = list_length(plan->targetlist);
-		for ( tleidx = 1; tleidx <= n; tleidx++ )
-		{	
-			tle = get_tle_by_resno( plan->targetlist, tleidx);
+		tleidx = 0;
+		foreach( cell, plan->targetlist )
+		{
+			tleidx++;
+			tle = (TargetEntry*)lfirst(cell);
 			
-			if ( tle == NULL )
+			/* We assume that resno and position are equivalen here. */
+			if ( tleidx != tle->resdom->resno )
 			{
 				ereport(ERROR,(
 					errcode(ERRCODE_CDB_INTERNAL_ERROR),
@@ -221,38 +227,36 @@ List *getAggStrategyList(Agg* agg)
 				));
 			}
 			
-			/*
-			 * The expectation is that a non-zero ressortgroupref in a TLE 
-			 * in the Agg target list is an index+1 into the Agg's grpColIdx
-			 * vector.  The entry thus indexed should be the resno of the
-			 * corresponding TLE in the Agg's child plan.  Further, the
-			 * Agg TLE's expression should be a Var referencing the child's
-			 * targetlist.
-			 */
-			g = tle->resdom->ressortgroupref;
-			if ( g > 0 )
+			if ( IsA(tle->expr, Var) )
 			{
-				Assert( g <= agg->numCols );
-				Assert( agg->grpColIdx[g-1] <= list_length(child->targetlist) );
-				grpset = bms_add_member(grpset, tleidx);
+				Var *var = (Var*)tle->expr;
+				int i;
+				for ( i = 0; i < agg->numCols; i++ )
+				{
+					if ( var->varattno == agg->grpColIdx[i] )
+					{
+						grpset = bms_add_member(grpset, tleidx);
+						break;
+					}
+				}
 			}
 		}
 	 }
 	 isgrouped = !bms_is_empty(grpset);
 	 	 
 	 /* 
-	  * Analyze our own targetlist and qual for Aggref information.  At 
-	  * the moment this is just discovering whether on not theres is a
-	  * single Aggrefs that specify DISTINCT and validating assumptions 
-	  * about the expression (e.g., grouping attributes don't contain 
-	  * Aggrefs, and Aggrefs don't nest.)
+	  * Analyze our own targetlist and qual for information about contained
+	  * Aggref nodes.  At the moment this is just discovering whether on not 
+	  * there is a single Aggref that specifies DISTINCT and validating our
+	  * assumptions about the expression (e.g., grouping attributes contain 
+	  * no Aggrefs, Aggrefs don't nest.)
 	  */
-	 initAggExprAnalysis(state);
-	 n = list_length(plan->targetlist);
-	 for ( i = 0; aOk && i < n; i++ )
-	 {
-		tleidx = i+1;
-		tle = (TargetEntry*)list_nth( plan->targetlist, i);
+	initAggExprAnalysis(state);
+	tleidx = 0;
+	foreach( cell, plan->targetlist )
+	{
+		tleidx++;
+		tle = (TargetEntry*)lfirst(cell);
 		aOk = aOk && analyzeAggExpr(tle->expr, bms_is_member(tleidx, grpset), state);
 	 }
 	 aOk = aOk && analyzeAggExpr((Expr*)(plan->qual), FALSE, state);

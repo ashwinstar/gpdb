@@ -442,6 +442,13 @@ double costMovement(Movement move, Plan *plan, JoinType	jointype)
 			if ( !enable_cdbrepartition )
 				bytes_thru_ams += disable_cost;
 			break;
+		
+		/* 
+		 *
+		 */
+		case MOVEMENT_AGG_RESTRUCT:
+			Assert( FALSE ); /* Not a valid strategy for a join. */
+			break;
 	}
 
 	return bytes_thru_ams;
@@ -458,7 +465,7 @@ double costMovement(Movement move, Plan *plan, JoinType	jointype)
  * list, just rearranged in sorted order.
  *
  * The strategy is to create an array of pointers out of the original list's pointers,
- * sort the arrat using qsort with the indicated compare function, and then create a
+ * sort the array using qsort with the indicated compare function, and then create a
  * new list out of the sorted pointers.
  */
 List *sort_list(List *l, int (*cmpfn)(const void *, const void *))
