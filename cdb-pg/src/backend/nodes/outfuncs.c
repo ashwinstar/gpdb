@@ -408,12 +408,17 @@ _outHashJoin(StringInfo str, HashJoin *node)
 static void
 _outAgg(StringInfo str, Agg *node)
 {
+	int i;
+	
 	WRITE_NODE_TYPE("AGG");
 
 	_outPlanInfo(str, (Plan *) node);
 
 	WRITE_ENUM_FIELD(aggstrategy, AggStrategy);
 	WRITE_INT_FIELD(numCols);
+	appendStringInfo(str, " :grpColIdx");
+	for (i = 0; i < node->numCols; i++)
+		appendStringInfo(str, " %d", node->grpColIdx[i]);
 	WRITE_LONG_FIELD(numGroups);
 }
 
@@ -1300,6 +1305,17 @@ _outDeclareCursorStmt(StringInfo str, DeclareCursorStmt *node)
 }
 
 static void
+_outCopyStmt(StringInfo str, CopyStmt *node)
+{
+	WRITE_NODE_TYPE("COPYSTMT");
+	WRITE_NODE_FIELD(relation);
+	WRITE_NODE_FIELD(attlist);
+	WRITE_BOOL_FIELD(is_from);
+	WRITE_STRING_FIELD(filename);
+	WRITE_NODE_FIELD(options);
+}
+
+static void
 _outSelectStmt(StringInfo str, SelectStmt *node)
 {
 	WRITE_NODE_TYPE("SELECT");
@@ -1962,6 +1978,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_DeclareCursorStmt:
 				_outDeclareCursorStmt(str, obj);
+				break;
+			case T_CopyStmt:
+				_outCopyStmt(str, obj);
 				break;
 			case T_SelectStmt:
 				_outSelectStmt(str, obj);
