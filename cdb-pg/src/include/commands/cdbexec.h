@@ -20,6 +20,6 @@
 
 
 /* Utility statement CDBEXEC */
-extern void CdbExecQuery(CdbExecStmt *stmt);
+extern void CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag);
 
 #endif   /* CDBEXEC_H */
