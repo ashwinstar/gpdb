@@ -1094,6 +1094,19 @@ _readCreateStmt(void)
 	READ_DONE();
 }
 
+static CreateSchemaStmt * 
+_readCreateSchemaStmt(void)
+{
+	READ_LOCALS(CreateSchemaStmt);
+
+	READ_STRING_FIELD(schemaname);
+	READ_STRING_FIELD(authid);
+	local_node->schemaElts = 0;
+	READ_OID_FIELD(schemaOid);
+
+	READ_DONE();
+}
+
 /*
  * _readPlan
  */
@@ -1600,6 +1613,7 @@ static ParseNodeInfo infoAr[] =
 	{"CONST", (ReadFn)_readConst},
 	{"CONSTRAINT", (ReadFn)_readConstraint},
 	{"CONVERTROWTYPEEXPR", (ReadFn)_readConvertRowtypeExpr},
+	{"CREATESCHEMASTMT", (ReadFn)_readCreateSchemaStmt},
 	{"CREATESTMT", (ReadFn)_readCreateStmt},
 	{"DECLARECURSOR", (ReadFn)_readDeclareCursorStmt},
 	{"DISTINCTEXPR", (ReadFn)_readDistinctExpr},

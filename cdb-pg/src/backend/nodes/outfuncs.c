@@ -1405,6 +1405,7 @@ _outQuery(StringInfo str, Query *node)
 			case T_IndexStmt:
 			case T_NotifyStmt:
 			case T_DeclareCursorStmt:
+			case T_CreateSchemaStmt:
 				WRITE_NODE_FIELD(utilityStmt);
 				break;
 			default:
@@ -1697,6 +1698,17 @@ _outFkConstraint(StringInfo str, FkConstraint *node)
 	WRITE_BOOL_FIELD(deferrable);
 	WRITE_BOOL_FIELD(initdeferred);
 	WRITE_BOOL_FIELD(skip_validation);
+}
+
+static void
+_outCreateSchemaStmt(StringInfo str, CreateSchemaStmt *node)
+{
+	WRITE_NODE_TYPE("CREATESCHEMASTMT");
+
+	WRITE_STRING_FIELD(schemaname);
+	WRITE_STRING_FIELD(authid);
+	WRITE_OID_FIELD(schemaOid);
+	
 }
 
 
@@ -2022,6 +2034,10 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_DefElem:
 				_outDefElem(str, obj);
+				break;
+
+			case T_CreateSchemaStmt:
+				_outCreateSchemaStmt(str, obj);
 				break;
 
 			default:

@@ -27,7 +27,7 @@
  * ---------------
  */
 Oid
-NamespaceCreate(const char *nspName, int32 ownerSysId)
+NamespaceCreate(const char *nspName, int32 ownerSysId, Oid forceOid)
 {
 	Relation	nspdesc;
 	HeapTuple	tup;
@@ -65,6 +65,11 @@ NamespaceCreate(const char *nspName, int32 ownerSysId)
 	tupDesc = nspdesc->rd_att;
 
 	tup = heap_formtuple(tupDesc, values, nulls);
+
+	if (forceOid != InvalidOid)
+		HeapTupleSetOid(tup, forceOid);		/* override heap_insert's OID
+											 * selection */
+
 
 	nspoid = simple_heap_insert(nspdesc, tup);
 	Assert(OidIsValid(nspoid));

@@ -31,6 +31,11 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbdisp.h"
+#include "cdb/cdbsrlz.h"
+#include "cdb/cdbvars.h"
+#include "cdb/cdbcat.h"
+
 
 /*
  * CREATE SCHEMA
@@ -47,6 +52,9 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 	AclId		owner_userid;
 	AclId		saved_userid;
 	AclResult	aclresult;
+
+	bool hasDispatched = false;
+	bool shouldDispatch =  Cdb_role == CDB_ROLE_DISPATCH && !IsBootstrapProcessingMode();
 
 	saved_userid = GetUserId();
 
@@ -100,11 +108,117 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 				 errmsg("unacceptable schema name \"%s\"", schemaName),
 		errdetail("The prefix \"pg_\" is reserved for system schemas.")));
 
+
+	 
+
 	/* Create the schema's namespace */
-	namespaceId = NamespaceCreate(schemaName, owner_userid);
+	if (shouldDispatch || Cdb_role != CDB_ROLE_EXECUTE)
+	{
+	namespaceId = NamespaceCreate(schemaName, owner_userid, 0);
+
+	if (shouldDispatch)
+	{
+		Assert(stmt->schemaOid == 0);
+		stmt->schemaOid = namespaceId;
+
+		elog( DEBUG5,"shouldDispatch = true, namespaceOid = %d",namespaceId);
+
+
+			char *pscCreateSchema;
+			DispatchTargetSet set;
+
+			/*
+			 * Serialize the stmt tree, and create the sql statement: cdbexec ....
+			 */
+			Query * q = makeNode(Query);
+
+			StringInfoData buffer;
+			
+			initStringInfo( &buffer );
+
+			q->commandType = CMD_UTILITY;
+			q->utilityStmt = (Node *)stmt;
+
+			q->querySource = QSRC_ORIGINAL;
+			q->canSetTag = true; /*?*/
+		
+
+			pscCreateSchema = serializeNode((Node *)q);
+			
+
+			Assert(pscCreateSchema != NULL );
+
+			elog( DEBUG5 ,"Dispatch Comand %s", pscCreateSchema);
+
+			appendStringInfo(&buffer, "cdbexec '%s' ''", pscCreateSchema);
+
+			pfree(pscCreateSchema);
+
+			
+			
+			set = DTS_SEGDB;
+			
+			
+
+			/*
+			 * This call returns after launching the threads that send the command to the appropriate
+			 * segdbs.  It does not wait for them to finish.
+			 */
+			CdbDispatchCommand(buffer.data, set, NULL, 0, true );
+			hasDispatched = true;
+			pfree(buffer.data);
+		}
+	
+	}
+	else if (Cdb_role == CDB_ROLE_EXECUTE)
+	{
+		namespaceId = NamespaceCreate(schemaName, owner_userid, stmt->schemaOid);
+	}
 
 	/* Advance cmd counter to make the namespace visible */
 	CommandCounterIncrement();
+
+
+	if ( hasDispatched )
+	{
+		char *message;
+		char *szCommand;
+
+		CdbDispatchResults* results;
+
+		
+		/*
+		 * We successfully completed on the Dispatcher.  Now check the results
+		 * from the qExecs.  This internally waits for them to all finish.
+		 */
+		results = CdbCheckDispatchResult();
+
+
+		message = CdbDumpDispatchResults(results, true);
+		szCommand = results->szCommand;
+		if ( szCommand == NULL )
+			szCommand = "";
+		Assert( message != NULL );
+		elog( DEBUG5,
+				"cdbexec command results for \"%s\": %s",
+				szCommand, message );
+
+		pfree(message);
+
+		if ( !results->success )
+		{
+			char *message = CdbDumpDispatchResults(results, false);
+			ereport( ERROR,
+						(errcode( ERRCODE_CDB_COMMAND_ERROR ),
+						errmsg("cdbexec command failed on one or more segment databases: %s",
+						message
+					)));
+				
+		}
+
+
+		DestroyCdbDispatchResults( results );
+	}
 
 	/*
 	 * Temporarily make the new namespace be the front of the search path,
