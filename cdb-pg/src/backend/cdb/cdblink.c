@@ -588,13 +588,11 @@ void getCdbIdentity(int *segindex, bool *isprimary)
 	if ( segindex != NULL )
 	{
 		*segindex = segment_dbs->my_segindex;
-		elog(DEBUG2, "getCdbIdentity: segindex=%d", *segindex);
 	}
 			
 	if ( isprimary != NULL )
 	{
 		*isprimary = segment_dbs->my_isprimary;
-		elog(DEBUG2, "getCdbIdentity: isprimary=%s", (*isprimary) ? "true" : "false");
 	}
 }
 

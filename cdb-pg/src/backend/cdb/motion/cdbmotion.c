@@ -1377,8 +1377,11 @@ void statRecvTuple(MotionNodeEntry *pMNEntry, ChunkSorterEntry *pCSEntry,
 
     /* Update "tuples available" counts for high watermark stats. */
 
-    pMNEntry->stat_tuples_available--;
+    if (recvRC == GOT_TUPLE)
+    {
+        pMNEntry->stat_tuples_available--;
 
-    if (pMNEntry->preserve_order)
-        pCSEntry->stat_tuples_available--;
+        if (pMNEntry->preserve_order)
+            pCSEntry->stat_tuples_available--;
+    }
 }
