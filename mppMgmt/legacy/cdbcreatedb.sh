@@ -10,7 +10,7 @@
 
 PATH="$(dirname $0):$PATH"
 
-usage="[ PGROOT=<root_directory> ]  $(basename $0) \n        [ {--nsegs|-n} { #segs | 3 } ] \n        [ {--segname|-s} { segname | segDB} ] \n        [ {--prefix|-P} { dbprefix | cdb} ] \n        [ {--useIP | -i} ] [ {--withTPCH }  {--withTiny} ] \n        [ {--verbose} ] [ {--help} ]"
+usage="[ PGROOT=<root_directory> ]  $(basename $0) \n        [ {--nsegs|-n} { #segs | 1 } ] \n        [ {--segname|-s} { segname | segDB} ] \n        [ {--prefix|-P} { dbprefix | cdb} ] \n        [ {--useIP | -i} ] [ {--withTPCH }  {--withTiny} ] \n        [ {--verbose} ] [ {--help} ]"
 
 echo -e "$(basename $0): Create and load a database into a CDB cluster."
 echo -e "Copyright (c) 2004-2005 Metapa, Inc. All Rights Reserved"
@@ -27,7 +27,7 @@ function display_help
     echo    "are created defaults to \"\$HOME/cdb-data\"."
 
     echo -e "\nYou can specify the number of segments instances you want to create in each"
-    echo    "database by --nsegs or -N. If no value is set, then the default value is 3"
+    echo    "database by --nsegs or -N. If no value is set, then the default value is 1"
     echo    "The prefix of each segment name can be specified with --segname or -s. This "
     echo    "defaults to \"segDB\". If there are multiple segments all segment DBs will"
     echo    "have an ascending integer appended to their name. E.g segDB1, segDB2, etc."
@@ -85,6 +85,7 @@ verbose=false
 ip=none
 withTPCH=false
 withTiny=false
+entrySegName=
 
 # These are the files needed for the TPCH schema
 tpchDDL=../../cdb-qa/refdbs_cdb2/refdb01/TPCH_DDL.sql
@@ -252,7 +253,7 @@ then
     fi
 else
     # If nothing is specified, then default to 3
-    : ${nsegs:=3}
+    : ${nsegs:=1}
 fi
 
 # And what about our prefix?
@@ -306,14 +307,6 @@ export PGDATA
 export PGPORT
 export PGOPTIONS
 
-
-# ---------------------------------------------------------------------
-# Node processing
-#
-#     (re-)create the database and add the test schema and data.
-#     Collect records for this node to add to the CDB schema.
-#
-# ---------------------------------------------------------------------
 shopt -s extglob
 schemaUpdates="/tmp/$$.sql"
 (( instancecount=0 ))
@@ -327,7 +320,7 @@ then
 fi
 
 # First of all, count up how many databases we can find
-for PGDATA in "$PGROOT"/$dbprefix*[1-9]?([0-9])
+for PGDATA in "$PGROOT"/$dbprefix*[0-9]?([0-9])
 do
     [ ! -d "$PGDATA" ] && continue
     (( instancecount++ ))
@@ -340,23 +333,28 @@ done
 # Did we find any?
 if [ $instancecount -gt 0 ]
 then
-  echo -e "\nFound $instancecount DB instance(s) in $PGROOT"
+  echo -e "\nFound $instancecount listener instance(s) in $PGROOT"
 else
-  echo -e "\nUnable to find any DB instances in $PGROOT using a prefix of $dbprefix"
+  echo -e "\nUnable to find any listener instances in $PGROOT using a prefix of $dbprefix"
   exit 1
 fi
 
 # Initialise some arrays we will use to store the admin statements
 declare -a listeners_array
-declare -a segdb_array
 declare -a segments_array
 
 # And some other useful variables
 current_listener=0
-current_segment=1
+current_segment=0
 
-# Ok, we have some databases, let's loop through them
-for PGDATA in "$PGROOT"/$dbprefix[1-9]?([0-9])
+#
+# Ok, we have some databases, let's loop through them and create the segment
+# databases.
+#
+# This loop also serves to generated and store some other cdb config data into
+# some arrays for later use.
+#
+for PGDATA in "$PGROOT"/$dbprefix[0-9]?([0-9])
 do
     [ ! -d "$PGDATA" ] && continue
     PGDATA=$(cd "$PGDATA"; pwd)
@@ -364,7 +362,7 @@ do
 
     if [ "$verbose" = "true" ]
     then
-        echo -e "About to create a DB in $PGDATA, Port = $PGPORT\n  "
+        echo -e "About to create a seg DB in $PGDATA, Port = $PGPORT\n  "
         echo -e "Number of segments to create = $nsegs"
     fi
 
@@ -383,6 +381,7 @@ do
       echo -e "\nCreating ${PGDATABASE} in $PGDATA"
 
       db=$(psql -t --list template1 2>/dev/null | grep "^[[:space:]]${PGDATABASE}[[:space:]]")
+
       if [ "$db" ]
       then
           sleep 1
@@ -396,11 +395,13 @@ do
       createdb
 
       # Store the listener statements
-      listeners_array[current_listener]="select cdb.add_listener('$hostname', $PGPORT, '$PGDATA');"
+      listeners_array[current_listener]="select cdb.add_listener('$hostname', $PGPORT, '$PGDATA', '$username', NULL);"
 
       # And our segment statements
-      segments_array[current_segment]="select cdb.add_segment('$finalSegName');"
-      segdb_array[current_segment]="select cdb.add_segment_database('$finalSegName', '$hostname', $PGPORT, 't');"
+      if [ "$current_segment" -gt 0 ]
+      then
+        segdb_array[current_segment]="select cdb.add_segment_database('$finalSegName', '$hostname', $PGPORT, true, $((current_segment-1)));"
+      fi
 
       # Increment our segment counter
       (( current_segment++ ))
@@ -411,15 +412,11 @@ do
 
 done
 
-# Show everyone what will happen to the admin schema
+# Show everyone what will be inserted into the entry database
 if [ "$verbose" = "true" ]
 then
   for i in "${listeners_array[@]}"; do
     echo "Listener : $i"
-  done
-
-  for i in "${segments_array[@]}"; do
-    echo "Segment : $i"
   done
 
   for i in "${segdb_array[@]}"; do
@@ -427,27 +424,27 @@ then
   done
 fi
 
-
-#
-# Ok, let's populate the admin schema everywhere
-#
-
 # Reset our counter
-real_segdbs=$((current_segment-2))
-echo real_segdbs=$real_segdbs
-current_segment=1
+current_listener=0
+current_segment=0
+total_content_segs=${#segdb_array[@]}
+entrySegName=$segname$current_listener
 
-# Ok, we have some databases, let's loop through them
-for PGDATA in "$PGROOT"/$dbprefix[1-9]?([0-9])
+#
+# Next loop. Here we record the identity of the current segment in the local
+# cdb.cdb table. Optionally, we also load and prune either the TPCH or Tiny
+# schema into the segment databases
+#
+# NOTE: Currently we have to load the actual schema and data PRIOR to filling
+# in the admin schema because of the oid inconsistency problem.
+for PGDATA in "$PGROOT"/$dbprefix[0-9]?([0-9])
 do
     [ ! -d "$PGDATA" ] && continue
     PGDATA=$(cd "$PGDATA"; pwd)
     PGPORT=$(getPort)
 
-    echo -e "\nPopulating admin schema at $PGDATA, Port = $PGPORT, Num Segs = $nsegs\n"
-
     # This is the loop for each segment database
-    for (( loop = 1; loop <= $nsegs; loop++ ))
+    for (( loop = 0; loop < $nsegs; loop++ ))
     do
 
       # Do we need to append anything to the segname?
@@ -458,119 +455,122 @@ do
           PGDATABASE=$finalSegName
       fi
 
-      #
-      # Ok, let's configure the Admin schema
-      #
-
-      echo -e "\nConfiguring admin schema for $finalSegName"
-
-      # First the host table
-      echo -e "Updating hosts table with hostname = $hostname"
-      psql -o /dev/null -q $finalSegName -c "select cdb.add_host('$hostname', 1111);"
-
-      # Now the listener
-      echo -e "Updating listener table with listeners"
-
-      for i in "${listeners_array[@]}"; do
-        psql -o /dev/null -q $finalSegName -c "$i"
-      done
-
-      # Add the segment
-      echo -e "Updating segment table"
-
-      for i in "${segments_array[@]}"; do
-        psql -o /dev/null -q $finalSegName -c "$i"
-      done
-
-      # And the segment database
-      echo -e "Updating segment database table."
-
-      for i in "${segdb_array[@]}"; do
-        psql -o /dev/null -q $finalSegName -c "$i"
-      done
+      dbid=$((current_segment+1));
+      contentid=$((current_segment-1));
 
       # And finally, set the identity
-      echo -e "Updating identity table"
-      psql -o /dev/null -q $finalSegName -c "select cdb.cdb_set_identity('Default Cluster', '$username', NULL, ${#segdb_array[@]}, '$hostname', $PGPORT, '$finalSegName' , 't');"
+      echo -e "\nPopulating identity table of $finalSegName on port = $PGPORT"
 
-      echo -e "Completed $finalSegName\n"
+      if [ "$verbose" == "true" ]
+      then
+        echo "Inserting into identity table: num segs $total_content_segs, db_id $dbid, content_id $contentid";
+      fi
+
+      psql -o /dev/null -q $finalSegName -c "select cdb.cdb_set_identity('Default Cluster', '$total_content_segs', $dbid, $contentid);"
 
       if [ "$withTPCH" = "true" ]
       then
 
         # Load the DDL
         echo "Loading TPCH DDL"
-        psql -o /dev/null -q $finalSegName -f $tpchDDL
+        psql -o /dev/null -q $finalSegName -f $tpchDDL > /dev/null 2>&1
 
-        echo "Setting TPCH distribution policy"
-        psql -o /dev/null -q $finalSegName -f $tpchDistPolicy
+        # Is this the entry database?
+        if [ "$entrySegName" == "$finalSegName" ]
+        then
+          echo "Setting TPCH distribution policy"
+          psql -o /dev/null -q $finalSegName -f $tpchDistPolicy
+        fi
 
         echo "Loading data into TPCH tables"
         psql -o /dev/null -q $finalSegName -f $tpchData
 
-        if [ $current_segment -gt 1 ]
+        if [ "$finalSegName" != "$entrySegName" ]
         then
-			echo "Pruning data from TPCH tables"
-					psql $finalSegName -c "delete from tpch.lineitem where l_orderkey % $real_segdbs <> $current_segment % $real_segdbs"
-					psql $finalSegName -c "delete from tpch.orders where o_orderkey % $real_segdbs <> $current_segment % $real_segdbs"
-					psql $finalSegName -c "delete from tpch.part where p_partkey % $real_segdbs <> $current_segment  % $real_segdbs"
-					psql $finalSegName -c "delete from tpch.region where r_regionkey % $real_segdbs <> $current_segment % $real_segdbs"
-					psql $finalSegName -c "delete from tpch.nation where n_nationkey % $real_segdbs <> $current_segment % $real_segdbs"
-					psql $finalSegName -c "delete from tpch.supplier where s_suppkey % $real_segdbs <> $current_segment % $real_segdbs"
-					psql $finalSegName -c "delete from tpch.partsupp where ps_partkey % $real_segdbs <> $current_segment % $real_segdbs"
-					psql $finalSegName -c "delete from tpch.customer where c_custkey % $real_segdbs <> $current_segment % $real_segdbs"
-			echo "Finished Pruning data from TPCH tables"
-		fi
-			
-        echo "Setting table constraints"
-        psql -o /dev/null -q $finalSegName -f $tpchConstraints
+          echo "Pruning data from TPCH tables"
 
-        if [ $current_segment -eq 1 ]
+          if [ "$verbose" == "true" ]
+          then
+            echo -e "Segname = $finalSegName, total segs = $total_content_segs, content id = $contentid\n";
+          fi
+
+          psql $finalSegName -c "delete from tpch.lineitem where l_orderkey % $total_content_segs <> $contentid"
+          psql $finalSegName -c "delete from tpch.orders where o_orderkey % $total_content_segs <> $contentid "
+          psql $finalSegName -c "delete from tpch.part where p_partkey % $total_content_segs <> $contentid "
+          psql $finalSegName -c "delete from tpch.region where r_regionkey % $total_content_segs <> $contentid "
+          psql $finalSegName -c "delete from tpch.nation where n_nationkey % $total_content_segs <> $contentid "
+          psql $finalSegName -c "delete from tpch.supplier where s_suppkey % $total_content_segs <> $contentid "
+          psql $finalSegName -c "delete from tpch.partsupp where ps_partkey % $total_content_segs <> $contentid "
+          psql $finalSegName -c "delete from tpch.customer where c_custkey % $total_content_segs <> $contentid "
+          echo "Finished Pruning data from TPCH tables"
+        fi
+
+        echo "Setting table constraints"
+        psql -o /dev/null -q $finalSegName -f $tpchConstraints > /dev/null 2>&1
+
+        if [ "$finalSegName" == "$entrySegName" ]
         then
-				psql $finalSegName -c "delete from tpch.lineitem"
-                psql $finalSegName -c "delete from tpch.orders"
-                psql $finalSegName -c "delete from tpch.part"
-                psql $finalSegName -c "delete from tpch.region"
-                psql $finalSegName -c "delete from tpch.nation"
-                psql $finalSegName -c "delete from tpch.supplier"
-                psql $finalSegName -c "delete from tpch.partsupp"
-                psql $finalSegName -c "delete from tpch.customer"
+          echo "Deleting data from entry database"
+          psql $finalSegName -c "delete from tpch.lineitem"
+          psql $finalSegName -c "delete from tpch.orders"
+          psql $finalSegName -c "delete from tpch.part"
+          psql $finalSegName -c "delete from tpch.region"
+          psql $finalSegName -c "delete from tpch.nation"
+          psql $finalSegName -c "delete from tpch.supplier"
+          psql $finalSegName -c "delete from tpch.partsupp"
+          psql $finalSegName -c "delete from tpch.customer"
         fi
       fi
 
       if [ "$withTiny" = "true" ]
       then
 
+        # Load the DDL
         echo "Loading Tiny DDL"
-        psql -o /dev/null -q $finalSegName -f $cvpDDL
+        psql -o /dev/null -q $finalSegName -f $cvpDDL > /dev/null 2>&1
 
-        echo "Setting Tiny distribution policy"
-        psql -o /dev/null -q $finalSegName -f $cvpDistPolicy
+        # Is this the entry database?
+        if [ "$entrySegName" == "$finalSegName" ]
+        then
+          echo "Setting Tiny distribution policy"
+          psql -o /dev/null -q $finalSegName -f $cvpDistPolicy
+        fi
 
+        # Load the data
         echo "Loading data into Tiny tables"
         psql -o /dev/null -q $finalSegName -f $cvpData
 
-        if [ $current_segment -gt 1 ]
+        # If this is not the entry db, prune the data
+        if [ "$finalSegName" != "$entrySegName" ]
         then
-            echo "Pruning data from Tiny tables"
-                    psql $finalSegName -c "delete from customer where cn % $real_segdbs <> $current_segment % $real_segdbs"
-                    psql $finalSegName -c "delete from vendor where vn % $real_segdbs <> $current_segment % $real_segdbs"
-                    psql $finalSegName -c "delete from product where pn % $real_segdbs <> $current_segment  % $real_segdbs"
-                    psql $finalSegName -c "delete from sale where cn % $real_segdbs <> $current_segment % $real_segdbs"
-            echo "Finished Pruning data from Tiny tables"
+          echo "Pruning data from Tiny tables"
+
+          if [ "$verbose" == "true" ]
+          then
+            echo -e "Segname = $finalSegName, total segs = $total_content_segs, content id = $contentid\n";
+          fi
+
+          psql $finalSegName -c "delete from customer where cn % $total_content_segs <> $contentid"
+          psql $finalSegName -c "delete from vendor where vn % $total_content_segs <> $contentid"
+          psql $finalSegName -c "delete from product where pn % $total_content_segs <> $contentid"
+          psql $finalSegName -c "delete from sale where cn % $total_content_segs <> $contentid"
+          echo "Finished Pruning data from Tiny tables"
         fi
 
+        echo -e "\nPerformaing vacuum on all tables"
         psql $finalSegName -c "vacuum analyze customer"
         psql $finalSegName -c "vacuum analyze vendor"
         psql $finalSegName -c "vacuum analyze product"
         psql $finalSegName -c "vacuum analyze sale"
 
-        if [ $current_segment -eq 1 ]
+        # If this is the entry db, blow the data away
+        if [ "$finalSegName" == "$entrySegName" ]
         then
-                    psql $finalSegName -c "delete from customer"
-                    psql $finalSegName -c "delete from vendor"
-                    psql $finalSegName -c "delete from product"
-                    psql $finalSegName -c "delete from sale"
+          echo "Deleting data from entry database"
+          psql $finalSegName -c "delete from customer"
+          psql $finalSegName -c "delete from vendor"
+          psql $finalSegName -c "delete from product"
+          psql $finalSegName -c "delete from sale"
         fi
       fi
 
@@ -578,6 +578,52 @@ do
       (( current_segment++ ))
 
     done
+done
+
+
+#
+# Ok, let's populate the admin schema in the entry listener
+#
+for PGDATA in "$PGROOT"/$dbprefix[0]?([0])
+do
+    [ ! -d "$PGDATA" ] && continue
+    PGDATA=$(cd "$PGDATA"; pwd)
+    PGPORT=$(getPort)
+
+    echo -e "\nPopulating admin schema in entry listener in $entrySegName on port = $PGPORT\n"
+
+    # Update the host table
+    echo "Updating the host table. Host is $hostname";
+    psql -o /dev/null -q $entrySegName -c "select cdb.add_host('$hostname');"
+
+    # Now the listener table
+    echo -e "Updating listener table with listeners"
+
+    for i in "${listeners_array[@]}"; do
+      if [ "$verbose" == "true" ]
+      then
+        echo -e " $i"
+      fi
+
+      psql -o /dev/null -q $entrySegName -c "$i"
+    done
+
+    # Add an entry database
+    echo "Adding $listenerSeg as the entry database";
+    psql -o /dev/null -q $entrySegName -c "select cdb.add_entry_database('$entrySegName', '$hostname', $PGPORT, true);"
+
+    # And the segment database
+    echo -e "Updating segment database table"
+
+    for i in "${segdb_array[@]}"; do
+      if [ "$verbose" == "true" ]
+      then
+        echo -e " $i"
+      fi
+
+      psql -o /dev/null -q $entrySegName -c "$i"
+    done
+
 done
 
 exit 1

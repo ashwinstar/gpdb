@@ -169,7 +169,7 @@ export PGPORT
 # Stop all the DB instances
 # ---------------------------------------------------------------------
 shopt -s extglob
-for PGDATA in "$PGROOT"/$prefix*[1-9]?([0-9])
+for PGDATA in "$PGROOT"/$prefix*[0-9]?([0-9])
 do
     [ ! -d "$PGROOT" ] && continue
 

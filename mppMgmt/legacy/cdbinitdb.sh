@@ -10,7 +10,7 @@
 
 PATH="$(dirname $0):$PATH"
 
-usage="[ PGROOT=<root_directory> ] [ PGPORT=<base_port> ] $(basename $0) \n        [ {--dbroot|-D} <root_directory> ] [ {--port|-p} <base_port> ] \n        [ {--dbname|-N} { dbname | cdb} ] \n        [ {--listeners|-n} { #listeners | 1 } ] \n        [ {--help} ]"
+usage="[ PGROOT=<root_directory> ] [ PGPORT=<base_port> ] $(basename $0) \n        [ {--dbroot|-D} <root_directory> ] [ {--port|-p} <base_port> ] \n        [ {--dbname|-N} { dbname | cdb} ] \n        [ {--listeners|-n} { #listeners | 4 } ] \n        [ {--help} ]"
 
 echo -e "$(basename $0): Initialize a listener and local catalog for a CDB cluster."
 echo -e "Copyright (c) 2004-2005 Metapa, Inc. All Rights Reserved"
@@ -22,9 +22,9 @@ function display_help
     echo -e "\nThis command initializes the directory structure(s) for a CDB installation."
     echo    "You are able to specify the number of listener instances that you wish to "
     echo    "initialize by passing the --nlist or -n option to the command line. By "
-    echo    "default, a single listener is created."
+    echo    "default, a four listeners are created."
 
-    echo -e "\nThe listener directory(s) are created under the directory specified in \$PGROOT"
+    echo -e "\nThe listener directories are created under the directory specified in \$PGROOT"
     echo    "or using the '-D' option. Directories of the form \$PGROOT/\$dbname\$N are"
     echo -e "created for all the segment databases in the cluster. If the directory"
     echo -e "\$PGROOT does not exist, it is created by this script. If --dbname is not set,"
@@ -228,7 +228,7 @@ then
     fi
 else
     # If nothing is specified, then default to 1
-    : ${nlisteners:=1}
+    : ${nlisteners:=4}
 fi
 
 # Check what port was specified
@@ -265,7 +265,7 @@ fi
 # ---------------------------------------------------------------------
 # CDB database processing
 # ---------------------------------------------------------------------
-for (( i = 1; i <= nlisteners; i++ ))
+for (( i = 0; i < nlisteners; i++ ))
 do
     PGDATA="$PGROOT/$dbname$i"
 
