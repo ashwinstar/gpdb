@@ -161,22 +161,22 @@ HeapTuple DeserializeTuple(TupleDesc tupdesc, StringInfo serialTup)
         initSerTupInfo(myState, tupdesc, natts);
 
     /* Receive and process the "non-NULL values" bitmap. */
-    j = pq_getmsgint(serialTup, 1);
-    k = 1 << 7;
-    for (i = 0; i < natts; ++i)
+    for (i = 0, k = 0; i < natts; ++i)
     {
+        if (k == 0)
+        {
+            /* Get the next byte in the bitmap. */
+            j = pq_getmsgint(serialTup, 1);
+            k = 1 << 7;
+        }
+        
         /* If bit cleared, set null; otherwise, set not null. */
         if ((j & k) != 0)
             myState->nulls[i] = ' ';
         else
             myState->nulls[i] = 'n';
-
+        
         k >>= 1;
-        if (k == 0)             /* end of byte? */
-        {
-            j = pq_getmsgint(serialTup, 1);
-            k = 1 << 7;
-        }
     }
 
     /* Deserialize the non-NULL attributes of this tuple */
