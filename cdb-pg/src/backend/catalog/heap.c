@@ -186,9 +186,8 @@ SystemAttributeByName(const char *attname, bool relhasoids)
  *				XXX END OF UGLY HARD CODED BADNESS XXX
  * ---------------------------------------------------------------- */
 
-
 /* ----------------------------------------------------------------
- *		heap_create		- Create an uncataloged heap relation
+ *		heap_create_with_relid		- Create an uncataloged heap relation
  *
  *		rel->rd_rel is initialized by RelationBuildLocalRelation,
  *		and is mostly zeroes at return.
@@ -196,17 +195,18 @@ SystemAttributeByName(const char *attname, bool relhasoids)
  *		Remove the system relation specific code to elsewhere eventually.
  * ----------------------------------------------------------------
  */
+
 Relation
-heap_create(const char *relname,
+heap_create_with_relid(const char *relname,
 			Oid relnamespace,
 			Oid reltablespace,
 			TupleDesc tupDesc,
 			char relkind,
 			bool shared_relation,
-			bool allow_system_table_mods)
+			bool allow_system_table_mods,
+			Oid relid,
+			bool nailme)
 {
-	Oid			relid;
-	bool		nailme = false;
 	bool		create_storage;
 	Relation	rel;
 
@@ -222,47 +222,7 @@ heap_create(const char *relname,
 						get_namespace_name(relnamespace), relname),
 				 errdetail("System catalog modifications are currently disallowed.")));
 
-	/*
-	 * Real ugly stuff to assign the proper relid in the relation
-	 * descriptor follows.	Note that only "bootstrapped" relations whose
-	 * OIDs are hard-coded in pg_class.h should be listed here.  We also
-	 * have to recognize those rels that must be nailed in cache.
-	 */
-	if (IsSystemNamespace(relnamespace))
-	{
-		if (strcmp(TypeRelationName, relname) == 0)
-		{
-			nailme = true;
-			relid = RelOid_pg_type;
-		}
-		else if (strcmp(AttributeRelationName, relname) == 0)
-		{
-			nailme = true;
-			relid = RelOid_pg_attribute;
-		}
-		else if (strcmp(ProcedureRelationName, relname) == 0)
-		{
-			nailme = true;
-			relid = RelOid_pg_proc;
-		}
-		else if (strcmp(RelationRelationName, relname) == 0)
-		{
-			nailme = true;
-			relid = RelOid_pg_class;
-		}
-		else if (strcmp(ShadowRelationName, relname) == 0)
-			relid = RelOid_pg_shadow;
-		else if (strcmp(GroupRelationName, relname) == 0)
-			relid = RelOid_pg_group;
-		else if (strcmp(DatabaseRelationName, relname) == 0)
-			relid = RelOid_pg_database;
-		else if (strcmp(TableSpaceRelationName, relname) == 0)
-			relid = RelOid_pg_tablespace;
-		else
-			relid = newoid();
-	}
-	else
-		relid = newoid();
+
 
 	/*
 	 * Decide if we need storage or not, and handle a couple other
@@ -325,6 +285,95 @@ heap_create(const char *relname,
 		RelationOpenSmgr(rel);
 		smgrcreate(rel->rd_smgr, rel->rd_istemp, false);
 	}
+
+	return rel;
+}
+
+/* ----------------------------------------------------------------
+ *		heap_create		- Create an uncataloged heap relation
+ *
+ *		rel->rd_rel is initialized by RelationBuildLocalRelation,
+ *		and is mostly zeroes at return.
+ *
+ *		Remove the system relation specific code to elsewhere eventually.
+ * ----------------------------------------------------------------
+ */
+Relation
+heap_create(const char *relname,
+			Oid relnamespace,
+			Oid reltablespace,
+			TupleDesc tupDesc,
+			char relkind,
+			bool shared_relation,
+			bool allow_system_table_mods)
+{
+	Oid			relid;
+	bool		nailme = false;
+	Relation	rel;
+
+	/*
+	 * sanity checks
+	 */
+	if (!allow_system_table_mods &&
+	(IsSystemNamespace(relnamespace) || IsToastNamespace(relnamespace)) &&
+		IsNormalProcessingMode())
+		ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+				 errmsg("permission denied to create \"%s.%s\"",
+						get_namespace_name(relnamespace), relname),
+				 errdetail("System catalog modifications are currently disallowed.")));
+
+	/*
+	 * Real ugly stuff to assign the proper relid in the relation
+	 * descriptor follows.	Note that only "bootstrapped" relations whose
+	 * OIDs are hard-coded in pg_class.h should be listed here.  We also
+	 * have to recognize those rels that must be nailed in cache.
+	 */
+	if (IsSystemNamespace(relnamespace))
+	{
+		if (strcmp(TypeRelationName, relname) == 0)
+		{
+			nailme = true;
+			relid = RelOid_pg_type;
+		}
+		else if (strcmp(AttributeRelationName, relname) == 0)
+		{
+			nailme = true;
+			relid = RelOid_pg_attribute;
+		}
+		else if (strcmp(ProcedureRelationName, relname) == 0)
+		{
+			nailme = true;
+			relid = RelOid_pg_proc;
+		}
+		else if (strcmp(RelationRelationName, relname) == 0)
+		{
+			nailme = true;
+			relid = RelOid_pg_class;
+		}
+		else if (strcmp(ShadowRelationName, relname) == 0)
+			relid = RelOid_pg_shadow;
+		else if (strcmp(GroupRelationName, relname) == 0)
+			relid = RelOid_pg_group;
+		else if (strcmp(DatabaseRelationName, relname) == 0)
+			relid = RelOid_pg_database;
+		else if (strcmp(TableSpaceRelationName, relname) == 0)
+			relid = RelOid_pg_tablespace;
+		else
+			relid = newoid();
+	}
+	else
+		relid = newoid();
+
+	rel = heap_create_with_relid(relname,
+			relnamespace,
+			reltablespace,
+			tupDesc,
+			relkind,
+			shared_relation,
+			allow_system_table_mods,
+			relid,
+			nailme);
 
 	return rel;
 }
@@ -828,6 +877,142 @@ heap_create_with_catalog(const char *relname,
 	heap_close(pg_class_desc, RowExclusiveLock);
 
 	return new_rel_oid;
+}
+
+/* --------------------------------
+ *		heap_create_with_catalog_with_relid
+ *
+ *		creates a new cataloged relation.  see comments above.
+ * --------------------------------
+ */
+void
+heap_create_with_catalog_with_relid(const char *relname,
+						 Oid relnamespace,
+						 Oid reltablespace,
+						 TupleDesc tupdesc,
+						 char relkind,
+						 bool shared_relation,
+						 bool oidislocal,
+						 int oidinhcount,
+						 OnCommitAction oncommit,
+						 bool allow_system_table_mods,
+						 Oid new_rel_oid)
+{
+	Relation	pg_class_desc;
+	Relation	new_rel_desc;
+	Oid			new_type_oid;
+
+	/*
+	 * sanity checks
+	 */
+	Assert(IsNormalProcessingMode() || IsBootstrapProcessingMode());
+
+	CheckAttributeNamesTypes(tupdesc, relkind);
+
+	if (get_relname_relid(relname, relnamespace))
+		ereport(ERROR,
+				(errcode(ERRCODE_DUPLICATE_TABLE),
+				 errmsg("relation \"%s\" already exists", relname)));
+
+	/*
+	 * Create the relcache entry (mostly dummy at this point) and the
+	 * physical disk file.	(If we fail further down, it's the smgr's
+	 * responsibility to remove the disk file again.)
+	 */
+	new_rel_desc = heap_create_with_relid(relname,
+							   relnamespace,
+							   reltablespace,
+							   tupdesc,
+							   relkind,
+							   shared_relation,
+							   allow_system_table_mods,
+							   new_rel_oid,
+							   false);
+
+	/* Fetch the relation OID assigned by heap_create */
+	Assert(new_rel_oid == RelationGetRelid(new_rel_desc));
+
+	/* Assign an OID for the relation's tuple type */
+	new_type_oid = newoid();
+
+	/*
+	 * now create an entry in pg_class for the relation.
+	 *
+	 * NOTE: we could get a unique-index failure here, in case someone else
+	 * is creating the same relation name in parallel but hadn't committed
+	 * yet when we checked for a duplicate name above.
+	 */
+	pg_class_desc = heap_openr(RelationRelationName, RowExclusiveLock);
+
+	AddNewRelationTuple(pg_class_desc,
+						new_rel_desc,
+						new_rel_oid,
+						new_type_oid,
+						relkind);
+
+	/*
+	 * since defining a relation also defines a complex type, we add a new
+	 * system type corresponding to the new relation.
+	 *
+	 * NOTE: we could get a unique-index failure here, in case the same name
+	 * has already been used for a type.
+	 */
+	AddNewRelationType(relname,
+					   relnamespace,
+					   new_rel_oid,
+					   relkind,
+					   new_type_oid);
+
+	/*
+	 * now add tuples to pg_attribute for the attributes in our new
+	 * relation.
+	 */
+	AddNewAttributeTuples(new_rel_oid, new_rel_desc->rd_att, relkind,
+						  oidislocal, oidinhcount);
+
+	/*
+	 * make a dependency link to force the relation to be deleted if its
+	 * namespace is.  Skip this in bootstrap mode, since we don't make
+	 * dependencies while bootstrapping.
+	 */
+	if (!IsBootstrapProcessingMode())
+	{
+		ObjectAddress myself,
+					referenced;
+
+		myself.classId = RelOid_pg_class;
+		myself.objectId = new_rel_oid;
+		myself.objectSubId = 0;
+		referenced.classId = get_system_catalog_relid(NamespaceRelationName);
+		referenced.objectId = relnamespace;
+		referenced.objectSubId = 0;
+		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+	}
+
+	/*
+	 * store constraints and defaults passed in the tupdesc, if any.
+	 *
+	 * NB: this may do a CommandCounterIncrement and rebuild the relcache
+	 * entry, so the relation must be valid and self-consistent at this
+	 * point. In particular, there are not yet constraints and defaults
+	 * anywhere.
+	 */
+	StoreConstraints(new_rel_desc, tupdesc);
+
+	/*
+	 * If there's a special on-commit action, remember it
+	 */
+	if (oncommit != ONCOMMIT_NOOP)
+		register_on_commit_action(new_rel_oid, oncommit);
+
+	/*
+	 * ok, the relation has been cataloged, so close our relations and
+	 * return the oid of the newly created relation.
+	 */
+	heap_close(new_rel_desc, NoLock);	/* do not unlock till end of xact */
+	heap_close(pg_class_desc, RowExclusiveLock);
+
+	
 }
 
 

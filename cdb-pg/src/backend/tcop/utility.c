@@ -574,7 +574,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_CreateStmt:
-			CdbSentry(CDB_NONCE, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			{
 				Oid			relOid;
 
