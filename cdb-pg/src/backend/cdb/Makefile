@@ -40,7 +40,8 @@ SUBSYS.o: $(pqlibs) $(ALLOBJS) $(pre_reqs)
 ifneq ($(PORTNAME),darwin)
 	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(ALLOBJS) $(EXTRA_OBJS) $(libpq)
 else
-	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(ALLOBJS) $(EXTRA_OBJS) $(libpq) -unexported_symbols_list libpq_local.sym.mac
+	# Force a static link.
+	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(ALLOBJS) $(EXTRA_OBJS) $(libpq_builddir)/libpq.a -unexported_symbols_list libpq_local.sym.mac
 endif
 
 ifeq ($(PORTNAME),linux)
