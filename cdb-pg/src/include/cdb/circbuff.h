@@ -46,6 +46,8 @@ typedef struct circbuff{
  */
 extern void initCircBuff( circbuff *cb, unsigned int size );
 
+extern char * getDataStart( circbuff *cb );
+
 /* Returns the total size of the circbuff datastructure in bytes including
  * the buffer space.
  */

@@ -21,8 +21,14 @@ void initCircBuff( circbuff *cb, unsigned int size )
 {
     cb->head = 0;
 	cb->tail = 0;
-    cb->size = size;  
-    
+    cb->size = size;
+	//cb->buffer = &(cb->tail) + sizeof(sig_atomic_t);   
+}
+
+
+char * getDataStart( circbuff *cb )
+{
+	return ((char*)cb) + HEADER_SIZE;
 }
 
 
