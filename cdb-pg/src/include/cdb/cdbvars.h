@@ -201,6 +201,20 @@ extern int Cdb_querygroup_id;           /* GUC var */
 extern bool enable_cdbrepartition;
 extern bool enable_cdbbroadcast;
 
+/*
+ * Parameter ams_wait_time
+ *
+ * The run-time parameter (GUC variable) ams_wait_time controls the
+ * amount of time that the motion layer polls when checking to see if more
+ * work can be performed.  This time is in microseconds.
+ *
+ * The minimum value of this parameter is 1 bytes, and the maximum is
+ * 1,000,000.
+ */
+extern int ams_wait_time;    /* GUC var */
+
+
+
 /* --------------------------------------------------------------------------------------------------
  * Structure for row of cdb.cdb table
  */

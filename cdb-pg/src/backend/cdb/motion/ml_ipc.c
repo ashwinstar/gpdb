@@ -219,49 +219,35 @@ TupleChunkListItem RecvTupleChunkFromAMS(void)
 
 
 
-void waitForMLIpc( bool readInterest, int *readSegId, bool writeInterest, int *writeSegId )
+
+bool CanWriteToAMS( int segId )
 {
-	int rc, index,count;
-	MPI_Status status;
+    Assert( segId == WRITE_INTEREST_ALL );
 
-	if( readInterest )
-	{
-		//Currently we don't support read interest for anything other than all.
-		Assert( *readSegId == READ_INTEREST_ALL );
+    if( sendInProgress )
+    {
+        int rc,flag;
+        MPI_Status status;
 
-		waitReqs[count] = mpiRecvReq;
-		count++;
-	}
 
-	if( writeInterest )
-	{
-		waitReqs[count] = mpiSendReq;
-		count++;
-	}
+        rc = MPI_Test( &mpiSendReq, &flag, &status );
+        checkMpiRc( rc, "Error during MPI_Test");
 
-	//wait for any of our requests to finish.	
-	rc = MPI_Waitany( count, waitReqs, &index, &status );
 
-	checkMpiRc( rc, "Error during MPI_Waitany");
+        if( flag )
+            return true;
+        else
+            return false;
 
-	/* post-process what happened. we have work to do here if it was a read because 
-	 * MPI_Waitany() sets our request to NULL if its ready. (that isn't very nice).
-     * So we'll need to book keep that that read is done so that the 
-     * RecvTupleChunkFromAMS() function can do the right thing.
-     */
-	if( readInterest && index == 0)
-	{
-		tcReady = true;	
-	} 
-	
-	
-	/* TODO: in this impl we don't even have to say which event happened.  which kind
-	 * of sux.  but is ok, for the basic way we are going to use it in the motion node.
-	 * otherwise we need to pass back what happened in readSegId and writeSegId.
-	 */
-   
+    }
+    else
+    {
+        /* if we don't have a send in progress then return true. */
+        return true;
+    }
 
 }
+
 
 /*=========================================================================
  * HELPER FUNCTIONS

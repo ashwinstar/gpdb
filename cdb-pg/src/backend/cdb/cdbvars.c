@@ -51,6 +51,8 @@ int					Cdb_querygroup_id;		/* Per-session ID, same across all backends in the s
 bool				enable_cdbrepartition;
 bool				enable_cdbbroadcast;
 
+int 				ams_wait_time;  /*time in microseconds for motion layer to wait. */
+
 /* 
  * The single row from cdb.cdb for this database is held in this variable,
  * which is initialized in cdbutil.c in the function

@@ -16,6 +16,14 @@
 #include "cdb/tupchunklist.h"
 
 
+/* constants associated with the ams_wait_time GUC Var.  All values are in 
+ * microseconds. 
+ */
+#define DEFAULT_AMS_WAIT_TIME 2000
+#define MIN_AMS_WAIT_TIME 1
+#define MAX_AMS_WAIT_TIME 1000000
+
+
 /* Define this if you want tons of logs! */
 #undef AMS_VERBOSE_LOGGING
 
@@ -213,6 +221,7 @@ extern void CanReadTuple(void);
  * in all reads 
  */
 #define READ_INTEREST_ALL -32768
+#define WRITE_INTEREST_ALL -32768
 
 /* Allows the caller to wait on a combination of specified read and write
  * interest.   Read interest is further specified by a segId.  One can

@@ -221,6 +221,7 @@ static ChunkSorterEntry *getChunkSorterEntry(MotionNodeEntry *motNodeEntry,
 static bool addChunkToSorter(TupleChunkListItem tcItem);
 
 static void processIncomingChunks(void);
+static bool isTupleInStore( Tuplestorestate *tupStoreState );
 
 static HeapTuple getNextTupleFromStore(Tuplestorestate *tupStoreState);
 
@@ -471,6 +472,10 @@ SendReturnCode SendEndOfStream(uint16 motNodeID, int16 target_segment)
          * own, as well as when we receive one.
          */
         pMNEntry->num_stream_ends_recvd++;
+        
+#ifdef AMS_VERBOSE_LOGGING
+        elog( DEBUG3, "Motion Layer Sent EndOfStream for motion node: %d", motNodeID);
+#endif
     }
 
     /* We record EOS as if a tuple were sent. */
@@ -622,51 +627,71 @@ ReceiveReturnCode RecvTupleFrom(uint16 motNodeID, HeapTuple *tup_i,
  */
 void waitForEvent( uint16 motNodeID, bool readInterest, int segId, bool writeInterest )
 {
-	//loop through till something good happens.
-	while(true)
+    MotionNodeEntry *pMNEntry;
+	ChunkSorterEntry *pCSEntry;
+    Tuplestorestate *tupStoreState;
+
+    bool done = false;
+
+
+    pMNEntry = getMotionNodeEntry(motNodeID);
+
+
+	/* we want to use the tuplestore where we are storing completed tuples
+     * this is depends on if its order preserving or not.
+     */
+	if( pMNEntry->preserve_order )
 	{
-		if( readInterest )
-		{
-			//see if we have anything in our chunkSorter. if yes, return;
-			MotionNodeEntry *pMNEntry;
-			Tuplestorestate *tupStoreState;
-			HeapTuple *tup;
-
-			pMNEntry = getMotionNodeEntry(motNodeID);
-			tupStoreState = pMNEntry->ready_tuples;
-
-			//we mark and restore since this function doesn't return the 
-			// tuple.
-			tuplestore_markpos(tupStoreState);
-			*tup = getNextTupleFromStore(tupStoreState);
-			tuplestore_restorepos(tupStoreState);
-
-
-			if( tup != NULL )
-				return;
-
-		}
-
-		//currently i don't think there are any smarts we can do for
-		// write interest. so if we are here, we will call into the 
-		// ml_ipc wait.
-		waitForMLIpc(readInterest, &segId, writeInterest, NULL );
-
-
-		if( segId == 1 )
-		{
-			//read occured.
-			processIncomingChunks();
-		}
-		else
-		{
-			//write occured.
-			return;
-		}
+		pCSEntry = getChunkSorterEntry(pMNEntry, segId );
+		tupStoreState = pCSEntry->ready_tuples;
 	}
+	else
+    	tupStoreState = pMNEntry->ready_tuples;
+
+
+    //loop through till something good happens.
+    while(!done)
+    {
+
+        CHECK_FOR_INTERRUPTS();
+
+        if( readInterest )
+        {
+
+            if( isTupleInStore(tupStoreState) )
+            {                
+                done = true;
+            }
+            else
+            {
+                //try and receive...             
+                processIncomingChunks();
+   			
+                //have we seen all our end of streams?
+                if( pMNEntry->num_stream_ends_recvd == pMNEntry->num_senders )
+                    done = true;
+            }
+        }
+
+
+        if( writeInterest )
+        {
+            //see if we can write
+            if( CanWriteToAMS( WRITE_INTEREST_ALL ) )
+                done = true;
+        }
+
+        //sleep for a bit.
+        if( !done )
+            pg_usleep( ams_wait_time );
+        
+
+    }
+
+
+    return;
 
 }
-
 
 /* This helper function is the receive-tuple workhorse.  It pulls tuple chunks
  * from the AMS, and pushes them to the chunk-sorter where they can be sorted
@@ -765,6 +790,45 @@ HeapTuple getNextTupleFromStore(Tuplestorestate *tupStoreState)
     
     return htup;
 }
+
+bool isTupleInStore( Tuplestorestate *tupStoreState )
+{
+    bool shouldFree;
+    HeapTuple htup;
+
+    AssertArg(tupStoreState != NULL);
+
+
+    /* If we are already at EOF, set the read-position to where EOF was
+     * previously encountered.  This is necessary since the read-position
+     * tracks the write-position once EOF occurs in the tuple-store.
+    */
+    Assert( tupStoreState != NULL );
+
+    if (tuplestore_ateof(tupStoreState))
+        tuplestore_restorepos(tupStoreState);
+
+    /* Get the next HeapTuple, if one is available! */
+    tuplestore_markpos(tupStoreState);
+    htup = tuplestore_getheaptuple(tupStoreState, true, &shouldFree);
+    tuplestore_restorepos(tupStoreState);
+
+
+    /* If the read-position ends up at EOF, mark the position so that we can
+     * restore it next time we read.  This is because the read-position tracks
+     * with the write-position when EOF occurs in the tuple-store.
+     */
+    if (tuplestore_ateof(tupStoreState))
+       tuplestore_markpos(tupStoreState);
+
+    if( htup == NULL )
+        return false;
+    else
+        return true;
+
+
+}
+
 
 
 /*

@@ -38,6 +38,8 @@ static void execMotionSortedFirstTime(MotionState *node);
 static uint32 evalHashKey(ExprContext *econtext, List *hashkeys, Oid *hashOids, CdbHash *h);
 static bool setReadFromAMS(Motion *node);
 
+
+
 /* ----------------------------------------------------------------
  *		ExecMotion
  * ----------------------------------------------------------------
@@ -304,17 +306,20 @@ execMotionUnsorted(MotionState *node)
                 }
             }
         }
-	
+#ifdef CDB_AMS_WAITFOR
 		/*EXPERIMENTAL: code below will throttle executor by calling into the motion layer
 		 *				to block until more work can be performed.  Currently, the 
 		 * 			    granularity is on an ALL Read, ALL write, or ALL both basis.  	
-		 *
-		 * UNCOMMENT BELOW TO TRY OUT!
 		 */
-		//if( node->noMoreChildTuples )
-	 	//	waitForEvent( motion->motionID, true, READ_INTEREST_ALL, false );			
-		//else
-		//	waitForEvent( motion->motionID, true, READ_INTEREST_ALL, true );			
+		 
+		/* we only want to wait around if we have reading and writing left to do. */ 
+		// !node->noMoreAMSTuples
+		// 
+		if( !node->noMoreAMSTuples || !node->noMoreChildTuples ) 
+    		waitForEvent( motion->motionID, !node->noMoreAMSTuples, 
+    		              READ_INTEREST_ALL, !node->noMoreChildTuples ); 
+		
+#endif
 
     }
     while (tuple == NULL &&
@@ -431,17 +436,18 @@ execMotionSorted(MotionState *node)
                 }
                 
                 recvRC = RecvTupleFrom(motion->motionID, &inputTuple, node->segindexNext);
-
+#ifdef CDB_AMS_WAITFOR
 				/*EXPERIMENTAL: code below will throttle executor by calling into the motion layer
 				 *				to block until more work can be performed.  Currently, the 
 		 		 * 			    granularity is on an ALL Read, ALL write, or ALL both basis.  	
-				 *
-				 * UNCOMMENT BELOW TO TRY OUT
-		 		 */
-				//if( node->noMoreChildTuples )
-				//	waitForEvent( motion->motionID, true, READ_INTEREST_ALL, false );			
-				//else
-				//	waitForEvent( motion->motionID, true, READ_INTEREST_ALL, true );			
+				 */
+		 		 
+		 		/* we only want to wait around if we have reading and writing left to do. */ 
+                if( !node->noMoreAMSTuples || !node->noMoreChildTuples ) 
+                    waitForEvent( motion->motionID, !node->noMoreAMSTuples, 
+                                  READ_INTEREST_ALL, !node->noMoreChildTuples );  
+							
+#endif
 
             }
             while (recvRC == NO_TUPLE);
@@ -475,16 +481,21 @@ execMotionSorted(MotionState *node)
                     CHECK_FOR_INTERRUPTS();
                     
                     trySendCurrentTuple(node);
-
+#ifdef CDB_AMS_WAITFOR
 					/*EXPERIMENTAL: code below will throttle executor by calling into the motion layer
 					 *				to block until more work can be performed.  Currently, the 
 			 		 * 			    granularity is on an ALL Read, ALL write, or ALL both basis.  	
 					 *
 					 *              below we only register write interest.
 					 *
-					 * UNCOMMENT BELOW TO TRY OUT
 			 		 */
-					//waitForEvent( motion->motionID, false, READ_INTEREST_ALL, true );
+			 		/* we only want to wait around if we have reading and writing left to do. */ 
+		            if( !node->noMoreChildTuples ) 
+		            {
+    		              waitForEvent( motion->motionID, false, READ_INTEREST_ALL, true ); 
+    		        }     
+					
+#endif
                 }
             }
             
