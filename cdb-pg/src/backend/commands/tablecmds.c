@@ -287,7 +287,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 	AttrNumber	attnum;
 
 	bool hasDispatched = false;
-	bool shouldDispatch =  Cdb_role == CDB_ROLE_DISPATCH;
+	bool shouldDispatch =  Cdb_role == CDB_ROLE_DISPATCH && !IsBootstrapProcessingMode();
 
 	/*
 	 * Truncate relname to appropriate length (probably a waste of time,
@@ -3793,7 +3793,8 @@ ATExecAddIndex(AlteredTableInfo *tab, Relation rel,
 				true,			/* is_alter_table */
 				check_rights,
 				skip_build,
-				quiet);
+				quiet,
+				stmt);
 }
 
 /*
@@ -5958,7 +5959,7 @@ AlterTableCreateToastTable(Oid relOid, bool silent)
 							   BTREE_AM_OID,
 							   rel->rd_rel->reltablespace,
 							   classObjectId,
-							   true, false, true, false);
+							   true, false, true, false, 0);
 
 	/*
 	 * Update toast rel's pg_class entry to show that it has an index. The

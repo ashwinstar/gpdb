@@ -459,14 +459,15 @@ index_create(Oid heapRelationId,
 			 bool primary,
 			 bool isconstraint,
 			 bool allow_system_table_mods,
-			 bool skip_build)
+			 bool skip_build,
+			 Oid indexoid)
 {
 	Relation	heapRelation;
 	Relation	indexRelation;
 	TupleDesc	indexTupDesc;
 	bool		shared_relation;
 	Oid			namespaceId;
-	Oid			indexoid;
+	/*Oid			indexoid;*/
 	int			i;
 
 	/*
@@ -526,7 +527,20 @@ index_create(Oid heapRelationId,
 	 * (If we fail further down, it's the smgr's responsibility to remove
 	 * the disk file again.)
 	 */
-	indexRelation = heap_create(indexRelationName,
+
+	if (indexoid != InvalidOid)
+		indexRelation = heap_create_with_relid(indexRelationName,
+								namespaceId,
+								tableSpaceId,
+								indexTupDesc,
+								RELKIND_INDEX,
+								shared_relation,
+								allow_system_table_mods,
+								indexoid,
+								false);
+	else
+
+		indexRelation = heap_create(indexRelationName,
 								namespaceId,
 								tableSpaceId,
 								indexTupDesc,

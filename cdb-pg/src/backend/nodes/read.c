@@ -294,8 +294,10 @@ nodeRead(char *token, int tok_len)
 		case LEFT_BRACE:
 			result = parseNodeString();
 			token = pg_strtok(&tok_len);
-			if (token == NULL || token[0] != '}')
+			if (token == NULL )
 				elog(ERROR, "did not find '}' at end of input node");
+			if (token[0] != '}')
+				elog(ERROR, "did not find '}' at end of input node, instead found %s",token);
 			break;
 		case LEFT_PAREN:
 			{

@@ -856,7 +856,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_IndexStmt:		/* CREATE INDEX */
-			CdbSentry(CDB_NONCE, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			{
 				IndexStmt  *stmt = (IndexStmt *) parsetree;
 
@@ -875,7 +875,8 @@ ProcessUtility(Node *parsetree,
 							false,		/* is_alter_table */
 							true,		/* check_rights */
 							false,		/* skip_build */
-							false);		/* quiet */
+							false,		/* quiet */
+							stmt);		
 			}
 			break;
 

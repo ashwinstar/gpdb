@@ -376,38 +376,76 @@ _readConstraint(void)
 
 	READ_STRING_FIELD(name);			/* name, or NULL if unnamed */
 	token = pg_strtok(&length);			/* skip:  :contype */
+	
+
 	token = pg_strtok(&length);
 
-	if (strcmp(token, "PRIMARY_KEY")==0)
+	
+
+	if (strncmp(token, "PRIMARY_KEY", length)==0)
 	{
 		local_node->contype = CONSTR_PRIMARY;
+		elog(NOTICE, "primary key");
 		READ_NODE_FIELD(keys);
 		READ_STRING_FIELD(indexspace);
 	}
-	else if (strcmp(token, "UNIQUE")==0)
+	else if (strncmp(token, "UNIQUE", length)==0)
 	{
 		local_node->contype = CONSTR_UNIQUE;
 		READ_NODE_FIELD(keys);
 		READ_STRING_FIELD(indexspace);
 	}
-	else if (strcmp(token, "CHECK")==0)
+	else if (strncmp(token, "CHECK", length)==0)
 	{
 		local_node->contype = CONSTR_CHECK;
 		READ_NODE_FIELD(raw_expr);
 		READ_STRING_FIELD(cooked_expr);
 	}
-	else if (strcmp(token, "DEFAULT")==0)
+	else if (strncmp(token, "DEFAULT", length)==0)
 	{
 		local_node->contype = CONSTR_DEFAULT;
 		READ_NODE_FIELD(raw_expr);
 		READ_STRING_FIELD(cooked_expr);
 	}
-	else if (strcmp(token, "NOT_NULL")==0)
+	else if (strncmp(token, "NOT_NULL", length)==0)
 	{
 		local_node->contype = CONSTR_NOTNULL;
 	}
 
 	
+	READ_DONE();
+}
+
+static IndexStmt *
+_readIndexStmt(void)
+{
+	READ_LOCALS(IndexStmt);
+
+	READ_STRING_FIELD(idxname);
+	READ_NODE_FIELD(relation);
+	READ_STRING_FIELD(accessMethod);
+	READ_STRING_FIELD(tableSpace);
+	READ_NODE_FIELD(indexParams);
+	READ_NODE_FIELD(whereClause);
+	READ_NODE_FIELD(rangetable);
+	READ_BOOL_FIELD(unique);
+	READ_BOOL_FIELD(primary);
+	READ_BOOL_FIELD(isconstraint);
+	READ_OID_FIELD(idxOid);
+
+	READ_DONE();
+}
+
+static IndexElem *
+_readIndexElem(void)
+{
+	READ_LOCALS(IndexElem);
+
+	READ_STRING_FIELD(name);
+	READ_NODE_FIELD(expr);
+	READ_NODE_FIELD(opclass);
+
+
 	READ_DONE();
 }
 
@@ -1575,7 +1613,9 @@ static ParseNodeInfo infoAr[] =
 	{"GROUPCLAUSE", (ReadFn)_readGroupClause},
 	{"HASH", (ReadFn)_readHash},
 	{"HASHJOIN", (ReadFn)_readHashJoin},
+	{"INDEXELEM", (ReadFn)_readIndexElem},
 	{"INDEXSCAN", (ReadFn)_readIndexScan},
+	{"INDEXSTMT", (ReadFn)_readIndexStmt},
 	{"JOIN", (ReadFn)_readJoin},
 	{"JOINEXPR", (ReadFn)_readJoinExpr},
 	{"LIMIT", (ReadFn)_readLimit},

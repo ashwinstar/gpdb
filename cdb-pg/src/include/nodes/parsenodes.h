@@ -1372,6 +1372,7 @@ typedef struct IndexStmt
 	bool		unique;			/* is index unique? */
 	bool		primary;		/* is index on primary key? */
 	bool		isconstraint;	/* is it from a CONSTRAINT clause? */
+	Oid			idxOid;
 } IndexStmt;
 
 /* ----------------------

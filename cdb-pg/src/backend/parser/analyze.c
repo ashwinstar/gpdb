@@ -1186,6 +1186,7 @@ transformIndexConstraints(ParseState *pstate, CreateStmtContext *cxt)
 			   || (constraint->contype == CONSTR_UNIQUE));
 
 		index = makeNode(IndexStmt);
+		index->idxOid = 0;
 
 		index->unique = true;
 		index->primary = (constraint->contype == CONSTR_PRIMARY);

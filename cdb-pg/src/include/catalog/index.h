@@ -39,7 +39,8 @@ extern Oid index_create(Oid heapRelationId,
 			 bool primary,
 			 bool isconstraint,
 			 bool allow_system_table_mods,
-			 bool skip_build);
+			 bool skip_build,
+			 Oid indexoid);
 
 extern void index_drop(Oid indexId);
 

@@ -246,7 +246,7 @@ Boot_DeclareIndexStmt:
 								$9,
 								NULL, NIL,
 								false, false, false,
-								false, false, true, false);
+								false, false, true, false, 0);
 					do_end();
 				}
 		;
@@ -263,7 +263,7 @@ Boot_DeclareUniqueIndexStmt:
 								$10,
 								NULL, NIL,
 								true, false, false,
-								false, false, true, false);
+								false, false, true, false, 0);
 					do_end();
 				}
 		;

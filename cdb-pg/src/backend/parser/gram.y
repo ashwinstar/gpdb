@@ -3208,6 +3208,7 @@ IndexStmt:	CREATE index_opt_unique INDEX index_name ON qualified_name
 					n->indexParams = $9;
 					n->tableSpace = $11;
 					n->whereClause = $12;
+					n->idxOid = 0;
 					$$ = (Node *)n;
 				}
 		;
