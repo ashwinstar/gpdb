@@ -1,0 +1,475 @@
+/*-------------------------------------------------------------------------
+ *
+ * cdbexecplan.c
+ *
+ *
+ *     Copyright (c) 2001-2003, PostgreSQL Global Development Group
+ *     ALL RIGHTS RESERVED;
+ *
+ *     Permission to use, copy, modify, and distribute this software and its
+ *     documentation for any purpose, without fee, and without a written agreement
+ *     is hereby granted, provided that the above copyright notice and this
+ *     paragraph and the following two paragraphs appear in all copies.
+ *
+ *     IN NO EVENT SHALL THE AUTHOR OR DISTRIBUTORS BE LIABLE TO ANY PARTY FOR
+ *     DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES, INCLUDING
+ *     LOST PROFITS, ARISING OUT OF THE USE OF THIS SOFTWARE AND ITS
+ *     DOCUMENTATION, EVEN IF THE AUTHOR OR DISTRIBUTORS HAVE BEEN ADVISED OF THE
+ *     POSSIBILITY OF SUCH DAMAGE.
+ *
+ *     THE AUTHOR AND DISTRIBUTORS SPECIFICALLY DISCLAIMS ANY WARRANTIES,
+ *     INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
+ *     AND FITNESS FOR A PARTICULAR PURPOSE.  THE SOFTWARE PROVIDED HEREUNDER IS
+ *     ON AN "AS IS" BASIS, AND THE AUTHOR AND DISTRIBUTORS HAS NO OBLIGATIONS TO
+ *     PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
+ *
+ */
+#include "postgres.h"
+
+#include <ctype.h>
+#include <assert.h>
+
+#include "libpq-fe.h"
+#include "libpq-int.h"
+#include "fmgr.h"
+#include "funcapi.h"
+#include "miscadmin.h"
+#include "access/tupdesc.h"
+#include "commands/async.h"
+#include "catalog/pg_type.h"
+#include "lib/stringinfo.h"
+#include "storage/ipc.h"
+#include "tcop/tcopprot.h"
+#include "utils/builtins.h"
+#include "utils/lsyscache.h"
+#include "utils/memutils.h"
+#include "executor/spi.h"
+#include "executor/spi_priv.h"
+#include "nodes/print.h"
+#include "cdb/cdbsrlz.h"
+
+#include "cdbexecplan.h"
+
+// Added to spi.c
+extern int  SPI_execute_cdb( const char *src, Plan* pPlan, Query* pQuery, bool read_only, int tcount);
+
+/* general utility */
+#define GET_STR(textp) DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(textp)))
+
+/*
+ * cdb_exec_plan takes 3 arguments:
+ * 	1) a serialized execution plan
+ *  2) a serialized query plan
+ *  3) an SQL statement
+ * It then runs the plan through the executor using the SPI interface.
+ * It currently logs the row count.
+ */
+PG_FUNCTION_INFO_V1(cdb_exec_plan);
+Datum
+cdb_exec_plan(PG_FUNCTION_ARGS)
+{
+	char* pszPlanXML = NULL;
+	char* pszQueryXML = NULL;
+	char* pszSQL = NULL;
+	bool bRtn = false;
+	Plan* pNewPlan = NULL;
+	Query* pNewQuery = NULL;
+	
+	pszPlanXML = GET_STR(PG_GETARG_TEXT_P(0));
+	pszQueryXML = GET_STR(PG_GETARG_TEXT_P(1));
+	pszSQL = GET_STR(PG_GETARG_TEXT_P(2));
+	
+	if ( SPI_OK_CONNECT != SPI_connect() )
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+				errmsg("SPI_connect failed in cdb_exec_plan" )));
+	}
+	
+	// Here, we will unserialize the string into an _SPI_plan structure
+	pNewPlan = (Plan *)deserializeNode( pszPlanXML );
+	pNewQuery = (Query *)deserializeNode( pszQueryXML );
+	if ( pNewPlan == NULL || pNewQuery == NULL )
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+				errmsg("Plan or Query XML deserialization failed in cdb_exec_plan" )));
+	}
+		
+	int x;
+
+	if ( SPI_OK_SELECT != SPI_execute_cdb( pszSQL, pNewPlan, pNewQuery, false, 0 ) )
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+				errmsg("SPI_execute_cdb failed in cdb_exec_plan" )));
+	}
+	
+	bRtn = true;	
+				
+	x = SPI_processed;
+	elog( INFO, "Rows returned in SPI_execute_plan were %d", x );
+
+	SPI_finish();
+	
+	pfree(pszPlanXML);
+	pfree(pszQueryXML);
+	pfree(pszSQL);
+	
+	PG_RETURN_BOOL( bRtn );
+}
+
+PG_FUNCTION_INFO_V1(cdb_serialize_plan);
+Datum
+cdb_serialize_plan(PG_FUNCTION_ARGS)
+{
+	char* pszSQL = NULL;
+	char* pszOutput = NULL;
+
+	/*
+	 * Grab the current memory context.  So we can create the node string in it,
+	 * rather than in the spi context that will go away when we call 
+	 * SPI_finish
+	 */
+	MemoryContext myContext = CurrentMemoryContext;
+	MemoryContext oldContext;
+	
+	pszSQL = GET_STR(PG_GETARG_TEXT_P(0));
+
+	if ( SPI_OK_CONNECT != SPI_connect() )
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+				errmsg("SPI_connect failed in cdb_serialize_plan" )));
+	}
+	
+	_SPI_plan*	thePlan = (_SPI_plan *)SPI_prepare(pszSQL, 0, NULL);
+	if ( thePlan == NULL )
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+				errmsg("SPI_prepare failed for sql %s", pszSQL )));
+	}
+		
+	if ( list_length(thePlan->ptlist) != 1 )
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+				errmsg("cdb_serialize_plan can only handle 1 sql statement, but there were %d", list_length(thePlan->ptlist) )));
+	}
+	
+	ListCell   *plan_list_item = list_head(thePlan->ptlist);
+
+	oldContext = MemoryContextSwitchTo(myContext);
+	pszOutput = serializeNode( lfirst(plan_list_item) );
+	MemoryContextSwitchTo(oldContext);
+
+	if ( pszOutput == NULL )
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+				errmsg("TestPlanSerialization failed for sql %s", pszSQL )));
+	}
+	
+	SPI_freeplan(thePlan);
+	SPI_finish();
+
+	char *f = pretty_format_node_dump(pszOutput);
+
+
+	int lenOutput = strlen(f);
+	int len = lenOutput + VARHDRSZ;
+	text* result = (text *) palloc(len);
+	if ( result == NULL )
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 errmsg("out of memory")));
+	}
+
+	/* Set size of result string... */
+	VARATT_SIZEP(result) = len;
+
+	/* Fill data field of result string... */
+	char* ptr = VARDATA(result);
+	memcpy(ptr, f, lenOutput);
+
+	pfree(pszOutput);
+	pfree(f);
+	pfree(pszSQL);
+
+	PG_RETURN_TEXT_P(result);
+}
+
+PG_FUNCTION_INFO_V1(cdb_serialize_query);
+Datum
+cdb_serialize_query(PG_FUNCTION_ARGS)
+{
+	char* pszOutput = NULL;
+	char* pszSQL = NULL;
+	
+	/*
+	 * Grab the current memory context.  So we can create the node string in it,
+	 * rather than in the spi context that will go away when we call 
+	 * SPI_finish
+	 */
+	MemoryContext myContext = CurrentMemoryContext;
+	MemoryContext oldContext;
+
+	pszSQL = GET_STR(PG_GETARG_TEXT_P(0));
+
+	if ( SPI_OK_CONNECT != SPI_connect() )
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+				errmsg("SPI_connect failed in cdb_serialize_query" )));
+	}
+	
+	_SPI_plan*	thePlan = (_SPI_plan *)SPI_prepare(pszSQL, 0, NULL);
+	if ( thePlan == NULL )
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+				errmsg("SPI_prepare failed for sql %s", pszSQL )));
+	}
+		
+	List	   *query_list_list = thePlan->qtlist;
+	if ( list_length(query_list_list) != 1 )
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+				errmsg("cdb_serialize_query can only handle 1 sql statement, but there were %d", list_length(query_list_list) )));
+	}
+	
+	ListCell   *query_list_list_item;
+	foreach(query_list_list_item, query_list_list)
+	{
+		List	   *query_list = lfirst(query_list_list_item);
+		ListCell   *query_list_item;
+		
+		if ( list_length(query_list) != 1 )
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+					errmsg("cdb_serialize_query can only handle 1 sql statement, but there were %d", list_length(query_list) )));
+		}
+		
+		foreach(query_list_item, query_list)
+		{
+			oldContext = MemoryContextSwitchTo(myContext);
+			pszOutput = serializeNode( lfirst(query_list_item) );
+			MemoryContextSwitchTo(oldContext);
+
+			if ( pszOutput == NULL )
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+						errmsg("TestQuerySerialization failed for sql %s", pszSQL )));
+			}
+			break;
+		}
+		break;
+	}
+		
+	SPI_freeplan(thePlan);
+	SPI_finish();
+
+	char *f = pretty_format_node_dump(pszOutput);
+
+	int lenOutput = strlen(f);
+	int len = lenOutput + VARHDRSZ;
+	text* result = (text *) palloc(len);
+	if ( result == NULL )
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 errmsg("out of memory")));
+	}
+
+	/* Set size of result string... */
+	VARATT_SIZEP(result) = len;
+
+	/* Fill data field of result string... */
+	char* ptr = VARDATA(result);
+	memcpy(ptr, f, lenOutput);
+
+	pfree(pszOutput);
+	pfree(f);
+	pfree(pszSQL);
+
+	PG_RETURN_TEXT_P(result);
+}
+
+
+typedef struct 
+{
+	int index;
+	int rows;
+} QueryInfo;
+
+PG_FUNCTION_INFO_V1(cdb_exec_indirect);
+Datum
+cdb_exec_indirect(PG_FUNCTION_ARGS)
+{
+    FuncCallContext *funcctx;
+    MemoryContext oldcontext;
+
+	char* pszSQL = NULL;
+	char* pszPlan = NULL;
+	char* pszQuery = NULL;
+	
+    /* stuff done only on the first call of the function */
+    if (SRF_IS_FIRSTCALL())
+    {
+        /* create a function context for cross-call persistence */
+        funcctx = SRF_FIRSTCALL_INIT();
+
+		pszSQL = GET_STR(PG_GETARG_TEXT_P(0));
+
+		if ( SPI_OK_CONNECT != SPI_connect() )
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+					errmsg("SPI_connect failed in cdb_exec_indirect" )));
+		}
+	
+		_SPI_plan*	thePlan = (_SPI_plan *)SPI_prepare(pszSQL, 0, NULL);
+		if ( thePlan == NULL )
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+					errmsg("SPI_prepare failed for sql %s", pszSQL )));
+		}
+		
+		if ( list_length(thePlan->ptlist) != 1 )
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+					errmsg("cdb_exec_indirect can only handle 1 sql statement, but there were %d", list_length(thePlan->ptlist) )));
+		}
+	
+		ListCell   *plan_list_item = list_head(thePlan->ptlist);
+
+		pszPlan = serializeNode( lfirst(plan_list_item) );
+
+		if ( pszPlan == NULL )
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+					errmsg("serializeNode failed for sql %s", pszSQL )));
+		}
+		
+		List	   *query_list_list = thePlan->qtlist;
+		if ( list_length(query_list_list) != 1 )
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+					errmsg("cdb_exec_indirect can only handle 1 sql statement, but there were %d", list_length(query_list_list) )));
+		}
+	
+		ListCell   *query_list_list_item;
+		foreach(query_list_list_item, query_list_list)
+		{
+			List	   *query_list = lfirst(query_list_list_item);
+			ListCell   *query_list_item;
+		
+			if ( list_length(query_list) != 1 )
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+						errmsg("cdb_exec_indirect can only handle 1 sql statement, but there were %d", list_length(query_list) )));
+			}
+		
+			foreach(query_list_item, query_list)
+			{
+				pszQuery = serializeNode( lfirst(query_list_item) );
+
+				if ( pszQuery == NULL )
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+							errmsg("serializeNode failed for sql %s", pszSQL )));
+				}
+				break;
+			}
+			break;
+		}
+
+		SPI_freeplan(thePlan);
+	
+		// Here, we will unserialize the string into an _SPI_plan structure
+		Plan *pNewPlan = (Plan *)deserializeNode( pszPlan );
+		Query *pNewQuery = (Query *)deserializeNode( pszQuery );
+		if ( pNewPlan == NULL || pNewQuery == NULL )
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+					errmsg("Plan or Query XML deserialization failed in cdb_exec_indirect" )));
+		}
+
+		if ( SPI_OK_SELECT != SPI_execute_cdb( pszSQL, pNewPlan, pNewQuery, false, 0 ) )
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+					errmsg("SPI_execute_cdb failed in cdb_exec_plan" )));
+		}
+
+		/* store needed metadata for subsequent calls */
+        /* switch to memory context appropriate for multiple function calls */
+        oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+        funcctx->tuple_desc = BlessTupleDesc(SPI_tuptable->tupdesc);
+
+
+		/* Allocate cross-call state, so that we can keep track of where we're
+         * at in the processing.
+         */
+        QueryInfo *query_block = (QueryInfo *) palloc0( sizeof(QueryInfo) );
+		funcctx->user_fctx = (int *)query_block;
+		
+		query_block->index	= 0;
+		query_block->rows	= SPI_processed;
+		MemoryContextSwitchTo(oldcontext);
+	}
+
+	/*---------------------*
+     * Per-call operations
+     */
+    
+    funcctx = SRF_PERCALL_SETUP();
+
+	QueryInfo *query_block = (QueryInfo *)funcctx->user_fctx;
+	if ( query_block->index < query_block->rows )
+	{
+		HeapTuple tuple = SPI_tuptable->vals[query_block->index++];
+		TupleDesc tupleDesc = funcctx->tuple_desc;
+
+		Datum *values = (Datum *) palloc(tupleDesc->natts * sizeof(Datum));
+		char *nulls = (char *) palloc(tupleDesc->natts * sizeof(char));
+
+		heap_deformtuple(tuple, tupleDesc, values, nulls);
+
+		HeapTuple res = heap_formtuple(tupleDesc, values, nulls );
+
+		pfree(values);
+		pfree(nulls);
+		
+		/* make the tuple into a datum */
+		Datum result  = HeapTupleGetDatum(res);
+
+		SRF_RETURN_NEXT(funcctx, result);
+	}
+	
+	/* 
+	 * do when there is no more left 
+	 */
+
+	pfree(query_block);
+
+	SPI_finish();
+	
+	funcctx->user_fctx = NULL;
+	
+	SRF_RETURN_DONE(funcctx);
+}
+

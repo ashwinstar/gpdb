@@ -25,3 +25,19 @@ CREATE OR REPLACE FUNCTION getdechunkedrows(text, regtype) RETURNS SETOF RECORD
     AS 'libcdbtest.so', 'GetDechunkedRows__text1_regtype1'
     LANGUAGE C IMMUTABLE STRICT;
 
+-- Plan and Query Serialization functions
+CREATE OR REPLACE FUNCTION cdb_exec_plan(text, text, text) RETURNS boolean
+    AS 'libcdbtest.so', 'cdb_exec_plan'
+    LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION cdb_serialize_plan(text) RETURNS text
+    AS 'libcdbtest.so', 'cdb_serialize_plan'
+    LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION cdb_serialize_query(text) RETURNS text
+    AS 'libcdbtest.so', 'cdb_serialize_query'
+    LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION cdb_exec_indirect(text) RETURNS SETOF RECORD
+    AS 'libcdbtest.so', 'cdb_exec_indirect'
+    LANGUAGE C IMMUTABLE STRICT;
