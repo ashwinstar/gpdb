@@ -67,6 +67,32 @@
     <target name="init"
             depends="-init,-setMake,-setCCompiler">
 
+        <!-- base properties -->
+        <property name="build" value="build"/>
+        <property name="buildJavaDoc" value="${build}/javadoc"/>
+
+        <path id="doc.class.path">
+
+            <!-- All the jars files we can find -->
+            <fileset dir=".">
+                <include name="**/*.jar"/>
+            </fileset>
+
+            <pathelement location="${cdbCommonsBuild}/cdb-commons.jar"/>
+            <pathelement location="${cdbMgmtBuild}/classes"/>
+            <pathelement location="${cdbLoaderBuild}/classes"/>
+
+            <!-- toolsLib is set up in common.xml -->
+            <fileset dir="${toolsLib}">
+                <include name="junit.jar"/>
+                <include name="ydoc.jar"/>
+                <include name="class2svg.jar"/>
+                <include name="styleed.jar"/>
+            </fileset>
+
+            <pathelement location="${tools}/ydoc-2.1_05/resources"/>
+        </path>
+
         <echo level="info">
 ========================================================================
 
@@ -152,7 +178,7 @@ Using toolsLib=${toolsLib}
     <!-- Generate the CDB documentation.                                -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <target name="makeDoc"
-            depends="init"
+            depends="init,apidoc"
             description="Generate product documentation (requires special tools)">
 
         <!--
@@ -163,6 +189,45 @@ Using toolsLib=${toolsLib}
              target="makeDoc">
         </ant>
 
+    </target>
+
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Create the javadocs                                            -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="apidoc"
+        depends="init, -makeCDBManagement, -makeCDBLoader"
+        description="Generate the javadocs">
+
+        <javadoc
+            destdir="${buildJavaDoc}"
+            author="true"
+            additionalparam="-breakiterator"
+            bottom="Copyright (c) 2004 - 2005 Metapa, Inc. All Rights Reserved."
+            verbose="no"
+            docletpathref="doc.class.path"
+            classpathref="doc.class.path">
+
+            <sourcepath>
+                <pathelement location="cdb-management/src" />
+                <pathelement location="common/cdb-commons/src" />
+                <pathelement location="cdb-loader/src" />
+            </sourcepath>
+
+            <package name="com.metapa.*" />
+
+            <doclet name="ydoc.doclets.YStandard">
+                <param name="-generic"/>
+                <param name="-umlautogen"/>
+                <param name="-tag" value="pre"/>
+                <param name="-tag" value="post"/>
+                <param name="-tag" value="design"/>
+                <param name="-tag" value="param"/>
+                <param name="-tag" value="return"/>
+                <param name="-tag" value="see"/>
+                <param name="-tag" value="todo"/>
+            </doclet>
+        </javadoc>
     </target>
 
 
@@ -489,3 +554,4 @@ The value of releaseDir is: ${releaseDir}
     </target>
 
 </project>
+
