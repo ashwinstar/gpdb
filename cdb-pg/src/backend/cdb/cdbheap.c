@@ -54,11 +54,12 @@ CdbHeap *CreateCdbTupleHeap( int nSourceSegments,
 						cmpinfo);
 }
 
-void SetCdbTupleHeapInitialValue( CdbHeap *cdbheap, HeapTuple tuple, int sourceSegIndex )
+void SetCdbTupleHeapInitialValue( CdbHeap *cdbheap, HeapTuple tuple, bool shouldFree, int sourceSegIndex )
 {
 	CdbTupleHeapInfo info;
 
 	info.tuple = tuple;
+	info.shouldFree = shouldFree;
 	info.sourceSegIndex = sourceSegIndex;
 
 	SetCdbHeapInitialValue( cdbheap, &info);
@@ -70,11 +71,12 @@ CdbTupleHeapInfo *GetLowestValueFromCdbTupleHeap( CdbHeap *cdbheap )
 	return (CdbTupleHeapInfo *)GetLowestValueFromCdbHeap( cdbheap );
 }
 
-void MergeNewValueIntoCdbTupleHeap( CdbHeap *cdbheap, HeapTuple h, int sourceSegIndex )
+void MergeNewValueIntoCdbTupleHeap( CdbHeap *cdbheap, HeapTuple h, bool shouldFree, int sourceSegIndex )
 {
 	CdbTupleHeapInfo info;
 
 	info.tuple = h;
+	info.shouldFree = shouldFree;
 	info.sourceSegIndex = sourceSegIndex;
 
 	MergeNewValueIntoCdbHeap( cdbheap, &info );
@@ -164,6 +166,7 @@ void *CreateCdbTupleHeapInfo( void *createData, void *initData )
 	info = palloc0( sizeof(CdbTupleHeapInfo) );
 
 	info->tuple = initTupleHeapInfo->tuple;
+	info->shouldFree = initTupleHeapInfo->shouldFree;
 	info->sourceSegIndex = initTupleHeapInfo->sourceSegIndex;
 	info->cmpinfo = cmpinfo;
 
@@ -182,6 +185,7 @@ void CopyCdbTupleHeapInfo( void *destination, void *source )
 	infoSrc = (CdbTupleHeapInfo *)source;
 
 	infoDest->tuple = infoSrc->tuple;
+	infoDest->shouldFree = infoSrc->shouldFree;
 	infoDest->sourceSegIndex = infoSrc->sourceSegIndex;
 }
 
@@ -190,6 +194,7 @@ void SwitchCdbTupleHeapInfo( void *left, void *right )
 	CdbTupleHeapInfo *infoLeft;
 	CdbTupleHeapInfo *infoRight;
 	HeapTuple tempTuple;
+	bool tempShouldFree;
 	int tempSegIndex;
 
 	Assert( left != NULL );
@@ -199,11 +204,13 @@ void SwitchCdbTupleHeapInfo( void *left, void *right )
 	infoRight = (CdbTupleHeapInfo *)right;
 
 	tempTuple = infoLeft->tuple;
+	tempShouldFree = infoLeft->shouldFree;
 	tempSegIndex = infoLeft->sourceSegIndex;
 
 	infoLeft->tuple = infoRight->tuple;
 	infoLeft->sourceSegIndex = infoRight->sourceSegIndex;
 	infoRight->tuple = tempTuple;
+	infoRight->shouldFree = tempShouldFree;
 	infoRight->sourceSegIndex = tempSegIndex;
 }
 
