@@ -220,7 +220,6 @@ ExecutorRun(QueryDesc *queryDesc,
 
 	(*dest->rStartup) (dest, operation, queryDesc->tupDesc);
 
-#ifdef CDB_DEVELOPER
 	bool hasDispatched = false;
 	bool shouldDispatch =  Cdb_role == CDB_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL;
 
@@ -359,8 +358,6 @@ ExecutorRun(QueryDesc *queryDesc,
 
 		DestroyCdbDispatchResults( results );
 	}
-
-#endif
 
 	/*
 	 * shutdown receiver
