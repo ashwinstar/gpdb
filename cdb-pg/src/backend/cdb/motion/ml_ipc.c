@@ -27,7 +27,7 @@ uint8 hdr[ TUPLE_CHUNK_HEADER_SIZE];
 void InitMotionLayerIPC( int segmentId )
 {
 	
-	Assert( segmentId > 0 );
+	Assert( segmentId > 0 && segmentId <= NUM_SEGS );
 	segId = segmentId;
 	
 	
