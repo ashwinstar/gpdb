@@ -534,6 +534,7 @@ static void _outHashMotionDefn(StringInfo str, Motion *node)
 			WRITE_NULL_FIELD(pHashDefn->hashSegIdx);
 		
 		WRITE_NODE_FIELD(pHashDefn->hashExpr);
+		WRITE_NODE_FIELD(pHashDefn->hashOp);
 	}
 	else
 		WRITE_NULL_FIELD(pHashDefn);

@@ -550,6 +550,7 @@ _copyHashMotionDefn(HashMotionDefn *pMotionDefn)
 	}
 	
 	newMotionDefn->hashExpr = copyObject(pMotionDefn->hashExpr);
+	newMotionDefn->hashOp	= copyObject(pMotionDefn->hashOp);
 	
 	return newMotionDefn;
 }
