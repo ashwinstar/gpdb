@@ -93,7 +93,9 @@ tpchData=../../cdb-qa/refdbs_cdb2/refdb01/TPCH_load.ctl
 tpchConstraints=../../cdb-qa/refdbs_cdb2/refdb01/TPCH_KEYS.sql
 
 # These are the files needed for the Tiny schema
-# PETE - insert stuff here
+cvpDDL=tiny/cvpschema.sql
+cvpDistPolicy=tiny/cvphead.sql
+cvpData=tiny/cvpdata.sql
 
 # Ok, loop through the command line args
 #
@@ -500,7 +502,7 @@ do
         echo "Loading TPCH DDL"
         psql -o /dev/null -q $finalSegName -f $tpchDDL
 
-        echo "Setting distribution policy"
+        echo "Setting TPCH distribution policy"
         psql -o /dev/null -q $finalSegName -f $tpchDistPolicy
 
             if [ $current_segment -gt 1 ]
@@ -529,13 +531,23 @@ do
       then
 
         echo "Loading Tiny DDL"
+        psql -o /dev/null -q $finalSegName -f $cvpDDL
 
-        # PETE: Insert here
-        echo "T.B.D."
+        echo "Setting Tiny distribution policy"
+        psql -o /dev/null -q $finalSegName -f $cvpDistPolicy
 
-        echo "Setting distribution policy"
+            if [ $current_segment -gt 1 ]
+                then
+                echo "Loading data into Tiny tables"
+                    psql -o /dev/null -q $finalSegName -f $cvpData
 
-        echo "T.B.D."
+                echo "Pruning data from Tiny tables"
+                        psql $finalSegName -c "delete from customer where cn % $real_segdbs <> $current_segment % $real_segdbs"
+                        psql $finalSegName -c "delete from vendor where vn % $real_segdbs <> $current_segment % $real_segdbs"
+                        psql $finalSegName -c "delete from product where pn % $real_segdbs <> $current_segment  % $real_segdbs"
+                        psql $finalSegName -c "delete from sale where cn % $real_segdbs <> $current_segment % $real_segdbs"
+                echo "Finished Pruning data from Tiny tables"
+                fi
 
       fi
 
