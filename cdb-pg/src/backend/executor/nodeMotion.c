@@ -211,7 +211,7 @@ execMotionUnsorted(MotionState *node)
                          * parent.
                          */
                         tuple = outerTupleSlot->val;
-                        shouldFree = false;
+                        shouldFree = outerTupleSlot->ttc_shouldFree;
                         node->tupSendCtxt.heap_tuple = tuple;
                         node->tupSendCtxt.target_segment = BROADCAST_SEGIDX;
                     }
@@ -237,7 +237,7 @@ execMotionUnsorted(MotionState *node)
 							{
 								/* We are the receiver, so pass-thru the tuple. */
 								tuple = outerTupleSlot->val;
-								shouldFree = false;
+								shouldFree = outerTupleSlot->ttc_shouldFree;
 							}
 							else
 							{
@@ -280,7 +280,7 @@ execMotionUnsorted(MotionState *node)
 						{
 							/* We are the receiver, so pass-thru the tuple. */
 							tuple = outerTupleSlot->val;
-							shouldFree = false;
+							shouldFree = outerTupleSlot->ttc_shouldFree;
 						}
 						else
 						{
@@ -455,7 +455,7 @@ execMotionSorted(MotionState *node)
             if (recvRC == GOT_TUPLE)
                 node->numTuplesFromAMS++;
             
-            MergeNewValueIntoCdbTupleHeap(node->tupleheap, inputTuple,
+            MergeNewValueIntoCdbTupleHeap(node->tupleheap, inputTuple, true,
                 node->segindexNext);
         }
         else
@@ -514,7 +514,7 @@ execMotionSorted(MotionState *node)
                 /* Child plan says "No more tuples!" */
                 node->noMoreChildTuples = true;
                 
-                MergeNewValueIntoCdbTupleHeap(node->tupleheap, NULL, mySegIdx);
+                MergeNewValueIntoCdbTupleHeap(node->tupleheap, NULL, false, mySegIdx);
                 
                 /* Send an End-Of-Stream token, if it is broadcast. */
                 if (motion->numOutputSegs == 0)
@@ -529,8 +529,8 @@ execMotionSorted(MotionState *node)
                 
                 node->numTuplesFromChild++;
                 
-                MergeNewValueIntoCdbTupleHeap(node->tupleheap,
-                    outerTupleSlot->val, mySegIdx);
+                MergeNewValueIntoCdbTupleHeap(node->tupleheap, outerTupleSlot->val, 
+					outerTupleSlot->ttc_shouldFree, mySegIdx);
                 
                 /* We only send the tuple here if it is broadcast.  (Remember
                  * that we previously asserted that either it is broadcast, or
@@ -558,6 +558,7 @@ execMotionSorted(MotionState *node)
     tupHeapInfo = GetLowestValueFromCdbTupleHeap(node->tupleheap);
     tuple = tupHeapInfo->tuple;
     node->segindexNext = tupHeapInfo->sourceSegIndex;
+	shouldFree = tupHeapInfo->shouldFree;
     
     if (tuple != NULL)
     {
@@ -682,7 +683,7 @@ void execMotionSortedFirstTime(MotionState *node)
             /* Child plan says "No more tuples!" */
             node->noMoreChildTuples = true;
             
-            SetCdbTupleHeapInitialValue(node->tupleheap, NULL, mySegIdx);
+            SetCdbTupleHeapInitialValue(node->tupleheap, NULL, false, mySegIdx);
         }
         else
         {
@@ -691,7 +692,7 @@ void execMotionSortedFirstTime(MotionState *node)
             node->numTuplesFromChild++;
             
             SetCdbTupleHeapInitialValue(node->tupleheap, outerTupleSlot->val,
-                mySegIdx);
+                outerTupleSlot->ttc_shouldFree, mySegIdx);
             
             /* We only send the tuple here if it is broadcast.  (Remember that
              * we previously asserted that either it is broadcast, or this
@@ -740,7 +741,7 @@ void execMotionSortedFirstTime(MotionState *node)
             
             if (recvRC != NO_TUPLE)
             {
-                SetCdbTupleHeapInitialValue(node->tupleheap, inputTuple,
+                SetCdbTupleHeapInitialValue(node->tupleheap, inputTuple, true,
                     motion->inputSegIdx[i]);
 
                 tupsReceived[i] = true;
