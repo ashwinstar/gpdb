@@ -49,7 +49,7 @@
          It is used for distribution build purposes.
       -->
     <!-- <property name="stickyTag" value="$$Name:  $$"/> -->
-    <property name="stickyTag" value="$$Name: Release-2_0_0-0 $$"/>
+    <property name="stickyTag" value="$$Name:  $$"/>
 
     <!-- base properties -->
     <property name="dist" value="dist"/>
@@ -126,7 +126,6 @@ Using toolsLib=${toolsLib}
             depends="init"
             description="Clean the project of distribution and build materials">
 
-        <delete dir="${installRoot}"/>
         <delete dir="${dist}"/>
 
         <!-- Perform a "regular" cleaning ... -->
@@ -264,16 +263,18 @@ Using toolsLib=${toolsLib}
             Call install subroutine with "dist" set for
             distribution build.
           -->
+
+
         <antcall target="-install">
             <param name="target" value="install"/>
             <param name="Idist" value=""/>
-            <param name="IcdbdocDir" location="${installRoot}/cdb-pgsql-${releaseDir}/docs"/>
-            <param name="IcdbjreDir" location="${installRoot}/cdb-pgsql-${releaseDir}/jre"/>
-            <param name="IcdbbinDir" location="${installRoot}/cdb-pgsql-${releaseDir}/bin"/>
-            <param name="IcdbmanDir" location="${installRoot}/cdb-pgsql-${releaseDir}/man"/>
-            <param name="IcdbserverDir" location="${installRoot}/cdb-pgsql-${releaseDir}/server"/>
-            <param name="IcdbtoolsDir" location="${installRoot}/cdb-pgsql-${releaseDir}/tools"/>
-            <param name="IcdbdemoDir" location="${installRoot}/cdb-pgsql-${releaseDir}/demo"/>
+            <param name="IcdbdocDir" location="${installRoot}/cdb-pgsql/docs"/>
+            <param name="IcdbjreDir" location="${installRoot}/cdb-pgsql/jre"/>
+            <param name="IcdbbinDir" location="${installRoot}/cdb-pgsql/bin"/>
+            <param name="IcdbmanDir" location="${installRoot}/cdb-pgsql/man"/>
+            <param name="IcdbserverDir" location="${installRoot}/cdb-pgsql/server"/>
+            <param name="IcdbtoolsDir" location="${installRoot}/cdb-pgsql/tools"/>
+            <param name="IcdbdemoDir" location="${installRoot}/cdb-pgsql/demo"/>
             <param name="IcdbclientDir" location="${installRoot}/cdb-client"/>
         </antcall>
 
@@ -400,6 +401,8 @@ The "install" target is allowed for devo builds only.  Use the
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <target name="-install">
 
+        <delete dir="${installRoot}/cdb-pgsql"/>
+
         <!--
             Build and "install" PostgreSQL
           -->
@@ -420,18 +423,28 @@ The "install" target is allowed for devo builds only.  Use the
 
         <mkdir dir="${IcdbdemoDir}"/>
 
+        <symlink link="cdb-pgsql" resource="${installRoot}/cdb-pgsql"/>
+        <symlink link="cdb-pgsql/bin" resource="server/bin"/>
+        <symlink action="delete" link="cdb-pgsql"/> 
+<!--
         <move todir="${IcdbserverDir}">
           <fileset dir="${installRoot}/cdb-pgsql/server"/>
         </move>
 
         <delete dir="${installRoot}/cdb-pgsql"/>
-
         <symlink link="cdb-pgsql" resource="${installRoot}/cdb-pgsql-${releaseDir}"/>
         <symlink link="cdb-pgsql/bin" resource="server/bin"/>
         <symlink link="metapa" resource="${installRoot}"/>
         <symlink link="metapa/cdb-pgsql" resource="cdb-pgsql-${releaseDir}"/>
         <symlink action="delete" link="cdb-pgsql"/> 
         <symlink action="delete" link="metapa"/>
+
+-->
+
+        <!-- Set LD_LIBRARY_PATH -->
+        <junit fork="yes">
+          <sysproperty key="LD_LIBRARY_PATH" value="${installRoot}/cdb-pgsql/lib"/>
+        </junit>
 
         <!--
             Created directories for the CDB Client
@@ -600,9 +613,11 @@ The "install" target is allowed for devo builds only.  Use the
           -->
         <echo>
 The value of installRoot is: ${installRoot}
-The value of releaseDir is: ${releaseDir}
-        </echo>
+The value of releaseVersion is: ${releaseDir}
 
+Make sure you set your LD_LIBRAY_PATH
+export LD_LIBRARY_PATH=${installRoot}/cdb-pgsql/server/lib
+        </echo>
         <!--
 
         <copy tofile="${ImgmtDir}/bin/agent.properties" file="mgmt/agent.properties.template">
