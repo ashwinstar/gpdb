@@ -375,10 +375,10 @@ SendReturnCode SendTuple(uint16 motNodeID, TupleSendContext *send_ctxt)
 
             send_ctxt->last_bytes_written += tuple_chunk->chunk_length;
 
-            Assert(send_ctxt->tuple_bytes_sent > 0);
+            Assert(send_ctxt->tuple_bytes_sent >= 0); /* Tuple could be 0 bytes. */
             Assert(send_ctxt->tuple_bytes_sent <= send_ctxt->total_tuple_bytes);
 
-            Assert(send_ctxt->total_bytes_sent > 0);
+            Assert(send_ctxt->total_bytes_sent > 0); /* Includes header; should always be > 0. */
 
             Assert(send_ctxt->last_bytes_written > 0);
 
