@@ -10,7 +10,7 @@
 
 PATH="$(dirname $0):$PATH"
 
-usage="[ PGROOT=<root_directory> ]  $(basename $0) \n        [ {--nsegs|-n} { #segs | 3 } ] \n        [ {--segname|-s} { segname | segDB} ] \n        [ {--prefix|-P} { dbprefix | cdb} ] \n        [ {--useIP | -i} ] [ {--verbose} ] [ {--help} ]"
+usage="[ PGROOT=<root_directory> ]  $(basename $0) \n        [ {--nsegs|-n} { #segs | 3 } ] \n        [ {--segname|-s} { segname | segDB} ] \n        [ {--prefix|-P} { dbprefix | cdb} ] \n        [ {--useIP | -i} ] [ {--withTPCH }] \n        [ {--verbose} ] [ {--help} ]"
 
 echo -e "$(basename $0): Create and load a database into a CDB cluster."
 echo -e "Copyright (c) 2004-2005 Metapa, Inc. All Rights Reserved"
@@ -39,6 +39,12 @@ function display_help
     echo -e "by 'hostname'. If you prefer to specify your ip address then use --useIP or -i."
     echo    "NOTE: you will have to make sure your pg_hba.conf file(s) are correctly configured."
 
+    echo -e "\nBy default, the CDB cluser will not have any user tables. If you wish, you can"
+    echo    "preload the TPCH schema using the --withTPCH option. The DDL and additional files"
+    echo    "required are found in the cdb-qa module. You will have to edit TPCH_load.ctl to"
+    echo    "contain the correct path for your environment. NOTE: the data loaded is NOT"
+    echo    "actually partitioned at this time. Each segDB will contain the same data."
+
     echo -e "\nSee README.txt for more details.\n"
 
     exit 1
@@ -51,7 +57,8 @@ function display_help
 #     -D | --dbroot     <root_directory>        $PGROOT
 #     -P | --prefix     <dbprefix>
 #     -N | --nsegs      <#segs>
-#     -v | --verbose    <verbose>
+#          --verbose    <verbose>
+#          --withTPCH   <also load tpch schema>
 #
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
@@ -71,6 +78,13 @@ dbprefix=
 segname=
 verbose=false
 ip=none
+withTPCH=false
+
+# These are the files needed for the TPCH schema
+tpchDDL=../../cdb-qa/refdbs_cdb2/refdb01/TPCH_DDL.sql
+tpchDistPolicy=../../cdb-qa/refdbs_cdb2/refdb01/TPCH_define_tables.sql
+tpchData=../../cdb-qa/refdbs_cdb2/refdb01/TPCH_load.ctl
+tpchConstraints=../../cdb-qa/refdbs_cdb2/refdb01/TPCH_KEYS.sql
 
 # Ok, loop through the command line args
 #
@@ -81,7 +95,7 @@ do
     if [ ! $options_ended ]; then
         OPTIND=1
         OPTARG='--'
-        while getopts :D:s:n:P:v:i: option
+        while getopts :D:s:n:P:i: option
         do
             case $option in
                 :)
@@ -106,9 +120,6 @@ do
                    ;;
                 P)
                    dbprefix="$OPTARG"
-                   ;;
-                v)
-                   verbose="true"
                    ;;
                 *)
                    display_help
@@ -185,6 +196,10 @@ do
                 verbose=true
                 shift 1
                 ;;
+            --withTPCH)
+                withTPCH=true
+                shift 1
+                ;;
             --*)
                 echo "$(basename $0): Unrecognized option \"$1\"" >&2
                 echo -e "\nSyntax: $usage"
@@ -241,6 +256,21 @@ PGROOT=${dbroot:-$PGROOT}
 if [ "$ip" != "none" ]
 then
   hostname="$ip"
+fi
+
+# Did they want the TPCH schema?
+if [ "$withTPCH" = "true" ]
+then
+  # Check for the existence of the files
+  dirname=$(dirname $tpchDDL)
+
+  if [ ! -d $dirname ]
+  then
+    echo -e "\nERROR: Unable to access \"$dirname\"."
+    echo -e "This is where we expect to find the TPCH schema. You probably "
+    echo -e "need to check out the cdb-qa module."
+    exit -1
+  fi
 fi
 
 if [ ! "$PGDATABASE" ]; then
@@ -415,7 +445,7 @@ do
       # Ok, let's configure the Admin schema
       #
 
-      echo -e "Configuring admin schema for $finalSegName"
+      echo -e "\nConfiguring admin schema for $finalSegName"
 
       # First the host table
       echo -e "Updating hosts table with hostname = $hostname"
@@ -447,6 +477,24 @@ do
       psql -o /dev/null -q $finalSegName -c "select cdb.cdb_set_identity('Default Cluster', '$username', NULL, ${#segdb_array[@]}, '$hostname', $PGPORT, '$finalSegName' , 't');"
 
       echo -e "Completed $finalSegName\n"
+
+      if [ "$withTPCH" = "true" ]
+      then
+
+        # Load the DDL
+        echo "Loading TPCH DDL"
+        psql -o /dev/null -q $finalSegName -f $tpchDDL
+
+        echo "Setting distribution policy"
+        psql -o /dev/null -q $finalSegName -f $tpchDistPolicy
+
+        echo "Loading data into TPCH tables"
+        psql -o /dev/null -q $finalSegName -f $tpchData
+
+        echo "Setting table constraints"
+        psql -o /dev/null -q $finalSegName -f $tpchConstraints
+
+      fi
 
       # Increment our segment counter
       (( current_segment++ ))
