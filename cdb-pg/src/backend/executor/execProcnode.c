@@ -102,6 +102,10 @@
 #include "miscadmin.h"
 #include "tcop/tcopprot.h"
 
+#ifdef CDB_TRACE_EXECUTOR
+static void ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result);
+#endif /* CDB_TRACE_EXECUTOR */
+
 /* ------------------------------------------------------------------------
  *		ExecInitNode
  *
@@ -275,6 +279,10 @@ ExecProcNode(PlanState *node)
 	TupleTableSlot *result;
 
 	CHECK_FOR_INTERRUPTS();
+	
+#ifdef CDB_TRACE_EXECUTOR
+	ExecCdbTraceNode(node, true, NULL);
+#endif /* CDB_TRACE_EXECUTOR */
 
 	/*
 	 * deal with NULL nodes..
@@ -386,6 +394,10 @@ ExecProcNode(PlanState *node)
 
 	if (node->instrument)
 		InstrStopNode(node->instrument, !TupIsNull(result));
+
+#ifdef CDB_TRACE_EXECUTOR
+	ExecCdbTraceNode(node, false, result);
+#endif /* CDB_TRACE_EXECUTOR */
 
 	return result;
 }
@@ -610,3 +622,146 @@ ExecEndNode(PlanState *node)
 			break;
 	}
 }
+
+
+#ifdef CDB_TRACE_EXECUTOR
+/* ----------------------------------------------------------------
+ *	ExecCdbTraceNode
+ *
+ *	Trace entry and exit from ExecProcNode on an executor node.
+ * ----------------------------------------------------------------
+ */
+void
+ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result)
+{
+	bool willReScan = FALSE;
+	bool willReturnTuple = FALSE;
+	Plan *plan = NULL;
+	const char *nameTag = NULL;
+	const char *extraTag = "";
+	char extraTagBuffer[20];
+	
+	/*
+	 * Don't trace NULL nodes..
+	 */
+	if (node == NULL)
+		return;
+
+	plan = node->plan;
+	Assert( plan != NULL );
+	Assert( result == NULL || !entry );
+	willReScan = (entry && node->chgParam != NULL);
+	willReturnTuple = ( !entry && !TupIsNull(result) );
+
+	switch (nodeTag(node))
+	{
+			/*
+			 * control nodes
+			 */
+		case T_ResultState:
+			nameTag = "Result";
+			break;
+
+		case T_AppendState:
+			nameTag = "Append";
+			break;
+
+			/*
+			 * scan nodes
+			 */
+		case T_SeqScanState:
+			nameTag = "SeqScan";
+			break;
+
+		case T_IndexScanState:
+			nameTag = "IndexScan";
+			break;
+
+		case T_TidScanState:
+			nameTag = "TidScan";
+			break;
+
+		case T_SubqueryScanState:
+			nameTag = "SubqueryScan";
+			break;
+
+		case T_FunctionScanState:
+			nameTag = "FunctionScan";
+			break;
+
+			/*
+			 * join nodes
+			 */
+		case T_NestLoopState:
+			nameTag = "NestLoop";
+			break;
+
+		case T_MergeJoinState:
+			nameTag = "MergeJoin";
+			break;
+
+		case T_HashJoinState:
+			nameTag = "HashJoin";
+			break;
+
+			/*
+			 * materialization nodes
+			 */
+		case T_MaterialState:
+			nameTag = "Material";
+			break;
+
+		case T_SortState:
+			nameTag = "Sort";
+			break;
+
+		case T_GroupState:
+			nameTag = "Group";
+			break;
+
+		case T_AggState:
+			nameTag = "Agg";
+			break;
+
+		case T_UniqueState:
+			nameTag = "Unique";
+			break;
+
+		case T_HashState:
+			nameTag = "Hash";
+			break;
+
+		case T_SetOpState:
+			nameTag = "SetOp";
+			break;
+
+		case T_LimitState:
+			nameTag = "Limit";
+			break;
+
+		case T_MotionState:
+			nameTag = "Motion";
+			{
+				snprintf(extraTagBuffer, sizeof extraTagBuffer, " %d", ((Motion*)plan)->motionID);
+				extraTag = &extraTagBuffer[0];
+			}
+			break;
+			
+		default:
+			nameTag = "*unknown*";
+			break;
+	}
+	
+	if ( entry )
+	{
+		elog(DEBUG4,"CDB_TRACE_EXECUTOR: Exec %s%s%s", nameTag, extraTag, willReScan ? " (will ReScan)."  : ".");
+	}
+	else
+	{
+		elog(DEBUG4,"CDB_TRACE_EXECUTOR: Return from %s%s with %s tuple.", nameTag, extraTag, willReturnTuple? "a" : "no");
+	}
+
+	return;
+}
+#endif /* CDB_TRACE_EXECUTOR */
+
