@@ -60,7 +60,7 @@ source cdbfuncs
 
 # Some useful variables
 dir="$(dirname $0)"
-hostname="$(hostname)"
+hostname="localhost"
 username="$(whoami)"
 plain=false
 positional=0
@@ -237,11 +237,9 @@ segname=${segname:-$segname}
 PGROOT=${dbroot:-$PGROOT}
 : ${PGROOT:=$HOME/cdb-data}
 
-# Should we use the ip address, rather than the hostname?
-if [ "$ip" = "none" ]
+# Should we use the ip address, rather than localhost?
+if [ "$ip" != "none" ]
 then
-  hostname="$(hostname)"
-else
   hostname="$ip"
 fi
 
