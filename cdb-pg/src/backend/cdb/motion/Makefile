@@ -12,6 +12,7 @@
 subdir = src/backend/cdb/motion
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
+override CPPFLAGS := -I$(libpq_srcdir) $(CPPFLAGS)
 
 OBJS = cdbmotion.o tupchunk.o tupchunklist.o tupser.o shmutils.o circbuff.o ml_ipc.o
 

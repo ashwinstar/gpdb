@@ -17,6 +17,7 @@
 
 #include "miscadmin.h"
 #include "access/heapam.h"
+#include "cdb/cdbconn.h"
 #include "cdb/cdblink.h"   //used for the getCdbIdentity() call.
 #include "cdb/cdbmotion.h"
 #include "cdb/cdbvars.h"
@@ -740,7 +741,7 @@ void InitMotionLayerNode(uint16 motNodeID, bool includeBackupSegDB,
     }
 
     /* TODO:  Hard-coded right now. */
-    pEntry->num_remote_senders = 3;
+    pEntry->num_remote_senders = CdbClusterDefinition->segment_count - 1;
     pEntry->num_stream_ends_recvd = 0;
 
     /* All done!  Go back to caller memory-context. */

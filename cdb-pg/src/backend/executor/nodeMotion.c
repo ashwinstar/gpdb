@@ -14,7 +14,9 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
+#include "cdb/cdblink.h"
 #include "cdb/cdbmotion.h"
+#include "cdb/cdbvars.h"
 #include "executor/execdebug.h"
 #include "executor/nodeMotion.h"
 #include "optimizer/clauses.h"
@@ -39,6 +41,7 @@ static List *getExprListFromTargetList(List *tlist, int numCols, AttrNumber *col
 static List *getOpListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx);
 static bool motion_expr_walker(Node *node, char *not_used);
 static uint32 evalHashKey(ExprContext *econtext, List *hashkeys, FmgrInfo *hashfunctions);
+static bool setReadFromAMS(Motion *node);
 
 
 /* ----------------------------------------------------------------
@@ -52,12 +55,201 @@ ExecMotion(MotionState *node)
 	TupleTableSlot *outerTupleSlot;
 	PlanState  *outerNode;
 	HeapTuple tuple;
+    bool shouldFree;
 	ExprContext *econtext = node->ps.ps_ExprContext;
 	Motion *motion = (Motion *)node->ps.plan;
-
+    
+    MotionNodeInfo mn_info;     /* TODO:  Try to get rid of this. */
+    int mySegIdx;               /* TODO:  This too. */
+    bool tupleInFlight;
+    SendReturnCode sendRC;
+    ReceiveReturnCode recvRC;
+    
 	SO1_printf("ExecMotion: %s\n",
 			   "entering routine");
 
+    /* TODO:  This is because we don't have the broadcast comm code yet. */
+    AssertState(motion->motionType = MOTIONTYPE_HASH ||
+        (motion->motionType == MOTIONTYPE_FIXED &&
+         motion->numOutputSegs == 1));
+    
+    
+    getCdbIdentity(&mySegIdx, NULL);
+
+    mn_info.process_group_id = 1234;
+    mn_info.motion_node_id = motion->motionID;
+	mn_info.segment_id = mySegIdx;
+	mn_info.host_id = 5678;
+
+    tuple = NULL;
+    tupleInFlight = (node->tupSendCtxt.heap_tuple != NULL);
+    do
+    {
+        /* If a tuple is in-flight, try to continue the send operation. */
+
+        if (tupleInFlight)
+        {
+            /* TODO:  This only works for hash or for single-receiver fixed. */
+            sendRC = SendTuple(&mn_info, &node->tupSendCtxt);
+            if (sendRC == SEND_COMPLETE)
+            {
+                node->numTuplesToAMS++;
+                
+                /* Clean up the send-context. */
+                /* TODO:  Donnie should create a helper for this. */
+                
+                clearTCList(node->tupSendCtxt.tuple_chunk_list);
+                bzero(&node->tupSendCtxt, sizeof(node->tupSendCtxt));
+            }
+
+            /* We could look at sendRC, but we want to use the same
+             * condition throughout.
+             */
+            tupleInFlight = (node->tupSendCtxt.heap_tuple != NULL);
+        }
+        else if (node->noMoreChildTuples && !node->sentEndOfStream)
+        {
+            /* We have no more child tuples, but we have not successfully
+             * sent an End-of-Stream token yet.
+             */
+            sendRC = SendEndOfStream(&mn_info);
+            node->sentEndOfStream = (sendRC == SEND_COMPLETE);
+        }
+
+        /*
+         * Next, try to read a tuple from AMS.  Tuples we read from AMS are
+         * ALWAYS for us.
+         */
+
+        if (!node->noMoreAMSTuples)
+        {
+            recvRC = RecvTuple(&mn_info, &tuple);
+            if (recvRC == END_OF_STREAM)
+            {
+                node->noMoreAMSTuples = true;
+            }
+            else if (recvRC == GOT_TUPLE)
+            {
+                node->numTuplesFromAMS++;
+                shouldFree = true;          /* TODO:  Pass up from RecvTuple. */
+            }
+        }
+
+        /*
+         * Finally, if we didn't receive a tuple, and there's no tuple
+         * in-flight, we try to read from the child-plan.
+         */
+        
+        if (!node->noMoreChildTuples && !tupleInFlight && tuple == NULL)
+        {
+            /*
+             * grab TupleTableSlot from our child.
+             */
+            outerNode = outerPlanState(node);
+            
+            outerTupleSlot = ExecProcNode(outerNode);
+            if ( TupIsNull(outerTupleSlot) )
+            {
+                /* Child plan says "No more tuples!" */
+                node->noMoreChildTuples = true;
+            }
+            else
+            {
+                /* We got a tuple from the child-plan. */
+                
+                node->numTuplesFromChild++;
+            
+                /* TODO:  Decide what to do with the child's tuple. */
+                
+                if (motion->motionType == MOTIONTYPE_FIXED)
+                {
+                    if (motion->numOutputSegs == 0)         /* Broadcast */
+                    {
+                        /* We broadcast the tuple, AND we hand it up to our
+                         * parent.
+                         */
+                        tuple = outerTupleSlot->val;
+                        shouldFree = false;
+                        node->tupSendCtxt.heap_tuple = tuple;
+                        node->tupSendCtxt.target_segment = BROADCAST_SEGIDX;
+                    }
+                    else
+                    {
+                        AssertState(motion->outputSegIdx != NULL);
+                        
+                        /* TODO:  We can only support one output-segment right now! */
+                        AssertState(motion->numOutputSegs == 1);
+                        
+                        if (motion->outputSegIdx[0] == mySegIdx)
+                        {
+                            /* We are the receiver, so pass-thru the tuple. */
+                            tuple = outerTupleSlot->val;
+                        }
+                        else
+                        {
+                            /* The target is someone else.  Set up the send. */
+                            node->tupSendCtxt.heap_tuple = outerTupleSlot->val;
+                            node->tupSendCtxt.target_segment =
+                                motion->outputSegIdx[0];
+
+                            Assert(tuple == NULL);
+                        }
+                    }
+                }
+                else    /* Hash motion node */
+                {
+                    /* TODO:  Do this! */
+                    Assert(false);
+                }
+                
+                /* If we have to send this tuple, kick off that process here. */
+                
+                if (node->tupSendCtxt.heap_tuple != NULL)
+                {
+                    sendRC = SendTuple(&mn_info, &node->tupSendCtxt);
+                    if (sendRC == SEND_COMPLETE)
+                    {
+                        node->numTuplesToAMS++;
+                        
+                        /* Clean up the send-context. */
+                        /* TODO:  Donnie should create a helper for this. */
+                    
+                        clearTCList(node->tupSendCtxt.tuple_chunk_list);
+                        bzero(&node->tupSendCtxt, sizeof(node->tupSendCtxt));
+                    }
+                    
+                    /* We could look at sendRC, but we want to use the same
+                     * condition throughout.
+                     */
+                    tupleInFlight = (node->tupSendCtxt.heap_tuple != NULL);
+                }
+            }
+        }
+    }
+    while (tuple == NULL &&
+        !(node->noMoreAMSTuples && node->noMoreChildTuples && node->sentEndOfStream));
+
+    if (tuple != NULL)
+    {
+        /*
+         * store it in our result slot and return this.
+         */
+    
+        slot = node->ps.ps_ResultTupleSlot;
+        
+        node->numTuplesToParent++;
+    
+        return ExecStoreTuple(tuple, slot, InvalidBuffer, shouldFree);
+    }
+    else
+    {
+        return NULL;
+    }
+}
+
+
+/* THIS WAS THE OLD CODE */
+#if 0
 	/*
 	 * grab TupleTableSlot from our child.
 	 */
@@ -89,8 +281,9 @@ ExecMotion(MotionState *node)
 
 	node->numTuplesToParent++;
 
-	return ExecStoreTuple(tuple, slot, InvalidBuffer, true);
-}
+	return ExecStoreTuple(tuple, slot, InvalidBuffer, /* shouldFree */ true);
+#endif
+
 
 /* ----------------------------------------------------------------
  *		ExecInitMotion
@@ -100,22 +293,44 @@ MotionState *
 ExecInitMotion(Motion *node, EState *estate)
 {
 	MotionState* motionstate;
-	
+	bool readFromChild, readFromAMS;
+    
 	SO_printf("ExecInitMotion: initializing motion node\n");
 	
+    AssertState(Cdb_role != CDB_ROLE_UTILITY);
+    
 	/*
 	 * create state structure
 	 */
 	motionstate = makeNode(MotionState);
 	motionstate->ps.plan = (Plan *) node;
 	motionstate->ps.state = estate;
-	motionstate->noMoreChildTuples = false;
-	motionstate->noMoreAMSTuples = false;
+    
+    readFromChild = (Cdb_role != CDB_ROLE_DISPATCH);
+    readFromAMS = setReadFromAMS(node);
+    
+    /* Short-circuit these values right away, if we shouldn't read from these
+     * sources of tuples.
+     */
+	motionstate->noMoreChildTuples = !readFromChild;
+	motionstate->noMoreAMSTuples = !readFromAMS;
+    
+    motionstate->sentEndOfStream = false;
+    
 	motionstate->numTuplesFromChild = 0;
 	motionstate->numTuplesToAMS = 0;
 	motionstate->numTuplesFromAMS = 0;
 	motionstate->numTuplesToParent = 0;
 	
+    bzero(&motionstate->tupSendCtxt, sizeof(motionstate->tupSendCtxt));
+    
+    elog(DEBUG2, "Motion-node %d type %s:  read from child = %s, from AMS = %s",
+        node->motionID,
+        (node->motionType == MOTIONTYPE_HASH ? "hash" : "fixed"),
+        (readFromChild ? "true" : "false"),
+        (readFromAMS ? "true" : "false")
+        );
+    
 	/*
 	 * Miscellaneous initialization
 	 *
@@ -175,13 +390,11 @@ ExecInitMotion(Motion *node, EState *estate)
 														 (PlanState *) motionstate);
 	}
 	
-#ifdef CDB_AMS_DEVELOPER
     /*
      * Perform per-node initialization in the motion layer.
      */
     InitMotionLayerNode(node->motionID, node->sendToSecondary,
         node->sendSorted, ExecGetResultType(&motionstate->ps));
-#endif
     
 	SO1_printf("ExecInitMotion: %s\n",
 			   "motion node initialized");
@@ -234,13 +447,12 @@ ExecEndMotion(MotionState *node)
 		);
 
 
-#ifdef CDB_AMS_DEVELOPER
     /*
-     * Free up this motion node's resources in the Motion Layer.  Also, make
-     * sure that the comm-layer is flushed - that there is no in-flight data.
+     * Free up this motion node's resources in the Motion Layer.
+     *
+     * TODO: For now, we don't flush the comm-layer.  NO ERRORS DURING AMS!!!
      */
-    EndMotionLayerNode(motNodeID, true);
-#endif
+    EndMotionLayerNode(motNodeID, /* flush-comm-layer */ false);
     
 	SO1_printf("ExecEndMotion: %s\n",
 			   "motion node shutdown");
@@ -828,4 +1040,66 @@ uint32 evalHashKey(ExprContext *econtext, List *hashkeys, FmgrInfo *hashfunction
 	MemoryContextSwitchTo(oldContext);
 	
 	return hashkey;
+}
+
+
+/* Helper function to determine whether the motion node needs to read from the
+ * Motion Layer (aka AMS).
+ */
+bool setReadFromAMS(Motion *node)
+{
+    int i, mySegIdx;
+    bool readFromAMS = true;
+    
+    AssertArg(node != NULL);
+    
+    /* TODO:  Figure out whether we need is-primary here. */
+    getCdbIdentity(&mySegIdx, NULL);
+    
+    switch (node->motionType)
+    {
+        case MOTIONTYPE_HASH:
+            AssertState(node->numHashSegs > 0);
+            AssertState(node->hashSegIdx != NULL);
+            
+            readFromAMS = false;
+            for (i = 0; i < node->numHashSegs; i++)
+            {
+                if (node->hashSegIdx[i] == mySegIdx)
+                {
+                    readFromAMS = true;
+                    break;
+                }
+            }
+
+            break;
+        
+        case MOTIONTYPE_FIXED:
+            AssertState(node->numOutputSegs >= 0);
+            AssertState(node->numOutputSegs == 0 || node->outputSegIdx != NULL);
+            
+            if (node->numOutputSegs == 0)
+            {
+                readFromAMS = true;
+            }
+            else
+            {
+                readFromAMS = false;
+                for (i = 0; i < node->numOutputSegs; i++)
+                {
+                    if (node->outputSegIdx[i] == mySegIdx)
+                    {
+                        readFromAMS = true;
+                        break;
+                    }
+                }
+            }
+            
+            break;
+        
+        default:
+            AssertState(false);
+    }
+    
+    return readFromAMS;
 }

@@ -37,7 +37,7 @@ TupleChunkListItem makeTupleChunkListItem(TupleChunkType chunkType,
 	
     /* Fill in chunk details. */
 	
-    SetTargetSegIdx( tcItem->chunk_data, srcSegIdx);
+    SetTargetSegIdx( tcItem->chunk_data, tgtSegIdx);
 	/*    SetQueryGroupID( tcItem->chunk_data, mnInfo->process_group_id); */
     SetSourceSegIdx( tcItem->chunk_data, srcSegIdx);
     SetMotionNodeID( tcItem->chunk_data, mnid);

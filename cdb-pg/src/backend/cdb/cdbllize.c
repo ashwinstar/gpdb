@@ -1255,10 +1255,13 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 						}
 						else
 						{
+							/* TODO: get the segindex of me */
+							int mySegIdx;
+							getCdbIdentity( &mySegIdx, NULL );
 							newnode = (Node*)make_union_motion(
 								plan, 
 								sendToSecondary, 
-								CdbThisSegment
+								mySegIdx
 								);
 						}
 						break;
