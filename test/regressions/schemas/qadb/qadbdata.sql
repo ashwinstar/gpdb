@@ -72,6 +72,12 @@ insert into sale values ( 1, 30, 300, '1401-5-2', 1, 0);
 insert into sale values ( 1, 50, 400, '1401-6-1', 1, 0);
 insert into sale values ( 2, 50, 400, '1401-6-1', 1, 0);
 
+-- Util
+insert into util values(1);
+insert into util values(20);
+insert into util values(300);
+
+
 ---- Leagues ------------------
 Insert into Leagues (League_ID, League_Name)
 values('A', 'American League');	
