@@ -35,6 +35,7 @@
 #include "utils/relcache.h"
 #include "utils/syscache.h"
 #include "catalog/catalog.h"
+#include "cdb/cdbvars.h"
 #include "miscadmin.h"
 
 
@@ -233,81 +234,84 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 		case RELKIND_RELATION:
 		case RELKIND_INDEX:
 		case RELKIND_TOASTVALUE:
-#ifdef CDB_DEVELOPER     // kh 20050324
-          *pages = (BlockNumber) rel->rd_rel->relpages;
-          *tuples = (double) rel->rd_rel->reltuples;
-#else                    // kh 20050324
-			/* it has storage, ok to call the smgr */
-			*pages = curpages = RelationGetNumberOfBlocks(rel);
-			/* quick exit if rel is clearly empty */
-			if (curpages == 0)
+			if ( Cdb_role == CDB_ROLE_DISPATCH )
 			{
-				*tuples = 0;
-				break;
+				*pages = (BlockNumber) rel->rd_rel->relpages;
+				*tuples = (double) rel->rd_rel->reltuples;
 			}
-			/* coerce values in pg_class to more desirable types */
-			relpages = (BlockNumber) rel->rd_rel->relpages;
-			reltuples = (double) rel->rd_rel->reltuples;
-			/*
-			 * If it's an index, discount the metapage.  This is a kluge
-			 * because it assumes more than it ought to about index contents;
-			 * it's reasonably OK for btrees but a bit suspect otherwise.
-			 */
-			if (rel->rd_rel->relkind == RELKIND_INDEX &&
-				relpages > 0)
-			{
-				curpages--;
-				relpages--;
-			}
-			/* estimate number of tuples from previous tuple density */
-			if (relpages > 0)
-				density = reltuples / (double) relpages;
 			else
 			{
-				/*
-				 * When we have no data because the relation was truncated,
-				 * estimate tuple width from attribute datatypes.  We assume
-				 * here that the pages are completely full, which is OK for
-				 * tables (since they've presumably not been VACUUMed yet)
-				 * but is probably an overestimate for indexes.  Fortunately
-				 * get_relation_info() can clamp the overestimate to the
-				 * parent table's size.
-				 *
-				 * Note: this code intentionally disregards alignment
-				 * considerations, because (a) that would be gilding the
-				 * lily considering how crude the estimate is, and (b)
-				 * it creates platform dependencies in the default plans
-				 * which are kind of a headache for regression testing.
-				 */
-				int32	tuple_width = 0;
-				int		i;
-
-				for (i = 1; i <= RelationGetNumberOfAttributes(rel); i++)
+				/* it has storage, ok to call the smgr */
+				*pages = curpages = RelationGetNumberOfBlocks(rel);
+				/* quick exit if rel is clearly empty */
+				if (curpages == 0)
 				{
-					Form_pg_attribute att = rel->rd_att->attrs[i - 1];
-					int32		item_width;
-
-					if (att->attisdropped)
-						continue;
-					/* This should match set_rel_width() in costsize.c */
-					item_width = get_attavgwidth(RelationGetRelid(rel), i);
-					if (item_width <= 0)
-					{
-						item_width = get_typavgwidth(att->atttypid,
-													 att->atttypmod);
-						Assert(item_width > 0);
-					}
-					if (attr_widths != NULL)
-						attr_widths[i] = item_width;
-					tuple_width += item_width;
+					*tuples = 0;
+					break;
 				}
-				tuple_width += sizeof(HeapTupleHeaderData);
-				tuple_width += sizeof(ItemPointerData);
-				/* note: integer division is intentional here */
-				density = (BLCKSZ - sizeof(PageHeaderData)) / tuple_width;
+				/* coerce values in pg_class to more desirable types */
+				relpages = (BlockNumber) rel->rd_rel->relpages;
+				reltuples = (double) rel->rd_rel->reltuples;
+				/*
+				* If it's an index, discount the metapage.  This is a kluge
+				* because it assumes more than it ought to about index contents;
+				* it's reasonably OK for btrees but a bit suspect otherwise.
+				*/
+				if (rel->rd_rel->relkind == RELKIND_INDEX &&
+					relpages > 0)
+				{
+					curpages--;
+					relpages--;
+				}
+				/* estimate number of tuples from previous tuple density */
+				if (relpages > 0)
+					density = reltuples / (double) relpages;
+				else
+				{
+					/*
+					* When we have no data because the relation was truncated,
+					* estimate tuple width from attribute datatypes.  We assume
+					* here that the pages are completely full, which is OK for
+					* tables (since they've presumably not been VACUUMed yet)
+					* but is probably an overestimate for indexes.  Fortunately
+					* get_relation_info() can clamp the overestimate to the
+					* parent table's size.
+					*
+					* Note: this code intentionally disregards alignment
+					* considerations, because (a) that would be gilding the
+					* lily considering how crude the estimate is, and (b)
+					* it creates platform dependencies in the default plans
+					* which are kind of a headache for regression testing.
+					*/
+					int32	tuple_width = 0;
+					int		i;
+
+					for (i = 1; i <= RelationGetNumberOfAttributes(rel); i++)
+					{
+						Form_pg_attribute att = rel->rd_att->attrs[i - 1];
+						int32		item_width;
+
+						if (att->attisdropped)
+							continue;
+						/* This should match set_rel_width() in costsize.c */
+						item_width = get_attavgwidth(RelationGetRelid(rel), i);
+						if (item_width <= 0)
+						{
+							item_width = get_typavgwidth(att->atttypid,
+														att->atttypmod);
+							Assert(item_width > 0);
+						}
+						if (attr_widths != NULL)
+							attr_widths[i] = item_width;
+						tuple_width += item_width;
+					}
+					tuple_width += sizeof(HeapTupleHeaderData);
+					tuple_width += sizeof(ItemPointerData);
+					/* note: integer division is intentional here */
+					density = (BLCKSZ - sizeof(PageHeaderData)) / tuple_width;
+				}
+				*tuples = rint(density * (double) curpages);
 			}
-			*tuples = rint(density * (double) curpages);
-#endif                       // kh 20050324
 			break;
 		case RELKIND_SEQUENCE:
 			/* Sequences always have a known size */
