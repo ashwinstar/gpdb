@@ -852,6 +852,22 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 #endif
 	},
+	{
+		{"enable_cdbrepartition", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the cdb parallelizer's use of the repartition strategy."),
+			NULL
+		},
+		&enable_cdbrepartition,
+		true, NULL, NULL
+	},
+	{
+		{"enable_cdbbroadcast", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the cdb parallelizer's use of the broadcast strategy."),
+			NULL
+		},
+		&enable_cdbbroadcast,
+		true, NULL, NULL
+	},
 
 	/* End-of-list marker */
 	{
@@ -1346,6 +1362,7 @@ static struct config_int ConfigureNamesInt[] =
 		&cdb_connections_per_thread,
 		256, 1, INT_MAX, assign_cdb_connections_per_thread, show_cdb_connections_per_thread
 	},
+
 
 	/* End-of-list marker */
 	{
