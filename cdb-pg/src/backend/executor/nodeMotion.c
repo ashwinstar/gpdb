@@ -24,6 +24,7 @@
 #include "parser/parsetree.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h" /* for ReleaseSysCache */
+#include "utils/tuplesort.h"
 #include "miscadmin.h"
 
 /* 
@@ -42,6 +43,10 @@ static List *getOpListFromTargetList(List *tlist, int numCols, AttrNumber *colId
 static bool motion_expr_walker(Node *node, char *not_used);
 static uint32 evalHashKey(ExprContext *econtext, List *hashkeys, FmgrInfo *hashfunctions);
 static bool setReadFromAMS(Motion *node);
+static int cmpTuplesForSortedMotion( HeapTuple ltup, HeapTuple rtup, 
+									FmgrInfo *sortFunctions, SortFunctionKind	*sortFnKinds,
+									int numSortCols, int *sortColIdx,
+									TupleDesc	tupDesc);
 
 
 /* ----------------------------------------------------------------
@@ -296,6 +301,7 @@ ExecInitMotion(Motion *node, EState *estate)
 {
 	MotionState* motionstate;
 	bool readFromChild, readFromAMS;
+	int i;
     
 	SO_printf("ExecInitMotion: initializing motion node\n");
 	
@@ -367,7 +373,6 @@ ExecInitMotion(Motion *node, EState *estate)
 	if ( node->motionType == MOTIONTYPE_HASH )
 	{
 		int			nkeys;
-		int			i;
 		ListCell	*ho;
 		
 		/*
@@ -392,6 +397,27 @@ ExecInitMotion(Motion *node, EState *estate)
 		
 		motionstate->hashExprState = (List *)ExecInitExpr( (Expr *)node->hashExpr,
 														 (PlanState *) motionstate);
+	}
+
+	if ( node->sendSorted )
+	{
+		Assert( node->numSortCols > 0 );
+
+		motionstate->sortFunctions = (FmgrInfo *) palloc0(node->numSortCols * sizeof(FmgrInfo));
+		motionstate->sortFnKinds = (SortFunctionKind *) palloc0(node->numSortCols * sizeof(SortFunctionKind));
+
+		for ( i=0; i<node->numSortCols; i++ )
+		{
+			RegProcedure sortFunction;
+
+			AssertArg(node->sortOperators[i] != 0);
+			AssertArg(node->sortColIdx[i] != 0);
+
+			/* select a function that implements the sort operator */
+			SelectSortFunction(node->sortOperators[i], &sortFunction, &motionstate->sortFnKinds[i]);
+
+			fmgr_info(sortFunction, &motionstate->sortFunctions[i]);
+		}
 	}
 	
     /*
@@ -614,8 +640,17 @@ Motion *make_motion(Plan *lefttree, MotionType motionType,
 	node->motionType = motionType;
 	node->sendToSecondary = sendToSecondary;
 	node->sendSorted = sendSorted;
-	node->numHashSegs = numHashSegs;
-	node->hashSegIdx = hashSegIdx;
+
+	/* TODO: When cdb schema changes are in place, change makeDefaultSegIdx
+	 * to reflect the changes, and remove this if statement.
+	 * Go back to using the passed in values for
+	 * numHashSegs and hashSegIdx
+	 */ 
+	if ( motionType == MOTIONTYPE_HASH )
+	{
+		node->hashSegIdx = makeDefaultSegIdxArrayNew(&node->numHashSegs);
+	}
+
 	node->hashExpr = hashExpr;
 	node->hashOp = hashOp;
 
@@ -625,10 +660,21 @@ Motion *make_motion(Plan *lefttree, MotionType motionType,
 	node->numSortCols = numSortCols;
 	node->sortColIdx = sortColIdx;
 	node->sortOperators = sortOperators;
-	node->numInputSegs = numInputSegs;
-	node->inputSegIdx = inputSegIdx;
 
-	node->motionID = 0;
+	/* TODO: When cdb schema changes are in place, change makeDefaultSegIdx
+	 * to reflect the changes, and remove this if statement.
+	 * Go back to using the passed in values for
+	 * numInputSegs and inputSegIdx
+	 */ 
+	if ( sendSorted )
+	{
+		node->inputSegIdx = makeDefaultSegIdxArrayNew(&node->numInputSegs);
+	}
+
+	/* TODO: When brian checks in his code where he sets the motionID, remove this.
+	 */ 
+	static int motionID = 0;
+	node->motionID = motionID++;
 
 	return node;
 }
@@ -1143,4 +1189,35 @@ bool setReadFromAMS(Motion *node)
     }
     
     return readFromAMS;
+}
+
+
+static int cmpTuplesForSortedMotion( HeapTuple ltup, HeapTuple rtup, 
+							  FmgrInfo *sortFunctions, SortFunctionKind	*sortFnKinds,
+							  int numSortCols, int *sortColIdx,
+							  TupleDesc	tupDesc)
+{
+	int			nkey;
+
+	for (nkey = 0; nkey < numSortCols; nkey++)
+	{
+		AttrNumber	attno = sortColIdx[nkey];
+		Datum		datum1,
+					datum2;
+		bool		isnull1,
+					isnull2;
+		int32		compare;
+
+		datum1 = heap_getattr(ltup, attno, tupDesc, &isnull1);
+		datum2 = heap_getattr(rtup, attno, tupDesc, &isnull2);
+
+		compare = ApplySortFunction(&sortFunctions[nkey],
+										  sortFnKinds[nkey],
+										  datum1, isnull1,
+										  datum2, isnull2);
+		if (compare != 0)
+			return compare;
+	}
+
+	return 0;
 }
