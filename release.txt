@@ -1,4 +1,7 @@
 <<<NEW vi: set expandtab ts=4: >>>
+CDB Hash API added. So far support for hashing on INT2,INT4,INT8,
+    TEXT,VARCHAR(n),CHAR(n) is added. Corresponding manual tests
+    are located in libcdbtest. 
 CDBEXEC command added.
     The command CDBEXEC is for internal use  only.
 Log4j is the new CDB-Loader logger. Logging is now configurable from
