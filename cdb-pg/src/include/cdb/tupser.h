@@ -15,10 +15,10 @@
 
 
 /* Serialize a HeapTuple's data into a StringInfo. */
-extern int SerializeTuple(HeapTuple tuple, TupleDesc typeinfo, StringInfo dest);
+extern int SerializeTuple(HeapTuple tuple, TupleDesc tupdesc, StringInfo dest);
 
 /* Deserialize a HeapTuple's data from a byte-array. */
-extern HeapTuple DeserializeTuple(TupleDesc typeinfo, uint8 *src, uint32 srcLen);
+extern HeapTuple DeserializeTuple(TupleDesc tupdesc, StringInfo serialTup);
 
 
 #endif /* TUPSER_H */

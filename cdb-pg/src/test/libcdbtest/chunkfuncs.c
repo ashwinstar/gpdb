@@ -30,6 +30,9 @@
 Datum GetSerializedRows__text1(PG_FUNCTION_ARGS);
 Datum GetRowsAsChunks__text1(PG_FUNCTION_ARGS);
 
+Datum GetDeserializedRows__text1_regtype1(PG_FUNCTION_ARGS);
+
+
 
 #define GET_STR(textp) DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(textp)))
 
@@ -66,6 +69,17 @@ typedef struct SerializedRowState
 
 /* Static state for GetSerializedRows function. */
 static SerializedRowState *s_sr_state;
+
+
+
+typedef struct DeserializedRowState
+{
+    /* Index of row we are on. */
+    int rowIdx;
+} DeserializedRowState;
+
+/* Static state for GetDeserializedRows function. */
+static DeserializedRowState *s_dr_state;
 
 
 
@@ -338,4 +352,139 @@ Datum GetRowsAsChunks__text1(PG_FUNCTION_ARGS)
         SRF_RETURN_NEXT(funcctx, resultTuple);
     }
 }
+
+
+
+
+/* This function executes a SQL "SELECT" statement that returns rows of
+ * serialized (but not chunked) tuple data, and returns the results as
+ * deserialized rows.  The input query should produce results of type bytea.
+ * Because the form of the tuple data is dependent on the input 
+ *
+ * This function returns the RECORD data-type; thus, the actual result format
+ * must be specified in the SELECT statement, like this:
+ *
+ *     SELECT * FROM getdeserializedrows('SELECT serialized FROM ser_rows')
+ *         AS r (msgid INTEGER, msgread BOOL, msgtext VARCHAR(2000));
+ *
+ *     select * from getdeserializedrows(
+ *         'select serialized from test_ser_rows',
+ *         'foo'::regtype)
+ *         as foo ( ident integer,
+ *                  boolval boolean,
+ *                  score integer,
+ *                  notes varchar);
+ *
+ * This way, the function knows what the TupleDesc should be for the tuple it
+ * creates.
+ */
+PG_FUNCTION_INFO_V1(GetDeserializedRows__text1_regtype1);
+Datum GetDeserializedRows__text1_regtype1(PG_FUNCTION_ARGS)
+{
+    FuncCallContext *funcctx;
+    MemoryContext oldcontext;
+
+    Oid typeOid;
+    char *pszSQL;
+    int rc;
+
+    HeapTuple htup;
+
+    Datum resultTuple;              /* The full result. */
+
+    /* stuff done only on the first call of the function */
+    if (SRF_IS_FIRSTCALL())
+    {
+        /* create a function context for cross-call persistence */
+        funcctx = SRF_FIRSTCALL_INIT();
+
+        /* switch to memory context appropriate for multiple function calls */
+        oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
+
+        /*---------------------*
+         * One-time operations
+         */
+
+        /* Get the SQL to execute, and run it. */
+        pszSQL = GET_STR(PG_GETARG_TEXT_P(0));
+        rc = SPI_connect();
+        if (rc != SPI_OK_CONNECT)
+            elog(ERROR, "SPI_connect() reported error.");
+
+        /* Execute read-only SQL.  The 0 means "no limit on results." */
+        rc = SPI_execute(pszSQL, true, 0);
+        if (rc != SPI_OK_SELECT)
+            elog(ERROR, "This function requires a SELECT statement.");
+
+        /* The SQL must return rows with a single column of type BYTEA. */
+
+        if (SPI_tuptable->tupdesc->natts != 1 ||
+            SPI_tuptable->tupdesc->attrs[0]->atttypid != BYTEAOID)
+        {
+            elog(ERROR, "The SELECT statement result must have exactly one"
+                " column of type BYTEA.");
+        }
+
+        /* Allocate cross-call state, so that we can keep track of where we're
+         * at in the processing.
+         */
+
+        s_dr_state = (DeserializedRowState *) palloc0(sizeof(DeserializedRowState));
+        s_dr_state->rowIdx = 0;
+
+        /* Return-type information must be specified by the caller. */
+
+        typeOid = PG_GETARG_OID(1);
+        funcctx->tuple_desc = TypeGetTupleDesc(typeOid, NULL);
+    }
+    
+    
+    /*---------------------*
+     * Per-call operations
+     */
+    
+    funcctx = SRF_PERCALL_SETUP();
+    
+    if (s_dr_state->rowIdx < SPI_processed)
+    {
+        /* There are more rows.  Deserialize the next row and return its
+         * contents.
+         */
+
+        Datum datumSerTup;
+        bytea *baSerTup;
+        StringInfoData strInfoTup;
+        bool isNull;
+
+        datumSerTup = fastgetattr(SPI_tuptable->vals[s_dr_state->rowIdx], 1,
+            SPI_tuptable->tupdesc, &isNull);
+        baSerTup = DatumGetByteaP(datumSerTup);
+
+        initStringInfo(&strInfoTup);
+        appendBinaryStringInfo(&strInfoTup, VARDATA(baSerTup),
+            VARSIZE(baSerTup) - VARHDRSZ);
+
+        /* Deserialize the data stream into a tuple. */
+
+        htup = DeserializeTuple(funcctx->tuple_desc, &strInfoTup);
+        resultTuple = HeapTupleGetDatum(htup);
+
+        /* Move on to the next row in the list, for next iteration. */
+        s_dr_state->rowIdx++;
+
+        /* Return our result! */
+        SRF_RETURN_NEXT(funcctx, resultTuple);
+    }
+    else
+    {
+        /* There are no more tuples.  We are done. */
+
+        /* Do final cleanup. */
+        SPI_finish();
+        s_dr_state = NULL;      /* Freed when mem-ctx is cleaned up. */
+
+        SRF_RETURN_DONE(funcctx);
+    }
+}
+
 
