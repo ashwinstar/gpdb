@@ -122,28 +122,28 @@
 	token = pg_strtok(&length);		/* skip :fldname */ \
 	if ( local_node->count > 0 ) \
 	{ \
-		local_node->fldname = (Type *)palloc(local_node->count * sizeof(Type)); \
 		int i; \
+		local_node->fldname = (Type *)palloc(local_node->count * sizeof(Type)); \
 		for(i=0; i<local_node->count; i++) \
 		{ \
 			token = pg_strtok(&length);		/* get field value */ \
 			local_node->fldname[i] = atoi(token); \
 		} \
-	} 
+	}
 
 /* Read an Oid array (written as ":fldname %u %u ...") */
 #define READ_OID_ARRAY(fldname, count) \
 	token = pg_strtok(&length);		/* skip :fldname */ \
 	if ( local_node->count > 0 ) \
 	{ \
-		local_node->fldname = (Oid *)palloc(local_node->count * sizeof(Oid)); \
 		int i; \
+		local_node->fldname = (Oid *)palloc(local_node->count * sizeof(Oid)); \
 		for(i=0; i<local_node->count; i++) \
 		{ \
 			token = pg_strtok(&length);		/* get field value */ \
 			local_node->fldname[i] = atooid(token); \
 		} \
-	} 
+	}
 
 /*
  * NOTE: use atoi() to read values written with %d, or atoui() to read
@@ -646,7 +646,7 @@ _readSubLink(void)
 }
 
 /*
- * _readSubPlan 
+ * _readSubPlan
  */
 static SubPlan *
 _readSubPlan(void)
@@ -1076,7 +1076,7 @@ static void readJoinInfo(Join *local_node);
 static Bitmapset *bitmapsetRead(void);
 
 
-static CreateStmt * 
+static CreateStmt *
 _readCreateStmt(void)
 {
 	READ_LOCALS(CreateStmt);
@@ -1094,7 +1094,7 @@ _readCreateStmt(void)
 	READ_DONE();
 }
 
-static CreateSchemaStmt * 
+static CreateSchemaStmt *
 _readCreateSchemaStmt(void)
 {
 	READ_LOCALS(CreateSchemaStmt);
@@ -1566,7 +1566,7 @@ bitmapsetRead(void)
  * linear searching that existed in the postgres version of
  * parseNodeString.  We introduced a struct containing
  * the node type string and read function pointer.
- * We created a sorted array of these for all node types supported 
+ * We created a sorted array of these for all node types supported
  * by parseNodeString, with cdb extensions.
  * This array is searched for a node type string.   If found,
  * the function pointer is excuted.
@@ -1594,7 +1594,7 @@ typedef struct ParseNodeInfo
  * infoAr is an array of the ParseNodeInfo for all node type that have read functions.
  * This array MUST be kept in sorted order (based on alphabetical order of the NodeName).
  */
-static ParseNodeInfo infoAr[] = 
+static ParseNodeInfo infoAr[] =
 {
 	{"AGG", (ReadFn)_readAgg},
 	{"AGGREF", (ReadFn)_readAggref},
@@ -1695,6 +1695,9 @@ Node *
 parseNodeString(void)
 {
 	void	   *return_value;
+	ParseNodeInfo pni;
+	ParseNodeInfo *found;
+	char *pztokname;
 
 	READ_TEMP_LOCALS();
 
@@ -1705,7 +1708,7 @@ parseNodeString(void)
 	 * of the infoAr.  In this way, we find the read function
 	 * for the node type represented by the token.
 	 */
-	char *pztokname = palloc( length + 1 );
+	pztokname = palloc( length + 1 );
 	memcpy(pztokname, token, length);
 	pztokname[length] = '\0';
 
@@ -1714,11 +1717,10 @@ parseNodeString(void)
 	 * i.e. a ParseNodeInfo.  Since the compare function is based on name only,
 	 * we can set the readNode element of the key to NULL.
 	 */
-	ParseNodeInfo pni;
 	pni.pzNodeName = pztokname;
 	pni.readNode = NULL;
 
-	ParseNodeInfo *found = bsearch( &pni, infoAr, lengthof(infoAr), sizeof(ParseNodeInfo), cmpParseNodeInfo);
+	found = bsearch( &pni, infoAr, lengthof(infoAr), sizeof(ParseNodeInfo), cmpParseNodeInfo);
 	
 	pfree(pztokname);
 

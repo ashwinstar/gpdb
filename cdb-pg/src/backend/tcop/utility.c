@@ -333,7 +333,7 @@ check_xact_readonly(Node *parsetree)
 
 /* CDB utility command handling. */
 
-/* 
+/*
  * The possible actions for a utility command.  These values are of
  * interest only as arguments to the local function CdbSentry.  They
  * indicate the level of support provided by following code for a
@@ -349,20 +349,20 @@ typedef enum
 				 * that follows it to execute.  It is intended for cases
 				 * where CDB support is not implemented yet and PostgreSQL
 				 * support is enabled as a convenience.  The user is told
-				 * that support may change or be rescinded. 
+				 * that support may change or be rescinded.
 				 */
 	CDB_NONCE,	/* This action issues an error and thus prevents the code
 				 * that follows from executing.  The message indicates to
 				 * the user that this a temporary restriction that will be
-				 * removed in a future release. 
+				 * removed in a future release.
 				 */
 	CDB_REJECT	/* This action issues an error and thus prevents the code
 				 * that follows from executing.  The message indicates to
-				 * the user that no CDB support is anticipated. 
+				 * the user that no CDB support is anticipated.
 				 */
 } CdbAction;
 
-/* 
+/*
  * Guard for the cases in ProcessUtilty.
  *
  */
@@ -718,7 +718,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_CdbExecStmt:
-			/* CdbSentry isn't appropriate here since this command should run 
+			/* CdbSentry isn't appropriate here since this command should run
 			 * only in the EXECUTE role, i.e., it is supplied by a dispatch
 			 * process to a qexec process. The cryptic message avoids mention
 			 * of roles to discourage experimentation by users. */
@@ -992,8 +992,8 @@ ProcessUtility(Node *parsetree,
 				 */
 				if (strcmp(n->name, "TRANSACTION") == 0)
 				{
-					CdbSentry(CDB_NONCE, parsetree, "SET TRANSACTION");
 					ListCell   *head;
+					CdbSentry(CDB_NONCE, parsetree, "SET TRANSACTION");
 
 					foreach(head, n->args)
 					{
@@ -1009,8 +1009,8 @@ ProcessUtility(Node *parsetree,
 				}
 				else if (strcmp(n->name, "SESSION CHARACTERISTICS") == 0)
 				{
-					CdbSentry(CDB_NONCE, parsetree, "SET SESSION CHARACTERISTICS");
 					ListCell   *head;
+					CdbSentry(CDB_NONCE, parsetree, "SET SESSION CHARACTERISTICS");
 
 					foreach(head, n->args)
 					{
@@ -1034,8 +1034,8 @@ ProcessUtility(Node *parsetree,
 
 		case T_VariableShowStmt:
 			{
-				CdbSentry(CDB_ACCEPT, parsetree, NULL);
 				VariableShowStmt *n = (VariableShowStmt *) parsetree;
+				CdbSentry(CDB_ACCEPT, parsetree, NULL);
 
 				GetPGVariable(n->name, dest);
 			}
@@ -1043,8 +1043,8 @@ ProcessUtility(Node *parsetree,
 
 		case T_VariableResetStmt:
 			{
-				CdbSentry(CDB_NONCE, parsetree, NULL);
 				VariableResetStmt *n = (VariableResetStmt *) parsetree;
+				CdbSentry(CDB_NONCE, parsetree, NULL);
 
 				ResetPGVariable(n->name);
 			}
