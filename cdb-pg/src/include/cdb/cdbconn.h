@@ -67,15 +67,6 @@ typedef struct segment_database_descriptor
 	 */
 	bool						considered_valid;
 
-	/* error_message
-	 *
-	 * A non-NULL value points to an error message
-	 * describing the connection failure associated with the last connection
-	 * attempt to this segment/instance.
-	 *
-	 */
-	char						*error_message;
-
 	/* conn
 	 *
 	 * A non-NULL value points to the PGconn block of a successfully
@@ -90,17 +81,32 @@ typedef struct segment_database_descriptor
 	 */
 	pthread_t					thread;
 	
-	/* row_count
+	/* error_message
 	 *
-	 * Number of rows in the result of the SQL statement.
+	 * A non-NULL value points to an error message
+	 * describing the connection failure associated with the last connection
+	 * attempt to this segment/instance, or the last command issued thru this connection.
+	 *
 	 */
-	int         				row_count;
+	char						*error_message;
 
-	/* query_result
+	/* cmdTuples
 	 *
-	 * The SQL statement result.
+	 * Number of rows in the result of the SQL command.
 	 */
-	PGresult   					*query_result;
+	int         				cmdTuples;
+
+	/* resultStatus
+	 *
+	 * The SQL statement result, from PQresultStatus.
+	 */
+	ExecStatusType				resultStatus;
+
+	/* cmdStatus
+	 *
+	 * The SQL statement command status, from PQcmdStatus.
+	 */
+	char						*cmdStatus;
 	
 	/* is_dispatch_segdb
 	 *
