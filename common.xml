@@ -477,18 +477,53 @@
     <!-- Ensure we have an ar utility available.                        -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <target name="-setAr" unless="ar">
+
         <!-- For normal UNIXen -->
         <condition property="ar" value="ar">
 	    <available file="ar" filepath="${os.PATH}" type="file"/>
 	</condition>
+
 	<!-- for Cygwin -->
 	<condition property="ar" value="ar.exe">
 	    <available file="ar.exe" filepath="${os.PATH}" type="file"/>
 	</condition>
+
 	<fail unless="ar">
 	    'ar' utility not found in PATH!
+
 	    For Solaris, /usr/ccs/bin should be in path *after* directory containing GNU make.
 	</fail>
+
+    </target>
+
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Ensure we have the objcopy utility available.                  -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="-setObjcopy" unless="objcopy">
+
+        <!-- Mac OsX (Darwin) doesn't need objcopy -->
+        <condition property="objcopy" value="">
+            <isset property="osIsMacosx"/>
+        </condition>
+
+        <!-- for Linux and Solaris -->
+        <condition property="objcopy" value="objcopy">
+            <available file="objcopy" filepath="${os.PATH}" type="file"/>
+        </condition>
+
+        <!-- for Cygwin -->
+        <condition property="objcopy" value="objcopy.exe">
+            <available file="objcopy.exe" filepath="${os.PATH}" type="file"/>
+        </condition>
+
+        <fail unless="objcopy">
+            'objcopy' utility not found in PATH!  THe GNU binutils package is required.
+
+            For Solaris, you may be able to obtain it from http://www.sunfreeware.com or
+            http://www.sun.com/bigadmin/common/freewareSearch.html.
+        </fail>
+
     </target>
     
 
