@@ -92,9 +92,6 @@ withTiny=false
 withQadb=false
 entrySegName=
 
-#This is needed for the cdb test functions
-cdbtest=../cdb-pg/src/test/libcdbtest/cdbtest.sql
-
 # These are the files needed for the TPCH schema
 tpchDDL=../../cdb-qa/refdbs_cdb2/refdb01/TPCH_DDL.sql
 tpchDistPolicy=../../cdb-qa/refdbs_cdb2/refdb01/TPCH_define_tables.sql
@@ -484,7 +481,6 @@ current_segment=0
 total_content_segs=${#segdb_array[@]}
 entrySegName=$segname$current_listener
 
-
 #
 # This next loop checks to see whether we want either of the test schemas,
 # and if so, creates all of the tables BEFORE we do anything else.
@@ -541,51 +537,8 @@ do
     ((current_segment++))
 done
 
-#
-# We need to load the cdbtest.sql function definitions
-# You better have built and installed libcdbtest!!!!
-#
-if [ "$withTPCH" == "true" ]
-then
-	# Reset this
-	current_segment=0
-	
-	for PGDATA in "$PGROOT"/$dbprefix[0-9]?([0-9])
-	do
-		[ ! -d "$PGDATA" ] && continue
-		PGDATA=$(cd "$PGDATA"; pwd)
-		PGPORT=$(getPort)
-
-		# This is the loop for each segment database
-		for (( loop = 0; loop < $nsegs; loop++ ))
-		do
-
-		# Do we need to append anything to the segname?
-		finalSegName=$segname
-		if [ $nsegs -gt 0 ]
-		then
-			finalSegName=$finalSegName$current_segment
-			PGDATABASE=$finalSegName
-		fi
-
-		psql $finalSegName -f $cdbtest > /dev/null 2>&1
-
-		# Increment our segment counter
-		(( current_segment++ ))
-
-		done 
-	done  
-fi  
-
-
 # Reset this
 current_segment=0
-
-#
-# For the sync up of oids.
-# TODO: Remove when Chuck's oid stuff is working
-#
-new_oid=1000000
 
 #
 # Next loop. Here we record the identity of the current segment in the local
@@ -639,11 +592,12 @@ do
           psql -o /dev/null -q $finalSegName -f $tpchDistPolicy
         fi
 
-        echo "Loading data into TPCH tables"
-        psql -o /dev/null -q $finalSegName -f $tpchData
-
         if [ "$finalSegName" != "$entrySegName" ]
         then
+        
+	      echo "Loading data into TPCH tables"
+		  psql -o /dev/null -q $finalSegName -f $tpchData
+		  
           echo "Pruning data from TPCH tables"
 
           if [ "$verbose" == "true" ]
@@ -661,25 +615,6 @@ do
           psql $finalSegName -c "delete from tpch.customer where c_custkey % $total_content_segs <> $contentid "
           echo "Finished Pruning data from TPCH tables"
         fi
-
-		echo "Setting the oid to $new_oid"
-		psql -o /dev/null -q $finalSegName -c "select cdb_set_oid($new_oid)" > /dev/null 2>&1
-
-        echo "Setting table constraints"
-        psql -o /dev/null -q $finalSegName -f $tpchConstraints > /dev/null 2>&1
-
-        if [ "$finalSegName" == "$entrySegName" ]
-        then
-          echo "Deleting data from entry database"
-          psql $finalSegName -c "delete from tpch.lineitem"
-          psql $finalSegName -c "delete from tpch.orders"
-          psql $finalSegName -c "delete from tpch.part"
-          psql $finalSegName -c "delete from tpch.region"
-          psql $finalSegName -c "delete from tpch.nation"
-          psql $finalSegName -c "delete from tpch.supplier"
-          psql $finalSegName -c "delete from tpch.partsupp"
-          psql $finalSegName -c "delete from tpch.customer"
-        fi
       fi
 
       if [ "$withTiny" = "true" ]
@@ -696,13 +631,14 @@ do
           psql -o /dev/null -q $finalSegName -f $cvpDistPolicy
         fi
 
-        # Load the data
-        echo "Loading data into Tiny tables"
-        psql -o /dev/null -q $finalSegName -f $cvpData
-
         # If this is not the entry db, prune the data
         if [ "$finalSegName" != "$entrySegName" ]
         then
+	      
+	      # Load the data
+		  echo "Loading data into Tiny tables"
+		  psql -o /dev/null -q $finalSegName -f $cvpData
+			
           echo "Pruning data from Tiny tables"
 
           if [ "$verbose" == "true" ]
@@ -715,19 +651,6 @@ do
           psql $finalSegName -c "delete from product where pn % $total_content_segs <> $contentid"
           psql $finalSegName -c "delete from sale where cn % $total_content_segs <> $contentid"
           echo "Finished Pruning data from Tiny tables"
-        fi
-
-        echo -e "\nPerforming vacuum analyze on db"
-        psql $finalSegName -c "vacuum analyze"
-
-        # If this is the entry db, blow the data away
-        if [ "$finalSegName" == "$entrySegName" ]
-        then
-          echo "Deleting data from entry database"
-          psql $finalSegName -c "delete from customer"
-          psql $finalSegName -c "delete from vendor"
-          psql $finalSegName -c "delete from product"
-          psql $finalSegName -c "delete from sale"
         fi
       fi
 
@@ -745,13 +668,14 @@ do
           psql -o /dev/null -q $finalSegName -f $qadbDistPolicy
         fi
 
-        # Load the data
-        echo "Loading data into Qadb tables"
-        psql -o /dev/null -q $finalSegName -f $qadbData
-
         # If this is not the entry db, prune the data
         if [ "$finalSegName" != "$entrySegName" ]
         then
+        
+          # Load the data
+          echo "Loading data into Qadb tables"
+          psql -o /dev/null -q $finalSegName -f $qadbData
+        
           echo "Pruning data from Qadb tables"
 
           if [ "$verbose" == "true" ]
@@ -763,78 +687,38 @@ do
           psql $finalSegName -c "delete from vendor where vn % $total_content_segs <> $contentid"
           psql $finalSegName -c "delete from product where pn % $total_content_segs <> $contentid"
           psql $finalSegName -c "delete from sale where cn % $total_content_segs <> $contentid"
-	  psql $finalSegName -c "delete from util where xn % $total_content_segs <> $contentid"
-	  psql $finalSegName -c "delete from leagues where length(league_id) % $total_content_segs <> $contentid"
-	  psql $finalSegName -c "delete from divisions where length(division_id) % $total_content_segs <> $contentid"
-	  psql $finalSegName -c "delete from teams where length(team_id) % $total_content_segs <> $contentid"
-	  psql $finalSegName -c "delete from positions where position_id % $total_content_segs <> $contentid"
-	  psql $finalSegName -c "delete from races where race_id % $total_content_segs <> $contentid"
-	  psql $finalSegName -c "delete from drugs where drug_of_choice_id % $total_content_segs <> $contentid"
-	  psql $finalSegName -c "delete from skills where best_skill_id % $total_content_segs <> $contentid"
-	  psql $finalSegName -c "delete from pregame_meals where pregame_meal_id % $total_content_segs <> $contentid"
-	  psql $finalSegName -c "delete from superstitions where superstition_id % $total_content_segs <> $contentid"
-	  psql $finalSegName -c "delete from mlb_player_fact where position_id % $total_content_segs <> $contentid"
-	  psql $finalSegName -c "delete from max_cols where col_1 % $total_content_segs <> $contentid"
-	  psql $finalSegName -c "delete from dtype_text where length(text_col) % $total_content_segs <> $contentid"
-	  psql $finalSegName -c "delete from dtype_varchar where length(varchar_col) % $total_content_segs <> $contentid"
-	  psql $finalSegName -c "delete from dtype_char where length(char_col) % $total_content_segs <> $contentid"
-	  psql $finalSegName -c "delete from dtype_int where int_col % $total_content_segs <> $contentid"
-	  psql $finalSegName -c "delete from dtype_int2 where int2_col % $total_content_segs <> $contentid"
-	  psql $finalSegName -c "delete from dtype_int8 where int8_col % $total_content_segs <> $contentid"
-	  psql $finalSegName -c "delete from dtype_numeric where numeric_col % $total_content_segs <> $contentid"
-	  psql $finalSegName -c "delete from dtype_float where cast(float_col as int) % $total_content_segs <> $contentid"
-	  psql $finalSegName -c "delete from dtype_float4 where cast(float4_col as int) % $total_content_segs <> $contentid"
-	  psql $finalSegName -c "delete from dtype_date where cast(extract(day from date_col) as int) % $total_content_segs <> $contentid"
-	  psql $finalSegName -c "delete from dtype_time where cast(extract(hour from time_col) as int) % $total_content_segs <> $contentid"
-	  psql $finalSegName -c "delete from dtype_timestamp where cast(extract(day from timestamp_col) as int) % $total_content_segs <> $contentid"
-	  psql $finalSegName -c "delete from dtype_interval where cast(extract(day from interval_col) as int) % $total_content_segs <> $contentid"
-	  psql $finalSegName -c "delete from dtype_boolean where (case when boolean_col ='t' then 1 else 0 end)  % $total_content_segs <> $contentid"
+	      psql $finalSegName -c "delete from util where xn % $total_content_segs <> $contentid"
+	      psql $finalSegName -c "delete from leagues where length(league_id) % $total_content_segs <> $contentid"
+	      psql $finalSegName -c "delete from divisions where length(division_id) % $total_content_segs <> $contentid"
+	      psql $finalSegName -c "delete from teams where length(team_id) % $total_content_segs <> $contentid"
+	      psql $finalSegName -c "delete from positions where position_id % $total_content_segs <> $contentid"
+	      psql $finalSegName -c "delete from races where race_id % $total_content_segs <> $contentid"
+	      psql $finalSegName -c "delete from drugs where drug_of_choice_id % $total_content_segs <> $contentid"
+	      psql $finalSegName -c "delete from skills where best_skill_id % $total_content_segs <> $contentid"
+	      psql $finalSegName -c "delete from pregame_meals where pregame_meal_id % $total_content_segs <> $contentid"
+	      psql $finalSegName -c "delete from superstitions where superstition_id % $total_content_segs <> $contentid"
+	      psql $finalSegName -c "delete from mlb_player_fact where position_id % $total_content_segs <> $contentid"
+	      psql $finalSegName -c "delete from max_cols where col_1 % $total_content_segs <> $contentid"
+	      psql $finalSegName -c "delete from dtype_text where length(text_col) % $total_content_segs <> $contentid"
+	      psql $finalSegName -c "delete from dtype_varchar where length(varchar_col) % $total_content_segs <> $contentid"
+	      psql $finalSegName -c "delete from dtype_char where length(char_col) % $total_content_segs <> $contentid"
+	      psql $finalSegName -c "delete from dtype_int where int_col % $total_content_segs <> $contentid"
+	      psql $finalSegName -c "delete from dtype_int2 where int2_col % $total_content_segs <> $contentid"
+	      psql $finalSegName -c "delete from dtype_int8 where int8_col % $total_content_segs <> $contentid"
+	      psql $finalSegName -c "delete from dtype_numeric where numeric_col % $total_content_segs <> $contentid"
+	      psql $finalSegName -c "delete from dtype_float where cast(float_col as int) % $total_content_segs <> $contentid"
+	      psql $finalSegName -c "delete from dtype_float4 where cast(float4_col as int) % $total_content_segs <> $contentid"
+	      psql $finalSegName -c "delete from dtype_date where cast(extract(day from date_col) as int) % $total_content_segs <> $contentid"
+	      psql $finalSegName -c "delete from dtype_time where cast(extract(hour from time_col) as int) % $total_content_segs <> $contentid"
+	      psql $finalSegName -c "delete from dtype_timestamp where cast(extract(day from timestamp_col) as int) % $total_content_segs <> $contentid"
+	      psql $finalSegName -c "delete from dtype_interval where cast(extract(day from interval_col) as int) % $total_content_segs <> $contentid"
+	      psql $finalSegName -c "delete from dtype_boolean where (case when boolean_col ='t' then 1 else 0 end)  % $total_content_segs <> $contentid"
           psql $finalSegName -c "delete from all_dtypes where int_col % $total_content_segs <> $contentid"	  
 	    
           echo "Finished Pruning data from Qadb tables"
         fi
-
-        echo -e "\nPerforming vacuum analyze on db"
-        psql $finalSegName -c "vacuum analyze"
-
-        # If this is the entry db, blow the data away
-        if [ "$finalSegName" == "$entrySegName" ]
-        then
-          echo "Deleting data from entry database"
-          psql $finalSegName -c "delete from customer"
-          psql $finalSegName -c "delete from vendor"
-          psql $finalSegName -c "delete from product"
-          psql $finalSegName -c "delete from sale"
-          psql $finalSegName -c "delete from util"
-          psql $finalSegName -c "delete from leagues"
-          psql $finalSegName -c "delete from divisions"
-          psql $finalSegName -c "delete from teams"
-          psql $finalSegName -c "delete from positions"
-          psql $finalSegName -c "delete from races"
-          psql $finalSegName -c "delete from drugs"
-          psql $finalSegName -c "delete from skills"
-          psql $finalSegName -c "delete from pregame_meals"
-          psql $finalSegName -c "delete from superstitions"
-          psql $finalSegName -c "delete from mlb_player_fact"
-          psql $finalSegName -c "delete from max_cols"
-          psql $finalSegName -c "delete from dtype_text"
-          psql $finalSegName -c "delete from dtype_varchar"
-          psql $finalSegName -c "delete from dtype_char"
-          psql $finalSegName -c "delete from dtype_int"
-          psql $finalSegName -c "delete from dtype_int2"
-          psql $finalSegName -c "delete from dtype_int8"
-          psql $finalSegName -c "delete from dtype_numeric"
-          psql $finalSegName -c "delete from dtype_float"
-          psql $finalSegName -c "delete from dtype_float4"
-          psql $finalSegName -c "delete from dtype_date"
-          psql $finalSegName -c "delete from dtype_time"
-          psql $finalSegName -c "delete from dtype_timestamp"
-          psql $finalSegName -c "delete from dtype_interval"
-          psql $finalSegName -c "delete from dtype_boolean"
-          psql $finalSegName -c "delete from all_dtypes"
-        fi
       fi
-
+      
       # Increment our segment counter
       (( current_segment++ ))
 
@@ -884,6 +768,13 @@ do
 
       psql -o /dev/null -q $entrySegName -c "$i"
     done
+    
+    echo -e "\nPerforming vacuum analyze on db"
+	
+	PGOPTIONS='-c cdb_session_role=dispatch'
+    export PGOPTIONS
+    
+    psql -o /dev/null -q $entrySegName -c "vacuum analyze"
 
 done
 
