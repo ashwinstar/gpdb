@@ -15,7 +15,7 @@ PATH="$(dirname $0):$PATH"
 
 usage="PGROOT=<root_directory> $(basename $0) \n        [ {--dbroot|-D} <root_directory> ] \n        [ {--prefix|-P} { dbprefix | cdb} ] \n        [ {--help} ] \n        [ <psql_options> ]"
 
-echo -e "$(basename $0): Connect psql to a segment database of a CDB cluster."          
+echo -e "$(basename $0): Connect psql to a segment database of a CDB cluster."
 echo -e "Copyright (c) 2004-2005 Metapa, Inc. All Rights Reserved"
 
 function display_help
@@ -24,7 +24,7 @@ function display_help
 
     echo -e "\nThis command runs the psql command connecting to a segment database "
     echo    "in the CDB cluster. The CDB cluster must have been previously initialized using"
-    echo    "\"cdbinitdb\" and started using \"cdbstart\". It is also recommended " 
+    echo    "\"cdbinitdb\" and started using \"cdbstart\". It is also recommended "
     echo -e "that a database was previously created using \"cdbcreatedb \"."
 
     echo -e "\nIf \$PGROOT is not set, the root of the CDB cluster containing the "
@@ -54,10 +54,10 @@ prefix=
 options=
 
 # Ok, loop through the command line args
-# 
+#
 # TODO: For some reason, the -X form of command line parsing, does not handle
 # errors very well. Needs fixing at some point.
-while [ $# -gt 0 ] 
+while [ $# -gt 0 ]
 do
     if [ ! $options_ended ]; then
         OPTIND=1
@@ -74,7 +74,7 @@ do
                    [ "$OPTARG" != "?" ] && break
                    ;;
                 D)
-                   dbroot="$OPTARG" 
+                   dbroot="$OPTARG"
                    ;;
                 P)
                    prefix="$OPTARG"
@@ -96,7 +96,7 @@ do
         shift $(($OPTIND - 1))
     fi
 
-    # 
+    #
     # Handle long options and positional parameters
     #
     if [ $# -gt 0 ]; then
@@ -169,15 +169,16 @@ export PGPORT
 shopt -s extglob
 
 # TODO: Add some real error checking here.
-# TODO: Also, doing this in a for loop sucks! I couldn't figure out how 
+# TODO: Also, doing this in a for loop sucks! I couldn't figure out how
 # to get the assignment to work otherwise though. This is OK for now.
-for PGDATA in "$PGROOT"/$prefix*[1-9]?([0-9]);
+for PGDATA in "$PGROOT"/$prefix*;
 do
+
     if [ -d "$PGDATA" ]
     then
         PGPORT=$(getPort)
-    
-        echo -e "\nConnecting to database $PGDATA on port $PGPORT"
+
+        echo -e "\nConnecting to database $PGDATA on port $PGPORT\n"
         #echo "Options = $options"
         psql $options
         break;
