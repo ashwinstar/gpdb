@@ -143,9 +143,9 @@ extern const char	  * show_cdb_role( void );
  *      2) In CdbDispatchCommand, when commands are sent from the dispatcher to the qExecs.
  *
  */
-extern int                              cdb_connections_per_thread;     /* GUC var - server operating mode.  */
-extern bool                             assign_cdb_connections_per_thread( int newval, bool doit, GucSource source );
-extern const char         * show_cdb_connections_per_thread( void );
+extern int			cdb_connections_per_thread;     /* GUC var - server operating mode.  */
+extern bool			assign_cdb_connections_per_thread( int newval, bool doit, GucSource source );
+extern const char	*show_cdb_connections_per_thread( void );
 
 
 /*
@@ -171,6 +171,18 @@ extern const char         * show_cdb_connections_per_thread( void );
  * slightly less than 64KB.
  */
 extern int Cdb_max_tuple_chunk_size;    /* GUC var */
+
+/*
+ * Parameters enable_cdbrepartition and enable_cdbbroadcast
+ *
+ * These run-time parameters (GUC variables) influence the cdb join strategies.
+ * These are analagous to the enable_nestloop, enable_mergejoin etc variable
+ * for the postgres planner.  When set to false, the cost for that type of
+ * strategy is increased by a very large amount.  This will effectively
+ * cause the code to not choose this strategy unless there is no other.
+ */
+extern bool enable_cdbrepartition;
+extern bool enable_cdbbroadcast;
 
 /* --------------------------------------------------------------------------------------------------
  * Structure for row of cdb.cdb table
