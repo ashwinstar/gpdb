@@ -233,6 +233,10 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 		case RELKIND_RELATION:
 		case RELKIND_INDEX:
 		case RELKIND_TOASTVALUE:
+#ifdef CDB_DEVELOPER     // kh 20050324
+          *pages = (BlockNumber) rel->rd_rel->relpages;
+          *tuples = (double) rel->rd_rel->reltuples;
+#else                    // kh 20050324
 			/* it has storage, ok to call the smgr */
 			*pages = curpages = RelationGetNumberOfBlocks(rel);
 			/* quick exit if rel is clearly empty */
@@ -303,6 +307,7 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 				density = (BLCKSZ - sizeof(PageHeaderData)) / tuple_width;
 			}
 			*tuples = rint(density * (double) curpages);
+#endif                       // kh 20050324
 			break;
 		case RELKIND_SEQUENCE:
 			/* Sequences always have a known size */
