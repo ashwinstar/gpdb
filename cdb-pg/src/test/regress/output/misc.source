@@ -579,6 +579,8 @@ SELECT user_relns() AS user_relns
  bt_txt_heap
  c
  c_star
+ cdb
+ cdb_get_segdbs
  char_tbl
  check2_tbl
  check_seq
@@ -596,6 +598,7 @@ SELECT user_relns() AS user_relns
  e_star
  emp
  equipment_r
+ extent
  f_star
  fast_emp4000
  float4_tbl
@@ -606,6 +609,7 @@ SELECT user_relns() AS user_relns
  hash_name_heap
  hash_txt_heap
  hobbies_r
+ host
  iexit
  ihighway
  inet_tbl
@@ -619,6 +623,7 @@ SELECT user_relns() AS user_relns
  int8_tbl
  interval_tbl
  iportaltest
+ listener
  log_table
  lseg_tbl
  main_table
@@ -638,18 +643,24 @@ SELECT user_relns() AS user_relns
  path_tbl
  person
  point_tbl
+ policy
  polygon_tbl
  ramp
  random_tbl
  real_city
  reltime_tbl
  road
+ segdb
+ segment
  shighway
  slow_emp4000
+ spacecategory
  street
  stud_emp
  student
  subselect_tbl
+ table_descriptor
+ tablespace
  tenk1
  tenk2
  text_tbl
@@ -660,8 +671,9 @@ SELECT user_relns() AS user_relns
  tinterval_tbl
  toyemp
  varchar_tbl
+ version
  xacttest
-(97 rows)
+(109 rows)
 
 SELECT name(equipment(hobby_construct(text 'skywalking', text 'mer')));
  name 
