@@ -10,6 +10,8 @@
  *     $Id$
  *-------------------------------------------------------------------------
  */
+#include "postgres_fe.h"
+
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,7 +23,14 @@
 #include "cdb/shmutils.h"
 
 
-
+#ifndef HAVE_UNION_SEMUN
+union semun
+{
+    int         val;
+    struct semid_ds *buf;
+    unsigned short *array;
+};
+#endif
 
 /* =================================================================*/
 /*                        SHARED MEMORY UTILITIES                   */
