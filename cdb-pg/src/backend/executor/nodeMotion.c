@@ -803,6 +803,7 @@ List *getOpListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
 	List		*oplist = NIL;
 	Expr		*expr = NULL;
 	Operator	eq_operator;
+	Oid			typeoid;
 	
 	for (i=0; i<numCols; i++ )
 	{
@@ -813,10 +814,8 @@ List *getOpListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
 		if ( target == NULL )
 			elog( ERROR, "no tlist entry for key %d", n );
 			
-		Var* var = (Var *)target->expr;
-		Assert(IsA(var, Var));
-
-		eq_operator = compatible_oper(list_make1(makeString("=")), var->vartype, var->vartype, true);
+		typeoid = target->resdom->restype;
+		eq_operator = compatible_oper(list_make1(makeString("=")), typeoid, typeoid, true);
 		oplist = lappend_oid(oplist, oprid(eq_operator));
 		ReleaseSysCache(eq_operator);
 	}
