@@ -101,8 +101,8 @@ By default, the CDB cluser will not have any user tables. If you wish, you can
 preload the TPCH schema using the --withTPCH option when executing cdbcreatedb.
 The DDL and additional files required are found in the cdb-qa module. You will
 have to edit TPCH_load.ctl to contain the correct path for your environment.
-NOTE: the data loaded is NOT actually partitioned at this time. Each segDB will
-contain the same data.
+Following the data load, segDB1 will have NO data and should be viewed as the
+QD. All other segDBs will have their own slice of the partitioned data.
 
 Notes
 =====
