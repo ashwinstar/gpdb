@@ -1,4 +1,10 @@
 <<<NEW vi: set expandtab ts=4: >>>
+Added support for hashing on FLOAT4 and FLOAT8. Also added the option
+    to select either the FNV1 or FNV1A hash algorithm, so that they
+    should both be tested. Reduction methods are "lazy-mod" and "bit
+    mask". Bit mask reduction is selected when the number of segments
+    is a power of 2, and Lazymod otherwize. This is done for performance
+    sake.
 CDB Hash API added. So far support for hashing on INT2,INT4,INT8,
     TEXT,VARCHAR(n),CHAR(n) is added. Corresponding manual tests
     are located in libcdbtest. 
