@@ -165,7 +165,7 @@ SemLock( int semid )
 	struct sembuf sops;
 	
 	sops.sem_op = -1;			/* decrement */
-	sops.sem_flg = SEM_UNDO;	
+	sops.sem_flg = 0;	
 	sops.sem_num = 0;
 	
 	return semop(semid, &sops, 1);
@@ -183,7 +183,7 @@ SemPost( int semid )
 	struct sembuf sops;
 	
 	sops.sem_op = 1;			/* increment */
-	sops.sem_flg = SEM_UNDO;	
+	sops.sem_flg = 0;	
 	sops.sem_num = 0;
 	
 	return semop(semid, &sops, 1);
