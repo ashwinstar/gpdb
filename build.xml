@@ -281,7 +281,7 @@ Using toolsLib=${toolsLib}
 
         <antcall target="cdb-client"> 
             <param name="target" value="installWithDoc"/>
-            <param name="Idist" location="${dist}"/>
+            <param name="Idist" location=""/>
             <param name="IcdbclientDir" location="${installRoot}/cdb-client"/>
         </antcall>
 
@@ -323,53 +323,23 @@ The "install" target is allowed for devo builds only.  Use the
     <!-- directory.                                                     -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <target name="dist"
-            depends="init,-installRootWarning,distclean,compile,makeDoc"
+            depends="-installRootWarning,install,makeDoc"
             description="Prepare a distribution package for CDB">
 
         <mkdir dir="${dist}"/>
 
         <!--
-            Call install subroutine with "dist" set for
-            distribution build.
-          -->
-        <antcall target="-install">
-            <param name="target" value="installWithDoc"/>
-            <param name="Idist" location="${dist}"/>
-            <param name="IcdbdocDir" location="${installRoot}/cdb-pgsql/docs"/>
-            <param name="IcdbjreDir" location="${installRoot}/cdb-pgsql/jre"/>
-            <param name="IcdbbinDir" location="${installRoot}/cdb-pgsql/bin"/>
-            <param name="IcdbmanDir" location="${installRoot}/cdb-pgsql/man"/>
-            <param name="IcdbserverDir" location="${installRoot}/cdb-pgsql/server"/>
-            <param name="IcdbtoolsDir" location="${installRoot}/cdb-pgsql/tools"/>
-            <param name="IcdbdemoDir" location="${installRoot}/cdb-pgsql/demo"/>
-            <param name="IcdbclientDir" location="${installRoot}/cdb-client"/>
-        </antcall>
-
-        <antcall target="cdb-client"> 
-            <param name="target" value="installWithDoc"/>
-            <param name="Idist" location="${dist}"/>
-            <param name="IcdbclientDir" location="${installRoot}/cdb-client"/>
-        </antcall>
-
-
-        <!--
             Create a tarball for distribution
           -->
-        <tar destfile="${dist}/cdb-pgsql-${releaseBuild}.tar.gz"
+<!--
+        <tar destfile="cdb-pgsql-${releaseBuild}.tar.gz"
              compression="gzip">
-            <tarfileset dir="${dist}" username="cdb" group="cdb">
-                <or>
-                    <filename name="**/bin/*" negate="true"/>
-                    <filename name="**/bin/*.sql"/>
-                </or>
-            </tarfileset>
-            <tarfileset dir="${dist}" username="cdb" group="cdb" mode="755">
-                <and>
-                    <filename name="**/bin/*"/>
-                    <filename name="**/bin/*.sql" negate="true"/>
-                </and>
-            </tarfileset>
+             <tarfileset dir="${installRoot}" username="cdb" group="cdb"/>
         </tar>
+-->
+       <exec executable="tar"> 
+           <arg line="zcvf ${dist}/cdb-pgsql-${releaseBuild}.tar.gz ${installRoot}"/>
+       </exec>
 
     </target>
 
@@ -686,7 +656,6 @@ export LD_LIBRARY_PATH=${installRoot}/cdb-pgsql/server/lib
        <move file="dist/cdb-pgsql-${releaseBuild}.tar.gz" todir="${webRoot}/nightly-build"/>
        <chmod type="file" perm="644" file="${webRoot}/nightly-build/cdb-pgsql-${releaseBuild}.tar.gz"/>
     </target>
-
 
 </project>
 
