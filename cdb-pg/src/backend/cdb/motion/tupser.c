@@ -10,10 +10,19 @@
  */
 #include "postgres.h"
 
-#include "libpq/pqformat.h"
-
+#include "catalog/pg_type.h"
 #include "cdb/tupser.h"
+#include "libpq/pqformat.h"
+#include "utils/date.h"
+#include "utils/numeric.h"
 
+
+/* A MemoryContext used within the tuple serialize code, so that freeing of
+ * space is SUPAFAST.  It is initialized in the first call to InitSerTupInfo()
+ * since that must be called before any tuple serialization or deserialization
+ * work can be done.
+ */
+static MemoryContext s_tupSerMemCtxt = NULL;
 
 
 /* Look up all of the information that SerializeTuple() and DeserializeTuple()
@@ -30,8 +39,16 @@ void InitSerTupInfo(TupleDesc tupdesc, SerTupInfo *pSerInfo)
     int i, numAttrs;
 
 	AssertArg(tupdesc != NULL);
-	
 	AssertArg(pSerInfo != NULL);
+	
+	if (s_tupSerMemCtxt == NULL)
+	{
+		/* Create tuple-serialization memory context. */
+		
+		s_tupSerMemCtxt = AllocSetContextCreate(TopMemoryContext,
+			"TupSerMemCtxt", ALLOCSET_SMALL_MINSIZE, ALLOCSET_SMALL_INITSIZE,
+			ALLOCSET_SMALL_MAXSIZE);
+	}
 	
     elog(DEBUG2, "Initializing cached tuple serialization information.");
 
@@ -58,18 +75,22 @@ void InitSerTupInfo(TupleDesc tupdesc, SerTupInfo *pSerInfo)
     {
         SerAttrInfo *attrInfo = pSerInfo->myinfo + i;
 
+		/* Get attribute's data-type Oid.  This lets us shortcut the comm
+		 * operations for some attribute-types.
+		 */
+		attrInfo->atttypid = tupdesc->attrs[i]->atttypid;
+		
         /* Info for sending the type. */
 
-        getTypeBinaryOutputInfo(tupdesc->attrs[i]->atttypid,
-            &attrInfo->typsend, &attrInfo->send_typio_param,
-            &attrInfo->typisvarlena);
+        getTypeBinaryOutputInfo(attrInfo->atttypid, &attrInfo->typsend,
+			&attrInfo->send_typio_param, &attrInfo->typisvarlena);
 
         fmgr_info(attrInfo->typsend, &attrInfo->send_finfo);
 
         /* Info for receiving the type. */
 
-        getTypeBinaryInputInfo(tupdesc->attrs[i]->atttypid,
-            &attrInfo->typrecv, &attrInfo->recv_typio_param);
+        getTypeBinaryInputInfo(attrInfo->atttypid, &attrInfo->typrecv,
+			&attrInfo->recv_typio_param);
 
         fmgr_info(attrInfo->typrecv, &attrInfo->recv_finfo);
     }
@@ -109,6 +130,7 @@ void CleanupSerTupInfo(SerTupInfo *pSerInfo)
  */
 int SerializeTuple(HeapTuple tuple, SerTupInfo *pSerInfo, StringInfo strInfo)
 {
+	MemoryContext oldCtxt;
 	TupleDesc tupdesc;
     int natts;
 
@@ -122,6 +144,14 @@ int SerializeTuple(HeapTuple tuple, SerTupInfo *pSerInfo, StringInfo strInfo)
 	tupdesc = pSerInfo->tupdesc;
     natts = tupdesc->natts;
     origLen = strInfo->len;
+
+#ifdef USE_TUPSER_MEM_CTXT
+	/* Flip to our tuple-serialization memory-context, to speed up memory
+	 * reclamation operations.
+	 */
+	AssertState(s_tupSerMemCtxt != NULL);
+	oldCtxt = MemoryContextSwitchTo(s_tupSerMemCtxt);
+#endif
 
     /* deconstruct the tuple (faster than a heap_getattr loop) */
     heap_deformtuple(tuple, tupdesc, pSerInfo->values, pSerInfo->nulls);
@@ -162,6 +192,62 @@ int SerializeTuple(HeapTuple tuple, SerTupInfo *pSerInfo, StringInfo strInfo)
         else
             attr = origattr;
 
+#ifdef SPECIAL_TUPSER_IO
+		bool fHandled = true;
+		switch (attrInfo->atttypid)
+		{
+		case INT4OID:
+		{
+			int32 tmpI32 = DatumGetInt32(attr);
+			pq_sendbytes(strInfo, (char *) &tmpI32, 4);
+			break;
+		}
+			
+		case CHAROID:
+		{
+			char tmpCh = DatumGetChar(attr);
+			pq_sendbyte(strInfo, tmpCh);
+			break;
+		}
+			
+		case BPCHAROID:
+		case VARCHAROID:
+		{
+			text *pText = DatumGetTextP(attr);
+			int textSize = VARSIZE(pText) - VARHDRSZ;
+			pq_sendbytes(strInfo, (char *) &textSize, 4);
+			pq_sendbytes(strInfo, (char *) VARDATA(pText), textSize);
+			break;
+		}
+		
+		case DATEOID:
+		{
+			DateADT date = DatumGetDateADT(attr);
+			pq_sendbytes(strInfo, (char *) &date, sizeof(DateADT));
+			break;
+		}
+		
+		case NUMERICOID:
+		{
+			/* Treat the numeric as a varlena variable, and just push the
+			 * whole shebang to the output-buffer.  We don't care about the
+			 * guts of the numeric.
+			 */
+			Numeric num = DatumGetNumeric(attr);
+			int numSize = VARSIZE(num) - VARHDRSZ;
+			pq_sendbytes(strInfo, (char *) &numSize, 4);
+			pq_sendbytes(strInfo, (char *) VARDATA(num), numSize);
+			break;
+		}
+		
+		default:
+			fHandled = false;
+		}
+		
+		if (fHandled)
+			continue;
+#endif
+
         outputbytes = DatumGetByteaP(FunctionCall2(&attrInfo->send_finfo,
             attr, ObjectIdGetDatum(attrInfo->send_typio_param)));
 
@@ -169,13 +255,22 @@ int SerializeTuple(HeapTuple tuple, SerTupInfo *pSerInfo, StringInfo strInfo)
         pq_sendint(strInfo, VARSIZE(outputbytes) - VARHDRSZ, 4);
         pq_sendbytes(strInfo, VARDATA(outputbytes),
             VARSIZE(outputbytes) - VARHDRSZ);
+
+#ifndef USE_TUPSER_MEM_CTXT
         pfree(outputbytes);
 
         /* Clean up detoasted copy, if any */
         if (attr != origattr)
             pfree(DatumGetPointer(attr));
+#endif
     }
-    
+
+#ifdef USE_TUPSER_MEM_CTXT
+	MemoryContextSwitchTo(oldCtxt);
+	
+	MemoryContextReset(s_tupSerMemCtxt);
+#endif
+
     /* Return the size of the serialized tuple in bytes. */
     return strInfo->len - origLen;
 }
@@ -187,6 +282,7 @@ int SerializeTuple(HeapTuple tuple, SerTupInfo *pSerInfo, StringInfo strInfo)
  */
 HeapTuple DeserializeTuple(SerTupInfo *pSerInfo, StringInfo serialTup)
 {
+	MemoryContext oldCtxt;
 	TupleDesc tupdesc;
 	HeapTuple htup;
     int natts;
@@ -204,6 +300,14 @@ HeapTuple DeserializeTuple(SerTupInfo *pSerInfo, StringInfo serialTup)
     natts = tupdesc->natts;
     origLen = serialTup->len;
 
+#ifdef USE_TUPSER_MEM_CTXT
+	/* Flip to our tuple-serialization memory-context, to speed up memory
+	 * reclamation operations.
+	 */
+	AssertState(s_tupSerMemCtxt != NULL);
+	oldCtxt = MemoryContextSwitchTo(s_tupSerMemCtxt);
+#endif
+	
     /* Receive and process the "non-NULL values" bitmap. */
     for (i = 0, k = 0; i < natts; ++i)
     {
@@ -232,41 +336,111 @@ HeapTuple DeserializeTuple(SerTupInfo *pSerInfo, StringInfo serialTup)
         if (pSerInfo->nulls[i] == 'n')       /* NULL field. */
         {
             pSerInfo->values[i] = (Datum) 0;
+			continue;
         }
-        else                                /* Non-NULL field. */
-        {
-            attr_size = pq_getmsgint(serialTup, 4);
 
-            /* reset attr_data to empty, and load raw data into it */
+#ifdef SPECIAL_TUPSER_IO
+		bool fHandled = true;
+		switch (attrInfo->atttypid)
+		{
+		case INT4OID:
+		{
+			int32 tmpI32;
+			pq_copymsgbytes(serialTup, (char *) &tmpI32, 4);
+			pSerInfo->values[i] = Int32GetDatum(tmpI32);
+			break;
+		}
+		
+		case CHAROID:
+			pSerInfo->values[i] = CharGetDatum(pq_getmsgbyte(serialTup));
+			break;
+			
+		case BPCHAROID:
+		case VARCHAROID:
+		{
+			text *pText;
+			int textSize;
+			pq_copymsgbytes(serialTup, (char *) &textSize, 4);
+			pText = (text *) palloc(textSize + VARHDRSZ);
+			VARATT_SIZEP(pText) = textSize + VARHDRSZ;
+			pq_copymsgbytes(serialTup, VARDATA(pText), textSize);
+			pSerInfo->values[i] = PointerGetDatum(pText);
+			break;
+		}
+		
+		case DATEOID:
+		{
+			DateADT date;
+			pq_copymsgbytes(serialTup, (char *) &date, sizeof(DateADT));
+			pSerInfo->values[i] = DateADTGetDatum(date);
+			break;
+		}
+		
+		case NUMERICOID:
+		{
+			/* Treat the numeric as a varlena variable, and just push the
+			 * whole shebang to the output-buffer.  We don't care about the
+			 * guts of the numeric.
+			 */
+			Numeric num;
+			int numSize;
+			pq_copymsgbytes(serialTup, (char *) &numSize, 4);
+			num = (Numeric) palloc(numSize + VARHDRSZ);
+			VARATT_SIZEP(num) = numSize + VARHDRSZ;
+			pq_copymsgbytes(serialTup, VARDATA(num), numSize);
+			pSerInfo->values[i] = NumericGetDatum(num);
+			break;
+		}
+		
+		default:
+			fHandled = false;
+		}
+		
+		if (fHandled)
+			continue;
+#endif
+		
+		attr_size = pq_getmsgint(serialTup, 4);
 
-            attr_data.len = 0;
-            attr_data.data[0] = '\0';
-            attr_data.cursor = 0;
+		/* reset attr_data to empty, and load raw data into it */
 
-            appendBinaryStringInfo(&attr_data,
-                pq_getmsgbytes(serialTup, attr_size), attr_size);
+		attr_data.len = 0;
+		attr_data.data[0] = '\0';
+		attr_data.cursor = 0;
 
-            /* Call the attribute type's binary input converter. */
-            pSerInfo->values[i] =  FunctionCall2(&attrInfo->recv_finfo,
-                PointerGetDatum(&attr_data),
-                ObjectIdGetDatum(attrInfo->recv_typio_param));
+		appendBinaryStringInfo(&attr_data,
+			pq_getmsgbytes(serialTup, attr_size), attr_size);
 
-            /* Trouble if it didn't eat the whole buffer */
-            if (attr_data.cursor != attr_data.len)
-            {
-                ereport(ERROR,
-                    (errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
-                    errmsg("incorrect binary data format")));
-            }
-        }
+		/* Call the attribute type's binary input converter. */
+		pSerInfo->values[i] =  FunctionCall2(&attrInfo->recv_finfo,
+			PointerGetDatum(&attr_data),
+			ObjectIdGetDatum(attrInfo->recv_typio_param));
+
+		/* Trouble if it didn't eat the whole buffer */
+		if (attr_data.cursor != attr_data.len)
+		{
+			ereport(ERROR,
+				(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
+				errmsg("incorrect binary data format")));
+		}
     }
 
+#ifndef USE_TUPSER_MEM_CTXT
     /* Free up memory we used. */
     pfree(attr_data.data);
-    
-    /* Construct the tuple from the Datums and nulls values. */
-    htup = heap_formtuple(tupdesc, pSerInfo->values, pSerInfo->nulls);
+#endif
+
+    /* Construct the tuple from the Datums and nulls values.  NOTE:  Switch
+	 * out of our temporary context before we form the tuple!
+	 */
 	
+#ifdef USE_TUPSER_MEM_CTXT
+	MemoryContextSwitchTo(oldCtxt);
+#endif
+
+    htup = heap_formtuple(tupdesc, pSerInfo->values, pSerInfo->nulls);
+
+#ifndef USE_TUPSER_MEM_CTXT
 	/* Clean up any variable-length attribute values that were allocated! */
 	
 	for (i = 0; i < natts; ++i)
@@ -279,7 +453,10 @@ HeapTuple DeserializeTuple(SerTupInfo *pSerInfo, StringInfo serialTup)
 			pSerInfo->values[i] = (Datum) NULL;
 		}
 	}
-	
+#else
+	MemoryContextReset(s_tupSerMemCtxt);
+#endif
+
 	/* All done.  Return the result. */
 	return htup;
 }

@@ -15,6 +15,17 @@
 #include "utils/lsyscache.h"
 
 
+/* Define this to use MemoryContextReset() to reclaim memory instead of using
+ * explicit pfree() calls.  Need to analyze performance of each approach.
+ */
+#define USE_TUPSER_MEM_CTXT
+
+/* Define this to use special-purpose tuple-serialization IO routines, instead
+ * of calling the Postgres binary IO routines for each data-type.
+ */
+#define SPECIAL_TUPSER_IO
+
+
 /* Used to encapsulate a motion node's core identity.
  *
  * FIELDS:
@@ -59,6 +70,9 @@ typedef struct MotionNodeInfo
  */
 typedef struct SerAttrInfo
 {
+    Oid     atttypid;           /* Oid of the attribute's data-type. */
+    bool    typisvarlena;       /* is type varlena (ie possibly toastable)? */
+    
     Oid      typsend;           /* Oid for the type's binary output fn */
     Oid      send_typio_param;  /* param to pass to the output fn */
     FmgrInfo send_finfo;        /* Precomputed call info for output fn */
@@ -66,8 +80,6 @@ typedef struct SerAttrInfo
     Oid      typrecv;           /* Oid for the type's binary input fn */
     Oid      recv_typio_param;  /* param to pass to the input fn */
     FmgrInfo recv_finfo;        /* Precomputed call info for output fn */
-
-    bool    typisvarlena;       /* is type varlena (ie possibly toastable)? */
 } SerAttrInfo;
 
 

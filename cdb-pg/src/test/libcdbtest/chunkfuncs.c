@@ -40,6 +40,9 @@ typedef struct ChunkedRowState
     uint16 tgtSegIdx;
     uint16 mnid;
 
+	/* The SerTupInfo with cached info in it for serialization. */
+	SerTupInfo serInfo;
+	
     /* Index of row we are on. */
     int rowIdx;
 
@@ -57,6 +60,9 @@ static ChunkedRowState *s_rac_state;
 
 typedef struct SerializedRowState
 {
+	/* The SerTupInfo with cached info in it for serialization. */
+	SerTupInfo serInfo;
+	
     /* Index of row we are on. */
     int rowIdx;
 } SerializedRowState;
@@ -67,6 +73,9 @@ static SerializedRowState *s_sr_state;
 
 typedef struct DechunkedRowState
 {
+	/* The SerTupInfo with cached info in it for serialization. */
+	SerTupInfo serInfo;
+	
     /* Index of row we are on. */
     int rowIdx;
 } DechunkedRowState;
@@ -77,6 +86,9 @@ static DechunkedRowState *s_dcr_state;
 
 typedef struct DeserializedRowState
 {
+	/* The SerTupInfo with cached info in it for serialization. */
+	SerTupInfo serInfo;
+	
     /* Index of row we are on. */
     int rowIdx;
 } DeserializedRowState;
@@ -141,6 +153,7 @@ Datum GetSerializedRows__text1(PG_FUNCTION_ARGS)
 
         s_sr_state = (SerializedRowState *) palloc0(sizeof(SerializedRowState));
         s_sr_state->rowIdx = 0;
+		InitSerTupInfo(SPI_tuptable->tupdesc, &s_sr_state->serInfo);
 
         /* Generate return-type information.  This is derived from the user
          * datatype "__getserializedrows".
@@ -172,7 +185,7 @@ Datum GetSerializedRows__text1(PG_FUNCTION_ARGS)
 
         pq_begintypsend(&serTupData);   /* Does initStringInfo() call. */
         reportedSize = SerializeTuple(SPI_tuptable->vals[s_sr_state->rowIdx],
-            SPI_tuptable->tupdesc, &serTupData);
+            &s_sr_state->serInfo, &serTupData);
         rowData = pq_endtypsend(&serTupData);
 
         resultValues[0] = Int32GetDatum(reportedSize);
@@ -265,6 +278,8 @@ Datum GetChunkedRows__text1(PG_FUNCTION_ARGS)
         
         s_rac_state->maxChunkDataSize = Cdb_max_tuple_chunk_size;
         
+		InitSerTupInfo(SPI_tuptable->tupdesc, &s_rac_state->serInfo);
+		
         /* Generate return-type information.  This is derived from the user
          * datatype "__getchunkedrows".
          */
@@ -433,17 +448,18 @@ Datum GetDeserializedRows__text1_regtype1(PG_FUNCTION_ARGS)
                 " column of type BYTEA.");
         }
 
+        /* Return-type information must be specified by the caller. */
+
+        typeOid = PG_GETARG_OID(1);
+        funcctx->tuple_desc = TypeGetTupleDesc(typeOid, NULL);
+
         /* Allocate cross-call state, so that we can keep track of where we're
          * at in the processing.
          */
 
         s_dr_state = (DeserializedRowState *) palloc0(sizeof(DeserializedRowState));
+		InitSerTupInfo(funcctx->tuple_desc, &s_dr_state->serInfo);
         s_dr_state->rowIdx = 0;
-
-        /* Return-type information must be specified by the caller. */
-
-        typeOid = PG_GETARG_OID(1);
-        funcctx->tuple_desc = TypeGetTupleDesc(typeOid, NULL);
     }
     
     
@@ -474,7 +490,7 @@ Datum GetDeserializedRows__text1_regtype1(PG_FUNCTION_ARGS)
 
         /* Deserialize the data stream into a tuple. */
 
-        htup = DeserializeTuple(funcctx->tuple_desc, &strInfoTup);
+        htup = DeserializeTuple(&s_dr_state->serInfo, &strInfoTup);
         resultTuple = HeapTupleGetDatum(htup);
 
         /* Move on to the next row in the list, for next iteration. */
@@ -559,17 +575,18 @@ Datum GetDechunkedRows__text1_regtype1(PG_FUNCTION_ARGS)
                 " column of type BYTEA.");
         }
 
+        /* Return-type information must be specified by the caller. */
+
+        typeOid = PG_GETARG_OID(1);
+        funcctx->tuple_desc = TypeGetTupleDesc(typeOid, NULL);
+
         /* Allocate cross-call state, so that we can keep track of where we're
          * at in the processing.
          */
 
         s_dcr_state = (DechunkedRowState *) palloc0(sizeof(DechunkedRowState));
         s_dcr_state->rowIdx = 0;
-
-        /* Return-type information must be specified by the caller. */
-
-        typeOid = PG_GETARG_OID(1);
-        funcctx->tuple_desc = TypeGetTupleDesc(typeOid, NULL);
+		InitSerTupInfo(funcctx->tuple_desc, &s_dcr_state->serInfo);
     }
 
 
