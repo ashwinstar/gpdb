@@ -452,7 +452,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 		Assert(stmt->relOid == 0);
 		stmt->relOid = relationId;
 
-		elog( NOTICE,"shouldDispatch = true, relOid = %d",relationId);
+		elog( DEBUG5,"shouldDispatch = true, relOid = %d",relationId);
 		if ( shouldDispatch )
 		{
 			/*
@@ -476,7 +476,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 
 			Assert(pszCreateTable != NULL );
 
-			elog( NOTICE,"Comand %s", pszCreateTable);
+			elog( DEBUG5,"Comand %s", pszCreateTable);
 
 			appendStringInfo(&buffer, "cdbexec '%s' ''", pszCreateTable);
 
@@ -500,7 +500,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 
 	if (Cdb_role == CDB_ROLE_EXECUTE) 
 	{
-		elog( NOTICE,"CdbRole Execute of CREATE TABLE, relationid %d",stmt->relOid);
+		elog( DEBUG5,"CdbRole Execute of CREATE TABLE, relationid %d",stmt->relOid);
 		Assert(stmt->relOid != 0);
 		relationId = stmt->relOid;
 
@@ -592,7 +592,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 	if ( hasDispatched )
 	{
 		char *message;
-		elog(NOTICE, "HasDispatched\n");
+		 
 		/*
 		 * We successfully completed on the Dispatcher.  Now check the results
 		 * from the qExecs.  This internally waits for them to all finish.
@@ -605,7 +605,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 		if ( szCommand == NULL )
 			szCommand = "";
 		Assert( message != NULL );
-		elog( NOTICE,
+		elog( DEBUG5,
 				"cdbexec command results for \"%s\": %s",
 				szCommand, message );
 
