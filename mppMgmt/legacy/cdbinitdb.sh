@@ -56,7 +56,16 @@ function updateConf
     case $OSTYPE in
 
         # These systems only support Basic Regular Expressions (BREs)
-        solaris|darwin*)
+        darwin*)
+	    # Macs need different values
+            local space=$(echo -en " \t\f\\\n\r\v")
+            sed -e "s/^#port = [0-9]*$/port = $PGPORT/" \
+                -e "s/^[$space]*max_connections[$space]*=\{0,1\}[$space]*[0-9]\{1,\}/max_connections = 8/" \
+                -e "s/^[$space]*shared_buffers[$space]*=\{0,1\}[$space]*[0-9]\{1,\}/shared_buffers = 16/" \
+                 "$PGDATA"/postgresql.conf > "$PGDATA"/postgresql.conf.new
+	    ;;
+
+        solaris)
             local space=$(echo -en " \t\f\\\n\r\v")
             sed -e "s/^#port = [0-9]*$/port = $PGPORT/" \
                 -e "s/^[$space]*max_connections[$space]*=\{0,1\}[$space]*[0-9]\{1,\}/max_connections = 10/" \
