@@ -303,7 +303,8 @@ SendReturnCode SendTuple(uint16 motNodeID, TupleSendContext *send_ctxt)
          */
 
         mnInfo.query_group_id = s_motion_layer_state.query_group_id;
-        mnInfo.segment_id     = s_motion_layer_state.my_seg_idx;
+		/* TODO HACK */
+        mnInfo.segment_id     = s_motion_layer_state.my_seg_idx + 2;
         mnInfo.host_id        = s_motion_layer_state.host_id;
 
         /* Set up the target segment index based on the motion node info. */
@@ -315,9 +316,10 @@ SendReturnCode SendTuple(uint16 motNodeID, TupleSendContext *send_ctxt)
         /* Create and store the serialized form, and some stats about it. */
 
         oldCtxt = MemoryContextSwitchTo(ML_MEM_CTXT);
-        tcList = CvtHeapTupToChunks(send_ctxt->heap_tuple,
+ 		/* TODO HACK */
+       tcList = CvtHeapTupToChunks(send_ctxt->heap_tuple,
             pMNEntry->tuple_desc, Cdb_max_tuple_chunk_size, motNodeID,
-            &mnInfo, targetSegIdx);
+            &mnInfo, targetSegIdx + 2);
         MemoryContextSwitchTo(oldCtxt);
 
         send_ctxt->tuple_chunk_list = tcList;
@@ -640,7 +642,10 @@ void processIncomingChunks(void)
 
         /* Pull out the motion node ID and the sender segment-database ID. */
         motNodeID = GetMotionNodeID(tcItem->chunk_data);
-        srcSegIdx = GetSourceSegIdx(tcItem->chunk_data);
+        srcSegIdx = GetSourceSegIdx(tcItem->chunk_data) - 2;
+		/* TODO HACK */
+		SetSourceSegIdx(tcItem->chunk_data, srcSegIdx);
+		SetTargetSegIdx(tcItem->chunk_data, s_motion_layer_state.my_seg_idx);
 
 #ifdef AMS_VERBOSE_LOGGING
         elog(DEBUG3, "Processing tuple-chunk received from source segment %d"
@@ -777,7 +782,9 @@ void InitMotionLayer(void)
 	/* Initialize the Motion Layer IPC subsystem. */
 	getCdbIdentity( &(s_motion_layer_state.my_seg_idx),
                     &(s_motion_layer_state.is_primary) );
-	InitMotionLayerIPC( s_motion_layer_state.my_seg_idx );
+
+	/* TODO Hack */
+	InitMotionLayerIPC( s_motion_layer_state.my_seg_idx + 2 );
 
     /* All done!  Go back to caller memory-context. */
     MemoryContextSwitchTo(oldCtxt);
@@ -857,7 +864,7 @@ void InitMotionLayerNode(uint16 motNodeID, bool includeBackupSegDB,
     }
 
     /* TODO:  Hard-coded right now. */
-    pEntry->num_senders = CdbClusterDefinition->segment_count - 1;
+    pEntry->num_senders = CdbIdentity.numsegments;
     pEntry->num_stream_ends_recvd = 0;
 
     /* Initialize statistics counters. */
