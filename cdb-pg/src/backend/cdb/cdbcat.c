@@ -43,12 +43,13 @@ CdbPolicyType get_table_policytype(Oid tbloid)
 	/*
 	 * Then, open the table and and find the oid of the index
 	 */
-	cdb_policy_rel = HeapOpenCDBObject( "policy", cdb_namespace_oid, true );
+	cdb_policy_rel = HeapOpenCDBObject( CdbPolicyRelationName, cdb_namespace_oid, true );
 
 	/*
 	 * We scan based on the unique index on localoid
 	 */
-	cdb_policy_index_oid = get_relname_relid("policy_localoid_key", cdb_namespace_oid);
+	cdb_policy_index_oid = get_relname_relid(CdbPolicyLocalOidIndexName, 
+												cdb_namespace_oid);
 
 	/*
 	 * Set up a ScanKey for the value of the localoid field
@@ -128,7 +129,7 @@ Oid getCDBNamespaceOid(void)
 	/*
 	 * We need to read the pg_namespace table
 	 */	
-	namestrcpy(&nname, "cdb");
+	namestrcpy(&nname, CdbNamespaceName);
 
 	/*
 	 * Set up a ScanKey based on the namespace name field
@@ -189,7 +190,7 @@ Relation HeapOpenCDBObject( const char *pszName, Oid cdb_namespace_oid, bool bTa
 	if ( cdb_oid == InvalidOid )
        ereport(ERROR, 
 		(errcode(ERRCODE_EXTERNAL_ROUTINE_INVOCATION_EXCEPTION),
-	        errmsg("Cannot retrieve oid of cdb.%s", pszName)));
+	        errmsg("Cannot retrieve oid of %s.%s", CdbNamespaceName, pszName)));
 
 	/*
 	 * If its a table, use heap_open. If an index, use index_open
