@@ -31,7 +31,6 @@ typedef struct CdbJoinStrategy
 	Movement leftmove;
 	Movement rightmove;
 	FlowType resultflowtype;
-	bool resultislocal;
 	double est_ams_cost;
 
 } CdbJoinStrategy;

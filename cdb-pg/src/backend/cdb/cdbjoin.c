@@ -266,7 +266,6 @@ CdbJoinStrategy *makeJoinStrategy(Movement left, Movement right, FlowType result
 	js->leftmove = left;
 	js->rightmove = right;
 	js->resultflowtype = result;
-	js->resultislocal = ( result == FLOW_SINGLETON );
 	js->est_ams_cost = 0.0;
 	return js;
 }	
@@ -280,7 +279,6 @@ CdbJoinStrategy *copyJoinStrategy(CdbJoinStrategy *old)
 	if  ( old != NULL )
 	{
 		js = makeJoinStrategy(old->leftmove, old->rightmove, old->resultflowtype);
-		js->resultislocal = old->resultislocal;
 	}
 	return js;
 }	

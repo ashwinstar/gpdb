@@ -944,7 +944,7 @@ typedef struct FromExpr
 typedef enum Movement
 {
 	MOVEMENT_NONE,			/* No motion required. */
-	MOVEMENT_FOCUS,			/* Fixed motion to dispatcher. */
+	MOVEMENT_FOCUS,			/* Fixed motion to a single segment. */
 	MOVEMENT_BROADCAST,		/* Broadcast motion. */
 	MOVEMENT_REPARTITION	/* Hash motion */
 

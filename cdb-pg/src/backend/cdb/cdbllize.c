@@ -104,7 +104,6 @@ static void psErrorNonce(PlanProfile *context,  const char* detail);
 static void psErrorInternal(PlanProfile *context,  const char* detail);
 static void issuePsError(PlanProfile *context);
 
-static Flow *makeFlow(FlowType flotype);
 static Flow *makeFlowForRelation(Oid reloid, PlanProfile *context);
 static void noteFlow(Flow *flow, PlanProfile *context);
 
@@ -115,6 +114,10 @@ static void assignMotionID(Node* newnode, ApplyMotionState* context, Node* oldno
 static bool initPlanProfile(PlanProfile *context, Query *query);
 static bool scanForManagedTables_walker(Node *node, PlanProfile *context);
 static bool scanForManagedTables(Plan *plan, Query *query);
+
+/* TODO Check suitability of the approach taken in these functions. */
+static void set_hash_in_flow(Plan *plan, int nattrs, int *attrs);
+static bool force_vars_walker(Node *node, void *varno);
 
 
 /* ------------------------------------------------------------------------- *
@@ -208,16 +211,11 @@ cdbparallelize(	Plan* plan,
 				errhint("CDB requires separate queries.")
 				));
 		}
-		else if ( profile.usesSegments )
-		{
-			if ( profile.hasPartitionedFlow )
-				plan = apply_motion(plan, query);
-			plan->dispatch = DISPATCH_PARALLEL;
-		}
 		else
 		{
-			Assert(!profile.hasPartitionedFlow);
-			plan->dispatch = DISPATCH_SEQUENTIAL;
+			Assert( profile.usesSegments );
+			plan = apply_motion(plan, query);
+			plan->dispatch = DISPATCH_PARALLEL;
 		}
 	}
 
@@ -436,7 +434,7 @@ prescan_walker(Node *node, PlanProfile *context)
 				else
 				{
 					/* Treat Var-free target list as replicated. */
-					plan->flow = makeReplicatedFlow();
+					plan->flow = makeFlow(FLOW_REPLICATED);
 				}
 				noteFlow(plan->flow, context);
 			}
@@ -694,14 +692,14 @@ bool prescan_hashjoin(Plan *plan, PlanProfile *context)
 		switch ( strategy->leftmove )
 		{
 			case MOVEMENT_FOCUS:
-				/* Request motion to focus the outer flow on the dispatcher. */
+				/* Request motion to focus the outer flow on a segment. */
 				outer->flow->req_move = MOVEMENT_FOCUS;
 				outer->flow->flotype = FLOW_SINGLETON;
-				outer->flow->segindex = -1;
+				outer->flow->segindex = 0;
 				break;
 					
 			case MOVEMENT_BROADCAST:
-				/* Request motion to focus the outer flow on the dispatcher. */
+				/* Request motion to replicate the outer flow. */
 				outer->flow->req_move = MOVEMENT_BROADCAST;
 				outer->flow->flotype = FLOW_REPLICATED;
 				outer->flow->segindex = 0;
@@ -732,14 +730,14 @@ bool prescan_hashjoin(Plan *plan, PlanProfile *context)
 		switch ( strategy->rightmove )
 		{
 			case MOVEMENT_FOCUS:
-				/* Request motion to focus the inner flow on the dispatcher. */
+				/* Request motion to focus the inner flow on a segment. */
 				inner->lefttree->flow->req_move = MOVEMENT_FOCUS;
 				inner->lefttree->flow->flotype = FLOW_SINGLETON;
-				inner->lefttree->flow->segindex = -1;
+				inner->lefttree->flow->segindex = 0;
 				
 				/* Adjust the flow type of the intermediate Hash node. */
 				inner->flow->flotype = FLOW_SINGLETON;
-				inner->flow->segindex = -1;
+				inner->flow->segindex = 0;
 				break;
 					
 			case MOVEMENT_BROADCAST:
@@ -778,7 +776,6 @@ bool prescan_hashjoin(Plan *plan, PlanProfile *context)
 	
 	/* Adopt proposed flow characteristics. */
 	plan->flow = makeFlow(strategy->resultflowtype);
-	plan->flow->segindex = ( strategy->resultislocal ) ? -1 : 0;
 	noteFlow(plan->flow, context);
 	return false;	 
 }
@@ -947,7 +944,6 @@ bool prescan_mergejoin(Plan *plan, PlanProfile *context)
 	
 	/* Adopt proposed flow characteristics. */
 	plan->flow = makeFlow(strategy->resultflowtype);
-	plan->flow->segindex = ( strategy->resultislocal ? -1 : 0 );
 	noteFlow(plan->flow, context);
 	return false;	 
 }
@@ -1034,7 +1030,6 @@ bool prescan_nestloop(Plan *plan, PlanProfile *context)
 	else if ( strategy->leftmove == MOVEMENT_NONE && strategy->rightmove == MOVEMENT_NONE  )
 	{
 		plan->flow = makeFlow(strategy->resultflowtype);
-		plan->flow->segindex = ( strategy->resultislocal ? -1 : 0 );
 	}
 	else 
 	{
@@ -1044,10 +1039,10 @@ bool prescan_nestloop(Plan *plan, PlanProfile *context)
 			switch ( strategy->leftmove )
 			{
 				case MOVEMENT_FOCUS:
-					/* Request motion to focus the outer flow on the dispatcher. */
+					/* Request motion to focus the outer flow on a segment. */
 					outer->flow->req_move = MOVEMENT_FOCUS;
 					outer->flow->flotype = FLOW_SINGLETON;
-					outer->flow->segindex = -1;
+					outer->flow->segindex = 0;
 					break;
 						
 				case MOVEMENT_BROADCAST:
@@ -1093,14 +1088,14 @@ bool prescan_nestloop(Plan *plan, PlanProfile *context)
 			switch ( strategy->rightmove )
 			{
 				case MOVEMENT_FOCUS:
-					/* Request motion to focus the inner flow on the dispatcher. */
+					/* Request motion to focus the inner flow on a segment. */
 					inner->lefttree->flow->req_move = MOVEMENT_FOCUS;
 					inner->lefttree->flow->flotype = FLOW_SINGLETON;
-					inner->lefttree->flow->segindex = -1;
+					inner->lefttree->flow->segindex = 0;
 					
 					/* Adjust the flow type of the intermediate Material node. */
 					inner->flow->flotype = FLOW_SINGLETON;
-					inner->flow->segindex = -1;
+					inner->flow->segindex = 0;
 					break;
 						
 				case MOVEMENT_BROADCAST:
@@ -1124,7 +1119,6 @@ bool prescan_nestloop(Plan *plan, PlanProfile *context)
 	
 	/* Adopt flow characteristics of strategy for the Nestloop. */
 	plan->flow = makeFlow(strategy->resultflowtype);
-	plan->flow->segindex = ( strategy->resultislocal ? -1 : 0 );
 	noteFlow(plan->flow, context);
 	return false;	 
 }
@@ -1190,20 +1184,19 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 			return false;
 			
 		case MOVEMENT_BROADCAST: 
-			child->flow = makeReplicatedFlow();
+			child->flow = makeFlow(FLOW_REPLICATED);
 			child->flow->req_move = strategy->leftmove;
 			noteFlow(child->flow, context);
 			break;
 		
 		case MOVEMENT_FOCUS:
-			child->flow = makeDispatcherFlow();
+			child->flow = makeFlow(FLOW_SINGLETON);  /* Focus on a segment. */
 			child->flow->req_move = strategy->leftmove;
-			child->flow->segindex = -1;  /* Dispatcher for now. */
 			noteFlow(child->flow, context);
 			break;
 			
 		case MOVEMENT_REPARTITION:
-			child->flow = makePartitionedFlow();
+			child->flow = makeFlow(FLOW_PARTITIONED);
 			child->flow->req_move = strategy->leftmove;
 			child->flow->hashExpr = strategy->hashexprs;
 			child->flow->hashOp = strategy->hashtypes;
@@ -1219,7 +1212,6 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 	/* Adopt flow characteristics of strategy for the Nestloop. */
 	/* TODO We could do better, e.g., track partition expressions. */
 	plan->flow = makeFlow(strategy->resultflowtype);
-	plan->flow->segindex = ( strategy->resultislocal ? -1 : 0 );
 	noteFlow(plan->flow, context);
 	return false;	 
 }
@@ -1381,8 +1373,7 @@ void noteFlow(Flow *flow, PlanProfile *context)
 		context->hasPartitionedFlow = true;
 	}
 		
-	 /* Note local flows which disallow parallelization */
-	/* TODO if ( flow->flotype == FLOW_SINGLETON ) */
+	 /* Note dispatcher flows which disallow parallelization */
 	if ( flow->flotype == FLOW_SINGLETON && flow->segindex == -1  )
 	{
 		context->hasLocalFlow = true;
@@ -1397,39 +1388,8 @@ Flow *makeFlow(FlowType flotype)
 	Flow *flow = makeNode(Flow);
 	flow->flotype = flotype;
 	flow->req_move = MOVEMENT_NONE;
+	flow->segindex = 0;
 	return flow;
-}
-
-/*
- * Construct a new replicated Flow in the current memory context.
- */
-Flow *makeReplicatedFlow()
-{
-	Flow *f = makeFlow(FLOW_REPLICATED);
-	f->segindex = 0;
-	return f;
-}
-
-
-/*
- * Construct a new local singleton Flow in the current memory context.
- */
-Flow *makeDispatcherFlow()
-{
-	Flow *f = makeFlow(FLOW_SINGLETON);
-	f->segindex = -1;
-	return f;
-}
-
-
-/*
- * Construct a new simple partitioned Flow in the current memory context.
- */
-Flow *makePartitionedFlow()
-{
-	Flow *f = makeFlow(FLOW_PARTITIONED);
-	f->segindex = 0;
-	return f;
 }
 
 
@@ -1454,7 +1414,7 @@ Flow *makeFlowForRelation(Oid reloid, PlanProfile *context)
 	switch ( policy->ptype )
 	{
 		case POLICYTYPE_PARTITIONED:	
-			flow = makePartitionedFlow();
+			flow = makeFlow(FLOW_PARTITIONED);
 			
 			eqstr = (Node*)makeString("=");
 			eqlst = list_make1(eqstr);
@@ -1484,14 +1444,17 @@ Flow *makeFlowForRelation(Oid reloid, PlanProfile *context)
 				flow->hashOp = lappend_oid(flow->hashOp, eq_oid);
 				
 			}
-			context->usesSegments = true;
+			if ( context != NULL )
+				context->usesSegments = true;
 			pfree(eqlst);
 			pfree(eqstr);
 			break;
 		
 		case POLICYTYPE_ENTRY:
-			flow = makeDispatcherFlow();
-			context->usesCatalog = true;
+			flow = makeFlow(FLOW_SINGLETON);
+			flow->segindex = -1; /* This is a dispatcher singleton! */
+			if ( context != NULL )
+				context->usesCatalog = true;
 			break;
 		
 		case POLICYTYPE_UNDEFINED:
@@ -1532,52 +1495,136 @@ Plan* apply_motion(Plan*  plan, Query* query)
 	switch ( query->commandType )
 	{
 		case CMD_SELECT:
-			if ( plan->flow->flotype == FLOW_PARTITIONED )
+			/*
+			 * [Re]focus the flow on the dispatch stream.  Note that, if
+			 * the top node's Flow is marked sorted, the movement request
+			 * becomes a request for ordered motion.
+			 *
+			 * TODO Fix top-level sort handling.
+			 *      Currently there is a good  chance that we'll encounter
+			 *      a flow that the optimizer knew was ordered but that
+			 *      we have failed to flag as such.  As an ugly stop-gap,
+			 *      we might check the query for an ORDER BY and slap on a
+			 *      Sort node.  This would only be a band-aid, though, since 
+			 *      it doesn't address deeper problems involving interior
+			 *      nodes that depend on order, e.g.,  LIMIT and OFFSET in  
+			 *      ordered subqueries.
+			 */
+			if ( plan->flow->flotype == FLOW_PARTITIONED 
+				|| ( plan->flow->flotype == FLOW_SINGLETON && plan->flow->segindex  != -1 )
+				)
 			{
-				/* Refocus the flow on the dispatch stream.  Note that, if
-				 * the top node's Flow is marked sorted, the movement request
-				 * becomes a request for ordered motion.
-				 *
-				 * TODO Fix top-level sort handling.
-				 *      Currently there is a good  chance that we'll encounter
-				 *      a flow that the optimizer knew was ordered but that
-				 *      we have failed to flag as such.  As an ugle stop-gap,
-				 *      we might check the query for an ORDER BY and slap on a
-				 *      Sort node.  This is only a band-aid since it doesn't
-				 *      address deeper problems involving interior nodes that
-				 *      depend on order, e.g.,  LIMIT and OFFSET in ordered 
-				 *      subqueries though.
-				 */
+				/* Flow is partitioned or singleton on a segment.  Refocus. */
 				plan->flow->req_move = MOVEMENT_FOCUS;
+				plan->flow->segindex = -1;
 			}
-			else if (!(plan->flow->flotype==FLOW_SINGLETON && plan->flow->segindex==-1))
+			else if ( plan->flow->flotype == FLOW_SINGLETON && plan->flow->segindex == -1 )
 			{
-				/* TODO  Use, e.g.,  REPLICATED-to-SINGLETON(-1) motion! */
+				/* Flow is singleton on dispatcher.  Already focused. */
+			}
+			else
+			{
+				/* 
+				 * TODO  Are the other flows we might legitimately see at the
+				 * top level.  E.g., a replicated flow that we would convert
+				 * with some hypothetical REPLICATED-to-SINGLETON(-1) motion! 
+				 */
 				 ereport(ERROR, (
 					errcode(ERRCODE_CDB_INTERNAL_ERROR),
 					errmsg("unexpected flow type at top of plan")
 				 ));
 			}
-			break; /* plan->flow->flotype==FLOW_SINGLETON && plan->flow->segindex==-1 */
+			break;
 		
 		case CMD_INSERT:
+			{
+				/*
+				 * TODO Remove this block to enable INSERT processing.
+				 */
+				ereport(ERROR, (
+					errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+					errmsg("CDB cannot parallelize INSERTs yet")
+				));
+			}
+			/*
+			 * Make sure the top level flow is partitioned on the partitioning
+			 * key of the target relation.  Since this is an INSERT command,
+			 * the target list will correspond to the attributes of the target
+			 * relation in order.
+			 */
+			{
+				RangeTblEntry *rte;
+				CdbPolicy *policy;
+				
+				/* TODO Are we sure the INSERT target isn't an inheritance set?
+				 *      Should we check, or would it work fine anyway?
+				 */
+				rte = rt_fetch(query->resultRelation, query->rtable);
+				Assert( rte->rtekind == RTE_RELATION);
+				policy = get_table_policy(rte->relid);
+				 
+				/* TODO Generalize this to deal with dispatcher singletons
+				 *      as the target relation.  For now, mixed queries are
+				 *      not allowed, so...
+				 */
+				Assert( policy->ptype == POLICYTYPE_PARTITIONED ); 				
+			
+				/*
+				 * Deal with the source of the INSERT based on its flow
+				 * characteristics.
+				 */
+				if ( plan->flow->flotype == FLOW_PARTITIONED 
+					|| ( plan->flow->flotype == FLOW_SINGLETON && plan->flow->segindex != -1 )
+					)
+				{
+					/* 
+					 * Source is partitioned or singleton on a segment. 
+					 * Refocus. 
+					 */
+					plan->flow->req_move = MOVEMENT_REPARTITION;
+					set_hash_in_flow(plan, policy->nattrs, policy->attrs);
+					
+					/* Tried externalizing these instead, but EXPLAIN still failed.
+					plan->flow->hashExpr = getExprListFromTargetList(plan->targetlist, policy->nattrs, policy->attrs);
+					plan->flow->hashOp = getOpListFromTargetList(plan->targetlist, policy->nattrs, policy->attrs);
+					*/
+				}
+				else if ( plan->flow->flotype == FLOW_REPLICATED )
+				{
+					/* 
+					 * Source is replicated over segments. Apply "deep-six". 
+					 */
+					ereport(ERROR, (
+						errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+						errmsg("CDB cannot parallelize INSERTs from replicated flows yet")
+					));
+				}
+				else
+				{
+					/*
+					 * Source is, presumably, a dispatcher singleton.
+					 */
+					ereport(ERROR, (
+						errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+						errmsg("CDB cannot parallelize that INSERT yet")
+					));
+				}
+			}
+			break;
+			
 		case CMD_UPDATE:
 		case CMD_DELETE:
 			/*
 			 * TODO Appropriate top-of-plan processing for other commands.  
-			 *      For example, INSERT to a partitioned table wants a top flow 
-			 *      partitioned according to the data distribution policy.  Some
-			 *      types of UPDATE and DELETE may want the top-level partitioned 
-			 *      flow unmodified (it is partitioned, in effect, on tuple
-			 *      location even though that doesn't occur in the tuple).
+			 *      Some UPDATEs and DELETEs may want the top-level partitioned 
+			 *      flow unmodified (i.e., when it is effectively partitioned 
+			 *      on tuple location).
 			 */
-			 ereport(ERROR, (
+			ereport(ERROR, (
 				errcode(ERRCODE_CDB_FEATURE_NOT_YET),
 				errmsg("CDB cannot parallelize %ss yet", 
-					query->commandType==CMD_INSERT? "INSERT":
-					query->commandType==CMD_UPDATE? "UPDATE":
-					"DELETE")
-			 ));
+					query->commandType==CMD_UPDATE ? "UPDATE" : "DELETE")
+			));
 			 
 		default:
 			Assert(false); /* Never see non-DML in here! */
@@ -1663,7 +1710,7 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 							newnode = (Node*)make_sorted_union_motion(
 								plan,
 								sendToSecondary,
-								-1,
+								flow->segindex, /* TODO if 0, adjust to "chosen" segment. */
 								flow->numSortCols,
 								flow->sortColIdx,
 								flow->sortOperators,
@@ -1678,7 +1725,7 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 							newnode = (Node*)make_union_motion(
 								plan, 
 								sendToSecondary, 
-								CdbIdentity.segindex
+								flow->segindex /* TODO if 0, adjust to "chosen" segment. */
 								);
 							/* Assign unique node number to the new node. */
 							assignMotionID(newnode, context, NULL);
@@ -1688,6 +1735,7 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 					case MOVEMENT_BROADCAST:
 						if ( flow->req_move!=MOVEMENT_NONE && flow->numSortCols>0 )
 						{
+							Assert(false); /* This case disallowed. */
 							newnode = (Node*)make_sorted_broadcast_motion(
 								plan,
 								sendToSecondary,
@@ -1715,6 +1763,7 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 						Assert( flow->hashExpr != NULL && flow->hashOp != NULL );
 						if ( flow->req_move!=MOVEMENT_NONE && flow->numSortCols>0 )
 						{
+							Assert(false); /* This case disallowed. */
 							newnode = (Node*)make_sorted_hashed_motion(
 								plan,
 								sendToSecondary,
@@ -2017,3 +2066,80 @@ bool initPlanProfile(PlanProfile *context, Query *query)
 
 	return true;
 }
+
+/*
+ * This function is problematic. It is written just to get the sample
+ * INSERTs to the tiny schema to flow through EXPLAIN:
+ *
+ *   insert into sale 
+ *     select * from sale where pn > 1000;
+ *
+ *   insert into sale(pn,vn,cn) 
+ *     select p.pn, v.vn, c.cn 
+ *     from customer c, vendor v, product p 
+ *     where pn=0 and vn=0 and  cn=0;
+ *
+ * TODO This function needs to be revisited!
+ */
+void set_hash_in_flow(Plan *plan, int nattrs, int *attrs)
+{
+	int i;
+	AttrNumber attr;
+	TargetEntry *tle;
+	Node *expr;
+	Oid eq_oid;
+	List *exprs = NIL;
+	List *opers = NIL;
+	List *eqlst = list_make1((Node*)makeString("="));
+	
+	for ( i = 0; i < nattrs; i++ )
+	{
+		attr = attrs[i];
+		tle = get_tle_by_resno(plan->targetlist, attr);
+		Assert( tle != NULL );
+		
+		eq_oid = compatible_oper_opid(eqlst, tle->resdom->restype, tle->resdom->restype, true);
+		
+		if ( eq_oid == InvalidOid )
+		{
+			ereport(ERROR, (	
+				errcode(ERRCODE_CDB_INTERNAL_ERROR),
+				errmsg(
+					"no equality operator for partitioning attribute of typid %d", 
+					tle->resdom->restype
+				)));
+
+		}
+		
+		expr = copyObject(tle->expr);
+		Index x = OUTER;
+		force_vars_walker(expr,(void*)x);
+		
+		exprs = lappend(exprs, expr);
+		opers = lappend_oid(opers, eq_oid);
+	}
+	
+	plan->flow->hashExpr = exprs;
+	plan->flow->hashOp = opers;
+	pfree(eqlst);
+	return;
+}
+
+/*
+ * This quick hack just forces all the Var nodes in the argument to 
+ * specify the given varno.  It is supplied as (void*)(Index)x in the
+ * caller, set_hash_in_flow().
+ */
+bool force_vars_walker(Node *node, void *varno)
+{
+	if (node == NULL)
+		return false;
+	
+	if (IsA(node, Var))
+	{
+		((Var*)node)->varno = (Index)varno;
+		return false;
+	}
+	return expression_tree_walker(node, force_vars_walker, varno);
+}
+

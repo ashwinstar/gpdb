@@ -320,7 +320,6 @@ CdbAggStrategy *makeAggStrategy(Movement left, FlowType result)
 	CdbAggStrategy *as = palloc(sizeof(CdbAggStrategy));
 	as->leftmove = left;
 	as->resultflowtype = result;
-	as->resultislocal = ( result == FLOW_SINGLETON );
 	as->hashexprs = NIL;
 	as->hashtypes = NIL;
 	return as;
@@ -339,7 +338,6 @@ CdbAggStrategy *copyAggStrategy(CdbAggStrategy *old)
 	if  ( old != NULL )
 	{
 		as = makeAggStrategy(old->leftmove, old->resultflowtype);
-		as->resultislocal = old->resultislocal;
 		as->hashexprs = (List*)copyObject(old->hashexprs);
 		as->hashtypes = (List*)copyObject(old->hashtypes);
 	}

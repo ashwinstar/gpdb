@@ -30,7 +30,6 @@ typedef struct CdbAggStrategy
 {
 	Movement leftmove;
 	FlowType resultflowtype;
-	bool resultislocal;
 	
 	List *hashexprs;
 	List *hashtypes;

@@ -30,12 +30,6 @@ extern bool
 is_plan_node(Node* node);
 
 extern Flow *
-makeReplicatedFlow(void);
-
-extern Flow *
-makeDispatcherFlow(void);
-
-extern Flow *
-makePartitionedFlow(void);
+makeFlow(FlowType flotype);
 
 #endif /* CDBLLIZE_H */
