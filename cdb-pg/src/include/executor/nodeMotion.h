@@ -14,19 +14,26 @@
 
 #include "nodes/execnodes.h"
 
+typedef enum HashMotionInfoType
+{
+	INFOTYPE_LEFTEXPR,	
+	INFOTYPE_RIGHTEXPR,	
+	INFOTYPE_OP	
+} HashMotionInfoType;
+
 extern int	ExecCountSlotsMotion(Motion *node);
 extern MotionState *ExecInitMotion(Motion *node, EState *estate);
 extern TupleTableSlot *ExecMotion(MotionState *node);
 extern void ExecEndMotion(MotionState *node);
 
-extern HashMotionDefn* makeSimpleHashMotionDefn( List* hashExpr, int numSegs);
-extern HashMotionDefn* makeHashMotionDefn( List* hashExpr, int numHashSegs, int *hashSegIdx);
+extern HashMotionDefn* makeSimpleHashMotionDefn( List* hashExpr, List* hashOp, int numSegs);
+extern HashMotionDefn* makeHashMotionDefn( List* hashExpr, List* hashOp, int numHashSegs, int *hashSegIdx);
 extern FixedMotionDefn* makeSimpleFixedMotionDefn( int SegIdx );
 extern FixedMotionDefn* makeFixedMotionDefn(int numOutputSegs, int *outputSegIdx);
 extern SortedMotionDefn* makeSimpleSortedMotionDefn(int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators, int numSegs );
 extern SortedMotionDefn* makeSortedMotionDefn(int numSoprtCols, AttrNumber *sortColIdx, Oid *sortOperators, int numInputSegs, int *inputSegIdx);
 
-extern List *getMotionHashExprList( Plan *node, bool leftChild );
+extern List *getHashMotionInfoList( Plan *node, HashMotionInfoType type );
 
 extern Motion *make_motion(Plan *lefttree, MotionType motionType,
 			bool sendToSecondary, bool sendSorted, 
