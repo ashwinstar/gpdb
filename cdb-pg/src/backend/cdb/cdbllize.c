@@ -108,7 +108,7 @@ static Flow *makeFlow(FlowType flotype);
 static Flow *makeFlowForRelation(Oid reloid, PlanProfile *context);
 static void noteFlow(Flow *flow, PlanProfile *context);
 
-static Plan* apply_motion(Plan*  plan);
+static Plan* apply_motion(Plan*  plan, Query* query);
 static Node* apply_motion_mutator(Node*  node, ApplyMotionState *context);
 static void assignMotionID(Node* newnode, ApplyMotionState* context, Node* oldnode);
 
@@ -196,7 +196,7 @@ cdbparallelize(	Plan* plan,
 	else if ( profile.usesSegments )
 	{
 		if ( profile.hasPartitionedFlow )
-			plan = apply_motion(plan);
+			plan = apply_motion(plan, query);
 		plan->dispatch = DISPATCH_PARALLEL;
 	}
 	else
@@ -851,10 +851,7 @@ bool prescan_mergejoin(Plan *plan, PlanProfile *context)
 	
 	/* Check assumptions.
 	 */
-	Assert( IsA(plan, MergeJoin) );
-	Assert( IsA(inner,Sort)|| IsA(inner,IndexScan) );
-	Assert( IsA(outer,Sort)|| IsA(outer,IndexScan) );
-	
+	Assert( IsA(plan, MergeJoin) );	
 
 	strategies = getJoinStrategyList((Join*)plan);
 	
@@ -866,11 +863,29 @@ bool prescan_mergejoin(Plan *plan, PlanProfile *context)
 		CdbJoinStrategy *s = (CdbJoinStrategy*)lfirst(cell);
 	
 		/* Copy the first strategy we can use and exit the loop. */
-		if ( true )
-		{
-			strategy = copyJoinStrategy(s);
-			break;
-		}
+		
+		/* Order-preserving hash motion might deadlock.  Don't do it! 
+		 * However, if the affected side is a Sort node, we know to push the
+		 * motion below it.
+		 */
+		if ( strategy->leftmove == MOVEMENT_REPARTITION && !IsA(outer,Sort) )
+			continue;
+		if ( strategy->rightmove == MOVEMENT_REPARTITION && !IsA(inner,Sort) )
+			continue;
+		
+		/* At the moment, we know how to extract ordering information only 
+		 * from Sort nodes.  
+		 *
+		 * TODO: Learn to pull it from IndexScan and MergeJoin nodes
+		 *       and any other node types known to give ordered results.
+		 */
+		if ( strategy->leftmove != MOVEMENT_NONE && !IsA(outer,Sort) )
+			continue;
+		if ( strategy->rightmove != MOVEMENT_NONE && !IsA(inner,Sort) )
+			continue;
+			
+		strategy = copyJoinStrategy(s);
+		break;
 	}
 	freeJoinStrategyList(strategies);
 	strategies = NIL;
@@ -918,6 +933,8 @@ bool prescan_mergejoin(Plan *plan, PlanProfile *context)
 				break;
 				
 			case T_IndexScan:
+			case T_MergeJoin:
+				Assert(false); /* This case filtered out above. */
 				psErrorNonce(context, "Cannot parallelize IndexScan.");
 				/* Hint: Try again with set enable_mergescan = false */
 				return true;	 
@@ -963,6 +980,8 @@ bool prescan_mergejoin(Plan *plan, PlanProfile *context)
 				break;
 				
 			case T_IndexScan:
+			case T_MergeJoin:
+				Assert(false); /* This case filtered out above. */
 				psErrorNonce(context, "Cannot parallelize IndexScan.");
 				/* Hint: Try again with set enable_mergescan = false */
 				return true;	 
@@ -1532,32 +1551,77 @@ Flow *makeFlowForRelation(Oid reloid, PlanProfile *context)
  * a top-level Plan tree as directed by the Flow nodes in the plan.  
  *
  * In addition, if the argument Plan produces a partitioned flow, a Motion 
- * is added to consolidate the tuple streams that make up the flow into a 
- * single tuple stream on the dispatcher.
+ * appropriate to the command is added to the top. For example, to consolidate
+ * the tuple streams from a SELECT command into a single tuple stream on the 
+ * dispatcher.
  *
  * The result is a deep copy of the argument Plan tree with added Motion 
  * nodes.
  *
- * TODO Add more context to argument list!  For example, command type.
+ * TODO Maybe add more context to argument list!
  * ------------------------------------------------------------------------- *
  */
-Plan* apply_motion(Plan*  plan)
+Plan* apply_motion(Plan*  plan, Query* query)
 {
 	ApplyMotionState state;
 	state.nextMotionID = 1; /* Start at 1 so zero will mean "unassigned". */
 	
-	/* If the command is SELECT and  the top plan node emits a parallel flow, 
-	 * refocus it on the dispatch stream.
-	 *
-	 * TODO Appropriate top-of-plan processing for other commands.  
-	 *      For example, INSERT to a partitioned table wants a top flow 
-	 *      partitioned according to the data distribution policy.  Some
-	 *      types of UPDATE and DELETE may want the top-level partitioned 
-	 *      flow unmodified (it is partitioned, in effect, on tuple
-	 *      location even though that doesn't occur in the tuple).
-	 */
-	if ( plan->flow->flotype == FLOW_PARTITIONED )
-		plan->flow->req_move = MOVEMENT_FOCUS;
+	Assert( is_plan_node((Node*)plan) && IsA(query,Query) );
+	
+	switch ( query->commandType )
+	{
+		case CMD_SELECT:
+			if ( plan->flow->flotype == FLOW_PARTITIONED )
+			{
+				/* Refocus the flow on the dispatch stream.  Note that, if
+				 * the top node's Flow is marked sorted, the movement request
+				 * becomes a request for ordered motion.
+				 *
+				 * TODO Fix top-level sort handling.
+				 *      Currently there is a good  chance that we'll encounter
+				 *      a flow that the optimizer knew was ordered but that
+				 *      we have failed to flag as such.  As an ugle stop-gap,
+				 *      we might check the query for an ORDER BY and slap on a
+				 *      Sort node.  This is only a band-aid since it doesn't
+				 *      address deeper problems involving interior nodes that
+				 *      depend on order, e.g.,  LIMIT and OFFSET in ordered 
+				 *      subqueries though.
+				 */
+				plan->flow->req_move = MOVEMENT_FOCUS;
+			}
+			else if (!(plan->flow->flotype==FLOW_SINGLETON && plan->flow->segindex==-1))
+			{
+				/* TODO  Use, e.g.,  REPLICATED-to-SINGLETON(-1) motion! */
+				 ereport(ERROR, (
+					errcode(ERRCODE_CDB_INTERNAL_ERROR),
+					errmsg("unexpected flow type at top of plan")
+				 ));
+			}
+			break; /* plan->flow->flotype==FLOW_SINGLETON && plan->flow->segindex==-1 */
+		
+		case CMD_INSERT:
+		case CMD_UPDATE:
+		case CMD_DELETE:
+			/*
+			 * TODO Appropriate top-of-plan processing for other commands.  
+			 *      For example, INSERT to a partitioned table wants a top flow 
+			 *      partitioned according to the data distribution policy.  Some
+			 *      types of UPDATE and DELETE may want the top-level partitioned 
+			 *      flow unmodified (it is partitioned, in effect, on tuple
+			 *      location even though that doesn't occur in the tuple).
+			 */
+			 ereport(ERROR, (
+				errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+				errmsg("CDB cannot parallelize %ss yet", 
+					query->commandType==CMD_INSERT? "INSERT":
+					query->commandType==CMD_UPDATE? "UPDATE":
+					"DELETE")
+			 ));
+			 
+		default:
+			Assert(false); /* Never see non-DML in here! */
+			return NULL; 
+	}
 	
 	return (Plan*)apply_motion_mutator((Node*)plan, &state);
 }
