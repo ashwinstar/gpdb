@@ -547,7 +547,7 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 	*/
 	for ( i=0; i<component_databases->total_entry_dbs; i++ )
 	{
-		CdbComponentDatabaseInfo* pInfo = &component_databases->total_entry_dbs[i];
+		CdbComponentDatabaseInfo* pInfo = &component_databases->entry_db_info[i];
 		if ( pInfo->dbid == CdbIdentity.dbid && pInfo->segindex == CdbIdentity.segindex )
 		{
 			break;
