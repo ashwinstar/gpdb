@@ -247,9 +247,86 @@ TupleChunkList CvtHeapTupToChunks(HeapTuple htup, TupleDesc tupdesc,
 
 HeapTuple CvtChunksToHeapTup(TupleChunkList tcList, TupleDesc tupdesc)
 {
-    AssertArg(tcList != NULL);
+    StringInfoData serData;
+    TupleChunkListItem tcItem;
+    int i;
+    HeapTuple htup;
     
-    return NULL;
+    AssertArg(tcList != NULL);
+    AssertArg(tcList->p_first != NULL);
+    AssertArg(tupdesc != NULL);
+    
+    /* Dump all of the data in the tuple chunk list into a single StringInfo,
+     * so that we can convert it into a HeapTuple.  Check chunk types based on
+     * whether there is only one chunk, or multiple chunks.
+     */
+
+    initStringInfo(&serData);
+    tcItem = tcList->p_first;
+    i = 0;
+    do
+    {
+        /* Make sure that the type of this tuple chunk is correct! */
+
+        if (i == 0)
+        {
+            if (tcItem->p_next == NULL)
+            {
+                if (GetChunkType(tcItem->chunk_data) != TC_WHOLE)
+                {
+                    ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+                        errmsg("Single chunk's type must be TC_WHOLE.")));
+                }
+            }
+            else    /* tcItem->p_next != NULL */
+            {
+                if (GetChunkType(tcItem->chunk_data) != TC_PARTIAL_START)
+                {
+                    ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+                        errmsg("First chunk of collection must have type"
+                               " TC_PARTIAL_START.")));
+                }
+            }
+        }
+        else    /* i > 0 */
+        {
+            if (tcItem->p_next == NULL)
+            {
+                if (GetChunkType(tcItem->chunk_data) != TC_PARTIAL_END)
+                {
+                    ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+                        errmsg("Last chunk of collection must have type"
+                               " TC_PARTIAL_END.")));
+                }
+            }
+            else    /* tcItem->p_next != NULL */
+            {
+                if (GetChunkType(tcItem->chunk_data) != TC_PARTIAL_MID)
+                {
+                    ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+                        errmsg("Last chunk of collection must have type"
+                               " TC_PARTIAL_MID.")));
+                }
+            }
+        }
+
+        /* Copy this chunk into the tuple data. */
+        appendBinaryStringInfo(&serData, tcItem->chunk_data,
+            tcItem->chunk_length);
+
+        /* Go to the next chunk. */
+        tcItem = tcItem->p_next;
+        i++;
+    }
+    while (tcItem != NULL);
+    
+    /* Create the HeapTuple from the concatenated chunks. */
+    htup = DeserializeTuple(tupdesc, &serData);
+
+    /* Free up memory we used, just to be leaner. */
+    pfree(serData.data);
+    
+    return htup;
 }
 
 

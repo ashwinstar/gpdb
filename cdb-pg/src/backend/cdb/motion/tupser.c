@@ -22,7 +22,6 @@
  * there will almost certainly be many rows processed, all with the same type.
  *
  * All values are for the binary input and output functions.
- * ----------------
  */
 typedef struct
 {
@@ -141,6 +140,8 @@ int SerializeTuple(HeapTuple tuple, TupleDesc tupdesc, StringInfo strInfo)
 
 
 /* Deserialize a HeapTuple's data from a byte-array.
+ *
+ * This code is based on the binary input handling functions in copy.c.
  */
 HeapTuple DeserializeTuple(TupleDesc tupdesc, StringInfo serialTup)
 {
@@ -211,6 +212,9 @@ HeapTuple DeserializeTuple(TupleDesc tupdesc, StringInfo serialTup)
                 errmsg("incorrect binary data format")));
         }
     }
+
+    /* Free up memory we used, just to be leaner. */
+    pfree(attr_data.data);
     
     /* Construct the tuple from the Datums and nulls values. */
     return heap_formtuple(tupdesc, myState->values, myState->nulls);
