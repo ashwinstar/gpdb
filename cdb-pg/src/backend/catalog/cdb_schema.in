@@ -139,8 +139,8 @@ create table CDB.SEGDB
 
 create table CDB.CDB
 (
-	cdbname name,
-	cdbsuperuser text,
+	cdbname name not null,
+	cdbsuperuser text not null,
 	cdbsuperpswd text,
 	numSegments integer not null,
 	listenerId integer not null,
