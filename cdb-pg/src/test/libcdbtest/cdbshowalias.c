@@ -17,6 +17,7 @@
 /* general utility */
 #define GET_STR(textp) DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(textp)))
 
+
 /*
  * cdb_show_alias takes 1 argument:
  *  1) an SQL statement
@@ -101,6 +102,11 @@ cdb_show_alias(PG_FUNCTION_ARGS)
 	 * get the typeoid and typemod
 	 * and compare these to the same fields from the attrs array
 	 */
+	int disambiguatingID = 1;
+
+	char	**NamesAr = palloc0(sizeof(char *) * list_length(targetList) );
+	int		countNames = 0;
+
 	ListCell *lc;
 	foreach( lc, targetList )
 	{
@@ -115,13 +121,59 @@ cdb_show_alias(PG_FUNCTION_ARGS)
 			if ( i > 0 )
 				appendStringInfo(&buffer, ", ");
 
+			StringInfoData nameStr;
+			initStringInfo( &nameStr );
+			appendStringInfo( &nameStr, tr->resname );
+			int cmp;
+			int j;
+
+			while ( true )
+			{
+				for ( j=0; j<countNames; j++ )
+				{
+					cmp = strcmp(NamesAr[j], nameStr.data);
+					if ( cmp == 0 )
+					{
+						pfree(nameStr.data);
+						initStringInfo( &nameStr );
+						appendStringInfo( &nameStr, "%s%d", tr->resname, disambiguatingID++ );
+						break;
+					}
+
+					if ( cmp > 0 )
+					{
+						break;
+					}
+				}
+
+				if ( cmp != 0 )
+					break;
+			}
+
+			// Insert at location j
+			int k;
+			for ( k=countNames-1; k>=j; k--)
+			{
+				NamesAr[k+1] = NamesAr[k];
+			}
+
+			NamesAr[j] = pstrdup(nameStr.data);
+			countNames++;
+
+
 			appendStringInfo(&buffer, "%s %s", 
-				tr->resname, 
-				format_type_be(tr->restype));
+							nameStr.data, 
+							format_type_be(tr->restype));
+			
+			pfree(nameStr.data);
 			
 			i++;
 		}
 	}
+
+	for ( i=0; i<countNames; i++)
+		pfree(NamesAr[i]);
+	pfree(NamesAr);
 	
 	appendStringInfo(&buffer, ")");
 
