@@ -141,7 +141,7 @@ cdbparallelize(	Plan* plan,
 			)
 {
 	PlanProfile profile; /* Will be initialized by prescan(). */
-	
+
 	if ( !prescan(plan, query, &profile) )
 		issuePsError(&profile);	
 
@@ -1222,17 +1222,6 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 				
 				bool sendToSecondary = false; /* always for now */
 				
-				SortedMotionDefn *sortdef = NULL;
-				if ( flow->req_move!=MOVEMENT_NONE && flow->numSortCols>0 )
-				{
-					sortdef = makeSimpleSortedMotionDefn(
-						flow->numSortCols,
-						flow->sortColIdx,
-						flow->sortOperators,
-						CdbNumSegments
-						);
-				}
-				
 				switch ( flow->req_move )
 				{
 					case MOVEMENT_FOCUS:
@@ -1248,13 +1237,17 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 						 *                            ThisSegmentNumber );
 						 *      or something.
 						 */
-						if ( sortdef != NULL )
+						if ( flow->req_move!=MOVEMENT_NONE && flow->numSortCols>0 )
 						{
 							newnode = (Node*)make_sorted_union_motion(
 								plan,
 								sendToSecondary,
 								CdbThisSegment,
-								sortdef
+								flow->numSortCols,
+								flow->sortColIdx,
+								flow->sortOperators,
+								CdbNumSegments,
+								makeDefaultSegIdxArray(CdbNumSegments)
 								);
 						}
 						else
@@ -1268,12 +1261,16 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 						break;
 						
 					case MOVEMENT_BROADCAST:
-						if ( sortdef != NULL )
+						if ( flow->req_move!=MOVEMENT_NONE && flow->numSortCols>0 )
 						{
 							newnode = (Node*)make_sorted_broadcast_motion(
 								plan,
 								sendToSecondary,
-								sortdef
+								flow->numSortCols,
+								flow->sortColIdx,
+								flow->sortOperators,
+								CdbNumSegments,
+								makeDefaultSegIdxArray(CdbNumSegments)
 								);
 						}
 						else
@@ -1287,16 +1284,20 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 						
 					case MOVEMENT_REPARTITION:
 						Assert( flow->hashExpr != NULL && flow->hashOp != NULL );
-						if ( sortdef != NULL )
+						if ( flow->req_move!=MOVEMENT_NONE && flow->numSortCols>0 )
 						{
 							newnode = (Node*)make_sorted_hashed_motion(
 								plan,
 								sendToSecondary,
-								makeSimpleHashMotionDefn(
-									flow->hashExpr,
-									flow->hashOp,
-									CdbNumSegments),
-								sortdef
+								CdbNumSegments,
+								makeDefaultSegIdxArray(CdbNumSegments),
+								flow->hashExpr,
+								flow->hashOp,
+								flow->numSortCols,
+								flow->sortColIdx,
+								flow->sortOperators,
+								CdbNumSegments,
+								makeDefaultSegIdxArray(CdbNumSegments)
 								);
 						}
 						else
@@ -1304,10 +1305,10 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 							newnode = (Node*)make_hashed_motion(
 								plan, 
 								sendToSecondary,
-								makeSimpleHashMotionDefn(
-									flow->hashExpr,
-									flow->hashOp,
-									CdbNumSegments)
+								CdbNumSegments,
+								makeDefaultSegIdxArray(CdbNumSegments),
+								flow->hashExpr,
+								flow->hashOp								
 								);
 						}
 						break;

@@ -147,10 +147,6 @@ walk_plan_node_fields(Plan *plan,
 	if (walker((Node *)(plan->righttree), context))
 		return true;
 	
-	/* target list to be computed at this node */
-	if (walker((Node *)(plan->targetlist), context))
-		return true;
-	
 	/* Init Plan nodes (uncorrelated expr subselects */
 	if (walker((Node *)(plan->initPlan), context))
 		return true;
@@ -369,16 +365,13 @@ plan_tree_walker(Node *node,
 		case T_Motion:
 			if ( walk_plan_node_fields((Plan*)node, walker, context) )
 				return true;
-			{
-				Motion *motion = (Motion*)node;
-				
-				if ( motion->pHashDefn != NULL )
-				{
-					if ( walker(motion->pHashDefn->hashExpr, context) )
-						return true;
-				}
-				/* Nothing to walk in FixedMotionDefn or SortMotionDefn. */
-			}
+
+			if ( walker((Node *)((Motion*)node)->hashExpr, context) )
+				return true;
+
+			if ( walker((Node *)((Motion*)node)->hashOp, context) )
+				return true;
+
 			break;
 		
 		case T_Flow:
@@ -819,31 +812,13 @@ plan_tree_mutator(Node *node,
 				Motion *newmotion;
 				FLATCOPY(newmotion, motion, Motion);
 				PLANMUTATE(newmotion, motion);
-				if ( motion->pHashDefn != NULL )
-				{
-					HashMotionDefn *pd = motion->pHashDefn;
-					HashMotionDefn *newpd = palloc0(sizeof(HashMotionDefn));
-					newpd->numHashSegs = pd->numHashSegs;
-					COPYARRAY(newpd, pd, numHashSegs, hashSegIdx);
-					MUTATE(newpd->hashExpr,  pd->hashExpr, List*);
-					MUTATE(newpd->hashOp,  pd->hashOp, List*);
-				}
-				if ( motion->pFixedDefn != NULL )
-				{
-					FixedMotionDefn *pd = motion->pFixedDefn;
-					FixedMotionDefn *newpd = palloc0(sizeof(FixedMotionDefn));
-					newpd->numOutputSegs = pd->numOutputSegs;
-					COPYARRAY(newpd, pd, numOutputSegs, outputSegIdx);
-				}
-				if ( motion->pSortDefn != NULL )
-				{
-					SortedMotionDefn *pd = motion->pSortDefn;
-					SortedMotionDefn *newpd = palloc0(sizeof(SortedMotionDefn));
-					newpd->numSortCols = pd->numSortCols;
-					COPYARRAY(newpd, pd, numSortCols, sortColIdx);
-					COPYARRAY(newpd, pd, numSortCols, sortOperators);
-					COPYARRAY(newpd, pd, numInputSegs, inputSegIdx);
-				}
+				COPYARRAY(newmotion, motion, numHashSegs, hashSegIdx);
+				MUTATE(newmotion->hashExpr, motion->hashExpr, List*);
+				MUTATE(newmotion->hashOp, motion->hashOp, List*);
+				COPYARRAY(newmotion, motion, numOutputSegs, outputSegIdx);
+				COPYARRAY(newmotion, motion, numSortCols, sortColIdx);
+				COPYARRAY(newmotion, motion, numSortCols, sortOperators);
+				COPYARRAY(newmotion, motion, numInputSegs, inputSegIdx);
 				return (Node*)newmotion;
 			}
 			break;
