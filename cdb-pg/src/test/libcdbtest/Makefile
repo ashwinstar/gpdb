@@ -19,7 +19,7 @@ override CFLAGS += $(PTHREAD_CFLAGS)
 LIBS := $(patsubst -lpgport,, $(LIBS))
 
 OBJS=	chunkfuncs.o cdbexecplan.o cdbshowalias.o ipcfuncs.o mlapi_access.o hashapi_access.o mlipc_access.o \
-		cdbheaptest.o \
+		cdbheaptest.o cdboid.o \
 	$(filter crypt.o getaddrinfo.o inet_aton.o open.o snprintf.o strerror.o, $(LIBOBJS))
 
 # Link against the Postgres backend and libpq.
