@@ -217,8 +217,6 @@ done
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
 # Do we have a valid set of segments?
-# @design (Todd) Not sure why there was a limit on 8 dbs previously. We can
-# remove this if needed.
 if [ "$nlisteners" ]
 then
     if expr "$nlisteners" : '[1-9][0-9]*$' 1>/dev/null
