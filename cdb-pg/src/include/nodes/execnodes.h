@@ -15,6 +15,7 @@
 #define EXECNODES_H
 
 #include "access/relscan.h"
+#include "cdb/cdbmotion.h"
 #include "executor/hashjoin.h"
 #include "executor/tuptable.h"
 #include "fmgr.h"
@@ -1195,8 +1196,11 @@ typedef struct MotionState
 	PlanState	ps;					/* its first field is NodeTag */
 	bool		noMoreChildTuples;	/* set when child node returns NULL */
 	bool		noMoreAMSTuples;	/* set when AMS indicates all peers are done sending tuples */
+    bool        sentEndOfStream;    /* set when end-of-stream has successfully been sent */
 	List		*hashExprState;
 	FmgrInfo	*hashfunctions;		/* functions to hash the expressions for a hash motion node */
+
+    TupleSendContext tupSendCtxt;   /* Context for in-flight tuples being sent. */
 
 	/* The following can be used for debugging, usage stats, etc.  */
 	int			numTuplesFromChild;	/* Number of tuples received from child */
