@@ -12,7 +12,6 @@
  *-------------------------------------------------------------------------
  */
  
- 
 #include <assert.h> 
 #include <stdio.h>
 #include <stdlib.h>
@@ -134,7 +133,7 @@ void doSend( int numToSend, int sizeOfMsg )
     circbuff *cb;		
     cb = (circbuff*)shm;
     
-    initCircQueue( cb, SHMEM_SIZE );
+    initCircBuff( cb, SHMEM_SIZE );
     
 
     //generate a some data to send over and over and over...
@@ -150,20 +149,12 @@ void doSend( int numToSend, int sizeOfMsg )
 
     
     
-    char *dstData = getDataStart( cb);
-    
-    char *dstTail;
-    
     struct timeval startTime;
     struct timeval endTime;
-    
+    int spaceAvail;
     bool tupSent = false;
     
     gettimeofday(&startTime, NULL);
-    
-    
-    
-    int spaceAvail;
     
     for( i=0; i < numToSend; i++ )
     {
@@ -175,24 +166,10 @@ void doSend( int numToSend, int sizeOfMsg )
             
             if( spaceAvail >= sizeOfMsg )
             {
-                //so we have enough room...send away
-                dstTail = dstData + cb->tail;
-               
-                
-                if( sizeOfMsg < ( cb->size - cb->tail) )
-                    memcpy( dstTail, msg, sizeOfMsg );
-                else
-                {
-               
-                    int length = cb->size - cb->tail;
-                    memcpy( dstTail, msg, length);
-                    memcpy( dstData, msg+length, sizeOfMsg-length);                          
-                }
-                
-                
-                updateBytesWritten( cb, sizeOfMsg );
-                tupSent = true;
-                
+				int bytesWritten = writeBytes( cb, msg, sizeOfMsg );
+				
+				if (bytesWritten == sizeOfMsg )
+					tupSent = true;
             }
             else
             {
@@ -210,9 +187,8 @@ void doSend( int numToSend, int sizeOfMsg )
         //do nothing...
     }
     
-    dstTail = dstData + cb->tail;
-    *dstTail = '\1';
-    updateBytesWritten( cb, 1 );
+	char eos_msg = '\1';
+	writeBytes(cb, &eos_msg, 1 );
     
     gettimeofday(&endTime, NULL);
     
@@ -262,8 +238,6 @@ void doReceive()
     circbuff *cb;		
     cb = (circbuff*)shm;
     
-    char *dstData = getDataStart(cb);
-    char *dstHead;
     
     //now its time to read!
     struct timeval startTime;
@@ -276,7 +250,6 @@ void doReceive()
     bool done = false;
     
     int bytesToRead;
-    int length;
     
     char *msg = malloc( cb->size );
     while( !done )
@@ -289,24 +262,11 @@ void doReceive()
         
         if( bytesToRead > 0 )
         {
-            dstHead = dstData + cb->head;                        
-            
-            if( bytesToRead < ( cb->size - cb->head) )
-                memcpy( msg, dstHead, bytesToRead );
-            else
-            {
-                //wrap around necessary
-                length = cb->size - cb->head;
-                memcpy( msg, dstHead, length);
-                memcpy( msg+length, dstData, bytesToRead-length);
-                
-            }            
-            
-            updateBytesRead( cb, bytesToRead );
-            totalBytes += bytesToRead;
+			readBytes( cb, msg, bytesToRead );
+			totalBytes += bytesToRead;
             
             //check the last byte read in to see if its the end            
-            if( *(dstData + cb->head - 1) == '\1' )
+            if( *(msg + bytesToRead - 1) == '\1' )
                 done = true;
            
         }  
@@ -329,15 +289,10 @@ void doReceive()
 }
 
 void doDelete()
-{
-    
-   
+{       
     if( ShmemRemove( SHMEM_KEY ) < 0 )
         perror("couldn't delete shmem seg:");
         
     if( SemRemove( SEM_KEY ) < 0 )
         perror("couldn't delete shmem semaphore:");
-      
-        
-
 }
