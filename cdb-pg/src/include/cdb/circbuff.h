@@ -13,10 +13,10 @@
 #ifndef CIRCBUFF_H
 #define CIRCBUFF_H
 
+#include "postgres_fe.h"
 
 #include <stdbool.h>
-
-#include "postgres.h"
+#include <signal.h>
 
 
 //get the size of the 3 fields in front of the buffer.
