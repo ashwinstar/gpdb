@@ -505,26 +505,37 @@ do
         echo "Setting TPCH distribution policy"
         psql -o /dev/null -q $finalSegName -f $tpchDistPolicy
 
-            if [ $current_segment -gt 1 ]
-                then
-                echo "Loading data into TPCH tables"
-                    psql -o /dev/null -q $finalSegName -f $tpchData
+        echo "Loading data into TPCH tables"
+        psql -o /dev/null -q $finalSegName -f $tpchData
 
-                echo "Pruning data from TPCH tables"
-                        psql $finalSegName -c "delete from tpch.lineitem where l_orderkey % $real_segdbs <> $current_segment % $real_segdbs"
-                        psql $finalSegName -c "delete from tpch.orders where o_orderkey % $real_segdbs <> $current_segment % $real_segdbs"
-                        psql $finalSegName -c "delete from tpch.part where p_partkey % $real_segdbs <> $current_segment  % $real_segdbs"
-                        psql $finalSegName -c "delete from tpch.region where r_regionkey % $real_segdbs <> $current_segment % $real_segdbs"
-                        psql $finalSegName -c "delete from tpch.nation where n_nationkey % $real_segdbs <> $current_segment % $real_segdbs"
-                        psql $finalSegName -c "delete from tpch.supplier where s_suppkey % $real_segdbs <> $current_segment % $real_segdbs"
-                        psql $finalSegName -c "delete from tpch.partsupp where ps_partkey % $real_segdbs <> $current_segment % $real_segdbs"
-                        psql $finalSegName -c "delete from tpch.customer where c_custkey % $real_segdbs <> $current_segment % $real_segdbs"
-                echo "Finished Pruning data from TPCH tables"
-                fi
-
+        if [ $current_segment -gt 1 ]
+        then
+			echo "Pruning data from TPCH tables"
+					psql $finalSegName -c "delete from tpch.lineitem where l_orderkey % $real_segdbs <> $current_segment % $real_segdbs"
+					psql $finalSegName -c "delete from tpch.orders where o_orderkey % $real_segdbs <> $current_segment % $real_segdbs"
+					psql $finalSegName -c "delete from tpch.part where p_partkey % $real_segdbs <> $current_segment  % $real_segdbs"
+					psql $finalSegName -c "delete from tpch.region where r_regionkey % $real_segdbs <> $current_segment % $real_segdbs"
+					psql $finalSegName -c "delete from tpch.nation where n_nationkey % $real_segdbs <> $current_segment % $real_segdbs"
+					psql $finalSegName -c "delete from tpch.supplier where s_suppkey % $real_segdbs <> $current_segment % $real_segdbs"
+					psql $finalSegName -c "delete from tpch.partsupp where ps_partkey % $real_segdbs <> $current_segment % $real_segdbs"
+					psql $finalSegName -c "delete from tpch.customer where c_custkey % $real_segdbs <> $current_segment % $real_segdbs"
+			echo "Finished Pruning data from TPCH tables"
+		fi
+			
         echo "Setting table constraints"
         psql -o /dev/null -q $finalSegName -f $tpchConstraints
 
+        if [ $current_segment -eq 1 ]
+        then
+				psql $finalSegName -c "delete from tpch.lineitem"
+                psql $finalSegName -c "delete from tpch.orders"
+                psql $finalSegName -c "delete from tpch.part"
+                psql $finalSegName -c "delete from tpch.region"
+                psql $finalSegName -c "delete from tpch.nation"
+                psql $finalSegName -c "delete from tpch.supplier"
+                psql $finalSegName -c "delete from tpch.partsupp"
+                psql $finalSegName -c "delete from tpch.customer"
+        fi
       fi
 
       if [ "$withTiny" = "true" ]
@@ -536,19 +547,31 @@ do
         echo "Setting Tiny distribution policy"
         psql -o /dev/null -q $finalSegName -f $cvpDistPolicy
 
-            if [ $current_segment -gt 1 ]
-                then
-                echo "Loading data into Tiny tables"
-                    psql -o /dev/null -q $finalSegName -f $cvpData
+        echo "Loading data into Tiny tables"
+        psql -o /dev/null -q $finalSegName -f $cvpData
 
-                echo "Pruning data from Tiny tables"
-                        psql $finalSegName -c "delete from customer where cn % $real_segdbs <> $current_segment % $real_segdbs"
-                        psql $finalSegName -c "delete from vendor where vn % $real_segdbs <> $current_segment % $real_segdbs"
-                        psql $finalSegName -c "delete from product where pn % $real_segdbs <> $current_segment  % $real_segdbs"
-                        psql $finalSegName -c "delete from sale where cn % $real_segdbs <> $current_segment % $real_segdbs"
-                echo "Finished Pruning data from Tiny tables"
-                fi
+        if [ $current_segment -gt 1 ]
+        then
+            echo "Pruning data from Tiny tables"
+                    psql $finalSegName -c "delete from customer where cn % $real_segdbs <> $current_segment % $real_segdbs"
+                    psql $finalSegName -c "delete from vendor where vn % $real_segdbs <> $current_segment % $real_segdbs"
+                    psql $finalSegName -c "delete from product where pn % $real_segdbs <> $current_segment  % $real_segdbs"
+                    psql $finalSegName -c "delete from sale where cn % $real_segdbs <> $current_segment % $real_segdbs"
+            echo "Finished Pruning data from Tiny tables"
+        fi
 
+        psql $finalSegName -c "vacuum analyze customer"
+        psql $finalSegName -c "vacuum analyze vendor"
+        psql $finalSegName -c "vacuum analyze product"
+        psql $finalSegName -c "vacuum analyze sale"
+
+        if [ $current_segment -eq 1 ]
+        then
+                    psql $finalSegName -c "delete from customer"
+                    psql $finalSegName -c "delete from vendor"
+                    psql $finalSegName -c "delete from product"
+                    psql $finalSegName -c "delete from sale"
+        fi
       fi
 
       # Increment our segment counter
