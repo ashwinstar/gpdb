@@ -598,6 +598,50 @@ void getCdbIdentity(int *segindex, bool *isprimary)
 	}
 }
 
+/* 
+ * Returns the number of segments
+ * 
+ * N.B.  Cdb_role must be either dispatch or execute, since
+ * when utiliy  no cdb catalog tables are read.  An Assert is
+ * thrown if Cdb_role = utility.
+ */
+int getCdbSegmentCount(void)
+{
+	Assert( Cdb_role != CDB_ROLE_UTILITY );
+	Assert( segment_dbs != NULL );
+
+	return segment_dbs->total_segments;
+}
+
+/* 
+ * Returns an array of the segindexes, and fills in the segment count
+ * in the out parameter.
+ * 
+ * N.B.  Cdb_role must be either dispatch or execute, since
+ * when utiliy  no cdb catalog tables are read.  An Assert is
+ * thrown if Cdb_role = utility.
+ */
+int *getCdbSegments(int *segcount)
+{
+	int *segs = NULL;
+	int i;
+
+	Assert( segcount != NULL );
+	Assert( Cdb_role != CDB_ROLE_UTILITY );
+	Assert( CdbClusterDefinition != NULL && 
+			CdbClusterDefinition->segdb_count > 0 && 
+			CdbClusterDefinition->segment_descriptors != NULL);
+
+	segs = (int *)palloc0( CdbClusterDefinition->segdb_count * sizeof(int) );
+	for ( i=0; i<CdbClusterDefinition->segdb_count; i++ )
+	{
+		segs[i] = CdbClusterDefinition->segment_descriptors[i].segindex;
+	}
+
+	*segcount = CdbClusterDefinition->segdb_count;
+	return segs;
+}
+
 /*
  *	buildCdbClusterDefinition: reads the Cdb catalog tables and build a SegmentDatabases structure.
  *	It then converts this to a CdbClusterDefinition structure and initializes
