@@ -246,13 +246,18 @@ if [ "$nsegs" ]
 then
     if expr "$nsegs" : '[1-9][0-9]*$' 1>/dev/null
     then
-       :
+      if [ $nsegs -gt 1 ]
+      then
+        echo -e "\nYou have specified more than one segment per listener."
+        echo    "Until we solve the OID sync problem, we do not support that option."
+        exit -1
+      fi
     else
       echo "The number of segments must be specified as a number" >&2
       exit 2
     fi
 else
-    # If nothing is specified, then default to 3
+    # If nothing is specified, then default to 1
     : ${nsegs:=1}
 fi
 
@@ -285,6 +290,22 @@ then
     echo -e "\nERROR: Unable to access \"$dirname\"."
     echo -e "This is where we expect to find the TPCH schema. You probably "
     echo -e "need to check out the cdb-qa module."
+    exit -1
+  fi
+fi
+
+# Did they want the Tiny schema?
+if [ "$withTiny" = "true" ]
+then
+  # Check for the existence of the files
+  dirname=$(dirname $cvpDDL)
+
+  if [ ! -d $dirname ]
+  then
+    echo -e "\nERROR: Unable to access \"$dirname\"."
+    echo -e "This is where we expect to find the Tiny schema. You probably "
+    echo -e "need to run this script from the cdb/scripts dir, or edit the "
+    echo -e "script to define the absolute path to the tiny schema."
     exit -1
   fi
 fi
@@ -430,6 +451,58 @@ current_segment=0
 total_content_segs=${#segdb_array[@]}
 entrySegName=$segname$current_listener
 
+
+#
+# This next loop checks to see whether we want either of the test schemas,
+# and if so, creates all of the tables BEFORE we do anything else.
+#
+# Todd: this loop is necessitated because of the OID sync problem. Once we
+# have that solved it can go away.
+for PGDATA in "$PGROOT"/$dbprefix[0-9]?([0-9])
+do
+    [ ! -d "$PGDATA" ] && continue
+    PGDATA=$(cd "$PGDATA"; pwd)
+    PGPORT=$(getPort)
+
+    # This is the loop for each segment database
+    for (( loop = 0; loop < $nsegs; loop++ ))
+    do
+
+      # Do we need to append anything to the segname?
+      finalSegName=$segname
+      if [ $nsegs -gt 0 ]
+      then
+          finalSegName=$finalSegName$current_segment
+          PGDATABASE=$finalSegName
+      fi
+
+      dbid=$((current_segment+1));
+      contentid=$((current_segment-1));
+
+      if [ "$withTPCH" = "true" ]
+      then
+
+        # Load the DDL
+        echo "Loading TPCH DDL"
+        psql -o /dev/null -q $finalSegName -f $tpchDDL > /dev/null 2>&1
+      fi
+
+      if [ "$withTiny" = "true" ]
+      then
+
+        # Load the DDL
+        echo "Loading Tiny DDL"
+        psql -o /dev/null -q $finalSegName -f $cvpDDL > /dev/null 2>&1
+      fi
+    done
+
+    # Increment our segment number
+    ((current_segment++))
+done
+
+# Reset this
+current_segment=0
+
 #
 # Next loop. Here we record the identity of the current segment in the local
 # cdb.cdb table. Optionally, we also load and prune either the TPCH or Tiny
@@ -472,8 +545,9 @@ do
       then
 
         # Load the DDL
-        echo "Loading TPCH DDL"
-        psql -o /dev/null -q $finalSegName -f $tpchDDL > /dev/null 2>&1
+        # Todd, 20050228: Commented out until we solve OID problem
+        #echo "Loading TPCH DDL"
+        #psql -o /dev/null -q $finalSegName -f $tpchDDL > /dev/null 2>&1
 
         # Is this the entry database?
         if [ "$entrySegName" == "$finalSegName" ]
@@ -526,8 +600,9 @@ do
       then
 
         # Load the DDL
-        echo "Loading Tiny DDL"
-        psql -o /dev/null -q $finalSegName -f $cvpDDL > /dev/null 2>&1
+        # Todd, 20050228: Commented out until we solve OID problem
+        #echo "Loading Tiny DDL"
+        #psql -o /dev/null -q $finalSegName -f $cvpDDL > /dev/null 2>&1
 
         # Is this the entry database?
         if [ "$entrySegName" == "$finalSegName" ]
