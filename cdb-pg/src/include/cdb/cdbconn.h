@@ -56,17 +56,8 @@ typedef struct segment_database_descriptor
 	 * parameters for this segment database.  Information in this structure is
 	 * obtained from the CDB administrative schema tables.
 	 */
-	SegmentDatabaseInfo 		*segment_database_info;
+	CdbComponentDatabaseInfo 	*segment_database_info;
 	
-	/* considered_valid
-	 * 
-	 * Indicates whether or not this segment database is considered
-	 * valid.  The initial value is set from the isvalid field in 
-	 * SegmentDatabaseInfo and will be made false if a connection attempt
-	 * failed.  
-	 */
-	bool						considered_valid;
-
 	/* conn
 	 *
 	 * A non-NULL value points to the PGconn block of a successfully
@@ -107,13 +98,6 @@ typedef struct segment_database_descriptor
 	 * The SQL statement command status, from PQcmdStatus.
 	 */
 	char						*cmdStatus;
-	
-	/* is_dispatch_segdb
-	 *
-	 * Flag that is true iff thei segment database is the one the user connected to,
-	 * making it the query dispatcher for this user's connection
-	 */
-	bool						is_dispatch_segdb;
 } SegmentDatabaseDescriptor;
 
 /* --------------------------------------------------------------------------------------------------
@@ -169,13 +153,6 @@ typedef struct segment_descriptor
 	 * segment.
 	 */
 	char 	   			  			*sql;
-	
-	/* is_dispatch_segment
-	 *
-	 * Flag that is true iff this segment represents the segment database the user connected to,
-	 * When true, the query_sdd is NULL, since this is the dispatch segment.
-	 */
-	bool							is_dispatch_segment;
 } SegmentDescriptor;
 
 

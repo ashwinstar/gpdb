@@ -325,7 +325,7 @@ void *thread_DispatchCommand(void *arg)
 	bool						cancelFromBelow		= pParms->cancelFromBelow;
 	int							i;
 	SegmentDatabaseDescriptor	*segdbDesc;
-	SegmentDatabaseInfo			*q;
+	CdbComponentDatabaseInfo	*q;
 	PGconn						*conn;
 	RunningInfo					*stillRunning = NULL;
 	int							stillRunningCount = 0;
@@ -640,8 +640,6 @@ void createThreadPoolPerListener( DispatchCommandParms *dispatchCommandParmsAr, 
 	 * we create a structure with the segdbDesc and listenerid for each
 	 * valid segdb, sort it by listenered.  Then we can loop through and easily
 	 * pick out one segdbDesc to use per listener.
-	 * We need to avoid sending the command to any segdb that has the same listenerid 
-	 * as the dispatcher, though.
 	 * We also need to make sure that for each listenerid with at least one valid segdb,
 	 * we find a connected segdb.  If not, it's an error.
 	 * 
@@ -650,10 +648,9 @@ void createThreadPoolPerListener( DispatchCommandParms *dispatchCommandParmsAr, 
 	int i;
 	int j;
 	int	PairArCount = 0;
-	int dispatchListenerID = -1;
 	SegmentDescriptor *segDesc;
 	SegmentDatabaseDescriptor *segdbDesc;
-	SegmentDatabaseInfo *q;
+	CdbComponentDatabaseInfo *q;
 	ListenerSegDBPair* pPairAr = NULL;
 	
 	pPairAr = (ListenerSegDBPair *)palloc0( sizeof(ListenerSegDBPair) * segdb_count );
@@ -666,26 +663,12 @@ void createThreadPoolPerListener( DispatchCommandParms *dispatchCommandParmsAr, 
 			segdbDesc = &segDesc->db_descriptors[j];
 			q	= segdbDesc->segment_database_info;
 
-			if ( segdbDesc->is_dispatch_segdb )
-			{
-				/*
-				 * We need to determine the listenerid of the
-				 * dispatch segdb, so we can be sure not to
-				 * send the command top any segdb with the same
-				 * listenerid.
-				 */
-				dispatchListenerID = q->listenerid;
-			}
-			else if ( q->isvalid )
-			{
-				pPairAr[PairArCount].listenerid = q->listenerid;
-				pPairAr[PairArCount].segdbDesc = segdbDesc;
-				PairArCount++;
-			}
+			pPairAr[PairArCount].listenerid = q->listenerid;
+			pPairAr[PairArCount].segdbDesc = segdbDesc;
+			PairArCount++;
 		}
 	}
 	
-	Assert( dispatchListenerID != -1 );
 	Assert( PairArCount == segdb_count -1 );
 	
 	/*
@@ -715,9 +698,6 @@ void createThreadPoolPerListener( DispatchCommandParms *dispatchCommandParmsAr, 
 	bool bFoundConnection = true;
 	for ( i=0; i<PairArCount; i++ )
 	{
-		if ( pPairAr[i].listenerid == dispatchListenerID )
-			continue;
-			
 		if ( pPairAr[i].listenerid != lastListenerID  )
 		{
 			// Check to see if we got a connection for the last listenerid
@@ -784,14 +764,11 @@ void createThreadPoolPerSegment( DispatchCommandParms *dispatchCommandParmsAr, i
 	{
 		segDesc = &CdbClusterDefinition->segment_descriptors[i];
 
-		if ( !segDesc->is_dispatch_segment )
-		{
-			/*
-			 * The query_db was set up for just this purpose.  So use it.
-			 */
-			Assert( segDesc->query_db != NULL );
-			addSegDBToDispatchThreadPool( dispatchCommandParmsAr, psegdbs_in_thread_pool, szCommand, cancelFromBelow, segDesc->query_db );
-		}
+		/*
+		 * The query_db was set up for just this purpose.  So use it.
+		 */
+		Assert( segDesc->query_db != NULL );
+		addSegDBToDispatchThreadPool( dispatchCommandParmsAr, psegdbs_in_thread_pool, szCommand, cancelFromBelow, segDesc->query_db );
 	}
 }
 
@@ -849,7 +826,7 @@ void createThreadPoolEnumeration( DispatchCommandParms *dispatchCommandParmsAr, 
 {
 	int x;
 	SegmentDatabaseDescriptor *segdbDesc;
-	SegmentDatabaseInfo *q;
+	CdbComponentDatabaseInfo *q;
 
 	for ( x=0; x<segdbListCount; x++)
 	{
@@ -945,7 +922,7 @@ CdbDispatchResults *initCdbDispatchResults(void)
 {
 	int							i;
 	SegmentDatabaseDescriptor	*segdbDesc;
-	SegmentDatabaseInfo			*q;
+	CdbComponentDatabaseInfo	*q;
 	CdbDispatchResults			*results = (CdbDispatchResults *)palloc0( sizeof(CdbDispatchResults) );
 	DispatchCommandParms		*pParms;
 
@@ -1189,7 +1166,7 @@ char *CdbDumpDispatchResults(CdbDispatchResults *results, bool verbose)
 
 void CdbDumpDispatchResult( CdbDispatchResult *result, bool verbose, StringInfo message )
 {
-	SegmentDatabaseInfo *q;
+	CdbComponentDatabaseInfo *q;
 
 	Assert( result != NULL );
 	Assert( result->segdbDesc != NULL );

@@ -71,12 +71,12 @@
 CdbClusterDescriptor	*CdbClusterDefinition = NULL;
 
 /*
- * Points to the result of getCdbSegmentDatabases()
+ * Points to the result of getCdbComponentDatabases()
  */
-static SegmentDatabases	*segment_dbs	= NULL;
+static CdbComponentDatabases *cdb_component_dbs	= NULL;
 
 /*
- *	buildCdbClusterDefinition reads the Cdb catalog tables and build a SegmentDatabases structure.
+ *	buildCdbClusterDefinition reads the Cdb catalog tables and build a CdbComponentDatabases structure.
  *	It then converts this to a CdbClusterDefinition structure and initializes
  *	all the non-connection related fields.
  */
@@ -147,10 +147,14 @@ cdblink_setup( void )
 	 
 	if ( Cdb_role == CDB_ROLE_UTILITY )
 		return;
+
+	getCdbCdb();
 		
-    int total_segment_databases = 0;
+	if ( Cdb_role == CDB_ROLE_EXECUTE )
+		return;
+
+	int total_segment_databases = 0;
     int successful_connections = 0;
-    int	skipped_connections = 0;
 
 	/*
 	 * MemoryContexts used in this routine.
@@ -161,8 +165,8 @@ cdblink_setup( void )
 	elog(DEBUG1, "CDBLINK_SETUP---" );	
 	
 	/*
-	 * buildCdbClusterDefinition() calls getCdbSegmentDatabases()
-	 * to read the Cdb catalog tables and build a SegmentDatabases structure.
+	 * buildCdbClusterDefinition() calls getCdbComponentDatabases()
+	 * to read the Cdb catalog tables and build a CdbComponentDatabases structure.
 	 * It then converts this to a CdbClusterDefinition structure and initializes
 	 * all the non-connection related fields.
 	 */
@@ -177,9 +181,6 @@ cdblink_setup( void )
 	 */
 	on_proc_exit( cdblink_disconnect, (Datum) NULL );
 	
-	if ( Cdb_role == CDB_ROLE_EXECUTE )
-		return;
-
 	/*
 	 * Loop through the segment_descriptors items inside CdbClusterDefinition.  
 	 * For each segdb in db_descriptors in segment_descriptor, attempt to get 
@@ -189,7 +190,7 @@ cdblink_setup( void )
 	 */
 	SegmentDescriptor					*segDesc;
 	SegmentDatabaseDescriptor			*segdbDesc;
-	SegmentDatabaseInfo					*q;
+	CdbComponentDatabaseInfo			*q;
 	int									i;
 	int									j; 
 	DoConnectParms						*doConnectParmsAr = NULL;
@@ -220,8 +221,6 @@ cdblink_setup( void )
 	 */
 	for ( i=0; i<CdbClusterDefinition->segment_count; i++ )
 	{
-		bool segmentHasValidPair = false;	// tracks initial *marked* validity 
-		
 		segDesc = &CdbClusterDefinition->segment_descriptors[i];
 			
 		/*
@@ -234,90 +233,19 @@ cdblink_setup( void )
 				
 			segdbDesc = &segDesc->db_descriptors[j];
 			q = segdbDesc->segment_database_info;
-			if ( q->isvalid )
-			{
-				if ( segdbDesc->is_dispatch_segdb )
-				{
-					/*
-					 * Here, we avoid making a client connection to ourself.
-					 */
-					skipped_connections++;				
-					segmentHasValidPair = true;
-                    elog(DEBUG2, "Skipping connecting to myself: CDB segindex=%d isprimary=%c", 
-                    			q->segindex, 
-                    			(q->isprimary ? 't' : 'f'));
-					continue;	                    			
-				}
 					
-				segmentHasValidPair = true;
-
-				/*
-				 * This function handles putting the segdbDesc into the proper thread's Parms
-				 * structure, based on cdb_connections_per_thread.
-				 * It does this based on the value of segdbs_in_thread_pool,
-				 * which it increments each time it is called.
-				 */				
-				addSegDBToConnThreadPool( doConnectParmsAr, &segdbs_in_thread_pool, segdbDesc);	
-			}
-			else
-			{
-				if ( segdbDesc->is_dispatch_segdb )
-				{		
-					/*
-		             * This means the user connected to a segment database marked as invalid.
-		             * We need to fail the connection.
-		             */
-					ereport( ERROR,
-							(errcode( ERRCODE_SQLSERVER_REJECTED_ESTABLISHMENT_OF_SQLCONNECTION ),
-							 errmsg("The CDB segment database that you are connecting to is not valid.")));
-				}
-				
-				/*
-	             * We've run into a segment database that's not valid.
-	             * Just log it.
-	             */
-	             elog( DEBUG2, "CDB segment database not valid: "
-	                    "segindex=%d isprimary=%c valid=%c host=%s:%u database=%s ", 
-	                    q->segindex,
-	                    (q->isprimary ? 't' : 'f'),
-	                    ( q->isvalid ? 't' : 'f' ),
-	                    ( q->hostname ? q->hostname : "<null>" ),
-	                    q->port,
-	                    q->dbname
-	                 );
-            }
-		}
-
-		/*
-		 * If a valid pair wasn't found, we need to flag 
-		 * an error for this segment.
-		 */
-		if ( !segmentHasValidPair )
-		{
-			StringInfoData buffer;
-
-			/* 
-			 * Initialize the StringInfo object using our "desired" memory
-			 * context.  Future expansions of this StringInfo will occur in
-			 * the "desired" context.
-			 */
-			oldContext = MemoryContextSwitchTo(permanentContext);
-			initStringInfo(&buffer);
-			MemoryContextSwitchTo(oldContext);
-
-			appendStringInfo(&buffer, "CDBLINK_SETUP--- No valid instance mapping for segindex %d", segDesc->segindex);
-
-			ereport( ERROR,
-					(errcode( ERRCODE_SQLSERVER_REJECTED_ESTABLISHMENT_OF_SQLCONNECTION ),
-					 errmsg(buffer.data)));
-		 
-			segDesc->error_message = buffer.data;
+			/*
+			* This function handles putting the segdbDesc into the proper thread's Parms
+			* structure, based on cdb_connections_per_thread.
+			* It does this based on the value of segdbs_in_thread_pool,
+			* which it increments each time it is called.
+			*/				
+			addSegDBToConnThreadPool( doConnectParmsAr, &segdbs_in_thread_pool, segdbDesc);	
 		}
 	}
 	
 	/*
-	 * At this point, we know each segment has at least one valid pair to try to connect to.
-	 * So spin off the threads we've prepared.
+	 * Spin off the threads we've prepared.
 	 */
 	if ( segdbs_in_thread_pool == 0 )
 		threadCount = 0;
@@ -379,57 +307,54 @@ cdblink_setup( void )
 		{
 			segdbDesc = &segDesc->db_descriptors[j];
 			q = segdbDesc->segment_database_info;
-			if ( q->isvalid && !segdbDesc->is_dispatch_segdb )
+			if ( segdbDesc->conn == NULL )
 			{
-				if ( segdbDesc->conn == NULL )
-				{
-					/*
-					 * The error message in segdbDesc->error_message
-					 * was allocated with malloc, since it was done in a thread,
-					 * and we cannot use palloc in a thread, because it is not thread safe.
-					 * So we need to make a palloc copy of it here, and free the original.
-					 */
-					char* pszErrorMessage = segdbDesc->error_message;
-					Assert( pszErrorMessage != NULL );
-					oldContext = MemoryContextSwitchTo(permanentContext);
-					segdbDesc->error_message = pstrdup(pszErrorMessage);
-					MemoryContextSwitchTo(oldContext);
-					free( pszErrorMessage );
+				/*
+					* The error message in segdbDesc->error_message
+					* was allocated with malloc, since it was done in a thread,
+					* and we cannot use palloc in a thread, because it is not thread safe.
+					* So we need to make a palloc copy of it here, and free the original.
+					*/
+				char* pszErrorMessage = segdbDesc->error_message;
+				Assert( pszErrorMessage != NULL );
+				oldContext = MemoryContextSwitchTo(permanentContext);
+				segdbDesc->error_message = pstrdup(pszErrorMessage);
+				MemoryContextSwitchTo(oldContext);
+				free( pszErrorMessage );
 
-					/*
-					 * Set a warning for failed connections.  Complete failures
-					 * are taken care of later.
-					 */
-					ereport(WARNING,
-							(errcode(ERRCODE_WARNING),
-							 errmsg("CDBLINK_SETUP--- Could not establish connection with segment database "
-									"segindex %d isprimary %c", 
-									q->segindex, (q->isprimary ? 't' : 'f')),
-							 errdetail("%s", segdbDesc->error_message)));
-							 
-					CdbClusterDefinition->all_valid_segdbs_connected = false;
-				}
-				else
-				{
-					/*
-					 * We have a live connection!
-					 */
-					successful_connections++;
-					segDesc->connected_count++;
-	
-					/*
-					 * Select the first connected segment database as the one to use for queries.
-					 * This could be changed for load balancing purposes.
-					 */
-					if ( !segDesc->query_db )
-						segDesc->query_db = segdbDesc;
-				}
+				/*
+					* Set a warning for failed connections.  Complete failures
+					* are taken care of later.
+					*/
+				ereport(WARNING,
+						(errcode(ERRCODE_WARNING),
+							errmsg("CDBLINK_SETUP--- Could not establish connection with segment database "
+								"segindex %d isprimary %c", 
+								q->segindex, (q->isprimary ? 't' : 'f')),
+							errdetail("%s", segdbDesc->error_message)));
+							
+				CdbClusterDefinition->all_valid_segdbs_connected = false;
+			}
+			else
+			{
+				/*
+					* We have a live connection!
+					*/
+				successful_connections++;
+				segDesc->connected_count++;
+
+				/*
+					* Select the first connected segment database as the one to use for queries.
+					* This could be changed for load balancing purposes.
+					*/
+				if ( !segDesc->query_db )
+					segDesc->query_db = segdbDesc;
 			}
 		}
 	}
 		
 	/*
-	 * If no segdb for a segment (not ourself) got a successful 
+	 * If no segdb for a segment got a successful 
 	 * connection, we error out.  We had to do this as a separate
 	 * loop from the preceding one yo make sure all error messages were
 	 * palloced before potentially calling ereport.
@@ -438,7 +363,7 @@ cdblink_setup( void )
 	{
 		segDesc = &CdbClusterDefinition->segment_descriptors[i];
 		
-		if (segDesc->connected_count == 0 && !segDesc->is_dispatch_segment)
+		if (segDesc->connected_count == 0)
 		{
 			StringInfoData buffer;
 
@@ -465,8 +390,8 @@ cdblink_setup( void )
 	}
 					
 
-    elog(DEBUG1, "CDB segment databases: defined=%d, connected=%d skipped=%d", 
-			total_segment_databases, successful_connections, skipped_connections);
+    elog(DEBUG1, "CDB segment databases: defined=%d, connected=%d", 
+			total_segment_databases, successful_connections);
     elog(DEBUG1, "CDB segments: defined = %d", CdbClusterDefinition->segment_count);
     
     return;
@@ -564,12 +489,15 @@ void cdblink_disconnect( int exit_code, Datum arg )
     /*
      * Discard the segment/instance information
      */
-    freeCdbSegmentDatabases(segment_dbs);
-    segment_dbs = NULL;
+    freeCdbComponentDatabases(cdb_component_dbs);
+    cdb_component_dbs = NULL;
+
+	freeCdbCdb();
 
     return;
 }
 
+/* TODO Get rid of this once Donnie takes out these calls from his code */
 /* 
  * getCdbIdentity:
  * Returns my_segindex and my_isprimary in out parameters
@@ -583,16 +511,15 @@ void cdblink_disconnect( int exit_code, Datum arg )
 void getCdbIdentity(int *segindex, bool *isprimary)
 {
 	Assert( Cdb_role != CDB_ROLE_UTILITY );
-	Assert( segment_dbs != NULL );
 		
 	if ( segindex != NULL )
 	{
-		*segindex = segment_dbs->my_segindex;
+		*segindex = CdbIdentity.segindex;
 	}
 			
 	if ( isprimary != NULL )
 	{
-		*isprimary = segment_dbs->my_isprimary;
+		*isprimary = true;
 	}
 }
 
@@ -606,9 +533,8 @@ void getCdbIdentity(int *segindex, bool *isprimary)
 int getCdbSegmentCount(void)
 {
 	Assert( Cdb_role != CDB_ROLE_UTILITY );
-	Assert( segment_dbs != NULL );
 
-	return segment_dbs->total_segments;
+	return CdbIdentity.numsegments;
 }
 
 /* 
@@ -641,7 +567,7 @@ int *getCdbSegments(int *segcount)
 }
 
 /*
- *	buildCdbClusterDefinition: reads the Cdb catalog tables and build a SegmentDatabases structure.
+ *	buildCdbClusterDefinition: reads the Cdb catalog tables and build a CdbComponentDatabases structure.
  *	It then converts this to a CdbClusterDefinition structure and initializes
  *	all the non-connection related fields.
  */
@@ -651,7 +577,6 @@ CdbClusterDescriptor *buildCdbClusterDefinition(void)
 	
 	MemoryContext oldContext;
 	MemoryContext permanentContext = TopMemoryContext;
-	
 	
 	/*
 	 * Get the structure representing the configured segment databases.  
@@ -663,14 +588,14 @@ CdbClusterDescriptor *buildCdbClusterDefinition(void)
 
 	ClusterDefn = (CdbClusterDescriptor *)palloc0( sizeof(CdbClusterDescriptor) );
 
-	segment_dbs = getCdbSegmentDatabases();
+	cdb_component_dbs = getCdbComponentDatabases();
 	
 	ClusterDefn->all_valid_segdbs_connected	= false;
 	
-	if ( segment_dbs != NULL && segment_dbs->total_segments != 0 )
+	if ( cdb_component_dbs != NULL && cdb_component_dbs->total_segments != 0 )
 	{
-		ClusterDefn->segment_count	= segment_dbs->total_segments;
-		ClusterDefn->segdb_count	= segment_dbs->total_segment_dbs;
+		ClusterDefn->segment_count	= cdb_component_dbs->total_segments;
+		ClusterDefn->segdb_count	= cdb_component_dbs->total_segment_dbs;
 		ClusterDefn->segment_descriptors = 
 			(SegmentDescriptor *) palloc0 ( ClusterDefn->segment_count * sizeof( SegmentDescriptor ) );
 	}
@@ -688,11 +613,11 @@ CdbClusterDescriptor *buildCdbClusterDefinition(void)
         return ClusterDefn;
     }
 
-	Assert( segment_dbs->total_segment_dbs > 0 );
+	Assert( cdb_component_dbs->total_segment_dbs > 0 );
 		
 	SegmentDescriptor				    *segDesc;
 	SegmentDatabaseDescriptor		    *segdbDesc;
-	SegmentDatabaseInfo					*p;
+	CdbComponentDatabaseInfo			*p;
 		
 	/*
 	 * Pass through each segment database in segment_dbs
@@ -711,9 +636,9 @@ CdbClusterDescriptor *buildCdbClusterDefinition(void)
 	segDesc = ClusterDefn->segment_descriptors - 1;
 	int i;
 		
-	for ( i=0; i<segment_dbs->total_segment_dbs; i++ )
+	for ( i=0; i<cdb_component_dbs->total_segment_dbs; i++ )
 	{
-		p = &segment_dbs->segment_db_info[i];
+		p = &cdb_component_dbs->segment_db_info[i];
 		if ( i == 0 || (p->segindex != last_segindex) )
 		{
 			/*
@@ -747,7 +672,7 @@ CdbClusterDescriptor *buildCdbClusterDefinition(void)
 	 * Loop through each segment descriptor in ClusterDefn->segment_descriptors
 	 * to allocate and initialize the db_descriptors array.
 	 */
-	p = &segment_dbs->segment_db_info[0];
+	p = &cdb_component_dbs->segment_db_info[0];
 
 	for ( i=0; i<seg_count; i++ )
 	{
@@ -770,30 +695,12 @@ CdbClusterDescriptor *buildCdbClusterDefinition(void)
 			segdbDesc = &segDesc->db_descriptors[j];
 			segdbDesc->segment_descriptor = segDesc;
 			segdbDesc->segment_database_info = p;
-			segdbDesc->considered_valid = p->isvalid;
 			segdbDesc->conn = NULL;		
 			segdbDesc->thread = (pthread_t)NULL;
 			segdbDesc->error_message = NULL;
 			segdbDesc->cmdTuples = 0;
 			segdbDesc->resultStatus = PGRES_COMMAND_OK;
 			segdbDesc->cmdStatus = NULL;
-			
-			if ( p->segindex  == segment_dbs->my_segindex &&
-				 p->isprimary == segment_dbs->my_isprimary )
-			{
-				/*
-				 * Mark this SegmentDatabaseDescriptor and this SegmentDescriptor
-				 * as the dispatch_segdb and dispatch_segment resp.
-				 * if its segindex and isprimary flag match the one for
-				 * "us"
-				 */
-				segdbDesc->is_dispatch_segdb = true;
-				segDesc->is_dispatch_segment = true;
-			}
-			else		 
-			{
-				segdbDesc->is_dispatch_segdb = false;
-			}
 			
 			p++;
 		}									
@@ -815,7 +722,7 @@ static void *thread_DoConnect(void *arg)
 	int		i;
 	
 	SegmentDatabaseDescriptor	*segdbDesc;
-	SegmentDatabaseInfo			*q;
+	CdbComponentDatabaseInfo	*q;
 	
 	/*
 	 * The pParms contains an array of SegmentDatabaseDescriptors
@@ -825,8 +732,6 @@ static void *thread_DoConnect(void *arg)
 	{
 		segdbDesc = segdbDescPtrArray[i];
 		q = segdbDesc->segment_database_info;
-
-		Assert( q->isvalid && !segdbDesc->is_dispatch_segdb );
 
 		/*
 		 * We use PQExpBufferData instead of StringInfoData

@@ -36,114 +36,26 @@
 /*
  * Helper Functions
  */
-static int SegmentDatabaseInfoCompare(const void *p1, const void *p2);
+static int CdbComponentDatabaseInfoCompare(const void *p1, const void *p2);
+static void freeCdbComponentDatabaseInfo( CdbComponentDatabaseInfo *cdi );
 
-/*
- * getCDbSegmentDatabases
- *
- * Obtains a structure representing the following JOIN:
- *
- *	 SELECT 
- *			 d.segindex, 
- * 			 s.dbname, 
- * 			 d.isprimary, 
- * 			 h.hostname,
- * 			 l.port, 
- * 			 l.datadir, 
- * 			 l.listenerid,
- * 			 d.isvalid
- * 			 c.cdbsuperuser,
- * 			 c.cdbsuperpswd
- *		 FROM
- *			 cdb.host h,
- *			 cdb.listener l,
- *			 cdb.segment s,
- * 			 cdb.segdb d
- * 			 cdb.cdb c
- *		 WHERE
- *			 h.hostid = l.hostid
- *			 AND l.listenerid = d.listenerid
- * 			 AND s.segindex = d.segindex
- *		 ORDER BY 
- *			 s.segindex, isprimary DESC
- *
- * Storage for the SegmentInstances block and all subsidiary
- * strucures are allocated from the caller's context.
- */
-SegmentDatabases *getCdbSegmentDatabases(void)
+CdbCdb CdbIdentity = {NULL, 0, 0, 0};
+
+void getCdbCdb(void)
 {
-	SegmentDatabases	*segment_databases = NULL;
-	/*
-	 * Relations for each of the 5 tables we need to read
-	 */
-	Relation			cdb_segdb_rel;
-	Relation			cdb_segment_rel;
-	Relation			cdb_listener_rel;
-	Relation			cdb_host_rel;
 	Relation			cdb_cdb_rel;
-	/*
-	 * HeapTuples for each of the 5 tables we need to read
-	 */
-	HeapTuple			cdb_segdb_tuple = NULL;
-	HeapTuple			cdb_segment_tuple = NULL;
-	HeapTuple			cdb_listener_tuple = NULL;
-	HeapTuple			cdb_host_tuple = NULL;
 	HeapTuple			cdb_cdb_tuple = NULL;
-	
-	/*
-	 * ScanDescs for each of the 5 tables we need to read
-	 */
-	HeapScanDesc		cdb_segdb_scan;
-	SysScanDesc			cdb_segment_scan;
-	SysScanDesc			cdb_listener_scan;
-	SysScanDesc			cdb_host_scan;
 	HeapScanDesc		cdb_cdb_scan;
-	
-	/*
-	 * Index Oids for each of the 3 indexes we use
-	 */
-	Oid					cdb_segment_index_oid;
-	Oid					cdb_listener_index_oid;
-	Oid					cdb_host_index_oid;
-
-	/*
-	 * Oid for cdb namespace
-	 */
 	Oid					cdb_namespace_oid;
-	
-	/*
-	 * Initial size for segment_db_info array.
-	 */
-	int					array_size = 128;
-
-	/*
-	 * ScanKeyDatas for the 3 scans we do.
-	 */
-	ScanKeyData			segment_key[1];
-	ScanKeyData			listener_key[1];
-	ScanKeyData			host_key[1];
-	
-	/*
-	 * isNull and attr are used when getting the data for a specific column from a HeapTuple
-	 */
 	bool				isNull;
 	Datum				attr;
-	
-	char				*cdbsuperuser = NULL;
-	char				*cdbsuperpswd = NULL;
-	int					cdb_numsegments = 0;
 
-	/*
-	 * Allocate segment_databases return structure and 
-	 * segment_databases->segment_db_info array with an initial size
-	 * of 128.  If necessary during row fetching, we grow this by
-	 * doubling each time we run out.
-	 */
-	segment_databases = palloc0( sizeof(SegmentDatabases) );
-	segment_databases->segment_db_info		= (SegmentDatabaseInfo *)palloc0(sizeof(SegmentDatabaseInfo) * array_size);
-	segment_databases->total_segment_dbs	= 0;
-	segment_databases->total_segments		= 0;
-	
+	if ( CdbIdentity.cdbname != NULL )
+	{
+		pfree( CdbIdentity.cdbname );
+		CdbIdentity.cdbname = NULL;
+	}
+
 	/*
 	 * Get oid of cdb namespace
 	 */
@@ -155,33 +67,9 @@ SegmentDatabases *getCdbSegmentDatabases(void)
 				 errmsg("Cannot retrieve oid of %s namespace", 
 				 		CdbNamespaceName )));
 	}
-		
-	/*
-	 * The strategy is to scan through cdb.segdb, and, for each row, 
-	 * do lookups into other tables.
-	 * We do this by index or heap scans with scan keys on the other tables.
-	 */
 
-	/*
-	 * First, open all the table relations.
-	 * This will ereport and ERROR is unsuccessful in opening the relation.
-	 */
-	cdb_segdb_rel = HeapOpenCDBObject( CdbSegDBRelationName, cdb_namespace_oid, true );
-	cdb_segment_rel = HeapOpenCDBObject( CdbSegmentRelationName, cdb_namespace_oid, true );
-	cdb_listener_rel = HeapOpenCDBObject( CdbListenerRelationName, cdb_namespace_oid, true );
-	cdb_host_rel = HeapOpenCDBObject( CdbHostRelationName, cdb_namespace_oid, true );
 	cdb_cdb_rel = HeapOpenCDBObject( CdbCdbRelationName, cdb_namespace_oid, true );
-	
-	/*
-	 * Convert index names to Oids
-	 */
-	cdb_segment_index_oid = get_relname_relid(CdbSegmentPrimaryKeyIndexName, 
-												cdb_namespace_oid);
-	cdb_listener_index_oid = get_relname_relid(CdbListenerPrimaryKeyIndexName, 
-												cdb_namespace_oid);
-	cdb_host_index_oid = get_relname_relid(CdbHostPrimaryKeyIndexName, 
-												cdb_namespace_oid);
-	
+
 	/*
 	 * Read the one row table cdb.cdb.
 	 * We currently require that this be there or else we ereport an ERROR.
@@ -201,149 +89,281 @@ SegmentDatabases *getCdbSegmentDatabases(void)
 	*/
 
 	/*
-	* cdbsuperuser
+	* cdbname
 	*/
-	attr = heap_getattr(cdb_cdb_tuple, Anum_cdb_cdb_cdbsuperuser, cdb_cdb_rel->rd_att, &isNull);
+	attr = heap_getattr(cdb_cdb_tuple, Anum_cdb_cdb_cdbname, cdb_cdb_rel->rd_att, &isNull);
 	Assert( !isNull );
-	cdbsuperuser = DatumGetCString(DirectFunctionCall1(textout, attr));
+	Name cdbname = DatumGetName(attr);
+
+	MemoryContext oldContext;
+	MemoryContext permanentContext = TopMemoryContext;
 	
-	/*
-	* cdbsuperpswd
-	*/
-	attr = heap_getattr(cdb_cdb_tuple, Anum_cdb_cdb_cdbsuperpswd, cdb_cdb_rel->rd_att, &isNull);
-	if ( !isNull )
-		cdbsuperpswd = DatumGetCString(DirectFunctionCall1(textout, attr));
-	 
-	/*
-	* segindex
-	*/
-	attr = heap_getattr(cdb_cdb_tuple, Anum_cdb_cdb_segindex, cdb_cdb_rel->rd_att, &isNull);
-	Assert( !isNull );
-	segment_databases->my_segindex = DatumGetInt32(attr);
+    oldContext = MemoryContextSwitchTo(permanentContext);
+	CdbIdentity.cdbname = pstrdup( cdbname->data );
+    MemoryContextSwitchTo(oldContext);
 		
-	/*
-	* isprimary
-	*/
-	attr = heap_getattr(cdb_cdb_tuple, Anum_cdb_cdb_isprimary, cdb_cdb_rel->rd_att, &isNull);
-	Assert( !isNull );
-	segment_databases->my_isprimary = DatumGetBool(attr);
-	
 	/*
 	* numsegments
 	*/
-	attr = heap_getattr(cdb_cdb_tuple, Anum_cdb_cdb_numSegments, cdb_cdb_rel->rd_att, &isNull);
+	attr = heap_getattr(cdb_cdb_tuple, Anum_cdb_cdb_numsegments, cdb_cdb_rel->rd_att, &isNull);
 	Assert( !isNull );
-	cdb_numsegments = DatumGetInt32(attr);
+	CdbIdentity.numsegments = DatumGetInt32(attr);
+	
+	/*
+	* dbid
+	*/
+	attr = heap_getattr(cdb_cdb_tuple, Anum_cdb_cdb_dbid, cdb_cdb_rel->rd_att, &isNull);
+	Assert( !isNull );
+	CdbIdentity.dbid = DatumGetInt32(attr);
 		
+	/*
+	* content
+	*/
+	attr = heap_getattr(cdb_cdb_tuple, Anum_cdb_cdb_content, cdb_cdb_rel->rd_att, &isNull);
+	Assert( !isNull );
+	CdbIdentity.segindex = DatumGetInt32(attr);
+
 	heap_endscan(cdb_cdb_scan);
 	heap_close(cdb_cdb_rel, AccessShareLock);
 	
-	/*
-	 * Main loop: loop through cdb.segdb by doing a heap scan
-	 */
-	cdb_segdb_scan = heap_beginscan(cdb_segdb_rel, SnapshotNow, 0, NULL);
-	
-	while ( HeapTupleIsValid(cdb_segdb_tuple = heap_getnext(cdb_segdb_scan, ForwardScanDirection)) )
+}
+
+void freeCdbCdb(void)
+{
+	if ( CdbIdentity.cdbname != NULL )
 	{
-		if ( segment_databases->total_segment_dbs >= array_size )
-		{
-			/*
-			 * Expand SegmentDatabaseInfo array if we've used up currently allocated space
-			 */
-			array_size *= 2;
-			SegmentDatabaseInfo *pOld = segment_databases->segment_db_info;
-			segment_databases->segment_db_info = (SegmentDatabaseInfo *)
-												repalloc(pOld, sizeof(SegmentDatabaseInfo) * array_size);
-		}
+		pfree( CdbIdentity.cdbname );
+		CdbIdentity.cdbname = NULL;
+	}
+
+	CdbIdentity.numsegments = 0;
+	CdbIdentity.dbid = 0;
+	CdbIdentity.segindex = 0;
+}
+
+
+/*
+ * getCdbComponentDatabases
+ *
+ * Obtains a structure representing the following JOIN:
+ *
+ *	 SELECT 
+ *			 d.dbid,
+ *			 d.content,
+ * 			 d.isprimary, 
+ * 			 d.dbname, 
+ * 			 h.hostname,
+ * 			 l.port, 
+ * 			 l.datadir, 
+ * 			 l.listenerid,
+ * 			 l.cdbsuperuser,
+ * 			 l.cdbsuperpswd
+ *		 FROM
+ *			 cdb.host h,
+ *			 cdb.listener l,
+ *			 cdb.pgdatabase d,
+ *		 WHERE
+ *			 h.hostid = l.hostid
+ *			 AND l.listenerid = d.listenerid
+ *		 ORDER BY 
+ *			 d.dbid, d.isprimary DESC
+ *
+ * Storage for the SegmentInstances block and all subsidiary
+ * strucures are allocated from the caller's context.
+ */
+CdbComponentDatabases *getCdbComponentDatabases(void)
+{
+	CdbComponentDatabases	*component_databases = NULL;
+
+	/*
+	 * Relations for each of the 3 tables we need to read
+	 */
+	Relation			cdb_pgdatabase_rel;
+	Relation			cdb_listener_rel;
+	Relation			cdb_host_rel;
+
+	/*
+	 * HeapTuples for each of the 3 tables we need to read
+	 */
+	HeapTuple			cdb_pgdatabase_tuple = NULL;
+	HeapTuple			cdb_listener_tuple = NULL;
+	HeapTuple			cdb_host_tuple = NULL;
+	
+	/*
+	 * ScanDescs for each of the 3 tables we need to read
+	 */
+	HeapScanDesc		cdb_pgdatabase_scan;
+	SysScanDesc			cdb_listener_scan;
+	SysScanDesc			cdb_host_scan;
+	
+	/*
+	 * Index Oids for each of the 2 indexes we use
+	 */
+	Oid					cdb_listener_index_oid;
+	Oid					cdb_host_index_oid;
+
+	/*
+	 * Oid for cdb namespace
+	 */
+	Oid					cdb_namespace_oid;
+	
+	/*
+	 * Initial size for info arrays.
+	 */
+	int					segment_array_size = 128;
+	int					entry_array_size = 4;
+
+	/*
+	 * ScanKeyDatas for the 2 scans we do.
+	 */
+	ScanKeyData			listener_key[1];
+	ScanKeyData			host_key[1];
+	
+	/*
+	 * isNull and attr are used when getting the data for a specific column from a HeapTuple
+	 */
+	bool				isNull;
+	Datum				attr;
+	
+	int					dbid;
+	int					content;
+	int					listenerid;
+	int					hostid;
+	bool				isprimary;
+	char				*dbname;
+
+	/*
+	 * Allocate segment_databases return structure and 
+	 * segment_databases->segment_db_info array with an initial size
+	 * of 128.  If necessary during row fetching, we grow this by
+	 * doubling each time we run out.
+	 */
+	component_databases = palloc0( sizeof(CdbComponentDatabases) );
+	component_databases->segment_db_info	= (CdbComponentDatabaseInfo *)palloc0(sizeof(CdbComponentDatabaseInfo) * segment_array_size);
+	component_databases->entry_db_info		= (CdbComponentDatabaseInfo *)palloc0(sizeof(CdbComponentDatabaseInfo) * entry_array_size);
+
+	/*
+	 * Get oid of cdb namespace
+	 */
+	cdb_namespace_oid = getCDBNamespaceOid();
+	if ( cdb_namespace_oid == InvalidOid )
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_CARDINALITY_VIOLATION),
+				 errmsg("Cannot retrieve oid of %s namespace", 
+				 		CdbNamespaceName )));
+	}
 		
-		SegmentDatabaseInfo *pRow;
-		pRow = &segment_databases->segment_db_info[segment_databases->total_segment_dbs];
+	/*
+	 * The strategy is to scan through cdb.pgdatabases, and, for each row, 
+	 * do lookups into other tables.
+	 * We do this by index or heap scans with scan keys on the other tables.
+	 */
+
+	/*
+	 * First, open all the table relations.
+	 * This will ereport and ERROR is unsuccessful in opening the relation.
+	 */
+	cdb_pgdatabase_rel = HeapOpenCDBObject( CdbSegmentRelationName, cdb_namespace_oid, true );
+	cdb_listener_rel = HeapOpenCDBObject( CdbListenerRelationName, cdb_namespace_oid, true );
+	cdb_host_rel = HeapOpenCDBObject( CdbHostRelationName, cdb_namespace_oid, true );
+	
+	/*
+	 * Convert index names to Oids
+	 */
+	cdb_listener_index_oid = get_relname_relid(CdbListenerPrimaryKeyIndexName, 
+												cdb_namespace_oid);
+	cdb_host_index_oid = get_relname_relid(CdbHostPrimaryKeyIndexName, 
+												cdb_namespace_oid);
+	
+	/*
+	 * Main loop: loop through cdb.pgdatabase by doing a heap scan
+	 */
+	cdb_pgdatabase_scan = heap_beginscan(cdb_pgdatabase_rel, SnapshotNow, 0, NULL);
+	
+	while ( HeapTupleIsValid(cdb_pgdatabase_tuple = heap_getnext(cdb_pgdatabase_scan, ForwardScanDirection)) )
+	{
+		
 		
 		/*
-		* Assign field from cdb.cdb that were already read in
+		* Grab the fields that we need from cdb.pgdatabase
 		*/
-		pRow->cdbsuperuser = pstrdup(cdbsuperuser);
-		if ( cdbsuperpswd != NULL )
-			pRow->cdbsuperpswd = pstrdup(cdbsuperpswd);
-		
-			
-		/*
-		* Grab the fields that we need from cdb.segdb
-		*/
-		int		segindex;
-		int		listenerid;
-		int		hostid;
 
 		/*
-		* segindex
+		* dbid
 		*/
-		attr = heap_getattr(cdb_segdb_tuple, Anum_cdb_segdb_segindex, cdb_segdb_rel->rd_att, &isNull);
+		attr = heap_getattr(cdb_pgdatabase_tuple, Anum_cdb_pgdatabase_dbid, cdb_pgdatabase_rel->rd_att, &isNull);
 		Assert( !isNull );
-		segindex = DatumGetInt32(attr);
-		pRow->segindex = segindex;
+		dbid = DatumGetInt32(attr);
+		
+		/*
+		* listenerid
+		*/
+		attr = heap_getattr(cdb_pgdatabase_tuple, Anum_cdb_pgdatabase_listenerid, cdb_pgdatabase_rel->rd_att, &isNull);
+		Assert( !isNull );
+		listenerid = DatumGetInt32(attr);
+
+		/*
+		* content
+		*/
+		attr = heap_getattr(cdb_pgdatabase_tuple, Anum_cdb_pgdatabase_content, cdb_pgdatabase_rel->rd_att, &isNull);
+		Assert( !isNull );
+		content = DatumGetInt32(attr);
 
 		/*
 		* isprimary
 		*/
-		attr = heap_getattr(cdb_segdb_tuple, Anum_cdb_segdb_isprimary, cdb_segdb_rel->rd_att, &isNull);
+		attr = heap_getattr(cdb_pgdatabase_tuple, Anum_cdb_pgdatabase_isprimary, cdb_pgdatabase_rel->rd_att, &isNull);
 		Assert( !isNull );
-		pRow->isprimary = DatumGetBool(attr);
-
-		/*
-		* isvalid
-		*/
-		attr = heap_getattr(cdb_segdb_tuple, Anum_cdb_segdb_isvalid, cdb_segdb_rel->rd_att, &isNull);
-		Assert( !isNull );
-		pRow->isvalid = DatumGetBool(attr);
-
-		/*
-		* listenerid
-		*/
-		attr = heap_getattr(cdb_segdb_tuple, Anum_cdb_segdb_listenerid, cdb_segdb_rel->rd_att, &isNull);
-		Assert( !isNull );
-		listenerid = DatumGetInt32(attr);
-		pRow->listenerid = listenerid;
-
-		/*
-		* Now, scan the cdb.segment table for this segindex.
-		* This will use the index if it's there and available.
-		*/
-		ScanKeyInit(&segment_key[0], Anum_cdb_segment_segindex, BTEqualStrategyNumber,
-					F_INT4EQ, Int32GetDatum(segindex));
-					
-		cdb_segment_scan = cdbtable_beginscan(cdb_segment_rel, 
-											  cdb_segment_index_oid, 
-											   (cdb_segment_index_oid != InvalidOid), 
-												SnapshotNow, 
-											   1, 
-											   segment_key);
-		
-		cdb_segment_tuple = systable_getnext(cdb_segment_scan);
-		if ( !HeapTupleIsValid(cdb_segment_tuple) )
-		{
-			/*
-			 * This should never happen because of the foreign key constraint we have on
-			 * cdb.segment.segindex
-			 */
-			ereport(ERROR,
-					(errcode(ERRCODE_CARDINALITY_VIOLATION),
-					 errmsg("Could not find segindex %d in %s.%s table",
-					 segindex, CdbNamespaceName, CdbSegmentRelationName )));
-		}
-		
-		/*
-		* Grab the fields that we need from cdb.segment
-		*/
+		isprimary = DatumGetBool(attr);
 
 		/*
 		* dbname
 		*/
-		attr = heap_getattr(cdb_segment_tuple, Anum_cdb_segment_dbname, cdb_segment_rel->rd_att, &isNull);
+		attr = heap_getattr(cdb_pgdatabase_tuple, Anum_cdb_pgdatabase_dbname, cdb_pgdatabase_rel->rd_att, &isNull);
 		Assert( !isNull );
-		pRow->dbname = DatumGetCString(DirectFunctionCall1(textout, attr));
+		dbname = DatumGetCString(DirectFunctionCall1(textout, attr));
 
-		systable_endscan(cdb_segment_scan);
-		
+		CdbComponentDatabaseInfo *pRow;
+		if ( content >= 0 )
+		{
+			if ( component_databases->total_segment_dbs >= segment_array_size )
+			{
+				/*
+				* Expand CdbComponentDatabaseInfo array if we've used up currently allocated space
+				*/
+				segment_array_size *= 2;
+				CdbComponentDatabaseInfo *pOld = component_databases->segment_db_info;
+				component_databases->segment_db_info = (CdbComponentDatabaseInfo *)
+													repalloc(pOld, sizeof(CdbComponentDatabaseInfo) * segment_array_size);
+			}
+			
+			pRow = &component_databases->segment_db_info[component_databases->total_segment_dbs];
+			component_databases->total_segment_dbs++;
+		}
+		else
+		{
+			if ( component_databases->total_entry_dbs >= entry_array_size )
+			{
+				/*
+				* Expand CdbComponentDatabaseInfo array if we've used up currently allocated space
+				*/
+				entry_array_size *= 2;
+				CdbComponentDatabaseInfo *pOld = component_databases->entry_db_info;
+				component_databases->entry_db_info = (CdbComponentDatabaseInfo *)
+													repalloc(pOld, sizeof(CdbComponentDatabaseInfo) * entry_array_size);
+			}
+			
+			pRow = &component_databases->entry_db_info[component_databases->total_entry_dbs];
+			component_databases->total_entry_dbs++;
+		}
+
+		pRow->dbid = dbid;
+		pRow->listenerid = listenerid;
+		pRow->segindex = content;
+		pRow->isprimary = isprimary;
+		pRow->dbname = dbname;
+
 		/*
 		* Now, scan the cdb.listener table for this listenerid
 		* This will use the index if it's there and available.
@@ -396,6 +416,20 @@ SegmentDatabases *getCdbSegmentDatabases(void)
 		Assert( !isNull );
 		hostid = DatumGetInt32(attr);
 
+		/*
+		* cdbsuperuser
+		*/
+		attr = heap_getattr(cdb_listener_tuple, Anum_cdb_listener_cdbsuperuser, cdb_listener_rel->rd_att, &isNull);
+		Assert( !isNull );
+		pRow->cdbsuperuser = DatumGetCString(DirectFunctionCall1(textout, attr));
+		
+		/*
+		* cdbsuperpswd
+		*/
+		attr = heap_getattr(cdb_listener_tuple, Anum_cdb_listener_cdbsuperpswd, cdb_listener_rel->rd_att, &isNull);
+		if ( !isNull )
+			pRow->cdbsuperpswd = DatumGetCString(DirectFunctionCall1(textout, attr));
+
 		systable_endscan(cdb_listener_scan);
 		
 		/*
@@ -433,96 +467,110 @@ SegmentDatabases *getCdbSegmentDatabases(void)
 		pRow->hostname = DatumGetCString(DirectFunctionCall1(textout, attr));
 
 		systable_endscan(cdb_host_scan);
-		
-		segment_databases->total_segment_dbs++;
 	}
 	
 	/*
 	 * Now sort the data by segindex, isprimary desc
 	 */
-	 qsort( segment_databases->segment_db_info, 
-			segment_databases->total_segment_dbs, sizeof(SegmentDatabaseInfo),
-    		  SegmentDatabaseInfoCompare);
+	 qsort( component_databases->segment_db_info, 
+			component_databases->total_segment_dbs, sizeof(CdbComponentDatabaseInfo),
+    		  CdbComponentDatabaseInfoCompare);
     		  
-	/*
+	 qsort( component_databases->entry_db_info, 
+			component_databases->total_entry_dbs, sizeof(CdbComponentDatabaseInfo),
+    		  CdbComponentDatabaseInfoCompare);
+
+	 /*
 	 * Now count the number of distinct segindexes.
 	 * Since it's sorted, this is easy.
 	 */
 	 int i;
 	 
-	 for ( i=0; i<segment_databases->total_segment_dbs; i++ )
+	 for ( i=0; i<component_databases->total_segment_dbs; i++ )
 	 {
 	 	if ( i == 0 || 
-		 	(segment_databases->segment_db_info[i].segindex != 
-		 	segment_databases->segment_db_info[i-1].segindex ) )
-			segment_databases->total_segments++;	 		
+		 	(component_databases->segment_db_info[i].segindex != 
+		 	component_databases->segment_db_info[i-1].segindex ) )
+			component_databases->total_segments++;	 		
 	 }
 	 
 	 /*
 	  *  Validate that cdb_numsegments == segment_databases->total_segment_dbs
 	  */
-	 if ( cdb_numsegments != segment_databases->total_segments )
+	 if ( CdbIdentity.numsegments != component_databases->total_segments )
 	 {
 		ereport(ERROR,
 				(errcode(ERRCODE_CARDINALITY_VIOLATION),
-				 errmsg("CDB number of segments inconsistency: count is %d from %s.%s table, but %d from getCdbSegmentDatabases()",
-		    cdb_numsegments, CdbNamespaceName, CdbCdbRelationName, segment_databases->total_segments )));
+				 errmsg("CDB number of segments inconsistency: count is %d from %s.%s table, but %d from getCdbComponentDatabases()",
+		    CdbIdentity.numsegments, CdbNamespaceName, CdbCdbRelationName, component_databases->total_segments )));
 	 }
 
 	/*
-	 * Cleanup invoves ending the heap scan of cdb.segdb, and closing all the relations we opened.
+	 * Cleanup invoves ending the heap scan of cdb.pgdatabase, and closing all the relations we opened.
 	 */
-	heap_endscan(cdb_segdb_scan);
+	heap_endscan(cdb_pgdatabase_scan);
 
-	heap_close(cdb_segdb_rel, AccessShareLock);
-	heap_close(cdb_segment_rel, AccessShareLock);
+	heap_close(cdb_pgdatabase_rel, AccessShareLock);
 	heap_close(cdb_listener_rel, AccessShareLock);
 	heap_close(cdb_host_rel, AccessShareLock);
 	
-	if ( cdbsuperuser != NULL )
-		pfree( cdbsuperuser );
-		
-	if ( cdbsuperpswd != NULL )
-		pfree( cdbsuperpswd );
-
-	return segment_databases;
+	return component_databases;
 }
 
 
 /*
- * freeCdbSegmentDatabases
+ * freeCdbComponentDatabases
  *
- * Releases the storage occupied by the SegmentDatabases
- * heap pointed to by the argument.
+ * Releases the storage occupied by the CdbComponentDatabases
+ * struct pointed to by the argument.
  */
-void freeCdbSegmentDatabases(SegmentDatabases *sd)
+void freeCdbComponentDatabases(CdbComponentDatabases *pDBs)
 {
 	int i;
 	
-	if ( sd == NULL )
+	if ( pDBs == NULL )
 		return;
 		
-	if ( sd->segment_db_info != NULL )
+	if ( pDBs->segment_db_info != NULL )
 	{
-		for ( i=0; i<sd->total_segment_dbs; i++ )
+		for ( i=0; i<pDBs->total_segment_dbs; i++ )
 		{
-			SegmentDatabaseInfo *sdi = &sd->segment_db_info[i]; 
-	    	if ( sdi->dbname != NULL )
-	    		pfree(sdi->dbname);
-	    	if ( sdi->hostname != NULL )
-	    		pfree(sdi->hostname);
-			if ( sdi->datadir != NULL )
-	    		pfree(sdi->datadir);
-			if ( sdi->cdbsuperuser != NULL )
-	    		pfree(sdi->cdbsuperuser);
-			if ( sdi->cdbsuperpswd != NULL )
-	    		pfree(sdi->cdbsuperpswd);
+			CdbComponentDatabaseInfo *cdi = &pDBs->segment_db_info[i]; 
+			freeCdbComponentDatabaseInfo( cdi );
 		}
 		
-		pfree( sd->segment_db_info );
+		pfree( pDBs->segment_db_info );
 	}
 
-	pfree( sd );
+	if ( pDBs->entry_db_info != NULL )
+	{
+		for ( i=0; i<pDBs->total_entry_dbs; i++ )
+		{
+			CdbComponentDatabaseInfo *cdi = &pDBs->entry_db_info[i]; 
+			freeCdbComponentDatabaseInfo( cdi );
+		}
+		
+		pfree( pDBs->entry_db_info );
+	}
+
+	pfree( pDBs );
+}
+
+void freeCdbComponentDatabaseInfo( CdbComponentDatabaseInfo *cdi )
+{
+	if ( cdi == NULL )
+		return;
+
+	if ( cdi->dbname != NULL )
+	    pfree(cdi->dbname);
+	if ( cdi->hostname != NULL )
+	    pfree(cdi->hostname);
+	if ( cdi->datadir != NULL )
+	    pfree(cdi->datadir);
+	if ( cdi->cdbsuperuser != NULL )
+	    pfree(cdi->cdbsuperuser);
+	if ( cdi->cdbsuperpswd != NULL )
+	    pfree(cdi->cdbsuperpswd);
 }
 
 /*
@@ -557,15 +605,15 @@ void cdb_cleanup(void)
 
 
 /*
- * SegmentDatabaseInfoCompare:
+ * CdbComponentDatabaseInfoCompare:
  * A compare function for SegmentDatabaseInfo structs
  * that compares based on segindex, isprimary desc
  * for use with qsort.
  */
-static int SegmentDatabaseInfoCompare(const void *p1, const void *p2)
+static int CdbComponentDatabaseInfoCompare(const void *p1, const void *p2)
 {
-	const SegmentDatabaseInfo *obj1 = (SegmentDatabaseInfo *)p1;
-	const SegmentDatabaseInfo *obj2 = (SegmentDatabaseInfo *)p2;
+	const CdbComponentDatabaseInfo *obj1 = (CdbComponentDatabaseInfo *)p1;
+	const CdbComponentDatabaseInfo *obj2 = (CdbComponentDatabaseInfo *)p2;
 	
 	int cmp = obj1->segindex - obj2->segindex;
 	if ( cmp == 0 )
