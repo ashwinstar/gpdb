@@ -22,8 +22,8 @@ scripts are not intended for any type of production environment.
     cdbstop     --  stops the listener(s) for a CDB database
                     cluster
 
-    cdbpsql     --  runs psql connecting to the first listener of
-                    the CDB database cluster.
+    cdbsql      --  runs psql connecting to the first listener and first
+                    segment database of the CDB database cluster
 
     cdbclean    --  deletes the CDB cluster database directory(s)
                     that were created using cdbinitdb
@@ -40,7 +40,7 @@ useful. You can source env.rc to automatically set these up.
 A word of WARNING -- these scripts are created for internal use; little,
 if any, error checking is performed.  It is expected that the typical
 recovery action is to kill the cluster's listeners, wipe out the PGROOT
-directory, and start over from scratch. Luckily, scripts are provided to
+directory, and start over from scratch. Luckily, cdbclean is provided to
 do this ;)
 
 Overview
@@ -100,6 +100,6 @@ To create a new CDB cluster, do the following:
 
     # Connect to the CDB cluster using cdbpsql
 
-    $ ./cdbpsql
+    $ ./cdbsql segDB1
 
 Continue working with your CDB cluster as you see fit!

@@ -36,7 +36,8 @@ function display_help
     echo    "segDB1 will be on the first listener, while segDB6 will be on the second."
 
     echo -e "\nBy default, the value inserted into the cdb.host table will be that returned"
-    echo -e "by 'hostname'. If you prefer to specify your ip address then use --useIP or -i"
+    echo -e "by 'hostname'. If you prefer to specify your ip address then use --useIP or -i."
+    echo    "NOTE: you will have to make sure your pg_hba.conf file(s) are correctly configured."
 
     echo -e "\nSee README.txt for more details.\n"
 
