@@ -2,11 +2,8 @@
 
 <!--
     Common ant elements for CDB project.
-
     This xml file is embedded within a project element in another xml file.
-
     See $PROJECT_HOME/build.xml for more information.
-
     @version $Id$
   -->
 
@@ -57,6 +54,10 @@
         <condition property="devoBuild">
             <contains string="${releaseDir}" substring=""/>
         </condition>
+
+        <!-- Set our common properties -->
+        <property name="cdbCommons" location="${projectRoot}/common/cdb-commons"/>
+        <property name="cdbCommonsBuild" value="${cdbCommons}/${build}"/>
 
     </target>
 
@@ -1117,4 +1118,23 @@ Set release properties:
     <target name="dumpEnvironment"
             depends="init">
         <echoproperties/>
+    </target>
+
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Compile the CDB Commons package                                -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="-makeCDBCommons"
+            depends="-init"
+            unless="pgUtilsDone">
+
+        <!-- Invoke ANT recursively to make the common subproject -->
+        <ant antfile="build.xml"
+             dir="${projectRoot}/common/cdb-commons"
+             target="package">
+            <property name="build" value="${cdbCommonsBuild}"/>
+        </ant>
+
+        <property name="pgUtilsDone" value="true"/>
+
     </target>
