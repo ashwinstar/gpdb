@@ -31,6 +31,10 @@
 /* 
  * Helper functions 
  */ 
+static void trySendCurrentTuple(MotionState *node);
+static TupleTableSlot *execMotionUnsorted(MotionState *node);
+static TupleTableSlot *execMotionSorted(MotionState *node);
+static void execMotionSortedFirstTime(MotionState *node);
 static void validateMotionNodeParms(MotionType motionType,
 			bool sendToSecondary, bool sendSorted, 
 			int numHashSegs, int *hashSegIdx, List *hashExpr, List *hashOp,
@@ -53,6 +57,18 @@ static bool setReadFromAMS(Motion *node);
 TupleTableSlot *
 ExecMotion(MotionState *node)
 {
+	Motion *motion = (Motion *)node->ps.plan;
+    
+    if (motion->sendSorted && !node->noMoreAMSTuples)
+        return execMotionSorted(node);
+    else
+        return execMotionUnsorted(node);
+}
+
+
+TupleTableSlot *
+execMotionUnsorted(MotionState *node)
+{
 	TupleTableSlot *slot;
 	TupleTableSlot *outerTupleSlot;
 	PlanState  *outerNode;
@@ -69,11 +85,8 @@ ExecMotion(MotionState *node)
 	SO1_printf("ExecMotion: %s\n",
 			   "entering routine");
 
-    /* TODO:  This is because we don't have the broadcast comm code yet. */
     AssertState(motion->motionType == MOTIONTYPE_HASH ||
-        (motion->motionType == MOTIONTYPE_FIXED &&
-         motion->numOutputSegs == 1));
-    
+        (motion->motionType == MOTIONTYPE_FIXED && motion->numOutputSegs <= 1));
     
     getCdbIdentity(&mySegIdx, NULL);
 
@@ -87,18 +100,7 @@ ExecMotion(MotionState *node)
 
         if (tupleInFlight)
         {
-            /* TODO:  This only works for hash or for single-receiver fixed. */
-            sendRC = SendTuple(motion->motionID, &node->tupSendCtxt);
-            if (sendRC == SEND_COMPLETE)
-            {
-                node->numTuplesToAMS++;
-                
-                /* Clean up the send-context. */
-                /* TODO:  Donnie should create a helper for this. */
-                
-                clearTCList(node->tupSendCtxt.tuple_chunk_list);
-                bzero(&node->tupSendCtxt, sizeof(node->tupSendCtxt));
-            }
+            trySendCurrentTuple(node);
 
             /* We could look at sendRC, but we want to use the same
              * condition throughout.
@@ -136,6 +138,8 @@ ExecMotion(MotionState *node)
 
         if (!node->noMoreAMSTuples)
         {
+            /* We do not need to preserve the order of incoming tuples. */
+            
             recvRC = RecvTuple(motion->motionID, &tuple);
             if (recvRC == END_OF_STREAM)
             {
@@ -144,7 +148,7 @@ ExecMotion(MotionState *node)
             else if (recvRC == GOT_TUPLE)
             {
                 node->numTuplesFromAMS++;
-                shouldFree = true;          /* TODO:  Pass up from RecvTuple. */
+                shouldFree = true;      /* TODO:  Pass up from RecvTuple. */
             }
         }
 
@@ -241,17 +245,7 @@ ExecMotion(MotionState *node)
                 
                 if (node->tupSendCtxt.heap_tuple != NULL)
                 {
-                    sendRC = SendTuple(motion->motionID, &node->tupSendCtxt);
-                    if (sendRC == SEND_COMPLETE)
-                    {
-                        node->numTuplesToAMS++;
-                        
-                        /* Clean up the send-context. */
-                        /* TODO:  Donnie should create a helper for this. */
-                    
-                        clearTCList(node->tupSendCtxt.tuple_chunk_list);
-                        bzero(&node->tupSendCtxt, sizeof(node->tupSendCtxt));
-                    }
+                    trySendCurrentTuple(node);
                     
                     /* We could look at sendRC, but we want to use the same
                      * condition throughout.
@@ -280,6 +274,397 @@ ExecMotion(MotionState *node)
     {
         return NULL;
     }
+}
+
+
+TupleTableSlot *
+execMotionSorted(MotionState *node)
+{
+	TupleTableSlot *slot;
+	TupleTableSlot *outerTupleSlot;
+	PlanState  *outerNode;
+	HeapTuple tuple, inputTuple;
+    bool shouldFree;
+	Motion *motion = (Motion *)node->ps.plan;
+    
+    int mySegIdx;               /* TODO:  This too. */
+    SendReturnCode sendRC;
+    ReceiveReturnCode recvRC;
+    
+    CdbTupleHeapInfo *tupHeapInfo;
+    
+	SO1_printf("execMotionSorted: %s\n",
+			   "entering routine");
+
+    AssertState(motion->motionType == MOTIONTYPE_FIXED &&
+                motion->numOutputSegs <= 1);
+    AssertState(motion->sendSorted);
+    AssertState(node->tupleheap != NULL);
+    
+    getCdbIdentity(&mySegIdx, NULL);
+    
+    /* NOTE:  THIS IS TRICKY!!!
+     *
+     * In an order-preserving fixed motion node, segments that are receiving
+     * tuples are basically passing up tuples from the tuple-heap, and not
+     * directly from the AMS or child-plan.
+     *
+     * There are two cases - broadcast order-preserving fixed motion node, or
+     * single-destination order-preserving fixed motion node.
+     *
+     * In the second case, all of the "send only" segments will act like
+     * NORMAL motion nodes, which means this function won't be called.  (They
+     * will do the proper end-of-stream processing, and all that stuff.)
+     *
+     * In the first case, we know that we will only have broadcast sends.
+     */
+    
+    /* These are all kinda different ways of saying the same thing... */
+    AssertState(!node->noMoreAMSTuples);
+    AssertState(motion->numOutputSegs == 0 ||
+                motion->outputSegIdx[0] == mySegIdx);
+    
+    if (!node->tupleheapReady)
+    {
+        execMotionSortedFirstTime(node);
+    }
+    else
+    {
+        /* There will be one entry in the heap that is missing a tuple.  We
+         * need to fill in that tuple.  If the segment without a tuple is not
+         * us, we unfortunately have to loop until we do get a tuple, since
+         * we can't hand up a tuple until we have one from every sender.
+         */
+        
+        if (node->segindexNext != mySegIdx)
+        {
+            /* The segment missing a tuple is remote, so try to receive a
+             * tuple from them.  (Also, if a tuple is in the middle of being
+             * sent, we continue the send.)
+             */
+
+            /* TODO:  This is an awfully tight loop - not very friendly to
+             *        other processes!  MAKE IT A BLOCKING CALL.
+             */
+            do
+            {
+                CHECK_FOR_INTERRUPTS();
+                
+                if (node->tupSendCtxt.heap_tuple != NULL)
+                {
+                    trySendCurrentTuple(node);
+                }
+                else if (node->noMoreChildTuples && !node->sentEndOfStream)
+                {
+                    /* Try to complete the End-Of-Stream send.  We know this
+                     * is the broadcast scenario because we won't have a
+                     * pending EOS send if we are the single receiver of a
+                     * order-preserving motion.  (This is because a single
+                     * receiver won't be sending to anybody.)
+                     */
+                    AssertState(motion->numOutputSegs == 0);
+                    
+                    sendRC = SendEndOfStream(motion->motionID, BROADCAST_SEGIDX);
+                    node->sentEndOfStream = (sendRC == SEND_COMPLETE);
+                }
+                
+                recvRC = RecvTupleFrom(motion->motionID, &inputTuple, node->segindexNext);
+            }
+            while (recvRC == NO_TUPLE);
+            
+            if (recvRC == GOT_TUPLE)
+                node->numTuplesFromAMS++;
+            
+            MergeNewValueIntoCdbTupleHeap(node->tupleheap, inputTuple,
+                node->segindexNext);
+        }
+        else
+        {
+            /* This segment is the one missing a tuple. */
+            
+            /* Unfortunately, if there is currently a tuple being sent out, it
+             * must be finished before we can pull up the next tuple.
+             *
+             * Fortunately, this only happens when tuples are being broadcast.
+             */
+            if (motion->numOutputSegs == 0)
+            {
+                /* The helper function will update the send-context once the
+                 * tuple has completed sending, so the loop will terminate.
+                 */
+                
+                /* TODO:  This is an awfully tight loop - not very friendly to
+                 *        other processes!  MAKE IT A BLOCKING CALL.
+                 */
+                while (node->tupSendCtxt.heap_tuple != NULL)
+                {
+                    CHECK_FOR_INTERRUPTS();
+                    
+                    trySendCurrentTuple(node);
+                }
+            }
+            
+            /*
+             * OK, now we can pull a tuple from the child plan.
+             */
+            
+            AssertState(!node->noMoreChildTuples);
+            
+            /* grab TupleTableSlot from our child. */
+            outerNode = outerPlanState(node);
+            
+            outerTupleSlot = ExecProcNode(outerNode);
+            if ( TupIsNull(outerTupleSlot) )
+            {
+                /* Child plan says "No more tuples!" */
+                node->noMoreChildTuples = true;
+                
+                MergeNewValueIntoCdbTupleHeap(node->tupleheap, NULL, mySegIdx);
+                
+                /* Send an End-Of-Stream token, if it is broadcast. */
+                if (motion->numOutputSegs == 0)
+                {
+                    sendRC = SendEndOfStream(motion->motionID, BROADCAST_SEGIDX);
+                    node->sentEndOfStream = (sendRC == SEND_COMPLETE);
+                }
+            }
+            else
+            {
+                /* We got a tuple from the child-plan. */
+                
+                node->numTuplesFromChild++;
+                
+                MergeNewValueIntoCdbTupleHeap(node->tupleheap,
+                    outerTupleSlot->val, mySegIdx);
+                
+                /* We only send the tuple here if it is broadcast.  (Remember
+                 * that we previously asserted that either it is broadcast, or
+                 * this segment is the receiver of all tuples.)
+                 */
+                if (motion->numOutputSegs == 0)
+                {
+                    node->tupSendCtxt.heap_tuple = outerTupleSlot->val;
+                    node->tupSendCtxt.target_segment = BROADCAST_SEGIDX;
+                }
+                
+                /* Try the send here, since it might be a while before we try
+                 * again.
+                 */
+                trySendCurrentTuple(node);
+            }
+        }
+    }
+    
+    /* THE HEAP SHOULD NOW HAVE A TUPLE FROM EVERY SOURCE.
+     *
+     * Pull out the next tuple and pass it back.
+     */
+    
+    tupHeapInfo = GetLowestValueFromCdbTupleHeap(node->tupleheap);
+    tuple = tupHeapInfo->tuple;
+    node->segindexNext = tupHeapInfo->sourceSegIndex;
+    
+    if (tuple != NULL)
+    {
+        /*
+         * store it in our result slot and return this.
+         */
+    
+        slot = node->ps.ps_ResultTupleSlot;
+        
+        node->numTuplesToParent++;
+    
+        return ExecStoreTuple(tuple, slot, InvalidBuffer, shouldFree);
+    }
+    else    /* tuple is null */
+    {
+        AssertState(node->noMoreChildTuples);
+        while (!node->sentEndOfStream)
+        {
+            /* Try to complete the End-Of-Stream send.  We know this
+             * is the broadcast scenario because we won't have a
+             * pending EOS send if we are the single receiver of a
+             * order-preserving motion.  (This is because a single
+             * receiver won't be sending to anybody.)
+             */
+            AssertState(motion->numOutputSegs == 0);
+            
+            sendRC = SendEndOfStream(motion->motionID, BROADCAST_SEGIDX);
+            node->sentEndOfStream = (sendRC == SEND_COMPLETE);
+        }
+        
+        /* This is just a sanity check. */
+        if (motion->numOutputSegs == 0)
+        {
+            /* If the tuple-heap hands back a NULL value, then that means that we
+             * don't have a tuple in flight.  This is because we cannot get the
+             * next tuple from the child plan until any in-progress send has
+             * completed.  Thus, when the child plan says it has no more tuples,
+             * we KNOW that all in-progress sends have completed.  Because the
+             * child plan must return NULL before the tuple-heap returns NULL, we
+             * know there should be no tuple-sends in flight at this point.
+             */
+            AssertState(node->tupSendCtxt.heap_tuple == NULL);
+            
+            /* We also must have sent our end-of-stream token already, since the
+             * heap cannot report NULL as the next tuple until it has received
+             * end-of-stream values from everyone.
+             */
+            AssertState(node->sentEndOfStream == true);
+        }
+
+        return NULL;
+    }
+}
+
+
+
+/* Helper function to try to send out the current tuple.
+ *
+ * NOTE:  node->tupSendCtxt.heap_tuple MUST NOT BE NULL!
+ */
+void trySendCurrentTuple(MotionState *node)
+{
+    Motion *motion = (Motion *)node->ps.plan;
+    SendReturnCode sendRC;
+
+    AssertArg(node->tupSendCtxt.heap_tuple != NULL);
+    
+    sendRC = SendTuple(motion->motionID, &node->tupSendCtxt);
+    if (sendRC == SEND_COMPLETE)
+    {
+        node->numTuplesToAMS++;
+        
+        /* Clean up the send-context. */
+        /* TODO:  Donnie should create a helper for this. */
+        
+        clearTCList(node->tupSendCtxt.tuple_chunk_list);
+        bzero(&node->tupSendCtxt, sizeof(node->tupSendCtxt));
+    }
+}
+
+
+void execMotionSortedFirstTime(MotionState *node)
+{
+	TupleTableSlot *outerTupleSlot;
+	PlanState *outerNode;
+	HeapTuple inputTuple;
+	Motion *motion = (Motion *)node->ps.plan;
+    int mySegIdx;
+    bool *tupsReceived;
+    bool allReady;
+    int i;
+    ReceiveReturnCode recvRC;
+    
+    getCdbIdentity(&mySegIdx, NULL);
+    
+    /* INITIALIZATION -
+     *
+     * We need to get a tuple from every sender, and stick it into the heap.
+     *
+     * To keep all the initialize-logic in one place, we will pull a single
+     * tuple from our child plan-node, IF noMoreChildTuples is false, AND if
+     * this segment is in the output segindex array.  (The second condition is
+     * true by default, if we are calling this function.  Thus, we assert it
+     * too.)
+     */
+    
+    /* These are all kinda different ways of saying the same thing... */
+    AssertState(!node->noMoreAMSTuples);
+    AssertState(motion->numOutputSegs == 0 ||
+                motion->outputSegIdx[0] == mySegIdx);
+    
+    if (!node->noMoreChildTuples)
+    {
+        /*
+         * grab TupleTableSlot from our child.
+         */
+        outerNode = outerPlanState(node);
+        
+        outerTupleSlot = ExecProcNode(outerNode);
+        if ( TupIsNull(outerTupleSlot) )
+        {
+            /* Child plan says "No more tuples!" */
+            node->noMoreChildTuples = true;
+            
+            SetCdbTupleHeapInitialValue(node->tupleheap, NULL, mySegIdx);
+        }
+        else
+        {
+            /* We got a tuple from the child-plan. */
+            
+            node->numTuplesFromChild++;
+            
+            SetCdbTupleHeapInitialValue(node->tupleheap, outerTupleSlot->val,
+                mySegIdx);
+            
+            /* We only send the tuple here if it is broadcast.  (Remember that
+             * we previously asserted that either it is broadcast, or this
+             * segment is the receiver of all tuples.)
+             */
+            if (motion->numOutputSegs == 0)
+            {
+                node->tupSendCtxt.heap_tuple = outerTupleSlot->val;
+                node->tupSendCtxt.target_segment = BROADCAST_SEGIDX;
+            }
+            
+            /* Don't really need to kick off the send here, since we will do
+             * it in the loop below.
+             */
+        }
+    }
+    
+    /* Now we iterate over the tuple-heap, and try to receive a tuple for
+     * each entry that doesn't yet have a tuple.
+     */
+    
+    tupsReceived = (bool *) palloc0(sizeof(bool) * motion->numInputSegs);
+    do
+    {
+		CHECK_FOR_INTERRUPTS();
+        
+        /* Unfortunately, if we have a send in progress, we MUST try to
+         * complete it, or else non-top order-preserving broadcast motion nodes
+         * will deadlock.
+         */
+        
+        if (node->tupSendCtxt.heap_tuple != NULL)
+            trySendCurrentTuple(node);
+        
+        /* This part of the loop is just trying to get a tuple for everybody. */
+        
+        allReady = true;
+        
+        for (i = 0; i < motion->numInputSegs; i++)
+        {
+            if (motion->inputSegIdx[i] == mySegIdx || tupsReceived[i])
+                continue;
+            
+            recvRC = RecvTupleFrom(motion->motionID, &inputTuple,
+                motion->inputSegIdx[i]);
+            
+            if (recvRC != NO_TUPLE)
+            {
+                SetCdbTupleHeapInitialValue(node->tupleheap, inputTuple,
+                    motion->inputSegIdx[i]);
+
+                tupsReceived[i] = true;
+                
+                if (recvRC == GOT_TUPLE)
+                    node->numTuplesFromAMS++;
+            }
+            else
+            {
+                allReady = false;
+            }
+        }
+    }
+    while (!allReady);
+    
+    /* Be nice and clean up. */
+    pfree(tupsReceived);
+    
+    node->tupleheapReady = true;
 }
 
 
@@ -698,7 +1083,11 @@ Motion *make_sorted_union_motion(Plan *lefttree, bool sendToSecondary, int destS
 								int numInputSegs, int *inputSegIdx )
 {
 	int *outputSegIdx = palloc( sizeof(int) );
-	outputSegIdx[0] = destSegIndex;
+    int mySegIdx;
+    
+    /* TODO:  Pete needs to work with Brian on this part.  Donnie is clueless. */
+    getCdbIdentity(&mySegIdx, NULL);
+	outputSegIdx[0] = mySegIdx;
 
 	return 	make_motion(lefttree, MOTIONTYPE_FIXED, 
 						sendToSecondary, true, 
