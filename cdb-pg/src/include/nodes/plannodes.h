@@ -407,6 +407,7 @@ typedef struct HashMotionDefn
 	int		numHashSegs;			/* number of segindexes in hashSegIdx array */	
 	int		*hashSegIdx;			/* array of segindex values to hash to */
 	List	*hashExpr;				/* list of hash expressions */
+	List	*hashOp;				/* list of hash operators oids */
 } HashMotionDefn;
 
 /*

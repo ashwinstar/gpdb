@@ -1178,6 +1178,8 @@ typedef struct MotionState
 	PlanState	ps;					/* its first field is NodeTag */
 	bool		noMoreChildTuples;	/* set when child node returns NULL */
 	bool		noMoreAMSTuples;	/* set when AMS indicates all peers are done sending tuples */
+	List		*hashExprState;
+	FmgrInfo	*hashfunctions;		/* functions to hash the expressions for a hash motion node */
 } MotionState;
 
 #endif   /* EXECNODES_H */
