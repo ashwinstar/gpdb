@@ -1130,6 +1130,7 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 	Plan *child;
 	int i;
 	AttrNumber *sortattrs = NULL;
+	Oid * sortoprs = NULL;
 	
 	/* Argument is a prescaned plan. */
 	child = outerPlan((Node*)plan);
@@ -1139,7 +1140,12 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 	/* Now get the stategy list. */
 	strategies = getAggStrategyList(agg);
 	
-	/* An AGG_SORTED node has special requirements. */
+	/* An AGG_SORTED node has special requirements.  We need to assure that 
+	 * it's input is correctly orders AND that the order in conserved in the
+	 * output in case an ancestor node assumes it.  If we can't gather the
+	 * necessary information, we have to reject the plan as currently not 
+	 * parallelizable.
+	 */
 	if ( agg->aggstrategy == AGG_SORTED )
 	{
 		/* Get the attribute numbers in the target list of the given Agg node 
@@ -1150,7 +1156,14 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 		 */
 		TargetEntry *tle;
 		AttrNumber attr, tidx = 0;
+		bool gotSortInfo;
+		
 		sortattrs = (AttrNumber*)palloc0(agg->numCols*sizeof(AttrNumber));
+		sortoprs = (Oid*)palloc0(agg->numCols*sizeof(Oid));
+		
+		/* Translate child node attribute numbers of the sort attributes 
+		 * into attribute numbers in the targetlist of this Agg node. 
+		 */
 		foreach( cell, plan->targetlist)
 		{
 			tidx++;
@@ -1162,15 +1175,34 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 				{
 					if ( attr == agg->grpColIdx[i] )
 					{
-						Assert( sortattrs[i]==0 );
+						Assert( sortattrs[i]==0 ); /* don't double assign! */
 						sortattrs[i] = tidx;
 					}
 				}
 			}
 		}
-		for ( i = 0; i < agg->numCols; i++ )
+		
+		/* Get sort operators from the child flow, check results of above
+		 * translation.
+		 */
+		gotSortInfo = FALSE;
+		if ( child->flow != NULL && child->flow->numSortCols >= agg->numCols )
 		{
-			Assert( sortattrs[i] != 0 );
+			gotSortInfo = TRUE;
+			for ( i = 0; i < agg->numCols; i++ )
+			{
+				if ( sortattrs[i] == 0 )
+				{
+					gotSortInfo = FALSE;
+					break; /* for loop */
+				}
+				sortoprs[i] = child->flow->sortOperators[i];
+			}
+		}
+		if ( !gotSortInfo )
+		{
+			psErrorNonce(context, "Ordering for sorted aggregation unknown");
+			return true;
 		}
 	}
 
@@ -1280,11 +1312,8 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 		plan->flow->numSortCols = agg->numCols;
 		plan->flow->sortColIdx = sortattrs;
 		sortattrs = NULL;
-		plan->flow->sortOperators = palloc(agg->numCols * sizeof(Oid));
-		for ( i = 0; i <  agg->numCols; i++)
-		{
-			plan->flow->sortOperators[i] = child->flow->sortOperators[i];
-		}
+		plan->flow->sortOperators = sortoprs;
+		sortoprs = NULL;
 	}
 	noteFlow(plan->flow, context);
 	return false;	 
