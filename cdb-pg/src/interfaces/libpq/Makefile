@@ -19,9 +19,7 @@ NAME= pq
 SO_MAJOR_VERSION= 3
 SO_MINOR_VERSION= 2
 
-# Commented out to force .so instead of .dylib library creation on Mac (darwin)
-# platforms.  -dhp 2004/12/23
-# DLTYPE= library
+DLTYPE= library
 
 override CPPFLAGS :=  -DFRONTEND -I$(srcdir) $(CPPFLAGS) -I$(top_builddir)/src/port
 override CFLAGS += $(PTHREAD_CFLAGS)
