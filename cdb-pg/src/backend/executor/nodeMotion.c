@@ -916,7 +916,7 @@ ExecEndMotion(MotionState *node)
 	}
 
 	if ( node->tupleheap != NULL )
-		DestroyCdbTupleHeap(node->tupleheap);
+		DestroyCdbHeap(node->tupleheap);
 
     /*
      * Free up this motion node's resources in the Motion Layer.
