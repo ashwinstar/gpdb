@@ -124,29 +124,7 @@ create table teams
 	primary key (Team_ID),
 	unique (Team_Name));
 	
-create table leagues
-(	League_ID  char(1),
-	League_Name  varchar(20),
-	
-	primary key (League_ID),
-	unique (League_Name));
-	
-create table divisions
-(	Division_ID  varchar(10),
-	Division_Name  varchar(30),
-	
-		
-	primary key (Division_ID),
-	unique (Division_Name)
-	);
-	
-create table teams
-(	Team_ID  varchar(5),
-	Team_Name  varchar(20),
-	
-	primary key (Team_ID),
-	unique (Team_Name));
-	
+
 create table positions
 (	Position_ID  numeric(1),
 	Position_Name  varchar(20),
