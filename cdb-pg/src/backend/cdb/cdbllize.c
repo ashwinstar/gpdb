@@ -131,7 +131,7 @@ static void assignMotionID(Node* newnode, ApplyMotionState* context, Node* oldno
  * The result is [a copy of] the input plan with alterations to make the 
  * plan suitable for execution by CDB.
  *
- * TODO Much investigation remains in the areas of 
+ * TODO: Much investigation remains in the areas of 
  *
  *      - initialization plans,
  *      - plan parameters, 
@@ -140,6 +140,16 @@ static void assignMotionID(Node* newnode, ApplyMotionState* context, Node* oldno
  *      - etc.
  *
  *      The current implementation is little more than a rough sketch.
+ *
+ * TODO: Split the prescan into 2 phases to avoid flunking QD-only queries.
+ *
+ *		The first scan (a true prescan) can just attach initial Flows
+ *		to Plan leaves and take an inventory of relations touched.
+ *      There no reason this would need to fail, so we can take an
+ *      early exit for QD-only queries.
+ *     
+ *      The seconnd scan (a postscan) does what the current scan does
+ *      minus attaching initial Flows to leaves.
  * ------------------------------------------------------------------------- *
  */
 Plan *
@@ -1020,6 +1030,14 @@ bool prescan_nestloop(Plan *plan, PlanProfile *context)
 		 */
 		 if ( IsA(inner, IndexScan) && s->rightmove != MOVEMENT_NONE )
 			continue;
+		/* 
+		 * TODO: Remove restriction by learning to add Material over Motion
+		 *       in the apply_motion_mutator().  The additional communication
+		 *       this would need is unclear.  Also need to consider its
+		 *       effect on costing.
+		 */
+		if (  ! IsA(inner, Material) && s->rightmove != MOVEMENT_NONE )
+			continue;
 			
 		strategy = copyJoinStrategy(s);
 		break;
@@ -1085,16 +1103,12 @@ bool prescan_nestloop(Plan *plan, PlanProfile *context)
 			 * We don't assume this, but if it isn't the case we'll fail.
 			 *			
 			 * TODO: Need a way to communicate (in a Flow) to the mutator
-			 * that it should add a Material node above an added Motion.
-			 * This would avoid the special requirement.
+			 *       that it should add a Material node above an added Motion.
+			 *       This would avoid the special requirement.  Note that we
+			 *       eliminate strategies that don't match the pattern in
+			 *       the filter stage above, so the Assert should never trip.
 			 */
-			if ( ! IsA(inner, Material) )
-			{
-				psErrorInternal(context, "unexpected inner relation type in nested loop join.");
-				/* Hint: Try again with set enable_nestloop = false */
-				return true;	 
-
-			}
+			Assert ( ! IsA(inner, Material) );
 			
 			switch ( strategy->rightmove )
 			{
