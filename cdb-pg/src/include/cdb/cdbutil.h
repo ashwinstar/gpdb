@@ -31,6 +31,7 @@ typedef struct segment_database_info
     char		*hostname;  	// name or ip address of host machine
     int4		port;     		// port that instance is listening on
     char		*datadir;   	// directory where instance was initialized into
+    int4		listenerid;		// id of listener for this database.
     bool		isvalid;    	// flag that tells whether the database is valid
     char		*cdbsuperuser;	// user name for cdb connection
     char		*cdbsuperpswd;	// password for cdb connection
