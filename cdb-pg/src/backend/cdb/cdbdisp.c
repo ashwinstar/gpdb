@@ -26,7 +26,7 @@ typedef struct DispatchCommandParms
 	/*
 	 * The SQL command
 	 */
-	const char					*szCommand;
+	char					*szCommand;
 
 	/*
 	 * db_count: The number of segdbs that this thread is responsible 
@@ -88,9 +88,14 @@ static void createThreadPoolPerSegment( DispatchCommandParms *dispatchCommandPar
 										 const char *szCommand, bool cancelFromBelow);
 static void createThreadPoolPerSegDB( DispatchCommandParms *dispatchCommandParmsAr, int *psegdbs_in_thread_pool,
 										 const char *szCommand, bool cancelFromBelow);
+static void createThreadPoolEnumeration( DispatchCommandParms *dispatchCommandParmsAr, int *psegdbs_in_thread_pool,
+										 const char *szCommand, bool cancelFromBelow, 
+										 SegmentDatabaseDescriptor **segdbList, int segdbListCount);
 static void addSegDBToDispatchThreadPool( DispatchCommandParms *ParmsAr, int *segdbCount, const char *szCommand, 
 										bool cancelFromBelow, SegmentDatabaseDescriptor *segdbDesc);
 static CdbDispatchResults *initCdbDispatchResults(void);
+static void CdbDumpDispatchResult( CdbDispatchResult *result, bool verbose, StringInfo message );
+
 
 /*
  * Static Variables.  These contain the thread count and array of 
@@ -115,7 +120,9 @@ static int	threadCount = 0;
  * The number of segdbs handled by any one thread is determined by the
  * guc variable cdb_connections_per_thread.
  */
-void CdbDispatchCommand( const char *szCommand, DispatchTargetSet targetSet, bool cancelFromBelow )
+void CdbDispatchCommand( const char *szCommand, DispatchTargetSet targetSet, 
+						SegmentDatabaseDescriptor **segdbList, int segdbListCount, 
+						bool cancelFromBelow )
 {
 	int i;
 	int max_threads;
@@ -123,6 +130,10 @@ void CdbDispatchCommand( const char *szCommand, DispatchTargetSet targetSet, boo
 	
 	if ( Cdb_role != CDB_ROLE_DISPATCH )
 		return;
+
+	Assert( segdbList == NULL || targetSet == DTS_ENUMERATION ); 
+	Assert( segdbListCount == 0 || targetSet == DTS_ENUMERATION );
+	Assert( segdbList == NULL || segdbListCount > 0 );
 	
 	int segdb_count = CdbClusterDefinition->segdb_count;
 	
@@ -157,10 +168,17 @@ void CdbDispatchCommand( const char *szCommand, DispatchTargetSet targetSet, boo
 			createThreadPoolPerSegment( dispatchCommandParmsAr, &segdbs_in_thread_pool,
 										 szCommand, cancelFromBelow);
 			break;
-		default:			
+
+		case DTS_SEGDB:
 			createThreadPoolPerSegDB( dispatchCommandParmsAr, &segdbs_in_thread_pool,
 										 szCommand, cancelFromBelow);
 			break;
+
+		case DTS_ENUMERATION:
+			createThreadPoolEnumeration( dispatchCommandParmsAr, &segdbs_in_thread_pool,
+										 szCommand, cancelFromBelow, segdbList, segdbListCount);
+			break;
+
 	}
 
 	/*
@@ -820,6 +838,44 @@ void createThreadPoolPerSegDB( DispatchCommandParms *dispatchCommandParmsAr, int
 }
 
 /*
+ * createThreadPoolEnumeration:
+ * This function uses the parameter segdbList as the subset definition.
+ * It assigns each segdb in the subset to a thread in the thread pool.
+ * This is based on each thread handling cdb_connections_per_thread connections.
+ */
+void createThreadPoolEnumeration( DispatchCommandParms *dispatchCommandParmsAr, int *psegdbs_in_thread_pool,
+									const char *szCommand, bool cancelFromBelow, 
+									SegmentDatabaseDescriptor **segdbList, int segdbListCount)
+{
+	int x;
+	SegmentDatabaseDescriptor *segdbDesc;
+	SegmentDatabaseInfo *q;
+
+	for ( x=0; x<segdbListCount; x++)
+	{
+		Assert( segdbDesc != NULL );
+		segdbDesc = segdbList[x];
+		if ( segdbDesc->conn == NULL )
+		{
+			q = segdbDesc->segment_database_info;
+			Assert( q != NULL );
+
+			// This is an error condition	
+			ereport( ERROR,
+						(errcode( ERRCODE_SQLSERVER_REJECTED_ESTABLISHMENT_OF_SQLCONNECTION ),
+						errmsg("Cannot dispatch command %s to segindex %d isprimary %c, because "
+					 			"there is no connection.",
+					 			szCommand, q->segindex, (q->isprimary ? 't' : 'f')
+					)));
+
+		}
+
+		addSegDBToDispatchThreadPool( dispatchCommandParmsAr, psegdbs_in_thread_pool, 
+									szCommand, cancelFromBelow, segdbDesc );
+	}
+}
+
+/*
  * listenerSegDBPairCompare:
  * A compare function for ListenerSegDBPair structs
  * that compares based on listenerid,
@@ -896,11 +952,15 @@ CdbDispatchResults *initCdbDispatchResults(void)
 	results->success = true;
 	results->count = 0;
 	results->pResults = NULL;
+	results->szCommand = NULL;
 
 	for ( i=0; i<threadCount; i++ )
 	{
 		pParms = &dispatchCommandParmsAr[i];
 		results->count += pParms->db_count;
+
+		if ( i == 0 && pParms->szCommand != NULL )
+			results->szCommand = pstrdup( pParms->szCommand );
 	}
 
 	if ( results->count > 0 )
@@ -922,8 +982,7 @@ CdbDispatchResults *initCdbDispatchResults(void)
 
 				CdbDispatchResult *result = &results->pResults[x++];
 
-				result->segindex		= q->segindex;
-				result->isprimary		= q->isprimary;
+				result->segdbDesc		= segdbDesc;
 				result->error_message	= NULL;
 				result->cmdTuples		= 0;
 				result->cmdStatus		= NULL;
@@ -962,6 +1021,9 @@ void DestroyCdbDispatchResults(CdbDispatchResults *results)
 		pfree( results->pResults );
 	}
 
+	if ( results->szCommand != NULL )
+		pfree( results->szCommand );
+
 	pfree( results );
 
 }
@@ -985,4 +1047,189 @@ int SumCmdTuples(CdbDispatchResults *results)
 	}
 
 	return cmdTuples;
+}
+
+/*
+ * CdbDoCommand:
+ * Combination of CdbDispatchCommand and then CdbCheckDispatchResult.
+ * If it fails on any of the targets, and the undo command is non-NULL,
+ * then the undo command is run on any targets that were successful.
+ * If the command successfully ran, returns true.
+ * If it failed on at least one target, and the undo was NULL or successful, then returns false.
+ * If it failed but the undo failed, ereport is called.
+ */
+bool CdbDoCommand( const char *szCommand, const char *szUndoCommand, 
+					DispatchTargetSet targetSet, 
+					bool cancelFromBelow )
+{
+	CdbDispatchResults* results = NULL;
+	bool				rtn		= true;
+	char				*message_do;
+	char				*message_undo;
+
+	Assert(szCommand != NULL);
+
+	CdbDispatchCommand( szCommand, targetSet, NULL, 0, cancelFromBelow );
+
+	results = CdbCheckDispatchResult();
+
+	message_do = CdbDumpDispatchResults(results, true);
+	Assert( message_do != NULL );
+	elog( DEBUG5,
+			"cdbexec command results for \"%s\": %s",
+			szCommand, message_do );
+
+	pfree(message_do);
+
+	if ( !results->success )
+	{
+		message_do = CdbDumpDispatchResults(results, false);
+		rtn = false;
+
+		if ( szUndoCommand != NULL )
+		{
+			int i;
+			int x = 0;
+			SegmentDatabaseDescriptor	**segdbsForUndo;
+			CdbDispatchResults* undo_results = NULL;
+
+
+			segdbsForUndo = (SegmentDatabaseDescriptor **)palloc0( results->count * sizeof(SegmentDatabaseDescriptor *) );
+			for( i=0; i<results->count; i++ )
+			{
+				CdbDispatchResult *pResult = &results->pResults[i];
+				if ( pResult->error_message == NULL )
+				{
+					segdbsForUndo[x++] = pResult->segdbDesc;
+				}
+			}
+
+			CdbDispatchCommand( szUndoCommand, DTS_ENUMERATION, segdbsForUndo, x, cancelFromBelow );
+
+			undo_results = CdbCheckDispatchResult();
+
+			message_undo = CdbDumpDispatchResults(undo_results, true);
+			Assert( message_undo != NULL );
+			elog( DEBUG2,
+					"cdbexec undo command results for \"%s\": %s",
+					szUndoCommand, message_undo );
+
+			pfree(message_undo);
+
+			if ( !undo_results->success )
+			{
+				// This is an error condition	
+				message_undo = CdbDumpDispatchResults(undo_results, false);
+				ereport( ERROR,
+							(errcode( ERRCODE_CDB_COMMAND_ERROR ),
+							errmsg("Command \"%s\" failed on at least one segment database: %s, "
+							"and then the undo command \"%s\" also failed on at least one segment database: %s",
+					 		szCommand, message_do, szUndoCommand, message_undo
+						)));
+			}
+			else
+			{
+				ereport( DEBUG5,
+							(errcode( ERRCODE_CDB_COMMAND_ERROR ),
+							errmsg("Command \"%s\" failed on at least one segment database: %s, "
+							"and then the undo command \"%s\" executed successfully",
+					 		szCommand, message_do, szUndoCommand
+						)));
+
+			}
+
+			DestroyCdbDispatchResults( undo_results );
+		}
+		else
+		{
+
+			ereport( DEBUG5,
+						(errcode( ERRCODE_CDB_COMMAND_ERROR ),
+						errmsg("Command \"%s\" failed on at least one segment database: %s, "
+						"and then the undo command \"%s\" executed successfully",
+					 	szCommand, message_do, szUndoCommand
+					)));
+
+		}
+
+		pfree( message_do );
+	}
+
+	DestroyCdbDispatchResults( results );
+
+	return rtn;
+}
+
+/*
+ * CdbDumpDispatchResults:
+ * Formats a string with results info.
+ * If verbose = true, reports on all target databases.
+ * If false, reports on only failures.
+ */
+char *CdbDumpDispatchResults(CdbDispatchResults *results, bool verbose)
+{
+	StringInfoData buffer;
+	int i;
+
+	Assert( results != NULL );
+
+	if ( !verbose && results->success )
+		return NULL;
+
+	initStringInfo( &buffer );
+
+	for ( i=0; i<results->count; i++ )
+	{
+		CdbDispatchResult *result = &results->pResults[i];
+		CdbDumpDispatchResult( result, verbose, &buffer );
+	}
+
+	return buffer.data;
+}
+
+void CdbDumpDispatchResult( CdbDispatchResult *result, bool verbose, StringInfo message )
+{
+	SegmentDatabaseInfo *q;
+
+	Assert( result != NULL );
+	Assert( result->segdbDesc != NULL );
+	Assert( message != NULL );
+
+	q = result->segdbDesc->segment_database_info;
+	Assert( q != NULL );
+
+	if ( !verbose )
+	{
+		if ( result->error_message == NULL )
+			return;
+
+		appendStringInfo( message, "segindex %d isprimary %c : %s\n", 
+							q->segindex, (q->isprimary ? 't' : 'f'),
+							result->error_message );
+	}
+	else
+	{
+		/*
+		 * In verbose mode, dump out all fields
+		 */
+		char *error_message = result->error_message;
+		char *cmdStatus		= result->cmdStatus;
+
+		if ( error_message == NULL )
+			error_message = "NULL";
+
+		if ( cmdStatus == NULL )
+			cmdStatus = "NULL";
+
+		appendStringInfo( message, "segindex %d isprimary %c \n"
+						"error message: %s "
+						"cmdTuples : %d "
+						"cmdStatus : %s "
+						"resultStatus : %d\n",
+						q->segindex, (q->isprimary ? 't' : 'f'),
+						error_message,
+						result->cmdTuples,
+						cmdStatus,
+						result->resultStatus);
+	}
 }
