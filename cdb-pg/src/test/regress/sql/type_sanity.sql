@@ -160,10 +160,12 @@ WHERE p1.typsend = p2.oid AND p1.typtype in ('b', 'p') AND NOT
 -- **************** pg_class ****************
 
 -- Look for illegal values in pg_class fields
+-- Modified for cdb2 schema entries
 
 SELECT p1.oid, p1.relname
 FROM pg_class as p1
-WHERE p1.relkind NOT IN ('r', 'i', 's', 'S', 't', 'v');
+WHERE p1.relkind NOT IN ('r', 'i', 's', 'S', 't', 'v')
+AND p1.relname NOT IN ('table_descriptor');
 
 -- Indexes should have an access method, others not.
 
