@@ -18,7 +18,8 @@ OBJCOPY ?= objcopy
 SUBDIRS := motion
 SUBDIROBJS := $(SUBDIRS:%=%/SUBSYS.o)
 
-OBJS = cdbvars.o cdbplan.o cdbllize.o cdbcat.o cdbutil.o cdblink.o cdbjoin.o cdbdisp.o cdbsrlz.o cdbhash.o
+OBJS = cdbvars.o cdbplan.o cdbllize.o cdbcat.o cdbutil.o cdblink.o cdbjoin.o \
+	   cdbdisp.o cdbsrlz.o cdbhash.o cdbheap.o
 
 ifeq ($(PORTNAME),cygwin)
 .LIBPATTERNS := $(filter-out %.so,$(.LIBPATTERNS))
