@@ -1606,14 +1606,46 @@ scanForManagedTables_walker(Node *node, PlanProfile *context)
 			}
 
 			break;  
-		
+
+		case T_SubqueryScan:
+			{
+				/*
+				 * SubqueryScans have thier own range table.  See ExecInitSubqueryScan
+				 * for details.
+				 * We save the context range table, substitute the SubqueryScan's range table
+				 * in the context before we descend into the fields of the SubqueryScan
+				 * and then put the original one back.
+				 */
+				RangeTblEntry *rte;
+				List *rtOld;
+				Plan *plan = (Plan*)node;
+				Scan *scan = (Scan*)plan;
+				Index rtindex = scan->scanrelid;
+				
+				rte = rt_fetch(rtindex, context->rtable);
+				Assert(rte->rtekind == RTE_SUBQUERY);
+				
+				rtOld = context->rtable;
+				Assert( rte->subquery->rtable != NULL );
+
+				context->rtable = rte->subquery->rtable;
+				
+				if ( plan_tree_walker(node, scanForManagedTables_walker, context) )
+					return true;
+
+				context->rtable = rtOld;
+
+				return false;
+			}
+
+			break;
 
 		default:
+			/* Let plan_tree_walker() deal with other node types. */
 			break;
 
 	}
 
-	/* Let plan_tree_walker() deal with other node types. */
 	return plan_tree_walker(node, scanForManagedTables_walker, context);
 }
 
