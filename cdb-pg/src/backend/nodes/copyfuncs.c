@@ -558,9 +558,11 @@ _copyMotion(Motion *from)
 	COPY_POINTER_FIELD(hashSegIdx, from->numHashSegs * sizeof(int));
 	COPY_NODE_FIELD(hashExpr);
 	COPY_NODE_FIELD(hashOp);
+	COPY_SCALAR_FIELD(hashToSelfOnly);
 	
 	COPY_SCALAR_FIELD(numOutputSegs);
 	COPY_POINTER_FIELD(outputSegIdx, from->numOutputSegs * sizeof(int));
+	COPY_SCALAR_FIELD(fixedToSelfOnly);
 
 	COPY_SCALAR_FIELD(numSortCols);
 	COPY_POINTER_FIELD(sortColIdx, from->numSortCols * sizeof(AttrNumber));

@@ -545,11 +545,13 @@ _outMotion(StringInfo str, Motion *node)
 
 	WRITE_NODE_FIELD(hashExpr);
 	WRITE_NODE_FIELD(hashOp);
+	WRITE_BOOL_FIELD(hashToSelfOnly);
 
 	WRITE_INT_FIELD(numOutputSegs);
 	appendStringInfo(str, " :outputSegIdx");
 	for (i = 0; i < node->numOutputSegs; i++)
 		appendStringInfo(str, " %d", node->outputSegIdx[i]);
+	WRITE_BOOL_FIELD(fixedToSelfOnly);
 
 	WRITE_INT_FIELD(numSortCols);
 	appendStringInfo(str, " :sortColIdx");

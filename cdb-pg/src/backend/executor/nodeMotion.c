@@ -123,7 +123,7 @@ execMotionUnsorted(MotionState *node)
     AssertState(motion->motionType == MOTIONTYPE_HASH ||
         (motion->motionType == MOTIONTYPE_FIXED && motion->numOutputSegs <= 1));
     
-    getCdbIdentity(&mySegIdx, NULL);
+    mySegIdx = CdbIdentity.segindex;
 
     tuple = NULL;
     tupleInFlight = (node->tupSendCtxt.heap_tuple != NULL);
@@ -232,22 +232,34 @@ execMotionUnsorted(MotionState *node)
                         
                         /* TODO:  We can only support one output-segment right now! */
                         AssertState(motion->numOutputSegs == 1);
-                        
-                        if (motion->outputSegIdx[0] == mySegIdx)
-                        {
-                            /* We are the receiver, so pass-thru the tuple. */
-                            tuple = outerTupleSlot->val;
-	                        shouldFree = false;
-                        }
-                        else
-                        {
-                            /* The target is someone else.  Set up the send. */
-                            node->tupSendCtxt.heap_tuple = outerTupleSlot->val;
-                            node->tupSendCtxt.target_segment =
-                                motion->outputSegIdx[0];
 
-                            Assert(tuple == NULL);
-                        }
+						/*
+						* If hashSegIdxMask is non-NULL, check to see whether
+						* hashing to the target_segindex has been turned off.
+						*/
+						if ( node->fixedSegIdxMask != NULL && !node->fixedSegIdxMask[0] )
+						{
+							// this tuple will be deep-sixed!
+							node->numTuplesToDeepSix++;
+						}
+						else
+						{
+							if (motion->outputSegIdx[0] == mySegIdx)
+							{
+								/* We are the receiver, so pass-thru the tuple. */
+								tuple = outerTupleSlot->val;
+								shouldFree = false;
+							}
+							else
+							{
+								/* The target is someone else.  Set up the send. */
+								node->tupSendCtxt.heap_tuple = outerTupleSlot->val;
+								node->tupSendCtxt.target_segment =
+									motion->outputSegIdx[0];
+
+								Assert(tuple == NULL);
+							}
+						}
                     }
                 }
                 else    /* Hash motion node */
@@ -257,7 +269,6 @@ execMotionUnsorted(MotionState *node)
 					uint32 hval = 0;
 					uint16 target_segindex;
 					
-
 					econtext->ecxt_outertuple = outerTupleSlot;
 					hval = evalHashKey(econtext, node->hashExprState, node->hashOids, node->cdbhash);
 					target_segindex = motion->hashSegIdx[ hval  ];
@@ -265,20 +276,32 @@ execMotionUnsorted(MotionState *node)
 					Assert( node->numTuplesByHashSegIdx != NULL );
 					node->numTuplesByHashSegIdx[ hval ]++;
 
-					if ( target_segindex == mySegIdx )
+					/*
+					 * If hashSegIdxMask is non-NULL, check to see whether
+					 * hashing to the target_segindex has been turned off.
+					 */
+					if ( node->hashSegIdxMask != NULL && !node->hashSegIdxMask[hval] )
 					{
-                        /* We are the receiver, so pass-thru the tuple. */
-                        tuple = outerTupleSlot->val;
-                        shouldFree = false;
-                    }
-                    else
-                    {
-                        /* The target is someone else.  Set up the send. */
-                        node->tupSendCtxt.heap_tuple = outerTupleSlot->val;
-                        node->tupSendCtxt.target_segment = target_segindex;
+						// this tuple will be deep-sixed!
+						node->numTuplesToDeepSix++;
+					}
+					else
+					{
+						if ( target_segindex == mySegIdx )
+						{
+							/* We are the receiver, so pass-thru the tuple. */
+							tuple = outerTupleSlot->val;
+							shouldFree = false;
+						}
+						else
+						{
+							/* The target is someone else.  Set up the send. */
+							node->tupSendCtxt.heap_tuple = outerTupleSlot->val;
+							node->tupSendCtxt.target_segment = target_segindex;
 
-                        Assert(tuple == NULL);
-                    }
+							Assert(tuple == NULL);
+						}
+					}
                 }
                 
                 /* If we have to send this tuple, kick off that process here. */
@@ -342,7 +365,7 @@ execMotionSorted(MotionState *node)
     AssertState(motion->sendSorted);
     AssertState(node->tupleheap != NULL);
     
-    getCdbIdentity(&mySegIdx, NULL);
+    mySegIdx = CdbIdentity.segindex;
     
     /* NOTE:  THIS IS TRICKY!!!
      *
@@ -597,7 +620,7 @@ void execMotionSortedFirstTime(MotionState *node)
     int i;
     ReceiveReturnCode recvRC;
     
-    getCdbIdentity(&mySegIdx, NULL);
+    mySegIdx = CdbIdentity.segindex;
     
     /* INITIALIZATION -
      *
@@ -749,6 +772,7 @@ ExecInitMotion(Motion *node, EState *estate)
 	motionstate->numTuplesToAMS = 0;
 	motionstate->numTuplesFromAMS = 0;
 	motionstate->numTuplesToParent = 0;
+	motionstate->numTuplesToDeepSix = 0;
 	
     bzero(&motionstate->tupSendCtxt, sizeof(motionstate->tupSendCtxt));
     
@@ -785,7 +809,6 @@ ExecInitMotion(Motion *node, EState *estate)
 	 */
 	ExecAssignResultTypeFromOuterPlan(&motionstate->ps);
 	motionstate->ps.ps_ProjInfo = NULL;
-	motionstate->hashfunctions = NULL;
 	motionstate->hashExprState = NULL;
 	motionstate->hashOids = NULL;
 	motionstate->cdbhash = NULL;
@@ -799,21 +822,13 @@ ExecInitMotion(Motion *node, EState *estate)
 		 * Get info about the hash functions to be used for each hash key.
 		 */
 		Assert( node->hashOp != NULL );
+		Assert( node->numHashSegs > 0 );
 		 
 		nkeys = list_length(node->hashOp);
-		motionstate->hashfunctions = (FmgrInfo *) palloc(nkeys * sizeof(FmgrInfo));
 		motionstate->hashOids = (Oid *) palloc(nkeys * sizeof(Oid));
 		i = 0;
 		foreach(ho, node->hashOp)
 		{
-			Oid			hashfn;
-	
-			hashfn = get_op_hash_function(lfirst_oid(ho));
-			if (!OidIsValid(hashfn))
-				elog(ERROR, "could not find hash function for hash operator %u",
-					 lfirst_oid(ho));
-			fmgr_info(hashfn, &motionstate->hashfunctions[i]);
-
 			Oid lefttype;
 			Oid righttype;
 
@@ -825,9 +840,53 @@ ExecInitMotion(Motion *node, EState *estate)
 		
 		motionstate->hashExprState = (List *)ExecInitExpr( (Expr *)node->hashExpr,
 														 (PlanState *) motionstate);
-		Assert( node->numHashSegs > 0 );
+
+		/*
+		 * Create hash API reference
+		 */
 		motionstate->cdbhash = makeCdbHash(node->numHashSegs, HASH_FNV_1); 
+
+		/*
+		 * Create bit vector of masks if this is a "deep-six" hash motion node
+		 */
+		if ( node->hashToSelfOnly )
+		{
+			Assert( !node->sendSorted );
+
+			motionstate->hashSegIdxMask = palloc0( node->numHashSegs * sizeof(bool) );
+			for ( i=0; i<node->numHashSegs; i++ )
+			{
+				if ( node->hashSegIdx[i] == CdbIdentity.segindex )
+					motionstate->hashSegIdxMask[i] = true;
+				else
+					motionstate->hashSegIdxMask[i] = false;
+			}
+		}
+
+		/*
+		 * Create buckets to hold counts of tuples hashing to each destination segindex (for debugging purposes)
+		 */
 		motionstate->numTuplesByHashSegIdx = (int *)palloc0( node->numHashSegs * sizeof(int) );
+	}
+	else if ( node->motionType == MOTIONTYPE_FIXED )
+	{
+		/*
+		 * Create bit vector of masks if this is a "deep-six" fixed motion node
+		 */
+		if ( node->fixedToSelfOnly )
+		{
+			Assert( node->numOutputSegs > 0 );
+			Assert( !node->sendSorted );
+
+			motionstate->fixedSegIdxMask = palloc0( node->numOutputSegs * sizeof(bool) );
+			for ( i=0; i<node->numOutputSegs; i++ )
+			{
+				if ( node->outputSegIdx[i] == CdbIdentity.segindex )
+					motionstate->fixedSegIdxMask[i] = true;
+				else
+					motionstate->fixedSegIdxMask[i] = false;
+			}
+		}
 	}
 
 	if ( node->sendSorted )
@@ -918,12 +977,13 @@ ExecEndMotion(MotionState *node)
 	Assert( motion != NULL );
 
 	elog( DEBUG1, "Motion Node %d counts: "
-					"%d numTuplesFromChild, %d numTuplesFromAMS, %d numTuplesToAMS, %d numTuplesToParent",
+					"%d numTuplesFromChild, %d numTuplesFromAMS, %d numTuplesToAMS, %d numTuplesToParent, %d numTuplesToDeepSix",
 					motNodeID,
 					node->numTuplesFromChild, 
 					node->numTuplesFromAMS, 
 					node->numTuplesToAMS, 
-					node->numTuplesToParent
+					node->numTuplesToParent,
+					node->numTuplesToDeepSix
 		);
 
 	if ( motion->motionType == MOTIONTYPE_FIXED && motion->numOutputSegs == 0 )
@@ -933,7 +993,7 @@ ExecEndMotion(MotionState *node)
 	}
 	else
 	{
-		Assert(node->numTuplesFromChild + node->numTuplesFromAMS == node->numTuplesToAMS + node->numTuplesToParent);
+		Assert(node->numTuplesFromChild + node->numTuplesFromAMS == node->numTuplesToAMS + node->numTuplesToParent + node->numTuplesToDeepSix);
 	}
 
 	if ( motion->motionType == MOTIONTYPE_HASH )
@@ -949,6 +1009,14 @@ ExecEndMotion(MotionState *node)
 			pfree( node->numTuplesByHashSegIdx );
 			node->numTuplesByHashSegIdx = NULL;
 		}
+
+		if ( node->hashSegIdxMask != NULL )
+			pfree( node->hashSegIdxMask );
+	}
+	else if ( motion->motionType == MOTIONTYPE_FIXED )
+	{
+		if ( node->fixedSegIdxMask != NULL )
+			pfree( node->fixedSegIdxMask );
 	}
 
 	if ( node->tupleheap != NULL )
@@ -1119,7 +1187,6 @@ Motion *make_motion(Plan *lefttree, MotionType motionType,
 	plan->plan_rows = lefttree->plan_rows;
 	plan->plan_width = lefttree->plan_width;
 	plan->targetlist = copyObject(lefttree->targetlist);
-//	plan->targetlist = makeMotionTargetList(lefttree); 
 	plan->qual = NIL;
 	plan->lefttree = lefttree;
 	plan->righttree = NULL;
@@ -1128,14 +1195,13 @@ Motion *make_motion(Plan *lefttree, MotionType motionType,
 	node->sendToSecondary = sendToSecondary;
 	node->sendSorted = sendSorted;
 
-	/* TODO: When cdb schema changes are in place, change makeDefaultSegIdx
-	 * to reflect the changes, and remove this if statement.
-	 * Go back to using the passed in values for
-	 * numHashSegs and hashSegIdx
-	 */ 
+	node->hashToSelfOnly = false;
+	node->fixedToSelfOnly = false;
+
 	if ( motionType == MOTIONTYPE_HASH )
 	{
-		node->hashSegIdx = makeDefaultSegIdxArrayNew(&node->numHashSegs);
+		node->numHashSegs = numHashSegs;
+		node->hashSegIdx = hashSegIdx;
 	}
 
 	node->hashExpr = hashExpr;
@@ -1147,14 +1213,10 @@ Motion *make_motion(Plan *lefttree, MotionType motionType,
 	node->sortColIdx = sortColIdx;
 	node->sortOperators = sortOperators;
 
-	/* TODO: When cdb schema changes are in place, change makeDefaultSegIdx
-	 * to reflect the changes, and remove this if statement.
-	 * Go back to using the passed in values for
-	 * numInputSegs and inputSegIdx
-	 */ 
 	if ( sendSorted )
 	{
-		node->inputSegIdx = makeDefaultSegIdxArrayNew(&node->numInputSegs);
+		node->numInputSegs = numInputSegs; 
+		node->inputSegIdx = inputSegIdx;
 	}
 
 	return node;
@@ -1180,7 +1242,7 @@ Motion *make_sorted_union_motion(Plan *lefttree, bool sendToSecondary, int destS
     int mySegIdx;
     
     /* TODO:  Pete needs to work with Brian on this part.  Donnie is clueless. */
-    getCdbIdentity(&mySegIdx, NULL);
+    mySegIdx = CdbIdentity.segindex;
 	outputSegIdx[0] = mySegIdx;
 
 	return 	make_motion(lefttree, MOTIONTYPE_FIXED, 
@@ -1231,41 +1293,47 @@ Motion *make_sorted_broadcast_motion(Plan *lefttree, bool sendToSecondary,
 						numSortCols, sortColIdx, sortOperators, numInputSegs, inputSegIdx );
 }
 
-/* --------------------------------------------------------------------
- * makeDefaultSegIdxArray -- creates an int array with numSegs-1 elements,
- * with values of all segindexes except this one
- * --------------------------------------------------------------------
+/*
+ * setHashToSelfOnly
+ * This enables "deep-sixing" of hash motion, whereby
+ * a tuple is only passed along if it hashes to its own segindex.
+ * This implements "replicated to partitioned" motion.
+ *
+ * The motion node must already have been created, 
+ * it must of course be a hash motion node,
+ * and it must not be sorted (Currently sorted hash motion ins not permitted anyway).
  */
-int *makeDefaultSegIdxArrayNew(int *count)
+void setHashToSelfOnly( Motion *motion )
 {
-	int *segIdx = NULL;
-	int i;
-	int x;
-	int segmentCount;
-	int mySegIndex;
+	Assert( motion != NULL );
+	Assert( motion->motionType == MOTIONTYPE_HASH );
+	Assert( motion->numHashSegs > 0 );
+	Assert( motion->hashSegIdx != NULL );
+	Assert( !motion->sendSorted );
 
-	getCdbIdentity( &mySegIndex, NULL );
+	motion->hashToSelfOnly = true;
+}
 
-	segIdx = getCdbSegments( &segmentCount );
+/*
+ * setFixedToSelfOnly
+ * This enables "deep-sixing" of fixed motion, whereby
+ * a tuple is only passed along if its destination is its own segindex.
+ * This implements "replicated to singleton" motion.
+ *
+ * The motion node must already have been created, 
+ * it must of course be a fixed motion node,
+ * and it must not be sorted,
+ * and it must not be a broadcast fixed motion node.
+ */
+void setFixedToSelfOnly( Motion *motion )
+{
+	Assert( motion != NULL );
+	Assert( motion->motionType == MOTIONTYPE_FIXED );
+	Assert( motion->numOutputSegs > 0 );
+	Assert( motion->outputSegIdx != NULL );
+	Assert( !motion->sendSorted );
 
-	if ( segmentCount <= 1 )
-	{
-		if ( segIdx != NULL )
-			pfree(segIdx);
-
-		return NULL;
-	}
-
-	x = 0;
-	for ( i=0; i<segmentCount; i++ )
-	{
-		if ( segIdx[i] != mySegIndex )
-			segIdx[x++] = segIdx[i];
-	}
-		
-	*count = x;
-
-	return segIdx;	
+	motion->fixedToSelfOnly = true;
 }
 
 /* --------------------------------------------------------------------
@@ -1507,7 +1575,6 @@ List *getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
 {
 	int		i;
 	List	*elist = NIL;
-	Expr	*expr = NULL;
 	
 	for (i=0; i<numCols; i++ )
 	{
@@ -1617,7 +1684,6 @@ List *getOpListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
  */
 uint32 evalHashKey(ExprContext *econtext, List *hashkeys, Oid *hashOids, CdbHash *h)
 {
-	uint32		hashkey = 0;
 	ListCell   *hk;
 	int			i = 0;
 	MemoryContext oldContext;
@@ -1667,7 +1733,7 @@ bool setReadFromAMS(Motion *node)
     AssertArg(node != NULL);
     
     /* TODO:  Figure out whether we need is-primary here. */
-    getCdbIdentity(&mySegIdx, NULL);
+    mySegIdx = CdbIdentity.segindex;
     
     switch (node->motionType)
     {

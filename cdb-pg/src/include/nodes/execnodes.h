@@ -1201,9 +1201,10 @@ typedef struct MotionState
 	bool				noMoreAMSTuples;	/* set when AMS indicates all peers are done sending tuples */
     bool				sentEndOfStream;    /* set when end-of-stream has successfully been sent */
 	List				*hashExprState;		/* state struct used for evaluating the hash expressions */
-	FmgrInfo			*hashfunctions;		/* functions to hash the expressions for a hash motion node */
-	Oid					*hashOids;
-	CdbHash				*cdbhash;
+	Oid					*hashOids;			/* Oids of the result of the hash expressions, used by the hash api*/	
+	CdbHash				*cdbhash;			/* hash api object */
+	bool				*hashSegIdxMask;	/* for hash motion, a bit vector indicating whether motion to that segIdx has been turned off */
+	bool				*fixedSegIdxMask;	/* for fixed motion, a bit vector indicating whether motion to that segIdx has been turned off */
 	FmgrInfo			*sortFunctions;		/* functions to sort the tuples for a sorted motion node */
 	SortFunctionKind	*sortFnKinds;		/* kind of sort function for sorted motion node */
 	struct CdbHeap		*tupleheap;			/* data structure for match merge in sorted motion node */
@@ -1217,6 +1218,7 @@ typedef struct MotionState
 	int			numTuplesToAMS;		/* Number of tuples from child that were sent to AMS */
 	int			numTuplesFromAMS;	/* Number of tuples received from AMS */
 	int			numTuplesToParent;	/* Number of tuples either from child or AMS that were sent to parent */
+	int			numTuplesToDeepSix;	/* Number of tuples that were not passed on due to hashSegIdxMask or fixedSegIdxMask being true*/
 	int			*numTuplesByHashSegIdx; /* Distribution of number of tuples from child by hash seg index */
 } MotionState;
 

@@ -1336,9 +1336,11 @@ _readMotion(void)
 
 	READ_NODE_FIELD(hashExpr);
 	READ_NODE_FIELD(hashOp);
+	READ_BOOL_FIELD(hashToSelfOnly);
 
 	READ_INT_FIELD(numOutputSegs);
 	READ_INT_ARRAY(outputSegIdx, numOutputSegs, int);
+	READ_BOOL_FIELD(fixedToSelfOnly);
 
 	READ_INT_FIELD(numSortCols);
 	READ_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);

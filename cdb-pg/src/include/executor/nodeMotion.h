@@ -49,7 +49,9 @@ extern Motion *make_broadcast_motion(Plan *lefttree, bool sendToSecondary);
 extern Motion *make_sorted_broadcast_motion(Plan *lefttree, bool sendToSecondary, 
 								int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators, 
 								int numInputSegs, int *inputSegIdx );
-extern int *makeDefaultSegIdxArrayNew(int *count);
+extern void setHashToSelfOnly( Motion *motion );
+extern void setFixedToSelfOnly( Motion *motion );
+
 extern int *makeDefaultSegIdxArray(int numSegs);
 
 
