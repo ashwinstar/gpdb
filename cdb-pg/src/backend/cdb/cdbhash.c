@@ -17,6 +17,9 @@
 #include "utils/builtins.h"
 #include "catalog/pg_type.h"
 #include "utils/numeric.h"
+#include "utils/timestamp.h"
+#include "utils/date.h"
+#include "utils/datetime.h"
 #include "fmgr.h"
 #include "cdb/cdbhash.h"
 
@@ -32,6 +35,9 @@
 
 /* Constant used for hashing a NULL value */
 #define NULL_VAL ((uint32)0XF0F0F0F1)
+
+/* Constant used for hashing a NAN value  */
+#define NAN_VAL ((uint32)0XE0E0E0E1)
 
 /* Fast mod using a bit mask, assuming that y is a power of 2 */
 #define FASTMOD(x,y)		((x) & ((y)-1))
@@ -65,17 +71,9 @@ int ispowof2(int numsegs);
  */
 CdbHash *makeCdbHash(int numsegs, CdbHashAlg algorithm)
 {	
+	assert(numsegs > 0); /* verify number of segments is legal. */	
+	assert( algorithm == HASH_FNV_1 || algorithm == HASH_FNV_1A );
 	
-	/*
-	 * verify number of segments is legal.
-	 */
-	if(numsegs <= 0)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("CDBHASH - number of segments in CDB must be more than 0. got %d",						 
-						numsegs)));
-	
-	  
 	/* Create a pointer to a CdbHash that includes the hash properties */ 
 	CdbHash *h = palloc(sizeof(CdbHash));
 	
@@ -84,13 +82,6 @@ CdbHash *makeCdbHash(int numsegs, CdbHashAlg algorithm)
 	 */
     h->hash = 0;
 	h->numsegs = numsegs;
-	
-	
-	/*
-	 * Set the hashing algoritm
-	 */
-	assert( algorithm == HASH_FNV_1 || algorithm == HASH_FNV_1A );
-
 	h->hashalg = algorithm;
 	 
 	if (h->hashalg == HASH_FNV_1)
@@ -98,10 +89,8 @@ CdbHash *makeCdbHash(int numsegs, CdbHashAlg algorithm)
 	else if(h->hashalg == HASH_FNV_1A)
 		h->hashfn = &fnv1a_32_buf;
 	
-	/*
-	 * set the reduction algorithm
-	 * If num_segs is power of 2 use bit mask, else
-	 * use lazy mod (h mod n)
+	/* set the reduction algorithm: If num_segs is power of 2 use bit mask, 
+	 * else use lazy mod (h mod n)
 	 */
 	if(ispowof2(numsegs))
 	{
@@ -112,6 +101,10 @@ CdbHash *makeCdbHash(int numsegs, CdbHashAlg algorithm)
 		h->reducealg = REDUCE_LAZYMOD;
 	}
 	
+	ereport(DEBUG4,
+			(errmsg("CDBHASH started using algorithm %d into %d segment databases",
+					h->hashalg,
+					h->numsegs)));
 	
 	return h;	
 }
@@ -141,7 +134,15 @@ void cdbhash(CdbHash *h, Datum datum, Oid type)
 	VarChar *vc;   /* a variable length struct (varlena) for varchar */
 	float4 buf_f4;    
 	float8 buf_f8;
-				
+	Timestamp tsbuf; /* timestamp data dype is either a double or int8 (determined in compile time) */
+	TimestampTz tstzbuf; 	
+	DateADT datebuf;
+	TimeADT timebuf;
+	TimeTzADT *timetzptr;
+	Interval *intervalptr;
+	Numeric num;
+	uint32 nanbuf; 
+	
 	/*
 	 * Select the hash to be performed according to the field type we are adding to the 
 	 * hash. 
@@ -149,7 +150,7 @@ void cdbhash(CdbHash *h, Datum datum, Oid type)
     switch( type )
 	{
 	   /*=====================================================
-		* integer type group (all hashed as int8)
+		* NUMERIC TYPES
 		*=====================================================
 		*/
 		case INT2OID: /* -32 thousand to 32 thousand, 2-byte storage */
@@ -169,9 +170,57 @@ void cdbhash(CdbHash *h, Datum datum, Oid type)
 			buf = &intbuf;
 			len = sizeof(intbuf);
 			break;
+
+	    case FLOAT4OID: /* single-precision floating point number, 4-byte storage */
+			buf_f4 = DatumGetFloat4(datum);
+			
+			/*
+			 * On IEEE-float machines, minus zero and zero have different bit
+			 * patterns but should compare as equal.  We must ensure that they
+			 * have the same hash value, which is most easily done this way:
+			 */
+			if (buf_f4 == (float4) 0)
+				buf_f4 = 0.0;
+				
+			buf = &buf_f4;
+			len = sizeof(buf_f4);
+			break;
+			
+		case FLOAT8OID: /* double-precision floating point number, 8-byte storage */
+			buf_f8 = DatumGetFloat8(datum);
+				
+			/*
+			 * On IEEE-float machines, minus zero and zero have different bit
+			 * patterns but should compare as equal.  We must ensure that they
+			 * have the same hash value, which is most easily done this way:
+			 */
+			if (buf_f8 == (float8) 0)
+				buf_f8 = 0.0;
+				
+			buf = &buf_f8;
+			len = sizeof(buf_f8);
+			break;
+
+		case NUMERICOID: 
+			
+			num = DatumGetNumeric(datum);
+			
+			if (NUMERIC_IS_NAN(num))
+			{
+				nanbuf = NAN_VAL;    
+				buf = &nanbuf;         
+				len = sizeof(nanbuf);
+			}
+		    else /* not a nan */
+			{
+				buf = num->n_data;
+				len = (num->varlen - NUMERIC_HDRSZ);
+			}
+				
+			break;
 						
 	   /*=====================================================
-		* character string type group
+		* CHARACTER TYPES
 		*=====================================================
 		*/
 		case CHAROID:   /* char(1), single character */ 
@@ -213,45 +262,66 @@ void cdbhash(CdbHash *h, Datum datum, Oid type)
 				len = ignoreblanks((char *)buf, len); 
 			break;
 		
+				
 	   /*=====================================================
-		* floating point type group
+		* DATE/TIME TYPES
 		*=====================================================
 		*/
-		case FLOAT4OID: /* single-precision floating point number, 4-byte storage */
-			buf_f4 = DatumGetFloat4(datum);
-			
-			/*
-			 * On IEEE-float machines, minus zero and zero have different bit
-			 * patterns but should compare as equal.  We must ensure that they
-			 * have the same hash value, which is most easily done this way:
-			 */
-			if (buf_f4 == (float4) 0)
-				buf_f4 = 0.0;
-				
-			buf = &buf_f4;
-			len = sizeof(buf_f4);
+		case TIMESTAMPOID: /* date and time */
+			tsbuf = DatumGetTimestamp(datum);
+			buf = &tsbuf;
+			len = sizeof(tsbuf);
 			break;
 			
-		case FLOAT8OID: /* double-precision floating point number, 8-byte storage */
-			buf_f8 = DatumGetFloat8(datum);
-				
-			/*
-			 * On IEEE-float machines, minus zero and zero have different bit
-			 * patterns but should compare as equal.  We must ensure that they
-			 * have the same hash value, which is most easily done this way:
-			 */
-			if (buf_f8 == (float8) 0)
-				buf_f8 = 0.0;
-					
-				buf = &buf_f8;
-			len = sizeof(buf_f8);
+		case TIMESTAMPTZOID: /* date and time with time zone */
+			tstzbuf = DatumGetTimestampTz(datum);
+			buf = &tstzbuf;
+			len = sizeof(tstzbuf);
 			break;
-				
+			
+		case DATEOID: /* ANSI SQL date */
+			datebuf = DatumGetDateADT(datum);
+			buf = &datebuf;
+			len = sizeof(datebuf);
+			break;
+			
+		case TIMEOID: /* hh:mm:ss, ANSI SQL time */
+			timebuf = DatumGetTimeADT(datum);\
+			buf = &timebuf;
+			len = sizeof(timebuf);
+			break;
+		
+		case TIMETZOID: /* time with time zone */
+			/*
+			 * will not compare to TIMEOID on equal values. 
+			 * Postgres never attempts to compare the two as well.
+			 */
+			timetzptr = DatumGetTimeTzADTP(datum);
+			buf = (unsigned char *)timetzptr; 
+			/*
+			 * Specify hash length as sizeof(double) + sizeof(int4), not as
+			 * sizeof(TimeTzADT), so that any garbage pad bytes in the structure
+			 * won't be included in the hash!
+			 */
+			len = sizeof(timetzptr->time) + sizeof(timetzptr->zone);
+            break;
+			
+	    case INTERVALOID: /* @ <number> <units>, time interval */
+			intervalptr = DatumGetIntervalP(datum);
+			buf = (unsigned char *)intervalptr;
+		    /*
+		 	 * Specify hash length as sizeof(double) + sizeof(int4), not as
+	 		 * sizeof(Interval), so that any garbage pad bytes in the structure
+ 			 * won't be included in the hash!
+			 */
+			len = sizeof(intervalptr->time) + sizeof(intervalptr->month);
+			break;
+
 	   /*=====================================================
 		* other types
 		*=====================================================
 		*/
-		case NUMERICOID: 
+			
 		case BOOLOID: /* boolean, 'true'/'false' */
 		case OIDOID:  /* object identifier(oid), maximum 4 billion */
 		default:
