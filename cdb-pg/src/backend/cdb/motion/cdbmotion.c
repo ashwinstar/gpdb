@@ -87,6 +87,10 @@ typedef struct MotionNodeEntry
     /* PER-MOTION-NODE STATISTICS */
     /*----------------------------*/
 
+    uint32 stat_total_chunks_sent;      /* Tuple-chunks sent. */
+    uint32 stat_total_bytes_sent;       /* Bytes sent, including headers. */
+    uint32 stat_tuple_bytes_sent;       /* Bytes of pure tuple-data sent. */
+    
     uint32 stat_total_sends;            /* Total calls to SendTuple. */
     uint32 stat_total_sends_incomplete; /* Times it returned INCOMPLETE. */
 
@@ -189,10 +193,10 @@ typedef struct MotionLayerState
     /* GLOBAL MOTION-LAYER STATISTICS */
     /*--------------------------------*/
 
-    /*
-    uint64 stat_total_chunks_sent;      / * Tuple-chunks sent. * /
-    */
-    
+    uint32 stat_total_chunks_sent;      /* Tuple-chunks sent. */
+    uint32 stat_total_bytes_sent;       /* Bytes sent, including headers. */
+    uint32 stat_tuple_bytes_sent;       /* Bytes of pure tuple-data sent. */
+
     uint64 stat_total_chunks_recvd;     /* Tuple-chunks received. */
     uint32 stat_total_chunkproc_calls;  /* Calls to processIncomingChunks() */
 
@@ -225,7 +229,10 @@ static void processIncomingChunks(void);
 static HeapTuple getNextTupleFromStore(Tuplestorestate *tupStoreState);
 
 /* Stats-function declarations. */
-static void statSendTuple(MotionNodeEntry *pMNEntry, bool sendCompleted);
+static void statSendTuple(MotionNodeEntry *pMNEntry,
+                          TupleSendContext *pSendCtxt,
+                          bool sendCompleted);
+static void statSendEOS(MotionNodeEntry *pMNEntry, bool sendCompleted);
 static void statChunksProcessed(int chunksProcessed);
 static void statNewTupleArrived(MotionNodeEntry *pMNEntry,
                                 ChunkSorterEntry *pCSEntry);
@@ -392,7 +399,7 @@ SendReturnCode SendTuple(uint16 motNodeID, TupleSendContext *send_ctxt)
     } while (!done_sending);
 
     /* Stats */
-    statSendTuple(pMNEntry, tuple_sent);
+    statSendTuple(pMNEntry, send_ctxt, tuple_sent);
 
     return (tuple_sent ? SEND_COMPLETE : SEND_INCOMPLETE);
 }
@@ -459,7 +466,7 @@ SendReturnCode SendEndOfStream(uint16 motNodeID, uint16 target_segment)
     }
 
     /* We record EOS as if a tuple were sent. */
-    statSendTuple(pMNEntry, chunk_sent);
+    statSendEOS(pMNEntry, chunk_sent);
 
     return (chunk_sent ? SEND_COMPLETE : SEND_INCOMPLETE);
 }
@@ -855,6 +862,10 @@ void InitMotionLayerNode(uint16 motNodeID, bool includeBackupSegDB,
 
     /* Initialize statistics counters. */
 
+    pEntry->stat_total_chunks_sent = 0;
+    pEntry->stat_total_bytes_sent = 0;
+    pEntry->stat_tuple_bytes_sent = 0;
+
     pEntry->stat_total_sends = 0;
     pEntry->stat_total_sends_incomplete = 0;
     pEntry->stat_total_recvs = 0;
@@ -982,10 +993,20 @@ void EndMotionLayerNode(uint16 motNodeID, bool flushCommLayer)
         "\tTotal Incomplete Sends:   %u\n"
         "\tTotal Receive Attempts:   %u\n"
         "\tTotal No-Tuple Receives:  %u\n"
-        "\tAvailable Tuples High-Watermark:  %u\n", motNodeID,
-        pMNEntry->stat_total_sends, pMNEntry->stat_total_sends_incomplete,
-        pMNEntry->stat_total_recvs, pMNEntry->stat_total_recvs_notuple,
-        pMNEntry->stat_tuples_available_hwm);
+        "\tAvailable Tuples High-Watermark:  %u\n"
+        "\tTotal Tuple-Chunks Sent:  %u\n"
+        "\tTuple Data Bytes Sent:    %u\n"
+        "\tTotal Bytes Sent:         %u",
+        motNodeID,
+        pMNEntry->stat_total_sends,
+        pMNEntry->stat_total_sends_incomplete,
+        pMNEntry->stat_total_recvs,
+        pMNEntry->stat_total_recvs_notuple,
+        pMNEntry->stat_tuples_available_hwm,
+        pMNEntry->stat_total_chunks_sent,
+        pMNEntry->stat_tuple_bytes_sent,
+        pMNEntry->stat_total_bytes_sent
+        );
 
     elog(DEBUG3, "Cleaning up motion-node entry %d.", motNodeID);
 
@@ -1308,14 +1329,67 @@ bool addChunkToSorter(TupleChunkListItem tcItem)
  * STATISTICS HELPER-FUNCTIONS
  */
 
-void statSendTuple(MotionNodeEntry *pMNEntry, bool sendCompleted)
+void statSendTuple(MotionNodeEntry *pMNEntry, TupleSendContext *pSendCtxt,
+                   bool sendCompleted)
 {
     AssertArg(pMNEntry != NULL);
+    AssertArg(pSendCtxt != NULL);
 
     pMNEntry->stat_total_sends++;
 
     if (!sendCompleted)
+    {
         pMNEntry->stat_total_sends_incomplete++;
+    }
+    else    /* Send completed. */
+    {
+        /* Update motion node statistics. */
+
+        pMNEntry->stat_total_chunks_sent +=
+            pSendCtxt->tuple_chunk_list->num_chunks;
+
+        AssertState(pSendCtxt->total_tuple_bytes ==
+                    pSendCtxt->tuple_bytes_sent);
+
+        pMNEntry->stat_total_bytes_sent += pSendCtxt->total_bytes_sent;
+        pMNEntry->stat_tuple_bytes_sent += pSendCtxt->tuple_bytes_sent;
+
+        /* Update global motion-layer statistics. */
+        
+        s_motion_layer_state.stat_total_chunks_sent +=
+            pSendCtxt->tuple_chunk_list->num_chunks;
+
+        s_motion_layer_state.stat_total_bytes_sent +=
+            pSendCtxt->total_bytes_sent;
+
+        s_motion_layer_state.stat_tuple_bytes_sent +=
+            pSendCtxt->tuple_bytes_sent;
+    }
+}
+
+
+void statSendEOS(MotionNodeEntry *pMNEntry, bool sendCompleted)
+{
+    AssertArg(pMNEntry != NULL);
+    
+    pMNEntry->stat_total_sends++;
+
+    if (!sendCompleted)
+    {
+        pMNEntry->stat_total_sends_incomplete++;
+    }
+    else    /* Send completed. */
+    {
+        /* Update motion node statistics. */
+
+        pMNEntry->stat_total_chunks_sent++;
+        pMNEntry->stat_total_bytes_sent += TUPLE_CHUNK_HEADER_SIZE;
+
+        /* Update global motion-layer statistics. */
+        
+        s_motion_layer_state.stat_total_chunks_sent++;
+        s_motion_layer_state.stat_total_bytes_sent += TUPLE_CHUNK_HEADER_SIZE;
+    }
 }
 
 
