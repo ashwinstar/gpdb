@@ -48,6 +48,10 @@
  * class defined by the standard have a subclass value that begins
  * with 'P'. In addition, error codes defined by PostgreSQL clients
  * (such as ecpg) have a class value that begins with 'Y'.
+ *
+ * An additional convention is the new error codes defined by CDB and
+ * that belong in a class defined by the standard have a subclass
+ * beginning 'M'.
  */
 
 /* Class 00 - Successful Completion */
@@ -63,6 +67,7 @@
 #define ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED		MAKE_SQLSTATE('0','1', '0','0','6')
 #define ERRCODE_WARNING_STRING_DATA_RIGHT_TRUNCATION	MAKE_SQLSTATE('0','1', '0','0','4')
 #define ERRCODE_WARNING_DEPRECATED_FEATURE	MAKE_SQLSTATE('0','1', 'P','0','1')
+#define ERRCODE_WARNING_CDB_INTERIM_FEATURE	MAKE_SQLSTATE('0','1', 'M','0','1')
 
 /* Class 02 - No Data --- this is also a warning class per SQL99 */
 /* (do not use this class for failure conditions!) */
@@ -86,6 +91,8 @@
 
 /* Class 0A - Feature Not Supported */
 #define ERRCODE_FEATURE_NOT_SUPPORTED		MAKE_SQLSTATE('0','A', '0','0','0')
+#define ERRCODE_CDB_FEATURE_NOT_SUPPORTED	MAKE_SQLSTATE('0','A', 'M','0','0')
+#define ERRCODE_CDB_FEATURE_NOT_YET			MAKE_SQLSTATE('0','A', 'M','0','1')
 
 /* Class 0B - Invalid Transaction Initiation */
 #define ERRCODE_INVALID_TRANSACTION_INITIATION		MAKE_SQLSTATE('0','B', '0','0','0')

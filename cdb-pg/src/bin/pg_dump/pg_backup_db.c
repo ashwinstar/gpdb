@@ -160,7 +160,8 @@ _connectDB(ArchiveHandle *AH, const char *reqdb, const char *requser)
 	{
 		need_pass = false;
 		newConn = PQsetdbLogin(PQhost(AH->connection), PQport(AH->connection),
-							   NULL, NULL, newdb,
+							   "-c cdb_session_role=utility", 
+							   NULL, newdb,
 							   newuser, password);
 		if (!newConn)
 			die_horribly(AH, modulename, "failed to reconnect to database\n");
@@ -242,7 +243,9 @@ ConnectDatabase(Archive *AHX,
 	do
 	{
 		need_pass = false;
-		AH->connection = PQsetdbLogin(pghost, pgport, NULL, NULL,
+		AH->connection = PQsetdbLogin(pghost, pgport, 
+		                              "-c cdb_session_role=utility", /* options */
+									  NULL,
 									  dbname, username, password);
 
 		if (!AH->connection)

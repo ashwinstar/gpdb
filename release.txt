@@ -1,4 +1,9 @@
 <<<NEW vi: set expandtab ts=4: >>>
+Special handling of SQL commands for CDB users.
+	Added "traffic control" for SQL commands to issue errors or warnings 
+	as appropriate when cdb_role=dispatch.  Modified PostgreSQL utilities 
+	(e.g, initdb, createdb) to override external specification of 
+	cdb_session_role, thus preserving their old behavior.
 New run-time variables cdb_session_role and cdb_role.
 	The run-time parameters cdb_session_role and cdb_role report and provide 
 	control over the role assumed by a postgres process.  The roles are 

@@ -77,6 +77,7 @@ bindir='@bindir@'
 datadir='@datadir@'
 host_platform='@host_tuple@'
 enable_shared='@enable_shared@'
+cdb_is_here=yes
 GCC=@GCC@
 
 if [ "$GCC" = yes ]; then
@@ -557,7 +558,9 @@ fi
 # Install the PL/pgSQL language in it
 # ----------
 
-if [ "$enable_shared" = yes ]; then
+if [ "$cdb_is_here" = yes ]; then
+		message "skipping PL/pgSQL installation (CDB)"
+elif [ "$enable_shared" = yes ]; then
         message "installing PL/pgSQL"
         "$bindir/createlang" -L "$pkglibdir" $psql_options plpgsql $dbname
         if [ $? -ne 0 ] && [ $? -ne 2 ]; then

@@ -101,10 +101,10 @@
 
 typedef enum 
 {
-	CDB_ROLE_DISPATCH,	/* Operating as the parallel query dispatcher */
-	CDB_ROLE_EXECUTE,	/* Operating as a parallel query executor */
-	CDB_ROLE_UTILITY,	/* Operating as a simple database engine */
-	CDB_ROLE_UNDEFINED	/* Should never see this role in use */
+	CDB_ROLE_UTILITY = 0,	/* Operating as a simple database engine */
+	CDB_ROLE_DISPATCH,		/* Operating as the parallel query dispatcher */
+	CDB_ROLE_EXECUTE,		/* Operating as a parallel query executor */
+	CDB_ROLE_UNDEFINED		/* Should never see this role in use */
 } CdbRoleValue;
 
 

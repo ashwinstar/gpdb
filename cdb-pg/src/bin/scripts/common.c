@@ -93,7 +93,9 @@ connectDatabase(const char *dbname, const char *pghost, const char *pgport,
 	do
 	{
 		need_pass = false;
-		conn = PQsetdbLogin(pghost, pgport, NULL, NULL, dbname, pguser, password);
+		conn = PQsetdbLogin(pghost, pgport, 
+		                    "-c cdb_session_role=utility", 
+							NULL, dbname, pguser, password);
 
 		if (!conn)
 		{

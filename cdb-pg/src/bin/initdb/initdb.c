@@ -138,7 +138,7 @@ char	   *authwarning = NULL;
  * (no quoting to worry about).
  */
 static const char *boot_options = "-F";
-static const char *backend_options = "-F -O -c search_path=pg_catalog -c exit_on_error=true";
+static const char *backend_options = "-F -O -c cdb_session_role=utility -c search_path=pg_catalog -c exit_on_error=true";
 
 
 /* path to 'initdb' binary directory */
@@ -1778,7 +1778,6 @@ setup_cdb_schema(void)
 {
 	PG_CMD_DECL;
 	char	  **lines;
-	int			fres;
 
 	fputs(_("creating cdb schema ... "), stdout);
 	fflush(stdout);
