@@ -311,7 +311,7 @@ The "install" target is allowed for devo builds only.  Use the
             <property name="DESTDIR" value="${Idist}"/>
         </ant>
 
-
+<!--
         <mkdir dir="${IcommandsDir}"/>
         <mkdir dir="${IcommandsDir}/bin"/>
         <mkdir dir="${IcommandsDir}/lib"/>
@@ -324,6 +324,7 @@ The "install" target is allowed for devo builds only.  Use the
         <mkdir dir="${ImgmtDir}"/>
         <mkdir dir="${ImgmtDir}/bin"/>
         <mkdir dir="${ImgmtDir}/lib"/>
+-->
 
         <!--
             Copy (generated) jar files to loader library directory
