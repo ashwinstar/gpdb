@@ -170,6 +170,7 @@ execMotionUnsorted(MotionState *node)
             
             sendRC = SendEndOfStream(motion->motionID, tgtSegIdx);
             node->sentEndOfStream = (sendRC == SEND_COMPLETE);
+			elog(DEBUG4, "motionID=%d node->sentEndOfStream=%d", motion->motionID, node->sentEndOfStream);
         }
 
         /*
@@ -184,6 +185,7 @@ execMotionUnsorted(MotionState *node)
             recvRC = RecvTuple(motion->motionID, &tuple);
             if (recvRC == END_OF_STREAM)
             {
+				elog(DEBUG4, "motionID=%d saw END_OF_STREAM", motion->motionID );
                 node->noMoreAMSTuples = true;
             }
             else if (recvRC == GOT_TUPLE)
@@ -840,7 +842,6 @@ ExecInitMotion(Motion *node, EState *estate)
 		}
 		
 		motionstate->tupleheap = CreateCdbTupleHeap( node->numInputSegs,
-													CmpTuplesForSortedMotion,
 													motionstate,
 													node);
 		motionstate->tupleheapReady = false;
