@@ -34,6 +34,7 @@
 #include "catalog/pg_index.h"
 #include "cdb/cdbanalyze.h"
 #include "cdb/cdbdisp.h"
+#include "cdb/cdbsrlz.h"
 #include "cdb/cdbvars.h"
 #include "commands/vacuum.h"
 #include "executor/executor.h"
@@ -522,6 +523,7 @@ vacuum(VacuumStmt *vacstmt)
 
 	if (anl_context)
 		MemoryContextDelete(anl_context);
+
 }
 
 /*
@@ -684,6 +686,7 @@ vac_update_relstats(Oid relid, BlockNumber num_pages, double num_tuples,
 		 * avoided the call when relacl was non-NULL.
 		 */
 		cdb_get_relstats(relid, &num_pages, &num_tuples);
+		elog( DEBUG1, "After cdb_get_relstats numpages=%d and num_tuples=%lf", (int)num_pages, num_tuples);
 	}
 
 	/* get the buffer cache tuple */
@@ -702,6 +705,7 @@ vac_update_relstats(Oid relid, BlockNumber num_pages, double num_tuples,
 	pgcform->reltuples = (float4) num_tuples;
 	pgcform->relhasindex = hasindex;
 
+	elog( DEBUG1, "After pgcform update oid=%u numpages=%d and num_tuples=%lf", relid, (int)num_pages, num_tuples);
 	/*
 	* If we have discovered that there are no indexes, then there's no
 	* primary key either.	This could be done more thoroughly...
@@ -3512,6 +3516,9 @@ static void dispatchVacuum(VacuumStmt *vacstmt)
 	 * If it fails on any of the targets, ereport(ERROR, ...) is called.
 	 */	
 	CdbDoCommand( buffer.data, NULL, set, true );
+
+	/* TODO - Remove this when CDB-77 is fixed  */
+	CdbDoCommand( "checkpoint", NULL, set, true );
 
 	pfree(buffer.data);
 
