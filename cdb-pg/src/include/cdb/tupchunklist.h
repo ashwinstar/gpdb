@@ -1,0 +1,117 @@
+/*-------------------------------------------------------------------------
+ * tupchunklist.h
+ *     The data-structures and functions for dealing with tuple chunk lists.
+ *
+ * Copyright (c) 2005, Metapa
+ *-------------------------------------------------------------------------
+ */
+#ifndef TUPCHUNKLIST_H
+#define TUPCHUNKLIST_H
+
+#include "access/htup.h"
+#include "access/tupdesc.h"
+
+/*-------------------*/
+/* Tuple Chunk Lists */
+/*-------------------*/
+
+
+/* An item in a tuple-chunk list.  Chunk data is just a sequence of bytes.
+* A "tuple-chunk" struct doesn't make sense for several reasons:
+*   - The struct would need to be packed, not word-aligned, to keep from
+*     sending too much stuff.  This can be tricky to achieve across various
+*     compilers.
+*   - Multi-byte integers need to be transmitted in network byte order, which
+*     may not match hardware byte order.
+* Therefore, it's just a chunk of bytes in the tuple-chunk list items.
+*/
+typedef struct TupleChunkListItemData
+{
+    /* Pointer to next item in the list. */
+    struct TupleChunkListItemData *p_next;
+    
+    /* Length of chunk, including header.  We could calculate this value, but
+	* why trouble ourselves???
+	*/
+    uint32 chunk_length;
+    
+    /* Variable-length data portion of the struct. */
+    uint8 chunk_data[];
+    
+} TupleChunkListItemData, *TupleChunkListItem;
+
+
+/* A list of tuple-chunks, in order, for a single HeapTuple.
+*
+* NOTE:  This structure is intended to hold tuple-chunks for ONLY ONE tuple
+*        at a time!!!  Tuple chunks have no information that indicates which
+*        tuple they are a part of, because they are expected to be sent and
+*        received in order, and without loss.  So, BEWARE.
+*/
+typedef struct TupleChunkListData
+{
+    /* If we ever want to generate these lists on an incremental basis (would
+	* be desirable for very large tuples, so that we use less memory during
+	* the process - although other things in Postgres would probably break
+	* too), the HeapTuple and the TupleDesc will probably need to be stored
+* in this structure.
+*/
+    
+    /* Pointers to start and end of list. */
+    TupleChunkListItem p_first;
+    TupleChunkListItem p_last;
+    
+    /* Count of chunks in the list. */
+    int num_chunks;
+    
+    /* Total bytes of serialized tuple data, not including chunk headers. */
+    int serialized_data_length;
+    
+} TupleChunkListData, *TupleChunkList;
+
+
+/* Sends a tuple chunk from the Postgres process to the local AMS process via
+ * IPC.  This function does not block; if the IPC channel cannot accept the
+ * tuple chunk for some reason, then this is indicated by a return-code.
+ *
+ * Errors are indicated by calls to ereport(), and are therefore not indicated
+ * in the return code.
+ *
+ * PARAMETERS:
+ *   - tcItem:  The tuple-chunk data to send.
+ *
+ * RETURN:
+ *   - false if the chunk could not be sent, or true if it could be sent.
+ */
+extern bool SendTupleChunkToAMS(TupleChunkListItem tcItem);
+
+
+/* Receives a tuple chunk from the local AMS process via IPC.  This function
+ * does not block; if there is no tuple chunk available, then NULL is
+ * returned.
+ *
+ * Errors are indicated by calls to ereport(), and are therefore not indicated
+ * in the return code.
+ *
+ * PARAMETERS:
+ *   - none.
+ *
+ * RETURN:
+ *   - A populated TupleChunkListItemData structure (allocated with palloc()),
+ *     or NULL if no chunk is available at time of call.
+ */
+extern TupleChunkListItem RecvTupleChunkFromAMS(void);
+
+
+
+extern TupleChunkListItem makeTupleChunkListItem(TupleChunkType chunkType,
+    void *pChunkData, uint16 chunkDataSize, uint16 srcSegIdx,
+    uint16 tgtSegIdx, uint16 mnid);
+
+/* Add another item to the end of a tuple chunk list. */
+extern void appendChunkToTCList(TupleChunkList tcList, TupleChunkListItem tcItem);
+
+/* Remove the contents of a TupleChunkList, and reset its state to "empty." */
+extern void clearTCList(TupleChunkList tcList);
+
+#endif /* TUPCHUNKLIST_H */

@@ -20,6 +20,7 @@
 #include "access/tupdesc.h"
 #include "cdb/cdbvars.h"
 #include "cdb/tupchunk.h"
+#include "cdb/tupchunklist.h"
 #include "cdb/tupser.h"
 #include "executor/spi.h"
 #include "libpq/pqformat.h"

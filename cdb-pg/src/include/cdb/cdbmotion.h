@@ -13,7 +13,7 @@
 
 #include "access/htup.h"
 #include "cdb/tupchunk.h"
-
+#include "cdb/tupchunklist.h"
 
 typedef enum SendReturnCode
 {
