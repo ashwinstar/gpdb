@@ -39,8 +39,14 @@
 static int CdbComponentDatabaseInfoCompare(const void *p1, const void *p2);
 static void freeCdbComponentDatabaseInfo( CdbComponentDatabaseInfo *cdi );
 
-CdbCdb CdbIdentity = {NULL, 0, 0, 0};
-
+/*
+ * getCdbCdb() causes the cdb.cdb table's singleton row to be read into a global structure
+ * This is called from cdblink_setup().
+ * The global variable is named CdbIdentity, and is declared in cdbvars.h and defined in cdbvars.c.
+ * There is one member variable that is a string.  It is allocated from the TopMemoryContext
+ * because this information is intended to last for the life of the connection.
+ * This call is made whether the database is an entry database or a segment database.
+ */
 void getCdbCdb(void)
 {
 	Relation			cdb_cdb_rel;
@@ -50,6 +56,9 @@ void getCdbCdb(void)
 	bool				isNull;
 	Datum				attr;
 
+	/*
+	 * Release storage for the cdbname if not NULL
+	 */
 	if ( CdbIdentity.cdbname != NULL )
 	{
 		pfree( CdbIdentity.cdbname );
@@ -68,6 +77,9 @@ void getCdbCdb(void)
 				 		CdbNamespaceName )));
 	}
 
+	/*
+	 * Open the cdb.cdb table relation
+	 */
 	cdb_cdb_rel = HeapOpenCDBObject( CdbCdbRelationName, cdb_namespace_oid, true );
 
 	/*
@@ -80,7 +92,7 @@ void getCdbCdb(void)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_CARDINALITY_VIOLATION),
-				 errmsg("No rows found in %s.%s",
+				 errmsg("No rows found in %s.%s.",
 				 CdbNamespaceName, CdbCdbRelationName)));
 	}
 	
@@ -97,7 +109,13 @@ void getCdbCdb(void)
 
 	MemoryContext oldContext;
 	MemoryContext permanentContext = TopMemoryContext;
-	
+
+
+	/*
+	* Switch to the TopMemoryContext for the cdbname, so it lasts for the life
+	* of the connection.  It is released in freeCdbCdb, which is called from 
+	* cdblink_disconnect().
+	*/
     oldContext = MemoryContextSwitchTo(permanentContext);
 	CdbIdentity.cdbname = pstrdup( cdbname->data );
     MemoryContextSwitchTo(oldContext);
@@ -123,6 +141,9 @@ void getCdbCdb(void)
 	Assert( !isNull );
 	CdbIdentity.segindex = DatumGetInt32(attr);
 
+	/*
+	 * End the heapscan and close the relation that we opened.
+	 */
 	heap_endscan(cdb_cdb_scan);
 	heap_close(cdb_cdb_rel, AccessShareLock);
 
@@ -135,18 +156,23 @@ void getCdbCdb(void)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-				 errmsg("Cannot connect with a Cdb_role of dispatch to a segment database" 
+				 errmsg("Cannot have a Cdb_role of dispatch when connected to a segment database." 
 				 		)));
 	}
 	else if ( Cdb_role == CDB_ROLE_EXECUTE && CdbIdentity.segindex < 0 )
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-				 errmsg("Cannot connect with a Cdb_role of execute to an entry database" 
+				 errmsg("Cannot have a Cdb_role of execute when connected to an entry database." 
 				 		)));
 	}
 }
 
+/*
+ * freeCdbCdb() causes the global variable holding the cdb.cdb table's singleton row to be 
+ * reinitialized to empty, releasing memory that was allocated when it was loaded.
+ * It is called from cdblink_disconnect().
+ */
 void freeCdbCdb(void)
 {
 	if ( CdbIdentity.cdbname != NULL )
@@ -244,6 +270,9 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 	bool				isNull;
 	Datum				attr;
 	
+	/*
+	 * Local variables for fields from the rows of the tables that we are reading.
+	 */
 	int					dbid;
 	int					content;
 	int					listenerid;
@@ -251,15 +280,21 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 	bool				isprimary;
 	char				*dbname;
 
+	int i;
+
 	/*
-	 * Allocate segment_databases return structure and 
-	 * segment_databases->segment_db_info array with an initial size
-	 * of 128.  If necessary during row fetching, we grow this by
-	 * doubling each time we run out.
+	 * Allocate component_databases return structure and 
+	 * component_databases->segment_db_info array with an initial size
+	 * of 128, and component_databases->entry_db_info with an initial size of 4.  
+	 * If necessary during row fetching, we grow these by doubling each time we run out.
 	 */
 	component_databases = palloc0( sizeof(CdbComponentDatabases) );
-	component_databases->segment_db_info	= (CdbComponentDatabaseInfo *)palloc0(sizeof(CdbComponentDatabaseInfo) * segment_array_size);
-	component_databases->entry_db_info		= (CdbComponentDatabaseInfo *)palloc0(sizeof(CdbComponentDatabaseInfo) * entry_array_size);
+
+	component_databases->segment_db_info	= 
+		(CdbComponentDatabaseInfo *)palloc0(sizeof(CdbComponentDatabaseInfo) * segment_array_size);
+
+	component_databases->entry_db_info		= 
+		(CdbComponentDatabaseInfo *)palloc0(sizeof(CdbComponentDatabaseInfo) * entry_array_size);
 
 	/*
 	 * Get oid of cdb namespace
@@ -281,7 +316,7 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 
 	/*
 	 * First, open all the table relations.
-	 * This will ereport and ERROR is unsuccessful in opening the relation.
+	 * This will ereport an ERROR is unsuccessful in opening the relation.
 	 */
 	cdb_pgdatabase_rel = HeapOpenCDBObject( CdbSegmentRelationName, cdb_namespace_oid, true );
 	cdb_listener_rel = HeapOpenCDBObject( CdbListenerRelationName, cdb_namespace_oid, true );
@@ -302,10 +337,10 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 	
 	while ( HeapTupleIsValid(cdb_pgdatabase_tuple = heap_getnext(cdb_pgdatabase_scan, ForwardScanDirection)) )
 	{
-		
-		
 		/*
-		* Grab the fields that we need from cdb.pgdatabase
+		* Grab the fields that we need from cdb.pgdatabase.
+		* We do this first, because until we read them, we don't know whether
+		* this is an entry database row or a segment database row.
 		*/
 
 		/*
@@ -343,6 +378,9 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 		Assert( !isNull );
 		dbname = DatumGetCString(DirectFunctionCall1(textout, attr));
 
+		/*
+		* Determine which array to place this rows data in: content or segment, based on the content field.
+		*/
 		CdbComponentDatabaseInfo *pRow;
 		if ( content >= 0 )
 		{
@@ -489,7 +527,7 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 	}
 	
 	/*
-	 * Validate that there exists at least one entry and one segment database configured
+	 * Validate that there exists at least one entry and one segment database in the configuration
 	 */
 	if ( component_databases->total_segment_dbs == 0 )
 	{
@@ -521,8 +559,6 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 	 * Now count the number of distinct segindexes.
 	 * Since it's sorted, this is easy.
 	 */
-	int i;
-	 
 	for ( i=0; i<component_databases->total_segment_dbs; i++ )
 	{
 		if ( i == 0 || 
@@ -559,6 +595,38 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 				(errcode(ERRCODE_DATA_EXCEPTION),
 				errmsg("Cannot locate entry database represented by cdb.cdb row in cdb.pgdatabase: dbid %d content %d",
 				CdbIdentity.dbid, CdbIdentity.segindex )));
+	}
+
+	/*
+	 * Now validate that the segindexes for the segment databases are between 0 and CdbIdentity.numsegments-1 inclusive,
+	 * and that we hit them all. Since it's sorted, this is relatively easy.
+	 */
+	int x = 0;
+	for ( i=0; i<CdbIdentity.numsegments; i++ )
+	{
+		int this_segindex;
+		while ( x < component_databases->total_segment_dbs )
+		{
+			this_segindex = component_databases->segment_db_info[x].segindex;
+			if ( this_segindex < i )
+				x++;
+			else if ( this_segindex == i )
+				break;
+			else if ( this_segindex > i )
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_DATA_EXCEPTION),
+						errmsg("Content values not valid in cdb.pgdatabase table.  They must be in the range 0 to %d inclusive",
+						CdbIdentity.numsegments - 1 )));
+			}
+		}
+		if ( this_segindex != i )
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_DATA_EXCEPTION),
+					errmsg("Content values not valid in cdb.pgdatabase table.  They must be in the range 0 to %d inclusive",
+					CdbIdentity.numsegments - 1 )));
+		}
 	}
 
 	/*
@@ -612,6 +680,10 @@ void freeCdbComponentDatabases(CdbComponentDatabases *pDBs)
 	pfree( pDBs );
 }
 
+/*
+ * freeCdbComponentDatabaseInfo:
+ * Releases any storage allocated for members variables of a CdbComponentDatabaseInfo struct.
+ */
 void freeCdbComponentDatabaseInfo( CdbComponentDatabaseInfo *cdi )
 {
 	if ( cdi == NULL )
@@ -633,7 +705,6 @@ void freeCdbComponentDatabaseInfo( CdbComponentDatabaseInfo *cdi )
  * performs all necessary setup required for cdb mode. 
  *
  * This includes cdblink_setup() and initializing the Motion Layer.
- *
  */
 void cdb_setup(void)
 {
@@ -662,7 +733,7 @@ void cdb_cleanup(void)
 
 /*
  * CdbComponentDatabaseInfoCompare:
- * A compare function for SegmentDatabaseInfo structs
+ * A compare function for CdbComponentDatabaseInfo structs
  * that compares based on segindex, isprimary desc
  * for use with qsort.
  */
