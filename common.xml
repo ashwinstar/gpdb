@@ -700,9 +700,11 @@
              * generated.  If "stickyTag" is set and ends with "-branch", a
              * developer branch tag is generated.
              *
-             * releaseTag ::= "<release>-m_n_l[-b]
-             * releaseDir ::= "Rm_n_l[-b]"
-             * releaseNumber ::= "m.n.l.b"
+             * releaseTag     ::= "<release>-m_n_l[-b]
+             * releaseDir     ::= "Rm_n_l[-b]"
+             * releaseNumber  ::= "m.n.l.b"
+             * releaseVersion ::= "m.n.l"
+             * releaseBuild   ::= "b"
              *
              * @author Clifford W. Johnson
              * @version $Id$
@@ -729,6 +731,7 @@
             String releaseTag;
             String releaseDir;
             String releaseNumber;
+            String releaseVersion, releaseBuild;
             if ( stickyTag.length() > tagLength
                      && stickyTag.startsWith(nameHead)
                      && stickyTag.endsWith(nameTail) )
@@ -744,9 +747,19 @@
 
                 int i = release.indexOf('-');
                 if ( i > 0 ) 
-                    release = release.substring(1, i - 1) + "_" + release.substring(i + 1);
+                {
+                    releaseVersion = release.substring(0, i).replace('_', '.');
+                    releaseBuild = release.substring(i + 1);
+
+                    release = release.substring(0, i) + "_" + release.substring(i + 1);
+                }
                 else
+                {
+                    releaseVersion = release;
+                    releaseBuild = "0";
+
                     release = release + "_0";
+                }
                 releaseNumber = release.replace('_', '.');
             }
             else
@@ -755,7 +768,11 @@
                                     + project.getProperty("DSTAMP")
                                     + project.getProperty("TSTAMP");
                 releaseDir = "devo";
-                releaseNumber = "0.0.0." + project.getProperty("DSTAMP") + project.getProperty("TSTAMP");
+
+                releaseVersion = "0.0.0";
+                releaseBuild = project.getProperty("DSTAMP") + project.getProperty("TSTAMP");
+
+                releaseNumber = releaseVersion + "." + releaseBuild;
             }
 
             /*
@@ -764,7 +781,19 @@
             project.setUserProperty("releaseTag", releaseTag);
             project.setUserProperty("releaseDir", releaseDir);
             project.setUserProperty("releaseNumber", releaseNumber);
+
+            project.setUserProperty("releaseVersion", releaseVersion);
+            project.setUserProperty("releaseBuild", releaseBuild);
         ]]></script>
+
+        <echo>
+Set release properties:
+  - releaseTag     '${releaseTag}'
+  - releaseDir     '${releaseDir}'
+  - releaseNumber  '${releaseNumber}'
+  - releaseVersion '${releaseVersion}'
+  - releaseBuild   '${releaseBuild}'
+        </echo>
 
     </target>
 
