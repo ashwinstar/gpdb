@@ -893,7 +893,8 @@ ExecEndMotion(MotionState *node)
 	 */
 	ExecEndNode(outerPlanState(node));
 
-	Assert(node->numTuplesFromChild + node->numTuplesFromAMS == node->numTuplesToAMS + node->numTuplesToParent);
+    Motion *motion = (Motion *)node->ps.plan;
+	Assert( motion != NULL );
 
 	elog( DEBUG1, "Motion Node %d counts: "
 					"%d numTuplesFromChild, %d numTuplesFromAMS, %d numTuplesToAMS, %d numTuplesToParent",
@@ -903,6 +904,16 @@ ExecEndMotion(MotionState *node)
 					node->numTuplesToAMS, 
 					node->numTuplesToParent
 		);
+
+	if ( motion->motionType == MOTIONTYPE_FIXED && motion->numOutputSegs == 0 )
+	{
+		Assert(node->numTuplesFromChild == node->numTuplesToAMS);
+		Assert(node->numTuplesFromChild + node->numTuplesFromAMS == node->numTuplesToParent);
+	}
+	else
+	{
+		Assert(node->numTuplesFromChild + node->numTuplesFromAMS == node->numTuplesToAMS + node->numTuplesToParent);
+	}
 
 	if ( node->tupleheap != NULL )
 		DestroyCdbTupleHeap(node->tupleheap);
@@ -1100,11 +1111,6 @@ Motion *make_motion(Plan *lefttree, MotionType motionType,
 	{
 		node->inputSegIdx = makeDefaultSegIdxArrayNew(&node->numInputSegs);
 	}
-
-	/* TODO: When brian checks in his code where he sets the motionID, remove this.
-	 */ 
-	static int motionID = 0;
-	node->motionID = motionID++;
 
 	return node;
 }
