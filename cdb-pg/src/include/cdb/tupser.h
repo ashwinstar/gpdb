@@ -25,6 +25,13 @@
  */
 #define SPECIAL_TUPSER_IO
 
+/* Define this to allocate scratch-space for varlena attribute-values, so that
+ * tuple-deserialization doesn't have to allocate space if the varlena's value
+ * is smaller than the scratch size.
+ */
+#undef TUPSER_SCRATCH_SPACE
+#define VARLEN_SCRATCH_SIZE 500
+
 
 /* Used to encapsulate a motion node's core identity.
  *
@@ -80,6 +87,11 @@ typedef struct SerAttrInfo
     Oid      typrecv;           /* Oid for the type's binary input fn */
     Oid      recv_typio_param;  /* param to pass to the input fn */
     FmgrInfo recv_finfo;        /* Precomputed call info for output fn */
+
+#ifdef TUPSER_SCRATCH_SPACE
+    void *pv_varlen_scratch;    /* For deserializing varlena attributes. */
+    int varlen_scratch_size;    /* Size of varlena scratch space. */
+#endif
 } SerAttrInfo;
 
 

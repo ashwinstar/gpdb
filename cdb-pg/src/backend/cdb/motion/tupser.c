@@ -93,6 +93,15 @@ void InitSerTupInfo(TupleDesc tupdesc, SerTupInfo *pSerInfo)
 			&attrInfo->recv_typio_param);
 
         fmgr_info(attrInfo->typrecv, &attrInfo->recv_finfo);
+		
+#ifdef TUPSER_SCRATCH_SPACE
+		/* If the field is a varlena, allocate some space to use for
+		 * deserializing it.  If most of the values are smaller than this
+		 * scratch-space then we save time on allocation and freeing.
+		 */
+		attrInfo->pv_varlen_scratch = palloc(VARLEN_SCRATCH_SIZE);
+		attrInfo->varlen_scratch_size = VARLEN_SCRATCH_SIZE;
+#endif
     }
 }
 
@@ -361,7 +370,16 @@ HeapTuple DeserializeTuple(SerTupInfo *pSerInfo, StringInfo serialTup)
 			text *pText;
 			int textSize;
 			pq_copymsgbytes(serialTup, (char *) &textSize, 4);
+			
+#ifdef TUPSER_SCRATCH_SPACE
+			if (textSize + VARHDRSZ <= attrInfo->varlen_scratch_size)
+				pText = (text *) attrInfo->pv_varlen_scratch;
+			else
+				pText = (text *) palloc(textSize + VARHDRSZ);
+#else
 			pText = (text *) palloc(textSize + VARHDRSZ);
+#endif
+			
 			VARATT_SIZEP(pText) = textSize + VARHDRSZ;
 			pq_copymsgbytes(serialTup, VARDATA(pText), textSize);
 			pSerInfo->values[i] = PointerGetDatum(pText);
@@ -385,7 +403,16 @@ HeapTuple DeserializeTuple(SerTupInfo *pSerInfo, StringInfo serialTup)
 			Numeric num;
 			int numSize;
 			pq_copymsgbytes(serialTup, (char *) &numSize, 4);
+			
+#ifdef TUPSER_SCRATCH_SPACE
+			if (numSize + VARHDRSZ <= attrInfo->varlen_scratch_size)
+				num = (Numeric) attrInfo->pv_varlen_scratch;
+			else
+				num = (Numeric) palloc(numSize + VARHDRSZ);
+#else
 			num = (Numeric) palloc(numSize + VARHDRSZ);
+#endif
+			
 			VARATT_SIZEP(num) = numSize + VARHDRSZ;
 			pq_copymsgbytes(serialTup, VARDATA(num), numSize);
 			pSerInfo->values[i] = NumericGetDatum(num);
@@ -449,8 +476,15 @@ HeapTuple DeserializeTuple(SerTupInfo *pSerInfo, StringInfo serialTup)
 		
 		if (attrInfo->typisvarlena && pSerInfo->values[i] != NULL)
 		{
-			pfree(DatumGetPointer(pSerInfo->values[i]));
-			pSerInfo->values[i] = (Datum) NULL;
+#ifdef TUPSER_SCRATCH_SPACE
+			if (attrInfo->pv_varlen_scratch != pSerInfo->values[i])
+			{
+#endif
+				pfree(DatumGetPointer(pSerInfo->values[i]));
+				pSerInfo->values[i] = (Datum) NULL;
+#ifdef TUPSER_SCRATCH_SPACE
+			}
+#endif
 		}
 	}
 #else
