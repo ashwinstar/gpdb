@@ -92,6 +92,9 @@ withTiny=false
 withQadb=false
 entrySegName=
 
+#This is needed for the cdb test functions
+cdbtest=../cdb-pg/src/test/libcdbtest/cdbtest.sql
+
 # These are the files needed for the TPCH schema
 tpchDDL=../../cdb-qa/refdbs_cdb2/refdb01/TPCH_DDL.sql
 tpchDistPolicy=../../cdb-qa/refdbs_cdb2/refdb01/TPCH_define_tables.sql
@@ -538,8 +541,51 @@ do
     ((current_segment++))
 done
 
+#
+# We need to load the cdbtest.sql function definitions
+# You better have built and installed libcdbtest!!!!
+#
+if [ "$withTPCH" == "true" ]
+then
+	# Reset this
+	current_segment=0
+	
+	for PGDATA in "$PGROOT"/$dbprefix[0-9]?([0-9])
+	do
+		[ ! -d "$PGDATA" ] && continue
+		PGDATA=$(cd "$PGDATA"; pwd)
+		PGPORT=$(getPort)
+
+		# This is the loop for each segment database
+		for (( loop = 0; loop < $nsegs; loop++ ))
+		do
+
+		# Do we need to append anything to the segname?
+		finalSegName=$segname
+		if [ $nsegs -gt 0 ]
+		then
+			finalSegName=$finalSegName$current_segment
+			PGDATABASE=$finalSegName
+		fi
+
+		psql $finalSegName -f $cdbtest > /dev/null 2>&1
+
+		# Increment our segment counter
+		(( current_segment++ ))
+
+		done 
+	done  
+fi  
+
+
 # Reset this
 current_segment=0
+
+#
+# For the sync up of oids.
+# TODO: Remove when Chuck's oid stuff is working
+#
+new_oid=1000000
 
 #
 # Next loop. Here we record the identity of the current segment in the local
@@ -583,9 +629,8 @@ do
       then
 
         # Load the DDL
-        # Todd, 20050228: Commented out until we solve OID problem
-        #echo "Loading TPCH DDL"
-        #psql -o /dev/null -q $finalSegName -f $tpchDDL > /dev/null 2>&1
+        echo "Loading TPCH DDL"
+        psql -o /dev/null -q $finalSegName -f $tpchDDL > /dev/null 2>&1
 
         # Is this the entry database?
         if [ "$entrySegName" == "$finalSegName" ]
@@ -617,6 +662,9 @@ do
           echo "Finished Pruning data from TPCH tables"
         fi
 
+		echo "Setting the oid to $new_oid"
+		psql -o /dev/null -q $finalSegName -c "select cdb_set_oid($new_oid)" > /dev/null 2>&1
+
         echo "Setting table constraints"
         psql -o /dev/null -q $finalSegName -f $tpchConstraints > /dev/null 2>&1
 
@@ -638,9 +686,8 @@ do
       then
 
         # Load the DDL
-        # Todd, 20050228: Commented out until we solve OID problem
-        #echo "Loading Tiny DDL"
-        #psql -o /dev/null -q $finalSegName -f $cvpDDL > /dev/null 2>&1
+        echo "Loading Tiny DDL"
+        psql -o /dev/null -q $finalSegName -f $cvpDDL > /dev/null 2>&1
 
         # Is this the entry database?
         if [ "$entrySegName" == "$finalSegName" ]
@@ -688,9 +735,8 @@ do
       then
 
         # Load the DDL
-        # Todd, 20050228: Commented out until we solve OID problem
-        #echo "Loading Qadb DDL"
-        #psql -o /dev/null -q $finalSegName -f $qadbDDL > /dev/null 2>&1
+        echo "Loading Qadb DDL"
+        psql -o /dev/null -q $finalSegName -f $qadbDDL > /dev/null 2>&1
 
         # Is this the entry database?
         if [ "$entrySegName" == "$finalSegName" ]
