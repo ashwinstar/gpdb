@@ -21,8 +21,6 @@ TupleChunkListItem makeTupleChunkListItem(TupleChunkType chunkType,
     void *pChunkData, uint16 chunkDataSize,
     uint16 srcSegIdx, uint16 tgtSegIdx, uint16 mnid);
 
-void appendChunkToTCList(TupleChunkList tcList, TupleChunkListItem tcItem);
-
 
 /*=========================================================================
  * Functions to get/set values on tuple chunks.  These respect network byte
@@ -310,9 +308,10 @@ HeapTuple CvtChunksToHeapTup(TupleChunkList tcList, TupleDesc tupdesc)
             }
         }
 
-        /* Copy this chunk into the tuple data. */
-        appendBinaryStringInfo(&serData, tcItem->chunk_data,
-            tcItem->chunk_length);
+        /* Copy this chunk into the tuple data.  Don't include the header! */
+        appendBinaryStringInfo(&serData,
+            tcItem->chunk_data + TUPLE_CHUNK_HEADER_SIZE,
+            tcItem->chunk_length - TUPLE_CHUNK_HEADER_SIZE);
 
         /* Go to the next chunk. */
         tcItem = tcItem->p_next;

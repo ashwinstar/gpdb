@@ -178,4 +178,7 @@ extern bool SendTupleChunkToAMS(TupleChunkListItem tcItem);
 extern TupleChunkListItem RecvTupleChunkFromAMS(void);
 
 
+extern void appendChunkToTCList(TupleChunkList tcList, TupleChunkListItem tcItem);
+
+
 #endif /* TUPCHUNK_H */
