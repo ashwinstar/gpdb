@@ -33,7 +33,30 @@
 #ifndef CDBLINK_H
 #define CDBLINK_H
 
+
+/* 
+ * Called by backend/utils/init/postinit.c to setup the connections to the
+ * tails and store them for the duration of the session.  Currently, since each
+ * user session has their own process, all of the information is stored in
+ * global or static variables.
+ */
 extern void cdblink_setup(void);
+
+/* 
+ * Called by on_proc_exit processing (in /backend/storage/ipc/ipc.c) to drop 
+ * the connections to the tails. 
+ */
 extern void cdblink_disconnect( int exit_code, Datum arg );
+
+/* 
+ * Returns my_segindex and my_isprimary in out parameters
+ * for the postgres process.  If either pointer is NULL,
+ * it skips returning that parameter.
+ * 
+ * N.B.  Cdb_role must be either dispatch or execute, since
+ * when utiliy  no cdb catalog tables are read.  An Assert is
+ * thrown if Cdb_role = utility.
+ */
+extern void getCdbIdentity(int *segindex, bool *isprimary);
 
 #endif   /* CDBLINK_H */
