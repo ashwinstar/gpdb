@@ -56,13 +56,6 @@ CREATE OR REPLACE FUNCTION ml_ipc_getMsg(text) RETURNS text
     AS 'libcdbtest.so', 'ml_ipc_getMsg__text1'
     LANGUAGE C IMMUTABLE STRICT;
 
-
--- Hashing functions
-CREATE OR REPLACE FUNCTION cdb_hash(anyelement) RETURNS int4
-    AS 'libcdbtest.so', 'cdb_hash'
-    LANGUAGE C IMMUTABLE STRICT;
-    
-
 -- Functions for access to the Motion Layer API (what motion nodes use)
 
 -- Initialize a motion layer node.
@@ -97,3 +90,12 @@ CREATE OR REPLACE FUNCTION mlapi_recvtuple(integer) RETURNS RECORD
 CREATE OR REPLACE FUNCTION mlapi_getlastrecvcode() RETURNS INTEGER
     AS 'libcdbtest.so', 'MLAPI_GetLastRecvCode'
     LANGUAGE C IMMUTABLE STRICT;
+
+-- Functions for access to the Cdb Hash API (used by motion node and PG-COPY)
+
+-- Simple single value hash on a text field - integer passed in is number of buckets (segments). 
+CREATE OR REPLACE FUNCTION cdbhash_text(integer) RETURNS integer
+    AS 'libcdbtest.so', 'HASHAPI_HashText__int1'
+    LANGUAGE C IMMUTABLE STRICT;
+
+	
