@@ -13,13 +13,13 @@ scripts are not intended for any type of production environment.
     cdbinitdb   --  initializes new CDB database cluster
                     data directory(s) (like initdb).
 
-    cdbstart    --  starts the listener(s) for a CDB database
+    cdbstart    --  starts the amsd and listener(s) for a CDB database
                     cluster
 
     cdbcreatedb --  creates a new database in a CDB database
                     cluster (like createdb).
 
-    cdbstop     --  stops the listener(s) for a CDB database
+    cdbstop     --  stops the amsd and listener(s) for a CDB database
                     cluster
 
     cdbsql      --  runs psql connecting to the first listener of
