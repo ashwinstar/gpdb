@@ -1,0 +1,15 @@
+<<<NEW vi: set expandtab ts=4: >>>
+
+Release-2_0_0:  18/Nov/2004  jeshleman
+
+    First post!  Initial Cut at Admin schema.
+
+Entry_template:  18/Nov/2004  jeshleman
+    One line description of the update including Scarab defect id.
+        Paragraph containing detailed update description from a product
+        consumer's point of view.  Internals discussions should be left
+        to Scarab entries and code comments.  New entries should be
+        added immediately following the <<<NEW>>> tag-line with no
+        blank lines between entries (the undented one line description
+        acts as an entry separator).  This file is processed using
+        automation so formatting is important.

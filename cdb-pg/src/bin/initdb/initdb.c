@@ -105,6 +105,7 @@ char	   *ident_file;
 char	   *conf_file;
 char	   *conversion_file;
 char	   *info_schema_file;
+char	   *cdb_schema_file;
 char	   *features_file;
 char	   *system_views_file;
 char	   *effective_user;
@@ -177,6 +178,7 @@ static void setup_conversion(void);
 static void setup_privileges(void);
 static void set_info_version(void);
 static void setup_schema(void);
+static void setup_cdb_schema(void);
 static void vacuum_db(void);
 static void make_template0(void);
 static void trapsig(int signum);
@@ -1767,6 +1769,53 @@ setup_schema(void)
 	check_ok();
 }
 
+
+/*
+ * load info schema and populate from features file
+ */
+static void
+setup_cdb_schema(void)
+{
+	PG_CMD_DECL;
+	char	  **lines;
+	int			fres;
+
+	fputs(_("creating cdb schema ... "), stdout);
+	fflush(stdout);
+
+	lines = readfile(cdb_schema_file);
+
+	/*
+	 * We use -N here to avoid backslashing stuff in
+	 * information_schema.sql
+	 */
+	snprintf(cmd, sizeof(cmd),
+			 "\"%s\" %s -N template1 >%s",
+			 backend_exec, backend_options,
+			 DEVNULL);
+
+	PG_CMD_OPEN;
+
+	for (line = lines; *line != NULL; line++)
+	{
+		PG_CMD_PUTLINE;
+		free(*line);
+	}
+
+	free(lines);
+
+	PG_CMD_CLOSE;
+
+	snprintf(cmd, sizeof(cmd),
+			 "\"%s\" %s template1 >%s",
+			 backend_exec, backend_options,
+			 DEVNULL);
+
+	check_ok();
+}
+
+
+
 /*
  * clean everything up in template1
  */
@@ -2331,6 +2380,7 @@ main(int argc, char *argv[])
 	set_input(&conf_file, "postgresql.conf.sample");
 	set_input(&conversion_file, "conversion_create.sql");
 	set_input(&info_schema_file, "information_schema.sql");
+	set_input(&cdb_schema_file, "cdb_schema.sql");
 	set_input(&features_file, "sql_features.txt");
 	set_input(&system_views_file, "system_views.sql");
 
@@ -2360,6 +2410,7 @@ main(int argc, char *argv[])
 	check_input(conf_file);
 	check_input(conversion_file);
 	check_input(info_schema_file);
+	check_input(cdb_schema_file);
 	check_input(features_file);
 	check_input(system_views_file);
 
@@ -2557,6 +2608,9 @@ main(int argc, char *argv[])
 	setup_privileges();
 
 	setup_schema();
+	
+	/* sets up the CDB admin schema */
+	setup_cdb_schema();
 
 	vacuum_db();
 
