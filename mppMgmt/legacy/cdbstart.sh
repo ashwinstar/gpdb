@@ -236,10 +236,6 @@ unset PGHOSTADDR
 export PGDATA
 export PGPORT
 
-pgoptions=${PGOPTIONS}
-unset PGOPTIONS
-
-
 # ---------------------------------------------------------------------
 # Start the DB instances
 # ---------------------------------------------------------------------
@@ -255,5 +251,5 @@ do
     echo "Starting DB instance ($PGDATA at $PGPORT)"
     echo "The logfile can be found at $PGROOT/logfile.$db"
 
-    pg_ctl -l "$PGROOT"/logfile.$db -o "-d 4 -i ${stats_options[@]} ${pgoptions}" start
+    pg_ctl -l "$PGROOT"/logfile.$db -o "-d 4 -i ${stats_options[@]}" start
 done
