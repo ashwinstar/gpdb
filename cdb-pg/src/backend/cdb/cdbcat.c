@@ -296,7 +296,7 @@ SysScanDesc cdbtable_beginscan(Relation heapRelation,
 	
 	array_type = DatumGetArrayTypeP(array_datum);
 	Assert( ARR_NDIM(array_type) == 1 );
-	Assert( ARR_ELEMTYPE(array_type) == INT4OID );
+	Assert( ARR_ELEMTYPE(array_type) == INT2OID );
 	Assert( ARR_LBOUND(array_type)[0] == 1 );
 	*lenp = ARR_DIMS(array_type)[0];
 	*vecp = (int*)ARR_DATA_PTR(array_type);
