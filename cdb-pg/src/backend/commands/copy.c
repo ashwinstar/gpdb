@@ -48,6 +48,10 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbvars.h"
+#include "cdb/cdbcopy.h"
+#include "cdb/cdbcat.h"
+#include "cdb/cdbhash.h"
 
 #define ISOCTAL(c) (((c) >= '0') && ((c) <= '7'))
 #define OCTVALUE(c) ((c) - '0')
@@ -820,6 +824,33 @@ DoCopy(const CopyStmt *stmt)
 			escape = quote;
 	}
 
+	
+	/* 
+	 * Check for unsuported COPY features in CDB. 
+	 * Currently - BINARY, OIDS, CSV are not supported
+	 * unless used in utility mode - vanilla postgres.
+	 */
+	if( Cdb_role != CDB_ROLE_UTILITY)
+	{	
+		if( binary )
+			ereport(ERROR,
+					(errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+					 errmsg("COPY with BINARY is not supported in CDB yet.")
+					 )); 
+		
+		if( oids )
+			ereport(ERROR,
+					(errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+					 errmsg("COPY with OIDS is not supported in CDB yet.")
+					 )); 
+		
+		if( csv_mode )
+			ereport(ERROR,
+					(errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+					 errmsg("CSV mode is not supported in CDB yet.")
+					 )); 
+	}
+	
 	/*
 	 * Only single-character delimiter strings are supported.
 	 */
@@ -827,7 +858,7 @@ DoCopy(const CopyStmt *stmt)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("COPY delimiter must be a single character")));
-
+	
 	/*
 	 * Check quote
 	 */
@@ -1396,9 +1427,14 @@ copy_in_error_callback(void *arg)
 		{
 			/* error is relevant to a particular column */
 			limit_printout_length(&attribute_buf);
-			errcontext("COPY %s, line %d, column %s: \"%s\"",
-					   copy_relname, copy_lineno, copy_attname,
-					   attribute_buf.data);
+			
+			if(Cdb_role != CDB_ROLE_UTILITY) /* omit segDB line number, it is confusing to the user */
+				errcontext("COPY %s, column %s: \"%s\"",
+						   copy_relname, copy_attname, attribute_buf.data);
+			else
+				errcontext("COPY %s, line %d, column %s: \"%s\"",
+						   copy_relname, copy_lineno, copy_attname,
+						   attribute_buf.data);				
 		}
 		else
 		{
@@ -1407,9 +1443,11 @@ copy_in_error_callback(void *arg)
 				client_encoding == server_encoding)
 			{
 				limit_printout_length(&line_buf);
-				errcontext("COPY %s, line %d: \"%s\"",
-						   copy_relname, copy_lineno,
-						   line_buf.data);
+				
+				if(Cdb_role != CDB_ROLE_UTILITY) /* omit segDB line number, it is confusing to the user */
+					errcontext("COPY %s: \"%s\"", copy_relname, line_buf.data);
+				else
+					errcontext("COPY %s, line %d: \"%s\"", copy_relname, copy_lineno, line_buf.data);
 			}
 			else
 			{
@@ -1421,7 +1459,10 @@ copy_in_error_callback(void *arg)
 				 * to regurgitate it without conversion.  So we have to punt
 				 * and just report the line number.
 				 */
-				errcontext("COPY %s, line %d", copy_relname, copy_lineno);
+				if(Cdb_role != CDB_ROLE_UTILITY) /* omit segDB line number, it is confusing to the user */				
+				    errcontext("COPY %s", copy_relname);
+				else
+				    errcontext("COPY %s, line %d", copy_relname, copy_lineno);
 			}
 		}
 	}
@@ -1497,7 +1538,52 @@ CopyFrom(Relation rel, List *attnumlist, bool binary, bool oids,
 	ExprContext *econtext;		/* used for ExecEvalExpr for default atts */
 	MemoryContext oldcontext = CurrentMemoryContext;
 	ErrorContextCallback errcontext;
-
+	
+	/*
+	 * This variable will hold all acumulated data error messages for this 
+	 * dispatcher COPY command. Data errors refer to errors that are a result
+	 * of inappropriate input data or constraint violations.
+	 * All data error messages from the segment databases will be added to 
+	 * this variable and reported back to the client at the end of the copy 
+	 * command execution on the dispatcher.
+	 */
+	StringInfoData cdbcopy_dataErr;
+	
+	/* 
+	 * This variable will hold any command execution error that occurs during
+	 * this COPY session. Such errors will usually be failure to send data over the 
+	 * network, a COPY command that was rejected by the segment databases or any I/O
+	 * error. Data errors are recorded separately and logged (see cdbcopy_dataErr).
+	 */
+	StringInfoData cdbcopy_IOErr;
+		
+	/* 
+	 * contains a copy of the original COPY command string that was issued by the 
+	 * client. This copy of the COPY command string is sent to all the segment
+	 * databases to execute there in cdb_role execute
+	 */
+	StringInfoData cdbcopy_cmdStr; 
+	
+	bool dataErrors = FALSE;    /* TRUE if any data parsing/partitioning/inserting error occured */
+	bool IOErrors = FALSE;      /* TRUE if any I/O error occured trying to communicate with segDB's */
+    MemoryContext beforeError;  
+	
+	/*
+	 * Variables for cdbpolicy
+	 */
+	int seg_count;       /* number of segments in CDB (not segment databases) */
+	CdbPolicy *policy;   /* the partitioning policy for this table            */
+	int p_nattrs;		 /* num of partitioning keys in the policy            */
+	
+	/*
+	 * Variables for cdbhash
+	 */
+	CdbHash *cdbHash;        /* a CdbHash API object      */
+	AttrNumber h_attnum;     /* hash key attribute number */ 
+	Datum h_key;             /* hash key value			  */
+	Oid h_oid;               /* hash key data type        */
+	unsigned int target_seg; /* result segment of cdbhash */			
+	
 	tupDesc = RelationGetDescr(rel);
 	attr = tupDesc->attrs;
 	num_phys_attrs = tupDesc->natts;
@@ -1607,6 +1693,96 @@ CopyFrom(Relation rel, List *attnumlist, bool binary, bool oids,
 	}
 
 	/*
+	 * If we are the dispatcher, prepare to COPY data into segDBs:
+	 * 1 - re-construct the orignial COPY command sent from the client.
+	 * 2 - execute a BEGIN transaction on all segment databases.
+	 * 2 - send the COPY command to all segment databases.
+	 * 3 - get the partitioning policy for this table.
+	 * 4 - prepare cdbhash for hashing on row values.
+	 */
+	if(Cdb_role == CDB_ROLE_DISPATCH)
+	{
+		ListCell  *c;   /* for scrolling through the column list   */
+		int       i,j;  /* indexes for iterating though all segDBs */
+		
+		/* allocate memory for error and copy strings */
+		initStringInfo(&cdbcopy_dataErr); 
+        initStringInfo(&cdbcopy_cmdStr); 
+		initStringInfo(&cdbcopy_IOErr);   
+		
+		/*
+		 * re-construct the original COPY command for sending to all segment databases.
+		 */		
+		
+		/* append schema and tablename */
+		appendStringInfo(&cdbcopy_cmdStr, "COPY %s.%s", get_namespace_name(RelationGetNamespace(rel)),
+											    RelationGetRelationName(rel)); 
+		/* append column list. 
+		 * NOTE: if not specified originally, attnumlist will include all columns of the table by default 
+		 */
+		appendStringInfo(&cdbcopy_cmdStr, "(");	
+		bool isFirstCol = TRUE;
+		foreach(c, attnumlist)
+		{
+			int		attnum = lfirst_int(c);
+			int		m = attnum - 1;
+		    if(isFirstCol)
+				appendStringInfo(&cdbcopy_cmdStr, "%s", NameStr(attr[m]->attname));
+			else
+				appendStringInfo(&cdbcopy_cmdStr, ",%s", NameStr(attr[m]->attname));
+			
+			isFirstCol = FALSE;
+		}
+		appendStringInfo(&cdbcopy_cmdStr, ")");	
+		
+	    /* append delimiter and null representations */ 
+		appendStringInfo(&cdbcopy_cmdStr, " FROM STDIN WITH");
+        appendStringInfo(&cdbcopy_cmdStr, " DELIMITER AS '%s'", delim);
+		appendStringInfo(&cdbcopy_cmdStr, " NULL AS '%s'", null_print);
+				 
+		/* 
+		 * start a transaction and a COPY command in every db of every segment in CDB 
+		 */
+		seg_count = cdbCopyGetNumSegs();
+		Assert(seg_count > 0);
+
+		for(i = 0 ; i < seg_count ; i++)
+		{
+			for(j = 0 ; j < cdbCopyGetDbCount(i) ; j++)
+			{
+				int trax_result = cdbCopyExecTrax(i, j, "BEGIN");
+
+				if(trax_result == -1)
+					ereport(ERROR,
+							(errcode(ERRCODE_CDB_INTERNAL_ERROR),
+							 errmsg("Error trying to start a transaction for the COPY command on segment %d db %d", i, j)));
+				
+				int copy_result = cdbCopyStart(i, j, cdbcopy_cmdStr.data);
+				
+				if(copy_result == -1)
+					ereport(ERROR,
+							(errcode(ERRCODE_CDB_INTERNAL_ERROR),
+							 errmsg("Error trying to send the COPY command to segment %d db %d", i, j)));
+			}
+		}
+		
+		/* 
+		 * get the CDB policy for this table and prepare for hashing.
+		 */
+		policy = get_table_policy(rel->rd_id);
+		
+		if(policy->ptype != POLICYTYPE_PARTITIONED)
+			ereport(ERROR, 	
+				   (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+					errmsg("Unexpected CdbPolicyType: %d.", policy->ptype)
+					));
+		
+		p_nattrs = policy->nattrs; /* number of partitioning keys */
+		
+		cdbHash = makeCdbHash(seg_count, HASH_FNV_1); /* Create hash API reference */
+	}
+	   
+	/*
 	 * Prepare to catch AFTER triggers.
 	 */
 	AfterTriggerBeginQuery();
@@ -1692,6 +1868,9 @@ CopyFrom(Relation rel, List *attnumlist, bool binary, bool oids,
 	errcontext.previous = error_context_stack;
 	error_context_stack = &errcontext;
 
+	/*
+	 * loop through all the input data rows until no more data.
+	 */
 	while (!done)
 	{
 		bool		skip_tuple;
@@ -1717,9 +1896,37 @@ CopyFrom(Relation rel, List *attnumlist, bool binary, bool oids,
 			char	   *string;
 			ListCell   *cur;
 
-			/* Actually read the line into memory here */
-			done = CopyReadLine();
-
+			if(Cdb_role == CDB_ROLE_DISPATCH) 
+			{
+				beforeError = CurrentMemoryContext;
+				
+				PG_TRY(); /* try to read a data line, if failed catch the error, flag it and break */
+				{
+					/* Actually read the line into memory here */
+					done = CopyReadLine();
+				}
+				PG_CATCH();
+				{
+					ErrorData  *edata;
+					MemoryContextSwitchTo(beforeError);
+					edata = CopyErrorData(); /* get the original error message */
+					FlushErrorState();
+					appendStringInfo(&cdbcopy_dataErr, "Error parsing data row.\nRow number: %d"
+									 "\nDescription: %s", copy_lineno, edata->message);
+					FreeErrorData(edata);
+                    dataErrors = TRUE;
+				}
+				PG_END_TRY();
+				
+				MemoryContextSwitchTo(beforeError);
+				
+				if(dataErrors)
+					break;
+				
+			}
+			else /* read the data line into memory and throw an error if one occured */
+				done = CopyReadLine(); 
+			
 			/*
 			 * EOF at start of line means we're done.  If we see EOF after
 			 * some characters, we act as though it was newline followed
@@ -1752,6 +1959,8 @@ CopyFrom(Relation rel, List *attnumlist, bool binary, bool oids,
 				}
 			}
 
+			int p_index = 0; /* index into policy partitioning keys array */
+
 			/*
 			 * Loop to read the user attributes on the line.
 			 */
@@ -1765,11 +1974,30 @@ CopyFrom(Relation rel, List *attnumlist, bool binary, bool oids,
 				 * complain.
 				 */
 				if (result != NORMAL_ATTR)
-					ereport(ERROR,
-							(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-							 errmsg("missing data for column \"%s\"",
-									NameStr(attr[m]->attname))));
-
+				{
+					/* 
+					 * If we are a segDB, throw an error immediately (this should never happen though
+					 * since the dispatcher would have caugh this error already) and bailed out 
+                     */
+					if(Cdb_role != CDB_ROLE_DISPATCH)	
+						ereport(ERROR,
+								(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+								 errmsg("missing data for column \"%s\"", NameStr(attr[m]->attname))
+								 ));
+					/* 
+					 * If we are the dispatcher, append error string, flag the error and 
+					 * break out of attribute list loop 
+					 */
+					else 
+					{
+						appendStringInfo(&cdbcopy_dataErr, "missing data for column \"%s\"",
+										 NameStr(attr[m]->attname));
+						dataErrors = TRUE;
+						break; /* break out of attribute loop */
+					}
+					
+				}
+					
 				if (csv_mode)
 				{
 					string = CopyReadAttributeCSV(delim, null_print, quote,
@@ -1780,9 +2008,11 @@ CopyFrom(Relation rel, List *attnumlist, bool binary, bool oids,
 							   errmsg("unterminated CSV quoted field")));
 				}
 				else
+				{
 					string = CopyReadAttribute(delim, null_print,
-											   &result, &isnull);
-
+												&result, &isnull);
+				}
+				
 				if (csv_mode && isnull && force_notnull[m])
 				{
 					string = null_print;		/* set to NULL string */
@@ -1793,26 +2023,77 @@ CopyFrom(Relation rel, List *attnumlist, bool binary, bool oids,
 				if (!isnull)
 				{
 					copy_attname = NameStr(attr[m]->attname);
-					values[m] = FunctionCall3(&in_functions[m],
-											  CStringGetDatum(string),
-										ObjectIdGetDatum(typioparams[m]),
-									  Int32GetDatum(attr[m]->atttypmod));
+					
+					if(Cdb_role == CDB_ROLE_DISPATCH)
+                    {
+						/*
+						 * Since we only need the internal format of values that
+						 * we want to hash on (partitioning keys only), we want to
+						 * skip converting the other values so we can run faster.
+						 */
+						for(p_index = 0 ; p_index < p_nattrs ; p_index++)
+						{
+						    if(attnum == policy->attrs[p_index] )
+							{
+								PG_TRY();
+								{
+									values[m] = FunctionCall3(&in_functions[m],
+															  CStringGetDatum(string),
+															  ObjectIdGetDatum(typioparams[m]),
+															  Int32GetDatum(attr[m]->atttypmod));
+								}
+								PG_CATCH();
+								{
+									limit_printout_length(&line_buf);
+									appendStringInfo(&cdbcopy_dataErr, "Bad value for partitioned column '%s'. \nRow number: %d"
+													 "\nData Value: '%s'. \nData row: %s\n",copy_attname, copy_lineno, string, line_buf.data);
+									dataErrors = TRUE;
+								}
+								PG_END_TRY();
+								break;
+					        }
+						}
+					}
+					else /* If in EXCECUTE or UTILITY modes, convert all fields, always, and 
+						    report any errors immediately (don't catch them) */
+					{
+						values[m] = FunctionCall3(&in_functions[m],
+												  CStringGetDatum(string),
+												  ObjectIdGetDatum(typioparams[m]),
+												  Int32GetDatum(attr[m]->atttypmod));						
+					}
+					
 					nulls[m] = ' ';
 					copy_attname = NULL;
 				}
-			}
-
+		    }
+			
 			/*
 			 * Complain if there are more fields on the input line.
 			 *
 			 * Special case: if we're reading a zero-column table, we won't
 			 * yet have called CopyReadAttribute() at all; so no error if
 			 * line is empty.
+			 *
+			 * If a dataError already occured earlier and we broke out of 
+			 * the data parse loop don't perform this check.
 			 */
-			if (result == NORMAL_ATTR && line_buf.len != 0)
-				ereport(ERROR,
-						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-					   errmsg("extra data after last expected column")));
+			if (result == NORMAL_ATTR && line_buf.len != 0  && !dataErrors)
+			{
+				/* if we are a segDB, throw an error immediately (this should never happen though
+				   since the dispatcher would have caugh this error already) and bailed out */
+			    if(Cdb_role != CDB_ROLE_DISPATCH)	
+				   ereport(ERROR,
+					   	   (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+					       errmsg("extra data after last expected column")));
+			    else /* if we are the dispatcher, append error string and flag the error */
+				{
+					limit_printout_length(&line_buf);
+					appendStringInfo(&cdbcopy_dataErr, "Extra data after last expected column. \nRow number: %d"
+									 "\nData row: %s\n", copy_lineno, line_buf.data);
+					dataErrors = TRUE;					
+				}
+			}
 		}
 		else
 		{
@@ -1865,6 +2146,9 @@ CopyFrom(Relation rel, List *attnumlist, bool binary, bool oids,
 			}
 		}
 
+		if(dataErrors) /* if data error occured, break out of row loop */
+			break;
+
 		/*
 		 * Now compute and insert any defaults available for the columns
 		 * not provided by the input data.	Anything not processed here or
@@ -1877,7 +2161,7 @@ CopyFrom(Relation rel, List *attnumlist, bool binary, bool oids,
 			if (!isnull)
 				nulls[defmap[i]] = ' ';
 		}
-
+		
 		/*
 		 * Next apply any domain constraints
 		 */
@@ -1906,63 +2190,229 @@ CopyFrom(Relation rel, List *attnumlist, bool binary, bool oids,
 				nulls[i] = isnull ? 'n' : ' ';
 			}
 		}
-
-		/*
-		 * And now we can form the input tuple.
+		
+		/* 
+		 * At this point in the code, values[x] is final for this data row -- either
+		 * the input data, a null or a default value is in there, and constraints applied. 
+		 *
+		 * One of the following will happen:
+		 *
+		 * 1 - If we are the dispatcher, hash on the partitioning key column(s) and
+		 * send COPY data line to the target segment database executors. Data row will
+		 * not be inserted locally.
+		 *
+		 * 2 - If we are an executor or in utility mode, form a tuple and insert it 
+		 * into the database.
 		 */
-		tuple = heap_formtuple(tupDesc, values, nulls);
-
-		if (oids && file_has_oids)
-			HeapTupleSetOid(tuple, loaded_oid);
-
-		/*
-		 * Triggers and stuff need to be invoked in query context.
-		 */
-		MemoryContextSwitchTo(oldcontext);
-
-		skip_tuple = false;
-
-		/* BEFORE ROW INSERT Triggers */
-		if (resultRelInfo->ri_TrigDesc &&
-			resultRelInfo->ri_TrigDesc->n_before_row[TRIGGER_EVENT_INSERT] > 0)
+		if(Cdb_role == CDB_ROLE_DISPATCH)
 		{
-			HeapTuple	newtuple;
-
-			newtuple = ExecBRInsertTriggers(estate, resultRelInfo, tuple);
-
-			if (newtuple == NULL)		/* "do nothing" */
-				skip_tuple = true;
-			else if (newtuple != tuple) /* modified by Trigger(s) */
+			/*
+			 * Add a line-end to line_buf (it was "eaten" in CopyReadLine).
+			 * Right now we add the original EOL back, however this may not 
+			 * be necessary since COPY in the segDB's will detects the EOL type
+			 * anyway. This switch statement may be redundant, and instead we
+			 * could probably always add EOL_NL. Keep it safe for now.
+			 */
+			switch(eol_type)
 			{
-				heap_freetuple(tuple);
-				tuple = newtuple;
+				case EOL_NL:
+					appendStringInfo(&line_buf, "%s", "\n");
+					break;
+				case EOL_CR:
+					appendStringInfo(&line_buf, "%s", "\r");
+					break;
+				case EOL_CRNL:
+					appendStringInfo(&line_buf, "%s", "\r\n");
+					break;
+				case EOL_UNKNOWN:
+				default:
+					ereport(ERROR,
+							(errcode(ERRCODE_CDB_INTERNAL_ERROR),
+							 errmsg("Unresolved EOL for COPY when trying to send data line to segment databases.")));
 			}
-		}
+			
+			/*
+			 * Perform a cdbhash on this data row. Perform a hash operation on
+			 * each attribute that is included in CDB policy.
+			 * 
+			 */
+			cdbhashinit(cdbHash);
+			
+			int k;
+			for(k = 0 ; k < p_nattrs ; k++)
+			{
+				h_attnum = policy->attrs[k];          /* current att num from cdb policy */
+				h_key = values[h_attnum - 1];         /* value of this attr              */
+				h_oid = attr[h_attnum - 1]->atttypid; /* data type of this attr          */
+				
+				if(nulls[h_attnum - 1] != 'n')
+					cdbhash(cdbHash, h_key, h_oid); /* if not NULL */
+				else
+					cdbhashnull(cdbHash); /* if NULL */
+			}
+			
+			target_seg = cdbhashreduce(cdbHash); /* hash result segment */
+			
+			/*
+			 * Send data row to all databases for this segment.
+			 */
+			int db_ind; /* database index for this segment */
+			
+			for(db_ind = 0 ; db_ind < cdbCopyGetDbCount(target_seg) ; db_ind++)
+			{
+				int result = cdbCopySendData(target_seg, db_ind, line_buf.data, line_buf.len);
+				if(result == -1)
+					ereport(ERROR,
+							(errcode(ERRCODE_CDB_INTERNAL_ERROR),
+							 errmsg("An error occured while trying to send COPY data to seg %d db %d",target_seg,db_ind)));
+			}
+			
+		}				
+		else /* not a dispatcher */
+        {
+			/*
+			 * And now we can form the input tuple.
+			 */
+			tuple = heap_formtuple(tupDesc, values, nulls);
 
-		if (!skip_tuple)
-		{
-			/* Place tuple in tuple slot */
-			ExecStoreTuple(tuple, slot, InvalidBuffer, false);
+			if (oids && file_has_oids)
+				HeapTupleSetOid(tuple, loaded_oid);
 
 			/*
-			 * Check the constraints of the tuple
+			 * Triggers and stuff need to be invoked in query context.
 			 */
-			if (rel->rd_att->constr)
-				ExecConstraints(resultRelInfo, slot, estate);
+			MemoryContextSwitchTo(oldcontext);
 
-			/*
-			 * OK, store the tuple and create index entries for it
-			 */
-			simple_heap_insert(rel, tuple);
+			skip_tuple = false;
 
-			if (resultRelInfo->ri_NumIndices > 0)
-				ExecInsertIndexTuples(slot, &(tuple->t_self), estate, false);
+			/* BEFORE ROW INSERT Triggers */
+			if (resultRelInfo->ri_TrigDesc &&
+				resultRelInfo->ri_TrigDesc->n_before_row[TRIGGER_EVENT_INSERT] > 0)
+			{
+				HeapTuple	newtuple;
 
-			/* AFTER ROW INSERT Triggers */
-			ExecARInsertTriggers(estate, resultRelInfo, tuple);
+				newtuple = ExecBRInsertTriggers(estate, resultRelInfo, tuple);
+
+				if (newtuple == NULL)		/* "do nothing" */
+					skip_tuple = true;
+				else if (newtuple != tuple) /* modified by Trigger(s) */
+				{
+					heap_freetuple(tuple);
+					tuple = newtuple;
+				}
+			}
+
+			if (!skip_tuple)
+			{
+				/* Place tuple in tuple slot */
+				ExecStoreTuple(tuple, slot, InvalidBuffer, false);
+
+				/*
+				 * Check the constraints of the tuple
+				 */
+				if (rel->rd_att->constr)
+					ExecConstraints(resultRelInfo, slot, estate);
+
+				/*
+				 * OK, store the tuple and create index entries for it
+				 */
+				simple_heap_insert(rel, tuple);
+
+				if (resultRelInfo->ri_NumIndices > 0)
+					ExecInsertIndexTuples(slot, &(tuple->t_self), estate, false);
+
+				/* AFTER ROW INSERT Triggers */
+				ExecARInsertTriggers(estate, resultRelInfo, tuple);
+			}
 		}
 	}
 
+	
+	/*
+	 * Done readin input data and sending it off to the segment databases (if
+	 * we are in dispatch mode). Now we would like to end the copy command on 
+	 * all segment databases across the cluster.
+	 */
+	if(Cdb_role == CDB_ROLE_DISPATCH)
+	{
+		char errMessage[512]; /* data error msg from the COPY on the segDBs */
+		int  s_ind,db_ind;
+		
+		for(s_ind = 0 ; s_ind < seg_count ; s_ind++)
+		{
+			for(db_ind = 0 ; db_ind < cdbCopyGetDbCount(s_ind) ; db_ind++)
+			{
+				/* end COPY successfully, regardless if we encoutered any errors previously. We
+				   will issue a ROLLBACK later on if necessary */
+				int result = cdbCopyEnd(s_ind, db_ind, errMessage);
+				
+				if (result == -1) /* encoutered an I/O error */ 
+				{
+					appendStringInfo(&cdbcopy_IOErr, "\n%s", errMessage);
+				    IOErrors = TRUE;
+				}
+				else if(result == 1) /* encountered a data error */
+				{
+					appendStringInfo(&cdbcopy_dataErr, "\n%s", errMessage);
+					dataErrors = TRUE;
+				}
+				
+				errMessage[0] = '\0';
+			}
+		}
+		
+		/* rollback and report data errors back to the client if there were any. commit otherwize */
+		if(dataErrors || IOErrors)
+		{
+			for(s_ind = 0 ; s_ind < seg_count ; s_ind++)
+			{
+				for(db_ind = 0 ; db_ind < cdbCopyGetDbCount(s_ind) ; db_ind++)
+				{
+					int trax_result = cdbCopyExecTrax(s_ind, db_ind, "ROLLBACK");
+					if(trax_result == -1)
+					{
+						ereport(WARNING,
+								(errcode(ERRCODE_CDB_INTERNAL_ERROR),
+								 errmsg("\nCDBCOPY-- Failed to issue a ROLLBACK on seg %d db %d", s_ind, db_ind)));
+						
+						//TODO: react to trax failure
+				    }
+				}
+			}
+			
+			/*
+			 * report all accumulated errors back to the client.
+			 */
+			if(dataErrors)
+				ereport(ERROR,
+						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+						 errmsg("\nCDBCOPY-- %s", cdbcopy_dataErr.data)));
+			if(IOErrors)
+				ereport(ERROR,
+						(errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						 errmsg("\nCDBCOPY-- %s", cdbcopy_IOErr.data)));
+		}
+		else
+		{
+			for(s_ind = 0 ; s_ind < seg_count ; s_ind++)
+			{
+				for(db_ind = 0 ; db_ind < cdbCopyGetDbCount(s_ind) ; db_ind++)
+				{
+					int trax_result = cdbCopyExecTrax(s_ind, db_ind, "COMMIT");
+					if(trax_result == -1)
+					{
+						ereport(WARNING,
+								(errcode(ERRCODE_CDB_INTERNAL_ERROR),
+								 errmsg("\nCDBCOPY-- Failed to issue a COMMIT on seg %d db %d", s_ind, db_ind)));
+						
+						//TODO: react to trax failure
+					}
+				}
+			}
+			
+		}
+	}
+	
 	/*
 	 * Done, clean up
 	 */
@@ -1979,7 +2429,20 @@ CopyFrom(Relation rel, List *attnumlist, bool binary, bool oids,
 	 * Handle queued AFTER triggers
 	 */
 	AfterTriggerEndQuery();
+	
+	if(Cdb_role == CDB_ROLE_DISPATCH)
+	{
+		pfree(cdbcopy_cmdStr.data);
+	    pfree(cdbcopy_dataErr.data);
+		pfree(cdbcopy_IOErr.data);
 
+		if (cdbHash != NULL)
+		{
+			pfree(cdbHash);
+			cdbHash = NULL;
+		}
+	}
+	
 	pfree(values);
 	pfree(nulls);
 
