@@ -155,11 +155,11 @@ void InitMotionLayerIPC( int segmentId )
 	}
 	outMpiBuff = palloc( sizeof(uint8) * MAX_AMS_PACKET_SIZE );
 
-	inBuff  = palloc( sizeof(uint8) * MAX_TUPLE_CHUNK_SIZE );
+	inBuff  = palloc( sizeof(uint8) * MAX_AMS_PACKET_SIZE);
 
 
 	/* start receiving */
-	rc = MPI_Irecv( inBuff, MAX_TUPLE_CHUNK_SIZE, MPI_BYTE, MPI_ANY_SOURCE,
+	rc = MPI_Irecv( inBuff, MAX_AMS_PACKET_SIZE, MPI_BYTE, MPI_ANY_SOURCE,
                     /*tag*/ MPI_ANY_TAG, amssvc_comm, &mpiRecvReq );
 
     checkMpiRc( rc, "Error during InitMotionLayerIPC");
@@ -489,7 +489,7 @@ static TupleChunkListItem getTupleChunk( int recvSize )
 
 
 	//kick off the next recv
-	rc = MPI_Irecv( inBuff, MAX_TC_DATA_SIZE, MPI_BYTE, MPI_ANY_SOURCE,
+	rc = MPI_Irecv( inBuff, MAX_AMS_PACKET_SIZE, MPI_BYTE, MPI_ANY_SOURCE,
 					/*tag*/ MPI_ANY_TAG, amssvc_comm, &mpiRecvReq );
 	checkMpiRc( rc, "Error during getTupleChunk");
 
