@@ -890,6 +890,9 @@ char *getStringValue(SerializeContext *context)
 }
 #endif
 
+static char *unescape_quotes(const char *src);
+static char *escape_quotes(const char *src);
+
 /*
  * serializeNode - 
  * This is used on the query dispatcher to serialize Plan and Query Trees for
@@ -899,7 +902,14 @@ char *getStringValue(SerializeContext *context)
 char *serializeNode(Node *node)
 {
 	Assert( node != NULL );
-	return nodeToString( node );
+
+	char *pszNode = nodeToString( node );
+	Assert( pszNode != NULL );
+
+	char *sNode = escape_quotes(pszNode);
+	pfree( pszNode);
+
+	return sNode;
 }
 
 /*
@@ -911,5 +921,56 @@ char *serializeNode(Node *node)
 Node *deserializeNode(char *strNode)
 {
 	Assert( strNode != NULL );
-	return stringToNode( strNode );
+
+	char *sNode = unescape_quotes( strNode );
+
+	Assert( sNode != NULL );
+
+	Node *node = stringToNode( sNode );
+
+	pfree( sNode );
+
+	return node;
+}
+
+
+/*
+ * Escape any single quotes in given string
+ */
+static char *
+escape_quotes(const char *src)
+{
+	int			len = strlen(src),
+				i, j;
+	char		*result = palloc(len * 2 + 1);
+	
+	for (i = 0, j = 0; i < len; i++)
+	{
+		if (src[i] == '\'' )
+			result[j++] = '\\';
+		result[j++] = src[i];
+	}
+	result[j] = '\0';
+	return result;
+}
+
+/*
+ * Unescape any escaped single quotes in given string
+ */
+static char *
+unescape_quotes(const char *src)
+{
+	int			len = strlen(src),
+				i, j;
+	char		*result = palloc(len + 1);
+	
+	for (i = 0, j = 0; i < len; i++)
+	{
+		if ( i < len-1 && src[i] == '\\' && src[i+1] == '\'' )
+			i++;
+
+		result[j++] = src[i];
+	}
+	result[j] = '\0';
+	return result;
 }
