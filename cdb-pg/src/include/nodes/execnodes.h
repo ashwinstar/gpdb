@@ -1169,4 +1169,15 @@ typedef struct LimitState
 	TupleTableSlot *subSlot;	/* tuple last obtained from subplan */
 } LimitState;
 
+/* ----------------
+ *	 MotionState information
+ * ----------------
+ */
+typedef struct MotionState
+{
+	PlanState	ps;					/* its first field is NodeTag */
+	bool		noMoreChildTuples;	/* set when child node returns NULL */
+	bool		noMoreAMSTuples;	/* set when AMS indicates all peers are done sending tuples */
+} MotionState;
+
 #endif   /* EXECNODES_H */

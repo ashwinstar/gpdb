@@ -171,6 +171,7 @@ set_plan_references(Plan *plan, List *rtable)
 		case T_Sort:
 		case T_Unique:
 		case T_SetOp:
+		case T_Motion:
 
 			/*
 			 * These plan types don't actually bother to evaluate their

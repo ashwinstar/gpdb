@@ -529,6 +529,8 @@ plannode_type(Plan *p)
 			return "HASH";
 		case T_Group:
 			return "GROUP";
+		case T_Motion:
+			return "MOTION";
 		default:
 			return "UNKNOWN";
 	}

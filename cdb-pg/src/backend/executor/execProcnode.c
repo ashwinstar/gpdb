@@ -89,6 +89,7 @@
 #include "executor/nodeLimit.h"
 #include "executor/nodeMaterial.h"
 #include "executor/nodeMergejoin.h"
+#include "executor/nodeMotion.h"
 #include "executor/nodeNestloop.h"
 #include "executor/nodeResult.h"
 #include "executor/nodeSeqscan.h"
@@ -213,6 +214,10 @@ ExecInitNode(Plan *node, EState *estate)
 			result = (PlanState *) ExecInitLimit((Limit *) node, estate);
 			break;
 
+		case T_Motion:
+			result = (PlanState *) ExecInitMotion((Motion *) node, estate);
+			break;
+			
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
 			result = NULL;		/* keep compiler quiet */
@@ -369,6 +374,10 @@ ExecProcNode(PlanState *node)
 			result = ExecLimit((LimitState *) node);
 			break;
 
+		case T_MotionState:
+			result = ExecMotion((MotionState *) node);
+			break;
+			
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
 			result = NULL;
@@ -461,6 +470,9 @@ ExecCountSlotsNode(Plan *node)
 		case T_Limit:
 			return ExecCountSlotsLimit((Limit *) node);
 
+		case T_Motion:
+			return ExecCountSlotsMotion((Motion *) node);
+			
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
 			break;
@@ -589,6 +601,10 @@ ExecEndNode(PlanState *node)
 			ExecEndLimit((LimitState *) node);
 			break;
 
+		case T_MotionState:
+			ExecEndMotion((MotionState *) node);
+			break;
+			
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
 			break;

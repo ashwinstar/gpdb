@@ -505,6 +505,7 @@ _outLimit(StringInfo str, Limit *node)
 	WRITE_NODE_FIELD(limitOffset);
 	WRITE_NODE_FIELD(limitCount);
 }
+	
 
 static void
 _outHash(StringInfo str, Hash *node)
@@ -512,6 +513,102 @@ _outHash(StringInfo str, Hash *node)
 	WRITE_NODE_TYPE("HASH");
 
 	_outPlanInfo(str, (Plan *) node);
+}
+
+#define WRITE_NULL_FIELD( fldname ) \
+	appendStringInfo(str, " :" CppAsString(fldname) " %s", "<>")
+	
+static void _outHashMotionDefn(StringInfo str, Motion *node)
+{
+	int i;
+	if ( node->pHashDefn != NULL )
+	{
+		WRITE_INT_FIELD(pHashDefn->numHashSegs);
+		if ( node->pHashDefn->numHashSegs > 0 )
+		{
+			appendStringInfo(str, " :pHashDefn->hashSegIdx");
+			for (i = 0; i < node->pHashDefn->numHashSegs; i++)
+				appendStringInfo(str, " %d", node->pHashDefn->hashSegIdx[i]);
+		}
+		else
+			WRITE_NULL_FIELD(pHashDefn->hashSegIdx);
+		
+		WRITE_NODE_FIELD(pHashDefn->hashExpr);
+	}
+	else
+		WRITE_NULL_FIELD(pHashDefn);
+}
+
+static void _outFixedMotionDefn(StringInfo str, Motion *node)
+{
+	int i;
+	if ( node->pFixedDefn != NULL )
+	{
+		WRITE_INT_FIELD(pFixedDefn->numOutputSegs);
+		if ( node->pFixedDefn->numOutputSegs > 0 )
+		{
+			appendStringInfo(str, " :pFixedDefn->outputSegIdx");
+			for (i = 0; i < node->pFixedDefn->numOutputSegs; i++)
+				appendStringInfo(str, " %d", node->pFixedDefn->outputSegIdx[i]);
+		}
+		else
+			WRITE_NULL_FIELD(pFixedDefn->outputSegIdx);
+	}
+	else
+		WRITE_NULL_FIELD(pFixedDefn);
+}
+
+static void _outSortedMotionDefn(StringInfo str, Motion *node)
+{
+	int i;
+	if ( node->pSortDefn != NULL )
+	{
+		WRITE_INT_FIELD(pSortDefn->numSortCols);
+		if ( node->pSortDefn->numSortCols > 0 )
+		{
+			appendStringInfo(str, " :pSortDefn->sortColIdx");
+			for (i = 0; i < node->pSortDefn->numSortCols; i++)
+				appendStringInfo(str, " %d", node->pSortDefn->sortColIdx[i]);
+
+			appendStringInfo(str, " :pSortDefn->sortOperators");
+			for (i = 0; i < node->pSortDefn->numSortCols; i++)
+				appendStringInfo(str, " %u", node->pSortDefn->sortOperators[i]);
+		}
+		else
+		{
+			WRITE_NULL_FIELD(pSortDefn->sortColIdx);
+			WRITE_NULL_FIELD(pSortDefn->sortOperators);
+		}
+		
+		WRITE_INT_FIELD(pSortDefn->numInputSegs);
+		if ( node->pSortDefn->numInputSegs > 0 )
+		{
+			appendStringInfo(str, " :pSortDefn->inputSegIdx");
+			for (i = 0; i < node->pSortDefn->numInputSegs; i++)
+				appendStringInfo(str, " %d", node->pSortDefn->inputSegIdx[i]);
+		}		
+		else
+			WRITE_NULL_FIELD(pSortDefn->inputSegIdx);
+	}
+	else
+		WRITE_NULL_FIELD(pSortDefn);
+}
+
+static void
+_outMotion(StringInfo str, Motion *node)
+{
+	WRITE_NODE_TYPE("MOTION");
+
+	_outPlanInfo(str, (Plan *) node);
+
+	WRITE_ENUM_FIELD(motionType, MotionType);
+	WRITE_BOOL_FIELD(sendToSecondary);
+	WRITE_BOOL_FIELD(sendSorted);
+	WRITE_INT_FIELD(motionID);
+	
+	_outHashMotionDefn(str, node);
+	_outFixedMotionDefn(str, node);
+	_outSortedMotionDefn(str, node);
 }
 
 /*****************************************************************************
@@ -1673,6 +1770,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_Hash:
 				_outHash(str, obj);
+				break;
+			case T_Motion:
+				_outMotion(str, obj);
 				break;
 			case T_Resdom:
 				_outResdom(str, obj);

@@ -387,4 +387,71 @@ typedef struct Limit
 	Node	   *limitCount;		/* COUNT parameter, or NULL if none */
 } Limit;
 
+/* -------------------------
+ *		motion node structs
+ * -------------------------
+ */
+typedef enum MotionType
+{
+	MOTIONTYPE_HASH,		/* Use hashing to select a segindex destination */
+	MOTIONTYPE_BROADCAST,	/* Send tuple to all segindexex */
+	MOTIONTYPE_FIXED		/* Send tuples to a fixed set of segindexes */
+} MotionType;
+
+/*
+ * Hash Motion Definition --
+ * This defines the info needed for a hash motion node
+ */
+typedef struct HashMotionDefn
+{
+	int		numHashSegs;			/* number of segindexes in hashSegIdx array */	
+	int		*hashSegIdx;			/* array of segindex values to hash to */
+	List	*hashExpr;				/* list of hash expressions */
+} HashMotionDefn;
+
+/*
+ * Fixed Motion Definition --
+ * This defines the info needed for a fixed motion node
+ */
+typedef struct FixedMotionDefn
+{
+	int		numOutputSegs;			/* number of segindexes in outputSegIdx array */	
+	int		*outputSegIdx;			/* array of output segindexes */
+} FixedMotionDefn;
+
+/*
+ * Sorted Motion Definition --
+ * This defines the info needed for a sorted motion node
+ */
+typedef struct SortedMotionDefn
+{
+	int			numSortCols;		/* number of sort key columns */
+	AttrNumber	*sortColIdx;		/* their indexes in target list */
+	Oid			*sortOperators;		/* OID of operators to sort them by */ 
+	int			numInputSegs;		/* number of segindexes in inputSegIdx array */
+	int			*inputSegIdx;		/* array of input segindexes */
+} SortedMotionDefn;
+
+/*
+ * Motion Node
+ * 
+ */
+typedef struct Motion
+{
+	Plan		plan;
+	MotionType	motionType;
+	bool		sendToSecondary;	/* if true, secondary instances will get sent tuples as well as primary */
+	bool		sendSorted;			/* if true, output should be sorted */
+	int			motionID;			/* required by AMS  */
+	
+	/* The following field is only used when motionType == MOTIONTYPE_HASH */
+	HashMotionDefn		*pHashDefn;
+	
+	/* The following field is only used when motionType == MOTIONTYPE_FIXED */
+	FixedMotionDefn		*pFixedDefn;
+
+	/* The following field is only used when sendSorted == true */
+	SortedMotionDefn	*pSortDefn;
+} Motion;
+
 #endif   /* PLANNODES_H */

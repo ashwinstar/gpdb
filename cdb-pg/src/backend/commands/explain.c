@@ -178,7 +178,11 @@ ExplainOneQuery(Query *query, ExplainStmt *stmt, TupOutputState *tstate)
 
 	/* plan the query */
 	plan = planner(query, isCursor, cursorOptions, NULL);
-
+	
+	extern void insertMotionNodes( Plan* node );
+	
+	insertMotionNodes( plan);
+	
 	/* Create a QueryDesc requesting no output */
 	queryDesc = CreateQueryDesc(query, plan,
 								ActiveSnapshot, InvalidSnapshot,
@@ -215,7 +219,7 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 
 	/* call ExecutorStart to prepare the plan for execution */
 	ExecutorStart(queryDesc, !stmt->analyze);
-
+	
 	/* Execute the plan for statistics if asked for */
 	if (stmt->analyze)
 	{
@@ -487,6 +491,22 @@ explain_outNode(StringInfo str,
 		case T_Hash:
 			pname = "Hash";
 			break;
+		case T_Motion:
+			switch(((Motion *) plan)->motionType)
+			{
+				 case MOTIONTYPE_HASH:
+					pname = "CDB Hash Motion";
+					break;
+				 case MOTIONTYPE_BROADCAST:
+					pname = "CDB Broadcast Motion";
+					break;
+				 case MOTIONTYPE_FIXED:
+					pname = "CDB Fixed Motion";
+					break;
+				 
+			}
+			
+			break;
 		default:
 			pname = "???";
 			break;
@@ -702,6 +722,17 @@ explain_outNode(StringInfo str,
 							"subplan", OUTER, outerPlan(plan),
 							"", 0, NULL,
 							str, indent, es);
+			break;
+		case T_Motion:
+			if ( ((Motion *) plan)->motionType == MOTIONTYPE_HASH )
+			{
+				show_upper_qual(((Motion *) plan)->pHashDefn->hashExpr,
+								"Hash Expression",
+								"outer", OUTER, outerPlan(plan),
+								"", 0, NULL,
+								str, indent, es);
+			}
+			
 			break;
 		default:
 			break;
