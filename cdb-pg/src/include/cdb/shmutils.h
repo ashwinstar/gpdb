@@ -19,7 +19,7 @@
 #define SHMEM_KEY 42
 #define SEM_KEY 43
 #define QSIZE 64000
-#define NUM_SEGS 3
+#define NUM_SEGS 4
 
 /* =================================================================*/
 /*                        SHARED MEMORY UTILITIES                   */
