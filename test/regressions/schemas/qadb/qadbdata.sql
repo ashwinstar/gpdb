@@ -16,32 +16,32 @@ delete from customer;
 delete from vendor;
 delete from product;
 delete from util;
-delete from leagues cascade;
-delete from divisions cascade;
-delete from teams cascade;
-delete from positions cascade;
-delete from races cascade;
-delete from drugs cascade;
-delete from skills cascade;
-delete from pregame_meals cascade;
-delete from superstitions cascade;
-delete from mlb_player_fact cascade;
-delete from max_cols cascade;
-delete from dtype_text cascade;
-delete from dtype_varchar cascade;
-delete from dtype_char cascade;
-delete from dtype_int cascade;
-delete from dtype_int2 cascade;
-delete from dtype_int8 cascade;
-delete from dtype_numeric cascade;
-delete from dtype_float cascade;
-delete from dtype_float4 cascade;
-delete from dtype_date cascade;
-delete from dtype_time cascade;
-delete from dtype_timestamp cascade;
-delete from dtype_interval cascade;
-delete from dtype_boolean cascade;
-delete from all_dtypes cascade;
+delete from leagues;
+delete from divisions;
+delete from teams;
+delete from positions;
+delete from races;
+delete from drugs;
+delete from skills;
+delete from pregame_meals;
+delete from superstitions;
+delete from mlb_player_fact;
+delete from max_cols;
+delete from dtype_text;
+delete from dtype_varchar;
+delete from dtype_char;
+delete from dtype_int;
+delete from dtype_int2;
+delete from dtype_int8;
+delete from dtype_numeric;
+delete from dtype_float;
+delete from dtype_float4;
+delete from dtype_date;
+delete from dtype_time;
+delete from dtype_timestamp;
+delete from dtype_interval;
+delete from dtype_boolean;
+delete from all_dtypes;
 
 
 
@@ -743,9 +743,9 @@ insert into dtype_numeric values(100.1);
 
 insert into dtype_float values(200.22);
 
-insert into dypte_float4 values(300.333);
+insert into dtype_float4 values(300.333);
 
-insert into dypte_date values('01/01/2005');
+insert into dtype_date values('01/01/2005');
 
 insert into dtype_time values('01/01/2005 23:59');
 
