@@ -366,6 +366,52 @@ _readConst(void)
 }
 
 /*
+ * _readConstraint
+ */
+static Constraint *
+_readConstraint(void)
+{
+
+	READ_LOCALS(Constraint);
+
+	READ_STRING_FIELD(name);			/* name, or NULL if unnamed */
+	token = pg_strtok(&length);			/* skip:  :contype */
+	token = pg_strtok(&length);
+
+	if (strcmp(token, "PRIMARY_KEY")==0)
+	{
+		local_node->contype = CONSTR_PRIMARY;
+		READ_NODE_FIELD(keys);
+		READ_STRING_FIELD(indexspace);
+	}
+	else if (strcmp(token, "UNIQUE")==0)
+	{
+		local_node->contype = CONSTR_UNIQUE;
+		READ_NODE_FIELD(keys);
+		READ_STRING_FIELD(indexspace);
+	}
+	else if (strcmp(token, "CHECK")==0)
+	{
+		local_node->contype = CONSTR_CHECK;
+		READ_NODE_FIELD(raw_expr);
+		READ_STRING_FIELD(cooked_expr);
+	}
+	else if (strcmp(token, "DEFAULT")==0)
+	{
+		local_node->contype = CONSTR_DEFAULT;
+		READ_NODE_FIELD(raw_expr);
+		READ_STRING_FIELD(cooked_expr);
+	}
+	else if (strcmp(token, "NOT_NULL")==0)
+	{
+		local_node->contype = CONSTR_NOTNULL;
+	}
+
+	
+	READ_DONE();
+}
+
+/*
  * _readParam
  */
 static Param *
@@ -1514,6 +1560,7 @@ static ParseNodeInfo infoAr[] =
 	{"COERCETODOMAINVALUE", (ReadFn)_readCoerceToDomainValue},
 	{"COLUMNDEF", (ReadFn)_readColumnDef},
 	{"CONST", (ReadFn)_readConst},
+	{"CONSTRAINT", (ReadFn)_readConstraint},
 	{"CONVERTROWTYPEEXPR", (ReadFn)_readConvertRowtypeExpr},
 	{"CREATESTMT", (ReadFn)_readCreateStmt},
 	{"DECLARECURSOR", (ReadFn)_readDeclareCursorStmt},
