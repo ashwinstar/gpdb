@@ -142,7 +142,7 @@ create table CDB.CDB
 	cdbname name not null,
 	cdbsuperuser text not null,
 	cdbsuperpswd text,
-	numSegments integer not null,
+	numsegments integer not null,
 	listenerId integer not null,
 	segindex integer not null,
 	isprimary boolean not null,
