@@ -68,13 +68,14 @@ typedef struct MotionNodeEntry
      */
     Tuplestorestate *ready_tuples;
 
-    /* Variable that records the total number of remote senders to this motion
-     * node.  This will usually be (number of seg-dbs) - 1.
+    /* Variable that records the total number of senders to this motion
+     * node.  This is expected to always be (number of qExecs).
      */
-    uint num_remote_senders;
+    uint num_senders;
 
     /* Variable that tracks number of senders that have reported end-of-stream
-     * for this motion node.
+     * for this motion node.  When the local node sends end-of-stream, that is
+     * also recorded.
      */
     uint num_stream_ends_recvd;
 
@@ -318,58 +319,65 @@ SendReturnCode SendTuple(MotionNodeInfo *mn_info, TupleSendContext *send_ctxt)
 }
 
 
-/* Signals other peer Motion Nodes that this motion node has no more tuples to
- * send out.  The send operation is nonblocking, and will return
- * SEND_INCOMPLETE if the send would block.  When this value is returned, the
- * caller must try again until the SEND_COMPLETE value is returned.
- */
-SendReturnCode SendEndOfStream(MotionNodeInfo *mn_info)
-{
-    return sendStreamEndChunk(mn_info, TC_END_OF_STREAM);
-}
-
-
-/* Signals other peer Motion Nodes that this motion node has terminated its
- * data stream due to an error condition.  This can be done mid-send, so there
- * may be partial tuple data at the receivers.
+/* Sends a token to one or all peer Motion Nodes, indicating that this motion
+ * node has no more tuples to send out.
  *
  * The send operation is nonblocking, and will return SEND_INCOMPLETE if the
  * send would block.  When this value is returned, the caller must try again
  * until the SEND_COMPLETE value is returned.
  */
-SendReturnCode SendAbortStream(MotionNodeInfo *mn_info)
+SendReturnCode SendEndOfStream(MotionNodeInfo *mn_info, uint16 target_segment)
 {
-    return sendStreamEndChunk(mn_info, TC_ABORT_STREAM);
-}
-
-
-/* Helper function that actually sends the stream-end tuple-chunk. */
-SendReturnCode sendStreamEndChunk(MotionNodeInfo *mn_info,
-    TupleChunkType tcType)
-{
+    MotionNodeEntry *pMNEntry;
     bool chunk_sent;
     uint8 *pData;
 
-    AssertArg(tcType == TC_END_OF_STREAM || tcType == TC_ABORT_STREAM);
-    
+    /* The target segment-index should be an "active-only" segment-index.  We
+     * add in the "include-backup-segdb" part ourselves.
+     */
+    AssertArg(IsActiveOnlySegIdx(target_segment));
+
+    /* Pull up the motion node entry with the node's details.  This includes
+     * details that affect sending, such as whether the motion node needs to
+     * include backup segment-dbs.
+     */
+    pMNEntry = getMotionNodeEntry(mn_info->motion_node_id);
+    if (pMNEntry == NULL)
+    {
+        ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+            errmsg("SendEndOfStream called for unrecognized motion-node ID %d.",
+            mn_info->motion_node_id)));
+    }
+
+    /* Set up the target segment index based on the motion node info. */
+    if (pMNEntry->include_backup_segdb)
+        target_segment = SetAllSegdbsFlag(target_segment);
+
     /* Use the statically allocated chunk that is intended for sending end-of-
      * stream messages so that we don't incur allocation and deallocation
      * overheads.
      */
-
     Assert(s_eos_chunk_data.p_next == NULL);
     Assert(s_eos_chunk_data.chunk_length == TUPLE_CHUNK_HEADER_SIZE);
 
     pData = s_eos_chunk_data.chunk_data;
 
-    SetTargetSegIdx(pData, BROADCAST_SEGIDX);
+    SetTargetSegIdx(pData, target_segment);
     SetQueryGroupID(pData, mn_info->process_group_id);
     SetSourceSegIdx(pData, mn_info->segment_id);
     SetMotionNodeID(pData, mn_info->motion_node_id);
     SetChunkDataSize(pData, 0);
-    SetChunkType(pData, TC_ABORT_STREAM);
+    SetChunkType(pData, TC_END_OF_STREAM);
 
     chunk_sent = SendTupleChunkToAMS(&s_eos_chunk_data);
+    
+    if (chunk_sent)
+    {
+        /* We increment our own "stream-ends received" count when we send our
+         * own, as well as when we receive one.
+         */
+        pMNEntry->num_stream_ends_recvd++;
+    }
 
     return (chunk_sent ? SEND_COMPLETE : SEND_INCOMPLETE);
 }
@@ -417,7 +425,7 @@ ReceiveReturnCode RecvTuple(MotionNodeInfo *mn_info, HeapTuple *tup_i)
         /* We got a tuple. */
         return GOT_TUPLE;
     }
-    else if (pMNEntry->num_stream_ends_recvd == pMNEntry->num_remote_senders)
+    else if (pMNEntry->num_stream_ends_recvd == pMNEntry->num_senders)
     {
         /* No tuple was available (tuple-store was at EOF), and end-of-stream
          * has been marked.  No more tuples are going to show up.
@@ -741,7 +749,7 @@ void InitMotionLayerNode(uint16 motNodeID, bool includeBackupSegDB,
     }
 
     /* TODO:  Hard-coded right now. */
-    pEntry->num_remote_senders = CdbClusterDefinition->segment_count - 1;
+    pEntry->num_senders = CdbClusterDefinition->segment_count - 1;
     pEntry->num_stream_ends_recvd = 0;
 
     /* All done!  Go back to caller memory-context. */

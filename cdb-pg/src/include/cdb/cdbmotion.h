@@ -160,8 +160,8 @@ extern SendReturnCode SendTuple(MotionNodeInfo *mn_info,
 
 
 
-/* Broadcast an END_OF_STREAM token or an ABORT_STREAM token to the
- * corresponding motion-node on ALL other segments.
+/* Send or broadcast an END_OF_STREAM token to the corresponding motion-node
+ * on other segments.
  *
  * The send operation is nonblocking, and will return SEND_INCOMPLETE if the
  * send would block.  When this value is returned, the caller must try again
@@ -178,8 +178,8 @@ extern SendReturnCode SendTuple(MotionNodeInfo *mn_info,
  *				  were full and the operation should be tried
  *				  later.  (Real errors are signalled via ereport().)
  */
-extern SendReturnCode SendEndOfStream(MotionNodeInfo *mn_info);
-extern SendReturnCode SendAbortStream(MotionNodeInfo *mn_info);
+extern SendReturnCode SendEndOfStream(MotionNodeInfo *mn_info,
+                                      uint16 target_segment);
 
 
 /* Receive a tuple from the corresponding motion-node on any query-executor

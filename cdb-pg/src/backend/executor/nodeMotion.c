@@ -111,10 +111,25 @@ ExecMotion(MotionState *node)
         }
         else if (node->noMoreChildTuples && !node->sentEndOfStream)
         {
+            int tgtSegIdx;
+            
             /* We have no more child tuples, but we have not successfully
              * sent an End-of-Stream token yet.
+             *
+             * NOTE:  If there is only one destination, we do not broadcast
+             *        the end-of-stream; we only send it to the single dest.
              */
-            sendRC = SendEndOfStream(&mn_info);
+            if (motion->motionType == MOTIONTYPE_FIXED &&
+                motion->numOutputSegs == 1)
+            {
+                tgtSegIdx = motion->outputSegIdx[0];
+            }
+            else
+            {
+                tgtSegIdx = BROADCAST_SEGIDX;
+            }
+            
+            sendRC = SendEndOfStream(&mn_info, tgtSegIdx);
             node->sentEndOfStream = (sendRC == SEND_COMPLETE);
         }
 
@@ -302,8 +317,10 @@ ExecInitMotion(Motion *node, EState *estate)
 	motionstate->noMoreChildTuples = !readFromChild;
 	motionstate->noMoreAMSTuples = !readFromAMS;
     
-    motionstate->sentEndOfStream = false;
-    
+    /* Query Dispatcher top motion-node doesn't send anything to qExecs. */
+    motionstate->sentEndOfStream = (Cdb_role == CDB_ROLE_DISPATCH);
+    Assert(motionstate->noMoreChildTuples || !motionstate->sentEndOfStream);
+
 	motionstate->numTuplesFromChild = 0;
 	motionstate->numTuplesToAMS = 0;
 	motionstate->numTuplesFromAMS = 0;
