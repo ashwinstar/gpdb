@@ -38,7 +38,7 @@ ifneq ($(PORTNAME), cygwin)
 ifneq ($(PORTNAME), win32)
 
 postgres: $(OBJS)
-	$(CC) $(CFLAGS) $(LDFLAGS) $(export_dynamic) $^ $(LIBS) -o $@
+	$(CC) $(CFLAGS) $(LDFLAGS) $(export_dynamic) $^ $(LIBS) $(PTHREAD_LIBS) -o $@
 
 endif
 endif
