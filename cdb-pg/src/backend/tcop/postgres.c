@@ -920,17 +920,7 @@ exec_simple_query(const char *query_string)
 		/*
 		 * Now we can create the destination receiver object.
 		 */
-
-		/*
-		 * TODO: Once the motion node guts are implemented, so that
-		 * tuples are flowing thru AMS,
-		 * change the following to be simply
-		 * receiver = CreateDestReceiver(dest, portal);
-		 */
-		if ( Cdb_role == CDB_ROLE_EXECUTE )
-			receiver = CreateDestReceiver(Debug, NULL);
-		else
-			receiver = CreateDestReceiver(dest, portal);
+		receiver = CreateDestReceiver(dest, portal);
 
 		/*
 		 * Switch back to transaction context for execution.
