@@ -184,6 +184,7 @@ typedef struct cdb_cluster_descriptor {
 	
 	int						segment_count;
 	int						segdb_count;
+	bool					all_valid_segdbs_connected;
 	SegmentDescriptor	   *segment_descriptors;
 } CdbClusterDescriptor;
 
