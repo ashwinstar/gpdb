@@ -40,7 +40,7 @@ options=
 for (( i = 1; i <= $#; i++ ))
 do
     case ${!i} in
-        '-h' | --help)
+        --help)
             display_help
             ;;
         '-u' | --utility)
