@@ -50,6 +50,7 @@ DefineVirtualRelation(const RangeVar *relation, List *tlist, bool replace)
 	List	   *attrList;
 	ListCell   *t;
 
+	createStmt->relOid = 0;
 	/*
 	 * create a list of ColumnDef nodes based on the names and types of
 	 * the (non-junk) targetlist items from the view's SELECT list.
