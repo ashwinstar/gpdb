@@ -718,6 +718,7 @@ ExecInitMotion(Motion *node, EState *estate)
 	MotionState* motionstate;
 	bool readFromChild, readFromAMS;
 	int i;
+	TupleDesc tupDesc;
     
 	SO_printf("ExecInitMotion: initializing motion node\n");
 	
@@ -860,9 +861,18 @@ ExecInitMotion(Motion *node, EState *estate)
     /*
      * Perform per-node initialization in the motion layer.
      */
+	tupDesc = ExecGetResultType(&motionstate->ps);
+	/* TODO  Take this out when issue CDB-47 is resolved  */
+	if ( tupDesc->natts == 0 )
+	{
+        ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+            errmsg("Motion node ID %d has an empty tuple attribute list.  This is not supported yet.  (See CDB-47)",
+            node->motionID)));
+	}
+
     InitMotionLayerNode(node->motionID, node->sendToSecondary,
         node->sendSorted, ExecGetResultType(&motionstate->ps));
-    
+
 	SO1_printf("ExecInitMotion: %s\n",
 			   "motion node initialized");
 
