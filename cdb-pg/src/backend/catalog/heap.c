@@ -931,7 +931,7 @@ heap_create_with_catalog_with_relid(const char *relname,
 							   new_rel_oid,
 							   false);
 
-	while(newoid() <= new_rel_oid);
+	while(newoid() < new_rel_oid);
 
 	/* Fetch the relation OID assigned by heap_create */
 	Assert(new_rel_oid == RelationGetRelid(new_rel_desc));
