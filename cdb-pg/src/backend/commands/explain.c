@@ -488,18 +488,20 @@ explain_outNode(StringInfo str,
 			pname = "Hash";
 			break;
 		case T_Motion:
-			switch(((Motion *) plan)->motionType)
 			{
-				 case MOTIONTYPE_HASH:
-					pname = "CDB Hash Motion";
-					break;
-				 case MOTIONTYPE_BROADCAST:
-					pname = "CDB Broadcast Motion";
-					break;
-				 case MOTIONTYPE_FIXED:
-					pname = "CDB Fixed Motion";
-					break;
-				 
+				Motion *pMotion = (Motion *) plan;
+				switch(pMotion->motionType)
+				{
+					case MOTIONTYPE_HASH:
+						pname = "CDB Hash Motion";
+						break;
+					case MOTIONTYPE_FIXED:
+						if ( pMotion->numOutputSegs > 0 )
+							pname = "CDB Fixed Motion";
+						else
+							pname = "CDB Broadcast Motion";
+						break;
+				}
 			}
 			
 			break;
@@ -722,7 +724,7 @@ explain_outNode(StringInfo str,
 		case T_Motion:
 			if ( ((Motion *) plan)->motionType == MOTIONTYPE_HASH )
 			{
-				show_upper_qual(((Motion *) plan)->pHashDefn->hashExpr,
+				show_upper_qual(((Motion *) plan)->hashExpr,
 								"Hash Expression",
 								"outer", OUTER, outerPlan(plan),
 								"", 0, NULL,
