@@ -16,7 +16,9 @@
 
 #include <sys/ipc.h>
 
-
+#define SHMEM_KEY 42
+#define SEM_KEY 43
+#define QSIZE 64000
 
 /* =================================================================*/
 /*                        SHARED MEMORY UTILITIES                   */
