@@ -18,7 +18,7 @@
 
 #include "catalog/pg_type.h"
 #include "utils/array.h"
-static void  extract_int_array(Datum array_datum, int* lenp, int** vecp);
+static void  extract_INT2OID_array(Datum array_datum, int* lenp, int16** vecp);
  
  
 /*
@@ -91,9 +91,8 @@ CdbPolicy *get_table_policy(Oid tbloid)
 	{
 		bool	isNull;
 		Datum	attr;
-		char*	policy_str = NULL;
 		int		i, nattrs = 0;
-		int*	attrnums = NULL;
+		int16*	attrnums = NULL;
 		size_t  sz;
 		
 		/*
@@ -101,7 +100,7 @@ CdbPolicy *get_table_policy(Oid tbloid)
 		 */
 		attr = heap_getattr(cdb_policy_tuple, Anum_cdb_policy_attrnums, cdb_policy_rel->rd_att, &isNull);
 		Assert( !isNull );
-		extract_int_array(attr, &nattrs, &attrnums);
+		extract_INT2OID_array(attr, &nattrs, &attrnums);
 		Assert( nattrs >= 0 );
 		
 		sz = sizeof(CdbPolicy) + nattrs*sizeof(policy->attrs[0]);
@@ -284,10 +283,11 @@ SysScanDesc cdbtable_beginscan(Relation heapRelation,
 
 
 /*
- * Extract len and pointer to buffer from an int32[] (vector) Datum.
+ * Extract len and pointer to buffer from an int16[] (vector) Datum 
+ * representing a PostgreSQL INT2OID type.
  */
  static void
- extract_int_array(Datum array_datum, int* lenp, int** vecp)
+ extract_INT2OID_array(Datum array_datum, int* lenp, int16** vecp)
  {
 	ArrayType *array_type;
 	
@@ -299,7 +299,7 @@ SysScanDesc cdbtable_beginscan(Relation heapRelation,
 	Assert( ARR_ELEMTYPE(array_type) == INT2OID );
 	Assert( ARR_LBOUND(array_type)[0] == 1 );
 	*lenp = ARR_DIMS(array_type)[0];
-	*vecp = (int*)ARR_DATA_PTR(array_type);
+	*vecp = (int16*)ARR_DATA_PTR(array_type);
 	
 	return;
  }	
