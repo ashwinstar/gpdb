@@ -494,6 +494,8 @@
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <target name="-setCCompiler"
             depends="-chooseCCompiler,-setPlatformCFLAGS">
+        <echo level="info" message="Using ${CCompiler} for C compiles"/>
+        <echo level="info" message="Using ${platformCFLAGS} for C compilation flags"/>
     </target>
 
 
@@ -536,7 +538,7 @@
     <!-- This covers shared library construction options.               -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <target name="-setPlatformCFLAGS" unless="platformCFLAGS"
-            depends="-setPlatform,-chooseCCompiler">
+            depends="-setPlatform,-chooseCCompiler,-setPlatformCFLAGS_SL">
 
         <!-- ~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~ -->
         <!-- Compile options (non-shared library)                                  -->
@@ -549,7 +551,9 @@
             <isset property="osIsCygwin"/>
         </condition>
         <property name="platformCFLAGS" value=""/>
+    </target>
         
+    <target name="-setPlatformCFLAGS_SL"> 
 
         <!-- ~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~ -->
         <!-- Shared Object/Library options:                                        -->
