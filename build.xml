@@ -27,7 +27,8 @@
     <description>
   CDB Project
 
-      -Dport=&lt;default_port&gt; must be specified to configure PostgreSQL.
+      -Dport=&lt;default_port&gt; can be specified to configure PostgreSQL.
+      The default port is set to 10000.
 
       Use -DinstallRoot=&lt;install_path&gt; to designate an installation target
       other than $HOME/cdb.
@@ -222,7 +223,7 @@ The "install" target is allowed for devo builds only.  Use the
     <!-- directory.                                                     -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <target name="dist"
-            depends="-checkOptions,init,-installRootWarning,distclean,compile,makeDoc"
+            depends="init,-installRootWarning,distclean,compile,makeDoc"
             description="Prepare a distribution package for CDB">
 
         <mkdir dir="${dist}"/>

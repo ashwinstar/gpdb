@@ -41,6 +41,7 @@
 
         <!-- Override this property for production build -->
         <property name="installRoot" value="${os.HOME}/cdb"/>
+        <property name="port" value="10000"/>
 
         <!--
             If we're not performing a production distribution build
