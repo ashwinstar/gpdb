@@ -39,13 +39,6 @@
     <property name="testDbDir" value="testDbDir"/>
     <property name="build.sysclasspath" value="ignore"/>
     <property name="jdbcDir" location="${projectRoot}/common/pgjdbc"/>
-    <property name="cdbCommonsDir" location="${projectRoot}/common/cdb-commons"/>
-    <property name="cdbCommonsBuild" value="${build}"/>
-    <property name="log4jDir" value="${cdbCommonsDir}/lib"/>
-    <property name="cdbLoaderDir" location="${projectRoot}/cdb-loader"/>
-    <property name="cdbLoaderLib" location="${cdbLoaderDir}/lib"/>
-    <property name="cdbLoaderBuild" value="${build}"/>
-
 
     <!--
         Insert common properties and targets.
@@ -64,39 +57,20 @@
         <mkdir dir="${buildJavaDoc}"/>
         <mkdir dir="${buildClasses}"/>
 
-
-
         <path id="test.class.path">
             <pathelement location="${buildClasses}"/>
-
 
             <fileset dir="${jdbcDir}">
                 <include name="postgres-jdbc3.jar"/>
             </fileset>
 
-            <fileset dir="${cdbCommonsDir}/${cdbCommonsBuild}">
-                <include name="cdb-commons.jar"/>
-            </fileset>
+            <pathelement location="${cdbCommonsBuild}/cdb-commons.jar"/>
+            <pathelement location="${cdbMgmtBuild}/classes"/>
+            <pathelement location="${cdbLoaderBuild}/classes"/>
 
             <fileset dir="${toolsLib}">
                 <include name="junit.jar"/>
             </fileset>
-
-            <fileset dir="${log4jDir}">
-                 <include name="log4j-1.2.9.jar"/>
-             </fileset>
-
-             <fileset dir="${cdbLoaderLib}">
-                 <include name="antlrall.jar"/>
-                 <include name="concurrent.jar"/>
-             </fileset>
-
-
-            <fileset dir="${cdbLoaderDir}/${cdbLoaderBuild}">
-                 <include name="cdb-loader.jar"/>
-             </fileset>
-
-
         </path>
 
         <echo level="info">
@@ -138,7 +112,7 @@
     <!-- Performs Java source compilation.                              -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <target name="compileJava"
-            depends="init,-makeCDBCommons,-makeCDBLoader">
+            depends="init,-makeCDBCommons">
 
         <!-- Build Java code. -->
         <javac srcdir="src"
@@ -165,45 +139,6 @@
 
     </target>
 
-
-    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
-    <!-- Generate common pgutils routine libraries                          -->
-    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
-    <target name="-makeCDBCommons"
-            depends="init"
-            unless="pgUtilsDone">
-
-        <!-- Invoke ANT recursively to make the common subproject -->
-        <ant antfile="build.xml"
-             dir="${projectRoot}/common/cdb-commons"
-             target="package">
-            <property name="build" value="${cdbCommonsBuild}"/>
-            <!-- omit passing "releaseX" variables here -->
-        </ant>
-
-        <property name="pgUtilsDone" value="true"/>
-
-    </target>
-
-
-    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
-    <!-- Generate cdb-loader jar                          -->
-    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
-    <target name="-makeCDBLoader"
-            depends="init"
-            unless="cdbLoaderDone">
-
-        <!-- Invoke ANT recursively to make the common subproject -->
-        <ant antfile="build.xml"
-             dir="${projectRoot}/cdb-loader"
-             target="package">
-            <property name="build" value="${cdbLoaderBuild}"/>
-            <!-- omit passing "releaseX" variables here -->
-        </ant>
-
-        <property name="cdbLoaderDone" value="true"/>
-
-    </target>
 
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <!-- Run test-cases                                                 -->
@@ -262,80 +197,5 @@
         <delete dir="${testDbDir}"/>
     </target>
 
-    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
-    <!-- Run Cdb-Loader test-cases                                                 -->
-    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
-    <target name="cdbloader"
-            depends="init,compile"
-            description="Run the test-cases.">
-
-        <property name="cdbLoaderTestsDir" value="src/com/metapa/test/loader"/>
-
-        <mkdir dir="${junitReportDir}"/>
-
-        <!-- get loader test properties -->
-        <property file="${cdbLoaderTestsDir}/test.properties" prefix="test."/>
-        <script language="beanshell"><![CDATA[
-            /**
-             * Adds project properties beginning "test.*" to each junit
-             * task in this target as system properties (including the
-             * "test." prefix.
-             */
-
-            import org.apache.tools.ant.taskdefs.optional.junit.JUnitTask;
-            import org.apache.tools.ant.types.Environment;
-            import org.apache.tools.ant.Task;
-            import org.apache.tools.ant.Project;
-
-            ArrayList propList = new ArrayList();
-            for ( Iterator it = project.getProperties().entrySet().iterator(); it.hasNext(); )
-            {
-                Map.Entry entry = (Map.Entry) it.next();
-                String key = entry.getKey();
-                if ( key.startsWith("test.") )
-                {
-                    Environment.Variable ev = new Environment.Variable();
-                    ev.setKey(key.substring(5));
-                    ev.setValue(entry.getValue());
-                    propList.add(ev);
-                }
-            }
-            Environment.Variable[] props = propList.toArray(new Environment.Variable[propList.size()]);
-            propList = null;
-
-            Task[] tasks = self.getOwningTarget().getTasks();
-            for ( int i = 0; i < tasks.length; i++ )
-            {
-                if ( tasks[i] instanceof JUnitTask )
-                {
-                    JUnitTask task = (JUnitTask) tasks[i];
-                    for ( int j = 0; j < props.length; j++ )
-                    {
-                        task.addSysproperty(props[j]);
-                        self.log("Adding " + props[j].getKey() + "=" + props[j].getValue()
-                                + " to task " + task.getTaskName() + " in " + task.getLocation().toString(),
-                                Project.MSG_DEBUG);
-                    }
-                }
-            }
-            ]]>
-        </script>
-
-
-        <junit fork="true" printsummary="true">
-            <classpath refid="test.class.path"/>
-
-            <formatter type="plain"/>
-
-            <batchtest todir="${junitReportDir}">
-                <fileset dir="${buildClasses}">
-                    <include name="**/*Test.class"/>
-                </fileset>
-            </batchtest>
-        </junit>
-
-        <echo>IMPORTANT NOTE: If any of the above tests FAILED, please make sure that you followed</echo>
-        <echo>all the instructions in README.txt. This is necessary until cluster creation and configuration will be automated.</echo>
-    </target>
 
 </project>
