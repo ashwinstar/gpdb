@@ -165,7 +165,7 @@ void ams_disconnect( int exit_code, Datum arg )
 	while( !done )
 	{
 		//send
-		if( SendTupleChunkToAMS(abortTcItem) )
+		if( SendShutdownToAMS(abortTcItem) )
 		{
 			//we are done here...
 			done = true;
@@ -182,6 +182,9 @@ void ams_disconnect( int exit_code, Datum arg )
     disconnected = true;
     
 	elog( DEBUG3, "AMS Disconnect Finished." );
+
+	//
+	CleanUpMotionLayerIPC();
 	
 	rc = MPI_Finalize();
 	if (rc != MPI_SUCCESS)
@@ -206,7 +209,7 @@ void ams_cleanup( )
 	 */
 	 
     //disconnect from ams-svc.	 
-    ams_disconnect( 0, NULL );
+    ams_disconnect( 0, (Datum)NULL );
     
 	
 	return;

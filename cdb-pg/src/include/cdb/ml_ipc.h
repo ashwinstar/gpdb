@@ -83,6 +83,10 @@ extern bool SendTupleChunkToAMS(TupleChunkListItem tcItem);
  */
 extern TupleChunkListItem RecvTupleChunkFromAMS(void);
 
+/* used to send a shutdown message to the ams. 
+ */
+extern bool SendShutdownToAMS(TupleChunkListItem tcItem);
+
 
 extern bool CanWriteToAMS( int segId );
 

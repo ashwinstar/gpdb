@@ -29,7 +29,6 @@
 #include "utils/memutils.h"
 
 
-
 /*=========================================================================
  * MOTION NODE INFO DATA STRUCTURES
  */
@@ -722,7 +721,6 @@ ReceiveReturnCode RecvTuple(uint16 motNodeID, HeapTuple *tup_i)
     /* Process all chunks in our incoming queue, regardless of which motion
      * nodes they are coming from.
      */
-    processIncomingChunks();
 
     /* Get the tuple-store that should contain heap-tuples that we want. */
 
@@ -744,6 +742,12 @@ ReceiveReturnCode RecvTuple(uint16 motNodeID, HeapTuple *tup_i)
 
     /* Get the next HeapTuple, if one is available! */
     *tup_i = htfifo_gettuple(pMNEntry->ready_tuples);
+
+	if( *tup_i == NULL )
+	{
+		processIncomingChunks();
+    	*tup_i = htfifo_gettuple(pMNEntry->ready_tuples);
+	}
 
     if (*tup_i != NULL)
     {
@@ -783,7 +787,6 @@ ReceiveReturnCode RecvTupleFrom(uint16 motNodeID, HeapTuple *tup_i,
     /* Process all chunks in our incoming queue, regardless of which motion
      * nodes they are coming from.
      */
-    processIncomingChunks();
 
     /* Get the tuple-store that should contain heap-tuples that we want. */
 
@@ -810,6 +813,13 @@ ReceiveReturnCode RecvTupleFrom(uint16 motNodeID, HeapTuple *tup_i,
 
     /* Get the next HeapTuple, if one is available! */
     *tup_i = htfifo_gettuple(pCSEntry->ready_tuples);
+
+	if( *tup_i == NULL )
+	{
+		processIncomingChunks();	
+    	*tup_i = htfifo_gettuple(pCSEntry->ready_tuples);
+	}
+
 
     if (*tup_i != NULL)
     {
@@ -1383,6 +1393,7 @@ bool addChunkToSorter(TupleChunkListItem tcItem)
         /* Mark the state as "end of stream." */
         chunkSorterEntry->end_of_stream = true;
         motNodeEntry->num_stream_ends_recvd++;
+
         
         break;
         
