@@ -10,6 +10,7 @@
 
 #include "access/htup.h"
 #include "access/tupdesc.h"
+#include "cdb/tupchunk.h"
 
 /*-------------------*/
 /* Tuple Chunk Lists */
@@ -69,38 +70,6 @@ typedef struct TupleChunkListData
     
 } TupleChunkListData, *TupleChunkList;
 
-
-/* Sends a tuple chunk from the Postgres process to the local AMS process via
- * IPC.  This function does not block; if the IPC channel cannot accept the
- * tuple chunk for some reason, then this is indicated by a return-code.
- *
- * Errors are indicated by calls to ereport(), and are therefore not indicated
- * in the return code.
- *
- * PARAMETERS:
- *   - tcItem:  The tuple-chunk data to send.
- *
- * RETURN:
- *   - false if the chunk could not be sent, or true if it could be sent.
- */
-extern bool SendTupleChunkToAMS(TupleChunkListItem tcItem);
-
-
-/* Receives a tuple chunk from the local AMS process via IPC.  This function
- * does not block; if there is no tuple chunk available, then NULL is
- * returned.
- *
- * Errors are indicated by calls to ereport(), and are therefore not indicated
- * in the return code.
- *
- * PARAMETERS:
- *   - none.
- *
- * RETURN:
- *   - A populated TupleChunkListItemData structure (allocated with palloc()),
- *     or NULL if no chunk is available at time of call.
- */
-extern TupleChunkListItem RecvTupleChunkFromAMS(void);
 
 
 

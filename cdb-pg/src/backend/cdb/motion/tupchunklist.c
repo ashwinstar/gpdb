@@ -16,6 +16,7 @@
 #include "cdb/tupser.h"
 #include "lib/stringinfo.h"
 
+
 TupleChunkListItem makeTupleChunkListItem(TupleChunkType chunkType,
 										  void *pChunkData, uint16 chunkDataSize,
 										  uint16 srcSegIdx, uint16 tgtSegIdx, uint16 mnid)
@@ -101,20 +102,3 @@ void clearTCList(TupleChunkList tcList)
 }
 
 
-/*=========================================================================
-* Functions to send and receive tuple chunks.  (TODO:  THIS NEEDS WORK!)
-*/
-
-
-bool SendTupleChunkToAMS(TupleChunkListItem tcItem)
-{
-    /* TODO:  Implement! */
-    return false;
-}
-
-
-TupleChunkListItem RecvTupleChunkFromAMS(void)
-{
-    /* TODO:  Implement! */
-    return NULL;
-}

@@ -46,4 +46,10 @@ CREATE OR REPLACE FUNCTION cdb_exec_indirect(text) RETURNS SETOF RECORD
 CREATE OR REPLACE FUNCTION cdb_show_alias(text) RETURNS text
     AS 'libcdbtest.so', 'cdb_show_alias'
     LANGUAGE C IMMUTABLE STRICT;
+
+-- ipc test function
+CREATE OR REPLACE FUNCTION ml_ipc_getMsg(text) RETURNS text
+    AS 'libcdbtest.so', 'ml_ipc_getMsg'
+    LANGUAGE C IMMUTABLE STRICT;
+
     

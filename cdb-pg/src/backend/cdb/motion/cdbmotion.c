@@ -16,12 +16,15 @@
 #include "postgres.h"
 
 #include "miscadmin.h"
+#include "cdb/cdblink.h"   //used for the getCdbIdentity() call.
 #include "cdb/cdbmotion.h"
 #include "cdb/cdbvars.h"
+#include "cdb/ml_ipc.h"
 #include "cdb/tupser.h"
 #include "libpq/pqformat.h"
 #include "utils/hsearch.h"
 #include "utils/tuplestore.h"
+
 
 
 /*=========================================================================
@@ -126,6 +129,8 @@ static MotionLayerState s_motion_layer_state;
 static TupleChunkListItemData s_eos_chunk_data =
     { NULL, TUPLE_CHUNK_HEADER_SIZE, "                " };
 
+static int mySegIndex;
+static bool isPrimary;
 
 /*=========================================================================
  * FUNCTION DEFINITIONS
@@ -349,6 +354,12 @@ void InitMotionLayer(void)
     }
 
     s_motion_layer_state.chunksort_map = htab;
+	
+	
+	/* Initialize the Motion Layer IPC subsystem. */
+	getCdbIdentity( &mySegIndex, &isPrimary );	
+	InitMotionLayerIPC( mySegIndex );
+	
 }
 
 
