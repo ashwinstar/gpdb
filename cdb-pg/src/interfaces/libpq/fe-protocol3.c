@@ -500,9 +500,19 @@ getAnotherTuple(PGconn *conn, int msgLength)
 	int			vlen;			/* length of the current field value */
 	int			i;
 
+#ifdef CDB_LIMITRESULT
+
+ if (result->ntups >= 10)
+    {
+      /* after first 10 rows, discard all the rest */
+	conn->inCursor = conn->inStart + 5 + msgLength;
+	    return 0;
+    }
+#endif
 	/* Allocate tuple space if first time for this data message */
 	if (conn->curTuple == NULL)
 	{
+	 
 		conn->curTuple = (PGresAttValue *)
 			pqResultAlloc(result, nfields * sizeof(PGresAttValue), TRUE);
 		if (conn->curTuple == NULL)
