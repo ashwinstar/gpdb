@@ -1226,7 +1226,9 @@ _outCreateStmt(StringInfo str, CreateStmt *node)
 	WRITE_NODE_FIELD(constraints);
 	WRITE_ENUM_FIELD(hasoids, ContainsOids);
 	WRITE_ENUM_FIELD(oncommit, OnCommitAction);
+	
 	WRITE_STRING_FIELD(tablespacename);
+	WRITE_OID_FIELD(relOid);
 }
 
 static void

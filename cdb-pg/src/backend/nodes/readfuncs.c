@@ -991,6 +991,25 @@ static void readScanInfo(Scan *local_node);
 static void readJoinInfo(Join *local_node);
 static Bitmapset *bitmapsetRead(void);
 
+
+static CreateStmt * 
+_readCreateStmt(void)
+{
+	READ_LOCALS(CreateStmt);
+
+	READ_NODE_FIELD(relation);
+	READ_NODE_FIELD(tableElts);
+	READ_NODE_FIELD(inhRelations);
+	READ_NODE_FIELD(constraints);
+
+	READ_ENUM_FIELD(hasoids,ContainsOids);
+	READ_ENUM_FIELD(oncommit,OnCommitAction);
+	READ_STRING_FIELD(tablespacename);
+	READ_OID_FIELD(relOid);
+
+	READ_DONE();
+}
+
 /*
  * _readPlan
  */
@@ -1496,6 +1515,7 @@ static ParseNodeInfo infoAr[] =
 	{"COLUMNDEF", (ReadFn)_readColumnDef},
 	{"CONST", (ReadFn)_readConst},
 	{"CONVERTROWTYPEEXPR", (ReadFn)_readConvertRowtypeExpr},
+	{"CREATESTMT", (ReadFn)_readCreateStmt},
 	{"DECLARECURSOR", (ReadFn)_readDeclareCursorStmt},
 	{"DISTINCTEXPR", (ReadFn)_readDistinctExpr},
 	{"FIELDSELECT", (ReadFn)_readFieldSelect},
