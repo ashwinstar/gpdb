@@ -14,6 +14,7 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
+#include "cdb/cdbheap.h"
 #include "cdb/cdblink.h"
 #include "cdb/cdbmotion.h"
 #include "cdb/cdbvars.h"
@@ -43,10 +44,6 @@ static List *getOpListFromTargetList(List *tlist, int numCols, AttrNumber *colId
 static bool motion_expr_walker(Node *node, char *not_used);
 static uint32 evalHashKey(ExprContext *econtext, List *hashkeys, FmgrInfo *hashfunctions);
 static bool setReadFromAMS(Motion *node);
-static int cmpTuplesForSortedMotion( HeapTuple ltup, HeapTuple rtup, 
-									FmgrInfo *sortFunctions, SortFunctionKind	*sortFnKinds,
-									int numSortCols, int *sortColIdx,
-									TupleDesc	tupDesc);
 
 
 /* ----------------------------------------------------------------
@@ -396,6 +393,8 @@ ExecInitMotion(Motion *node, EState *estate)
 	if ( node->sendSorted )
 	{
 		Assert( node->numSortCols > 0 );
+		Assert( node->numInputSegs > 0 );
+		Assert( node->inputSegIdx != NULL );
 
 		motionstate->sortFunctions = (FmgrInfo *) palloc0(node->numSortCols * sizeof(FmgrInfo));
 		motionstate->sortFnKinds = (SortFunctionKind *) palloc0(node->numSortCols * sizeof(SortFunctionKind));
@@ -412,6 +411,13 @@ ExecInitMotion(Motion *node, EState *estate)
 
 			fmgr_info(sortFunction, &motionstate->sortFunctions[i]);
 		}
+		
+		motionstate->tupleheap = CreateCdbTupleHeap( node->numInputSegs,
+													CmpTuplesForSortedMotion,
+													motionstate,
+													node);
+		motionstate->tupleheapReady = false;
+		motionstate->segindexNext = node->inputSegIdx[0];
 	}
 	
     /*
@@ -470,6 +476,8 @@ ExecEndMotion(MotionState *node)
 					node->numTuplesToParent
 		);
 
+	if ( node->tupleheap != NULL )
+		DestroyCdbTupleHeap(node->tupleheap);
 
     /*
      * Free up this motion node's resources in the Motion Layer.
@@ -1186,32 +1194,3 @@ bool setReadFromAMS(Motion *node)
 }
 
 
-static int cmpTuplesForSortedMotion( HeapTuple ltup, HeapTuple rtup, 
-							  FmgrInfo *sortFunctions, SortFunctionKind	*sortFnKinds,
-							  int numSortCols, int *sortColIdx,
-							  TupleDesc	tupDesc)
-{
-	int			nkey;
-
-	for (nkey = 0; nkey < numSortCols; nkey++)
-	{
-		AttrNumber	attno = sortColIdx[nkey];
-		Datum		datum1,
-					datum2;
-		bool		isnull1,
-					isnull2;
-		int32		compare;
-
-		datum1 = heap_getattr(ltup, attno, tupDesc, &isnull1);
-		datum2 = heap_getattr(rtup, attno, tupDesc, &isnull2);
-
-		compare = ApplySortFunction(&sortFunctions[nkey],
-										  sortFnKinds[nkey],
-										  datum1, isnull1,
-										  datum2, isnull2);
-		if (compare != 0)
-			return compare;
-	}
-
-	return 0;
-}
