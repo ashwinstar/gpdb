@@ -16,9 +16,9 @@ OBJS = catalog.o dependency.o heap.o index.o indexing.o namespace.o aclchk.o \
 
 BKIFILES = postgres.bki postgres.description
 
-all: cdb_schema SUBSYS.o $(BKIFILES)
+all: cdb_schema.sql SUBSYS.o $(BKIFILES)
 
-cdb_schema: cdb_schema.in
+cdb_schema.sql: cdb_schema.in
 			sed -e 's,@pkglibdir@,$(pkglibdir),g' \
                 -e 's,@dlsuffix@,$(DLSUFFIX),g' \
              $< > cdb_schema.sql    
@@ -50,12 +50,12 @@ postgres.bki: genbki.sh $(POSTGRES_BKI_SRCS) \
 	AWK='$(AWK)' $(SHELL) $< $(pg_includes) --set-version=$(VERSION) -o postgres $(POSTGRES_BKI_SRCS)
 
 .PHONY: install-data
-install-data: cdb_schema $(BKIFILES) installdirs
+install-data: cdb_schema.sql $(BKIFILES) installdirs
 	$(INSTALL_DATA) postgres.bki         $(DESTDIR)$(datadir)/postgres.bki
 	$(INSTALL_DATA) postgres.description $(DESTDIR)$(datadir)/postgres.description
 	$(INSTALL_DATA) $(srcdir)/system_views.sql $(DESTDIR)$(datadir)/system_views.sql
 	$(INSTALL_DATA) $(srcdir)/information_schema.sql $(DESTDIR)$(datadir)/information_schema.sql
-	$(INSTALL_DATA) $(srcdir)/cdb_schema.sql $(DESTDIR)$(datadir)/cdb_schema.sql
+	$(INSTALL_DATA) cdb_schema.sql $(DESTDIR)$(datadir)/cdb_schema.sql
 	$(INSTALL_DATA) $(srcdir)/sql_features.txt $(DESTDIR)$(datadir)/sql_features.txt
 
 installdirs:
