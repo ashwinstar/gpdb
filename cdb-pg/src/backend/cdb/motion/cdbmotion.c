@@ -21,16 +21,13 @@
 #include "cdb/cdblink.h"   //used for the getCdbIdentity() call.
 #include "cdb/cdbmotion.h"
 #include "cdb/cdbvars.h"
+#include "cdb/htupfifo.h"
 #include "cdb/ml_ipc.h"
 #include "cdb/tupser.h"
 #include "libpq/pqformat.h"
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
-#include "utils/tuplestore.h"
 
-
-/* I'm not sure that the cache mem-ctxt is where internal stuff should go! */
-#define ML_MEM_CTXT     CacheMemoryContext
 
 
 /*=========================================================================
@@ -67,11 +64,10 @@ typedef struct MotionNodeEntry
 	 */
 	SerTupInfo ser_tup_info;
 	
-    /* If preserve_order is false, this tuple-store is used to hold completed
-     * tuples that have not yet been consumed.  If preserve_order is true,
-     * this is NULL.
+    /* If preserve_order is false, this is used to hold completed tuples that
+	 * have not yet been consumed.  If preserve_order is true, this is NULL.
      */
-    Tuplestorestate *ready_tuples;
+    htup_fifo ready_tuples;
 
     /* Variable that records the total number of senders to this motion
      * node.  This is expected to always be (number of qExecs).
@@ -137,10 +133,10 @@ typedef struct ChunkSorterEntry
      */
     TupleChunkListData chunk_list;
     
-    /* A tuple-store to hold the tuples that have been completed but not yet
+    /* A FIFO to hold the tuples that have been completed but not yet
      * retrieved.  This will not be initialized until it is actually needed.
      */
-    Tuplestorestate *ready_tuples;
+    htup_fifo ready_tuples;
     
     /* Flag recording whether end-of-stream has been reported from the source
      * segment-database.
@@ -180,6 +176,11 @@ typedef struct MotionLayerState
 
     /* The ID of the query-group. */
     int query_group_id;
+
+	/* Memory context for the whole motion layer.  This is a child context of
+	 * the TopMemoryContext, so we are responsible for managing it.
+	 */
+	MemoryContext motion_layer_mctx;
 
     /*------------------------------------------------------------------*/
     /* MOTION NODE STATE - Initialized and used on per-statement basis. */
@@ -223,9 +224,11 @@ static TupleChunkListItemData s_eos_chunk_data =
 
 
 /*=========================================================================
- * FUNCTION DEFINITIONS
+ * HELPER FUNCTION DECLARATIONS
  */
 
+
+static void initMotionLayerStructs(void);
 
 static MotionNodeEntry *getMotionNodeEntry(uint16 motNodeID);
 static ChunkSorterEntry *getChunkSorterEntry(MotionNodeEntry *motNodeEntry,
@@ -233,9 +236,6 @@ static ChunkSorterEntry *getChunkSorterEntry(MotionNodeEntry *motNodeEntry,
 static bool addChunkToSorter(TupleChunkListItem tcItem);
 
 static void processIncomingChunks(void);
-static bool isTupleInStore( Tuplestorestate *tupStoreState );
-
-static HeapTuple getNextTupleFromStore(Tuplestorestate *tupStoreState);
 
 /* Stats-function declarations. */
 static void statSendTuple(MotionNodeEntry *pMNEntry,
@@ -249,25 +249,77 @@ static void statRecvTuple(MotionNodeEntry *pMNEntry,
                           ReceiveReturnCode recvRC);
 
 
+/*=========================================================================
+ * FUNCTION DEFINITIONS
+ */
+
+
 /* This function performs one-time initialization of the Motion Layer.  This
  * should be called at "postgres" process initialization time.
  */
 void InitMotionLayer(void)
 {
+	/* Create the memory-contexts that we will use within the Motion Layer.
+	 *
+	 * The Motion Layer memory-context is a child of the TopMemoryContext, so
+	 * that we can manage when it is reset ourselves.
+	 *
+	 * The tuple-serial memory-context is a child of the Motion Layer
+	 * memory-context 
+	 */
+
+	s_motion_layer_state.motion_layer_mctx = AllocSetContextCreate(
+		TopMemoryContext, "MotionLayerMemCtxt",
+		ALLOCSET_SMALL_MINSIZE, ALLOCSET_SMALL_INITSIZE, ALLOCSET_SMALL_MAXSIZE);
+
+	/* Initialize the Motion Layer IPC subsystem. */
+	getCdbIdentity( &(s_motion_layer_state.my_seg_idx),
+                    &(s_motion_layer_state.is_primary) );
+
+	InitMotionLayerIPC(s_motion_layer_state.my_seg_idx);
+
+	/* Initialize the dynamically-allocated data-structures that the Motion
+	 * Layer uses.
+	 */
+	initMotionLayerStructs();
+}
+
+
+/* This function completely resets the Motion Layer at the end of a query
+ * execution.
+ */
+void ResetMotionLayer(bool flushCommLayer)
+{
+	/* TODO:  Any clearing or resetting of the networking layer should happen
+	 *        here.
+	 */
+
+	/* Free all memory used by the Motion Layer in the processing of the
+	 * previous query.
+	 */
+	MemoryContextReset(s_motion_layer_state.motion_layer_mctx);
+
+	/* Reinitialize the dynamic data-structures that the Motion Layer uses. */
+	initMotionLayerStructs();
+}
+
+
+void initMotionLayerStructs(void)
+{
     MemoryContext oldCtxt;
     HASHCTL hctl;
     HTAB *htab;
 
-    /* Switch to the cache memory-context, since we want this stuff to last
-     * for the lifetime of the postgres process.
+    /* Switch to the Motion Layer memory context, so that we can clean things
+	 * up easily.
      */
-    oldCtxt = MemoryContextSwitchTo(ML_MEM_CTXT);
+    oldCtxt = MemoryContextSwitchTo(s_motion_layer_state.motion_layer_mctx);
 
     /* Initialize motion-node hashtable.  The initial number of bins is chosen
      * to be relatively small, since the max number of bins is just the number
      * of motion nodes in the plan.
      */
-    
+
     hctl.keysize = sizeof(uint16);
     hctl.entrysize = sizeof(MotionNodeEntry);
     hctl.hash = tag_hash;
@@ -298,14 +350,21 @@ void InitMotionLayer(void)
 
     s_motion_layer_state.chunksort_map = htab;
 
-	/* Initialize the Motion Layer IPC subsystem. */
-	getCdbIdentity( &(s_motion_layer_state.my_seg_idx),
-                    &(s_motion_layer_state.is_primary) );
-
-	InitMotionLayerIPC( s_motion_layer_state.my_seg_idx);
-
-    /* All done!  Go back to caller memory-context. */
+    /* Allocation is done.  Go back to caller memory-context. */
     MemoryContextSwitchTo(oldCtxt);
+	
+	/* Clear out statistics values.
+	 *
+	 * TODO:  Perhaps move these to a separate struct so we can just bzero()
+	 *        them all out?
+	 */
+    s_motion_layer_state.stat_total_chunks_sent = 0;
+    s_motion_layer_state.stat_total_bytes_sent = 0;
+    s_motion_layer_state.stat_tuple_bytes_sent = 0;
+    s_motion_layer_state.stat_total_chunks_recvd = 0;
+    s_motion_layer_state.stat_total_bytes_recvd = 0;
+    s_motion_layer_state.stat_tuple_bytes_recvd = 0;
+    s_motion_layer_state.stat_total_chunkproc_calls = 0;
 }
 
 
@@ -323,10 +382,10 @@ void InitMotionLayerNode(uint16 motNodeID, bool includeBackupSegDB,
 
     AssertArg(tupDesc != NULL);
 
-    /* Switch to the cache memory-context, since we want this stuff to last
-     * for the lifetime of the postgres process.
+    /* Switch to the Motion Layer's memory-context, so that the motion node
+	 * can be reset later.
      */
-    oldCtxt = MemoryContextSwitchTo(ML_MEM_CTXT);
+    oldCtxt = MemoryContextSwitchTo(s_motion_layer_state.motion_layer_mctx);
 
     elog(DEBUG2, "Initializing entry for motion node %d in Motion Layer.",
         motNodeID);
@@ -371,8 +430,7 @@ void InitMotionLayerNode(uint16 motNodeID, bool includeBackupSegDB,
         elog(DEBUG3, "Motion node %d is not order-preserving.  Creating"
             " node-level tuple-store.", motNodeID);
 
-        pEntry->ready_tuples = tuplestore_begin_heap(/*randomAccess*/ false,
-            /*interXact*/ true, work_mem);
+        pEntry->ready_tuples = htfifo_create(work_mem);
     }
     else
     {
@@ -401,17 +459,6 @@ void InitMotionLayerNode(uint16 motNodeID, bool includeBackupSegDB,
 
     /* All done!  Go back to caller memory-context. */
     MemoryContextSwitchTo(oldCtxt);
-}
-
-
-/* This function completely resets the Motion Layer at the end of a query
- * execution.  It iterates through each entry in the motion-node and
- * chunk-sorter tables, and performs necessary cleanup of the data-structures.
- */
-void ResetMotionLayer(bool flushCommLayer)
-{
-    
-    /*hash_seq_init(HASH_SEQ_STATUS *status, HTAB *hashp)*/
 }
 
 
@@ -492,8 +539,8 @@ SendReturnCode SendTuple(uint16 motNodeID, TupleSendContext *send_ctxt)
 
         /* Create and store the serialized form, and some stats about it. */
 
-        oldCtxt = MemoryContextSwitchTo(ML_MEM_CTXT);
-       tcList = CvtHeapTupToChunks(send_ctxt->heap_tuple,
+        oldCtxt = MemoryContextSwitchTo(s_motion_layer_state.motion_layer_mctx);
+        tcList = CvtHeapTupToChunks(send_ctxt->heap_tuple,
             &pMNEntry->ser_tup_info, Cdb_max_tuple_chunk_size, motNodeID,
             &mnInfo, targetSegIdx );
         MemoryContextSwitchTo(oldCtxt);
@@ -669,7 +716,6 @@ SendReturnCode SendEndOfStream(uint16 motNodeID, int16 target_segment)
 ReceiveReturnCode RecvTuple(uint16 motNodeID, HeapTuple *tup_i)
 {
     MotionNodeEntry *pMNEntry;
-    Tuplestorestate *tupStoreState;
     ReceiveReturnCode recvRC;
 
     /* Process all chunks in our incoming queue, regardless of which motion
@@ -695,10 +741,8 @@ ReceiveReturnCode RecvTuple(uint16 motNodeID, HeapTuple *tup_i)
                 " motion-node ID %d.", motNodeID)));
     }
 
-    tupStoreState = pMNEntry->ready_tuples;
-
     /* Get the next HeapTuple, if one is available! */
-    *tup_i = getNextTupleFromStore(tupStoreState);
+    *tup_i = htfifo_gettuple(pMNEntry->ready_tuples);
 
     if (*tup_i != NULL)
     {
@@ -733,7 +777,6 @@ ReceiveReturnCode RecvTupleFrom(uint16 motNodeID, HeapTuple *tup_i,
 {
     MotionNodeEntry *pMNEntry;
     ChunkSorterEntry *pCSEntry;
-    Tuplestorestate *tupStoreState;
     ReceiveReturnCode recvRC;
 
     /* Process all chunks in our incoming queue, regardless of which motion
@@ -763,10 +806,9 @@ ReceiveReturnCode RecvTupleFrom(uint16 motNodeID, HeapTuple *tup_i,
      * tuple-store we should use.
      */
     pCSEntry = getChunkSorterEntry(pMNEntry, srcSegIdx);
-    tupStoreState = pCSEntry->ready_tuples;
 
     /* Get the next HeapTuple, if one is available! */
-    *tup_i = getNextTupleFromStore(tupStoreState);
+    *tup_i = htfifo_gettuple(pCSEntry->ready_tuples);
 
     if (*tup_i != NULL)
     {
@@ -806,7 +848,7 @@ void waitForEvent( uint16 motNodeID, bool readInterest, int segId, bool writeInt
 {
     MotionNodeEntry *pMNEntry;
 	ChunkSorterEntry *pCSEntry;
-    Tuplestorestate *tupStoreState;
+    htup_fifo fifo;
 
     bool done = false;
 
@@ -814,16 +856,16 @@ void waitForEvent( uint16 motNodeID, bool readInterest, int segId, bool writeInt
     pMNEntry = getMotionNodeEntry(motNodeID);
 
 
-	/* we want to use the tuplestore where we are storing completed tuples
+	/* we want to use the FIFO where we are storing completed tuples
      * this is depends on if its order preserving or not.
      */
 	if( pMNEntry->preserve_order )
 	{
 		pCSEntry = getChunkSorterEntry(pMNEntry, segId );
-		tupStoreState = pCSEntry->ready_tuples;
+		fifo = pCSEntry->ready_tuples;
 	}
 	else
-    	tupStoreState = pMNEntry->ready_tuples;
+    	fifo = pMNEntry->ready_tuples;
 
 
     //loop through till something good happens.
@@ -835,8 +877,8 @@ void waitForEvent( uint16 motNodeID, bool readInterest, int segId, bool writeInt
         if( readInterest )
         {
 
-            if( isTupleInStore(tupStoreState) )
-            {                
+            if( fifo->tup_count > 0 )
+            {
                 done = true;
             }
             else
@@ -888,7 +930,7 @@ void processIncomingChunks(void)
 	/* Keep track of processed chunk stats. */
     int numChunks, chunkBytes, tupleBytes;
 
-    oldCtxt = MemoryContextSwitchTo(ML_MEM_CTXT);
+    oldCtxt = MemoryContextSwitchTo(s_motion_layer_state.motion_layer_mctx);
 
     /* Get all of the currently available tuple-chunks, and push each one into
      * the chunk-sorter.
@@ -941,89 +983,6 @@ void processIncomingChunks(void)
 
     MemoryContextSwitchTo(oldCtxt);
 }
-
-
-/* This helper function pulls the next HeapTuple from a tuple-store, working
- * around the fact that when the tuple-store read-position hits EOF, it stays
- * at EOF when new tuples are written to the store.  We don't want that
- * behavior, so we have to use the mark-position/restore-position
- * functionality to work around it.
- *
- * If no tuple is available, NULL is returned.
- */
-HeapTuple getNextTupleFromStore(Tuplestorestate *tupStoreState)
-{
-    bool shouldFree;
-    HeapTuple htup;
-
-    AssertArg(tupStoreState != NULL);
-
-    /* If we are already at EOF, set the read-position to where EOF was
-     * previously encountered.  This is necessary since the read-position
-     * tracks the write-position once EOF occurs in the tuple-store.
-     */
-    if (tuplestore_ateof(tupStoreState))
-        tuplestore_restorepos(tupStoreState);
-
-    /* Get the next HeapTuple, if one is available! */
-    htup = tuplestore_getheaptuple(tupStoreState, true, &shouldFree);
-
-    /* I don't know what we should do about the value of should-free. */
-    if (htup != NULL)
-    {
-        /* TODO:  Probably MUCH better to just pass up the should-free flag. */
-        if (!shouldFree)
-            htup = heap_copytuple(htup);
-    }
-    
-    /* If the read-position ends up at EOF, mark the position so that we can
-     * restore it next time we read.  This is because the read-position tracks
-     * with the write-position when EOF occurs in the tuple-store.
-     */
-    if (tuplestore_ateof(tupStoreState))
-        tuplestore_markpos(tupStoreState);
-    
-    return htup;
-}
-
-bool isTupleInStore( Tuplestorestate *tupStoreState )
-{
-    bool shouldFree;
-    HeapTuple htup;
-
-    AssertArg(tupStoreState != NULL);
-
-
-    /* If we are already at EOF, set the read-position to where EOF was
-     * previously encountered.  This is necessary since the read-position
-     * tracks the write-position once EOF occurs in the tuple-store.
-    */
-    Assert( tupStoreState != NULL );
-
-    if (tuplestore_ateof(tupStoreState))
-        tuplestore_restorepos(tupStoreState);
-
-    /* Get the next HeapTuple, if one is available! */
-    tuplestore_markpos(tupStoreState);
-    htup = tuplestore_getheaptuple(tupStoreState, true, &shouldFree);
-    tuplestore_restorepos(tupStoreState);
-
-
-    /* If the read-position ends up at EOF, mark the position so that we can
-     * restore it next time we read.  This is because the read-position tracks
-     * with the write-position when EOF occurs in the tuple-store.
-     */
-    if (tuplestore_ateof(tupStoreState))
-       tuplestore_markpos(tupStoreState);
-
-    if( htup == NULL )
-        return false;
-    else
-        return true;
-
-
-}
-
 
 
 /*
@@ -1138,7 +1097,7 @@ void EndMotionLayerNode(uint16 motNodeID, bool flushCommLayer)
 
         clearTCList(&pCSEntry->chunk_list);
         if (pMNEntry->preserve_order)   /* Clean up the tuple-store. */
-            tuplestore_end(pCSEntry->ready_tuples);
+            htfifo_destroy(pCSEntry->ready_tuples);
         
         hash_search(s_motion_layer_state.chunksort_map, &pCSEntry->key,
             HASH_REMOVE, NULL);
@@ -1171,7 +1130,7 @@ void EndMotionLayerNode(uint16 motNodeID, bool flushCommLayer)
 	CleanupSerTupInfo(&pMNEntry->ser_tup_info);
     FreeTupleDesc(pMNEntry->tuple_desc);
     if (!pMNEntry->preserve_order)
-        tuplestore_end(pMNEntry->ready_tuples);
+        htfifo_destroy(pMNEntry->ready_tuples);
 
     hash_search(s_motion_layer_state.motionnode_map,
         &pMNEntry->motion_node_id, HASH_REMOVE, NULL);
@@ -1213,7 +1172,7 @@ ChunkSorterEntry *getChunkSorterEntry(MotionNodeEntry *motNodeEntry,
     csKey.source_seg_idx = srcSegIdx;
     csKey.motion_node_id = motNodeID;
 
-    oldCtxt = MemoryContextSwitchTo(ML_MEM_CTXT);
+    oldCtxt = MemoryContextSwitchTo(s_motion_layer_state.motion_layer_mctx);
 
     chunkSorterEntry = (ChunkSorterEntry *) hash_search(
         s_motion_layer_state.chunksort_map, &csKey, HASH_ENTER, &found);
@@ -1247,8 +1206,7 @@ ChunkSorterEntry *getChunkSorterEntry(MotionNodeEntry *motNodeEntry,
                 " tuple-store for entry [src=%d,mn=%d].", motNodeID,
                 srcSegIdx, motNodeID);
 
-            chunkSorterEntry->ready_tuples = tuplestore_begin_heap(
-                /*randomAccess*/ false, /*interXact*/ true, work_mem);
+            chunkSorterEntry->ready_tuples = htfifo_create(work_mem);
 
             /* Sanity-check: */
             Assert(motNodeEntry->ready_tuples == NULL);
@@ -1286,7 +1244,7 @@ bool addChunkToSorter(TupleChunkListItem tcItem)
 {
     MemoryContext oldCtxt;
     
-    int16 srcSegIdx; 
+    int16 srcSegIdx;
     uint16 motNodeID;
     ChunkSorterEntry *chunkSorterEntry;
     MotionNodeEntry *motNodeEntry;
@@ -1297,7 +1255,7 @@ bool addChunkToSorter(TupleChunkListItem tcItem)
 
     AssertArg(tcItem != NULL);
 
-    oldCtxt = MemoryContextSwitchTo(ML_MEM_CTXT);
+    oldCtxt = MemoryContextSwitchTo(s_motion_layer_state.motion_layer_mctx);
 
     srcSegIdx = GetSourceSegIdx(tcItem->chunk_data);
     motNodeID = GetMotionNodeID(tcItem->chunk_data);
@@ -1346,24 +1304,11 @@ bool addChunkToSorter(TupleChunkListItem tcItem)
                     " partial tuple data.", srcSegIdx, motNodeID)));
         }
         
-        /* Put this chunk into the list. */
-        appendChunkToTCList(&chunkSorterEntry->chunk_list, tcItem);
-        
-        /* Process the list into a new tuple, then store the tuple. */
+        /* Put this chunk into the list, then turn it into a HeapTuple! */
 
-        htup = CvtChunksToHeapTup(&chunkSorterEntry->chunk_list,
-            &motNodeEntry->ser_tup_info);
-
-        tuplestore_puttuple(chunkSorterEntry->ready_tuples, htup);
-		heap_freetuple(htup);
-
-        tupleCompleted = true;
-
-        /* Clean up the chunk-list to receive a new tuple. */
-        clearTCList(&chunkSorterEntry->chunk_list);
-
-        /* Stats */
-        statNewTupleArrived(motNodeEntry, chunkSorterEntry);
+		appendChunkToTCList(&chunkSorterEntry->chunk_list, tcItem);
+		reconstructTuple(motNodeEntry, chunkSorterEntry);
+		tupleCompleted = true;
 
         break;
 
@@ -1406,24 +1351,11 @@ bool addChunkToSorter(TupleChunkListItem tcItem)
                     " without any leading tuple data.", srcSegIdx, motNodeID)));
         }
 
-        /* Append this chunk to the list. */
-        appendChunkToTCList(&chunkSorterEntry->chunk_list, tcItem);
+        /* Put this chunk into the list, then turn it into a HeapTuple! */
 
-        /* Process the list into a new tuple, then store the tuple. */
-
-        htup = CvtChunksToHeapTup(&chunkSorterEntry->chunk_list,
-            &motNodeEntry->ser_tup_info);
-
-        tuplestore_puttuple(chunkSorterEntry->ready_tuples, htup);
-		heap_freetuple(htup);
-
-        tupleCompleted = true;
-
-        /* Clean up the chunk-list to receive a new tuple. */
-        clearTCList(&chunkSorterEntry->chunk_list);
-
-        /* Stats */
-        statNewTupleArrived(motNodeEntry, chunkSorterEntry);
+		appendChunkToTCList(&chunkSorterEntry->chunk_list, tcItem);
+		reconstructTuple(motNodeEntry, chunkSorterEntry);
+		tupleCompleted = true;
 
         break;
 
@@ -1488,6 +1420,30 @@ bool addChunkToSorter(TupleChunkListItem tcItem)
 
     return tupleCompleted;
 }
+
+
+/* Helper function to perform the operations necessary to reconstruct a
+ * HeapTuple from a list of tuple-chunks, and then update the Motion Layer
+ * state appropriately.  This includes storing the tuple, cleaning out the
+ * tuple-chunk list, and recording statistics about the newly formed tuple.
+ */
+void reconstructTuple(MotionNodeEntry *pMNEntry, ChunkSorterEntry *pCSEntry)
+{
+	HeapTuple htup;
+	
+	/* Convert the list of chunks into a tuple, then stow it away. */
+
+	htup = CvtChunksToHeapTup(&pCSEntry->chunk_list, &pMNEntry->ser_tup_info);
+
+	htfifo_addtuple(pCSEntry->ready_tuples, htup);
+
+	/* Clean up the chunk-list to receive a new tuple. */
+	clearTCList(&pCSEntry->chunk_list);
+
+	/* Stats */
+	statNewTupleArrived(pMNEntry, pCSEntry);
+}
+
 
 /*=========================================================================
  * STATISTICS HELPER-FUNCTIONS

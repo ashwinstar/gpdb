@@ -20,7 +20,7 @@ override LIBS := $(MPILIBS) $(LIBS)
 override CPPFLAGS := -I$(libpq_srcdir) $(CPPFLAGS)
 
 OBJS = cdbmotion.o tupchunk.o tupchunklist.o tupser.o  \
-	ml_ipc.o ams.o ams-net.o mpiutils.o
+	ml_ipc.o ams.o ams-net.o mpiutils.o htupfifo.o
 
 all: SUBSYS.o
 
