@@ -946,8 +946,8 @@ typedef enum Movement
 	MOVEMENT_NONE,			/* No motion required. */
 	MOVEMENT_FOCUS,			/* Fixed motion to a single segment. */
 	MOVEMENT_BROADCAST,		/* Broadcast motion. */
-	MOVEMENT_REPARTITION	/* Hash motion */
-
+	MOVEMENT_REPARTITION,	/* Hash motion */
+	MOVEMENT_REP2PARTITIONED /* inflow is replicated outflow is partitioned */
 } Movement;
 
 /*----------
