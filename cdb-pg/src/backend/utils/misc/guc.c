@@ -58,6 +58,7 @@
 #include "utils/memutils.h"
 #include "utils/pg_locale.h"
 #include "pgstat.h"
+#include "cdb/cdbvars.h"
 
 
 #ifndef PG_KRB_SRVTAB
@@ -1835,6 +1836,27 @@ static struct config_string ConfigureNamesString[] =
 		},
 		&external_pid_file,
 		NULL, assign_canonical_path, NULL
+	},
+
+	{
+		{"cdb_session_role", PGC_BACKEND, UNGROUPED,
+			gettext_noop("Reports the default role for the session."),
+			gettext_noop("Valid values are DISPATCH, EXECUTE, and UTILITY."),
+			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+		},
+		&cdb_session_role_string,
+		"dispatch", assign_cdb_session_role, show_cdb_session_role
+	},
+
+	{
+		{"cdb_role", PGC_SUSET, UNGROUPED,
+			gettext_noop("Sets the role for the session."),
+			gettext_noop("Valid values are DISPATCH, EXECUTE, and UTILITY."),
+			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+
+		},
+		&cdb_role_string,
+		"dispatch", assign_cdb_role, show_cdb_role
 	},
 
 	/* End-of-list marker */
