@@ -326,6 +326,36 @@ Datum HASHAPI_Hash_1_float4(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32(targetbucket); /* return target bucket (segID) */
 }
 
+/* 
+ * HASHAPI_Hash_1_null
+ * Perform a single null value hash.
+ */ 
+PG_FUNCTION_INFO_V1(HASHAPI_Hash_1_null);
+Datum HASHAPI_Hash_1_null(PG_FUNCTION_ARGS)
+{
+    int32 num_segs;            /* number of segments  */
+	unsigned int targetbucket; /* 0-based             */
+	int algorithm;           /* hashing algorithm   */
+	
+	/* Get number of segments */
+        num_segs = PG_GETARG_INT32(0);
+    
+	/* Get hashing algoriithm */
+	algorithm = PG_GETARG_INT32(1);
+	
+	/* create a CdbHash for this hash test. */
+	h = makeCdbHash(num_segs, algorithm);
+	
+	/* init cdb hash */
+	cdbhashinit(h);
+	
+	cdbhashnull(h);
+	
+	/* reduce the result hash value */
+	targetbucket = cdbhashreduce(h);	
+	
+	PG_RETURN_INT32(targetbucket); /* return target bucket (segID) */
+}
 
 /*==============================================
  *
