@@ -20,6 +20,7 @@
 #include "miscadmin.h"
 #include "utils/guc.h"
 #include "cdb/cdbvars.h"
+#include "cdb/cdblink.h"
  
 /*
  * ----------------
@@ -111,8 +112,8 @@ assign_cdb_session_role( const char *newval, bool doit, GucSource source )
 {
     
 #if FALSE
-    elog(DEBUG1, "cdb_assign_role: cdb_session_role=%s, newval=%s, doit=%s, interactive=%s",
-            cdb_show_role(), newval, ( doit ? "true" : "false" ), ( interactive ? "true" : "false" ) );
+    elog(DEBUG1, "assign_cdb_session_role: cdb_session_role=%s, newval=%s, doit=%s",
+            show_cdb_session_role(), newval, ( doit ? "true" : "false" ) );
 #endif
 
 	CdbRoleValue newrole = string_to_role(newval);
@@ -146,12 +147,13 @@ assign_cdb_role( const char *newval, bool doit, GucSource source )
 {
 
 #if FALSE
-    elog(DEBUG1, "cdb_assign_role: cdb_role=%s, newval=%s, doit=%s, interactive=%s",
-            cdb_show_role(), newval, ( doit ? "true" : "false" ), ( interactive ? "true" : "false" ) );
+    elog(DEBUG1, "assign_cdb_role: cdb_role=%s, newval=%s, doit=%s",
+            show_cdb_role(), newval, ( doit ? "true" : "false" ));
 #endif
 
 
 	CdbRoleValue newrole = string_to_role(newval);
+	CdbRoleValue oldrole = Cdb_role;
 	
 	if ( newrole  == CDB_ROLE_UNDEFINED )
 	{
@@ -160,8 +162,48 @@ assign_cdb_role( const char *newval, bool doit, GucSource source )
 	
     if ( doit )
     {
+    	/*
+    	 * When changing to/from dispatch role, we must
+    	 * get/release the libpq connections to the other qExecs.
+    	 */
+    	bool do_disconnect = false;
+    	bool do_connect = false;
+    	
+    	if ( Cdb_role != newrole && IsUnderPostmaster )
+    	{
+    		if ( Cdb_role == CDB_ROLE_DISPATCH )
+    			do_disconnect = true;
+    		else if ( newrole == CDB_ROLE_DISPATCH )
+    			do_connect = true;
+    	}
+    	
+    	if ( do_disconnect )
+    		cdblink_disconnect( 0, 0 );
+	    	
         Cdb_role = newrole;
+        
+    	if ( do_connect )
+    	{
+    		/*
+    		 * In case there are problems with the cdb tables or data,
+    		 * we catch any error coming out of cdblink_setup so we can set the
+    		 * cdb_role back to what it was.  Otherwise we'd be left with
+    		 * a cdb_role of dispatch with no conmnections to the qExecs.
+    		 */
+			PG_TRY();
+			{
+		  		cdblink_setup();
+			}
+			PG_CATCH();
+			{
+	    		cdblink_disconnect( 0, 0 );
+				Cdb_role = oldrole;
+				PG_RE_THROW();
+			}
+			PG_END_TRY();
+    	}
    	}
+   	
     return newval;
 }
 
