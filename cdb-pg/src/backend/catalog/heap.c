@@ -914,7 +914,7 @@ heap_create_with_catalog_with_relid(const char *relname,
 				(errcode(ERRCODE_DUPLICATE_TABLE),
 				 errmsg("relation \"%s\" already exists", relname)));
 
-	elog(NOTICE, "Creating table with oid %d", new_rel_oid);
+	elog(DEBUG5, "Creating table with oid %d", new_rel_oid);
 
 	/*
 	 * Create the relcache entry (mostly dummy at this point) and the
