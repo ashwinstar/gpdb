@@ -29,7 +29,34 @@
     <!-- Perform the normal INIT step targets.                          -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <target name="-init"
-            depends="-setTstamp,-setPlatform,-setTools,-setJava,-checkBash"/>
+            depends="-setTstamp,-setPlatform,-setTools,-setJava,-checkBash,-setRelease">
+
+        <!-- Remember if user set installRoot -->
+        <condition property="installRootDefaulted">
+            <not>
+                <isset property="installRoot"/>
+            </not>
+        </condition>
+
+        <!-- Override this property for production build -->
+        <property name="installRoot" value="${os.HOME}/cdb"/>
+
+        <!--
+            If we're not performing a production distribution build
+            then we're performing a development build (duh!).  We
+            set the "devoBuild" property to drive some options (like
+            debug compile) that would be inappropriate for production
+            work.
+
+            The difference between a development build and a production
+            build depends on whether or not a tagged release of the
+            project is used for the build.
+          -->
+        <condition property="devoBuild">
+            <equals arg1="${releaseDir}" arg2="devo"/>
+        </condition>
+
+    </target>
 
   
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
@@ -99,6 +126,7 @@
     <!-- directory from it.                                             -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <target name="-setTools" depends="-prepareCygwin" unless="toolsSet">
+
         <script language="beanshell"><![CDATA[
             /**
              * Sets "tools" and "toolsLib" properties based on presumed caller
@@ -182,7 +210,10 @@
             project.setUserProperty("toolsLib", (new File(dirs[0], "lib")).getCanonicalPath());
             ]]>
         </script>
+        
+        <property name="toolsAnt" location="${toolsLib}/../bin/ant"/>
         <property name="toolsSet" value="true"/>
+        
     </target>
 
 
@@ -258,7 +289,8 @@
     </target>
 
     <target name="-setJniIncludes"
-            depends="-jniMacOsX,-jniCygwin,-jniLinux,-jniSolaris">
+            depends="-jniMacOsX,-jniCygwin,-jniLinux,-jniSolaris"
+            unless="jniHeadersFound">
 
         <available property="jniHeadersFound" file="jni.h">
             <filepath>
@@ -297,9 +329,19 @@
 
 
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Locate the make utility and ensure it's the GNU one.           -->
+    <!--                                                                -->
+    <!-- Use this target as a dependenty instead of "-findMake" and/or  -->
+    <!-- "-checkMake".                                                  -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="-setMake"
+            depends="-findMake,-checkMake"/>
+
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <!-- Determine which "make" utility to use.                         -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
-    <target name="-setMake" unless="make">
+    <target name="-findMake" unless="make">
         <!-- For normal UNIXen -->
         <condition property="make" value="make">
             <available file="make" filepath="${os.PATH}" type="file"/>
@@ -313,12 +355,40 @@
 
 
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Ensure the make utility is GNU make.                           -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="-checkMake" unless="haveGnuMake" 
+            depends="-findMake">
+        <exec executable="${make}"
+	      outputproperty="makeVersion"
+	      resultproperty="makeCode">
+	    <arg value="-v"/>
+	</exec>
+	<condition property="haveGnuMake" value="true">
+	    <contains string="${makeVersion}" substring="GNU Make "/>
+	</condition>
+	<fail unless="haveGnuMake" message="GNU make is required for this build; make found is not GNU!"/>
+    </target>
+
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Drive C compiler determination and platform dependent options  -->
+    <!--                                                                -->
+    <!-- Use this target as a dependency instead of "-chooseCCompiler"  -->
+    <!-- and/or "-setPlatformCFLAGS".                                   -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="-setCCompiler"
+            depends="-chooseCCompiler,-setPlatformCFLAGS">
+    </target>
+
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <!-- Determine which C compiler to use                              -->
     <!--                                                                -->
     <!-- The INTEL compiler is used if available; otherwise the GCC     -->
     <!-- compiler is used.                                              -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
-    <target name="-setCCompiler" unless="CCompiler">
+    <target name="-chooseCCompiler" unless="CCompiler">
     
         <!--
             Check for Intel C Compiler first
@@ -341,6 +411,84 @@
 
         <fail unless="CCompiler" message="No C compiler available in PATH!"/>
         <echo level="info" message="Using ${CCompiler} for C compiles"/>
+
+    </target>
+
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Set platform & compiler dependent options for compile and load -->
+    <!--                                                                -->
+    <!-- This covers shared library construction options.               -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="-setPlatformCFLAGS" unless="platformCFLAGS"
+            depends="-setPlatform,-chooseCCompiler">
+
+        <!-- ~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~ -->
+        <!-- Compile options (non-shared library)                                  -->
+        <!--                                                                       -->
+        <!--                                                                       -->
+        <!--   OS       Arch   Compiler    CFLAGS                                  -->
+        <!--   Cygwin   x86    gcc         -D__int64="long long"                   -->
+        <!-- ~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~ -->
+        <condition property="platformCFLAGS" value="-D__int64=&quot;long long&quot;">
+            <isset property="osIsCygwin"/>
+        </condition>
+        <property name="platformCFLAGS" value=""/>
+        
+
+        <!-- ~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~ -->
+        <!-- Shared Object/Library options:                                        -->
+        <!--                                                                       -->
+        <!--   OS       Arch   Compiler    CFLAGS_SL   LDFLAGS_SL                  -->
+        <!--   Linux    i386   gcc         -fpic       -fpic -shared               -->
+        <!--   Linux    i386   icc         -fpic       -fpic -shared               -->
+        <!--   Linux    sparc  gcc         -fPIC       -fPIC -shared               -->
+        <!--   Solaris  sparc  gcc         -fPIC       -fPIC -G -Bdynamic          -->
+        <!--   Solaris  i386   gcc         -fPIC       -fPIC -G -Bdynamic          -->
+        <!--   MacOsX   -      gcc         n/a         -bundle                     -->
+        <!--   Cygwin   x86    gcc         n/a                                     -->
+        <!-- ~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~ -->
+        <condition property="platformCFLAGS_SL" value="-fPIC">
+            <or>
+                <os arch="sparc"/>
+                <isset property="osIsSolaris"/>
+            </or>
+        </condition>
+        <condition property="platformCFLAGS_SL" value="-fpic">
+            <and>
+                <isset property="osIsLinux"/>
+                <os arch="i386"/>
+            </and>
+        </condition>
+        <property name="platformCFLAGS_SL" value=""/>
+
+        <condition property="platformLDFLAGS_SL" value="-bundle">
+            <isset property="osIsMacosx"/>
+        </condition>
+        <condition property="platformLDFLAGS_SL" value="${platformCFLAGS_SL} -Wl,-G -Wl,-Bdynamic">
+            <isset property="osIsSolaris"/>
+        </condition>
+        <property name="platformLDFLAGS_SL" value="${platformCFLAGS_SL} -shared"/>
+
+    </target>
+
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Ensure we have an ar utility available.                        -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="-setAr" unless="ar">
+        <!-- For normal UNIXen -->
+        <condition property="ar" value="ar">
+	    <available file="ar" filepath="${os.PATH}" type="file"/>
+	</condition>
+	<!-- for Cygwin -->
+	<condition property="ar" value="ar.exe">
+	    <available file="ar.exe" filepath="${os.PATH}" type="file"/>
+	</condition>
+	<fail unless="ar">
+	    'ar' utility not found in PATH!
+	    For Solaris, /usr/ccs/bin should be in path *after* directory containing GNU make.
+	</fail>
     </target>
     
 
@@ -348,10 +496,11 @@
     <!-- Pick out actual tag name from "$Name[:] <tag_name> $".         -->
     <!--                                                                -->
     <!-- This routine sets "releaseTag" and "releaseDir" properties.    -->
-    <!-- It is dependend on the "tstamp" task having previously been    -->
-    <!-- called.                                                        -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
-    <target name="-setRelease" unless="releaseTag">
+    <target name="-setRelease" 
+            depends="-setTstamp"
+            unless="releaseTag">
+
         <script language="beanshell"> <![CDATA[
             /**
              * This beanshell script is used in ANT build files to extract
@@ -419,6 +568,7 @@
                 project.setUserProperty("releaseNumber", releaseNumber);
             ]]>
         </script>
+
     </target>
 
 
