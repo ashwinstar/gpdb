@@ -796,7 +796,7 @@ bool prescan_mergejoin(Plan *plan, PlanProfile *context)
 {	
 	List *strategies;
 	ListCell *cell;
-	CdbJoinStrategy *strategy;
+	CdbJoinStrategy *strategy = NULL;
 	
 	Plan *outer = outerPlan(plan);
 	Plan *inner = innerPlan(plan);
@@ -820,9 +820,9 @@ bool prescan_mergejoin(Plan *plan, PlanProfile *context)
 		 * However, if the affected side is a Sort node, we know to push the
 		 * motion below it.
 		 */
-		if ( strategy->leftmove == MOVEMENT_REPARTITION && !IsA(outer,Sort) )
+		if ( s->leftmove == MOVEMENT_REPARTITION && !IsA(outer,Sort) )
 			continue;
-		if ( strategy->rightmove == MOVEMENT_REPARTITION && !IsA(inner,Sort) )
+		if ( s->rightmove == MOVEMENT_REPARTITION && !IsA(inner,Sort) )
 			continue;
 		
 		/* At the moment, we know how to extract ordering information only 
@@ -831,9 +831,9 @@ bool prescan_mergejoin(Plan *plan, PlanProfile *context)
 		 * TODO: Learn to pull it from IndexScan and MergeJoin nodes
 		 *       and any other node types known to give ordered results.
 		 */
-		if ( strategy->leftmove != MOVEMENT_NONE && !IsA(outer,Sort) )
+		if ( s->leftmove != MOVEMENT_NONE && !IsA(outer,Sort) )
 			continue;
-		if ( strategy->rightmove != MOVEMENT_NONE && !IsA(inner,Sort) )
+		if ( s->rightmove != MOVEMENT_NONE && !IsA(inner,Sort) )
 			continue;
 			
 		strategy = copyJoinStrategy(s);
