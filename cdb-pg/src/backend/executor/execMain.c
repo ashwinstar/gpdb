@@ -248,9 +248,15 @@ ExecutorRun(QueryDesc *queryDesc,
 			
 			initStringInfo( &buffer );
 
-			appendStringInfo( &buffer, "cdbexec '%s' '%s'", 
-							serializeNode((Node *)queryDesc->parsetree), 
-							serializeNode((Node *)queryDesc->plantree) );
+			char *pszQuery = serializeNode((Node *)queryDesc->parsetree);
+			char *pszPlan = serializeNode((Node *)queryDesc->plantree);
+
+			Assert(pszQuery != NULL && pszPlan != NULL);
+
+			appendStringInfo(&buffer, "cdbexec '%s' '%s'", pszQuery, pszPlan);
+
+			pfree(pszQuery);
+			pfree(pszPlan);
 
 			DispatchTargetSet set;
 			if ( operation == CMD_SELECT )
