@@ -13,6 +13,7 @@
 #include <arpa/inet.h>
 
 #include "cdb/tupchunk.h"
+#include "cdb/tupser.h"
 #include "lib/stringinfo.h"
 
 
@@ -180,8 +181,7 @@ TupleChunkList CvtHeapTupToChunks(HeapTuple htup, TupleDesc tupdesc,
     /* Generate serialized version of heap tuple into the string info. */
     
     initStringInfo(&serialTup);
-    
-    /* TODO */
+    SerializeTuple(htup, tupdesc, &serialTup);
     
     /* Create the tuple-chunk list from the serialized data. */
     
