@@ -48,6 +48,20 @@ typedef enum TupleChunkType
 #define TUPLE_CHUNK_HEADER_SIZE 11
 
 
+/* The target segment index also encodes whether the data should go only to
+ * the active segment-database for the segment-index, or to all segment-
+ * databases for that segment-index, in the top bit.  (0 = active only;
+ * 1 = all seg-dbs for the seg-index.)  In addition, the segment-index 0x7FFF
+ * means "broadcast."
+ */
+
+#define BROADCAST_SEGIDX        0x7FFF
+#define ALL_SEGDBS_MASK         0x8000
+
+#define GetSegIdx(x)            ((x) & ~ALL_SEGDBS_MASK)
+#define IsBroadcastSegIdx(x)    (GetSegIdx(x) == BROADCAST_SEGIDX)
+#define IsActiveOnlySegIdx(x)   ( ((x) & ALL_SEGDBS_MASK) == 0 )
+
 /* Simple accessors/mutators for parts of the tuple-chunk header.  These
  * functions store multibyte integers in network byte order, and convert
  * back to hardware byte order on retrieval.

@@ -44,9 +44,15 @@ typedef struct MotionNodeEntry
      */
     bool preserve_order;
 
+    /* Flag specifying whether only the active segment DB should be included
+     * in sends, or whether all (primary and backup) segment DBs should be
+     * included.
+     */
+    bool include_backup_seg_dbs;
+
     /* The description of tuples that this motion node will be exchanging. */
     TupleDesc tuple_desc;
-    
+
     /* If preserve_order is false, this tuple-store is used to hold completed
      * tuples that have not yet been consumed.  If preserve_order is true,
      * this is NULL.
@@ -93,7 +99,7 @@ typedef struct ChunkSorterEntry
 } ChunkSorterEntry;
 
 /*=========================================================================
- * MOTION LAYER DATA STRUCTURE AND GLOBAL STATE VARIABLE
+ * MOTION LAYER DATA STRUCTURE
  */
 
 typedef struct MotionLayerState
@@ -110,7 +116,15 @@ typedef struct MotionLayerState
 } MotionLayerState;
 
 
+/*=========================================================================
+ * STATIC STATE VARS
+ */
+
+
 static MotionLayerState s_motion_layer_state;
+
+static TupleChunkListItemData s_eos_chunk_data =
+    { NULL, TUPLE_CHUNK_HEADER_SIZE, "                " };
 
 
 /*=========================================================================
@@ -131,24 +145,23 @@ bool addChunkToSorter(TupleChunkListItem tcItem);
  * Function:  SendTuple - Sends a portion or whole tuple to the AMS layer.
  *
  */
-int 
-SendTuple( MotionNodeInfo *mn_info, TupleSendContext *send_ctxt )
+int SendTuple(MotionNodeInfo *mn_info, TupleSendContext *send_ctxt)
 {
     bool chunk_sent = false;
     bool done_sending = false;
     bool tuple_sent = false;
     TupleChunkList tcList;
     TupleChunkListItem tuple_chunk;
-    
+
     AssertArg(mn_info != NULL);
-    
+
     AssertArg(send_ctxt != NULL);
     AssertArg(send_ctxt->total_tuple_bytes > 0);
     AssertArg(send_ctxt->total_bytes_sent < send_ctxt->total_tuple_bytes); /* fail means already sent */
     AssertArg(send_ctxt->last_bytes_written >= 0);
     AssertArg(send_ctxt->last_bytes_written <= send_ctxt->total_bytes_sent);
-    
-    /* On the first call, we need to turn the Heapgenerate a serialized version of the
+
+    /* On the first call, we need to generate a serialized version of the
      * HeapTuple.  This gets stored into the TupleSendContext, but freed on
      * the last call required to send the tuple.  (For tuples that require a
      * single send call, it is freed right away; for tuples that require
@@ -162,29 +175,29 @@ SendTuple( MotionNodeInfo *mn_info, TupleSendContext *send_ctxt )
         tcList = CvtHeapTupToChunks(send_ctxt->heap_tuple,
             mn_info->tuple_desc, Cdb_max_tuple_chunk_size, mn_info,
             send_ctxt->target_segment);
-        
+
         send_ctxt->tuple_chunk_list = tcList;
         send_ctxt->next_tuple_chunk = tcList->p_first;
-        
+
         send_ctxt->total_tuple_bytes = tcList->serialized_data_length;
         send_ctxt->total_bytes_sent = 0;
     }
-    
+
     send_ctxt->last_bytes_written = 0;
-    
+
     /* Loop on sending tuple chunks until either the whole tuple is sent, or
      * we can't send the current chunk.  (If we get stopped in the middle, the
      * state is stored in the TupleSendContext, so that this function can be
      * called again later.)
      */
-    
+
     tuple_sent = false;
     done_sending = false;
     do
     {
         tuple_chunk = send_ctxt->next_tuple_chunk;
         Assert(tuple_chunk != NULL);
-        
+
         /* Push the tuple chunk to the AMS using some IPC mechanism (we don't
          * care how the data gets there).
          */
@@ -209,7 +222,7 @@ SendTuple( MotionNodeInfo *mn_info, TupleSendContext *send_ctxt )
             Assert(send_ctxt->total_bytes_sent > 0);
 
             Assert(send_ctxt->last_bytes_written > 0);
-            
+
             /* Get out the next chunk to send.  If the whole tuple has been
              * sent, exit the loop.
              */
@@ -225,21 +238,42 @@ SendTuple( MotionNodeInfo *mn_info, TupleSendContext *send_ctxt )
             }
         }
     } while (!done_sending);
-    
+
     return (tuple_sent ? SEND_COMPLETE : SEND_INCOMPLETE);
 }
 
 
-/*
- * Function: SendEndOfStream - Signals other peer Motion Nodes that this motion
- *			       node has no more tuples to send out.	
- * 			
+/* Signals other peer Motion Nodes that this motion node has no more tuples to
+ * send out.  The send operation is nonblocking, and will return
+ * SEND_INCOMPLETE if the send would block.  When this value is returned, the
+ * caller must try again until the SEND_COMPLETE value is returned.
  */
-int  
-SendEndOfStream( MotionNodeInfo *mn_info )
+int
+SendEndOfStream(MotionNodeInfo *mn_info)
 {
-    
-	return 0; 
+    bool chunk_sent;
+    uint8 *pData;
+
+    /* Use the statically allocated chunk that is intended for sending end-of-
+     * stream messages so that we don't incur allocation and deallocation
+     * overheads.
+     */
+
+    Assert(s_eos_chunk_data.p_next == NULL);
+    Assert(s_eos_chunk_data.chunk_length == TUPLE_CHUNK_HEADER_SIZE);
+
+    pData = s_eos_chunk_data.chunk_data;
+
+    SetTargetSegIdx(pData, BROADCAST_SEGIDX);
+    SetQueryGroupID(pData, mn_info->process_group_id);
+    SetSourceSegIdx(pData, mn_info->segment_id);
+    SetMotionNodeID(pData, mn_info->motion_node_id);
+    SetChunkDataSize(pData, 0);
+    SetChunkType(pData, TC_END_OF_STREAM);
+
+    chunk_sent = SendTupleChunkToAMS(&s_eos_chunk_data);
+
+    return (chunk_sent ? SEND_COMPLETE : SEND_INCOMPLETE);
 }
  
  
