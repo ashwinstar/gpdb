@@ -1331,6 +1331,7 @@ bool addChunkToSorter(TupleChunkListItem tcItem)
             &motNodeEntry->ser_tup_info);
 
         tuplestore_puttuple(chunkSorterEntry->ready_tuples, htup);
+		heap_freetuple(htup);
 
         tupleCompleted = true;
 
@@ -1390,6 +1391,7 @@ bool addChunkToSorter(TupleChunkListItem tcItem)
             &motNodeEntry->ser_tup_info);
 
         tuplestore_puttuple(chunkSorterEntry->ready_tuples, htup);
+		heap_freetuple(htup);
 
         tupleCompleted = true;
 
