@@ -32,8 +32,12 @@
 #include "catalog/namespace.h"
 #include "catalog/pg_database.h"
 #include "catalog/pg_index.h"
+#include "cdb/cdbanalyze.h"
+#include "cdb/cdbdisp.h"
+#include "cdb/cdbvars.h"
 #include "commands/vacuum.h"
 #include "executor/executor.h"
+#include "lib/stringinfo.h"
 #include "miscadmin.h"
 #include "storage/buf_internals.h"
 #include "storage/freespace.h"
@@ -213,6 +217,11 @@ static int	vac_cmp_offno(const void *left, const void *right);
 static int	vac_cmp_vtlinks(const void *left, const void *right);
 static bool enough_space(VacPage vacpage, Size len);
 
+/*
+ * Cdb Addition to send the vacuum statement from the dispatcher to the qExecs.
+ */
+static void dispatchVacuum(VacuumStmt *vacstmt);
+
 
 /****************************************************************************
  *																			*
@@ -236,6 +245,13 @@ vacuum(VacuumStmt *vacstmt)
 				in_outer_xact,
 				use_own_xacts;
 	List	   *relations;
+
+	/*
+	 * If we are in Cdb Dispatch Mode, first send off
+	 * vacuum calls to all the qExecs
+	 */
+	if ( Cdb_role == CDB_ROLE_DISPATCH )
+		dispatchVacuum(vacstmt);
 
 	if (vacstmt->verbose)
 		elevel = INFO;
@@ -643,23 +659,39 @@ vac_update_relstats(Oid relid, BlockNumber num_pages, double num_tuples,
 	Buffer		buffer;
 
 	/*
-	 * update number of tuples and number of pages in pg_class
-	 */
+	* update number of tuples and number of pages in pg_class
+	*/
 	rd = heap_openr(RelationRelationName, RowExclusiveLock);
 
 	ctup = SearchSysCache(RELOID,
-						  ObjectIdGetDatum(relid),
-						  0, 0, 0);
+						ObjectIdGetDatum(relid),
+						0, 0, 0);
 	if (!HeapTupleIsValid(ctup))
 		elog(ERROR, "pg_class entry for relid %u vanished during vacuuming",
-			 relid);
+			relid);
+
+	/* 
+	 * TODO: Remove the heap_attisnull condition once we are able to supress non-used columns
+	 * in the motion node
+	 */
+	if ( Cdb_role == CDB_ROLE_DISPATCH && heap_attisnull(ctup, Anum_pg_class_relacl) )
+	{
+		/*
+		 * This was originally intended to be called whenever the role is DISPATCH,
+		 * but there were problems with the query generated from cdb_get_relstats
+		 * whenever relacl was non-NULL.
+		 * Since normally this will be NULL in all user tables, I just
+		 * avoided the call when relacl was non-NULL.
+		 */
+		cdb_get_relstats(relid, &num_pages, &num_tuples);
+	}
 
 	/* get the buffer cache tuple */
 	rtup.t_self = ctup->t_self;
 	ReleaseSysCache(ctup);
 	if (!heap_fetch(rd, SnapshotNow, &rtup, &buffer, false, NULL))
 		elog(ERROR, "pg_class entry for relid %u vanished during vacuuming",
-			 relid);
+			relid);
 
 	/* ensure no one else does this at the same time */
 	LockBuffer(buffer, BUFFER_LOCK_EXCLUSIVE);
@@ -671,20 +703,20 @@ vac_update_relstats(Oid relid, BlockNumber num_pages, double num_tuples,
 	pgcform->relhasindex = hasindex;
 
 	/*
-	 * If we have discovered that there are no indexes, then there's no
-	 * primary key either.	This could be done more thoroughly...
-	 */
+	* If we have discovered that there are no indexes, then there's no
+	* primary key either.	This could be done more thoroughly...
+	*/
 	if (!hasindex)
 		pgcform->relhaspkey = false;
 
 	LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
 
 	/*
-	 * Invalidate the tuple in the catcaches; this also arranges to flush
-	 * the relation's relcache entry.  (If we fail to commit for some
-	 * reason, no flush will occur, but no great harm is done since there
-	 * are no noncritical state updates here.)
-	 */
+	* Invalidate the tuple in the catcaches; this also arranges to flush
+	* the relation's relcache entry.  (If we fail to commit for some
+	* reason, no flush will occur, but no great harm is done since there
+	* are no noncritical state updates here.)
+	*/
 	CacheInvalidateHeapTuple(rd, &rtup);
 
 	/* Write the buffer */
@@ -3434,4 +3466,53 @@ vacuum_delay_point(void)
 		/* Might have gotten an interrupt while sleeping */
 		CHECK_FOR_INTERRUPTS();
 	}
+}
+
+/*
+ * dispatchVacuum:
+ * Sends the vacuum statement to the qExecs.
+ * must only be called in dispatch mode.
+ */
+static void dispatchVacuum(VacuumStmt *vacstmt)
+{
+	char *pszVacuum;
+	DispatchTargetSet set;
+	Query *q;
+	StringInfoData buffer;
+
+	Assert( Cdb_role == CDB_ROLE_DISPATCH );
+
+	/*
+	 * Serialize the stmt tree, and create the sql statement: cdbexec ....
+	 */
+	q = makeNode(Query);
+
+	initStringInfo( &buffer );
+
+	q->commandType = CMD_UTILITY;
+	q->utilityStmt = (Node *)vacstmt;
+	q->querySource = QSRC_ORIGINAL;
+	q->canSetTag = true; /*?*/
+
+	pszVacuum = serializeNode((Node *)q);
+
+	pfree(q);
+
+	Assert(pszVacuum != NULL);
+
+	elog( DEBUG5, "Command %s", pszVacuum);
+
+	appendStringInfo(&buffer, "cdbexec '%s' ''", pszVacuum);
+
+	pfree(pszVacuum);
+
+	set = DTS_SEGDB;
+	
+	/* Combination of CdbDispatchCommand and then CdbCheckDispatchResult.
+	 * If it fails on any of the targets, ereport(ERROR, ...) is called.
+	 */	
+	CdbDoCommand( buffer.data, NULL, set, true );
+
+	pfree(buffer.data);
+
 }
