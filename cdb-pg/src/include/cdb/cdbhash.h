@@ -16,7 +16,8 @@
 /* 
  * hashing algorithms.
  */
-#define HASH_FNV 1
+#define HASH_FNV_1  1
+#define HASH_FNV_1A 2
 
 /*
  * reduction methods.
@@ -29,10 +30,10 @@
  */ 
 typedef struct CdbHash
 {
-	uint32 hash;		   /* The result hash value                           */
-    int numsegs;           /* number of segments in CDB used for partitioning */
-	int hash_algorithm;    /* the hashing algorithm                           */
-	int reduce_algorithm;  /* the algorithm used for reducing to buckets      */
+	uint32 hash;  		      /* The result hash value                           */
+    int numsegs;              /* number of segments in CDB used for partitioning */
+	int16 hash_algorithm;    /* the hashing algorithm                           */
+	int16 reduce_algorithm;  /* the algorithm used for reducing to buckets      */
 	
 } CdbHash;
 
@@ -40,8 +41,9 @@ typedef struct CdbHash
 /*
  * Create and initialize a CdbHash in the current memory context.
  * Parameter numsegs - number of segments in CDB. 
+ * Parameter algorithm - the hash algorithm, either HASH_FNV_1 or HASH_FNV_1A 
  */
-extern CdbHash *makeCdbHash(int numsegs); 
+extern CdbHash *makeCdbHash(int numsegs, int16 algorithm); 
 
 /*
  * Initialize CdbHash for hashing the next tuple values.
