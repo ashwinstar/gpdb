@@ -14,25 +14,19 @@
 
 static void SiftDown( CdbHeap *cdbheap, int From, int End );
 
+/*
+ * Specific CdbTupleHeapInfo heap implementation
+ */
 
 CdbHeap *CreateCdbTupleHeap( int nSourceSegments,
-							CdbHeapCmpFn cmpfn,
 							MotionState *node,
 							Motion *motion)
 {
-	CdbHeap *result;
-	CdbTupleHeapInfo** heap;
-	int i;
 	CdbHeapTupleCompareInfo *cmpinfo;
 
-	Assert( cmpfn != NULL 
+	Assert( nSourceSegments >= 1 
 			&& node != NULL 
 			&& motion != NULL );
-
-	result = palloc0( sizeof(CdbHeap) );
-	result->size = nSourceSegments;
-
-	heap = (CdbTupleHeapInfo**)palloc0( (result->size + 1) * sizeof(CdbTupleHeapInfo *) );
 
 	cmpinfo = (CdbHeapTupleCompareInfo *)palloc0( sizeof(CdbHeapTupleCompareInfo) );
 	cmpinfo->sortFunctions	= node->sortFunctions;
@@ -41,173 +35,41 @@ CdbHeap *CreateCdbTupleHeap( int nSourceSegments,
 	cmpinfo->sortColIdx		= motion->sortColIdx;
 	cmpinfo->tupDesc		= ExecGetResultType(&node->ps);
 
-	for ( i=0; i<=result->size; i++ )
-	{
-		heap[i] = (CdbTupleHeapInfo *)palloc0( sizeof(CdbTupleHeapInfo) );
-		heap[i]->tuple = NULL;
-		heap[i]->sourceSegIndex = INT_MIN;
-		heap[i]->cmpinfo = cmpinfo;
-	}
 
-	result->heap = (void **)heap;
-	result->initialSortDone = false;
-	result->cmpfn = cmpfn;
-
-	return result;
-}
-
-void DestroyCdbTupleHeap( CdbHeap *cdbheap )
-{
-	int i;
-
-	if ( cdbheap == NULL )
-		return;
-
-	if ( cdbheap->heap != NULL )
-	{
-		CdbTupleHeapInfo** heap;
-		heap = (CdbTupleHeapInfo**)cdbheap->heap;
-
-		for ( i=0; i<=cdbheap->size; i++ )
-		{
-			if ( heap[i] != NULL )
-			{
-				if ( i == 0 )
-					pfree( heap[i]->cmpinfo );
-
-				pfree( heap[i] );
-			}
-		}
-
-		pfree( heap );
-	}
-
-	pfree( cdbheap );
+	return CreateCdbHeap( nSourceSegments,
+						CmpTuplesForSortedMotion,
+						CreateCdbTupleHeapInfo,
+						CopyCdbTupleHeapInfo,
+						SwitchCdbTupleHeapInfo,
+						cmpinfo);
 }
 
 void SetCdbTupleHeapInitialValue( CdbHeap *cdbheap, HeapTuple tuple, int sourceSegIndex )
 {
-	int i;
-	CdbTupleHeapInfo** heap;
+	CdbTupleHeapInfo info;
 
-	Assert( cdbheap != NULL 
-			&& sourceSegIndex >= 0 );
-	Assert( cdbheap->initialSortDone == false );
-	Assert( cdbheap->heap != NULL );
+	info.tuple = tuple;
+	info.sourceSegIndex = sourceSegIndex;
 
-	heap = (CdbTupleHeapInfo**)cdbheap->heap;
-
-	// Find next open slot
-	for ( i=1; i<=cdbheap->size; i++ )
-	{
-		if ( heap[i] != NULL && heap[i]->sourceSegIndex == INT_MIN )
-		{
-			heap[i]->tuple = tuple;
-			heap[i]->sourceSegIndex = sourceSegIndex;
-			return;
-		}
-	}
-
-	/* Oops, found no open slot  
-	 * This is a programming error 
-	 * Caller didn't pass correct nSourceSegments in createCdbTupleHeap,
-	 * or is calling this too many times.
-	 */
-
-	Assert( false );
+	SetCdbHeapInitialValue( cdbheap, &info);
 }
 
 
 CdbTupleHeapInfo *GetLowestValueFromCdbTupleHeap( CdbHeap *cdbheap )
 {
-	CdbTupleHeapInfo** heap;
-	int i;
-	int n;
-
-	Assert( cdbheap != NULL 
-		&& cdbheap->heap != NULL
-		&& cdbheap->size >= 1);
-
-	heap = (CdbTupleHeapInfo**)cdbheap->heap;
-
-	if ( !cdbheap->initialSortDone )
-	{
-		/*
-		 * Validate that the heap array is full, from 1 to cdbheap->size
-		 */
-		for ( i=1; i<cdbheap->size; i++ )
-		{
-			Assert( heap[i]->sourceSegIndex >= 0 );
-			Assert( heap[i]->cmpinfo != NULL );
-		}
-
-		/*
-		*  Now, do the Sift Down
-		*/
-		n = cdbheap->size;
-		for ( i=n/2; i>=1; i-- )
-		{
-			SiftDown( cdbheap, i, n );
-		}
-	}
-
-	// Return a pointer to top of heap
-	return cdbheap->heap[1];
+	return (CdbTupleHeapInfo *)GetLowestValueFromCdbHeap( cdbheap );
 }
 
 void MergeNewValueIntoCdbTupleHeap( CdbHeap *cdbheap, HeapTuple h, int sourceSegIndex )
 {
-	CdbTupleHeapInfo** heap;
+	CdbTupleHeapInfo info;
 
-	Assert( cdbheap != NULL 
-			&& cdbheap->heap != NULL 
-			&& cdbheap->size >= 1 );
+	info.tuple = h;
+	info.sourceSegIndex = sourceSegIndex;
 
-	heap = (CdbTupleHeapInfo**)cdbheap->heap;
-
-	// Replace top value and sift down
-	heap[1]->tuple = h;
-	heap[1]->sourceSegIndex = sourceSegIndex;
-
-	SiftDown( cdbheap, 1, cdbheap->size );
+	MergeNewValueIntoCdbHeap( cdbheap, &info );
 }
 
-void SiftDown( CdbHeap *cdbheap, int From, int End )
-{
-	int i;
-	void **heap;
-	CdbHeapCmpFn cmpfn;
-
-	Assert( cdbheap != NULL 
-			&& cdbheap->heap != NULL 
-			&& cdbheap->size >= 1 
-			&& cdbheap->cmpfn != NULL );
-
-	i = From;
-	heap = cdbheap->heap;
-	cmpfn = cdbheap->cmpfn;
-	
-	while ( i <= End/2 )
-	{
-		int j = 2*i;
-		void *temp;
-		
-		if ( j+1 <= End )
-		{
-			if ( (*cmpfn)(heap[j+1], heap[j]) < 0 )
-				j++;	
-		}
-			
-		if ( (*cmpfn)(heap[i], heap[j]) <= 0 )
-			break;
-	
-		// Switch i and j
-		temp = heap[i];
-		heap[i] = heap[j];
-		heap[j] = temp;
-		i = j;
-	}
-}
 
 /*
  * cmpTuplesForSortedMotion:
@@ -275,4 +137,252 @@ int CmpTuplesForSortedMotion( void *lhs, void *rhs )
 
 	return 0;
 
+}
+
+void *CreateCdbTupleHeapInfo( void *createData, void *initData )
+{
+	CdbTupleHeapInfo *info;
+	CdbTupleHeapInfo *initTupleHeapInfo;
+	CdbHeapTupleCompareInfo *cmpinfo;
+
+	Assert( createData != NULL );
+	Assert( initData != NULL );
+
+	initTupleHeapInfo = (CdbTupleHeapInfo *)initData;
+	cmpinfo = (CdbHeapTupleCompareInfo *)createData;
+
+	info = palloc0( sizeof(CdbTupleHeapInfo) );
+
+	info->tuple = initTupleHeapInfo->tuple;
+	info->sourceSegIndex = initTupleHeapInfo->sourceSegIndex;
+	info->cmpinfo = cmpinfo;
+
+	return info;
+}
+
+void CopyCdbTupleHeapInfo( void *destination, void *source )
+{
+	CdbTupleHeapInfo *infoDest;
+	CdbTupleHeapInfo *infoSrc;
+
+	Assert( destination != NULL );
+	Assert( source != NULL );
+
+	infoDest = (CdbTupleHeapInfo *)destination;
+	infoSrc = (CdbTupleHeapInfo *)source;
+
+	infoDest->tuple = infoSrc->tuple;
+	infoDest->sourceSegIndex = infoSrc->sourceSegIndex;
+}
+
+void SwitchCdbTupleHeapInfo( void *left, void *right )
+{
+	CdbTupleHeapInfo *infoLeft;
+	CdbTupleHeapInfo *infoRight;
+	HeapTuple tempTuple;
+	int tempSegIndex;
+
+	Assert( left != NULL );
+	Assert( right != NULL );
+
+	infoLeft = (CdbTupleHeapInfo *)left;
+	infoRight = (CdbTupleHeapInfo *)right;
+
+	tempTuple = infoLeft->tuple;
+	tempSegIndex = infoLeft->sourceSegIndex;
+
+	infoLeft->tuple = infoRight->tuple;
+	infoLeft->sourceSegIndex = infoRight->sourceSegIndex;
+	infoRight->tuple = tempTuple;
+	infoRight->sourceSegIndex = tempSegIndex;
+}
+
+/*
+ * Generic Heap Implementation
+ */
+
+CdbHeap *CreateCdbHeap( int nSlots,
+						CdbHeapCmpFn cmpfn,
+						CdbHeapCreateFn createfn,
+						CdbHeapCopyFn copyfn,
+						CdbHeapSwitchFn switchfn,
+						void *createData)
+{
+	CdbHeap *result;
+	void **heap;
+
+	Assert( cmpfn != NULL 
+			&& createfn != NULL
+			&& copyfn != NULL 
+			&& switchfn != NULL
+			&& nSlots >= 1 );
+
+	result = palloc0( sizeof(CdbHeap) );
+	result->size = nSlots;
+
+	heap = (void **)palloc0( (nSlots + 1) * sizeof(void *) );
+
+	result->heap = (void **)heap;
+	result->initialSortDone = false;
+	result->cmpfn = cmpfn;
+	result->createfn = createfn;
+	result->copyfn = copyfn;
+	result->switchfn = switchfn;
+	result->createdata = createData;
+
+	return result;
+}
+
+void DestroyCdbTupleHeap( CdbHeap *cdbheap )
+{
+	int i;
+
+	if ( cdbheap == NULL )
+		return;
+
+	if ( cdbheap->heap != NULL )
+	{
+		void** heap;
+		heap = cdbheap->heap;
+
+		for ( i=0; i<=cdbheap->size; i++ )
+		{
+			if ( heap[i] != NULL )
+			{
+				pfree( heap[i] );
+			}
+		}
+
+		pfree( heap );
+	}
+
+	if ( cdbheap->createdata != NULL )
+		pfree(cdbheap->createdata);
+
+	pfree( cdbheap );
+}
+
+void SetCdbHeapInitialValue( CdbHeap *cdbheap, void *value )
+{
+	int i;
+	void **heap;
+	CdbHeapCreateFn createfn;
+
+	Assert( cdbheap != NULL 
+			&& cdbheap->heap != NULL 
+			&& cdbheap->size >= 1
+			&& cdbheap->createfn != NULL);
+
+	heap = cdbheap->heap;
+	createfn = cdbheap->createfn;
+
+	for ( i=1; i<=cdbheap->size; i++ )
+	{
+		if ( heap[i] == NULL )
+		{
+			heap[i] = (*createfn)(cdbheap->createdata, value);
+			return;
+		}
+	}
+
+	/* Oops, found no open slot  
+	 * This is a programming error 
+	 * Caller didn't pass correct nSlots in createCdbHeap,
+	 * or is calling this function too many times.
+	 */
+
+	Assert( false );
+}
+
+
+void *GetLowestValueFromCdbHeap( CdbHeap *cdbheap )
+{
+	void** heap;
+	int i;
+	int n;
+
+	Assert( cdbheap != NULL 
+		&& cdbheap->heap != NULL
+		&& cdbheap->size >= 1);
+
+	heap = cdbheap->heap;
+
+	if ( !cdbheap->initialSortDone )
+	{
+		/*
+		 * Validate that the heap array is full, from 1 to cdbheap->size
+		 */
+		for ( i=1; i<cdbheap->size; i++ )
+		{
+			Assert( heap[i] != NULL );
+		}
+
+		/*
+		*  Now, do the Sift Down
+		*/
+		n = cdbheap->size;
+		for ( i=n/2; i>=1; i-- )
+		{
+			SiftDown( cdbheap, i, n );
+		}
+	}
+
+	// Return a pointer to top of heap
+	return cdbheap->heap[1];
+}
+
+void MergeNewValueIntoCdbHeap( CdbHeap *cdbheap, void *value )
+{
+	void **heap;
+	CdbHeapCopyFn copyfn;
+
+	Assert( cdbheap != NULL 
+			&& cdbheap->heap != NULL 
+			&& cdbheap->size >= 1 
+			&& cdbheap->copyfn != NULL);
+
+	heap = cdbheap->heap;
+	copyfn = cdbheap->copyfn;
+
+	// Replace top value and sift down
+	(*copyfn)( heap[1], value );
+
+	SiftDown( cdbheap, 1, cdbheap->size );
+}
+
+void SiftDown( CdbHeap *cdbheap, int From, int End )
+{
+	int i;
+	void **heap;
+	CdbHeapCmpFn cmpfn;
+	CdbHeapSwitchFn switchfn;
+
+	Assert( cdbheap != NULL 
+			&& cdbheap->heap != NULL 
+			&& cdbheap->size >= 1 
+			&& cdbheap->cmpfn != NULL
+			&& cdbheap->switchfn != NULL);
+
+	i = From;
+	heap = cdbheap->heap;
+	cmpfn = cdbheap->cmpfn;
+	switchfn = cdbheap->switchfn;
+	
+	while ( i <= End/2 )
+	{
+		int j = 2*i;
+		
+		if ( j+1 <= End )
+		{
+			if ( (*cmpfn)(heap[j+1], heap[j]) < 0 )
+				j++;	
+		}
+			
+		if ( (*cmpfn)(heap[i], heap[j]) <= 0 )
+			break;
+	
+		// Switch i and j
+		(*switchfn)( heap[i], heap[j] );
+		i = j;
+	}
 }
