@@ -15,6 +15,16 @@
 static void SiftDown( CdbHeap *cdbheap, int From, int End );
 
 /*
+ * Function specific to 
+ * heaps of CdbTupleHeapInfo data.
+ */
+static int CmpTuplesForSortedMotion( void *lhs, void *rhs );
+static void *CreateCdbTupleHeapInfo( void *createData, void *initData );
+static void CopyCdbTupleHeapInfo( void *destination, void *source );
+static void SwitchCdbTupleHeapInfo( void *left, void *right );
+
+
+/*
  * Specific CdbTupleHeapInfo heap implementation
  */
 
@@ -233,7 +243,7 @@ CdbHeap *CreateCdbHeap( int nSlots,
 	return result;
 }
 
-void DestroyCdbTupleHeap( CdbHeap *cdbheap )
+void DestroyCdbHeap( CdbHeap *cdbheap )
 {
 	int i;
 
