@@ -1203,6 +1203,9 @@ typedef struct MotionState
 	FmgrInfo			*hashfunctions;		/* functions to hash the expressions for a hash motion node */
 	FmgrInfo			*sortFunctions;		/* functions to sort the tuples for a sorted motion node */
 	SortFunctionKind	*sortFnKinds;		/* kind of sort function for sorted motion node */
+	struct CdbHeap		*tupleheap;			/* data structure for match merge in sorted motion node */
+	int					segindexNext;		/* for a sorted motion node, the segindex to get next (same as the segindex last returned ) */
+	bool				tupleheapReady;		/* for a sorted motion node, false until we have a tuple from each source segindex */
 
     TupleSendContext tupSendCtxt;   /* Context for in-flight tuples being sent. */
 
