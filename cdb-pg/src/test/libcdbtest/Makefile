@@ -44,22 +44,3 @@ clean distclean: clean-lib
 
 maintainer-clean: distclean
 
-
-# 
-# MODULE_big = cdbtest
-# PG_CPPFLAGS = -I$(libpq_srcdir)
-# OBJS	= chunkfuncs.o
-# SHLIB_LINK = $(libpq)
-# 
-# DOCS = README.cdbtest
-# 
-# ifdef USE_PGXS
-# PGXS = $(shell pg_config --pgxs)
-# include $(PGXS)
-# else
-# subdir = src/test/libcdbtest
-# top_builddir = ../../..
-# include $(top_builddir)/src/Makefile.global
-# include $(top_srcdir)/contrib/contrib-global.mk
-# endif
-# 
