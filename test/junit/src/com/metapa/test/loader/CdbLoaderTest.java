@@ -47,23 +47,31 @@ public class CdbLoaderTest extends TestCase
 
     }
 
-    protected void setUp() throws FileNotFoundException, IOException
+    protected void setUp() throws Exception
     {
         /**
-         * retreive test properties from system properties (these properties
-         * are read from the test properties file and copied to the system
-         * properties by the ant runTests target).
+         * retreive entry node info from the test properties file
+         * and connect to it in utility mode.
          */
-        String host = System.getProperty("test.homeseg.host");
-        int port = Integer.parseInt(System.getProperty("test.homeseg.port"));
-        String dbname = System.getProperty("test.homeseg.dbname");
-        String username = System.getProperty("test.homeseg.user");
-        String password = System.getProperty("test.homeseg.password");
+        Properties props = new Properties();
 
+        InputStream inStr = getClass().getClassLoader().getResourceAsStream("com/metapa/test/hash/test.properties");
+        if (inStr == null)
+            throw new Exception("Could not find resource 'test.properties'");
+
+        props.load(inStr);
+
+        String host = props.getProperty("entry.host");
+        int port = Integer.parseInt(props.getProperty("entry.port"));
+        String dbname = props.getProperty("entry.dbname");
+        String username = props.getProperty("entry.user");
+        String password = props.getProperty("entry.password");
+
+        inStr.close();
         /**
          * create a loader given the home segment properties.
          */
-        loader = new CdbLoader(host, port, dbname, username, password);
+        //loader = new CdbLoader(host, port, dbname, username, password);
     }
 
     protected void tearDown()
@@ -78,8 +86,8 @@ public class CdbLoaderTest extends TestCase
     //
     
 
-//    public void testInsertAll()
-//    {
+    public void testInsertAll()
+    {
 //        File dir = new File(".");
 //        String dataFile = "test_set1.dat";
 //
@@ -118,6 +126,6 @@ public class CdbLoaderTest extends TestCase
 //            System.out.println("Couldn't close the test data file. " + e.getMessage());
 //        }
 //
-//    }
+    }
 }
 
