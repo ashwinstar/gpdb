@@ -12,14 +12,14 @@ PATH="$(dirname $0):$PATH"
 
 usage="[ PGROOT=<root_directory> ] $(basename $0) \n        [ {--dbroot|-D} <root_directory> ] \n        [ --stats {off|on|all|{command,block,row} ] \n        [ {--prefix|-P} { dbprefix | cdb} ] \n        [ {--help} ]"
 
-echo -e "cdbstart: Starts the listener(s) of the local CDB cluster."
+echo -e "cdbstart: Starts the amsd and listener(s) of the local CDB cluster."
 echo -e "Copyright (c) 2004-2005 Metapa, Inc. All Rights Reserved"
 
 function display_help
 {
     echo -e "\nSyntax: $usage"
 
-    echo -e "\nThis command starts the listener(s) of the local CDB cluster. The"
+    echo -e "\nThis command starts the amsd and listener(s) of the local CDB cluster. The"
     echo    "CDB cluster must have been previously initialized using \"cdbinitdb\"."
 
     echo -e "\nIf \$PGROOT is not set, or --dbroot or -D are not passed, the location "
@@ -235,6 +235,11 @@ unset PGHOSTADDR
 # The following vary depending on the target node
 export PGDATA
 export PGPORT
+
+# ---------------------------------------------------------------------
+# Start the AMS Daemon
+# ---------------------------------------------------------------------
+amsd &
 
 # ---------------------------------------------------------------------
 # Start the DB instances

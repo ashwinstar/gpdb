@@ -19,7 +19,7 @@ function display_help
 {
     echo -e "\nSyntax: $usage"
 
-    echo -e "\nThis command stops the listeners of a CDB cluster.The CDB cluster must"
+    echo -e "\nThis command stops the amsd and listeners of a CDB cluster.The CDB cluster must"
     echo    "have been previously initialized using \"cdbinitdb\" and started using \"cdbstart\"."
 
     echo -e "\nIf \$PGROOT or --dbroot is not set, the root of the database installation "
@@ -179,3 +179,9 @@ do
     echo "Stopping ($PGDATA on port $PGPORT)"
     pg_ctl stop
 done
+
+# ---------------------------------------------------------------------
+# Stop the amsd
+# ---------------------------------------------------------------------
+echo "Shutting down amsd"
+killall amsd
