@@ -223,15 +223,6 @@ ExecutorRun(QueryDesc *queryDesc,
 	bool hasDispatched = false;
 	bool shouldDispatch =  Cdb_role == CDB_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL;
 
-	/* TODO Remove this pre-flight check, when we're ready. */
-	if ( shouldDispatch && operation != CMD_SELECT )
-	{
-		ereport(ERROR,  (
-			errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-			errmsg("CDB cannot dispatch queries that modify partitioned tables yet.")
-			));
-	}
-	
 	/*
 	 * Need a try/catch block here so that if an ereport is called from
 	 * within ExecutePlan, we can clean up by calling CdbCheckDispatchResult.
@@ -280,7 +271,7 @@ ExecutorRun(QueryDesc *queryDesc,
 		}
 
 		/* For now, query executors only do SELECTs. */
-		Assert( !( Cdb_role==CDB_ROLE_EXECUTE  && operation != CMD_SELECT ) );
+//		Assert( !( Cdb_role==CDB_ROLE_EXECUTE  && operation != CMD_SELECT ) );
 
 
 	/*
