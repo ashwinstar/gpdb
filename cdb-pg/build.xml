@@ -898,5 +898,32 @@
 
     </target>
 
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Compile and install PostgreSQL.                                -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="pgsql-check"
+            depends="install"
+            description="Execute Postgres Regression Test">
+
+        <!-- "Default" value for DESTDIR is empty string -->
+        <condition property="DESTDIR" value="">
+            <not>
+                <isset property="DESTDIR"/>
+            </not>
+        </condition>
+
+        <!--
+            Build PostgreSQL
+          -->
+        <exec executable="${make}"
+              failonerror="true">
+            <env key="PGOPTIONS" value="-c cdb_session_role=utility"/>
+            <env key="LC_ALL" value="C"/>
+            <env key="DESTDIR" value="${DESTDIR}"/>
+            <arg value="check"/>
+        </exec>
+
+    </target>
+
 </project>
 
