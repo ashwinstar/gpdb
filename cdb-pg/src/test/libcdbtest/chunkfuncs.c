@@ -17,6 +17,7 @@
 #include "funcapi.h"
 
 #include "access/tupdesc.h"
+#include "cdb/cdbvars.h"
 #include "cdb/tupchunk.h"
 #include "cdb/tupser.h"
 #include "executor/spi.h"
@@ -71,9 +72,9 @@ static SerializedRowState *s_sr_state;
 /* This function executes a SQL "SELECT" statement and returns the results as
  * serialized data.  The returned rows have the following format:
  *
- * +--------------+--------------------+
- * | reportedsize | serialized (BYTEA) |
- * +--------------+--------------------+
+ * +------------------------+--------------------+
+ * | reportedsize (INTEGER) | serialized (BYTEA) |
+ * +------------------------+--------------------+
  *
  * This is defined as the "__getserializedrows" data-type.
  */
@@ -146,19 +147,19 @@ Datum GetSerializedRows__text1(PG_FUNCTION_ARGS)
 
     if (s_sr_state->rowIdx < SPI_processed)
     {
-        /* There are more chunks.  Return the next chunk as a row. */
+        /* There are more rows.  Return the next row as serialized data. */
 
         StringInfoData serTupData;
         int reportedSize;
-        bytea *chunkData;
+        bytea *rowData;
 
         pq_begintypsend(&serTupData);   /* Does initStringInfo() call. */
         reportedSize = SerializeTuple(SPI_tuptable->vals[s_sr_state->rowIdx],
             SPI_tuptable->tupdesc, &serTupData);
-        chunkData = pq_endtypsend(&serTupData);
+        rowData = pq_endtypsend(&serTupData);
 
         resultValues[0] = Int32GetDatum(reportedSize);
-        resultValues[1] = PointerGetDatum(chunkData);
+        resultValues[1] = PointerGetDatum(rowData);
 
         /* Form the tuple. */
         htup = heap_formtuple(funcctx->tuple_desc, resultValues, resultNulls);
@@ -176,6 +177,7 @@ Datum GetSerializedRows__text1(PG_FUNCTION_ARGS)
 
         /* Do final cleanup. */
         SPI_finish();
+        s_sr_state = NULL;      /* Freed when mem-ctx is cleaned up. */
 
         SRF_RETURN_DONE(funcctx);
     }
@@ -244,6 +246,8 @@ Datum GetRowsAsChunks__text1(PG_FUNCTION_ARGS)
         s_rac_state->rowChunks = NULL;
         s_rac_state->chunkNum = 0;
         
+        s_rac_state->maxChunkDataSize = Cdb_max_tuple_chunk_size;
+        
         /* Generate return-type information.  This is derived from the user
          * datatype "__getrowsaschunks".
          */
@@ -266,9 +270,7 @@ Datum GetRowsAsChunks__text1(PG_FUNCTION_ARGS)
          * for that row.
          */
 
-        s_rac_state->rowIdx++;
-
-        if (s_rac_state->rowIdx <= SPI_processed)
+        if (s_rac_state->rowIdx < SPI_processed)
         {
             s_rac_state->rowChunks = CvtHeapTupToChunks(
                 SPI_tuptable->vals[s_rac_state->rowIdx],
@@ -277,43 +279,60 @@ Datum GetRowsAsChunks__text1(PG_FUNCTION_ARGS)
                 s_rac_state->srcSegIdx,
                 s_rac_state->tgtSegIdx,
                 s_rac_state->mnid);
+
+            s_rac_state->nextChunk = s_rac_state->rowChunks->p_first;
+            s_rac_state->chunkNum = 0;
         }
-        
-        s_rac_state->nextChunk = s_rac_state->rowChunks->p_first;
-        s_rac_state->chunkNum = 0;
+        else
+        {
+            /* No more rows. */
+            
+            s_rac_state->rowChunks = NULL;
+            s_rac_state->nextChunk = NULL;
+            s_rac_state->chunkNum = 0;
+        }
     }
+    
     
     if (s_rac_state->rowChunks == NULL ||
         s_rac_state->rowChunks->p_first == NULL)
     {
         /* There are no more tuples and no more chunks.  We are done. */
+
+        /* Do final cleanup. */
+        SPI_finish();
+        s_rac_state = NULL;      /* Freed when mem-ctx is cleaned up. */
+
         SRF_RETURN_DONE(funcctx);
     }
     else
     {
         /* There are more chunks.  Return the next chunk as a row. */
 
-        size_t escChunkLength;
-        char *pszEscChunk;
+        StringInfoData serChunkData;
+        bytea *chunkData;
 
         resultValues[0] = Int32GetDatum(s_rac_state->rowIdx + 1);
         resultValues[1] = Int32GetDatum(s_rac_state->chunkNum + 1);
 
-        pszEscChunk = PQescapeBytea(s_rac_state->nextChunk->chunk_data,
-            s_rac_state->nextChunk->chunk_length, &escChunkLength);
+        pq_begintypsend(&serChunkData);   /* Does initStringInfo() call. */
+        pq_sendbytes(&serChunkData, s_rac_state->nextChunk->chunk_data,
+            s_rac_state->nextChunk->chunk_length);
+        chunkData = pq_endtypsend(&serChunkData);
 
-        resultValues[2] = CStringGetDatum(pszEscChunk);
+        resultValues[2] = PointerGetDatum(chunkData);
 
         /* Form the tuple. */
         htup = heap_formtuple(funcctx->tuple_desc, resultValues, resultNulls);
         resultTuple = HeapTupleGetDatum(htup);
 
-        /* Clean up memory. */
-        PQfreemem(pszEscChunk);
-        
         /* Go to the next chunk, for the next call to this function. */
-        s_rac_state->nextChunk = s_rac_state->nextChunk->p_next;
+
         s_rac_state->chunkNum++;
+
+        s_rac_state->nextChunk = s_rac_state->nextChunk->p_next;
+        if (s_rac_state->nextChunk == NULL)
+            s_rac_state->rowIdx++;
         
         /* Return our result! */
         SRF_RETURN_NEXT(funcctx, resultTuple);

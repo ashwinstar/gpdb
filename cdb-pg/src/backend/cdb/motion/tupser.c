@@ -58,7 +58,10 @@ void InitSerTupInfo(SerTupInfo *myState, TupleDesc tupdesc, int numAttrs);
 void InitSerTupInfo(SerTupInfo *myState, TupleDesc tupdesc, int numAttrs)
 {
     int i;
-
+    MemoryContext oldctxt;
+    
+    oldctxt = MemoryContextSwitchTo(CacheMemoryContext);
+    
     /* get rid of any old data */
 
     if (myState->myinfo)
@@ -91,6 +94,8 @@ void InitSerTupInfo(SerTupInfo *myState, TupleDesc tupdesc, int numAttrs)
 
         fmgr_info(thisState->typsend, &thisState->finfo);
     }
+    
+    MemoryContextSwitchTo(oldctxt);
 }
 
 

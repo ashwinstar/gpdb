@@ -185,10 +185,7 @@ TupleChunkList CvtHeapTupToChunks(HeapTuple htup, TupleDesc tupdesc,
     
     /* Create the tuple-chunk list from the serialized data. */
     
-    tcList = (TupleChunkList) palloc(sizeof(TupleChunkListData));
-    tcList->p_first = NULL;
-    tcList->p_last = NULL;
-    
+    tcList = (TupleChunkList) palloc0(sizeof(TupleChunkListData));
     tcList->serialized_data_length = serialTup.len;
     
     if (serialTup.len <= maxChunkDataSize)   /* Tuple fits in single chunk. */
@@ -248,9 +245,9 @@ TupleChunkList CvtHeapTupToChunks(HeapTuple htup, TupleDesc tupdesc,
 }
 
 
-HeapTuple CvtChunksToHeapTup(TupleChunkList tclist, TupleDesc tupdesc)
+HeapTuple CvtChunksToHeapTup(TupleChunkList tcList, TupleDesc tupdesc)
 {
-    AssertArg(tclist != NULL);
+    AssertArg(tcList != NULL);
     
     return NULL;
 }
