@@ -1,0 +1,350 @@
+<!-- DO NOT include <?xml?> header in this file -->
+
+<!--
+    Common ant elements for CDB project.
+
+    This xml file is embedded within a project element in another xml file.
+
+    See $PROJECT_HOME/build.xml for more information.
+
+    @version $Id$
+  -->
+
+<!--
+    Common global properties ...
+  -->
+  
+    <!--
+         Support access to OS's ENVIRONMENT variables via
+         os.<variable_name>.
+      -->
+    <property environment="os"/>
+
+
+<!--
+    Common targets ...
+  -->
+  
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Set TIMESTAMP properties: DSTAMP, TSTAMP, and TODAY.           -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="-setTstamp" unless="DSTAMP">
+        <tstamp/>
+    </target>
+
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Ensure we have a CDB_TOOLS reference & calculate toolsLib      -->
+    <!-- directory from it.                                             -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="-setTools" unless="tools">
+        <script language="beanshell"><![CDATA[
+            /**
+             * Sets "tools" and "toolsLib" properties based on presumed caller
+             * and environment variable settings.
+             *
+             * Property "tools" is set to "$CDB_TOOLS" if CDB_TOOLS is set.
+             * If CDB_TOOLS is not set, is is required to be 
+             * "${projectRoot}/../cdb-tools".
+             *
+             * Property "toolsLib" is set by searching the "tools" directory
+             * for a likely ANT directory.  If none is found, the build is
+             * terminated.  $ANT_HOME is ignored for this procedure since it may
+             * not be set to the ANT distribution in $CDB_TOOLS.
+             */
+            import org.apache.tools.ant.*;
+            
+            String cdbTools = project.getProperty("os.CDB_TOOLS");
+            if ( cdbTools != null )
+            {
+                project.setUserProperty("tools", project.resolveFile(cdbTools).getAbsolutePath());
+            }
+            else
+            {
+                System.out.println("projectRoot=" + project.getProperty("projectRoot"));
+                File cdbToolsRef = new File(project.resolveFile(project.getProperty("projectRoot")), "../cdb-tools");
+                if ( cdbToolsRef.isDirectory() )
+                {
+                    project.setUserProperty("tools", cdbToolsRef.getCanonicalPath());
+                }
+                else
+                {
+                    self.log("\"" + cdbToolsRef.getPath() + "\" is not a directory", Project.MSG_ERR);
+                    throw new BuildException("Environment variable CDB_TOOLS is not set!");
+                }
+            }
+            
+            /*
+             * Search the CDB_TOOLS directory (set in property "tools" in the 
+             * preceeding task).  Directories containing "-ant-" and having a
+             * "lib" subdirectory are candidates for the ANT home directory.
+             */
+            String toolsDirName = project.getProperty("tools");
+            File toolsDir = new File(toolsDirName);
+            File[] dirs = toolsDir.listFiles( new FileFilter() 
+                    {
+                        boolean accept(File pathname) 
+                        {
+                            if ( pathname.isDirectory() &&
+                                 pathname.getName().indexOf("-ant-") > -1 && 
+                                 (new File(pathname, "lib")).isDirectory() )
+                            {
+                                self.log("Accepting ANT home candidate " + pathname.getCanonicalPath(), 
+                                         Project.MSG_VERBOSE);
+                                return true;
+                            }
+                            else
+                            {
+                                self.log("Rejecting ANT home candidate " + pathname.getCanonicalPath(), 
+                                         Project.MSG_DEBUG);
+                                return false;
+                            }
+                        }
+                    } );
+
+            /*
+             * If no candidate directories are found, terminate the build.
+             * If one or more candidate directories are found, use the first one.
+             */
+            if ( dirs.length == 0 )
+            {
+                self.log("Unable to find ANT home directory in CDB_TOOLS directory; can't set cdbToolLib property",
+                         Project.MSG_ERR);
+                throw new BuildException("Unable to locate ANT home directory in CDB_TOOLS directory");
+            }
+            else if ( dirs.length != 1 )
+                self.log("Multiple ANT home candidates found in CDB_TOOLS directory; using first one found",
+                         Project.MSG_WARN);
+            project.setUserProperty("toolsLib", (new File(dirs[0], "lib")).getCanonicalPath());
+            ]]>
+        </script>
+    </target>
+
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Ensure we have a JAVA_HOME                                     -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="-setJavaHome" unless="javaHome">
+        <condition property="javaHome" value="${os.JAVA_HOME}">
+            <isset property="os.JAVA_HOME"/>
+        </condition>
+        <fail unless="javaHome" message="Environment variable JAVA_HOME is not set!"/>
+    </target>
+
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Determine which "make" utility to use.                         -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="-setMake" unless="make">
+        <condition property="make" value="make">
+            <available file="make" filepath="${os.PATH}" type="file"/>
+        </condition>
+        <fail unless="make" message="'make' utility not found in PATH!"/>
+    </target>
+
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Determine which C compiler to use                              -->
+    <!--                                                                -->
+    <!-- The INTEL compiler is used if available; otherwise the GCC     -->
+    <!-- compiler is used.                                              -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="-setCCompiler" unless="CCompiler">
+        <condition property="CCompiler" value="icc">
+            <available file="icc" filepath="${os.PATH}" type="file"/>
+        </condition>
+        <condition property="CCompiler" value="gcc">
+            <available file="gcc" filepath="${os.PATH}" type="file"/>
+        </condition>
+        <fail unless="CCompiler" message="No C compiler available in PATH!"/>
+        <echo level="info" message="Using ${CCompiler} for C compiles"/>
+    </target>
+    
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Pick out actual tag name from "$Name[:] <tag_name> $".         -->
+    <!--                                                                -->
+    <!-- This routine sets "releaseTag" and "releaseDir" properties.    -->
+    <!-- It is dependend on the "tstamp" task having previously been    -->
+    <!-- called.                                                        -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="-setRelease" unless="releaseTag">
+        <script language="beanshell"> <![CDATA[
+            /**
+             * This beanshell script is used in ANT build files to extract
+             * the release tag from the ANT property "stickyTag" and set the
+             * ANT properties "releaseTag" and "releaseDir" from the extracted
+             * value.  If "stickyTag" is not set, a developer release tag is
+             * generated.
+             *
+             * releaseTag ::= "<release>-m_n_l[-b]
+             * releaseDir ::= "Rm_n_l[-b]"
+             * releaseNumber ::= "m.n.l.b"
+             *
+             * @author Clifford W. Johnson
+             * @version $Id$
+             */
+
+                String nameHead = "$Name" + ": ";
+                String nameTail = " $";
+                int tagLength = nameHead.length() + nameTail.length();
+
+                /*
+                 * Fetch the value of the CVS sticky tag; this is in the form
+                 * of "$NAME<colon> <release_tag> $" where <release_tag> may be
+                 * empty.
+                 */
+                String stickyTag = project.getProperty("stickyTag");
+
+                /*
+                 * Extract the release tag from the sticky tag.  If there
+                 * is no sticky tag value, construct one from the userid,
+                 * date stamp, and time stamp.
+                 */
+                String releaseTag;
+                String releaseDir;
+                String releaseNumber;
+                if ( stickyTag.length() > tagLength
+                         && stickyTag.startsWith(nameHead)
+                         && stickyTag.endsWith(nameTail) )
+                {
+                    releaseTag = stickyTag.substring(nameHead.length(),
+                                                     stickyTag.length() - nameTail.length());
+                    String release = releaseTag.substring(releaseTag.indexOf('-') + 1);
+                    releaseDir = "R" || release;
+                    int i = release.indexOf('-');
+                    if ( i > 0 ) 
+                        release = release.substring(1, i - 1) || "_" || release.substring(i + 1);
+                    else
+                        release = release || "_0";
+                    releaseNumber = release.replace('_', '.');
+                }
+                else
+                {
+                    releaseTag = project.getProperty("os.USER") + "_"
+                                        + project.getProperty("DSTAMP")
+                                        + project.getProperty("TSTAMP");
+                    releaseDir = "devo";
+                    releaseNumber = "0.0.0." + project.getProperty("DSTAMP") + project.getProperty("TSTAMP");
+                }
+
+                /*
+                 * Set the release tag in the project properties.
+                 */
+                project.setUserProperty("releaseTag", releaseTag);
+                project.setUserProperty("releaseDir", releaseDir);
+                project.setUserProperty("releaseNumber", releaseNumber);
+            ]]>
+        </script>
+    </target>
+
+
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Ensure that BASH is available.                                 -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="-checkBash" unless="bashAvailable">
+        <condition property="bashAvailable">
+            <or>
+                <!-- For standard UNIX systems ... -->
+                <available file="bash"     filepath="${os.PATH}" type="file"/>
+
+                <!-- For Cygwin environments ... -->
+                <available file="bash.exe" filepath="${os.PATH}" type="file"/>
+
+                <!-- For Windows environments ... -->
+                <available file="bash.exe" filepath="${os.Path}" type="file"/>
+            </or>
+        </condition>
+        <fail unless="bashAvailable" message="Bash executable must be available via PATH!"/>
+    </target>
+
+
+    <!-- ==============================================================
+        Internal use stage.
+        Compile an Antlr grammar file.
+
+        @param grammarDir the (sub)project directory containing the
+                ANTLR grammar file.  Relative to ${basedir}.
+        @param grammarFile the name(s) of the grammar files to be 
+                processed in ${grammarDir}.
+        @param grammarOutputFileSet a reference to a FileSet identifying
+                the files output by an ANTLR compile of ${grammarFile}.
+
+        @param classPath the classpath to be used for the ANTLR compile.
+      -->
+    <target name="-antlrCompile">
+
+        <!-- 
+            Erase ALL grammar output files if the grammar input is newer than any. 
+          -->
+        <dependset>
+            <srcfilelist dir="${grammarDir}" files="${grammarFile}"/>
+            <targetfileset refid="grammarOutputFileSet"/>
+        </dependset>
+
+        <!-- 
+            Compile the ANTLR grammar.  Output files are placed in the source directory.
+          -->
+        <antlr target="${grammarDir}/${grammarFile}">
+            <classpath refid="classPath"/>
+        </antlr>
+        
+    </target>
+
+
+    <!--
+        Internal-use stage.
+
+        Generate the C header file for a Java class with native methods 
+        and remove obviously dependent object files.
+
+        The header files are generated into ${buildHeaders} with names
+        that reflect the package structure of the Java class, e.g.
+        the header file for Java class com.metapa.io.NamedPipe.class
+        is com_metapa_io_NamedPipe.h.
+
+        @param dirName the directory name, relative to ${basedir}/src, containing
+                the Java class.
+        @param className the name of the Java class without the ".class" extension.
+
+        @param buildClasses the project subdirectory, relative to ${basedir},
+                into which the class files from subproject Java compiles are
+                saved.
+        @param buildHeaders the project subdirectory, relative to ${basedir},
+                into which the C header file are to be saved.
+        @param buildObject the project subdirectory, relative to ${basedir},
+                into which the C programs are compiled.
+      -->
+    <target name="-generateHeader">
+
+        <!-- Convenience properties for directory/package names. -->
+        <script language="beanshell"><![CDATA[
+                String dir = project.getProperty("dirName");
+                project.setUserProperty("packageName", dir.replace('/', '.') );
+                project.setUserProperty("headerPrefix", dir.replace('/', '_') );
+            ]]>
+        </script>
+
+        <!-- Remove header files for recompiled classes. -->
+        <dependset>
+            <srcfilelist dir="${buildClasses}/${dirName}" files="${className}.class"/>
+            <targetfilelist dir="${buildHeaders}" files="${headerPrefix}_${className}.h"/>
+        </dependset>
+
+        <!-- 
+            Generate C headers for native methods. 
+          -->
+        <javah classpath="${buildClasses}" destdir="${buildHeaders}">
+            <class name="${packageName}.${className}"/>
+        </javah>
+        
+        <!--
+            Remove native method objects for updated headers. 
+          -->
+        <dependset>
+            <srcfilelist dir="${buildHeaders}" files="${headerPrefix}_${className}.h"/>
+            <targetfilelist dir="${buildObject}" files="${packageName}.${className}.o"/>
+        </dependset>
+        
+    </target>
