@@ -973,8 +973,8 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_VacuumStmt:
-		CdbSentry(CDB_WARN, parsetree, NULL);
-		vacuum((VacuumStmt *) parsetree);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
+			vacuum((VacuumStmt *) parsetree);
 			break;
 
 		case T_ExplainStmt:
