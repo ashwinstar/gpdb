@@ -13,7 +13,7 @@ subdir = src/backend/cdb/motion
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
-OBJS = cdbmotion.o tupchunk.o tupser.o
+OBJS = cdbmotion.o tupchunk.o tupser.o shmutils.o circbuff.o
 
 all: SUBSYS.o
 
