@@ -32,6 +32,7 @@
 #include "commands/lockcmds.h"
 #include "commands/portalcmds.h"
 #include "commands/prepare.h"
+#include "commands/cdbexec.h"
 #include "commands/proclang.h"
 #include "commands/schemacmds.h"
 #include "commands/sequence.h"
@@ -714,6 +715,22 @@ ProcessUtility(Node *parsetree,
 		case T_DeallocateStmt:
 			CdbSentry(CDB_REJECT, parsetree, NULL);
 			DeallocateQuery((DeallocateStmt *) parsetree);
+			break;
+
+		case T_CdbExecStmt:
+			/* CdbSentry isn't appropriate here since this command should run 
+			 * only in the EXECUTE role, i.e., it is supplied by a dispatch
+			 * process to a qexec process. The cryptic message avoids mention
+			 * of roles to discourage experimentation by users. */
+			if ( Cdb_role != CDB_ROLE_EXECUTE )
+			{
+				ereport(ERROR, (
+					errcode(ERRCODE_CDB_COMMAND_ERROR),
+					errmsg("CDBEXEC is not available for external use.")
+			));
+				
+			}
+			CdbExecQuery((CdbExecStmt *) parsetree);
 			break;
 
 			/*
@@ -1786,6 +1803,10 @@ CreateCommandTag(Node *parsetree)
 
 		case T_DeallocateStmt:
 			tag = "DEALLOCATE";
+			break;
+
+		case T_CdbExecStmt:
+			tag = "CDBEXEC";
 			break;
 
 		default:

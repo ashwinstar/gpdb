@@ -1,4 +1,6 @@
 <<<NEW vi: set expandtab ts=4: >>>
+CDBEXEC command added.
+    The command CDBEXEC is for internal use  only.
 Log4j is the new CDB-Loader logger. Logging is now configurable from
     a properties config file and also some config options exist in the
     command line argument options (command line on higher priority).
@@ -11,30 +13,30 @@ CDB2 admin schema version 1 support added to the CDB-Loader. Besides
     now asks the admin schema which version it is and loads the appropriate
     set of queries for that particular version. 
 Added traffic control and preliminary parallelization to SQL DML.
-	CDB now analyzes and, in some cases, parallelizes the SQL DML commands,
-	SELECT, INSERT, UPDATE, and DELETE. In addition, it recognizes and 
-	rejects commands that should be parallelized but that the current code 
-	can't handle.  Parallelized plans still execute in a single segment
-	database, but the effects of parallelization may be observed via the
-	EXPLAIN command.
+    CDB now analyzes and, in some cases, parallelizes the SQL DML commands,
+    SELECT, INSERT, UPDATE, and DELETE. In addition, it recognizes and 
+    rejects commands that should be parallelized but that the current code 
+    can't handle.  Parallelized plans still execute in a single segment
+    database, but the effects of parallelization may be observed via the
+    EXPLAIN command.
 Fixed some traffic control and message issues (CDB-5)
-	ALTER messages now distinguish failures due to unsupported objects
-	(like ALTER TABLE) versus unsupported operations  (like ALTER OWNER).
-	Clarified some other messages and aligned the program behavior with
-	the documented behavior vis a vis rejection versus interim rejection
+    ALTER messages now distinguish failures due to unsupported objects
+    (like ALTER TABLE) versus unsupported operations  (like ALTER OWNER).
+    Clarified some other messages and aligned the program behavior with
+    the documented behavior vis a vis rejection versus interim rejection
 Special handling of SQL commands for CDB users.
-	Added "traffic control" for SQL commands to issue errors or warnings 
-	as appropriate when cdb_role=dispatch.  Modified PostgreSQL utilities 
-	(e.g, initdb, createdb) to override external specification of 
-	cdb_session_role, thus preserving their old behavior.
+    Added "traffic control" for SQL commands to issue errors or warnings 
+    as appropriate when cdb_role=dispatch.  Modified PostgreSQL utilities 
+    (e.g, initdb, createdb) to override external specification of 
+    cdb_session_role, thus preserving their old behavior.
 New run-time variables cdb_session_role and cdb_role.
-	The run-time parameters cdb_session_role and cdb_role report and provide 
-	control over the role assumed by a postgres process.  The roles are 
-	dispatch (process acts as a parallel SQL dispatcher), execute (process 
-	acts as a parallel SQL executor), and utility (process acts as a simple 
-	SQL engine. They are initialized to the same value at connection time and 
-	are local to the resulting session. A super user can modify cdb_role via 
-	the SET command, but cdb_session_role may not be modified.	
+    The run-time parameters cdb_session_role and cdb_role report and provide 
+    control over the role assumed by a postgres process.  The roles are 
+    dispatch (process acts as a parallel SQL dispatcher), execute (process 
+    acts as a parallel SQL executor), and utility (process acts as a simple 
+    SQL engine. They are initialized to the same value at connection time and 
+    are local to the resulting session. A super user can modify cdb_role via 
+    the SET command, but cdb_session_role may not be modified.  
 
 Release-2_0_0:  18/Nov/2004  jeshleman
 

@@ -1815,4 +1815,20 @@ typedef struct DeallocateStmt
 	char	   *name;			/* The name of the plan to remove */
 } DeallocateStmt;
 
+
+/* ----------------------
+ *		CDBEXEC Statement
+ *
+ * Serialized items are Value nodes (NodeTag T_String).
+ * ----------------------
+ */
+typedef struct CdbExecStmt
+{
+	NodeTag		type;
+	Node *		ser_query;		/* Serialized query tree. */
+	Node *		ser_plan;		/* Serialized plan tree. */
+	List *		ser_params;		/* List of serialized ParamInfoData structs. */
+} CdbExecStmt;
+
+
 #endif   /* PARSENODES_H */

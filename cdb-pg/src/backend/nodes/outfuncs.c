@@ -1263,6 +1263,15 @@ _outCopyStmt(StringInfo str, CopyStmt *node)
 }
 
 static void
+_outCdbExecStmt(StringInfo str, CdbExecStmt *node)
+{
+	WRITE_NODE_TYPE("CDBEXECSTMT");
+	WRITE_NODE_FIELD(ser_query);
+	WRITE_NODE_FIELD(ser_plan);
+	WRITE_NODE_FIELD(ser_params);
+}
+
+static void
 _outSelectStmt(StringInfo str, SelectStmt *node)
 {
 	WRITE_NODE_TYPE("SELECT");
@@ -1928,6 +1937,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_CopyStmt:
 				_outCopyStmt(str, obj);
+				break;
+			case T_CdbExecStmt:
+				_outCdbExecStmt(str, obj);
 				break;
 			case T_SelectStmt:
 				_outSelectStmt(str, obj);

@@ -130,7 +130,7 @@ static void doNegateFloat(Value *v);
 %type <node>	stmt schema_stmt
 		AlterDatabaseSetStmt AlterDomainStmt AlterGroupStmt AlterOwnerStmt
 		AlterSeqStmt AlterTableStmt AlterUserStmt AlterUserSetStmt
-		AnalyzeStmt ClosePortalStmt ClusterStmt CommentStmt
+		AnalyzeStmt CdbExecStmt ClosePortalStmt ClusterStmt CommentStmt
 		ConstraintsSetStmt CopyStmt CreateAsStmt CreateCastStmt
 		CreateDomainStmt CreateGroupStmt CreateOpClassStmt CreatePLangStmt
 		CreateSchemaStmt CreateSeqStmt CreateStmt CreateTableSpaceStmt
@@ -214,6 +214,7 @@ static void doNegateFloat(Value *v);
 				opt_distinct opt_definition func_args
 				func_args_list func_as createfunc_opt_list
 				oper_argtypes RuleActionList RuleActionMulti
+				opt_cdb_string_list cdb_string_list
 				opt_column_list columnList opt_name_list
 				sort_clause opt_sort_clause sortby_list index_params
 				name_list from_clause from_list opt_array_bounds
@@ -270,6 +271,7 @@ static void doNegateFloat(Value *v);
 
 %type <node>	TableElement ConstraintElem TableFuncElement
 %type <node>	columnDef
+%type <node>	cdb_string
 %type <defelt>	def_elem
 %type <node>	def_arg columnElem where_clause
 				a_expr b_expr c_expr func_expr AexprConst indirection_el
@@ -337,7 +339,7 @@ static void doNegateFloat(Value *v);
 	BACKWARD BEFORE BEGIN_P BETWEEN BIGINT BINARY BIT
 	BOOLEAN_P BOTH BY
 
-	CACHE CALLED CASCADE CASE CAST CHAIN CHAR_P
+	CACHE CALLED CASCADE CASE CAST CDBEXEC CHAIN CHAR_P
 	CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE
 	CLUSTER COALESCE COLLATE COLUMN COMMENT COMMIT
 	COMMITTED CONSTRAINT CONSTRAINTS CONVERSION_P CONVERT COPY CREATE CREATEDB
@@ -492,6 +494,7 @@ stmt :
 			| AlterUserSetStmt
 			| AlterUserStmt
 			| AnalyzeStmt
+			| CdbExecStmt
 			| CheckPointStmt
 			| ClosePortalStmt
 			| ClusterStmt
@@ -4575,6 +4578,43 @@ DeallocateStmt: DEALLOCATE name
 
 /*****************************************************************************
  *
+ *		QUERY :
+ *				CDBEXEC query plan [ ( parameter [, ...] ) ]
+ *
+ *****************************************************************************/
+
+CdbExecStmt:	CDBEXEC cdb_string cdb_string opt_cdb_string_list
+				{
+					CdbExecStmt *n = makeNode(CdbExecStmt);
+
+					n->ser_query = ($2);
+					n->ser_plan = ($3);
+					n->ser_params = ($4);
+					$$ = (Node *)n;
+				}
+		;
+
+
+opt_cdb_string_list:
+			'(' cdb_string_list ')'				{ $$ = $2; }
+			| /* EMPTY */						{ $$ = NIL; }
+		;
+
+
+cdb_string_list:
+			cdb_string							{ $$ = list_make1($1); }								
+			| cdb_string_list ',' cdb_string	{ $$ = lappend($1, $3); }
+		;
+
+cdb_string:
+			Sconst
+				{
+					$$ = (Node *) makeString($1);
+				}
+		;
+
+/*****************************************************************************
+ *
  *		QUERY:
  *				INSERT STATEMENTS
  *
@@ -7641,6 +7681,7 @@ unreserved_keyword:
 			| CACHE
 			| CALLED
 			| CASCADE
+			| CDBEXEC
 			| CHAIN
 			| CHARACTERISTICS
 			| CHECKPOINT

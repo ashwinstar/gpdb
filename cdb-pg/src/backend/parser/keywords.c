@@ -66,6 +66,7 @@ static const ScanKeyword ScanKeywords[] = {
 	{"cascade", CASCADE},
 	{"case", CASE},
 	{"cast", CAST},
+	{"cdbexec", CDBEXEC},
 	{"chain", CHAIN},
 	{"char", CHAR_P},
 	{"character", CHARACTER},

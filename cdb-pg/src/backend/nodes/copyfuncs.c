@@ -2538,6 +2538,18 @@ _copyDeallocateStmt(DeallocateStmt *from)
 	return newnode;
 }
 
+static CdbExecStmt *
+_copyCdbExecStmt(CdbExecStmt *from)
+{
+	CdbExecStmt *newnode = makeNode(CdbExecStmt);
+	
+	COPY_NODE_FIELD(ser_query);
+	COPY_NODE_FIELD(ser_plan);
+	COPY_NODE_FIELD(ser_params);
+	
+	return newnode;
+}
+
 
 /* ****************************************************************
  *					pg_list.h copy functions
@@ -3149,6 +3161,9 @@ copyObject(void *from)
 			break;
 		case T_FuncWithArgs:
 			retval = _copyFuncWithArgs(from);
+			break;
+		case T_CdbExecStmt:
+			retval = _copyCdbExecStmt(from);
 			break;
 
 		default:

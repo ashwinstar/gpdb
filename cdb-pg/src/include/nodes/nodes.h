@@ -274,6 +274,7 @@ typedef enum NodeTag
 	T_CreateTableSpaceStmt,
 	T_DropTableSpaceStmt,
 	T_AlterOwnerStmt,
+	T_CdbExecStmt,
 
 	T_A_Expr = 800,
 	T_ColumnRef,

@@ -1460,6 +1460,16 @@ _equalDeallocateStmt(DeallocateStmt *a, DeallocateStmt *b)
 	return true;
 }
 
+static bool
+_equalCdbExecStmt(CdbExecStmt *a, CdbExecStmt *b)
+{
+	COMPARE_NODE_FIELD(ser_query);
+	COMPARE_NODE_FIELD(ser_plan);
+	COMPARE_NODE_FIELD(ser_params);
+
+	return true;
+}
+
 
 /*
  * stuff from parsenodes.h
@@ -2168,6 +2178,10 @@ equal(void *a, void *b)
 			break;
 		case T_DeallocateStmt:
 			retval = _equalDeallocateStmt(a, b);
+			break;
+
+		case T_CdbExecStmt:
+			retval = _equalCdbExecStmt(a, b);
 			break;
 
 		case T_A_Expr:
