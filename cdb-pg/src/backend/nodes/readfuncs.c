@@ -67,6 +67,12 @@
 	token = pg_strtok(&length);		/* get field value */ \
 	local_node->fldname = atooid(token)
 
+/* Read a long-integer field (anything written as ":fldname %ld") */
+#define READ_LONG_FIELD(fldname) \
+	token = pg_strtok(&length);		/* skip :fldname */ \
+	token = pg_strtok(&length);		/* get field value */ \
+	local_node->fldname = atol(token)
+
 /* Read a char field (ie, one ascii character) */
 #define READ_CHAR_FIELD(fldname) \
 	token = pg_strtok(&length);		/* skip :fldname */ \
@@ -102,10 +108,42 @@
 	token = pg_strtok(&length);		/* skip :fldname */ \
 	local_node->fldname = nodeRead(NULL, 0)
 
+/* Write a bitmapset field */
+#define READ_BITMAPSET_FIELD(fldname) \
+	token = pg_strtok(&length);		/* skip :fldname */ \
+	 local_node->fldname = bitmapsetRead()
+
 /* Routine exit */
 #define READ_DONE() \
 	return local_node
 
+/* Read an integer array (anything written as ":fldname %d %d ...") */
+#define READ_INT_ARRAY(fldname, count, Type) \
+	token = pg_strtok(&length);		/* skip :fldname */ \
+	if ( local_node->count > 0 ) \
+	{ \
+		local_node->fldname = (Type *)palloc(local_node->count * sizeof(Type)); \
+		int i; \
+		for(i=0; i<local_node->count; i++) \
+		{ \
+			token = pg_strtok(&length);		/* get field value */ \
+			local_node->fldname[i] = atoi(token); \
+		} \
+	} 
+
+/* Read an Oid array (written as ":fldname %u %u ...") */
+#define READ_OID_ARRAY(fldname, count) \
+	token = pg_strtok(&length);		/* skip :fldname */ \
+	if ( local_node->count > 0 ) \
+	{ \
+		local_node->fldname = (Oid *)palloc(local_node->count * sizeof(Oid)); \
+		int i; \
+		for(i=0; i<local_node->count; i++) \
+		{ \
+			token = pg_strtok(&length);		/* get field value */ \
+			local_node->fldname[i] = atooid(token); \
+		} \
+	} 
 
 /*
  * NOTE: use atoi() to read values written with %d, or atoui() to read
@@ -908,6 +946,562 @@ _readRangeTblEntry(void)
 	READ_DONE();
 }
 
+/*
+ * Cdb additions for serialization support
+ */
+#include "nodes/plannodes.h"
+
+static void readPlanInfo(Plan *local_node);
+static void readScanInfo(Scan *local_node);
+static void readJoinInfo(Join *local_node);
+static Bitmapset *bitmapsetRead(void);
+
+/*
+ * _readPlan
+ */
+static Plan *
+_readPlan(void)
+{
+	READ_LOCALS_NO_FIELDS(Plan);
+
+	readPlanInfo(local_node);
+
+	READ_DONE();
+}
+
+/*
+ * _readResult
+ */
+static Result *
+_readResult(void)
+{
+	READ_LOCALS(Result);
+
+	readPlanInfo((Plan *)local_node);
+
+	READ_NODE_FIELD(resconstantqual);
+
+	READ_DONE();
+}
+
+/*
+ * _readAppend
+ */
+static Append *
+_readAppend(void)
+{
+	READ_LOCALS(Append);
+
+	readPlanInfo((Plan *)local_node);
+
+	READ_NODE_FIELD(appendplans);
+	READ_BOOL_FIELD(isTarget);
+
+	READ_DONE();
+}
+
+/*
+ * _readScan
+ */
+static Scan *
+_readScan(void)
+{
+	READ_LOCALS_NO_FIELDS(Scan);
+
+	readScanInfo(local_node);
+
+	READ_DONE();
+}
+
+/*
+ * _readSeqScan
+ */
+static SeqScan *
+_readSeqScan(void)
+{
+	READ_LOCALS_NO_FIELDS(SeqScan);
+
+	readScanInfo((Scan *)local_node);
+
+	READ_DONE();
+}
+
+/*
+ * _readIndexScan
+ */
+static IndexScan *
+_readIndexScan(void)
+{
+	READ_LOCALS(IndexScan);
+
+	readScanInfo((Scan *)local_node);
+
+	READ_NODE_FIELD(indxid);
+	READ_NODE_FIELD(indxqual);
+	READ_NODE_FIELD(indxqualorig);
+	READ_NODE_FIELD(indxstrategy);
+	READ_NODE_FIELD(indxsubtype);
+	READ_NODE_FIELD(indxlossy);
+	READ_ENUM_FIELD(indxorderdir, ScanDirection);
+
+	READ_DONE();
+}
+
+/*
+ * _readTidScan
+ */
+static TidScan *
+_readTidScan(void)
+{
+	READ_LOCALS(TidScan);
+
+	readScanInfo((Scan *)local_node);
+
+	READ_NODE_FIELD(tideval);
+
+	READ_DONE();
+}
+
+/*
+ * _readSubqueryScan
+ */
+static SubqueryScan *
+_readSubqueryScan(void)
+{
+	READ_LOCALS(SubqueryScan);
+
+	readScanInfo((Scan *)local_node);
+
+	READ_NODE_FIELD(subplan);
+
+	READ_DONE();
+}
+
+/*
+ * _readFunctionScan
+ */
+static FunctionScan *
+_readFunctionScan(void)
+{
+	READ_LOCALS_NO_FIELDS(FunctionScan);
+
+	readScanInfo((Scan *)local_node);
+
+	READ_DONE();
+}
+
+/*
+ * _readJoin
+ */
+static Join *
+_readJoin(void)
+{
+	READ_LOCALS_NO_FIELDS(Join);
+
+	readJoinInfo((Join *)local_node);
+
+	READ_DONE();
+}
+
+/*
+ * _readNestLoop
+ */
+static NestLoop *
+_readNestLoop(void)
+{
+	READ_LOCALS_NO_FIELDS(NestLoop);
+
+	readJoinInfo((Join *)local_node);
+
+	READ_DONE();
+}
+
+/*
+ * _readMergeJoin
+ */
+static MergeJoin *
+_readMergeJoin(void)
+{
+	READ_LOCALS(MergeJoin);
+
+	readJoinInfo((Join *)local_node);
+
+	READ_NODE_FIELD(mergeclauses);
+
+	READ_DONE();
+}
+
+/*
+ * _readHashJoin
+ */
+static HashJoin *
+_readHashJoin(void)
+{
+	READ_LOCALS(HashJoin);
+
+	readJoinInfo((Join *)local_node);
+
+	READ_NODE_FIELD(hashclauses);
+
+	READ_DONE();
+}
+
+/*
+ * _readAgg
+ */
+static Agg *
+_readAgg(void)
+{
+	READ_LOCALS(Agg);
+
+	readPlanInfo((Plan *)local_node);
+
+	READ_ENUM_FIELD(aggstrategy, AggStrategy);
+	READ_INT_FIELD(numCols);
+	READ_INT_ARRAY(grpColIdx, numCols, AttrNumber);
+	READ_LONG_FIELD(numGroups);
+
+	READ_DONE();
+}
+
+/*
+ * _readGroup
+ */
+static Group *
+_readGroup(void)
+{
+	READ_LOCALS(Group);
+
+	readPlanInfo((Plan *)local_node);
+
+	READ_INT_FIELD(numCols);
+
+	READ_INT_ARRAY(grpColIdx, numCols, AttrNumber);
+		
+	READ_DONE();
+}
+
+/*
+ * _readMaterial
+ */
+static Material *
+_readMaterial(void)
+{
+	READ_LOCALS_NO_FIELDS(Material);
+
+	readPlanInfo((Plan *)local_node);
+
+	READ_DONE();
+}
+
+/*
+ * _readSort
+ */
+static Sort *
+_readSort(void)
+{
+
+	READ_LOCALS(Sort);
+
+	readPlanInfo((Plan *)local_node);
+
+	READ_INT_FIELD(numCols);
+
+	READ_INT_ARRAY(sortColIdx, numCols, AttrNumber);
+
+	READ_OID_ARRAY(sortOperators, numCols);
+
+	READ_DONE();
+}
+
+/*
+ * _readUnique
+ */
+static Unique *
+_readUnique(void)
+{
+	READ_LOCALS(Unique);
+
+	readPlanInfo((Plan *)local_node);
+
+	READ_INT_FIELD(numCols);
+
+	READ_INT_ARRAY(uniqColIdx, numCols, AttrNumber);
+
+	READ_DONE();
+}
+
+/*
+ * _readSetOp
+ */
+static SetOp *
+_readSetOp(void)
+{
+	READ_LOCALS(SetOp);
+
+	readPlanInfo((Plan *)local_node);
+
+	READ_ENUM_FIELD(cmd, SetOpCmd);
+	READ_INT_FIELD(numCols);
+
+	READ_INT_ARRAY(dupColIdx, numCols, AttrNumber);
+
+	READ_INT_FIELD(flagColIdx);
+
+	READ_DONE();
+}
+
+/*
+ * _readLimit
+ */
+static Limit *
+_readLimit(void)
+{
+	READ_LOCALS(Limit);
+
+	readPlanInfo((Plan *)local_node);
+
+	READ_NODE_FIELD(limitOffset);
+	READ_NODE_FIELD(limitCount);
+
+	READ_DONE();
+}
+	
+
+/*
+ * _readHash
+ */
+static Hash *
+_readHash(void)
+{
+	READ_LOCALS_NO_FIELDS(Hash);
+
+	readPlanInfo((Plan *)local_node);
+
+	READ_DONE();
+}
+
+/*
+ * _readMotion
+ */
+static Motion *
+_readMotion(void)
+{
+	READ_LOCALS(Motion);
+
+	readPlanInfo((Plan *)local_node);
+
+	READ_ENUM_FIELD(motionType, MotionType);
+	READ_BOOL_FIELD(sendToSecondary);
+	READ_BOOL_FIELD(sendSorted);
+	READ_INT_FIELD(motionID);
+	
+	READ_INT_FIELD(numHashSegs);
+	READ_INT_ARRAY(hashSegIdx, numHashSegs, int);
+
+	READ_NODE_FIELD(hashExpr);
+	READ_NODE_FIELD(hashOp);
+
+	READ_INT_FIELD(numOutputSegs);
+	READ_INT_ARRAY(outputSegIdx, numOutputSegs, int);
+
+	READ_INT_FIELD(numSortCols);
+	READ_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);
+	READ_OID_ARRAY(sortOperators, numSortCols);
+
+	READ_INT_FIELD(numInputSegs);
+	READ_INT_ARRAY(inputSegIdx, numInputSegs, int);
+
+	READ_DONE();
+}
+
+
+/*
+ * _readFlow
+ */
+static Flow *
+_readFlow(void)
+{
+	READ_LOCALS(Flow);
+
+	READ_ENUM_FIELD(flotype, FlowType);
+	READ_BOOL_FIELD(islocal);
+	READ_ENUM_FIELD(req_move, Movement);
+	
+	READ_INT_FIELD(numSortCols);
+	READ_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);
+	READ_OID_ARRAY(sortOperators, numSortCols);
+
+	READ_NODE_FIELD(hashExpr);
+	READ_NODE_FIELD(hashOp);
+
+	READ_DONE();
+}
+
+void readScanInfo(Scan *local_node)
+{
+	READ_TEMP_LOCALS();
+
+	readPlanInfo((Plan *)local_node);
+
+	READ_UINT_FIELD(scanrelid);
+}
+
+void readPlanInfo(Plan *local_node)
+{
+	READ_TEMP_LOCALS();
+
+	READ_FLOAT_FIELD(startup_cost);
+	READ_FLOAT_FIELD(total_cost);
+	READ_FLOAT_FIELD(plan_rows);
+	READ_INT_FIELD(plan_width);
+	READ_NODE_FIELD(targetlist);
+	READ_NODE_FIELD(qual);
+	READ_NODE_FIELD(lefttree);
+	READ_NODE_FIELD(righttree);
+	READ_NODE_FIELD(initPlan);
+	READ_BITMAPSET_FIELD(extParam);
+	READ_BITMAPSET_FIELD(allParam);
+	READ_INT_FIELD(nParamExec);
+	READ_NODE_FIELD(flow);
+}
+
+void readJoinInfo(Join *local_node)
+{
+	READ_TEMP_LOCALS();
+
+	readPlanInfo((Plan *)local_node);
+
+	READ_ENUM_FIELD(jointype, JoinType);
+	READ_NODE_FIELD(joinqual);
+}
+
+
+Bitmapset  *
+bitmapsetRead(void)
+{
+	READ_TEMP_LOCALS();
+	
+	token = pg_strtok(&length);	// read (
+	token = pg_strtok(&length);	// read b
+	token = pg_strtok(&length);	// read )
+
+	return NULL;
+}
+
+/*
+ * Cdb developers added code to improve performance over the
+ * linear searching that existed in the postgres version of
+ * parseNodeString.  We introduced a struct containing
+ * the node type string and read function pointer.
+ * We created a sorted array of these for all node types supported 
+ * by parseNodeString, with cdb extensions.
+ * This array is searched for a node type string.   If found,
+ * the function pointer is excuted.
+ */
+
+/*
+ * Typedefs used in binary searching for node type in parseNodeString.
+ */
+
+/*
+ * ReadFn is the typedef of a read function for a node type.
+ */
+typedef void * (*ReadFn)(void);
+
+/*
+ * ParseNodeInfo is a struct containing the string and read function for a node type.
+ */
+typedef struct ParseNodeInfo
+{
+	char	*pzNodeName;
+	ReadFn	readNode;
+} ParseNodeInfo;
+
+/*
+ * infoAr is an array of the ParseNodeInfo for all node type that have read functions.
+ * This array MUST be kept in sorted order (based on alphabetical order of the NodeName).
+ */
+static ParseNodeInfo infoAr[] = 
+{
+	{"AGG", (ReadFn)_readAgg},
+	{"AGGREF", (ReadFn)_readAggref},
+	{"ALIAS", (ReadFn)_readAlias},
+	{"APPEND", (ReadFn)_readAppend},
+	{"ARRAY", (ReadFn)_readArrayExpr},
+	{"ARRAYREF", (ReadFn)_readArrayRef},
+	{"BOOLEANTEST", (ReadFn)_readBooleanTest},
+	{"BOOLEXPR", (ReadFn)_readBoolExpr},
+	{"CASE", (ReadFn)_readCaseExpr},
+	{"CASETESTEXPR", (ReadFn)_readCaseTestExpr},
+	{"COALESCE", (ReadFn)_readCoalesceExpr},
+	{"COERCETODOMAIN", (ReadFn)_readCoerceToDomain},
+	{"COERCETODOMAINVALUE", (ReadFn)_readCoerceToDomainValue},
+	{"COLUMNDEF", (ReadFn)_readColumnDef},
+	{"CONST", (ReadFn)_readConst},
+	{"DECLARECURSOR", (ReadFn)_readDeclareCursorStmt},
+	{"DISTINCTEXPR", (ReadFn)_readDistinctExpr},
+	{"FIELDSELECT", (ReadFn)_readFieldSelect},
+	{"FIELDSTORE", (ReadFn)_readFieldStore},
+	{"FLOW", (ReadFn)_readFlow},
+	{"FROMEXPR", (ReadFn)_readFromExpr},
+	{"FUNCEXPR", (ReadFn)_readFuncExpr},
+	{"FUNCTIONSCAN", (ReadFn)_readFunctionScan},
+	{"GROUP", (ReadFn)_readGroup},
+	{"GROUPCLAUSE", (ReadFn)_readGroupClause},
+	{"HASH", (ReadFn)_readHash},
+	{"HASHJOIN", (ReadFn)_readHashJoin},
+	{"INDEXSCAN", (ReadFn)_readIndexScan},
+	{"JOIN", (ReadFn)_readJoin},
+	{"JOINEXPR", (ReadFn)_readJoinExpr},
+	{"LIMIT", (ReadFn)_readLimit},
+	{"MATERIAL", (ReadFn)_readMaterial},
+	{"MERGEJOIN", (ReadFn)_readMergeJoin},
+	{"MOTION", (ReadFn)_readMotion},
+	{"NESTLOOP", (ReadFn)_readNestLoop},
+	{"NOTIFY", (ReadFn)_readNotifyStmt},
+	{"NULLIFEXPR", (ReadFn)_readNullIfExpr},
+	{"NULLTEST", (ReadFn)_readNullTest},
+	{"OPEXPR", (ReadFn)_readOpExpr},
+	{"PARAM", (ReadFn)_readParam},
+	{"PLAN", (ReadFn)_readPlan},
+	{"QUERY", (ReadFn)_readQuery},
+	{"RANGETBLREF", (ReadFn)_readRangeTblRef},
+	{"RANGEVAR", (ReadFn)_readRangeVar},
+	{"RELABELTYPE", (ReadFn)_readRelabelType},
+	{"RESDOM", (ReadFn)_readResdom},
+	{"RESULT", (ReadFn)_readResult},
+	{"ROW", (ReadFn)_readRowExpr},
+	{"RTE", (ReadFn)_readRangeTblEntry},
+	{"SCALARARRAYOPEXPR", (ReadFn)_readScalarArrayOpExpr},
+	{"SCAN", (ReadFn)_readScan},
+	{"SEQSCAN", (ReadFn)_readSeqScan},
+	{"SETOP", (ReadFn)_readSetOp},
+	{"SETOPERATIONSTMT", (ReadFn)_readSetOperationStmt},
+	{"SETTODEFAULT", (ReadFn)_readSetToDefault},
+	{"SORT", (ReadFn)_readSort},
+	{"SORTCLAUSE", (ReadFn)_readSortClause},
+	{"SUBLINK", (ReadFn)_readSubLink},
+	{"SUBQUERYSCAN", (ReadFn)_readSubqueryScan},
+	{"TARGETENTRY", (ReadFn)_readTargetEntry},
+	{"TIDSCAN", (ReadFn)_readTidScan},
+	{"TYPENAME", (ReadFn)_readTypeName},
+	{"UNIQUE", (ReadFn)_readUnique},
+	{"VAR", (ReadFn)_readVar},
+	{"WHEN", (ReadFn)_readCaseWhen}
+};
+
+/*
+ * cmpParseNodeInfo is the compare function for ParseNodeInfo, used in bsearch.
+ * It compares based on the NodeName.
+ */
+static int cmpParseNodeInfo( const void *x, const void *y)
+{
+	const ParseNodeInfo *px = (const ParseNodeInfo *)x;
+	const ParseNodeInfo *py = (const ParseNodeInfo *)y;
+
+	return strcmp( px->pzNodeName, py->pzNodeName );
+}
 
 /*
  * parseNodeString
@@ -917,6 +1511,7 @@ _readRangeTblEntry(void)
  *
  * The string to be read must already have been loaded into pg_strtok().
  */
+
 Node *
 parseNodeString(void)
 {
@@ -926,100 +1521,43 @@ parseNodeString(void)
 
 	token = pg_strtok(&length);
 
-#define MATCH(tokname, namelen) \
-	(length == namelen && strncmp(token, tokname, namelen) == 0)
+	/*
+	 * Make a string with the token, for use in the binary search
+	 * of the infoAr.  In this way, we find the read function
+	 * for the node type represented by the token.
+	 */
+	char *pztokname = palloc( length + 1 );
+	memcpy(pztokname, token, length);
+	pztokname[length] = '\0';
 
-	if (MATCH("QUERY", 5))
-		return_value = _readQuery();
-	else if (MATCH("SORTCLAUSE", 10))
-		return_value = _readSortClause();
-	else if (MATCH("GROUPCLAUSE", 11))
-		return_value = _readGroupClause();
-	else if (MATCH("SETOPERATIONSTMT", 16))
-		return_value = _readSetOperationStmt();
-	else if (MATCH("RESDOM", 6))
-		return_value = _readResdom();
-	else if (MATCH("ALIAS", 5))
-		return_value = _readAlias();
-	else if (MATCH("RANGEVAR", 8))
-		return_value = _readRangeVar();
-	else if (MATCH("VAR", 3))
-		return_value = _readVar();
-	else if (MATCH("CONST", 5))
-		return_value = _readConst();
-	else if (MATCH("PARAM", 5))
-		return_value = _readParam();
-	else if (MATCH("AGGREF", 6))
-		return_value = _readAggref();
-	else if (MATCH("ARRAYREF", 8))
-		return_value = _readArrayRef();
-	else if (MATCH("FUNCEXPR", 8))
-		return_value = _readFuncExpr();
-	else if (MATCH("OPEXPR", 6))
-		return_value = _readOpExpr();
-	else if (MATCH("DISTINCTEXPR", 12))
-		return_value = _readDistinctExpr();
-	else if (MATCH("SCALARARRAYOPEXPR", 17))
-		return_value = _readScalarArrayOpExpr();
-	else if (MATCH("BOOLEXPR", 8))
-		return_value = _readBoolExpr();
-	else if (MATCH("SUBLINK", 7))
-		return_value = _readSubLink();
-	else if (MATCH("FIELDSELECT", 11))
-		return_value = _readFieldSelect();
-	else if (MATCH("FIELDSTORE", 10))
-		return_value = _readFieldStore();
-	else if (MATCH("RELABELTYPE", 11))
-		return_value = _readRelabelType();
-	else if (MATCH("CASE", 4))
-		return_value = _readCaseExpr();
-	else if (MATCH("WHEN", 4))
-		return_value = _readCaseWhen();
-	else if (MATCH("CASETESTEXPR", 12))
-		return_value = _readCaseTestExpr();
-	else if (MATCH("ARRAY", 5))
-		return_value = _readArrayExpr();
-	else if (MATCH("ROW", 3))
-		return_value = _readRowExpr();
-	else if (MATCH("COALESCE", 8))
-		return_value = _readCoalesceExpr();
-	else if (MATCH("NULLIFEXPR", 10))
-		return_value = _readNullIfExpr();
-	else if (MATCH("NULLTEST", 8))
-		return_value = _readNullTest();
-	else if (MATCH("BOOLEANTEST", 11))
-		return_value = _readBooleanTest();
-	else if (MATCH("COERCETODOMAIN", 14))
-		return_value = _readCoerceToDomain();
-	else if (MATCH("COERCETODOMAINVALUE", 19))
-		return_value = _readCoerceToDomainValue();
-	else if (MATCH("SETTODEFAULT", 12))
-		return_value = _readSetToDefault();
-	else if (MATCH("TARGETENTRY", 11))
-		return_value = _readTargetEntry();
-	else if (MATCH("RANGETBLREF", 11))
-		return_value = _readRangeTblRef();
-	else if (MATCH("JOINEXPR", 8))
-		return_value = _readJoinExpr();
-	else if (MATCH("FROMEXPR", 8))
-		return_value = _readFromExpr();
-	else if (MATCH("COLUMNDEF", 9))
-		return_value = _readColumnDef();
-	else if (MATCH("TYPENAME", 8))
-		return_value = _readTypeName();
-	else if (MATCH("RTE", 3))
-		return_value = _readRangeTblEntry();
-	else if (MATCH("NOTIFY", 6))
-		return_value = _readNotifyStmt();
-	else if (MATCH("DECLARECURSOR", 13))
-		return_value = _readDeclareCursorStmt();
-	else
+	/*
+	 * We have to search with a key that is the same data type as we have in the infoAr
+	 * i.e. a ParseNodeInfo.  Since the compare function is based on name only,
+	 * we can set the readNode element of the key to NULL.
+	 */
+	ParseNodeInfo pni;
+	pni.pzNodeName = pztokname;
+	pni.readNode = NULL;
+
+	ParseNodeInfo *found = bsearch( &pni, infoAr, lengthof(infoAr), sizeof(ParseNodeInfo), cmpParseNodeInfo);
+	
+	pfree(pztokname);
+
+	if ( found == NULL )
 	{
 		elog(ERROR, "badly formatted node string \"%.32s\"...", token);
 		return_value = NULL;	/* keep compiler quiet */
 	}
+	else
+	{
+		/*
+		* We matched the token with a node type.
+		* Call the read function.
+		*/
+		return_value = (*found->readNode)();
+	}
 
-	return (Node *) return_value;
+	return (Node *)return_value;
 }
 
 
@@ -1086,3 +1624,4 @@ readDatum(bool typbyval)
 
 	return res;
 }
+
