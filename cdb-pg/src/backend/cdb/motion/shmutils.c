@@ -47,7 +47,7 @@ ShmemCreate( key_t shmem_key, int size )
 	/*
 	 * Locate the segment.
 	 */
-	if ((shmid = shmget(shmem_key, size, IPC_CREAT | 0666)) < 0) {
+	if ((shmid = shmget(shmem_key, size, IPC_CREAT | IPC_EXCL | 0666)) < 0) {
 		return NULL;
 	}
 	
