@@ -158,46 +158,85 @@ Plan* apply_motion(Plan*  plan, Query* query)
 				Assert( rte->rtekind == RTE_RELATION);
 				policy = get_table_policy(rte->relid);
 				 
-				/* TODO Generalize this to deal with dispatcher singletons
-				 *      as the target relation.  For now, mixed queries are
-				 *      not allowed, so...
-				 */
-				Assert( policy->ptype == POLICYTYPE_PARTITIONED ); 				
-			
-				/*
-				 * Deal with the source of the INSERT based on its flow
-				 * characteristics.
-				 */
-				if ( plan->flow->flotype == FLOW_PARTITIONED 
-					|| ( plan->flow->flotype == FLOW_SINGLETON && plan->flow->segindex != -1 )
-					)
+				switch ( policy->ptype )
 				{
-					/* 
-					 * Source is partitioned or singleton on a segment. 
-					 * Refocus. 
-					 */
-					plan->flow->req_move = MOVEMENT_REPARTITION;
-				}
-				else if ( plan->flow->flotype == FLOW_REPLICATED )
-				{
-					/* 
-					 * Source is replicated over segments. Apply "deep-six". 
-					 */
-					plan->flow->req_move = MOVEMENT_REP2PARTITIONED;
-				}
-				else
-				{
-					/*
-					 * Source is, presumably, a dispatcher singleton.
-					 */
-					ereport(ERROR, (
-						errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-						errmsg("CDB cannot parallelize that INSERT yet")
-					));
-				}
+					case POLICYTYPE_PARTITIONED:
+						/*
+						* Deal with the source of the INSERT based on its flow
+						* characteristics.
+						*/
+						if ( plan->flow->flotype == FLOW_PARTITIONED 
+							|| ( plan->flow->flotype == FLOW_SINGLETON && plan->flow->segindex != -1 )
+							)
+						{
+							/* 
+							* Source is partitioned or singleton on a segment. 
+							* Refocus. 
+							*/
+							plan->flow->req_move = MOVEMENT_REPARTITION;
+						}
+						else if ( plan->flow->flotype == FLOW_REPLICATED )
+						{
+							/* 
+							* Source is replicated over segments. Apply "deep-six". 
+							*/
+							plan->flow->req_move = MOVEMENT_REP2PARTITIONED;
+						}
+						else
+						{
+							/*
+							* Source is, presumably, a dispatcher singleton.
+							*/
+							ereport(ERROR, (
+								errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+								errmsg("CDB cannot parallelize that INSERT yet")
+							));
+						}
 
-				plan->flow->hashExpr = getExprListFromTargetList(plan->targetlist, policy->nattrs, policy->attrs);
-				plan->flow->hashOp = getOpListFromTargetList(plan->targetlist, policy->nattrs, policy->attrs);
+						plan->flow->hashExpr = getExprListFromTargetList(plan->targetlist, policy->nattrs, policy->attrs);
+						plan->flow->hashOp = getOpListFromTargetList(plan->targetlist, policy->nattrs, policy->attrs);
+						break;
+
+					case POLICYTYPE_ENTRY:
+						/*
+						* Deal with the source of the INSERT based on its flow
+						* characteristics.
+						*/
+						if ( plan->flow->flotype == FLOW_PARTITIONED 
+							|| ( plan->flow->flotype == FLOW_SINGLETON && plan->flow->segindex != -1 )
+							)
+						{
+							/* 
+							* Source is partitioned or singleton on a segment. 
+							* Refocus. 
+							*/
+							plan->flow->req_move = MOVEMENT_FOCUS;
+							plan->flow->segindex = -1;
+						}
+						else if ( plan->flow->flotype == FLOW_REPLICATED )
+						{
+							/* 
+							* Source is replicated over segments.
+							* We cannot currently handle insert into a local table
+							* from a replicated flow.
+							*/
+							ereport(ERROR, (
+								errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+								errmsg("CDB cannot parallelize that INSERT yet")
+							));
+						}
+						else
+						{
+							/*
+							* Source is, presumably, a dispatcher singleton.
+							*/
+							plan->flow->req_move = MOVEMENT_NONE;
+						}
+						break;
+					default:
+						Assert( false );
+						break;
+				}
 			}
 			break;
 			

@@ -13,6 +13,7 @@
 #include <pthread.h>
 #include "pqexpbuffer.h"
 #include "lib/stringinfo.h"
+#include "storage/ipc.h"  /* For proc_exit_inprogress  */
 #include "miscadmin.h"
 #include "cdb/cdbconn.h"
 #include "cdb/cdbdisp.h"
@@ -95,7 +96,7 @@ static void addSegDBToDispatchThreadPool( DispatchCommandParms *ParmsAr, int *se
 										bool cancelFromBelow, SegmentDatabaseDescriptor *segdbDesc);
 static CdbDispatchResults *initCdbDispatchResults(void);
 static void CdbDumpDispatchResult( CdbDispatchResult *result, bool verbose, StringInfo message );
-
+static void setCancelFlag(void);
 
 /*
  * Static Variables.  These contain the thread count and array of 
@@ -378,7 +379,7 @@ void *thread_DispatchCommand(void *arg)
 									
 			segdbDesc->error_message = buffer.data;
 			if ( cancelFromBelow )
-				QueryCancelPending = true;
+				setCancelFlag();
 			continue;
 		}
 		
@@ -396,7 +397,7 @@ void *thread_DispatchCommand(void *arg)
 										PQerrorMessage(conn) );
 			segdbDesc->error_message = buffer.data;
 			if ( cancelFromBelow )
-				QueryCancelPending = true;
+				setCancelFlag();
 			continue;
 		}
 		
@@ -460,7 +461,7 @@ void *thread_DispatchCommand(void *arg)
 			}
 
 			if ( cancelFromBelow )
-				QueryCancelPending = true;
+				setCancelFlag();
 				
 			free( buffer.data );
 			return NULL;	
@@ -487,7 +488,7 @@ void *thread_DispatchCommand(void *arg)
 											q->segindex, (q->isprimary ? 't' : 'f') );
 				segdbDesc->error_message = buffer.data;
 				if ( cancelFromBelow )
-					QueryCancelPending = true;
+					setCancelFlag();
 			}
 			else
 			{
@@ -571,7 +572,7 @@ void *thread_DispatchCommand(void *arg)
 							segdbDesc->error_message = buffer.data;
 							
 							if ( cancelFromBelow )
-								QueryCancelPending = true;
+								setCancelFlag();
 							
 						}
 						else
@@ -1208,5 +1209,21 @@ void CdbDumpDispatchResult( CdbDispatchResult *result, bool verbose, StringInfo 
 						result->cmdTuples,
 						cmdStatus,
 						result->resultStatus);
+	}
+}
+
+
+/*
+ * setCancelFlag:
+ * This utility function is called to signal to postgres that
+ * a cancel is requested, similar to what happens when a ctrl-C
+ * is pressed (StatementCancelHandler)
+ */
+void setCancelFlag(void)
+{
+	if (!proc_exit_inprogress)
+	{
+		InterruptPending = true;
+		QueryCancelPending = true;
 	}
 }

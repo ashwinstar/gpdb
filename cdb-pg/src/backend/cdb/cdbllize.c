@@ -52,8 +52,13 @@ typedef struct PlanProfile
 	bool	hasPartitionedFlow;
 	bool	hasLocalFlow;
 	
+	/* The uses flags refer to relations in the query */
 	bool	usesCatalog;
 	bool	usesSegments;
+
+	/* The result flags refer to relation in the result of an insert, update, or delete */
+	bool	resultCatalog;
+	bool	resultSegments;
 	
 	/* Context */
 	List	*rtable; /* The current range table. */
@@ -176,12 +181,22 @@ cdbparallelize(	Plan* plan,
 			));
 		ereport(NOTICE,  (
 			errmsg("CDB Notice: Plan %s catalog and %s segments.",
-				profile.usesCatalog ? "uses" : "doesn't use",
-				profile.usesSegments ? "uses" : "doesn't use" )
+				(profile.usesCatalog || profile.resultCatalog) ? "uses" : "doesn't use",
+				(profile.usesSegments || profile.resultSegments) ? "uses" : "doesn't use" )
 			));
 	#endif
 
-		if ( profile.usesCatalog && profile.usesSegments )
+		/*
+		 * Since we scanForManagedTables was true, we have to have usesSegments
+		 * in either the query relations or the result relation.
+		 */
+		Assert( profile.usesSegments || profile.resultSegments );
+
+		/*
+		 * Since we know we are reference segments either in the source or target of the queries
+		 * we know we cannot yet also useCatalog.
+		 */
+		if ( profile.usesCatalog )
 		{
 			ereport(ERROR,  (
 				errcode(ERRCODE_CDB_FEATURE_NOT_YET),
@@ -189,12 +204,9 @@ cdbparallelize(	Plan* plan,
 				errhint("CDB requires separate queries.")
 				));
 		}
-		else
-		{
-			Assert( profile.usesSegments );
-			plan = apply_motion(plan, query);
-			plan->dispatch = DISPATCH_PARALLEL;
-		}
+
+		plan = apply_motion(plan, query);
+		plan->dispatch = DISPATCH_PARALLEL;
 	}
 
 	return plan;
@@ -1532,7 +1544,7 @@ scanForManagedTables(Plan *plan, Query *query)
 		issuePsError(&profile);	
 
 	/* initPlanProfile may have already found a managed table. */
-	if ( profile.usesSegments )
+	if ( profile.resultSegments )
 		return true;
 
 	/*
@@ -1664,6 +1676,8 @@ bool initPlanProfile(PlanProfile *context, Query *query)
 	context->hasLocalFlow = false;
 	context->usesCatalog = false;
 	context->usesSegments = false;
+	context->resultCatalog = false;
+	context->resultSegments = false;
 	
 	/* Initialize the current range table. */
 	context->rtable = query->rtable;
@@ -1701,9 +1715,9 @@ bool initPlanProfile(PlanProfile *context, Query *query)
 				policy = get_table_policy(reloid);
 				
 				if ( policy->ptype == POLICYTYPE_PARTITIONED )
-					context->usesSegments = true;
+					context->resultSegments = true;
 				else if ( policy->ptype == POLICYTYPE_ENTRY )
-					context->usesCatalog = true;
+					context->resultCatalog = true;
 				else
 				{
 					psError(context,  ERRCODE_CDB_INTERNAL_ERROR,
