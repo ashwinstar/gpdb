@@ -54,7 +54,7 @@
             project is used for the build.
           -->
         <condition property="devoBuild">
-            <equals arg1="${releaseDir}" arg2="devo"/>
+            <contains string="${releaseDir}" substring="devo"/>
         </condition>
 
     </target>
@@ -697,7 +697,8 @@
              * the release tag from the ANT property "stickyTag" and set the
              * ANT properties "releaseTag" and "releaseDir" from the extracted
              * value.  If "stickyTag" is not set, a developer release tag is
-             * generated.
+             * generated.  If "stickyTag" is set and ends with "-branch", a
+             * developer branch tag is generated.
              *
              * releaseTag ::= "<release>-m_n_l[-b]
              * releaseDir ::= "Rm_n_l[-b]"
@@ -710,6 +711,8 @@
             String nameHead = "$Name" + ": ";
             String nameTail = " $";
             int tagLength = nameHead.length() + nameTail.length();
+
+            String branchTag = "-branch";
 
             /*
              * Fetch the value of the CVS sticky tag; this is in the form
@@ -733,7 +736,12 @@
                 releaseTag = stickyTag.substring(nameHead.length(),
                                                  stickyTag.length() - nameTail.length());
                 String release = releaseTag.substring(releaseTag.indexOf('-') + 1);
-                releaseDir = release;
+
+                if (release.endsWith(branchTag))
+                    releaseDir = release.substring(0, release.length() - branchTag.length()) + "-devo";
+                else
+                    releaseDir = release;
+
                 int i = release.indexOf('-');
                 if ( i > 0 ) 
                     release = release.substring(1, i - 1) + "_" + release.substring(i + 1);
