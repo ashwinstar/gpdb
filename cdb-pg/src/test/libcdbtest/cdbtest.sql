@@ -53,12 +53,47 @@ CREATE OR REPLACE FUNCTION cdb_show_alias(text) RETURNS text
 
 -- ipc test function
 CREATE OR REPLACE FUNCTION ml_ipc_getMsg(text) RETURNS text
-    AS 'libcdbtest.so', 'ml_ipc_getMsg'
+    AS 'libcdbtest.so', 'ml_ipc_getMsg__text1'
     LANGUAGE C IMMUTABLE STRICT;
 
-    
+
 -- Hashing functions
 CREATE OR REPLACE FUNCTION cdb_hash(anyelement) RETURNS int4
     AS 'libcdbtest.so', 'cdb_hash'
     LANGUAGE C IMMUTABLE STRICT;
     
+
+-- Functions for access to the Motion Layer API (what motion nodes use)
+
+-- Initialize a motion layer node.
+CREATE OR REPLACE FUNCTION mlapi_init_node(integer, bool, regtype) RETURNS integer
+    AS 'libcdbtest.so', 'MLAPI_InitMLNode__int1_bool1_regtype1'
+    LANGUAGE C IMMUTABLE STRICT;
+
+-- Clean up a motion layer node.
+CREATE OR REPLACE FUNCTION mlapi_end_node(integer) RETURNS integer
+    AS 'libcdbtest.so', 'MLAPI_EndMLNode__int1'
+    LANGUAGE C IMMUTABLE STRICT;
+
+-- Begin a send-operation, and hopefully complete it.  Return-value indicates
+-- whether the send completed or not.
+CREATE OR REPLACE FUNCTION mlapi_sendtuple(integer, text) RETURNS integer
+    AS 'libcdbtest.so', 'MLAPI_SendTuple__int1_text1'
+    LANGUAGE C IMMUTABLE STRICT;
+
+-- Attempt to complete an existing send operation.  Return-value indicates
+-- whether the send completed or not.
+CREATE OR REPLACE FUNCTION mlapi_finish_sendtuple() RETURNS integer
+    AS 'libcdbtest.so', 'MLAPI_FinishSendTuple'
+    LANGUAGE C IMMUTABLE STRICT;
+
+-- Attempt to receive a tuple.  NULL is returned if a row is not ready.
+CREATE OR REPLACE FUNCTION mlapi_recvtuple(integer) RETURNS RECORD
+    AS 'libcdbtest.so', 'MLAPI_RecvTuple__int1'
+    LANGUAGE C IMMUTABLE STRICT;
+
+-- Find out the last receive return-code.  Obviously, mlapi_recvtuple should
+-- be called before this function is used, otherwise the result is invalid.
+CREATE OR REPLACE FUNCTION mlapi_getlastrecvcode() RETURNS INTEGER
+    AS 'libcdbtest.so', 'MLAPI_GetLastRecvCode'
+    LANGUAGE C IMMUTABLE STRICT;

@@ -23,6 +23,7 @@
 #include "cdb/tupser.h"
 #include "libpq/pqformat.h"
 #include "utils/hsearch.h"
+#include "utils/memutils.h"
 #include "utils/tuplestore.h"
 
 
@@ -181,10 +182,13 @@ SendReturnCode SendTuple(MotionNodeInfo *mn_info, TupleSendContext *send_ctxt)
     AssertArg(mn_info != NULL);
 
     AssertArg(send_ctxt != NULL);
-    AssertArg(send_ctxt->total_tuple_bytes > 0);
-    AssertArg(send_ctxt->total_bytes_sent < send_ctxt->total_tuple_bytes); /* fail means already sent */
-    AssertArg(send_ctxt->last_bytes_written >= 0);
-    AssertArg(send_ctxt->last_bytes_written <= send_ctxt->total_bytes_sent);
+    AssertArg(send_ctxt->total_tuple_bytes >= 0);
+    if (send_ctxt->total_tuple_bytes > 0)
+    {
+        AssertArg(send_ctxt->total_bytes_sent < send_ctxt->total_tuple_bytes); /* fail means already sent */
+        AssertArg(send_ctxt->last_bytes_written >= 0);
+        AssertArg(send_ctxt->last_bytes_written <= send_ctxt->total_bytes_sent);
+    }
 
     /* The target segment-index should be an "active-only" segment-index.  We
      * add in the "include-backup-segdb" part ourselves.
@@ -209,9 +213,11 @@ SendReturnCode SendTuple(MotionNodeInfo *mn_info, TupleSendContext *send_ctxt)
      * single send call, it is freed right away; for tuples that require
      * multiple send calls, it is freed when it is no longer needed.)
      */
-    if (send_ctxt->total_bytes_sent == 0 &&
+    if (send_ctxt->total_tuple_bytes == 0 &&
         send_ctxt->tuple_chunk_list == NULL)
     {
+        elog(DEBUG3, "Serializing HeapTuple for sending.");
+
         /* Set up the target segment index based on the motion node info. */
 
         targetSegIdx = send_ctxt->target_segment;
@@ -229,6 +235,15 @@ SendReturnCode SendTuple(MotionNodeInfo *mn_info, TupleSendContext *send_ctxt)
 
         send_ctxt->total_tuple_bytes = tcList->serialized_data_length;
         send_ctxt->total_bytes_sent = 0;
+        
+        elog(DEBUG3, "Serialized HeapTuple for sending:\n"
+            "\ttarget-segment %d (backup %s)\n"
+            "\t%d bytes in serial form\n"
+            "\tbroken into %d chunks",
+            send_ctxt->target_segment,
+            (pMNEntry->include_backup_segdb ? "included" : "NOT included"),
+            tcList->serialized_data_length,
+            tcList->num_chunks);
     }
 
     send_ctxt->last_bytes_written = 0;
@@ -261,7 +276,11 @@ SendReturnCode SendTuple(MotionNodeInfo *mn_info, TupleSendContext *send_ctxt)
         else /* chunk was sent */
         {
             /* Update the send-context info. */
+
             send_ctxt->total_bytes_sent += tuple_chunk->chunk_length;
+            send_ctxt->tuple_bytes_sent +=
+                GetChunkDataSize(tuple_chunk->chunk_data);
+
             send_ctxt->last_bytes_written += tuple_chunk->chunk_length;
 
             Assert(send_ctxt->tuple_bytes_sent > 0);
@@ -539,6 +558,10 @@ HeapTuple getNextTupleFromStore(Tuplestorestate *tupStoreState)
     {
         elog(DEBUG3, "In getNextTupleFromStore(), shouldFree is %s.",
             (shouldFree ? "true" : "false"));
+        
+        /* TODO:  Probably MUCH better to just pass up the should-free flag. */
+        if (!shouldFree)
+            htup = heap_copytuple(htup);
     }
     
     /* If the read-position ends up at EOF, mark the position so that we can
@@ -578,8 +601,14 @@ CanReadTuple( )
  */
 void InitMotionLayer(void)
 {
+    MemoryContext oldCtxt;
     HASHCTL hctl;
     HTAB *htab;
+
+    /* Switch to the cache memory-context, since we want this stuff to last
+     * for the lifetime of the postgres process.
+     */
+    oldCtxt = MemoryContextSwitchTo(CacheMemoryContext);
 
     /* Initialize motion-node hashtable.  The initial number of bins is chosen
      * to be relatively small, since the max number of bins is just the number
@@ -618,9 +647,11 @@ void InitMotionLayer(void)
 	
 	
 	/* Initialize the Motion Layer IPC subsystem. */
-	getCdbIdentity( &mySegIndex, &isPrimary );	
+	getCdbIdentity( &mySegIndex, &isPrimary );
 	InitMotionLayerIPC( mySegIndex );
 	
+    /* All done!  Go back to caller memory-context. */
+    MemoryContextSwitchTo(oldCtxt);
 }
 
 
@@ -632,10 +663,16 @@ void InitMotionLayer(void)
 void InitMotionLayerNode(uint16 motNodeID, bool includeBackupSegDB,
     bool preserveOrder, TupleDesc tupDesc)
 {
+    MemoryContext oldCtxt;
     MotionNodeEntry *pEntry;
     bool found;
 
     AssertArg(tupDesc != NULL);
+
+    /* Switch to the cache memory-context, since we want this stuff to last
+     * for the lifetime of the postgres process.
+     */
+    oldCtxt = MemoryContextSwitchTo(CacheMemoryContext);
 
     elog(DEBUG2, "Initializing entry for motion node %d in Motion Layer.",
         motNodeID);
@@ -667,11 +704,11 @@ void InitMotionLayerNode(uint16 motNodeID, bool includeBackupSegDB,
     /* Finish up initialization of the motion node entry. */
 
     Assert(pEntry->motion_node_id == motNodeID);
-    
+
     pEntry->include_backup_segdb = includeBackupSegDB;
     pEntry->preserve_order = preserveOrder;
-    pEntry->tuple_desc = tupDesc;
-    
+    pEntry->tuple_desc = CreateTupleDescCopy(tupDesc);
+
     if (!preserveOrder)
     {
         /* Create a tuple-store for the motion node's incoming tuples. */
@@ -689,6 +726,9 @@ void InitMotionLayerNode(uint16 motNodeID, bool includeBackupSegDB,
 
         pEntry->ready_tuples = NULL;
     }
+
+    /* All done!  Go back to caller memory-context. */
+    MemoryContextSwitchTo(oldCtxt);
 }
 
 

@@ -61,8 +61,6 @@ typedef struct MotionNodeInfo
 	int segment_id;
 	int host_id;
     
-    TupleDesc tuple_desc;
-    
 } MotionNodeInfo;
 
 
@@ -91,8 +89,9 @@ typedef struct MotionNodeInfo
 typedef struct TupleSendContext
 {
 	HeapTuple heap_tuple;
-	uint16 target_segment;	
+	uint16 target_segment;
 	unsigned char flags;
+
 	long total_tuple_bytes;
     long tuple_bytes_sent;      /* Bytes of tuple data sent. */
 	long total_bytes_sent;      /* Bytes sent, including chunk header info. */

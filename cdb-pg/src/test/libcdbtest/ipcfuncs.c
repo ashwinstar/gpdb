@@ -14,6 +14,9 @@
  */
 #include "postgres.h"
 
+
+#include <unistd.h>
+
 #include "funcapi.h"
 #include "libpq-fe.h"
 #include "access/tupdesc.h"
@@ -48,8 +51,8 @@
  * NOTE: this function MUST be called in utility mode.!
  * 
  */
-PG_FUNCTION_INFO_V1(ml_ipc_getMsg);
-Datum ml_ipc_getMsg(PG_FUNCTION_ARGS)
+PG_FUNCTION_INFO_V1(ml_ipc_getMsg__text1);
+Datum ml_ipc_getMsg__text1(PG_FUNCTION_ARGS)
 {
 	char	*msg = GET_STR(PG_GETARG_TEXT_P(0));
     int		mySegIndex = 1;
