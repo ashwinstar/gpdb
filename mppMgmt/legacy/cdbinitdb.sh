@@ -105,7 +105,7 @@ do
     if [ ! $options_ended ]; then
         OPTIND=1
         OPTARG='--'
-        while getopts :D:n:N:P: option
+        while getopts :D:n:N:p: option
         do
             case $option in
                 :)
