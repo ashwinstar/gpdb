@@ -236,6 +236,7 @@ static ChunkSorterEntry *getChunkSorterEntry(MotionNodeEntry *motNodeEntry,
 static bool addChunkToSorter(TupleChunkListItem tcItem);
 
 static void processIncomingChunks(void);
+static void reconstructTuple(MotionNodeEntry *pMNEntry, ChunkSorterEntry *pCSEntry);
 
 /* Stats-function declarations. */
 static void statSendTuple(MotionNodeEntry *pMNEntry,

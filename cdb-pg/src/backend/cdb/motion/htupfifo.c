@@ -182,7 +182,8 @@ HeapTuple htfifo_gettuple(htup_fifo htf)
 		AssertState(htf->curr_mem_size > 0);
 		
 		htf->tup_count--;
-		htf->curr_mem_size -= GetMemoryChunkSpace(p_ent) + GetMemoryChunkSpace(htup);
+		htf->curr_mem_size -= 
+			(GetMemoryChunkSpace(p_ent) + GetMemoryChunkSpace(htup));
 		
 		AssertState(htf->tup_count >= 0);
 		AssertState(htf->curr_mem_size >= 0);
