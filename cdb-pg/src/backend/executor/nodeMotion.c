@@ -17,6 +17,7 @@
 #include "executor/execdebug.h"
 #include "executor/nodeMotion.h"
 #include "optimizer/clauses.h"
+#include "parser/parse_oper.h"
 #include "parser/parsetree.h"
 #include "utils/lsyscache.h"
 #include "miscadmin.h"
@@ -305,9 +306,9 @@ List *getHashMotionInfoList( Plan *node, HashMotionInfoType type )
 						"Empty grpColIdx array encountered in getHashExprList for Agg node" );
 						
 				if ( type == INFOTYPE_LEFTEXPR || type == INFOTYPE_RIGHTEXPR )
-					hashinfo = getExprListFromTargetList(aggnode->plan.targetlist, numCols, grpColIdx);
+					hashinfo = getExprListFromTargetList(aggnode->plan.lefttree->targetlist, numCols, grpColIdx);
 				else
-					hashinfo = getOpListFromTargetList(aggnode->plan.targetlist, numCols, grpColIdx);
+					hashinfo = getOpListFromTargetList(aggnode->plan.lefttree->targetlist, numCols, grpColIdx);
 			}
 				
 			break;
@@ -783,7 +784,7 @@ List *getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
 			elog( ERROR, "no tlist entry for key %d", n );
 			
 		expr = copyObject(target->expr);
-		
+		motion_expr_walker(expr, NULL);
 		elist = lappend(elist, expr);
 	}
 	
@@ -791,17 +792,17 @@ List *getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
 }
 
 /* ----------------------------------------------------------------
- * getExprListFromTargetList - -
- * this extracts the indicated entries from the target list, copies each,
- * and puts them into a list.
+ * getOpListFromTargetList - -
+ * this extracts the indicated oids from the target list and puts them into a list.
  * 
  * ----------------------------------------------------------------
  */
 List *getOpListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
 {
-	int		i;
-	List	*oplist = NIL;
-	Expr	*expr = NULL;
+	int			i;
+	List		*oplist = NIL;
+	Expr		*expr = NULL;
+	Operator	eq_operator;
 	
 	for (i=0; i<numCols; i++ )
 	{
@@ -814,8 +815,10 @@ List *getOpListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
 			
 		Var* var = (Var *)target->expr;
 		Assert(IsA(var, Var));
-		
-		oplist = lappend(oplist, var->vartype);
+
+		eq_operator = compatible_oper(list_make1(makeString("=")), var->vartype, var->vartype, true);
+		oplist = lappend_oid(oplist, oprid(eq_operator));
+		ReleaseSysCache(eq_operator);
 	}
 	
 	return oplist;
