@@ -914,6 +914,8 @@ heap_create_with_catalog_with_relid(const char *relname,
 				(errcode(ERRCODE_DUPLICATE_TABLE),
 				 errmsg("relation \"%s\" already exists", relname)));
 
+	elog(NOTICE, "Creating table with oid %d", new_rel_oid);
+
 	/*
 	 * Create the relcache entry (mostly dummy at this point) and the
 	 * physical disk file.	(If we fail further down, it's the smgr's
@@ -928,6 +930,8 @@ heap_create_with_catalog_with_relid(const char *relname,
 							   allow_system_table_mods,
 							   new_rel_oid,
 							   false);
+
+	while(newoid() <= new_rel_oid);
 
 	/* Fetch the relation OID assigned by heap_create */
 	Assert(new_rel_oid == RelationGetRelid(new_rel_desc));

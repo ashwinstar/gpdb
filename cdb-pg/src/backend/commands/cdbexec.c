@@ -92,8 +92,8 @@ CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
 		/*ProcessUtility(query->utilityStmt,
 			   NULL,
 			   dest,
-			   completionTag);*/
-		return;
+			   completionTag); 
+		return */
 	}
 
 	EState	   *estate = NULL;

@@ -452,7 +452,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 		Assert(stmt->relOid == 0);
 		stmt->relOid = relationId;
 
-		elog( NOTICE,"shouldDispatch = true\n");
+		elog( NOTICE,"shouldDispatch = true, relOid = %d",relationId);
 		if ( shouldDispatch )
 		{
 			/*
@@ -500,7 +500,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 
 	if (Cdb_role == CDB_ROLE_EXECUTE) 
 	{
-		elog( NOTICE,"CdbRole Execute of CREATE TABLE\n");
+		elog( NOTICE,"CdbRole Execute of CREATE TABLE, relationid %d",stmt->relOid);
 		Assert(stmt->relOid != 0);
 		relationId = stmt->relOid;
 
