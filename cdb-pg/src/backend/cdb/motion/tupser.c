@@ -186,30 +186,35 @@ HeapTuple DeserializeTuple(TupleDesc tupdesc, StringInfo serialTup)
         SerAttrInfo *thisState = myState->myinfo + i;
         uint32 attr_size;
 
-        if (myState->nulls[i] == 'n')
-            continue;
-
-        attr_size = pq_getmsgint(serialTup, 4);
-
-        /* reset attr_data to empty, and load raw data into it */
-        
-        attr_data.len = 0;
-        attr_data.data[0] = '\0';
-        attr_data.cursor = 0;
-
-        appendBinaryStringInfo(&attr_data,
-            pq_getmsgbytes(serialTup, attr_size), attr_size);
-
-        /* Call the attribute type's binary input converter. */
-        myState->values[i] =  FunctionCall2(&thisState->recv_finfo,
-            PointerGetDatum(&attr_data),
-            ObjectIdGetDatum(thisState->recv_typio_param));
-
-        /* Trouble if it didn't eat the whole buffer */
-        if (attr_data.cursor != attr_data.len)
+        if (myState->nulls[i] == 'n')       /* NULL field. */
         {
-            ereport(ERROR, (errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
-                errmsg("incorrect binary data format")));
+            myState->values[i] = (Datum) 0;
+        }
+        else                                /* Non-NULL field. */
+        {
+            attr_size = pq_getmsgint(serialTup, 4);
+
+            /* reset attr_data to empty, and load raw data into it */
+
+            attr_data.len = 0;
+            attr_data.data[0] = '\0';
+            attr_data.cursor = 0;
+
+            appendBinaryStringInfo(&attr_data,
+                pq_getmsgbytes(serialTup, attr_size), attr_size);
+
+            /* Call the attribute type's binary input converter. */
+            myState->values[i] =  FunctionCall2(&thisState->recv_finfo,
+                PointerGetDatum(&attr_data),
+                ObjectIdGetDatum(thisState->recv_typio_param));
+
+            /* Trouble if it didn't eat the whole buffer */
+            if (attr_data.cursor != attr_data.len)
+            {
+                ereport(ERROR,
+                    (errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
+                    errmsg("incorrect binary data format")));
+            }
         }
     }
 

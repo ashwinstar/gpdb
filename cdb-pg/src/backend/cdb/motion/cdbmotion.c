@@ -16,6 +16,7 @@
 #include "postgres.h"
 
 #include "miscadmin.h"
+#include "access/heapam.h"
 #include "cdb/cdblink.h"   //used for the getCdbIdentity() call.
 #include "cdb/cdbmotion.h"
 #include "cdb/cdbvars.h"
@@ -26,6 +27,9 @@
 #include "utils/memutils.h"
 #include "utils/tuplestore.h"
 
+
+/* I'm not sure that the cache mem-ctxt is where internal stuff should go! */
+#define ML_MEM_CTXT     CacheMemoryContext
 
 
 /*=========================================================================
@@ -178,6 +182,7 @@ SendReturnCode SendTuple(MotionNodeInfo *mn_info, TupleSendContext *send_ctxt)
     bool tuple_sent = false;
     TupleChunkList tcList;
     TupleChunkListItem tuple_chunk;
+    MemoryContext oldCtxt;
 
     AssertArg(mn_info != NULL);
 
@@ -226,9 +231,11 @@ SendReturnCode SendTuple(MotionNodeInfo *mn_info, TupleSendContext *send_ctxt)
 
         /* Create and store the serialized form, and some stats about it. */
 
+        oldCtxt = MemoryContextSwitchTo(ML_MEM_CTXT);
         tcList = CvtHeapTupToChunks(send_ctxt->heap_tuple,
             pMNEntry->tuple_desc, Cdb_max_tuple_chunk_size, mn_info,
             targetSegIdx);
+        MemoryContextSwitchTo(oldCtxt);
 
         send_ctxt->tuple_chunk_list = tcList;
         send_ctxt->next_tuple_chunk = tcList->p_first;
@@ -403,7 +410,7 @@ ReceiveReturnCode RecvTuple(MotionNodeInfo *mn_info, HeapTuple *tup_i)
 
     /* Get the next HeapTuple, if one is available! */
     *tup_i = getNextTupleFromStore(tupStoreState);
-    
+
     if (*tup_i != NULL)
     {
         /* We got a tuple. */
@@ -501,6 +508,9 @@ void processIncomingChunks(void)
 {
     TupleChunkListItem tcItem, tcNext;
     uint16 motNodeID, srcSegIdx;
+    MemoryContext oldCtxt;
+
+    oldCtxt = MemoryContextSwitchTo(ML_MEM_CTXT);
 
     /* Get all of the currently available tuple-chunks, and push each one into
      * the chunk-sorter.
@@ -525,6 +535,8 @@ void processIncomingChunks(void)
         
         tcItem = tcNext;
     }
+
+    MemoryContextSwitchTo(oldCtxt);
 }
 
 
@@ -540,9 +552,9 @@ HeapTuple getNextTupleFromStore(Tuplestorestate *tupStoreState)
 {
     bool shouldFree;
     HeapTuple htup;
-    
+
     AssertArg(tupStoreState != NULL);
-    
+
     /* If we are already at EOF, set the read-position to where EOF was
      * previously encountered.  This is necessary since the read-position
      * tracks the write-position once EOF occurs in the tuple-store.
@@ -608,7 +620,7 @@ void InitMotionLayer(void)
     /* Switch to the cache memory-context, since we want this stuff to last
      * for the lifetime of the postgres process.
      */
-    oldCtxt = MemoryContextSwitchTo(CacheMemoryContext);
+    oldCtxt = MemoryContextSwitchTo(ML_MEM_CTXT);
 
     /* Initialize motion-node hashtable.  The initial number of bins is chosen
      * to be relatively small, since the max number of bins is just the number
@@ -672,7 +684,7 @@ void InitMotionLayerNode(uint16 motNodeID, bool includeBackupSegDB,
     /* Switch to the cache memory-context, since we want this stuff to last
      * for the lifetime of the postgres process.
      */
-    oldCtxt = MemoryContextSwitchTo(CacheMemoryContext);
+    oldCtxt = MemoryContextSwitchTo(ML_MEM_CTXT);
 
     elog(DEBUG2, "Initializing entry for motion node %d in Motion Layer.",
         motNodeID);
@@ -717,7 +729,7 @@ void InitMotionLayerNode(uint16 motNodeID, bool includeBackupSegDB,
             " node-level tuple-store.", motNodeID);
 
         pEntry->ready_tuples = tuplestore_begin_heap(/*randomAccess*/ false,
-            /*interXact*/ false, work_mem);
+            /*interXact*/ true, work_mem);
     }
     else
     {
@@ -815,17 +827,20 @@ ChunkSorterEntry *getChunkSorterEntry(MotionNodeEntry *motNodeEntry,
     uint16 srcSegIdx)
 {
     uint16 motNodeID;
+    MemoryContext oldCtxt;
     ChunkSorterKey csKey;
     ChunkSorterEntry *chunkSorterEntry;
     bool found;
-    
+
     AssertArg(motNodeEntry != NULL);
 
     motNodeID = motNodeEntry->motion_node_id;
-    
+
     bzero(&csKey, sizeof(csKey));
     csKey.source_seg_idx = srcSegIdx;
     csKey.motion_node_id = motNodeID;
+
+    oldCtxt = MemoryContextSwitchTo(ML_MEM_CTXT);
 
     chunkSorterEntry = (ChunkSorterEntry *) hash_search(
         s_motion_layer_state.chunksort_map, &csKey, HASH_ENTER, &found);
@@ -860,7 +875,7 @@ ChunkSorterEntry *getChunkSorterEntry(MotionNodeEntry *motNodeEntry,
                 srcSegIdx, motNodeID);
 
             chunkSorterEntry->ready_tuples = tuplestore_begin_heap(
-                /*randomAccess*/ false, /*interXact*/ false, work_mem);
+                /*randomAccess*/ false, /*interXact*/ true, work_mem);
 
             /* Sanity-check: */
             Assert(motNodeEntry->ready_tuples == NULL);
@@ -878,6 +893,8 @@ ChunkSorterEntry *getChunkSorterEntry(MotionNodeEntry *motNodeEntry,
         }
     }
 
+    MemoryContextSwitchTo(oldCtxt);
+
     Assert(chunkSorterEntry != NULL);
     return chunkSorterEntry;
 }
@@ -894,6 +911,8 @@ ChunkSorterEntry *getChunkSorterEntry(MotionNodeEntry *motNodeEntry,
  */
 bool addChunkToSorter(TupleChunkListItem tcItem)
 {
+    MemoryContext oldCtxt;
+    
     uint16 srcSegIdx, motNodeID;
     ChunkSorterEntry *chunkSorterEntry;
     MotionNodeEntry *motNodeEntry;
@@ -903,6 +922,8 @@ bool addChunkToSorter(TupleChunkListItem tcItem)
     HeapTuple htup;
 
     AssertArg(tcItem != NULL);
+
+    oldCtxt = MemoryContextSwitchTo(ML_MEM_CTXT);
 
     srcSegIdx = GetSourceSegIdx(tcItem->chunk_data);
     motNodeID = GetMotionNodeID(tcItem->chunk_data);
@@ -1078,7 +1099,9 @@ bool addChunkToSorter(TupleChunkListItem tcItem)
             errmsg("Received tuple chunk of unrecognized type %d"
                 " from [src=%d,mn=%d].", tcType, srcSegIdx, motNodeID)));
     }
-    
+
+    MemoryContextSwitchTo(oldCtxt);
+
     return tupleCompleted;
 }
 
