@@ -1491,6 +1491,25 @@ _readFlow(void)
 	READ_DONE();
 }
 
+/*
+ * _readFlow
+ */
+static VacuumStmt *
+_readVacuumStmt(void)
+{
+	READ_LOCALS(VacuumStmt);
+
+	READ_BOOL_FIELD(vacuum);
+	READ_BOOL_FIELD(full);
+	READ_BOOL_FIELD(analyze);
+	READ_BOOL_FIELD(freeze);
+	READ_BOOL_FIELD(verbose);
+	READ_NODE_FIELD(relation);
+	READ_NODE_FIELD(va_cols);
+
+	READ_DONE();
+}
+
 void readScanInfo(Scan *local_node)
 {
 	READ_TEMP_LOCALS();
@@ -1666,6 +1685,7 @@ static ParseNodeInfo infoAr[] =
 	{"TIDSCAN", (ReadFn)_readTidScan},
 	{"TYPENAME", (ReadFn)_readTypeName},
 	{"UNIQUE", (ReadFn)_readUnique},
+	{"VACUUMSTMT", (ReadFn)_readVacuumStmt},
 	{"VAR", (ReadFn)_readVar},
 	{"WHEN", (ReadFn)_readCaseWhen}
 };

@@ -1406,6 +1406,7 @@ _outQuery(StringInfo str, Query *node)
 			case T_NotifyStmt:
 			case T_DeclareCursorStmt:
 			case T_CreateSchemaStmt:
+			case T_VacuumStmt:
 				WRITE_NODE_FIELD(utilityStmt);
 				break;
 			default:
@@ -1711,6 +1712,19 @@ _outCreateSchemaStmt(StringInfo str, CreateSchemaStmt *node)
 	
 }
 
+static void
+_outVacuumStmt(StringInfo str, VacuumStmt *node)
+{
+	WRITE_NODE_TYPE("VACUUMSTMT");
+
+	WRITE_BOOL_FIELD(vacuum);
+	WRITE_BOOL_FIELD(full);
+	WRITE_BOOL_FIELD(analyze);
+	WRITE_BOOL_FIELD(freeze);
+	WRITE_BOOL_FIELD(verbose);
+	WRITE_NODE_FIELD(relation);
+	WRITE_NODE_FIELD(va_cols);
+}
 
 /*
  * _outNode -
@@ -2035,11 +2049,12 @@ _outNode(StringInfo str, void *obj)
 			case T_DefElem:
 				_outDefElem(str, obj);
 				break;
-
 			case T_CreateSchemaStmt:
 				_outCreateSchemaStmt(str, obj);
 				break;
-
+			case T_VacuumStmt:
+				_outVacuumStmt(str, obj);
+				break;
 			default:
 
 				/*

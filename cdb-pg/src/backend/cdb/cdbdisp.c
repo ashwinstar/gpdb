@@ -1121,11 +1121,10 @@ bool CdbDoCommand( const char *szCommand, const char *szUndoCommand,
 		else
 		{
 
-			ereport( DEBUG5,
+			ereport( ERROR,
 						(errcode( ERRCODE_CDB_COMMAND_ERROR ),
-						errmsg("Command \"%s\" failed on at least one segment database: %s, "
-						"and then the undo command \"%s\" executed successfully",
-					 	szCommand, message_do, szUndoCommand
+						errmsg("Command \"%s\" failed on at least one segment database: %s, ",
+					 	szCommand, message_do
 					)));
 
 		}
