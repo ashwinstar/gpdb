@@ -219,20 +219,28 @@
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <!-- Ensure we have a JAVA_HOME and prepare JNI include references  -->
     <!--                                                                -->
-    <!-- We can't depend on the value of ${java.home} set by ANT ...    -->
-    <!-- under IntelliJ IDEA, it's set to the embedded JRE; for         -->
-    <!-- Windows, Cygwin, & Linux, it's set to the JRE in the SDK       -->
-    <!-- distribution.  So we require that JAVA_HOME be set to the SDK  -->
-    <!-- root.                                                          -->
+    <!-- IntelliJ IDEA sets JAVA_HOME to the embedded JRE; however      -->
+    <!-- ANT under IntelliJ IDEA sets ${java.home} to the JRE sub-      -->
+    <!-- directory of a custom JDK selected in the Ant Build File       -->
+    <!-- properties when "Run under custom JDK" is selected - so for    -->
+    <!-- IntelliJ IDEA, the custom JDK *must* be selected.  Aside from  -->
+    <!-- IntelliJ IDEA, if JAVA_HOME is set, it must be set to the root -->
+    <!-- of the Java SDK.  If JAVA_HOME is not set (or we're running    -->
+    <!-- under IntelliJ IDEA), the root of the SDK is calculated to be  -->
+    <!-- the parent directory of ${java.home}.                          -->
+    <!--                                                                -->
+    <!-- For MacOsX (Darwin), the location of the JNI includes is based -->
+    <!-- on ${java.home} without the presumption that it's parent is    -->
+    <!-- the SDK.                                                       -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <target name="-setJava" unless="javaSet"
             depends="-setPlatform,-setJavaHome,-setJniIncludes">
-        <fail unless="os.JAVA_HOME" message="Environment variable JAVA_HOME is not set!"/>
+        <!-- fail unless="os.JAVA_HOME" message="Environment variable JAVA_HOME is not set!"/ -->
         <property name="javaSet" value="true"/>
     </target>
 
     <target name="-setJavaHome" if="os.JAVA_HOME" unless="javaHome"
-            depends="-setCygwinJavaHome">
+            depends="-setCygwinJavaHome,-setIdeaJavaHome">
         <property name="javaHome" value="${os.JAVA_HOME}"/>
     </target>
 
@@ -242,6 +250,11 @@
             <arg value="--unix"/>
             <arg value="${os.JAVA_HOME}"/>
         </exec>
+    </target>
+
+    <target name="-setIdeaJavaHome" if="underIdea" unless="javaHome">
+        <!-- Set javaHOME to "../${java.home}" -->
+        <property name="javaHome" location="${java.home}/.."/>
     </target>
 
     <target name="-setJniIncludes"
@@ -264,8 +277,9 @@
     </target>
 
     <target name="-jniCygwin" if="osIsCygwin" unless="jniIncludesSet">
-        <property name="baseInclude" value="${unix.javaHome}/include"/>
-        <property name="platformInclude" value="${baseInclude}/win32"/>
+        <!-- Cygwin includes directories are Windows based; GCC accepts this -->
+        <property name="baseInclude" value="${javaHome}\include"/>
+        <property name="platformInclude" value="${baseInclude}\win32"/>
         <property name="jniIncludesSet" value="true"/>
     </target>
 
