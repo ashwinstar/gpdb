@@ -37,7 +37,7 @@
         </condition>
 
         <!-- Override this property for production build -->
-        <property name="installRoot" value="${os.HOME}/cdb"/>
+        <property name="installRoot" value="${os.HOME}/metapa"/>
         <property name="port" value="10000"/>
 
         <!--

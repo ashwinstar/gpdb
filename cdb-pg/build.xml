@@ -402,9 +402,10 @@
             <arg line="${enableThreading} ${readlineSupport} --with-java --with-perl"/>
             <arg value="--enable-multibyte=UNICODE"/>
             <arg value="--with-maxbackends=1024"/>
+            <arg value="--disable-rpath"/>
             <arg value="--with-docdir=${installRoot}/${releaseDir}/doc"/>
             <arg value="--mandir=${installRoot}/${releaseDir}/man"/>
-            <arg value="--prefix=${installRoot}/${releaseDir}/pgsql"/>
+            <arg value="--prefix=${installRoot}/cdb-pgsql/server"/>
             <arg value="--with-pgport=${port}"/>
 
         </exec>

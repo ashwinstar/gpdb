@@ -48,7 +48,8 @@
     <!-- this property is set by CVS checkout -r ...
          It is used for distribution build purposes.
       -->
-    <property name="stickyTag" value="$$Name:  $$"/>
+    <!-- <property name="stickyTag" value="$$Name:  $$"/> -->
+    <property name="stickyTag" value="$$Name: Release-2_0_0-0 $$"/>
 
     <!-- base properties -->
     <property name="dist" value="dist"/>
@@ -125,6 +126,7 @@ Using toolsLib=${toolsLib}
             depends="init"
             description="Clean the project of distribution and build materials">
 
+        <delete dir="${installRoot}"/>
         <delete dir="${dist}"/>
 
         <!-- Perform a "regular" cleaning ... -->
@@ -168,6 +170,26 @@ Using toolsLib=${toolsLib}
         <ant antfile="build.xml"
              dir="cdb-pg"
              target="compile">
+        </ant>
+
+        <!--
+            Build common subproject
+          -->
+        <ant antfile="build.xml"
+             dir="common/cdb-commons"
+             target="package">
+        </ant>
+
+
+        <!--
+            Build commands subproject
+          -->
+        <ant antfile="build.xml"
+             dir="cdb-loader"
+             target="package">
+            <property name="build" value="build"/>
+            <property name="commonDone" value="true"/>
+            <property name="jdbcDone" value="true"/>
         </ant>
 
 
@@ -235,7 +257,7 @@ Using toolsLib=${toolsLib}
     <!-- Install CDB for development testing                            -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <target name="install"
-            depends="init,-checkDevoInstall,compile"
+            depends="init,-checkDevoInstall,distclean,compile"
             description="Install CDB for development testing">
 
         <!--
@@ -245,9 +267,14 @@ Using toolsLib=${toolsLib}
         <antcall target="-install">
             <param name="target" value="install"/>
             <param name="Idist" value=""/>
-            <param name="IcommandsDir" location="${installRoot}/${releaseDir}/commands"/>
-            <param name="IcdbtoolsDir" location="${installRoot}/${releaseDir}/tools"/>
-            <param name="ImgmtDir" location="${installRoot}/${releaseDir}/mgmt"/>
+            <param name="IcdbdocDir" location="${installRoot}/cdb-pgsql-${releaseDir}/docs"/>
+            <param name="IcdbjreDir" location="${installRoot}/cdb-pgsql-${releaseDir}/jre"/>
+            <param name="IcdbbinDir" location="${installRoot}/cdb-pgsql-${releaseDir}/bin"/>
+            <param name="IcdbmanDir" location="${installRoot}/cdb-pgsql-${releaseDir}/man"/>
+            <param name="IcdbserverDir" location="${installRoot}/cdb-pgsql-${releaseDir}/server"/>
+            <param name="IcdbtoolsDir" location="${installRoot}/cdb-pgsql-${releaseDir}/tools"/>
+            <param name="IcdbdemoDir" location="${installRoot}/cdb-pgsql-${releaseDir}/demo"/>
+            <param name="IcdbclientDir" location="${installRoot}/cdb-client"/>
         </antcall>
 
     </target>
@@ -300,9 +327,14 @@ The "install" target is allowed for devo builds only.  Use the
         <antcall target="-install">
             <param name="target" value="installWithDoc"/>
             <param name="Idist" location="${dist}"/>
-            <param name="IcommandsDir" location="${dist}/${installRoot}/${releaseDir}/commands"/>
-            <param name="IcdbtoolsDir" location="${dist}/${installRoot}/${releaseDir}/tools"/>
-            <param name="ImgmtDir" location="${dist}/${installRoot}/${releaseDir}/mgmt"/>
+            <param name="IcdbdocDir" location="${installRoot}/cdb-pgsql-${releaseDir}/docs"/>
+            <param name="IcdbjreDir" location="${installRoot}/cdb-pgsql-${releaseDir}/jre"/>
+            <param name="IcdbbinDir" location="${installRoot}/cdb-pgsql-${releaseDir}/bin"/>
+            <param name="IcdbmanDir" location="${installRoot}/cdb-pgsql-${releaseDir}/man"/>
+            <param name="IcdbserverDir" location="${installRoot}/cdb-pgsql-${releaseDir}/server"/>
+            <param name="IcdbtoolsDir" location="${installRoot}/cdb-pgsql-${releaseDir}/tools"/>
+            <param name="IcdbdemoDir" location="${installRoot}/cdb-pgsql-${releaseDir}/demo"/>
+            <param name="IcdbclientDir" location="${installRoot}/cdb-client"/>
         </antcall>
 
 
@@ -371,49 +403,91 @@ The "install" target is allowed for devo builds only.  Use the
         <!--
             Build and "install" PostgreSQL
           -->
+
         <ant antfile="build.xml"
              dir="cdb-pg"
              target="${target}">
             <property name="DESTDIR" value="${Idist}"/>
         </ant>
 
-<!--
-        <mkdir dir="${IcommandsDir}"/>
-        <mkdir dir="${IcommandsDir}/bin"/>
-        <mkdir dir="${IcommandsDir}/lib"/>
+        <mkdir dir="${IcdbdocDir}"/>
+        <mkdir dir="${IcdbjreDir}"/>
+        <mkdir dir="${IcdbmanDir}"/>
 
-        <mkdir dir="${IcdbtoolsDir}/bin"/>
-        <mkdir dir="${IcdbtoolsDir}/man"/>
-        <mkdir dir="${IcdbtoolsDir}/support"/>
-        <mkdir dir="${IcdbtoolsDir}/support/bin"/>
+        <mkdir dir="${IcdbtoolsDir}"/>
+        <mkdir dir="${IcdbtoolsDir}/management"/>
+        <mkdir dir="${IcdbtoolsDir}/scripts"/>
 
-        <mkdir dir="${ImgmtDir}"/>
-        <mkdir dir="${ImgmtDir}/bin"/>
-        <mkdir dir="${ImgmtDir}/lib"/>
--->
+        <mkdir dir="${IcdbdemoDir}"/>
+
+        <move todir="${IcdbserverDir}">
+          <fileset dir="${installRoot}/cdb-pgsql/server"/>
+        </move>
+
+        <delete dir="${installRoot}/cdb-pgsql"/>
+
+        <symlink link="cdb-pgsql" resource="${installRoot}/cdb-pgsql-${releaseDir}"/>
+        <symlink link="cdb-pgsql/bin" resource="server/bin"/>
+        <symlink link="metapa" resource="${installRoot}"/>
+        <symlink link="metapa/cdb-pgsql" resource="cdb-pgsql-${releaseDir}"/>
+        <symlink action="delete" link="cdb-pgsql"/> 
+        <symlink action="delete" link="metapa"/>
 
         <!--
-            Copy (generated) jar files to loader library directory
+            Created directories for the CDB Client
           -->
 
-        <!-- Commented out since it's a new CDB development -->
+        <mkdir dir="${IcdbclientDir}"/> 
+        <mkdir dir="${IcdbclientDir}/docs"/> 
+        <mkdir dir="${IcdbclientDir}/bin"/> 
+        <mkdir dir="${IcdbclientDir}/jre"/> 
+
         <!--
-        <copy todir="${IcommandsDir}/lib"
+            Copy the necessary JAR files for the CDB-Loader
+          -->
+
+        <mkdir dir="${IcdbclientDir}/cdb-loader"/> 
+        <mkdir dir="${IcdbclientDir}/cdb-loader/bin"/> 
+        <mkdir dir="${IcdbclientDir}/cdb-loader/lib"/> 
+        <mkdir dir="${IcdbclientDir}/cdb-loader/conf"/> 
+
+        <copy todir="${IcdbclientDir}/cdb-loader/bin"
               preservelastmodified="true">
-            <fileset dir="common/build">
+            <fileset dir="cdb-loader/bin">
+              <or>
+                 <filename name="loader.sh"/>
+              </or>
+            </fileset>
+        </copy>
+
+        <copy todir="${IcdbclientDir}/cdb-loader/conf"
+              preservelastmodified="true">
+            <fileset dir="cdb-loader/conf">
+              <or>
+                 <filename name="*.properties"/>
+              </or>
+            </fileset>
+        </copy>
+
+        <copy todir="${IcdbclientDir}/cdb-loader/lib"
+              preservelastmodified="true">
+            <fileset dir="common/cdb-commons/build">
                 <or>
-                    <filename name="cdb-common.jar"/>
-                    <filename name="libcommon.so"/>
-                    <filename name="libcommon.jnilib"/>
+                    <filename name="cdb-commons.jar"/>
                 </or>
             </fileset>
-            <fileset dir="commands/lib">
+            <fileset dir="common/cdb-commons/lib">
+                <or>
+                    <filename name="log4j*.jar"/>
+                </or>
+            </fileset>
+            <fileset dir="cdb-loader/lib">
                 <or>
                     <filename name="antlrall.jar"/>
                     <filename name="concurrent.jar"/>
                 </or>
             </fileset>
-            <fileset dir="commands/build">
+            <fileset dir="cdb-loader/build">
                 <or>
                     <filename name="cdb-loader.jar"/>
                     <filename name="libloader.so"/>
@@ -421,8 +495,6 @@ The "install" target is allowed for devo builds only.  Use the
                 </or>
             </fileset>
         </copy>
-
-        -->
 
         <!--
             Copy command executables
