@@ -89,6 +89,7 @@
                 <include name="ydoc.jar"/>
                 <include name="class2svg.jar"/>
                 <include name="styleed.jar"/>
+                <include name="AntelopeTasks_3.2.1.jar"/>
             </fileset>
 
             <pathelement location="${tools}/ydoc-2.1_05/resources"/>
@@ -278,6 +279,12 @@ Using toolsLib=${toolsLib}
             <param name="IcdbclientDir" location="${installRoot}/cdb-client"/>
         </antcall>
 
+        <antcall target="cdb-client"> 
+            <param name="target" value="installWithDoc"/>
+            <param name="Idist" location="${dist}"/>
+            <param name="IcdbclientDir" location="${installRoot}/cdb-client"/>
+        </antcall>
+
     </target>
 
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
@@ -335,6 +342,12 @@ The "install" target is allowed for devo builds only.  Use the
             <param name="IcdbserverDir" location="${installRoot}/cdb-pgsql-${releaseDir}/server"/>
             <param name="IcdbtoolsDir" location="${installRoot}/cdb-pgsql-${releaseDir}/tools"/>
             <param name="IcdbdemoDir" location="${installRoot}/cdb-pgsql-${releaseDir}/demo"/>
+            <param name="IcdbclientDir" location="${installRoot}/cdb-client"/>
+        </antcall>
+
+        <antcall target="cdb-client"> 
+            <param name="target" value="installWithDoc"/>
+            <param name="Idist" location="${dist}"/>
             <param name="IcdbclientDir" location="${installRoot}/cdb-client"/>
         </antcall>
 
@@ -397,54 +410,22 @@ The "install" target is allowed for devo builds only.  Use the
     </target>
 
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
-    <!-- Perform installation tasks (common with dist and devo install) -->
+    <!-- Perform only CDB-CLIENT tasks                                  -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
-    <target name="-install">
-
-        <delete dir="${installRoot}/cdb-pgsql"/>
+    <target name="cdb-client" depends="init">
+        <property name="IcdbclientDir" location="${installRoot}/cdb-client" />
+        <delete dir="${IcdbclientDir}"/>
 
         <!--
-            Build and "install" PostgreSQL
+            Build and "install" CDB-Client
           -->
-
         <ant antfile="build.xml"
-             dir="cdb-pg"
-             target="${target}">
-            <property name="DESTDIR" value="${Idist}"/>
+             dir="cdb-loader"
+             target="package">
+            <property name="build" value="build"/>
+            <property name="commonDone" value="true"/>
+            <property name="jdbcDone" value="true"/>
         </ant>
-
-        <mkdir dir="${IcdbdocDir}"/>
-        <mkdir dir="${IcdbjreDir}"/>
-        <mkdir dir="${IcdbmanDir}"/>
-
-        <mkdir dir="${IcdbtoolsDir}"/>
-        <mkdir dir="${IcdbtoolsDir}/management"/>
-        <mkdir dir="${IcdbtoolsDir}/scripts"/>
-
-        <mkdir dir="${IcdbdemoDir}"/>
-
-        <symlink link="cdb-pgsql" resource="${installRoot}/cdb-pgsql"/>
-        <symlink link="cdb-pgsql/bin" resource="server/bin"/>
-        <symlink action="delete" link="cdb-pgsql"/> 
-<!--
-        <move todir="${IcdbserverDir}">
-          <fileset dir="${installRoot}/cdb-pgsql/server"/>
-        </move>
-
-        <delete dir="${installRoot}/cdb-pgsql"/>
-        <symlink link="cdb-pgsql" resource="${installRoot}/cdb-pgsql-${releaseDir}"/>
-        <symlink link="cdb-pgsql/bin" resource="server/bin"/>
-        <symlink link="metapa" resource="${installRoot}"/>
-        <symlink link="metapa/cdb-pgsql" resource="cdb-pgsql-${releaseDir}"/>
-        <symlink action="delete" link="cdb-pgsql"/> 
-        <symlink action="delete" link="metapa"/>
-
--->
-
-        <!-- Set LD_LIBRARY_PATH -->
-        <junit fork="yes">
-          <sysproperty key="LD_LIBRARY_PATH" value="${installRoot}/cdb-pgsql/lib"/>
-        </junit>
 
         <!--
             Created directories for the CDB Client
@@ -508,6 +489,58 @@ The "install" target is allowed for devo builds only.  Use the
                 </or>
             </fileset>
         </copy>
+
+    </target>
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Perform installation tasks (common with dist and devo install) -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="-install">
+
+        <delete dir="${installRoot}/cdb-pgsql"/>
+
+        <!--
+            Build and "install" PostgreSQL
+          -->
+
+        <ant antfile="build.xml"
+             dir="cdb-pg"
+             target="${target}">
+            <property name="DESTDIR" value="${Idist}"/>
+        </ant>
+
+        <mkdir dir="${IcdbdocDir}"/>
+        <mkdir dir="${IcdbjreDir}"/>
+        <mkdir dir="${IcdbmanDir}"/>
+
+        <mkdir dir="${IcdbtoolsDir}"/>
+        <mkdir dir="${IcdbtoolsDir}/management"/>
+        <mkdir dir="${IcdbtoolsDir}/scripts"/>
+
+        <mkdir dir="${IcdbdemoDir}"/>
+
+        <symlink link="cdb-pgsql" resource="${installRoot}/cdb-pgsql"/>
+        <symlink link="cdb-pgsql/bin" resource="server/bin"/>
+        <symlink action="delete" link="cdb-pgsql"/> 
+<!--
+        <move todir="${IcdbserverDir}">
+          <fileset dir="${installRoot}/cdb-pgsql/server"/>
+        </move>
+
+        <delete dir="${installRoot}/cdb-pgsql"/>
+        <symlink link="cdb-pgsql" resource="${installRoot}/cdb-pgsql-${releaseDir}"/>
+        <symlink link="cdb-pgsql/bin" resource="server/bin"/>
+        <symlink link="metapa" resource="${installRoot}"/>
+        <symlink link="metapa/cdb-pgsql" resource="cdb-pgsql-${releaseDir}"/>
+        <symlink action="delete" link="cdb-pgsql"/> 
+        <symlink action="delete" link="metapa"/>
+
+-->
+
+        <!-- Set LD_LIBRARY_PATH -->
+        <junit fork="yes">
+          <sysproperty key="LD_LIBRARY_PATH" value="${installRoot}/cdb-pgsql/lib"/>
+        </junit>
 
         <!--
             Copy command executables
