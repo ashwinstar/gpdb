@@ -173,3 +173,6 @@ do
     fullprefix=$(basename "$PGDATA")
     rm -r $PGROOT/logfile.$fullprefix
 done
+
+echo "Deleting amsd.log"
+rm -f $PGROOT/amsd.log
