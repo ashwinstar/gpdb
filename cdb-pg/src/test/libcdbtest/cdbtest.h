@@ -38,6 +38,7 @@ extern Datum MLAPI_SendRecvPerf__int1_text1(PG_FUNCTION_ARGS);
 
 extern Datum HASHAPI_Hash_1_BigInt(PG_FUNCTION_ARGS);
 extern Datum HASHAPI_Hash_1_Int(PG_FUNCTION_ARGS);
+extern Datum HASHAPI_Hash_1_SmallInt(PG_FUNCTION_ARGS);
 extern Datum HASHAPI_Hash_2_Int_Int(PG_FUNCTION_ARGS);
 extern Datum HASHAPI_Hash_1_BpChar(PG_FUNCTION_ARGS);
 extern Datum HASHAPI_Hash_1_Text(PG_FUNCTION_ARGS);

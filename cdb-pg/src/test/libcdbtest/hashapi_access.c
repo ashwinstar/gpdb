@@ -85,8 +85,8 @@ PG_FUNCTION_INFO_V1(HASHAPI_Hash_1_Int);
 Datum HASHAPI_Hash_1_Int(PG_FUNCTION_ARGS)
 {
     int32 num_segs; /* number of segments  */
-	int16 algorithm;  /* hashing algorithm   */
-	int32 val1;     /* big int input value */
+	int16 algorithm;/* hashing algorithm   */
+	int32 val1;     /* int input value */
     unsigned int targetbucket; /* 0-based  */
 	
 	/* Get number of segments */
@@ -108,6 +108,48 @@ Datum HASHAPI_Hash_1_Int(PG_FUNCTION_ARGS)
 	
 	Oid oid = INT4OID;
 	
+	
+	cdbhash(h, d1, oid);
+	
+	/* reduce the result hash value */
+	targetbucket = cdbhashreduce(h);	
+	
+    PG_RETURN_INT32(targetbucket); /* return target bucket (segID) */
+}
+
+/* 
+* HASHAPI_Hash_1_SmallInt
+ * Perform a simple 1-value int2 hash 
+ */ 
+PG_FUNCTION_INFO_V1(HASHAPI_Hash_1_SmallInt);
+Datum HASHAPI_Hash_1_SmallInt(PG_FUNCTION_ARGS)
+{
+    int32 num_segs; /* number of segments  */
+	int16 algorithm;/* hashing algorithm   */
+	int32 value;	/* int input value 
+					   will be cast to int16 */
+    unsigned int targetbucket; /* 0-based   */
+	 
+	/* Get number of segments */
+    num_segs = PG_GETARG_INT32(0);
+	
+	/* Get hashing algoriithm */
+	algorithm = PG_GETARG_INT16(1);
+	
+	/* Get the value to hash */
+	value = PG_GETARG_INT32(2);
+	
+	int16 val1 = (int16)value;
+	
+	Datum d1 = Int16GetDatum(val1);
+	
+	/* create a CdbHash for this hash test. */
+    h = makeCdbHash(num_segs, algorithm);
+	
+	/* init cdb hash */
+	cdbhashinit(h);
+	
+	Oid oid = INT2OID;
 	
 	cdbhash(h, d1, oid);
 	

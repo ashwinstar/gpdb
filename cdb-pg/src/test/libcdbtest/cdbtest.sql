@@ -123,7 +123,8 @@ CREATE OR REPLACE FUNCTION mlapi_sendrecv_perf(integer, text) RETURNS __mlapi_se
 -- Functions for access to the Cdb Hash API (used by motion node and PG-COPY)
 -- In each of those the first 2 arguments are integers. The first represents the 
 -- number of segments we want to hash to, and the second represents a choice of
--- a hashing algorithm. Currently the 2 options are 1 for FNV1 and 2 for FNV1A
+-- a hashing algorithm. Currently the 2 options are 1 for FNV1 and 2 for FNV1A.
+-- the third argument is the hash key.
  
 CREATE OR REPLACE FUNCTION cdbhash_1_bigint(integer, integer, bigint) RETURNS integer
     AS 'libcdbtest.so', 'HASHAPI_Hash_1_BigInt'
@@ -131,6 +132,10 @@ CREATE OR REPLACE FUNCTION cdbhash_1_bigint(integer, integer, bigint) RETURNS in
 
 CREATE OR REPLACE FUNCTION cdbhash_1_int(integer, integer, integer) RETURNS integer
     AS 'libcdbtest.so', 'HASHAPI_Hash_1_Int'
+    LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION cdbhash_1_smallint(integer, integer, integer) RETURNS integer
+    AS 'libcdbtest.so', 'HASHAPI_Hash_1_SmallInt'
     LANGUAGE C IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION cdbhash_2_int_int(integer, integer, integer, integer) RETURNS integer
