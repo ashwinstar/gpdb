@@ -495,6 +495,7 @@
     <target name="-setCCompiler"
             depends="-chooseCCompiler,-setPlatformCFLAGS">
         <echo level="info" message="Using ${CCompiler} for C compiles"/>
+        <echo level="info" message="Using ${CxxCompiler} for C++ compiles"/>
         <echo level="info" message="Using ${platformCFLAGS} for C compilation flags"/>
     </target>
 
@@ -528,6 +529,41 @@
 
         <fail unless="CCompiler" message="No C compiler available in PATH!"/>
         <echo level="info" message="Using ${CCompiler} for C compiles"/>
+
+        <!--
+            Use Intel C++ compiler if we are using the Intel C compiler and if
+            we can find the Intel C++ compiler.  Otherwise, we use the Intel C
+            compiler for the C++ compiler.
+          -->
+        <!-- For normal UNIXen -->
+        <condition property="CxxCompiler" value="icpc">
+            <and>
+                <equals arg1="${CCompiler}" arg2="icc" />
+                <available file="icpc" filepath="${os.PATH}" type="file" />
+            </and>
+        </condition>
+        <condition property="CxxCompiler" value="icc">
+            <and>
+                <not>
+                    <isset property="CxxCompiler" />
+                </not>
+                <equals arg1="${CCompiler}" arg2="icc" />
+            </and>
+        </condition>
+
+        <!--
+            Check for GNU C++ Compiler if Intel C++ Compiler not found
+          -->
+        <!-- For normal UNIXen -->
+        <condition property="CxxCompiler" value="g++">
+            <available file="g++" filepath="${os.PATH}" type="file"/>
+        </condition>
+        <condition property="CxxCompiler" value="g++.exe">
+            <available file="g++.exe" filepath="${os.PATH}" type="file"/>
+        </condition>
+
+        <fail unless="CxxCompiler" message="No C++ compiler available in PATH!"/>
+        <echo level="info" message="Using ${CxxCompiler} for C++ compiles"/>
 
     </target>
 
