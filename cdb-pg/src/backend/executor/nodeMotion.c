@@ -27,6 +27,7 @@
 #include "utils/syscache.h" /* for ReleaseSysCache */
 #include "utils/tuplesort.h"
 #include "miscadmin.h"
+#include "nodes/makefuncs.h"
 
 /* 
  * Helper functions 
@@ -48,7 +49,7 @@ static List *getOpListFromTargetList(List *tlist, int numCols, AttrNumber *colId
 static bool motion_expr_walker(Node *node, char *not_used);
 static uint32 evalHashKey(ExprContext *econtext, List *hashkeys, Oid *hashOids, CdbHash *h);
 static bool setReadFromAMS(Motion *node);
-
+static List * makeMotionTargetList(Plan *arg);
 
 /* ----------------------------------------------------------------
  *		ExecMotion
@@ -1118,6 +1119,7 @@ Motion *make_motion(Plan *lefttree, MotionType motionType,
 	plan->plan_rows = lefttree->plan_rows;
 	plan->plan_width = lefttree->plan_width;
 	plan->targetlist = copyObject(lefttree->targetlist);
+	/* plan->targetlist = makeMotionTargetList(lefttree); */
 	plan->qual = NIL;
 	plan->lefttree = lefttree;
 	plan->righttree = NULL;
@@ -1565,6 +1567,51 @@ List *getOpListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
 	
 	return oplist;
 }
+
+/* ----------------------------------------------------------------
+ * makeMotionTargetList
+ * 
+ * Returns a target list for a new motion node based on the
+ * argument plan's target list.
+ * 
+ * ----------------------------------------------------------------
+ */
+ List * makeMotionTargetList(Plan *arg)
+ {
+	TargetEntry *tle;
+	Resdom *new_resdom, *resdom;
+	Var *new_var;
+	ListCell *cell;
+	
+	int attno = 0;
+	List *new_tlist = NIL;
+	
+	foreach ( cell, arg->targetlist )
+	{
+		tle = (TargetEntry*)lfirst(cell);
+		resdom = tle->resdom;
+		attno++;
+		
+		Assert( attno == tle->resdom->resno );
+		
+		new_resdom = makeResdom(
+			tle->resdom->resno, 
+			tle->resdom->restype, 
+			tle->resdom->restypmod, 
+			tle->resdom->resname? pstrdup(tle->resdom->resname): (char *) NULL,
+			tle->resdom->resjunk
+		);
+			
+		new_var = makeVar(
+			0, attno, 
+			new_resdom->restype, new_resdom->restypmod, 0
+		);		
+		
+		new_tlist = lappend(new_tlist, makeTargetEntry(resdom, (Expr*)new_var));
+	}
+	return new_tlist;
+ }
+
 
 /*
  * Experimental code that will be replaced later with new hashing mechanism
