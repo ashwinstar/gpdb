@@ -16,6 +16,9 @@
 #include "postgres.h"
 #include "nodes/nodes.h"
 #include "cdb/cdbjoin.h"
+#include "cdb/cdbvars.h"
+
+static double disable_cost = 1.0E10;
 
 typedef enum {
 		RxR = 0,	RxL,	RxP,
@@ -31,7 +34,10 @@ typedef enum {
 } JoinDirection;
 
 static CdbJoinStrategy *makeJoinStrategy(Movement left, Movement right, FlowType result);
-
+static List *costStrategies(List *strategies, Join *join);
+static double costMovement(Movement move, Plan *plan, JoinType jointype);
+static List *sort_list(List *l, int (*cmpfn)(const void *, const void *));
+static int cmpCdbJoinStrategy( const void *l, const void *r );
 
 /*
  * Function getJoinStrategy generates a palloc'd strategy indicating how
@@ -237,6 +243,13 @@ List *getJoinStrategyList(Join* join)
 				result = lappend(result,makeJoinStrategy(MOVEMENT_BROADCAST, MOVEMENT_NONE, FLOW_PARTITIONED));
 			break;
 	}
+
+	/*
+	 * evaluate estimated cost, store in est_ams_cost, and sort result list in order
+	 * of ascending est_ams_cost
+	 */
+	result = costStrategies( result, join );
+
 	return result;
 }
 
@@ -251,6 +264,7 @@ CdbJoinStrategy *makeJoinStrategy(Movement left, Movement right, FlowType result
 	js->rightmove = right;
 	js->resultflowtype = result;
 	js->resultislocal = ( result == FLOW_SINGLETON );
+	js->est_ams_cost = 0.0;
 	return js;
 }	
 /*
@@ -275,4 +289,245 @@ CdbJoinStrategy *copyJoinStrategy(CdbJoinStrategy *old)
 void freeJoinStrategyList(List* jslist)
 {
 	list_free_deep(jslist);
+}
+
+/*
+ * costStrategies - 
+ * This iterates over the strategies in the strategies List
+ * and calls costMovement for the left and right sides.  
+ * The costs are added and stored in est_ams_cost.
+ * At the end, the strategy list is sorted based on
+ * increasing est_ams_cost.
+ */
+List *costStrategies(List *strategies, Join *join)
+{
+	ListCell *cell;
+	Plan *lefttree;
+	Plan *righttree;
+
+	if ( strategies == NIL )
+		return NIL;
+
+	Assert( join != NULL );
+
+	lefttree = ((Plan *)join)->lefttree;
+	righttree = ((Plan *)join)->righttree;
+	
+	foreach( cell, strategies )
+	{
+		CdbJoinStrategy *s = (CdbJoinStrategy*)lfirst(cell);
+		double cost = 0.0;
+
+		cost += costMovement(s->leftmove, lefttree, join->jointype);
+		cost += costMovement(s->rightmove, righttree, join->jointype);
+
+		s->est_ams_cost = cost;
+	}
+
+	/*
+	 * sort_list creates a new list out of the same pointers
+	 * contained in the passed-in list, in sorted order
+	 * (based on the cmpCdbJoinStrategy function
+	 */
+	strategies = sort_list( strategies, cmpCdbJoinStrategy );
+
+	return strategies;
+}
+
+/*
+ * costMovement - 
+ * This estimates the total number of bytes that have to be moved through
+ * ams for the Plan node and movement type parameters.
+ * Currently, the jointype is ignored, but may be used in the future
+ * to refine the estimate.
+ *
+ * The formula starts with the estimated result bytes per segment (result_bytes_per_segment)
+ * for the plan node result set.  This is equal to:
+ *			rows * width
+ * since it is assumed that the Plan structure's plan_rows field refers to
+ * an average row number per segment.
+ *
+ * Then the total_result_bytes for all segments (total_result_bytes)
+ *  is estimated as:
+ *			 result_bytes_per_segment * numSegs
+ * unless the flotype is a singleton, in which case the total result
+ * bytes is set equal to the result_bytes_per_segment.
+ *
+ * Then, based on the Movement type, the final estimate (bytes_thru_ams) is calculated:
+ *
+ * For a focus movement:
+ *			bytes_thru_ams = total_result_bytes
+ * since all results are moved.
+ *
+ * For a repartition movement, 
+ *			bytes_thru_ams = total_result_bytes *  (1.0 - 1.0/numSegs)
+ * since is is assumed that the probablilty of a row hashing to its own segment
+ * is 1/numSegs.
+ *
+ * For a broadcast movement,
+ *			bytes_thru_ams = total_result_bytes *  (numSegs-1)
+ * since every tuple has to be moved to each other segment.
+ *
+ * In the spirit of the postgres enable_hashjoin, enable_indexscan, etc guc variables,
+ * there are two cdb guc variables that influence the cost for either repartitioning or
+ * broadcast: enable_cdbrepartition and enable_cdbbroadcast.
+ * If either is set off, a large constant is added to the cost for that type of Movement.
+ * 
+ */
+double costMovement(Movement move, Plan *plan, JoinType	jointype)
+{
+	/*
+	 *	Assume that plan_rows is the estimate of the
+	 *  average number of rows per segment.
+	 */
+	double rows = plan->plan_rows;
+	double width = (double)plan->plan_width;
+	FlowType flotype = plan->flow->flotype;
+	int numSegs = CdbIdentity.numsegments;
+
+	double result_bytes_per_segment;
+	double total_result_bytes;
+	double bytes_thru_ams;
+
+	Assert( numSegs > 0 );
+	Assert( flotype != FLOW_UNDEFINED );
+
+	result_bytes_per_segment = rows * width;
+
+	total_result_bytes = result_bytes_per_segment;
+	if ( flotype != FLOW_SINGLETON )
+		total_result_bytes *= numSegs;
+
+	switch ( move )
+	{
+		case MOVEMENT_NONE:
+			bytes_thru_ams = 0.0;
+			break;
+
+		/*
+		 *	When focusing back to the dispatcher, all rows are moved
+		 */
+		case MOVEMENT_FOCUS:
+			bytes_thru_ams = total_result_bytes;
+			break;
+
+		/*
+		 *	When broadcasting, all rows are moved to all other segments
+		 */
+		case MOVEMENT_BROADCAST:
+			bytes_thru_ams = total_result_bytes * (numSegs-1);
+			if ( !enable_cdbbroadcast )
+				bytes_thru_ams += disable_cost;
+			break;
+
+		/*
+		 *	When repartitioning, each row is moved to one other segment,
+		 *  except when it hashes to itself.  Assume the prob of this
+		 * is uniform, i.e. 1/numsegments
+		 */
+		case MOVEMENT_REPARTITION:
+			bytes_thru_ams = total_result_bytes *  (1.0 - 1.0/numSegs);
+			if ( !enable_cdbrepartition )
+				bytes_thru_ams += disable_cost;
+			break;
+	}
+
+	return bytes_thru_ams;
+}
+
+/*
+ * Generic list sorting routine for lists of pointers.
+ * The cmpfn should be the same type of compare function that
+ * is used in qsort.  In this case, it should expect
+ * pointers to whatever type of pointer is in the List for its first and secong arguments.
+ * (See cmpCdbJoinStrategy for an example when the List is a List of CdbJoinStrategy *'s.).
+ * The passed in list is destroyed.  The caller should not use it again.
+ * The new list is returned.  The new list is a list of the same pointers that were in the old
+ * list, just rearranged in sorted order.
+ *
+ * The strategy is to create an array of pointers out of the original list's pointers,
+ * sort the arrat using qsort with the indicated compare function, and then create a
+ * new list out of the sorted pointers.
+ */
+List *sort_list(List *l, int (*cmpfn)(const void *, const void *))
+{
+	void **cellvalues = NULL;
+	int i;
+	ListCell *cell;
+
+	Assert( l != NIL );
+	Assert( IsA(l, List) );
+
+	int n = list_length(l);
+	Assert( n > 0 );
+
+	/*
+	 * Allocate an array of pointers to void to hold
+	 * the pointers from the list.
+	 */
+	cellvalues = (void **)palloc0( n * sizeof(void *) );
+
+	/*
+	 * Grab the pointers out of the list, and put them into the array.
+	 */
+	i=0;
+	foreach(cell, l)
+	{
+		cellvalues[i++] = lfirst(cell);
+	}
+
+	/*
+	 * Free the memory for the passed in list, without freeing the pointers inside the list.
+	 */
+	list_free(l);
+	l = NIL;
+
+	/*
+	 * Sort the pointers using the passed-in compare function.
+	 */
+	qsort(cellvalues, n, sizeof(void *), cmpfn);
+
+	/*
+	 * Create a list from the sorted pointers
+	 */
+	for ( i=0; i<n; i++ )
+	{
+		l = lappend( l, cellvalues[i] );		
+	}
+
+	/*
+	 * Free the array of pointers.
+	 */
+	pfree(cellvalues);
+
+	return l;
+}
+
+/*
+ * cmpCdbJoinStrategy.
+ * 
+ * This is a compare function that accepts pointers to pointers
+ * to CdbJoinStrategy structs, and compares them based on the 
+ * est_ams_cost field.
+ */
+int cmpCdbJoinStrategy( const void *l, const void *r ) 
+{
+	CdbJoinStrategy *lhs;
+	CdbJoinStrategy *rhs;
+
+	Assert( l != NULL && r != NULL );
+
+	lhs = *(CdbJoinStrategy **)l;
+	rhs = *(CdbJoinStrategy **)r;
+
+	Assert( lhs != NULL && rhs != NULL );
+
+	double diff = lhs->est_ams_cost - rhs->est_ams_cost;
+
+	if ( diff < 0.0 )
+		return -1;
+	else if ( diff == 0.0 )
+		return 0;
+	else 
+		return 1;
 }
