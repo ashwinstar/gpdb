@@ -46,7 +46,7 @@ typedef struct
     char        *nulls;
 } SerTupInfo;
 
-static SerTupInfo *s_serAttrInfo;
+static SerTupInfo s_serTupInfo;
 
 
 void InitSerTupInfo(SerTupInfo *myState, TupleDesc tupdesc, int numAttrs);
@@ -109,7 +109,7 @@ int SerializeTuple(HeapTuple tuple, TupleDesc tupdesc, StringInfo strInfo)
     int i, j, k;
     int origLen;
 
-    myState = s_serAttrInfo;
+    myState = &s_serTupInfo;
     natts = tupdesc->natts;
     origLen = strInfo->len;
 
