@@ -28,6 +28,7 @@
 #include "catalog/pg_shadow.h"
 #include "catalog/pg_tablespace.h"
 #include "cdb/cdblink.h"
+#include "cdb/cdbvars.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "postmaster/postmaster.h"
@@ -432,14 +433,7 @@ InitPostgres(const char *dbname, const char *username)
      */
     if (!bootstrap && IsUnderPostmaster)
     {
-    	/*
-    	 * We will error out trying to read cdb schema info from
-    	 * template0 or template1.  The cdb schema tables are there but with
-    	 * no data.  So skip cdblink_setup in this case.
-    	 */
-    	if ( strcmp(dbname, "template0") != 0 &&
-    		strcmp(dbname, "template1") != 0 )
-			cdblink_setup();
+		cdblink_setup();
     }
         
     /*
