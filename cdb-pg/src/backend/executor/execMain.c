@@ -47,6 +47,9 @@
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
 
+#include "cdb/cdbdisp.h"
+#include "cdb/cdbsrlz.h"
+#include "cdb/cdbvars.h"
 
 typedef struct execRowMark
 {
@@ -217,6 +220,57 @@ ExecutorRun(QueryDesc *queryDesc,
 
 	(*dest->rStartup) (dest, operation, queryDesc->tupDesc);
 
+#ifdef CDB_DEVELOPER
+	bool hasDispatched = false;
+
+	/*
+	 * Need a try/catch block here so that if an ereport is called from
+	 * within ExecutePlan, we can clean up by calling CdbCheckDispatchResult.
+	 * This cleans up the asynchronous commands running through the threads launched from
+	 * CdbDispatchCommand.
+	 */
+	PG_TRY();
+	{
+		/*
+		* if in dispatch mode, time to serialize plan and query trees, and
+		* fire off cdb_exec command to each of the qexecs
+		*/
+		if ( Cdb_role == CDB_ROLE_DISPATCH )
+		{
+			/*
+			 * Serialize the plan and query trees, and create the sql statement: cdbexec ....
+			 */
+			StringInfoData buffer;
+			
+			initStringInfo( &buffer );
+
+			appendStringInfo( &buffer, "cdbexec '%s' '%s'", 
+							serializeNode((Node *)queryDesc->parsetree), 
+							serializeNode((Node *)queryDesc->plantree) );
+
+			DISPATCH_TARGET_SET set;
+			if ( operation == CMD_SELECT )
+				set = DTS_SEGMENT;
+			else
+				set = DTS_SEGDB;
+
+			/*
+			 * This call returns after launching the threads that send the command to the appropriate
+			 * segdbs.  It does not wait for them to finish.
+			 */
+			CdbDispatchCommand(buffer.data, set, true );
+			hasDispatched = true;
+// ???		pfree(buffer.data);
+		}
+
+		if ( Cdb_role != CDB_ROLE_DISPATCH || operation == CMD_SELECT )
+		{
+			/*
+			 * Insert/update/delete don't have to run on the dispatcher.  Select does.
+			 */
+
+#endif
+
 	/*
 	 * run plan
 	 */
@@ -229,11 +283,66 @@ ExecutorRun(QueryDesc *queryDesc,
 							 count,
 							 direction,
 							 dest);
+#ifdef CDB_DEVELOPER
+		}
+	}
+	PG_CATCH();
+	{
+		if ( hasDispatched )
+		{
+			/*
+			 *  We need to wait for the threads to finish.  This allows for proper cleanup
+			 * of the results from the async command executions.
+			 */
+
+			/*
+			 * Set this to force any remaining commands executing on qExecs to stop.
+			 */
+			QueryCancelPending = true;
+
+			CdbDispatchResults* results = CdbCheckDispatchResult();
+			DestroyCdbDispatchResults( results );
+			hasDispatched = false;
+		}
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	if ( hasDispatched )
+	{
+		/*
+		 * We successfully completed on the Dispatcher.  Now check the results
+		 * from the qExecs.  This internally waits for them to all finish.
+		 */
+		CdbDispatchResults* results = CdbCheckDispatchResult();
+
+		if ( !results->success )
+		{
+			/*  TODO: Format better error message */
+			ereport( ERROR,
+						(errcode( ERRCODE_CDB_COMMAND_ERROR ),
+							errmsg("cdbexec command failed on one or more segment databases"							
+					)));
+				
+		}
+
+		if ( operation != CMD_SELECT )
+		{
+			/*  Plug the nuber of rows affected for non selects */
+			queryDesc->estate->es_processed = SumCmdTuples(results);
+		}
+
+		DestroyCdbDispatchResults( results );
+	}
+
+#endif
 
 	/*
 	 * shutdown receiver
 	 */
 	(*dest->rShutdown) (dest);
+
+
 
 	MemoryContextSwitchTo(oldcontext);
 
