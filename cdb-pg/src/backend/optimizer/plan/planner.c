@@ -19,6 +19,8 @@
 
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
+#include "cdb/cdbvars.h"
+#include "cdb/cdbllize.h"
 #include "executor/executor.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
@@ -124,7 +126,7 @@ planner(Query *parse, bool isCursor, int cursorOptions,
 		/* Default assumption is we need all the tuples */
 		tuple_fraction = 0.0;
 	}
-
+	
 	/* primary planning entry point (may recurse for subqueries) */
 	result_plan = subquery_planner(parse, tuple_fraction);
 
@@ -150,7 +152,12 @@ planner(Query *parse, bool isCursor, int cursorOptions,
 	PlannerQueryLevel = save_PlannerQueryLevel;
 	PlannerParamList = save_PlannerParamList;
 	PlannerBoundParamList = save_PlannerBoundParamList;
-
+	
+	if ( Cdb_role == CDB_ROLE_DISPATCH )
+	{
+		result_plan = cdbparallelize(result_plan, parse, isCursor, cursorOptions, boundParams);
+	}
+	
 	return result_plan;
 }
 
@@ -186,7 +193,7 @@ subquery_planner(Query *parse, double tuple_fraction)
 	List	   *newHaving;
 	List	   *lst;
 	ListCell   *l;
-
+	
 	/* Set up for a new level of subquery */
 	PlannerQueryLevel++;
 	PlannerInitPlan = NIL;

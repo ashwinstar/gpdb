@@ -18,6 +18,7 @@
 #ifndef CDBVARS_H
 #define CDBVARS_H
 
+#include "utils/guc.h"
 
 /* 
  * ----- Declarations of CDB global variables ------ 

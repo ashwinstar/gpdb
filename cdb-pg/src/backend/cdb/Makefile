@@ -13,7 +13,7 @@ subdir = src/backend/cdb
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
-OBJS = cdbvars.o
+OBJS = cdbvars.o cdbplan.o cdbllize.o
 
 all: SUBSYS.o
 
