@@ -46,6 +46,9 @@ int					cdb_connections_per_thread;	/* How many libpq connections are handled in
 
 int                 Cdb_max_tuple_chunk_size;   /* CDB Motion Layer -> AMS */
 
+bool				enable_cdbrepartition;
+bool				enable_cdbbroadcast;
+
 /* 
  * The single row from cdb.cdb for this database is held in this variable,
  * which is initialized in cdbutil.c in the function
