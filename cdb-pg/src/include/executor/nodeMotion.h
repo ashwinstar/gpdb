@@ -26,25 +26,29 @@ extern MotionState *ExecInitMotion(Motion *node, EState *estate);
 extern TupleTableSlot *ExecMotion(MotionState *node);
 extern void ExecEndMotion(MotionState *node);
 
-extern HashMotionDefn* makeSimpleHashMotionDefn( List* hashExpr, List* hashOp, int numSegs);
-extern HashMotionDefn* makeHashMotionDefn( List* hashExpr, List* hashOp, int numHashSegs, int *hashSegIdx);
-extern FixedMotionDefn* makeSimpleFixedMotionDefn( int SegIdx );
-extern FixedMotionDefn* makeFixedMotionDefn(int numOutputSegs, int *outputSegIdx);
-extern SortedMotionDefn* makeSimpleSortedMotionDefn(int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators, int numSegs );
-extern SortedMotionDefn* makeSortedMotionDefn(int numSoprtCols, AttrNumber *sortColIdx, Oid *sortOperators, int numInputSegs, int *inputSegIdx);
-
 extern List *getHashMotionInfoList( Plan *node, HashMotionInfoType type );
 
 extern Motion *make_motion(Plan *lefttree, MotionType motionType,
 			bool sendToSecondary, bool sendSorted, 
-			HashMotionDefn *pHashDefn, FixedMotionDefn* pFixedDefn,
-			SortedMotionDefn *pSortDefn );
+			int numHashSegs, int *hashSegIdx, List *hashExpr, List *hashOp,
+			int numOutputSegs, int *outputSegIdx,
+			int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators, 
+			int numInputSegs, int *inputSegIdx );
 			
 extern Motion *make_union_motion(Plan *lefttree, bool sendToSecondary, int destSegIndex );
-extern Motion *make_sorted_union_motion(Plan *lefttree, bool sendToSecondary, int destSegIndex, SortedMotionDefn *pSortDefn  );
-extern Motion *make_hashed_motion(Plan *lefttree, bool sendToSecondary, HashMotionDefn *pHashDefn);
-extern Motion *make_sorted_hashed_motion(Plan *lefttree, bool sendToSecondary, HashMotionDefn *pHashDefn, SortedMotionDefn *pSortDefn);
+extern Motion *make_sorted_union_motion(Plan *lefttree, bool sendToSecondary, int destSegIndex, 
+								int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators, 
+								int numInputSegs, int *inputSegIdx );
+extern Motion *make_hashed_motion(Plan *lefttree, bool sendToSecondary, 
+							int numHashSegs, int *hashSegIdx, List *hashExpr, List *hashOp );
+extern Motion *make_sorted_hashed_motion(Plan *lefttree, bool sendToSecondary, 
+								int numHashSegs, int *hashSegIdx, List *hashExpr, List *hashOp,
+								int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators, 
+								int numInputSegs, int *inputSegIdx );
 extern Motion *make_broadcast_motion(Plan *lefttree, bool sendToSecondary);
-extern Motion *make_sorted_broadcast_motion(Plan *lefttree, bool sendToSecondary, SortedMotionDefn *pSortDefn );
+extern Motion *make_sorted_broadcast_motion(Plan *lefttree, bool sendToSecondary, 
+								int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators, 
+								int numInputSegs, int *inputSegIdx );
+extern int *makeDefaultSegIdxArray(int numSegs);
 
 #endif   /* NODEMOTION_H */
