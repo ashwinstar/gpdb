@@ -388,6 +388,7 @@ ExecMayReturnRawTuples(PlanState *node)
 			break;
 
 			/* Non-projecting nodes */
+		case T_MotionState:
 		case T_HashState:
 		case T_MaterialState:
 		case T_UniqueState:
