@@ -2,13 +2,14 @@
 
 -- These declarations are for the functions in chunkfuncs.c
 
+DROP TYPE __getserializedrows CASCADE;
 CREATE TYPE __getserializedrows AS (reportedsize integer, serialized bytea);
 
 CREATE OR REPLACE FUNCTION getserializedrows(text) RETURNS SETOF __getserializedrows
     AS 'libcdbtest.so', 'GetSerializedRows__text1'
     LANGUAGE C IMMUTABLE STRICT;
 
-
+DROP TYPE __getchunkedrows CASCADE;
 CREATE TYPE __getchunkedrows AS (rownum integer, chunknum integer, chunksize integer, chunkdata bytea);
 
 CREATE OR REPLACE FUNCTION getchunkedrows(text) RETURNS SETOF __getchunkedrows
@@ -57,6 +58,7 @@ CREATE OR REPLACE FUNCTION ml_ipc_getMsg(text) RETURNS text
     LANGUAGE C IMMUTABLE STRICT;
 
 -- ml_ipc benchmark functions
+DROP TYPE __ml_ipc_bench_results CASCADE;
 CREATE TYPE __ml_ipc_bench_results AS ( testTimeInMsec   int8,
 									    totalMBytes      float8,
 										bw_MB_per_sec    float8	 );
@@ -99,6 +101,23 @@ CREATE OR REPLACE FUNCTION mlapi_recvtuple(integer) RETURNS RECORD
 -- be called before this function is used, otherwise the result is invalid.
 CREATE OR REPLACE FUNCTION mlapi_getlastrecvcode() RETURNS INTEGER
     AS 'libcdbtest.so', 'MLAPI_GetLastRecvCode'
+    LANGUAGE C IMMUTABLE STRICT;
+
+DROP TYPE __mlapi_sendrecv_perf CASCADE;
+CREATE TYPE __mlapi_sendrecv_perf AS (
+    total_tups integer,
+    total_bytes bigint,
+    tuple_bytes bigint,
+    send_start bigint,
+    send_end bigint,
+    send_ops bigint,
+    recv_start bigint,
+    recv_end bigint,
+    recv_ops bigint
+);
+
+CREATE OR REPLACE FUNCTION mlapi_sendrecv_perf(integer, text) RETURNS __mlapi_sendrecv_perf
+    AS 'libcdbtest.so', 'MLAPI_SendRecvPerf__int1_text1'
     LANGUAGE C IMMUTABLE STRICT;
 
 -- Functions for access to the Cdb Hash API (used by motion node and PG-COPY)

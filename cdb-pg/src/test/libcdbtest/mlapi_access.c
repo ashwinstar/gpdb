@@ -13,6 +13,8 @@
 #include "postgres.h"
 
 
+#include <sys/time.h>
+
 #include "funcapi.h"
 
 #include "access/heapam.h"
@@ -45,6 +47,9 @@ static bool s_sendInProgress = false;
 static TupleSendContext s_tupSendCtxt;
 
 static ReceiveReturnCode s_last_recvRC = -1;
+
+
+long getCurrTimestamp(void);
 
 
 /* Initialize a motion layer node. */
@@ -252,3 +257,221 @@ Datum MLAPI_GetLastRecvCode(PG_FUNCTION_ARGS)
     PG_RETURN_INT32(s_last_recvRC);
 }
 
+
+/* This SQL function performs a benchmark against the Motion Layer API, and
+ * then returns the performance results as a compound-type.
+ *
+ * Arguments to SQL function:
+ *     Arg 0:  Motion-node ID to use.
+ *     Arg 1:  SQL to execute, to get the results to move back and forth.
+ *
+ * Results:
+ *     The results are packaged as the following compound-type:
+ *         total_tups
+ *         total_bytes
+ *         tuple_bytes
+ *         send_start
+ *         send_end
+ *         send_ops
+ *         recv_start
+ *         recv_end
+ *         recv_ops
+ */
+PG_FUNCTION_INFO_V1(MLAPI_SendRecvPerf__int1_text1);
+Datum MLAPI_SendRecvPerf__int1_text1(PG_FUNCTION_ARGS)
+{
+    int mnid, mySegIdx, rc;
+    char *pszSQL;
+    TupleDesc tupdesc;
+    HeapTuple htup;
+
+    MotionNodeInfo mn_info;
+    TupleSendContext tup_send_ctxt;
+    
+    SendReturnCode sendRC;
+    ReceiveReturnCode recvRC;
+
+    int tups_sent = 0;      /* Tracks count of tuples sent. */
+    int tups_recvd = 0;     /* Tracks count of tuples received. */
+    int total_tups;
+    
+    long recv_ops = 0;      /* Number of times RecvTuple() was called. */
+    long send_ops = 0;      /* Number of times SendTuple() was called. */
+
+    /* These vars track amount of bytes sent. */
+    long tuple_bytes_sent = 0, total_bytes_sent = 0;
+    
+    long recvStartTime = 0, recvEndTime = 0;    /* Start/end times, for     */
+    long sendStartTime = 0, sendEndTime = 0;    /* bandwidth/latency calcs. */
+    
+    Datum resultValues[9];              /* Parts of the result set. */
+    char *resultNulls = "         ";    /* No NULLs in result set. */
+    Datum resultTuple;                  /* The full result. */
+
+    /*---------------------------------
+     * Arguments
+     */
+    
+    /* Get the motion-node ID. */
+    mnid = PG_GETARG_INT32(0);
+
+    /* Get the SQL to execute. */
+    pszSQL = GET_STR(PG_GETARG_TEXT_P(1));
+
+    /* Generate return-type information.  This is derived from the user
+     * datatype "__mlapi_sendrecv_perf".
+     */
+    tupdesc = RelationNameGetTupleDesc("__mlapi_sendrecv_perf");
+    tupdesc = BlessTupleDesc(tupdesc);
+
+    /* Execute read-only SQL.  The 0 means "no limit on results." */
+
+    rc = SPI_connect();
+    if (rc != SPI_OK_CONNECT)
+        elog(ERROR, "SPI_connect() reported error.");
+
+    rc = SPI_execute(pszSQL, true, 0);
+    if (rc != SPI_OK_SELECT)
+        elog(ERROR, "This function requires a SELECT statement.");
+
+    if (SPI_processed == 0)
+        elog(ERROR, "The input SELECT statement produced zero rows.");
+
+    elog(NOTICE, "Performing Motion Layer API benchmark with %d rows.\n\t%s\n",
+        SPI_processed, (SPI_processed < 1000 ?
+            "(That's not very many.  Are you scared or something?)" :
+            "Please wait patiently..."));
+
+    total_tups = SPI_processed;
+
+    /* Start sending and receiving tuple data!  Track stats, too. */
+
+    getCdbIdentity(&mySegIdx, NULL);
+
+    bzero(&mn_info, sizeof(mn_info));
+    mn_info.process_group_id = TEST_PROC_GROUP_ID;
+    mn_info.motion_node_id = mnid;
+    mn_info.segment_id = mySegIdx;
+    mn_info.host_id = TEST_HOST_ID;
+
+    bzero(&tup_send_ctxt, sizeof(tup_send_ctxt));
+    tup_send_ctxt.heap_tuple = SPI_tuptable->vals[0];
+    tup_send_ctxt.target_segment = mySegIdx;
+
+    /* Record current timestamp as send start-time, since we are basically
+     * starting to send right away.
+     */
+    sendStartTime = getCurrTimestamp();
+    
+    do
+    {
+        /* Try to do a receive now. */
+        if (tups_recvd < SPI_processed)
+        {
+            recvRC = RecvTuple(&mn_info, &htup);
+            recv_ops++;
+            
+            switch (recvRC)
+            {
+            case GOT_TUPLE:
+                if (tups_recvd == 0)
+                    recvStartTime = getCurrTimestamp();
+                
+                tups_recvd++;
+                
+                if (tups_recvd == SPI_processed)
+                    recvEndTime = getCurrTimestamp();
+                
+                /* We don't need the actual tuple, so just free it. */
+                heap_freetuple(htup);
+                
+                break;
+                
+            case NO_TUPLE:
+                /* Nothing to do here.  We already count recv-ops earlier. */
+                break;
+                
+            case END_OF_STREAM:
+                elog(ERROR, "Received unexpected end-of-stream!");
+                /* The elog() transfers control, so this won't fall thru. */
+                
+            default:
+                elog(ERROR, "Unrecognized result-code from RecvTuple().");
+            }
+        }
+
+        /* Try to do a send now. */
+        if (tups_sent < SPI_processed)
+        {
+            sendRC = SendTuple(&mn_info, &tup_send_ctxt);
+            send_ops++;
+
+            switch (sendRC)
+            {
+            case SEND_COMPLETE:
+                /* Record statistics for this tuple. */
+                
+                tups_sent++;
+
+                if (tups_sent == SPI_processed)
+                    sendEndTime = getCurrTimestamp();
+
+                tuple_bytes_sent += tup_send_ctxt.tuple_bytes_sent;
+                total_bytes_sent += tup_send_ctxt.total_bytes_sent;
+
+                /* Clean up send-context, in preparation for next tuple. */
+
+                clearTCList(tup_send_ctxt.tuple_chunk_list);
+                bzero(&tup_send_ctxt, sizeof(tup_send_ctxt));
+
+                /* Set up for the next tuple. */
+
+                tup_send_ctxt.heap_tuple = SPI_tuptable->vals[tups_sent];
+                tup_send_ctxt.target_segment = mySegIdx;
+
+                break;
+
+            case SEND_INCOMPLETE:
+                /* Nothing to do here.  We already count send-ops earlier. */
+                break;
+
+            default:
+                elog(ERROR, "Unrecognized result-code from SendTuple().");
+            }
+        }
+    }
+    while (tups_sent < total_tups || tups_recvd < total_tups);
+
+    SPI_finish();
+
+    /* Finally, return the results for the performance-test. */
+
+    resultValues[0] = Int32GetDatum(total_tups);
+    resultValues[1] = Int64GetDatum(total_bytes_sent);
+    resultValues[2] = Int64GetDatum(tuple_bytes_sent);
+    resultValues[3] = Int64GetDatum(sendStartTime);
+    resultValues[4] = Int64GetDatum(sendEndTime);
+    resultValues[5] = Int64GetDatum(send_ops);
+    resultValues[6] = Int64GetDatum(recvStartTime);
+    resultValues[7] = Int64GetDatum(recvEndTime);
+    resultValues[8] = Int64GetDatum(recv_ops);
+
+    /* Form the tuple. */
+    htup = heap_formtuple(tupdesc, resultValues, resultNulls);
+    resultTuple = HeapTupleGetDatum(htup);
+
+    return resultTuple;
+}
+
+
+/* Helper function to return the current milliseconds timestamp of the system. */
+long getCurrTimestamp(void)
+{
+    struct timeval currTime;
+    
+    if (gettimeofday(&currTime, NULL) < 0)
+        elog(ERROR, "gettimeofday() error!");
+    
+    /* Combine seconds and microseconds into a milliseconds value. */
+    return currTime.tv_sec * 1000 + currTime.tv_usec / 1000;
+}

@@ -739,6 +739,10 @@ void InitMotionLayerNode(uint16 motNodeID, bool includeBackupSegDB,
         pEntry->ready_tuples = NULL;
     }
 
+    /* TODO:  Hard-coded right now. */
+    pEntry->num_remote_senders = 3;
+    pEntry->num_stream_ends_recvd = 0;
+
     /* All done!  Go back to caller memory-context. */
     MemoryContextSwitchTo(oldCtxt);
 }

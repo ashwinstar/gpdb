@@ -32,6 +32,8 @@ extern Datum MLAPI_FinishSendTuple(PG_FUNCTION_ARGS);
 extern Datum MLAPI_RecvTuple__int1(PG_FUNCTION_ARGS);
 extern Datum MLAPI_GetLastRecvCode(PG_FUNCTION_ARGS);
 
+extern Datum MLAPI_SendRecvPerf__int1_text1(PG_FUNCTION_ARGS);
+
 /* These functions are defined in hashapi_access.c */
 
 extern Datum HASHAPI_HashText__int1(PG_FUNCTION_ARGS);
