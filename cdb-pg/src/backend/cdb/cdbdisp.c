@@ -115,7 +115,7 @@ static int	threadCount = 0;
  * The number of segdbs handled by any one thread is determined by the
  * guc variable cdb_connections_per_thread.
  */
-void CdbDispatchCommand( const char *szCommand, DISPATCH_TARGET_SET targetSet, bool cancelFromBelow )
+void CdbDispatchCommand( const char *szCommand, DispatchTargetSet targetSet, bool cancelFromBelow )
 {
 	int i;
 	int max_threads;
@@ -267,6 +267,9 @@ CdbDispatchResults *CdbCheckDispatchResult(void)
 
 			result->cmdTuples = segdbDesc->cmdTuples;
 			segdbDesc->cmdTuples = 0;
+
+			result->resultStatus = segdbDesc->resultStatus;
+			segdbDesc->resultStatus = PGRES_COMMAND_OK;;
 		}
 	}	
 	
@@ -278,12 +281,15 @@ CdbDispatchResults *CdbCheckDispatchResult(void)
 		for ( i=0; i<threadCount; i++ ) 
 		{
 			pParms = &dispatchCommandParmsAr[i];
+			Assert( pParms != NULL && pParms->segdbDescPtrArray != NULL);
 			pfree( pParms->segdbDescPtrArray );
+			Assert( pParms->szCommand != NULL );
+			pfree(  pParms->szCommand );
 		}
 		pfree( dispatchCommandParmsAr );
 		dispatchCommandParmsAr = NULL;
 	}
-	
+    	
 	threadCount = 0;
 
 	return results;	
@@ -851,7 +857,7 @@ void addSegDBToDispatchThreadPool( DispatchCommandParms *ParmsAr, int *segdbCoun
 	
 	if ( (*segdbCount) % cdb_connections_per_thread == 0 )
 	{
-		pParms->szCommand = szCommand;
+		pParms->szCommand = pstrdup(szCommand);
 		pParms->segdbDescPtrArray = (SegmentDatabaseDescriptor **)palloc0( cdb_connections_per_thread * sizeof(SegmentDatabaseDescriptor *) );
 		pParms->cancelFromBelow = cancelFromBelow;
 		pParms->thread = (pthread_t)0;
@@ -921,6 +927,7 @@ CdbDispatchResults *initCdbDispatchResults(void)
 				result->error_message	= NULL;
 				result->cmdTuples		= 0;
 				result->cmdStatus		= NULL;
+				result->resultStatus	= PGRES_COMMAND_OK;
 			}
 		}
 	}
