@@ -69,7 +69,7 @@ ExecMotion(MotionState *node)
 			   "entering routine");
 
     /* TODO:  This is because we don't have the broadcast comm code yet. */
-    AssertState(motion->motionType = MOTIONTYPE_HASH ||
+    AssertState(motion->motionType == MOTIONTYPE_HASH ||
         (motion->motionType == MOTIONTYPE_FIXED &&
          motion->numOutputSegs == 1));
     
@@ -85,6 +85,8 @@ ExecMotion(MotionState *node)
     tupleInFlight = (node->tupSendCtxt.heap_tuple != NULL);
     do
     {
+		CHECK_FOR_INTERRUPTS();
+
         /* If a tuple is in-flight, try to continue the send operation. */
 
         if (tupleInFlight)
@@ -139,7 +141,6 @@ ExecMotion(MotionState *node)
          * Finally, if we didn't receive a tuple, and there's no tuple
          * in-flight, we try to read from the child-plan.
          */
-        
         if (!node->noMoreChildTuples && !tupleInFlight && tuple == NULL)
         {
             /*
@@ -184,6 +185,7 @@ ExecMotion(MotionState *node)
                         {
                             /* We are the receiver, so pass-thru the tuple. */
                             tuple = outerTupleSlot->val;
+	                        shouldFree = false;
                         }
                         else
                         {
@@ -198,8 +200,30 @@ ExecMotion(MotionState *node)
                 }
                 else    /* Hash motion node */
                 {
-                    /* TODO:  Do this! */
-                    Assert(false);
+					// Get hash value of hash expressions
+					Assert( motion->numHashSegs > 0 && motion->hashSegIdx != NULL );
+					uint32 hval = 0;
+					uint16 target_segindex;
+					
+
+					econtext->ecxt_outertuple = outerTupleSlot;
+					hval = evalHashKey(econtext, node->hashExprState, node->hashfunctions);
+					target_segindex = motion->hashSegIdx[ hval % motion->numHashSegs ];
+
+					if ( target_segindex == mySegIdx )
+					{
+                        /* We are the receiver, so pass-thru the tuple. */
+                        tuple = outerTupleSlot->val;
+                        shouldFree = false;
+                    }
+                    else
+                    {
+                        /* The target is someone else.  Set up the send. */
+                        node->tupSendCtxt.heap_tuple = outerTupleSlot->val;
+                        node->tupSendCtxt.target_segment = target_segindex;
+
+                        Assert(tuple == NULL);
+                    }
                 }
                 
                 /* If we have to send this tuple, kick off that process here. */
@@ -246,43 +270,6 @@ ExecMotion(MotionState *node)
         return NULL;
     }
 }
-
-
-/* THIS WAS THE OLD CODE */
-#if 0
-	/*
-	 * grab TupleTableSlot from our child.
-	 */
-	outerNode = outerPlanState(node);
-	
-	outerTupleSlot = ExecProcNode(outerNode);
-	if ( TupIsNull(outerTupleSlot) )
-		return NULL;
-
-	node->numTuplesFromChild++;
-		
-	/*
-	 * make a copy of the tuple
-	 */
-	tuple = heap_copytuple(outerTupleSlot->val);
-	
-	uint32 hval = 0;
-	if ( motion->motionType == MOTIONTYPE_HASH )
-	{
-		econtext->ecxt_outertuple = outerTupleSlot;
-		hval = evalHashKey(econtext, node->hashExprState, node->hashfunctions);
-	}
-
-	slot = node->ps.ps_ResultTupleSlot;
-	
-	/*
-	 * store it in our result slot and return this.
-	 */
-
-	node->numTuplesToParent++;
-
-	return ExecStoreTuple(tuple, slot, InvalidBuffer, /* shouldFree */ true);
-#endif
 
 
 /* ----------------------------------------------------------------
@@ -694,6 +681,43 @@ Motion *make_sorted_broadcast_motion(Plan *lefttree, bool sendToSecondary,
 						0, NULL, NIL, NIL,
 						0, NULL, 
 						numSortCols, sortColIdx, sortOperators, numInputSegs, inputSegIdx );
+}
+
+/* --------------------------------------------------------------------
+ * makeDefaultSegIdxArray -- creates an int array with numSegs-1 elements,
+ * with values of all segindexes except this one
+ * --------------------------------------------------------------------
+ */
+int *makeDefaultSegIdxArrayNew(int *count)
+{
+	int *segIdx = NULL;
+	int i;
+	int x;
+	int segmentCount;
+	int mySegIndex;
+
+	getCdbIdentity( &mySegIndex, NULL );
+
+	segIdx = getCdbSegments( &segmentCount );
+
+	if ( segmentCount <= 1 )
+	{
+		if ( segIdx != NULL )
+			pfree(segIdx);
+
+		return NULL;
+	}
+
+	x = 0;
+	for ( i=0; i<segmentCount; i++ )
+	{
+		if ( segIdx[i] != mySegIndex )
+			segIdx[x++] = segIdx[i];
+	}
+		
+	*count = x;
+
+	return segIdx;	
 }
 
 /* --------------------------------------------------------------------
