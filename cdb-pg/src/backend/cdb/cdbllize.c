@@ -188,6 +188,8 @@ prescan(Plan *plan, Query *query, PlanProfile *context)
 	
 	/* At the moment, we only accept SELECT statements. */
 	Assert( query != NULL && IsA(query, Query) );
+
+#ifndef CDB_DEVELOPER
 	switch ( query->commandType )
 	{
 		case CMD_SELECT:
@@ -213,6 +215,7 @@ prescan(Plan *plan, Query *query, PlanProfile *context)
 				"CDB cannot parallelize unrecognized query type.", NULL );
 			return false;
 	}
+#endif
 
 	return !prescan_walker((Node*)plan, context);
 }

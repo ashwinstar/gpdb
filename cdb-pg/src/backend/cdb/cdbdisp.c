@@ -90,6 +90,7 @@ static void createThreadPoolPerSegDB( DispatchCommandParms *dispatchCommandParms
 										 const char *szCommand, bool cancelFromBelow);
 static void addSegDBToDispatchThreadPool( DispatchCommandParms *ParmsAr, int *segdbCount, const char *szCommand, 
 										bool cancelFromBelow, SegmentDatabaseDescriptor *segdbDesc);
+static CdbDispatchResults *initCdbDispatchResults(void);
 
 /*
  * Static Variables.  These contain the thread count and array of 
@@ -195,19 +196,18 @@ void CdbDispatchCommand( const char *szCommand, DISPATCH_TARGET_SET targetSet, b
  * If so, returns true.  If not, returns false, and fills in pszError 
  * out parameter with a concatenation of errors from any failed command.
  */
-bool CdbCheckDispatchResult( char **pszError )
+CdbDispatchResults *CdbCheckDispatchResult(void)
 {
 	int							i;
 	int							j;
-	bool						bRtn = true;
 	SegmentDatabaseDescriptor	*segdbDesc;
-	StringInfoData				buffer;
 	DispatchCommandParms		*pParms;
-		
-	initStringInfo( &buffer );
-	
+	CdbDispatchResults			*results = initCdbDispatchResults();
+
+	Assert( results != NULL );
+
 	if ( threadCount == 0 )
-		return true;
+		return results;
 
 	/*
 	 * Wait for threads to finish.
@@ -225,7 +225,10 @@ bool CdbCheckDispatchResult( char **pszError )
 	 * Check whether there were error messages.
 	 * This is stored in the error_message field of the
 	 * segment_database_descriptor.  
-	 */						
+	 */			
+
+	int x = 0;
+
 	for ( i=0; i<threadCount; i++ )
 	{
 		pParms = &dispatchCommandParmsAr[i];
@@ -234,10 +237,12 @@ bool CdbCheckDispatchResult( char **pszError )
 		{
 			segdbDesc = pParms->segdbDescPtrArray[j];
 			Assert(	segdbDesc != NULL );
+
+			CdbDispatchResult *result = &results->pResults[x++];
 			
 			if ( segdbDesc->error_message != NULL )
 			{
-				bRtn = false;
+				results->success = false;
 				
 	 		/* Because we cannot use palloc inside a thread, the error messages
 	 		 * were malloc'd. So we must free the malloc'd memory after
@@ -247,24 +252,24 @@ bool CdbCheckDispatchResult( char **pszError )
 				char *pszErrMsg = segdbDesc->error_message;
 				segdbDesc->error_message = NULL;
 				
-				if ( strlen(buffer.data) > 0 )
-					appendStringInfo(&buffer, ", ");
-					
-				appendStringInfo(&buffer, pszErrMsg);
+				result->error_message = pstrdup( pszErrMsg );
 				free( pszErrMsg );
 			}
+
+			if ( segdbDesc->cmdStatus != NULL )
+			{
+				char *cmdStatus = segdbDesc->cmdStatus;
+				segdbDesc->cmdStatus = NULL;
+				
+				result->cmdStatus = pstrdup( cmdStatus );
+				free( cmdStatus );
+			}
+
+			result->cmdTuples = segdbDesc->cmdTuples;
+			segdbDesc->cmdTuples = 0;
 		}
 	}	
 	
-	if ( strlen(buffer.data) > 0 )
-	{
-		Assert( pszError != NULL );
-		*pszError = buffer.data;
-		buffer.data = NULL;
-	}
-	else
-		pfree( buffer.data );
-		
 	/*
 	 * pfree the memory allocated for the dispatchCommandParmsAr
 	 */
@@ -281,7 +286,7 @@ bool CdbCheckDispatchResult( char **pszError )
 	
 	threadCount = 0;
 
-	return bRtn;	
+	return results;	
 }
 
 /*
@@ -372,7 +377,7 @@ void *thread_DispatchCommand(void *arg)
 		}
 		
 		/*
-		 * OK, command was successfully submoitted. Add to the stillRunning array
+		 * OK, command was successfully submitted. Add to the stillRunning array
 		 * so we can monitor it.
 		 */
 		stillRunning[stillRunningCount].segdbDesc = segdbDesc;
@@ -521,12 +526,16 @@ void *thread_DispatchCommand(void *arg)
 					PGresult *pRes;
 					while ( NULL != (pRes = PQgetResult(conn) ) )
 					{
-						if ( PGRES_COMMAND_OK != PQresultStatus( pRes ) )
+						segdbDesc->resultStatus = PQresultStatus( pRes );
+						if ( PGRES_COMMAND_OK != segdbDesc->resultStatus &&
+							PGRES_TUPLES_OK != segdbDesc->resultStatus )
 						{
 							PQExpBufferData buffer;
 							initPQExpBuffer(&buffer);
 							appendPQExpBuffer( &buffer, "SQL Command error: "
+														"resultStatus %d "
 														"segindex %d isprimary %c, %s", 
+														segdbDesc->resultStatus, 
 														q->segindex, (q->isprimary ? 't' : 'f'),
 														PQerrorMessage(conn) );
 							if ( segdbDesc->error_message != NULL )
@@ -536,9 +545,20 @@ void *thread_DispatchCommand(void *arg)
 							}
 
 							segdbDesc->error_message = buffer.data;
+							
 							if ( cancelFromBelow )
 								QueryCancelPending = true;
 							
+						}
+						else
+						{
+							char *cmdStatus = PQcmdStatus(pRes);
+							if ( cmdStatus != NULL )
+								segdbDesc->cmdStatus = strdup(cmdStatus);
+
+							char *cmdTuples = PQcmdTuples(pRes);
+							if ( cmdTuples != NULL )
+								segdbDesc->cmdTuples = atoi(cmdTuples);
 						}
 						
 						PQclear( pRes );
@@ -848,4 +868,114 @@ void addSegDBToDispatchThreadPool( DispatchCommandParms *ParmsAr, int *segdbCoun
 	 * Bump the count of segdbs processed
 	 */
 	(*segdbCount)++;
+}
+
+/*
+ * initCdbDispatchResults:
+ * Allocates and initializes a CdbDispatchResults struct,
+ * based on static variables threadCount and dispatchCommandParmsAr.
+ * This should be called after CdbDispatchCommand has been called, since
+ * this is what sets these static variables.
+ * The caller is responsible for calling DestroyCdbDispatchResults on the returned
+ * pointer when done using it.
+ */
+CdbDispatchResults *initCdbDispatchResults(void)
+{
+	int							i;
+	SegmentDatabaseDescriptor	*segdbDesc;
+	SegmentDatabaseInfo			*q;
+	CdbDispatchResults			*results = (CdbDispatchResults *)palloc0( sizeof(CdbDispatchResults) );
+	DispatchCommandParms		*pParms;
+
+	results->success = true;
+	results->count = 0;
+	results->pResults = NULL;
+
+	for ( i=0; i<threadCount; i++ )
+	{
+		pParms = &dispatchCommandParmsAr[i];
+		results->count += pParms->db_count;
+	}
+
+	if ( results->count > 0 )
+	{
+		results->pResults = (CdbDispatchResult *)palloc0( results->count * sizeof(CdbDispatchResult) );
+		
+		int x = 0;
+		for ( i=0; i<threadCount; i++ )
+		{
+			pParms = &dispatchCommandParmsAr[i];
+
+			int j;
+			for ( j=0; j<pParms->db_count; j++ )
+			{
+				segdbDesc = pParms->segdbDescPtrArray[j];
+				Assert(	segdbDesc != NULL );
+				q = segdbDesc->segment_database_info;
+				Assert( q != NULL );
+
+				CdbDispatchResult *result = &results->pResults[x++];
+
+				result->segindex		= q->segindex;
+				result->isprimary		= q->isprimary;
+				result->error_message	= NULL;
+				result->cmdTuples		= 0;
+				result->cmdStatus		= NULL;
+			}
+		}
+	}
+
+	return results;
+}
+
+/*
+ * DestroyCdbDispatchResults:
+ * pfrees all memory allocated in CdbDispatchResults struct.
+ */
+void DestroyCdbDispatchResults(CdbDispatchResults *results)
+{
+	if ( results == NULL )
+		return;
+
+	if ( results->count > 0 )
+	{
+		int i;
+
+		for ( i=0; i<results->count; i++ )
+		{
+			CdbDispatchResult *result = &results->pResults[i];
+		
+			if ( result->error_message != NULL )
+				pfree( result->error_message );
+
+			if ( result->cmdStatus != NULL )
+				pfree( result->cmdStatus );
+		}
+
+		pfree( results->pResults );
+	}
+
+	pfree( results );
+
+}
+
+/*
+ * SumCmdTuples:
+ * Convenience routine for looping through and summing
+ * the cmdTuples values for all elements of results->pResults.
+ * Used to determine the row counts for insert, update, and delete commands.
+ */
+int SumCmdTuples(CdbDispatchResults *results)
+{
+	int i;
+	int cmdTuples = 0;
+
+	for (i=0; i<results->count; i++ )
+	{
+		CdbDispatchResult *result = &results->pResults[i];
+
+		cmdTuples += result->cmdTuples;
+	}
+
+	return cmdTuples;
 }

@@ -732,8 +732,9 @@ CdbClusterDescriptor *buildCdbClusterDefinition(void)
 			segdbDesc->conn = NULL;		
 			segdbDesc->thread = (pthread_t)NULL;
 			segdbDesc->error_message = NULL;
-			segdbDesc->row_count = 0;
-			segdbDesc->query_result = NULL;
+			segdbDesc->cmdTuples = 0;
+			segdbDesc->resultStatus = PGRES_COMMAND_OK;
+			segdbDesc->cmdStatus = NULL;
 			
 			if ( p->segindex  == segment_dbs->my_segindex &&
 				 p->isprimary == segment_dbs->my_isprimary )
