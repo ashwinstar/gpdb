@@ -1742,3 +1742,36 @@ _SPI_copy_plan(_SPI_plan *plan, int location)
 
 	return newplan;
 }
+
+int  
+SPI_execute_cdb( const char *src, Plan* pPlan, Query* pQuery, bool read_only, int tcount)
+{
+	_SPI_plan	plan;
+	int			res;
+
+	if (src == NULL || pPlan == NULL || pQuery == NULL || tcount < 0)
+		return SPI_ERROR_ARGUMENT;
+
+	res = _SPI_begin_call(true);
+	if (res < 0)
+		return res;
+
+	plan.plancxt = NULL;		/* doesn't have own context */
+	plan.query = src;
+	plan.nargs = 0;
+	plan.argtypes = NULL;
+	plan.ptlist = NIL;
+	plan.qtlist = NIL;
+	
+	plan.ptlist = lappend(plan.ptlist, pPlan );
+	List* query_list = NIL;
+	query_list = lappend(query_list, pQuery);
+	plan.qtlist = lappend(plan.qtlist, query_list);
+
+	res = _SPI_execute_plan(&plan, NULL, NULL,
+							InvalidSnapshot, InvalidSnapshot,
+							read_only, tcount);
+
+	_SPI_end_call(true);
+	return res;
+}
