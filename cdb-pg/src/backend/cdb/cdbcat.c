@@ -97,48 +97,21 @@ CdbPolicy *get_table_policy(Oid tbloid)
 		size_t  sz;
 		
 		/*
-		 * Get the policytype attribute
+		 * Get the attributes on which to partition.
 		 */
-		attr = heap_getattr(cdb_policy_tuple, Anum_cdb_policy_policytype, cdb_policy_rel->rd_att, &isNull);
+		attr = heap_getattr(cdb_policy_tuple, Anum_cdb_policy_attrnums, cdb_policy_rel->rd_att, &isNull);
 		Assert( !isNull );
-		policy_str = DatumGetCString(DirectFunctionCall1(textout, attr));
+		extract_int_array(attr, &nattrs, &attrnums);
+		Assert( nattrs >= 0 );
 		
-		/*
-		 * Outcome depends on CdbPolicyType. This is a bit of a mess due
-		 * to the need to work against the old CDB schema, which doesn't
-		 * really fit.
-		 *
-		 * TODO Clean up when new schema design is in place.
-		 */
-		switch( policy_str[0] )
+		sz = sizeof(CdbPolicy) + nattrs*sizeof(policy->attrs[0]);
+		policy = (CdbPolicy*) palloc(sz);
+		policy->ptype = POLICYTYPE_PARTITIONED;
+		policy->nattrs = nattrs;
+		for ( i = 0; i < nattrs; i++ )
 		{
-			case 'p':  /* POLICYTYPE_PARTITIONED */
-				/* Get the attributes on which to partition */
-				attr = heap_getattr(cdb_policy_tuple, Anum_cdb_policy_attrnums, cdb_policy_rel->rd_att, &isNull);
-				Assert( !isNull );
-				extract_int_array(attr, &nattrs, &attrnums);
-				Assert( nattrs >= 0 );
-				
-				sz = sizeof(CdbPolicy) + nattrs*sizeof(policy->attrs[0]);
-				policy = (CdbPolicy*) palloc(sz);
-				policy->ptype = POLICYTYPE_PARTITIONED;
-				policy->nattrs = nattrs;
-				for ( i = 0; i < nattrs; i++ )
-				{
-					policy->attrs[i] = attrnums[i];
-				}
-				break;	
-			default:
-				ereport(WARNING, (	
-					errcode(ERRCODE_WARNING_DEPRECATED_FEATURE),
-					errmsg("Ignoring cdb.policy row with policytype=\"%s\".", policy_str),
-					errhint("Update your CDB database and CDB schema contents!")
-				));
-				break;	
+			policy->attrs[i] = attrnums[i];
 		}
-		
-		if ( policy_str != NULL )
-			pfree( policy_str );
 	}
 	
 	/*

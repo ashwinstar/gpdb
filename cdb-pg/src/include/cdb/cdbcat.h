@@ -18,88 +18,66 @@
 #define CdbNamespaceName			"cdb"
 
 /*
- * Defines for cdb.segdb table
+ * Defines for cdb.pgdatabase table
  */
-#define CdbSegDBRelationName		"segdb"
-#define Natts_cdb_segdb				4
-#define Anum_cdb_segdb_segindex		1
-#define Anum_cdb_segdb_isprimary	2
-#define Anum_cdb_segdb_listenerid	3
-#define Anum_cdb_segdb_isvalid		4
-
-/*
- * Defines for cdb.segment table
- */
-#define CdbSegmentRelationName			"segment"
-#define CdbSegmentPrimaryKeyIndexName	"segment_pkey"
-#define Natts_cdb_segment				2
-#define Anum_cdb_segment_segindex		1
-#define Anum_cdb_segment_dbname			2
+#define CdbSegmentRelationName			"pgdatabase"
+#define CdbSegmentPrimaryKeyIndexName	"pgdatabase_pkey"
+#define Natts_cdb_pgdatabase			5
+#define Anum_cdb_pgdatabase_dbid		1
+#define Anum_cdb_pgdatabase_isprimary	2
+#define Anum_cdb_pgdatabase_dbname		3
+#define Anum_cdb_pgdatabase_content		4
+#define Anum_cdb_pgdatabase_listenerid	5
 
 /*
  * Defines for cdb.listener table
  */
 #define CdbListenerRelationName			"listener"
 #define CdbListenerPrimaryKeyIndexName	"listener_pkey"
-#define Natts_cdb_listener				4
+#define Natts_cdb_listener				6
 #define Anum_cdb_listener_listenerid	1
 #define Anum_cdb_listener_hostid		2
 #define Anum_cdb_listener_port			3
 #define Anum_cdb_listener_datadir		4
+#define Anum_cdb_listener_cdbsuperuser	5
+#define Anum_cdb_listener_cdbsuperpswd	6
 
 /*
  * Defines for cdb.host table
  */
 #define CdbHostRelationName			"host"
 #define CdbHostPrimaryKeyIndexName	"host_pkey"
-#define Natts_cdb_host				3
+#define Natts_cdb_host				2
 #define Anum_cdb_host_hostid		1
 #define Anum_cdb_host_hostname		2
-#define Anum_cdb_host_amsport		3
 
 /*
  * Defines for cdb.cdb table
  */
 #define CdbCdbRelationName			"cdb"
-#define Natts_cdb_cdb				7
+#define Natts_cdb_cdb				4
 #define Anum_cdb_cdb_cdbname		1
-#define Anum_cdb_cdb_cdbsuperuser	2
-#define Anum_cdb_cdb_cdbsuperpswd	3
-#define Anum_cdb_cdb_numSegments	4
-#define Anum_cdb_cdb_listenerId		5
-#define Anum_cdb_cdb_segindex		6
-#define Anum_cdb_cdb_isprimary		7
+#define Anum_cdb_cdb_numsegments	2
+#define Anum_cdb_cdb_dbid			3
+#define Anum_cdb_cdb_content		4
 
 /*
  * Defines for cdb.policy
  */
 #define CdbPolicyRelationName		"policy"
 #define CdbPolicyLocalOidIndexName	"policy_localoid_key"
-#define Natts_cdb_policy			4
-#define Anum_cdb_policy_globalid	1
-#define Anum_cdb_policy_localoid	2
-#define Anum_cdb_policy_policytype	3
-#define Anum_cdb_policy_attrnums	4
+#define Natts_cdb_policy			2
+#define Anum_cdb_policy_localoid	1
+#define Anum_cdb_policy_attrnums	2
 
 /*
  * CdbPolicyType represents a type of policy under which a relation's
  * tuples may be assigned to a component database.
- *
- * TODO Remove the following comments following CDB schema redesign.
- *
- * enum representing the policy type of a table,
- * from cdb.policy.policytype.
- * The mapping is as follows:
- * 'p'  ----> POLICYTYPE_PARTITIONED
- * 'r'	----> POLICYTYPE_REPLICATED
- * 's'  ----> POLICYTYPE_SPECIAL
  */
 typedef enum CdbPolicyType
 {
 	POLICYTYPE_UNDEFINED,	
 	POLICYTYPE_PARTITIONED,	/* Tuples partitioned onto segment database. */
-	POLICYTYPE_REPLICATED,	/* TODO Remove - no longer pertinent */
-	POLICYTYPE_SPECIAL,		/* TODO Remove - no longer pertinent */
 	POLICYTYPE_ENTRY		/* Tuples stored on enty database. */
 } CdbPolicyType;
 

@@ -1424,10 +1424,6 @@ Flow *makeFlowForRelation(Oid reloid, PlanProfile *context)
 			flow = makeDispatcherFlow();
 			context->usesCatalog = true;
 			break;
-			
-		/* TODO Remove obsolete types when CDB schema updated. */
-		case POLICYTYPE_REPLICATED:			
-		case POLICYTYPE_SPECIAL:
 		
 		case POLICYTYPE_UNDEFINED:
 		default:
