@@ -172,4 +172,20 @@ extern const char         * show_cdb_connections_per_thread( void );
  */
 extern int Cdb_max_tuple_chunk_size;    /* GUC var */
 
+/* --------------------------------------------------------------------------------------------------
+ * Structure for row of cdb.cdb table
+ */
+typedef struct CdbCdb
+{
+    char	*cdbname; 		// array of SegmentDatabaseInfo's for segment databases
+    int4	numsegments;	// count of distinct segindexes
+	int4	dbid;			// the dbid of this database
+	int4	segindex;		// content indicator: -1 for entry database, 0, ..., n-1 for segment database
+} CdbCdb;
+
+/* --------------------------------------------------------------------------------------------------
+ * Global variable declaration for the data for the single row of cdb.cdb table
+ */
+extern CdbCdb CdbIdentity;
+
 #endif	/* CDBVARS_H */
