@@ -81,8 +81,9 @@
     <!--
         External headers that are necessary for CDB-specific components.
       -->
-    <property name="cdb.withincludes" location="${projectRoot}/common/include" />
-
+    <!-- Edited by Johnny Soedomo -->
+    <!-- This is used for the Transaction Manager -->
+    <!-- <property name="cdb.withincludes" location="${projectRoot}/common/include" /> -->
     <!--
         Documentation tools properties:
             D2MDIR is location of "docbook2man-spec.pl
@@ -426,10 +427,12 @@
             depends="-init"
             unless="readlineSupport">
 
+        <!-- Edited by Johnny Soedomo -->
+        <!-- This is used for the Transaction Manager -->
         <!-- Make sure common headers are available, since we need them! -->
-        <ant antfile="${projectRoot}/common/build.xml"
+        <!--  <ant antfile="${projectRoot}/common/build.xml"
              dir="${projectRoot}/common"
-             target="expandHeaders" />
+             target="expandHeaders" /> -->
 
         <!--
             If includes and libraries are installed in the expected place
