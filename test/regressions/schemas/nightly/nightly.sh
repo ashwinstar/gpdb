@@ -15,5 +15,3 @@ echo "Initializing CDB2 database"
 ./cdbstart
 sleep 30
 ./cdbcreatedb -s cdbunit --withQadb
-
-sleep 60
