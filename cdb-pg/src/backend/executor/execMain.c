@@ -47,6 +47,7 @@
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
 
+#include "cdb/cdbcat.h"
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbvars.h"
@@ -192,6 +193,7 @@ ExecutorRun(QueryDesc *queryDesc,
 	DestReceiver *dest;
 	TupleTableSlot *result;
 	MemoryContext oldcontext;
+	RangeTblEntry *rte;
 
 	/* sanity checks */
 	Assert(queryDesc != NULL);
@@ -242,13 +244,59 @@ ExecutorRun(QueryDesc *queryDesc,
 			 * Serialize the plan and query trees, and create the sql statement: cdbexec ....
 			 */
 			StringInfoData buffer;
+			bool bChangedQueryTree = false;
+			CmdType origCmdType;
+			RTEKind origRTEKind;
 			
 			initStringInfo( &buffer );
 
+			/*
+			 * Hack for insert selects into local tables
+			 */
+			if ( queryDesc->parsetree->commandType == CMD_INSERT )
+			{
+				CdbPolicy *policy;
+
+				rte = rt_fetch(queryDesc->parsetree->resultRelation, queryDesc->parsetree->rtable);
+				Assert( rte->rtekind == RTE_RELATION);
+				policy = get_table_policy(rte->relid);
+				Assert(policy != NULL );
+
+				if ( policy->ptype == POLICYTYPE_ENTRY )
+				{
+					/*
+					 * The query tree references the target table.  Since it is a local table,
+					 * it may not exist on the qExecs. Even though no rows will ever be inserted
+					 * on the qExecs into the target table, the Executor there would insist on the table existing.
+					 * To get around this, we reset the command type to select, and the retkind to function.
+					 * With these changes, the qExec executors don't check the existence of the relation.
+					 */
+					origCmdType = queryDesc->parsetree->commandType;
+					queryDesc->parsetree->commandType = CMD_SELECT;
+					origRTEKind = rte->rtekind;
+					rte->rtekind = RTE_FUNCTION;
+					bChangedQueryTree = true;
+				}
+
+				pfree(policy);
+			}
+			
 			char *pszQuery = serializeNode((Node *)queryDesc->parsetree);
 			char *pszPlan = serializeNode((Node *)queryDesc->plantree);
 
 			Assert(pszQuery != NULL && pszPlan != NULL);
+
+			if ( bChangedQueryTree )
+			{
+				/*
+				 * If we hacked the query tree before serialization, we set
+				 * the original values back here, before we start running the wrong
+				 * thing here on the dispatcher.
+				 */
+				queryDesc->parsetree->commandType = origCmdType;
+				Assert(rte != NULL);
+				rte->rtekind = origRTEKind;
+			}
 
 			appendStringInfo(&buffer, "cdbexec '%s' '%s'", pszQuery, pszPlan);
 
@@ -291,6 +339,8 @@ ExecutorRun(QueryDesc *queryDesc,
 	{
 		if ( hasDispatched )
 		{
+			char *message;
+
 			/*
 			 *  We need to wait for the threads to finish.  This allows for proper cleanup
 			 * of the results from the async command executions.
@@ -302,6 +352,29 @@ ExecutorRun(QueryDesc *queryDesc,
 			QueryCancelPending = true;
 
 			CdbDispatchResults* results = CdbCheckDispatchResult();
+
+			message = CdbDumpDispatchResults(results, true);
+			char *szCommand = results->szCommand;
+			if ( szCommand == NULL )
+				szCommand = "";
+			Assert( message != NULL );
+			elog( DEBUG4,
+					"cdbexec command results for \"%s\": %s",
+					szCommand, message );
+
+			pfree(message);
+
+			if ( !results->success )
+			{
+				char *message = CdbDumpDispatchResults(results, false);
+				ereport( NOTICE,
+							(errcode( ERRCODE_CDB_COMMAND_ERROR ),
+							errmsg("cdbexec command failed on one or more segment databases: %s",
+							message
+						)));
+
+				pfree(message);
+			}
 			DestroyCdbDispatchResults( results );
 			hasDispatched = false;
 		}
@@ -324,7 +397,7 @@ ExecutorRun(QueryDesc *queryDesc,
 		if ( szCommand == NULL )
 			szCommand = "";
 		Assert( message != NULL );
-		elog( DEBUG5,
+		elog( DEBUG4,
 				"cdbexec command results for \"%s\": %s",
 				szCommand, message );
 
@@ -344,7 +417,7 @@ ExecutorRun(QueryDesc *queryDesc,
 		if ( operation != CMD_SELECT )
 		{
 			/*  Plug the nuber of rows affected for non selects */
-			queryDesc->estate->es_processed = SumCmdTuples(results);
+			queryDesc->estate->es_processed += SumCmdTuples(results);
 		}
 
 		DestroyCdbDispatchResults( results );
