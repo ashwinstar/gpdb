@@ -2,7 +2,7 @@
 - CDB Utility Scripts                                                         -
 -                                                                             -
 - Authors: Todd Papaioannou, Clifford Johnson                                 -
-- Version: $Revision$                                                         -
+- Version: $Revision$                                                   -
 =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 The following BASH scripts make up a set of "utility" tools for creating
