@@ -23,7 +23,9 @@
 #include "nodes/params.h"
 #include "nodes/plannodes.h"
 #include "utils/hsearch.h"
+#include "utils/tuplesort.h"
 #include "utils/tuplestore.h"
+
 
 
 /* ----------------
@@ -1193,12 +1195,14 @@ typedef struct LimitState
  */
 typedef struct MotionState
 {
-	PlanState	ps;					/* its first field is NodeTag */
-	bool		noMoreChildTuples;	/* set when child node returns NULL */
-	bool		noMoreAMSTuples;	/* set when AMS indicates all peers are done sending tuples */
-    bool        sentEndOfStream;    /* set when end-of-stream has successfully been sent */
-	List		*hashExprState;
-	FmgrInfo	*hashfunctions;		/* functions to hash the expressions for a hash motion node */
+	PlanState			ps;					/* its first field is NodeTag */
+	bool				noMoreChildTuples;	/* set when child node returns NULL */
+	bool				noMoreAMSTuples;	/* set when AMS indicates all peers are done sending tuples */
+    bool				sentEndOfStream;    /* set when end-of-stream has successfully been sent */
+	List				*hashExprState;		/* state struct used for evaluating the hash expressions */
+	FmgrInfo			*hashfunctions;		/* functions to hash the expressions for a hash motion node */
+	FmgrInfo			*sortFunctions;		/* functions to sort the tuples for a sorted motion node */
+	SortFunctionKind	*sortFnKinds;		/* kind of sort function for sorted motion node */
 
     TupleSendContext tupSendCtxt;   /* Context for in-flight tuples being sent. */
 
