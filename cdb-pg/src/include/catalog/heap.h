@@ -35,6 +35,16 @@ typedef struct CookedConstraint
 	Node	   *expr;			/* transformed default or check expr */
 } CookedConstraint;
 
+extern Relation heap_create_with_relid(const char *relname,
+			Oid relnamespace,
+			Oid reltablespace,
+			TupleDesc tupDesc,
+			char relkind,
+			bool shared_relation,
+			bool allow_system_table_mods,
+			Oid relid,
+			bool nailme);
+
 extern Relation heap_create(const char *relname,
 			Oid relnamespace,
 			Oid reltablespace,
@@ -53,6 +63,18 @@ extern Oid heap_create_with_catalog(const char *relname,
 						 int oidinhcount,
 						 OnCommitAction oncommit,
 						 bool allow_system_table_mods);
+
+extern void heap_create_with_catalog_with_relid(const char *relname,
+						 Oid relnamespace,
+						 Oid reltablespace,
+						 TupleDesc tupdesc,
+						 char relkind,
+						 bool shared_relation,
+						 bool oidislocal,
+						 int oidinhcount,
+						 OnCommitAction oncommit,
+						 bool allow_system_table_mods,
+						 Oid new_rel_oid);
 
 extern void heap_drop_with_catalog(Oid relid);
 
