@@ -290,8 +290,7 @@ Datum GetChunkedRows__text1(PG_FUNCTION_ARGS)
         if (s_rac_state->rowIdx < SPI_processed)
         {
             MotionNodeInfo mnInfo = {
-                0,                          /* process_group_id */
-                s_rac_state->mnid,          /* motion_node_id   */
+                0,                          /* query_group_id */
                 s_rac_state->srcSegIdx,     /* segment_id       */
                 0                           /* host_id          */
             };
@@ -300,6 +299,7 @@ Datum GetChunkedRows__text1(PG_FUNCTION_ARGS)
                 SPI_tuptable->vals[s_rac_state->rowIdx],
                 SPI_tuptable->tupdesc,
                 s_rac_state->maxChunkDataSize,
+                s_rac_state->mnid,
                 &mnInfo,
                 s_rac_state->tgtSegIdx);
 

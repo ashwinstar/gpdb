@@ -28,7 +28,7 @@ extern Datum MLAPI_InitMLNode__int1_bool1_regtype1(PG_FUNCTION_ARGS);
 extern Datum MLAPI_EndMLNode__int1(PG_FUNCTION_ARGS);
 
 extern Datum MLAPI_SendTuple__int1_text1(PG_FUNCTION_ARGS);
-extern Datum MLAPI_FinishSendTuple(PG_FUNCTION_ARGS);
+extern Datum MLAPI_FinishSendTuple__int1(PG_FUNCTION_ARGS);
 extern Datum MLAPI_RecvTuple__int1(PG_FUNCTION_ARGS);
 extern Datum MLAPI_GetLastRecvCode(PG_FUNCTION_ARGS);
 

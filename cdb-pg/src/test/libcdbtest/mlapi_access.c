@@ -41,8 +41,6 @@
  * test functions.
  */
 
-static MotionNodeInfo s_motNodeInfo;
-
 static bool s_sendInProgress = false;
 static TupleSendContext s_tupSendCtxt;
 
@@ -134,15 +132,8 @@ Datum MLAPI_SendTuple__int1_text1(PG_FUNCTION_ARGS)
      */
 
     oldCtxt = MemoryContextSwitchTo(CacheMemoryContext);
-    
-    bzero(&s_motNodeInfo, sizeof(s_motNodeInfo));
 
     getCdbIdentity(&mySegIdx, NULL);
-
-    s_motNodeInfo.process_group_id = TEST_PROC_GROUP_ID;
-    s_motNodeInfo.motion_node_id = mnid;
-    s_motNodeInfo.segment_id = mySegIdx;
-    s_motNodeInfo.host_id = TEST_HOST_ID;
 
     /*-----------------------------*
      * Set up tuple send context.
@@ -160,14 +151,12 @@ Datum MLAPI_SendTuple__int1_text1(PG_FUNCTION_ARGS)
      * Do the send!
      */
     
-    sendRC = SendTuple(&s_motNodeInfo, &s_tupSendCtxt);
+    sendRC = SendTuple(mnid, &s_tupSendCtxt);
     s_sendInProgress = (sendRC == SEND_INCOMPLETE);
 
     if (sendRC == SEND_COMPLETE)
     {
         /* Time to clean up our intermediate state. */
-
-        bzero(&s_motNodeInfo, sizeof(s_motNodeInfo));
 
         heap_freetuple(s_tupSendCtxt.heap_tuple);
         clearTCList(s_tupSendCtxt.tuple_chunk_list);
@@ -179,22 +168,32 @@ Datum MLAPI_SendTuple__int1_text1(PG_FUNCTION_ARGS)
 }
 
 
-PG_FUNCTION_INFO_V1(MLAPI_FinishSendTuple);
-Datum MLAPI_FinishSendTuple(PG_FUNCTION_ARGS)
+PG_FUNCTION_INFO_V1(MLAPI_FinishSendTuple__int1);
+Datum MLAPI_FinishSendTuple__int1(PG_FUNCTION_ARGS)
 {
+    int mnid;
     SendReturnCode sendRC;
 
     if (!s_sendInProgress)
         elog(ERROR, "No incomplete send-tuple in progress.");
 
-    sendRC = SendTuple(&s_motNodeInfo, &s_tupSendCtxt);
+    /*---------------------*
+     * Arguments
+     */
+
+    /* Motion node ID */
+    mnid = PG_GETARG_INT32(0);
+
+    /*-----------------------------*
+     * Continue the send!
+     */
+
+    sendRC = SendTuple(mnid, &s_tupSendCtxt);
     s_sendInProgress = (sendRC == SEND_INCOMPLETE);
 
     if (sendRC == SEND_COMPLETE)
     {
         /* Time to clean up our intermediate state. */
-
-        bzero(&s_motNodeInfo, sizeof(s_motNodeInfo));
 
         heap_freetuple(s_tupSendCtxt.heap_tuple);
         clearTCList(s_tupSendCtxt.tuple_chunk_list);
@@ -208,7 +207,7 @@ Datum MLAPI_FinishSendTuple(PG_FUNCTION_ARGS)
 PG_FUNCTION_INFO_V1(MLAPI_RecvTuple__int1);
 Datum MLAPI_RecvTuple__int1(PG_FUNCTION_ARGS)
 {
-    int mnid, mySegIdx;
+    int mnid;
     HeapTuple htup;
 
     /*---------------------*
@@ -222,21 +221,10 @@ Datum MLAPI_RecvTuple__int1(PG_FUNCTION_ARGS)
      * Perform the receive.
      */
 
-    /* Make sure that the motion node info is set up correctly. */
-
-    bzero(&s_motNodeInfo, sizeof(s_motNodeInfo));
-
-    getCdbIdentity(&mySegIdx, NULL);
-
-    s_motNodeInfo.process_group_id = TEST_PROC_GROUP_ID;
-    s_motNodeInfo.motion_node_id = mnid;
-    s_motNodeInfo.segment_id = mySegIdx;
-    s_motNodeInfo.host_id = TEST_HOST_ID;
-
     /* Try to receive a tuple. */
 
     htup = NULL;
-    s_last_recvRC = RecvTuple(&s_motNodeInfo, &htup);
+    s_last_recvRC = RecvTuple(mnid, &htup);
 
     if (s_last_recvRC == GOT_TUPLE)
     {
@@ -285,9 +273,8 @@ Datum MLAPI_SendRecvPerf__int1_text1(PG_FUNCTION_ARGS)
     TupleDesc tupdesc;
     HeapTuple htup;
 
-    MotionNodeInfo mn_info;
     TupleSendContext tup_send_ctxt;
-    
+
     SendReturnCode sendRC;
     ReceiveReturnCode recvRC;
 
@@ -348,12 +335,6 @@ Datum MLAPI_SendRecvPerf__int1_text1(PG_FUNCTION_ARGS)
 
     getCdbIdentity(&mySegIdx, NULL);
 
-    bzero(&mn_info, sizeof(mn_info));
-    mn_info.process_group_id = TEST_PROC_GROUP_ID;
-    mn_info.motion_node_id = mnid;
-    mn_info.segment_id = mySegIdx;
-    mn_info.host_id = TEST_HOST_ID;
-
     bzero(&tup_send_ctxt, sizeof(tup_send_ctxt));
     tup_send_ctxt.heap_tuple = SPI_tuptable->vals[0];
     tup_send_ctxt.target_segment = mySegIdx;
@@ -368,7 +349,7 @@ Datum MLAPI_SendRecvPerf__int1_text1(PG_FUNCTION_ARGS)
         /* Try to do a receive now. */
         if (tups_recvd < SPI_processed)
         {
-            recvRC = RecvTuple(&mn_info, &htup);
+            recvRC = RecvTuple(mnid, &htup);
             recv_ops++;
             
             switch (recvRC)
@@ -403,7 +384,7 @@ Datum MLAPI_SendRecvPerf__int1_text1(PG_FUNCTION_ARGS)
         /* Try to do a send now. */
         if (tups_sent < SPI_processed)
         {
-            sendRC = SendTuple(&mn_info, &tup_send_ctxt);
+            sendRC = SendTuple(mnid, &tup_send_ctxt);
             send_ops++;
 
             switch (sendRC)

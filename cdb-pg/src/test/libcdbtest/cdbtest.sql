@@ -88,7 +88,7 @@ CREATE OR REPLACE FUNCTION mlapi_sendtuple(integer, text) RETURNS integer
 
 -- Attempt to complete an existing send operation.  Return-value indicates
 -- whether the send completed or not.
-CREATE OR REPLACE FUNCTION mlapi_finish_sendtuple() RETURNS integer
+CREATE OR REPLACE FUNCTION mlapi_finish_sendtuple(integer) RETURNS integer
     AS 'libcdbtest.so', 'MLAPI_FinishSendTuple'
     LANGUAGE C IMMUTABLE STRICT;
 
