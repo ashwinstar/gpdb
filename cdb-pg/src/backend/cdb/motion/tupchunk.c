@@ -37,22 +37,23 @@
 
 
 #define getUint16(pNetData)    ntohs( *( (uint16 *) (pNetData) ) )
+#define getInt16(pNetData)    ntohs( *( (int16 *) (pNetData) ) )
 
 
 /*-------------------------------*/
 /* Get/Set target segment index. */
 /*-------------------------------*/
 
-uint16 GetTargetSegIdx(uint8 *tc_data)
+int16 GetTargetSegIdx(uint8 *tc_data)
 {
     /* Target segment index = offset 0 */
     AssertArg(tc_data != NULL);
-    return getUint16(tc_data + 0);
+    return getInt16(tc_data + 0);
 }
 
-void SetTargetSegIdx(uint8 *tc_data, uint16 value)
+void SetTargetSegIdx(uint8 *tc_data, int16 value)
 {
-    uint16 netval;
+    int16 netval;
     
     AssertArg(tc_data != NULL);
     
@@ -87,16 +88,16 @@ void SetQueryGroupID(uint8 *tc_data, uint16 value)
 /* Get/Set source segment index. */
 /*-------------------------------*/
 
-uint16 GetSourceSegIdx(uint8 *tc_data)
+int16 GetSourceSegIdx(uint8 *tc_data)
 {
     /* Source segment index = offset 4 */
     AssertArg(tc_data != NULL);
-    return getUint16(tc_data + 4);
+    return getInt16(tc_data + 4);
 }
 
-void SetSourceSegIdx(uint8 *tc_data, uint16 value)
+void SetSourceSegIdx(uint8 *tc_data, int16 value)
 {
-    uint16 netval;
+    int16 netval;
     
     AssertArg(tc_data != NULL);
     

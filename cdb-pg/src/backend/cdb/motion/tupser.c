@@ -288,7 +288,7 @@ void initSerTupInfo(SerTupInfo *myState, TupleDesc tupdesc, int numAttrs)
 
 TupleChunkList CvtHeapTupToChunks(HeapTuple htup, TupleDesc tupdesc,
     int maxChunkDataSize, uint16 motNodeID, MotionNodeInfo *mn_info,
-    uint16 tgtSegIdx)
+    int16 tgtSegIdx)
 {
     StringInfoData serialTup;
     TupleChunkList tcList;

@@ -26,8 +26,9 @@ uint8 hdr[ TUPLE_CHUNK_HEADER_SIZE];
 
 void InitMotionLayerIPC( int segmentId )
 {
-	
-	Assert( segmentId > 0 && segmentId <= NUM_SEGS );
+    int offset;	
+
+	Assert( segmentId >= -1 && segmentId < NUM_SEGS );
 	segId = segmentId;
 	
 	
@@ -63,9 +64,20 @@ void InitMotionLayerIPC( int segmentId )
 	// set these up.  
 	// TODO: eventually there will be a shared memory registry that will help
 	//       us locate our queue.  for now, it is hardwired.
+
+    /* this is still a bit hackish... but isn't going to live long enough to do
+     * anything more elegant.
+     *
+     * so segmentId -1  ---->   offset 0 (inputQueue) offset 1 (outputQueue)
+     *    segmentId 0   ---->   offset 2 (inputQueue) offset 3 (outputQueue)
+     *    and so on...
+     */
+    
+    offset = segId + 2;
+
 	int cbuff_size = QSIZE + sizeof(circbuff);
-	inputQueue = (circbuff*)(shm_start + (2*(segId-1)*cbuff_size));
-	outputQueue = (circbuff*)(shm_start + ( ( (2*(segId-1)) +1) * cbuff_size ));
+	inputQueue = (circbuff*)(shm_start + (2*(offset-1)*cbuff_size));
+	outputQueue = (circbuff*)(shm_start + ( ( (2*(offset-1)) +1) * cbuff_size ));
 	
 }
 

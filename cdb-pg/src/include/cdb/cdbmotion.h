@@ -64,6 +64,7 @@ typedef struct MotionNodeInfo
  *
  *	heap_tuple:  Heap tuple to be sent.
  *
+ *            TODO:  change this below
  *	target_segment:  The target destination segment; -1 indicates broadcast.
  *
  *	flags:	indicates if the tuple should be delivered to the active
@@ -83,7 +84,7 @@ typedef struct MotionNodeInfo
 typedef struct TupleSendContext
 {
 	HeapTuple heap_tuple;
-	uint16 target_segment;
+	int16 target_segment;
 	unsigned char flags;
 
 	long total_tuple_bytes;
@@ -171,7 +172,7 @@ extern SendReturnCode SendTuple(uint16 motNodeID, TupleSendContext *tupCtxt);
  *				  were full and the operation should be tried
  *				  later.  (Real errors are signalled via ereport().)
  */
-extern SendReturnCode SendEndOfStream(uint16 motNodeID, uint16 target_segment);
+extern SendReturnCode SendEndOfStream(uint16 motNodeID, int16 target_segment);
 
 
 /* Receive a tuple from the corresponding motion-node on any query-executor
@@ -188,7 +189,7 @@ extern SendReturnCode SendEndOfStream(uint16 motNodeID, uint16 target_segment);
  */
 extern ReceiveReturnCode RecvTuple(uint16 motNodeID, HeapTuple *tup_i);
 extern ReceiveReturnCode RecvTupleFrom(uint16 motNodeID, HeapTuple *tup_i,
-                                       uint16 srcSegIdx);
+                                       int16 srcSegIdx);
 
 
 /* Proposed API call.  Would block until there was something to be received

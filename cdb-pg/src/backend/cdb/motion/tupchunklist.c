@@ -19,7 +19,7 @@
 
 TupleChunkListItem makeTupleChunkListItem(TupleChunkType chunkType,
 										  void *pChunkData, uint16 chunkDataSize,
-										  uint16 srcSegIdx, uint16 tgtSegIdx, uint16 mnid)
+										  int16 srcSegIdx, int16 tgtSegIdx, uint16 mnid)
 {
     int chunkSize;
     TupleChunkListItem tcItem;

@@ -113,7 +113,7 @@ typedef struct MotionNodeEntry
  */
 typedef struct ChunkSorterKey
 {
-    uint16 source_seg_idx;
+    int16 source_seg_idx;
     uint16 motion_node_id;
 } ChunkSorterKey;
 
@@ -221,7 +221,7 @@ static TupleChunkListItemData s_eos_chunk_data =
 
 static MotionNodeEntry *getMotionNodeEntry(uint16 motNodeID);
 static ChunkSorterEntry *getChunkSorterEntry(MotionNodeEntry *motNodeEntry,
-                                             uint16 srcSegIdx);
+                                             int16 srcSegIdx);
 static bool addChunkToSorter(TupleChunkListItem tcItem);
 
 static void processIncomingChunks(void);
@@ -270,7 +270,9 @@ SendReturnCode SendTuple(uint16 motNodeID, TupleSendContext *send_ctxt)
     /* The target segment-index should be an "active-only" segment-index.  We
      * add in the "include-backup-segdb" part ourselves.
      */
-    AssertArg(IsActiveOnlySegIdx(send_ctxt->target_segment));
+
+    //TODO HACK: currently disabled concept of "active"
+    //AssertArg(IsActiveOnlySegIdx(send_ctxt->target_segment));
 
     /* Pull up the motion node entry with the node's details.  This includes
      * details that affect sending, such as whether the motion node needs to
@@ -303,23 +305,23 @@ SendReturnCode SendTuple(uint16 motNodeID, TupleSendContext *send_ctxt)
          */
 
         mnInfo.query_group_id = s_motion_layer_state.query_group_id;
-		/* TODO HACK */
-        mnInfo.segment_id     = s_motion_layer_state.my_seg_idx + 2;
+        mnInfo.segment_id     = s_motion_layer_state.my_seg_idx;
         mnInfo.host_id        = s_motion_layer_state.host_id;
 
         /* Set up the target segment index based on the motion node info. */
 
         targetSegIdx = send_ctxt->target_segment;
-        if (pMNEntry->include_backup_segdb)
-            targetSegIdx = SetAllSegdbsFlag(targetSegIdx);
+	
+	//TODO: HACK  currently disabled active/backup segdbs
+//        if (pMNEntry->include_backup_segdb)
+ //           targetSegIdx = SetAllSegdbsFlag(targetSegIdx);
 
         /* Create and store the serialized form, and some stats about it. */
 
         oldCtxt = MemoryContextSwitchTo(ML_MEM_CTXT);
- 		/* TODO HACK */
        tcList = CvtHeapTupToChunks(send_ctxt->heap_tuple,
             pMNEntry->tuple_desc, Cdb_max_tuple_chunk_size, motNodeID,
-            &mnInfo, targetSegIdx + 2);
+            &mnInfo, targetSegIdx );
         MemoryContextSwitchTo(oldCtxt);
 
         send_ctxt->tuple_chunk_list = tcList;
@@ -414,7 +416,7 @@ SendReturnCode SendTuple(uint16 motNodeID, TupleSendContext *send_ctxt)
  * send would block.  When this value is returned, the caller must try again
  * until the SEND_COMPLETE value is returned.
  */
-SendReturnCode SendEndOfStream(uint16 motNodeID, uint16 target_segment)
+SendReturnCode SendEndOfStream(uint16 motNodeID, int16 target_segment)
 {
     MotionNodeEntry *pMNEntry;
     bool chunk_sent;
@@ -423,7 +425,13 @@ SendReturnCode SendEndOfStream(uint16 motNodeID, uint16 target_segment)
     /* The target segment-index should be an "active-only" segment-index.  We
      * add in the "include-backup-segdb" part ourselves.
      */
-    AssertArg(IsActiveOnlySegIdx(target_segment));
+
+    /* TODO: HACK below is commented out after the schema change.  since now
+     *            segidx is a signed thing.  we need to figure a new
+     *            representation for active/backup segidx.  but for now since
+     *		  we only support active ones... we are somewhat ok.
+     */
+    //AssertArg(IsActiveOnlySegIdx(target_segment));
 
     /* Pull up the motion node entry with the node's details.  This includes
      * details that affect sending, such as whether the motion node needs to
@@ -437,9 +445,11 @@ SendReturnCode SendEndOfStream(uint16 motNodeID, uint16 target_segment)
             motNodeID)));
     }
 
+    //TODO: Hack  currently disabled active/backup segdb distinction!
+
     /* Set up the target segment index based on the motion node info. */
-    if (pMNEntry->include_backup_segdb)
-        target_segment = SetAllSegdbsFlag(target_segment);
+//    if (pMNEntry->include_backup_segdb)
+//        target_segment = SetAllSegdbsFlag(target_segment);
 
     /* Use the statically allocated chunk that is intended for sending end-of-
      * stream messages so that we don't incur allocation and deallocation
@@ -541,7 +551,7 @@ ReceiveReturnCode RecvTuple(uint16 motNodeID, HeapTuple *tup_i)
 
 
 ReceiveReturnCode RecvTupleFrom(uint16 motNodeID, HeapTuple *tup_i,
-    uint16 srcSegIdx)
+    int16 srcSegIdx)
 {
     MotionNodeEntry *pMNEntry;
     ChunkSorterEntry *pCSEntry;
@@ -619,7 +629,8 @@ ReceiveReturnCode RecvTupleFrom(uint16 motNodeID, HeapTuple *tup_i,
 void processIncomingChunks(void)
 {
     TupleChunkListItem tcItem, tcNext;
-    uint16 motNodeID, srcSegIdx;
+    uint16 motNodeID;
+    int16 srcSegIdx;
     MemoryContext oldCtxt;
     int numChunks;          /* Keep track of processed chunk count. */
 
@@ -642,10 +653,7 @@ void processIncomingChunks(void)
 
         /* Pull out the motion node ID and the sender segment-database ID. */
         motNodeID = GetMotionNodeID(tcItem->chunk_data);
-        srcSegIdx = GetSourceSegIdx(tcItem->chunk_data) - 2;
-		/* TODO HACK */
-		SetSourceSegIdx(tcItem->chunk_data, srcSegIdx);
-		SetTargetSegIdx(tcItem->chunk_data, s_motion_layer_state.my_seg_idx);
+        srcSegIdx = GetSourceSegIdx(tcItem->chunk_data);
 
 #ifdef AMS_VERBOSE_LOGGING
         elog(DEBUG3, "Processing tuple-chunk received from source segment %d"
@@ -783,8 +791,7 @@ void InitMotionLayer(void)
 	getCdbIdentity( &(s_motion_layer_state.my_seg_idx),
                     &(s_motion_layer_state.is_primary) );
 
-	/* TODO Hack */
-	InitMotionLayerIPC( s_motion_layer_state.my_seg_idx + 2 );
+	InitMotionLayerIPC( s_motion_layer_state.my_seg_idx);
 
     /* All done!  Go back to caller memory-context. */
     MemoryContextSwitchTo(oldCtxt);
@@ -1045,7 +1052,7 @@ MotionNodeEntry *getMotionNodeEntry(uint16 motNodeID)
  * retrieved using getMotionNodeEntry() before this function is called.
  */
 ChunkSorterEntry *getChunkSorterEntry(MotionNodeEntry *motNodeEntry,
-    uint16 srcSegIdx)
+    int16 srcSegIdx)
 {
     uint16 motNodeID;
     MemoryContext oldCtxt;
@@ -1134,7 +1141,8 @@ bool addChunkToSorter(TupleChunkListItem tcItem)
 {
     MemoryContext oldCtxt;
     
-    uint16 srcSegIdx, motNodeID;
+    int16 srcSegIdx; 
+    uint16 motNodeID;
     ChunkSorterEntry *chunkSorterEntry;
     MotionNodeEntry *motNodeEntry;
 
@@ -1155,12 +1163,14 @@ bool addChunkToSorter(TupleChunkListItem tcItem)
             errmsg("Source segment index may not be broadcast"
             " segment index.")));
     }
-    if (!IsActiveOnlySegIdx(srcSegIdx))
-    {
-        ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
-            errmsg("Source segment index may not set"
-            " the \"all seg-dbs\" flag.")));
-    }
+
+    //TODO HACK: currently disabled concept of active segidx
+    //if (!IsActiveOnlySegIdx(srcSegIdx))
+    //{
+    //    ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+    //        errmsg("Source segment index may not set"
+    //        " the \"all seg-dbs\" flag.")));
+    //}
 
     /* Pull up the motion node entry for this item.  If one doesn't exist,
      * something is SERIOUSLY WRONG.
