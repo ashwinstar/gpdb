@@ -10,7 +10,7 @@
 
 PATH="$(dirname $0):$PATH"
 
-usage="[ PGROOT=<root_directory> ]  $(basename $0) \n        [ {--nsegs|-n} { #segs | 3 } ] \n        [ {--segname|-s} { segname | segDB} ] \n        [ {--prefix|-P} { dbprefix | cdb} ] \n        [ {--useIP | -i} ] [ {--withTPCH }] \n        [ {--verbose} ] [ {--help} ]"
+usage="[ PGROOT=<root_directory> ]  $(basename $0) \n        [ {--nsegs|-n} { #segs | 3 } ] \n        [ {--segname|-s} { segname | segDB} ] \n        [ {--prefix|-P} { dbprefix | cdb} ] \n        [ {--useIP | -i} ] [ {--withTPCH }  {--withTiny} ] \n        [ {--verbose} ] [ {--help} ]"
 
 echo -e "$(basename $0): Create and load a database into a CDB cluster."
 echo -e "Copyright (c) 2004-2005 Metapa, Inc. All Rights Reserved"
@@ -46,6 +46,10 @@ function display_help
     echo    "actually partitioned at this time. segDB1 will have NO data, and is the query "
     echo    "dispatcher. The other segDBs contain their slice of the data."
 
+    echo -e "\nAlternatively, you can seed the cluster with the Tiny schema by using the"
+    echo    "--withTiny option. Tiny schema is a very small set of tables and data that"
+    echo    "can be used for testing purposes."
+
     echo -e "\nSee README.txt for more details.\n"
 
     exit 1
@@ -80,12 +84,16 @@ segname=
 verbose=false
 ip=none
 withTPCH=false
+withTiny=false
 
 # These are the files needed for the TPCH schema
 tpchDDL=../../cdb-qa/refdbs_cdb2/refdb01/TPCH_DDL.sql
 tpchDistPolicy=../../cdb-qa/refdbs_cdb2/refdb01/TPCH_define_tables.sql
 tpchData=../../cdb-qa/refdbs_cdb2/refdb01/TPCH_load.ctl
 tpchConstraints=../../cdb-qa/refdbs_cdb2/refdb01/TPCH_KEYS.sql
+
+# These are the files needed for the Tiny schema
+# PETE - insert stuff here
 
 # Ok, loop through the command line args
 #
@@ -199,6 +207,10 @@ do
                 ;;
             --withTPCH)
                 withTPCH=true
+                shift 1
+                ;;
+            --withTiny)
+                withTiny=true
                 shift 1
                 ;;
             --*)
@@ -485,7 +497,7 @@ do
       then
 
         # Load the DDL
-	echo "Loading TPCH DDL"
+        echo "Loading TPCH DDL"
         psql -o /dev/null -q $finalSegName -f $tpchDDL
 
         echo "Setting distribution policy"
@@ -512,7 +524,21 @@ do
         psql -o /dev/null -q $finalSegName -f $tpchConstraints
 
       fi
-      
+
+      if [ "$withTiny" = "true" ]
+      then
+
+        echo "Loading Tiny DDL"
+
+        # PETE: Insert here
+        echo "T.B.D."
+
+        echo "Setting distribution policy"
+
+        echo "T.B.D."
+
+      fi
+
       # Increment our segment counter
       (( current_segment++ ))
 
