@@ -1328,6 +1328,17 @@ static struct config_int ConfigureNamesInt[] =
 		BLCKSZ, BLCKSZ, BLCKSZ, NULL, NULL
 	},
 
+	{
+		{"cdb_connections_per_thread", PGC_SUSET, UNGROUPED,
+			gettext_noop("Sets the number of client connections handled in each thread."),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+
+		},
+		&cdb_connections_per_thread,
+		256, 1, INT_MAX, assign_cdb_connections_per_thread, show_cdb_connections_per_thread
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL

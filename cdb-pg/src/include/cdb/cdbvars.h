@@ -119,4 +119,31 @@ extern char			  * cdb_role_string;	/* Use by guc.c as staging area for value. */
 extern const char	  * assign_cdb_role( const char *newval, bool doit, GucSource source );
 extern const char	  * show_cdb_role( void );
 
+/*
+ * Parameter cdb_connections_per_thread
+ * 
+ * The run-time parameter (GUC variables) cdb_connections_per_thread
+ * controls how many libpq connections to qExecs are processed in each
+ * thread.
+ * 
+ * Any number >= 1 is valid.
+ * 
+ * 1 means each connection has its own thread.
+ * 
+ * This can be set in the config file, or at runtime by a superuser using
+ * SQL: set cdb_connections_per_thread = x; 
+ * 
+ * The default is 256.  So, if there are fewer than 256 segdbs, all would be handled
+ * by the same thread.
+ * 
+ * Currently, this is used in two situation:
+ * 	1) In cdblink_setup, when the libpq connections are obtained by the dispatcher
+ * 		to the qExecs.
+ * 	2) In CdbDispatchCommand, when commands are sent from the dispatcher to the qExecs.
+ * 
+ */
+extern int				cdb_connections_per_thread;	/* GUC var - server operating mode.  */
+extern bool				assign_cdb_connections_per_thread( int newval, bool doit, GucSource source );
+extern const char	  * show_cdb_connections_per_thread( void );
+
 #endif	/* CDBVARS_H */
