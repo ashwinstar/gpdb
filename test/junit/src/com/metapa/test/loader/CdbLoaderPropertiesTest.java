@@ -5,11 +5,12 @@
  * All Rights Reserved.
  *
  */
-package com.metapa.cdb.loader;
+package com.metapa.test.loader;
 
 import junit.framework.TestCase;
 import com.metapa.commons.utils.PropertiesInitializerException;
 import com.metapa.commons.utils.Globals;
+import com.metapa.cdb.loader.CdbLoaderProperties;
 
 import java.net.URL;
 

@@ -5,13 +5,15 @@
  * All Rights Reserved.
  *
  */
-package com.metapa.cdb.loader;
+package com.metapa.test.loader;
 
 import junit.framework.*;
 
 import java.io.*;
 import java.util.Properties;
 import java.sql.SQLException;
+
+import com.metapa.cdb.loader.CdbLoader;
 
 /**
  * Unit tests for the CdbLoader class.

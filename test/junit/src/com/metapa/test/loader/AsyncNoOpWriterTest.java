@@ -5,7 +5,7 @@
  * All Rights Reserved.
  *
  */
-package com.metapa.cdb.loader;
+package com.metapa.test.loader;
 
 import junit.framework.TestCase;
 
@@ -13,6 +13,10 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.File;
 import java.io.IOException;
+
+import com.metapa.cdb.loader.CdbLoader;
+import com.metapa.cdb.loader.AsyncWriter;
+import com.metapa.cdb.loader.AsyncNoOpWriter;
 
 /**
  * Unit tests for the AsyncNoOpWriter class.

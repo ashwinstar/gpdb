@@ -5,12 +5,15 @@
  * All Rights Reserved.
  *
  */
-package com.metapa.cdb.loader;
+package com.metapa.test.loader;
 
 import junit.framework.*;
 
 import java.io.IOException;
 import java.util.ArrayList;
+
+import com.metapa.cdb.loader.PgUtils;
+import com.metapa.cdb.loader.ParsePgCopyException;
 
 /**
  * Tests the various outcomes of parsing valid and non valid load commands.
@@ -48,7 +51,7 @@ public class PgUtilsTest extends TestCase
         assertEquals("testing schema name ", "myschema", copy.getSchemaName());
         assertEquals("testing data file name ", "'mydata.dat'", copy.getFileName());
         assertEquals("testing delimiter representation ", "'|'", copy.getDelimiter());
-        assertEquals("testing null representation ", "'@'", copy.nullName);
+        assertEquals("testing null representation ", "'@'", copy.getNullName());
         assertEquals("testing escape representation ", "'*'", copy.getEscape());
     }
 
@@ -71,7 +74,7 @@ public class PgUtilsTest extends TestCase
         assertNull(copy.getSchemaName());
         assertEquals("testing data file name ", "'mydata.dat'", copy.getFileName());
         assertEquals("testing delimiter representation ", "'|'", copy.getDelimiter());
-        assertEquals("testing null representation ", "'@'", copy.nullName);
+        assertEquals("testing null representation ", "'@'", copy.getNullName());
         assertEquals("testing escape representation ", "'*'", copy.getEscape());
     }
 
@@ -91,7 +94,7 @@ public class PgUtilsTest extends TestCase
 
         copy = PgUtils.parsePgCopy(copyCmd);
 
-        assertEquals("testing if from stdin ", true, copy.useStdIn);
+        assertEquals("testing if from stdin ", true, copy.isUseStdIn());
         assertEquals("testing escape ", "'\\'", copy.getEscape());
         assertEquals("testing delimiter ", "'\t'", copy.getDelimiter());
         assertEquals("testing for empty column list", 0, copy.getColumnNames().size());
