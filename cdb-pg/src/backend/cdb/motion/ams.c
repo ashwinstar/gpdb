@@ -30,11 +30,11 @@
 /* the number of times we will try and lookup our ams-svc component
  * in ams_fabric_connect().  
  */
-#define MPI_LOOKUP_TRIES 10
+#define MPI_LOOKUP_TRIES 30
 
 /* The amount of time we sleep in microseconds in between lookup tries.
  */ 
-#define MPI_LOOKUP_SLEEP 2000
+#define MPI_LOOKUP_SLEEP 3000
 
 
 /*=========================================================================
