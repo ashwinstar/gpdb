@@ -1,0 +1,29 @@
+# The names in this list are symbols referred to
+# directly or indirectly by program modules in this
+# subsystem that should be resolved as dynamic
+# references to libpq.so-resident symbols.
+EncryptMD5
+SockAddr_cidr_mask
+freeaddrinfo_all
+getaddrinfo_all
+getnameinfo_all
+md5_hash
+pg_char_to_encname_struct
+pg_char_to_encoding
+pg_enc2name_tbl
+pg_encname_tbl
+pg_encname_tbl_sz
+pg_encoding_dsplen
+pg_encoding_max_length
+pg_encoding_mblen
+pg_encoding_to_char
+pg_mic_mblen
+pg_mule_mblen
+pg_utf_mblen
+pg_valid_client_encoding
+pg_valid_server_encoding
+pg_wchar_table
+pqsignal
+promote_v4_to_v6_addr
+promote_v4_to_v6_mask
+rangeSockAddr
