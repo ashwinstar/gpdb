@@ -454,7 +454,7 @@ _readOpExpr(void)
 	 * operators' functions. (We don't currently support an ALTER OPERATOR
 	 * command, but might someday.)
 	 */
-	local_node->opfuncid = InvalidOid;
+//	local_node->opfuncid = InvalidOid;
 
 	READ_OID_FIELD(opresulttype);
 	READ_BOOL_FIELD(opretset);
@@ -562,8 +562,28 @@ _readSubLink(void)
 }
 
 /*
- * _readSubPlan is not needed since it doesn't appear in stored rules.
+ * _readSubPlan 
  */
+static SubPlan *
+_readSubPlan(void)
+{
+	READ_LOCALS(SubPlan);
+
+	READ_ENUM_FIELD(subLinkType, SubLinkType);
+	READ_BOOL_FIELD(useOr);
+	READ_NODE_FIELD(exprs);
+	READ_NODE_FIELD(paramIds);
+	READ_NODE_FIELD(plan);
+	READ_INT_FIELD(plan_id);
+	READ_NODE_FIELD(rtable);
+	READ_BOOL_FIELD(useHashTable);
+	READ_BOOL_FIELD(unknownEqFalse);
+	READ_NODE_FIELD(setParam);
+	READ_NODE_FIELD(parParam);
+	READ_NODE_FIELD(args);
+
+	READ_DONE();
+}
 
 /*
  * _readFieldSelect
@@ -1381,12 +1401,30 @@ Bitmapset  *
 bitmapsetRead(void)
 {
 	READ_TEMP_LOCALS();
+
+	Bitmapset *bms = NULL;
 	
 	token = pg_strtok(&length);	// read (
 	token = pg_strtok(&length);	// read b
-	token = pg_strtok(&length);	// read )
 
-	return NULL;
+	/* List of integers */
+	for (;;)
+	{
+		int			val;
+		char	   *endptr;
+
+		token = pg_strtok(&length);
+		if (token == NULL)
+			elog(ERROR, "unterminated bitmapset structure");
+		if (token[0] == ')')
+			break;
+		val = (int) strtol(token, &endptr, 10);
+		if (endptr != token + length)
+			elog(ERROR, "unrecognized integer: \"%.*s\"", length, token);
+		bms = bms_add_member(bms, val);
+	}
+
+	return bms;
 }
 
 /*
@@ -1482,6 +1520,7 @@ static ParseNodeInfo infoAr[] =
 	{"SORT", (ReadFn)_readSort},
 	{"SORTCLAUSE", (ReadFn)_readSortClause},
 	{"SUBLINK", (ReadFn)_readSubLink},
+	{"SUBPLAN", (ReadFn)_readSubPlan},
 	{"SUBQUERYSCAN", (ReadFn)_readSubqueryScan},
 	{"TARGETENTRY", (ReadFn)_readTargetEntry},
 	{"TIDSCAN", (ReadFn)_readTidScan},
