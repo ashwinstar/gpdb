@@ -22,9 +22,16 @@
 
 /*
  * Initialize a CdbHash for this session.
+ *
+ * CdbHash is initialized an maintains the following information about the hash:
+ * 1 - a the current hash value.
+ * 2 - number of segments in CDB.
+ * 3 - hashingalgorithm used.
+ * 4 - reduction method.
  */
 CdbHash *makeCdbHash(int numsegs)
 {	
+	
 	ereport(NOTICE, (
 		errmsg("CDBHASH - Creating a CdbHash with %d buckets, using FNV hash "
 			   "and modulus reduction" /* algorithm names hard coded for now... */
