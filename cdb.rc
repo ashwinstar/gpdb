@@ -1,0 +1,19 @@
+#
+# This file contains the set of environment variables that are needed to
+# execute cdb correctly. To include this in your path just source the file.
+# E.g. source ./cdb.rc
+#
+# $Id$
+#
+
+# The location of the cdb installation
+CDB_HOME=$HOME/cdb
+
+# The base path for where cdb-pg has been compiled to, or installed
+CDB_PATH=$CDB_HOME/cdb-pgsql
+PATH=./:$CDB_PATH/bin:$PATH
+
+# Update our library path
+LD_LIBRARY_PATH=$CDB_PATH/server/lib
+
+export CDB_HOME CDB_PATH PATH LD_LIBRARY_PATH
