@@ -15,6 +15,11 @@
 #include "cdb/tupchunk.h"
 #include "cdb/tupchunklist.h"
 
+
+/* Define this if you want tons of logs! */
+#undef AMS_VERBOSE_LOGGING
+
+
 typedef enum SendReturnCode
 {
 	SEND_COMPLETE,

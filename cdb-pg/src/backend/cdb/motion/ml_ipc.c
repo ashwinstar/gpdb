@@ -136,7 +136,9 @@ bool SendTupleChunkToAMS(TupleChunkListItem tcItem)
 		if( flag )
 		{
 			//we've finished this one.  don't send it again.
+#ifdef AMS_VERBOSE_LOGGING
 			elog(DEBUG2, "Send tuple-chunk completed.");
+#endif
 			sendInProgress = false;
 			return true;
 		}
@@ -157,8 +159,9 @@ bool SendTupleChunkToAMS(TupleChunkListItem tcItem)
 		checkMpiRc( rc, "Error during MPI_Isend");
 		sendInProgress = true;
 
+#ifdef AMS_VERBOSE_LOGGING
 		elog(DEBUG2, "Started sending tuple-chunk.");
-
+#endif
 
 		/* not sure if this helps.  but it would be nice to catch sends that go out 
      	 * immediately.  Otherwise every TC that gets sent will require at least
@@ -169,7 +172,9 @@ bool SendTupleChunkToAMS(TupleChunkListItem tcItem)
 
 		if (flag)
 		{
+#ifdef AMS_VERBOSE_LOGGING
 			elog(DEBUG2, "Send tuple-chunk completed (quick-complete).");
+#endif
 			sendInProgress = false;
 		}
 
@@ -278,7 +283,9 @@ static TupleChunkListItem getTupleChunk( )
     memcpy( tcItem->chunk_data, inBuff, tcSize );
 
 	int16 srcSegId = GetSourceSegIdx( tcItem->chunk_data );
+#ifdef AMS_VERBOSE_LOGGING
 	elog( DEBUG2, "Received TupleChunk from  segId: %d", srcSegId );
+#endif
 
 	//kick off the next recv
 	rc = MPI_Irecv( inBuff, MAX_TC_DATA_SIZE, MPI_BYTE, MPI_ANY_SOURCE,

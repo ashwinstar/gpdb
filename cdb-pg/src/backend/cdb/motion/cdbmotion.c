@@ -29,10 +29,6 @@
 #include "utils/tuplestore.h"
 
 
-/* Define this if you want tons of logs! */
-/* #define AMS_VERBOSE_LOGGING */
-
-
 /* I'm not sure that the cache mem-ctxt is where internal stuff should go! */
 #define ML_MEM_CTXT     CacheMemoryContext
 
