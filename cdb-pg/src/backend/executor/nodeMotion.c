@@ -1110,16 +1110,16 @@ Motion *make_motion(Plan *lefttree, MotionType motionType,
 			numOutputSegs, outputSegIdx,
 			numSortCols, sortColIdx, sortOperators, 
 			numInputSegs, inputSegIdx);
-			
-	Motion	   *node = makeNode(Motion);
-	Plan	   *plan = &node->plan;
 
+	Motion	*node = makeNode(Motion);
+	Plan	*plan = &node->plan;
+			
 	plan->startup_cost = lefttree->startup_cost;
 	plan->total_cost = lefttree->total_cost;
 	plan->plan_rows = lefttree->plan_rows;
 	plan->plan_width = lefttree->plan_width;
 	plan->targetlist = copyObject(lefttree->targetlist);
-	/* plan->targetlist = makeMotionTargetList(lefttree); */
+//	plan->targetlist = makeMotionTargetList(lefttree); 
 	plan->qual = NIL;
 	plan->lefttree = lefttree;
 	plan->righttree = NULL;
@@ -1140,7 +1140,6 @@ Motion *make_motion(Plan *lefttree, MotionType motionType,
 
 	node->hashExpr = hashExpr;
 	node->hashOp = hashOp;
-
 	node->numOutputSegs = numOutputSegs;
 	node->outputSegIdx = outputSegIdx;
 
@@ -1494,17 +1493,14 @@ List *getOpListFromCondList(List *clist)
 /* ----------------------------------------------------------------
  * getExprListFromTargetList
  *
- * Extracts the indicated entries from the target list, copies each,
+ * Creates a VAR that references the indicated entries from the target list, 
+ * sets the restype and restypmod fields from the target list info,
  * and puts them into a list.
  *
- * The AttrNumber indexes actually refer to the resno value in the 
- * Resdom entries in the target list.  These are often just the
- * ordinal positions (origin 1) of the entries, but for non-query
- * DML it may not be.
+ * The AttrNumber indexes actually refer to the 1 based index into the
+ * target list.
  * 
- * The entries returned are copies of the expressions from the
- * target list in which any Var references to INNER have been
- * replaced by references in OUTER.
+ * The entries have the varno field replaced by references in OUTER.
  * ----------------------------------------------------------------
  */
 List *getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
@@ -1515,16 +1511,19 @@ List *getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
 	
 	for (i=0; i<numCols; i++ )
 	{
-		// Find expr in TargetList
+		Var *new_var;
+
+		/* Find expr in TargetList */
 		AttrNumber n = colIdx[i];
 
 		TargetEntry* target = get_tle_by_resno( tlist, n );
 		if ( target == NULL )
 			elog( ERROR, "no tlist entry for key %d", n );
+
+		/* Make a Var that references the target list entry at this offset, using OUTER as the varno */
+		new_var = makeVar(OUTER, n, target->resdom->restype, target->resdom->restypmod, 0);
 			
-		expr = copyObject(target->expr);
-		motion_expr_walker((Node*)expr, NULL);
-		elist = lappend(elist, expr);
+		elist = lappend(elist, new_var);
 	}
 	
 	return elist;
