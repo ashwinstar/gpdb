@@ -1128,6 +1128,8 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 	CdbAggStrategy *strategy;
 	Agg *agg;
 	Plan *child;
+	int i;
+	AttrNumber *sortattrs = NULL;
 	
 	/* Argument is a prescaned plan. */
 	child = outerPlan((Node*)plan);
@@ -1136,6 +1138,41 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 	
 	/* Now get the stategy list. */
 	strategies = getAggStrategyList(agg);
+	
+	/* An AGG_SORTED node has special requirements. */
+	if ( agg->aggstrategy == AGG_SORTED )
+	{
+		/* Get the attribute numbers in the target list of the given Agg node 
+		 * of the grouping attributes.  These correspond to the grouping
+		 * attributes of the Agg node's child, but differ in position.
+		 *
+		 * Note that, hereafter, (sortattrs != NULL) flags an AGG_SORTED. 
+		 */
+		TargetEntry *tle;
+		AttrNumber attr, tidx = 0;
+		sortattrs = (AttrNumber*)palloc0(agg->numCols*sizeof(AttrNumber));
+		foreach( cell, plan->targetlist)
+		{
+			tidx++;
+			tle = (TargetEntry*)lfirst(cell);
+			if ( IsA(tle->expr, Var) )
+			{
+				attr = ((Var*)tle->expr)->varattno;
+				for ( i = 0;  i < agg->numCols; i++ )
+				{
+					if ( attr == agg->grpColIdx[i] )
+					{
+						Assert( sortattrs[i]==0 );
+						sortattrs[i] = tidx;
+					}
+				}
+			}
+		}
+		for ( i = 0; i < agg->numCols; i++ )
+		{
+			Assert( sortattrs[i] != 0 );
+		}
+	}
 
 	/* Use the first strategy we know how to implement. */
 	strategy = NULL;
@@ -1237,6 +1274,18 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 	 */
 	/* TODO We could do better, e.g., track partition expressions. */
 	plan->flow = makeFlow(strategy->resultflowtype);
+	
+	if ( sortattrs != NULL )
+	{
+		plan->flow->numSortCols = agg->numCols;
+		plan->flow->sortColIdx = sortattrs;
+		sortattrs = NULL;
+		plan->flow->sortOperators = palloc(agg->numCols * sizeof(Oid));
+		for ( i = 0; i <  agg->numCols; i++)
+		{
+			plan->flow->sortOperators[i] = child->flow->sortOperators[i];
+		}
+	}
 	noteFlow(plan->flow, context);
 	return false;	 
 }
