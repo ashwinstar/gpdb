@@ -10,7 +10,7 @@
 
 PATH="$(dirname $0):$PATH"
 
-usage="[ PGROOT=<root_directory> ]  $(basename $0) \n        [ {--nsegs|-n} { #segs | 1 } ] \n        [ {--segname|-s} { segname | segDB} ] \n        [ {--prefix|-P} { dbprefix | cdb} ] \n        [ {--useIP | -i} ] [ {--withTPCH }  {--withTiny} ] \n        [ {--verbose} ] [ {--help} ]"
+usage="[ PGROOT=<root_directory> ]  $(basename $0) \n        [ {--nsegs|-n} { #segs | 1 } ] \n        [ {--segname|-s} { segname | segDB} ] \n        [ {--prefix|-P} { dbprefix | cdb} ] \n        [ {--useIP | -i} ] [ {--withTPCH }  {--withTiny}  {--withQadb} ] \n        [ {--verbose} ] [ {--help} ]"
 
 echo -e "$(basename $0): Create and load a database into a CDB cluster."
 echo -e "Copyright (c) 2004-2005 Metapa, Inc. All Rights Reserved"
@@ -50,6 +50,10 @@ function display_help
     echo    "--withTiny option. Tiny schema is a very small set of tables and data that"
     echo    "can be used for testing purposes."
 
+    echo -e "\nAlternatively, you can seed the cluster with the Qadb schema by using the"
+    echo    "--withQadb option. The Qadb schema is a set of tables used by qa for "
+    echo    "regression testing."
+
     echo -e "\nSee README.txt for more details.\n"
 
     exit 1
@@ -85,6 +89,7 @@ verbose=false
 ip=none
 withTPCH=false
 withTiny=false
+withQadb=false
 entrySegName=
 
 # These are the files needed for the TPCH schema
@@ -94,9 +99,14 @@ tpchData=../../cdb-qa/refdbs_cdb2/refdb01/TPCH_load.ctl
 tpchConstraints=../../cdb-qa/refdbs_cdb2/refdb01/TPCH_KEYS.sql
 
 # These are the files needed for the Tiny schema
-cvpDDL=tiny/cvpschema.sql
-cvpDistPolicy=tiny/cvphead.sql
-cvpData=tiny/cvpdata.sql
+cvpDDL=./tiny/cvpschema.sql
+cvpDistPolicy=./tiny/cvphead.sql
+cvpData=./tiny/cvpdata.sql
+
+# These are the files needed for the qadb schema
+qadbDDL=./qadb/qadbschema.sql
+qadbDistPolicy=./qadb/qadbhead.sql
+qadbData=./qadb/qadbdata.sql
 
 # Ok, loop through the command line args
 #
@@ -216,6 +226,10 @@ do
                 withTiny=true
                 shift 1
                 ;;
+	    --withQadb)
+                withQadb=true
+                shift 1
+                ;;
             --*)
                 echo "$(basename $0): Unrecognized option \"$1\"" >&2
                 echo -e "\nSyntax: $usage"
@@ -306,6 +320,22 @@ then
     echo -e "This is where we expect to find the Tiny schema. You probably "
     echo -e "need to run this script from the cdb/scripts dir, or edit the "
     echo -e "script to define the absolute path to the tiny schema."
+    exit -1
+  fi
+fi
+
+# Did they want the Qadb schema?
+if [ "$withQadb" = "true" ]
+then
+  # Check for the existence of the files
+  dirname=$(dirname $qadbDDL)
+
+  if [ ! -d $dirname ]
+  then
+    echo -e "\nERROR: Unable to access \"$dirname\"."
+    echo -e "This is where we expect to find the Qadb schema. You probably "
+    echo -e "need to run this script from the cdb/scripts dir, or edit the "
+    echo -e "script to define the absolute path to the Qadb schema."
     exit -1
   fi
 fi
@@ -494,6 +524,14 @@ do
         echo "Loading Tiny DDL"
         psql -o /dev/null -q $finalSegName -f $cvpDDL > /dev/null 2>&1
       fi
+
+      if [ "$withQadb" = "true" ]
+      then
+
+        # Load the DDL
+        echo "Loading Qadb DDL"
+        psql -o /dev/null -q $finalSegName -f $qadbDDL > /dev/null 2>&1
+      fi
     done
 
     # Increment our segment number
@@ -505,8 +543,8 @@ current_segment=0
 
 #
 # Next loop. Here we record the identity of the current segment in the local
-# cdb.cdb table. Optionally, we also load and prune either the TPCH or Tiny
-# schema into the segment databases
+# cdb.cdb table. Optionally, we also load and prune either the TPCH, Tiny,
+# or Qadb schema into the segment databases
 #
 # NOTE: Currently we have to load the actual schema and data PRIOR to filling
 # in the admin schema because of the oid inconsistency problem.
@@ -632,11 +670,8 @@ do
           echo "Finished Pruning data from Tiny tables"
         fi
 
-        echo -e "\nPerformaing vacuum on all tables"
-        psql $finalSegName -c "vacuum analyze customer"
-        psql $finalSegName -c "vacuum analyze vendor"
-        psql $finalSegName -c "vacuum analyze product"
-        psql $finalSegName -c "vacuum analyze sale"
+        echo -e "\nPerforming vacuum analyze on db"
+        psql $finalSegName -c "vacuum analyze"
 
         # If this is the entry db, blow the data away
         if [ "$finalSegName" == "$entrySegName" ]
@@ -646,6 +681,111 @@ do
           psql $finalSegName -c "delete from vendor"
           psql $finalSegName -c "delete from product"
           psql $finalSegName -c "delete from sale"
+        fi
+      fi
+
+      if [ "$withQadb" = "true" ]
+      then
+
+        # Load the DDL
+        # Todd, 20050228: Commented out until we solve OID problem
+        #echo "Loading Qadb DDL"
+        #psql -o /dev/null -q $finalSegName -f $qadbDDL > /dev/null 2>&1
+
+        # Is this the entry database?
+        if [ "$entrySegName" == "$finalSegName" ]
+        then
+          echo "Setting Qadb distribution policy"
+          psql -o /dev/null -q $finalSegName -f $qadbDistPolicy
+        fi
+
+        # Load the data
+        echo "Loading data into Qadb tables"
+        psql -o /dev/null -q $finalSegName -f $qadbData
+
+        # If this is not the entry db, prune the data
+        if [ "$finalSegName" != "$entrySegName" ]
+        then
+          echo "Pruning data from Qadb tables"
+
+          if [ "$verbose" == "true" ]
+          then
+            echo -e "Segname = $finalSegName, total segs = $total_content_segs, content id = $contentid\n";
+          fi
+
+          psql $finalSegName -c "delete from customer where cn % $total_content_segs <> $contentid"
+          psql $finalSegName -c "delete from vendor where vn % $total_content_segs <> $contentid"
+          psql $finalSegName -c "delete from product where pn % $total_content_segs <> $contentid"
+          psql $finalSegName -c "delete from sale where cn % $total_content_segs <> $contentid"
+	  psql $finalSegName -c "delete from util where xn % $total_content_segs <> $contentid"
+	  psql $finalSegName -c "delete from leagues where length(league_id) % $total_content_segs <> $contentid"
+	  psql $finalSegName -c "delete from divisions where length(division_id) % $total_content_segs <> $contentid"
+	  psql $finalSegName -c "delete from teams where length(team_id) % $total_content_segs <> $contentid"
+	  psql $finalSegName -c "delete from positions where position_id % $total_content_segs <> $contentid"
+	  psql $finalSegName -c "delete from races where race_id % $total_content_segs <> $contentid"
+	  psql $finalSegName -c "delete from drugs where drug_of_choice_id % $total_content_segs <> $contentid"
+	  psql $finalSegName -c "delete from skills where best_skill_id % $total_content_segs <> $contentid"
+	  psql $finalSegName -c "delete from pregame_meals where pregame_meal_id % $total_content_segs <> $contentid"
+	  psql $finalSegName -c "delete from superstitions where superstition_id % $total_content_segs <> $contentid"
+	  psql $finalSegName -c "delete from mlb_player_fact where position_id % $total_content_segs <> $contentid"
+	  psql $finalSegName -c "delete from max_cols where col_1 % $total_content_segs <> $contentid"
+	  psql $finalSegName -c "delete from dtype_text where length(text_col) % $total_content_segs <> $contentid"
+	  psql $finalSegName -c "delete from dtype_varchar where length(varchar_col) % $total_content_segs <> $contentid"
+	  psql $finalSegName -c "delete from dtype_char where length(char_col) % $total_content_segs <> $contentid"
+	  psql $finalSegName -c "delete from dtype_int where int_col % $total_content_segs <> $contentid"
+	  psql $finalSegName -c "delete from dtype_int2 where int2_col % $total_content_segs <> $contentid"
+	  psql $finalSegName -c "delete from dtype_int8 where int8_col % $total_content_segs <> $contentid"
+	  psql $finalSegName -c "delete from dtype_numeric where numeric_col % $total_content_segs <> $contentid"
+	  psql $finalSegName -c "delete from dtype_float where cast(float_col as int) % $total_content_segs <> $contentid"
+	  psql $finalSegName -c "delete from dtype_float4 where cast(float4_col as int) % $total_content_segs <> $contentid"
+	  psql $finalSegName -c "delete from dtype_date where cast(extract(day from date_col) as int) % $total_content_segs <> $contentid"
+	  psql $finalSegName -c "delete from dtype_time where cast(extract(hour from time_col) as int) % $total_content_segs <> $contentid"
+	  psql $finalSegName -c "delete from dtype_timestamp where cast(extract(day from timestamp_col) as int) % $total_content_segs <> $contentid"
+	  psql $finalSegName -c "delete from dtype_interval where cast(extract(day from interval_col) as int) % $total_content_segs <> $contentid"
+	  psql $finalSegName -c "delete from dtype_boolean where (case when boolean_col ='t' then 1 else 0 end)  % $total_content_segs <> $contentid"
+          psql $finalSegName -c "delete from all_dtypes where int_col % $total_content_segs <> $contentid"	  
+	    
+          echo "Finished Pruning data from Qadb tables"
+        fi
+
+        echo -e "\nPerforming vacuum analyze on db"
+        psql $finalSegName -c "vacuum analyze"
+
+        # If this is the entry db, blow the data away
+        if [ "$finalSegName" == "$entrySegName" ]
+        then
+          echo "Deleting data from entry database"
+          psql $finalSegName -c "delete from customer"
+          psql $finalSegName -c "delete from vendor"
+          psql $finalSegName -c "delete from product"
+          psql $finalSegName -c "delete from sale"
+          psql $finalSegName -c "delete from util"
+          psql $finalSegName -c "delete from leagues"
+          psql $finalSegName -c "delete from divisions"
+          psql $finalSegName -c "delete from teams"
+          psql $finalSegName -c "delete from positions"
+          psql $finalSegName -c "delete from races"
+          psql $finalSegName -c "delete from drugs"
+          psql $finalSegName -c "delete from skills"
+          psql $finalSegName -c "delete from pregame_meals"
+          psql $finalSegName -c "delete from superstitions"
+          psql $finalSegName -c "delete from mlb_player_fact"
+          psql $finalSegName -c "delete from max_cols"
+          psql $finalSegName -c "delete from dtype_text"
+          psql $finalSegName -c "delete from dtype_varchar"
+          psql $finalSegName -c "delete from dtype_char"
+          psql $finalSegName -c "delete from dtype_int"
+          psql $finalSegName -c "delete from dtype_int2"
+          psql $finalSegName -c "delete from dtype_int8"
+          psql $finalSegName -c "delete from dtype_numeric"
+          psql $finalSegName -c "delete from dtype_float"
+          psql $finalSegName -c "delete from dtype_float4"
+          psql $finalSegName -c "delete from dtype_date"
+          psql $finalSegName -c "delete from dtype_time"
+          psql $finalSegName -c "delete from dtype_timestamp"
+          psql $finalSegName -c "delete from dtype_interval"
+          psql $finalSegName -c "delete from dtype_boolean"
+          psql $finalSegName -c "delete from all_dtypes"
         fi
       fi
 
