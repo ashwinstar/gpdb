@@ -29,7 +29,8 @@
     <!-- Perform the normal INIT step targets.                          -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <target name="-init"
-            depends="-setTstamp,-setPlatform,-setTools,-setJava,-checkBash,-setRelease">
+            depends="-setTstamp,-setPlatform,-checkJavaVersion,-setTools,
+                     -setJava,-setJavaLibraries,-checkBash,-setRelease">
 
         <!-- Remember if user set installRoot -->
         <condition property="installRootDefaulted">
@@ -125,7 +126,9 @@
     <!-- Ensure we have a CDB_TOOLS reference & calculate toolsLib      -->
     <!-- directory from it.                                             -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
-    <target name="-setTools" depends="-prepareCygwin" unless="toolsSet">
+    <target name="-setTools" 
+            depends="-prepareCygwin,-checkBeanshell" 
+            unless="toolsSet">
 
         <script language="beanshell"><![CDATA[
             /**
@@ -208,8 +211,7 @@
                 self.log("Multiple ANT home candidates found in CDB_TOOLS directory; using first one found",
                          Project.MSG_WARN);
             project.setUserProperty("toolsLib", (new File(dirs[0], "lib")).getCanonicalPath());
-            ]]>
-        </script>
+        ]]></script>
         
         <property name="toolsAnt" location="${toolsLib}/../bin/ant"/>
         <property name="toolsSet" value="true"/>
@@ -245,6 +247,115 @@
         </exec>
     </target>
 
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Prepare for Java cross-compiling.                              -->
+    <!--                                                                -->
+    <!-- Java cross-compiling requires access to boot class libraries   -->
+    <!-- and the extension class libraries of the target release.       -->
+    <!-- For the CDB project, copies of these libraries are contained   -->
+    <!-- in the cdb-tools project.                                      -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="-setJavaLibraries"
+            depends="-setTools"
+            unless="javaLibrariesSet">
+
+        <!-- -->
+        <patternset id="jarfiles">
+          <include name="*.jar"/>
+          <include name="*.zip"/>
+        </patternset>
+
+        <!-- Define bootclasspath and extdirs for JDK 1.1.x -->
+        <path id="jdk11x.bootclasspath">
+          <fileset dir="${tools}/java/jdk1.1.x/lib">
+            <patternset refid="jarfiles"/>
+          </fileset>
+        </path>
+        <property name="jdk11x.extdirs" value=""/>
+
+        <!-- Define bootclasspath and extdirs for JDK 1.2.x -->
+        <path id="jdk12x.bootclasspath">
+          <fileset dir="${tools}/java/jdk1.2.x/jre/lib">
+            <patternset refid="jarfiles"/>
+          </fileset>
+        </path>
+        <path id="jdk12x.extdirs.path">
+          <dirset dir="${tools}/java/jdk1.2.x/jre/lib">
+            <include name="ext"/> 
+          </dirset>
+        </path>
+        <property name="jdk12x.extdirs" refid="jdk12x.extdirs.path"/>
+
+        <!-- Define bootclasspath and extdirs for JDK 1.3.x -->
+        <path id="jdk13x.bootclasspath">
+          <fileset dir="${tools}/java/jdk1.3.x/jre/lib">
+            <patternset refid="jarfiles"/>
+          </fileset>
+        </path>
+        <path id="jdk13x.extdirs.path">
+          <dirset dir="${tools}/java/jdk1.3.x/jre/lib">
+            <include name="ext"/> 
+          </dirset>
+        </path>
+        <property name="jdk13x.extdirs" refid="jdk13x.extdirs.path"/>
+
+        <!-- Define bootclasspath and extdirs for JDK 1.4.x -->
+        <path id="jdk14x.bootclasspath">
+          <fileset dir="${tools}/java/j2sdk1.4.x/jre/lib">
+            <patternset refid="jarfiles"/>
+          </fileset>
+        </path>
+        <path id="jdk14x.extdirs.path">
+          <dirset dir="${tools}/java/j2sdk1.4.x/jre/lib">
+            <include name="ext"/> 
+          </dirset>
+        </path>
+        <property name="jdk14x.extdirs" refid="jdk14x.extdirs.path"/>
+
+        <property name="javaLibrariesSet" value="true"/>
+        
+    </target>
+
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Check the version of Java under which we're running.           -->
+    <!--                                                                -->
+    <!-- The beanshell scripts used in this build process have JRE      -->
+    <!-- dependencies.  Check which version of Java we're running and   -->
+    <!-- Enforce the minimum JRE version.                               -->
+    <!--                                                                -->
+    <!-- The properties set herein do not indicate a specific version   -->
+    <!-- but the presence of "at least" that version (usually what is   -->
+    <!-- needed for a build process).                                   -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="-checkJavaVersion"
+            unless="javaVersionChecked">
+
+        <!-- 
+            Determining the JRE version is done by checking for the
+            presence of classes added by that version.  If you add a
+            dependency for a specific class, it would be appropriate
+            to add a check for that here.
+          -->
+          
+        <!-- We're running ... it's at least 1.0 -->
+        <property name="isJRE1.0" value="true"/>
+
+        <available property="isJRE1.1" classname="java.lang.Void"/>
+        <available property="isJRE1.2" classname="java.lang.ThreadLocal"/>
+        <available property="isJRE1.3" classname="java.lang.StrictMath"/>
+        <available property="isJRE1.4" classname="java.lang.StackTraceElement"/>
+        <available property="isJRE1.5" classname="java.lang.Enum"/>
+
+        <fail unless="isJRE1.4">
+            ANT must be run under Version 1.4 or better of the Java Runtime Environment
+            for this build process to run successfully!
+        </fail>
+
+        <property name="javaVersionChecked" value="true"/>
+        
+    </target>
 
 
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
@@ -292,6 +403,9 @@
             depends="-jniMacOsX,-jniCygwin,-jniLinux,-jniSolaris"
             unless="jniHeadersFound">
 
+        <!-- It not already set by one of the dependent targets -->
+        <property name="jniLibExt" value=".so"/>
+
         <available property="jniHeadersFound" file="jni.h">
             <filepath>
                 <pathelement location="${baseInclude}"/>
@@ -305,6 +419,7 @@
     <target name="-jniMacOsX" if="osIsMacosx" unless="jniIncludesSet">
         <property name="baseInclude" value="${java.home}/include"/>
         <property name="platformInclude" value="${baseInclude}"/>
+        <property name="jniLibExt" value=".jnilib"/>
         <property name="jniIncludesSet" value="true"/>
     </target>
 
@@ -533,10 +648,10 @@
     <!-- This routine sets "releaseTag" and "releaseDir" properties.    -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <target name="-setRelease" 
-            depends="-setTstamp"
+            depends="-setTstamp,-checkBeanshell"
             unless="releaseTag">
 
-        <script language="beanshell"> <![CDATA[
+        <script language="beanshell"><![CDATA[
             /**
              * This beanshell script is used in ANT build files to extract
              * the release tag from the ANT property "stickyTag" and set the
@@ -552,57 +667,73 @@
              * @version $Id$
              */
 
-                String nameHead = "$Name" + ": ";
-                String nameTail = " $";
-                int tagLength = nameHead.length() + nameTail.length();
+            String nameHead = "$Name" + ": ";
+            String nameTail = " $";
+            int tagLength = nameHead.length() + nameTail.length();
 
-                /*
-                 * Fetch the value of the CVS sticky tag; this is in the form
-                 * of "$NAME<colon> <release_tag> $" where <release_tag> may be
-                 * empty.
-                 */
-                String stickyTag = project.getProperty("stickyTag");
+            /*
+             * Fetch the value of the CVS sticky tag; this is in the form
+             * of "$NAME<colon> <release_tag> $" where <release_tag> may be
+             * empty.
+             */
+            String stickyTag = project.getProperty("stickyTag");
 
-                /*
-                 * Extract the release tag from the sticky tag.  If there
-                 * is no sticky tag value, construct one from the userid,
-                 * date stamp, and time stamp.
-                 */
-                String releaseTag;
-                String releaseDir;
-                String releaseNumber;
-                if ( stickyTag.length() > tagLength
-                         && stickyTag.startsWith(nameHead)
-                         && stickyTag.endsWith(nameTail) )
-                {
-                    releaseTag = stickyTag.substring(nameHead.length(),
-                                                     stickyTag.length() - nameTail.length());
-                    String release = releaseTag.substring(releaseTag.indexOf('-') + 1);
-                    releaseDir = release;
-                    int i = release.indexOf('-');
-                    if ( i > 0 ) 
-                        release = release.substring(1, i - 1) + "_" + release.substring(i + 1);
-                    else
-                        release = release + "_0";
-                    releaseNumber = release.replace('_', '.');
-                }
+            /*
+             * Extract the release tag from the sticky tag.  If there
+             * is no sticky tag value, construct one from the userid,
+             * date stamp, and time stamp.
+             */
+            String releaseTag;
+            String releaseDir;
+            String releaseNumber;
+            if ( stickyTag.length() > tagLength
+                     && stickyTag.startsWith(nameHead)
+                     && stickyTag.endsWith(nameTail) )
+            {
+                releaseTag = stickyTag.substring(nameHead.length(),
+                                                 stickyTag.length() - nameTail.length());
+                String release = releaseTag.substring(releaseTag.indexOf('-') + 1);
+                releaseDir = release;
+                int i = release.indexOf('-');
+                if ( i > 0 ) 
+                    release = release.substring(1, i - 1) + "_" + release.substring(i + 1);
                 else
-                {
-                    releaseTag = project.getProperty("os.USER") + "_"
-                                        + project.getProperty("DSTAMP")
-                                        + project.getProperty("TSTAMP");
-                    releaseDir = "devo";
-                    releaseNumber = "0.0.0." + project.getProperty("DSTAMP") + project.getProperty("TSTAMP");
-                }
+                    release = release + "_0";
+                releaseNumber = release.replace('_', '.');
+            }
+            else
+            {
+                releaseTag = project.getProperty("os.USER") + "_"
+                                    + project.getProperty("DSTAMP")
+                                    + project.getProperty("TSTAMP");
+                releaseDir = "devo";
+                releaseNumber = "0.0.0." + project.getProperty("DSTAMP") + project.getProperty("TSTAMP");
+            }
 
-                /*
-                 * Set the release tag in the project properties.
-                 */
-                project.setUserProperty("releaseTag", releaseTag);
-                project.setUserProperty("releaseDir", releaseDir);
-                project.setUserProperty("releaseNumber", releaseNumber);
-            ]]>
-        </script>
+            /*
+             * Set the release tag in the project properties.
+             */
+            project.setUserProperty("releaseTag", releaseTag);
+            project.setUserProperty("releaseDir", releaseDir);
+            project.setUserProperty("releaseNumber", releaseNumber);
+        ]]></script>
+
+    </target>
+
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Ensure that the ANT <script> task with BeanShell is available. -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="-checkBeanshell" unless="beanshellAvailable">
+
+        <available property="beanshellAvailable" classname="bsh.util.BeanShellBSFEngine"/>
+        <fail unless="beanshellAvailable">
+            BeanShell must be available in ${ant.home}/lib or otherwise in CLASSPATH for
+            running ANT for this build.
+
+            Add the jars for Bean Scripting Framework (bsf.jar) and BeanShell (bsh-v.r.jar)
+            to ${ant.home}/lib or the ANT properties for IntelliJ IDEA.
+        </fail>
 
     </target>
 
@@ -625,6 +756,189 @@
             </or>
         </condition>
         <fail unless="bashAvailable" message="Bash executable must be available via PATH!"/>
+    </target>
+
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- This target may be used via AntCall to alter a Javac task with -->
+    <!-- an "id" attribute to add cross-compile options (target,        -->
+    <!-- bootclasspath, & extdirs).                                     -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="-modifyJavacTask"
+            depends="-setJavaLibraries,-checkBeanshell">
+
+      <script language="beanshell"><![CDATA[
+          import org.apache.tools.ant.*;
+          import org.apache.tools.ant.types.*;
+          import org.apache.tools.ant.taskdefs.*;
+
+          /**
+           * This procedure adds the target, bootclasspathref, and extdirs arguments
+           * to the javac task in this target if the target parameter and
+           * the java.version property do not reflect the same version.
+           *
+           * To use this script, add an "id" attribute to the Javac task needing
+           * modification and code an AntCall task *before* the target Javac task.
+           * This sample AntCall task invokes this script to operate on the Javac
+           * task with id="jdbcCompile".  (The torefid="taskid" is REQUIRED!)
+           *
+           *     <antcall target="-modifyJavacTask" inheritRefs="true">
+           *         <param name="target" value="1.3"/>
+           *         <reference torefid="taskid" refid="jdbcCompile"/>
+           *     </antcall>
+           *
+           * A sanity check of ensuring that the target parameter value is less than 
+           * or equal to java.version is performed.
+           *
+           * @param target  v.r of the targetted JRE release.
+           * @param taskid  reference to a Javac task to modify.
+           */
+          String target = project.getProperty("target");
+          String javaVersion = project.getProperty("java.version");
+
+          if ( taskid == null )
+          {
+              throw new BuildException("Reference taskid must be set to the id reference of the targetted javac task.");
+          }
+          if ( ! (taskid instanceof Javac) )
+          {
+              throw new BuildException("Task id \"" + taskid + "\" is not a Javac task.");
+          }
+          Javac compileTask = (Javac)taskid;
+
+          /*
+           * Ensure that target has enough tokens
+           */
+          int p, q;
+          q = target.length();
+          p = target.indexOf('.');
+          if ( p < 1 || q <= p + 1 )
+          {
+              self.log("Property target (" + target + ") value is malformed; must be numeric in the form v.r",
+                       Project.MSG_ERR);
+              throw new BuildException("Property target value is malformed!");
+          }
+
+          /*
+           * Compare only the Version and Release numbers
+           */
+          int target_version;
+          int target_release;
+          int javaVersion_version;
+          int javaVersion_release;
+          
+          /*
+           * Extract version and release numbers from target
+           */
+          try 
+          {
+              if ( (p = target.indexOf('.')) < 0 )
+              {
+                  target_version = Integer.parseInt(target);
+                  target_release = 0;
+              }
+              else
+              {
+                  target_version = Integer.parseInt(target.substring(0, p));
+                  if ( (q = target.indexOf('.', p + 1)) < 0 )
+                      target_release = Integer.parseInt(target.substring(p + 1));
+                  else
+                      target_release = Integer.parseInt(target.substring(p + 1, q));
+              }
+          }
+          catch ( NumberFormatException ex )
+          {
+              self.log("Property target (" + target + ") value is malformed; must numeric in the form v.r",
+                       Project.MSG_ERR);
+              throw new BuildException("Property target value is malformed!", ex);
+          }
+          catch ( IndexOutOfBoundsException ex )
+          {
+              self.log("Property target (" + target + ") value is malformed; must numeric in the form v.r",
+                       Project.MSG_ERR);
+              throw new BuildException("Property target value is malformed!", ex);
+          }
+          self.log("target_version=" + target_version, Project.MSG_DEBUG);
+          self.log("target_release=" + target_release, Project.MSG_DEBUG);
+          
+          /*
+           * Extract version and release numbers from java.version
+           */
+          try 
+          {
+              if ( (p = javaVersion.indexOf('.')) < 0 )
+              {
+                  throw new BuildException("Property java.version (" + javaVersion + ") is not formatted as expected!");
+              }
+              else
+              {
+                  javaVersion_version = Integer.parseInt(javaVersion.substring(0, p));
+                  if ( (q = javaVersion.indexOf('.', p + 1)) < 0 )
+                      javaVersion_release = Integer.parseInt(javaVersion.substring(p + 1));
+                  else
+                      javaVersion_release = Integer.parseInt(javaVersion.substring(p + 1, q));
+              }
+          }
+          catch ( NumberFormatException ex )
+          {
+              throw new BuildException("Property java.version (" + javaVersion + ") is not formatted as expected!", ex);
+          }
+          catch ( IndexOutOfBoundsException ex )
+          {
+              throw new BuildException("Property java.version (" + javaVersion + ") is not formatted as expected!", ex);
+          }
+          self.log("javaVersion_version=" + javaVersion_version, Project.MSG_DEBUG);
+          self.log("javaVersion_release=" + javaVersion_release, Project.MSG_DEBUG);
+
+          /*
+           * Compare version numbers and release numbers.  If the version and release of both
+           * target and java.version are the same, we can exit -- modifying the
+           * javac task isn't necessary.
+           */
+          if (target_version == javaVersion_version && target_release == javaVersion_release) 
+          {
+              self.log("javac task left unmodified; target and java.version reflect the same release", 
+                       Project.MSG_VERBOSE);
+              return;
+          }
+          else if ( (target_version == javaVersion_version && target_release < javaVersion_release) 
+              || target_version < javaVersion_version )
+          {
+              /* all is well */
+          }
+          else
+          {
+              throw new BuildException("Target compile not supported: target > java.version");
+          }
+
+          /*
+           * Now get to the mean of what we're trying to do, add attributes to the javac task.
+           * Access to the task is done by it's ID ... in this case "jdbcCompile".  We set
+           * the target, bootclasspathref, and extdirs attributes.
+           */
+          String jdkTarget = target_version + "." + target_release;
+          compileTask.setTarget(jdkTarget);
+          self.log("Task " + taskid + " altered: target=" + jdkTarget);
+
+          String jdkRoot = "jdk" + target_version + "" + target_release + "x";
+
+          String bootClasspathId = jdkRoot + ".bootclasspath";
+          if ( project.getReference(bootClasspathId) == null )
+          {
+              throw new BuildException("Path reference " + bootClasspathId + " does not exist; it is required!");
+          }
+          compileTask.setBootClasspathRef(new Reference(bootClasspathId));
+          self.log("Task " + taskid + " altered: bootclasspathref=" + bootClasspathId);
+
+          String extDirsId = jdkRoot + ".extdirs";
+          String extDirs = project.getProperty(extDirsId);
+          if ( extDirs != null )
+          {
+              compileTask.setExtdirs(new Path(project, extDirs));
+              self.log("Task " + taskid + " altered: extdirs=" + extDirs);
+          }
+      ]]></script>
+
     </target>
 
 
@@ -684,15 +998,15 @@
         @param buildObject the project subdirectory, relative to ${basedir},
                 into which the C programs are compiled.
       -->
-    <target name="-generateHeader">
+    <target name="-generateHeader"
+            depends="-checkBeanshell">
 
         <!-- Convenience properties for directory/package names. -->
         <script language="beanshell"><![CDATA[
-                String dir = project.getProperty("dirName");
-                project.setUserProperty("packageName", dir.replace('/', '.') );
-                project.setUserProperty("headerPrefix", dir.replace('/', '_') );
-            ]]>
-        </script>
+            String dir = project.getProperty("dirName");
+            project.setUserProperty("packageName", dir.replace('/', '.') );
+            project.setUserProperty("headerPrefix", dir.replace('/', '_') );
+        ]]></script>
 
         <!-- Remove header files for recompiled classes. -->
         <dependset>
@@ -719,7 +1033,7 @@
 
 
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
-    <!-- A testing target ... does nothing useful for the projec.       -->
+    <!-- A testing target ... does nothing useful for the project.      -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <target name="dumpEnvironment"
             depends="init">
