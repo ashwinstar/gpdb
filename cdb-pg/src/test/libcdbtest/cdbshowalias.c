@@ -102,6 +102,16 @@ cdb_show_alias(PG_FUNCTION_ARGS)
 	 * get the typeoid and typemod
 	 * and compare these to the same fields from the attrs array
 	 */
+
+	/*
+	 * To make the alias column names unique is tricky.
+	 * The tr->resname are not necessarily unique.
+	 * We use an ID, called disambiguatingID, to insure uniqueness.
+	 * We save the current column names in a sorted array called NamesAr.
+	 * When we get to a new column, if the resname matches one we already have,
+	 * we append the disambiguatingID to it and try again.  Finally, when we get a unique
+	 * name, we add that to its proper place in the sortted NamesAr.
+	 */
 	int disambiguatingID = 1;
 
 	char	**NamesAr = palloc0(sizeof(char *) * list_length(targetList) );
