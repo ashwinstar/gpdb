@@ -705,9 +705,14 @@ bool motion_expr_walker(Node *node, char *not_used)
 }
 
 /* ----------------------------------------------------------------
- * getExprListFromCondList - -
- * this extracts either the left or right arguments 
- * or operators from the funcexpr list
+ * getExprListFromCondList
+ *
+ * Extracts either the left or right arguments or operators from 
+ * the given join condition list.
+ * 
+ * The entries returned are copies of the expressions from the
+ * condition list in which any Var references to INNER have been
+ * replaced by references to OUTER.
  * ----------------------------------------------------------------
  */
 List *getExprListFromCondList(List *clist, HashMotionInfoType type)
@@ -763,10 +768,19 @@ List *getOpListFromCondList(List *clist)
 }
 
 /* ----------------------------------------------------------------
- * getExprListFromTargetList - -
- * this extracts the indicated entries from the target list, copies each,
+ * getExprListFromTargetList
+ *
+ * Extracts the indicated entries from the target list, copies each,
  * and puts them into a list.
+ *
+ * The AttrNumber indexes actually refer to the resno value in the 
+ * Resdom entries in the target list.  These are often just the
+ * ordinal positions (origin 1) of the entries, but for non-query
+ * DML it may not be.
  * 
+ * The entries returned are copies of the expressions from the
+ * target list in which any Var references to INNER have been
+ * replaced by references in OUTER.
  * ----------------------------------------------------------------
  */
 List *getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
@@ -793,8 +807,15 @@ List *getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
 }
 
 /* ----------------------------------------------------------------
- * getOpListFromTargetList - -
- * this extracts the indicated oids from the target list and puts them into a list.
+ * getOpListFromTargetList
+ * 
+ * Returns a list of oids or the equality operators for indicated
+ * entries of the target list.
+ *
+ * The AttrNumber indexes actually refer to the resno value in the 
+ * Resdom entries in the target list.  These are often just the
+ * ordinal positions (origin 1) of the entries, but for non-query
+ * DML it may not be.
  * 
  * ----------------------------------------------------------------
  */

@@ -26,6 +26,7 @@
 #include "cdb/cdbplan.h"
 #include "cdb/cdbllize.h"
 #include "cdb/cdbcat.h"
+#include "cdb/cdbjoin.h"
 
 #define ARRAYCOPY(to, from, sz) \
 	do { \
@@ -46,6 +47,12 @@ typedef struct PlanProfile
 	/* Context */
 	List	*rtable; /* The current range table. */
 	
+	/* TODO Validate the assumption that plans don't have Var nodes
+	 *      that refer to outer range tables (i.e., varlevelsup is
+	 *      either 0 or ignored.  This would make it legitimate to
+	 *      store only the current range table (as above) rather
+	 *      than a stack of them. */
+	
 	/* Message data */
 	unsigned code;
 	const char *message;
@@ -59,7 +66,11 @@ typedef struct PlanProfile
  */
 typedef struct ApplyMotionState
 {
-	int dummy;
+	int dummy;  
+	
+	/* TODO Finish the mutator which will eventually need some state:
+	 *      At a minimum, a range table, and perhaps more.
+	 */
 } ApplyMotionState;
 
 
@@ -68,25 +79,47 @@ typedef struct ApplyMotionState
  */
 static bool prescan(Plan *plan, Query *query, PlanProfile *context);
 static bool prescan_walker(Node *node, PlanProfile *context);
-static bool prescan_hash_join(Plan *plan, PlanProfile *context);
-static void psError(PlanProfile *context, unsigned code, 
-		const char* message, const char* detail);
+static bool prescan_hashjoin(Plan *plan, PlanProfile *context);
+static bool prescan_mergejoin(Plan *plan, PlanProfile *context);
+static bool prescan_nestloop(Plan *plan, PlanProfile *context);
+
+static bool repartitionSort(Sort *sort, List *exprs, List *ops, PlanProfile *context);
+static bool focusSort(Sort *sort, PlanProfile *context);
+static bool broadcastSort(Sort *sort, PlanProfile *context);
+
+static void psError(PlanProfile *context, unsigned code, const char* message, const char* detail);
+static void psErrorNonce(PlanProfile *context,  const char* detail);
+static void psErrorInternal(PlanProfile *context,  const char* detail);
 static void issuePsError(PlanProfile *context);
+
 static Flow *makeFlow(FlowType flotype, bool islocal);
 static Flow *makeFlowForRelation(Oid reloid);
 static void noteFlow(Flow *flow, PlanProfile *context);
+
 static Plan* apply_motion(Plan*  plan);
 static Node* apply_motion_mutator(Node*  node, ApplyMotionState *context);
 static bool is_plan_node(Node* node);
 
 
-/* TODO Find a way to make these values available. */
-
+/* TODO Find a way to make these values real and globally available.  
+ *      May also need others such as CdbHomeSegment, etc.  
+ */
 static unsigned CdbNumSegments = 1;
 static unsigned CdbThisSegment = 0;
 
+
+
 /* ------------------------------------------------------------------------- *
- * Function cdbparallelize() is the main entry point.
+ * Function cdbparallelize() is the main entry point.  
+ *
+ * Parallelize a single raw PostgreSQL sequential plan. The input plan
+ * is modified in that Flow nodes are attached to Plan nodes in the input.
+ * So don't parallelize the same input plan more than once (unless you
+ * have set all the flow fields back to NULL).
+ *
+ * The result is a copy of the input plan with alterations (principally
+ * added Motion nodes) to make the plan suitable for parallel execution
+ * by CDB.
  *
  * TODO Much investigation remains in the areas of 
  *
@@ -107,20 +140,18 @@ cdbparallelize(	Plan* plan,
 				ParamListInfo boundParams
 			)
 {
-#ifndef CDB_DEVELOPER
-	return plan;
-#endif
-
 	PlanProfile profile; /* Will be initialized by prescan(). */
 	
 	if ( !prescan(plan, query, &profile) )
 		issuePsError(&profile);	
 
+#ifdef CDB_DEVELOPER
 	ereport(NOTICE,  (
 		errmsg("CDB Notice: Plan has %s partitioned and %s local flows.",
 			profile.hasPartitionedFlow ? "some" : "no",
 			profile.hasLocalFlow ? "some" : "no" )
 		));
+#endif
 
 	if ( ! profile.hasPartitionedFlow )
 		return plan;
@@ -307,8 +338,9 @@ prescan_walker(Node *node, PlanProfile *context)
 						 *   backward.
 						 */
 						 
-						 /* TODO Designate flow as ordered! */
-
+						 /* TODO Decide whether/how to record the fact that
+						  *      the flow is ordered! 
+						  */
 						noteFlow(plan->flow, context);
 						
 						/* Walk into subnodes */
@@ -332,8 +364,13 @@ prescan_walker(Node *node, PlanProfile *context)
 					case T_SubqueryScan:
 						Assert( rte->rtekind == RTE_SUBQUERY );
 						/*
-						 * At present it is a MYSTERY how plans specify what
-						 * to do with subquery RTEs.
+						 * It appears that a subquery uses the range table
+						 * of the retained Query node in the subquery RTE to
+						 * resolve the Var nodes in the Plan.
+						 * 
+						 * TODO Investigate whether a  SubqueryScan can
+						 *      have parameters.  Devise way to parallelize.
+						 *      Implement range table push/pop code.
 						 */
 						detail = "Query contains subqueries.";
 						break; /* Fall through to report error. */
@@ -411,21 +448,28 @@ prescan_walker(Node *node, PlanProfile *context)
 				/* Flow is same as leftree's Flow. */
 				Plan *plan = (Plan*)node;
 				Plan *child = outerPlan(node);
-				Assert( child != NULL );
 				
 				/* TODO In case the argument flow is partitioned, assure 
 				 *      that tuples are collocated on the 
 				 *     ((Unique*)node)->numCols attributes of the array
 				 *     ((Unique*)node)->uniqColIdx of AttrNumber
-				 */
-				 
-				/* Note the input flow is certainly sorted this way and
+				 *
+				 * Note the input flow is certainly sorted this way and
 				 * that no projection is done by this node.
 				 */
-				plan->flow = copyObject(child->flow);
-				noteFlow(plan->flow, context);
+
+				Assert( child != NULL && child->flow != NULL );
+				if ( child->flow->flotype == FLOW_REPLICATED
+					|| child ->flow->flotype == FLOW_SINGLETON )
+				{
+					/* No motion required so inherit flow characteristics. */
+					plan->flow = copyObject(child->flow);
+					noteFlow(plan->flow, context);
+					return false;
+				}
 			}
-			return false;
+			detail = "Query involves partitioned duplicate removal.";
+			return true;
 		
 		case T_NestLoop:
 		case T_MergeJoin:
@@ -448,41 +492,33 @@ prescan_walker(Node *node, PlanProfile *context)
 				switch (nodeTag(node))
 				{
 					case T_NestLoop:
-					
-						/* TODO Can't be sure that the join is hashable so
-						 *      need to figure that out.  
-						 */
-						
-						/* TODO Set flows!
-						 */
-						break; /* Error */
+						/* Sets its own error information, if necessary. */
+						return prescan_nestloop(plan, context);
 						
 					case T_MergeJoin:
-						/* ((MergeJoin*)join)->mergeclauses */
-						
-						/* TODO Set flows!
-						 */
-						break; /* Error */
+						/* Sets its own error information, if necessary. */
+						return prescan_mergejoin(plan, context);
 						
 					case T_HashJoin:
 						/* Sets its own error information, if necessary. */
-						return prescan_hash_join(plan, context);
+						return prescan_hashjoin(plan, context);
 						
 					default:
-						break; /* Error */
+						break; /* Can't happen but compiler likes it. */
 				}
 			}
-			detail = "Query involves a join.";
 			break; /* Fall through to report error. */
 		
 		case T_SetOp:
 			/*
 			 * A SetOp node appears to have only a lefttree like this Lisp:
 			 * (Sort (Append (List (SubQueryScan ...) (SubQueryScan ....)))).
-			 *
 			 * It does no projection.
+			 * 
+			 * TODO Determine whether special handling is indicated or whether
 			 */
-			 detail = "Query involves a set or multiset operation.";
+				
+			detail = "Query involves a set or multiset operation.";
 			break; /* Fall through to report error. */			 
 		
 		case T_Append:
@@ -495,15 +531,69 @@ prescan_walker(Node *node, PlanProfile *context)
 			break; /* Fall through to report error. */
 		
 		case T_Agg:
-			detail = "Query involves aggregration.";
+			/* First prescan children */
+			if ( plan_tree_walker(node, prescan_walker, context) )
+				return true;
+			{
+				Plan *plan = (Plan*)node;
+				Plan *child = outerPlan(node);
+				Assert( child != NULL && child->flow != NULL );
+				
+				if ( child->flow->flotype == FLOW_REPLICATED
+					|| child ->flow->flotype == FLOW_SINGLETON )
+				{
+					/* No motion required so inherit flow characteristics. */
+					plan->flow = copyObject(child->flow);
+					noteFlow(plan->flow, context);
+					return false;
+				}
+			}
+			/* TODO Deal with partitioned aggregration. */
+			detail = "Query involves partitioned aggregration.";
 			break; /* Fall through to report error. */
 		
 		case T_Group:
-			detail = "Query involves grouping.";
+			/* First prescan children */
+			if ( plan_tree_walker(node, prescan_walker, context) )
+				return true;
+			{
+				Plan *plan = (Plan*)node;
+				Plan *child = outerPlan(node);
+				Assert( child != NULL && child->flow != NULL );
+				
+				if ( child->flow->flotype == FLOW_REPLICATED
+					|| child ->flow->flotype == FLOW_SINGLETON )
+				{
+					/* No motion required so inherit flow characteristics. */
+					plan->flow = copyObject(child->flow);
+					noteFlow(plan->flow, context);
+					return false;
+				}
+			}
+			/* TODO Deal with partitioned aggregration. */
+			detail = "Query involves partitioned grouping.";
 			break; /* Fall through to report error. */
 		
 		case T_Limit:
-			detail = "Query involves LIMIT and OFFSET.";
+			/* First prescan children */
+			if ( plan_tree_walker(node, prescan_walker, context) )
+				return true;
+			{
+				Plan *plan = (Plan*)node;
+				Plan *child = outerPlan(node);
+				Assert( child != NULL && child->flow != NULL );
+				
+				if ( child->flow->flotype == FLOW_REPLICATED
+					|| child ->flow->flotype == FLOW_SINGLETON )
+				{
+					/* No motion required so inherit flow characteristics. */
+					plan->flow = copyObject(child->flow);
+					noteFlow(plan->flow, context);
+					return false;
+				}
+			}
+			/* TODO Deal with partitioned LIMIT and OFFSET. */
+			detail = "Query involves partitioned LIMIT and OFFSET.";
 			break; /* Fall through to report error. */
 			
 		default:
@@ -512,13 +602,11 @@ prescan_walker(Node *node, PlanProfile *context)
 
 	}
 
-	 /* Breaking out of the above switch will generate an error report
+	 /* Breaking out of the above switch will setup an error report
 	  * with whatever detail was set above. 
 	  */
-	 psError(context, ERRCODE_CDB_FEATURE_NOT_YET,
-			"CDB cannot parallelize that query yet.", detail);
-		
-	return true; /* Never get here, but keep's the compiler happy.. */
+	 psErrorNonce(context, detail);
+	return true;
 }
 
 /* Helper for prescan_walker() does processing for a HashJoin.
@@ -529,11 +617,10 @@ prescan_walker(Node *node, PlanProfile *context)
  * Return false to indicate successful prescan.  Else set error info
  * in the context and return true.
  */
-bool prescan_hash_join(Plan *plan, PlanProfile *context)
+bool prescan_hashjoin(Plan *plan, PlanProfile *context)
 {	
 	Plan *outer = outerPlan(plan);
 	Plan *inner = innerPlan(plan);
-	Flow *joinflow = NULL;
 	
 	/* Assure that we have the expected pattern:
 	 *
@@ -550,111 +637,368 @@ bool prescan_hash_join(Plan *plan, PlanProfile *context)
 	Assert( IsA(inner, Hash) );
 	Assert( is_plan_node((Node*)(inner->lefttree)) );
 	Assert( is_plan_node((Node*)outer) );
-	 
-	/* If either argument is replicated, we can use the other flow
-	 * to specify the output flow type of the join.  No motion is
-	 * required.
-	 */
-	if ( outer->flow->flotype == FLOW_REPLICATED )
+	
+	/* Figure out what to do. */
+	CdbJoinStrategy *strategy = getJoinStrategy((Join*)plan);
+	
+	if ( strategy == NULL )
 	{
-		joinflow = makeFlow(inner->flow->flotype, inner->flow->islocal);
-	}
-	else if ( inner->flow->flotype == FLOW_REPLICATED )
-	{
-		joinflow = makeFlow(outer->flow->flotype, outer->flow->islocal);
-	}
-
-	 /* Else If both argument flows are singleton and local, so is the
-	  * result flow.  No motion is required.
-	  */
-	else if ( outer->flow->flotype == FLOW_SINGLETON && outer->flow->islocal
-		&&  inner->flow->flotype == FLOW_SINGLETON && inner->flow->islocal )
-	{
-		joinflow = makeDispatcherFlow();
+		psErrorNonce(context, "No strategy available to parallelize that hash join.");
+		/* Hint: Try again with set enable_hashjoin = false */
+		return true;	 
 	}
 	
-	/* Else If one argument flow is singleton and local and the other is
-	 * partitioned, we need to focus the partitioned flow on the 
-	 * dispatcher.  (The alternative of broadcasting the singleton is
-	 * not available because it is local.  Someday soon we'll want to
-	 * support non-local singletons, but we don't at the moment.)
-	 */
-	else if (  outer->flow->flotype == FLOW_PARTITIONED 
-			&& inner->flow->flotype == FLOW_SINGLETON  
-			&& inner->flow->islocal )
-	{
-		/* Request motion to focus the outer flow on the dispatcher. */
-		outer->flow->req_move = MOVEMENT_FOCUS;
-		outer->flow->flotype = FLOW_SINGLETON;
-		outer->flow->islocal = true;
-		
-		/* The result flow of the HashJoin is also local. */
-		joinflow = makeDispatcherFlow();
-	}
-	else if (  outer->flow->flotype == FLOW_SINGLETON
-			&& outer->flow->islocal
-			&& inner->flow->flotype == FLOW_PARTITIONED )
-	{
-		/* Request motion to focus the inner flow on the dispatcher. */
-		inner->lefttree->flow->req_move = MOVEMENT_FOCUS;
-		inner->lefttree->flow->flotype = FLOW_SINGLETON;
-		inner->lefttree->flow->islocal = true;
-		
-		/* Adjust the flow type of the intermediate Hash node. */
-		inner->flow->flotype = FLOW_SINGLETON;
-		inner->flow->islocal = true;
-		
-		/* The result flow of the HashJoin is also local. */
-		joinflow = makeDispatcherFlow();
-	}
+	List *outerexpr = NULL;
+	List *innerexpr = NULL;
+	List *hashOp = NULL;
 
-	/* Else If both argument flows are partitioned...
-	 */
-	else if (  inner->flow->flotype == FLOW_PARTITIONED
-			&& outer->flow->flotype == FLOW_PARTITIONED )
+	if ( strategy->leftmove != MOVEMENT_NONE )
 	{
-		/* We aren't clever enough (yet) to know on what they're
-		 * partitioned or to make a smart decision about how best to
-		 * bring them into useful alignment, so we just repartition
-		 * both sides.
-		 */
-		
-		/* Get the hash expressions.  Note that the left set will also apply
-		 * to the child of the Hash (since Hash nodes do no projection).
-		 */
-		List *outerexpr = getHashMotionInfoList(plan, INFOTYPE_LEFTEXPR);
-		List *innerexpr = getHashMotionInfoList(plan, INFOTYPE_RIGHTEXPR);
-		List *hashOp = getHashMotionInfoList(plan, INFOTYPE_OP);
-		
-		outer->flow->req_move = MOVEMENT_REPARTITION;
-		outer->flow->hashExpr = outerexpr;
-		outer->flow->hashOp = hashOp;
-		
-		inner->lefttree->flow->req_move = MOVEMENT_REPARTITION;
-		inner->lefttree->flow->hashExpr = innerexpr;
-		inner->lefttree->flow->hashOp = hashOp;
-		
-		/* The Hash node, inner, is already designated partitioned. */
-		 
-		 joinflow = makePartitionedFlow();
+		/* Implement left argument movement. */
+		switch ( strategy->leftmove )
+		{
+			case MOVEMENT_FOCUS:
+				/* Request motion to focus the outer flow on the dispatcher. */
+				outer->flow->req_move = MOVEMENT_FOCUS;
+				outer->flow->flotype = FLOW_SINGLETON;
+				outer->flow->islocal = true;
+				break;
+					
+			case MOVEMENT_BROADCAST:
+				/* Request motion to focus the outer flow on the dispatcher. */
+				outer->flow->req_move = MOVEMENT_BROADCAST;
+				outer->flow->flotype = FLOW_REPLICATED;
+				outer->flow->islocal = false;
+				break;
+					
+			case MOVEMENT_REPARTITION:
+				/* Get outer hash information in hand. */
+				outerexpr = getHashMotionInfoList(plan, INFOTYPE_LEFTEXPR);
+				hashOp = getHashMotionInfoList(plan, INFOTYPE_OP);
+				
+				/* Request motion to repartition outer flow on join key. */
+				outer->flow->req_move = MOVEMENT_REPARTITION;
+				outer->flow->flotype = FLOW_PARTITIONED;
+				outer->flow->islocal = false;
+				outer->flow->hashExpr = outerexpr;
+				outer->flow->hashOp = hashOp;
+				break;
+				
+			default:
+				Assert(false);
+				break;
+		}
 	}
 	
-	/* At this point, on the assumption that all singleton flows are local,
-	 * there are no remaining cases to consider.
-	 */
-
-	if ( joinflow != NULL )
+	if ( strategy->rightmove != MOVEMENT_NONE )
 	{
-		/* We were suceeded in defining the flow. */
-		plan->flow = joinflow; 
-		return false;
+		/* Implement right argument movement. */
+		switch ( strategy->rightmove )
+		{
+			case MOVEMENT_FOCUS:
+				/* Request motion to focus the inner flow on the dispatcher. */
+				inner->lefttree->flow->req_move = MOVEMENT_FOCUS;
+				inner->lefttree->flow->flotype = FLOW_SINGLETON;
+				inner->lefttree->flow->islocal = true;
+				
+				/* Adjust the flow type of the intermediate Hash node. */
+				inner->flow->flotype = FLOW_SINGLETON;
+				inner->flow->islocal = true;
+				break;
+					
+			case MOVEMENT_BROADCAST:
+				/* Request motion to broadcast the inner flow. */
+				inner->lefttree->flow->req_move = MOVEMENT_BROADCAST;
+				inner->lefttree->flow->flotype = FLOW_REPLICATED;
+				inner->lefttree->flow->islocal = false;
+				
+				/* Adjust the flow type of the intermediate Hash node. */
+				inner->flow->flotype = FLOW_REPLICATED;
+				inner->flow->islocal = false;
+				break;
+					
+			case MOVEMENT_REPARTITION:
+				/* Get inner hash information in hand. */
+				innerexpr = getHashMotionInfoList(plan, INFOTYPE_RIGHTEXPR);
+				if ( hashOp == NULL )
+					hashOp = getHashMotionInfoList(plan, INFOTYPE_OP);
+					
+				/* Request motion ot repartition inner flow on join key. */
+				inner->lefttree->flow->req_move = MOVEMENT_REPARTITION;
+				inner->lefttree->flow->flotype = FLOW_PARTITIONED;
+				inner->lefttree->flow->hashExpr = innerexpr;
+				inner->lefttree->flow->hashOp = hashOp;
+				
+				/* Adjust the flow type of the intermediate Hash node. */
+				inner->flow->flotype = FLOW_PARTITIONED;
+				inner->flow->islocal = false;
+				break;
+				
+			default:
+				Assert(false);
+				break;
+		}
+	}
+	
+	/* Adopt proposed flow characteristics. */
+	plan->flow = makeFlow(strategy->resultflowtype, strategy->resultislocal);
+	noteFlow(plan->flow, context);
+	return false;	 
+}
+
+
+/* Helper for prescan_walker() does processing for a MergeJoin.
+ *
+ * Note that prescan_walker has already finished scaning the child nodes
+ * of the join.
+ *
+ * Return false to indicate successful prescan.  Else set error info
+ * in the context and return true.
+ */
+bool prescan_mergejoin(Plan *plan, PlanProfile *context)
+{	
+	Plan *outer = outerPlan(plan);
+	Plan *inner = innerPlan(plan);
+	
+	/* Check assumptions.
+	 */
+	Assert( IsA(plan, MergeJoin) );
+	Assert( IsA(inner,Sort)|| IsA(inner,IndexScan) );
+	Assert( IsA(outer,Sort)|| IsA(outer,IndexScan) );
+	
+	/* Figure out what to do. */
+	CdbJoinStrategy *strategy = getJoinStrategy((Join*)plan);
+	
+	if ( strategy == NULL )
+	{
+		psErrorNonce(context, "No strategy available to parallelize that merge join.");
+		/* Hint: Try again with set enable_mergejoin = false */
+		return true;	 
+	}
+	
+	List *outerexpr = NULL;
+	List *innerexpr = NULL;
+	List *hashOp = NULL;
+
+	if ( strategy->leftmove != MOVEMENT_NONE )
+	{
+		/* Implement left argument movement. */
+		switch ( outer->type )
+		{
+			case T_Sort:
+				switch ( strategy->leftmove )
+				{
+					case MOVEMENT_FOCUS:
+						if ( focusSort((Sort*)outer, context) )
+							return true;
+						break;
+							
+					case MOVEMENT_BROADCAST:
+						if ( broadcastSort((Sort*)outer, context) )
+							return true;
+						break;
+							
+					case MOVEMENT_REPARTITION:
+						outerexpr = getHashMotionInfoList(plan, INFOTYPE_LEFTEXPR);
+						hashOp = getHashMotionInfoList(plan, INFOTYPE_OP);
+						if ( repartitionSort((Sort*)outer, outerexpr, hashOp, context) )
+							return true;
+						break;
+						
+					default:
+						Assert(false);
+						break;
+				}
+			case T_IndexScan:
+				psErrorNonce(context, "Cannot parallelize IndexScan.");
+				/* Hint: Try again with set enable_mergescan = false */
+				return true;	 
+			
+			default:
+				psErrorInternal(context, "Unexpected left argument to merge join.");
+				/* Hint: Try again with set enable_mergescan = false */
+				return true;	 
+		}
 	}
 
-	psError(context, ERRCODE_CDB_FEATURE_NOT_YET, 
-		"CDB cannot parallelize that query yet.", 
-		"Query hash joins subqueries of unexpected type."
-		);
-	return true;	 
+	
+	if ( strategy->rightmove != MOVEMENT_NONE )
+	{
+		/* Implement right argument movement. */
+		switch ( inner->type )
+		{
+			case T_Sort:
+				switch ( strategy->rightmove )
+				{
+					case MOVEMENT_FOCUS:
+						if ( focusSort((Sort*)inner, context) )
+							return true;
+						break;
+							
+					case MOVEMENT_BROADCAST:
+						if ( broadcastSort((Sort*)inner, context) )
+							return true;
+						break;
+							
+					case MOVEMENT_REPARTITION:
+						innerexpr = getHashMotionInfoList(plan, INFOTYPE_RIGHTEXPR);
+						if ( hashOp == NULL )
+							hashOp = getHashMotionInfoList(plan, INFOTYPE_OP);
+						if ( repartitionSort((Sort*)inner, innerexpr, hashOp, context) )
+							return true;
+						break;
+						
+					default:
+						Assert(false);
+						break;
+				}
+			case T_IndexScan:
+				psErrorNonce(context, "Cannot parallelize IndexScan.");
+				/* Hint: Try again with set enable_mergescan = false */
+				return true;	 
+			
+			default:
+				psErrorInternal(context, "Unexpected right argument to merge join.");
+				/* Hint: Try again with set enable_mergescan = false */
+				return true;	 
+		}
+	}
+	
+	/* Adopt proposed flow characteristics. */
+	plan->flow = makeFlow(strategy->resultflowtype, strategy->resultislocal);
+	noteFlow(plan->flow, context);
+	return false;	 
+}
+
+
+/* Helper for prescan_walker() does processing for a NestLoop join.
+ *
+ * Note that prescan_walker has already finished scaning the child nodes
+ * of the join.
+ *
+ * Return false to indicate successful prescan.  Else set error info
+ * in the context and return true.
+ */
+bool prescan_nestloop(Plan *plan, PlanProfile *context)
+{	
+	Plan *outer = outerPlan(plan);
+	Plan *inner = innerPlan(plan);
+	
+	/* Check assumptions.
+	 */
+	Assert( IsA(plan, NestLoop) );
+	Assert( is_plan_node((Node*)inner) && inner->flow != NULL );
+	Assert( is_plan_node((Node*)outer) && outer->flow != NULL );
+	
+	CdbJoinStrategy *strategy = getJoinStrategy((Join*)plan);
+	
+	if ( strategy == NULL )
+	{
+		psErrorNonce(context, "No strategy available to parallelize that nested-loop join.");
+		/* Hint: Try again with set enable_nestloop = false */
+		return true;	 
+	}
+	
+	if ( strategy->leftmove != MOVEMENT_NONE 
+		|| strategy->rightmove != MOVEMENT_NONE  )
+	{
+		psErrorNonce(context, "Query involves partitioned nested-loop join.");
+		/* Hint: Try again with set enable_nestloop = false */
+		return true;	 
+	}
+	
+	/* No motion required so just adopt flow characteristics. */
+	plan->flow = makeFlow(strategy->resultflowtype, strategy->resultislocal);
+	noteFlow(plan->flow, context);
+	return false;	 
+}
+
+
+
+/* 
+ * Helper for prescan_mergescan() -- Request repartitioning of the flow from 
+ * the node below the given Sort node according to the given join expressions 
+ * and operators.
+ *
+ * Return false to indicate successful prescan.  Else set error info
+ * in the context and return true.
+ */
+bool repartitionSort(Sort *sort, List *exprs, List *ops, PlanProfile *context)
+{
+	int n = list_length(exprs);
+	
+	/* Test assumptions. */
+	Assert( IsA(sort,Sort) );
+	Assert( n == list_length(ops) );
+	
+	/* The partitioning expressions must match a prefix of the  sort 
+	 * specifications for this to be a valid transformation.  Check!
+	 */
+	if ( sort->numCols < n )
+	{
+		psErrorInternal(context, "Conflicts between partitioning and sort.");
+		return true;
+	}
+	int i = 0;
+	ListCell *cell;
+	
+	foreach(cell, exprs)
+	{
+		/* This may eventually need to become smarter, e.g., accept simple
+		 * casts of Var.  But for now...
+		 */
+		Node *x = (Node*)lfirst(cell);
+		if ( !IsA(x,Var) || ((Var*)x)->varattno != sort->sortColIdx[i] )
+		{
+		psErrorInternal(context, "Conflicts between partitioning and sort.");
+		return true;
+		}
+		i++;
+	}
+	
+	/* Everything looks okay. */
+	Plan *outer = outerPlan(sort);
+	
+	/* Request repartitioning. */
+	outer->flow->req_move = MOVEMENT_REPARTITION;
+	outer->flow->hashExpr = exprs;
+	outer->flow->hashOp = ops;
+	
+	/* Note the both nodes are now partitioned. */
+	outer->flow->flotype = FLOW_PARTITIONED;
+	((Plan*)sort)->flow->flotype = FLOW_PARTITIONED;
+	
+	return false; /* Success. */
+}
+
+bool focusSort(Sort *sort, PlanProfile *context)
+{
+	Plan *outer = outerPlan(sort);
+		
+	outer->flow->req_move = MOVEMENT_FOCUS;
+	
+	/* Motion node must preserve sort order. */
+	int n = sort->numCols;
+	outer->flow->numSortCols = n;
+	ARRAYCOPY(outer->flow->sortColIdx, sort->sortColIdx, n*sizeof(AttrNumber));
+	ARRAYCOPY(outer->flow->sortOperators, sort->sortOperators, n*sizeof(Oid));
+	
+	return false;
+}
+
+bool broadcastSort(Sort *sort, PlanProfile *context)
+{
+	Plan *outer = outerPlan(sort);
+		
+	outer->flow->req_move = MOVEMENT_BROADCAST;
+	
+	/* Motion node must preserve sort order. */
+	int n = sort->numCols;
+	outer->flow->numSortCols = n;
+	ARRAYCOPY(outer->flow->sortColIdx, sort->sortColIdx, n*sizeof(AttrNumber));
+	ARRAYCOPY(outer->flow->sortOperators, sort->sortOperators, n*sizeof(Oid));
+	
+	return false;
 }
 
 
@@ -668,6 +1012,28 @@ void psError(PlanProfile *context,
 {
 	context->code = code;
 	context->message = message;
+	context->detail = detail;
+}
+
+
+/* 
+ * Helper for prescan() -- Write error info into a PlanProfile.
+ */
+void psErrorNonce(PlanProfile *context,  const char* detail)
+{
+	context->code = ERRCODE_CDB_FEATURE_NOT_YET; 
+	context->message = "CDB cannot parallelize that query yet.";
+	context->detail = detail;
+}
+
+
+/* 
+ * Helper for prescan() -- Write error info into a PlanProfile.
+ */
+void psErrorInternal(PlanProfile *context,  const char* detail)
+{
+	context->code = ERRCODE_CDB_INTERNAL_ERROR; 
+	context->message ="Unexpected error parallelizing a query.";
 	context->detail = detail;
 }
 

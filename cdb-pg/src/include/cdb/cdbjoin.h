@@ -1,0 +1,40 @@
+/*-------------------------------------------------------------------------
+ *
+ * cdbjoin.h
+ *	  definitions for cdbjoin.c and users of same
+ *
+ * Copyright (c) 2004, Metapa
+ *
+ *
+ * IDENTIFICATION
+ *	  $Id$
+ *
+ * NOTES
+ *	 
+ *-------------------------------------------------------------------------
+ */
+
+#ifndef CDBJOIN_H
+#define CDBJOIN_H
+
+#include "nodes/primnodes.h"
+#include "nodes/plannodes.h"
+
+/*
+ * A CdbJoinStrategy is the composite result of function getJoinStrategy.
+ * It characterizes a way of transforming a Join node and its arguments
+ * in order to produce a correct result in the CDB parallel execution
+ * environment.
+ */
+typedef struct CdbJoinStrategy
+{
+	Movement leftmove;
+	Movement rightmove;
+	FlowType resultflowtype;
+	bool resultislocal;
+
+} CdbJoinStrategy;
+
+extern CdbJoinStrategy *getJoinStrategy(Join *join);
+
+#endif /* CDBJOIN_H */

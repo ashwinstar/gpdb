@@ -1,4 +1,16 @@
 <<<NEW vi: set expandtab ts=4: >>>
+Added traffic control and preliminary parallelization to SQL DML.
+	CDB now analyzes and, in some cases, parallelizes the SQL DML commands,
+	SELECT, INSERT, UPDATE, and DELETE. In addition, it recognizes and 
+	rejects commands that should be parallelized but that the current code 
+	can't handle.  Parallelized plans still execute in a single segment
+	database, but the effects of parallelization may be observed via the
+	EXPLAIN command.
+Fixed some traffic control and message issues (CDB-5)
+	ALTER messages now distinguish failures due to unsupported objects
+	(like ALTER TABLE) versus unsupported operations  (like ALTER OWNER).
+	Clarified some other messages and aligned the program behavior with
+	the documented behavior vis a vis rejection versus interim rejection
 Special handling of SQL commands for CDB users.
 	Added "traffic control" for SQL commands to issue errors or warnings 
 	as appropriate when cdb_role=dispatch.  Modified PostgreSQL utilities 

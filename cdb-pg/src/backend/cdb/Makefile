@@ -16,7 +16,7 @@ include $(top_builddir)/src/Makefile.global
 SUBDIRS := motion
 SUBDIROBJS := $(SUBDIRS:%=%/SUBSYS.o)
 
-OBJS = cdbvars.o cdbplan.o cdbllize.o cdbcat.o
+OBJS = cdbvars.o cdbplan.o cdbllize.o cdbcat.o cdbjoin.o
 ALLOBJS = $(OBJS) $(SUBDIROBJS)
 
 all: SUBSYS.o
