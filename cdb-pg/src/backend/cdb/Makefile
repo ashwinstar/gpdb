@@ -12,17 +12,50 @@
 subdir = src/backend/cdb
 top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
+override CPPFLAGS := -I$(libpq_srcdir) $(CPPFLAGS)
+OBJCOPY ?= objcopy
 
 SUBDIRS := motion
 SUBDIROBJS := $(SUBDIRS:%=%/SUBSYS.o)
 
-OBJS = cdbvars.o cdbplan.o cdbllize.o cdbcat.o cdbjoin.o
+OBJS = cdbvars.o cdbplan.o cdbllize.o cdbcat.o cdbutil.o cdblink.o cdbjoin.o
+
+ifeq ($(PORTNAME),cygwin)
+.LIBPATTERNS := $(filter-out %.so,$(.LIBPATTERNS))
+endif
+
+pqlibs := $(addprefix $(libpq_builddir)/,$(subst %,pq,$(.LIBPATTERNS)))
+
+ifeq ($(PORTNAME),darwin)
+pre_reqs := libpq_local.sym.mac
+else
+pre_reqs := $(top_srcdir)/$(subdir)/libpq_local.sym
+endif
+
 ALLOBJS = $(OBJS) $(SUBDIROBJS)
 
 all: SUBSYS.o
 
-SUBSYS.o: $(ALLOBJS) 
-	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $^
+SUBSYS.o: $(pqlibs) $(ALLOBJS) $(pre_reqs)
+ifneq ($(PORTNAME),darwin)
+	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(ALLOBJS) $(EXTRA_OBJS) $(libpq)
+else
+	$(LD) $(LDREL) $(LDOUT) SUBSYS.o $(ALLOBJS) $(EXTRA_OBJS) $(libpq) -unexported_symbols_list libpq_local.sym.mac
+endif
+
+ifeq ($(PORTNAME),linux)
+	$(OBJCOPY) --localize-symbols=$(top_srcdir)/$(subdir)/libpq_local.sym SUBSYS.o
+endif
+ifeq ($(PORTNAME),solaris)
+	$(OBJCOPY) --localize-symbols=$(top_srcdir)/$(subdir)/libpq_local.sym SUBSYS.o
+endif
+
+$(pqlibs) : submake-libpq
+
+ifeq ($(PORTNAME),darwin)
+libpq_local.sym.mac: $(top_srcdir)/$(subdir)/libpq_local.sym
+	sed -e '/^#/!s/^[[:space:]]*/_/' $(top_srcdir)/$(subdir)/libpq_local.sym > libpq_local.sym.mac
+endif	
 
 $(SUBDIROBJS): $(SUBDIRS:%=%-recursive) ;
 
@@ -36,7 +69,7 @@ depend dep:
 
 clean:
 	for dir in $(SUBDIRS); do $(MAKE) -C $$dir $@ || exit; done
-	rm -f SUBSYS.o $(OBJS) 
+	rm -f SUBSYS.o $(OBJS) libpq_local.sym.mac
 
 ifeq (depend,$(wildcard depend))
 include depend
