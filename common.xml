@@ -54,7 +54,7 @@
             project is used for the build.
           -->
         <condition property="devoBuild">
-            <contains string="${releaseDir}" substring="devo"/>
+            <contains string="${releaseDir}" substring=""/>
         </condition>
 
     </target>
@@ -767,7 +767,8 @@
                 releaseTag = project.getProperty("os.USER") + "_"
                                     + project.getProperty("DSTAMP")
                                     + project.getProperty("TSTAMP");
-                releaseDir = "devo";
+                // Removed devo folder
+                releaseDir = "";
 
                 releaseVersion = "0.0.0";
                 releaseBuild = project.getProperty("DSTAMP") + project.getProperty("TSTAMP");
