@@ -112,6 +112,9 @@ static Plan* apply_motion(Plan*  plan, Query* query);
 static Node* apply_motion_mutator(Node*  node, ApplyMotionState *context);
 static void assignMotionID(Node* newnode, ApplyMotionState* context, Node* oldnode);
 
+static bool initPlanProfile(PlanProfile *context, Query *query);
+static bool scanForManagedTables_walker(Node *node, PlanProfile *context);
+static bool scanForManagedTables(Plan *plan, Query *query);
 
 
 /* ------------------------------------------------------------------------- *
@@ -160,8 +163,6 @@ cdbparallelize(	Plan* plan,
 				ParamListInfo boundParams
 			)
 {
-	PlanProfile profile; /* Will be initialized by prescan(). */
-	
 	Assert( is_plan_node((Node*)plan) );
 	Assert( query != NULL && IsA(query, Query) );
 	
@@ -169,41 +170,57 @@ cdbparallelize(	Plan* plan,
 	if ( plan->dispatch != DISPATCH_UNDETERMINED )
 		return plan;
 
-	if ( !prescan(plan, query, &profile) )
-		issuePsError(&profile);	
-
-#ifdef CDB_DEVELOPER
-	ereport(NOTICE,  (
-		errmsg("CDB Notice: Plan has %s partitioned and %s local flows.",
-			profile.hasPartitionedFlow ? "some" : "no",
-			profile.hasLocalFlow ? "some" : "no" )
-		));
-	ereport(NOTICE,  (
-		errmsg("CDB Notice: Plan %s catalog and %s segments.",
-			profile.usesCatalog ? "uses" : "doesn't use",
-			profile.usesSegments ? "uses" : "doesn't use" )
-		));
-#endif
-
-	if ( profile.usesCatalog && profile.usesSegments )
+	/* 
+	 * Do a quick walk of the plan to see whether there are
+	 * any managed tables referenced.  If not, we don't need to
+	 * perform the prescan.
+	 */
+	if ( !scanForManagedTables(plan, query) )
 	{
-		ereport(ERROR,  (
-			errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-			errmsg("Query references both catalog and data."),
-			errhint("CDB requires separate queries.")
-			));
-	}
-	else if ( profile.usesSegments )
-	{
-		if ( profile.hasPartitionedFlow )
-			plan = apply_motion(plan, query);
-		plan->dispatch = DISPATCH_PARALLEL;
+		plan->dispatch = DISPATCH_SEQUENTIAL;
 	}
 	else
 	{
-		Assert(!profile.hasPartitionedFlow);
-		plan->dispatch = DISPATCH_SEQUENTIAL;
+		PlanProfile profile; /* Will be initialized by prescan(). */
+
+		if ( !prescan(plan, query, &profile) )
+			issuePsError(&profile);	
+
+
+	#ifdef CDB_DEVELOPER
+		ereport(NOTICE,  (
+			errmsg("CDB Notice: Plan has %s partitioned and %s local flows.",
+				profile.hasPartitionedFlow ? "some" : "no",
+				profile.hasLocalFlow ? "some" : "no" )
+			));
+		ereport(NOTICE,  (
+			errmsg("CDB Notice: Plan %s catalog and %s segments.",
+				profile.usesCatalog ? "uses" : "doesn't use",
+				profile.usesSegments ? "uses" : "doesn't use" )
+			));
+	#endif
+
+		if ( profile.usesCatalog && profile.usesSegments )
+		{
+			ereport(ERROR,  (
+				errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+				errmsg("Query references both catalog and data."),
+				errhint("CDB requires separate queries.")
+				));
+		}
+		else if ( profile.usesSegments )
+		{
+			if ( profile.hasPartitionedFlow )
+				plan = apply_motion(plan, query);
+			plan->dispatch = DISPATCH_PARALLEL;
+		}
+		else
+		{
+			Assert(!profile.hasPartitionedFlow);
+			plan->dispatch = DISPATCH_SEQUENTIAL;
+		}
 	}
+
 	return plan;
 }
 
@@ -227,73 +244,8 @@ bool
 prescan(Plan *plan, Query *query, PlanProfile *context)
 {
 	/* Initialize the PlanProfile result. */
-	
-	context->hasPartitionedFlow = false;
-	context->hasLocalFlow = false;
-	context->usesCatalog = false;
-	context->usesSegments = false;
-	
-	/* Initialize the current range table. */
-	context->rtable = query->rtable;
-	
-	switch ( query->commandType )
-	{
-		case CMD_SELECT:
-			break;
-			
-		case CMD_INSERT:
-		case CMD_UPDATE:
-		case CMD_DELETE:
-			if ( query->resultRelation <= 0 || query->resultRelations != NIL )
-			{
-				/* Perhaps this should be an Assert(?) rather than an error. */
-				psError(context,  ERRCODE_CDB_INTERNAL_ERROR,
-					"Unexpected relation specified as target of modification.", 
-					"CDB expects a single result relation without inheritance." );
-				return false;
-			}
-			else
-			{
-				/* 
-				 * Since this is a data modification command, include the 
-				 * result relation in the summary of relations touched.
-				 */
-				Oid reloid;
-				RangeTblEntry *rte;
-				CdbPolicy *policy;
-				
-				Assert( query->resultRelation<=list_length(context->rtable) );
-				rte = rt_fetch(query->resultRelation, context->rtable);
-				Assert( rte->rtekind == RTE_RELATION );
-				reloid = rte->relid;
-				policy = get_table_policy(reloid);
-				
-				if ( policy->ptype == POLICYTYPE_PARTITIONED )
-					context->usesSegments = true;
-				else if ( policy->ptype == POLICYTYPE_ENTRY )
-					context->usesCatalog = true;
-				else
-				{
-					psError(context,  ERRCODE_CDB_INTERNAL_ERROR,
-						"Unexpected data distribution policy.", NULL );
-					return false;
-				}
-				pfree(policy); /* Or should we cache this? */
-			}
-			break;
-		
-		default:
-			psError(context,  ERRCODE_CDB_INTERNAL_ERROR,
-				"CDB cannot parallelize unrecognized query type.", NULL );
-			return false;
-	}
-	
-	/* 
-	 * Initialize the error fields of the context, in case some failure
-	 * in the prescan neglects to set them.
-	 */
-	psError(context,  ERRCODE_CDB_INTERNAL_ERROR,
-		"Unexpected failure parallelizing query.", NULL );
+	if ( !initPlanProfile(context, query) )
+		return false;
 	
 	/*
 	 * Do the prescan.
@@ -1860,4 +1812,199 @@ void assignMotionID(Node* newnode, ApplyMotionState* context, Node* oldnode)
 				((Motion*)newnode)->motionID )
 		));
 	}
+}
+
+/* ----------------------------------------------------------------------- *
+ * Functions scanForManagedTables() and scanForManagedTables_walker() 
+ * use the plan_tree_walk() framework to visit the nodes of a plan tree 
+ * to see if there are any managed tables referenced in any of the
+ * plan scan nodes.
+ *
+ * The plan and query arguments should not be null.
+ *
+ * Returns true if the there exists at least one managed table referenced by the Plan,
+ * false otherwise.
+ *
+ * If an error is encountered, an ereport is issued directly.
+ *
+ * The purpose of scanForManagedTables is to do a quick scan to see whether there
+ * are no managed tables, in which case we can skip the parallelization step.
+ * Without this, we may generate errors during the parallelization process
+ * that will erroneously prevent catalog queries from running.
+ * ----------------------------------------------------------------------- *
+ */
+bool
+scanForManagedTables(Plan *plan, Query *query)
+{
+	PlanProfile profile;
+
+	/* Initialize the PlanProfile result. */
+	if ( !initPlanProfile(&profile, query) )
+		issuePsError(&profile);	
+
+	/* initPlanProfile may have already found a managed table. */
+	if ( profile.usesSegments )
+		return true;
+
+	/*
+	 * Do the scanForManagedTables_walker.
+	 */
+	return scanForManagedTables_walker((Node*)plan, &profile);
+}
+
+
+/*
+ * Function scanForManagedTables_walker is the workhorse of scanForManagedTables.
+ * It only cares about SeqScans, TidScans, and Index Scans.
+ * For these, it gets the relid of the scan, gets the RangeTableEntry
+ * from the context rtable, and gets the oid of the relation in the scan.
+ * It calls get_table_polict to see whether this oid represents a
+ * managed table.  If so, we can exit the walk by returning true.
+ * If not, we use plan_walker to walk the appropriate child nodes.
+ * For nodes other than SeqScan, TidScan, and IndexScan, we just 
+ * use plan_walker to walk the appropriate child nodes.
+ *
+ * The only field of the PlanProfile that we end up using in the walk is the
+ * rtable.  For simplicity sake, we just reuse the PLanProfile
+ * as the context of this walk, rather than create a different context structure
+ * than that used by prescan_walker.
+ */
+bool 
+scanForManagedTables_walker(Node *node, PlanProfile *context)
+{	
+	if ( node == NULL )
+		return false;
+	
+	switch (nodeTag(node))
+	{
+		case T_SeqScan:
+		case T_TidScan:
+		case T_IndexScan:
+			/* All scan types have a range table entry:	 */
+			{
+				Plan *plan = (Plan*)node;
+				Scan *scan = (Scan*)plan;
+				Index rtindex = scan->scanrelid;
+				Oid reloid = InvalidOid;
+				CdbPolicy *policy;
+				CdbPolicyType ptype;
+				
+				Assert( scan->scanrelid > 0 ); /* Make sure we have an index. */
+				Assert( 0<rtindex && rtindex<=list_length(context->rtable) );
+				
+				RangeTblEntry *rte = rt_fetch(rtindex, context->rtable);
+				
+				reloid = rte->relid;				
+				policy = get_table_policy(reloid);
+				ptype = policy->ptype;
+				pfree( policy );
+	
+				switch ( ptype )
+				{
+					case POLICYTYPE_PARTITIONED:	
+						return true;
+					
+					case POLICYTYPE_ENTRY:
+						break;
+					
+					case POLICYTYPE_UNDEFINED:
+					default:
+						ereport(ERROR, (	
+							errcode(ERRCODE_CDB_INTERNAL_ERROR),
+							errmsg("Unexpected CdbPolicyType: %d.", policy->ptype )
+						));
+				}
+			}
+
+			break;  
+		
+
+		default:
+			break;
+
+	}
+
+	/* Let plan_tree_walker() deal with other node types. */
+	return plan_tree_walker(node, scanForManagedTables_walker, context);
+}
+
+/* 
+ * initPlanProfile
+ * initializes the PlanProfile struct fields
+ * and checks to see whether there is a result relation 
+ * (for an insert, update, or delete statement)
+ * and if so, includes it in the summary of relations touched.
+ */
+bool initPlanProfile(PlanProfile *context, Query *query)
+{
+	Assert( context != NULL );
+
+	context->hasPartitionedFlow = false;
+	context->hasLocalFlow = false;
+	context->usesCatalog = false;
+	context->usesSegments = false;
+	
+	/* Initialize the current range table. */
+	context->rtable = query->rtable;
+	
+	switch ( query->commandType )
+	{
+		case CMD_SELECT:
+			break;
+			
+		case CMD_INSERT:
+		case CMD_UPDATE:
+		case CMD_DELETE:
+			if ( query->resultRelation <= 0 || query->resultRelations != NIL )
+			{
+				/* Perhaps this should be an Assert(?) rather than an error. */
+				psError(context,  ERRCODE_CDB_INTERNAL_ERROR,
+					"Unexpected relation specified as target of modification.", 
+					"CDB expects a single result relation without inheritance." );
+				return false;
+			}
+			else
+			{
+				/* 
+				 * Since this is a data modification command, include the 
+				 * result relation in the summary of relations touched.
+				 */
+				Oid reloid;
+				RangeTblEntry *rte;
+				CdbPolicy *policy;
+				
+				Assert( query->resultRelation<=list_length(context->rtable) );
+				rte = rt_fetch(query->resultRelation, context->rtable);
+				Assert( rte->rtekind == RTE_RELATION );
+				reloid = rte->relid;
+				policy = get_table_policy(reloid);
+				
+				if ( policy->ptype == POLICYTYPE_PARTITIONED )
+					context->usesSegments = true;
+				else if ( policy->ptype == POLICYTYPE_ENTRY )
+					context->usesCatalog = true;
+				else
+				{
+					psError(context,  ERRCODE_CDB_INTERNAL_ERROR,
+						"Unexpected data distribution policy.", NULL );
+					return false;
+				}
+				pfree(policy); /* Or should we cache this? */
+			}
+			break;
+		
+		default:
+			psError(context,  ERRCODE_CDB_INTERNAL_ERROR,
+				"CDB cannot parallelize unrecognized query type.", NULL );
+			return false;
+	}
+	
+	/* 
+	 * Initialize the error fields of the context, in case some failure
+	 * in the prescan neglects to set them.
+	 */
+	psError(context,  ERRCODE_CDB_INTERNAL_ERROR,
+		"Unexpected failure parallelizing query.", NULL );
+
+	return true;
 }
