@@ -470,6 +470,11 @@ The "install" target is allowed for devo builds only.  Use the
                     <filename name="cdb-commons.jar"/>
                 </or>
             </fileset>
+            <fileset dir="common/pgjdbc">
+                <or>
+                    <filename name="*.jar"/>
+                </or>
+            </fileset>
             <fileset dir="common/cdb-commons/lib">
                 <or>
                     <filename name="log4j*.jar"/>
