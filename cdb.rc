@@ -11,9 +11,14 @@ CDB_HOME=$HOME/cdb
 
 # The base path for where cdb-pg has been compiled to, or installed
 CDB_PATH=$CDB_HOME/cdb-pgsql
-PATH=./:$CDB_PATH/bin:$PATH
+
+# The location of the CDB management suite
+CDB_MGMT_HOME=$CDB_PATH/tools/management
+
+# Update our path
+PATH=./:$CDB_PATH/bin:$CDB_MGMT_HOME/bin:$PATH
 
 # Update our library path
 LD_LIBRARY_PATH=$CDB_PATH/server/lib
 
-export CDB_HOME CDB_PATH PATH LD_LIBRARY_PATH
+export CDB_HOME CDB_PATH CDB_MGMT_HOME PATH LD_LIBRARY_PATH
