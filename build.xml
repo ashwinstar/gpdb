@@ -1,0 +1,489 @@
+<?xml version="1.0"?>
+
+<!--
+
+    build.xml
+
+
+    @version $Id$
+
+-->
+
+<!DOCTYPE project [
+  <!--
+      Entity "common" identifies the file containing the common ant elements 
+      needed both here and in subproject build.xml files.  Ant elements other 
+      than property are NOT inherited when ant calls itself for a subproject.
+
+      The file common.xml is a collection of common targets useful to all
+      subprojects.
+    -->
+  <!ENTITY common SYSTEM "file:./common.xml">
+]>
+
+<project name="cdb"
+         default="compile">
+
+    <description>
+  CDB Project
+
+      -Dport=&lt;default_port&gt; must be specified to configure PostgreSQL.
+
+      Use -DinstallRoot=&lt;install_path&gt; to designate an installation target
+      other than $HOME/cdb.
+
+      Use -Dcdb.enableDtx=true to include distributed transactions in the build.
+      (A "distclean" is required for this configuration-change to take effect.)
+
+      Use -Dcdb.enableInsert=true to include the insert-hook in the build
+      (A "distclean" is required for this configuration-change to take effect.)
+    </description>
+
+    <!--
+        Establish a reference to the project root directory.
+      -->
+    <property name="projectRoot" value="${basedir}"/>
+  
+    <!-- this property is set by CVS checkout -r ...
+         It is used for distribution build purposes.
+      -->
+    <property name="stickyTag" value="$$Name:  $$"/>
+
+    <!-- base properties -->
+    <property name="dist" value="dist"/>
+
+    <property name="build.sysclasspath" value="ignore"/>
+
+    <!--
+        Insert common properties and targets.  
+        The common targets are generally called from the init target.
+      -->
+    &common;
+
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="init"
+            depends="-init,-setMake,-setCCompiler">
+
+        <echo level="info">
+========================================================================
+
+Building CDB for ${releaseTag}
+    into release-directory ${releaseDir}
+
+Using tools=${tools}
+Using toolsLib=${toolsLib}
+
+========================================================================
+        </echo>
+
+    </target>
+
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Ensure that all required command line options are provided.    -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="-checkOptions">
+
+        <fail unless="port" message="Variable port must be set (use -Dport=&lt;port&gt;)"/>
+
+    </target>
+
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Perform a distribution-level clean of the project.             -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="distclean"
+            depends="init"
+            description="Clean the project of distribution and build materials">
+
+        <delete dir="${dist}"/>
+
+        <!-- Perform a "regular" cleaning ... -->
+        <antcall target="clean"/>
+            
+        <!-- Scrub configure and build output from the postgresql subproject. -->
+        <ant antfile="build.xml"
+             dir="cdb-pg"
+             target="distclean">
+        </ant>
+
+    </target>
+
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Perform a build-level cleaning of the project                  -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="clean"
+            depends="init"
+            description="Clean the project of build materials">
+
+        <!-- Remove build output from the postgresql subproject. -->
+        <ant antfile="build.xml"
+             dir="cdb-pg"
+             target="clean">
+        </ant>
+
+    </target>
+
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Compile the CDB subprojects                                    -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="compile"
+            depends="init"
+            description="Compile all subprojects of CDB">
+
+        <!--
+            Build PostgreSQL
+          -->
+        <ant antfile="build.xml"
+             dir="cdb-pg"
+             target="compile">
+        </ant>
+
+
+    </target>
+
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Generate the CDB documentation.                                -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="makeDoc"
+            depends="init"
+            description="Generate product documentation (requires special tools)">
+
+        <!--
+            Build PostgreSQL documentation
+          -->
+        <ant antfile="build.xml"
+             dir="cdb-pg"
+             target="makeDoc">
+        </ant>
+
+    </target>
+
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Install CDB for development testing                            -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="install"
+            depends="init,-checkDevoInstall,compile"
+            description="Install CDB for development testing">
+
+        <!--
+            Call install subroutine with "dist" set for
+            distribution build.
+          -->
+        <antcall target="-install">
+            <param name="target" value="install"/>
+            <param name="Idist" value=""/>
+            <param name="IcommandsDir" location="${installRoot}/${releaseDir}/commands"/>
+            <param name="IcdbtoolsDir" location="${installRoot}/${releaseDir}/tools"/>
+            <param name="ImgmtDir" location="${installRoot}/${releaseDir}/mgmt"/>
+        </antcall>
+
+    </target>
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Perform Postgres 8.0 regression testing                        -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="pgsql-check"
+            description="Perform Postgres 8.0 regression testing">
+
+        <!--
+            Call install subroutine with "dist" set for
+            distribution build.
+          -->
+        <antcall target="-pgsql-check">
+            <param name="target" value="pgsql-check"/>
+        </antcall>
+
+    </target>
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Fail install if *not* performing a development install.        -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="-checkDevoInstall"
+            depends="-init"
+            unless="devoBuild">
+        <fail>
+The "install" target is allowed for devo builds only.  Use the
+"dist" target to prepare distribution builds.
+        </fail>
+    </target>
+
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Perform a distribution build.                                  -->
+    <!--                                                                -->
+    <!-- The result of this target is a tarball in the ${dist}          -->
+    <!-- directory.                                                     -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="dist"
+            depends="-checkOptions,init,-installRootWarning,distclean,compile,makeDoc"
+            description="Prepare a distribution package for CDB">
+
+        <mkdir dir="${dist}"/>
+
+        <!--
+            Call install subroutine with "dist" set for
+            distribution build.
+          -->
+        <antcall target="-install">
+            <param name="target" value="installWithDoc"/>
+            <param name="Idist" location="${dist}"/>
+            <param name="IcommandsDir" location="${dist}/${installRoot}/${releaseDir}/commands"/>
+            <param name="IcdbtoolsDir" location="${dist}/${installRoot}/${releaseDir}/tools"/>
+            <param name="ImgmtDir" location="${dist}/${installRoot}/${releaseDir}/mgmt"/>
+        </antcall>
+
+
+        <!--
+            Create a tarball for distribution
+          -->
+        <tar destfile="${dist}/cdb-${releaseDir}.tar.bz2"
+             compression="bzip2">
+            <tarfileset dir="${dist}" username="cdb" group="cdb">
+                <or>
+                    <filename name="**/bin/*" negate="true"/>
+                    <filename name="**/bin/*.sql"/>
+                </or>
+            </tarfileset>
+            <tarfileset dir="${dist}" username="cdb" group="cdb" mode="755">
+                <and>
+                    <filename name="**/bin/*"/>
+                    <filename name="**/bin/*.sql" negate="true"/>
+                </and>
+            </tarfileset>
+        </tar>
+
+    </target>
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Issue a message warning of use of default installRoot if       -->
+    <!-- we're not producing a development build.                       -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="-installRootWarning"
+            depends="-init"
+            if="installRootDefaulted"
+            unless="devoBuild">
+        <echo level="warning">
+            *************************************************************************
+
+            -DinstallRoot=&lt;install_target_directory&gt; was not specified!  
+            
+            This build is not suitable for customer installations.
+
+            *************************************************************************
+            
+        </echo>
+        <input/>
+    </target>
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Perform installation tasks (common with dist and devo install) -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="-pgsql-check">
+
+        <!--
+            Build and "install" PostgreSQL
+          -->
+        <ant antfile="build.xml"
+             dir="cdb-pg"
+             target="${target}">
+            <property name="DESTDIR" value="${Idist}"/>
+        </ant>
+    </target>
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Perform installation tasks (common with dist and devo install) -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="-install">
+
+        <!--
+            Build and "install" PostgreSQL
+          -->
+        <ant antfile="build.xml"
+             dir="cdb-pg"
+             target="${target}">
+            <property name="DESTDIR" value="${Idist}"/>
+        </ant>
+
+
+        <mkdir dir="${IcommandsDir}"/>
+        <mkdir dir="${IcommandsDir}/bin"/>
+        <mkdir dir="${IcommandsDir}/lib"/>
+
+        <mkdir dir="${IcdbtoolsDir}/bin"/>
+        <mkdir dir="${IcdbtoolsDir}/man"/>
+        <mkdir dir="${IcdbtoolsDir}/support"/>
+        <mkdir dir="${IcdbtoolsDir}/support/bin"/>
+
+        <mkdir dir="${ImgmtDir}"/>
+        <mkdir dir="${ImgmtDir}/bin"/>
+        <mkdir dir="${ImgmtDir}/lib"/>
+
+        <!--
+            Copy (generated) jar files to loader library directory
+          -->
+
+        <!-- Commented out since it's a new CDB development -->
+        <!--
+        <copy todir="${IcommandsDir}/lib"
+              preservelastmodified="true">
+            <fileset dir="common/build">
+                <or>
+                    <filename name="cdb-common.jar"/>
+                    <filename name="libcommon.so"/>
+                    <filename name="libcommon.jnilib"/>
+                </or>
+            </fileset>
+            <fileset dir="commands/lib">
+                <or>
+                    <filename name="antlrall.jar"/>
+                    <filename name="concurrent.jar"/>
+                </or>
+            </fileset>
+            <fileset dir="commands/build">
+                <or>
+                    <filename name="cdb-loader.jar"/>
+                    <filename name="libloader.so"/>
+                    <filename name="libloader.jnilib"/>
+                </or>
+            </fileset>
+        </copy>
+
+        -->
+
+        <!--
+            Copy command executables
+          -->
+        <!-- 
+        <copy todir="${IcommandsDir}/bin"
+              preservelastmodified="true">
+            <fileset dir="commands/bin">
+                <or>
+                    <filename name="loader.sh"/>
+                </or>
+            </fileset>
+            <fileset dir="commands">
+                <or>
+                    <filename name="loader-logger.properties"/>
+                </or>
+            </fileset>
+        </copy>
+        <chmod type="file" perm="755">
+            <fileset dir="${IcommandsDir}/bin"/>
+        </chmod>
+        -->
+
+        <!--
+            Copy tools shell scripts
+          -->
+        <!--
+        <copy todir="${IcdbtoolsDir}/bin"
+              preservelastmodified="true">
+            <fileset dir="test/bin">
+                <and>
+                    <depth max="0"/>
+                    <or>
+                        <filename name="cdbcast"/>
+                        <filename name="cdbfuncs"/>
+                        <filename name="cdb_admin_functions.sql"/>
+                    </or>
+                </and>
+            </fileset>
+        </copy>
+        <copy todir="${IcdbtoolsDir}/support/bin"
+              preservelastmodified="true">
+            <fileset dir="test/bin">
+                <and>
+                    <depth max="0"/>
+                    <or>
+                        <filename name="cdbcreatedb"/>
+                        <filename name="cdbinitdb"/>
+                        <filename name="cdbpsql"/>
+                        <filename name="cdbstart"/>
+                        <filename name="cdbstop"/>
+                        <filename name="cvpschema.sql"/>
+                        <filename name="cvpdata.sql"/>
+                        <filename name="cvphead.sql"/>
+                        <filename name="cvptail.sql"/>
+                    </or>
+                </and>
+            </fileset>
+        </copy>
+        <chmod type="file" perm="755">
+            <fileset dir="${IcdbtoolsDir}">
+                <exclude name="**/*.sql"/>
+            </fileset>
+        </chmod>  
+        -->
+
+        <!--
+            Copy (generated) jar files to mgmt library directory
+          -->
+        <!--
+        <copy todir="${ImgmtDir}/lib"
+              preservelastmodified="true">
+            <fileset dir="mgmt/build">
+                <or>
+                    <filename name="cdb-mgmt.jar"/>
+                    <filename name="cdb-agent.jar"/>
+                </or>
+            </fileset>
+        </copy>
+        -->
+
+        <!--
+            Copy command executables
+          -->
+        <!--
+        <copy todir="${ImgmtDir}/bin"
+              preservelastmodified="true">
+            <fileset dir="mgmt">
+                <or>
+                  <filename name="runAgent.sh"/>
+                  <filename name="launchGui.sh"/>
+		  <filename name="cdbmgmt.properties"/>
+		  <filename name="logging.properties"/>
+                </or>
+            </fileset>
+        </copy>
+        <chmod type="file" perm="755" file="${ImgmtDir}/bin/runAgent.sh"/>
+        <chmod type="file" perm="755" file="${ImgmtDir}/bin/launchGui.sh"/>
+        -->
+
+        <!--
+            Create the agent.properties file from the template
+          -->
+        <echo>
+The value of installRoot is: ${installRoot}
+The value of releaseDir is: ${releaseDir}
+        </echo>
+
+        <!--
+
+        <copy tofile="${ImgmtDir}/bin/agent.properties" file="mgmt/agent.properties.template">
+             <filterset>
+                     <filter token="project-bin"  value="${installRoot}/${releaseDir}/pgsql/bin/" />
+             </filterset>
+        </copy>
+        -->
+
+        <!--
+            Create the agent rc file from the template
+          -->
+        <!--
+        <copy tofile="${ImgmtDir}/bin/cdbagent.rc" file="mgmt/cdbagent.redhat-rc.template">
+             <filterset>
+                     <filter token="project-path"  value="${installRoot}/${releaseDir}" />
+             </filterset>
+        </copy>
+        -->
+
+    </target>
+
+</project>
