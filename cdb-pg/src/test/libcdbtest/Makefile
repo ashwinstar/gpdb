@@ -11,6 +11,9 @@ NAME= cdbtest
 SO_MAJOR_VERSION= 2
 SO_MINOR_VERSION= 0
 
+# Everything in this directory is built with MPI support.
+override CC := $(MPICC)
+override LIBS := $(MPILIBS) $(LIBS)
 
 override CPPFLAGS :=  -DFRONTEND -I$(srcdir) $(CPPFLAGS) -I$(top_builddir)/src/port -I$(libpq_srcdir)
 override CFLAGS += $(PTHREAD_CFLAGS)
