@@ -93,7 +93,7 @@ positional=0
 options_ended=
 dbroot=
 port=
-ndbs=
+nlisteners=
 dbname=
 
 # Ok, loop through the command line args
@@ -123,7 +123,7 @@ do
                    port="$OPTARG"
                    ;;
                 n)
-                   ndbs="$OPTARG"
+                   nlisteners="$OPTARG"
                    ;;
                 N)
                    dbname="$OPTARG"
@@ -168,11 +168,11 @@ do
                 shift 1
                 ;;
             --listeners)
-                listeners=${2:?Option '--listeners' requires a value}
+                nlisteners=${2:?Option '--listeners' requires a value}
                 shift 2
                 ;;
             --listeners=*)
-                listeners=${val:?Option '--listeners' requires a value}
+                nlisteners=${val:?Option '--listeners' requires a value}
                 shift 1
                 ;;
             --dbname)
@@ -219,18 +219,18 @@ done
 # Do we have a valid set of segments?
 # @design (Todd) Not sure why there was a limit on 8 dbs previously. We can
 # remove this if needed.
-if [ "$listeners" ]
+if [ "$nlisteners" ]
 then
-    if expr "$listeners" : '[1-9][0-9]*$' 1>/dev/null
+    if expr "$nlisteners" : '[1-9][0-9]*$' 1>/dev/null
     then
        :
     else
-       echo "Number of instances must be specified as a number greater than zero" >&2
+       echo "Number of listeners must be specified as a number greater than zero" >&2
        exit 2
     fi
 else
     # If nothing is specified, then default to 1
-    : ${listeners:=1}
+    : ${nlisteners:=1}
 fi
 
 # Check what port was specified
@@ -267,7 +267,7 @@ fi
 # ---------------------------------------------------------------------
 # CDB database processing
 # ---------------------------------------------------------------------
-for (( i = 1; i <= listeners; i++ ))
+for (( i = 1; i <= nlisteners; i++ ))
 do
     PGDATA="$PGROOT/$dbname$i"
 
