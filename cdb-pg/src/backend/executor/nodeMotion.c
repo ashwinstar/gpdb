@@ -66,6 +66,8 @@ ExecMotion(MotionState *node)
 	outerTupleSlot = ExecProcNode(outerNode);
 	if ( TupIsNull(outerTupleSlot) )
 		return NULL;
+
+	node->numTuplesFromChild++;
 		
 	/*
 	 * make a copy of the tuple
@@ -84,6 +86,9 @@ ExecMotion(MotionState *node)
 	/*
 	 * store it in our result slot and return this.
 	 */
+
+	node->numTuplesToParent++;
+
 	return ExecStoreTuple(tuple, slot, InvalidBuffer, true);
 }
 
@@ -106,7 +111,11 @@ ExecInitMotion(Motion *node, EState *estate)
 	motionstate->ps.state = estate;
 	motionstate->noMoreChildTuples = false;
 	motionstate->noMoreAMSTuples = false;
-
+	motionstate->numTuplesFromChild = 0;
+	motionstate->numTuplesToAMS = 0;
+	motionstate->numTuplesFromAMS = 0;
+	motionstate->numTuplesToParent = 0;
+	
 	/*
 	 * Miscellaneous initialization
 	 *
@@ -212,6 +221,18 @@ ExecEndMotion(MotionState *node)
 	 * shut down the subplan
 	 */
 	ExecEndNode(outerPlanState(node));
+
+	Assert(node->numTuplesFromChild + node->numTuplesFromAMS == node->numTuplesToAMS + node->numTuplesToParent);
+
+	elog( DEBUG1, "Motion Node %d counts: "
+					"%d numTuplesFromChild, %d numTuplesFromAMS, %d numTuplesToAMS, %d numTuplesToParent",
+					motNodeID,
+					node->numTuplesFromChild, 
+					node->numTuplesFromAMS, 
+					node->numTuplesToAMS, 
+					node->numTuplesToParent
+		);
+
 
 #ifdef CDB_AMS_DEVELOPER
     /*
@@ -392,7 +413,7 @@ Motion *make_motion(Plan *lefttree, MotionType motionType,
 	node->inputSegIdx = inputSegIdx;
 
 	node->motionID = 0;
-	
+
 	return node;
 }
 

@@ -235,6 +235,10 @@ ExecutorRun(QueryDesc *queryDesc,
 		* if in dispatch mode, time to serialize plan and query trees, and
 		* fire off cdb_exec command to each of the qexecs
 		*/
+
+		/* TODO: check in the queryDesc to see whether this query
+		 * needs to be dispatched or run locally  
+		 */
 		if ( Cdb_role == CDB_ROLE_DISPATCH )
 		{
 			/*
@@ -248,7 +252,7 @@ ExecutorRun(QueryDesc *queryDesc,
 							serializeNode((Node *)queryDesc->parsetree), 
 							serializeNode((Node *)queryDesc->plantree) );
 
-			DISPATCH_TARGET_SET set;
+			DispatchTargetSet set;
 			if ( operation == CMD_SELECT )
 				set = DTS_SEGMENT;
 			else
@@ -260,7 +264,7 @@ ExecutorRun(QueryDesc *queryDesc,
 			 */
 			CdbDispatchCommand(buffer.data, set, true );
 			hasDispatched = true;
-// ???		pfree(buffer.data);
+			pfree(buffer.data);
 		}
 
 		if ( Cdb_role != CDB_ROLE_DISPATCH || operation == CMD_SELECT )
