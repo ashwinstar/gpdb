@@ -105,6 +105,11 @@ struct CdbPolicy
 extern CdbPolicy *get_table_policy(Oid tbloid);
 
 /*
+ * set_table_policy: sets the CdbPolicy for a table.
+ */
+extern void set_table_policy(Oid tbloid, CdbPolicy * policy);
+
+/*
  * getCDBNamespaceOid: gets the oid of the cdb namespace.
  */
 extern Oid getCDBNamespaceOid(void);

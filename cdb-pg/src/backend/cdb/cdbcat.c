@@ -11,6 +11,7 @@
 #include "postgres.h"
 #include "miscadmin.h"
 #include "catalog/pg_namespace.h"
+#include "catalog/indexing.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
@@ -304,3 +305,110 @@ SysScanDesc cdbtable_beginscan(Relation heapRelation,
 	return;
  }	
  
+/*
+ * Sets the policy of a table into the cdb.policy table
+ * from a CdbPolicy structure.
+ *
+ */
+void
+set_table_policy(Oid tbloid, CdbPolicy * policy)
+{
+
+	Relation		cdb_policy_rel;
+	/*Oid				cdb_policy_index_oid;
+	ScanKeyData		policy_key[1];
+	SysScanDesc		cdb_policy_scan;*/
+	HeapTuple		cdb_policy_tuple = NULL;
+
+	ArrayType  *attrnums;
+
+	char		nulls[2];
+	Datum		values[2];
+	
+	
+	
+	/*
+	 * first, get the oid of the cdb namespace
+	 */
+	Oid cdb_namespace_oid = getCDBNamespaceOid();
+	if ( cdb_namespace_oid == InvalidOid )
+	{
+		ereport(ERROR, (	
+			errcode(ERRCODE_CDB_INTERNAL_ERROR),
+			errmsg("CDB schema not found.")
+		));
+		
+		return; /* Won't happen */
+	}
+		
+
+	Assert(policy->nattrs >= 0);
+	Assert(policy->ptype == POLICYTYPE_PARTITIONED);
+
+	/* open the policy table for writing */
+	{
+		
+		/*
+		 * Get the oid of the policy table, using the cdb namespace oid and the table name
+		 */	
+		Oid cdb_oid = get_relname_relid(CdbPolicyRelationName, cdb_namespace_oid);
+		
+		/*
+		 * If the policy table wasn't there, we consider this a fatal error.
+		 */	
+		if ( cdb_oid == InvalidOid )
+		 ereport(ERROR, 
+			(errcode(ERRCODE_EXTERNAL_ROUTINE_INVOCATION_EXCEPTION),
+				errmsg("Cannot retrieve oid of %s.%s", CdbNamespaceName, CdbPolicyRelationName)));
+
+		cdb_policy_rel = heap_open(cdb_oid, RowExclusiveLock);
+	}
+
+
+	/*
+	 * Convert C arrays into Postgres arrays.
+	 */
+	if (policy->nattrs > 0)
+	{
+		int i;
+		Datum	   *akey;
+
+		akey = (Datum *) palloc(policy->nattrs * sizeof(Datum));
+		for (i = 0; i < policy->nattrs; i++)
+			akey[i] = Int16GetDatum(policy->attrs[i]);
+		attrnums = construct_array(akey, policy->nattrs,
+									  INT2OID, 2, true, 's');
+	}
+	else
+	{
+		attrnums = NULL;
+	}
+
+
+	nulls[0] = ' ';
+	nulls[1] = ' ';
+	values[0] =  ObjectIdGetDatum(tbloid);
+
+	if (attrnums)
+		values[1] =  PointerGetDatum(attrnums);
+	else
+		nulls[1] = 'n';
+
+	cdb_policy_tuple = heap_formtuple(RelationGetDescr(cdb_policy_rel), values, nulls);
+
+	simple_heap_insert(cdb_policy_rel, cdb_policy_tuple);
+
+	/* update catalog indexes */
+	CatalogUpdateIndexes(cdb_policy_rel, cdb_policy_tuple);
+
+
+	heap_close(cdb_policy_rel, RowExclusiveLock);
+
+	
+	
+
+	
+
+			
+	
+}

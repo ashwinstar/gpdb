@@ -65,6 +65,7 @@
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbvars.h"
+#include "cdb/cdbcat.h"
 
 
 
@@ -285,6 +286,9 @@ DefineRelation(CreateStmt *stmt, char relkind)
 	int			i;
 	AttrNumber	attnum;
 
+	bool hasDispatched = false;
+	bool shouldDispatch =  Cdb_role == CDB_ROLE_DISPATCH;
+
 	/*
 	 * Truncate relname to appropriate length (probably a waste of time,
 	 * as parser should have done this already).
@@ -426,8 +430,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 		}
 	}
 
-	bool hasDispatched = false;
-	bool shouldDispatch =  Cdb_role == CDB_ROLE_DISPATCH;
+
 
 	
 	/* If we are the dispatcher, we need to create the table to get the new relid */
@@ -455,14 +458,18 @@ DefineRelation(CreateStmt *stmt, char relkind)
 		elog( DEBUG5,"shouldDispatch = true, relOid = %d",relationId);
 		if ( shouldDispatch )
 		{
+
+			char *pszCreateTable;
+			DispatchTargetSet set;
+
 			/*
 			 * Serialize the stmt tree, and create the sql statement: cdbexec ....
 			 */
+			Query * q = makeNode(Query);
+
 			StringInfoData buffer;
 			
 			initStringInfo( &buffer );
-
-			Query * q = makeNode(Query);
 
 			q->commandType = CMD_UTILITY;
 			q->utilityStmt = (Node *)stmt;
@@ -471,7 +478,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 			q->canSetTag = true; /*?*/
 		
 
-			char *pszCreateTable = serializeNode((Node *)q);
+			pszCreateTable = serializeNode((Node *)q);
 			
 
 			Assert(pszCreateTable != NULL );
@@ -482,7 +489,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 
 			pfree(pszCreateTable);
 
-			DispatchTargetSet set;
+			
 			
 			set = DTS_SEGDB;
 			
@@ -592,16 +599,32 @@ DefineRelation(CreateStmt *stmt, char relkind)
 	if ( hasDispatched )
 	{
 		char *message;
+		char *szCommand;
+		CdbPolicy * policy;
+		CdbDispatchResults* results;
+
+		int nattrs = 1;
+
+		/* dispatch node needs to update policy */
+		
+		policy = (CdbPolicy*) palloc(sizeof(CdbPolicy) + nattrs*sizeof(policy->attrs[0]));
+		policy->ptype = POLICYTYPE_PARTITIONED;
+		policy->nattrs = nattrs;
+		
+		/* Hack! BUG BUG!  right now we always partition on column 1 */
+		policy->attrs[0] = 1;
+		
+		set_table_policy(relationId, policy);
 		 
 		/*
 		 * We successfully completed on the Dispatcher.  Now check the results
 		 * from the qExecs.  This internally waits for them to all finish.
 		 */
-		CdbDispatchResults* results = CdbCheckDispatchResult();
+		results = CdbCheckDispatchResult();
 
 
 		message = CdbDumpDispatchResults(results, true);
-		char *szCommand = results->szCommand;
+		szCommand = results->szCommand;
 		if ( szCommand == NULL )
 			szCommand = "";
 		Assert( message != NULL );
