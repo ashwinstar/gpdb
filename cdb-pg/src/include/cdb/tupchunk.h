@@ -137,14 +137,6 @@ typedef struct TupleChunkListData
 } TupleChunkListData, *TupleChunkList;
 
 
-extern TupleChunkList CvtHeapTupToChunks(HeapTuple htup, TupleDesc tupdesc,
-    int maxChunkDataSize, uint16 srcSegIdx, uint16 tgtSegIdx, uint16 mnid);
-
-
-extern HeapTuple CvtChunksToHeapTup(TupleChunkList tclist, TupleDesc tupdesc);
-
-
-
 /* Sends a tuple chunk from the Postgres process to the local AMS process via
  * IPC.  This function does not block; if the IPC channel cannot accept the
  * tuple chunk for some reason, then this is indicated by a return-code.
@@ -178,7 +170,15 @@ extern bool SendTupleChunkToAMS(TupleChunkListItem tcItem);
 extern TupleChunkListItem RecvTupleChunkFromAMS(void);
 
 
+
+extern TupleChunkListItem makeTupleChunkListItem(TupleChunkType chunkType,
+    void *pChunkData, uint16 chunkDataSize, uint16 srcSegIdx,
+    uint16 tgtSegIdx, uint16 mnid);
+
+/* Add another item to the end of a tuple chunk list. */
 extern void appendChunkToTCList(TupleChunkList tcList, TupleChunkListItem tcItem);
 
+/* Remove the contents of a TupleChunkList, and reset its state to "empty." */
+extern void clearTCList(TupleChunkList tcList);
 
 #endif /* TUPCHUNK_H */

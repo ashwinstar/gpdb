@@ -91,7 +91,7 @@ typedef struct MotionNodeInfo
 typedef struct TupleSendContext
 {
 	HeapTuple heap_tuple;
-	int target_segment;	
+	uint16 target_segment;	
 	unsigned char flags;
 	long total_tuple_bytes;
     long tuple_bytes_sent;      /* Bytes of tuple data sent. */
@@ -113,6 +113,12 @@ typedef struct TupleSendContext
 
 
 /* API FUNCTION CALLS */
+
+
+extern void InitMotionLayer(void);
+extern void InitMotionNode(uint16 motNodeID, bool preserveOrder,
+    TupleDesc tupDesc);
+
 
 /* non-blocking operation that may perform only part (or none) of the 
  * send before returning.  The TupleSendContext is used to help keep track

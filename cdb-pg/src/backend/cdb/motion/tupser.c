@@ -221,11 +221,13 @@ HeapTuple DeserializeTuple(TupleDesc tupdesc, StringInfo serialTup)
 }
 
 
-/* Get the lookup info that SerializeTuple() needs */
+/* Get the lookup info that SerializeTuple() and DeserializeTuple() need. */
 void initSerTupInfo(SerTupInfo *myState, TupleDesc tupdesc, int numAttrs)
 {
     int i;
     MemoryContext oldctxt;
+
+    elog(DEBUG2, "Initializing cached tuple serialization information.");
 
     /* Allocate this stuff in the cache memory context so that it won't
      * get freed when a statement ends.
@@ -279,4 +281,172 @@ void initSerTupInfo(SerTupInfo *myState, TupleDesc tupdesc, int numAttrs)
 
 
 
+TupleChunkList CvtHeapTupToChunks(HeapTuple htup, TupleDesc tupdesc,
+    int maxChunkDataSize, MotionNodeInfo *mn_info, uint16 tgtSegIdx)
+{
+    StringInfoData serialTup;
+    TupleChunkList tcList;
+    TupleChunkListItem tcItem;
+    int i;
+    uint16 chunkDataSize;
+    TupleChunkType tcType;
+    
+    AssertArg(htup != NULL);
+    AssertArg(tupdesc != NULL);
+    AssertArg(maxChunkDataSize >= MIN_TC_DATA_SIZE);
+    AssertArg(maxChunkDataSize <= MAX_TC_DATA_SIZE);
+    
+    /* Generate serialized version of heap tuple into the string info. */
+    
+    initStringInfo(&serialTup);
+    SerializeTuple(htup, tupdesc, &serialTup);
+    
+    /* Create the tuple-chunk list from the serialized data. */
+    
+    tcList = (TupleChunkList) palloc0(sizeof(TupleChunkListData));
+    tcList->serialized_data_length = serialTup.len;
+    
+    if (serialTup.len <= maxChunkDataSize)   /* Tuple fits in single chunk. */
+    {
+        /* Create the new tuple chunk. */
+        chunkDataSize = serialTup.len;
+        tcItem = makeTupleChunkListItem(TC_WHOLE, serialTup.data,
+            chunkDataSize, mn_info->segment_id, tgtSegIdx,
+            mn_info->motion_node_id);
+
+        /* Update the chunk list. */
+        appendChunkToTCList(tcList, tcItem);
+        Assert(tcList->num_chunks == 1);
+    }
+    else
+    {
+        /* Tuple requires at least two chunks. */
+        
+        for (i = 0; i < serialTup.len; /*nothing*/ )
+        {
+            /* Calculate the size of the next chunk of data, and create the
+             * new tuple chunk.
+             */
+
+            chunkDataSize = serialTup.len - i;
+            if (chunkDataSize > maxChunkDataSize)
+            {
+                chunkDataSize = maxChunkDataSize;
+                tcType = (i == 0 ? TC_PARTIAL_START : TC_PARTIAL_MID);
+            }
+            else
+            {
+                /* Sanity check:  If we get here, it's because the tuple data
+                 * won't fit in a single chunk.  So we shouldn't get in here
+                 * on the first iteration of the loop.
+                 */
+                Assert(i > 0);
+                
+                /* Since we finally got to the point where the whole rest of
+                 * the tuple fits in a chunk, this is the end chunk for the
+                 * tuple.
+                 */
+                tcType = TC_PARTIAL_END;
+            }
+
+            tcItem = makeTupleChunkListItem(tcType, serialTup.data + i,
+                chunkDataSize, mn_info->segment_id, tgtSegIdx,
+                mn_info->motion_node_id);
+
+            /* Update the chunk list. */
+            appendChunkToTCList(tcList, tcItem);
+            
+            /* Finally, increment i! */
+            i += chunkDataSize;
+        }
+    }
+    
+    return tcList;
+}
+
+
+HeapTuple CvtChunksToHeapTup(TupleChunkList tcList, TupleDesc tupdesc)
+{
+    StringInfoData serData;
+    TupleChunkListItem tcItem;
+    int i;
+    HeapTuple htup;
+    
+    AssertArg(tcList != NULL);
+    AssertArg(tcList->p_first != NULL);
+    AssertArg(tupdesc != NULL);
+    
+    /* Dump all of the data in the tuple chunk list into a single StringInfo,
+     * so that we can convert it into a HeapTuple.  Check chunk types based on
+     * whether there is only one chunk, or multiple chunks.
+     */
+
+    initStringInfo(&serData);
+    tcItem = tcList->p_first;
+    i = 0;
+    do
+    {
+        /* Make sure that the type of this tuple chunk is correct! */
+
+        if (i == 0)
+        {
+            if (tcItem->p_next == NULL)
+            {
+                if (GetChunkType(tcItem->chunk_data) != TC_WHOLE)
+                {
+                    ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+                        errmsg("Single chunk's type must be TC_WHOLE.")));
+                }
+            }
+            else    /* tcItem->p_next != NULL */
+            {
+                if (GetChunkType(tcItem->chunk_data) != TC_PARTIAL_START)
+                {
+                    ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+                        errmsg("First chunk of collection must have type"
+                               " TC_PARTIAL_START.")));
+                }
+            }
+        }
+        else    /* i > 0 */
+        {
+            if (tcItem->p_next == NULL)
+            {
+                if (GetChunkType(tcItem->chunk_data) != TC_PARTIAL_END)
+                {
+                    ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+                        errmsg("Last chunk of collection must have type"
+                               " TC_PARTIAL_END.")));
+                }
+            }
+            else    /* tcItem->p_next != NULL */
+            {
+                if (GetChunkType(tcItem->chunk_data) != TC_PARTIAL_MID)
+                {
+                    ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+                        errmsg("Last chunk of collection must have type"
+                               " TC_PARTIAL_MID.")));
+                }
+            }
+        }
+
+        /* Copy this chunk into the tuple data.  Don't include the header! */
+        appendBinaryStringInfo(&serData,
+            tcItem->chunk_data + TUPLE_CHUNK_HEADER_SIZE,
+            tcItem->chunk_length - TUPLE_CHUNK_HEADER_SIZE);
+
+        /* Go to the next chunk. */
+        tcItem = tcItem->p_next;
+        i++;
+    }
+    while (tcItem != NULL);
+    
+    /* Create the HeapTuple from the concatenated chunks. */
+    htup = DeserializeTuple(tupdesc, &serData);
+
+    /* Free up memory we used, just to be leaner. */
+    pfree(serData.data);
+    
+    return htup;
+}
 
