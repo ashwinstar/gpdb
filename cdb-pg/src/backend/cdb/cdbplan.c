@@ -26,15 +26,22 @@ static bool walk_plan_node_fields(Plan *plan, bool (*walker) (), void *context);
 static bool walk_scan_node_fields(Scan *scan, bool (*walker) (), void *context);
 static bool walk_join_node_fields(Join *join, bool (*walker) (), void *context);
 
-static bool plan_inventory_walker(Node *node, PlanInventory *pinventory);
+static void mutate_plan_fields(Plan* newplan, Plan* oldplan, Node *(*mutator) (), void *context);
+static void mutate_join_fields(Join* newplan, Join* oldplan, Node *(*mutator) (), void *context);
 
-/* Functions plan_inventory() and plan_inventory_walker() demonstrate use
+
+static bool plan_inventory_walker(Node *node, PlanInventory *pinventory);
+static Node* plan_copy_mutator(Node*  node, int *context);
+
+/* ----------------------------------------------------------------------- *
+ * Functions plan_inventory() and plan_inventory_walker() demonstrate use
  * of the plan_tree_walker() framework and will eventually be replaced by
  * one or more useful tools.
  *
  * For now plan_inventory() just counts the Var and Scan nodes in a plan
  * tree and reports back via a PlanInventory structure allocated by the
  * caller.  Just a toy for now.
+ * ----------------------------------------------------------------------- *
  */
 bool
 plan_inventory(Plan *plan, PlanInventory *pinventory)
@@ -83,6 +90,32 @@ plan_inventory_walker(Node *node, PlanInventory *pinventory)
 
 }
 
+
+/* ----------------------------------------------------------------------- *
+ * A sample mutator -- just does a deep copy.
+ * ----------------------------------------------------------------------- *
+ */
+ 
+ Plan* plan_copy(Plan* plan)
+ {
+	int n;
+	return (Plan*)plan_copy_mutator((Node*)plan, &n);
+ }
+ 
+ Node* plan_copy_mutator(Node*  node, int *context)
+ {
+	if ( node == NULL )
+		return NULL;
+	/* Don't do anything! */
+	return plan_tree_mutator(node, plan_copy_mutator, context);
+ }
+
+
+/* ----------------------------------------------------------------------- *
+ * Plan Tree Walker Framework
+ * ----------------------------------------------------------------------- *
+ */
+ 
 /* Function walk_plan_node_fields is a subroutine used by plan_tree_walker() 
  * to walk the fields of Plan nodes.  Plan is actually an abstract superclass 
  * of all plan nodes and this function encapsulates the common structure.
@@ -120,6 +153,10 @@ walk_plan_node_fields(Plan *plan,
 	
 	/* Init Plan nodes (uncorrelated expr subselects */
 	if (walker((Node *)(plan->initPlan), context))
+		return true;
+	
+	/* CDB Flow node */
+	if (walker((Node *)(plan->flow), context))
 		return true;
 		
 	return false;
@@ -343,6 +380,35 @@ plan_tree_walker(Node *node,
 				/* Nothing to walk in FixedMotionDefn or SortMotionDefn. */
 			}
 			break;
+		
+		case T_Flow:
+			/* Nothing to walk in Flow nodes at present. */
+			break;
+
+		case T_SubPlan:
+			/* SubPlan is handled by expression_tree_walker() , but that
+			 * walker doesn't recur into the plan itself.  Here, we do the
+			 * whole item, though users of the function will probably need
+			 * to update their context to reflect the range table.
+			 */
+			{
+				SubPlan    *subplan = (SubPlan *) node;
+
+				/* recurse into the exprs list */
+				if (expression_tree_walker((Node *) subplan->exprs,
+										   walker, context))
+					return true;
+				
+				/* recur into the subplan, a kind of Plan node */
+				if ( walker((Node*)subplan->plan, context) )
+					return true;
+				
+				/* also examine args list */
+				if (expression_tree_walker((Node *) subplan->args,
+										   walker, context))
+					return true;
+			}
+			break;
 
 	
 		/* Query nodes are handled by the Postgres query_tree_walker.
@@ -375,7 +441,6 @@ plan_tree_walker(Node *node,
 		case T_ScalarArrayOpExpr:
 		case T_BoolExpr:
 		case T_SubLink:
-		case T_SubPlan:
 		case T_FieldSelect:
 		case T_FieldStore:
 		case T_RelabelType:
@@ -399,3 +464,519 @@ plan_tree_walker(Node *node,
 	}
 	return false;
 }
+
+
+
+/* ----------------------------------------------------------------------- *
+ * Plan Tree Mutator Framework
+ * ----------------------------------------------------------------------- *
+ */
+
+/*--------------------
+ * expression_tree_mutator() is designed to support routines that make a
+ * modified copy of an expression tree, with some nodes being added,
+ * removed, or replaced by new subtrees.  The original tree is (normally)
+ * not changed.  Each recursion level is responsible for returning a copy of
+ * (or appropriately modified substitute for) the subtree it is handed.
+ * A mutator routine should look like this:
+ *
+ * Node * my_mutator (Node *node, my_struct *context)
+ * {
+ *		if (node == NULL)
+ *			return NULL;
+ *		// check for nodes that special work is required for, eg:
+ *		if (IsA(node, Var))
+ *		{
+ *			... create and return modified copy of Var node
+ *		}
+ *		else if (IsA(node, ...))
+ *		{
+ *			... do special transformations of other node types
+ *		}
+ *		// for any node type not specially processed, do:
+ *		return expression_tree_mutator(node, my_mutator, (void *) context);
+ * }
+ *
+ * The "context" argument points to a struct that holds whatever context
+ * information the mutator routine needs --- it can be used to return extra
+ * data gathered by the mutator, too.  This argument is not touched by
+ * expression_tree_mutator, but it is passed down to recursive sub-invocations
+ * of my_mutator.  The tree walk is started from a setup routine that
+ * fills in the appropriate context struct, calls my_mutator with the
+ * top-level node of the tree, and does any required post-processing.
+ *
+ * Each level of recursion must return an appropriately modified Node.
+ * If expression_tree_mutator() is called, it will make an exact copy
+ * of the given Node, but invoke my_mutator() to copy the sub-node(s)
+ * of that Node.  In this way, my_mutator() has full control over the
+ * copying process but need not directly deal with expression trees
+ * that it has no interest in.
+ *
+ * Just as for expression_tree_walker, the node types handled by
+ * expression_tree_mutator include all those normally found in target lists
+ * and qualifier clauses during the planning stage.
+ *
+ * expression_tree_mutator will handle SubLink nodes by recursing normally
+ * into the "lefthand" arguments (which are expressions belonging to the outer
+ * plan).  It will also call the mutator on the sub-Query node; however, when
+ * expression_tree_mutator itself is called on a Query node, it does nothing
+ * and returns the unmodified Query node.  The net effect is that unless the
+ * mutator does something special at a Query node, sub-selects will not be
+ * visited or modified; the original sub-select will be linked to by the new
+ * SubLink node.  Mutators that want to descend into sub-selects will usually
+ * do so by recognizing Query nodes and calling query_tree_mutator (below).
+ *
+ * expression_tree_mutator will handle a SubPlan node by recursing into
+ * the "exprs" and "args" lists (which belong to the outer plan), but it
+ * will simply copy the link to the inner plan, since that's typically what
+ * expression tree mutators want.  A mutator that wants to modify the subplan
+ * can force appropriate behavior by recognizing SubPlan expression nodes
+ * and doing the right thing.
+ *--------------------
+ */
+
+Node *
+plan_tree_mutator(Node *node,
+						Node *(*mutator) (),
+						void *context)
+{
+	/*
+	 * The mutator has already decided not to modify the current node, but
+	 * we must call the mutator for any sub-nodes.
+	 */
+
+#define FLATCOPY(newnode, node, nodetype)  \
+	( (newnode) = makeNode(nodetype), \
+	  memcpy((newnode), (node), sizeof(nodetype)) )
+
+#define CHECKFLATCOPY(newnode, node, nodetype)	\
+	( AssertMacro(IsA((node), nodetype)), \
+	  (newnode) = makeNode(nodetype), \
+	  memcpy((newnode), (node), sizeof(nodetype)) )
+
+#define MUTATE(newfield, oldfield, fieldtype)  \
+		( (newfield) = (fieldtype) mutator((Node *) (oldfield), context) )
+
+#define PLANMUTATE(newplan, oldplan) \
+		mutate_plan_fields((Plan*)(newplan), (Plan*)(oldplan), mutator, context)
+
+/* This is just like  PLANMUTATE because Scan adds only scalar fields. */
+#define SCANMUTATE(newplan, oldplan) \
+		mutate_plan_fields((Plan*)(newplan), (Plan*)(oldplan), mutator, context)
+
+#define JOINMUTATE(newplan, oldplan) \
+		mutate_join_fields((Join*)(newplan), (Join*)(oldplan), mutator, context)
+
+#define COPYARRAY(dest,src,lenfld,datfld) \
+	do { \
+		(dest)->lenfld = (src)->lenfld; \
+		if ( (src)->lenfld > 0 ) \
+		{ \
+			Size _size = ((src)->lenfld*sizeof(*((src)->datfld))); \
+			(dest)->datfld = palloc(_size); \
+			memcpy((dest)->datfld, (src)->datfld, _size); \
+		} \
+		else \
+		{ \
+			(dest)->datfld = NULL; \
+		} \
+	} while (0)
+	
+	
+
+	if (node == NULL)
+		return NULL;
+
+	/* Guard against stack overflow due to overly complex expressions */
+	check_stack_depth();
+
+	switch (nodeTag(node))
+	{
+		/* Plan nodes aren't handled by expression_tree_walker, so we
+		 * need to do them here.
+		 */
+		case T_Plan:
+			/* Abstract: Should see only subclasses. */
+			elog(ERROR, "abstract node type not allowed: T_Plan");
+			
+		case T_Result:
+			{
+				Result *result = (Result*)node;
+				Result *newresult;
+				FLATCOPY(newresult, result, Result);
+				PLANMUTATE(newresult, result);
+				MUTATE(newresult->resconstantqual, result->resconstantqual, Node*);
+				return (Node*)newresult;
+			}
+			break;
+				
+		case T_Append:
+			{
+				Append *append = (Append*)node;
+				Append *newappend;
+				FLATCOPY(newappend, append, Append);
+				PLANMUTATE(newappend, append);
+				MUTATE(newappend->appendplans, append->appendplans, List*);
+				/* isTarget is scalar. */
+				return (Node*)newappend;
+			}	
+			break;
+				
+		case T_Scan: 
+			/* Abstract: Should see only subclasses. */
+			elog(ERROR, "abstract node type not allowed: T_Scan");
+			
+		case T_SeqScan:
+			{
+				SeqScan *seqscan = (SeqScan*)node;
+				SeqScan *newseqscan;
+				FLATCOPY(newseqscan, seqscan, SeqScan);
+				SCANMUTATE(newseqscan,seqscan);
+				/* A SeqScan is really just a Scan, so we're done. */
+				return (Node*)newseqscan;
+			}
+			break;
+			
+		case T_IndexScan:
+			{
+				IndexScan *idxscan = (IndexScan*)node;
+				IndexScan *newidxscan;
+				FLATCOPY(newidxscan, idxscan, IndexScan);
+				SCANMUTATE(newidxscan,idxscan);
+				MUTATE(newidxscan->indxid, idxscan->indxid, List*);
+				MUTATE(newidxscan->indxqual, idxscan->indxqual, List*);
+				MUTATE(newidxscan->indxqualorig, idxscan->indxqualorig, List*);
+				MUTATE(newidxscan->indxstrategy, idxscan->indxstrategy, List*);
+				MUTATE(newidxscan->indxsubtype, idxscan->indxsubtype, List*);
+				MUTATE(newidxscan->indxlossy, idxscan->indxlossy, List*);
+				/* indxorderdir  is  scalar */
+				return (Node*)newidxscan;
+			}
+			break;
+				
+		case T_TidScan:
+			{
+				TidScan *tidscan = (TidScan*)node;
+				TidScan *newtidscan;
+				FLATCOPY(newtidscan, tidscan, TidScan);
+				SCANMUTATE(newtidscan, tidscan);
+				MUTATE(newtidscan->tideval, tidscan->tideval, List*);
+				/* isTarget is scalar. */
+				return (Node*)newtidscan;
+			}	
+			break;
+				
+		case T_SubqueryScan:
+			{
+				SubqueryScan *sqscan = (SubqueryScan*)node;
+				SubqueryScan *newsqscan;
+				FLATCOPY(newsqscan, sqscan, SubqueryScan);
+				SCANMUTATE(newsqscan, sqscan);
+				MUTATE(newsqscan->subplan, sqscan->subplan, Plan*);
+				return (Node*)newsqscan;
+			}	
+			break;
+			
+		case T_FunctionScan:
+			{
+				FunctionScan *fnscan = (FunctionScan*)node;
+				FunctionScan *newfnscan;
+				FLATCOPY(newfnscan, fnscan, FunctionScan);
+				SCANMUTATE(newfnscan,fnscan);
+				/* A FunctionScan is really just a Scan, so we're done. */
+				return (Node*)newfnscan;
+			}
+			break;
+				
+		case T_Join:
+			/* Abstract: Should see only subclasses. */
+			elog(ERROR, "abstract node type not allowed: T_Join");
+						
+		case T_NestLoop:
+			{
+				NestLoop *loopscan = (NestLoop*)node;
+				NestLoop *newloopscan;
+				FLATCOPY(newloopscan, loopscan, NestLoop);
+				JOINMUTATE(newloopscan, loopscan);
+				/* A NestLoop is really just a Join. */
+				return (Node*)newloopscan;
+			}	
+			break;
+				
+		case T_MergeJoin:
+			{
+				MergeJoin *merge = (MergeJoin*)node;
+				MergeJoin *newmerge;
+				FLATCOPY(newmerge, merge, MergeJoin);
+				JOINMUTATE(newmerge, merge);
+				MUTATE(newmerge->mergeclauses, merge->mergeclauses, List*);
+				return (Node*)newmerge;
+			}	
+			break;
+				
+		case T_HashJoin:
+			{
+				HashJoin *hjoin = (HashJoin*)node;
+				HashJoin *newhjoin;
+				FLATCOPY(newhjoin, hjoin, HashJoin);
+				JOINMUTATE(newhjoin, hjoin);
+				MUTATE(newhjoin->hashclauses, hjoin->hashclauses, List*);
+				return (Node*)newhjoin;
+			}	
+			break;
+				
+		case T_Material:
+			{
+				Material *material = (Material*)node;
+				Material *newmaterial;
+				FLATCOPY(newmaterial, material, Material);
+				PLANMUTATE(newmaterial, material);
+				return (Node*)newmaterial;
+			}
+			break;
+				
+		case T_Sort:
+			{
+				Sort *sort = (Sort*)node;
+				Sort *newsort;
+				FLATCOPY(newsort, sort, Sort);
+				PLANMUTATE(newsort, sort);
+				COPYARRAY(newsort, sort, numCols, sortColIdx);
+				COPYARRAY(newsort, sort, numCols, sortOperators);
+				return (Node*)newsort;
+			}
+			break;
+			
+		case T_Group:
+			{
+				Group *group = (Group*)node;
+				Group *newgroup;
+				FLATCOPY(newgroup, group, Group);
+				PLANMUTATE(newgroup, group);
+				COPYARRAY(newgroup, group, numCols, grpColIdx);
+				return (Node*)newgroup;
+			}
+			break;
+			
+		case T_Agg:
+			{
+				Agg *agg = (Agg*)node;
+				Agg *newagg;
+				FLATCOPY(newagg, agg, Agg);
+				PLANMUTATE(newagg, agg);
+				COPYARRAY(newagg, agg, numCols, grpColIdx);
+				return (Node*)newagg;
+			}
+			break;
+			
+		case T_Unique:
+			{
+				Unique *uniq = (Unique*)node;
+				Unique *newuniq;
+				FLATCOPY(newuniq, uniq, Unique);
+				PLANMUTATE(newuniq, uniq);
+				COPYARRAY(newuniq, uniq, numCols, uniqColIdx);
+				return (Node*)newuniq;
+			}
+			break;
+			
+		case T_Hash:
+			{
+				Hash *hash = (Hash*)node;
+				Hash *newhash;
+				FLATCOPY(newhash, hash, Hash);
+				PLANMUTATE(newhash, hash);
+				return (Node*)newhash;
+			}
+			break;
+			
+		case T_SetOp:
+			{
+				SetOp *setop = (SetOp*)node;
+				SetOp *newsetop;
+				FLATCOPY(newsetop, setop, SetOp);
+				PLANMUTATE(newsetop, setop);
+				COPYARRAY(newsetop, setop, numCols, dupColIdx);
+				return (Node*)newsetop;
+			}
+			break;
+			
+		case T_Limit:
+			{
+				Limit *limit = (Limit*)node;
+				Limit *newlimit;
+				FLATCOPY(newlimit, limit, Limit);
+				PLANMUTATE(newlimit, limit);
+				MUTATE(newlimit->limitOffset, limit->limitOffset, Node*);
+				MUTATE(newlimit->limitCount, limit->limitCount, Node*);
+				return (Node*)newlimit;
+			}
+			break;
+			
+		case T_Motion:
+			{
+				Motion *motion = (Motion*)node;
+				Motion *newmotion;
+				FLATCOPY(newmotion, motion, Motion);
+				PLANMUTATE(newmotion, motion);
+				if ( motion->pHashDefn != NULL )
+				{
+					HashMotionDefn *pd = motion->pHashDefn;
+					HashMotionDefn *newpd = palloc0(sizeof(HashMotionDefn));
+					newpd->numHashSegs = pd->numHashSegs;
+					COPYARRAY(newpd, pd, numHashSegs, hashSegIdx);
+					MUTATE(newpd->hashExpr,  pd->hashExpr, List*);
+					MUTATE(newpd->hashOp,  pd->hashOp, List*);
+				}
+				if ( motion->pFixedDefn != NULL )
+				{
+					FixedMotionDefn *pd = motion->pFixedDefn;
+					FixedMotionDefn *newpd = palloc0(sizeof(FixedMotionDefn));
+					newpd->numOutputSegs = pd->numOutputSegs;
+					COPYARRAY(newpd, pd, numOutputSegs, outputSegIdx);
+				}
+				if ( motion->pSortDefn != NULL )
+				{
+					SortedMotionDefn *pd = motion->pSortDefn;
+					SortedMotionDefn *newpd = palloc0(sizeof(SortedMotionDefn));
+					newpd->numSortCols = pd->numSortCols;
+					COPYARRAY(newpd, pd, numSortCols, sortColIdx);
+					COPYARRAY(newpd, pd, numSortCols, sortOperators);
+					COPYARRAY(newpd, pd, numInputSegs, inputSegIdx);
+				}
+				return (Node*)newmotion;
+			}
+			break;
+		
+		case T_Flow:
+			{
+				Flow *flow = (Flow*)node;
+				Flow *newflow;
+				FLATCOPY(newflow, flow, Flow);
+				/* For now, just shallow copy.  Eventually, though, flow
+				 * characterization will be complex, which is why it's a
+				 * node.
+				 */
+				return (Node*)newflow;
+			}
+			break;
+		
+		case T_IntList:
+		case T_OidList:
+			/* Note that expression_tree_mutator handles T_List but not 
+			 * these.  A shallow copy will do.
+			 */
+			return (Node*)list_copy((List*)node);
+			
+			break;
+			
+		case T_Query:
+			/* Since expression_tree_mutator doesn't descend into Query nodes,
+			 * we use ... 
+			 */
+			return (Node*)query_tree_mutator((Query*)node, mutator, context, 0);
+			break;
+
+		/* The following cases are handled by expression_tree_mutator.  In 
+		 * addition, we let expression_tree_mutator handle unrecognized nodes.
+		 *
+		 * TODO: Identify node types that should never appear in plan trees
+		 *		 and disallow them here by issuing an error or asserting 
+		 *		 false.
+		 */
+		case T_Var:
+		case T_Const:
+		case T_Param:
+		case T_CoerceToDomainValue:
+		case T_CaseTestExpr:
+		case T_SetToDefault:
+		case T_RangeTblRef:
+		case T_Aggref:
+		case T_ArrayRef:
+		case T_FuncExpr:
+		case T_OpExpr:
+		case T_DistinctExpr:
+		case T_ScalarArrayOpExpr:
+		case T_BoolExpr:
+		case T_SubLink:
+		case T_SubPlan:
+		case T_FieldSelect:
+		case T_FieldStore:
+		case T_RelabelType:
+		case T_CaseExpr:
+		case T_CaseWhen:
+		case T_ArrayExpr:
+		case T_RowExpr:
+		case T_CoalesceExpr:
+		case T_NullIfExpr:
+		case T_NullTest:
+		case T_BooleanTest:
+		case T_CoerceToDomain:
+		case T_TargetEntry:
+		case T_List:
+		case T_FromExpr:
+		case T_JoinExpr:
+		case T_SetOperationStmt:
+		case T_InClauseInfo:
+
+		default:
+			/* Let expression_tree_mutator handle remaining cases or complain
+			 * of unrecognized node type.
+			 */
+			return expression_tree_mutator(node, mutator, context);
+			break;
+	}
+	/* can't get here, but keep compiler happy */
+	return NULL;
+}
+
+
+/* Function mutate_plan_fields() is a subroutine for plan_tree_mutator().
+ * It "hijacks" the macro MUTATE defined for use in that function, so don't
+ * change the argument names "mutator" and "context" use in the macro
+ * definition.
+ *
+ */
+void mutate_plan_fields(Plan* newplan, Plan* oldplan, Node *(*mutator) (), void *context)
+{
+	/* Scalar fields 
+	 *     startup_cost
+	 *     total_cost
+	 *     plan_rows
+	 *     plan_width
+	 *     nParamExec
+	 * need no mutation.
+	 */
+	 
+	/*  Node fields need mutation. */
+	MUTATE(newplan->targetlist, oldplan->targetlist, List*);
+	MUTATE(newplan->qual, oldplan->qual, List*);
+	MUTATE(newplan->lefttree, oldplan->lefttree, Plan*);
+	MUTATE(newplan->righttree, oldplan->righttree, Plan*);
+	MUTATE(newplan->initPlan, oldplan->initPlan,  List*);
+	
+	/* Bitmapsets aren't nodes but need to be copied to palloc'd space. */
+	newplan->extParam = bms_copy(oldplan->extParam);
+	newplan->allParam = bms_copy(oldplan->allParam);
+}
+
+
+/* Function mutate_plan_fields() is a subroutine for plan_tree_mutator().
+ * It "hijacks" the macro MUTATE defined for use in that function, so don't
+ * change the argument names "mutator" and "context" use in the macro
+ * definition.
+ *
+ */
+void mutate_join_fields(Join* newjoin, Join* oldjoin, Node *(*mutator) (), void *context)
+{
+	/* A Join node is a Plan node. */
+	mutate_plan_fields((Plan*)newjoin, (Plan*)oldjoin, mutator, context);
+	
+	/* Scalar field jointype needs no mutation. */
+	 
+	/*  Node fields need mutation. */
+	MUTATE(newjoin->joinqual, oldjoin->joinqual, List*);
+}
+
+
+

@@ -26,4 +26,13 @@
 extern Plan *
 cdbparallelize(Plan* plan, Query *query, bool isCursor, int cursorOptions, ParamListInfo boundParams);
 
+extern Flow *
+makeReplicatedFlow(void);
+
+extern Flow *
+makeDispatcherFlow(void);
+
+extern Flow *
+makePartitionedFlow(void);
+
 #endif /* CDBLLIZE_H */

@@ -253,6 +253,7 @@ _outPlanInfo(StringInfo str, Plan *node)
 	WRITE_BITMAPSET_FIELD(extParam);
 	WRITE_BITMAPSET_FIELD(allParam);
 	WRITE_INT_FIELD(nParamExec);
+	WRITE_NODE_FIELD(flow);
 }
 
 /*
@@ -1022,6 +1023,16 @@ _outFromExpr(StringInfo str, FromExpr *node)
 
 	WRITE_NODE_FIELD(fromlist);
 	WRITE_NODE_FIELD(quals);
+}
+
+static void
+_outFlow(StringInfo str, Flow *node)
+{
+	WRITE_NODE_TYPE("FLOW");
+
+	WRITE_ENUM_FIELD(flotype, FlowType);
+	WRITE_BOOL_FIELD(islocal);
+	WRITE_ENUM_FIELD(req_move, Movement);
 }
 
 /*****************************************************************************
@@ -1876,6 +1887,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_FromExpr:
 				_outFromExpr(str, obj);
+				break;
+			case T_Flow:
+				_outFlow(str, obj);
 				break;
 
 			case T_Path:

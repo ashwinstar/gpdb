@@ -919,4 +919,34 @@ typedef struct FromExpr
 	Node	   *quals;			/* qualifiers on join, if any */
 } FromExpr;
 
+
+typedef enum Movement
+{
+	MOVEMENT_NONE,			/* No motion required. */
+	MOVEMENT_FOCUS,			/* Move entire flow to dispatcher stream. */
+	MOVEMENT_BROADCAST,
+	MOVEMENT_REPARTITION
+
+} Movement;
+
+/*----------
+ * Flow - describes a tuple flow in a parallelized plan
+ *
+ * This node type is a CDB extension.
+ *
+ * Plan nodes contain a reference to a Flow that characterizes the output
+ * tuple flow of the node.  In addition, the node contains fields used for
+ * parallelizing specification.
+ *----------
+ */
+typedef struct Flow
+{
+	NodeTag		type;			/* T_Flow */
+	FlowType	flotype;		/* Type of flow. */
+	bool		islocal;		/* Is the flow tagged as local? */
+	
+	/* */
+	Movement	req_move;
+} Flow;
+
 #endif   /* PRIMNODES_H */

@@ -2438,6 +2438,7 @@ is_projection_capable_plan(Plan *plan)
 		case T_SetOp:
 		case T_Limit:
 		case T_Append:
+		case T_Motion:
 			return false;
 		default:
 			break;

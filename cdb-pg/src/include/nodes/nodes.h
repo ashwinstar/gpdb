@@ -130,6 +130,7 @@ typedef enum NodeTag
 	T_RangeTblRef,
 	T_JoinExpr,
 	T_FromExpr,
+	T_Flow,
 
 	/*
 	 * TAGS FOR EXPRESSION STATE NODES (execnodes.h)
@@ -461,5 +462,23 @@ typedef enum JoinType
 	((jointype) == JOIN_LEFT || \
 	 (jointype) == JOIN_FULL || \
 	 (jointype) == JOIN_RIGHT)
+
+
+/*
+ * FlowType - kinds of tuple flows in parallelized plans.
+ *
+ * This enum is a CDB extension.
+ */
+typedef enum FlowType
+{
+	FLOW_UNDEFINED,		/* used prior to calculation of type of derived flow */
+	FLOW_SINGLETON,		/* flow has single stream */
+	FLOW_REPLICATED,	/* flow is replicated across IOPs */
+	FLOW_PARTITIONED	/* flow is partitioned across IOPs */
+	/*
+	 * We might need additional flow types someday.
+	 */
+
+} FlowType;
 
 #endif   /* NODES_H */

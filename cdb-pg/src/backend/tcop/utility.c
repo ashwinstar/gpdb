@@ -58,7 +58,6 @@
 #include "utils/syscache.h"
 #include "cdb/cdbvars.h"
 
-
 /*
  * Error-checking support for DROP commands
  */
@@ -367,9 +366,10 @@ typedef enum
  *
  */
 static void
-CdbSentry(CdbAction dispatch, Node *parsetree)
+CdbSentry(CdbAction dispatch, Node *parsetree, const char *altname)
 {
 	CdbAction action;
+	const char *cmdname;
 	
 	switch ( Cdb_role )
 	{
@@ -389,25 +389,30 @@ CdbSentry(CdbAction dispatch, Node *parsetree)
 		return;
 	}
 	
+	if ( altname == NULL )
+		cmdname = CreateCommandTag(parsetree);
+	else
+		cmdname = altname;
+	
 	switch ( action )
 	{
 	case CDB_WARN:
 		ereport(WARNING, (
 			errcode(ERRCODE_WARNING_CDB_INTERIM_FEATURE),
-			errmsg("CDB support for %s may change or be revoked in the future.", CreateCommandTag(parsetree))
+			errmsg("CDB support for %s may change or be revoked in the future.", cmdname)
 			));
 		return;
 		
 	case CDB_NONCE:
 		ereport(ERROR, (
 			errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-			errmsg("CDB support for %s is not available yet.", CreateCommandTag(parsetree))
+			errmsg("CDB support for %s is not available yet.", cmdname)
 			));
 		
 	case CDB_REJECT:
 		ereport(ERROR, (
 			errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-			errmsg("CDB does not support %s.", CreateCommandTag(parsetree))
+			errmsg("CDB does not support %s.", cmdname)
 			));
 	
 	default:
@@ -458,7 +463,7 @@ ProcessUtility(Node *parsetree,
 						 */
 					case TRANS_STMT_BEGIN:
 					case TRANS_STMT_START:
-						CdbSentry(CDB_ACCEPT, parsetree);
+						CdbSentry(CDB_ACCEPT, parsetree, NULL);
 						{
 							ListCell   *lc;
 
@@ -480,7 +485,7 @@ ProcessUtility(Node *parsetree,
 						break;
 
 					case TRANS_STMT_COMMIT:
-						CdbSentry(CDB_ACCEPT, parsetree);
+						CdbSentry(CDB_ACCEPT, parsetree, NULL);
 						if (!EndTransactionBlock())
 						{
 							/* report unsuccessful commit in completionTag */
@@ -490,12 +495,12 @@ ProcessUtility(Node *parsetree,
 						break;
 
 					case TRANS_STMT_ROLLBACK:
-						CdbSentry(CDB_ACCEPT, parsetree);
+						CdbSentry(CDB_ACCEPT, parsetree, NULL);
 						UserAbortTransactionBlock();
 						break;
 
 					case TRANS_STMT_SAVEPOINT:
-						CdbSentry(CDB_REJECT, parsetree);
+						CdbSentry(CDB_REJECT, parsetree, NULL);
 						{
 							ListCell   *cell;
 							char	   *name = NULL;
@@ -517,13 +522,13 @@ ProcessUtility(Node *parsetree,
 						break;
 
 					case TRANS_STMT_RELEASE:
-						CdbSentry(CDB_REJECT, parsetree);
+						CdbSentry(CDB_REJECT, parsetree, NULL);
 						RequireTransactionChain((void *) stmt, "RELEASE SAVEPOINT");
 						ReleaseSavepoint(stmt->options);
 						break;
 
 					case TRANS_STMT_ROLLBACK_TO:
-						CdbSentry(CDB_REJECT, parsetree);
+						CdbSentry(CDB_REJECT, parsetree, "ROLLBACK TO SAVEPOINT");
 						RequireTransactionChain((void *) stmt, "ROLLBACK TO SAVEPOINT");
 						RollbackToSavepoint(stmt->options);
 
@@ -540,12 +545,12 @@ ProcessUtility(Node *parsetree,
 			 * Portal (cursor) manipulation
 			 */
 		case T_DeclareCursorStmt:
-			CdbSentry(CDB_REJECT, parsetree);
+			CdbSentry(CDB_REJECT, parsetree, NULL);
 			PerformCursorOpen((DeclareCursorStmt *) parsetree, params);
 			break;
 
 		case T_ClosePortalStmt:
-			CdbSentry(CDB_REJECT, parsetree);
+			CdbSentry(CDB_REJECT, parsetree, NULL);
 			{
 				ClosePortalStmt *stmt = (ClosePortalStmt *) parsetree;
 
@@ -554,7 +559,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_FetchStmt:
-			CdbSentry(CDB_REJECT, parsetree);
+			CdbSentry(CDB_REJECT, parsetree, NULL);
 			PerformPortalFetch((FetchStmt *) parsetree, dest,
 							   completionTag);
 			break;
@@ -563,12 +568,12 @@ ProcessUtility(Node *parsetree,
 			 * relation and attribute manipulation
 			 */
 		case T_CreateSchemaStmt:
-			CdbSentry(CDB_NONCE, parsetree);
+			CdbSentry(CDB_NONCE, parsetree, NULL);
 			CreateSchemaCommand((CreateSchemaStmt *) parsetree);
 			break;
 
 		case T_CreateStmt:
-			CdbSentry(CDB_NONCE, parsetree);
+			CdbSentry(CDB_NONCE, parsetree, NULL);
 			{
 				Oid			relOid;
 
@@ -585,12 +590,12 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_CreateTableSpaceStmt:
-			CdbSentry(CDB_NONCE, parsetree);
+			CdbSentry(CDB_NONCE, parsetree, NULL);
 			CreateTableSpace((CreateTableSpaceStmt *) parsetree);
 			break;
 
 		case T_DropTableSpaceStmt:
-			CdbSentry(CDB_NONCE, parsetree);
+			CdbSentry(CDB_NONCE, parsetree, NULL);
 			DropTableSpace((DropTableSpaceStmt *) parsetree);
 			break;
 
@@ -607,41 +612,41 @@ ProcessUtility(Node *parsetree,
 					switch (stmt->removeType)
 					{
 						case OBJECT_TABLE:
-							CdbSentry(CDB_NONCE, parsetree);
+							CdbSentry(CDB_NONCE, parsetree, NULL);
 							rel = makeRangeVarFromNameList(names);
 							CheckDropPermissions(rel, RELKIND_RELATION);
 							RemoveRelation(rel, stmt->behavior);
 							break;
 
 						case OBJECT_SEQUENCE:
-							CdbSentry(CDB_NONCE, parsetree);
+							CdbSentry(CDB_NONCE, parsetree, NULL);
 							rel = makeRangeVarFromNameList(names);
 							CheckDropPermissions(rel, RELKIND_SEQUENCE);
 							RemoveRelation(rel, stmt->behavior);
 							break;
 
 						case OBJECT_VIEW:
-							CdbSentry(CDB_NONCE, parsetree);
+							CdbSentry(CDB_NONCE, parsetree, NULL);
 							rel = makeRangeVarFromNameList(names);
 							CheckDropPermissions(rel, RELKIND_VIEW);
 							RemoveView(rel, stmt->behavior);
 							break;
 
 						case OBJECT_INDEX:
-							CdbSentry(CDB_NONCE, parsetree);
+							CdbSentry(CDB_NONCE, parsetree, NULL);
 							rel = makeRangeVarFromNameList(names);
 							CheckDropPermissions(rel, RELKIND_INDEX);
 							RemoveIndex(rel, stmt->behavior);
 							break;
 
 						case OBJECT_TYPE:
-							CdbSentry(CDB_REJECT, parsetree);
+							CdbSentry(CDB_REJECT, parsetree, NULL);
 							/* RemoveType does its own permissions checks */
 							RemoveType(names, stmt->behavior);
 							break;
 
 						case OBJECT_DOMAIN:
-							CdbSentry(CDB_NONCE, parsetree);
+							CdbSentry(CDB_NONCE, parsetree, NULL);
 							/*
 							 * RemoveDomain does its own permissions
 							 * checks
@@ -650,12 +655,12 @@ ProcessUtility(Node *parsetree,
 							break;
 
 						case OBJECT_CONVERSION:
-							CdbSentry(CDB_REJECT, parsetree);
+							CdbSentry(CDB_REJECT, parsetree, NULL);
 							DropConversionCommand(names, stmt->behavior);
 							break;
 
 						case OBJECT_SCHEMA:
-							CdbSentry(CDB_NONCE, parsetree);
+							CdbSentry(CDB_NONCE, parsetree, NULL);
 							/*
 							 * RemoveSchema does its own permissions
 							 * checks
@@ -678,7 +683,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_TruncateStmt:
-			CdbSentry(CDB_NONCE, parsetree);
+			CdbSentry(CDB_NONCE, parsetree, NULL);
 			{
 				TruncateStmt *stmt = (TruncateStmt *) parsetree;
 
@@ -687,27 +692,27 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_CommentStmt:
-			CdbSentry(CDB_NONCE, parsetree);
+			CdbSentry(CDB_NONCE, parsetree, NULL);
 			CommentObject((CommentStmt *) parsetree);
 			break;
 
 		case T_CopyStmt:
-			CdbSentry(CDB_ACCEPT, parsetree);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			DoCopy((CopyStmt *) parsetree);
 			break;
 
 		case T_PrepareStmt:
-			CdbSentry(CDB_REJECT, parsetree);
+			CdbSentry(CDB_REJECT, parsetree, NULL);
 			PrepareQuery((PrepareStmt *) parsetree);
 			break;
 
 		case T_ExecuteStmt:
-			CdbSentry(CDB_REJECT, parsetree);
+			CdbSentry(CDB_REJECT, parsetree, NULL);
 			ExecuteQuery((ExecuteStmt *) parsetree, dest, completionTag);
 			break;
 
 		case T_DeallocateStmt:
-			CdbSentry(CDB_REJECT, parsetree);
+			CdbSentry(CDB_REJECT, parsetree, NULL);
 			DeallocateQuery((DeallocateStmt *) parsetree);
 			break;
 
@@ -715,22 +720,22 @@ ProcessUtility(Node *parsetree,
 			 * schema
 			 */
 		case T_RenameStmt:
-			CdbSentry(CDB_REJECT, parsetree); /* NB covers all ALTER RENAME */
+			CdbSentry(CDB_NONCE, parsetree, "ALTER RENAME"); /* NB covers all ALTER RENAME */
 			ExecRenameStmt((RenameStmt *) parsetree);
 			break;
 
 		case T_AlterOwnerStmt:
-			CdbSentry(CDB_REJECT, parsetree); /* NB covers all ALTER OWNER */
+			CdbSentry(CDB_NONCE, parsetree, "ALTER OWNER"); /* NB covers some ALTER OWNER */
 			ExecAlterOwnerStmt((AlterOwnerStmt *) parsetree);
 			break;
 
 		case T_AlterTableStmt:
-			CdbSentry(CDB_NONCE, parsetree);
+			CdbSentry(CDB_NONCE, parsetree, NULL);
 			AlterTable((AlterTableStmt *) parsetree);
 			break;
 
 		case T_AlterDomainStmt:
-			CdbSentry(CDB_NONCE, parsetree);
+			CdbSentry(CDB_NONCE, parsetree, NULL);
 			{
 				AlterDomainStmt *stmt = (AlterDomainStmt *) parsetree;
 
@@ -776,7 +781,7 @@ ProcessUtility(Node *parsetree,
 
 
 		case T_GrantStmt:
-			CdbSentry(CDB_NONCE, parsetree);
+			CdbSentry(CDB_NONCE, parsetree, NULL);
 			ExecuteGrantStmt((GrantStmt *) parsetree);
 			break;
 
@@ -786,7 +791,7 @@ ProcessUtility(Node *parsetree,
 			 *
 			 */
 		case T_DefineStmt:
-			CdbSentry(CDB_REJECT, parsetree);
+			CdbSentry(CDB_REJECT, parsetree, NULL);
 			{
 				DefineStmt *stmt = (DefineStmt *) parsetree;
 
@@ -810,7 +815,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_CompositeTypeStmt:		/* CREATE TYPE (composite) */
-			CdbSentry(CDB_REJECT, parsetree);
+			CdbSentry(CDB_REJECT, parsetree, NULL);
 			{
 				CompositeTypeStmt *stmt = (CompositeTypeStmt *) parsetree;
 
@@ -819,7 +824,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_ViewStmt:		/* CREATE VIEW */
-			CdbSentry(CDB_NONCE, parsetree);
+			CdbSentry(CDB_NONCE, parsetree, NULL);
 			{
 				ViewStmt   *stmt = (ViewStmt *) parsetree;
 
@@ -828,12 +833,12 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_CreateFunctionStmt:		/* CREATE FUNCTION */
-			CdbSentry(CDB_REJECT, parsetree);
+			CdbSentry(CDB_REJECT, parsetree, NULL);
 			CreateFunction((CreateFunctionStmt *) parsetree);
 			break;
 
 		case T_IndexStmt:		/* CREATE INDEX */
-			CdbSentry(CDB_NONCE, parsetree);
+			CdbSentry(CDB_NONCE, parsetree, NULL);
 			{
 				IndexStmt  *stmt = (IndexStmt *) parsetree;
 
@@ -857,47 +862,47 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_RuleStmt:		/* CREATE RULE */
-			CdbSentry(CDB_REJECT, parsetree);
+			CdbSentry(CDB_REJECT, parsetree, NULL);
 			DefineQueryRewrite((RuleStmt *) parsetree);
 			break;
 
 		case T_CreateSeqStmt:
-			CdbSentry(CDB_NONCE, parsetree);
+			CdbSentry(CDB_NONCE, parsetree, NULL);
 			DefineSequence((CreateSeqStmt *) parsetree);
 			break;
 
 		case T_AlterSeqStmt:
-			CdbSentry(CDB_NONCE, parsetree);
+			CdbSentry(CDB_NONCE, parsetree, NULL);
 			AlterSequence((AlterSeqStmt *) parsetree);
 			break;
 
 		case T_RemoveAggrStmt:
-			CdbSentry(CDB_REJECT, parsetree);
+			CdbSentry(CDB_REJECT, parsetree, NULL);
 			RemoveAggregate((RemoveAggrStmt *) parsetree);
 			break;
 
 		case T_RemoveFuncStmt:
-			CdbSentry(CDB_REJECT, parsetree);
+			CdbSentry(CDB_REJECT, parsetree, NULL);
 			RemoveFunction((RemoveFuncStmt *) parsetree);
 			break;
 
 		case T_RemoveOperStmt:
-			CdbSentry(CDB_REJECT, parsetree);
+			CdbSentry(CDB_REJECT, parsetree, NULL);
 			RemoveOperator((RemoveOperStmt *) parsetree);
 			break;
 
 		case T_CreatedbStmt:
-			CdbSentry(CDB_REJECT, parsetree);
+			CdbSentry(CDB_REJECT, parsetree, NULL);
 			createdb((CreatedbStmt *) parsetree);
 			break;
 
 		case T_AlterDatabaseSetStmt:
-			CdbSentry(CDB_REJECT, parsetree);
+			CdbSentry(CDB_REJECT, parsetree, NULL);
 			AlterDatabaseSet((AlterDatabaseSetStmt *) parsetree);
 			break;
 
 		case T_DropdbStmt:
-			CdbSentry(CDB_REJECT, parsetree);
+			CdbSentry(CDB_REJECT, parsetree, NULL);
 			{
 				DropdbStmt *stmt = (DropdbStmt *) parsetree;
 
@@ -907,7 +912,7 @@ ProcessUtility(Node *parsetree,
 
 			/* Query-level asynchronous notification */
 		case T_NotifyStmt:
-			CdbSentry(CDB_REJECT, parsetree);
+			CdbSentry(CDB_REJECT, parsetree, NULL);
 			{
 				NotifyStmt *stmt = (NotifyStmt *) parsetree;
 
@@ -916,7 +921,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_ListenStmt:
-			CdbSentry(CDB_REJECT, parsetree);
+			CdbSentry(CDB_REJECT, parsetree, NULL);
 			{
 				ListenStmt *stmt = (ListenStmt *) parsetree;
 
@@ -925,7 +930,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_UnlistenStmt:
-			CdbSentry(CDB_REJECT, parsetree);
+			CdbSentry(CDB_REJECT, parsetree, NULL);
 			{
 				UnlistenStmt *stmt = (UnlistenStmt *) parsetree;
 
@@ -934,7 +939,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_LoadStmt:
-			CdbSentry(CDB_REJECT, parsetree);
+			CdbSentry(CDB_REJECT, parsetree, NULL);
 			{
 				LoadStmt   *stmt = (LoadStmt *) parsetree;
 
@@ -944,17 +949,17 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_ClusterStmt:
-			CdbSentry(CDB_NONCE, parsetree);
+			CdbSentry(CDB_NONCE, parsetree, NULL);
 			cluster((ClusterStmt *) parsetree);
 			break;
 
 		case T_VacuumStmt:
-		CdbSentry(CDB_WARN, parsetree);
+		CdbSentry(CDB_WARN, parsetree, NULL);
 		vacuum((VacuumStmt *) parsetree);
 			break;
 
 		case T_ExplainStmt:
-			CdbSentry(CDB_WARN, parsetree);
+			CdbSentry(CDB_WARN, parsetree, NULL);
 			ExplainQuery((ExplainStmt *) parsetree, dest);
 			break;
 
@@ -968,7 +973,7 @@ ProcessUtility(Node *parsetree,
 				 */
 				if (strcmp(n->name, "TRANSACTION") == 0)
 				{
-					CdbSentry(CDB_NONCE, parsetree);
+					CdbSentry(CDB_NONCE, parsetree, "SET TRANSACTION");
 					ListCell   *head;
 
 					foreach(head, n->args)
@@ -985,7 +990,7 @@ ProcessUtility(Node *parsetree,
 				}
 				else if (strcmp(n->name, "SESSION CHARACTERISTICS") == 0)
 				{
-					CdbSentry(CDB_NONCE, parsetree);
+					CdbSentry(CDB_NONCE, parsetree, "SET SESSION CHARACTERISTICS");
 					ListCell   *head;
 
 					foreach(head, n->args)
@@ -1002,7 +1007,7 @@ ProcessUtility(Node *parsetree,
 				}
 				else
 				{
-					CdbSentry(CDB_ACCEPT, parsetree);
+					CdbSentry(CDB_ACCEPT, parsetree, NULL);
 					SetPGVariable(n->name, n->args, n->is_local);
 				}
 			}
@@ -1010,7 +1015,7 @@ ProcessUtility(Node *parsetree,
 
 		case T_VariableShowStmt:
 			{
-				CdbSentry(CDB_ACCEPT, parsetree);
+				CdbSentry(CDB_ACCEPT, parsetree, NULL);
 				VariableShowStmt *n = (VariableShowStmt *) parsetree;
 
 				GetPGVariable(n->name, dest);
@@ -1019,7 +1024,7 @@ ProcessUtility(Node *parsetree,
 
 		case T_VariableResetStmt:
 			{
-				CdbSentry(CDB_NONCE, parsetree);
+				CdbSentry(CDB_NONCE, parsetree, NULL);
 				VariableResetStmt *n = (VariableResetStmt *) parsetree;
 
 				ResetPGVariable(n->name);
@@ -1027,7 +1032,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_CreateTrigStmt:
-			CdbSentry(CDB_REJECT, parsetree);
+			CdbSentry(CDB_REJECT, parsetree, NULL);
 			CreateTrigger((CreateTrigStmt *) parsetree, false);
 			break;
 
@@ -1041,13 +1046,13 @@ ProcessUtility(Node *parsetree,
 				switch (stmt->removeType)
 				{
 					case OBJECT_RULE:
-						CdbSentry(CDB_REJECT, parsetree);
+						CdbSentry(CDB_REJECT, parsetree, NULL);
 						/* RemoveRewriteRule checks permissions */
 						RemoveRewriteRule(relId, stmt->property,
 										  stmt->behavior);
 						break;
 					case OBJECT_TRIGGER:
-						CdbSentry(CDB_REJECT, parsetree);
+						CdbSentry(CDB_REJECT, parsetree, NULL);
 						/* DropTrigger checks permissions */
 						DropTrigger(relId, stmt->property,
 									stmt->behavior);
@@ -1061,12 +1066,12 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_CreatePLangStmt:
-			CdbSentry(CDB_REJECT, parsetree);
+			CdbSentry(CDB_REJECT, parsetree, NULL);
 			CreateProceduralLanguage((CreatePLangStmt *) parsetree);
 			break;
 
 		case T_DropPLangStmt:
-			CdbSentry(CDB_REJECT, parsetree);
+			CdbSentry(CDB_REJECT, parsetree, NULL);
 			DropProceduralLanguage((DropPLangStmt *) parsetree);
 			break;
 
@@ -1074,7 +1079,7 @@ ProcessUtility(Node *parsetree,
 			 * ******************************** DOMAIN statements ****
 			 */
 		case T_CreateDomainStmt:
-			CdbSentry(CDB_NONCE, parsetree);
+			CdbSentry(CDB_NONCE, parsetree, NULL);
 			DefineDomain((CreateDomainStmt *) parsetree);
 			break;
 
@@ -1082,47 +1087,47 @@ ProcessUtility(Node *parsetree,
 			 * ******************************** USER statements ****
 			 */
 		case T_CreateUserStmt:
-			CdbSentry(CDB_NONCE, parsetree);
+			CdbSentry(CDB_NONCE, parsetree, NULL);
 			CreateUser((CreateUserStmt *) parsetree);
 			break;
 
 		case T_AlterUserStmt:
-			CdbSentry(CDB_NONCE, parsetree);
+			CdbSentry(CDB_NONCE, parsetree, NULL);
 			AlterUser((AlterUserStmt *) parsetree);
 			break;
 
 		case T_AlterUserSetStmt:
-			CdbSentry(CDB_NONCE, parsetree);
+			CdbSentry(CDB_NONCE, parsetree, NULL);
 			AlterUserSet((AlterUserSetStmt *) parsetree);
 			break;
 
 		case T_DropUserStmt:
-			CdbSentry(CDB_NONCE, parsetree);
+			CdbSentry(CDB_NONCE, parsetree, NULL);
 			DropUser((DropUserStmt *) parsetree);
 			break;
 
 		case T_LockStmt:
-			CdbSentry(CDB_NONCE, parsetree);
+			CdbSentry(CDB_NONCE, parsetree, NULL);
 			LockTableCommand((LockStmt *) parsetree);
 			break;
 
 		case T_ConstraintsSetStmt:
-			CdbSentry(CDB_REJECT, parsetree);
+			CdbSentry(CDB_NONCE, parsetree, NULL);
 			AfterTriggerSetState((ConstraintsSetStmt *) parsetree);
 			break;
 
 		case T_CreateGroupStmt:
-			CdbSentry(CDB_NONCE, parsetree);
+			CdbSentry(CDB_NONCE, parsetree, NULL);
 			CreateGroup((CreateGroupStmt *) parsetree);
 			break;
 
 		case T_AlterGroupStmt:
-			CdbSentry(CDB_NONCE, parsetree);
+			CdbSentry(CDB_NONCE, parsetree, NULL);
 			AlterGroup((AlterGroupStmt *) parsetree, "ALTER GROUP");
 			break;
 
 		case T_DropGroupStmt:
-			CdbSentry(CDB_NONCE, parsetree);
+			CdbSentry(CDB_NONCE, parsetree, NULL);
 			DropGroup((DropGroupStmt *) parsetree);
 			break;
 
@@ -1131,12 +1136,12 @@ ProcessUtility(Node *parsetree,
 				ereport(ERROR,
 						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 						 errmsg("must be superuser to do CHECKPOINT")));
-			CdbSentry(CDB_WARN, parsetree);
+			CdbSentry(CDB_WARN, parsetree, NULL);
 			RequestCheckpoint(true);
 			break;
 
 		case T_ReindexStmt:
-			CdbSentry(CDB_NONCE, parsetree);
+			CdbSentry(CDB_NONCE, parsetree, NULL);
 			{
 				ReindexStmt *stmt = (ReindexStmt *) parsetree;
 
@@ -1161,27 +1166,27 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_CreateConversionStmt:
-			CdbSentry(CDB_REJECT, parsetree);
+			CdbSentry(CDB_REJECT, parsetree, NULL);
 			CreateConversionCommand((CreateConversionStmt *) parsetree);
 			break;
 
 		case T_CreateCastStmt:
-			CdbSentry(CDB_REJECT, parsetree);
+			CdbSentry(CDB_REJECT, parsetree, NULL);
 			CreateCast((CreateCastStmt *) parsetree);
 			break;
 
 		case T_DropCastStmt:
-			CdbSentry(CDB_REJECT, parsetree);
+			CdbSentry(CDB_REJECT, parsetree, NULL);
 			DropCast((DropCastStmt *) parsetree);
 			break;
 
 		case T_CreateOpClassStmt:
-			CdbSentry(CDB_REJECT, parsetree);
+			CdbSentry(CDB_REJECT, parsetree, NULL);
 			DefineOpClass((CreateOpClassStmt *) parsetree);
 			break;
 
 		case T_RemoveOpClassStmt:
-			CdbSentry(CDB_REJECT, parsetree);
+			CdbSentry(CDB_REJECT, parsetree, NULL);
 			RemoveOpClass((RemoveOpClassStmt *) parsetree);
 			break;
 

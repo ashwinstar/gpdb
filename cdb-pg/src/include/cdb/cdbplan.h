@@ -25,6 +25,8 @@
 extern bool
 plan_tree_walker(Node *node, bool (*walker) (), void *context);
 
+extern Node *
+plan_tree_mutator(Node *node, Node *(*mutator) (), void *context);
 
 
 /* Example exerise of plan_tree_walker framework. */
@@ -40,5 +42,9 @@ typedef struct PlanInventory
 extern bool plan_inventory(Plan *plan, PlanInventory *pinventory);
 
 
+/* Example exercise of plan_tree_mutator framework. */
+
+extern Plan *plan_copy(Plan *plan);
+ 
 
 #endif	/* CDBPLAN_H */

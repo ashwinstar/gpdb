@@ -86,6 +86,7 @@ CopyPlanFields(Plan *from, Plan *newnode)
 	COPY_BITMAPSET_FIELD(extParam);
 	COPY_BITMAPSET_FIELD(allParam);
 	COPY_SCALAR_FIELD(nParamExec);
+	COPY_NODE_FIELD(flow);
 }
 
 /*
@@ -1214,6 +1215,21 @@ _copyFromExpr(FromExpr *from)
 
 	COPY_NODE_FIELD(fromlist);
 	COPY_NODE_FIELD(quals);
+
+	return newnode;
+}
+
+/*
+ * _copyFlow
+ */
+static Flow *
+_copyFlow(Flow *from)
+{
+	Flow   *newnode = makeNode(Flow);
+
+	COPY_SCALAR_FIELD(flotype);
+	COPY_SCALAR_FIELD(islocal);
+	COPY_SCALAR_FIELD(req_move);
 
 	return newnode;
 }
@@ -2850,6 +2866,9 @@ copyObject(void *from)
 			break;
 		case T_FromExpr:
 			retval = _copyFromExpr(from);
+			break;
+		case T_Flow:
+			retval = _copyFlow(from);
 			break;
 
 			/*

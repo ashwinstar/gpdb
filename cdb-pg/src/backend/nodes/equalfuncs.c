@@ -566,6 +566,16 @@ _equalFromExpr(FromExpr *a, FromExpr *b)
 	return true;
 }
 
+static bool
+_equalFlow(Flow *a, Flow *b)
+{
+	COMPARE_SCALAR_FIELD(flotype);
+	COMPARE_SCALAR_FIELD(islocal);
+	COMPARE_SCALAR_FIELD(req_move);
+	
+	return true;
+}
+
 
 /*
  * Stuff from relation.h
@@ -1889,6 +1899,9 @@ equal(void *a, void *b)
 			break;
 		case T_FromExpr:
 			retval = _equalFromExpr(a, b);
+			break;
+		case T_Flow:
+			retval = _equalFlow(a, b);
 			break;
 		case T_JoinExpr:
 			retval = _equalJoinExpr(a, b);

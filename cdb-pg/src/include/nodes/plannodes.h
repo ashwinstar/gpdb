@@ -86,6 +86,14 @@ typedef struct Plan
 	int			nParamExec;		/* Number of them in entire query. This is
 								 * to get Executor know about how many
 								 * param_exec there are in query plan. */
+	
+	/* 
+	 * CDB needs to keep track of the characteristics of flow of output
+	 * tuple of Plan nodes.
+	 */
+	Flow		*flow;			/* Flow description.  Initially NULL.
+								 * Set during parallelization.
+								 */
 } Plan;
 
 /* ----------------
