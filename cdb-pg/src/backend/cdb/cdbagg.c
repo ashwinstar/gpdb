@@ -26,8 +26,8 @@
 #include "nodes/parsenodes.h"
 #include "nodes/plannodes.h"
 #include "cdb/cdbplan.h"
+#include "cdb/cdbmutate.h"
 #include "cdb/cdbagg.h"
-#include "executor/nodeMotion.h"
 
 /* 
  * Context structure for helper function analyzeAggExpr_walker

@@ -21,7 +21,6 @@
 #include "nodes/plannodes.h"
 #include "nodes/pg_list.h"
 #include "nodes/print.h"
-#include "executor/nodeMotion.h"
 
 #include "parser/parsetree.h" /* for rt_fetch() */
 #include "utils/lsyscache.h" /* for getatttypetypmod() */
