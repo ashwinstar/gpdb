@@ -43,8 +43,8 @@ extern void InitMotionLayerIPC( int segmentId );
 extern void CleanUpMotionLayerIPC(void);
 
 
-/* Sends a tuple chunk from the Postgres process to the local AMS process via
- * IPC.  This function does not block; if the IPC channel cannot accept the
+/* Sends a tuple chunk from the Postgres process to the local AMS process via
+ * IPC.  This function does not block; if the IPC channel cannot accept the
  * tuple chunk for some reason, then this is indicated by a return-code.
  *
  * Errors are indicated by calls to ereport(), and are therefore not indicated
@@ -59,9 +59,13 @@ extern void CleanUpMotionLayerIPC(void);
 extern bool SendTupleChunkToAMS(TupleChunkListItem tcItem);
 
 
-/* Receives a tuple chunk from the local AMS process via IPC.  This function
- * does not block; if there is no tuple chunk available, then NULL is
- * returned.
+/* Attempts to Receive one or more tuple chunks from the local AMS process
+ * via IPC.  This function does not block; if there is no tuple chunk available,
+ * does not block; then NULL is returned.  
+ * 
+ * NOTE: Although this function returns a chain of TupleChunkListItem's, they
+ *       are not necessarily all for the same motion node.  The caller of this
+ *       function will have to go through and put them back together as needed.
  *
  * Errors are indicated by calls to ereport(), and are therefore not indicated
  * in the return code.
