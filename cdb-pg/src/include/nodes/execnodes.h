@@ -15,6 +15,7 @@
 #define EXECNODES_H
 
 #include "access/relscan.h"
+#include "cdb/cdbhash.h"
 #include "cdb/cdbmotion.h"
 #include "executor/hashjoin.h"
 #include "executor/tuptable.h"
@@ -1201,6 +1202,8 @@ typedef struct MotionState
     bool				sentEndOfStream;    /* set when end-of-stream has successfully been sent */
 	List				*hashExprState;		/* state struct used for evaluating the hash expressions */
 	FmgrInfo			*hashfunctions;		/* functions to hash the expressions for a hash motion node */
+	Oid					*hashOids;
+	CdbHash				*cdbhash;
 	FmgrInfo			*sortFunctions;		/* functions to sort the tuples for a sorted motion node */
 	SortFunctionKind	*sortFnKinds;		/* kind of sort function for sorted motion node */
 	struct CdbHeap		*tupleheap;			/* data structure for match merge in sorted motion node */
@@ -1214,6 +1217,7 @@ typedef struct MotionState
 	int			numTuplesToAMS;		/* Number of tuples from child that were sent to AMS */
 	int			numTuplesFromAMS;	/* Number of tuples received from AMS */
 	int			numTuplesToParent;	/* Number of tuples either from child or AMS that were sent to parent */
+	int			*numTuplesByHashSegIdx; /* Distribution of number of tuples from child by hash seg index */
 } MotionState;
 
 #endif   /* EXECNODES_H */
