@@ -21,6 +21,9 @@
 #include "utils/guc.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdblink.h"
+#include "lib/stringinfo.h"
+#include "libpq/libpq-be.h"
+#include "utils/memutils.h"
  
 /*
  * ----------------
@@ -39,6 +42,7 @@ char			   *cdb_role_string;	/* Staging area for guc.c */
 CdbRoleValue		Cdb_session_role;	/* Role paid by this CDB backend */
 char			   *cdb_session_role_string; /* Staging area for guc.c */
 
+int					cdb_connections_per_thread;	/* How many libpq connections are handled in each thread */
 
 /*
  * Local macro to provide string values of numeric defines.
@@ -209,6 +213,33 @@ assign_cdb_role( const char *newval, bool doit, GucSource source )
 
 
 /*
+ * Assign hook routine for "cdb_connections_per_thread" option.  This variablle has context
+ * PGC_SUSET so that is can only be set by a superuser via the SET command.
+ * (It can also be set in config file, but not inside of PGOPTIONS.)
+ *
+ * See src/backend/util/misc/guc.c for option definition.
+ */
+bool
+assign_cdb_connections_per_thread( int newval, bool doit, GucSource source )
+{
+
+#if FALSE
+    elog(DEBUG1, "assign_cdb_connections_per_thread: cdb_connections_per_thread=%s, newval=%d, doit=%s",
+            show_cdb_connections_per_thread(), newval, ( doit ? "true" : "false" ));
+#endif
+            
+    if ( doit )
+    {
+    	if ( newval < 1 )
+    		return false;
+    		
+        cdb_connections_per_thread = newval;
+    }
+   	
+    return true;
+}
+
+/*
  * Show hook routine for "cdb_session_role" option.
  *
  * See src/backend/util/misc/guc.c for option definition.
@@ -229,5 +260,25 @@ const char *
 show_cdb_role( void )
 {
     return role_to_string(Cdb_role);
+}
+
+/*
+ * Show hook routine for "cdb_connections_per_thread" option.
+ *
+ * See src/backend/util/misc/guc.c for option definition.
+ */
+const char *
+show_cdb_connections_per_thread( void )
+{
+	/*
+	 * We rely on the fact that the memory context will clean up the memory
+	 * for the buffer.data.
+	 */
+	StringInfoData buffer;
+	initStringInfo(&buffer);
+	
+	appendStringInfo( &buffer, "%d", cdb_connections_per_thread );
+
+    return buffer.data;
 }
 
