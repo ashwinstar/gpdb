@@ -35,5 +35,5 @@ extern Datum cdb_exec_plan(PG_FUNCTION_ARGS);
 extern Datum cdb_serialize_plan(PG_FUNCTION_ARGS);
 extern Datum cdb_serialize_query(PG_FUNCTION_ARGS);
 extern Datum cdb_exec_indirect(PG_FUNCTION_ARGS);
-
+extern Datum cdb_test_cdbexec(PG_FUNCTION_ARGS);
 #endif   /* CDBEXECPLAN_H */

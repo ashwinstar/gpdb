@@ -30,11 +30,11 @@ CREATE OR REPLACE FUNCTION cdb_exec_plan(text, text, text) RETURNS boolean
     AS 'libcdbtest.so', 'cdb_exec_plan'
     LANGUAGE C IMMUTABLE STRICT;
 
-CREATE OR REPLACE FUNCTION cdb_serialize_plan(text) RETURNS text
+CREATE OR REPLACE FUNCTION cdb_serialize_plan(text, boolean) RETURNS text
     AS 'libcdbtest.so', 'cdb_serialize_plan'
     LANGUAGE C IMMUTABLE STRICT;
 
-CREATE OR REPLACE FUNCTION cdb_serialize_query(text) RETURNS text
+CREATE OR REPLACE FUNCTION cdb_serialize_query(text, boolean) RETURNS text
     AS 'libcdbtest.so', 'cdb_serialize_query'
     LANGUAGE C IMMUTABLE STRICT;
 
@@ -42,6 +42,10 @@ CREATE OR REPLACE FUNCTION cdb_exec_indirect(text) RETURNS SETOF RECORD
     AS 'libcdbtest.so', 'cdb_exec_indirect'
     LANGUAGE C IMMUTABLE STRICT;
     
+CREATE OR REPLACE FUNCTION cdb_test_cdbexec(text) RETURNS boolean
+    AS 'libcdbtest.so', 'cdb_test_cdbexec'
+    LANGUAGE C IMMUTABLE STRICT;
+
 -- Alias information function
 CREATE OR REPLACE FUNCTION cdb_show_alias(text) RETURNS text
     AS 'libcdbtest.so', 'cdb_show_alias'
@@ -52,4 +56,9 @@ CREATE OR REPLACE FUNCTION ml_ipc_getMsg(text) RETURNS text
     AS 'libcdbtest.so', 'ml_ipc_getMsg'
     LANGUAGE C IMMUTABLE STRICT;
 
+    
+-- Hashing functions
+CREATE OR REPLACE FUNCTION cdb_hash(anyelement) RETURNS int4
+    AS 'libcdbtest.so', 'cdb_hash'
+    LANGUAGE C IMMUTABLE STRICT;
     

@@ -130,6 +130,7 @@ cdb_serialize_plan(PG_FUNCTION_ARGS)
 {
 	char* pszSQL = NULL;
 	char* pszOutput = NULL;
+	bool bPretty = true;
 
 	/*
 	 * Grab the current memory context.  So we can create the node string in it,
@@ -139,7 +140,8 @@ cdb_serialize_plan(PG_FUNCTION_ARGS)
 	MemoryContext myContext = CurrentMemoryContext;
 	MemoryContext oldContext;
 	
-	pszSQL = GET_STR(PG_GETARG_TEXT_P(0));
+	pszSQL	= GET_STR(PG_GETARG_TEXT_P(0));
+	bPretty	= PG_GETARG_BOOL(1);
 
 	if ( SPI_OK_CONNECT != SPI_connect() )
 	{
@@ -179,8 +181,11 @@ cdb_serialize_plan(PG_FUNCTION_ARGS)
 	SPI_freeplan(thePlan);
 	SPI_finish();
 
-	char *f = pretty_format_node_dump(pszOutput);
-
+	char *f;
+	if ( bPretty )
+		f = pretty_format_node_dump(pszOutput);
+	else
+		f = pstrdup(pszOutput);
 
 	int lenOutput = strlen(f);
 	int len = lenOutput + VARHDRSZ;
@@ -217,6 +222,7 @@ cdb_serialize_query(PG_FUNCTION_ARGS)
 {
 	char* pszOutput = NULL;
 	char* pszSQL = NULL;
+	bool bPretty = true;
 	
 	/*
 	 * Grab the current memory context.  So we can create the node string in it,
@@ -227,6 +233,7 @@ cdb_serialize_query(PG_FUNCTION_ARGS)
 	MemoryContext oldContext;
 
 	pszSQL = GET_STR(PG_GETARG_TEXT_P(0));
+	bPretty	= PG_GETARG_BOOL(1);
 
 	if ( SPI_OK_CONNECT != SPI_connect() )
 	{
@@ -284,7 +291,11 @@ cdb_serialize_query(PG_FUNCTION_ARGS)
 	SPI_freeplan(thePlan);
 	SPI_finish();
 
-	char *f = pretty_format_node_dump(pszOutput);
+	char *f;
+	if ( bPretty )
+		f = pretty_format_node_dump(pszOutput);
+	else
+		f = pstrdup(pszOutput);
 
 	int lenOutput = strlen(f);
 	int len = lenOutput + VARHDRSZ;
@@ -526,5 +537,128 @@ cdb_exec_indirect(PG_FUNCTION_ARGS)
 	funcctx->user_fctx = NULL;
 	
 	SRF_RETURN_DONE(funcctx);
+}
+
+PG_FUNCTION_INFO_V1(cdb_test_cdbexec);
+Datum
+cdb_test_cdbexec(PG_FUNCTION_ARGS)
+{
+	char* pszSQL = NULL;
+	char* pszPlan = NULL;
+	char* pszQuery = NULL;
+	
+	pszSQL = GET_STR(PG_GETARG_TEXT_P(0));
+
+	if ( SPI_OK_CONNECT != SPI_connect() )
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+				errmsg("SPI_connect failed in cdb_test_cdbexec" )));
+	}
+
+	/*
+	* Prepare the SQL using SPI
+	*/
+	_SPI_plan*	thePlan = (_SPI_plan *)SPI_prepare(pszSQL, 0, NULL);
+	if ( thePlan == NULL )
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+				errmsg("SPI_prepare failed for sql %s", pszSQL )));
+	}
+		
+	/*
+	 * Grab the plan tree from the _SPI_plan struct.
+	 * Fail if there is more than 1.
+	 */
+	if ( list_length(thePlan->ptlist) != 1 )
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+				errmsg("cdb_test_cdbexec can only handle 1 sql statement, but there were %d", list_length(thePlan->ptlist) )));
+	}
+	
+	ListCell   *plan_list_item = list_head(thePlan->ptlist);
+
+	/*
+	* Serialize the plan tree to a string
+	*/
+	pszPlan = serializeNode( lfirst(plan_list_item) );
+
+	if ( pszPlan == NULL )
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+				errmsg("serializeNode failed for sql %s", pszSQL )));
+	}
+		
+	/*
+	* Grab the query tree from the _SPI_plan struct.
+	* Fail if there is more than 1.
+	*/
+	List	   *query_list_list = thePlan->qtlist;
+	if ( list_length(query_list_list) != 1 )
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+				errmsg("cdb_test_cdbexec can only handle 1 sql statement, but there were %d", list_length(query_list_list) )));
+	}
+	
+	ListCell   *query_list_list_item;
+	foreach(query_list_list_item, query_list_list)
+	{
+		List	   *query_list = lfirst(query_list_list_item);
+		ListCell   *query_list_item;
+	
+		if ( list_length(query_list) != 1 )
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+					errmsg("cdb_test_cdbexec can only handle 1 sql statement, but there were %d", list_length(query_list) )));
+		}
+		
+		foreach(query_list_item, query_list)
+		{
+			/*
+			* Serialize the query tree to a string
+			*/
+			pszQuery = serializeNode( lfirst(query_list_item) );
+
+			if ( pszQuery == NULL )
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+						errmsg("serializeNode failed for sql %s", pszSQL )));
+			}
+			break;
+		}
+		break;
+	}
+
+	int x;
+
+	StringInfoData buffer;
+	initStringInfo( &buffer );
+
+	appendStringInfo( &buffer, "cdbexec '%s' '%s'", pszQuery, pszPlan);
+
+	if ( SPI_OK_SELECT != SPI_execute( buffer.data, false, 0 ) )
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+				errmsg("SPI_execute failed in cdb_test_cdbexec" )));
+	}
+
+	bool bRtn = true;	
+				
+	x = SPI_processed;
+	elog( INFO, "Rows returned in SPI_execute_plan were %d", x );
+
+	SPI_finish();
+	
+	pfree(pszSQL);
+	
+	PG_RETURN_BOOL( bRtn );
+	
 }
 
