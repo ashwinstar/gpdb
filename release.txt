@@ -1,4 +1,8 @@
 <<<NEW vi: set expandtab ts=4: >>>
+Log4j is the new CDB-Loader logger. Logging is now configurable from
+    a properties config file and also some config options exist in the
+    command line argument options (command line on higher priority).
+Data load rate (MB/sec) added to the end of load statistics in the CDB-Loader.
 CDB-Loader code changes that accomodate the change from a "cdb-head and
     tails" in CDB1.x to an all equal segment database cluster.
 CDB2 admin schema version 1 support added to the CDB-Loader. Besides
