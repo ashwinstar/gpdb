@@ -161,7 +161,7 @@ void processIncomingChunks(void);
 SendReturnCode sendStreamEndChunk(MotionNodeInfo *mn_info,
     TupleChunkType tcType);
 
-
+static HeapTuple getNextTupleFromStore(Tuplestorestate *tupStoreState);
 
 /*
  * Function:  SendTuple - Sends a portion or whole tuple to the AMS layer.
