@@ -59,11 +59,12 @@
         <property name="build" value="build" />
         <property name="cdbCommons" location="${projectRoot}/common/cdb-commons"/>
         <property name="cdbCommonsBuild" value="${cdbCommons}/${build}"/>
+        <property name="cdbJDBC" location="${projectRoot}/common/pgjdbc"/>
         <property name="cdbMgmt" location="${projectRoot}/cdb-management"/>
         <property name="cdbMgmtBuild" value="${cdbMgmt}/${build}"/>
         <property name="cdbLoader" location="${projectRoot}/cdb-loader"/>
         <property name="cdbLoaderBuild" value="${cdbLoader}/${build}"/>
-
+        <property name="webRoot" value="/var/www/html" />
     </target>
 
   
