@@ -763,7 +763,19 @@ void ResetMotionLayer(bool flushCommLayer)
 void EndMotionLayerNode(uint16 motNodeID, bool flushCommLayer)
 {
     HASH_SEQ_STATUS seqStatus;
+    MotionNodeEntry *pMNEntry;
     ChunkSorterEntry *pCSEntry;
+
+    pMNEntry = getMotionNodeEntry(motNodeID);
+    if (pMNEntry == NULL)
+    {
+        ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+            errmsg("EndMotionLayerNode() called for unrecognized"
+            " motion-node ID %d.", motNodeID)));
+    }
+
+    elog(DEBUG2, "Cleaning up Motion Layer details for motion node %d.",
+        motNodeID);
 
     /* Iterate through all entries in the motion layer's chunk-sort map, to
      * see if we have gotten end-of-stream from all senders.
@@ -776,6 +788,9 @@ void EndMotionLayerNode(uint16 motNodeID, bool flushCommLayer)
         /* Skip entries for motion nodes we don't care about. */
         if (pCSEntry->key.motion_node_id != motNodeID)
             continue;
+        
+        elog(DEBUG3, "Cleaning up chunk-sorter entry [src=%d,mn=%d].",
+            pCSEntry->key.source_seg_idx, pCSEntry->key.motion_node_id);
         
         /* If we haven't gotten the end-of-stream yet, handle it according to
          * the caller's request.
@@ -790,6 +805,7 @@ void EndMotionLayerNode(uint16 motNodeID, bool flushCommLayer)
                     pCSEntry->key.source_seg_idx);
                 
                 /*** TODO - get chunks until end-of-stream comes in. ***/
+                Assert(false);
             }
             else
             {
@@ -802,11 +818,45 @@ void EndMotionLayerNode(uint16 motNodeID, bool flushCommLayer)
         {
             /* End-of-stream is marked for this entry. */
             
-            /*** TODO - make sure there is no chunk data or outstanding tuple
-                 in the tuple-store.
+            /*** TODO - do more than just complain! ***/
+            
+            if (pCSEntry->chunk_list.num_chunks > 0)
+            {
+                elog(WARNING, "Motion layer node %d cleanup - there are still"
+                    " %d chunks enqueued from sender %d.", motNodeID,
+                    pCSEntry->chunk_list.num_chunks,
+                    pCSEntry->key.source_seg_idx);
+            }
+            
+            /***
+             TODO - Make sure there are no outstanding tuples in the
+                    tuple-store.
              ***/
+            
         }
+
+        /* Clean up the chunk-sorter entry, then remove it from the hash
+         * table.
+         */
+
+        clearTCList(&pCSEntry->chunk_list);
+        if (pMNEntry->preserve_order)   /* Clean up the tuple-store. */
+            tuplestore_end(pCSEntry->ready_tuples);
+        
+        hash_search(s_motion_layer_state.chunksort_map, &pCSEntry->key,
+            HASH_REMOVE, NULL);
     }
+
+    /* Clean up the motion-node entry, then remove it from the hash table. */
+
+    elog(DEBUG3, "Cleaning up motion-node entry %d.", motNodeID);
+
+    FreeTupleDesc(pMNEntry->tuple_desc);
+    if (!pMNEntry->preserve_order)
+        tuplestore_end(pMNEntry->ready_tuples);
+
+    hash_search(s_motion_layer_state.motionnode_map,
+        &pMNEntry->motion_node_id, HASH_REMOVE, NULL);
 }
 
 
