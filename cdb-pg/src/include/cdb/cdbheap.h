@@ -129,41 +129,33 @@ typedef struct CdbHeap
  * Generic heap functions, that can be used with any
  * data structure and cmpfunc
  */
-void SetCdbHeapInitialValue( CdbHeap *cdbheap, void *value);
-void *GetLowestValueFromCdbHeap( CdbHeap *cdbheap );
-void MergeNewValueIntoCdbHeap( CdbHeap *cdbheap, void *value );
-CdbHeap *CreateCdbHeap( int nSlots,
+extern void SetCdbHeapInitialValue( CdbHeap *cdbheap, void *value);
+extern void *GetLowestValueFromCdbHeap( CdbHeap *cdbheap );
+extern void MergeNewValueIntoCdbHeap( CdbHeap *cdbheap, void *value );
+extern CdbHeap *CreateCdbHeap( int nSlots,
 						CdbHeapCmpFn cmpfn,
 						CdbHeapCreateFn createfn,
 						CdbHeapCopyFn copyfn,
 						CdbHeapSwitchFn switchfn,
 						void *createData);
+extern void DestroyCdbHeap( CdbHeap *cdbheap );
 
 /*
  * Specific heap functions, specific to 
  * heaps of CdbTupleHeapInfo data.
  */
-void SetCdbTupleHeapInitialValue( CdbHeap *cdbheap, HeapTuple tuple, int sourceSegIndex );
-CdbTupleHeapInfo *GetLowestValueFromCdbTupleHeap( CdbHeap *cdbheap );
-void MergeNewValueIntoCdbTupleHeap( CdbHeap *cdbheap, HeapTuple h, int sourceSegIndex );
+extern void SetCdbTupleHeapInitialValue( CdbHeap *cdbheap, HeapTuple tuple, int sourceSegIndex );
+extern CdbTupleHeapInfo *GetLowestValueFromCdbTupleHeap( CdbHeap *cdbheap );
+extern void MergeNewValueIntoCdbTupleHeap( CdbHeap *cdbheap, HeapTuple h, int sourceSegIndex );
 
 /*
- * Create and destroy heap functions, specific to 
+ * Create heap functions, specific to 
  * heaps of CdbTupleHeapInfo data.
  */
-CdbHeap *CreateCdbTupleHeap( int nSourceSegments,
-							MotionState *node,
-							Motion *motion);
-void DestroyCdbTupleHeap( CdbHeap *cdbheap );
+extern CdbHeap *CreateCdbTupleHeap( int nSourceSegments,
+									MotionState *node,
+									Motion *motion);
 
-/*
- * Compare Function specific to 
- * heaps of CdbTupleHeapInfo data.
- */
-int CmpTuplesForSortedMotion( void *lhs, void *rhs );
-void *CreateCdbTupleHeapInfo( void *createData, void *initData );
-void CopyCdbTupleHeapInfo( void *destination, void *source );
-void SwitchCdbTupleHeapInfo( void *left, void *right );
 
 
 
