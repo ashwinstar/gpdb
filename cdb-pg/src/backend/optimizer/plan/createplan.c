@@ -192,7 +192,7 @@ create_scan_plan(Query *root, Path *best_path)
 	 * possible.  (Note that planner.c may replace the tlist we generate
 	 * here, forcing projection to occur.)
 	 */
-#ifndef CDB_DEVELOPER /*kh 20050405*/	
+#ifdef CDB_FULL_PROJECTION /*kh 20050405*/
 	if (use_physical_tlist(rel))
 	{
 		tlist = build_physical_tlist(root, rel);
@@ -201,7 +201,7 @@ create_scan_plan(Query *root, Path *best_path)
 			tlist = build_relation_tlist(rel);
 	}
 	else
-#endif /*kh 20050405*/	
+#endif /*kh 20050405*/
 		tlist = build_relation_tlist(rel);
 
 	/*
