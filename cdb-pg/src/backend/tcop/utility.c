@@ -730,7 +730,8 @@ ProcessUtility(Node *parsetree,
 			));
 				
 			}
-			CdbExecQuery((CdbExecStmt *) parsetree);
+
+			CdbExecQuery((CdbExecStmt *) parsetree, dest, completionTag);
 			break;
 
 			/*
