@@ -21,6 +21,9 @@ typedef enum TupleChunkType
     TC_PARTIAL_END,     /* Contains the final portion of a tuple. */
     TC_END_OF_STREAM,   /* Indicates "end of tuples" from this source. */
     TC_ABORT_STREAM,    /* Indicates abnormal termination of execution. */
+	TC_SHUTDOWN, 		/* Indicates normal shutdown to be performed. 
+						   Should only be sent from pg to ams-svc.
+						 */
 
     TC_MAXVAL           /* For range checks on type values. */
 } TupleChunkType;

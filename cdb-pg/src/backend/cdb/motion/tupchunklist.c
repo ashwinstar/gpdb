@@ -26,7 +26,9 @@ TupleChunkListItem makeTupleChunkListItem(TupleChunkType chunkType,
     
     AssertArg(chunkType >= 0);
     AssertArg(chunkType < TC_MAXVAL);
-    AssertArg(pChunkData != NULL);
+	
+	if( chunkDataSize > 0 )
+    	AssertArg(pChunkData != NULL);
     
     /* Allocate tuple-chunk list item, including space for the header. */
     

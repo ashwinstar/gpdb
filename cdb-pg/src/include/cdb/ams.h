@@ -9,9 +9,20 @@
 #define AMS_H
 
 
-void ams_setup(void);
-int ams_fabric_connect(void);
+extern void ams_setup(void);
 
-void ams_cleanup(void);
+extern int ams_fabric_connect(void);
+
+/* Called by ams_cleanup to disconnect cleanly with the ams-svc process
+ * Also registered with postgres to be called on process exit.
+ *
+ * PARAMETERS:
+ *  - exit_code: The exit code that caused the disconnect to occur.
+ *  - arg:
+ */
+extern void ams_disconnect( int exit_code, Datum arg );
+
+
+extern void ams_cleanup( );
 
 #endif /*AMS_H*/

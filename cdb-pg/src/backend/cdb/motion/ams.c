@@ -25,6 +25,7 @@
 
 #include "executor/spi.h" 
 #include "commands/sequence.h"  /* for nextval() */
+#include "storage/ipc.h"  /*for on_proc_exit() */
 
 
 /* the number of times we will try and lookup our ams-svc component
@@ -44,7 +45,8 @@
 /* how to talk to ams-svc process. */
 static MPI_Comm amssvc_comm;
 
-
+/* keeps track of if disconnected from ams-svc or not. */
+static bool disconnected;
 
 /*=========================================================================
  * FUNCTION DEFINITIONS
@@ -74,7 +76,7 @@ static void qd_ams_setup(void);
  *
  * TODO: this should probably be moved out of here and into someplace else.
  */
-void ams_setup(void)
+void ams_setup( )
 {
 	int rc;
     
@@ -84,6 +86,13 @@ void ams_setup(void)
 		elog(DEBUG1, "CDB is in utility mode.  Skipping ams_setup.");
         return;
 	}
+
+	/*
+     * Establish a call-back so that when the process exit we also
+     * send a kill message to our ams-svg.
+     *
+	 */
+    on_proc_exit( ams_disconnect, (Datum) NULL ); 
 	
 	/* Perform MPI Init.  We do this for QD AND QE */
     
@@ -126,9 +135,64 @@ void ams_setup(void)
 }
 
 
-void ams_cleanup(void)
+
+/* sends a Shutdown message to ams-svc process from ams-svc before calling
+ * MPI_Finalize
+ */
+void ams_disconnect( int exit_code, Datum arg )
 {
-	int rc;
+    int rc;
+	bool done = false;
+	TupleChunkListItem tcItem;
+	TupleChunkListItem abortTcItem;
+
+    //don't do anything if we aren't even connected.
+    if( disconnected )
+        return;
+        
+        
+	elog( DEBUG3, "AMS Disconnect Started" );
+
+	//form our abortTcItem
+	abortTcItem = makeTupleChunkListItem( TC_SHUTDOWN, NULL, 0, CdbIdentity.segindex,   
+											/*tgtSegIdx*/ 0, /*mnid*/ 0 );	
+
+	/* we will loop around until we are able to send our TC_Abort_Stream
+	 * message.  We also need to keep pulling out tuples and throwing
+	 * them away in case we need to "un-stick" someone else in order
+	 * to allow us to send
+	 */
+	while( !done )
+	{
+		//send
+		if( SendTupleChunkToAMS(abortTcItem) )
+		{
+			//we are done here...
+			done = true;
+		}	
+
+		//receive
+		tcItem = RecvTupleChunkFromAMS();
+
+		if( tcItem != NULL )
+			pfree(tcItem);
+
+	}	
+	
+    disconnected = true;
+    
+	elog( DEBUG3, "AMS Disconnect Finished." );
+	
+	rc = MPI_Finalize();
+	if (rc != MPI_SUCCESS)
+		elog(WARNING, "Error during MPI_Finalize().");
+		
+	return;
+}
+
+
+void ams_cleanup( )
+{
 	
     /* If we are utility role... exit now */
     if ( Cdb_role == CDB_ROLE_UTILITY )
@@ -140,10 +204,12 @@ void ams_cleanup(void)
 	/* TODO: impl this.  There has to at least be more than disconnecting
 	 *       from MPI!
 	 */
+	 
+    //disconnect from ams-svc.	 
+    ams_disconnect( 0, NULL );
+    
 	
-	rc = MPI_Finalize();
-	if (rc != MPI_SUCCESS)
-		elog(WARNING, "Error during MPI_Finalize().");
+	return;
 }
 
 
@@ -219,6 +285,8 @@ int ams_fabric_connect(void)
 
 	setMpiComm( amssvc_comm );
 
+    disconnected = false;
+    
 	return numDbs;	
 	
 }
