@@ -429,9 +429,11 @@ test_postmaster_connection(void)
 	if (!*portstr)
 		snprintf(portstr, sizeof(portstr), "%d", DEF_PGPORT);
 
+	static const char *backend_options = "-c cdb_session_role=utility";
+
 	for (i = 0; i < wait_seconds; i++)
 	{
-		if ((conn = PQsetdbLogin(NULL, portstr, NULL, NULL,
+		if ((conn = PQsetdbLogin(NULL, portstr, backend_options, NULL,
 								 "template1", NULL, NULL)) != NULL &&
 			(PQstatus(conn) == CONNECTION_OK ||
 			 (strcmp(PQerrorMessage(conn),
