@@ -672,19 +672,8 @@ vac_update_relstats(Oid relid, BlockNumber num_pages, double num_tuples,
 		elog(ERROR, "pg_class entry for relid %u vanished during vacuuming",
 			relid);
 
-	/* 
-	 * TODO: Remove the heap_attisnull condition once we are able to supress non-used columns
-	 * in the motion node
-	 */
-	if ( Cdb_role == CDB_ROLE_DISPATCH && heap_attisnull(ctup, Anum_pg_class_relacl) )
+	if ( Cdb_role == CDB_ROLE_DISPATCH )
 	{
-		/*
-		 * This was originally intended to be called whenever the role is DISPATCH,
-		 * but there were problems with the query generated from cdb_get_relstats
-		 * whenever relacl was non-NULL.
-		 * Since normally this will be NULL in all user tables, I just
-		 * avoided the call when relacl was non-NULL.
-		 */
 		cdb_get_relstats(relid, &num_pages, &num_tuples);
 		elog( DEBUG1, "After cdb_get_relstats numpages=%d and num_tuples=%lf", (int)num_pages, num_tuples);
 	}
