@@ -49,6 +49,8 @@ extern Motion *make_broadcast_motion(Plan *lefttree, bool sendToSecondary);
 extern Motion *make_sorted_broadcast_motion(Plan *lefttree, bool sendToSecondary, 
 								int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators, 
 								int numInputSegs, int *inputSegIdx );
+extern int *makeDefaultSegIdxArrayNew(int *count);
 extern int *makeDefaultSegIdxArray(int numSegs);
+
 
 #endif   /* NODEMOTION_H */
