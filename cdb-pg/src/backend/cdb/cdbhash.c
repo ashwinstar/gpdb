@@ -18,33 +18,26 @@
 #include "catalog/pg_type.h"
 #include "utils/numeric.h"
 #include "fmgr.h"
-
 #include "cdb/cdbhash.h"
 
-/* Constant values used for an FNV1/FNV1A hash */
-#define FNV_32_PRIME ((uint32)16777619)
-#define FNV1_32_INIT ((uint32)2166136261UL)
+/*
+ * 32 bit FNV-1 and FNV-1a non-zero initial basis
+ * NOTE: The FNV-1a initial basis is the same value as FNV-1 by definition.
+ */
+#define FNV1_32_INIT ((uint32)0x811c9dc5)
+#define FNV1_32A_INIT FNV1_32_INIT
 
-/* FNV macros for hashing */
-#define FNV1_OP(hash, octet)	( ( ((uint32)hash) * FNV_32_PRIME) ^ ((uint8)octet))
-#define FNV1A_OP(hash, octet)   ( (((uint32)hash) ^ ((uint8)octet)) * FNV_32_PRIME )
+/* Constant prime value used for an FNV1/FNV1A hash */
+#define FNV_32_PRIME ((uint32)0x01000193)
 
 /* Fast mod using a bit mask, assuming that y is a power of 2 */
-#define FASTMOD(x,y)			((x) & ((y)-1))
+#define FASTMOD(x,y)		((x) & ((y)-1))
 
 /* local function declarations */
-uint32 cdbhash_int2(uint32 hash, Datum datum, int16 algorithm);
-uint32 cdbhash_int4(uint32 hash, Datum datum, int16 algorithm);
-uint32 cdbhash_int8(uint32 hash, Datum datum, int16 algorithm);
-uint32 cdbhash_bpchar(uint32 hash, Datum datum, int16 algorithm);
-uint32 cdbhash_text(uint32 hash, Datum datum, int16 algorithm);
-uint32 cdbhash_varchar(uint32 hash, Datum datum, int16 algorithm);
-uint32 cdbhash_float8(uint32 hash, Datum datum, int16 algorithm);
-uint32 cdbhash_float4(uint32 hash, Datum datum, int16 algorithm);
-uint32 fnv_8byte(uint32 hash, int64 val, int16 algorithm);
-uint32 fnv_1byte(uint32 hash, int8 val, int16 algorithm);
 int ignoreblanks(char *data, int len);
 int ispowof2(int numsegs);
+uint32 fnv1_32_buf(void *buf, size_t len, uint32 hashval);
+uint32 fnv1a_32_buf(void *buf, size_t len, uint32 hashval);
 
 
 /*================================================================
@@ -67,7 +60,7 @@ int ispowof2(int numsegs);
  *
  * The hash value itself will be initialized for every tuple in cdbhashinit()
  */
-CdbHash *makeCdbHash(int numsegs, int16 algorithm)
+CdbHash *makeCdbHash(int numsegs, CdbHashAlg algorithm)
 {	
 	
 	ereport(NOTICE, (
@@ -93,6 +86,19 @@ CdbHash *makeCdbHash(int numsegs, int16 algorithm)
     h->hash = 0;
 	h->numsegs = numsegs;
 	
+	
+	/*
+	 * Set the hashing algoritm
+	 */
+	assert( algorithm == HASH_FNV_1 || algorithm == HASH_FNV_1A );
+
+	h->hashalg = algorithm;
+	 
+	if (h->hashalg == HASH_FNV_1)
+		h->hashfn = &fnv1_32_buf;
+	else if(h->hashalg == HASH_FNV_1A)
+		h->hashfn = &fnv1a_32_buf;
+	
 	/*
 	 * set the reduction algorithm
 	 * If num_segs is power of 2 use bit mask, else
@@ -100,24 +106,13 @@ CdbHash *makeCdbHash(int numsegs, int16 algorithm)
 	 */
 	if(ispowof2(numsegs))
 	{
-		h->reduce_algorithm = REDUCE_BITMASK;
+		h->reducealg = REDUCE_BITMASK;
 	}
 	else
 	{
-		h->reduce_algorithm = REDUCE_LAZYMOD;
+		h->reducealg = REDUCE_LAZYMOD;
 	}
 	
-	/*
-	 * Set the hashing algoritm
-	 */
-	if((algorithm != HASH_FNV_1) && (algorithm != HASH_FNV_1A)) /* invalid choice */
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("CDBHASH - Invalid choice for a cdb hash algorithm. got %d",algorithm),
-				 errhint("Currently the following algorithms are supported: HASH_FNV_1, HASH_FNV_1A")
-				 ));
-	else 
-		h->hash_algorithm = algorithm;
 	
 	return h;	
 }
@@ -136,22 +131,17 @@ void cdbhashinit(CdbHash *h)
 /*
  * Add an attribute to the hash calculation.
  */
-void cdbhash(CdbHash *h, Datum datum, Oid type, short typmod)
+void cdbhash(CdbHash *h, Datum datum, Oid type)
 {
-	/*
-	 * The current hash value (either INIT value or hash from previous attributes).
-	 */
-	uint32 currenthash = h->hash;
 	
-	/*
-	 * The newly calculated hash value after adding this attribute.
-	 */
-	uint32 newhash;
-	
-	/*
-	 * Hashing algorithm to be used.
-	 */
-	int16 algorithm = h->hash_algorithm;
+	void *buf;    /* pointer to the data */
+	size_t len;   /* length for the data buffer */
+	int64 intbuf; /* an 8 byte buffer for all integer sizes */
+	BpChar  *bp;  /* a variable length struct (varlena) for blank padded strings */
+	text *txt;    /* a variable length struct (varlena) for text */
+	VarChar *vc;  /* a variable length struct (varlena) for varchar */
+	float4 buf_f4;    
+	float8 buf_f8;
 	
 	ereport(NOTICE,  (
 		errmsg("CDB Hash: Adding an attribute of type %d to the hash.", (int)type) /* add more detail later */
@@ -181,15 +171,21 @@ void cdbhash(CdbHash *h, Datum datum, Oid type, short typmod)
 		*=====================================================
 		*/
 		case INT2OID: /* -32 thousand to 32 thousand, 2-byte storage */
-			newhash = cdbhash_int2( currenthash, datum, algorithm );
+			intbuf = (int64)DatumGetInt16(datum); /* cast to 8 byte before hashing */
+			buf = &intbuf;
+			len = sizeof(intbuf);
 			break;
 			
 		case INT4OID: /* -2 billion to 2 billion integer, 4-byte storage */
-			newhash = cdbhash_int4( currenthash, datum, algorithm );
+			intbuf = (int64)DatumGetInt32(datum); /* cast to 8 byte before hashing */
+			buf = &intbuf;
+			len = sizeof(intbuf);
 			break;
 					
 		case INT8OID: /* ~18 digit integer, 8-byte storage */ 
-			newhash = cdbhash_int8( currenthash, datum, algorithm );
+			intbuf = DatumGetInt64(datum); /* cast to 8 byte before hashing */
+			buf = &intbuf;
+			len = sizeof(intbuf);
 			break;
 						
 	   /*=====================================================
@@ -198,15 +194,41 @@ void cdbhash(CdbHash *h, Datum datum, Oid type, short typmod)
 		*/
 		case CHAROID:   /* char(1), single character */ 
 		case BPCHAROID: /* char(n), blank-padded string, fixed storage length */
-			newhash = cdbhash_bpchar( currenthash, datum, algorithm );
+			bp = DatumGetBpCharP(datum);      
+			len = VARSIZE(bp) - VARHDRSZ; /* get the string length */
+			buf = VARDATA(bp);  /* get the string data buf */
+			
+			/* adjust length to not include trailing blanks */
+			if(len > 1)
+				len = ignoreblanks((char *)buf, len); 
 			break;
 
 		case TEXTOID: /* variable-length string, no limit specified */
-			newhash = cdbhash_text( currenthash, datum, algorithm );
+	        txt = DatumGetTextP(datum);   /* a varlena struct (includes data and len)  */
+			
+			/* get the string length */
+			len = VARSIZE(txt) - VARHDRSZ;
+			
+			/* get the string data   */
+			buf = VARDATA(txt);		   
+			
+			/* adjust length to not include trailing blanks */
+			if(len > 1)
+				len = ignoreblanks((char *)buf, len); 
 			break;
 			
 		case VARCHAROID: /* varchar(length), non-blank-padded string, variable storage length */
-			newhash = cdbhash_varchar( currenthash, datum, algorithm );
+			vc = DatumGetVarCharP(datum);/* a varlena struct (includes data and len)  */
+				
+			/* get the string length */
+			len = VARSIZE(vc) - VARHDRSZ;
+				
+			/* get the string data   */
+			buf = VARDATA(vc);		   
+				
+			/* adjust length to not include trailing blanks */
+			if(len > 1)
+				len = ignoreblanks((char *)buf, len); 
 			break;
 		
 	   /*=====================================================
@@ -214,13 +236,35 @@ void cdbhash(CdbHash *h, Datum datum, Oid type, short typmod)
 		*=====================================================
 		*/
 		case FLOAT4OID: /* single-precision floating point number, 4-byte storage */
-			newhash = cdbhash_float4( currenthash, datum, algorithm );
+			buf_f4 = DatumGetFloat4(datum);
+			
+			/*
+			 * On IEEE-float machines, minus zero and zero have different bit
+			 * patterns but should compare as equal.  We must ensure that they
+			 * have the same hash value, which is most easily done this way:
+			 */
+			if (buf_f4 == (float4) 0)
+				buf_f4 = 0.0;
+				
+			buf = &buf_f4;
+			len = sizeof(buf_f4);
 			break;
 			
 		case FLOAT8OID: /* double-precision floating point number, 8-byte storage */
-			newhash = cdbhash_float8( currenthash, datum, algorithm );
+			buf_f8 = DatumGetFloat8(datum);
+				
+			/*
+			 * On IEEE-float machines, minus zero and zero have different bit
+			 * patterns but should compare as equal.  We must ensure that they
+			 * have the same hash value, which is most easily done this way:
+			 */
+			if (buf_f8 == (float8) 0)
+				buf_f8 = 0.0;
+					
+				buf = &buf_f8;
+			len = sizeof(buf_f8);
 			break;
-		
+				
 	   /*=====================================================
 		* other types
 		*=====================================================
@@ -230,19 +274,17 @@ void cdbhash(CdbHash *h, Datum datum, Oid type, short typmod)
 		case OIDOID:  /* object identifier(oid), maximum 4 billion */
 		default:
 			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					(errcode(ERRCODE_CDB_FEATURE_NOT_YET),
 						errmsg("Type %u can't be hashed yet.", type)));
 					
 	}/* switch(type) */
 	
-
-	/* update hash to the newly calculated hash value */		
-	h->hash = newhash;		
-			
+    /* do the hash using the selected algorithm */
+    h->hash = (h->hashfn)(buf, len, h->hash); 
+	
 	ereport(NOTICE,  (
-		errmsg("CDB Hash: New hash value %u.", newhash) /* add more detail later */
+		errmsg("CDB Hash: New hash value %u.", h->hash) /* add more detail later */
 			));
-					
 }
 
 /*
@@ -260,235 +302,30 @@ void cdbhashnull(CdbHash *h)
  */
 unsigned int cdbhashreduce(CdbHash *h)
 {
+	assert( h->reducealg == REDUCE_BITMASK ||  h->reducealg == REDUCE_LAZYMOD);
+	
 	int result = 0; /* TODO: what is a good initialization value? could we 
 					   guarantee at this point that there will not be a negative 
 					   segid in CDB and therefore initialize to this value for error
 					   checking? */
 	
-	ereport(NOTICE,  (
-		errmsg("CDB Hash: Reducing hash value to one of %d segments.",
-			   h->numsegs) 
-					));
-	
 	/*
 	 * Reduce our 32-bit hash value to a segment number
 	 */
-	if(h->reduce_algorithm == REDUCE_BITMASK)
-	{	
-		result = FASTMOD(h->hash, (uint32)h->numsegs); /* fast mod (bitmask) */
-	} 
-	else if(h->reduce_algorithm == REDUCE_LAZYMOD)
+	switch(h->reducealg)
 	{
-		result = (h->hash) % (h->numsegs); /* simple mod */
-	}
-	else
-		ereport(ERROR,
-				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
-				 errmsg("CDBHASH - Reduction method not set to neither BITMASK or LAZYMOD. Value read is: %d",						 
-						h->reduce_algorithm)));
+		case REDUCE_BITMASK:
+			result = FASTMOD(h->hash, (uint32)h->numsegs); /* fast mod (bitmask) */
+			break;
 			
+		case REDUCE_LAZYMOD:
+			result = (h->hash) % (h->numsegs); /* simple mod */
+			break;
+	}
+	
 	return result;
 }
 
-
-/*================================================================
- *
- * PRE-HASH TYPE-SPECIFIC OPERATIONS 
- *
- *================================================================
- */
-
-/*
- * Hash an INT2 (int16) into a 32 bit hash code.
- */
-uint32 cdbhash_int2(uint32 hash, Datum val, int16 algo)
-{
-	int64 num = (int64)DatumGetInt16(val); /* cast to 8 byte before hashing */
-    return fnv_8byte(hash, num, algo);
-}
-
-/*
- * Hash an INT4 (int32) into a 32 bit hash code.
- */
-uint32 cdbhash_int4(uint32 hash, Datum val, int16 algo)
-{
-	int64 num = (int64)DatumGetInt32(val); /* cast to 8 byte before hashing */
-	return fnv_8byte(hash, num, algo);
-}
-
-/*
- * Hash an INT8 (int64) into a 32 bit hash code.
- */
-uint32 cdbhash_int8(uint32 hash, Datum val, int16 algo)
-{
-	int64 num = DatumGetInt64(val);
-	return fnv_8byte(hash, num, algo);
-}
-
-/*
- * Hash a blank padded character(s) into a 32 bit hash code.
- * That includes the following PG types:
- * - CHAR
- * - CHAR(n)
- */
-uint32 cdbhash_bpchar(uint32 hash, Datum datum, int16 algo)
-{
-	BpChar  *t = DatumGetBpCharP(datum);      /* a varlena struct (includes data and len)  */
-	int		len;						      /* the string length                         */
-	char    *data;
-	int     index = 0;                        /* index into the data string                */
-	
-	/* get the string length */
-	len = VARSIZE(t) - VARHDRSZ;
-	
-	/* get the string data   */
-	data = VARDATA(t);		   
-	
-	/* adjust length to not include trailing blanks */
-	if(len > 1)
-		len = ignoreblanks(data, len); 
-	
-	while ( index < len )
-	{
-		hash = fnv_1byte(hash, data[index], algo);
-		index++;
-	}
-	
-	
-	return hash; 	
-}
-
-/*
- * Hash a text strings into a 32 bit hash code.
- * That includes the following PG types:
- * - TEXT
- */
-uint32 cdbhash_text(uint32 hash, Datum datum, int16 algo)
-{
-	
-	text	*t = DatumGetTextP(datum);   /* a varlena struct (includes data and len)  */
-	int		len;						 /* the string length                         */
-	char *  data;
-	int     index = 0;                   /* index into the data string                */
-	
-	/* get the string length */
-	len = VARSIZE(t) - VARHDRSZ;
-	
-	/* get the string data   */
-	data = VARDATA(t);				     
-	
-	/* adjust length to not include trailing blanks */
-	if(len > 1)
-		len = ignoreblanks(data, len); 
-	
-	while ( index < len )
-	{
-		hash = fnv_1byte(hash, data[index], algo);
-		index++;
-	}
-	
-	return hash; 	
-}
-
-/*
- * Hash a varchar into a 32 bit hash code.
- * That includes the following PG types:
- * - VARCHAR(n)
- */
-uint32 cdbhash_varchar(uint32 hash, Datum datum, int16 algo)
-{
-	VarChar *t = DatumGetVarCharP(datum);/* a varlena struct (includes data and len)  */
-	int		len;						 /* the string length                         */
-	char *  data;
-	int     index = 0;                   /* index into the data string                */
-	
-	/* get the string length */
-	len = VARSIZE(t) - VARHDRSZ;
-	
-	/* get the string data   */
-	data = VARDATA(t);				     
-	
-    /* adjust length to not include trailing blanks */
-	if(len > 1)
-       len = ignoreblanks(data, len); 
-	
-	while ( index < len )
-	{
-		hash = fnv_1byte(hash, data[index], algo);
-		index++;
-	}
-	
-	return hash; 	
-}
-
-/*
- * Hash a float8 into a 32 bit hash code.
- * That includes the following PG types:
- * - FLOAT8
- */
-uint32 cdbhash_float8(uint32 hash, Datum datum, int16 algo)
-{
-	ereport(NOTICE,  (
-		errmsg("CDB Hash: hash value before operation is %u", hash) /* add more detail later */
-				));
-			
-	float8 num = DatumGetFloat8(datum);
-	
-   /*
-	* On IEEE-float machines, minus zero and zero have different bit
-	* patterns but should compare as equal.  We must ensure that they
-	* have the same hash value, which is most easily done this way:
-	*/
-	if (num == (float8) 0)
-		num = 0.0;
-			
-	char *val = (char *)&num;
-	int index = 0;
-	int len = sizeof(float8);
-				
-	while(index < len)
-	{
-		hash = fnv_1byte(hash, val[index], algo);
-		index++;
-	}
-			
-	return hash;
-	
-}
-
-/*
- * Hash a float4 into a 32 bit hash code.
- * That includes the following PG types:
- * - FLOAT8
- */
-uint32 cdbhash_float4(uint32 hash, Datum datum, int16 algo)
-{
-	ereport(NOTICE,  (
-					  errmsg("CDB Hash: hash value before operation is %u", hash) /* add more detail later */
-							 ));
-			
-	float4 num = DatumGetFloat4(datum);
-			
-   /*
-	* On IEEE-float machines, minus zero and zero have different bit
-	* patterns but should compare as equal.  We must ensure that they
-	* have the same hash value, which is most easily done this way:
-	*/
-	if (num == (float4) 0)
-		num = 0.0;
-			
-	char *val = (char *)&num;
-	int index = 0;
-	int len = sizeof(float4);
-			
-	while(index < len)
-	{
-		hash = fnv_1byte(hash, val[index], algo);
-		index++;
-	}
-			
-	return hash;
-}
 
 /*================================================================
  *
@@ -497,74 +334,79 @@ uint32 cdbhash_float4(uint32 hash, Datum datum, int16 algo)
  *================================================================
  */
 
+
 /*
- * Hash a 8 byte value into an unsigned 32bit hash.
+ * fnv1_32_buf - perform a 32 bit FNV 1 hash on a buffer
  *
- * For every octet (8 bits) we use FNV to hash on it, and then shift to
- * the next 8 bits and hash again. We do that for all 64 bits.
+ * input:
+ *	buf	- start of buffer to hash
+ *	len	- length of buffer in octets (bytes)
+ *	hval	- previous hash value or FNV1_32_INIT if first call.
+ *
+ * returns:
+ *	32 bit hash as a static hash type
  */
-uint32 fnv_8byte(uint32 hash, int64 val, int16 algo)
+uint32
+fnv1_32_buf(void *buf, size_t len, uint32 hval)
 {
-	ereport(NOTICE,  (
-		errmsg("CDB Hash: hash value before operation is %u", hash) /* add more detail later */
-			          ));
+    unsigned char *bp = (unsigned char *)buf;	/* start of buffer */
+    unsigned char *be = bp + len;		/* beyond end of buffer */
 	
-	if(algo == HASH_FNV_1)
-	{
-	    hash = FNV1_OP(hash, val);			
-	    val >>= 8;
-	    hash = FNV1_OP(hash, val);
-	    val >>= 8;
-	    hash = FNV1_OP(hash, val);
-	    val >>= 8;
-	    hash = FNV1_OP(hash, val);
-	    val >>= 8;
-	    hash = FNV1_OP(hash, val);
-	    val >>= 8;
-	    hash = FNV1_OP(hash, val);
-	    val >>= 8;
-	    hash = FNV1_OP(hash, val);
-	    val >>= 8;
-	    hash = FNV1_OP(hash, val);
-	}
-	else
-	{
-		hash = FNV1A_OP(hash, val);			
-		val >>= 8;
-		hash = FNV1A_OP(hash, val);
-		val >>= 8;
-		hash = FNV1A_OP(hash, val);
-		val >>= 8;
-		hash = FNV1A_OP(hash, val);
-		val >>= 8;
-		hash = FNV1A_OP(hash, val);
-		val >>= 8;
-		hash = FNV1A_OP(hash, val);
-		val >>= 8;
-		hash = FNV1A_OP(hash, val);
-		val >>= 8;
-		hash = FNV1A_OP(hash, val);
-	}
-			
-	return hash;
+    /*
+     * FNV-1 hash each octet in the buffer
+     */
+    while (bp < be) {
+		
+		/* multiply by the 32 bit FNV magic prime mod 2^32 */
+#if defined(NO_FNV_GCC_OPTIMIZATION)
+		hval *= FNV_32_PRIME;
+#else
+		hval += (hval<<1) + (hval<<4) + (hval<<7) + (hval<<8) + (hval<<24);
+#endif
+		
+		/* xor the bottom with the current octet */
+		hval ^= (uint32)*bp++;
+    }
+	
+    /* return our new hash value */
+    return hval;
 }
 
 /*
- * Hash a single byte value into an unsigned 32bit hash.
+ * fnv1a_32_buf - perform a 32 bit FNV 1A hash on a buffer
+ *
+ * input:
+ *	buf	- start of buffer to hash
+ *	len	- length of buffer in octets (bytes)
+ *	hval	- previous hash value or FNV1_32_INIT if first call.
+ *
+ * returns:
+ *	32 bit hash as a static hash type
  */
-uint32 fnv_1byte(uint32 hash, int8 val, int16 algo)
+uint32
+fnv1a_32_buf(void *buf, size_t len, uint32 hval)
 {
-	ereport(NOTICE,  (
-		errmsg("CDB Hash: hash value before operation is %u", hash) /* add more detail later */
-					));
+    unsigned char *bp = (unsigned char *)buf;	/* start of buffer */
+    unsigned char *be = bp + len;		/* beyond end of buffer */
 	
-	/* execute the hash on our octet */		
-	if(algo == HASH_FNV_1)
-			hash = FNV1_OP(hash, val);			
-	else
-			hash = FNV1A_OP(hash, val);
-			
-    return hash;
+    /*
+     * FNV-1 hash each octet in the buffer
+     */
+	while (bp < be) {
+		
+		/* xor the bottom with the current octet */
+		hval ^= (uint32)*bp++;
+		
+		/* multiply by the 32 bit FNV magic prime mod 2^32 */
+#if defined(NO_FNV_GCC_OPTIMIZATION)
+		hval *= FNV_32_PRIME;
+#else
+		hval += (hval<<1) + (hval<<4) + (hval<<7) + (hval<<8) + (hval<<24);
+#endif
+	}
+	
+    /* return our new hash value */
+    return hval;
 }
 
 /*================================================================
