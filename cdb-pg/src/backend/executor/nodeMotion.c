@@ -20,6 +20,7 @@
 #include "parser/parse_oper.h"
 #include "parser/parsetree.h"
 #include "utils/lsyscache.h"
+#include "utils/syscache.h" /* for ReleaseSysCache */
 #include "miscadmin.h"
 
 /* 
@@ -730,7 +731,7 @@ List *getExprListFromCondList(List *clist, HashMotionInfoType type)
 		else
 			Assert(0);	
 			
-		Assert(IsA(node, Expr));
+		/* Assert(IsA(node, Expr)); -- Expr is abstract, IsA is not smart enought to deal with this. */
 		expr = copyObject(node);
 		
 		motion_expr_walker(expr, NULL);
@@ -784,7 +785,7 @@ List *getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
 			elog( ERROR, "no tlist entry for key %d", n );
 			
 		expr = copyObject(target->expr);
-		motion_expr_walker(expr, NULL);
+		motion_expr_walker((Node*)expr, NULL);
 		elist = lappend(elist, expr);
 	}
 	
@@ -801,7 +802,6 @@ List *getOpListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
 {
 	int			i;
 	List		*oplist = NIL;
-	Expr		*expr = NULL;
 	Operator	eq_operator;
 	Oid			typeoid;
 	

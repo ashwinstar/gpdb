@@ -27,6 +27,13 @@
 #include "cdb/cdbllize.h"
 #include "cdb/cdbcat.h"
 
+#define ARRAYCOPY(to, from, sz) \
+	do { \
+		Size	_size = (sz); \
+		(to) = palloc(_size); \
+		memcpy((to), (from), _size); \
+	} while (0)
+
 /* 
  * A PlanProfile holds state for recursive prescan_walker(). 
  */
@@ -61,14 +68,22 @@ typedef struct ApplyMotionState
  */
 static bool prescan(Plan *plan, Query *query, PlanProfile *context);
 static bool prescan_walker(Node *node, PlanProfile *context);
+static bool prescan_hash_join(Plan *plan, PlanProfile *context);
 static void psError(PlanProfile *context, unsigned code, 
 		const char* message, const char* detail);
 static void issuePsError(PlanProfile *context);
+static Flow *makeFlow(FlowType flotype, bool islocal);
 static Flow *makeFlowForRelation(Oid reloid);
 static void noteFlow(Flow *flow, PlanProfile *context);
 static Plan* apply_motion(Plan*  plan);
 static Node* apply_motion_mutator(Node*  node, ApplyMotionState *context);
+static bool is_plan_node(Node* node);
 
+
+/* TODO Find a way to make these values available. */
+
+static unsigned CdbNumSegments = 1;
+static unsigned CdbThisSegment = 0;
 
 /* ------------------------------------------------------------------------- *
  * Function cdbparallelize() is the main entry point.
@@ -256,6 +271,7 @@ prescan_walker(Node *node, PlanProfile *context)
 				Plan *plan = (Plan*)node;
 				Scan *scan = (Scan*)plan;
 				Index rtindex = scan->scanrelid;
+				Oid reloid = InvalidOid;
 				
 				Assert( plan->flow == NULL ); /* Make sure this is first time. */
 				Assert( scan->scanrelid > 0 ); /* Make sure we have an index. */
@@ -268,7 +284,7 @@ prescan_walker(Node *node, PlanProfile *context)
 					case T_SeqScan:
 					case T_TidScan:
 						Assert( rte->rtekind == RTE_RELATION );
-						Oid reloid = rte->relid;
+						reloid = rte->relid;
 						plan->flow = makeFlowForRelation(reloid);
 						noteFlow(plan->flow, context);
 						
@@ -276,6 +292,9 @@ prescan_walker(Node *node, PlanProfile *context)
 						return plan_tree_walker(node, prescan_walker, context);
 						
 					case T_IndexScan:
+						Assert( rte->rtekind == RTE_RELATION );
+						reloid = rte->relid;
+						plan->flow = makeFlowForRelation(reloid);
 						/*  
 						 * IndexScan *s = (IndexScan*)node;
 						 *
@@ -289,6 +308,8 @@ prescan_walker(Node *node, PlanProfile *context)
 						 */
 						 
 						 /* TODO Designate flow as ordered! */
+
+						noteFlow(plan->flow, context);
 						
 						/* Walk into subnodes */
 						return plan_tree_walker(node, prescan_walker, context);
@@ -364,13 +385,19 @@ prescan_walker(Node *node, PlanProfile *context)
 			if ( plan_tree_walker(node, prescan_walker, context) )
 				return true;
 			{
-				/* Flow is same as leftree's Flow. */
+				/* Flow is same as leftree's Flow ... */
 				Plan *plan = (Plan*)node;
 				Plan *child = outerPlan(node);
 				Assert( child != NULL );
 				plan->flow = copyObject(child->flow);
 				
-				/* TODO Designate flow as ordered! */
+				/* ... but reordered. */
+				Sort *sort = (Sort*)node;
+				plan->flow->numSortCols = sort->numCols;
+				ARRAYCOPY(plan->flow->sortColIdx, sort->sortColIdx, 
+					sort->numCols*sizeof(AttrNumber) );
+				ARRAYCOPY(plan->flow->sortOperators, sort->sortOperators, 
+					sort->numCols*sizeof(Oid) );
 				
 				noteFlow(plan->flow, context);
 			}
@@ -386,9 +413,10 @@ prescan_walker(Node *node, PlanProfile *context)
 				Plan *child = outerPlan(node);
 				Assert( child != NULL );
 				
-				/* TODO Assure tuples are collocated on the 
-				 *      ((Unique*)node)->numCols attributes of the array
-				 *      ((Unique*)node)->uniqColIdx of AttrNumber
+				/* TODO In case the argument flow is partitioned, assure 
+				 *      that tuples are collocated on the 
+				 *     ((Unique*)node)->numCols attributes of the array
+				 *     ((Unique*)node)->uniqColIdx of AttrNumber
 				 */
 				 
 				/* Note the input flow is certainly sorted this way and
@@ -437,11 +465,8 @@ prescan_walker(Node *node, PlanProfile *context)
 						break; /* Error */
 						
 					case T_HashJoin:
-						/* ((HashJoin*)join)->hashclauses */
-						
-						/* TODO Set flows!
-						 */
-						break; /* Error */
+						/* Sets its own error information, if necessary. */
+						return prescan_hash_join(plan, context);
 						
 					default:
 						break; /* Error */
@@ -487,11 +512,149 @@ prescan_walker(Node *node, PlanProfile *context)
 
 	}
 
-	 /* Breaking out of the above switch will throw an error report. */
+	 /* Breaking out of the above switch will generate an error report
+	  * with whatever detail was set above. 
+	  */
 	 psError(context, ERRCODE_CDB_FEATURE_NOT_YET,
 			"CDB cannot parallelize that query yet.", detail);
 		
 	return true; /* Never get here, but keep's the compiler happy.. */
+}
+
+/* Helper for prescan_walker() does processing for a HashJoin.
+ *
+ * Note that prescan_walker has already finished scaning the child nodes
+ * of the join.
+ *
+ * Return false to indicate successful prescan.  Else set error info
+ * in the context and return true.
+ */
+bool prescan_hash_join(Plan *plan, PlanProfile *context)
+{	
+	Plan *outer = outerPlan(plan);
+	Plan *inner = innerPlan(plan);
+	Flow *joinflow = NULL;
+	
+	/* Assure that we have the expected pattern:
+	 *
+	 *          plan 
+	 *       (HashTree)
+	 *        /     \ 
+	 *     outer   inner
+	 *    (Plan)   (Hash)
+	 *               |              
+	 *          inner->lefttree 
+	 *             (Plan)
+	 */
+	Assert( IsA(plan, HashJoin) );
+	Assert( IsA(inner, Hash) );
+	Assert( is_plan_node((Node*)(inner->lefttree)) );
+	Assert( is_plan_node((Node*)outer) );
+	 
+	/* If either argument is replicated, we can use the other flow
+	 * to specify the output flow type of the join.  No motion is
+	 * required.
+	 */
+	if ( outer->flow->flotype == FLOW_REPLICATED )
+	{
+		joinflow = makeFlow(inner->flow->flotype, inner->flow->islocal);
+	}
+	else if ( inner->flow->flotype == FLOW_REPLICATED )
+	{
+		joinflow = makeFlow(outer->flow->flotype, outer->flow->islocal);
+	}
+
+	 /* Else If both argument flows are singleton and local, so is the
+	  * result flow.  No motion is required.
+	  */
+	else if ( outer->flow->flotype == FLOW_SINGLETON && outer->flow->islocal
+		&&  inner->flow->flotype == FLOW_SINGLETON && inner->flow->islocal )
+	{
+		joinflow = makeDispatcherFlow();
+	}
+	
+	/* Else If one argument flow is singleton and local and the other is
+	 * partitioned, we need to focus the partitioned flow on the 
+	 * dispatcher.  (The alternative of broadcasting the singleton is
+	 * not available because it is local.  Someday soon we'll want to
+	 * support non-local singletons, but we don't at the moment.)
+	 */
+	else if (  outer->flow->flotype == FLOW_PARTITIONED 
+			&& inner->flow->flotype == FLOW_SINGLETON  
+			&& inner->flow->islocal )
+	{
+		/* Request motion to focus the outer flow on the dispatcher. */
+		outer->flow->req_move = MOVEMENT_FOCUS;
+		outer->flow->flotype = FLOW_SINGLETON;
+		outer->flow->islocal = true;
+		
+		/* The result flow of the HashJoin is also local. */
+		joinflow = makeDispatcherFlow();
+	}
+	else if (  outer->flow->flotype == FLOW_SINGLETON
+			&& outer->flow->islocal
+			&& inner->flow->flotype == FLOW_PARTITIONED )
+	{
+		/* Request motion to focus the inner flow on the dispatcher. */
+		inner->lefttree->flow->req_move = MOVEMENT_FOCUS;
+		inner->lefttree->flow->flotype = FLOW_SINGLETON;
+		inner->lefttree->flow->islocal = true;
+		
+		/* Adjust the flow type of the intermediate Hash node. */
+		inner->flow->flotype = FLOW_SINGLETON;
+		inner->flow->islocal = true;
+		
+		/* The result flow of the HashJoin is also local. */
+		joinflow = makeDispatcherFlow();
+	}
+
+	/* Else If both argument flows are partitioned...
+	 */
+	else if (  inner->flow->flotype == FLOW_PARTITIONED
+			&& outer->flow->flotype == FLOW_PARTITIONED )
+	{
+		/* We aren't clever enough (yet) to know on what they're
+		 * partitioned or to make a smart decision about how best to
+		 * bring them into useful alignment, so we just repartition
+		 * both sides.
+		 */
+		
+		/* Get the hash expressions.  Note that the left set will also apply
+		 * to the child of the Hash (since Hash nodes do no projection).
+		 */
+		List *outerexpr = getHashMotionInfoList(plan, INFOTYPE_LEFTEXPR);
+		List *innerexpr = getHashMotionInfoList(plan, INFOTYPE_RIGHTEXPR);
+		List *hashOp = getHashMotionInfoList(plan, INFOTYPE_OP);
+		
+		outer->flow->req_move = MOVEMENT_REPARTITION;
+		outer->flow->hashExpr = outerexpr;
+		outer->flow->hashOp = hashOp;
+		
+		inner->lefttree->flow->req_move = MOVEMENT_REPARTITION;
+		inner->lefttree->flow->hashExpr = innerexpr;
+		inner->lefttree->flow->hashOp = hashOp;
+		
+		/* The Hash node, inner, is already designated partitioned. */
+		 
+		 joinflow = makePartitionedFlow();
+	}
+	
+	/* At this point, on the assumption that all singleton flows are local,
+	 * there are no remaining cases to consider.
+	 */
+
+	if ( joinflow != NULL )
+	{
+		/* We were suceeded in defining the flow. */
+		plan->flow = joinflow; 
+		return false;
+	}
+
+	psError(context, ERRCODE_CDB_FEATURE_NOT_YET, 
+		"CDB cannot parallelize that query yet.", 
+		"Query hash joins subqueries of unexpected type."
+		);
+	return true;	 
 }
 
 
@@ -548,13 +711,21 @@ void noteFlow(Flow *flow, PlanProfile *context)
 /*
  * Construct a new replicated Flow in the current memory context.
  */
-Flow *makeReplicatedFlow()
+Flow *makeFlow(FlowType flotype, bool islocal)
 {
 	Flow *flow = makeNode(Flow);
-	flow->flotype = FLOW_REPLICATED;
-	flow->islocal = false;
+	flow->flotype = flotype;
+	flow->islocal = islocal;
 	flow->req_move = MOVEMENT_NONE;
 	return flow;
+}
+
+/*
+ * Construct a new replicated Flow in the current memory context.
+ */
+Flow *makeReplicatedFlow()
+{
+	return makeFlow(FLOW_REPLICATED, false);
 }
 
 
@@ -563,11 +734,7 @@ Flow *makeReplicatedFlow()
  */
 Flow *makeDispatcherFlow()
 {
-	Flow *flow = makeNode(Flow);
-	flow->flotype = FLOW_SINGLETON;
-	flow->islocal = true;
-	flow->req_move = MOVEMENT_NONE;
-	return flow;
+	return makeFlow(FLOW_SINGLETON, true);
 }
 
 
@@ -576,11 +743,7 @@ Flow *makeDispatcherFlow()
  */
 Flow *makePartitionedFlow()
 {
-	Flow *flow = makeNode(Flow);
-	flow->flotype = FLOW_PARTITIONED;
-	flow->islocal = false;
-	flow->req_move = MOVEMENT_NONE;
-	return flow;
+	return makeFlow(FLOW_PARTITIONED, false);
 }
 
 
@@ -691,6 +854,19 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 				Plan *plan = (Plan*)newnode;
 				Flow *flow = plan->flow;
 				
+				bool sendToSecondary = false; /* always for now */
+				
+				SortedMotionDefn *sortdef = NULL;
+				if ( flow->req_move!=MOVEMENT_NONE && flow->numSortCols>0 )
+				{
+					sortdef = makeSimpleSortedMotionDefn(
+						flow->numSortCols,
+						flow->sortColIdx,
+						flow->sortOperators,
+						CdbNumSegments
+						);
+				}
+				
 				switch ( flow->req_move )
 				{
 					case MOVEMENT_FOCUS:
@@ -706,18 +882,76 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 						 *                            ThisSegmentNumber );
 						 *      or something.
 						 */
-						newnode = (Node*)make_union_motion(plan, false, 0);
+						if ( sortdef != NULL )
+						{
+							newnode = (Node*)make_sorted_union_motion(
+								plan,
+								sendToSecondary,
+								CdbThisSegment,
+								sortdef
+								);
+						}
+						else
+						{
+							newnode = (Node*)make_union_motion(
+								plan, 
+								sendToSecondary, 
+								CdbThisSegment
+								);
+						}
 						break;
 						
 					case MOVEMENT_BROADCAST:
+						if ( sortdef != NULL )
+						{
+							newnode = (Node*)make_sorted_broadcast_motion(
+								plan,
+								sendToSecondary,
+								sortdef
+								);
+						}
+						else
+						{
+							newnode = (Node*)make_broadcast_motion(
+								plan, 
+								sendToSecondary
+								);
+						}
+						break;
+						
 					case MOVEMENT_REPARTITION:
-						/* TODO Add these branches and the associated 
-						 *      Flow support.
-						 */
-						Assert(false);
+						Assert( flow->hashExpr != NULL && flow->hashOp != NULL );
+						if ( sortdef != NULL )
+						{
+							newnode = (Node*)make_sorted_hashed_motion(
+								plan,
+								sendToSecondary,
+								makeSimpleHashMotionDefn(
+									flow->hashExpr,
+									flow->hashOp,
+									CdbNumSegments),
+								sortdef
+								);
+						}
+						else
+						{
+							newnode = (Node*)make_hashed_motion(
+								plan, 
+								sendToSecondary,
+								makeSimpleHashMotionDefn(
+									flow->hashExpr,
+									flow->hashOp,
+									CdbNumSegments)
+								);
+						}
+						break;
+						
 					
 					case MOVEMENT_NONE:
+						break;
+						
 					default:
+						Assert(false);
 						break;
 				}
 			}
@@ -730,5 +964,40 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 }
 
 
-
+/*
+ * Is the node a "subclass" of Plan?
+ */
+bool is_plan_node(Node* node)
+{
+	if ( node == NULL )
+		return false;
+		
+	switch ( nodeTag(node) )
+	{
+		case T_Result:
+		case T_Append:
+		case T_SeqScan:
+		case T_IndexScan:
+		case T_TidScan:
+		case T_SubqueryScan:
+		case T_FunctionScan:
+		case T_NestLoop:
+		case T_MergeJoin:
+		case T_HashJoin:
+		case T_Material:
+		case T_Sort:
+		case T_Group:
+		case T_Agg:
+		case T_Unique:
+		case T_Hash:
+		case T_SetOp:
+		case T_Limit:
+		case T_Motion:
+			return true;
+			
+		default: 
+			break;
+	}
+	return false;
+}
 

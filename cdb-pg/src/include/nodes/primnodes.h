@@ -923,9 +923,9 @@ typedef struct FromExpr
 typedef enum Movement
 {
 	MOVEMENT_NONE,			/* No motion required. */
-	MOVEMENT_FOCUS,			/* Move entire flow to dispatcher stream. */
-	MOVEMENT_BROADCAST,
-	MOVEMENT_REPARTITION
+	MOVEMENT_FOCUS,			/* Fixed motion to dispatcher. */
+	MOVEMENT_BROADCAST,		/* Broadcast motion. */
+	MOVEMENT_REPARTITION	/* Hash motion */
 
 } Movement;
 
@@ -945,8 +945,20 @@ typedef struct Flow
 	FlowType	flotype;		/* Type of flow. */
 	bool		islocal;		/* Is the flow tagged as local? */
 	
-	/* */
+	/* What motion (including none) should be applied to this Plan's output. */
 	Movement	req_move;
+	
+	/* Sort specifications. */
+	int			numSortCols;		/* number of sort key columns */
+	AttrNumber	*sortColIdx;		/* their indexes in target list */
+	Oid			*sortOperators;		/* OID of operators to sort them by */ 
+	
+	/* If flotype is FLOW_PARTITIONED and req_move is MOVEMENT_REPARTITION,
+	 * these express the desired partitioning for a hash motion, 
+	 * otherwise, they are NIL. */
+	List	*hashExpr;				/* list of hash expressions */
+	List	*hashOp;				/* list of hash operators oids */
+		
 } Flow;
 
 #endif   /* PRIMNODES_H */

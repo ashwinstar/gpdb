@@ -1028,11 +1028,27 @@ _outFromExpr(StringInfo str, FromExpr *node)
 static void
 _outFlow(StringInfo str, Flow *node)
 {
+	int i;
+	
 	WRITE_NODE_TYPE("FLOW");
 
 	WRITE_ENUM_FIELD(flotype, FlowType);
 	WRITE_BOOL_FIELD(islocal);
 	WRITE_ENUM_FIELD(req_move, Movement);
+	
+	WRITE_INT_FIELD(numSortCols);
+	
+	/* Caution: Just made up this format! May break, e.g., pretty print. */
+	appendStringInfo(str, " :sortColIdx");
+	for ( i = 0; i < node->numSortCols; i++ )
+		appendStringInfo(str, " %d", node->sortColIdx[i]);
+	
+	appendStringInfo(str, " :sortOperators");
+	for ( i = 0; i < node->numSortCols; i++ )
+		appendStringInfo(str, " %u", node->sortOperators[i]);
+	
+	WRITE_NODE_FIELD(hashExpr);
+	WRITE_NODE_FIELD(hashOp);
 }
 
 /*****************************************************************************

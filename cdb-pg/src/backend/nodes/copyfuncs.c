@@ -1230,6 +1230,11 @@ _copyFlow(Flow *from)
 	COPY_SCALAR_FIELD(flotype);
 	COPY_SCALAR_FIELD(islocal);
 	COPY_SCALAR_FIELD(req_move);
+	COPY_SCALAR_FIELD(numSortCols);
+	COPY_POINTER_FIELD(sortColIdx, from->numSortCols*sizeof(AttrNumber));
+	COPY_POINTER_FIELD(sortOperators, from->numSortCols*sizeof(Oid));	
+	COPY_NODE_FIELD(hashExpr);
+	COPY_NODE_FIELD(hashOp);
 
 	return newnode;
 }
