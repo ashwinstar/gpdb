@@ -628,6 +628,7 @@ List *getExprListFromCondList(List *clist, bool leftChild)
 {
 	List *elist = NIL;
 	ListCell *l;
+	Expr	*expr = NULL;
 		
 	foreach(l, clist)
 	{
@@ -643,8 +644,10 @@ List *getExprListFromCondList(List *clist, bool leftChild)
 			node = lsecond(fexpr->args);
 			
 		Assert(IsA(node, Expr));
-		motion_expr_walker(node, NULL);
-		elist = lappend(elist, node);
+		expr = copyObject(node);
+		
+		motion_expr_walker(expr, NULL);
+		elist = lappend(elist, expr);
 	}
 	
 	return elist;
