@@ -32,7 +32,7 @@ public class AsyncNoOpWriterTest extends TestCase
     /**
      * the segment DB that this writer is assigned to.
      */
-    private CdbLoader.SegmentDB segDB;
+    private CdbLoader.Database segDB;
 
     /**
      * constructor
@@ -55,7 +55,7 @@ public class AsyncNoOpWriterTest extends TestCase
          * instantiate a segment db. all parameter values are not important.
          */
         CdbLoader loader = new CdbLoader("localhost", 10000, "mydb", "user", "pass");
-        segDB = loader.new SegmentDB(1, "some/data/dir", true, true, "localhost", 10000, "mydb", "user", "password");
+        segDB = loader.new Database("localhost", 10000, "mydb", "user", "password");
     }
 
     public void tearDown()

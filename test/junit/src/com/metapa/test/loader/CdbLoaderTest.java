@@ -71,25 +71,12 @@ public class CdbLoaderTest extends TestCase
 
     }
 
-    /**
-     * test the getClusterInfo method of CdbLoader.
-     * @throws SQLException
-     */
-    public void testGetClusterInfo() throws SQLException
-    {
-        loader.getClusterInfo();
 
-        //todo: check validity map
 
-        /**
-         * check that the number of segment databases that the loader found in the admin
-         * schema is actually what we expect.
-         */
-        int expectedNumSegDbs = Integer.parseInt(System.getProperty("test.cluster.totalsegdbs"));
-        int actualNumSegDbs = loader.getSegDBs().length;
-        assertEquals("Testing the total number of seg dbs in CDB ", expectedNumSegDbs, actualNumSegDbs);
-
-    }
+    //
+    //CLUSTER INTO TEST REMOVED AFTER CHANGES TO CDB2 LOADER
+    //
+    
 
 //    public void testInsertAll()
 //    {
