@@ -10,37 +10,38 @@ and interacting with a local CDB cluster. The intention is that developers
 and testers will be able to use this cluster to perform their work. These
 scripts are not intended for any type of production environment.
 
-    cdbinitdb   --  initializes a new CDB database cluster
-                    data directory (like initdb).
+    cdbinitdb   --  initializes new CDB database cluster
+                    data directory(s) (like initdb).
 
-    cdbstart    --  starts the postmaster(s) for a CDB database
+    cdbstart    --  starts the listener(s) for a CDB database
                     cluster
 
     cdbcreatedb --  creates a new database in a CDB database
                     cluster (like createdb).
 
-    cdbstop     --  stops the postmaster(s) for a CDB database
+    cdbstop     --  stops the listener(s) for a CDB database
                     cluster
 
-    cdbpsql     --  runs psql connecting to the first postmaster of
+    cdbpsql     --  runs psql connecting to the first listener of
                     the CDB database cluster.
 
-    cdbcast     --  runs a single SQL statement or SQL script against
-                    all segment databases of a CDB database.
+    cdbclean    --  deletes the CDB cluster database directory(s)
+                    that were created using cdbinitdb
 
     cdbfuncs    --  contains functions for use in the other scripts
 
 Notes
 =====
 
-The bin directory of the CDB PostgreSQL code base is expected to be
-in $PATH. There are a number of other environmental variables that
-are useful. You can source env.rc to automatically set these up.
+The bin directory of the CDB PostgreSQL code base is expected to be in
+$PATH. There are a number of other environmental variables that are
+useful. You can source env.rc to automatically set these up.
 
 A word of WARNING -- these scripts are created for internal use; little,
 if any, error checking is performed.  It is expected that the typical
-recovery action is to kill the cluster's postmasters, wipe out the PGROOT
-directory, and start over from scratch.
+recovery action is to kill the cluster's listeners, wipe out the PGROOT
+directory, and start over from scratch. Luckily, scripts are provided to
+do this ;)
 
 Overview
 ========
@@ -54,7 +55,7 @@ attention to the --prefix option, which will allow you to work with multiple
 CDB instances.
 
 The cdbinitdb script initializes a single PostgreSQL instance and
-associated postmaster. By default, this occurs in $HOME/cdb-data/cdb
+associated listener. By default, this occurs in $HOME/cdb-data/cdb
 and the default port is 10000. Multiple databases _can_ be configured
 using the script though, and in this case, port numbers are incremented
 from the base port. The postgresql.conf file of each instance is

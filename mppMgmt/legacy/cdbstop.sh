@@ -3,29 +3,29 @@
 #
 # cdbstop
 #
-#       Stops all postmasters of a CDB cluster.
+#       Stops the listener(s) of a CDB cluster.
 #
 # $Id$
 # ---------------------------------------------------------------------
 
 PATH="$(dirname $0):$PATH"
- 
+
 usage="[ PGROOT=<root_directory> ] $(basename $0) \n        [ {--dbroot|-D} <root_directory> ] \n        [ {--prefix|-P} { dbprefix | cdb} ] \n        [ {--help} ]"
 
-echo -e "$(basename $0): Stops all postmasters of a CDB cluster."          
+echo -e "$(basename $0): Stops all listeners of a CDB cluster."
 echo -e "Copyright (c) 2004-2005 Metapa, Inc. All Rights Reserved"
 
 function display_help
 {
     echo -e "\nSyntax: $usage"
 
-    echo -e "\nThis command stops the postmasters of a CDB cluster.The CDB cluster must" 
+    echo -e "\nThis command stops the listeners of a CDB cluster.The CDB cluster must"
     echo    "have been previously initialized using \"cdbinitdb\" and started using \"cdbstart\"."
-    
+
     echo -e "\nIf \$PGROOT or --dbroot is not set, the root of the database installation "
     echo -e "defaults to \"\$HOME/cdb-data\". You can also specify which database(s) to stop "
     echo -e "using the --prefix option. Unless set, this defaults to \"cdb\"."
-  
+
     echo -e "\nSee README.txt for more details.\n"
 
     exit 1
@@ -51,10 +51,10 @@ dbroot=
 prefix=
 
 # Ok, loop through the command line args
-# 
+#
 # TODO: For some reason, the -X form of command line parsing, does not handle
 # errors very well. Needs fixing at some point.
-while [ $# -gt 0 ] 
+while [ $# -gt 0 ]
 do
     if [ ! $options_ended ]; then
         OPTIND=1
@@ -71,7 +71,7 @@ do
                    [ "$OPTARG" != "?" ] && break
                    ;;
                 D)
-                   dbroot="$OPTARG" 
+                   dbroot="$OPTARG"
                    ;;
                 P)
                    prefix="$OPTARG"
@@ -100,7 +100,7 @@ do
         shift $(($OPTIND - 1))
     fi
 
-    # 
+    #
     # Handle long options and positional parameters
     #
     if [ $# -gt 0 ]; then
@@ -166,12 +166,12 @@ export PGPORT
 
 
 # ---------------------------------------------------------------------
-# Stop all the DB instances 
+# Stop all the DB instances
 # ---------------------------------------------------------------------
 shopt -s extglob
 for PGDATA in "$PGROOT"/$prefix*[1-9]?([0-9])
 do
-    [ ! -d "$PGROOT" ] && continue 
+    [ ! -d "$PGROOT" ] && continue
 
     db=$(basename "$PGDATA")
     PGPORT=$(getPort)
