@@ -125,39 +125,39 @@ CREATE OR REPLACE FUNCTION mlapi_sendrecv_perf(integer, text) RETURNS __mlapi_se
 -- number of segments we want to hash to, and the second represents a choice of
 -- a hashing algorithm. Currently the 2 options are 1 for FNV1 and 2 for FNV1A
  
-CREATE OR REPLACE FUNCTION cdbhash_1_bigint(integer, smallint, bigint) RETURNS integer
+CREATE OR REPLACE FUNCTION cdbhash_1_bigint(integer, integer, bigint) RETURNS integer
     AS 'libcdbtest.so', 'HASHAPI_Hash_1_BigInt'
     LANGUAGE C IMMUTABLE STRICT;
 
-CREATE OR REPLACE FUNCTION cdbhash_1_int(integer, smallint, integer) RETURNS integer
+CREATE OR REPLACE FUNCTION cdbhash_1_int(integer, integer, integer) RETURNS integer
     AS 'libcdbtest.so', 'HASHAPI_Hash_1_Int'
     LANGUAGE C IMMUTABLE STRICT;
 
-CREATE OR REPLACE FUNCTION cdbhash_2_int_int(integer, smallint, integer, integer) RETURNS integer
+CREATE OR REPLACE FUNCTION cdbhash_2_int_int(integer, integer, integer, integer) RETURNS integer
     AS 'libcdbtest.so', 'HASHAPI_Hash_2_Int_Int'
     LANGUAGE C IMMUTABLE STRICT;
 
-CREATE OR REPLACE FUNCTION cdbhash_1_bpchar(integer, smallint, BpChar) RETURNS integer
+CREATE OR REPLACE FUNCTION cdbhash_1_bpchar(integer, integer, BpChar) RETURNS integer
     AS 'libcdbtest.so', 'HASHAPI_Hash_1_BpChar'
     LANGUAGE C IMMUTABLE STRICT;
 
-CREATE OR REPLACE FUNCTION cdbhash_1_text(integer, smallint, text) RETURNS integer
+CREATE OR REPLACE FUNCTION cdbhash_1_text(integer, integer, text) RETURNS integer
     AS 'libcdbtest.so', 'HASHAPI_Hash_1_Text'
     LANGUAGE C IMMUTABLE STRICT;
 
-CREATE OR REPLACE FUNCTION cdbhash_1_varchar(integer, smallint, VarChar) RETURNS integer
+CREATE OR REPLACE FUNCTION cdbhash_1_varchar(integer, integer, VarChar) RETURNS integer
     AS 'libcdbtest.so', 'HASHAPI_Hash_1_Varchar'
     LANGUAGE C IMMUTABLE STRICT;
 
-CREATE OR REPLACE FUNCTION cdbhash_2_text_text(integer, smallint, text, text) RETURNS integer
+CREATE OR REPLACE FUNCTION cdbhash_2_text_text(integer, integer, text, text) RETURNS integer
     AS 'libcdbtest.so', 'HASHAPI_Hash_2_Text_Text'
     LANGUAGE C IMMUTABLE STRICT;
 
-CREATE OR REPLACE FUNCTION cdbhash_1_float8(integer, smallint, float8) RETURNS integer
+CREATE OR REPLACE FUNCTION cdbhash_1_float8(integer, integer, float8) RETURNS integer
     AS 'libcdbtest.so', 'HASHAPI_Hash_1_float8'
     LANGUAGE C IMMUTABLE STRICT;
 
-CREATE OR REPLACE FUNCTION cdbhash_1_float4(integer, smallint, float4) RETURNS integer
+CREATE OR REPLACE FUNCTION cdbhash_1_float4(integer, integer, float4) RETURNS integer
     AS 'libcdbtest.so', 'HASHAPI_Hash_1_float4'
     LANGUAGE C IMMUTABLE STRICT;
 
