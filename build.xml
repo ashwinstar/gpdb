@@ -440,13 +440,26 @@ The "install" target is allowed for devo builds only.  Use the
              target="${target}">
             <property name="DESTDIR" value="${Idist}"/>
         </ant>
+        <copy file="cdb.rc" todir="${installRoot}/cdb-pgsql"/>
+        <replace file="${installRoot}/cdb-pgsql/cdb.rc" value="${installRoot}">
+          <replacetoken><![CDATA[$HOME/cdb]]></replacetoken>
+        </replace>
 
         <mkdir dir="${IcdbdocDir}"/>
         <mkdir dir="${IcdbjreDir}"/>
         <mkdir dir="${IcdbmanDir}"/>
 
         <mkdir dir="${IcdbtoolsDir}"/>
+
+        <!--
+            Created directories for the CDB Management
+          -->
         <mkdir dir="${IcdbtoolsDir}/management"/>
+        <ant antfile="build.xml"
+             dir="cdb-management"
+             target="${target}">
+        </ant>
+
         <mkdir dir="${IcdbtoolsDir}/scripts"/>
 
         <mkdir dir="${IcdbdemoDir}"/>
@@ -643,8 +656,8 @@ The "install" target is allowed for devo builds only.  Use the
 The value of installRoot is: ${installRoot}
 The value of releaseVersion is: ${releaseDir}
 
-Make sure you set your LD_LIBRAY_PATH
-export LD_LIBRARY_PATH=${installRoot}/cdb-pgsql/server/lib
+Make sure you source cdb.rc
+source ${installRoot}/cdb-pgsql/cdb.rc
         </echo>
         <!--
 
