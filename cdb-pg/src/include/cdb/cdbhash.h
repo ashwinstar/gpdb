@@ -29,8 +29,8 @@
  */ 
 typedef struct CdbHash
 {
-	int hash;		       /* The result hash value                           */
-	int numsegs;           /* number of segments in CDB used for partitioning */
+	uint32 hash;		   /* The result hash value                           */
+    int numsegs;           /* number of segments in CDB used for partitioning */
 	int hash_algorithm;    /* the hashing algorithm                           */
 	int reduce_algorithm;  /* the algorithm used for reducing to buckets      */
 	
@@ -42,6 +42,11 @@ typedef struct CdbHash
  * Parameter numsegs - number of segments in CDB. 
  */
 extern CdbHash *makeCdbHash(int numsegs); 
+
+/*
+ * Initialize CdbHash for hashing the next tuple values.
+ */
+extern void cdbhashinit(CdbHash *h);
 
 /*
  * Add an attribute to the hash calculation.
