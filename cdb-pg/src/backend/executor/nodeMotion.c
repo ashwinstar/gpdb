@@ -211,7 +211,7 @@ execMotionUnsorted(MotionState *node)
                          * parent.
                          */
                         tuple = outerTupleSlot->val;
-                        shouldFree = outerTupleSlot->ttc_shouldFree;
+                        shouldFree = false;
                         node->tupSendCtxt.heap_tuple = tuple;
                         node->tupSendCtxt.target_segment = BROADCAST_SEGIDX;
                     }
@@ -237,7 +237,7 @@ execMotionUnsorted(MotionState *node)
 							{
 								/* We are the receiver, so pass-thru the tuple. */
 								tuple = outerTupleSlot->val;
-								shouldFree = outerTupleSlot->ttc_shouldFree;
+								shouldFree = false;
 							}
 							else
 							{
@@ -280,7 +280,7 @@ execMotionUnsorted(MotionState *node)
 						{
 							/* We are the receiver, so pass-thru the tuple. */
 							tuple = outerTupleSlot->val;
-							shouldFree = outerTupleSlot->ttc_shouldFree;
+							shouldFree = false;
 						}
 						else
 						{
@@ -530,7 +530,7 @@ execMotionSorted(MotionState *node)
                 node->numTuplesFromChild++;
                 
                 MergeNewValueIntoCdbTupleHeap(node->tupleheap, outerTupleSlot->val, 
-					outerTupleSlot->ttc_shouldFree, mySegIdx);
+					false, mySegIdx);
                 
                 /* We only send the tuple here if it is broadcast.  (Remember
                  * that we previously asserted that either it is broadcast, or
@@ -692,7 +692,7 @@ void execMotionSortedFirstTime(MotionState *node)
             node->numTuplesFromChild++;
             
             SetCdbTupleHeapInitialValue(node->tupleheap, outerTupleSlot->val,
-                outerTupleSlot->ttc_shouldFree, mySegIdx);
+                false, mySegIdx);
             
             /* We only send the tuple here if it is broadcast.  (Remember that
              * we previously asserted that either it is broadcast, or this
