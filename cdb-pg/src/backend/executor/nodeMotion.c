@@ -26,11 +26,12 @@
 /* 
  * Helper functions 
  */ 
-static int *makeDefaultSegIdxArray(int numSegs);
 static void validateMotionNodeParms(MotionType motionType,
 			bool sendToSecondary, bool sendSorted, 
-			HashMotionDefn *pHashDefn, FixedMotionDefn* pFixedDefn,
-			SortedMotionDefn *pSortDefn);
+			int numHashSegs, int *hashSegIdx, List *hashExpr, List *hashOp,
+			int numOutputSegs, int *outputSegIdx,
+			int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators, 
+			int numInputSegs, int *inputSegIdx );
 static List *getExprListFromCondList(List *clist, HashMotionInfoType type);
 static List *getOpListFromCondList(List *clist);
 static List *getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx);
@@ -143,13 +144,12 @@ ExecInitMotion(Motion *node, EState *estate)
 		/*
 		 * Get info about the hash functions to be used for each hash key.
 		 */
-		HashMotionDefn *pHashDefn = node->pHashDefn;
-		Assert( pHashDefn != NULL && pHashDefn->hashOp != NULL );
+		Assert( node->hashOp != NULL );
 		 
-		nkeys = list_length(pHashDefn->hashOp);
+		nkeys = list_length(node->hashOp);
 		motionstate->hashfunctions = (FmgrInfo *) palloc(nkeys * sizeof(FmgrInfo));
 		i = 0;
-		foreach(ho, pHashDefn->hashOp)
+		foreach(ho, node->hashOp)
 		{
 			Oid			hashfn;
 	
@@ -161,7 +161,7 @@ ExecInitMotion(Motion *node, EState *estate)
 			i++;
 		}
 		
-		motionstate->hashExprState = (List *)ExecInitExpr( (Expr *)pHashDefn->hashExpr,
+		motionstate->hashExprState = (List *)ExecInitExpr( (Expr *)node->hashExpr,
 														 (PlanState *) motionstate);
 	}
 		
@@ -323,134 +323,6 @@ List *getHashMotionInfoList( Plan *node, HashMotionInfoType type )
 } 
 
 /* --------------------------------------------------------------------
- * makeHashMotionDefn -- creates a HashMotionDefn*
- * Caller must have built the hashExpr and hashOp lists and 
- * hashSegIdx array already.
- * --------------------------------------------------------------------
- */
-HashMotionDefn* makeHashMotionDefn( List* hashExpr, List* hashOp, int numHashSegs, int *hashSegIdx)
-{
-	HashMotionDefn *pHashDefn = palloc0(sizeof(HashMotionDefn));
-	
-	if ( numHashSegs < 0 )
-		numHashSegs = 0;
-		
-	pHashDefn->numHashSegs = numHashSegs;
-	
-	if ( numHashSegs > 0 )
-		pHashDefn->hashSegIdx = hashSegIdx;
-	
-	pHashDefn->hashExpr = hashExpr;
-	pHashDefn->hashOp	= hashOp;
-	
-	return pHashDefn;
-}
-
-/* ----------------------------------------------------------------
- * makeSimpleHashMotionDefn -- 
- * Convenience routine to create a HashMotionDefn that
- * uses all of the segindexes for the hashSegIdx array.
- * Caller must have built the hashExpr and hashOp lists already.
- * ----------------------------------------------------------------
- */
-HashMotionDefn *makeSimpleHashMotionDefn( List* hashExpr, List* hashOp, int numSegs)
-{
-	int *hashSegIdx = NULL;
-	
-	if ( numSegs > 0 )
-	{
-		hashSegIdx = makeDefaultSegIdxArray(numSegs);
-	}
-	
-	return makeHashMotionDefn( hashExpr, hashOp, numSegs, hashSegIdx);
-}
-
-/* --------------------------------------------------------------------
- * makeFixedMotionDefn -- creates a FixedMotionDefn*
- * Caller must have built the outputSegIdx array already.
- * --------------------------------------------------------------------
- */
-FixedMotionDefn* makeFixedMotionDefn(int numOutputSegs, int *outputSegIdx)
-{
-	FixedMotionDefn *pFixedDefn = palloc0(sizeof(FixedMotionDefn));
-	
-	if ( numOutputSegs < 0 )
-		numOutputSegs = 0;
-		
-	pFixedDefn->numOutputSegs = numOutputSegs;
-	
-	if ( numOutputSegs > 0 )
-		pFixedDefn->outputSegIdx = outputSegIdx;
-	
-	return pFixedDefn;
-}
-
-/* --------------------------------------------------------------------
- * makeSimpleFixedMotionDefn --
- * Convenience routine to create a FixedMotionDefn that
- * has exactly one output segindex, e.g. for a union motion node
- * --------------------------------------------------------------------
- */
-FixedMotionDefn* makeSimpleFixedMotionDefn( int SegIdx )
-{
-	int *outputSegIdx = palloc( sizeof(int) );
-	*outputSegIdx = SegIdx;
-
-	return makeFixedMotionDefn(1, outputSegIdx);
-}
-
-/* --------------------------------------------------------------------
- * makeSortedMotionDefn -- creates a SortedMotionDefn*
- * Caller must have built the sortColIdx and sortOperators 
- * and inputSegIdx arrays already.
- * --------------------------------------------------------------------
- */
-SortedMotionDefn* makeSortedMotionDefn(int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators, int numInputSegs, int *inputSegIdx)
-{
-	SortedMotionDefn *pSortDefn = palloc0(sizeof(SortedMotionDefn));
-	
-	if ( numSortCols < 0 )
-		numSortCols = 0;
-		
-	pSortDefn->numSortCols = numSortCols;
-	
-	if ( numSortCols > 0 )
-	{
-		pSortDefn->sortColIdx = sortColIdx;
-		pSortDefn->sortOperators = sortOperators;
-	}
-	
-	if ( numInputSegs < 0 )
-		numInputSegs = 0;
-		
-	pSortDefn->numInputSegs = numInputSegs;
-	
-	if ( numInputSegs > 0 )
-		pSortDefn->inputSegIdx = inputSegIdx;
-	
-	return pSortDefn;
-}
-
-/* --------------------------------------------------------------------
- * makeSimpleSortedMotionDefn -- 
- * Convenience routine to create a SortedMotionDefn that
- * uses all of the segindexes for the inputSegIdx array.
- * Caller must have built the sortColIdx and sortOperators arrays already.
- * --------------------------------------------------------------------
- */
-SortedMotionDefn* makeSimpleSortedMotionDefn(int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators, int numSegs )
-{
-	int *inputSegIdx = NULL;
-	
-	if ( numSegs > 0 )
-	{
-		inputSegIdx = makeDefaultSegIdxArray(numSegs);
-	}
-	
-	return makeSortedMotionDefn( numSortCols, sortColIdx, sortOperators, numSegs, inputSegIdx);
-}
-
-/* --------------------------------------------------------------------
  * make_motion -- creates a Motion node.
  * Caller must have built the pHashDefn, pFixedDefn,
  * and pSortDefn structs already.
@@ -458,11 +330,16 @@ SortedMotionDefn* makeSimpleSortedMotionDefn(int numSortCols, AttrNumber *sortCo
  */
 Motion *make_motion(Plan *lefttree, MotionType motionType,
 			bool sendToSecondary, bool sendSorted, 
-			HashMotionDefn *pHashDefn, FixedMotionDefn* pFixedDefn,
-			SortedMotionDefn *pSortDefn )
+			int numHashSegs, int *hashSegIdx, List *hashExpr, List *hashOp,
+			int numOutputSegs, int *outputSegIdx,
+			int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators, 
+			int numInputSegs, int *inputSegIdx )
 {
 	validateMotionNodeParms(motionType,	sendToSecondary, sendSorted, 
-			pHashDefn, pFixedDefn,	pSortDefn);
+			numHashSegs, hashSegIdx, hashExpr, hashOp,
+			numOutputSegs, outputSegIdx,
+			numSortCols, sortColIdx, sortOperators, 
+			numInputSegs, inputSegIdx);
 			
 	Motion	   *node = makeNode(Motion);
 	Plan	   *plan = &node->plan;
@@ -479,9 +356,20 @@ Motion *make_motion(Plan *lefttree, MotionType motionType,
 	node->motionType = motionType;
 	node->sendToSecondary = sendToSecondary;
 	node->sendSorted = sendSorted;
-	node->pHashDefn = pHashDefn;
-	node->pFixedDefn = pFixedDefn;
-	node->pSortDefn = pSortDefn;
+	node->numHashSegs = numHashSegs;
+	node->hashSegIdx = hashSegIdx;
+	node->hashExpr = hashExpr;
+	node->hashOp = hashOp;
+
+	node->numOutputSegs = numOutputSegs;
+	node->outputSegIdx = outputSegIdx;
+
+	node->numSortCols = numSortCols;
+	node->sortColIdx = sortColIdx;
+	node->sortOperators = sortOperators;
+	node->numInputSegs = numInputSegs;
+	node->inputSegIdx = inputSegIdx;
+
 	node->motionID = 0;
 	
 	return node;
@@ -489,60 +377,77 @@ Motion *make_motion(Plan *lefttree, MotionType motionType,
 
 Motion *make_union_motion(Plan *lefttree, bool sendToSecondary, int destSegIndex )
 {
+	int *outputSegIdx = palloc( sizeof(int) );
+	outputSegIdx[0] = destSegIndex;
+
 	return 	make_motion(lefttree, MOTIONTYPE_FIXED, 
 						sendToSecondary, false, 
-						NULL, makeSimpleFixedMotionDefn( destSegIndex ), NULL );
+						0, NULL, NIL, NIL,
+						1, outputSegIdx,
+						0, NULL, NULL, 0, NULL );
 }
 
-Motion *make_sorted_union_motion(Plan *lefttree, bool sendToSecondary, int destSegIndex, SortedMotionDefn *pSortDefn  )
+Motion *make_sorted_union_motion(Plan *lefttree, bool sendToSecondary, int destSegIndex, 
+								int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators, 
+								int numInputSegs, int *inputSegIdx )
 {
+	int *outputSegIdx = palloc( sizeof(int) );
+	outputSegIdx[0] = destSegIndex;
+
 	return 	make_motion(lefttree, MOTIONTYPE_FIXED, 
 						sendToSecondary, true, 
-						NULL, makeSimpleFixedMotionDefn( destSegIndex ), pSortDefn );
+						0, NULL, NIL, NIL,
+						1, outputSegIdx, 
+						numSortCols, sortColIdx, sortOperators, numInputSegs, inputSegIdx);
 }
 
 Motion *make_hashed_motion(Plan *lefttree, bool sendToSecondary, 
-							HashMotionDefn *pHashDefn)
+							int numHashSegs, int *hashSegIdx, List *hashExpr, List *hashOp )
 {
 	return make_motion(lefttree, MOTIONTYPE_HASH,
 						sendToSecondary, false, 
-						pHashDefn, NULL, NULL );
+						numHashSegs, hashSegIdx, hashExpr, hashOp,
+						0, NULL, 0, NULL, NULL, 0, NULL);
 }
 
 Motion *make_sorted_hashed_motion(Plan *lefttree, bool sendToSecondary, 
-								HashMotionDefn *pHashDefn, SortedMotionDefn *pSortDefn)
+								int numHashSegs, int *hashSegIdx, List *hashExpr, List *hashOp,
+								int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators, 
+								int numInputSegs, int *inputSegIdx )
 {
 	return make_motion(lefttree, MOTIONTYPE_HASH,
 						sendToSecondary, true, 
-						pHashDefn, NULL, pSortDefn);
+						numHashSegs, hashSegIdx, hashExpr, hashOp, 
+						0, NULL, 
+						numSortCols, sortColIdx, sortOperators, numInputSegs, inputSegIdx );
 }
 
 Motion *make_broadcast_motion(Plan *lefttree, bool sendToSecondary)
 {
-	return make_motion(lefttree, MOTIONTYPE_BROADCAST,
+	return make_motion(lefttree, MOTIONTYPE_FIXED,
 						sendToSecondary, false, 
-						NULL, NULL, NULL );
+						0, NULL, NIL, NIL,
+						0, NULL, 
+						0, NULL, NULL, 0, NULL );
 }
 
-Motion *make_sorted_broadcast_motion(Plan *lefttree, bool sendToSecondary, SortedMotionDefn *pSortDefn )
+Motion *make_sorted_broadcast_motion(Plan *lefttree, bool sendToSecondary, 
+								int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators, 
+								int numInputSegs, int *inputSegIdx )
 {
-	return make_motion(lefttree, MOTIONTYPE_BROADCAST,
+	return make_motion(lefttree, MOTIONTYPE_FIXED,
 						sendToSecondary, true, 
-						NULL, NULL, pSortDefn );
+						0, NULL, NIL, NIL,
+						0, NULL, 
+						numSortCols, sortColIdx, sortOperators, numInputSegs, inputSegIdx );
 }
 
-/* --------------------------------------------------------------------
- * 
- *  Static Helper routines
- * --------------------------------------------------------------------
- */
- 
 /* --------------------------------------------------------------------
  * makeDefaultSegIdxArray -- creates an int array with numSegs elements,
  * with values between 0 and numSegs-1
  * --------------------------------------------------------------------
  */
-static int *makeDefaultSegIdxArray(int numSegs)
+int *makeDefaultSegIdxArray(int numSegs)
 {
 	int *segIdx = palloc(numSegs * sizeof(int));
 
@@ -558,14 +463,22 @@ static int *makeDefaultSegIdxArray(int numSegs)
 }
 
 /* --------------------------------------------------------------------
+ * 
+ *  Static Helper routines
+ * --------------------------------------------------------------------
+ */
+ 
+/* --------------------------------------------------------------------
  * validateMotionNodeParms -- validates the parameters passed to
  * make_motion
  * --------------------------------------------------------------------
  */
 void validateMotionNodeParms(MotionType motionType,
 			bool sendToSecondary, bool sendSorted, 
-			HashMotionDefn *pHashDefn, FixedMotionDefn* pFixedDefn,
-			SortedMotionDefn *pSortDefn)
+			int numHashSegs, int *hashSegIdx, List *hashExpr, List *hashOp,
+			int numOutputSegs, int *outputSegIdx,
+			int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators, 
+			int numInputSegs, int *inputSegIdx )
 {
 	/*
 	 *  Perform validation based on motionType.
@@ -574,58 +487,45 @@ void validateMotionNodeParms(MotionType motionType,
 	{
 		case MOTIONTYPE_HASH: 
 	
-			if ( pHashDefn == NULL )
-				elog(ERROR, "motion type 'hash' node must have non-NULL pHashDefn");
 		/*
 		 *  A Hash motion node must have hash expr info specified.
 		 */
-			if ( pHashDefn->hashExpr == NULL )
+			if ( hashExpr == NIL )
 				elog(ERROR, "motion type 'hash' node must have non-NULL hashExpr");
 				
 		/*
 		 *  A Hash motion node must have hash operator info specified.
 		 */
-			if ( pHashDefn->hashOp == NULL )
+			if ( hashOp == NIL )
 				elog(ERROR, "motion type 'hash' node must have non-NULL hashOp");
 				
 		/*
 		 *  A Hash motion node must have hash segment info specified.
 		 */
-			if ( pHashDefn->numHashSegs <= 0 || pHashDefn->hashSegIdx == NULL )
+			if ( numHashSegs <= 0 || hashSegIdx == NULL )
 				elog(ERROR, "motion type 'hash' node must have numHashSegs > 0 and non-NULL hashSegIdx");
 
 		/*
 		 *  A Hash motion node shouldn't have FixedMotionDefn specified.
 		 */
-			Assert(pFixedDefn == NULL);
+			Assert(numOutputSegs == 0 && outputSegIdx == NULL);
 			break;	
 	
-		case MOTIONTYPE_BROADCAST: 
-		/*
-		 *  A Broadcast motion node shouldn't have HashMotionDefn specified.
-		 */
-			Assert( pHashDefn == NULL);
-
-		/*
-		 *  A Broadcast motion node shouldn't have FixedMotionDefn specified.
-		 */
-			Assert(pFixedDefn == NULL);
-			break;	
-
 		case MOTIONTYPE_FIXED: 
 
-			if ( pFixedDefn == NULL )
-				elog(ERROR, "motion type 'fixed' node must have non-NULL pFixedDefn");
 		/*
 		 *  An Fixed motion node must have output Segs info specified.
 		 */
-			if ( pFixedDefn->numOutputSegs <= 0 || pFixedDefn->outputSegIdx == NULL  )
-				elog(ERROR, "motion type 'fixed' node must have numOutputSegs > 0 and non-NULL outputSegIdx");
+			if ( numOutputSegs < 0 || 
+				(numOutputSegs == 0 && outputSegIdx != NULL ) || 
+				(numOutputSegs > 0 && outputSegIdx == NULL ) )
+				elog(ERROR, "motion type 'fixed' node must have numOutputSegs > 0 and non-NULL outputSegIdx"
+							" or numOutputSegs == 0 and NULL outputSegIdx");
 
 		/*
-		 *  An Fixed motion node shouldn't have HashMotionDefn specified.
+		 *  A Fixed motion node shouldn't have HashMotionDefn specified.
 		 */
-			Assert( pHashDefn == NULL);
+			Assert( numHashSegs == 0 && hashSegIdx == NULL && hashExpr == NIL && hashOp == NIL);
 				
 			break;	
 			
@@ -642,20 +542,16 @@ void validateMotionNodeParms(MotionType motionType,
 	 */
 	if ( sendSorted )
 	{
-		if ( pSortDefn == NULL )
-			elog(ERROR, "sorted motion node must have non-NULL pSortDefn");
-		
 		/*
 		 *  A sorted motion node must have sort Cols specified
 		 */
-		if (pSortDefn->numSortCols == 0 || pSortDefn->sortColIdx == NULL 
-				|| pSortDefn->sortOperators == NULL)
+		if (numSortCols == 0 || sortColIdx == NULL || sortOperators == NULL)
 			elog(ERROR, "sorted motion node must have numSortCols > 0 and non-NULL sortColIdx and sortOperators");
 
 		/*
 		 *  A sorted motion node must have input Segs info specified
 		 */
-		if (pSortDefn->numInputSegs == 0 || pSortDefn->inputSegIdx == NULL)
+		if (numInputSegs == 0 || inputSegIdx == NULL)
 			elog(ERROR, "sorted motion node must have numInputSegs > 0 and non-NULL inputSegIdx");
 	}
 	else
@@ -663,7 +559,8 @@ void validateMotionNodeParms(MotionType motionType,
 		/*
 		 *  A non-sorted motion node should not have SortMotionDefn specified
 		 */
-		Assert( pSortDefn == NULL);
+		Assert(numSortCols == 0 && sortColIdx == NULL && sortOperators == NULL && 
+				numInputSegs == 0 && inputSegIdx == NULL);
 	}
 }			
 
