@@ -46,7 +46,7 @@ static List *getOpListFromCondList(List *clist);
 static List *getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx);
 static List *getOpListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx);
 static bool motion_expr_walker(Node *node, char *not_used);
-static uint32 evalHashKey(ExprContext *econtext, List *hashkeys, FmgrInfo *hashfunctions);
+static uint32 evalHashKey(ExprContext *econtext, List *hashkeys, Oid *hashOids, CdbHash *h);
 static bool setReadFromAMS(Motion *node);
 
 
@@ -89,13 +89,6 @@ ExecMotion(MotionState *node)
 	 */
 	tuple = heap_copytuple(outerTupleSlot->val);
 	
-	uint32 hval = 0;
-	if ( motion->motionType == MOTIONTYPE_HASH )
-	{
-		econtext->ecxt_outertuple = outerTupleSlot;
-		hval = evalHashKey(econtext, node->hashExprState, node->hashfunctions);
-	}
-
 	slot = node->ps.ps_ResultTupleSlot;
 	
 	/*
@@ -265,8 +258,11 @@ execMotionUnsorted(MotionState *node)
 					
 
 					econtext->ecxt_outertuple = outerTupleSlot;
-					hval = evalHashKey(econtext, node->hashExprState, node->hashfunctions);
-					target_segindex = motion->hashSegIdx[ hval % motion->numHashSegs ];
+					hval = evalHashKey(econtext, node->hashExprState, node->hashOids, node->cdbhash);
+					target_segindex = motion->hashSegIdx[ hval  ];
+
+					Assert( node->numTuplesByHashSegIdx != NULL );
+					node->numTuplesByHashSegIdx[ hval ]++;
 
 					if ( target_segindex == mySegIdx )
 					{
@@ -297,7 +293,7 @@ execMotionUnsorted(MotionState *node)
                 }
             }
         }
-		pg_usleep(1);
+//		pg_usleep(1);
     }
     while (tuple == NULL &&
         !(node->noMoreAMSTuples && node->noMoreChildTuples && node->sentEndOfStream));
@@ -789,6 +785,8 @@ ExecInitMotion(Motion *node, EState *estate)
 	motionstate->ps.ps_ProjInfo = NULL;
 	motionstate->hashfunctions = NULL;
 	motionstate->hashExprState = NULL;
+	motionstate->hashOids = NULL;
+	motionstate->cdbhash = NULL;
 		
 	if ( node->motionType == MOTIONTYPE_HASH )
 	{
@@ -802,6 +800,7 @@ ExecInitMotion(Motion *node, EState *estate)
 		 
 		nkeys = list_length(node->hashOp);
 		motionstate->hashfunctions = (FmgrInfo *) palloc(nkeys * sizeof(FmgrInfo));
+		motionstate->hashOids = (Oid *) palloc(nkeys * sizeof(Oid));
 		i = 0;
 		foreach(ho, node->hashOp)
 		{
@@ -812,11 +811,21 @@ ExecInitMotion(Motion *node, EState *estate)
 				elog(ERROR, "could not find hash function for hash operator %u",
 					 lfirst_oid(ho));
 			fmgr_info(hashfn, &motionstate->hashfunctions[i]);
+
+			Oid lefttype;
+			Oid righttype;
+
+			op_input_types( lfirst_oid(ho), &lefttype, &righttype );
+			Assert( lefttype == righttype );
+			motionstate->hashOids[i] = lefttype;
 			i++;
 		}
 		
 		motionstate->hashExprState = (List *)ExecInitExpr( (Expr *)node->hashExpr,
 														 (PlanState *) motionstate);
+		Assert( node->numHashSegs > 0 );
+		motionstate->cdbhash = makeCdbHash(node->numHashSegs, HASH_FNV_1); 
+		motionstate->numTuplesByHashSegIdx = (int *)palloc0( node->numHashSegs * sizeof(int) );
 	}
 
 	if ( node->sendSorted )
@@ -880,6 +889,7 @@ void
 ExecEndMotion(MotionState *node)
 {
     uint16 motNodeID;
+	int i;
     
 	SO1_printf("ExecEndMotion: %s\n",
 			   "shutting down motion node");
@@ -915,8 +925,32 @@ ExecEndMotion(MotionState *node)
 		Assert(node->numTuplesFromChild + node->numTuplesFromAMS == node->numTuplesToAMS + node->numTuplesToParent);
 	}
 
+	if ( motion->motionType == MOTIONTYPE_HASH )
+	{
+		if ( node->numTuplesByHashSegIdx != NULL )
+		{
+			elog( DEBUG1, "Motion Node %d Hash Bucket Distribution of child tuples: ", motNodeID );
+			for ( i=0; i<motion->numHashSegs; i++ )
+			{
+				elog( DEBUG1, "Bucket %d : %d", i, node->numTuplesByHashSegIdx[i] );
+			}
+
+			pfree( node->numTuplesByHashSegIdx );
+			node->numTuplesByHashSegIdx = NULL;
+		}
+	}
+
 	if ( node->tupleheap != NULL )
+	{
 		DestroyCdbHeap(node->tupleheap);
+		node->tupleheap = NULL;
+	}
+
+	if ( node->cdbhash != NULL )
+	{
+		pfree( node->cdbhash );
+		node->cdbhash = NULL;
+	}
 
     /*
      * Free up this motion node's resources in the Motion Layer.
@@ -1525,7 +1559,7 @@ List *getOpListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
 /*
  * Experimental code that will be replaced later with new hashing mechanism
  */
-uint32 evalHashKey(ExprContext *econtext, List *hashkeys, FmgrInfo *hashfunctions)
+uint32 evalHashKey(ExprContext *econtext, List *hashkeys, Oid *hashOids, CdbHash *h)
 {
 	uint32		hashkey = 0;
 	ListCell   *hk;
@@ -1536,14 +1570,13 @@ uint32 evalHashKey(ExprContext *econtext, List *hashkeys, FmgrInfo *hashfunction
 
 	oldContext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 
+	cdbhashinit(h);
+
 	foreach(hk, hashkeys)
 	{
 		ExprState  *keyexpr = (ExprState *) lfirst(hk);
 		Datum		keyval;
 		bool		isNull;
-
-		/* rotate hashkey left 1 bit at each step */
-		hashkey = (hashkey << 1) | ((hashkey & 0x80000000) ? 1 : 0);
 
 		/*
 		 * Get the attribute value of the tuple
@@ -1554,19 +1587,16 @@ uint32 evalHashKey(ExprContext *econtext, List *hashkeys, FmgrInfo *hashfunction
 		 * Compute the hash function
 		 */
 		if (!isNull)			/* treat nulls as having hash key 0 */
-		{
-			uint32		hkey;
-
-			hkey = DatumGetUInt32(FunctionCall1(&hashfunctions[i],keyval));
-			hashkey ^= hkey;
-		}
+			cdbhash(h, keyval, hashOids[i]); 
+		else
+			cdbhashnull(h);
 
 		i++;
 	}
 	
 	MemoryContextSwitchTo(oldContext);
 	
-	return hashkey;
+	return cdbhashreduce(h);
 }
 
 
