@@ -125,7 +125,26 @@ void getCdbCdb(void)
 
 	heap_endscan(cdb_cdb_scan);
 	heap_close(cdb_cdb_rel, AccessShareLock);
-	
+
+	/*
+	 * Validate the cdb_role against the content.
+	 * If the role is DISPATCH, we must be an entry database,
+	 * and if the role is EXECUTE, we must be a segment database.
+	 */
+	if ( Cdb_role == CDB_ROLE_DISPATCH && CdbIdentity.segindex >= 0 )
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
+				 errmsg("Cannot connect with a Cdb_role of dispatch to a segment database" 
+				 		)));
+	}
+	else if ( Cdb_role == CDB_ROLE_EXECUTE && CdbIdentity.segindex < 0 )
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
+				 errmsg("Cannot connect with a Cdb_role of execute to an entry database" 
+				 		)));
+	}
 }
 
 void freeCdbCdb(void)
