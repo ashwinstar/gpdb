@@ -14,6 +14,7 @@
 #include "funcapi.h"
 #include "executor/spi.h"
 #include "utils/memutils.h"
+#include "utils/numeric.h"
 #include "cdb/cdbhash.h"
 #include "cdbtest.h"
 
@@ -38,20 +39,25 @@ static CdbHash *h;
 PG_FUNCTION_INFO_V1(HASHAPI_Hash_1_BigInt);
 Datum HASHAPI_Hash_1_BigInt(PG_FUNCTION_ARGS)
 {
-    int32 num_segs; /* number of segments  */
-	int64 val1;     /* big int input value */
+    int32 num_segs;    /* number of segments  */
+	
+	int16 algorithm;  /* hashing algorithm   */
+	int64 val1;        /* big int input value */
     unsigned int targetbucket; /* 0-based  */
 	
 	/* Get number of segments */
     num_segs = PG_GETARG_INT32(0);
+	
+	/* Get hashing algoriithm */
+	algorithm = PG_GETARG_INT16(1);
     
 	/* Get the value to hash */
-	val1 = PG_GETARG_INT64(1);
+	val1 = PG_GETARG_INT64(2);
 	
 	Datum d1 = Int64GetDatum(val1);
 	
 	/* create a CdbHash for this hash test. */
-    h = makeCdbHash(num_segs);
+    h = makeCdbHash(num_segs, algorithm);
 	
 	/* init cdb hash */
 	cdbhashinit(h);
@@ -76,19 +82,23 @@ PG_FUNCTION_INFO_V1(HASHAPI_Hash_1_Int);
 Datum HASHAPI_Hash_1_Int(PG_FUNCTION_ARGS)
 {
     int32 num_segs; /* number of segments  */
+	int16 algorithm;  /* hashing algorithm   */
 	int32 val1;     /* big int input value */
     unsigned int targetbucket; /* 0-based  */
 	
 	/* Get number of segments */
     num_segs = PG_GETARG_INT32(0);
-    
+ 
+	/* Get hashing algoriithm */
+	algorithm = PG_GETARG_INT16(1);
+
 	/* Get the value to hash */
-	val1 = PG_GETARG_INT32(1);
+	val1 = PG_GETARG_INT32(2);
 	
 	Datum d1 = Int32GetDatum(val1);
 	
 	/* create a CdbHash for this hash test. */
-    h = makeCdbHash(num_segs);
+    h = makeCdbHash(num_segs, algorithm);
 	
 	/* init cdb hash */
 	cdbhashinit(h);
@@ -112,19 +122,23 @@ PG_FUNCTION_INFO_V1(HASHAPI_Hash_1_BpChar);
 Datum HASHAPI_Hash_1_BpChar(PG_FUNCTION_ARGS)
 {
     int32 num_segs;            /* number of segments  */
+    int16 algorithm;  /* hashing algorithm   */
 	BpChar *val1;				   /* char value          */
     unsigned int targetbucket; /* 0-based             */
 	
 	/* Get number of segments */
     num_segs = PG_GETARG_INT32(0);
-    
+
+	/* Get hashing algoriithm */
+	algorithm = PG_GETARG_INT16(1);
+
 	/* Get the value to hash */
-	val1 = PG_GETARG_BPCHAR_P(1);	
+	val1 = PG_GETARG_BPCHAR_P(2);	
 				
 	Datum d1 = PointerGetDatum(val1);
 	
 	/* create a CdbHash for this hash test. */
-    h = makeCdbHash(num_segs);
+    h = makeCdbHash(num_segs, algorithm);
 	
 	/* init cdb hash */
 	cdbhashinit(h);
@@ -137,6 +151,9 @@ Datum HASHAPI_Hash_1_BpChar(PG_FUNCTION_ARGS)
 	/* reduce the result hash value */
 	targetbucket = cdbhashreduce(h);	
 	
+	/* Avoid leaking memory for toasted inputs */
+	PG_FREE_IF_COPY(val1, 2);
+
     PG_RETURN_INT32(targetbucket); /* return target bucket (segID) */
 }
 
@@ -150,18 +167,22 @@ Datum HASHAPI_Hash_1_Text(PG_FUNCTION_ARGS)
     int32 num_segs;            /* number of segments  */
 	text *val1;	        	   /* char value          */
     unsigned int targetbucket; /* 0-based             */
+	int16 algorithm;  /* hashing algorithm   */
 	
 	/* Get number of segments */
     num_segs = PG_GETARG_INT32(0);
-    
+
+	/* Get hashing algoriithm */
+	algorithm = PG_GETARG_INT16(1);
+
 	/* Get the value to hash */
-	val1 = PG_GETARG_TEXT_P(1);
+	val1 = PG_GETARG_TEXT_P(2);
 	
 			
 	Datum d1 = PointerGetDatum(val1);
 			
 	/* create a CdbHash for this hash test. */
-	h = makeCdbHash(num_segs);
+	h = makeCdbHash(num_segs, algorithm);
 			
 	/* init cdb hash */
 	cdbhashinit(h);
@@ -173,6 +194,9 @@ Datum HASHAPI_Hash_1_Text(PG_FUNCTION_ARGS)
 			
 	/* reduce the result hash value */
 	targetbucket = cdbhashreduce(h);	
+	
+	/* Avoid leaking memory for toasted inputs */
+	PG_FREE_IF_COPY(val1, 2);
 			
 	PG_RETURN_INT32(targetbucket); /* return target bucket (segID) */
 }
@@ -187,23 +211,113 @@ Datum HASHAPI_Hash_1_Varchar(PG_FUNCTION_ARGS)
     int32 num_segs;            /* number of segments  */
 	VarChar    *val1;        	   /* varchar value		  */
     unsigned int targetbucket; /* 0-based             */
+    int16 algorithm;  /* hashing algorithm   */
 	
 	/* Get number of segments */
     num_segs = PG_GETARG_INT32(0);
-    
+
+	/* Get hashing algoriithm */
+	algorithm = PG_GETARG_INT16(1);
+
 	/* Get the value to hash */
-	val1 = PG_GETARG_VARCHAR_P(1);
+	val1 = PG_GETARG_VARCHAR_P(2);
 	
 	
 	Datum d1 = PointerGetDatum(val1);
 	
 	/* create a CdbHash for this hash test. */
-	h = makeCdbHash(num_segs);
+	h = makeCdbHash(num_segs, algorithm);
 	
 	/* init cdb hash */
 	cdbhashinit(h);
 	
 	Oid oid = VARCHAROID;
+	short typmod;
+	
+	cdbhash(h, d1, oid, typmod);
+	
+	/* reduce the result hash value */
+	targetbucket = cdbhashreduce(h);	
+	
+	
+	/* Avoid leaking memory for toasted inputs */
+	PG_FREE_IF_COPY(val1, 2);
+	
+	PG_RETURN_INT32(targetbucket); /* return target bucket (segID) */
+}
+
+
+/* 
+ * HASHAPI_Hash_1_float8
+ * Perform a single float8 value (double) hash.
+ */ 
+PG_FUNCTION_INFO_V1(HASHAPI_Hash_1_float8);
+Datum HASHAPI_Hash_1_float8(PG_FUNCTION_ARGS)
+{
+    int32 num_segs;            /* number of segments  */
+	float8    val1;        	   /* varchar value		  */
+    unsigned int targetbucket; /* 0-based             */
+	int16 algorithm;  /* hashing algorithm   */
+	
+	/* Get number of segments */
+    num_segs = PG_GETARG_INT32(0);
+
+	/* Get hashing algoriithm */
+	algorithm = PG_GETARG_INT16(1);
+
+	/* Get the value to hash */
+	val1 = PG_GETARG_FLOAT8(2);
+	
+	
+	Datum d1 = Float8GetDatum(val1);
+	
+	/* create a CdbHash for this hash test. */
+	h = makeCdbHash(num_segs, algorithm);
+	
+	/* init cdb hash */
+	cdbhashinit(h);
+	
+	Oid oid = FLOAT8OID;
+	short typmod;
+	
+	cdbhash(h, d1, oid, typmod);
+	
+	/* reduce the result hash value */
+	targetbucket = cdbhashreduce(h);	
+	
+	PG_RETURN_INT32(targetbucket); /* return target bucket (segID) */
+}
+
+/* 
+ * HASHAPI_Hash_1_float4
+ * Perform a single float4 value (double) hash.
+ */ 
+PG_FUNCTION_INFO_V1(HASHAPI_Hash_1_float4);
+Datum HASHAPI_Hash_1_float4(PG_FUNCTION_ARGS)
+{
+    int32 num_segs;            /* number of segments  */
+	float4    val1;        	   /* varchar value		  */
+    unsigned int targetbucket; /* 0-based             */
+	int16 algorithm;  /* hashing algorithm   */
+	
+	/* Get number of segments */
+    num_segs = PG_GETARG_INT32(0);
+    
+	/* Get hashing algoriithm */
+	algorithm = PG_GETARG_INT16(1);
+
+	/* Get the value to hash */
+	val1 = PG_GETARG_FLOAT4(2);
+	
+	Datum d1 = Float4GetDatum(val1);
+	
+	/* create a CdbHash for this hash test. */
+	h = makeCdbHash(num_segs, algorithm);
+	
+	/* init cdb hash */
+	cdbhashinit(h);
+	
+	Oid oid = FLOAT4OID;
 	short typmod;
 	
 	cdbhash(h, d1, oid, typmod);
@@ -233,19 +347,23 @@ Datum HASHAPI_Hash_2_Int_Int(PG_FUNCTION_ARGS)
 	int32 val1;     /* int input value     */
 	int32 val2;     /* bigint input value  */
     unsigned int targetbucket; /* 0-based  */
+	int16 algorithm;  /* hashing algorithm   */
 	
 	/* Get number of segments */
     num_segs = PG_GETARG_INT32(0);
     
+	/* Get hashing algoriithm */
+	algorithm = PG_GETARG_INT16(1);
+
 	/* Get the values to hash */
-	val1 = PG_GETARG_INT32(1);
-	val2 = PG_GETARG_INT32(2);
+	val1 = PG_GETARG_INT32(2);
+	val2 = PG_GETARG_INT32(3);
 	
 	Datum d1 = Int32GetDatum(val1);
 	Datum d2 = Int32GetDatum(val2);
 	
 	/* create a CdbHash for this hash test. */
-    h = makeCdbHash(num_segs);
+    h = makeCdbHash(num_segs, algorithm);
 	
 	/* init cdb hash */
 	cdbhashinit(h);
@@ -275,20 +393,24 @@ Datum HASHAPI_Hash_2_Text_Text(PG_FUNCTION_ARGS)
 	text *val1;	        	   /* text value1         */
 	text *val2;	        	   /* text value2         */
     unsigned int targetbucket; /* 0-based             */
+	int16 algorithm;  /* hashing algorithm   */
 	
 	/* Get number of segments */
     num_segs = PG_GETARG_INT32(0);
     
+	/* Get hashing algoriithm */
+	algorithm = PG_GETARG_INT16(1);
+
 	/* Get the value to hash */
-	val1 = PG_GETARG_TEXT_P(1);
-	val2 = PG_GETARG_TEXT_P(2);
+	val1 = PG_GETARG_TEXT_P(2);
+	val2 = PG_GETARG_TEXT_P(3);
 
 	
 	Datum d1 = PointerGetDatum(val1);
 	Datum d2 = PointerGetDatum(val2);
 	
 	/* create a CdbHash for this hash test. */
-	h = makeCdbHash(num_segs);
+	h = makeCdbHash(num_segs, algorithm);
 	
 	/* init cdb hash */
 	cdbhashinit(h);
@@ -302,6 +424,10 @@ Datum HASHAPI_Hash_2_Text_Text(PG_FUNCTION_ARGS)
 	/* reduce the result hash value */
 	targetbucket = cdbhashreduce(h);	
 	
+	/* Avoid leaking memory for toasted inputs */
+	PG_FREE_IF_COPY(val1, 1);
+	PG_FREE_IF_COPY(val2, 2);
+
 	PG_RETURN_INT32(targetbucket); /* return target bucket (segID) */
 }
 
