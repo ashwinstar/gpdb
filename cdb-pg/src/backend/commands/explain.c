@@ -179,10 +179,6 @@ ExplainOneQuery(Query *query, ExplainStmt *stmt, TupOutputState *tstate)
 	/* plan the query */
 	plan = planner(query, isCursor, cursorOptions, NULL);
 	
-	extern void insertMotionNodes( Plan* node );
-	
-	insertMotionNodes( plan);
-	
 	/* Create a QueryDesc requesting no output */
 	queryDesc = CreateQueryDesc(query, plan,
 								ActiveSnapshot, InvalidSnapshot,
