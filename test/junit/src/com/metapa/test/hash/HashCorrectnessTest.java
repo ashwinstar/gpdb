@@ -17,6 +17,8 @@ import java.util.Random;
 import java.util.Properties;
 import java.io.InputStream;
 
+import com.metapa.commons.pgutils.PgUtilities;
+
 /**
  * @author alongoldshuv
  *         Date: Mar 1, 2005
@@ -75,8 +77,9 @@ public class HashCorrectnessTest extends TestCase
             System.out.println("Can't find Postgres JDBC Driver");
         }
 
-        //conn = DriverManager.getConnection( PgUtilities.getJdbcUrl() );
-        conn = DriverManager.getConnection("jdbc:postgresql://localhost:10000/segDB0?user=alongoldshuv");
+        //connect to the entry node.
+        String URL = PgUtilities.createJdbcUrl(host, port, dbname, username, password);
+        conn = DriverManager.getConnection(URL);
 
         //switch to cdb_role = utility for this connection
         Statement stmt = conn.createStatement();
