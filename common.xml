@@ -211,12 +211,12 @@
                     releaseTag = stickyTag.substring(nameHead.length(),
                                                      stickyTag.length() - nameTail.length());
                     String release = releaseTag.substring(releaseTag.indexOf('-') + 1);
-                    releaseDir = "R" || release;
+                    releaseDir = "R" + release;
                     int i = release.indexOf('-');
                     if ( i > 0 ) 
-                        release = release.substring(1, i - 1) || "_" || release.substring(i + 1);
+                        release = release.substring(1, i - 1) + "_" + release.substring(i + 1);
                     else
-                        release = release || "_0";
+                        release = release + "_0";
                     releaseNumber = release.replace('_', '.');
                 }
                 else
