@@ -84,6 +84,8 @@ static int flushedIdx;
 /* keeps track of the motion Id we are expecting when in eosMode. */
 static int eosMotionId;
 
+static TupleChunkListItem eosTcItem;
+
 /* Set to true after the first call to SendShutdownToAMS(). */
 static bool shutdownStarted;
 
@@ -290,7 +292,10 @@ bool SendTupleChunkToAMS(TupleChunkListItem tcItem)
 		if( GetChunkType( tcItem->chunk_data ) != TC_END_OF_STREAM )
 		{
 			Assert( GetMotionNodeID(tcItem->chunk_data) != eosMotionId );
-			return false;
+			//elog(ERROR, "received a normal tcItem while in eosMode");
+			//sendEndOfStream( eosTcItem );
+			//return false;
+			
 		}	
 		else
 		{	
@@ -314,6 +319,7 @@ bool SendTupleChunkToAMS(TupleChunkListItem tcItem)
 		 * limitations of this.  All of this funk should go away when the 
 		 * threaded implementation gets done. 
 		 */
+		eosTcItem = tcItem;
 		eosMode = true;
 		eosMotionId = GetMotionNodeID( tcItem->chunk_data);
 		return sendEndOfStream( tcItem );
@@ -562,6 +568,7 @@ static bool sendEndOfStream( TupleChunkListItem tcItem  )
 		return false;
 	}
 }
+
 
 static void sendBuffer( int buffId, TupleChunkListItem tcItem )
 {
