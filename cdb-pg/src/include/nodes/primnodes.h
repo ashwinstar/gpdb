@@ -964,10 +964,15 @@ typedef struct Flow
 {
 	NodeTag		type;			/* T_Flow */
 	FlowType	flotype;		/* Type of flow. */
-	bool		islocal;		/* Is the flow tagged as local? */
 	
 	/* What motion (including none) should be applied to this Plan's output. */
 	Movement	req_move;
+	
+	/* If flotype is FLOW_SINGLETON, then this is the segment (-1 for entry)
+	 * on which tuples occur.  If req_move is MOVEMENT_FOCUS, then this is
+	 * the desired segment for the resulting singleton flow.
+	 */
+	int			segindex;		/* Segment index of singleton flow. */
 	
 	/* Sort specifications. */
 	int			numSortCols;		/* number of sort key columns */

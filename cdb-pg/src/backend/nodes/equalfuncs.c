@@ -588,8 +588,8 @@ static bool
 _equalFlow(Flow *a, Flow *b)
 {
 	COMPARE_SCALAR_FIELD(flotype);
-	COMPARE_SCALAR_FIELD(islocal);
 	COMPARE_SCALAR_FIELD(req_move);
+	COMPARE_SCALAR_FIELD(segindex);
 	COMPARE_SCALAR_FIELD(numSortCols);
 	COMPARE_POINTER_FIELD(sortColIdx, a->numSortCols*sizeof(AttrNumber));
 	COMPARE_POINTER_FIELD(sortOperators, a->numSortCols*sizeof(Oid));

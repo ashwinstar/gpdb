@@ -1360,8 +1360,8 @@ _readFlow(void)
 	READ_LOCALS(Flow);
 
 	READ_ENUM_FIELD(flotype, FlowType);
-	READ_BOOL_FIELD(islocal);
 	READ_ENUM_FIELD(req_move, Movement);
+	READ_INT_FIELD(segindex);
 	
 	READ_INT_FIELD(numSortCols);
 	READ_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);

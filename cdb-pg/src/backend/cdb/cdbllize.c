@@ -103,7 +103,7 @@ static void psErrorNonce(PlanProfile *context,  const char* detail);
 static void psErrorInternal(PlanProfile *context,  const char* detail);
 static void issuePsError(PlanProfile *context);
 
-static Flow *makeFlow(FlowType flotype, bool islocal);
+static Flow *makeFlow(FlowType flotype);
 static Flow *makeFlowForRelation(Oid reloid, PlanProfile *context);
 static void noteFlow(Flow *flow, PlanProfile *context);
 
@@ -754,14 +754,14 @@ bool prescan_hashjoin(Plan *plan, PlanProfile *context)
 				/* Request motion to focus the outer flow on the dispatcher. */
 				outer->flow->req_move = MOVEMENT_FOCUS;
 				outer->flow->flotype = FLOW_SINGLETON;
-				outer->flow->islocal = true;
+				outer->flow->segindex = -1;
 				break;
 					
 			case MOVEMENT_BROADCAST:
 				/* Request motion to focus the outer flow on the dispatcher. */
 				outer->flow->req_move = MOVEMENT_BROADCAST;
 				outer->flow->flotype = FLOW_REPLICATED;
-				outer->flow->islocal = false;
+				outer->flow->segindex = 0;
 				break;
 					
 			case MOVEMENT_REPARTITION:
@@ -772,7 +772,7 @@ bool prescan_hashjoin(Plan *plan, PlanProfile *context)
 				/* Request motion to repartition outer flow on join key. */
 				outer->flow->req_move = MOVEMENT_REPARTITION;
 				outer->flow->flotype = FLOW_PARTITIONED;
-				outer->flow->islocal = false;
+				outer->flow->segindex = 0;
 				outer->flow->hashExpr = outerexpr;
 				outer->flow->hashOp = hashOp;
 				break;
@@ -792,22 +792,22 @@ bool prescan_hashjoin(Plan *plan, PlanProfile *context)
 				/* Request motion to focus the inner flow on the dispatcher. */
 				inner->lefttree->flow->req_move = MOVEMENT_FOCUS;
 				inner->lefttree->flow->flotype = FLOW_SINGLETON;
-				inner->lefttree->flow->islocal = true;
+				inner->lefttree->flow->segindex = -1;
 				
 				/* Adjust the flow type of the intermediate Hash node. */
 				inner->flow->flotype = FLOW_SINGLETON;
-				inner->flow->islocal = true;
+				inner->flow->segindex = -1;
 				break;
 					
 			case MOVEMENT_BROADCAST:
 				/* Request motion to broadcast the inner flow. */
 				inner->lefttree->flow->req_move = MOVEMENT_BROADCAST;
 				inner->lefttree->flow->flotype = FLOW_REPLICATED;
-				inner->lefttree->flow->islocal = false;
+				inner->lefttree->flow->segindex = 0;
 				
 				/* Adjust the flow type of the intermediate Hash node. */
 				inner->flow->flotype = FLOW_REPLICATED;
-				inner->flow->islocal = false;
+				inner->flow->segindex = 0;
 				break;
 					
 			case MOVEMENT_REPARTITION:
@@ -824,7 +824,7 @@ bool prescan_hashjoin(Plan *plan, PlanProfile *context)
 				
 				/* Adjust the flow type of the intermediate Hash node. */
 				inner->flow->flotype = FLOW_PARTITIONED;
-				inner->flow->islocal = false;
+				inner->flow->segindex = 0;
 				break;
 				
 			default:
@@ -834,7 +834,8 @@ bool prescan_hashjoin(Plan *plan, PlanProfile *context)
 	}
 	
 	/* Adopt proposed flow characteristics. */
-	plan->flow = makeFlow(strategy->resultflowtype, strategy->resultislocal);
+	plan->flow = makeFlow(strategy->resultflowtype);
+	plan->flow->segindex = ( strategy->resultislocal ) ? -1 : 0;
 	noteFlow(plan->flow, context);
 	return false;	 
 }
@@ -983,7 +984,8 @@ bool prescan_mergejoin(Plan *plan, PlanProfile *context)
 	}
 	
 	/* Adopt proposed flow characteristics. */
-	plan->flow = makeFlow(strategy->resultflowtype, strategy->resultislocal);
+	plan->flow = makeFlow(strategy->resultflowtype);
+	plan->flow->segindex = ( strategy->resultislocal ? -1 : 0 );
 	noteFlow(plan->flow, context);
 	return false;	 
 }
@@ -1052,7 +1054,8 @@ bool prescan_nestloop(Plan *plan, PlanProfile *context)
 	}
 	else if ( strategy->leftmove == MOVEMENT_NONE && strategy->rightmove == MOVEMENT_NONE  )
 	{
-		plan->flow = makeFlow(strategy->resultflowtype, strategy->resultislocal);
+		plan->flow = makeFlow(strategy->resultflowtype);
+		plan->flow->segindex = ( strategy->resultislocal ? -1 : 0 );
 	}
 	else 
 	{
@@ -1065,14 +1068,14 @@ bool prescan_nestloop(Plan *plan, PlanProfile *context)
 					/* Request motion to focus the outer flow on the dispatcher. */
 					outer->flow->req_move = MOVEMENT_FOCUS;
 					outer->flow->flotype = FLOW_SINGLETON;
-					outer->flow->islocal = true;
+					outer->flow->segindex = -1;
 					break;
 						
 				case MOVEMENT_BROADCAST:
 					/* Request motion to focus the outer flow on the dispatcher. */
 					outer->flow->req_move = MOVEMENT_BROADCAST;
 					outer->flow->flotype = FLOW_REPLICATED;
-					outer->flow->islocal = false;
+					outer->flow->segindex = 0;
 					break;
 						
 				case MOVEMENT_REPARTITION:
@@ -1118,22 +1121,22 @@ bool prescan_nestloop(Plan *plan, PlanProfile *context)
 					/* Request motion to focus the inner flow on the dispatcher. */
 					inner->lefttree->flow->req_move = MOVEMENT_FOCUS;
 					inner->lefttree->flow->flotype = FLOW_SINGLETON;
-					inner->lefttree->flow->islocal = true;
+					inner->lefttree->flow->segindex = -1;
 					
 					/* Adjust the flow type of the intermediate Material node. */
 					inner->flow->flotype = FLOW_SINGLETON;
-					inner->flow->islocal = true;
+					inner->flow->segindex = -1;
 					break;
 						
 				case MOVEMENT_BROADCAST:
 					/* Request motion to broadcast the inner flow. */
 					inner->lefttree->flow->req_move = MOVEMENT_BROADCAST;
 					inner->lefttree->flow->flotype = FLOW_REPLICATED;
-					inner->lefttree->flow->islocal = false;
+					inner->lefttree->flow->segindex = 0;
 					
 					/* Adjust the flow type of the intermediate Material node. */
 					inner->flow->flotype = FLOW_REPLICATED;
-					inner->flow->islocal = false;
+					inner->flow->segindex = 0;
 					break;
 						
 				case MOVEMENT_REPARTITION:
@@ -1145,7 +1148,8 @@ bool prescan_nestloop(Plan *plan, PlanProfile *context)
 	}
 	
 	/* Adopt flow characteristics of strategy for the Nestloop. */
-	plan->flow = makeFlow(strategy->resultflowtype, strategy->resultislocal);
+	plan->flow = makeFlow(strategy->resultflowtype);
+	plan->flow->segindex = ( strategy->resultislocal ? -1 : 0 );
 	noteFlow(plan->flow, context);
 	return false;	 
 }
@@ -1310,7 +1314,7 @@ void noteFlow(Flow *flow, PlanProfile *context)
 		
 	 /* Note local flows which disallow parallelization */
 	/* TODO if ( flow->flotype == FLOW_SINGLETON ) */
-	if ( flow->islocal  )
+	if ( flow->flotype == FLOW_SINGLETON && flow->segindex == -1  )
 	{
 		context->hasLocalFlow = true;
 	}
@@ -1319,11 +1323,10 @@ void noteFlow(Flow *flow, PlanProfile *context)
 /*
  * Construct a new Flow in the current memory context.
  */
-Flow *makeFlow(FlowType flotype, bool islocal)
+Flow *makeFlow(FlowType flotype)
 {
 	Flow *flow = makeNode(Flow);
 	flow->flotype = flotype;
-	flow->islocal = islocal;
 	flow->req_move = MOVEMENT_NONE;
 	return flow;
 }
@@ -1333,7 +1336,9 @@ Flow *makeFlow(FlowType flotype, bool islocal)
  */
 Flow *makeReplicatedFlow()
 {
-	return makeFlow(FLOW_REPLICATED, false);
+	Flow *f = makeFlow(FLOW_REPLICATED);
+	f->segindex = 0;
+	return f;
 }
 
 
@@ -1342,7 +1347,9 @@ Flow *makeReplicatedFlow()
  */
 Flow *makeDispatcherFlow()
 {
-	return makeFlow(FLOW_SINGLETON, true);
+	Flow *f = makeFlow(FLOW_SINGLETON);
+	f->segindex = -1;
+	return f;
 }
 
 
@@ -1351,7 +1358,9 @@ Flow *makeDispatcherFlow()
  */
 Flow *makePartitionedFlow()
 {
-	return makeFlow(FLOW_PARTITIONED, false);
+	Flow *f = makeFlow(FLOW_PARTITIONED);
+	f->segindex = 0;
+	return f;
 }
 
 

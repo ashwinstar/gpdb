@@ -996,8 +996,8 @@ _outFlow(StringInfo str, Flow *node)
 	WRITE_NODE_TYPE("FLOW");
 
 	WRITE_ENUM_FIELD(flotype, FlowType);
-	WRITE_BOOL_FIELD(islocal);
 	WRITE_ENUM_FIELD(req_move, Movement);
+	WRITE_INT_FIELD(segindex);
 	
 	/* This array format as in Group and Sort nodes. */
 	WRITE_INT_FIELD(numSortCols);
