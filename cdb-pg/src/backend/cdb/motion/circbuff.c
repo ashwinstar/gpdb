@@ -11,7 +11,7 @@
  */
  
  #include <stdlib.h>
- #include <assert.h>
+ //#include <assert.h>
  
  #include "cdb/circbuff.h"
  #include "cdb/shmutils.h"
@@ -92,7 +92,9 @@ int writeBytes( circbuff *cb, char* msg, int length )
 	char *dstTail = cb->buffer + cb->tail;
 	
 	if( length < ( cb->size - cb->tail) )
-		memcpy( dstTail, msg, length );
+	{
+		memcpy( dstTail, msg, length );		
+	}
 	else
 	{			
 		int firstWrite = cb->size - cb->tail;
@@ -139,4 +141,26 @@ int readBytes( circbuff *cb, char* msg, int length )
 	return length;
 
 }
+
+
+int peekBytes( circbuff *cb, uint8* msg, int length )
+{
+    
+    uint8 *data = cb->buffer + cb->head;
+    
+    if( length < ( cb->size - cb->head) )
+		memcpy( msg, data, length );
+	else
+	{
+		//wrap around necessary, split into 2 memcpy's
+		int firstRead = cb->size - cb->head;
+		memcpy( msg, data, firstRead);
+		memcpy( msg+firstRead, cb->buffer, length-firstRead);			
+	}
+    
+    return length;
+
+}
+
+
 

@@ -14,6 +14,7 @@
 #include <stdio.h>
 
 
+#include "cdb/tupchunk.h"
 #include "cdb/circbuff.h"
 #include "testframe.h"
 
@@ -21,7 +22,9 @@
 
 void testBasicBufferOperation(void);
 void testWrapAround(void);
+void testLimitWrite(void);
 void initBuffCheck( circbuff *cb, int qsize );
+
 
 
 int main(int argc, char **argv)
@@ -29,6 +32,7 @@ int main(int argc, char **argv)
 
     RUN_TEST(testBasicBufferOperation);
     RUN_TEST(testWrapAround);
+    RUN_TEST(testLimitWrite);
     
 //Error:    
     return 0;
@@ -65,7 +69,7 @@ void testBasicBufferOperation(void)
     
     
     free(cb);
-
+    free( readMsg );
 }
 
 void testWrapAround(void)
@@ -92,7 +96,44 @@ void testWrapAround(void)
      
      VERIFY( strncmp( "1000", msgRead, 4 ) == 0 );
      
+     free( cb); 
+     free( msgRead );
+     
+}
 
+void testLimitWrite(void)
+{
+    int qsize = 5;
+    
+     circbuff *cb = malloc( sizeof(circbuff) + qsize );
+     initCircBuff( cb, qsize );
+     
+     //check the init
+     initBuffCheck( cb, qsize );
+    
+     char *msg = "1111";
+     char *msg2 = "0000";
+     char *msgRead = malloc( 6 );
+    
+     int workDone;
+     
+     workDone = writeBytes( cb, msg, 4 );
+     workDone = readBytes( cb, msgRead, 4 );
+     
+     VERIFY( strcmp( msg, msgRead ) == 0) ;
+     
+     workDone = writeBytes( cb, msg2, 4 );          
+     workDone = readBytes( cb, msgRead, 4 );        
+     VERIFY( strcmp( msg2, msgRead) == 0 );
+     
+     
+     workDone = writeBytes( cb, msg, 4 );          
+     workDone = readBytes( cb, msgRead, 4 );        
+     VERIFY( strcmp( msg, msgRead) == 0 );
+     
+     free( cb );
+     free( msgRead );
+     
 }
 
 

@@ -22,6 +22,8 @@ int  semId;
 circbuff *inputQueue;
 circbuff *outputQueue;
 
+uint8 hdr[ TUPLE_CHUNK_HEADER_SIZE];
+
 void InitMotionLayerIPC( int segmentId )
 {
 	
@@ -86,17 +88,15 @@ bool SendTupleChunkToAMS(TupleChunkListItem tcItem)
 	int currSpaceAvail = getSpaceAvail( outputQueue );			
 	
 	if( currSpaceAvail >= tcItem->chunk_length )
-	{
-		
+	{			
 		//send away
-		writeBytes( outputQueue,  tcItem->chunk_data, tcItem->chunk_length );
+		writeBytes( outputQueue,  tcItem->chunk_data, tcItem->chunk_length );		
 		
 		//post that data is avail
 		SemPost( semId );
 		
 		//success
-		return true;
-		
+		return true;		
 	}
 	else
 	{
@@ -114,7 +114,7 @@ bool SendTupleChunkToAMS(TupleChunkListItem tcItem)
 TupleChunkListItem RecvTupleChunkFromAMS(void)
 {
 	int dataToRead = getDataAvail( inputQueue );
-	
+
 	//short circuit exit if we have nothing to do.
 	if( dataToRead == 0 )
 		return NULL;
@@ -124,17 +124,18 @@ TupleChunkListItem RecvTupleChunkFromAMS(void)
 	
 	
 	TupleChunkListItem firstTcItem = NULL;
-	TupleChunkListItem lastTcItem;
-	TupleChunkListItem tcItem;
+	TupleChunkListItem lastTcItem = NULL;
+	TupleChunkListItem tcItem = NULL;
 	int bytesRead = 0;
 	
 	while( bytesRead != dataToRead )
 	{
 		//we should never read to much
 		Assert( bytesRead <= dataToRead );
+				
+		peekBytes( inputQueue, hdr, TUPLE_CHUNK_HEADER_SIZE );		
+		uint16 totalChunkSize = TUPLE_CHUNK_HEADER_SIZE + GetChunkDataSize( hdr );
 		
-		uint8 *tcStart = inputQueue->buffer + inputQueue->head;		
-		uint16 totalChunkSize = TUPLE_CHUNK_HEADER_SIZE + GetChunkDataSize( tcStart );
 		
 		tcItem = (TupleChunkListItem)palloc0( sizeof(TupleChunkListData) + 
 											  totalChunkSize);

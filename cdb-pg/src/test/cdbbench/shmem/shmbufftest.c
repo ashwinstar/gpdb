@@ -12,7 +12,6 @@
  *-------------------------------------------------------------------------
  */
  
-#include <assert.h> 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -79,8 +78,6 @@ int main( int argc, char *argv[])
         doDelete();
     else
     {
-        /* Try again, silly programmer. */
-        assert(0);
     }
     
     exit(0);

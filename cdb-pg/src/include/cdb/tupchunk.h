@@ -8,7 +8,6 @@
 #ifndef TUPCHUNK_H
 #define TUPCHUNK_H
 
-
 /*--------------*/
 /* Tuple Chunks */
 /*--------------*/
@@ -70,15 +69,15 @@ extern uint16  GetTargetSegIdx(uint8 *tc_data);
 extern uint16  GetQueryGroupID(uint8 *tc_data);
 extern uint16  GetSourceSegIdx(uint8 *tc_data);
 extern uint16  GetMotionNodeID(uint8 *tc_data);
-extern uint16 GetChunkDataSize(uint8 *tc_data);
-extern uint8      GetChunkType(uint8 *tc_data);
+extern uint16  GetChunkDataSize(uint8 *tc_data);
+extern uint8   GetChunkType(uint8 *tc_data);
 
 extern void  SetTargetSegIdx(uint8 *tc_data, uint16 value);
 extern void  SetQueryGroupID(uint8 *tc_data, uint16 value);
 extern void  SetSourceSegIdx(uint8 *tc_data, uint16 value);
 extern void  SetMotionNodeID(uint8 *tc_data, uint16 value);
-extern void SetChunkDataSize(uint8 *tc_data, uint16 value);
-extern void     SetChunkType(uint8 *tc_data, TupleChunkType value);
+extern void  SetChunkDataSize(uint8 *tc_data, uint16 value);
+extern void  SetChunkType(uint8 *tc_data, TupleChunkType value);
 
 
 /* This is the maximum allowable tuple-chunk data-payload size.  It is based

@@ -56,6 +56,16 @@ CREATE OR REPLACE FUNCTION ml_ipc_getMsg(text) RETURNS text
     AS 'libcdbtest.so', 'ml_ipc_getMsg__text1'
     LANGUAGE C IMMUTABLE STRICT;
 
+-- ml_ipc benchmark functions
+CREATE TYPE __ml_ipc_bench_results AS ( testTimeInMsec   int8,
+									    totalMBytes      float8,
+										bw_MB_per_sec    float8	 );
+
+CREATE OR REPLACE FUNCTION ml_ipc_bench(int, int) RETURNS SETOF __ml_ipc_bench_results 
+    AS 'libcdbtest.so', 'ml_ipc_bench'
+    LANGUAGE C IMMUTABLE STRICT;
+
+ 
 -- Functions for access to the Motion Layer API (what motion nodes use)
 
 -- Initialize a motion layer node.
@@ -98,4 +108,3 @@ CREATE OR REPLACE FUNCTION cdbhash_text(integer) RETURNS integer
     AS 'libcdbtest.so', 'HASHAPI_HashText__int1'
     LANGUAGE C IMMUTABLE STRICT;
 
-	

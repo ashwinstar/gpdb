@@ -75,5 +75,13 @@ extern int writeBytes( circbuff *cb, char* bytes, int length );
  * successful, or 0 if there was not enough data in circbuff to read.
  */
 extern int readBytes( circbuff *cb, char* msg, int length );
+ 
+
+/* allows bytes to be read from the circbuff without marking them as "read"
+ * within the circbuff.  This is useful for reading the header of a datagram
+ * out and deciding what to do with it before having to read the whole
+ * datagram
+ */
+extern int peekBytes( circbuff *cb, uint8* msg, int length ); 
 
 #endif /*CIRCBUFF_H */

@@ -19,6 +19,9 @@ extern Datum GetDechunkedRows__text1_regtype1(PG_FUNCTION_ARGS);
 /* These functions are defined in ipcfuncs.c */
 extern Datum ml_ipc_getMsg__text1(PG_FUNCTION_ARGS);
 
+/* These functions are defined in mlipc_access.c */
+extern Datum ml_ipc_bench(PG_FUNCTION_ARGS);
+
 /* These functions are defined in mlapi_access.c */
 
 extern Datum MLAPI_InitMLNode__int1_bool1_regtype1(PG_FUNCTION_ARGS);
