@@ -84,7 +84,7 @@ public class CdbLoaderTest extends TestCase
          * schema is actually what we expect.
          */
         int expectedNumSegDbs = Integer.parseInt(System.getProperty("test.cluster.totalsegdbs"));
-        int actualNumSegDbs = loader.getTailSegmentInstances().length;
+        int actualNumSegDbs = loader.getSegDBs().length;
         assertEquals("Testing the total number of seg dbs in CDB ", expectedNumSegDbs, actualNumSegDbs);
 
     }

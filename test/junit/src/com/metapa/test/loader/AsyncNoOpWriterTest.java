@@ -51,7 +51,7 @@ public class AsyncNoOpWriterTest extends TestCase
          * instantiate a segment db. all parameter values are not important.
          */
         CdbLoader loader = new CdbLoader("localhost", 10000, "mydb", "user", "pass");
-        segDB = loader.new SegmentDB(1, "some/data/dir", true, true, "localhost", 10000, "mydb", "user", "password", false);
+        segDB = loader.new SegmentDB(1, "some/data/dir", true, true, "localhost", 10000, "mydb", "user", "password");
     }
 
     public void tearDown()
