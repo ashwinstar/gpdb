@@ -16,7 +16,9 @@
 #include "access/heapam.h"
 #include "executor/execdebug.h"
 #include "executor/nodeMotion.h"
+#include "optimizer/clauses.h"
 #include "parser/parsetree.h"
+#include "utils/lsyscache.h"
 #include "miscadmin.h"
 
 /* 
@@ -27,9 +29,12 @@ static void validateMotionNodeParms(MotionType motionType,
 			bool sendToSecondary, bool sendSorted, 
 			HashMotionDefn *pHashDefn, FixedMotionDefn* pFixedDefn,
 			SortedMotionDefn *pSortDefn);
-static List *getExprListFromCondList(List *clist, bool leftChild);
+static List *getExprListFromCondList(List *clist, HashMotionInfoType type);
+static List *getOpListFromCondList(List *clist);
 static List *getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx);
+static List *getOpListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx);
 static bool motion_expr_walker(Node *node, char *not_used);
+static uint32 evalHashKey(ExprContext *econtext, List *hashkeys, FmgrInfo *hashfunctions);
 
 
 /* ----------------------------------------------------------------
@@ -43,6 +48,8 @@ ExecMotion(MotionState *node)
 	TupleTableSlot *outerTupleSlot;
 	PlanState  *outerNode;
 	HeapTuple tuple;
+	ExprContext *econtext = node->ps.ps_ExprContext;
+	Motion *motion = (Motion *)node->ps.plan;
 
 	SO1_printf("ExecMotion: %s\n",
 			   "entering routine");
@@ -60,6 +67,13 @@ ExecMotion(MotionState *node)
 	 * make a copy of the tuple
 	 */
 	tuple = heap_copytuple(outerTupleSlot->val);
+	
+	uint32 hval = 0;
+	if ( motion->motionType == MOTIONTYPE_HASH )
+	{
+		econtext->ecxt_outertuple = outerTupleSlot;
+		hval = evalHashKey(econtext, node->hashExprState, node->hashfunctions);
+	}
 
 	slot = node->ps.ps_ResultTupleSlot;
 	
@@ -115,7 +129,40 @@ ExecInitMotion(Motion *node, EState *estate)
 	 */
 	ExecAssignResultTypeFromOuterPlan(&motionstate->ps);
 	motionstate->ps.ps_ProjInfo = NULL;
-
+	motionstate->hashfunctions = NULL;
+	motionstate->hashExprState = NULL;
+		
+	if ( node->motionType == MOTIONTYPE_HASH )
+	{
+		int			nkeys;
+		int			i;
+		ListCell	*ho;
+		
+		/*
+		 * Get info about the hash functions to be used for each hash key.
+		 */
+		HashMotionDefn *pHashDefn = node->pHashDefn;
+		Assert( pHashDefn != NULL && pHashDefn->hashOp != NULL );
+		 
+		nkeys = list_length(pHashDefn->hashOp);
+		motionstate->hashfunctions = (FmgrInfo *) palloc(nkeys * sizeof(FmgrInfo));
+		i = 0;
+		foreach(ho, pHashDefn->hashOp)
+		{
+			Oid			hashfn;
+	
+			hashfn = get_op_hash_function(lfirst_oid(ho));
+			if (!OidIsValid(hashfn))
+				elog(ERROR, "could not find hash function for hash operator %u",
+					 lfirst_oid(ho));
+			fmgr_info(hashfn, &motionstate->hashfunctions[i]);
+			i++;
+		}
+		
+		motionstate->hashExprState = (List *)ExecInitExpr( (Expr *)pHashDefn->hashExpr,
+														 (PlanState *) motionstate);
+	}
+		
 	SO1_printf("ExecInitMotion: %s\n",
 			   "motion node initialized");
 
@@ -155,14 +202,14 @@ ExecEndMotion(MotionState *node)
 			   "motion node shutdown");
 }
 
-/* ----------------------------------------------------------------
- * Helper functions for extracting Lists of join expressions
+/* -----------------------------------------------------------------------
+ * Helper functions for extracting Lists of join expressions or operators
  * from nodes, where the logic varies by node type
- * ----------------------------------------------------------------
+ * -----------------------------------------------------------------------
  */
-List *getMotionHashExprList( Plan *node, bool leftChild )
+List *getHashMotionInfoList( Plan *node, HashMotionInfoType type )
 {
-	List *hashexpr = NIL;
+	List *hashinfo = NIL;
 	
 	switch ( nodeTag(node) )
 	{
@@ -175,15 +222,18 @@ List *getMotionHashExprList( Plan *node, bool leftChild )
 				HashJoin *hjnode = (HashJoin *)node;
 				List *hclist = hjnode->hashclauses;
 				if ( hclist == NIL )
-					elog( ERROR, "Empty hashclauses list encountered in getHashExprList for HashJoin node");
+					elog( ERROR, "Empty hashclauses list encountered in getHashMotionInfoList for HashJoin node");
 					
-				hashexpr = getExprListFromCondList(hclist, leftChild);
+				if ( type == INFOTYPE_LEFTEXPR || type == INFOTYPE_RIGHTEXPR )
+					hashinfo = getExprListFromCondList(hclist, type);
+				else	
+					hashinfo = getOpListFromCondList(hclist);
 			}
 				
 			break;
 			
 		case T_Hash:
-			elog( ERROR, "Musn't use a Hash Node to get the HashExprList.  Use the parent HashJoin node instead." );
+			elog( ERROR, "Musn't use a Hash Node in getHashMotionInfoList.  Use the parent HashJoin node instead." );
 			break;
 			
 		case T_MergeJoin:
@@ -195,9 +245,12 @@ List *getMotionHashExprList( Plan *node, bool leftChild )
 				MergeJoin *mjnode = (MergeJoin *)node;
 				List *mclist = mjnode->mergeclauses;
 				if ( mclist == NIL )
-					elog( ERROR, "Empty mergeclauses list encountered in getHashExprList for MergeJoin node");
+					elog( ERROR, "Empty mergeclauses list encountered in getHashMotionInfoList for MergeJoin node");
 				
-				hashexpr = getExprListFromCondList(mclist, leftChild);
+				if ( type == INFOTYPE_LEFTEXPR || type == INFOTYPE_RIGHTEXPR )
+					hashinfo = getExprListFromCondList(mclist, type);
+				else	
+					hashinfo = getOpListFromCondList(mclist);
 			}
 				
 			break;
@@ -208,10 +261,13 @@ List *getMotionHashExprList( Plan *node, bool leftChild )
 				List *jqlist = nlnode->join.joinqual;
 				if ( jqlist == NIL )
 					elog( ERROR, 
-							"Not yet implemented: calling getHashExprList for a NestLoop node with no joinqual list.  "
+							"Not yet implemented: calling getHashMotionInfoList for a NestLoop node with no joinqual list.  "
 							"This can happen with an IndexScan node as the inner child." );
 				
-				hashexpr = getExprListFromCondList(jqlist, leftChild);
+				if ( type == INFOTYPE_LEFTEXPR || type == INFOTYPE_RIGHTEXPR )
+					hashinfo = getExprListFromCondList(jqlist, type);
+				else	
+					hashinfo = getOpListFromCondList(jqlist);
 			}
 				
 			break;
@@ -226,7 +282,11 @@ List *getMotionHashExprList( Plan *node, bool leftChild )
 					elog( ERROR, 
 							"Empty sortColIdx array encountered in getHashExprList for Sort node" );
 							
-				hashexpr = getExprListFromTargetList(snode->plan.targetlist, numCols, sortColIdx);
+				if ( type == INFOTYPE_LEFTEXPR || type == INFOTYPE_RIGHTEXPR )
+					hashinfo = getExprListFromTargetList(snode->plan.targetlist, numCols, sortColIdx);
+				else
+					hashinfo = getOpListFromTargetList(snode->plan.targetlist, numCols, sortColIdx);
+					
 			}
 				
 			break;
@@ -244,25 +304,29 @@ List *getMotionHashExprList( Plan *node, bool leftChild )
 					elog( ERROR, 
 						"Empty grpColIdx array encountered in getHashExprList for Agg node" );
 						
-				hashexpr = getExprListFromTargetList(aggnode->plan.targetlist, numCols, grpColIdx);
+				if ( type == INFOTYPE_LEFTEXPR || type == INFOTYPE_RIGHTEXPR )
+					hashinfo = getExprListFromTargetList(aggnode->plan.targetlist, numCols, grpColIdx);
+				else
+					hashinfo = getOpListFromTargetList(aggnode->plan.targetlist, numCols, grpColIdx);
 			}
 				
 			break;
 			
 		default:
-			elog( WARNING, "getHashExprList called with an unsupported node type %d", nodeTag(node) );
+			elog( WARNING, "getHashMotionInfoList called with an unsupported node type %d", nodeTag(node) );
 			break;
 	}	
 	
-	return hashexpr;
+	return hashinfo;
 } 
 
 /* --------------------------------------------------------------------
  * makeHashMotionDefn -- creates a HashMotionDefn*
- * Caller must have built the hashExpr list and hashSegIdx array already.
+ * Caller must have built the hashExpr and hashOp lists and 
+ * hashSegIdx array already.
  * --------------------------------------------------------------------
  */
-HashMotionDefn* makeHashMotionDefn( List* hashExpr, int numHashSegs, int *hashSegIdx)
+HashMotionDefn* makeHashMotionDefn( List* hashExpr, List* hashOp, int numHashSegs, int *hashSegIdx)
 {
 	HashMotionDefn *pHashDefn = palloc0(sizeof(HashMotionDefn));
 	
@@ -275,6 +339,7 @@ HashMotionDefn* makeHashMotionDefn( List* hashExpr, int numHashSegs, int *hashSe
 		pHashDefn->hashSegIdx = hashSegIdx;
 	
 	pHashDefn->hashExpr = hashExpr;
+	pHashDefn->hashOp	= hashOp;
 	
 	return pHashDefn;
 }
@@ -283,10 +348,10 @@ HashMotionDefn* makeHashMotionDefn( List* hashExpr, int numHashSegs, int *hashSe
  * makeSimpleHashMotionDefn -- 
  * Convenience routine to create a HashMotionDefn that
  * uses all of the segindexes for the hashSegIdx array.
- * Caller must have built the hashExpr list already.
+ * Caller must have built the hashExpr and hashOp lists already.
  * ----------------------------------------------------------------
  */
-HashMotionDefn *makeSimpleHashMotionDefn( List* hashExpr, int numSegs)
+HashMotionDefn *makeSimpleHashMotionDefn( List* hashExpr, List* hashOp, int numSegs)
 {
 	int *hashSegIdx = NULL;
 	
@@ -295,7 +360,7 @@ HashMotionDefn *makeSimpleHashMotionDefn( List* hashExpr, int numSegs)
 		hashSegIdx = makeDefaultSegIdxArray(numSegs);
 	}
 	
-	return makeHashMotionDefn( hashExpr, numSegs, hashSegIdx);
+	return makeHashMotionDefn( hashExpr, hashOp, numSegs, hashSegIdx);
 }
 
 /* --------------------------------------------------------------------
@@ -516,7 +581,13 @@ void validateMotionNodeParms(MotionType motionType,
 				elog(ERROR, "motion type 'hash' node must have non-NULL hashExpr");
 				
 		/*
-		 *  A Hash motion node must have hash columns info specified.
+		 *  A Hash motion node must have hash operator info specified.
+		 */
+			if ( pHashDefn->hashOp == NULL )
+				elog(ERROR, "motion type 'hash' node must have non-NULL hashOp");
+				
+		/*
+		 *  A Hash motion node must have hash segment info specified.
 		 */
 			if ( pHashDefn->numHashSegs <= 0 || pHashDefn->hashSegIdx == NULL )
 				elog(ERROR, "motion type 'hash' node must have numHashSegs > 0 and non-NULL hashSegIdx");
@@ -610,38 +681,53 @@ bool motion_expr_walker(Node *node, char *not_used)
 	// check for nodes that special work is required for, eg:
 	if (IsA(node, Var))
 	{
-		if ( ((Var *)node)->varno == INNER )
-			((Var *)node)->varno = OUTER;
+		Var* var = (Var *)node;
+		switch( var->varno )
+		{
+			case INNER:
+				var->varno = OUTER;
+				break;
+
+			default:
+				var->varno = OUTER;
+				break;
+		}
+		
+		return false;
 	}
 	else
 	{
 		return expression_tree_walker(node, motion_expr_walker, (void *) not_used);
 	}
+	
 }
 
 /* ----------------------------------------------------------------
  * getExprListFromCondList - -
- * this extracts either the left or right arguments from the funcexpr list
+ * this extracts either the left or right arguments 
+ * or operators from the funcexpr list
  * ----------------------------------------------------------------
  */
-List *getExprListFromCondList(List *clist, bool leftChild)
+List *getExprListFromCondList(List *clist, HashMotionInfoType type)
 {
 	List *elist = NIL;
 	ListCell *l;
-	Expr	*expr = NULL;
+	Node *expr;
+	Node *node;
 		
 	foreach(l, clist)
 	{
-		FuncExpr	*fexpr = (FuncExpr *) lfirst(l);
+		OpExpr	*opexpr = (OpExpr *) lfirst(l);
 
-		Assert(IsA(fexpr, FuncExpr));
-		Assert(list_length(fexpr->args) == 2);
+		Assert(IsA(opexpr, OpExpr));
+		Assert(list_length(opexpr->args) == 2);
 		
-		Node *node;
-		if (leftChild)
-			node = linitial(fexpr->args);
-		else	
-			node = lsecond(fexpr->args);
+		if (type == INFOTYPE_LEFTEXPR)
+			node = linitial(opexpr->args);
+		else if (type == INFOTYPE_RIGHTEXPR)	
+			node = lsecond(opexpr->args);
+		else
+			Assert(0);	
 			
 		Assert(IsA(node, Expr));
 		expr = copyObject(node);
@@ -652,6 +738,27 @@ List *getExprListFromCondList(List *clist, bool leftChild)
 	
 	return elist;
 }	
+
+/* ----------------------------------------------------------------
+ * getOpListFromCondList - -
+ * this extracts the list of hash operator OIDs
+ * appropriate to the datatype of condition in the clist
+ * ----------------------------------------------------------------
+ */
+List *getOpListFromCondList(List *clist)
+{
+	List		*oplist = NIL;
+	ListCell	*l;
+	
+	foreach(l, clist)
+	{
+		OpExpr	*opexpr = (OpExpr *) lfirst(l);
+		Assert(IsA(opexpr, OpExpr));
+		oplist = lappend_oid(oplist, opexpr->opno);
+	}
+	
+	return oplist;
+}
 
 /* ----------------------------------------------------------------
  * getExprListFromTargetList - -
@@ -683,3 +790,80 @@ List *getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
 	return elist;
 }
 
+/* ----------------------------------------------------------------
+ * getExprListFromTargetList - -
+ * this extracts the indicated entries from the target list, copies each,
+ * and puts them into a list.
+ * 
+ * ----------------------------------------------------------------
+ */
+List *getOpListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
+{
+	int		i;
+	List	*oplist = NIL;
+	Expr	*expr = NULL;
+	
+	for (i=0; i<numCols; i++ )
+	{
+		// Find expr in TargetList
+		AttrNumber n = colIdx[i];
+
+		TargetEntry* target = get_tle_by_resno( tlist, n );
+		if ( target == NULL )
+			elog( ERROR, "no tlist entry for key %d", n );
+			
+		Var* var = (Var *)target->expr;
+		Assert(IsA(var, Var));
+		
+		oplist = lappend(oplist, var->vartype);
+	}
+	
+	return oplist;
+}
+
+/*
+ * Experimental code that will be replaced later with new hashing mechanism
+ */
+uint32 evalHashKey(ExprContext *econtext, List *hashkeys, FmgrInfo *hashfunctions)
+{
+	uint32		hashkey = 0;
+	ListCell   *hk;
+	int			i = 0;
+	MemoryContext oldContext;
+
+	ResetExprContext(econtext);
+
+	oldContext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
+
+	foreach(hk, hashkeys)
+	{
+		ExprState  *keyexpr = (ExprState *) lfirst(hk);
+		Datum		keyval;
+		bool		isNull;
+
+		/* rotate hashkey left 1 bit at each step */
+		hashkey = (hashkey << 1) | ((hashkey & 0x80000000) ? 1 : 0);
+
+		/*
+		 * Get the attribute value of the tuple
+		 */
+		keyval = ExecEvalExpr(keyexpr, econtext, &isNull, NULL);
+
+		/*
+		 * Compute the hash function
+		 */
+		if (!isNull)			/* treat nulls as having hash key 0 */
+		{
+			uint32		hkey;
+
+			hkey = DatumGetUInt32(FunctionCall1(&hashfunctions[i],keyval));
+			hashkey ^= hkey;
+		}
+
+		i++;
+	}
+	
+	MemoryContextSwitchTo(oldContext);
+	
+	return hashkey;
+}
