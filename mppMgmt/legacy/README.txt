@@ -22,26 +22,16 @@ scripts are not intended for any type of production environment.
     cdbstop     --  stops the listener(s) for a CDB database
                     cluster
 
-    cdbsql      --  runs psql connecting to the first listener and first
-                    segment database of the CDB database cluster
+    cdbsql      --  runs psql connecting to the first listener of
+                    the cluster
 
     cdbclean    --  deletes the CDB cluster database directory(s)
                     that were created using cdbinitdb
 
     cdbfuncs    --  contains functions for use in the other scripts
 
-Notes
-=====
-
-The bin directory of the CDB PostgreSQL code base is expected to be in
-$PATH. There are a number of other environmental variables that are
-useful. You can source env.rc to automatically set these up.
-
-A word of WARNING -- these scripts are created for internal use; little,
-if any, error checking is performed.  It is expected that the typical
-recovery action is to kill the cluster's listeners, wipe out the PGROOT
-directory, and start over from scratch. Luckily, cdbclean is provided to
-do this ;)
+Note: all the scripts support a --help option that will give further details
+of the options and behaviour of each script.
 
 Overview
 ========
@@ -73,6 +63,9 @@ If there are are multiple listeners then the increment will carry across all
 the listeners. E.g if there are two listeners and 3 segments per listener, then
 segDB1 will be on the first listener, while segDB6 will be on the second.
 
+Example
+=======
+
 To create a new CDB cluster, do the following:
 
     # Set up the required environmental variables. Each of
@@ -103,3 +96,23 @@ To create a new CDB cluster, do the following:
     $ ./cdbsql segDB1
 
 Continue working with your CDB cluster as you see fit!
+
+By default, the CDB cluser will not have any user tables. If you wish, you can
+preload the TPCH schema using the --withTPCH option when executing cdbcreatedb.
+The DDL and additional files required are found in the cdb-qa module. You will
+have to edit TPCH_load.ctl to contain the correct path for your environment.
+NOTE: the data loaded is NOT actually partitioned at this time. Each segDB will
+contain the same data.
+
+Notes
+=====
+
+The bin directory of the CDB PostgreSQL code base is expected to be in
+$PATH. There are a number of other environmental variables that are
+useful. You can source env.rc to automatically set these up.
+
+A word of WARNING -- these scripts are created for internal use; little,
+if any, error checking is performed.  It is expected that the typical
+recovery action is to kill the cluster's listeners, wipe out the PGROOT
+directory, and start over from scratch. Luckily, cdbclean is provided to
+do this ;)
