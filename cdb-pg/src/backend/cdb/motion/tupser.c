@@ -30,7 +30,7 @@ void InitSerTupInfo(TupleDesc tupdesc, SerTupInfo *pSerInfo)
     int i, numAttrs;
 
 	AssertArg(tupdesc != NULL);
-	AssertArg(numAttrs >= 0);
+	
 	AssertArg(pSerInfo != NULL);
 	
     elog(DEBUG2, "Initializing cached tuple serialization information.");
