@@ -16,26 +16,36 @@
 /* 
  * hashing algorithms.
  */
-#define HASH_FNV_1  1
-#define HASH_FNV_1A 2
+typedef enum
+{
+    HASH_FNV_1 = 1,
+    HASH_FNV_1A
+} CdbHashAlg;
 
 /*
  * reduction methods.
  */
-#define REDUCE_LAZYMOD 1
-#define REDUCE_BITMASK 2
+typedef enum
+{
+	REDUCE_LAZYMOD =1,
+	REDUCE_BITMASK
+} CdbHashReduce;
+
+typedef uint32 CdbHashFn(void *, size_t, uint32);
 
 /* 
  * Structure that holds CDB hashing information.
  */ 
 typedef struct CdbHash
 {
-	uint32 hash;  		      /* The result hash value                           */
-    int numsegs;              /* number of segments in CDB used for partitioning */
-	int16 hash_algorithm;    /* the hashing algorithm                           */
-	int16 reduce_algorithm;  /* the algorithm used for reducing to buckets      */
+	uint32 hash;				/* The result hash value                            */
+    int numsegs;				/* number of segments in CDB used for partitioning  */
+	CdbHashAlg hashalg;			/* the hashing algorithm                            */
+    CdbHashFn *hashfn;			/* hashing function for the selected hash algorithm */
+	CdbHashReduce reducealg;	/* the algorithm used for reducing to buckets       */
 	
 } CdbHash;
+
 
 
 /*
@@ -43,7 +53,7 @@ typedef struct CdbHash
  * Parameter numsegs - number of segments in CDB. 
  * Parameter algorithm - the hash algorithm, either HASH_FNV_1 or HASH_FNV_1A 
  */
-extern CdbHash *makeCdbHash(int numsegs, int16 algorithm); 
+extern CdbHash *makeCdbHash(int numsegs, CdbHashAlg algorithm); 
 
 /*
  * Initialize CdbHash for hashing the next tuple values.
@@ -53,7 +63,7 @@ extern void cdbhashinit(CdbHash *h);
 /*
  * Add an attribute to the hash calculation.
  */
-extern void cdbhash(CdbHash *h, Datum val, Oid typid, short typmod); 
+extern void cdbhash(CdbHash *h, Datum val, Oid typid); 
 
 /*
  * Add a NULL attribute to the hash calculation.
