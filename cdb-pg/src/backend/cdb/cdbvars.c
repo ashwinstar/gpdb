@@ -46,6 +46,18 @@ int					cdb_connections_per_thread;	/* How many libpq connections are handled in
 
 int                 Cdb_max_tuple_chunk_size;   /* CDB Motion Layer -> AMS */
 
+/* 
+ * The single row from cdb.cdb for this database is held in this variable,
+ * which is initialized in cdbutil.c in the function
+ * getCdbCdb(), which is called from cdblink_setup() 
+ * for both dispatch and execute modes.
+ *
+ * Any code needing the "mysegindex" ot "numsegments"
+ * can simply #include cdbvars.h, and use CdbIdentity.numsegments
+ * or CdbIdentity.segindex.
+ */
+CdbCdb				CdbIdentity = {NULL, 0, 0, 0};  
+
 /*
  * Local macro to provide string values of numeric defines.
  */
@@ -169,22 +181,24 @@ assign_cdb_role( const char *newval, bool doit, GucSource source )
     if ( doit )
     {
     	/*
-    	 * When changing to/from dispatch role, we must
-    	 * get/release the libpq connections to the other qExecs.
+    	 * When changing between roles, we must
+    	 * call cdb_cleanup and then cdb_setup to get 
+		 * setup and connections appropriate to the new role.
     	 */
     	bool do_disconnect = false;
     	bool do_connect = false;
     	
     	if ( Cdb_role != newrole && IsUnderPostmaster )
     	{
-    		if ( Cdb_role == CDB_ROLE_DISPATCH )
+    		if ( Cdb_role != CDB_ROLE_UTILITY )
     			do_disconnect = true;
-    		else if ( newrole == CDB_ROLE_DISPATCH )
+
+    		if ( newrole != CDB_ROLE_UTILITY )
     			do_connect = true;
     	}
     	
     	if ( do_disconnect )
-    		cdb_cleanup( );
+    		cdb_cleanup();
 	    	
         Cdb_role = newrole;
         
@@ -193,8 +207,8 @@ assign_cdb_role( const char *newval, bool doit, GucSource source )
     		/*
     		 * In case there are problems with the cdb tables or data,
     		 * we catch any error coming out of cdblink_setup so we can set the
-    		 * cdb_role back to what it was.  Otherwise we'd be left with
-    		 * a cdb_role of dispatch with no conmnections to the qExecs.
+    		 * cdb_role back to what it was.  Otherwise we may be left with
+    		 * inappropriate connections for the new role.
     		 */
 			PG_TRY();
 			{
@@ -202,8 +216,10 @@ assign_cdb_role( const char *newval, bool doit, GucSource source )
 			}
 			PG_CATCH();
 			{
-	    		cdb_cleanup( );
+	    		cdb_cleanup();
 				Cdb_role = oldrole;
+				if ( Cdb_role != CDB_ROLE_UTILITY )
+		  			cdb_setup();
 				PG_RE_THROW();
 			}
 			PG_END_TRY();
