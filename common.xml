@@ -56,8 +56,13 @@
         </condition>
 
         <!-- Set our common properties -->
+        <property name="build" value="build" />
         <property name="cdbCommons" location="${projectRoot}/common/cdb-commons"/>
         <property name="cdbCommonsBuild" value="${cdbCommons}/${build}"/>
+        <property name="cdbMgmt" location="${projectRoot}/cdb-management"/>
+        <property name="cdbMgmtBuild" value="${cdbMgmt}/${build}"/>
+        <property name="cdbLoader" location="${projectRoot}/cdb-loader"/>
+        <property name="cdbLoaderBuild" value="${cdbLoader}/${build}"/>
 
     </target>
 
@@ -217,7 +222,8 @@
         
         <property name="toolsAnt" location="${toolsLib}/../bin/ant"/>
         <property name="toolsSet" value="true"/>
-        
+        <property name="junit_style_dir" location="${projectRoot}/common/doc" />
+
     </target>
 
 
@@ -1130,10 +1136,40 @@ Set release properties:
 
         <!-- Invoke ANT recursively to make the common subproject -->
         <ant antfile="build.xml"
-             dir="${projectRoot}/common/cdb-commons"
+             dir="${cdbCommons}"
              target="package">
             <property name="build" value="${cdbCommonsBuild}"/>
         </ant>
+
+        <property name="pgUtilsDone" value="true"/>
+
+    </target>
+
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Compile the CDB Management package                             -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="-makeCDBManagement"
+            depends="-init"
+            unless="pgUtilsDone">
+
+        <!-- Invoke ANT recursively to make the common subproject -->
+        <ant antfile="build.xml" dir="${cdbMgmt}" target="compile" />
+
+        <property name="pgUtilsDone" value="true"/>
+
+    </target>
+
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Compile the CDB Loader package                                 -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="-makeCDBLoader"
+            depends="-init"
+            unless="pgUtilsDone">
+
+        <!-- Invoke ANT recursively to make the common subproject -->
+        <ant antfile="build.xml" dir="${cdbLoader}" target="compile" />
 
         <property name="pgUtilsDone" value="true"/>
 
