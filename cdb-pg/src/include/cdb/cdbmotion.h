@@ -115,9 +115,19 @@ typedef struct TupleSendContext
 /* API FUNCTION CALLS */
 
 
+/* One-time initialization of motion layer. */
 extern void InitMotionLayer(void);
-extern void InitMotionNode(uint16 motNodeID, bool preserveOrder,
-    TupleDesc tupDesc);
+
+/* Initialization of each motion node in execution plan. */
+extern void InitMotionLayerNode(uint16 motNodeID, bool includeBackupSegDB,
+    bool preserveOrder, TupleDesc tupDesc);
+
+/* Cleanup of each motion node in execution plan (normal termination). */
+extern void EndMotionLayerNode(uint16 motNodeID, bool flushCommLayer);
+
+/* Reset the Motion Layer's state between query executions (normal termination
+ * or error-cleanup). */
+extern void ResetMotionLayer(bool flushCommLayer);
 
 
 /* non-blocking operation that may perform only part (or none) of the 
@@ -146,32 +156,31 @@ extern void InitMotionNode(uint16 motNodeID, bool preserveOrder,
  *				  the TupleSendContext structure will be updated
  *				  with the change in status.
  */
-extern int SendTuple( MotionNodeInfo *mn_info,
-		      		  TupleSendContext *tupCtxt
-		    		);
+extern SendReturnCode SendTuple(MotionNodeInfo *mn_info,
+    TupleSendContext *tupCtxt);
 
 
 
-/* Broadcast an END_OF_STREAM token to the corresponding motion-node on ALL
- * other segments.  This call does not block, but indicates whether the
- * operation was successful or not.
+/* Broadcast an END_OF_STREAM token or an ABORT_STREAM token to the
+ * corresponding motion-node on ALL other segments.
  *
- * (?) what happens if AMS buffers are full.  then this just fails?
+ * The send operation is nonblocking, and will return SEND_INCOMPLETE if the
+ * send would block.  When this value is returned, the caller must try again
+ * until the SEND_COMPLETE value is returned.
  *
  * RETURN: Possible return values are:
  *
- *		SEND_COMPLETE - The END_OF_STREAM tokean was accepted by the
- *				AM.  Note that the END_OF_STREAM token may still
- *				be in the AMS send-buffers, but as far as the
+ *		SEND_COMPLETE - The token was accepted by the AMS.  Note that the
+ *				token may still be in the AMS send-buffers, but as far as the
  *				motion node is concerned, the send is done.
  *
  *		SEND_INCOMPLETE - The END_OF_STREAM token could not be sent.
  *				  This generally means that the send-buffers 
  *				  were full and the operation should be tried
- *				  later.  (?) how to signal real errors?
- *
+ *				  later.  (Real errors are signalled via ereport().)
  */
-extern int SendEndOfStream( MotionNodeInfo *mn_info );
+extern SendReturnCode SendEndOfStream(MotionNodeInfo *mn_info);
+extern SendReturnCode SendAbortStream(MotionNodeInfo *mn_info);
 
 
 /* Receive a tuple from the corresponding motion-node on any query-executor
@@ -185,12 +194,10 @@ extern int SendEndOfStream( MotionNodeInfo *mn_info );
  *		NO_TUPLE - No tuple was available, but more are still expected.
  *
  *		END_OF_STREAM - No tuple was received, and no more are expected.
- *
  */
-extern int RecvTuple( MotionNodeInfo *mn_info,
-		 		      HeapTuple *tup_i
-		    		);
-
+extern ReceiveReturnCode RecvTuple(MotionNodeInfo *mn_info, HeapTuple *tup_i);
+extern ReceiveReturnCode RecvTupleFrom(MotionNodeInfo *mn_info,
+    HeapTuple *tup_i, uint16 srcSegIdx);
 
 
 /* Proposed API call.  Would block until there was something to be received

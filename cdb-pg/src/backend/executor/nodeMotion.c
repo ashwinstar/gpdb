@@ -14,6 +14,7 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
+#include "cdb/cdbmotion.h"
 #include "executor/execdebug.h"
 #include "executor/nodeMotion.h"
 #include "optimizer/clauses.h"
@@ -164,7 +165,15 @@ ExecInitMotion(Motion *node, EState *estate)
 		motionstate->hashExprState = (List *)ExecInitExpr( (Expr *)node->hashExpr,
 														 (PlanState *) motionstate);
 	}
-		
+	
+#ifdef CDB_AMS_DEVELOPER
+    /*
+     * Perform per-node initialization in the motion layer.
+     */
+    InitMotionLayerNode(node->motionID, node->sendToSecondary,
+        node->sendSorted, ExecGetResultType(&motionstate->ps));
+#endif
+    
 	SO1_printf("ExecInitMotion: %s\n",
 			   "motion node initialized");
 
@@ -190,8 +199,12 @@ ExecCountSlotsMotion(Motion *node)
 void
 ExecEndMotion(MotionState *node)
 {
+    uint16 motNodeID;
+    
 	SO1_printf("ExecEndMotion: %s\n",
 			   "shutting down motion node");
+
+    motNodeID = ((Motion *) node->ps.plan)->motionID;
 
 	ExecFreeExprContext(&node->ps);
 	
@@ -200,6 +213,14 @@ ExecEndMotion(MotionState *node)
 	 */
 	ExecEndNode(outerPlanState(node));
 
+#ifdef CDB_AMS_DEVELOPER
+    /*
+     * Free up this motion node's resources in the Motion Layer.  Also, make
+     * sure that the comm-layer is flushed - that there is no in-flight data.
+     */
+    EndMotionLayerNode(motNodeID, true);
+#endif
+    
 	SO1_printf("ExecEndMotion: %s\n",
 			   "motion node shutdown");
 }

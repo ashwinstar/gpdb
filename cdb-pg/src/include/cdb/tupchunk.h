@@ -21,7 +21,8 @@ typedef enum TupleChunkType
     TC_PARTIAL_MID,     /* Contains a middle part of a tuple. */
     TC_PARTIAL_END,     /* Contains the final portion of a tuple. */
     TC_END_OF_STREAM,   /* Indicates "end of tuples" from this source. */
-    
+    TC_ABORT_STREAM,    /* Indicates abnormal termination of execution. */
+
     TC_MAXVAL           /* For range checks on type values. */
 } TupleChunkType;
 
@@ -57,6 +58,8 @@ typedef enum TupleChunkType
 #define GetSegIdx(x)            ((x) & ~ALL_SEGDBS_MASK)
 #define IsBroadcastSegIdx(x)    (GetSegIdx(x) == BROADCAST_SEGIDX)
 #define IsActiveOnlySegIdx(x)   ( ((x) & ALL_SEGDBS_MASK) == 0 )
+
+#define SetAllSegdbsFlag(x)     ((x) | ALL_SEGDBS_MASK)
 
 /* Simple accessors/mutators for parts of the tuple-chunk header.  These
  * functions store multibyte integers in network byte order, and convert
