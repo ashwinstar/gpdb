@@ -1197,6 +1197,12 @@ typedef struct MotionState
 	bool		noMoreAMSTuples;	/* set when AMS indicates all peers are done sending tuples */
 	List		*hashExprState;
 	FmgrInfo	*hashfunctions;		/* functions to hash the expressions for a hash motion node */
+
+	/* The following can be used for debugging, usage stats, etc.  */
+	int			numTuplesFromChild;	/* Number of tuples received from child */
+	int			numTuplesToAMS;		/* Number of tuples from child that were sent to AMS */
+	int			numTuplesFromAMS;	/* Number of tuples received from AMS */
+	int			numTuplesToParent;	/* Number of tuples either from child or AMS that were sent to parent */
 } MotionState;
 
 #endif   /* EXECNODES_H */

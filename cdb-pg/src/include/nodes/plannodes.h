@@ -402,44 +402,9 @@ typedef struct Limit
 typedef enum MotionType
 {
 	MOTIONTYPE_HASH,		/* Use hashing to select a segindex destination */
-//	MOTIONTYPE_BROADCAST,	/* Send tuple to all segindexex */
 	MOTIONTYPE_FIXED		/* Send tuples to a fixed set of segindexes */
 } MotionType;
 
-/*
- * Hash Motion Definition --
- * This defines the info needed for a hash motion node
- */
-typedef struct HashMotionDefn
-{
-	int		numHashSegs;			/* number of segindexes in hashSegIdx array */	
-	int		*hashSegIdx;			/* array of segindex values to hash to */
-	List	*hashExpr;				/* list of hash expressions */
-	List	*hashOp;				/* list of hash operators oids */
-} HashMotionDefn;
-
-/*
- * Fixed Motion Definition --
- * This defines the info needed for a fixed motion node
- */
-typedef struct FixedMotionDefn
-{
-	int		numOutputSegs;			/* number of segindexes in outputSegIdx array */	
-	int		*outputSegIdx;			/* array of output segindexes */
-} FixedMotionDefn;
-
-/*
- * Sorted Motion Definition --
- * This defines the info needed for a sorted motion node
- */
-typedef struct SortedMotionDefn
-{
-	int			numSortCols;		/* number of sort key columns */
-	AttrNumber	*sortColIdx;		/* their indexes in target list */
-	Oid			*sortOperators;		/* OID of operators to sort them by */ 
-	int			numInputSegs;		/* number of segindexes in inputSegIdx array */
-	int			*inputSegIdx;		/* array of input segindexes */
-} SortedMotionDefn;
 
 /*
  * Motion Node
@@ -454,19 +419,16 @@ typedef struct Motion
 	int			motionID;			/* required by AMS  */
 	
 	/* The following fields are only used when motionType == MOTIONTYPE_HASH */
-//	HashMotionDefn		*pHashDefn;
-	int		numHashSegs;			/* number of segindexes in hashSegIdx array */	
-	int		*hashSegIdx;			/* array of segindex values to hash to */
-	List	*hashExpr;				/* list of hash expressions */
-	List	*hashOp;				/* list of hash operators oids */
+	int			numHashSegs;		/* number of segindexes in hashSegIdx array */	
+	int			*hashSegIdx;		/* array of segindex values to hash to */
+	List		*hashExpr;			/* list of hash expressions */
+	List		*hashOp;			/* list of hash operators oids */
 	
 	/* The following field is only used when motionType == MOTIONTYPE_FIXED */
-//	FixedMotionDefn		*pFixedDefn;
-	int		numOutputSegs;			/* number of segindexes in outputSegIdx array (0 means broadcast to all) */	
-	int		*outputSegIdx;			/* array of output segindexes */
+	int			numOutputSegs;		/* number of segindexes in outputSegIdx array (0 means broadcast to all) */	
+	int			*outputSegIdx;		/* array of output segindexes */
 
 	/* The following field is only used when sendSorted == true */
-//	SortedMotionDefn	*pSortDefn;
 	int			numSortCols;		/* number of sort key columns */
 	AttrNumber	*sortColIdx;		/* their indexes in target list */
 	Oid			*sortOperators;		/* OID of operators to sort them by */ 
