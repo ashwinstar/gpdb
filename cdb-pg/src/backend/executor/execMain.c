@@ -283,7 +283,6 @@ ExecutorRun(QueryDesc *queryDesc,
 		/* For now, query executors only do SELECTs. */
 		Assert( !( Cdb_role==CDB_ROLE_EXECUTE  && operation != CMD_SELECT ) );
 
-#endif
 
 	/*
 	 * run plan on the dispatcher (entry) process.
@@ -297,7 +296,6 @@ ExecutorRun(QueryDesc *queryDesc,
 							 count,
 							 direction,
 							 dest);
-#ifdef CDB_DEVELOPER
 	}
 	PG_CATCH();
 	{
