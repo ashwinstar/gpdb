@@ -15,9 +15,12 @@
 #include "access/genam.h"
 #include "access/heapam.h"
 
+#define CdbNamespaceName			"cdb"
+
 /*
  * Defines for cdb.segdb table
  */
+#define CdbSegDBRelationName		"segdb"
 #define Natts_cdb_segdb				4
 #define Anum_cdb_segdb_segindex		1
 #define Anum_cdb_segdb_isprimary	2
@@ -27,6 +30,8 @@
 /*
  * Defines for cdb.segment table
  */
+#define CdbSegmentRelationName			"segment"
+#define CdbSegmentPrimaryKeyIndexName	"segment_pkey"
 #define Natts_cdb_segment				2
 #define Anum_cdb_segment_segindex		1
 #define Anum_cdb_segment_dbname			2
@@ -34,6 +39,8 @@
 /*
  * Defines for cdb.listener table
  */
+#define CdbListenerRelationName			"listener"
+#define CdbListenerPrimaryKeyIndexName	"listener_pkey"
 #define Natts_cdb_listener				4
 #define Anum_cdb_listener_listenerid	1
 #define Anum_cdb_listener_hostid		2
@@ -43,6 +50,8 @@
 /*
  * Defines for cdb.host table
  */
+#define CdbHostRelationName			"host"
+#define CdbHostPrimaryKeyIndexName	"host_pkey"
 #define Natts_cdb_host				3
 #define Anum_cdb_host_hostid		1
 #define Anum_cdb_host_hostname		2
@@ -51,6 +60,7 @@
 /*
  * Defines for cdb.cdb table
  */
+#define CdbCdbRelationName			"cdb"
 #define Natts_cdb_cdb				7
 #define Anum_cdb_cdb_cdbname		1
 #define Anum_cdb_cdb_cdbsuperuser	2
@@ -63,6 +73,8 @@
 /*
  * Defines for cdb.policy
  */
+#define CdbPolicyRelationName		"policy"
+#define CdbPolicyLocalOidIndexName	"policy_localoid_key"
 #define Natts_cdb_policy			4
 #define Anum_cdb_policy_globalid	1
 #define Anum_cdb_policy_localoid	2
