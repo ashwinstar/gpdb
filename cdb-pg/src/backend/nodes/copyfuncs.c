@@ -535,78 +535,6 @@ _copyLimit(Limit *from)
 	return newnode;
 }
 
-static HashMotionDefn*
-_copyHashMotionDefn(HashMotionDefn *pMotionDefn)
-{
-	HashMotionDefn *newMotionDefn = palloc0(sizeof(HashMotionDefn));
-	
-	newMotionDefn->numHashSegs = pMotionDefn->numHashSegs;
-	
-	if ( newMotionDefn->numHashSegs > 0 )
-	{
-		newMotionDefn->hashSegIdx = palloc( sizeof(int) * pMotionDefn->numHashSegs);
-		memcpy( newMotionDefn->hashSegIdx,  
-				pMotionDefn->hashSegIdx, 
-				sizeof(int) * pMotionDefn->numHashSegs );
-	}
-	
-	newMotionDefn->hashExpr = copyObject(pMotionDefn->hashExpr);
-	newMotionDefn->hashOp	= copyObject(pMotionDefn->hashOp);
-	
-	return newMotionDefn;
-}
-
-static FixedMotionDefn*
-_copyFixedMotionDefn(FixedMotionDefn *pFixedDefn)
-{
-	FixedMotionDefn *newFixedDefn = palloc0(sizeof(FixedMotionDefn));
-	
-	newFixedDefn->numOutputSegs = pFixedDefn->numOutputSegs;
-	
-	if ( newFixedDefn->numOutputSegs > 0 )
-	{
-		newFixedDefn->outputSegIdx = palloc( sizeof(int) * pFixedDefn->numOutputSegs);
-		memcpy( newFixedDefn->outputSegIdx,  
-				pFixedDefn->outputSegIdx, 
-				sizeof(int) * pFixedDefn->numOutputSegs );
-	}
-	
-	return newFixedDefn;
-}
-
-static SortedMotionDefn*
-_copySortedMotionDefn(SortedMotionDefn *pSortDefn)
-{
-	SortedMotionDefn *newSortDefn = palloc0(sizeof(SortedMotionDefn));
-
-	newSortDefn->numSortCols = pSortDefn->numSortCols;
-	
-	if ( newSortDefn->numSortCols > 0 )
-	{
-		newSortDefn->sortColIdx = palloc( sizeof(AttrNumber) * pSortDefn->numSortCols);
-		memcpy( newSortDefn->sortColIdx,  
-				pSortDefn->sortColIdx, 
-				sizeof(AttrNumber) * pSortDefn->numSortCols );
-		
-		newSortDefn->sortOperators = palloc( sizeof(Oid) * pSortDefn->numSortCols);
-		memcpy( newSortDefn->sortOperators,  
-				pSortDefn->sortOperators, 
-				sizeof(Oid) * pSortDefn->numSortCols );
-	}
-				
-	newSortDefn->numInputSegs = pSortDefn->numInputSegs;
-	
-	if ( newSortDefn->numInputSegs > 0 )
-	{
-		newSortDefn->inputSegIdx = palloc( sizeof(int) * pSortDefn->numInputSegs);
-		memcpy( newSortDefn->inputSegIdx,  
-				pSortDefn->inputSegIdx, 
-				sizeof(int) * pSortDefn->numInputSegs );
-	}
-
-	return newSortDefn;
-}
-
 /*
  * _copyMotion
  */
@@ -625,14 +553,19 @@ _copyMotion(Motion *from)
 	COPY_SCALAR_FIELD(sendSorted);
 	COPY_SCALAR_FIELD(motionID);
 	
-	if ( from->pHashDefn != NULL )
-		newnode->pHashDefn = _copyHashMotionDefn(from->pHashDefn);
+	COPY_SCALAR_FIELD(numHashSegs);
+	COPY_POINTER_FIELD(hashSegIdx, from->numHashSegs * sizeof(int));
+	COPY_NODE_FIELD(hashExpr);
+	COPY_NODE_FIELD(hashOp);
+	
+	COPY_SCALAR_FIELD(numOutputSegs);
+	COPY_POINTER_FIELD(outputSegIdx, from->numOutputSegs * sizeof(int));
 
-	if ( from->pFixedDefn != NULL )
-		newnode->pFixedDefn = _copyFixedMotionDefn(from->pFixedDefn);
-
-	if ( from->pSortDefn != NULL )
-		newnode->pSortDefn = _copySortedMotionDefn(from->pSortDefn);
+	COPY_SCALAR_FIELD(numSortCols);
+	COPY_POINTER_FIELD(sortColIdx, from->numSortCols * sizeof(AttrNumber));
+	COPY_POINTER_FIELD(sortOperators, from->numSortCols * sizeof(Oid));
+	COPY_SCALAR_FIELD(numInputSegs);
+	COPY_POINTER_FIELD(inputSegIdx, from->numInputSegs * sizeof(int));
 
 	return newnode;
 }
