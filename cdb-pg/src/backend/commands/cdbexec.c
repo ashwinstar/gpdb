@@ -26,13 +26,14 @@
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
 #include "cdb/cdbvars.h"
+#include "cdb/cdbsrlz.h"
 
 
 /*
  * Implements the 'CDBEXEC' utility statement.
  */
 void
-CdbExecQuery(CdbExecStmt *stmt)
+CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
 {
 	Query *query = NULL;
 	Plan *plan = NULL;
@@ -50,14 +51,19 @@ CdbExecQuery(CdbExecStmt *stmt)
 	oldctx = MemoryContextSwitchTo(qctx);
 	
 	/* Deserialize the strings from the CDBEXEC statement. */
-	
-	/* TODO - Deserialize query, for now just show it. */
-	query = NULL;
-	elog(NOTICE, "CDBEXEC ser_query: %s", nodeToString(stmt->ser_query));
-	
-	/* TODO - Deserialize plan, for now just show it. */
-	plan = NULL;
-	elog(NOTICE, "CDBEXEC ser_plan: %s", nodeToString(stmt->ser_plan));
+	Assert(stmt->ser_query != NULL );
+	Assert(IsA(stmt->ser_query, String));
+	char *pszQuery = strVal(stmt->ser_query);
+	Assert(pszQuery != NULL );
+	query = (Query *)deserializeNode(pszQuery);
+	pfree(pszQuery);
+
+	Assert(stmt->ser_plan != NULL );
+	Assert(IsA(stmt->ser_plan, String));
+	char *pszPlan = strVal(stmt->ser_plan);
+	Assert(pszPlan != NULL );
+	plan = (Plan *)deserializeNode(pszPlan);
+	pfree(pszPlan);
 
 	/* TODO - Deserialize parameters, if any */
 	n = list_length(stmt->ser_params);
@@ -70,23 +76,47 @@ CdbExecQuery(CdbExecStmt *stmt)
 		{
 			ser_param = lfirst(pc);
 			/* TODO - Deserialize one parameter, for now show and invalidate. */
-			elog(NOTICE, "CDBEXEC ser_params - %d: %s", i, nodeToString(ser_param));
+//			elog(NOTICE, "CDBEXEC ser_params - %d: %s", i, nodeToString(ser_param));
 			paramLI[i].kind = PARAM_INVALID;
 			i++;
 		}
 	}
 
+	EState	   *estate = NULL;
+	Assert( query->commandType != CMD_UTILITY );
+
 	/*
-	 * TODO - Run the query, for now just issue error.
+	 * Create a new portal to run the query in
 	 */
-	 ereport(ERROR,
-	 	( errcode(ERRCODE_CDB_INTERNAL_ERROR),
-	 	  errmsg("The CDBEXEC command is under construction!"),
-	 	  errdetail("Caller beware!")
-	 	));
-	 
+	List *query_list = list_make1(query);
+	List *plan_list = list_make1(plan);
+	const char *commandTag = CreateQueryTag(query);
+
+	Portal		portal = CreateNewPortal();
+
+	PortalDefineQuery(portal,
+					  "",
+					  commandTag,
+					  query_list,
+					  plan_list,
+					  qctx);
+	
+	/*
+	 * Run the portal to completion.
+	 */
+	PortalStart(portal, paramLI, ActiveSnapshot);
+
+	(void) PortalRun(portal, FETCH_ALL, dest, dest, completionTag);
+
+	PortalDrop(portal, false);
+
+	if (estate)
+		FreeExecutorState(estate);
+
 	 /* Restore state prior to return. */
-	 pfree(paramLI); /* Maybe should let context free it. */
+	if ( paramLI != NULL )
+		pfree(paramLI); /* Maybe should let context free it. */
+
 	 if ( oldctx )
 		MemoryContextSwitchTo(oldctx);
 	 
