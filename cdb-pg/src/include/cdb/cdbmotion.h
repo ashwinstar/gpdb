@@ -11,9 +11,9 @@
 #ifndef CDBMOTION_H
 #define CDBMOTION_H
 
-#include "postgres.h"
-#include "c.h"
 #include "access/htup.h"
+#include "cdb/tupchunk.h"
+
 
 typedef enum SendReturnCode
 {
@@ -60,6 +60,9 @@ typedef struct MotionNodeInfo
 	int motion_node_id;
 	int segment_id;
 	int host_id;
+    
+    TupleDesc tuple_desc;
+    
 } MotionNodeInfo;
 
 
@@ -87,12 +90,24 @@ typedef struct MotionNodeInfo
  */
 typedef struct TupleSendContext
 {
-	HeapTuple *heap_tuple;
+	HeapTuple heap_tuple;
 	int target_segment;	
 	unsigned char flags;
 	long total_tuple_bytes;
-	long total_bytes_sent;
-	long last_bytes_written;
+    long tuple_bytes_sent;      /* Bytes of tuple data sent. */
+	long total_bytes_sent;      /* Bytes sent, including chunk header info. */
+	long last_bytes_written;    /* Bytes sent in the last operation. */
+    
+    /*
+     * The following information is initialized and managed by the Motion
+     * Layer.  DON'T MESS WITH IT, or you will make the Motion Layer ANGRY.
+     *
+     * Data structures referenced below are allocated with palloc().
+     */
+    
+    TupleChunkList tuple_chunk_list;
+    TupleChunkListItem next_tuple_chunk;
+    
 } TupleSendContext;
 
 
@@ -169,8 +184,8 @@ extern int SendEndOfStream( MotionNodeInfo *mn_info );
 extern int RecvTuple( MotionNodeInfo *mn_info,
 		 		      HeapTuple *tup_i
 		    		);
-		    
-		    
+
+
 
 /* Proposed API call.  Would block until there was something to be received
  * with RecvTuple().  This function could ONLY EVER be called 
@@ -183,5 +198,5 @@ extern int RecvTuple( MotionNodeInfo *mn_info,
  */
 extern void CanReadTuple(void);		    
 
-		    
+
 #endif /*CDBMOTION_H */

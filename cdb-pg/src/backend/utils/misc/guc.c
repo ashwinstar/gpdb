@@ -27,6 +27,7 @@
 
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
+#include "cdb/tupchunk.h"
 #include "commands/async.h"
 #include "commands/variable.h"
 #include "commands/vacuum.h"
@@ -1327,6 +1328,16 @@ static struct config_int ConfigureNamesInt[] =
 		&block_size,
 		BLCKSZ, BLCKSZ, BLCKSZ, NULL, NULL
 	},
+    
+    {
+        {"cdb_max_tuple_chunk_size", PGC_SUSET, UNGROUPED,
+            gettext_noop("Sets the max tuple data size that Motion Layer can move at once."),
+            gettext_noop("Tuples that serialize to a larger data-block than this are "
+                         "broken into multiple chunks before sending them to the AMS.")
+        },
+        &Cdb_max_tuple_chunk_size,
+        DEFAULT_TC_DATA_SIZE, MIN_TC_DATA_SIZE, MAX_TC_DATA_SIZE, NULL, NULL
+    },
 
 	{
 		{"cdb_connections_per_thread", PGC_SUSET, UNGROUPED,

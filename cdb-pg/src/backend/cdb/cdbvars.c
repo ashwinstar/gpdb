@@ -38,11 +38,13 @@
  
 CdbRoleValue		Cdb_role;			/* Role paid by this CDB backend */
 char			   *cdb_role_string;	/* Staging area for guc.c */
- 
+
 CdbRoleValue		Cdb_session_role;	/* Role paid by this CDB backend */
 char			   *cdb_session_role_string; /* Staging area for guc.c */
 
 int					cdb_connections_per_thread;	/* How many libpq connections are handled in each thread */
+
+int                 Cdb_max_tuple_chunk_size;   /* CDB Motion Layer -> AMS */
 
 /*
  * Local macro to provide string values of numeric defines.

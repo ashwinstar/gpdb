@@ -119,31 +119,57 @@ extern char			  * cdb_role_string;	/* Use by guc.c as staging area for value. */
 extern const char	  * assign_cdb_role( const char *newval, bool doit, GucSource source );
 extern const char	  * show_cdb_role( void );
 
+
 /*
  * Parameter cdb_connections_per_thread
- * 
+ *
  * The run-time parameter (GUC variables) cdb_connections_per_thread
  * controls how many libpq connections to qExecs are processed in each
  * thread.
- * 
+ *
  * Any number >= 1 is valid.
- * 
+ *
  * 1 means each connection has its own thread.
- * 
+ *
  * This can be set in the config file, or at runtime by a superuser using
- * SQL: set cdb_connections_per_thread = x; 
- * 
+ * SQL: set cdb_connections_per_thread = x;
+ *
  * The default is 256.  So, if there are fewer than 256 segdbs, all would be handled
  * by the same thread.
- * 
+ *
  * Currently, this is used in two situation:
- * 	1) In cdblink_setup, when the libpq connections are obtained by the dispatcher
- * 		to the qExecs.
- * 	2) In CdbDispatchCommand, when commands are sent from the dispatcher to the qExecs.
- * 
+ *      1) In cdblink_setup, when the libpq connections are obtained by the dispatcher
+ *              to the qExecs.
+ *      2) In CdbDispatchCommand, when commands are sent from the dispatcher to the qExecs.
+ *
  */
-extern int				cdb_connections_per_thread;	/* GUC var - server operating mode.  */
-extern bool				assign_cdb_connections_per_thread( int newval, bool doit, GucSource source );
-extern const char	  * show_cdb_connections_per_thread( void );
+extern int                              cdb_connections_per_thread;     /* GUC var - server operating mode.  */
+extern bool                             assign_cdb_connections_per_thread( int newval, bool doit, GucSource source );
+extern const char         * show_cdb_connections_per_thread( void );
+
+
+/*
+ * Parameter cdb_max_tuple_chunk_size
+ *
+ * The run-time parameter (GUC variable) cdb_max_tuple_chunk_size controls the
+ * maximum size of a block of data that the Motion Layer will move from the
+ * postgres process to the AMS process through IPC.
+ * 
+ * When a tuple is sent to a different backend by a motion node, it is
+ * serialized into a byte-sequence (called its "serialized form").  If a
+ * tuple's serialized form is less than the maximum tuple chunk size, then the
+ * tuple will be moved as a complete unit to the AMS.  However, if the tuple's
+ * serialized form is larger than the maximum tuple chunk size then the tuple
+ * will be split into two or more chunks and moved piecemeal to the AMS.
+ *
+ * Ideally, most tuples being moved by motion nodes will have serialized forms
+ * that are smaller than the maximum tuple chunk size.  However, it is
+ * reasonable to expect that at least some tuples will need to be broken into
+ * smaller chunks.
+ * 
+ * The minimum value of this parameter is 64 bytes, and the maximum is
+ * slightly less than 64KB.
+ */
+extern int Cdb_max_tuple_chunk_size;    /* GUC var */
 
 #endif	/* CDBVARS_H */
