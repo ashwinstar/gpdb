@@ -10,9 +10,9 @@
 
 PATH="$(dirname $0):$PATH"
 
-usage="[ PGROOT=<root_directory> ] [ PGPORT=<base_port> ] $(basename $0) \n        [ {--dbroot|-D} <root_directory> ] [ {--port|-p} <base_port> ] \n        [ {--dbname|-N} { dbname | cdb} ] \n        [ {--ndbs|-n} { #dbs | 1 } ] \n        [ {--help} ]"
+usage="[ PGROOT=<root_directory> ] [ PGPORT=<base_port> ] $(basename $0) \n        [ {--dbroot|-D} <root_directory> ] [ {--port|-p} <base_port> ] \n        [ {--dbname|-N} { dbname | cdb} ] \n        [ {--listeners|-n} { #listeners | 1 } ] \n        [ {--help} ]"
 
-echo -e "$(basename $0): Initialize the database directories for a CDB cluster."
+echo -e "$(basename $0): Initialize a listener and local catalog for a CDB cluster."
 echo -e "Copyright (c) 2004-2005 Metapa, Inc. All Rights Reserved"
 
 function display_help
@@ -20,13 +20,13 @@ function display_help
     echo -e "\nSyntax: $usage"
 
     echo -e "\nThis command initializes the directory structure(s) for a CDB installation."
-    echo    "You are able to specify the number of PG instances that you wish to initialize"
-    echo    "by passing the --ndbs or -N option to the command line. By default, a single "
-    echo    "PG installation with a single listener is created."
+    echo    "You are able to specify the number of listener instances that you wish to "
+    echo    "initialize by passing the --nlist or -n option to the command line. By "
+    echo    "default, a single listener is created."
 
-    echo -e "\nThe database directory(s) are created under the directory specified in \$PGROOT"
+    echo -e "\nThe listener directory(s) are created under the directory specified in \$PGROOT"
     echo    "or using the '-D' option. Directories of the form \$PGROOT/\$dbname\$N are"
-    echo -e "created for all the required databases in the cluster. If the directory"
+    echo -e "created for all the segment databases in the cluster. If the directory"
     echo -e "\$PGROOT does not exist, it is created by this script. If --dbname is not set,"
     echo -e "it defaults to \"cdb\"."
 
@@ -167,12 +167,12 @@ do
                 dbroot=${val:?Option '--dbroot' requires a value}
                 shift 1
                 ;;
-            --ndbs)
-                ndbs=${2:?Option '--ndbs' requires a value}
+            --listeners)
+                listeners=${2:?Option '--listeners' requires a value}
                 shift 2
                 ;;
-            --ndbs=*)
-                ndbs=${val:?Option '--ndbs' requires a value}
+            --listeners=*)
+                listeners=${val:?Option '--listeners' requires a value}
                 shift 1
                 ;;
             --dbname)
@@ -219,9 +219,9 @@ done
 # Do we have a valid set of segments?
 # @design (Todd) Not sure why there was a limit on 8 dbs previously. We can
 # remove this if needed.
-if [ "$ndbs" ]
+if [ "$listeners" ]
 then
-    if expr "$ndbs" : '[1-9][0-9]*$' 1>/dev/null
+    if expr "$listeners" : '[1-9][0-9]*$' 1>/dev/null
     then
        :
     else
@@ -230,7 +230,7 @@ then
     fi
 else
     # If nothing is specified, then default to 1
-    : ${ndbs:=1}
+    : ${listeners:=1}
 fi
 
 # Check what port was specified
@@ -267,7 +267,7 @@ fi
 # ---------------------------------------------------------------------
 # CDB database processing
 # ---------------------------------------------------------------------
-for (( i = 1; i <= ndbs; i++ ))
+for (( i = 1; i <= listeners; i++ ))
 do
     PGDATA="$PGROOT/$dbname$i"
 
