@@ -489,29 +489,47 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 	}
 	
 	/*
+	 * Validate that there exists at least one entry and one segment database configured
+	 */
+	if ( component_databases->total_segment_dbs == 0 )
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_CARDINALITY_VIOLATION),
+				 errmsg("CDB number of segment databases cannot be 0"
+		     )));
+	}
+	if ( component_databases->total_entry_dbs == 0 )
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_CARDINALITY_VIOLATION),
+				 errmsg("CDB number of entry databases cannot be 0"
+		     )));
+	}
+
+	/*
 	 * Now sort the data by segindex, isprimary desc
 	 */
-	 qsort( component_databases->segment_db_info, 
+	qsort( component_databases->segment_db_info, 
 			component_databases->total_segment_dbs, sizeof(CdbComponentDatabaseInfo),
-    		  CdbComponentDatabaseInfoCompare);
+   			  CdbComponentDatabaseInfoCompare);
     		  
-	 qsort( component_databases->entry_db_info, 
+	qsort( component_databases->entry_db_info, 
 			component_databases->total_entry_dbs, sizeof(CdbComponentDatabaseInfo),
-    		  CdbComponentDatabaseInfoCompare);
+   			  CdbComponentDatabaseInfoCompare);
 
 	 /*
 	 * Now count the number of distinct segindexes.
 	 * Since it's sorted, this is easy.
 	 */
-	 int i;
+	int i;
 	 
-	 for ( i=0; i<component_databases->total_segment_dbs; i++ )
-	 {
-	 	if ( i == 0 || 
+	for ( i=0; i<component_databases->total_segment_dbs; i++ )
+	{
+		if ( i == 0 || 
 		 	(component_databases->segment_db_info[i].segindex != 
 		 	component_databases->segment_db_info[i-1].segindex ) )
 			component_databases->total_segments++;	 		
-	 }
+	}
 	 
 	 /*
 	  *  Validate that cdb_numsegments == segment_databases->total_segment_dbs
@@ -519,10 +537,29 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 	 if ( CdbIdentity.numsegments != component_databases->total_segments )
 	 {
 		ereport(ERROR,
-				(errcode(ERRCODE_CARDINALITY_VIOLATION),
+				(errcode(ERRCODE_DATA_EXCEPTION),
 				 errmsg("CDB number of segments inconsistency: count is %d from %s.%s table, but %d from getCdbComponentDatabases()",
 		    CdbIdentity.numsegments, CdbNamespaceName, CdbCdbRelationName, component_databases->total_segments )));
 	 }
+
+	/*
+	* Now validate that our identity is present in the entry databases
+	*/
+	for ( i=0; i<component_databases->total_entry_dbs; i++ )
+	{
+		CdbComponentDatabaseInfo* pInfo = &component_databases->total_entry_dbs[i];
+		if ( pInfo->dbid == CdbIdentity.dbid && pInfo->segindex == CdbIdentity.segindex )
+		{
+			break;
+		}
+	}
+	if ( i == component_databases->total_entry_dbs )
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_DATA_EXCEPTION),
+				errmsg("Cannot locate entry database represented by cdb.cdb row in cdb.pgdatabase: dbid %d content %d",
+				CdbIdentity.dbid, CdbIdentity.segindex )));
+	}
 
 	/*
 	 * Cleanup invoves ending the heap scan of cdb.pgdatabase, and closing all the relations we opened.
