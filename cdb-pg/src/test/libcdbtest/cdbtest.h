@@ -46,5 +46,12 @@ extern Datum HASHAPI_Hash_1_Varchar(PG_FUNCTION_ARGS);
 extern Datum HASHAPI_Hash_1_float8(PG_FUNCTION_ARGS);
 extern Datum HASHAPI_Hash_1_float4(PG_FUNCTION_ARGS);
 extern Datum HASHAPI_Hash_1_null(PG_FUNCTION_ARGS);
+extern Datum HASHAPI_Hash_1_timestamp(PG_FUNCTION_ARGS);
+extern Datum HASHAPI_Hash_1_timestamptz(PG_FUNCTION_ARGS);
+extern Datum HASHAPI_Hash_1_date(PG_FUNCTION_ARGS);
+extern Datum HASHAPI_Hash_1_time(PG_FUNCTION_ARGS);
+extern Datum HASHAPI_Hash_1_timetz(PG_FUNCTION_ARGS);
+extern Datum HASHAPI_Hash_1_numeric(PG_FUNCTION_ARGS);
+
 
 #endif /* CDBTEST_H */

@@ -165,7 +165,34 @@ CREATE OR REPLACE FUNCTION cdbhash_1_null(integer, integer) RETURNS integer
     AS 'libcdbtest.so', 'HASHAPI_Hash_1_null'
     LANGUAGE C IMMUTABLE STRICT;
 
+
+CREATE OR REPLACE FUNCTION cdbhash_1_timestamp(integer, integer, timestamp) RETURNS integer
+    AS 'libcdbtest.so', 'HASHAPI_Hash_1_timestamp'
+    LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION cdbhash_1_timestamptz(integer, integer, timestamp with time zone) RETURNS integer
+    AS 'libcdbtest.so', 'HASHAPI_Hash_1_timestamptz'
+    LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION cdbhash_1_date(integer, integer, date) RETURNS integer
+    AS 'libcdbtest.so', 'HASHAPI_Hash_1_date'
+    LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION cdbhash_1_time(integer, integer, time) RETURNS integer
+    AS 'libcdbtest.so', 'HASHAPI_Hash_1_time'
+    LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION cdbhash_1_timetz(integer, integer, time with time zone) RETURNS integer
+    AS 'libcdbtest.so', 'HASHAPI_Hash_1_timetz'
+    LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION cdbhash_1_numeric(integer, integer, numeric) RETURNS integer
+    AS 'libcdbtest.so', 'HASHAPI_Hash_1_numeric'
+    LANGUAGE C IMMUTABLE STRICT;
+
+
 CREATE OR REPLACE FUNCTION cdb_heap_test(integer, integer, integer) RETURNS boolean
     AS 'libcdbtest.so', 'cdb_heap_test'
     LANGUAGE C IMMUTABLE STRICT;
+
 
