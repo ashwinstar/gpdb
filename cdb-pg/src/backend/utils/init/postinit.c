@@ -27,8 +27,8 @@
 #include "catalog/pg_database.h"
 #include "catalog/pg_shadow.h"
 #include "catalog/pg_tablespace.h"
-#include "cdb/cdblink.h"
 #include "cdb/cdbvars.h"
+#include "cdb/cdbutil.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "postmaster/postmaster.h"
@@ -436,7 +436,7 @@ InitPostgres(const char *dbname, const char *username)
 	InitializeClientEncoding();
 
 	/* 
-     * cdblink package setup 
+     * cdb package setup 
      *
      * Primary function is to establish connctions to the qExecs.
      * This is SKIPPED when the database is in bootstrap mode or 
@@ -444,7 +444,7 @@ InitPostgres(const char *dbname, const char *username)
      */
     if (!bootstrap && IsUnderPostmaster)
     {
-		cdblink_setup();
+		cdb_setup();
     }
 
 	/*

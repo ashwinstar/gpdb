@@ -58,6 +58,23 @@ typedef struct
  */
 
 /*
+ * performs all necessary setup required for initializing CDB components.
+ *
+ * This includes cdblink_setup() and initializing the Motion Layer.
+ *
+ */
+extern void cdb_setup(void);
+
+
+/*
+ * performs all necessary cleanup required when cleaning up CDB components
+ * when disabling CDB functionality.
+ *
+ */
+extern void cdb_cleanup(void);
+
+
+/*
  * getCdbSegmentInstances() returns a pointer to a SegmentDatabases
  * structure. The array of SegmentDatabaseInfo's is ordered by segindex, 
  * isprimary desc.   

@@ -29,6 +29,8 @@
 #include "utils/lsyscache.h"
 #include "cdb/cdbcat.h"
 #include "cdb/cdbutil.h"
+#include "cdb/cdblink.h"
+#include "cdb/cdbmotion.h"
 
 /*
  * Helper Functions
@@ -521,6 +523,34 @@ void freeCdbSegmentDatabases(SegmentDatabases *sd)
 
 	pfree( sd );
 }
+
+/*
+ * performs all necessary setup required for cdb mode. 
+ *
+ * This includes cdblink_setup() and initializing the Motion Layer.
+ *
+ */
+void cdb_setup(void)
+{
+	elog( DEBUG1, "Initializing CDB components...");
+	cdblink_setup();
+	InitMotionLayer();
+}
+
+
+/*
+ * performs all necessary cleanup required when leaving cdb mode.
+ *
+ */
+void cdb_cleanup(void)
+{
+	elog( DEBUG1, "Cleaning up CDB components...");
+	
+	cdblink_disconnect( 0, 0 );
+		
+	//TODO: we probably need something to clean up the MotionLayer.
+}
+
 
 /*
  * SegmentDatabaseInfoCompare:

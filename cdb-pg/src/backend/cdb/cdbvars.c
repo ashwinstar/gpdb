@@ -20,7 +20,7 @@
 #include "miscadmin.h"
 #include "utils/guc.h"
 #include "cdb/cdbvars.h"
-#include "cdb/cdblink.h"
+#include "cdb/cdbutil.h"
 #include "lib/stringinfo.h"
 #include "libpq/libpq-be.h"
 #include "utils/memutils.h"
@@ -184,7 +184,7 @@ assign_cdb_role( const char *newval, bool doit, GucSource source )
     	}
     	
     	if ( do_disconnect )
-    		cdblink_disconnect( 0, 0 );
+    		cdb_cleanup( );
 	    	
         Cdb_role = newrole;
         
@@ -198,11 +198,11 @@ assign_cdb_role( const char *newval, bool doit, GucSource source )
     		 */
 			PG_TRY();
 			{
-		  		cdblink_setup();
+		  		cdb_setup();
 			}
 			PG_CATCH();
 			{
-	    		cdblink_disconnect( 0, 0 );
+	    		cdb_cleanup( );
 				Cdb_role = oldrole;
 				PG_RE_THROW();
 			}
