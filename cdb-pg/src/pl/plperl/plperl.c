@@ -33,28 +33,22 @@
  *	  ENHANCEMENTS, OR MODIFICATIONS.
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/pl/plperl/plperl.c,v 1.55 2004/10/15 17:08:26 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/pl/plperl/plperl.c,v 1.67 2005/01/14 16:25:42 tgl Exp $
  *
  **********************************************************************/
 
 #include "postgres.h"
 
 /* system stuff */
+#include <ctype.h>
 #include <fcntl.h>
 #include <unistd.h>
 
 /* postgreSQL stuff */
-#include "access/heapam.h"
-#include "catalog/pg_language.h"
-#include "catalog/pg_proc.h"
-#include "catalog/pg_type.h"
-#include "funcapi.h"			/* need for SRF support */
 #include "commands/trigger.h"
 #include "executor/spi.h"
-#include "fmgr.h"
-#include "tcop/tcopprot.h"
+#include "funcapi.h"
 #include "utils/lsyscache.h"
-#include "utils/syscache.h"
 #include "utils/typcache.h"
 
 /* perl stuff */
@@ -82,8 +76,8 @@ typedef struct plperl_proc_desc
 	bool		lanpltrusted;
 	bool		fn_retistuple;	/* true, if function returns tuple */
 	bool		fn_retisset;	/* true, if function returns set */
-	Oid			ret_oid;		/* Oid of returning type */
-	FmgrInfo	result_in_func;
+	Oid			result_oid;		/* Oid of result type */
+	FmgrInfo	result_in_func;	/* I/O function and arg for result type */
 	Oid			result_typioparam;
 	int			nargs;
 	FmgrInfo	arg_out_func[FUNC_MAX_ARGS];
@@ -100,9 +94,6 @@ static int	plperl_firstcall = 1;
 static bool plperl_safe_init_done = false;
 static PerlInterpreter *plperl_interp = NULL;
 static HV  *plperl_proc_hash = NULL;
-static AV  *g_column_keys = NULL;
-static SV  *srf_perlret = NULL; /* keep returned value */
-static int	g_attr_num = 0;
 
 /* this is saved and restored by plperl_call_handler */
 static plperl_proc_desc *plperl_current_prodesc = NULL;
@@ -116,12 +107,14 @@ static void plperl_init_interp(void);
 Datum		plperl_call_handler(PG_FUNCTION_ARGS);
 void		plperl_init(void);
 
+HV		   *plperl_spi_exec(char *query, int limit);
+
 static Datum plperl_func_handler(PG_FUNCTION_ARGS);
 
 static Datum plperl_trigger_handler(PG_FUNCTION_ARGS);
 static plperl_proc_desc *compile_plperl_function(Oid fn_oid, bool is_trigger);
 
-static SV  *plperl_build_tuple_argument(HeapTuple tuple, TupleDesc tupdesc);
+static SV  *plperl_hash_from_tuple(HeapTuple tuple, TupleDesc tupdesc);
 static void plperl_init_shared_libs(pTHX);
 static HV  *plperl_spi_execute_fetch_result(SPITupleTable *, int, int);
 
@@ -160,27 +153,7 @@ plperl_init(void)
 		return;
 
 	/************************************************************
-	 * Free the proc hash table
-	 ************************************************************/
-	if (plperl_proc_hash != NULL)
-	{
-		hv_undef(plperl_proc_hash);
-		SvREFCNT_dec((SV *) plperl_proc_hash);
-		plperl_proc_hash = NULL;
-	}
-
-	/************************************************************
-	 * Destroy the existing Perl interpreter
-	 ************************************************************/
-	if (plperl_interp != NULL)
-	{
-		perl_destruct(plperl_interp);
-		perl_free(plperl_interp);
-		plperl_interp = NULL;
-	}
-
-	/************************************************************
-	 * Now recreate a new Perl interpreter
+	 * Create the Perl interpreter
 	 ************************************************************/
 	plperl_init_interp();
 
@@ -214,8 +187,7 @@ plperl_init_all(void)
 static void
 plperl_init_interp(void)
 {
-
-	char	   *embedding[3] = {
+	static char	   *embedding[3] = {
 		"", "-e",
 
 		/*
@@ -228,17 +200,16 @@ plperl_init_interp(void)
 
 	plperl_interp = perl_alloc();
 	if (!plperl_interp)
-		elog(ERROR, "could not allocate perl interpreter");
+		elog(ERROR, "could not allocate Perl interpreter");
 
 	perl_construct(plperl_interp);
 	perl_parse(plperl_interp, plperl_init_shared_libs, 3, embedding, NULL);
 	perl_run(plperl_interp);
 
 	/************************************************************
-	 * Initialize the proc and query hash tables
+	 * Initialize the procedure hash table
 	 ************************************************************/
 	plperl_proc_hash = newHV();
-
 }
 
 
@@ -250,53 +221,88 @@ plperl_safe_init(void)
 
 	static char *safe_ok =
 	"use vars qw($PLContainer); $PLContainer = new Safe('PLPerl');"
-	"$PLContainer->permit_only(':default');$PLContainer->permit(':base_math');"
-	"$PLContainer->share(qw[&elog &spi_exec_query &DEBUG &LOG &INFO &NOTICE &WARNING &ERROR %SHARED ]);"
+	"$PLContainer->permit_only(':default');"
+	"$PLContainer->permit(qw[:base_math !:base_io sort time]);"
+	"$PLContainer->share(qw[&elog &spi_exec_query &DEBUG &LOG "
+    "&INFO &NOTICE &WARNING &ERROR %SHARED ]);"
 	"sub ::mksafefunc { return $PLContainer->reval(qq[sub { $_[0] $_[1]}]); }"
 			   ;
 
 	static char *safe_bad =
 	"use vars qw($PLContainer); $PLContainer = new Safe('PLPerl');"
-	"$PLContainer->permit_only(':default');$PLContainer->permit(':base_math');"
-	"$PLContainer->share(qw[&elog &DEBUG &LOG &INFO &NOTICE &WARNING &ERROR %SHARED ]);"
+	"$PLContainer->permit_only(':default');"
+	"$PLContainer->share(qw[&elog &ERROR ]);"
 	"sub ::mksafefunc { return $PLContainer->reval(qq[sub { "
-	"elog(ERROR,'trusted perl functions disabled - please upgrade perl Safe module to at least 2.09');}]); }"
+	"elog(ERROR,'trusted Perl functions disabled - "
+    "please upgrade Perl Safe module to version 2.09 or later');}]); }"
 			   ;
 
 	SV		   *res;
-
-	float		safe_version;
+	double		safe_version;
 
 	res = eval_pv(safe_module, FALSE);	/* TRUE = croak if failure */
 
 	safe_version = SvNV(res);
 
-	eval_pv((safe_version < 2.09 ? safe_bad : safe_ok), FALSE);
+	/*
+	 * We actually want to reject safe_version < 2.09, but it's risky to
+	 * assume that floating-point comparisons are exact, so use a slightly
+	 * smaller comparison value.
+	 */
+	eval_pv((safe_version < 2.0899 ? safe_bad : safe_ok), FALSE);
 
 	plperl_safe_init_done = true;
 }
 
 
-static HV *
-plperl_hash_from_tuple(HeapTuple tuple, TupleDesc tupdesc)
+/*
+ * Perl likes to put a newline after its error messages; clean up such
+ */
+static char *
+strip_trailing_ws(const char *msg)
 {
-	int	i;
-	HV *hv = newHV();
-	for (i = 0; i < tupdesc->natts; i++)
+	char   *res = pstrdup(msg);
+	int		len = strlen(res);
+
+	while (len > 0 && isspace((unsigned char) res[len-1]))
+		res[--len] = '\0';
+	return res;
+}
+
+
+/*
+ * Build a tuple from a hash
+ */
+static HeapTuple
+plperl_build_tuple_result(HV *perlhash, AttInMetadata *attinmeta)
+{
+	TupleDesc	td = attinmeta->tupdesc;
+	char	  **values;
+	SV		   *val;
+	char	   *key;
+	I32			klen;
+	HeapTuple	tup;
+
+	values = (char **) palloc0(td->natts * sizeof(char *));
+
+	hv_iterinit(perlhash);
+	while ((val = hv_iternextsv(perlhash, &key, &klen)))
 	{
-		SV *value;
+		int			attn = SPI_fnumber(td, key);
 
-		char *key = SPI_fname(tupdesc, i+1);
-		char *val = SPI_getvalue(tuple, tupdesc, i + 1);
-
-		if (val)
-			value = newSVpv(val, 0);
-		else
-			value = newSV(0);
-
-		hv_store(hv, key, strlen(key), value, 0);
+		if (attn <= 0 || td->attrs[attn - 1]->attisdropped)
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_COLUMN),
+					 errmsg("Perl hash contains nonexistent column \"%s\"",
+							key)));
+		if (SvOK(val) && SvTYPE(val) != SVt_NULL)
+			values[attn - 1] = SvPV(val, PL_na);
 	}
-	return hv;
+	hv_iterinit(perlhash);
+
+	tup = BuildTupleFromCStrings(attinmeta, values);
+	pfree(values);
+	return tup;
 }
 
 
@@ -308,7 +314,7 @@ plperl_trigger_build_args(FunctionCallInfo fcinfo)
 {
 	TriggerData *tdata;
 	TupleDesc	tupdesc;
-	int			i = 0;
+	int			i;
 	char	   *level;
 	char	   *event;
 	char	   *relid;
@@ -321,8 +327,8 @@ plperl_trigger_build_args(FunctionCallInfo fcinfo)
 	tupdesc = tdata->tg_relation->rd_att;
 
 	relid = DatumGetCString(
-				DirectFunctionCall1(
-					oidout, ObjectIdGetDatum(tdata->tg_relation->rd_id)
+				DirectFunctionCall1(oidout,
+									ObjectIdGetDatum(tdata->tg_relation->rd_id)
 				)
 			);
 
@@ -332,44 +338,44 @@ plperl_trigger_build_args(FunctionCallInfo fcinfo)
 	if (TRIGGER_FIRED_BY_INSERT(tdata->tg_event))
 	{
 		event = "INSERT";
-		hv_store(hv, "new", 3,
-				 newRV((SV *)plperl_hash_from_tuple(tdata->tg_trigtuple,
-													tupdesc)),
-				 0);
+		if (TRIGGER_FIRED_FOR_ROW(tdata->tg_event))
+			hv_store(hv, "new", 3,
+					 plperl_hash_from_tuple(tdata->tg_trigtuple, tupdesc),
+					 0);
 	}
 	else if (TRIGGER_FIRED_BY_DELETE(tdata->tg_event))
 	{
 		event = "DELETE";
-		hv_store(hv, "old", 3,
-				 newRV((SV *)plperl_hash_from_tuple(tdata->tg_trigtuple,
-													tupdesc)),
-				 0);
+		if (TRIGGER_FIRED_FOR_ROW(tdata->tg_event))
+			hv_store(hv, "old", 3,
+					 plperl_hash_from_tuple(tdata->tg_trigtuple, tupdesc),
+					 0);
 	}
 	else if (TRIGGER_FIRED_BY_UPDATE(tdata->tg_event))
 	{
 		event = "UPDATE";
-		hv_store(hv, "old", 3,
-				 newRV((SV *)plperl_hash_from_tuple(tdata->tg_trigtuple,
-													tupdesc)),
-				 0);
-		hv_store(hv, "new", 3,
-				 newRV((SV *)plperl_hash_from_tuple(tdata->tg_newtuple,
-													tupdesc)),
-				 0);
+		if (TRIGGER_FIRED_FOR_ROW(tdata->tg_event))
+		{
+			hv_store(hv, "old", 3,
+					 plperl_hash_from_tuple(tdata->tg_trigtuple, tupdesc),
+					 0);
+			hv_store(hv, "new", 3,
+					 plperl_hash_from_tuple(tdata->tg_newtuple, tupdesc),
+					 0);
+		}
 	}
-	else {
+	else
 		event = "UNKNOWN";
-	}
 
 	hv_store(hv, "event", 5, newSVpv(event, 0), 0);
 	hv_store(hv, "argc", 4, newSViv(tdata->tg_trigger->tgnargs), 0);
 
-	if (tdata->tg_trigger->tgnargs != 0)
+	if (tdata->tg_trigger->tgnargs > 0)
 	{
 		AV *av = newAV();
 		for (i=0; i < tdata->tg_trigger->tgnargs; i++)
 			av_push(av, newSVpv(tdata->tg_trigger->tgargs[i], 0));
-		hv_store(hv, "args", 4, newRV((SV *)av), 0);
+		hv_store(hv, "args", 4, newRV_noinc((SV *)av), 0);
 	}
 
 	hv_store(hv, "relname", 7,
@@ -391,196 +397,116 @@ plperl_trigger_build_args(FunctionCallInfo fcinfo)
 		level = "UNKNOWN";
 	hv_store(hv, "level", 5, newSVpv(level, 0), 0);
 
-	return newRV((SV*)hv);
+	return newRV_noinc((SV*)hv);
 }
 
 
-/**********************************************************************
- * check return value from plperl function
- **********************************************************************/
-static int
-plperl_is_set(SV *sv)
-{
-	int			i = 0;
-	int			len = 0;
-	int			set = 0;
-	int			other = 0;
-	AV		   *input_av;
-	SV		  **val;
-
-	if (SvTYPE(sv) != SVt_RV)
-		return 0;
-
-	if (SvTYPE(SvRV(sv)) == SVt_PVHV)
-		return 0;
-
-	if (SvTYPE(SvRV(sv)) == SVt_PVAV)
-	{
-		input_av = (AV *) SvRV(sv);
-		len = av_len(input_av) + 1;
-
-		for (i = 0; i < len; i++)
-		{
-			val = av_fetch(input_av, i, FALSE);
-			if (SvTYPE(*val) == SVt_RV)
-				set = 1;
-			else
-				other = 1;
-		}
-	}
-
-	if (len == 0)
-		return 1;
-	if (set && !other)
-		return 1;
-	if (!set && other)
-		return 0;
-	if (set && other)
-		elog(ERROR, "plperl: check your return value structure");
-	if (!set && !other)
-		elog(ERROR, "plperl: check your return value structure");
-
-	return 0;					/* for compiler */
-}
-
-/**********************************************************************
- * extract a list of keys from a hash
- **********************************************************************/
-static AV  *
-plperl_get_keys(HV *hv)
-{
-	AV		   *ret;
-	SV		   *val;
-	char	   *key;
-	I32			klen;
-
-	ret = newAV();
-
-	hv_iterinit(hv);
-	while ((val = hv_iternextsv(hv, (char **) &key, &klen)))
-		av_push(ret, newSVpv(key, 0));
-	hv_iterinit(hv);
-
-	return ret;
-}
-
-/**********************************************************************
- * extract a given key (by index) from a list of keys
- **********************************************************************/
-static char *
-plperl_get_key(AV *keys, int index)
-{
-	SV		  **svp;
-	int			len;
-
-	len = av_len(keys) + 1;
-	if (index < len)
-		svp = av_fetch(keys, index, FALSE);
-	else
-		return NULL;
-	return SvPV(*svp, PL_na);
-}
-
-/**********************************************************************
- * extract a value for a given key from a hash
+/*
+ * Obtain tuple descriptor for a function returning tuple
  *
- * return NULL on error or if we got an undef
- *
- **********************************************************************/
-static char *
-plperl_get_elem(HV *hash, char *key)
+ * NB: copy the result if needed for any great length of time
+ */
+static TupleDesc
+get_function_tupdesc(Oid result_type, ReturnSetInfo *rsinfo)
 {
-	SV **svp = hv_fetch(hash, key, strlen(key), FALSE);
-	if (!svp)
+	if (result_type == RECORDOID)
 	{
-		elog(ERROR, "plperl: key '%s' not found", key);
-		return NULL;
+		/* We must get the information from call context */
+		if (!rsinfo || !IsA(rsinfo, ReturnSetInfo) ||
+			rsinfo->expectedDesc == NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("function returning record called in context "
+							"that cannot accept type record")));
+		return rsinfo->expectedDesc;
 	}
-	return SvTYPE(*svp) == SVt_NULL ? NULL : SvPV(*svp, PL_na);
+	else				/* ordinary composite type */
+		return lookup_rowtype_tupdesc(result_type, -1);
 }
 
 /**********************************************************************
  * set up the new tuple returned from a trigger
  **********************************************************************/
 static HeapTuple
-plperl_modify_tuple(HV *hvTD, TriggerData *tdata, HeapTuple otup, Oid fn_oid)
+plperl_modify_tuple(HV *hvTD, TriggerData *tdata, HeapTuple otup)
 {
 	SV		  **svp;
 	HV		   *hvNew;
-	AV		   *plkeys;
-	char	   *platt;
-	char	   *plval;
 	HeapTuple	rtup;
-	int			natts,
-				i,
-				attn,
-				atti;
-	int		   *volatile modattrs = NULL;
-	Datum	   *volatile modvalues = NULL;
-	char	   *volatile modnulls = NULL;
+	SV		   *val;
+	char	   *key;
+	I32			klen;
+	int			slotsused;
+	int		   *modattrs;
+	Datum	   *modvalues;
+	char	   *modnulls;
+
 	TupleDesc	tupdesc;
-	HeapTuple	typetup;
 
 	tupdesc = tdata->tg_relation->rd_att;
 
 	svp = hv_fetch(hvTD, "new", 3, FALSE);
+	if (!svp)
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_COLUMN),
+				 errmsg("$_TD->{new} does not exist")));
+	if (!SvOK(*svp) || SvTYPE(*svp) != SVt_RV || SvTYPE(SvRV(*svp)) != SVt_PVHV)
+		ereport(ERROR,
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+				 errmsg("$_TD->{new} is not a hash reference")));
 	hvNew = (HV *) SvRV(*svp);
 
-	if (SvTYPE(hvNew) != SVt_PVHV)
-		elog(ERROR, "plperl: $_TD->{new} is not a hash");
+	modattrs = palloc(tupdesc->natts * sizeof(int));
+	modvalues = palloc(tupdesc->natts * sizeof(Datum));
+	modnulls = palloc(tupdesc->natts * sizeof(char));
+	slotsused = 0;
 
-	plkeys = plperl_get_keys(hvNew);
-	natts = av_len(plkeys) + 1;
-	if (natts != tupdesc->natts)
-		elog(ERROR, "plperl: $_TD->{new} has an incorrect number of keys.");
-
-	modattrs = palloc0(natts * sizeof(int));
-	modvalues = palloc0(natts * sizeof(Datum));
-	modnulls = palloc0(natts * sizeof(char));
-
-	for (i = 0; i < natts; i++)
+	hv_iterinit(hvNew);
+	while ((val = hv_iternextsv(hvNew, &key, &klen)))
 	{
-		FmgrInfo	finfo;
-		Oid			typinput;
-		Oid			typelem;
+		int			attn = SPI_fnumber(tupdesc, key);
 
-		platt = plperl_get_key(plkeys, i);
-
-		attn = modattrs[i] = SPI_fnumber(tupdesc, platt);
-
-		if (attn == SPI_ERROR_NOATTRIBUTE)
-			elog(ERROR, "plperl: invalid attribute `%s' in tuple.", platt);
-		atti = attn - 1;
-
-		plval = plperl_get_elem(hvNew, platt);
-
-		typetup = SearchSysCache(TYPEOID, ObjectIdGetDatum(tupdesc->attrs[atti]->atttypid), 0, 0, 0);
-		typinput = ((Form_pg_type) GETSTRUCT(typetup))->typinput;
-		typelem = ((Form_pg_type) GETSTRUCT(typetup))->typelem;
-		ReleaseSysCache(typetup);
-		fmgr_info(typinput, &finfo);
-
-		if (plval)
+		if (attn <= 0 || tupdesc->attrs[attn - 1]->attisdropped)
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_COLUMN),
+					 errmsg("Perl hash contains nonexistent column \"%s\"",
+							key)));
+		if (SvOK(val) && SvTYPE(val) != SVt_NULL)
 		{
-			modvalues[i] = FunctionCall3(&finfo,
-										 CStringGetDatum(plval),
-										 ObjectIdGetDatum(typelem),
-						 Int32GetDatum(tupdesc->attrs[atti]->atttypmod));
-			modnulls[i] = ' ';
+			Oid			typinput;
+			Oid			typioparam;
+			FmgrInfo	finfo;
+
+			/* XXX would be better to cache these lookups */
+			getTypeInputInfo(tupdesc->attrs[attn - 1]->atttypid,
+							 &typinput, &typioparam);
+			fmgr_info(typinput, &finfo);
+			modvalues[slotsused] = FunctionCall3(&finfo,
+										 CStringGetDatum(SvPV(val, PL_na)),
+										 ObjectIdGetDatum(typioparam),
+						 Int32GetDatum(tupdesc->attrs[attn - 1]->atttypmod));
+			modnulls[slotsused] = ' ';
 		}
 		else
 		{
-			modvalues[i] = (Datum) 0;
-			modnulls[i] = 'n';
+			modvalues[slotsused] = (Datum) 0;
+			modnulls[slotsused] = 'n';
 		}
+		modattrs[slotsused] = attn;
+		slotsused++;
 	}
-	rtup = SPI_modifytuple(tdata->tg_relation, otup, natts, modattrs, modvalues, modnulls);
+	hv_iterinit(hvNew);
+
+	rtup = SPI_modifytuple(tdata->tg_relation, otup, slotsused,
+						   modattrs, modvalues, modnulls);
 
 	pfree(modattrs);
 	pfree(modvalues);
 	pfree(modnulls);
+
 	if (rtup == NULL)
-		elog(ERROR, "plperl: SPI_modifytuple failed -- error:  %d", SPI_result);
+		elog(ERROR, "SPI_modifytuple failed: %s",
+			 SPI_result_code_string(SPI_result));
 
 	return rtup;
 }
@@ -613,16 +539,10 @@ plperl_call_handler(PG_FUNCTION_ARGS)
 
 	PG_TRY();
 	{
-		/************************************************************
-		 * Connect to SPI manager
-		 ************************************************************/
-		if (SPI_connect() != SPI_OK_CONNECT)
-			elog(ERROR, "could not connect to SPI manager");
-
-		/************************************************************
+		/*
 		 * Determine if called as function or trigger and
 		 * call appropriate subhandler
-		 ************************************************************/
+		 */
 		if (CALLED_AS_TRIGGER(fcinfo))
 			retval = PointerGetDatum(plperl_trigger_handler(fcinfo));
 		else
@@ -654,7 +574,10 @@ plperl_create_sub(char *s, bool trusted)
 	int			count;
 
 	if (trusted && !plperl_safe_init_done)
+	{
 		plperl_safe_init();
+		SPAGAIN;
+	}
 
 	ENTER;
 	SAVETMPS;
@@ -682,11 +605,14 @@ plperl_create_sub(char *s, bool trusted)
 
 	if (SvTRUE(ERRSV))
 	{
-		POPs;
+		(void) POPs;
 		PUTBACK;
 		FREETMPS;
 		LEAVE;
-		elog(ERROR, "creation of function failed: %s", SvPV(ERRSV, PL_na));
+		ereport(ERROR,
+				(errcode(ERRCODE_SYNTAX_ERROR),
+				 errmsg("creation of Perl function failed: %s",
+						strip_trailing_ws(SvPV(ERRSV, PL_na)))));
 	}
 
 	/*
@@ -738,7 +664,7 @@ plperl_init_shared_libs(pTHX)
 
 /**********************************************************************
  * plperl_call_perl_func()		- calls a perl function through the RV
- *			stored in the prodesc structure. massages the input parms properly
+ *	stored in the prodesc structure. massages the input parms properly
  **********************************************************************/
 static SV  *
 plperl_call_perl_func(plperl_proc_desc *desc, FunctionCallInfo fcinfo)
@@ -752,53 +678,44 @@ plperl_call_perl_func(plperl_proc_desc *desc, FunctionCallInfo fcinfo)
 	SAVETMPS;
 
 	PUSHMARK(SP);
-	XPUSHs(sv_2mortal(newSVpv("undef", 0)));
+
+	XPUSHs(sv_2mortal(newSVpv("undef", 0))); /* no trigger data */
+
 	for (i = 0; i < desc->nargs; i++)
 	{
-		if (desc->arg_is_rowtype[i])
+		if (fcinfo->argnull[i])
+			XPUSHs(&PL_sv_undef);
+		else if (desc->arg_is_rowtype[i])
 		{
-			if (fcinfo->argnull[i])
-				XPUSHs(&PL_sv_undef);
-			else
-			{
-				HeapTupleHeader td;
-				Oid			tupType;
-				int32		tupTypmod;
-				TupleDesc	tupdesc;
-				HeapTupleData tmptup;
-				SV		   *hashref;
+			HeapTupleHeader td;
+			Oid			tupType;
+			int32		tupTypmod;
+			TupleDesc	tupdesc;
+			HeapTupleData tmptup;
+			SV		   *hashref;
 
-				td = DatumGetHeapTupleHeader(fcinfo->arg[i]);
-				/* Extract rowtype info and find a tupdesc */
-				tupType = HeapTupleHeaderGetTypeId(td);
-				tupTypmod = HeapTupleHeaderGetTypMod(td);
-				tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
-				/* Build a temporary HeapTuple control structure */
-				tmptup.t_len = HeapTupleHeaderGetDatumLength(td);
-				tmptup.t_data = td;
+			td = DatumGetHeapTupleHeader(fcinfo->arg[i]);
+			/* Extract rowtype info and find a tupdesc */
+			tupType = HeapTupleHeaderGetTypeId(td);
+			tupTypmod = HeapTupleHeaderGetTypMod(td);
+			tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
+			/* Build a temporary HeapTuple control structure */
+			tmptup.t_len = HeapTupleHeaderGetDatumLength(td);
+			tmptup.t_data = td;
 
-				/*
-				 * plperl_build_tuple_argument better return a mortal SV.
-				 */
-				hashref = plperl_build_tuple_argument(&tmptup, tupdesc);
-				XPUSHs(hashref);
-			}
+			hashref = plperl_hash_from_tuple(&tmptup, tupdesc);
+			XPUSHs(sv_2mortal(hashref));
 		}
 		else
 		{
-			if (fcinfo->argnull[i])
-				XPUSHs(&PL_sv_undef);
-			else
-			{
-				char	   *tmp;
+			char	   *tmp;
 
-				tmp = DatumGetCString(FunctionCall3(&(desc->arg_out_func[i]),
-													fcinfo->arg[i],
-							   ObjectIdGetDatum(desc->arg_typioparam[i]),
-													Int32GetDatum(-1)));
-				XPUSHs(sv_2mortal(newSVpv(tmp, 0)));
-				pfree(tmp);
-			}
+			tmp = DatumGetCString(FunctionCall3(&(desc->arg_out_func[i]),
+												fcinfo->arg[i],
+									ObjectIdGetDatum(desc->arg_typioparam[i]),
+												Int32GetDatum(-1)));
+			XPUSHs(sv_2mortal(newSVpv(tmp, 0)));
+			pfree(tmp);
 		}
 	}
 	PUTBACK;
@@ -818,11 +735,14 @@ plperl_call_perl_func(plperl_proc_desc *desc, FunctionCallInfo fcinfo)
 
 	if (SvTRUE(ERRSV))
 	{
-		POPs;
+		(void) POPs;
 		PUTBACK;
 		FREETMPS;
 		LEAVE;
-		elog(ERROR, "error from function: %s", SvPV(ERRSV, PL_na));
+		/* XXX need to find a way to assign an errcode here */
+		ereport(ERROR,
+				(errmsg("error from Perl function: %s",
+						strip_trailing_ws(SvPV(ERRSV, PL_na)))));
 	}
 
 	retval = newSVsv(POPs);
@@ -835,14 +755,16 @@ plperl_call_perl_func(plperl_proc_desc *desc, FunctionCallInfo fcinfo)
 }
 
 /**********************************************************************
- * plperl_call_perl_trigger_func()	- calls a perl function affected by trigger
- * through the RV stored in the prodesc structure. massages the input parms properly
+ * plperl_call_perl_trigger_func()	- calls a perl trigger function
+ *	through the RV stored in the prodesc structure.
  **********************************************************************/
 static SV  *
-plperl_call_perl_trigger_func(plperl_proc_desc *desc, FunctionCallInfo fcinfo, SV *td)
+plperl_call_perl_trigger_func(plperl_proc_desc *desc, FunctionCallInfo fcinfo,
+							  SV *td)
 {
 	dSP;
 	SV		   *retval;
+	Trigger    *tg_trigger;
 	int			i;
 	int			count;
 
@@ -850,12 +772,16 @@ plperl_call_perl_trigger_func(plperl_proc_desc *desc, FunctionCallInfo fcinfo, S
 	SAVETMPS;
 
 	PUSHMARK(sp);
+
 	XPUSHs(td);
-	for (i = 0; i < ((TriggerData *) fcinfo->context)->tg_trigger->tgnargs; i++)
-		XPUSHs(sv_2mortal(newSVpv(((TriggerData *) fcinfo->context)->tg_trigger->tgargs[i], 0)));
+
+	tg_trigger = ((TriggerData *) fcinfo->context)->tg_trigger;
+	for (i = 0; i < tg_trigger->tgnargs; i++)
+		XPUSHs(sv_2mortal(newSVpv(tg_trigger->tgargs[i], 0)));
 	PUTBACK;
 
-	count = perl_call_sv(desc->reference, G_SCALAR | G_EVAL | G_KEEPERR);
+	/* Do NOT use G_KEEPERR here */
+	count = perl_call_sv(desc->reference, G_SCALAR | G_EVAL);
 
 	SPAGAIN;
 
@@ -864,16 +790,19 @@ plperl_call_perl_trigger_func(plperl_proc_desc *desc, FunctionCallInfo fcinfo, S
 		PUTBACK;
 		FREETMPS;
 		LEAVE;
-		elog(ERROR, "plperl: didn't get a return item from function");
+		elog(ERROR, "didn't get a return item from trigger function");
 	}
 
 	if (SvTRUE(ERRSV))
 	{
-		POPs;
+		(void) POPs;
 		PUTBACK;
 		FREETMPS;
 		LEAVE;
-		elog(ERROR, "plperl: error from function: %s", SvPV(ERRSV, PL_na));
+		/* XXX need to find a way to assign an errcode here */
+		ereport(ERROR,
+				(errmsg("error from Perl trigger function: %s",
+						strip_trailing_ws(SvPV(ERRSV, PL_na)))));
 	}
 
 	retval = newSVsv(POPs);
@@ -895,6 +824,10 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 	SV		   *perlret;
 	Datum		retval;
 
+	/* Connect to SPI manager */
+	if (SPI_connect() != SPI_OK_CONNECT)
+		elog(ERROR, "could not connect to SPI manager");
+
 	/* Find or compile the function */
 	prodesc = compile_plperl_function(fcinfo->flinfo->fn_oid, false);
 
@@ -905,19 +838,14 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 	 ************************************************************/
 	if (!prodesc->fn_retisset)
 		perlret = plperl_call_perl_func(prodesc, fcinfo);
+	else if (SRF_IS_FIRSTCALL())
+		perlret = plperl_call_perl_func(prodesc, fcinfo);
 	else
 	{
-		if (SRF_IS_FIRSTCALL()) /* call function only once */
-			srf_perlret = plperl_call_perl_func(prodesc, fcinfo);
-		perlret = srf_perlret;
-	}
+		/* Get back the SV stashed on initial call */
+		FuncCallContext *funcctx = (FuncCallContext *) fcinfo->flinfo->fn_extra;
 
-	if (prodesc->fn_retisset && SRF_IS_FIRSTCALL())
-	{
-		if (prodesc->fn_retistuple)
-			g_column_keys = newAV();
-		if (SvTYPE(perlret) != SVt_RV)
-			elog(ERROR, "plperl: set-returning function must return reference");
+		perlret = (SV *) funcctx->user_fctx;
 	}
 
 	/************************************************************
@@ -932,138 +860,70 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 	if (!(perlret && SvOK(perlret) && SvTYPE(perlret) != SVt_NULL))
 	{
 		/* return NULL if Perl code returned undef */
-		retval = (Datum) 0;
-		fcinfo->isnull = true;
+		ReturnSetInfo *rsi = (ReturnSetInfo *) fcinfo->resultinfo;
+
+		if (perlret)
+			SvREFCNT_dec(perlret);
+		if (rsi && IsA(rsi, ReturnSetInfo))
+			rsi->isDone = ExprEndResult;
+		PG_RETURN_NULL();
 	}
 
-	if (prodesc->fn_retisset && !(perlret && SvTYPE(SvRV(perlret)) == SVt_PVAV))
-		elog(ERROR, "plperl: set-returning function must return reference to array");
-
-	if (prodesc->fn_retistuple && perlret && SvTYPE(perlret) != SVt_RV)
-		elog(ERROR, "plperl: composite-returning function must return a reference");
-
-	if (prodesc->fn_retistuple && fcinfo->resultinfo)	/* set of tuples */
+	if (prodesc->fn_retisset && prodesc->fn_retistuple)
 	{
-		/* SRF support */
-		HV		   *ret_hv;
+		/* set of tuples */
 		AV		   *ret_av;
-
 		FuncCallContext *funcctx;
-		int			call_cntr;
-		int			max_calls;
 		TupleDesc	tupdesc;
-		TupleTableSlot *slot;
 		AttInMetadata *attinmeta;
-		bool		isset = 0;
-		char	  **values = NULL;
-		ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 
-		if (prodesc->fn_retisset && !rsinfo)
+		if (!SvOK(perlret) || SvTYPE(perlret) != SVt_RV || SvTYPE(SvRV(perlret)) != SVt_PVAV)
 			ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("returning a composite type is not allowed in this context"),
-					 errhint("This function is intended for use in the FROM clause.")));
-
-
-		isset = plperl_is_set(perlret);
-
-		if (SvTYPE(SvRV(perlret)) == SVt_PVHV)
-			ret_hv = (HV *) SvRV(perlret);
-		else
-			ret_av = (AV *) SvRV(perlret);
+					(errcode(ERRCODE_DATATYPE_MISMATCH),
+					 errmsg("set-returning Perl function must return reference to array")));
+		ret_av = (AV *) SvRV(perlret);
 
 		if (SRF_IS_FIRSTCALL())
 		{
 			MemoryContext oldcontext;
-			int			i;
 
 			funcctx = SRF_FIRSTCALL_INIT();
 
+			funcctx->user_fctx = (void *) perlret;
+
+			funcctx->max_calls = av_len(ret_av) + 1;
+
+			/* Cache a copy of the result's tupdesc and attinmeta */
 			oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
-
-			if (SvTYPE(SvRV(perlret)) == SVt_PVHV)
-			{
-				if (isset)
-					funcctx->max_calls = hv_iterinit(ret_hv);
-				else
-					funcctx->max_calls = 1;
-			}
-			else
-			{
-				if (isset)
-					funcctx->max_calls = av_len(ret_av) + 1;
-				else
-					funcctx->max_calls = 1;
-			}
-
-			tupdesc = CreateTupleDescCopy(rsinfo->expectedDesc);
-
-			g_attr_num = tupdesc->natts;
-
-			for (i = 0; i < tupdesc->natts; i++)
-				av_store(g_column_keys, i + 1,
-						 newSVpv(SPI_fname(tupdesc, i+1), 0));
-
-			slot = TupleDescGetSlot(tupdesc);
-			funcctx->slot = slot;
-			attinmeta = TupleDescGetAttInMetadata(tupdesc);
-			funcctx->attinmeta = attinmeta;
+			tupdesc = get_function_tupdesc(prodesc->result_oid,
+										(ReturnSetInfo *) fcinfo->resultinfo);
+			tupdesc = CreateTupleDescCopy(tupdesc);
+			funcctx->attinmeta = TupleDescGetAttInMetadata(tupdesc);
 			MemoryContextSwitchTo(oldcontext);
 		}
 
 		funcctx = SRF_PERCALL_SETUP();
-		call_cntr = funcctx->call_cntr;
-		max_calls = funcctx->max_calls;
-		slot = funcctx->slot;
 		attinmeta = funcctx->attinmeta;
+		tupdesc = attinmeta->tupdesc;
 
-		if (call_cntr < max_calls)
+		if (funcctx->call_cntr < funcctx->max_calls)
 		{
+			SV		  **svp;
+			HV		   *row_hv;
 			HeapTuple	tuple;
-			Datum		result;
-			int			i;
-			char	   *column_key;
-			char	   *elem;
 
-			if (isset)
-			{
-				HV		   *row_hv;
-				SV		  **svp;
+			svp = av_fetch(ret_av, funcctx->call_cntr, FALSE);
+			Assert(svp != NULL);
 
-				svp = av_fetch(ret_av, call_cntr, FALSE);
+			if (!SvOK(*svp) || SvTYPE(*svp) != SVt_RV || SvTYPE(SvRV(*svp)) != SVt_PVHV)
+				ereport(ERROR,
+						(errcode(ERRCODE_DATATYPE_MISMATCH),
+						 errmsg("elements of Perl result array must be reference to hash")));
+			row_hv = (HV *) SvRV(*svp);
 
-				row_hv = (HV *) SvRV(*svp);
-
-				values = (char **) palloc(g_attr_num * sizeof(char *));
-
-				for (i = 0; i < g_attr_num; i++)
-				{
-					column_key = plperl_get_key(g_column_keys, i + 1);
-					elem = plperl_get_elem(row_hv, column_key);
-					if (elem)
-						values[i] = elem;
-					else
-						values[i] = NULL;
-				}
-			}
-			else
-			{
-				int			i;
-
-				values = (char **) palloc(g_attr_num * sizeof(char *));
-				for (i = 0; i < g_attr_num; i++)
-				{
-					column_key = SPI_fname(tupdesc, i + 1);
-					elem = plperl_get_elem(ret_hv, column_key);
-					if (elem)
-						values[i] = elem;
-					else
-						values[i] = NULL;
-				}
-			}
-			tuple = BuildTupleFromCStrings(attinmeta, values);
-			result = TupleGetDatum(slot, tuple);
-			SRF_RETURN_NEXT(funcctx, result);
+			tuple = plperl_build_tuple_result(row_hv, attinmeta);
+			retval = HeapTupleGetDatum(tuple);
+			SRF_RETURN_NEXT(funcctx, retval);
 		}
 		else
 		{
@@ -1071,94 +931,93 @@ plperl_func_handler(PG_FUNCTION_ARGS)
 			SRF_RETURN_DONE(funcctx);
 		}
 	}
-	else if (prodesc->fn_retisset)		/* set of non-tuples */
+	else if (prodesc->fn_retisset)
 	{
+		/* set of non-tuples */
+		AV		   *ret_av;
 		FuncCallContext *funcctx;
+
+		if (!SvOK(perlret) || SvTYPE(perlret) != SVt_RV || SvTYPE(SvRV(perlret)) != SVt_PVAV)
+			ereport(ERROR,
+					(errcode(ERRCODE_DATATYPE_MISMATCH),
+					 errmsg("set-returning Perl function must return reference to array")));
+		ret_av = (AV *) SvRV(perlret);
 
 		if (SRF_IS_FIRSTCALL())
 		{
-			MemoryContext oldcontext;
-
 			funcctx = SRF_FIRSTCALL_INIT();
-			oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
-			funcctx->max_calls = av_len((AV *) SvRV(perlret)) + 1;
+			funcctx->user_fctx = (void *) perlret;
+
+			funcctx->max_calls = av_len(ret_av) + 1;
 		}
 
 		funcctx = SRF_PERCALL_SETUP();
 
 		if (funcctx->call_cntr < funcctx->max_calls)
 		{
-			Datum		result;
-			AV		   *array;
 			SV		  **svp;
 
-			array = (AV *) SvRV(perlret);
-			svp = av_fetch(array, funcctx->call_cntr, FALSE);
+			svp = av_fetch(ret_av, funcctx->call_cntr, FALSE);
+			Assert(svp != NULL);
 
-			if (SvTYPE(*svp) != SVt_NULL)
-				result = FunctionCall3(&prodesc->result_in_func,
-									   PointerGetDatum(SvPV(*svp, PL_na)),
+			if (SvOK(*svp) && SvTYPE(*svp) != SVt_NULL)
+			{
+				char	   *val = SvPV(*svp, PL_na);
+
+				fcinfo->isnull = false;
+				retval = FunctionCall3(&prodesc->result_in_func,
+									   PointerGetDatum(val),
 							ObjectIdGetDatum(prodesc->result_typioparam),
 									   Int32GetDatum(-1));
+			}
 			else
 			{
 				fcinfo->isnull = true;
-				result = (Datum) 0;
+				retval = (Datum) 0;
 			}
-			SRF_RETURN_NEXT(funcctx, result);
-			fcinfo->isnull = false;
+			SRF_RETURN_NEXT(funcctx, retval);
 		}
 		else
 		{
-			if (perlret)
-				SvREFCNT_dec(perlret);
+			SvREFCNT_dec(perlret);
 			SRF_RETURN_DONE(funcctx);
 		}
 	}
-	else if (!fcinfo->isnull)	/* non-null singleton */
+	else if (prodesc->fn_retistuple)
 	{
+		/* singleton perl hash to Datum */
+		HV		   *perlhash;
+		TupleDesc	td;
+		AttInMetadata *attinmeta;
+		HeapTuple	tup;
 
+		if (!SvOK(perlret) || SvTYPE(perlret) != SVt_RV || SvTYPE(SvRV(perlret)) != SVt_PVHV)
+			ereport(ERROR,
+					(errcode(ERRCODE_DATATYPE_MISMATCH),
+					 errmsg("composite-returning Perl function must return reference to hash")));
+		perlhash = (HV *) SvRV(perlret);
 
-		if (prodesc->fn_retistuple)		/* singleton perl hash to Datum */
-		{
-			TupleDesc	td = lookup_rowtype_tupdesc(prodesc->ret_oid, (int32) -1);
-			HV		   *perlhash = (HV *) SvRV(perlret);
-			int			i;
-			char	  **values;
-			char	   *key,
-					   *val;
-			AttInMetadata *attinmeta;
-			HeapTuple	tup;
+		/*
+		 * XXX should cache the attinmeta data instead of recomputing
+		 */
+		td = get_function_tupdesc(prodesc->result_oid,
+								  (ReturnSetInfo *) fcinfo->resultinfo);
+		/* td = CreateTupleDescCopy(td); */
+		attinmeta = TupleDescGetAttInMetadata(td);
 
-			if (!td)
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("no TupleDesc info available")));
+		tup = plperl_build_tuple_result(perlhash, attinmeta);
+		retval = HeapTupleGetDatum(tup);
+	}
+	else
+	{
+		/* perl string to Datum */
+		char	   *val = SvPV(perlret, PL_na);
 
-			values = (char **) palloc(td->natts * sizeof(char *));
-			for (i = 0; i < td->natts; i++)
-			{
-
-				key = SPI_fname(td, i + 1);
-				val = plperl_get_elem(perlhash, key);
-				if (val)
-					values[i] = val;
-				else
-					values[i] = NULL;
-			}
-			attinmeta = TupleDescGetAttInMetadata(td);
-			tup = BuildTupleFromCStrings(attinmeta, values);
-			retval = HeapTupleGetDatum(tup);
-
-		}
-		else
-			/* perl string to Datum */
-			retval = FunctionCall3(&prodesc->result_in_func,
-								   PointerGetDatum(SvPV(perlret, PL_na)),
-							ObjectIdGetDatum(prodesc->result_typioparam),
-								   Int32GetDatum(-1));
-
+		retval = FunctionCall3(&prodesc->result_in_func,
+							   CStringGetDatum(val),
+							   ObjectIdGetDatum(prodesc->result_typioparam),
+							   Int32GetDatum(-1));
 	}
 
 	SvREFCNT_dec(perlret);
@@ -1174,9 +1033,12 @@ plperl_trigger_handler(PG_FUNCTION_ARGS)
 	plperl_proc_desc *prodesc;
 	SV		   *perlret;
 	Datum		retval;
-	char	   *tmp;
 	SV		   *svTD;
 	HV		   *hvTD;
+
+	/* Connect to SPI manager */
+	if (SPI_connect() != SPI_OK_CONNECT)
+		elog(ERROR, "could not connect to SPI manager");
 
 	/* Find or compile the function */
 	prodesc = compile_plperl_function(fcinfo->flinfo->fn_oid, true);
@@ -1196,8 +1058,6 @@ plperl_trigger_handler(PG_FUNCTION_ARGS)
 	hvTD = (HV *) SvRV(svTD);	/* convert SV TD structure to Perl Hash
 								 * structure */
 
-	tmp = SvPV(perlret, PL_na);
-
 	/************************************************************
 	* Disconnect from SPI manager and then create the return
 	* values datum (if the input function does a palloc for it
@@ -1205,10 +1065,11 @@ plperl_trigger_handler(PG_FUNCTION_ARGS)
 	* because SPI_finish would free it).
 	************************************************************/
 	if (SPI_finish() != SPI_OK_FINISH)
-		elog(ERROR, "plperl: SPI_finish() failed");
+		elog(ERROR, "SPI_finish() failed");
 
-	if (!(perlret && SvOK(perlret)))
+	if (!(perlret && SvOK(perlret) && SvTYPE(perlret) != SVt_NULL))
 	{
+		/* undef result means go ahead with original tuple */
 		TriggerData *trigdata = ((TriggerData *) fcinfo->context);
 
 		if (TRIGGER_FIRED_BY_INSERT(trigdata->tg_event))
@@ -1217,47 +1078,50 @@ plperl_trigger_handler(PG_FUNCTION_ARGS)
 			retval = (Datum) trigdata->tg_newtuple;
 		else if (TRIGGER_FIRED_BY_DELETE(trigdata->tg_event))
 			retval = (Datum) trigdata->tg_trigtuple;
+		else
+			retval = (Datum) 0;	/* can this happen? */
 	}
 	else
 	{
-		if (!fcinfo->isnull)
+		HeapTuple	trv;
+		char	   *tmp;
+
+		tmp = SvPV(perlret, PL_na);
+
+		if (pg_strcasecmp(tmp, "SKIP") == 0)
+			trv = NULL;
+		else if (pg_strcasecmp(tmp, "MODIFY") == 0)
 		{
+			TriggerData *trigdata = (TriggerData *) fcinfo->context;
 
-			HeapTuple	trv;
-
-			if (strcasecmp(tmp, "SKIP") == 0)
-				trv = NULL;
-			else if (strcasecmp(tmp, "MODIFY") == 0)
-			{
-				TriggerData *trigdata = (TriggerData *) fcinfo->context;
-
-				if (TRIGGER_FIRED_BY_INSERT(trigdata->tg_event))
-					trv = plperl_modify_tuple(hvTD, trigdata, trigdata->tg_trigtuple, fcinfo->flinfo->fn_oid);
-				else if (TRIGGER_FIRED_BY_UPDATE(trigdata->tg_event))
-					trv = plperl_modify_tuple(hvTD, trigdata, trigdata->tg_newtuple, fcinfo->flinfo->fn_oid);
-				else
-				{
-					trv = NULL;
-					elog(WARNING, "plperl: Ignoring modified tuple in DELETE trigger");
-				}
-			}
-			else if (strcasecmp(tmp, "OK"))
-			{
-				trv = NULL;
-				elog(ERROR, "plperl: Expected return to be undef, 'SKIP' or 'MODIFY'");
-			}
+			if (TRIGGER_FIRED_BY_INSERT(trigdata->tg_event))
+				trv = plperl_modify_tuple(hvTD, trigdata,
+										  trigdata->tg_trigtuple);
+			else if (TRIGGER_FIRED_BY_UPDATE(trigdata->tg_event))
+				trv = plperl_modify_tuple(hvTD, trigdata,
+										  trigdata->tg_newtuple);
 			else
 			{
+				ereport(WARNING,
+						(errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED),
+						 errmsg("ignoring modified tuple in DELETE trigger")));
 				trv = NULL;
-				elog(ERROR, "plperl: Expected return to be undef, 'SKIP' or 'MODIFY'");
 			}
-			retval = PointerGetDatum(trv);
 		}
+		else
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_E_R_I_E_TRIGGER_PROTOCOL_VIOLATED),
+					 errmsg("result of Perl trigger function must be undef, \"SKIP\" or \"MODIFY\"")));
+			trv = NULL;
+		}
+		retval = PointerGetDatum(trv);
 	}
 
-	SvREFCNT_dec(perlret);
+	SvREFCNT_dec(svTD);
+	if (perlret)
+		SvREFCNT_dec(perlret);
 
-	fcinfo->isnull = false;
 	return retval;
 }
 
@@ -1413,17 +1277,10 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 				}
 			}
 
-			prodesc->fn_retisset = procStruct->proretset;		/* true, if function
-																 * returns set */
-
-			if (typeStruct->typtype == 'c' || procStruct->prorettype == RECORDOID)
-			{
-				prodesc->fn_retistuple = true;
-				prodesc->ret_oid =
-					procStruct->prorettype == RECORDOID ?
-					typeStruct->typrelid :
-					procStruct->prorettype;
-			}
+			prodesc->result_oid = procStruct->prorettype;
+			prodesc->fn_retisset = procStruct->proretset;
+			prodesc->fn_retistuple = (typeStruct->typtype == 'c' ||
+									  procStruct->prorettype == RECORDOID);
 
 			perm_fmgr_info(typeStruct->typinput, &(prodesc->result_in_func));
 			prodesc->result_typioparam = getTypeIOParam(typeTup);
@@ -1481,7 +1338,6 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 		 * create the text of the anonymous subroutine.
 		 * we do not use a named subroutine so that we can call directly
 		 * through the reference.
-		 *
 		 ************************************************************/
 		prosrcdatum = SysCacheGetAttr(PROCOID, procTup,
 									  Anum_pg_proc_prosrc, &isnull);
@@ -1495,7 +1351,7 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 		 ************************************************************/
 		prodesc->reference = plperl_create_sub(proc_source, prodesc->lanpltrusted);
 		pfree(proc_source);
-		if (!prodesc->reference)
+		if (!prodesc->reference) /* can this happen? */
 		{
 			free(prodesc->proname);
 			free(prodesc);
@@ -1517,31 +1373,32 @@ compile_plperl_function(Oid fn_oid, bool is_trigger)
 
 
 /**********************************************************************
- * plperl_build_tuple_argument() - Build a string for a ref to a hash
+ * plperl_hash_from_tuple() - Build a ref to a hash
  *				  from all attributes of a given tuple
  **********************************************************************/
 static SV  *
-plperl_build_tuple_argument(HeapTuple tuple, TupleDesc tupdesc)
+plperl_hash_from_tuple(HeapTuple tuple, TupleDesc tupdesc)
 {
-	int			i;
 	HV		   *hv;
-	Datum		attr;
-	bool		isnull;
-	char	   *attname;
-	char	   *outputstr;
-	HeapTuple	typeTup;
-	Oid			typoutput;
-	Oid			typioparam;
-	int			namelen;
+	int			i;
 
 	hv = newHV();
 
 	for (i = 0; i < tupdesc->natts; i++)
 	{
+		Datum		attr;
+		bool		isnull;
+		char	   *attname;
+		char	   *outputstr;
+		Oid			typoutput;
+		Oid			typioparam;
+		bool		typisvarlena;
+		int			namelen;
+
 		if (tupdesc->attrs[i]->attisdropped)
 			continue;
 
-		attname = tupdesc->attrs[i]->attname.data;
+		attname = NameStr(tupdesc->attrs[i]->attname);
 		namelen = strlen(attname);
 		attr = heap_getattr(tuple, i + 1, tupdesc, &isnull);
 
@@ -1551,24 +1408,11 @@ plperl_build_tuple_argument(HeapTuple tuple, TupleDesc tupdesc)
 			continue;
 		}
 
-		/************************************************************
-		 * Lookup the attribute type in the syscache
-		 * for the output function
-		 ************************************************************/
-		typeTup = SearchSysCache(TYPEOID,
-						   ObjectIdGetDatum(tupdesc->attrs[i]->atttypid),
-								 0, 0, 0);
-		if (!HeapTupleIsValid(typeTup))
-			elog(ERROR, "cache lookup failed for type %u",
-				 tupdesc->attrs[i]->atttypid);
+		/* XXX should have a way to cache these lookups */
 
-		typoutput = ((Form_pg_type) GETSTRUCT(typeTup))->typoutput;
-		typioparam = getTypeIOParam(typeTup);
-		ReleaseSysCache(typeTup);
+		getTypeOutputInfo(tupdesc->attrs[i]->atttypid,
+						  &typoutput, &typioparam, &typisvarlena);
 
-		/************************************************************
-		 * Append the attribute name and the value to the list.
-		 ************************************************************/
 		outputstr = DatumGetCString(OidFunctionCall3(typoutput,
 													 attr,
 											ObjectIdGetDatum(typioparam),
@@ -1577,24 +1421,83 @@ plperl_build_tuple_argument(HeapTuple tuple, TupleDesc tupdesc)
 		hv_store(hv, attname, namelen, newSVpv(outputstr, 0), 0);
 	}
 
-	return sv_2mortal(newRV((SV *)hv));
+	return newRV_noinc((SV *) hv);
 }
 
 
+/*
+ * Implementation of spi_exec_query() Perl function
+ */
 HV *
 plperl_spi_exec(char *query, int limit)
 {
 	HV		   *ret_hv;
-	int			spi_rv;
 
-	spi_rv = SPI_execute(query, plperl_current_prodesc->fn_readonly, limit);
-	ret_hv = plperl_spi_execute_fetch_result(SPI_tuptable, SPI_processed, spi_rv);
+	/*
+	 * Execute the query inside a sub-transaction, so we can cope with
+	 * errors sanely
+	 */
+	MemoryContext oldcontext = CurrentMemoryContext;
+	ResourceOwner oldowner = CurrentResourceOwner;
+
+	BeginInternalSubTransaction(NULL);
+	/* Want to run inside function's memory context */
+	MemoryContextSwitchTo(oldcontext);
+
+	PG_TRY();
+	{
+		int			spi_rv;
+
+		spi_rv = SPI_execute(query, plperl_current_prodesc->fn_readonly,
+							 limit);
+		ret_hv = plperl_spi_execute_fetch_result(SPI_tuptable, SPI_processed,
+												 spi_rv);
+
+		/* Commit the inner transaction, return to outer xact context */
+		ReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldcontext);
+		CurrentResourceOwner = oldowner;
+		/*
+		 * AtEOSubXact_SPI() should not have popped any SPI context,
+		 * but just in case it did, make sure we remain connected.
+		 */
+		SPI_restore_connection();
+	}
+	PG_CATCH();
+	{
+		ErrorData  *edata;
+
+		/* Save error info */
+		MemoryContextSwitchTo(oldcontext);
+		edata = CopyErrorData();
+		FlushErrorState();
+
+		/* Abort the inner transaction */
+		RollbackAndReleaseCurrentSubTransaction();
+		MemoryContextSwitchTo(oldcontext);
+		CurrentResourceOwner = oldowner;
+
+		/*
+		 * If AtEOSubXact_SPI() popped any SPI context of the subxact,
+		 * it will have left us in a disconnected state.  We need this
+		 * hack to return to connected state.
+		 */
+		SPI_restore_connection();
+
+		/* Punt the error to Perl */
+		croak("%s", edata->message);
+
+		/* Can't get here, but keep compiler quiet */
+		return NULL;
+	}
+	PG_END_TRY();
 
 	return ret_hv;
 }
 
 static HV  *
-plperl_spi_execute_fetch_result(SPITupleTable *tuptable, int processed, int status)
+plperl_spi_execute_fetch_result(SPITupleTable *tuptable, int processed,
+								int status)
 {
 	HV		   *result;
 
@@ -1607,21 +1510,18 @@ plperl_spi_execute_fetch_result(SPITupleTable *tuptable, int processed, int stat
 
 	if (status == SPI_OK_SELECT)
 	{
-		if (processed)
-		{
-			AV		   *rows;
-			HV		   *row;
-			int			i;
+		AV		   *rows;
+		SV		   *row;
+		int			i;
 
-			rows = newAV();
-			for (i = 0; i < processed; i++)
-			{
-				row = plperl_hash_from_tuple(tuptable->vals[i], tuptable->tupdesc);
-				av_push(rows, newRV_noinc((SV *)row));
-			}
-			hv_store(result, "rows", strlen("rows"),
-					 newRV_noinc((SV *) rows), 0);
+		rows = newAV();
+		for (i = 0; i < processed; i++)
+		{
+			row = plperl_hash_from_tuple(tuptable->vals[i], tuptable->tupdesc);
+			av_push(rows, row);
 		}
+		hv_store(result, "rows", strlen("rows"),
+				 newRV_noinc((SV *) rows), 0);
 	}
 
 	SPI_freetuptable(tuptable);

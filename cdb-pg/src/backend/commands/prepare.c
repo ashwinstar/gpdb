@@ -7,10 +7,10 @@
  * accessed via the extended FE/BE query protocol.
  *
  *
- * Copyright (c) 2002-2004, PostgreSQL Global Development Group
+ * Copyright (c) 2002-2005, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/prepare.c,v 1.32 2004/09/13 20:06:29 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/prepare.c,v 1.36 2005/01/01 05:43:06 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -48,6 +48,7 @@ void
 PrepareQuery(PrepareStmt *stmt)
 {
 	const char *commandTag;
+	Query	   *query;
 	List	   *query_list,
 			   *plan_list;
 
@@ -87,8 +88,18 @@ PrepareQuery(PrepareStmt *stmt)
 	 * the query.
 	 */
 
+	/*
+	 * Because the planner is not cool about not scribbling on its input,
+	 * we make a preliminary copy of the source querytree.  This prevents
+	 * problems in the case that the PREPARE is in a portal or plpgsql
+	 * function and is executed repeatedly.  (See also the same hack in
+	 * DECLARE CURSOR and EXPLAIN.)  XXX the planner really shouldn't
+	 * modify its input ... FIXME someday.
+	 */
+	query = copyObject(stmt->query);
+
 	/* Rewrite the query. The result could be 0, 1, or many queries. */
-	query_list = QueryRewrite(stmt->query);
+	query_list = QueryRewrite(query);
 
 	/* Generate plans for queries.	Snapshot is already set. */
 	plan_list = pg_plan_queries(query_list, NULL, false);
@@ -264,9 +275,6 @@ InitQueryHashTable(void)
 								   32,
 								   &hash_ctl,
 								   HASH_ELEM);
-
-	if (!prepared_queries)
-		elog(ERROR, "could not create hash table");
 }
 
 /*
@@ -299,8 +307,7 @@ StorePreparedStatement(const char *stmt_name,
 
 	/* Check for pre-existing entry of same name */
 	/* See notes in FetchPreparedStatement */
-	MemSet(key, 0, sizeof(key));
-	strncpy(key, stmt_name, sizeof(key));
+	StrNCpy(key, stmt_name, sizeof(key));
 
 	hash_search(prepared_queries, key, HASH_FIND, &found);
 
@@ -373,8 +380,7 @@ FetchPreparedStatement(const char *stmt_name, bool throwError)
 		 * the hash package is picky enough that it needs to be
 		 * NULL-padded out to the appropriate length to work correctly.
 		 */
-		MemSet(key, 0, sizeof(key));
-		strncpy(key, stmt_name, sizeof(key));
+		StrNCpy(key, stmt_name, sizeof(key));
 
 		entry = (PreparedStatement *) hash_search(prepared_queries,
 												  key,

@@ -3,12 +3,12 @@
  * readfuncs.c
  *	  Reader functions for Postgres tree nodes.
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/nodes/readfuncs.c,v 1.173 2004/08/29 04:12:33 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/nodes/readfuncs.c,v 1.175 2004/12/31 21:59:55 pgsql Exp $
  *
  * NOTES
  *	  Path and Plan nodes do not have any readfuncs support, because we
@@ -629,6 +629,21 @@ _readRelabelType(void)
 	READ_OID_FIELD(resulttype);
 	READ_INT_FIELD(resulttypmod);
 	READ_ENUM_FIELD(relabelformat, CoercionForm);
+
+	READ_DONE();
+}
+
+/*
+ * _readConvertRowtypeExpr
+ */
+static ConvertRowtypeExpr *
+_readConvertRowtypeExpr(void)
+{
+	READ_LOCALS(ConvertRowtypeExpr);
+
+	READ_NODE_FIELD(arg);
+	READ_OID_FIELD(resulttype);
+	READ_ENUM_FIELD(convertformat, CoercionForm);
 
 	READ_DONE();
 }
@@ -1477,6 +1492,7 @@ static ParseNodeInfo infoAr[] =
 	{"COERCETODOMAINVALUE", (ReadFn)_readCoerceToDomainValue},
 	{"COLUMNDEF", (ReadFn)_readColumnDef},
 	{"CONST", (ReadFn)_readConst},
+	{"CONVERTROWTYPEEXPR", (ReadFn)_readConvertRowtypeExpr},
 	{"DECLARECURSOR", (ReadFn)_readDeclareCursorStmt},
 	{"DISTINCTEXPR", (ReadFn)_readDistinctExpr},
 	{"FIELDSELECT", (ReadFn)_readFieldSelect},

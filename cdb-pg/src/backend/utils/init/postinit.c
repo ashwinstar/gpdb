@@ -3,12 +3,12 @@
  * postinit.c
  *	  postgres initialization utilities
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/init/postinit.c,v 1.137 2004/08/29 05:06:51 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/init/postinit.c,v 1.139 2004/12/31 22:01:40 pgsql Exp $
  *
  *
  *-------------------------------------------------------------------------
@@ -223,14 +223,21 @@ BaseInit(void)
  * InitPostgres
  *		Initialize POSTGRES.
  *
+ * In bootstrap mode neither of the parameters are used.
+ *
+ * The return value indicates whether the userID is a superuser.  (That
+ * can only be tested inside a transaction, so we want to do it during
+ * the startup transaction rather than doing a separate one in postgres.c.)
+ * 
  * Note:
  *		Be very careful with the order of calls in the InitPostgres function.
  * --------------------------------
  */
-void
+bool
 InitPostgres(const char *dbname, const char *username)
 {
 	bool		bootstrap = IsBootstrapProcessingMode();
+	bool		am_superuser;
 
 	/*
 	 * Set up the global variables holding database id and path.
@@ -400,15 +407,19 @@ InitPostgres(const char *dbname, const char *username)
 	RelationCacheInitializePhase3();
 
 	/*
-	 * Check a normal user hasn't connected to a superuser reserved slot.
-	 * We can't do this till after we've read the user information, and we
-	 * must do it inside a transaction since checking superuserness may
-	 * require database access.  The superuser check is probably the most
-	 * expensive part; don't do it until necessary.
+	 * Check if user is a superuser.
 	 */
-	if (ReservedBackends > 0 &&
-		CountEmptyBackendSlots() < ReservedBackends &&
-		!superuser())
+	if (bootstrap)
+		am_superuser = true;
+	else
+		am_superuser = superuser();
+
+	/*
+	 * Check a normal user hasn't connected to a superuser reserved slot.
+	 */
+	if (!am_superuser &&
+		ReservedBackends > 0 &&
+		CountEmptyBackendSlots() < ReservedBackends)
 		ereport(FATAL,
 				(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
 				 errmsg("connection limit exceeded for non-superusers")));
@@ -435,12 +446,6 @@ InitPostgres(const char *dbname, const char *username)
     {
 		cdblink_setup();
     }
-        
-    /*
-	 * Now all default states are fully set up.  Report them to client if
-	 * appropriate.
-	 */
-	BeginReportingGUCOptions();
 
 	/*
 	 * Set up process-exit callback to do pre-shutdown cleanup.  This
@@ -454,6 +459,8 @@ InitPostgres(const char *dbname, const char *username)
 	/* close the transaction we started above */
 	if (!bootstrap)
 		CommitTransactionCommand();
+
+	return am_superuser;
 }
 
 /*

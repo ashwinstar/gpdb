@@ -16,14 +16,12 @@ endif
 # correctly in the LP64 data model.
 LIBS := -lxnet $(LIBS)
 
-# Embed 'libdir' as the shared library search path so that the executables
-# don't need SHLIB_PATH to be set.  (We do not observe the --enable-rpath
-# switch here because you'd get rather bizarre behavior if you leave this
-# option off.)
+# Set up rpath so that the executables don't need SHLIB_PATH to be set.
+# (Note: --disable-rpath is a really bad idea on this platform...)
 ifeq ($(with_gnu_ld), yes)
-   LDFLAGS += -Wl,-rpath -Wl,$(libdir)
+   rpath = -Wl,-rpath -Wl,$(rpathdir)
 else
-   LDFLAGS += -Wl,+b -Wl,$(libdir)
+   rpath = -Wl,+b -Wl,$(rpathdir)
 endif
 
 # catch null pointer dereferences
@@ -35,7 +33,6 @@ endif
 
 # set up appropriate options for shared library builds
 export_dynamic = -Wl,-E
-shlib_symbolic = -Bsymbolic
 
 INSTALL_SHLIB_OPTS = -m 555
 
@@ -55,10 +52,18 @@ endif
 # Rule for building shared libs (currently used only for regression test
 # shlib ... should go away, since this is not really enough knowledge)
 %$(DLSUFFIX): %.o
-ifeq ($(with_gnu_ld), yes)
-	$(CC) $(LDFLAGS) -shared -o $@ $<
+ifeq ($(GCC), yes)
+  ifeq ($(with_gnu_ld), yes)
+	$(CC) $(LDFLAGS) -shared -o $@ $< `$(CC) $(LDFLAGS) -print-libgcc-file-name`
+  else
+	$(LD) -b -o $@ $< `$(CC) $(LDFLAGS) -print-libgcc-file-name`
+  endif
 else
+  ifeq ($(with_gnu_ld), yes)
+	$(CC) $(LDFLAGS) -shared -o $@ $<
+  else
 	$(LD) -b -o $@ $<
+  endif
 endif
 
 sqlmansect = 5

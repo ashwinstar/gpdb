@@ -1,13 +1,15 @@
 /*-------------------------------------------------------------------------
  *
  * exec.c
+ *		Functions for finding and validating executable files
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ *
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/port/exec.c,v 1.30 2004/10/18 19:08:58 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/port/exec.c,v 1.37 2005/01/14 17:47:49 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -26,8 +28,6 @@
 #include <unistd.h>
 #endif
 
-#define _(x) gettext(x)
-
 #ifndef S_IRUSR					/* XXX [TRH] should be in a header */
 #define S_IRUSR		 S_IREAD
 #define S_IWUSR		 S_IWRITE
@@ -42,13 +42,19 @@
 
 #ifndef FRONTEND
 /* We use only 3-parameter elog calls in this file, for simplicity */
-#define log_error(str, param)	elog(LOG, (str), (param))
+/* NOTE: caller must provide gettext call around str! */
+#define log_error(str, param)	elog(LOG, str, param)
 #else
-#define log_error(str, param)	fprintf(stderr, (str), (param))
+#define log_error(str, param)	(fprintf(stderr, str, param), fputc('\n', stderr))
 #endif
 
+#ifdef WIN32_CLIENT_ONLY
+#define getcwd(cwd,len)  GetCurrentDirectory(len, cwd)
+#endif
 
-static void win32_make_absolute(char *path);
+static int	validate_exec(const char *path);
+static int	resolve_symlinks(char *path);
+static char *pipe_read_line(char *cmd, char *line, int maxsize);
 
 
 /*
@@ -157,15 +163,22 @@ validate_exec(const char *path)
 #endif
 }
 
+
 /*
  * find_my_exec -- find an absolute path to a valid executable
+ *
+ *	argv0 is the name passed on the command line
+ *	retpath is the output area (must be of size MAXPGPATH)
+ *	Returns 0 if OK, -1 if error.
  *
  * The reason we have to work so hard to find an absolute path is that
  * on some platforms we can't do dynamic loading unless we know the
  * executable's location.  Also, we need a full path not a relative
- * path because we will later change working directory.
+ * path because we will later change working directory.  Finally, we want
+ * a true path not a symlink location, so that we can locate other files
+ * that are part of our installation relative to the executable.
  *
- * This function is not thread-safe because of it calls validate_exec(),
+ * This function is not thread-safe because it calls validate_exec(),
  * which calls getgrgid().	This function should be used only in
  * non-threaded binaries, not in library routines.
  */
@@ -176,63 +189,41 @@ find_my_exec(const char *argv0, char *retpath)
 				test_path[MAXPGPATH];
 	char	   *path;
 
-#ifndef WIN32_CLIENT_ONLY
 	if (!getcwd(cwd, MAXPGPATH))
-#else
-	if (!GetCurrentDirectory(MAXPGPATH, cwd))
-#endif
-		cwd[0] = '\0';
+	{
+		log_error(gettext("could not identify current directory: %s"),
+				  strerror(errno));
+		return -1;
+	}
 
 	/*
-	 * First try: use the binary that's located in the same directory if
-	 * it was invoked with an explicit path. Presumably the user used an
-	 * explicit path because it wasn't in PATH, and we don't want to use
-	 * incompatible executables.
-	 *
-	 * For the binary: First try: if we're given some kind of path, use it
-	 * (making sure that a relative path is made absolute before returning
-	 * it).
+	 * If argv0 contains a separator, then PATH wasn't used.
 	 */
-	/* Does argv0 have a separator? */
-	if ((path = last_dir_separator(argv0)))
+	if (first_dir_separator(argv0) != NULL)
 	{
-		if (*++path == '\0')
-		{
-			log_error("argv[0] ends with a path separator \"%s\"", argv0);
-			return -1;
-		}
-
 		if (is_absolute_path(argv0))
 			StrNCpy(retpath, argv0, MAXPGPATH);
 		else
-			snprintf(retpath, MAXPGPATH, "%s/%s", cwd, argv0);
-
+			join_path_components(retpath, cwd, argv0);
 		canonicalize_path(retpath);
+
 		if (validate_exec(retpath) == 0)
-		{
-			win32_make_absolute(retpath);
-			return 0;
-		}
-		else
-		{
-			log_error("invalid binary \"%s\"", retpath);
-			return -1;
-		}
+			return resolve_symlinks(retpath);
+
+		log_error(gettext("invalid binary \"%s\""), retpath);
+		return -1;
 	}
 
 #ifdef WIN32
 	/* Win32 checks the current directory first for names without slashes */
-	if (validate_exec(argv0) == 0)
-	{
-		snprintf(retpath, MAXPGPATH, "%s/%s", cwd, argv0);
-		win32_make_absolute(retpath);
-		return 0;
-	}
+	join_path_components(retpath, cwd, argv0);
+	if (validate_exec(retpath) == 0)
+		return resolve_symlinks(retpath);
 #endif
 
 	/*
-	 * Second try: since no explicit path was supplied, the user must have
-	 * been relying on PATH.  We'll use the same PATH.
+	 * Since no explicit path was supplied, the user must have
+	 * been relying on PATH.  We'll search the same PATH.
 	 */
 	if ((path = getenv("PATH")) && *path)
 	{
@@ -253,47 +244,174 @@ find_my_exec(const char *argv0, char *retpath)
 			StrNCpy(test_path, startp, Min(endp - startp + 1, MAXPGPATH));
 
 			if (is_absolute_path(test_path))
-				snprintf(retpath, MAXPGPATH, "%s/%s", test_path, argv0);
+				join_path_components(retpath, test_path, argv0);
 			else
-				snprintf(retpath, MAXPGPATH, "%s/%s/%s", cwd, test_path, argv0);
-
+			{
+				join_path_components(retpath, cwd, test_path);
+				join_path_components(retpath, retpath, argv0);
+			}
 			canonicalize_path(retpath);
+
 			switch (validate_exec(retpath))
 			{
-				case 0: /* found ok */
-					win32_make_absolute(retpath);
-					return 0;
+				case 0:			/* found ok */
+					return resolve_symlinks(retpath);
 				case -1:		/* wasn't even a candidate, keep looking */
-					continue;
+					break;
 				case -2:		/* found but disqualified */
-					log_error("could not read binary \"%s\"", retpath);
-					continue;
+					log_error(gettext("could not read binary \"%s\""),
+							  retpath);
+					break;
 			}
 		} while (*endp);
 	}
 
-	log_error("could not find a \"%s\" to execute", argv0);
+	log_error(gettext("could not find a \"%s\" to execute"), argv0);
 	return -1;
-
-#if NOT_USED
-	/*
-	 * Win32 has a native way to find the executable name, but the above
-	 * method works too.
-	 */
-	if (GetModuleFileName(NULL, retpath, MAXPGPATH) == 0)
-		log_error("GetModuleFileName failed (%i)", (int) GetLastError());
-#endif
 }
 
+
 /*
- * The runtime librarys popen() on win32 does not work when being
+ * resolve_symlinks - resolve symlinks to the underlying file
+ *
+ * Replace "path" by the absolute path to the referenced file.
+ *
+ * Returns 0 if OK, -1 if error.
+ *
+ * Note: we are not particularly tense about producing nice error messages
+ * because we are not really expecting error here; we just determined that
+ * the symlink does point to a valid executable.
+ */
+static int
+resolve_symlinks(char *path)
+{
+#ifdef HAVE_READLINK
+	struct stat buf;
+	char		orig_wd[MAXPGPATH],
+				link_buf[MAXPGPATH];
+	char	   *fname;
+
+	/*
+	 * To resolve a symlink properly, we have to chdir into its directory
+	 * and then chdir to where the symlink points; otherwise we may fail to
+	 * resolve relative links correctly (consider cases involving mount
+	 * points, for example).  After following the final symlink, we use
+	 * getcwd() to figure out where the heck we're at.
+	 *
+	 * One might think we could skip all this if path doesn't point to a
+	 * symlink to start with, but that's wrong.  We also want to get rid
+	 * of any directory symlinks that are present in the given path.
+	 * We expect getcwd() to give us an accurate, symlink-free path.
+	 */
+	if (!getcwd(orig_wd, MAXPGPATH))
+	{
+		log_error(gettext("could not identify current directory: %s"),
+				  strerror(errno));
+		return -1;
+	}
+
+	for (;;)
+	{
+		char   *lsep;
+		int		rllen;
+
+		lsep = last_dir_separator(path);
+		if (lsep)
+		{
+			*lsep = '\0';
+			if (chdir(path) == -1)
+			{
+				log_error(gettext("could not change directory to \"%s\""), path);
+				return -1;
+			}
+			fname = lsep + 1;
+		}
+		else
+			fname = path;
+
+		if (lstat(fname, &buf) < 0 ||
+			(buf.st_mode & S_IFMT) != S_IFLNK)
+			break;
+
+		rllen = readlink(fname, link_buf, sizeof(link_buf));
+		if (rllen < 0 || rllen >= sizeof(link_buf))
+		{
+			log_error(gettext("could not read symbolic link \"%s\""), fname);
+			return -1;
+		}
+		link_buf[rllen] = '\0';
+		strcpy(path, link_buf);
+	}
+
+	/* must copy final component out of 'path' temporarily */
+	strcpy(link_buf, fname);
+
+	if (!getcwd(path, MAXPGPATH))
+	{
+		log_error(gettext("could not identify current directory: %s"),
+				  strerror(errno));
+		return -1;
+	}
+	join_path_components(path, path, link_buf);
+	canonicalize_path(path);
+
+	if (chdir(orig_wd) == -1)
+	{
+		log_error(gettext("could not change directory to \"%s\""), orig_wd);
+		return -1;
+	}
+
+#endif /* HAVE_READLINK */
+
+	return 0;
+}
+
+
+/*
+ * Find another program in our binary's directory,
+ * then make sure it is the proper version.
+ */
+int
+find_other_exec(const char *argv0, const char *target,
+				const char *versionstr, char *retpath)
+{
+	char		cmd[MAXPGPATH];
+	char		line[100];
+
+	if (find_my_exec(argv0, retpath) < 0)
+		return -1;
+
+	/* Trim off program name and keep just directory */
+	*last_dir_separator(retpath) = '\0';
+	canonicalize_path(retpath);
+
+	/* Now append the other program's name */
+	snprintf(retpath + strlen(retpath), MAXPGPATH - strlen(retpath),
+			 "/%s%s", target, EXE);
+
+	if (validate_exec(retpath) != 0)
+		return -1;
+
+	snprintf(cmd, sizeof(cmd), "\"%s\" -V 2>%s", retpath, DEVNULL);
+
+	if (!pipe_read_line(cmd, line, sizeof(line)))
+		return -1;
+
+	if (strcmp(line, versionstr) != 0)
+		return -2;
+
+	return 0;
+}
+
+
+/*
+ * The runtime library's popen() on win32 does not work when being
  * called from a service when running on windows <= 2000, because
  * there is no stdin/stdout/stderr.
  *
  * Executing a command in a pipe and reading the first line from it
  * is all we need.
  */
-
 static char *
 pipe_read_line(char *cmd, char *line, int maxsize)
 {
@@ -317,8 +435,9 @@ pipe_read_line(char *cmd, char *line, int maxsize)
 		return NULL;
 
 	return line;
-#else
-	/* Win32 */
+
+#else /* WIN32 */
+
 	SECURITY_ATTRIBUTES sattr;
 	HANDLE		childstdoutrd,
 				childstdoutwr,
@@ -368,30 +487,45 @@ pipe_read_line(char *cmd, char *line, int maxsize)
 					  &si,
 					  &pi))
 	{
-		DWORD		bytesread = 0;
-
 		/* Successfully started the process */
+		char   *lineptr;
 
 		ZeroMemory(line, maxsize);
 
-		/* Let's see if we can read */
-		if (WaitForSingleObject(childstdoutrddup, 10000) != WAIT_OBJECT_0)
+		/* Try to read at least one line from the pipe */
+		/* This may require more than one wait/read attempt */
+		for (lineptr = line; lineptr < line+maxsize-1; )
 		{
-			/* Got timeout */
-			CloseHandle(pi.hProcess);
-			CloseHandle(pi.hThread);
-			CloseHandle(childstdoutwr);
-			CloseHandle(childstdoutrddup);
-			return NULL;
+			DWORD		bytesread = 0;
+
+			/* Let's see if we can read */
+			if (WaitForSingleObject(childstdoutrddup, 10000) != WAIT_OBJECT_0)
+				break;		/* Timeout, but perhaps we got a line already */
+
+			if (!ReadFile(childstdoutrddup, lineptr, maxsize-(lineptr-line),
+						  &bytesread, NULL))
+				break;		/* Error, but perhaps we got a line already */
+
+			lineptr += strlen(lineptr);
+
+			if (!bytesread)
+				break; /* EOF */
+
+			if (strchr(line, '\n'))
+				break; /* One or more lines read */
 		}
 
-		/* We try just once */
-		if (ReadFile(childstdoutrddup, line, maxsize, &bytesread, NULL) &&
-			bytesread > 0)
+		if (lineptr != line)
 		{
-			/* So we read some data */
-			int			len = strlen(line);
-			retval = line;
+			/* OK, we read some data */
+			int			len;
+
+			/* If we got more than one line, cut off after the first \n */
+			lineptr = strchr(line,'\n');
+			if (lineptr)
+				*(lineptr+1) = '\0';
+
+			len = strlen(line);
 
 			/*
 			 * If EOL is \r\n, convert to just \n. Because stdout is a
@@ -413,6 +547,8 @@ pipe_read_line(char *cmd, char *line, int maxsize)
 			 */
 			if (len == 0 || line[len - 1] != '\n')
 				strcat(line, "\n");
+
+			retval = line;
 		}
 
 		CloseHandle(pi.hProcess);
@@ -423,45 +559,7 @@ pipe_read_line(char *cmd, char *line, int maxsize)
 	CloseHandle(childstdoutrddup);
 
 	return retval;
-#endif
-}
-
-
-
-/*
- * Find our binary directory, then make sure the "target" executable
- * is the proper version.
- */
-int
-find_other_exec(const char *argv0, const char *target,
-				const char *versionstr, char *retpath)
-{
-	char		cmd[MAXPGPATH];
-	char		line[100];
-
-	if (find_my_exec(argv0, retpath) < 0)
-		return -1;
-
-	/* Trim off program name and keep just directory */
-	*last_dir_separator(retpath) = '\0';
-	canonicalize_path(retpath);
-
-	/* Now append the other program's name */
-	snprintf(retpath + strlen(retpath), MAXPGPATH - strlen(retpath),
-			 "/%s%s", target, EXE);
-
-	if (validate_exec(retpath))
-		return -1;
-
-	snprintf(cmd, sizeof(cmd), "\"%s\" -V 2>%s", retpath, DEVNULL);
-
-	if (!pipe_read_line(cmd, line, sizeof(line)))
-		return -1;
-
-	if (strcmp(line, versionstr) != 0)
-		return -2;
-
-	return 0;
+#endif /* WIN32 */
 }
 
 
@@ -486,42 +584,14 @@ pclose_check(FILE *stream)
 		perror("pclose failed");
 	}
 	else if (WIFEXITED(exitstatus))
-	{
-		log_error(_("child process exited with exit code %d\n"),
+		log_error(gettext("child process exited with exit code %d"),
 				  WEXITSTATUS(exitstatus));
-	}
 	else if (WIFSIGNALED(exitstatus))
-	{
-		log_error(_("child process was terminated by signal %d\n"),
+		log_error(gettext("child process was terminated by signal %d"),
 				  WTERMSIG(exitstatus));
-	}
 	else
-	{
-		log_error(_("child process exited with unrecognized status %d\n"),
+		log_error(gettext("child process exited with unrecognized status %d"),
 				  exitstatus);
-	}
 
 	return -1;
-}
-
-
-/*
- * Windows doesn't like relative paths to executables (other things work fine)
- * so we call its builtin function to expand them. Elsewhere this is a NOOP
- */
-static void
-win32_make_absolute(char *path)
-{
-#ifdef WIN32
-	char		abspath[MAXPGPATH];
-
-	if (_fullpath(abspath, path, MAXPGPATH) == NULL)
-	{
-		log_error("Win32 path expansion failed: %s", strerror(errno));
-		StrNCpy(abspath, path, MAXPGPATH);
-	}
-	canonicalize_path(abspath);
-
-	StrNCpy(path, abspath, MAXPGPATH);
-#endif
 }

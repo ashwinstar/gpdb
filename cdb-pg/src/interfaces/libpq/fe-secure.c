@@ -6,12 +6,12 @@
  *	  message integrity and endpoint authentication.
  *
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-secure.c,v 1.55 2004/10/16 03:26:43 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-secure.c,v 1.67 2005/01/10 00:37:12 tgl Exp $
  *
  * NOTES
  *	  [ Most of these notes are wrong/obsolete, but perhaps not all ]
@@ -26,7 +26,7 @@
  *	  "man-in-the-middle" and "impersonation" attacks.	The
  *	  server certificate, or better yet the CA certificate used
  *	  to sign the server certificate, should be present in the
- *	  "$HOME/.postgresql/root.crt" file.  If this file isn't
+ *	  "~/.postgresql/root.crt" file.  If this file isn't
  *	  readable, or the server certificate can't be validated,
  *	  pqsecure_open_client() will return an error code.
  *
@@ -50,7 +50,7 @@
  *	  ...
  *
  *	  Unlike the server's static private key, the client's
- *	  static private key ($HOME/.postgresql/postgresql.key)
+ *	  static private key (~/.postgresql/postgresql.key)
  *	  should normally be stored encrypted.	However we still
  *	  support EPH since it's useful for other reasons.
  *
@@ -63,9 +63,9 @@
  *	  keeping it closed to everyone else.
  *
  *	  The user's certificate and private key are located in
- *		$HOME/.postgresql/postgresql.crt
+ *		~/.postgresql/postgresql.crt
  *	  and
- *		$HOME/.postgresql/postgresql.key
+ *		~/.postgresql/postgresql.key
  *	  respectively.
  *
  *	  ...
@@ -74,21 +74,14 @@
  *	  info_cb() in be-secure.c), since there's mechanism to
  *	  display that information to the client.
  *
- * OS DEPENDENCIES
- *	  The code currently assumes a POSIX password entry.  How should
- *	  Windows and Mac users be handled?
- *
  *-------------------------------------------------------------------------
  */
 
 #include "postgres_fe.h"
 
-#include <sys/types.h>
 #include <signal.h>
 #include <fcntl.h>
-#include <errno.h>
 #include <ctype.h>
-#include <string.h>
 
 #include "libpq-fe.h"
 #include "libpq-int.h"
@@ -107,6 +100,7 @@
 #endif
 #include <arpa/inet.h>
 #endif
+#include <sys/stat.h>
 
 #ifdef ENABLE_THREAD_SAFETY
 #include <pthread.h>
@@ -116,11 +110,6 @@
 #include "strdup.h"
 #endif
 
-#ifndef WIN32
-#include <pwd.h>
-#endif
-#include <sys/stat.h>
-
 #ifdef USE_SSL
 #include <openssl/ssl.h>
 #include <openssl/dh.h>
@@ -128,11 +117,24 @@
 
 
 #ifdef USE_SSL
-static int	verify_cb(int ok, X509_STORE_CTX *ctx);
+
+#ifndef WIN32
+#define USERCERTFILE	".postgresql/postgresql.crt"
+#define USERKEYFILE		".postgresql/postgresql.key"
+#define ROOTCERTFILE	".postgresql/root.crt"
+#define DHFILEPATTERN	"%s/.postgresql/dh%d.pem"
+#else
+/* On Windows, the "home" directory is already PostgreSQL-specific */
+#define USERCERTFILE	"postgresql.crt"
+#define USERKEYFILE		"postgresql.key"
+#define ROOTCERTFILE	"root.crt"
+#define DHFILEPATTERN	"%s/dh%d.pem"
+#endif
 
 #ifdef NOT_USED
 static int	verify_peer(PGconn *);
 #endif
+static int	verify_cb(int ok, X509_STORE_CTX *ctx);
 static DH  *load_dh_file(int keylength);
 static DH  *load_dh_buffer(const char *, size_t);
 static DH  *tmp_dh_cb(SSL *s, int is_export, int keylength);
@@ -147,15 +149,9 @@ static void SSLerrfree(char *buf);
 #endif
 
 #ifdef USE_SSL
-bool		pq_initssllib = true;
+static bool pq_initssllib = true;
 
 static SSL_CTX *SSL_context = NULL;
-#endif
-
-#ifdef ENABLE_THREAD_SAFETY
-static void sigpipe_handler_ignore_send(int signo);
-pthread_key_t pq_thread_in_send = 0;	/* initializer needed on Darwin */
-static pqsigfunc pq_pipe_handler;
 #endif
 
 /* ------------------------------------------------------------ */
@@ -168,7 +164,7 @@ static pqsigfunc pq_pipe_handler;
  *	sessions even if the static private key is compromised,
  *	so we are *highly* motivated to ensure that we can use
  *	EDH even if the user... or an attacker... deletes the
- *	$HOME/.postgresql/dh*.pem files.
+ *	~/.postgresql/dh*.pem files.
  *
  *	It's not critical that users have EPH keys, but it doesn't
  *	hurt and if it's missing someone will demand it, so....
@@ -217,6 +213,19 @@ KWbuHn491xNO25CQWMtem80uKw+pTnisBRF/454n1Jnhub144YRBoN8CAQI=\n\
 /* ------------------------------------------------------------ */
 /*			 Procedures common to all secure sessions			*/
 /* ------------------------------------------------------------ */
+
+
+/*
+ * Exported (but as yet undocumented) function to allow application to
+ * tell us it's already initialized OpenSSL.
+ */
+void
+PQinitSSL(int do_init)
+{
+#ifdef USE_SSL
+	pq_initssllib = do_init;
+#endif
+}
 
 /*
  *	Initialize global context
@@ -267,6 +276,11 @@ pqsecure_open_client(PGconn *conn)
 			close_SSL(conn);
 			return PGRES_POLLING_FAILED;
 		}
+		/*
+		 * Initialize errorMessage to empty.  This allows open_client_SSL()
+		 * to detect whether client_cert_cb() has stored a message.
+		 */
+		resetPQExpBuffer(&conn->errorMessage);
 	}
 	/* Begin or continue the actual handshake */
 	return open_client_SSL(conn);
@@ -374,9 +388,14 @@ ssize_t
 pqsecure_write(PGconn *conn, const void *ptr, size_t len)
 {
 	ssize_t		n;
-
+	
 #ifdef ENABLE_THREAD_SAFETY
-	pthread_setspecific(pq_thread_in_send, "t");
+	sigset_t	osigmask;
+	bool		sigpipe_pending;
+	bool		got_epipe = false;
+	
+	if (pq_block_sigpipe(&osigmask, &sigpipe_pending) < 0)
+		return -1;
 #else
 #ifndef WIN32
 	pqsigfunc	oldsighandler = pqsignal(SIGPIPE, SIG_IGN);
@@ -411,9 +430,15 @@ pqsecure_write(PGconn *conn, const void *ptr, size_t len)
 					char		sebuf[256];
 
 					if (n == -1)
+					{
+#ifdef ENABLE_THREAD_SAFETY
+						if (SOCK_ERRNO == EPIPE)
+							got_epipe = true;
+#endif
 						printfPQExpBuffer(&conn->errorMessage,
 								libpq_gettext("SSL SYSCALL error: %s\n"),
 						SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
+					}
 					else
 					{
 						printfPQExpBuffer(&conn->errorMessage,
@@ -446,10 +471,16 @@ pqsecure_write(PGconn *conn, const void *ptr, size_t len)
 	}
 	else
 #endif
+	{
 		n = send(conn->sock, ptr, len, 0);
+#ifdef ENABLE_THREAD_SAFETY
+		if (n < 0 && SOCK_ERRNO == EPIPE)
+			got_epipe = true;
+#endif
+	}
 
 #ifdef ENABLE_THREAD_SAFETY
-	pthread_setspecific(pq_thread_in_send, "f");
+	pq_reset_sigpipe(&osigmask, sigpipe_pending, got_epipe);
 #else
 #ifndef WIN32
 	pqsignal(SIGPIPE, oldsighandler);
@@ -463,6 +494,7 @@ pqsecure_write(PGconn *conn, const void *ptr, size_t len)
 /*						  SSL specific code						*/
 /* ------------------------------------------------------------ */
 #ifdef USE_SSL
+
 /*
  *	Certificate verification callback
  *
@@ -583,7 +615,7 @@ verify_peer(PGconn *conn)
 
 	return -1;
 }
-#endif
+#endif /* NOT_USED */
 
 /*
  *	Load precomputed DH parameters.
@@ -595,23 +627,17 @@ verify_peer(PGconn *conn)
 static DH  *
 load_dh_file(int keylength)
 {
-#ifdef WIN32
-	return NULL;
-#else
-	char		pwdbuf[BUFSIZ];
-	struct passwd pwdstr;
-	struct passwd *pwd = NULL;
-	FILE	   *fp;
+	char		homedir[MAXPGPATH];
 	char		fnbuf[MAXPGPATH];
-	DH		   *dh = NULL;
+	FILE	   *fp;
+	DH		   *dh;
 	int			codes;
 
-	if (pqGetpwuid(getuid(), &pwdstr, pwdbuf, sizeof(pwdbuf), &pwd) != 0)
+	if (!pqGetHomeDirectory(homedir, sizeof(homedir)))
 		return NULL;
 
 	/* attempt to open file.  It's not an error if it doesn't exist. */
-	snprintf(fnbuf, sizeof(fnbuf), "%s/.postgresql/dh%d.pem",
-			 pwd->pw_dir, keylength);
+	snprintf(fnbuf, sizeof(fnbuf), DHFILEPATTERN, homedir, keylength);
 
 	if ((fp = fopen(fnbuf, "r")) == NULL)
 		return NULL;
@@ -638,7 +664,6 @@ load_dh_file(int keylength)
 	}
 
 	return dh;
-#endif
 }
 
 /*
@@ -742,22 +767,18 @@ tmp_dh_cb(SSL *s, int is_export, int keylength)
 static int
 client_cert_cb(SSL *ssl, X509 **x509, EVP_PKEY **pkey)
 {
-#ifdef WIN32
-	return 0;
-#else
-	char		pwdbuf[BUFSIZ];
-	struct passwd pwdstr;
-	struct passwd *pwd = NULL;
-	struct stat buf,
-				buf2;
+	char		homedir[MAXPGPATH];
+	struct stat buf;
+#ifndef WIN32
+	struct stat buf2;
+#endif
 	char		fnbuf[MAXPGPATH];
 	FILE	   *fp;
 	PGconn	   *conn = (PGconn *) SSL_get_app_data(ssl);
 	int			(*cb) () = NULL;	/* how to read user password */
 	char		sebuf[256];
 
-
-	if (pqGetpwuid(getuid(), &pwdstr, pwdbuf, sizeof(pwdbuf), &pwd) != 0)
+	if (!pqGetHomeDirectory(homedir, sizeof(homedir)))
 	{
 		printfPQExpBuffer(&conn->errorMessage,
 					  libpq_gettext("could not get user information\n"));
@@ -765,10 +786,7 @@ client_cert_cb(SSL *ssl, X509 **x509, EVP_PKEY **pkey)
 	}
 
 	/* read the user certificate */
-	snprintf(fnbuf, sizeof(fnbuf), "%s/.postgresql/postgresql.crt",
-			 pwd->pw_dir);
-	if (stat(fnbuf, &buf) == -1)
-		return 0;
+	snprintf(fnbuf, sizeof(fnbuf), "%s/%s", homedir, USERCERTFILE);
 	if ((fp = fopen(fnbuf, "r")) == NULL)
 	{
 		printfPQExpBuffer(&conn->errorMessage,
@@ -790,41 +808,40 @@ client_cert_cb(SSL *ssl, X509 **x509, EVP_PKEY **pkey)
 	fclose(fp);
 
 	/* read the user key */
-	snprintf(fnbuf, sizeof(fnbuf), "%s/.postgresql/postgresql.key",
-			 pwd->pw_dir);
+	snprintf(fnbuf, sizeof(fnbuf), "%s/%s", homedir, USERKEYFILE);
 	if (stat(fnbuf, &buf) == -1)
 	{
 		printfPQExpBuffer(&conn->errorMessage,
 		libpq_gettext("certificate present, but not private key file \"%s\"\n"),
 						  fnbuf);
-		X509_free(*x509);
 		return 0;
 	}
+#ifndef WIN32
 	if (!S_ISREG(buf.st_mode) || (buf.st_mode & 0077) ||
-		buf.st_uid != getuid())
+		buf.st_uid != geteuid())
 	{
 		printfPQExpBuffer(&conn->errorMessage,
 		libpq_gettext("private key file \"%s\" has wrong permissions\n"),
 						  fnbuf);
-		X509_free(*x509);
 		return 0;
 	}
+#endif
 	if ((fp = fopen(fnbuf, "r")) == NULL)
 	{
 		printfPQExpBuffer(&conn->errorMessage,
 			 libpq_gettext("could not open private key file \"%s\": %s\n"),
 						  fnbuf, pqStrerror(errno, sebuf, sizeof(sebuf)));
-		X509_free(*x509);
 		return 0;
 	}
+#ifndef WIN32
 	if (fstat(fileno(fp), &buf2) == -1 ||
 		buf.st_dev != buf2.st_dev || buf.st_ino != buf2.st_ino)
 	{
 		printfPQExpBuffer(&conn->errorMessage,
 						  libpq_gettext("private key file \"%s\" changed during execution\n"), fnbuf);
-		X509_free(*x509);
 		return 0;
 	}
+#endif
 	if (PEM_read_PrivateKey(fp, pkey, cb, NULL) == NULL)
 	{
 		char	   *err = SSLerrmessage();
@@ -833,7 +850,6 @@ client_cert_cb(SSL *ssl, X509 **x509, EVP_PKEY **pkey)
 				  libpq_gettext("could not read private key file \"%s\": %s\n"),
 						  fnbuf, err);
 		SSLerrfree(err);
-		X509_free(*x509);
 		fclose(fp);
 		return 0;
 	}
@@ -848,13 +864,10 @@ client_cert_cb(SSL *ssl, X509 **x509, EVP_PKEY **pkey)
 			libpq_gettext("certificate does not match private key file \"%s\": %s\n"),
 						  fnbuf, err);
 		SSLerrfree(err);
-		X509_free(*x509);
-		EVP_PKEY_free(*pkey);
 		return 0;
 	}
 
 	return 1;
-#endif
 }
 
 #ifdef ENABLE_THREAD_SAFETY
@@ -866,6 +879,7 @@ pq_threadidcallback(void)
 }
 
 static pthread_mutex_t *pq_lockarray;
+
 static void
 pq_lockingcallback(int mode, int n, const char *file, int line)
 {
@@ -874,6 +888,7 @@ pq_lockingcallback(int mode, int n, const char *file, int line)
 	else
 		pthread_mutex_unlock(&pq_lockarray[n]);
 }
+
 #endif   /* ENABLE_THREAD_SAFETY */
 
 static int
@@ -950,23 +965,17 @@ init_ssl_system(PGconn *conn)
 static int
 initialize_SSL(PGconn *conn)
 {
-#ifndef WIN32
 	struct stat buf;
-	char		pwdbuf[BUFSIZ];
-	struct passwd pwdstr;
-	struct passwd *pwd = NULL;
+	char		homedir[MAXPGPATH];
 	char		fnbuf[MAXPGPATH];
-#endif
 
 	if (init_ssl_system(conn))
 		return -1;
 
-#ifndef WIN32
 	/* Set up to verify server cert, if root.crt is present */
-	if (pqGetpwuid(getuid(), &pwdstr, pwdbuf, sizeof(pwdbuf), &pwd) == 0)
+	if (pqGetHomeDirectory(homedir, sizeof(homedir)))
 	{
-		snprintf(fnbuf, sizeof(fnbuf), "%s/.postgresql/root.crt",
-				 pwd->pw_dir);
+		snprintf(fnbuf, sizeof(fnbuf), "%s/%s", homedir, ROOTCERTFILE);
 		if (stat(fnbuf, &buf) == 0)
 		{
 			if (!SSL_CTX_load_verify_locations(SSL_context, fnbuf, NULL))
@@ -990,7 +999,6 @@ initialize_SSL(PGconn *conn)
 
 	/* set up mechanism to provide client certificate, if available */
 	SSL_CTX_set_client_cert_cb(SSL_context, client_cert_cb);
-#endif
 
 	return 0;
 }
@@ -1045,11 +1053,23 @@ open_client_SSL(PGconn *conn)
 				}
 			case SSL_ERROR_SSL:
 				{
-					char	   *err = SSLerrmessage();
+					/*
+					 * If there are problems with the local certificate files,
+					 * these will be detected by client_cert_cb() which is
+					 * called from SSL_connect().  We want to return that
+					 * error message and not the rather unhelpful error that
+					 * OpenSSL itself returns.  So check to see if an error
+					 * message was already stored.
+					 */
+					if (conn->errorMessage.len == 0)
+					{
+						char	   *err = SSLerrmessage();
 
-					printfPQExpBuffer(&conn->errorMessage,
-								  libpq_gettext("SSL error: %s\n"), err);
-					SSLerrfree(err);
+						printfPQExpBuffer(&conn->errorMessage,
+										  libpq_gettext("SSL error: %s\n"),
+										  err);
+						SSLerrfree(err);
+					}
 					close_SSL(conn);
 					return PGRES_POLLING_FAILED;
 				}
@@ -1201,73 +1221,99 @@ PQgetssl(PGconn *conn)
 		return NULL;
 	return conn->ssl;
 }
-#else
+
+#else   /* !USE_SSL */
+
 void *
 PQgetssl(PGconn *conn)
 {
 	return NULL;
 }
+
 #endif   /* USE_SSL */
 
-
 #ifdef ENABLE_THREAD_SAFETY
-#ifndef WIN32
-/*
- *	Check SIGPIPE handler and perhaps install our own.
- */
-void
-pq_check_sigpipe_handler(void)
-{
-	pthread_key_create(&pq_thread_in_send, NULL);
-
-	/*
-	 * Find current pipe handler and chain on to it.
-	 */
-	pq_pipe_handler = pqsignalinquire(SIGPIPE);
-	pqsignal(SIGPIPE, sigpipe_handler_ignore_send);
-}
 
 /*
- *	Threaded SIGPIPE signal handler
+ *	Block SIGPIPE for this thread.  This prevents send()/write() from exiting
+ *	the application.
  */
-void
-sigpipe_handler_ignore_send(int signo)
+int
+pq_block_sigpipe(sigset_t *osigset, bool *sigpipe_pending)
 {
-	/*
-	 * If we have gotten a SIGPIPE outside send(), chain or exit if we are
-	 * at the end of the chain. Synchronous signals are delivered to the
-	 * thread that caused the signal.
-	 */
-	if (!PQinSend())
+	sigset_t sigpipe_sigset;
+	sigset_t sigset;
+	
+	sigemptyset(&sigpipe_sigset);
+	sigaddset(&sigpipe_sigset, SIGPIPE);
+
+	/* Block SIGPIPE and save previous mask for later reset */
+	SOCK_ERRNO_SET(pthread_sigmask(SIG_BLOCK, &sigpipe_sigset, osigset));
+	if (SOCK_ERRNO)
+		return -1;
+
+	/* We can have a pending SIGPIPE only if it was blocked before */
+	if (sigismember(osigset, SIGPIPE))
 	{
-		if (pq_pipe_handler == SIG_DFL) /* not set by application */
-			exit(128 + SIGPIPE);	/* typical return value for SIG_DFL */
+		/* Is there a pending SIGPIPE? */
+		if (sigpending(&sigset) != 0)
+			return -1;
+	
+		if (sigismember(&sigset, SIGPIPE))
+			*sigpipe_pending = true;
 		else
-			(*pq_pipe_handler) (signo); /* call original handler */
+			*sigpipe_pending = false;
 	}
+	else
+		*sigpipe_pending = false;
+	
+	return 0;
 }
-#endif
-#endif
-
+	
 /*
- *	Indicates whether the current thread is in send()
- *	For use by SIGPIPE signal handlers;  they should
- *	ignore SIGPIPE when libpq is in send().  This means
- *	that the backend has died unexpectedly.
+ *	Discard any pending SIGPIPE and reset the signal mask.
+ *
+ * Note: we are effectively assuming here that the C library doesn't queue
+ * up multiple SIGPIPE events.  If it did, then we'd accidentally leave
+ * ours in the queue when an event was already pending and we got another.
+ * As long as it doesn't queue multiple events, we're OK because the caller
+ * can't tell the difference.
+ *
+ * The caller should say got_epipe = FALSE if it is certain that it
+ * didn't get an EPIPE error; in that case we'll skip the clear operation
+ * and things are definitely OK, queuing or no.  If it got one or might have
+ * gotten one, pass got_epipe = TRUE.
+ *
+ * We do not want this to change errno, since if it did that could lose
+ * the error code from a preceding send().  We essentially assume that if
+ * we were able to do pq_block_sigpipe(), this can't fail.
  */
-pqbool
-PQinSend(void)
+void
+pq_reset_sigpipe(sigset_t *osigset, bool sigpipe_pending, bool got_epipe)
 {
-#ifdef ENABLE_THREAD_SAFETY
-	return (pthread_getspecific(pq_thread_in_send) /* has it been set? */ &&
-			*(char *) pthread_getspecific(pq_thread_in_send) == 't') ? true : false;
-#else
+	int	save_errno = SOCK_ERRNO;
+	int	signo;
+	sigset_t sigset;
 
-	/*
-	 * No threading: our code ignores SIGPIPE around send(). Therefore, we
-	 * can't be in send() if we are checking from a SIGPIPE signal
-	 * handler.
-	 */
-	return false;
-#endif
+	/* Clear SIGPIPE only if none was pending */
+	if (got_epipe && !sigpipe_pending)
+	{
+		if (sigpending(&sigset) == 0 &&
+			sigismember(&sigset, SIGPIPE))
+		{
+			sigset_t sigpipe_sigset;
+			
+			sigemptyset(&sigpipe_sigset);
+			sigaddset(&sigpipe_sigset, SIGPIPE);
+
+			sigwait(&sigpipe_sigset, &signo);
+		}
+	}
+	
+	/* Restore saved block mask */
+	pthread_sigmask(SIG_SETMASK, osigset, NULL);
+
+	SOCK_ERRNO_SET(save_errno);
 }
+
+#endif /* ENABLE_THREAD_SAFETY */

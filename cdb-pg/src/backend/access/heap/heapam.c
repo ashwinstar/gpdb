@@ -3,12 +3,12 @@
  * heapam.c
  *	  heap access method code
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/heap/heapam.c,v 1.179 2004/10/15 22:39:42 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/heap/heapam.c,v 1.182 2004/12/31 21:59:16 pgsql Exp $
  *
  *
  * INTERFACE ROUTINES
@@ -191,8 +191,6 @@ heapgettup(Relation relation,
 		*buffer = ReleaseAndReadBuffer(*buffer,
 									   relation,
 									   ItemPointerGetBlockNumber(tid));
-		if (!BufferIsValid(*buffer))
-			elog(ERROR, "ReadBuffer failed");
 
 		LockBuffer(*buffer, BUFFER_LOCK_SHARE);
 
@@ -226,8 +224,6 @@ heapgettup(Relation relation,
 		*buffer = ReleaseAndReadBuffer(*buffer,
 									   relation,
 									   page);
-		if (!BufferIsValid(*buffer))
-			elog(ERROR, "ReadBuffer failed");
 
 		LockBuffer(*buffer, BUFFER_LOCK_SHARE);
 
@@ -266,8 +262,6 @@ heapgettup(Relation relation,
 		*buffer = ReleaseAndReadBuffer(*buffer,
 									   relation,
 									   page);
-		if (!BufferIsValid(*buffer))
-			elog(ERROR, "ReadBuffer failed");
 
 		LockBuffer(*buffer, BUFFER_LOCK_SHARE);
 
@@ -360,8 +354,6 @@ heapgettup(Relation relation,
 		*buffer = ReleaseAndReadBuffer(*buffer,
 									   relation,
 									   page);
-		if (!BufferIsValid(*buffer))
-			elog(ERROR, "ReadBuffer failed");
 
 		LockBuffer(*buffer, BUFFER_LOCK_SHARE);
 		dp = (Page) BufferGetPage(*buffer);
@@ -878,14 +870,16 @@ heap_getnext(HeapScanDesc scan, ScanDirection direction)
  * is set to the buffer holding the tuple and TRUE is returned.  The caller
  * must unpin the buffer when done with the tuple.
  *
- * If the tuple is not found, then tuple->t_data is set to NULL, *userbuf
- * is set to InvalidBuffer, and FALSE is returned.
+ * If the tuple is not found (ie, item number references a deleted slot),
+ * then tuple->t_data is set to NULL and FALSE is returned.
  *
- * If the tuple is found but fails the time qual check, then FALSE will be
- * returned. When the caller specifies keep_buf = true, we retain the pin
- * on the buffer and return it in *userbuf (so the caller can still access
- * the tuple); when keep_buf = false, the pin is released and *userbuf is set
- * to InvalidBuffer.
+ * If the tuple is found but fails the time qual check, then FALSE is returned
+ * but tuple->t_data is left pointing to the tuple.
+ *
+ * keep_buf determines what is done with the buffer in the FALSE-result cases.
+ * When the caller specifies keep_buf = true, we retain the pin on the buffer
+ * and return it in *userbuf (so the caller must eventually unpin it); when
+ * keep_buf = false, the pin is released and *userbuf is set to InvalidBuffer.
  *
  * It is somewhat inconsistent that we ereport() on invalid block number but
  * return false on invalid item number.  This is historical.  The only
@@ -914,6 +908,8 @@ heap_fetch(Relation relation,
  * InvalidBuffer on entry, that buffer will be released before reading
  * the new page.  This saves a separate ReleaseBuffer step and hence
  * one entry into the bufmgr when looping through multiple fetches.
+ * Also, if *userbuf is the same buffer that holds the target tuple,
+ * we avoid bufmgr manipulation altogether.
  */
 bool
 heap_release_fetch(Relation relation,
@@ -937,11 +933,6 @@ heap_release_fetch(Relation relation,
 	buffer = ReleaseAndReadBuffer(*userbuf, relation,
 								  ItemPointerGetBlockNumber(tid));
 
-	if (!BufferIsValid(buffer))
-		elog(ERROR, "ReadBuffer(\"%s\", %lu) failed",
-			 RelationGetRelationName(relation),
-			 (unsigned long) ItemPointerGetBlockNumber(tid));
-
 	/*
 	 * Need share lock on buffer to examine tuple commit status.
 	 */
@@ -962,8 +953,13 @@ heap_release_fetch(Relation relation,
 	if (!ItemIdIsUsed(lp))
 	{
 		LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
-		ReleaseBuffer(buffer);
-		*userbuf = InvalidBuffer;
+		if (keep_buf)
+			*userbuf = buffer;
+		else
+		{
+			ReleaseBuffer(buffer);
+			*userbuf = InvalidBuffer;
+		}
 		tuple->t_datamcxt = NULL;
 		tuple->t_data = NULL;
 		return false;
@@ -1007,16 +1003,12 @@ heap_release_fetch(Relation relation,
 
 	/* Tuple failed time qual, but maybe caller wants to see it anyway. */
 	if (keep_buf)
-	{
 		*userbuf = buffer;
-
-		return false;
+	else
+	{
+		ReleaseBuffer(buffer);
+		*userbuf = InvalidBuffer;
 	}
-
-	/* Okay to release pin on buffer. */
-	ReleaseBuffer(buffer);
-
-	*userbuf = InvalidBuffer;
 
 	return false;
 }
@@ -1044,14 +1036,7 @@ heap_get_latest_tid(Relation relation,
 	 * get the buffer from the relation descriptor Note that this does a
 	 * buffer pin.
 	 */
-
 	buffer = ReadBuffer(relation, ItemPointerGetBlockNumber(tid));
-
-	if (!BufferIsValid(buffer))
-		elog(ERROR, "ReadBuffer(\"%s\", %lu) failed",
-			 RelationGetRelationName(relation),
-			 (unsigned long) ItemPointerGetBlockNumber(tid));
-
 	LockBuffer(buffer, BUFFER_LOCK_SHARE);
 
 	/*
@@ -1299,10 +1284,6 @@ heap_delete(Relation relation, ItemPointer tid,
 	Assert(ItemPointerIsValid(tid));
 
 	buffer = ReadBuffer(relation, ItemPointerGetBlockNumber(tid));
-
-	if (!BufferIsValid(buffer))
-		elog(ERROR, "ReadBuffer failed");
-
 	LockBuffer(buffer, BUFFER_LOCK_EXCLUSIVE);
 
 	dp = (PageHeader) BufferGetPage(buffer);
@@ -1523,8 +1504,6 @@ heap_update(Relation relation, ItemPointer otid, HeapTuple newtup,
 	Assert(ItemPointerIsValid(otid));
 
 	buffer = ReadBuffer(relation, ItemPointerGetBlockNumber(otid));
-	if (!BufferIsValid(buffer))
-		elog(ERROR, "ReadBuffer failed");
 	LockBuffer(buffer, BUFFER_LOCK_EXCLUSIVE);
 
 	dp = (PageHeader) BufferGetPage(buffer);
@@ -1858,10 +1837,6 @@ heap_mark4update(Relation relation, HeapTuple tuple, Buffer *buffer,
 	int			result;
 
 	*buffer = ReadBuffer(relation, ItemPointerGetBlockNumber(tid));
-
-	if (!BufferIsValid(*buffer))
-		elog(ERROR, "ReadBuffer failed");
-
 	LockBuffer(*buffer, BUFFER_LOCK_EXCLUSIVE);
 
 	dp = (PageHeader) BufferGetPage(*buffer);

@@ -14,11 +14,11 @@
  * either.	This might need to be fixed someday.
  *
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/nodes/equalfuncs.c,v 1.231 2004/08/29 05:06:43 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/nodes/equalfuncs.c,v 1.234 2004/12/31 21:59:55 pgsql Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -375,6 +375,24 @@ _equalRelabelType(RelabelType *a, RelabelType *b)
 	if (a->relabelformat != b->relabelformat &&
 		a->relabelformat != COERCE_DONTCARE &&
 		b->relabelformat != COERCE_DONTCARE)
+		return false;
+
+	return true;
+}
+
+static bool
+_equalConvertRowtypeExpr(ConvertRowtypeExpr *a, ConvertRowtypeExpr *b)
+{
+	COMPARE_NODE_FIELD(arg);
+	COMPARE_SCALAR_FIELD(resulttype);
+
+	/*
+	 * Special-case COERCE_DONTCARE, so that planner can build coercion
+	 * nodes that are equal() to both explicit and implicit coercions.
+	 */
+	if (a->convertformat != b->convertformat &&
+		a->convertformat != COERCE_DONTCARE &&
+		b->convertformat != COERCE_DONTCARE)
 		return false;
 
 	return true;
@@ -1392,7 +1410,6 @@ _equalCreateSchemaStmt(CreateSchemaStmt *a, CreateSchemaStmt *b)
 {
 	COMPARE_STRING_FIELD(schemaname);
 	COMPARE_STRING_FIELD(authid);
-	COMPARE_STRING_FIELD(tablespacename);
 	COMPARE_NODE_FIELD(schemaElts);
 
 	return true;
@@ -1869,6 +1886,9 @@ equal(void *a, void *b)
 			break;
 		case T_RelabelType:
 			retval = _equalRelabelType(a, b);
+			break;
+		case T_ConvertRowtypeExpr:
+			retval = _equalConvertRowtypeExpr(a, b);
 			break;
 		case T_CaseExpr:
 			retval = _equalCaseExpr(a, b);

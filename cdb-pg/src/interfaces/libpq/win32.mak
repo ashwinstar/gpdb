@@ -62,6 +62,7 @@ CLEAN :
 	-@erase "$(INTDIR)\fe-print.obj"
 	-@erase "$(INTDIR)\fe-secure.obj"
 	-@erase "$(INTDIR)\pqexpbuffer.obj"
+	-@erase "$(INTDIR)\pqsignal.obj"
 	-@erase "$(OUTDIR)\libpqdll.obj"
 	-@erase "$(OUTDIR)\win32.obj"
 	-@erase "$(OUTDIR)\$(OUTFILENAME).lib"
@@ -128,6 +129,7 @@ LIB32_OBJS= \
 	"$(INTDIR)\fe-print.obj" \
 	"$(INTDIR)\fe-secure.obj" \
 	"$(INTDIR)\pqexpbuffer.obj" \
+	"$(INTDIR)\pqsignal.obj" \
 	"$(INTDIR)\wchar.obj" \
 	"$(INTDIR)\encnames.obj" \
 	"$(INTDIR)\pthread-win32.obj"
@@ -136,7 +138,7 @@ LIB32_OBJS= \
 RSC_PROJ=/l 0x409 /fo"$(INTDIR)\libpq.res"
 
 LINK32=link.exe
-LINK32_FLAGS=kernel32.lib user32.lib advapi32.lib wsock32.lib $(SSL_LIBS)  \
+LINK32_FLAGS=kernel32.lib user32.lib advapi32.lib shell32.lib wsock32.lib $(SSL_LIBS)  \
  /nologo /subsystem:windows /dll $(LOPT) /incremental:no\
  /pdb:"$(OUTDIR)\libpqdll.pdb" /machine:I386 /out:"$(OUTDIR)\$(OUTFILENAME).dll"\
  /implib:"$(OUTDIR)\$(OUTFILENAME)dll.lib"  /def:$(OUTFILENAME)dll.def

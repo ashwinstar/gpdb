@@ -10,12 +10,12 @@
  *	  Index cost functions are registered in the pg_am catalog
  *	  in the "amcostestimate" attribute.
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/selfuncs.c,v 1.166 2004/09/18 19:39:50 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/selfuncs.c,v 1.169 2004/12/31 22:01:22 pgsql Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -109,45 +109,6 @@
 #include "utils/pg_locale.h"
 #include "utils/selfuncs.h"
 #include "utils/syscache.h"
-
-
-/*
- * Note: the default selectivity estimates are not chosen entirely at random.
- * We want them to be small enough to ensure that indexscans will be used if
- * available, for typical table densities of ~100 tuples/page.	Thus, for
- * example, 0.01 is not quite small enough, since that makes it appear that
- * nearly all pages will be hit anyway.  Also, since we sometimes estimate
- * eqsel as 1/num_distinct, we probably want DEFAULT_NUM_DISTINCT to equal
- * 1/DEFAULT_EQ_SEL.
- */
-
-/* default selectivity estimate for equalities such as "A = b" */
-#define DEFAULT_EQ_SEL	0.005
-
-/* default selectivity estimate for inequalities such as "A < b" */
-#define DEFAULT_INEQ_SEL  (1.0 / 3.0)
-
-/* default selectivity estimate for pattern-match operators such as LIKE */
-#define DEFAULT_MATCH_SEL	0.005
-
-/* default number of distinct values in a table */
-#define DEFAULT_NUM_DISTINCT  200
-
-/* default selectivity estimate for boolean and null test nodes */
-#define DEFAULT_UNK_SEL			0.005
-#define DEFAULT_NOT_UNK_SEL		(1.0 - DEFAULT_UNK_SEL)
-
-/*
- * Clamp a computed probability estimate (which may suffer from roundoff or
- * estimation errors) to valid range.  Argument must be a float variable.
- */
-#define CLAMP_PROBABILITY(p) \
-	do { \
-		if (p < 0.0) \
-			p = 0.0; \
-		else if (p > 1.0) \
-			p = 1.0; \
-	} while (0)
 
 
 /* Return data from examine_variable and friends */
@@ -3498,6 +3459,8 @@ regex_fixed_prefix(Const *patt_const, bool case_insensitive,
 	char	   *match;
 	int			pos,
 				match_pos,
+				prev_pos,
+				prev_match_pos,
 				paren_depth;
 	char	   *patt;
 	char	   *rest;
@@ -3558,11 +3521,13 @@ regex_fixed_prefix(Const *patt_const, bool case_insensitive,
 
 	/* OK, allocate space for pattern */
 	match = palloc(strlen(patt) + 1);
-	match_pos = 0;
+	prev_match_pos = match_pos = 0;
 
 	/* note start at pos 1 to skip leading ^ */
-	for (pos = 1; patt[pos]; pos++)
+	for (prev_pos = pos = 1; patt[pos]; )
 	{
+		int		len;
+
 		/*
 		 * Check for characters that indicate multiple possible matches
 		 * here. XXX I suspect isalpha() is not an adequately
@@ -3577,6 +3542,14 @@ regex_fixed_prefix(Const *patt_const, bool case_insensitive,
 			break;
 
 		/*
+		 * In AREs, backslash followed by alphanumeric is an escape, not
+		 * a quoted character.  Must treat it as having multiple possible
+		 * matches.
+		 */
+		if (patt[pos] == '\\' && isalnum((unsigned char) patt[pos + 1]))
+			break;
+
+		/*
 		 * Check for quantifiers.  Except for +, this means the preceding
 		 * character is optional, so we must remove it from the prefix
 		 * too!
@@ -3585,14 +3558,13 @@ regex_fixed_prefix(Const *patt_const, bool case_insensitive,
 			patt[pos] == '?' ||
 			patt[pos] == '{')
 		{
-			if (match_pos > 0)
-				match_pos--;
-			pos--;
+			match_pos = prev_match_pos;
+			pos = prev_pos;
 			break;
 		}
 		if (patt[pos] == '+')
 		{
-			pos--;
+			pos = prev_pos;
 			break;
 		}
 		if (patt[pos] == '\\')
@@ -3602,7 +3574,14 @@ regex_fixed_prefix(Const *patt_const, bool case_insensitive,
 			if (patt[pos] == '\0')
 				break;
 		}
-		match[match_pos++] = patt[pos];
+		/* save position in case we need to back up on next loop cycle */
+		prev_match_pos = match_pos;
+		prev_pos = pos;
+		/* must use encoding-aware processing here */
+		len = pg_mblen(&patt[pos]);
+		memcpy(&match[match_pos], &patt[pos], len);
+		match_pos += len;
+		pos += len;
 	}
 
 	match[match_pos] = '\0';

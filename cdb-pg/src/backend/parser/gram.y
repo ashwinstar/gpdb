@@ -6,12 +6,12 @@
  * gram.y
  *	  POSTGRES SQL YACC rules/actions
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/parser/gram.y,v 2.478 2004/10/01 16:39:59 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/parser/gram.y,v 2.481 2004/12/31 22:00:27 pgsql Exp $
  *
  * HISTORY
  *	  AUTHOR			DATE			MAJOR EVENT
@@ -82,6 +82,7 @@ static Node *makeRowNullTest(NullTestType test, RowExpr *row);
 static DefElem *makeDefElem(char *name, Node *arg);
 static A_Const *makeBoolAConst(bool state);
 static FuncCall *makeOverlaps(List *largs, List *rargs);
+static void check_qualified_name(List *names);
 static List *check_func_name(List *names);
 static List *extractArgTypes(List *parameters);
 static SelectStmt *findLeftmostSelect(SelectStmt *node);
@@ -783,7 +784,7 @@ DropGroupStmt:
  *****************************************************************************/
 
 CreateSchemaStmt:
-			CREATE SCHEMA OptSchemaName AUTHORIZATION UserId OptTableSpace OptSchemaEltList
+			CREATE SCHEMA OptSchemaName AUTHORIZATION UserId OptSchemaEltList
 				{
 					CreateSchemaStmt *n = makeNode(CreateSchemaStmt);
 					/* One can omit the schema name or the authorization id. */
@@ -792,18 +793,16 @@ CreateSchemaStmt:
 					else
 						n->schemaname = $5;
 					n->authid = $5;
-					n->tablespacename = $6;
-					n->schemaElts = $7;
+					n->schemaElts = $6;
 					$$ = (Node *)n;
 				}
-			| CREATE SCHEMA ColId OptTableSpace OptSchemaEltList
+			| CREATE SCHEMA ColId OptSchemaEltList
 				{
 					CreateSchemaStmt *n = makeNode(CreateSchemaStmt);
 					/* ...but not both */
 					n->schemaname = $3;
 					n->authid = NULL;
-					n->tablespacename = $4;
-					n->schemaElts = $5;
+					n->schemaElts = $4;
 					$$ = (Node *)n;
 				}
 		;
@@ -2675,14 +2674,10 @@ any_name:	ColId						{ $$ = list_make1(makeString($1)); }
 			| ColId attrs				{ $$ = lcons(makeString($1), $2); }
 		;
 
-/*
- * The slightly convoluted way of writing this production avoids reduce/reduce
- * errors against indirection_el.
- */
 attrs:		'.' attr_name
 					{ $$ = list_make1(makeString($2)); }
-			| '.' attr_name attrs
-					{ $$ = lcons(makeString($2), $3); }
+			| attrs '.' attr_name
+					{ $$ = lappend($1, makeString($3)); }
 		;
 
 
@@ -7433,6 +7428,13 @@ qualified_name_list:
 			| qualified_name_list ',' qualified_name { $$ = lappend($1, $3); }
 		;
 
+/*
+ * The production for a qualified relation name has to exactly match the
+ * production for a qualified func_name, because in a FROM clause we cannot
+ * tell which we are parsing until we see what comes after it ('(' for a
+ * func_name, something else for a relation). Therefore we allow 'indirection'
+ * which may contain subscripts, and reject that case in the C code.
+ */
 qualified_name:
 			relation_name
 				{
@@ -7441,8 +7443,9 @@ qualified_name:
 					$$->schemaname = NULL;
 					$$->relname = $1;
 				}
-			| relation_name attrs
+			| relation_name indirection
 				{
+					check_qualified_name($2);
 					$$ = makeNode(RangeVar);
 					switch (list_length($2))
 					{
@@ -8241,6 +8244,25 @@ makeOverlaps(List *largs, List *rargs)
 	n->agg_star = FALSE;
 	n->agg_distinct = FALSE;
 	return n;
+}
+
+/* check_qualified_name --- check the result of qualified_name production
+ *
+ * It's easiest to let the grammar production for qualified_name allow
+ * subscripts and '*', which we then must reject here.
+ */
+static void
+check_qualified_name(List *names)
+{
+	ListCell   *i;
+
+	foreach(i, names)
+	{
+		if (!IsA(lfirst(i), String))
+			yyerror("syntax error");
+		else if (strcmp(strVal(lfirst(i)), "*") == 0)
+			yyerror("syntax error");
+	}
 }
 
 /* check_func_name --- check the result of func_name production

@@ -4,7 +4,7 @@
 #
 # 'make install' installs whole contents of src/include.
 #
-# $PostgreSQL: pgsql/src/include/Makefile,v 1.15 2004/10/16 22:52:39 tgl Exp $
+# $PostgreSQL: pgsql/src/include/Makefile,v 1.19 2005/01/06 21:00:24 tgl Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -18,10 +18,11 @@ all: pg_config.h pg_config_os.h
 
 # Subdirectories containing headers for server-side dev
 SUBDIRS = access bootstrap catalog commands executor lib libpq mb \
-	nodes optimizer parser port regex rewrite storage tcop utils
+	nodes optimizer parser regex rewrite storage tcop utils \
+	port port/win32 port/win32/arpa port/win32/netinet port/win32/sys
 
 # Install all headers
-install: all installdirs remove-old-headers
+install: all installdirs
 # These headers are needed by the public headers of the interfaces.
 	$(INSTALL_DATA) $(srcdir)/postgres_ext.h   $(DESTDIR)$(includedir)
 	$(INSTALL_DATA) $(srcdir)/libpq/libpq-fs.h $(DESTDIR)$(includedir)/libpq
@@ -46,26 +47,8 @@ install: all installdirs remove-old-headers
 	done
 
 installdirs:
-	$(mkinstalldirs) $(DESTDIR)$(includedir)/libpq $(DESTDIR)$(includedir_internal)/libpq $(DESTDIR)$(includedir_internal)/lib
+	$(mkinstalldirs) $(DESTDIR)$(includedir)/libpq $(DESTDIR)$(includedir_internal)/libpq
 	$(mkinstalldirs) $(addprefix $(DESTDIR)$(includedir_server)/, $(SUBDIRS))
-
-
-# Pre-7.1 Postgres installed some headers that are no longer installed by
-# default.  If we see these headers in the target directory, zap them to
-# avoid cross-version compile problems.  However, don't zap them if they
-# match current sources (that means the user did install-all-headers).
-
-remove-old-headers:
-	for file in fmgr.h postgres.h access/attnum.h commands/trigger.h \
-		executor/spi.h utils/elog.h utils/geo_decls.h utils/mcxt.h \
-		utils/palloc.h; do \
-		if cmp -s $(srcdir)/$$file $(DESTDIR)$(includedir)/$$file 2>/dev/null; \
-		then \
-			: ; \
-		else \
-			rm -f $(DESTDIR)$(includedir)/$$file; \
-		fi ; \
-	done
 
 
 uninstall:

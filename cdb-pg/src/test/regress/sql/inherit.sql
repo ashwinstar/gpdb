@@ -118,7 +118,8 @@ insert into bar2 values(4,4,4);
 
 update bar set f2 = f2 + 100 where f1 in (select f1 from foo);
 
-SELECT relname, bar.* FROM bar, pg_class where bar.tableoid = pg_class.oid;
+SELECT relname, bar.* FROM bar, pg_class where bar.tableoid = pg_class.oid
+order by 1,2;
 
 
 /* Test inheritance of structure (LIKE) */
@@ -145,7 +146,25 @@ SELECT * FROM inhf; /* Single entry with value 'text' */
 
 -- Test changing the type of inherited columns
 insert into d values('test','one','two','three');
-
 alter table a alter column aa type integer using bit_length(aa);
-
 select * from d;
+
+-- Tests for casting between the rowtypes of parent and child
+-- tables. See the pgsql-hackers thread beginning Dec. 4/04
+create table base (i integer);
+create table derived () inherits (base);
+insert into derived (i) values (0);
+select derived::base from derived;
+drop table derived;
+drop table base;
+
+create table p1(ff1 int);
+create table p2(f1 text);
+create function p2text(p2) returns text as 'select $1.f1' language sql;
+create table c1(f3 int) inherits(p1,p2);
+insert into c1 values(123456789, 'hi', 42);
+select p2text(c1.*) from c1;
+drop function p2text(p2);
+drop table c1;
+drop table p2;
+drop table p1;

@@ -4,12 +4,12 @@
  *	  dynamic hash tables
  *
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/hash/dynahash.c,v 1.55 2004/10/22 07:21:06 neilc Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/hash/dynahash.c,v 1.58 2004/12/31 22:01:37 pgsql Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -120,8 +120,6 @@ hash_create(const char *tabname, long nelem, HASHCTL *info, int flags)
 
 	/* Initialize the hash header */
 	hashp = (HTAB *) MEM_ALLOC(sizeof(HTAB));
-	if (!hashp)
-		return NULL;
 	MemSet(hashp, 0, sizeof(HTAB));
 
 	hashp->tabname = (char *) MEM_ALLOC(strlen(tabname) + 1);
@@ -175,7 +173,9 @@ hash_create(const char *tabname, long nelem, HASHCTL *info, int flags)
 	{
 		hashp->hctl = (HASHHDR *) hashp->alloc(sizeof(HASHHDR));
 		if (!hashp->hctl)
-			return NULL;
+			ereport(ERROR,
+					(errcode(ERRCODE_OUT_OF_MEMORY),
+					 errmsg("out of memory")));
 	}
 
 	hdefault(hashp);
@@ -231,7 +231,7 @@ hash_create(const char *tabname, long nelem, HASHCTL *info, int flags)
 	if (!init_htab(hashp, nelem))
 	{
 		hash_destroy(hashp);
-		return NULL;
+		elog(ERROR, "failed to initialize hash table");
 	}
 
 	/*
@@ -243,7 +243,9 @@ hash_create(const char *tabname, long nelem, HASHCTL *info, int flags)
 		if (!element_alloc(hashp, (int) nelem))
 		{
 			hash_destroy(hashp);
-			return NULL;
+			ereport(ERROR,
+					(errcode(ERRCODE_OUT_OF_MEMORY),
+					 errmsg("out of memory")));
 		}
 	}
 
@@ -660,7 +662,7 @@ hash_search(HTAB *hashp,
 			/* caller is expected to fill the data field on return */
 
 			/* Check if it is time to split the segment */
-			if (++hctl->nentries / (long) (hctl->max_bucket + 1) > hctl->ffactor)
+			if (++hctl->nentries / (long) (hctl->max_bucket + 1) >= hctl->ffactor)
 			{
 				/*
 				 * NOTE: failure to expand table is not a fatal error, it

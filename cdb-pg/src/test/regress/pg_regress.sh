@@ -1,5 +1,5 @@
 #! /bin/sh
-# $PostgreSQL: pgsql/src/test/regress/pg_regress.sh,v 1.48 2004/10/24 22:09:33 tgl Exp $
+# $PostgreSQL: pgsql/src/test/regress/pg_regress.sh,v 1.53 2005/01/15 04:15:51 tgl Exp $
 
 me=`basename $0`
 : ${TMPDIR=/tmp}
@@ -49,6 +49,14 @@ message(){
 # ----------
 
 unset LC_COLLATE LC_CTYPE LC_MONETARY LC_MESSAGES LC_NUMERIC LC_TIME LC_ALL LANG LANGUAGE
+
+# On Windows the default locale may not be English, so force it
+case $host_platform in
+    *-*-cygwin*|*-*-mingw32*)
+	LANG=en
+	export LANG
+	;;
+esac
 
 
 # ----------
@@ -185,11 +193,10 @@ esac
 
 
 # ----------
-# When on QNX or BeOS, don't use Unix sockets.
+# On some platforms we can't use Unix sockets.
 # ----------
-
 case $host_platform in
-    *-*-qnx* | *beos*)
+    *-*-cygwin* | *-*-mingw32* | *-*-qnx* | *beos*)
         unix_sockets=no;;
     *)
         unix_sockets=yes;;
@@ -231,18 +238,20 @@ PGDATESTYLE='ISO, MDY'; export PGDATESTYLE
 # with the result of the last shell command before the `exit'.  Hence
 # we have to write `(exit x); exit' below this point.
 
-trap '
-    savestatus=$?
+exit_trap(){ 
+    savestatus=$1
     if [ -n "$postmaster_pid" ]; then
         kill -2 "$postmaster_pid"
         wait "$postmaster_pid"
         unset postmaster_pid
     fi
     rm -f "$TMPFILE" && exit $savestatus
-' 0
+}
 
-trap '
-    savestatus=$?
+trap 'exit_trap $?' 0
+
+sig_trap() {
+    savestatus=$1
     echo; echo "caught signal"
     if [ -n "$postmaster_pid" ]; then
         echo "signalling fast shutdown to postmaster with pid $postmaster_pid"
@@ -251,7 +260,9 @@ trap '
         unset postmaster_pid
     fi
     (exit $savestatus); exit
-' 1 2 13 15
+}
+
+trap 'sig_trap $?' 1 2 13 15
 
 
 
@@ -298,7 +309,7 @@ then
         case $host_platform in
           *-*-mingw32*)
                 pkglibdir="`pwd -W`/$temp_install/install/$pkglibdir"
-        	  temp_install="`pwd`/$temp_install"
+                temp_install="`pwd`/$temp_install"
                 ;;
           *)
                 temp_install="`pwd`/$temp_install"
@@ -406,7 +417,11 @@ then
 
     message "starting postmaster"
     [ "$debug" = yes ] && postmaster_options="$postmaster_options -d 5"
-    [ "$unix_sockets" = no ] && postmaster_options="$postmaster_options -i"
+    if [ "$unix_sockets" = no ]; then
+        postmaster_options="$postmaster_options -c listen_addresses=$hostname"
+    else
+        postmaster_options="$postmaster_options -c listen_addresses=''"
+    fi
     "$bindir/postmaster" -D "$PGDATA" -F $postmaster_options >"$LOGDIR/postmaster.log" 2>&1 &
     postmaster_pid=$!
 
@@ -415,7 +430,7 @@ then
     # wait forever, however.
     i=0
     max=60
-    until "$bindir/psql" $psql_options template1 </dev/null 2>/dev/null
+    until "$bindir/psql" -X $psql_options template1 </dev/null 2>/dev/null
     do
         i=`expr $i + 1`
         if [ $i -ge $max ]
@@ -455,13 +470,6 @@ else # not temp-install
             ;;
     esac
 
-    # If Unix sockets are not available, use the local host by default.
-    if [ "$unix_sockets" = no ]; then
-        PGHOST=$hostname
-        export PGHOST
-        unset PGHOSTADDR
-    fi
-
     if [ -n "$PGPORT" ]; then
         port_info="port $PGPORT"
     else
@@ -471,15 +479,13 @@ else # not temp-install
     if [ -n "$PGHOST" ]; then
         echo "(using postmaster on $PGHOST, $port_info)"
     else
-		case $host_platform in
-			*-*-mingw32*)
-				echo "(using postmaster on localhost socket, $port_info)"
-				;;
-			*)
-				echo "(using postmaster on Unix socket, $port_info)"
-				;;
-		esac
+        if [ "$unix_sockets" = no ]; then
+            echo "(using postmaster on localhost, $port_info)"
+        else
+            echo "(using postmaster on Unix socket, $port_info)"
+        fi
     fi
+
     message "dropping database \"$dbname\""
     "$bindir/dropdb" $psql_options "$dbname"
     # errors can be ignored
@@ -530,12 +536,12 @@ if [ $? -ne 0 ]; then
     (exit 2); exit
 fi
 
-"$bindir/psql" $psql_options -c "\
+"$bindir/psql" -q -X $psql_options -c "\
 checkpoint;
 alter database \"$dbname\" set lc_messages to 'C';
 alter database \"$dbname\" set lc_monetary to 'C';
 alter database \"$dbname\" set lc_numeric to 'C';
-alter database \"$dbname\" set lc_time to 'C';" "$dbname" 2>/dev/null
+alter database \"$dbname\" set lc_time to 'C';" "$dbname"
 if [ $? -ne 0 ]; then
     echo "$me: could not set database default locales"
     (exit 2); exit
@@ -547,7 +553,7 @@ fi
 # ----------
 
 message "dropping regression test user accounts"
-"$bindir/psql" $psql_options -c 'DROP GROUP regressgroup1; DROP GROUP regressgroup2; DROP USER regressuser1, regressuser2, regressuser3, regressuser4;' $dbname 2>/dev/null
+"$bindir/psql" -q -X $psql_options -c 'DROP GROUP regressgroup1; DROP GROUP regressgroup2; DROP USER regressuser1, regressuser2, regressuser3, regressuser4;' $dbname 2>/dev/null
 if [ $? -eq 2 ]; then
     echo "$me: could not drop user accounts"
     (exit 2); exit
@@ -621,7 +627,7 @@ do
         formatted=`echo $1 | awk '{printf "%-20.20s", $1;}'`
         $ECHO_N "test $formatted ... $ECHO_C"
         ( $PSQL -d "$dbname" <"$inputdir/sql/$1.sql" >"$outputdir/results/$1.out" 2>&1 )&
-	wait
+        wait
     else
         # Start a parallel group
         $ECHO_N "parallel group ($# tests): $ECHO_C"

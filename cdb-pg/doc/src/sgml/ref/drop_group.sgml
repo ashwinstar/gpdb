@@ -1,5 +1,5 @@
 <!--
-$PostgreSQL: pgsql/doc/src/sgml/ref/drop_group.sgml,v 1.8 2003/11/29 19:51:38 pgsql Exp $
+$PostgreSQL: pgsql/doc/src/sgml/ref/drop_group.sgml,v 1.10 2005/01/09 05:57:45 tgl Exp $
 PostgreSQL documentation
 -->
 
@@ -29,7 +29,7 @@ DROP GROUP <replaceable class="PARAMETER">name</replaceable>
 
   <para>
    <command>DROP GROUP</command> removes the specified group.  The
-   users in the group are not deleted.
+   users in the group are not removed.
   </para>
  </refsect1>
   
@@ -46,6 +46,17 @@ DROP GROUP <replaceable class="PARAMETER">name</replaceable>
     </listitem>
    </varlistentry>
   </variablelist>
+ </refsect1>
+
+ <refsect1>
+  <title>Notes</title>
+
+  <para>
+   It is unwise to drop a group that has any
+   granted permissions on objects.  Currently, this is not enforced,
+   but it is likely that future versions of
+   <productname>PostgreSQL</productname> will check for the error.
+  </para>
  </refsect1>
 
  <refsect1>

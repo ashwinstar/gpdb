@@ -3,12 +3,12 @@
  * relnode.c
  *	  Relation-node lookup/construction routines
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/util/relnode.c,v 1.62 2004/08/29 05:06:44 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/util/relnode.c,v 1.64 2004/12/31 22:00:23 pgsql Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -159,22 +159,20 @@ make_base_rel(Query *root, int relid)
 			break;
 		case RTE_SUBQUERY:
 		case RTE_FUNCTION:
-			/* Subquery or function --- need only set up attr range */
+			/* Subquery or function --- set up attr range and arrays */
 			/* Note: 0 is included in range to support whole-row Vars */
 			rel->min_attr = 0;
 			rel->max_attr = list_length(rte->eref->colnames);
+			rel->attr_needed = (Relids *)
+				palloc0((rel->max_attr - rel->min_attr + 1) * sizeof(Relids));
+			rel->attr_widths = (int32 *)
+				palloc0((rel->max_attr - rel->min_attr + 1) * sizeof(int32));
 			break;
 		default:
 			elog(ERROR, "unrecognized RTE kind: %d",
 				 (int) rte->rtekind);
 			break;
 	}
-
-	Assert(rel->max_attr >= rel->min_attr);
-	rel->attr_needed = (Relids *)
-		palloc0((rel->max_attr - rel->min_attr + 1) * sizeof(Relids));
-	rel->attr_widths = (int32 *)
-		palloc0((rel->max_attr - rel->min_attr + 1) * sizeof(int32));
 
 	return rel;
 }

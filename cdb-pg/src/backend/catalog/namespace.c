@@ -9,11 +9,11 @@
  * and implementing search-path-controlled searches.
  *
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/catalog/namespace.c,v 1.71 2004/09/16 16:58:27 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/catalog/namespace.c,v 1.73 2004/12/31 21:59:38 pgsql Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -1675,7 +1675,7 @@ InitTempTableNamespace(void)
 		 * that access the temp namespace for my own backend skip
 		 * permissions checks on it.
 		 */
-		namespaceId = NamespaceCreate(namespaceName, BOOTSTRAP_USESYSID, 0);
+		namespaceId = NamespaceCreate(namespaceName, BOOTSTRAP_USESYSID);
 		/* Advance command counter to make namespace visible */
 		CommandCounterIncrement();
 	}

@@ -33,11 +33,11 @@
  * restart needs to be forced.)
  *
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/postmaster/bgwriter.c,v 1.9 2004/10/12 21:54:40 petere Exp $
+ *	  $PostgreSQL: pgsql/src/backend/postmaster/bgwriter.c,v 1.13 2005/01/10 20:02:20 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -347,6 +347,13 @@ BackgroundWriterMain(void)
 			CreateCheckPoint(false, force_checkpoint);
 
 			/*
+			 * After any checkpoint, close all smgr files.	This is so we
+			 * won't hang onto smgr references to deleted files
+			 * indefinitely.
+			 */
+			smgrcloseall();
+
+			/*
 			 * Indicate checkpoint completion to any waiting backends.
 			 */
 			BgWriterShmem->ckpt_done = BgWriterShmem->ckpt_started;
@@ -358,15 +365,6 @@ BackgroundWriterMain(void)
 			 * checkpoints happen at a predictable spacing.
 			 */
 			last_checkpoint_time = now;
-
-			/*
-			 * After any checkpoint, close all smgr files.	This is so we
-			 * won't hang onto smgr references to deleted files
-			 * indefinitely. (It is safe to do this because this process
-			 * does not have a relcache, and so no dangling references
-			 * could remain.)
-			 */
-			smgrcloseall();
 
 			/* Nap for configured time before rechecking */
 			n = 1;
@@ -553,7 +551,7 @@ RequestCheckpoint(bool waitforit)
 		if (bgs->ckpt_failed != old_failed)
 			ereport(ERROR,
 					(errmsg("checkpoint request failed"),
-					 errhint("Consult the postmaster log for details.")));
+					 errhint("Consult the server log for details.")));
 	}
 }
 

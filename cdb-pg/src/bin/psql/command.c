@@ -1,9 +1,9 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2004, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2005, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/command.c,v 1.129 2004/10/16 03:10:16 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/command.c,v 1.139 2005/01/01 05:43:08 momjian Exp $
  */
 #include "postgres_fe.h"
 #include "command.h"
@@ -23,6 +23,10 @@
 #include <io.h>
 #include <fcntl.h>
 #include <direct.h>
+#ifndef WIN32_CLIENT_ONLY
+#include <sys/types.h>			/* for umask() */
+#include <sys/stat.h>			/* for stat() */
+#endif
 #endif
 
 #include "libpq-fe.h"
@@ -123,13 +127,23 @@ HandleSlashCmds(PsqlScanState scan_state,
 		status = CMD_ERROR;
 	}
 
-	/* eat the rest of the options, if any */
-	while ((arg = psql_scan_slash_option(scan_state,
-										 OT_NORMAL, NULL, false)))
+	if (status != CMD_ERROR)
 	{
-		if (status != CMD_ERROR)
+		/* eat any remaining arguments after a valid command */
+		/* note we suppress evaluation of backticks here */
+		while ((arg = psql_scan_slash_option(scan_state,
+											 OT_VERBATIM, NULL, false)))
+		{
 			psql_error("\\%s: extra argument \"%s\" ignored\n", cmd, arg);
-		free(arg);
+			free(arg);
+		}
+	}
+	else
+	{
+		/* silently throw away rest of line after an erroneous command */
+		while ((arg = psql_scan_slash_option(scan_state,
+											 OT_WHOLE_LINE, NULL, false)))
+			free(arg);
 	}
 
 	/* if there is a trailing \\, swallow it */
@@ -644,6 +658,8 @@ exec_command(const char *cmd,
 
 		if (success && !quiet && fname)
 			printf(gettext("Wrote history to file \"%s\".\n"), fname);
+		if (!fname)
+			putchar('\n');
 		free(fname);
 	}
 
@@ -1092,12 +1108,20 @@ editFile(const char *fname)
 	if (!editorName)
 		editorName = DEFAULT_EDITOR;
 
+	/*
+	 * On Unix the EDITOR value should *not* be quoted, since it might include
+	 * switches, eg, EDITOR="pico -t"; it's up to the user to put quotes in it
+	 * if necessary.  But this policy is not very workable on Windows, due to
+	 * severe brain damage in their command shell plus the fact that standard
+	 * program paths include spaces.
+	 */
 	sys = pg_malloc(strlen(editorName) + strlen(fname) + 10 + 1);
-	sprintf(sys,
 #ifndef WIN32
-			"exec "
+	sprintf(sys, "exec %s '%s'", editorName, fname);
+#else
+	sprintf(sys, "%s\"%s\" \"%s\"%s",
+			SYSTEMQUOTE, editorName, fname, SYSTEMQUOTE);
 #endif
-			"%s '%s'", editorName, fname);
 	result = system(sys);
 	if (result == -1)
 		psql_error("could not start editor \"%s\"\n", editorName);
@@ -1119,7 +1143,7 @@ do_edit(const char *filename_arg, PQExpBuffer query_buf)
 	bool		error = false;
 	int			fd;
 
-#ifndef WIN32
+#ifndef WIN32_CLIENT_ONLY
 	struct stat before,
 				after;
 #endif
@@ -1130,13 +1154,35 @@ do_edit(const char *filename_arg, PQExpBuffer query_buf)
 	{
 		/* make a temp file to edit */
 #ifndef WIN32
-		const char *tmpdirenv = getenv("TMPDIR");
+		const char *tmpdir = getenv("TMPDIR");
 
-		snprintf(fnametmp, sizeof(fnametmp), "%s/psql.edit.%d.%d",
-				 tmpdirenv ? tmpdirenv : "/tmp", geteuid(), (int)getpid());
+		if (!tmpdir)
+			tmpdir = "/tmp";
 #else
-		GetTempFileName(".", "psql", 0, fnametmp);
+		char tmpdir[MAXPGPATH];
+		int ret;
+
+		ret = GetTempPath(MAXPGPATH, tmpdir);
+		if (ret == 0 || ret > MAXPGPATH)
+		{
+			psql_error("cannot locate temporary directory: %s",
+						!ret ? strerror(errno) : "");
+			return false;
+		}
+		/*
+		 *	No canonicalize_path() here.
+		 *	EDIT.EXE run from CMD.EXE prepends the current directory to the
+		 *	supplied path unless we use only backslashes, so we do that.
+		 */
 #endif
+		snprintf(fnametmp, sizeof(fnametmp), "%s%spsql.edit.%d", tmpdir,
+#ifndef WIN32
+				"/",
+#else
+				"",	/* trailing separator already present */
+#endif
+				(int)getpid());
+
 		fname = (const char *) fnametmp;
 
 		fd = open(fname, O_WRONLY | O_CREAT | O_EXCL, 0600);
@@ -1174,7 +1220,7 @@ do_edit(const char *filename_arg, PQExpBuffer query_buf)
 		}
 	}
 
-#ifndef WIN32
+#ifndef WIN32_CLIENT_ONLY
 	if (!error && stat(fname, &before) != 0)
 	{
 		psql_error("%s: %s\n", fname, strerror(errno));
@@ -1186,7 +1232,7 @@ do_edit(const char *filename_arg, PQExpBuffer query_buf)
 	if (!error)
 		error = !editFile(fname);
 
-#ifndef WIN32
+#ifndef WIN32_CLIENT_ONLY
 	if (!error && stat(fname, &after) != 0)
 	{
 		psql_error("%s: %s\n", fname, strerror(errno));
@@ -1499,7 +1545,15 @@ do_pset(const char *param, const char *value, printQueryOpt *popt, bool quiet)
 
 
 
+#ifndef WIN32
 #define DEFAULT_SHELL "/bin/sh"
+#else
+/*
+ *	CMD.EXE is in different places in different Win32 releases so we
+ *	have to rely on the path to find it.
+ */
+#define DEFAULT_SHELL "cmd.exe"
+#endif
 
 static bool
 do_shell(const char *command)
@@ -1512,15 +1566,21 @@ do_shell(const char *command)
 		const char *shellName;
 
 		shellName = getenv("SHELL");
+#ifdef WIN32
+		if (shellName == NULL)
+			shellName = getenv("COMSPEC");
+#endif
 		if (shellName == NULL)
 			shellName = DEFAULT_SHELL;
 
 		sys = pg_malloc(strlen(shellName) + 16);
 		sprintf(sys,
+		/* See EDITOR handling comment for an explaination */
 #ifndef WIN32
-				"exec "
+				"exec %s", shellName);
+#else
+				"%s\"%s\"%s", SYSTEMQUOTE, shellName, SYSTEMQUOTE);
 #endif
-				"%s", shellName);
 		result = system(sys);
 		free(sys);
 	}

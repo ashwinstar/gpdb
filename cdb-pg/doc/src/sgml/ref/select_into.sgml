@@ -1,5 +1,5 @@
 <!--
-$PostgreSQL: pgsql/doc/src/sgml/ref/select_into.sgml,v 1.31 2004/09/26 23:48:07 neilc Exp $
+$PostgreSQL: pgsql/doc/src/sgml/ref/select_into.sgml,v 1.33 2005/01/09 05:57:45 tgl Exp $
 PostgreSQL documentation
 -->
 
@@ -95,17 +95,26 @@ SELECT [ ALL | DISTINCT [ ON ( <replaceable class="PARAMETER">expression</replac
 
   <para>
    Prior to <productname>PostgreSQL</> 8.0, the table created by
-   <command>SELECT INTO</command> always included OIDs. Furthermore,
-   these OIDs were newly generated: they were distinct from the OIDs
-   of any of the rows in the source tables of the <command>SELECT
-   INTO</command> statement. Therefore, if <command>SELECT
-   INTO</command> was frequently executed, the OID counter would be
-   rapidly incremented. As of <productname>PostgreSQL</> 8.0, the
+   <command>SELECT INTO</command> always included OIDs.
+   As of <productname>PostgreSQL</> 8.0, the
    inclusion of OIDs in the table created by <command>SELECT
    INTO</command> is controlled by the
    <xref linkend="guc-default-with-oids"> configuration variable. This
    variable currently defaults to true, but will likely default to
    false in a future release of <productname>PostgreSQL</>.
+  </para>
+ </refsect1>
+
+ <refsect1>
+  <title>Examples</title>
+
+  <para>
+   Create a new table <literal>films_recent</literal> consisting of only
+   recent entries from the table <literal>films</literal>:
+
+<programlisting>
+SELECT * INTO films_recent FROM films WHERE date_prod &gt;= '2002-01-01';
+</programlisting>
   </para>
  </refsect1>
 
@@ -123,6 +132,14 @@ SELECT [ ALL | DISTINCT [ ON ( <replaceable class="PARAMETER">expression</replac
    best to use <command>CREATE TABLE AS</command> for this purpose in
    new code.
   </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createtableas" endterm="sql-createtableas-title"></member>
+  </simplelist>
  </refsect1>
 </refentry>
 

@@ -1,12 +1,13 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2004, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2005, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/help.c,v 1.95 2004/10/12 21:54:44 petere Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/help.c,v 1.100 2005/01/08 22:51:13 tgl Exp $
  */
 #include "postgres_fe.h"
 #include "common.h"
+#include "input.h"
 #include "print.h"
 #include "help.h"
 
@@ -18,7 +19,7 @@
 #include <pwd.h>				/* for getpwuid() */
 #endif
 #include <sys/types.h>			/* (ditto) */
-#include <unistd.h>				/* for getuid() */
+#include <unistd.h>				/* for geteuid() */
 #else
 #include <win32.h>
 #endif
@@ -250,7 +251,7 @@ slashUsage(unsigned short int pager)
 	fprintf(output, _("Copy, Large Object\n"));
 	fprintf(output, _("  \\copy ...      perform SQL COPY with data stream to the client host\n"));
 	fprintf(output, _("  \\lo_export LOBOID FILE\n"
-					  "  \\lo_import FILE [COMMENT] \n"
+					  "  \\lo_import FILE [COMMENT]\n"
 					  "  \\lo_list\n"
 				   "  \\lo_unlink LOBOID    large object operations\n"));
 
@@ -374,7 +375,7 @@ print_copyright(void)
 {
 	puts(
 		 "PostgreSQL Data Base Management System\n\n"
-		 "Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group\n\n"
+		 "Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group\n\n"
 		 "This software is based on Postgres95, formerly known as Postgres, which\n"
 		 "contains the following notice:\n\n"
 		 "Portions Copyright(c) 1994, Regents of the University of California\n\n"

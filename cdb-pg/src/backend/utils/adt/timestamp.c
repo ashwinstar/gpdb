@@ -3,12 +3,12 @@
  * timestamp.c
  *	  Functions for the built-in SQL92 types "timestamp" and "interval".
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/timestamp.c,v 1.113 2004/08/30 02:54:39 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/timestamp.c,v 1.117 2004/12/31 22:01:22 pgsql Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -17,7 +17,6 @@
 
 #include <ctype.h>
 #include <math.h>
-#include <errno.h>
 #include <float.h>
 #include <limits.h>
 
@@ -2352,25 +2351,25 @@ timestamp_age(PG_FUNCTION_ARGS)
 			tm->tm_year = -tm->tm_year;
 		}
 
-		if (tm->tm_sec < 0)
+		while (tm->tm_sec < 0)
 		{
 			tm->tm_sec += 60;
 			tm->tm_min--;
 		}
 
-		if (tm->tm_min < 0)
+		while (tm->tm_min < 0)
 		{
 			tm->tm_min += 60;
 			tm->tm_hour--;
 		}
 
-		if (tm->tm_hour < 0)
+		while (tm->tm_hour < 0)
 		{
 			tm->tm_hour += 24;
 			tm->tm_mday--;
 		}
 
-		if (tm->tm_mday < 0)
+		while (tm->tm_mday < 0)
 		{
 			if (dt1 < dt2)
 			{
@@ -2384,7 +2383,7 @@ timestamp_age(PG_FUNCTION_ARGS)
 			}
 		}
 
-		if (tm->tm_mon < 0)
+		while (tm->tm_mon < 0)
 		{
 			tm->tm_mon += 12;
 			tm->tm_year--;
@@ -2437,11 +2436,14 @@ timestamptz_age(PG_FUNCTION_ARGS)
 			   *tm1 = &tt1;
 	struct pg_tm tt2,
 			   *tm2 = &tt2;
+	int			tz1;
+	int			tz2;
+	char	   *tzn;
 
 	result = (Interval *) palloc(sizeof(Interval));
 
-	if ((timestamp2tm(dt1, NULL, tm1, &fsec1, NULL) == 0)
-		&& (timestamp2tm(dt2, NULL, tm2, &fsec2, NULL) == 0))
+	if ((timestamp2tm(dt1, &tz1, tm1, &fsec1, &tzn) == 0)
+		&& (timestamp2tm(dt2, &tz2, tm2, &fsec2, &tzn) == 0))
 	{
 		fsec = (fsec1 - fsec2);
 		tm->tm_sec = (tm1->tm_sec - tm2->tm_sec);
@@ -2463,25 +2465,25 @@ timestamptz_age(PG_FUNCTION_ARGS)
 			tm->tm_year = -tm->tm_year;
 		}
 
-		if (tm->tm_sec < 0)
+		while (tm->tm_sec < 0)
 		{
 			tm->tm_sec += 60;
 			tm->tm_min--;
 		}
 
-		if (tm->tm_min < 0)
+		while (tm->tm_min < 0)
 		{
 			tm->tm_min += 60;
 			tm->tm_hour--;
 		}
 
-		if (tm->tm_hour < 0)
+		while (tm->tm_hour < 0)
 		{
 			tm->tm_hour += 24;
 			tm->tm_mday--;
 		}
 
-		if (tm->tm_mday < 0)
+		while (tm->tm_mday < 0)
 		{
 			if (dt1 < dt2)
 			{
@@ -2495,11 +2497,15 @@ timestamptz_age(PG_FUNCTION_ARGS)
 			}
 		}
 
-		if (tm->tm_mon < 0)
+		while (tm->tm_mon < 0)
 		{
 			tm->tm_mon += 12;
 			tm->tm_year--;
 		}
+
+		/*
+		 * Note: we deliberately ignore any difference between tz1 and tz2.
+		 */
 
 		/* recover sign if necessary... */
 		if (dt1 < dt2)
@@ -2842,6 +2848,7 @@ timestamptz_trunc(PG_FUNCTION_ARGS)
 	int			tz;
 	int			type,
 				val;
+	bool		redotz = false;
 	char	   *lowunits;
 	fsec_t		fsec;
 	char	   *tzn;
@@ -2872,6 +2879,7 @@ timestamptz_trunc(PG_FUNCTION_ARGS)
 				tm->tm_min = 0;
 				tm->tm_sec = 0;
 				fsec = 0;
+				redotz = true;
 				break;
 				/* one may consider DTK_THOUSAND and DTK_HUNDRED... */
 			case DTK_MILLENNIUM:
@@ -2885,12 +2893,14 @@ timestamptz_trunc(PG_FUNCTION_ARGS)
 					tm->tm_year = ((tm->tm_year + 999) / 1000) * 1000 - 999;
 				else
 					tm->tm_year = -((999 - (tm->tm_year - 1)) / 1000) * 1000 + 1;
+				/* FALL THRU */
 			case DTK_CENTURY:
 				/* truncating to the century? as above: -100, 1, 101... */
 				if (tm->tm_year > 0)
 					tm->tm_year = ((tm->tm_year + 99) / 100) * 100 - 99;
 				else
 					tm->tm_year = -((99 - (tm->tm_year - 1)) / 100) * 100 + 1;
+				/* FALL THRU */
 			case DTK_DECADE:
 
 				/*
@@ -2904,18 +2914,26 @@ timestamptz_trunc(PG_FUNCTION_ARGS)
 					else
 						tm->tm_year = -((8 - (tm->tm_year - 1)) / 10) * 10;
 				}
+				/* FALL THRU */
 			case DTK_YEAR:
 				tm->tm_mon = 1;
+				/* FALL THRU */
 			case DTK_QUARTER:
 				tm->tm_mon = (3 * ((tm->tm_mon - 1) / 3)) + 1;
+				/* FALL THRU */
 			case DTK_MONTH:
 				tm->tm_mday = 1;
+				/* FALL THRU */
 			case DTK_DAY:
 				tm->tm_hour = 0;
+				redotz = true;	/* for all cases >= DAY */
+				/* FALL THRU */
 			case DTK_HOUR:
 				tm->tm_min = 0;
+				/* FALL THRU */
 			case DTK_MINUTE:
 				tm->tm_sec = 0;
+				/* FALL THRU */
 			case DTK_SECOND:
 				fsec = 0;
 				break;
@@ -2941,7 +2959,8 @@ timestamptz_trunc(PG_FUNCTION_ARGS)
 				result = 0;
 		}
 
-		tz = DetermineLocalTimeZone(tm);
+		if (redotz)
+			tz = DetermineLocalTimeZone(tm);
 
 		if (tm2timestamp(tm, fsec, &tz, &result) != 0)
 			ereport(ERROR,
@@ -3521,7 +3540,11 @@ timestamptz_part(PG_FUNCTION_ARGS)
 				break;
 
 			case DTK_YEAR:
-				result = tm->tm_year;
+				if (tm->tm_year > 0)
+					result = tm->tm_year;
+				else
+					/* there is no year 0, just 1 BC and 1 AD */
+					result = tm->tm_year - 1;
 				break;
 
 			case DTK_DECADE:

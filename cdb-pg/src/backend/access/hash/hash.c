@@ -3,12 +3,12 @@
  * hash.c
  *	  Implementation of Margo Seltzer's Hashing package for postgres.
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/hash/hash.c,v 1.73 2004/08/29 05:06:40 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/hash/hash.c,v 1.76 2004/12/31 21:59:13 pgsql Exp $
  *
  * NOTES
  *	  This file contains only the public interface routines.
@@ -44,11 +44,6 @@ static void hashbuildCallback(Relation index,
 
 /*
  *	hashbuild() -- build a new hash index.
- *
- *		We use a global variable to record the fact that we're creating
- *		a new index.  This is used to avoid high-concurrency locking,
- *		since the index won't be visible until this transaction commits
- *		and since building is guaranteed to be single-threaded.
  */
 Datum
 hashbuild(PG_FUNCTION_ARGS)
@@ -402,9 +397,8 @@ hashmarkpos(PG_FUNCTION_ARGS)
 	/* bump pin count on currentItemData and copy to currentMarkData */
 	if (ItemPointerIsValid(&(scan->currentItemData)))
 	{
-		so->hashso_mrkbuf = _hash_getbuf(rel,
-								 BufferGetBlockNumber(so->hashso_curbuf),
-										 HASH_NOLOCK);
+		IncrBufferRefCount(so->hashso_curbuf);
+		so->hashso_mrkbuf = so->hashso_curbuf;
 		scan->currentMarkData = scan->currentItemData;
 	}
 
@@ -430,9 +424,8 @@ hashrestrpos(PG_FUNCTION_ARGS)
 	/* bump pin count on currentMarkData and copy to currentItemData */
 	if (ItemPointerIsValid(&(scan->currentMarkData)))
 	{
-		so->hashso_curbuf = _hash_getbuf(rel,
-								 BufferGetBlockNumber(so->hashso_mrkbuf),
-										 HASH_NOLOCK);
+		IncrBufferRefCount(so->hashso_mrkbuf);
+		so->hashso_curbuf = so->hashso_mrkbuf;
 		scan->currentItemData = scan->currentMarkData;
 	}
 

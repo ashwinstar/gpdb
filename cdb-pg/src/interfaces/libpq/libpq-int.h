@@ -9,10 +9,10 @@
  *	  more likely to break across PostgreSQL releases than code that uses
  *	  only the official API.
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/interfaces/libpq/libpq-int.h,v 1.95 2004/10/18 22:00:42 tgl Exp $
+ * $PostgreSQL: pgsql/src/interfaces/libpq/libpq-int.h,v 1.100 2005/01/06 00:59:47 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -31,6 +31,7 @@
 
 #ifdef ENABLE_THREAD_SAFETY
 #include <pthread.h>
+#include <signal.h>
 #endif
 
 #ifdef WIN32_CLIENT_ONLY
@@ -346,6 +347,18 @@ struct pg_conn
 	PQExpBufferData workBuffer; /* expansible string */
 };
 
+/* PGcancel stores all data necessary to cancel a connection. A copy of this
+ * data is required to safely cancel a connection running on a different
+ * thread.
+ */
+struct pg_cancel
+{
+	SockAddr	raddr;			/* Remote address */
+	int			be_pid;			/* PID of backend --- needed for cancels */
+	int			be_key;			/* key of backend --- needed for cancels */
+};
+
+
 /* String descriptions of the ExecStatusTypes.
  * direct use of this array is deprecated; call PQresStatus() instead.
  */
@@ -364,15 +377,16 @@ extern char *const pgresStatus[];
 
 extern int pqPacketSend(PGconn *conn, char pack_type,
 			 const void *buf, size_t buf_len);
+extern bool pqGetHomeDirectory(char *buf, int bufsize);
 
 #ifdef ENABLE_THREAD_SAFETY
-extern pgthreadlock_t *g_threadlock;
+extern pgthreadlock_t pg_g_threadlock;
 
-#define pglock_thread() g_threadlock(true);
-#define pgunlock_thread() g_threadlock(false);
+#define pglock_thread()		pg_g_threadlock(true)
+#define pgunlock_thread()	pg_g_threadlock(false)
 #else
-#define pglock_thread() ((void)0)
-#define pgunlock_thread() ((void)0)
+#define pglock_thread()		((void) 0)
+#define pgunlock_thread()	((void) 0)
 #endif
 
 
@@ -464,12 +478,9 @@ extern ssize_t pqsecure_read(PGconn *, void *ptr, size_t len);
 extern ssize_t pqsecure_write(PGconn *, const void *ptr, size_t len);
 
 #ifdef ENABLE_THREAD_SAFETY
-extern void pq_check_sigpipe_handler(void);
-extern pthread_key_t pq_thread_in_send;
-#endif
-
-#ifdef USE_SSL
-extern bool pq_initssllib;
+extern int	pq_block_sigpipe(sigset_t *osigset, bool *sigpipe_pending);
+extern void pq_reset_sigpipe(sigset_t *osigset, bool sigpipe_pending,
+							 bool got_epipe);
 #endif
 
 /*

@@ -1,5 +1,5 @@
 # Makefile for PL/Perl
-# $PostgreSQL: pgsql/src/pl/plperl/GNUmakefile,v 1.16 2004/10/07 19:01:09 momjian Exp $
+# $PostgreSQL: pgsql/src/pl/plperl/GNUmakefile,v 1.18 2004/11/19 19:22:58 tgl Exp $
 
 subdir = src/pl/plperl
 top_builddir = ../../..
@@ -16,11 +16,6 @@ endif
 # to work without, we have to skip it.
 ifneq (,$(findstring yes, $(shared_libperl)$(allow_nonpic_in_shlib)))
 
-# The code isn't clean with regard to these warnings.
-ifeq ($(GCC),yes)
-override CFLAGS := $(filter-out -Wall -Wmissing-declarations -Wmissing-prototypes, $(CFLAGS))
-endif
-
 ifeq ($(PORTNAME), win32)
 perl_archlibexp := $(subst \,/,$(perl_archlibexp))
 perl_privlibexp := $(subst \,/,$(perl_privlibexp))
@@ -29,6 +24,8 @@ override CPPFLAGS += -DPLPERL_HAVE_UID_GID
 endif
 
 override CPPFLAGS := -I$(srcdir) $(CPPFLAGS) -I$(perl_archlibexp)/CORE
+
+rpathdir = $(perl_archlibexp)/CORE
 
 
 NAME = plperl

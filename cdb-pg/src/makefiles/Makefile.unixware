@@ -7,12 +7,11 @@ endif
 
 ifeq ($(ld_R_works), yes)
 ifeq ($(with_gnu_ld), yes)
-	rpath = -Wl,-rpath,$(libdir)
+	rpath = -Wl,-rpath,$(rpathdir)
 else
-	rpath = -Wl,-R$(libdir)
+	rpath = -Wl,-R$(rpathdir)
 endif
 endif
-shlib_symbolic = -Wl,-Bsymbolic
 
 DLSUFFIX = .so
 ifeq ($(GCC), yes)
@@ -33,5 +32,3 @@ sqlmansect = 5sql
 
 # Unixware needs threads for everything that uses libpq
 CFLAGS += $(PTHREAD_CFLAGS)
-
-

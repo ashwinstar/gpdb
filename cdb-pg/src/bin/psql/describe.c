@@ -1,9 +1,9 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2004, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2005, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/describe.c,v 1.108 2004/10/12 21:54:44 petere Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/describe.c,v 1.111 2005/01/01 05:43:08 momjian Exp $
  */
 #include "postgres_fe.h"
 #include "describe.h"
@@ -112,7 +112,7 @@ describeTablespaces(const char *pattern, bool verbose)
 	PGresult   *res;
 	printQueryOpt myopt = pset.popt;
 
-	if (pset.sversion < 70500)
+	if (pset.sversion < 80000)
 	{
 		fprintf(stderr, _("The server version (%d) does not support tablespaces.\n"),
 				pset.sversion);
@@ -715,7 +715,7 @@ describeOneTableDetails(const char *schemaname,
 	"SELECT relhasindex, relkind, relchecks, reltriggers, relhasrules, \n"
 					  "relhasoids %s \n"
 					  "FROM pg_catalog.pg_class WHERE oid = '%s'",
-					  pset.sversion >= 70500 ? ", reltablespace" : "",
+					  pset.sversion >= 80000 ? ", reltablespace" : "",
 					  oid);
 	res = PSQLexec(buf.data, false);
 	if (!res)
@@ -737,7 +737,7 @@ describeOneTableDetails(const char *schemaname,
 	tableinfo.hasindex = strcmp(PQgetvalue(res, 0, 0), "t") == 0;
 	tableinfo.hasrules = strcmp(PQgetvalue(res, 0, 4), "t") == 0;
 	tableinfo.hasoids = strcmp(PQgetvalue(res, 0, 5), "t") == 0;
-	tableinfo.tablespace = (pset.sversion >= 70500) ?
+	tableinfo.tablespace = (pset.sversion >= 80000) ?
 		atooid(PQgetvalue(res, 0, 6)) : 0;
 	PQclear(res);
 
@@ -1149,9 +1149,9 @@ describeOneTableDetails(const char *schemaname,
 				/* Label as primary key or unique (but not both) */
 				appendPQExpBuffer(&buf,
 							  strcmp(PQgetvalue(result1, i, 1), "t") == 0
-								  ? _(" PRIMARY KEY,") :
+								  ? " PRIMARY KEY," :
 							 (strcmp(PQgetvalue(result1, i, 2), "t") == 0
-							  ? _(" UNIQUE,")
+							  ? " UNIQUE,"
 							  : ""));
 				/* Everything after "USING" is echoed verbatim */
 				indexdef = PQgetvalue(result1, i, 4);
@@ -1162,7 +1162,7 @@ describeOneTableDetails(const char *schemaname,
 				appendPQExpBuffer(&buf, " %s", indexdef);
 
 				if (strcmp(PQgetvalue(result1, i, 3), "t") == 0)
-					appendPQExpBuffer(&buf, _(" CLUSTER"));
+					appendPQExpBuffer(&buf, " CLUSTER");
 
 				footers[count_footers++] = pg_strdup(buf.data);
 			}
@@ -1388,7 +1388,7 @@ describeUsers(const char *pattern)
 		return false;
 
 	myopt.nullPrint = NULL;
-	myopt.title = _("List of database users");
+	myopt.title = _("List of users");
 
 	printQuery(res, &myopt, pset.queryFout);
 
@@ -1428,7 +1428,7 @@ describeGroups(const char *pattern)
 		return false;
 
 	myopt.nullPrint = NULL;
-	myopt.title = _("List of database groups");
+	myopt.title = _("List of groups");
 
 	printQuery(res, &myopt, pset.queryFout);
 

@@ -1,4 +1,4 @@
-/* $PostgreSQL: pgsql/src/interfaces/ecpg/preproc/preproc.y,v 1.298 2004/10/18 13:36:23 meskes Exp $ */
+/* $PostgreSQL: pgsql/src/interfaces/ecpg/preproc/preproc.y,v 1.303 2005/01/10 12:58:30 meskes Exp $ */
 
 /* Copyright comment */
 %{
@@ -208,10 +208,16 @@ static char *
 adjust_informix(struct arguments *list)
 {
 	/* Informix accepts DECLARE with variables that are out of scope when OPEN is called.
+ 	 * for instance you can declare variables in a function, and then subsequently use them
+	 * { 
+	 *      declare_vars();
+	 *      exec sql ... which uses vars declared in the above function
+	 *
 	 * This breaks standard and leads to some very dangerous programming. 
 	 * Since they do, we have to work around and accept their syntax as well.
 	 * But we will do so ONLY in Informix mode.
-	 * We have to change the variables to our own struct and just store the pointer instead of the variable */
+	 * We have to change the variables to our own struct and just store the pointer instead of the variable 
+	 */
 
 	 struct arguments *ptr;
 	 char *result = make_str("");
@@ -225,12 +231,12 @@ adjust_informix(struct arguments *list)
 		original_var = ptr->variable->name;
 		sprintf(temp, "%d))", ecpg_informix_var);
 		
-		if ((ptr->variable->type->type != ECPGt_char && ptr->variable->type->type != ECPGt_unsigned_char) && atoi(ptr->variable->type->size) > 1)
+		if ((ptr->variable->type->type != ECPGt_varchar && ptr->variable->type->type != ECPGt_char && ptr->variable->type->type != ECPGt_unsigned_char) && atoi(ptr->variable->type->size) > 1)
 		{
 			ptr->variable = new_variable(cat_str(4, make_str("("), mm_strdup(ECPGtype_name(ptr->variable->type->u.element->type)), make_str(" *)(ECPG_informix_get_var("), mm_strdup(temp)), ECPGmake_array_type(ECPGmake_simple_type(ptr->variable->type->u.element->type, make_str("1")), ptr->variable->type->size), 0);
 			sprintf(temp, "%d, (", ecpg_informix_var++);
 		}
-		else if ((ptr->variable->type->type == ECPGt_char || ptr->variable->type->type == ECPGt_unsigned_char) && atoi(ptr->variable->type->size) > 1)
+		else if ((ptr->variable->type->type == ECPGt_varchar || ptr->variable->type->type == ECPGt_char || ptr->variable->type->type == ECPGt_unsigned_char) && atoi(ptr->variable->type->size) > 1)
 		{
 			ptr->variable = new_variable(cat_str(4, make_str("("), mm_strdup(ECPGtype_name(ptr->variable->type->type)), make_str(" *)(ECPG_informix_get_var("), mm_strdup(temp)), ECPGmake_simple_type(ptr->variable->type->type, ptr->variable->type->size), 0);
 			sprintf(temp, "%d, (", ecpg_informix_var++);
@@ -1007,10 +1013,10 @@ DropGroupStmt: DROP GROUP_P UserId
  *
  *****************************************************************************/
 
-CreateSchemaStmt:  CREATE SCHEMA OptSchemaName AUTHORIZATION UserId OptTableSpace OptSchemaEltList
-			{ $$ = cat_str(6, make_str("create schema"), $3, make_str("authorization"), $5, $6, $7); }
-		| CREATE SCHEMA ColId OptTableSpace OptSchemaEltList
-			{ $$ = cat_str(4, make_str("create schema"), $3, $4, $5); }
+CreateSchemaStmt:  CREATE SCHEMA OptSchemaName AUTHORIZATION UserId OptSchemaEltList
+			{ $$ = cat_str(5, make_str("create schema"), $3, make_str("authorization"), $5, $6); }
+		| CREATE SCHEMA ColId OptSchemaEltList
+			{ $$ = cat_str(3, make_str("create schema"), $3, $4); }
 		;
 
 OptSchemaName: ColId		{ $$ = $1; }
@@ -1949,12 +1955,8 @@ any_name: ColId        { $$ = $1; }
 	| ColId attrs  { $$ = cat2_str($1, $2); }
         ;
 
-/*
- * The slightly convoluted way of writing this production avoids reduce/reduce
- * errors against indirection_el.
- */
 attrs: '.' attr_name		{ $$ = cat2_str(make_str("."), $2); }
-	| '.' attr_name attrs	{ $$ = cat_str(3, make_str("."), $2, $3); }
+	| attrs '.' attr_name 	{ $$ = cat_str(3, $1, make_str("."), $3); }
 	;
 
 /*****************************************************************************
@@ -2100,7 +2102,7 @@ GrantStmt:	GRANT privileges ON privilege_target TO grantee_list opt_grant_grant_
 
 RevokeStmt:  REVOKE opt_revoke_grant_option privileges ON privilege_target FROM grantee_list opt_drop_behavior
 			{
-			  $$ = cat_str(9, make_str("revoke"), $2, $3, make_str("on"), $5, make_str("from"), $7, $8);
+			  $$ = cat_str(8, make_str("revoke"), $2, $3, make_str("on"), $5, make_str("from"), $7, $8);
 			}
 			  
 		;
@@ -4161,7 +4163,7 @@ qualified_name_list:  qualified_name
 
 qualified_name: relation_name
 		{ $$ = $1; }
-		| relation_name attrs
+		| relation_name indirection
 		{ $$ = cat2_str($1, $2); }
 		;
 
@@ -5757,6 +5759,7 @@ ECPGKeywords_vanames:  SQL_BREAK		{ $$ = make_str("break"); }
 		| SQL_SQLPRINT			{ $$ = make_str("sqlprint"); }
 		| SQL_SQLWARNING		{ $$ = make_str("sqlwarning"); }
 		| SQL_STOP			{ $$ = make_str("stop"); }
+		| SQL_VALUE			{ $$ = make_str("value"); }
 		;
 		
 ECPGKeywords_rest:  SQL_CONNECT			{ $$ = make_str("connect"); }

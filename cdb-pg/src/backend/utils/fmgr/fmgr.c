@@ -3,12 +3,12 @@
  * fmgr.c
  *	  The Postgres function manager.
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/fmgr/fmgr.c,v 1.85 2004/10/01 20:39:54 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/fmgr/fmgr.c,v 1.88 2004/12/31 22:01:31 pgsql Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -40,11 +40,10 @@
  * *additionally* into %d0 for compatibility.) The price is that there are
  * some warnings about int->pointer conversions...
  */
-#if defined(__mc68000__) && defined(__ELF__)
-typedef int32 ((*func_ptr) ());
-
+#if (defined(__mc68000__) || (defined(__m68k__))) && defined(__ELF__)
+typedef int32  (*func_ptr) ();
 #else
-typedef char *((*func_ptr) ());
+typedef char * (*func_ptr) ();
 #endif
 
 /*
@@ -515,10 +514,6 @@ record_C_func(HeapTuple procedureTuple,
 								100,
 								&hash_ctl,
 								HASH_ELEM | HASH_FUNCTION);
-		if (CFuncHash == NULL)
-			ereport(ERROR,
-					(errcode(ERRCODE_OUT_OF_MEMORY),
-					 errmsg("out of memory")));
 	}
 
 	entry = (CFuncHashTabEntry *)

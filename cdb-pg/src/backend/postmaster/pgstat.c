@@ -11,9 +11,9 @@
  *			- Add a pgstat config column to pg_database, so this
  *			  entire thing can be enabled/disabled on a per db basis.
  *
- *	Copyright (c) 2001-2004, PostgreSQL Global Development Group
+ *	Copyright (c) 2001-2005, PostgreSQL Global Development Group
  *
- *	$PostgreSQL: pgsql/src/backend/postmaster/pgstat.c,v 1.81 2004/10/14 20:23:44 momjian Exp $
+ *	$PostgreSQL: pgsql/src/backend/postmaster/pgstat.c,v 1.87 2005/01/01 05:43:07 momjian Exp $
  * ----------
  */
 #include "postgres.h"
@@ -42,6 +42,7 @@
 #include "miscadmin.h"
 #include "postmaster/postmaster.h"
 #include "storage/backendid.h"
+#include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/pg_shmem.h"
 #include "storage/pmsignal.h"
@@ -109,8 +110,9 @@ bool		pgstat_collect_blocklevel = false;
  * ----------
  */
 NON_EXEC_STATIC int pgStatSock = -1;
-static int	pgStatPipe[2];
+NON_EXEC_STATIC int pgStatPipe[2] = {-1,-1};
 static struct sockaddr_storage pgStatAddr;
+static pid_t pgStatCollectorPid = 0;
 
 static time_t last_pgstat_start_time;
 
@@ -377,7 +379,7 @@ pgstat_init(void)
 			 * errno will not be set meaningfully here, so don't use it.
 			 */
 			ereport(LOG,
-					(ERRCODE_CONNECTION_FAILURE,
+					(errcode(ERRCODE_CONNECTION_FAILURE),
 					 errmsg("test message did not get through on socket for statistics collector")));
 			closesocket(pgStatSock);
 			pgStatSock = -1;
@@ -399,7 +401,7 @@ pgstat_init(void)
 		if (test_byte != TESTBYTEVAL)	/* strictly paranoia ... */
 		{
 			ereport(LOG,
-					(ERRCODE_INTERNAL_ERROR,
+					(errcode(ERRCODE_INTERNAL_ERROR),
 					 errmsg("incorrect test message transmission on socket for statistics collector")));
 			closesocket(pgStatSock);
 			pgStatSock = -1;
@@ -412,12 +414,7 @@ pgstat_init(void)
 
 	/* Did we find a working address? */
 	if (!addr || pgStatSock < 0)
-	{
-		ereport(LOG,
-				(errcode_for_socket_access(),
-				 errmsg("disabling statistics collector for lack of working socket")));
 		goto startup_failed;
-	}
 
 	/*
 	 * Set the socket to non-blocking IO.  This ensures that if the
@@ -438,6 +435,9 @@ pgstat_init(void)
 	return;
 
 startup_failed:
+	ereport(LOG,
+			(errmsg("disabling statistics collector for lack of working socket")));
+
 	if (addrs)
 		freeaddrinfo_all(hints.ai_family, addrs);
 
@@ -491,10 +491,6 @@ pgstat_forkexec(STATS_PROCESS_TYPE procType)
 	/* postgres_exec_path is not passed by write_backend_variables */
 	av[ac++] = postgres_exec_path;
 
-	/* Pipe file ids (those not passed by write_backend_variables) */
-	snprintf(pgstatBuf[bufc++], 32, "%d", pgStatPipe[0]);
-	snprintf(pgstatBuf[bufc++], 32, "%d", pgStatPipe[1]);
-
 	/* Add to the arg list */
 	Assert(bufc <= lengthof(pgstatBuf));
 	for (i = 0; i < bufc; i++)
@@ -516,12 +512,10 @@ pgstat_forkexec(STATS_PROCESS_TYPE procType)
 static void
 pgstat_parseArgs(int argc, char *argv[])
 {
-	Assert(argc == 6);
+	Assert(argc == 4);
 
 	argc = 3;
 	StrNCpy(postgres_exec_path, argv[argc++], MAXPGPATH);
-	pgStatPipe[0] = atoi(argv[argc++]);
-	pgStatPipe[1] = atoi(argv[argc++]);
 }
 #endif   /* EXEC_BACKEND */
 
@@ -682,7 +676,7 @@ pgstat_bestart(void)
 /* ----------
  * pgstat_report_activity() -
  *
- *	Called in tcop/postgres.c to tell the collector what the backend
+ *	Called from tcop/postgres.c to tell the collector what the backend
  *	is actually doing (usually "<IDLE>" or the start of the query to
  *	be executed).
  * ----------
@@ -910,7 +904,7 @@ pgstat_vacuum_tabstat(void)
 	/*
 	 * Free the dbid list.
 	 */
-	pfree((char *) dbidlist);
+	pfree(dbidlist);
 
 	/*
 	 * Tell the caller how many removeable objects we found
@@ -988,7 +982,7 @@ pgstat_ping(void)
 /*
  * Create or enlarge the pgStatTabstatMessages array
  */
-static bool
+static void
 more_tabstat_space(void)
 {
 	PgStat_MsgTabstat *newMessages;
@@ -998,39 +992,25 @@ more_tabstat_space(void)
 
 	/* Create (another) quantum of message buffers */
 	newMessages = (PgStat_MsgTabstat *)
-		malloc(sizeof(PgStat_MsgTabstat) * TABSTAT_QUANTUM);
-	if (newMessages == NULL)
-	{
-		ereport(LOG,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("out of memory")));
-		return false;
-	}
+		MemoryContextAllocZero(TopMemoryContext,
+							   sizeof(PgStat_MsgTabstat) * TABSTAT_QUANTUM);
 
 	/* Create or enlarge the pointer array */
 	if (pgStatTabstatMessages == NULL)
 		msgArray = (PgStat_MsgTabstat **)
-			malloc(sizeof(PgStat_MsgTabstat *) * newAlloc);
+			MemoryContextAlloc(TopMemoryContext,
+							   sizeof(PgStat_MsgTabstat *) * newAlloc);
 	else
 		msgArray = (PgStat_MsgTabstat **)
-			realloc(pgStatTabstatMessages,
-					sizeof(PgStat_MsgTabstat *) * newAlloc);
-	if (msgArray == NULL)
-	{
-		free(newMessages);
-		ereport(LOG,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("out of memory")));
-		return false;
-	}
+			repalloc(pgStatTabstatMessages,
+					 sizeof(PgStat_MsgTabstat *) * newAlloc);
 
-	MemSet(newMessages, 0, sizeof(PgStat_MsgTabstat) * TABSTAT_QUANTUM);
 	for (i = 0; i < TABSTAT_QUANTUM; i++)
 		msgArray[pgStatTabstatAlloc + i] = newMessages++;
 	pgStatTabstatMessages = msgArray;
 	pgStatTabstatAlloc = newAlloc;
 
-	return true;
+	Assert(pgStatTabstatUsed < pgStatTabstatAlloc);
 }
 
 /* ----------
@@ -1102,14 +1082,7 @@ pgstat_initstats(PgStat_Info *stats, Relation rel)
 	 * If we ran out of message buffers, we just allocate more.
 	 */
 	if (pgStatTabstatUsed >= pgStatTabstatAlloc)
-	{
-		if (!more_tabstat_space())
-		{
-			stats->no_stats = TRUE;
-			return;
-		}
-		Assert(pgStatTabstatUsed < pgStatTabstatAlloc);
-	}
+		more_tabstat_space();
 
 	/*
 	 * Use the first entry of the next message buffer.
@@ -1146,10 +1119,8 @@ pgstat_count_xact_commit(void)
 	 * new xact-counters.
 	 */
 	if (pgStatTabstatAlloc == 0)
-	{
-		if (!more_tabstat_space())
-			return;
-	}
+		more_tabstat_space();
+
 	if (pgStatTabstatUsed == 0)
 	{
 		pgStatTabstatUsed++;
@@ -1180,10 +1151,8 @@ pgstat_count_xact_rollback(void)
 	 * new xact-counters.
 	 */
 	if (pgStatTabstatAlloc == 0)
-	{
-		if (!more_tabstat_space())
-			return;
-	}
+		more_tabstat_space();
+
 	if (pgStatTabstatUsed == 0)
 	{
 		pgStatTabstatUsed++;
@@ -1405,24 +1374,21 @@ PgstatBufferMain(int argc, char *argv[])
 	 * good.
 	 */
 	if (pgpipe(pgStatPipe) < 0)
-	{
-		ereport(LOG,
+		ereport(ERROR,
 				(errcode_for_socket_access(),
 			 errmsg("could not create pipe for statistics buffer: %m")));
-		exit(1);
-	}
 
-#ifdef EXEC_BACKEND
 	/* child becomes collector process */
-	switch (pgstat_forkexec(STAT_PROC_COLLECTOR))
+#ifdef EXEC_BACKEND
+	pgStatCollectorPid = pgstat_forkexec(STAT_PROC_COLLECTOR);
 #else
-	switch (fork())
+	pgStatCollectorPid = fork();
 #endif
+	switch (pgStatCollectorPid)
 	{
 		case -1:
-			ereport(LOG,
+			ereport(ERROR,
 					(errmsg("could not fork statistics collector: %m")));
-			exit(1);
 
 #ifndef EXEC_BACKEND
 		case 0:
@@ -1473,7 +1439,12 @@ PgstatCollectorMain(int argc, char *argv[])
 	pqsignal(SIGHUP, SIG_IGN);
 	pqsignal(SIGINT, SIG_IGN);
 	pqsignal(SIGTERM, SIG_IGN);
+#ifndef WIN32
 	pqsignal(SIGQUIT, SIG_IGN);
+#else
+	/* kluge to allow buffer process to kill collector; FIXME */
+	pqsignal(SIGQUIT, pgstat_exit);
+#endif
 	pqsignal(SIGALRM, SIG_IGN);
 	pqsignal(SIGPIPE, SIG_IGN);
 	pqsignal(SIGUSR1, SIG_IGN);
@@ -1529,28 +1500,12 @@ PgstatCollectorMain(int argc, char *argv[])
 	hash_ctl.hash = tag_hash;
 	pgStatBeDead = hash_create("Dead Backends", PGSTAT_BE_HASH_SIZE,
 							   &hash_ctl, HASH_ELEM | HASH_FUNCTION);
-	if (pgStatBeDead == NULL)
-	{
-		/* assume the problem is out-of-memory */
-		ereport(LOG,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-			 errmsg("out of memory in statistics collector --- abort")));
-		exit(1);
-	}
 
 	/*
 	 * Create the known backends table
 	 */
-	pgStatBeTable = (PgStat_StatBeEntry *) malloc(
+	pgStatBeTable = (PgStat_StatBeEntry *) palloc0(
 							   sizeof(PgStat_StatBeEntry) * MaxBackends);
-	if (pgStatBeTable == NULL)
-	{
-		ereport(LOG,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-			 errmsg("out of memory in statistics collector --- abort")));
-		exit(1);
-	}
-	memset(pgStatBeTable, 0, sizeof(PgStat_StatBeEntry) * MaxBackends);
 
 	readPipe = pgStatPipe[0];
 
@@ -1605,10 +1560,9 @@ PgstatCollectorMain(int argc, char *argv[])
 		{
 			if (errno == EINTR)
 				continue;
-			ereport(LOG,
+			ereport(ERROR,
 					(errcode_for_socket_access(),
 				 errmsg("select() failed in statistics collector: %m")));
-			exit(1);
 		}
 
 		/*
@@ -1647,10 +1601,9 @@ PgstatCollectorMain(int argc, char *argv[])
 				{
 					if (errno == EINTR)
 						continue;
-					ereport(LOG,
+					ereport(ERROR,
 							(errcode_for_socket_access(),
 							 errmsg("could not read from statistics collector pipe: %m")));
-					exit(1);
 				}
 				if (len == 0)	/* EOF on the pipe! */
 				{
@@ -1670,9 +1623,8 @@ PgstatCollectorMain(int argc, char *argv[])
 						 * sync with the buffer process somehow. Abort so
 						 * that we can restart both processes.
 						 */
-						ereport(LOG,
+						ereport(ERROR,
 						  (errmsg("invalid statistics message length")));
-						exit(1);
 					}
 				}
 			}
@@ -1815,24 +1767,14 @@ pgstat_recvbuffer(void)
 	 * the collector falls behind.
 	 */
 	if (!set_noblock(writePipe))
-	{
-		ereport(LOG,
+		ereport(ERROR,
 				(errcode_for_socket_access(),
 				 errmsg("could not set statistics collector pipe to nonblocking mode: %m")));
-		exit(1);
-	}
 
 	/*
 	 * Allocate the message buffer
 	 */
-	msgbuffer = (char *) malloc(PGSTAT_RECVBUFFERSZ);
-	if (msgbuffer == NULL)
-	{
-		ereport(LOG,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-			 errmsg("out of memory in statistics collector --- abort")));
-		exit(1);
-	}
+	msgbuffer = (char *) palloc(PGSTAT_RECVBUFFERSZ);
 
 	/*
 	 * Loop forever
@@ -1887,10 +1829,9 @@ pgstat_recvbuffer(void)
 		{
 			if (errno == EINTR)
 				continue;
-			ereport(LOG,
+			ereport(ERROR,
 					(errcode_for_socket_access(),
 					 errmsg("select() failed in statistics buffer: %m")));
-			exit(1);
 		}
 
 		/*
@@ -1902,12 +1843,9 @@ pgstat_recvbuffer(void)
 			len = recv(pgStatSock, (char *) &input_buffer,
 					   sizeof(PgStat_Msg), 0);
 			if (len < 0)
-			{
-				ereport(LOG,
+				ereport(ERROR,
 						(errcode_for_socket_access(),
 					   errmsg("could not read statistics message: %m")));
-				exit(1);
-			}
 
 			/*
 			 * We ignore messages that are smaller than our common header
@@ -1968,10 +1906,9 @@ pgstat_recvbuffer(void)
 			{
 				if (errno == EINTR || errno == EAGAIN)
 					continue;	/* not enough space in pipe */
-				ereport(LOG,
+				ereport(ERROR,
 						(errcode_for_socket_access(),
 						 errmsg("could not write to statistics collector pipe: %m")));
-				exit(1);
 			}
 			/* NB: len < xfr is okay */
 			msg_send += len;
@@ -2005,6 +1942,16 @@ pgstat_exit(SIGNAL_ARGS)
 	 * be cleaner to allow any pending messages to be sent, but that
 	 * creates a tradeoff against speed of exit.
 	 */
+
+	/*
+	 * If running in bufferer, kill our collector as well. On some broken
+	 * win32 systems, it does not shut down automatically because of issues
+	 * with socket inheritance.  XXX so why not fix the socket inheritance...
+	 */
+#ifdef WIN32
+	if (pgStatCollectorPid > 0)
+		kill(pgStatCollectorPid, SIGQUIT);
+#endif
 	exit(0);
 }
 
@@ -2093,12 +2040,9 @@ pgstat_add_backend(PgStat_MsgHdr *msg)
 										   (void *) &(msg->m_databaseid),
 												 HASH_ENTER, &found);
 	if (dbentry == NULL)
-	{
-		ereport(LOG,
+		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 			 errmsg("out of memory in statistics collector --- abort")));
-		exit(1);
-	}
 
 	/*
 	 * If not found, initialize the new one.
@@ -2123,14 +2067,6 @@ pgstat_add_backend(PgStat_MsgHdr *msg)
 									  PGSTAT_TAB_HASH_SIZE,
 									  &hash_ctl,
 									  HASH_ELEM | HASH_FUNCTION);
-		if (dbentry->tables == NULL)
-		{
-			/* assume the problem is out-of-memory */
-			ereport(LOG,
-					(errcode(ERRCODE_OUT_OF_MEMORY),
-			 errmsg("out of memory in statistics collector --- abort")));
-			exit(1);
-		}
 	}
 
 	/*
@@ -2179,12 +2115,10 @@ pgstat_sub_backend(int procpid)
 													   HASH_ENTER,
 													   &found);
 			if (deadbe == NULL)
-			{
-				ereport(LOG,
+				ereport(ERROR,
 						(errcode(ERRCODE_OUT_OF_MEMORY),
 						 errmsg("out of memory in statistics collector --- abort")));
-				exit(1);
-			}
+
 			if (!found)
 			{
 				deadbe->backendid = i + 1;
@@ -2256,12 +2190,9 @@ pgstat_write_statsfile(void)
 				if (hash_search(pgStatDBHash,
 								(void *) &(dbentry->databaseid),
 								HASH_REMOVE, NULL) == NULL)
-				{
-					ereport(LOG,
+					ereport(ERROR,
 							(errmsg("database hash table corrupted "
 									"during cleanup --- abort")));
-					exit(1);
-				}
 			}
 
 			/*
@@ -2294,12 +2225,11 @@ pgstat_write_statsfile(void)
 									(void *) &(tabentry->tableid),
 									HASH_REMOVE, NULL) == NULL)
 					{
-						ereport(LOG,
+						ereport(ERROR,
 								(errmsg("tables hash table for "
 										"database %u corrupted during "
 										"cleanup --- abort",
 										dbentry->databaseid)));
-						exit(1);
 					}
 				}
 				continue;
@@ -2374,10 +2304,9 @@ pgstat_write_statsfile(void)
 							(void *) &(deadbe->procpid),
 							HASH_REMOVE, NULL) == NULL)
 			{
-				ereport(LOG,
+				ereport(ERROR,
 					  (errmsg("dead-server-process hash table corrupted "
 							  "during cleanup --- abort")));
-				exit(1);
 			}
 		}
 	}
@@ -2436,21 +2365,6 @@ pgstat_read_statsfile(HTAB **dbhash, Oid onlydb,
 	hash_ctl.hcxt = use_mcxt;
 	*dbhash = hash_create("Databases hash", PGSTAT_DB_HASH_SIZE, &hash_ctl,
 						  HASH_ELEM | HASH_FUNCTION | mcxt_flags);
-	if (*dbhash == NULL)
-	{
-		/* assume the problem is out-of-memory */
-		if (pgStatRunningInCollector)
-		{
-			ereport(LOG,
-					(errcode(ERRCODE_OUT_OF_MEMORY),
-			 errmsg("out of memory in statistics collector --- abort")));
-			exit(1);
-		}
-		/* in backend, can do normal error */
-		ereport(ERROR,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("out of memory")));
-	}
 
 	/*
 	 * Initialize the number of known backends to zero, just in case we do
@@ -2478,7 +2392,7 @@ pgstat_read_statsfile(HTAB **dbhash, Oid onlydb,
 	 * simply return zero for anything and the collector simply starts
 	 * from scratch with empty counters.
 	 */
-	if ((fpin = fopen(pgStat_fname, PG_BINARY_R)) == NULL)
+	if ((fpin = AllocateFile(pgStat_fname, PG_BINARY_R)) == NULL)
 		return;
 
 	/*
@@ -2499,8 +2413,7 @@ pgstat_read_statsfile(HTAB **dbhash, Oid onlydb,
 				{
 					ereport(pgStatRunningInCollector ? LOG : WARNING,
 							(errmsg("corrupted pgstat.stat file")));
-					fclose(fpin);
-					return;
+					goto done;
 				}
 
 				/*
@@ -2512,27 +2425,15 @@ pgstat_read_statsfile(HTAB **dbhash, Oid onlydb,
 															 &found);
 				if (dbentry == NULL)
 				{
-					if (pgStatRunningInCollector)
-					{
-						ereport(LOG,
-								(errcode(ERRCODE_OUT_OF_MEMORY),
-								 errmsg("out of memory in statistics collector --- abort")));
-						exit(1);
-					}
-					else
-					{
-						fclose(fpin);
-						ereport(ERROR,
-								(errcode(ERRCODE_OUT_OF_MEMORY),
-								 errmsg("out of memory")));
-					}
+					ereport(ERROR,
+							(errcode(ERRCODE_OUT_OF_MEMORY),
+							 errmsg("out of memory")));
 				}
 				if (found)
 				{
 					ereport(pgStatRunningInCollector ? LOG : WARNING,
 							(errmsg("corrupted pgstat.stat file")));
-					fclose(fpin);
-					return;
+					goto done;
 				}
 
 				memcpy(dbentry, &dbbuf, sizeof(PgStat_StatDBEntry));
@@ -2554,23 +2455,7 @@ pgstat_read_statsfile(HTAB **dbhash, Oid onlydb,
 				dbentry->tables = hash_create("Per-database table",
 											  PGSTAT_TAB_HASH_SIZE,
 											  &hash_ctl,
-								 HASH_ELEM | HASH_FUNCTION | mcxt_flags);
-				if (dbentry->tables == NULL)
-				{
-					/* assume the problem is out-of-memory */
-					if (pgStatRunningInCollector)
-					{
-						ereport(LOG,
-								(errcode(ERRCODE_OUT_OF_MEMORY),
-								 errmsg("out of memory in statistics collector --- abort")));
-						exit(1);
-					}
-					/* in backend, can do normal error */
-					fclose(fpin);
-					ereport(ERROR,
-							(errcode(ERRCODE_OUT_OF_MEMORY),
-							 errmsg("out of memory")));
-				}
+											  HASH_ELEM | HASH_FUNCTION | mcxt_flags);
 
 				/*
 				 * Arrange that following 'T's add entries to this
@@ -2594,8 +2479,7 @@ pgstat_read_statsfile(HTAB **dbhash, Oid onlydb,
 				{
 					ereport(pgStatRunningInCollector ? LOG : WARNING,
 							(errmsg("corrupted pgstat.stat file")));
-					fclose(fpin);
-					return;
+					goto done;
 				}
 
 				/*
@@ -2608,27 +2492,15 @@ pgstat_read_statsfile(HTAB **dbhash, Oid onlydb,
 												(void *) &tabbuf.tableid,
 													 HASH_ENTER, &found);
 				if (tabentry == NULL)
-				{
-					if (pgStatRunningInCollector)
-					{
-						ereport(LOG,
-								(errcode(ERRCODE_OUT_OF_MEMORY),
-								 errmsg("out of memory in statistics collector --- abort")));
-						exit(1);
-					}
-					/* in backend, can do normal error */
-					fclose(fpin);
 					ereport(ERROR,
 							(errcode(ERRCODE_OUT_OF_MEMORY),
 							 errmsg("out of memory")));
-				}
 
 				if (found)
 				{
 					ereport(pgStatRunningInCollector ? LOG : WARNING,
 							(errmsg("corrupted pgstat.stat file")));
-					fclose(fpin);
-					return;
+					goto done;
 				}
 
 				memcpy(tabentry, &tabbuf, sizeof(tabbuf));
@@ -2639,30 +2511,23 @@ pgstat_read_statsfile(HTAB **dbhash, Oid onlydb,
 				 */
 			case 'M':
 				if (betab == NULL || numbackends == NULL)
-				{
-					fclose(fpin);
-					return;
-				}
+					goto done;
 				if (fread(&maxbackends, 1, sizeof(maxbackends), fpin) !=
 					sizeof(maxbackends))
 				{
 					ereport(pgStatRunningInCollector ? LOG : WARNING,
 							(errmsg("corrupted pgstat.stat file")));
-					fclose(fpin);
-					return;
+					goto done;
 				}
 				if (maxbackends == 0)
-				{
-					fclose(fpin);
-					return;
-				}
+					goto done;
 
 				/*
 				 * Allocate space (in TopTransactionContext too) for the
 				 * backend table.
 				 */
 				if (use_mcxt == NULL)
-					*betab = (PgStat_StatBeEntry *) malloc(
+					*betab = (PgStat_StatBeEntry *) palloc(
 							   sizeof(PgStat_StatBeEntry) * maxbackends);
 				else
 					*betab = (PgStat_StatBeEntry *) MemoryContextAlloc(
@@ -2674,16 +2539,8 @@ pgstat_read_statsfile(HTAB **dbhash, Oid onlydb,
 				 * 'B'	A PgStat_StatBeEntry follows.
 				 */
 			case 'B':
-				if (betab == NULL || numbackends == NULL)
-				{
-					fclose(fpin);
-					return;
-				}
-				if (*betab == NULL)
-				{
-					fclose(fpin);
-					return;
-				}
+				if (betab == NULL || numbackends == NULL || *betab == NULL)
+					goto done;
 
 				/*
 				 * Read it directly into the table.
@@ -2694,8 +2551,7 @@ pgstat_read_statsfile(HTAB **dbhash, Oid onlydb,
 				{
 					ereport(pgStatRunningInCollector ? LOG : WARNING,
 							(errmsg("corrupted pgstat.stat file")));
-					fclose(fpin);
-					return;
+					goto done;
 				}
 
 				/*
@@ -2711,28 +2567,25 @@ pgstat_read_statsfile(HTAB **dbhash, Oid onlydb,
 				if (numbackends != 0)
 					*numbackends = havebackends;
 				if (havebackends >= maxbackends)
-				{
-					fclose(fpin);
-					return;
-				}
+					goto done;
+
 				break;
 
 				/*
 				 * 'E'	The EOF marker of a complete stats file.
 				 */
 			case 'E':
-				fclose(fpin);
-				return;
+				goto done;
 
 			default:
 				ereport(pgStatRunningInCollector ? LOG : WARNING,
 						(errmsg("corrupted pgstat.stat file")));
-				fclose(fpin);
-				return;
+				goto done;
 		}
 	}
 
-	fclose(fpin);
+done:
+	FreeFile(fpin);
 }
 
 /*
@@ -2860,12 +2713,9 @@ pgstat_recv_tabstat(PgStat_MsgTabstat *msg, int len)
 											  (void *) &(tabmsg[i].t_id),
 													 HASH_ENTER, &found);
 		if (tabentry == NULL)
-		{
-			ereport(LOG,
+			ereport(ERROR,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 			 errmsg("out of memory in statistics collector --- abort")));
-			exit(1);
-		}
 
 		if (!found)
 		{
@@ -3040,12 +2890,4 @@ pgstat_recv_resetcounter(PgStat_MsgResetcounter *msg, int len)
 								  PGSTAT_TAB_HASH_SIZE,
 								  &hash_ctl,
 								  HASH_ELEM | HASH_FUNCTION);
-	if (dbentry->tables == NULL)
-	{
-		/* assume the problem is out-of-memory */
-		ereport(LOG,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-			 errmsg("out of memory in statistics collector --- abort")));
-		exit(1);
-	}
 }

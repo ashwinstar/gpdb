@@ -4,10 +4,10 @@
  *		PostgreSQL transaction log manager
  *
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/backend/access/transam/xlog.c,v 1.174 2004/10/14 20:23:43 momjian Exp $
+ * $PostgreSQL: pgsql/src/backend/access/transam/xlog.c,v 1.180 2004/12/31 21:59:30 pgsql Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -442,8 +442,9 @@ static int	XLogFileOpen(uint32 log, uint32 seg);
 static int	XLogFileRead(uint32 log, uint32 seg, int emode);
 static bool RestoreArchivedFile(char *path, const char *xlogfname,
 					const char *recovername, off_t expectedSize);
-static void PreallocXlogFiles(XLogRecPtr endptr);
-static void MoveOfflineLogs(uint32 log, uint32 seg, XLogRecPtr endptr);
+static int	PreallocXlogFiles(XLogRecPtr endptr);
+static void MoveOfflineLogs(uint32 log, uint32 seg, XLogRecPtr endptr,
+							int *nsegsremoved, int *nsegsrecycled);
 static XLogRecord *ReadRecord(XLogRecPtr *RecPtr, int emode);
 static bool ValidXLOGHeader(XLogPageHeader hdr, int emode);
 static XLogRecord *ReadCheckpointRecord(XLogRecPtr RecPtr, int whichChkpt);
@@ -1200,21 +1201,38 @@ XLogWrite(XLogwrtRqst WriteRqst)
 				UpdateControlFile();
 
 				/*
-				 * Signal postmaster to start a checkpoint if it's been
+				 * Signal bgwriter to start a checkpoint if it's been
 				 * too long since the last one.  (We look at local copy of
 				 * RedoRecPtr which might be a little out of date, but
 				 * should be close enough for this purpose.)
+				 *
+				 * A straight computation of segment number could overflow
+				 * 32 bits.  Rather than assuming we have working 64-bit
+				 * arithmetic, we compare the highest-order bits separately,
+				 * and force a checkpoint immediately when they change.
 				 */
-				if (IsUnderPostmaster &&
-					(openLogId != RedoRecPtr.xlogid ||
-					 openLogSeg >= (RedoRecPtr.xrecoff / XLogSegSize) +
-					 (uint32) CheckPointSegments))
+				if (IsUnderPostmaster)
 				{
+					uint32		old_segno,
+								new_segno;
+					uint32		old_highbits,
+								new_highbits;
+
+					old_segno = (RedoRecPtr.xlogid % XLogSegSize) * XLogSegsPerFile +
+						(RedoRecPtr.xrecoff / XLogSegSize);
+					old_highbits = RedoRecPtr.xlogid / XLogSegSize;
+					new_segno = (openLogId % XLogSegSize) * XLogSegsPerFile +
+						openLogSeg;
+					new_highbits = openLogId / XLogSegSize;
+					if (new_highbits != old_highbits ||
+						new_segno >= old_segno + (uint32) CheckPointSegments)
+					{
 #ifdef WAL_DEBUG
-					if (XLOG_DEBUG)
-						elog(LOG, "time for a checkpoint, signaling bgwriter");
+						if (XLOG_DEBUG)
+							elog(LOG, "time for a checkpoint, signaling bgwriter");
 #endif
-					RequestCheckpoint(false);
+						RequestCheckpoint(false);
+					}
 				}
 			}
 			LWLockRelease(ControlFileLock);
@@ -1659,7 +1677,7 @@ XLogFileCopy(uint32 log, uint32 seg,
 						 errmsg("could not read file \"%s\": %m", path)));
 			else
 				ereport(PANIC,
-					 (errmsg("insufficient data in file \"%s\"", path)));
+					 (errmsg("not enough data in file \"%s\"", path)));
 		}
 		errno = 0;
 		if ((int) write(fd, buffer, sizeof(buffer)) != (int) sizeof(buffer))
@@ -2048,7 +2066,7 @@ RestoreArchivedFile(char *path, const char *xlogfname,
 	 * program incorrectly.  We have to assume the former.
 	 */
 	ereport(DEBUG1,
-		 (errmsg("could not restore \"%s\" from archive: return code %d",
+		 (errmsg("could not restore file \"%s\" from archive: return code %d",
 				 xlogfname, rc)));
 
 	/*
@@ -2067,9 +2085,10 @@ RestoreArchivedFile(char *path, const char *xlogfname,
  * Preallocate log files beyond the specified log endpoint, according to
  * the XLOGfile user parameter.
  */
-static void
+static int
 PreallocXlogFiles(XLogRecPtr endptr)
 {
+	int			nsegsadded = 0;
 	uint32		_logId;
 	uint32		_logSeg;
 	int			lf;
@@ -2083,7 +2102,10 @@ PreallocXlogFiles(XLogRecPtr endptr)
 		use_existent = true;
 		lf = XLogFileInit(_logId, _logSeg, &use_existent, true);
 		close(lf);
+		if (!use_existent)
+			nsegsadded++;
 	}
+	return nsegsadded;
 }
 
 /*
@@ -2093,7 +2115,8 @@ PreallocXlogFiles(XLogRecPtr endptr)
  * whether we want to recycle rather than delete no-longer-wanted log files.
  */
 static void
-MoveOfflineLogs(uint32 log, uint32 seg, XLogRecPtr endptr)
+MoveOfflineLogs(uint32 log, uint32 seg, XLogRecPtr endptr,
+				int *nsegsremoved, int *nsegsrecycled)
 {
 	uint32		endlogId;
 	uint32		endlogSeg;
@@ -2101,6 +2124,9 @@ MoveOfflineLogs(uint32 log, uint32 seg, XLogRecPtr endptr)
 	struct dirent *xlde;
 	char		lastoff[MAXFNAMELEN];
 	char		path[MAXPGPATH];
+
+	*nsegsremoved = 0;
+	*nsegsrecycled = 0;
 
 	XLByteToPrevSeg(endptr, endlogId, endlogSeg);
 
@@ -2152,17 +2178,19 @@ MoveOfflineLogs(uint32 log, uint32 seg, XLogRecPtr endptr)
 										   true, XLOGfileslop,
 										   true))
 				{
-					ereport(DEBUG1,
+					ereport(DEBUG2,
 						  (errmsg("recycled transaction log file \"%s\"",
 								  xlde->d_name)));
+					(*nsegsrecycled)++;
 				}
 				else
 				{
 					/* No need for any more future segments... */
-					ereport(DEBUG1,
+					ereport(DEBUG2,
 						  (errmsg("removing transaction log file \"%s\"",
 								  xlde->d_name)));
 					unlink(path);
+					(*nsegsremoved)++;
 				}
 
 				XLogArchiveCleanup(xlde->d_name);
@@ -4470,7 +4498,7 @@ StartupXLOG(void)
 	/*
 	 * Preallocate additional log files, if wanted.
 	 */
-	PreallocXlogFiles(EndOfLog);
+	(void) PreallocXlogFiles(EndOfLog);
 
 	/*
 	 * Okay, we're officially UP.
@@ -4694,6 +4722,9 @@ CreateCheckPoint(bool shutdown, bool force)
 	uint32		freespace;
 	uint32		_logId;
 	uint32		_logSeg;
+	int			nsegsadded = 0;
+	int			nsegsremoved = 0;
+	int			nsegsrecycled = 0;
 
 	/*
 	 * Acquire CheckpointLock to ensure only one checkpoint happens at a
@@ -4861,6 +4892,10 @@ CreateCheckPoint(bool shutdown, bool force)
 	 */
 	END_CRIT_SECTION();
 
+	if (!shutdown)
+		ereport(DEBUG1,
+				(errmsg("checkpoint starting")));
+
 	CheckPointCLOG();
 	CheckPointSUBTRANS();
 	FlushBufferPool();
@@ -4936,7 +4971,8 @@ CreateCheckPoint(bool shutdown, bool force)
 	if (_logId || _logSeg)
 	{
 		PrevLogSeg(_logId, _logSeg);
-		MoveOfflineLogs(_logId, _logSeg, recptr);
+		MoveOfflineLogs(_logId, _logSeg, recptr,
+						&nsegsremoved, &nsegsrecycled);
 	}
 
 	/*
@@ -4945,7 +4981,7 @@ CreateCheckPoint(bool shutdown, bool force)
 	 * necessary.)
 	 */
 	if (!shutdown)
-		PreallocXlogFiles(recptr);
+		nsegsadded = PreallocXlogFiles(recptr);
 
 	/*
 	 * Truncate pg_subtrans if possible.  We can throw away all data
@@ -4956,6 +4992,11 @@ CreateCheckPoint(bool shutdown, bool force)
 	 */
 	if (!InRecovery)
 		TruncateSUBTRANS(GetOldestXmin(true));
+
+	if (!shutdown)
+		ereport(DEBUG1,
+				(errmsg("checkpoint complete; %d transaction log file(s) added, %d removed, %d recycled",
+						nsegsadded, nsegsremoved, nsegsrecycled)));
 
 	LWLockRelease(CheckpointLock);
 }
@@ -5242,6 +5283,14 @@ pg_start_backup(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 (errmsg("must be superuser to run a backup"))));
+
+	if (!XLogArchivingActive())
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 (errmsg("WAL archiving is not active"),
+				 (errhint("archive_command must be defined before "
+						  "online backups can be made safely.")))));
+
 	backupidstr = DatumGetCString(DirectFunctionCall1(textout,
 											 PointerGetDatum(backupid)));
 

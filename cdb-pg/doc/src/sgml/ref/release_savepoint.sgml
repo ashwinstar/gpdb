@@ -1,5 +1,5 @@
 <!--
-$PostgreSQL: pgsql/doc/src/sgml/ref/release_savepoint.sgml,v 1.2 2004/08/24 00:06:51 neilc Exp $
+$PostgreSQL: pgsql/doc/src/sgml/ref/release_savepoint.sgml,v 1.4 2005/01/06 20:53:34 tgl Exp $
 PostgreSQL documentation
 -->
 
@@ -94,9 +94,9 @@ RELEASE [ SAVEPOINT ] <replaceable>savepoint_name</replaceable>
    To establish and later destroy a savepoint:
 <programlisting>
 BEGIN;
-    INSERT INTO table VALUES (3);
+    INSERT INTO table1 VALUES (3);
     SAVEPOINT my_savepoint;
-    INSERT INTO table VALUES (4);
+    INSERT INTO table1 VALUES (4);
     RELEASE SAVEPOINT my_savepoint;
 COMMIT;
 </programlisting>
@@ -108,11 +108,10 @@ COMMIT;
   <title>Compatibility</title>
   
   <para>
-   The SQL2003 standard specifies that the keyword
-   <literal>SAVEPOINT</literal> is mandatory.
-   <productname>PostgreSQL</productname> allows the
-   <literal>SAVEPOINT</literal> keyword to be omitted. Otherwise, this
-   command is fully conforming.
+   This command conforms to the SQL:2003 standard.  The standard
+   specifies that the key word <literal>SAVEPOINT</literal> is
+   mandatory, but <productname>PostgreSQL</productname> allows it to
+   be omitted.
   </para>
  </refsect1>
 

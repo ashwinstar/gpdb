@@ -1,5 +1,5 @@
 <!--
-$PostgreSQL: pgsql/doc/src/sgml/ref/declare.sgml,v 1.31 2004/06/17 12:41:02 momjian Exp $
+$PostgreSQL: pgsql/doc/src/sgml/ref/declare.sgml,v 1.33 2005/01/04 00:39:53 tgl Exp $
 PostgreSQL documentation
 -->
 
@@ -78,7 +78,7 @@ DECLARE <replaceable class="parameter">name</replaceable> [ BINARY ] [ INSENSITI
     specifies whether data is to be retrieved in text or binary format.
     This choice overrides the way that the cursor is defined.  The concept
     of a binary cursor as such is thus obsolete when using extended query
-    protocol --- any cursor can be treated as either text or binary.
+    protocol &mdash; any cursor can be treated as either text or binary.
    </para>
   </note>
  </refsect1>
@@ -286,6 +286,16 @@ DECLARE liahona CURSOR FOR SELECT * FROM films;
    Binary cursors are a <productname>PostgreSQL</productname>
    extension.
   </para>
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-close" endterm="sql-close-title"></member>
+   <member><xref linkend="sql-fetch" endterm="sql-fetch-title"></member>
+   <member><xref linkend="sql-move" endterm="sql-move-title"></member>
+  </simplelist>
  </refsect1>
 </refentry>
 

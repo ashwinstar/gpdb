@@ -3,12 +3,12 @@
  * clauses.c
  *	  routines to manipulate qualification clauses
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/util/clauses.c,v 1.183 2004/10/22 17:20:05 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/util/clauses.c,v 1.186 2004/12/31 22:00:23 pgsql Exp $
  *
  * HISTORY
  *	  AUTHOR			DATE			MAJOR EVENT
@@ -76,7 +76,8 @@ static Expr *simplify_function(Oid funcid, Oid result_type, List *args,
 				  bool allow_inline,
 				  eval_const_expressions_context *context);
 static Expr *evaluate_function(Oid funcid, Oid result_type, List *args,
-				  HeapTuple func_tuple);
+				  HeapTuple func_tuple,
+				  eval_const_expressions_context *context);
 static Expr *inline_function(Oid funcid, Oid result_type, List *args,
 				HeapTuple func_tuple,
 				eval_const_expressions_context *context);
@@ -1046,6 +1047,13 @@ strip_implicit_coercions(Node *node)
 		if (r->relabelformat == COERCE_IMPLICIT_CAST)
 			return strip_implicit_coercions((Node *) r->arg);
 	}
+	else if (IsA(node, ConvertRowtypeExpr))
+	{
+		ConvertRowtypeExpr *c = (ConvertRowtypeExpr *) node;
+
+		if (c->convertformat == COERCE_IMPLICIT_CAST)
+			return strip_implicit_coercions((Node *) c->arg);
+	}
 	else if (IsA(node, CoerceToDomain))
 	{
 		CoerceToDomain *c = (CoerceToDomain *) node;
@@ -1081,11 +1089,13 @@ set_coercionform_dontcare_walker(Node *node, void *context)
 		return false;
 	if (IsA(node, FuncExpr))
 		((FuncExpr *) node)->funcformat = COERCE_DONTCARE;
-	if (IsA(node, RelabelType))
+	else if (IsA(node, RelabelType))
 		((RelabelType *) node)->relabelformat = COERCE_DONTCARE;
-	if (IsA(node, RowExpr))
+	else if (IsA(node, ConvertRowtypeExpr))
+		((ConvertRowtypeExpr *) node)->convertformat = COERCE_DONTCARE;
+	else if (IsA(node, RowExpr))
 		((RowExpr *) node)->row_format = COERCE_DONTCARE;
-	if (IsA(node, CoerceToDomain))
+	else if (IsA(node, CoerceToDomain))
 		((CoerceToDomain *) node)->coercionformat = COERCE_DONTCARE;
 	return expression_tree_walker(node, set_coercionform_dontcare_walker,
 								  context);
@@ -1151,7 +1161,7 @@ eval_const_expressions(Node *node)
 	return eval_const_expressions_mutator(node, &context);
 }
 
-/*
+/*--------------------
  * estimate_expression_value
  *
  * This function attempts to estimate the value of an expression for
@@ -1159,11 +1169,11 @@ eval_const_expressions(Node *node)
  * eval_const_expressions(): we will perform constant reductions that are
  * not necessarily 100% safe, but are reasonable for estimation purposes.
  *
- * Currently the only such transform is to substitute values for Params,
- * when a bound Param value has been made available by the caller of planner().
- * In future we might consider other things, such as reducing now() to current
- * time.  (XXX seems like there could be a lot of scope for ideas here...
- * but we might need more volatility classifications ...)
+ * Currently the extra steps that are taken in this mode are:
+ * 1. Substitute values for Params, where a bound Param value has been made
+ *    available by the caller of planner().
+ * 2. Fold stable, as well as immutable, functions to constants.
+ *--------------------
  */
 Node *
 estimate_expression_value(Node *node)
@@ -1909,7 +1919,8 @@ simplify_function(Oid funcid, Oid result_type, List *args,
 	if (!HeapTupleIsValid(func_tuple))
 		elog(ERROR, "cache lookup failed for function %u", funcid);
 
-	newexpr = evaluate_function(funcid, result_type, args, func_tuple);
+	newexpr = evaluate_function(funcid, result_type, args,
+								func_tuple, context);
 
 	if (!newexpr && allow_inline)
 		newexpr = inline_function(funcid, result_type, args,
@@ -1925,14 +1936,16 @@ simplify_function(Oid funcid, Oid result_type, List *args,
  *
  * We can do this if the function is strict and has any constant-null inputs
  * (just return a null constant), or if the function is immutable and has all
- * constant inputs (call it and return the result as a Const node).
+ * constant inputs (call it and return the result as a Const node).  In
+ * estimation mode we are willing to pre-evaluate stable functions too.
  *
  * Returns a simplified expression if successful, or NULL if cannot
  * simplify the function.
  */
 static Expr *
 evaluate_function(Oid funcid, Oid result_type, List *args,
-				  HeapTuple func_tuple)
+				  HeapTuple func_tuple,
+				  eval_const_expressions_context *context)
 {
 	Form_pg_proc funcform = (Form_pg_proc) GETSTRUCT(func_tuple);
 	bool		has_nonconst_input = false;
@@ -1967,12 +1980,25 @@ evaluate_function(Oid funcid, Oid result_type, List *args,
 		return (Expr *) makeNullConst(result_type);
 
 	/*
-	 * Otherwise, can simplify only if the function is immutable and all
-	 * inputs are constants. (For a non-strict function, constant NULL
-	 * inputs are treated the same as constant non-NULL inputs.)
+	 * Otherwise, can simplify only if all inputs are constants. (For a
+	 * non-strict function, constant NULL inputs are treated the same as
+	 * constant non-NULL inputs.)
 	 */
-	if (funcform->provolatile != PROVOLATILE_IMMUTABLE ||
-		has_nonconst_input)
+	if (has_nonconst_input)
+		return NULL;
+
+	/*
+	 * Ordinarily we are only allowed to simplify immutable functions.
+	 * But for purposes of estimation, we consider it okay to simplify
+	 * functions that are merely stable; the risk that the result might
+	 * change from planning time to execution time is worth taking in
+	 * preference to not being able to estimate the value at all.
+	 */
+	if (funcform->provolatile == PROVOLATILE_IMMUTABLE)
+		/* okay */ ;
+	else if (context->estimate && funcform->provolatile == PROVOLATILE_STABLE)
+		/* okay */ ;
+	else
 		return NULL;
 
 	/*
@@ -2630,6 +2656,8 @@ expression_tree_walker(Node *node,
 			break;
 		case T_RelabelType:
 			return walker(((RelabelType *) node)->arg, context);
+		case T_ConvertRowtypeExpr:
+			return walker(((ConvertRowtypeExpr *) node)->arg, context);
 		case T_CaseExpr:
 			{
 				CaseExpr   *caseexpr = (CaseExpr *) node;
@@ -3037,6 +3065,16 @@ expression_tree_mutator(Node *node,
 
 				FLATCOPY(newnode, relabel, RelabelType);
 				MUTATE(newnode->arg, relabel->arg, Expr *);
+				return (Node *) newnode;
+			}
+			break;
+		case T_ConvertRowtypeExpr:
+			{
+				ConvertRowtypeExpr *convexpr = (ConvertRowtypeExpr *) node;
+				ConvertRowtypeExpr *newnode;
+
+				FLATCOPY(newnode, convexpr, ConvertRowtypeExpr);
+				MUTATE(newnode->arg, convexpr->arg, Expr *);
 				return (Node *) newnode;
 			}
 			break;

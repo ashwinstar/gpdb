@@ -11,11 +11,11 @@
  * be handled easily in a simple depth-first traversal.
  *
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/nodes/copyfuncs.c,v 1.292 2004/08/29 05:06:43 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/nodes/copyfuncs.c,v 1.295 2004/12/31 21:59:55 pgsql Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -909,6 +909,21 @@ _copyRelabelType(RelabelType *from)
 	COPY_SCALAR_FIELD(resulttype);
 	COPY_SCALAR_FIELD(resulttypmod);
 	COPY_SCALAR_FIELD(relabelformat);
+
+	return newnode;
+}
+
+/*
+ * _copyConvertRowtypeExpr
+ */
+static ConvertRowtypeExpr *
+_copyConvertRowtypeExpr(ConvertRowtypeExpr *from)
+{
+	ConvertRowtypeExpr *newnode = makeNode(ConvertRowtypeExpr);
+
+	COPY_NODE_FIELD(arg);
+	COPY_SCALAR_FIELD(resulttype);
+	COPY_SCALAR_FIELD(convertformat);
 
 	return newnode;
 }
@@ -2458,7 +2473,6 @@ _copyCreateSchemaStmt(CreateSchemaStmt *from)
 
 	COPY_STRING_FIELD(schemaname);
 	COPY_STRING_FIELD(authid);
-	COPY_STRING_FIELD(tablespacename);
 	COPY_NODE_FIELD(schemaElts);
 
 	return newnode;
@@ -2768,6 +2782,9 @@ copyObject(void *from)
 			break;
 		case T_RelabelType:
 			retval = _copyRelabelType(from);
+			break;
+		case T_ConvertRowtypeExpr:
+			retval = _copyConvertRowtypeExpr(from);
 			break;
 		case T_CaseExpr:
 			retval = _copyCaseExpr(from);

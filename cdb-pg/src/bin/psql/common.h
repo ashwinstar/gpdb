@@ -1,9 +1,9 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2004, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2005, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/common.h,v 1.39 2004/08/29 04:13:02 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/common.h,v 1.42 2005/01/01 05:43:08 momjian Exp $
  */
 #ifndef COMMON_H
 #define COMMON_H
@@ -48,7 +48,10 @@ extern void ResetCancelConn(void);
 
 #ifndef WIN32
 extern void handle_sigint(SIGNAL_ARGS);
-#endif   /* not WIN32 */
+#else
+extern void setup_win32_locks(void);
+extern void setup_cancel_handler(void);
+#endif
 
 extern PGresult *PSQLexec(const char *query, bool start_xact);
 

@@ -3,12 +3,12 @@
  * md.c
  *	  This code manages relations that reside on magnetic disk.
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/storage/smgr/md.c,v 1.112 2004/08/30 03:52:43 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/storage/smgr/md.c,v 1.114 2004/12/31 22:01:13 pgsql Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -132,10 +132,6 @@ mdinit(void)
 									  100L,
 									  &hash_ctl,
 							   HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
-		if (pendingOpsTable == NULL)
-			ereport(FATAL,
-					(errcode(ERRCODE_OUT_OF_MEMORY),
-					 errmsg("out of memory")));
 	}
 
 	return true;

@@ -4,12 +4,12 @@
  *	   Hardware-dependent implementation of spinlocks.
  *
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/storage/lmgr/s_lock.c,v 1.32 2004/08/30 23:47:20 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/storage/lmgr/s_lock.c,v 1.35 2004/12/31 22:01:05 pgsql Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -136,12 +136,26 @@ s_lock(volatile slock_t *lock, const char *file, int line)
 
 
 #if defined(__m68k__)
+/* really means: extern int tas(slock_t* **lock); */
 static void
-tas_dummy()						/* really means: extern int tas(slock_t
-								 * **lock); */
+tas_dummy()
 {
 	__asm__		__volatile__(
-										 "\
+#if defined(__NetBSD__) && defined(__ELF__)
+/* no underscore for label and % for registers */
+										"\
+.global		tas 				\n\
+tas:							\n\
+			movel	%sp@(0x4),%a0	\n\
+			tas 	%a0@		\n\
+			beq 	_success	\n\
+			moveq	#-128,%d0	\n\
+			rts 				\n\
+_success:						\n\
+			moveq	#0,%d0		\n\
+			rts 				\n"
+#else
+										"\
 .global		_tas				\n\
 _tas:							\n\
 			movel	sp@(0x4),a0	\n\
@@ -151,8 +165,9 @@ _tas:							\n\
 			rts					\n\
 _success:						\n\
 			moveq 	#0,d0		\n\
-			rts					\n\
-");
+			rts					\n"
+#endif   /* __NetBSD__ && __ELF__ */
+);
 }
 #endif   /* __m68k__ */
 
@@ -225,8 +240,15 @@ static void
 tas_dummy()						/* really means: extern int tas(slock_t
 								 * *lock); */
 {
+
+#ifdef SUNOS4_CC
 	asm(".seg \"data\"");
 	asm(".seg \"text\"");
+#else
+	asm(".section \"data\"");
+	asm(".section \"text\"");
+#endif
+
 	asm("_tas:");
 
 	/*

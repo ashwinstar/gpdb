@@ -3,7 +3,7 @@
  *			  procedural language
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/pl/plpgsql/src/pl_exec.c,v 1.120 2004/09/16 16:58:44 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/pl/plpgsql/src/pl_exec.c,v 1.127 2005/01/13 23:07:34 tgl Exp $
  *
  *	  This software is copyrighted by Jan Wieck - Hamburg.
  *
@@ -398,7 +398,7 @@ plpgsql_exec_function(PLpgSQL_function *func, FunctionCallInfo fcinfo)
 											&fcinfo->isnull);
 
 			/*
-			 * If the functions return type isn't by value, copy the value
+			 * If the function's return type isn't by value, copy the value
 			 * into upper executor memory context.
 			 */
 			if (!fcinfo->isnull && !func->fn_retbyval)
@@ -426,7 +426,7 @@ plpgsql_exec_function(PLpgSQL_function *func, FunctionCallInfo fcinfo)
 	error_context_stack = plerrcontext.previous;
 
 	/*
-	 * Return the functions result
+	 * Return the function's result
 	 */
 	return estate.retval;
 }
@@ -898,24 +898,25 @@ exec_stmt_block(PLpgSQL_execstate *estate, PLpgSQL_stmt_block *block)
 		 */
 		MemoryContext oldcontext = CurrentMemoryContext;
 		ResourceOwner oldowner = CurrentResourceOwner;
-		volatile bool caught = false;
-		int			xrc;
 
-		/*
-		 * Start a subtransaction, and re-connect to SPI within it
-		 */
-		SPI_push();
 		BeginInternalSubTransaction(NULL);
 		/* Want to run statements inside function's memory context */
 		MemoryContextSwitchTo(oldcontext);
 
-		if ((xrc = SPI_connect()) != SPI_OK_CONNECT)
-			elog(ERROR, "SPI_connect failed: %s",
-				 SPI_result_code_string(xrc));
-
 		PG_TRY();
 		{
 			rc = exec_stmts(estate, block->body);
+
+			/* Commit the inner transaction, return to outer xact context */
+			ReleaseCurrentSubTransaction();
+			MemoryContextSwitchTo(oldcontext);
+			CurrentResourceOwner = oldowner;
+
+			/*
+			 * AtEOSubXact_SPI() should not have popped any SPI context,
+			 * but just in case it did, make sure we remain connected.
+			 */
+			SPI_restore_connection();
 		}
 		PG_CATCH();
 		{
@@ -928,12 +929,17 @@ exec_stmt_block(PLpgSQL_execstate *estate, PLpgSQL_stmt_block *block)
 			edata = CopyErrorData();
 			FlushErrorState();
 
-			/* Abort the inner transaction (and inner SPI connection) */
+			/* Abort the inner transaction */
 			RollbackAndReleaseCurrentSubTransaction();
 			MemoryContextSwitchTo(oldcontext);
 			CurrentResourceOwner = oldowner;
 
-			SPI_pop();
+			/*
+			 * If AtEOSubXact_SPI() popped any SPI context of the subxact,
+			 * it will have left us in a disconnected state.  We need this
+			 * hack to return to connected state.
+			 */
+			SPI_restore_connection();
 
 			/* Look for a matching exception handler */
 			exceptions = block->exceptions;
@@ -953,23 +959,8 @@ exec_stmt_block(PLpgSQL_execstate *estate, PLpgSQL_stmt_block *block)
 				ReThrowError(edata);
 			else
 				FreeErrorData(edata);
-			caught = true;
 		}
 		PG_END_TRY();
-
-		/* Commit the inner transaction, return to outer xact context */
-		if (!caught)
-		{
-			if ((xrc = SPI_finish()) != SPI_OK_FINISH)
-				elog(ERROR, "SPI_finish failed: %s",
-					 SPI_result_code_string(xrc));
-
-			ReleaseCurrentSubTransaction();
-			MemoryContextSwitchTo(oldcontext);
-			CurrentResourceOwner = oldowner;
-
-			SPI_pop();
-		}
 	}
 	else
 	{
@@ -3557,9 +3548,10 @@ exec_eval_simple_expr(PLpgSQL_execstate *estate,
 					  Oid *rettype)
 {
 	Datum		retval;
-	ExprContext *econtext;
+	ExprContext * volatile econtext;
 	ParamListInfo paramLI;
 	int			i;
+	Snapshot	saveActiveSnapshot;
 
 	/*
 	 * Pass back previously-determined result type.
@@ -3614,7 +3606,7 @@ exec_eval_simple_expr(PLpgSQL_execstate *estate,
 	 * have more than one active param list.
 	 */
 	paramLI = (ParamListInfo)
-		MemoryContextAllocZero(econtext->ecxt_per_tuple_memory,
+		MemoryContextAlloc(econtext->ecxt_per_tuple_memory,
 						(expr->nparams + 1) * sizeof(ParamListInfoData));
 
 	/*
@@ -3638,13 +3630,43 @@ exec_eval_simple_expr(PLpgSQL_execstate *estate,
 	econtext->ecxt_param_list_info = paramLI;
 
 	/*
-	 * Now call the executor to evaluate the expression
+	 * We have to do some of the things SPI_execute_plan would do,
+	 * in particular advance the snapshot if we are in a non-read-only
+	 * function.  Without this, stable functions within the expression
+	 * would fail to see updates made so far by our own function.
 	 */
 	SPI_push();
-	retval = ExecEvalExprSwitchContext(expr->expr_simple_state,
-									   econtext,
-									   isNull,
-									   NULL);
+	saveActiveSnapshot = ActiveSnapshot;
+
+	PG_TRY();
+	{
+		MemoryContext oldcontext;
+
+		oldcontext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
+		if (!estate->readonly_func)
+		{
+			CommandCounterIncrement();
+			ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
+		}
+
+		/*
+		 * Finally we can call the executor to evaluate the expression
+		 */
+		retval = ExecEvalExpr(expr->expr_simple_state,
+							  econtext,
+							  isNull,
+							  NULL);
+		MemoryContextSwitchTo(oldcontext);
+	}
+	PG_CATCH();
+	{
+		/* Restore global vars and propagate error */
+		ActiveSnapshot = saveActiveSnapshot;
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	ActiveSnapshot = saveActiveSnapshot;
 	SPI_pop();
 
 	/*
@@ -4032,6 +4054,9 @@ exec_simple_check_node(Node *node)
 
 		case T_RelabelType:
 			return exec_simple_check_node((Node *) ((RelabelType *) node)->arg);
+
+		case T_ConvertRowtypeExpr:
+			return exec_simple_check_node((Node *) ((ConvertRowtypeExpr *) node)->arg);
 
 		case T_CaseExpr:
 			{

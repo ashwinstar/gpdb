@@ -2,9 +2,9 @@
  *
  * pg_ctl --- start/stops/restarts the PostgreSQL server
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/pg_ctl/pg_ctl.c,v 1.42 2004/10/22 00:24:18 tgl Exp $
+ * $PostgreSQL: pgsql/src/bin/pg_ctl/pg_ctl.c,v 1.53 2004/12/31 22:03:05 pgsql Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -22,12 +22,13 @@
 #include "getopt_long.h"
 
 #if defined(__CYGWIN__)
+#include <sys/cygwin.h>
 #include <windows.h>
 /* Cygwin defines WIN32 in windows.h, but we don't want it. */
 #undef WIN32
 #endif
 
-#ifndef HAVE_OPTRESET
+#ifndef HAVE_INT_OPTRESET
 int			optreset;
 #endif
 
@@ -335,7 +336,7 @@ start_postmaster(void)
 	 * http://dev.remotenetworktechnology.com/cmd/cmdfaq.htm
 	 */
 	if (log_file != NULL)
-#if !defined(WIN32)	/* Cygwin doesn't have START */
+#ifndef WIN32	/* Cygwin doesn't have START */
 		snprintf(cmd, MAXPGPATH, "%s\"%s\" %s%s < \"%s\" >> \"%s\" 2>&1 &%s",
 #else
 		snprintf(cmd, MAXPGPATH, "%sSTART /B \"\" \"%s\" %s%s < \"%s\" >> \"%s\" 2>&1%s",
@@ -343,7 +344,7 @@ start_postmaster(void)
 				 SYSTEMQUOTE, postgres_path, pgdata_opt, post_opts,
 				 DEVNULL, log_file, SYSTEMQUOTE);
 	else
-#if !defined(WIN32)	/* Cygwin doesn't have START */
+#ifndef WIN32	/* Cygwin doesn't have START */
 		snprintf(cmd, MAXPGPATH, "%s\"%s\" %s%s < \"%s\" 2>&1 &%s",
 #else
 		snprintf(cmd, MAXPGPATH, "%sSTART /B \"\" \"%s\" %s%s < \"%s\" 2>&1%s",
@@ -583,7 +584,10 @@ do_start(void)
 		print_msg(_("waiting for postmaster to start..."));
 
 		if (test_postmaster_connection() == false)
+		{
 			printf(_("could not start postmaster\n"));
+			exit(1);
+		}
 		else
 		{
 			print_msg(_(" done\n"));
@@ -769,20 +773,20 @@ do_status(void)
 	pid = get_pgpid();
 	if (pid == 0)				/* no pid file */
 	{
-		write_stderr(_("%s: neither postmaster nor postgres running\n"), progname);
+		printf(_("%s: neither postmaster nor postgres running\n"), progname);
 		exit(1);
 	}
 	else if (pid < 0)			/* standalone backend */
 	{
 		pid = -pid;
-		fprintf(stdout, _("%s: a standalone backend \"postgres\" is running (PID: %ld)\n"), progname, pid);
+		printf(_("%s: a standalone backend \"postgres\" is running (PID: %ld)\n"), progname, pid);
 	}
 	else
 	/* postmaster */
 	{
 		char	  **optlines;
 
-		fprintf(stdout, _("%s: postmaster is running (PID: %ld)\n"), progname, pid);
+		printf(_("%s: postmaster is running (PID: %ld)\n"), progname, pid);
 
 		optlines = readfile(postopts_file);
 		if (optlines != NULL)
@@ -822,6 +826,9 @@ pgwin32_CommandLine(bool registration)
 {
 	static char cmdLine[MAXPGPATH];
 	int			ret;
+#ifdef __CYGWIN__
+	char		buf[MAXPGPATH];
+#endif
 
 	if (registration)
 	{
@@ -841,6 +848,12 @@ pgwin32_CommandLine(bool registration)
 			exit(1);
 		}
 	}
+
+#ifdef __CYGWIN__
+	/* need to convert to windows path */
+	cygwin_conv_to_full_win32_path(cmdLine, buf);
+	strcpy(cmdLine, buf);
+#endif
 
 	if (registration)
 	{
@@ -1067,7 +1080,11 @@ pgwin32_doRunAsService(void)
 	SERVICE_TABLE_ENTRY st[] = {{register_servicename, pgwin32_ServiceMain},
 	{NULL, NULL}};
 
-	StartServiceCtrlDispatcher(st);
+	if (StartServiceCtrlDispatcher(st) == 0)
+	{
+		write_stderr(_("%s: could not start service \"%s\": error code %d\n"), progname, register_servicename, (int) GetLastError());
+		exit(1);
+	}
 }
 #endif
 
@@ -1281,19 +1298,24 @@ main(int argc, char **argv)
 			{
 				case 'D':
 					{
-						int			len = strlen(optarg);
-						char	   *env_var;
+						char	   *pgdata_D;
+						char	   *env_var = xmalloc(strlen(optarg) + 8);
 
-						env_var = xmalloc(len + 8);
-						snprintf(env_var, len + 8, "PGDATA=%s", optarg);
+						pgdata_D = xstrdup(optarg);
+						canonicalize_path(pgdata_D);
+						snprintf(env_var, strlen(optarg) + 8, "PGDATA=%s",
+								 pgdata_D);
 						putenv(env_var);
 
 						/*
-						 * Show -D for easier postmaster 'ps'
-						 * identification
+						 *	We could pass PGDATA just in an environment
+						 *	variable but we do -D too for clearer
+						 *	postmaster 'ps' display
 						 */
-						pgdata_opt = xmalloc(len + 7);
-						snprintf(pgdata_opt, len + 7, "-D \"%s\" ", optarg);
+						pgdata_opt = xmalloc(strlen(pgdata_D) + 7);
+						snprintf(pgdata_opt, strlen(pgdata_D) + 7,
+								 "-D \"%s\" ",
+								 pgdata_D);
 						break;
 					}
 				case 'l':

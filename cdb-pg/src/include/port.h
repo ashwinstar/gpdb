@@ -1,12 +1,12 @@
 /*-------------------------------------------------------------------------
  *
  * port.h
- *	  Header for /port compatibility functions.
+ *	  Header for src/port/ compatibility functions.
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/port.h,v 1.64 2004/10/11 22:50:33 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/port.h,v 1.69 2005/01/06 00:59:25 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -20,25 +20,15 @@
 #include <ctype.h>
 
 /* non-blocking */
-bool		set_noblock(int sock);
+extern bool set_noblock(int sock);
 
 /* Portable path handling for Unix/Win32 */
 
-/* Find the location of the first directory separator, return
- * NULL if not found.
- */
 extern char *first_dir_separator(const char *filename);
-
-/* Find the location of the last directory separator, return
- * NULL if not found.
- */
 extern char *last_dir_separator(const char *filename);
-
-/* Find the location of the first path separator (i.e. ':' on
- * Unix, ';' on Windows), return NULL if not found.
- */
-extern char *first_path_separator(const char *filename);
-
+extern char *first_path_separator(const char *pathlist);
+extern void join_path_components(char *ret_path,
+								 const char *head, const char *tail);
 extern void canonicalize_path(char *path);
 extern void make_native_path(char *path);
 extern const char *get_progname(const char *argv0);
@@ -57,9 +47,8 @@ extern void get_parent_directory(char *path);
 /*
  *	is_absolute_path
  *
- *	This capability is needed by libpq and initdb.c
- *	On Win32, you can't reference the same object file that is
- *	in two different libraries (pgport and libpq), so a macro is best.
+ *	By making this a macro we prevent the need for libpq to include
+ *	path.c which uses exec.c.
  */
 #ifndef WIN32
 #define is_absolute_path(filename) \
@@ -84,9 +73,13 @@ extern int find_other_exec(const char *argv0, const char *target,
 
 #if defined(WIN32) || defined(__CYGWIN__)
 #define EXE ".exe"
-#define DEVNULL "nul"
 #else
 #define EXE ""
+#endif
+
+#if defined(WIN32) && !defined(__CYGWIN__)
+#define DEVNULL "nul"
+#else
 #define DEVNULL "/dev/null"
 #endif
 
@@ -99,16 +92,10 @@ extern int find_other_exec(const char *argv0, const char *target,
  *	See the "Notes" section about quotes at:
  *		http://home.earthlink.net/~rlively/MANUALS/COMMANDS/C/CMD.HTM
  */
-#ifdef WIN32
+#if defined(WIN32) && !defined(__CYGWIN__)
 #define SYSTEMQUOTE "\""
 #else
 #define SYSTEMQUOTE ""
-#endif
-
-#ifdef WIN32
-#define HOMEDIR "USERPROFILE"
-#else
-#define HOMEDIR "HOME"
 #endif
 
 /* Portable delay handling */
@@ -122,11 +109,6 @@ extern unsigned char pg_tolower(unsigned char ch);
 
 /* Portable prompt handling */
 extern char *simple_prompt(const char *prompt, int maxlen, bool echo);
-
-#if defined(bsdi) || defined(netbsd)
-extern int	fseeko(FILE *stream, off_t offset, int whence);
-extern off_t ftello(FILE *stream);
-#endif
 
 /*
  *	WIN32 doesn't allow descriptors returned by pipe() to be used in select(),
@@ -179,17 +161,18 @@ extern int	pgunlink(const char *path);
  *	Cygwin has its own symlinks which work on Win95/98/ME where
  *	junction points don't, so use it instead.  We have no way of
  *	knowing what type of system Cygwin binaries will be run on.
+ *      Note: Some CYGWIN includes might #define WIN32.
  */
-#ifdef WIN32	
+#if defined(WIN32) && !defined(__CYGWIN__)
 extern int	pgsymlink(const char *oldpath, const char *newpath);
 #define symlink(oldpath, newpath)	pgsymlink(oldpath, newpath)
 #endif
 
-#endif
+#endif /* defined(WIN32) || defined(__CYGWIN__) */
 
 extern bool rmtree(char *path, bool rmtopdir);
 
-#ifdef WIN32
+#if defined(WIN32) && !defined(__CYGWIN__)
 
 /* open() replacement to allow delete of held files */
 #ifndef WIN32_CLIENT_ONLY
@@ -212,14 +195,14 @@ extern void srand48(long seed);
 /* Last parameter not used */
 extern int	gettimeofday(struct timeval * tp, struct timezone * tzp);
 
-#else
+#else /* !WIN32 */
 
 /*
  *	Win32 requires a special close for sockets and pipes, while on Unix
  *	close() does them all.
  */
 #define closesocket close
-#endif
+#endif /* WIN32 */
 
 /*
  * Default "extern" declarations or macro substitutes for library routines.
@@ -227,6 +210,11 @@ extern int	gettimeofday(struct timeval * tp, struct timezone * tzp);
  */
 #ifndef HAVE_CRYPT
 extern char *crypt(const char *key, const char *setting);
+#endif
+
+#if defined(bsdi) || defined(netbsd)
+extern int	fseeko(FILE *stream, off_t offset, int whence);
+extern off_t ftello(FILE *stream);
 #endif
 
 #ifndef HAVE_FSEEKO
@@ -277,7 +265,7 @@ extern void srandom(unsigned int seed);
 /* thread.h */
 extern char *pqStrerror(int errnum, char *strerrbuf, size_t buflen);
 
-#ifndef WIN32
+#if !defined(WIN32) || defined(__CYGWIN__)
 extern int pqGetpwuid(uid_t uid, struct passwd * resultbuf, char *buffer,
 		   size_t buflen, struct passwd ** result);
 #endif

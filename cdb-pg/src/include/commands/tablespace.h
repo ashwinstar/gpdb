@@ -4,10 +4,10 @@
  *		Tablespace management commands (create/drop tablespace).
  *
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/commands/tablespace.h,v 1.6 2004/10/17 20:47:21 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/commands/tablespace.h,v 1.8 2004/12/31 22:03:28 pgsql Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -32,12 +32,15 @@ typedef struct xl_tblspc_drop_rec
 	Oid			ts_id;
 }	xl_tblspc_drop_rec;
 
+
 extern void CreateTableSpace(CreateTableSpaceStmt *stmt);
 extern void DropTableSpace(DropTableSpaceStmt *stmt);
 extern void RenameTableSpace(const char *oldname, const char *newname);
 extern void AlterTableSpaceOwner(const char *name, AclId newOwnerSysId);
 
 extern void TablespaceCreateDbspace(Oid spcNode, Oid dbNode, bool isRedo);
+
+extern Oid	GetDefaultTablespace(void);
 
 extern Oid	get_tablespace_oid(const char *tablespacename);
 extern char *get_tablespace_name(Oid spc_oid);

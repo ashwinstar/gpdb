@@ -1,5 +1,5 @@
 # Norwegian bokmål translation of messages for PostgreSQL (psql).
-# Copyright (C) 2003 The PostgreSQL Global Development Group.
+# Copyright (c) 2003-2005, PostgreSQL Global Development Group
 # Trond Endrestøl <trond@ramstind.gtf.ol.no>, 2003.
 #
 # In the translator's comments for each message below, these initials
@@ -1524,9 +1524,9 @@ msgid ""
 "\n"
 "where option can be:\n"
 "\n"
-"    [ ENCRYPTED | UNENCRYPTED ] PASSWORD 'password' \n"
-"    | CREATEDB | NOCREATEDB\n"
+"    CREATEDB | NOCREATEDB\n"
 "    | CREATEUSER | NOCREATEUSER \n"
+"    | [ ENCRYPTED | UNENCRYPTED ] PASSWORD 'password' \n"
 "    | VALID UNTIL 'abstime'\n"
 "\n"
 "ALTER USER name RENAME TO newname\n"
@@ -1931,10 +1931,10 @@ msgid ""
 "where option can be:\n"
 "    \n"
 "      SYSID uid \n"
-"    | [ ENCRYPTED | UNENCRYPTED ] PASSWORD 'password'\n"
 "    | CREATEDB | NOCREATEDB\n"
 "    | CREATEUSER | NOCREATEUSER\n"
 "    | IN GROUP groupname [, ...]\n"
+"    | [ ENCRYPTED | UNENCRYPTED ] PASSWORD 'password'\n"
 "    | VALID UNTIL 'abstime'"
 msgstr ""
 

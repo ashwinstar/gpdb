@@ -2,7 +2,9 @@
                     PostgreSQL Installation Instructions
 
    This document describes the installation of PostgreSQL from the source
-   code distribution.
+   code distribution. (If you are installing a pre-packaged distribution,
+   such as an RPM or Debian package, ignore this document and read the
+   packager's instructions instead.)
      __________________________________________________________________
 
                                 Short Version
@@ -49,9 +51,21 @@ gmake --version
        history retrieval) will be used by default. If you don't want to
        use it then you must specify the "--without-readline" option for
        "configure". (On NetBSD, the "libedit" library is
-       Readline-compatible and is used if "libreadline" is not found.)
-     * To build on Windows NT or Windows 2000 you need the Cygwin and
-       cygipc packages. See the file "doc/FAQ_MSWIN" for details.
+       Readline-compatible and is used if "libreadline" is not found.) If
+       you are using a package-based Linux distribution, be aware that you
+       need both the readline and readline-devel packages, if those are
+       separate in your distribution.
+     * Additional software is needed to build PostgreSQL on Windows. You
+       can build PostgreSQL for NT-based versions of Windows (like Windows
+       XP and 2003) using MinGW; see "doc/FAQ_MINGW" for details. You can
+       also build PostgreSQL using Cygwin; see "doc/FAQ_CYGWIN". A
+       Cygwin-based build will work on older versions of Windows, but if
+       you have a choice, we recommend the MinGW approach. While these are
+       the only tool sets recommended for a complete build, it is possible
+       to build just the C client library (libpq) and the interactive
+       terminal (psql) using other Windows tool sets. For details of that
+       see the documentation chapter "Client-Only Installation on Windows"
+       .
 
    The following packages are optional. They are not required in the
    default configuration, but they are needed when certain build options
@@ -62,7 +76,7 @@ gmake --version
        files. Since PL/Perl will be a shared library, the "libperl"
        library must be a shared library also on most platforms. This
        appears to be the default in recent Perl versions, but it was not
-       in earlier versions, and in general it is the choice of whomever
+       in earlier versions, and in any case it is the choice of whomever
        installed Perl at your site.
        If you don't have the shared library but you need one, a message
        like this will appear during the build to point out this fact:
@@ -106,19 +120,19 @@ gmake --version
        additionally need the GNU Gettext package for some utility
        programs. For any of the other implementations you will not need
        it.
-     * Kerberos, OpenSSL, or PAM, if you want to support authentication
-       using these services.
+     * Kerberos, OpenSSL, and/or PAM, if you want to support
+       authentication or encryption using these services.
 
    If you are building from a CVS tree instead of using a released source
    package, or if you want to do development, you also need the following
    packages:
 
-     * Flex and Bison are needed to build a CVS checkout or if you changed
-       the actual scanner and parser definition files. If you need them,
-       be sure to get Flex 2.5.4 or later and Bison 1.875 or later. Other
-       yacc programs can sometimes be used, but doing so requires extra
-       effort and is not recommended. Other lex programs will definitely
-       not work.
+     * GNU Flex and Bison are needed to build a CVS checkout or if you
+       changed the actual scanner and parser definition files. If you need
+       them, be sure to get Flex 2.5.4 or later and Bison 1.875 or later.
+       Other yacc programs can sometimes be used, but doing so requires
+       extra effort and is not recommended. Other lex programs will
+       definitely not work.
 
    If you need to get a GNU package, you can find it at your local GNU
    mirror site (see http://www.gnu.org/order/ftp.html for a list) or at
@@ -130,7 +144,7 @@ gmake --version
    databases take about five times the amount of space that a flat text
    file with the same data would take. If you are going to run the
    regression tests you will temporarily need up to an extra 90 MB. Use
-   the "df" command to check for disk space.
+   the "df" command to check free disk space.
      __________________________________________________________________
 
                             If You Are Upgrading
@@ -155,33 +169,35 @@ pg_dumpall > outputfile
        you need to do this.
        To make the backup, you can use the pg_dumpall command from the
        version you are currently running. For best results, however, try
-       to use the pg_dumpall command from PostgreSQL 8.0.0beta4, since
-       this version contains bug fixes and improvements over older
-       versions. While this advice might seem idiosyncratic since you
-       haven't installed the new version yet, it is advisable to follow it
-       if you plan to install the new version in parallel with the old
-       version. In that case you can complete the installation normally
-       and transfer the data later. This will also decrease the downtime.
+       to use the pg_dumpall command from PostgreSQL 8.0.0, since this
+       version contains bug fixes and improvements over older versions.
+       While this advice might seem idiosyncratic since you haven't
+       installed the new version yet, it is advisable to follow it if you
+       plan to install the new version in parallel with the old version.
+       In that case you can complete the installation normally and
+       transfer the data later. This will also decrease the downtime.
     3. If you are installing the new version at the same location as the
        old one then shut down the old server, at the latest before you
        install the new files:
-kill -INT `cat /usr/local/pgsql/data/postmaster.pid | sed 1q`
-       Versions prior to 7.0 do not have this "postmaster.pid" file. If
-       you are using such a version you must find out the process ID of
-       the server yourself, for example by typing "ps ax | grep
-       postmaster", and supply it to the "kill" command.
+pg_ctl stop
        On systems that have PostgreSQL started at boot time, there is
        probably a start-up file that will accomplish the same thing. For
        example, on a Red Hat Linux system one might find that
 /etc/rc.d/init.d/postgresql stop
-       works. Another possibility is "pg_ctl stop".
+       works.
+       Very old versions might not have pg_ctl. If you can't find it or it
+       doesn't work, find out the process ID of the old server, for
+       example by typing
+ps ax | grep postmaster
+       and signal it to stop this way:
+kill -INT processID
     4. If you are installing in the same place as the old version then it
        is also a good idea to move the old installation out of the way, in
        case you have trouble and need to revert to it. Use a command like
        this:
 mv /usr/local/pgsql /usr/local/pgsql.old
 
-   After you have installed PostgreSQL 8.0.0beta4, create a new database
+   After you have installed PostgreSQL 8.0.0, create a new database
    directory and start the new server. Remember that you must execute
    these commands while logged in to the special database user account
    (which you already have if you are upgrading).
@@ -193,8 +209,8 @@ mv /usr/local/pgsql /usr/local/pgsql.old
 
    using the *new* psql.
 
-   These topics are discussed at length in the documentation, which you
-   are encouraged to read in any case.
+   Further discussion appears in the documentation, which you are
+   encouraged to read in any case.
      __________________________________________________________________
 
                            Installation Procedure
@@ -321,7 +337,7 @@ mv /usr/local/pgsql /usr/local/pgsql.old
         --enable-nls[=LANGUAGES]
                 Enables Native Language Support (NLS), that is, the
                 ability to display a program's messages in a language
-                other than English. "LANGUAGES" is a space separated list
+                other than English. "LANGUAGES" is a space-separated list
                 of codes of the languages that you want supported, for
                 example --enable-nls='de fr'. (The intersection between
                 your list and the set of actually provided translations
@@ -383,12 +399,13 @@ mv /usr/local/pgsql /usr/local/pgsql.old
                 Build with PAM (Pluggable Authentication Modules) support.
 
         --without-readline
-                Prevents the use of the Readline library. This disables
+                Prevents use of the Readline library. This disables
                 command-line editing and history in psql, so it is not
                 recommended.
 
         --with-rendezvous
-                Build with Rendezvous support.
+                Build with Rendezvous support. This requires Rendezvous
+                support in your operating system. Recommended on Mac OS X.
 
         --disable-spinlocks
                 Allow the build to succeed even if PostgreSQL has no CPU
@@ -402,13 +419,15 @@ mv /usr/local/pgsql /usr/local/pgsql.old
         --enable-thread-safety
                 Make the client libraries thread-safe. This allows
                 concurrent threads in libpq and ECPG programs to safely
-                control their private connection handles.
+                control their private connection handles. This option
+                requires adequate threading support in your operating
+                system.
 
         --without-zlib
-                Prevents the use of the Zlib library. This disables
-                compression support in pg_dump. This option is only
-                intended for those rare systems where this library is not
-                available.
+                Prevents use of the Zlib library. This disables support
+                for compressed archives in pg_dump and pg_restore. This
+                option is only intended for those rare systems where this
+                library is not available.
 
         --enable-debug
                 Compiles all programs and libraries with debugging
@@ -445,11 +464,12 @@ mv /usr/local/pgsql /usr/local/pgsql.old
                 install. At present, this option will work only if you use
                 GCC.
 
-       If you prefer a C compiler different from the one "configure" picks
-       then you can set the environment variable CC to the program of your
-       choice. By default, "configure" will pick "gcc" unless this is
-       inappropriate for the platform. Similarly, you can override the
-       default compiler flags with the CFLAGS variable.
+       If you prefer a C compiler different from the one "configure"
+       picks, you can set the environment variable CC to the program of
+       your choice. By default, "configure" will pick "gcc" if available,
+       else the platform's default (usually "cc"). Similarly, you can
+       override the default compiler flags if needed with the CFLAGS
+       variable.
        You can specify environment variables on the "configure" command
        line, for example:
 ./configure CC=/opt/bin/gcc CFLAGS='-O2 -pipe'
@@ -473,8 +493,8 @@ gmake check
     4. Installing The Files
 
      Note: If you are upgrading an existing system and are going to
-     install the new files over the old ones, then you should have backed
-     up your data and shut down the old server by now, as explained in
+     install the new files over the old ones, be sure to back up your
+     data and shut down the old server before proceeding, as explained in
      the Section called If You Are Upgrading above.
        To install PostgreSQL enter
 gmake install
@@ -493,9 +513,11 @@ gmake install
        you want to save all the disk space you possibly can, you will have
        to do manual work.
        The standard installation provides all the header files needed for
-       client application development as well as for any server-side
-       program development (such as custom functions or data types written
-       in C).
+       client application development as well as for server-side program
+       development, such as custom functions or data types written in C.
+       (Prior to PostgreSQL 8.0, a separate gmake install-all-headers
+       command was needed for the latter, but this step has been folded
+       into the standard install.)
        Client-only installation: If you want to install only the client
        applications and interface libraries, then you can use these
        commands:
@@ -518,8 +540,10 @@ regsvr32 pgsql_library_directory/pgevent.dll
    will preserve the files made by the "configure" program, so that you
    can rebuild everything with "gmake" later on. To reset the source tree
    to the state in which it was distributed, use "gmake distclean". If you
-   are going to build for several platforms from the same source tree you
-   must do this and re-configure for each build.
+   are going to build for several platforms within the same source tree
+   you must do this and re-configure for each build. (Alternatively, use a
+   separate build tree for each platform, so that the source tree remains
+   unmodified.)
 
    If you perform a build and then discover that your "configure" options
    were wrong, or if you change anything that "configure" investigates
@@ -689,79 +713,127 @@ psql testdb
    PostgreSQL has been verified by the developer community to work on the
    platforms listed below. A supported platform generally means that
    PostgreSQL builds and installs according to these instructions and that
-   the regression tests pass.
+   the regression tests pass. "Build farm" entries refer to builds
+   reported by the PostgreSQL Build Farm. Platform entries that show an
+   older version of PostgreSQL are those that did not receive explicit
+   testing at the time of release of version 8.0 but that we still expect
+   to work.
 
      Note: If you are having problems with the installation on a
      supported platform, please write to <pgsql-bugs@postgresql.org> or
      <pgsql-ports@postgresql.org>, not to the people listed here.
 
    OS Processor Version Reported Remarks
-   AIX RS6000 7.4 2003-10-25, Hans-Jürgen Schönig (<hs@cybertec.at>) see
+   AIX PowerPC 8.0.0 Travis P (<twp@castle.fastmail.fm>), 2004-12-12 see
    also doc/FAQ_AIX
-   BSD/OS x86 7.4 2003-10-24, Bruce Momjian (<pgman@candle.pha.pa.us>) 4.3
-   FreeBSD Alpha 7.4 2003-10-25, Peter Eisentraut (<peter_e@gmx.net>) 4.8
-   FreeBSD x86 7.4 2003-10-24, Peter Eisentraut (<peter_e@gmx.net>) 4.9
-   HP-UX PA-RISC 7.4 2003-10-31, 10.20, Tom Lane (<tgl@sss.pgh.pa.us>);
-   2003-11-04, 11.00, Peter Eisentraut (<peter_e@gmx.net>) gcc and cc; see
-   also doc/FAQ_HPUX
-   IRIX MIPS 7.4 2003-11-12, Robert E. Bruccoleri
-   (<bruc@stone.congenomics.com>) 6.5.20, cc only
-   Linux Alpha 7.4 2003-10-25, Noèl Köthe (<noel@debian.org>) 2.4
-   Linux arm41 7.4 2003-10-25, Noèl Köthe (<noel@debian.org>) 2.4
-   Linux Itanium 7.4 2003-10-25, Noèl Köthe (<noel@debian.org>) 2.4
-   Linux m68k 7.4 2003-10-25, Noèl Köthe (<noel@debian.org>) 2.4
-   Linux MIPS 7.4 2003-10-25, Noèl Köthe (<noel@debian.org>) 2.4
-   Linux Opteron 7.4 2003-11-01, Jani Averbach (<jaa@cc.jyu.fi>) 2.6
-   Linux PPC 7.4 2003-10-25, Noèl Köthe (<noel@debian.org>)
-   Linux S/390 7.4 2003-10-25, Noèl Köthe (<noel@debian.org>) 2.4
-   Linux Sparc 7.4 2003-10-24, Peter Eisentraut (<peter_e@gmx.net>) 2.4,
-   32-bit
-   Linux x86 7.4 2003-10-24, Peter Eisentraut (<peter_e@gmx.net>) 2.4
-   Mac OS X PPC 7.4 2003-10-24, 10.2.8, Adam Witney
-   (<awitney@sghms.ac.uk>), 10.3, Marko Karppinen (<marko@karppinen.fi>)
-   NetBSD arm32 7.4 2003-11-12, Patrick Welche (<prlw1@newn.cam.ac.uk>)
+   AIX RS6000 8.0.0 Hans-Jürgen Schönig (<hs@cybertec.at>), 2004-12-06 see
+   also doc/FAQ_AIX
+   BSD/OS x86 8.0.0 Bruce Momjian (<pgman@candle.pha.pa.us>), 2004-12-07
+   4.3.1
+   Debian GNU/Linux Alpha 7.4 Noèl Köthe (<noel@debian.org>), 2003-10-25
+   Debian GNU/Linux AMD64 8.0.0 Build farm panda, snapshot 2004-12-06
+   01:20:02 sid, kernel 2.6
+   Debian GNU/Linux ARM 8.0.0 Jim Buttafuoco (<jim@contactbda.com>),
+   2005-01-06
+   Debian GNU/Linux IA64 7.4 Noèl Köthe (<noel@debian.org>), 2003-10-25
+   Debian GNU/Linux m68k 8.0.0 Noèl Köthe (<noel@debian.org>), 2004-12-09
+   sid
+   Debian GNU/Linux MIPS 8.0.0 Build farm lionfish, snapshot 2004-12-06
+   11:00:08 3.1 (sarge), kernel 2.4
+   Debian GNU/Linux PA-RISC 8.0.0 Noèl Köthe (<noel@debian.org>),
+   2004-12-07 sid
+   Debian GNU/Linux PowerPC 8.0.0 Noèl Köthe (<noel@debian.org>),
+   2004-12-15 sid
+   Debian GNU/Linux S/390 7.4 Noèl Köthe (<noel@debian.org>), 2003-10-25
+   Debian GNU/Linux Sparc 8.0.0 Noèl Köthe (<noel@debian.org>), 2004-12-09
+   sid, 32-bit
+   Debian GNU/Linux x86 8.0.0 Peter Eisentraut (<peter_e@gmx.net>),
+   2004-12-06 3.1 (sarge), kernel 2.6
+   Fedora AMD64 8.0.0 John Gray (<jgray@azuli.co.uk>), 2004-12-12 FC3
+   Fedora x86 8.0.0 Build farm dog, snapshot 2004-12-06 02:06:01 FC1
+   FreeBSD Alpha 7.4 Peter Eisentraut (<peter_e@gmx.net>), 2003-10-25 4.8
+   FreeBSD x86 8.0.0 Build farm cockatoo, snapshot 2004-12-06 14:10:01
+   (4.10); Marc Fournier (<scrappy@postgresql.org>), 2004-12-07 (5.3)
+   Gentoo Linux AMD64 8.0.0 Jani Averbach (<jaa@jaa.iki.fi>), 2005-01-13
+   Gentoo Linux x86 8.0.0 Paul Bort (<pbort@tmwsystems.com>), 2004-12-07
+   HP-UX IA64 8.0.0 Tom Lane (<tgl@sss.pgh.pa.us>), 2005-01-06 11.23, gcc
+   and cc; see also doc/FAQ_HPUX
+   HP-UX PA-RISC 8.0.0 Tom Lane (<tgl@sss.pgh.pa.us>), 2005-01-06 10.20
+   and 11.11, gcc and cc; see also doc/FAQ_HPUX
+   IRIX MIPS 7.4 Robert E. Bruccoleri (<bruc@stone.congenomics.com>),
+   2003-11-12 6.5.20, cc only
+   Mac OS X PowerPC 8.0.0 Andrew Rawnsley (<ronz@ravensfield.com>),
+   2004-12-07 10.3.5
+   Mandrakelinux x86 8.0.0 Build farm shrew, snapshot 2004-12-06 02:02:01
+   10.0
+   NetBSD arm32 7.4 Patrick Welche (<prlw1@newn.cam.ac.uk>), 2003-11-12
    1.6ZE/acorn32
-   NetBSD Sparc 7.4.1 2003-11-26, Peter Eisentraut (<peter_e@gmx.net>)
+   NetBSD m68k 8.0.0 Rémi Zara (<remi_zara@mac.com>), 2004-12-14 2.0
+   NetBSD Sparc 7.4.1 Peter Eisentraut (<peter_e@gmx.net>), 2003-11-26
    1.6.1, 32-bit
-   NetBSD x86 7.4 2003-10-24, Peter Eisentraut (<peter_e@gmx.net>) 1.6
-   OpenBSD Sparc 7.4 2003-11-01, Peter Eisentraut (<peter_e@gmx.net>) 3.4
-   OpenBSD x86 7.4 2003-10-24, Peter Eisentraut (<peter_e@gmx.net>) 3.2
-   Solaris Sparc 7.4 2003-10-26, Christopher Browne
-   (<cbbrowne@libertyrms.info>) 2.8; see also doc/FAQ_Solaris
-   Solaris x86 7.4 2003-10-26, Kurt Roeckx (<Q@ping.be>) 2.6; see also
+   NetBSD x86 8.0.0 Build farm canary, snapshot 2004-12-06 03:30:00 1.6
+   OpenBSD Sparc 8.0.0 Chris Mair (<list@1006.org>), 2005-01-10 3.3
+   OpenBSD Sparc64 8.0.0 Build farm spoonbill, snapshot 2005-01-06
+   00:50:05 3.6
+   OpenBSD x86 8.0.0 Build farm emu, snapshot 2004-12-06 11:35:03 3.6
+   Red Hat Linux AMD64 8.0.0 Tom Lane (<tgl@sss.pgh.pa.us>), 2004-12-07
+   RHEL 3AS
+   Red Hat Linux IA64 8.0.0 Tom Lane (<tgl@sss.pgh.pa.us>), 2004-12-07
+   RHEL 3AS
+   Red Hat Linux PowerPC 8.0.0 Tom Lane (<tgl@sss.pgh.pa.us>), 2004-12-07
+   RHEL 3AS
+   Red Hat Linux PowerPC 64 8.0.0 Tom Lane (<tgl@sss.pgh.pa.us>),
+   2004-12-07 RHEL 3AS
+   Red Hat Linux S/390 8.0.0 Tom Lane (<tgl@sss.pgh.pa.us>), 2004-12-07
+   RHEL 3AS
+   Red Hat Linux S/390x 8.0.0 Tom Lane (<tgl@sss.pgh.pa.us>), 2004-12-07
+   RHEL 3AS
+   Red Hat Linux x86 8.0.0 Tom Lane (<tgl@sss.pgh.pa.us>), 2004-12-07 RHEL
+   3AS
+   Solaris Sparc 8.0.0 Kenneth Marshall (<ktm@is.rice.edu>), 2004-12-07
+   Solaris 8; see also doc/FAQ_Solaris
+   Solaris x86 8.0.0 Build farm kudu, snapshot 2004-12-10 02:30:04 (cc);
+   dragonfly, snapshot 2004-12-09 04:30:00 (gcc) Solaris 9; see also
    doc/FAQ_Solaris
-   Tru64 UNIX Alpha 7.4 2003-10-25, 5.1b, Peter Eisentraut
-   (<peter_e@gmx.net>); 2003-10-29, 4.0g, Alessio Bragadini
-   (<alessio@albourne.com>)
-   UnixWare x86 7.4 2003-11-03, Larry Rosenman (<ler@lerctr.org>) 7.1.3;
-   join test may fail, see also doc/FAQ_SCO
-   Windows with Cygwin x86 7.4 2003-10-24, Peter Eisentraut
-   (<peter_e@gmx.net>) see doc/FAQ_MSWIN
-   Windows x86 7.4 2003-10-27, Dave Page (<dpage@vale-housing.co.uk>)
-   native is client-side only, see documentation
+   SUSE Linux AMD64 8.0.0 Reinhard Max (<max@suse.de>), 2005-01-03 9.0,
+   9.1, 9.2, SLES 9
+   SUSE Linux IA64 8.0.0 Reinhard Max (<max@suse.de>), 2005-01-03 SLES 9
+   SUSE Linux PowerPC 8.0.0 Reinhard Max (<max@suse.de>), 2005-01-03 SLES
+   9
+   SUSE Linux PowerPC 64 8.0.0 Reinhard Max (<max@suse.de>), 2005-01-03
+   SLES 9
+   SUSE Linux S/390 8.0.0 Reinhard Max (<max@suse.de>), 2005-01-03 SLES 9
+   SUSE Linux S/390x 8.0.0 Reinhard Max (<max@suse.de>), 2005-01-03 SLES 9
+   SUSE Linux x86 8.0.0 Reinhard Max (<max@suse.de>), 2005-01-03 9.0, 9.1,
+   9.2, SLES 9
+   Tru64 UNIX Alpha 8.0.0 Honda Shigehiro (<fwif0083@mb.infoweb.ne.jp>),
+   2005-01-07 5.0
+   UnixWare x86 8.0.0 Peter Eisentraut (<peter_e@gmx.net>), 2004-12-14 cc,
+   7.1.4; see also doc/FAQ_SCO
+   Windows x86 8.0.0 Dave Page (<dpage@vale-housing.co.uk>), 2004-12-07 XP
+   Pro; see doc/FAQ_MINGW
+   Windows with Cygwin x86 8.0.0 Build farm gibbon, snapshot 2004-12-11
+   01:33:01 see doc/FAQ_CYGWIN
 
    Unsupported Platforms: The following platforms are either known not to
-   work, or they used to work in a previous release and we did not receive
-   explicit confirmation of a successful test with version 8.0 at the time
-   this list was compiled. We include these here to let you know that
-   these platforms *could* be supported if given some attention.
+   work, or they used to work in a fairly distant previous release. We
+   include these here to let you know that these platforms *could* be
+   supported if given some attention.
 
    OS Processor Version Reported Remarks
-   BeOS x86 7.2 2001-11-29, Cyril Velter (<cyril.velter@libertysurf.fr>)
+   BeOS x86 7.2 Cyril Velter (<cyril.velter@libertysurf.fr>), 2001-11-29
    needs updates to semaphore code
-   Linux PlayStation 2 7.4 2003-11-02, Peter Eisentraut
-   (<peter_e@gmx.net>) needs new config.guess, --disable-spinlocks
-   Linux PA-RISC 7.4 2003-10-25, Noèl Köthe (<noel@debian.org>) needs
-   --disable-spinlocks, otherwise OK
-   NetBSD Alpha 7.2 2001-11-20, Thomas Thai (<tom@minnesota.com>) 1.5W
-   NetBSD MIPS 7.2.1 2002-06-13, Warwick Hunter (<whunter@agile.tv>) 1.5.3
-   NetBSD PPC 7.2 2001-11-28, Bill Studenmund (<wrstuden@netbsd.org>) 1.5
-   NetBSD VAX 7.1 2001-03-30, Tom I. Helbekkmo (<tih@kpnQwest.no>) 1.5
-   QNX 4 RTOS x86 7.2 2001-12-10, Bernd Tegge (<tegge@repas-aeg.de>) needs
+   Linux PlayStation 2 8.0.0 Chris Mair (<list@1006.org>), 2005-01-09
+   requires --disable-spinlocks (works, but slow)
+   NetBSD Alpha 7.2 Thomas Thai (<tom@minnesota.com>), 2001-11-20 1.5W
+   NetBSD MIPS 7.2.1 Warwick Hunter (<whunter@agile.tv>), 2002-06-13 1.5.3
+   NetBSD PowerPC 7.2 Bill Studenmund (<wrstuden@netbsd.org>), 2001-11-28
+   1.5
+   NetBSD VAX 7.1 Tom I. Helbekkmo (<tih@kpnQwest.no>), 2001-03-30 1.5
+   QNX 4 RTOS x86 7.2 Bernd Tegge (<tegge@repas-aeg.de>), 2001-12-10 needs
    updates to semaphore code; see also doc/FAQ_QNX4
-   QNX RTOS v6 x86 7.2 2001-11-20, Igor Kovalenko
-   (<Igor.Kovalenko@motorola.com>) patches available in archives, but too
-   late for 7.2
-   SCO OpenServer x86 7.3.1 2002-12-11, Shibashish Satpathy
-   (<shib@postmark.net>) 5.0.4, gcc; see also doc/FAQ_SCO
-   SunOS 4 Sparc 7.2 2001-12-04, Tatsuo Ishii (<t-ishii@sra.co.jp>)
+   QNX RTOS v6 x86 7.2 Igor Kovalenko (<Igor.Kovalenko@motorola.com>),
+   2001-11-20 patches available in archives, but too late for 7.2
+   SCO OpenServer x86 7.3.1 Shibashish Satpathy (<shib@postmark.net>),
+   2002-12-11 5.0.4, gcc; see also doc/FAQ_SCO
+   SunOS 4 Sparc 7.2 Tatsuo Ishii (<t-ishii@sra.co.jp>), 2001-12-04

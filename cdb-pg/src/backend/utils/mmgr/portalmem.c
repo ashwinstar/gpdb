@@ -8,11 +8,11 @@
  * doesn't actually run the executor for them.
  *
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/mmgr/portalmem.c,v 1.74 2004/10/12 01:50:04 neilc Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/mmgr/portalmem.c,v 1.76 2004/12/31 22:02:48 pgsql Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -26,10 +26,13 @@
 #include "utils/portal.h"
 
 /*
- * estimate of the maximum number of open portals a user would have,
- * used in initially sizing the PortalHashTable in EnablePortalManager()
+ * Estimate of the maximum number of open portals a user would have,
+ * used in initially sizing the PortalHashTable in EnablePortalManager().
+ * Since the hash table can expand, there's no need to make this overly
+ * generous, and keeping it small avoids unnecessary overhead in the
+ * hash_seq_search() calls executed during transaction end.
  */
-#define PORTALS_PER_USER	   64
+#define PORTALS_PER_USER	   16
 
 
 /* ----------------

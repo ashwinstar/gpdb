@@ -3,12 +3,12 @@
  * rewriteDefine.c
  *	  routines for defining a rewrite rule
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/rewrite/rewriteDefine.c,v 1.98 2004/08/29 05:06:47 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/rewrite/rewriteDefine.c,v 1.100 2005/01/10 20:02:21 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -484,10 +484,8 @@ DefineQueryRewrite(RuleStmt *stmt)
 	 */
 	if (RelisBecomingView)
 	{
-		if (event_relation->rd_smgr == NULL)
-			event_relation->rd_smgr = smgropen(event_relation->rd_node);
+		RelationOpenSmgr(event_relation);
 		smgrscheduleunlink(event_relation->rd_smgr, event_relation->rd_istemp);
-		event_relation->rd_smgr = NULL;
 	}
 
 	/* Close rel, but keep lock till commit... */

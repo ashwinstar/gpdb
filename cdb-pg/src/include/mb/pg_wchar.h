@@ -1,4 +1,4 @@
-/* $PostgreSQL: pgsql/src/include/mb/pg_wchar.h,v 1.52 2004/09/17 21:59:57 petere Exp $ */
+/* $PostgreSQL: pgsql/src/include/mb/pg_wchar.h,v 1.56 2004/12/04 18:19:33 momjian Exp $ */
 
 #ifndef PG_WCHAR_H
 #define PG_WCHAR_H

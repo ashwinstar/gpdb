@@ -8,12 +8,12 @@
  * dispatches to the proper FooMain() routine for the incarnation.
  *
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/main/main.c,v 1.91 2004/10/12 21:54:38 petere Exp $
+ *	  $PostgreSQL: pgsql/src/backend/main/main.c,v 1.94 2004/12/31 21:59:53 pgsql Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -118,9 +118,6 @@ main(int argc, char *argv[])
 						 argv[0], err);
 			exit(1);
 		}
-
-		/* Start our win32 signal implementation */
-		pgwin32_signal_initialize();
 	}
 #endif
 
@@ -243,7 +240,8 @@ main(int argc, char *argv[])
 #else							/* WIN32 */
 		if (pgwin32_is_admin())
 		{
-			write_stderr("Execution of PostgreSQL by a user with administrative permissions is not permitted.\n"
+			write_stderr("Execution of PostgreSQL by a user with administrative permissions is not\n"
+						 "permitted.\n"
 						 "The server must be started under an unprivileged user ID to prevent\n"
 						 "possible system security compromises.  See the documentation for\n"
 			  "more information on how to properly start the server.\n");
@@ -278,6 +276,16 @@ main(int argc, char *argv[])
 #ifdef EXEC_BACKEND
 	if (argc > 1 && strncmp(argv[1], "-fork", 5) == 0)
 		exit(SubPostmasterMain(argc, argv));
+#endif
+
+#ifdef WIN32
+	/*
+	 * Start our win32 signal implementation
+	 *
+	 * SubPostmasterMain() will do this for itself, but the remaining
+	 * modes need it here
+	 */
+	pgwin32_signal_initialize();
 #endif
 
 	/*

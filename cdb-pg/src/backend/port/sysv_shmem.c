@@ -6,11 +6,11 @@
  * These routines represent a fairly thin layer on top of SysV shared
  * memory functionality.
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/port/sysv_shmem.c,v 1.39 2004/10/13 01:25:11 neilc Exp $
+ *	  $PostgreSQL: pgsql/src/backend/port/sysv_shmem.c,v 1.42 2004/12/31 22:00:30 pgsql Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -20,6 +20,7 @@
 #include <signal.h>
 #include <unistd.h>
 #include <sys/file.h>
+#include <sys/stat.h>
 #ifdef HAVE_SYS_IPC_H
 #include <sys/ipc.h>
 #endif
@@ -39,6 +40,12 @@ typedef key_t IpcMemoryKey;		/* shared memory key passed to shmget(2) */
 typedef int IpcMemoryId;		/* shared memory ID returned by shmget(2) */
 
 #define IPCProtection	(0600)	/* access/modify by user only */
+
+#ifdef SHM_SHARE_MMU			/* use intimate shared memory on Solaris */
+#define PG_SHMAT_FLAGS			SHM_SHARE_MMU
+#else
+#define PG_SHMAT_FLAGS			0
+#endif
 
 
 unsigned long UsedShmemSegID = 0;
@@ -135,17 +142,7 @@ InternalIpcMemoryCreate(IpcMemoryKey memKey, uint32 size)
 	on_shmem_exit(IpcMemoryDelete, Int32GetDatum(shmid));
 
 	/* OK, should be able to attach to the segment */
-#ifdef SHM_SHARE_MMU
-	/* use intimate shared memory on Solaris */
-	memAddress = shmat(shmid, 0, SHM_SHARE_MMU);
-#else
-
-#ifdef EXEC_BACKEND
-	memAddress = shmat(shmid, UsedShmemSegAddr, 0);
-#else
-	memAddress = shmat(shmid, NULL, 0);
-#endif
-#endif
+	memAddress = shmat(shmid, NULL, PG_SHMAT_FLAGS);
 
 	if (memAddress == (void *) -1)
 		elog(FATAL, "shmat(id=%d) failed: %m", shmid);
@@ -188,20 +185,26 @@ IpcMemoryDelete(int status, Datum shmId)
  * PGSharedMemoryIsInUse
  *
  * Is a previously-existing shmem segment still existing and in use?
+ *
+ * The point of this exercise is to detect the case where a prior postmaster
+ * crashed, but it left child backends that are still running.  Therefore
+ * we only care about shmem segments that are associated with the intended
+ * DataDir.  This is an important consideration since accidental matches of
+ * shmem segment IDs are reasonably common.
  */
 bool
 PGSharedMemoryIsInUse(unsigned long id1, unsigned long id2)
 {
 	IpcMemoryId shmId = (IpcMemoryId) id2;
 	struct shmid_ds shmStat;
+#ifndef WIN32
+	struct stat statbuf;
+	PGShmemHeader *hdr;
+#endif
 
 	/*
 	 * We detect whether a shared memory segment is in use by seeing
 	 * whether it (a) exists and (b) has any processes are attached to it.
-	 *
-	 * If we are unable to perform the stat operation for a reason other than
-	 * nonexistence of the segment (most likely, because it doesn't belong
-	 * to our userid), assume it is in use.
 	 */
 	if (shmctl(shmId, IPC_STAT, &shmStat) < 0)
 	{
@@ -212,13 +215,58 @@ PGSharedMemoryIsInUse(unsigned long id1, unsigned long id2)
 		 */
 		if (errno == EINVAL)
 			return false;
-		/* Else assume segment is in use */
+		/*
+		 * EACCES implies that the segment belongs to some other userid,
+		 * which means it is not a Postgres shmem segment (or at least,
+		 * not one that is relevant to our data directory).
+		 */
+		if (errno == EACCES)
+			return false;
+		/*
+		 * Otherwise, we had better assume that the segment is in use.
+		 * The only likely case is EIDRM, which implies that the segment
+		 * has been IPC_RMID'd but there are still processes attached to it.
+		 */
 		return true;
 	}
-	/* If it has attached processes, it's in use */
-	if (shmStat.shm_nattch != 0)
-		return true;
-	return false;
+
+	/* If it has no attached processes, it's not in use */
+	if (shmStat.shm_nattch == 0)
+		return false;
+
+	/*
+	 * Try to attach to the segment and see if it matches our data directory.
+	 * This avoids shmid-conflict problems on machines that are running
+	 * several postmasters under the same userid.  On Windows, which doesn't
+	 * have useful inode numbers, we can't do this so we punt and assume there
+	 * is a conflict.
+	 */
+#ifndef WIN32
+	if (stat(DataDir, &statbuf) < 0)
+		return true;			/* if can't stat, be conservative */
+
+	hdr = (PGShmemHeader *) shmat(shmId, NULL, PG_SHMAT_FLAGS);
+
+	if (hdr == (PGShmemHeader *) -1)
+		return true;			/* if can't attach, be conservative */
+
+	if (hdr->magic != PGShmemMagic ||
+		hdr->device != statbuf.st_dev ||
+		hdr->inode != statbuf.st_ino)
+	{
+		/*
+		 * It's either not a Postgres segment, or not one for my data
+		 * directory.  In either case it poses no threat.
+		 */
+		shmdt((void *) hdr);
+		return false;
+	}
+
+	/* Trouble --- looks a lot like there's still live backends */
+	shmdt((void *) hdr);
+#endif
+
+	return true;
 }
 
 
@@ -227,7 +275,7 @@ PGSharedMemoryIsInUse(unsigned long id1, unsigned long id2)
  *
  * Create a shared memory segment of the given size and initialize its
  * standard header.  Also, register an on_shmem_exit callback to release
- * the storage.  For an exec'ed backend, it just attaches.
+ * the storage.
  *
  * Dead Postgres segments are recycled if found, but we do not fail upon
  * collision with non-Postgres shmem segments.	The idea here is to detect and
@@ -247,29 +295,8 @@ PGSharedMemoryCreate(uint32 size, bool makePrivate, int port)
 	void	   *memAddress;
 	PGShmemHeader *hdr;
 	IpcMemoryId shmid;
-
-#ifdef EXEC_BACKEND
-	/* If Exec case, just attach and return the pointer */
-	if (UsedShmemSegAddr != NULL && !makePrivate && IsUnderPostmaster)
-	{
-		void	   *origUsedShmemSegAddr = UsedShmemSegAddr;
-
-#ifdef __CYGWIN__
-		/* cygipc (currently) appears to not detach on exec. */
-		PGSharedMemoryDetach();
-		UsedShmemSegAddr = origUsedShmemSegAddr;
-#endif
-		elog(DEBUG3, "Attaching to %p", UsedShmemSegAddr);
-		hdr = PGSharedMemoryAttach((IpcMemoryKey) UsedShmemSegID, &shmid);
-		if (hdr == NULL)
-			elog(FATAL, "could not attach to proper memory at fixed address: shmget(key=%d, addr=%p) failed: %m",
-				 (int) UsedShmemSegID, UsedShmemSegAddr);
-		if (hdr != origUsedShmemSegAddr)
-			elog(FATAL, "attaching to shared mem returned unexpected address (got %p, expected %p)",
-				 hdr, UsedShmemSegAddr);
-		UsedShmemSegAddr = hdr;
-		return hdr;
-	}
+#ifndef WIN32
+	struct stat statbuf;
 #endif
 
 	/* Room for a header? */
@@ -345,6 +372,17 @@ PGSharedMemoryCreate(uint32 size, bool makePrivate, int port)
 	hdr->creatorPID = getpid();
 	hdr->magic = PGShmemMagic;
 
+#ifndef WIN32
+	/* Fill in the data directory ID info, too */
+	if (stat(DataDir, &statbuf) < 0)
+		ereport(FATAL,
+				(errcode_for_file_access(),
+				 errmsg("could not stat data directory \"%s\": %m",
+						DataDir)));
+	hdr->device = statbuf.st_dev;
+	hdr->inode = statbuf.st_ino;
+#endif
+
 	/*
 	 * Initialize space allocation status for segment.
 	 */
@@ -357,6 +395,49 @@ PGSharedMemoryCreate(uint32 size, bool makePrivate, int port)
 
 	return hdr;
 }
+
+#ifdef EXEC_BACKEND
+
+/*
+ * PGSharedMemoryReAttach
+ *
+ * Re-attach to an already existing shared memory segment.  In the non
+ * EXEC_BACKEND case this is not used, because postmaster children inherit
+ * the shared memory segment attachment via fork().
+ *
+ * UsedShmemSegID and UsedShmemSegAddr are implicit parameters to this
+ * routine.  The caller must have already restored them to the postmaster's
+ * values.
+ */
+void
+PGSharedMemoryReAttach(void)
+{
+	IpcMemoryId shmid;
+	void	   *hdr;
+	void	   *origUsedShmemSegAddr = UsedShmemSegAddr;
+
+	Assert(UsedShmemSegAddr != NULL);
+	Assert(IsUnderPostmaster);
+
+#ifdef __CYGWIN__
+	/* cygipc (currently) appears to not detach on exec. */
+	PGSharedMemoryDetach();
+	UsedShmemSegAddr = origUsedShmemSegAddr;
+#endif
+
+	elog(DEBUG3, "Attaching to %p", UsedShmemSegAddr);
+	hdr = (void *) PGSharedMemoryAttach((IpcMemoryKey) UsedShmemSegID, &shmid);
+	if (hdr == NULL)
+		elog(FATAL, "could not reattach to shared memory (key=%d, addr=%p): %m",
+			 (int) UsedShmemSegID, UsedShmemSegAddr);
+	if (hdr != origUsedShmemSegAddr)
+		elog(FATAL, "reattaching to shared memory returned unexpected address (got %p, expected %p)",
+			 hdr, origUsedShmemSegAddr);
+
+	UsedShmemSegAddr = hdr;		/* probably redundant */
+}
+
+#endif /* EXEC_BACKEND */
 
 /*
  * PGSharedMemoryDetach
@@ -397,15 +478,7 @@ PGSharedMemoryAttach(IpcMemoryKey key, IpcMemoryId *shmid)
 	if ((*shmid = shmget(key, sizeof(PGShmemHeader), 0)) < 0)
 		return NULL;
 
-	hdr = (PGShmemHeader *) shmat(*shmid,
-								  UsedShmemSegAddr,
-#ifdef SHM_SHARE_MMU
-	/* use intimate shared memory on Solaris */
-								  SHM_SHARE_MMU
-#else
-								  0
-#endif
-		);
+	hdr = (PGShmemHeader *) shmat(*shmid, UsedShmemSegAddr, PG_SHMAT_FLAGS);
 
 	if (hdr == (PGShmemHeader *) -1)
 		return NULL;			/* failed: must be some other app's */

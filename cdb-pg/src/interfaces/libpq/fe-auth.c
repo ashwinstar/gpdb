@@ -3,14 +3,14 @@
  * fe-auth.c
  *	   The front-end (client) authorization routines
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * NOTE: the error message strings returned by this module must not
  * exceed INITIAL_EXPBUFFER_SIZE (currently 256 bytes).
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-auth.c,v 1.94 2004/10/16 03:10:17 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-auth.c,v 1.99 2005/01/12 21:37:54 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -243,7 +243,10 @@ pg_krb4_sendauth(char *PQerrormsg, int sock,
  */
 
 #include <krb5.h>
+/* Some old versions of Kerberos do not include <com_err.h> in <krb5.h> */
+#if !defined(__COM_ERR_H) && !defined(__COM_ERR_H__)
 #include <com_err.h>
+#endif
 
 /*
  * pg_an_to_ln -- return the local name corresponding to an authentication
@@ -527,7 +530,7 @@ pg_password_sendauth(PGconn *conn, const char *password, AuthRequest areq)
 				if (!(crypt_pwd = malloc(MD5_PASSWD_LEN + 1)) ||
 					!(crypt_pwd2 = malloc(MD5_PASSWD_LEN + 1)))
 				{
-					perror("malloc");
+					fprintf(stderr, libpq_gettext("out of memory\n"));
 					return STATUS_ERROR;
 				}
 				if (!EncryptMD5(password, conn->pguser,
@@ -719,8 +722,16 @@ char *
 fe_getauthname(char *PQerrormsg)
 {
 	const char *name = NULL;
-	char	   *authn = NULL;
+	char	   *authn;
 	MsgType		authsvc;
+#ifdef WIN32
+	char		username[128];
+	DWORD		namesize = sizeof(username) - 1;
+#else
+	char		pwdbuf[BUFSIZ];
+	struct passwd pwdstr;
+	struct passwd *pw = NULL;
+#endif
 
 	authsvc = fe_getauthsvc(PQerrormsg);
 
@@ -729,6 +740,7 @@ fe_getauthname(char *PQerrormsg)
 		return NULL;			/* leave original error message in place */
 
 	pglock_thread();
+
 #ifdef KRB4
 	if (authsvc == STARTUP_KRB4_MSG)
 		name = pg_krb4_authname(PQerrormsg);
@@ -743,18 +755,10 @@ fe_getauthname(char *PQerrormsg)
 		|| (authsvc == STARTUP_KRB5_MSG && !name))
 	{
 #ifdef WIN32
-		char		username[128];
-		DWORD		namesize = sizeof(username) - 1;
-
 		if (GetUserName(username, &namesize))
 			name = username;
 #else
-		char		pwdbuf[BUFSIZ];
-		struct passwd pwdstr;
-		struct passwd *pw = NULL;
-
-		if (pqGetpwuid(geteuid(), &pwdstr,
-					   pwdbuf, sizeof(pwdbuf), &pw) == 0)
+		if (pqGetpwuid(geteuid(), &pwdstr, pwdbuf, sizeof(pwdbuf), &pw) == 0)
 			name = pw->pw_name;
 #endif
 	}
@@ -764,8 +768,9 @@ fe_getauthname(char *PQerrormsg)
 				 libpq_gettext("fe_getauthname: invalid authentication system: %d\n"),
 				 authsvc);
 
-	if (name && (authn = (char *) malloc(strlen(name) + 1)))
-		strcpy(authn, name);
+	authn = name ? strdup(name) : NULL;
+
 	pgunlock_thread();
+
 	return authn;
 }

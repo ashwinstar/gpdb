@@ -3,12 +3,12 @@
  * parse_coerce.c
  *		handle type coercions/conversions for parser
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/parser/parse_coerce.c,v 2.123 2004/08/29 05:06:44 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/parser/parse_coerce.c,v 2.126 2004/12/31 22:00:27 pgsql Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -191,7 +191,7 @@ coerce_type(ParseState *pstate, Node *node,
 		/* If target is a domain, apply constraints. */
 		if (targetTyptype == 'd')
 			result = coerce_to_domain(result, InvalidOid, targetTypeId,
-									  cformat, false);
+									  cformat, false, false);
 
 		ReleaseSysCache(targetType);
 
@@ -253,23 +253,33 @@ coerce_type(ParseState *pstate, Node *node,
 			 * Generate an expression tree representing run-time
 			 * application of the conversion function.	If we are dealing
 			 * with a domain target type, the conversion function will
-			 * yield the base type (and we assume targetTypeMod must be
-			 * -1).
+			 * yield the base type, and we need to extract the correct
+			 * typmod to use from the domain's typtypmod.
 			 */
 			Oid			baseTypeId = getBaseType(targetTypeId);
+			int32		baseTypeMod;
+
+			if (targetTypeId != baseTypeId)
+				baseTypeMod = get_typtypmod(targetTypeId);
+			else
+				baseTypeMod = targetTypeMod;
 
 			result = build_coercion_expression(node, funcId,
-											   baseTypeId, targetTypeMod,
+											   baseTypeId, baseTypeMod,
 											   cformat,
 									  (cformat != COERCE_IMPLICIT_CAST));
 
 			/*
 			 * If domain, coerce to the domain type and relabel with
-			 * domain type ID
+			 * domain type ID.  We can skip the internal length-coercion
+			 * step if the selected coercion function was a type-and-length
+			 * coercion.
 			 */
 			if (targetTypeId != baseTypeId)
 				result = coerce_to_domain(result, baseTypeId, targetTypeId,
-										  cformat, true);
+										  cformat, true,
+										  exprIsLengthCoercion(result,
+															   NULL));
 		}
 		else
 		{
@@ -284,7 +294,7 @@ coerce_type(ParseState *pstate, Node *node,
 			 * then we won't need a RelabelType node.
 			 */
 			result = coerce_to_domain(node, InvalidOid, targetTypeId,
-									  cformat, false);
+									  cformat, false, false);
 			if (result == node)
 			{
 				/*
@@ -311,13 +321,16 @@ coerce_type(ParseState *pstate, Node *node,
 	if (typeInheritsFrom(inputTypeId, targetTypeId))
 	{
 		/*
-		 * Input class type is a subclass of target, so nothing to do ---
-		 * except relabel the type.  This is binary compatibility for
-		 * complex types.
+		 * Input class type is a subclass of target, so generate an
+		 * appropriate runtime conversion (removing unneeded columns
+		 * and possibly rearranging the ones that are wanted).
 		 */
-		return (Node *) makeRelabelType((Expr *) node,
-										targetTypeId, -1,
-										cformat);
+		ConvertRowtypeExpr *r = makeNode(ConvertRowtypeExpr);
+
+		r->arg = (Expr *) node;
+		r->resulttype = targetTypeId;
+		r->convertformat = cformat;
+		return (Node *) r;
 	}
 	/* If we get here, caller blew it */
 	elog(ERROR, "failed to find conversion function from %s to %s",
@@ -425,15 +438,16 @@ can_coerce_type(int nargs, Oid *input_typeids, Oid *target_typeids,
  * 'typeId': target type to coerce to
  * 'cformat': coercion format
  * 'hideInputCoercion': if true, hide the input coercion under this one.
+ * 'lengthCoercionDone': if true, caller already accounted for length.
  *
  * If the target type isn't a domain, the given 'arg' is returned as-is.
  */
 Node *
 coerce_to_domain(Node *arg, Oid baseTypeId, Oid typeId,
-				 CoercionForm cformat, bool hideInputCoercion)
+				 CoercionForm cformat, bool hideInputCoercion,
+				 bool lengthCoercionDone)
 {
 	CoerceToDomain *result;
-	int32		typmod;
 
 	/* Get the base type if it hasn't been supplied */
 	if (baseTypeId == InvalidOid)
@@ -461,12 +475,16 @@ coerce_to_domain(Node *arg, Oid baseTypeId, Oid typeId,
 	 * that would be safe to do anyway, without lots of knowledge about
 	 * what the base type thinks the typmod means.
 	 */
-	typmod = get_typtypmod(typeId);
-	if (typmod >= 0)
-		arg = coerce_type_typmod(arg, baseTypeId, typmod,
-								 COERCE_IMPLICIT_CAST,
-								 (cformat != COERCE_IMPLICIT_CAST),
-								 false);
+	if (!lengthCoercionDone)
+	{
+		int32	typmod = get_typtypmod(typeId);
+
+		if (typmod >= 0)
+			arg = coerce_type_typmod(arg, baseTypeId, typmod,
+									 COERCE_IMPLICIT_CAST,
+									 (cformat != COERCE_IMPLICIT_CAST),
+									 false);
+	}
 
 	/*
 	 * Now build the domain coercion node.	This represents run-time
@@ -552,6 +570,8 @@ hide_coercion_node(Node *node)
 		((FuncExpr *) node)->funcformat = COERCE_IMPLICIT_CAST;
 	else if (IsA(node, RelabelType))
 		((RelabelType *) node)->relabelformat = COERCE_IMPLICIT_CAST;
+	else if (IsA(node, ConvertRowtypeExpr))
+		((ConvertRowtypeExpr *) node)->convertformat = COERCE_IMPLICIT_CAST;
 	else if (IsA(node, RowExpr))
 		((RowExpr *) node)->row_format = COERCE_IMPLICIT_CAST;
 	else if (IsA(node, CoerceToDomain))

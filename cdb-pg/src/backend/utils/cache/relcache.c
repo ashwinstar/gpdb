@@ -3,12 +3,12 @@
  * relcache.c
  *	  POSTGRES relation descriptor cache code
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/cache/relcache.c,v 1.211 2004/09/16 16:58:35 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/cache/relcache.c,v 1.215 2005/01/10 20:02:23 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -119,6 +119,11 @@ static long relcacheInvalsReceived = 0L;
  * init file.
  */
 static List *initFileRelationIds = NIL;
+
+/*
+ * This flag lets us optimize away work in AtEOSubXact_RelationCache().
+ */
+static bool need_eosubxact_work = false;
 
 /*
  *		RelationBuildDescInfo exists so code can be shared
@@ -252,8 +257,8 @@ static Relation RelationSysNameCacheGetRelation(const char *relationName);
 static bool load_relcache_init_file(void);
 static void write_relcache_init_file(void);
 
-static void formrdesc(const char *relationName, int natts,
-		  FormData_pg_attribute *att);
+static void formrdesc(const char *relationName, Oid relationReltype,
+					  bool hasoids, int natts, FormData_pg_attribute *att);
 
 static HeapTuple ScanPgRelation(RelationBuildDescInfo buildinfo, bool indexOK);
 static Relation AllocateRelationDesc(Relation relation, Form_pg_class relp);
@@ -1260,16 +1265,15 @@ LookupOpclassInfo(Oid operatorClassOid,
  * NOTE: we assume we are already switched into CacheMemoryContext.
  */
 static void
-formrdesc(const char *relationName,
-		  int natts,
-		  FormData_pg_attribute *att)
+formrdesc(const char *relationName, Oid relationReltype,
+		  bool hasoids, int natts, FormData_pg_attribute *att)
 {
 	Relation	relation;
 	int			i;
 	bool		has_not_null;
 
 	/*
-	 * allocate new relation desc clear all fields of reldesc
+	 * allocate new relation desc, clear all fields of reldesc
 	 */
 	relation = (Relation) palloc0(sizeof(RelationData));
 	relation->rd_targblock = InvalidBlockNumber;
@@ -1301,6 +1305,7 @@ formrdesc(const char *relationName,
 
 	namestrcpy(&relation->rd_rel->relname, relationName);
 	relation->rd_rel->relnamespace = PG_CATALOG_NAMESPACE;
+	relation->rd_rel->reltype = relationReltype;
 
 	/*
 	 * It's important to distinguish between shared and non-shared
@@ -1313,7 +1318,7 @@ formrdesc(const char *relationName,
 	relation->rd_rel->relpages = 1;
 	relation->rd_rel->reltuples = 1;
 	relation->rd_rel->relkind = RELKIND_RELATION;
-	relation->rd_rel->relhasoids = true;
+	relation->rd_rel->relhasoids = hasoids;
 	relation->rd_rel->relnatts = (int16) natts;
 
 	/*
@@ -1322,12 +1327,10 @@ formrdesc(const char *relationName,
 	 * Unlike the case with the relation tuple, this data had better be right
 	 * because it will never be replaced.  The input values must be
 	 * correctly defined by macros in src/include/catalog/ headers.
-	 *
-	 * Note however that rd_att's tdtypeid, tdtypmod, tdhasoid fields are not
-	 * right at this point.  They will be fixed later when the real
-	 * pg_class row is loaded.
 	 */
-	relation->rd_att = CreateTemplateTupleDesc(natts, false);
+	relation->rd_att = CreateTemplateTupleDesc(natts, hasoids);
+	relation->rd_att->tdtypeid = relationReltype;
+	relation->rd_att->tdtypmod = -1;	/* unnecessary, but... */
 
 	/*
 	 * initialize tuple desc info
@@ -1375,10 +1378,12 @@ formrdesc(const char *relationName,
 	/*
 	 * initialize the rel-has-index flag, using hardwired knowledge
 	 */
-	relation->rd_rel->relhasindex = false;
-
-	/* In bootstrap mode, we have no indexes */
-	if (!IsBootstrapProcessingMode())
+	if (IsBootstrapProcessingMode())
+	{
+		/* In bootstrap mode, we have no indexes */
+		relation->rd_rel->relhasindex = false;
+	}
+	else
 	{
 		/* Otherwise, all the rels formrdesc is used for have indexes */
 		relation->rd_rel->relhasindex = true;
@@ -1654,11 +1659,7 @@ RelationClearRelation(Relation relation, bool rebuild)
 	 * ensures that the low-level file access state is updated after, say,
 	 * a vacuum truncation.
 	 */
-	if (relation->rd_smgr)
-	{
-		smgrclose(relation->rd_smgr);
-		relation->rd_smgr = NULL;
-	}
+	RelationCloseSmgr(relation);
 
 	/*
 	 * Never, never ever blow away a nailed-in system relation, because
@@ -1852,16 +1853,7 @@ RelationForgetRelation(Oid rid)
  *
  * Any relcache entry matching the relid must be flushed.  (Note: caller has
  * already determined that the relid belongs to our database or is a shared
- * relation.)  If rnode isn't NULL, we must also ensure that any smgr cache
- * entry matching that rnode is flushed.
- *
- * Ordinarily, if rnode is supplied then it will match the relfilenode of
- * the target relid.  However, it's possible for rnode to be different if
- * someone is engaged in a relfilenode change.	In that case we want to
- * make sure we clear the right cache entries.	This has to be done here
- * to keep things in sync between relcache and smgr cache --- we can't have
- * someone flushing an smgr cache entry that a relcache entry still points
- * to.
+ * relation.)
  *
  * We used to skip local relations, on the grounds that they could
  * not be targets of cross-backend SI update messages; but it seems
@@ -1870,7 +1862,7 @@ RelationForgetRelation(Oid rid)
  * local and nonlocal relations.
  */
 void
-RelationCacheInvalidateEntry(Oid relationId, RelFileNode *rnode)
+RelationCacheInvalidateEntry(Oid relationId)
 {
 	Relation	relation;
 
@@ -1879,19 +1871,7 @@ RelationCacheInvalidateEntry(Oid relationId, RelFileNode *rnode)
 	if (PointerIsValid(relation))
 	{
 		relcacheInvalsReceived++;
-		if (rnode)
-		{
-			/* Need to be sure smgr is flushed, but don't do it twice */
-			if (relation->rd_smgr == NULL ||
-				!RelFileNodeEquals(*rnode, relation->rd_node))
-				smgrclosenode(*rnode);
-		}
 		RelationFlushRelation(relation);
-	}
-	else
-	{
-		if (rnode)
-			smgrclosenode(*rnode);
 	}
 }
 
@@ -1941,11 +1921,7 @@ RelationCacheInvalidate(void)
 		relation = idhentry->reldesc;
 
 		/* Must close all smgr references to avoid leaving dangling ptrs */
-		if (relation->rd_smgr)
-		{
-			smgrclose(relation->rd_smgr);
-			relation->rd_smgr = NULL;
-		}
+		RelationCloseSmgr(relation);
 
 		/* Ignore new relations, since they are never SI targets */
 		if (relation->rd_createSubid != InvalidSubTransactionId)
@@ -2087,6 +2063,9 @@ AtEOXact_RelationCache(bool isCommit)
 			relation->rd_indexvalid = 0;
 		}
 	}
+
+	/* Once done with the transaction, we can reset need_eosubxact_work */
+	need_eosubxact_work = false;
 }
 
 /*
@@ -2102,6 +2081,21 @@ AtEOSubXact_RelationCache(bool isCommit, SubTransactionId mySubid,
 {
 	HASH_SEQ_STATUS status;
 	RelIdCacheEnt *idhentry;
+
+	/*
+	 * In the majority of subtransactions there is not anything for this
+	 * routine to do, and since there are usually many entries in the
+	 * relcache, uselessly scanning the cache represents a surprisingly
+	 * large fraction of the subtransaction entry/exit overhead.  To avoid
+	 * this, we keep a static flag that must be set whenever a condition
+	 * is created that requires subtransaction-end work.  (Currently, this
+	 * means either a relation is created in the current xact, or an index
+	 * list is forced.)  For simplicity, the flag remains set till end of
+	 * top-level transaction, even though we could clear it earlier in some
+	 * cases.
+	 */
+	if (!need_eosubxact_work)
+		return;
 
 	hash_seq_init(&status, RelationIdCache);
 
@@ -2183,6 +2177,9 @@ RelationBuildLocalRelation(const char *relname,
 
 	/* it's being created in this transaction */
 	rel->rd_createSubid = GetCurrentSubTransactionId();
+
+	/* must flag that we have rels created in this transaction */
+	need_eosubxact_work = true;
 
 	/* is it a temporary relation? */
 	rel->rd_istemp = isTempNamespace(relnamespace);
@@ -2322,14 +2319,14 @@ RelationCacheInitialize(void)
 	if (IsBootstrapProcessingMode() ||
 		!load_relcache_init_file())
 	{
-		formrdesc(RelationRelationName,
-				  Natts_pg_class, Desc_pg_class);
-		formrdesc(AttributeRelationName,
-				  Natts_pg_attribute, Desc_pg_attribute);
-		formrdesc(ProcedureRelationName,
-				  Natts_pg_proc, Desc_pg_proc);
-		formrdesc(TypeRelationName,
-				  Natts_pg_type, Desc_pg_type);
+		formrdesc(RelationRelationName, PG_CLASS_RELTYPE_OID,
+				  true, Natts_pg_class, Desc_pg_class);
+		formrdesc(AttributeRelationName, PG_ATTRIBUTE_RELTYPE_OID,
+				  false, Natts_pg_attribute, Desc_pg_attribute);
+		formrdesc(ProcedureRelationName, PG_PROC_RELTYPE_OID,
+				  true, Natts_pg_proc, Desc_pg_proc);
+		formrdesc(TypeRelationName, PG_TYPE_RELTYPE_OID,
+				  true, Natts_pg_type, Desc_pg_type);
 
 #define NUM_CRITICAL_RELS	4	/* fix if you change list above */
 	}
@@ -2745,6 +2742,8 @@ RelationSetIndexList(Relation relation, List *indexIds)
 	list_free(relation->rd_indexlist);
 	relation->rd_indexlist = indexIds;
 	relation->rd_indexvalid = 2;	/* mark list as forced */
+	/* must flag that we have a forced index list */
+	need_eosubxact_work = true;
 }
 
 /*
@@ -3172,6 +3171,7 @@ load_relcache_init_file(void)
 			rel->rd_refcnt = 0;
 		rel->rd_indexvalid = 0;
 		rel->rd_indexlist = NIL;
+		rel->rd_createSubid = InvalidSubTransactionId;
 		MemSet(&rel->pgstat_info, 0, sizeof(rel->pgstat_info));
 
 		/*
@@ -3393,16 +3393,22 @@ write_relcache_init_file(void)
 		/*
 		 * OK, rename the temp file to its final name, deleting any
 		 * previously-existing init file.
+		 *
+		 * Note: a failure here is possible under Cygwin, if some other
+		 * backend is holding open an unlinked-but-not-yet-gone init file.
+		 * So treat this as a noncritical failure; just remove the useless
+		 * temp file on failure.
 		 */
-		rename(tempfilename, finalfilename);
-		LWLockRelease(RelCacheInitLock);
+		if (rename(tempfilename, finalfilename) < 0)
+			unlink(tempfilename);
 	}
 	else
 	{
 		/* Delete the already-obsolete temp file */
 		unlink(tempfilename);
-		LWLockRelease(RelCacheInitLock);
 	}
+
+	LWLockRelease(RelCacheInitLock);
 }
 
 /*

@@ -5,12 +5,12 @@
  *	  wherein you authenticate a user by seeing what IP address the system
  *	  says he comes from and possibly using ident).
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/libpq/hba.c,v 1.133 2004/10/12 21:54:38 petere Exp $
+ *	  $PostgreSQL: pgsql/src/backend/libpq/hba.c,v 1.136 2004/12/31 21:59:50 pgsql Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -82,8 +82,10 @@ static List **group_sorted = NULL;		/* sorted group list, for
 static int	user_length;
 static int	group_length;
 
-static void tokenize_file(FILE *file, List **lines, List **line_nums);
-static char *tokenize_inc_file(const char *inc_filename);
+static void tokenize_file(const char *filename, FILE *file,
+						  List **lines, List **line_nums);
+static char *tokenize_inc_file(const char *outer_filename,
+							   const char *inc_filename);
 
 /*
  * isblank() exists in the ISO C99 spec, but it's not very portable yet,
@@ -212,12 +214,13 @@ next_token(FILE *fp, char *buf, int bufsz)
  * we have reached EOL.
  */
 static char *
-next_token_expand(FILE *file)
+next_token_expand(const char *filename, FILE *file)
 {
 	char		buf[MAX_TOKEN];
 	char	   *comma_str = pstrdup("");
 	bool		trailing_comma;
 	char	   *incbuf;
+	int			needed;
 
 	do
 	{
@@ -235,20 +238,18 @@ next_token_expand(FILE *file)
 
 		/* Is this referencing a file? */
 		if (buf[0] == '@')
-			incbuf = tokenize_inc_file(buf + 1);
+			incbuf = tokenize_inc_file(filename, buf + 1);
 		else
 			incbuf = pstrdup(buf);
 
-		comma_str = repalloc(comma_str,
-							 strlen(comma_str) + strlen(incbuf) + 1);
-		strcat(comma_str, incbuf);
-		pfree(incbuf);
-
+		needed = strlen(comma_str) + strlen(incbuf) + 1;
 		if (trailing_comma)
-		{
-			comma_str = repalloc(comma_str, strlen(comma_str) + 1 + 1);
+			needed++;
+		comma_str = repalloc(comma_str, needed);
+		strcat(comma_str, incbuf);
+		if (trailing_comma)
 			strcat(comma_str, MULTI_VALUE_SEP);
-		}
+		pfree(incbuf);
 	} while (trailing_comma);
 
 	return comma_str;
@@ -302,23 +303,34 @@ free_lines(List **lines, List **line_nums)
 
 
 static char *
-tokenize_inc_file(const char *inc_filename)
+tokenize_inc_file(const char *outer_filename,
+				  const char *inc_filename)
 {
 	char	   *inc_fullname;
 	FILE	   *inc_file;
 	List	   *inc_lines;
 	List	   *inc_line_nums;
 	ListCell   *line;
-	char	   *comma_str = pstrdup("");
+	char	   *comma_str;
 
-	inc_fullname = (char *) palloc(strlen(DataDir) + 1 +
-								   strlen(inc_filename) + 1);
-	strcpy(inc_fullname, DataDir);
-	strcat(inc_fullname, "/");
-	strcat(inc_fullname, inc_filename);
+	if (is_absolute_path(inc_filename))
+	{
+		/* absolute path is taken as-is */
+		inc_fullname = pstrdup(inc_filename);
+	}
+	else
+	{
+		/* relative path is relative to dir of calling file */
+		inc_fullname = (char *) palloc(strlen(outer_filename) + 1 +
+									   strlen(inc_filename) + 1);
+		strcpy(inc_fullname, outer_filename);
+		get_parent_directory(inc_fullname);
+		join_path_components(inc_fullname, inc_fullname, inc_filename);
+		canonicalize_path(inc_fullname);
+	}
 
 	inc_file = AllocateFile(inc_fullname, "r");
-	if (!inc_file)
+	if (inc_file == NULL)
 	{
 		ereport(LOG,
 				(errcode_for_file_access(),
@@ -326,16 +338,18 @@ tokenize_inc_file(const char *inc_filename)
 						inc_filename, inc_fullname)));
 		pfree(inc_fullname);
 
-		/* return empty string, it matches nothing */
-		return pstrdup("");
+		/* return single space, it matches nothing */
+		return pstrdup(" ");
 	}
-	pfree(inc_fullname);
 
 	/* There is possible recursion here if the file contains @ */
-	tokenize_file(inc_file, &inc_lines, &inc_line_nums);
-	FreeFile(inc_file);
+	tokenize_file(inc_fullname, inc_file, &inc_lines, &inc_line_nums);
 
-	/* Create comma-separate string from List */
+	FreeFile(inc_file);
+	pfree(inc_fullname);
+
+	/* Create comma-separated string from List */
+	comma_str = pstrdup("");
 	foreach(line, inc_lines)
 	{
 		List	   *token_list = (List *) lfirst(line);
@@ -343,18 +357,27 @@ tokenize_inc_file(const char *inc_filename)
 
 		foreach(token, token_list)
 		{
-			if (strlen(comma_str))
-			{
-				comma_str = repalloc(comma_str, strlen(comma_str) + 1);
+			int		oldlen = strlen(comma_str);
+			int		needed;
+
+			needed = oldlen + strlen(lfirst(token)) + 1;
+			if (oldlen > 0)
+				needed++;
+			comma_str = repalloc(comma_str, needed);
+			if (oldlen > 0)
 				strcat(comma_str, MULTI_VALUE_SEP);
-			}
-			comma_str = repalloc(comma_str,
-						  strlen(comma_str) + strlen(lfirst(token)) + 1);
 			strcat(comma_str, lfirst(token));
 		}
 	}
 
 	free_lines(&inc_lines, &inc_line_nums);
+
+	/* if file is empty, return single space rather than empty string */
+	if (strlen(comma_str) == 0)
+	{
+		pfree(comma_str);
+		return pstrdup(" ");
+	}
 
 	return comma_str;
 }
@@ -364,9 +387,12 @@ tokenize_inc_file(const char *inc_filename)
  * Tokenize the given file, storing the resulting data into two lists:
  * a list of sublists, each sublist containing the tokens in a line of
  * the file, and a list of line numbers.
+ *
+ * filename must be the absolute path to the target file.
  */
 static void
-tokenize_file(FILE *file, List **lines, List **line_nums)
+tokenize_file(const char *filename, FILE *file,
+			  List **lines, List **line_nums)
 {
 	List	   *current_line = NIL;
 	int			line_number = 1;
@@ -376,7 +402,7 @@ tokenize_file(FILE *file, List **lines, List **line_nums)
 
 	while (!feof(file))
 	{
-		buf = next_token_expand(file);
+		buf = next_token_expand(filename, file);
 
 		/* add token to list, unless we are at EOL or comment start */
 		if (buf[0])
@@ -892,61 +918,13 @@ check_hba(hbaPort *port)
 }
 
 
-
-/*
- * Open the group file if possible (return NULL if not)
- */
-static FILE *
-group_openfile(void)
-{
-	char	   *filename;
-	FILE	   *groupfile;
-
-	filename = group_getfilename();
-	groupfile = AllocateFile(filename, "r");
-
-	if (groupfile == NULL && errno != ENOENT)
-		ereport(LOG,
-				(errcode_for_file_access(),
-				 errmsg("could not open file \"%s\": %m", filename)));
-
-	pfree(filename);
-
-	return groupfile;
-}
-
-
-
-/*
- * Open the password file if possible (return NULL if not)
- */
-static FILE *
-user_openfile(void)
-{
-	char	   *filename;
-	FILE	   *pwdfile;
-
-	filename = user_getfilename();
-	pwdfile = AllocateFile(filename, "r");
-
-	if (pwdfile == NULL && errno != ENOENT)
-		ereport(LOG,
-				(errcode_for_file_access(),
-				 errmsg("could not open file \"%s\": %m", filename)));
-
-	pfree(filename);
-
-	return pwdfile;
-}
-
-
-
 /*
  *	 Load group/user name mapping file
  */
 void
 load_group(void)
 {
+	char	   *filename;
 	FILE	   *group_file;
 
 	/* Discard any old data */
@@ -957,11 +935,25 @@ load_group(void)
 	group_sorted = NULL;
 	group_length = 0;
 
-	group_file = group_openfile();
-	if (!group_file)
+	/* Read in the file contents */
+	filename = group_getfilename();
+	group_file = AllocateFile(filename, "r");
+
+	if (group_file == NULL)
+	{
+		/* no complaint if not there */
+		if (errno != ENOENT)
+			ereport(LOG,
+					(errcode_for_file_access(),
+					 errmsg("could not open file \"%s\": %m", filename)));
+		pfree(filename);
 		return;
-	tokenize_file(group_file, &group_lines, &group_line_nums);
+	}
+
+	tokenize_file(filename, group_file, &group_lines, &group_line_nums);
+
 	FreeFile(group_file);
+	pfree(filename);
 
 	/* create sorted lines for binary searching */
 	group_length = list_length(group_lines);
@@ -989,6 +981,7 @@ load_group(void)
 void
 load_user(void)
 {
+	char	   *filename;
 	FILE	   *user_file;
 
 	/* Discard any old data */
@@ -999,11 +992,25 @@ load_user(void)
 	user_sorted = NULL;
 	user_length = 0;
 
-	user_file = user_openfile();
-	if (!user_file)
+	/* Read in the file contents */
+	filename = user_getfilename();
+	user_file = AllocateFile(filename, "r");
+
+	if (user_file == NULL)
+	{
+		/* no complaint if not there */
+		if (errno != ENOENT)
+			ereport(LOG,
+					(errcode_for_file_access(),
+					 errmsg("could not open file \"%s\": %m", filename)));
+		pfree(filename);
 		return;
-	tokenize_file(user_file, &user_lines, &user_line_nums);
+	}
+
+	tokenize_file(filename, user_file, &user_lines, &user_line_nums);
+
 	FreeFile(user_file);
+	pfree(filename);
 
 	/* create sorted lines for binary searching */
 	user_length = list_length(user_lines);
@@ -1044,7 +1051,7 @@ load_hba(void)
 				 errmsg("could not open configuration file \"%s\": %m",
 						HbaFileName)));
 
-	tokenize_file(file, &hba_lines, &hba_line_nums);
+	tokenize_file(HbaFileName, file, &hba_lines, &hba_line_nums);
 	FreeFile(file);
 }
 
@@ -1188,7 +1195,7 @@ load_ident(void)
 	}
 	else
 	{
-		tokenize_file(file, &ident_lines, &ident_line_nums);
+		tokenize_file(IdentFileName, file, &ident_lines, &ident_line_nums);
 		FreeFile(file);
 	}
 }

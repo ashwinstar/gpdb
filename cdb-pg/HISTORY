@@ -3,32 +3,33 @@
 
                                  Release 8.0
 
-     Release date: 2004-??-??, current as of 2004-08-06
+     Release date: 2005-01-19
      __________________________________________________________________
 
 Overview
 
    Major changes in this release:
 
-   Win32 Native Server
-          This is the first PostgreSQL release to natively run on
-          Microsoft Windows as a server. It can run as a Windows service.
-          This release supports NT-based Windows releases like Win2000,
-          XP, Win2003. Older releases like Windows 95, 98, and ME are not
-          supported because these operating systems do not have the
-          infrastructure to support PostgreSQL. A separate installer
-          project has been created to ease installation on Windows:
+   Microsoft Windows Native Server
+          This is the first PostgreSQL release to run natively on
+          Microsoft Windows® as a server. It can run as a Windows service.
+          This release supports NT-based Windows releases like Windows
+          2000, Windows XP, and Windows 2003. Older releases like Windows
+          95, Windows 98, and Windows ME are not supported because these
+          operating systems do not have the infrastructure to support
+          PostgreSQL. A separate installer project has been created to
+          ease installation on Windows -- see
           http://pgfoundry.org/projects/pginstaller.
 
           Although tested throughout our release cycle, the Windows port
           does not have the benefit of years of use in production
-          environments that PostgreSQL has on Unix platforms and therefore
+          environments that PostgreSQL has on Unix platforms. Therefore it
           should be treated with the same level of caution as you would a
           new product.
 
-          Previous releases required the Unix emulation toolkit Cygwin for
-          Win32 server support. PostgreSQL has always supported clients on
-          Win32.
+          Previous releases required the Unix emulation toolkit Cygwin in
+          order to run the server on Windows operating systems. PostgreSQL
+          has supported native clients on Windows for many years.
 
    Savepoints
           Savepoints allow specific parts of a transaction to be aborted
@@ -39,19 +40,18 @@ Overview
           writers who require error recovery within a complex transaction.
 
    Point-In-Time Recovery
-          Though PostgreSQL is very reliable, in previous releases there
-          was no way to recover from disk drive failure except to restore
-          from a previous backup or use a standby replication server.
-          Point-in-time recovery allows continuous backup of the server.
-          You can recover either to the point of failure or to some
-          transaction in the past.
+          In previous releases there was no way to recover from disk drive
+          failure except to restore from a previous backup or use a
+          standby replication server. Point-in-time recovery allows
+          continuous backup of the server. You can recover either to the
+          point of failure or to some transaction in the past.
 
    Tablespaces
-          Tablespaces allow administrators to select the file systems used
-          for storage of databases, schemas, tables, or indexes. This
-          improves performance and control over disk space usage. Prior
-          releases used initlocation and manual symlink management for
-          such tasks.
+          Tablespaces allow administrators to select different file
+          systems for storage of individual tables, indexes, and
+          databases. This improves performance and control over disk space
+          usage. Prior releases used initlocation and manual symlink
+          management for such tasks.
 
    Improved Buffer Management, CHECKPOINT, VACUUM
           This release has a more intelligent buffer replacement strategy,
@@ -67,9 +67,9 @@ Overview
           persistent shared storage area, triggers, returning records and
           arrays of records, and SPI calls to access the database.
 
-   CSV support in COPY
-          "COPY" can now read and write comma-separated-value (CSV) files.
-          It has the flexibility to interpret non-standard quoting and
+   Comma-separated-value (CSV) support in COPY
+          "COPY" can now read and write comma-separated-value files. It
+          has the flexibility to interpret non-standard quoting and
           separation characters too.
      __________________________________________________________________
 
@@ -80,6 +80,21 @@ Migration to version 8.0
 
    Observe the following incompatibilities:
 
+     * In "READ COMMITTED" serialization mode, volatile functions now see
+       the results of concurrent transactions committed up to the
+       beginning of each statement within the function, rather than up to
+       the beginning of the interactive command that called the function.
+     * Functions declared "STABLE" or "IMMUTABLE" always use the snapshot
+       of the calling query, and therefore do not see the effects of
+       actions taken after the calling query starts, whether in their own
+       transaction or other transactions. Such a function must be
+       read-only, too, meaning that it cannot use any SQL commands other
+       than "SELECT".
+     * Non-deferred "AFTER" triggers are now fired immediately after
+       completion of the triggering query, rather than upon finishing the
+       current interactive command. This makes a difference when the
+       triggering query occurred within a function: the trigger is invoked
+       before the function proceeds to its next operation.
      * Server configuration parameters virtual_host and tcpip_socket have
        been replaced with a more general parameter listen_addresses. Also,
        the server now listens on localhost by default, which eliminates
@@ -89,14 +104,15 @@ Migration to version 8.0
        their use. The original names are still supported in "SET" and
        "SHOW".
      * Server configuration parameters log_pid, log_timestamp, and
-       log_source_port have been removed now that a more flexible
-       log_line_prefix has been added.
-     * Server configuration parameter syslog has been removed and replaced
-       with a more logical log_destination variable to control the log
-       output destination.
+       log_source_port have been replaced with a more general parameter
+       log_line_prefix.
+     * Server configuration parameter syslog has been replaced with a more
+       logical log_destination variable to control the log output
+       destination.
      * Server configuration parameter log_statement has been changed so it
        can selectively log just database modification or data definition
-       statements.
+       statements. Server configuration parameter log_duration now prints
+       only when log_statement prints the query.
      * Server configuration parameter max_expr_depth parameter has been
        replaced with max_stack_depth which measures the physical stack
        size rather than the expression nesting depth. This helps prevent
@@ -106,62 +122,48 @@ Migration to version 8.0
        values.
      * Casting an integer to BIT(N) selects the rightmost N bits of the
        integer, not the leftmost N bits as before.
-     * UPDATE-ing an element or slice of a NULL array value now produces a
+     * Updating an element or slice of a NULL array value now produces a
        non-NULL array result, namely an array containing just the
        assigned-to positions.
-     * Overflow in integer arithmetic operations is now detected and
-       reported as an error.
-     * The arithmetic operators associated with the "char" data type have
-       been removed.
-     * The server now warns of empty strings passed to oid/float4/float8
-       data types. In the next major release, doing this will generate an
-       error.
-     * The extract() function (also called date_part) now returns the
-       proper year for BC dates. It previously returned one less than the
-       current year. The function now also returns the proper values for
-       millennium and century.
-     * psql's \copy command now reads or writes the query stdin/stdout,
-       rather than psql's stdin/stdout. The previous behavior can be
-       accessed via new pstdin/pstdout parameters.
-     * The JDBC client interface has been removed from the core
-       distribution, and is now hosted at http://jdbc.postgresql.org. The
-       TCL client interface has also been removed. There are several TCL
-       interfaces now hosted at http://gborg.postgresql.org.
-     * The server now uses its own time zone database, rather than the one
-       supplied by the operating system. This will provide consistent
-       behavior across all platforms. In most cases, there should be
-       little noticeable difference in time zone behavior, except that the
-       time zone names used by SET/SHOW TimeZone may be different from
-       what your platform provides.
-     * "EXECUTE" now returns a completion tag that matches the executed
-       statement.
-     * configure's threading option no longer requires users to run tests
-       or edit configuration files; threading options are now detected
-       automatically.
-     * Now that tablespaces have been implemented, initlocation has been
-       removed.
      * Syntax checking of array input values has been tightened up
        considerably. Junk that was previously allowed in odd places with
-       odd results now causes an ERROR. Empty-string element values must
+       odd results now causes an error. Empty-string element values must
        now be written as "", rather than writing nothing. Also changed
        behavior with respect to whitespace surrounding array elements:
        trailing whitespace is now ignored, for symmetry with leading
        whitespace (which has always been ignored).
-     * In READ COMMITTED serialization mode, volatile functions now see
-       the results of concurrent transactions committed up to the
-       beginning of each statement within the function, rather than up to
-       the beginning of the interactive command that called the function.
-     * Functions declared STABLE or IMMUTABLE always use the snapshot of
-       the calling query, and therefore do not see the effects of actions
-       taken after the calling query starts, whether in their own
-       transaction or other transactions. Such a function must be
-       read-only, too, meaning that it cannot use any SQL commands other
-       than "SELECT".
-     * Non-deferred AFTER triggers are now fired immediately after
-       completion of the triggering query, rather than upon finishing the
-       current interactive command. This makes a difference when the
-       triggering query occurred within a function: the trigger is invoked
-       before the function proceeds to its next operation.
+     * Overflow in integer arithmetic operations is now detected and
+       reported as an error.
+     * The arithmetic operators associated with the single-byte "char"
+       data type have been removed.
+     * The extract() function (also called date_part) now returns the
+       proper year for BC dates. It previously returned one less than the
+       correct year. The function now also returns the proper values for
+       millennium and century.
+     * CIDR values now must have their non-masked bits be zero. For
+       example, we no longer allow 204.248.199.1/31 as a CIDR value. Such
+       values should never have been accepted by PostgreSQL and will now
+       be rejected.
+     * "EXECUTE" now returns a completion tag that matches the executed
+       statement.
+     * psql's "\copy" command now reads or writes to the query's
+       stdin/stdout, rather than psql's stdin/stdout. The previous
+       behavior can be accessed via new "pstdin"/"pstdout" parameters.
+     * The JDBC client interface has been removed from the core
+       distribution, and is now hosted at http://jdbc.postgresql.org.
+     * The Tcl client interface has also been removed. There are several
+       Tcl interfaces now hosted at http://gborg.postgresql.org.
+     * The server now uses its own time zone database, rather than the one
+       supplied by the operating system. This will provide consistent
+       behavior across all platforms. In most cases, there should be
+       little noticeable difference in time zone behavior, except that the
+       time zone names used by "SET"/"SHOW" TimeZone may be different from
+       what your platform provides.
+     * Configure's threading option no longer requires users to run tests
+       or edit configuration files; threading options are now detected
+       automatically.
+     * Now that tablespaces have been implemented, initlocation has been
+       removed.
      __________________________________________________________________
 
 Deprecated Features
@@ -171,14 +173,17 @@ Deprecated Features
    removed in 8.0, but they are considered deprecated and will be removed
    in the next major release.
 
-     * The 8.1 release will remove the function to_char(interval).
+     * The 8.1 release will remove the function to_char(interval, text).
+     * The server now warns of empty strings passed to oid/float4/float8
+       data types, but continues to interpret them as zeroes as before. In
+       the next major release, empty strings will be considered invalid
+       input for these data types.
      * By default, tables in PostgreSQL 8.0 and earlier are created with
        OIDs. In the next release, this will *not* be the case: to create a
-       table that contains OIDs, the WITH OIDS clause must be specified or
-       the default_with_oids configuration parameter must be enabled.
-       Users are encouraged to explicitly specify WITH OIDS if their
-       tables require OIDs for compatibility with future releases of
-       PostgreSQL.
+       table that contains OIDs, the "WITH OIDS" clause must be specified
+       or the default_with_oids configuration parameter must be set. Users
+       are encouraged to explicitly specify "WITH OIDS" if their tables
+       require OIDs for compatibility with future releases of PostgreSQL.
      __________________________________________________________________
 
 Changes
@@ -209,7 +214,7 @@ Performance Improvements
        In previous releases, the checkpoint process, which runs every few
        minutes, would write all dirty buffers to the operating system's
        buffer cache then flush all dirty operating system buffers to disk.
-       This often resulted in a periodic spike in disk usage that hurt
+       This resulted in a periodic spike in disk usage that often hurt
        performance. The new code uses a background writer to trickle disk
        writes at a steady pace so checkpoints have far fewer dirty pages
        to write to disk. Also, the new code does not issue a global sync()
@@ -221,10 +226,19 @@ Performance Improvements
        performance for other users. This release allows you to slow down
        "VACUUM" to reduce its impact on other users, though this increases
        the total duration of "VACUUM".
-     * Improve btree index performance for duplicate keys (Dmitry Tkach,
+     * Improve B-tree index performance for duplicate keys (Dmitry Tkach,
        Tom)
        This improves the way indexes are scanned when many duplicate
        values exist in the index.
+     * Use dynamically-generated table size estimates while planning (Tom)
+       Formerly the planner estimated table sizes using the values seen by
+       the last "VACUUM" or "ANALYZE", both as to physical table size
+       (number of pages) and number of rows. Now, the current physical
+       table size is obtained from the kernel, and the number of rows is
+       estimated by multiplying the table size by the row density (rows
+       per page) seen by the last "VACUUM" or "ANALYZE". This should
+       produce more reliable estimates in cases where the table size has
+       changed significantly since the last housekeeping command.
      * Improved index usage with OR clauses (Tom)
        This allows the optimizer to use indexes in statements with many OR
        clauses that would not have been indexed in the past. It can also
@@ -232,7 +246,7 @@ Performance Improvements
        the second column is part of an OR clause.
      * Improve matching of partial index clauses (Tom)
        The server is now smarter about using partial indexes in queries
-       involving complex WHERE clauses.
+       involving complex "WHERE" clauses.
      * Improve performance of the GEQO optimizer (Tom)
        The GEQO optimizer is used to plan queries involving many tables
        (by default, twelve or more). This release speeds up the way
@@ -249,8 +263,7 @@ Performance Improvements
        Cave-Ayland)
        This feature allows more flexibility in generating statistics for
        non-standard data types.
-     * Allow collection of "ANALYZE" statistics for expression indexes
-       (Tom)
+     * "ANALYZE" now collects statistics for expression indexes (Tom)
        Expression indexes (also called functional indexes) allow users to
        index not just columns but the results of expressions and function
        calls. With this release, the optimizer can gather and use
@@ -258,7 +271,8 @@ Performance Improvements
        greatly improve the quality of planning for queries in which an
        expression index is relevant.
      * New two-stage sampling method for "ANALYZE" (Manfred Koizar)
-       This gives better statistics for asymmetric data distributions.
+       This gives better statistics when the density of valid rows is very
+       different in different regions of a table.
      * Speed up "TRUNCATE" (Tom)
        This buys back some of the performance loss observed in 7.4, while
        still keeping "TRUNCATE" transaction-safe.
@@ -271,13 +285,14 @@ Server Changes
      * Add a built-in log rotation program (Andreas Pflug)
        It is now possible to log server messages conveniently without
        relying on either syslog or an external log rotation program.
-     * Add new read-only server configuration parameters to query server
+     * Add new read-only server configuration parameters to show server
        compile-time settings: block_size, integer_datetimes,
        max_function_args, max_identifier_length, max_index_keys (Joe)
-     * Make quoting of "sameuser", "samegroup", and "all" remove special
-       meaning of these terms in pg_hba.conf (Andrew)
-     * Use clearer IPv6 name ::1/128 for localhost in default pg_hba.conf
-       (Andrew)
+     * Make quoting of sameuser, samegroup, and all remove special meaning
+       of these terms in "pg_hba.conf" (Andrew)
+     * Use clearer IPv6 name ::1/128 for localhost in default
+       "pg_hba.conf" (Andrew)
+     * Use CIDR format in "pg_hba.conf" examples (Andrew)
      * Rename server configuration parameters SortMem and VacuumMem to
        work_mem and maintenance_work_mem (Old names still supported) (Tom)
        This change was made to clarify that bulk operations such as index
@@ -294,10 +309,12 @@ Server Changes
        (Andrew)
      * Replace the virtual_host and tcpip_socket parameters with a unified
        listen_addresses parameter (Andrew, Tom)
+       virtual_host could only specify a single IP address to listen on.
+       listen_addresses allows multiple addresses to be specified.
      * Listen on localhost by default, which eliminates the need for the
-       -i postmaster switch in many scenarios (Andrew)
+       "-i" postmaster switch in many scenarios (Andrew)
        Listening on localhost (127.0.0.1) opens no new security holes but
-       allows configurations like Win32 and JDBC, which do not support
+       allows configurations like Windows and JDBC, which do not support
        local sockets, to work without special adjustments.
      * Remove syslog server configuration parameter, and add more logical
        log_destination variable to control log output location (Magnus)
@@ -305,11 +322,18 @@ Server Changes
        all, mod, ddl, or none to select which queries are logged (Bruce)
        This allows administrators to log only data definition changes or
        only data modification statements.
+     * Some logging-related configuration parameters could formerly be
+       adjusted by ordinary users, but only in the "more verbose"
+       direction. They are now treated more strictly: only superusers can
+       set them. However, a superuser may use "ALTER USER" to provide
+       per-user settings of these values for non-superusers. Also, it is
+       now possible for superusers to set values of superuser-only
+       configuration parameters via PGOPTIONS.
      * Allow configuration files to be placed outside the data directory
        (mlw)
-       By default, configuration files sit in the top server directory.
-       With this addition, configuration files can be placed outside the
-       data directory, easing administration.
+       By default, configuration files are kept in the cluster's top
+       directory. With this addition, configuration files can be placed
+       outside the data directory, easing administration.
      * Plan prepared queries only when first executed so constants can be
        used for statistics (Oliver Jowett)
        Prepared statements plan queries once and execute them many times.
@@ -318,7 +342,8 @@ Server Changes
        parameters to be used in the query. In this release, planning of
        unnamed prepared statements is delayed until the first execution,
        and the actual parameter values of that execution are used as
-       optimization hints.
+       optimization hints. This allows use of out-of-line parameter
+       passing without incurring a performance penalty.
      * Allow "DECLARE CURSOR" to take parameters (Oliver Jowett)
        It is now useful to issue "DECLARE CURSOR" in a Parse message with
        parameters. The parameter values sent at Bind time will be
@@ -326,7 +351,9 @@ Server Changes
      * Fix hash joins and aggregates of inet and cidr data types (Tom)
        Release 7.4 handled hashing of mixed inet and cidr values
        incorrectly. (This bug did not exist in prior releases because they
-       wouldn't try to hash either datatype.)
+       wouldn't try to hash either data type.)
+     * Make log_duration print only when log_statement prints the query
+       (Ed L.)
      __________________________________________________________________
 
 Query Changes
@@ -352,9 +379,9 @@ Query Changes
        the task of quoting correctly, especially in complex functions.
        Dollar quoting can be used anywhere quoted text is needed.
      * Make CASE val WHEN compval1 THEN ... evaluate val only once (Tom)
-       CASE no longer evaluates the test expression multiple times. This
-       has benefits when the expression is complex or is volatile.
-     * Test HAVING before computing target list of an aggregate query
+       "CASE" no longer evaluates the tested expression multiple times.
+       This has benefits when the expression is complex or is volatile.
+     * Test "HAVING" before computing target list of an aggregate query
        (Tom)
        Fixes improper failure of cases such as SELECT SUM(win)/SUM(lose)
        ... GROUP BY ... HAVING SUM(lose) > 0. This should work but
@@ -369,8 +396,8 @@ Query Changes
        This release allows SQL expressions to contain arbitrary composite
        types, that is, row values. It also allows functions to more easily
        take rows as arguments and return row values.
-     * Allow LIKE/ILIKE to be used as the operator in row and subselect
-       comparisons (Fabien Coelho)
+     * Allow "LIKE"/"ILIKE" to be used as the operator in row and
+       subselect comparisons (Fabien Coelho)
      * Avoid locale-specific case conversion of basic ASCII letters in
        identifiers and keywords (Tom)
        This solves the "Turkish problem" with mangling of words containing
@@ -383,68 +410,74 @@ Query Changes
        Previous releases return an "EXECUTE" tag for any "EXECUTE" call.
        In this release, the tag returned will reflect the command
        executed.
-     * Avoid emitting NATURAL CROSS JOIN in rule listings (Tom)
+     * Avoid emitting "NATURAL CROSS JOIN" in rule listings (Tom)
        Such a clause makes no logical sense, but in some cases the rule
        decompiler formerly produced this syntax.
      __________________________________________________________________
 
 Object Manipulation Changes
 
-     * Add COMMENT ON casts, conversions, languages, operator classes, and
-       large objects (Christopher)
+     * Add "COMMENT ON" for casts, conversions, languages, operator
+       classes, and large objects (Christopher)
      * Add new server configuration parameter default_with_oids to control
        whether tables are created with OIDs by default (Neil)
-       This allows administrators to default all "CREATE TABLE" commands
-       to create tables without OID columns.
-     * Add WITH / WITHOUT OIDS clause to "CREATE TABLE AS" (Neil)
-     * Allow ALTER TABLE DROP COLUMN to drop an OID column (ALTER TABLE
-       SET WITHOUT OIDS still works) (Tom)
+       This allows administrators to control whether "CREATE TABLE"
+       commands create tables with or without OID columns by default.
+       (Note: the current factory default setting for default_with_oids is
+       TRUE, but the default will become FALSE in future releases.)
+     * Add "WITH" / "WITHOUT OIDS" clause to "CREATE TABLE AS" (Neil)
+     * Allow "ALTER TABLE DROP COLUMN" to drop an OID column ("ALTER TABLE
+       SET WITHOUT OIDS" still works) (Tom)
      * Allow composite types as table columns (Tom)
-     * Allow ALTER ... ADD COLUMN with defaults and NOT NULL constraints;
-       works per SQL spec (Rod)
-       It is now possible for ADD COLUMN to create a column that is not
+     * Allow "ALTER ... ADD COLUMN" with defaults and "NOT NULL"
+       constraints; works per SQL spec (Rod)
+       It is now possible for "ADD COLUMN" to create a column that is not
        initially filled with NULLs, but with a specified default value.
-     * Add ALTER COLUMN TYPE to change column's type (Rod)
-       It is now possible to alter a column's datatype without dropping
+     * Add "ALTER COLUMN TYPE" to change column's type (Rod)
+       It is now possible to alter a column's data type without dropping
        and re-adding the column.
-     * Allow multiple ALTER actions in a single "ALTER TABLE" command
+     * Allow multiple "ALTER" actions in a single "ALTER TABLE" command
        (Rod)
-       This is particularly useful for ALTER commands that rewrite the
-       table (which include ALTER COLUMN TYPE and ADD COLUMN with a
-       default). By grouping ALTER commands together, the table need be
+       This is particularly useful for "ALTER" commands that rewrite the
+       table (which include "ALTER COLUMN TYPE" and "ADD COLUMN" with a
+       default). By grouping "ALTER" commands together, the table need be
        rewritten only once.
-     * Allow "ALTER TABLE" to add serial columns (Tom)
-       This is related to the new capability of adding defaults for new
-       columns.
+     * Allow "ALTER TABLE" to add SERIAL columns (Tom)
+       This falls out from the new capability of specifying defaults for
+       new columns.
      * Allow changing the owners of aggregates, conversions, databases,
        functions, operators, operator classes, schemas, types, and
        tablespaces (Christopher, Euler Taveira de Oliveira)
        Previously this required modifying the system tables directly.
-     * Allow temporary object creation to be limited to SECURITY DEFINER
+     * Allow temporary object creation to be limited to "SECURITY DEFINER"
        functions (Sean Chittenden)
-     * Add ALTER TABLE ... SET WITHOUT CLUSTER (Christopher)
+     * Add "ALTER TABLE ... SET WITHOUT CLUSTER" (Christopher)
        Prior to this release, there was no way to clear an auto-cluster
        specification except to modify the system tables.
-     * Constraint/Index/SERIAL names are now table_column_type with
+     * Constraint/Index/SERIAL names are now "table_column_type" with
        numbers appended to guarantee uniqueness within the schema (Tom)
        The SQL specification states that such names should be unique
        within a schema.
-     * Add pg_get_serial_sequence() to return a serial column's sequence
+     * Add pg_get_serial_sequence() to return a SERIAL column's sequence
        name (Christopher)
-       This allows automated scripts to reliabily find the serial sequence
+       This allows automated scripts to reliably find the SERIAL sequence
        name.
-     * Warn when primary/foreign key datatype mismatch requires costly
+     * Warn when primary/foreign key data type mismatch requires costly
        lookup
+     * New "ALTER INDEX" command to allow moving of indexes between
+       tablespaces (Gavin)
+     * Make "ALTER TABLE OWNER" change dependent sequence ownership too
+       (Alvaro)
      __________________________________________________________________
 
 Utility Command Changes
 
      * Allow "CREATE SCHEMA" to create triggers, indexes, and sequences
        (Neil)
-     * Add ALSO keyword to "CREATE RULE" (Fabien Coelho)
-       This allows ALSO to be added to rule creation to contrast it with
-       INSTEAD rules.
-     * Add NOWAIT option to "LOCK" (Tatsuo)
+     * Add "ALSO" keyword to "CREATE RULE" (Fabien Coelho)
+       This allows "ALSO" to be added to rule creation to contrast it with
+       "INSTEAD" rules.
+     * Add "NOWAIT" option to "LOCK" (Tatsuo)
        This allows the "LOCK" command to fail if it would have to wait for
        the requested lock.
      * Allow "COPY" to read and write comma-separated-value (CSV) files
@@ -454,8 +487,8 @@ Utility Command Changes
      * "GRANT"/"REVOKE" behavior follows the SQL spec more closely
      * Avoid locking conflict between "CREATE INDEX" and "CHECKPOINT"
        (Tom)
-       In 7.3 and 7.4, a long-running btree index build could block
-       concurrent CHECKPOINTs from completing, thereby causing WAL bloat
+       In 7.3 and 7.4, a long-running B-tree index build could block
+       concurrent "CHECKPOINT"s from completing, thereby causing WAL bloat
        because the WAL log could not be recycled.
      * Database-wide "ANALYZE" does not hold locks across tables (Tom)
        This reduces the potential for deadlocks against other backends
@@ -470,17 +503,20 @@ Utility Command Changes
        rebuilt.
      * Erase MD5 user passwords when a user is renamed (Bruce)
        PostgreSQL uses the user name as salt when encrypting passwords via
-       MD5. When a user name is changed, their salt no longer matches the
-       stored MD5 password, so the stored password becomes useless. In
+       MD5. When a user's name is changed, the salt will no longer match
+       the stored MD5 password, so the stored password becomes useless. In
        this release a notice is generated and the password is cleared. A
-       new password must then be assigned.
-     * New pg_ctl kill option for Win32 (Andrew)
-       Win32 does not have a kill command to send signals to backends so
+       new password must then be assigned if the user is to be able to log
+       in with a password.
+     * New pg_ctl "kill" option for Windows (Andrew)
+       Windows does not have a kill command to send signals to backends so
        this capability was added to pg_ctl.
      * Information schema improvements
-     * Add --pwfile option to initdb so the initial password can be set by
-       GUI tools (Magnus)
+     * Add "--pwfile" option to initdb so the initial password can be set
+       by GUI tools (Magnus)
      * Detect locale/encoding mismatch in initdb (Peter)
+     * Add "register" command to pg_ctl to register Windows operating
+       system service (Dave Page)
      __________________________________________________________________
 
 Data Type and Function Changes
@@ -491,22 +527,23 @@ Data Type and Function Changes
      * Reject non-rectangular array values as erroneous (Joe)
        Formerly, array_in would silently build a surprising result.
      * Overflow in integer arithmetic operations is now detected (Tom)
-     * The arithmetic operators associated with the "char" data type have
-       been removed.
+     * The arithmetic operators associated with the single-byte "char"
+       data type have been removed.
        Formerly, the parser would select these operators in many
        situations where an "unable to select an operator" error would be
        more appropriate, such as null * null. If you actually want to do
-       arithmetic on a "char" column, you can cast it to integer.
+       arithmetic on a "char" column, you can cast it to integer
+       explicitly.
      * Syntax checking of array input values considerably tightened up
        (Joe)
        Junk that was previously allowed in odd places with odd results now
-       causes an ERROR: for example, non-whitespace after the closing
+       causes an ERROR, for example, non-whitespace after the closing
        right brace.
      * Empty-string array element values must now be written as "", rather
        than writing nothing (Joe)
        Formerly, both ways of writing an empty-string element value were
        allowed, but now a quoted empty string is required. The case where
-       nothing at all appears will probably be taken over to mean a NULL
+       nothing at all appears will probably be considered to be a NULL
        element value in some future release.
      * Array element trailing whitespace is now ignored (Joe)
        Formerly leading whitespace was ignored, but trailing whitespace
@@ -515,28 +552,29 @@ Data Type and Function Changes
      * Emit array values with explicit array bounds when lower bound is
        not one (Joe)
      * Accept YYYY-monthname-DD as a date string (Tom)
-     * Make netmask() and hostmask() functions return maximum-length
-       masklen (Tom)
+     * Make netmask and hostmask functions return maximum-length mask
+       length (Tom)
      * Change factorial function to return numeric (Gavin)
        Returning numeric allows the factorial function to work for a wider
        range of input values.
-     * to_char/to_date date conversion improvements (Kurt Roeckx)
+     * to_char/to_date() date conversion improvements (Kurt Roeckx, Fabien
+       Coelho)
      * Make length() disregard trailing spaces in CHAR(n) (Gavin)
        This change was made to improve consistency: trailing spaces are
        semantically insignificant in CHAR(n) data, so they should not be
        counted by length().
-     * Warn of empty string being passed to oid/float4/float8 data types
-       (Neil)
+     * Warn about empty string being passed to OID/float4/float8 data
+       types (Neil)
        8.1 will throw an error instead.
-     * Allow int2/int4/int8/float4/float8 input routines to have leading
-       or trailing whitespace (Neil)
-     * Better support for IEEE Infinity and NaN values in float4, float8
+     * Allow leading or trailing whitespace in
+       int2/int4/int8/float4/float8 input routines (Neil)
+     * Better support for IEEE Infinity and NaN values in float4/float8
        (Neil)
        These should now work on all platforms that support IEEE-compliant
        floating point arithmetic.
-     * Add "week" to date_trunc options (Robert Creager)
+     * Add "week" option to date_trunc() (Robert Creager)
      * Fix to_char for 1 BC (previously it returned 1 AD) (Bruce)
-     * Fix to_char(year) for BC dates (previously it returned one less
+     * Fix date_part(year) for BC dates (previously it returned one less
        than the correct year) (Bruce)
      * Fix date_part() to return the proper millennium and century (Fabien
        Coelho)
@@ -547,13 +585,14 @@ Data Type and Function Changes
        pow() for standards compliance (Neil)
      * Change ln(), log(), power(), and sqrt() to emit the correct
        SQLSTATE error codes for certain error conditions, as specified by
-       SQL2003 (Neil)
-     * Add width_bucket() function as defined by SQL2003 (Neil)
+       SQL:2003 (Neil)
+     * Add width_bucket() function as defined by SQL:2003 (Neil)
      * Add generate_series() functions to simplify working with numeric
        sets (Joe)
-     * Fix upper/lower/initcap functions to work with multibyte encodings
-       (Tom)
-     * Add boolean and bitwise integer AND/OR aggregates (Fabien Coelho)
+     * Fix upper/lower/initcap() functions to work with multibyte
+       encodings (Tom)
+     * Add boolean and bitwise integer "AND"/"OR" aggregates (Fabien
+       Coelho)
      * New session information functions to return network addresses for
        client and server (Sean Chittenden)
      * Add function to determine the area of a closed path (Sean
@@ -567,6 +606,8 @@ Data Type and Function Changes
        In prior releases, the leftmost N bits were selected, but this was
        deemed unhelpful, not to mention inconsistent with casting from bit
        to int.
+     * Require CIDR values to have all non-masked bits be zero (Kevin
+       Brintnall)
      __________________________________________________________________
 
 Server-Side Language Changes
@@ -580,8 +621,9 @@ Server-Side Language Changes
        taken after the calling query starts, whether in their own
        transaction or other transactions. Such a function must be
        read-only, too, meaning that it cannot use any SQL commands other
-       than "SELECT".
-     * Non-deferred AFTER triggers are now fired immediately after
+       than "SELECT". There is a considerable performance gain from
+       declaring a function STABLE or IMMUTABLE rather than VOLATILE.
+     * Non-deferred "AFTER" triggers are now fired immediately after
        completion of the triggering query, rather than upon finishing the
        current interactive command. This makes a difference when the
        triggering query occurred within a function: the trigger is invoked
@@ -606,96 +648,116 @@ Server-Side Language Changes
      * Default values for PL/pgSQL variables can now reference previously
        declared variables
      * Improve parsing of PL/pgSQL FOR loops (Tom)
-       Parsing is now driven by presence of ".." rather than datatype of
-       FOR variable. This makes no difference for correct functions, but
+       Parsing is now driven by presence of ".." rather than data type of
+       "FOR" variable. This makes no difference for correct functions, but
        should result in more understandable error messages when a mistake
        is made.
      * Major overhaul of PL/Perl server-side language (Command Prompt,
        Andrew Dunstan)
+     * In PL/Tcl, SPI commands are now run in subtransactions. If an error
+       occurs, the subtransaction is cleaned up and the error is reported
+       as an ordinary Tcl error, which can be trapped with catch.
+       Formerly, it was not possible to catch such errors.
+     * Accept "ELSEIF" in PL/pgSQL (Neil)
+       Previously PL/pgSQL only allowed "ELSIF", but many people are
+       accustomed to spelling this keyword "ELSEIF".
      __________________________________________________________________
 
 psql Changes
 
      * Improve psql information display about database objects
        (Christopher)
-     * Allow psql to display group membership in \du and \dg (Markus
+     * Allow psql to display group membership in "\du" and "\dg" (Markus
        Bertheau)
-     * Prevent psql \dn from showing temporary schemas (Bruce)
+     * Prevent psql "\dn" from showing temporary schemas (Bruce)
      * Allow psql to handle tilde user expansion for file names (Zach
        Irmen)
      * Allow psql to display fancy prompts, including color, via readline
        (Reece Hart, Chet Ramey)
-     * Make psql \copy match "COPY" command syntax fully (Tom)
+     * Make psql "\copy" match "COPY" command syntax fully (Tom)
      * Show the location of syntax errors (Fabien Coelho, Tom)
-     * Add "CLUSTER" information to psql \d display (Bruce)
-     * Change psql \copy stdin/stdout to read from command input/output
+     * Add "CLUSTER" information to psql "\d" display (Bruce)
+     * Change psql "\copy stdin/stdout" to read from command input/output
        (Bruce)
-     * Add pstdin/pstdout to read from psql's stdin/stdout (Mark Feit)
-     * Add global psql config file, "psqlrc.sample" (Bruce)
+     * Add "pstdin"/"pstdout" to read from psql's stdin/stdout (Mark Feit)
+     * Add global psql configuration file, "psqlrc.sample" (Bruce)
        This allows a central file where global psql startup commands can
        be stored.
-     * Have psql \d+ indicate if the table has an OID column (Neil)
+     * Have psql "\d+" indicate if the table has an OID column (Neil)
      * On Windows, use binary mode in psql when reading files so control-Z
        is not seen as end-of-file
-     * Have \dn+ show permissions and description for schemas (Dennis
+     * Have "\dn+" show permissions and description for schemas (Dennis
        Bjorklund)
+     * Improve tab completion support (Stefan Kaltenbrunn, Greg Sabino
+       Mullane)
+     * Allow boolean settings to be set using upper or lower case (Michael
+       Paesold)
      __________________________________________________________________
 
 pg_dump Changes
 
      * Use dependency information to improve the reliability of pg_dump
        (Tom)
+       This should solve the longstanding problems with related objects
+       sometimes being dumped in the wrong order.
      * Have pg_dump output objects in alphabetical order if possible (Tom)
        This should make it easier to identify changes between dump files.
      * Allow pg_restore to ignore some SQL errors (Fabien Coelho)
        This makes pg_restore's behavior similar to the results of feeding
        a pg_dump output script to psql. In most cases, ignoring errors and
-       plowing ahead is the most useful thing to do.
-     * pg_restore -l display now includes objects' schema names
+       plowing ahead is the most useful thing to do. Also added was a
+       pg_restore option to give the old behavior of exiting on an error.
+     * pg_restore "-l" display now includes objects' schema names
      * New begin/end markers in pg_dump text output (Bruce)
      * Add start/stop times for pg_dump/pg_dumpall in verbose mode (Bruce)
      * Allow most pg_dump options in pg_dumpall (Christopher)
-     * Have pg_dump use ALTER OWNER rather than SET SESSION AUTHORIZATION
-       by default (Christopher)
+     * Have pg_dump use "ALTER OWNER" rather than "SET SESSION
+       AUTHORIZATION" by default (Christopher)
      __________________________________________________________________
 
 libpq Changes
 
-     * Make libpq SIGPIPE thread-safe (Bruce)
-     * Add PQmbdsplen() which returns the "display length" of a character
+     * Make libpq's "SIGPIPE" handling thread-safe (Bruce)
+     * Add PQmbdsplen() which returns the display length of a character
        (Tatsuo)
      * Add thread locking to SSL and Kerberos connections (Manfred Spraul)
      * Allow PQoidValue(), PQcmdTuples(), and PQoidStatus() to work on
        "EXECUTE" commands (Neil)
+     * Add PQserverVersion() to provide more convenient access to the
+       server version number (Greg Sabino Mullane)
+     * Add PQprepare/PQsendPrepared() functions to support preparing
+       statements without necessarily specifying the data types of their
+       parameters (Abhijit Menon-Sen)
+     * Many ECPG improvements, including "SET DESCRIPTOR" (Michael)
      __________________________________________________________________
 
 Source Code Changes
 
-     * Allow the database server to run natively on Win32 (Claudio,
+     * Allow the database server to run natively on Windows (Claudio,
        Magnus, Andrew)
-     * Shell script commands converted to C versions for Win32 support
+     * Shell script commands converted to C versions for Windows support
        (Andrew)
      * Create an extension makefile framework (Fabien Coelho, Peter)
        This simplifies the task of building extensions outside the
        original source tree.
      * Support relocatable installations (Bruce)
-       Directory paths for installed files (such as the /share directory)
-       are now computed relative to the actual location of the
+       Directory paths for installed files (such as the "/share"
+       directory) are now computed relative to the actual location of the
        executables, so that an installation tree can be moved to another
        place without reconfiguring and rebuilding.
-     * Use --with-docdir to choose installation location of documentation;
-       also allow --infodir (Peter)
-     * Add --without-docdir to prevent installation of documentation
+     * Use "--with-docdir" to choose installation location of
+       documentation; also allow "--infodir" (Peter)
+     * Add "--without-docdir" to prevent installation of documentation
        (Peter)
      * Upgrade to DocBook V4.2 SGML (Peter)
-     * New "PostgreSQL" CVS tag (Marc)
+     * New PostgreSQL CVS tag (Marc)
        This was done to make it easier for organizations to manage their
        own copies of the PostgreSQL CVS repository. File version stamps
        from the master repository will not get munged by checking into or
        out of a copied repository.
      * Clarify locking code (Manfred Koizar)
      * Buffer manager cleanup (Neil)
-     * Decouple platform tests from cpu spinlock code (Bruce, Tom)
+     * Decouple platform tests from CPU spinlock code (Bruce, Tom)
      * Add inlined test-and-set code on PA-RISC for gcc (ViSolve, Tom)
      * Improve i386 spinlock code (Manfred Spraul)
      * Clean up spinlock assembly code to avoid warnings from newer gcc
@@ -704,13 +766,12 @@ Source Code Changes
      * Remove the libpgtcl client interface; now a separate project
      * More accurately estimate memory and file descriptor usage (Tom)
      * Improvements to the Mac OS X startup scripts (Ray A.)
-     * New fsync test program (Bruce)
+     * New fsync() test program (Bruce)
      * Major documentation improvements (Neil, Peter)
-     * Remove contrib/rserv: obsoleted by various separate projects
      * Remove pg_encoding; not needed anymore
      * Remove pg_id; not needed anymore
      * Remove initlocation; not needed anymore
-     * Auto detect thread flags (no more manual testing) (Bruce)
+     * Auto-detect thread flags (no more manual testing) (Bruce)
      * Use Olson's public domain timezone library (Magnus)
      * With threading enabled, use thread flags on Unixware for backend
        executables too (Bruce)
@@ -726,21 +787,26 @@ Source Code Changes
        configuration parameters (Thomas Hallgren)
      * New Brazilian version of FAQ (Euler Taveira de Oliveira)
      * Add French FAQ (Guillaume Lelarge)
-     * New pgevent for Win32 logging
-     * Make libpq and ecpg build as proper shared libraries on OS X (Tom)
+     * New pgevent for Windows logging
+     * Make libpq and ECPG build as proper shared libraries on OS X (Tom)
      __________________________________________________________________
 
 Contrib Changes
 
-     * Many ecpg fixes, including SET DESCRIPTOR (Michael)
-     * Overhaul of /contrib/dblink (Joe)
-     * /contrib/dbmirror improvements
-     * New /contrib/xml2 (John Gray, Torchbox)
-     * Update /contrib/mysql
-     * New version of /contrib/btree_gist (Teodor)
-     * New /contrib/trgm, trigram matching for PostgreSQL (Teodor)
-     * Many /contrib/tsearch2 improvements (Teodor)
-     * Add double metaphone to /contrib/fuzzystrmatch (Andrew)
+     * Overhaul of "contrib/dblink" (Joe)
+     * "contrib/dbmirror" improvements (Steven Singer)
+     * New "contrib/xml2" (John Gray, Torchbox)
+     * Updated "contrib/mysql"
+     * New version of "contrib/btree_gist" (Teodor)
+     * New "contrib/trgm", trigram matching for PostgreSQL (Teodor)
+     * Many "contrib/tsearch2" improvements (Teodor)
+     * Add double metaphone to "contrib/fuzzystrmatch" (Andrew)
+     * Allow "contrib/pg_autovacuum" to run as a Windows service (Dave
+       Page)
+     * Add functions to "contrib/dbsize" (Andreas Pflug)
+     * Removed "contrib/pg_logger": obsoleted by integrated logging
+       subprocess
+     * Removed "contrib/rserv": obsoleted by various separate projects
      __________________________________________________________________
 
                                 Release 7.4.6
@@ -766,7 +832,7 @@ Changes
        unmatched left-side rows given just the right data distribution.
      * Disallow running pg_ctl as root
        This is to guard against any possible security issues.
-     * Avoid using temp files in /tmp in make_oidjoins_check
+     * Avoid using temp files in "/tmp" in "make_oidjoins_check"
        This has been reported as a security issue, though it's hardly
        worthy of concern since there is no reason for non-developers to
        use this script anyway.
@@ -775,7 +841,7 @@ Changes
        In rare cases, a client might think that its last command had
        succeeded when it really had been aborted by forced database
        shutdown.
-     * Repair bug in pg_stat_get_backend_idset()
+     * Repair bug in pg_stat_get_backend_idset
        This could lead to misbehavior in some of the system-statistics
        views.
      * Fix small memory leak in postmaster
@@ -802,9 +868,9 @@ Migration to version 7.4.5
 
 Changes
 
-     * Repair possible crash during concurrent btree index insertions
+     * Repair possible crash during concurrent B-tree index insertions
        This patch fixes a rare case in which concurrent insertions into a
-       btree index could result in a server panic. No permanent damage
+       B-tree index could result in a server panic. No permanent damage
        would result, but it's still worth a re-release. The bug does not
        exist in pre-7.4 releases.
      __________________________________________________________________
@@ -831,7 +897,7 @@ Changes
        has existed since PostgreSQL 7.1.
      * Check HAVING restriction before evaluating result list of an
        aggregate plan
-     * Avoid crash when session's current userID is deleted
+     * Avoid crash when session's current user ID is deleted
      * Fix hashed crosstab for zero-rows case (Joe)
      * Force cache update after renaming a column in a foreign key
      * Pretty-print UNION queries correctly
@@ -1454,7 +1520,7 @@ Query Changes
 
 Object Manipulation Changes
 
-     * Make "CREATE SEQUENCE" grammar more conforming to SQL 2003 (Neil)
+     * Make "CREATE SEQUENCE" grammar more conforming to SQL:2003 (Neil)
      * Add statement-level triggers (Neil)
        While this allows a trigger to fire at the end of a statement, it
        does not allow the trigger to access all rows modified by the
@@ -1483,7 +1549,7 @@ Object Manipulation Changes
      * Improve automatic type casting for domains (Rod, Tom)
      * Allow dollar signs in identifiers, except as first character (Tom)
      * Disallow dollar signs in operator names, so x=$1 works (Tom)
-     * Allow copying table schema using LIKE subtable, also SQL 2003
+     * Allow copying table schema using LIKE subtable, also SQL:2003
        feature INCLUDING DEFAULTS (Rod)
      * Add WITH GRANT OPTION clause to "GRANT" (Peter)
        This enabled "GRANT" to give other users the ability to grant
@@ -2622,7 +2688,7 @@ psql
 
 libpq
 
-     * Add $HOME/.pgpass to store host/user password combinations (Alvaro
+     * Add ~/.pgpass to store host/user password combinations (Alvaro
        Herrera)
      * Add PQunescapeBytea() function to libpq (Patrick Welche)
      * Fix for sending large queries over non-blocking connections

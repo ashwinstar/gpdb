@@ -23,7 +23,6 @@ pg_utf_mblen
 pg_valid_client_encoding
 pg_valid_server_encoding
 pg_wchar_table
-pqsignal
 promote_v4_to_v6_addr
 promote_v4_to_v6_mask
 rangeSockAddr

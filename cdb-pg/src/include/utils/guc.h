@@ -4,10 +4,10 @@
  * External declarations pertaining to backend/utils/misc/guc.c and
  * backend/utils/misc/guc-file.l
  *
- * Copyright (c) 2000-2004, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2005, PostgreSQL Global Development Group
  * Written by Peter Eisentraut <peter_e@gmx.net>.
  *
- * $PostgreSQL: pgsql/src/include/utils/guc.h,v 1.54 2004/10/22 19:48:19 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/utils/guc.h,v 1.58 2005/01/01 05:43:09 momjian Exp $
  *--------------------------------------------------------------------
  */
 #ifndef GUC_H
@@ -44,12 +44,7 @@
  * given backend once it's started, but they can vary across backends.
  *
  * SUSET options can be set at postmaster startup, with the SIGHUP
- * mechanism, or from SQL if you're a superuser. These options cannot
- * be set in the connection startup packet, because when it is processed
- * we don't yet know if the user is a superuser.
- *
- * USERLIMIT options can only be manipulated in certain ways by
- * non-superusers.
+ * mechanism, or from SQL if you're a superuser.
  *
  * USERSET options can be set by anyone any time.
  */
@@ -60,7 +55,6 @@ typedef enum
 	PGC_SIGHUP,
 	PGC_BACKEND,
 	PGC_SUSET,
-	PGC_USERLIMIT,
 	PGC_USERSET
 } GucContext;
 
@@ -74,9 +68,7 @@ typedef enum
  * as the current value.  Note that source == PGC_S_OVERRIDE should be
  * used when setting a PGC_INTERNAL option.
  *
- * PGC_S_UNPRIVILEGED isn't actually a source value, but the dividing line
- * between privileged and unprivileged sources for USERLIMIT purposes.
- * Similarly, PGC_S_INTERACTIVE isn't a real source value, but is the
+ * PGC_S_INTERACTIVE isn't actually a source value, but is the
  * dividing line between "interactive" and "non-interactive" sources for
  * error reporting purposes.
  *
@@ -92,7 +84,6 @@ typedef enum
 	PGC_S_ENV_VAR,				/* postmaster environment variable */
 	PGC_S_FILE,					/* postgresql.conf */
 	PGC_S_ARGV,					/* postmaster command line */
-	PGC_S_UNPRIVILEGED,			/* dividing line for USERLIMIT */
 	PGC_S_DATABASE,				/* per-database setting */
 	PGC_S_USER,					/* per-user setting */
 	PGC_S_CLIENT,				/* from client connection request */
@@ -184,6 +175,7 @@ extern void EmitWarningsOnPlaceholders(const char *className);
 
 extern const char *GetConfigOption(const char *name);
 extern const char *GetConfigOptionResetString(const char *name);
+extern bool IsSuperuserConfigOption(const char *name);
 extern void ProcessConfigFile(GucContext context);
 extern void InitializeGUCOptions(void);
 extern bool SelectConfigFiles(const char *userDoption, const char *progname);
@@ -222,6 +214,10 @@ extern void read_nondefault_variables(void);
 
 /* in utils/adt/datetime.c */
 extern bool ClearDateCache(bool newval, bool doit, GucSource source);
+
+/* in commands/tablespace.c */
+extern const char *assign_default_tablespace(const char *newval,
+				   bool doit, GucSource source);
 
 /* in utils/adt/regexp.c */
 extern const char *assign_regex_flavor(const char *value,

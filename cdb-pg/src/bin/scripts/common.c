@@ -2,10 +2,10 @@
  *
  * Miscellaneous shared code
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/bin/scripts/common.c,v 1.12 2004/10/16 03:10:16 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/scripts/common.c,v 1.16 2005/01/08 22:51:14 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -27,10 +27,11 @@ get_user_name(const char *progname)
 #ifndef WIN32
 	struct passwd *pw;
 
-	pw = getpwuid(getuid());
+	pw = getpwuid(geteuid());
 	if (!pw)
 	{
-		perror(progname);
+		fprintf(stderr, _("%s: could not obtain information about current user: %s\n"),
+				progname, strerror(errno));
 		exit(1);
 	}
 	return pw->pw_name;
@@ -40,7 +41,8 @@ get_user_name(const char *progname)
 
 	if (!GetUserName(username, &len))
 	{
-		perror(progname);
+		fprintf(stderr, _("%s: could not get current user name: %s\n"),
+				progname, strerror(errno));
 		exit(1);
 	}
 	return username;

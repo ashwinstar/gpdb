@@ -6,12 +6,12 @@
  *	  message integrity and endpoint authentication.
  *
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/libpq/be-secure.c,v 1.52 2004/10/06 09:35:20 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/libpq/be-secure.c,v 1.56 2005/01/08 22:51:12 tgl Exp $
  *
  *	  Since the server static private key ($DataDir/server.key)
  *	  will normally be stored unencrypted so that the database
@@ -676,7 +676,7 @@ initialize_SSL(void)
 		 */
 #if !defined(WIN32) && !defined(__CYGWIN__)
 		if (!S_ISREG(buf.st_mode) || (buf.st_mode & (S_IRWXG | S_IRWXO)) ||
-			buf.st_uid != getuid())
+			buf.st_uid != geteuid())
 			ereport(FATAL,
 					(errcode(ERRCODE_CONFIG_FILE_ERROR),
 				  errmsg("unsafe permissions on private key file \"%s\"",
@@ -727,38 +727,6 @@ initialize_SSL(void)
 	return 0;
 }
 
-#ifdef WIN32
-/*
- *	Win32 socket code uses nonblocking sockets. We ned to deal with that
- *	by waiting on the socket if the SSL accept operation didn't complete
- *	right away.
- */
-static int pgwin32_SSL_accept(SSL *ssl)
-{
-	int r;
-
-	while (1)
-	{
-		int rc;
-		int waitfor;
-
-		printf("uhh\n");fflush(stdout);
-		r = SSL_accept(ssl);
-		if (r == 1)
-			return 1;
-
-		rc = SSL_get_error(ssl, r);
-		if (rc != SSL_ERROR_WANT_READ && rc != SSL_ERROR_WANT_WRITE)
-			return r;
-
-		waitfor = (rc == SSL_ERROR_WANT_READ)?FD_READ|FD_CLOSE|FD_ACCEPT:FD_WRITE|FD_CLOSE;
-		if (pgwin32_waitforsinglesocket(SSL_get_fd(ssl), waitfor) == 0)
-			return -1;
-	}
-}
-#define SSL_accept(ssl) pgwin32_SSL_accept(ssl)
-#endif
-
 /*
  *	Destroy global SSL context.
  */
@@ -778,7 +746,9 @@ destroy_SSL(void)
 static int
 open_server_SSL(Port *port)
 {
-	int r;
+	int			r;
+	int			err;
+
 	Assert(!port->ssl);
 	Assert(!port->peer);
 
@@ -800,12 +770,50 @@ open_server_SSL(Port *port)
 		close_SSL(port);
 		return -1;
 	}
-	if ((r=SSL_accept(port->ssl)) <= 0)
+
+aloop:
+	r = SSL_accept(port->ssl);
+	if (r <= 0)
 	{
-		ereport(COMMERROR,
-				(errcode(ERRCODE_PROTOCOL_VIOLATION),
-				 errmsg("could not accept SSL connection: %i",
-						SSL_get_error(port->ssl,r))));
+		err = SSL_get_error(port->ssl, r);
+		switch (err)
+		{
+			case SSL_ERROR_WANT_READ:
+			case SSL_ERROR_WANT_WRITE:
+#ifdef WIN32
+				pgwin32_waitforsinglesocket(SSL_get_fd(port->ssl),
+					(err==SSL_ERROR_WANT_READ) ?
+						FD_READ|FD_CLOSE|FD_ACCEPT : FD_WRITE|FD_CLOSE);
+#endif
+				goto aloop;
+			case SSL_ERROR_SYSCALL:
+				if (r < 0)
+					ereport(COMMERROR,
+							(errcode_for_socket_access(),
+							 errmsg("could not accept SSL connection: %m")));
+				else
+					ereport(COMMERROR,
+							(errcode(ERRCODE_PROTOCOL_VIOLATION),
+							 errmsg("could not accept SSL connection: EOF detected")));
+				break;
+			case SSL_ERROR_SSL:
+				ereport(COMMERROR,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						 errmsg("could not accept SSL connection: %s",
+								SSLerrmessage())));
+				break;
+			case SSL_ERROR_ZERO_RETURN:
+				ereport(COMMERROR,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						 errmsg("could not accept SSL connection: EOF detected")));
+				break;
+			default:
+				ereport(COMMERROR,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						 errmsg("unrecognized SSL error code: %d",
+								err)));
+				break;
+		}
 		close_SSL(port);
 		return -1;
 	}

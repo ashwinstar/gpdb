@@ -3,14 +3,14 @@
  * fe-print.c
  *	  functions for pretty-printing query results
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * These functions were formerly part of fe-exec.c, but they
  * didn't really belong there.
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-print.c,v 1.54 2004/08/29 05:07:00 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-print.c,v 1.58 2004/12/31 22:03:50 pgsql Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -91,7 +91,11 @@ PQprint(FILE *fout,
 		int			total_line_length = 0;
 		int			usePipe = 0;
 		char	   *pagerenv;
-
+#ifdef ENABLE_THREAD_SAFETY
+		sigset_t	osigset;
+		bool		sigpipe_masked = false;
+		bool		sigpipe_pending;
+#endif
 #if !defined(ENABLE_THREAD_SAFETY) && !defined(WIN32)
 		pqsigfunc	oldsigpipehandler = NULL;
 #endif
@@ -110,17 +114,17 @@ PQprint(FILE *fout,
 		nTups = PQntuples(res);
 		if (!(fieldNames = (const char **) calloc(nFields, sizeof(char *))))
 		{
-			perror("calloc");
+			fprintf(stderr, libpq_gettext("out of memory\n"));
 			exit(1);
 		}
 		if (!(fieldNotNum = (unsigned char *) calloc(nFields, 1)))
 		{
-			perror("calloc");
+			fprintf(stderr, libpq_gettext("out of memory\n"));
 			exit(1);
 		}
 		if (!(fieldMax = (int *) calloc(nFields, sizeof(int))))
 		{
-			perror("calloc");
+			fprintf(stderr, libpq_gettext("out of memory\n"));
 			exit(1);
 		}
 		for (numFieldName = 0;
@@ -189,7 +193,8 @@ PQprint(FILE *fout,
 				{
 					usePipe = 1;
 #ifdef ENABLE_THREAD_SAFETY
-					pthread_setspecific(pq_thread_in_send, "t");
+					if (pq_block_sigpipe(&osigset, &sigpipe_pending) == 0)
+						sigpipe_masked = true;
 #else
 #ifndef WIN32
 					oldsigpipehandler = pqsignal(SIGPIPE, SIG_IGN);
@@ -205,7 +210,7 @@ PQprint(FILE *fout,
 		{
 			if (!(fields = (char **) calloc(nFields * (nTups + 1), sizeof(char *))))
 			{
-				perror("calloc");
+				fprintf(stderr, libpq_gettext("out of memory\n"));
 				exit(1);
 			}
 		}
@@ -311,7 +316,9 @@ PQprint(FILE *fout,
 			pclose(fout);
 #endif
 #ifdef ENABLE_THREAD_SAFETY
-			pthread_setspecific(pq_thread_in_send, "f");
+			/* we can't easily verify if EPIPE occurred, so say it did */
+			if (sigpipe_masked)
+				pq_reset_sigpipe(&osigset, sigpipe_pending, true);
 #else
 #ifndef WIN32
 			pqsignal(SIGPIPE, oldsigpipehandler);
@@ -392,7 +399,7 @@ do_field(const PQprintOpt *po, const PGresult *res,
 				fieldMax[j] = plen;
 			if (!(fields[i * nFields + j] = (char *) malloc(plen + 1)))
 			{
-				perror("malloc");
+				fprintf(stderr, libpq_gettext("out of memory\n"));
 				exit(1);
 			}
 			strcpy(fields[i * nFields + j], pval);
@@ -463,7 +470,7 @@ do_header(FILE *fout, const PQprintOpt *po, const int nFields, int *fieldMax,
 		border = malloc(tot + 1);
 		if (!border)
 		{
-			perror("malloc");
+			fprintf(stderr, libpq_gettext("out of memory\n"));
 			exit(1);
 		}
 		p = border;

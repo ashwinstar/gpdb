@@ -2,11 +2,11 @@
  *
  * pg_dumpall
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
- * $PostgreSQL: pgsql/src/bin/pg_dump/pg_dumpall.c,v 1.54 2004/10/16 03:10:15 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/pg_dump/pg_dumpall.c,v 1.57 2004/12/31 22:03:09 pgsql Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -25,7 +25,7 @@
 
 #include "getopt_long.h"
 
-#ifndef HAVE_OPTRESET
+#ifndef HAVE_INT_OPTRESET
 int			optreset;
 #endif
 
@@ -349,7 +349,7 @@ help(void)
 	printf(_("  -D, --column-inserts     dump data as INSERT commands with column names\n"));
 	printf(_("  -g, --globals-only       dump only global objects, no databases\n"));
 	printf(_("  -o, --oids               include OIDs in dump\n"));
-	printf(_("  -O, --no-owner           do not output commands to set object ownership\n"));
+	printf(_("  -O, --no-owner           skip restoration of object ownership\n"));
 	printf(_("  -s, --schema-only        dump only the schema, no data\n"));
 	printf(_("  -S, --superuser=NAME     specify the superuser user name to use in the dump\n"));
 	printf(_("  -x, --no-privileges      do not dump privileges (grant/revoke)\n"));

@@ -1,9 +1,9 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2004, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2005, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/startup.c,v 1.104 2004/10/16 03:10:16 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/startup.c,v 1.112 2005/01/17 10:00:05 petere Exp $
  */
 #include "postgres_fe.h"
 
@@ -18,7 +18,7 @@
 
 #include "getopt_long.h"
 
-#ifndef HAVE_OPTRESET
+#ifndef HAVE_INT_OPTRESET
 int			optreset;
 #endif
 
@@ -43,8 +43,13 @@ int			optreset;
  */
 PsqlSettings pset;
 
+#ifndef WIN32
 #define SYSPSQLRC	"psqlrc"
 #define PSQLRC		".psqlrc"
+#else
+#define SYSPSQLRC	"psqlrc"
+#define PSQLRC		"psqlrc.conf"
+#endif
 
 /*
  * Structures to pass information between the option parsing routine
@@ -121,6 +126,7 @@ main(int argc, char *argv[])
 
 #ifdef WIN32
 	setvbuf(stderr, NULL, _IONBF, 0);
+	setup_win32_locks();
 #endif
 	pset.cur_cmd_source = stdin;
 	pset.cur_cmd_interactive = false;
@@ -156,11 +162,6 @@ main(int argc, char *argv[])
 	pset.getPassword = true;
 #else
 	pset.getPassword = false;
-#endif
-
-#ifndef HAVE_UNIX_SOCKETS
-	/* default to localhost on platforms without unix sockets */
-	options.host = "localhost";
 #endif
 
 	parse_psql_options(argc, argv, &options);
@@ -572,24 +573,21 @@ parse_psql_options(int argc, char *argv[], struct adhoc_opts * options)
 static void
 process_psqlrc(char *argv0)
 {
-	char	   *psqlrc;
 	char		home[MAXPGPATH];
-	char		global_file[MAXPGPATH];
+	char		rc_file[MAXPGPATH];
 	char		my_exec_path[MAXPGPATH];
 	char		etc_path[MAXPGPATH];
 
 	find_my_exec(argv0, my_exec_path);
 	get_etc_path(my_exec_path, etc_path);
 
-	snprintf(global_file, MAXPGPATH, "%s/%s", etc_path, SYSPSQLRC);
-	process_psqlrc_file(global_file);
+	snprintf(rc_file, MAXPGPATH, "%s/%s", etc_path, SYSPSQLRC);
+	process_psqlrc_file(rc_file);
 
 	if (get_home_path(home))
 	{
-		psqlrc = pg_malloc(strlen(home) + 1 + strlen(PSQLRC) + 1);
-		sprintf(psqlrc, "%s/%s", home, PSQLRC);
-		process_psqlrc_file(psqlrc);
-		free(psqlrc);
+		snprintf(rc_file, MAXPGPATH, "%s/%s", home, PSQLRC);
+		process_psqlrc_file(rc_file);
 	}
 }
 
@@ -672,9 +670,9 @@ checkWin32Codepage(void)
 	concp = GetConsoleCP();
 	if (wincp != concp)
 	{
-		printf("Warning: Console codepage (%u) differs from windows codepage (%u)\n"
-			   "         8-bit characters will not work correctly. See PostgreSQL\n"
-			   "         documentation \"Installation on Windows\" for details.\n\n",
+			printf(gettext("Warning: Console code page (%u) differs from Windows code page (%u)\n"
+					   "         8-bit characters may not work correctly. See psql reference\n"
+					   "         page \"Notes for Windows users\" for details.\n\n"),
 			   concp, wincp);
 	}
 }

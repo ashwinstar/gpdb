@@ -4,7 +4,7 @@
  *	  pg_dump is a utility for dumping out a postgres database
  *	  into a script file.
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *	pg_dump will read the system catalogs in a database and dump out a
@@ -12,7 +12,7 @@
  *	by PostgreSQL
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/bin/pg_dump/pg_dump.c,v 1.390 2004/10/22 16:04:35 petere Exp $
+ *	  $PostgreSQL: pgsql/src/bin/pg_dump/pg_dump.c,v 1.400 2005/01/11 17:55:25 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -40,7 +40,7 @@
 
 #include "getopt_long.h"
 
-#ifndef HAVE_OPTRESET
+#ifndef HAVE_INT_OPTRESET
 int			optreset;
 #endif
 
@@ -108,9 +108,6 @@ static const CatalogId nilCatalogId = {0, 0};
 static NamespaceInfo *g_namespaces;
 static int	g_numNamespaces;
 
-/* need the name of the database's default tablespace */
-static char *dbDefaultTableSpace;
-
 /* flag to turn on/off dollar quoting */
 static int	disable_dollar_quoting = 0;
 
@@ -145,6 +142,7 @@ static void dumpAttrDef(Archive *fout, AttrDefInfo *adinfo);
 static void dumpSequence(Archive *fout, TableInfo *tbinfo);
 static void dumpIndex(Archive *fout, IndxInfo *indxinfo);
 static void dumpConstraint(Archive *fout, ConstraintInfo *coninfo);
+static void dumpTableConstraintComment(Archive *fout, ConstraintInfo *coninfo);
 
 static void dumpACL(Archive *fout, CatalogId objCatId, DumpId objDumpId,
 		const char *type, const char *name,
@@ -685,7 +683,7 @@ help(const char *progname)
 	printf(_("  -D, --column-inserts     dump data as INSERT commands with column names\n"));
 	printf(_("  -n, --schema=SCHEMA      dump the named schema only\n"));
 	printf(_("  -o, --oids               include OIDs in dump\n"));
-	printf(_("  -O, --no-owner           do not output commands to set object ownership\n"
+	printf(_("  -O, --no-owner           skip restoration of object ownership\n"
 			 "                           in plain text format\n"));
 	printf(_("  -s, --schema-only        dump only the schema, no data\n"));
 	printf(_("  -S, --superuser=NAME     specify the superuser user name to use in\n"
@@ -1104,6 +1102,7 @@ dumpTableData(Archive *fout, TableDataInfo *tdinfo)
 	ArchiveEntry(fout, tdinfo->dobj.catId, tdinfo->dobj.dumpId,
 				 tbinfo->dobj.name,
 				 tbinfo->dobj.namespace->dobj.name,
+				 NULL,
 				 tbinfo->usename, false,
 				 "TABLE DATA", "", "", copyStmt,
 				 tdinfo->dobj.dependencies, tdinfo->dobj.nDeps,
@@ -1252,9 +1251,6 @@ dumpDatabase(Archive *AH)
 	encoding = PQgetvalue(res, 0, i_encoding);
 	tablespace = PQgetvalue(res, 0, i_tablespace);
 
-	/* save dattablespace name for later dump routines */
-	dbDefaultTableSpace = strdup(tablespace);
-
 	appendPQExpBuffer(creaQry, "CREATE DATABASE %s WITH TEMPLATE = template0",
 					  fmtId(datname));
 	if (strlen(encoding) > 0)
@@ -1277,6 +1273,7 @@ dumpDatabase(Archive *AH)
 				 dbDumpId,		/* dump ID */
 				 datname,		/* Name */
 				 NULL,			/* Namespace */
+				 NULL, 			/* Tablespace */
 				 dba,			/* Owner */
 				 false,			/* with oids */
 				 "DATABASE",	/* Desc */
@@ -1322,7 +1319,7 @@ dumpTimestamp(Archive *AH, char *msg)
 		appendPQExpBuffer(qry, "\n");
 
 		ArchiveEntry(AH, nilCatalogId, createDumpId(),
-					 "DUMP TIMESTAMP", NULL, "",
+					 "DUMP TIMESTAMP", NULL, NULL, "",
 					 false, "DUMP TIMESTAMP", qry->data, "", NULL,
 					 NULL, 0,
 					 NULL, NULL);
@@ -1362,7 +1359,7 @@ dumpEncoding(Archive *AH)
 	appendPQExpBuffer(qry, ";\n");
 
 	ArchiveEntry(AH, nilCatalogId, createDumpId(),
-				 "ENCODING", NULL, "",
+				 "ENCODING", NULL, NULL, "",
 				 false, "ENCODING", qry->data, "", NULL,
 				 NULL, 0,
 				 NULL, NULL);
@@ -1482,7 +1479,6 @@ getNamespaces(int *numNamespaces)
 	int			i_oid;
 	int			i_nspname;
 	int			i_usename;
-	int			i_nsptablespace;
 	int			i_nspacl;
 
 	/*
@@ -1500,7 +1496,6 @@ getNamespaces(int *numNamespaces)
 		nsinfo[0].dobj.name = strdup("public");
 		nsinfo[0].usename = strdup("");
 		nsinfo[0].nspacl = strdup("");
-		nsinfo[0].nsptablespace = strdup("");
 
 		selectDumpableNamespace(&nsinfo[0]);
 
@@ -1511,7 +1506,6 @@ getNamespaces(int *numNamespaces)
 		nsinfo[1].dobj.name = strdup("pg_catalog");
 		nsinfo[1].usename = strdup("");
 		nsinfo[1].nspacl = strdup("");
-		nsinfo[0].nsptablespace = strdup("");
 
 		selectDumpableNamespace(&nsinfo[1]);
 
@@ -1530,21 +1524,9 @@ getNamespaces(int *numNamespaces)
 	 * we fetch all namespaces including system ones, so that every object
 	 * we read in can be linked to a containing namespace.
 	 */
-	if (g_fout->remoteVersion >= 80000)
-	{
-		appendPQExpBuffer(query, "SELECT tableoid, oid, nspname, "
-						  "(select usename from pg_user where nspowner = usesysid) as usename, "
-						  "nspacl, "
-						  "(SELECT spcname FROM pg_tablespace t WHERE t.oid = nsptablespace) AS nsptablespace "
-						  "FROM pg_namespace");
-	}
-	else
-	{
-		appendPQExpBuffer(query, "SELECT tableoid, oid, nspname, "
-						  "(select usename from pg_user where nspowner = usesysid) as usename, "
-						  "nspacl, NULL AS nsptablespace "
-						  "FROM pg_namespace");
-	}
+	appendPQExpBuffer(query, "SELECT tableoid, oid, nspname, "
+					  "(select usename from pg_user where nspowner = usesysid) as usename, "
+					  "nspacl FROM pg_namespace");
 
 	res = PQexec(g_conn, query->data);
 	check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
@@ -1558,7 +1540,6 @@ getNamespaces(int *numNamespaces)
 	i_nspname = PQfnumber(res, "nspname");
 	i_usename = PQfnumber(res, "usename");
 	i_nspacl = PQfnumber(res, "nspacl");
-	i_nsptablespace = PQfnumber(res, "nsptablespace");
 
 	for (i = 0; i < ntups; i++)
 	{
@@ -1569,7 +1550,6 @@ getNamespaces(int *numNamespaces)
 		nsinfo[i].dobj.name = strdup(PQgetvalue(res, i, i_nspname));
 		nsinfo[i].usename = strdup(PQgetvalue(res, i, i_usename));
 		nsinfo[i].nspacl = strdup(PQgetvalue(res, i, i_nspacl));
-		nsinfo[i].nsptablespace = strdup(PQgetvalue(res, i, i_nsptablespace));
 
 		/* Decide whether to dump this namespace */
 		selectDumpableNamespace(&nsinfo[i]);
@@ -2369,8 +2349,13 @@ getTables(int *numTables)
 	 * We include system catalogs, so that we can work if a user table is
 	 * defined to inherit from a system catalog (pretty weird, but...)
 	 *
-	 * We ignore tables that are not type 'r' (ordinary relation) or 'S'
-	 * (sequence) or 'v' (view).
+	 * We ignore tables that are not type 'r' (ordinary relation), 'S'
+	 * (sequence), 'v' (view), or 'c' (composite type).
+	 *
+	 * Composite-type table entries won't be dumped as such, but we have
+	 * to make a DumpableObject for them so that we can track dependencies
+	 * of the composite type (pg_depend entries for columns of the composite
+	 * type link to the pg_class entry not the pg_type entry).
 	 *
 	 * Note: in this phase we should collect only a minimal amount of
 	 * information about each table, basically just enough to decide if it
@@ -2400,10 +2385,11 @@ getTables(int *numTables)
 						"d.classid = c.tableoid and d.objid = c.oid and "
 						  "d.objsubid = 0 and "
 						"d.refclassid = c.tableoid and d.deptype = 'i') "
-						  "where relkind in ('%c', '%c', '%c') "
+						  "where relkind in ('%c', '%c', '%c', '%c') "
 						  "order by c.oid",
 						  RELKIND_SEQUENCE,
-					   RELKIND_RELATION, RELKIND_SEQUENCE, RELKIND_VIEW);
+						  RELKIND_RELATION, RELKIND_SEQUENCE,
+						  RELKIND_VIEW, RELKIND_COMPOSITE_TYPE);
 	}
 	else if (g_fout->remoteVersion >= 70300)
 	{
@@ -2426,10 +2412,11 @@ getTables(int *numTables)
 						"d.classid = c.tableoid and d.objid = c.oid and "
 						  "d.objsubid = 0 and "
 						"d.refclassid = c.tableoid and d.deptype = 'i') "
-						  "where relkind in ('%c', '%c', '%c') "
+						  "where relkind in ('%c', '%c', '%c', '%c') "
 						  "order by c.oid",
 						  RELKIND_SEQUENCE,
-					   RELKIND_RELATION, RELKIND_SEQUENCE, RELKIND_VIEW);
+						  RELKIND_RELATION, RELKIND_SEQUENCE,
+						  RELKIND_VIEW, RELKIND_COMPOSITE_TYPE);
 	}
 	else if (g_fout->remoteVersion >= 70200)
 	{
@@ -2565,7 +2552,9 @@ getTables(int *numTables)
 		 * serial columns are never dumpable on their own; we will
 		 * transpose their owning table's dump flag to them below.
 		 */
-		if (OidIsValid(tblinfo[i].owning_tab))
+		if (tblinfo[i].relkind == RELKIND_COMPOSITE_TYPE)
+			tblinfo[i].dump = false;
+		else if (OidIsValid(tblinfo[i].owning_tab))
 			tblinfo[i].dump = false;
 		else
 			selectDumpableTable(&tblinfo[i]);
@@ -3180,12 +3169,21 @@ getRules(int *numRules)
 			 */
 			if (ruleinfo[i].ruletable->relkind == RELKIND_VIEW &&
 				ruleinfo[i].ev_type == '1' && ruleinfo[i].is_instead)
+			{
 				addObjectDependency(&ruleinfo[i].ruletable->dobj,
 									ruleinfo[i].dobj.dumpId);
+				/* We'll merge the rule into CREATE VIEW, if possible */
+				ruleinfo[i].separate = false;
+			}
 			else
+			{
 				addObjectDependency(&ruleinfo[i].dobj,
 									ruleinfo[i].ruletable->dobj.dumpId);
+				ruleinfo[i].separate = true;
+			}
 		}
+		else
+			ruleinfo[i].separate = true;
 	}
 
 	PQclear(res);
@@ -3960,6 +3958,12 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
 				constrs[j].conindex = 0;
 				constrs[j].coninherited = false;
 				constrs[j].separate = false;
+				/*
+				 * Mark the constraint as needing to appear before the
+				 * table --- this is so that any other dependencies of
+				 * the constraint will be emitted before we try to create
+				 * the table.
+				 */
 				addObjectDependency(&tbinfo->dobj,
 									constrs[j].dobj.dumpId);
 
@@ -4026,6 +4030,13 @@ getTableAttrs(TableInfo *tblinfo, int numTables)
  * plus catalog ID and subid which are the lookup key for pg_description,
  * plus the dump ID for the object (for setting a dependency).
  * If a matching pg_description entry is found, it is dumped.
+ *
+ * Note: although this routine takes a dumpId for dependency purposes,
+ * that purpose is just to mark the dependency in the emitted dump file
+ * for possible future use by pg_restore.  We do NOT use it for determining
+ * ordering of the comment in the dump file, because this routine is called
+ * after dependency sorting occurs.  This routine should be called just after
+ * calling ArchiveEntry() for the specified object.
  */
 static void
 dumpComment(Archive *fout, const char *target,
@@ -4062,7 +4073,7 @@ dumpComment(Archive *fout, const char *target,
 		appendPQExpBuffer(query, ";\n");
 
 		ArchiveEntry(fout, nilCatalogId, createDumpId(),
-					 target, namespace, owner, false,
+					 target, namespace, NULL, owner, false,
 					 "COMMENT", query->data, "", NULL,
 					 &(dumpId), 1,
 					 NULL, NULL);
@@ -4121,7 +4132,9 @@ dumpTableComment(Archive *fout, TableInfo *tbinfo,
 
 			ArchiveEntry(fout, nilCatalogId, createDumpId(),
 						 target->data,
-					  tbinfo->dobj.namespace->dobj.name, tbinfo->usename,
+						 tbinfo->dobj.namespace->dobj.name,
+						 NULL,
+						 tbinfo->usename,
 						 false, "COMMENT", query->data, "", NULL,
 						 &(tbinfo->dobj.dumpId), 1,
 						 NULL, NULL);
@@ -4141,7 +4154,9 @@ dumpTableComment(Archive *fout, TableInfo *tbinfo,
 
 			ArchiveEntry(fout, nilCatalogId, createDumpId(),
 						 target->data,
-					  tbinfo->dobj.namespace->dobj.name, tbinfo->usename,
+						 tbinfo->dobj.namespace->dobj.name,
+						 NULL,
+						 tbinfo->usename,
 						 false, "COMMENT", query->data, "", NULL,
 						 &(tbinfo->dobj.dumpId), 1,
 						 NULL, NULL);
@@ -4390,7 +4405,7 @@ dumpDumpableObject(Archive *fout, DumpableObject *dobj)
 			break;
 		case DO_BLOBS:
 			ArchiveEntry(fout, dobj->catId, dobj->dumpId,
-						 dobj->name, NULL, "",
+						 dobj->name, NULL, NULL, "",
 						 false, "BLOBS", "", "", NULL,
 						 NULL, 0,
 						 dumpBlobs, NULL);
@@ -4422,29 +4437,14 @@ dumpNamespace(Archive *fout, NamespaceInfo *nspinfo)
 
 	qnspname = strdup(fmtId(nspinfo->dobj.name));
 
-	/*
-	 * Note that ownership is shown in the AUTHORIZATION clause, while the
-	 * archive entry is listed with empty owner (causing it to be emitted
-	 * with SET SESSION AUTHORIZATION DEFAULT). This seems the best way of
-	 * dealing with schemas owned by users without CREATE SCHEMA
-	 * privilege.  Further hacking has to be applied for --no-owner mode,
-	 * though!
-	 */
 	appendPQExpBuffer(delq, "DROP SCHEMA %s;\n", qnspname);
 
-	appendPQExpBuffer(q, "CREATE SCHEMA %s AUTHORIZATION %s",
-					  qnspname, fmtId(nspinfo->usename));
-
-	/* Add tablespace qualifier, if not default for database */
-	if (strlen(nspinfo->nsptablespace) != 0)
-		appendPQExpBuffer(q, " TABLESPACE %s",
-						  fmtId(nspinfo->nsptablespace));
-
-	appendPQExpBuffer(q, ";\n");
+	appendPQExpBuffer(q, "CREATE SCHEMA %s;\n", qnspname);
 
 	ArchiveEntry(fout, nspinfo->dobj.catId, nspinfo->dobj.dumpId,
 				 nspinfo->dobj.name,
-				 NULL, strcmp(nspinfo->dobj.name, "public") == 0 ? nspinfo->usename : "",
+				 NULL, NULL, 
+				 nspinfo->usename,
 				 false, "SCHEMA", q->data, delq->data, NULL,
 				 nspinfo->dobj.dependencies, nspinfo->dobj.nDeps,
 				 NULL, NULL);
@@ -4735,6 +4735,7 @@ dumpBaseType(Archive *fout, TypeInfo *tinfo)
 	ArchiveEntry(fout, tinfo->dobj.catId, tinfo->dobj.dumpId,
 				 tinfo->dobj.name,
 				 tinfo->dobj.namespace->dobj.name,
+				 NULL,
 				 tinfo->usename, false,
 				 "TYPE", q->data, delq->data, NULL,
 				 tinfo->dobj.dependencies, tinfo->dobj.nDeps,
@@ -4841,6 +4842,7 @@ dumpDomain(Archive *fout, TypeInfo *tinfo)
 	ArchiveEntry(fout, tinfo->dobj.catId, tinfo->dobj.dumpId,
 				 tinfo->dobj.name,
 				 tinfo->dobj.namespace->dobj.name,
+				 NULL,
 				 tinfo->usename, false,
 				 "DOMAIN", q->data, delq->data, NULL,
 				 tinfo->dobj.dependencies, tinfo->dobj.nDeps,
@@ -4934,6 +4936,7 @@ dumpCompositeType(Archive *fout, TypeInfo *tinfo)
 	ArchiveEntry(fout, tinfo->dobj.catId, tinfo->dobj.dumpId,
 				 tinfo->dobj.name,
 				 tinfo->dobj.namespace->dobj.name,
+				 NULL,
 				 tinfo->usename, false,
 				 "TYPE", q->data, delq->data, NULL,
 				 tinfo->dobj.dependencies, tinfo->dobj.nDeps,
@@ -5025,7 +5028,7 @@ dumpProcLang(Archive *fout, ProcLangInfo *plang)
 
 	ArchiveEntry(fout, plang->dobj.catId, plang->dobj.dumpId,
 				 plang->dobj.name,
-				 funcInfo->dobj.namespace->dobj.name, "",
+				 funcInfo->dobj.namespace->dobj.name, NULL, "",
 				 false, "PROCEDURAL LANGUAGE",
 				 defqry->data, delqry->data, NULL,
 				 plang->dobj.dependencies, plang->dobj.nDeps,
@@ -5299,6 +5302,7 @@ dumpFunc(Archive *fout, FuncInfo *finfo)
 	ArchiveEntry(fout, finfo->dobj.catId, finfo->dobj.dumpId,
 				 funcsig_tag,
 				 finfo->dobj.namespace->dobj.name,
+				 NULL,
 				 finfo->usename, false,
 				 "FUNCTION", q->data, delqry->data, NULL,
 				 finfo->dobj.dependencies, finfo->dobj.nDeps,
@@ -5438,7 +5442,7 @@ dumpCast(Archive *fout, CastInfo *cast)
 
 	ArchiveEntry(fout, cast->dobj.catId, cast->dobj.dumpId,
 				 castsig->data,
-				 "pg_catalog", "",
+				 "pg_catalog", NULL, "",
 				 false, "CAST", defqry->data, delqry->data, NULL,
 				 cast->dobj.dependencies, cast->dobj.nDeps,
 				 NULL, NULL);
@@ -5691,7 +5695,9 @@ dumpOpr(Archive *fout, OprInfo *oprinfo)
 
 	ArchiveEntry(fout, oprinfo->dobj.catId, oprinfo->dobj.dumpId,
 				 oprinfo->dobj.name,
-				 oprinfo->dobj.namespace->dobj.name, oprinfo->usename,
+				 oprinfo->dobj.namespace->dobj.name, 
+				 NULL,
+				 oprinfo->usename,
 				 false, "OPERATOR", q->data, delq->data, NULL,
 				 oprinfo->dobj.dependencies, oprinfo->dobj.nDeps,
 				 NULL, NULL);
@@ -5998,7 +6004,9 @@ dumpOpclass(Archive *fout, OpclassInfo *opcinfo)
 
 	ArchiveEntry(fout, opcinfo->dobj.catId, opcinfo->dobj.dumpId,
 				 opcinfo->dobj.name,
-				 opcinfo->dobj.namespace->dobj.name, opcinfo->usename,
+				 opcinfo->dobj.namespace->dobj.name, 
+				 NULL,
+				 opcinfo->usename,
 				 false, "OPERATOR CLASS", q->data, delq->data, NULL,
 				 opcinfo->dobj.dependencies, opcinfo->dobj.nDeps,
 				 NULL, NULL);
@@ -6108,7 +6116,9 @@ dumpConversion(Archive *fout, ConvInfo *convinfo)
 
 	ArchiveEntry(fout, convinfo->dobj.catId, convinfo->dobj.dumpId,
 				 convinfo->dobj.name,
-				 convinfo->dobj.namespace->dobj.name, convinfo->usename,
+				 convinfo->dobj.namespace->dobj.name, 
+				 NULL, 
+				 convinfo->usename,
 				 false, "CONVERSION", q->data, delq->data, NULL,
 				 convinfo->dobj.dependencies, convinfo->dobj.nDeps,
 				 NULL, NULL);
@@ -6343,9 +6353,11 @@ dumpAgg(Archive *fout, AggInfo *agginfo)
 
 	ArchiveEntry(fout, agginfo->aggfn.dobj.catId, agginfo->aggfn.dobj.dumpId,
 				 aggsig_tag,
-		agginfo->aggfn.dobj.namespace->dobj.name, agginfo->aggfn.usename,
+				 agginfo->aggfn.dobj.namespace->dobj.name,
+				 NULL,
+				 agginfo->aggfn.usename,
 				 false, "AGGREGATE", q->data, delq->data, NULL,
-			 agginfo->aggfn.dobj.dependencies, agginfo->aggfn.dobj.nDeps,
+				 agginfo->aggfn.dobj.dependencies, agginfo->aggfn.dobj.nDeps,
 				 NULL, NULL);
 
 	/* Dump Aggregate Comments */
@@ -6422,6 +6434,7 @@ dumpACL(Archive *fout, CatalogId objCatId, DumpId objDumpId,
 	if (sql->len > 0)
 		ArchiveEntry(fout, nilCatalogId, createDumpId(),
 					 tag, nspname,
+					 NULL, 
 					 owner ? owner : "",
 					 false, "ACL", sql->data, "", NULL,
 					 &(objDumpId), 1,
@@ -6659,18 +6672,6 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			appendPQExpBuffer(q, ")");
 		}
 
-		/* Output tablespace clause if different from parent schema's */
-		if (strcmp(tbinfo->reltablespace,
-				   tbinfo->dobj.namespace->nsptablespace) != 0)
-		{
-			if (strlen(tbinfo->reltablespace) != 0)
-				appendPQExpBuffer(q, " TABLESPACE %s",
-								  fmtId(tbinfo->reltablespace));
-			else if (strlen(dbDefaultTableSpace) != 0)
-				appendPQExpBuffer(q, " TABLESPACE %s",
-								  fmtId(dbDefaultTableSpace));
-		}
-
 		appendPQExpBuffer(q, ";\n");
 
 		/* Loop dumping statistics and storage statements */
@@ -6736,14 +6737,27 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 
 	ArchiveEntry(fout, tbinfo->dobj.catId, tbinfo->dobj.dumpId,
 				 tbinfo->dobj.name,
-				 tbinfo->dobj.namespace->dobj.name, tbinfo->usename,
-		   (strcmp(reltypename, "TABLE") == 0) ? tbinfo->hasoids : false,
+				 tbinfo->dobj.namespace->dobj.name,
+				 (tbinfo->relkind == RELKIND_VIEW) ? NULL : tbinfo->reltablespace,
+				 tbinfo->usename,
+				 (strcmp(reltypename, "TABLE") == 0) ? tbinfo->hasoids : false,
 				 reltypename, q->data, delq->data, NULL,
 				 tbinfo->dobj.dependencies, tbinfo->dobj.nDeps,
 				 NULL, NULL);
 
 	/* Dump Table Comments */
 	dumpTableComment(fout, tbinfo, reltypename);
+
+	/* Dump comments on inlined table constraints */
+	for (j = 0; j < tbinfo->ncheck; j++)
+	{
+		ConstraintInfo *constr = &(tbinfo->checkexprs[j]);
+
+		if (constr->coninherited || constr->separate)
+			continue;
+
+		dumpTableConstraintComment(fout, constr);
+	}
 
 	destroyPQExpBuffer(query);
 	destroyPQExpBuffer(q);
@@ -6791,7 +6805,9 @@ dumpAttrDef(Archive *fout, AttrDefInfo *adinfo)
 
 	ArchiveEntry(fout, adinfo->dobj.catId, adinfo->dobj.dumpId,
 				 tbinfo->attnames[adnum - 1],
-				 tbinfo->dobj.namespace->dobj.name, tbinfo->usename,
+				 tbinfo->dobj.namespace->dobj.name, 
+				 NULL,
+				 tbinfo->usename,
 				 false, "DEFAULT", q->data, delq->data, NULL,
 				 adinfo->dobj.dependencies, adinfo->dobj.nDeps,
 				 NULL, NULL);
@@ -6854,7 +6870,8 @@ dumpIndex(Archive *fout, IndxInfo *indxinfo)
 
 	/*
 	 * If there's an associated constraint, don't dump the index per se,
-	 * but do dump any comment for it.
+	 * but do dump any comment for it.  (This is safe because dependency
+	 * ordering will have ensured the constraint is emitted first.)
 	 */
 	if (indxinfo->indexconstraint == 0)
 	{
@@ -6882,6 +6899,7 @@ dumpIndex(Archive *fout, IndxInfo *indxinfo)
 		ArchiveEntry(fout, indxinfo->dobj.catId, indxinfo->dobj.dumpId,
 					 indxinfo->dobj.name,
 					 tbinfo->dobj.namespace->dobj.name,
+					 tbinfo->reltablespace,
 					 tbinfo->usename, false,
 					 "INDEX", q->data, delq->data, NULL,
 					 indxinfo->dobj.dependencies, indxinfo->dobj.nDeps,
@@ -6955,21 +6973,7 @@ dumpConstraint(Archive *fout, ConstraintInfo *coninfo)
 							  fmtId(attname));
 		}
 
-		appendPQExpBuffer(q, ")");
-
-		/* Output tablespace clause if different from parent table's */
-		if (strcmp(indxinfo->tablespace,
-				   indxinfo->indextable->reltablespace) != 0)
-		{
-			if (strlen(indxinfo->tablespace) != 0)
-				appendPQExpBuffer(q, " USING INDEX TABLESPACE %s",
-								  fmtId(indxinfo->tablespace));
-			else if (strlen(dbDefaultTableSpace) != 0)
-				appendPQExpBuffer(q, " USING INDEX TABLESPACE %s",
-								  fmtId(dbDefaultTableSpace));
-		}
-
-		appendPQExpBuffer(q, ";\n");
+		appendPQExpBuffer(q, ");\n");
 
 		/* If the index is clustered, we need to record that. */
 		if (indxinfo->indisclustered)
@@ -6994,6 +6998,7 @@ dumpConstraint(Archive *fout, ConstraintInfo *coninfo)
 		ArchiveEntry(fout, coninfo->dobj.catId, coninfo->dobj.dumpId,
 					 coninfo->dobj.name,
 					 tbinfo->dobj.namespace->dobj.name,
+					 indxinfo->tablespace,
 					 tbinfo->usename, false,
 					 "CONSTRAINT", q->data, delq->data, NULL,
 					 coninfo->dobj.dependencies, coninfo->dobj.nDeps,
@@ -7025,6 +7030,7 @@ dumpConstraint(Archive *fout, ConstraintInfo *coninfo)
 		ArchiveEntry(fout, coninfo->dobj.catId, coninfo->dobj.dumpId,
 					 coninfo->dobj.name,
 					 tbinfo->dobj.namespace->dobj.name,
+					 NULL,
 					 tbinfo->usename, false,
 					 "FK CONSTRAINT", q->data, delq->data, NULL,
 					 coninfo->dobj.dependencies, coninfo->dobj.nDeps,
@@ -7058,6 +7064,7 @@ dumpConstraint(Archive *fout, ConstraintInfo *coninfo)
 			ArchiveEntry(fout, coninfo->dobj.catId, coninfo->dobj.dumpId,
 						 coninfo->dobj.name,
 						 tbinfo->dobj.namespace->dobj.name,
+						 NULL,
 						 tbinfo->usename, false,
 						 "CHECK CONSTRAINT", q->data, delq->data, NULL,
 						 coninfo->dobj.dependencies, coninfo->dobj.nDeps,
@@ -7092,6 +7099,7 @@ dumpConstraint(Archive *fout, ConstraintInfo *coninfo)
 			ArchiveEntry(fout, coninfo->dobj.catId, coninfo->dobj.dumpId,
 						 coninfo->dobj.name,
 						 tinfo->dobj.namespace->dobj.name,
+						 NULL,
 						 tinfo->usename, false,
 						 "CHECK CONSTRAINT", q->data, delq->data, NULL,
 						 coninfo->dobj.dependencies, coninfo->dobj.nDeps,
@@ -7105,28 +7113,43 @@ dumpConstraint(Archive *fout, ConstraintInfo *coninfo)
 	}
 
 	/* Dump Constraint Comments --- only works for table constraints */
-	if (tbinfo)
-	{
-		resetPQExpBuffer(q);
-		appendPQExpBuffer(q, "CONSTRAINT %s ",
-						  fmtId(coninfo->dobj.name));
-		appendPQExpBuffer(q, "ON %s",
-						  fmtId(tbinfo->dobj.name));
-		dumpComment(fout, q->data,
-					tbinfo->dobj.namespace->dobj.name,
-					tbinfo->usename,
-					coninfo->dobj.catId, 0, coninfo->dobj.dumpId);
-	}
+	if (tbinfo && coninfo->separate)
+		dumpTableConstraintComment(fout, coninfo);
 
 	destroyPQExpBuffer(q);
 	destroyPQExpBuffer(delq);
 }
 
 /*
+ * dumpTableConstraintComment --- dump a constraint's comment if any
+ *
+ * This is split out because we need the function in two different places
+ * depending on whether the constraint is dumped as part of CREATE TABLE
+ * or as a separate ALTER command.
+ */
+static void
+dumpTableConstraintComment(Archive *fout, ConstraintInfo *coninfo)
+{
+	TableInfo  *tbinfo = coninfo->contable;
+	PQExpBuffer q = createPQExpBuffer();
+
+	appendPQExpBuffer(q, "CONSTRAINT %s ",
+					  fmtId(coninfo->dobj.name));
+	appendPQExpBuffer(q, "ON %s",
+					  fmtId(tbinfo->dobj.name));
+	dumpComment(fout, q->data,
+				tbinfo->dobj.namespace->dobj.name,
+				tbinfo->usename,
+				coninfo->dobj.catId, 0,
+				coninfo->separate ? coninfo->dobj.dumpId : tbinfo->dobj.dumpId);
+
+	destroyPQExpBuffer(q);
+}
+
+/*
  * setMaxOid -
  * find the maximum oid and generate a COPY statement to set it
-*/
-
+ */
 static void
 setMaxOid(Archive *fout)
 {
@@ -7134,8 +7157,12 @@ setMaxOid(Archive *fout)
 	Oid			max_oid;
 	char		sql[1024];
 
-	do_sql_command(g_conn,
-				   "CREATE TEMPORARY TABLE pgdump_oid (dummy integer)");
+	if (fout->remoteVersion >= 70200)
+		do_sql_command(g_conn,
+					   "CREATE TEMPORARY TABLE pgdump_oid (dummy integer) WITH OIDS");
+	else
+		do_sql_command(g_conn,
+					   "CREATE TEMPORARY TABLE pgdump_oid (dummy integer)");
 	res = PQexec(g_conn, "INSERT INTO pgdump_oid VALUES (0)");
 	check_sql_result(res, g_conn, "INSERT INTO pgdump_oid VALUES (0)",
 					 PGRES_COMMAND_OK);
@@ -7150,7 +7177,7 @@ setMaxOid(Archive *fout)
 	if (g_verbose)
 		write_msg(NULL, "maximum system OID is %u\n", max_oid);
 	snprintf(sql, sizeof(sql),
-			 "CREATE TEMPORARY TABLE pgdump_oid (dummy integer);\n"
+			 "CREATE TEMPORARY TABLE pgdump_oid (dummy integer) WITH OIDS;\n"
 			 "COPY pgdump_oid WITH OIDS FROM stdin;\n"
 			 "%u\t0\n"
 			 "\\.\n"
@@ -7158,7 +7185,7 @@ setMaxOid(Archive *fout)
 			 max_oid);
 
 	ArchiveEntry(fout, nilCatalogId, createDumpId(),
-				 "Max OID", NULL, "",
+				 "Max OID", NULL, NULL, "",
 				 false, "<Init>", sql, "", NULL,
 				 NULL, 0,
 				 NULL, NULL);
@@ -7357,7 +7384,9 @@ dumpSequence(Archive *fout, TableInfo *tbinfo)
 
 		ArchiveEntry(fout, tbinfo->dobj.catId, tbinfo->dobj.dumpId,
 					 tbinfo->dobj.name,
-					 tbinfo->dobj.namespace->dobj.name, tbinfo->usename,
+					 tbinfo->dobj.namespace->dobj.name, 
+					 NULL,
+					 tbinfo->usename,
 					 false, "SEQUENCE", query->data, delqry->data, NULL,
 					 tbinfo->dobj.dependencies, tbinfo->dobj.nDeps,
 					 NULL, NULL);
@@ -7393,7 +7422,9 @@ dumpSequence(Archive *fout, TableInfo *tbinfo)
 
 		ArchiveEntry(fout, nilCatalogId, createDumpId(),
 					 tbinfo->dobj.name,
-					 tbinfo->dobj.namespace->dobj.name, tbinfo->usename,
+					 tbinfo->dobj.namespace->dobj.name,
+					 NULL,
+					 tbinfo->usename,
 					 false, "SEQUENCE SET", query->data, "", NULL,
 					 &(tbinfo->dobj.dumpId), 1,
 					 NULL, NULL);
@@ -7559,6 +7590,7 @@ dumpTrigger(Archive *fout, TriggerInfo *tginfo)
 	ArchiveEntry(fout, tginfo->dobj.catId, tginfo->dobj.dumpId,
 				 tginfo->dobj.name,
 				 tbinfo->dobj.namespace->dobj.name,
+				 NULL,
 				 tbinfo->usename, false,
 				 "TRIGGER", query->data, delqry->data, NULL,
 				 tginfo->dobj.dependencies, tginfo->dobj.nDeps,
@@ -7598,10 +7630,10 @@ dumpRule(Archive *fout, RuleInfo *rinfo)
 		return;
 
 	/*
-	 * If it is an ON SELECT rule, we do not need to dump it because it
-	 * will be handled via CREATE VIEW for the table.
+	 * If it is an ON SELECT rule that is created implicitly by CREATE VIEW,
+	 * we do not want to dump it as a separate object.
 	 */
-	if (rinfo->ev_type == '1' && rinfo->is_instead)
+	if (!rinfo->separate)
 		return;
 
 	/*
@@ -7653,6 +7685,7 @@ dumpRule(Archive *fout, RuleInfo *rinfo)
 	ArchiveEntry(fout, rinfo->dobj.catId, rinfo->dobj.dumpId,
 				 rinfo->dobj.name,
 				 tbinfo->dobj.namespace->dobj.name,
+				 NULL,
 				 tbinfo->usename, false,
 				 "RULE", cmd->data, delcmd->data, NULL,
 				 rinfo->dobj.dependencies, rinfo->dobj.nDeps,
@@ -7772,7 +7805,19 @@ getDependencies(void)
 			continue;
 		}
 
-		addObjectDependency(dobj, refdobj->dumpId);
+		/*
+		 * Ordinarily, table rowtypes have implicit dependencies on their
+		 * tables.  However, for a composite type the implicit dependency
+		 * goes the other way in pg_depend; which is the right thing for
+		 * DROP but it doesn't produce the dependency ordering we need.
+		 * So in that one case, we reverse the direction of the dependency.
+		 */
+		if (deptype == 'i' &&
+			dobj->objType == DO_TABLE &&
+			refdobj->objType == DO_TYPE)
+			addObjectDependency(refdobj, dobj->dumpId);
+		else					/* normal case */
+			addObjectDependency(dobj, refdobj->dumpId);
 	}
 
 	PQclear(res);

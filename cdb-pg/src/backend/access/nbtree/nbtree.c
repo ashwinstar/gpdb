@@ -8,11 +8,11 @@
  *	  This file contains only the public interface routines.
  *
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/nbtree/nbtree.c,v 1.120 2004/08/29 04:12:21 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/nbtree/nbtree.c,v 1.124 2004/12/31 21:59:22 pgsql Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -60,11 +60,6 @@ static void btbuildCallback(Relation index,
 
 /*
  *	btbuild() -- build a new btree index.
- *
- *		We use a global variable to record the fact that we're creating
- *		a new index.  This is used to avoid high-concurrency locking,
- *		since the index won't be visible until this transaction commits
- *		and since building is guaranteed to be single-threaded.
  */
 Datum
 btbuild(PG_FUNCTION_ARGS)
@@ -482,8 +477,8 @@ btmarkpos(PG_FUNCTION_ARGS)
 	/* bump pin on current buffer for assignment to mark buffer */
 	if (ItemPointerIsValid(&(scan->currentItemData)))
 	{
-		so->btso_mrkbuf = ReadBuffer(scan->indexRelation,
-								  BufferGetBlockNumber(so->btso_curbuf));
+		IncrBufferRefCount(so->btso_curbuf);
+		so->btso_mrkbuf = so->btso_curbuf;
 		scan->currentMarkData = scan->currentItemData;
 		so->mrkHeapIptr = so->curHeapIptr;
 	}
@@ -514,8 +509,8 @@ btrestrpos(PG_FUNCTION_ARGS)
 	/* bump pin on marked buffer */
 	if (ItemPointerIsValid(&(scan->currentMarkData)))
 	{
-		so->btso_curbuf = ReadBuffer(scan->indexRelation,
-								  BufferGetBlockNumber(so->btso_mrkbuf));
+		IncrBufferRefCount(so->btso_mrkbuf);
+		so->btso_curbuf = so->btso_mrkbuf;
 		scan->currentItemData = scan->currentMarkData;
 		so->curHeapIptr = so->mrkHeapIptr;
 	}
@@ -790,6 +785,10 @@ btvacuumcleanup(PG_FUNCTION_ARGS)
 			 * Do the physical truncation.
 			 */
 			RelationTruncate(rel, new_pages);
+
+			/* update statistics */
+			stats->pages_removed = num_pages - new_pages;
+
 			num_pages = new_pages;
 		}
 	}

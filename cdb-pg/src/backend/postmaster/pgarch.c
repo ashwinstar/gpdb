@@ -14,12 +14,12 @@
  *
  *	Initial author: Simon Riggs		simon@2ndquadrant.com
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/postmaster/pgarch.c,v 1.9 2004/08/29 05:06:46 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/postmaster/pgarch.c,v 1.14 2004/12/31 22:00:40 pgsql Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -51,7 +51,7 @@
 #define PGARCH_AUTOWAKE_INTERVAL 60		/* How often to force a poll of
 										 * the archive status directory;
 										 * in seconds. */
-#define PGARCH_RESTART_INTERVAL 60		/* How often to attempt to restart
+#define PGARCH_RESTART_INTERVAL 10		/* How often to attempt to restart
 										 * a failed archiver; in seconds. */
 
 /* ----------
@@ -338,15 +338,14 @@ pgarch_MainLoop(void)
 
 		/*
 		 * There shouldn't be anything for the archiver to do except to
-		 * wait for a signal, so we could use pause(3) here... ...however,
-		 * the archiver exists to protect our data, so she wakes up
-		 * occasionally to allow herself to be proactive. In particular
-		 * this avoids getting stuck if a signal arrives just before we
-		 * enter sleep().
+		 * wait for a signal, ... however, the archiver exists to 
+		 * protect our data, so she wakes up occasionally to allow 
+		 * herself to be proactive. In particular this avoids getting 
+		 * stuck if a signal arrives just before we sleep.
 		 */
 		if (!wakened)
 		{
-			sleep(PGARCH_AUTOWAKE_INTERVAL);
+			pg_usleep(PGARCH_AUTOWAKE_INTERVAL * 1000000L);
 
 			curtime = time(NULL);
 			if ((unsigned int) (curtime - last_copy_time) >=
@@ -389,11 +388,11 @@ pgarch_ArchiverCopyLoop(void)
 				if (++failures >= NUM_ARCHIVE_RETRIES)
 				{
 					ereport(WARNING,
-							(errmsg("transaction log file \"%s\" could not be archived",
+							(errmsg("transaction log file \"%s\" could not be archived: too many failures",
 									xlog)));
 					return;		/* give up archiving for now */
 				}
-				sleep(1);		/* wait a bit before retrying */
+				pg_usleep(1000000L);	/* wait a bit before retrying */
 			}
 		}
 	}

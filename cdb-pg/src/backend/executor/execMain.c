@@ -21,12 +21,12 @@
  *	ExecutorRun accepts direction and count arguments that specify whether
  *	the plan is to be executed forwards, backwards, and for how many tuples.
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/execMain.c,v 1.239 2004/10/07 18:38:49 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/execMain.c,v 1.241 2005/01/14 17:53:33 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -542,7 +542,7 @@ InitPlan(QueryDesc *queryDesc, bool explainOnly)
 	}
 
 	/*
-	 * Detect whether we're doing SELECT INTO.  If so, set the force_oids
+	 * Detect whether we're doing SELECT INTO.  If so, set the es_into_oids
 	 * flag appropriately so that the plan tree will be initialized with
 	 * the correct tuple descriptors.
 	 */

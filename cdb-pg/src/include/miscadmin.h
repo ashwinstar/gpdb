@@ -10,10 +10,10 @@
  *	  Over time, this has also become the preferred place for widely known
  *	  resource-limitation stuff, such as work_mem and check_stack_depth().
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/miscadmin.h,v 1.172 2004/10/22 22:33:58 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/miscadmin.h,v 1.174 2004/12/31 22:03:19 pgsql Exp $
  *
  * NOTES
  *	  some of the information in this file should be moved to other files.
@@ -302,7 +302,7 @@ extern ProcessingMode Mode;
  *****************************************************************************/
 
 /* in utils/init/postinit.c */
-extern void InitPostgres(const char *dbname, const char *username);
+extern bool InitPostgres(const char *dbname, const char *username);
 extern void BaseInit(void);
 
 /* in utils/init/miscinit.c */

@@ -3,12 +3,12 @@
  * analyze.c
  *	  the Postgres statistics generator
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/analyze.c,v 1.77 2004/09/30 23:21:19 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/analyze.c,v 1.80 2004/12/31 21:59:41 pgsql Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -811,8 +811,6 @@ acquire_sample_rows(Relation onerel, HeapTuple *rows, int targrows,
 		 * tuples.
 		 */
 		targbuffer = ReadBuffer(onerel, targblock);
-		if (!BufferIsValid(targbuffer))
-			elog(ERROR, "ReadBuffer failed");
 		LockBuffer(targbuffer, BUFFER_LOCK_SHARE);
 		targpage = BufferGetPage(targbuffer);
 		maxoffset = PageGetMaxOffsetNumber(targpage);
@@ -822,11 +820,12 @@ acquire_sample_rows(Relation onerel, HeapTuple *rows, int targrows,
 		for (targoffset = FirstOffsetNumber; targoffset <= maxoffset; targoffset++)
 		{
 			HeapTupleData targtuple;
-			Buffer		tupbuffer;
 
 			ItemPointerSet(&targtuple.t_self, targblock, targoffset);
-			if (heap_fetch(onerel, SnapshotNow, &targtuple, &tupbuffer,
-						   false, NULL))
+			/* We use heap_release_fetch to avoid useless bufmgr traffic */
+			if (heap_release_fetch(onerel, SnapshotNow,
+								   &targtuple, &targbuffer,
+								   true, NULL))
 			{
 				/*
 				 * The first targrows live rows are simply copied into the
@@ -869,9 +868,6 @@ acquire_sample_rows(Relation onerel, HeapTuple *rows, int targrows,
 					rowstoskip -= 1;
 				}
 
-				/* must release the extra pin acquired by heap_fetch */
-				ReleaseBuffer(tupbuffer);
-
 				liverows += 1;
 			}
 			else
@@ -886,7 +882,7 @@ acquire_sample_rows(Relation onerel, HeapTuple *rows, int targrows,
 			}
 		}
 
-		/* Now release the initial pin on the page */
+		/* Now release the pin on the page */
 		ReleaseBuffer(targbuffer);
 	}
 

@@ -1,9 +1,9 @@
 /*
  * psql - the PostgreSQL interactive terminal
  *
- * Copyright (c) 2000-2004, PostgreSQL Global Development Group
+ * Copyright (c) 2000-2005, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/settings.h,v 1.21 2004/08/29 05:06:54 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/settings.h,v 1.23 2005/01/01 05:43:08 momjian Exp $
  */
 #ifndef SETTINGS_H
 #define SETTINGS_H
@@ -15,7 +15,12 @@
 
 #define DEFAULT_FIELD_SEP "|"
 #define DEFAULT_RECORD_SEP "\n"
+
+#if defined(WIN32) || defined(__CYGWIN__)
+#define DEFAULT_EDITOR	"notepad.exe"
+#else
 #define DEFAULT_EDITOR	"vi"
+#endif
 
 #define DEFAULT_PROMPT1 "%/%R%# "
 #define DEFAULT_PROMPT2 "%/%R%# "

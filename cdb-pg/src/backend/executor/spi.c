@@ -3,12 +3,12 @@
  * spi.c
  *				Server Programming Interface
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/spi.c,v 1.131 2004/10/13 01:25:10 neilc Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/spi.c,v 1.133 2004/12/31 21:59:45 pgsql Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -268,6 +268,14 @@ void
 SPI_pop(void)
 {
 	_SPI_curid--;
+}
+
+/* Restore state of SPI stack after aborting a subtransaction */
+void
+SPI_restore_connection(void)
+{
+	Assert(_SPI_connected >= 0);
+	_SPI_curid = _SPI_connected - 1;
 }
 
 /* Parse, plan, and execute a querystring */

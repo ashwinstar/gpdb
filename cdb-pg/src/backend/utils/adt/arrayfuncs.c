@@ -3,12 +3,12 @@
  * arrayfuncs.c
  *	  Support functions for arrays.
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/arrayfuncs.c,v 1.113 2004/09/27 01:39:02 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/arrayfuncs.c,v 1.115 2004/12/31 22:01:21 pgsql Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -2241,7 +2241,13 @@ array_map(FunctionCallInfo fcinfo, Oid inpType, Oid retType)
 
 	/* Check for empty array */
 	if (nitems <= 0)
-		PG_RETURN_ARRAYTYPE_P(v);
+	{
+		/* Return empty array */
+		result = (ArrayType *) palloc0(sizeof(ArrayType));
+		result->size = sizeof(ArrayType);
+		result->elemtype = retType;
+		PG_RETURN_ARRAYTYPE_P(result);
+	}
 
 	/*
 	 * We arrange to look up info about input and return element types
@@ -2425,14 +2431,9 @@ construct_md_array(Datum *elems,
 	if (ndims == 0)
 	{
 		/* Allocate and initialize 0-D result array */
-		nbytes = ARR_OVERHEAD(ndims);
-		result = (ArrayType *) palloc(nbytes);
-
-		result->size = nbytes;
-		result->ndim = ndims;
-		result->flags = 0;
+		result = (ArrayType *) palloc0(sizeof(ArrayType));
+		result->size = sizeof(ArrayType);
 		result->elemtype = elmtype;
-
 		return result;
 	}
 

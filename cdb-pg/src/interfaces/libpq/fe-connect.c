@@ -3,12 +3,12 @@
  * fe-connect.c
  *	  functions related to setting up a connection to the backend
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-connect.c,v 1.286 2004/10/21 20:23:19 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-connect.c,v 1.301 2005/01/14 00:25:56 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -20,7 +20,9 @@
 #include <fcntl.h>
 #include <ctype.h>
 #include <time.h>
+#ifndef WIN32_CLIENT_ONLY
 #include <unistd.h>
+#endif
 
 #ifndef HAVE_STRDUP
 #include "strdup.h"
@@ -33,9 +35,17 @@
 
 #ifdef WIN32
 #include "win32.h"
+#ifdef _WIN32_IE
+#undef _WIN32_IE
+#endif
+#define _WIN32_IE 0x0400
+#ifdef near
+#undef near
+#endif
+#define near
+#include <shlobj.h>
 #else
 #include <sys/socket.h>
-#include <unistd.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #ifdef HAVE_NETINET_TCP_H
@@ -56,7 +66,11 @@
 #endif
 
 
+#ifndef WIN32
 #define PGPASSFILE ".pgpass"
+#else
+#define PGPASSFILE "pgpass.conf"
+#endif
 
 /* fall back options if they are not specified by arguments or defined
    by environment variables */
@@ -201,6 +215,11 @@ static int parseServiceInfo(PQconninfoOption *options,
 static char *pwdfMatchesString(char *buf, char *token);
 static char *PasswordFromFile(char *hostname, char *port, char *dbname,
 				 char *username);
+static void default_threadlock(int acquire);
+
+
+/* global variable because fe-auth.c needs to access it */
+pgthreadlock_t pg_g_threadlock = default_threadlock;
 
 
 /*
@@ -862,17 +881,8 @@ connectDBStart(PGconn *conn)
 	char		portstr[128];
 	struct addrinfo *addrs = NULL;
 	struct addrinfo hint;
-	const char *node = NULL;
+	const char *node;
 	int			ret;
-
-#ifdef ENABLE_THREAD_SAFETY
-#ifndef WIN32
-	static pthread_once_t check_sigpipe_once = PTHREAD_ONCE_INIT;
-
-	/* Check only on first connection request */
-	pthread_once(&check_sigpipe_once, pq_check_sigpipe_handler);
-#endif
-#endif
 
 	if (!conn)
 		return 0;
@@ -910,15 +920,19 @@ connectDBStart(PGconn *conn)
 		node = conn->pghost;
 		hint.ai_family = AF_UNSPEC;
 	}
-#ifdef HAVE_UNIX_SOCKETS
 	else
 	{
+#ifdef HAVE_UNIX_SOCKETS
 		/* pghostaddr and pghost are NULL, so use Unix domain socket */
 		node = NULL;
 		hint.ai_family = AF_UNIX;
 		UNIXSOCK_PATH(portstr, portnum, conn->pgunixsocket);
-	}
+#else
+		/* Without Unix sockets, default to localhost instead */
+		node = "localhost";
+		hint.ai_family = AF_UNSPEC;
 #endif   /* HAVE_UNIX_SOCKETS */
+	}
 
 	/* Use getaddrinfo_all() to resolve the address */
 	ret = getaddrinfo_all(node, portstr, &hint, &addrs);
@@ -1446,30 +1460,36 @@ keep_going:						/* We will come back to here until there
 
 				/*
 				 * On first time through, get the postmaster's response to
-				 * our SSL negotiation packet.	Be careful to read only
-				 * one byte (if there's more, it could be SSL data).
+				 * our SSL negotiation packet.
 				 */
 				if (conn->ssl == NULL)
 				{
+					/*
+					 * We use pqReadData here since it has the logic to
+					 * distinguish no-data-yet from connection closure.
+					 * Since conn->ssl isn't set, a plain recv() will occur.
+					 */
 					char		SSLok;
-					int			nread;
+					int			rdresult;
 
-			retry_ssl_read:
-					nread = recv(conn->sock, &SSLok, 1, 0);
-					if (nread < 0)
+					rdresult = pqReadData(conn);
+					if (rdresult < 0)
 					{
-						if (SOCK_ERRNO == EINTR)
-							/* Interrupted system call - just try again */
-							goto retry_ssl_read;
-
-						printfPQExpBuffer(&conn->errorMessage,
-										  libpq_gettext("could not receive server response to SSL negotiation packet: %s\n"),
-						SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
+						/* errorMessage is already filled in */
 						goto error_return;
 					}
-					if (nread == 0)
+					if (rdresult == 0)
+					{
 						/* caller failed to wait for data */
 						return PGRES_POLLING_READING;
+					}
+					if (pqGetc(&SSLok, conn) < 0)
+					{
+						/* should not happen really */
+						return PGRES_POLLING_READING;
+					}
+					/* mark byte consumed */
+					conn->inStart = conn->inCursor;
 					if (SSLok == 'S')
 					{
 						/* Do one-time setup; this creates conn->ssl */
@@ -1943,7 +1963,7 @@ makeEmptyPGconn(void)
 	PGconn	   *conn;
 
 #ifdef WIN32
-	/* needed to use the static libpq under windows as well */
+	/* make sure socket support is up and running */
 	WSADATA		wsaData;
 
 	if (WSAStartup(MAKEWORD(1, 1), &wsaData))
@@ -2189,18 +2209,54 @@ PQresetPoll(PGconn *conn)
 	return PGRES_POLLING_FAILED;
 }
 
+/*
+ * PQcancelGet: get a PGcancel structure corresponding to a connection.
+ *
+ * A copy is needed to be able to cancel a running query from a different
+ * thread. If the same structure is used all structure members would have
+ * to be individually locked (if the entire structure was locked, it would
+ * be impossible to cancel a synchronous query becuase the structure would
+ * have to stay locked for the duration of the query).
+ */
+PGcancel *
+PQgetCancel(PGconn *conn)
+{
+	PGcancel *cancel;
+
+	if (!conn)
+		return NULL;
+
+	if (conn->sock < 0)
+		return NULL;
+
+	cancel = malloc(sizeof(PGcancel));
+	if (cancel == NULL)
+		return NULL;
+
+	memcpy(&cancel->raddr, &conn->raddr, sizeof(SockAddr));
+	cancel->be_pid = conn->be_pid;
+	cancel->be_key = conn->be_key;
+
+	return cancel;
+}
+
+/* PQfreeCancel: free a cancel structure */
+void
+PQfreeCancel(PGcancel *cancel)
+{
+	if (cancel)
+		free(cancel);
+}
+
 
 /*
- * PQrequestCancel: attempt to request cancellation of the current operation.
+ * PQcancel and PQrequestCancel: attempt to request cancellation of the
+ * current operation.
  *
  * The return value is TRUE if the cancel request was successfully
- * dispatched, FALSE if not (in which case conn->errorMessage is set).
+ * dispatched, FALSE if not (in which case an error message is available).
  * Note: successful dispatch is no guarantee that there will be any effect at
  * the backend.  The application must read the operation result as usual.
- *
- * XXX it was a bad idea to have the error message returned in
- * conn->errorMessage, since it could overwrite a message already there.
- * Would be better to return it in a char array passed by the caller.
  *
  * CAUTION: we want this routine to be safely callable from a signal handler
  * (for example, an application might want to call it in a SIGINT handler).
@@ -2210,59 +2266,40 @@ PQresetPoll(PGconn *conn)
  * error messages with strcpy/strcat is tedious but should be quite safe.
  * We also save/restore errno in case the signal handler support doesn't.
  *
- * NOTE: this routine must not generate any error message longer than
- * INITIAL_EXPBUFFER_SIZE (currently 256), since we dare not try to
- * expand conn->errorMessage!
+ * internal_cancel() is an internal helper function to make code-sharing
+ * between the two versions of the cancel function possible.
  */
-
-int
-PQrequestCancel(PGconn *conn)
+static int
+internal_cancel(SockAddr *raddr, int be_pid, int be_key,
+				char *errbuf, int errbufsize)
 {
 	int			save_errno = SOCK_ERRNO;
 	int			tmpsock = -1;
 	char		sebuf[256];
+	int         maxlen;
 	struct
 	{
 		uint32		packetlen;
 		CancelRequestPacket cp;
 	}			crp;
 
-	/* Check we have an open connection */
-	if (!conn)
-		return FALSE;
-
-	if (conn->sock < 0)
-	{
-		strcpy(conn->errorMessage.data,
-			   "PQrequestCancel() -- connection is not open\n");
-		conn->errorMessage.len = strlen(conn->errorMessage.data);
-#ifdef WIN32
-		WSASetLastError(save_errno);
-#else
-		errno = save_errno;
-#endif
-		return FALSE;
-	}
-
 	/*
-	 * We need to open a temporary connection to the postmaster. Use the
-	 * information saved by connectDB to do this with only kernel calls.
+	 * We need to open a temporary connection to the postmaster. Do
+	 * this with only kernel calls.
 	 */
-	if ((tmpsock = socket(conn->raddr.addr.ss_family, SOCK_STREAM, 0)) < 0)
+	if ((tmpsock = socket(raddr->addr.ss_family, SOCK_STREAM, 0)) < 0)
 	{
-		strcpy(conn->errorMessage.data,
-			   "PQrequestCancel() -- socket() failed: ");
+		StrNCpy(errbuf, "PQcancel() -- socket() failed: ", errbufsize);
 		goto cancel_errReturn;
 	}
 retry3:
-	if (connect(tmpsock, (struct sockaddr *) & conn->raddr.addr,
-				conn->raddr.salen) < 0)
+	if (connect(tmpsock, (struct sockaddr *) & raddr->addr,
+				raddr->salen) < 0)
 	{
 		if (SOCK_ERRNO == EINTR)
 			/* Interrupted system call - we'll just try again */
 			goto retry3;
-		strcpy(conn->errorMessage.data,
-			   "PQrequestCancel() -- connect() failed: ");
+		StrNCpy(errbuf, "PQcancel() -- connect() failed: ", errbufsize);
 		goto cancel_errReturn;
 	}
 
@@ -2274,8 +2311,8 @@ retry3:
 
 	crp.packetlen = htonl((uint32) sizeof(crp));
 	crp.cp.cancelRequestCode = (MsgType) htonl(CANCEL_REQUEST_CODE);
-	crp.cp.backendPID = htonl(conn->be_pid);
-	crp.cp.cancelAuthCode = htonl(conn->be_key);
+	crp.cp.backendPID = htonl(be_pid);
+	crp.cp.cancelAuthCode = htonl(be_key);
 
 retry4:
 	if (send(tmpsock, (char *) &crp, sizeof(crp), 0) != (int) sizeof(crp))
@@ -2283,8 +2320,7 @@ retry4:
 		if (SOCK_ERRNO == EINTR)
 			/* Interrupted system call - we'll just try again */
 			goto retry4;
-		strcpy(conn->errorMessage.data,
-			   "PQrequestCancel() -- send() failed: ");
+		StrNCpy(errbuf, "PQcancel() -- send() failed: ", errbufsize);
 		goto cancel_errReturn;
 	}
 
@@ -2307,28 +2343,87 @@ retry5:
 
 	/* All done */
 	closesocket(tmpsock);
-#ifdef WIN32
-	WSASetLastError(save_errno);
-#else
-	errno = save_errno;
-#endif
-
+	SOCK_ERRNO_SET(save_errno);
 	return TRUE;
 
 cancel_errReturn:
-	strcat(conn->errorMessage.data, SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)));
-	strcat(conn->errorMessage.data, "\n");
-	conn->errorMessage.len = strlen(conn->errorMessage.data);
-	if (tmpsock >= 0)
+	/*
+	 * Make sure we don't overflow the error buffer. Leave space for
+	 * the \n at the end, and for the terminating zero.
+	 */
+	maxlen = errbufsize - strlen(errbuf) - 2;
+	if (maxlen >= 0)
 	{
-		closesocket(tmpsock);
-#ifdef WIN32
-		WSASetLastError(save_errno);
-#else
-		errno = save_errno;
-#endif
+		strncat(errbuf, SOCK_STRERROR(SOCK_ERRNO, sebuf, sizeof(sebuf)),
+				maxlen);
+		strcat(errbuf, "\n");
 	}
+	if (tmpsock >= 0)
+		closesocket(tmpsock);
+	SOCK_ERRNO_SET(save_errno);
 	return FALSE;
+}
+
+/*
+ * PQcancel: request query cancel
+ *
+ * Returns TRUE if able to send the cancel request, FALSE if not.
+ *
+ * On failure, an error message is stored in *errbuf, which must be of size
+ * errbufsize (recommended size is 256 bytes).  *errbuf is not changed on
+ * success return.
+ */
+int
+PQcancel(PGcancel *cancel, char *errbuf, int errbufsize)
+{
+	if (!cancel)
+	{
+		StrNCpy(errbuf, "PQcancel() -- no cancel object supplied", errbufsize);
+		return FALSE;
+	}
+
+	return internal_cancel(&cancel->raddr, cancel->be_pid, cancel->be_key,
+						   errbuf, errbufsize);
+}
+
+/*
+ * PQrequestCancel: old, not thread-safe function for requesting query cancel
+ *
+ * Returns TRUE if able to send the cancel request, FALSE if not.
+ *
+ * On failure, the error message is saved in conn->errorMessage; this means
+ * that this can't be used when there might be other active operations on
+ * the connection object.
+ *
+ * NOTE: error messages will be cut off at the current size of the
+ * error message buffer, since we dare not try to expand conn->errorMessage!
+ */
+int
+PQrequestCancel(PGconn *conn)
+{
+	int r;
+
+	/* Check we have an open connection */
+	if (!conn)
+		return FALSE;
+
+	if (conn->sock < 0)
+	{
+		StrNCpy(conn->errorMessage.data,
+				"PQrequestCancel() -- connection is not open\n",
+				conn->errorMessage.maxlen);
+		conn->errorMessage.len = strlen(conn->errorMessage.data);
+
+		return FALSE;
+	}
+
+	r = internal_cancel(&conn->raddr, conn->be_pid, conn->be_key,
+						conn->errorMessage.data, conn->errorMessage.maxlen);
+
+	if (!r)
+		conn->errorMessage.len = strlen(conn->errorMessage.data);
+
+	return r;
 }
 
 
@@ -3099,8 +3194,8 @@ static char *
 PasswordFromFile(char *hostname, char *port, char *dbname, char *username)
 {
 	FILE	   *fp;
-	char	   *pgpassfile;
-	char	   *home;
+	char		homedir[MAXPGPATH];
+	char		pgpassfile[MAXPGPATH];
 	struct stat stat_buf;
 
 #define LINELEN NAMEDATALEN*5
@@ -3118,32 +3213,14 @@ PasswordFromFile(char *hostname, char *port, char *dbname, char *username)
 	if (port == NULL)
 		port = DEF_PGPORT_STR;
 
-	/*
-	 * Look for it in the home dir. We don't use get_home_path() so we
-	 * don't pull path.c into our library.
-	 */
-	if (!(home = getenv(HOMEDIR)))
+	if (!pqGetHomeDirectory(homedir, sizeof(homedir)))
 		return NULL;
 
-	pgpassfile = malloc(strlen(home) + 1 + strlen(PGPASSFILE) + 1);
-	if (!pgpassfile)
-	{
-		fprintf(stderr, libpq_gettext("out of memory\n"));
-		return NULL;
-	}
-
-#ifndef WIN32
-	sprintf(pgpassfile, "%s/%s", home, PGPASSFILE);
-#else
-	sprintf(pgpassfile, "%s\\%s", home, PGPASSFILE);
-#endif
+	snprintf(pgpassfile, sizeof(pgpassfile), "%s/%s", homedir, PGPASSFILE);
 
 	/* If password file cannot be opened, ignore it. */
 	if (stat(pgpassfile, &stat_buf) == -1)
-	{
-		free(pgpassfile);
 		return NULL;
-	}
 
 #ifndef WIN32
 	/* If password file is insecure, alert the user and ignore it. */
@@ -3152,13 +3229,11 @@ PasswordFromFile(char *hostname, char *port, char *dbname, char *username)
 		fprintf(stderr,
 				libpq_gettext("WARNING: Password file %s has world or group read access; permission should be u=rw (0600)\n"),
 				pgpassfile);
-		free(pgpassfile);
 		return NULL;
 	}
 #endif
 
 	fp = fopen(pgpassfile, "r");
-	free(pgpassfile);
 	if (fp == NULL)
 		return NULL;
 
@@ -3195,19 +3270,43 @@ PasswordFromFile(char *hostname, char *port, char *dbname, char *username)
 }
 
 /*
- * To keep the API consistent, the locking stubs are always provided, even
- * if they are not required.
+ * Obtain user's home directory, return in given buffer
+ *
+ * On Unix, this actually returns the user's home directory.  On Windows
+ * it returns the PostgreSQL-specific application data folder.
+ *
+ * This is essentially the same as get_home_path(), but we don't use that
+ * because we don't want to pull path.c into libpq (it pollutes application
+ * namespace)
  */
-
-void
-PQinitSSL(int do_init)
+bool
+pqGetHomeDirectory(char *buf, int bufsize)
 {
-#ifdef USE_SSL
-	pq_initssllib = do_init;
+#ifndef WIN32
+	char		pwdbuf[BUFSIZ];
+	struct passwd pwdstr;
+	struct passwd *pwd = NULL;
+
+	if (pqGetpwuid(geteuid(), &pwdstr, pwdbuf, sizeof(pwdbuf), &pwd) != 0)
+		return false;
+	StrNCpy(buf, pwd->pw_dir, bufsize);
+	return true;
+
+#else
+	char		tmppath[MAX_PATH];
+
+	ZeroMemory(tmppath, sizeof(tmppath));
+	if (!SHGetSpecialFolderPath(NULL, tmppath, CSIDL_APPDATA, FALSE))
+		return false;
+	snprintf(buf, bufsize, "%s/postgresql", tmppath);
+	return true;
 #endif
 }
 
-static pgthreadlock_t default_threadlock;
+/*
+ * To keep the API consistent, the locking stubs are always provided, even
+ * if they are not required.
+ */
 
 static void
 default_threadlock(int acquire)
@@ -3236,17 +3335,15 @@ default_threadlock(int acquire)
 #endif
 }
 
-pgthreadlock_t *g_threadlock = default_threadlock;
-
-pgthreadlock_t *
-PQregisterThreadLock(pgthreadlock_t *newhandler)
+pgthreadlock_t
+PQregisterThreadLock(pgthreadlock_t newhandler)
 {
-	pgthreadlock_t *prev;
+	pgthreadlock_t prev = pg_g_threadlock;
 
-	prev = g_threadlock;
 	if (newhandler)
-		g_threadlock = newhandler;
+		pg_g_threadlock = newhandler;
 	else
-		g_threadlock = default_threadlock;
+		pg_g_threadlock = default_threadlock;
+
 	return prev;
 }

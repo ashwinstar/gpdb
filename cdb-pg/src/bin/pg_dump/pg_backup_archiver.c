@@ -15,7 +15,7 @@
  *
  *
  * IDENTIFICATION
- *		$PostgreSQL: pgsql/src/bin/pg_dump/pg_backup_archiver.c,v 1.99 2004/10/22 16:04:35 petere Exp $
+ *		$PostgreSQL: pgsql/src/bin/pg_dump/pg_backup_archiver.c,v 1.101 2005/01/11 05:14:10 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -47,7 +47,7 @@ static char *modulename = gettext_noop("archiver");
 
 static ArchiveHandle *_allocAH(const char *FileSpec, const ArchiveFormat fmt,
 		 const int compression, ArchiveMode mode);
-static char *_getObjectFromDropStmt(const char *dropStmt, const char *type);
+static void _getObjectDescription(PQExpBuffer buf, TocEntry *te);
 static void _printTocEntry(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt, bool isData, bool acl_pass);
 
 
@@ -60,6 +60,7 @@ static void _reconnectToDB(ArchiveHandle *AH, const char *dbname);
 static void _becomeUser(ArchiveHandle *AH, const char *user);
 static void _becomeOwner(ArchiveHandle *AH, TocEntry *te);
 static void _selectOutputSchema(ArchiveHandle *AH, const char *schemaName);
+static void _selectTablespace(ArchiveHandle *AH, const char *tablespace);
 
 static teReqs _tocEntryRequired(TocEntry *te, RestoreOptions *ropt, bool acl_pass);
 static void _disableTriggersIfNecessary(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt);
@@ -602,7 +603,9 @@ void
 ArchiveEntry(Archive *AHX,
 			 CatalogId catalogId, DumpId dumpId,
 			 const char *tag,
-			 const char *namespace, const char *owner, bool withOids,
+			 const char *namespace,
+			 const char *tablespace, 
+			 const char *owner, bool withOids,
 			 const char *desc, const char *defn,
 			 const char *dropStmt, const char *copyStmt,
 			 const DumpId *deps, int nDeps,
@@ -629,6 +632,7 @@ ArchiveEntry(Archive *AHX,
 
 	newToc->tag = strdup(tag);
 	newToc->namespace = namespace ? strdup(namespace) : NULL;
+	newToc->tablespace = tablespace ? strdup(tablespace) : NULL;
 	newToc->owner = strdup(owner);
 	newToc->withOids = withOids;
 	newToc->desc = strdup(desc);
@@ -693,6 +697,12 @@ PrintTOCSummary(Archive *AHX, RestoreOptions *ropt)
 	ahprintf(AH, ";     Format: %s\n", fmtName);
 	ahprintf(AH, ";     Integer: %d bytes\n", (int) AH->intSize);
 	ahprintf(AH, ";     Offset: %d bytes\n", (int) AH->offSize);
+	if (AH->archiveRemoteVersion)
+		ahprintf(AH, ";     Dumped from database version: %s\n",
+				 AH->archiveRemoteVersion);
+	if (AH->archiveDumpVersion)
+		ahprintf(AH, ";     Dumped by pg_dump version: %s\n",
+				 AH->archiveDumpVersion);
 
 	ahprintf(AH, ";\n;\n; Selected TOC Entries:\n;\n");
 
@@ -1822,6 +1832,7 @@ WriteToc(ArchiveHandle *AH)
 		WriteStr(AH, te->dropStmt);
 		WriteStr(AH, te->copyStmt);
 		WriteStr(AH, te->namespace);
+		WriteStr(AH, te->tablespace);
 		WriteStr(AH, te->owner);
 		WriteStr(AH, te->withOids ? "true" : "false");
 
@@ -1890,6 +1901,9 @@ ReadToc(ArchiveHandle *AH)
 
 		if (AH->version >= K_VERS_1_6)
 			te->namespace = ReadStr(AH);
+
+		if (AH->version >= K_VERS_1_10)
+			te->tablespace = ReadStr(AH);
 
 		te->owner = ReadStr(AH);
 		if (AH->version >= K_VERS_1_9)
@@ -2293,65 +2307,134 @@ _selectOutputSchema(ArchiveHandle *AH, const char *schemaName)
 	destroyPQExpBuffer(qry);
 }
 
-
-/**
- * Parses the dropStmt part of a TOC entry and returns
- * a newly allocated string that is the object identifier
- * The caller must free the result.
+/*
+ * Issue the commands to select the specified tablespace as the current one
+ * in the target database.
  */
-static char *
-_getObjectFromDropStmt(const char *dropStmt, const char *type)
+static void
+_selectTablespace(ArchiveHandle *AH, const char *tablespace)
 {
-	/* Chop "DROP" off the front and make a copy */
-	char	   *first = strdup(dropStmt + 5);
-	char	   *last = first + strlen(first) - 1;		/* Points to the last
-														 * real char in extract */
-	char	   *buf = NULL;
+	PQExpBuffer qry;
+	const char	*want, *have;
 
-	/*
-	 * Loop from the end of the string until last char is no longer '\n'
-	 * or ';'
-	 */
-	while (last >= first && (*last == '\n' || *last == ';'))
-		last--;
+	have = AH->currTablespace;
+	want = tablespace;
 
-	/* Insert end of string one place after last */
-	*(last + 1) = '\0';
+	/* no need to do anything for non-tablespace object */
+	if (!want)
+		return;
 
-	/*
-	 * Take off CASCADE if necessary.  Only TYPEs seem to have this, but
-	 * may as well check for all
-	 */
-	if ((last - first) >= 8)
+	if (have && strcmp(want, have) == 0)
+		return;					/* no need to do anything */
+
+	qry = createPQExpBuffer();
+
+	if (strcmp(want, "") == 0)
 	{
-		if (strcmp(last - 7, " CASCADE") == 0)
-			last -= 8;
-	}
-
-	/* Insert end of string one place after last */
-	*(last + 1) = '\0';
-
-	/* Special case VIEWs and SEQUENCEs.  They must use ALTER TABLE. */
-	if (strcmp(type, "VIEW") == 0 && (last - first) >= 5)
-	{
-		int			len = 6 + strlen(first + 5) + 1;
-
-		buf = malloc(len);
-		snprintf(buf, len, "TABLE %s", first + 5);
-		free(first);
-	}
-	else if (strcmp(type, "SEQUENCE") == 0 && (last - first) >= 9)
-	{
-		int			len = 6 + strlen(first + 9) + 1;
-
-		buf = malloc(len);
-		snprintf(buf, len, "TABLE %s", first + 9);
-		free(first);
+		/* We want the tablespace to be the database's default */
+		appendPQExpBuffer(qry, "SET default_tablespace = ''");
 	}
 	else
-		buf = first;
+	{
+		/* We want an explicit tablespace */
+		appendPQExpBuffer(qry, "SET default_tablespace = %s", fmtId(want));
+	}
 
-	return buf;
+	if (RestoringToDB(AH))
+	{
+		PGresult   *res;
+
+		res = PQexec(AH->connection, qry->data);
+
+		if (!res || PQresultStatus(res) != PGRES_COMMAND_OK)
+			warn_or_die_horribly(AH, modulename, 
+								 "could not set default_tablespace to %s: %s",
+								 fmtId(want), PQerrorMessage(AH->connection));
+
+		PQclear(res);
+	}
+	else
+		ahprintf(AH, "%s;\n\n", qry->data);
+
+	if (AH->currTablespace)
+		free(AH->currTablespace);
+	AH->currTablespace = strdup(want);
+
+	destroyPQExpBuffer(qry);
+}
+
+/*
+ * Extract an object description for a TOC entry, and append it to buf.
+ *
+ * This is not quite as general as it may seem, since it really only
+ * handles constructing the right thing to put into ALTER ... OWNER TO.
+ *
+ * The whole thing is pretty grotty, but we are kind of stuck since the
+ * information used is all that's available in older dump files.
+ */
+static void
+_getObjectDescription(PQExpBuffer buf, TocEntry *te)
+{
+	const char *type = te->desc;
+
+	/* Use ALTER TABLE for views and sequences */
+	if (strcmp(type, "VIEW") == 0 ||
+		strcmp(type, "SEQUENCE") == 0)
+		type = "TABLE";
+
+	/* We assume CONSTRAINTs are always pkey/unique indexes */
+	if (strcmp(type, "CONSTRAINT") == 0)
+		type = "INDEX";
+
+	/* objects named by a schema and name */
+	if (strcmp(type, "CONVERSION") == 0 ||
+		strcmp(type, "DOMAIN") == 0 ||
+		strcmp(type, "INDEX") == 0 ||
+		strcmp(type, "TABLE") == 0 ||
+		strcmp(type, "TYPE") == 0)
+	{
+		appendPQExpBuffer(buf, "%s %s", type, fmtId(te->namespace));
+		appendPQExpBuffer(buf, ".%s", fmtId(te->tag));
+		return;
+	}
+
+	/* objects named by just a name */
+	if (strcmp(type, "DATABASE") == 0 ||
+		strcmp(type, "SCHEMA") == 0)
+	{
+		appendPQExpBuffer(buf, "%s %s", type, fmtId(te->tag));
+		return;
+	}
+
+	/*
+	 * These object types require additional decoration.  Fortunately,
+	 * the information needed is exactly what's in the DROP command.
+	 */
+	if (strcmp(type, "AGGREGATE") == 0 ||
+		strcmp(type, "FUNCTION") == 0 ||
+		strcmp(type, "OPERATOR") == 0 ||
+		strcmp(type, "OPERATOR CLASS") == 0)
+	{
+		/* Chop "DROP " off the front and make a modifiable copy */
+		char	   *first = strdup(te->dropStmt + 5);
+		char	   *last;
+
+		/* point to last character in string */
+		last = first + strlen(first) - 1;
+
+		/* Strip off any ';' or '\n' at the end */
+		while (last >= first && (*last == '\n' || *last == ';'))
+			last--;
+		*(last + 1) = '\0';
+
+		appendPQExpBufferStr(buf, first);
+
+		free(first);
+		return;
+	}
+
+	write_msg(modulename, "WARNING: don't know how to set owner for object type %s\n",
+			  type);
 }
 
 static void
@@ -2378,9 +2461,10 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt, bool isDat
 		strcmp(te->desc, "SCHEMA") == 0 && strcmp(te->tag, "public") == 0)
 		return;
 
-	/* Select owner and schema as necessary */
+	/* Select owner, schema, and tablespace as necessary */
 	_becomeOwner(AH, te);
 	_selectOutputSchema(AH, te->namespace);
+	_selectTablespace(AH, te->tablespace);
 
 	/* Set up OID mode too */
 	if (strcmp(te->desc, "TABLE") == 0)
@@ -2411,10 +2495,14 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt, bool isDat
 				ahprintf(AH, "\n");
 			}
 		}
-		ahprintf(AH, "-- %sName: %s; Type: %s; Schema: %s; Owner: %s\n",
+		ahprintf(AH, "-- %sName: %s; Type: %s; Schema: %s; Owner: %s",
 				 pfx, te->tag, te->desc,
 				 te->namespace ? te->namespace : "-",
 				 te->owner);
+		if (te->tablespace) 
+			ahprintf(AH, "; Tablespace: %s", te->tablespace);
+		ahprintf(AH, "\n");
+
 		if (AH->PrintExtraTocPtr != NULL)
 			(*AH->PrintExtraTocPtr) (AH, te);
 		ahprintf(AH, "--\n\n");
@@ -2423,13 +2511,14 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt, bool isDat
 	/*
 	 * Actually print the definition.
 	 *
-	 * Really crude hack for suppressing AUTHORIZATION clause of CREATE
-	 * SCHEMA when --no-owner mode is selected.  This is ugly, but I see
+	 * Really crude hack for suppressing AUTHORIZATION clause that old
+	 * pg_dump versions put into CREATE SCHEMA.  We have to do this when
+	 * --no-owner mode is selected.  This is ugly, but I see
 	 * no other good way ...
 	 */
-	if (AH->ropt && AH->ropt->noOwner && strcmp(te->desc, "SCHEMA") == 0)
+	if (ropt->noOwner && strcmp(te->desc, "SCHEMA") == 0)
 	{
-		ahprintf(AH, "CREATE SCHEMA %s;\n\n\n", te->tag);
+		ahprintf(AH, "CREATE SCHEMA %s;\n\n\n", fmtId(te->tag));
 	}
 	else
 	{
@@ -2439,29 +2528,51 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt, bool isDat
 
 	/*
 	 * If we aren't using SET SESSION AUTH to determine ownership, we must
-	 * instead issue an ALTER OWNER command.  Ugly, since we have to cons
-	 * one up based on the dropStmt.  We don't need this for schemas
-	 * (since we use CREATE SCHEMA AUTHORIZATION instead), nor for some
-	 * other object types.
+	 * instead issue an ALTER OWNER command.  We assume that anything without
+	 * a DROP command is not a separately ownable object.  All the categories
+	 * with DROP commands must appear in one list or the other.
 	 */
 	if (!ropt->noOwner && !ropt->use_setsessauth &&
-		strlen(te->owner) > 0 && strlen(te->dropStmt) > 0 &&
-		(strcmp(te->desc, "AGGREGATE") == 0 ||
-		 strcmp(te->desc, "CONVERSION") == 0 ||
-		 strcmp(te->desc, "DATABASE") == 0 ||
-		 strcmp(te->desc, "DOMAIN") == 0 ||
-		 strcmp(te->desc, "FUNCTION") == 0 ||
-		 strcmp(te->desc, "OPERATOR") == 0 ||
-		 strcmp(te->desc, "OPERATOR CLASS") == 0 ||
-		 strcmp(te->desc, "TABLE") == 0 ||
-		 strcmp(te->desc, "TYPE") == 0 ||
-		 strcmp(te->desc, "VIEW") == 0 ||
-		 strcmp(te->desc, "SEQUENCE") == 0))
+		strlen(te->owner) > 0 && strlen(te->dropStmt) > 0)
 	{
-		char	   *temp = _getObjectFromDropStmt(te->dropStmt, te->desc);
+		if (strcmp(te->desc, "AGGREGATE") == 0 ||
+			strcmp(te->desc, "CONSTRAINT") == 0 ||
+			strcmp(te->desc, "CONVERSION") == 0 ||
+			strcmp(te->desc, "DATABASE") == 0 ||
+			strcmp(te->desc, "DOMAIN") == 0 ||
+			strcmp(te->desc, "FUNCTION") == 0 ||
+			strcmp(te->desc, "INDEX") == 0 ||
+			strcmp(te->desc, "OPERATOR") == 0 ||
+			strcmp(te->desc, "OPERATOR CLASS") == 0 ||
+			strcmp(te->desc, "SCHEMA") == 0 ||
+			strcmp(te->desc, "TABLE") == 0 ||
+			strcmp(te->desc, "TYPE") == 0 ||
+			strcmp(te->desc, "VIEW") == 0 ||
+			strcmp(te->desc, "SEQUENCE") == 0)
+		{
+			PQExpBuffer temp = createPQExpBuffer();
 
-		ahprintf(AH, "ALTER %s OWNER TO %s;\n\n", temp, fmtId(te->owner));
-		free(temp);
+			appendPQExpBuffer(temp, "ALTER ");
+			_getObjectDescription(temp, te);
+			appendPQExpBuffer(temp, " OWNER TO %s;", fmtId(te->owner));
+			ahprintf(AH, "%s\n\n", temp->data);
+			destroyPQExpBuffer(temp);
+		}
+		else if (strcmp(te->desc, "CAST") == 0 ||
+				 strcmp(te->desc, "CHECK CONSTRAINT") == 0 ||
+				 strcmp(te->desc, "DEFAULT") == 0 ||
+				 strcmp(te->desc, "FK CONSTRAINT") == 0 ||
+				 strcmp(te->desc, "PROCEDURAL LANGUAGE") == 0 ||
+				 strcmp(te->desc, "RULE") == 0 ||
+				 strcmp(te->desc, "TRIGGER") == 0)
+		{
+			/* these object types don't have separate owners */
+		}
+		else
+		{
+			write_msg(modulename, "WARNING: don't know how to set owner for object type %s\n",
+					  te->desc);
+		}
 	}
 
 	/*
@@ -2509,6 +2620,8 @@ WriteHead(ArchiveHandle *AH)
 	WriteInt(AH, crtm.tm_year);
 	WriteInt(AH, crtm.tm_isdst);
 	WriteStr(AH, PQdb(AH->connection));
+	WriteStr(AH, AH->public.remoteVersionStr);
+	WriteStr(AH, PG_VERSION);
 }
 
 void
@@ -2593,6 +2706,12 @@ ReadHead(ArchiveHandle *AH)
 
 		if (AH->createDate == (time_t) -1)
 			write_msg(modulename, "WARNING: invalid creation date in header\n");
+	}
+
+	if (AH->version >= K_VERS_1_10)
+	{
+		AH->archiveRemoteVersion = ReadStr(AH);
+		AH->archiveDumpVersion = ReadStr(AH);
 	}
 
 }

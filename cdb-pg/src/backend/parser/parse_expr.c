@@ -3,12 +3,12 @@
  * parse_expr.c
  *	  handle expressions in parser
  *
- * Portions Copyright (c) 1996-2004, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/parser/parse_expr.c,v 1.176 2004/08/29 05:06:44 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/parser/parse_expr.c,v 1.179 2005/01/12 17:32:36 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -646,16 +646,29 @@ transformExpr(ParseState *pstate, Node *expr)
 
 				/* transform the test expression, if any */
 				arg = transformExpr(pstate, (Node *) c->arg);
-				newc->arg = (Expr *) arg;
+
 				/* generate placeholder for test expression */
 				if (arg)
 				{
+					/*
+					 * If test expression is an untyped literal, force it to
+					 * text.  We have to do something now because we won't be
+					 * able to do this coercion on the placeholder.  This is
+					 * not as flexible as what was done in 7.4 and before,
+					 * but it's good enough to handle the sort of silly
+					 * coding commonly seen.
+					 */
+					if (exprType(arg) == UNKNOWNOID)
+						arg = coerce_to_common_type(pstate, arg,
+													TEXTOID, "CASE");
 					placeholder = makeNode(CaseTestExpr);
 					placeholder->typeId = exprType(arg);
 					placeholder->typeMod = exprTypmod(arg);
 				}
 				else
 					placeholder = NULL;
+
+				newc->arg = (Expr *) arg;
 
 				/* transform the list of arguments */
 				newargs = NIL;
@@ -940,6 +953,7 @@ transformExpr(ParseState *pstate, Node *expr)
 		case T_FieldSelect:
 		case T_FieldStore:
 		case T_RelabelType:
+		case T_ConvertRowtypeExpr:
 		case T_CaseTestExpr:
 		case T_CoerceToDomain:
 		case T_CoerceToDomainValue:
@@ -1405,6 +1419,9 @@ exprType(Node *expr)
 			break;
 		case T_RelabelType:
 			type = ((RelabelType *) expr)->resulttype;
+			break;
+		case T_ConvertRowtypeExpr:
+			type = ((ConvertRowtypeExpr *) expr)->resulttype;
 			break;
 		case T_CaseExpr:
 			type = ((CaseExpr *) expr)->casetype;

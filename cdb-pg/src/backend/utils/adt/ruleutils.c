@@ -3,7 +3,7 @@
  *				back to source text
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/ruleutils.c,v 1.183 2004/10/17 21:17:27 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/ruleutils.c,v 1.188 2005/01/13 17:19:10 tgl Exp $
  *
  *	  This software is copyrighted by Jan Wieck - Hamburg.
  *
@@ -55,7 +55,6 @@
 #include "catalog/pg_operator.h"
 #include "catalog/pg_shadow.h"
 #include "catalog/pg_trigger.h"
-#include "commands/tablespace.h"
 #include "executor/spi.h"
 #include "lib/stringinfo.h"
 #include "miscadmin.h"
@@ -163,7 +162,6 @@ static char *pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 							int prettyFlags);
 static char *pg_get_expr_worker(text *expr, Oid relid, char *relname,
 				   int prettyFlags);
-static Oid	get_constraint_index(Oid constraintRelOid, Oid constraintOid);
 static void make_ruledef(StringInfo buf, HeapTuple ruletup, TupleDesc rulettc,
 			 int prettyFlags);
 static void make_viewdef(StringInfo buf, HeapTuple ruletup, TupleDesc rulettc,
@@ -184,7 +182,7 @@ static void get_setop_query(Node *setOp, Query *query,
 static Node *get_rule_sortgroupclause(SortClause *srt, List *tlist,
 						 bool force_colno,
 						 deparse_context *context);
-static void get_names_for_var(Var *var, deparse_context *context,
+static void get_names_for_var(Var *var, int levelsup, deparse_context *context,
 				  char **schemaname, char **refname, char **attname);
 static RangeTblEntry *find_rte_by_refname(const char *refname,
 					deparse_context *context);
@@ -775,27 +773,6 @@ pg_get_indexdef_worker(Oid indexrelid, int colno, int prettyFlags)
 		appendStringInfoChar(&buf, ')');
 
 		/*
-		 * If the index is in a different tablespace from its parent, tell
-		 * about that
-		 */
-		if (idxrelrec->reltablespace != get_rel_tablespace(indrelid))
-		{
-			char	   *spcname;
-
-			if (OidIsValid(idxrelrec->reltablespace))
-				spcname = get_tablespace_name(idxrelrec->reltablespace);
-			else
-				spcname = get_tablespace_name(MyDatabaseTableSpace);
-
-			if (spcname)		/* just paranoia... */
-			{
-				appendStringInfo(&buf, " TABLESPACE %s",
-								 quote_identifier(spcname));
-				pfree(spcname);
-			}
-		}
-
-		/*
 		 * If it's a partial index, decompile and append the predicate
 		 */
 		if (!heap_attisnull(ht_idx, Anum_pg_index_indpred))
@@ -1023,7 +1000,6 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 			{
 				Datum		val;
 				bool		isnull;
-				Oid			indexOid;
 
 				/* Start off the constraint definition */
 				if (conForm->contype == CONSTRAINT_PRIMARY)
@@ -1041,30 +1017,6 @@ pg_get_constraintdef_worker(Oid constraintId, bool fullCommand,
 				decompile_column_index_array(val, conForm->conrelid, &buf);
 
 				appendStringInfo(&buf, ")");
-
-				/* Add TABLESPACE if it's not default */
-				indexOid = get_constraint_index(RelationGetRelid(conDesc),
-												constraintId);
-				if (OidIsValid(indexOid))
-				{
-					Oid			reltablespace;
-					Oid			indtablespace;
-
-					reltablespace = get_rel_tablespace(conForm->conrelid);
-					indtablespace = get_rel_tablespace(indexOid);
-					if (OidIsValid(indtablespace) &&
-						indtablespace != reltablespace)
-					{
-						char	   *spcname = get_tablespace_name(indtablespace);
-
-						if (spcname)	/* just paranoia... */
-						{
-							appendStringInfo(&buf, " USING INDEX TABLESPACE %s",
-											 quote_identifier(spcname));
-							pfree(spcname);
-						}
-					}
-				}
 				break;
 			}
 		case CONSTRAINT_CHECK:
@@ -1375,67 +1327,6 @@ pg_get_serial_sequence(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_NULL();
-}
-
-/*
- * get_constraint_index
- *		Given the OID of a unique or primary-key constraint,
- *		look up the OID of the underlying index.
- *
- * We make the caller pass in the OID of pg_constraint, too, simply because
- * it's probably got it at hand already.
- *
- * Returns InvalidOid if index can't be found.
- */
-static Oid
-get_constraint_index(Oid constraintRelOid, Oid constraintOid)
-{
-	Oid			result = InvalidOid;
-	Relation	depRel;
-	ScanKeyData key[3];
-	SysScanDesc scan;
-	HeapTuple	tup;
-
-	/* Search the dependency table for the dependent index */
-	depRel = heap_openr(DependRelationName, AccessShareLock);
-
-	ScanKeyInit(&key[0],
-				Anum_pg_depend_refclassid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(constraintRelOid));
-	ScanKeyInit(&key[1],
-				Anum_pg_depend_refobjid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(constraintOid));
-	ScanKeyInit(&key[2],
-				Anum_pg_depend_refobjsubid,
-				BTEqualStrategyNumber, F_INT4EQ,
-				Int32GetDatum(0));
-
-	scan = systable_beginscan(depRel, DependReferenceIndex, true,
-							  SnapshotNow, 3, key);
-
-	while (HeapTupleIsValid(tup = systable_getnext(scan)))
-	{
-		Form_pg_depend deprec = (Form_pg_depend) GETSTRUCT(tup);
-
-		/*
-		 * We assume any internal dependency of a relation on the
-		 * constraint must be what we are looking for.
-		 */
-		if (deprec->classid == RelOid_pg_class &&
-			deprec->objsubid == 0 &&
-			deprec->deptype == DEPENDENCY_INTERNAL)
-		{
-			result = deprec->objid;
-			break;
-		}
-	}
-
-	systable_endscan(scan);
-	heap_close(depRel, AccessShareLock);
-
-	return result;
 }
 
 
@@ -2107,7 +1998,7 @@ get_basic_select_query(Query *query, deparse_context *context,
 				char	   *refname;
 				char	   *attname;
 
-				get_names_for_var(var, context,
+				get_names_for_var(var, 0, context,
 								  &schemaname, &refname, &attname);
 				tell_as = (attname == NULL ||
 						   strcmp(attname, colname) != 0);
@@ -2501,6 +2392,10 @@ get_utility_query_def(Query *query, deparse_context *context)
 /*
  * Get the schemaname, refname and attname for a (possibly nonlocal) Var.
  *
+ * In some cases (currently only when recursing into an unnamed join)
+ * the Var's varlevelsup has to be interpreted with respect to a context
+ * above the current one; levelsup indicates the offset.
+ *
  * schemaname is usually returned as NULL.	It will be non-null only if
  * use of the unqualified refname would find the wrong RTE.
  *
@@ -2513,17 +2408,20 @@ get_utility_query_def(Query *query, deparse_context *context)
  * distinguish this case.)
  */
 static void
-get_names_for_var(Var *var, deparse_context *context,
+get_names_for_var(Var *var, int levelsup, deparse_context *context,
 				  char **schemaname, char **refname, char **attname)
 {
+	int			netlevelsup;
 	deparse_namespace *dpns;
 	RangeTblEntry *rte;
 
 	/* Find appropriate nesting depth */
-	if (var->varlevelsup >= list_length(context->namespaces))
-		elog(ERROR, "bogus varlevelsup: %d", var->varlevelsup);
+	netlevelsup = var->varlevelsup + levelsup;
+	if (netlevelsup >= list_length(context->namespaces))
+		elog(ERROR, "bogus varlevelsup: %d offset %d",
+			 var->varlevelsup, levelsup);
 	dpns = (deparse_namespace *) list_nth(context->namespaces,
-										  var->varlevelsup);
+										  netlevelsup);
 
 	/* Find the relevant RTE */
 	if (var->varno >= 1 && var->varno <= list_length(dpns->rtable))
@@ -2558,6 +2456,29 @@ get_names_for_var(Var *var, deparse_context *context,
 		}
 		else if (rte->rtekind == RTE_JOIN)
 		{
+			/*
+			 * If it's an unnamed join, look at the expansion of the alias
+			 * variable.  If it's a simple reference to one of the input
+			 * vars then recursively find the name of that var, instead.
+			 * (This allows correct decompiling of cases where there are
+			 * identically named columns on both sides of the join.)
+			 * When it's not a simple reference, we have to just return
+			 * the unqualified variable name (this can only happen with
+			 * columns that were merged by USING or NATURAL clauses).
+			 */
+			if (var->varattno > 0)
+			{
+				Var		*aliasvar;
+
+				aliasvar = (Var *) list_nth(rte->joinaliasvars,
+											var->varattno-1);
+				if (IsA(aliasvar, Var))
+				{
+					get_names_for_var(aliasvar, netlevelsup, context,
+									  schemaname, refname, attname);
+					return;
+				}
+			}
 			/* Unnamed join has neither schemaname nor refname */
 			*refname = NULL;
 		}
@@ -2707,6 +2628,9 @@ isSimpleNode(Node *node, Node *parentNode, int prettyFlags)
 								node, prettyFlags);
 		case T_RelabelType:
 			return isSimpleNode((Node *) ((RelabelType *) node)->arg,
+								node, prettyFlags);
+		case T_ConvertRowtypeExpr:
+			return isSimpleNode((Node *) ((ConvertRowtypeExpr *) node)->arg,
 								node, prettyFlags);
 
 		case T_OpExpr:
@@ -2950,7 +2874,7 @@ get_rule_expr(Node *node, deparse_context *context,
 				char	   *refname;
 				char	   *attname;
 
-				get_names_for_var(var, context,
+				get_names_for_var(var, 0, context,
 								  &schemaname, &refname, &attname);
 				if (refname && (context->varprefix || attname == NULL))
 				{
@@ -3215,6 +3139,30 @@ get_rule_expr(Node *node, deparse_context *context,
 					appendStringInfo(buf, "::%s",
 							format_type_with_typemod(relabel->resulttype,
 												 relabel->resulttypmod));
+				}
+			}
+			break;
+
+		case T_ConvertRowtypeExpr:
+			{
+				ConvertRowtypeExpr *convert = (ConvertRowtypeExpr *) node;
+				Node	   *arg = (Node *) convert->arg;
+
+				if (convert->convertformat == COERCE_IMPLICIT_CAST &&
+					!showimplicit)
+				{
+					/* don't show the implicit cast */
+					get_rule_expr_paren(arg, context, false, node);
+				}
+				else
+				{
+					if (!PRETTY_PAREN(context))
+						appendStringInfoChar(buf, '(');
+					get_rule_expr_paren(arg, context, false, node);
+					if (!PRETTY_PAREN(context))
+						appendStringInfoChar(buf, ')');
+					appendStringInfo(buf, "::%s",
+							format_type_with_typemod(convert->resulttype, -1));
 				}
 			}
 			break;
@@ -3962,7 +3910,8 @@ get_from_clause_item(Node *jtnode, Query *query, deparse_context *context)
 		bool		need_paren_on_right;
 
 		need_paren_on_right = PRETTY_PAREN(context) &&
-			!IsA(j->rarg, RangeTblRef);
+			!IsA(j->rarg, RangeTblRef) && 
+			!(IsA(j->rarg, JoinExpr) && ((JoinExpr*) j->rarg)->alias != NULL);
 
 		if (!PRETTY_PAREN(context) || j->alias != NULL)
 			appendStringInfoChar(buf, '(');
