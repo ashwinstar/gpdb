@@ -41,3 +41,9 @@ CREATE OR REPLACE FUNCTION cdb_serialize_query(text) RETURNS text
 CREATE OR REPLACE FUNCTION cdb_exec_indirect(text) RETURNS SETOF RECORD
     AS 'libcdbtest.so', 'cdb_exec_indirect'
     LANGUAGE C IMMUTABLE STRICT;
+    
+-- Alias information function
+CREATE OR REPLACE FUNCTION cdb_show_alias(text) RETURNS text
+    AS 'libcdbtest.so', 'cdb_show_alias'
+    LANGUAGE C IMMUTABLE STRICT;
+    
