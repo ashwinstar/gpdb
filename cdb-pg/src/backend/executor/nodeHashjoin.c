@@ -135,6 +135,16 @@ ExecHashJoin(HashJoinState *node)
 		{
 			ExecHashTableDestroy(hashtable);
 			node->hj_HashTable = NULL;
+
+			/* To avoid hang ups in AMS */
+			/* TODO: Think of a better way to do this */
+			while ( true )
+			{
+				outerTupleSlot = ExecProcNode(outerNode);
+				if ( TupIsNull(outerTupleSlot))
+					break;
+			}
+
 			return NULL;
 		}
 
