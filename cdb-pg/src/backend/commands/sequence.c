@@ -102,6 +102,7 @@ DefineSequence(CreateSeqStmt *seq)
 	/*
 	 * Create relation (and fill *null & *value)
 	 */
+	stmt->relOid = 0;
 	stmt->tableElts = NIL;
 	for (i = SEQ_COL_FIRSTCOL; i <= SEQ_COL_LASTCOL; i++)
 	{

@@ -62,6 +62,12 @@
 #include "utils/syscache.h"
 
 
+#include "cdb/cdbdisp.h"
+#include "cdb/cdbsrlz.h"
+#include "cdb/cdbvars.h"
+
+
+
 /*
  * ON COMMIT action list
  */
@@ -420,18 +426,100 @@ DefineRelation(CreateStmt *stmt, char relkind)
 		}
 	}
 
-	relationId = heap_create_with_catalog(relname,
-										  namespaceId,
-										  tablespaceId,
-										  descriptor,
-										  relkind,
-										  false,
-										  localHasOids,
-										  parentOidCount,
-										  stmt->oncommit,
-										  allowSystemTableMods);
+	bool hasDispatched = false;
+	bool shouldDispatch =  Cdb_role == CDB_ROLE_DISPATCH;
 
-	StoreCatalogInheritance(relationId, inheritOids);
+	
+	/* If we are the dispatcher, we need to create the table to get the new relid */
+	if (Cdb_role == CDB_ROLE_DISPATCH || Cdb_role == CDB_ROLE_UTILITY)
+	{
+		relationId = heap_create_with_catalog(relname,
+											  namespaceId,
+											  tablespaceId,
+											  descriptor,
+											  relkind,
+											  false,
+											  localHasOids,
+											  parentOidCount,
+											  stmt->oncommit,
+											  allowSystemTableMods);
+
+		StoreCatalogInheritance(relationId, inheritOids);
+	}
+
+	if (shouldDispatch)
+	{
+		Assert(stmt->relOid == 0);
+		stmt->relOid = relationId;
+
+		elog( NOTICE,"shouldDispatch = true\n");
+		if ( shouldDispatch )
+		{
+			/*
+			 * Serialize the stmt tree, and create the sql statement: cdbexec ....
+			 */
+			StringInfoData buffer;
+			
+			initStringInfo( &buffer );
+
+			Query * q = makeNode(Query);
+
+			q->commandType = CMD_UTILITY;
+			q->utilityStmt = (Node *)stmt;
+
+			q->querySource = QSRC_ORIGINAL;
+			q->canSetTag = true; /*?*/
+		
+
+			char *pszCreateTable = serializeNode((Node *)q);
+			
+
+			Assert(pszCreateTable != NULL );
+
+			elog( NOTICE,"Comand %s", pszCreateTable);
+
+			appendStringInfo(&buffer, "cdbexec '%s' ''", pszCreateTable);
+
+			pfree(pszCreateTable);
+
+			DispatchTargetSet set;
+			
+			set = DTS_SEGDB;
+			
+			
+
+			/*
+			 * This call returns after launching the threads that send the command to the appropriate
+			 * segdbs.  It does not wait for them to finish.
+			 */
+			CdbDispatchCommand(buffer.data, set, NULL, 0, true );
+			hasDispatched = true;
+			pfree(buffer.data);
+		}
+	}
+
+	if (Cdb_role == CDB_ROLE_EXECUTE) 
+	{
+		elog( NOTICE,"CdbRole Execute of CREATE TABLE\n");
+		Assert(stmt->relOid != 0);
+		relationId = stmt->relOid;
+
+		heap_create_with_catalog_with_relid(relname,
+											  namespaceId,
+											  tablespaceId,
+											  descriptor,
+											  relkind,
+											  false,
+											  localHasOids,
+											  parentOidCount,
+											  stmt->oncommit,
+											  allowSystemTableMods,
+											  relationId);
+
+		StoreCatalogInheritance(relationId, inheritOids);
+
+	}
+
 
 	/*
 	 * We must bump the command counter to make the newly-created relation
@@ -500,6 +588,44 @@ DefineRelation(CreateStmt *stmt, char relkind)
 	 * visible to anyone else anyway, until commit).
 	 */
 	relation_close(rel, NoLock);
+
+	if ( hasDispatched )
+	{
+		char *message;
+		elog(NOTICE, "HasDispatched\n");
+		/*
+		 * We successfully completed on the Dispatcher.  Now check the results
+		 * from the qExecs.  This internally waits for them to all finish.
+		 */
+		CdbDispatchResults* results = CdbCheckDispatchResult();
+
+
+		message = CdbDumpDispatchResults(results, true);
+		char *szCommand = results->szCommand;
+		if ( szCommand == NULL )
+			szCommand = "";
+		Assert( message != NULL );
+		elog( NOTICE,
+				"cdbexec command results for \"%s\": %s",
+				szCommand, message );
+
+		pfree(message);
+
+		if ( !results->success )
+		{
+			char *message = CdbDumpDispatchResults(results, false);
+			ereport( ERROR,
+						(errcode( ERRCODE_CDB_COMMAND_ERROR ),
+						errmsg("cdbexec command failed on one or more segment databases: %s",
+						message
+					)));
+				
+		}
+
+
+		DestroyCdbDispatchResults( results );
+	}
+
 
 	return relationId;
 }

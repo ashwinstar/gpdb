@@ -58,32 +58,46 @@ CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
 	query = (Query *)deserializeNode(pszQuery);
 	pfree(pszQuery);
 
-	Assert(stmt->ser_plan != NULL );
-	Assert(IsA(stmt->ser_plan, String));
-	char *pszPlan = strVal(stmt->ser_plan);
-	Assert(pszPlan != NULL );
-	plan = (Plan *)deserializeNode(pszPlan);
-	pfree(pszPlan);
-
-	/* TODO - Deserialize parameters, if any */
-	n = list_length(stmt->ser_params);
-	if ( n > 0)
+	if (query->commandType != CMD_UTILITY)
 	{
-		paramLI = palloc((n+1) * sizeof(ParamListInfoData));
-		paramLI[n].kind = PARAM_INVALID; /* Mark end of array */
-		i = 0;
-		foreach (pc, stmt->ser_params)
+		Assert(stmt->ser_plan != NULL );
+		Assert(IsA(stmt->ser_plan, String));
+		char *pszPlan = strVal(stmt->ser_plan);
+		Assert(pszPlan != NULL );
+		plan = (Plan *)deserializeNode(pszPlan);
+		pfree(pszPlan);
+
+		/* TODO - Deserialize parameters, if any */
+		n = list_length(stmt->ser_params);
+		if ( n > 0)
 		{
-			ser_param = lfirst(pc);
-			/* TODO - Deserialize one parameter, for now show and invalidate. */
-//			elog(NOTICE, "CDBEXEC ser_params - %d: %s", i, nodeToString(ser_param));
-			paramLI[i].kind = PARAM_INVALID;
-			i++;
+			paramLI = palloc((n+1) * sizeof(ParamListInfoData));
+			paramLI[n].kind = PARAM_INVALID; /* Mark end of array */
+			i = 0;
+			foreach (pc, stmt->ser_params)
+			{
+				ser_param = lfirst(pc);
+				/* TODO - Deserialize one parameter, for now show and invalidate. */
+	//			elog(NOTICE, "CDBEXEC ser_params - %d: %s", i, nodeToString(ser_param));
+				paramLI[i].kind = PARAM_INVALID;
+				i++;
+			}
 		}
+		Assert( query->commandType != CMD_UTILITY );
+	}
+	else
+	{
+		plan = NULL;
+		elog(NOTICE, "Received a utility Command\n");
+		/*ProcessUtility(query->utilityStmt,
+			   NULL,
+			   dest,
+			   completionTag);*/
+		return;
 	}
 
 	EState	   *estate = NULL;
-	Assert( query->commandType != CMD_UTILITY );
+	/*Assert( query->commandType != CMD_UTILITY );*/
 
 	/*
 	 * Create a new portal to run the query in
