@@ -15,6 +15,9 @@
 
 #include "postgres.h"
 #include "nodes/nodes.h"
+#include "optimizer/clauses.h"
+#include "parser/parse_oper.h"
+#include "utils/lsyscache.h"
 #include "cdb/cdbjoin.h"
 #include "cdb/cdbvars.h"
 
@@ -530,4 +533,274 @@ int cmpCdbJoinStrategy( const void *l, const void *r )
 		return 0;
 	else 
 		return 1;
+}
+
+/* 
+ * A ExprVarProfile holds state for recursive expr_varlist_walker(). 
+ */
+typedef struct VarProfile
+{
+	List	*varnos;
+} VarProfile;
+
+static bool expr_varlist_walker(Node *node, VarProfile *context);
+static int varwalk(Node *node);
+
+/*
+ * varwalk uses expr_varlist_walker to visit the nodes in an expression,
+ * and create a list of all the varnos in any Var node therein.
+ * We are interested in finding exactly one varno, so if there are
+ * 0 or 2 or more, we return 0.  If one, we return that as the return value.
+ */
+int varwalk(Node *node)
+{
+	VarProfile	context;
+	context.varnos			= NIL;
+
+	int rtn = 0;
+
+	if ( !expr_varlist_walker(node, &context) )
+	{
+		if ( context.varnos != NIL && list_length( context.varnos ) == 1 )
+			rtn = lfirst_int(list_head(context.varnos));
+	}
+
+	if ( context.varnos != NIL )
+		list_free(context.varnos);
+
+	return rtn;
+}
+
+bool expr_varlist_walker(Node *node, VarProfile *context)
+{
+	if ( node == NULL )
+		return false;
+	
+	switch (nodeTag(node))
+	{
+		case T_Var:
+			{
+				int varno = ((Var *)node)->varno;
+
+				/* See whether varno is already in context->varnos */
+				if ( !list_member_int( context->varnos, varno ) )
+					context->varnos = lappend_int( context->varnos, varno );
+
+				return false;
+			}
+
+		default:
+			break;
+	}
+
+	return expression_tree_walker(node, expr_varlist_walker, context);
+}
+
+
+/*
+ * extractHashExprFromQual
+ * This is an attempt to take an arbitrary joinqual list, from a NestLoop,
+ * and see whether each element of the list is an OpExpr, representing =,
+ * and whose arguments satisfy the property that one references only Vars 
+ * with varno of INNER and the other one references only Vars with varno of
+ * OUTER.  Furthermore, we are currently requiring that the oid of the types of the left
+ * and right arguments are the same, although this could be relaxed in the future.
+ * When this is the case, we create two Lists: one a List of the OpExpr, and the other a List
+ * of the oids of the types of the arguments to the OpExprs.  Furthermore, the List of OpExpr
+ * is guarantted to always have OUTER as the varno of Vars in the first argument, and
+ * INNER as the varno of the Vars in the second argument.
+ * These Lists are returned in the out parameters pHashExpr, and pHashOp.
+ * In this case the function returns true.
+ * If these conditions are not satisfied, the function returns false.
+ *
+ * Examples: 
+ * 1) r_regionkey=n_regionkey.  
+ *		This results in a successful extraction.
+ * 2) r_regionkey + n_regionkey = 2.  
+ *		This does not result in a successful extraction, 
+ *		because the lhs refers to 2 different tables,
+ *      although it could be made successful by rewriting it as r_regionkey = 2 - n_regionkey.
+ * 3) r_regionkey < n_regionkey. 
+ *		This does not result in a successful extraction, 
+ *		because it uses < instead of =.
+ * 4) length( strX ) = length( strY ).  
+ *		This results in a successful extraction.
+ * 5) case when r_regionkey < 5 then r_regionkey + 7 else r_regionkey - 7 end = 
+ *		case when n_regionkey < 5 then n_regionkey * n_regionkey else 1 end 
+ *		This results in a successful extraction.
+ * 6) r_regionkey = n_regionkey or n_regionkey=1 
+ *		This does not result in a successful extraction, because the expression type is a BoolExpr
+ * 7) l_orderkey = o_orderkey and o_custkey = l_partkey
+ *		This does result in a successful extraction, but one of the the hashExpr OpExpr will
+ * be reversed, so that the l_fields and the n_fields are on the same side in both expressions.
+ */		
+bool extractHashExprFromQual( List *joinqual, List **pHashExpr, List **pHashOp )
+{
+	ListCell	*c;
+	int			i=0;
+	List		*hashExpr = NIL;
+	List		*hashOp = NIL;
+	Expr		*e;
+	Oid			opno;
+	Oid			lefttype;
+	Oid			righttype;
+	Oid			temptype;
+	Oid			eqoid;
+	bool		rtn = false;
+
+	Assert( pHashExpr != NULL );
+	Assert( pHashOp != NULL );
+
+	if ( joinqual == NIL )
+	{
+		elog( DEBUG1, "Ooops, joinqual == NIL" );
+		goto cleanup;
+	}
+
+	/*
+	 * Iterate through the list of Expressions in the 
+	 * joinqual.
+	 */
+	foreach( c, joinqual )
+	{
+		i++;
+
+		e = (Expr *)lfirst(c);
+
+		/*
+		* If it's not an OpExpr, we lose.
+		*/
+		if ( nodeTag(e) != T_OpExpr )
+		{
+			elog( DEBUG1, "Ooops, nodeTag was %d in test for separable nestloop joinqual expressions, loop %d", 
+				nodeTag(e),
+				i );
+			goto cleanup;
+		}
+
+		/* The opno of the OpExpr must respresent the equality operator for the data types 
+		 * in the argument list, or we lose.
+		 */
+		OpExpr *oexpr = (OpExpr *)e;
+		if ( list_length(oexpr->args) != 2 )
+		{
+			elog( DEBUG1, "Ooops, list_length(oexpr->args) was %d in test for separable nestloop joinqual expressions, loop %d", 
+						list_length(oexpr->args),
+						i );
+			goto cleanup;
+		}
+
+		opno = oexpr->opno;
+		lefttype = InvalidOid;
+		righttype = InvalidOid;
+		eqoid = InvalidOid;
+
+		op_input_types(opno, &lefttype, &righttype);
+
+		/*
+		 * TODO: We should be able to remove this restriction.  There is really no need to insist that they
+		 * be the same.  However, currently we only have one List for the optypes.
+		 */
+		if ( lefttype != righttype )
+		{
+			elog( DEBUG1, "Ooops, op input types ( %d and %d) don't match for separable nestloop joinqual expressions, loop %d", 
+						lefttype, righttype,
+						i );
+			goto cleanup;
+		}
+
+		eqoid = compatible_oper_opid(list_make1(makeString("=")), lefttype, righttype, true);
+
+		if ( opno != eqoid )
+		{
+			elog( DEBUG1, "Ooops, opno != eqoid (%d != %d) in test for separable nestloop joinqual expressions, loop %d", 
+						opno, eqoid,
+						i );
+			goto cleanup;
+		}
+
+		/* 
+		 * Each argument must reference exactly one varno, or we lose.
+		 * Furthermore, one argument must reference INNER (65000) and the other one OUTER (65001)
+		 * or we lose.  
+		 */
+		int varno1, varno2;
+		varno1 = varwalk(linitial(oexpr->args));
+		varno2 = varwalk(lsecond(oexpr->args));
+		if ( varno1 == 0 || varno2 == 0 )
+		{
+			elog( DEBUG1, "Ooops, varno1 (%d) or varno2 (%d) is 0 in test for separable nestloop joinqual expressions, loop %d", 
+						varno1, varno2,
+						i );
+			goto cleanup;
+		}
+
+		if ( varno1 == varno2 )
+		{
+			elog( DEBUG1, "Ooops, varno1 (%d) == varno2 (%d) in test for separable nestloop joinqual expressions, loop %d", 
+						varno1, varno2,
+						i );
+			goto cleanup;
+		}
+
+		/*
+		* This is a little tricky.  We want to make sure that
+		* 1) the new varnos are OUTER, INNER 
+		* 2) they occur in the order OUTER, INNER.  If not, we need to create
+		*		a new opexpression, with the arguments switched, and an eq operator appropriate
+		*		to the switched arguments.
+		* We do this so the resulting hashExpr List is in a canonical form for later use.
+		*/
+		if (	(varno1 != OUTER && varno2 != OUTER) 
+			||	(varno1 != INNER && varno2 != INNER) )
+		{
+			elog( DEBUG1, "Ooops, missing either 65001 and 65000 in varnos (%d,%d) in test for separable nestloop joinqual expressions, loop %d", 
+						varno1, varno2,
+						i );
+			goto cleanup;
+		}
+		
+		if ( varno1 == OUTER )
+		{
+			/* Great news.  Order is correct */
+			hashExpr = lappend( hashExpr, oexpr );
+		}
+		else
+		{
+			/*
+				* We need to create a new opexr, switching the args, and
+				* getting the correct opno for the switched args
+				*/ 
+			OpExpr *temp = makeNode(OpExpr);
+			temp->opno = oexpr->opno;
+			temp->opfuncid = InvalidOid;
+			temp->opresulttype = oexpr->opresulttype;
+			temp->opretset = oexpr->opretset;
+			temp->args = list_copy(oexpr->args);
+			CommuteClause(temp);
+			hashExpr = lappend( hashExpr, temp );
+			temptype = lefttype;
+			lefttype = righttype;
+			righttype = temptype;
+		}
+
+		hashOp = lappend_oid( hashOp, lefttype );
+	}
+
+	rtn = true;
+
+cleanup:
+	if ( !rtn )
+	{
+		list_free( hashExpr );
+		list_free( hashOp );
+	}
+	else
+	{
+		*pHashExpr = hashExpr;
+		*pHashOp = hashOp;
+	}
+
+	return rtn;
+
 }

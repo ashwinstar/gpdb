@@ -39,5 +39,6 @@ typedef struct CdbJoinStrategy
 extern List *getJoinStrategyList(Join *join);
 extern CdbJoinStrategy *copyJoinStrategy(CdbJoinStrategy *old);
 extern void freeJoinStrategyList(List* jslist);
+extern bool extractHashExprFromQual( List *joinqual, List **pHashExpr, List **pHashOp );
 
 #endif /* CDBJOIN_H */

@@ -967,6 +967,7 @@ bool prescan_nestloop(Plan *plan, PlanProfile *context)
 	ListCell *cell;
 	CdbJoinStrategy *strategy = NULL;
 
+
 	Plan *outer = outerPlan(plan);
 	Plan *inner = innerPlan(plan);	
 			
@@ -979,6 +980,14 @@ bool prescan_nestloop(Plan *plan, PlanProfile *context)
 	
 	strategies = getJoinStrategyList((Join*)plan);
 	
+	List *hashExpr = NIL;
+	List *hashOp = NIL;
+	
+	if ( extractHashExprFromQual( ((Join*)plan)->joinqual, &hashExpr, &hashOp ))
+	{
+		/* Yippee, we can use repartitioning  */
+	}
+
 	/*
 	 * Use the first strategy we can implement. 
 	 */
@@ -1079,7 +1088,7 @@ bool prescan_nestloop(Plan *plan, PlanProfile *context)
 			 *       eliminate strategies that don't match the pattern in
 			 *       the filter stage above, so the Assert should never trip.
 			 */
-			Assert ( ! IsA(inner, Material) );
+			Assert ( IsA(inner, Material) );
 			
 			switch ( strategy->rightmove )
 			{
