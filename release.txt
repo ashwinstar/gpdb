@@ -1,4 +1,11 @@
 <<<NEW vi: set expandtab ts=4: >>>
+CDB-Loader code changes that accomodate the change from a "cdb-head and
+    tails" in CDB1.x to an all equal segment database cluster.
+CDB2 admin schema version 1 support added to the CDB-Loader. Besides
+    the support for this schema version, other schema versions support
+    could be added in the future and loaded automatically. The loader
+    now asks the admin schema which version it is and loads the appropriate
+    set of queries for that particular version. 
 Added traffic control and preliminary parallelization to SQL DML.
 	CDB now analyzes and, in some cases, parallelizes the SQL DML commands,
 	SELECT, INSERT, UPDATE, and DELETE. In addition, it recognizes and 
