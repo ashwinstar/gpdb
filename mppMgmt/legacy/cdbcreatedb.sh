@@ -581,10 +581,6 @@ do
       if [ "$withTPCH" = "true" ]
       then
 
-        # Load the DDL
-        echo "Loading TPCH DDL"
-        psql -o /dev/null -q $finalSegName -f $tpchDDL > /dev/null 2>&1
-
         # Is this the entry database?
         if [ "$entrySegName" == "$finalSegName" ]
         then
@@ -614,15 +610,12 @@ do
           psql $finalSegName -c "delete from tpch.partsupp where ps_partkey % $total_content_segs <> $contentid "
           psql $finalSegName -c "delete from tpch.customer where c_custkey % $total_content_segs <> $contentid "
           echo "Finished Pruning data from TPCH tables"
+          
         fi
       fi
 
       if [ "$withTiny" = "true" ]
       then
-
-        # Load the DDL
-        echo "Loading Tiny DDL"
-        psql -o /dev/null -q $finalSegName -f $cvpDDL > /dev/null 2>&1
 
         # Is this the entry database?
         if [ "$entrySegName" == "$finalSegName" ]
@@ -656,10 +649,6 @@ do
 
       if [ "$withQadb" = "true" ]
       then
-
-        # Load the DDL
-        echo "Loading Qadb DDL"
-        psql -o /dev/null -q $finalSegName -f $qadbDDL > /dev/null 2>&1
 
         # Is this the entry database?
         if [ "$entrySegName" == "$finalSegName" ]
@@ -769,13 +758,10 @@ do
       psql -o /dev/null -q $entrySegName -c "$i"
     done
     
-    echo -e "\nPerforming vacuum analyze on db"
-	
-	PGOPTIONS='-c cdb_session_role=dispatch'
-    export PGOPTIONS
-    
-    psql -o /dev/null -q $entrySegName -c "vacuum analyze"
-
+    # Vacuum
+    echo "Vacuuming entry database";
+	# TODO - Remove the checkpoint when CDB-77 is fixed 
+    PGOPTIONS='-c cdb_session_role=dispatch' psql -o /dev/null -q $entrySegName -c "vacuum full analyze;checkpoint;"
 done
 
 exit 1
