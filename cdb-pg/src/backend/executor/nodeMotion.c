@@ -57,12 +57,53 @@ static bool setReadFromAMS(Motion *node);
 TupleTableSlot *
 ExecMotion(MotionState *node)
 {
+#ifndef CDB_NOMOTION
 	Motion *motion = (Motion *)node->ps.plan;
     
     if (motion->sendSorted && !node->noMoreAMSTuples)
         return execMotionSorted(node);
     else
         return execMotionUnsorted(node);
+#else
+	TupleTableSlot *slot;
+	TupleTableSlot *outerTupleSlot;
+	PlanState  *outerNode;
+	HeapTuple tuple;
+	ExprContext *econtext = node->ps.ps_ExprContext;
+	Motion *motion = (Motion *)node->ps.plan;
+
+	SO1_printf("ExecMotion: %s\n",
+			   "entering routine");
+
+	/*
+	 * grab TupleTableSlot from our child.
+	 */
+	outerNode = outerPlanState(node);
+	
+	outerTupleSlot = ExecProcNode(outerNode);
+	if ( TupIsNull(outerTupleSlot) )
+		return NULL;
+		
+	/*
+	 * make a copy of the tuple
+	 */
+	tuple = heap_copytuple(outerTupleSlot->val);
+	
+	uint32 hval = 0;
+	if ( motion->motionType == MOTIONTYPE_HASH )
+	{
+		econtext->ecxt_outertuple = outerTupleSlot;
+		hval = evalHashKey(econtext, node->hashExprState, node->hashfunctions);
+	}
+
+	slot = node->ps.ps_ResultTupleSlot;
+	
+	/*
+	 * store it in our result slot and return this.
+	 */
+	return ExecStoreTuple(tuple, slot, InvalidBuffer, true);
+
+#endif
 }
 
 
