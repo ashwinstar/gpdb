@@ -10,7 +10,7 @@
 
 PATH="$(dirname $0):$PATH"
 
-usage="[ PGROOT=<root_directory> ]  $(basename $0) \n        [ {--nsegs|-n} { #segs | 3 } ] \n        [ {--segname|-s} { segname | segDB} ] \n        [ {--prefix|-P} { dbprefix | cdb} ] \n        [ {--help} ]"
+usage="[ PGROOT=<root_directory> ]  $(basename $0) \n        [ {--nsegs|-n} { #segs | 3 } ] \n        [ {--segname|-s} { segname | segDB} ] \n        [ {--prefix|-P} { dbprefix | cdb} ] \n        [ {--useIP} ] [ {--verbose} ] [ {--help} ]"
 
 echo -e "$(basename $0): Create and load a database into a CDB cluster."
 echo -e "Copyright (c) 2004-2005 Metapa, Inc. All Rights Reserved"
@@ -28,12 +28,16 @@ function display_help
 
     echo -e "\nYou can specify the number of segments instances you want to create in each"
     echo    "database by --nsegs or -N. If no value is set, then the default value is 3"
-    echo -e "The prefix of each segment name can be specified with --segname or -s. This "
-    echo    "defaults to \"segDB\". If there are multiple segments per database instance, all"
-    echo    "segment DBs will have an ascending integer appended to their name. E.g segDB1."
+    echo    "The prefix of each segment name can be specified with --segname or -s. This "
+    echo    "defaults to \"segDB\". If there are multiple segments all segment DBs will"
+    echo    "have an ascending integer appended to their name. E.g segDB1, segDB2, etc."
+    echo -e "\nIf there are are multiple listeners then the increment will carry across all"
+    echo    "the listeners. E.g if there are two listeners and 3 segments per listener, then"
+    echo    "segDB1 will be on the first listener, while segDB6 will be on the second."
 
-    echo -e "\nUnless --plain is specified, a set of small verification tables is created "
-    echo    "in schema \"public\"."
+    echo -e "\nBy default, the value inserted into the cdb.host table will be that returned"
+    echo -e "by 'hostname'. If you prefer to insert your ip address then use --useIP."
+    echo    "NOTE: you must make sure you have your /etc/hosts file configured correctly."
 
     echo -e "\nSee README.txt for more details.\n"
 
@@ -66,6 +70,7 @@ nsegs=
 dbprefix=
 segname=
 verbose=false
+useip=false
 
 # Ok, loop through the command line args
 #
@@ -165,6 +170,14 @@ do
                 dbprefix=${val:?Option '--prefix' requires a value}
                 shift 1
                 ;;
+            --verbose)
+                verbose=true
+                shift 1
+                ;;
+            --useIP)
+                useip=true
+                shift 1
+                ;;
             --*)
                 echo "$(basename $0): Unrecognized option \"$1\"" >&2
                 echo -e "\nSyntax: $usage"
@@ -213,24 +226,21 @@ dbprefix=${dbprefix:-$dbprefix}
 segname=${segname:-$segname}
 : ${segname:=segDB}
 
-# Did they want a dummy database?
-# TODO: finish this
-if [ "$1" = "--plain" ]; then
-    plain=
-    shift 1
-fi
-
 # And what about the root dir?
 PGROOT=${dbroot:-$PGROOT}
 : ${PGROOT:=$HOME/cdb-data}
 
+# Should we use the ip address, rather than the hostname?
+if [ "$useip" = "true" ]
+then
+  hostname="$(hostname -i)"
+fi
 
 if [ ! "$PGDATABASE" ]; then
     export PGDATABASE=${1:-segDB}
 else
     export PGDATABASE=${1:-$PGDATABASE}
 fi
-#export PGOPTIONS="-c BLAH BLAH TODO"
 
 # Discard outside values of these
 unset PGHOST
@@ -273,9 +283,9 @@ done
 # Did we find any?
 if [ $instancecount -gt 0 ]
 then
-  echo -e "\nFound $instancecount DB instance(s) in $PGROOT\n"
+  echo -e "\nFound $instancecount DB instance(s) in $PGROOT"
 else
-  echo -e "\nUnable to find any DB instances in $PGROOT using a prefix of $dbprefix\n"
+  echo -e "\nUnable to find any DB instances in $PGROOT using a prefix of $dbprefix"
   exit 1
 fi
 
@@ -313,18 +323,16 @@ do
           PGDATABASE=$finalSegName
       fi
 
-      echo -e "Creating ${PGDATABASE} in $PGDATA"
+      echo -e "\nCreating ${PGDATABASE} in $PGDATA"
 
       db=$(psql -t --list template1 2>/dev/null | grep "^[[:space:]]${PGDATABASE}[[:space:]]")
       if [ "$db" ]
       then
           sleep 1
+          echo "A database called $PGDATABASE already exists, so dropping it."
           dropdb $PGDATABASE
       else
-          if [ "$verbose" = "true" ]
-          then
-              echo -e "Found no DB named $PGDATABASE, no need to DROP"
-          fi
+          echo -e "Found no DB named $PGDATABASE, no need to DROP"
       fi
 
       sleep 1
@@ -377,11 +385,7 @@ do
     PGDATA=$(cd "$PGDATA"; pwd)
     PGPORT=$(getPort)
 
-    if [ "$verbose" = "true" ]
-    then
-        echo -e "Populating schema at $PGDATA, Port = $PGPORT\n  "
-        echo -e "Number of segments = $nsegs"
-    fi
+    echo -e "\nPopulating admin schema at $PGDATA, Port = $PGPORT, Num Segs = $nsegs\n"
 
     # This is the loop for each segment database
     for (( loop = 1; loop <= $nsegs; loop++ ))
@@ -395,62 +399,42 @@ do
           PGDATABASE=$finalSegName
       fi
 
+      #
       # Ok, let's configure the Admin schema
       #
 
-      if [ "$verbose" = "true" ]
-      then
-          echo -e "For this loop, we are using segname = $finalSegName"
-      fi
+      echo -e "Configuring admin schema for $finalSegName"
 
       # First the host table
-      if [ "$verbose" = "true" ]
-      then
-          echo -e "Updating hosts table with hostname = $hostname"
-      fi
-      psql $finalSegName -c "select cdb.add_host('$hostname', 1111);"
+      echo -e "Updating hosts table with hostname = $hostname"
+      psql -o /dev/null -q $finalSegName -c "select cdb.add_host('$hostname', 1111);"
 
       # Now the listener
-      if [ "$verbose" = "true" ]
-      then
-        echo -e "Updating listener table with listeners"
-      fi
+      echo -e "Updating listener table with listeners"
 
       for i in "${listeners_array[@]}"; do
-        psql $finalSegName -c "$i"
+        psql -o /dev/null -q $finalSegName -c "$i"
       done
 
       # Add the segment
-      if [ "$verbose" = "true" ]
-      then
-          echo -e "Updating segment table"
-      fi
+      echo -e "Updating segment table"
 
       for i in "${segments_array[@]}"; do
-        psql $finalSegName -c "$i"
+        psql -o /dev/null -q $finalSegName -c "$i"
       done
 
       # And the segment database
-      if [ "$verbose" = "true" ]
-      then
-          echo -e "Updating segment database table."
-      fi
+      echo -e "Updating segment database table."
 
       for i in "${segdb_array[@]}"; do
-        psql $finalSegName -c "$i"
+        psql -o /dev/null -q $finalSegName -c "$i"
       done
 
       # And finally, set the identity
-      if [ "$verbose" = "true" ]
-      then
-          echo -e "Updating identity table"
-      fi
-      psql $finalSegName -c "select cdb.cdb_set_identity('Default Cluster', '$username', NULL, ${#segdb_array[@]}, '$hostname', $PGPORT, '$finalSegName' , 't');"
+      echo -e "Updating identity table"
+      psql -o /dev/null -q $finalSegName -c "select cdb.cdb_set_identity('Default Cluster', '$username', NULL, ${#segdb_array[@]}, '$hostname', $PGPORT, '$finalSegName' , 't');"
 
-      if [ "$verbose" = "true" ]
-      then
-          echo -e "Done with loop for $finalSegName"
-      fi
+      echo -e "Completed $finalSegName\n"
 
       # Increment our segment counter
       (( current_segment++ ))
