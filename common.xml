@@ -10,7 +10,7 @@
 <!--
     Common global properties ...
   -->
-  
+
     <!--
          Support access to OS's ENVIRONMENT variables via
          os.<variable_name>.
@@ -67,7 +67,7 @@
         <property name="webRoot" value="/var/www/html" />
     </target>
 
-  
+
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <!-- Set TIMESTAMP properties: DSTAMP, TSTAMP, and TODAY.           -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
@@ -107,7 +107,7 @@
             <os family="windows"/>
         </condition>
         <condition property="osIsCygwin">
-            <!-- 
+            <!--
                 Cygwin is differentiated from Windows by the presence of
                 the USER, PWD, and HOME environment variables and the use
                 of "PATH" instead of "Path".
@@ -134,8 +134,8 @@
     <!-- Ensure we have a CDB_TOOLS reference & calculate toolsLib      -->
     <!-- directory from it.                                             -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
-    <target name="-setTools" 
-            depends="-prepareCygwin,-checkBeanshell" 
+    <target name="-setTools"
+            depends="-prepareCygwin,-checkBeanshell"
             unless="toolsSet">
 
         <script language="beanshell"><![CDATA[
@@ -144,7 +144,7 @@
              * and environment variable settings.
              *
              * Property "tools" is set to "$CDB_TOOLS" if CDB_TOOLS is set.
-             * If CDB_TOOLS is not set, is is required to be 
+             * If CDB_TOOLS is not set, is is required to be
              * "${projectRoot}/../cdb-tools".
              *
              * Property "toolsLib" is set by searching the "tools" directory
@@ -163,7 +163,7 @@
                 }
                 else
                 {
-                    File cdbToolsRef = new File(project.resolveFile(project.getProperty("projectRoot")), 
+                    File cdbToolsRef = new File(project.resolveFile(project.getProperty("projectRoot")),
                                                 "../cdb-tools");
                     if ( cdbToolsRef.isDirectory() )
                     {
@@ -176,29 +176,29 @@
                     }
                 }
             }
-            
+
             /*
-             * Search the CDB_TOOLS directory (set in property "tools" in the 
+             * Search the CDB_TOOLS directory (set in property "tools" in the
              * preceeding task).  Directories containing "-ant-" and having a
              * "lib" subdirectory are candidates for the ANT home directory.
              */
             String toolsDirName = project.getProperty("tools");
             File toolsDir = new File(toolsDirName);
-            File[] dirs = toolsDir.listFiles( new FileFilter() 
+            File[] dirs = toolsDir.listFiles( new FileFilter()
                     {
-                        boolean accept(File pathname) 
+                        boolean accept(File pathname)
                         {
                             if ( pathname.isDirectory() &&
-                                 pathname.getName().indexOf("-ant-") > -1 && 
+                                 pathname.getName().indexOf("-ant-") > -1 &&
                                  (new File(pathname, "lib")).isDirectory() )
                             {
-                                self.log("Accepting ANT home candidate " + pathname.getCanonicalPath(), 
+                                self.log("Accepting ANT home candidate " + pathname.getCanonicalPath(),
                                          Project.MSG_VERBOSE);
                                 return true;
                             }
                             else
                             {
-                                self.log("Rejecting ANT home candidate " + pathname.getCanonicalPath(), 
+                                self.log("Rejecting ANT home candidate " + pathname.getCanonicalPath(),
                                          Project.MSG_DEBUG);
                                 return false;
                             }
@@ -220,7 +220,7 @@
                          Project.MSG_WARN);
             project.setUserProperty("toolsLib", (new File(dirs[0], "lib")).getCanonicalPath());
         ]]></script>
-        
+
         <property name="toolsAnt" location="${toolsLib}/../bin/ant"/>
         <property name="toolsSet" value="true"/>
         <property name="junit_style_dir" location="${projectRoot}/common/doc" />
@@ -231,7 +231,7 @@
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <!-- Normalize pathnames of some properties for Cygwin              -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
-    <target name="-prepareCygwin" 
+    <target name="-prepareCygwin"
             if="osIsCygwin" unless="cygwinPrepared"
             depends="-setPlatform,-prepareCDB_TOOLS">
 
@@ -242,7 +242,7 @@
         </exec>
 
         <property name="cygwinPrepared" value="true"/>
-        
+
     </target>
 
     <target name="-prepareCDB_TOOLS" if="os.CDB_TOOLS" unless="cygwinPrepared"
@@ -291,7 +291,7 @@
         </path>
         <path id="jdk12x.extdirs.path">
           <dirset dir="${tools}/java/jdk1.2.x/jre/lib">
-            <include name="ext"/> 
+            <include name="ext"/>
           </dirset>
         </path>
         <property name="jdk12x.extdirs" refid="jdk12x.extdirs.path"/>
@@ -304,7 +304,7 @@
         </path>
         <path id="jdk13x.extdirs.path">
           <dirset dir="${tools}/java/jdk1.3.x/jre/lib">
-            <include name="ext"/> 
+            <include name="ext"/>
           </dirset>
         </path>
         <property name="jdk13x.extdirs" refid="jdk13x.extdirs.path"/>
@@ -317,13 +317,13 @@
         </path>
         <path id="jdk14x.extdirs.path">
           <dirset dir="${tools}/java/j2sdk1.4.x/jre/lib">
-            <include name="ext"/> 
+            <include name="ext"/>
           </dirset>
         </path>
         <property name="jdk14x.extdirs" refid="jdk14x.extdirs.path"/>
 
         <property name="javaLibrariesSet" value="true"/>
-        
+
     </target>
 
 
@@ -341,13 +341,13 @@
     <target name="-checkJavaVersion"
             unless="javaVersionChecked">
 
-        <!-- 
+        <!--
             Determining the JRE version is done by checking for the
             presence of classes added by that version.  If you add a
             dependency for a specific class, it would be appropriate
             to add a check for that here.
           -->
-          
+
         <!-- We're running ... it's at least 1.0 -->
         <property name="isJRE1.0" value="true"/>
 
@@ -363,7 +363,7 @@
         </fail>
 
         <property name="javaVersionChecked" value="true"/>
-        
+
     </target>
 
 
@@ -481,17 +481,17 @@
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <!-- Ensure the make utility is GNU make.                           -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
-    <target name="-checkMake" unless="haveGnuMake" 
+    <target name="-checkMake" unless="haveGnuMake"
             depends="-findMake">
         <exec executable="${make}"
-	      outputproperty="makeVersion"
-	      resultproperty="makeCode">
-	    <arg value="-v"/>
-	</exec>
-	<condition property="haveGnuMake" value="true">
-	    <contains string="${makeVersion}" substring="GNU Make "/>
-	</condition>
-	<fail unless="haveGnuMake" message="GNU make is required for this build; make found is not GNU!"/>
+        outputproperty="makeVersion"
+        resultproperty="makeCode">
+      <arg value="-v"/>
+  </exec>
+  <condition property="haveGnuMake" value="true">
+      <contains string="${makeVersion}" substring="GNU Make "/>
+  </condition>
+  <fail unless="haveGnuMake" message="GNU make is required for this build; make found is not GNU!"/>
     </target>
 
 
@@ -516,7 +516,7 @@
     <!-- compiler is used.                                              -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <target name="-chooseCCompiler" unless="CCompiler">
-    
+
         <!--
             Check for Intel C Compiler first
           -->
@@ -524,6 +524,14 @@
         <condition property="CCompiler" value="icc">
             <available file="icc" filepath="${os.PATH}" type="file"/>
         </condition>
+
+        <!-- Set up the pthread library properly -->
+        <condition property="PThreadLib" value="-lpthread">
+            <equals arg1="${CCompiler}" arg2="icc" />
+        </condition>
+        <property name="PThreadLib" value="" />
+
+        <echo level="info" message="PThreadLib set to ${PThreadLib}"/>
 
         <!--
             Check for GNU C Compiler if Intel C Compiler not found
@@ -583,7 +591,7 @@
     <!-- This covers shared library construction options.               -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <target name="-setPlatformCFLAGS" unless="platformCFLAGS"
-            depends="-setPlatform,-chooseCCompiler,-setPlatformCFLAGS_SL">
+            depends="-setPlatform,-chooseCCompiler,-setPlatformCFLAGS_SL,-setCOPT">
 
         <!-- ~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~ -->
         <!-- Compile options (non-shared library)                                  -->
@@ -597,8 +605,24 @@
         </condition>
         <property name="platformCFLAGS" value=""/>
     </target>
-        
-    <target name="-setPlatformCFLAGS_SL"> 
+
+    <target name="-setCOPT" unless="COPT"
+            depends="-chooseCCompiler" >
+
+      <!-- Allow for the extension of addition platform optimizations on the command line -->
+      <condition property="COPTX" value="" >
+          <not>
+              <isset property="COPTX"/>
+          </not>
+      </condition>
+
+      <condition property="COPT" value="-O3 -tpp7 -xW ${COPTX}" >
+          <equals arg1="${CCompiler}" arg2="icc" />
+      </condition>
+      <property name="COPT" value="-O3 -funroll-loops -fomit-frame-pointer -fargument-noalias-global ${COPTX}"/>
+    </target>
+
+    <target name="-setPlatformCFLAGS_SL">
 
         <!-- ~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~-~ -->
         <!-- Shared Object/Library options:                                        -->
@@ -644,19 +668,19 @@
 
         <!-- For normal UNIXen -->
         <condition property="ar" value="ar">
-	    <available file="ar" filepath="${os.PATH}" type="file"/>
-	</condition>
+      <available file="ar" filepath="${os.PATH}" type="file"/>
+  </condition>
 
-	<!-- for Cygwin -->
-	<condition property="ar" value="ar.exe">
-	    <available file="ar.exe" filepath="${os.PATH}" type="file"/>
-	</condition>
+  <!-- for Cygwin -->
+  <condition property="ar" value="ar.exe">
+      <available file="ar.exe" filepath="${os.PATH}" type="file"/>
+  </condition>
 
-	<fail unless="ar">
-	    'ar' utility not found in PATH!
+  <fail unless="ar">
+      'ar' utility not found in PATH!
 
-	    For Solaris, /usr/ccs/bin should be in path *after* directory containing GNU make.
-	</fail>
+      For Solaris, /usr/ccs/bin should be in path *after* directory containing GNU make.
+  </fail>
 
     </target>
 
@@ -689,14 +713,14 @@
         </fail>
 
     </target>
-    
+
 
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <!-- Pick out actual tag name from "$Name[:] <tag_name> $".         -->
     <!--                                                                -->
     <!-- This routine sets "releaseTag" and "releaseDir" properties.    -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
-    <target name="-setRelease" 
+    <target name="-setRelease"
             depends="-setTstamp,-checkBeanshell"
             unless="releaseTag">
 
@@ -755,7 +779,7 @@
                     releaseDir = release;
 
                 int i = release.indexOf('-');
-                if ( i > 0 ) 
+                if ( i > 0 )
                 {
                     releaseVersion = release.substring(0, i).replace('_', '.');
                     releaseBuild = release.substring(i + 1);
@@ -874,7 +898,7 @@ Set release properties:
            *         <reference torefid="taskid" refid="jdbcCompile"/>
            *     </antcall>
            *
-           * A sanity check of ensuring that the target parameter value is less than 
+           * A sanity check of ensuring that the target parameter value is less than
            * or equal to java.version is performed.
            *
            * @param target  v.r of the targetted JRE release.
@@ -913,11 +937,11 @@ Set release properties:
           int target_release;
           int javaVersion_version;
           int javaVersion_release;
-          
+
           /*
            * Extract version and release numbers from target
            */
-          try 
+          try
           {
               if ( (p = target.indexOf('.')) < 0 )
               {
@@ -947,11 +971,11 @@ Set release properties:
           }
           self.log("target_version=" + target_version, Project.MSG_DEBUG);
           self.log("target_release=" + target_release, Project.MSG_DEBUG);
-          
+
           /*
            * Extract version and release numbers from java.version
            */
-          try 
+          try
           {
               if ( (p = javaVersion.indexOf('.')) < 0 )
               {
@@ -982,13 +1006,13 @@ Set release properties:
            * target and java.version are the same, we can exit -- modifying the
            * javac task isn't necessary.
            */
-          if (target_version == javaVersion_version && target_release == javaVersion_release) 
+          if (target_version == javaVersion_version && target_release == javaVersion_release)
           {
-              self.log("javac task left unmodified; target and java.version reflect the same release", 
+              self.log("javac task left unmodified; target and java.version reflect the same release",
                        Project.MSG_VERBOSE);
               return;
           }
-          else if ( (target_version == javaVersion_version && target_release < javaVersion_release) 
+          else if ( (target_version == javaVersion_version && target_release < javaVersion_release)
               || target_version < javaVersion_version )
           {
               /* all is well */
@@ -1035,7 +1059,7 @@ Set release properties:
 
         @param grammarDir the (sub)project directory containing the
                 ANTLR grammar file.  Relative to ${basedir}.
-        @param grammarFile the name(s) of the grammar files to be 
+        @param grammarFile the name(s) of the grammar files to be
                 processed in ${grammarDir}.
         @param grammarOutputFileSet a reference to a FileSet identifying
                 the files output by an ANTLR compile of ${grammarFile}.
@@ -1044,28 +1068,28 @@ Set release properties:
       -->
     <target name="-antlrCompile">
 
-        <!-- 
-            Erase ALL grammar output files if the grammar input is newer than any. 
+        <!--
+            Erase ALL grammar output files if the grammar input is newer than any.
           -->
         <dependset>
             <srcfilelist dir="${grammarDir}" files="${grammarFile}"/>
             <targetfileset refid="grammarOutputFileSet"/>
         </dependset>
 
-        <!-- 
+        <!--
             Compile the ANTLR grammar.  Output files are placed in the source directory.
           -->
         <antlr target="${grammarDir}/${grammarFile}">
             <classpath refid="classPath"/>
         </antlr>
-        
+
     </target>
 
 
     <!--
         Internal-use stage.
 
-        Generate the C header file for a Java class with native methods 
+        Generate the C header file for a Java class with native methods
         and remove obviously dependent object files.
 
         The header files are generated into ${buildHeaders} with names
@@ -1101,21 +1125,21 @@ Set release properties:
             <targetfilelist dir="${buildHeaders}" files="${headerPrefix}_${className}.h"/>
         </dependset>
 
-        <!-- 
-            Generate C headers for native methods. 
+        <!--
+            Generate C headers for native methods.
           -->
         <javah classpath="${buildClasses}" destdir="${buildHeaders}">
             <class name="${packageName}.${className}"/>
         </javah>
-        
+
         <!--
-            Remove native method objects for updated headers. 
+            Remove native method objects for updated headers.
           -->
         <dependset>
             <srcfilelist dir="${buildHeaders}" files="${headerPrefix}_${className}.h"/>
             <targetfilelist dir="${buildObject}" files="${packageName}.${className}.o"/>
         </dependset>
-        
+
     </target>
 
 

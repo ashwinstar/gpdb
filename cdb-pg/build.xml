@@ -14,8 +14,8 @@
 
 <!DOCTYPE project [
   <!--
-      Entity "common" identifies the file containing the common ant elements 
-      needed both here and in subproject build.xml files.  Ant elements other 
+      Entity "common" identifies the file containing the common ant elements
+      needed both here and in subproject build.xml files.  Ant elements other
       than property are NOT inherited when ant calls itself for a subproject.
 
       The file common.xml is a collection of common targets useful to all
@@ -35,7 +35,7 @@
     so it is available during the "configure" target.
 
     To set the directory into which Postgres "wants" to install itself, specify
-    "-DinstallRoot=&lt;target-directory&gt;" so it is available during the 
+    "-DinstallRoot=&lt;target-directory&gt;" so it is available during the
     "configure" target.
 
     This subsystem can be configured for debugging builds by specifying
@@ -65,15 +65,15 @@
         Establish a reference to the project root directory.
       -->
     <property name="projectRoot" value=".."/>
-  
-    <!-- 
+
+    <!--
          This property is set by CVS checkout -r ...
          It is used for distribution build purposes.
       -->
     <property name="stickyTag" value="$$Name:  $$"/>
 
     <!--
-        "Fink" locations for readline libraries and included on Mac OsX 
+        "Fink" locations for readline libraries and included on Mac OsX
       -->
     <property name="osx.withincludes" value="/sw/include"/>
     <property name="osx.withlibraries" value="/sw/lib"/>
@@ -95,7 +95,7 @@
 
 
     <!--
-        Insert common properties and targets.  
+        Insert common properties and targets.
         The common targets are generally called from the init target.
       -->
     &common;
@@ -116,7 +116,7 @@
             Using toolsLib=${toolsLib}
 
             ========================================================================
-	</echo>
+  </echo>
 
     <condition property="isConfigured">
       <not>
@@ -141,7 +141,7 @@
 
         <!-- Clean build product too -->
         <antcall target="clean"/>
-            
+
         <!-- Scrub configure output from the postgresql subproject. -->
         <exec executable="${make}"
               failonerror="false">
@@ -165,7 +165,7 @@
             <and>
                 <!-- distclean fails unless GNUmakefile exists -->
                 <isset property="haveGNUmakefile"/>
-                
+
                 <or>
                     <isset property="distcleanRequired"/>
                     <not>
@@ -212,7 +212,7 @@
             if="makefilePortMissing"
             unless="hostportOption">
 
-        <!-- 
+        <!--
             Since Makefile.port is a symbolic link, a broken one is
             invisible to most ANT (Java) methods.  We need to resort
             to rm to delete it.
@@ -232,7 +232,7 @@
             <arg value="Makefile.port"/>
         </exec>
 
-	<property name="hostportOption" value=""/>
+  <property name="hostportOption" value=""/>
 
     </target>
 
@@ -243,7 +243,7 @@
     <!-- The Makefile.port is considered missing only if we have a      -->
     <!-- GNUmakefile.                                                   -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
-    <target name="-checkMakefilePort" 
+    <target name="-checkMakefilePort"
             depends="-haveGNUmakefile"
             unless="makefilePortMissing">
 
@@ -298,36 +298,36 @@
 
 
     <target name="-configureOptionalFeatures">
-	<!-- If cdb.enableDtx is set to "true", enable dtx in the build. -->
-	<condition property="cdb.cflag.dtx" value="-DCDB_ENABLE_DTX">
-	    <equals arg1="${cdb.enableDtx}" arg2="true" casesensitive="false" />
-	</condition>
-	<!-- Set cdb.cflag.dtx to empty-string if user didn't request DTX. -->
-	<condition property="cdb.cflag.dtx" value="">
-	    <not>
-		<equals arg1="${cdb.enableDtx}" arg2="true" casesensitive="false" />
-	    </not>
-	</condition>
+  <!-- If cdb.enableDtx is set to "true", enable dtx in the build. -->
+  <condition property="cdb.cflag.dtx" value="-DCDB_ENABLE_DTX">
+      <equals arg1="${cdb.enableDtx}" arg2="true" casesensitive="false" />
+  </condition>
+  <!-- Set cdb.cflag.dtx to empty-string if user didn't request DTX. -->
+  <condition property="cdb.cflag.dtx" value="">
+      <not>
+    <equals arg1="${cdb.enableDtx}" arg2="true" casesensitive="false" />
+      </not>
+  </condition>
 
-	<!-- If cdb.enableInsert is set to "true", enable insert in the build. -->
-	<condition property="cdb.cflag.insert" value="-DCDB_ENABLE_INSERT_HOOK">
-	    <equals arg1="${cdb.enableInsert}" arg2="true" casesensitive="false" />
-	</condition>
-	<!-- Set cdb.cflag.insert to empty-string if user didn't request insert. -->
-	<condition property="cdb.cflag.insert" value="">
-	    <not>
-		<equals arg1="${cdb.enableInsert}" arg2="true" casesensitive="false" />
-	    </not>
-	</condition>
+  <!-- If cdb.enableInsert is set to "true", enable insert in the build. -->
+  <condition property="cdb.cflag.insert" value="-DCDB_ENABLE_INSERT_HOOK">
+      <equals arg1="${cdb.enableInsert}" arg2="true" casesensitive="false" />
+  </condition>
+  <!-- Set cdb.cflag.insert to empty-string if user didn't request insert. -->
+  <condition property="cdb.cflag.insert" value="">
+      <not>
+    <equals arg1="${cdb.enableInsert}" arg2="true" casesensitive="false" />
+      </not>
+  </condition>
 
-	<!-- Combine all the CDB CFLAGS values into one place. -->
-	<property name="cdb.feature.cflags" value="${cdb.cflag.dtx} ${cdb.cflag.insert}" />
-	
-	<echo>
-	      cdb.cflag.insert=${cdb.cflag.insert}
-	         cdb.cflag.dtx=${cdb.cflag.dtx}
-	OPTIONAL-FEATURE FLAGS=${cdb.feature.cflags}
-	</echo>
+  <!-- Combine all the CDB CFLAGS values into one place. -->
+  <property name="cdb.feature.cflags" value="${cdb.cflag.dtx} ${cdb.cflag.insert}" />
+
+  <echo>
+        cdb.cflag.insert=${cdb.cflag.insert}
+           cdb.cflag.dtx=${cdb.cflag.dtx}
+  OPTIONAL-FEATURE FLAGS=${cdb.feature.cflags}
+  </echo>
     </target>
 
 
@@ -339,8 +339,8 @@
             unless="configured"
             description="Configure PostgreSQL source tree for building">
 
-        <!-- 
-            Options for debugging needed for PostgreSQL CONFIGURE 
+        <!--
+            Options for debugging needed for PostgreSQL CONFIGURE
 
             These are separated into options that need to appear in the CFLAGS
             property, and other options that need to be passed as arguments to
@@ -373,8 +373,8 @@
         </condition>
         <property name="cdb.debug.cflags" value=""/>
 
-        <!-- 
-            Set thread support option for supported platforms 
+        <!--
+            Set thread support option for supported platforms
           -->
         <condition property="enableThreading" value="--enable-thread-safety">
             <or>
@@ -386,8 +386,8 @@
         </condition>
         <property name="enableThreading" value=""/>
 
-        <!-- 
-            Set thread support option for supported platforms 
+        <!--
+            Set thread support option for supported platforms
           -->
         <condition property="enableThreading" value="--enable-thread-safety">
             <or>
@@ -405,6 +405,7 @@
         <exec executable="bash"
               failonerror="true">
             <env key="LC_ALL" value="C"/>
+            <env key="PTHREAD_LIBS" value="${PThreadLib}"/>
             <arg file="configure"/>
             <arg line="${CdebugOptions} --enable-debug"/>
             <arg line="CFLAGS='${platformCFLAGS} ${cdb.debug.cflags} ${cdb.feature.cflags}'"/>
@@ -451,8 +452,8 @@
             values to include the support.  Otherwise, set "readlineSupport"
             to disable readline support and warn the user.
           -->
-        <condition property="readlineSupport" 
-                   value="--with-includes=&quot;${cdb.withincludes}:${osx.withincludes}&quot; 
+        <condition property="readlineSupport"
+                   value="--with-includes=&quot;${cdb.withincludes}:${osx.withincludes}&quot;
                           --with-libraries=&quot;${osx.withlibraries}&quot;">
             <and>
                 <isset property="osIsMacosx"/>
@@ -469,7 +470,7 @@
             </and>
         </condition>
         <condition property="readlineSupport"
-                   value="--with-includes=&quot;${cdb.withincludes}&quot; 
+                   value="--with-includes=&quot;${cdb.withincludes}&quot;
                           --without-readline">
             <and>
                 <isset property="osIsMacosx"/>
@@ -487,7 +488,7 @@
                 <isset property="readlineSupport"/>
             </not>
         </condition>
-        
+
     </target>
 
     <target name="-macNoReadline" if="readlineIsMissing">
@@ -498,10 +499,10 @@
                 lib=${osx.withlibraries}
                 include=${osx.withincludes}
 
-            Specify 
-                "-Dosx.withlibraries=&lt;lib-location&gt;" 
+            Specify
+                "-Dosx.withlibraries=&lt;lib-location&gt;"
             and
-                "-Dosx.withincludes=&lt;include-location&gt;" 
+                "-Dosx.withincludes=&lt;include-location&gt;"
             to enable readline support.
 
             Configuring without readline support.
@@ -525,24 +526,24 @@
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <!-- Determine the currently configured port.                       -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
-    <target name="-setPort" 
+    <target name="-setPort"
             depends="-extractConfigProperties"
             unless="port">
-        
+
         <condition property="port" value="${DEF_PGPORT}">
             <isset property="DEF_PGPORT"/>
         </condition>
-        
+
     </target>
 
 
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <!-- Extract certain build properties out of src/Makefile.global.   -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
-    <target name="-extractConfigProperties" 
+    <target name="-extractConfigProperties"
             depends="-haveMakefileGlobal"
             if="haveMakefileGlobal">
-    
+
         <loadproperties srcFile="src/Makefile.global">
             <filterchain>
                 <linecontainsregexp>
@@ -550,7 +551,7 @@
                 </linecontainsregexp>
             </filterchain>
         </loadproperties>
-    
+
         <loadproperties srcFile="src/Makefile.global">
             <filterchain>
                 <linecontainsregexp>
@@ -559,7 +560,7 @@
                 <prefixlines prefix="config."/>
             </filterchain>
         </loadproperties>
-    
+
         <loadproperties srcFile="src/Makefile.global">
             <filterchain>
                 <linecontainsregexp>
@@ -568,7 +569,7 @@
                 <prefixlines prefix="config."/>
             </filterchain>
         </loadproperties>
-    
+
         <loadproperties srcFile="src/Makefile.global">
             <filterchain>
                 <linecontainsregexp>
@@ -577,7 +578,7 @@
                 <prefixlines prefix="config."/>
             </filterchain>
         </loadproperties>
-    
+
         <loadproperties srcFile="src/Makefile.global">
             <filterchain>
                 <linecontainsregexp>
@@ -588,22 +589,22 @@
         </loadproperties>
 
         <loadproperties srcFile="src/Makefile.global">
-	    <filterchain>
-	        <linecontainsregexp>
-		    <regexp pattern="^CFLAGS\p{Space}*="/>
-		</linecontainsregexp>
-		<prefixlines prefix="config."/>
-	    </filterchain>
-	</loadproperties>
+      <filterchain>
+          <linecontainsregexp>
+        <regexp pattern="^CFLAGS\p{Space}*="/>
+    </linecontainsregexp>
+    <prefixlines prefix="config."/>
+      </filterchain>
+  </loadproperties>
 
         <loadproperties srcFile="src/Makefile.global">
-	    <filterchain>
-	        <linecontainsregexp>
-		    <regexp pattern="^CPPFLAGS\p{Space}*="/>
-		</linecontainsregexp>
-		<prefixlines prefix="config."/>
-	    </filterchain>
-	</loadproperties>
+      <filterchain>
+          <linecontainsregexp>
+        <regexp pattern="^CPPFLAGS\p{Space}*="/>
+    </linecontainsregexp>
+    <prefixlines prefix="config."/>
+      </filterchain>
+  </loadproperties>
 
         <script language="beanshell"><![CDATA[
             /**
@@ -685,7 +686,7 @@
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <target name="-checkHostChange"
             depends="-extractConfigProperties">
-            
+
         <!--
             Ask the configuration utility to tell us what type of system
             we're running on.  While this isn't exactly what PostgreSQL
@@ -729,11 +730,11 @@
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <target name="-checkIncludesAreMissing"
             depends="-extractConfigProperties">
-	<condition property="includesAreMissing">
-	    <not>
-	        <contains string="${config.CPPFLAGS}" substring="common/include" />
-	    </not>
-	</condition>
+  <condition property="includesAreMissing">
+      <not>
+          <contains string="${config.CPPFLAGS}" substring="common/include" />
+      </not>
+  </condition>
     </target>
 
 
@@ -797,7 +798,7 @@
               failonerror="false">
              <arg line="-s src/postgres.tar.gz"/>
         </exec>
-        
+
     </target>
 
 
@@ -887,7 +888,7 @@
       <echo message="Trying to reconfigure"/>
       <antcall target="configure"/>
     </target>
-     
+
 
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <!-- Build and override existing PostgreSQL.                        -->
