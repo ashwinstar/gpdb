@@ -402,7 +402,7 @@ typedef struct Limit
 typedef enum MotionType
 {
 	MOTIONTYPE_HASH,		/* Use hashing to select a segindex destination */
-	MOTIONTYPE_BROADCAST,	/* Send tuple to all segindexex */
+//	MOTIONTYPE_BROADCAST,	/* Send tuple to all segindexex */
 	MOTIONTYPE_FIXED		/* Send tuples to a fixed set of segindexes */
 } MotionType;
 
@@ -453,14 +453,25 @@ typedef struct Motion
 	bool		sendSorted;			/* if true, output should be sorted */
 	int			motionID;			/* required by AMS  */
 	
-	/* The following field is only used when motionType == MOTIONTYPE_HASH */
-	HashMotionDefn		*pHashDefn;
+	/* The following fields are only used when motionType == MOTIONTYPE_HASH */
+//	HashMotionDefn		*pHashDefn;
+	int		numHashSegs;			/* number of segindexes in hashSegIdx array */	
+	int		*hashSegIdx;			/* array of segindex values to hash to */
+	List	*hashExpr;				/* list of hash expressions */
+	List	*hashOp;				/* list of hash operators oids */
 	
 	/* The following field is only used when motionType == MOTIONTYPE_FIXED */
-	FixedMotionDefn		*pFixedDefn;
+//	FixedMotionDefn		*pFixedDefn;
+	int		numOutputSegs;			/* number of segindexes in outputSegIdx array (0 means broadcast to all) */	
+	int		*outputSegIdx;			/* array of output segindexes */
 
 	/* The following field is only used when sendSorted == true */
-	SortedMotionDefn	*pSortDefn;
+//	SortedMotionDefn	*pSortDefn;
+	int			numSortCols;		/* number of sort key columns */
+	AttrNumber	*sortColIdx;		/* their indexes in target list */
+	Oid			*sortOperators;		/* OID of operators to sort them by */ 
+	int			numInputSegs;		/* number of segindexes in inputSegIdx array */
+	int			*inputSegIdx;		/* array of input segindexes */
 } Motion;
 
 #endif   /* PLANNODES_H */
