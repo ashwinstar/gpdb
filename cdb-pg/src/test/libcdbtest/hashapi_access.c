@@ -63,9 +63,9 @@ Datum HASHAPI_Hash_1_BigInt(PG_FUNCTION_ARGS)
 	cdbhashinit(h);
 	
 	Oid oid = INT8OID;
-	short typmod;
 	
-	cdbhash(h, d1, oid, typmod);
+	
+	cdbhash(h, d1, oid);
 	
 	/* reduce the result hash value */
 	targetbucket = cdbhashreduce(h);	
@@ -104,9 +104,9 @@ Datum HASHAPI_Hash_1_Int(PG_FUNCTION_ARGS)
 	cdbhashinit(h);
 	
 	Oid oid = INT4OID;
-	short typmod;
 	
-	cdbhash(h, d1, oid, typmod);
+	
+	cdbhash(h, d1, oid);
 	
 	/* reduce the result hash value */
 	targetbucket = cdbhashreduce(h);	
@@ -144,9 +144,9 @@ Datum HASHAPI_Hash_1_BpChar(PG_FUNCTION_ARGS)
 	cdbhashinit(h);
 	
 	Oid oid = BPCHAROID;
-	short typmod;
 	
-	cdbhash(h, d1, oid, typmod);
+	
+	cdbhash(h, d1, oid);
 	
 	/* reduce the result hash value */
 	targetbucket = cdbhashreduce(h);	
@@ -188,9 +188,9 @@ Datum HASHAPI_Hash_1_Text(PG_FUNCTION_ARGS)
 	cdbhashinit(h);
 			
 	Oid oid = TEXTOID;
-	short typmod;
+	
 			
-	cdbhash(h, d1, oid, typmod);
+	cdbhash(h, d1, oid);
 			
 	/* reduce the result hash value */
 	targetbucket = cdbhashreduce(h);	
@@ -232,9 +232,9 @@ Datum HASHAPI_Hash_1_Varchar(PG_FUNCTION_ARGS)
 	cdbhashinit(h);
 	
 	Oid oid = VARCHAROID;
-	short typmod;
+
 	
-	cdbhash(h, d1, oid, typmod);
+	cdbhash(h, d1, oid);
 	
 	/* reduce the result hash value */
 	targetbucket = cdbhashreduce(h);	
@@ -278,9 +278,8 @@ Datum HASHAPI_Hash_1_float8(PG_FUNCTION_ARGS)
 	cdbhashinit(h);
 	
 	Oid oid = FLOAT8OID;
-	short typmod;
 	
-	cdbhash(h, d1, oid, typmod);
+	cdbhash(h, d1, oid);
 	
 	/* reduce the result hash value */
 	targetbucket = cdbhashreduce(h);	
@@ -318,9 +317,8 @@ Datum HASHAPI_Hash_1_float4(PG_FUNCTION_ARGS)
 	cdbhashinit(h);
 	
 	Oid oid = FLOAT4OID;
-	short typmod;
 	
-	cdbhash(h, d1, oid, typmod);
+	cdbhash(h, d1, oid);
 	
 	/* reduce the result hash value */
 	targetbucket = cdbhashreduce(h);	
@@ -371,10 +369,9 @@ Datum HASHAPI_Hash_2_Int_Int(PG_FUNCTION_ARGS)
 	Oid oid1 = INT4OID;
 	Oid oid2 = INT4OID;
 	
-	short typmod = 1; /* not used here... */
 	
-	cdbhash(h, d1, oid1, typmod);
-	cdbhash(h, d2, oid2, typmod);
+	cdbhash(h, d1, oid1);
+	cdbhash(h, d2, oid2);
 
 	/* reduce the result hash value */
 	targetbucket = cdbhashreduce(h);	
@@ -416,10 +413,9 @@ Datum HASHAPI_Hash_2_Text_Text(PG_FUNCTION_ARGS)
 	cdbhashinit(h);
 	
 	Oid oid = TEXTOID;
-	short typmod;
 	
-	cdbhash(h, d1, oid, typmod);
-	cdbhash(h, d2, oid, typmod);
+	cdbhash(h, d1, oid);
+	cdbhash(h, d2, oid);
 
 	/* reduce the result hash value */
 	targetbucket = cdbhashreduce(h);	
