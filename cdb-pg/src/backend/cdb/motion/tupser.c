@@ -10,86 +10,128 @@
  */
 #include "postgres.h"
 
-#include "access/heapam.h"
 #include "libpq/pqformat.h"
-#include "utils/lsyscache.h"
 
 #include "cdb/tupser.h"
 
 
 
-/* Attribute information for sending and receiving.  This is cached, since
- * there will almost certainly be many rows processed, all with the same type.
+/* Look up all of the information that SerializeTuple() and DeserializeTuple()
+ * need to perform their jobs quickly.  Also, scratchpad space is allocated
+ * for serialization and desrialization of datum values, and for formation/
+ * deformation of tuples themselves.
  *
- * All values are for the binary input and output functions.
+ * NOTE:  This function allocates various data-structures, but it assumes that
+ *        the current memory-context is acceptable.  So the caller should set
+ *        the desired memory-context before calling this function.
  */
-typedef struct
+void InitSerTupInfo(TupleDesc tupdesc, SerTupInfo *pSerInfo)
 {
-    Oid      typsend;           /* Oid for the type's binary output fn */
-    Oid      send_typio_param;  /* param to pass to the output fn */
-    FmgrInfo send_finfo;        /* Precomputed call info for output fn */
+    int i, numAttrs;
 
-    Oid      typrecv;           /* Oid for the type's binary input fn */
-    Oid      recv_typio_param;  /* param to pass to the input fn */
-    FmgrInfo recv_finfo;        /* Precomputed call info for output fn */
+	AssertArg(tupdesc != NULL);
+	AssertArg(numAttrs >= 0);
+	AssertArg(pSerInfo != NULL);
+	
+    elog(DEBUG2, "Initializing cached tuple serialization information.");
 
-    bool    typisvarlena;       /* is type varlena (ie possibly toastable)? */
-} SerAttrInfo;
+	/* Set contents to all 0, just to make things clean and easy. */
+	bzero(pSerInfo, sizeof(SerTupInfo));
+	
+	/* Store the tuple-descriptor so we can use it later. */
+    pSerInfo->tupdesc = tupdesc;
+	
+	/* If we have some attributes, go ahead and prepare the information for
+	 * each attribute in the descriptor.  Otherwise, we can return right away.
+	 */
+	
+	numAttrs = tupdesc->natts;
+    if (numAttrs <= 0)
+        return;
+	
+    pSerInfo->myinfo = (SerAttrInfo *) palloc0(numAttrs * sizeof(SerAttrInfo));
 
-typedef struct
+    pSerInfo->values = (Datum *) palloc(numAttrs * sizeof(Datum));
+    pSerInfo->nulls  = (char  *) palloc(numAttrs * sizeof(char ));
+
+    for (i = 0; i < numAttrs; i++)
+    {
+        SerAttrInfo *attrInfo = pSerInfo->myinfo + i;
+
+        /* Info for sending the type. */
+
+        getTypeBinaryOutputInfo(tupdesc->attrs[i]->atttypid,
+            &attrInfo->typsend, &attrInfo->send_typio_param,
+            &attrInfo->typisvarlena);
+
+        fmgr_info(attrInfo->typsend, &attrInfo->send_finfo);
+
+        /* Info for receiving the type. */
+
+        getTypeBinaryInputInfo(tupdesc->attrs[i]->atttypid,
+            &attrInfo->typrecv, &attrInfo->recv_typio_param);
+
+        fmgr_info(attrInfo->typrecv, &attrInfo->recv_finfo);
+    }
+}
+
+
+/* Free up storage in a previously initialized SerTupInfo struct. */
+void CleanupSerTupInfo(SerTupInfo *pSerInfo)
 {
-    TupleDesc   tupdesc;    /* The attr info we are set up for */
-    int         nattrs;
-    SerAttrInfo *myinfo;    /* Cached info about each attr */
-
-    /* preallocated space for deformtuple */
-    Datum       *values;
-    char        *nulls;
-} SerTupInfo;
-
-static SerTupInfo s_serTupInfo;
-
-/*-----------------------*/
-/* Function Declarations */
-/*-----------------------*/
-
-void initSerTupInfo(SerTupInfo *myState, TupleDesc tupdesc, int numAttrs);
-
-
-/*----------------------*/
-/* Function Definitions */
-/*----------------------*/
+	AssertArg(pSerInfo != NULL);
+	
+    /*
+	 * Free any old data.
+	 *
+	 * NOTE:  This works because data-structure was bzero()ed in init call.
+	 */
+	
+    if (pSerInfo->myinfo != NULL)
+        pfree(pSerInfo->myinfo);
+    pSerInfo->myinfo = NULL;
+	
+    if (pSerInfo->values != NULL)
+        pfree(pSerInfo->values);
+    pSerInfo->values = NULL;
+    
+	if (pSerInfo->nulls != NULL)
+        pfree(pSerInfo->nulls);
+    pSerInfo->nulls = NULL;
+	
+	pSerInfo->tupdesc = NULL;
+}
 
 
 /* Convert a HeapTuple into a byte-sequence, and store it into the StringInfo.
  *
  * This code is based on the printtup_internal_20() function in printtup.c.
  */
-int SerializeTuple(HeapTuple tuple, TupleDesc tupdesc, StringInfo strInfo)
+int SerializeTuple(HeapTuple tuple, SerTupInfo *pSerInfo, StringInfo strInfo)
 {
-    SerTupInfo *myState;
+	TupleDesc tupdesc;
     int natts;
 
     int i, j, k;
     int origLen;
 
-    myState = &s_serTupInfo;
+	AssertArg(tuple != NULL);
+	AssertArg(pSerInfo != NULL);
+	AssertArg(strInfo != NULL);
+	
+	tupdesc = pSerInfo->tupdesc;
     natts = tupdesc->natts;
     origLen = strInfo->len;
 
-    /* Set or update my derived attribute info, if needed */
-    if (myState->tupdesc != tupdesc || myState->nattrs != natts)
-        initSerTupInfo(myState, tupdesc, natts);
-
     /* deconstruct the tuple (faster than a heap_getattr loop) */
-    heap_deformtuple(tuple, tupdesc, myState->values, myState->nulls);
+    heap_deformtuple(tuple, tupdesc, pSerInfo->values, pSerInfo->nulls);
 
     /* send a bitmap of which attributes are not null */
     j = 0;
     k = 1 << 7;
     for (i = 0; i < natts; ++i)
     {
-        if (myState->nulls[i] != 'n')
+        if (pSerInfo->nulls[i] != 'n')
             j |= k;             /* set bit if not null */
         k >>= 1;
         if (k == 0)             /* end of byte? */
@@ -105,23 +147,23 @@ int SerializeTuple(HeapTuple tuple, TupleDesc tupdesc, StringInfo strInfo)
     /* send the attributes of this tuple */
     for (i = 0; i < natts; ++i)
     {
-        SerAttrInfo *thisState = myState->myinfo + i;
-        Datum origattr = myState->values[i], attr;
+        SerAttrInfo *attrInfo = pSerInfo->myinfo + i;
+        Datum origattr = pSerInfo->values[i], attr;
         bytea *outputbytes;
 
-        if (myState->nulls[i] == 'n')
+        if (pSerInfo->nulls[i] == 'n')
             continue;
 
         /* If we have a toasted datum, forcibly detoast it here to avoid
          * memory leakage inside the type's output routine.
          */
-        if (thisState->typisvarlena)
+        if (attrInfo->typisvarlena)
             attr = PointerGetDatum(PG_DETOAST_DATUM(origattr));
         else
             attr = origattr;
 
-        outputbytes = DatumGetByteaP(FunctionCall2(&thisState->send_finfo,
-            attr, ObjectIdGetDatum(thisState->send_typio_param)));
+        outputbytes = DatumGetByteaP(FunctionCall2(&attrInfo->send_finfo,
+            attr, ObjectIdGetDatum(attrInfo->send_typio_param)));
 
         /* We assume the result will not have been toasted */
         pq_sendint(strInfo, VARSIZE(outputbytes) - VARHDRSZ, 4);
@@ -143,22 +185,21 @@ int SerializeTuple(HeapTuple tuple, TupleDesc tupdesc, StringInfo strInfo)
  *
  * This code is based on the binary input handling functions in copy.c.
  */
-HeapTuple DeserializeTuple(TupleDesc tupdesc, StringInfo serialTup)
+HeapTuple DeserializeTuple(SerTupInfo *pSerInfo, StringInfo serialTup)
 {
-    SerTupInfo *myState;
+	TupleDesc tupdesc;
     int natts;
 
     int i, j, k;
     int origLen;
     StringInfoData attr_data;
 
-    myState = &s_serTupInfo;
+	AssertArg(pSerInfo != NULL);
+	AssertArg(serialTup != NULL);
+	
+    tupdesc = pSerInfo->tupdesc;
     natts = tupdesc->natts;
     origLen = serialTup->len;
-
-    /* Set or update my derived attribute info, if needed */
-    if (myState->tupdesc != tupdesc || myState->nattrs != natts)
-        initSerTupInfo(myState, tupdesc, natts);
 
     /* Receive and process the "non-NULL values" bitmap. */
     for (i = 0, k = 0; i < natts; ++i)
@@ -172,9 +213,9 @@ HeapTuple DeserializeTuple(TupleDesc tupdesc, StringInfo serialTup)
         
         /* If bit cleared, set null; otherwise, set not null. */
         if ((j & k) != 0)
-            myState->nulls[i] = ' ';
+            pSerInfo->nulls[i] = ' ';
         else
-            myState->nulls[i] = 'n';
+            pSerInfo->nulls[i] = 'n';
         
         k >>= 1;
     }
@@ -183,12 +224,12 @@ HeapTuple DeserializeTuple(TupleDesc tupdesc, StringInfo serialTup)
     initStringInfo(&attr_data);
     for (i = 0; i < natts; ++i)
     {
-        SerAttrInfo *thisState = myState->myinfo + i;
+        SerAttrInfo *attrInfo = pSerInfo->myinfo + i;
         uint32 attr_size;
 
-        if (myState->nulls[i] == 'n')       /* NULL field. */
+        if (pSerInfo->nulls[i] == 'n')       /* NULL field. */
         {
-            myState->values[i] = (Datum) 0;
+            pSerInfo->values[i] = (Datum) 0;
         }
         else                                /* Non-NULL field. */
         {
@@ -204,9 +245,9 @@ HeapTuple DeserializeTuple(TupleDesc tupdesc, StringInfo serialTup)
                 pq_getmsgbytes(serialTup, attr_size), attr_size);
 
             /* Call the attribute type's binary input converter. */
-            myState->values[i] =  FunctionCall2(&thisState->recv_finfo,
+            pSerInfo->values[i] =  FunctionCall2(&attrInfo->recv_finfo,
                 PointerGetDatum(&attr_data),
-                ObjectIdGetDatum(thisState->recv_typio_param));
+                ObjectIdGetDatum(attrInfo->recv_typio_param));
 
             /* Trouble if it didn't eat the whole buffer */
             if (attr_data.cursor != attr_data.len)
@@ -222,71 +263,12 @@ HeapTuple DeserializeTuple(TupleDesc tupdesc, StringInfo serialTup)
     pfree(attr_data.data);
     
     /* Construct the tuple from the Datums and nulls values. */
-    return heap_formtuple(tupdesc, myState->values, myState->nulls);
-}
-
-
-/* Get the lookup info that SerializeTuple() and DeserializeTuple() need. */
-void initSerTupInfo(SerTupInfo *myState, TupleDesc tupdesc, int numAttrs)
-{
-    int i;
-    MemoryContext oldctxt;
-
-    elog(DEBUG2, "Initializing cached tuple serialization information.");
-
-    /* Allocate this stuff in the cache memory context so that it won't
-     * get freed when a statement ends.
-     */
-    oldctxt = MemoryContextSwitchTo(CacheMemoryContext);
-
-    /* get rid of any old data */
-
-    if (myState->myinfo)
-        pfree(myState->myinfo);
-    myState->myinfo = NULL;
-    if (myState->values)
-        pfree(myState->values);
-    myState->values = NULL;
-    if (myState->nulls)
-        pfree(myState->nulls);
-    myState->nulls = NULL;
-
-    myState->tupdesc = tupdesc;
-    myState->nattrs = numAttrs;
-    if (numAttrs <= 0)
-        return;
-
-    myState->myinfo = (SerAttrInfo *) palloc0(numAttrs * sizeof(SerAttrInfo));
-
-    myState->values = (Datum *) palloc(numAttrs * sizeof(Datum));
-    myState->nulls = (char *) palloc(numAttrs * sizeof(char));
-
-    for (i = 0; i < numAttrs; i++)
-    {
-        SerAttrInfo *thisState = myState->myinfo + i;
-
-        /* Info for sending the type. */
-
-        getTypeBinaryOutputInfo(tupdesc->attrs[i]->atttypid,
-            &thisState->typsend, &thisState->send_typio_param,
-            &thisState->typisvarlena);
-
-        fmgr_info(thisState->typsend, &thisState->send_finfo);
-
-        /* Info for receiving the type. */
-
-        getTypeBinaryInputInfo(tupdesc->attrs[i]->atttypid,
-            &thisState->typrecv, &thisState->recv_typio_param);
-
-        fmgr_info(thisState->typrecv, &thisState->recv_finfo);
-    }
-
-    MemoryContextSwitchTo(oldctxt);
+    return heap_formtuple(tupdesc, pSerInfo->values, pSerInfo->nulls);
 }
 
 
 
-TupleChunkList CvtHeapTupToChunks(HeapTuple htup, TupleDesc tupdesc,
+TupleChunkList CvtHeapTupToChunks(HeapTuple htup, SerTupInfo *pSerInfo,
     int maxChunkDataSize, uint16 motNodeID, MotionNodeInfo *mn_info,
     int16 tgtSegIdx)
 {
@@ -298,7 +280,7 @@ TupleChunkList CvtHeapTupToChunks(HeapTuple htup, TupleDesc tupdesc,
     TupleChunkType tcType;
 
     AssertArg(htup != NULL);
-    AssertArg(tupdesc != NULL);
+    AssertArg(pSerInfo != NULL);
     AssertArg(maxChunkDataSize >= MIN_TC_DATA_SIZE);
     AssertArg(maxChunkDataSize <= MAX_TC_DATA_SIZE);
     AssertArg(mn_info != NULL);
@@ -306,7 +288,7 @@ TupleChunkList CvtHeapTupToChunks(HeapTuple htup, TupleDesc tupdesc,
     /* Generate serialized version of heap tuple into the string info. */
 
     initStringInfo(&serialTup);
-    SerializeTuple(htup, tupdesc, &serialTup);
+    SerializeTuple(htup, pSerInfo, &serialTup);
 
     /* Create the tuple-chunk list from the serialized data. */
 
@@ -370,7 +352,7 @@ TupleChunkList CvtHeapTupToChunks(HeapTuple htup, TupleDesc tupdesc,
 }
 
 
-HeapTuple CvtChunksToHeapTup(TupleChunkList tcList, TupleDesc tupdesc)
+HeapTuple CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo *pSerInfo)
 {
     StringInfoData serData;
     TupleChunkListItem tcItem;
@@ -379,7 +361,7 @@ HeapTuple CvtChunksToHeapTup(TupleChunkList tcList, TupleDesc tupdesc)
     
     AssertArg(tcList != NULL);
     AssertArg(tcList->p_first != NULL);
-    AssertArg(tupdesc != NULL);
+    AssertArg(pSerInfo != NULL);
     
     /* Dump all of the data in the tuple chunk list into a single StringInfo,
      * so that we can convert it into a HeapTuple.  Check chunk types based on
@@ -447,7 +429,7 @@ HeapTuple CvtChunksToHeapTup(TupleChunkList tcList, TupleDesc tupdesc)
     while (tcItem != NULL);
     
     /* Create the HeapTuple from the concatenated chunks. */
-    htup = DeserializeTuple(tupdesc, &serData);
+    htup = DeserializeTuple(pSerInfo, &serData);
 
     /* Free up memory we used, just to be leaner. */
     pfree(serData.data);

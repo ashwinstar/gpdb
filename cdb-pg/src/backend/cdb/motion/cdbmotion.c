@@ -62,6 +62,11 @@ typedef struct MotionNodeEntry
     /* The description of tuples that this motion node will be exchanging. */
     TupleDesc tuple_desc;
 
+	/* The cached information to perform tuple serialization and
+	 * deserialization as quickly as possible.
+	 */
+	SerTupInfo ser_tup_info;
+	
     /* If preserve_order is false, this tuple-store is used to hold completed
      * tuples that have not yet been consumed.  If preserve_order is true,
      * this is NULL.
@@ -317,7 +322,7 @@ SendReturnCode SendTuple(uint16 motNodeID, TupleSendContext *send_ctxt)
 
         oldCtxt = MemoryContextSwitchTo(ML_MEM_CTXT);
        tcList = CvtHeapTupToChunks(send_ctxt->heap_tuple,
-            pMNEntry->tuple_desc, Cdb_max_tuple_chunk_size, motNodeID,
+            &pMNEntry->ser_tup_info, Cdb_max_tuple_chunk_size, motNodeID,
             &mnInfo, targetSegIdx );
         MemoryContextSwitchTo(oldCtxt);
 
@@ -965,7 +970,8 @@ void InitMotionLayerNode(uint16 motNodeID, bool includeBackupSegDB,
     pEntry->include_backup_segdb = includeBackupSegDB;
     pEntry->preserve_order = preserveOrder;
     pEntry->tuple_desc = CreateTupleDescCopy(tupDesc);
-
+	InitSerTupInfo(pEntry->tuple_desc, &pEntry->ser_tup_info);
+	
     if (!preserveOrder)
     {
         /* Create a tuple-store for the motion node's incoming tuples. */
@@ -1138,6 +1144,7 @@ void EndMotionLayerNode(uint16 motNodeID, bool flushCommLayer)
 
     elog(DEBUG3, "Cleaning up motion-node entry %d.", motNodeID);
 
+	CleanupSerTupInfo(&pMNEntry->ser_tup_info);
     FreeTupleDesc(pMNEntry->tuple_desc);
     if (!pMNEntry->preserve_order)
         tuplestore_end(pMNEntry->ready_tuples);
@@ -1321,7 +1328,7 @@ bool addChunkToSorter(TupleChunkListItem tcItem)
         /* Process the list into a new tuple, then store the tuple. */
 
         htup = CvtChunksToHeapTup(&chunkSorterEntry->chunk_list,
-            motNodeEntry->tuple_desc);
+            &motNodeEntry->ser_tup_info);
 
         tuplestore_puttuple(chunkSorterEntry->ready_tuples, htup);
 
@@ -1380,7 +1387,7 @@ bool addChunkToSorter(TupleChunkListItem tcItem)
         /* Process the list into a new tuple, then store the tuple. */
 
         htup = CvtChunksToHeapTup(&chunkSorterEntry->chunk_list,
-            motNodeEntry->tuple_desc);
+            &motNodeEntry->ser_tup_info);
 
         tuplestore_puttuple(chunkSorterEntry->ready_tuples, htup);
 
