@@ -96,7 +96,7 @@ struct CdbPolicy
 	
 	/* These fields apply to POLICYTYPE_PARTITIONED. */
 	int nattrs;
-	int attrs[0]; /* the first of nattrs attribute numbers.  */
+	AttrNumber attrs[0]; /* the first of nattrs attribute numbers.  */
 } CdbPolicy;
 
 /*
