@@ -1,4 +1,8 @@
 <<<NEW vi: set expandtab ts=4: >>>
+Major simplifications to the cdbloader front end: removed the hashing
+    logic, removed all communications to the admin schema. The loader
+    now connects only to the entry node, and the entry node information
+    is still passed into the loader from the command line like before.
 Added support for hashing on FLOAT4 and FLOAT8. Also added the option
     to select either the FNV1 or FNV1A hash algorithm, so that they
     should both be tested. Reduction methods are "lazy-mod" and "bit
