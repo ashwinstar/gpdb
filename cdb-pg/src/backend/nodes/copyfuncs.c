@@ -87,6 +87,7 @@ CopyPlanFields(Plan *from, Plan *newnode)
 	COPY_BITMAPSET_FIELD(allParam);
 	COPY_SCALAR_FIELD(nParamExec);
 	COPY_NODE_FIELD(flow);
+	COPY_SCALAR_FIELD(dispatch);
 }
 
 /*

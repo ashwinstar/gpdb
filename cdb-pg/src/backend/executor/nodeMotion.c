@@ -295,6 +295,7 @@ execMotionUnsorted(MotionState *node)
                 }
             }
         }
+		pg_usleep(1);
     }
     while (tuple == NULL &&
         !(node->noMoreAMSTuples && node->noMoreChildTuples && node->sentEndOfStream));

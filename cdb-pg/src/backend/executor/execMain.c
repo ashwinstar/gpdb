@@ -222,7 +222,17 @@ ExecutorRun(QueryDesc *queryDesc,
 
 #ifdef CDB_DEVELOPER
 	bool hasDispatched = false;
+	bool shouldDispatch =  Cdb_role == CDB_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL;
 
+	/* TODO Remove this pre-flight check, when we're ready. */
+	if ( shouldDispatch && operation != CMD_SELECT )
+	{
+		ereport(ERROR,  (
+			errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+			errmsg("CDB cannot dispatch queries that modify partitioned tables yet.")
+			));
+	}
+	
 	/*
 	 * Need a try/catch block here so that if an ereport is called from
 	 * within ExecutePlan, we can clean up by calling CdbCheckDispatchResult.
@@ -236,10 +246,7 @@ ExecutorRun(QueryDesc *queryDesc,
 		* fire off cdb_exec command to each of the qexecs
 		*/
 
-		/* TODO: check in the queryDesc to see whether this query
-		 * needs to be dispatched or run locally  
-		 */
-		if ( Cdb_role == CDB_ROLE_DISPATCH )
+		if ( shouldDispatch )
 		{
 			/*
 			 * Serialize the plan and query trees, and create the sql statement: cdbexec ....
@@ -273,16 +280,13 @@ ExecutorRun(QueryDesc *queryDesc,
 			pfree(buffer.data);
 		}
 
-		if ( Cdb_role != CDB_ROLE_DISPATCH || operation == CMD_SELECT )
-		{
-			/*
-			 * Insert/update/delete don't have to run on the dispatcher.  Select does.
-			 */
+		/* For now, query executors only do SELECTs. */
+		Assert( !( Cdb_role==CDB_ROLE_EXECUTE  && operation != CMD_SELECT ) );
 
 #endif
 
 	/*
-	 * run plan
+	 * run plan on the dispatcher (entry) process.
 	 */
 	if (direction == NoMovementScanDirection)
 		result = NULL;
@@ -294,7 +298,6 @@ ExecutorRun(QueryDesc *queryDesc,
 							 direction,
 							 dest);
 #ifdef CDB_DEVELOPER
-		}
 	}
 	PG_CATCH();
 	{

@@ -476,6 +476,7 @@ typedef enum FlowType
 {
 	FLOW_UNDEFINED,		/* used prior to calculation of type of derived flow */
 	FLOW_SINGLETON,		/* flow has single stream */
+	/* TODO - Remove FLOW_REPLICATED. */
 	FLOW_REPLICATED,	/* flow is replicated across IOPs */
 	FLOW_PARTITIONED	/* flow is partitioned across IOPs */
 	/*
@@ -483,5 +484,19 @@ typedef enum FlowType
 	 */
 
 } FlowType;
+
+/*
+ * DispatchMethod - CDB dispatch method.
+ *
+ * There are currently three possibilties, an initial value of undetermined,
+ * and a value for each of the ways the dispatch code implements.
+ */
+typedef enum DispatchMethod
+{
+	DISPATCH_UNDETERMINED = 0,	/* Used prior to determination. */
+	DISPATCH_SEQUENTIAL,		/* Dispatch on entry postgres process only. */
+	DISPATCH_PARALLEL			/* Dispatch on query executor and entry processes. */
+	
+} DispatchMethod;
 
 #endif   /* NODES_H */

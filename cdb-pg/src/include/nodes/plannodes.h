@@ -94,6 +94,17 @@ typedef struct Plan
 	Flow		*flow;			/* Flow description.  Initially NULL.
 								 * Set during parallelization.
 								 */
+	
+	/* 
+	 * CDB:  How should this plan tree be dispatched?  Initially this is set 
+	 * to DISPATCH_UNDETERMINED and, in non-root nodes, may remain so.
+	 * However, in Plan nodes at the root of any separately dispatchable plan
+	 * fragment, it must be set to a specific dispatch type.  This field
+	 * is another candidate for a hypothetical TopPlan node as mentioned
+	 * above.
+	 */
+	DispatchMethod dispatch;
+	
 } Plan;
 
 /* ----------------

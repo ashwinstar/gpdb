@@ -22,7 +22,15 @@
 #include "nodes/pg_list.h"
 #include "nodes/print.h"
 #include "executor/nodeMotion.h"
+
 #include "parser/parsetree.h" /* for rt_fetch() */
+#include "utils/lsyscache.h" /* for getatttypetypmod() */
+#include "parser/parse_oper.h" /* for compatible_oper_opid() */
+#include "nodes/makefuncs.h" /* for makeVar() */
+#include "nodes/value.h" /* for makeString() */
+
+#include "cdb/cdblink.h" /* for getCdbIdentity() */
+
 #include "cdb/cdbplan.h"
 #include "cdb/cdbllize.h"
 #include "cdb/cdbcat.h"
@@ -43,6 +51,9 @@ typedef struct PlanProfile
 	/* Summary status. */
 	bool	hasPartitionedFlow;
 	bool	hasLocalFlow;
+	
+	bool	usesCatalog;
+	bool	usesSegments;
 	
 	/* Context */
 	List	*rtable; /* The current range table. */
@@ -66,7 +77,7 @@ typedef struct PlanProfile
  */
 typedef struct ApplyMotionState
 {
-	int dummy;  
+	int nextMotionID;  
 	
 	/* TODO Finish the mutator which will eventually need some state:
 	 *      At a minimum, a range table, and perhaps more.
@@ -93,12 +104,13 @@ static void psErrorInternal(PlanProfile *context,  const char* detail);
 static void issuePsError(PlanProfile *context);
 
 static Flow *makeFlow(FlowType flotype, bool islocal);
-static Flow *makeFlowForRelation(Oid reloid);
+static Flow *makeFlowForRelation(Oid reloid, PlanProfile *context);
 static void noteFlow(Flow *flow, PlanProfile *context);
 
 static Plan* apply_motion(Plan*  plan);
 static Node* apply_motion_mutator(Node*  node, ApplyMotionState *context);
 static bool is_plan_node(Node* node);
+static void assignMotionID(Node* newnode, ApplyMotionState* context, Node* oldnode);
 
 
 /* TODO Find a way to make these values real and globally available.  
@@ -113,13 +125,18 @@ static unsigned CdbThisSegment = 0;
  * Function cdbparallelize() is the main entry point.  
  *
  * Parallelize a single raw PostgreSQL sequential plan. The input plan
- * is modified in that Flow nodes are attached to Plan nodes in the input.
- * So don't parallelize the same input plan more than once (unless you
- * have set all the flow fields back to NULL).
+ * is modified in that Flow nodes are attached to Plan nodes in the input
+ * as appropriate and the top-level plan node's dispatch field is set
+ * to specify how the plan should be handled by the executor.
  *
- * The result is a copy of the input plan with alterations (principally
- * added Motion nodes) to make the plan suitable for parallel execution
- * by CDB.
+ * If the dispatch field of the top-level plan is set to a non-default
+ * value on entry, the plan is returned unmodified.  This guarantees that
+ * we won't parallelize the same input plan more than once, provides a way
+ * for the planner to create a plan that this function will recognize as
+ * already final.
+ *
+ * The result is [a copy of] the input plan with alterations to make the 
+ * plan suitable for execution by CDB.
  *
  * TODO Much investigation remains in the areas of 
  *
@@ -141,6 +158,13 @@ cdbparallelize(	Plan* plan,
 			)
 {
 	PlanProfile profile; /* Will be initialized by prescan(). */
+	
+	Assert( is_plan_node((Node*)plan) );
+	Assert( query != NULL && IsA(query, Query) );
+	
+	/* If the plan is already marked dispatchable, just return it. */
+	if ( plan->dispatch != DISPATCH_UNDETERMINED )
+		return plan;
 
 	if ( !prescan(plan, query, &profile) )
 		issuePsError(&profile);	
@@ -151,12 +175,33 @@ cdbparallelize(	Plan* plan,
 			profile.hasPartitionedFlow ? "some" : "no",
 			profile.hasLocalFlow ? "some" : "no" )
 		));
+	ereport(NOTICE,  (
+		errmsg("CDB Notice: Plan %s catalog and %s segments.",
+			profile.usesCatalog ? "uses" : "doesn't use",
+			profile.usesSegments ? "uses" : "doesn't use" )
+		));
 #endif
 
-	if ( ! profile.hasPartitionedFlow )
-		return plan;
-	
-	return apply_motion(plan);
+	if ( profile.usesCatalog && profile.usesSegments )
+	{
+		ereport(ERROR,  (
+			errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+			errmsg("Query references both catalog and data."),
+			errhint("CDB requires separate queries.")
+			));
+	}
+	else if ( profile.usesSegments )
+	{
+		if ( profile.hasPartitionedFlow )
+			plan = apply_motion(plan);
+		plan->dispatch = DISPATCH_PARALLEL;
+	}
+	else
+	{
+		Assert(!profile.hasPartitionedFlow);
+		plan->dispatch = DISPATCH_SEQUENTIAL;
+	}
+	return plan;
 }
 
 
@@ -166,6 +211,8 @@ cdbparallelize(	Plan* plan,
  * add flow information to the leaves for later use.  The walker may 
  * also choose to exit with an error, usually to report an unsupported
  * feature used in the plan tree or an unexpected problem.
+ *
+ * The plan and query arguments should not be null.
  *
  * Returns true if the scan results in a parallelization strategy or
  * no parallelization is required;  false otherwise.
@@ -177,46 +224,77 @@ bool
 prescan(Plan *plan, Query *query, PlanProfile *context)
 {
 	/* Initialize the PlanProfile result. */
+	
 	context->hasPartitionedFlow = false;
 	context->hasLocalFlow = false;
+	context->usesCatalog = false;
+	context->usesSegments = false;
 	
 	/* Initialize the current range table. */
 	context->rtable = query->rtable;
 	
-	psError(context,  ERRCODE_CDB_INTERNAL_ERROR,
-		"Unexpected failure parallelizing query.", NULL );
-	
-	/* At the moment, we only accept SELECT statements. */
-	Assert( query != NULL && IsA(query, Query) );
-
-#ifndef CDB_DEVELOPER
 	switch ( query->commandType )
 	{
 		case CMD_SELECT:
 			break;
 			
-		case CMD_UPDATE:
-			psError(context,  ERRCODE_CDB_FEATURE_NOT_YET,
-				"CDB does not support UPDATE yet.", NULL );
-			return false;
-			
-		case CMD_DELETE:
-			psError(context,  ERRCODE_CDB_FEATURE_NOT_YET,
-				"CDB does not support DELETE yet.", NULL );
-			return false;
-			
 		case CMD_INSERT:
-			psError(context,  ERRCODE_CDB_FEATURE_NOT_YET,
-				"CDB does not support INSERT yet.", NULL );
-			return false;
-			
+		case CMD_UPDATE:
+		case CMD_DELETE:
+			if ( query->resultRelation <= 0 || query->resultRelations != NIL )
+			{
+				/* Perhaps this should be an Assert(?) rather than an error. */
+				psError(context,  ERRCODE_CDB_INTERNAL_ERROR,
+					"Unexpected relation specified as target of modification.", 
+					"CDB expects a single result relation without inheritance." );
+				return false;
+			}
+			else
+			{
+				/* 
+				 * Since this is a data modification command, include the 
+				 * result relation in the summary of relations touched.
+				 */
+				Oid reloid;
+				RangeTblEntry *rte;
+				CdbPolicy *policy;
+				
+				Assert( query->resultRelation<=list_length(context->rtable) );
+				rte = rt_fetch(query->resultRelation, context->rtable);
+				Assert( rte->rtekind == RTE_RELATION );
+				reloid = rte->relid;
+				policy = get_table_policy(reloid);
+				
+				if ( policy->ptype == POLICYTYPE_PARTITIONED )
+					context->usesSegments = true;
+				else if ( policy->ptype == POLICYTYPE_ENTRY )
+					context->usesCatalog = true;
+				else
+				{
+					psError(context,  ERRCODE_CDB_INTERNAL_ERROR,
+						"Unexpected data distribution policy.", NULL );
+					return false;
+				}
+				pfree(policy); /* Or should we cache this? */
+			}
+			break;
+		
 		default:
 			psError(context,  ERRCODE_CDB_INTERNAL_ERROR,
 				"CDB cannot parallelize unrecognized query type.", NULL );
 			return false;
 	}
-#endif
-
+	
+	/* 
+	 * Initialize the error fields of the context, in case some failure
+	 * in the prescan neglects to set them.
+	 */
+	psError(context,  ERRCODE_CDB_INTERNAL_ERROR,
+		"Unexpected failure parallelizing query.", NULL );
+	
+	/*
+	 * Do the prescan.
+	 */
 	return !prescan_walker((Node*)plan, context);
 }
 
@@ -247,11 +325,16 @@ prescan_walker(Node *node, PlanProfile *context)
 	switch (nodeTag(node))
 	{
 		case T_SubPlan:
+			/* A SubPlan node is not a Plan node, but an Expr node that
+			 * contains a Plan and its range table.  It corresponds to a
+			 * SubLink in the query tree (a SQL subquery expression).
+			 */
+			 
 			/* TODO Figure out whether this code is safe and efficacious. */
 			detail = "Query involves a sublink expression.";
 			break; /* Error */
 			{
-				/* SubPlans establish a local state for the plan contain,
+				/* SubPlans establish a local state for the contained plan,
 				 * notably the range table.
 				 */
 				SubPlan    *subplan = (SubPlan*) node;
@@ -319,7 +402,7 @@ prescan_walker(Node *node, PlanProfile *context)
 					case T_TidScan:
 						Assert( rte->rtekind == RTE_RELATION );
 						reloid = rte->relid;
-						plan->flow = makeFlowForRelation(reloid);
+						plan->flow = makeFlowForRelation(reloid, context);
 						noteFlow(plan->flow, context);
 						
 						/* Walk into subnodes */
@@ -328,7 +411,7 @@ prescan_walker(Node *node, PlanProfile *context)
 					case T_IndexScan:
 						Assert( rte->rtekind == RTE_RELATION );
 						reloid = rte->relid;
-						plan->flow = makeFlowForRelation(reloid);
+						plan->flow = makeFlowForRelation(reloid, context);
 						/*  
 						 * IndexScan *s = (IndexScan*)node;
 						 *
@@ -367,13 +450,11 @@ prescan_walker(Node *node, PlanProfile *context)
 					case T_SubqueryScan:
 						Assert( rte->rtekind == RTE_SUBQUERY );
 						/*
-						 * It appears that a subquery uses the range table
-						 * of the retained Query node in the subquery RTE to
-						 * resolve the Var nodes in the Plan.
+						 * The subplan within a subquery uses the same range 
+						 * table as the subquery itself.
 						 * 
 						 * TODO Investigate whether a  SubqueryScan can
 						 *      have parameters.  Devise way to parallelize.
-						 *      Implement range table push/pop code.
 						 */
 						detail = "Query contains subqueries.";
 						break; /* Fall through to report error. */
@@ -622,6 +703,9 @@ prescan_walker(Node *node, PlanProfile *context)
  */
 bool prescan_hashjoin(Plan *plan, PlanProfile *context)
 {	
+	List *strategies = NIL;
+	CdbJoinStrategy *strategy = NULL;
+	
 	Plan *outer = outerPlan(plan);
 	Plan *inner = innerPlan(plan);
 	
@@ -641,8 +725,14 @@ bool prescan_hashjoin(Plan *plan, PlanProfile *context)
 	Assert( is_plan_node((Node*)(inner->lefttree)) );
 	Assert( is_plan_node((Node*)outer) );
 	
-	/* Figure out what to do. */
-	CdbJoinStrategy *strategy = getJoinStrategy((Join*)plan);
+	/* Use the first strategy. */
+	strategies = getJoinStrategyList((Join*)plan);
+	if ( strategies != NIL )
+	{
+		strategy = copyJoinStrategy((CdbJoinStrategy*)linitial(strategies));
+		freeJoinStrategyList(strategies);
+		strategies = NIL;
+	}
 	
 	if ( strategy == NULL )
 	{
@@ -760,6 +850,10 @@ bool prescan_hashjoin(Plan *plan, PlanProfile *context)
  */
 bool prescan_mergejoin(Plan *plan, PlanProfile *context)
 {	
+	List *strategies;
+	ListCell *cell;
+	CdbJoinStrategy *strategy;
+	
 	Plan *outer = outerPlan(plan);
 	Plan *inner = innerPlan(plan);
 	
@@ -769,8 +863,25 @@ bool prescan_mergejoin(Plan *plan, PlanProfile *context)
 	Assert( IsA(inner,Sort)|| IsA(inner,IndexScan) );
 	Assert( IsA(outer,Sort)|| IsA(outer,IndexScan) );
 	
-	/* Figure out what to do. */
-	CdbJoinStrategy *strategy = getJoinStrategy((Join*)plan);
+
+	strategies = getJoinStrategyList((Join*)plan);
+	
+	/*
+	 * Use the first strategy we know how to implement. 
+	 */
+	foreach( cell, strategies)
+	{
+		CdbJoinStrategy *s = (CdbJoinStrategy*)lfirst(cell);
+	
+		/* Copy the first strategy we can use and exit the loop. */
+		if ( true )
+		{
+			strategy = copyJoinStrategy(s);
+			break;
+		}
+	}
+	freeJoinStrategyList(strategies);
+	strategies = NIL;
 	
 	if ( strategy == NULL )
 	{
@@ -812,6 +923,8 @@ bool prescan_mergejoin(Plan *plan, PlanProfile *context)
 						Assert(false);
 						break;
 				}
+				break;
+				
 			case T_IndexScan:
 				psErrorNonce(context, "Cannot parallelize IndexScan.");
 				/* Hint: Try again with set enable_mergescan = false */
@@ -855,6 +968,8 @@ bool prescan_mergejoin(Plan *plan, PlanProfile *context)
 						Assert(false);
 						break;
 				}
+				break;
+				
 			case T_IndexScan:
 				psErrorNonce(context, "Cannot parallelize IndexScan.");
 				/* Hint: Try again with set enable_mergescan = false */
@@ -884,16 +999,50 @@ bool prescan_mergejoin(Plan *plan, PlanProfile *context)
  */
 bool prescan_nestloop(Plan *plan, PlanProfile *context)
 {	
+	List *strategies;
+	ListCell *cell;
+	CdbJoinStrategy *strategy = NULL;
+
 	Plan *outer = outerPlan(plan);
-	Plan *inner = innerPlan(plan);
-	
-	/* Check assumptions.
+	Plan *inner = innerPlan(plan);	
+			
+	/* 
+	 * Check assumptions.
 	 */
-	Assert( IsA(plan, NestLoop) );
+	Assert( IsA(plan, NestLoop) && plan->flow == NULL );
 	Assert( is_plan_node((Node*)inner) && inner->flow != NULL );
 	Assert( is_plan_node((Node*)outer) && outer->flow != NULL );
 	
-	CdbJoinStrategy *strategy = getJoinStrategy((Join*)plan);
+	strategies = getJoinStrategyList((Join*)plan);
+	
+	/*
+	 * Use the first strategy we can implement. 
+	 */
+	foreach( cell, strategies)
+	{
+		CdbJoinStrategy *s = (CdbJoinStrategy*)lfirst(cell);
+		
+		/* 
+		 * TODO Determine whether we can extract hashExpr and hashOp from
+		 * the join conditions (qual and joinqual) which would allow us
+		 * to use repartitioning.  In the meantime, we can't use it.
+		 */
+		if ( s->leftmove == MOVEMENT_REPARTITION || s->rightmove == MOVEMENT_REPARTITION )
+			continue;
+		
+		/*
+		 * If the inner relation is an IndexScan, the NestLoop is tightly 
+		 * coupled to it (needs to pass index keys on ExecReScan calls) 
+		 * so we can't insert any motion in between.
+		 */
+		 if ( IsA(inner, IndexScan) && s->rightmove != MOVEMENT_NONE )
+			continue;
+			
+		strategy = copyJoinStrategy(s);
+		break;
+	}
+	freeJoinStrategyList(strategies);
+	strategies = NIL;
 	
 	if ( strategy == NULL )
 	{
@@ -901,16 +1050,101 @@ bool prescan_nestloop(Plan *plan, PlanProfile *context)
 		/* Hint: Try again with set enable_nestloop = false */
 		return true;	 
 	}
-	
-	if ( strategy->leftmove != MOVEMENT_NONE 
-		|| strategy->rightmove != MOVEMENT_NONE  )
+	else if ( strategy->leftmove == MOVEMENT_NONE && strategy->rightmove == MOVEMENT_NONE  )
 	{
-		psErrorNonce(context, "Query involves partitioned nested-loop join.");
-		/* Hint: Try again with set enable_nestloop = false */
-		return true;	 
+		plan->flow = makeFlow(strategy->resultflowtype, strategy->resultislocal);
+	}
+	else 
+	{
+		if ( strategy->leftmove != MOVEMENT_NONE )
+		{
+			/* Implement left argument movement. */
+			switch ( strategy->leftmove )
+			{
+				case MOVEMENT_FOCUS:
+					/* Request motion to focus the outer flow on the dispatcher. */
+					outer->flow->req_move = MOVEMENT_FOCUS;
+					outer->flow->flotype = FLOW_SINGLETON;
+					outer->flow->islocal = true;
+					break;
+						
+				case MOVEMENT_BROADCAST:
+					/* Request motion to focus the outer flow on the dispatcher. */
+					outer->flow->req_move = MOVEMENT_BROADCAST;
+					outer->flow->flotype = FLOW_REPLICATED;
+					outer->flow->islocal = false;
+					break;
+						
+				case MOVEMENT_REPARTITION:
+				default:
+					Assert(false);
+					break;
+			}
+		}
+		
+		if ( strategy->rightmove != MOVEMENT_NONE )
+		{
+			/* Implement right argument movement. Since we discard strategies
+			 * that would introduce Motion between a NestLoop and an inner
+			 * IndexScan, it is likely that the inner relation will always 
+			 * be a Material node, like this:
+			 *
+			 *          plan 
+			 *       (NestLoop)
+			 *        /     \ 
+			 *     outer   inner
+			 *    (Plan) (Material)
+			 *               |              
+			 *          inner->lefttree 
+			 *             (Plan)
+             *
+			 * We don't assume this, but if it isn't the case we'll fail.
+			 *			
+			 * TODO: Need a way to communicate (in a Flow) to the mutator
+			 * that it should add a Material node above an added Motion.
+			 * This would avoid the special requirement.
+			 */
+			if ( ! IsA(inner, Material) )
+			{
+				psErrorInternal(context, "unexpected inner relation type in nested loop join.");
+				/* Hint: Try again with set enable_nestloop = false */
+				return true;	 
+
+			}
+			
+			switch ( strategy->rightmove )
+			{
+				case MOVEMENT_FOCUS:
+					/* Request motion to focus the inner flow on the dispatcher. */
+					inner->lefttree->flow->req_move = MOVEMENT_FOCUS;
+					inner->lefttree->flow->flotype = FLOW_SINGLETON;
+					inner->lefttree->flow->islocal = true;
+					
+					/* Adjust the flow type of the intermediate Material node. */
+					inner->flow->flotype = FLOW_SINGLETON;
+					inner->flow->islocal = true;
+					break;
+						
+				case MOVEMENT_BROADCAST:
+					/* Request motion to broadcast the inner flow. */
+					inner->lefttree->flow->req_move = MOVEMENT_BROADCAST;
+					inner->lefttree->flow->flotype = FLOW_REPLICATED;
+					inner->lefttree->flow->islocal = false;
+					
+					/* Adjust the flow type of the intermediate Material node. */
+					inner->flow->flotype = FLOW_REPLICATED;
+					inner->flow->islocal = false;
+					break;
+						
+				case MOVEMENT_REPARTITION:
+				default:
+					Assert(false);
+					break;
+			}
+		}
 	}
 	
-	/* No motion required so just adopt flow characteristics. */
+	/* Adopt flow characteristics of strategy for the Nestloop. */
 	plan->flow = makeFlow(strategy->resultflowtype, strategy->resultislocal);
 	noteFlow(plan->flow, context);
 	return false;	 
@@ -947,7 +1181,7 @@ bool repartitionSort(Sort *sort, List *exprs, List *ops, PlanProfile *context)
 	
 	foreach(cell, exprs)
 	{
-		/* This may eventually need to become smarter, e.g., accept simple
+		/* TODO This may eventually need to become smarter, e.g., accept simple
 		 * casts of Var.  But for now...
 		 */
 		Node *x = (Node*)lfirst(cell);
@@ -1070,15 +1304,20 @@ void noteFlow(Flow *flow, PlanProfile *context)
 {
 	 /* Note partitioned flows which force parallelization */
 	if ( flow->flotype == FLOW_PARTITIONED )
+	{
 		context->hasPartitionedFlow = true;
+	}
 		
 	 /* Note local flows which disallow parallelization */
+	/* TODO if ( flow->flotype == FLOW_SINGLETON ) */
 	if ( flow->islocal  )
+	{
 		context->hasLocalFlow = true;
+	}
 }
 
 /*
- * Construct a new replicated Flow in the current memory context.
+ * Construct a new Flow in the current memory context.
  */
 Flow *makeFlow(FlowType flotype, bool islocal)
 {
@@ -1121,25 +1360,73 @@ Flow *makePartitionedFlow()
  * for the table specified in the argument.  Flow allocated in current
  * memory context.
  */
-Flow *makeFlowForRelation(Oid reloid)
+Flow *makeFlowForRelation(Oid reloid, PlanProfile *context)
 {
 	Flow *flow;
+	Oid typid;
+	int32 typmod;
+	Oid eq_oid;
+	int i;
+	Var *var;
+	Node* eqstr = NULL;
+	List* eqlst = NIL;
 	
-	switch ( get_table_policytype(reloid) )
+	CdbPolicy *policy = get_table_policy(reloid);
+	
+	switch ( policy->ptype )
 	{
 		case POLICYTYPE_PARTITIONED:	
 			flow = makePartitionedFlow();
+			
+			eqstr = (Node*)makeString("=");
+			eqlst = list_make1(eqstr);
+			
+			for ( i = 0; i < policy->nattrs; i++ )
+			{
+				/* Get attribute datatype information. */
+				typid = InvalidOid;
+				typmod = -1;
+				get_atttypetypmod(reloid, policy->attrs[i], &typid, &typmod);
+				
+				/* Get equality operator OID. */
+				eq_oid = compatible_oper_opid(eqlst, typid, typid, true);
+				
+				if ( eq_oid == InvalidOid )
+				{
+					ereport(ERROR, (	
+						errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						errmsg("no equality operator for partitioned attribute typid %d", typid)
+					));
+				}
+				
+				/* makeVar(varno, attrno, typid, typmod, varlevelsup); */
+				var = makeVar(1,  policy->attrs[i], typid, typmod, 0);
+				
+				flow->hashExpr = lappend(flow->hashExpr, var);
+				flow->hashOp = lappend_oid(flow->hashOp, eq_oid);
+				
+			}
+			context->usesSegments = true;
+			pfree(eqlst);
+			pfree(eqstr);
 			break;
 		
-		case POLICYTYPE_REPLICATED:	
-			flow = makeReplicatedFlow();
+		case POLICYTYPE_ENTRY:
+			flow = makeDispatcherFlow();
+			context->usesCatalog = true;
 			break;
-		
+			
+		/* TODO Remove obsolete types when CDB schema updated. */
+		case POLICYTYPE_REPLICATED:			
 		case POLICYTYPE_SPECIAL:
+		
 		case POLICYTYPE_UNDEFINED:
 		default:
-			flow = makeDispatcherFlow();
-			break;
+			ereport(ERROR, (	
+				errcode(ERRCODE_CDB_INTERNAL_ERROR),
+				errmsg("Unexpected CdbPolicyType: %d.", policy->ptype )
+			));
+			
 	}
 	
 	return flow;
@@ -1156,15 +1443,24 @@ Flow *makeFlowForRelation(Oid reloid)
  *
  * The result is a deep copy of the argument Plan tree with added Motion 
  * nodes.
+ *
+ * TODO Add more context to argument list!  For example, command type.
  * ------------------------------------------------------------------------- *
  */
 Plan* apply_motion(Plan*  plan)
 {
 	ApplyMotionState state;
-	state.dummy = 0;
+	state.nextMotionID = 1; /* Start at 1 so zero will mean "unassigned". */
 	
-	/* If the top plan node emits a parallel flow, refocus it on the
-	 * dispatch stream.
+	/* If the command is SELECT and  the top plan node emits a parallel flow, 
+	 * refocus it on the dispatch stream.
+	 *
+	 * TODO Appropriate top-of-plan processing for other commands.  
+	 *      For example, INSERT to a partitioned table wants a top flow 
+	 *      partitioned according to the data distribution policy.  Some
+	 *      types of UPDATE and DELETE may want the top-level partitioned 
+	 *      flow unmodified (it is partitioned, in effect, on tuple
+	 *      location even though that doesn't occur in the tuple).
 	 */
 	if ( plan->flow->flotype == FLOW_PARTITIONED )
 		plan->flow->req_move = MOVEMENT_FOCUS;
@@ -1194,9 +1490,12 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 			Assert(false);
 			break; 
 			
-		/* Motion nodes can't specify motion. */
+		/* Pre-existing Motion nodes must be renumbered. */
 		case T_Motion:
+			/* Motion nodes can't specify motion. */
 			Assert( ((Plan*)newnode)->flow->req_move == MOVEMENT_NONE );
+			/* Assign unique node number to the new node. */
+			assignMotionID(newnode, context, node);
 			break;
 		
 		/* Add any specified motion to the top of the plan subtree. */
@@ -1252,6 +1551,8 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 								CdbNumSegments,
 								makeDefaultSegIdxArray(CdbNumSegments)
 								);
+							/* Assign unique node number to the new node. */
+							assignMotionID(newnode, context, NULL);
 						}
 						else
 						{
@@ -1263,6 +1564,8 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 								sendToSecondary, 
 								mySegIdx
 								);
+							/* Assign unique node number to the new node. */
+							assignMotionID(newnode, context, NULL);
 						}
 						break;
 						
@@ -1278,6 +1581,8 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 								CdbNumSegments,
 								makeDefaultSegIdxArray(CdbNumSegments)
 								);
+							/* Assign unique node number to the new node. */
+							assignMotionID(newnode, context, NULL);
 						}
 						else
 						{
@@ -1285,6 +1590,8 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 								plan, 
 								sendToSecondary
 								);
+							/* Assign unique node number to the new node. */
+							assignMotionID(newnode, context, NULL);
 						}
 						break;
 						
@@ -1305,6 +1612,8 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 								CdbNumSegments,
 								makeDefaultSegIdxArray(CdbNumSegments)
 								);
+							/* Assign unique node number to the new node. */
+							assignMotionID(newnode, context, NULL);
 						}
 						else
 						{
@@ -1316,6 +1625,8 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 								flow->hashExpr,
 								flow->hashOp								
 								);
+							/* Assign unique node number to the new node. */
+							assignMotionID(newnode, context, NULL);
 						}
 						break;
 						
@@ -1374,3 +1685,24 @@ bool is_plan_node(Node* node)
 	return false;
 }
 
+/* 
+ * Helper code for ApplyMotionState -- Assign motion id to new Motion node. 
+ */
+void assignMotionID(Node* newnode, ApplyMotionState* context, Node* oldnode)
+{
+	Assert( IsA(newnode,Motion) && context != NULL);
+	Assert( oldnode == NULL || (IsA(oldnode,Motion) && oldnode != newnode) );
+	
+	/* Assign unique node number to the new node. */
+	((Motion*)newnode)->motionID = context->nextMotionID++;
+	
+	/* Debugging hint that we have reassigned a previously assigned ID. */
+	if ( oldnode != NULL && ((Motion*)oldnode)->motionID != 0 )
+	{
+		ereport(DEBUG2, (
+			errmsg("Motion node renumbered: old=%d new=%d.",
+				((Motion*)oldnode)->motionID,
+				((Motion*)newnode)->motionID )
+		));
+	}
+}

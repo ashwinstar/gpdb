@@ -82,6 +82,11 @@
 #define Anum_cdb_policy_attrnums	4
 
 /*
+ * CdbPolicyType represents a type of policy under which a relation's
+ * tuples may be assigned to a component database.
+ *
+ * TODO Remove the following comments following CDB schema redesign.
+ *
  * enum representing the policy type of a table,
  * from cdb.policy.policytype.
  * The mapping is as follows:
@@ -92,15 +97,34 @@
 typedef enum CdbPolicyType
 {
 	POLICYTYPE_UNDEFINED,	
-	POLICYTYPE_PARTITIONED,	
-	POLICYTYPE_REPLICATED,	
-	POLICYTYPE_SPECIAL	
+	POLICYTYPE_PARTITIONED,	/* Tuples partitioned onto segment database. */
+	POLICYTYPE_REPLICATED,	/* TODO Remove - no longer pertinent */
+	POLICYTYPE_SPECIAL,		/* TODO Remove - no longer pertinent */
+	POLICYTYPE_ENTRY		/* Tuples stored on enty database. */
 } CdbPolicyType;
 
 /*
- * get_table_policytype: returns the CdbPolicyType for a table oid.
+ * CdbPolicy represents a CDB data distribution policy. The ptype field
+ * is always significant.  Other fields may be specific to a particular
+ * type.
+ *
+ * A CdbPolicy is typically palloc'd with space for nattrs integer
+ * attribute numbers (attrs) in addition to sizeof(CdbPolicy).
  */
-extern CdbPolicyType get_table_policytype(Oid tbloid);
+typedef
+struct CdbPolicy
+{
+	CdbPolicyType ptype;
+	
+	/* These fields apply to POLICYTYPE_PARTITIONED. */
+	int nattrs;
+	int attrs[0]; /* the first of nattrs attribute numbers.  */
+} CdbPolicy;
+
+/*
+ * get_table_policy: returns a palloc'd CdbPolicy for a table oid.
+ */
+extern CdbPolicy *get_table_policy(Oid tbloid);
 
 /*
  * getCDBNamespaceOid: gets the oid of the cdb namespace.

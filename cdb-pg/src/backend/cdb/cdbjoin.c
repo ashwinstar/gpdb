@@ -51,11 +51,11 @@ static CdbJoinStrategy *makeStrategy(Movement left, Movement right, FlowType res
  * a list of possible flow specifications.
  *
  */
-CdbJoinStrategy *getJoinStrategy(Join* join)
+List *getJoinStrategyList(Join* join)
 {
-	
 	JoinCombination jcomb;
 	JoinDirection argreqs;
+	List *result = NIL;
 	
 	Assert( ((Plan*)join)->lefttree->flow != NULL );
 	Assert( ((Plan*)join)->righttree->flow != NULL );
@@ -79,7 +79,7 @@ CdbJoinStrategy *getJoinStrategy(Join* join)
 			break;
 		case FLOW_UNDEFINED:
 		default:
-			return NULL;
+			return NIL;
 	}
 	
 	switch (((Plan*)join)->righttree->flow->flotype )
@@ -95,7 +95,7 @@ CdbJoinStrategy *getJoinStrategy(Join* join)
 			break;
 		case FLOW_UNDEFINED:
 		default:
-			return NULL;
+			return NIL;
 	}
 
 	/* Next determine what argument requirements are introduced by outer joins.
@@ -136,7 +136,7 @@ CdbJoinStrategy *getJoinStrategy(Join* join)
 		case JOIN_UNION:
 		default:
 			/* This shouldn't happen. */
-			return NULL;
+			return NIL;
 			break;
 	}
 	
@@ -144,21 +144,25 @@ CdbJoinStrategy *getJoinStrategy(Join* join)
 	{
 		case RxR:
 			/* Replicated flows can join in parallel.   The result is a
-			 * replicate flow. */
-			return makeStrategy(MOVEMENT_NONE, MOVEMENT_NONE, FLOW_REPLICATED);
+			 * replicated flow.  This case may never occur. */
+			result = lappend(result,makeStrategy(MOVEMENT_NONE, MOVEMENT_NONE, FLOW_REPLICATED));
 			break;
 		
 		case RxL:
 		case LxR:
+			/* Replicated and singleton where the singleton is on a segment
+			 * can join in parallel, producing a singleton.  Currently,
+			 * though, the only singleton flows are on the entry database,
+			 * so the direct strategy is closed for now.  */
+			 break;
+			 
 		case LxL:
-			/* Replicated and local flows can join in parallel, but the
-			 * local flow forces the result to be local.  */
-			return makeStrategy(MOVEMENT_NONE, MOVEMENT_NONE, FLOW_SINGLETON);
+			result = lappend(result,makeStrategy(MOVEMENT_NONE, MOVEMENT_NONE, FLOW_SINGLETON));
 			break;
 		
 		case RxP:
 			/* A replicated flow can join directly to a partitioned flow
-			 * producing partitioned flow, unless the replicated flow is on
+			 * producing a partitioned flow, unless the replicated flow is on
 			 * the "driving side" of an outer join.
 			 */
 			switch ( argreqs )
@@ -166,7 +170,8 @@ CdbJoinStrategy *getJoinStrategy(Join* join)
 				case InnerJoin:
 				case OuterRight:
 					/* Replicated flow isn't on the driving side. */
-					return makeStrategy(MOVEMENT_NONE, MOVEMENT_NONE, FLOW_PARTITIONED);
+					result = lappend(result,makeStrategy(MOVEMENT_NONE, MOVEMENT_NONE, FLOW_PARTITIONED));
+					/* Could also broadcast right side, but why? */
 					break;
 				
 				case OuterLeft:
@@ -176,7 +181,7 @@ CdbJoinStrategy *getJoinStrategy(Join* join)
 					 * partitioned one, so the only thing we can do is to
 					 * broadcast the partitioned side making it replicated.
 					 */
-					return makeStrategy(MOVEMENT_NONE, MOVEMENT_BROADCAST, FLOW_REPLICATED);
+					result = lappend(result,makeStrategy(MOVEMENT_NONE, MOVEMENT_BROADCAST, FLOW_REPLICATED));
 					break;
 			}
 			break;
@@ -191,7 +196,8 @@ CdbJoinStrategy *getJoinStrategy(Join* join)
 				case InnerJoin:
 				case OuterLeft:
 					/* Replicated flow isn't on the driving side. */
-					return makeStrategy(MOVEMENT_NONE, MOVEMENT_NONE, FLOW_PARTITIONED);
+					result = lappend(result,makeStrategy(MOVEMENT_NONE, MOVEMENT_NONE, FLOW_PARTITIONED));
+					/* Could also broadcast left side, but why? */
 					break;
 				
 				case OuterRight:
@@ -201,7 +207,7 @@ CdbJoinStrategy *getJoinStrategy(Join* join)
 					 * partitioned one, so the only thing we can do is to
 					 * broadcast the partitioned side making it replicated.
 					 */
-					return makeStrategy(MOVEMENT_BROADCAST, MOVEMENT_NONE, FLOW_REPLICATED);
+					result = lappend(result,makeStrategy(MOVEMENT_BROADCAST, MOVEMENT_NONE, FLOW_REPLICATED));
 					break;
 			}
 			break;
@@ -211,12 +217,12 @@ CdbJoinStrategy *getJoinStrategy(Join* join)
 		 * we need to bring all the rows of the partitioned flow to the
 		 * stream that carries the local flow. */		
 		case LxP:
-			return makeStrategy(MOVEMENT_NONE, MOVEMENT_FOCUS, FLOW_SINGLETON);
+			result = lappend(result,makeStrategy(MOVEMENT_NONE, MOVEMENT_FOCUS, FLOW_SINGLETON));
 			break;		
 		case PxL:
 			/* Motion: Focus left on dispatcher. */
 			/* Result: Singleton, Local */
-			return makeStrategy(MOVEMENT_FOCUS, MOVEMENT_NONE, FLOW_SINGLETON);
+			result = lappend(result,makeStrategy(MOVEMENT_FOCUS, MOVEMENT_NONE, FLOW_SINGLETON));
 			break;
 			
 		case PxP:
@@ -224,10 +230,14 @@ CdbJoinStrategy *getJoinStrategy(Join* join)
 			 * join key. (It would be great if we were smart enought to notice
 			 * whether one or both flow were already partitioned that way, but
 			 * we're not, so both sides get repartitioned. */
-			return makeStrategy(MOVEMENT_REPARTITION, MOVEMENT_REPARTITION, FLOW_PARTITIONED);
+			result = lappend(result,makeStrategy(MOVEMENT_REPARTITION, MOVEMENT_REPARTITION, FLOW_PARTITIONED));
+			if ( argreqs!=OuterRight && argreqs!=OuterBoth)
+				result = lappend(result,makeStrategy(MOVEMENT_NONE, MOVEMENT_BROADCAST, FLOW_PARTITIONED));
+			if ( argreqs!=OuterLeft && argreqs!=OuterBoth)
+				result = lappend(result,makeStrategy(MOVEMENT_BROADCAST, MOVEMENT_NONE, FLOW_PARTITIONED));
 			break;
 	}
-	return NULL;
+	return result;
 }
 
 
@@ -243,3 +253,26 @@ CdbJoinStrategy *makeStrategy(Movement left, Movement right, FlowType result)
 	js->resultislocal = ( result == FLOW_SINGLETON );
 	return js;
 }	
+/*
+ * Make a palloc'd copy of the argument strategy.
+ */
+CdbJoinStrategy *copyJoinStrategy(CdbJoinStrategy *old)
+{
+	CdbJoinStrategy *js = NULL;
+	
+	if  ( old != NULL )
+	{
+		js = makeStrategy(old->leftmove, old->rightmove, old->resultflowtype);
+		js->resultislocal = old->resultislocal;
+	}
+	return js;
+}	
+
+/*
+ * Free a result of getJoinStrategyList().  Caller should NIL out any
+ * copies of pointers to the list.
+ */
+void freeJoinStrategyList(List* jslist)
+{
+	list_free_deep(jslist);
+}

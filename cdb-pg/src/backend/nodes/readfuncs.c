@@ -1399,6 +1399,7 @@ void readPlanInfo(Plan *local_node)
 	READ_BITMAPSET_FIELD(allParam);
 	READ_INT_FIELD(nParamExec);
 	READ_NODE_FIELD(flow);
+	READ_ENUM_FIELD(dispatch, DispatchMethod);
 }
 
 void readJoinInfo(Join *local_node)

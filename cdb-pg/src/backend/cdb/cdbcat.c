@@ -16,13 +16,22 @@
 #include "utils/lsyscache.h"
 #include "cdb/cdbcat.h"
 
-
+#include "catalog/pg_type.h"
+#include "utils/array.h"
+static void  extract_int_array(Datum array_datum, int* lenp, int** vecp);
+ 
+ 
 /*
- * Returns the policy type of a table from the cdb.policy table
+ * Returns the policy of a table as determined from the cdb.policy table
+ * in a CdbPolicy structure allocated in the current memory context.
+ *
+ * The caller is responsible for passing in a valid relation oid.  This
+ * function does not check and assigns a policy of type POLICYTYPE_ENTRY
+ * for any oid not found in cdb.policy.
  */
-CdbPolicyType get_table_policytype(Oid tbloid)
+CdbPolicy *get_table_policy(Oid tbloid)
 {
-	CdbPolicyType	ptype = POLICYTYPE_UNDEFINED;
+	CdbPolicy *		policy = NULL;  /* The result */
 	Relation		cdb_policy_rel;
 	Oid				cdb_policy_index_oid;
 	ScanKeyData		policy_key[1];
@@ -38,7 +47,14 @@ CdbPolicyType get_table_policytype(Oid tbloid)
 	 */
 	Oid cdb_namespace_oid = getCDBNamespaceOid();
 	if ( cdb_namespace_oid == InvalidOid )
-		return ptype;
+	{
+		ereport(ERROR, (	
+			errcode(ERRCODE_CDB_INTERNAL_ERROR),
+			errmsg("CDB schema not found.")
+		));
+		
+		return NULL; /* Won't happen */
+	}
 		
 	/*
 	 * Then, open the table and and find the oid of the index
@@ -75,43 +91,71 @@ CdbPolicyType get_table_policytype(Oid tbloid)
 	{
 		bool	isNull;
 		Datum	attr;
-		char*	policy = NULL;
+		char*	policy_str = NULL;
+		int		i, nattrs = 0;
+		int*	attrnums = NULL;
+		size_t  sz;
 		
 		/*
 		 * Get the policytype attribute
 		 */
 		attr = heap_getattr(cdb_policy_tuple, Anum_cdb_policy_policytype, cdb_policy_rel->rd_att, &isNull);
 		Assert( !isNull );
-		policy = DatumGetCString(DirectFunctionCall1(textout, attr));
+		policy_str = DatumGetCString(DirectFunctionCall1(textout, attr));
 		
 		/*
-		 * Convert it to CdbPolicyType
+		 * Outcome depends on CdbPolicyType. This is a bit of a mess due
+		 * to the need to work against the old CDB schema, which doesn't
+		 * really fit.
+		 *
+		 * TODO Clean up when new schema design is in place.
 		 */
-		switch( policy[0] )
+		switch( policy_str[0] )
 		{
-			case 'p':
-				ptype = POLICYTYPE_PARTITIONED;
+			case 'p':  /* POLICYTYPE_PARTITIONED */
+				/* Get the attributes on which to partition */
+				attr = heap_getattr(cdb_policy_tuple, Anum_cdb_policy_attrnums, cdb_policy_rel->rd_att, &isNull);
+				Assert( !isNull );
+				extract_int_array(attr, &nattrs, &attrnums);
+				Assert( nattrs >= 0 );
+				
+				sz = sizeof(CdbPolicy) + nattrs*sizeof(policy->attrs[0]);
+				policy = (CdbPolicy*) palloc(sz);
+				policy->ptype = POLICYTYPE_PARTITIONED;
+				policy->nattrs = nattrs;
+				for ( i = 0; i < nattrs; i++ )
+				{
+					policy->attrs[i] = attrnums[i];
+				}
 				break;	
-			case 'r':
-				ptype = POLICYTYPE_REPLICATED;
-				break;	
-			case 's':
-				ptype = POLICYTYPE_SPECIAL;
+			default:
+				ereport(WARNING, (	
+					errcode(ERRCODE_WARNING_DEPRECATED_FEATURE),
+					errmsg("Ignoring cdb.policy row with policytype=\"%s\".", policy_str),
+					errhint("Update your CDB database and CDB schema contents!")
+				));
 				break;	
 		}
 		
-		if ( policy != NULL )
-			pfree( policy );
+		if ( policy_str != NULL )
+			pfree( policy_str );
 	}
 	
 	/*
 	 * Cleanup the scan and relation objects.
 	 */
 	systable_endscan(cdb_policy_scan);
-	
 	heap_close(cdb_policy_rel, AccessShareLock);
+	
+	/* Interpret absence of a valid policy row as POLICYTYPE_ENTRY */
+	if ( policy == NULL )
+	{
+		policy = palloc(sizeof(CdbPolicy));
+		policy->ptype = POLICYTYPE_ENTRY;
+		policy->nattrs= 0;
+	}
 			
-	return ptype;
+	return policy;
 }
 
 /*
@@ -265,3 +309,25 @@ SysScanDesc cdbtable_beginscan(Relation heapRelation,
 	return sysscan;
 }
 
+
+/*
+ * Extract len and pointer to buffer from an int32[] (vector) Datum.
+ */
+ static void
+ extract_int_array(Datum array_datum, int* lenp, int** vecp)
+ {
+	ArrayType *array_type;
+	
+	Assert( lenp != NULL );
+	Assert( vecp != NULL );
+	
+	array_type = DatumGetArrayTypeP(array_datum);
+	Assert( ARR_NDIM(array_type) == 1 );
+	Assert( ARR_ELEMTYPE(array_type) == INT4OID );
+	Assert( ARR_LBOUND(array_type)[0] == 1 );
+	*lenp = ARR_DIMS(array_type)[0];
+	*vecp = (int*)ARR_DATA_PTR(array_type);
+	
+	return;
+ }	
+ 

@@ -35,6 +35,8 @@ typedef struct CdbJoinStrategy
 
 } CdbJoinStrategy;
 
-extern CdbJoinStrategy *getJoinStrategy(Join *join);
+extern List *getJoinStrategyList(Join *join);
+extern CdbJoinStrategy *copyJoinStrategy(CdbJoinStrategy *old);
+extern void freeJoinStrategyList(List* jslist);
 
 #endif /* CDBJOIN_H */

@@ -254,6 +254,7 @@ _outPlanInfo(StringInfo str, Plan *node)
 	WRITE_BITMAPSET_FIELD(allParam);
 	WRITE_INT_FIELD(nParamExec);
 	WRITE_NODE_FIELD(flow);
+	WRITE_ENUM_FIELD(dispatch,DispatchMethod);
 }
 
 /*
@@ -998,9 +999,9 @@ _outFlow(StringInfo str, Flow *node)
 	WRITE_BOOL_FIELD(islocal);
 	WRITE_ENUM_FIELD(req_move, Movement);
 	
+	/* This array format as in Group and Sort nodes. */
 	WRITE_INT_FIELD(numSortCols);
 	
-	/* Caution: Just made up this format! May break, e.g., pretty print. */
 	appendStringInfo(str, " :sortColIdx");
 	for ( i = 0; i < node->numSortCols; i++ )
 		appendStringInfo(str, " %d", node->sortColIdx[i]);
