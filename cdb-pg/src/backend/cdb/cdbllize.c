@@ -73,19 +73,6 @@ typedef struct PlanProfile
 
 
 /*
- * An ApplyMotionState holds state for the recursive apply_motion_mutator().
- */
-typedef struct ApplyMotionState
-{
-	int nextMotionID;  
-	
-	/* TODO Finish the mutator which will eventually need some state:
-	 *      At a minimum, a range table, and perhaps more.
-	 */
-} ApplyMotionState;
-
-
-/*
  * Forward Declarations
  */
 static bool prescan(Plan *plan, Query *query, PlanProfile *context);
