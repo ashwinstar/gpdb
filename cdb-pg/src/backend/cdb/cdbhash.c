@@ -30,14 +30,17 @@
 /* Constant prime value used for an FNV1/FNV1A hash */
 #define FNV_32_PRIME ((uint32)0x01000193)
 
+/* Constant used for hashing a NULL value */
+#define NULL_VAL ((uint32)0XF0F0F0F1)
+
 /* Fast mod using a bit mask, assuming that y is a power of 2 */
 #define FASTMOD(x,y)		((x) & ((y)-1))
 
 /* local function declarations */
-int ignoreblanks(char *data, int len);
-int ispowof2(int numsegs);
 uint32 fnv1_32_buf(void *buf, size_t len, uint32 hashval);
 uint32 fnv1a_32_buf(void *buf, size_t len, uint32 hashval);
+int ignoreblanks(char *data, int len);
+int ispowof2(int numsegs);
 
 
 /*================================================================
@@ -63,10 +66,6 @@ uint32 fnv1a_32_buf(void *buf, size_t len, uint32 hashval);
 CdbHash *makeCdbHash(int numsegs, CdbHashAlg algorithm)
 {	
 	
-	ereport(NOTICE, (
-		errmsg("CDBHASH - Creating a CdbHash with %d buckets, using FNV hash ", numsegs)
-					));
-			
 	/*
 	 * verify number of segments is legal.
 	 */
@@ -134,40 +133,23 @@ void cdbhashinit(CdbHash *h)
 void cdbhash(CdbHash *h, Datum datum, Oid type)
 {
 	
-	void *buf;    /* pointer to the data */
-	size_t len;   /* length for the data buffer */
-	int64 intbuf; /* an 8 byte buffer for all integer sizes */
-	BpChar  *bp;  /* a variable length struct (varlena) for blank padded strings */
-	text *txt;    /* a variable length struct (varlena) for text */
-	VarChar *vc;  /* a variable length struct (varlena) for varchar */
+	void *buf;     /* pointer to the data */
+	size_t len;    /* length for the data buffer */
+	int64 intbuf;  /* an 8 byte buffer for all integer sizes */
+	BpChar  *bp;   /* a variable length struct (varlena) for blank padded strings */
+	text *txt;     /* a variable length struct (varlena) for text */
+	VarChar *vc;   /* a variable length struct (varlena) for varchar */
 	float4 buf_f4;    
 	float8 buf_f8;
-	
-	ereport(NOTICE,  (
-		errmsg("CDB Hash: Adding an attribute of type %d to the hash.", (int)type) /* add more detail later */
-					));
-			
+				
 	/*
 	 * Select the hash to be performed according to the field type we are adding to the 
 	 * hash. 
-	 *
-	 * Before calculating the hash we make sure to convert a data type that belogs to a type
-	 * group into the pre-decided type. For example, an integer type group may include types int2,int4,int8. 
-	 * int2 and int4 will be cast to an int8 and hashed as an int8. 
-	 *
-	 * The reason for doing so is that arguments to equality omparisons that don't match on 
-	 * type are never hashable by PostgreSQL (e.g., int4 = int8). PostgreSQL will never choose hash join to 
-	 * implement a join on equality of an int4 attribute to an int8 attribute. It will choose another approach 
-	 * and will perform the comparison using the procedure "int48eq".
-	 * As of PostgreSQL 8.0 there are 55 built-in equality comparisons, each of which may or may
-	 * not be a candidate for a PostgreSQL hash join. Therefore, the CDB hash function can do a better job (at the 
-	 * expense of some datatype generality) by recognizing the comparability of closely related types.
-	 */
-	
-	switch( type )
+     */	
+    switch( type )
 	{
 	   /*=====================================================
-		* integer type group
+		* integer type group (all hashed as int8)
 		*=====================================================
 		*/
 		case INT2OID: /* -32 thousand to 32 thousand, 2-byte storage */
@@ -280,11 +262,7 @@ void cdbhash(CdbHash *h, Datum datum, Oid type)
 	}/* switch(type) */
 	
     /* do the hash using the selected algorithm */
-    h->hash = (h->hashfn)(buf, len, h->hash); 
-	
-	ereport(NOTICE,  (
-		errmsg("CDB Hash: New hash value %u.", h->hash) /* add more detail later */
-			));
+    h->hash = (h->hashfn)(buf, len, h->hash); 	
 }
 
 /*
@@ -292,9 +270,12 @@ void cdbhash(CdbHash *h, Datum datum, Oid type)
  */
 void cdbhashnull(CdbHash *h)
 {
-	ereport(NOTICE,  (
-		errmsg("CDB Hash: Adding a NULL attribute to the hash.") /* add more detail later */
-					));
+	uint32 nullbuf = NULL_VAL;     /* stores the constant value that represents a NULL */
+	void *buf = &nullbuf;          /* stores the address of the buffer                 */
+	size_t len = sizeof(nullbuf);  /* length of the value							   */
+	
+	/* do the hash using the selected algorithm */
+	h->hash = (h->hashfn)(buf, len, h->hash); 
 }
 
 /*
