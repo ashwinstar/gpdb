@@ -10,7 +10,7 @@
 
 PATH="$(dirname $0):$PATH"
 
-usage="[ PGROOT=<root_directory> ] $(basename $0) \n        [ {--dbroot|-D} <root_directory> ] \n        [ --stats {off|on|all|{command,block,row} ] \n        [ {--prefix|-P} { dbprefix | cdb} ] \n        [ {--help} ]"
+usage="[ PGROOT=<root_directory> ] $(basename $0) \n        [ {--dbroot|-D} <root_directory> ] \n        [ --stats {off|on|all|{command,block,row} ] \n        [ {--prefix|-P} { dbprefix | cdb} ] \n        [ {-u} {--help} ]"
 
 echo -e "cdbstart: Starts the amsd and listener(s) of the local CDB cluster."
 echo -e "Copyright (c) 2004-2005 Metapa, Inc. All Rights Reserved"
@@ -42,6 +42,7 @@ function display_help
     echo    "TCP socket listener is enabled."
 
     echo -e "\nUse \"cdbpsql <databasename>\" to interact with the first segDB of the CDB cluster."
+    echo -e "If you need use the -u option, you can start the whole cluster in utility mode."
 
     echo -e "\nSee README.txt for more details.\n"
 
@@ -65,6 +66,7 @@ options_ended=
 dbroot=
 stats=
 prefix=
+utility=
 
 # Loop through our command line args, and see what we have
 # TODO: Figure out why we don't trap bad options in the first block
@@ -73,7 +75,7 @@ do
     if [ ! $options_ended ]; then
         OPTIND=1
         OPTARG='--'
-        while getopts :D:P: option
+        while getopts :D:P:u option
         do
             case $option in
                 :)
@@ -89,6 +91,9 @@ do
                    ;;
                 P)
                    prefix="$OPTARG"
+                   ;;
+                u)
+                   utility="-c cdb_session_role=utility"
                    ;;
                 *)
                    display_help
@@ -256,5 +261,5 @@ do
     echo "Starting DB instance ($PGDATA at $PGPORT)"
     echo "The logfile can be found at $PGROOT/logfile.$db"
 
-    pg_ctl -l "$PGROOT"/logfile.$db -o "-d 4 -i ${stats_options[@]}" start
+    pg_ctl -l "$PGROOT"/logfile.$db -o "-d 4 -i ${stats_options[@]} $utility" start
 done
