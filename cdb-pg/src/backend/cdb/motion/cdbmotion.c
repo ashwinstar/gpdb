@@ -29,6 +29,10 @@
 #include "utils/tuplestore.h"
 
 
+/* Define this if you want tons of logs! */
+/* #define AMS_VERBOSE_LOGGING */
+
+
 /* I'm not sure that the cache mem-ctxt is where internal stuff should go! */
 #define ML_MEM_CTXT     CacheMemoryContext
 
@@ -79,6 +83,19 @@ typedef struct MotionNodeEntry
      */
     uint num_stream_ends_recvd;
 
+    /*----------------------------*/
+    /* PER-MOTION-NODE STATISTICS */
+    /*----------------------------*/
+
+    uint32 stat_total_sends;            /* Total calls to SendTuple. */
+    uint32 stat_total_sends_incomplete; /* Times it returned INCOMPLETE. */
+
+    uint32 stat_total_recvs;            /* Total calls to RecvTuple/etc. */
+    uint32 stat_total_recvs_notuple;    /* Times it returned NO-TUPLE. */
+
+    uint32 stat_tuples_available;       /* Total tuples awaiting receive. */
+    uint32 stat_tuples_available_hwm;   /* High-water-mark of this value. */
+
 } MotionNodeEntry;
 
 
@@ -121,6 +138,16 @@ typedef struct ChunkSorterEntry
      */
     bool end_of_stream;
 
+    /*---------------------------------------*/
+    /* PER-(MOTION NODE & SENDER) STATISTICS */
+    /*                                       */
+    /* These are utilized primarily in order */
+    /* preserving motion nodes.              */
+    /*---------------------------------------*/
+
+    uint32 stat_tuples_available;       /* Total tuples awaiting receive. */
+    uint32 stat_tuples_available_hwm;   /* High-water-mark of this value. */
+
 } ChunkSorterEntry;
 
 /*=========================================================================
@@ -129,6 +156,26 @@ typedef struct ChunkSorterEntry
 
 typedef struct MotionLayerState
 {
+    /*--------------*/
+    /* GLOBAL STATE */
+    /*--------------*/
+
+    /* The segment-index of the local segment-database. */
+    int my_seg_idx;
+
+    /* Records whether this segment-database is primary. */
+    bool is_primary;
+
+    /* The host ID that this segment-database is on. */
+    int host_id;
+
+    /* The ID of the query-group. */
+    int query_group_id;
+
+    /*------------------------------------------------------------------*/
+    /* MOTION NODE STATE - Initialized and used on per-statement basis. */
+    /*------------------------------------------------------------------*/
+
     /* Map to store information about each motion node in a plan. */
     HTAB *motionnode_map;
 
@@ -137,7 +184,18 @@ typedef struct MotionLayerState
      * destination motion-node.
      */
     HTAB *chunksort_map;
+
+    /*--------------------------------*/
+    /* GLOBAL MOTION-LAYER STATISTICS */
+    /*--------------------------------*/
+
+    /*
+    uint64 stat_total_chunks_sent;      / * Tuple-chunks sent. * /
+    */
     
+    uint64 stat_total_chunks_recvd;     /* Tuple-chunks received. */
+    uint32 stat_total_chunkproc_calls;  /* Calls to processIncomingChunks() */
+
 } MotionLayerState;
 
 
@@ -151,33 +209,40 @@ static MotionLayerState s_motion_layer_state;
 static TupleChunkListItemData s_eos_chunk_data =
     { NULL, TUPLE_CHUNK_HEADER_SIZE, "                " };
 
-static int mySegIndex;
-static bool isPrimary;
 
 /*=========================================================================
  * FUNCTION DEFINITIONS
  */
 
 
-MotionNodeEntry *getMotionNodeEntry(uint16 motNodeID);
-ChunkSorterEntry *getChunkSorterEntry(MotionNodeEntry *motNodeEntry,
-    uint16 srcSegIdx);
-bool addChunkToSorter(TupleChunkListItem tcItem);
+static MotionNodeEntry *getMotionNodeEntry(uint16 motNodeID);
+static ChunkSorterEntry *getChunkSorterEntry(MotionNodeEntry *motNodeEntry,
+                                             uint16 srcSegIdx);
+static bool addChunkToSorter(TupleChunkListItem tcItem);
 
-void processIncomingChunks(void);
-SendReturnCode sendStreamEndChunk(MotionNodeInfo *mn_info,
-    TupleChunkType tcType);
+static void processIncomingChunks(void);
 
 static HeapTuple getNextTupleFromStore(Tuplestorestate *tupStoreState);
+
+/* Stats-function declarations. */
+static void statSendTuple(MotionNodeEntry *pMNEntry, bool sendCompleted);
+static void statChunksProcessed(int chunksProcessed);
+static void statNewTupleArrived(MotionNodeEntry *pMNEntry,
+                                ChunkSorterEntry *pCSEntry);
+static void statRecvTuple(MotionNodeEntry *pMNEntry,
+                          ChunkSorterEntry *pCSEntry,
+                          ReceiveReturnCode recvRC);
+
 
 /*
  * Function:  SendTuple - Sends a portion or whole tuple to the AMS layer.
  *
  */
-SendReturnCode SendTuple(MotionNodeInfo *mn_info, TupleSendContext *send_ctxt)
+SendReturnCode SendTuple(uint16 motNodeID, TupleSendContext *send_ctxt)
 {
     MotionNodeEntry *pMNEntry;
     uint16 targetSegIdx;
+    MotionNodeInfo mnInfo;
     
     bool chunk_sent = false;
     bool done_sending = false;
@@ -185,8 +250,6 @@ SendReturnCode SendTuple(MotionNodeInfo *mn_info, TupleSendContext *send_ctxt)
     TupleChunkList tcList;
     TupleChunkListItem tuple_chunk;
     MemoryContext oldCtxt;
-
-    AssertArg(mn_info != NULL);
 
     AssertArg(send_ctxt != NULL);
     AssertArg(send_ctxt->total_tuple_bytes >= 0);
@@ -206,12 +269,12 @@ SendReturnCode SendTuple(MotionNodeInfo *mn_info, TupleSendContext *send_ctxt)
      * details that affect sending, such as whether the motion node needs to
      * include backup segment-dbs.
      */
-    pMNEntry = getMotionNodeEntry(mn_info->motion_node_id);
+    pMNEntry = getMotionNodeEntry(motNodeID);
     if (pMNEntry == NULL)
     {
         ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
             errmsg("SendTuple called for unrecognized motion-node ID %d.",
-            mn_info->motion_node_id)));
+            motNodeID)));
     }
 
     /* On the first call, we need to generate a serialized version of the
@@ -223,7 +286,18 @@ SendReturnCode SendTuple(MotionNodeInfo *mn_info, TupleSendContext *send_ctxt)
     if (send_ctxt->total_tuple_bytes == 0 &&
         send_ctxt->tuple_chunk_list == NULL)
     {
+#ifdef AMS_VERBOSE_LOGGING
         elog(DEBUG3, "Serializing HeapTuple for sending.");
+#endif
+
+        /*
+         * TODO:  Populate the motion-node info so that the tuple->chunk
+         *        conversion can occur.
+         */
+
+        mnInfo.query_group_id = s_motion_layer_state.query_group_id;
+        mnInfo.segment_id     = s_motion_layer_state.my_seg_idx;
+        mnInfo.host_id        = s_motion_layer_state.host_id;
 
         /* Set up the target segment index based on the motion node info. */
 
@@ -235,8 +309,8 @@ SendReturnCode SendTuple(MotionNodeInfo *mn_info, TupleSendContext *send_ctxt)
 
         oldCtxt = MemoryContextSwitchTo(ML_MEM_CTXT);
         tcList = CvtHeapTupToChunks(send_ctxt->heap_tuple,
-            pMNEntry->tuple_desc, Cdb_max_tuple_chunk_size, mn_info,
-            targetSegIdx);
+            pMNEntry->tuple_desc, Cdb_max_tuple_chunk_size, motNodeID,
+            &mnInfo, targetSegIdx);
         MemoryContextSwitchTo(oldCtxt);
 
         send_ctxt->tuple_chunk_list = tcList;
@@ -244,7 +318,8 @@ SendReturnCode SendTuple(MotionNodeInfo *mn_info, TupleSendContext *send_ctxt)
 
         send_ctxt->total_tuple_bytes = tcList->serialized_data_length;
         send_ctxt->total_bytes_sent = 0;
-        
+
+#ifdef AMS_VERBOSE_LOGGING
         elog(DEBUG3, "Serialized HeapTuple for sending:\n"
             "\ttarget-segment %d (backup %s)\n"
             "\t%d bytes in serial form\n"
@@ -253,6 +328,7 @@ SendReturnCode SendTuple(MotionNodeInfo *mn_info, TupleSendContext *send_ctxt)
             (pMNEntry->include_backup_segdb ? "included" : "NOT included"),
             tcList->serialized_data_length,
             tcList->num_chunks);
+#endif
     }
 
     send_ctxt->last_bytes_written = 0;
@@ -315,6 +391,9 @@ SendReturnCode SendTuple(MotionNodeInfo *mn_info, TupleSendContext *send_ctxt)
         }
     } while (!done_sending);
 
+    /* Stats */
+    statSendTuple(pMNEntry, tuple_sent);
+
     return (tuple_sent ? SEND_COMPLETE : SEND_INCOMPLETE);
 }
 
@@ -326,7 +405,7 @@ SendReturnCode SendTuple(MotionNodeInfo *mn_info, TupleSendContext *send_ctxt)
  * send would block.  When this value is returned, the caller must try again
  * until the SEND_COMPLETE value is returned.
  */
-SendReturnCode SendEndOfStream(MotionNodeInfo *mn_info, uint16 target_segment)
+SendReturnCode SendEndOfStream(uint16 motNodeID, uint16 target_segment)
 {
     MotionNodeEntry *pMNEntry;
     bool chunk_sent;
@@ -341,12 +420,12 @@ SendReturnCode SendEndOfStream(MotionNodeInfo *mn_info, uint16 target_segment)
      * details that affect sending, such as whether the motion node needs to
      * include backup segment-dbs.
      */
-    pMNEntry = getMotionNodeEntry(mn_info->motion_node_id);
+    pMNEntry = getMotionNodeEntry(motNodeID);
     if (pMNEntry == NULL)
     {
         ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
             errmsg("SendEndOfStream called for unrecognized motion-node ID %d.",
-            mn_info->motion_node_id)));
+            motNodeID)));
     }
 
     /* Set up the target segment index based on the motion node info. */
@@ -363,14 +442,14 @@ SendReturnCode SendEndOfStream(MotionNodeInfo *mn_info, uint16 target_segment)
     pData = s_eos_chunk_data.chunk_data;
 
     SetTargetSegIdx(pData, target_segment);
-    SetQueryGroupID(pData, mn_info->process_group_id);
-    SetSourceSegIdx(pData, mn_info->segment_id);
-    SetMotionNodeID(pData, mn_info->motion_node_id);
+    SetQueryGroupID(pData, s_motion_layer_state.query_group_id);
+    SetSourceSegIdx(pData, s_motion_layer_state.my_seg_idx);
+    SetMotionNodeID(pData, motNodeID);
     SetChunkDataSize(pData, 0);
     SetChunkType(pData, TC_END_OF_STREAM);
 
     chunk_sent = SendTupleChunkToAMS(&s_eos_chunk_data);
-    
+
     if (chunk_sent)
     {
         /* We increment our own "stream-ends received" count when we send our
@@ -378,6 +457,9 @@ SendReturnCode SendEndOfStream(MotionNodeInfo *mn_info, uint16 target_segment)
          */
         pMNEntry->num_stream_ends_recvd++;
     }
+
+    /* We record EOS as if a tuple were sent. */
+    statSendTuple(pMNEntry, chunk_sent);
 
     return (chunk_sent ? SEND_COMPLETE : SEND_INCOMPLETE);
 }
@@ -387,10 +469,11 @@ SendReturnCode SendEndOfStream(MotionNodeInfo *mn_info, uint16 target_segment)
  * Function:
  *
  */
-ReceiveReturnCode RecvTuple(MotionNodeInfo *mn_info, HeapTuple *tup_i)
+ReceiveReturnCode RecvTuple(uint16 motNodeID, HeapTuple *tup_i)
 {
     MotionNodeEntry *pMNEntry;
     Tuplestorestate *tupStoreState;
+    ReceiveReturnCode recvRC;
 
     /* Process all chunks in our incoming queue, regardless of which motion
      * nodes they are coming from.
@@ -399,20 +482,20 @@ ReceiveReturnCode RecvTuple(MotionNodeInfo *mn_info, HeapTuple *tup_i)
 
     /* Get the tuple-store that should contain heap-tuples that we want. */
 
-    pMNEntry = getMotionNodeEntry(mn_info->motion_node_id);
+    pMNEntry = getMotionNodeEntry(motNodeID);
 
     if (pMNEntry == NULL)
     {
         ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
             errmsg("RecvTuple called for unrecognized motion-node ID %d.",
-            mn_info->motion_node_id)));
+            motNodeID)));
     }
 
     if (pMNEntry->preserve_order)
     {
         ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
             errmsg("RecvTuple called for order-preserving"
-                " motion-node ID %d.", mn_info->motion_node_id)));
+                " motion-node ID %d.", motNodeID)));
     }
 
     tupStoreState = pMNEntry->ready_tuples;
@@ -423,14 +506,14 @@ ReceiveReturnCode RecvTuple(MotionNodeInfo *mn_info, HeapTuple *tup_i)
     if (*tup_i != NULL)
     {
         /* We got a tuple. */
-        return GOT_TUPLE;
+        recvRC = GOT_TUPLE;
     }
     else if (pMNEntry->num_stream_ends_recvd == pMNEntry->num_senders)
     {
         /* No tuple was available (tuple-store was at EOF), and end-of-stream
          * has been marked.  No more tuples are going to show up.
          */
-        return END_OF_STREAM;
+        recvRC = END_OF_STREAM;
     }
     else
     {
@@ -438,17 +521,23 @@ ReceiveReturnCode RecvTuple(MotionNodeInfo *mn_info, HeapTuple *tup_i)
          * been sent an end-of-stream.  Tell the caller that there are no
          * tuples right now.
          */
-        return NO_TUPLE;
+        recvRC = NO_TUPLE;
     }
+
+    /* Stats */
+    statRecvTuple(pMNEntry, NULL, recvRC);
+
+    return recvRC;
 }
 
 
-ReceiveReturnCode RecvTupleFrom(MotionNodeInfo *mn_info, HeapTuple *tup_i,
+ReceiveReturnCode RecvTupleFrom(uint16 motNodeID, HeapTuple *tup_i,
     uint16 srcSegIdx)
 {
     MotionNodeEntry *pMNEntry;
     ChunkSorterEntry *pCSEntry;
     Tuplestorestate *tupStoreState;
+    ReceiveReturnCode recvRC;
 
     /* Process all chunks in our incoming queue, regardless of which motion
      * nodes they are coming from.
@@ -457,20 +546,20 @@ ReceiveReturnCode RecvTupleFrom(MotionNodeInfo *mn_info, HeapTuple *tup_i,
 
     /* Get the tuple-store that should contain heap-tuples that we want. */
 
-    pMNEntry = getMotionNodeEntry(mn_info->motion_node_id);
+    pMNEntry = getMotionNodeEntry(motNodeID);
 
     if (pMNEntry == NULL)
     {
         ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
             errmsg("RecvTuple called for unrecognized motion-node ID %d.",
-            mn_info->motion_node_id)));
+            motNodeID)));
     }
 
     if (!pMNEntry->preserve_order)
     {
         ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
             errmsg("RecvTupleFrom called for non order-preserving"
-                " motion-node ID %d.", mn_info->motion_node_id)));
+                " motion-node ID %d.", motNodeID)));
     }
 
     /* Pull up the chunk-sorter entry for the specified sender, and get the
@@ -485,14 +574,14 @@ ReceiveReturnCode RecvTupleFrom(MotionNodeInfo *mn_info, HeapTuple *tup_i,
     if (*tup_i != NULL)
     {
         /* We got a tuple. */
-        return GOT_TUPLE;
+        recvRC = GOT_TUPLE;
     }
     else if (pCSEntry->end_of_stream)
     {
         /* No tuple was available (tuple-store was at EOF), and end-of-stream
          * has been marked.  No more tuples are going to show up.
          */
-        return END_OF_STREAM;
+        recvRC = END_OF_STREAM;
     }
     else
     {
@@ -500,8 +589,13 @@ ReceiveReturnCode RecvTupleFrom(MotionNodeInfo *mn_info, HeapTuple *tup_i,
          * been sent an end-of-stream.  Tell the caller that there are no
          * tuples right now.
          */
-        return NO_TUPLE;
+        recvRC = NO_TUPLE;
     }
+
+    /* Stats */
+    statRecvTuple(pMNEntry, pCSEntry, recvRC);
+
+    return recvRC;
 }
 
 
@@ -518,6 +612,7 @@ void processIncomingChunks(void)
     TupleChunkListItem tcItem, tcNext;
     uint16 motNodeID, srcSegIdx;
     MemoryContext oldCtxt;
+    int numChunks;          /* Keep track of processed chunk count. */
 
     oldCtxt = MemoryContextSwitchTo(ML_MEM_CTXT);
 
@@ -526,8 +621,12 @@ void processIncomingChunks(void)
      */
 
     tcItem = RecvTupleChunkFromAMS();
+
+    numChunks = 0;
     while (tcItem != NULL)
     {
+        numChunks++;
+
         /* Detach the current chunk off of the front of the list. */
         tcNext = tcItem->p_next;
         tcItem->p_next = NULL;
@@ -536,14 +635,19 @@ void processIncomingChunks(void)
         motNodeID = GetMotionNodeID(tcItem->chunk_data);
         srcSegIdx = GetSourceSegIdx(tcItem->chunk_data);
 
+#ifdef AMS_VERBOSE_LOGGING
         elog(DEBUG3, "Processing tuple-chunk received from source segment %d"
             " for motion-node %d.", srcSegIdx, motNodeID);
+#endif
 
         /* Stick the chunk into the sorter. */
         addChunkToSorter(tcItem);
-        
+
         tcItem = tcNext;
     }
+
+    /* Stats */
+    statChunksProcessed(numChunks);
 
     MemoryContextSwitchTo(oldCtxt);
 }
@@ -577,9 +681,6 @@ HeapTuple getNextTupleFromStore(Tuplestorestate *tupStoreState)
     /* I don't know what we should do about the value of should-free. */
     if (htup != NULL)
     {
-        elog(DEBUG3, "In getNextTupleFromStore(), shouldFree is %s.",
-            (shouldFree ? "true" : "false"));
-        
         /* TODO:  Probably MUCH better to just pass up the should-free flag. */
         if (!shouldFree)
             htup = heap_copytuple(htup);
@@ -665,12 +766,12 @@ void InitMotionLayer(void)
     }
 
     s_motion_layer_state.chunksort_map = htab;
-	
-	
+
 	/* Initialize the Motion Layer IPC subsystem. */
-	getCdbIdentity( &mySegIndex, &isPrimary );
-	InitMotionLayerIPC( mySegIndex );
-	
+	getCdbIdentity( &(s_motion_layer_state.my_seg_idx),
+                    &(s_motion_layer_state.is_primary) );
+	InitMotionLayerIPC( s_motion_layer_state.my_seg_idx );
+
     /* All done!  Go back to caller memory-context. */
     MemoryContextSwitchTo(oldCtxt);
 }
@@ -752,6 +853,15 @@ void InitMotionLayerNode(uint16 motNodeID, bool includeBackupSegDB,
     pEntry->num_senders = CdbClusterDefinition->segment_count - 1;
     pEntry->num_stream_ends_recvd = 0;
 
+    /* Initialize statistics counters. */
+
+    pEntry->stat_total_sends = 0;
+    pEntry->stat_total_sends_incomplete = 0;
+    pEntry->stat_total_recvs = 0;
+    pEntry->stat_total_recvs_notuple = 0;
+    pEntry->stat_tuples_available = 0;
+    pEntry->stat_tuples_available_hwm = 0;
+
     /* All done!  Go back to caller memory-context. */
     MemoryContextSwitchTo(oldCtxt);
 }
@@ -796,14 +906,24 @@ void EndMotionLayerNode(uint16 motNodeID, bool flushCommLayer)
         /* Skip entries for motion nodes we don't care about. */
         if (pCSEntry->key.motion_node_id != motNodeID)
             continue;
-        
+
+        if (pMNEntry->preserve_order)
+        {
+            /* Print chunk-sorter entry statistics. */
+            
+            elog(DEBUG1, "Chunk-sorter entry [src=%d,mn=%d] statistics:\n"
+                "\tAvailable Tuples High-Watermark:  %u\n",
+                pCSEntry->key.source_seg_idx, pCSEntry->key.motion_node_id,
+                pMNEntry->stat_tuples_available_hwm);
+        }
+
         elog(DEBUG3, "Cleaning up chunk-sorter entry [src=%d,mn=%d].",
             pCSEntry->key.source_seg_idx, pCSEntry->key.motion_node_id);
-        
+
         /* If we haven't gotten the end-of-stream yet, handle it according to
          * the caller's request.
          */
-        
+
         if (!(pCSEntry->end_of_stream))
         {
             if (flushCommLayer)
@@ -811,7 +931,7 @@ void EndMotionLayerNode(uint16 motNodeID, bool flushCommLayer)
                 elog(DEBUG2, "Motion layer node %d cleanup - did not receive"
                     " end-of-stream from sender %d.  Waiting.", motNodeID,
                     pCSEntry->key.source_seg_idx);
-                
+
                 /*** TODO - get chunks until end-of-stream comes in. ***/
                 Assert(false);
             }
@@ -856,6 +976,16 @@ void EndMotionLayerNode(uint16 motNodeID, bool flushCommLayer)
     }
 
     /* Clean up the motion-node entry, then remove it from the hash table. */
+
+    elog(DEBUG1, "Motion node %d statistics:\n"
+        "\tTotal Send Attempts:      %u\n"
+        "\tTotal Incomplete Sends:   %u\n"
+        "\tTotal Receive Attempts:   %u\n"
+        "\tTotal No-Tuple Receives:  %u\n"
+        "\tAvailable Tuples High-Watermark:  %u\n", motNodeID,
+        pMNEntry->stat_total_sends, pMNEntry->stat_total_sends_incomplete,
+        pMNEntry->stat_total_recvs, pMNEntry->stat_total_recvs_notuple,
+        pMNEntry->stat_tuples_available_hwm);
 
     elog(DEBUG3, "Cleaning up motion-node entry %d.", motNodeID);
 
@@ -1048,6 +1178,9 @@ bool addChunkToSorter(TupleChunkListItem tcItem)
         /* Clean up the chunk-list to receive a new tuple. */
         clearTCList(&chunkSorterEntry->chunk_list);
 
+        /* Stats */
+        statNewTupleArrived(motNodeEntry, chunkSorterEntry);
+
         break;
 
     case TC_PARTIAL_START:
@@ -1104,6 +1237,9 @@ bool addChunkToSorter(TupleChunkListItem tcItem)
         /* Clean up the chunk-list to receive a new tuple. */
         clearTCList(&chunkSorterEntry->chunk_list);
 
+        /* Stats */
+        statNewTupleArrived(motNodeEntry, chunkSorterEntry);
+
         break;
 
     case TC_END_OF_STREAM:
@@ -1121,9 +1257,9 @@ bool addChunkToSorter(TupleChunkListItem tcItem)
         if (chunkSorterEntry->end_of_stream)
         {
             ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
-                errmsg("Received end-of-stream chunk from [src=%d,mn=%d]"
-                    " when already marked as at end-of-stream.",
-                    srcSegIdx, motNodeID)));
+                errmsg("Segment %d received end-of-stream chunk from"
+                    " [src=%d,mn=%d] when already marked as at end-of-stream.",
+                    s_motion_layer_state.my_seg_idx, srcSegIdx, motNodeID)));
         }
         
         /* Mark the state as "end of stream." */
@@ -1168,3 +1304,81 @@ bool addChunkToSorter(TupleChunkListItem tcItem)
     return tupleCompleted;
 }
 
+/*=========================================================================
+ * STATISTICS HELPER-FUNCTIONS
+ */
+
+void statSendTuple(MotionNodeEntry *pMNEntry, bool sendCompleted)
+{
+    AssertArg(pMNEntry != NULL);
+
+    pMNEntry->stat_total_sends++;
+
+    if (!sendCompleted)
+        pMNEntry->stat_total_sends_incomplete++;
+}
+
+
+void statChunksProcessed(int chunksProcessed)
+{
+    s_motion_layer_state.stat_total_chunks_recvd += chunksProcessed;
+    s_motion_layer_state.stat_total_chunkproc_calls++;
+}
+
+
+void statNewTupleArrived(MotionNodeEntry *pMNEntry,
+                         ChunkSorterEntry *pCSEntry)
+{
+    uint32 tupsAvail;
+
+    AssertArg(pMNEntry != NULL);
+    AssertArg(pCSEntry != NULL);
+
+    /*
+     * High-watermarks:  We track the number of tuples available to receive,
+     * but that haven't yet been received.  The high-watermark is recorded.
+     *
+     * Also, if the motion node is order-preserving, we track a per-sender
+     * high-watermark as well.
+     */
+
+    tupsAvail = ++(pMNEntry->stat_tuples_available);
+    if (pMNEntry->stat_tuples_available_hwm < tupsAvail)
+    {
+        /* New high-watermark! */
+        pMNEntry->stat_tuples_available_hwm = tupsAvail;
+    }
+
+    if (pMNEntry->preserve_order)
+    {
+        /* Track per-sender high watermark. */
+        tupsAvail = ++(pCSEntry->stat_tuples_available);
+        if (pCSEntry->stat_tuples_available_hwm < tupsAvail)
+        {
+            /* New high-watermark! */
+            pCSEntry->stat_tuples_available_hwm = tupsAvail;
+        }
+    }
+}
+
+
+void statRecvTuple(MotionNodeEntry *pMNEntry, ChunkSorterEntry *pCSEntry,
+                   ReceiveReturnCode recvRC)
+{
+    AssertArg(pMNEntry != NULL);
+    AssertArg(pCSEntry != NULL || !pMNEntry->preserve_order);
+
+    /* Keep track of calls to RecvTuple() and RecvTupleFrom(). */
+
+    pMNEntry->stat_total_recvs++;
+
+    if (recvRC == NO_TUPLE)
+        pMNEntry->stat_total_recvs_notuple++;
+
+    /* Update "tuples available" counts for high watermark stats. */
+
+    pMNEntry->stat_tuples_available--;
+
+    if (pMNEntry->preserve_order)
+        pCSEntry->stat_tuples_available--;
+}

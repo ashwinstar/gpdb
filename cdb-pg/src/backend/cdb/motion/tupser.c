@@ -287,7 +287,8 @@ void initSerTupInfo(SerTupInfo *myState, TupleDesc tupdesc, int numAttrs)
 
 
 TupleChunkList CvtHeapTupToChunks(HeapTuple htup, TupleDesc tupdesc,
-    int maxChunkDataSize, MotionNodeInfo *mn_info, uint16 tgtSegIdx)
+    int maxChunkDataSize, uint16 motNodeID, MotionNodeInfo *mn_info,
+    uint16 tgtSegIdx)
 {
     StringInfoData serialTup;
     TupleChunkList tcList;
@@ -295,29 +296,29 @@ TupleChunkList CvtHeapTupToChunks(HeapTuple htup, TupleDesc tupdesc,
     int i;
     uint16 chunkDataSize;
     TupleChunkType tcType;
-    
+
     AssertArg(htup != NULL);
     AssertArg(tupdesc != NULL);
     AssertArg(maxChunkDataSize >= MIN_TC_DATA_SIZE);
     AssertArg(maxChunkDataSize <= MAX_TC_DATA_SIZE);
-    
+    AssertArg(mn_info != NULL);
+
     /* Generate serialized version of heap tuple into the string info. */
-    
+
     initStringInfo(&serialTup);
     SerializeTuple(htup, tupdesc, &serialTup);
-    
+
     /* Create the tuple-chunk list from the serialized data. */
-    
+
     tcList = (TupleChunkList) palloc0(sizeof(TupleChunkListData));
     tcList->serialized_data_length = serialTup.len;
-    
+
     if (serialTup.len <= maxChunkDataSize)   /* Tuple fits in single chunk. */
     {
         /* Create the new tuple chunk. */
         chunkDataSize = serialTup.len;
         tcItem = makeTupleChunkListItem(TC_WHOLE, serialTup.data,
-            chunkDataSize, mn_info->segment_id, tgtSegIdx,
-            mn_info->motion_node_id);
+            chunkDataSize, mn_info->segment_id, tgtSegIdx, motNodeID);
 
         /* Update the chunk list. */
         appendChunkToTCList(tcList, tcItem);
@@ -355,12 +356,11 @@ TupleChunkList CvtHeapTupToChunks(HeapTuple htup, TupleDesc tupdesc,
             }
 
             tcItem = makeTupleChunkListItem(tcType, serialTup.data + i,
-                chunkDataSize, mn_info->segment_id, tgtSegIdx,
-                mn_info->motion_node_id);
+                chunkDataSize, mn_info->segment_id, tgtSegIdx, motNodeID);
 
             /* Update the chunk list. */
             appendChunkToTCList(tcList, tcItem);
-            
+
             /* Finally, increment i! */
             i += chunkDataSize;
         }

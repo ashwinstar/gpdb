@@ -34,7 +34,7 @@ typedef enum ReceiveReturnCode
  *
  * FIELDS:
  *
- *	process_group_id:  When a user connects to the CDB, a postgres process
+ *	query_group_id:  When a user connects to the CDB, a postgres process
  *			   will be started for every segment-database in the CDB.
  *			   All of these postgres processes are part of the same 
  *			   group of processes serving that user's connection and
@@ -44,11 +44,6 @@ typedef enum ReceiveReturnCode
  *
  *			   TODO:  This id is assigned by the AMS?
  *
- *	motion_node_id: Unique ID which identifies a motion node from other 
- *			motion nodes within a given Plan.  This is assigned
- *			by the planner as motion nodes are placed within the
- *			the plan.
- *
  *	segment_id: The segment id for the local segment database.
  *
  *	host_id: The host id for the local segment database.
@@ -56,8 +51,7 @@ typedef enum ReceiveReturnCode
  */
 typedef struct MotionNodeInfo
 {
-	int process_group_id;
-	int motion_node_id;
+	int query_group_id;
 	int segment_id;
 	int host_id;
     
@@ -155,8 +149,7 @@ extern void ResetMotionLayer(bool flushCommLayer);
  *				  the TupleSendContext structure will be updated
  *				  with the change in status.
  */
-extern SendReturnCode SendTuple(MotionNodeInfo *mn_info,
-    TupleSendContext *tupCtxt);
+extern SendReturnCode SendTuple(uint16 motNodeID, TupleSendContext *tupCtxt);
 
 
 
@@ -178,8 +171,7 @@ extern SendReturnCode SendTuple(MotionNodeInfo *mn_info,
  *				  were full and the operation should be tried
  *				  later.  (Real errors are signalled via ereport().)
  */
-extern SendReturnCode SendEndOfStream(MotionNodeInfo *mn_info,
-                                      uint16 target_segment);
+extern SendReturnCode SendEndOfStream(uint16 motNodeID, uint16 target_segment);
 
 
 /* Receive a tuple from the corresponding motion-node on any query-executor
@@ -194,9 +186,9 @@ extern SendReturnCode SendEndOfStream(MotionNodeInfo *mn_info,
  *
  *		END_OF_STREAM - No tuple was received, and no more are expected.
  */
-extern ReceiveReturnCode RecvTuple(MotionNodeInfo *mn_info, HeapTuple *tup_i);
-extern ReceiveReturnCode RecvTupleFrom(MotionNodeInfo *mn_info,
-    HeapTuple *tup_i, uint16 srcSegIdx);
+extern ReceiveReturnCode RecvTuple(uint16 motNodeID, HeapTuple *tup_i);
+extern ReceiveReturnCode RecvTupleFrom(uint16 motNodeID, HeapTuple *tup_i,
+                                       uint16 srcSegIdx);
 
 
 /* Proposed API call.  Would block until there was something to be received

@@ -64,7 +64,6 @@ ExecMotion(MotionState *node)
 	ExprContext *econtext = node->ps.ps_ExprContext;
 	Motion *motion = (Motion *)node->ps.plan;
     
-    MotionNodeInfo mn_info;     /* TODO:  Try to get rid of this. */
     int mySegIdx;               /* TODO:  This too. */
     bool tupleInFlight;
     SendReturnCode sendRC;
@@ -81,11 +80,6 @@ ExecMotion(MotionState *node)
     
     getCdbIdentity(&mySegIdx, NULL);
 
-    mn_info.process_group_id = 1234;
-    mn_info.motion_node_id = motion->motionID;
-	mn_info.segment_id = mySegIdx;
-	mn_info.host_id = 5678;
-
     tuple = NULL;
     tupleInFlight = (node->tupSendCtxt.heap_tuple != NULL);
     do
@@ -97,7 +91,7 @@ ExecMotion(MotionState *node)
         if (tupleInFlight)
         {
             /* TODO:  This only works for hash or for single-receiver fixed. */
-            sendRC = SendTuple(&mn_info, &node->tupSendCtxt);
+            sendRC = SendTuple(motion->motionID, &node->tupSendCtxt);
             if (sendRC == SEND_COMPLETE)
             {
                 node->numTuplesToAMS++;
@@ -134,7 +128,7 @@ ExecMotion(MotionState *node)
                 tgtSegIdx = BROADCAST_SEGIDX;
             }
             
-            sendRC = SendEndOfStream(&mn_info, tgtSegIdx);
+            sendRC = SendEndOfStream(motion->motionID, tgtSegIdx);
             node->sentEndOfStream = (sendRC == SEND_COMPLETE);
         }
 
@@ -145,7 +139,7 @@ ExecMotion(MotionState *node)
 
         if (!node->noMoreAMSTuples)
         {
-            recvRC = RecvTuple(&mn_info, &tuple);
+            recvRC = RecvTuple(motion->motionID, &tuple);
             if (recvRC == END_OF_STREAM)
             {
                 node->noMoreAMSTuples = true;
@@ -250,7 +244,7 @@ ExecMotion(MotionState *node)
                 
                 if (node->tupSendCtxt.heap_tuple != NULL)
                 {
-                    sendRC = SendTuple(&mn_info, &node->tupSendCtxt);
+                    sendRC = SendTuple(motion->motionID, &node->tupSendCtxt);
                     if (sendRC == SEND_COMPLETE)
                     {
                         node->numTuplesToAMS++;

@@ -27,7 +27,8 @@ extern HeapTuple DeserializeTuple(TupleDesc tupdesc, StringInfo serialTup);
  * tuple data.
  */
 extern TupleChunkList CvtHeapTupToChunks(HeapTuple htup, TupleDesc tupdesc,
-    int maxChunkDataSize, MotionNodeInfo *mn_info, uint16 tgtSegIdx);
+    int maxChunkDataSize, uint16 motNodeID, MotionNodeInfo *mn_info,
+    uint16 tgtSegIdx);
 
 /* Convert a sequence of chunks containing serialized tuple data into a
  * HeapTuple.
@@ -35,7 +36,8 @@ extern TupleChunkList CvtHeapTupToChunks(HeapTuple htup, TupleDesc tupdesc,
 extern HeapTuple CvtChunksToHeapTup(TupleChunkList tclist, TupleDesc tupdesc);
 
 /* Create an "end of stream" tuple chunk. */
-extern TupleChunkListItem MakeEndOfStreamChunk(uint16 srcSegIdx, MotionNodeInfo *mn_info);
+extern TupleChunkListItem MakeEndOfStreamChunk(uint16 srcSegIdx,
+    MotionNodeInfo *mn_info);
 
 
 #endif /* TUPSER_H */
