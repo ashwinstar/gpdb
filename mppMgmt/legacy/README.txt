@@ -56,7 +56,7 @@ CDB instances.
 
 The cdbinitdb script initializes a single PostgreSQL instance and
 associated listener. By default, this occurs in $HOME/cdb-data/cdb
-and the default port is 10000. Multiple databases _can_ be configured
+and the default port is 10000. Multiple listeners _can_ be configured
 using the script though, and in this case, port numbers are incremented
 from the base port. The postgresql.conf file of each instance is
 altered to set the port (as described), set max_connections to 10,
@@ -64,8 +64,14 @@ and set shared_buffers to 32.
 
 The cdbcreatedb script creates databases within the PostgresQL instances
 previously created using cdbinitdb. By default, three segment databases
-are created for each PG instance. This can be configured on the command
-line using the --nsegs argument.
+are created for each listener instance. This can be configured on the command
+line using the --nsegs argument. If there are multiple segments all segment
+DBs will have an ascending integer appended to their name. E.g segDB1, segDB2,
+etc.
+
+If there are are multiple listeners then the increment will carry across all
+the listeners. E.g if there are two listeners and 3 segments per listener, then
+segDB1 will be on the first listener, while segDB6 will be on the second.
 
 To create a new CDB cluster, do the following:
 
@@ -76,7 +82,7 @@ To create a new CDB cluster, do the following:
 
 
     # Initialize the CDB cluster data directories;  if the directory
-    # identified in PGROOT doesn't exist, cdbinitdb creates it.  .
+    # identified in PGROOT doesn't exist, cdbinitdb creates it.
 
     $ ./cdbinitdb
 
