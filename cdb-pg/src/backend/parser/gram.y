@@ -1511,6 +1511,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->hasoids = $9;
 					n->oncommit = $10;
 					n->tablespacename = $11;
+					n->relOid = 0;
 					$$ = (Node *)n;
 				}
 		| CREATE OptTemp TABLE qualified_name OF qualified_name
@@ -1528,6 +1529,7 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->hasoids = $10;
 					n->oncommit = $11;
 					n->tablespacename = $12;
+					n->relOid = 0;
 					$$ = (Node *)n;
 				}
 		;
