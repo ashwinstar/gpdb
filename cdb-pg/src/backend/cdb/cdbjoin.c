@@ -431,6 +431,17 @@ double costMovement(Movement move, Plan *plan, JoinType	jointype)
 			if ( !enable_cdbrepartition )
 				bytes_thru_ams += disable_cost;
 			break;
+
+		/*
+		 * When repartitioning from a replicated flow, no rows are moved.
+		 * Those tuples that hash to a different segindex that thier present one
+		 * are deep-sixed instead of moved.
+		 */
+		case MOVEMENT_REP2PARTITIONED:
+			bytes_thru_ams = 0.0;
+			if ( !enable_cdbrepartition )
+				bytes_thru_ams += disable_cost;
+			break;
 	}
 
 	return bytes_thru_ams;
