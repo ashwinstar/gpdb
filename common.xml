@@ -24,6 +24,13 @@
 <!--
     Common targets ...
   -->
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Perform the normal INIT step targets.                          -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="-init"
+            depends="-setTstamp,-setPlatform,-setTools,-setJava,-checkBash"/>
+
   
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <!-- Set TIMESTAMP properties: DSTAMP, TSTAMP, and TODAY.           -->
@@ -34,10 +41,64 @@
 
 
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Determine the execution platform.                              -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="-setPlatform" unless="platformSet">
+
+        <condition property="osIsUnix">
+            <os family="unix"/>
+        </condition>
+        <condition property="osIsLinux">
+            <and>
+                <os family="unix"/>
+                <os name="Linux"/>
+            </and>
+        </condition>
+        <condition property="osIsSolaris">
+            <and>
+                <os family="unix"/>
+                <os name="SunOS"/>
+            </and>
+        </condition>
+        <condition property="osIsMacosx">
+            <and>
+                <os family="mac"/>
+                <os family="unix"/>
+            </and>
+        </condition>
+
+        <condition property="osIsWindows">
+            <os family="windows"/>
+        </condition>
+        <condition property="osIsCygwin">
+            <!-- 
+                Cygwin is differentiated from Windows by the presence of
+                the USER, PWD, and HOME environment variables and the use
+                of "PATH" instead of "Path".
+              -->
+            <and>
+                <os family="windows"/>
+                <isset property="os.USER"/>
+                <isset property="os.PWD"/>
+                <isset property="os.PATH"/>
+                <isset property="os.HOME"/>
+            </and>
+        </condition>
+
+        <condition property="underIdea">
+          <available file="idea_rt.jar" filepath="${java.class.path}" type="file"/>
+        </condition>
+
+        <property name="platformSet" value="true"/>
+
+    </target>
+
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <!-- Ensure we have a CDB_TOOLS reference & calculate toolsLib      -->
     <!-- directory from it.                                             -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
-    <target name="-setTools" unless="tools">
+    <target name="-setTools" depends="-prepareCygwin" unless="toolsSet">
         <script language="beanshell"><![CDATA[
             /**
              * Sets "tools" and "toolsLib" properties based on presumed caller
@@ -53,24 +114,27 @@
              * not be set to the ANT distribution in $CDB_TOOLS.
              */
             import org.apache.tools.ant.*;
-            
-            String cdbTools = project.getProperty("os.CDB_TOOLS");
-            if ( cdbTools != null )
+
+            if ( project.getProperty("tools") == null )
             {
-                project.setUserProperty("tools", project.resolveFile(cdbTools).getAbsolutePath());
-            }
-            else
-            {
-                System.out.println("projectRoot=" + project.getProperty("projectRoot"));
-                File cdbToolsRef = new File(project.resolveFile(project.getProperty("projectRoot")), "../cdb-tools");
-                if ( cdbToolsRef.isDirectory() )
+                String cdbTools = project.getProperty("os.CDB_TOOLS");
+                if ( cdbTools != null )
                 {
-                    project.setUserProperty("tools", cdbToolsRef.getCanonicalPath());
+                    project.setUserProperty("tools", project.resolveFile(cdbTools).getAbsolutePath());
                 }
                 else
                 {
-                    self.log("\"" + cdbToolsRef.getPath() + "\" is not a directory", Project.MSG_ERR);
-                    throw new BuildException("Environment variable CDB_TOOLS is not set!");
+                    File cdbToolsRef = new File(project.resolveFile(project.getProperty("projectRoot")), 
+                                                "../cdb-tools");
+                    if ( cdbToolsRef.isDirectory() )
+                    {
+                        project.setUserProperty("tools", cdbToolsRef.getCanonicalPath());
+                    }
+                    else
+                    {
+                        self.log("\"" + cdbToolsRef.getPath() + "\" is not a directory", Project.MSG_ERR);
+                        throw new BuildException("Environment variable CDB_TOOLS is not set!");
+                    }
                 }
             }
             
@@ -118,17 +182,103 @@
             project.setUserProperty("toolsLib", (new File(dirs[0], "lib")).getCanonicalPath());
             ]]>
         </script>
+        <property name="toolsSet" value="true"/>
     </target>
 
 
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
-    <!-- Ensure we have a JAVA_HOME                                     -->
+    <!-- Normalize pathnames of some properties for Cygwin              -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
-    <target name="-setJavaHome" unless="javaHome">
-        <condition property="javaHome" value="${os.JAVA_HOME}">
-            <isset property="os.JAVA_HOME"/>
-        </condition>
-        <fail unless="javaHome" message="Environment variable JAVA_HOME is not set!"/>
+    <target name="-prepareCygwin" 
+            if="osIsCygwin" unless="cygwinPrepared"
+            depends="-setPlatform,-prepareCDB_TOOLS">
+
+        <!-- Provide UNIX-format "basedir" in "unix.basedir" -->
+        <exec executable="cygpath" outputproperty="unix.basedir">
+            <arg value="--unix"/>
+            <arg value="${basedir}"/>
+        </exec>
+
+        <property name="cygwinPrepared" value="true"/>
+        
+    </target>
+
+    <target name="-prepareCDB_TOOLS" if="os.CDB_TOOLS" unless="cygwinPrepared"
+            depends="-convertCDB_TOOLS"/>
+
+    <target name="-convertCDB_TOOLS" if="osIsCygwin" unless="cygwinPrepared">
+        <!-- Get Windows-format "CDB_TOOLS" into "tools" -->
+        <exec executable="cygpath" outputproperty="tools">
+            <arg value="--windows"/>
+            <arg value="${os.CDB_TOOLS}"/>
+        </exec>
+    </target>
+
+
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Ensure we have a JAVA_HOME and prepare JNI include references  -->
+    <!--                                                                -->
+    <!-- We can't depend on the value of ${java.home} set by ANT ...    -->
+    <!-- under IntelliJ IDEA, it's set to the embedded JRE; for         -->
+    <!-- Windows, Cygwin, & Linux, it's set to the JRE in the SDK       -->
+    <!-- distribution.  So we require that JAVA_HOME be set to the SDK  -->
+    <!-- root.                                                          -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="-setJava" unless="javaSet"
+            depends="-setPlatform,-setJavaHome,-setJniIncludes">
+        <fail unless="os.JAVA_HOME" message="Environment variable JAVA_HOME is not set!"/>
+        <property name="javaSet" value="true"/>
+    </target>
+
+    <target name="-setJavaHome" if="os.JAVA_HOME" unless="javaHome"
+            depends="-setCygwinJavaHome">
+        <property name="javaHome" value="${os.JAVA_HOME}"/>
+    </target>
+
+    <target name="-setCygwinJavaHome" if="osIsCygwin" unless="unix.javaHome">
+        <!-- Provide UNIX-format "os.JAVA_HOME" in "unix.javaHome" -->
+        <exec executable="cygpath" outputproperty="unix.javaHome">
+            <arg value="--unix"/>
+            <arg value="${os.JAVA_HOME}"/>
+        </exec>
+    </target>
+
+    <target name="-setJniIncludes"
+            depends="-jniMacOsX,-jniCygwin,-jniLinux,-jniSolaris">
+
+        <available property="jniHeadersFound" file="jni.h">
+            <filepath>
+                <pathelement location="${baseInclude}"/>
+                <pathelement location="${platformInclude}"/>
+            </filepath>
+        </available>
+        <fail unless="jniHeadersFound" message="JNI header files not found in expected place!"/>
+
+    </target>
+
+    <target name="-jniMacOsX" if="osIsMacosx" unless="jniIncludesSet">
+        <property name="baseInclude" value="${java.home}/include"/>
+        <property name="platformInclude" value="${baseInclude}"/>
+        <property name="jniIncludesSet" value="true"/>
+    </target>
+
+    <target name="-jniCygwin" if="osIsCygwin" unless="jniIncludesSet">
+        <property name="baseInclude" value="${unix.javaHome}/include"/>
+        <property name="platformInclude" value="${baseInclude}/win32"/>
+        <property name="jniIncludesSet" value="true"/>
+    </target>
+
+    <target name="-jniLinux" if="osIsLinux" unless="jniIncludesSet">
+        <property name="baseInclude" value="${javaHome}/include"/>
+        <property name="platformInclude" value="${baseInclude}/linux"/>
+        <property name="jniIncludesSet" value="true"/>
+    </target>
+
+    <target name="-jniSolaris" if="osIsSolaris" unless="jniIncludesSet">
+        <property name="baseInclude" value="${javaHome}/include"/>
+        <property name="platformInclude" value="${baseInclude}/solaris"/>
+        <property name="jniIncludesSet" value="true"/>
     </target>
 
 
@@ -136,8 +286,13 @@
     <!-- Determine which "make" utility to use.                         -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <target name="-setMake" unless="make">
+        <!-- For normal UNIXen -->
         <condition property="make" value="make">
             <available file="make" filepath="${os.PATH}" type="file"/>
+        </condition>
+        <!-- For Cygwin -->
+        <condition property="make" value="make.exe">
+            <available file="make.exe" filepath="${os.PATH}" type="file"/>
         </condition>
         <fail unless="make" message="'make' utility not found in PATH!"/>
     </target>
@@ -150,12 +305,26 @@
     <!-- compiler is used.                                              -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <target name="-setCCompiler" unless="CCompiler">
+    
+        <!--
+            Check for Intel C Compiler first
+          -->
+        <!-- For normal UNIXen -->
         <condition property="CCompiler" value="icc">
             <available file="icc" filepath="${os.PATH}" type="file"/>
         </condition>
+
+        <!--
+            Check for GNU C Compiler if Intel C Compiler not found
+          -->
+        <!-- For normal UNIXen -->
         <condition property="CCompiler" value="gcc">
             <available file="gcc" filepath="${os.PATH}" type="file"/>
         </condition>
+        <condition property="CCompiler" value="gcc.exe">
+            <available file="gcc.exe" filepath="${os.PATH}" type="file"/>
+        </condition>
+
         <fail unless="CCompiler" message="No C compiler available in PATH!"/>
         <echo level="info" message="Using ${CCompiler} for C compiles"/>
     </target>
@@ -211,7 +380,7 @@
                     releaseTag = stickyTag.substring(nameHead.length(),
                                                      stickyTag.length() - nameTail.length());
                     String release = releaseTag.substring(releaseTag.indexOf('-') + 1);
-                    releaseDir = "R" + release;
+                    releaseDir = release;
                     int i = release.indexOf('-');
                     if ( i > 0 ) 
                         release = release.substring(1, i - 1) + "_" + release.substring(i + 1);
@@ -347,4 +516,13 @@
             <targetfilelist dir="${buildObject}" files="${packageName}.${className}.o"/>
         </dependset>
         
+    </target>
+
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- A testing target ... does nothing useful for the projec.       -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="dumpEnvironment"
+            depends="init">
+        <echoproperties/>
     </target>
