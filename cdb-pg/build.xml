@@ -116,7 +116,17 @@
             Using toolsLib=${toolsLib}
 
             ========================================================================
-        </echo>
+	</echo>
+
+    <condition property="isConfigured">
+      <not>
+       <or>
+        <available property="present" file="config.status" />
+       </or>
+      </not>
+    </condition>
+
+    <echo message="Configured? ${isConfigured}"/>
 
     </target>
 
@@ -854,6 +864,46 @@
     <target name="install"
             depends="init,compile"
             description="Install &quot;supported&quot; parts of CDB&apos;s PostgreSQL">
+
+        <!-- "Default" value for DESTDIR is empty string -->
+        <condition property="DESTDIR" value="">
+            <not>
+                <isset property="DESTDIR"/>
+            </not>
+        </condition>
+
+        <!--
+            Build PostgreSQL
+          -->
+        <exec executable="${make}"
+              failonerror="true">
+            <env key="LC_ALL" value="C"/>
+            <env key="DESTDIR" value="${DESTDIR}"/>
+            <arg value="install"/>
+        </exec>
+    </target>
+
+    <target name="reconfigure" depends="init" if="isConfigured">
+      <echo message="Trying to reconfigure"/>
+      <antcall target="configure"/>
+    </target>
+     
+
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <!-- Build and override existing PostgreSQL.                        -->
+    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+    <target name="build-pgsql"
+            depends="init,reconfigure"
+            description="Install &quot;supported&quot; parts of CDB&apos;s PostgreSQL without re-configuring">
+
+        <!--
+            Build PostgreSQL
+          -->
+        <exec executable="${make}"
+              failonerror="true">
+            <env key="LC_ALL" value="C"/>
+            <arg value="--jobs=4"/>
+        </exec>
 
         <!-- "Default" value for DESTDIR is empty string -->
         <condition property="DESTDIR" value="">
