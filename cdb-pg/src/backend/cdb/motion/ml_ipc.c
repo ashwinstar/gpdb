@@ -1,13 +1,13 @@
 /*-------------------------------------------------------------------------
-* ml_ipc.c
-*     Motion Layer IPC Layer.  
-*
-* Copyright (c) 2005, Metapa
-*
-* IDENTIFICATION:
-*     $Id$
-*-------------------------------------------------------------------------
-*/
+ * ml_ipc.c
+ *     Motion Layer IPC Layer.  
+ *
+ * Copyright (c) 2005, Metapa
+ *
+ * IDENTIFICATION:
+ *     $Id$
+ *-------------------------------------------------------------------------
+ */
 #include "postgres.h"
 
 #include <mpi.h>
@@ -17,6 +17,7 @@
 #include "cdb/ams.h"
 #include "cdb/cdbmotion.h"
 #include "cdb/mpiutils.h"
+#include "utils/memutils.h"
 
 
 /*=========================================================================
@@ -57,9 +58,13 @@ void setMpiComm( MPI_Comm comm )
 
 void InitMotionLayerIPC( int segmentId )
 {
+	MemoryContext oldCtxt;
+
 	int numDbs,rc;
 
 	segId = segmentId;
+
+	oldCtxt = MemoryContextSwitchTo(TopMemoryContext);
 
 	/* get a connection to our ams-svc process. */
 	numDbs = ams_fabric_connect();
@@ -82,6 +87,8 @@ void InitMotionLayerIPC( int segmentId )
                     /*tag*/ MPI_ANY_TAG, amssvc_comm, &mpiRecvReq );
 
     checkMpiRc( rc, "Error during InitMotionLayerIPC");
+
+	MemoryContextSwitchTo(oldCtxt);
 }
 
 
