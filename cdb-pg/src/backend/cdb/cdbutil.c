@@ -47,6 +47,7 @@ static int SegmentDatabaseInfoCompare(const void *p1, const void *p2);
  * 			 h.hostname,
  * 			 l.port, 
  * 			 l.datadir, 
+ * 			 l.listenerid,
  * 			 d.isvalid
  * 			 c.cdbsuperuser,
  * 			 c.cdbsuperpswd
@@ -298,6 +299,7 @@ SegmentDatabases *getCdbSegmentDatabases(void)
 		attr = heap_getattr(cdb_segdb_tuple, Anum_cdb_segdb_listenerid, cdb_segdb_rel->rd_att, &isNull);
 		Assert( !isNull );
 		listenerid = DatumGetInt32(attr);
+		pRow->listenerid = listenerid;
 
 		/*
 		* Now, scan the cdb.segment table for this segindex.
@@ -533,7 +535,7 @@ static int SegmentDatabaseInfoCompare(const void *p1, const void *p2)
 	
 	int cmp = obj1->segindex - obj2->segindex;
 	if ( cmp == 0 )
-		cmp = (int)obj1->isprimary - (int)obj1->isprimary;
+		cmp = (int)obj2->isprimary - (int)obj1->isprimary;
 		
 	return cmp;	
 }
