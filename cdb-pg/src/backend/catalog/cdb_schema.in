@@ -964,7 +964,7 @@ COMMENT ON FUNCTION cdb.cdb_set_identity( cdb.cdb.cdbname%TYPE,
 
 CREATE OR REPLACE VIEW cdb.cdb_get_segdbs
 	AS SELECT
-				s.dbname, d.isprimary, h.hostname, l.port, l.datadir, d.isvalid
+				s.segindex, s.dbname, d.isprimary, h.hostname, l.port, l.datadir, d.isvalid
 		FROM cdb.host h, cdb.listener l, cdb.segment s, cdb.segdb d
 		WHERE h.hostid = l.hostid AND l.listenerid = d.listenerid AND s.segindex = d.segindex
 		ORDER BY s.segindex, isprimary DESC;
