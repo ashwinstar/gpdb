@@ -75,11 +75,11 @@ typedef enum TupleChunkType
  */
 
 extern int16  GetTargetSegIdx(uint8 *tc_data);
-extern uint16  GetQueryGroupID(uint8 *tc_data);
+extern uint16 GetQueryGroupID(uint8 *tc_data);
 extern int16  GetSourceSegIdx(uint8 *tc_data);
-extern uint16  GetMotionNodeID(uint8 *tc_data);
-extern uint16  GetChunkDataSize(uint8 *tc_data);
-extern uint8   GetChunkType(uint8 *tc_data);
+extern uint16 GetMotionNodeID(uint8 *tc_data);
+extern uint16 GetChunkDataSize(uint8 *tc_data);
+extern uint8  GetChunkType(uint8 *tc_data);
 
 extern void  SetTargetSegIdx(uint8 *tc_data, int16 value);
 extern void  SetQueryGroupID(uint8 *tc_data, uint16 value);

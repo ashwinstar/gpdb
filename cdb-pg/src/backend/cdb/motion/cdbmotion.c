@@ -1,8 +1,8 @@
 /*-------------------------------------------------------------------------
  *
  * cdbmotion.c
- * 		Access into the motion-layer in order to send and receive tuples
- *	  		within a motion node ID within a particular process group id. 	
+ *		Access into the motion-layer in order to send and receive tuples
+ *		within a motion node ID within a particular process group id.
  *
  * Copyright (c) 2003-2004, Metapa
  *
@@ -91,7 +91,11 @@ typedef struct MotionNodeEntry
     uint32 stat_total_chunks_sent;      /* Tuple-chunks sent. */
     uint32 stat_total_bytes_sent;       /* Bytes sent, including headers. */
     uint32 stat_tuple_bytes_sent;       /* Bytes of pure tuple-data sent. */
-    
+
+    uint32 stat_total_chunks_recvd;     /* Tuple-chunks received. */
+    uint32 stat_total_bytes_recvd;      /* Bytes received, including headers. */
+    uint32 stat_tuple_bytes_recvd;      /* Bytes of pure tuple-data received. */
+
     uint32 stat_total_sends;            /* Total calls to SendTuple. */
     uint32 stat_total_sends_incomplete; /* Times it returned INCOMPLETE. */
 
@@ -194,11 +198,14 @@ typedef struct MotionLayerState
     /* GLOBAL MOTION-LAYER STATISTICS */
     /*--------------------------------*/
 
-    uint32 stat_total_chunks_sent;      /* Tuple-chunks sent. */
-    uint32 stat_total_bytes_sent;       /* Bytes sent, including headers. */
-    uint32 stat_tuple_bytes_sent;       /* Bytes of pure tuple-data sent. */
+    uint32 stat_total_chunks_sent;  /* Tuple-chunks sent. */
+    uint32 stat_total_bytes_sent;   /* Bytes sent, including headers. */
+    uint32 stat_tuple_bytes_sent;   /* Bytes of pure tuple-data sent. */
 
-    uint64 stat_total_chunks_recvd;     /* Tuple-chunks received. */
+    uint32 stat_total_chunks_recvd; /* Tuple-chunks received. */
+    uint32 stat_total_bytes_recvd;  /* Bytes received, including headers. */
+    uint32 stat_tuple_bytes_recvd;  /* Bytes of pure tuple-data received. */
+
     uint32 stat_total_chunkproc_calls;  /* Calls to processIncomingChunks() */
 
 } MotionLayerState;
@@ -235,12 +242,177 @@ static void statSendTuple(MotionNodeEntry *pMNEntry,
                           TupleSendContext *pSendCtxt,
                           bool sendCompleted);
 static void statSendEOS(MotionNodeEntry *pMNEntry, bool sendCompleted);
-static void statChunksProcessed(int chunksProcessed);
-static void statNewTupleArrived(MotionNodeEntry *pMNEntry,
-                                ChunkSorterEntry *pCSEntry);
+static void statChunksProcessed(int chunksProcessed, int chunkBytes, int tupleBytes);
+static void statNewTupleArrived(MotionNodeEntry *pMNEntry, ChunkSorterEntry *pCSEntry);
 static void statRecvTuple(MotionNodeEntry *pMNEntry,
                           ChunkSorterEntry *pCSEntry,
                           ReceiveReturnCode recvRC);
+
+
+/* This function performs one-time initialization of the Motion Layer.  This
+ * should be called at "postgres" process initialization time.
+ */
+void InitMotionLayer(void)
+{
+    MemoryContext oldCtxt;
+    HASHCTL hctl;
+    HTAB *htab;
+
+    /* Switch to the cache memory-context, since we want this stuff to last
+     * for the lifetime of the postgres process.
+     */
+    oldCtxt = MemoryContextSwitchTo(ML_MEM_CTXT);
+
+    /* Initialize motion-node hashtable.  The initial number of bins is chosen
+     * to be relatively small, since the max number of bins is just the number
+     * of motion nodes in the plan.
+     */
+    
+    hctl.keysize = sizeof(uint16);
+    hctl.entrysize = sizeof(MotionNodeEntry);
+    hctl.hash = tag_hash;
+    htab = hash_create("MotionNodeInfo", 10, &hctl, HASH_ELEM | HASH_FUNCTION);
+    if (htab == NULL)
+    {
+        ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
+            errmsg("Could not allocate hash table for motion node info.")));
+    }
+    
+    s_motion_layer_state.motionnode_map = htab;
+    
+    /* Initialize tuple-data hashtable.  The initial number of bins is chosen
+     * to be relatively small, since the max number of bins is just the number
+     * of segment databases multiplied by the number of motion nodes in the
+     * plan.
+     */
+
+    hctl.keysize = sizeof(ChunkSorterKey);
+    hctl.entrysize = sizeof(ChunkSorterEntry);
+    hctl.hash = tag_hash;
+    htab = hash_create("ChunkSorter", 10, &hctl, HASH_ELEM | HASH_FUNCTION);
+    if (htab == NULL)
+    {
+        ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
+            errmsg("Could not allocate hash table for tuple chunk sorter.")));
+    }
+
+    s_motion_layer_state.chunksort_map = htab;
+
+	/* Initialize the Motion Layer IPC subsystem. */
+	getCdbIdentity( &(s_motion_layer_state.my_seg_idx),
+                    &(s_motion_layer_state.is_primary) );
+
+	InitMotionLayerIPC( s_motion_layer_state.my_seg_idx);
+
+    /* All done!  Go back to caller memory-context. */
+    MemoryContextSwitchTo(oldCtxt);
+}
+
+
+/* Initialize a single motion node.  This is called by the executor when a
+ * motion node in the plan tree is being initialized.
+ *
+ * This function is called from:  ExecInitMotion()
+ */
+void InitMotionLayerNode(uint16 motNodeID, bool includeBackupSegDB,
+    bool preserveOrder, TupleDesc tupDesc)
+{
+    MemoryContext oldCtxt;
+    MotionNodeEntry *pEntry;
+    bool found;
+
+    AssertArg(tupDesc != NULL);
+
+    /* Switch to the cache memory-context, since we want this stuff to last
+     * for the lifetime of the postgres process.
+     */
+    oldCtxt = MemoryContextSwitchTo(ML_MEM_CTXT);
+
+    elog(DEBUG2, "Initializing entry for motion node %d in Motion Layer.",
+        motNodeID);
+
+    /* Create a new MotionNodeEntry.  If one already exists, complain! */
+
+    pEntry = (MotionNodeEntry *) hash_search(
+        s_motion_layer_state.motionnode_map, &motNodeID, HASH_ENTER, &found);
+
+    if (pEntry == NULL)
+    {
+        ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
+            errmsg("Could not allocate HTAB entry for motion node %d.",
+            motNodeID)));
+    }
+
+    if (found)
+    {
+        /* An entry for this motion node ID already existed.  Initializing
+         * twice for a given motion node is not allowed.  Having two nodes
+         * with the same ID is also not allowed.  So, this is pretty likely a
+         * serious problem.
+         */
+        ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+            errmsg("A HTAB entry for motion node %d already exists.",
+            motNodeID)));
+    }
+
+    /* Finish up initialization of the motion node entry. */
+
+    Assert(pEntry->motion_node_id == motNodeID);
+
+    pEntry->include_backup_segdb = includeBackupSegDB;
+    pEntry->preserve_order = preserveOrder;
+    pEntry->tuple_desc = CreateTupleDescCopy(tupDesc);
+	InitSerTupInfo(pEntry->tuple_desc, &pEntry->ser_tup_info);
+	
+    if (!preserveOrder)
+    {
+        /* Create a tuple-store for the motion node's incoming tuples. */
+        
+        elog(DEBUG3, "Motion node %d is not order-preserving.  Creating"
+            " node-level tuple-store.", motNodeID);
+
+        pEntry->ready_tuples = tuplestore_begin_heap(/*randomAccess*/ false,
+            /*interXact*/ true, work_mem);
+    }
+    else
+    {
+        elog(DEBUG3, "Motion node %d is order-preserving.  No node-level"
+            " tuple-store.", motNodeID);
+
+        pEntry->ready_tuples = NULL;
+    }
+
+    /* TODO:  Hard-coded right now. */
+    pEntry->num_senders = CdbIdentity.numsegments;
+    pEntry->num_stream_ends_recvd = 0;
+
+    /* Initialize statistics counters. */
+
+    pEntry->stat_total_chunks_sent = 0;
+    pEntry->stat_total_bytes_sent = 0;
+    pEntry->stat_tuple_bytes_sent = 0;
+
+    pEntry->stat_total_sends = 0;
+    pEntry->stat_total_sends_incomplete = 0;
+    pEntry->stat_total_recvs = 0;
+    pEntry->stat_total_recvs_notuple = 0;
+    pEntry->stat_tuples_available = 0;
+    pEntry->stat_tuples_available_hwm = 0;
+
+    /* All done!  Go back to caller memory-context. */
+    MemoryContextSwitchTo(oldCtxt);
+}
+
+
+/* This function completely resets the Motion Layer at the end of a query
+ * execution.  It iterates through each entry in the motion-node and
+ * chunk-sorter tables, and performs necessary cleanup of the data-structures.
+ */
+void ResetMotionLayer(bool flushCommLayer)
+{
+    
+    /*hash_seq_init(HASH_SEQ_STATUS *status, HTAB *hashp)*/
+}
 
 
 /*
@@ -712,7 +884,9 @@ void processIncomingChunks(void)
     uint16 motNodeID;
     int16 srcSegIdx;
     MemoryContext oldCtxt;
-    int numChunks;          /* Keep track of processed chunk count. */
+	
+	/* Keep track of processed chunk stats. */
+    int numChunks, chunkBytes, tupleBytes;
 
     oldCtxt = MemoryContextSwitchTo(ML_MEM_CTXT);
 
@@ -723,6 +897,9 @@ void processIncomingChunks(void)
     tcItem = RecvTupleChunkFromAMS();
 
     numChunks = 0;
+    chunkBytes = 0;
+    tupleBytes = 0;
+
     while (tcItem != NULL)
     {
         numChunks++;
@@ -734,6 +911,19 @@ void processIncomingChunks(void)
         /* Pull out the motion node ID and the sender segment-database ID. */
         motNodeID = GetMotionNodeID(tcItem->chunk_data);
         srcSegIdx = GetSourceSegIdx(tcItem->chunk_data);
+
+		/* Track stats. */
+		chunkBytes += tcItem->chunk_length;
+		if (tcItem->chunk_length >= TUPLE_CHUNK_HEADER_SIZE)
+		{
+			tupleBytes += tcItem->chunk_length - TUPLE_CHUNK_HEADER_SIZE;
+		}
+		else
+		{
+			elog(WARNING, "Received tuple-chunk of size %u; smaller than"
+				" chunk header size %d!", tcItem->chunk_length,
+				TUPLE_CHUNK_HEADER_SIZE);
+		}
 
 #ifdef AMS_VERBOSE_LOGGING
         elog(DEBUG3, "Processing tuple-chunk received from source segment %d"
@@ -747,7 +937,7 @@ void processIncomingChunks(void)
     }
 
     /* Stats */
-    statChunksProcessed(numChunks);
+    statChunksProcessed(numChunks, chunkBytes, tupleBytes);
 
     MemoryContextSwitchTo(oldCtxt);
 }
@@ -854,172 +1044,6 @@ CanReadTuple( )
 	
 	//for now... we will do nothing.  :)
 
-}
-
-
-/* This function performs one-time initialization of the Motion Layer.  This
- * should be called at "postgres" process initialization time.
- */
-void InitMotionLayer(void)
-{
-    MemoryContext oldCtxt;
-    HASHCTL hctl;
-    HTAB *htab;
-
-    /* Switch to the cache memory-context, since we want this stuff to last
-     * for the lifetime of the postgres process.
-     */
-    oldCtxt = MemoryContextSwitchTo(ML_MEM_CTXT);
-
-    /* Initialize motion-node hashtable.  The initial number of bins is chosen
-     * to be relatively small, since the max number of bins is just the number
-     * of motion nodes in the plan.
-     */
-    
-    hctl.keysize = sizeof(uint16);
-    hctl.entrysize = sizeof(MotionNodeEntry);
-    hctl.hash = tag_hash;
-    htab = hash_create("MotionNodeInfo", 10, &hctl, HASH_ELEM | HASH_FUNCTION);
-    if (htab == NULL)
-    {
-        ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
-            errmsg("Could not allocate hash table for motion node info.")));
-    }
-    
-    s_motion_layer_state.motionnode_map = htab;
-    
-    /* Initialize tuple-data hashtable.  The initial number of bins is chosen
-     * to be relatively small, since the max number of bins is just the number
-     * of segment databases multiplied by the number of motion nodes in the
-     * plan.
-     */
-
-    hctl.keysize = sizeof(ChunkSorterKey);
-    hctl.entrysize = sizeof(ChunkSorterEntry);
-    hctl.hash = tag_hash;
-    htab = hash_create("ChunkSorter", 10, &hctl, HASH_ELEM | HASH_FUNCTION);
-    if (htab == NULL)
-    {
-        ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
-            errmsg("Could not allocate hash table for tuple chunk sorter.")));
-    }
-
-    s_motion_layer_state.chunksort_map = htab;
-
-	/* Initialize the Motion Layer IPC subsystem. */
-	getCdbIdentity( &(s_motion_layer_state.my_seg_idx),
-                    &(s_motion_layer_state.is_primary) );
-
-	InitMotionLayerIPC( s_motion_layer_state.my_seg_idx);
-
-    /* All done!  Go back to caller memory-context. */
-    MemoryContextSwitchTo(oldCtxt);
-}
-
-
-/* Initialize a single motion node.  This is called by the executor when a
- * motion node in the plan tree is being initialized.
- *
- * This function is called from:  ExecInitMotion()
- */
-void InitMotionLayerNode(uint16 motNodeID, bool includeBackupSegDB,
-    bool preserveOrder, TupleDesc tupDesc)
-{
-    MemoryContext oldCtxt;
-    MotionNodeEntry *pEntry;
-    bool found;
-
-    AssertArg(tupDesc != NULL);
-
-    /* Switch to the cache memory-context, since we want this stuff to last
-     * for the lifetime of the postgres process.
-     */
-    oldCtxt = MemoryContextSwitchTo(ML_MEM_CTXT);
-
-    elog(DEBUG2, "Initializing entry for motion node %d in Motion Layer.",
-        motNodeID);
-
-    /* Create a new MotionNodeEntry.  If one already exists, complain! */
-
-    pEntry = (MotionNodeEntry *) hash_search(
-        s_motion_layer_state.motionnode_map, &motNodeID, HASH_ENTER, &found);
-
-    if (pEntry == NULL)
-    {
-        ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
-            errmsg("Could not allocate HTAB entry for motion node %d.",
-            motNodeID)));
-    }
-
-    if (found)
-    {
-        /* An entry for this motion node ID already existed.  Initializing
-         * twice for a given motion node is not allowed.  Having two nodes
-         * with the same ID is also not allowed.  So, this is pretty likely a
-         * serious problem.
-         */
-        ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-            errmsg("A HTAB entry for motion node %d already exists.",
-            motNodeID)));
-    }
-
-    /* Finish up initialization of the motion node entry. */
-
-    Assert(pEntry->motion_node_id == motNodeID);
-
-    pEntry->include_backup_segdb = includeBackupSegDB;
-    pEntry->preserve_order = preserveOrder;
-    pEntry->tuple_desc = CreateTupleDescCopy(tupDesc);
-	InitSerTupInfo(pEntry->tuple_desc, &pEntry->ser_tup_info);
-	
-    if (!preserveOrder)
-    {
-        /* Create a tuple-store for the motion node's incoming tuples. */
-        
-        elog(DEBUG3, "Motion node %d is not order-preserving.  Creating"
-            " node-level tuple-store.", motNodeID);
-
-        pEntry->ready_tuples = tuplestore_begin_heap(/*randomAccess*/ false,
-            /*interXact*/ true, work_mem);
-    }
-    else
-    {
-        elog(DEBUG3, "Motion node %d is order-preserving.  No node-level"
-            " tuple-store.", motNodeID);
-
-        pEntry->ready_tuples = NULL;
-    }
-
-    /* TODO:  Hard-coded right now. */
-    pEntry->num_senders = CdbIdentity.numsegments;
-    pEntry->num_stream_ends_recvd = 0;
-
-    /* Initialize statistics counters. */
-
-    pEntry->stat_total_chunks_sent = 0;
-    pEntry->stat_total_bytes_sent = 0;
-    pEntry->stat_tuple_bytes_sent = 0;
-
-    pEntry->stat_total_sends = 0;
-    pEntry->stat_total_sends_incomplete = 0;
-    pEntry->stat_total_recvs = 0;
-    pEntry->stat_total_recvs_notuple = 0;
-    pEntry->stat_tuples_available = 0;
-    pEntry->stat_tuples_available_hwm = 0;
-
-    /* All done!  Go back to caller memory-context. */
-    MemoryContextSwitchTo(oldCtxt);
-}
-
-
-/* This function completely resets the Motion Layer at the end of a query
- * execution.  It iterates through each entry in the motion-node and
- * chunk-sorter tables, and performs necessary cleanup of the data-structures.
- */
-void ResetMotionLayer(bool flushCommLayer)
-{
-    
-    /*hash_seq_init(HASH_SEQ_STATUS *status, HTAB *hashp)*/
 }
 
 
@@ -1533,10 +1557,17 @@ void statSendEOS(MotionNodeEntry *pMNEntry, bool sendCompleted)
 }
 
 
-void statChunksProcessed(int chunksProcessed)
+void statChunksProcessed(int chunksProcessed, int chunkBytes, int tupleBytes)
 {
+	AssertArg(chunksProcessed >= 0);
+	AssertArg(chunkBytes >= 0);
+	AssertArg(tupleBytes >= 0);
+	
     s_motion_layer_state.stat_total_chunks_recvd += chunksProcessed;
+	
     s_motion_layer_state.stat_total_chunkproc_calls++;
+	s_motion_layer_state.stat_total_bytes_recvd += chunkBytes;
+	s_motion_layer_state.stat_tuple_bytes_recvd += tupleBytes;
 }
 
 

@@ -188,7 +188,10 @@ int SerializeTuple(HeapTuple tuple, SerTupInfo *pSerInfo, StringInfo strInfo)
 HeapTuple DeserializeTuple(SerTupInfo *pSerInfo, StringInfo serialTup)
 {
 	TupleDesc tupdesc;
+	HeapTuple htup;
     int natts;
+	SerAttrInfo *attrInfo;
+	uint32 attr_size;
 
     int i, j, k;
     int origLen;
@@ -224,8 +227,7 @@ HeapTuple DeserializeTuple(SerTupInfo *pSerInfo, StringInfo serialTup)
     initStringInfo(&attr_data);
     for (i = 0; i < natts; ++i)
     {
-        SerAttrInfo *attrInfo = pSerInfo->myinfo + i;
-        uint32 attr_size;
+        attrInfo = pSerInfo->myinfo + i;
 
         if (pSerInfo->nulls[i] == 'n')       /* NULL field. */
         {
@@ -259,11 +261,27 @@ HeapTuple DeserializeTuple(SerTupInfo *pSerInfo, StringInfo serialTup)
         }
     }
 
-    /* Free up memory we used, just to be leaner. */
+    /* Free up memory we used. */
     pfree(attr_data.data);
     
     /* Construct the tuple from the Datums and nulls values. */
-    return heap_formtuple(tupdesc, pSerInfo->values, pSerInfo->nulls);
+    htup = heap_formtuple(tupdesc, pSerInfo->values, pSerInfo->nulls);
+	
+	/* Clean up any variable-length attribute values that were allocated! */
+	
+	for (i = 0; i < natts; ++i)
+	{
+        attrInfo = pSerInfo->myinfo + i;
+		
+		if (attrInfo->typisvarlena && pSerInfo->values[i] != NULL)
+		{
+			pfree(DatumGetPointer(pSerInfo->values[i]));
+			pSerInfo->values[i] = (Datum) NULL;
+		}
+	}
+	
+	/* All done.  Return the result. */
+	return htup;
 }
 
 
@@ -348,6 +366,9 @@ TupleChunkList CvtHeapTupToChunks(HeapTuple htup, SerTupInfo *pSerInfo,
         }
     }
     
+    /* Free up memory we used. */
+    pfree(serialTup.data);
+    
     return tcList;
 }
 
@@ -431,7 +452,7 @@ HeapTuple CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo *pSerInfo)
     /* Create the HeapTuple from the concatenated chunks. */
     htup = DeserializeTuple(pSerInfo, &serData);
 
-    /* Free up memory we used, just to be leaner. */
+    /* Free up memory we used. */
     pfree(serData.data);
     
     return htup;

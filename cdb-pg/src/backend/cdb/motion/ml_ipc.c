@@ -254,6 +254,13 @@ bool CanWriteToAMS( int segId )
  */
 
 
+/* This helper function does several things.  First of all, it creates a
+ * new TupleChunkListItem from a byte-sequence just received from the AMS
+ * layer.  Second, it initiates a new asynchronous receive operation.
+ *
+ * NOTE:  The new TupleChunkListItem is palloc()'d, and therefore care
+ *        needs to be taken in the management of the memory contexts, etc.
+ */
 static TupleChunkListItem getTupleChunk( )
 {
      //we got something.  form it into a TupleChunkListItem and pass it
