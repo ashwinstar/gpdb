@@ -165,4 +165,7 @@ CREATE OR REPLACE FUNCTION cdbhash_1_null(integer, integer) RETURNS integer
     AS 'libcdbtest.so', 'HASHAPI_Hash_1_null'
     LANGUAGE C IMMUTABLE STRICT;
 
+CREATE OR REPLACE FUNCTION cdb_heap_test(integer, integer, integer) RETURNS boolean
+    AS 'libcdbtest.so', 'cdb_heap_test'
+    LANGUAGE C IMMUTABLE STRICT;
 
