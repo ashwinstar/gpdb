@@ -408,17 +408,19 @@ _outHashJoin(StringInfo str, HashJoin *node)
 static void
 _outAgg(StringInfo str, Agg *node)
 {
-	int i;
-	
+	int			i;
+
 	WRITE_NODE_TYPE("AGG");
 
 	_outPlanInfo(str, (Plan *) node);
 
 	WRITE_ENUM_FIELD(aggstrategy, AggStrategy);
 	WRITE_INT_FIELD(numCols);
+
 	appendStringInfo(str, " :grpColIdx");
 	for (i = 0; i < node->numCols; i++)
 		appendStringInfo(str, " %d", node->grpColIdx[i]);
+
 	WRITE_LONG_FIELD(numGroups);
 }
 
@@ -521,89 +523,11 @@ _outHash(StringInfo str, Hash *node)
 	_outPlanInfo(str, (Plan *) node);
 }
 
-#define WRITE_NULL_FIELD( fldname ) \
-	appendStringInfo(str, " :" CppAsString(fldname) " %s", "<>")
-	
-static void _outHashMotionDefn(StringInfo str, Motion *node)
-{
-	int i;
-	if ( node->pHashDefn != NULL )
-	{
-		WRITE_INT_FIELD(pHashDefn->numHashSegs);
-		if ( node->pHashDefn->numHashSegs > 0 )
-		{
-			appendStringInfo(str, " :pHashDefn->hashSegIdx");
-			for (i = 0; i < node->pHashDefn->numHashSegs; i++)
-				appendStringInfo(str, " %d", node->pHashDefn->hashSegIdx[i]);
-		}
-		else
-			WRITE_NULL_FIELD(pHashDefn->hashSegIdx);
-		
-		WRITE_NODE_FIELD(pHashDefn->hashExpr);
-		WRITE_NODE_FIELD(pHashDefn->hashOp);
-	}
-	else
-		WRITE_NULL_FIELD(pHashDefn);
-}
-
-static void _outFixedMotionDefn(StringInfo str, Motion *node)
-{
-	int i;
-	if ( node->pFixedDefn != NULL )
-	{
-		WRITE_INT_FIELD(pFixedDefn->numOutputSegs);
-		if ( node->pFixedDefn->numOutputSegs > 0 )
-		{
-			appendStringInfo(str, " :pFixedDefn->outputSegIdx");
-			for (i = 0; i < node->pFixedDefn->numOutputSegs; i++)
-				appendStringInfo(str, " %d", node->pFixedDefn->outputSegIdx[i]);
-		}
-		else
-			WRITE_NULL_FIELD(pFixedDefn->outputSegIdx);
-	}
-	else
-		WRITE_NULL_FIELD(pFixedDefn);
-}
-
-static void _outSortedMotionDefn(StringInfo str, Motion *node)
-{
-	int i;
-	if ( node->pSortDefn != NULL )
-	{
-		WRITE_INT_FIELD(pSortDefn->numSortCols);
-		if ( node->pSortDefn->numSortCols > 0 )
-		{
-			appendStringInfo(str, " :pSortDefn->sortColIdx");
-			for (i = 0; i < node->pSortDefn->numSortCols; i++)
-				appendStringInfo(str, " %d", node->pSortDefn->sortColIdx[i]);
-
-			appendStringInfo(str, " :pSortDefn->sortOperators");
-			for (i = 0; i < node->pSortDefn->numSortCols; i++)
-				appendStringInfo(str, " %u", node->pSortDefn->sortOperators[i]);
-		}
-		else
-		{
-			WRITE_NULL_FIELD(pSortDefn->sortColIdx);
-			WRITE_NULL_FIELD(pSortDefn->sortOperators);
-		}
-		
-		WRITE_INT_FIELD(pSortDefn->numInputSegs);
-		if ( node->pSortDefn->numInputSegs > 0 )
-		{
-			appendStringInfo(str, " :pSortDefn->inputSegIdx");
-			for (i = 0; i < node->pSortDefn->numInputSegs; i++)
-				appendStringInfo(str, " %d", node->pSortDefn->inputSegIdx[i]);
-		}		
-		else
-			WRITE_NULL_FIELD(pSortDefn->inputSegIdx);
-	}
-	else
-		WRITE_NULL_FIELD(pSortDefn);
-}
-
 static void
 _outMotion(StringInfo str, Motion *node)
 {
+	int i;
+
 	WRITE_NODE_TYPE("MOTION");
 
 	_outPlanInfo(str, (Plan *) node);
@@ -613,9 +537,32 @@ _outMotion(StringInfo str, Motion *node)
 	WRITE_BOOL_FIELD(sendSorted);
 	WRITE_INT_FIELD(motionID);
 	
-	_outHashMotionDefn(str, node);
-	_outFixedMotionDefn(str, node);
-	_outSortedMotionDefn(str, node);
+	WRITE_INT_FIELD(numHashSegs);
+	appendStringInfo(str, " :hashSegIdx");
+	for (i = 0; i < node->numHashSegs; i++)
+		appendStringInfo(str, " %d", node->hashSegIdx[i]);
+
+	WRITE_NODE_FIELD(hashExpr);
+	WRITE_NODE_FIELD(hashOp);
+
+	WRITE_INT_FIELD(numOutputSegs);
+	appendStringInfo(str, " :outputSegIdx");
+	for (i = 0; i < node->numOutputSegs; i++)
+		appendStringInfo(str, " %d", node->outputSegIdx[i]);
+
+	WRITE_INT_FIELD(numSortCols);
+	appendStringInfo(str, " :sortColIdx");
+	for (i = 0; i < node->numSortCols; i++)
+		appendStringInfo(str, " %d", node->sortColIdx[i]);
+
+	appendStringInfo(str, " :sortOperators");
+	for (i = 0; i < node->numSortCols; i++)
+		appendStringInfo(str, " %u", node->sortOperators[i]);
+
+	WRITE_INT_FIELD(numInputSegs);
+	appendStringInfo(str, " :inputSegIdx");
+	for (i = 0; i < node->numInputSegs; i++)
+		appendStringInfo(str, " %d", node->inputSegIdx[i]);
 }
 
 /*****************************************************************************
@@ -2075,3 +2022,5 @@ nodeToString(void *obj)
 	_outNode(&str, obj);
 	return str.data;
 }
+
+
