@@ -29,12 +29,12 @@
 #include "nodes/makefuncs.h" /* for makeVar() */
 #include "nodes/value.h" /* for makeString() */
 
-#include "cdb/cdblink.h" /* for getCdbIdentity() */
-
+#include "cdb/cdbvars.h"
 #include "cdb/cdbplan.h"
 #include "cdb/cdbllize.h"
 #include "cdb/cdbcat.h"
 #include "cdb/cdbjoin.h"
+#include "cdb/cdbagg.h"
 
 #define ARRAYCOPY(to, from, sz) \
 	do { \
@@ -93,6 +93,7 @@ static bool prescan_walker(Node *node, PlanProfile *context);
 static bool prescan_hashjoin(Plan *plan, PlanProfile *context);
 static bool prescan_mergejoin(Plan *plan, PlanProfile *context);
 static bool prescan_nestloop(Plan *plan, PlanProfile *context);
+static bool prescan_agg(Plan *plan, PlanProfile *context);
 
 static bool repartitionSort(Sort *sort, List *exprs, List *ops, PlanProfile *context);
 static bool focusSort(Sort *sort, PlanProfile *context);
@@ -109,15 +110,7 @@ static void noteFlow(Flow *flow, PlanProfile *context);
 
 static Plan* apply_motion(Plan*  plan);
 static Node* apply_motion_mutator(Node*  node, ApplyMotionState *context);
-static bool is_plan_node(Node* node);
 static void assignMotionID(Node* newnode, ApplyMotionState* context, Node* oldnode);
-
-
-/* TODO Find a way to make these values real and globally available.  
- *      May also need others such as CdbHomeSegment, etc.  
- */
-static unsigned CdbNumSegments = 1;
-static unsigned CdbThisSegment = 0;
 
 
 
@@ -615,25 +608,13 @@ prescan_walker(Node *node, PlanProfile *context)
 			break; /* Fall through to report error. */
 		
 		case T_Agg:
-			/* First prescan children */
-			if ( plan_tree_walker(node, prescan_walker, context) )
-				return true;
 			{
-				Plan *plan = (Plan*)node;
-				Plan *child = outerPlan(node);
-				Assert( child != NULL && child->flow != NULL );
-				
-				if ( child->flow->flotype == FLOW_REPLICATED
-					|| child ->flow->flotype == FLOW_SINGLETON )
-				{
-					/* No motion required so inherit flow characteristics. */
-					plan->flow = copyObject(child->flow);
-					noteFlow(plan->flow, context);
-					return false;
-				}
+				/* First prescan children */
+				if ( plan_tree_walker(node, prescan_walker, context) )
+					return true;
+					
+				return prescan_agg((Plan*)node, context);
 			}
-			/* TODO Deal with partitioned aggregration. */
-			detail = "Query involves partitioned aggregration.";
 			break; /* Fall through to report error. */
 		
 		case T_Group:
@@ -1154,6 +1135,100 @@ bool prescan_nestloop(Plan *plan, PlanProfile *context)
 	return false;	 
 }
 
+/* Helper for prescan_walker() does processing for an Agg node.
+ *
+ * Note that prescan_walker has already finished scaning the child nodes
+ * of the node.
+ *
+ * Return false to indicate successful prescan.  Else set error info
+ * in the context and return true.
+ */
+bool prescan_agg(Plan *plan, PlanProfile *context)
+{	
+	List *strategies;
+	ListCell *cell;
+	CdbAggStrategy *strategy;
+	Plan *child;
+	
+	/* Argument is a prescaned plan. */
+	child = outerPlan((Node*)plan);
+	Assert( is_plan_node((Node*)child) && child->flow != NULL  );
+	
+	/* Now get the stategy list. */
+	strategies = getAggStrategyList((Agg*)plan);
+
+	/* Use the first strategy we know how to implement. */
+	strategy = NULL;
+	foreach( cell, strategies)
+	{
+		/* Copy the first strategy we can use and exit the loop. */
+		CdbAggStrategy *s = (CdbAggStrategy*)lfirst(cell);
+		switch ( s->leftmove )
+		{
+			case MOVEMENT_NONE:
+			case MOVEMENT_FOCUS:
+			case MOVEMENT_BROADCAST:
+			case MOVEMENT_REPARTITION:
+				strategy = copyAggStrategy(s);
+				break; /* switch */
+			default:
+				break; /* switch */
+		}
+		if ( strategy != NULL )
+			break; /* foreach */
+	}
+	freeAggStrategyList(strategies);
+	strategies = NIL;
+	
+	/* Use the chosen strategy to fill in the flow. */
+	if ( strategy == NULL )
+	{
+		psErrorNonce(context, "Cannot find aggregation stategy");
+		return true;	 
+	}
+		
+	switch ( strategy->leftmove )
+	{
+		case MOVEMENT_NONE:
+			/* No motion required so inherit flow characteristics. */
+			plan->flow = copyObject(child->flow);
+			noteFlow(plan->flow, context);
+			return false;
+			
+		case MOVEMENT_BROADCAST: 
+			child->flow = makeReplicatedFlow();
+			child->flow->req_move = strategy->leftmove;
+			noteFlow(child->flow, context);
+			break;
+		
+		case MOVEMENT_FOCUS:
+			child->flow = makeDispatcherFlow();
+			child->flow->req_move = strategy->leftmove;
+			child->flow->segindex = -1;  /* Dispatcher for now. */
+			noteFlow(child->flow, context);
+			break;
+			
+		case MOVEMENT_REPARTITION:
+			child->flow = makePartitionedFlow();
+			child->flow->req_move = strategy->leftmove;
+			child->flow->hashExpr = strategy->hashexprs;
+			child->flow->hashOp = strategy->hashtypes;
+			noteFlow(child->flow, context);
+			break;
+		
+		default:
+			psErrorNonce(context, "Cannot implement aggregation strategy");
+			return true;
+	}
+
+	
+	/* Adopt flow characteristics of strategy for the Nestloop. */
+	/* TODO We could do better, e.g., track partition expressions. */
+	plan->flow = makeFlow(strategy->resultflowtype);
+	plan->flow->segindex = ( strategy->resultislocal ? -1 : 0 );
+	noteFlow(plan->flow, context);
+	return false;	 
+}
 
 
 /* 
@@ -1549,25 +1624,22 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 							newnode = (Node*)make_sorted_union_motion(
 								plan,
 								sendToSecondary,
-								CdbThisSegment,
+								-1,
 								flow->numSortCols,
 								flow->sortColIdx,
 								flow->sortOperators,
-								CdbNumSegments,
-								makeDefaultSegIdxArray(CdbNumSegments)
+								CdbIdentity.numsegments,
+								makeDefaultSegIdxArray(CdbIdentity.numsegments)
 								);
 							/* Assign unique node number to the new node. */
 							assignMotionID(newnode, context, NULL);
 						}
 						else
 						{
-							/* TODO: get the segindex of me */
-							int mySegIdx;
-							getCdbIdentity( &mySegIdx, NULL );
 							newnode = (Node*)make_union_motion(
 								plan, 
 								sendToSecondary, 
-								mySegIdx
+								CdbIdentity.segindex
 								);
 							/* Assign unique node number to the new node. */
 							assignMotionID(newnode, context, NULL);
@@ -1583,8 +1655,8 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 								flow->numSortCols,
 								flow->sortColIdx,
 								flow->sortOperators,
-								CdbNumSegments,
-								makeDefaultSegIdxArray(CdbNumSegments)
+								CdbIdentity.numsegments,
+								makeDefaultSegIdxArray(CdbIdentity.numsegments)
 								);
 							/* Assign unique node number to the new node. */
 							assignMotionID(newnode, context, NULL);
@@ -1607,15 +1679,15 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 							newnode = (Node*)make_sorted_hashed_motion(
 								plan,
 								sendToSecondary,
-								CdbNumSegments,
-								makeDefaultSegIdxArray(CdbNumSegments),
+								CdbIdentity.numsegments,
+								makeDefaultSegIdxArray(CdbIdentity.numsegments),
 								flow->hashExpr,
 								flow->hashOp,
 								flow->numSortCols,
 								flow->sortColIdx,
 								flow->sortOperators,
-								CdbNumSegments,
-								makeDefaultSegIdxArray(CdbNumSegments)
+								CdbIdentity.numsegments,
+								makeDefaultSegIdxArray(CdbIdentity.numsegments)
 								);
 							/* Assign unique node number to the new node. */
 							assignMotionID(newnode, context, NULL);
@@ -1625,8 +1697,8 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 							newnode = (Node*)make_hashed_motion(
 								plan, 
 								sendToSecondary,
-								CdbNumSegments,
-								makeDefaultSegIdxArray(CdbNumSegments),
+								CdbIdentity.numsegments,
+								makeDefaultSegIdxArray(CdbIdentity.numsegments),
 								flow->hashExpr,
 								flow->hashOp								
 								);

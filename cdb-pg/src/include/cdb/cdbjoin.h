@@ -21,7 +21,7 @@
 #include "nodes/plannodes.h"
 
 /*
- * A CdbJoinStrategy is the composite result of function getJoinStrategy.
+ * A CdbJoinStrategy is the composite result of function getJoinStrategyList.
  * It characterizes a way of transforming a Join node and its arguments
  * in order to produce a correct result in the CDB parallel execution
  * environment.

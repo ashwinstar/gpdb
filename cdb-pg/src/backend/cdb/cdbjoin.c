@@ -30,7 +30,7 @@ typedef enum {
 		OuterBoth
 } JoinDirection;
 
-static CdbJoinStrategy *makeStrategy(Movement left, Movement right, FlowType result);
+static CdbJoinStrategy *makeJoinStrategy(Movement left, Movement right, FlowType result);
 
 
 /*
@@ -145,7 +145,7 @@ List *getJoinStrategyList(Join* join)
 		case RxR:
 			/* Replicated flows can join in parallel.   The result is a
 			 * replicated flow.  This case may never occur. */
-			result = lappend(result,makeStrategy(MOVEMENT_NONE, MOVEMENT_NONE, FLOW_REPLICATED));
+			result = lappend(result,makeJoinStrategy(MOVEMENT_NONE, MOVEMENT_NONE, FLOW_REPLICATED));
 			break;
 		
 		case RxL:
@@ -157,7 +157,7 @@ List *getJoinStrategyList(Join* join)
 			 break;
 			 
 		case LxL:
-			result = lappend(result,makeStrategy(MOVEMENT_NONE, MOVEMENT_NONE, FLOW_SINGLETON));
+			result = lappend(result,makeJoinStrategy(MOVEMENT_NONE, MOVEMENT_NONE, FLOW_SINGLETON));
 			break;
 		
 		case RxP:
@@ -170,7 +170,7 @@ List *getJoinStrategyList(Join* join)
 				case InnerJoin:
 				case OuterRight:
 					/* Replicated flow isn't on the driving side. */
-					result = lappend(result,makeStrategy(MOVEMENT_NONE, MOVEMENT_NONE, FLOW_PARTITIONED));
+					result = lappend(result,makeJoinStrategy(MOVEMENT_NONE, MOVEMENT_NONE, FLOW_PARTITIONED));
 					/* Could also broadcast right side, but why? */
 					break;
 				
@@ -181,7 +181,7 @@ List *getJoinStrategyList(Join* join)
 					 * partitioned one, so the only thing we can do is to
 					 * broadcast the partitioned side making it replicated.
 					 */
-					result = lappend(result,makeStrategy(MOVEMENT_NONE, MOVEMENT_BROADCAST, FLOW_REPLICATED));
+					result = lappend(result,makeJoinStrategy(MOVEMENT_NONE, MOVEMENT_BROADCAST, FLOW_REPLICATED));
 					break;
 			}
 			break;
@@ -196,7 +196,7 @@ List *getJoinStrategyList(Join* join)
 				case InnerJoin:
 				case OuterLeft:
 					/* Replicated flow isn't on the driving side. */
-					result = lappend(result,makeStrategy(MOVEMENT_NONE, MOVEMENT_NONE, FLOW_PARTITIONED));
+					result = lappend(result,makeJoinStrategy(MOVEMENT_NONE, MOVEMENT_NONE, FLOW_PARTITIONED));
 					/* Could also broadcast left side, but why? */
 					break;
 				
@@ -207,7 +207,7 @@ List *getJoinStrategyList(Join* join)
 					 * partitioned one, so the only thing we can do is to
 					 * broadcast the partitioned side making it replicated.
 					 */
-					result = lappend(result,makeStrategy(MOVEMENT_BROADCAST, MOVEMENT_NONE, FLOW_REPLICATED));
+					result = lappend(result,makeJoinStrategy(MOVEMENT_BROADCAST, MOVEMENT_NONE, FLOW_REPLICATED));
 					break;
 			}
 			break;
@@ -217,12 +217,12 @@ List *getJoinStrategyList(Join* join)
 		 * we need to bring all the rows of the partitioned flow to the
 		 * stream that carries the local flow. */		
 		case LxP:
-			result = lappend(result,makeStrategy(MOVEMENT_NONE, MOVEMENT_FOCUS, FLOW_SINGLETON));
+			result = lappend(result,makeJoinStrategy(MOVEMENT_NONE, MOVEMENT_FOCUS, FLOW_SINGLETON));
 			break;		
 		case PxL:
 			/* Motion: Focus left on dispatcher. */
 			/* Result: Singleton, Local */
-			result = lappend(result,makeStrategy(MOVEMENT_FOCUS, MOVEMENT_NONE, FLOW_SINGLETON));
+			result = lappend(result,makeJoinStrategy(MOVEMENT_FOCUS, MOVEMENT_NONE, FLOW_SINGLETON));
 			break;
 			
 		case PxP:
@@ -230,11 +230,11 @@ List *getJoinStrategyList(Join* join)
 			 * join key. (It would be great if we were smart enought to notice
 			 * whether one or both flow were already partitioned that way, but
 			 * we're not, so both sides get repartitioned. */
-			result = lappend(result,makeStrategy(MOVEMENT_REPARTITION, MOVEMENT_REPARTITION, FLOW_PARTITIONED));
+			result = lappend(result,makeJoinStrategy(MOVEMENT_REPARTITION, MOVEMENT_REPARTITION, FLOW_PARTITIONED));
 			if ( argreqs!=OuterRight && argreqs!=OuterBoth)
-				result = lappend(result,makeStrategy(MOVEMENT_NONE, MOVEMENT_BROADCAST, FLOW_PARTITIONED));
+				result = lappend(result,makeJoinStrategy(MOVEMENT_NONE, MOVEMENT_BROADCAST, FLOW_PARTITIONED));
 			if ( argreqs!=OuterLeft && argreqs!=OuterBoth)
-				result = lappend(result,makeStrategy(MOVEMENT_BROADCAST, MOVEMENT_NONE, FLOW_PARTITIONED));
+				result = lappend(result,makeJoinStrategy(MOVEMENT_BROADCAST, MOVEMENT_NONE, FLOW_PARTITIONED));
 			break;
 	}
 	return result;
@@ -244,7 +244,7 @@ List *getJoinStrategyList(Join* join)
 /*
  * Helper for getJoinStrategy -- palloc and initialize a strategy.
  */
-CdbJoinStrategy *makeStrategy(Movement left, Movement right, FlowType result)
+CdbJoinStrategy *makeJoinStrategy(Movement left, Movement right, FlowType result)
 {
 	CdbJoinStrategy *js = palloc(sizeof(CdbJoinStrategy));
 	js->leftmove = left;
@@ -262,7 +262,7 @@ CdbJoinStrategy *copyJoinStrategy(CdbJoinStrategy *old)
 	
 	if  ( old != NULL )
 	{
-		js = makeStrategy(old->leftmove, old->rightmove, old->resultflowtype);
+		js = makeJoinStrategy(old->leftmove, old->rightmove, old->resultflowtype);
 		js->resultislocal = old->resultislocal;
 	}
 	return js;
