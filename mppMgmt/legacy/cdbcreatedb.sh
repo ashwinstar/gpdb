@@ -10,9 +10,9 @@
 
 PATH="$(dirname $0):$PATH"
 
-usage="[ PGROOT=<root_directory> ]  $(basename $0) \n        [ {--nsegs|-n} { #segs | 3 } ] \n        [ {--segname|-s} { segname | segDB} ] \n        [ {--prefix|-P} { dbprefix | cdb} ] \n        [ {--help}s ]"
+usage="[ PGROOT=<root_directory> ]  $(basename $0) \n        [ {--nsegs|-n} { #segs | 3 } ] \n        [ {--segname|-s} { segname | segDB} ] \n        [ {--prefix|-P} { dbprefix | cdb} ] \n        [ {--help} ]"
 
-echo -e "$(basename $0): Create and load a database into a CDB cluster."          
+echo -e "$(basename $0): Create and load a database into a CDB cluster."
 echo -e "Copyright (c) 2004-2005 Metapa, Inc. All Rights Reserved"
 
 function display_help
@@ -22,15 +22,15 @@ function display_help
     echo -e "\nThis command allows you to create and load database(s) into a CDB cluster."
     echo    "The CDB cluster must have been previously initialized using \"cdbinitdb\" "
     echo    "Unless otherwise specified, the name of the database created is \"segDB\"."
-    
+
     echo -e "\nIf \$PGROOT is not set, the root of the CDB cluster in which the database(s) "
     echo    "are created defaults to \"\$HOME/cdb-data\"."
-    
+
     echo -e "\nYou can specify the number of segments instances you want to create in each"
     echo    "database by --nsegs or -N. If no value is set, then the default value is 3"
     echo -e "The prefix of each segment name can be specified with --segname or -s. This "
     echo    "defaults to \"segDB\". If there are multiple segments per database instance, all"
-    echo    "segment DBs will have an ascending integer appended to their name. E.g segDB1." 
+    echo    "segment DBs will have an ascending integer appended to their name. E.g segDB1."
 
     echo -e "\nUnless --plain is specified, a set of small verification tables is created "
     echo    "in schema \"public\"."
@@ -56,6 +56,8 @@ source cdbfuncs
 
 # Some useful variables
 dir="$(dirname $0)"
+hostname="$(hostname)"
+username="$(whoami)"
 plain=false
 positional=0
 options_ended=
@@ -66,10 +68,10 @@ segname=
 verbose=false
 
 # Ok, loop through the command line args
-# 
+#
 # TODO: For some reason, the -X form of command line parsing, does not handle
 # errors very well. Needs fixing at some point.
-while [ $# -gt 0 ] 
+while [ $# -gt 0 ]
 do
     if [ ! $options_ended ]; then
         OPTIND=1
@@ -86,7 +88,7 @@ do
                    [ "$OPTARG" != "?" ] && break
                    ;;
                 D)
-                   dbroot="$OPTARG" 
+                   dbroot="$OPTARG"
                    ;;
                 s)
                    segname="$OPTARG"
@@ -121,7 +123,7 @@ do
         shift $(($OPTIND - 1))
     fi
 
-    # 
+    #
     # Handle long options and positional parameters
     #
     if [ $# -gt 0 ]; then
@@ -199,7 +201,7 @@ then
       exit 2
     fi
 else
-    # If nothing is specified, then default to 3 
+    # If nothing is specified, then default to 3
     : ${nsegs:=3}
 fi
 
@@ -228,7 +230,7 @@ if [ ! "$PGDATABASE" ]; then
 else
     export PGDATABASE=${1:-$PGDATABASE}
 fi
-#export PGOPTIONS="-c BLAH BLAH TODO" 
+#export PGOPTIONS="-c BLAH BLAH TODO"
 
 # Discard outside values of these
 unset PGHOST
@@ -277,36 +279,46 @@ else
   exit 1
 fi
 
+# Initialise some arrays we will use to store the admin statements
+declare -a listeners_array
+declare -a segdb_array
+declare -a segments_array
+
+# And some other useful variables
+current_listener=0
+current_segment=1
+
 # Ok, we have some databases, let's loop through them
 for PGDATA in "$PGROOT"/$dbprefix[1-9]?([0-9])
 do
     [ ! -d "$PGDATA" ] && continue
     PGDATA=$(cd "$PGDATA"; pwd)
     PGPORT=$(getPort)
-    
+
     if [ "$verbose" = "true" ]
     then
         echo -e "About to create a DB in $PGDATA, Port = $PGPORT\n  "
+        echo -e "Number of segments to create = $nsegs"
     fi
 
     # This is the loop for each segment database
     for (( i = 1; i <= nsegs; i++ ))
     do
-    
+
       # Do we need to append anything to the segname?
       finalSegName=$segname
       if [ $nsegs -gt 0 ]
       then
-          finalSegName=$finalSegName$i
+          finalSegName=$finalSegName$current_segment
           PGDATABASE=$finalSegName
       fi
-    
-      echo -e "Creating ${PGDATABASE} in $PGDATA/$finalSegName"
+
+      echo -e "Creating ${PGDATABASE} in $PGDATA"
 
       db=$(psql -t --list template1 2>/dev/null | grep "^[[:space:]]${PGDATABASE}[[:space:]]")
       if [ "$db" ]
       then
-        sleep 1
+          sleep 1
           dropdb $PGDATABASE
       else
           if [ "$verbose" = "true" ]
@@ -314,75 +326,136 @@ do
               echo -e "Found no DB named $PGDATABASE, no need to DROP"
           fi
       fi
-  
+
       sleep 1
       createdb
 
+      # Store the listener statements
+      listeners_array[current_listener]="select cdb.add_listener('$hostname', $PGPORT, '$PGDATA');"
 
-#      ( cd $dir
-#      psql <<EOF
-#      \set instancecount $instancecount
-#      \set tailid $tail
-#      \set QUIET
-#      set client_min_messages = 'ERROR';
-#      set search_path = 'public';
-#      ${plain:+\i cvpschema.sql}
-#      ${plain:+\i cvptail.sql}
-#EOF
-#      )
-      
-#      cat >>$schemaUpdates <<EOF
-      
-#      \\echo Defining instance $tail and segment $tail
-#      -- Insert a row describing this instance
-#      SELECT cdb.define_tail_instance( $tail, $PGPORT, 'localhost', '$PGDATA' );
-#      -- Insert a row describing a segment and maps it to the instance
-#      SELECT cdb.define_segment( $tail, $tail, '$PGDATABASE', '$USER', NULL );
-#EOF
+      # And our segment statements
+      segments_array[current_segment]="select cdb.add_segment('$finalSegName');"
+      segdb_array[current_segment]="select cdb.add_segment_database('$finalSegName', '$hostname', $PGPORT, 't');"
+
+      # Increment our segment counter
+      (( current_segment++ ))
     done
+
+    # Increment our listener counter
+    (( current_listener++ ))
 
 done
 
-echo -e "\nRemember, nothing has been configured in the admin schema at this point"
+# Show everyone what will happen to the admin schema
+if [ "$verbose" = "true" ]
+then
+  for i in "${listeners_array[@]}"; do
+    echo "Listener : $i"
+  done
+
+  for i in "${segments_array[@]}"; do
+    echo "Segment : $i"
+  done
+
+  for i in "${segdb_array[@]}"; do
+    echo "Seg DB : $i"
+  done
+fi
+
+
+#
+# Ok, let's populate the admin schema everywhere
+#
+
+# Reset our counter
+current_segment=1
+
+# Ok, we have some databases, let's loop through them
+for PGDATA in "$PGROOT"/$dbprefix[1-9]?([0-9])
+do
+    [ ! -d "$PGDATA" ] && continue
+    PGDATA=$(cd "$PGDATA"; pwd)
+    PGPORT=$(getPort)
+
+    if [ "$verbose" = "true" ]
+    then
+        echo -e "Populating schema at $PGDATA, Port = $PGPORT\n  "
+        echo -e "Number of segments = $nsegs"
+    fi
+
+    # This is the loop for each segment database
+    for (( loop = 1; loop <= $nsegs; loop++ ))
+    do
+
+      # Do we need to append anything to the segname?
+      finalSegName=$segname
+      if [ $nsegs -gt 0 ]
+      then
+          finalSegName=$finalSegName$current_segment
+          PGDATABASE=$finalSegName
+      fi
+
+      # Ok, let's configure the Admin schema
+      #
+
+      if [ "$verbose" = "true" ]
+      then
+          echo -e "For this loop, we are using segname = $finalSegName"
+      fi
+
+      # First the host table
+      if [ "$verbose" = "true" ]
+      then
+          echo -e "Updating hosts table with hostname = $hostname"
+      fi
+      psql $finalSegName -c "select cdb.add_host('$hostname', 1111);"
+
+      # Now the listener
+      if [ "$verbose" = "true" ]
+      then
+        echo -e "Updating listener table with listeners"
+      fi
+
+      for i in "${listeners_array[@]}"; do
+        psql $finalSegName -c "$i"
+      done
+
+      # Add the segment
+      if [ "$verbose" = "true" ]
+      then
+          echo -e "Updating segment table"
+      fi
+
+      for i in "${segments_array[@]}"; do
+        psql $finalSegName -c "$i"
+      done
+
+      # And the segment database
+      if [ "$verbose" = "true" ]
+      then
+          echo -e "Updating segment database table."
+      fi
+
+      for i in "${segdb_array[@]}"; do
+        psql $finalSegName -c "$i"
+      done
+
+      # And finally, set the identity
+      if [ "$verbose" = "true" ]
+      then
+          echo -e "Updating identity table"
+      fi
+      psql $finalSegName -c "select cdb.cdb_set_identity('Default Cluster', '$username', NULL, ${#segdb_array[@]}, '$hostname', $PGPORT, '$finalSegName' , 't');"
+
+      if [ "$verbose" = "true" ]
+      then
+          echo -e "Done with loop for $finalSegName"
+      fi
+
+      # Increment our segment counter
+      (( current_segment++ ))
+
+    done
+done
 
 exit 1
-
-
-
-
-# TODO: Automatically configure the admin schema
-
-# ---------------------------------------------------------------------
-# Complete TAIL setup to HEAD in cdb schema tables and identify the
-# CDB managed tables to the HEAD.
-# ---------------------------------------------------------------------
-PGDATA="$PGROOT/head"
-PGPORT=$(getPort)
-
-echo -e "\n=======================================================\n\
-Definining CDB instances, segments, and segment/instance pairs,\n\
-identifying CDB managed tables, and loading data into the HEAD. \
-\n======================================================="
-
-( cd $dir
-psql <<EOF
-\set tailid 0
-\set QUIET
-set client_min_messages = 'ERROR';
-\o /dev/null
-\i $schemaUpdates
-set search_path = 'public';
-${plain:+\i cvphead.sql}
-\o
-EOF
-)
-
-rm $schemaUpdates
-
-
-# ---------------------------------------------------------------------
-# All done
-# ---------------------------------------------------------------------
-echo -e "\n\n**********************************************************\n\
-Don't forget to restart the cluster using \"cdbstart head\"\n"
-
