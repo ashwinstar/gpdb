@@ -70,8 +70,6 @@ static PgMpiBuffer *outBuffs;
  */
 static uint8 *outMpiBuff;
 
-/* Keeps track of the last buffer that was sent. */
-static int lastBuffSent;
 
 /* marks whether we are in End Of Stream mode or not.  
  */
@@ -200,8 +198,6 @@ void CleanUpMotionLayerIPC(void)
 	}
 	
 	pfree(inBuff);
-	pfree(mpiSendReq);
-	pfree(mpiRecvReq);
 	pfree(outBuffs);
 	pfree(outMpiBuff);
 	
@@ -254,6 +250,8 @@ bool SendShutdownToAMS(TupleChunkListItem tcItem)
 		rc = MPI_Isend( tcItem->chunk_data, tcItem->chunk_length, MPI_BYTE,
 						0,0, amssvc_comm, &mpiSendReq );
 		checkMpiRc( rc, "MPI Error while sending Shutdown msg to AMS");
+
+		shutdownStarted = true;
 		return false;
 		
 	}
