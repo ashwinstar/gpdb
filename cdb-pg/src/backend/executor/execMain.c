@@ -268,7 +268,7 @@ ExecutorRun(QueryDesc *queryDesc,
 			 * This call returns after launching the threads that send the command to the appropriate
 			 * segdbs.  It does not wait for them to finish.
 			 */
-			CdbDispatchCommand(buffer.data, set, true );
+			CdbDispatchCommand(buffer.data, set, NULL, 0, true );
 			hasDispatched = true;
 			pfree(buffer.data);
 		}
@@ -320,18 +320,32 @@ ExecutorRun(QueryDesc *queryDesc,
 
 	if ( hasDispatched )
 	{
+		char *message;
 		/*
 		 * We successfully completed on the Dispatcher.  Now check the results
 		 * from the qExecs.  This internally waits for them to all finish.
 		 */
 		CdbDispatchResults* results = CdbCheckDispatchResult();
 
+
+		message = CdbDumpDispatchResults(results, true);
+		char *szCommand = results->szCommand;
+		if ( szCommand == NULL )
+			szCommand = "";
+		Assert( message != NULL );
+		elog( DEBUG5,
+				"cdbexec command results for \"%s\": %s",
+				szCommand, message );
+
+		pfree(message);
+
 		if ( !results->success )
 		{
-			/*  TODO: Format better error message */
+			char *message = CdbDumpDispatchResults(results, false);
 			ereport( ERROR,
 						(errcode( ERRCODE_CDB_COMMAND_ERROR ),
-							errmsg("cdbexec command failed on one or more segment databases"							
+						errmsg("cdbexec command failed on one or more segment databases: %s",
+						message
 					)));
 				
 		}
