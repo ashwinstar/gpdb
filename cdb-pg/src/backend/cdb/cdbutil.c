@@ -31,6 +31,7 @@
 #include "cdb/cdbutil.h"
 #include "cdb/cdblink.h"
 #include "cdb/cdbmotion.h"
+#include "cdb/cdbvars.h"
 
 /*
  * Helper Functions
@@ -534,7 +535,10 @@ void cdb_setup(void)
 {
 	elog( DEBUG1, "Initializing CDB components...");
 	cdblink_setup();
-	InitMotionLayer();
+	
+	/* If cdb_role is UTILITY, skip this call. */
+	if ( Cdb_role != CDB_ROLE_UTILITY )
+		InitMotionLayer();
 }
 
 
