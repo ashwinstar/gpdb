@@ -1,0 +1,1006 @@
+-- --------------------------------------------------------------------
+--
+-- cdb_schema.sql
+--
+-- Define CDB administrative schema and several SQL functions to aid 
+-- in maintaining the CDB administrative schema.
+--
+-- $Id$
+--
+-- --------------------------------------------------------------------
+
+set log_min_messages = 'WARNING';
+
+-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+--
+-- Create the schema and ensure PUBLIC access
+--
+-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+CREATE SCHEMA cdb;
+COMMENT ON SCHEMA cdb
+    IS 'repository for CDB service functions and related schema objects';
+GRANT USAGE ON SCHEMA cdb TO PUBLIC;
+
+
+-- Add PL/PGSQL to the database
+CREATE FUNCTION plpgsql_call_handler () 
+		RETURNS language_handler 
+		AS '@pkglibdir@/plpgsql@dlsuffix@'
+		LANGUAGE 'C';
+		
+-- PIN the function to the database
+INSERT INTO pg_depend SELECT 0,0,0, tableoid, oid, 0, 'p' FROM pg_proc WHERE proname = 'plpgsql_call_handler';
+
+CREATE TRUSTED LANGUAGE 'plpgsql' 
+		HANDLER plpgsql_call_handler
+		LANCOMPILER 'PL/pgSQL';
+
+-- PIN the language to the database
+INSERT INTO pg_depend SELECT 0,0,0, tableoid, oid, 0, 'p' FROM pg_language WHERE lanname = 'plpgsql';
+
+
+-- A row of table HOST represents a host machine in the CDB.
+--
+-- Attribute hostname is a component of the URL for PostgreSQL databases
+-- (segment databases) served by listeners that run on the host machine.
+--
+-- Each segment database in a given CDB contains an identical copy 
+-- of this table.
+
+create table CDB.HOST
+(
+	hostid integer,
+	hostname text not null,
+	amsport integer not null,
+	
+	primary key (hostid),
+	unique (hostname)
+);
+
+
+-- A row of table LISTENER represents a listener (postmaster process) used
+-- by the running CDB. 
+--
+-- Attribute port is a component of the URL for PostgreSQL databases 
+-- (segment databases) served by the listener.
+--
+-- Each segment database in a given CDB contains an identical copy 
+-- of this table.
+
+create table CDB.LISTENER
+(
+	listenerid integer,
+	hostid integer not null,
+	port integer not null,
+	datadir text not null,
+	
+	primary key (listenerid),
+	foreign key (hostid) references CDB.host
+);
+
+
+-- A row of table SEGMENT represents a segment of the logical database
+-- stored in the CDB.
+--
+-- Attribute segindex has a value from interval 0..(N-1) where N is the
+-- number of segments (not segment databases) in the CDB.
+--
+-- Never the less, the database name used for the segment databases the
+-- implement the segment is fixed here, thus implying that the a given
+-- listener can serve at most one segment database per segment.
+--
+-- Each segment database in a given CDB contains an identical copy 
+-- of this table.
+
+create table CDB.SEGMENT
+(
+	segindex integer,
+	dbname text not null,
+	primary key (segindex),
+	unique (dbname)
+);
+
+
+
+-- A row of table SEGDB represents a segment database in the CDB.
+--
+-- Attribute segindex has a value from interval 0..(N-1) where N is the
+-- number of segments (not segment databases) in the CDB.
+--
+-- The database name used for the segment database is determined by the
+-- segment that the database implements.
+--
+-- Each segment database in a given CDB contains an identical copy 
+-- of this table.
+
+create table CDB.SEGDB
+(
+	segindex integer,
+	isprimary boolean,
+	listenerid integer not null,
+	isvalid boolean not null,
+	
+	primary key (segindex, isprimary),
+	unique (segindex, listenerid),
+	foreign key (segindex) references CDB.segment(segindex),
+	foreign key (listenerid) references CDB.listener(listenerid)
+);
+
+
+-- The sole row of table CDB represents (1) the CDB as a whole and (2) the
+-- segment database in which it appears.
+--
+-- All segment databases in a given CDB have the same values for attributes 
+-- cdbName and numSegments.  The remaining attributes  are specific to the 
+-- segment database.
+--
+-- No two segment databases in a given CDB can match in all attributes of
+-- this table.
+
+create table CDB.CDB
+(
+	cdbname name,
+	cdbsuperuser text,
+	cdbsuperpswd text,
+	numSegments integer not null,
+	listenerId integer not null,
+	segindex integer not null,
+	isprimary boolean not null,
+	
+	primary key (cdbname),
+	foreign key( segIndex, isprimary) references CDB.segdb(segIndex,isprimary),
+	foreign key (segindex) references CDB.segment(segindex)
+);
+
+create table CDB.VERSION
+(
+    schemaversion integer
+);
+
+INSERT INTO CDB.VERSION VALUES ( 1 );
+
+
+-- A row of table SPACECATEGORY represents a logical category of physical 
+-- storage within the CDB.
+--
+-- There are three space categories required in every CDB, thus each 
+-- actual SPACEATEGORY table is guaranteed to have three rows with 
+-- known values: TEMP, FAST, and SLOW.  CDBs implemented in special
+-- hardware environments (e.g. solid state disks or whatever) may have 
+-- additional rows.
+--
+-- Each segment database in a given CDB contains an identical copy 
+-- of this table.
+
+create table CDB.SPACECATEGORY
+(
+	category text,
+	remark text not null,
+	
+	primary key (category)
+);
+
+insert into CDB.SPACECATEGORY values ('TEMP','Sort overflow area');
+insert into CDB.SPACECATEGORY values ('FAST','Primary data area');
+insert into CDB.SPACECATEGORY values ('SLOW','Secondary data area');
+
+
+-- A row of table TABLESPACE represents a CDB tablespace (not a PostgreSQL 
+-- tablespace).
+--
+-- Each segment database in a given CDB contains an identical copy 
+-- of this table.
+
+create table CDB.TABLESPACE
+(
+	spaceid integer,
+	spacename text not null,
+	category text not null,
+	
+	primary key (spaceid),
+	unique (spacename),
+	foreign key (category) references CDB.spacecategory(category)
+);
+
+
+-- A row of table EXTENT represents a a distinct piece of physical storage
+-- (e.g., a disk or disk partition on a specific host machine).
+--
+-- The idea is to represent how the administrator has carved up the available
+-- disk.  This "carving up" is managed and enforced externally.  The table
+-- EXTENT merely informs CDB of the storage available to it.
+--
+-- Each segment database in a given CDB contains an identical copy 
+-- of this table.
+
+create table CDB.EXTENT
+(
+	listenerid integer,
+	path text not null,
+	category text not null,
+	spaceid integer,
+	pg_spacename text not null, -- system assigned
+	
+	primary key (listenerid,path),
+	foreign key (listenerid) references CDB.listener(listenerid),
+	foreign key (category) references CDB.spacecategory(category),
+	foreign key (spaceid) references CDB.tablespace(spaceid)
+);
+
+
+-- A row of POLICY represents a database object known to the CDB.
+--
+-- There are two uses for a row of POLICY suggesting that, perhaps, 
+-- it should be separated into two tables: 
+--
+--  1. It supports remapping of OIDs.
+--  2. It describes policy under which table data is distributed 
+--     (which is closely related to the type of a table).
+--
+-- (Note that POLICY it might better be noted by altering pg_class.)
+--
+-- Attribute policytype has three possible values:
+--
+-- 'p' - the object is a table and is partitioned
+-- 'r' - the object is a table and is replicated
+-- 's' - the object is special, e.g., managed by PostgreSQL or CDB.
+--
+-- (It seems likely that the catch-all type 's' should be replaced by a
+-- small set of more specific type, but it is unclear at present what they
+-- should be.)
+--
+-- Each segment database in a given CDB contains a unique version of table
+-- POLICY, since it relates local to global identifiers.  On the other hand,
+-- every segment database will have an identical projection of POLICY 
+-- defined by  
+--
+--     SELECT DISTINCT GLOBALID, POLICYTYPE, ATTRNUMS
+--     FROM CDB.POLICY
+
+
+create table CDB.POLICY
+(
+	globalid integer,
+	localoid oid,
+	policytype char(1) not null,
+	attrnums integer[],
+	
+	primary key (globalid),
+	unique (localoid), -- logically a foreign key to pg_class
+	constraint policytypes check (policytype in ('p','r','s'))
+);
+
+
+create type cdb.table_descriptor as 
+(
+    oid         oid,
+    schema_name name,
+    table_name  name,
+    kind        "char" 
+);
+COMMENT ON TYPE cdb.table_descriptor
+    IS 'used internally by CDB for service functions';
+
+
+--
+-- used to add a host to the cdb.hosts table
+--
+CREATE OR REPLACE FUNCTION cdb.add_host(cdb.host.hostname%TYPE,cdb.host.amsport%TYPE) RETURNS VOID
+	AS '
+		DECLARE
+			host_name 	ALIAS FOR $1;
+			ams_port    ALIAS FOR $2;
+			host_row	cdb.host%ROWTYPE;
+			lastid      cdb.host.hostid%TYPE;
+		BEGIN
+		
+			--
+			-- Perform a little validation on the input parameters
+			--
+			IF host_name IS NULL OR host_name = ''''
+			THEN
+				RAISE EXCEPTION ''Host name must be specificed'';
+			END IF;
+			
+			IF ams_port IS NULL OR ams_port < 1 OR ams_port > 65535
+			THEN
+				RAISE EXCEPTION ''AMS port number must be specified and between 1 and 65535'';
+			END IF;
+			
+			
+			--
+			-- Ensure that the hostname isnt already represented
+			--
+			SELECT INTO host_row
+					*
+				FROM cdb.host h
+				WHERE h.hostname = host_name;
+				
+			IF FOUND
+			THEN
+				RAISE EXCEPTION ''% is already represented as hostid %'', host_name, host_row.hostid;
+			END IF;
+			
+			--
+			-- Determine the next hostid to be used
+			--
+			SELECT INTO lastid
+					hostid
+				FROM cdb.host
+				ORDER BY hostid DESC
+				LIMIT 1;
+			
+			IF NOT FOUND
+			THEN
+				lastid := 1;
+			ELSE
+				lastid := lastid + 1;
+			END IF;
+			
+			-- 
+			-- Add en entry to cdb.host table for this host
+			INSERT INTO cdb.host VALUES ( lastid, host_name, ams_port );
+			
+			RETURN;
+		END;
+	
+	' LANGUAGE 'plpgsql';
+
+COMMENT ON FUNCTION cdb.add_host(cdb.host.hostname%TYPE,cdb.host.amsport%TYPE) IS 'Adds a host to the hosts table';
+
+
+--
+-- Used to add a segment to the cdb.segment table
+--
+CREATE OR REPLACE FUNCTION cdb.add_segment(cdb.segment.dbname%TYPE) 
+	RETURNS void
+	AS '
+		DECLARE
+			dbname		ALIAS FOR $1;
+			seg_row  	cdb.segment%ROWTYPE;
+			lastid   	cdb.segment.segindex%TYPE;
+		BEGIN
+		
+		   --
+		   -- Perform a little validation on the input parameters
+		   --
+		   IF dbname IS NULL OR dbname = ''''
+		   THEN
+		         RAISE EXCEPTION ''dbname must be specified'';
+		   END IF;
+
+	
+			--
+			-- Ensure that the dbname isnt already represented
+			--
+			SELECT INTO seg_row 
+					*
+				FROM cdb.segment s
+				WHERE s.dbname = dbname;
+				
+			IF FOUND
+			THEN
+				RAISE EXCEPTION ''% is already represented as segindex: %'', dbname, seg_row.segindex;
+			END IF;
+			
+			
+			--
+			-- Determine the next segindex to use
+			--
+			SELECT INTO lastid
+					segindex
+				FROM cdb.segment
+				ORDER BY segindex DESC
+				LIMIT 1;
+				
+			IF NOT FOUND
+			THEN
+				lastid := 1;
+			ELSE
+				lastid := lastid + 1;
+			END IF;
+			
+			--
+			-- Add an entry to cdb.segment table for this segment.
+			--
+			INSERT INTO cdb.segment VALUES ( lastid, dbname );		
+			
+			RETURN;
+		END;
+	' LANGUAGE 'plpgsql';
+	
+COMMENT ON FUNCTION cdb.add_segment(cdb.segment.dbname%TYPE)
+	IS 'used to add a segment';
+									
+									
+--
+-- Used to add a listener to the cdb.listener table
+--
+CREATE OR REPLACE FUNCTION cdb.add_listener(cdb.host.hostname%TYPE,
+										    cdb.listener.port%TYPE,
+										    cdb.listener.datadir%TYPE) 
+	RETURNS void
+	AS '
+		DECLARE
+			hostname		ALIAS FOR $1;
+			port  			ALIAS FOR $2;
+			datadir  		ALIAS FOR $3;
+			host_row  		cdb.host%ROWTYPE;
+			hostid 	 		cdb.host.hostid%TYPE;
+			lastid   		cdb.listener.listenerid%TYPE;
+
+		BEGIN
+			--
+		   	-- Perform a little validation on the input parameters
+		   	--
+		   	IF hostname IS NULL OR hostname = ''''
+		   	THEN
+		    	RAISE EXCEPTION ''hostname must be specified'';
+		   	END IF;
+		   	
+		   	IF port IS NULL OR port < 1 OR port > 65535
+			THEN
+				RAISE EXCEPTION ''Listener port number must be specified and between 1 and 65535'';
+			END IF;
+			
+			IF datadir IS NULL OR datadir = ''''
+			THEN
+				RAISE EXCEPTION ''datadir must be specified'';
+			END IF;
+			
+			
+			--
+			-- Look up the hostid for the specified hostname
+			--
+			SELECT INTO host_row
+					*
+				FROM cdb.host h
+				WHERE h.hostname = hostname;
+				
+			IF FOUND
+			THEN
+				hostid := host_row.hostid;
+			ELSE
+				RAISE EXCEPTION ''% is not in the cdb.host table'', hostname;
+			END IF;						
+			
+			
+			--
+			-- Determine the next listenerid to use
+			--
+			SELECT INTO lastid
+					listenerid
+				FROM cdb.listener
+				ORDER BY listenerid DESC
+				LIMIT 1;
+				
+			IF NOT FOUND
+			THEN
+				lastid := 1;
+			ELSE
+				lastid := lastid + 1;
+			END IF;
+			
+			
+			--
+			-- Add an entry to cdb.listener table for this listener
+			--
+			INSERT INTO cdb.listener VALUES ( lastid, hostid, port, datadir );
+			
+			RETURN;
+		END;
+	' LANGUAGE 'plpgsql';
+
+COMMENT ON FUNCTION cdb.add_listener(cdb.host.hostname%TYPE,
+			 					     cdb.listener.port%TYPE,
+									 cdb.listener.datadir%TYPE) 
+	IS 'used to add a listener';
+	
+--
+-- Used to add a Segment Database to the CDb
+--
+CREATE OR REPLACE FUNCTION cdb.add_segment_database( cdb.segment.dbname%TYPE,
+													 cdb.host.hostname%TYPE,
+			 					     				 cdb.listener.port%TYPE, 
+													 cdb.segdb.isprimary%TYPE)
+	RETURNS void
+	AS '
+		DECLARE
+			dbname			ALIAS FOR $1;
+			hostname		ALIAS FOR $2;
+			port			ALIAS FOR $3;
+			isprimary   	ALIAS FOR $4;
+			host_row		cdb.host%ROWTYPE;			
+			hostid			cdb.host.hostid%TYPE;
+			listenerid		cdb.listener.listenerid%TYPE;
+			segid			cdb.segment.segindex%TYPE;
+		
+		BEGIN
+			--
+			-- Perform a little validation on the input parameters
+			--
+			IF dbname IS NULL OR dbname = ''''
+			THEN
+				RAISE EXCEPTION ''dbname must be specified'';
+			END IF;
+			
+			IF hostname IS NULL or hostname = ''''
+			THEN
+				RAISE EXCEPTION ''hostname must be specified'';
+			END IF;
+			
+			IF port IS NULL OR port < 1 OR port > 65535
+			THEN
+				RAISE EXCEPTION ''Listener port number must be specified and between 1 and 65535'';
+			END IF;
+			
+			IF isprimary IS NULL 
+			THEN
+				RAISE EXCEPTION ''isprimary must be specified'';
+			END IF;
+			
+			
+			--
+			-- Look up the hostid for the specified hostname
+			--
+			SELECT INTO host_row
+					*
+				FROM cdb.host h
+				WHERE h.hostname = hostname;
+				
+			IF FOUND
+			THEN
+				hostid := host_row.hostid;
+			ELSE
+				RAISE EXCEPTION ''% is not in the cdb.host table'', hostname;
+			END IF;	
+			
+			
+			--
+			-- Look up the listener id for the specified hostid,port
+			--
+			SELECT INTO listenerid
+					l.listenerid
+				FROM cdb.listener l
+				WHERE l.hostid = hostid AND l.port = port;
+				
+			IF NOT FOUND
+			THEN
+				RAISE EXCEPTION ''Could not find listener in listener table for %:%'', hostname,port;
+			END IF;
+			
+			
+			--
+			-- Look up the segindex for the specified dbname
+			--
+			SELECT INTO segid
+					segindex
+				FROM cdb.segment WHERE segment.dbname = dbname
+				ORDER BY segindex DESC
+				LIMIT 1;
+				
+			IF NOT FOUND
+			THEN
+				RAISE EXCEPTION ''Could not find the segment specified by dbname %'', dbname;
+			END IF;
+			
+			
+			--
+			-- Add an entry to cdb.segdb table
+			--
+			INSERT INTO cdb.segdb VALUES ( segid, isprimary, listenerid, ''t'' );
+			
+			RETURN;
+		END;
+	' LANGUAGE 'plpgsql';
+			
+COMMENT ON FUNCTION cdb.add_segment_database( cdb.segment.dbname%TYPE,
+											  cdb.host.hostname%TYPE,
+			 					     		  cdb.listener.port%TYPE, 
+											  cdb.segdb.isprimary%TYPE)
+	IS 'adds a segment database to the CDB';
+	
+
+
+-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+--
+-- Obtains information about the designated class (table) and ensures
+-- the table is manageable by CDB.  To be manageable, the table:
+--
+--     1) must be a base table (kind = 'r');
+--     2) must NOT be a system table.
+--
+-- No table locks are required by this routine.
+--
+-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+create or replace function cdb.get_table_info( regclass )
+    returns cdb.table_descriptor
+    as '
+        DECLARE
+
+            class_name_or_oid   ALIAS FOR $1;
+           
+            table_info          cdb.table_descriptor; 
+            lastsysoid          pg_catalog.pg_database.datlastsysoid%TYPE;
+
+        BEGIN
+
+            IF class_name_or_oid IS NULL 
+            THEN
+                RAISE EXCEPTION ''Table identifier cannot be NULL or empty.'';
+            END IF;
+           
+            -- force a conversion from regclass to oid
+            table_info.oid := class_name_or_oid::oid;
+
+            --
+            -- Determine the type of relation the caller gave us
+            --
+            SELECT INTO table_info.table_name, table_info.kind, table_info.schema_name
+                    c.relname, c.relkind, n.nspname
+                FROM pg_catalog.pg_class c, pg_catalog.pg_namespace n
+                WHERE 
+                        c.oid = table_info.oid
+                    AND n.oid = c.relnamespace;
+            IF NOT FOUND
+            THEN
+                RAISE EXCEPTION ''Table identifier ''''%'''' is not a table.'', class_name_or_oid;
+            END IF;
+
+            --
+            -- Perform CDB acceptance tests on this table ...
+            --
+
+            -- If the relation was not a table, abandon this procedure
+            IF table_info.kind IS NULL OR table_info.kind <> ''r''
+            THEN
+                RAISE EXCEPTION ''Relation "%.%" (oid=%) has kind=''''%''''; expecting ''''r''''.'', 
+                        table_info.schema_name, 
+                        table_info.table_name, 
+                        table_info.oid,
+                        table_info.kind;
+            END IF;
+
+            -- Lastly, ensure that we are not trying to play with a system table.
+            SELECT INTO lastsysoid
+                    datlastsysoid
+                FROM pg_catalog.pg_database
+                WHERE datname = current_database();
+            IF table_info.oid <= lastsysoid
+            THEN
+                RAISE EXCEPTION ''CDB cannot manage table %.% (oid=%); it is a system table'', 
+                        table_info.schema_name, 
+                        Table_info.table_name, 
+                        table_info.oid;
+            END IF;
+           
+            RETURN table_info;
+
+        END;
+    ' language 'plpgsql';
+COMMENT ON FUNCTION cdb.get_table_info( regclass )
+    IS 'Returns table information by table name or oid';
+
+
+
+-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+--
+-- Removes a table from the CDB management tables.  While the table is
+-- checked to ensure manageability by CDB, no check is performed to 
+-- ensure that the table was actually managed by CDB.
+--
+-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+create or replace function cdb.reset_table( regclass )
+    returns oid
+    as '
+        --
+        -- oid = reset_table( table_name_or_oid );
+        --
+        DECLARE
+            table_name_or_oid   ALIAS FOR $1;
+            table_info          cdb.table_descriptor;
+            removed             boolean := false;
+        BEGIN
+
+           
+
+            -- Get the oid for the named table
+            SELECT INTO table_info * FROM cdb.get_table_info( table_name_or_oid );
+            IF table_info.oid IS NULL
+            THEN
+                RAISE WARNING ''Identifier "%" is not a CDB manageable table.'', table_name_or_oid;
+                RETURN NULL;
+            END IF;
+
+
+
+			DELETE FROM cdb.policy WHERE localoid = table_info.oid;
+			
+			IF FOUND THEN
+				removed := true;
+			END IF;
+			
+            RETURN table_info.oid;               
+        END;
+    ' language 'plpgsql';
+COMMENT ON FUNCTION cdb.reset_table( regclass )
+    IS 'Discards CDB schema data about a table by name or oid';
+    
+    
+-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+--
+-- Marks a table as a replicated table.
+--
+-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+CREATE OR REPLACE FUNCTION cdb.replicate_table( regclass )
+    RETURNS oid
+    as '
+        DECLARE
+			table_name_or_oid   ALIAS FOR $1;
+			table_info          cdb.table_descriptor; 
+			lastid				cdb.policy.globalid%TYPE;
+			
+		BEGIN
+		
+			--
+            -- Get the oid for the named table
+            --
+            SELECT INTO table_info * FROM cdb.get_table_info( table_name_or_oid );
+            IF table_info.oid IS NULL
+            THEN
+                RAISE EXCEPTION ''Table "%" is not defined.'', table_name_or_oid;
+            END IF;
+            
+            --
+            -- Delete any pre-existing rows in cdb_basetable, cdb_policy,
+            -- and cdb_assignment to ensure no confusion.
+            --
+            PERFORM cdb.reset_table( table_info.oid );
+
+
+			--
+			-- Determine the next global oid to use
+			--
+			SELECT INTO lastid
+					globalid
+				FROM cdb.policy
+				ORDER BY globalid DESC
+				LIMIT 1;
+				
+			IF NOT FOUND
+			THEN
+				lastid := 1;
+			ELSE
+				lastid := lastid + 1;
+			END IF;
+
+			--
+			-- Add a row to Policy table
+			INSERT INTO cdb.policy VALUES ( lastid, table_info.oid, ''r'', NULL );
+			
+			
+			RETURN table_info.oid;
+		END;
+	' LANGUAGE 'plpgsql';
+	
+	
+COMMENT ON FUNCTION cdb.replicate_table( regclass )
+	IS 'used to mark a table as being replicated';
+	
+
+--
+-- Marks a table as a partitioned table
+--
+CREATE OR REPLACE FUNCTION cdb.partition_table( regclass, cdb.policy.attrnums%TYPE )
+	RETURNS oid
+	AS '
+		DECLARE
+			table_name_or_oid    ALIAS FOR $1;
+			col_names			 ALIAS FOR $2;
+			table_info           cdb.table_descriptor;
+			lastid				 cdb.policy.globalid%TYPE;
+		BEGIN
+		
+			--
+			-- Get the oid for the named table
+			-- 
+			SELECT INTO table_info * FROM cdb.get_table_info( table_name_or_oid );
+            IF table_info.oid IS NULL
+            THEN
+                RAISE EXCEPTION ''Table "%" is not defined.'', table_name_or_oid;
+            END IF;
+            
+            --
+            -- Delete any pre-existing rows in cdb_basetable, cdb_policy,
+            -- and cdb_assignment to ensure no confusion.
+            --
+            PERFORM cdb.reset_table( table_info.oid );
+            
+            --
+			-- Determine the next global oid to use
+			--
+			SELECT INTO lastid
+					globalid
+				FROM cdb.policy
+				ORDER BY globalid DESC
+				LIMIT 1;
+				
+			IF NOT FOUND
+			THEN
+				lastid := 1;
+			ELSE
+				lastid := lastid + 1;
+			END IF;
+
+
+	
+			--
+			-- Add a row to Policy table
+			INSERT INTO cdb.policy VALUES ( lastid, table_info.oid, ''p'', col_names );
+			
+			
+			RETURN table_info.oid;
+            
+        END;
+	' LANGUAGE 'plpgsql';
+	
+COMMENT ON FUNCTION cdb.partition_table( regclass, cdb.policy.attrnums%TYPE )
+	IS 'used to mark as table as being partitioned';
+
+
+
+
+CREATE OR REPLACE FUNCTION cdb.cdb_set_identity( cdb.cdb.cdbname%TYPE,
+												 cdb.cdb.cdbsuperuser%TYPE,
+												 cdb.cdb.cdbsuperpswd%TYPE,
+												 cdb.cdb.numsegments%TYPE,
+												 cdb.host.hostname%TYPE,
+			 					     			 cdb.listener.port%TYPE,
+												 cdb.segment.dbname%TYPE,
+												 cdb.cdb.isprimary%TYPE	 
+												)
+	RETURNS void
+	AS '
+		DECLARE
+			cdbname			ALIAS FOR $1;
+			username		ALIAS FOR $2;
+			pswd			ALIAS FOR $3;
+			numsegments		ALIAS FOR $4;
+			hostname		ALIAS FOR $5;
+			port			ALIAS FOR $6;
+			dbname			ALIAS FOR $7;
+			isprimary		ALIAS FOR $8;
+			
+			host_row		cdb.host%ROWTYPE;
+			hostid			cdb.host.hostid%TYPE;
+			listenerid		cdb.listener.listenerid%TYPE;
+			segid			cdb.segment.segindex%TYPE;
+		BEGIN
+		
+		
+			--
+            -- Ensure that dbuser is a database superuser
+            --
+            -- Strictly speaking, this test should be performed on each tail
+            -- instance.  But, for the time being, we will just check the head
+            -- and presume that the user is defined similarly on the tails.
+            --
+            PERFORM * FROM pg_catalog.pg_user WHERE usename = username AND usesuper;
+            IF NOT FOUND THEN
+                RAISE EXCEPTION ''User % is not a database superuser.'', username;
+            END IF;
+            
+            
+			--
+			-- Look up the hostid for the specified hostname
+			--
+			SELECT INTO host_row
+					*
+				FROM cdb.host h
+				WHERE h.hostname = hostname;
+				
+			IF FOUND
+			THEN
+				hostid := host_row.hostid;
+			ELSE
+				RAISE EXCEPTION ''% is not in the cdb.host table'', hostname;
+			END IF;	
+			
+			
+			--
+			-- Look up the listener id for the specified hostid,port
+			--
+			SELECT INTO listenerid
+					l.listenerid
+				FROM cdb.listener l
+				WHERE l.hostid = hostid AND l.port = port;
+				
+			IF NOT FOUND
+			THEN
+				RAISE EXCEPTION ''Could not find listener in listener table for %:%'', hostname,port;
+			END IF;
+			
+			
+			--
+			-- Look up the segindex for the specified dbname
+			--
+			SELECT INTO segid
+					segindex
+				FROM cdb.segment s WHERE s.dbname = dbname
+				ORDER BY segindex DESC
+				LIMIT 1;
+				
+			IF NOT FOUND
+			THEN
+				RAISE EXCEPTION ''Could not find the segment specified by dbname %'', dbname;
+			END IF;
+		
+		
+		
+			--
+			-- Add a row to cdb.cdb
+			--
+			INSERT INTO cdb.cdb VALUES ( cdbname, username, pswd, numsegments, listenerid, segid, isprimary );
+			IF NOT FOUND
+			THEN
+				RAISE EXCEPTION ''Failed to set identity'';
+			END IF;
+			
+			RETURN;
+		END;
+	' LANGUAGE 'plpgsql';
+COMMENT ON FUNCTION cdb.cdb_set_identity( cdb.cdb.cdbname%TYPE,
+ 										  cdb.cdb.cdbsuperuser%TYPE,
+										  cdb.cdb.cdbsuperpswd%TYPE,
+										  cdb.cdb.numsegments%TYPE,
+										  cdb.host.hostname%TYPE,
+		 					     		  cdb.listener.port%TYPE,
+										  cdb.segment.dbname%TYPE,
+										  cdb.cdb.isprimary%TYPE	 ) 
+	IS ' used to set the identity of the seg db ';
+
+
+
+
+CREATE OR REPLACE VIEW cdb.cdb_get_segdbs
+	AS SELECT
+				s.dbname, d.isprimary, h.hostname, l.port, l.datadir, d.isvalid
+		FROM cdb.host h, cdb.listener l, cdb.segment s, cdb.segdb d
+		WHERE h.hostid = l.hostid AND l.listenerid = d.listenerid AND s.segindex = d.segindex
+		ORDER BY s.segindex, isprimary DESC;
+
+COMMENT ON VIEW cdb.cdb_get_segdbs
+	IS ' returns info about all segment databases within the cdb';
+
+set log_min_messages to DEFAULT;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
