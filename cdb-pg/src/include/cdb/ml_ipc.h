@@ -8,8 +8,12 @@
 #ifndef ML_IPC_H
 #define ML_IPC_H
 
+#include <mpi.h>
+
 #include "cdb/tupchunklist.h"
 
+
+extern void setMpiComm( MPI_Comm comm );
 
 /* Performs initialization of the MotionLayerIPC.  This should be called before
  * any work is performed through functions here.
@@ -78,5 +82,35 @@ extern bool SendTupleChunkToAMS(TupleChunkListItem tcItem);
  *     or NULL if no chunk is available at time of call.
  */
 extern TupleChunkListItem RecvTupleChunkFromAMS(void);
+
+
+
+
+/* Allows the caller to wait on a combination of specified read and write
+ * interest.   Read interest is further specified by a segId.  (one can
+ * specify ALL to by notified of a read for any).
+ *
+ * Initially, (while we are without flow control), we should disallow the
+ * segId to be of any value other than ALL.
+ * 
+ *
+ * PARAMETERS:
+ *
+ *  - readInterest:  signals if interested in knowing when to read again.
+ *
+ *  - readSegId:  significant only when readInterest is true.  Specifies which
+ *                segId we are interested in reading. This is an IN/OUT param.
+ *				  although currently the OUT part is not implemented.
+ *				  
+ *
+ *  - writeInterest:  signals if interested in knowing when we can write
+ *  			      again.
+ *
+ *  - writeSegId: significant only when writeInterest is true. specifies
+ *				  which segIds we can write to. This is an IN/OUT param but
+ *				  the OUT part is not implemented.
+ */
+ extern void waitForMLIpc( bool readInterest, int *readSegId, 
+						   bool writeInterest, int *writeSegId );
 
 #endif /* ML_IPC_H */

@@ -100,6 +100,7 @@ extern void  SetChunkType(uint8 *tc_data, TupleChunkType value);
 #define DEFAULT_TC_DATA_SIZE 1024
 
 
+#define MAX_TUPLE_CHUNK_SIZE (TUPLE_CHUNK_HEADER_SIZE + MAX_TC_DATA_SIZE)
 
 
 #endif /* TUPCHUNK_H */

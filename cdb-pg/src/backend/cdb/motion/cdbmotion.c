@@ -618,6 +618,60 @@ ReceiveReturnCode RecvTupleFrom(uint16 motNodeID, HeapTuple *tup_i,
 }
 
 
+/* want to wait until the specified interest can be performed. 
+ *
+ * TODO: this function is currently very simple.  It should be made much more
+ *       sophisticated so that it provides better use to the motion node.
+ *	     
+ */
+void waitForEvent( uint16 motNodeID, bool readInterest, int segId, bool writeInterest )
+{
+	//loop through till something good happens.
+	while(true)
+	{
+		if( readInterest )
+		{
+			//see if we have anything in our chunkSorter. if yes, return;
+			MotionNodeEntry *pMNEntry;
+			Tuplestorestate *tupStoreState;
+			HeapTuple *tup;
+
+			pMNEntry = getMotionNodeEntry(motNodeID);
+			tupStoreState = pMNEntry->ready_tuples;
+
+			//we mark and restore since this function doesn't return the 
+			// tuple.
+			tuplestore_markpos(tupStoreState);
+			*tup = getNextTupleFromStore(tupStoreState);
+			tuplestore_restorepos(tupStoreState);
+
+
+			if( tup != NULL )
+				return;
+
+		}
+
+		//currently i don't think there are any smarts we can do for
+		// write interest. so if we are here, we will call into the 
+		// ml_ipc wait.
+		waitForMLIpc(readInterest, &segId, writeInterest, NULL );
+
+
+		if( segId == 1 )
+		{
+			//read occured.
+			processIncomingChunks();
+		}
+		else
+		{
+			//write occured.
+			return;
+		}
+	}
+
+}
+
+
 /* This helper function is the receive-tuple workhorse.  It pulls tuple chunks
  * from the AMS, and pushes them to the chunk-sorter where they can be sorted
  * based on sender, and reconstituted into whole HeapTuples.  Functions like

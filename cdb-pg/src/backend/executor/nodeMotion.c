@@ -304,7 +304,18 @@ execMotionUnsorted(MotionState *node)
                 }
             }
         }
-//		pg_usleep(1);
+	
+		/*EXPERIMENTAL: code below will throttle executor by calling into the motion layer
+		 *				to block until more work can be performed.  Currently, the 
+		 * 			    granularity is on an ALL Read, ALL write, or ALL both basis.  	
+		 *
+		 * UNCOMMENT BELOW TO TRY OUT!
+		 */
+		//if( node->noMoreChildTuples )
+	 	//	waitForEvent( motion->motionID, true, READ_INTEREST_ALL, false );			
+		//else
+		//	waitForEvent( motion->motionID, true, READ_INTEREST_ALL, true );			
+
     }
     while (tuple == NULL &&
         !(node->noMoreAMSTuples && node->noMoreChildTuples && node->sentEndOfStream));
@@ -420,6 +431,18 @@ execMotionSorted(MotionState *node)
                 }
                 
                 recvRC = RecvTupleFrom(motion->motionID, &inputTuple, node->segindexNext);
+
+				/*EXPERIMENTAL: code below will throttle executor by calling into the motion layer
+				 *				to block until more work can be performed.  Currently, the 
+		 		 * 			    granularity is on an ALL Read, ALL write, or ALL both basis.  	
+				 *
+				 * UNCOMMENT BELOW TO TRY OUT
+		 		 */
+				//if( node->noMoreChildTuples )
+				//	waitForEvent( motion->motionID, true, READ_INTEREST_ALL, false );			
+				//else
+				//	waitForEvent( motion->motionID, true, READ_INTEREST_ALL, true );			
+
             }
             while (recvRC == NO_TUPLE);
             
@@ -452,6 +475,16 @@ execMotionSorted(MotionState *node)
                     CHECK_FOR_INTERRUPTS();
                     
                     trySendCurrentTuple(node);
+
+					/*EXPERIMENTAL: code below will throttle executor by calling into the motion layer
+					 *				to block until more work can be performed.  Currently, the 
+			 		 * 			    granularity is on an ALL Read, ALL write, or ALL both basis.  	
+					 *
+					 *              below we only register write interest.
+					 *
+					 * UNCOMMENT BELOW TO TRY OUT
+			 		 */
+					//waitForEvent( motion->motionID, false, READ_INTEREST_ALL, true );
                 }
             }
             

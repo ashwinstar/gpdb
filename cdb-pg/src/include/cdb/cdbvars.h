@@ -172,6 +172,23 @@ extern const char	*show_cdb_connections_per_thread( void );
  */
 extern int Cdb_max_tuple_chunk_size;    /* GUC var */
 
+
+/*
+ * Parameter cdb_querygroup_id
+ *
+ * The run-time parameter (GUC variable) cdb_querygroup_id is a per-session
+ * (aka "per-user-connection") identifier that is the same across all backend
+ * processes serving the same session.  It is used by the Interconnect to
+ * establish the communication fabric between all of these processes across
+ * all machines.
+ *
+ * This variable is in the PGC_BACKEND context; it is set internally by the
+ * Query Dispatcher, and is propagated to Query Executors in the connection
+ * parameters.  It is not modifiable by any user, ever.
+ */
+extern int Cdb_querygroup_id;           /* GUC var */
+
+
 /*
  * Parameters enable_cdbrepartition and enable_cdbbroadcast
  *

@@ -204,4 +204,38 @@ extern ReceiveReturnCode RecvTupleFrom(uint16 motNodeID, HeapTuple *tup_i,
 extern void CanReadTuple(void);		    
 
 
+/* to be used with waitForEvent in the segId field to specify interest
+ * in all reads 
+ */
+#define READ_INTEREST_ALL -32768
+
+/* Allows the caller to wait on a combination of specified read and write
+ * interest.   Read interest is further specified by a segId.  One can
+ * specify interest in of any read by specifying READ_INTEREST_ALL.
+ *
+ * Specifying read interest will block on this call until a Tuple becomes
+ * available to read from the specified segId.
+ *
+ * If both read and write interest is specified, the function will block
+ * until one of the two operations becomes possible.  Currently, this 
+ * function does not provide any feedback as to what event actually occured.
+ *
+ * NOTE: currently only READ_INTEREST_ALL is supported for segId!!! 
+ *
+ * PARAMETERS:
+ *
+ *  - motNodeID: motion id that interest is registered for.
+ *
+ *  - readInterest:  signals if interested in knowing when to read again.
+ *
+ *  - segId:  significant only when readInterest is true.  Specifies which
+ *            segId we are interested in reading.
+ *
+ *  - writeInterest:  signals if interested in knowing when we can write
+ *                    again.
+ *
+ */
+void waitForEvent( uint16 motNodeID, bool readInterest, int segId, bool writeInterest);
+
+
 #endif /*CDBMOTION_H */

@@ -32,6 +32,10 @@
 #include "cdb/cdblink.h"
 #include "cdb/cdbmotion.h"
 #include "cdb/cdbvars.h"
+#include "cdb/ams.h"
+
+
+
 
 /*
  * Helper Functions
@@ -709,6 +713,11 @@ void freeCdbComponentDatabaseInfo( CdbComponentDatabaseInfo *cdi )
 void cdb_setup(void)
 {
 	elog( DEBUG1, "Initializing CDB components...");
+	
+	elog( DEBUG1, "Registering with amsd...");
+	ams_setup();
+	
+	elog( DEBUG1, "Establishing Connections to QEs...");
 	cdblink_setup();
 	
 	/* If cdb_role is UTILITY, skip this call. */
@@ -726,6 +735,8 @@ void cdb_cleanup(void)
 	elog( DEBUG1, "Cleaning up CDB components...");
 	
 	cdblink_disconnect( 0, 0 );
+	
+	ams_cleanup();
 		
 	//TODO: we probably need something to clean up the MotionLayer.
 }
@@ -748,3 +759,5 @@ static int CdbComponentDatabaseInfoCompare(const void *p1, const void *p2)
 		
 	return cmp;	
 }
+
+

@@ -696,6 +696,11 @@ if test "$with_pam" = yes ; then
   AC_CHECK_LIB(pam,    pam_start, [], [AC_MSG_ERROR([library 'pam' is required for PAM])])
 fi
 
+# MPI
+
+ACX_MPI
+AC_MSG_NOTICE([MPI C compiler=$MPICC, C++ compiler=$MPICXX])
+AC_MSG_NOTICE([MPI libs=$MPILIBS])
 
 ##
 ## Header files

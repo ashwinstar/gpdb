@@ -186,6 +186,12 @@ COMMENT ON TYPE cdb.table_descriptor
     IS 'used internally by CDB for service functions';
 
 
+-- Sequence used to assign group ids within the Query Dispatcher
+create sequence cdb.group_seq start with 1;
+
+COMMENT ON SEQUENCE cdb.group_seq
+	IS 'used to assign group id by the Query Dispatcher';
+
 --
 -- used to add a host to the cdb.host table
 --

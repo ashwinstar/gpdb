@@ -742,12 +742,14 @@ static void *thread_DoConnect(void *arg)
 		 */
 		PQExpBufferData buffer;
 		initPQExpBuffer(&buffer);
-					
+		
 		/*
 		 * Build the connection string
-		 */					
-		appendPQExpBufferStr(&buffer, "options='-c cdb_session_role=EXECUTE' " );
-					
+		 */
+		appendPQExpBuffer(&buffer,
+			"options='-c cdb_session_role=EXECUTE -c cdb_querygroup_id=%d' ",
+			Cdb_querygroup_id);
+		
 		if ( q->hostname == NULL ) 
 			appendPQExpBufferStr(&buffer, "host='' " );
         else if ( isdigit(q->hostname[0]) )

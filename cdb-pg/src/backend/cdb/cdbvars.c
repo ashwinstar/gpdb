@@ -44,7 +44,9 @@ char			   *cdb_session_role_string; /* Staging area for guc.c */
 
 int					cdb_connections_per_thread;	/* How many libpq connections are handled in each thread */
 
-int                 Cdb_max_tuple_chunk_size;   /* CDB Motion Layer -> AMS */
+int					Cdb_max_tuple_chunk_size;   /* CDB Motion Layer -> AMS */
+
+int					Cdb_querygroup_id;		/* Per-session ID, same across all backends in the session. */
 
 bool				enable_cdbrepartition;
 bool				enable_cdbbroadcast;

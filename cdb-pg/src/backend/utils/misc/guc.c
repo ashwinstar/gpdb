@@ -1362,6 +1362,17 @@ static struct config_int ConfigureNamesInt[] =
 		&cdb_connections_per_thread,
 		256, 1, INT_MAX, assign_cdb_connections_per_thread, show_cdb_connections_per_thread
 	},
+	
+	{
+		{"cdb_querygroup_id", PGC_BACKEND, UNGROUPED,
+			gettext_noop("Per-session ID, same across all backends in the session."),
+			gettext_noop("Used by Interconnect to establish communication fabric "
+						 "between all processes serving a user-connection to the CDB."),
+			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+		},
+		&Cdb_querygroup_id,
+		0, INT_MIN, INT_MAX, NULL, NULL
+	},
 
 
 	/* End-of-list marker */

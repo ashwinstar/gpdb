@@ -10,164 +10,283 @@
 */
 #include "postgres.h"
 
+#include <mpi.h>
+
 #include "cdb/tupchunklist.h"
-#include "cdb/shmutils.h"
-#include "cdb/circbuff.h"
 #include "cdb/ml_ipc.h"
+#include "cdb/ams.h"
+#include "cdb/cdbmotion.h"
+#include "cdb/mpiutils.h"
 
 
-int segId;
-char *shm_start;
-int  semId;
-circbuff *inputQueue;
-circbuff *outputQueue;
+/*=========================================================================
+ * STATIC STATE VARS
+ */
 
-uint8 hdr[ TUPLE_CHUNK_HEADER_SIZE];
+/* our own segmentId, (or contentId) */
+static int segId;
+
+
+static bool sendInProgress;
+static uint8 *outBuff;
+static uint8 *inBuff;
+
+static bool tcReady;
+static MPI_Request mpiSendReq;
+static MPI_Request mpiRecvReq;
+
+static MPI_Request *waitReqs;
+
+static MPI_Comm amssvc_comm;
+
+
+/*=========================================================================
+ * FUNCTION DEFINITIONS
+ */
+
+static TupleChunkListItem getTupleChunk(void);
+
+
+/*=========================================================================
+ * VISIBLE FUNCTIONS
+ */
+void setMpiComm( MPI_Comm comm )
+{
+    amssvc_comm = comm;
+}
 
 void InitMotionLayerIPC( int segmentId )
 {
-    int offset;	
+	int numDbs,rc;
 
-	Assert( segmentId >= -1 && segmentId < NUM_SEGS );
 	segId = segmentId;
-	
-	
-	
-	//amsd should have already setup shared memory and semaphore
-	// so we will try and attach and complain loudly if there are problems.
-	shm_start = ShmemAttach( SHMEM_KEY );
-    
-	if( shm_start == NULL )
-    {
-		ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
-						errmsg("Error attaching to Shared Memory: shmemget() failed. "
-							   "Check that amsd is running.")));		
-    }
-    else if( shm_start == (char *) -1 )
-    {
-        ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
-						errmsg("Error attaching to Shared Memory: shmat() failed. "
-							   "Check that amsd is running.")));
-    }
-	
-	semId = SemGet( SEM_KEY );
-	
-	if( semId < 0 )
-	{
-		ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
-						errmsg("Error obtaining Semaphore: semget() failed. "
-							   "Check that amsd is running.")));
-	}
-	
-	
-	//attach to our input and output queue.  amsd should have already 
-	// set these up.  
-	// TODO: eventually there will be a shared memory registry that will help
-	//       us locate our queue.  for now, it is hardwired.
 
-    /* this is still a bit hackish... but isn't going to live long enough to do
-     * anything more elegant.
-     *
-     * so segmentId -1  ---->   offset 0 (inputQueue) offset 1 (outputQueue)
-     *    segmentId 0   ---->   offset 2 (inputQueue) offset 3 (outputQueue)
-     *    and so on...
-     */
-    
-    offset = segId + 2;
-
-	int cbuff_size = QSIZE + sizeof(circbuff);
-	inputQueue = (circbuff*)(shm_start + (2*(offset-1)*cbuff_size));
-	outputQueue = (circbuff*)(shm_start + ( ( (2*(offset-1)) +1) * cbuff_size ));
+	/* get a connection to our ams-svc process. */
+	numDbs = ams_fabric_connect();
 	
+	/*setup the mpi requests */
+	mpiSendReq = MPI_REQUEST_NULL;
+	mpiRecvReq = MPI_REQUEST_NULL;
+
+	sendInProgress = false;
+
+	/* waitReqs needs to hold all send and recv requests */
+	waitReqs = palloc( sizeof(MPI_Request) * 2 );
+
+	/* setup the buffers we are going to use. */
+	outBuff = palloc( sizeof(uint8) * MAX_TUPLE_CHUNK_SIZE );
+	inBuff  = palloc( sizeof(uint8) * MAX_TUPLE_CHUNK_SIZE );
+
+	/* start receiving */
+	rc = MPI_Irecv( inBuff, MAX_TUPLE_CHUNK_SIZE, MPI_BYTE, MPI_ANY_SOURCE,
+                    /*tag*/ MPI_ANY_TAG, amssvc_comm, &mpiRecvReq );
+
+    checkMpiRc( rc, "Error during InitMotionLayerIPC");
 }
+
 
 
 void CleanUpMotionLayerIPC(void)
 {
+	pfree(outBuff);
+	pfree(inBuff);
+	pfree(mpiSendReq);
+	pfree(mpiRecvReq);
 	
-	/* For now i don't believe there is any cleanup to do..  All of the 
-	 * Semaphore operations are done with SEM_UNDO, so they will be undone
-	 * when the process dies.  
-	 *
-	 * TODO: this may not be enough, revisit this when error handling matures.
-	 */
-	
+
+	/* cancel any pending MPI sends and receives. */
+	if( mpiSendReq != MPI_REQUEST_NULL)
+		MPI_Cancel( &mpiSendReq );
+
+	MPI_Request_free( &mpiSendReq );
+
+	if( mpiRecvReq != MPI_REQUEST_NULL)
+		MPI_Cancel( &mpiRecvReq );
+
+	MPI_Request_free( &mpiRecvReq );
+
+
+	//TODO: any more state to wipe?
 }
 
 
+/* This method only accepts a single tcItem, and not a chain of
+ * tcItems.
+ */
 bool SendTupleChunkToAMS(TupleChunkListItem tcItem)
 {
-	int currSpaceAvail = getSpaceAvail( outputQueue );			
-	
-	if( currSpaceAvail >= tcItem->chunk_length )
-	{			
-		//send away
-		writeBytes( outputQueue,  tcItem->chunk_data, tcItem->chunk_length );		
-		
-		//post that data is avail
-		SemPost( semId );
-		
-		//success
-		return true;		
+	int rc,flag;
+	MPI_Status status;
+
+	Assert( tcItem != NULL );
+	Assert( tcItem->p_next == NULL );
+
+
+	/* check to see if we have a free buffer for the destination.
+     * If yes, send it, otherwise return false. 
+     */
+
+	rc = MPI_Test( &mpiSendReq, &flag, &status );
+
+	checkMpiRc( rc, "Error during MPI_Test");
+
+	if( sendInProgress )
+	{
+		//see if we are done.
+		if( flag )
+		{
+			//we've finished this one.  don't send it again.
+			elog(DEBUG2, "Send tuple-chunk completed.");
+			sendInProgress = false;
+			return true;
+		}
+		else
+		{
+			//not done.
+			return false;
+		}
 	}
 	else
 	{
-		//not enough room...
-		return false;
+		//no send in progress... need to kick one off.
+		memcpy( outBuff, tcItem->chunk_data, tcItem->chunk_length );
+
+		rc = MPI_Isend( outBuff, tcItem->chunk_length, MPI_BYTE, /*dest*/ 0, /*tag*/ 0, 
+					amssvc_comm, &mpiSendReq);
+
+		checkMpiRc( rc, "Error during MPI_Isend");
+		sendInProgress = true;
+
+		elog(DEBUG2, "Started sending tuple-chunk.");
+
+
+		/* not sure if this helps.  but it would be nice to catch sends that go out 
+     	 * immediately.  Otherwise every TC that gets sent will require at least
+     	 * 2 calls to this function. 
+      	 */
+		rc = MPI_Test( &mpiSendReq, &flag, &status );
+		checkMpiRc( rc, "Error during MPI_Test");
+
+		if (flag)
+		{
+			elog(DEBUG2, "Send tuple-chunk completed (quick-complete).");
+			sendInProgress = false;
+		}
+
+		return flag;
+
 	}
-	
+		
 }
 
 
-/* IMPORTANT:  This function assumes that the inputQueue can only ever
- * have an integral number of chunks in the queue at any given time.
- *
- */
 TupleChunkListItem RecvTupleChunkFromAMS(void)
 {
-	int dataToRead = getDataAvail( inputQueue );
-
-	//short circuit exit if we have nothing to do.
-	if( dataToRead == 0 )
-		return NULL;
+	int rc,flag;
+	MPI_Status status;
 	
-	//if there is data, it should at least be a tuple chunk header size.
-	Assert( dataToRead >= TUPLE_CHUNK_HEADER_SIZE );
-	
-	
-	TupleChunkListItem firstTcItem = NULL;
-	TupleChunkListItem lastTcItem = NULL;
-	TupleChunkListItem tcItem = NULL;
-	int bytesRead = 0;
-	
-	while( bytesRead != dataToRead )
+	if( tcReady )
 	{
-		//we should never read to much
-		Assert( bytesRead <= dataToRead );
-				
-		peekBytes( inputQueue, hdr, TUPLE_CHUNK_HEADER_SIZE );		
-		uint16 totalChunkSize = TUPLE_CHUNK_HEADER_SIZE + GetChunkDataSize( hdr );
+		/* this means a wait(...) event below was nuked our mpiRecvReq
+		 * AND that a tuplechunk is ready. 
+ 		 */
+		tcReady = false;
+		return getTupleChunk();
 		
-		
-		tcItem = (TupleChunkListItem)palloc0( sizeof(TupleChunkListData) + 
-											  totalChunkSize);
-		tcItem->chunk_length = totalChunkSize;
-		readBytes( inputQueue, tcItem->chunk_data, totalChunkSize );
-		
-		bytesRead += totalChunkSize;
-		
-		if( firstTcItem == NULL )
-		{
-			firstTcItem = tcItem;
-			lastTcItem = tcItem;
-		}
-		else
-		{			
-			lastTcItem->p_next = tcItem;
-			lastTcItem = tcItem;
-		}
-		
-	}	
-	
-	return firstTcItem;
+	}
+
+	//check on our status
+	rc = MPI_Test( &mpiRecvReq, &flag, &status );
+
+	checkMpiRc( rc, "Error during MPI_Test");
+
+	if( flag )
+	{
+		return getTupleChunk( );
+	}
+	else
+	{
+		//nothing to do here.
+		return NULL;
+	}
+
 }
+
+
+
+void waitForMLIpc( bool readInterest, int *readSegId, bool writeInterest, int *writeSegId )
+{
+	int rc, index,count;
+	MPI_Status status;
+
+	if( readInterest )
+	{
+		//Currently we don't support read interest for anything other than all.
+		Assert( *readSegId == READ_INTEREST_ALL );
+
+		waitReqs[count] = mpiRecvReq;
+		count++;
+	}
+
+	if( writeInterest )
+	{
+		waitReqs[count] = mpiSendReq;
+		count++;
+	}
+
+	//wait for any of our requests to finish.	
+	rc = MPI_Waitany( count, waitReqs, &index, &status );
+
+	checkMpiRc( rc, "Error during MPI_Waitany");
+
+	/* post-process what happened. we have work to do here if it was a read because 
+	 * MPI_Waitany() sets our request to NULL if its ready. (that isn't very nice).
+     * So we'll need to book keep that that read is done so that the 
+     * RecvTupleChunkFromAMS() function can do the right thing.
+     */
+	if( readInterest && index == 0)
+	{
+		tcReady = true;	
+	} 
+	
+	
+	/* TODO: in this impl we don't even have to say which event happened.  which kind
+	 * of sux.  but is ok, for the basic way we are going to use it in the motion node.
+	 * otherwise we need to pass back what happened in readSegId and writeSegId.
+	 */
+   
+
+}
+
+/*=========================================================================
+ * HELPER FUNCTIONS
+ */
+
+
+static TupleChunkListItem getTupleChunk( )
+{
+     //we got something.  form it into a TupleChunkListItem and pass it
+    // back
+	int rc;
+    TupleChunkListItem tcItem;
+    uint16 tcSize;
+
+    tcSize = TUPLE_CHUNK_HEADER_SIZE + GetChunkDataSize( inBuff );
+    tcItem = (TupleChunkListItem)palloc0( sizeof(TupleChunkListData) + tcSize );
+
+    tcItem->chunk_length = tcSize;
+    memcpy( tcItem->chunk_data, inBuff, tcSize );
+
+	int16 srcSegId = GetSourceSegIdx( tcItem->chunk_data );
+	elog( DEBUG2, "Received TupleChunk from  segId: %d", srcSegId );
+
+	//kick off the next recv
+	rc = MPI_Irecv( inBuff, MAX_TC_DATA_SIZE, MPI_BYTE, MPI_ANY_SOURCE,
+					/*tag*/ MPI_ANY_TAG, amssvc_comm, &mpiRecvReq );
+
+	checkMpiRc( rc, "Error during getTupleChunk");
+
+    return tcItem;
+
+}
+

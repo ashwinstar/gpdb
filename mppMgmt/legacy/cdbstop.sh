@@ -184,4 +184,10 @@ done
 # Stop the amsd
 # ---------------------------------------------------------------------
 echo "Shutting down amsd"
-killall amsd
+stopams
+
+# Sometimes bugs leave ams-svc processes around!
+killall ams-svc > /dev/null
+
+# Stop lam
+lamhalt
