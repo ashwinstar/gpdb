@@ -35,31 +35,34 @@
 typedef struct
 AggExprAnalysis 
 {
-	/* These fields are arguments of analysis. */
-	int tleidx;
+	/* Arguments of analysis (in addition to the expression itself). */
 	bool is_grp_attr;
 	
-	/* These fields hold the cumulative results of the analysis. */
-	int ndistinct; 
-	Aggref *aggref_distinct; /* Working storage for distinct scanning.  */
+	/* The cumulative results of the analysis. */
+	int ndistinct; /* Number of Aggref specifying DISTINCT. */
+	Aggref *aggref_distinct; /* If ndistinct == 1, the target expression.  */
 	
-	/* These are work fields for the analyzeAggExpr_walker. */
+	/* These are working storage for analyzeAggExpr_walker. */
 	int aggdepth; /* Number of Aggref nodes in stack. */
 		
 } AggExprAnalysis;
 
 
-/* Helper Declarations */
+/* Local Declarations */
 static CdbAggStrategy *makeAggStrategy(Movement left, FlowType result);
 static void initAggExprAnalysis(AggExprAnalysis *aa);
-static bool analyzeAggExpr(Expr* expr, Index tleidx, bool is_grp_attr, AggExprAnalysis *state);
+static bool analyzeAggExpr(Expr* expr, bool is_grp_attr, AggExprAnalysis *state);
 static bool analyzeAggExpr_walker (Node *node, void *context);
 
 
+/*
+ * Function: initAggExprAnalysis
+ *
+ * Initialize an AggExprAnalysis structure.
+ */
 void 
 initAggExprAnalysis(AggExprAnalysis *aa)
 {
-	aa->tleidx = 0;
 	aa->is_grp_attr = FALSE;
 	aa->ndistinct = 0;
 	aa->aggref_distinct = NULL;
@@ -67,15 +70,18 @@ initAggExprAnalysis(AggExprAnalysis *aa)
 }
 
 
-
 /*
  * Function: analyzeAggExpr
+ *
+ * Analyze an expression for getAggStrategyList.  The arguments are
+ *
+ * expr - the expression to analyze
  *
  * Return TRUE to indicate that analysis completed successfully, FALSE
  * to indicate that problems prevented completion.
  */
 bool
-analyzeAggExpr(Expr* expr, Index tleidx, bool is_grp_attr, AggExprAnalysis *state)
+analyzeAggExpr(Expr* expr, bool is_grp_attr, AggExprAnalysis *state)
 {
 	bool result = TRUE;
 	Node * node;
@@ -84,7 +90,6 @@ analyzeAggExpr(Expr* expr, Index tleidx, bool is_grp_attr, AggExprAnalysis *stat
 	node = (Node*)expr;
 	
 	/* Add arguments to state for walk.  */
-	state->tleidx = tleidx;
 	state->is_grp_attr = is_grp_attr;
 	
 
@@ -96,7 +101,9 @@ analyzeAggExpr(Expr* expr, Index tleidx, bool is_grp_attr, AggExprAnalysis *stat
 
 
 /*
- * Do the heavy lifting for function analyzeAggExpr.
+ * Function: analyzeAggExpr_walker
+ *
+ * Recursive helper for function analyzeAggExpr.
  */
 static bool analyzeAggExpr_walker (Node *node, void *context)
 {
@@ -148,16 +155,23 @@ static bool analyzeAggExpr_walker (Node *node, void *context)
 
 
 /*
- * Function getAggStrategyList generates a List of palloc'd CdbAggStrategy 
- * structures indicating how the given Agg node should be processed.  If no 
- * strategy can be found, it returns NULL.
+ * Function: getAggStrategyList 
+ * 
+ * Generates a List of palloc'd CdbAggStrategy structures indicating how 
+ * the given Agg node should be processed.  If no strategy can be found, 
+ * returns NULL.
  *
- * The returned strategy specifies motions and other transformations to apply 
- * to the aggregation argument and output flow characteristics that will 
- * result.
- *
+ * The returned strategy list specifies motions and other transformations to 
+ * apply to the outer child of the Agg node and output flow characteristics 
+ * of the Agg that will result.
+ * 
  * Note that this function expects an Agg node whose child has been prescaned 
  * (see cdbllize.c) and, hence, have their output Flow node fully specified.
+ *
+ * TODO: CdbAggStrategy and Flow both need to be expanded to represent the
+ *       restructuring approach to aggregation.
+ *
+ * TODO: Sort the strategy list in order of increasing "cost".
  *
  * Later, we might consider making CdbJoinStrategy a Node and returning 
  * a list of strategies for the caller to choose from. We would probably
@@ -166,7 +180,7 @@ static bool analyzeAggExpr_walker (Node *node, void *context)
  */
 List *getAggStrategyList(Agg* agg)
 {
-	int i, n, tleidx;
+	int i, g, n, tleidx;
 	TargetEntry *tle;
 	CdbAggStrategy *as;
 	
@@ -186,7 +200,12 @@ List *getAggStrategyList(Agg* agg)
 	
 	child = plan->lefttree;	
 		
-	/* Find grouping expressions since we might want to hash on them. */
+	/* 
+	 * Find grouping expressions in our target list that correspond to the 
+	 * grouping expression in our argument (child) plan's target list.
+	 * They should be appear there even if they aren't included in the
+	 * non-junk attributes.
+	 */
 	 if ( agg->aggstrategy == AGG_SORTED || agg->aggstrategy == AGG_HASHED )
 	 {
 		n = list_length(plan->targetlist);
@@ -202,41 +221,49 @@ List *getAggStrategyList(Agg* agg)
 				));
 			}
 			
-			if ( tle->resdom->ressortgroupref != 0 )
+			/*
+			 * The expectation is that a non-zero ressortgroupref in a TLE 
+			 * in the Agg target list is an index+1 into the Agg's grpColIdx
+			 * vector.  The entry thus indexed should be the resno of the
+			 * corresponding TLE in the Agg's child plan.  Further, the
+			 * Agg TLE's expression should be a Var referencing the child's
+			 * targetlist.
+			 */
+			g = tle->resdom->ressortgroupref;
+			if ( g > 0 )
 			{
-				for ( i = 0; i < agg->numCols; i++ )
-				{
-					if ( tle->resdom->ressortgroupref == agg->grpColIdx[i] )
-					{
-						grpset = bms_add_member(grpset, tleidx);
-						break; /* for */
-					}
-				}
+				Assert( g <= agg->numCols );
+				Assert( agg->grpColIdx[g-1] <= list_length(child->targetlist) );
+				grpset = bms_add_member(grpset, tleidx);
 			}
 		}
 	 }
 	 isgrouped = !bms_is_empty(grpset);
-	 
-	 /*
-	 grpexprs = getHashMotionInfoList(plan, INFOTYPE_LEFTEXPR);
-	 grptypes = getHashMotionInfoList(plan, INFOTYPE_OP);
-	 */
-	 
-	 /* Analyze the targetlist and qual for Aggref related information */
+	 	 
+	 /* 
+	  * Analyze our own targetlist and qual for Aggref information.  At 
+	  * the moment this is just discovering whether on not theres is a
+	  * single Aggrefs that specify DISTINCT and validating assumptions 
+	  * about the expression (e.g., grouping attributes don't contain 
+	  * Aggrefs, and Aggrefs don't nest.)
+	  */
 	 initAggExprAnalysis(state);
 	 n = list_length(plan->targetlist);
 	 for ( i = 0; aOk && i < n; i++ )
 	 {
 		tleidx = i+1;
 		tle = (TargetEntry*)list_nth( plan->targetlist, i);
-		aOk = aOk && analyzeAggExpr(tle->expr, tleidx, bms_is_member(tleidx, grpset), state);
+		aOk = aOk && analyzeAggExpr(tle->expr, bms_is_member(tleidx, grpset), state);
 	 }
-	 aOk = aOk && analyzeAggExpr((Expr*)(plan->qual), 0, FALSE, state);
-
+	 aOk = aOk && analyzeAggExpr((Expr*)(plan->qual), FALSE, state);
 	
-	/* First see whether we can get away with doing nothing. */
+	/*
+	 * Generate possible strategies for parallelizing the Agg node.
+	 */
+	
 	if ( child->flow->flotype == FLOW_REPLICATED || child ->flow->flotype == FLOW_SINGLETON )
 	{
+		/* Can do nothing. */
 		result = lappend(result,makeAggStrategy(MOVEMENT_NONE, child->flow->flotype));
 	}
 	
@@ -246,28 +273,26 @@ List *getAggStrategyList(Agg* agg)
 		{
 			if ( !isgrouped && state->ndistinct == 1  )
 			{
-				/* Can partition on the sole distinct expr. */
-				as = makeAggStrategy(MOVEMENT_REPARTITION, FLOW_PARTITIONED);
+				/* Can partition on the solitary distinct expr. */
 				Assert( state->aggref_distinct != NULL );
 				
 				/* 
-				 * TODO Externalize stuff in nodeMotion.c to extract expression from arbitrary spot. 
-				 * The code below the error is incorrect.  The code in the isgrouped branch is good.
+				 * TODO Externalize stuff in nodeMotion.c to extract the hash
+				 * expression from an arbitrary Expr node.  The code below is 
+				 * not correct, but suggests what should be done.
 				 */
-				ereport(ERROR,(
-					errcode(ERRCODE_CDB_INTERNAL_ERROR),
-					errmsg("can't extract hash expr for distinct aggregrate")
-				));
 				
-				as->hashexprs = list_make1(state->aggref_distinct);
-				as->hashtypes = list_make1_oid(exprType((Node*)(state->aggref_distinct)));
-				result = lappend(result,as);
-				as = NULL;
+				/* 
+					as = makeAggStrategy(MOVEMENT_REPARTITION, FLOW_PARTITIONED);
+					as->hashexprs = list_make1(state->aggref_distinct);
+					as->hashtypes = list_make1_oid(exprType((Node*)(state->aggref_distinct)));
+					result = lappend(result,as);
+					as = NULL;
+				*/
 			}
 			else if ( isgrouped && state->ndistinct == 0 )
 			{
 				/* Can partition on grouping exprs. */
-				/* TODO -- Fix ressortgroupref bug in getHashMotioonInfoList */
 				as = makeAggStrategy(MOVEMENT_REPARTITION, FLOW_PARTITIONED);
 				as->hashexprs = getHashMotionInfoList(plan, INFOTYPE_LEFTEXPR);
 				as->hashtypes = getHashMotionInfoList(plan, INFOTYPE_OP);
@@ -286,6 +311,8 @@ List *getAggStrategyList(Agg* agg)
 
 
 /*
+ * Function: makeAggStrategy
+ * 
  * Helper for getAggStrategyList -- palloc and initialize a strategy.
  */
 CdbAggStrategy *makeAggStrategy(Movement left, FlowType result)
@@ -298,7 +325,11 @@ CdbAggStrategy *makeAggStrategy(Movement left, FlowType result)
 	as->hashtypes = NIL;
 	return as;
 }	
+
+
 /*
+ * Function: copyAggStrategy
+ *
  * Make a palloc'd copy of the argument strategy.
  */
 CdbAggStrategy *copyAggStrategy(CdbAggStrategy *old)
@@ -316,6 +347,8 @@ CdbAggStrategy *copyAggStrategy(CdbAggStrategy *old)
 }	
 
 /*
+ * Function: freeAggStrategyList
+ *
  * Free a result of getAggStrategyList().  Caller should NIL out any
  * copies of pointers to the list.
  */
