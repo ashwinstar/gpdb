@@ -119,6 +119,11 @@ cdb_exec_plan(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL( bRtn );
 }
 
+/*
+ * cdb_serialize_plan takes 1 argument:
+ *  1) an SQL statement
+ * And returns the serialized plan tree.
+ */
 PG_FUNCTION_INFO_V1(cdb_serialize_plan);
 Datum
 cdb_serialize_plan(PG_FUNCTION_ARGS)
@@ -201,6 +206,11 @@ cdb_serialize_plan(PG_FUNCTION_ARGS)
 	PG_RETURN_TEXT_P(result);
 }
 
+/*
+ * cdb_serialize_query takes 1 argument:
+ *  1) an SQL statement
+ * And returns the serialized query tree.
+ */
 PG_FUNCTION_INFO_V1(cdb_serialize_query);
 Datum
 cdb_serialize_query(PG_FUNCTION_ARGS)
@@ -307,6 +317,19 @@ typedef struct
 	int rows;
 } QueryInfo;
 
+/*
+ * cdb_exec_indirect takes 1 argument:
+ *  1) an SQL statement
+ * And returns a rowset of the query results
+ * resulting from
+ *	a) preparing the statment, and grabbing the plan and query trees
+ *		from this.
+ *	b) serializing both the plan and query trees.
+ *  c) deserializing the plan and query tree strings into plan and query nodes.
+ *  d) executing the query using these plan and query nodes.
+ * This can be compared against the rowset resulting from executing the query directly.
+ * If they match, the serialization may be correct.  If they don't, it is definitely wrong.
+ */
 PG_FUNCTION_INFO_V1(cdb_exec_indirect);
 Datum
 cdb_exec_indirect(PG_FUNCTION_ARGS)
@@ -332,6 +355,10 @@ cdb_exec_indirect(PG_FUNCTION_ARGS)
 					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
 					errmsg("SPI_connect failed in cdb_exec_indirect" )));
 		}
+
+		/*
+		 * Prepare the SQL using SPI
+		 */
 	
 		_SPI_plan*	thePlan = (_SPI_plan *)SPI_prepare(pszSQL, 0, NULL);
 		if ( thePlan == NULL )
@@ -341,6 +368,10 @@ cdb_exec_indirect(PG_FUNCTION_ARGS)
 					errmsg("SPI_prepare failed for sql %s", pszSQL )));
 		}
 		
+		/*
+		 * Grab the plan tree from the _SPI_plan struct.
+		 * Fail if there is more than 1.
+		 */
 		if ( list_length(thePlan->ptlist) != 1 )
 		{
 			ereport(ERROR,
@@ -350,6 +381,9 @@ cdb_exec_indirect(PG_FUNCTION_ARGS)
 	
 		ListCell   *plan_list_item = list_head(thePlan->ptlist);
 
+		/*
+		 * Serialize the plan tree to a string
+		 */
 		pszPlan = serializeNode( lfirst(plan_list_item) );
 
 		if ( pszPlan == NULL )
@@ -359,6 +393,10 @@ cdb_exec_indirect(PG_FUNCTION_ARGS)
 					errmsg("serializeNode failed for sql %s", pszSQL )));
 		}
 		
+		/*
+		 * Grab the query tree from the _SPI_plan struct.
+		 * Fail if there is more than 1.
+		 */
 		List	   *query_list_list = thePlan->qtlist;
 		if ( list_length(query_list_list) != 1 )
 		{
@@ -382,6 +420,9 @@ cdb_exec_indirect(PG_FUNCTION_ARGS)
 		
 			foreach(query_list_item, query_list)
 			{
+				/*
+				* Serialize the query tree to a string
+				*/
 				pszQuery = serializeNode( lfirst(query_list_item) );
 
 				if ( pszQuery == NULL )
@@ -397,7 +438,10 @@ cdb_exec_indirect(PG_FUNCTION_ARGS)
 
 		SPI_freeplan(thePlan);
 	
-		// Here, we will unserialize the string into an _SPI_plan structure
+		/*
+		 * Now reverse the process: deserialize the plan and query tree strings
+		 * back into nodes.
+		 */ 
 		Plan *pNewPlan = (Plan *)deserializeNode( pszPlan );
 		Query *pNewQuery = (Query *)deserializeNode( pszQuery );
 		if ( pNewPlan == NULL || pNewQuery == NULL )
@@ -407,6 +451,9 @@ cdb_exec_indirect(PG_FUNCTION_ARGS)
 					errmsg("Plan or Query XML deserialization failed in cdb_exec_indirect" )));
 		}
 
+		/*
+		 * Execute through our cdb version of SPI_execute
+		 */ 
 		if ( SPI_OK_SELECT != SPI_execute_cdb( pszSQL, pNewPlan, pNewQuery, false, 0 ) )
 		{
 			ereport(ERROR,
@@ -414,7 +461,7 @@ cdb_exec_indirect(PG_FUNCTION_ARGS)
 					errmsg("SPI_execute_cdb failed in cdb_exec_plan" )));
 		}
 
-		/* store needed metadata for subsequent calls */
+
         /* switch to memory context appropriate for multiple function calls */
         oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
@@ -441,6 +488,14 @@ cdb_exec_indirect(PG_FUNCTION_ARGS)
 	QueryInfo *query_block = (QueryInfo *)funcctx->user_fctx;
 	if ( query_block->index < query_block->rows )
 	{
+		/*
+		 * Get heaptuple from SPI, then deform it, and reform it using
+		 * our tuple desc.
+		 * If we don't do this, but rather try to pass the tuple from SPI
+		 * directly back, we get an error because
+		 * the tuple desc that is associated with the SPI call
+		 * has not been blessed.
+		 */
 		HeapTuple tuple = SPI_tuptable->vals[query_block->index++];
 		TupleDesc tupleDesc = funcctx->tuple_desc;
 
