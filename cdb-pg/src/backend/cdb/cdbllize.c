@@ -1258,11 +1258,13 @@ bool focusSort(Sort *sort, PlanProfile *context)
 	outer->flow->req_move = MOVEMENT_FOCUS;
 	
 	/* Motion node must preserve sort order. */
+	/* TODO: Have Brian look at this.  It seems wrong to me.  
 	int n = sort->numCols;
 	outer->flow->numSortCols = n;
 	ARRAYCOPY(outer->flow->sortColIdx, sort->sortColIdx, n*sizeof(AttrNumber));
 	ARRAYCOPY(outer->flow->sortOperators, sort->sortOperators, n*sizeof(Oid));
-	
+	*/
+
 	return false;
 }
 
@@ -1273,11 +1275,14 @@ bool broadcastSort(Sort *sort, PlanProfile *context)
 	outer->flow->req_move = MOVEMENT_BROADCAST;
 	
 	/* Motion node must preserve sort order. */
+
+	/* TODO: Have Brian look at this.  It seems wrong to me.  
 	int n = sort->numCols;
 	outer->flow->numSortCols = n;
 	ARRAYCOPY(outer->flow->sortColIdx, sort->sortColIdx, n*sizeof(AttrNumber));
 	ARRAYCOPY(outer->flow->sortOperators, sort->sortOperators, n*sizeof(Oid));
-	
+	*/
+
 	return false;
 }
 
