@@ -10,7 +10,7 @@
 
 PATH="$(dirname $0):$PATH"
 
-usage="[ PGROOT=<root_directory> ]  $(basename $0) \n        [ {--nsegs|-n} { #segs | 3 } ] \n        [ {--segname|-s} { segname | segDB} ] \n        [ {--prefix|-P} { dbprefix | cdb} ] \n        [ {--useIP} ] [ {--verbose} ] [ {--help} ]"
+usage="[ PGROOT=<root_directory> ]  $(basename $0) \n        [ {--nsegs|-n} { #segs | 3 } ] \n        [ {--segname|-s} { segname | segDB} ] \n        [ {--prefix|-P} { dbprefix | cdb} ] \n        [ {--useIP | -i} ] [ {--verbose} ] [ {--help} ]"
 
 echo -e "$(basename $0): Create and load a database into a CDB cluster."
 echo -e "Copyright (c) 2004-2005 Metapa, Inc. All Rights Reserved"
@@ -36,8 +36,7 @@ function display_help
     echo    "segDB1 will be on the first listener, while segDB6 will be on the second."
 
     echo -e "\nBy default, the value inserted into the cdb.host table will be that returned"
-    echo -e "by 'hostname'. If you prefer to insert your ip address then use --useIP."
-    echo    "NOTE: you must make sure you have your /etc/hosts file configured correctly."
+    echo -e "by 'hostname'. If you prefer to specify your ip address then use --useIP or -i"
 
     echo -e "\nSee README.txt for more details.\n"
 
@@ -70,7 +69,7 @@ nsegs=
 dbprefix=
 segname=
 verbose=false
-useip=false
+ip=none
 
 # Ok, loop through the command line args
 #
@@ -81,7 +80,7 @@ do
     if [ ! $options_ended ]; then
         OPTIND=1
         OPTARG='--'
-        while getopts :D:s:n:P:v option
+        while getopts :D:s:n:P:v:i: option
         do
             case $option in
                 :)
@@ -97,6 +96,9 @@ do
                    ;;
                 s)
                    segname="$OPTARG"
+                   ;;
+                i)
+                   ip="$OPTARG"
                    ;;
                 n)
                    nsegs="$OPTARG"
@@ -170,12 +172,16 @@ do
                 dbprefix=${val:?Option '--prefix' requires a value}
                 shift 1
                 ;;
-            --verbose)
-                verbose=true
+            --useIP)
+                ip=${2:?Option '--prefix' requires a value}
                 shift 1
                 ;;
-            --useIP)
-                useip=true
+            --useIP=*)
+                ip=${val:?Option '--useIP' requires a value}
+                shift 1
+                ;;
+            --verbose)
+                verbose=true
                 shift 1
                 ;;
             --*)
@@ -231,9 +237,11 @@ PGROOT=${dbroot:-$PGROOT}
 : ${PGROOT:=$HOME/cdb-data}
 
 # Should we use the ip address, rather than the hostname?
-if [ "$useip" = "true" ]
+if [ "$ip" = "none" ]
 then
-  hostname="$(hostname -i)"
+  hostname="$(hostname)"
+else
+  hostname="$ip"
 fi
 
 if [ ! "$PGDATABASE" ]; then
@@ -246,9 +254,14 @@ fi
 unset PGHOST
 unset PGHOSTADDR
 
+# Set this value
+PGOPTIONS='-c cdb_session_role=utility'
+
 # The following vary depending on the target node
 export PGDATA
 export PGPORT
+export PGOPTIONS
+
 
 # ---------------------------------------------------------------------
 # Node processing
