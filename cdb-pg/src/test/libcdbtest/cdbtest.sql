@@ -121,9 +121,33 @@ CREATE OR REPLACE FUNCTION mlapi_sendrecv_perf(integer, text) RETURNS __mlapi_se
     LANGUAGE C IMMUTABLE STRICT;
 
 -- Functions for access to the Cdb Hash API (used by motion node and PG-COPY)
-
--- Simple single value hash on a text field - integer passed in is number of buckets (segments). 
-CREATE OR REPLACE FUNCTION cdbhash_text(integer) RETURNS integer
-    AS 'libcdbtest.so', 'HASHAPI_HashText__int1'
+ 
+CREATE OR REPLACE FUNCTION cdbhash_1_bigint(integer, bigint) RETURNS integer
+    AS 'libcdbtest.so', 'HASHAPI_Hash_1_BigInt'
     LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION cdbhash_1_int(integer, integer) RETURNS integer
+    AS 'libcdbtest.so', 'HASHAPI_Hash_1_Int'
+    LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION cdbhash_2_int_int(integer, integer, integer) RETURNS integer
+    AS 'libcdbtest.so', 'HASHAPI_Hash_2_Int_Int'
+    LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION cdbhash_1_bpchar(integer, BpChar) RETURNS integer
+    AS 'libcdbtest.so', 'HASHAPI_Hash_1_BpChar'
+    LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION cdbhash_1_text(integer, text) RETURNS integer
+    AS 'libcdbtest.so', 'HASHAPI_Hash_1_Text'
+    LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION cdbhash_1_varchar(integer, VarChar) RETURNS integer
+    AS 'libcdbtest.so', 'HASHAPI_Hash_1_Varchar'
+    LANGUAGE C IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION cdbhash_2_text_text(integer, text, text) RETURNS integer
+    AS 'libcdbtest.so', 'HASHAPI_Hash_2_Text_Text'
+    LANGUAGE C IMMUTABLE STRICT;
+
 
