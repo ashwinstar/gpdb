@@ -221,11 +221,11 @@ done
 # remove this if needed.
 if [ "$ndbs" ]
 then
-    if expr "$ndbs" : '[1-9][0-9]*$' 1>/dev/null && [ 1 -le $ndbs -a $ndbs -le 8 ]
+    if expr "$ndbs" : '[1-9][0-9]*$' 1>/dev/null
     then
        :
     else
-       echo "Number of dbs must be from 1 to 8" >&2
+       echo "Number of instances must be specified as a number greater than zero" >&2
        exit 2
     fi
 else
