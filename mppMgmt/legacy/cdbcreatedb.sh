@@ -42,8 +42,9 @@ function display_help
     echo -e "\nBy default, the CDB cluser will not have any user tables. If you wish, you can"
     echo    "preload the TPCH schema using the --withTPCH option. The DDL and additional files"
     echo    "required are found in the cdb-qa module. You will have to edit TPCH_load.ctl to"
-    echo    "contain the correct path for your environment. NOTE: the data loaded is NOT"
-    echo    "actually partitioned at this time. Each segDB will contain the same data."
+    echo    "contain the correct path for your environment. NOTE: the data loaded is ALL"
+    echo    "actually partitioned at this time. segDB1 will have NO data, and is the query "
+    echo    "dispatcher. The other segDBs contain their slice of the data."
 
     echo -e "\nSee README.txt for more details.\n"
 
@@ -418,6 +419,8 @@ fi
 #
 
 # Reset our counter
+real_segdbs=$((current_segment-2))
+echo real_segdbs=$real_segdbs
 current_segment=1
 
 # Ok, we have some databases, let's loop through them
@@ -482,20 +485,34 @@ do
       then
 
         # Load the DDL
-        echo "Loading TPCH DDL"
+	echo "Loading TPCH DDL"
         psql -o /dev/null -q $finalSegName -f $tpchDDL
 
         echo "Setting distribution policy"
         psql -o /dev/null -q $finalSegName -f $tpchDistPolicy
 
-        echo "Loading data into TPCH tables"
-        psql -o /dev/null -q $finalSegName -f $tpchData
+            if [ $current_segment -gt 1 ]
+                then
+                echo "Loading data into TPCH tables"
+                    psql -o /dev/null -q $finalSegName -f $tpchData
+
+                echo "Pruning data from TPCH tables"
+                        psql $finalSegName -c "delete from tpch.lineitem where l_orderkey % $real_segdbs <> $current_segment % $real_segdbs"
+                        psql $finalSegName -c "delete from tpch.orders where o_orderkey % $real_segdbs <> $current_segment % $real_segdbs"
+                        psql $finalSegName -c "delete from tpch.part where p_partkey % $real_segdbs <> $current_segment  % $real_segdbs"
+                        psql $finalSegName -c "delete from tpch.region where r_regionkey % $real_segdbs <> $current_segment % $real_segdbs"
+                        psql $finalSegName -c "delete from tpch.nation where n_nationkey % $real_segdbs <> $current_segment % $real_segdbs"
+                        psql $finalSegName -c "delete from tpch.supplier where s_suppkey % $real_segdbs <> $current_segment % $real_segdbs"
+                        psql $finalSegName -c "delete from tpch.partsupp where ps_partkey % $real_segdbs <> $current_segment % $real_segdbs"
+                        psql $finalSegName -c "delete from tpch.customer where c_custkey % $real_segdbs <> $current_segment % $real_segdbs"
+                echo "Finished Pruning data from TPCH tables"
+                fi
 
         echo "Setting table constraints"
         psql -o /dev/null -q $finalSegName -f $tpchConstraints
 
       fi
-
+      
       # Increment our segment counter
       (( current_segment++ ))
 
