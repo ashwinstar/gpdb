@@ -39,6 +39,7 @@ typedef struct CdbHash
 
 /*
  * Create and initialize a CdbHash in the current memory context.
+ * Parameter numsegs - number of segments in CDB. 
  */
 extern CdbHash *makeCdbHash(int numsegs); 
 
