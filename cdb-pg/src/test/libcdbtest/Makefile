@@ -18,7 +18,7 @@ override CFLAGS += $(PTHREAD_CFLAGS)
 # Need to recomple any libpgport object files
 LIBS := $(patsubst -lpgport,, $(LIBS))
 
-OBJS=	chunkfuncs.o cdbexecplan.o \
+OBJS=	chunkfuncs.o cdbexecplan.o cdbshowalias.o \
 	$(filter crypt.o getaddrinfo.o inet_aton.o open.o snprintf.o strerror.o, $(LIBOBJS))
 
 # Link against the Postgres backend and libpq.
