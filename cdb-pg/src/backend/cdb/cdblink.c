@@ -2,7 +2,7 @@
  *
  * cdblink.c
  *
- *    Functions returning results from a remote database
+ *    Setting up libpq connections to qRxecs from Dispatcher
  *
  *
  * ATTRIBUTION
@@ -93,10 +93,11 @@ static void *thread_DoConnect(void *arg);
 /*
  * Parameter structure for the DoConnect threads
  */ 
-typedef struct DoConnectParm
+typedef struct DoConnectParms
 {
 	/*
-	 * db_count: The number of segdbs that thread is responsible for connecting to.
+	 * db_count: The number of segdbs that this thread is responsible for 
+	 * connecting to.
 	 * Equals the count of segdbDescPtrArray below.
 	 */ 
 	int db_count;
@@ -108,11 +109,18 @@ typedef struct DoConnectParm
 	SegmentDatabaseDescriptor **segdbDescPtrArray;
 	
 	/*
-	 * The pthread_t for the thread that this structure is a parameter for.
+	 * The pthread_t thread handle.
 	 */ 
 	pthread_t	thread;
-} DoConnectParm;
+} DoConnectParms;
 
+/*
+ * AddSegDBToConnThreadPool
+ * Helper function used to add a segdb's segdbDesc to the thread pool to be connected to.
+ * It figures out which thread will handle it, based on the setting of
+ * cdb_connections_per_thread.
+ */
+static void addSegDBToConnThreadPool( DoConnectParms *ParmsAr, int *segdbCount, SegmentDatabaseDescriptor *segdbDesc);
 
 /* 
  * Called by backend/utils/init/postinit.c to setup the connections to the
@@ -184,11 +192,26 @@ cdblink_setup( void )
 	SegmentDatabaseInfo					*q;
 	int									i;
 	int									j; 
-	DoConnectParm						*threadParms = NULL;
-	int									threadParmCount = 0;
+	DoConnectParms						*doConnectParmsAr = NULL;
+	int									threadCount = 0;
+	int									max_threads;
+	int									segdbs_in_thread_pool;
+	int									segdb_count = CdbClusterDefinition->segdb_count;
 	
-	threadParms = (DoConnectParm *)palloc0( CdbClusterDefinition->segdb_count * sizeof(DoConnectParm) );
-		
+	Assert( cdb_connections_per_thread > 0 );
+	Assert( segdb_count > 0 );
+	
+	/*
+	 * The most threads we could have is segdb_count / cdb_connections_per_thread, rounded up.
+	 * This is equivalent to 1 + (segdb_count-1) / cdb_connections_per_thread.
+	 * We allocate enough memory for this many DoConnectParms structures,
+	 * even though we may not use them all.
+	 */
+	max_threads =  1 + (segdb_count-1) / cdb_connections_per_thread;
+	doConnectParmsAr = (DoConnectParms *)
+						palloc0( max_threads * sizeof(DoConnectParms) );
+	segdbs_in_thread_pool = 0;
+	
 	/*
 	 * In this loop, we check each segdb.  If it's marked as valid, and is not
 	 * ourself, we prepare a thread Parm struct for connecting to it.
@@ -227,11 +250,14 @@ cdblink_setup( void )
 				}
 					
 				segmentHasValidPair = true;
-				
-				threadParms[threadParmCount].segdbDescPtrArray = (SegmentDatabaseDescriptor **)palloc0( sizeof(SegmentDatabaseInfo *) );
-				threadParms[threadParmCount].segdbDescPtrArray[0] = segdbDesc;
-				threadParms[threadParmCount].db_count = 1;
-				threadParmCount++;
+
+				/*
+				 * This function handles putting the segdbDesc into the proper thread's Parms
+				 * structure, based on cdb_connections_per_thread.
+				 * It does this based on the value of segdbs_in_thread_pool,
+				 * which it increments each time it is called.
+				 */				
+				addSegDBToConnThreadPool( doConnectParmsAr, &segdbs_in_thread_pool, segdbDesc);	
 			}
 			else
 			{
@@ -293,48 +319,52 @@ cdblink_setup( void )
 	 * At this point, we know each segment has at least one valid pair to try to connect to.
 	 * So spin off the threads we've prepared.
 	 */
-	for ( i=0; i<threadParmCount; i++ )
+	if ( segdbs_in_thread_pool == 0 )
+		threadCount = 0;
+	else	
+		threadCount = 1 + (segdbs_in_thread_pool - 1) / cdb_connections_per_thread;
+		
+	for ( i=0; i<threadCount; i++ )
 	{
-		Assert( threadParms[i].segdbDescPtrArray != NULL );
-		
-		SegmentDatabaseInfo* q = threadParms[i].segdbDescPtrArray[0]->segment_database_info;
-		
-		elog(DEBUG2, "Launching thread for connecting to segindex %d isprimary %c", 
-   			q->segindex, 
-			(q->isprimary ? 't' : 'f'));
+		DoConnectParms* pParms = &doConnectParmsAr[i];
+
+		elog(DEBUG2, "Creating thread %d of %d for libpq connections", i+1, threadCount);
 			
-		pthread_create( &threadParms[i].thread,
+		pthread_create( &pParms->thread,
 						NULL, 
 						thread_DoConnect, 
-						&threadParms[i] );
+						pParms );
 	}
 	
     /* wait for all of the DoConnect threads to complete. */
-	for ( i=0; i<threadParmCount; i++ ) 
+	for ( i=0; i<threadCount; i++ ) 
 	{
-		Assert( threadParms[i].segdbDescPtrArray != NULL );
+		DoConnectParms* pParms = &doConnectParmsAr[i];
 		
-		SegmentDatabaseInfo* q = threadParms[i].segdbDescPtrArray[0]->segment_database_info;
-		
-		elog(DEBUG2, "Joining to thread for connecting to segindex %d isprimary %c", 
-   			q->segindex, 
-			(q->isprimary ? 't' : 'f'));
+		elog(DEBUG2, "Joining to thread %d of %d for libpq connections", i+1, threadCount);
 			
-		pthread_join(threadParms[i].thread, NULL);
-
-		Assert( threadParms[i].segdbDescPtrArray != NULL );
-		pfree( threadParms[i].segdbDescPtrArray );
-		threadParms[i].segdbDescPtrArray = NULL;
+		pthread_join(pParms->thread, NULL);
 	}
 	
 	/*
 	 * Free the memory allocated for the threadParms array
 	 */
-	if (  threadParms != NULL )
+	if (  doConnectParmsAr != NULL )
 	{
-		pfree( threadParms );
-		threadParms = NULL;
+		for ( i=0; i<threadCount; i++ ) 
+		{
+			DoConnectParms* pParms = &doConnectParmsAr[i];
+			pfree( pParms->segdbDescPtrArray );
+		}
+		pfree( doConnectParmsAr );
+		doConnectParmsAr = NULL;
 	}
+	
+	/*
+	 * For now, set all_valid_segdbs_connected to true.
+	 * Reset to false if we get fail to connect to a valid segdb
+	 */
+	CdbClusterDefinition->all_valid_segdbs_connected = true;
 	
 	/*
 	 * In this loop, we check whether the connections were successful.
@@ -355,7 +385,7 @@ cdblink_setup( void )
 				{
 					/*
 					 * The error message in segdbDesc->error_message
-					 * was allocated with makkoc, since it was done in a thread,
+					 * was allocated with malloc, since it was done in a thread,
 					 * and we cannot use palloc in a thread, because it is not thread safe.
 					 * So we need to make a palloc copy of it here, and free the original.
 					 */
@@ -376,6 +406,8 @@ cdblink_setup( void )
 									"segindex %d isprimary %c", 
 									q->segindex, (q->isprimary ? 't' : 'f')),
 							 errdetail("%s", segdbDesc->error_message)));
+							 
+					CdbClusterDefinition->all_valid_segdbs_connected = false;
 				}
 				else
 				{
@@ -538,6 +570,33 @@ void cdblink_disconnect( int exit_code, Datum arg )
     return;
 }
 
+/* 
+ * getCdbIdentity:
+ * Returns my_segindex and my_isprimary in out parameters
+ * for the postgres process.  If either pointer is NULL,
+ * it skips returning that parameter.
+ * 
+ * N.B.  Cdb_role must be either dispatch or execute, since
+ * when utiliy  no cdb catalog tables are read.  An Assert is
+ * thrown if Cdb_role = utility.
+ */
+void getCdbIdentity(int *segindex, bool *isprimary)
+{
+	Assert( Cdb_role != CDB_ROLE_UTILITY );
+	Assert( segment_dbs != NULL );
+		
+	if ( segindex != NULL )
+	{
+		*segindex = segment_dbs->my_segindex;
+		elog(DEBUG2, "getCdbIdentity: segindex=%d", *segindex);
+	}
+			
+	if ( isprimary != NULL )
+	{
+		*isprimary = segment_dbs->my_isprimary;
+		elog(DEBUG2, "getCdbIdentity: isprimary=%s", (*isprimary) ? "true" : "false");
+	}
+}
 
 /*
  *	buildCdbClusterDefinition: reads the Cdb catalog tables and build a SegmentDatabases structure.
@@ -561,27 +620,17 @@ CdbClusterDescriptor *buildCdbClusterDefinition(void)
     oldContext = MemoryContextSwitchTo(permanentContext);
 
 	ClusterDefn = (CdbClusterDescriptor *)palloc0( sizeof(CdbClusterDescriptor) );
-	if ( !ClusterDefn )
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("out of memory")));
-	}
 
 	segment_dbs = getCdbSegmentDatabases();
+	
+	ClusterDefn->all_valid_segdbs_connected	= false;
+	
 	if ( segment_dbs != NULL && segment_dbs->total_segments != 0 )
 	{
 		ClusterDefn->segment_count	= segment_dbs->total_segments;
 		ClusterDefn->segdb_count	= segment_dbs->total_segment_dbs;
-		
 		ClusterDefn->segment_descriptors = 
 			(SegmentDescriptor *) palloc0 ( ClusterDefn->segment_count * sizeof( SegmentDescriptor ) );
-		if ( !ClusterDefn->segment_descriptors )
-		{
-			ereport(ERROR,
-					(errcode(ERRCODE_OUT_OF_MEMORY),
-					 errmsg("out of memory")));
-		}
 	}
 	else
     {
@@ -716,9 +765,9 @@ CdbClusterDescriptor *buildCdbClusterDefinition(void)
  */
 static void *thread_DoConnect(void *arg)
 {
-	DoConnectParm				*parm				= (DoConnectParm *)arg;
-	SegmentDatabaseDescriptor **segdbDescPtrArray	= parm->segdbDescPtrArray;
-	int							db_count			= parm->db_count;
+	DoConnectParms				*pParms				= (DoConnectParms *)arg;
+	SegmentDatabaseDescriptor **segdbDescPtrArray	= pParms->segdbDescPtrArray;
+	int							db_count			= pParms->db_count;
 	
 	int		i;
 	
@@ -726,9 +775,8 @@ static void *thread_DoConnect(void *arg)
 	SegmentDatabaseInfo			*q;
 	
 	/*
-	 * In the general case, the parm contains an array of SegmentDatabaseDescriptors
-	 * to connect to.  In practice, we use it with just one.  This can be changed
-	 * later if desired.
+	 * The pParms contains an array of SegmentDatabaseDescriptors
+	 * to connect to. 
 	 */
 	for ( i=0; i<db_count; i++ )
 	{
@@ -790,3 +838,44 @@ static void *thread_DoConnect(void *arg)
 	return(NULL);
 }
 
+/*
+ * AddSegDBToConnThreadPool
+ * Helper function used to add a segdb's segdbDesc to the thread pool to be connected to.
+ * It figures out which thread will handle it, based on the setting of
+ * cdb_connections_per_thread.
+ */
+void addSegDBToConnThreadPool( DoConnectParms *ParmsAr, int *segdbCount, SegmentDatabaseDescriptor *segdbDesc)
+{
+	DoConnectParms *pParms;
+	int	ParmsIndex;
+	
+	Assert( segdbCount != NULL );
+	
+	/*
+	 * The proper index into the DoConnectParms array is computed, based on 
+	 * having cdb_connections_per_thread segdbDesc's in each thread.
+	 * If it's the first access to an array location, determined
+	 * by (*segdbCount) % cdb_connections_per_thread == 0,
+	 * then we initialize the struct members for that array location first.
+	 */
+	ParmsIndex = (*segdbCount) / cdb_connections_per_thread;
+	pParms = &ParmsAr[ParmsIndex];
+	
+	if ( (*segdbCount) % cdb_connections_per_thread == 0 )
+	{
+		pParms->segdbDescPtrArray = (SegmentDatabaseDescriptor **)palloc0( cdb_connections_per_thread * sizeof(SegmentDatabaseDescriptor *) );
+		pParms->thread = (pthread_t)0;
+		pParms->db_count = 0;
+	}
+	
+	/*
+	 * Just add to the end of the used portion of the segdbDescPtrArray
+	 * and bump the count of members
+	 */
+	pParms->segdbDescPtrArray[pParms->db_count++] = segdbDesc;
+	
+	/*
+	 * Bump the count of segdbs processed
+	 */
+	(*segdbCount)++;
+}
