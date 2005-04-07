@@ -132,7 +132,7 @@ int cdbCopyEnd(int seg, int db, char *errMessage)
  */
 int cdbCopyExecTrax(int seg, int db, char *sql)
 {
-	assert(sql == "BEGIN" || sql == "ROLLBACK" || sql == "COMMIT");
+	/*assert(sql == "BEGIN" || sql == "ROLLBACK" || sql == "COMMIT");*/
 	
 	SegmentDescriptor *p = &(CdbClusterDefinition->segment_descriptors[seg]);
 	SegmentDatabaseDescriptor *q = &(p->db_descriptors[db]);
