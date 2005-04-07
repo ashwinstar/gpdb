@@ -175,7 +175,7 @@ static bool analyzeAggExpr_walker (Node *node, void *context)
  *
  * TODO: Sort the strategy list in order of increasing "cost".
  *
- * Later, we might consider making CdbJoinStrategy a Node and returning 
+ * Later, we might consider making CdbAggStrategy a Node and returning 
  * a list of strategies for the caller to choose from. We would probably
  * do this in conjuction with changing the flow field of Plan to contain
  * a list of possible flow specifications.
@@ -218,7 +218,7 @@ List *getAggStrategyList(Agg* agg)
 			tleidx++;
 			tle = (TargetEntry*)lfirst(cell);
 			
-			/* We assume that resno and position are equivalen here. */
+			/* We assume that resno and position are equivalent here. */
 			if ( tleidx != tle->resdom->resno )
 			{
 				ereport(ERROR,(
@@ -246,7 +246,7 @@ List *getAggStrategyList(Agg* agg)
 	 	 
 	 /* 
 	  * Analyze our own targetlist and qual for information about contained
-	  * Aggref nodes.  At the moment this is just discovering whether on not 
+	  * Aggref nodes.  At the moment this is just discovering whether or not 
 	  * there is a single Aggref that specifies DISTINCT and validating our
 	  * assumptions about the expression (e.g., grouping attributes contain 
 	  * no Aggrefs, Aggrefs don't nest.)
@@ -265,7 +265,7 @@ List *getAggStrategyList(Agg* agg)
 	 * Generate possible strategies for parallelizing the Agg node.
 	 */
 	
-	if ( child->flow->flotype == FLOW_REPLICATED || child ->flow->flotype == FLOW_SINGLETON )
+	if ( child->flow->flotype == FLOW_REPLICATED || child->flow->flotype == FLOW_SINGLETON )
 	{
 		/* Can do nothing. */
 		result = lappend(result,makeAggStrategy(MOVEMENT_NONE, child->flow->flotype));
@@ -275,6 +275,26 @@ List *getAggStrategyList(Agg* agg)
 	{
 		if ( aOk )
 		{
+
+#ifdef CDB_ENABLE_PHASED_AGG
+			if ( agg->aggstrategy==AGG_HASHED && state->ndistinct==0 )
+			{
+				/* Can restructure to 2-stage aggregation. */
+				as = makeAggStrategy(MOVEMENT_AGG_RESTRUCT, FLOW_PARTITIONED);
+				as->hashexprs = getHashMotionInfoList(plan, INFOTYPE_LEFTEXPR);
+				as->hashtypes = getHashMotionInfoList(plan, INFOTYPE_OP);
+				result = lappend(result,as);
+				as = NULL;
+			}
+			else if ( agg->aggstrategy==AGG_PLAIN && state->ndistinct==0 )
+			{
+				/* Can restructure to 2-stage aggregation. */
+				as = makeAggStrategy(MOVEMENT_AGG_RESTRUCT, FLOW_SINGLETON);
+				result = lappend(result,as);
+				as = NULL;
+			}
+#endif
+			
 			if ( !isgrouped && state->ndistinct == 1  )
 			{
 				/* Can partition on the solitary distinct expr. */

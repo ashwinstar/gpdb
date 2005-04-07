@@ -41,7 +41,6 @@
  * Forward Declarations
  */
 static Node* apply_motion_mutator(Node*  node, ApplyMotionState *context);
-static void assignMotionID(Node* newnode, ApplyMotionState* context, Node* oldnode);
 
 /* TODO Check suitability of the approach taken in these functions. */
 //static void set_hash_in_flow(Plan *plan, int nattrs, int *attrs);
@@ -262,7 +261,17 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 	/*  Copy this node and mutate its children. */
 	Node *newnode = plan_tree_mutator(node, apply_motion_mutator, context);
 	
-	/* Add motion atop the copied node, if necessary. **/
+	/* Perform special transformation, if specified. */
+	if ( is_plan_node(node) && ((Plan*)node)->flow->req_xform != NULL )
+	{
+		Plan *plan = (Plan*)node;
+		
+		/* For now, there's only one. */
+		Assert( IsA(node,Agg) && plan->flow->req_xform->req_move == MOVEMENT_AGG_RESTRUCT );
+		newnode = apply_agg_motion(newnode, context);
+	}
+	
+	/* Add motion atop the copied node, if necessary. */
 	switch (nodeTag(newnode))
 	{
 		/* Abstract: really should see only subclasses. */

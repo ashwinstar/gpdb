@@ -38,6 +38,7 @@ typedef struct ApplyMotionState
 } ApplyMotionState;
 
 extern Plan *apply_motion(Plan* plan, Query* query);
+extern void assignMotionID(Node* newnode, ApplyMotionState* context, Node* oldnode);
 
 typedef enum HashMotionInfoType
 {

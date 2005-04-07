@@ -187,14 +187,14 @@ cdbparallelize(	Plan* plan,
 	#endif
 
 		/*
-		 * Since we scanForManagedTables was true, we have to have usesSegments
-		 * in either the query relations or the result relation.
+		 * Since scanForManagedTables returned true, we must have usesSegments
+		 * in either the query relations or the result relation.  Check.
 		 */
 		Assert( profile.usesSegments || profile.resultSegments );
 
 		/*
-		 * Since we know we are reference segments either in the source or target of the queries
-		 * we know we cannot yet also useCatalog.
+		 * Since we know we reference segments in  either in the source or 
+		 * target of the query, we may not also have useCatalog.
 		 */
 		if ( profile.usesCatalog )
 		{
@@ -256,6 +256,12 @@ prescan(Plan *plan, Query *query, PlanProfile *context)
  * children (expressions), and to descend into children of interior
  * nodes (in order to assign their children's flows) before examining 
  * them and assigning their flows.
+ *
+ * This means that child (lefttree, righttree, etc)  Plan nodes of the 
+ * current Plan node (the one under investigation) will have had their 
+ * Flow nodes assigned already while the current Plan node will not. 
+ * Note, however, that the child plans may have their Flow node adjusted, 
+ * to meet the requirements of the current node.
  */
 bool 
 prescan_walker(Node *node, PlanProfile *context)
@@ -420,6 +426,12 @@ prescan_walker(Node *node, PlanProfile *context)
 				{
 					/* Might scan child, so inherit flow characteristics. */
 					plan->flow = copyObject(child->flow);
+					
+					/* We aren't sure the partitioning attributes are in
+					 * our targetlist, so we shouldn't claim they are.
+					 */
+					plan->flow->hashExpr = NIL;
+					plan->flow->hashOp = NIL;
 				}
 				else
 				{
@@ -1131,6 +1143,8 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 	int i;
 	AttrNumber *sortattrs = NULL;
 	Oid * sortoprs = NULL;
+	Flow *xform = NULL;
+	Flow *newflow = NULL;
 	
 	/* Argument is a prescaned plan. */
 	child = outerPlan((Node*)plan);
@@ -1141,7 +1155,7 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 	strategies = getAggStrategyList(agg);
 	
 	/* An AGG_SORTED node has special requirements.  We need to assure that 
-	 * it's input is correctly orders AND that the order in conserved in the
+	 * it's input is correctly ordered AND that the order is conserved in the
 	 * output in case an ancestor node assumes it.  If we can't gather the
 	 * necessary information, we have to reject the plan as currently not 
 	 * parallelizable.
@@ -1218,6 +1232,7 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 			case MOVEMENT_FOCUS:
 			case MOVEMENT_BROADCAST:
 			case MOVEMENT_REPARTITION:
+			case MOVEMENT_AGG_RESTRUCT:
 				strategy = copyAggStrategy(s);
 				break; /* switch */
 			default:
@@ -1236,13 +1251,18 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 		return true;	 
 	}
 		
+	/*
+	 * A strategy has been chosen. We need to adjust the flow on the
+	 * input (child) node to suit the needs of the strategy and create
+	 * a new flow for the given (Agg) node based on the result of the
+	 * strategy.
+	 */
 	switch ( strategy->leftmove )
 	{
 		case MOVEMENT_NONE:
 			/* No motion required so inherit flow characteristics. */
-			plan->flow = copyObject(child->flow);
-			noteFlow(plan->flow, context);
-			return false;
+			newflow = copyObject(child->flow);
+			break;
 			
 		case MOVEMENT_BROADCAST: 
 			/* Broadcast motion required. */
@@ -1252,10 +1272,11 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 			}
 			else
 			{
-				child->flow = makeFlow(FLOW_REPLICATED);
-				child->flow->req_move = strategy->leftmove;
+				Assert(child->flow != NULL);
+				child->flow->req_move = MOVEMENT_BROADCAST;
+				child->flow->flotype = FLOW_REPLICATED;
 			}
-			noteFlow(child->flow, context);
+			newflow = makeFlow(FLOW_REPLICATED);
 			break;
 		
 		case MOVEMENT_FOCUS:
@@ -1266,10 +1287,11 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 			}
 			else
 			{
-				child->flow = makeFlow(FLOW_SINGLETON);  /* Focus on a segment. */
-				child->flow->req_move = strategy->leftmove;
+				child->flow->req_move = MOVEMENT_FOCUS;
+				child->flow->flotype = FLOW_SINGLETON;
+				child->flow->segindex = -1;
 			}
-			noteFlow(child->flow, context);
+			newflow = makeFlow(FLOW_SINGLETON);
 			break;
 			
 		case MOVEMENT_REPARTITION:
@@ -1283,8 +1305,8 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 			}
 			else
 			{
-				child->flow = makeFlow(FLOW_PARTITIONED);
-				child->flow->req_move = strategy->leftmove;
+				child->flow->req_move = MOVEMENT_REPARTITION;
+				child->flow->flotype = FLOW_PARTITIONED;
 				child->flow->hashExpr = strategy->hashexprs;
 				child->flow->hashOp = strategy->hashtypes;
 			}
@@ -1292,7 +1314,18 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 			   character of the output.  (In the hope that this will
 			   serve to keep sorted output at the top.)
 			 */
-			noteFlow(child->flow, context);
+			newflow = makeFlow(FLOW_PARTITIONED);
+			break;
+		
+		case MOVEMENT_AGG_RESTRUCT:
+			/* TODO -- NEW CODE -- CHECK CAREFULLY */
+			newflow = makeFlow(strategy->resultflowtype);
+			newflow->req_xform = makeFlow(strategy->resultflowtype);
+			newflow->req_xform->req_move = MOVEMENT_AGG_RESTRUCT;
+			newflow->req_xform->flotype = strategy->resultflowtype;
+			newflow->req_xform->hashExpr = strategy->hashexprs;
+			newflow->req_xform->hashOp = strategy->hashtypes;
+			/* No child adjustments. */
 			break;
 		
 		default:
@@ -1305,7 +1338,7 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 	 * we ultimately adopted and the flow characteristics of the child. 
 	 */
 	/* TODO We could do better, e.g., track partition expressions. */
-	plan->flow = makeFlow(strategy->resultflowtype);
+	plan->flow = newflow;
 	
 	if ( sortattrs != NULL )
 	{
@@ -1496,6 +1529,8 @@ Flow *makeFlow(FlowType flotype)
 	Flow *flow = makeNode(Flow);
 	flow->flotype = flotype;
 	flow->req_move = MOVEMENT_NONE;
+	flow->req_xform = NULL;
+	
 	/* TODO
 	 * Put this back to 0 and work out the problem
 	 * with count(*) returning n-1 tuples with 0
@@ -1509,6 +1544,7 @@ Flow *makeFlow(FlowType flotype)
 	 * we were ending up with num_stream_ends_recvd == num_senders+1
 	 */
 	flow->segindex = -1;
+	
 	return flow;
 }
 

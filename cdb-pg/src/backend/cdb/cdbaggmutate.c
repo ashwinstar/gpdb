@@ -2,7 +2,13 @@
 *
 * cdbaggmutate.c
 *	  Restructure an Agg node into partial and final Agg nodes with
-*     an intervening Motion node.
+*     an intervening Motion node.  The main entry point is the function
+*     apply_agg_motion.
+* 
+*     Note that there are other strategies  for Agg nodes (e.g., partition 
+*     on grouping attributes). There are handled directly by cdbagg.c.  The 
+*     functions in this file deal strictly with the 2-stage approach to 
+*     aggregation.
 *
 * Portions Copyright (c) 1996-2003, PostgreSQL Global Development Group
 * Portions Copyright (c) 1994, Regents of the University of California
@@ -40,7 +46,9 @@
 #include "utils/fmgroids.h"
 
 #include "parser/parse_expr.h" /* exprType() and exprTypmod(). */
+#include "cdb/cdbvars.h"
 #include "cdb/cdbagg.h"
+#include "cdb/cdbllize.h"
 
 
 /* --------------------------------------------------------------------------
@@ -74,7 +82,7 @@ static Var *addInnerTle(Expr* expr, SplitAggsContext* context);
 /* 
  * Function: initSplitAggsContext
  *
- * Helper for function: xformAggregate
+ * Helper for function apply_agg_motion.
  *
  * Initialize a SplitAggsContext structure.
  */
@@ -92,7 +100,7 @@ static void initSplitAggsContext(SplitAggsContext* context)
 /*
  * Function: addInnerTle
  * 
- * Helper for function:  xformAggregate 
+ * Helper for function apply_agg_motion. 
  *
  * Add the given expression to the the inner query target list currently 
  * under construction in the given context.  Return a Var node by which 
@@ -110,7 +118,7 @@ addInnerTle(Expr* expr, SplitAggsContext* context)
 	StringInfoData str;
 	
 	/* This will be our attribute number in the intermediate. */
-	attno = list_length(context->inner_tlist);
+	attno = 1 + list_length(context->inner_tlist);
 	
 	/* Make up a name for the attribute. */
 	initStringInfo(&str);
@@ -146,8 +154,8 @@ addInnerTle(Expr* expr, SplitAggsContext* context)
  /*
   * Function: apply_agg_motion
   *
-  * An AGGREGATE transformation restructures a given Agg node into an 
-  * intermediate Agg node that computes a partial result (per segment
+  * A 2-stage aggregate transformation restructures a given Agg node into 
+  * an intermediate Agg node that computes a partial result (per segment
   * database) and a final Agg node that computes final result (per segment
   * or on a specific segment).  The result of the final Agg is just the
   * the desired result of the given Agg node.
@@ -170,12 +178,13 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 	ListCell *cell;
 	TargetEntry *tle;
 	SplitAggsContext context;
+	Flow *xform_flow;
 	
 	/* Sanity checks */
 	Assert( 
 		plan != NULL
 		&& IsA(plan,Agg) 
-		&& plan->flow->req_move == MOVEMENT_AGG_RESTRUCT 
+		&& plan->flow->req_xform->req_move == MOVEMENT_AGG_RESTRUCT 
 		&& plan->lefttree != NULL
 		&& plan->righttree == NULL
 		&& plan->initPlan == NIL
@@ -187,16 +196,27 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 	( (newnode) = makeNode(nodetype), \
 	  memcpy((newnode), (node), sizeof(nodetype)) )
 	
-	/* The idea is to incrementally transform the argument Agg into what
-	 * will serve as the outer Agg and to construct the inner Agg anew.
+	/* 
+	 * The general idea is to split the argument Agg node in two.  The
+	 * original (agg) will be incrementally transformed into the final
+	 * aggregation, the copy (inner_agg) into the partial or intermediate
+	 * aggregation.  At the end, they will be spliced together around an
+	 * intervening Motion node.
 	 */
 	 
 	agg = (Agg*)plan;
 	FLATCOPY(inner_agg, agg, Agg);
 	inner_plan = (Plan*)inner_agg;
 	
-	inner_plan->targetlist = NIL;
-	inner_plan->qual = NIL;
+	xform_flow = plan->flow->req_xform;
+	plan->flow->req_xform = NULL;
+	
+	inner_plan->targetlist = NIL; /* Build on the fly. */
+	inner_plan->qual = NIL; /* Build on the fly. */
+	plan->lefttree = NULL; /* Eventually, this will be Motion node. */
+	inner_plan->flow = NULL;
+	inner_plan->dispatch = DISPATCH_UNDETERMINED; /* Default */
+	agg->grpColIdx = NULL; /* Eventually, put a new one in. */
 	
 	/* Create our local context. */
 	initSplitAggsContext(&context);
@@ -215,7 +235,7 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 	 * This also gives us a way to check whether a Var reference is to a
 	 * grouped or ungrouped attribute.
 	 */
-	context.attr_count = list_length(inner_plan->targetlist);
+	context.attr_count = list_length(inner_plan->lefttree->targetlist);
 	n = 1 + context.attr_count;
 	context.attr_map = (AttrNumber*)palloc(n * sizeof(AttrNumber));
 
@@ -223,10 +243,10 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 	for ( i = 0; i < n; i++ )
 	{
 		context.attr_map[i] = -1; /* Initially flag all as non-grouping. */
-	}
-	for ( i = 0; i <  agg->numCols; i++ )
+	}	
+	for ( i = 0; i <  inner_agg->numCols; i++ )
 	{
-		AttrNumber g = agg->grpColIdx[i];
+		AttrNumber g = inner_agg->grpColIdx[i];
 		bool found = false;
 		foreach( cell, plan->targetlist )
 		{
@@ -241,15 +261,31 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 		Assert( 0 < g && g < n );
 		
 		context.inner_tlist = lappend(context.inner_tlist, copyObject(tle));
-		context.attr_map[g] = list_length(inner_plan->targetlist);
+		context.attr_map[g] = list_length(context.inner_tlist);
 	}
 	
+	/* Since we just put the grouping attributes on front of the inner 
+	 * targetlist, and since Motion nodes are non-projecting, we know
+	 * that the grouping attributes of the outer Agg's input (the Motion)
+	 * will be 1,2,3,....
+	 */
+	if ( agg->numCols > 0 )
+	{
+		agg->grpColIdx = palloc(agg->numCols * sizeof(AttrNumber));
+		for ( i = 0; i < agg->numCols; i++ )
+		{
+			agg->grpColIdx[i] = i+1;
+		}
+	}	
 	
 	/* Now mutate the given Agg's target list and qual (the HAVING clause)
 	 * to refer to the result of the intermediate Agg (rather than the child 
 	 * plan).  As we go, we add any necessary attributes (Aggref expressions)
 	 * to the intermediate Agg target list so we can refer to them in the 
 	 * mutated outer target list (or qual).
+	 *
+	 * This can fail since there may be aggregate functions we don't know
+	 * how to split.  Therefore, we need to check for sucess as we go.
 	 */
 	foreach( cell, plan->targetlist)
 	{		
@@ -257,15 +293,49 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 		tle->expr = (Expr*)splitAggs((Node*)tle->expr, &context);
 	}
 	
+	/* TODO Push qual conjuncts without Aggrefs down to inner_plan! */
 	plan->qual = (List*)splitAggs((Node*)plan->qual, &context);
 	
+	if ( context.errmsg != NULL )
+	{
+		ereport(ERROR, (
+			errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+			errmsg("CDB cannot parallelize that command yet"),
+			errdetail(context.errmsg)
+		));
+	}
 	
-	/* Compose the inner query and make it into a subquery RTE, the sole
-	 * entry in the outer query's range table.
-	 */
+	/* Finish composing the inner plan. */
 	inner_plan->targetlist = context.inner_tlist;
 	context.inner_tlist = NIL;
 	
+	/* Splice in Motion and set the flow of the inner plan. */
+	switch ( agg->aggstrategy )
+	{
+		case AGG_PLAIN:
+			plan->lefttree =(Plan*)make_union_motion(inner_plan, false, -1);
+			plan->flow = makeFlow(FLOW_SINGLETON);
+			break;
+			
+		case AGG_HASHED:
+			plan->lefttree = (Plan*)make_hashed_motion(
+				inner_plan, false, CdbIdentity.numsegments,
+				makeDefaultSegIdxArray(CdbIdentity.numsegments),
+				/* These are wrong.  Should be grouping attrs. */
+				xform_flow->hashExpr,
+				xform_flow->hashOp
+				);
+			inner_plan->flow = makeFlow(FLOW_PARTITIONED);
+			inner_plan->flow->hashExpr = copyObject( ((Motion*)plan->lefttree)->hashExpr );
+			inner_plan->flow->hashOp = copyObject( ((Motion*)plan->lefttree)->hashOp );
+			break;
+			
+		default:
+			Assert(FALSE); /* Internal error */
+	}
+	assignMotionID((Node*)plan->lefttree, state, NULL);
+	
+	/* TODO - Adjust costs for explain */
 	
 	elog_node_display(DEBUG1, "CDB apply_agg_motion Outer: ", plan, Debug_pretty_print);
 	elog_node_display(DEBUG1, "CDB apply_agg_motion Inner: ", inner_plan, Debug_pretty_print);
@@ -325,7 +395,7 @@ splitAggs_mutator(Node* node, SplitAggsContext *context)
 {
 	Node *new_expr;
 	
-	if (node == NULL)
+	if ( node == NULL || context->errmsg != NULL )
 		return NULL;
 	
 	if ( IsA(node, Aggref) )
@@ -334,7 +404,7 @@ splitAggs_mutator(Node* node, SplitAggsContext *context)
 		Aggref* aggref = (Aggref*)node;
 		
 		Assert( !context->mutatingAggref ); /* Aggrefs don't nest */
-		Assert( !aggref->aggdistinct ); /* We're not smart enought to do this. */
+		Assert( !aggref->aggdistinct ); /* We're not smart enough to do this. */
 		context->mutatingAggref = TRUE;
 		
 		/* Get the specific tactic by which to parallelize this aggregate
@@ -347,6 +417,14 @@ splitAggs_mutator(Node* node, SplitAggsContext *context)
 			if ( context->errmsg == NULL )
 				context->errmsg = "CDB has no tactic for implementing this aggregation";
 			context->mutatingAggref = FALSE;
+			
+			/******/
+			ereport(ERROR, (
+				errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+				errmsg("CDB cannot parallelize that command yet"),
+				errdetail(context->errmsg)
+			));
+			
 			return NULL;
 		}
 		
@@ -428,7 +506,7 @@ splitAggs_mutator(Node* node, SplitAggsContext *context)
 		}
 		else
 		{
-			List *args;
+			List *args = NIL;
 			
 			for ( i = 0; i < tactic->numFinals; i++ )
 			{
