@@ -176,9 +176,9 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 	Plan *inner_plan;
 	int i, n;
 	ListCell *cell;
-	TargetEntry *tle;
+	TargetEntry *tle, *new_tle;
+	AttrNumber attno;
 	SplitAggsContext context;
-	Flow *xform_flow;
 	
 	/* Sanity checks */
 	Assert( 
@@ -208,7 +208,10 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 	FLATCOPY(inner_agg, agg, Agg);
 	inner_plan = (Plan*)inner_agg;
 	
-	xform_flow = plan->flow->req_xform;
+	/* The attached flow is no longer interesting.  It flagged the need to
+	 * call this function, but from here on, all the information we need to 
+	 * make the transformation is readily available in the plan itself.
+	 */
 	plan->flow->req_xform = NULL;
 	
 	inner_plan->targetlist = NIL; /* Build on the fly. */
@@ -234,16 +237,24 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 	 * references from referring-to-child-plan to referring-to-intermediate.
 	 * This also gives us a way to check whether a Var reference is to a
 	 * grouped or ungrouped attribute.
+	 * 
+	 * Entries in context.attr_map correspond to the target list of the
+	 * input relation.  (Dummy element 0 adjusts for origin 1.)  Entries
+	 * that are grouping attributes have as their value, the attribute 
+	 * number of the grouping attribute in the target list of the partial
+	 * aggregation Agg node.  Others have -1.
 	 */
 	context.attr_count = list_length(inner_plan->lefttree->targetlist);
 	n = 1 + context.attr_count;
 	context.attr_map = (AttrNumber*)palloc(n * sizeof(AttrNumber));
 
-	
+	/* Initially flag all as non-grouping. */
 	for ( i = 0; i < n; i++ )
 	{
-		context.attr_map[i] = -1; /* Initially flag all as non-grouping. */
+		context.attr_map[i] = -1;
 	}	
+	
+	/* Reset grouping attr entries to their position in the inner tlist. */
 	for ( i = 0; i <  inner_agg->numCols; i++ )
 	{
 		AttrNumber g = inner_agg->grpColIdx[i];
@@ -260,8 +271,12 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 		Assert(found); /* TODO Should we issue an error instead? */
 		Assert( 0 < g && g < n );
 		
-		context.inner_tlist = lappend(context.inner_tlist, copyObject(tle));
-		context.attr_map[g] = list_length(context.inner_tlist);
+		new_tle =  copyObject(tle);
+		attno = 1 + list_length(context.inner_tlist);
+		new_tle->resdom->resno = attno;
+		
+		context.inner_tlist = lappend(context.inner_tlist, new_tle);
+		context.attr_map[g] = attno;
 	}
 	
 	/* Since we just put the grouping attributes on front of the inner 
@@ -293,7 +308,12 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 		tle->expr = (Expr*)splitAggs((Node*)tle->expr, &context);
 	}
 	
-	/* TODO Push qual conjuncts without Aggrefs down to inner_plan! */
+	/* 
+	 * TODO Push qual conjuncts without Aggrefs down to inner_plan! 
+	 *      This would eliminate groups at the inner plan and avoid
+	 *      shipping, consolidating, and discarding them on the outer.
+	 */
+	 
 	plan->qual = (List*)splitAggs((Node*)plan->qual, &context);
 	
 	if ( context.errmsg != NULL )
@@ -321,9 +341,8 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 			plan->lefttree = (Plan*)make_hashed_motion(
 				inner_plan, false, CdbIdentity.numsegments,
 				makeDefaultSegIdxArray(CdbIdentity.numsegments),
-				/* These are wrong.  Should be grouping attrs. */
-				xform_flow->hashExpr,
-				xform_flow->hashOp
+				getHashMotionInfoList(inner_plan, INFOTYPE_LEFTEXPR),
+				getHashMotionInfoList(inner_plan, INFOTYPE_OP)
 				);
 			inner_plan->flow = makeFlow(FLOW_PARTITIONED);
 			inner_plan->flow->hashExpr = copyObject( ((Motion*)plan->lefttree)->hashExpr );
@@ -336,9 +355,6 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 	assignMotionID((Node*)plan->lefttree, state, NULL);
 	
 	/* TODO - Adjust costs for explain */
-	
-	elog_node_display(DEBUG1, "CDB apply_agg_motion Outer: ", plan, Debug_pretty_print);
-	elog_node_display(DEBUG1, "CDB apply_agg_motion Inner: ", inner_plan, Debug_pretty_print);
 	
 	return plan;
 }

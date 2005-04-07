@@ -281,8 +281,7 @@ List *getAggStrategyList(Agg* agg)
 			{
 				/* Can restructure to 2-stage aggregation. */
 				as = makeAggStrategy(MOVEMENT_AGG_RESTRUCT, FLOW_PARTITIONED);
-				as->hashexprs = getHashMotionInfoList(plan, INFOTYPE_LEFTEXPR);
-				as->hashtypes = getHashMotionInfoList(plan, INFOTYPE_OP);
+				/* No need to set hash fields, transform code can deduce. */
 				result = lappend(result,as);
 				as = NULL;
 			}

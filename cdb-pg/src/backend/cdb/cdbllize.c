@@ -1318,13 +1318,15 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 			break;
 		
 		case MOVEMENT_AGG_RESTRUCT:
-			/* TODO -- NEW CODE -- CHECK CAREFULLY */
 			newflow = makeFlow(strategy->resultflowtype);
+			
+			/* Flag the required transformation.  Really only need
+			 * req_move==MOVEMENT_AGG_RESTRUCT for this transformation.
+			 */
 			newflow->req_xform = makeFlow(strategy->resultflowtype);
 			newflow->req_xform->req_move = MOVEMENT_AGG_RESTRUCT;
 			newflow->req_xform->flotype = strategy->resultflowtype;
-			newflow->req_xform->hashExpr = strategy->hashexprs;
-			newflow->req_xform->hashOp = strategy->hashtypes;
+
 			/* No child adjustments. */
 			break;
 		
