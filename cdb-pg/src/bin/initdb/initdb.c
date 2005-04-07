@@ -1113,7 +1113,7 @@ static void
 test_buffers(void)
 {
 	char		cmd[MAXPGPATH];
-	static const int bufs[] = {1000, 900, 800, 700, 600, 500,
+	static const int bufs[] = {16000, 900, 800, 700, 600, 500,
 	400, 300, 200, 100, 50};
 	static const int len = sizeof(bufs) / sizeof(int);
 	int			i,
@@ -1163,7 +1163,7 @@ setup_config(void)
 	conflines = replace_token(conflines, "#max_connections = 100", repltok);
 
 	snprintf(repltok, sizeof(repltok), "shared_buffers = %d", n_buffers);
-	conflines = replace_token(conflines, "#shared_buffers = 1000", repltok);
+	conflines = replace_token(conflines, "#shared_buffers = 16000", repltok);
 
 #if DEF_PGPORT != 5432
 	snprintf(repltok, sizeof(repltok), "#port = %d", DEF_PGPORT);

@@ -982,7 +982,7 @@ static struct config_int ConfigureNamesInt[] =
 			NULL
 		},
 		&NBuffers,
-		1000, 16, INT_MAX / BLCKSZ, NULL, NULL
+		16000, 16, INT_MAX / BLCKSZ, NULL, NULL
 	},
 
 	{
