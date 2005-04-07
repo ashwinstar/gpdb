@@ -3506,9 +3506,6 @@ static void dispatchVacuum(VacuumStmt *vacstmt)
 	 */	
 	CdbDoCommand( buffer.data, NULL, set, true );
 
-	/* TODO - Remove this when CDB-77 is fixed  */
-	CdbDoCommand( "checkpoint", NULL, set, true );
-
 	pfree(buffer.data);
 
 }

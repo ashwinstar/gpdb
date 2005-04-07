@@ -760,8 +760,7 @@ do
     
     # Vacuum
     echo "Vacuuming entry database";
-	# TODO - Remove the checkpoint when CDB-77 is fixed 
-    PGOPTIONS='-c cdb_session_role=dispatch' psql -o /dev/null -q $entrySegName -c "vacuum full analyze;checkpoint;"
+    PGOPTIONS='-c cdb_session_role=dispatch' psql -o /dev/null -q $entrySegName -c "vacuum full analyze"
 done
 
 exit 1
