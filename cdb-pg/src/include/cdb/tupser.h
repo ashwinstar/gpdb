@@ -15,15 +15,11 @@
 #include "utils/lsyscache.h"
 
 
-/* Define this to use MemoryContextReset() to reclaim memory instead of using
- * explicit pfree() calls.  Need to analyze performance of each approach.
+/* Define this to pack the NULLs-mask into the minimum number of bytes
+ * possible.  If undefined, the NULLs-sequence is sent as one character per
+ * attribute.
  */
-#define USE_TUPSER_MEM_CTXT
-
-/* Define this to use special-purpose tuple-serialization IO routines, instead
- * of calling the Postgres binary IO routines for each data-type.
- */
-#define SPECIAL_TUPSER_IO
+#undef TUPSER_BITPACK_NULLMASK
 
 /* Define this to allocate scratch-space for varlena attribute-values, so that
  * tuple-deserialization doesn't have to allocate space if the varlena's value

@@ -25,6 +25,12 @@
 static MemoryContext s_tupSerMemCtxt = NULL;
 
 
+
+static void appendStringInfoInt32(StringInfo str, int32 i);
+static int32 stringInfoGetInt32(StringInfo str);
+
+
+
 /* Look up all of the information that SerializeTuple() and DeserializeTuple()
  * need to perform their jobs quickly.  Also, scratchpad space is allocated
  * for serialization and desrialization of datum values, and for formation/
@@ -145,7 +151,8 @@ int SerializeTuple(HeapTuple tuple, SerTupInfo *pSerInfo, StringInfo strInfo)
 
     int i, j, k;
     int origLen;
-
+	bool fHandled;
+	
 	AssertArg(tuple != NULL);
 	AssertArg(pSerInfo != NULL);
 	AssertArg(strInfo != NULL);
@@ -154,17 +161,16 @@ int SerializeTuple(HeapTuple tuple, SerTupInfo *pSerInfo, StringInfo strInfo)
     natts = tupdesc->natts;
     origLen = strInfo->len;
 
-#ifdef USE_TUPSER_MEM_CTXT
 	/* Flip to our tuple-serialization memory-context, to speed up memory
 	 * reclamation operations.
 	 */
 	AssertState(s_tupSerMemCtxt != NULL);
 	oldCtxt = MemoryContextSwitchTo(s_tupSerMemCtxt);
-#endif
 
     /* deconstruct the tuple (faster than a heap_getattr loop) */
     heap_deformtuple(tuple, tupdesc, pSerInfo->values, pSerInfo->nulls);
 
+#ifdef TUPSER_BITPACK_NULLMASK
     /* send a bitmap of which attributes are not null */
     j = 0;
     k = 1 << 7;
@@ -182,6 +188,10 @@ int SerializeTuple(HeapTuple tuple, SerTupInfo *pSerInfo, StringInfo strInfo)
     }
     if (k != (1 << 7))          /* flush last partial byte */
         pq_sendint(strInfo, j, 1);
+#else
+	/* Send the nulls character-array. */
+	appendBinaryStringInfo(strInfo, pSerInfo->nulls, natts);
+#endif
 
     /* send the attributes of this tuple */
     for (i = 0; i < natts; ++i)
@@ -201,38 +211,34 @@ int SerializeTuple(HeapTuple tuple, SerTupInfo *pSerInfo, StringInfo strInfo)
         else
             attr = origattr;
 
-#ifdef SPECIAL_TUPSER_IO
-		bool fHandled = true;
+		/* Assume that the data's output will be handled by the special IO
+		 * code, and if not then we can handle it the slow way.
+		 */
+		fHandled = true;
 		switch (attrInfo->atttypid)
 		{
 		case INT4OID:
-		{
-			int32 tmpI32 = DatumGetInt32(attr);
-			pq_sendbytes(strInfo, (char *) &tmpI32, 4);
+			appendStringInfoInt32(strInfo, DatumGetInt32(attr));
 			break;
-		}
 			
 		case CHAROID:
-		{
-			char tmpCh = DatumGetChar(attr);
-			pq_sendbyte(strInfo, tmpCh);
+			appendStringInfoCharMacro(strInfo, DatumGetChar(attr));
 			break;
-		}
 			
 		case BPCHAROID:
 		case VARCHAROID:
 		{
 			text *pText = DatumGetTextP(attr);
-			int textSize = VARSIZE(pText) - VARHDRSZ;
-			pq_sendbytes(strInfo, (char *) &textSize, 4);
-			pq_sendbytes(strInfo, (char *) VARDATA(pText), textSize);
+			int32 textSize = VARSIZE(pText) - VARHDRSZ;
+			appendStringInfoInt32(strInfo, textSize);
+			appendBinaryStringInfo(strInfo, (char *) VARDATA(pText), textSize);
 			break;
 		}
 		
 		case DATEOID:
 		{
 			DateADT date = DatumGetDateADT(attr);
-			pq_sendbytes(strInfo, (char *) &date, sizeof(DateADT));
+			appendBinaryStringInfo(strInfo, (char *) &date, sizeof(DateADT));
 			break;
 		}
 		
@@ -243,9 +249,9 @@ int SerializeTuple(HeapTuple tuple, SerTupInfo *pSerInfo, StringInfo strInfo)
 			 * guts of the numeric.
 			 */
 			Numeric num = DatumGetNumeric(attr);
-			int numSize = VARSIZE(num) - VARHDRSZ;
-			pq_sendbytes(strInfo, (char *) &numSize, 4);
-			pq_sendbytes(strInfo, (char *) VARDATA(num), numSize);
+			int32 numSize = VARSIZE(num) - VARHDRSZ;
+			appendStringInfoInt32(strInfo, numSize);
+			appendBinaryStringInfo(strInfo, (char *) VARDATA(num), numSize);
 			break;
 		}
 		
@@ -255,30 +261,19 @@ int SerializeTuple(HeapTuple tuple, SerTupInfo *pSerInfo, StringInfo strInfo)
 		
 		if (fHandled)
 			continue;
-#endif
 
         outputbytes = DatumGetByteaP(FunctionCall2(&attrInfo->send_finfo,
             attr, ObjectIdGetDatum(attrInfo->send_typio_param)));
 
         /* We assume the result will not have been toasted */
-        pq_sendint(strInfo, VARSIZE(outputbytes) - VARHDRSZ, 4);
-        pq_sendbytes(strInfo, VARDATA(outputbytes),
+        appendStringInfoInt32(strInfo, VARSIZE(outputbytes) - VARHDRSZ);
+        appendBinaryStringInfo(strInfo, VARDATA(outputbytes),
             VARSIZE(outputbytes) - VARHDRSZ);
-
-#ifndef USE_TUPSER_MEM_CTXT
-        pfree(outputbytes);
-
-        /* Clean up detoasted copy, if any */
-        if (attr != origattr)
-            pfree(DatumGetPointer(attr));
-#endif
     }
 
-#ifdef USE_TUPSER_MEM_CTXT
 	MemoryContextSwitchTo(oldCtxt);
 	
 	MemoryContextReset(s_tupSerMemCtxt);
-#endif
 
     /* Return the size of the serialized tuple in bytes. */
     return strInfo->len - origLen;
@@ -301,6 +296,7 @@ HeapTuple DeserializeTuple(SerTupInfo *pSerInfo, StringInfo serialTup)
     int i, j, k;
     int origLen;
     StringInfoData attr_data;
+	bool fHandled;
 
 	AssertArg(pSerInfo != NULL);
 	AssertArg(serialTup != NULL);
@@ -309,21 +305,20 @@ HeapTuple DeserializeTuple(SerTupInfo *pSerInfo, StringInfo serialTup)
     natts = tupdesc->natts;
     origLen = serialTup->len;
 
-#ifdef USE_TUPSER_MEM_CTXT
 	/* Flip to our tuple-serialization memory-context, to speed up memory
 	 * reclamation operations.
 	 */
 	AssertState(s_tupSerMemCtxt != NULL);
 	oldCtxt = MemoryContextSwitchTo(s_tupSerMemCtxt);
-#endif
 	
+#ifdef TUPSER_BITPACK_NULLMASK
     /* Receive and process the "non-NULL values" bitmap. */
     for (i = 0, k = 0; i < natts; ++i)
     {
         if (k == 0)
         {
             /* Get the next byte in the bitmap. */
-            j = pq_getmsgint(serialTup, 1);
+            j = pq_getmsgbyte(serialTup);
             k = 1 << 7;
         }
         
@@ -335,6 +330,10 @@ HeapTuple DeserializeTuple(SerTupInfo *pSerInfo, StringInfo serialTup)
         
         k >>= 1;
     }
+#else
+	/* Receive nulls character-array. */
+	pq_copymsgbytes(serialTup, pSerInfo->nulls, natts);
+#endif
 
     /* Deserialize the non-NULL attributes of this tuple */
     initStringInfo(&attr_data);
@@ -348,17 +347,15 @@ HeapTuple DeserializeTuple(SerTupInfo *pSerInfo, StringInfo serialTup)
 			continue;
         }
 
-#ifdef SPECIAL_TUPSER_IO
-		bool fHandled = true;
+		/* Assume that the data's output will be handled by the special IO
+		 * code, and if not then we can handle it the slow way.
+		 */
+		fHandled = true;
 		switch (attrInfo->atttypid)
 		{
 		case INT4OID:
-		{
-			int32 tmpI32;
-			pq_copymsgbytes(serialTup, (char *) &tmpI32, 4);
-			pSerInfo->values[i] = Int32GetDatum(tmpI32);
+			pSerInfo->values[i] = Int32GetDatum(stringInfoGetInt32(serialTup));
 			break;
-		}
 		
 		case CHAROID:
 			pSerInfo->values[i] = CharGetDatum(pq_getmsgbyte(serialTup));
@@ -369,7 +366,8 @@ HeapTuple DeserializeTuple(SerTupInfo *pSerInfo, StringInfo serialTup)
 		{
 			text *pText;
 			int textSize;
-			pq_copymsgbytes(serialTup, (char *) &textSize, 4);
+			
+			textSize = stringInfoGetInt32(serialTup);
 			
 #ifdef TUPSER_SCRATCH_SPACE
 			if (textSize + VARHDRSZ <= attrInfo->varlen_scratch_size)
@@ -388,6 +386,9 @@ HeapTuple DeserializeTuple(SerTupInfo *pSerInfo, StringInfo serialTup)
 		
 		case DATEOID:
 		{
+			/* TODO:  I would LIKE to do something more efficient, but DateADT
+			 *        is not strictly limited to 4 bytes by its definition.
+			 */
 			DateADT date;
 			pq_copymsgbytes(serialTup, (char *) &date, sizeof(DateADT));
 			pSerInfo->values[i] = DateADTGetDatum(date);
@@ -402,7 +403,8 @@ HeapTuple DeserializeTuple(SerTupInfo *pSerInfo, StringInfo serialTup)
 			 */
 			Numeric num;
 			int numSize;
-			pq_copymsgbytes(serialTup, (char *) &numSize, 4);
+			
+			numSize = stringInfoGetInt32(serialTup);
 			
 #ifdef TUPSER_SCRATCH_SPACE
 			if (numSize + VARHDRSZ <= attrInfo->varlen_scratch_size)
@@ -425,9 +427,8 @@ HeapTuple DeserializeTuple(SerTupInfo *pSerInfo, StringInfo serialTup)
 		
 		if (fHandled)
 			continue;
-#endif
 		
-		attr_size = pq_getmsgint(serialTup, 4);
+		attr_size = stringInfoGetInt32(serialTup);
 
 		/* reset attr_data to empty, and load raw data into it */
 
@@ -452,44 +453,15 @@ HeapTuple DeserializeTuple(SerTupInfo *pSerInfo, StringInfo serialTup)
 		}
     }
 
-#ifndef USE_TUPSER_MEM_CTXT
-    /* Free up memory we used. */
-    pfree(attr_data.data);
-#endif
-
     /* Construct the tuple from the Datums and nulls values.  NOTE:  Switch
 	 * out of our temporary context before we form the tuple!
 	 */
 	
-#ifdef USE_TUPSER_MEM_CTXT
 	MemoryContextSwitchTo(oldCtxt);
-#endif
 
     htup = heap_formtuple(tupdesc, pSerInfo->values, pSerInfo->nulls);
 
-#ifndef USE_TUPSER_MEM_CTXT
-	/* Clean up any variable-length attribute values that were allocated! */
-	
-	for (i = 0; i < natts; ++i)
-	{
-        attrInfo = pSerInfo->myinfo + i;
-		
-		if (attrInfo->typisvarlena && pSerInfo->values[i] != NULL)
-		{
-#ifdef TUPSER_SCRATCH_SPACE
-			if (attrInfo->pv_varlen_scratch != pSerInfo->values[i])
-			{
-#endif
-				pfree(DatumGetPointer(pSerInfo->values[i]));
-				pSerInfo->values[i] = (Datum) NULL;
-#ifdef TUPSER_SCRATCH_SPACE
-			}
-#endif
-		}
-	}
-#else
 	MemoryContextReset(s_tupSerMemCtxt);
-#endif
 
 	/* All done.  Return the result. */
 	return htup;
@@ -668,4 +640,67 @@ HeapTuple CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo *pSerInfo)
     
     return htup;
 }
+
+
+/*
+ * appendStringInfoInt32
+ *
+ * Append a 4-byte integer to str.  The result is not necessarily in network
+ * byte-ordering, and is architecture dependent.
+ *
+ * Hopefully this is faster than the stuff in stringinfo.c or pqformat.c!
+ */
+void appendStringInfoInt32(StringInfo str, int32 i)
+{
+	/* Make more room if needed */
+	if (str->len + 4 >= str->maxlen)
+		enlargeStringInfo(str, 4);
+
+	/* Store the int32.  We cast the pointer to the next part of the data to
+	 * an int32 pointer, and just store the integer into that location of the
+	 * array.
+	 */
+	*((int32 *) (str->data + str->len)) = i;
+	
+	/* Update the count, and 0-terminate the string. */
+	str->len += 4;
+	str->data[str->len] = '\0';
+}
+
+
+/*
+ * stringInfoGetInt32
+ *
+ * Pull a 4-byte integer out of str, at the current cursor location.  The
+ * cursor is then incremented by 4.  If there is not 4 bytes left between the
+ * cursor and the end of the string, an error is reported.
+ *
+ * The input is expected to be in the current architecture's byte-ordering.
+ *
+ * Hopefully this is faster than the stuff in stringinfo.c or pqformat.c!
+ */
+int32 stringInfoGetInt32(StringInfo str)
+{
+	int32 res;
+	
+	/* Make sure there are enough bytes left. */
+	if (str->len - str->cursor < 4)
+	{
+		ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+			errmsg("insufficient data left in message")));
+	}
+
+	/* Pull out the int32.  We cast the pointer to the next part of the data
+	 * to an int32 pointer, and just retrieve the integer from that location
+	 * in the array.
+	 */
+	res = *((int32 *) (str->data + str->cursor));
+	
+	/* Update the cursor. */
+	str->cursor += 4;
+	
+	return res;
+}
+
+
 
