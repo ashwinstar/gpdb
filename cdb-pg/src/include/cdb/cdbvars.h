@@ -202,6 +202,12 @@ extern bool enable_cdbrepartition;
 extern bool enable_cdbbroadcast;
 
 /*
+ * Unlike the above, enable_agg_restruct is not cost based. When set to
+ * false, the parallelizer will not use multi-level aggregation.
+ */
+extern bool enable_agg_restruct;
+
+/*
  * Parameter ams_wait_time
  *
  * The run-time parameter (GUC variable) ams_wait_time controls the

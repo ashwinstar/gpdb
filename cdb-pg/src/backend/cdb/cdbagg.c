@@ -25,6 +25,7 @@
 #include "nodes/primnodes.h"
 #include "nodes/parsenodes.h"
 #include "nodes/plannodes.h"
+#include "cdb/cdbvars.h"
 #include "cdb/cdbplan.h"
 #include "cdb/cdbmutate.h"
 #include "cdb/cdbagg.h"
@@ -279,23 +280,24 @@ List *getAggStrategyList(Agg* agg)
 		if ( aOk )
 		{
 
-#ifdef CDB_ENABLE_PHASED_AGG
-			if ( agg->aggstrategy==AGG_HASHED && state->ndistinct==0 )
+			if ( enable_agg_restruct ) 
 			{
-				/* Can restructure to 2-stage aggregation. */
-				as = makeAggStrategy(MOVEMENT_AGG_RESTRUCT, FLOW_PARTITIONED);
-				/* No need to set hash fields, transform code can deduce. */
-				result = lappend(result,as);
-				as = NULL;
+				if ( agg->aggstrategy==AGG_HASHED && state->ndistinct==0 )
+				{
+					/* Can restructure to 2-stage aggregation. */
+					as = makeAggStrategy(MOVEMENT_AGG_RESTRUCT, FLOW_PARTITIONED);
+					/* No need to set hash fields, transform code can deduce. */
+					result = lappend(result,as);
+					as = NULL;
+				}
+				else if ( agg->aggstrategy==AGG_PLAIN && state->ndistinct==0 )
+				{
+					/* Can restructure to 2-stage aggregation. */
+					as = makeAggStrategy(MOVEMENT_AGG_RESTRUCT, FLOW_SINGLETON);
+					result = lappend(result,as);
+					as = NULL;
+				}
 			}
-			else if ( agg->aggstrategy==AGG_PLAIN && state->ndistinct==0 )
-			{
-				/* Can restructure to 2-stage aggregation. */
-				as = makeAggStrategy(MOVEMENT_AGG_RESTRUCT, FLOW_SINGLETON);
-				result = lappend(result,as);
-				as = NULL;
-			}
-#endif
 			
 			if ( !isgrouped && state->ndistinct == 1  )
 			{
@@ -320,8 +322,13 @@ List *getAggStrategyList(Agg* agg)
 			{
 				/* Can partition on grouping exprs. */
 				as = makeAggStrategy(MOVEMENT_REPARTITION, FLOW_PARTITIONED);
+				
+				/* TODO These expressions will apply to the child, not the parent */
+				/*      E.g. select count(*),vn from sale group by vn */
+				/*      will break! */
 				as->hashexprs = getHashMotionInfoList(plan, INFOTYPE_LEFTEXPR);
 				as->hashtypes = getHashMotionInfoList(plan, INFOTYPE_OP);
+				
 				result = lappend(result,as);
 				as = NULL;
 			}

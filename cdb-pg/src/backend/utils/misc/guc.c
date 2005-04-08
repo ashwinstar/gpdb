@@ -869,6 +869,15 @@ static struct config_bool ConfigureNamesBool[] =
 		true, NULL, NULL
 	},
 
+	{
+		{"enable_agg_restructure", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the cdb parallelizer to use a restructuring strategy for aggregation."),
+			NULL
+		},
+		&enable_agg_restruct,
+		true, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL

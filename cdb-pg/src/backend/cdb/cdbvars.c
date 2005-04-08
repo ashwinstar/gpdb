@@ -50,6 +50,7 @@ int					Cdb_querygroup_id;		/* Per-session ID, same across all backends in the s
 
 bool				enable_cdbrepartition;
 bool				enable_cdbbroadcast;
+bool				enable_agg_restruct;
 
 int 				ams_wait_time;  /*time in microseconds for motion layer to wait. */
 

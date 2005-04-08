@@ -165,6 +165,9 @@
 #from_collapse_limit = 8
 #join_collapse_limit = 8	# 1 disables collapsing of explicit JOINs
 
+# - Parallel Query Options -
+
+#enable_agg_restructure = true
 
 #---------------------------------------------------------------------------
 # ERROR REPORTING AND LOGGING
