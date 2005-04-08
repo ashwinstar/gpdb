@@ -946,7 +946,7 @@ escape_quotes(const char *src)
 	
 	for (i = 0, j = 0; i < len; i++)
 	{
-		if (src[i] == '\'' )
+		if (src[i] == '\'' || src[i] == '\\')
 			result[j++] = '\\';
 		result[j++] = src[i];
 	}
@@ -966,7 +966,7 @@ unescape_quotes(const char *src)
 	
 	for (i = 0, j = 0; i < len; i++)
 	{
-		if ( i < len-1 && src[i] == '\\' && src[i+1] == '\'' )
+		if ( i < len-1 && src[i] == '\\' && (src[i+1] == '\'' || src[i+1] == '\\'))
 			i++;
 
 		result[j++] = src[i];
