@@ -22,6 +22,7 @@
 #include "nodes/pg_list.h"
 #include "nodes/print.h"
 
+#include "optimizer/planmain.h" /* for is_projection_capable_plan() */
 #include "parser/parsetree.h" /* for rt_fetch() */
 #include "utils/lsyscache.h" /* for getatttypetypmod() */
 #include "parser/parse_oper.h" /* for compatible_oper_opid() */
@@ -308,7 +309,7 @@ prescan_walker(Node *node, PlanProfile *context)
 					return true;
 				
 				/* Transmit flow characterization upward. */
-				((Plan*)subplan)->flow = copyObject(subplan->plan->flow);
+				((Plan*)subplan)->flow = pull_up_Flow((Plan*)subplan);
 				noteFlow( ((Plan*)subplan)->flow, context );
 			}
 			return false;
@@ -425,7 +426,7 @@ prescan_walker(Node *node, PlanProfile *context)
 				if ( child != NULL )
 				{
 					/* Might scan child, so inherit flow characteristics. */
-					plan->flow = copyObject(child->flow);
+					plan->flow = pull_up_Flow(plan);
 					
 					/* We aren't sure the partitioning attributes are in
 					 * our targetlist, so we shouldn't claim they are.
@@ -452,7 +453,7 @@ prescan_walker(Node *node, PlanProfile *context)
 				Plan *plan = (Plan*)node;
 				Plan *child = outerPlan(node);
 				Assert( child != NULL );
-				plan->flow = copyObject(child->flow);
+				plan->flow = pull_up_Flow(plan);
 			}
 			return false;
 		
@@ -465,7 +466,7 @@ prescan_walker(Node *node, PlanProfile *context)
 				Plan *plan = (Plan*)node;
 				Plan *child = outerPlan(node);
 				Assert( child != NULL );
-				plan->flow = copyObject(child->flow);
+				plan->flow = pull_up_Flow(plan);
 				
 				/* ... but reordered. */
 				Sort *sort = (Sort*)node;
@@ -502,7 +503,7 @@ prescan_walker(Node *node, PlanProfile *context)
 					|| child ->flow->flotype == FLOW_SINGLETON )
 				{
 					/* No motion required so inherit flow characteristics. */
-					plan->flow = copyObject(child->flow);
+					plan->flow = pull_up_Flow(plan);
 					noteFlow(plan->flow, context);
 					return false;
 				}
@@ -592,7 +593,7 @@ prescan_walker(Node *node, PlanProfile *context)
 					|| child ->flow->flotype == FLOW_SINGLETON )
 				{
 					/* No motion required so inherit flow characteristics. */
-					plan->flow = copyObject(child->flow);
+					plan->flow = pull_up_Flow(plan);
 					noteFlow(plan->flow, context);
 					return false;
 				}
@@ -614,7 +615,7 @@ prescan_walker(Node *node, PlanProfile *context)
 					|| child ->flow->flotype == FLOW_SINGLETON )
 				{
 					/* No motion required so inherit flow characteristics. */
-					plan->flow = copyObject(child->flow);
+					plan->flow = pull_up_Flow(plan);
 					noteFlow(plan->flow, context);
 					return false;
 				}
@@ -1143,7 +1144,6 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 	int i;
 	AttrNumber *sortattrs = NULL;
 	Oid * sortoprs = NULL;
-	Flow *xform = NULL;
 	Flow *newflow = NULL;
 	
 	/* Argument is a prescaned plan. */
@@ -1168,44 +1168,21 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 		 *
 		 * Note that, hereafter, (sortattrs != NULL) flags an AGG_SORTED. 
 		 */
-		TargetEntry *tle;
-		AttrNumber attr, tidx = 0;
 		bool gotSortInfo;
-		
-		sortattrs = (AttrNumber*)palloc0(agg->numCols*sizeof(AttrNumber));
-		sortoprs = (Oid*)palloc0(agg->numCols*sizeof(Oid));
 		
 		/* Translate child node attribute numbers of the sort attributes 
 		 * into attribute numbers in the targetlist of this Agg node. 
+		 * Get sort operators from the child flow (and check assumption
+		 * that the attribute lists match).
 		 */
-		foreach( cell, plan->targetlist)
+		gotSortInfo = invertGrpColIdx(agg, &sortattrs);
+
+		if ( gotSortInfo && child->flow != NULL && child->flow->numSortCols >= agg->numCols )
 		{
-			tidx++;
-			tle = (TargetEntry*)lfirst(cell);
-			if ( IsA(tle->expr, Var) )
-			{
-				attr = ((Var*)tle->expr)->varattno;
-				for ( i = 0;  i < agg->numCols; i++ )
-				{
-					if ( attr == agg->grpColIdx[i] )
-					{
-						Assert( sortattrs[i]==0 ); /* don't double assign! */
-						sortattrs[i] = tidx;
-					}
-				}
-			}
-		}
-		
-		/* Get sort operators from the child flow, check results of above
-		 * translation.
-		 */
-		gotSortInfo = FALSE;
-		if ( child->flow != NULL && child->flow->numSortCols >= agg->numCols )
-		{
-			gotSortInfo = TRUE;
+			sortoprs = (Oid*)palloc0(agg->numCols*sizeof(Oid));
 			for ( i = 0; i < agg->numCols; i++ )
 			{
-				if ( sortattrs[i] == 0 )
+				if ( agg->grpColIdx[i] != child->flow->sortColIdx[i] )
 				{
 					gotSortInfo = FALSE;
 					break; /* for loop */
@@ -1215,6 +1192,16 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 		}
 		if ( !gotSortInfo )
 		{
+			if ( sortattrs != NULL )
+			{
+				pfree(sortattrs);
+				sortattrs = NULL;
+			}
+			if ( sortoprs != NULL )
+			{
+				pfree(sortoprs);
+				sortoprs = NULL;
+			}
 			psErrorNonce(context, "Ordering for sorted aggregation unknown");
 			return true;
 		}
@@ -1299,8 +1286,10 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 			if ( IsA(child, Sort) )
 			{
 				repartitionSort((Sort*)child, 
-					strategy->hashexprs, 
-					strategy->hashtypes, 
+					/* strategy->hashexprs, */
+					getExprListFromTargetList(child->targetlist, agg->numCols, agg->grpColIdx),
+					/* strategy->hashtypes, */
+					getOpListFromTargetList(child->targetlist, agg->numCols, agg->grpColIdx),
 					context);
 			}
 			else
@@ -1548,6 +1537,38 @@ Flow *makeFlow(FlowType flotype)
 	flow->segindex = -1;
 	
 	return flow;
+}
+
+
+/*
+ * Create a flow for the given Plan node based on the flow in it's
+ * lefttree (outer) plan.  Partitioning information in preserved for
+ * non-projecting plan nodes.   Sort specifications are not preserved.
+ */
+Flow * pull_up_Flow(Plan *plan)
+{
+	Assert( is_plan_node((Node*)plan) && plan->lefttree != NULL );
+	
+	Flow *model_flow = plan->lefttree->flow;
+	
+	if ( model_flow == NULL )
+		return NULL;
+		
+	Flow *new_flow = makeFlow(model_flow->flotype);
+	
+	if ( model_flow->flotype == FLOW_PARTITIONED && !is_projection_capable_plan(plan) )
+	{
+		/* Propagate hash attribute definitions. */
+		new_flow->hashExpr = model_flow->hashExpr;
+		new_flow->hashOp = model_flow->hashOp;
+	}
+	else if ( model_flow->flotype == FLOW_SINGLETON )
+	{
+		/* Propagate segment definitions. */
+		new_flow->segindex = model_flow->segindex;
+	}
+	
+	return new_flow;
 }
 
 

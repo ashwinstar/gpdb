@@ -54,11 +54,8 @@ static void validateMotionNodeParms(MotionType motionType,
 			int numInputSegs, int *inputSegIdx );
 static List *getExprListFromCondList(List *clist, HashMotionInfoType type);
 static List *getOpListFromCondList(List *clist);
-static List *getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx);
-static List *getOpListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx);
 static bool motion_expr_walker(Node *node, char *not_used);
 static List * makeMotionTargetList(Plan *arg);
-
 
 
 /* ------------------------------------------------------------------------- *
@@ -268,7 +265,7 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 		
 		/* For now, there's only one. */
 		Assert( IsA(node,Agg) && plan->flow->req_xform->req_move == MOVEMENT_AGG_RESTRUCT );
-		newnode = apply_agg_motion(newnode, context);
+		newnode = (Node*)apply_agg_motion((Plan*)newnode, context);
 	}
 	
 	/* Add motion atop the copied node, if necessary. */
@@ -545,6 +542,64 @@ bool force_vars_walker(Node *node, void *varno)
 }
 */
 
+/*
+ * Create a palloc'd vector of Atttribute numbers over the targetlist
+ * of the given Agg node corresponding to its grpColIdx vector (which
+ * contains Attribute numbers over the targetlist of its child).
+ *
+ * A pointer to the new array or a NULL (if there are no grouping
+ * attributes) is stored at location pinverse.
+ *
+ * Result = TRUE indicates success.  Note that a NULL pointer at location
+ * pinverse counts as a success, iff there are no grouping attributes.
+ *
+ * Failure results from a mismatch between the targetlist index and the
+ * resno declared in the targetlist entries themselves.
+ */
+bool invertGrpColIdx(Agg *agg, AttrNumber **pinverse)
+{
+	ListCell *cell;
+	int i;
+	AttrNumber tleidx, *invGrpColIdx;
+	TargetEntry *tle;
+	bool aok = TRUE;
+	
+	*pinverse = NULL;
+	if ( agg->numCols == 0 )
+		return aok;
+		
+	invGrpColIdx = palloc(agg->numCols * sizeof(AttrNumber));
+	
+	for ( i = 0; i < agg->numCols; i++ )
+	{
+		AttrNumber child_tleidx = agg->grpColIdx[i];
+		tleidx = 0;
+		foreach ( cell, agg->plan.targetlist )
+		{
+			tle = (TargetEntry*)lfirst(cell);
+			tleidx++;
+			if ( IsA(tle->expr, Var) && ((Var*)tle->expr)->varattno == child_tleidx )
+			{
+				if (tleidx != tle->resdom->resno)
+				{
+					aok = FALSE;
+					break;
+				}
+				invGrpColIdx[i] = tleidx;
+			}
+		}
+		if ( !aok ) break;
+	}
+	
+	if ( aok )
+	{
+		*pinverse = invGrpColIdx;
+	}
+	
+	return  aok;
+}
+
+
 /* -----------------------------------------------------------------------
  * Helper functions for extracting Lists of join expressions or operators
  * from nodes, where the logic varies by node type
@@ -641,16 +696,22 @@ List *getHashMotionInfoList( Plan *node, HashMotionInfoType type )
 					elog( ERROR, "there is no hash expression list for Plain Aggregate nodes");	
 				
 				int			numCols = aggnode->numCols;
-				AttrNumber *grpColIdx = aggnode->grpColIdx;
+				AttrNumber *grpColIdx = NULL;
+				
+				if ( !invertGrpColIdx(aggnode, &grpColIdx) )
+				{
+					elog( ERROR, 
+						"Unexpected grpColIdx array contents in getHashExprList for Agg node" );
+				}
 
 				if ( numCols == 0 || grpColIdx == NULL )				
 					elog( ERROR, 
 						"Empty grpColIdx array encountered in getHashExprList for Agg node" );
 						
 				if ( type == INFOTYPE_LEFTEXPR || type == INFOTYPE_RIGHTEXPR )
-					hashinfo = getExprListFromTargetList(aggnode->plan.lefttree->targetlist, numCols, grpColIdx);
+					hashinfo = getExprListFromTargetList(aggnode->plan.targetlist, numCols, grpColIdx);
 				else
-					hashinfo = getOpListFromTargetList(aggnode->plan.lefttree->targetlist, numCols, grpColIdx);
+					hashinfo = getOpListFromTargetList(aggnode->plan.targetlist, numCols, grpColIdx);
 			}
 				
 			break;

@@ -39,6 +39,8 @@ typedef struct ApplyMotionState
 
 extern Plan *apply_motion(Plan* plan, Query* query);
 extern void assignMotionID(Node* newnode, ApplyMotionState* context, Node* oldnode);
+extern bool invertGrpColIdx(Agg *agg, AttrNumber **pinverse);
+
 
 typedef enum HashMotionInfoType
 {
@@ -48,6 +50,10 @@ typedef enum HashMotionInfoType
 } HashMotionInfoType;
 
 extern List *getHashMotionInfoList( Plan *node, HashMotionInfoType type );
+
+extern List *getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx);
+extern List *getOpListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx);
+
 
 extern Motion *make_motion(Plan *lefttree, MotionType motionType,
 			bool sendToSecondary, bool sendSorted, 

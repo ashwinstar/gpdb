@@ -32,4 +32,7 @@ is_plan_node(Node* node);
 extern Flow *
 makeFlow(FlowType flotype);
 
+extern Flow * 
+pull_up_Flow(Plan *plan);
+
 #endif /* CDBLLIZE_H */

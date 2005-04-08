@@ -182,7 +182,7 @@ static bool analyzeAggExpr_walker (Node *node, void *context)
  */
 List *getAggStrategyList(Agg* agg)
 {
-	int i, g, n, tleidx;
+	int tleidx;
 	ListCell *cell;
 	TargetEntry *tle;
 	CdbAggStrategy *as;
@@ -250,6 +250,9 @@ List *getAggStrategyList(Agg* agg)
 	  * there is a single Aggref that specifies DISTINCT and validating our
 	  * assumptions about the expression (e.g., grouping attributes contain 
 	  * no Aggrefs, Aggrefs don't nest.)
+	  *
+	  * TODO Note whether there are Aggrefs whose functions disqualify the
+	  *      2-stage (MOVEMENT_AGG_RESTRUCT) tactic. Need an API for that.
 	  */
 	initAggExprAnalysis(state);
 	tleidx = 0;
