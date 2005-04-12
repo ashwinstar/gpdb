@@ -634,7 +634,7 @@ void trySendCurrentTuple(MotionState *node)
         /* Clean up the send-context. */
         /* TODO:  Donnie should create a helper for this. */
         
-        clearTCList(node->tupSendCtxt.tuple_chunk_list);
+        deleteTCList(&(node->tupSendCtxt.tuple_chunk_list));
         bzero(&node->tupSendCtxt, sizeof(node->tupSendCtxt));
     }
 }

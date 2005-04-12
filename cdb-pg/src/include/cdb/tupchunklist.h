@@ -83,4 +83,8 @@ extern void appendChunkToTCList(TupleChunkList tcList, TupleChunkListItem tcItem
 /* Remove the contents of a TupleChunkList, and reset its state to "empty." */
 extern void clearTCList(TupleChunkList tcList);
 
+/* Free a TupleChunkList and its contents, and set the list pointer to NULL. */
+extern void deleteTCList(TupleChunkList *pTCList);
+
+
 #endif /* TUPCHUNKLIST_H */
