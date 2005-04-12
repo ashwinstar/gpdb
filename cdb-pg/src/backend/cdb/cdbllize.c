@@ -576,7 +576,9 @@ prescan_walker(Node *node, PlanProfile *context)
 				if ( plan_tree_walker(node, prescan_walker, context) )
 					return true;
 					
-				return prescan_agg((Plan*)node, context);
+				if ( !prescan_agg((Plan*)node, context) )
+					return false;
+				detail = "Query involves complex aggregation.";
 			}
 			break; /* Fall through to report error. */
 		
@@ -1296,8 +1298,10 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 			{
 				child->flow->req_move = MOVEMENT_REPARTITION;
 				child->flow->flotype = FLOW_PARTITIONED;
-				child->flow->hashExpr = strategy->hashexprs;
-				child->flow->hashOp = strategy->hashtypes;
+				/* child->flow->hashExpr = strategy->hashexprs; */
+				child->flow->hashExpr = getExprListFromTargetList(child->targetlist, agg->numCols, agg->grpColIdx);
+				/* child->flow->hashOp = strategy->hashtypes; */
+				child->flow->hashOp = getOpListFromTargetList(child->targetlist, agg->numCols, agg->grpColIdx);
 			}
 			/* TODO: If the Agg was AGG_SORT, preserve the sorted
 			   character of the output.  (In the hope that this will
