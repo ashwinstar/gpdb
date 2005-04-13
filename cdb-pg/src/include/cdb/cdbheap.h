@@ -149,6 +149,7 @@ extern void DestroyCdbHeap( CdbHeap *cdbheap );
 extern void SetCdbTupleHeapInitialValue( CdbHeap *cdbheap, HeapTuple tuple, bool shouldFree, int sourceSegIndex );
 extern CdbTupleHeapInfo *GetLowestValueFromCdbTupleHeap( CdbHeap *cdbheap );
 extern void MergeNewValueIntoCdbTupleHeap( CdbHeap *cdbheap, HeapTuple h, bool shouldFree, int sourceSegIndex );
+extern int GetCountCdbHeap( CdbHeap *cdbheap );
 
 /*
  * Create heap functions, specific to 

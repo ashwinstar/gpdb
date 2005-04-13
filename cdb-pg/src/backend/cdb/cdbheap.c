@@ -214,6 +214,33 @@ void SwitchCdbTupleHeapInfo( void *left, void *right )
 	infoRight->sourceSegIndex = tempSegIndex;
 }
 
+int GetCountCdbHeap( CdbHeap *cdbheap )
+{
+	int	count = 0;
+	int	i;
+	void** heap;
+	CdbTupleHeapInfo *info;
+
+	if ( cdbheap == NULL || 
+		cdbheap->heap == NULL ||
+		cdbheap->size <= 0 )
+		return count;
+
+	heap = cdbheap->heap;
+
+	for ( i=1; i<=cdbheap->size; i++ )
+	{
+		if ( heap[i] == NULL )
+			continue;
+		
+		info = (CdbTupleHeapInfo *)heap[i];
+		if ( info != NULL && info->tuple != NULL )
+			count++;
+	}
+
+	return count;
+}
+
 /*
  * Generic Heap Implementation
  */
