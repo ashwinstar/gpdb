@@ -1220,6 +1220,7 @@ typedef struct MotionState
 	int			numTuplesToParent;	/* Number of tuples either from child or AMS that were sent to parent */
 	int			numTuplesToDeepSix;	/* Number of tuples that were not passed on due to hashSegIdxMask or fixedSegIdxMask being true*/
 	int			*numTuplesByHashSegIdx; /* Distribution of number of tuples from child by hash seg index */
+	int			numTuplesInHeap;	/* Number of tuples that are currently sitting in tupleheap*/
 } MotionState;
 
 #endif   /* EXECNODES_H */
