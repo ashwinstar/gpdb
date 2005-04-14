@@ -457,6 +457,7 @@ execMotionSorted(MotionState *node)
             
             MergeNewValueIntoCdbTupleHeap(node->tupleheap, inputTuple, true,
                 node->segindexNext);
+            node->numTuplesInHeap++;
         }
         else
         {
@@ -532,6 +533,8 @@ execMotionSorted(MotionState *node)
                 MergeNewValueIntoCdbTupleHeap(node->tupleheap, outerTupleSlot->val, 
 					false, mySegIdx);
                 
+	            node->numTuplesInHeap++;
+
                 /* We only send the tuple here if it is broadcast.  (Remember
                  * that we previously asserted that either it is broadcast, or
                  * this segment is the receiver of all tuples.)
@@ -565,6 +568,8 @@ execMotionSorted(MotionState *node)
         /*
          * store it in our result slot and return this.
          */
+        node->numTuplesInHeap--;
+		Assert( node->numTuplesInHeap >= 0 );
     
         slot = node->ps.ps_ResultTupleSlot;
         
@@ -690,6 +695,7 @@ void execMotionSortedFirstTime(MotionState *node)
             /* We got a tuple from the child-plan. */
             
             node->numTuplesFromChild++;
+            node->numTuplesInHeap++;
             
             SetCdbTupleHeapInitialValue(node->tupleheap, outerTupleSlot->val,
                 false, mySegIdx);
@@ -745,7 +751,8 @@ void execMotionSortedFirstTime(MotionState *node)
                     motion->inputSegIdx[i]);
 
                 tupsReceived[i] = true;
-                
+	            node->numTuplesInHeap++;
+
                 if (recvRC == GOT_TUPLE)
                     node->numTuplesFromAMS++;
             }
@@ -805,6 +812,7 @@ ExecInitMotion(Motion *node, EState *estate)
 	motionstate->numTuplesFromAMS = 0;
 	motionstate->numTuplesToParent = 0;
 	motionstate->numTuplesToDeepSix = 0;
+	motionstate->numTuplesInHeap = 0;
 	
     bzero(&motionstate->tupSendCtxt, sizeof(motionstate->tupSendCtxt));
     
@@ -1001,14 +1009,21 @@ ExecEndMotion(MotionState *node)
     Motion *motion = (Motion *)node->ps.plan;
 	Assert( motion != NULL );
 
-	elog( DEBUG1, "Motion Node %d counts: "
-					"%d numTuplesFromChild, %d numTuplesFromAMS, %d numTuplesToAMS, %d numTuplesToParent, %d numTuplesToDeepSix",
-					motNodeID,
-					node->numTuplesFromChild, 
-					node->numTuplesFromAMS, 
-					node->numTuplesToAMS, 
-					node->numTuplesToParent,
-					node->numTuplesToDeepSix
+	elog( DEBUG1, 
+		"Motion Node %d counts: \n" 
+		"numTuplesFromChild: %d\n"
+		"numTuplesFromAMS: %d\n"
+		"numTuplesToAMS: %d\n"
+		"numTuplesToParent: %d\n"
+		"numTuplesToDeepSix: %d\n"
+		"numTuplesInHeap: %d\n",
+		motNodeID,
+		node->numTuplesFromChild,
+		node->numTuplesFromAMS,
+		node->numTuplesToAMS,
+		node->numTuplesToParent,
+		node->numTuplesToDeepSix,
+		node->numTuplesInHeap
 		);
 
 	if ( motion->motionType == MOTIONTYPE_FIXED && motion->numOutputSegs == 0 )
@@ -1016,13 +1031,10 @@ ExecEndMotion(MotionState *node)
 		Assert(node->numTuplesFromChild == node->numTuplesToAMS);
 		Assert(node->numTuplesFromChild + node->numTuplesFromAMS == node->numTuplesToParent);
 	}
-	else if ( motion->motionType == MOTIONTYPE_FIXED && motion->sendSorted )
-	{
-//		Assert(node->numTuplesFromChild + node->numTuplesFromAMS + GetCountCdbHeap(node->tupleheap) == node->numTuplesToAMS + node->numTuplesToParent + node->numTuplesToDeepSix);
-	}
 	else
 	{
-		Assert(node->numTuplesFromChild + node->numTuplesFromAMS == node->numTuplesToAMS + node->numTuplesToParent + node->numTuplesToDeepSix);
+		Assert(node->numTuplesFromChild + node->numTuplesFromAMS == 
+			node->numTuplesToAMS + node->numTuplesToParent + node->numTuplesToDeepSix + node->numTuplesInHeap);
 	}
 
 	if ( motion->motionType == MOTIONTYPE_HASH )
