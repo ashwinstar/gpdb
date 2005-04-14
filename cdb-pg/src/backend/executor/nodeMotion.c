@@ -1016,6 +1016,10 @@ ExecEndMotion(MotionState *node)
 		Assert(node->numTuplesFromChild == node->numTuplesToAMS);
 		Assert(node->numTuplesFromChild + node->numTuplesFromAMS == node->numTuplesToParent);
 	}
+	else if ( motion->motionType == MOTIONTYPE_FIXED && motion->sendSorted )
+	{
+		Assert(node->numTuplesFromChild + node->numTuplesFromAMS + GetCountCdbHeap(node->tupleheap) == node->numTuplesToAMS + node->numTuplesToParent + node->numTuplesToDeepSix);
+	}
 	else
 	{
 		Assert(node->numTuplesFromChild + node->numTuplesFromAMS == node->numTuplesToAMS + node->numTuplesToParent + node->numTuplesToDeepSix);

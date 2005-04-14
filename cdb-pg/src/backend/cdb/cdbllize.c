@@ -309,7 +309,7 @@ prescan_walker(Node *node, PlanProfile *context)
 					return true;
 				
 				/* Transmit flow characterization upward. */
-				((Plan*)subplan)->flow = pull_up_Flow((Plan*)subplan);
+				((Plan*)subplan)->flow = pull_up_Flow((Plan*)subplan, false);
 				noteFlow( ((Plan*)subplan)->flow, context );
 			}
 			return false;
@@ -426,7 +426,7 @@ prescan_walker(Node *node, PlanProfile *context)
 				if ( child != NULL )
 				{
 					/* Might scan child, so inherit flow characteristics. */
-					plan->flow = pull_up_Flow(plan);
+					plan->flow = pull_up_Flow(plan, false);
 					
 					/* We aren't sure the partitioning attributes are in
 					 * our targetlist, so we shouldn't claim they are.
@@ -453,7 +453,7 @@ prescan_walker(Node *node, PlanProfile *context)
 				Plan *plan = (Plan*)node;
 				Plan *child = outerPlan(node);
 				Assert( child != NULL );
-				plan->flow = pull_up_Flow(plan);
+				plan->flow = pull_up_Flow(plan, false);
 			}
 			return false;
 		
@@ -466,7 +466,7 @@ prescan_walker(Node *node, PlanProfile *context)
 				Plan *plan = (Plan*)node;
 				Plan *child = outerPlan(node);
 				Assert( child != NULL );
-				plan->flow = pull_up_Flow(plan);
+				plan->flow = pull_up_Flow(plan, false);
 				
 				/* ... but reordered. */
 				Sort *sort = (Sort*)node;
@@ -503,7 +503,7 @@ prescan_walker(Node *node, PlanProfile *context)
 					|| child ->flow->flotype == FLOW_SINGLETON )
 				{
 					/* No motion required so inherit flow characteristics. */
-					plan->flow = pull_up_Flow(plan);
+					plan->flow = pull_up_Flow(plan, true);
 					noteFlow(plan->flow, context);
 					return false;
 				}
@@ -595,7 +595,7 @@ prescan_walker(Node *node, PlanProfile *context)
 					|| child ->flow->flotype == FLOW_SINGLETON )
 				{
 					/* No motion required so inherit flow characteristics. */
-					plan->flow = pull_up_Flow(plan);
+					plan->flow = pull_up_Flow(plan, true);
 					noteFlow(plan->flow, context);
 					return false;
 				}
@@ -617,12 +617,50 @@ prescan_walker(Node *node, PlanProfile *context)
 					|| child ->flow->flotype == FLOW_SINGLETON )
 				{
 					/* No motion required so inherit flow characteristics. */
-					plan->flow = pull_up_Flow(plan);
+					plan->flow = pull_up_Flow(plan, true);
 					noteFlow(plan->flow, context);
 					return false;
 				}
 			}
-			/* TODO Deal with partitioned LIMIT and OFFSET. */
+			/*  Deal with partitioned LIMIT and OFFSET. 
+			 */
+			 
+			/* There are currently a number of restrictions due to
+			 * inadequacies in our implementation or understanding.
+			 */
+#ifdef CDB_DEVELOPER
+			{
+				Limit *limit = (Limit*)node;
+				
+				if ( (limit->limitOffset != NULL && !IsA(limit->limitOffset, Const))
+					|| (limit->limitCount != NULL && !IsA(limit->limitCount, Const)) )
+				{
+					detail ="LIMIT offset or count not a constant";
+					break; /* Fall through to report error. */
+				}
+	
+				if ( limit->plan.lefttree->flow->numSortCols < 1 )
+				{
+					detail = "LIMIT sort order uncertain";
+					break; /* Fall through to report error. */
+				}
+
+				/* Specify restructuring.  The resulting flow will retain
+				 * any sort specified in the input plan, but will become
+				 * singleton.  The restructurnig is flagged by the xform
+				 * flow. */
+				limit->plan.flow = pull_up_Flow((Plan*)limit, true);
+				limit->plan.flow->flotype = FLOW_SINGLETON;
+				limit->plan.flow->req_move = MOVEMENT_NONE;
+				limit->plan.flow->segindex = -1;
+				limit->plan.flow->hashExpr = NIL;
+				limit->plan.flow->hashOp = NIL;
+				limit->plan.flow->req_xform = makeFlow(FLOW_PARTITIONED);
+				limit->plan.flow->req_xform->req_move = MOVEMENT_LIM_RESTRUCT;
+				return false;
+			}
+#endif
+			
 			detail = "Query involves partitioned LIMIT and OFFSET.";
 			break; /* Fall through to report error. */
 			
@@ -1547,9 +1585,10 @@ Flow *makeFlow(FlowType flotype)
 /*
  * Create a flow for the given Plan node based on the flow in it's
  * lefttree (outer) plan.  Partitioning information in preserved for
- * non-projecting plan nodes.   Sort specifications are not preserved.
+ * non-projecting plan nodes.   Sort specifications are preserved only
+ * if withSort is true.
  */
-Flow * pull_up_Flow(Plan *plan)
+Flow * pull_up_Flow(Plan *plan, bool withSort)
 {
 	Assert( is_plan_node((Node*)plan) && plan->lefttree != NULL );
 	
@@ -1570,6 +1609,13 @@ Flow * pull_up_Flow(Plan *plan)
 	{
 		/* Propagate segment definitions. */
 		new_flow->segindex = model_flow->segindex;
+	}
+	
+	if ( withSort && model_flow->numSortCols >  0 )
+	{
+		new_flow->numSortCols = model_flow->numSortCols;
+		ARRAYCOPY(new_flow->sortColIdx, model_flow->sortColIdx, model_flow->numSortCols * sizeof(AttrNumber));
+		ARRAYCOPY(new_flow->sortOperators, model_flow->sortOperators, model_flow->numSortCols * sizeof(Oid));
 	}
 	
 	return new_flow;

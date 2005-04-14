@@ -41,6 +41,12 @@ extern Plan *apply_motion(Plan* plan, Query* query);
 extern void assignMotionID(Node* newnode, ApplyMotionState* context, Node* oldnode);
 extern bool invertGrpColIdx(Agg *agg, AttrNumber **pinverse);
 
+/* Declarations of functions defined in cdbaggmutate.c */
+extern Plan *apply_agg_motion(Plan *plan, ApplyMotionState *state);
+
+/* Declarations of functions defined in cdblimmutate.c */
+extern Plan *apply_limit_motion(Plan *plan, ApplyMotionState *state);
+
 
 typedef enum HashMotionInfoType
 {

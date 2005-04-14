@@ -33,6 +33,6 @@ extern Flow *
 makeFlow(FlowType flotype);
 
 extern Flow * 
-pull_up_Flow(Plan *plan);
+pull_up_Flow(Plan *plan, bool withSort);
 
 #endif /* CDBLLIZE_H */

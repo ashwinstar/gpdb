@@ -264,8 +264,23 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 		Plan *plan = (Plan*)node;
 		
 		/* For now, there's only one. */
-		Assert( IsA(node,Agg) && plan->flow->req_xform->req_move == MOVEMENT_AGG_RESTRUCT );
-		newnode = (Node*)apply_agg_motion((Plan*)newnode, context);
+		if ( IsA(node,Agg) && plan->flow->req_xform->req_move == MOVEMENT_AGG_RESTRUCT )
+		{
+			newnode = (Node*)apply_agg_motion((Plan*)newnode, context);
+		}
+		else if ( IsA(node,Limit) && plan->flow->req_xform->req_move == MOVEMENT_LIM_RESTRUCT )
+		{
+			newnode = (Node*)apply_limit_motion((Plan*)newnode, context);
+		}
+		else
+		{
+			 ereport(ERROR, (
+				errcode(ERRCODE_CDB_INTERNAL_ERROR),
+				errmsg("Unknown CDB restructuring transformation %d for node type %d",
+					plan->flow->req_xform->req_move,
+					node->type)
+			 ));
+		}
 	}
 	
 	/* Add motion atop the copied node, if necessary. */

@@ -176,9 +176,6 @@ extern List *getAggStrategyList(Agg *agg);
 extern CdbAggStrategy *copyAggStrategy(CdbAggStrategy *old);
 extern void freeAggStrategyList(List* aslist);
 
-/* Declarations of functions defined in cdbaggmutate.c */
-extern Plan *apply_agg_motion(Plan *plan, ApplyMotionState *state);
-
 /* 
  * Declarations of functions defined in cdbaggtactic.c 
  */
