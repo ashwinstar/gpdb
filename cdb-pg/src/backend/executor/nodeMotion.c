@@ -1035,8 +1035,11 @@ ExecEndMotion(MotionState *node)
 	}
 	else
 	{
-		Assert(node->numTuplesFromChild + node->numTuplesFromAMS == 
+/*		Assert(node->numTuplesFromChild + node->numTuplesFromAMS == 
 			node->numTuplesToAMS + node->numTuplesToParent + node->numTuplesToDeepSix + node->numTuplesInHeap);
+*/
+		Assert(node->numTuplesFromChild + node->numTuplesFromAMS >= 
+			node->numTuplesToAMS + node->numTuplesToParent + node->numTuplesToDeepSix);
 	}
 
 	if ( motion->motionType == MOTIONTYPE_HASH )
