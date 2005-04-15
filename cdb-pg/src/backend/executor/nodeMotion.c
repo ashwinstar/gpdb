@@ -453,11 +453,13 @@ execMotionSorted(MotionState *node)
             while (recvRC == NO_TUPLE);
             
             if (recvRC == GOT_TUPLE)
+			{
                 node->numTuplesFromAMS++;
+	            node->numTuplesInHeap++;
+			}
             
             MergeNewValueIntoCdbTupleHeap(node->tupleheap, inputTuple, true,
                 node->segindexNext);
-            node->numTuplesInHeap++;
         }
         else
         {
