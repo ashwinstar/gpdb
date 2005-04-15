@@ -531,11 +531,11 @@ execMotionSorted(MotionState *node)
                 /* We got a tuple from the child-plan. */
                 
                 node->numTuplesFromChild++;
+	            node->numTuplesInHeap++;
                 
                 MergeNewValueIntoCdbTupleHeap(node->tupleheap, outerTupleSlot->val, 
 					false, mySegIdx);
                 
-	            node->numTuplesInHeap++;
 
                 /* We only send the tuple here if it is broadcast.  (Remember
                  * that we previously asserted that either it is broadcast, or
@@ -570,12 +570,11 @@ execMotionSorted(MotionState *node)
         /*
          * store it in our result slot and return this.
          */
-        node->numTuplesInHeap--;
-		Assert( node->numTuplesInHeap >= 0 );
-    
         slot = node->ps.ps_ResultTupleSlot;
         
         node->numTuplesToParent++;
+        node->numTuplesInHeap--;
+		Assert( node->numTuplesInHeap >= 0 );
     
         return ExecStoreTuple(tuple, slot, InvalidBuffer, shouldFree);
     }
@@ -753,10 +752,12 @@ void execMotionSortedFirstTime(MotionState *node)
                     motion->inputSegIdx[i]);
 
                 tupsReceived[i] = true;
-	            node->numTuplesInHeap++;
 
                 if (recvRC == GOT_TUPLE)
+				{
                     node->numTuplesFromAMS++;
+		            node->numTuplesInHeap++;
+				}
             }
             else
             {
@@ -1035,11 +1036,8 @@ ExecEndMotion(MotionState *node)
 	}
 	else
 	{
-/*		Assert(node->numTuplesFromChild + node->numTuplesFromAMS == 
+		Assert(node->numTuplesFromChild + node->numTuplesFromAMS == 
 			node->numTuplesToAMS + node->numTuplesToParent + node->numTuplesToDeepSix + node->numTuplesInHeap);
-*/
-		Assert(node->numTuplesFromChild + node->numTuplesFromAMS >= 
-			node->numTuplesToAMS + node->numTuplesToParent + node->numTuplesToDeepSix);
 	}
 
 	if ( motion->motionType == MOTIONTYPE_HASH )
