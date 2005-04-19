@@ -851,6 +851,64 @@ plan_tree_mutator(Node *node,
 			 */
 			return (Node*)query_tree_mutator((Query*)node, mutator, context, 0);
 			break;
+			
+		case T_SubPlan:
+			/* Since expression_tree_mutator doesn't descend into the plan
+			 * in a SubPlan node, we handle the case directly.
+			 */
+			{
+				SubPlan    *subplan = (SubPlan *) node;
+				SubPlan    *newnode;
+
+				FLATCOPY(newnode, subplan, SubPlan);
+				
+				MUTATE(newnode->exprs, subplan->exprs, List *);
+				MUTATE(newnode->paramIds, subplan->paramIds, List*);
+				MUTATE(newnode->plan, subplan->plan, Plan*);
+				MUTATE(newnode->rtable, subplan->rtable, List*);
+				MUTATE(newnode->setParam, subplan->setParam, List *);
+				MUTATE(newnode->parParam, subplan->parParam, List *);
+				MUTATE(newnode->args, subplan->args, List *);
+
+				return (Node *) newnode;
+			}
+			break;
+		
+		case T_RangeTblEntry:
+			/* Also expression_tree_mutator doesn't recognize range table
+			 * entries.
+			 *
+			 * TODO Figure out what's to do and handle this case.
+			 * ***************************************************
+			 */
+			 {
+				RangeTblEntry *rte = (RangeTblEntry*)node;
+				RangeTblEntry *newrte;
+				
+				FLATCOPY(newrte, rte, RangeTblEntry);
+				switch ( rte->rtekind )
+				{
+				case RTE_RELATION: /* ordinary relation reference */
+				case RTE_SPECIAL: /* special rule relation (NEW or OLD) */
+					/* No extras. */
+					break;
+				
+				case RTE_SUBQUERY: /* subquery in FROM */
+					newrte->subquery = copyObject(rte->subquery);
+					break;
+					
+				case RTE_JOIN: /* join */
+					newrte->joinaliasvars = copyObject(rte->joinaliasvars);
+					break;
+					
+				case RTE_FUNCTION: /* function in FROM */
+					MUTATE(newrte->funcexpr, rte->funcexpr, Node*);
+					newrte->coldeflist, copyObject(rte->coldeflist);
+					break;
+				}
+				return newrte;
+			 }
+			 break;
 
 		/* The following cases are handled by expression_tree_mutator.  In 
 		 * addition, we let expression_tree_mutator handle unrecognized nodes.
@@ -874,7 +932,6 @@ plan_tree_mutator(Node *node,
 		case T_ScalarArrayOpExpr:
 		case T_BoolExpr:
 		case T_SubLink:
-		case T_SubPlan:
 		case T_FieldSelect:
 		case T_FieldStore:
 		case T_RelabelType:

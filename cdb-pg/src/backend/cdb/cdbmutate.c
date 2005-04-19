@@ -97,6 +97,10 @@ Plan* apply_motion(Plan*  plan, Query* query)
 			 *      it doesn't address deeper problems involving interior
 			 *      nodes that depend on order, e.g.,  LIMIT and OFFSET in  
 			 *      ordered subqueries.
+			 *
+			 * TODO If the top node is a Material, we should reach below
+			 *      it for our focusing.  Doing so would conserve
+			 *      ExecSupportsBackwardScan-ness.
 			 */
 			if ( plan->flow->flotype == FLOW_PARTITIONED 
 				|| ( plan->flow->flotype == FLOW_SINGLETON && plan->flow->segindex  != -1 )
@@ -255,7 +259,10 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 	if ( node == NULL )
 		return NULL;
 	
-	/*  Copy this node and mutate its children. */
+	/* Copy this node and mutate its children. Afterward, this node should
+	 * be an exact image of the input node, except that contained nodes
+	 * requiring parallelization will have had it applied.
+	 */
 	Node *newnode = plan_tree_mutator(node, apply_motion_mutator, context);
 	
 	/* Perform special transformation, if specified. */
@@ -263,11 +270,12 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 	{
 		Plan *plan = (Plan*)node;
 		
-		/* For now, there's only one. */
+		/* Special aggregrate transformation? */
 		if ( IsA(node,Agg) && plan->flow->req_xform->req_move == MOVEMENT_AGG_RESTRUCT )
 		{
 			newnode = (Node*)apply_agg_motion((Plan*)newnode, context);
 		}
+		/* Special limit transformation? */
 		else if ( IsA(node,Limit) && plan->flow->req_xform->req_move == MOVEMENT_LIM_RESTRUCT )
 		{
 			newnode = (Node*)apply_limit_motion((Plan*)newnode, context);
@@ -317,7 +325,7 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 		case T_SubqueryScan:
 		case T_Group:
 		case T_Agg:
-		case T_SubPlan:
+		/* case T_SubPlan: Important, but handled in expression_tree_mutator. */
 		case T_NestLoop:
 		case T_MergeJoin:
 		case T_HashJoin:
@@ -797,6 +805,13 @@ Motion *make_motion(Plan *lefttree, MotionType motionType,
 		node->numInputSegs = numInputSegs; 
 		node->inputSegIdx = inputSegIdx;
 	}
+	
+	plan->extParam = bms_copy(lefttree->extParam);
+	plan->allParam = bms_copy(lefttree->allParam);
+	
+	/* TODO Should we attach a descriptive Flow here?
+	 *      What about setXxxToSelfOnly() calls?
+	 */
 
 	return node;
 }
