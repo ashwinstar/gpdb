@@ -10,25 +10,25 @@ and interacting with a local CDB cluster. The intention is that developers
 and testers will be able to use this cluster to perform their work. These
 scripts are not intended for any type of production environment.
 
-    cdbinitdb   --  initializes new CDB database cluster
+    cdbinitda.shb  --  initializes new CDB database cluster
                     data directory(s) (like initdb).
 
-    cdbstart    --  starts the amsd and listener(s) for a CDB database
+    cdbstart.sh    --  starts the amsd and listener(s) for a CDB database
                     cluster
 
-    cdbcreatedb --  creates a new database in a CDB database
+    cdbcreatedb.sh --  creates a new database in a CDB database
                     cluster (like createdb).
 
-    cdbstop     --  stops the amsd and listener(s) for a CDB database
+    cdbstop.sh     --  stops the amsd and listener(s) for a CDB database
                     cluster
 
-    cdbsql      --  runs psql connecting to the first listener of
+    cdbsql.sh      --  runs psql connecting to the first listener of
                     the cluster
 
-    cdbclean    --  deletes the CDB cluster database directory(s)
+    cdbclean.sh    --  deletes the CDB cluster database directory(s)
                     that were created using cdbinitdb
 
-    cdbfuncs    --  contains functions for use in the other scripts
+    cdbfuncs       --  contains functions for use in the other scripts
 
 Note: all the scripts support a --help option that will give further details
 of the options and behaviour of each script.
@@ -76,23 +76,23 @@ To create a new CDB cluster, do the following:
     # Initialize the CDB cluster data directories;  if the directory
     # identified in PGROOT doesn't exist, cdbinitdb creates it.
 
-    $ ./cdbinitdb
+    $ ./cdbinitdb.sh
 
 
     # Start the CDB cluster to enable creation of segment database(s)
 
-    $ ./cdbstart
+    $ ./cdbstart.sh
 
 
     # Create the segment databases. If you omit a database name, then
     # then it will be created with the name of segDB#
 
-    $ ./cdbcreatedb
+    $ ./cdbcreatedb.sh
 
 
     # Connect to the CDB cluster using cdbpsql
 
-    $ ./cdbsql segDB1
+    $ ./cdbsql.sh segDB1
 
 Continue working with your CDB cluster as you see fit!
 
