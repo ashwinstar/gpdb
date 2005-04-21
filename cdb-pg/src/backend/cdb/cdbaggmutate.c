@@ -187,9 +187,6 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 		&& plan->flow->req_xform->req_move == MOVEMENT_AGG_RESTRUCT 
 		&& plan->lefttree != NULL
 		&& plan->righttree == NULL
-		&& plan->initPlan == NIL
-		&& bms_is_empty(plan->extParam)
-		&& bms_is_empty(plan->allParam)
 	);
 
 #define FLATCOPY(newnode, node, nodetype)  \
@@ -217,6 +214,9 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 	inner_plan->targetlist = NIL; /* Build on the fly. */
 	inner_plan->qual = NIL; /* Build on the fly. */
 	plan->lefttree = NULL; /* Eventually, this will be Motion node. */
+	plan->initPlan = NIL; /* Does it matter which node get's the initPlan? */
+	plan->extParam = bms_copy(inner_plan->extParam);
+	plan->allParam = bms_copy(inner_plan->allParam);
 	inner_plan->flow = NULL;
 	inner_plan->dispatch = DISPATCH_UNDETERMINED; /* Default */
 	agg->grpColIdx = NULL; /* Eventually, put a new one in. */
