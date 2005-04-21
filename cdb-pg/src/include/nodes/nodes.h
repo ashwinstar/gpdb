@@ -132,6 +132,7 @@ typedef enum NodeTag
 	T_JoinExpr,
 	T_FromExpr,
 	T_Flow,
+	T_RemoteParamData,
 
 	/*
 	 * TAGS FOR EXPRESSION STATE NODES (execnodes.h)

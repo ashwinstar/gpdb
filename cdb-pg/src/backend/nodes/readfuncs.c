@@ -24,6 +24,7 @@
 
 #include "nodes/parsenodes.h"
 #include "nodes/readfuncs.h"
+#include "utils/lsyscache.h"  /* For get_typlenbyval */
 
 
 /*
@@ -1511,6 +1512,35 @@ _readVacuumStmt(void)
 	READ_DONE();
 }
 
+/*
+ * _readRemoteParamData
+ */
+static RemoteParamData * 
+_readRemoteParamData(void)
+{
+	int16 typlen;
+	bool typbyval;
+
+	READ_LOCALS(RemoteParamData);
+
+	READ_INT_FIELD(paramData.kind); 
+	READ_STRING_FIELD(paramData.name); 
+	READ_INT_FIELD(paramData.id); 
+	READ_OID_FIELD(paramData.ptype); 
+	READ_BOOL_FIELD(paramData.isnull);
+
+	get_typlenbyval(local_node->paramData.ptype, &typlen, &typbyval);
+
+	token = pg_strtok(&length); /* skip :value */
+
+	if ( local_node->paramData.isnull )
+		token = pg_strtok(&length);		/* skip "<>" */
+	else
+		local_node->paramData.value = readDatum(typbyval);
+
+	READ_DONE();
+}
+
 void readScanInfo(Scan *local_node)
 {
 	READ_TEMP_LOCALS();
@@ -1549,7 +1579,6 @@ void readJoinInfo(Join *local_node)
 	READ_ENUM_FIELD(jointype, JoinType);
 	READ_NODE_FIELD(joinqual);
 }
-
 
 Bitmapset  *
 bitmapsetRead(void)
@@ -1667,6 +1696,7 @@ static ParseNodeInfo infoAr[] =
 	{"RANGETBLREF", (ReadFn)_readRangeTblRef},
 	{"RANGEVAR", (ReadFn)_readRangeVar},
 	{"RELABELTYPE", (ReadFn)_readRelabelType},
+	{"REMOTEPARAMDATA", (ReadFn)_readRemoteParamData},
 	{"RESDOM", (ReadFn)_readResdom},
 	{"RESULT", (ReadFn)_readResult},
 	{"ROW", (ReadFn)_readRowExpr},

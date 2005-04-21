@@ -20,6 +20,7 @@
 #include "access/attnum.h"
 #include "nodes/pg_list.h"
 #include "nodes/value.h"
+#include "nodes/params.h"  /* For ParamListInfoData */
 
 
 /* ----------------------------------------------------------------
@@ -994,5 +995,11 @@ typedef struct Flow
 	List	*hashOp;				/* list of hash operators oids */
 		
 } Flow;
+
+typedef struct RemoteParamData
+{
+	NodeTag				type;	/* T_RemoteParamData */
+	ParamListInfoData	paramData;
+} RemoteParamData;
 
 #endif   /* PRIMNODES_H */

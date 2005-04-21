@@ -20,8 +20,13 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
+#include "cdb/cdbvars.h"
+#include "cdb/cdbsrlz.h"
+#include "cdb/cdbdisp.h"
+#include "miscadmin.h"
 #include "executor/executor.h"
 #include "executor/nodeSubplan.h"
+#include "lib/stringinfo.h"
 #include "nodes/makefuncs.h"
 #include "parser/parse_expr.h"
 #include "utils/array.h"
@@ -904,8 +909,18 @@ ExecInitSubPlan(SubPlanState *node, EState *estate)
  * output parameters after evaluating them!
  * ----------------------------------------------------------------
  */
+
+/*
+ * CDB Changes:
+ * In the case where this is running on the dispatcher, and it's a parallel dispatch
+ * subplan, we need to dispatch the query to the qExecs as well, like in ExecutorRun.
+ * except in this case we don't have to worry about insert statements.  
+ * In order to serialize the parameters (including PARAM_EXEC parameters that
+ * are converted into PARAM_EXEC_REMOTE parameters, I had to add a parameter to this
+ * function: ParamListInfo p.  This may be NULL in the non-dispatch case.
+ */
 void
-ExecSetParamPlan(SubPlanState *node, ExprContext *econtext)
+ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, ParamListInfo p)
 {
 	SubPlan    *subplan = (SubPlan *) node->xprstate.expr;
 	PlanState  *planstate = node->planstate;
@@ -916,128 +931,284 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext)
 	bool		found = false;
 	ArrayBuildState *astate = NULL;
 
+	bool hasDispatched = false;
+	bool shouldDispatch = false;
+    if ( Cdb_role == CDB_ROLE_DISPATCH && 
+		planstate != NULL && 
+		planstate->plan != NULL && 
+		planstate->plan->dispatch == DISPATCH_PARALLEL )
+		shouldDispatch = true;
+
+
 	/*
-	 * Must switch to child query's per-query memory context.
+	 * Need a try/catch block here so that if an ereport is called from
+	 * within ExecutePlan, we can clean up by calling CdbCheckDispatchResult.
+	 * This cleans up the asynchronous commands running through the threads launched from
+	 * CdbDispatchCommand.
 	 */
-	oldcontext = MemoryContextSwitchTo(node->sub_estate->es_query_cxt);
-
-	if (subLinkType == ANY_SUBLINK ||
-		subLinkType == ALL_SUBLINK)
-		elog(ERROR, "ANY/ALL subselect unsupported as initplan");
-
-	if (planstate->chgParam != NULL)
-		ExecReScan(planstate, NULL);
-
-	for (slot = ExecProcNode(planstate);
-		 !TupIsNull(slot);
-		 slot = ExecProcNode(planstate))
+	PG_TRY();
 	{
-		HeapTuple	tup = slot->val;
-		TupleDesc	tdesc = slot->ttc_tupleDescriptor;
-		int			i = 1;
-
-		if (subLinkType == EXISTS_SUBLINK)
+		if ( shouldDispatch )
 		{
-			/* There can be only one param... */
-			int			paramid = linitial_int(subplan->setParam);
-			ParamExecData *prm = &(econtext->ecxt_param_exec_vals[paramid]);
+			/*
+				* Serialize the plan and query trees, and create the sql statement: cdbexec ....
+				*/
+			StringInfoData buffer;
+			initStringInfo( &buffer );
+			
+			Query *query = makeNode(Query);
+			query->rtable = subplan->rtable;
+			query->commandType = CMD_SELECT;
 
-			prm->execPlan = NULL;
-			prm->value = BoolGetDatum(true);
-			prm->isnull = false;
-			found = true;
-			break;
+			char *pszQuery = serializeNode((Node *)query);
+			char *pszPlan = serializeNode((Node *)planstate->plan);
+
+			Assert(pszQuery != NULL && pszPlan != NULL);
+			appendStringInfo(&buffer, "cdbexec '%s' '%s'", pszQuery, pszPlan);
+			pfree(query);
+			pfree(pszQuery);
+			pfree(pszPlan);
+
+			if ( p != NULL )
+			{
+				bool bFirstTime = true;
+				appendStringInfo(&buffer, " (");
+				while ( p->kind != PARAM_INVALID )
+				{
+					char *pszParams;
+					RemoteParamData *rpd;
+					
+					rpd = makeNode(RemoteParamData);
+					memcpy( &rpd->paramData, p, sizeof(ParamListInfoData) );
+					pszParams = serializeNode((Node *)rpd);
+					if ( !bFirstTime )
+						appendStringInfo(&buffer, ", ");
+					else
+						bFirstTime = false;
+
+					appendStringInfo(&buffer, " '%s'", pszParams);
+
+					pfree(pszParams);
+					pfree( rpd );
+					p++;
+				}
+				appendStringInfo(&buffer, ")");
+			}
+
+			/*
+				* This call returns after launching the threads that send the command to the appropriate
+				* segdbs.  It does not wait for them to finish.
+				*/
+			CdbDispatchCommand(buffer.data, DTS_SEGMENT, NULL, 0, true );
+			hasDispatched = true;
+			pfree(buffer.data);
 		}
-
-		if (subLinkType == ARRAY_SUBLINK)
-		{
-			Datum		dvalue;
-			bool		disnull;
-
-			found = true;
-			/* stash away current value */
-			dvalue = heap_getattr(tup, 1, tdesc, &disnull);
-			astate = accumArrayResult(astate, dvalue, disnull,
-									  tdesc->attrs[0]->atttypid,
-									  oldcontext);
-			/* keep scanning subplan to collect all values */
-			continue;
-		}
-
-		if (found &&
-			(subLinkType == EXPR_SUBLINK ||
-			 subLinkType == MULTIEXPR_SUBLINK))
-			ereport(ERROR,
-					(errcode(ERRCODE_CARDINALITY_VIOLATION),
-					 errmsg("more than one row returned by a subquery used as an expression")));
-
-		found = true;
 
 		/*
-		 * We need to copy the subplan's tuple into our own context, in
-		 * case any of the params are pass-by-ref type --- the pointers
-		 * stored in the param structs will point at this copied tuple!
-		 * node->curTuple keeps track of the copied tuple for eventual
-		 * freeing.
-		 */
-		MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
-		tup = heap_copytuple(tup);
-		if (node->curTuple)
-			heap_freetuple(node->curTuple);
-		node->curTuple = tup;
-		MemoryContextSwitchTo(node->sub_estate->es_query_cxt);
+		* Must switch to child query's per-query memory context.
+		*/
+		oldcontext = MemoryContextSwitchTo(node->sub_estate->es_query_cxt);
 
-		/*
-		 * Now set all the setParam params from the columns of the tuple
-		 */
-		foreach(l, subplan->setParam)
+		if (subLinkType == ANY_SUBLINK ||
+			subLinkType == ALL_SUBLINK)
+			elog(ERROR, "ANY/ALL subselect unsupported as initplan");
+
+		if (planstate->chgParam != NULL)
+			ExecReScan(planstate, NULL);
+
+		for (slot = ExecProcNode(planstate);
+			!TupIsNull(slot);
+			slot = ExecProcNode(planstate))
 		{
-			int			paramid = lfirst_int(l);
-			ParamExecData *prm = &(econtext->ecxt_param_exec_vals[paramid]);
+			HeapTuple	tup = slot->val;
+			TupleDesc	tdesc = slot->ttc_tupleDescriptor;
+			int			i = 1;
 
-			prm->execPlan = NULL;
-			prm->value = heap_getattr(tup, i, tdesc, &(prm->isnull));
-			i++;
-		}
-	}
+			if (subLinkType == EXISTS_SUBLINK)
+			{
+				/* There can be only one param... */
+				int			paramid = linitial_int(subplan->setParam);
+				ParamExecData *prm = &(econtext->ecxt_param_exec_vals[paramid]);
 
-	if (!found)
-	{
-		if (subLinkType == EXISTS_SUBLINK)
-		{
-			/* There can be only one param... */
-			int			paramid = linitial_int(subplan->setParam);
-			ParamExecData *prm = &(econtext->ecxt_param_exec_vals[paramid]);
+				prm->execPlan = NULL;
+				prm->value = BoolGetDatum(true);
+				prm->isnull = false;
+				found = true;
+				break;
+			}
 
-			prm->execPlan = NULL;
-			prm->value = BoolGetDatum(false);
-			prm->isnull = false;
-		}
-		else
-		{
+			if (subLinkType == ARRAY_SUBLINK)
+			{
+				Datum		dvalue;
+				bool		disnull;
+
+				found = true;
+				/* stash away current value */
+				dvalue = heap_getattr(tup, 1, tdesc, &disnull);
+				astate = accumArrayResult(astate, dvalue, disnull,
+										tdesc->attrs[0]->atttypid,
+										oldcontext);
+				/* keep scanning subplan to collect all values */
+				continue;
+			}
+
+			if (found &&
+				(subLinkType == EXPR_SUBLINK ||
+				subLinkType == MULTIEXPR_SUBLINK))
+				ereport(ERROR,
+						(errcode(ERRCODE_CARDINALITY_VIOLATION),
+						errmsg("more than one row returned by a subquery used as an expression")));
+
+			found = true;
+
+			/*
+			* We need to copy the subplan's tuple into our own context, in
+			* case any of the params are pass-by-ref type --- the pointers
+			* stored in the param structs will point at this copied tuple!
+			* node->curTuple keeps track of the copied tuple for eventual
+			* freeing.
+			*/
+			MemoryContextSwitchTo(econtext->ecxt_per_query_memory);
+			tup = heap_copytuple(tup);
+			if (node->curTuple)
+				heap_freetuple(node->curTuple);
+			node->curTuple = tup;
+			MemoryContextSwitchTo(node->sub_estate->es_query_cxt);
+
+			/*
+			* Now set all the setParam params from the columns of the tuple
+			*/
 			foreach(l, subplan->setParam)
 			{
 				int			paramid = lfirst_int(l);
 				ParamExecData *prm = &(econtext->ecxt_param_exec_vals[paramid]);
 
 				prm->execPlan = NULL;
-				prm->value = (Datum) 0;
-				prm->isnull = true;
+				prm->value = heap_getattr(tup, i, tdesc, &(prm->isnull));
+				i++;
 			}
 		}
-	}
-	else if (subLinkType == ARRAY_SUBLINK)
-	{
-		/* There can be only one param... */
-		int			paramid = linitial_int(subplan->setParam);
-		ParamExecData *prm = &(econtext->ecxt_param_exec_vals[paramid]);
 
-		Assert(astate != NULL);
-		prm->execPlan = NULL;
-		/* We build the result in query context so it won't disappear */
-		prm->value = makeArrayResult(astate, econtext->ecxt_per_query_memory);
-		prm->isnull = false;
+		if (!found)
+		{
+			if (subLinkType == EXISTS_SUBLINK)
+			{
+				/* There can be only one param... */
+				int			paramid = linitial_int(subplan->setParam);
+				ParamExecData *prm = &(econtext->ecxt_param_exec_vals[paramid]);
+
+				prm->execPlan = NULL;
+				prm->value = BoolGetDatum(false);
+				prm->isnull = false;
+			}
+			else
+			{
+				foreach(l, subplan->setParam)
+				{
+					int			paramid = lfirst_int(l);
+					ParamExecData *prm = &(econtext->ecxt_param_exec_vals[paramid]);
+
+					prm->execPlan = NULL;
+					prm->value = (Datum) 0;
+					prm->isnull = true;
+				}
+			}
+		}
+		else if (subLinkType == ARRAY_SUBLINK)
+		{
+			/* There can be only one param... */
+			int			paramid = linitial_int(subplan->setParam);
+			ParamExecData *prm = &(econtext->ecxt_param_exec_vals[paramid]);
+
+			Assert(astate != NULL);
+			prm->execPlan = NULL;
+			/* We build the result in query context so it won't disappear */
+			prm->value = makeArrayResult(astate, econtext->ecxt_per_query_memory);
+			prm->isnull = false;
+		}
 	}
+	PG_CATCH();
+	{
+		if ( hasDispatched )
+		{
+			char *message;
+
+			/*
+			 *  We need to wait for the threads to finish.  This allows for proper cleanup
+			 * of the results from the async command executions.
+			 */
+
+			/*
+			 * Set this to force any remaining commands executing on qExecs to stop.
+			 */
+			QueryCancelPending = true;
+
+			CdbDispatchResults* results = CdbCheckDispatchResult();
+
+			message = CdbDumpDispatchResults(results, true);
+			char *szCommand = results->szCommand;
+			if ( szCommand == NULL )
+				szCommand = "";
+			Assert( message != NULL );
+			elog( DEBUG4,
+					"cdbexec command results for \"%s\": %s",
+					szCommand, message );
+
+			pfree(message);
+
+			if ( !results->success )
+			{
+				char *message = CdbDumpDispatchResults(results, false);
+				ereport( NOTICE,
+							(errcode( ERRCODE_CDB_COMMAND_ERROR ),
+							errmsg("cdbexec command failed on one or more segment databases: %s",
+							message
+						)));
+
+				pfree(message);
+			}
+			DestroyCdbDispatchResults( results );
+			hasDispatched = false;
+		}
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	if ( hasDispatched )
+	{
+		char *message;
+		/*
+		 * We successfully completed on the Dispatcher.  Now check the results
+		 * from the qExecs.  This internally waits for them to all finish.
+		 */
+		CdbDispatchResults* results = CdbCheckDispatchResult();
+
+
+		message = CdbDumpDispatchResults(results, true);
+		char *szCommand = results->szCommand;
+		if ( szCommand == NULL )
+			szCommand = "";
+		Assert( message != NULL );
+		elog( DEBUG4,
+				"cdbexec command results for \"%s\": %s",
+				szCommand, message );
+
+		pfree(message);
+
+		if ( !results->success )
+		{
+			char *message = CdbDumpDispatchResults(results, false);
+			ereport( ERROR,
+						(errcode( ERRCODE_CDB_COMMAND_ERROR ),
+						errmsg("cdbexec command failed on one or more segment databases: %s",
+						message
+					)));
+				
+		}
+
+		DestroyCdbDispatchResults( results );
+	}
+
 
 	MemoryContextSwitchTo(oldcontext);
 }

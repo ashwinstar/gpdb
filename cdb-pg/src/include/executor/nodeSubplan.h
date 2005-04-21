@@ -23,7 +23,9 @@ extern Datum ExecSubPlan(SubPlanState *node,
 			ExprDoneCond *isDone);
 extern void ExecEndSubPlan(SubPlanState *node);
 extern void ExecReScanSetParamPlan(SubPlanState *node, PlanState *parent);
-
-extern void ExecSetParamPlan(SubPlanState *node, ExprContext *econtext);
+/*
+ * CDB Change: Added a parameter (ParamListInfo p) to this function.  See comments in nodeSubplan.cpp
+ */
+extern void ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, ParamListInfo p);
 
 #endif   /* NODESUBPLAN_H */

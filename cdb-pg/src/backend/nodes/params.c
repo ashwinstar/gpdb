@@ -93,7 +93,14 @@ lookupParam(ParamListInfo paramList, int thisParamKind,
 						if (strcmp(paramList->name, thisParamName) == 0)
 							return paramList;
 						break;
+					/*
+					 * PARAM_EXEC_REMOTE is a CDB Addition.  
+					 * represent parameters that started off as PARAM_EXEC on the dispatcher,
+					 * and were preprocessed there.  Obce their values are known,
+					 * they are passed to the qExecs as PARAM_EXEC_REMOTE parameters. 
+					 */
 					case PARAM_NUM:
+					case PARAM_EXEC_REMOTE:
 						if (paramList->id == thisParamId)
 							return paramList;
 						break;

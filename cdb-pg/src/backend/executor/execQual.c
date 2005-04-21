@@ -38,6 +38,7 @@
 
 #include "access/heapam.h"
 #include "catalog/pg_type.h"
+#include "cdb/cdbvars.h"
 #include "commands/typecmds.h"
 #include "executor/execdebug.h"
 #include "executor/functions.h"
@@ -564,6 +565,15 @@ ExecEvalConst(ExprState *exprstate, ExprContext *econtext,
  *		   (in which case we could return NULL)?	-cim 10/13/89
  * ----------------------------------------------------------------
  */
+
+/*
+ * CDB Changes:
+ * In executor mode, a PARAM_EXEC parameter can not be evaluated by executing
+ * the subplan.  The subplan was executed on the dispatcher prior to 
+ * launching the main query.  The value of the result is passed to the qExec
+ * in the ParamInfo, with a kind of PARAM_EXEC_REMOTE.  
+ * So, this function was changed to just do a lookup in that case.
+ */
 static Datum
 ExecEvalParam(ExprState *exprstate, ExprContext *econtext,
 			  bool *isNull, ExprDoneCond *isDone)
@@ -571,6 +581,7 @@ ExecEvalParam(ExprState *exprstate, ExprContext *econtext,
 	Param	   *expression = (Param *) exprstate->expr;
 	int			thisParamKind = expression->paramkind;
 	AttrNumber	thisParamId = expression->paramid;
+	ParamListInfo paramInfo;
 
 	if (isDone)
 		*isDone = ExprSingleResult;
@@ -587,11 +598,27 @@ ExecEvalParam(ExprState *exprstate, ExprContext *econtext,
 		prm = &(econtext->ecxt_param_exec_vals[thisParamId]);
 		if (prm->execPlan != NULL)
 		{
-			/* Parameter not evaluated yet, so go do it */
-			ExecSetParamPlan(prm->execPlan, econtext);
-			/* ExecSetParamPlan should have processed this param... */
-			Assert(prm->execPlan == NULL);
+			if ( Cdb_role == CDB_ROLE_EXECUTE )
+			{
+				paramInfo = lookupParam(econtext->ecxt_param_list_info,
+										PARAM_EXEC_REMOTE,
+										NULL,
+										thisParamId,
+										false);
+						
+				prm->value = paramInfo->value;
+				prm->isnull = paramInfo->isnull;
+				prm->execPlan = NULL;
+			}
+			else
+			{
+				/* Parameter not evaluated yet, so go do it */
+				ExecSetParamPlan(prm->execPlan, econtext, NULL);
+				/* ExecSetParamPlan should have processed this param... */
+				Assert(prm->execPlan == NULL);
+			}
 		}
+
 		*isNull = prm->isnull;
 		return prm->value;
 	}
@@ -601,8 +628,6 @@ ExecEvalParam(ExprState *exprstate, ExprContext *econtext,
 		 * All other parameter types must be sought in
 		 * ecxt_param_list_info.
 		 */
-		ParamListInfo paramInfo;
-
 		paramInfo = lookupParam(econtext->ecxt_param_list_info,
 								thisParamKind,
 								expression->paramname,

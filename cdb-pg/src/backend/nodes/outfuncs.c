@@ -28,7 +28,7 @@
 #include "nodes/plannodes.h"
 #include "nodes/relation.h"
 #include "utils/datum.h"
-
+#include "utils/lsyscache.h"  /* For get_typlenbyval */
 
 /*
  * Macros to simplify output of different kinds of fields.	Use these
@@ -1727,6 +1727,41 @@ _outVacuumStmt(StringInfo str, VacuumStmt *node)
 	WRITE_NODE_FIELD(va_cols);
 }
 
+static void
+_outRemoteParamData(StringInfo str, RemoteParamData *node)
+{
+	int16 typlen;
+	bool typbyval;
+
+	get_typlenbyval(node->paramData.ptype, &typlen, &typbyval);
+
+	WRITE_NODE_TYPE("REMOTEPARAMDATA");
+	WRITE_INT_FIELD(paramData.kind); 
+	WRITE_STRING_FIELD(paramData.name); 
+	WRITE_INT_FIELD(paramData.id); 
+	WRITE_OID_FIELD(paramData.ptype); 
+
+	if ( !typbyval && typlen < 0 && node->paramData.value == 0 )
+		node->paramData.isnull = true;
+
+	WRITE_BOOL_FIELD(paramData.isnull);
+
+	appendStringInfo(str, " :value ");
+
+	/*
+	 * When the value is NULL for a datum that is not a typbyval,
+	 * and the typlen=-1 (say, for a NULL text datum),
+	 * the _outDatum call would call ereport when it tried to
+	 * call datumGetSize.  So we must test for null here, and
+	 * avoid calling _outDatum for a NULL value.
+	 */
+	if ( node->paramData.isnull )
+		appendStringInfo(str, "<>");
+	else
+		_outDatum(str, node->paramData.value, typlen, typbyval);
+}
+
+
 /*
  * _outNode -
  *	  converts a Node into ascii string and append it to 'str'
@@ -1925,7 +1960,9 @@ _outNode(StringInfo str, void *obj)
 			case T_Flow:
 				_outFlow(str, obj);
 				break;
-
+			case T_RemoteParamData:
+				_outRemoteParamData(str, obj);
+				break;
 			case T_Path:
 				_outPath(str, obj);
 				break;

@@ -41,7 +41,6 @@ CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
 	MemoryContext oldctx = NULL, qctx;
 	int i, n;
 	ListCell *pc;
-	Node *ser_param;
 	
 	/* tcop shouldn't call unless the role is right! */
 	Assert(Cdb_role == CDB_ROLE_EXECUTE );
@@ -67,7 +66,10 @@ CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
 		plan = (Plan *)deserializeNode(pszPlan);
 		pfree(pszPlan);
 
-		/* TODO - Deserialize parameters, if any */
+		/*
+		 * Any parameters were serialized as RemoteParmData nodes.
+		 * This is just a node wrapper around ParmListInfo.
+		 */
 		n = list_length(stmt->ser_params);
 		if ( n > 0)
 		{
@@ -76,10 +78,20 @@ CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
 			i = 0;
 			foreach (pc, stmt->ser_params)
 			{
+				char *pszRemoteParmData;
+				RemoteParamData *rpd;
+				Node *ser_param;
+
 				ser_param = lfirst(pc);
-				/* TODO - Deserialize one parameter, for now show and invalidate. */
-	//			elog(NOTICE, "CDBEXEC ser_params - %d: %s", i, nodeToString(ser_param));
-				paramLI[i].kind = PARAM_INVALID;
+				Assert(IsA(ser_param, String));
+
+				pszRemoteParmData = strVal(ser_param);
+
+				rpd = (RemoteParamData *)deserializeNode(pszRemoteParmData);
+				pfree( pszRemoteParmData );
+
+				
+				memcpy( &paramLI[i], &rpd->paramData, sizeof(ParamListInfoData) );
 				i++;
 			}
 		}

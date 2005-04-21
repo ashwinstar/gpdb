@@ -41,10 +41,11 @@
  * ----------------
  */
 
-#define PARAM_NAMED		11
-#define PARAM_NUM		12
-#define PARAM_EXEC		15
-#define PARAM_INVALID	100
+#define PARAM_NAMED			11
+#define PARAM_NUM			12
+#define PARAM_EXEC			15
+#define PARAM_EXEC_REMOTE	16
+#define PARAM_INVALID		100
 
 
 /* ----------------

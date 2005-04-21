@@ -38,7 +38,6 @@
 #include "commands/tablecmds.h"
 #include "commands/trigger.h"
 #include "executor/execdebug.h"
-#include "executor/execdefs.h"
 #include "miscadmin.h"
 #include "optimizer/clauses.h"
 #include "optimizer/var.h"
@@ -50,6 +49,7 @@
 #include "cdb/cdbcat.h"
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbsrlz.h"
+#include "cdb/cdbsubplan.h"
 #include "cdb/cdbvars.h"
 
 typedef struct execRowMark
@@ -240,14 +240,23 @@ ExecutorRun(QueryDesc *queryDesc,
 
 		if ( shouldDispatch )
 		{
-			/*
-			 * Serialize the plan and query trees, and create the sql statement: cdbexec ....
-			 */
 			StringInfoData buffer;
 			bool bChangedQueryTree = false;
 			CmdType origCmdType;
 			RTEKind origRTEKind;
+
+			/*
+			 * First, see whether we need to pre-execute any initPlan subplans.
+			 */
+			if ( queryDesc->plantree->nParamExec > 0 )
+			{
+				preprocess_initplans( queryDesc );
+			}
+
 			
+			/*
+			 * Serialize the plan and query trees, and create the sql statement: cdbexec ....
+			 */
 			initStringInfo( &buffer );
 
 			/*
@@ -299,9 +308,51 @@ ExecutorRun(QueryDesc *queryDesc,
 			}
 
 			appendStringInfo(&buffer, "cdbexec '%s' '%s'", pszQuery, pszPlan);
-
 			pfree(pszQuery);
 			pfree(pszPlan);
+
+			/*
+			 * Start with any external parameters sitting in queryDesc->params.
+			 * Then we call addRemoteExecParamsToParamList to 
+			 * add on parameters that represent the preprocessed initPlan query results.
+			 * We mark these with a new paramkind field PARAM_EXEC_REMOTE so as to not
+			 * interfere with any existing code.
+			 * Then we serialize the parameters into RemoteParamData structs, which is just
+			 * a node wrapper around ParamListInfo.
+			 * We add parameters to the cdbexec command by enclosing the whole set with ()
+			 * and separating individual ones with a comma, so it looks like:
+			 * ('Param1', 'Param2', ...) at the end of the cdbexec command.
+			 */
+			ParamListInfo p = addRemoteExecParamsToParamList( queryDesc->plantree, queryDesc->params, 
+																estate->es_param_exec_vals, 
+																queryDesc->plantree->nParamExec );
+			if ( p != NULL )
+			{
+				bool bFirstTime = true;
+				ParamListInfo q = p;
+				appendStringInfo(&buffer, " (");
+				while ( q->kind != PARAM_INVALID )
+				{
+					char *pszParams;
+					RemoteParamData *rpd;
+					
+					rpd = makeNode(RemoteParamData);
+					memcpy( &rpd->paramData, q, sizeof(ParamListInfoData) );
+					pszParams = serializeNode((Node *)rpd);
+					if ( !bFirstTime )
+						appendStringInfo(&buffer, ", ");
+					else
+						bFirstTime = false;
+
+					appendStringInfo(&buffer, " '%s'", pszParams);
+
+					pfree(pszParams);
+					pfree( rpd );
+					q++;
+				}
+				appendStringInfo(&buffer, ")");
+				pfree(p);
+			}
 
 			DispatchTargetSet set;
 			if ( operation == CMD_SELECT )
@@ -322,18 +373,18 @@ ExecutorRun(QueryDesc *queryDesc,
 //		Assert( !( Cdb_role==CDB_ROLE_EXECUTE  && operation != CMD_SELECT ) );
 
 
-	/*
-	 * run plan on the dispatcher (entry) process.
-	 */
-	if (direction == NoMovementScanDirection)
-		result = NULL;
-	else
-		result = ExecutePlan(estate,
-							 queryDesc->planstate,
-							 operation,
-							 count,
-							 direction,
-							 dest);
+		/*
+		* run plan on the dispatcher (entry) process.
+		*/
+		if (direction == NoMovementScanDirection)
+			result = NULL;
+		else
+			result = ExecutePlan(estate,
+								queryDesc->planstate,
+								operation,
+								count,
+								direction,
+								dest);
 	}
 	PG_CATCH();
 	{
@@ -2334,3 +2385,4 @@ EvalPlanQualStop(evalPlanQual *epq)
 	epq->estate = NULL;
 	epq->planstate = NULL;
 }
+
