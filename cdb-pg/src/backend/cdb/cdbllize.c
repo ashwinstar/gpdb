@@ -1838,20 +1838,29 @@ scanForManagedTables(Plan *plan, Query *query)
 
 
 /*
- * Function scanForManagedTables_walker is the workhorse of scanForManagedTables.
- * It only cares about SeqScans, TidScans, and Index Scans.
- * For these, it gets the relid of the scan, gets the RangeTableEntry
- * from the context rtable, and gets the oid of the relation in the scan.
- * It calls get_table_polict to see whether this oid represents a
- * managed table.  If so, we can exit the walk by returning true.
- * If not, we use plan_walker to walk the appropriate child nodes.
- * For nodes other than SeqScan, TidScan, and IndexScan, we just 
- * use plan_walker to walk the appropriate child nodes.
+ * Function scanForManagedTables_walker() is the recursive core of
+ * scanForManagedTables(). It is mainly interested in SeqScans, TidScans, 
+ * and Index Scans since these are the nodes that reference base relations.  
+ * For these, it 
+ * - gets the relid of the scan, 
+ * - gets the RangeTableEntry from the context rtable, 
+ * - gets the oid of the relation in the scan,
+ * - calls get_table_policy to see whether this oid represents a
+ *   managed table.  
  *
- * The only field of the PlanProfile that we end up using in the walk is the
- * rtable.  For simplicity sake, we just reuse the PLanProfile
- * as the context of this walk, rather than create a different context structure
- * than that used by prescan_walker.
+ * If so, we can exit the walk by returning true, otherwise we use the
+ * plan_walker framework to walk the appropriate child nodes.
+ *
+ * The other node type of interest SubPlan, since this changes the current
+ * range table.
+ * 
+ * For nodes other than these, we just use plan_walker to walk the appropriate 
+ * child nodes.
+ *
+ * This walker uses the same PlanProfile structure as prescan_walker().
+ * The only information we use from context PlanProfile is the current
+ * range table.  
+ *
  */
 bool 
 scanForManagedTables_walker(Node *node, PlanProfile *context)
@@ -1930,6 +1939,33 @@ scanForManagedTables_walker(Node *node, PlanProfile *context)
 			}
 
 			break;
+
+		case T_SubPlan:
+			{
+				/* SubPlans establish a local state for the contained plan,
+				 * notably the range table.
+				 */
+				SubPlan    *subplan = (SubPlan*) node;
+
+				/* Recur into the exprs list (as usual). */
+				if (expression_tree_walker((Node *) subplan->exprs, scanForManagedTables_walker, context))
+					return true;
+				
+				/* Set local state for the subplan. */
+				pushLocals(context, subplan->rtable);
+				
+				/* Walk the subplan.  */
+				if ( scanForManagedTables_walker((Node*)subplan->plan, context) )
+					return true;
+				
+				/* Restore state for the parent plan. */
+				popLocals(context);
+				
+				/* Recur into the args list. */
+				if (expression_tree_walker((Node *) subplan->args, scanForManagedTables_walker, context))
+					return true;
+			}
+			return false;
 
 		default:
 			/* Let plan_tree_walker() deal with other node types. */
