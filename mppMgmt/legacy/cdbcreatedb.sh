@@ -694,7 +694,7 @@ do
 	      psql $finalSegName -c "delete from dtype_int where int_col % $total_content_segs <> $contentid"
 	      psql $finalSegName -c "delete from dtype_int2 where int2_col % $total_content_segs <> $contentid"
 	      psql $finalSegName -c "delete from dtype_int8 where int8_col % $total_content_segs <> $contentid"
-	      psql $finalSegName -c "delete from dtype_numeric where numeric_col % $total_content_segs <> $contentid"
+	      psql $finalSegName -c "delete from dtype_numeric where cast(numeric_col as int) % $total_content_segs <> $contentid"
 	      psql $finalSegName -c "delete from dtype_float where cast(float_col as int) % $total_content_segs <> $contentid"
 	      psql $finalSegName -c "delete from dtype_float4 where cast(float4_col as int) % $total_content_segs <> $contentid"
 	      psql $finalSegName -c "delete from dtype_date where cast(extract(day from date_col) as int) % $total_content_segs <> $contentid"
