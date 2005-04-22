@@ -3,7 +3,7 @@
  * cdbcat.h
  *	  routines for reading info from cdb schema tables
  *
- * Copyright (c) 2003-2004, Metapa
+ * Copyright (c) 2003-2005, Metapa
  *
  *
  *-------------------------------------------------------------------------
@@ -98,6 +98,14 @@ struct CdbPolicy
 	int nattrs;
 	AttrNumber attrs[0]; /* the first of nattrs attribute numbers.  */
 } CdbPolicy;
+
+/*
+ * CdbPolicyCopy -- Return a copy of a CdbPolicy object.
+ *
+ * The copy is palloc'ed in the caller's context.
+ */
+CdbPolicy *
+CdbPolicyCopy(const CdbPolicy *src);
 
 /*
  * get_table_policy: returns a palloc'd CdbPolicy for a table oid.

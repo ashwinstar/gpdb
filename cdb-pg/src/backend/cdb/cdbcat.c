@@ -3,7 +3,7 @@
  * cdbcat.c
  *	  Provides routines for reading info from cdb schema tables
  *
- * Copyright (c) 2003-2004, Metapa
+ * Copyright (c) 2003-2005, Metapa
  *
  *-------------------------------------------------------------------------
  */
@@ -16,7 +16,7 @@
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "cdb/cdbcat.h"
-
+#include "cdb/cdbvars.h"          /* Cdb_role */
 #include "catalog/pg_type.h"
 #include "utils/array.h"
 static void  extract_INT2OID_array(Datum array_datum, int* lenp, int16** vecp);
@@ -38,6 +38,24 @@ extern bool bTreatLocalsAsPartitioned;
  * it back to false.
  */
 bool bTreatLocalsAsPartitioned = false;
+
+/*
+ * CdbPolicyCopy -- Return a copy of a CdbPolicy object.
+ *
+ * The copy is palloc'ed in the caller's context.
+ */
+CdbPolicy *
+CdbPolicyCopy(const CdbPolicy *src)
+{
+    CdbPolicy *tgt;
+    size_t     nb;
+    if (!src)
+        return NULL;
+    nb = sizeof(*src) + src->nattrs * sizeof(src->attrs[0]);
+    tgt = (CdbPolicy*)palloc(nb);
+    memcpy(tgt, src, nb);
+    return tgt;
+}                                       /* CdbPolicyCopy */
  
 /*
  * Returns the policy of a table as determined from the cdb.policy table
@@ -52,27 +70,27 @@ CdbPolicy *get_table_policy(Oid tbloid)
 	CdbPolicy *		policy = NULL;  /* The result */
 	Relation		cdb_policy_rel;
 	Oid				cdb_policy_index_oid;
+    Oid             cdb_namespace_oid;
 	ScanKeyData		policy_key[1];
 	SysScanDesc		cdb_policy_scan;
 	HeapTuple		cdb_policy_tuple = NULL;
 	
-	/*
+    /*
+     * Skip if qExec or utility mode.
+     */
+    if ( Cdb_role != CDB_ROLE_DISPATCH )
+        return NULL;
+
+    /*
 	 * We need to read the cdb.policy table
 	 */	
 	
 	/*
 	 * first, get the oid of the cdb namespace
 	 */
-	Oid cdb_namespace_oid = getCDBNamespaceOid();
+	cdb_namespace_oid = getCDBNamespaceOid();
 	if ( cdb_namespace_oid == InvalidOid )
-	{
-		ereport(ERROR, (	
-			errcode(ERRCODE_CDB_INTERNAL_ERROR),
-			errmsg("CDB schema not found.")
-		));
-		
-		return NULL; /* Won't happen */
-	}
+		return NULL; 
 		
 	/*
 	 * Then, open the table and and find the oid of the index

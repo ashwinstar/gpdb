@@ -3,6 +3,7 @@
  * relcache.c
  *	  POSTGRES relation descriptor cache code
  *
+ * Portions Copyright (c) 2005, Metapa Inc.
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -65,6 +66,8 @@
 #include "utils/resowner.h"
 #include "utils/syscache.h"
 #include "utils/typcache.h"
+
+#include "cdb/cdbcat.h"         /* CdbPolicy */
 
 
 /*
@@ -883,6 +886,11 @@ RelationBuildDesc(RelationBuildDescInfo buildinfo,
 
 	/* make sure relation is marked as having no open file yet */
 	relation->rd_smgr = NULL;
+
+    /*
+     * initialize CDB partitioning info
+     */
+    relation->rd_cdbpolicy = NULL;
 
 	/*
 	 * Insert newly created relation into relcache hash tables.
@@ -1717,6 +1725,8 @@ RelationClearRelation(Relation relation, bool rebuild)
 	list_free(relation->rd_indexlist);
 	if (relation->rd_indexcxt)
 		MemoryContextDelete(relation->rd_indexcxt);
+    if (relation->rd_cdbpolicy)
+        pfree(relation->rd_cdbpolicy);
 
 	/*
 	 * If we're really done with the relcache entry, blow it away. But if
@@ -2609,6 +2619,27 @@ CheckConstraintFetch(Relation relation)
 			 ncheck - found, RelationGetRelationName(relation));
 }
 
+
+/*
+ * RelationGetPartitioningKey -- get CdbPolicy struct for distributed relation
+ *
+ * Returns a copy of the relation's CdbPolicy object, palloc'd in
+ * the caller's context.  Celler should pfree() it.  If NULL is
+ * returned, relation should be accessed locally.
+ */
+CdbPolicy*
+RelationGetPartitioningKey(Relation relation)
+{
+    if (!relation->rd_cdbpolicy)
+    {
+      MemoryContext oldcxt = MemoryContextSwitchTo(CacheMemoryContext);
+      relation->rd_cdbpolicy = get_table_policy(relation->rd_id);
+      MemoryContextSwitchTo(oldcxt);
+    }
+    return CdbPolicyCopy(relation->rd_cdbpolicy);
+}                                       /* RelationGetPartitioningKey */
+
+
 /*
  * RelationGetIndexList -- get a list of OIDs of indexes on this relation
  *
@@ -3173,6 +3204,7 @@ load_relcache_init_file(void)
 		rel->rd_indexlist = NIL;
 		rel->rd_createSubid = InvalidSubTransactionId;
 		MemSet(&rel->pgstat_info, 0, sizeof(rel->pgstat_info));
+        rel->rd_cdbpolicy = NULL;
 
 		/*
 		 * Recompute lock and physical addressing info.  This is needed in

@@ -4,6 +4,7 @@
  *	  Definitions for planner's internal data structures.
  *
  *
+ * Portions Copyright (c) 2005, Metapa Inc.
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -26,6 +27,11 @@
  */
 
 typedef Bitmapset *Relids;
+
+/*
+ * Estimated costs
+ */
+typedef double EstimatedBytes;  /* an estimated number of bytes */
 
 /*
  * When looking for a "cheapest path", this enum specifies whether we want
@@ -204,6 +210,7 @@ typedef struct RelOptInfo
 	List	   *indexlist;
 	BlockNumber	pages;
 	double		tuples;
+    struct CdbPolicy *cdbpolicy;/* partitioning info if distributed rel */
 	struct Plan *subplan;		/* if subquery */
 
 	/* used by various scans and joins: */
@@ -307,6 +314,20 @@ typedef struct PathKeyItem
 } PathKeyItem;
 
 /*
+ * CdbPathPartitioning
+ */
+
+typedef struct CdbPathPartitioning
+{
+    NodeTag		type;           /* T_CdbPathPartitioning */
+    FlowType    distribution;    
+    List       *partkey;        /* partitioning key: 
+                                 *  List of PathKeyItem nodes if 
+                                 *    distribution == FLOW_PARTITIONED;
+                                 *  else NIL */
+} CdbPathPartitioning;
+
+/*
  * Type "Path" is used as-is for sequential-scan paths.  For other
  * path types it is the first component of a larger struct.
  *
@@ -329,8 +350,12 @@ typedef struct Path
 								 * tuples */
 	Cost		total_cost;		/* total cost (assuming all tuples
 								 * fetched) */
+    EstimatedBytes  memory;     /* executor RAM needed for Path + kids */
 
-	List	   *pathkeys;		/* sort ordering of path's output */
+    CdbPathPartitioning *partn; /* distribution of the result tuples, or 
+                                 * NULL if not yet decided */
+
+    List	   *pathkeys;		/* sort ordering of path's output */
 	/* pathkeys is a List of Lists of PathKeyItem nodes; see above */
 } Path;
 
@@ -399,6 +424,16 @@ typedef struct TidPath
 	Path		path;
 	List	   *tideval;		/* qual(s) involving CTID = something */
 } TidPath;
+
+/*
+ * CdbMotionPath represents transmission of the child Path results
+ * from a set of sending processes to a set of receiving processes.
+ */
+typedef struct CdbMotionPath
+{
+	Path		path;
+    Path	   *subpath;
+} CdbMotionPath;
 
 /*
  * AppendPath represents an Append plan, ie, successive execution of

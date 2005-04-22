@@ -4,6 +4,7 @@
  *	  prototypes for pathnode.c, relnode.c.
  *
  *
+ * Portions Copyright (c) 2005, Metapa Inc.
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -26,6 +27,10 @@ extern int compare_fractional_path_costs(Path *path1, Path *path2,
 							  double fraction);
 extern void set_cheapest(RelOptInfo *parent_rel);
 extern void add_path(RelOptInfo *parent_rel, Path *new_path);
+
+CdbPathPartitioning *
+cdb_create_path_partitioning(FlowType   distribution,
+                             List      *partkey);
 
 extern Path *create_seqscan_path(Query *root, RelOptInfo *rel);
 extern IndexPath *create_index_path(Query *root, RelOptInfo *rel,
@@ -70,6 +75,12 @@ extern HashPath *create_hashjoin_path(Query *root,
 					 Path *inner_path,
 					 List *restrict_clauses,
 					 List *hashclauses);
+
+CdbMotionPath *
+cdb_create_motion_path(Query                *root, 
+                       Path                 *subpath,
+                       CdbPathPartitioning  *partn,
+                       List                 *pathkeys);
 
 /*
  * prototypes for relnode.c

@@ -3,6 +3,7 @@
  * pathnode.c
  *	  Routines to manipulate pathlists and create path nodes
  *
+ * Portions Copyright (c) 2005, Metapa Inc.
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -393,6 +394,21 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 /*****************************************************************************
  *		PATH NODE CREATION ROUTINES
  *****************************************************************************/
+
+
+/*
+ * cdb_create_path_partitioning
+ */
+CdbPathPartitioning *
+cdb_create_path_partitioning(FlowType   distribution,
+                             List      *partkey)
+{
+	CdbPathPartitioning *partn = makeNode(CdbPathPartitioning);
+	partn->distribution = distribution;
+	partn->partkey = partkey;
+	return partn;
+}
+
 
 /*
  * create_seqscan_path
@@ -1023,3 +1039,29 @@ create_hashjoin_path(Query *root,
 
 	return pathnode;
 }
+
+
+/*
+ * cdb_create_motion_path
+ */
+CdbMotionPath *
+cdb_create_motion_path(Query                *root, 
+                       Path                 *subpath,
+                       CdbPathPartitioning  *partn,
+                       List                 *pathkeys)
+{
+	CdbMotionPath *pathnode = makeNode(CdbMotionPath);
+	pathnode->path.pathtype = T_Motion;
+	pathnode->path.parent = subpath->parent;
+    pathnode->path.partn = partn;
+    pathnode->path.pathkeys = pathkeys;	
+    pathnode->subpath = subpath;	
+
+    /* Cost estimate */
+    pathnode->path.startup_cost = subpath->startup_cost;
+    pathnode->path.total_cost = subpath->total_cost;
+    pathnode->path.memory = subpath->memory;
+
+	return pathnode;
+}
+
