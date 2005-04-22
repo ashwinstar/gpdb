@@ -737,8 +737,7 @@ prescan_walker(Node *node, PlanProfile *context)
 				limit->plan.flow->segindex = -1;
 				limit->plan.flow->hashExpr = NIL;
 				limit->plan.flow->hashOp = NIL;
-				limit->plan.flow->req_xform = makeFlow(FLOW_PARTITIONED);
-				limit->plan.flow->req_xform->req_move = MOVEMENT_LIM_RESTRUCT;
+				limit->plan.flow->req_xform = MOVEMENT_LIM_RESTRUCT;
 				return false;
 			}
 #endif
@@ -1430,12 +1429,8 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 		case MOVEMENT_AGG_RESTRUCT:
 			newflow = makeFlow(strategy->resultflowtype);
 			
-			/* Flag the required transformation.  Really only need
-			 * req_move==MOVEMENT_AGG_RESTRUCT for this transformation.
-			 */
-			newflow->req_xform = makeFlow(strategy->resultflowtype);
-			newflow->req_xform->req_move = MOVEMENT_AGG_RESTRUCT;
-			newflow->req_xform->flotype = strategy->resultflowtype;
+			/* Flag the required transformation.  */
+			newflow->req_xform = MOVEMENT_AGG_RESTRUCT;
 
 			/* No child adjustments. */
 			break;
@@ -1623,7 +1618,7 @@ Flow *makeFlow(FlowType flotype)
 	Flow *flow = makeNode(Flow);
 	flow->flotype = flotype;
 	flow->req_move = MOVEMENT_NONE;
-	flow->req_xform = NULL;
+	flow->req_xform = MOVEMENT_NONE;
 	
 	/* TODO
 	 * Put this back to 0 and work out the problem

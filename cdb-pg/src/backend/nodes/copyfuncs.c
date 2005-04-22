@@ -1180,7 +1180,7 @@ _copyFlow(Flow *from)
 
 	COPY_SCALAR_FIELD(flotype);
 	COPY_SCALAR_FIELD(req_move);
-	COPY_NODE_FIELD(req_xform);
+	COPY_SCALAR_FIELD(req_xform);
 	COPY_SCALAR_FIELD(segindex);
 	COPY_SCALAR_FIELD(numSortCols);
 	COPY_POINTER_FIELD(sortColIdx, from->numSortCols*sizeof(AttrNumber));

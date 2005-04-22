@@ -903,10 +903,10 @@ plan_tree_mutator(Node *node,
 					
 				case RTE_FUNCTION: /* function in FROM */
 					MUTATE(newrte->funcexpr, rte->funcexpr, Node*);
-					newrte->coldeflist, copyObject(rte->coldeflist);
+					newrte->coldeflist = (List*)copyObject(rte->coldeflist);
 					break;
 				}
-				return newrte;
+				return (Node*)newrte;
 			 }
 			 break;
 

@@ -1480,7 +1480,7 @@ _readFlow(void)
 
 	READ_ENUM_FIELD(flotype, FlowType);
 	READ_ENUM_FIELD(req_move, Movement);
-	READ_NODE_FIELD(req_xform);
+	READ_ENUM_FIELD(req_xform, Movement);
 	READ_INT_FIELD(segindex);
 	
 	READ_INT_FIELD(numSortCols);

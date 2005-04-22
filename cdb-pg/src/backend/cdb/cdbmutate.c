@@ -266,17 +266,17 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 	Node *newnode = plan_tree_mutator(node, apply_motion_mutator, context);
 	
 	/* Perform special transformation, if specified. */
-	if ( is_plan_node(node) && ((Plan*)node)->flow->req_xform != NULL )
+	if ( is_plan_node(node) && ((Plan*)node)->flow->req_xform != MOVEMENT_NONE )
 	{
 		Plan *plan = (Plan*)node;
 		
 		/* Special aggregrate transformation? */
-		if ( IsA(node,Agg) && plan->flow->req_xform->req_move == MOVEMENT_AGG_RESTRUCT )
+		if ( IsA(node,Agg) && plan->flow->req_xform == MOVEMENT_AGG_RESTRUCT )
 		{
 			newnode = (Node*)apply_agg_motion((Plan*)newnode, context);
 		}
 		/* Special limit transformation? */
-		else if ( IsA(node,Limit) && plan->flow->req_xform->req_move == MOVEMENT_LIM_RESTRUCT )
+		else if ( IsA(node,Limit) && plan->flow->req_xform == MOVEMENT_LIM_RESTRUCT )
 		{
 			newnode = (Node*)apply_limit_motion((Plan*)newnode, context);
 		}
@@ -285,7 +285,7 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 			 ereport(ERROR, (
 				errcode(ERRCODE_CDB_INTERNAL_ERROR),
 				errmsg("Unknown CDB restructuring transformation %d for node type %d",
-					plan->flow->req_xform->req_move,
+					plan->flow->req_xform,
 					node->type)
 			 ));
 		}

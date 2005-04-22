@@ -65,24 +65,23 @@ apply_limit_motion(Plan *plan, ApplyMotionState *state)
 	Limit *limit;
 	Limit *prelimit;
 	Plan *input_plan;
+	List *input_initPlan;
 	Flow *output_flow;
 	
 	/* Sanity checks */
 	Assert( 
 		plan != NULL
 		&& IsA(plan,Limit) 
-		&& plan->flow->req_xform->req_move == MOVEMENT_LIM_RESTRUCT 
+		&& plan->flow->req_xform == MOVEMENT_LIM_RESTRUCT 
 		&& plan->lefttree != NULL
 		&& plan->lefttree->flow != NULL
 		&& plan->lefttree->flow->flotype == FLOW_PARTITIONED
 		&& plan->righttree == NULL
-		&& plan->initPlan == NIL
-		&& bms_is_empty(plan->extParam)
-		&& bms_is_empty(plan->allParam)
 	);
 
 	limit = (Limit*)plan;
 	input_plan = plan->lefttree;
+	input_initPlan = plan->initPlan;
 	output_flow = plan->flow;
 	
 	/* Reassert what  prescan should have checked. */
@@ -99,17 +98,18 @@ apply_limit_motion(Plan *plan, ApplyMotionState *state)
 	 */
 	plan->flow = NULL;
 	plan->lefttree = NULL;
+	plan->initPlan = NIL;
 	prelimit = copyObject(limit);
 	
 	/* The attached xform flow is no longer interesting. */
-	pfree(output_flow->req_xform); 
-	output_flow->req_xform = NULL;
+	output_flow->req_xform = MOVEMENT_NONE;
 	
 	/* Reestablish flows and things we omitted from the copy. */
 	
 	plan->flow = output_flow; /* prescan set this up correctly. */
 	
 	prelimit->plan.lefttree = input_plan;
+	prelimit->plan.initPlan = input_initPlan;
 	prelimit->plan.flow = pull_up_Flow((Plan*)prelimit, true);
 	
 	/* In preliminary (sorted), count must specify offset+count tuples

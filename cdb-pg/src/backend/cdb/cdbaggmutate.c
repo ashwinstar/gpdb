@@ -184,7 +184,7 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 	Assert( 
 		plan != NULL
 		&& IsA(plan,Agg) 
-		&& plan->flow->req_xform->req_move == MOVEMENT_AGG_RESTRUCT 
+		&& plan->flow->req_xform == MOVEMENT_AGG_RESTRUCT 
 		&& plan->lefttree != NULL
 		&& plan->righttree == NULL
 	);
@@ -209,7 +209,7 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 	 * call this function, but from here on, all the information we need to 
 	 * make the transformation is readily available in the plan itself.
 	 */
-	plan->flow->req_xform = NULL;
+	plan->flow->req_xform = MOVEMENT_NONE;
 	
 	inner_plan->targetlist = NIL; /* Build on the fly. */
 	inner_plan->qual = NIL; /* Build on the fly. */

@@ -447,6 +447,7 @@ double costMovement(Movement move, Plan *plan, JoinType	jointype)
 		 *
 		 */
 		case MOVEMENT_AGG_RESTRUCT:
+		case MOVEMENT_LIM_RESTRUCT:
 			Assert( FALSE ); /* Not a valid strategy for a join. */
 			break;
 	}

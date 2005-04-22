@@ -999,7 +999,7 @@ _outFlow(StringInfo str, Flow *node)
 
 	WRITE_ENUM_FIELD(flotype, FlowType);
 	WRITE_ENUM_FIELD(req_move, Movement);
-	WRITE_NODE_FIELD(req_xform);
+	WRITE_ENUM_FIELD(req_xform, Movement);
 	WRITE_INT_FIELD(segindex);
 	
 	/* This array format as in Group and Sort nodes. */
