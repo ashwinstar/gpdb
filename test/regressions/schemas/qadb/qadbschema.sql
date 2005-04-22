@@ -437,7 +437,13 @@ create table max_cols
         Col_247        Numeric,
         Col_248        Numeric,
         Col_249        Numeric,
-        Col_250        Numeric);
+        Col_250        Numeric,
+        Col_251        Numeric,
+        Col_252        Numeric,
+        Col_253        Numeric,
+        Col_254        Numeric,
+        Col_255        Numeric,
+        Col_256        Numeric);
 
 create table dtype_text (text_col  text);
 
