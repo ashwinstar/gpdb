@@ -9,9 +9,9 @@ cd $CDB_SCRIPTS
 echo "Initializing CDB2 database"
 
 # Initialize the database
-./cdbstop
-./cdbclean
-./cdbinitdb -n 3
-./cdbstart
+./cdbstop.sh
+./cdbclean.sh
+./cdbinitdb.sh -n 3
+./cdbstart.sh
 sleep 30
-./cdbcreatedb -s cdbunit --withQadb
+./cdbcreatedb.sh -s cdbunit --withQadb
