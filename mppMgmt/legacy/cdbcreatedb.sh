@@ -759,8 +759,8 @@ do
     done
     
     # Vacuum
-    echo "Vacuuming entry database";
-    PGOPTIONS='-c cdb_session_role=dispatch' psql -o /dev/null -q $entrySegName -c "vacuum full analyze"
+    #echo "Vacuuming entry database";
+    #PGOPTIONS='-c cdb_session_role=dispatch' psql -o /dev/null -q $entrySegName -c "vacuum full analyze"
 done
 
 exit 1
