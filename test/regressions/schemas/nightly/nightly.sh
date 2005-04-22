@@ -13,5 +13,5 @@ echo "Initializing CDB2 database"
 ./cdbclean.sh
 ./cdbinitdb.sh -n 3
 ./cdbstart.sh
-sleep 30
+sleep 10
 ./cdbcreatedb.sh -s cdbunit --withQadb
