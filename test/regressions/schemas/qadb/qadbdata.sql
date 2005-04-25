@@ -908,8 +908,6 @@ insert into dtype_timestamp values('01/02/2005 23:59');
 
 insert into dtype_interval values('23:59:00');
 
-insert into dtype_boolean values('T');
-
 insert into all_dtypes
 (text_col,
 varchar_col,
@@ -940,3 +938,5 @@ values
 '01/02/2005 23:59',
 '23:59:00',
 'T');
+
+insert into dtype_boolean values('T');
