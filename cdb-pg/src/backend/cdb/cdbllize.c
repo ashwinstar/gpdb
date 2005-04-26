@@ -192,13 +192,11 @@ cdbparallelize(	Plan* plan,
 	if ( !prescan(plan, query, &profile) )
 		issuePsError(&profile);	
 
-#ifdef CDB_DEVELOPER
-	ereport(NOTICE,  (
+	ereport(DEBUG3,  (
 		errmsg("CDB Notice: Plan %s catalog and %s segments.",
 			(profile.usesCatalog || profile.resultCatalog) ? "uses" : "doesn't use",
 			(profile.usesSegments || profile.resultSegments) ? "uses" : "doesn't use" )
 		));
-#endif
 
 	/* Since scanForManagedTables returned true, we must have usesSegments
 	 * in either the query relations or the result relation.  Insist!
@@ -296,13 +294,10 @@ prescan_walker(Node *node, PlanProfile *context)
 			 * SubLink in the query tree (a SQL subquery expression) or a
 			 * plan in an initplan list.
 			 *
-			 * TODO Figure out whether this code is safe and efficacious.
-			 *
-			 * This code replaces
-			 *		detail = "Query involves a sublink expression.";
-			 *		break; 
+			 * TODO Add support for multirow and correlated subqueries.
+			 *      Will this require additional context to distinguish
+			 *      "in an initPlan" from "in an ordinary expression"? 
 			 */
-#ifdef CDB_DEVELOPER
 			{
 				/* SubPlans establish a local state for the contained plan,
 				 * notably the range table.
@@ -381,10 +376,6 @@ prescan_walker(Node *node, PlanProfile *context)
 					return true;
 			}
 			return false;
-#else
-			detail = "Query involves a sublink expression.";
-			break; 
-#endif
 			
 		case T_Flow:
 			/* Since this function is where Flow nodes are generated, we can't 
@@ -710,7 +701,6 @@ prescan_walker(Node *node, PlanProfile *context)
 			/* There are currently a number of restrictions due to
 			 * inadequacies in our implementation or understanding.
 			 */
-#ifdef CDB_DEVELOPER
 			{
 				Limit *limit = (Limit*)node;
 				
@@ -740,10 +730,6 @@ prescan_walker(Node *node, PlanProfile *context)
 				limit->plan.flow->req_xform = MOVEMENT_LIM_RESTRUCT;
 				return false;
 			}
-#endif
-			
-			detail = "Query involves partitioned LIMIT and OFFSET.";
-			break; /* Fall through to report error. */
 			
 		default:
 			/* Let plan_tree_walker() deal with other node types. */
