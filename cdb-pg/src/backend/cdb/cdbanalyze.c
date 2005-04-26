@@ -51,7 +51,6 @@ void cdb_get_relstats(Oid relid, BlockNumber *pages, double *tuples)
 	int				rtn;
 	HeapTuple		tup;
 	TupleDesc		tupdesc;
-	Relation		rel;
 
 	Assert( Cdb_role == CDB_ROLE_DISPATCH );
 	Assert( pages != NULL );
