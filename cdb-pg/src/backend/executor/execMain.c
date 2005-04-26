@@ -73,7 +73,15 @@ static void InitPlan(QueryDesc *queryDesc, bool explainOnly);
 static void initResultRelInfo(ResultRelInfo *resultRelInfo,
 				  Index resultRelationIndex,
 				  List *rangeTable,
-				  CmdType operation);
+				  CmdType operation,
+				  /* 
+				   * Added the following parameter for CDB,
+				   * so that when the relation is opened for insert, update or delete,
+				   * and the Cdb_role is CDB_ROLE_DISPATCH, 
+				   * and the plan dispatch type is DISPATCH_PARALLEL,
+				   * the lock type passed to heap_open is set to ExclusiveLock instead of RowExclusiveLock.
+				   */
+				  bool shouldDispatch);
 static TupleTableSlot *ExecutePlan(EState *estate, PlanState *planstate,
 			CmdType operation,
 			long numberTuples,
@@ -709,6 +717,7 @@ InitPlan(QueryDesc *queryDesc, bool explainOnly)
 	Relation	intoRelationDesc;
 	bool		do_select_into;
 	TupleDesc	tupType;
+	bool shouldDispatch =  Cdb_role == CDB_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL;
 
 	/*
 	 * Do permissions checks.  It's sufficient to examine the query's top
@@ -754,7 +763,8 @@ InitPlan(QueryDesc *queryDesc, bool explainOnly)
 				initResultRelInfo(resultRelInfo,
 								  lfirst_int(l),
 								  rangeTable,
-								  operation);
+								  operation,
+								  shouldDispatch);
 				resultRelInfo++;
 			}
 		}
@@ -769,7 +779,8 @@ InitPlan(QueryDesc *queryDesc, bool explainOnly)
 			initResultRelInfo(resultRelInfos,
 							  parseTree->resultRelation,
 							  rangeTable,
-							  operation);
+							  operation,
+							  shouldDispatch);
 		}
 
 		estate->es_result_relations = resultRelInfos;
@@ -1040,17 +1051,26 @@ InitPlan(QueryDesc *queryDesc, bool explainOnly)
 /*
  * Initialize ResultRelInfo data for one result relation
  */
+/* 
+ * Added the shouldDispatch parameter for CDB.
+ * This is true iff the Cdb_role is CDB_ROLE_DISPATCH, 
+ * and the plan dispatch type is DISPATCH_PARALLEL.
+ * When true, the lock type passed to heap_open is set to 
+ * ExclusiveLock instead of RowExclusiveLock.
+*/
+
 static void
 initResultRelInfo(ResultRelInfo *resultRelInfo,
 				  Index resultRelationIndex,
 				  List *rangeTable,
-				  CmdType operation)
+				  CmdType operation,
+				  bool shouldDispatch)
 {
 	Oid			resultRelationOid;
 	Relation	resultRelationDesc;
 
 	resultRelationOid = getrelid(resultRelationIndex, rangeTable);
-	resultRelationDesc = heap_open(resultRelationOid, RowExclusiveLock);
+	resultRelationDesc = heap_open(resultRelationOid, shouldDispatch ? ExclusiveLock : RowExclusiveLock);
 
 	switch (resultRelationDesc->rd_rel->relkind)
 	{

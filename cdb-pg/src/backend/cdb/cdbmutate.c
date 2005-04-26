@@ -56,6 +56,7 @@ static List *getExprListFromCondList(List *clist, HashMotionInfoType type);
 static List *getOpListFromCondList(List *clist);
 static bool motion_expr_walker(Node *node, char *not_used);
 static List * makeMotionTargetList(Plan *arg);
+static bool doesUpdateAffectPartitionCols( CdbPolicy *policy, List *rte );
 
 
 /* ------------------------------------------------------------------------- *
@@ -231,16 +232,87 @@ Plan* apply_motion(Plan*  plan, Query* query)
 		case CMD_UPDATE:
 		case CMD_DELETE:
 			/*
-			 * TODO Appropriate top-of-plan processing for other commands.  
-			 *      Some UPDATEs and DELETEs may want the top-level partitioned 
-			 *      flow unmodified (i.e., when it is effectively partitioned 
-			 *      on tuple location).
+			 * For updates and deletes on partitioned tables, we restrict the query
+			 * to only those with a partioned flow, and involving no other tables.  
+			 * In this manner , we avoid any motion nodes.  If there are subqueries, 
+			 * the query will get rejected by the parallelizer unless they are initPlan subqueries.
+			 * If the table is an entry database table, we reject the query unless the
+			 * flow is a singleton on the entry database.
 			 */
-			ereport(ERROR, (
-				errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-				errmsg("CDB cannot parallelize %ss yet", 
-					query->commandType==CMD_UPDATE ? "UPDATE" : "DELETE")
-			));
+			{
+				RangeTblEntry *rte;
+				CdbPolicy *policy;
+
+				rte = rt_fetch(query->resultRelation, query->rtable);
+				Assert( rte->rtekind == RTE_RELATION);
+				policy = get_table_policy(rte->relid);
+				 
+				switch ( policy->ptype )
+				{
+					case POLICYTYPE_PARTITIONED:
+						/*
+						 * Currently, we only support update or delete involving 1 table
+						 */
+						if ( list_length(query->rtable) > 1 )
+						{
+							ereport(ERROR, (
+								errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+									errmsg("CDB cannot parallelize that %s yet", 
+										query->commandType==CMD_UPDATE ? "UPDATE" : "DELETE")
+							));
+						}
+
+						/*
+						 * Make sure we are not updating any of the partitioning columns
+						 */
+						if ( query->commandType == CMD_UPDATE &&
+							doesUpdateAffectPartitionCols( policy, plan->targetlist ) )
+						{
+							ereport(ERROR, (
+								errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+									errmsg("CDB cannot parallelize an update that involves the partitioning columns")
+							));
+						}
+
+						if ( plan->flow->flotype == FLOW_PARTITIONED )
+						{
+							plan->flow->req_move = MOVEMENT_NONE;
+						}
+						else if ( plan->flow->flotype == FLOW_REPLICATED
+							|| plan->flow->flotype == FLOW_SINGLETON )
+						{
+							ereport(ERROR, (
+								errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+									errmsg("CDB cannot parallelize that %s yet", 
+										query->commandType==CMD_UPDATE ? "UPDATE" : "DELETE")
+							));
+						}
+
+						break;
+
+					case POLICYTYPE_ENTRY:
+						if ( plan->flow->flotype == FLOW_PARTITIONED 
+							|| plan->flow->flotype == FLOW_REPLICATED
+							|| ( plan->flow->flotype == FLOW_SINGLETON && plan->flow->segindex != -1 )
+							)
+						{
+							ereport(ERROR, (
+								errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+									errmsg("CDB cannot parallelize that %s yet", 
+										query->commandType==CMD_UPDATE ? "UPDATE" : "DELETE")
+							));
+						}
+						/*
+						* Source is, presumably, a dispatcher singleton.
+						*/
+						plan->flow->req_move = MOVEMENT_NONE;
+						break;
+					default:
+						Assert( false );
+						break;
+				}
+			}
+			break;
 			 
 		default:
 			Assert(false); /* Never see non-DML in here! */
@@ -1270,5 +1342,43 @@ List *getOpListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
 		new_tlist = lappend(new_tlist, makeTargetEntry(resdom, (Expr*)new_var));
 	}
 	return new_tlist;
- }
+}
 
+/*
+ * doesUpdateAffectPartitionCols:
+ * This checks to see whether an update query's target list
+ * shows that 
+ */
+bool doesUpdateAffectPartitionCols( CdbPolicy *policy, List *targetlist )
+{
+	/*
+	 * Want to test whether an update statement possibly changes the 
+	 * value of any of the partitioning columns.
+	 */
+
+	/*
+	 * For each partitioning column, the TargetListEntry for that varattno
+	 * should be just a Var node with the same varattno.
+	 */
+	int i;
+
+	Assert( policy != NULL );
+	Assert( targetlist != NIL );
+	Assert( policy->ptype == POLICYTYPE_PARTITIONED );
+	Assert( policy->nattrs > 0 );
+
+	for ( i=0; i<policy->nattrs; i++ )
+	{
+		AttrNumber colno = policy->attrs[i];
+		TargetEntry *entry = get_tle_by_resno( targetlist, colno );
+		Assert( entry != NULL );
+		if ( nodeTag(entry->expr) != T_Var )
+			return true;
+
+		Var *var = (Var *)entry->expr;
+		if ( var->varattno != colno )
+			return true;
+	}
+
+	return false;
+}
