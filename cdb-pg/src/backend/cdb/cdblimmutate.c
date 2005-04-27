@@ -87,6 +87,7 @@ apply_limit_motion(Plan *plan, ApplyMotionState *state)
 	/* Reassert what  prescan should have checked. */
 	Assert( limit->limitOffset == NULL || IsA(limit->limitOffset, Const) );
 	Assert( limit->limitCount == NULL || IsA(limit->limitCount, Const) );
+	Assert( limit->limitCount != NULL || limit->limitOffset != NULL );
 	
 	/* TODO - If we KNOW the input is unordered, we can allow it.  The problem
 	 *        is that we don't currently distinguish unknown from unordered.
@@ -101,7 +102,7 @@ apply_limit_motion(Plan *plan, ApplyMotionState *state)
 	plan->initPlan = NIL;
 	prelimit = copyObject(limit);
 	
-	/* The attached xform flow is no longer interesting. */
+	/* The specified xform is no longer appropriate. */
 	output_flow->req_xform = MOVEMENT_NONE;
 	
 	/* Reestablish flows and things we omitted from the copy. */
@@ -111,18 +112,16 @@ apply_limit_motion(Plan *plan, ApplyMotionState *state)
 	prelimit->plan.lefttree = input_plan;
 	prelimit->plan.initPlan = input_initPlan;
 	prelimit->plan.flow = pull_up_Flow((Plan*)prelimit, true);
+	prelimit->limitOffset = NULL;
+	prelimit->limitCount = NULL;
 	
 	/* In preliminary (sorted), count must specify offset+count tuples
 	 * from each segment of the partitioned input (just in case).
 	 */
-	if ( prelimit->limitOffset != NULL )
+	if ( limit->limitCount != NULL )
 	{
-		if ( prelimit->limitCount == NULL )
-		{
-			prelimit->limitCount = prelimit->limitOffset;
-			prelimit->limitOffset = NULL;
-		}
-		else
+		prelimit->limitCount = copyObject(limit->limitCount);
+		if ( limit->limitOffset != NULL )
 		{
 			/* TODO Set prelimit->limitCount to sum of offset and limit 
 			 *      when we smart enough to do so.  Until then...
