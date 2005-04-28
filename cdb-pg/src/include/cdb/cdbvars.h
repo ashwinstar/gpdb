@@ -119,6 +119,16 @@ extern char			  * cdb_role_string;	/* Use by guc.c as staging area for value. */
 extern const char	  * assign_cdb_role( const char *newval, bool doit, GucSource source );
 extern const char	  * show_cdb_role( void );
 
+/* Parameter debug_print_prelim_plan
+ * 
+ * This run-time parameter is closely related to the PostgreSQL parameter
+ * debug_print_plan which, if true, causes the final plan to display on the 
+ * server log prior to execution.  This parameter, if true, causes the 
+ * preliminary plan (from the optimizer prior to cdbparallelize) to display
+ * on the log.
+ */
+extern bool Debug_print_prelim_plan;
+
 
 /*
  * Parameter cdb_connections_per_thread

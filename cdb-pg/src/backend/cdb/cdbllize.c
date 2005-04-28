@@ -167,6 +167,13 @@ cdbparallelize(	Plan* plan,
 	int nParamExec;
 	
 	Assert( is_plan_node((Node*)plan) );
+		/*
+	 * Print plan if debugging.
+	 */
+	if (Debug_print_prelim_plan)
+		elog_node_display(DEBUG1, "preliminary plan", plan, Debug_pretty_print);
+
+	
 	Assert( query != NULL && IsA(query, Query) );
 	
 	/* If the plan is already marked dispatchable, just return it. */

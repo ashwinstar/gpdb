@@ -228,6 +228,7 @@
 
 #debug_print_parse = false
 #debug_print_rewritten = false
+#debug_print_prelim_plan = false
 #debug_print_plan = false
 #debug_pretty_print = false
 #log_connections = false

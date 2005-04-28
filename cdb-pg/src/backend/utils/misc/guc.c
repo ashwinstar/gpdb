@@ -542,6 +542,14 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 	},
 	{
+		{"debug_print_prelim_plan", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Prints the preliminary execution plan to server log."),
+			NULL
+		},
+		&Debug_print_prelim_plan,
+		false, NULL, NULL
+	},
+	{
 		{"debug_print_plan", PGC_USERSET, LOGGING_WHAT,
 			gettext_noop("Prints the execution plan to server log."),
 			NULL
