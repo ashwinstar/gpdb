@@ -402,8 +402,14 @@ plan_tree_walker(Node *node,
 					return true;
 			}
 			break;
+			
+		case T_IntList:
+		case T_OidList:
+			/* Note that expression_tree_walker handles T_List but not 
+			 * these.  No contained stuff, so just succeed.
+			 */			
+			break;
 
-	
 		/* Query nodes are handled by the Postgres query_tree_walker.
 		 * We just use it without setting any ignore flags.  The caller
 		 * must handle query nodes specially to get other behavior, 
