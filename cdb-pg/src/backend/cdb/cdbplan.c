@@ -204,7 +204,7 @@ walk_join_node_fields(Join *join,
 	if ( walk_plan_node_fields((Plan*)join, walker, context) )
 		return true;
 	
-	return walker((Node*)(join->joinqual), walker, context);
+	return walker((Node*)(join->joinqual), context);
 }
 
 
