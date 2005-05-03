@@ -76,6 +76,47 @@ Datum HASHAPI_Hash_1_BigInt(PG_FUNCTION_ARGS)
     PG_RETURN_INT32(targetbucket); /* return target bucket (segID) */
 }
 
+/* 
+* HASHAPI_Hash_1_BigInt
+ * Perform a simple 1-value bigint hash 
+ */ 
+PG_FUNCTION_INFO_V1(HASHAPI_Hash_1_Bool);
+Datum HASHAPI_Hash_1_Bool(PG_FUNCTION_ARGS)
+{
+    int32 num_segs;    /* number of segments  */
+	
+	int16 algorithm;  /* hashing algorithm   */
+	bool val1;        /* boolean input value */
+    unsigned int targetbucket; /* 0-based  */
+	
+	/* Get number of segments */
+    num_segs = PG_GETARG_INT32(0);
+	
+	/* Get hashing algoriithm */
+	algorithm = PG_GETARG_INT16(1);
+    
+	/* Get the value to hash */
+	val1 = PG_GETARG_BOOL(2);
+	
+	Datum d1 = BoolGetDatum(val1);
+	
+	/* create a CdbHash for this hash test. */
+    h = makeCdbHash(num_segs, algorithm);
+	
+	/* init cdb hash */
+	cdbhashinit(h);
+	
+	Oid oid = BOOLOID;
+	
+	
+	cdbhash(h, d1, oid);
+	
+	/* reduce the result hash value */
+	targetbucket = cdbhashreduce(h);	
+	
+    PG_RETURN_INT32(targetbucket); /* return target bucket (segID) */
+}
+
 
 /* 
  * HASHAPI_Hash_1_Int
