@@ -184,6 +184,7 @@ typedef struct PortalData
 extern void EnablePortalManager(void);
 extern void AtCommit_Portals(void);
 extern void AtAbort_Portals(void);
+extern void AtPrepare_Portals(void);
 extern void AtCleanup_Portals(void);
 extern void AtSubCommit_Portals(SubTransactionId mySubid,
 								SubTransactionId parentSubid,

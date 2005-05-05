@@ -97,6 +97,7 @@
 #include "utils/relcache.h"
 #include "utils/syscache.h"
 
+#include "access/twophase_rmgr.h"
 
 /*
  * To minimize palloc traffic, we keep pending requests in successively-
@@ -171,6 +172,7 @@ static struct CACHECALLBACK
 
 static int	cache_callback_count = 0;
 
+static void PersistSharedInvalidMessage(SharedInvalidationMessage *msg);
 
 /* ----------------------------------------------------------------
  *				Invalidation list support functions
@@ -636,6 +638,27 @@ AtStart_Inval(void)
 	transInvalInfo->my_level = GetCurrentTransactionNestLevel();
 }
 
+void  
+AtPrepare_Inval(void)
+{
+      /*
+       * Relcache init file invalidation requires processing both before
+       * and after we send the SI messages.  However, we need not do
+       * anything unless we committed.
+       */
+      if (transInvalInfo->RelcacheInitFileInval)
+              RelationCacheInitFileInvalidate(true);
+
+      AppendInvalidationMessages(&transInvalInfo->PriorCmdInvalidMsgs,
+                                                         &transInvalInfo->CurrentCmdInvalidMsgs);
+
+       ProcessInvalidationMessages(&transInvalInfo->PriorCmdInvalidMsgs,
+                                                              PersistSharedInvalidMessage);
+
+      /* Need not free anything explicitly */
+      transInvalInfo = NULL;
+}
+
 /*
  * AtSubStart_Inval
  *		Initialize inval lists at start of a subtransaction.
@@ -653,6 +676,29 @@ AtSubStart_Inval(void)
 	myInfo->my_level = GetCurrentTransactionNestLevel();
 	transInvalInfo = myInfo;
 }
+
+/*
+ * PersistSharedInvalidMessage
+ *  Writes the message to two-phase file
+ */
+static void
+PersistSharedInvalidMessage(SharedInvalidationMessage *msg)
+{
+      RegisterTwoPhaseRecord(TWOPHASE_RM_INVAL_ID, msg, sizeof(SharedInvalidationMessage));
+}
+
+void
+inval_postcommit_record(TransactionId xid, void *recdata, uint32 len)
+{
+      SharedInvalidationMessage *msg = (SharedInvalidationMessage *) recdata;
+
+      /* XXX - init file invalidation should be done only once before
+         and once after sending messages */
+      RelationCacheInitFileInvalidate(false);
+      SendSharedInvalidMessage(msg);
+      RelationCacheInitFileInvalidate(true);
+}
+
 
 /*
  * AtEOXact_Inval

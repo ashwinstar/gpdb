@@ -468,7 +468,7 @@ ProcessUtility(Node *parsetree,
 						{
 							ListCell   *lc;
 
-							BeginTransactionBlock();
+							BeginTransactionBlock(stmt->gid);
 							foreach(lc, stmt->options)
 							{
 								DefElem    *item = (DefElem *) lfirst(lc);
@@ -476,18 +476,18 @@ ProcessUtility(Node *parsetree,
 								if (strcmp(item->defname, "transaction_isolation") == 0)
 									SetPGVariable("transaction_isolation",
 												  list_make1(item->arg),
-												  false);
+												  true);
 								else if (strcmp(item->defname, "transaction_read_only") == 0)
 									SetPGVariable("transaction_read_only",
 												  list_make1(item->arg),
-												  false);
+												  true);
 							}
 						}
 						break;
 
 					case TRANS_STMT_COMMIT:
 						CdbSentry(CDB_ACCEPT, parsetree, NULL);
-						if (!EndTransactionBlock())
+						if (!EndTransactionBlock(stmt->gid))
 						{
 							/* report unsuccessful commit in completionTag */
 							if (completionTag)
@@ -495,9 +495,31 @@ ProcessUtility(Node *parsetree,
 						}
 						break;
 
+					case TRANS_STMT_COMMIT_PREPARED:
+                         PreventTransactionChain(stmt, "COMMIT PREPARED");
+                         CommitPreparedTransaction(stmt->gid);
+					    break;
+					
+					case TRANS_STMT_ROLLBACK_PREPARED:
+				        PreventTransactionChain(stmt, "ROLLBACK PREPARED");
+				        AbortPreparedTransaction(stmt->gid);
+					    break;
+					
+					case TRANS_STMT_PREPARE:
+					    PrepareTransactionBlock(stmt->gid);
+					    break;
+
 					case TRANS_STMT_ROLLBACK:
-						CdbSentry(CDB_ACCEPT, parsetree, NULL);
-						UserAbortTransactionBlock();
+                         if (stmt->gid == NULL || IsGlobalTransaction())
+                         {
+						  CdbSentry(CDB_ACCEPT, parsetree, NULL);
+						  UserAbortTransactionBlock(stmt->gid);
+                         }
+                         else
+                         {
+                           PreventTransactionChain(stmt, "ROLLBACK PREPARED");
+                           AbortPreparedTransaction(stmt->gid);
+                         }
 						break;
 
 					case TRANS_STMT_SAVEPOINT:
@@ -1378,10 +1400,22 @@ CreateCommandTag(Node *parsetree)
 					case TRANS_STMT_START:
 						tag = "START TRANSACTION";
 						break;
+						
+					case TRANS_STMT_PREPARE:
+					    tag = "PREPARE TRANSACTION";
+					break;
 
 					case TRANS_STMT_COMMIT:
 						tag = "COMMIT";
 						break;
+
+					case TRANS_STMT_COMMIT_PREPARED:
+				        tag = "COMMIT PREPARED";
+				        break;
+					
+					case TRANS_STMT_ROLLBACK_PREPARED:
+				        tag = "ROLLBACK PREPARED";
+					    break;
 
 					case TRANS_STMT_ROLLBACK:
 					case TRANS_STMT_ROLLBACK_TO:

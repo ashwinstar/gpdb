@@ -288,6 +288,8 @@ extern bool LockAcquire(LOCKMETHODID lockmethodid, LOCKTAG *locktag,
 extern bool LockRelease(LOCKMETHODID lockmethodid, LOCKTAG *locktag,
 			TransactionId xid, LOCKMODE lockmode);
 extern bool LockReleaseAll(LOCKMETHODID lockmethodid, bool allxids);
+extern bool LockPersistAll(void);
+extern bool LockReleasePersistentAll(LOCKMETHODID lockmethodid, TransactionId xid);
 extern void LockReleaseCurrentOwner(void);
 extern void LockReassignCurrentOwner(void);
 extern int LockCheckConflicts(LockMethod lockMethodTable,
@@ -309,7 +311,7 @@ extern LockData *GetLockStatusData(void);
 extern const char *GetLockmodeName(LOCKMODE mode);
 
 #ifdef LOCK_DEBUG
-extern void DumpLocks(void);
+extern void DumpLocks(PGPROC *proc);
 extern void DumpAllLocks(void);
 #endif
 

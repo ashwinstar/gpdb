@@ -15,6 +15,7 @@
 #define XACT_H
 
 #include "access/xlog.h"
+#include "access/twophase.h"
 #include "storage/relfilenode.h"
 #include "nodes/pg_list.h"
 #include "utils/nabstime.h"
@@ -47,6 +48,7 @@ extern bool XactReadOnly;
 typedef enum
 {
 	XACT_EVENT_COMMIT,
+	XACT_EVENT_PREPARE,
 	XACT_EVENT_ABORT
 } XactEvent;
 
@@ -72,8 +74,11 @@ typedef void (*SubXactCallback) (SubXactEvent event, SubTransactionId mySubid,
  * XLOG allows to store some information in high 4 bits of log
  * record xl_info field
  */
-#define XLOG_XACT_COMMIT	0x00
-#define XLOG_XACT_ABORT		0x20
+#define XLOG_XACT_COMMIT                      0x00
+#define XLOG_XACT_PREPARE                     0x10
+#define XLOG_XACT_ABORT                       0x20
+#define XLOG_XACT_COMMIT_PREPARED     			0x30
+#define XLOG_XACT_ABORT_PREPARED				0x40
 
 typedef struct xl_xact_commit
 {
@@ -86,6 +91,11 @@ typedef struct xl_xact_commit
 } xl_xact_commit;
 
 #define MinSizeOfXactCommit offsetof(xl_xact_commit, xnodes)
+
+
+/* high bits of xl_info field tells us if it's a prepare,
+ * abort or commit record
+ */
 
 typedef struct xl_xact_abort
 {
@@ -119,9 +129,9 @@ extern void CommandCounterIncrement(void);
 extern void StartTransactionCommand(void);
 extern void CommitTransactionCommand(void);
 extern void AbortCurrentTransaction(void);
-extern void BeginTransactionBlock(void);
-extern bool EndTransactionBlock(void);
-extern void UserAbortTransactionBlock(void);
+extern void BeginTransactionBlock(char *gid);
+extern bool EndTransactionBlock(char *gid);
+extern void UserAbortTransactionBlock(char *gid);
 extern void ReleaseSavepoint(List *options);
 extern void DefineSavepoint(char *name);
 extern void RollbackToSavepoint(List *options);
@@ -131,6 +141,7 @@ extern void RollbackAndReleaseCurrentSubTransaction(void);
 extern bool IsSubTransaction(void);
 extern bool IsTransactionBlock(void);
 extern bool IsTransactionOrTransactionBlock(void);
+extern bool IsGlobalTransaction(void);
 extern char TransactionBlockStatusCode(void);
 extern void AbortOutOfAnyTransaction(void);
 extern void PreventTransactionChain(void *stmtNode, const char *stmtType);
@@ -142,6 +153,10 @@ extern void RegisterSubXactCallback(SubXactCallback callback, void *arg);
 extern void UnregisterSubXactCallback(SubXactCallback callback, void *arg);
 
 extern void RecordTransactionCommit(void);
+
+extern void CommitPreparedTransaction(char *gid);
+extern void AbortPreparedTransaction(char *gid);
+extern void PrepareTransactionBlock(char *gid);
 
 extern int	xactGetCommittedChildren(TransactionId **ptr);
 

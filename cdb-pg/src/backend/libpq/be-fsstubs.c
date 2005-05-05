@@ -503,6 +503,13 @@ lo_export(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32(1);
 }
 
+void
+AtPrepare_LargeObject(void)
+{
+	if (fscxt != NULL)
+		elog(ERROR, "two-phase commit of large objects is not implemented");
+}
+
 /*
  * AtEOXact_LargeObject -
  *		 prepares large objects for transaction commit

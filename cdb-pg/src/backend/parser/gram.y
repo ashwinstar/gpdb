@@ -380,11 +380,11 @@ static void doNegateFloat(Value *v);
 	NOCREATEUSER NONE NOT NOTHING NOTIFY NOTNULL NOWAIT NULL_P
 	NULLIF NUMERIC
 
-	OBJECT_P OF OFF OFFSET OIDS OLD ON ONLY OPERATOR OPTION OR
+	OBJECT_P OF OFF OFFSET OIDS OLD ON ONEPHASE ONLY OPERATOR OPTION OR
 	ORDER OUT_P OUTER_P OVERLAPS OVERLAY OWNER
 
 	PARTIAL PASSWORD PLACING POSITION
-	PRECISION PRESERVE PREPARE PRIMARY
+	PRECISION PRESERVE PREPARE PREPARED PRIMARY
 	PRIOR PRIVILEGES PROCEDURAL PROCEDURE
 
 	QUOTE
@@ -3977,6 +3977,14 @@ TransactionStmt:
 					n->options = $3;
 					$$ = (Node *)n;
 				}
+			| BEGIN_P Sconst transaction_mode_list_or_empty
+				{
+					TransactionStmt *n = makeNode(TransactionStmt);
+					n->kind = TRANS_STMT_BEGIN;
+					n->options = $3;
+					n->gid = $2;
+					$$ = (Node *)n;
+				}
 			| START TRANSACTION transaction_mode_list_or_empty
 				{
 					TransactionStmt *n = makeNode(TransactionStmt);
@@ -3984,6 +3992,27 @@ TransactionStmt:
 					n->options = $3;
 					$$ = (Node *)n;
 				}
+			| PREPARE opt_transaction Sconst
+		        {
+	                TransactionStmt *n = makeNode(TransactionStmt);
+	                n->kind = TRANS_STMT_PREPARE;
+	                n->gid = $3;
+	                $$ = (Node *)n;
+		        }
+			| COMMIT PREPARED Sconst
+		        {
+	                TransactionStmt *n = makeNode(TransactionStmt);
+	                n->kind = TRANS_STMT_COMMIT_PREPARED;
+	                n->gid = $3;
+	                $$ = (Node *)n;
+		        }
+			| ROLLBACK PREPARED Sconst
+		        {
+	                TransactionStmt *n = makeNode(TransactionStmt);
+	                n->kind = TRANS_STMT_ROLLBACK_PREPARED;
+	                n->gid = $3;
+	                $$ = (Node *)n;
+		        }
 			| COMMIT opt_transaction
 				{
 					TransactionStmt *n = makeNode(TransactionStmt);
@@ -3991,6 +4020,13 @@ TransactionStmt:
 					n->options = NIL;
 					$$ = (Node *)n;
 				}
+			| COMMIT Sconst
+		        {
+	                TransactionStmt *n = makeNode(TransactionStmt);
+	                n->kind = TRANS_STMT_COMMIT;
+	                n->gid = $2;
+	                $$ = (Node *)n;
+		        }
 			| END_P opt_transaction
 				{
 					TransactionStmt *n = makeNode(TransactionStmt);
@@ -4003,6 +4039,14 @@ TransactionStmt:
 					TransactionStmt *n = makeNode(TransactionStmt);
 					n->kind = TRANS_STMT_ROLLBACK;
 					n->options = NIL;
+					$$ = (Node *)n;
+				}
+			| ROLLBACK Sconst
+				{
+					TransactionStmt *n = makeNode(TransactionStmt);
+					n->kind = TRANS_STMT_ROLLBACK;
+					n->options = NIL;
+					n->gid = $2;
 					$$ = (Node *)n;
 				}
 			| SAVEPOINT ColId
@@ -7780,12 +7824,14 @@ unreserved_keyword:
 			| OBJECT_P
 			| OF
 			| OIDS
+			| ONEPHASE
 			| OPERATOR
 			| OPTION
 			| OWNER
 			| PARTIAL
 			| PASSWORD
 			| PREPARE
+			| PREPARED
 			| PRESERVE
 			| PRIOR
 			| PRIVILEGES

@@ -261,6 +261,10 @@ CREATE VIEW pg_locks AS
     FROM pg_lock_status() AS L(relation oid, database oid, 
         transaction xid, pid int4, mode text, granted boolean);
 
+CREATE VIEW pg_prepared_xacts AS
+    SELECT *
+      FROM pg_prepared_xact() AS L(transaction xid, gid text, usesysid integer);
+
 CREATE VIEW pg_settings AS 
     SELECT * 
     FROM pg_show_all_settings() AS A 

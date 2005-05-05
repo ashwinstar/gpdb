@@ -143,7 +143,7 @@ SubTransGetTopmostTransaction(TransactionId xid)
 				previousXid = xid;
 
 	/* Can't ask about stuff that might not be around anymore */
-	Assert(TransactionIdFollowsOrEquals(xid, TransactionXmin));
+	/* Assert(TransactionIdFollowsOrEquals(xid, TransactionXmin)); */
 
 	while (TransactionIdIsValid(parentXid))
 	{

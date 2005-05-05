@@ -242,6 +242,7 @@ static const ScanKeyword ScanKeywords[] = {
 	{"position", POSITION},
 	{"precision", PRECISION},
 	{"prepare", PREPARE},
+	{"prepared", PREPARED},
 	{"preserve", PRESERVE},
 	{"primary", PRIMARY},
 	{"prior", PRIOR},

@@ -28,6 +28,7 @@
 #include "access/xlog.h"
 #include "access/xlog_internal.h"
 #include "access/xlogutils.h"
+#include "access/twophase.h"
 #include "catalog/catversion.h"
 #include "catalog/pg_control.h"
 #include "miscadmin.h"
@@ -484,6 +485,13 @@ static void remove_backup_label(void);
 XLogRecPtr
 XLogInsert(RmgrId rmid, uint8 info, XLogRecData *rdata)
 {
+	return XLogInsertOnBehalf(rmid, info, rdata, GetCurrentTransactionIdIfAny());
+}
+
+
+XLogRecPtr
+XLogInsertOnBehalf(RmgrId rmid, uint8 info, XLogRecData *rdata, TransactionId xid)
+{
 	XLogCtlInsert *Insert = &XLogCtl->Insert;
 	XLogRecord *record;
 	XLogContRecord *contrecord;
@@ -748,7 +756,7 @@ begin:;
 	/* Insert record header */
 
 	record->xl_prev = Insert->PrevRecord;
-	record->xl_xid = GetCurrentTransactionIdIfAny();
+	record->xl_xid = xid;
 	record->xl_len = len;		/* doesn't include backup blocks */
 	record->xl_info = info;
 	record->xl_rmid = rmid;
@@ -3573,9 +3581,10 @@ BootStrapXLOG(void)
 
 	WriteControlFile();
 
-	/* Bootstrap the commit log, too */
+	/* Bootstrap the commit log, subtransaction and twophase subsystems, too */
 	BootStrapCLOG();
 	BootStrapSUBTRANS();
+	BootStrapTwoPhase();
 }
 
 static char *
@@ -4450,6 +4459,9 @@ StartupXLOG(void)
 	}
 #endif
 
+	StartupSUBTRANS();
+	RecoverPreparedTransactions();
+	
 	if (InRecovery)
 	{
 		int			rmid;
@@ -4511,7 +4523,6 @@ StartupXLOG(void)
 
 	/* Start up the commit log, too */
 	StartupCLOG();
-	StartupSUBTRANS();
 
 	ereport(LOG,
 			(errmsg("database system is ready")));
@@ -4898,6 +4909,7 @@ CreateCheckPoint(bool shutdown, bool force)
 
 	CheckPointCLOG();
 	CheckPointSUBTRANS();
+	CheckPointTwoPhase();
 	FlushBufferPool();
 
 	START_CRIT_SECTION();

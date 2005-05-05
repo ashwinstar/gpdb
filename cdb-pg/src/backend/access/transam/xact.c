@@ -1,5 +1,6 @@
 /*-------------------------------------------------------------------------
  *
+ * 
  * xact.c
  *	  top level transaction system support routines
  *
@@ -17,11 +18,13 @@
 
 #include "postgres.h"
 
-#include <time.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 #include "access/subtrans.h"
 #include "access/xact.h"
+#include "access/twophase.h"
+#include "access/twophase_rmgr.h"
 #include "catalog/heap.h"
 #include "catalog/index.h"
 #include "catalog/namespace.h"
@@ -36,6 +39,7 @@
 #include "storage/proc.h"
 #include "storage/sinval.h"
 #include "storage/smgr.h"
+#include "storage/lockrmgr.h"
 #include "utils/guc.h"
 #include "utils/inval.h"
 #include "utils/memutils.h"
@@ -67,7 +71,8 @@ typedef enum TransState
 	TRANS_START,
 	TRANS_INPROGRESS,
 	TRANS_COMMIT,
-	TRANS_ABORT
+	TRANS_ABORT,
+	TRANS_PREPARE
 } TransState;
 
 /*
@@ -98,7 +103,10 @@ typedef enum TBlockState
 	TBLOCK_SUBABORT_END,		/* failed subxact, ROLLBACK received */
 	TBLOCK_SUBABORT_PENDING,	/* live subxact, ROLLBACK received */
 	TBLOCK_SUBRESTART,			/* live subxact, ROLLBACK TO received */
-	TBLOCK_SUBABORT_RESTART		/* failed subxact, ROLLBACK TO received */
+	TBLOCK_SUBABORT_RESTART,		/* failed subxact, ROLLBACK TO received */
+	
+	/* two-phase commit stats */
+	TBLOCK_PREPARE
 } TBlockState;
 
 /*
@@ -120,6 +128,8 @@ typedef struct TransactionStateData
 	AclId		currentUser;	/* subxact start current_user */
 	bool		prevXactReadOnly;		/* entry-time xact r/o state */
 	struct TransactionStateData *parent;		/* back link to parent */
+	char    *gid;					/* stash for the gid between calls to 
+                                  PrepareTransaction and PrepareTransactionBlock */
 } TransactionStateData;
 
 typedef TransactionStateData *TransactionState;
@@ -151,10 +161,13 @@ static TransactionStateData TopTransactionStateData = {
 	NIL,						/* subcommitted child Xids */
 	0,							/* entry-time current userid */
 	false,						/* entry-time xact r/o state */
-	NULL						/* link to parent state block */
+	NULL,                    /* link to parent state block */
+       0                     /* a stash for holding the gid between
+                              * PrepareTransactionBlock and PrepareTransaction */
 };
 
 static TransactionState CurrentTransactionState = &TopTransactionStateData;
+static char gid_array[GIDSIZE];
 
 /*
  * The subtransaction ID and command ID assignment counters are global
@@ -219,6 +232,9 @@ static void CleanupTransaction(void);
 static void CommitTransaction(void);
 static void RecordTransactionAbort(void);
 static void StartTransaction(void);
+static void RecordTransactionCommitPrepared(TransactionId xid, int nchildren, TransactionId *children);
+static void RecordTransactionAbortPrepared(TransactionId xid, int nchildren, TransactionId *children);
+
 
 static void RecordSubTransactionCommit(void);
 static void StartSubTransaction(void);
@@ -266,6 +282,8 @@ IsTransactionState(void)
 		case TRANS_INPROGRESS:
 			return true;
 		case TRANS_COMMIT:
+			return true;
+		case TRANS_PREPARE:
 			return true;
 		case TRANS_ABORT:
 			return true;
@@ -523,6 +541,73 @@ CommandCounterIncrement(void)
 	AtStart_Cache();
 }
 
+/*
+ * FlushXLog
+ *
+ * Calls XLogFlush, but takes care of commit delay first.
+ */
+static void
+FlushXLog(XLogRecPtr recptr)
+{
+      /*
+       * Sleep before flush! So we can flush more than one commit
+       * records per single fsync.  (The idea is some other backend
+       * may do the XLogFlush while we're sleeping.  This needs work
+       * still, because on most Unixen, the minimum select() delay
+       * is 10msec or more, which is way too long.)
+       *
+       * We do not sleep if enableFsync is not turned on, nor if there
+       * are fewer than CommitSiblings other backends with active
+       * transactions.
+       */
+      if (CommitDelay > 0 && enableFsync &&
+              CountActiveBackends() >= CommitSiblings)
+      {
+              struct timeval delay;
+
+              delay.tv_sec = 0;
+              delay.tv_usec = CommitDelay;
+              (void) select(0, NULL, NULL, NULL, &delay);
+      }
+      XLogFlush(recptr);
+}
+
+/* ----------------------------------------------------------------
+ *                                            PrepareTransaction stuff
+ * ----------------------------------------------------------------
+ */
+
+
+/*
+ *    RecordTransactionCommitPrepared
+ */
+static void
+RecordTransactionCommitPrepared(TransactionId xid, int nchildren, TransactionId *children)
+{
+      XLogRecData rdata[2];
+      XLogRecPtr      recptr;
+
+      elog(DEBUG1, "Committing prepared transaction %d\n", xid);
+
+      START_CRIT_SECTION();
+
+      rdata[0].buffer = InvalidBuffer;
+      rdata[0].data = (char *)&nchildren;
+      rdata[0].len = sizeof(nchildren);
+      rdata[0].next = &rdata[1];
+      rdata[1].buffer = InvalidBuffer;
+      rdata[1].data = (char *)children;
+      rdata[1].len = sizeof(TransactionId) * nchildren;
+      rdata[1].next = NULL;
+
+      recptr = XLogInsertOnBehalf(RM_XACT_ID, XLOG_XACT_COMMIT_PREPARED | XLOG_NO_TRAN, rdata, xid);
+      FlushXLog(recptr);
+
+      TransactionIdCommit(xid);
+      TransactionIdCommitTree(nchildren, children);
+
+      END_CRIT_SECTION();
+}
 
 /* ----------------------------------------------------------------
  *						StartTransaction stuff
@@ -650,6 +735,45 @@ AtSubStart_ResourceOwner(void)
 }
 
 /* ----------------------------------------------------------------
+ *                       PrepareTransaction stuff
+ * ----------------------------------------------------------------
+ */
+
+/*
+ *    RecordTransactionAbortPrepared
+ */
+static void
+RecordTransactionAbortPrepared(TransactionId xid, int nchildren, TransactionId *children)
+{
+      XLogRecData rdata[2];
+      XLogRecPtr      recptr;
+
+      START_CRIT_SECTION();
+
+      rdata[0].buffer = InvalidBuffer;
+      rdata[0].data = (char *)&nchildren;
+      rdata[0].len = sizeof(nchildren);
+      rdata[0].next = &rdata[1];
+      rdata[1].buffer = InvalidBuffer;
+      rdata[1].data = (char *)children;
+      rdata[1].len = sizeof(TransactionId) * nchildren;
+      rdata[1].next = NULL;
+
+      recptr = XLogInsertOnBehalf(RM_XACT_ID, XLOG_XACT_ABORT_PREPARED | XLOG_NO_TRAN, rdata, xid);
+      FlushXLog(recptr);
+
+      /*
+       * Mark the transaction aborted in clog.  This is not absolutely
+       * necessary but we may as well do it while we are here.
+       */
+      TransactionIdAbort(xid);
+      TransactionIdAbortTree(nchildren, children);
+
+      END_CRIT_SECTION();
+}
+
+
+/* ----------------------------------------------------------------
  *						CommitTransaction stuff
  * ----------------------------------------------------------------
  */
@@ -763,22 +887,7 @@ RecordTransactionCommit(void)
 		 */
 		if (MyXactMadeXLogEntry)
 		{
-			/*
-			 * Sleep before flush! So we can flush more than one commit
-			 * records per single fsync.  (The idea is some other backend
-			 * may do the XLogFlush while we're sleeping.  This needs work
-			 * still, because on most Unixen, the minimum select() delay
-			 * is 10msec or more, which is way too long.)
-			 *
-			 * We do not sleep if enableFsync is not turned on, nor if there
-			 * are fewer than CommitSiblings other backends with active
-			 * transactions.
-			 */
-			if (CommitDelay > 0 && enableFsync &&
-				CountActiveBackends() >= CommitSiblings)
-				pg_usleep(CommitDelay);
-
-			XLogFlush(recptr);
+			FlushXLog(recptr);
 		}
 
 		/*
@@ -958,6 +1067,255 @@ RecordSubTransactionCommit(void)
 		END_CRIT_SECTION();
 	}
 }
+
+/*    
+ *    AbortPreparedTransaction
+ */
+void  
+AbortPreparedTransaction(char *gid)
+{     
+      TransactionId xid;
+      TransactionId *children;
+      TwoPhaseFileHeader hdr;
+      int fd;
+
+      xid = MarkAsNoLongerPrepared(gid, GetUserId());
+ 
+      if(xid == InvalidTransactionId)
+              elog(ERROR, "No prepared transaction with gid %s", gid);
+
+      fd = OpenTwoPhaseFile(xid, &hdr, &children);
+      RecordTransactionAbortPrepared(xid, hdr.nsubxacts, children);
+      ProcessRecords(fd, xid, postabort_callbacks);
+      close(fd);
+      RemoveTwoPhaseFile(xid);
+      lock_postabort(xid);
+}     
+
+/*    
+ *    CommitPreparedTransaction
+ */    
+void  
+CommitPreparedTransaction(char *gid)
+{
+      TransactionId xid;
+      TransactionId *children;
+      TwoPhaseFileHeader hdr;
+      int fd;
+
+      xid = MarkAsNoLongerPrepared(gid, GetUserId());
+
+      if(xid == InvalidTransactionId)
+              elog(ERROR, "No prepared transaction with gid %s", gid);
+
+      fd = OpenTwoPhaseFile(xid, &hdr, &children);
+      RecordTransactionCommitPrepared(xid, hdr.nsubxacts, children);
+      ProcessRecords(fd, xid, postcommit_callbacks);
+      close(fd);
+      RemoveTwoPhaseFile(xid);
+      lock_postcommit(xid);
+}
+
+/*
+ *    PrepareTransaction
+ */
+static void
+PrepareTransaction(void)
+{
+      TransactionState s = CurrentTransactionState;
+      TransactionId xid = GetCurrentTransactionId();
+
+      Assert(MyProc != NULL);
+
+      ShowTransactionState("PrepareTransaction");
+
+      /*
+       * check the current transaction state
+       */
+      Assert(s->state == TRANS_INPROGRESS);
+      Assert(s->parent == NULL);
+
+ 
+      /*
+       * Do pre-commit processing (most of this stuff requires database
+       * access, and in fact could still cause an error...)
+       *
+       * It is possible for CommitHoldablePortals to invoke functions that
+       * queue deferred triggers, and it's also possible that triggers create
+       * holdable cursors.  So we have to loop until there's nothing left to
+       * do. 
+       */     
+      //  TODO TWOPHASE --
+      //for (;;)
+      {
+              /*
+               * Fire all currently pending deferred triggers.
+               */
+              //AfterTriggerFireDeferred();
+       
+              /*
+               * Convert any open holdable cursors into static portals.  If there
+               * weren't any, we are done ... otherwise loop back to check if they
+               * queued deferred triggers.  Lather, rinse, repeat.
+               */
+              //if (!CommitHoldablePortals())
+              //    break;
+      }
+       
+      /* Now we can shut down the deferred-trigger manager */
+      AfterTriggerEndXact();
+       
+      /*
+       * Similarly, let ON COMMIT management do its thing before we start to
+       * commit.
+       */
+      PreCommit_on_commit_actions();
+        
+      /* Prevent cancel/die interrupt while cleaning up */
+      HOLD_INTERRUPTS();
+
+      /*
+       * set the current transaction state information appropriately during
+       * the processing
+       */
+      s->state = TRANS_PREPARE;
+
+      /* Reserve the gid for this transaction. This could still fail if the
+       * gid is already in use. */
+
+      /* TODO: If we fail later, the gid stays reserved until restart */
+      MarkAsPrepared(xid, s->gid, GetUserId());
+
+      StartPrepare(s->gid);
+
+      /*
+       * Do pre-commit processing (most of this stuff requires database
+       * access, and in fact could still cause an error...)
+       */
+
+      AtPrepare_Portals();
+
+      /* handle prepare for large objects */
+      AtPrepare_LargeObject();
+
+      /* NOTIFY commit must come before lower-level cleanup
+       */
+      AtPrepare_Notify();
+
+      /* Update the flat files if we changed pg_database, pg_shadow or pg_group
+       */
+      //  TODO TWOPHASE --  AtPrepare_UpdateFlatFiles();
+
+      /*
+       * Let smgr persist its list of pending deletes.
+       */
+      AtPrepare_smgr();
+
+      AtPrepare_Inval();
+      AtPrepare_GUC();
+
+      LockPersistAll();
+
+      /*
+       * Here is where we really truly prepare.
+       */
+
+      /*
+       * We have to record transaction prepares even if we didn't
+       * make any updates, because the transaction manager might
+       * get confused if we lose a global transaction.
+       */
+
+      /* Tell bufmgr and smgr to prepare for commit */
+      BufmgrCommit();
+
+      EndPrepare();
+
+      /* Break the chain of back-links in the XLOG records I output */
+      MyLastRecPtr.xrecoff = 0;
+      MyXactMadeXLogEntry = false;
+      MyXactMadeTempRelUpdate = false;
+
+      /* Show myself as out of the transaction in PGPROC array */
+      MyProc->logRec.xrecoff = 0;
+
+      /*
+       * Let others know about no transaction in progress by me.
+       *
+       * LWLockAcquire(SInvalLock) is required: UPDATE with xid 0 is blocked by
+       * xid 1' UPDATE, xid 1 is doing commit while xid 2 gets snapshot - if
+       * xid 2' GetSnapshotData sees xid 1 as running then it must see xid 0
+       * as running as well or it will see two tuple versions - one deleted
+       * by xid 1 and one inserted by xid 0.  See notes in GetSnapshotData.
+       */
+      /* Lock SInvalLock because that's what GetSnapshotData uses. */
+      LWLockAcquire(SInvalLock, LW_EXCLUSIVE);
+      MyProc->xid = InvalidTransactionId;
+      MyProc->xmin = InvalidTransactionId;
+      LWLockRelease(SInvalLock);
+
+      /*
+       * This is all post-transaction cleanup.  Note that if an error is raised
+       * here, it's too late to abort the transaction.  This should be just
+       * noncritical resource releasing.
+       *
+       * The ordering of operations is not entirely random.  The idea is:
+       * release resources visible to other backends (eg, files, buffer
+       * pins); then release locks; then release backend-local resources. We
+       * want to release locks at the point where any backend waiting for us
+       * will see our transaction as being fully cleaned up.
+       *
+       * Resources that can be associated with individual queries are handled
+       * by the ResourceOwner mechanism.      The other calls here are for
+       * backend-wide state.
+       */
+
+      CallXactCallbacks(XACT_EVENT_PREPARE);
+
+      ResourceOwnerRelease(TopTransactionResourceOwner,
+                                               RESOURCE_RELEASE_BEFORE_LOCKS,
+                                               true, true);
+
+      ResourceOwnerRelease(TopTransactionResourceOwner,
+                                               RESOURCE_RELEASE_LOCKS,
+                                               true, true);
+      ResourceOwnerRelease(TopTransactionResourceOwner,
+                                               RESOURCE_RELEASE_AFTER_LOCKS,
+                                               true, true);
+
+
+      AtEOXact_SPI(true);
+      AtEOXact_on_commit_actions(true);
+      AtEOXact_Namespace(true);
+      /* smgrcommit already done */
+      AtEOXact_Files();
+      /* TODO: */
+      /* pgstat_count_xact_commit(); */
+
+      CurrentResourceOwner = NULL;
+
+      ResourceOwnerDelete(TopTransactionResourceOwner);
+      s->curTransactionOwner = NULL;
+      CurTransactionResourceOwner = NULL;
+      TopTransactionResourceOwner = NULL;
+
+      AtCommit_Memory();
+
+      s->transactionId = InvalidTransactionId;
+      s->subTransactionId = InvalidSubTransactionId;
+      s->nestingLevel = 0;
+      s->childXids = NIL;
+      s->gid = NULL;
+
+      /*
+       * done with 1st phase commit processing, set current transaction
+       * state back to default
+       */
+      s->state = TRANS_DEFAULT;
+
+      RESUME_INTERRUPTS();
+}
+
 
 /* ----------------------------------------------------------------
  *						AbortTransaction stuff
@@ -1577,6 +1935,7 @@ CommitTransaction(void)
 	s->subTransactionId = InvalidSubTransactionId;
 	s->nestingLevel = 0;
 	s->childXids = NIL;
+	s->gid = NULL;
 
 	/*
 	 * done with commit processing, set current transaction state back to
@@ -1619,7 +1978,8 @@ AbortTransaction(void)
 	/*
 	 * check the current transaction state
 	 */
-	if (s->state != TRANS_INPROGRESS)
+
+    if (s->state != TRANS_INPROGRESS && s->state != TRANS_PREPARE)
 		elog(WARNING, "AbortTransaction while in %s state",
 			 TransStateAsString(s->state));
 	Assert(s->parent == NULL);
@@ -1731,7 +2091,11 @@ CleanupTransaction(void)
 	 * do abort cleanup processing
 	 */
 	AtCleanup_Portals();		/* now safe to release portal memory */
-
+    
+    /* cleanup global transaction */
+    if (s->gid != NULL)
+        MarkAsNoLongerBegun(s->gid, GetUserId());
+    
 	CurrentResourceOwner = NULL;	/* and resource owner */
 	if (TopTransactionResourceOwner)
 		ResourceOwnerDelete(TopTransactionResourceOwner);
@@ -1745,6 +2109,7 @@ CleanupTransaction(void)
 	s->subTransactionId = InvalidSubTransactionId;
 	s->nestingLevel = 0;
 	s->childXids = NIL;
+	s->gid = NULL;
 
 	/*
 	 * done with abort processing, set current transaction state back to
@@ -1807,6 +2172,7 @@ StartTransactionCommand(void)
 		case TBLOCK_SUBABORT_PENDING:
 		case TBLOCK_SUBRESTART:
 		case TBLOCK_SUBABORT_RESTART:
+		case TBLOCK_PREPARE:
 			elog(ERROR, "StartTransactionCommand: unexpected state %s",
 				 BlockStateAsString(s->blockState));
 			break;
@@ -2021,6 +2387,18 @@ CommitTransactionCommand(void)
 				s->blockState = TBLOCK_SUBINPROGRESS;
 			}
 			break;
+			
+             /*
+              * This is the case when we just got the "PREPARE TRANSACTION"
+              * statement, so we prepare the transaction and go back to the
+              * default state.
+              */
+		case TBLOCK_PREPARE:
+			{
+              	PrepareTransaction();
+              	s->blockState = TBLOCK_DEFAULT;
+			}
+             break;
 	}
 }
 
@@ -2146,6 +2524,17 @@ AbortCurrentTransaction(void)
 			CleanupSubTransaction();
 			AbortCurrentTransaction();
 			break;
+
+         case TBLOCK_PREPARE:
+             AbortTransaction();
+             s->blockState = TBLOCK_ABORT;
+             /*
+             s->blockState = TBLOCK_DEFAULT;
+             AbortTransaction();
+             CleanupTransaction();
+             */
+             break;
+
 	}
 }
 
@@ -2408,7 +2797,7 @@ CallSubXactCallbacks(SubXactEvent event,
  *		This executes a BEGIN command.
  */
 void
-BeginTransactionBlock(void)
+BeginTransactionBlock(char *gid)
 {
 	TransactionState s = CurrentTransactionState;
 
@@ -2419,6 +2808,12 @@ BeginTransactionBlock(void)
 			 * begin.
 			 */
 		case TBLOCK_STARTED:
+			if (gid != NULL)
+             {
+				MarkAsBegun(GetCurrentTransactionId(), gid, GetUserId());
+	             s->gid = gid_array;
+	             strncpy(gid_array, gid, GIDSIZE);
+             }
 			s->blockState = TBLOCK_BEGIN;
 			break;
 
@@ -2446,11 +2841,70 @@ BeginTransactionBlock(void)
 		case TBLOCK_SUBABORT_PENDING:
 		case TBLOCK_SUBRESTART:
 		case TBLOCK_SUBABORT_RESTART:
+		case TBLOCK_PREPARE:
 			elog(FATAL, "BeginTransactionBlock: unexpected state %s",
 				 BlockStateAsString(s->blockState));
 			break;
 	}
 }
+
+/*
+ *    PrepareTransactionBlock
+ */
+void
+PrepareTransactionBlock(char *gid)
+{
+      TransactionState s = CurrentTransactionState;
+      
+	  if(s->gid == NULL || strcmp(s->gid, gid) != 0)
+	  {
+		ereport(ERROR, 
+			(errcode(ERRCODE_INVALID_TRANSACTION_STATE),
+			 errmsg("global transaction identifier \"%s\" is not found", gid)));
+	  }
+
+      /*
+       * check the current transaction state
+       */
+      if (s->blockState == TBLOCK_INPROGRESS || s->blockState == TBLOCK_SUBINPROGRESS)
+      {
+              /*
+               * here we are in a transaction block which should commit when we
+               * get to the upcoming CommitTransactionCommand() so we set the
+               * state to "PREPARE".  CommitTransactionCommand() will recognize this
+               * and log the transaction as prepared and return us to the default state
+               */
+              s->blockState = TBLOCK_PREPARE;
+              //s->gid = gid;
+              return;
+      }
+
+      if (s->blockState == TBLOCK_ABORT)
+      {
+              /*
+               * here, we are in a transaction block which aborted and since the
+               * AbortTransaction() was already done, we do whatever is needed
+               * and change to the special "END ABORT" state.  The upcoming
+               * CommitTransactionCommand() will recognise this and then put us
+               * back in the default state.
+               */
+              //s->blockState = TBLOCK_ABORT_END;
+              return;
+      }
+
+      /*
+       * here, the user issued PREPARE TRANSACTION when not inside a
+       * transaction. Issue a WARNING and go to abort state.  The upcoming
+       * call to CommitTransactionCommand() will then put us back into the
+       * default state.
+       */
+      ereport(WARNING,
+                      (errcode(ERRCODE_NO_ACTIVE_SQL_TRANSACTION),
+                       errmsg("there is no transaction in progress")));
+      AbortTransaction();
+      s->blockState = TBLOCK_ABORT_END;
+}
+
 
 /*
  *	EndTransactionBlock
@@ -2465,10 +2919,26 @@ BeginTransactionBlock(void)
  * resource owner, etc while executing inside a Portal.
  */
 bool
-EndTransactionBlock(void)
+EndTransactionBlock(char *gid)
 {
 	TransactionState s = CurrentTransactionState;
 	bool		result = false;
+    
+    /* check global transactrion */
+    if(s->gid != NULL)
+    {
+        if (gid == NULL || strncmp(s->gid, gid, GIDSIZE) != 0)
+             ereport(ERROR, 
+                (errcode(ERRCODE_INVALID_TRANSACTION_STATE),
+                errmsg("Can not commit global transaction identifier \"%s\"", gid)));
+    }
+    else
+    { 
+        if (gid != NULL)
+             ereport(ERROR, 
+                (errcode(ERRCODE_INVALID_TRANSACTION_STATE),
+                errmsg("Can not commit local transaction")));
+    }
 
 	switch (s->blockState)
 	{
@@ -2562,11 +3032,16 @@ EndTransactionBlock(void)
 		case TBLOCK_SUBABORT_PENDING:
 		case TBLOCK_SUBRESTART:
 		case TBLOCK_SUBABORT_RESTART:
+		case TBLOCK_PREPARE:
 			elog(FATAL, "EndTransactionBlock: unexpected state %s",
 				 BlockStateAsString(s->blockState));
 			break;
 	}
 
+    /* onephase commit, remove gid from active transaction array */
+    if (gid != NULL)
+        MarkAsNoLongerBegun(gid, GetUserId());
+        
 	return result;
 }
 
@@ -2577,9 +3052,25 @@ EndTransactionBlock(void)
  * As above, we don't actually do anything here except change blockState.
  */
 void
-UserAbortTransactionBlock(void)
+UserAbortTransactionBlock(char *gid)
 {
 	TransactionState s = CurrentTransactionState;
+
+    /* check global transactrion */
+    if(s->gid != NULL)
+    {
+        if (gid == NULL || strncmp(s->gid, gid, GIDSIZE) != 0)
+             ereport(ERROR, 
+                (errcode(ERRCODE_INVALID_TRANSACTION_STATE),
+                errmsg("Can not rollback global transaction identifier \"%s\"", gid)));
+    }
+    else
+    { 
+        if (gid != NULL)
+             ereport(ERROR, 
+                (errcode(ERRCODE_INVALID_TRANSACTION_STATE),
+                errmsg("Can not rollback local0 transaction")));
+    }
 
 	switch (s->blockState)
 	{
@@ -2653,10 +3144,15 @@ UserAbortTransactionBlock(void)
 		case TBLOCK_SUBABORT_PENDING:
 		case TBLOCK_SUBRESTART:
 		case TBLOCK_SUBABORT_RESTART:
+		case TBLOCK_PREPARE:
 			elog(FATAL, "UserAbortTransactionBlock: unexpected state %s",
 				 BlockStateAsString(s->blockState));
 			break;
 	}
+    
+    /* remove gid from active transaction array */
+    if (gid != NULL)
+        MarkAsNoLongerBegun(gid, GetUserId());
 }
 
 /*
@@ -2754,6 +3250,7 @@ ReleaseSavepoint(List *options)
 		case TBLOCK_SUBABORT_PENDING:
 		case TBLOCK_SUBRESTART:
 		case TBLOCK_SUBABORT_RESTART:
+		case TBLOCK_PREPARE:
 			elog(FATAL, "ReleaseSavepoint: unexpected state %s",
 				 BlockStateAsString(s->blockState));
 			break;
@@ -2851,6 +3348,7 @@ RollbackToSavepoint(List *options)
 		case TBLOCK_SUBABORT_PENDING:
 		case TBLOCK_SUBRESTART:
 		case TBLOCK_SUBABORT_RESTART:
+		case TBLOCK_PREPARE:
 			elog(FATAL, "RollbackToSavepoint: unexpected state %s",
 				 BlockStateAsString(s->blockState));
 			break;
@@ -2958,6 +3456,7 @@ BeginInternalSubTransaction(char *name)
 		case TBLOCK_SUBABORT_PENDING:
 		case TBLOCK_SUBRESTART:
 		case TBLOCK_SUBABORT_RESTART:
+		case TBLOCK_PREPARE:
 			elog(FATAL, "BeginInternalSubTransaction: unexpected state %s",
 				 BlockStateAsString(s->blockState));
 			break;
@@ -3014,6 +3513,7 @@ RollbackAndReleaseCurrentSubTransaction(void)
 		case TBLOCK_BEGIN:
 		case TBLOCK_SUBBEGIN:
 		case TBLOCK_INPROGRESS:
+		case TBLOCK_PREPARE:
 		case TBLOCK_END:
 		case TBLOCK_SUBEND:
 		case TBLOCK_ABORT:
@@ -3070,6 +3570,7 @@ AbortOutOfAnyTransaction(void)
 			case TBLOCK_INPROGRESS:
 			case TBLOCK_END:
 			case TBLOCK_ABORT_PENDING:
+			case TBLOCK_PREPARE:
 				/* In a transaction, so clean up */
 				AbortTransaction();
 				CleanupTransaction();
@@ -3161,6 +3662,7 @@ TransactionBlockStatusCode(void)
 		case TBLOCK_SUBINPROGRESS:
 		case TBLOCK_END:
 		case TBLOCK_SUBEND:
+		case TBLOCK_PREPARE:
 			return 'T';			/* in transaction */
 		case TBLOCK_ABORT:
 		case TBLOCK_SUBABORT:
@@ -3191,6 +3693,20 @@ IsSubTransaction(void)
 		return true;
 
 	return false;
+}
+
+/*
+ * IsGlobalTransaction
+ */
+bool
+IsGlobalTransaction(void)
+{
+    TransactionState s = CurrentTransactionState;
+
+    if (s->gid != NULL)
+        return true;
+
+    return false;
 }
 
 /*
@@ -3659,6 +4175,8 @@ BlockStateAsString(TBlockState blockState)
 			return "SUB RESTART";
 		case TBLOCK_SUBABORT_RESTART:
 			return "SUB AB RESTRT";
+		case TBLOCK_PREPARE:
+             return "PREPARE";
 	}
 	return "UNRECOGNIZED";
 }
@@ -3682,6 +4200,8 @@ TransStateAsString(TransState state)
 			return "ABORT";
 		case TRANS_INPROGRESS:
 			return "INPROGR";
+         case TRANS_PREPARE:
+             return "PREPARE";
 	}
 	return "UNRECOGNIZED";
 }
@@ -3730,33 +4250,22 @@ void
 xact_redo(XLogRecPtr lsn, XLogRecord *record)
 {
 	uint8		info = record->xl_info & ~XLR_INFO_MASK;
+    TransactionId xid = record->xl_xid;
+    TransactionId max_xid;
+    TransactionId *sub_xids = NULL;
+    int nsubxacts = 0;
+    int     i;
 
 	if (info == XLOG_XACT_COMMIT)
 	{
 		xl_xact_commit *xlrec = (xl_xact_commit *) XLogRecGetData(record);
-		TransactionId *sub_xids;
-		TransactionId max_xid;
-		int			i;
 
-		TransactionIdCommit(record->xl_xid);
+		TransactionIdCommit(xid);
 
 		/* Mark committed subtransactions as committed */
-		sub_xids = (TransactionId *) &(xlrec->xnodes[xlrec->nrels]);
+        nsubxacts = xlrec->nsubxacts;
+        sub_xids = (TransactionId *) &(xlrec->xnodes[xlrec->nrels]);
 		TransactionIdCommitTree(xlrec->nsubxacts, sub_xids);
-
-		/* Make sure nextXid is beyond any XID mentioned in the record */
-		max_xid = record->xl_xid;
-		for (i = 0; i < xlrec->nsubxacts; i++)
-		{
-			if (TransactionIdPrecedes(max_xid, sub_xids[i]))
-				max_xid = sub_xids[i];
-		}
-		if (TransactionIdFollowsOrEquals(max_xid,
-										 ShmemVariableCache->nextXid))
-		{
-			ShmemVariableCache->nextXid = max_xid;
-			TransactionIdAdvance(ShmemVariableCache->nextXid);
-		}
 
 		/* Make sure files supposed to be dropped are dropped */
 		for (i = 0; i < xlrec->nrels; i++)
@@ -3769,28 +4278,13 @@ xact_redo(XLogRecPtr lsn, XLogRecord *record)
 	{
 		xl_xact_abort *xlrec = (xl_xact_abort *) XLogRecGetData(record);
 		TransactionId *sub_xids;
-		TransactionId max_xid;
-		int			i;
 
 		TransactionIdAbort(record->xl_xid);
 
 		/* Mark subtransactions as aborted */
+		nsubxacts = xlrec->nsubxacts;
 		sub_xids = (TransactionId *) &(xlrec->xnodes[xlrec->nrels]);
 		TransactionIdAbortTree(xlrec->nsubxacts, sub_xids);
-
-		/* Make sure nextXid is beyond any XID mentioned in the record */
-		max_xid = record->xl_xid;
-		for (i = 0; i < xlrec->nsubxacts; i++)
-		{
-			if (TransactionIdPrecedes(max_xid, sub_xids[i]))
-				max_xid = sub_xids[i];
-		}
-		if (TransactionIdFollowsOrEquals(max_xid,
-										 ShmemVariableCache->nextXid))
-		{
-			ShmemVariableCache->nextXid = max_xid;
-			TransactionIdAdvance(ShmemVariableCache->nextXid);
-		}
 
 		/* Make sure files supposed to be dropped are dropped */
 		for (i = 0; i < xlrec->nrels; i++)
@@ -3799,8 +4293,45 @@ xact_redo(XLogRecPtr lsn, XLogRecord *record)
 			smgrdounlink(smgropen(xlrec->xnodes[i]), false, true);
 		}
 	}
+    else if (info == XLOG_XACT_PREPARE)
+    {
+		ereport(LOG, (errmsg("Redo prepare")));
+		RecreateTwoPhaseFile(xid, XLogRecGetData(record), record->xl_len);
+    }
+    else if (info == XLOG_XACT_COMMIT_PREPARED)
+    {
+		nsubxacts = *((int *)XLogRecGetData(record));
+		sub_xids =  (TransactionId *)(XLogRecGetData(record) + sizeof(int));
+		ereport(LOG, (errmsg("Redo commit prepared")));
+		TransactionIdCommit(xid);
+		TransactionIdCommitTree(nsubxacts, sub_xids);
+		RemoveTwoPhaseFile(xid);
+    }
+    else if (info == XLOG_XACT_ABORT_PREPARED)
+    {
+		nsubxacts = *((int *)XLogRecGetData(record));
+		sub_xids =  (TransactionId *)(XLogRecGetData(record) + sizeof(int));
+		ereport(LOG, (errmsg("Redo abort prepared")));
+		TransactionIdAbort(xid);
+		TransactionIdAbortTree(nsubxacts, sub_xids);
+		RemoveTwoPhaseFile(xid);
+    }
 	else
 		elog(PANIC, "xact_redo: unknown op code %u", info);
+
+    /* Make sure nextXid is beyond any XID mentioned in the record */
+    max_xid = xid;
+    for (i = 0; i < nsubxacts; i++)
+    {
+	    if (TransactionIdPrecedes(max_xid, sub_xids[i]))
+	            max_xid = sub_xids[i];
+    }
+    if (TransactionIdFollowsOrEquals(max_xid, ShmemVariableCache->nextXid))
+    {
+	    ShmemVariableCache->nextXid = max_xid;
+	    TransactionIdAdvance(ShmemVariableCache->nextXid);
+    }
+
 }
 
 void
@@ -3878,6 +4409,36 @@ xact_desc(char *buf, uint8 xl_info, char *rec)
 				sprintf(buf + strlen(buf), " %u", xacts[i]);
 		}
 	}
+    else if (info == XLOG_XACT_PREPARE)
+    {
+        sprintf(buf + strlen(buf), "prepare");
+    }
+    else if (info == XLOG_XACT_COMMIT_PREPARED)
+    {
+        int nsubxacts = *((int *)rec);
+        TransactionId *sub_xids =  (TransactionId *)(((char *)rec) + sizeof(int));
+
+        sprintf(buf + strlen(buf), "commit_prepared: ");
+        if (nsubxacts > 0)
+        {
+            sprintf(buf + strlen(buf), "; subxacts:");
+            for (i = 0; i < nsubxacts; i++)
+                sprintf(buf + strlen(buf), " %u", sub_xids[i]);
+        }
+    }
+    else if (info == XLOG_XACT_ABORT_PREPARED)
+    {
+        int nsubxacts = *((int *)rec);
+        TransactionId *sub_xids =  (TransactionId *)(((char *)rec) + sizeof(int));
+
+        sprintf(buf + strlen(buf), "abort_prepared: ");
+        if (nsubxacts > 0)
+        {
+            sprintf(buf + strlen(buf), "; subxacts:");
+            for (i = 0; i < nsubxacts; i++)
+                sprintf(buf + strlen(buf), " %u", sub_xids[i]);
+        }
+    }
 	else
 		strcat(buf, "UNKNOWN");
 }

@@ -26,6 +26,7 @@
 #include "utils/inval.h"
 #include "utils/tqual.h"
 #include "miscadmin.h"
+#include "access/twophase.h"
 
 
 #ifdef XIDCACHE_DEBUG
@@ -599,6 +600,14 @@ TransactionIdIsInProgress(TransactionId xid)
 	locked = false;
 
 	/*
+     * Prepared transactions are considered in-progress.
+     */     
+    if(TransactionIdIsPrepared(xid)) {
+	    result = true;
+        goto result_known;
+    }
+
+    /*
 	 * If none of the relevant caches overflowed, we know the Xid is not
 	 * running without looking at pg_subtrans.
 	 */
@@ -758,6 +767,7 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 	TransactionId globalxmin;
 	int			index;
 	int			count = 0;
+	int          nPrepared;
 
 	Assert(snapshot != NULL);
 
@@ -782,7 +792,7 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 		 * First call for this snapshot
 		 */
 		snapshot->xip = (TransactionId *)
-			malloc(MaxBackends * sizeof(TransactionId));
+			malloc((MaxBackends + max_prepared_xacts) * sizeof(TransactionId));
 		if (snapshot->xip == NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
@@ -796,6 +806,7 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 	 * lock; if not, this is a read-only operation so it can be shared.
 	 */
 	LWLockAcquire(SInvalLock, serializable ? LW_EXCLUSIVE : LW_SHARED);
+	StartPreparedTransactionListScan();
 
 	/*--------------------
 	 * Unfortunately, we have to call ReadNewTransactionId() after acquiring
@@ -863,11 +874,28 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 					globalxmin = xid;
 		}
 	}
+	
+	/* Take a snapshot of prepared transactions too */
+    if(nPrepared > 0)
+    {
+        TransactionId xid;
+        while((xid = NextPreparedTransactionId()) != InvalidTransactionId)
+        {
+            if (!TransactionIdIsNormal(xid) || TransactionIdFollowsOrEquals(xid, xmax))
+                continue;
+
+            if (TransactionIdPrecedes(xid, xmin))
+                xmin = xid;
+
+            snapshot->xip[count++] = xid;
+        }
+    }
 
 	if (serializable)
 		MyProc->xmin = TransactionXmin = xmin;
 
 	LWLockRelease(SInvalLock);
+	EndPreparedTransactionListScan();
 
 	/*
 	 * Update globalxmin to include actual process xids.  This is a

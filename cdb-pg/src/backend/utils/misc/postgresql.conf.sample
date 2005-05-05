@@ -102,6 +102,7 @@
 #bgwriter_percent = 1		# 0-100% of dirty buffers in each round
 #bgwriter_maxpages = 100	# 0-1000 buffers max per round
 
+#max_prepared_transactions = 100 # 0-1000
 
 #---------------------------------------------------------------------------
 # WRITE AHEAD LOG

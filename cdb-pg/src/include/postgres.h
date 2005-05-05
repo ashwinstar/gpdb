@@ -277,6 +277,20 @@ typedef Datum *DatumPtr;
 #define TransactionIdGetDatum(X) ((Datum) SET_4_BYTES((X)))
 
 /*
+ * DatumGetAclId
+ *            Returns user or group identifier value of a datum.
+ */
+
+#define DatumGetAclId(X) ((AclId) GET_4_BYTES(X))
+
+/*
+ * AclIdGetDatum
+ *            Returns datum representation for a user or group identifier.
+ */
+
+#define AclIdGetDatum(X) ((AclId) SET_4_BYTES((X)))
+
+/*
  * DatumGetCommandId
  *		Returns command identifier value of a datum.
  */

@@ -34,12 +34,18 @@
 #include <unistd.h>
 
 #include "access/xact.h"
+#include "access/twophase.h"
+#include "access/twophase_rmgr.h"
 #include "miscadmin.h"
 #include "storage/proc.h"
+#include "storage/lockrmgr.h"
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
 #include "utils/resowner.h"
 
+/* A dummy PGPROC structure used to hold proclock entries for
+   locks that belong to transactions that are in prepared state */
+static struct PGPROC *persistedLocksProc;
 
 /* This configuration variable is used to set the lock table size */
 int			max_locks_per_xact; /* set by guc.c */
@@ -76,6 +82,12 @@ static const char *const lock_mode_names[] =
 	"ExclusiveLock",
 	"AccessExclusiveLock"
 };
+
+/* Record that's written to xlog when a lock is persisted */
+typedef struct TwoPhaseLockRecord {
+    LOCKTAG locktag;
+    LOCKMASK holdMask;
+} TwoPhaseLockRecord;
 
 
 #ifdef LOCK_DEBUG
@@ -159,6 +171,9 @@ PROCLOCK_PRINT(const char *where, const PROCLOCK *proclockP)
 #define PROCLOCK_PRINT(where, proclockP)
 #endif   /* not LOCK_DEBUG */
 
+static bool LockAcquireForProc(LOCKMETHODID lockmethodid, LOCKTAG *locktag,
+                             TransactionId xid, LOCKMODE lockmode, bool dontWait, PGPROC *proc);
+
 
 static void RemoveLocalLock(LOCALLOCK *locallock);
 static void GrantLockLocal(LOCALLOCK *locallock, ResourceOwner owner);
@@ -166,6 +181,11 @@ static int WaitOnLock(LOCKMETHODID lockmethodid, LOCALLOCK *locallock,
 		   ResourceOwner owner);
 static void LockCountMyLocks(SHMEM_OFFSET lockOffset, PGPROC *proc,
 				 int *myHolding);
+
+static bool RemoveProcLock(LOCKMETHODID lockmethodid, PROCLOCK *proclock, LOCK *lock);
+
+static void fillLockRecord(TwoPhaseLockRecord *xldata, PROCLOCK *proclock);
+static void lock_cleanup(void);
 
 
 /*
@@ -175,7 +195,15 @@ static void LockCountMyLocks(SHMEM_OFFSET lockOffset, PGPROC *proc,
 void
 InitLocks(void)
 {
-	/* NOP */
+    bool found;
+	/* Initialize the dummy PGPROC structure for locks from prepared
+       transactions */
+    persistedLocksProc = (PGPROC *) ShmemInitStruct("persistedLocksProc", sizeof(PGPROC), &found);
+    if (!found) {
+            MemSet(persistedLocksProc, 0, sizeof(PGPROC));
+            persistedLocksProc->pid = 0;
+            SHMQueueInit(&persistedLocksProc->procLocks);
+    }
 }
 
 
@@ -440,6 +468,13 @@ bool
 LockAcquire(LOCKMETHODID lockmethodid, LOCKTAG *locktag,
 			TransactionId xid, LOCKMODE lockmode, bool dontWait)
 {
+	return LockAcquireForProc(lockmethodid, locktag, xid, lockmode, dontWait, MyProc);
+}
+
+bool
+LockAcquireForProc(LOCKMETHODID lockmethodid, LOCKTAG *locktag,
+                      TransactionId xid, LOCKMODE lockmode, bool dontWait, PGPROC *proc)
+{
 	LOCALLOCKTAG localtag;
 	LOCALLOCK  *locallock;
 	LOCK	   *lock;
@@ -588,7 +623,7 @@ LockAcquire(LOCKMETHODID lockmethodid, LOCKTAG *locktag,
 	 */
 	MemSet(&proclocktag, 0, sizeof(PROCLOCKTAG));		/* must clear padding */
 	proclocktag.lock = MAKE_OFFSET(lock);
-	proclocktag.proc = MAKE_OFFSET(MyProc);
+	proclocktag.proc = MAKE_OFFSET(proc);
 	TransactionIdStore(xid, &proclocktag.xid);
 
 	/*
@@ -631,7 +666,7 @@ LockAcquire(LOCKMETHODID lockmethodid, LOCKTAG *locktag,
 		proclock->holdMask = 0;
 		/* Add proclock to appropriate lists */
 		SHMQueueInsertBefore(&lock->procLocks, &proclock->lockLink);
-		SHMQueueInsertBefore(&MyProc->procLocks, &proclock->procLink);
+		SHMQueueInsertBefore(&proc->procLocks, &proclock->procLink);
 		PROCLOCK_PRINT("LockAcquire: new", proclock);
 	}
 	else
@@ -685,7 +720,7 @@ LockAcquire(LOCKMETHODID lockmethodid, LOCKTAG *locktag,
 	 * If this process (under any XID) is a holder of the lock, just grant
 	 * myself another one without blocking.
 	 */
-	LockCountMyLocks(proclock->tag.lock, MyProc, myHolding);
+	LockCountMyLocks(proclock->tag.lock, proc, myHolding);
 	if (myHolding[lockmode] > 0)
 	{
 		GrantLock(lock, proclock, lockmode);
@@ -705,7 +740,7 @@ LockAcquire(LOCKMETHODID lockmethodid, LOCKTAG *locktag,
 	else
 		status = LockCheckConflicts(lockMethodTable, lockmode,
 									lock, proclock,
-									MyProc, myHolding);
+									proc, myHolding);
 
 	if (status == STATUS_OK)
 	{
@@ -758,7 +793,7 @@ LockAcquire(LOCKMETHODID lockmethodid, LOCKTAG *locktag,
 				if (myHolding[i] > 0)
 					heldLocks |= LOCKBIT_ON(i);
 			}
-			MyProc->heldLocks = heldLocks;
+			proc->heldLocks = heldLocks;
 		}
 
 		/*
@@ -810,6 +845,45 @@ RemoveLocalLock(LOCALLOCK *locallock)
 	if (!locallock)
 		elog(WARNING, "locallock table corrupted");
 }
+
+/* Subroutine to unlink and free a proclock entry, and garbage
+ * collect the lock object.
+ */
+static bool
+RemoveProcLock(LOCKMETHODID lockmethodid, PROCLOCK *proclock, LOCK *lock)
+{
+	PROCLOCK_PRINT("RemoveProcLock: deleting", proclock);
+	SHMQueueDelete(&proclock->lockLink);
+	SHMQueueDelete(&proclock->procLink);
+	proclock = (PROCLOCK *) hash_search(LockMethodProcLockHash[lockmethodid],
+                                        (void *) &(proclock->tag),
+                                        HASH_REMOVE, NULL);
+	if (!proclock)
+	{
+	    elog(WARNING, "proclock table corrupted");
+	    return FALSE;
+	}
+
+	if (lock->nRequested == 0)
+	{
+		/*
+		 * We've just released the last lock, so garbage-collect the
+		 * lock object.
+		 */
+		LOCK_PRINT("RemoveProcLock: deleting", lock, 0);
+		Assert(SHMQueueEmpty(&(lock->procLocks)));
+		lock = (LOCK *) hash_search(LockMethodLockHash[lockmethodid],
+                                    (void *) &(lock->tag),
+                                    HASH_REMOVE, NULL);
+		if (!lock)
+		{
+			elog(WARNING, "lock table corrupted");
+			    return FALSE;
+		}
+	}
+	return TRUE;
+}
+
 
 /*
  * LockCheckConflicts -- test whether requested lock conflicts
@@ -1265,6 +1339,50 @@ LockRelease(LOCKMETHODID lockmethodid, LOCKTAG *locktag,
 		RemoveLocalLock(locallock);
 		return FALSE;
 	}
+
+        wakeupNeeded = UnGrantLock(lock, lockmode, proclock, lockMethodTable);
+
+	/*
+	 * If this was my last hold on this lock, delete my entry in the
+	 * proclock table.
+	 */
+	if (proclock->holdMask == 0)
+	{
+		if(!RemoveProcLock(lockmethodid, proclock, lock))
+		{
+			LWLockRelease(masterLock);
+
+			RemoveLocalLock(locallock);
+			return FALSE;
+		}
+	}
+    /*
+     * Wake up waiters if needed.
+     */
+    if (wakeupNeeded)
+	    ProcLockWakeup(lockMethodTable, lock);
+
+	LWLockRelease(masterLock);
+
+	RemoveLocalLock(locallock);
+	return TRUE;
+}
+
+/*
+ * UnGrantLock -- opposite of GrantLock.
+ *
+ * Updates the lock and proclock data structures to show that the lock
+ * is no longer held nor requested by the current holder.
+ *
+ * Returns true if there were any waiters waiting on the lock that
+ * should now be woken up with ProcLockWakeup.
+ */
+static bool
+UnGrantLock(LOCK *lock, LOCKMODE lockmode,
+                        PROCLOCK *proclock, LockMethod lockMethodTable)
+{
+	bool wakeupNeeded = false;
+
 	Assert((lock->nRequested > 0) && (lock->requested[lockmode] > 0));
 	Assert((lock->nGranted > 0) && (lock->granted[lockmode] > 0));
 	Assert(lock->nGranted <= lock->nRequested);
@@ -1306,58 +1424,7 @@ LockRelease(LOCKMETHODID lockmethodid, LOCKTAG *locktag,
 	proclock->holdMask &= LOCKBIT_OFF(lockmode);
 	PROCLOCK_PRINT("LockRelease: updated", proclock);
 
-	/*
-	 * If this was my last hold on this lock, delete my entry in the
-	 * proclock table.
-	 */
-	if (proclock->holdMask == 0)
-	{
-		PROCLOCK_PRINT("LockRelease: deleting", proclock);
-		SHMQueueDelete(&proclock->lockLink);
-		SHMQueueDelete(&proclock->procLink);
-		proclock = (PROCLOCK *) hash_search(LockMethodProcLockHash[lockmethodid],
-											(void *) &(proclock->tag),
-											HASH_REMOVE, NULL);
-		if (!proclock)
-		{
-			LWLockRelease(masterLock);
-			elog(WARNING, "proclock table corrupted");
-			RemoveLocalLock(locallock);
-			return FALSE;
-		}
-	}
-
-	if (lock->nRequested == 0)
-	{
-		/*
-		 * We've just released the last lock, so garbage-collect the lock
-		 * object.
-		 */
-		Assert(SHMQueueEmpty(&(lock->procLocks)));
-		lock = (LOCK *) hash_search(LockMethodLockHash[lockmethodid],
-									(void *) &(lock->tag),
-									HASH_REMOVE, NULL);
-		if (!lock)
-		{
-			LWLockRelease(masterLock);
-			elog(WARNING, "lock table corrupted");
-			RemoveLocalLock(locallock);
-			return FALSE;
-		}
-	}
-	else
-	{
-		/*
-		 * Wake up waiters if needed.
-		 */
-		if (wakeupNeeded)
-			ProcLockWakeup(lockMethodTable, lock);
-	}
-
-	LWLockRelease(masterLock);
-
-	RemoveLocalLock(locallock);
-	return TRUE;
+	return wakeupNeeded;
 }
 
 /*
@@ -1507,45 +1574,15 @@ LockReleaseAll(LOCKMETHODID lockmethodid, bool allxids)
 
 		PROCLOCK_PRINT("LockReleaseAll: deleting", proclock);
 
-		/*
-		 * Remove the proclock entry from the linked lists
-		 */
-		SHMQueueDelete(&proclock->lockLink);
-		SHMQueueDelete(&proclock->procLink);
+		//Assert(proclock->holdMask == 0);
 
-		/*
-		 * remove the proclock entry from the hashtable
-		 */
-		proclock = (PROCLOCK *) hash_search(LockMethodProcLockHash[lockmethodid],
-											(void *) &(proclock->tag),
-											HASH_REMOVE,
-											NULL);
-		if (!proclock)
+		if(!RemoveProcLock(lockmethodid, proclock, lock))
 		{
 			LWLockRelease(masterLock);
-			elog(WARNING, "proclock table corrupted");
 			return FALSE;
 		}
 
-		if (lock->nRequested == 0)
-		{
-			/*
-			 * We've just released the last lock, so garbage-collect the
-			 * lock object.
-			 */
-			LOCK_PRINT("LockReleaseAll: deleting", lock, 0);
-			Assert(SHMQueueEmpty(&(lock->procLocks)));
-			lock = (LOCK *) hash_search(LockMethodLockHash[lockmethodid],
-										(void *) &(lock->tag),
-										HASH_REMOVE, NULL);
-			if (!lock)
-			{
-				LWLockRelease(masterLock);
-				elog(WARNING, "lock table corrupted");
-				return FALSE;
-			}
-		}
-		else if (wakeupNeeded)
+		if (wakeupNeeded)
 			ProcLockWakeup(lockMethodTable, lock);
 
 next_item:
@@ -1685,6 +1722,208 @@ LockReassignCurrentOwner(void)
 	}
 }
 
+static void   
+fillLockRecord(TwoPhaseLockRecord *xldata, PROCLOCK *proclock)
+{     
+    LOCK *lock = (LOCK *) MAKE_PTR(proclock->tag.lock);
+   
+    memcpy(&(xldata->locktag), &(lock->tag), sizeof(LOCKTAG));
+    xldata->holdMask = proclock->holdMask;
+}     
+        
+/* Go through locallocks, reassign all proclocks to 
+ * the dummy proc, and release all locallocks.
+ */    
+bool   
+LockPersistAll(void)
+{     
+    HASH_SEQ_STATUS status;
+    SHM_QUEUE  *procLocks = &(MyProc->procLocks);
+    LWLockId        masterLock;
+    LockMethod      lockMethodTable;
+    int                     numLockModes;
+    LOCALLOCK  *locallock;
+    PROCLOCK   *oldproclock;
+    PROCLOCK   *newproclock;
+    LOCK       *lock;
+    LOCKMETHODID lockmethodid = DEFAULT_LOCKMETHOD;
+    PROCLOCKTAG proclocktag;
+    bool found;
+    TwoPhaseLockRecord record;
+
+#ifdef LOCK_DEBUG
+    if (Trace_locks)
+		elog(LOG, "AtPrepare_Lock: lockmethod=%d", lockmethodid);
+#endif
+
+    lockMethodTable = LockMethods[lockmethodid];
+    if (!lockMethodTable)
+    {
+		elog(WARNING, "bad lock method: %d", lockmethodid);
+		return FALSE;
+    }
+
+    numLockModes = lockMethodTable->numLockModes;
+    masterLock = lockMethodTable->masterLock;
+
+    /*
+     * First we run through the locallock table and get rid of unwanted
+     * entries, then we scan the process's proclocks and get rid of those.
+     * We do this separately because we may have multiple locallock
+     * entries pointing to the same proclock, and we daren't end up with
+     * any dangling pointers.
+     */
+    hash_seq_init(&status, LockMethodLocalHash[lockmethodid]);
+
+    while ((locallock = (LOCALLOCK *) hash_seq_search(&status)) != NULL)
+    {
+		if (locallock->proclock == NULL || locallock->lock == NULL)
+        {
+        		/*
+			 * We must've run out of shared memory while trying to set up
+			 * this lock.  Just forget the local entry.
+			 */
+	        Assert(locallock->nLocks == 0);
+	        RemoveLocalLock(locallock);
+	        continue;
+		}
+			
+		/* Ignore items that are not of the lockmethod to be removed */
+		if (LOCALLOCK_LOCKMETHOD(*locallock) != lockmethodid)
+	        continue;
+		
+		/*
+		 * Ignore locks with Xid=0
+		 */
+		if (TransactionIdEquals(locallock->tag.xid, InvalidTransactionId))
+	        continue;
+		
+		RemoveLocalLock(locallock);
+	}
+
+      LWLockAcquire(masterLock, LW_EXCLUSIVE);
+
+      oldproclock = (PROCLOCK *) SHMQueueNext(procLocks, procLocks,
+                                              offsetof(PROCLOCK, procLink));
+
+       while (oldproclock)
+       {
+              PROCLOCK   *nextHolder;
+
+              /* Get link first, since we may unlink/delete this proclock */
+              nextHolder = (PROCLOCK *) SHMQueueNext(procLocks, &oldproclock->procLink,
+                                                     offsetof(PROCLOCK, procLink));
+
+              Assert(oldproclock->tag.proc == MAKE_OFFSET(MyProc));
+
+              lock = (LOCK *) MAKE_PTR(oldproclock->tag.lock);
+
+              /* Ignore items that are not of the lockmethod to be removed */
+              if (LOCK_LOCKMETHOD(*lock) != lockmethodid)
+                      goto next_item;
+
+              /*
+               * Ignore locks with Xid=0
+               */
+              if (TransactionIdEquals(oldproclock->tag.xid, InvalidTransactionId))
+                      goto next_item;
+
+              PROCLOCK_PRINT("AtPrepare_Lock", oldproclock);
+              LOCK_PRINT("AtPrepare_Lock", lock, 0);
+              Assert(lock->nRequested >= 0);
+              Assert(lock->nGranted >= 0);
+              Assert(lock->nGranted <= lock->nRequested);
+              Assert((oldproclock->holdMask & ~lock->grantMask) == 0);
+
+              Assert((lock->nRequested >= 0) && (lock->nGranted >= 0));
+              Assert(lock->nGranted <= lock->nRequested);
+              LOCK_PRINT("AtPrepare_Lock: updated", lock, 0);
+
+
+
+              /*
+               * First, we need to create a new proclock structure that is identical to
+               * the old one, except that the new one points to persistedLocksProc.
+               * Then, we insert the new proclock in the LOCK.lockHolders
+               * list, right next to the old one, and then the old proclock is removed
+               * from the linked lists and finally from the hashtable.
+               */
+
+              /*
+               * Create the hash key for the proclock table.
+               */
+              MemSet(&proclocktag, 0, sizeof(PROCLOCKTAG));           /* must clear padding,
+                                                                        * needed */
+              proclocktag.lock = oldproclock->tag.lock;
+              proclocktag.proc = MAKE_OFFSET(persistedLocksProc);
+              TransactionIdStore(oldproclock->tag.xid, &proclocktag.xid);
+
+              newproclock = (PROCLOCK *) hash_search(LockMethodProcLockHash[lockmethodid],
+                                                  (void *) &proclocktag,
+                                                  HASH_ENTER, &found);
+              if (!newproclock)
+              {
+                  LWLockRelease(masterLock);
+                  ereport(ERROR,
+		                  (errcode(ERRCODE_OUT_OF_MEMORY),
+                           errmsg("out of memory")));
+                  return FALSE;
+              }
+
+              /*
+               * If new, initialize the new entry
+               */
+              if (!found)
+              {
+                      newproclock->holdMask = oldproclock->holdMask;
+                      /* Add proclock to appropriate lists */
+                      SHMQueueInsertBefore(&lock->procLocks, &newproclock->lockLink);
+                      SHMQueueInsertBefore(&persistedLocksProc->procLocks, &newproclock->procLink);
+                      PROCLOCK_PRINT("LockPersistAll: new", newproclock);
+              }
+
+              /* Make a recovery record that can be used to reacquire the
+               * lock after shutdown or crash.
+               */
+              {
+                      LOCK *lock = (LOCK *) MAKE_PTR(oldproclock->tag.lock);
+                      memcpy(&(record.locktag), &(lock->tag), sizeof(LOCKTAG));
+                      record.holdMask = oldproclock->holdMask;
+              }
+              RegisterTwoPhaseRecord(TWOPHASE_RM_LOCK_ID, &record, sizeof(TwoPhaseLockRecord));
+
+              PROCLOCK_PRINT("LockPersistAll: deleting", oldproclock);
+
+              /* remove the old proclock entry from the hashtable and linked lists */
+              SHMQueueDelete(&oldproclock->lockLink);
+              SHMQueueDelete(&oldproclock->procLink);
+              oldproclock = (PROCLOCK *) hash_search(LockMethodProcLockHash[lockmethodid],
+                                                                                      (void *) &(oldproclock->tag),
+                                                                                      HASH_REMOVE,
+                                                                                      NULL);
+              if (!oldproclock)
+              {
+                      LWLockRelease(masterLock);
+                      elog(WARNING, "proclock table corrupted");
+                      return FALSE;
+              }
+
+next_item:
+              oldproclock = nextHolder;
+      }
+
+      LWLockRelease(masterLock);
+
+#ifdef LOCK_DEBUG
+      if (lockmethodid == USER_LOCKMETHOD ? Trace_userlocks : Trace_locks)
+              elog(LOG, "LockReleaseAll done");
+#endif
+
+      return TRUE;
+
+
+}
+
 
 /*
  * Estimate shared-memory space used for lock tables
@@ -1712,6 +1951,9 @@ LockShmemSize(int maxBackends)
 	 * safety margin.
 	 */
 	size += size / 10;
+	
+	/* Count in the dummy PGPROC structure */
+	size += MAXALIGN(sizeof(PGPROC));
 
 	return size;
 }
@@ -1790,16 +2032,14 @@ GetLockmodeName(LOCKMODE mode)
  * Must have already acquired the masterLock.
  */
 void
-DumpLocks(void)
+DumpLocks(PGPROC *proc)
 {
-	PGPROC	   *proc;
 	SHM_QUEUE  *procLocks;
 	PROCLOCK   *proclock;
 	LOCK	   *lock;
 	int			lockmethodid = DEFAULT_LOCKMETHOD;
 	LockMethod	lockMethodTable;
 
-	proc = MyProc;
 	if (proc == NULL)
 		return;
 
@@ -1874,3 +2114,126 @@ DumpAllLocks(void)
 }
 
 #endif   /* LOCK_DEBUG */
+
+/*
+ * LOCK resource manager's routines
+ */
+
+/*
+ * Re-acquire all locks that belong to transactions
+ * that were prepared. Some of these transactions
+ * might have committed/aborted later, but we
+ * release locks belonging to those transactions
+ * later in lock_cleanup, when we know the final
+ * state of all transactions.
+ *
+ * Because this function is run at db startup,
+ * re-acquiring the locks should never conflict
+ * with running transactions because there is none.
+ * All locks are acquired for the same dummy PGPROC
+ * structure, and therefore they should also
+ * never conflict with each other.
+ */
+void
+lock_recover_record(TransactionId xid, void *recdata, uint32 len)
+{
+      TwoPhaseLockRecord *rec = (TwoPhaseLockRecord *) recdata;
+      int lockmode;
+      bool success;
+
+      for(lockmode = 0; lockmode < MAX_LOCKMODES; lockmode++) {
+              if(rec->holdMask & LOCKBIT_ON(lockmode)) {
+                      success = LockAcquireForProc(rec->locktag.lockmethodid, &rec->locktag,
+                                                   xid, lockmode, true, persistedLocksProc);
+                      if(success) {
+                              elog(DEBUG1, "Lock re-acquired");
+                      } else {
+                              elog(WARNING, "Couldn't re-acquire lock");
+                      }
+              }
+      }
+}
+
+void
+lock_postcommit(TransactionId xid)
+{
+      lock_cleanup();
+}
+
+void
+lock_postabort(TransactionId xid)
+{
+      lock_cleanup();
+}
+
+/*
+ * This releases any locks that were acquired on behalf transactions
+ * that later aborted or committed.
+ */
+static void
+lock_cleanup(void) {
+      SHM_QUEUE  *procLocks = &(persistedLocksProc->procLocks);
+      PROCLOCK   *proclock;
+      PROCLOCK   *nextHolder;
+      LWLockId        masterLock;
+      LockMethod      lockMethodTable;
+      int                     i,
+                              numLockModes;
+      LOCK       *lock;
+
+      lockMethodTable = LockMethods[DEFAULT_LOCKMETHOD];
+
+      numLockModes = lockMethodTable->numLockModes;
+      masterLock = lockMethodTable->masterLock;
+
+      LWLockAcquire(masterLock, LW_EXCLUSIVE);
+
+      proclock = (PROCLOCK *) SHMQueueNext(procLocks, procLocks,
+                                                                               offsetof(PROCLOCK, procLink));
+
+      while (proclock)
+      {
+              bool            wakeupNeeded = false;
+
+              /* Get link first, since we may unlink/delete this proclock */
+              nextHolder = (PROCLOCK *) SHMQueueNext(procLocks, &proclock->procLink,
+                                                                                 offsetof(PROCLOCK, procLink));
+
+              lock = (LOCK *) MAKE_PTR(proclock->tag.lock);
+
+              /* We only remove items of transactions that are not in prepared state */
+              if(TransactionIdIsPrepared(proclock->tag.xid))
+                      goto next_item;
+
+              PROCLOCK_PRINT("lock_cleanup", proclock);
+              LOCK_PRINT("lock_cleanup", lock, 0);
+
+              for (i = 1; i <= numLockModes; i++) {
+                      if(!(proclock->holdMask & LOCKBIT_ON(i)))
+                              continue;
+                      wakeupNeeded |= UnGrantLock(lock, i, proclock, lockMethodTable);
+              }
+              LOCK_PRINT("lock_cleanup: updated", lock, 0);
+
+              PROCLOCK_PRINT("lock_cleanup: deleting", proclock);
+
+              if(!RemoveProcLock(DEFAULT_LOCKMETHOD, proclock, lock))
+              {
+                      LWLockRelease(masterLock);
+                      return;
+              }
+              if (wakeupNeeded)
+                      ProcLockWakeup(lockMethodTable, lock);
+next_item:
+              proclock = nextHolder;
+      }
+
+      LWLockRelease(masterLock);
+
+#ifdef LOCK_DEBUG
+      if (Trace_locks)
+              elog(LOG, "lock_cleanup done");
+#endif
+
+      return;
+}

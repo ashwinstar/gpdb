@@ -83,10 +83,14 @@ extern void smgrcommit(void);
 extern void smgrabort(void);
 extern void smgrsync(void);
 
+extern void AtPrepare_smgr(void);
+
 extern void smgr_redo(XLogRecPtr lsn, XLogRecord *record);
 extern void smgr_undo(XLogRecPtr lsn, XLogRecord *record);
 extern void smgr_desc(char *buf, uint8 xl_info, char *rec);
 
+extern void smgr_postcommit_record(TransactionId xid, void *recdata, uint32 len);
+extern void smgr_postabort_record(TransactionId xid, void *recdata, uint32 len);
 
 /* internals: move me elsewhere -- ay 7/94 */
 

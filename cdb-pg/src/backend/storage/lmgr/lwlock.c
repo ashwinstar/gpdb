@@ -113,6 +113,9 @@ NumLWLocks(void)
 
 	/* subtrans.c needs one per SubTrans buffer */
 	numLocks += NUM_SLRU_BUFFERS;
+	
+	/* twophase.c needs one lock */
+	numLocks++;
 
 	/* Perhaps create a few more for use by user-defined modules? */
 

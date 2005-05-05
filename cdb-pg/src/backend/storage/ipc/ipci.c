@@ -16,6 +16,7 @@
 
 #include "access/clog.h"
 #include "access/subtrans.h"
+#include "access/twophase.h"
 #include "access/xlog.h"
 #include "miscadmin.h"
 #include "postmaster/bgwriter.h"
@@ -75,6 +76,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate,
 		size += XLOGShmemSize();
 		size += CLOGShmemSize();
 		size += SUBTRANSShmemSize();
+		size += TwoPhaseShmemSize();
 		size += LWLockShmemSize();
 		size += SInvalShmemSize(maxBackends);
 		size += FreeSpaceShmemSize();
@@ -140,6 +142,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate,
 	XLOGShmemInit();
 	CLOGShmemInit();
 	SUBTRANSShmemInit();
+	TwoPhaseShmemInit();
 	InitBufferPool();
 
 	/*

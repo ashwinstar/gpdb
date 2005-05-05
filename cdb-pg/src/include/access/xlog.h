@@ -117,6 +117,7 @@ extern bool XLOG_DEBUG;
 #endif
 
 extern XLogRecPtr XLogInsert(RmgrId rmid, uint8 info, XLogRecData *rdata);
+extern XLogRecPtr XLogInsertOnBehalf(RmgrId rmid, uint8 info, XLogRecData *rdata, TransactionId xid);
 extern void XLogFlush(XLogRecPtr RecPtr);
 
 extern void xlog_redo(XLogRecPtr lsn, XLogRecord *record);

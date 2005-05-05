@@ -18,6 +18,7 @@
 #include "postgres.h"
 
 #include "access/xact.h"
+#include "access/twophase_rmgr.h"
 #include "commands/tablespace.h"
 #include "storage/bufmgr.h"
 #include "storage/freespace.h"
@@ -674,6 +675,54 @@ smgrimmedsync(SMgrRelation reln)
 						reln->smgr_rnode.dbNode,
 						reln->smgr_rnode.relNode)));
 }
+
+void
+smgr_postcommit_record(TransactionId xid, void *recdata, uint32 len)
+{
+      PendingRelDelete *pending = (PendingRelDelete *) recdata;
+
+      if (pending->atCommit)
+              smgr_internal_unlink(pending->relnode,
+                                                       pending->which,
+                                                       pending->isTemp,
+                                                       false);
+}
+
+void
+smgr_postabort_record(TransactionId xid, void *recdata, uint32 len)
+{
+      PendingRelDelete *pending = (PendingRelDelete *) recdata;
+
+      if (!pending->atCommit)
+              smgr_internal_unlink(pending->relnode,
+                                                       pending->which,
+                                                       pending->isTemp,
+                                                       false);
+}
+
+/*
+ *    AtPrepare_smgr -- Does things related to two-phase commit prepare phase
+ */
+void
+AtPrepare_smgr(void)
+{
+      if(pendingDeletes != NULL) {
+              PendingRelDelete *pending;
+              PendingRelDelete *next;
+
+              for (pending = pendingDeletes; pending != NULL; pending = next)
+              {
+                      next = pending->next;
+
+                      pendingDeletes = next;
+
+                      RegisterTwoPhaseRecord(TWOPHASE_RM_SMGR_ID, pending, sizeof(PendingRelDelete));
+                      /* must explicitly free the list entry */
+                      pfree(pending);
+              }
+      }
+}
+
 
 /*
  *	smgrDoPendingDeletes() -- Take care of relation deletes at end of xact.

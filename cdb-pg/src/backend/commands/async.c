@@ -91,6 +91,7 @@
 #include "utils/fmgroids.h"
 #include "utils/ps_status.h"
 #include "utils/syscache.h"
+#include "access/twophase_rmgr.h"
 
 
 /*
@@ -406,6 +407,32 @@ Async_UnlistenOnExit(int code, Datum arg)
 	StartTransactionCommand();
 	Async_UnlistenAll();
 	CommitTransactionCommand();
+}
+
+/*
+ *--------------------------------------------------------------
+ * AtPrepare_Notify
+ *
+ *            This is called at the prepare phase of a two-phase
+ *            transaction.
+ *
+ *            Not implemented. Throw an error if there was any notify
+ *            requests in this transaction.
+ *
+ *--------------------------------------------------------------
+ */
+void
+AtPrepare_Notify(void)
+{
+      ListCell *p;
+
+      /* elog(ERROR, "notifications with two-phase commit not implemented"); */
+
+      foreach(p, pendingNotifies) {
+              char *relname = lfirst(p);
+              RegisterTwoPhaseRecord(TWOPHASE_RM_NOTIFY_ID, relname, strlen(relname) + 1);
+      }
+      ClearPendingNotifies();
 }
 
 /*
@@ -1037,4 +1064,11 @@ ClearPendingNotifies(void)
 	 * list head pointer.
 	 */
 	pendingNotifies = NIL;
+}
+
+void
+notify_postcommit_record(TransactionId xid, void *recdata, uint32 len)
+{
+      /* Piggyback the current transaction running COMMIT PREPARED */
+      Async_Notify((char *) recdata);
 }

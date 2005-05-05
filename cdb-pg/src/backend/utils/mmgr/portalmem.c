@@ -410,6 +410,15 @@ DropDependentPortals(MemoryContext queryContext)
 	}
 }
 
+/*
+ * This is called at prepare phase of a two-phase commit. Currently,
+ * we don't do anything different from a regular commit.
+ */
+void
+AtPrepare_Portals(void)
+{
+	AtCommit_Portals();
+}
 
 /*
  * Pre-commit processing for portals.

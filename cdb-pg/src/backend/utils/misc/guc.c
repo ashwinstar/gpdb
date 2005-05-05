@@ -1099,6 +1099,15 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"max_prepared_transactions", PGC_POSTMASTER, RESOURCES,
+			gettext_noop("Sets the maximum number of simultaneously prepared transactions."),
+            NULL
+		},
+		&max_prepared_xacts,
+		50, 0, 1000, NULL, NULL
+	},
+
+	{
 		{"max_files_per_process", PGC_POSTMASTER, RESOURCES_KERNEL,
 			gettext_noop("Sets the maximum number of simultaneously open files for each server process."),
 			NULL
@@ -1980,6 +1989,8 @@ static int	size_guc_variables;
 
 static bool guc_dirty;			/* TRUE if need to do commit/abort work */
 
+static bool guc_cannotprepare;                        /* TRUE if this transaction cannot be prepared for 2PC */
+
 static bool reporting_enabled;	/* TRUE to enable GUC_REPORT */
 
 static char *guc_string_workspace;		/* for avoiding memory leaks */
@@ -2507,6 +2518,7 @@ InitializeGUCOptions(void)
 	}
 
 	guc_dirty = false;
+	guc_cannotprepare = false;
 
 	reporting_enabled = false;
 
@@ -2732,6 +2744,7 @@ ResetAllOptions(void)
 					conf->gen.tentative_source = conf->gen.reset_source;
 					conf->gen.status |= GUC_HAVE_TENTATIVE;
 					guc_dirty = true;
+					guc_cannotprepare = true;
 					break;
 				}
 			case PGC_INT:
@@ -2748,6 +2761,7 @@ ResetAllOptions(void)
 					conf->gen.tentative_source = conf->gen.reset_source;
 					conf->gen.status |= GUC_HAVE_TENTATIVE;
 					guc_dirty = true;
+					guc_cannotprepare = true;
 					break;
 				}
 			case PGC_REAL:
@@ -2764,6 +2778,7 @@ ResetAllOptions(void)
 					conf->gen.tentative_source = conf->gen.reset_source;
 					conf->gen.status |= GUC_HAVE_TENTATIVE;
 					guc_dirty = true;
+					guc_cannotprepare = true;
 					break;
 				}
 			case PGC_STRING:
@@ -2804,6 +2819,7 @@ ResetAllOptions(void)
 					conf->gen.tentative_source = conf->gen.reset_source;
 					conf->gen.status |= GUC_HAVE_TENTATIVE;
 					guc_dirty = true;
+					guc_cannotprepare = true;
 					break;
 				}
 		}
@@ -2893,6 +2909,16 @@ push_old_value(struct config_generic * gconf)
 		/* Ensure we remember to pop at end of xact */
 		guc_dirty = true;
 	}
+}
+
+/*
+ * Do GUC processing at transaction prepare.
+ */
+void
+AtPrepare_GUC(void)
+{
+    if (guc_cannotprepare)
+	    elog(ERROR, "two-phase commit of session variables is not implemented");
 }
 
 /*
@@ -3155,8 +3181,11 @@ AtEOXact_GUC(bool isCommit, bool isSubXact)
 	 * know that all outer transaction levels will have stacked values to
 	 * deal with.)
 	 */
-	if (!isSubXact)
+	if (!isSubXact) {
 		guc_dirty = false;
+		guc_cannotprepare = false;
+	}
+
 }
 
 
@@ -3563,6 +3592,7 @@ set_config_option(const char *name, const char *value,
 						conf->gen.tentative_source = source;
 						conf->gen.status |= GUC_HAVE_TENTATIVE;
 						guc_dirty = true;
+						guc_cannotprepare = true;
 					}
 				}
 				break;
@@ -3647,6 +3677,7 @@ set_config_option(const char *name, const char *value,
 						conf->gen.tentative_source = source;
 						conf->gen.status |= GUC_HAVE_TENTATIVE;
 						guc_dirty = true;
+						guc_cannotprepare = true;
 					}
 				}
 				break;
@@ -3731,6 +3762,7 @@ set_config_option(const char *name, const char *value,
 						conf->gen.tentative_source = source;
 						conf->gen.status |= GUC_HAVE_TENTATIVE;
 						guc_dirty = true;
+						guc_cannotprepare = true;
 					}
 				}
 				break;
@@ -3851,6 +3883,7 @@ set_config_option(const char *name, const char *value,
 						conf->gen.tentative_source = source;
 						conf->gen.status |= GUC_HAVE_TENTATIVE;
 						guc_dirty = true;
+						guc_cannotprepare = true;
 					}
 				}
 				else
