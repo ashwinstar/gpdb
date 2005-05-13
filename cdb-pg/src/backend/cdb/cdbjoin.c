@@ -33,7 +33,8 @@ typedef enum {
 		InnerJoin,
 		OuterLeft,
 		OuterRight,
-		OuterBoth
+		OuterBoth,
+		InJoin
 } JoinDirection;
 
 static CdbJoinStrategy *makeJoinStrategy(Movement left, Movement right, FlowType result);
@@ -123,10 +124,11 @@ List *getJoinStrategyList(Join* join)
 	switch ( join->jointype )
 	{
 		case JOIN_INNER: 
-		case JOIN_IN:
-		case JOIN_REVERSE_IN:
-		case JOIN_UNIQUE_INNER:
 			argreqs = InnerJoin;
+			break;
+		
+		case JOIN_IN:
+			argreqs = InJoin;
 			break;
 		
 		case JOIN_LEFT: 
@@ -134,7 +136,6 @@ List *getJoinStrategyList(Join* join)
 			break;
 		
 		case JOIN_FULL: 
-		case JOIN_UNIQUE_OUTER:
 			argreqs = OuterBoth;
 			break;
 		
@@ -142,9 +143,12 @@ List *getJoinStrategyList(Join* join)
 			argreqs = OuterRight;
 			break;
 
+		case JOIN_REVERSE_IN:
+		case JOIN_UNIQUE_INNER:
+		case JOIN_UNIQUE_OUTER:
 		case JOIN_UNION:
 		default:
-			/* This shouldn't happen. */
+			/* These shouldn't happen in an executor-ready plan. */
 			return NIL;
 			break;
 	}
@@ -192,6 +196,13 @@ List *getJoinStrategyList(Join* join)
 					 */
 					result = lappend(result,makeJoinStrategy(MOVEMENT_NONE, MOVEMENT_BROADCAST, FLOW_REPLICATED));
 					break;
+				
+				case InJoin:
+					/* If partitioning is on join attributes, this would
+					 * work and produce a partitioned result, but we don't
+					 * check that case yet.
+					 */
+					break;
 			}
 			break;
 		
@@ -203,6 +214,7 @@ List *getJoinStrategyList(Join* join)
 			switch ( argreqs )
 			{
 				case InnerJoin:
+				case InJoin:
 				case OuterLeft:
 					/* Replicated flow isn't on the driving side. */
 					result = lappend(result,makeJoinStrategy(MOVEMENT_NONE, MOVEMENT_NONE, FLOW_PARTITIONED));

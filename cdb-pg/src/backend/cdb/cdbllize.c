@@ -403,7 +403,12 @@ prescan_walker(Node *node, PlanProfile *context)
 		case T_IndexScan:
 		case T_FunctionScan:
 		case T_SubqueryScan:
-			/* All scan types have a range table entry:	 */
+			/* A Scan is a source of tuples and thus occurs as a leaf of the
+			 * plan tree.  Note, however, that scans may include SubPlan nodes 
+			 * (directly as in a Subquery scan or indirectly through a SubPlan
+			 * node in an expresion) so they aren't necessarily a base case
+			 * for recursion.
+			 */
 			{
 				Plan *plan = (Plan*)node;
 				Scan *scan = (Scan*)plan;
@@ -412,26 +417,66 @@ prescan_walker(Node *node, PlanProfile *context)
 				
 				/* Make sure this is first time. */
 				Assert( plan->flow == NULL ); 
+				
 				/* Make sure we have a valid index. */
 				Assert( 0<rtindex && rtindex<=list_length(localRangeTable(context)) );
 				
+				/* All scan types have a range table entry. */
 				RangeTblEntry *rte = rt_fetch(rtindex, localRangeTable(context));
 				
+				/* The entry type is related to the to the scan type. */
 				switch (nodeTag(node))
 				{
 					case T_SeqScan:
 					case T_TidScan:
-						Assert( rte->rtekind == RTE_RELATION );
-						reloid = rte->relid;
-						plan->flow = makeFlowForRelation(reloid, context);
-						
-						/* Walk into subnodes */
-						return plan_tree_walker(node, prescan_walker, context);
-						
 					case T_IndexScan:
 						Assert( rte->rtekind == RTE_RELATION );
 						reloid = rte->relid;
+						
+						/* Walk into subnodes */
+						if ( plan_tree_walker(node, prescan_walker, context) )
+							return true;
+						
+						/* Create the flow for this node. */
 						plan->flow = makeFlowForRelation(reloid, context);
+						
+						/* The flow may need adjusting if the planner decided
+						 * to thin the targetlist.
+						 */
+						 {
+							ListCell* cell;
+							Var* hvar;
+							TargetEntry *tle;
+							Node* texpr;
+							bool haveHashAttrs = true;
+							int tlistlen = list_length(plan->targetlist);
+							
+							foreach(cell, plan->flow->hashExpr)
+							{
+								hvar = lfirst(cell);
+								if ( hvar->varattno <= tlistlen )
+								{
+									tle = (TargetEntry*)list_nth(plan->targetlist, hvar->varattno-1);
+									texpr = tle->expr;
+									if ( IsA(texpr,Var) && ((Var*)texpr)->varattno == hvar->varattno )
+										continue;
+								}
+								haveHashAttrs = false;
+								break;
+							}
+							
+							if ( !haveHashAttrs )
+							{
+								list_free_deep(plan->flow->hashExpr);
+								plan->flow->hashExpr = NIL;
+								list_free(plan->flow->hashOp);
+								plan->flow->hashOp = NIL;
+							}
+						 }
+						 /* TODO Remove partitions spec if physical tlist disused. */
+						 
+						if ( IsA(node,IndexScan) )
+						{
 						/*  
 						 * IndexScan *s = (IndexScan*)node;
 						 *
@@ -447,10 +492,10 @@ prescan_walker(Node *node, PlanProfile *context)
 						 /* TODO Decide whether/how to record the fact that
 						  *      the flow is ordered! 
 						  */
+						}
 						
-						/* Walk into subnodes */
-						return plan_tree_walker(node, prescan_walker, context);
-				
+						return false;
+										
 					case T_FunctionScan:
 						Assert( rte->rtekind == RTE_FUNCTION );
 						/*
@@ -571,15 +616,6 @@ prescan_walker(Node *node, PlanProfile *context)
 				/* Flow is same as leftree's Flow. */
 				Plan *plan = (Plan*)node;
 				Plan *child = outerPlan(node);
-				
-				/* TODO In case the argument flow is partitioned, assure 
-				 *      that tuples are collocated on the 
-				 *     ((Unique*)node)->numCols attributes of the array
-				 *     ((Unique*)node)->uniqColIdx of AttrNumber
-				 *
-				 * Note the input flow is certainly sorted this way and
-				 * that no projection is done by this node.
-				 */
 
 				Assert( child != NULL && child->flow != NULL );
 				if ( child->flow->flotype == FLOW_REPLICATED
@@ -589,9 +625,21 @@ prescan_walker(Node *node, PlanProfile *context)
 					plan->flow = pull_up_Flow(plan, true);
 					return false;
 				}
+				
+				/* The argument flow is partitioned, so we need to make sure
+				 * that tuples are collocated on the input attributes to be
+				 * uniqued, i.e., the numCols element array of AttrNumber as
+				 * uniqColIdx.
+				 *
+				 * Note the input flow is certainly sorted this way and
+				 * that no projection is done by this node, however, we
+				 * must prove that the unique attributes are a prefix of
+				 * the hash attributes.
+				 */
+				/* TODO - Implement the above. */
 			}
 			detail = "Query involves partitioned duplicate removal.";
-			return true;
+			break; /* Fall through to report error. */
 		
 		case T_NestLoop:
 		case T_MergeJoin:
@@ -874,7 +922,7 @@ bool prescan_hashjoin(Plan *plan, PlanProfile *context)
 				if ( hashOp == NULL )
 					hashOp = getHashMotionInfoList(plan, INFOTYPE_OP);
 					
-				/* Request motion ot repartition inner flow on join key. */
+				/* Request motion to repartition inner flow on join key. */
 				inner->lefttree->flow->req_move = MOVEMENT_REPARTITION;
 				inner->lefttree->flow->flotype = FLOW_PARTITIONED;
 				inner->lefttree->flow->hashExpr = innerexpr;
@@ -883,6 +931,7 @@ bool prescan_hashjoin(Plan *plan, PlanProfile *context)
 				/* Adjust the flow type of the intermediate Hash node. */
 				inner->flow->flotype = FLOW_PARTITIONED;
 				inner->flow->segindex = 0;
+				/* Strictly, should copy hash criteria, but who'd use it? */
 				break;
 				
 			default:
