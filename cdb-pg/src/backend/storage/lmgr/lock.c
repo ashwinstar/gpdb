@@ -177,6 +177,8 @@ static bool LockAcquireForProc(LOCKMETHODID lockmethodid, LOCKTAG *locktag,
 
 static void RemoveLocalLock(LOCALLOCK *locallock);
 static void GrantLockLocal(LOCALLOCK *locallock, ResourceOwner owner);
+static bool UnGrantLock(LOCK *lock, LOCKMODE lockmode,
+                        PROCLOCK *proclock, LockMethod lockMethodTable);
 static int WaitOnLock(LOCKMETHODID lockmethodid, LOCALLOCK *locallock,
 		   ResourceOwner owner);
 static void LockCountMyLocks(SHMEM_OFFSET lockOffset, PGPROC *proc,
