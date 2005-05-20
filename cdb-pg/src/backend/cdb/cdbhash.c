@@ -141,6 +141,7 @@ void cdbhash(CdbHash *h, Datum datum, Oid type)
 	TimeTzADT *timetzptr;
 	Interval *intervalptr;
 	Numeric num;
+	bool bool_buf;
 	uint32 nanbuf; 
 	
 	/*
@@ -323,6 +324,11 @@ void cdbhash(CdbHash *h, Datum datum, Oid type)
 		*/
 			
 		case BOOLOID: /* boolean, 'true'/'false' */
+			bool_buf = DatumGetBool(datum);
+			buf = &bool_buf;
+			len = sizeof(bool_buf);
+			break;
+		
 		case OIDOID:  /* object identifier(oid), maximum 4 billion */
 		default:
 			ereport(ERROR,
