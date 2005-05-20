@@ -637,21 +637,24 @@ bool force_vars_walker(Node *node, void *varno)
 }
 */
 
+
 /*
- * Create a palloc'd vector of Atttribute numbers over the targetlist
- * of the given Agg node corresponding to its grpColIdx vector (which
- * contains Attribute numbers over the targetlist of its child).
+ * Given the targetlist of a [potentially] projecting Plan operator and
+ * a vector of attribute numbers of the single argument relation of the
+ * plan, try to create a palloc'd vector of attribute numbers of the given 
+ * targetlist.
  *
- * A pointer to the new array or a NULL (if there are no grouping
- * attributes) is stored at location pinverse.
+ * A result of true indicates sucess, in which casea pointer to the new 
+ * vector is stored at location pinverse.  Note that  a NULL pointer may
+ * occur with as a sucess, iff the number of attributes if zero.
  *
- * Result = TRUE indicates success.  Note that a NULL pointer at location
- * pinverse counts as a success, iff there are no grouping attributes.
- *
- * Failure results from a mismatch between the targetlist index and the
- * resno declared in the targetlist entries themselves.
+ * A result of false indicates failure which may be due to a failure to 
+ * find a targetlist entry corresponding to a given argument attribute (the
+ * attribute may have been projected out) or due to some irregularity such 
+ * as a mismatch between a targetlist index and the resno declared in the 
+ * targetlist entry itself. 
  */
-bool invertGrpColIdx(Agg *agg, AttrNumber **pinverse)
+bool invertColIdx(List *targetlist, int numCols, AttrNumber *colIdx, AttrNumber **pinverse)
 {
 	ListCell *cell;
 	int i;
@@ -660,16 +663,16 @@ bool invertGrpColIdx(Agg *agg, AttrNumber **pinverse)
 	bool aok = TRUE;
 	
 	*pinverse = NULL;
-	if ( agg->numCols == 0 )
+	if ( numCols == 0 )
 		return aok;
 		
-	invGrpColIdx = palloc(agg->numCols * sizeof(AttrNumber));
+	invGrpColIdx = palloc(numCols * sizeof(AttrNumber));
 	
-	for ( i = 0; i < agg->numCols; i++ )
+	for ( i = 0; i < numCols; i++ )
 	{
-		AttrNumber child_tleidx = agg->grpColIdx[i];
+		AttrNumber child_tleidx = colIdx[i];
 		tleidx = 0;
-		foreach ( cell, agg->plan.targetlist )
+		foreach ( cell, targetlist )
 		{
 			tle = (TargetEntry*)lfirst(cell);
 			tleidx++;
@@ -692,6 +695,25 @@ bool invertGrpColIdx(Agg *agg, AttrNumber **pinverse)
 	}
 	
 	return  aok;
+}
+
+/*
+ * Create a palloc'd vector of Atttribute numbers over the targetlist
+ * of the given Agg node corresponding to its grpColIdx vector (which
+ * contains Attribute numbers over the targetlist of its child).
+ *
+ * A pointer to the new array or a NULL (if there are no grouping
+ * attributes) is stored at location pinverse.
+ *
+ * Result = TRUE indicates success.  Note that a NULL pointer at location
+ * pinverse counts as a success, iff there are no grouping attributes.
+ *
+ * Failure results from a mismatch between the targetlist index and the
+ * resno declared in the targetlist entries themselves.
+ */
+bool invertGrpColIdx(Agg *agg, AttrNumber **pinverse)
+{
+	return invertColIdx(agg->plan.targetlist, agg->numCols, agg->grpColIdx,  pinverse);
 }
 
 

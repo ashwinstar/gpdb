@@ -725,17 +725,17 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_PrepareStmt:
-			CdbSentry(CDB_REJECT, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			PrepareQuery((PrepareStmt *) parsetree);
 			break;
 
 		case T_ExecuteStmt:
-			CdbSentry(CDB_REJECT, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			ExecuteQuery((ExecuteStmt *) parsetree, dest, completionTag);
 			break;
 
 		case T_DeallocateStmt:
-			CdbSentry(CDB_REJECT, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			DeallocateQuery((DeallocateStmt *) parsetree);
 			break;
 

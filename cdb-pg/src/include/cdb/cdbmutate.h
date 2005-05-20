@@ -39,6 +39,7 @@ typedef struct ApplyMotionState
 
 extern Plan *apply_motion(Plan* plan, Query* query);
 extern void assignMotionID(Node* newnode, ApplyMotionState* context, Node* oldnode);
+extern bool invertColIdx(List *targetlist, int numCols, AttrNumber *colIdx, AttrNumber **pinverse);
 extern bool invertGrpColIdx(Agg *agg, AttrNumber **pinverse);
 
 /* Declarations of functions defined in cdbaggmutate.c */

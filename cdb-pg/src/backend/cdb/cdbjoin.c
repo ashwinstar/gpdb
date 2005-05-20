@@ -23,10 +23,17 @@
 
 static double disable_cost = 1.0E10;
 
+/*
+ * R = 0  --  Replicated
+ * D = 1  --  Singleton on Dispatch process
+ * S = 2  --  Singleton on Executor process
+ * P = 3  --  Partitioned
+ */
 typedef enum {
-		RxR = 0,	RxL,	RxP,
-		LxR,		LxL,	LxP,
-		PxR,		PxL,	PxP
+		RxR = 0,	RxD,	RxS,	RxP,
+		DxR,		DxD,	DxS,	DxP,
+		SxR,		SxD,	SxS,	SxP,
+		PxR,		PxD,	PxS,	PxP
 } JoinCombination;
 	
 typedef enum {
@@ -79,13 +86,16 @@ List *getJoinStrategyList(Join* join)
 	switch ( ((Plan*)join)->lefttree->flow->flotype )
 	{
 		case FLOW_REPLICATED:
-			jcomb = 0*3;
+			jcomb = 0*4;
 			break;
 		case FLOW_SINGLETON:
-			jcomb = 1*3;
+			if ( ((Plan*)join)->lefttree->flow->segindex < 0 )
+				jcomb = 1*4;
+			else
+				jcomb = 2*4;
 			break;
 		case FLOW_PARTITIONED:
-			jcomb = 2*3;
+			jcomb = 3*4;
 			break;
 		case FLOW_UNDEFINED:
 		default:
@@ -98,10 +108,13 @@ List *getJoinStrategyList(Join* join)
 			jcomb += 0;
 			break;
 		case FLOW_SINGLETON:
-			jcomb += 1;
+			if ( ((Plan*)join)->righttree->flow->segindex < 0 )
+				jcomb += 1;
+			else
+				jcomb += 2;
 			break;
 		case FLOW_PARTITIONED:
-			jcomb += 2;
+			jcomb += 3;
 			break;
 		case FLOW_UNDEFINED:
 		default:
@@ -156,20 +169,32 @@ List *getJoinStrategyList(Join* join)
 	switch ( jcomb )
 	{
 		case RxR:
-			/* Replicated flows can join in parallel.   The result is a
-			 * replicated flow.  This case may never occur. */
+			/* Replicated flows can join in parallel.   
+			 * The result is a replicated flow.  
+			 * This case may never occur. 
+			 */
 			result = lappend(result,makeJoinStrategy(MOVEMENT_NONE, MOVEMENT_NONE, FLOW_REPLICATED));
 			break;
 		
-		case RxL:
-		case LxR:
-			/* Replicated and singleton where the singleton is on a segment
-			 * can join in parallel, producing a singleton.  Currently,
-			 * though, the only singleton flows are on the entry database,
-			 * so the direct strategy is closed for now.  */
+		case RxD:
+		case DxR:
+			/* Replicated and singleton on the dispatcher doesn't work.
+			 */
+			 break;
+		
+		case RxS:
+		case SxR:
+			/* Replicated and singleton on a segment can join in parallel
+			 * The result is singleton.  
+			 * Currently, the only singleton flows are on the dispatcher,
+			 * so this strategy is unused for now.  
+			 *
+			 * result = lappend(result, makeJoinStrategy(MOVEMENT_NONE, MOVEMENT_NONE, FLOW_SINGLETON));
+			 */
 			 break;
 			 
-		case LxL:
+		case DxD:
+		case SxS:
 			result = lappend(result,makeJoinStrategy(MOVEMENT_NONE, MOVEMENT_NONE, FLOW_SINGLETON));
 			break;
 		
@@ -202,6 +227,7 @@ List *getJoinStrategyList(Join* join)
 					 * work and produce a partitioned result, but we don't
 					 * check that case yet.
 					 */
+					 result = lappend(result,makeJoinStrategy(MOVEMENT_NONE, MOVEMENT_REPARTITION,  FLOW_PARTITIONED));
 					break;
 			}
 			break;
@@ -214,10 +240,14 @@ List *getJoinStrategyList(Join* join)
 			switch ( argreqs )
 			{
 				case InnerJoin:
-				case InJoin:
 				case OuterLeft:
 					/* Replicated flow isn't on the driving side. */
 					result = lappend(result,makeJoinStrategy(MOVEMENT_NONE, MOVEMENT_NONE, FLOW_PARTITIONED));
+					/* Could also broadcast left side, but why? */
+					break;
+					
+				case InJoin:
+					result = lappend(result,makeJoinStrategy(MOVEMENT_REPARTITION, MOVEMENT_NONE, FLOW_PARTITIONED));
 					/* Could also broadcast left side, but why? */
 					break;
 				
@@ -237,10 +267,10 @@ List *getJoinStrategyList(Join* join)
 		 * current environment, to join a local flow to partitioned flow,
 		 * we need to bring all the rows of the partitioned flow to the
 		 * stream that carries the local flow. */		
-		case LxP:
+		case DxP:
 			result = lappend(result,makeJoinStrategy(MOVEMENT_NONE, MOVEMENT_FOCUS, FLOW_SINGLETON));
 			break;		
-		case PxL:
+		case PxD:
 			/* Motion: Focus left on dispatcher. */
 			/* Result: Singleton, Local */
 			result = lappend(result,makeJoinStrategy(MOVEMENT_FOCUS, MOVEMENT_NONE, FLOW_SINGLETON));
@@ -252,10 +282,24 @@ List *getJoinStrategyList(Join* join)
 			 * whether one or both flow were already partitioned that way, but
 			 * we're not, so both sides get repartitioned. */
 			result = lappend(result,makeJoinStrategy(MOVEMENT_REPARTITION, MOVEMENT_REPARTITION, FLOW_PARTITIONED));
-			if ( argreqs!=OuterRight && argreqs!=OuterBoth)
-				result = lappend(result,makeJoinStrategy(MOVEMENT_NONE, MOVEMENT_BROADCAST, FLOW_PARTITIONED));
-			if ( argreqs!=OuterLeft && argreqs!=OuterBoth)
-				result = lappend(result,makeJoinStrategy(MOVEMENT_BROADCAST, MOVEMENT_NONE, FLOW_PARTITIONED));
+			if ( argreqs!=InJoin )
+			{
+				if ( argreqs!=OuterRight && argreqs!=OuterBoth)
+					result = lappend(result,makeJoinStrategy(MOVEMENT_NONE, MOVEMENT_BROADCAST, FLOW_PARTITIONED));
+				if ( argreqs!=OuterLeft && argreqs!=OuterBoth)
+					result = lappend(result,makeJoinStrategy(MOVEMENT_BROADCAST, MOVEMENT_NONE, FLOW_PARTITIONED));
+			}
+			else
+			{
+				result = lappend(result,makeJoinStrategy(MOVEMENT_REPARTITION, MOVEMENT_REPARTITION, FLOW_PARTITIONED));
+			}
+			break;
+		
+		case DxS:
+		case SxD:
+		case SxP:
+		case PxS:
+			/* TODO: Should handle these eventually, but not now. */
 			break;
 	}
 

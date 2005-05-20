@@ -51,6 +51,7 @@
 typedef struct LocalProfile
 {
 	List *rtable; /* The current range table. */
+	bool finished; /* Are we inside a finished (by the planner) branch? */
 	
 	struct LocalProfile *outerFrame; /* The next more global context or NULL. */
 
@@ -85,14 +86,11 @@ typedef struct PlanProfile
  */
 static bool prescan(Plan *plan, Query *query, PlanProfile *context);
 static bool prescan_walker(Node *node, PlanProfile *context);
+
 static bool prescan_hashjoin(Plan *plan, PlanProfile *context);
 static bool prescan_mergejoin(Plan *plan, PlanProfile *context);
 static bool prescan_nestloop(Plan *plan, PlanProfile *context);
 static bool prescan_agg(Plan *plan, PlanProfile *context);
-
-static bool repartitionSort(Sort *sort, List *exprs, List *ops, PlanProfile *context);
-static bool focusSort(Sort *sort, PlanProfile *context);
-static bool broadcastSort(Sort *sort, PlanProfile *context);
 
 static void psError(PlanProfile *context, unsigned code, const char* message, const char* detail);
 static void psErrorNonce(PlanProfile *context,  const char* detail);
@@ -105,9 +103,19 @@ static bool initPlanProfile(PlanProfile *context, Query *query);
 static void pushLocals(PlanProfile *profile, List *rtable);
 static void popLocals(PlanProfile *profile);
 static  List *localRangeTable(PlanProfile *profile);
+static bool isPlanFinished(Node *node, PlanProfile *profile);
 
 static bool scanForManagedTables_walker(Node *node, PlanProfile *context);
 static bool scanForManagedTables(Plan *plan, Query *query);
+
+static void initTargetFlow(Plan *plan, Flow *target, bool stable);
+static bool focusPlan(Plan* plan, bool live, bool stable, bool rescanable, int segidx);
+static bool broadcastPlan(Plan* plan, bool live, bool stable, bool rescanable);
+static bool repartitionPlan(Plan* plan, bool live, bool stable, bool rescanable, List *hashExpr, List *hashOp);
+static bool adjustPlanFlow(Plan *plan, Flow *target, bool stable, bool rescanable, bool live);
+static bool focusBasePlan(Plan *plan, Flow *target, bool stable, bool rescanable, bool live);
+static bool broadcastBasePlan(Plan *plan, Flow *target, bool stable, bool rescanable, bool live);
+static bool repartitionBasePlan(Plan *plan, Flow *target, bool stable, bool rescanable, bool live);
 
 /* ------------------------------------------------------------------------- *
  * Function cdbparallelize() is the main entry point.  
@@ -288,10 +296,13 @@ prescan(Plan *plan, Query *query, PlanProfile *context)
 bool 
 prescan_walker(Node *node, PlanProfile *context)
 {	
+	bool finished;
 	const char *detail = NULL;
 	
 	if ( node == NULL )
 		return false;
+	
+	finished = isPlanFinished(node, context);
 	
 	switch (nodeTag(node))
 	{
@@ -338,7 +349,14 @@ prescan_walker(Node *node, PlanProfile *context)
 				if (expression_tree_walker((Node *) subplan->exprs, prescan_walker, context))
 					return true;
 				
-				/* Set local state for the subplan. */
+				/* Set local state for the subplan.  This has two effects. 
+				 * The local state now has the new rangetable.  Also, the 
+				 * "finished" indicator is cleared, so that when recur to
+				 * parallelize the plan in the SubPlan expression, we will
+				 * make a fresh determination of how to interpret the plan: 
+				 * as sequential or as already parallel (down to the next 
+				 * level of SubPlan).
+				 */
 				pushLocals(context, subplan->rtable);
 				
 				/* Parallelize the subplan.  */
@@ -392,11 +410,12 @@ prescan_walker(Node *node, PlanProfile *context)
 			return false;
 		
 		case T_Motion:
-			/* Since this function is called to begin deciding where to put
-			 * Motion nodes, we shouldn't see any!
+			/* If we see a Motion node, it must be part of a finished plan
+			 * produced by the planner.  We still need to walk into it,  
+			 * though, in case it contains an unfinished subplan.
 			 */
-			Assert(false);
-			break;
+			Assert(finished);
+			return plan_tree_walker(node, prescan_walker, context);
 		
 		case T_SeqScan:
 		case T_TidScan:
@@ -415,8 +434,19 @@ prescan_walker(Node *node, PlanProfile *context)
 				Index rtindex = scan->scanrelid;
 				Oid reloid = InvalidOid;
 				
-				/* Make sure this is first time. */
-				Assert( plan->flow == NULL ); 
+				/* Make sure this is first time. 
+				 * TODO: Clean-up this mess. Our contract with the planner
+				 *       specifies that that there will be a finish flow on
+				 *       a relation scanning node so we shouldn't need to
+				 *       look up relation policy, etc.  But we have to keep
+				 *       working until the planner is ready.  Another part
+				 *       of the contract says that a node in an unfinished
+				 *       part of the plan will have a flow allocated but with
+				 *       a type of FLOW_UNDEFINED. So we accept that but
+				 *       just orphan it to be cleaned up with the memory
+				 *       context.
+				 */
+				Assert( finished || plan->flow == NULL || plan->flow->flotype == FLOW_UNDEFINED );
 				
 				/* Make sure we have a valid index. */
 				Assert( 0<rtindex && rtindex<=list_length(localRangeTable(context)) );
@@ -437,63 +467,65 @@ prescan_walker(Node *node, PlanProfile *context)
 						if ( plan_tree_walker(node, prescan_walker, context) )
 							return true;
 						
-						/* Create the flow for this node. */
-						plan->flow = makeFlowForRelation(reloid, context);
-						
-						/* The flow may need adjusting if the planner decided
-						 * to thin the targetlist.
-						 */
-						 {
-							ListCell* cell;
-							Var* hvar;
-							TargetEntry *tle;
-							Node* texpr;
-							bool haveHashAttrs = true;
-							int tlistlen = list_length(plan->targetlist);
-							
-							foreach(cell, plan->flow->hashExpr)
-							{
-								hvar = lfirst(cell);
-								if ( hvar->varattno <= tlistlen )
-								{
-									tle = (TargetEntry*)list_nth(plan->targetlist, hvar->varattno-1);
-									texpr = tle->expr;
-									if ( IsA(texpr,Var) && ((Var*)texpr)->varattno == hvar->varattno )
-										continue;
-								}
-								haveHashAttrs = false;
-								break;
-							}
-							
-							if ( !haveHashAttrs )
-							{
-								list_free_deep(plan->flow->hashExpr);
-								plan->flow->hashExpr = NIL;
-								list_free(plan->flow->hashOp);
-								plan->flow->hashOp = NIL;
-							}
-						 }
-						 /* TODO Remove partitions spec if physical tlist disused. */
-						 
-						if ( IsA(node,IndexScan) )
+						if ( ! finished )
 						{
-						/*  
-						 * IndexScan *s = (IndexScan*)node;
-						 *
-						 * s->indxid is a list of index oids so, for example,
-						 *   get_rel_name(linitial_oid(s->indxid) is the name of the 
-						 *   first index.
-						 *
-						 * s->indxorderdir is the scan order so for example,
-						 *   ScanDirectionIsBackward(s->indxorderdir) tests for
-						 *   backward.
-						 */
-						 
-						 /* TODO Decide whether/how to record the fact that
-						  *      the flow is ordered! 
-						  */
+							/* Create the flow for this node. */
+							plan->flow = makeFlowForRelation(reloid, context);
+							
+							/* The flow may need adjusting if the planner decided
+							 * to thin the targetlist.
+							 */
+							 {
+								ListCell* cell;
+								Var* hvar;
+								TargetEntry *tle;
+								Node* texpr;
+								bool haveHashAttrs = true;
+								int tlistlen = list_length(plan->targetlist);
+								
+								foreach(cell, plan->flow->hashExpr)
+								{
+									hvar = lfirst(cell);
+									if ( hvar->varattno <= tlistlen )
+									{
+										tle = (TargetEntry*)list_nth(plan->targetlist, hvar->varattno-1);
+										texpr = (Node*)tle->expr;
+										if ( IsA(texpr,Var) && ((Var*)texpr)->varattno == hvar->varattno )
+											continue;
+									}
+									haveHashAttrs = false;
+									break;
+								}
+								
+								if ( !haveHashAttrs )
+								{
+									list_free_deep(plan->flow->hashExpr);
+									plan->flow->hashExpr = NIL;
+									list_free(plan->flow->hashOp);
+									plan->flow->hashOp = NIL;
+								}
+							 }
+							 /* TODO Remove partitions spec if physical tlist disused. */
+							 
+							if ( IsA(node,IndexScan) )
+							{
+							/*  
+							 * IndexScan *s = (IndexScan*)node;
+							 *
+							 * s->indxid is a list of index oids so, for example,
+							 *   get_rel_name(linitial_oid(s->indxid) is the name of the 
+							 *   first index.
+							 *
+							 * s->indxorderdir is the scan order so for example,
+							 *   ScanDirectionIsBackward(s->indxorderdir) tests for
+							 *   backward.
+							 */
+							 
+							 /* TODO Decide whether/how to record the fact that
+							  *      the flow is ordered! 
+							  */
+							}
 						}
-						
 						return false;
 										
 					case T_FunctionScan:
@@ -516,13 +548,8 @@ prescan_walker(Node *node, PlanProfile *context)
 						/*
 						 * Parallelize a Subquery in the FROM clause.
 						 *
-						 * This code replaces
-						 *		detail = "Query contains subqueries.";
-						 *		break;
-						 *
-						 * TODO Validate handling of SubqueryScan node.
-						 *      Is there any special handling needed for
-						 *      parameters.
+						 * TODO Is there any special handling needed for
+						 *      parameters?
 						 */
 						{
 							SubqueryScan *subqueryscan = (SubqueryScan*)node;
@@ -530,19 +557,34 @@ prescan_walker(Node *node, PlanProfile *context)
 							
 							/* The subplan uses the range table of the
 							 * Query node atttached to the subquery RTE.
+							 * Also, the local context forces reexamination
+							 * of the contained query.
 							 */
 							pushLocals(context, rte->subquery->rtable);
 							if ( prescan_walker((Node*)subplan, context) )
 								return true;
 							popLocals(context);
 							
-							((Plan*)node)->flow = pull_up_Flow(subplan, true);
+							if ( !finished )
+							{
+								((Plan*)node)->flow = pull_up_Flow(subplan, true);
+								/* Don't use expressions from the wrong range table */
+								((Plan*)node)->flow->hashExpr = NIL; 
+								((Plan*)node)->flow->hashOp = NIL;
+							}
+							
+							if ( ((Plan*)node)->flow == NULL || ((Plan*)node)->flow->flotype == FLOW_UNDEFINED )
+							{
+								detail = "Can't characterize flow from SubqueryScan.";
+								break; /* Fail */
+							}
+							
 							return false;
 						}
 					
 					default: /* Never happens, but makes the compiler happy. */
 						Assert( false );
-				}
+				} /* inner switch */
 			}
 			break;  /* Fall through to report error. */
 		
@@ -551,6 +593,7 @@ prescan_walker(Node *node, PlanProfile *context)
 			/* First prescan children */
 			if ( plan_tree_walker(node, prescan_walker, context) )
 				return true;
+			if ( !finished )
 			{
 				Plan *plan = (Plan*)node;
 				Plan *child = outerPlan(node);
@@ -558,6 +601,12 @@ prescan_walker(Node *node, PlanProfile *context)
 				{
 					/* Might scan child, so inherit flow characteristics. */
 					plan->flow = pull_up_Flow(plan, false);
+					
+					if ( plan->flow == NULL || plan->flow->flotype == FLOW_UNDEFINED )
+					{
+						detail = "Can't characterize flow from Result node.";
+						break;
+					}
 					
 					/* We aren't sure the partitioning attributes are in
 					 * our targetlist, so we shouldn't claim they are.
@@ -578,12 +627,19 @@ prescan_walker(Node *node, PlanProfile *context)
 			/* First prescan children */
 			if ( plan_tree_walker(node, prescan_walker, context) )
 				return true;
+			if ( !finished )
 			{
 				/* Flow is same as leftree's Flow. */
 				Plan *plan = (Plan*)node;
 				Plan *child = outerPlan(node);
 				Assert( child != NULL );
 				plan->flow = pull_up_Flow(plan, false);
+					
+				if ( plan->flow == NULL || plan->flow->flotype == FLOW_UNDEFINED )
+				{
+					detail = "Can't characterize flow from Hash or Material node.";
+					break;
+				}
 			}
 			return false;
 		
@@ -591,12 +647,19 @@ prescan_walker(Node *node, PlanProfile *context)
 			/* First prescan children */
 			if ( plan_tree_walker(node, prescan_walker, context) )
 				return true;
+			if ( ! finished )
 			{
 				/* Flow is same as leftree's Flow ... */
 				Plan *plan = (Plan*)node;
 				Plan *child = outerPlan(node);
 				Assert( child != NULL );
 				plan->flow = pull_up_Flow(plan, false);
+					
+				if ( plan->flow == NULL || plan->flow->flotype == FLOW_UNDEFINED )
+				{
+					detail = "Can't characterize flow from Sort node.";
+					break;
+				}
 				
 				/* ... but reordered. */
 				Sort *sort = (Sort*)node;
@@ -612,6 +675,9 @@ prescan_walker(Node *node, PlanProfile *context)
 			/* First prescan children */
 			if ( plan_tree_walker(node, prescan_walker, context) )
 				return true;
+			if ( finished )
+				return false;
+				
 			{
 				/* Flow is same as leftree's Flow. */
 				Plan *plan = (Plan*)node;
@@ -623,6 +689,12 @@ prescan_walker(Node *node, PlanProfile *context)
 				{
 					/* No motion required so inherit flow characteristics. */
 					plan->flow = pull_up_Flow(plan, true);
+						
+					if ( plan->flow == NULL || plan->flow->flotype == FLOW_UNDEFINED )
+					{
+						detail = "Can't characterize flow from Unique node.";
+						break;
+					}
 					return false;
 				}
 				
@@ -648,7 +720,6 @@ prescan_walker(Node *node, PlanProfile *context)
 				Plan *plan = (Plan*)node;
 				Join *join = (Join*)plan;
 				
-				Assert( plan->flow == NULL ); /* Make sure this is first time. */
 				Assert ( join->jointype == JOIN_INNER
 					|| join->jointype == JOIN_LEFT
 					|| join->jointype == JOIN_FULL
@@ -658,6 +729,11 @@ prescan_walker(Node *node, PlanProfile *context)
 				/* Walk into subnodes */
 				if ( plan_tree_walker(node, prescan_walker, context) )
 					return true;
+				
+				if ( finished )
+					return false;
+					
+				Assert( plan->flow == NULL || plan->flow->flotype == FLOW_UNDEFINED ); 
 				
 				switch (nodeTag(node))
 				{
@@ -685,7 +761,7 @@ prescan_walker(Node *node, PlanProfile *context)
 			 * (Sort (Append (List (SubQueryScan ...) (SubQueryScan ....)))).
 			 * It does no projection.
 			 * 
-			 * TODO Determine whether special handling is indicated or whether
+			 * TODO Implment special handling.
 			 */
 				
 			detail = "Query involves a set or multiset operation.";
@@ -705,6 +781,9 @@ prescan_walker(Node *node, PlanProfile *context)
 				/* First prescan children */
 				if ( plan_tree_walker(node, prescan_walker, context) )
 					return true;
+				
+				if ( finished )
+					return false;
 					
 				if ( !prescan_agg((Plan*)node, context) )
 					return false;
@@ -716,6 +795,9 @@ prescan_walker(Node *node, PlanProfile *context)
 			/* First prescan children */
 			if ( plan_tree_walker(node, prescan_walker, context) )
 				return true;
+			if ( finished )
+				return false;
+				
 			{
 				Plan *plan = (Plan*)node;
 				Plan *child = outerPlan(node);
@@ -726,6 +808,12 @@ prescan_walker(Node *node, PlanProfile *context)
 				{
 					/* No motion required so inherit flow characteristics. */
 					plan->flow = pull_up_Flow(plan, true);
+						
+					if ( plan->flow == NULL || plan->flow->flotype == FLOW_UNDEFINED )
+					{
+						detail = "Can't characterize flow from Group node.";
+						break;
+					}
 					return false;
 				}
 			}
@@ -737,6 +825,9 @@ prescan_walker(Node *node, PlanProfile *context)
 			/* First prescan children */
 			if ( plan_tree_walker(node, prescan_walker, context) )
 				return true;
+			if ( finished )
+				return false;
+			
 			{
 				Plan *plan = (Plan*)node;
 				Plan *child = outerPlan(node);
@@ -747,6 +838,12 @@ prescan_walker(Node *node, PlanProfile *context)
 				{
 					/* No motion required so inherit flow characteristics. */
 					plan->flow = pull_up_Flow(plan, true);
+						
+					if ( plan->flow == NULL || plan->flow->flotype == FLOW_UNDEFINED )
+					{
+						detail = "Can't characterize flow from Limit node.";
+						break;
+					}
 					return false;
 				}
 			}
@@ -774,18 +871,24 @@ prescan_walker(Node *node, PlanProfile *context)
 
 				/* Specify restructuring.  The resulting flow will retain
 				 * any sort specified in the input plan, but will become
-				 * singleton.  The restructurnig is flagged by the xform
-				 * flow. */
+				 * singleton.  The restructuring is flagged by the xform
+				 * movement request. */
 				limit->plan.flow = pull_up_Flow((Plan*)limit, true);
+					
+				if ( limit->plan.flow == NULL || limit->plan.flow->flotype == FLOW_UNDEFINED )
+				{
+					detail = "Sort criteria missing from Limit node.";
+					break;
+				}
 				limit->plan.flow->flotype = FLOW_SINGLETON;
 				limit->plan.flow->req_move = MOVEMENT_NONE;
 				limit->plan.flow->segindex = -1;
 				limit->plan.flow->hashExpr = NIL;
 				limit->plan.flow->hashOp = NIL;
 				limit->plan.flow->req_xform = MOVEMENT_LIM_RESTRUCT;
-				return false;
 			}
-			
+			return false;
+
 		default:
 			/* Let plan_tree_walker() deal with other node types. */
 			return plan_tree_walker(node, prescan_walker, context);
@@ -799,6 +902,7 @@ prescan_walker(Node *node, PlanProfile *context)
 	return true;
 }
 
+
 /* Helper for prescan_walker() does processing for a HashJoin.
  *
  * Note that prescan_walker has already finished scaning the child nodes
@@ -809,16 +913,21 @@ prescan_walker(Node *node, PlanProfile *context)
  */
 bool prescan_hashjoin(Plan *plan, PlanProfile *context)
 {	
-	List *strategies = NIL;
+	List *strategies;
+	ListCell *cell;
 	CdbJoinStrategy *strategy = NULL;
+
+	List *outerexpr = NULL;
+	List *innerexpr = NULL;
+	List *hashOp = NULL;
 	
 	Plan *outer = outerPlan(plan);
 	Plan *inner = innerPlan(plan);
 	
-	/* Assure that we have the expected pattern:
+	/* The expected pattern is:
 	 *
 	 *          plan 
-	 *       (HashTree)
+	 *       (HashJoin)
 	 *        /     \ 
 	 *     outer   inner
 	 *    (Plan)   (Hash)
@@ -831,15 +940,90 @@ bool prescan_hashjoin(Plan *plan, PlanProfile *context)
 	Assert( is_plan_node((Node*)(inner->lefttree)) );
 	Assert( is_plan_node((Node*)outer) );
 	
-	/* Use the first strategy. */
+	
+	/* Get a list of possible strategies sorted by cost and 
+	 * use the first strategy that we can actually implement
+	 * for a hash join in this context. 
+	 */
 	strategies = getJoinStrategyList((Join*)plan);
+	
+	foreach ( cell, strategies )
+	{
+		bool canUse;
+		CdbJoinStrategy *s = (CdbJoinStrategy*)lfirst(cell);
+		
+		/* Pre-flight check the outer relation. */
+		switch ( s->leftmove )
+		{
+			case MOVEMENT_NONE:
+				canUse = true;
+				break;
+				
+			case MOVEMENT_FOCUS:
+				canUse = focusPlan(plan->lefttree, false, false, false, 0);
+				break;
+				
+			case MOVEMENT_BROADCAST:
+				canUse = broadcastPlan(plan->lefttree, false, false, false);
+				break;
+				
+			case MOVEMENT_REPARTITION:
+				outerexpr = getHashMotionInfoList(plan, INFOTYPE_LEFTEXPR);
+				hashOp = getHashMotionInfoList(plan, INFOTYPE_OP);
+				canUse = repartitionPlan(plan->lefttree, false, false, false, outerexpr, hashOp);
+				break;
+				
+			default:
+				canUse = false;
+				break;
+		}
+		
+		if ( !canUse )
+			continue; /* next strategy */
+		
+		/* Pre-flight check the inner relation. */
+		switch ( s->rightmove )
+		{
+			case MOVEMENT_NONE:
+				canUse = true;
+				break;
+				
+			case MOVEMENT_FOCUS:
+				canUse = focusPlan(plan->righttree, false, false, false, 0);
+				break;
+				
+			case MOVEMENT_BROADCAST:
+				canUse = broadcastPlan(plan->righttree, false, false, false);
+				break;
+				
+			case MOVEMENT_REPARTITION:
+				innerexpr = getHashMotionInfoList(plan, INFOTYPE_RIGHTEXPR);
+				hashOp = getHashMotionInfoList(plan, INFOTYPE_OP);
+				canUse = repartitionPlan(plan->righttree, false, false, false, innerexpr, hashOp);
+				break;
+				
+			default:
+				canUse = false;
+				break;
+		}
+		
+		if ( canUse )
+		{
+			strategy = copyJoinStrategy(s);
+			break;
+		}
+		
+		/* Else, next strategy. */
+	}
+	
+	/* Clean up */
 	if ( strategies != NIL )
 	{
-		strategy = copyJoinStrategy((CdbJoinStrategy*)linitial(strategies));
 		freeJoinStrategyList(strategies);
 		strategies = NIL;
 	}
 	
+	/* If we didn't find a useable strategy, bail out. */
 	if ( strategy == NULL )
 	{
 		psErrorNonce(context, "No strategy available to parallelize that hash join.");
@@ -847,103 +1031,70 @@ bool prescan_hashjoin(Plan *plan, PlanProfile *context)
 		return true;	 
 	}
 	
-	List *outerexpr = NULL;
-	List *innerexpr = NULL;
-	List *hashOp = NULL;
 
-	if ( strategy->leftmove != MOVEMENT_NONE )
+	/*
+	 * Annotate the outer plan by updating Flow nodes as necessary.
+	 */
+	switch ( strategy->leftmove )
 	{
-		/* Implement left argument movement. */
-		switch ( strategy->leftmove )
-		{
-			case MOVEMENT_FOCUS:
-				/* Request motion to focus the outer flow on a segment. */
-				outer->flow->req_move = MOVEMENT_FOCUS;
-				outer->flow->flotype = FLOW_SINGLETON;
-				outer->flow->segindex = 0;
-				break;
-					
-			case MOVEMENT_BROADCAST:
-				/* Request motion to replicate the outer flow. */
-				outer->flow->req_move = MOVEMENT_BROADCAST;
-				outer->flow->flotype = FLOW_REPLICATED;
-				outer->flow->segindex = 0;
-				break;
-					
-			case MOVEMENT_REPARTITION:
-				/* Get outer hash information in hand. */
-				outerexpr = getHashMotionInfoList(plan, INFOTYPE_LEFTEXPR);
-				hashOp = getHashMotionInfoList(plan, INFOTYPE_OP);
-				
-				/* Request motion to repartition outer flow on join key. */
-				outer->flow->req_move = MOVEMENT_REPARTITION;
-				outer->flow->flotype = FLOW_PARTITIONED;
-				outer->flow->segindex = 0;
-				outer->flow->hashExpr = outerexpr;
-				outer->flow->hashOp = hashOp;
-				break;
-				
-			default:
-				Assert(false);
-				break;
-		}
+		case MOVEMENT_NONE:
+			break;
+			
+		case MOVEMENT_FOCUS:
+			focusPlan(plan->lefttree, true, false, false, 0);
+			break;
+			
+		case MOVEMENT_BROADCAST:
+			broadcastPlan(plan->lefttree, true, false, false);
+			break;
+			
+		case MOVEMENT_REPARTITION:
+			repartitionPlan(plan->lefttree, true, false, false, outerexpr, hashOp);
+			break;
+			
+		default:
+			Assert(false);
+			break;
 	}
 	
-	if ( strategy->rightmove != MOVEMENT_NONE )
+	/*
+	 * Annotate the inner plan by updating Flow nodes as necessary.
+	 */
+	switch ( strategy->rightmove )
 	{
-		/* Implement right argument movement. */
-		switch ( strategy->rightmove )
-		{
-			case MOVEMENT_FOCUS:
-				/* Request motion to focus the inner flow on a segment. */
-				inner->lefttree->flow->req_move = MOVEMENT_FOCUS;
-				inner->lefttree->flow->flotype = FLOW_SINGLETON;
-				inner->lefttree->flow->segindex = 0;
-				
-				/* Adjust the flow type of the intermediate Hash node. */
-				inner->flow->flotype = FLOW_SINGLETON;
-				inner->flow->segindex = 0;
-				break;
-					
-			case MOVEMENT_BROADCAST:
-				/* Request motion to broadcast the inner flow. */
-				inner->lefttree->flow->req_move = MOVEMENT_BROADCAST;
-				inner->lefttree->flow->flotype = FLOW_REPLICATED;
-				inner->lefttree->flow->segindex = 0;
-				
-				/* Adjust the flow type of the intermediate Hash node. */
-				inner->flow->flotype = FLOW_REPLICATED;
-				inner->flow->segindex = 0;
-				break;
-					
-			case MOVEMENT_REPARTITION:
-				/* Get inner hash information in hand. */
-				innerexpr = getHashMotionInfoList(plan, INFOTYPE_RIGHTEXPR);
-				if ( hashOp == NULL )
-					hashOp = getHashMotionInfoList(plan, INFOTYPE_OP);
-					
-				/* Request motion to repartition inner flow on join key. */
-				inner->lefttree->flow->req_move = MOVEMENT_REPARTITION;
-				inner->lefttree->flow->flotype = FLOW_PARTITIONED;
-				inner->lefttree->flow->hashExpr = innerexpr;
-				inner->lefttree->flow->hashOp = hashOp;
-				
-				/* Adjust the flow type of the intermediate Hash node. */
-				inner->flow->flotype = FLOW_PARTITIONED;
-				inner->flow->segindex = 0;
-				/* Strictly, should copy hash criteria, but who'd use it? */
-				break;
-				
-			default:
-				Assert(false);
-				break;
-		}
+		case MOVEMENT_NONE:
+			break;
+			
+		case MOVEMENT_FOCUS:
+			focusPlan(plan->righttree, true, false, false, 0);
+			break;
+			
+		case MOVEMENT_BROADCAST:
+			broadcastPlan(plan->righttree, true, false, false);
+			break;
+			
+		case MOVEMENT_REPARTITION:
+			repartitionPlan(plan->righttree, true, false, false, innerexpr, hashOp);
+			break;
+			
+		default:
+			Assert(false);
+			break;
 	}
 	
-	/* Adopt proposed flow characteristics. */
+	/*
+	 * Annotate this HashJoin plan -- attach a Flow describing the result
+	 * of adopting the proposed strategy. 
+	 *
+	 * TODO It might be a good idea to try to track whether the join
+	 *      will preserve sort order or partitioning (or even to add
+	 *      junk attributes to facilitate it), but for now we track
+	 *      only flow type.
+	 */
 	plan->flow = makeFlow(strategy->resultflowtype);
 	return false;	 
 }
+
 
 
 /* Helper for prescan_walker() does processing for a MergeJoin.
@@ -960,50 +1111,118 @@ bool prescan_mergejoin(Plan *plan, PlanProfile *context)
 	ListCell *cell;
 	CdbJoinStrategy *strategy = NULL;
 	
+	List *outerexpr = NULL;
+	List *innerexpr = NULL;
+	List *hashOp = NULL;
+
 	Plan *outer = outerPlan(plan);
 	Plan *inner = innerPlan(plan);
 	
-	/* Check assumptions.
+	/* This is the expected pattern:
+	 *
+	 *          plan 
+	 *       (MergeJoin)
+	 *        /      \ 
+	 *     outer    inner
+	 *    (Plan)    (Plan)
+	 *    ordered   ordered       
+	 *              rescan (via mark,restore)               
 	 */
 	Assert( IsA(plan, MergeJoin) );	
+	Assert( is_plan_node((Node*)inner) && inner->flow != NULL );
+	Assert( is_plan_node((Node*)outer) && outer->flow != NULL );
 
+	/* Get a list of possible strategies sorted by cost and 
+	 * use the first strategy that we can actually implement
+	 * for a hash join in this context. 
+	 */
 	strategies = getJoinStrategyList((Join*)plan);
 	
-	/*
-	 * Use the first strategy we know how to implement. 
-	 */
 	foreach( cell, strategies)
 	{
+		bool canUse;
 		CdbJoinStrategy *s = (CdbJoinStrategy*)lfirst(cell);
+		
+		/* Make sure we have ordering information for any argument we
+		 * need to apply motion to. 
+		 */
+		if ( s->leftmove != MOVEMENT_NONE && outer->flow->numSortCols < 1 )
+			continue;
+		if ( s->rightmove != MOVEMENT_NONE && inner->flow->numSortCols < 1 )
+			continue;
 	
-		/* Copy the first strategy we can use and exit the loop. */
+		/* Pre-flight check the outer relation. */
+		switch ( s->leftmove )
+		{
+			case MOVEMENT_NONE:
+				canUse = true;
+				break;
+				
+			case MOVEMENT_FOCUS:
+				canUse = focusPlan(plan->lefttree, false, true, false, 0);
+				break;
+				
+			case MOVEMENT_BROADCAST:
+				canUse = broadcastPlan(plan->lefttree, false, true, false);
+				break;
+				
+			case MOVEMENT_REPARTITION:
+				outerexpr = getHashMotionInfoList(plan, INFOTYPE_LEFTEXPR);
+				hashOp = getHashMotionInfoList(plan, INFOTYPE_OP);
+				canUse = repartitionPlan(plan->lefttree, false, true, false, outerexpr, hashOp);
+				break;
+				
+			default:
+				canUse = false;
+				break;
+		}
 		
-		/* Order-preserving hash motion might deadlock.  Don't do it! 
-		 * However, if the affected side is a Sort node, we know to push the
-		 * motion below it.
-		 */
-		if ( s->leftmove == MOVEMENT_REPARTITION && !IsA(outer,Sort) )
-			continue;
-		if ( s->rightmove == MOVEMENT_REPARTITION && !IsA(inner,Sort) )
-			continue;
+		if ( !canUse )
+			continue; /* next strategy */
 		
-		/* At the moment, we know how to extract ordering information only 
-		 * from Sort nodes.  
-		 *
-		 * TODO: Learn to pull it from IndexScan and MergeJoin nodes
-		 *       and any other node types known to give ordered results.
-		 */
-		if ( s->leftmove != MOVEMENT_NONE && !IsA(outer,Sort) )
-			continue;
-		if ( s->rightmove != MOVEMENT_NONE && !IsA(inner,Sort) )
-			continue;
-			
-		strategy = copyJoinStrategy(s);
-		break;
+		/* Pre-flight check the inner relation. */
+		switch ( s->rightmove )
+		{
+			case MOVEMENT_NONE:
+				canUse = true;
+				break;
+				
+			case MOVEMENT_FOCUS:
+				canUse = focusPlan(plan->righttree, false, true, true, 0);
+				break;
+				
+			case MOVEMENT_BROADCAST:
+				canUse = broadcastPlan(plan->righttree, false, true, true);
+				break;
+				
+			case MOVEMENT_REPARTITION:
+				innerexpr = getHashMotionInfoList(plan, INFOTYPE_RIGHTEXPR);
+				hashOp = getHashMotionInfoList(plan, INFOTYPE_OP);
+				canUse = repartitionPlan(plan->righttree, false, true, true, innerexpr, hashOp);
+				break;
+				
+			default:
+				canUse = false;
+				break;
+		}
+		
+		if ( canUse )
+		{
+			strategy = copyJoinStrategy(s);
+			break;
+		}
+		
+		/* Else, next strategy. */
+	}		
+
+	/* Clean up */
+	if ( strategies != NIL )
+	{
+		freeJoinStrategyList(strategies);
+		strategies = NIL;
 	}
-	freeJoinStrategyList(strategies);
-	strategies = NIL;
 	
+	/* If we didn't find a useable strategy, bail out. */
 	if ( strategy == NULL )
 	{
 		psErrorNonce(context, "No strategy available to parallelize that merge join.");
@@ -1011,106 +1230,69 @@ bool prescan_mergejoin(Plan *plan, PlanProfile *context)
 		return true;	 
 	}
 	
-	List *outerexpr = NULL;
-	List *innerexpr = NULL;
-	List *hashOp = NULL;
-
-	if ( strategy->leftmove != MOVEMENT_NONE )
+	/*
+	 * Annotate the outer plan by updating Flow nodes as necessary.
+	 */
+	switch ( strategy->leftmove )
 	{
-		/* Implement left argument movement. */
-		switch ( outer->type )
-		{
-			case T_Sort:
-				switch ( strategy->leftmove )
-				{
-					case MOVEMENT_FOCUS:
-						if ( focusSort((Sort*)outer, context) )
-							return true;
-						break;
-							
-					case MOVEMENT_BROADCAST:
-						if ( broadcastSort((Sort*)outer, context) )
-							return true;
-						break;
-							
-					case MOVEMENT_REPARTITION:
-						outerexpr = getHashMotionInfoList(plan, INFOTYPE_LEFTEXPR);
-						hashOp = getHashMotionInfoList(plan, INFOTYPE_OP);
-						if ( repartitionSort((Sort*)outer, outerexpr, hashOp, context) )
-							return true;
-						break;
-						
-					default:
-						Assert(false);
-						break;
-				}
-				break;
-				
-			case T_IndexScan:
-			case T_MergeJoin:
-				Assert(false); /* This case filtered out above. */
-				psErrorNonce(context, "Cannot parallelize IndexScan.");
-				/* Hint: Try again with set enable_mergescan = false */
-				return true;	 
+		case MOVEMENT_NONE:
+			break;
 			
-			default:
-				psErrorInternal(context, "Unexpected left argument to merge join.");
-				/* Hint: Try again with set enable_mergescan = false */
-				return true;	 
-		}
-	}
-
-	
-	if ( strategy->rightmove != MOVEMENT_NONE )
-	{
-		/* Implement right argument movement. */
-		switch ( inner->type )
-		{
-			case T_Sort:
-				switch ( strategy->rightmove )
-				{
-					case MOVEMENT_FOCUS:
-						if ( focusSort((Sort*)inner, context) )
-							return true;
-						break;
-							
-					case MOVEMENT_BROADCAST:
-						if ( broadcastSort((Sort*)inner, context) )
-							return true;
-						break;
-							
-					case MOVEMENT_REPARTITION:
-						innerexpr = getHashMotionInfoList(plan, INFOTYPE_RIGHTEXPR);
-						if ( hashOp == NULL )
-							hashOp = getHashMotionInfoList(plan, INFOTYPE_OP);
-						if ( repartitionSort((Sort*)inner, innerexpr, hashOp, context) )
-							return true;
-						break;
-						
-					default:
-						Assert(false);
-						break;
-				}
-				break;
-				
-			case T_IndexScan:
-			case T_MergeJoin:
-				Assert(false); /* This case filtered out above. */
-				psErrorNonce(context, "Cannot parallelize IndexScan.");
-				/* Hint: Try again with set enable_mergescan = false */
-				return true;	 
+		case MOVEMENT_FOCUS:
+			focusPlan(plan->lefttree, true, true, false, 0);
+			break;
 			
-			default:
-				psErrorInternal(context, "Unexpected right argument to merge join.");
-				/* Hint: Try again with set enable_mergescan = false */
-				return true;	 
-		}
+		case MOVEMENT_BROADCAST:
+			broadcastPlan(plan->lefttree, true, true, false);
+			break;
+			
+		case MOVEMENT_REPARTITION:
+			repartitionPlan(plan->lefttree, true, true, false, outerexpr, hashOp);
+			break;
+			
+		default:
+			Assert(false);
+			break;
 	}
 	
-	/* Adopt proposed flow characteristics. */
+	/*
+	 * Annotate the inner plan by updating Flow nodes as necessary.
+	 */
+	switch ( strategy->rightmove )
+	{
+		case MOVEMENT_NONE:
+			break;
+			
+		case MOVEMENT_FOCUS:
+			focusPlan(plan->righttree, true, true, true, 0);
+			break;
+			
+		case MOVEMENT_BROADCAST:
+			broadcastPlan(plan->righttree, true, true, true);
+			break;
+			
+		case MOVEMENT_REPARTITION:
+			repartitionPlan(plan->righttree, true, true, true, innerexpr, hashOp);
+			break;
+			
+		default:
+			Assert(false);
+			break;
+	}
+	
+	/*
+	 * Annotate this MergeJoin plan -- attach a Flow describing the result
+	 * of adopting the proposed strategy. 
+	 *
+	 * TODO It might be a good idea to try to track whether the join
+	 *      will preserve sort order or partitioning (or even to add
+	 *      junk attributes to facilitate it), but for now we track
+	 *      only flow type.
+	 */
 	plan->flow = makeFlow(strategy->resultflowtype);
 	return false;	 
 }
+
 
 
 /* Helper for prescan_walker() does processing for a NestLoop join.
@@ -1127,41 +1309,93 @@ bool prescan_nestloop(Plan *plan, PlanProfile *context)
 	ListCell *cell;
 	CdbJoinStrategy *strategy = NULL;
 
+	List *outerexpr = NIL;
+	List *innerexpr = NIL;
+	List *hashExpr = NIL;
+	List *hashOp = NIL;
+	bool attemptedHashExtract = false;
 
 	Plan *outer = outerPlan(plan);
 	Plan *inner = innerPlan(plan);	
 			
-	/* 
-	 * Check assumptions.
+	/* There are two expected patterns:
+	 *
+	 *          plan 
+	 *       (NestLoop)
+	 *        /     \ 
+	 *     outer   inner
+	 *    (Plan) (IndexScan)
+	 *  
+	 *
+	 *          plan 
+	 *       (NestLoop)
+	 *        /     \ 
+	 *     outer   inner
+	 *    (Plan)   (Plan)
+	 *             rescan
+	 *
+	 * The first pattern is special because the NestLoop passes its
+	 * context down to IndexScan which uses it to obtain the index
+	 * key.  Therefore, we can't insert a motion in between.
+	 *
+	 * In the second pattern the inner plan will usually be a Material
+	 * node but we can't assume this. The real requirement is that it
+	 * be rescanable.
+	 *			
+	 * TODO: Need a way to communicate (in a Flow) to the mutator
+	 *       that it should add a Material node above an added Motion.
+	 *       This would avoid the special requirement.  Note that we
+	 *       eliminate strategies that don't match the pattern in
+	 *       the filter stage above, so the Assert should never trip.
 	 */
 	Assert( IsA(plan, NestLoop) && plan->flow == NULL );
 	Assert( is_plan_node((Node*)inner) && inner->flow != NULL );
 	Assert( is_plan_node((Node*)outer) && outer->flow != NULL );
 	
+	
+	/* Get a list of possible strategies sorted by cost and 
+	 * use the first strategy that we can actually implement
+	 * for a hash join in this context. 
+	 */
 	strategies = getJoinStrategyList((Join*)plan);
 	
-	List *hashExpr = NIL;
-	List *hashOp = NIL;
-	
-	if ( extractHashExprFromQual( ((Join*)plan)->joinqual, &hashExpr, &hashOp ))
-	{
-		/* Yippee, we can use repartitioning  */
-	}
-
-	/*
-	 * Use the first strategy we can implement. 
-	 */
 	foreach( cell, strategies)
 	{
+		bool canUse;
 		CdbJoinStrategy *s = (CdbJoinStrategy*)lfirst(cell);
 		
-		/* 
-		 * TODO Determine whether we can extract hashExpr and hashOp from
-		 * the join conditions (qual and joinqual) which would allow us
-		 * to use repartitioning.  In the meantime, we can't use it.
+		
+		/*
+		 * If the strategy requires repartitioning, we can only do it if we
+		 * can extract hashing information from the joinqual.
 		 */
 		if ( s->leftmove == MOVEMENT_REPARTITION || s->rightmove == MOVEMENT_REPARTITION )
-			continue;
+		{
+			if ( hashOp == NULL && ! attemptedHashExtract )
+			{
+				ListCell *xc;
+				/* Try to extract hash criteria from joinqual. */
+				if ( extractHashExprFromQual( ((Join*)plan)->joinqual, &hashExpr, &hashOp ))
+				{
+					/* Repartitioning is possible, dissect expressions. */
+					foreach ( xc, hashExpr )
+					{
+						OpExpr *op = (OpExpr*)lfirst(xc);
+						Assert( list_length(op->args) == 2 );
+						outerexpr = lappend(outerexpr, linitial(op->args));
+						innerexpr = lappend(innerexpr, lsecond(op->args));
+					}
+				}
+				else
+				{
+					hashExpr = hashOp = NIL;  /* Just to be sure. */
+				}
+				attemptedHashExtract = true;
+			}
+			
+			if ( hashOp == NIL )
+				continue; /* Not hashable, so can't use this strategy. */
+		}
 		
 		/*
 		 * If the inner relation is an IndexScan, the NestLoop is tightly 
@@ -1170,121 +1404,148 @@ bool prescan_nestloop(Plan *plan, PlanProfile *context)
 		 */
 		 if ( IsA(inner, IndexScan) && s->rightmove != MOVEMENT_NONE )
 			continue;
-		/* 
-		 * TODO: Remove restriction by learning to add Material over Motion
-		 *       in the apply_motion_mutator().  The additional communication
-		 *       this would need is unclear.  Also need to consider its
-		 *       effect on costing.
-		 */
-		if (  ! IsA(inner, Material) && s->rightmove != MOVEMENT_NONE )
-			continue;
 			
-		strategy = copyJoinStrategy(s);
-		break;
-	}
-	freeJoinStrategyList(strategies);
-	strategies = NIL;
 	
+		/* Pre-flight check the outer relation. */
+		switch ( s->leftmove )
+		{
+			case MOVEMENT_NONE:
+				canUse = true;
+				break;
+				
+			case MOVEMENT_FOCUS:
+				canUse = focusPlan(plan->lefttree, false, false, false, 0);
+				break;
+				
+			case MOVEMENT_BROADCAST:
+				canUse = broadcastPlan(plan->lefttree, false, false, false);
+				break;
+				
+			case MOVEMENT_REPARTITION:
+				canUse = repartitionPlan(plan->lefttree, false, false, false, outerexpr, hashOp);
+				break;
+				
+			default:
+				canUse = false;
+				break;
+		}
+		
+		if ( !canUse )
+			continue; /* next strategy */
+		
+		/* Pre-flight check the inner relation. */
+		switch ( s->rightmove )
+		{
+			case MOVEMENT_NONE:
+				canUse = true;
+				break;
+				
+			case MOVEMENT_FOCUS:
+				canUse = focusPlan(plan->righttree, false, false, true, 0);
+				break;
+				
+			case MOVEMENT_BROADCAST:
+				canUse = broadcastPlan(plan->righttree, false, false, true);
+				break;
+				
+			case MOVEMENT_REPARTITION:
+				canUse = repartitionPlan(plan->righttree, false, false, true, innerexpr, hashOp);
+				break;
+				
+			default:
+				canUse = false;
+				break;
+		}
+		
+		if ( canUse )
+		{
+			strategy = copyJoinStrategy(s);
+			break;
+		}
+		
+		/* Else, next strategy. */
+	}
+	
+	/* Clean up */
+	if ( strategies != NIL )
+	{
+		freeJoinStrategyList(strategies);
+		strategies = NIL;
+	}
+	
+	/* If we didn't find a useable strategy, bail out. */
 	if ( strategy == NULL )
 	{
 		psErrorNonce(context, "No strategy available to parallelize that nested-loop join.");
 		/* Hint: Try again with set enable_nestloop = false */
 		return true;	 
 	}
-	else if ( strategy->leftmove == MOVEMENT_NONE && strategy->rightmove == MOVEMENT_NONE  )
+	
+	/*
+	 * Annotate the outer plan by updating Flow nodes as necessary.
+	 */
+	switch ( strategy->leftmove )
 	{
-		plan->flow = makeFlow(strategy->resultflowtype);
-	}
-	else 
-	{
-		if ( strategy->leftmove != MOVEMENT_NONE )
-		{
-			/* Implement left argument movement. */
-			switch ( strategy->leftmove )
-			{
-				case MOVEMENT_FOCUS:
-					/* Request motion to focus the outer flow on a segment. */
-					outer->flow->req_move = MOVEMENT_FOCUS;
-					outer->flow->flotype = FLOW_SINGLETON;
-					outer->flow->segindex = 0;
-					break;
-						
-				case MOVEMENT_BROADCAST:
-					/* Request motion to focus the outer flow on the dispatcher. */
-					outer->flow->req_move = MOVEMENT_BROADCAST;
-					outer->flow->flotype = FLOW_REPLICATED;
-					outer->flow->segindex = 0;
-					break;
-						
-				case MOVEMENT_REPARTITION:
-				default:
-					Assert(false);
-					break;
-			}
-		}
-		
-		if ( strategy->rightmove != MOVEMENT_NONE )
-		{
-			/* Implement right argument movement. Since we discard strategies
-			 * that would introduce Motion between a NestLoop and an inner
-			 * IndexScan, it is likely that the inner relation will always 
-			 * be a Material node, like this:
-			 *
-			 *          plan 
-			 *       (NestLoop)
-			 *        /     \ 
-			 *     outer   inner
-			 *    (Plan) (Material)
-			 *               |              
-			 *          inner->lefttree 
-			 *             (Plan)
-             *
-			 * We don't assume this, but if it isn't the case we'll fail.
-			 *			
-			 * TODO: Need a way to communicate (in a Flow) to the mutator
-			 *       that it should add a Material node above an added Motion.
-			 *       This would avoid the special requirement.  Note that we
-			 *       eliminate strategies that don't match the pattern in
-			 *       the filter stage above, so the Assert should never trip.
-			 */
-			Assert ( IsA(inner, Material) );
+		case MOVEMENT_NONE:
+			break;
 			
-			switch ( strategy->rightmove )
-			{
-				case MOVEMENT_FOCUS:
-					/* Request motion to focus the inner flow on a segment. */
-					inner->lefttree->flow->req_move = MOVEMENT_FOCUS;
-					inner->lefttree->flow->flotype = FLOW_SINGLETON;
-					inner->lefttree->flow->segindex = 0;
-					
-					/* Adjust the flow type of the intermediate Material node. */
-					inner->flow->flotype = FLOW_SINGLETON;
-					inner->flow->segindex = 0;
-					break;
-						
-				case MOVEMENT_BROADCAST:
-					/* Request motion to broadcast the inner flow. */
-					inner->lefttree->flow->req_move = MOVEMENT_BROADCAST;
-					inner->lefttree->flow->flotype = FLOW_REPLICATED;
-					inner->lefttree->flow->segindex = 0;
-					
-					/* Adjust the flow type of the intermediate Material node. */
-					inner->flow->flotype = FLOW_REPLICATED;
-					inner->flow->segindex = 0;
-					break;
-						
-				case MOVEMENT_REPARTITION:
-				default:
-					Assert(false);
-					break;
-			}
-		}
+		case MOVEMENT_FOCUS:
+			focusPlan(plan->lefttree, true, false, false, 0);
+			break;
+			
+		case MOVEMENT_BROADCAST:
+			broadcastPlan(plan->lefttree, true, false, false);
+			break;
+			
+		case MOVEMENT_REPARTITION:
+			repartitionPlan(plan->lefttree, true, false, false, outerexpr, hashOp);
+			break;
+			
+		default:
+			Assert(false);
+			break;
 	}
 	
-	/* Adopt flow characteristics of strategy for the Nestloop. */
+	
+	/*
+	 * Annotate the inner plan by updating Flow nodes as necessary.
+	 */
+	switch ( strategy->rightmove )
+	{
+		case MOVEMENT_NONE:
+			break;
+			
+		case MOVEMENT_FOCUS:
+			focusPlan(plan->righttree, true, false, true, 0);
+			break;
+			
+		case MOVEMENT_BROADCAST:
+			broadcastPlan(plan->righttree, true, false, true);
+			break;
+			
+		case MOVEMENT_REPARTITION:
+			repartitionPlan(plan->righttree, true, false, true, innerexpr, hashOp);
+			break;
+			
+		default:
+			Assert(false);
+			break;
+	}
+	
+	/*
+	 * Annotate this NestLoop plan -- attach a Flow describing the result
+	 * of adopting the proposed strategy. 
+	 *
+	 * TODO It might be a good idea to try to track whether the join
+	 *      will preserve sort order or partitioning (or even to add
+	 *      junk attributes to facilitate it), but for now we track
+	 *      only flow type.
+	 */
 	plan->flow = makeFlow(strategy->resultflowtype);
 	return false;	 
 }
+
+
 
 /* Helper for prescan_walker() does processing for an Agg node.
  *
@@ -1298,33 +1559,36 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 {	
 	List *strategies;
 	ListCell *cell;
-	CdbAggStrategy *strategy;
+	CdbAggStrategy *strategy = NULL;
+	
 	Agg *agg;
 	Plan *child;
 	int i;
+
 	AttrNumber *sortattrs = NULL;
 	Oid * sortoprs = NULL;
 	Flow *newflow = NULL;
+	
+	List *hashExpr = NIL;
+	List *hashOp = NIL;
 	
 	/* Argument is a prescaned plan. */
 	child = outerPlan((Node*)plan);
 	Assert( is_plan_node((Node*)child) && child->flow != NULL  );
 	agg = (Agg*)plan;
 	
-	/* Now get the stategy list. */
-	strategies = getAggStrategyList(agg);
 	
-	/* An AGG_SORTED node has special requirements.  We need to assure that 
-	 * it's input is correctly ordered AND that the order is conserved in the
-	 * output in case an ancestor node assumes it.  If we can't gather the
-	 * necessary information, we have to reject the plan as currently not 
-	 * parallelizable.
+	/* If the node is of type AGG_SORTED, we need to preserve the sort order 
+	 * of its input and output since an ancestor node may assume it.  If we
+	 * can't gather the necessary information, we have to reject the plan as
+	 * not currently parallelizable.
 	 */
 	if ( agg->aggstrategy == AGG_SORTED )
 	{
-		/* Get the attribute numbers in the target list of the given Agg node 
-		 * of the grouping attributes.  These correspond to the grouping
-		 * attributes of the Agg node's child, but differ in position.
+		/* Get the attribute numbers of the grouping attributes in the 
+		 * target list of the given Agg node.  These correspond to the 
+		 * grouping attributes of the Agg node's child, which are recorded
+		 * the sort fields of the Agg node, but they may differ in position.
 		 *
 		 * Note that, hereafter, (sortattrs != NULL) flags an AGG_SORTED. 
 		 */
@@ -1366,38 +1630,66 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 			return true;
 		}
 	}
+	
+	
+	/* Get a list of possible strategies and use the first strategy 
+	 * that we can actually implement for this Agg in this context. 
+	 */
+	strategies = getAggStrategyList(agg);
 
-	/* Use the first strategy we know how to implement. */
-	strategy = NULL;
 	foreach( cell, strategies)
 	{
-		/* Copy the first strategy we can use and exit the loop. */
+		bool canUse;
 		CdbAggStrategy *s = (CdbAggStrategy*)lfirst(cell);
+		
+		/* Pre-flight check required changes to the child. */
 		switch ( s->leftmove )
 		{
 			case MOVEMENT_NONE:
-			case MOVEMENT_FOCUS:
-			case MOVEMENT_BROADCAST:
-			case MOVEMENT_REPARTITION:
 			case MOVEMENT_AGG_RESTRUCT:
-				strategy = copyAggStrategy(s);
-				break; /* switch */
+				canUse = true;
+				break;
+				
+			case MOVEMENT_FOCUS:
+				canUse = focusPlan(child, false, sortattrs!=NULL, false, -1);
+				break;
+				
+			case MOVEMENT_BROADCAST:
+				canUse = broadcastPlan(child, false, sortattrs!=NULL, false);
+				break;
+				
+			case MOVEMENT_REPARTITION:
+				hashExpr = getExprListFromTargetList(child->targetlist, agg->numCols, agg->grpColIdx);
+				hashOp = getOpListFromTargetList(child->targetlist, agg->numCols, agg->grpColIdx);
+				canUse = repartitionPlan(child, false, sortattrs!=NULL, false, hashExpr, hashOp);
+				break;
+				
 			default:
-				break; /* switch */
+				canUse = false;
+				break;
 		}
-		if ( strategy != NULL )
+		
+		if (canUse)
+		{
+			strategy = copyAggStrategy(s);
 			break; /* foreach */
+		}
 	}
-	freeAggStrategyList(strategies);
-	strategies = NIL;
 	
-	/* Use the chosen strategy to fill in the flow. */
+	/* Clean up */
+	if ( strategies != NIL )
+	{
+		freeAggStrategyList(strategies);
+		strategies = NIL;
+	}
+	
+	/* If we didn't find a useable strategy, bail out. */
 	if ( strategy == NULL )
 	{
 		psErrorNonce(context, "Cannot find aggregation stategy");
 		return true;	 
 	}
-		
+	
 	/*
 	 * A strategy has been chosen. We need to adjust the flow on the
 	 * input (child) node to suit the needs of the strategy and create
@@ -1408,64 +1700,25 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 	{
 		case MOVEMENT_NONE:
 			/* No motion required so inherit flow characteristics. */
-			newflow = copyObject(child->flow);
-			break;
-			
-		case MOVEMENT_BROADCAST: 
-			/* Broadcast motion required. */
-			if ( IsA(child,Sort) )
-			{
-				broadcastSort((Sort*)child, context);
-			}
-			else
-			{
-				Assert(child->flow != NULL);
-				child->flow->req_move = MOVEMENT_BROADCAST;
-				child->flow->flotype = FLOW_REPLICATED;
-			}
-			newflow = makeFlow(FLOW_REPLICATED);
+			newflow = pull_up_Flow(plan, true);
 			break;
 		
 		case MOVEMENT_FOCUS:
 			/* Focus motion required */
-			if ( IsA(child, Sort) )
-			{
-				focusSort((Sort*)child, context);
-			}
-			else
-			{
-				child->flow->req_move = MOVEMENT_FOCUS;
-				child->flow->flotype = FLOW_SINGLETON;
-				child->flow->segindex = -1;
-			}
+			focusPlan(child, true, sortattrs!=NULL, false, -1);
 			newflow = makeFlow(FLOW_SINGLETON);
+			break;
+			
+		case MOVEMENT_BROADCAST: 
+			/* Broadcast motion required. */
+			broadcastPlan(child, true, sortattrs!=NULL, false);
+			newflow = makeFlow(FLOW_REPLICATED);
 			break;
 			
 		case MOVEMENT_REPARTITION:
 			/* Repartition motion required */
-			if ( IsA(child, Sort) )
-			{
-				repartitionSort((Sort*)child, 
-					/* strategy->hashexprs, */
-					getExprListFromTargetList(child->targetlist, agg->numCols, agg->grpColIdx),
-					/* strategy->hashtypes, */
-					getOpListFromTargetList(child->targetlist, agg->numCols, agg->grpColIdx),
-					context);
-			}
-			else
-			{
-				child->flow->req_move = MOVEMENT_REPARTITION;
-				child->flow->flotype = FLOW_PARTITIONED;
-				/* child->flow->hashExpr = strategy->hashexprs; */
-				child->flow->hashExpr = getExprListFromTargetList(child->targetlist, agg->numCols, agg->grpColIdx);
-				/* child->flow->hashOp = strategy->hashtypes; */
-				child->flow->hashOp = getOpListFromTargetList(child->targetlist, agg->numCols, agg->grpColIdx);
-			}
-			/* TODO: If the Agg was AGG_SORT, preserve the sorted
-			   character of the output.  (In the hope that this will
-			   serve to keep sorted output at the top.)
-			 */
-			newflow = makeFlow(FLOW_PARTITIONED);
+			repartitionPlan(child, true, sortattrs!=NULL, false, hashExpr, hashOp);
+			newflow = pull_up_Flow(plan, true);
 			break;
 		
 		case MOVEMENT_AGG_RESTRUCT:
@@ -1486,110 +1739,8 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 	/* Set the flow characteristics of the result based on the strategy
 	 * we ultimately adopted and the flow characteristics of the child. 
 	 */
-	/* TODO We could do better, e.g., track partition expressions. */
 	plan->flow = newflow;
-	
-	if ( sortattrs != NULL )
-	{
-		plan->flow->numSortCols = agg->numCols;
-		plan->flow->sortColIdx = sortattrs;
-		sortattrs = NULL;
-		plan->flow->sortOperators = sortoprs;
-		sortoprs = NULL;
-	}
 	return false;	 
-}
-
-
-/* 
- * Helper for prescan_mergescan() -- Request repartitioning of the flow from 
- * the node below the given Sort node according to the given join expressions 
- * and operators.
- *
- * Return false to indicate successful prescan.  Else set error info
- * in the context and return true.
- */
-bool repartitionSort(Sort *sort, List *exprs, List *ops, PlanProfile *context)
-{
-	int n = list_length(exprs);
-	
-	/* Test assumptions. */
-	Assert( IsA(sort,Sort) );
-	Assert( n == list_length(ops) );
-	
-	/* The partitioning expressions must match a prefix of the  sort 
-	 * specifications for this to be a valid transformation.  Check!
-	 */
-	if ( sort->numCols < n )
-	{
-		psErrorInternal(context, "Conflicts between partitioning and sort.");
-		return true;
-	}
-	int i = 0;
-	ListCell *cell;
-	
-	foreach(cell, exprs)
-	{
-		/* TODO This may eventually need to become smarter, e.g., accept simple
-		 * casts of Var.  But for now...
-		 */
-		Node *x = (Node*)lfirst(cell);
-		if ( !IsA(x,Var) || ((Var*)x)->varattno != sort->sortColIdx[i] )
-		{
-		psErrorInternal(context, "Conflicts between partitioning and sort.");
-		return true;
-		}
-		i++;
-	}
-	
-	/* Everything looks okay. */
-	Plan *outer = outerPlan(sort);
-	
-	/* Request repartitioning. */
-	outer->flow->req_move = MOVEMENT_REPARTITION;
-	outer->flow->hashExpr = exprs;
-	outer->flow->hashOp = ops;
-	
-	/* Note the both nodes are now partitioned. */
-	outer->flow->flotype = FLOW_PARTITIONED;
-	((Plan*)sort)->flow->flotype = FLOW_PARTITIONED;
-	
-	return false; /* Success. */
-}
-
-bool focusSort(Sort *sort, PlanProfile *context)
-{
-	Plan *outer = outerPlan(sort);
-		
-	outer->flow->req_move = MOVEMENT_FOCUS;
-	
-	/* Motion node must preserve sort order. */
-	/* TODO: Have Brian look at this.  It seems wrong to me.  
-	int n = sort->numCols;
-	outer->flow->numSortCols = n;
-	ARRAYCOPY(outer->flow->sortColIdx, sort->sortColIdx, n*sizeof(AttrNumber));
-	ARRAYCOPY(outer->flow->sortOperators, sort->sortOperators, n*sizeof(Oid));
-	*/
-
-	return false;
-}
-
-bool broadcastSort(Sort *sort, PlanProfile *context)
-{
-	Plan *outer = outerPlan(sort);
-		
-	outer->flow->req_move = MOVEMENT_BROADCAST;
-	
-	/* Motion node must preserve sort order. */
-
-	/* TODO: Have Brian look at this.  It seems wrong to me.  
-	int n = sort->numCols;
-	outer->flow->numSortCols = n;
-	ARRAYCOPY(outer->flow->sortColIdx, sort->sortColIdx, n*sizeof(AttrNumber));
-	ARRAYCOPY(outer->flow->sortOperators, sort->sortOperators, n*sizeof(Oid));
-	*/
-
-	return false;
 }
 
 
@@ -1710,9 +1861,25 @@ Flow * pull_up_Flow(Plan *plan, bool withSort)
 	}
 	
 	if ( withSort && model_flow->numSortCols >  0 )
-	{
+	{		
+		if ( is_projection_capable_plan(plan) )
+		{
+			/* Try to derive a sortColIdx to align with projected targetlist. */
+			if ( ! invertColIdx(
+					plan->targetlist, 
+					model_flow->numSortCols, 
+					model_flow->sortColIdx,
+					&(new_flow->sortColIdx) )
+				)
+				return NULL;
+		}
+		else
+		{
+			/* Non-projecting so sort attributes are the same. */
+			ARRAYCOPY(new_flow->sortColIdx, model_flow->sortColIdx, model_flow->numSortCols * sizeof(AttrNumber));
+		}
+		
 		new_flow->numSortCols = model_flow->numSortCols;
-		ARRAYCOPY(new_flow->sortColIdx, model_flow->sortColIdx, model_flow->numSortCols * sizeof(AttrNumber));
 		ARRAYCOPY(new_flow->sortOperators, model_flow->sortOperators, model_flow->numSortCols * sizeof(Oid));
 	}
 	
@@ -2100,6 +2267,7 @@ void pushLocals(PlanProfile *profile, List* rtable)
 	LocalProfile *newlocal = palloc(sizeof(LocalProfile));
 	
 	newlocal->rtable = rtable;
+	newlocal->finished = false;
 	newlocal->outerFrame = profile->local;
 	
 	profile->local = newlocal;
@@ -2121,4 +2289,437 @@ List *localRangeTable(PlanProfile *profile)
 	if ( profile->local == NULL )
 		return NIL;
 	return profile->local->rtable;
+}
+
+/* Has the plan in context at the given node been parallelized yet?
+ * The node argument is only interesting if it's a Plan node and the
+ * the context so far indicated "unfinished" in which case we check
+ * for evidence of "finished" and update the context:
+ *
+ * - If the node is a Motion node, the branch must be finished.
+ * - If the node has a defined Flow,  the branch must be finished.
+ */
+bool isPlanFinished(Node *node,  PlanProfile *profile)
+{
+	if ( is_plan_node(node) && !profile->local->finished )
+	{
+		Plan *plan = (Plan*)node; 
+		profile->local->finished = node->type == T_Motion 
+			|| (plan->flow != NULL && plan->flow->flotype != FLOW_UNDEFINED);
+	}
+	return profile->local->finished;
+}
+
+/* Functions focusPlan, broadcastPlan, and repartitionPlan annotate the top
+ * of the given plan tree with a motion request for later implementation by
+ * function apply_motion in cdbmutate.c.
+ *
+ * plan        the plan to annotate
+ *
+ * live        if false, don't actually make any change to the flow 
+ *             specifications; just verify that they can be done.
+ * 
+ * stable      if true, the result plan must present the result in the
+ *             order specified in the flow (which, presumably, matches
+ *             the input order.
+ *
+ * rescanable  if true, the resulting plan must be rescanable, i.e., 
+ *             it must be possible to use it like a scan. (Note that
+ *             currently, no Motion nodes are rescanable.
+ *	
+ * Remaining arguments, if any, determined by the requirements of the specific
+ * function.
+ *
+ * The result is true if the requested annotation could be made (or was made
+ * in case live == true).  Else, false.
+ */
+
+/*
+ * Function: focusPlan
+ */
+bool focusPlan(Plan* plan, bool live, bool stable, bool rescanable, int segidx)
+{
+	Flow target;
+	
+	if ( segidx < -1 || 0 < segidx )
+		return false; /* Argument segindex must be -1 (QD) or 0 (some QE). */
+	
+	initTargetFlow(plan, &target, stable);
+	target.flotype = FLOW_SINGLETON;
+	target.segindex = segidx;
+	
+	return adjustPlanFlow(plan, &target, stable, rescanable, live);  
+}
+
+
+/*
+ * Function: broadcastPlan
+ */
+bool broadcastPlan(Plan* plan, bool live, bool stable, bool rescanable)
+{
+	Flow target;
+	
+	initTargetFlow(plan, &target, stable);
+	target.flotype = FLOW_REPLICATED;
+	
+	return adjustPlanFlow(plan, &target, stable, rescanable, live);  
+}
+
+
+/*
+ * Function: repartitionPlan
+ */
+bool repartitionPlan(Plan* plan, bool live, bool stable, bool rescanable, List *hashExpr, List *hashOp)
+{
+	Flow target;
+	
+	if ( list_length(hashExpr) < 1 || list_length(hashExpr) != list_length(hashOp) )
+		return false; /* Not much of a check, but it's something. */
+	
+	initTargetFlow(plan, &target, stable);
+	target.flotype = FLOW_PARTITIONED;
+	target.hashExpr = hashExpr;
+	target.hashOp = hashOp;
+	
+	return adjustPlanFlow(plan, &target, stable, rescanable, live);  
+}
+
+
+/*
+ * Helper Function: initTargetFlow
+ *
+ * Initialize a preallocated default Flow.
+ */
+void initTargetFlow(Plan *plan, Flow *target, bool stable)
+{
+	target->type = T_Flow;
+	target->flotype = FLOW_SINGLETON;
+	target->req_move = target->req_xform = MOVEMENT_NONE;
+	target->segindex = 0;
+	if ( stable )
+	{
+		target->numSortCols = plan->flow->numSortCols;
+		ARRAYCOPY(target->sortColIdx,  
+			plan->flow->sortColIdx, 
+			plan->flow->numSortCols * sizeof(AttrNumber));
+		ARRAYCOPY(target->sortOperators, 
+			plan->flow->sortOperators, 
+			plan->flow->numSortCols * sizeof(Oid));
+	}
+	else
+	{
+		target->numSortCols = 0;
+		target->sortColIdx = NULL;
+		target->sortOperators = NULL;
+	}
+	target->hashExpr = NIL;
+	target->hashOp = NIL;
+}
+
+
+/*
+ * Helper Function: adjustPlanFlow
+ *
+ * Recursively pushes a motion request down the plan tree which allows us
+ * to remove contraints in some cases.  For example, pushing a motion below
+ * a Sort removes the stability constraint.
+ */
+bool adjustPlanFlow(Plan *plan, Flow *target, bool stable, bool rescanable, bool live)
+{
+	bool recur, r_stable, r_rescan;
+	
+	/* If we can't honor this request, return false. */
+	if ( plan->flow == NULL )
+		return false; /* Must have a flow. */
+	if ( plan->flow->req_move != MOVEMENT_NONE || plan->flow->req_xform != MOVEMENT_NONE )
+		return false; /* Must not already have motion or transform assigned. */
+		
+	/* If we can, recur to push the request further down the plan tree and
+	 * possibly remove restrictions. */
+	recur = false;
+	r_stable = stable;
+	r_rescan = rescanable;
+	
+	switch ( plan->type )
+	{
+		case T_Hash:
+			/* Always push motion below Hash. */
+			/* No need to preserve order or restartability below hash. */
+			recur = true;
+			r_stable = false;
+			r_rescan = false;
+			break;
+			
+		case T_Sort:
+			if ( target->flotype == FLOW_SINGLETON && !rescanable )
+			{
+				/* We'd rather do a merge of a parallel sort, than do a
+				 * sequential sort. A fixed motion can do that as long as
+				 * we don't need to rescan.  
+				 */
+				break;
+			}
+			else
+			{
+				/* No need to preserve order or restartability below a sort. */
+				recur = true;
+				r_stable = false;
+				r_rescan = false;
+			}
+			break;
+			
+		case T_Material:
+			/* Always push motion below Material. */
+			/* No need to preserve restartability below a materialization. */
+			recur = true;
+			r_rescan = false;
+			break;
+	
+		case T_Append: /* Maybe handle specially some day. */
+		default:
+			recur = false;
+			break;
+	}
+	
+	/* If recurring, adjust flow of this plan node on return. */
+	
+	if ( recur && adjustPlanFlow(plan->lefttree, target, r_stable, r_rescan, live) )
+	{
+		if ( live )
+		{
+			switch ( target->flotype )
+			{
+				case FLOW_SINGLETON:
+					plan->flow->flotype = FLOW_SINGLETON;
+					plan->flow->segindex = target->segindex;
+					break;
+				case FLOW_REPLICATED:
+					plan->flow->flotype = FLOW_REPLICATED;
+					break;
+				case FLOW_PARTITIONED:
+					plan->flow->flotype = FLOW_PARTITIONED;
+					/* TODO - Can we fill in criteria? */
+					break;
+				default:
+					return false; /* TODO */
+			}
+			
+			if ( r_stable )
+			{
+				Flow * model_flow = plan->lefttree->flow;
+				
+				plan->flow->numSortCols = model_flow->numSortCols;
+				
+				if ( model_flow->numSortCols > 0 )
+				{
+					ARRAYCOPY(plan->flow->sortColIdx,  
+						model_flow->sortColIdx, 
+						model_flow->numSortCols * sizeof(AttrNumber));
+					ARRAYCOPY(plan->flow->sortOperators, 
+						model_flow->sortOperators, 
+						model_flow->numSortCols * sizeof(Oid));
+				}
+				else
+				{
+					plan->flow->sortColIdx = NULL;
+					plan->flow->sortOperators = NULL;
+				}
+			}
+		}
+		return  true;
+	}
+	
+	/* Else this is the base case, so honor the request or fail. */
+	
+	if ( stable && plan->flow->numSortCols < 1 )
+	{
+		return false; /* No order so can't preserve one. */
+	}
+	
+	if ( rescanable )
+	{
+		return false; /* Motion nodes aren't rescanable. */
+	}
+	
+	switch ( target->flotype )
+	{
+		case FLOW_SINGLETON:
+			return focusBasePlan(plan, target, stable, rescanable, live);	
+				
+		case FLOW_REPLICATED:
+			if ( stable )
+				return false; 
+			return broadcastBasePlan(plan, target, stable, rescanable, live);
+			
+		case FLOW_PARTITIONED:
+			if ( stable )
+				return false; 
+			return repartitionBasePlan(plan, target, stable, rescanable, live);
+			
+		case FLOW_UNDEFINED:
+			break;
+	}
+	return false;
+}	
+
+
+
+
+/*
+ * Helper Function: focusBasePlan
+ *
+ * Apply a motion request to focus the argument plan.
+ */
+bool focusBasePlan(Plan *plan, Flow *target, bool stable, bool rescanable, bool live)
+{
+	switch ( plan->flow->flotype )
+	{
+		case FLOW_SINGLETON:
+			if ( plan->flow->segindex == 0 &&  target->segindex == -1 )
+			 /* QE -> QD */
+			 {
+				if ( live )
+				{
+					plan->flow->req_move = MOVEMENT_FOCUS;
+					plan->flow->flotype = FLOW_SINGLETON;
+					plan->flow->segindex = target->segindex;
+					/* Fixed motions preserve the specfied order. */
+				}
+				return true;
+			}
+			else if ( plan->flow->segindex == target->segindex )
+			/* QE -> QE or QD -> QD */
+			{
+				return true; /* Bizarre, but ok. */
+			}
+			else
+			/* QD -> QE */
+			{
+				return false; /* No motion *from* the QD is defined. */
+			}
+			break;
+			
+		case FLOW_REPLICATED:
+			if ( stable || rescanable )
+				return false; 
+			return false; /* TODO How specify deep-six? */
+			break;
+			
+		case FLOW_PARTITIONED:
+			if ( rescanable )
+				return false;
+			if ( live )
+			{
+				plan->flow->req_move = MOVEMENT_FOCUS;
+				plan->flow->flotype = FLOW_SINGLETON;
+				plan->flow->segindex = target->segindex;
+				/* Fixed motions preserve the order specified in the Flow. */
+			}
+			return true;
+			break;
+			
+		case FLOW_UNDEFINED:
+			break;
+	}
+	return false;
+}
+
+
+/*
+ * Helper Function: broadcastBasePlan
+ *
+ * Apply a motion request to broadcast the argument plan.
+ */
+bool broadcastBasePlan(Plan *plan, Flow *target, bool stable, bool rescanable, bool live)
+{
+	switch ( plan->flow->flotype )
+	{
+		case FLOW_SINGLETON:
+			if ( rescanable )
+				return false;
+			if ( plan->flow->segindex <  0 )
+				return false; /* No motions from QD. */
+			if ( live )
+			{
+				plan->flow->req_move = MOVEMENT_BROADCAST;
+				plan->flow->flotype = FLOW_REPLICATED;
+				/* Send of singleton preserves order. */
+			}
+			return true;
+			
+		case FLOW_REPLICATED:
+			return true; /* Bizarre, but ok. */
+			break;
+			
+		case FLOW_PARTITIONED:
+			if ( stable || rescanable )
+				return false; /* Can't preserve order in N-to-N motion.  */
+			if ( live )
+			{
+				plan->flow->req_move = MOVEMENT_BROADCAST;
+				plan->flow->flotype = FLOW_REPLICATED;
+			}
+			return true;
+			
+		case FLOW_UNDEFINED:
+			break;
+	}
+	return false;
+}
+
+
+/*
+ * Helper Function: repartitionBasePlan
+ *
+ * Apply a motion request to repartition the argument plan.
+ */
+bool repartitionBasePlan(Plan *plan, Flow *target, bool stable, bool rescanable, bool live)
+{
+	switch ( plan->flow->flotype )
+	{
+		case FLOW_SINGLETON:
+			if ( rescanable )
+				return  false;
+			/* Send of singleton preserves order so stable is ok. */
+			if ( plan->flow->segindex <  0 )
+				return false; /* No motions from QD. */
+			if ( live )
+			{
+				plan->flow->req_move = MOVEMENT_REPARTITION;
+				plan->flow->flotype = FLOW_PARTITIONED;
+				plan->flow->hashExpr = copyObject(target->hashExpr);
+				plan->flow->hashOp = copyObject(target->hashOp);
+			}
+			return true;
+			
+		case FLOW_REPLICATED:
+			if ( rescanable )
+				return false; 
+			/* Restriction on replicated preserves order so stable is ok. */
+			return false; /* TODO How specify deep-six? MOVEMENT_REP2PARTITIONED */
+			if ( live )
+			{
+				plan->flow->req_move = MOVEMENT_REP2PARTITIONED;
+				plan->flow->flotype = FLOW_PARTITIONED;
+				plan->flow->hashExpr = copyObject(target->hashExpr);
+				plan->flow->hashOp = copyObject(target->hashOp);
+			}
+			return true;
+			
+		case FLOW_PARTITIONED:
+			if ( stable || rescanable )
+				return false; /* Can't preserve order in N-to-N motion.  */
+			if ( live )
+			{
+				plan->flow->req_move = MOVEMENT_REPARTITION;
+				plan->flow->flotype = FLOW_PARTITIONED;
+				plan->flow->hashExpr = copyObject(target->hashExpr);
+				plan->flow->hashOp = copyObject(target->hashOp);
+			}
+			return true;
+			
+		case FLOW_UNDEFINED:
+			break;
+	}
+	return false;
 }
