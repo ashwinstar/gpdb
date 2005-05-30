@@ -960,6 +960,7 @@ typedef struct CreateStmt
 	ContainsOids hasoids;		/* should it have OIDs? */
 	OnCommitAction oncommit;	/* what do we do at COMMIT? */
 	char	   *tablespacename; /* table space to use, or NULL */
+	List       *distributedBy;   /* what columns we distribute the data by */
 	Oid        relOid;			/* create table with this relOid */
 } CreateStmt;
 
