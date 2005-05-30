@@ -1090,6 +1090,7 @@ _readCreateStmt(void)
 	READ_ENUM_FIELD(hasoids,ContainsOids);
 	READ_ENUM_FIELD(oncommit,OnCommitAction);
 	READ_STRING_FIELD(tablespacename);
+	READ_NODE_FIELD(distributedBy);
 	READ_OID_FIELD(relOid);
 
 	READ_DONE();

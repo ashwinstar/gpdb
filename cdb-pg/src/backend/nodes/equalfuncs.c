@@ -871,6 +871,7 @@ _equalCreateStmt(CreateStmt *a, CreateStmt *b)
 	COMPARE_SCALAR_FIELD(hasoids);
 	COMPARE_SCALAR_FIELD(oncommit);
 	COMPARE_STRING_FIELD(tablespacename);
+	COMPARE_NODE_FIELD(distributedBy);
 	COMPARE_SCALAR_FIELD(relOid);
 
 	return true;

@@ -1832,6 +1832,7 @@ _copyCreateStmt(CreateStmt *from)
 	COPY_SCALAR_FIELD(hasoids);
 	COPY_SCALAR_FIELD(oncommit);
 	COPY_STRING_FIELD(tablespacename);
+	COPY_NODE_FIELD(distributedBy);
 	COPY_SCALAR_FIELD(relOid);
 
 	return newnode;
