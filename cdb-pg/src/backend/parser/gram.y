@@ -324,6 +324,7 @@ static void doNegateFloat(Value *v);
 %type <list>	constraints_set_list
 %type <boolean> constraints_set_mode
 %type <str>		OptTableSpace OptConsTableSpace OptTableSpaceOwner
+%type <list>    OptDistributedBy
 
 
 /*
@@ -349,7 +350,7 @@ static void doNegateFloat(Value *v);
 
 	DATABASE DAY_P DEALLOCATE DEC DECIMAL_P DECLARE DEFAULT DEFAULTS
 	DEFERRABLE DEFERRED DEFINER DELETE_P DELIMITER DELIMITERS
-	DESC DISTINCT DO DOMAIN_P DOUBLE_P DROP
+	DESC DISTINCT DISTRIBUTED DO DOMAIN_P DOUBLE_P DROP
 
 	EACH ELSE ENCODING ENCRYPTED END_P ESCAPE EXCEPT EXCLUDING
 	EXCLUSIVE EXECUTE EXISTS EXPLAIN EXTERNAL EXTRACT
@@ -1502,7 +1503,7 @@ opt_using:
  *****************************************************************************/
 
 CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
-			OptInherit OptWithOids OnCommitOption OptTableSpace
+			OptInherit OptWithOids OnCommitOption OptTableSpace OptDistributedBy
 				{
 					CreateStmt *n = makeNode(CreateStmt);
 					$4->istemp = $2;
@@ -1513,11 +1514,13 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->hasoids = $9;
 					n->oncommit = $10;
 					n->tablespacename = $11;
+					n->distributedBy = $12;
 					n->relOid = 0;
+					
 					$$ = (Node *)n;
 				}
 		| CREATE OptTemp TABLE qualified_name OF qualified_name
-			'(' OptTableElementList ')' OptWithOids OnCommitOption OptTableSpace
+			'(' OptTableElementList ')' OptWithOids OnCommitOption OptTableSpace OptDistributedBy
 				{
 					/* SQL99 CREATE TABLE OF <UDT> (cols) seems to be satisfied
 					 * by our inheritance capabilities. Let's try it...
@@ -1531,7 +1534,9 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->hasoids = $10;
 					n->oncommit = $11;
 					n->tablespacename = $12;
+					n->distributedBy = $13;
 					n->relOid = 0;
+					
 					$$ = (Node *)n;
 				}
 		;
@@ -1960,6 +1965,9 @@ OptConsTableSpace:   USING INDEX TABLESPACE name	{ $$ = $4; }
 			| /*EMPTY*/								{ $$ = NULL; }
 		;
 
+OptDistributedBy:   DISTRIBUTED BY  '(' columnList ')'			{ $$ = $4; }
+			| /*EMPTY*/								{ $$ = NULL; }
+		;
 
 /*
  * Note: CREATE TABLE ... AS SELECT ... is just another spelling for

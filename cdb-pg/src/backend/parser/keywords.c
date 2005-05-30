@@ -114,6 +114,7 @@ static const ScanKeyword ScanKeywords[] = {
 	{"delimiters", DELIMITERS},
 	{"desc", DESC},
 	{"distinct", DISTINCT},
+	{"distributed", DISTRIBUTED},
 	{"do", DO},
 	{"domain", DOMAIN_P},
 	{"double", DOUBLE_P},
