@@ -962,6 +962,7 @@ typedef struct CreateStmt
 	char	   *tablespacename; /* table space to use, or NULL */
 	List       *distributedBy;   /* what columns we distribute the data by */
 	Oid        relOid;			/* create table with this relOid */
+	char	   relKind;         /* CDB: force relkind to this */
 } CreateStmt;
 
 /* ----------
@@ -1575,6 +1576,7 @@ typedef struct ViewStmt
 	List	   *aliases;		/* target column names */
 	Query	   *query;			/* the SQL statement */
 	bool		replace;		/* replace an existing view? */
+	Oid        relOid;			/* create view with this relOid */
 } ViewStmt;
 
 /* ----------------------
