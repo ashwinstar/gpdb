@@ -192,6 +192,11 @@ create sequence cdb.group_seq start with 1;
 COMMENT ON SEQUENCE cdb.group_seq
 	IS 'used to assign group id by the Query Dispatcher';
 
+-- AMS won't let people connect if they can't use this sequence. BUG?	
+GRANT SELECT ON cdb.group_seq TO PUBLIC;
+GRANT UPDATE ON cdb.group_seq TO PUBLIC;
+
+
 --
 -- used to add a host to the cdb.host table
 --
