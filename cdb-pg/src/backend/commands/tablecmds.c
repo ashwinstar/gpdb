@@ -606,7 +606,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 
 		 
 
-		if ( Cdb_role == CDB_ROLE_DISPATCH )
+		if ( Cdb_role == CDB_ROLE_DISPATCH && stmt != 0 && relkind == RELKIND_RELATION)
 				{
 					/* dispatch node needs to update policy */
 							 
