@@ -58,7 +58,7 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "cdb/cdbvars.h"
-
+#include "cdb/cdbcat.h"
 /*
  * Error-checking support for DROP commands
  */
@@ -599,9 +599,14 @@ ProcessUtility(Node *parsetree,
 			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			{
 				Oid			relOid;
+				char relKind = RELKIND_RELATION;
+
+				if ( Cdb_role == CDB_ROLE_EXECUTE )
+				  if ( ((CreateStmt *)parsetree)->relKind != 0 )
+					relKind = ((CreateStmt *)parsetree)->relKind;
 
 				relOid = DefineRelation((CreateStmt *) parsetree,
-										RELKIND_RELATION);
+										relKind);
 
 				/*
 				 * Let AlterTableCreateToastTable decide if this one needs
@@ -635,31 +640,31 @@ ProcessUtility(Node *parsetree,
 					switch (stmt->removeType)
 					{
 						case OBJECT_TABLE:
-							CdbSentry(CDB_NONCE, parsetree, NULL);
+							CdbSentry(CDB_ACCEPT, parsetree, NULL);
 							rel = makeRangeVarFromNameList(names);
 							CheckDropPermissions(rel, RELKIND_RELATION);
-							RemoveRelation(rel, stmt->behavior);
+							RemoveRelation(rel, stmt);
 							break;
 
 						case OBJECT_SEQUENCE:
-							CdbSentry(CDB_NONCE, parsetree, NULL);
+							CdbSentry(CDB_ACCEPT, parsetree, NULL);
 							rel = makeRangeVarFromNameList(names);
 							CheckDropPermissions(rel, RELKIND_SEQUENCE);
-							RemoveRelation(rel, stmt->behavior);
+							RemoveRelation(rel, stmt);
 							break;
 
 						case OBJECT_VIEW:
-							CdbSentry(CDB_NONCE, parsetree, NULL);
+							CdbSentry(CDB_ACCEPT, parsetree, NULL);
 							rel = makeRangeVarFromNameList(names);
 							CheckDropPermissions(rel, RELKIND_VIEW);
-							RemoveView(rel, stmt->behavior);
+							RemoveView(rel, stmt);
 							break;
 
 						case OBJECT_INDEX:
-							CdbSentry(CDB_NONCE, parsetree, NULL);
+							CdbSentry(CDB_ACCEPT, parsetree, NULL);
 							rel = makeRangeVarFromNameList(names);
 							CheckDropPermissions(rel, RELKIND_INDEX);
-							RemoveIndex(rel, stmt->behavior);
+							RemoveIndex(rel, stmt);
 							break;
 
 						case OBJECT_TYPE:
@@ -706,16 +711,16 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_TruncateStmt:
-			CdbSentry(CDB_NONCE, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			{
 				TruncateStmt *stmt = (TruncateStmt *) parsetree;
 
-				TruncateRelation(stmt->relation);
+				TruncateRelation(stmt);
 			}
 			break;
 
 		case T_CommentStmt:
-			CdbSentry(CDB_NONCE, parsetree, NULL);
+			CdbSentry(CDB_WARN, parsetree, NULL);
 			CommentObject((CommentStmt *) parsetree);
 			break;
 
@@ -760,7 +765,7 @@ ProcessUtility(Node *parsetree,
 			 * schema
 			 */
 		case T_RenameStmt:
-			CdbSentry(CDB_NONCE, parsetree, "ALTER RENAME"); /* NB covers all ALTER RENAME */
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);  
 			ExecRenameStmt((RenameStmt *) parsetree);
 			break;
 
@@ -821,7 +826,7 @@ ProcessUtility(Node *parsetree,
 
 
 		case T_GrantStmt:
-			CdbSentry(CDB_NONCE, parsetree, NULL);
+			CdbSentry(CDB_WARN, parsetree, NULL);
 			ExecuteGrantStmt((GrantStmt *) parsetree);
 			break;
 
@@ -864,11 +869,11 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_ViewStmt:		/* CREATE VIEW */
-			CdbSentry(CDB_NONCE, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			{
 				ViewStmt   *stmt = (ViewStmt *) parsetree;
 
-				DefineView(stmt->view, stmt->query, stmt->replace);
+				DefineView(stmt);
 			}
 			break;
 
@@ -1128,7 +1133,7 @@ ProcessUtility(Node *parsetree,
 			 * ******************************** USER statements ****
 			 */
 		case T_CreateUserStmt:
-			CdbSentry(CDB_NONCE, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			CreateUser((CreateUserStmt *) parsetree);
 			break;
 
@@ -1143,7 +1148,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_DropUserStmt:
-			CdbSentry(CDB_NONCE, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			DropUser((DropUserStmt *) parsetree);
 			break;
 
