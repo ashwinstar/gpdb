@@ -1516,6 +1516,8 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tablespacename = $11;
 					n->distributedBy = $12;
 					n->relOid = 0;
+					n->relKind = RELKIND_RELATION;
+					n->policy = 0;
 					
 					$$ = (Node *)n;
 				}
@@ -1536,6 +1538,8 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tablespacename = $12;
 					n->distributedBy = $13;
 					n->relOid = 0;
+					n->relKind = RELKIND_RELATION;
+					n->policy = 0;
 					
 					$$ = (Node *)n;
 				}
@@ -4144,6 +4148,7 @@ ViewStmt:	CREATE opt_or_replace VIEW qualified_name opt_column_list
 				AS SelectStmt
 				{
 					ViewStmt *n = makeNode(ViewStmt);
+					n->relOid = 0;
 					n->replace = $2;
 					n->view = $4;
 					n->aliases = $5;
