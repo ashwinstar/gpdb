@@ -1231,6 +1231,7 @@ _outCreateStmt(StringInfo str, CreateStmt *node)
 	WRITE_STRING_FIELD(tablespacename);
 	WRITE_NODE_FIELD(distributedBy);
 	WRITE_OID_FIELD(relOid);
+	WRITE_CHAR_FIELD(relKind);
 }
 
 static void
@@ -1249,6 +1250,62 @@ _outIndexStmt(StringInfo str, IndexStmt *node)
 	WRITE_BOOL_FIELD(primary);
 	WRITE_BOOL_FIELD(isconstraint);
 	WRITE_OID_FIELD(idxOid);
+}
+
+static void
+_outViewStmt(StringInfo str, ViewStmt *node)
+{
+	WRITE_NODE_TYPE("VIEWSTMT");
+
+	WRITE_NODE_FIELD(view);
+	WRITE_NODE_FIELD(aliases);
+	WRITE_NODE_FIELD(query);
+	WRITE_BOOL_FIELD(replace);
+}
+
+static void
+_outDropStmt(StringInfo str, DropStmt *node)
+{
+	WRITE_NODE_TYPE("DROPSTMT");
+
+	WRITE_NODE_FIELD(objects);
+	WRITE_ENUM_FIELD(removeType, ObjectType);
+	WRITE_ENUM_FIELD(behavior, DropBehavior);
+
+	
+}
+
+static void
+_outCreateUserStmt(StringInfo str, CreateUserStmt *node)
+{
+	WRITE_NODE_TYPE("CREATEUSERSTMT");
+
+	WRITE_STRING_FIELD(user);
+	WRITE_NODE_FIELD(options);
+
+}
+
+static  void
+_outDropUserStmt(StringInfo str, DropUserStmt *node)
+{
+	WRITE_NODE_TYPE("DROPUSERSTMT");
+
+	WRITE_NODE_FIELD(users);
+}
+
+static void
+_outRenameStmt(StringInfo str, RenameStmt *node)
+{
+	WRITE_NODE_TYPE("RENAMESTMT");
+
+	WRITE_NODE_FIELD(relation);
+	WRITE_NODE_FIELD(object);
+	WRITE_NODE_FIELD(objarg);
+	WRITE_STRING_FIELD(subname);
+	WRITE_STRING_FIELD(newname);
+	WRITE_ENUM_FIELD(renameType,ObjectType);
+
+	 
 }
 
 static void
@@ -1404,6 +1461,11 @@ _outQuery(StringInfo str, Query *node)
 		switch (nodeTag(node->utilityStmt))
 		{
 			case T_CreateStmt:
+			case T_DropStmt:
+			case T_ViewStmt:
+			case T_CreateUserStmt:
+			case T_DropUserStmt:
+			case T_RenameStmt:
 			case T_IndexStmt:
 			case T_NotifyStmt:
 			case T_DeclareCursorStmt:
@@ -2013,6 +2075,24 @@ _outNode(StringInfo str, void *obj)
 			case T_IndexStmt:
 				_outIndexStmt(str, obj);
 				break;
+			case T_ViewStmt:
+				_outViewStmt(str, obj);
+				break;
+			case T_DropStmt:
+				_outDropStmt(str, obj);
+				break;
+
+			case T_CreateUserStmt:
+				_outCreateUserStmt(str, obj);
+				break;
+			case T_DropUserStmt:
+				_outDropUserStmt(str, obj);
+				break;
+
+			case T_RenameStmt:
+				_outRenameStmt(str, obj);
+				break;
+
 			case T_NotifyStmt:
 				_outNotifyStmt(str, obj);
 				break;

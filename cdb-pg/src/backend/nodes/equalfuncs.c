@@ -873,6 +873,7 @@ _equalCreateStmt(CreateStmt *a, CreateStmt *b)
 	COMPARE_STRING_FIELD(tablespacename);
 	COMPARE_NODE_FIELD(distributedBy);
 	COMPARE_SCALAR_FIELD(relOid);
+	COMPARE_SCALAR_FIELD(relKind);
 
 	return true;
 }

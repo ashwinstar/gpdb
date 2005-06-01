@@ -450,6 +450,69 @@ _readIndexElem(void)
 	READ_DONE();
 }
 
+static ViewStmt *
+_readViewStmt(void)
+{
+	READ_LOCALS(ViewStmt);
+
+	READ_NODE_FIELD(view);
+	READ_NODE_FIELD(aliases);
+	READ_NODE_FIELD(query);
+	READ_BOOL_FIELD(replace);
+
+	READ_DONE();
+}
+
+static DropStmt *
+_readDropStmt(void)
+{
+	READ_LOCALS(DropStmt);
+
+	READ_NODE_FIELD(objects);
+	READ_ENUM_FIELD(removeType,ObjectType);
+	READ_ENUM_FIELD(behavior,DropBehavior);
+
+	READ_DONE();
+}
+
+
+static CreateUserStmt *
+_readCreateUserStmt(void)
+{
+	READ_LOCALS(CreateUserStmt);
+
+	READ_STRING_FIELD(user);
+	READ_NODE_FIELD(options);
+
+	READ_DONE();
+}
+
+static DropUserStmt *
+_readDropUserStmt(void)
+{
+	READ_LOCALS(DropUserStmt);
+
+	READ_NODE_FIELD(users);
+
+	READ_DONE();
+	
+}
+
+static RenameStmt *
+_readRenameStmt(void)
+{
+	READ_LOCALS(RenameStmt);
+
+	READ_NODE_FIELD(relation);
+	READ_NODE_FIELD(object);
+	READ_NODE_FIELD(objarg);
+	READ_STRING_FIELD(subname);
+	READ_STRING_FIELD(newname);
+	READ_ENUM_FIELD(renameType,ObjectType);
+
+	READ_DONE();
+}
+
 /*
  * _readParam
  */
@@ -1092,6 +1155,8 @@ _readCreateStmt(void)
 	READ_STRING_FIELD(tablespacename);
 	READ_NODE_FIELD(distributedBy);
 	READ_OID_FIELD(relOid);
+	READ_CHAR_FIELD(relKind);
+	local_node->policy = NULL;
 
 	READ_DONE();
 }
@@ -1665,8 +1730,11 @@ static ParseNodeInfo infoAr[] =
 	{"CONVERTROWTYPEEXPR", (ReadFn)_readConvertRowtypeExpr},
 	{"CREATESCHEMASTMT", (ReadFn)_readCreateSchemaStmt},
 	{"CREATESTMT", (ReadFn)_readCreateStmt},
+	{"CREATEUSERSTMT", (ReadFn)_readCreateUserStmt},
 	{"DECLARECURSOR", (ReadFn)_readDeclareCursorStmt},
 	{"DISTINCTEXPR", (ReadFn)_readDistinctExpr},
+	{"DROPSTMT", (ReadFn)_readDropStmt},
+	{"DROPUSERSTMT", (ReadFn)_readDropUserStmt},
 	{"FIELDSELECT", (ReadFn)_readFieldSelect},
 	{"FIELDSTORE", (ReadFn)_readFieldStore},
 	{"FLOW", (ReadFn)_readFlow},
@@ -1698,6 +1766,7 @@ static ParseNodeInfo infoAr[] =
 	{"RANGEVAR", (ReadFn)_readRangeVar},
 	{"RELABELTYPE", (ReadFn)_readRelabelType},
 	{"REMOTEPARAMDATA", (ReadFn)_readRemoteParamData},
+	{"RENAMESTMT", (ReadFn)_readRenameStmt},
 	{"RESDOM", (ReadFn)_readResdom},
 	{"RESULT", (ReadFn)_readResult},
 	{"ROW", (ReadFn)_readRowExpr},
@@ -1719,6 +1788,7 @@ static ParseNodeInfo infoAr[] =
 	{"UNIQUE", (ReadFn)_readUnique},
 	{"VACUUMSTMT", (ReadFn)_readVacuumStmt},
 	{"VAR", (ReadFn)_readVar},
+	{"VIEWSTMT", (ReadFn)_readViewStmt},
 	{"WHEN", (ReadFn)_readCaseWhen}
 };
 
