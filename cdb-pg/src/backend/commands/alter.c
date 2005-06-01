@@ -119,7 +119,7 @@ ExecRenameStmt(RenameStmt *stmt)
 								aclcheck_error(aclresult, ACL_KIND_NAMESPACE,
 										get_namespace_name(namespaceId));
 
-							renamerel(relid, stmt->newname);
+							renamerel(relid, stmt->newname, stmt);
 							break;
 						}
 					case OBJECT_COLUMN:

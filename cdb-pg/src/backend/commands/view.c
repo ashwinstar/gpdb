@@ -29,6 +29,12 @@
 #include "utils/lsyscache.h"
 
 
+#include "cdb/cdbdisp.h"
+#include "cdb/cdbsrlz.h"
+#include "cdb/cdbvars.h"
+#include "cdb/cdbcat.h"
+
+
 static void checkViewTupleDesc(TupleDesc newdesc, TupleDesc olddesc);
 
 
@@ -145,6 +151,7 @@ DefineVirtualRelation(const RangeVar *relation, List *tlist, bool replace)
 		createStmt->hasoids = MUST_NOT_HAVE_OIDS;
 		createStmt->oncommit = ONCOMMIT_NOOP;
 		createStmt->tablespacename = NULL;
+		createStmt->relKind = RELKIND_VIEW;
 
 		/*
 		 * finally create the relation (this will error out if there's an
@@ -235,6 +242,7 @@ DefineViewRules(const RangeVar *view, Query *viewParse, bool replace)
 	RuleStmt   *append_rule;
 	RuleStmt   *delete_rule;
 #endif
+
 
 	retrieve_rule = FormViewRetrieveRule(view, viewParse, replace);
 
@@ -327,9 +335,13 @@ UpdateRangeTableOfViewParse(Oid viewOid, Query *viewParse)
  *-------------------------------------------------------------------
  */
 void
-DefineView(const RangeVar *view, Query *viewParse, bool replace)
+DefineView(ViewStmt* stmt)
 {
 	Oid			viewOid;
+		const RangeVar *view = stmt->view;
+	Query *viewParse = stmt->query;
+	bool replace = stmt->replace;
+
 
 	/*
 	 * Create the view relation
@@ -368,10 +380,12 @@ DefineView(const RangeVar *view, Query *viewParse, bool replace)
  * cleaned up automatically.
  */
 void
-RemoveView(const RangeVar *view, DropBehavior behavior)
+RemoveView(const RangeVar *view, DropStmt * stmt)
 {
 	Oid			viewOid;
 	ObjectAddress object;
+
+	DropBehavior behavior = stmt->behavior;
 
 	viewOid = RangeVarGetRelid(view, false);
 
@@ -380,4 +394,42 @@ RemoveView(const RangeVar *view, DropBehavior behavior)
 	object.objectSubId = 0;
 
 	performDeletion(&object, behavior);
+
+	if (Cdb_role == CDB_ROLE_DISPATCH)
+	{
+			char *szCommand;
+			
+
+			/*
+			 * Serialize the stmt tree, and create the sql statement: cdbexec ....
+			 */
+			Query * q = makeNode(Query);
+
+			StringInfoData buffer;
+			
+			initStringInfo( &buffer );
+
+			q->commandType = CMD_UTILITY;
+			q->utilityStmt = (Node *)stmt;
+
+			q->querySource = QSRC_ORIGINAL;
+			q->canSetTag = true; /*?*/
+		
+
+			szCommand = serializeNode((Node *)q);
+			
+
+			Assert(szCommand != NULL );
+
+			elog( NOTICE,"Comand %s", szCommand);
+
+			appendStringInfo(&buffer, "cdbexec '%s' ''", szCommand);
+
+			pfree(szCommand);
+
+		CdbDoCommand( buffer.data, 0 /*undo command*/, 
+					DTS_SEGDB, 
+					false );
+
+	}
 }

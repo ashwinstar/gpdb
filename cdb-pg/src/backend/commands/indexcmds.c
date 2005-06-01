@@ -1002,11 +1002,12 @@ relationHasPrimaryKey(Relation rel)
  *		Deletes an index.
  */
 void
-RemoveIndex(RangeVar *relation, DropBehavior behavior)
+RemoveIndex(RangeVar *relation, DropStmt * stmt)
 {
 	Oid			indOid;
 	char		relkind;
 	ObjectAddress object;
+	DropBehavior behavior = stmt->behavior;
 
 	indOid = RangeVarGetRelid(relation, false);
 	relkind = get_rel_relkind(indOid);
@@ -1021,6 +1022,44 @@ RemoveIndex(RangeVar *relation, DropBehavior behavior)
 	object.objectSubId = 0;
 
 	performDeletion(&object, behavior);
+
+	if (Cdb_role == CDB_ROLE_DISPATCH)
+	{
+			char *szCommand;
+			
+
+			/*
+			 * Serialize the stmt tree, and create the sql statement: cdbexec ....
+			 */
+			Query * q = makeNode(Query);
+
+			StringInfoData buffer;
+			
+			initStringInfo( &buffer );
+
+			q->commandType = CMD_UTILITY;
+			q->utilityStmt = (Node *)stmt;
+
+			q->querySource = QSRC_ORIGINAL;
+			q->canSetTag = true; /*?*/
+		
+
+			szCommand = serializeNode((Node *)q);
+			
+
+			Assert(szCommand != NULL );
+
+			elog( NOTICE,"Comand %s", szCommand);
+
+			appendStringInfo(&buffer, "cdbexec '%s' ''", szCommand);
+
+			pfree(szCommand);
+
+		CdbDoCommand( buffer.data, 0 /*undo command*/, 
+					DTS_SEGDB, 
+					false );
+
+	}
 }
 
 /*

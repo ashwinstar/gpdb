@@ -454,6 +454,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 	{
 		Assert(stmt->relOid == 0);
 		stmt->relOid = relationId;
+		stmt->relKind = relkind;
 
 		elog( DEBUG5,"shouldDispatch = true, relOid = %d",relationId);
 		if ( shouldDispatch )
@@ -600,21 +601,23 @@ DefineRelation(CreateStmt *stmt, char relkind)
 	{
 		char *message;
 		char *szCommand;
-		CdbPolicy * policy;
+		
 		CdbDispatchResults* results;
 
-		int nattrs = 1;
+		 
 
-		/* dispatch node needs to update policy */
+		if ( Cdb_role == CDB_ROLE_DISPATCH )
+				{
+					/* dispatch node needs to update policy */
+							 
+					CdbPolicy * policy = stmt->policy;
+					
+					if (policy)
+						set_table_policy(relationId, policy);
+					else
+						elog( NOTICE,"Table created in dispatch mode has no policy");
+				}
 		
-		policy = (CdbPolicy*) palloc(sizeof(CdbPolicy) + nattrs*sizeof(policy->attrs[0]));
-		policy->ptype = POLICYTYPE_PARTITIONED;
-		policy->nattrs = nattrs;
-		
-		/* Hack! BUG BUG!  right now we always partition on column 1 */
-		policy->attrs[0] = 1;
-		
-		set_table_policy(relationId, policy);
 		 
 		/*
 		 * We successfully completed on the Dispatcher.  Now check the results
@@ -658,10 +661,13 @@ DefineRelation(CreateStmt *stmt, char relkind)
  *		Deletes a relation.
  */
 void
-RemoveRelation(const RangeVar *relation, DropBehavior behavior)
+RemoveRelation(const RangeVar *relation, DropStmt   *stmt)
 {
 	Oid			relOid;
 	ObjectAddress object;
+	DropBehavior behavior;
+
+	behavior = stmt->behavior;
 
 	relOid = RangeVarGetRelid(relation, false);
 
@@ -669,6 +675,43 @@ RemoveRelation(const RangeVar *relation, DropBehavior behavior)
 	object.objectId = relOid;
 	object.objectSubId = 0;
 
+	if (Cdb_role == CDB_ROLE_DISPATCH)
+	{
+			char *szCommand;
+			
+
+			/*
+			 * Serialize the stmt tree, and create the sql statement: cdbexec ....
+			 */
+			Query * q = makeNode(Query);
+
+			StringInfoData buffer;
+			
+			initStringInfo( &buffer );
+
+			q->commandType = CMD_UTILITY;
+			q->utilityStmt = (Node *)stmt;
+
+			q->querySource = QSRC_ORIGINAL;
+			q->canSetTag = true; /*?*/
+		
+
+			szCommand = serializeNode((Node *)q);
+			
+
+			Assert(szCommand != NULL );
+
+			elog( NOTICE,"Comand %s", szCommand);
+
+			appendStringInfo(&buffer, "cdbexec '%s' ''", szCommand);
+
+			pfree(szCommand);
+
+		CdbDoCommand( buffer.data, 0 /*undo command*/, 
+					DTS_SEGDB, 
+					false );
+
+	}
 	performDeletion(&object, behavior);
 }
 
@@ -677,11 +720,12 @@ RemoveRelation(const RangeVar *relation, DropBehavior behavior)
  *		Removes all the rows from a relation.
  */
 void
-TruncateRelation(const RangeVar *relation)
+TruncateRelation(TruncateStmt *stmt)
 {
 	Relation	rel;
 	Oid			heap_relid;
 	Oid			toast_relid;
+	RangeVar * relation = stmt->relation;
 
 	/* Grab exclusive lock in preparation for truncate */
 	rel = heap_openrv(relation, AccessExclusiveLock);
@@ -728,6 +772,46 @@ TruncateRelation(const RangeVar *relation)
 	 * Don't allow truncate on tables which are referenced by foreign keys
 	 */
 	heap_truncate_check_FKs(rel);
+
+	if (Cdb_role == CDB_ROLE_DISPATCH)
+	{
+			char *szCommand;
+			
+
+			/*
+			 * Serialize the stmt tree, and create the sql statement: cdbexec ....
+			 */
+			Query * q = makeNode(Query);
+
+			StringInfoData buffer;
+			
+			initStringInfo( &buffer );
+
+			q->commandType = CMD_UTILITY;
+			q->utilityStmt = (Node *)stmt;
+
+			q->querySource = QSRC_ORIGINAL;
+			q->canSetTag = true; /*?*/
+		
+
+			szCommand = serializeNode((Node *)q);
+			
+
+			Assert(szCommand != NULL );
+
+			elog( NOTICE,"Comand %s", szCommand);
+
+			appendStringInfo(&buffer, "cdbexec '%s' ''", szCommand);
+
+			pfree(szCommand);
+
+		CdbDoCommand( buffer.data, 0 /*undo command*/, 
+					DTS_SEGDB, 
+					false );
+
+	}
+
+	
 
 	/*
 	 * Okay, here we go: create a new empty storage file for the relation,
@@ -1604,7 +1688,7 @@ renameatt(Oid myrelid,
  *			  sequence, AFAIK there's no need for it to be there.
  */
 void
-renamerel(Oid myrelid, const char *newrelname)
+renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 {
 	Relation	targetrelation;
 	Relation	relrelation;	/* for RELATION relation */
@@ -1660,6 +1744,44 @@ renamerel(Oid myrelid, const char *newrelname)
 
 	/* keep the system catalog indexes current */
 	CatalogUpdateIndexes(relrelation, reltup);
+
+	if (Cdb_role == CDB_ROLE_DISPATCH)
+	{
+			char *szCommand;
+			
+
+			/*
+			 * Serialize the stmt tree, and create the sql statement: cdbexec ....
+			 */
+			Query * q = makeNode(Query);
+
+			StringInfoData buffer;
+			
+			initStringInfo( &buffer );
+
+			q->commandType = CMD_UTILITY;
+			q->utilityStmt = (Node *)stmt;
+
+			q->querySource = QSRC_ORIGINAL;
+			q->canSetTag = true; /*?*/
+		
+
+			szCommand = serializeNode((Node *)q);
+			
+
+			Assert(szCommand != NULL );
+
+			elog( NOTICE,"Comand %s", szCommand);
+
+			appendStringInfo(&buffer, "cdbexec '%s' ''", szCommand);
+
+			pfree(szCommand);
+
+		CdbDoCommand( buffer.data, 0 /*undo command*/, 
+					DTS_SEGDB, 
+					false );
+
+	}
 
 	heap_freetuple(reltup);
 	heap_close(relrelation, RowExclusiveLock);

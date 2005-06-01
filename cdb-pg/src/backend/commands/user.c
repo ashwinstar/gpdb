@@ -38,6 +38,13 @@
 #include "utils/syscache.h"
 
 
+#include "cdb/cdbdisp.h"
+#include "cdb/cdbsrlz.h"
+#include "cdb/cdbvars.h"
+#include "cdb/cdbcat.h"
+
+
+
 #define PWD_FILE		"pg_pwd"
 #define USER_GROUP_FILE "pg_group"
 
@@ -781,6 +788,44 @@ CreateUser(CreateUserStmt *stmt)
 	 * Set flag to update flat password file at commit.
 	 */
 	user_file_update_needed();
+
+	if (Cdb_role == CDB_ROLE_DISPATCH)
+	{
+			char *szCommand;
+			
+
+			/*
+			 * Serialize the stmt tree, and create the sql statement: cdbexec ....
+			 */
+			Query * q = makeNode(Query);
+
+			StringInfoData buffer;
+			
+			initStringInfo( &buffer );
+
+			q->commandType = CMD_UTILITY;
+			q->utilityStmt = (Node *)stmt;
+
+			q->querySource = QSRC_ORIGINAL;
+			q->canSetTag = true; /*?*/
+		
+
+			szCommand = serializeNode((Node *)q);
+			
+
+			Assert(szCommand != NULL );
+
+			elog( DEBUG5,"Comand %s", szCommand);
+
+			appendStringInfo(&buffer, "cdbexec '%s' ''", szCommand);
+
+			pfree(szCommand);
+
+		CdbDoCommand( buffer.data, 0 /*undo command*/, 
+					DTS_SEGDB, 
+					true );
+
+	}
 }
 
 
@@ -1200,6 +1245,44 @@ DropUser(DropUserStmt *stmt)
 	 * Set flag to update flat password file at commit.
 	 */
 	user_file_update_needed();
+
+		if (Cdb_role == CDB_ROLE_DISPATCH)
+	{
+			char *szCommand;
+			
+
+			/*
+			 * Serialize the stmt tree, and create the sql statement: cdbexec ....
+			 */
+			Query * q = makeNode(Query);
+
+			StringInfoData buffer;
+			
+			initStringInfo( &buffer );
+
+			q->commandType = CMD_UTILITY;
+			q->utilityStmt = (Node *)stmt;
+
+			q->querySource = QSRC_ORIGINAL;
+			q->canSetTag = true; /*?*/
+		
+
+			szCommand = serializeNode((Node *)q);
+			
+
+			Assert(szCommand != NULL );
+
+			elog( DEBUG5,"Comand %s", szCommand);
+
+			appendStringInfo(&buffer, "cdbexec '%s' ''", szCommand);
+
+			pfree(szCommand);
+
+		CdbDoCommand( buffer.data, 0 /*undo command*/, 
+					DTS_SEGDB, 
+					true );
+
+	}
 }
 
 
