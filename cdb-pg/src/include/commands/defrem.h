@@ -33,7 +33,7 @@ extern void DefineIndex(RangeVar *heapRelation,
 			bool skip_build,
 			bool quiet,
 			IndexStmt * stmt);
-extern void RemoveIndex(RangeVar *relation, DropBehavior behavior);
+extern void RemoveIndex(RangeVar *relation, DropStmt * stmt);
 extern void ReindexIndex(RangeVar *indexRelation, bool force);
 extern void ReindexTable(RangeVar *relation, bool force);
 extern void ReindexDatabase(const char *databaseName, bool force, bool all);

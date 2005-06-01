@@ -19,7 +19,7 @@
 
 extern Oid	DefineRelation(CreateStmt *stmt, char relkind);
 
-extern void RemoveRelation(const RangeVar *relation, DropBehavior behavior);
+extern void RemoveRelation(const RangeVar *relation, DropStmt   *stmt);
 
 extern void AlterTable(AlterTableStmt *stmt);
 
@@ -27,7 +27,7 @@ extern void AlterTableInternal(Oid relid, List *cmds, bool recurse);
 
 extern void AlterTableCreateToastTable(Oid relOid, bool silent);
 
-extern void TruncateRelation(const RangeVar *relation);
+extern void TruncateRelation(TruncateStmt *stmt);
 
 extern void renameatt(Oid myrelid,
 		  const char *oldattname,
@@ -36,7 +36,8 @@ extern void renameatt(Oid myrelid,
 		  bool recursing);
 
 extern void renamerel(Oid myrelid,
-		  const char *newrelname);
+		  const char *newrelname,
+		  RenameStmt *stmt);
 
 extern void register_on_commit_action(Oid relid, OnCommitAction action);
 extern void remove_on_commit_action(Oid relid);

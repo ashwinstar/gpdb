@@ -15,7 +15,8 @@
 #define PARSENODES_H
 
 #include "nodes/primnodes.h"
-
+ 
+#include "cdb/cdbcat.h"
 
 /* Possible sources of a Query */
 typedef enum QuerySource
@@ -963,6 +964,7 @@ typedef struct CreateStmt
 	List       *distributedBy;   /* what columns we distribute the data by */
 	Oid        relOid;			/* create table with this relOid */
 	char	   relKind;         /* CDB: force relkind to this */
+	CdbPolicy  *policy;
 } CreateStmt;
 
 /* ----------

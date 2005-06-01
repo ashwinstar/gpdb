@@ -16,7 +16,7 @@
 
 #include "nodes/parsenodes.h"
 
-extern void DefineView(const RangeVar *view, Query *view_parse, bool replace);
-extern void RemoveView(const RangeVar *view, DropBehavior behavior);
+extern void DefineView(ViewStmt   *stmt);
+extern void RemoveView(const RangeVar *view, DropStmt * stmt);
 
 #endif   /* VIEW_H */
