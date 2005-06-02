@@ -118,12 +118,7 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 
 	if (shouldDispatch)
 	{
-		Assert(stmt->schemaOid == 0);
-		stmt->schemaOid = namespaceId;
-
-		elog( DEBUG5,"shouldDispatch = true, namespaceOid = %d",namespaceId);
-
-
+		
 			char *pscCreateSchema;
 			DispatchTargetSet set;
 
@@ -132,7 +127,13 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 			 */
 			Query * q = makeNode(Query);
 
+			Assert(stmt->schemaOid == 0);
+			stmt->schemaOid = namespaceId;
+
 			StringInfoData buffer;
+
+			elog( DEBUG5,"shouldDispatch = true, namespaceOid = %d",namespaceId);
+
 			
 			initStringInfo( &buffer );
 

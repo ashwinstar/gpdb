@@ -116,6 +116,7 @@ DefineIndex(RangeVar *heapRelation,
 	Form_pg_am	accessMethodForm;
 	IndexInfo  *indexInfo;
 	int			numberOfAttributes;
+	Oid indexoid;
 
 	bool hasDispatched = false;
 	bool shouldDispatch =  Cdb_role == CDB_ROLE_DISPATCH && !IsBootstrapProcessingMode();
@@ -380,7 +381,7 @@ DefineIndex(RangeVar *heapRelation,
 
 	heap_close(rel, NoLock);
 
-	Oid indexoid = InvalidOid;
+	indexoid = InvalidOid;
 	if (shouldDispatch)
 	{
 		
