@@ -1410,8 +1410,8 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 	 
 	 
 	ListCell   *keys;
-	ListCell   *columns;
-	List	   *cols;			/* optional: names of the target columns */
+	 
+	CdbPolicy * policy;
 	int colindex;
 	int maxattrs = 200;
 	if ( Cdb_role != CDB_ROLE_DISPATCH )
@@ -1420,7 +1420,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 		return;
 	}
 	
-	CdbPolicy * policy;
+	
 	policy = (CdbPolicy*) palloc(sizeof(CdbPolicy) + maxattrs*sizeof(policy->attrs[0]));
 	policy->ptype = POLICYTYPE_PARTITIONED;
 	policy->nattrs = 0;
