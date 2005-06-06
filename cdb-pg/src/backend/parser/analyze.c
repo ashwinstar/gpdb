@@ -1561,185 +1561,51 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 	}
 
 
-		*policyp = policy;
+	*policyp = policy;
 
-		 
-/***************************/
-#if 0
-	/*
-	 * Run through the constraints that need to generate an index. For
-	 * PRIMARY KEY, mark each column as NOT NULL and create an index. For
-	 * UNIQUE, create an index as for PRIMARY KEY, but do not insist on
-	 * NOT NULL.
-	 */
-	foreach(listptr, cxt->ixconstraints)
+	if (cxt && cxt->pkey != NULL) // Primary key specified.  Make sure distribution columns match
 	{
-		Constraint *constraint = lfirst(listptr);
-		ListCell   *keys;
-		IndexElem  *iparam;
-
-		Assert(IsA(constraint, Constraint));
-		Assert((constraint->contype == CONSTR_PRIMARY)
-			   || (constraint->contype == CONSTR_UNIQUE));
-
-		index = makeNode(IndexStmt);
-		index->idxOid = 0;
-
-		index->unique = true;
-		index->primary = (constraint->contype == CONSTR_PRIMARY);
-		if (index->primary)
+		int i = 0;
+		IndexStmt * index = cxt->pkey;
+		List * indexParams = index->indexParams;
+		ListCell * ip;
+		foreach(ip, indexParams)
 		{
-			if (cxt->pkey != NULL)
-				ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-						 errmsg("multiple primary keys for table \"%s\" are not allowed",
-								cxt->relation->relname)));
-			cxt->pkey = index;
+			if (i >= policy->nattrs)
+				break;
 
-			/*
-			 * In ALTER TABLE case, a primary index might already exist,
-			 * but DefineIndex will check for it.
-			 */
-		}
-		index->isconstraint = true;
-
-		if (constraint->name != NULL)
-			index->idxname = pstrdup(constraint->name);
-		else
-			index->idxname = NULL;		/* DefineIndex will choose name */
-
-		index->relation = cxt->relation;
-		index->accessMethod = DEFAULT_INDEX_TYPE;
-		index->tableSpace = constraint->indexspace;
-		index->indexParams = NIL;
-		index->whereClause = NULL;
-
-		/*
-		 * Make sure referenced keys exist.  If we are making a PRIMARY
-		 * KEY index, also make sure they are NOT NULL, if possible.
-		 * (Although we could leave it to DefineIndex to mark the columns
-		 * NOT NULL, it's more efficient to get it right the first time.)
-		 */
-		foreach(keys, constraint->keys)
-		{
-			char	   *key = strVal(lfirst(keys));
-			bool		found = false;
-			ColumnDef  *column = NULL;
-			ListCell   *columns;
-
-			foreach(columns, cxt->columns)
+			IndexElem  *iparam = lfirst(ip);
+			if (iparam->name != 0)
 			{
-				column = (ColumnDef *) lfirst(columns);
-				Assert(IsA(column, ColumnDef));
-				if (strcmp(column->colname, key) == 0)
+				ColumnDef  *column = NULL;
+				ListCell   *columns;
+
+				colindex = 0;
+				foreach(columns, cxt->columns)
 				{
-					found = true;
-					break;
-				}
-			}
-			if (found)
-			{
-				/* found column in the new table; force it to be NOT NULL */
-				if (constraint->contype == CONSTR_PRIMARY)
-					column->is_not_null = TRUE;
-			}
-			else if (SystemAttributeByName(key, cxt->hasoids) != NULL)
-			{
-				/*
-				 * column will be a system column in the new table, so
-				 * accept it.  System columns can't ever be null, so no
-				 * need to worry about PRIMARY/NOT NULL constraint.
-				 */
-				found = true;
-			}
-			else if (cxt->inhRelations)
-			{
-				/* try inherited tables */
-				ListCell   *inher;
-
-				foreach(inher, cxt->inhRelations)
-				{
-					RangeVar   *inh = (RangeVar *) lfirst(inher);
-					Relation	rel;
-					int			count;
-
-					Assert(IsA(inh, RangeVar));
-					rel = heap_openrv(inh, AccessShareLock);
-					if (rel->rd_rel->relkind != RELKIND_RELATION)
-						ereport(ERROR,
-								(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-						errmsg("inherited relation \"%s\" is not a table",
-							   inh->relname)));
-					for (count = 0; count < rel->rd_att->natts; count++)
+					column = (ColumnDef *) lfirst(columns);
+					Assert(IsA(column, ColumnDef));
+					colindex++;
+					if (strcmp(column->colname, iparam->name) == 0)
 					{
-						Form_pg_attribute inhattr = rel->rd_att->attrs[count];
-						char	   *inhname = NameStr(inhattr->attname);
-
-						if (inhattr->attisdropped)
-							continue;
-						if (strcmp(key, inhname) == 0)
-						{
-							found = true;
-
-							/*
-							 * We currently have no easy way to force an
-							 * inherited column to be NOT NULL at
-							 * creation, if its parent wasn't so already.
-							 * We leave it to DefineIndex to fix things up
-							 * in this case.
-							 */
-							break;
-						}
-					}
-					heap_close(rel, NoLock);
-					if (found)
+						/*found = true;*/
 						break;
+					}
 				}
+				 
+				if (colindex != policy->attrs[i])
+					ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				errmsg("When there is both a PRIMARY KEY, and a DISTRIBUTED BY clause, the DISTRIBUTED BY clause must be equal to or a left-subset of the PRIMARY KEY"
+				)));
+
+				i++;
+				 
 			}
-
-			/*
-			 * In the ALTER TABLE case, don't complain about index keys
-			 * not created in the command; they may well exist already.
-			 * DefineIndex will complain about them if not, and will also
-			 * take care of marking them NOT NULL.
-			 */
-			if (!found && !cxt->isalter)
-				ereport(ERROR,
-						(errcode(ERRCODE_UNDEFINED_COLUMN),
-					  errmsg("column \"%s\" named in key does not exist",
-							 key)));
-
-			/* Check for PRIMARY KEY(foo, foo) */
-			foreach(columns, index->indexParams)
-			{
-				iparam = (IndexElem *) lfirst(columns);
-				if (iparam->name && strcmp(key, iparam->name) == 0)
-				{
-					if (index->primary)
-						ereport(ERROR,
-								(errcode(ERRCODE_DUPLICATE_COLUMN),
-								 errmsg("column \"%s\" appears twice in primary key constraint",
-										key)));
-					else
-						ereport(ERROR,
-								(errcode(ERRCODE_DUPLICATE_COLUMN),
-								 errmsg("column \"%s\" appears twice in unique constraint",
-										key)));
-				}
-			}
-
-			/* OK, add it to the index definition */
-			iparam = makeNode(IndexElem);
-			iparam->name = pstrdup(key);
-			iparam->expr = NULL;
-			iparam->opclass = NIL;
-			index->indexParams = lappend(index->indexParams, iparam);
 		}
-
-		indexlist = lappend(indexlist, index);
 	}
+		 
 
-#endif
 }
 
 static void
