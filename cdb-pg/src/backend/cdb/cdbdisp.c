@@ -119,7 +119,7 @@ static DispatchCommandParms* dispatchCommandParmsAr = NULL;
 static int	threadCount = 0;
 
 /*
- * CdbDispatchCommand:
+ * CdbDispatchCommandInt:
  * Send ths szCommand SQL statement to the subset of all segdbs in the cluster
  * specified by the targetSet parameter.  cancelFromBelow indicates whether an error
  * occurring on one of the qExec segdbs should cause all still-executing commands to cancel
@@ -219,6 +219,17 @@ void CdbDispatchCommandInt( const char *szCommand, DispatchTargetSet targetSet,
 	}
 }
 
+/*
+ * CdbDispatchCommand:
+ * Send ths szCommand SQL statement to the subset of all segdbs in the cluster
+ * specified by the targetSet parameter.  cancelFromBelow indicates whether an error
+ * occurring on one of the qExec segdbs should cause all still-executing commands to cancel
+ * on other qExecs. Normally this would be true.  The commands are sent over the libpq
+ * connections that were established during cdblink_setup.  They are run inside of threads.
+ * The number of segdbs handled by any one thread is determined by the
+ * guc variable cdb_connections_per_thread.
+ * Called by general users, this method includes global transaction control.
+ */
 void CdbDispatchCommand( const char *szCommand, DispatchTargetSet targetSet, 
                         SegmentDatabaseDescriptor **segdbList, int segdbListCount, 
                         bool cancelFromBelow )
@@ -230,7 +241,7 @@ void CdbDispatchCommand( const char *szCommand, DispatchTargetSet targetSet,
 }
 
 /*
- * CdbCheckDispatchResult:
+ * CdbCheckDispatchResultInt:
  * Waits for threads that were launched in CdbDispatchCommand
  * to finish, and then checks to see whether they all succeeded.
  * If so, returns true.  If not, returns false, and fills in pszError 
@@ -335,6 +346,14 @@ CdbDispatchResults *CdbCheckDispatchResultInt(void)
 	return results;	
 }
 
+/*
+ * CdbCheckDispatchResult:
+ * Waits for threads that were launched in CdbDispatchCommand
+ * to finish, and then checks to see whether they all succeeded.
+ * If so, returns true.  If not, returns false, and fills in pszError 
+ * out parameter with a concatenation of errors from any failed command.
+ * Called by general users, this method includes global transaction control.
+ */
 CdbDispatchResults *CdbCheckDispatchResult(void)
 {
     CdbDispatchResults          *results;
@@ -1073,16 +1092,11 @@ int SumCmdTuples(CdbDispatchResults *results)
 }
 
 /*
- * CdbDoCommand:
+ * CdbDoCommandInt:
  * Combination of CdbDispatchCommand and then CdbCheckDispatchResult.
- * If it fails on any of the targets, and the undo command is non-NULL,
- * then the undo command is run on any targets that were successful.
- * If the command successfully ran, returns true.
- * If it failed on at least one target, and the undo was NULL or successful, then returns false.
- * If it failed but the undo failed, ereport is called.
+ * If the command successfully ran, returns true, else error is thrown.
  */
-bool CdbDoCommand( const char *szCommand, const char *szUndoCommand, 
-					DispatchTargetSet targetSet, 
+bool CdbDoCommandInt( const char *szCommand, DispatchTargetSet targetSet, 
 					bool cancelFromBelow, void ***resultSets )
 {
 	CdbDispatchResults* results = NULL;
@@ -1109,6 +1123,7 @@ bool CdbDoCommand( const char *szCommand, const char *szUndoCommand,
 		message_do = CdbDumpDispatchResults(results, false);
 		rtn = false;
 
+        /* comment out undoCommand, not needed anymore for global transactions.
 		if ( szUndoCommand != NULL )
 		{
 			int i;
@@ -1164,6 +1179,7 @@ bool CdbDoCommand( const char *szCommand, const char *szUndoCommand,
 			DestroyCdbDispatchResults( undo_results );
 		}
 		else
+        */
 		{
 
 			ereport( ERROR,
@@ -1181,6 +1197,25 @@ bool CdbDoCommand( const char *szCommand, const char *szUndoCommand,
 
 	return rtn;
 }
+
+/*
+ * CdbDoCommand: 
+ * Combination of CdbDispatchCommand and then CdbCheckDispatchResult.
+ * If the command successfully ran, returns true, else error is thrown.
+ * Called by general users, this method includes global transaction control.
+ */
+bool CdbDoCommand( const char *szCommand, 
+                    DispatchTargetSet targetSet, 
+                    bool cancelFromBelow, void ***resultSets )
+{
+    // need to start distributed transaction
+    condStartDtxTransaction();
+    bool ret = CdbDoCommandInt( szCommand, targetSet, 
+                            cancelFromBelow, resultSets );
+    condCommitDtxTransaction( false, false );
+    return ret;            
+}
+
 
 /*
  * CdbDumpDispatchResults:

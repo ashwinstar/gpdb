@@ -223,7 +223,7 @@ execCommand(void)
     }
     
 
-    if ( !CdbDoCommand(cmdbuf, NULL, DTS_SEGDB, true, NULL) )
+    if ( !CdbDoCommandInt(cmdbuf, DTS_SEGDB, true, NULL) )
     {
         // error
         switch (currentGxact->state)
@@ -731,7 +731,7 @@ recoverRMs(PGresult ***pgresultSets)
 {
     char cmdbuf[] = "select gid from pg_prepared_xacts";
     
-    if ( !CdbDoCommand(cmdbuf, NULL, DTS_SEGDB, true, pgresultSets) )
+    if ( !CdbDoCommandInt(cmdbuf, DTS_SEGDB, true, pgresultSets) )
     {
         return true;
     }
