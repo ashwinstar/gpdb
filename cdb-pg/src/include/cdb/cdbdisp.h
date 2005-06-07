@@ -120,7 +120,7 @@ extern int SumCmdTuples(CdbDispatchResults *results);
  * If it failed on at least one target, and the undo was successful, then returns false.
  * If it failed but the undo failed, ereport is called.
  */
-extern bool CdbDoCommand( const char *szCommand, const char *szUndoCommand, 
+extern bool CdbDoCommand( const char *szCommand, 
 						 DispatchTargetSet targetSet, bool cancelFromBelow,
                           void ***resultSets );  // resultSets points to PGresult
 
