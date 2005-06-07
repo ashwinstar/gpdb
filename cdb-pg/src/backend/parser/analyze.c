@@ -1571,10 +1571,12 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 		ListCell * ip;
 		foreach(ip, indexParams)
 		{
+			IndexElem  *iparam;
+
 			if (i >= policy->nattrs)
 				break;
 
-			IndexElem  *iparam = lfirst(ip);
+			iparam = lfirst(ip);
 			if (iparam->name != 0)
 			{
 				ColumnDef  *column = NULL;
