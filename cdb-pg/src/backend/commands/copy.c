@@ -1226,10 +1226,10 @@ DoCopy(const CopyStmt *stmt)
 		{
 			/* elog(LOG,"Starting CDB-COPY FROM with improved parsing capabilities"); */
 		
-			if(Cdb_role == CDB_ROLE_UTILITY)
+			if(Cdb_role == CDB_ROLE_UTILITY)	
 				FastUtilityCopyFrom(rel, attnumlist, binary, oids, delim, null_print, csv_mode,
 							 quote, escape, force_notnull_atts);
-			
+		    	
 			else if(Cdb_role == CDB_ROLE_DISPATCH)
 				FastDispatcherCopyFrom(rel, attnumlist, binary, oids, delim, null_print, csv_mode,
 									   quote, escape, force_notnull_atts);
@@ -3784,9 +3784,7 @@ FastDispatcherCopyFrom(Relation rel, List *attnumlist, bool binary, bool oids,
 	pfree(defexprs);
 	pfree(constraintexprs);
 	pfree(force_notnull);	
-	bytebuffer_free(&attr_fastbuf);
-	bytebuffer_free(&line_fastbuf);
-	
+		
 	/*
 	 * report all accumulated errors back to the client.
 	 */
@@ -5363,7 +5361,6 @@ bytebuffer_init(bytebuffer *dest)
 				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
 				 errmsg("Failed to allocate memory for bytebuffer in bytebuffer init.")
 				 ));
-	
 }
 
 void 
@@ -5379,7 +5376,7 @@ bytebuffer_free(bytebuffer *dest)
 {
 	if ((dest->bytes) != NULL) 
 	{
-		free((dest->bytes));
+		pfree((dest->bytes));
 	}
 	dest->alloc_size = 0;
 	bytebuffer_reset(dest);
