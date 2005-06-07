@@ -821,9 +821,7 @@ CreateUser(CreateUserStmt *stmt)
 
 			pfree(szCommand);
 
-		CdbDoCommand( buffer.data, 0 /*undo command*/, 
-					DTS_SEGDB, 
-					true, NULL );
+        CdbDoCommand( buffer.data, DTS_SEGDB, true, NULL );
 
 	}
 }
@@ -1278,9 +1276,7 @@ DropUser(DropUserStmt *stmt)
 
 			pfree(szCommand);
 
-		CdbDoCommand( buffer.data, 0 /*undo command*/, 
-					DTS_SEGDB, 
-					true, NULL );
+        CdbDoCommand( buffer.data, DTS_SEGDB, true, NULL );
 
 	}
 }

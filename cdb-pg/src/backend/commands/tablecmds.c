@@ -707,10 +707,8 @@ RemoveRelation(const RangeVar *relation, DropStmt   *stmt)
 
 			pfree(szCommand);
 
-		CdbDoCommand( buffer.data, 0 /*undo command*/, 
-					DTS_SEGDB, 
-					false, NULL );
-
+        CdbDoCommand( buffer.data, DTS_SEGDB, false, NULL );
+        
 	}
 	performDeletion(&object, behavior);
 }
@@ -805,9 +803,7 @@ TruncateRelation(TruncateStmt *stmt)
 
 			pfree(szCommand);
 
-		CdbDoCommand( buffer.data, 0 /*undo command*/, 
-					DTS_SEGDB, 
-					false, NULL );
+        CdbDoCommand( buffer.data, DTS_SEGDB, false, NULL );
 
 	}
 
@@ -1777,9 +1773,7 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 
 			pfree(szCommand);
 
-		CdbDoCommand( buffer.data, 0 /*undo command*/, 
-					DTS_SEGDB, 
-					false, NULL );
+        CdbDoCommand( buffer.data, DTS_SEGDB, false, NULL );
 
 	}
 

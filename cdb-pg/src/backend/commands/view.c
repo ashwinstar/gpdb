@@ -403,9 +403,7 @@ DefineView(ViewStmt* stmt)
 
 			pfree(szCommand);
 
-		CdbDoCommand( buffer.data, 0 /*undo command*/, 
-					DTS_SEGDB, 
-					false, NULL  );
+		CdbDoCommand( buffer.data, DTS_SEGDB, false, NULL  );
 
 	}
 }
