@@ -369,6 +369,45 @@ DefineView(ViewStmt* stmt)
 	 * Now create the rules associated with the view.
 	 */
 	DefineViewRules(view, viewParse, replace);
+
+	if (Cdb_role == CDB_ROLE_DISPATCH)
+	{
+			char *szCommand;
+			
+
+			/*
+			 * Serialize the stmt tree, and create the sql statement: cdbexec ....
+			 */
+			Query * q = makeNode(Query);
+
+			StringInfoData buffer;
+			
+			initStringInfo( &buffer );
+
+			q->commandType = CMD_UTILITY;
+			q->utilityStmt = (Node *)stmt;
+
+			q->querySource = QSRC_ORIGINAL;
+			q->canSetTag = true; /*?*/
+			stmt->replace = true; /* Special:  The view relation will already exist at this point */
+		
+
+			szCommand = serializeNode((Node *)q);
+			
+
+			Assert(szCommand != NULL );
+
+			elog( NOTICE,"Comand %s", szCommand);
+
+			appendStringInfo(&buffer, "cdbexec '%s' ''", szCommand);
+
+			pfree(szCommand);
+
+		CdbDoCommand( buffer.data, 0 /*undo command*/, 
+					DTS_SEGDB, 
+					false );
+
+	}
 }
 
 /*
