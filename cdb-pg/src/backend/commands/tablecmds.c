@@ -709,7 +709,7 @@ RemoveRelation(const RangeVar *relation, DropStmt   *stmt)
 
 		CdbDoCommand( buffer.data, 0 /*undo command*/, 
 					DTS_SEGDB, 
-					false );
+					false, NULL );
 
 	}
 	performDeletion(&object, behavior);
@@ -807,7 +807,7 @@ TruncateRelation(TruncateStmt *stmt)
 
 		CdbDoCommand( buffer.data, 0 /*undo command*/, 
 					DTS_SEGDB, 
-					false );
+					false, NULL );
 
 	}
 
@@ -1779,7 +1779,7 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 
 		CdbDoCommand( buffer.data, 0 /*undo command*/, 
 					DTS_SEGDB, 
-					false );
+					false, NULL );
 
 	}
 

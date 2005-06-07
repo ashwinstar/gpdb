@@ -823,7 +823,7 @@ CreateUser(CreateUserStmt *stmt)
 
 		CdbDoCommand( buffer.data, 0 /*undo command*/, 
 					DTS_SEGDB, 
-					true );
+					true, NULL );
 
 	}
 }
@@ -1280,7 +1280,7 @@ DropUser(DropUserStmt *stmt)
 
 		CdbDoCommand( buffer.data, 0 /*undo command*/, 
 					DTS_SEGDB, 
-					true );
+					true, NULL );
 
 	}
 }

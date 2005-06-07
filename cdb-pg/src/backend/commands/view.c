@@ -429,7 +429,7 @@ RemoveView(const RangeVar *view, DropStmt * stmt)
 
 		CdbDoCommand( buffer.data, 0 /*undo command*/, 
 					DTS_SEGDB, 
-					false );
+					false, NULL );
 
 	}
 }
