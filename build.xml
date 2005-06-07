@@ -666,7 +666,7 @@ source ${installRoot}/cdb-pgsql/cdb.rc
        <move file="dist/cdb-pgsql-${releaseBuild}.tar.gz" todir="${webRoot}/nightly-build"/>
        <chmod type="file" perm="644" file="${webRoot}/nightly-build/cdb-pgsql-${releaseBuild}.tar.gz"/>
        <exec executable="scp">
-           <arg line="${webRoot}/nightly-build/cdb-pgsql-${releaseBuild}.tar.gz cdb2@qa1:~/builds"/>
+           <arg line="${webRoot}/nightly-build/cdb-pgsql-${releaseBuild}.tar.gz cdb2@osprey1:~/builds"/>
        </exec>
     </target>
 
