@@ -2180,6 +2180,7 @@ main(int argc, char *argv[])
 		"pg_clog",
 		"pg_subtrans",
 		"pg_twophase",
+        "pg_dtm",
 		"base",
 		"base/1",
 		"pg_tblspc"

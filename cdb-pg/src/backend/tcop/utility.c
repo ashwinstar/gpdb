@@ -483,6 +483,10 @@ ProcessUtility(Node *parsetree,
 												  true);
 							}
 						}
+                        
+                        // start transaction on all QE
+                        startDtxTransaction();
+                        
 						break;
 
 					case TRANS_STMT_COMMIT:
@@ -493,6 +497,11 @@ ProcessUtility(Node *parsetree,
 							if (completionTag)
 								strcpy(completionTag, "ROLLBACK");
 						}
+                        else
+                        {
+                            // commit all QE
+                            commitDtxTransaction(false);
+                        }
 						break;
 
 					case TRANS_STMT_COMMIT_PREPARED:

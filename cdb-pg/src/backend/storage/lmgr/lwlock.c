@@ -116,6 +116,9 @@ NumLWLocks(void)
 	
 	/* twophase.c needs one lock */
 	numLocks++;
+    
+    /* cdbtm.c needs one lock */
+    numLocks++;
 
 	/* Perhaps create a few more for use by user-defined modules? */
 

@@ -1784,6 +1784,10 @@ StartTransaction(void)
 static void
 CommitTransaction(void)
 {
+    // commit all QE as cleanup process, ignore all errors
+    // commit should have been all from ProcessUtility and CdbDispatchCommand
+    commitDtxTransaction();
+    
 	TransactionState s = CurrentTransactionState;
 
 	ShowTransactionState("CommitTransaction");
@@ -2071,6 +2075,9 @@ AbortTransaction(void)
 	 * State remains TRANS_ABORT until CleanupTransaction().
 	 */
 	RESUME_INTERRUPTS();
+    
+    // abort all QE as cleanup process, ignore all errors
+    rollbackDtxTransaction();
 }
 
 /*

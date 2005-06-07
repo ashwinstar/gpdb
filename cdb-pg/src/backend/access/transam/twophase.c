@@ -399,7 +399,8 @@ BootStrapTwoPhase(void)
 int
 TwoPhaseShmemSize(void)
 {
-	return max_prepared_xacts * sizeof(GXACT) * 2;
+    return MAXALIGN( sizeof(LWLockId) + (sizeof(int) * 2) +
+                    (max_prepared_xacts * sizeof(GXACT) * 2));
 }
 
 
@@ -415,8 +416,9 @@ TwoPhaseShmemInit(void)
 		struct GXACT axact_array[max_prepared_xacts];
 	} *shared;
 
-	shared = ShmemInitStruct("global transaction lookup table", sizeof(LWLockId) +
-		 (sizeof(int) * 2) + (max_prepared_xacts * sizeof(GXACT) * 2), &found);
+// TODO REMOVE
+    printf("TwoPhaseShmemInit called");
+	shared = ShmemInitStruct("global transaction lookup table", TwoPhaseShmemSize(), &found);
 	if(!shared)
 		elog(FATAL, "could not initialize global transaction lookup table");
 	

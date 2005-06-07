@@ -723,6 +723,10 @@ void cdb_setup(void)
 	/* If cdb_role is UTILITY, skip this call. */
 	if ( Cdb_role != CDB_ROLE_UTILITY )
 		InitMotionLayer();
+        
+    // initialize TM
+    if ( Cdb_role == CDB_ROLE_DISPATCH )
+        initTM();
 }
 
 

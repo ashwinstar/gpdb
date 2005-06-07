@@ -18,6 +18,7 @@
 #include "cdb/cdbconn.h"
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbvars.h"
+#include "cdb/cdbtm.h"
 
 /*
  * Parameter structure for the DispatchCommand threads
@@ -53,6 +54,12 @@ typedef struct DispatchCommandParms
 	 * The pthread_t thread handle.
 	 */
 	pthread_t					thread;
+    
+    /*
+     * Returned resultset
+     */
+    PGresult                      ***resultSets;
+    
 } DispatchCommandParms;
 
 /*
@@ -121,9 +128,9 @@ static int	threadCount = 0;
  * The number of segdbs handled by any one thread is determined by the
  * guc variable cdb_connections_per_thread.
  */
-void CdbDispatchCommand( const char *szCommand, DispatchTargetSet targetSet, 
-						SegmentDatabaseDescriptor **segdbList, int segdbListCount, 
-						bool cancelFromBelow )
+void CdbDispatchCommandInt( const char *szCommand, DispatchTargetSet targetSet, 
+                        SegmentDatabaseDescriptor **segdbList, int segdbListCount, 
+                        bool cancelFromBelow, void ***resultSets )
 {
 	int i;
 	int max_threads;
@@ -181,6 +188,10 @@ void CdbDispatchCommand( const char *szCommand, DispatchTargetSet targetSet,
 			break;
 
 	}
+    
+    // set result set variables if return of result set is required
+    if (resultSets != NULL)
+        dispatchCommandParmsAr->resultSets = resultSets;
 
 	/*
 	 * Compute the thread count based on how many segdbs were added into the 
@@ -208,6 +219,16 @@ void CdbDispatchCommand( const char *szCommand, DispatchTargetSet targetSet,
 	}
 }
 
+void CdbDispatchCommand( const char *szCommand, DispatchTargetSet targetSet, 
+                        SegmentDatabaseDescriptor **segdbList, int segdbListCount, 
+                        bool cancelFromBelow )
+{
+    condStartDtxTransaction();
+    CdbDispatchCommandInt( szCommand, targetSet, 
+                        segdbList, segdbListCount, 
+                        cancelFromBelow, NULL );
+}
+
 /*
  * CdbCheckDispatchResult:
  * Waits for threads that were launched in CdbDispatchCommand
@@ -215,7 +236,7 @@ void CdbDispatchCommand( const char *szCommand, DispatchTargetSet targetSet,
  * If so, returns true.  If not, returns false, and fills in pszError 
  * out parameter with a concatenation of errors from any failed command.
  */
-CdbDispatchResults *CdbCheckDispatchResult(void)
+CdbDispatchResults *CdbCheckDispatchResultInt(void)
 {
 	int							i;
 	int							j;
@@ -310,8 +331,18 @@ CdbDispatchResults *CdbCheckDispatchResult(void)
 	}
     	
 	threadCount = 0;
-
+    
 	return results;	
+}
+
+CdbDispatchResults *CdbCheckDispatchResult(void)
+{
+    CdbDispatchResults          *results;
+    results = CdbCheckDispatchResultInt();
+    if (results->success)
+        condCommitDtxTransaction(false,false);
+
+    return results;
 }
 
 /*
@@ -335,6 +366,13 @@ void *thread_DispatchCommand(void *arg)
 	 * In threads, we cannot use palloc, because it's not thread safe.  
 	 */
 	stillRunning = (RunningInfo *)calloc(db_count, sizeof(RunningInfo));
+    
+    PGresult **pqresults = NULL;
+    if (pParms->resultSets != NULL)
+    {
+        pqresults = (PGresult **)calloc(db_count, sizeof(pqresults));
+        *pParms->resultSets = pqresults;
+    }
 					
 	/*
 	 * The pParms contains an array of SegmentDatabaseDescriptors
@@ -585,8 +623,15 @@ void *thread_DispatchCommand(void *arg)
 							if ( cmdTuples != NULL )
 								segdbDesc->cmdTuples = atoi(cmdTuples);
 						}
-						
-						PQclear( pRes );
+				        if (pqresults != NULL)
+                         {
+                            // TODO:   need to handle multiple result sets
+                            // check the segindex for segment case
+                            Assert(pqresults[segdbDesc->segment_descriptor->segindex] == NULL);
+                            pqresults[segdbDesc->segment_descriptor->segindex] = pRes;
+                         }
+                         else		
+						  PQclear( pRes );
 					}
 				}
 				else
@@ -1038,7 +1083,7 @@ int SumCmdTuples(CdbDispatchResults *results)
  */
 bool CdbDoCommand( const char *szCommand, const char *szUndoCommand, 
 					DispatchTargetSet targetSet, 
-					bool cancelFromBelow )
+					bool cancelFromBelow, void ***resultSets )
 {
 	CdbDispatchResults* results = NULL;
 	bool				rtn		= true;
@@ -1047,9 +1092,9 @@ bool CdbDoCommand( const char *szCommand, const char *szUndoCommand,
 
 	Assert(szCommand != NULL);
 
-	CdbDispatchCommand( szCommand, targetSet, NULL, 0, cancelFromBelow );
+	CdbDispatchCommandInt( szCommand, targetSet, NULL, 0, cancelFromBelow, resultSets );
 
-	results = CdbCheckDispatchResult();
+	results = CdbCheckDispatchResultInt();
 
 	message_do = CdbDumpDispatchResults(results, true);
 	Assert( message_do != NULL );
@@ -1082,9 +1127,9 @@ bool CdbDoCommand( const char *szCommand, const char *szUndoCommand,
 				}
 			}
 
-			CdbDispatchCommand( szUndoCommand, DTS_ENUMERATION, segdbsForUndo, x, cancelFromBelow );
+			CdbDispatchCommandInt( szUndoCommand, DTS_ENUMERATION, segdbsForUndo, x, cancelFromBelow, NULL );
 
-			undo_results = CdbCheckDispatchResult();
+			undo_results = CdbCheckDispatchResultInt();
 
 			message_undo = CdbDumpDispatchResults(undo_results, true);
 			Assert( message_undo != NULL );

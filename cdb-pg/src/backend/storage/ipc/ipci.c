@@ -32,6 +32,7 @@
 #include "storage/proc.h"
 #include "storage/sinval.h"
 #include "storage/spin.h"
+#include "cdb/cdbtm.h"
 
 
 /*
@@ -77,6 +78,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate,
 		size += CLOGShmemSize();
 		size += SUBTRANSShmemSize();
 		size += TwoPhaseShmemSize();
+         size += tmShmemSize();
 		size += LWLockShmemSize();
 		size += SInvalShmemSize(maxBackends);
 		size += FreeSpaceShmemSize();
@@ -143,6 +145,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate,
 	CLOGShmemInit();
 	SUBTRANSShmemInit();
 	TwoPhaseShmemInit();
+    tmShmemInit();
 	InitBufferPool();
 
 	/*

@@ -498,6 +498,12 @@ ShutdownPostgres(int code, Datum arg)
 	 * callback for it wouldn't work.
 	 */
 	smgrDoPendingDeletes(false);	/* delete as though aborting xact */
+    
+    /*
+     * shutdown TM
+     */
+    if ( Cdb_role == CDB_ROLE_DISPATCH )
+        shutdownTM();
 }
 
 
