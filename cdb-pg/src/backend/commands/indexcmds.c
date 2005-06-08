@@ -1050,7 +1050,7 @@ RemoveIndex(RangeVar *relation, DropStmt * stmt)
 
 			Assert(szCommand != NULL );
 
-			elog( NOTICE,"Comand %s", szCommand);
+			elog( DEBUG1,"Comand %s", szCommand);
 
 			appendStringInfo(&buffer, "cdbexec '%s' ''", szCommand);
 
