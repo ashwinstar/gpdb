@@ -701,7 +701,7 @@ RemoveRelation(const RangeVar *relation, DropStmt   *stmt)
 
 			Assert(szCommand != NULL );
 
-			elog( NOTICE,"Comand %s", szCommand);
+			elog( DEBUG1,"Comand %s", szCommand);
 
 			appendStringInfo(&buffer, "cdbexec '%s' ''", szCommand);
 
@@ -797,7 +797,7 @@ TruncateRelation(TruncateStmt *stmt)
 
 			Assert(szCommand != NULL );
 
-			elog( NOTICE,"Comand %s", szCommand);
+			elog( DEBUG1,"Comand %s", szCommand);
 
 			appendStringInfo(&buffer, "cdbexec '%s' ''", szCommand);
 
@@ -1767,7 +1767,7 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 
 			Assert(szCommand != NULL );
 
-			elog( NOTICE,"Comand %s", szCommand);
+			elog( DEBUG1,"Comand %s", szCommand);
 
 			appendStringInfo(&buffer, "cdbexec '%s' ''", szCommand);
 
