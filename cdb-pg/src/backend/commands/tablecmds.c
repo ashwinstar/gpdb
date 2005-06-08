@@ -5959,11 +5959,13 @@ AlterTableCreateToastTable(Oid relOid, bool silent)
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("shared tables cannot be toasted after initdb")));
 
+	elog(DEBUG1, "In AlterTableCreateToastTable");
 	/*
 	 * Is it already toasted?
 	 */
 	if (rel->rd_rel->reltoastrelid != InvalidOid)
 	{
+		elog(DEBUG1, "Table already toasted");
 		if (silent)
 		{
 			heap_close(rel, NoLock);
@@ -5981,6 +5983,7 @@ AlterTableCreateToastTable(Oid relOid, bool silent)
 	 */
 	if (!needs_toast_table(rel))
 	{
+		elog(DEBUG1, "Doesn't need toast");
 		if (silent)
 		{
 			heap_close(rel, NoLock);
@@ -6125,6 +6128,7 @@ AlterTableCreateToastTable(Oid relOid, bool silent)
 	heap_close(rel, NoLock);
 
 	CommandCounterIncrement();
+	elog(DEBUG1, "Toast table created successfully");
 }
 
 /*

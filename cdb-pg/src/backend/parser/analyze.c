@@ -1409,10 +1409,10 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 {
 	 
 	 
-	ListCell   *keys;
+	ListCell   *keys = NULL;
 	 
-	CdbPolicy * policy;
-	int colindex;
+	CdbPolicy * policy = NULL;
+	int colindex = 0;
 	int maxattrs = 200;
 	if ( Cdb_role != CDB_ROLE_DISPATCH )
 	{
@@ -1430,12 +1430,13 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 	{
 
 		IndexStmt * index = cxt->pkey;
+		Assert(index->indexParams != NULL);
 		List * indexParams = index->indexParams;
-		ListCell * ip;
+		ListCell * ip = NULL;
 		foreach(ip, indexParams)
 		{
 			IndexElem  *iparam = lfirst(ip);
-			if (iparam->name != 0)
+			if (iparam && iparam->name != 0)
 			{
 				 
 				if (distributedBy)
@@ -1597,9 +1598,9 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 				 
 				if (colindex != policy->attrs[i])
 					ereport(ERROR,
-				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-				errmsg("When there is both a PRIMARY KEY, and a DISTRIBUTED BY clause, the DISTRIBUTED BY clause must be equal to or a left-subset of the PRIMARY KEY"
-				)));
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					errmsg("When there is both a PRIMARY KEY, and a DISTRIBUTED BY clause, the DISTRIBUTED BY clause must be equal to or a left-subset of the PRIMARY KEY"
+					)));
 
 				i++;
 				 
