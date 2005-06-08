@@ -386,7 +386,7 @@ _readConstraint(void)
 	if (strncmp(token, "PRIMARY_KEY", length)==0)
 	{
 		local_node->contype = CONSTR_PRIMARY;
-		elog(NOTICE, "primary key");
+		/*elog(NOTICE, "primary key");*/
 		READ_NODE_FIELD(keys);
 		READ_STRING_FIELD(indexspace);
 	}
