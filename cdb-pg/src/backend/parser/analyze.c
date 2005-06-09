@@ -1430,9 +1430,11 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 	{
 
 		IndexStmt * index = cxt->pkey;
-		Assert(index->indexParams != NULL);
-		List * indexParams = index->indexParams;
+		List * indexParams;
 		ListCell * ip = NULL;
+		Assert(index->indexParams != NULL);
+		indexParams = index->indexParams;
+
 		foreach(ip, indexParams)
 		{
 			IndexElem  *iparam = lfirst(ip);

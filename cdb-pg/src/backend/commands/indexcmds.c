@@ -888,9 +888,9 @@ makeObjectName(const char *name1, const char *name2, const char *label)
 	}
 
 	if (name1)
-		name1chars = pg_mbcliplen(name1, name1chars, name1chars);
+		name1chars = pg_mbcliplen((const unsigned char *)name1, name1chars, name1chars);
 	if (name2)
-		name2chars = pg_mbcliplen(name2, name2chars, name2chars);
+		name2chars = pg_mbcliplen((const unsigned char *)name2, name2chars, name2chars);
 
 	/* Now construct the string using the chosen lengths */
 	name = palloc(name1chars + name2chars + overhead + 1);

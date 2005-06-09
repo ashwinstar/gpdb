@@ -848,7 +848,7 @@ pq_getstring(StringInfo s)
 			if (PqRecvBuffer[i] == '\0')
 			{
 				/* include the '\0' in the copy */
-				appendBinaryStringInfo(s, PqRecvBuffer + PqRecvPointer,
+				appendBinaryStringInfo(s, (const char *)(PqRecvBuffer + PqRecvPointer),
 									   i - PqRecvPointer + 1);
 				PqRecvPointer = i + 1;	/* advance past \0 */
 				return 0;
@@ -856,7 +856,7 @@ pq_getstring(StringInfo s)
 		}
 
 		/* If we're here we haven't got the \0 in the buffer yet. */
-		appendBinaryStringInfo(s, PqRecvBuffer + PqRecvPointer,
+		appendBinaryStringInfo(s, (const char *)(PqRecvBuffer + PqRecvPointer),
 							   PqRecvLength - PqRecvPointer);
 		PqRecvPointer = PqRecvLength;
 	}

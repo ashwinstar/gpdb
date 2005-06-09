@@ -175,7 +175,7 @@ truncate_identifier(char *ident, int len, bool warn)
 {
 	if (len >= NAMEDATALEN)
 	{
-		len = pg_mbcliplen(ident, len, NAMEDATALEN - 1);
+		len = pg_mbcliplen((const unsigned char *)ident, len, NAMEDATALEN - 1);
 		if (warn)
 			ereport(NOTICE,
 					(errcode(ERRCODE_NAME_TOO_LONG),

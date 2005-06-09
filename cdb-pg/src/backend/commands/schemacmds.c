@@ -127,10 +127,12 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 			 */
 			Query * q = makeNode(Query);
 
+			StringInfoData buffer;
+
 			Assert(stmt->schemaOid == 0);
 			stmt->schemaOid = namespaceId;
 
-			StringInfoData buffer;
+			
 
 			elog( DEBUG5,"shouldDispatch = true, namespaceOid = %d",namespaceId);
 
