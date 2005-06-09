@@ -228,7 +228,7 @@ execMotionUnsorted(MotionState *node)
 						*/
 						if ( node->fixedSegIdxMask != NULL && !node->fixedSegIdxMask[0] )
 						{
-							// this tuple will be deep-sixed!
+							/* this tuple will be deep-sixed! */
 							node->numTuplesToDeepSix++;
 						}
 						else
@@ -253,7 +253,7 @@ execMotionUnsorted(MotionState *node)
                 }
                 else    /* Hash motion node */
                 {
-					// Get hash value of hash expressions
+					/*  Get hash value of hash expressions */
 					Assert( motion->numHashSegs > 0 && motion->hashSegIdx != NULL );
 					uint32 hval = 0;
 					uint16 target_segindex;
@@ -271,7 +271,7 @@ execMotionUnsorted(MotionState *node)
 					 */
 					if ( node->hashSegIdxMask != NULL && !node->hashSegIdxMask[hval] )
 					{
-						// this tuple will be deep-sixed!
+						/* this tuple will be deep-sixed! */
 						node->numTuplesToDeepSix++;
 					}
 					else
@@ -313,8 +313,8 @@ execMotionUnsorted(MotionState *node)
 		 */
 		 
 		/* we only want to wait around if we have reading and writing left to do. */ 
-		// !node->noMoreAMSTuples
-		// 
+		/* !node->noMoreAMSTuples
+		*/ 
 		if( !node->noMoreAMSTuples || !node->noMoreChildTuples ) 
     		waitForEvent( motion->motionID, !node->noMoreAMSTuples, 
     		              READ_INTEREST_ALL, !node->noMoreChildTuples ); 

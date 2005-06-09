@@ -378,7 +378,7 @@ ExecutorRun(QueryDesc *queryDesc,
 		}
 
 		/* For now, query executors only do SELECTs. */
-//		Assert( !( Cdb_role==CDB_ROLE_EXECUTE  && operation != CMD_SELECT ) );
+/*		Assert( !( Cdb_role==CDB_ROLE_EXECUTE  && operation != CMD_SELECT ) ); */
 
 
 		/*
