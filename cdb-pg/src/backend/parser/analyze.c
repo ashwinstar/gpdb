@@ -1564,7 +1564,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 
 	*policyp = policy;
 
-	if (cxt && cxt->pkey != NULL) // Primary key specified.  Make sure distribution columns match
+	if (cxt && cxt->pkey != NULL) /* Primary key specified.  Make sure distribution columns match */
 	{
 		int i = 0;
 		IndexStmt * index = cxt->pkey;

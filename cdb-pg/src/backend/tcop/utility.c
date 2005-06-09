@@ -484,7 +484,7 @@ ProcessUtility(Node *parsetree,
 							}
 						}
                         
-                        // start transaction on all QE
+                        /* start transaction on all QE */
                         startDtxTransaction();
                         
 						break;
@@ -499,7 +499,7 @@ ProcessUtility(Node *parsetree,
 						}
                         else
                         {
-                            // commit all QE
+                            /* commit all QE */
                             commitDtxTransaction(false);
                         }
 						break;
