@@ -433,7 +433,7 @@ void cdblink_disconnect( int exit_code, Datum arg )
 			{
 				SegmentDatabaseDescriptor *segdbDesc = &(segDesc->db_descriptors[j]);
 				
-				// TODO: Perform cancellation of "still running" queries
+				/* TODO: Perform cancellation of "still running" queries */
 
 /*				if ( pairDesc->query_result )
 				{

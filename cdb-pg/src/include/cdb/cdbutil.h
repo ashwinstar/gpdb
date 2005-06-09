@@ -26,16 +26,16 @@
  */
 typedef struct CdbComponentDatabaseInfo 
 {
-	int4		dbid;			// the dbid of this database
-	int4		segindex;		// content indicator: -1 for entry database, 0, ..., n-1 for segment database
-    bool		isprimary;  	// true if this is the primary segment, false if it's the secondary
-    char		*dbname; 		// segment database name
-    char		*hostname;  	// name or ip address of host machine
-    int4		port;     		// port that instance is listening on
-    char		*datadir;   	// directory where instance was initialized into
-    int4		listenerid;		// id of listener for this database.
-    char		*cdbsuperuser;	// user name for cdb connection
-    char		*cdbsuperpswd;	// password for cdb connection
+	int4		dbid;			/* the dbid of this database */
+	int4		segindex;		/* content indicator: -1 for entry database, 0, ..., n-1 for segment database */
+    bool		isprimary;  	/* true if this is the primary segment, false if it's the secondary */
+    char		*dbname; 		/* segment database name */
+    char		*hostname;  	/* name or ip address of host machine */
+    int4		port;     		/* port that instance is listening on */
+    char		*datadir;   	/* directory where instance was initialized into */
+    int4		listenerid;		/* id of listener for this database. */
+    char		*cdbsuperuser;	/* user name for cdb connection */
+    char		*cdbsuperpswd;	/* password for cdb connection */
 } CdbComponentDatabaseInfo;
 
 /* --------------------------------------------------------------------------------------------------
@@ -46,14 +46,14 @@ typedef struct CdbComponentDatabaseInfo
  */
 typedef struct CdbComponentDatabases
 {
-    CdbComponentDatabaseInfo	*segment_db_info; 			// array of SegmentDatabaseInfo's for segment databases
-    int							total_segment_dbs;			// count of the array 
-    CdbComponentDatabaseInfo	*entry_db_info; 			// array of SegmentDatabaseInfo's for entry databases
-    int							total_entry_dbs;			// count of the array 
-    int							total_segments;				// count of distinct segindexes
-    int							my_dbid;					// the dbid of this database
-    int							my_segindex;				// the content of this database
-    bool						my_isprimary;				// the isprimary flag of this database
+    CdbComponentDatabaseInfo	*segment_db_info; 			/* array of SegmentDatabaseInfo's for segment databases */
+    int							total_segment_dbs;			/* count of the array  */
+    CdbComponentDatabaseInfo	*entry_db_info; 			/* array of SegmentDatabaseInfo's for entry databases */
+    int							total_entry_dbs;			/* count of the array  */
+    int							total_segments;				/* count of distinct segindexes */
+    int							my_dbid;					/* the dbid of this database */
+    int							my_segindex;				/* the content of this database */
+    bool						my_isprimary;				/* the isprimary flag of this database */
 } CdbComponentDatabases;
 
 /*

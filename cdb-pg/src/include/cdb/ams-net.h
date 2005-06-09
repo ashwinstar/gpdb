@@ -10,7 +10,7 @@
 
 
 /* Maximum packet-size for an AMS packet. */
-//#define MAX_AMS_PACKET_SIZE 65536
+/*#define MAX_AMS_PACKET_SIZE 65536*/
 #define MAX_AMS_PACKET_SIZE 32000
 
 /* number of concurrent async sends between PG and AMS-SVC. */

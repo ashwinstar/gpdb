@@ -724,7 +724,7 @@ void cdb_setup(void)
 	if ( Cdb_role != CDB_ROLE_UTILITY )
 		InitMotionLayer();
         
-    // initialize TM
+    /* initialize TM */
     if ( Cdb_role == CDB_ROLE_DISPATCH )
         initTM();
 }
@@ -742,7 +742,7 @@ void cdb_cleanup(void)
 	
 	ams_cleanup();
 		
-	//TODO: we probably need something to clean up the MotionLayer.
+	/*TODO: we probably need something to clean up the MotionLayer. */
 }
 
 

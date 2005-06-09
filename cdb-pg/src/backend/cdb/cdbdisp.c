@@ -189,7 +189,7 @@ void CdbDispatchCommandInt( const char *szCommand, DispatchTargetSet targetSet,
 
 	}
     
-    // set result set variables if return of result set is required
+    /* set result set variables if return of result set is required */
     if (resultSets != NULL)
         dispatchCommandParmsAr->resultSets = resultSets;
 
@@ -644,8 +644,8 @@ void *thread_DispatchCommand(void *arg)
 						}
 				        if (pqresults != NULL)
                          {
-                            // TODO:   need to handle multiple result sets
-                            // check the segindex for segment case
+                            /* TODO:   need to handle multiple result sets */
+                            /* check the segindex for segment case */
                             Assert(pqresults[segdbDesc->segment_descriptor->segindex] == NULL);
                             pqresults[segdbDesc->segment_descriptor->segindex] = pRes;
                          }
@@ -765,10 +765,10 @@ void createThreadPoolPerListener( DispatchCommandParms *dispatchCommandParmsAr, 
 	{
 		if ( pPairAr[i].listenerid != lastListenerID  )
 		{
-			// Check to see if we got a connection for the last listenerid
+			/* Check to see if we got a connection for the last listenerid */
 			if ( !bFoundConnection )
 			{
-				// This is an error condition	
+				/* This is an error condition	*/
 				ereport( ERROR,
 							(errcode( ERRCODE_SQLSERVER_REJECTED_ESTABLISHMENT_OF_SQLCONNECTION ),
 							 errmsg("Cannot dispatch command %s to all listeners: "
@@ -794,10 +794,10 @@ void createThreadPoolPerListener( DispatchCommandParms *dispatchCommandParmsAr, 
 		}
 	}
 	
-	// Check to see if we got a connection for the last listenerid
+	/* Check to see if we got a connection for the last listenerid */
 	if ( !bFoundConnection )
 	{
-		// This is an error condition	
+		/* This is an error condition	*/
 		ereport( ERROR,
 					(errcode( ERRCODE_SQLSERVER_REJECTED_ESTABLISHMENT_OF_SQLCONNECTION ),
 					 errmsg("Cannot dispatch command %s to all listeners: "
@@ -852,7 +852,7 @@ void createThreadPoolPerSegDB( DispatchCommandParms *dispatchCommandParmsAr, int
 	SegmentDescriptor *segDesc;
 	SegmentDatabaseDescriptor *segdbDesc;
 	
-	// Validate that we have connections that we need
+	/* Validate that we have connections that we need */
 	if ( !CdbClusterDefinition->all_valid_segdbs_connected )
 	{
 		ereport( ERROR,
@@ -902,7 +902,7 @@ void createThreadPoolEnumeration( DispatchCommandParms *dispatchCommandParmsAr, 
 			q = segdbDesc->segment_database_info;
 			Assert( q != NULL );
 
-			// This is an error condition	
+			/* This is an error condition	*/
 			ereport( ERROR,
 						(errcode( ERRCODE_SQLSERVER_REJECTED_ESTABLISHMENT_OF_SQLCONNECTION ),
 						errmsg("Cannot dispatch command %s to segindex %d isprimary %c, because "
@@ -1208,7 +1208,7 @@ bool CdbDoCommand( const char *szCommand,
                     DispatchTargetSet targetSet, 
                     bool cancelFromBelow, void ***resultSets )
 {
-    // need to start distributed transaction
+    /* need to start distributed transaction */
     condStartDtxTransaction();
     bool ret = CdbDoCommandInt( szCommand, targetSet, 
                             cancelFromBelow, resultSets );
