@@ -602,7 +602,7 @@ _readOpExpr(void)
 	 * operators' functions. (We don't currently support an ALTER OPERATOR
 	 * command, but might someday.)
 	 */
-//	local_node->opfuncid = InvalidOid;
+/*	local_node->opfuncid = InvalidOid; */
 
 	READ_OID_FIELD(opresulttype);
 	READ_BOOL_FIELD(opretset);
@@ -1653,8 +1653,8 @@ bitmapsetRead(void)
 
 	Bitmapset *bms = NULL;
 	
-	token = pg_strtok(&length);	// read (
-	token = pg_strtok(&length);	// read b
+	token = pg_strtok(&length);	/* read ( */
+	token = pg_strtok(&length);	/* read b */
 
 	/* List of integers */
 	for (;;)
