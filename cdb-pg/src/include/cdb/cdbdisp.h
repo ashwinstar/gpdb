@@ -122,6 +122,6 @@ extern int SumCmdTuples(CdbDispatchResults *results);
  */
 extern bool CdbDoCommand( const char *szCommand, 
 						 DispatchTargetSet targetSet, bool cancelFromBelow,
-                          void ***resultSets );  // resultSets points to PGresult
+                          void ***resultSets );  /* resultSets points to PGresult */
 
 #endif	/* CDBDISP_H */

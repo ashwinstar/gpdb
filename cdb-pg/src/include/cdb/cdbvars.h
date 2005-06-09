@@ -236,10 +236,10 @@ extern int ams_wait_time;    /* GUC var */
  */
 typedef struct CdbCdb
 {
-    char	*cdbname; 		// array of SegmentDatabaseInfo's for segment databases
-    int4	numsegments;	// count of distinct segindexes
-	int4	dbid;			// the dbid of this database
-	int4	segindex;		// content indicator: -1 for entry database, 0, ..., n-1 for segment database
+    char	*cdbname; 		/* array of SegmentDatabaseInfo's for segment databases */
+    int4	numsegments;	/* count of distinct segindexes */
+	int4	dbid;			/* the dbid of this database */
+	int4	segindex;		/* content indicator: -1 for entry database, 0, ..., n-1 for segment database */
 } CdbCdb;
 
 /* --------------------------------------------------------------------------------------------------

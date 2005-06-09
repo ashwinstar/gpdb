@@ -62,15 +62,15 @@ typedef enum TupleChunkType
  *            between "active" segdb and backup
  */
 
-//#define BROADCAST_SEGIDX        0x7FFF
+/*#define BROADCAST_SEGIDX        0x7FFF*/
 #define BROADCAST_SEGIDX        0xFF
-//#define ALL_SEGDBS_MASK         0x8000
+/*#define ALL_SEGDBS_MASK         0x8000*/
 
-//#define GetSegIdx(x)            ((x) & ~ALL_SEGDBS_MASK)
+/*#define GetSegIdx(x)            ((x) & ~ALL_SEGDBS_MASK)*/
 #define GetSegIdx(x)            (x)
 #define IsBroadcastSegIdx(x)    (GetSegIdx(x) == BROADCAST_SEGIDX)
-//#define IsActiveOnlySegIdx(x)   ( ((x) & ALL_SEGDBS_MASK) == 0 )
-//#define SetAllSegdbsFlag(x)     ((x) | ALL_SEGDBS_MASK)
+/*#define IsActiveOnlySegIdx(x)   ( ((x) & ALL_SEGDBS_MASK) == 0 )*/
+/*#define SetAllSegdbsFlag(x)     ((x) | ALL_SEGDBS_MASK)*/
 
 /* Simple accessors/mutators for parts of the tuple-chunk header.  These
  * functions store multibyte integers in network byte order, and convert
