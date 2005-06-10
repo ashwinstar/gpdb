@@ -477,12 +477,14 @@ register_statefileblock(void *data, uint32 len)
 		records.tail = records.tail->next;
 		records.tail->buffer = InvalidBuffer;
 		records.tail->next = NULL;
+        records.tail->len = 0;
 
 		records.bytesFree = len > 512 ? len : 512;
 		records.tail->data = palloc(records.bytesFree);
 	}
 	memcpy(&((char *)records.tail->data)[records.tail->len], data, len);
 	records.tail->len += len;
+    records.bytesFree -= len;
 }
 
 void
