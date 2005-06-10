@@ -32,9 +32,14 @@ static void match_unsorted_outer(Query *root, RelOptInfo *joinrel,
 					 RelOptInfo *outerrel, RelOptInfo *innerrel,
 					 List *restrictlist, List *mergeclause_list,
 					 JoinType jointype);
-static void hash_inner_and_outer(Query *root, RelOptInfo *joinrel,
-					 RelOptInfo *outerrel, RelOptInfo *innerrel,
-					 List *restrictlist, JoinType jointype);
+static void
+hash_inner_and_outer(Query *root,
+                     RelOptInfo *joinrel,
+                     RelOptInfo *outerrel,
+                     RelOptInfo *innerrel,
+                     List *restrictlist,
+                     List *mergeclause_list,    /*CDB*/
+                     JoinType jointype);
 static List *select_mergejoin_clauses(RelOptInfo *joinrel,
 						 RelOptInfo *outerrel,
 						 RelOptInfo *innerrel,
@@ -69,7 +74,9 @@ add_paths_to_joinrel(Query *root,
 	 * our only way of implementing full outer joins, so override
 	 * mergejoin disable if it's a full join.
 	 */
+#if 0  /*CDB*/
 	if (enable_mergejoin || jointype == JOIN_FULL)
+#endif /*CDB*/
 		mergeclause_list = select_mergejoin_clauses(joinrel,
 													outerrel,
 													innerrel,
@@ -115,7 +122,7 @@ add_paths_to_joinrel(Query *root,
 	 */
 	if (enable_hashjoin)
 		hash_inner_and_outer(root, joinrel, outerrel, innerrel,
-							 restrictlist, jointype);
+							 restrictlist, mergeclause_list, jointype);
 }
 
 /*
@@ -450,6 +457,7 @@ match_unsorted_outer(Query *root,
 										  outerpath,
 										  inner_cheapest_total,
 										  restrictlist,
+                                          mergeclause_list,         /*CDB*/
 										  merge_pathkeys));
 			if (matpath != NULL)
 				add_path(joinrel, (Path *)
@@ -459,6 +467,7 @@ match_unsorted_outer(Query *root,
 											  outerpath,
 											  matpath,
 											  restrictlist,
+                                              mergeclause_list,     /*CDB*/
 											  merge_pathkeys));
 			if (inner_cheapest_startup != inner_cheapest_total)
 				add_path(joinrel, (Path *)
@@ -468,6 +477,7 @@ match_unsorted_outer(Query *root,
 											  outerpath,
 											  inner_cheapest_startup,
 											  restrictlist,
+                                              mergeclause_list,     /*CDB*/
 											  merge_pathkeys));
 			if (bestinnerjoin != NULL)
 				add_path(joinrel, (Path *)
@@ -477,6 +487,7 @@ match_unsorted_outer(Query *root,
 											  outerpath,
 											  bestinnerjoin,
 											  restrictlist,
+                                              mergeclause_list,     /*CDB*/
 											  merge_pathkeys));
 		}
 
@@ -672,6 +683,7 @@ hash_inner_and_outer(Query *root,
 					 RelOptInfo *outerrel,
 					 RelOptInfo *innerrel,
 					 List *restrictlist,
+                     List *mergeclause_list,    /*CDB*/
 					 JoinType jointype)
 {
 	bool		isouterjoin;
@@ -772,6 +784,7 @@ hash_inner_and_outer(Query *root,
 									  cheapest_total_outer,
 									  cheapest_total_inner,
 									  restrictlist,
+                                      mergeclause_list,
 									  hashclauses));
 		if (cheapest_startup_outer != cheapest_total_outer)
 			add_path(joinrel, (Path *)
@@ -781,6 +794,7 @@ hash_inner_and_outer(Query *root,
 										  cheapest_startup_outer,
 										  cheapest_total_inner,
 										  restrictlist,
+                                          mergeclause_list,
 										  hashclauses));
 	}
 }

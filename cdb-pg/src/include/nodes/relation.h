@@ -4,7 +4,7 @@
  *	  Definitions for planner's internal data structures.
  *
  *
- * Portions Copyright (c) 2005, Metapa Inc.
+ * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -19,6 +19,8 @@
 #include "nodes/bitmapset.h"
 #include "nodes/parsenodes.h"
 #include "storage/block.h"
+
+#include "cdb/cdbpathlocus.h"
 
 
 /*
@@ -51,6 +53,7 @@ typedef struct QualCost
 	Cost		startup;		/* one-time cost */
 	Cost		per_tuple;		/* per-evaluation cost */
 } QualCost;
+
 
 /*----------
  * RelOptInfo
@@ -210,7 +213,7 @@ typedef struct RelOptInfo
 	List	   *indexlist;
 	BlockNumber	pages;
 	double		tuples;
-    struct CdbPolicy *cdbpolicy;/* partitioning info if distributed rel */
+    struct CdbPolicy   *cdbpolicy;      /* distribution of stored tuples */
 	struct Plan *subplan;		/* if subquery */
 
 	/* used by various scans and joins: */
@@ -313,19 +316,6 @@ typedef struct PathKeyItem
 	 */
 } PathKeyItem;
 
-/*
- * CdbPathPartitioning
- */
-
-typedef struct CdbPathPartitioning
-{
-    NodeTag		type;           /* T_CdbPathPartitioning */
-    FlowType    distribution;    
-    List       *partkey;        /* partitioning key: 
-                                 *  List of PathKeyItem nodes if 
-                                 *    distribution == FLOW_PARTITIONED;
-                                 *  else NIL */
-} CdbPathPartitioning;
 
 /*
  * Type "Path" is used as-is for sequential-scan paths.  For other
@@ -352,8 +342,7 @@ typedef struct Path
 								 * fetched) */
     EstimatedBytes  memory;     /* executor RAM needed for Path + kids */
 
-    CdbPathPartitioning *partn; /* distribution of the result tuples, or 
-                                 * NULL if not yet decided */
+    CdbPathLocus    locus;      /* distribution of the result tuples */
 
     List	   *pathkeys;		/* sort ordering of path's output */
 	/* pathkeys is a List of Lists of PathKeyItem nodes; see above */

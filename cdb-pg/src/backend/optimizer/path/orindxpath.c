@@ -291,6 +291,9 @@ best_or_subclause_indexes(Query *root,
 	pathnode->path.startup_cost = path_startup_cost;
 	pathnode->path.total_cost = path_total_cost;
 
+    /* Distribution is same as the base table. */
+    pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
+
 	/*
 	 * This is an IndexScan, but the overall result will consist of tuples
 	 * extracted in multiple passes (one for each subclause of the OR), so

@@ -160,7 +160,11 @@ create_plan(Query *root, Path *best_path)
 			plan = (Plan *) create_unique_plan(root,
 											   (UniquePath *) best_path);
 			break;
-		default:
+        case T_Motion:
+            /* CDB TODO: create Motion plan */
+            plan = create_plan(root, ((CdbMotionPath *)best_path)->subpath);
+            break;
+        default:
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) best_path->pathtype);
 			plan = NULL;		/* keep compiler quiet */

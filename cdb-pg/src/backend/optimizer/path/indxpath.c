@@ -1649,7 +1649,10 @@ make_innerjoin_index_path(Query *root,
 	/* Like costsize.c, force estimate to be at least one row */
 	pathnode->rows = clamp_row_est(pathnode->rows);
 
-	cost_index(&pathnode->path, root, rel, index, indexquals, true);
+    /* Distribution is same as the base table. */
+    pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
+
+    cost_index(&pathnode->path, root, rel, index, indexquals, true);
 
 	return (Path *) pathnode;
 }

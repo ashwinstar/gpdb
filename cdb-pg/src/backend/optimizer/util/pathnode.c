@@ -3,7 +3,7 @@
  * pathnode.c
  *	  Routines to manipulate pathlists and create path nodes
  *
- * Portions Copyright (c) 2005, Metapa Inc.
+ * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -34,6 +34,7 @@
 #include "utils/selfuncs.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbpath.h"        /* cdb_join_motion() etc */
 
 static bool is_distinct_query(Query *query);
 static bool hash_safe_tlist(List *tlist);
@@ -275,7 +276,10 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 	ListCell   *p1_prev = NULL;
 	ListCell   *p1;
 
-	/*
+    if (!new_path)
+        return;
+    
+    /*
 	 * Loop to check proposed new path against old paths.  Note it is
 	 * possible for more than one old path to be tossed out because
 	 * new_path dominates it.
@@ -397,20 +401,6 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 
 
 /*
- * cdb_create_path_partitioning
- */
-CdbPathPartitioning *
-cdb_create_path_partitioning(FlowType   distribution,
-                             List      *partkey)
-{
-	CdbPathPartitioning *partn = makeNode(CdbPathPartitioning);
-	partn->distribution = distribution;
-	partn->partkey = partkey;
-	return partn;
-}
-
-
-/*
  * create_seqscan_path
  *	  Creates a path corresponding to a sequential scan, returning the
  *	  pathnode.
@@ -423,8 +413,9 @@ create_seqscan_path(Query *root, RelOptInfo *rel)
 	pathnode->pathtype = T_SeqScan;
 	pathnode->parent = rel;
 	pathnode->pathkeys = NIL;	/* seqscan has unordered result */
+    pathnode->locus = cdbpathlocus_from_baserel(root, rel);
 
-	cost_seqscan(pathnode, root, rel);
+    cost_seqscan(pathnode, root, rel);
 
 	return pathnode;
 }
@@ -459,7 +450,7 @@ create_index_path(Query *root,
 	pathnode->path.parent = rel;
 	pathnode->path.pathkeys = pathkeys;
 
-	/* Convert clauses to indexquals the executor can handle */
+    /* Convert clauses to indexquals the executor can handle */
 	indexquals = expand_indexqual_conditions(index, restriction_clauses);
 
 	/* Flatten the clause-groups list to produce indexclauses list */
@@ -484,6 +475,9 @@ create_index_path(Query *root,
 	 */
 	pathnode->rows = rel->rows;
 
+    /* Distribution is same as the base table. */
+    pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
+
 	cost_index(&pathnode->path, root, rel, index, indexquals, false);
 
 	return pathnode;
@@ -504,6 +498,9 @@ create_tidscan_path(Query *root, RelOptInfo *rel, List *tideval)
 	pathnode->path.pathkeys = NIL;
 
 	pathnode->tideval = tideval;
+
+    /* Distribution is same as the base table. */
+    pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
 
 	cost_tidscan(&pathnode->path, root, rel, tideval);
 
@@ -543,6 +540,11 @@ create_append_path(RelOptInfo *rel, List *subpaths)
 		pathnode->path.total_cost += subpath->total_cost;
 	}
 
+    /* Decide result locus and add Motion operators to subpaths. */
+    pathnode->path.locus = cdbpath_motion_for_append(subpaths); 
+    if (CdbPathLocus_IsNull(pathnode->path.locus))
+        return NULL;
+
 	return pathnode;
 }
 
@@ -579,7 +581,12 @@ create_result_path(RelOptInfo *rel, Path *subpath, List *constantqual)
 		pathnode->path.total_cost = cpu_tuple_cost;
 	}
 
-	return pathnode;
+    if (subpath)
+        pathnode->path.locus = subpath->locus;
+    else
+        CdbPathLocus_MakeGeneral(&pathnode->path.locus);
+
+    return pathnode;
 }
 
 /*
@@ -596,6 +603,7 @@ create_material_path(RelOptInfo *rel, Path *subpath)
 	pathnode->path.parent = rel;
 
 	pathnode->path.pathkeys = subpath->pathkeys;
+    pathnode->path.locus = subpath->locus;
 
 	pathnode->subpath = subpath;
 
@@ -627,7 +635,7 @@ create_unique_path(Query *root, RelOptInfo *rel, Path *subpath)
 	ListCell   *l;
 	int			numCols;
 
-	/* Caller made a mistake if subpath isn't cheapest_total */
+    /* Caller made a mistake if subpath isn't cheapest_total */
 	Assert(subpath == rel->cheapest_total_path);
 
 	/* If result already cached, return it */
@@ -648,6 +656,7 @@ create_unique_path(Query *root, RelOptInfo *rel, Path *subpath)
 
 	pathnode->path.pathtype = T_Unique;
 	pathnode->path.parent = rel;
+    pathnode->path.locus = subpath->locus;
 
 	/*
 	 * Treat the output as always unsorted, since we don't necessarily
@@ -765,6 +774,15 @@ create_unique_path(Query *root, RelOptInfo *rel, Path *subpath)
 		pathnode->path.total_cost = sort_path.total_cost;
 	}
 
+    /*
+     * CDB TODO: handle partitioned subplan
+     */
+    if (!CdbPathLocus_IsRoot(subpath->locus))
+    {
+        pathnode->path.total_cost = pathnode->path.startup_cost = 1001000000e0;
+        return pathnode;
+    }
+
 	rel->cheapest_unique_path = (Path *) pathnode;
 
 	return pathnode;
@@ -867,6 +885,9 @@ create_subqueryscan_path(RelOptInfo *rel, List *pathkeys)
 	pathnode->parent = rel;
 	pathnode->pathkeys = pathkeys;
 
+    /* CDB TODO: handle subquery */
+    CdbPathLocus_MakeRoot(&pathnode->locus);
+
 	cost_subqueryscan(pathnode, rel);
 
 	return pathnode;
@@ -886,10 +907,15 @@ create_functionscan_path(Query *root, RelOptInfo *rel)
 	pathnode->parent = rel;
 	pathnode->pathkeys = NIL;	/* for now, assume unordered result */
 
+    /* CDB TODO: handle function scan */
+    /* Assign all function evaluations to the query dispatcher, for now. */
+    CdbPathLocus_MakeRoot(&pathnode->locus);
+
 	cost_functionscan(pathnode, root, rel);
 
 	return pathnode;
 }
+
 
 /*
  * create_nestloop_path
@@ -912,10 +938,32 @@ create_nestloop_path(Query *root,
 					 Path *outer_path,
 					 Path *inner_path,
 					 List *restrict_clauses,
+                     List *mergeclause_list,    /*CDB*/
 					 List *pathkeys)
 {
-	NestPath   *pathnode = makeNode(NestPath);
+	NestPath       *pathnode;
+    CdbPathLocus    join_locus;
+    
+    /* Add motion nodes above subpaths and decide where to join. */
+    join_locus = cdbpath_motion_for_join(root,
+                                         &outer_path,       /* INOUT */      
+                                         &inner_path,       /* INOUT */
+                                         mergeclause_list,  
+                                         pathkeys,
+                                         NIL,
+                                         false);
+    if (CdbPathLocus_IsNull(join_locus))
+        return NULL;
 
+    /* Outer might not be ordered anymore after motion. */
+    if (IsA(outer_path, CdbMotionPath))
+        pathkeys = outer_path->pathkeys;
+
+    /* Materialize inner after motion (could omit if outer is unique). */
+    if (IsA(inner_path, CdbMotionPath))
+        inner_path = (Path *)create_material_path(inner_path->parent, inner_path);
+
+    pathnode = makeNode(NestPath);
 	pathnode->path.pathtype = T_NestLoop;
 	pathnode->path.parent = joinrel;
 	pathnode->jointype = jointype;
@@ -923,6 +971,7 @@ create_nestloop_path(Query *root,
 	pathnode->innerjoinpath = inner_path;
 	pathnode->joinrestrictinfo = restrict_clauses;
 	pathnode->path.pathkeys = pathkeys;
+    pathnode->path.locus = join_locus;
 
 	cost_nestloop(pathnode, root);
 
@@ -943,7 +992,9 @@ create_nestloop_path(Query *root,
  * 'mergeclauses' are the RestrictInfo nodes to use as merge clauses
  *		(this should be a subset of the restrict_clauses list)
  * 'outersortkeys' are the sort varkeys for the outer relation
+ *      or NIL to use existing ordering
  * 'innersortkeys' are the sort varkeys for the inner relation
+ *      or NIL to use existing ordering
  */
 MergePath *
 create_mergejoin_path(Query *root,
@@ -957,18 +1008,49 @@ create_mergejoin_path(Query *root,
 					  List *outersortkeys,
 					  List *innersortkeys)
 {
-	MergePath  *pathnode = makeNode(MergePath);
+    MergePath      *pathnode;
+    CdbPathLocus    join_locus;
+    List           *osk = NIL;
+    List           *isk = NIL;
+
+    /* 
+     * If subpaths have useful ordering, and motion is needed, request
+     * order-preserving motion.  (A request that might not be granted).
+     */
+    if (!outersortkeys)
+        osk = outer_path->pathkeys;
+    else if (pathkeys_contained_in(outersortkeys, outer_path->pathkeys))
+        osk = outersortkeys;
+    if (!innersortkeys)
+        isk = inner_path->pathkeys;
+    else if (pathkeys_contained_in(innersortkeys, inner_path->pathkeys))
+        isk = innersortkeys;
+
+    /* 
+     * Add motion nodes above subpaths and decide where to join. 
+     */
+    join_locus = cdbpath_motion_for_join(root,
+                                         &outer_path,       /* INOUT */      
+                                         &inner_path,       /* INOUT */
+                                         mergeclauses,  
+                                         osk,
+                                         isk,
+                                         true);     /* must_preserve_order */
+    if (CdbPathLocus_IsNull(join_locus))
+        return NULL;
 
 	/*
-	 * If the given paths are already well enough ordered, we can skip
-	 * doing an explicit sort.
+	 * Sort is not needed if subpath is already well enough ordered 
+     * and a disordering motion node hasn't been added.
 	 */
-	if (outersortkeys &&
-		pathkeys_contained_in(outersortkeys, outer_path->pathkeys))
+	if (osk &&
+		osk == outer_path->pathkeys)
 		outersortkeys = NIL;
-	if (innersortkeys &&
-		pathkeys_contained_in(innersortkeys, inner_path->pathkeys))
+	if (isk &&
+		isk == inner_path->pathkeys)
 		innersortkeys = NIL;
+
+    pathnode = makeNode(MergePath);
 
 	/*
 	 * If we are not sorting the inner path, we may need a materialize
@@ -993,6 +1075,7 @@ create_mergejoin_path(Query *root,
 	pathnode->jpath.innerjoinpath = inner_path;
 	pathnode->jpath.joinrestrictinfo = restrict_clauses;
 	pathnode->jpath.path.pathkeys = pathkeys;
+    pathnode->jpath.path.locus = join_locus;
 	pathnode->path_mergeclauses = mergeclauses;
 	pathnode->outersortkeys = outersortkeys;
 	pathnode->innersortkeys = innersortkeys;
@@ -1021,9 +1104,24 @@ create_hashjoin_path(Query *root,
 					 Path *outer_path,
 					 Path *inner_path,
 					 List *restrict_clauses,
+                     List *mergeclause_list,    /*CDB*/
 					 List *hashclauses)
 {
-	HashPath   *pathnode = makeNode(HashPath);
+    HashPath       *pathnode;
+    CdbPathLocus    join_locus;
+
+    /* Add motion nodes above subpaths and decide where to join. */
+    join_locus = cdbpath_motion_for_join(root,
+                                         &outer_path,       /* INOUT */      
+                                         &inner_path,       /* INOUT */
+                                         mergeclause_list,  
+                                         NIL,   /* don't care about ordering */
+                                         NIL,               
+                                         false);
+    if (CdbPathLocus_IsNull(join_locus))
+        return NULL;
+
+	pathnode = makeNode(HashPath);
 
 	pathnode->jpath.path.pathtype = T_HashJoin;
 	pathnode->jpath.path.parent = joinrel;
@@ -1033,34 +1131,10 @@ create_hashjoin_path(Query *root,
 	pathnode->jpath.joinrestrictinfo = restrict_clauses;
 	/* A hashjoin never has pathkeys, since its ordering is unpredictable */
 	pathnode->jpath.path.pathkeys = NIL;
+    pathnode->jpath.path.locus = join_locus;
 	pathnode->path_hashclauses = hashclauses;
 
 	cost_hashjoin(pathnode, root);
-
-	return pathnode;
-}
-
-
-/*
- * cdb_create_motion_path
- */
-CdbMotionPath *
-cdb_create_motion_path(Query                *root, 
-                       Path                 *subpath,
-                       CdbPathPartitioning  *partn,
-                       List                 *pathkeys)
-{
-	CdbMotionPath *pathnode = makeNode(CdbMotionPath);
-	pathnode->path.pathtype = T_Motion;
-	pathnode->path.parent = subpath->parent;
-    pathnode->path.partn = partn;
-    pathnode->path.pathkeys = pathkeys;	
-    pathnode->subpath = subpath;	
-
-    /* Cost estimate */
-    pathnode->path.startup_cost = subpath->startup_cost;
-    pathnode->path.total_cost = subpath->total_cost;
-    pathnode->path.memory = subpath->memory;
 
 	return pathnode;
 }

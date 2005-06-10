@@ -21,7 +21,8 @@ SUBDIROBJS := $(SUBDIRS:%=%/SUBSYS.o)
 OBJS = cdbvars.o cdbplan.o cdbllize.o cdbcat.o cdbutil.o cdblink.o cdbjoin.o \
 	   cdbdisp.o cdbsrlz.o cdbhash.o cdbheap.o cdbagg.o cdbmutate.o \
 	   cdbaggtactic.o cdbaggmutate.o cdbanalyze.o cdbcopy.o cdblimmutate.o \
-	   cdbsubplan.o cdbtm.o cdbtmlog.o
+	   cdbsubplan.o cdbtm.o cdbtmlog.o \
+	   cdbpath.o cdbpathlocus.o
 
 ifeq ($(PORTNAME),cygwin)
 .LIBPATTERNS := $(filter-out %.so,$(.LIBPATTERNS))
