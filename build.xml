@@ -668,6 +668,11 @@ source ${installRoot}/cdb-pgsql/cdb.rc
        <exec executable="scp">
            <arg line="${webRoot}/nightly-build/cdb-pgsql-${releaseBuild}.tar.gz cdb2@osprey1:~/builds"/>
        </exec>
+<!--
+       <exec executable="scp">
+           <arg line="${webRoot}/nightly-build/cdb-pgsql-${releaseBuild}.tar.gz cdb2@stinger4:~/builds"/>
+       </exec>
+-->
     </target>
 
 </project>
