@@ -34,6 +34,8 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbpath.h"        /* cdbpath_add_flow_to_plan() */
+
 
 static Scan *create_scan_plan(Query *root, Path *best_path);
 static List *build_relation_tlist(RelOptInfo *rel);
@@ -129,7 +131,7 @@ create_plan(Query *root, Path *best_path)
 {
 	Plan	   *plan;
 
-	switch (best_path->pathtype)
+    switch (best_path->pathtype)
 	{
 		case T_IndexScan:
 		case T_SeqScan:
@@ -137,6 +139,7 @@ create_plan(Query *root, Path *best_path)
 		case T_SubqueryScan:
 		case T_FunctionScan:
 			plan = (Plan *) create_scan_plan(root, best_path);
+            cdbpath_add_flow_to_plan(root, best_path, plan);
 			break;
 		case T_HashJoin:
 		case T_MergeJoin:
@@ -171,7 +174,7 @@ create_plan(Query *root, Path *best_path)
 			break;
 	}
 
-	return plan;
+    return plan;
 }
 
 /*

@@ -544,7 +544,7 @@ _outMotion(StringInfo str, Motion *node)
 		appendStringInfo(str, " %d", node->hashSegIdx[i]);
 
 	WRITE_NODE_FIELD(hashExpr);
-	WRITE_NODE_FIELD(hashOp);
+	WRITE_NODE_FIELD(hashDataTypes);
 	WRITE_BOOL_FIELD(hashToSelfOnly);
 
 	WRITE_INT_FIELD(numOutputSegs);
@@ -1014,7 +1014,6 @@ _outFlow(StringInfo str, Flow *node)
 		appendStringInfo(str, " %u", node->sortOperators[i]);
 	
 	WRITE_NODE_FIELD(hashExpr);
-	WRITE_NODE_FIELD(hashOp);
 }
 
 /*****************************************************************************
@@ -1305,7 +1304,7 @@ _outRenameStmt(StringInfo str, RenameStmt *node)
 	WRITE_STRING_FIELD(newname);
 	WRITE_ENUM_FIELD(renameType,ObjectType);
 
-	 
+	
 }
 
 static void
@@ -1799,10 +1798,10 @@ _outRemoteParamData(StringInfo str, RemoteParamData *node)
 	get_typlenbyval(node->paramData.ptype, &typlen, &typbyval);
 
 	WRITE_NODE_TYPE("REMOTEPARAMDATA");
-	WRITE_INT_FIELD(paramData.kind); 
-	WRITE_STRING_FIELD(paramData.name); 
-	WRITE_INT_FIELD(paramData.id); 
-	WRITE_OID_FIELD(paramData.ptype); 
+	WRITE_INT_FIELD(paramData.kind);
+	WRITE_STRING_FIELD(paramData.name);
+	WRITE_INT_FIELD(paramData.id);
+	WRITE_OID_FIELD(paramData.ptype);
 
 	if ( !typbyval && typlen < 0 && node->paramData.value == 0 )
 		node->paramData.isnull = true;

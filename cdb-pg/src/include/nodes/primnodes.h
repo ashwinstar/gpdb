@@ -986,13 +986,12 @@ typedef struct Flow
 	/* Sort specifications. */
 	int			numSortCols;		/* number of sort key columns */
 	AttrNumber	*sortColIdx;		/* their indexes in target list */
-	Oid			*sortOperators;		/* OID of operators to sort them by */ 
+	Oid			*sortOperators;		/* OID of operators to sort them by */
 	
 	/* If flotype is FLOW_PARTITIONED and req_move is MOVEMENT_REPARTITION,
-	 * these express the desired partitioning for a hash motion, 
+	 * these express the desired partitioning for a hash motion,
 	 * otherwise, they are NIL. */
 	List	*hashExpr;				/* list of hash expressions */
-	List	*hashOp;				/* list of hash operators oids */
 		
 } Flow;
 

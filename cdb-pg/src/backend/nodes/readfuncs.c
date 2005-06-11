@@ -1518,7 +1518,7 @@ _readMotion(void)
 	READ_INT_ARRAY(hashSegIdx, numHashSegs, int);
 
 	READ_NODE_FIELD(hashExpr);
-	READ_NODE_FIELD(hashOp);
+	READ_NODE_FIELD(hashDataTypes);
 	READ_BOOL_FIELD(hashToSelfOnly);
 
 	READ_INT_FIELD(numOutputSegs);
@@ -1554,7 +1554,6 @@ _readFlow(void)
 	READ_OID_ARRAY(sortOperators, numSortCols);
 
 	READ_NODE_FIELD(hashExpr);
-	READ_NODE_FIELD(hashOp);
 
 	READ_DONE();
 }
@@ -1581,7 +1580,7 @@ _readVacuumStmt(void)
 /*
  * _readRemoteParamData
  */
-static RemoteParamData * 
+static RemoteParamData *
 _readRemoteParamData(void)
 {
 	int16 typlen;
@@ -1589,10 +1588,10 @@ _readRemoteParamData(void)
 
 	READ_LOCALS(RemoteParamData);
 
-	READ_INT_FIELD(paramData.kind); 
-	READ_STRING_FIELD(paramData.name); 
-	READ_INT_FIELD(paramData.id); 
-	READ_OID_FIELD(paramData.ptype); 
+	READ_INT_FIELD(paramData.kind);
+	READ_STRING_FIELD(paramData.name);
+	READ_INT_FIELD(paramData.id);
+	READ_OID_FIELD(paramData.ptype);
 	READ_BOOL_FIELD(paramData.isnull);
 
 	get_typlenbyval(local_node->paramData.ptype, &typlen, &typbyval);

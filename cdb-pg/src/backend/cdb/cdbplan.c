@@ -52,7 +52,7 @@ plan_inventory(Plan *plan, PlanInventory *pinventory)
 	return ! plan_inventory_walker((Node*)plan, pinventory);
 }
 
-bool 
+bool
 plan_inventory_walker(Node *node, PlanInventory *pinventory)
 {	
 	if ( node == NULL )
@@ -66,7 +66,7 @@ plan_inventory_walker(Node *node, PlanInventory *pinventory)
 			(pinventory->vars)++;
 			
 			/* Var is primitive, no need to recur. */
-			return false; 
+			return false;
 			
 		case T_SeqScan:
 		case T_FunctionScan:
@@ -77,14 +77,14 @@ plan_inventory_walker(Node *node, PlanInventory *pinventory)
 			/* Process the Scan node */
 			(pinventory->scans)++;
 			
-			/* Scan nodes are complex so let plan_tree_walker() recur on 
-			 * their sub-nodes. 
+			/* Scan nodes are complex so let plan_tree_walker() recur on
+			 * their sub-nodes.
 			 */
 			break;
 			
 		default:
 			/* Let plan_tree_walker() deal with other node types. */
-			break; 
+			break;
 	}
 	return plan_tree_walker(node, plan_inventory_walker, pinventory);
 
@@ -95,13 +95,13 @@ plan_inventory_walker(Node *node, PlanInventory *pinventory)
  * A sample mutator -- just does a deep copy.
  * ----------------------------------------------------------------------- *
  */
- 
+
  Plan* plan_copy(Plan* plan)
  {
 	int n;
 	return (Plan*)plan_copy_mutator((Node*)plan, &n);
  }
- 
+
  Node* plan_copy_mutator(Node*  node, int *context)
  {
 	if ( node == NULL )
@@ -115,20 +115,20 @@ plan_inventory_walker(Node *node, PlanInventory *pinventory)
  * Plan Tree Walker Framework
  * ----------------------------------------------------------------------- *
  */
- 
-/* Function walk_plan_node_fields is a subroutine used by plan_tree_walker() 
- * to walk the fields of Plan nodes.  Plan is actually an abstract superclass 
+
+/* Function walk_plan_node_fields is a subroutine used by plan_tree_walker()
+ * to walk the fields of Plan nodes.  Plan is actually an abstract superclass
  * of all plan nodes and this function encapsulates the common structure.
  *
  * Most specific walkers won't need to call this function, but complicated
- * ones may find it a useful utility.  
+ * ones may find it a useful utility.
  *
- * Caution: walk_scan_node_fields and walk_join_node_fields call this 
+ * Caution: walk_scan_node_fields and walk_join_node_fields call this
  * function.  Use only the most specific function.
  */
 bool
-walk_plan_node_fields(Plan *plan, 
-						bool (*walker) (), 
+walk_plan_node_fields(Plan *plan,
+						bool (*walker) (),
 						void *context)
 {
 	/* target list to be computed at this node */
@@ -159,13 +159,13 @@ walk_plan_node_fields(Plan *plan,
 }
 
 
-/* Function walk_scan_node_fields is a subroutine used by plan_tree_walker() 
- * to walk the fields of Scan nodes.  Scan is actually an abstract superclass 
- * of all scan nodes and a subclass of Plan.  This function encapsulates the 
+/* Function walk_scan_node_fields is a subroutine used by plan_tree_walker()
+ * to walk the fields of Scan nodes.  Scan is actually an abstract superclass
+ * of all scan nodes and a subclass of Plan.  This function encapsulates the
  * common structure.
  *
  * Most specific walkers won't need to call this function, but complicated
- * ones may find it a useful utility.  
+ * ones may find it a useful utility.
  *
  * Caution: This function calls walk_plan_node_fields so callers shouldn't,
  * else they will walk common plan fields twice.
@@ -184,13 +184,13 @@ walk_scan_node_fields(Scan *scan,
 }
 
 
-/* Function walk_join_node_fields is a subroutine used by plan_tree_walker() 
- * to walk the fields of Join nodes.  Join is actually an abstract superclass 
- * of all join nodes and a subclass of Plan.  This function encapsulates the 
+/* Function walk_join_node_fields is a subroutine used by plan_tree_walker()
+ * to walk the fields of Join nodes.  Join is actually an abstract superclass
+ * of all join nodes and a subclass of Plan.  This function encapsulates the
  * common structure.
  *
  * Most specific walkers won't need to call this function, but complicated
- * ones may find it a useful utility.  
+ * ones may find it a useful utility.
  *
  * Caution: This function calls walk_plan_node_fields so callers shouldn't,
  * else they will walk common plan fields twice.
@@ -210,7 +210,7 @@ walk_join_node_fields(Join *join,
 
 /* Function plan_tree_walker is a general walker for Plan trees.
  *
- * It is based on (and uses) the expression_tree_walker() framework from 
+ * It is based on (and uses) the expression_tree_walker() framework from
  * src/backend/optimizer/util/clauses.c.  See the comments there for more
  * insight into how this function works.
  *
@@ -260,7 +260,7 @@ plan_tree_walker(Node *node,
 				return true;
 			break;
 				
-		case T_Scan: 
+		case T_Scan:
 			/* Abstract: really should see only subclasses. */
 			return walk_scan_node_fields((Scan*)node, walker, context);
 			
@@ -369,7 +369,7 @@ plan_tree_walker(Node *node,
 			if ( walker((Node *)((Motion*)node)->hashExpr, context) )
 				return true;
 
-			if ( walker((Node *)((Motion*)node)->hashOp, context) )
+			if ( walker((Node *)((Motion*)node)->hashDataTypes, context) )
 				return true;
 
 			break;
@@ -405,24 +405,24 @@ plan_tree_walker(Node *node,
 			
 		case T_IntList:
 		case T_OidList:
-			/* Note that expression_tree_walker handles T_List but not 
+			/* Note that expression_tree_walker handles T_List but not
 			 * these.  No contained stuff, so just succeed.
 			 */			
 			break;
 
 		/* Query nodes are handled by the Postgres query_tree_walker.
 		 * We just use it without setting any ignore flags.  The caller
-		 * must handle query nodes specially to get other behavior, 
+		 * must handle query nodes specially to get other behavior,
 		 * e.g. by calling query_tree_walker directly.
 		 */
 		case T_Query:
 			return query_tree_walker((Query*)node, walker, context, 0);
 		
-		/* The following cases are handled by expression_tree_walker.  In 
+		/* The following cases are handled by expression_tree_walker.  In
 		 * addition, we let expression_tree_walker handle unrecognized nodes.
 		 *
 		 * TODO: Identify node types that should never appear in plan trees
-		 *		 and disallow them here by issuing an error or asserting 
+		 *		 and disallow them here by issuing an error or asserting
 		 *		 false.
 		 */
 		case T_Var:
@@ -621,7 +621,7 @@ plan_tree_mutator(Node *node,
 			}	
 			break;
 				
-		case T_Scan: 
+		case T_Scan:
 			/* Abstract: Should see only subclasses. */
 			elog(ERROR, "abstract node type not allowed: T_Scan");
 			
@@ -820,7 +820,7 @@ plan_tree_mutator(Node *node,
 				PLANMUTATE(newmotion, motion);
 				COPYARRAY(newmotion, motion, numHashSegs, hashSegIdx);
 				MUTATE(newmotion->hashExpr, motion->hashExpr, List*);
-				MUTATE(newmotion->hashOp, motion->hashOp, List*);
+				MUTATE(newmotion->hashDataTypes, motion->hashDataTypes, List*);
 				COPYARRAY(newmotion, motion, numOutputSegs, outputSegIdx);
 				COPYARRAY(newmotion, motion, numSortCols, sortColIdx);
 				COPYARRAY(newmotion, motion, numSortCols, sortOperators);
@@ -844,7 +844,7 @@ plan_tree_mutator(Node *node,
 		
 		case T_IntList:
 		case T_OidList:
-			/* Note that expression_tree_mutator handles T_List but not 
+			/* Note that expression_tree_mutator handles T_List but not
 			 * these.  A shallow copy will do.
 			 */
 			return (Node*)list_copy((List*)node);
@@ -853,7 +853,7 @@ plan_tree_mutator(Node *node,
 			
 		case T_Query:
 			/* Since expression_tree_mutator doesn't descend into Query nodes,
-			 * we use ... 
+			 * we use ...
 			 */
 			return (Node*)query_tree_mutator((Query*)node, mutator, context, 0);
 			break;
@@ -916,11 +916,11 @@ plan_tree_mutator(Node *node,
 			 }
 			 break;
 
-		/* The following cases are handled by expression_tree_mutator.  In 
+		/* The following cases are handled by expression_tree_mutator.  In
 		 * addition, we let expression_tree_mutator handle unrecognized nodes.
 		 *
 		 * TODO: Identify node types that should never appear in plan trees
-		 *		 and disallow them here by issuing an error or asserting 
+		 *		 and disallow them here by issuing an error or asserting
 		 *		 false.
 		 */
 		case T_Var:
@@ -977,7 +977,7 @@ plan_tree_mutator(Node *node,
  */
 void mutate_plan_fields(Plan* newplan, Plan* oldplan, Node *(*mutator) (), void *context)
 {
-	/* Scalar fields 
+	/* Scalar fields
 	 *     startup_cost
 	 *     total_cost
 	 *     plan_rows
@@ -985,7 +985,7 @@ void mutate_plan_fields(Plan* newplan, Plan* oldplan, Node *(*mutator) (), void 
 	 *     nParamExec
 	 * need no mutation.
 	 */
-	 
+	
 	/*  Node fields need mutation. */
 	MUTATE(newplan->targetlist, oldplan->targetlist, List*);
 	MUTATE(newplan->qual, oldplan->qual, List*);
@@ -1011,7 +1011,7 @@ void mutate_join_fields(Join* newjoin, Join* oldjoin, Node *(*mutator) (), void 
 	mutate_plan_fields((Plan*)newjoin, (Plan*)oldjoin, mutator, context);
 	
 	/* Scalar field jointype needs no mutation. */
-	 
+	
 	/*  Node fields need mutation. */
 	MUTATE(newjoin->joinqual, oldjoin->joinqual, List*);
 }

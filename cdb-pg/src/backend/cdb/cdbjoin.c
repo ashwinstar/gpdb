@@ -529,12 +529,13 @@ List *sort_list(List *l, int (*cmpfn)(const void *, const void *))
 {
 	void **cellvalues = NULL;
 	int i;
+    int n;
 	ListCell *cell;
 
 	Assert( l != NIL );
 	Assert( IsA(l, List) );
 
-	int n = list_length(l);
+	n = list_length(l);
 	Assert( n > 0 );
 
 	/*
@@ -590,6 +591,7 @@ int cmpCdbJoinStrategy( const void *l, const void *r )
 {
 	CdbJoinStrategy *lhs;
 	CdbJoinStrategy *rhs;
+    double diff;
 
 	Assert( l != NULL && r != NULL );
 
@@ -598,7 +600,7 @@ int cmpCdbJoinStrategy( const void *l, const void *r )
 
 	Assert( lhs != NULL && rhs != NULL );
 
-	double diff = lhs->est_ams_cost - rhs->est_ams_cost;
+	diff = lhs->est_ams_cost - rhs->est_ams_cost;
 
 	if ( diff < 0.0 )
 		return -1;
@@ -628,10 +630,10 @@ static int varwalk(Node *node);
 int varwalk(Node *node)
 {
 	VarProfile	context;
+    int         rtn = 0;
+
 	context.varnos			= NIL;
-
-	int rtn = 0;
-
+    
 	if ( !expr_varlist_walker(node, &context) )
 	{
 		if ( context.varnos != NIL && list_length( context.varnos ) == 1 )
@@ -678,11 +680,10 @@ bool expr_varlist_walker(Node *node, VarProfile *context)
  * with varno of INNER and the other one references only Vars with varno of
  * OUTER.  Furthermore, we are currently requiring that the oid of the types of the left
  * and right arguments are the same, although this could be relaxed in the future.
- * When this is the case, we create two Lists: one a List of the OpExpr, and the other a List
- * of the oids of the types of the arguments to the OpExprs.  Furthermore, the List of OpExpr
- * is guarantted to always have OUTER as the varno of Vars in the first argument, and
+ * When this is the case, we create a List of the OpExprs.  The List of OpExpr
+ * always has OUTER as the varno of Vars in the first argument, and
  * INNER as the varno of the Vars in the second argument.
- * These Lists are returned in the out parameters pHashExpr, and pHashOp.
+ * This List is returned in the out parameter pHashExpr.
  * In this case the function returns true.
  * If these conditions are not satisfied, the function returns false.
  *
@@ -707,12 +708,11 @@ bool expr_varlist_walker(Node *node, VarProfile *context)
  *		This does result in a successful extraction, but one of the the hashExpr OpExpr will
  * be reversed, so that the l_fields and the n_fields are on the same side in both expressions.
  */		
-bool extractHashExprFromQual( List *joinqual, List **pHashExpr, List **pHashOp )
+bool extractHashExprFromQual( List *joinqual, List **pHashExpr )
 {
 	ListCell	*c;
 	int			i=0;
 	List		*hashExpr = NIL;
-	List		*hashOp = NIL;
 	Expr		*e;
 	Oid			opno;
 	Oid			lefttype;
@@ -722,7 +722,6 @@ bool extractHashExprFromQual( List *joinqual, List **pHashExpr, List **pHashOp )
 	bool		rtn = false;
 
 	Assert( pHashExpr != NULL );
-	Assert( pHashOp != NULL );
 
 	if ( joinqual == NIL )
 	{
@@ -736,7 +735,10 @@ bool extractHashExprFromQual( List *joinqual, List **pHashExpr, List **pHashOp )
 	 */
 	foreach( c, joinqual )
 	{
-		i++;
+        OpExpr *oexpr;
+        int     varno1, varno2;
+        
+        i++;
 
 		e = (Expr *)lfirst(c);
 
@@ -754,7 +756,7 @@ bool extractHashExprFromQual( List *joinqual, List **pHashExpr, List **pHashOp )
 		/* The opno of the OpExpr must respresent the equality operator for the data types 
 		 * in the argument list, or we lose.
 		 */
-		OpExpr *oexpr = (OpExpr *)e;
+		oexpr = (OpExpr *)e;
 		if ( list_length(oexpr->args) != 2 )
 		{
 			elog( DEBUG1, "Ooops, list_length(oexpr->args) was %d in test for separable nestloop joinqual expressions, loop %d", 
@@ -797,7 +799,6 @@ bool extractHashExprFromQual( List *joinqual, List **pHashExpr, List **pHashOp )
 		 * Furthermore, one argument must reference INNER (65000) and the other one OUTER (65001)
 		 * or we lose.  
 		 */
-		int varno1, varno2;
 		varno1 = varwalk(linitial(oexpr->args));
 		varno2 = varwalk(lsecond(oexpr->args));
 		if ( varno1 == 0 || varno2 == 0 )
@@ -857,22 +858,15 @@ bool extractHashExprFromQual( List *joinqual, List **pHashExpr, List **pHashOp )
 			righttype = temptype;
 		}
 
-		hashOp = lappend_oid( hashOp, lefttype );
 	}
 
 	rtn = true;
 
 cleanup:
 	if ( !rtn )
-	{
 		list_free( hashExpr );
-		list_free( hashOp );
-	}
 	else
-	{
 		*pHashExpr = hashExpr;
-		*pHashOp = hashOp;
-	}
 
 	return rtn;
 

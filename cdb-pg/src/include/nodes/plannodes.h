@@ -433,7 +433,7 @@ typedef struct Motion
 	int			numHashSegs;		/* number of segindexes in hashSegIdx array */	
 	int			*hashSegIdx;		/* array of segindex values to hash to */
 	List		*hashExpr;			/* list of hash expressions */
-	List		*hashOp;			/* list of hash operators oids */
+	List		*hashDataTypes;	    /* list of hash expr data type oids */
 	bool		hashToSelfOnly;		/* if true, only pass tuple when it hashes to same node ("deep-six the rest") */
 	
 	/* The following field is only used when motionType == MOTIONTYPE_FIXED */

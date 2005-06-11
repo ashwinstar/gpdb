@@ -557,7 +557,7 @@ _copyMotion(Motion *from)
 	COPY_SCALAR_FIELD(numHashSegs);
 	COPY_POINTER_FIELD(hashSegIdx, from->numHashSegs * sizeof(int));
 	COPY_NODE_FIELD(hashExpr);
-	COPY_NODE_FIELD(hashOp);
+	COPY_NODE_FIELD(hashDataTypes);
 	COPY_SCALAR_FIELD(hashToSelfOnly);
 	
 	COPY_SCALAR_FIELD(numOutputSegs);
@@ -1186,7 +1186,6 @@ _copyFlow(Flow *from)
 	COPY_POINTER_FIELD(sortColIdx, from->numSortCols*sizeof(AttrNumber));
 	COPY_POINTER_FIELD(sortOperators, from->numSortCols*sizeof(Oid));	
 	COPY_NODE_FIELD(hashExpr);
-	COPY_NODE_FIELD(hashOp);
 
 	return newnode;
 }

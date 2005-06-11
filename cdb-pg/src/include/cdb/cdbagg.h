@@ -10,7 +10,7 @@
  *	  $Id$
  *
  * NOTES
- *	 
+ *	
  *-------------------------------------------------------------------------
  */
 
@@ -23,8 +23,8 @@
 
 /*
  * A CdbAggStrategy is the composite result of function getAggStrategyList.
- * It characterizes a way of transforming an Agg node (or related node) and 
- * its argument in order to produce a correct result in the CDB parallel 
+ * It characterizes a way of transforming an Agg node (or related node) and
+ * its argument in order to produce a correct result in the CDB parallel
  * execution environment.
  *
  * TODO Extend to support specification of a restructuring approach.
@@ -35,16 +35,15 @@ typedef struct CdbAggStrategy
 	FlowType resultflowtype;
 	
 	List *hashexprs;
-	List *hashtypes;
 
 } CdbAggStrategy;
 
-/* 
+/*
  * Structures: CdbAggTactic, CdbAggPartial, CdbAggFinal
  *
  * These structures work together to define a tactic for computing an
  * aggregate function value across a partitioned set.  The are used by
- * the restructing strategy to restructure the Aggref nodes within an Agg 
+ * the restructing strategy to restructure the Aggref nodes within an Agg
  * node.
  *
  * CdbAggTactic is the top-level structure.  It contains palloc'd arrays
@@ -54,13 +53,13 @@ typedef struct CdbAggStrategy
  * CdbAggPartial corresponds to a partial aggregation in which a subset
  * of the set being aggregated is reduced an intermediate result.
  *
- * CdbAggFinal corresponds to a final aggregation of partial aggregations 
+ * CdbAggFinal corresponds to a final aggregation of partial aggregations
  * in which the intermediate results from a set of CbdAggPartials are
  * combined into a set of intermediate results ready for consolidate
  * specified in the controlling CdbAggTactic.
  *
  * The explicit relationships among them are fairly straight-forward:
- * - numFinals and numPartials are the lengths of palloc'd arrays finals 
+ * - numFinals and numPartials are the lengths of palloc'd arrays finals
  *   and partials, respectively, and
  * - argindex values must be valid C indexes into the partials array.
  *
@@ -127,7 +126,7 @@ CdbAggFinal
 							 * supplies the argument.
 							 */
 	int argindex;			/* The index into the CdbAggTactic's partial
-							 * array of the CdbAggPartial that supplies the 
+							 * array of the CdbAggPartial that supplies the
 							 * argument to this final.
 							 */
 	
@@ -143,7 +142,7 @@ CdbAggFinal
 		                     */
 } CdbAggFinal;
 
-typedef struct 
+typedef struct
 CdbAggTactic
 {
 	Oid consolidator;		/* The Oid of a consolidation function with
@@ -155,15 +154,15 @@ CdbAggTactic
 	int numFinals;			/* The length of array finals; also the number
 							 * of arguments to the consolidator.
 							 */
-	CdbAggFinal *finals;	/* A palloc'd array of final aggregation 
+	CdbAggFinal *finals;	/* A palloc'd array of final aggregation
 							 * instructions.
 							 */
 	int numPartials;		/* The length of the array partials; also the
 							 * number of inner query target entries that
-							 * will be generated; also the limit on the 
+							 * will be generated; also the limit on the
 							 * values of argindex in an element of finals.
 							 */
-	CdbAggPartial *partials; /* A palloc'd array of partial aggregration 
+	CdbAggPartial *partials; /* A palloc'd array of partial aggregration
 							 * instructions.
 							 */
 } CdbAggTactic;
@@ -176,8 +175,8 @@ extern List *getAggStrategyList(Agg *agg);
 extern CdbAggStrategy *copyAggStrategy(CdbAggStrategy *old);
 extern void freeAggStrategyList(List* aslist);
 
-/* 
- * Declarations of functions defined in cdbaggtactic.c 
+/*
+ * Declarations of functions defined in cdbaggtactic.c
  */
 extern CdbAggTactic *getAggTactic(Aggref *aggref, char **msg);
 extern void freeAggTactic(CdbAggTactic *tactic);

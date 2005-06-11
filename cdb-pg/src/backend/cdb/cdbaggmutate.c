@@ -4,10 +4,10 @@
 *	  Restructure an Agg node into partial and final Agg nodes with
 *     an intervening Motion node.  The main entry point is the function
 *     apply_agg_motion.
-* 
-*     Note that there are other strategies  for Agg nodes (e.g., partition 
-*     on grouping attributes). There are handled directly by cdbagg.c.  The 
-*     functions in this file deal strictly with the 2-stage approach to 
+*
+*     Note that there are other strategies  for Agg nodes (e.g., partition
+*     on grouping attributes). There are handled directly by cdbagg.c.  The
+*     functions in this file deal strictly with the 2-stage approach to
 *     aggregation.
 *
 * Portions Copyright (c) 1996-2003, PostgreSQL Global Development Group
@@ -79,7 +79,7 @@ static Node *splitAggs_mutator(Node* node, SplitAggsContext *context);
 static Var *addInnerTle(Expr* expr, SplitAggsContext* context);
 
 
-/* 
+/*
  * Function: initSplitAggsContext
  *
  * Helper for function apply_agg_motion.
@@ -99,16 +99,16 @@ static void initSplitAggsContext(SplitAggsContext* context)
 
 /*
  * Function: addInnerTle
- * 
- * Helper for function apply_agg_motion. 
  *
- * Add the given expression to the the inner query target list currently 
- * under construction in the given context.  Return a Var node by which 
+ * Helper for function apply_agg_motion.
+ *
+ * Add the given expression to the the inner query target list currently
+ * under construction in the given context.  Return a Var node by which
  * the outer query may refer to the new target entry in the inner query.
  *
  * TODO Do we need more info for the Var or the Resdom?
  */
-static Var * 
+static Var *
 addInnerTle(Expr* expr, SplitAggsContext* context)
 {
 	TargetEntry *inner_tle;
@@ -116,6 +116,7 @@ addInnerTle(Expr* expr, SplitAggsContext* context)
 	AttrNumber attno;
 	char *attname;
 	StringInfoData str;
+    Var *var;
 	
 	/* This will be our attribute number in the intermediate. */
 	attno = 1 + list_length(context->inner_tlist);
@@ -141,11 +142,11 @@ addInnerTle(Expr* expr, SplitAggsContext* context)
 	context->inner_tlist = lappend(context->inner_tlist, inner_tle);
 	
 	/* Return a Var node by which the outer query can refer to this */
-	Var *var = makeVar(0,
-					   attno,
-					   resdom->restype,
-					   resdom->restypmod,
-					   0);
+	var = makeVar(0,
+				  attno,
+				  resdom->restype,
+				  resdom->restypmod,
+				  0);
 	
 	return var;
 }
@@ -154,7 +155,7 @@ addInnerTle(Expr* expr, SplitAggsContext* context)
  /*
   * Function: apply_agg_motion
   *
-  * A 2-stage aggregate transformation restructures a given Agg node into 
+  * A 2-stage aggregate transformation restructures a given Agg node into
   * an intermediate Agg node that computes a partial result (per segment
   * database) and a final Agg node that computes final result (per segment
   * or on a specific segment).  The result of the final Agg is just the
@@ -181,10 +182,10 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 	SplitAggsContext context;
 	
 	/* Sanity checks */
-	Assert( 
+	Assert(
 		plan != NULL
-		&& IsA(plan,Agg) 
-		&& plan->flow->req_xform == MOVEMENT_AGG_RESTRUCT 
+		&& IsA(plan,Agg)
+		&& plan->flow->req_xform == MOVEMENT_AGG_RESTRUCT
 		&& plan->lefttree != NULL
 		&& plan->righttree == NULL
 	);
@@ -193,20 +194,20 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 	( (newnode) = makeNode(nodetype), \
 	  memcpy((newnode), (node), sizeof(nodetype)) )
 	
-	/* 
+	/*
 	 * The general idea is to split the argument Agg node in two.  The
 	 * original (agg) will be incrementally transformed into the final
 	 * aggregation, the copy (inner_agg) into the partial or intermediate
 	 * aggregation.  At the end, they will be spliced together around an
 	 * intervening Motion node.
 	 */
-	 
+	
 	agg = (Agg*)plan;
 	FLATCOPY(inner_agg, agg, Agg);
 	inner_plan = (Plan*)inner_agg;
 	
 	/* The attached flow is no longer interesting.  It flagged the need to
-	 * call this function, but from here on, all the information we need to 
+	 * call this function, but from here on, all the information we need to
 	 * make the transformation is readily available in the plan itself.
 	 */
 	plan->flow->req_xform = MOVEMENT_NONE;
@@ -225,22 +226,22 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 	initSplitAggsContext(&context);
 	
 	/*
-	 * Begin constructing the target list for the intermediate (partial) Agg 
-	 * node by adding entries corresponding to the grouping attributes.  We 
+	 * Begin constructing the target list for the intermediate (partial) Agg
+	 * node by adding entries corresponding to the grouping attributes.  We
 	 * can take advantage of (and verify) the fact that the targetlist of the
-	 * given Agg node must contain simple, Var-type target list entries for 
+	 * given Agg node must contain simple, Var-type target list entries for
 	 * the grouping columns--we can just find them and copy them to the list
-	 * we're buidling.  
+	 * we're buidling.
 	 *
-	 * Note that we also record the location of the grouping attributes of the 
-	 * intermediate Agg in a lookup table (attr_map) so we can convert Var 
+	 * Note that we also record the location of the grouping attributes of the
+	 * intermediate Agg in a lookup table (attr_map) so we can convert Var
 	 * references from referring-to-child-plan to referring-to-intermediate.
 	 * This also gives us a way to check whether a Var reference is to a
 	 * grouped or ungrouped attribute.
-	 * 
+	 *
 	 * Entries in context.attr_map correspond to the target list of the
 	 * input relation.  (Dummy element 0 adjusts for origin 1.)  Entries
-	 * that are grouping attributes have as their value, the attribute 
+	 * that are grouping attributes have as their value, the attribute
 	 * number of the grouping attribute in the target list of the partial
 	 * aggregation Agg node.  Others have -1.
 	 */
@@ -279,7 +280,7 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 		context.attr_map[g] = attno;
 	}
 	
-	/* Since we just put the grouping attributes on front of the inner 
+	/* Since we just put the grouping attributes on front of the inner
 	 * targetlist, and since Motion nodes are non-projecting, we know
 	 * that the grouping attributes of the outer Agg's input (the Motion)
 	 * will be 1,2,3,....
@@ -294,9 +295,9 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 	}	
 	
 	/* Now mutate the given Agg's target list and qual (the HAVING clause)
-	 * to refer to the result of the intermediate Agg (rather than the child 
+	 * to refer to the result of the intermediate Agg (rather than the child
 	 * plan).  As we go, we add any necessary attributes (Aggref expressions)
-	 * to the intermediate Agg target list so we can refer to them in the 
+	 * to the intermediate Agg target list so we can refer to them in the
 	 * mutated outer target list (or qual).
 	 *
 	 * This can fail since there may be aggregate functions we don't know
@@ -308,12 +309,12 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 		tle->expr = (Expr*)splitAggs((Node*)tle->expr, &context);
 	}
 	
-	/* 
-	 * TODO Push qual conjuncts without Aggrefs down to inner_plan! 
+	/*
+	 * TODO Push qual conjuncts without Aggrefs down to inner_plan!
 	 *      This would eliminate groups at the inner plan and avoid
 	 *      shipping, consolidating, and discarding them on the outer.
 	 */
-	 
+	
 	plan->qual = (List*)splitAggs((Node*)plan->qual, &context);
 	
 	if ( context.errmsg != NULL )
@@ -341,12 +342,10 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 			plan->lefttree = (Plan*)make_hashed_motion(
 				inner_plan, false, CdbIdentity.numsegments,
 				makeDefaultSegIdxArray(CdbIdentity.numsegments),
-				getHashMotionInfoList(inner_plan, INFOTYPE_LEFTEXPR),
-				getHashMotionInfoList(inner_plan, INFOTYPE_OP)
+				getHashMotionInfoList(inner_plan, INFOTYPE_LEFTEXPR)
 				);
 			inner_plan->flow = makeFlow(FLOW_PARTITIONED);
 			inner_plan->flow->hashExpr = copyObject( ((Motion*)plan->lefttree)->hashExpr );
-			inner_plan->flow->hashOp = copyObject( ((Motion*)plan->lefttree)->hashOp );
 			break;
 			
 		default:
@@ -360,15 +359,15 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 }
 
 
-/* 
+/*
  * Function: splitAggs
  *
  * Given an expression node from the given Agg node, return a mutated version
  * of the node in which references to grouping attributes or Aggref nodes
  * are replaced by suitable references to attributes in the target list
  * being constructed in the inner_tlist field of the context.
- * 
- * Add any needed partial aggregation expressions to the inner_tlist. 
+ *
+ * Add any needed partial aggregation expressions to the inner_tlist.
  *
  * The function is expected to be called either with the expression of
  * a target list entry from in the given Agg, or with the boolean
@@ -385,28 +384,28 @@ splitAggs(Node *node, SplitAggsContext *context)
  * Function: splitAggs_mutator
  *
  * This is the work horse for function splitAggs.
- * 
- * Deep copy the given expression tree down to any Aggref nodes. 
+ *
+ * Deep copy the given expression tree down to any Aggref nodes.
  *
  * On encountering an Aggref node:
  *
  *    Based on the type of aggregation, update the inner_tlist under
- *    construction in the context by adding TargetEntry nodes for any 
+ *    construction in the context by adding TargetEntry nodes for any
  *    partial aggregation results needed to compute that Aggref's result.
  *    These will eventually become the target list of the intermediate plan.
  *
- *    Instead of returning the Aggref, return a pointer to a new expression 
+ *    Instead of returning the Aggref, return a pointer to a new expression
  *    that computes the desired Aggref result from the partial results just
  *    added to (or found in) the inner_tlist.
  *
  * On encountering a Var node outside an Aggref:
  *
  *    Check that the Var refers to a grouping attribute and return a
- *    Var referring to the corresponding grouping attribute in the 
+ *    Var referring to the corresponding grouping attribute in the
  *    inner_tlist
  *
  */
-static Node * 
+static Node *
 splitAggs_mutator(Node* node, SplitAggsContext *context)
 {
 	Node *new_expr;
@@ -418,16 +417,17 @@ splitAggs_mutator(Node* node, SplitAggsContext *context)
 	{
 		int i;
 		Aggref* aggref = (Aggref*)node;
+        CdbAggTactic *tactic;
 		
 		Assert( !context->mutatingAggref ); /* Aggrefs don't nest */
 		Assert( !aggref->aggdistinct ); /* We're not smart enough to do this. */
 		context->mutatingAggref = TRUE;
 		
 		/* Get the specific tactic by which to parallelize this aggregate
-		 * function call. 
+		 * function call.
 		 */
-		CdbAggTactic *tactic = getAggTactic(aggref, &(context->errmsg));
-		if ( context->errmsg != NULL || tactic == NULL ) 
+		tactic = getAggTactic(aggref, &(context->errmsg));
+		if ( context->errmsg != NULL || tactic == NULL )
 		{
 			freeAggTactic(tactic);
 			if ( context->errmsg == NULL )
@@ -444,8 +444,8 @@ splitAggs_mutator(Node* node, SplitAggsContext *context)
 			return NULL;
 		}
 		
-		/* Record partial aggregation(s) for inner target list. 
-		 * This involves construction of one or more partial aggregration 
+		/* Record partial aggregation(s) for inner target list.
+		 * This involves construction of one or more partial aggregration
 		 * expressions for execution on the tails and Var nodes by which
 		 * the head query may refer to their results.
 		 */
@@ -459,15 +459,14 @@ splitAggs_mutator(Node* node, SplitAggsContext *context)
 			partial_agg->aggtype = partial->rettype;
 			
 			if ( partial->argfnoid != InvalidOid )
-			{
-				Assert( !partial_agg->aggstar );
-				
+			{			
 				/* Apply the function to the argument. */
 				FuncExpr *expr = makeFuncExpr(partial->argfnoid,
 											  partial->argtype,
 											  list_make1(partial_agg->target),
 											  COERCE_EXPLICIT_CALL);
 				partial_agg->target = (Expr*)expr;
+                Assert( !partial_agg->aggstar );
 			}
 			
 			
@@ -522,6 +521,7 @@ splitAggs_mutator(Node* node, SplitAggsContext *context)
 		}
 		else
 		{
+            FuncExpr *expr;
 			List *args = NIL;
 			
 			for ( i = 0; i < tactic->numFinals; i++ )
@@ -529,10 +529,10 @@ splitAggs_mutator(Node* node, SplitAggsContext *context)
 				args = lappend(args, tactic->finals[i].expr);
 			}
 			
-			FuncExpr *expr = makeFuncExpr(tactic->consolidator,
-										  aggref->aggtype,
-										  args,
-										  COERCE_EXPLICIT_CALL);
+			expr = makeFuncExpr(tactic->consolidator,
+								aggref->aggtype,
+								args,
+								COERCE_EXPLICIT_CALL);
 			new_expr = (Node*)expr;
 		}
 		

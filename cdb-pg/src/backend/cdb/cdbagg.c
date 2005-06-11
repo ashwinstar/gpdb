@@ -313,7 +313,6 @@ List *getAggStrategyList(Agg* agg)
 				/* 
 					as = makeAggStrategy(MOVEMENT_REPARTITION, FLOW_PARTITIONED);
 					as->hashexprs = list_make1(state->aggref_distinct);
-					as->hashtypes = list_make1_oid(exprType((Node*)(state->aggref_distinct)));
 					result = lappend(result,as);
 					as = NULL;
 				*/
@@ -327,7 +326,6 @@ List *getAggStrategyList(Agg* agg)
 				/*      E.g. select count(*),vn from sale group by vn */
 				/*      will break! */
 				as->hashexprs = getHashMotionInfoList(plan, INFOTYPE_LEFTEXPR);
-				as->hashtypes = getHashMotionInfoList(plan, INFOTYPE_OP);
 				
 				result = lappend(result,as);
 				as = NULL;
@@ -354,7 +352,6 @@ CdbAggStrategy *makeAggStrategy(Movement left, FlowType result)
 	as->leftmove = left;
 	as->resultflowtype = result;
 	as->hashexprs = NIL;
-	as->hashtypes = NIL;
 	return as;
 }	
 
@@ -372,7 +369,6 @@ CdbAggStrategy *copyAggStrategy(CdbAggStrategy *old)
 	{
 		as = makeAggStrategy(old->leftmove, old->resultflowtype);
 		as->hashexprs = (List*)copyObject(old->hashexprs);
-		as->hashtypes = (List*)copyObject(old->hashtypes);
 	}
 	return as;
 }	
@@ -396,11 +392,6 @@ void freeAggStrategyList(List* aslist)
 		{
 			pfree(stgy->hashexprs);
 			stgy->hashexprs = NULL;
-		}
-		if ( stgy->hashtypes != NULL )
-		{
-			pfree(stgy->hashtypes);
-			stgy->hashtypes = NULL;
 		}
 	}
 	

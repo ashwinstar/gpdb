@@ -18,6 +18,11 @@ extern Cost     cdb_motion_tuple_cost;
 extern unsigned cdb_num_partitions;
 
 
+void
+cdbpath_add_flow_to_plan(Query *root,
+                         Path  *path,
+                         Plan  *plan);
+
 Path *
 cdbpath_create_motion_path(Path            *subpath,    
                            List            *pathkeys,   

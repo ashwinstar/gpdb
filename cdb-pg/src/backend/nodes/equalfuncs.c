@@ -595,7 +595,6 @@ _equalFlow(Flow *a, Flow *b)
 	COMPARE_POINTER_FIELD(sortColIdx, a->numSortCols*sizeof(AttrNumber));
 	COMPARE_POINTER_FIELD(sortOperators, a->numSortCols*sizeof(Oid));
 	COMPARE_NODE_FIELD(hashExpr);
-	COMPARE_NODE_FIELD(hashOp);
 	
 	return true;
 }

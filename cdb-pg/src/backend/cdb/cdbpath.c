@@ -16,6 +16,7 @@
 #include "optimizer/pathnode.h" /* Path */
 #include "optimizer/paths.h"    /* compare_pathkeys() */
 
+#include "cdb/cdbllize.h"       /* makeFlow() */
 #include "cdb/cdbpath.h"        /* me */
 
 #undef small                    /* defined by winsock.h */
@@ -23,6 +24,41 @@
 /* Globals */
 Cost        cdb_motion_tuple_cost   = 0.0;
 unsigned    cdb_num_partitions      = 16;
+
+
+/*
+ * cdbpath_add_flow_to_plan
+ */
+void
+cdbpath_add_flow_to_plan(Query *root,
+                         Path  *path,
+                         Plan  *plan)
+{
+    Flow       *flow;
+    FlowType    flotype = FLOW_UNDEFINED;
+    
+    if (CdbPathLocus_IsRoot(path->locus))
+    {
+        flow = makeFlow(FLOW_SINGLETON);
+        flow->segindex = -1;
+    }
+    else if (CdbPathLocus_IsReplicated(path->locus) ||
+             CdbPathLocus_IsGeneral(path->locus))
+    {
+        flow = makeFlow(FLOW_REPLICATED);
+    }
+    else if (CdbPathLocus_IsHashed(path->locus))
+    {
+        flow = makeFlow(FLOW_PARTITIONED);
+    }
+    else if (CdbPathLocus_IsHashedOJ(path->locus))
+    {
+    }
+    else
+        flow = makeFlow(FLOW_UNDEFINED);
+    
+    // $$$$  plan->flow = flow;
+}                               /* cdbpath_add_flow_to_plan */
 
 
 /*

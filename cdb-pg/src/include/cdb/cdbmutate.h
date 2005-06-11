@@ -10,7 +10,7 @@
  *	  $Id$
  *
  * NOTES
- *	 
+ *	
  *-------------------------------------------------------------------------
  */
 
@@ -25,12 +25,12 @@
 
 /*
  * An ApplyMotionState holds state for the recursive apply_motion_mutator().
- * It is externalized here to make it shareable by helper code in other 
+ * It is externalized here to make it shareable by helper code in other
  * modules, e.g., cdbaggmutate.c.
  */
 typedef struct ApplyMotionState
 {
-	int nextMotionID;  
+	int nextMotionID;
 	
 	/* TODO Finish the mutator which will eventually need some state:
 	 *      At a minimum, a range table, and perhaps more.
@@ -52,36 +52,34 @@ extern Plan *apply_limit_motion(Plan *plan, ApplyMotionState *state);
 typedef enum HashMotionInfoType
 {
 	INFOTYPE_LEFTEXPR,	
-	INFOTYPE_RIGHTEXPR,	
-	INFOTYPE_OP	
+	INFOTYPE_RIGHTEXPR	
 } HashMotionInfoType;
 
 extern List *getHashMotionInfoList( Plan *node, HashMotionInfoType type );
 
 extern List *getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx);
-extern List *getOpListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx);
 
 
 extern Motion *make_motion(Plan *lefttree, MotionType motionType,
-			bool sendToSecondary, bool sendSorted, 
-			int numHashSegs, int *hashSegIdx, List *hashExpr, List *hashOp,
+			bool sendToSecondary, bool sendSorted,
+			int numHashSegs, int *hashSegIdx, List *hashExpr,
 			int numOutputSegs, int *outputSegIdx,
-			int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators, 
+			int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators,
 			int numInputSegs, int *inputSegIdx );
 			
 extern Motion *make_union_motion(Plan *lefttree, bool sendToSecondary, int destSegIndex );
-extern Motion *make_sorted_union_motion(Plan *lefttree, bool sendToSecondary, int destSegIndex, 
-								int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators, 
+extern Motion *make_sorted_union_motion(Plan *lefttree, bool sendToSecondary, int destSegIndex,
+								int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators,
 								int numInputSegs, int *inputSegIdx );
-extern Motion *make_hashed_motion(Plan *lefttree, bool sendToSecondary, 
-							int numHashSegs, int *hashSegIdx, List *hashExpr, List *hashOp );
-extern Motion *make_sorted_hashed_motion(Plan *lefttree, bool sendToSecondary, 
-								int numHashSegs, int *hashSegIdx, List *hashExpr, List *hashOp,
-								int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators, 
+extern Motion *make_hashed_motion(Plan *lefttree, bool sendToSecondary,
+							int numHashSegs, int *hashSegIdx, List *hashExpr);
+extern Motion *make_sorted_hashed_motion(Plan *lefttree, bool sendToSecondary,
+								int numHashSegs, int *hashSegIdx, List *hashExpr,
+								int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators,
 								int numInputSegs, int *inputSegIdx );
 extern Motion *make_broadcast_motion(Plan *lefttree, bool sendToSecondary);
-extern Motion *make_sorted_broadcast_motion(Plan *lefttree, bool sendToSecondary, 
-								int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators, 
+extern Motion *make_sorted_broadcast_motion(Plan *lefttree, bool sendToSecondary,
+								int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators,
 								int numInputSegs, int *inputSegIdx );
 extern void setHashToSelfOnly( Motion *motion );
 extern void setFixedToSelfOnly( Motion *motion );

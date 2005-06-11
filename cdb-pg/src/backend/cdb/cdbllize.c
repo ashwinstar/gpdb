@@ -111,7 +111,7 @@ static bool scanForManagedTables(Plan *plan, Query *query);
 static void initTargetFlow(Plan *plan, Flow *target, bool stable);
 static bool focusPlan(Plan* plan, bool live, bool stable, bool rescanable, int segidx);
 static bool broadcastPlan(Plan* plan, bool live, bool stable, bool rescanable);
-static bool repartitionPlan(Plan* plan, bool live, bool stable, bool rescanable, List *hashExpr, List *hashOp);
+static bool repartitionPlan(Plan* plan, bool live, bool stable, bool rescanable, List *hashExpr);
 static bool adjustPlanFlow(Plan *plan, Flow *target, bool stable, bool rescanable, bool live);
 static bool focusBasePlan(Plan *plan, Flow *target, bool stable, bool rescanable, bool live);
 static bool broadcastBasePlan(Plan *plan, Flow *target, bool stable, bool rescanable, bool live);
@@ -433,6 +433,7 @@ prescan_walker(Node *node, PlanProfile *context)
 				Scan *scan = (Scan*)plan;
 				Index rtindex = scan->scanrelid;
 				Oid reloid = InvalidOid;
+                RangeTblEntry *rte;
 				
 				/* Make sure this is first time. 
 				 * TODO: Clean-up this mess. Our contract with the planner
@@ -452,7 +453,7 @@ prescan_walker(Node *node, PlanProfile *context)
 				Assert( 0<rtindex && rtindex<=list_length(localRangeTable(context)) );
 				
 				/* All scan types have a range table entry. */
-				RangeTblEntry *rte = rt_fetch(rtindex, localRangeTable(context));
+				rte = rt_fetch(rtindex, localRangeTable(context));
 				
 				/* The entry type is related to the to the scan type. */
 				switch (nodeTag(node))
@@ -501,8 +502,6 @@ prescan_walker(Node *node, PlanProfile *context)
 								{
 									list_free_deep(plan->flow->hashExpr);
 									plan->flow->hashExpr = NIL;
-									list_free(plan->flow->hashOp);
-									plan->flow->hashOp = NIL;
 								}
 							 }
 							 /* TODO Remove partitions spec if physical tlist disused. */
@@ -570,7 +569,6 @@ prescan_walker(Node *node, PlanProfile *context)
 								((Plan*)node)->flow = pull_up_Flow(subplan, true);
 								/* Don't use expressions from the wrong range table */
 								((Plan*)node)->flow->hashExpr = NIL; 
-								((Plan*)node)->flow->hashOp = NIL;
 							}
 							
 							if ( ((Plan*)node)->flow == NULL || ((Plan*)node)->flow->flotype == FLOW_UNDEFINED )
@@ -612,7 +610,6 @@ prescan_walker(Node *node, PlanProfile *context)
 					 * our targetlist, so we shouldn't claim they are.
 					 */
 					plan->flow->hashExpr = NIL;
-					plan->flow->hashOp = NIL;
 				}
 				else
 				{
@@ -649,7 +646,9 @@ prescan_walker(Node *node, PlanProfile *context)
 				return true;
 			if ( ! finished )
 			{
-				/* Flow is same as leftree's Flow ... */
+                Sort *sort; 
+
+                /* Flow is same as leftree's Flow ... */
 				Plan *plan = (Plan*)node;
 				Plan *child = outerPlan(node);
 				Assert( child != NULL );
@@ -662,7 +661,7 @@ prescan_walker(Node *node, PlanProfile *context)
 				}
 				
 				/* ... but reordered. */
-				Sort *sort = (Sort*)node;
+				sort = (Sort*)node;
 				plan->flow->numSortCols = sort->numCols;
 				ARRAYCOPY(plan->flow->sortColIdx, sort->sortColIdx, 
 					sort->numCols*sizeof(AttrNumber) );
@@ -884,7 +883,6 @@ prescan_walker(Node *node, PlanProfile *context)
 				limit->plan.flow->req_move = MOVEMENT_NONE;
 				limit->plan.flow->segindex = -1;
 				limit->plan.flow->hashExpr = NIL;
-				limit->plan.flow->hashOp = NIL;
 				limit->plan.flow->req_xform = MOVEMENT_LIM_RESTRUCT;
 			}
 			return false;
@@ -919,7 +917,6 @@ bool prescan_hashjoin(Plan *plan, PlanProfile *context)
 
 	List *outerexpr = NULL;
 	List *innerexpr = NULL;
-	List *hashOp = NULL;
 	
 	Plan *outer = outerPlan(plan);
 	Plan *inner = innerPlan(plan);
@@ -969,8 +966,7 @@ bool prescan_hashjoin(Plan *plan, PlanProfile *context)
 				
 			case MOVEMENT_REPARTITION:
 				outerexpr = getHashMotionInfoList(plan, INFOTYPE_LEFTEXPR);
-				hashOp = getHashMotionInfoList(plan, INFOTYPE_OP);
-				canUse = repartitionPlan(plan->lefttree, false, false, false, outerexpr, hashOp);
+				canUse = repartitionPlan(plan->lefttree, false, false, false, outerexpr);
 				break;
 				
 			default:
@@ -998,8 +994,7 @@ bool prescan_hashjoin(Plan *plan, PlanProfile *context)
 				
 			case MOVEMENT_REPARTITION:
 				innerexpr = getHashMotionInfoList(plan, INFOTYPE_RIGHTEXPR);
-				hashOp = getHashMotionInfoList(plan, INFOTYPE_OP);
-				canUse = repartitionPlan(plan->righttree, false, false, false, innerexpr, hashOp);
+				canUse = repartitionPlan(plan->righttree, false, false, false, innerexpr);
 				break;
 				
 			default:
@@ -1049,7 +1044,7 @@ bool prescan_hashjoin(Plan *plan, PlanProfile *context)
 			break;
 			
 		case MOVEMENT_REPARTITION:
-			repartitionPlan(plan->lefttree, true, false, false, outerexpr, hashOp);
+			repartitionPlan(plan->lefttree, true, false, false, outerexpr);
 			break;
 			
 		default:
@@ -1074,7 +1069,7 @@ bool prescan_hashjoin(Plan *plan, PlanProfile *context)
 			break;
 			
 		case MOVEMENT_REPARTITION:
-			repartitionPlan(plan->righttree, true, false, false, innerexpr, hashOp);
+			repartitionPlan(plan->righttree, true, false, false, innerexpr);
 			break;
 			
 		default:
@@ -1113,7 +1108,6 @@ bool prescan_mergejoin(Plan *plan, PlanProfile *context)
 	
 	List *outerexpr = NULL;
 	List *innerexpr = NULL;
-	List *hashOp = NULL;
 
 	Plan *outer = outerPlan(plan);
 	Plan *inner = innerPlan(plan);
@@ -1168,8 +1162,7 @@ bool prescan_mergejoin(Plan *plan, PlanProfile *context)
 				
 			case MOVEMENT_REPARTITION:
 				outerexpr = getHashMotionInfoList(plan, INFOTYPE_LEFTEXPR);
-				hashOp = getHashMotionInfoList(plan, INFOTYPE_OP);
-				canUse = repartitionPlan(plan->lefttree, false, true, false, outerexpr, hashOp);
+				canUse = repartitionPlan(plan->lefttree, false, true, false, outerexpr);
 				break;
 				
 			default:
@@ -1197,8 +1190,7 @@ bool prescan_mergejoin(Plan *plan, PlanProfile *context)
 				
 			case MOVEMENT_REPARTITION:
 				innerexpr = getHashMotionInfoList(plan, INFOTYPE_RIGHTEXPR);
-				hashOp = getHashMotionInfoList(plan, INFOTYPE_OP);
-				canUse = repartitionPlan(plan->righttree, false, true, true, innerexpr, hashOp);
+				canUse = repartitionPlan(plan->righttree, false, true, true, innerexpr);
 				break;
 				
 			default:
@@ -1247,7 +1239,7 @@ bool prescan_mergejoin(Plan *plan, PlanProfile *context)
 			break;
 			
 		case MOVEMENT_REPARTITION:
-			repartitionPlan(plan->lefttree, true, true, false, outerexpr, hashOp);
+			repartitionPlan(plan->lefttree, true, true, false, outerexpr);
 			break;
 			
 		default:
@@ -1272,7 +1264,7 @@ bool prescan_mergejoin(Plan *plan, PlanProfile *context)
 			break;
 			
 		case MOVEMENT_REPARTITION:
-			repartitionPlan(plan->righttree, true, true, true, innerexpr, hashOp);
+			repartitionPlan(plan->righttree, true, true, true, innerexpr);
 			break;
 			
 		default:
@@ -1312,7 +1304,6 @@ bool prescan_nestloop(Plan *plan, PlanProfile *context)
 	List *outerexpr = NIL;
 	List *innerexpr = NIL;
 	List *hashExpr = NIL;
-	List *hashOp = NIL;
 	bool attemptedHashExtract = false;
 
 	Plan *outer = outerPlan(plan);
@@ -1371,11 +1362,11 @@ bool prescan_nestloop(Plan *plan, PlanProfile *context)
 		 */
 		if ( s->leftmove == MOVEMENT_REPARTITION || s->rightmove == MOVEMENT_REPARTITION )
 		{
-			if ( hashOp == NULL && ! attemptedHashExtract )
+			if ( hashExpr == NIL && ! attemptedHashExtract )
 			{
 				ListCell *xc;
 				/* Try to extract hash criteria from joinqual. */
-				if ( extractHashExprFromQual( ((Join*)plan)->joinqual, &hashExpr, &hashOp ))
+				if ( extractHashExprFromQual( ((Join*)plan)->joinqual, &hashExpr ))
 				{
 					/* Repartitioning is possible, dissect expressions. */
 					foreach ( xc, hashExpr )
@@ -1388,12 +1379,12 @@ bool prescan_nestloop(Plan *plan, PlanProfile *context)
 				}
 				else
 				{
-					hashExpr = hashOp = NIL;  /* Just to be sure. */
+					hashExpr = NIL;  /* Just to be sure. */
 				}
 				attemptedHashExtract = true;
 			}
 			
-			if ( hashOp == NIL )
+			if ( hashExpr == NIL )
 				continue; /* Not hashable, so can't use this strategy. */
 		}
 		
@@ -1422,7 +1413,7 @@ bool prescan_nestloop(Plan *plan, PlanProfile *context)
 				break;
 				
 			case MOVEMENT_REPARTITION:
-				canUse = repartitionPlan(plan->lefttree, false, false, false, outerexpr, hashOp);
+				canUse = repartitionPlan(plan->lefttree, false, false, false, outerexpr);
 				break;
 				
 			default:
@@ -1449,7 +1440,7 @@ bool prescan_nestloop(Plan *plan, PlanProfile *context)
 				break;
 				
 			case MOVEMENT_REPARTITION:
-				canUse = repartitionPlan(plan->righttree, false, false, true, innerexpr, hashOp);
+				canUse = repartitionPlan(plan->righttree, false, false, true, innerexpr);
 				break;
 				
 			default:
@@ -1498,7 +1489,7 @@ bool prescan_nestloop(Plan *plan, PlanProfile *context)
 			break;
 			
 		case MOVEMENT_REPARTITION:
-			repartitionPlan(plan->lefttree, true, false, false, outerexpr, hashOp);
+			repartitionPlan(plan->lefttree, true, false, false, outerexpr);
 			break;
 			
 		default:
@@ -1524,7 +1515,7 @@ bool prescan_nestloop(Plan *plan, PlanProfile *context)
 			break;
 			
 		case MOVEMENT_REPARTITION:
-			repartitionPlan(plan->righttree, true, false, true, innerexpr, hashOp);
+			repartitionPlan(plan->righttree, true, false, true, innerexpr);
 			break;
 			
 		default:
@@ -1570,7 +1561,6 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 	Flow *newflow = NULL;
 	
 	List *hashExpr = NIL;
-	List *hashOp = NIL;
 	
 	/* Argument is a prescaned plan. */
 	child = outerPlan((Node*)plan);
@@ -1660,8 +1650,7 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 				
 			case MOVEMENT_REPARTITION:
 				hashExpr = getExprListFromTargetList(child->targetlist, agg->numCols, agg->grpColIdx);
-				hashOp = getOpListFromTargetList(child->targetlist, agg->numCols, agg->grpColIdx);
-				canUse = repartitionPlan(child, false, sortattrs!=NULL, false, hashExpr, hashOp);
+				canUse = repartitionPlan(child, false, sortattrs!=NULL, false, hashExpr);
 				break;
 				
 			default:
@@ -1717,7 +1706,7 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 			
 		case MOVEMENT_REPARTITION:
 			/* Repartition motion required */
-			repartitionPlan(child, true, sortattrs!=NULL, false, hashExpr, hashOp);
+			repartitionPlan(child, true, sortattrs!=NULL, false, hashExpr);
 			newflow = pull_up_Flow(plan, true);
 			break;
 		
@@ -1839,20 +1828,22 @@ Flow *makeFlow(FlowType flotype)
  */
 Flow * pull_up_Flow(Plan *plan, bool withSort)
 {
+    Flow *model_flow;
+    Flow *new_flow; 
+
 	Assert( is_plan_node((Node*)plan) && plan->lefttree != NULL );
 	
-	Flow *model_flow = plan->lefttree->flow;
+    model_flow = plan->lefttree->flow;
 	
 	if ( model_flow == NULL )
 		return NULL;
 		
-	Flow *new_flow = makeFlow(model_flow->flotype);
+	new_flow = makeFlow(model_flow->flotype);
 	
 	if ( model_flow->flotype == FLOW_PARTITIONED && !is_projection_capable_plan(plan) )
 	{
 		/* Propagate hash attribute definitions. */
 		new_flow->hashExpr = model_flow->hashExpr;
-		new_flow->hashOp = model_flow->hashOp;
 	}
 	else if ( model_flow->flotype == FLOW_SINGLETON )
 	{
@@ -1935,7 +1926,6 @@ Flow *makeFlowForRelation(Oid reloid, PlanProfile *context)
 				var = makeVar(1,  policy->attrs[i], typid, typmod, 0);
 				
 				flow->hashExpr = lappend(flow->hashExpr, var);
-				flow->hashOp = lappend_oid(flow->hashOp, eq_oid);
 				
 			}
 			if ( context != NULL )
@@ -2085,11 +2075,12 @@ scanForManagedTables_walker(Node *node, PlanProfile *context)
 				Oid reloid = InvalidOid;
 				CdbPolicy *policy;
 				CdbPolicyType ptype;
+                RangeTblEntry *rte;
 				
 				Assert( scan->scanrelid > 0 ); /* Make sure we have an index. */
 				Assert( 0<rtindex && rtindex<=list_length(localRangeTable(context)) );
 				
-				RangeTblEntry *rte = rt_fetch(rtindex, localRangeTable(context));
+				rte = rt_fetch(rtindex, localRangeTable(context));
 				
 				reloid = rte->relid;				
 				policy = get_table_policy(reloid);
@@ -2369,17 +2360,16 @@ bool broadcastPlan(Plan* plan, bool live, bool stable, bool rescanable)
 /*
  * Function: repartitionPlan
  */
-bool repartitionPlan(Plan* plan, bool live, bool stable, bool rescanable, List *hashExpr, List *hashOp)
+bool repartitionPlan(Plan* plan, bool live, bool stable, bool rescanable, List *hashExpr)
 {
 	Flow target;
 	
-	if ( list_length(hashExpr) < 1 || list_length(hashExpr) != list_length(hashOp) )
+	if ( list_length(hashExpr) < 1 )
 		return false; /* Not much of a check, but it's something. */
 	
 	initTargetFlow(plan, &target, stable);
 	target.flotype = FLOW_PARTITIONED;
 	target.hashExpr = hashExpr;
-	target.hashOp = hashOp;
 	
 	return adjustPlanFlow(plan, &target, stable, rescanable, live);  
 }
@@ -2413,7 +2403,6 @@ void initTargetFlow(Plan *plan, Flow *target, bool stable)
 		target->sortOperators = NULL;
 	}
 	target->hashExpr = NIL;
-	target->hashOp = NIL;
 }
 
 
@@ -2688,7 +2677,6 @@ bool repartitionBasePlan(Plan *plan, Flow *target, bool stable, bool rescanable,
 				plan->flow->req_move = MOVEMENT_REPARTITION;
 				plan->flow->flotype = FLOW_PARTITIONED;
 				plan->flow->hashExpr = copyObject(target->hashExpr);
-				plan->flow->hashOp = copyObject(target->hashOp);
 			}
 			return true;
 			
@@ -2702,7 +2690,6 @@ bool repartitionBasePlan(Plan *plan, Flow *target, bool stable, bool rescanable,
 				plan->flow->req_move = MOVEMENT_REP2PARTITIONED;
 				plan->flow->flotype = FLOW_PARTITIONED;
 				plan->flow->hashExpr = copyObject(target->hashExpr);
-				plan->flow->hashOp = copyObject(target->hashOp);
 			}
 			return true;
 			
@@ -2714,7 +2701,6 @@ bool repartitionBasePlan(Plan *plan, Flow *target, bool stable, bool rescanable,
 				plan->flow->req_move = MOVEMENT_REPARTITION;
 				plan->flow->flotype = FLOW_PARTITIONED;
 				plan->flow->hashExpr = copyObject(target->hashExpr);
-				plan->flow->hashOp = copyObject(target->hashOp);
 			}
 			return true;
 			

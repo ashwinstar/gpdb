@@ -1201,7 +1201,6 @@ typedef struct MotionState
 	bool				noMoreAMSTuples;	/* set when AMS indicates all peers are done sending tuples */
     bool				sentEndOfStream;    /* set when end-of-stream has successfully been sent */
 	List				*hashExprState;		/* state struct used for evaluating the hash expressions */
-	Oid					*hashOids;			/* Oids of the result of the hash expressions, used by the hash api*/	
 	CdbHash				*cdbhash;			/* hash api object */
 	bool				*hashSegIdxMask;	/* for hash motion, a bit vector indicating whether motion to that segIdx has been turned off */
 	bool				*fixedSegIdxMask;	/* for fixed motion, a bit vector indicating whether motion to that segIdx has been turned off */

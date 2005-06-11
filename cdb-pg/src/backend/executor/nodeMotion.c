@@ -35,7 +35,7 @@ static void trySendCurrentTuple(MotionState *node);
 static TupleTableSlot *execMotionUnsorted(MotionState *node);
 static TupleTableSlot *execMotionSorted(MotionState *node);
 static void execMotionSortedFirstTime(MotionState *node);
-static uint32 evalHashKey(ExprContext *econtext, List *hashkeys, Oid *hashOids, CdbHash *h);
+static uint32 evalHashKey(ExprContext *econtext, List *hashkeys, List* hashtypes, CdbHash *h);
 static bool setReadFromAMS(Motion *node);
 
 
@@ -254,12 +254,14 @@ execMotionUnsorted(MotionState *node)
                 else    /* Hash motion node */
                 {
 					/*  Get hash value of hash expressions */
-					Assert( motion->numHashSegs > 0 && motion->hashSegIdx != NULL );
 					uint32 hval = 0;
 					uint16 target_segindex;
 					
-					econtext->ecxt_outertuple = outerTupleSlot;
-					hval = evalHashKey(econtext, node->hashExprState, node->hashOids, node->cdbhash);
+                    Assert( motion->numHashSegs > 0 && motion->hashSegIdx != NULL );
+
+                    econtext->ecxt_outertuple = outerTupleSlot;
+					hval = evalHashKey(econtext, node->hashExprState, 
+                                       motion->hashDataTypes, node->cdbhash);
 					target_segindex = motion->hashSegIdx[ hval  ];
 
 					Assert( node->numTuplesByHashSegIdx != NULL );
@@ -853,34 +855,19 @@ ExecInitMotion(Motion *node, EState *estate)
 	ExecAssignResultTypeFromOuterPlan(&motionstate->ps);
 	motionstate->ps.ps_ProjInfo = NULL;
 	motionstate->hashExprState = NULL;
-	motionstate->hashOids = NULL;
 	motionstate->cdbhash = NULL;
 		
 	if ( node->motionType == MOTIONTYPE_HASH )
 	{
 		int			nkeys;
-		ListCell	*ho;
 		
 		/*
 		 * Get info about the hash functions to be used for each hash key.
 		 */
-		Assert( node->hashOp != NULL );
+		Assert( node->hashDataTypes != NULL );
 		Assert( node->numHashSegs > 0 );
 		 
-		nkeys = list_length(node->hashOp);
-		motionstate->hashOids = (Oid *) palloc(nkeys * sizeof(Oid));
-		i = 0;
-		foreach(ho, node->hashOp)
-		{
-			Oid lefttype;
-			Oid righttype;
-
-			op_input_types( lfirst_oid(ho), &lefttype, &righttype );
-			Assert( lefttype == righttype );
-			motionstate->hashOids[i] = lefttype;
-			i++;
-		}
-		
+		nkeys = list_length(node->hashDataTypes);
 		motionstate->hashExprState = (List *)ExecInitExpr( (Expr *)node->hashExpr,
 														 (PlanState *) motionstate);
 
@@ -996,6 +983,7 @@ ExecEndMotion(MotionState *node)
 {
     uint16 motNodeID;
 	int i;
+    Motion *motion;
     
 	SO1_printf("ExecEndMotion: %s\n",
 			   "shutting down motion node");
@@ -1009,7 +997,7 @@ ExecEndMotion(MotionState *node)
 	 */
 	ExecEndNode(outerPlanState(node));
 
-    Motion *motion = (Motion *)node->ps.plan;
+    motion = (Motion *)node->ps.plan;
 	Assert( motion != NULL );
 
 	elog( DEBUG1, 
@@ -1090,10 +1078,10 @@ ExecEndMotion(MotionState *node)
 /*
  * Experimental code that will be replaced later with new hashing mechanism
  */
-uint32 evalHashKey(ExprContext *econtext, List *hashkeys, Oid *hashOids, CdbHash *h)
+uint32 evalHashKey(ExprContext *econtext, List *hashkeys, List* hashtypes, CdbHash *h)
 {
 	ListCell   *hk;
-	int			i = 0;
+    ListCell   *ht;
 	MemoryContext oldContext;
 
 	ResetExprContext(econtext);
@@ -1102,7 +1090,7 @@ uint32 evalHashKey(ExprContext *econtext, List *hashkeys, Oid *hashOids, CdbHash
 
 	cdbhashinit(h);
 
-	foreach(hk, hashkeys)
+	forboth(hk, hashkeys, ht, hashtypes)
 	{
 		ExprState  *keyexpr = (ExprState *) lfirst(hk);
 		Datum		keyval;
@@ -1117,11 +1105,9 @@ uint32 evalHashKey(ExprContext *econtext, List *hashkeys, Oid *hashOids, CdbHash
 		 * Compute the hash function
 		 */
 		if (!isNull)			/* treat nulls as having hash key 0 */
-			cdbhash(h, keyval, hashOids[i]); 
+			cdbhash(h, keyval, lfirst_oid(ht)); 
 		else
 			cdbhashnull(h);
-
-		i++;
 	}
 	
 	MemoryContextSwitchTo(oldContext);
