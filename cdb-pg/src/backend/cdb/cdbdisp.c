@@ -241,13 +241,13 @@ void CdbDispatchCommand( const char *szCommand, DispatchTargetSet targetSet,
 }
 
 /*
- * CdbCheckDispatchResultInt:
+ * CdbCheckDispatchResult:
  * Waits for threads that were launched in CdbDispatchCommand
  * to finish, and then checks to see whether they all succeeded.
  * If so, returns true.  If not, returns false, and fills in pszError 
  * out parameter with a concatenation of errors from any failed command.
  */
-CdbDispatchResults *CdbCheckDispatchResultInt(void)
+CdbDispatchResults *CdbCheckDispatchResult(void)
 {
 	int							i;
 	int							j;
@@ -344,24 +344,6 @@ CdbDispatchResults *CdbCheckDispatchResultInt(void)
 	threadCount = 0;
     
 	return results;	
-}
-
-/*
- * CdbCheckDispatchResult:
- * Waits for threads that were launched in CdbDispatchCommand
- * to finish, and then checks to see whether they all succeeded.
- * If so, returns true.  If not, returns false, and fills in pszError 
- * out parameter with a concatenation of errors from any failed command.
- * Called by general users, this method includes global transaction control.
- */
-CdbDispatchResults *CdbCheckDispatchResult(void)
-{
-    CdbDispatchResults          *results;
-    results = CdbCheckDispatchResultInt();
-    if (results->success)
-        condCommitDtxTransaction(false,false);
-
-    return results;
 }
 
 /*
@@ -644,8 +626,10 @@ void *thread_DispatchCommand(void *arg)
 						}
 				        if (pqresults != NULL)
                          {
-                            /* TODO:   need to handle multiple result sets */
-                            /* check the segindex for segment case */
+                            /*
+                             * TODO:   need to handle multiple result sets
+                             * check the segindex for segment case
+                             */
                             Assert(pqresults[segdbDesc->segment_descriptor->segindex] == NULL);
                             pqresults[segdbDesc->segment_descriptor->segindex] = pRes;
                          }
@@ -768,7 +752,7 @@ void createThreadPoolPerListener( DispatchCommandParms *dispatchCommandParmsAr, 
 			/* Check to see if we got a connection for the last listenerid */
 			if ( !bFoundConnection )
 			{
-				/* This is an error condition	*/
+				/* This is an error condition */	
 				ereport( ERROR,
 							(errcode( ERRCODE_SQLSERVER_REJECTED_ESTABLISHMENT_OF_SQLCONNECTION ),
 							 errmsg("Cannot dispatch command %s to all listeners: "
@@ -797,7 +781,7 @@ void createThreadPoolPerListener( DispatchCommandParms *dispatchCommandParmsAr, 
 	/* Check to see if we got a connection for the last listenerid */
 	if ( !bFoundConnection )
 	{
-		/* This is an error condition	*/
+		/* This is an error condition	 */
 		ereport( ERROR,
 					(errcode( ERRCODE_SQLSERVER_REJECTED_ESTABLISHMENT_OF_SQLCONNECTION ),
 					 errmsg("Cannot dispatch command %s to all listeners: "
@@ -1108,7 +1092,7 @@ bool CdbDoCommandInt( const char *szCommand, DispatchTargetSet targetSet,
 
 	CdbDispatchCommandInt( szCommand, targetSet, NULL, 0, cancelFromBelow, resultSets );
 
-	results = CdbCheckDispatchResultInt();
+	results = CdbCheckDispatchResult();
 
 	message_do = CdbDumpDispatchResults(results, true);
 	Assert( message_do != NULL );
@@ -1123,72 +1107,11 @@ bool CdbDoCommandInt( const char *szCommand, DispatchTargetSet targetSet,
 		message_do = CdbDumpDispatchResults(results, false);
 		rtn = false;
 
-        /* comment out undoCommand, not needed anymore for global transactions.
-		if ( szUndoCommand != NULL )
-		{
-			int i;
-			int x = 0;
-			SegmentDatabaseDescriptor	**segdbsForUndo;
-			CdbDispatchResults* undo_results = NULL;
-
-
-			segdbsForUndo = (SegmentDatabaseDescriptor **)palloc0( results->count * sizeof(SegmentDatabaseDescriptor *) );
-			for( i=0; i<results->count; i++ )
-			{
-				CdbDispatchResult *pResult = &results->pResults[i];
-				if ( pResult->error_message == NULL )
-				{
-					segdbsForUndo[x++] = pResult->segdbDesc;
-				}
-			}
-
-			CdbDispatchCommandInt( szUndoCommand, DTS_ENUMERATION, segdbsForUndo, x, cancelFromBelow, NULL );
-
-			undo_results = CdbCheckDispatchResultInt();
-
-			message_undo = CdbDumpDispatchResults(undo_results, true);
-			Assert( message_undo != NULL );
-			elog( DEBUG2,
-					"cdbexec undo command results for \"%s\": %s",
-					szUndoCommand, message_undo );
-
-			pfree(message_undo);
-
-			if ( !undo_results->success )
-			{
-				// This is an error condition	
-				message_undo = CdbDumpDispatchResults(undo_results, false);
-				ereport( ERROR,
-							(errcode( ERRCODE_CDB_COMMAND_ERROR ),
-							errmsg("Command \"%s\" failed on at least one segment database: %s, "
-							"and then the undo command \"%s\" also failed on at least one segment database: %s",
-					 		szCommand, message_do, szUndoCommand, message_undo
-						)));
-			}
-			else
-			{
-				ereport( DEBUG5,
-							(errcode( ERRCODE_CDB_COMMAND_ERROR ),
-							errmsg("Command \"%s\" failed on at least one segment database: %s, "
-							"and then the undo command \"%s\" executed successfully",
-					 		szCommand, message_do, szUndoCommand
-						)));
-
-			}
-
-			DestroyCdbDispatchResults( undo_results );
-		}
-		else
-        */
-		{
-
-			ereport( ERROR,
-						(errcode( ERRCODE_CDB_COMMAND_ERROR ),
-						errmsg("Command \"%s\" failed on at least one segment database: %s, ",
-					 	szCommand, message_do
-					)));
-
-		}
+		ereport( ERROR,
+					(errcode( ERRCODE_CDB_COMMAND_ERROR ),
+					errmsg("Command \"%s\" failed on at least one segment database: %s, ",
+				 	szCommand, message_do
+				)));
 
 		pfree( message_do );
 	}
@@ -1212,7 +1135,6 @@ bool CdbDoCommand( const char *szCommand,
     condStartDtxTransaction();
     bool ret = CdbDoCommandInt( szCommand, targetSet, 
                             cancelFromBelow, resultSets );
-    condCommitDtxTransaction( false, false );
     return ret;            
 }
 
