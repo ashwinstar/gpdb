@@ -1707,6 +1707,10 @@ StartTransaction(void)
 	if (s->state != TRANS_DEFAULT)
 		elog(WARNING, "StartTransaction while in %s state",
 			 TransStateAsString(s->state));
+             
+    /* check DTM transaction */
+    if (isInGlobalTransaction())
+        elog(ERROR, "DTM transaction leftover");
 
 	/*
 	 * set the current transaction state information appropriately during
@@ -1784,9 +1788,10 @@ StartTransaction(void)
 static void
 CommitTransaction(void)
 {
-    // commit all QE as cleanup process, ignore all errors
-    // commit should have been all from ProcessUtility and CdbDispatchCommand
-    commitDtxTransaction();
+    /* commit all QE as cleanup process, ignore all errors
+     * commit should have been called from ProcessUtility and CdbDispatchCommand
+     */
+    commitDtxTransaction(false);
     
 	TransactionState s = CurrentTransactionState;
 
@@ -2076,7 +2081,7 @@ AbortTransaction(void)
 	 */
 	RESUME_INTERRUPTS();
     
-    // abort all QE as cleanup process, ignore all errors
+    /* abort all QE as cleanup process, ignore all errors */
     rollbackDtxTransaction();
 }
 
@@ -2883,7 +2888,7 @@ PrepareTransactionBlock(char *gid)
                * and log the transaction as prepared and return us to the default state
                */
               s->blockState = TBLOCK_PREPARE;
-              //s->gid = gid;
+              /*s->gid = gid; */
               return;
       }
 
@@ -2896,7 +2901,7 @@ PrepareTransactionBlock(char *gid)
                * CommitTransactionCommand() will recognise this and then put us
                * back in the default state.
                */
-              //s->blockState = TBLOCK_ABORT_END;
+              /*s->blockState = TBLOCK_ABORT_END; */
               return;
       }
 

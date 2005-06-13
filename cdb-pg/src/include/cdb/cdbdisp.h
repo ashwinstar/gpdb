@@ -78,6 +78,10 @@ extern void CdbDispatchCommand( const char *szCommand, DispatchTargetSet targetS
 							   struct segment_database_descriptor **segdbList, int segdbListCount,
 							   bool cancelFromBelow );
 
+extern void CdbDispatchCommandInt( const char *szCommand, DispatchTargetSet targetSet, 
+                               struct segment_database_descriptor **segdbList, int segdbListCount,
+                               bool cancelFromBelow, void ***resultSets );
+
 /*
  * CdbCheckDispatchResult:
  * Waits for threads that were launched in CdbDispatchCommand
@@ -124,4 +128,7 @@ extern bool CdbDoCommand( const char *szCommand,
 						 DispatchTargetSet targetSet, bool cancelFromBelow,
                           void ***resultSets );  /* resultSets points to PGresult */
 
+extern bool CdbDoCommandInt( const char *szCommand, DispatchTargetSet targetSet, 
+                    bool cancelFromBelow, void ***resultSets );
+                    
 #endif	/* CDBDISP_H */

@@ -26,7 +26,7 @@ extern char dtm_dir[MAXPGPATH];
  */
 
 #define MAXPATH  1024
-#define MAXLOGFILESIZE 50000000    // 50M
+#define MAXLOGFILESIZE 50000000    /* 50M */
 
 /************************************************************************/
 /* Shared memory bookkeeping                                            */
@@ -44,27 +44,27 @@ static int  logFileFD=-1, logFileNo;
 TmLogRecord *
 readTmLogRecordNext(int offset)
 {
+    int loffset, participant_len=0;
+    TmLogRecord *record = NULL;
+    
     elog(DEBUG1, "readTmLogRecord (%d)", offset);
     TmLogRecordHeader header;
     
     if (offset == -1)
         offset = currentOffset;
     
-    int loffset = lseek(logFileFD, offset, SEEK_SET);
+    loffset = lseek(logFileFD, offset, SEEK_SET);
     Assert(loffset == offset);
 
     /* Read record header */
     if (!read_with_ereport(logFileFD, &header, sizeof(TmLogRecordHeader)))
     {
-        // could be the last corrupted record, ignore it.
+        /* could be the last corrupted record, ignore it. */
         return NULL;
     }
 
     Assert(header.thisOffset == offset);
     
-    TmLogRecord *record = NULL;
-    int participant_len=0;
-            
     if (header.numberOfParticipants == 0)
     {
         record = malloc(sizeof(TmLogRecordHeader));
@@ -87,7 +87,7 @@ readTmLogRecordNext(int offset)
         /* Read Participants */
         if (!read_with_ereport(logFileFD, &record->participants, participant_len))
         {
-            //could be the last corrupted record, ignore it
+            /* could be the last corrupted record, ignore it */
             return NULL;
         }
     }
@@ -99,16 +99,18 @@ readTmLogRecordNext(int offset)
 void
 writeTmLogRecord(TmLogRecord *record)
 {
+    int len;
+    
     if ( logFileNo != *shmLatestLogFileNo )
     {
-        // log file is incremented
+        /* log file is incremented */
         closeTmLogFile();
         openTmLogFile( *shmLatestLogFileNo );
     }
 
     if ( lseek(logFileFD, 0, SEEK_END) > MAXLOGFILESIZE )
     {
-        // switch log file
+        /* switch log file */
         switchTmLogFile();
     }
 
@@ -116,7 +118,7 @@ writeTmLogRecord(TmLogRecord *record)
     record->header.thisOffset = lseek(logFileFD, 0, SEEK_END);
     Assert(record->header.thisOffset != -1);
     
-    int len=sizeof(TmLogRecordHeader);
+    len=sizeof(TmLogRecordHeader);
     if (record->header.numberOfParticipants != 0)
     {
         switch (record->header.recType)
@@ -153,9 +155,11 @@ checkPointTm(void)
     TMGXACT *gxact;
     int n = startTMXactScan();
     int earlierFileNo=-1;
-    
-    TmLogRecord *record = palloc(sizeof(TmLogRecordHeader) + n*sizeof(TMGXACT));
+    TmLogRecord *record=NULL;
     int i=0;
+    
+    record = palloc(sizeof(TmLogRecordHeader) + n*sizeof(TMGXACT));
+
     for ( i=0;i<n;i++ )
     {
         gxact = getNextTMXact(i);
@@ -171,19 +175,19 @@ checkPointTm(void)
     record->header.numberOfParticipants = n;
 
 
-    // write check point log record
+    /* write check point log record */
     writeTmLogRecord(record);
     
     //write log control header
     writeTmControlBlock(record->header.thisOffset);
 
-    // deallocate record
+    /* deallocate record */
     pfree(record);
     
-    // flush tm log file
+    /* flush tm log file */
     flushTmLogFile();
     
-    // remove old log file
+    /* remove old log file */
     removeTmLogFileUntil( earlierFileNo );
 }
 
@@ -197,7 +201,6 @@ initTmLogFile(int seqno)
     elog(LOG, "InitTmLogFile (%d)", seqno);
 
     logFileFD = open(path, O_RDWR | O_CREAT | O_EXCL, S_IRUSR | S_IWUSR);
-    //logFileFD = BasicOpenFile(path, PG_BINARY, S_IRUSR | S_IWUSR);
     if (logFileFD < 0)
     {
         ereport(ERROR,
@@ -221,7 +224,6 @@ openTmLogFile(int seqno)
 	elog(LOG, "OpenTmLogFile (%d)", seqno);
 
     logFileFD = open(path, O_RDWR, 0);
-	//logFileFD = BasicOpenFile(path, PG_BINARY, S_IRUSR | S_IWUSR);
 	if (logFileFD < 0)
 	{
         ereport(ERROR,
@@ -233,7 +235,7 @@ openTmLogFile(int seqno)
     logFileNo = seqno;
     if (!read_with_ereport(logFileFD, &tmLogFileHeader, sizeof(TmLogFileControlBlock)))
     {
-        // partial control block, file is not created properly
+        /* partial control block, file is not created properly */
         return false;
     }
     currentOffset = sizeof(TmLogFileControlBlock);
@@ -247,7 +249,7 @@ openTmLogFile(int seqno)
                         path)));
     }
     
-    // if file is not created completely
+    /* if file is not created completely */
     if (tmLogFileHeader.checkpointOffset == 0)
         return false;
     
@@ -271,7 +273,7 @@ switchTmLogFile(void)
     int seqno = ++logFileNo;
     closeTmLogFile();
     
-    // create new log file
+    /* create new log file */
     initTmLogFile(seqno);
     checkPointTm();
     flushTmLogFile();
@@ -293,9 +295,10 @@ flushTmLogFile(void)
 void
 removeTmLogFileUntil(int seqno)
 {
+    int i=0;
     if ( seqno <= *shmEarliestLogFileNo )
         return;
-    int i=0;
+
     for (i=*shmEarliestLogFileNo;i<seqno;i++)
         removeTmLogFile(i);
     *shmEarliestLogFileNo = seqno; 
@@ -323,6 +326,10 @@ initTmLog( char *dir)
 {
     DIR                *cldir;
     struct dirent *clde;
+    /* sort files, should have only two files at most */
+    int file1=-1,    /* lastest file */
+        file2=-1,    /* second lastest file */
+        id=0;
 
     elog(DEBUG1, "Discovering tm log files");
     
@@ -331,11 +338,6 @@ initTmLog( char *dir)
         ereport(ERROR,
                 (errcode_for_file_access(),
                  errmsg("could not open directory \"%s\": %m", dir)));
-    
-    // sort files, should have only two files at most
-    int file1=-1,    // lastest file
-        file2=-1,    // second lastest file
-        id=0;
     
     while ((clde = readdir(cldir)) != NULL)
     {
@@ -357,7 +359,7 @@ initTmLog( char *dir)
     
     if (file1 == -1)
     {
-        // no file found, create the first log file
+        /* no file found, create the first log file */
         initTmLogFile(0);
         checkPointTm();
         return true;
@@ -368,9 +370,9 @@ initTmLog( char *dir)
         {
             if ( file2 == -1 || !openTmLogFile(file2) )
             {
-                // cleanup
+                /* cleanup */
                 removeTmLogFile(file2);
-                // no valid tm log file found, recreate
+                /* no valid tm log file found, recreate */
                 initTmLogFile(0);
                 checkPointTm();
                 return true;
@@ -392,33 +394,35 @@ initTmLog( char *dir)
 void
 recoverTmLog(void)
 {
+    int i=0;
+    TmLogRecord *record=NULL;
 	elog(LOG, "Recovering TM");
 
     if ( initTmLog(dtm_dir) )
-        // tm log is new initialized, no recovery needed
+        /* tm log is new initialized, no recovery needed */
         return;
         
-    // recovery
+    /* recovery */
     
-    // read checkpoint log record
+    /* read checkpoint log record */
     Assert(tmLogFileHeader.checkpointFileNo == logFileNo);
-    TmLogRecord *record = readTmLogRecordNext( tmLogFileHeader.checkpointOffset );
+    record = readTmLogRecordNext( tmLogFileHeader.checkpointOffset );
     if (record == NULL)
     {
-        // checkpoint failure
+        /* checkpoint failure */
         ereport(ERROR,
             (errcode_for_file_access(),
              errmsg("tm log file is corrupted \"%.08d\"", logFileNo)));
     }
     Assert( record->header.recType == TM_LOG_CHECKPOINT );
-    int i=0;
+
     for ( i=0;i<record->header.numberOfParticipants;i++ )
     {
         restoreGxact(&((TMGXACT*)record->participants)[i]);
     }
     free(record);
     
-    // read subsequent log record
+    /* read subsequent log record */
     while ( (record = readTmLogRecordNext(-1)) != NULL )
     {
         if (record->header.recType != TM_LOG_CHECKPOINT)

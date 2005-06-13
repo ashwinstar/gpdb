@@ -28,11 +28,12 @@ typedef enum
 } DtxState;;
 
 
+#define GXACT_STATUS_PERSISTENT   0x01
+
 typedef struct TMGXACT {
     char gid[TMGIDSIZE];
     DtxState state;
-    bool     autocommit;
-    bool     persistent;
+    char     infomask;
     uint32   fileno;
     uint32   offset;
 } TMGXACT;
@@ -64,8 +65,8 @@ extern int startDtxTransaction(void);
 extern int commitDtxTransaction(bool onephase);
 extern int rollbackDtxTransaction(void);
 extern int condStartDtxTransaction(void);
-extern int condCommitDtxTransaction(bool onephase, bool force);
-extern int condRollbackDtxTransaction(bool force);
+extern int condCommitDtxTransaction(bool onephase);
+extern int condRollbackDtxTransaction(void);
 extern int startTMXactScan(void);
 extern TMGXACT * getNextTMXact(int index);
 extern void endTMXactScan(void);
@@ -84,7 +85,7 @@ void initGxact( TMGXACT *gxact );
 TMGXACT *allocGxact(void);
 void restoreGxact(TMGXACT *gxact);
 void releaseGxact(void);
-int updateDtxState(DtxState state);
+void updateDtxState(DtxState state);
 void generateGID(char *gid);
 void shutdownTM(void);
 void recoverTM(void);
@@ -93,7 +94,8 @@ void cleanRMResultSets( PGresult **pgresultSets );
 bool dumpRMxacts( PGresult **pgresultSets );
 bool checkRM( PGresult **pgresultSets );
 bool recoverRMs(PGresult ***pgresultSets);
-bool handleCommittedDtx(void);
+void recoverCommittedDtx(void);
+void recoverRollbackedDtx(void);
 void getTmLock(void);
 void releaseTmLock(void);
 
