@@ -64,6 +64,7 @@ static const int transitionState[8][8]=
 
 /*
  *  starting a global transaction, called by user begin
+ *  or by CdbDispatchCommand
  */
 int
 startDtxTransaction(void)
@@ -81,7 +82,8 @@ startDtxTransaction(void)
 }
 
 /*
- * committing a global transaction
+ * committing a global transaction, called by user commit
+ * or by CommitTransaction
  */
 int
 commitDtxTransaction(bool onephase)
@@ -92,7 +94,8 @@ commitDtxTransaction(bool onephase)
 }
 
 /*
- * rollback a global transaction
+ * rollback a global transaction, called by user rollback
+ * or by AbortTransaction during Postgres automatic rollback
  */
 int
 rollbackDtxTransaction(void)
@@ -111,6 +114,7 @@ rollbackDtxTransaction(void)
 
 /*
  * starting a global transaction, call by internal command
+ * if transaction is started, this method is a no-op
  */
 int
 condStartDtxTransaction(void)
@@ -137,6 +141,10 @@ condStartDtxTransaction(void)
     return DTX_OK;
 }
 
+/*
+ * committing a global transaction, called by internal
+ * this method does a two-phase commit.
+ */
 int
 condCommitDtxTransaction(bool onephase)
 {
@@ -148,6 +156,7 @@ condCommitDtxTransaction(bool onephase)
         (errmsg("condCommitDtxTransaction:  %s", currentGxact->gid)));
     if (!onephase)
     {
+        /* update the tm state first, so we know the latest state of the txn */
         updateDtxState(DTX_STATE_PREPARED);
         
         /* send prepare to all RM */
@@ -157,8 +166,12 @@ condCommitDtxTransaction(bool onephase)
                 (errmsg("DTM failed on command \"PREPARE %s\" with error: %s", currentGxact->gid, errMessage)));
         }
 
+        /* set the transaction to be prepared, so it will not be removed before
+         * all qe finish.
+         */
         currentGxact->infomask |= GXACT_STATUS_PERSISTENT;
             
+        /* send phase 2 commit to all RM */
         updateDtxState(DTX_STATE_2P_COMMIT);
         if (execCommand() != DTX_OK)
         {
@@ -168,6 +181,7 @@ condCommitDtxTransaction(bool onephase)
     }
     else
     {
+        /* one phase commit case */
         updateDtxState(DTX_STATE_1P_COMMIT);
         
         if (execCommand() != DTX_OK)
@@ -177,10 +191,14 @@ condCommitDtxTransaction(bool onephase)
         }
     }
     
+    /* set txn tm state to be done, so it will be removed from cache */
     updateDtxState(DTX_STATE_COMMIT_DONE);
     return DTX_OK;
 }
 
+/*
+ * rolling back a global transaction, called by internal
+ */
 int
 condRollbackDtxTransaction(void)
 {
@@ -193,7 +211,11 @@ condRollbackDtxTransaction(void)
     }
     ereport(DEBUG1, 
         (errmsg("condRollbackDtxTransaction:  %s", currentGxact->gid)));
+
+    /* keep previous state */
     ignoreError = (currentGxact->state == DTX_STATE_ABORT);
+
+    /* update tm state first */
     updateDtxState(DTX_STATE_ROLLBACK);
         
     /* send rollback to all RM */
@@ -208,6 +230,8 @@ condRollbackDtxTransaction(void)
         else
             /* leave it in the list for recovery */
             currentGxact = NULL;
+            
+        /* if the first time failure, throw exception, otherwise keep silent */
         if (!ignoreError)
             ereport(ERROR,
                 (errmsg("DTM failed on command \"ROLLBACK %s\" with error: %s", gid, errMessage)));
@@ -219,6 +243,9 @@ condRollbackDtxTransaction(void)
     return ret;
 }
 
+/*
+ * execute a transaction command on all QE
+ */
 int
 execCommand(void)
 {
@@ -250,7 +277,8 @@ execCommand(void)
             Assert( currentGxact->state == 0 );
             break;        
     }
-    
+   
+    /* dispatch command */ 
     CdbDispatchCommandInt(cmdbuf, DTS_SEGDB, NULL, 0, false, NULL);
     results = CdbCheckDispatchResult();
 
@@ -286,7 +314,9 @@ execCommand(void)
     return ret;
 }
 
-
+/*
+ * start scan of current active global transactions.
+ */
 int
 startTMXactScan(void)
 {
@@ -294,19 +324,28 @@ startTMXactScan(void)
     return *shmNumGxacts;
 }
 
+/*
+ * scaning current active global transaction.
+ */
 TMGXACT *
 getNextTMXact(int index)
 {
     return shmGxactArray[index];
 }
 
+/*
+ * end scaning current active global transaction.
+ */
 void
 endTMXactScan(void)
 {
     releaseTmLock();
 }
 
-
+/*
+ * initialize TM, called by CdbInit for each process.
+ * first call to this method will trigger tm recovery.
+ */
 void
 initTM(void)
 {
@@ -328,6 +367,7 @@ initTM(void)
     }
 }
 
+/* get tm share memory size */
 int
 tmShmemSize(void)
 {
@@ -381,12 +421,16 @@ tmShmemInit(void)
     snprintf(dtm_dir, MAXPGPATH, "%s/pg_dtm", DataDir);
 }
 
+/*
+ * is global transaction started
+ */
 bool
 isInGlobalTransaction(void)
 {
     return (currentGxact!=NULL);
 }
 
+/* initialize a global transaction context */
 void
 initGxact( TMGXACT *gxact )
 {
@@ -397,6 +441,9 @@ initGxact( TMGXACT *gxact )
     gxact->offset = 0;
 }
 
+/*
+ * allocate a global transaction context from share memory.
+ */
 TMGXACT *
 allocGxact(void)
 {
@@ -416,6 +463,9 @@ allocGxact(void)
     return gxact;
 }
 
+/*
+ * restore global transaction during tm log recovery
+ */
 void
 restoreGxact(TMGXACT *gxact)
 {
@@ -430,6 +480,9 @@ restoreGxact(TMGXACT *gxact)
         memcpy( currentGxact, gxact, sizeof(TMGXACT));
 }
 
+/*
+ * redo transaction log
+ */
 void
 redoTmLog(TmLogRecord *glog)
 {
@@ -439,13 +492,16 @@ redoTmLog(TmLogRecord *glog)
     {
         if (strcmp(glog->header.gid, shmGxactArray[i]->gid) == 0)
         {
+            /* found an active global transaction */
             currentGxact = shmGxactArray[i];
             break;
         }
     }
     if ( i==*shmNumGxacts )
     {
-        /* transaction not found, this should be a prepare log */
+        /* transaction not found, this is the first log of this transaction,
+         * amd it should be a prepare log, rollback log or 1p commit log.
+         */
         Assert(glog->header.state == DTX_STATE_PREPARED ||
                glog->header.state == DTX_STATE_1P_COMMIT ||
                glog->header.state == DTX_STATE_ROLLBACK);
@@ -453,16 +509,20 @@ redoTmLog(TmLogRecord *glog)
         memcpy(currentGxact->gid, glog->header.gid, TMGIDSIZE);
     }
 
-    /* use set, so log will not written again */
+    /* use set state instead of update state, so log will not written again */
     SET_DTX_STATE(currentGxact, glog->header.state);
     currentGxact->fileno = glog->header.thisFileNo;
     currentGxact->offset = glog->header.thisOffset;
-    
+   
+    /* release it if it's done */ 
     if (currentGxact->state == DTX_STATE_ROLLBACK_DONE ||
         currentGxact->state == DTX_STATE_COMMIT_DONE)
         releaseGxact();
 }
 
+/*
+ * release global transaction to share memory
+ */
 void
 releaseGxact(void)
 {
@@ -488,7 +548,7 @@ releaseGxact(void)
 
 
 /*
- * update transaction state
+ * update transaction state, this method writes transaction and checkpoint log
  */
 void
 updateDtxState(DtxState state) 
@@ -555,6 +615,7 @@ updateDtxState(DtxState state)
     lastGxactState = state;
 }
 
+/* generate global transaction id */
 void
 generateGID(char *gid)
 {
@@ -569,6 +630,7 @@ generateGID(char *gid)
     sprintf( gid, "%ld-%.10d", t, (*shmGIDSeq)++);
 }
 
+/* shutdown tm, called when process exits */
 void
 shutdownTM(void)
 {
@@ -587,30 +649,24 @@ shutdownTM(void)
     releaseTmLock();
 }
 
+/*
+ * perform TM recovery, this connects to all QE and resolve all in-doubt txn.
+ */
 void
 recoverTM(void)
 {
     PGresult **pgresultSets;
     
-    // Joe's debug
-    char *cdb_debug = getenv("CDB_DEBUG1"); 
-    if ( cdb_debug != NULL )
-    {     
-        int iii=0;
-        while ( iii == 0 )
-        { 
-            int jjj=0;
-        } 
-    }     
-
     duringRecovery = true;
 
     /* phase 1 recovery
-     * read and rollforward tm log
+     * read and roll forward tm log
      */
     recoverTmLog();
     
-    /* phase 2 recovery */
+    /* phase 2 recovery
+     * go through all in-double transactions and resolve them
+     */
     if ( !phase2Recovery() )
         return;
     
@@ -620,12 +676,11 @@ recoverTM(void)
         /* still have in-doubt transactions, save it to log */
         int i=0;
         for ( i=0;i<*shmNumGxacts;i++ )
-            ereport(LOG, 
+            ereport(FATAL, 
                     (errmsg("global xact %s pending on TM", shmGxactArray[i]->gid)));
     }
 
     /* check again to see any un-resolved transactions in QE */
-
     if ( recoverRMs( &pgresultSets ) )
     {
         /* still have in-doubt transactions in QE, save it to log */
@@ -641,6 +696,9 @@ recoverTM(void)
     duringRecovery = false;
 }
 
+/*
+ * phase two recovery
+ */
 bool
 phase2Recovery(void)
 {
@@ -648,7 +706,8 @@ phase2Recovery(void)
     PGresult **pgresultSets;
     bool needRecovery = recoverRMs( &pgresultSets );
     int i=0;
-    
+   
+    /* check to see if any in-doubt transaction exists */ 
     if ( *shmNumGxacts == 0 && !needRecovery )
     {
         checkPointTm();
@@ -658,6 +717,7 @@ phase2Recovery(void)
         return false;
     }
     
+    /* recover in-doubt transaction in TM */
     for ( i=0;i<*shmNumGxacts;i++ )
     {
         currentGxact = shmGxactArray[i];
@@ -702,6 +762,7 @@ phase2Recovery(void)
     return true;
 }
 
+/* free pgresultset */
 void
 cleanRMResultSets( PGresult **pgresultSets )
 {
@@ -720,6 +781,7 @@ cleanRMResultSets( PGresult **pgresultSets )
     free(pgresultSets);
 }
 
+/* dump all in-doubt transaction in RM */
 bool
 dumpRMxacts( PGresult **pgresultSets )
 {
@@ -775,6 +837,7 @@ recoverRMs(PGresult ***pgresultSets)
     char cmdbuf[] = "select gid from pg_prepared_xacts";
     int totaldbs, i;
     
+    /* call to all QE to get in-doubt transactions */
     if ( !CdbDoCommandInt(cmdbuf, DTS_SEGDB, false, (void ***)pgresultSets) )
     {
         return true;
@@ -792,6 +855,7 @@ recoverRMs(PGresult ***pgresultSets)
     return false;
 }
 
+/* rollback in-doubt transaction */
 void
 recoverRollbackedDtx(void)
 {
@@ -804,6 +868,7 @@ recoverRollbackedDtx(void)
     updateDtxState(DTX_STATE_ROLLBACK_DONE);
 }
 
+/* commit in-doubt transaction */
 void
 recoverCommittedDtx(void)
 {
@@ -815,6 +880,7 @@ recoverCommittedDtx(void)
     updateDtxState(DTX_STATE_COMMIT_DONE);
 }
 
+/* acquire tm lw lock */
 void
 getTmLock(void)
 {
@@ -822,6 +888,7 @@ getTmLock(void)
         LWLockAcquire(shmControlLock, LW_EXCLUSIVE);
 }
 
+/* release tm lw lock */
 void
 releaseTmLock(void)
 {

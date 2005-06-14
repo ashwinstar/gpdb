@@ -41,6 +41,9 @@ static TmLogFileControlBlock tmLogFileHeader={TM_FILE_MAGIC,0,0,{0}};
 static int  currentOffset=-1;
 static int  logFileFD=-1, logFileNo;
 
+/*
+ * read next log record. if offset is given, read from that offset.
+ */
 TmLogRecord *
 readTmLogRecordNext(int offset)
 {
@@ -96,6 +99,9 @@ readTmLogRecordNext(int offset)
     return record;
 }
 
+/*
+ * write a tm log record
+ */
 void
 writeTmLogRecord(TmLogRecord *record)
 {
@@ -136,6 +142,9 @@ writeTmLogRecord(TmLogRecord *record)
     write_with_ereport(logFileFD, record, len);
 }
 
+/*
+ * write tm control block, which is located in the begining of each tm log file. 
+ */
 void
 writeTmControlBlock(int offset)
 {
@@ -149,6 +158,9 @@ writeTmControlBlock(int offset)
     write_with_ereport(logFileFD, &tmLogFileHeader, sizeof(TmLogFileControlBlock));
 }
 
+/*
+ * write check point log record
+ */
 void
 checkPointTm(void)
 {   
@@ -191,6 +203,9 @@ checkPointTm(void)
     removeTmLogFileUntil( earlierFileNo );
 }
 
+/*
+ * initialize, creating, a tm log file
+ */
 void
 initTmLogFile(int seqno)
 {
@@ -214,6 +229,9 @@ initTmLogFile(int seqno)
     currentOffset = sizeof(TmLogFileControlBlock);
 }
 
+/*
+ * opening a tm log file
+ */
 bool
 openTmLogFile(int seqno)
 {
@@ -256,6 +274,9 @@ openTmLogFile(int seqno)
     return true;
 }
 
+/*
+ * closing a tm log file
+ */
 void
 closeTmLogFile(void)
 {
@@ -267,6 +288,9 @@ closeTmLogFile(void)
     logFileNo=-1;
 }
 
+/*
+ * switch to next tm log file when log file size limit is reached.
+ */
 void
 switchTmLogFile(void)
 {
@@ -279,6 +303,7 @@ switchTmLogFile(void)
     flushTmLogFile();
 }
 
+/* flush tm log file */
 void
 flushTmLogFile(void)
 {
@@ -292,6 +317,7 @@ flushTmLogFile(void)
     }
 }
 
+/* remove useless tm log file */
 void
 removeTmLogFileUntil(int seqno)
 {
@@ -304,6 +330,7 @@ removeTmLogFileUntil(int seqno)
     *shmEarliestLogFileNo = seqno; 
 }
 
+/* delete a tm log file */
 void
 removeTmLogFile(int seqno)
 {
@@ -321,6 +348,9 @@ removeTmLogFile(int seqno)
     }
 }
 
+/*
+ * initalize tm log manager
+ */
 int
 initTmLog( char *dir)
 {
@@ -335,10 +365,13 @@ initTmLog( char *dir)
     
     cldir = opendir(dir);
     if (cldir == NULL)
+    {
         ereport(ERROR,
                 (errcode_for_file_access(),
                  errmsg("could not open directory \"%s\": %m", dir)));
-    
+    }
+   
+    /* go through tm directory to find latest log file */ 
     while ((clde = readdir(cldir)) != NULL)
     {
         if (*clde->d_name == '.')
