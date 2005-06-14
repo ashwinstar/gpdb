@@ -62,12 +62,7 @@ typedef struct LocalProfile
  */
 typedef struct PlanProfile
 {	
-	/* The uses flags refer to relations in the query */
-	bool	usesCatalog;
-	bool	usesSegments;
-
 	/* The result flags refer to relation in the result of an insert, update, or delete */
-	bool	resultCatalog;
 	bool	resultSegments;
 	
 	/* Context */
@@ -207,30 +202,6 @@ cdbparallelize(	Plan* plan,
 	if ( !prescan(plan, query, &profile) )
 		issuePsError(&profile);	
 
-	ereport(DEBUG3,  (
-		errmsg("CDB Notice: Plan %s catalog and %s segments.",
-			(profile.usesCatalog || profile.resultCatalog) ? "uses" : "doesn't use",
-			(profile.usesSegments || profile.resultSegments) ? "uses" : "doesn't use" )
-		));
-
-	/* Since scanForManagedTables returned true, we must have usesSegments
-	 * in either the query relations or the result relation.  Insist!
-	 */
-	Assert( profile.usesSegments || profile.resultSegments );
-
-	/*
-	 * Since we know we reference segments in either the source or 
-	 * target of the query, we may not also reference the catalog.
-	 */
-	if ( profile.usesCatalog )
-	{
-		ereport(ERROR,  (
-			errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-			errmsg("Query references both catalog and data."),
-			errhint("CDB requires separate queries.")
-			));
-	}
-
 	/* Implement the parallelizing directions in the attached flows.
 	 */
 	plan = apply_motion(plan, query);
@@ -297,12 +268,14 @@ bool
 prescan_walker(Node *node, PlanProfile *context)
 {	
 	bool finished;
+    bool parent_finished;
 	const char *detail = NULL;
 	
 	if ( node == NULL )
 		return false;
 	
-	finished = isPlanFinished(node, context);
+	parent_finished = context->local->finished;
+    finished = parent_finished || isPlanFinished(node, context);
 	
 	switch (nodeTag(node))
 	{
@@ -347,7 +320,7 @@ prescan_walker(Node *node, PlanProfile *context)
 
 				/* Recur into the exprs list (as usual). */
 				if (expression_tree_walker((Node *) subplan->exprs, prescan_walker, context))
-					return true;
+					goto return_true;
 				
 				/* Set local state for the subplan.  This has two effects. 
 				 * The local state now has the new rangetable.  Also, the 
@@ -361,7 +334,7 @@ prescan_walker(Node *node, PlanProfile *context)
 				
 				/* Parallelize the subplan.  */
 				if ( prescan_walker((Node*)subplan->plan, context) )
-					return true;
+					goto return_true;
 				
 				Assert(subplan->plan->flow != NULL && subplan->plan->flow->req_move == MOVEMENT_NONE);
 				
@@ -398,16 +371,16 @@ prescan_walker(Node *node, PlanProfile *context)
 				
 				/* Recur into the args list. */
 				if (expression_tree_walker((Node *) subplan->args, prescan_walker, context))
-					return true;
+					goto return_true;
 			}
-			return false;
+			goto return_false;
 			
 		case T_Flow:
 			/* Since this function is where Flow nodes are generated, we can't 
 			 * rely on this case to see them all.  Instead we handle them as 
 			 * they are created.
 			 */
-			return false;
+			goto return_false;
 		
 		case T_Motion:
 			/* If we see a Motion node, it must be part of a finished plan
@@ -415,7 +388,9 @@ prescan_walker(Node *node, PlanProfile *context)
 			 * though, in case it contains an unfinished subplan.
 			 */
 			Assert(finished);
-			return plan_tree_walker(node, prescan_walker, context);
+			if (plan_tree_walker(node, prescan_walker, context))
+                goto return_true;
+            goto return_false;
 		
 		case T_SeqScan:
 		case T_TidScan:
@@ -466,7 +441,7 @@ prescan_walker(Node *node, PlanProfile *context)
 						
 						/* Walk into subnodes */
 						if ( plan_tree_walker(node, prescan_walker, context) )
-							return true;
+							goto return_true;
 						
 						if ( ! finished )
 						{
@@ -499,10 +474,7 @@ prescan_walker(Node *node, PlanProfile *context)
 								}
 								
 								if ( !haveHashAttrs )
-								{
-									list_free_deep(plan->flow->hashExpr);
 									plan->flow->hashExpr = NIL;
-								}
 							 }
 							 /* TODO Remove partitions spec if physical tlist disused. */
 							 
@@ -525,7 +497,7 @@ prescan_walker(Node *node, PlanProfile *context)
 							  */
 							}
 						}
-						return false;
+						goto return_false;
 										
 					case T_FunctionScan:
 						Assert( rte->rtekind == RTE_FUNCTION );
@@ -561,7 +533,7 @@ prescan_walker(Node *node, PlanProfile *context)
 							 */
 							pushLocals(context, rte->subquery->rtable);
 							if ( prescan_walker((Node*)subplan, context) )
-								return true;
+								goto return_true;
 							popLocals(context);
 							
 							if ( !finished )
@@ -577,7 +549,7 @@ prescan_walker(Node *node, PlanProfile *context)
 								break; /* Fail */
 							}
 							
-							return false;
+							goto return_false;
 						}
 					
 					default: /* Never happens, but makes the compiler happy. */
@@ -590,7 +562,7 @@ prescan_walker(Node *node, PlanProfile *context)
 		case T_Result:
 			/* First prescan children */
 			if ( plan_tree_walker(node, prescan_walker, context) )
-				return true;
+				goto return_true;
 			if ( !finished )
 			{
 				Plan *plan = (Plan*)node;
@@ -617,13 +589,13 @@ prescan_walker(Node *node, PlanProfile *context)
 					plan->flow = makeFlow(FLOW_REPLICATED);
 				}
 			}
-			return false;
+			goto return_false;
 
 		case T_Material:
 		case T_Hash:
 			/* First prescan children */
 			if ( plan_tree_walker(node, prescan_walker, context) )
-				return true;
+				goto return_true;
 			if ( !finished )
 			{
 				/* Flow is same as leftree's Flow. */
@@ -638,12 +610,12 @@ prescan_walker(Node *node, PlanProfile *context)
 					break;
 				}
 			}
-			return false;
+			goto return_false;
 		
 		case T_Sort:
 			/* First prescan children */
 			if ( plan_tree_walker(node, prescan_walker, context) )
-				return true;
+				goto return_true;
 			if ( ! finished )
 			{
                 Sort *sort; 
@@ -668,14 +640,14 @@ prescan_walker(Node *node, PlanProfile *context)
 				ARRAYCOPY(plan->flow->sortOperators, sort->sortOperators, 
 					sort->numCols*sizeof(Oid) );
 			}
-			return false;
+			goto return_false;
 		
 		case T_Unique:
 			/* First prescan children */
 			if ( plan_tree_walker(node, prescan_walker, context) )
-				return true;
+				goto return_true;
 			if ( finished )
-				return false;
+				goto return_false;
 				
 			{
 				/* Flow is same as leftree's Flow. */
@@ -694,7 +666,7 @@ prescan_walker(Node *node, PlanProfile *context)
 						detail = "Can't characterize flow from Unique node.";
 						break;
 					}
-					return false;
+					goto return_false;
 				}
 				
 				/* The argument flow is partitioned, so we need to make sure
@@ -727,10 +699,10 @@ prescan_walker(Node *node, PlanProfile *context)
 						
 				/* Walk into subnodes */
 				if ( plan_tree_walker(node, prescan_walker, context) )
-					return true;
+					goto return_true;
 				
 				if ( finished )
-					return false;
+					goto return_false;
 					
 				Assert( plan->flow == NULL || plan->flow->flotype == FLOW_UNDEFINED ); 
 				
@@ -738,15 +710,21 @@ prescan_walker(Node *node, PlanProfile *context)
 				{
 					case T_NestLoop:
 						/* Sets its own error information, if necessary. */
-						return prescan_nestloop(plan, context);
+						if (prescan_nestloop(plan, context))
+                            goto return_true;
+                        goto return_false;
 						
 					case T_MergeJoin:
 						/* Sets its own error information, if necessary. */
-						return prescan_mergejoin(plan, context);
+						if (prescan_mergejoin(plan, context))
+                            goto return_true;
+                        goto return_false;
 						
 					case T_HashJoin:
 						/* Sets its own error information, if necessary. */
-						return prescan_hashjoin(plan, context);
+				        if (prescan_hashjoin(plan, context))
+                            goto return_true;
+                        goto return_false;
 						
 					default:
 						break; /* Can't happen but compiler likes it. */
@@ -779,13 +757,13 @@ prescan_walker(Node *node, PlanProfile *context)
 			{
 				/* First prescan children */
 				if ( plan_tree_walker(node, prescan_walker, context) )
-					return true;
+					goto return_true;
 				
 				if ( finished )
-					return false;
+					goto return_false;
 					
 				if ( !prescan_agg((Plan*)node, context) )
-					return false;
+					goto return_false;
 				detail = "Query involves complex aggregation.";
 			}
 			break; /* Fall through to report error. */
@@ -793,9 +771,9 @@ prescan_walker(Node *node, PlanProfile *context)
 		case T_Group:
 			/* First prescan children */
 			if ( plan_tree_walker(node, prescan_walker, context) )
-				return true;
+				goto return_true;
 			if ( finished )
-				return false;
+				goto return_false;
 				
 			{
 				Plan *plan = (Plan*)node;
@@ -813,7 +791,7 @@ prescan_walker(Node *node, PlanProfile *context)
 						detail = "Can't characterize flow from Group node.";
 						break;
 					}
-					return false;
+					goto return_false;
 				}
 			}
 			/* TODO Deal with partitioned aggregration. */
@@ -823,9 +801,9 @@ prescan_walker(Node *node, PlanProfile *context)
 		case T_Limit:
 			/* First prescan children */
 			if ( plan_tree_walker(node, prescan_walker, context) )
-				return true;
+				goto return_true;
 			if ( finished )
-				return false;
+				goto return_false;
 			
 			{
 				Plan *plan = (Plan*)node;
@@ -843,7 +821,7 @@ prescan_walker(Node *node, PlanProfile *context)
 						detail = "Can't characterize flow from Limit node.";
 						break;
 					}
-					return false;
+					goto return_false;
 				}
 			}
 			/*  Deal with partitioned LIMIT and OFFSET. 
@@ -885,11 +863,13 @@ prescan_walker(Node *node, PlanProfile *context)
 				limit->plan.flow->hashExpr = NIL;
 				limit->plan.flow->req_xform = MOVEMENT_LIM_RESTRUCT;
 			}
-			return false;
+			goto return_false;
 
 		default:
 			/* Let plan_tree_walker() deal with other node types. */
-			return plan_tree_walker(node, prescan_walker, context);
+			if (plan_tree_walker(node, prescan_walker, context))
+                goto return_true;
+            goto return_false;
 
 	}
 
@@ -897,7 +877,13 @@ prescan_walker(Node *node, PlanProfile *context)
 	  * with whatever detail was set above. 
 	  */
 	 psErrorNonce(context, detail);
-	return true;
+
+return_true:
+    context->local->finished = parent_finished;
+    return true;
+return_false:
+    context->local->finished = parent_finished;
+    return false;
 }
 
 
@@ -1888,11 +1874,8 @@ Flow *makeFlowForRelation(Oid reloid, PlanProfile *context)
 	Flow *flow;
 	Oid typid;
 	int32 typmod;
-	Oid eq_oid;
 	int i;
 	Var *var;
-	Node* eqstr = NULL;
-	List* eqlst = NIL;
 	
 	CdbPolicy *policy = get_table_policy(reloid);
 	
@@ -1900,10 +1883,6 @@ Flow *makeFlowForRelation(Oid reloid, PlanProfile *context)
 	{
 		case POLICYTYPE_PARTITIONED:	
 			flow = makeFlow(FLOW_PARTITIONED);
-			
-			eqstr = (Node*)makeString("=");
-			eqlst = list_make1(eqstr);
-			
 			for ( i = 0; i < policy->nattrs; i++ )
 			{
 				/* Get attribute datatype information. */
@@ -1911,34 +1890,16 @@ Flow *makeFlowForRelation(Oid reloid, PlanProfile *context)
 				typmod = -1;
 				get_atttypetypmod(reloid, policy->attrs[i], &typid, &typmod);
 				
-				/* Get equality operator OID. */
-				eq_oid = compatible_oper_opid(eqlst, typid, typid, true);
-				
-				if ( eq_oid == InvalidOid )
-				{
-					ereport(ERROR, (	
-						errcode(ERRCODE_CDB_INTERNAL_ERROR),
-						errmsg("no equality operator for partitioned attribute typid %d", typid)
-					));
-				}
-				
 				/* makeVar(varno, attrno, typid, typmod, varlevelsup); */
 				var = makeVar(1,  policy->attrs[i], typid, typmod, 0);
 				
-				flow->hashExpr = lappend(flow->hashExpr, var);
-				
+				flow->hashExpr = lappend(flow->hashExpr, var);				
 			}
-			if ( context != NULL )
-				context->usesSegments = true;
-			pfree(eqlst);
-			pfree(eqstr);
 			break;
 		
 		case POLICYTYPE_ENTRY:
 			flow = makeFlow(FLOW_SINGLETON);
 			flow->segindex = -1; /* This is a dispatcher singleton! */
-			if ( context != NULL )
-				context->usesCatalog = true;
 			break;
 		
 		case POLICYTYPE_UNDEFINED:
@@ -2067,44 +2028,20 @@ scanForManagedTables_walker(Node *node, PlanProfile *context)
 		case T_SeqScan:
 		case T_TidScan:
 		case T_IndexScan:
-			/* All scan types have a range table entry:	 */
 			{
-				Plan *plan = (Plan*)node;
-				Scan *scan = (Scan*)plan;
-				Index rtindex = scan->scanrelid;
-				Oid reloid = InvalidOid;
-				CdbPolicy *policy;
-				CdbPolicyType ptype;
-                RangeTblEntry *rte;
-				
-				Assert( scan->scanrelid > 0 ); /* Make sure we have an index. */
-				Assert( 0<rtindex && rtindex<=list_length(localRangeTable(context)) );
-				
-				rte = rt_fetch(rtindex, localRangeTable(context));
-				
-				reloid = rte->relid;				
-				policy = get_table_policy(reloid);
-				ptype = policy->ptype;
-				pfree( policy );
-	
-				switch ( ptype )
-				{
-					case POLICYTYPE_PARTITIONED:	
-						return true;
-					
-					case POLICYTYPE_ENTRY:
-						break;
-					
-					case POLICYTYPE_UNDEFINED:
-					default:
-						ereport(ERROR, (	
-							errcode(ERRCODE_CDB_INTERNAL_ERROR),
-							errmsg("Unexpected CdbPolicyType: %d.", policy->ptype )
-						));
-				}
+                Plan   *plan = (Plan*)node;
+                Assert(plan->flow);
+                switch (plan->flow->flotype)
+                {
+                    case FLOW_PARTITIONED:
+                        return true;
+                    case FLOW_SINGLETON:
+                        break;
+                    default:
+                        Assert(false);
+                }
 			}
-
-			break;  
+            return false;
 
 		case T_SubqueryScan:
 			{
@@ -2182,9 +2119,6 @@ bool initPlanProfile(PlanProfile *context, Query *query)
 {
 	Assert( context != NULL );
 
-	context->usesCatalog = false;
-	context->usesSegments = false;
-	context->resultCatalog = false;
 	context->resultSegments = false;
 	
 	/* Initialize the current range table. */
@@ -2225,9 +2159,7 @@ bool initPlanProfile(PlanProfile *context, Query *query)
 				
 				if ( policy->ptype == POLICYTYPE_PARTITIONED )
 					context->resultSegments = true;
-				else if ( policy->ptype == POLICYTYPE_ENTRY )
-					context->resultCatalog = true;
-				else
+				else if ( policy->ptype != POLICYTYPE_ENTRY )
 				{
 					psError(context,  ERRCODE_CDB_INTERNAL_ERROR,
 						"Unexpected data distribution policy.", NULL );
@@ -2676,7 +2608,7 @@ bool repartitionBasePlan(Plan *plan, Flow *target, bool stable, bool rescanable,
 			{
 				plan->flow->req_move = MOVEMENT_REPARTITION;
 				plan->flow->flotype = FLOW_PARTITIONED;
-				plan->flow->hashExpr = copyObject(target->hashExpr);
+				plan->flow->hashExpr = target->hashExpr;
 			}
 			return true;
 			
@@ -2689,7 +2621,7 @@ bool repartitionBasePlan(Plan *plan, Flow *target, bool stable, bool rescanable,
 			{
 				plan->flow->req_move = MOVEMENT_REP2PARTITIONED;
 				plan->flow->flotype = FLOW_PARTITIONED;
-				plan->flow->hashExpr = copyObject(target->hashExpr);
+				plan->flow->hashExpr = target->hashExpr;
 			}
 			return true;
 			
@@ -2700,7 +2632,7 @@ bool repartitionBasePlan(Plan *plan, Flow *target, bool stable, bool rescanable,
 			{
 				plan->flow->req_move = MOVEMENT_REPARTITION;
 				plan->flow->flotype = FLOW_PARTITIONED;
-				plan->flow->hashExpr = copyObject(target->hashExpr);
+				plan->flow->hashExpr = target->hashExpr;
 			}
 			return true;
 			

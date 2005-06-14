@@ -165,6 +165,74 @@ cdbpathlocus_from_baserel(struct Query         *root,
 
 
 /*
+ * cdbpathlocus_get_pathkeyitem
+ */
+static PathKeyItem *
+cdbpathlocus_get_pathkeyitem(List          *pathkey,
+                             Relids         relids,
+                             PathKeyItem   *initial)
+{
+    ListCell   *pathkeycell;
+    foreach(pathkeycell, pathkey)
+    {
+        PathKeyItem    *item = lfirst(pathkeycell);
+        Assert(IsA(item, PathKeyItem));
+        if (bms_is_subset(item->cdb_key_relids, relids))
+        {
+            if (IsA(item->key, Var) ||
+                item->cdb_num_relids == 0)
+                return item;
+            if (!initial ||
+                item->cdb_num_relids < initial->cdb_num_relids)
+                initial = item;
+        }
+    }
+    return initial;
+}                               /* cdbpathlocus_get_pathkeyitem */
+
+
+/*
+ * cdbpathlocus_get_partkey_exprs
+ */
+List *
+cdbpathlocus_get_partkey_exprs(CdbPathLocus locus,
+                               Relids       relids)
+{
+    List       *result = NIL;
+    ListCell   *partkeycell;
+    foreach(partkeycell, locus.partkey)
+    {
+        List           *pathkey;
+        PathKeyItem    *item = NULL;
+        if (CdbPathLocus_IsHashed(locus))
+        {
+            pathkey = lfirst(partkeycell);
+            item = cdbpathlocus_get_pathkeyitem(pathkey, relids, NULL);
+        }
+        else if (CdbPathLocus_IsHashedOJ(locus))
+        {
+            List       *pathkeylist = lfirst(partkeycell);
+            ListCell   *pathkeylistcell;
+            foreach(pathkeylistcell, pathkeylist)
+            {
+                pathkey = lfirst(pathkeylistcell);
+                item = cdbpathlocus_get_pathkeyitem(pathkey, relids, item);
+                if (item)
+                {
+                    if (IsA(item->key, Var) ||
+                        item->cdb_num_relids == 0)
+                        break;
+                }
+           }
+        }
+        Assert(item);
+        result = lappend(result, item->key);
+    }
+    return result;
+}                               /* cdbpathlocus_get_partkey_exprs */
+
+
+/*
  * cdbpathlocus_join
  */
 CdbPathLocus 

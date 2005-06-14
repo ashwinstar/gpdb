@@ -15,7 +15,6 @@
 
 /* globals */
 extern Cost     cdb_motion_tuple_cost;
-extern unsigned cdb_num_partitions;
 
 
 void

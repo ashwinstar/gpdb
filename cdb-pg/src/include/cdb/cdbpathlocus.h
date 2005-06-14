@@ -138,9 +138,7 @@ typedef struct CdbPathLocus
 #define CdbPathLocus_MakeHashedOJ(plocus, partkey)      \
             CdbPathLocus_Make((plocus), CdbLocusType_HashedOJ, (partkey))
 
-/*
- * CdbPathLocus_Comparison
- */
+/************************************************************************/
 
 typedef enum
 {
@@ -163,5 +161,10 @@ cdbpathlocus_from_baserel(struct Query         *root,
 CdbPathLocus
 cdbpathlocus_join(CdbPathLocus a, CdbPathLocus b);
 
+/************************************************************************/
+
+List *
+cdbpathlocus_get_partkey_exprs(CdbPathLocus     locus,
+                               Bitmapset       *relids);
 
 #endif   /* CDBPATHLOCUS_H */

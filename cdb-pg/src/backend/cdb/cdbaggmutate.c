@@ -345,7 +345,7 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 				getHashMotionInfoList(inner_plan, INFOTYPE_LEFTEXPR)
 				);
 			inner_plan->flow = makeFlow(FLOW_PARTITIONED);
-			inner_plan->flow->hashExpr = copyObject( ((Motion*)plan->lefttree)->hashExpr );
+			inner_plan->flow->hashExpr = ((Motion*)plan->lefttree)->hashExpr;
 			break;
 			
 		default:

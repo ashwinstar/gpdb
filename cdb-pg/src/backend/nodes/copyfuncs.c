@@ -1208,6 +1208,8 @@ _copyPathKeyItem(PathKeyItem *from)
 
 	COPY_NODE_FIELD(key);
 	COPY_SCALAR_FIELD(sortop);
+	COPY_BITMAPSET_FIELD(cdb_key_relids);   /*CDB*/
+	COPY_SCALAR_FIELD(cdb_num_relids);      /*CDB*/
 
 	return newnode;
 }

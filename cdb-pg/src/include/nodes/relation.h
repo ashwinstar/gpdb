@@ -308,6 +308,8 @@ typedef struct PathKeyItem
 
 	Node	   *key;			/* the item that is ordered */
 	Oid			sortop;			/* the ordering operator ('<' op) */
+    Relids      cdb_key_relids; /* set of relids referenced by key expr */
+    int         cdb_num_relids; /* num of relids referenced by key expr */
 
 	/*
 	 * key typically points to a Var node, ie a relation attribute, but it
@@ -422,6 +424,8 @@ typedef struct CdbMotionPath
 {
 	Path		path;
     Path	   *subpath;
+    bool		hashToSelfOnly; /* if true, only pass tuple when it hashes 
+                                 * to same node ("deep-six the rest") */
 } CdbMotionPath;
 
 /*

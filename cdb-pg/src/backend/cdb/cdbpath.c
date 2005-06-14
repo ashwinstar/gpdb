@@ -17,13 +17,13 @@
 #include "optimizer/paths.h"    /* compare_pathkeys() */
 
 #include "cdb/cdbllize.h"       /* makeFlow() */
+#include "cdb/cdbvars.h"        /* CdbIdentity */
+
 #include "cdb/cdbpath.h"        /* me */
 
-#undef small                    /* defined by winsock.h */
 
 /* Globals */
 Cost        cdb_motion_tuple_cost   = 0.0;
-unsigned    cdb_num_partitions      = 16;
 
 
 /*
@@ -35,7 +35,6 @@ cdbpath_add_flow_to_plan(Query *root,
                          Plan  *plan)
 {
     Flow       *flow;
-    FlowType    flotype = FLOW_UNDEFINED;
     
     if (CdbPathLocus_IsRoot(path->locus))
     {
@@ -47,17 +46,17 @@ cdbpath_add_flow_to_plan(Query *root,
     {
         flow = makeFlow(FLOW_REPLICATED);
     }
-    else if (CdbPathLocus_IsHashed(path->locus))
+    else if (CdbPathLocus_IsHashed(path->locus) ||
+             CdbPathLocus_IsHashedOJ(path->locus))
     {
         flow = makeFlow(FLOW_PARTITIONED);
-    }
-    else if (CdbPathLocus_IsHashedOJ(path->locus))
-    {
+        flow->hashExpr = cdbpathlocus_get_partkey_exprs(path->locus,
+                                                        path->parent->relids);
     }
     else
-        flow = makeFlow(FLOW_UNDEFINED);
+        flow = NULL;
     
-    // $$$$  plan->flow = flow;
+    plan->flow = flow;
 }                               /* cdbpath_add_flow_to_plan */
 
 
@@ -72,6 +71,7 @@ cdbpath_create_motion_path(Path            *subpath,
                            CdbPathLocus     locus)
 {
     CdbMotionPath      *pathnode;
+    bool                hashToSelfOnly = false;
 
     /* No motion needed if subpath locus matches caller's request. */
     if (CdbPathLocus_IsEqual(subpath->locus, locus) ||
@@ -123,6 +123,7 @@ cdbpath_create_motion_path(Path            *subpath,
     pathnode->path.locus = locus;
     pathnode->path.pathkeys = pathkeys;
     pathnode->subpath = subpath;
+    pathnode->hashToSelfOnly = hashToSelfOnly;
 
     /*
      * Cost of motion
@@ -143,7 +144,7 @@ cdbpath_create_motion_path(Path            *subpath,
         /* Does each receiver get whole rel? */
         if (CdbPathLocus_IsRoot(locus) ||
             CdbPathLocus_IsReplicated(locus))
-            rows *= cdb_num_partitions;
+            rows *= CdbIdentity.numsegments;
 
         pathnode->path.total_cost += rows * cost_per_row;
     }
@@ -542,7 +543,7 @@ cdbpath_motion_for_join(Query  *root,
 
         /* Replicate smaller rel if it appears likely to fit in memory. */
         else if (!small_preserve_order &&
-                 small_bytes * cdb_num_partitions < 0.5 * work_mem * 1024.0)
+                 small_bytes * CdbIdentity.numsegments < 0.5 * work_mem * 1024.0)
             CdbPathLocus_MakeReplicated(&small_move_to);
 
         /* If joining on smaller rel's partitioning key, redistribute larger. */

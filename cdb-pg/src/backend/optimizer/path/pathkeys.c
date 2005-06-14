@@ -47,7 +47,11 @@ makePathKeyItem(Node *key, Oid sortop, bool checkType)
 {
 	PathKeyItem *item = makeNode(PathKeyItem);
 
-	/*
+    /* Store the set of relids referenced by the key expr. */
+    item->cdb_key_relids = pull_varnos(key);
+    item->cdb_num_relids = bms_num_members(item->cdb_key_relids);
+
+    /*
 	 * Some callers pass expressions that are not necessarily of the same
 	 * type as the sort operator expects as input (for example when
 	 * dealing with an index that uses binary-compatible operators).  We
