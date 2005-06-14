@@ -212,13 +212,10 @@ condRollbackDtxTransaction(void)
             ereport(ERROR,
                 (errmsg("DTM failed on command \"ROLLBACK %s\" with error: %s", gid, errMessage)));
     }
-    
-    if ( (currentGxact->infomask & GXACT_STATUS_PERSISTENT) == 0 || ret == DTX_OK )
+    else
         /* remove gxact either rollback is successful or xact is not prepared. */
         updateDtxState(DTX_STATE_ROLLBACK_DONE);
-    else
-        /* leave it in the list for recovery */
-        currentGxact = NULL;
+
     return ret;
 }
 
