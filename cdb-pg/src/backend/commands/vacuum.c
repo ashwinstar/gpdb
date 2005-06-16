@@ -3503,8 +3503,9 @@ static void dispatchVacuum(VacuumStmt *vacstmt)
 	
 	/* Combination of CdbDispatchCommand and then CdbCheckDispatchResult.
 	 * If it fails on any of the targets, ereport(ERROR, ...) is called.
+     * call CdbDoCommandInt since it can not start in a transaction
 	 */	
-	CdbDoCommand( buffer.data, set, true, NULL );
+	CdbDoCommandInt( buffer.data, set, true, NULL );
 
 	pfree(buffer.data);
 
