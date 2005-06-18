@@ -634,19 +634,19 @@ prescan_walker(Node *node, PlanProfile *context)
 					case T_NestLoop:
 						/* Sets its own error information, if necessary. */
 						if (prescan_nestloop(plan, context))
-                            break;
+                            goto return_true;
                         goto return_false;
 						
 					case T_MergeJoin:
 						/* Sets its own error information, if necessary. */
 						if (prescan_mergejoin(plan, context))
-                            break;
+                            goto return_true;
                         goto return_false;
 						
 					case T_HashJoin:
 						/* Sets its own error information, if necessary. */
 				        if (prescan_hashjoin(plan, context))
-                            break;
+                            goto return_true;
                         goto return_false;
 						
 					default:
