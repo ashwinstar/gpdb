@@ -3,7 +3,7 @@
  * cdbllize.c
  *	  Parallelize a PostgreSQL sequential plan tree.
  *
- * Copyright (c) 2004, Metapa
+ * Copyright (c) 2005, greenplum inc
  *
  * IDENTIFICATION
  *	  $Id$
@@ -634,19 +634,19 @@ prescan_walker(Node *node, PlanProfile *context)
 					case T_NestLoop:
 						/* Sets its own error information, if necessary. */
 						if (prescan_nestloop(plan, context))
-                            goto return_true;
+                            break;
                         goto return_false;
 						
 					case T_MergeJoin:
 						/* Sets its own error information, if necessary. */
 						if (prescan_mergejoin(plan, context))
-                            goto return_true;
+                            break;
                         goto return_false;
 						
 					case T_HashJoin:
 						/* Sets its own error information, if necessary. */
 				        if (prescan_hashjoin(plan, context))
-                            goto return_true;
+                            break;
                         goto return_false;
 						
 					default:
@@ -1295,7 +1295,7 @@ bool prescan_nestloop(Plan *plan, PlanProfile *context)
 					hashExpr = NIL;  /* Just to be sure. */
 				}
 				attemptedHashExtract = true;
-			}
+            }
 			
 			if ( hashExpr == NIL )
 				continue; /* Not hashable, so can't use this strategy. */
@@ -1445,7 +1445,7 @@ bool prescan_nestloop(Plan *plan, PlanProfile *context)
 	 *      junk attributes to facilitate it), but for now we track
 	 *      only flow type.
 	 */
-	plan->flow = makeFlow(strategy->resultflowtype);
+    plan->flow = makeFlow(strategy->resultflowtype);
 	return false;	 
 }
 

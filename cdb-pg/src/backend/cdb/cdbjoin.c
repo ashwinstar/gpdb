@@ -723,11 +723,8 @@ bool extractHashExprFromQual( List *joinqual, List **pHashExpr )
 
 	Assert( pHashExpr != NULL );
 
-	if ( joinqual == NIL )
-	{
-		elog( DEBUG1, "Ooops, joinqual == NIL" );
-		goto cleanup;
-	}
+    if ( joinqual == NIL )
+        return false;
 
 	/*
 	 * Iterate through the list of Expressions in the 
@@ -861,13 +858,12 @@ bool extractHashExprFromQual( List *joinqual, List **pHashExpr )
 	}
 
 	rtn = true;
+    *pHashExpr = hashExpr;
 
 cleanup:
-	if ( !rtn )
+	if ( !rtn &&
+         hashExpr != NIL )
 		list_free( hashExpr );
-	else
-		*pHashExpr = hashExpr;
-
 	return rtn;
 
 }

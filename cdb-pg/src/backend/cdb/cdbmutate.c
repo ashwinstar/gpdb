@@ -57,7 +57,9 @@ static void validateMotionNodeParms(MotionType motionType,
 			int numInputSegs, int *inputSegIdx );
 static List *getExprListFromCondList(List *clist, HashMotionInfoType type);
 static bool motion_expr_walker(Node *node, char *not_used);
+#ifdef UNUSED
 static List * makeMotionTargetList(Plan *arg);
+#endif /*UNUSED*/
 static bool doesUpdateAffectPartitionCols( CdbPolicy *policy, List *rte );
 
 
@@ -341,7 +343,9 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 	newnode = plan_tree_mutator(node, apply_motion_mutator, context);
 	
 	/* Perform special transformation, if specified. */
-	if ( is_plan_node(node) && ((Plan*)node)->flow->req_xform != MOVEMENT_NONE )
+	if ( is_plan_node(node) && 
+         ((Plan*)node)->flow != NULL &&
+         ((Plan*)node)->flow->req_xform != MOVEMENT_NONE )
 	{
 		Plan *plan = (Plan*)node;
 		
@@ -379,7 +383,8 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 		/* Pre-existing Motion nodes must be renumbered. */
 		case T_Motion:
 			/* Motion nodes can't specify motion. */
-			Assert( ((Plan*)newnode)->flow->req_move == MOVEMENT_NONE );
+			Assert( ((Plan*)newnode)->flow == NULL || 
+                    ((Plan*)newnode)->flow->req_move == MOVEMENT_NONE );
 			/* Assign unique node number to the new node. */
 			assignMotionID(newnode, context, node);
 			break;
@@ -410,7 +415,13 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 				
 				bool sendToSecondary = false; /* always for now */
 				
-				switch ( flow->req_move )
+                /* If no Flow node, we're in a portion of the tree
+                 * that was finished by the planner. 
+                 */
+                if (!flow)
+                    break;
+
+                switch ( flow->req_move )
 				{
 					case MOVEMENT_FOCUS:
 						/* TODO Fix this branch (which requires, in turn,
@@ -1252,6 +1263,7 @@ List *getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
 	return elist;
 }
 
+#ifdef UNUSED
 /* ----------------------------------------------------------------
  * getOpListFromTargetList
  *
@@ -1289,7 +1301,9 @@ List *getOpListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
 	
 	return oplist;
 }
+#endif /*UNUSED*/
 
+#ifdef UNUSED
 /* ----------------------------------------------------------------
  * makeMotionTargetList
  *
@@ -1333,6 +1347,7 @@ List *getOpListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
 	}
 	return new_tlist;
 }
+#endif /*UNUSED*/
 
 /*
  * doesUpdateAffectPartitionCols:
