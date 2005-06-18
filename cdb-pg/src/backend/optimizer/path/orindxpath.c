@@ -3,6 +3,7 @@
  * orindxpath.c
  *	  Routines to find index paths that match a set of OR clauses
  *
+ * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -293,6 +294,8 @@ best_or_subclause_indexes(Query *root,
 
     /* Distribution is same as the base table. */
     pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
+    pathnode->path.motionHazard = false;
+    pathnode->path.isFinished = true;
 
 	/*
 	 * This is an IndexScan, but the overall result will consist of tuples

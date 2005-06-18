@@ -54,7 +54,7 @@ cdbpath_add_flow_to_plan(Query *root,
                                                         path->parent->relids);
     }
     else
-        flow = NULL;
+        Assert(false);
     
     plan->flow = flow;
 }                               /* cdbpath_add_flow_to_plan */
@@ -116,6 +116,8 @@ cdbpath_create_motion_path(Path            *subpath,
     if (IsA(subpath, MaterialPath))
         subpath = ((MaterialPath *)subpath)->subpath;
 
+    /* CDB TODO: If subpath->motionHazard, materialize before motion. */
+
     /* Allocate CdbMotionPath node. */
     pathnode = makeNode(CdbMotionPath);
     pathnode->path.pathtype = T_Motion;
@@ -125,14 +127,25 @@ cdbpath_create_motion_path(Path            *subpath,
     pathnode->subpath = subpath;
     pathnode->hashToSelfOnly = hashToSelfOnly;
 
-    /*
-     * Cost of motion
-     */
     pathnode->path.startup_cost = subpath->startup_cost;
     pathnode->path.total_cost = subpath->total_cost;
     pathnode->path.memory = subpath->memory;
 
-    if (!CdbPathLocus_IsGeneral(subpath->locus))
+    /*
+     * If data is everywhere, no motion is needed; but the 
+     * CdbMotionPath node can be used to relabel the subpath
+     * with a specific locus.
+     */
+    if (CdbPathLocus_IsGeneral(subpath->locus))
+    {
+        pathnode->path.motionHazard = subpath->motionHazard;
+        pathnode->path.isFinished = false;      /* CDB TODO: fix */
+    }
+
+    /*
+     * Cost of motion
+     */
+    else
     {
         Cost    cost_per_row = (cdb_motion_tuple_cost > 0.0)
                              ? cdb_motion_tuple_cost
@@ -147,6 +160,9 @@ cdbpath_create_motion_path(Path            *subpath,
             rows *= CdbIdentity.numsegments;
 
         pathnode->path.total_cost += rows * cost_per_row;
+
+        pathnode->path.motionHazard = true;
+        pathnode->path.isFinished = false;      /* CDB TODO: fix */
     }
 
     return (Path *)pathnode;
@@ -614,43 +630,5 @@ fail:
     CdbPathLocus_MakeNull(&outer_move_to);  
     return outer_move_to;
 }                               /* cdbpath_motion_for_join */
-
-
-/*
- * cdbpath_motion_for_append
- *
- * Set a Path's locus to describe the distribution of the
- * result of an Append operator.
- */
-CdbPathLocus
-cdbpath_motion_for_append(List *subpaths)
-{
-    CdbPathLocus result;
-
-    CdbPathLocus_MakeNull(&result);
-    if (subpaths)
-    {
-        ListCell   *cell = list_head(subpaths);
-        Path       *subpath = (Path *)lfirst(cell);
-
-        /* Result locus is same as first subpath locus. */
-        result = subpath->locus;
-
-        /* The rest of the subpaths must have equivalent locus. */ 
-        for_each_cell(cell, lnext(cell))
-        {
-            subpath = (Path *)lfirst(cell);
-            if (!cdbpathlocus_compare(CdbPathLocus_Comparison_Equal, 
-                                      result, 
-                                      subpath->locus)) 
-            {
-                /* CDB TODO: handle other cases */
-                ereport(ERROR, ( errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-                                 errmsg("Distribution mismatch in UNION") ));
-            }
-        }
-    }
-    return result;
-}                               /* cdbpath_motion_for_append */
 
 

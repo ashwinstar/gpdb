@@ -4,6 +4,7 @@
  *	  Routines to determine which indices are usable for scanning a
  *	  given relation, and create IndexPaths accordingly.
  *
+ * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -1651,6 +1652,8 @@ make_innerjoin_index_path(Query *root,
 
     /* Distribution is same as the base table. */
     pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
+    pathnode->path.motionHazard = false;
+    pathnode->path.isFinished = true;
 
     cost_index(&pathnode->path, root, rel, index, indexquals, true);
 

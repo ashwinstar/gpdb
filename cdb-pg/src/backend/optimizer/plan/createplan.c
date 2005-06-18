@@ -5,6 +5,7 @@
  *	  Planning is complete, we just need to convert the selected
  *	  Path into a Plan.
  *
+ * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -127,7 +128,7 @@ static Sort *make_sort_from_pathkeys(Query *root, Plan *lefttree,
  *	  Returns a Plan tree.
  */
 Plan *
-create_plan(Query *root, Path *best_path)
+create_plan(Query *root, Path *best_path, bool parent_finished)
 {
 	Plan	   *plan;
 
@@ -139,7 +140,6 @@ create_plan(Query *root, Path *best_path)
 		case T_SubqueryScan:
 		case T_FunctionScan:
 			plan = (Plan *) create_scan_plan(root, best_path);
-            cdbpath_add_flow_to_plan(root, best_path, plan);
 			break;
 		case T_HashJoin:
 		case T_MergeJoin:
@@ -165,7 +165,7 @@ create_plan(Query *root, Path *best_path)
 			break;
         case T_Motion:
             /* CDB TODO: create Motion plan */
-            plan = create_plan(root, ((CdbMotionPath *)best_path)->subpath);
+            plan = create_plan(root, ((CdbMotionPath *)best_path)->subpath, best_path->isFinished);
             break;
         default:
 			elog(ERROR, "unrecognized node type: %d",
@@ -173,6 +173,16 @@ create_plan(Query *root, Path *best_path)
 			plan = NULL;		/* keep compiler quiet */
 			break;
 	}
+
+    if (CdbPathLocus_IsReplicated(best_path->locus) ||
+        CdbPathLocus_IsHashed(best_path->locus) ||
+        CdbPathLocus_IsHashedOJ(best_path->locus))
+        plan->dispatch = DISPATCH_PARALLEL;
+
+    if (plan &&
+        !parent_finished &&
+        best_path->isFinished)
+        cdbpath_add_flow_to_plan(root, best_path, plan);
 
     return plan;
 }
@@ -364,8 +374,8 @@ create_join_plan(Query *root, JoinPath *best_path)
 	Plan	   *inner_plan;
 	Join	   *plan;
 
-	outer_plan = create_plan(root, best_path->outerjoinpath);
-	inner_plan = create_plan(root, best_path->innerjoinpath);
+	outer_plan = create_plan(root, best_path->outerjoinpath, best_path->path.isFinished);
+	inner_plan = create_plan(root, best_path->innerjoinpath, best_path->path.isFinished);
 
 	switch (best_path->path.pathtype)
 	{
@@ -429,7 +439,7 @@ create_append_plan(Query *root, AppendPath *best_path)
 	{
 		Path	   *subpath = (Path *) lfirst(subpaths);
 
-		subplans = lappend(subplans, create_plan(root, subpath));
+		subplans = lappend(subplans, create_plan(root, subpath, best_path->path.isFinished));
 	}
 
 	plan = make_append(subplans, false, tlist);
@@ -458,7 +468,7 @@ create_result_plan(Query *root, ResultPath *best_path)
 		tlist = NIL;			/* will be filled in later */
 
 	if (best_path->subpath)
-		subplan = create_plan(root, best_path->subpath);
+		subplan = create_plan(root, best_path->subpath, best_path->path.isFinished);
 	else
 		subplan = NULL;
 
@@ -482,7 +492,7 @@ create_material_plan(Query *root, MaterialPath *best_path)
 	Material   *plan;
 	Plan	   *subplan;
 
-	subplan = create_plan(root, best_path->subpath);
+	subplan = create_plan(root, best_path->subpath, best_path->path.isFinished);
 
 	/* We don't want any excess columns in the materialized tuples */
 	disuse_physical_tlist(subplan, best_path->subpath);
@@ -515,7 +525,7 @@ create_unique_plan(Query *root, UniquePath *best_path)
 	bool		newitems;
 	ListCell   *l;
 
-	subplan = create_plan(root, best_path->subpath);
+	subplan = create_plan(root, best_path->subpath, best_path->path.isFinished);
 
 	/*
 	 * As constructed, the subplan has a "flat" tlist containing just the

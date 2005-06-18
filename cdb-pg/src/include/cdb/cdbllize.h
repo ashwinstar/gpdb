@@ -3,7 +3,7 @@
  * cdbllize.h
  *	  definitions for cdbplan.c utilities
  *
- * Copyright (c) 2004, Metapa
+ * Copyright (c) 2005, greenplum inc
  *
  *
  * IDENTIFICATION
@@ -33,6 +33,6 @@ extern Flow *
 makeFlow(FlowType flotype);
 
 extern Flow * 
-pull_up_Flow(Plan *plan, bool withSort);
+pull_up_Flow(Plan *plan, Plan *subplan, bool withSort);
 
 #endif /* CDBLLIZE_H */

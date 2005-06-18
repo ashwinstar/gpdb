@@ -413,7 +413,10 @@ create_seqscan_path(Query *root, RelOptInfo *rel)
 	pathnode->pathtype = T_SeqScan;
 	pathnode->parent = rel;
 	pathnode->pathkeys = NIL;	/* seqscan has unordered result */
+    
     pathnode->locus = cdbpathlocus_from_baserel(root, rel);
+    pathnode->motionHazard = false;
+    pathnode->isFinished = true;
 
     cost_seqscan(pathnode, root, rel);
 
@@ -477,6 +480,8 @@ create_index_path(Query *root,
 
     /* Distribution is same as the base table. */
     pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
+    pathnode->path.motionHazard = false;
+    pathnode->path.isFinished = true;
 
 	cost_index(&pathnode->path, root, rel, index, indexquals, false);
 
@@ -501,6 +506,8 @@ create_tidscan_path(Query *root, RelOptInfo *rel, List *tideval)
 
     /* Distribution is same as the base table. */
     pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
+    pathnode->path.motionHazard = false;
+    pathnode->path.isFinished = true;
 
 	cost_tidscan(&pathnode->path, root, rel, tideval);
 
@@ -529,6 +536,9 @@ create_append_path(RelOptInfo *rel, List *subpaths)
 										 * unsorted */
 	pathnode->subpaths = subpaths;
 
+    pathnode->path.motionHazard = false;
+    pathnode->path.isFinished = true;
+
 	pathnode->path.startup_cost = 0;
 	pathnode->path.total_cost = 0;
 	foreach(l, subpaths)
@@ -538,12 +548,22 @@ create_append_path(RelOptInfo *rel, List *subpaths)
 		if (l == list_head(subpaths))	/* first node? */
 			pathnode->path.startup_cost = subpath->startup_cost;
 		pathnode->path.total_cost += subpath->total_cost;
-	}
 
-    /* Decide result locus and add Motion operators to subpaths. */
-    pathnode->path.locus = cdbpath_motion_for_append(subpaths); 
-    if (CdbPathLocus_IsNull(pathnode->path.locus))
-        return NULL;
+        /* 
+         * CDB: At present this function is called only when combining rel 
+         * scans in an inheritance tree.  Allow inheritance on root only.
+         */
+        if (l == list_head(subpaths))	            
+            pathnode->path.locus = subpath->locus;  
+        if (!CdbPathLocus_IsRoot(subpath->locus))
+            ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
+                            errmsg("Distributed tables cannot use inheritance")));
+
+        if (subpath->motionHazard)
+            pathnode->path.motionHazard = true;
+        if (!subpath->isFinished)
+            pathnode->path.isFinished = false;
+	}
 
 	return pathnode;
 }
@@ -574,17 +594,20 @@ create_result_path(RelOptInfo *rel, Path *subpath, List *constantqual)
 	{
 		pathnode->path.startup_cost = subpath->startup_cost;
 		pathnode->path.total_cost = subpath->total_cost;
+
+        pathnode->path.locus = subpath->locus;
+        pathnode->path.motionHazard = subpath->motionHazard;
+        pathnode->path.isFinished = subpath->isFinished;
 	}
 	else
 	{
 		pathnode->path.startup_cost = 0;
 		pathnode->path.total_cost = cpu_tuple_cost;
-	}
 
-    if (subpath)
-        pathnode->path.locus = subpath->locus;
-    else
         CdbPathLocus_MakeGeneral(&pathnode->path.locus);
+        pathnode->path.motionHazard = false;
+        pathnode->path.isFinished = true;
+	}
 
     return pathnode;
 }
@@ -603,7 +626,10 @@ create_material_path(RelOptInfo *rel, Path *subpath)
 	pathnode->path.parent = rel;
 
 	pathnode->path.pathkeys = subpath->pathkeys;
+
     pathnode->path.locus = subpath->locus;
+    pathnode->path.motionHazard = false;    
+    pathnode->path.isFinished = subpath->isFinished;
 
 	pathnode->subpath = subpath;
 
@@ -656,7 +682,10 @@ create_unique_path(Query *root, RelOptInfo *rel, Path *subpath)
 
 	pathnode->path.pathtype = T_Unique;
 	pathnode->path.parent = rel;
+
     pathnode->path.locus = subpath->locus;
+    pathnode->path.motionHazard = subpath->motionHazard;
+    pathnode->path.isFinished = false;  /* CDB TODO: support UniquePath */
 
 	/*
 	 * Treat the output as always unsorted, since we don't necessarily
@@ -774,6 +803,9 @@ create_unique_path(Query *root, RelOptInfo *rel, Path *subpath)
 		pathnode->path.total_cost = sort_path.total_cost;
 	}
 
+    /* hash or sort implies materialization and breaks deadlock cycle */
+    pathnode->path.motionHazard = false;
+
     /*
      * CDB TODO: handle partitioned subplan
      */
@@ -887,6 +919,8 @@ create_subqueryscan_path(RelOptInfo *rel, List *pathkeys)
 
     /* CDB TODO: handle subquery */
     CdbPathLocus_MakeRoot(&pathnode->locus);
+    pathnode->motionHazard = false;
+    pathnode->isFinished = false;  
 
 	cost_subqueryscan(pathnode, rel);
 
@@ -910,6 +944,8 @@ create_functionscan_path(Query *root, RelOptInfo *rel)
     /* CDB TODO: handle function scan */
     /* Assign all function evaluations to the query dispatcher, for now. */
     CdbPathLocus_MakeRoot(&pathnode->locus);
+    pathnode->motionHazard = false;
+    pathnode->isFinished = true;
 
 	cost_functionscan(pathnode, root, rel);
 
@@ -971,7 +1007,10 @@ create_nestloop_path(Query *root,
 	pathnode->innerjoinpath = inner_path;
 	pathnode->joinrestrictinfo = restrict_clauses;
 	pathnode->path.pathkeys = pathkeys;
+
     pathnode->path.locus = join_locus;
+    pathnode->path.motionHazard = outer_path->motionHazard || inner_path->motionHazard;
+    //pathnode->path.isFinished = outer_path->isFinished && inner_path->isFinished;
 
 	cost_nestloop(pathnode, root);
 
@@ -1026,6 +1065,8 @@ create_mergejoin_path(Query *root,
     else if (pathkeys_contained_in(innersortkeys, inner_path->pathkeys))
         isk = innersortkeys;
 
+    /* CDB TODO: If motionHazard, materialize smaller input. */
+
     /* 
      * Add motion nodes above subpaths and decide where to join. 
      */
@@ -1076,6 +1117,8 @@ create_mergejoin_path(Query *root,
 	pathnode->jpath.joinrestrictinfo = restrict_clauses;
 	pathnode->jpath.path.pathkeys = pathkeys;
     pathnode->jpath.path.locus = join_locus;
+    pathnode->jpath.path.motionHazard = outer_path->motionHazard || inner_path->motionHazard;
+    //pathnode->jpath.path.isFinished = outer_path->isFinished && inner_path->isFinished;
 	pathnode->path_mergeclauses = mergeclauses;
 	pathnode->outersortkeys = outersortkeys;
 	pathnode->innersortkeys = innersortkeys;
@@ -1132,6 +1175,8 @@ create_hashjoin_path(Query *root,
 	/* A hashjoin never has pathkeys, since its ordering is unpredictable */
 	pathnode->jpath.path.pathkeys = NIL;
     pathnode->jpath.path.locus = join_locus;
+    pathnode->jpath.path.motionHazard = false;  /* outer + inner are materialized */
+    //pathnode->jpath.path.isFinished = outer_path->isFinished && inner_path->isFinished;
 	pathnode->path_hashclauses = hashclauses;
 
 	cost_hashjoin(pathnode, root);

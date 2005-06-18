@@ -28,9 +28,6 @@ cdbpath_create_motion_path(Path            *subpath,
                            CdbPathLocus     locus);
 
 CdbPathLocus
-cdbpath_motion_for_append(List *subpaths);
-
-CdbPathLocus
 cdbpath_motion_for_join(Query  *root,
                         Path  **outer_path,         /* INOUT */
                         Path  **inner_path,         /* INOUT */

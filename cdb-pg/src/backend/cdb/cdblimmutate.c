@@ -111,7 +111,7 @@ apply_limit_motion(Plan *plan, ApplyMotionState *state)
 	
 	prelimit->plan.lefttree = input_plan;
 	prelimit->plan.initPlan = input_initPlan;
-	prelimit->plan.flow = pull_up_Flow((Plan*)prelimit, true);
+	prelimit->plan.flow = pull_up_Flow((Plan*)prelimit, input_plan, true);
 	prelimit->limitOffset = NULL;
 	prelimit->limitCount = NULL;
 	

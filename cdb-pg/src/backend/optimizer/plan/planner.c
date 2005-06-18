@@ -1121,12 +1121,12 @@ grouping_planner(Query *parse, double tuple_fraction)
 		 */
 		if (sorted_path && !use_hashed_grouping)
 		{
-			result_plan = create_plan(parse, sorted_path);
+			result_plan = create_plan(parse, sorted_path, false);
 			current_pathkeys = sorted_path->pathkeys;
 		}
 		else
 		{
-			result_plan = create_plan(parse, cheapest_path);
+			result_plan = create_plan(parse, cheapest_path, false);
 			current_pathkeys = cheapest_path->pathkeys;
 		}
 
