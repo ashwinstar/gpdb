@@ -1029,7 +1029,7 @@ ProcessUtility(Node *parsetree,
 				if (strcmp(n->name, "TRANSACTION") == 0)
 				{
 					ListCell   *head;
-					CdbSentry(CDB_NONCE, parsetree, "SET TRANSACTION");
+					CdbSentry(CDB_WARN, parsetree, "SET TRANSACTION");
 
 					foreach(head, n->args)
 					{
@@ -1046,7 +1046,7 @@ ProcessUtility(Node *parsetree,
 				else if (strcmp(n->name, "SESSION CHARACTERISTICS") == 0)
 				{
 					ListCell   *head;
-					CdbSentry(CDB_NONCE, parsetree, "SET SESSION CHARACTERISTICS");
+					CdbSentry(CDB_WARN, parsetree, "SET SESSION CHARACTERISTICS");
 
 					foreach(head, n->args)
 					{
