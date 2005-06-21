@@ -513,6 +513,34 @@ _readRenameStmt(void)
 	READ_DONE();
 }
 
+
+static FuncCall *
+_readFuncCall(void)
+{
+	READ_LOCALS(FuncCall);
+
+	READ_NODE_FIELD(funcname);
+	READ_NODE_FIELD(args);
+	READ_BOOL_FIELD(agg_star);
+	READ_BOOL_FIELD(agg_distinct);
+	READ_DONE();
+}
+
+static A_Const *
+_readAConst(void)
+{
+	READ_LOCALS(A_Const);  
+
+	token = pg_strtok(&length);	
+	local_node->val.type = T_String;
+	 
+	local_node->val.val.str = palloc(length + 1);
+	strcpy(local_node->val.val.str , token);
+	
+	 
+	READ_DONE();
+}
+
 /*
  * _readParam
  */
@@ -1716,6 +1744,7 @@ static ParseNodeInfo infoAr[] =
 	{"APPEND", (ReadFn)_readAppend},
 	{"ARRAY", (ReadFn)_readArrayExpr},
 	{"ARRAYREF", (ReadFn)_readArrayRef},
+	{"A_CONST", (ReadFn)_readAConst},
 	{"BOOLEANTEST", (ReadFn)_readBooleanTest},
 	{"BOOLEXPR", (ReadFn)_readBoolExpr},
 	{"CASE", (ReadFn)_readCaseExpr},
@@ -1738,6 +1767,7 @@ static ParseNodeInfo infoAr[] =
 	{"FIELDSTORE", (ReadFn)_readFieldStore},
 	{"FLOW", (ReadFn)_readFlow},
 	{"FROMEXPR", (ReadFn)_readFromExpr},
+	{"FUNCCALL", (ReadFn)_readFuncCall},
 	{"FUNCEXPR", (ReadFn)_readFuncExpr},
 	{"FUNCTIONSCAN", (ReadFn)_readFunctionScan},
 	{"GROUP", (ReadFn)_readGroup},

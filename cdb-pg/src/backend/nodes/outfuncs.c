@@ -1672,7 +1672,7 @@ _outAConst(StringInfo str, A_Const *node)
 	WRITE_NODE_TYPE("A_CONST");
 
 	_outValue(str, &(node->val));
-	WRITE_NODE_FIELD(typename);
+	/*WRITE_NODE_FIELD(typename);*/
 }
 
 static void
