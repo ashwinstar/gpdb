@@ -2056,6 +2056,7 @@ CreateSeqStmt:
 					$4->istemp = $2;
 					n->sequence = $4;
 					n->options = $5;
+					n->relOid = 0;
 					$$ = (Node *)n;
 				}
 		;
@@ -4186,6 +4187,7 @@ CreatedbStmt:
 					CreatedbStmt *n = makeNode(CreatedbStmt);
 					n->dbname = $3;
 					n->options = $5;
+					n->dbOid = 0;
 					$$ = (Node *)n;
 				}
 		;
