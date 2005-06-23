@@ -2176,6 +2176,7 @@ _copyCreatedbStmt(CreatedbStmt *from)
 
 	COPY_STRING_FIELD(dbname);
 	COPY_NODE_FIELD(options);
+	COPY_SCALAR_FIELD(dbOid);
 
 	return newnode;
 }
@@ -2237,6 +2238,7 @@ _copyCreateSeqStmt(CreateSeqStmt *from)
 
 	COPY_NODE_FIELD(sequence);
 	COPY_NODE_FIELD(options);
+	COPY_SCALAR_FIELD(relOid);
 
 	return newnode;
 }

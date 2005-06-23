@@ -526,6 +526,16 @@ _readFuncCall(void)
 	READ_DONE();
 }
 
+static DefElem *
+_readDefElem(void)
+{
+	READ_LOCALS(DefElem);
+
+	READ_STRING_FIELD(defname);
+	READ_NODE_FIELD(arg);
+	READ_DONE();
+}
+
 static A_Const *
 _readAConst(void)
 {
@@ -1202,6 +1212,30 @@ _readCreateSchemaStmt(void)
 	READ_DONE();
 }
 
+static CreateSeqStmt *
+_readCreateSeqStmt(void)
+{
+	READ_LOCALS(CreateSeqStmt);
+	READ_NODE_FIELD(sequence);
+	READ_NODE_FIELD(options);
+	 
+	READ_OID_FIELD(relOid);
+	 
+	READ_DONE();
+}
+
+static CreatedbStmt *
+_readCreatedbStmt(void)
+{
+	READ_LOCALS(CreatedbStmt);
+	READ_STRING_FIELD(dbname);
+	READ_NODE_FIELD(options);
+	 
+	READ_OID_FIELD(dbOid);
+	 
+	READ_DONE();
+}
+
 /*
  * _readPlan
  */
@@ -1756,10 +1790,13 @@ static ParseNodeInfo infoAr[] =
 	{"CONST", (ReadFn)_readConst},
 	{"CONSTRAINT", (ReadFn)_readConstraint},
 	{"CONVERTROWTYPEEXPR", (ReadFn)_readConvertRowtypeExpr},
+	{"CREATEDBSTMT", (ReadFn)_readCreatedbStmt},
 	{"CREATESCHEMASTMT", (ReadFn)_readCreateSchemaStmt},
+	{"CREATESEQSTMT", (ReadFn)_readCreateSeqStmt},
 	{"CREATESTMT", (ReadFn)_readCreateStmt},
 	{"CREATEUSERSTMT", (ReadFn)_readCreateUserStmt},
 	{"DECLARECURSOR", (ReadFn)_readDeclareCursorStmt},
+	{"DEFELEM", (ReadFn)_readDefElem},
 	{"DISTINCTEXPR", (ReadFn)_readDistinctExpr},
 	{"DROPSTMT", (ReadFn)_readDropStmt},
 	{"DROPUSERSTMT", (ReadFn)_readDropUserStmt},

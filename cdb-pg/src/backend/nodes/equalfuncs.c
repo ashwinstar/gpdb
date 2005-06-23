@@ -1158,7 +1158,7 @@ _equalCreatedbStmt(CreatedbStmt *a, CreatedbStmt *b)
 {
 	COMPARE_STRING_FIELD(dbname);
 	COMPARE_NODE_FIELD(options);
-
+	COMPARE_SCALAR_FIELD(dbOid);
 	return true;
 }
 
@@ -1209,6 +1209,7 @@ _equalCreateSeqStmt(CreateSeqStmt *a, CreateSeqStmt *b)
 {
 	COMPARE_NODE_FIELD(sequence);
 	COMPARE_NODE_FIELD(options);
+	COMPARE_SCALAR_FIELD(relOid);
 
 	return true;
 }

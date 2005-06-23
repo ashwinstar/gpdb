@@ -1307,6 +1307,24 @@ _outRenameStmt(StringInfo str, RenameStmt *node)
 	
 }
 
+static void 
+_outCreateSeqStmt(StringInfo str, CreateSeqStmt *node)
+{
+	WRITE_NODE_TYPE("CREATESEQSTMT");
+	WRITE_NODE_FIELD(sequence);
+	WRITE_NODE_FIELD(options);
+	WRITE_OID_FIELD(relOid);
+}
+
+static void 
+_outCreatedbStmt(StringInfo str, CreatedbStmt *node)
+{
+	WRITE_NODE_TYPE("CREATEDBSTMT");
+	WRITE_STRING_FIELD(dbname);
+	WRITE_NODE_FIELD(options);
+	WRITE_OID_FIELD(dbOid);
+}
+
 static void
 _outNotifyStmt(StringInfo str, NotifyStmt *node)
 {
@@ -1470,6 +1488,8 @@ _outQuery(StringInfo str, Query *node)
 			case T_DeclareCursorStmt:
 			case T_CreateSchemaStmt:
 			case T_VacuumStmt:
+			case T_CreateSeqStmt:
+			case T_CreatedbStmt:
 				WRITE_NODE_FIELD(utilityStmt);
 				break;
 			default:
@@ -2090,6 +2110,13 @@ _outNode(StringInfo str, void *obj)
 
 			case T_RenameStmt:
 				_outRenameStmt(str, obj);
+				break;
+
+			case T_CreateSeqStmt:
+				_outCreateSeqStmt(str, obj);
+				break;
+			case T_CreatedbStmt:
+				_outCreatedbStmt(str, obj);
 				break;
 
 			case T_NotifyStmt:
