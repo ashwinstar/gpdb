@@ -1275,6 +1275,29 @@ _outDropStmt(StringInfo str, DropStmt *node)
 }
 
 static void
+_outAlterTableStmt(StringInfo str, AlterTableStmt *node)
+{
+	WRITE_NODE_TYPE("ALTERTABLESTMT");
+
+	WRITE_NODE_FIELD(relation);
+	WRITE_NODE_FIELD(cmds);
+	WRITE_ENUM_FIELD(relkind, ObjectType);
+}
+
+static void
+_outAlterTableCmd(StringInfo str, AlterTableCmd *node)
+{
+	WRITE_NODE_TYPE("ALTERTABLECMD");
+
+	WRITE_ENUM_FIELD(subtype, AlterTableType);
+	WRITE_STRING_FIELD(name);
+	WRITE_NODE_FIELD(def);
+	WRITE_NODE_FIELD(transform);
+	WRITE_ENUM_FIELD(behavior, DropBehavior);
+}
+
+
+static void
 _outCreateUserStmt(StringInfo str, CreateUserStmt *node)
 {
 	WRITE_NODE_TYPE("CREATEUSERSTMT");
@@ -1323,6 +1346,16 @@ _outCreatedbStmt(StringInfo str, CreatedbStmt *node)
 	WRITE_STRING_FIELD(dbname);
 	WRITE_NODE_FIELD(options);
 	WRITE_OID_FIELD(dbOid);
+}
+
+static void
+_outTransactionStmt(StringInfo str, TransactionStmt *node)
+{
+	WRITE_NODE_TYPE("TRANSACTIONSTMT");
+
+	WRITE_ENUM_FIELD(kind, TransactionStmtKind);
+	WRITE_NODE_FIELD(options);
+
 }
 
 static void
@@ -1479,6 +1512,8 @@ _outQuery(StringInfo str, Query *node)
 		{
 			case T_CreateStmt:
 			case T_DropStmt:
+			case T_AlterTableStmt:
+			case T_AlterTableCmd:
 			case T_ViewStmt:
 			case T_CreateUserStmt:
 			case T_DropUserStmt:
@@ -1490,10 +1525,12 @@ _outQuery(StringInfo str, Query *node)
 			case T_VacuumStmt:
 			case T_CreateSeqStmt:
 			case T_CreatedbStmt:
+			case T_TransactionStmt:
 				WRITE_NODE_FIELD(utilityStmt);
 				break;
 			default:
 				appendStringInfo(str, " :utilityStmt ?");
+				appendStringInfo(str, "%ld", nodeTag(node->utilityStmt));
 				break;
 		}
 	}
@@ -1690,6 +1727,8 @@ static void
 _outAConst(StringInfo str, A_Const *node)
 {
 	WRITE_NODE_TYPE("A_CONST");
+
+	appendStringInfoChar(str, ' ');
 
 	_outValue(str, &(node->val));
 	/*WRITE_NODE_FIELD(typename);*/
@@ -2101,6 +2140,13 @@ _outNode(StringInfo str, void *obj)
 				_outDropStmt(str, obj);
 				break;
 
+			case T_AlterTableStmt:
+				_outAlterTableStmt(str, obj);
+				break;
+			case T_AlterTableCmd:
+				_outAlterTableCmd(str, obj);
+				break;
+
 			case T_CreateUserStmt:
 				_outCreateUserStmt(str, obj);
 				break;
@@ -2117,6 +2163,10 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_CreatedbStmt:
 				_outCreatedbStmt(str, obj);
+				break;
+
+			case T_TransactionStmt:
+				_outTransactionStmt(str, obj);
 				break;
 
 			case T_NotifyStmt:

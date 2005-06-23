@@ -544,8 +544,17 @@ _readAConst(void)
 	token = pg_strtok(&length);	
 	local_node->val.type = T_String;
 	 
-	local_node->val.val.str = palloc(length + 1);
-	strcpy(local_node->val.val.str , token);
+	if (token[0] == '"')
+	{
+		token[strlen(token)-1] = '\0';
+		local_node->val.val.str = palloc(length - 1);
+		strcpy(local_node->val.val.str , token+1);
+	}
+	else
+	{
+		local_node->val.val.str = palloc(length + 1);
+		strcpy(local_node->val.val.str , token);
+	}
 	
 	 
 	READ_DONE();
