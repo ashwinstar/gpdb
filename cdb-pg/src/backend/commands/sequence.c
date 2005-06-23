@@ -25,6 +25,11 @@
 #include "utils/builtins.h"
 #include "utils/resowner.h"
 
+#include "cdb/cdbdisp.h"
+#include "cdb/cdbsrlz.h"
+#include "cdb/cdbvars.h"
+#include "cdb/cdbcat.h"
+
 
 /*
  * We don't want to log each fetching of a value from a sequence,
@@ -96,13 +101,29 @@ DefineSequence(CreateSeqStmt *seq)
 	int			i;
 	NameData	name;
 
+	
+	bool shouldDispatch =  Cdb_role == CDB_ROLE_DISPATCH && !IsBootstrapProcessingMode();
+
 	/* Check and set all option values */
 	init_params(seq->options, &new, true);
+
 
 	/*
 	 * Create relation (and fill *null & *value)
 	 */
 	stmt->relOid = 0;
+	 
+	if (shouldDispatch)
+	{
+		
+			/* stmt->relOid = newOid(); */
+	}
+	else if (Cdb_role == CDB_ROLE_EXECUTE)
+	{
+
+			stmt->relOid = seq->relOid;
+	
+	}
 	stmt->tableElts = NIL;
 	for (i = SEQ_COL_FIRSTCOL; i <= SEQ_COL_LASTCOL; i++)
 	{
@@ -184,8 +205,47 @@ DefineSequence(CreateSeqStmt *seq)
 	stmt->hasoids = MUST_NOT_HAVE_OIDS;
 	stmt->oncommit = ONCOMMIT_NOOP;
 	stmt->tablespacename = NULL;
+	stmt->relKind = RELKIND_SEQUENCE;
 
 	seqoid = DefineRelation(stmt, RELKIND_SEQUENCE);
+
+	stmt->relOid = seq->relOid = seqoid;
+
+	if (shouldDispatch)
+	{
+			char *szCommand;
+			
+
+			/*
+			 * Serialize the stmt tree, and create the sql statement: cdbexec ....
+			 */
+			Query * q = makeNode(Query);
+
+			StringInfoData buffer;
+			
+			initStringInfo( &buffer );
+
+			q->commandType = CMD_UTILITY;
+			q->utilityStmt = (Node *)seq;
+
+			q->querySource = QSRC_ORIGINAL;
+			q->canSetTag = true; /*?*/
+		
+
+			szCommand = serializeNode((Node *)q);
+			
+
+			Assert(szCommand != NULL );
+
+			elog( DEBUG5,"Comand %s", szCommand);
+
+			appendStringInfo(&buffer, "cdbexec '%s' ''", szCommand);
+
+			pfree(szCommand);
+
+        CdbDoCommand( buffer.data, DTS_SEGDB, true, NULL );
+
+	}
 
 	rel = heap_open(seqoid, AccessExclusiveLock);
 	tupDesc = RelationGetDescr(rel);

@@ -287,7 +287,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 	AttrNumber	attnum;
 
 	bool hasDispatched = false;
-	bool shouldDispatch =  Cdb_role == CDB_ROLE_DISPATCH && !IsBootstrapProcessingMode();
+	bool shouldDispatch =  Cdb_role == CDB_ROLE_DISPATCH && !IsBootstrapProcessingMode() && relkind != RELKIND_SEQUENCE;
 
 	/*
 	 * Truncate relname to appropriate length (probably a waste of time,
