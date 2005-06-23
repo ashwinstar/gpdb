@@ -1188,6 +1188,7 @@ typedef struct CreateSeqStmt
 	NodeTag		type;
 	RangeVar   *sequence;		/* the sequence to create */
 	List	   *options;
+	Oid        relOid;			/* create table with this relOid */
 } CreateSeqStmt;
 
 typedef struct AlterSeqStmt
@@ -1600,6 +1601,7 @@ typedef struct CreatedbStmt
 	NodeTag		type;
 	char	   *dbname;			/* name of database to create */
 	List	   *options;		/* List of DefElem nodes */
+	Oid			dbOid;
 } CreatedbStmt;
 
 /* ----------------------
