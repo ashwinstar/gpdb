@@ -1526,8 +1526,10 @@ _outQuery(StringInfo str, Query *node)
 			case T_CreateSeqStmt:
 			case T_CreatedbStmt:
 			case T_TransactionStmt:
+			case T_CdbExecStmt:
 				WRITE_NODE_FIELD(utilityStmt);
 				break;
+
 			default:
 				appendStringInfo(str, " :utilityStmt ?");
 				appendStringInfo(str, "%ld", nodeTag(node->utilityStmt));
@@ -1881,6 +1883,7 @@ _outRemoteParamData(StringInfo str, RemoteParamData *node)
 	else
 		_outDatum(str, node->paramData.value, typlen, typbyval);
 }
+
 
 
 /*

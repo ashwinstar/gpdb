@@ -546,9 +546,9 @@ _readAConst(void)
 	 
 	if (token[0] == '"')
 	{
-		token[strlen(token)-1] = '\0';
 		local_node->val.val.str = palloc(length - 1);
-		strcpy(local_node->val.val.str , token+1);
+		strncpy(local_node->val.val.str , token+1, length-2);
+		local_node->val.val.str[length-1] = '\0';
 	}
 	else
 	{
