@@ -158,7 +158,12 @@ DefineSequence(CreateSeqStmt *seq)
 			case SEQ_COL_LASTVAL:
 				typnam->typeid = INT8OID;
 				coldef->colname = "last_value";
+				
+				if (Cdb_role == CDB_ROLE_EXECUTE)
+					new.last_value += ((CdbIdentity.segindex+1) << 24);
+
 				value[i - 1] = Int64GetDatumFast(new.last_value);
+
 				break;
 			case SEQ_COL_INCBY:
 				typnam->typeid = INT8OID;
@@ -173,7 +178,11 @@ DefineSequence(CreateSeqStmt *seq)
 			case SEQ_COL_MINVALUE:
 				typnam->typeid = INT8OID;
 				coldef->colname = "min_value";
+				if (Cdb_role == CDB_ROLE_EXECUTE)
+					new.min_value += ((CdbIdentity.segindex+1) << 24);
+
 				value[i - 1] = Int64GetDatumFast(new.min_value);
+				
 				break;
 			case SEQ_COL_CACHE:
 				typnam->typeid = INT8OID;
