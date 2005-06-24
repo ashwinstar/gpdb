@@ -44,6 +44,11 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbdisp.h"
+#include "cdb/cdbsrlz.h"
+#include "cdb/cdbvars.h"
+#include "cdb/cdbcat.h"
+
 
 /* non-export function prototypes */
 static bool get_db_info(const char *name, Oid *dbIdP, int4 *ownerIdP,
@@ -58,7 +63,7 @@ static void remove_dbtablespaces(Oid db_id);
  * CREATE DATABASE
  */
 void
-createdb(const CreatedbStmt *stmt)
+createdb(CreatedbStmt *stmt)
 {
 	HeapScanDesc scan;
 	Relation	rel;
@@ -91,6 +96,10 @@ createdb(const CreatedbStmt *stmt)
 #ifndef WIN32
 	char		buf[2 * MAXPGPATH + 100];
 #endif
+
+	bool hasDispatched = false;
+	bool shouldDispatch =  Cdb_role == CDB_ROLE_DISPATCH && !IsBootstrapProcessingMode();
+
 
 	/* don't call this in a transaction block */
 	PreventTransactionChain((void *) stmt, "CREATE DATABASE");
@@ -325,7 +334,66 @@ createdb(const CreatedbStmt *stmt)
 	 * Preassign OID for pg_database tuple, so that we can compute db
 	 * path.
 	 */
-	dboid = newoid();
+	if (Cdb_role == CDB_ROLE_EXECUTE && stmt->dbOid != 0)
+		dboid = stmt->dbOid;
+	else
+		dboid = newoid();
+
+	/* Remember this for dispatching to segDBs */
+	stmt->dbOid = dboid;
+
+	if (shouldDispatch)
+	{
+		
+		elog( DEBUG5,"shouldDispatch = true, dbOid = %d",dboid);
+		if ( shouldDispatch )
+		{
+
+			char *pszCreateDb;
+			DispatchTargetSet set;
+
+			/*
+			 * Serialize the stmt tree, and create the sql statement: cdbexec ....
+			 */
+			Query * q = makeNode(Query);
+
+			StringInfoData buffer;
+			
+			initStringInfo( &buffer );
+
+			q->commandType = CMD_UTILITY;
+			q->utilityStmt = (Node *)stmt;
+
+			q->querySource = QSRC_ORIGINAL;
+			q->canSetTag = true; /*?*/
+		
+
+			pszCreateDb = serializeNode((Node *)q);
+			
+
+			Assert(pszCreateDb != NULL );
+
+			elog( DEBUG5,"Comand %s", pszCreateDb);
+
+			appendStringInfo(&buffer, "cdbexec '%s' ''", pszCreateDb);
+
+			pfree(pszCreateDb);
+
+			
+			
+			set = DTS_SEGDB;
+			
+			
+
+			/*
+			 * This call returns after launching the threads that send the command to the appropriate
+			 * segdbs.  It does not wait for them to finish.
+			 */
+			CdbDispatchCommand(buffer.data, set, NULL, 0, true );
+			hasDispatched = true;
+			pfree(buffer.data);
+		}
+	}
 
 	/*
 	 * Force dirty buffers out to disk, to ensure source database is
@@ -506,6 +574,46 @@ createdb(const CreatedbStmt *stmt)
 
 	/* Close pg_database, but keep exclusive lock till commit */
 	heap_close(pg_database_rel, NoLock);
+
+	if ( hasDispatched )
+	{
+		char *message;
+		char *szCommand;
+
+		CdbDispatchResults* results;
+
+		/*
+		 * We successfully completed on the Dispatcher.  Now check the results
+		 * from the qExecs.  This internally waits for them to all finish.
+		 */
+		results = CdbCheckDispatchResult();
+
+
+		message = CdbDumpDispatchResults(results, true);
+		szCommand = results->szCommand;
+		if ( szCommand == NULL )
+			szCommand = "";
+		Assert( message != NULL );
+		elog( DEBUG5,
+				"cdbexec command results for \"%s\": %s",
+				szCommand, message );
+
+		pfree(message);
+
+		if ( !results->success )
+		{
+			char *message = CdbDumpDispatchResults(results, false);
+			ereport( ERROR,
+						(errcode( ERRCODE_CDB_COMMAND_ERROR ),
+						errmsg("cdbexec command failed on one or more segment databases: %s",
+						message
+					)));
+				
+		}
+
+
+		DestroyCdbDispatchResults( results );
+	}
 }
 
 
