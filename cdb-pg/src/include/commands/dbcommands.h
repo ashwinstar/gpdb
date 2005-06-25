@@ -36,7 +36,7 @@ typedef struct xl_dbase_drop_rec
 	char		dir_path[1];	/* VARIABLE LENGTH STRING */
 }	xl_dbase_drop_rec;
 
-extern void createdb(const CreatedbStmt *stmt);
+extern void createdb(CreatedbStmt *stmt);
 extern void dropdb(const char *dbname);
 extern void RenameDatabase(const char *oldname, const char *newname);
 extern void AlterDatabaseSet(AlterDatabaseSetStmt *stmt);
