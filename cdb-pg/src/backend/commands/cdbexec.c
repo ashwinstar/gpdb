@@ -27,7 +27,7 @@
 #include "utils/memutils.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbsrlz.h"
-
+#include "cdb/cdbvars.h"
 
 /*
  * Implements the 'CDBEXEC' utility statement.
@@ -131,6 +131,16 @@ CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
 	 * Run the portal to completion.
 	 */
 	PortalStart(portal, paramLI, ActiveSnapshot);
+	
+	/* TODO: If we're running as a QE and this is an executor-driven
+	 *       portal, we need to do a little surgery on the Estate 
+	 *       before we run the portal.
+	 */
+	if ( Cdb_role == CDB_ROLE_EXECUTE && portal->queryDesc != NULL )
+	{
+		EState * es = portal->queryDesc->estate;
+		elog(NOTICE, "QE[%d] patching queryDesc Estate at %lx.", CdbIdentity.segindex, (unsigned long) es);
+	}
 
 	(void) PortalRun(portal, FETCH_ALL, dest, dest, completionTag);
 

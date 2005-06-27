@@ -26,6 +26,7 @@
 #include "lib/stringinfo.h"
 #include "nodes/parsenodes.h"
 #include "nodes/plannodes.h"
+#include "nodes/execnodes.h"
 #include "nodes/relation.h"
 #include "utils/datum.h"
 #include "utils/lsyscache.h"  /* For get_typlenbyval */
@@ -255,6 +256,7 @@ _outPlanInfo(StringInfo str, Plan *node)
 	WRITE_INT_FIELD(nParamExec);
 	WRITE_NODE_FIELD(flow);
 	WRITE_ENUM_FIELD(dispatch,DispatchMethod);
+	WRITE_INT_FIELD(nMotionNodes);
 }
 
 /*
@@ -1884,6 +1886,39 @@ _outRemoteParamData(StringInfo str, RemoteParamData *node)
 		_outDatum(str, node->paramData.value, typlen, typbyval);
 }
 
+static void
+_outCdbProcess(StringInfo str, CdbProcess *node)
+{
+	WRITE_NODE_TYPE("CDBPROCESS");
+	WRITE_STRING_FIELD(listenerAddr);
+	WRITE_INT_FIELD(listenerPort);
+	WRITE_INT_FIELD(contentid);
+	WRITE_INT_FIELD(routeid);
+}
+
+static void
+_outSlice(StringInfo str, Slice *node)
+{
+	WRITE_NODE_TYPE("SLICE");
+	WRITE_INT_FIELD(sliceIndex);
+	WRITE_INT_FIELD(rootIndex);
+	WRITE_ENUM_FIELD(gangType,GangType);
+	WRITE_INT_FIELD(gangSize);
+	WRITE_INT_FIELD(parentIndex);
+	WRITE_NODE_FIELD(children); /* List of int index */
+	WRITE_NODE_FIELD(primaryProcesses); /* List of (CDBProcess *) */
+	WRITE_NODE_FIELD(mirrorProcesses); /* List of (CDBProcess *) */
+}
+
+static void
+_outSliceTable(StringInfo str, SliceTable *node)
+{
+	WRITE_NODE_TYPE("SLICETABLE");
+	WRITE_INT_FIELD(nMotions);
+	WRITE_INT_FIELD(nextInitPlan);
+	WRITE_INT_FIELD(nSubplans);
+	WRITE_NODE_FIELD(slices); /* List of int */
+}
 
 
 /*
@@ -2252,6 +2287,15 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_VacuumStmt:
 				_outVacuumStmt(str, obj);
+				break;
+			case T_CdbProcess:
+				_outCdbProcess(str, obj);
+				break;
+			case T_Slice:
+				_outSlice(str, obj);
+				break;
+			case T_SliceTable:
+				_outSliceTable(str, obj);
 				break;
 			default:
 

@@ -1001,4 +1001,18 @@ typedef struct RemoteParamData
 	ParamListInfoData	paramData;
 } RemoteParamData;
 
+
+/* GangType enumeration is used in several structures related to CDB
+ * slice plan support.
+ */
+typedef enum GangType
+{
+	GANGTYPE_UNALLOCATED,
+	GANGTYPE_READER, /* A 1-gang or an N-gang */
+	GANGTYPE_PRIMARY_WRITER, /* An N-gang */
+	GANGTYPE_MIRROR_WRITER /* An N-gang */
+	
+} GangType;
+
+
 #endif   /* PRIMNODES_H */

@@ -165,6 +165,14 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 	estate->es_snapshot = queryDesc->snapshot;
 	estate->es_crosscheck_snapshot = queryDesc->crosscheck_snapshot;
 	estate->es_instrument = queryDesc->doInstrument;
+	
+	/* 
+	 * Handling of the Slice table depends on context.
+	 */
+	 if ( Cdb_role == CDB_ROLE_DISPATCH )
+	 {
+		InitSliceTable(estate, queryDesc->plantree->nMotionNodes, queryDesc->plantree->nParamExec);
+	 }
 
 	/*
 	 * Initialize the plan state tree
@@ -172,6 +180,15 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 	InitPlan(queryDesc, explainOnly);
 
 	MemoryContextSwitchTo(oldcontext);
+	
+	/* TODO: Remove this or replace with configurable trace. */
+	if ( Cdb_role == CDB_ROLE_DISPATCH )
+	{
+		elog_node_display(DEBUG1, 
+						  "global (QD) slice table", 
+						  estate->es_sliceTable,
+						  Debug_pretty_print);
+	}
 }
 
 /* ----------------------------------------------------------------

@@ -213,6 +213,10 @@ CreateExecutorState(void)
 	estate->es_evTupleNull = NULL;
 	estate->es_evTuple = NULL;
 	estate->es_useEvalPlan = false;
+	
+	estate->es_cur_slice_idx = 0;
+	estate->es_cur_root_idx = 0;
+	estate->es_sliceTable = NULL;
 
 	/*
 	 * Return the executor state structure
@@ -993,3 +997,58 @@ ShutdownExprContext(ExprContext *econtext)
 
 	MemoryContextSwitchTo(oldcontext);
 }
+
+
+/* ----------------------------------------------------------------
+ *		CDB Slice Table utilities
+ * ----------------------------------------------------------------
+ */
+
+/* Attach a slice table to the given Estate structure.  It should 
+ * consist of blank slices, one for the root plan, one for each 
+ * Motion node (which roots a slice with a send node), and one for 
+ * each subplan (which acts as an initplan root node).
+ */
+void InitSliceTable(EState *estate, int nMotions, int nSubplans)
+{
+	SliceTable *table;
+	Slice *slice;
+	int i, n;
+	MemoryContext oldcontext;
+	
+	oldcontext = MemoryContextSwitchTo(estate->es_query_cxt);
+	
+	table = makeNode(SliceTable);
+	table->nMotions = nMotions;
+	table->nSubplans = nSubplans;
+	table->nextInitPlan = 1 + nMotions;
+	table->slices = NIL;
+	
+	n = 1 + nMotions + nSubplans;
+	for ( i = 0; i < n; i++ )
+	{
+		slice = makeNode(Slice);
+		
+		slice->sliceIndex = -1;
+		slice->rootIndex = -1;
+		slice->gangType = GANGTYPE_UNALLOCATED;
+		slice->gangSize = 0;
+		slice->parentIndex = -1;
+		slice->children = NIL;
+		slice->primaryProcesses = NIL;
+		slice->mirrorProcesses = NIL;
+
+		table->slices = lappend(table->slices, slice);
+	}
+	
+	slice = (Slice*)linitial(table->slices);
+	slice->sliceIndex = 0;
+	slice->rootIndex = 0;
+	
+	estate->es_sliceTable = table;
+	estate->es_cur_root_idx = 0;
+	estate->es_cur_slice_idx = 0;
+	
+	MemoryContextSwitchTo(oldcontext);
+}
+

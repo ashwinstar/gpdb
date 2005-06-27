@@ -80,6 +80,7 @@ static bool doesUpdateAffectPartitionCols( CdbPolicy *policy, List *rte );
  */
 Plan* apply_motion(Plan*  plan, Query* query)
 {
+	Plan *result;
 	ApplyMotionState state;
 	state.nextMotionID = 1; /* Start at 1 so zero will mean "unassigned". */
 	
@@ -322,7 +323,10 @@ Plan* apply_motion(Plan*  plan, Query* query)
 			return NULL;
 	}
 	
-	return (Plan*)apply_motion_mutator((Node*)plan, &state);
+	result = (Plan*)apply_motion_mutator((Node*)plan, &state);
+	
+	result->nMotionNodes = state.nextMotionID - 1;
+	return result;
 }
 
 

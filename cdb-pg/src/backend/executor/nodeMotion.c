@@ -787,10 +787,17 @@ ExecInitMotion(Motion *node, EState *estate)
 	bool readFromChild, readFromAMS;
 	int i;
 	TupleDesc tupDesc;
+	Slice *parentSlice;
+	Slice *thisSlice;
+	int prior_es_cur_slice_idx;
+	int prior_es_cur_root_idx;
     
 	SO_printf("ExecInitMotion: initializing motion node\n");
 	
     AssertState(Cdb_role != CDB_ROLE_UTILITY);
+	
+	prior_es_cur_slice_idx = estate->es_cur_slice_idx; /* save */
+	prior_es_cur_root_idx = estate->es_cur_root_idx; /* save */
     
 	/*
 	 * create state structure
@@ -798,6 +805,38 @@ ExecInitMotion(Motion *node, EState *estate)
 	motionstate = makeNode(MotionState);
 	motionstate->ps.plan = (Plan *) node;
 	motionstate->ps.state = estate;
+	
+	/*
+	 * CDB Slice Plan: QD must initialize the global slice table.
+	 */
+	if ( Cdb_role == CDB_ROLE_DISPATCH )
+	{
+		MemoryContext oldcxt;
+		oldcxt = MemoryContextSwitchTo(estate->es_query_cxt);
+		
+		parentSlice = (Slice*)list_nth(estate->es_sliceTable->slices, estate->es_cur_slice_idx);
+		
+		Assert(IsA(parentSlice, Slice));
+		Assert(parentSlice->sliceIndex == estate->es_cur_slice_idx);
+		Assert(0 < node->motionID && node->motionID <= estate->es_sliceTable->nMotions);
+		
+		thisSlice = (Slice*)list_nth(estate->es_sliceTable->slices, node->motionID);
+		
+		Assert(IsA(thisSlice, Slice));
+		Assert(thisSlice->sliceIndex = -1);
+
+		thisSlice->sliceIndex = node->motionID;
+		thisSlice->rootIndex = parentSlice->rootIndex;
+		/* thisSlice->gangType = ???; */ 
+		/* thisSlice->gangSize = ???; */ 
+		thisSlice->parentIndex = estate->es_cur_slice_idx;
+		
+		parentSlice->children = lappend_int(parentSlice->children, thisSlice->sliceIndex);
+		
+		estate->es_cur_slice_idx = thisSlice->sliceIndex;
+		
+		MemoryContextSwitchTo(oldcxt);
+	}
     
     readFromChild = (Cdb_role != CDB_ROLE_DISPATCH);
     readFromAMS = setReadFromAMS(node);
@@ -847,7 +886,14 @@ ExecInitMotion(Motion *node, EState *estate)
 	 * initializes child nodes
 	 */
 	outerPlanState(motionstate) = ExecInitNode(outerPlan(node), estate);
-
+	
+	/*
+	 * restore state that might have changed in recursion for our caller
+	 * (and for ourself).
+	 */
+	 estate->es_cur_slice_idx =	prior_es_cur_slice_idx; 
+	 estate->es_cur_root_idx =	prior_es_cur_root_idx; 
+	
 	/*
 	 * initialize tuple type.  no need to initialize projection info
 	 * because this node doesn't do projections.

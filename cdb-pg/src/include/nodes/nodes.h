@@ -38,6 +38,9 @@ typedef enum NodeTag
 	T_ResultRelInfo,
 	T_EState,
 	T_TupleTableSlot,
+	T_CdbProcess,
+	T_Slice,
+	T_SliceTable,
 
 	/*
 	 * TAGS FOR PLAN NODES (plannodes.h)

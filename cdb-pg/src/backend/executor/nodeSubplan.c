@@ -719,11 +719,25 @@ ExecInitSubPlan(SubPlanState *node, EState *estate)
 	sp_estate->es_snapshot = estate->es_snapshot;
 	sp_estate->es_crosscheck_snapshot = estate->es_crosscheck_snapshot;
 	sp_estate->es_instrument = estate->es_instrument;
+	
+	/*
+	 * "Loan" the global slice table to the subplan EState.  The global
+	 * state is already set up by the code that called up, e.g., it this
+	 * is an initPlan subplan, then the current slice will be a root.
+	 */
+	 sp_estate->es_cur_root_idx = estate->es_cur_root_idx;
+	 sp_estate->es_cur_slice_idx = estate->es_cur_slice_idx;
+	 sp_estate->es_sliceTable = estate->es_sliceTable;
 
 	/*
 	 * Start up the subplan (this is a very cut-down form of InitPlan())
 	 */
 	node->planstate = ExecInitNode(subplan->plan, sp_estate);
+	
+	/*
+	 * Should we "Reclaim" the global slice table to keep control of it?
+	 * Shouldn't be necessary since deallocation is context based.
+	 */
 
 	node->needShutdown = true;	/* now we need to shutdown the subplan */
 

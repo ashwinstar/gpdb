@@ -273,6 +273,133 @@ typedef struct ResultRelInfo
 } ResultRelInfo;
 
 /* ----------------
+ * CDB Worker Process information
+ *
+ * This structure represents the global information about a worker process.
+ * It is contructed on the entry process (QD) and transmitted as part of
+ * the global slice table to the involved QEs.  Note that this is an 
+ * immutable, fixed-size structure so it can be held in a contiguous. 
+ * ----------------
+ */ 
+ typedef struct CdbProcess
+ {
+	NodeTag type;
+	
+	/* The  fields are estabished at connection (libpq) time and, for
+	 * QEs, are available in the PGconn structure.  Consider replacing
+	 */
+	 
+	char *listenerAddr; /* Interconnect listener IPv4 address, a C-string */
+	int listenerPort; /* Interconnect listener port */
+	
+	/* Unclear about why we need these.
+	 */
+	
+	int contentid;
+	int routeid;
+	
+ } CdbProcess;
+
+/* ----------------
+ * CDB Plan Slice information
+ *
+ * These structures summarize how a plan tree is sliced up into separate
+ * units of execution or slices. A slice will execute on a each worker within 
+ * a gang of processes. Some gangs have a worker process on each of several 
+ * databases, others have a single worker.
+ * ----------------
+ */
+typedef struct Slice
+{
+	NodeTag type;
+	
+	int sliceIndex;			/* The index in the global slice table of this 
+							 * slice.  The root slice of the main plan is
+							 * always 0. Slices that have senders at their
+							 * local root have a sliceIndex equal to the
+							 * motionID of their sender Motion. 
+							 * 
+							 * Undefined slices should have this set to
+							 * -1.
+							 */
+	
+	int rootIndex;			/* The root slice of the slice tree of which
+							 * this slice is a part.
+							 */
+							 
+	GangType gangType;		/* What kind of gang does this slice need? */
+	
+	int gangSize;			/* How many gang members needed? 
+							 *
+							 * This may seem redundant, but it is set before
+							 * the process lists belo and used to decide how
+							 * to initialize them.
+							 */
+							 
+	int parentIndex;		/* The index in the global slice table (origin
+							 * 0) of the parent of this slice, or -1 if
+							 * this is a root slice
+							 */
+							 
+	List *children;			/* An integer list of indices in the global slice
+							 * table (origin  0) of the child slices of 
+							 * this slice, or -1 if this is a leaf slice.
+							 * A child slice corresponds to a receiving
+							 * motion in this slice.
+							 */
+	
+	List *primaryProcesses;	/* A list of CDBProcess nodes corresponding to
+							 * the worker processes allocated to implement
+							 * this plan slice.
+							 *
+							 * The number of processes must agree with the
+							 * the plan slice to be implemented.  In CDB 2
+							 * the possibilities are 1 for a slice that 
+							 * operates on a single stream of tuples (e.g., 
+							 * the receiver of a fixed motion, a 1-gang), or 
+							 * the number of segments (e.g., a parallel 
+							 * operation or the receiver of the results of a 
+							 * parallel operation, an N-gang).
+							 *
+							 * The processes of an N-gang must be in hash
+							 * value order -- a hash value of H used to direct 
+							 * an input tuple to this slice will direct it to
+							 * the H+1st process in the list.
+							 */
+							 
+	List *mirrorProcesses;	/* A list of CDBProcess nodes corresponding to 
+							 * the mirrors of the primaryProcesses list entries, 
+							 * or NIL if no mirroring is needed in this slice.
+							 */
+} Slice;
+
+/* The SliceTable is a list of Slice structures organized into root slices
+ * and motion slices as follows:
+ * 
+ * Slice 0 is the root slice of plan as a whole.
+ * Slices 1 through nMotion are motion slices with a sending motion at
+ *  the root of the slice.
+ * Slices nMotion+1 and on are root slices of initPlans.
+ *
+ * There may be unused slices in case the plan contains subplans that
+ * are  not initPlans.  (This won't happen unless CDB decides to support
+ * subplans similarly to PostgreSQL, which isn't the current plan.)
+ * 
+ */
+typedef struct SliceTable
+{
+	NodeTag type;
+	
+	int nMotions;		/* The number Motion nodes in the entire plan */
+	int nextInitPlan;	/* Next available subplan slice index */
+	int nSubplans;		/* The number of subplan slices allocated */
+ 	List *slices;		/* List of slices */
+	
+} SliceTable;
+
+ 
+
+/* ----------------
  *	  EState information
  *
  * Master working state for an Executor invocation
@@ -330,6 +457,12 @@ typedef struct EState
 	bool	   *es_evTupleNull; /* local array of EPQ status */
 	HeapTuple  *es_evTuple;		/* shared array of EPQ substitute tuples */
 	bool		es_useEvalPlan; /* evaluating EPQ tuples? */
+	
+	/* Additions for CDB plan slicing. */
+	int es_cur_root_idx;
+	int es_cur_slice_idx;
+ 	SliceTable *es_sliceTable;
+
 } EState;
 
 

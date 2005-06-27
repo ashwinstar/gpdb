@@ -23,6 +23,7 @@
 #include <math.h>
 
 #include "nodes/parsenodes.h"
+#include "nodes/execnodes.h" /* Just for Slice and SliceTable */
 #include "nodes/readfuncs.h"
 #include "utils/lsyscache.h"  /* For get_typlenbyval */
 
@@ -1677,6 +1678,49 @@ _readRemoteParamData(void)
 	READ_DONE();
 }
 
+static CdbProcess *
+_readCdbProcess(void)
+{
+	READ_LOCALS(CdbProcess);
+	
+	READ_STRING_FIELD(listenerAddr);
+	READ_INT_FIELD(listenerPort);
+	READ_INT_FIELD(contentid);
+	READ_INT_FIELD(routeid);
+	
+	READ_DONE();
+}
+
+static Slice *
+_readSlice(void)
+{
+	READ_LOCALS(Slice);
+	
+	READ_INT_FIELD(sliceIndex);
+	READ_INT_FIELD(rootIndex);
+	READ_ENUM_FIELD(gangType, GangType);
+	READ_INT_FIELD(gangSize);
+	READ_INT_FIELD(parentIndex);
+	READ_NODE_FIELD(children); /* List of int index */
+	READ_NODE_FIELD(primaryProcesses); /* List of (CDBProcess *) */
+	READ_NODE_FIELD(mirrorProcesses); /* List of (CDBProcess *) */
+	
+	READ_DONE();
+}
+
+static SliceTable *
+_readSliceTable(void)
+{
+	READ_LOCALS(SliceTable);
+	
+	READ_INT_FIELD(nMotions);
+	READ_INT_FIELD(nextInitPlan);
+	READ_INT_FIELD(nSubplans);
+	READ_NODE_FIELD(slices); /* List of Slice* */
+	
+	READ_DONE();
+}
+
 void readScanInfo(Scan *local_node)
 {
 	READ_TEMP_LOCALS();
@@ -1704,6 +1748,7 @@ void readPlanInfo(Plan *local_node)
 	READ_INT_FIELD(nParamExec);
 	READ_NODE_FIELD(flow);
 	READ_ENUM_FIELD(dispatch, DispatchMethod);
+	READ_INT_FIELD(nMotionNodes);
 }
 
 void readJoinInfo(Join *local_node)
@@ -1792,6 +1837,7 @@ static ParseNodeInfo infoAr[] =
 	{"BOOLEXPR", (ReadFn)_readBoolExpr},
 	{"CASE", (ReadFn)_readCaseExpr},
 	{"CASETESTEXPR", (ReadFn)_readCaseTestExpr},
+	{"CDBPROCESS", (ReadFn)_readCdbProcess},
 	{"COALESCE", (ReadFn)_readCoalesceExpr},
 	{"COERCETODOMAIN", (ReadFn)_readCoerceToDomain},
 	{"COERCETODOMAINVALUE", (ReadFn)_readCoerceToDomainValue},
@@ -1852,6 +1898,8 @@ static ParseNodeInfo infoAr[] =
 	{"SETOP", (ReadFn)_readSetOp},
 	{"SETOPERATIONSTMT", (ReadFn)_readSetOperationStmt},
 	{"SETTODEFAULT", (ReadFn)_readSetToDefault},
+	{"SLICE", (ReadFn)_readSlice},
+	{"SLICETABLE", (ReadFn)_readSliceTable},
 	{"SORT", (ReadFn)_readSort},
 	{"SORTCLAUSE", (ReadFn)_readSortClause},
 	{"SUBLINK", (ReadFn)_readSubLink},

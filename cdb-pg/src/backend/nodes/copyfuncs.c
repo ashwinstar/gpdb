@@ -24,8 +24,9 @@
 
 #include "nodes/parsenodes.h"
 #include "nodes/plannodes.h"
+#include "nodes/execnodes.h" /* CdbProcess, Slice, and SliceTable. */
 #include "nodes/relation.h"
-#include "utils/datum.h"
+#include "utils/datum.h"s
 
 
 /*
@@ -88,6 +89,7 @@ CopyPlanFields(Plan *from, Plan *newnode)
 	COPY_SCALAR_FIELD(nParamExec);
 	COPY_NODE_FIELD(flow);
 	COPY_SCALAR_FIELD(dispatch);
+	COPY_SCALAR_FIELD(nMotionNodes);
 }
 
 /*
@@ -2578,6 +2580,49 @@ _copyCdbExecStmt(CdbExecStmt *from)
 	return newnode;
 }
 
+static CdbProcess *
+_copyCdbProcess(CdbProcess *from)
+{
+	CdbProcess *newnode = makeNode(CdbProcess);
+	
+	COPY_STRING_FIELD(listenerAddr); 
+	COPY_SCALAR_FIELD(listenerPort);
+	COPY_SCALAR_FIELD(contentid);
+	COPY_SCALAR_FIELD(routeid);
+	
+	return newnode;
+}
+
+static Slice *
+_copySlice(Slice *from)
+{
+	Slice *newnode = makeNode(Slice);
+	
+	COPY_SCALAR_FIELD(sliceIndex);
+	COPY_SCALAR_FIELD(rootIndex);
+	COPY_SCALAR_FIELD(gangType);
+	COPY_SCALAR_FIELD(gangSize);
+	COPY_SCALAR_FIELD(parentIndex);
+	COPY_NODE_FIELD(children);
+	COPY_NODE_FIELD(primaryProcesses);
+	COPY_NODE_FIELD(mirrorProcesses);
+	
+	return newnode;
+}
+
+static SliceTable *
+_copySliceTable(SliceTable *from)
+{
+	SliceTable *newnode = makeNode(SliceTable);
+	
+	COPY_SCALAR_FIELD(nMotions);
+	COPY_SCALAR_FIELD(nextInitPlan);
+	COPY_SCALAR_FIELD(nSubplans);
+	COPY_NODE_FIELD(slices);
+		
+	return newnode;
+}
+
 
 /* ****************************************************************
  *					pg_list.h copy functions
@@ -3195,6 +3240,15 @@ copyObject(void *from)
 			break;
 		case T_CdbExecStmt:
 			retval = _copyCdbExecStmt(from);
+			break;
+		case T_CdbProcess:
+			retval = _copyCdbProcess(from);
+			break;
+		case T_Slice:
+			retval = _copySlice(from);
+			break;
+		case T_SliceTable:
+			retval = _copySliceTable(from);
 			break;
 
 		default:

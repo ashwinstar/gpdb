@@ -105,6 +105,12 @@ typedef struct Plan
 	 */
 	DispatchMethod dispatch;
 	
+	/* 
+	 * CDB: Now many motion nodes are there in the Plan.  Another plan 
+	 * tree global significant only in the root node.
+	 */
+	 int nMotionNodes;
+	
 } Plan;
 
 /* ----------------

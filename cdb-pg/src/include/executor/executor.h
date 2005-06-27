@@ -264,4 +264,7 @@ extern void UnregisterExprContextCallback(ExprContext *econtext,
 							  ExprContextCallbackFunction function,
 							  Datum arg);
 
+/* Additions for CDB Slice table utilities defined in execUtils.c */
+extern void InitSliceTable(EState *estate, int nMotions, int nSubplans);
+
 #endif   /* EXECUTOR_H  */

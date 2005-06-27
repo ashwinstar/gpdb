@@ -101,6 +101,7 @@
 #include "executor/nodeUnique.h"
 #include "miscadmin.h"
 #include "tcop/tcopprot.h"
+#include "cdb/cdbvars.h"
 
 #ifdef CDB_TRACE_EXECUTOR
 static void ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result);
@@ -237,10 +238,46 @@ ExecInitNode(Plan *node, EState *estate)
 	{
 		SubPlan    *subplan = (SubPlan *) lfirst(l);
 		SubPlanState *sstate;
+		int prior_es_cur_slice_idx;
+		int prior_es_cur_root_idx;
 
 		Assert(IsA(subplan, SubPlan));
 		sstate = ExecInitExprInitPlan(subplan, result);
+		
+		/*
+		 * CDB Slice Plan:  QD must initialize the global slice table.
+		 */
+		prior_es_cur_slice_idx = estate->es_cur_slice_idx; /* save */
+		prior_es_cur_root_idx = estate->es_cur_root_idx; /* save */
+		
+		if ( Cdb_role == CDB_ROLE_DISPATCH )
+		{
+			MemoryContext oldcxt;
+			int idx;
+			Slice *thisSlice;
+			
+			oldcxt = MemoryContextSwitchTo(estate->es_query_cxt);
+			idx = estate->es_sliceTable->nextInitPlan++;
+			
+			Assert(idx < list_length(estate->es_sliceTable->slices));
+			
+			estate->es_cur_slice_idx = idx;
+			estate->es_cur_root_idx = idx;
+			thisSlice =  (Slice*)list_nth(estate->es_sliceTable->slices, idx);
+			
+			Assert(thisSlice->sliceIndex = -1);
+			
+			thisSlice->sliceIndex = idx;
+			thisSlice->rootIndex = idx;
+			
+			MemoryContextSwitchTo(oldcxt);
+		}
+		
 		ExecInitSubPlan(sstate, estate);
+		
+		estate->es_cur_slice_idx = prior_es_cur_slice_idx; /* restore */
+		estate->es_cur_root_idx = prior_es_cur_root_idx; /* restore */
+		
 		subps = lappend(subps, sstate);
 	}
 	result->initPlan = subps;
