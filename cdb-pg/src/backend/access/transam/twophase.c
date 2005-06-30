@@ -416,8 +416,6 @@ TwoPhaseShmemInit(void)
 		struct GXACT axact_array[max_prepared_xacts];
 	} *shared;
 
-// TODO REMOVE
-    printf("TwoPhaseShmemInit called");
 	shared = ShmemInitStruct("global transaction lookup table", TwoPhaseShmemSize(), &found);
 	if(!shared)
 		elog(FATAL, "could not initialize global transaction lookup table");
