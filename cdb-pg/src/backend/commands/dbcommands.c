@@ -389,7 +389,7 @@ createdb(CreatedbStmt *stmt)
 			 * This call returns after launching the threads that send the command to the appropriate
 			 * segdbs.  It does not wait for them to finish.
 			 */
-			CdbDispatchCommand(buffer.data, set, NULL, 0, true );
+			CdbDispatchCommandInt(buffer.data, set, NULL, 0, true, NULL );
 			hasDispatched = true;
 			pfree(buffer.data);
 		}
