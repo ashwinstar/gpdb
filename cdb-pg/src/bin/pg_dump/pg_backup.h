@@ -107,6 +107,9 @@ typedef struct _restoreOptions
 	char	   *username;
 	int			ignoreVersion;
 	int			requirePassword;
+    int         oidOrder;
+    int         origOrder;
+    int         rearrange;
 	int			exit_on_error;
 
 	bool	   *idWanted;
