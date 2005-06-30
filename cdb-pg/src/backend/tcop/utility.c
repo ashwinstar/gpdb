@@ -483,10 +483,10 @@ ProcessUtility(Node *parsetree,
 												  true);
 							}
 						}
-                        
+
                         /* start transaction on all QE */
                         startDtxTransaction();
-                        
+
 						break;
 
 					case TRANS_STMT_COMMIT:
@@ -774,7 +774,7 @@ ProcessUtility(Node *parsetree,
 			 * schema
 			 */
 		case T_RenameStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);  
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			ExecRenameStmt((RenameStmt *) parsetree);
 			break;
 
@@ -1014,7 +1014,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_ExplainStmt:
-			CdbSentry(CDB_WARN, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			ExplainQuery((ExplainStmt *) parsetree, dest);
 			break;
 
@@ -1246,7 +1246,8 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		default:
-			elog(ERROR, "unrecognized node type: %d",
+            Assert(false);
+            elog(ERROR, "unrecognized node type: %d",
 				 (int) nodeTag(parsetree));
 			break;
 	}
@@ -1860,6 +1861,7 @@ CreateCommandTag(Node *parsetree)
 			break;
 
 		default:
+            Assert(false);
 			elog(WARNING, "unrecognized node type: %d",
 				 (int) nodeTag(parsetree));
 			tag = "???";
