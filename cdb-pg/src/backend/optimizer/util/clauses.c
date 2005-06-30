@@ -2751,7 +2751,8 @@ expression_tree_walker(Node *node,
 			}
 			break;
 		default:
-			elog(ERROR, "unrecognized node type: %d",
+            Assert(false);
+            elog(ERROR, "unrecognized node type: %d",
 				 (int) nodeTag(node));
 			break;
 	}
@@ -3255,7 +3256,8 @@ expression_tree_mutator(Node *node,
 			}
 			break;
 		default:
-			elog(ERROR, "unrecognized node type: %d",
+            Assert(false);
+            elog(ERROR, "unrecognized node type: %d",
 				 (int) nodeTag(node));
 			break;
 	}
