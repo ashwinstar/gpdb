@@ -781,7 +781,10 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 	}
     
     if (pInputOpts->pszPGPort == NULL)
-        pInputOpts->pszPGPort = getenv("PGPORT");
+    {
+        if (getenv("PGPORT") != NULL)
+            pInputOpts->pszPGPort = Safe_strdup(getenv("PGPORT"));
+    }
 	
 	bRtn = true;
 	

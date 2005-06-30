@@ -650,6 +650,12 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 				exit(1);
 		}
 	}
+    
+    if (pInputOpts->pszPGPort == NULL)
+    {
+        if (getenv("PGPORT") != NULL)
+            pInputOpts->pszPGPort = Safe_strdup(getenv("PGPORT"));
+    }
 }
 
 /*

@@ -63,10 +63,9 @@ void FreeInputOptions( InputOptions* pInputOpts )
 	if ( pInputOpts->pszPGHost != NULL )
 		free( pInputOpts->pszPGHost );
 	
-    /*
 	if ( pInputOpts->pszPGPort != NULL )
 		free( pInputOpts->pszPGPort );
-	*/
+
 	if ( pInputOpts->pszUserName != NULL )
 		free( pInputOpts->pszUserName );
 	
