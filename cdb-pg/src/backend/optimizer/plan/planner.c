@@ -24,9 +24,7 @@
 #include "executor/executor.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
-#ifdef OPTIMIZER_DEBUG
 #include "nodes/print.h"
-#endif
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/pathnode.h"
@@ -1121,11 +1119,15 @@ grouping_planner(Query *parse, double tuple_fraction)
 		 */
 		if (sorted_path && !use_hashed_grouping)
 		{
+            if (Debug_print_prelim_plan)    /*CDB*/                                            
+                elog_node_display(DEBUG1, "Path chosen (ordered)", sorted_path, true);      
 			result_plan = create_plan(parse, sorted_path, false);
 			current_pathkeys = sorted_path->pathkeys;
 		}
 		else
 		{
+            if (Debug_print_prelim_plan)    /*CDB*/                                        
+                elog_node_display(DEBUG1, "Path chosen (unordered)", cheapest_path, true);  
 			result_plan = create_plan(parse, cheapest_path, false);
 			current_pathkeys = cheapest_path->pathkeys;
 		}
