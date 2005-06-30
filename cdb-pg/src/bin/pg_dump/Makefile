@@ -22,7 +22,8 @@ OBJS=	pg_backup_archiver.o pg_backup_db.o pg_backup_custom.o \
 
 EXTRA_OBJS = $(top_builddir)/src/backend/parser/keywords.o
 
-all: submake-libpq submake-libpgport submake-backend pg_dump pg_restore pg_dumpall
+all: submake-libpq submake-libpgport submake-backend pg_dump pg_restore pg_dumpall \
+     submake-cdb
 
 pg_dump: pg_dump.o common.o pg_dump_sort.o $(OBJS) $(libpq_builddir)/libpq.a 
 	$(CC) $(CFLAGS) pg_dump.o common.o pg_dump_sort.o $(OBJS) $(EXTRA_OBJS) $(libpq) $(LDFLAGS) $(LIBS) -o $@$(X)
@@ -37,11 +38,15 @@ pg_dumpall: pg_dumpall.o dumputils.o $(libpq_builddir)/libpq.a
 submake-backend:
 	$(MAKE) -C $(top_builddir)/src/backend/parser keywords.o
 
+submake-cdb:
+	$(MAKE) -C cdb all
+
 
 install: all installdirs
 	$(INSTALL_PROGRAM) pg_dump$(X) $(DESTDIR)$(bindir)/pg_dump$(X)
 	$(INSTALL_PROGRAM) pg_restore$(X) $(DESTDIR)$(bindir)/pg_restore$(X)
 	$(INSTALL_PROGRAM) pg_dumpall$(X) $(DESTDIR)$(bindir)/pg_dumpall$(X)
+	$(MAKE) -C cdb install
 
 installdirs:
 	$(mkinstalldirs) $(DESTDIR)$(bindir)
