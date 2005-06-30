@@ -51,10 +51,9 @@ static Node* apply_motion_mutator(Node*  node, ApplyMotionState *context);
 
 static void validateMotionNodeParms(MotionType motionType,
 			bool sendToSecondary, bool sendSorted,
-			int numHashSegs, int *hashSegIdx, List *hashExpr,
+			List *hashExpr,
 			int numOutputSegs, int *outputSegIdx,
-			int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators,
-			int numInputSegs, int *inputSegIdx );
+			int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators );
 static List *getExprListFromCondList(List *clist, HashMotionInfoType type);
 static bool motion_expr_walker(Node *node, char *not_used);
 #ifdef UNUSED
@@ -448,9 +447,7 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 								flow->segindex, /* TODO if 0, adjust to "chosen" segment. */
 								flow->numSortCols,
 								flow->sortColIdx,
-								flow->sortOperators,
-								CdbIdentity.numsegments,
-								makeDefaultSegIdxArray(CdbIdentity.numsegments)
+								flow->sortOperators
 								);
 							/* Assign unique node number to the new node. */
 							assignMotionID(newnode, context, NULL);
@@ -476,9 +473,7 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 								sendToSecondary,
 								flow->numSortCols,
 								flow->sortColIdx,
-								flow->sortOperators,
-								CdbIdentity.numsegments,
-								makeDefaultSegIdxArray(CdbIdentity.numsegments)
+								flow->sortOperators
 								);
 							/* Assign unique node number to the new node. */
 							assignMotionID(newnode, context, NULL);
@@ -503,14 +498,10 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 							newnode = (Node*)make_sorted_hashed_motion(
 								plan,
 								sendToSecondary,
-								CdbIdentity.numsegments,
-								makeDefaultSegIdxArray(CdbIdentity.numsegments),
 								flow->hashExpr,
 								flow->numSortCols,
 								flow->sortColIdx,
-								flow->sortOperators,
-								CdbIdentity.numsegments,
-								makeDefaultSegIdxArray(CdbIdentity.numsegments)
+								flow->sortOperators
 								);
 							/* Assign unique node number to the new node. */
 							assignMotionID(newnode, context, NULL);
@@ -520,8 +511,6 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 							newnode = (Node*)make_hashed_motion(
 								plan,
 								sendToSecondary,
-								CdbIdentity.numsegments,
-								makeDefaultSegIdxArray(CdbIdentity.numsegments),
 								flow->hashExpr
 								);
 							/* Assign unique node number to the new node. */
@@ -830,20 +819,18 @@ List *getHashMotionInfoList( Plan *node, HashMotionInfoType type )
  */
 Motion *make_motion(Plan *lefttree, MotionType motionType,
 			bool sendToSecondary, bool sendSorted,
-			int numHashSegs, int *hashSegIdx, List *hashExpr,
+			List *hashExpr,
 			int numOutputSegs, int *outputSegIdx,
-			int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators,
-			int numInputSegs, int *inputSegIdx )
+			int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators )
 {
     Motion *node = makeNode(Motion);
     Plan   *plan = &node->plan;
     List   *hashDataTypes = NIL;
 
     validateMotionNodeParms(motionType,	sendToSecondary, sendSorted,
-			numHashSegs, hashSegIdx, hashExpr,
+			hashExpr,
 			numOutputSegs, outputSegIdx,
-			numSortCols, sortColIdx, sortOperators,
-			numInputSegs, inputSegIdx);
+			numSortCols, sortColIdx, sortOperators);
 
     /* Build list of hash key expression data types. */
     if (hashExpr)
@@ -889,12 +876,6 @@ Motion *make_motion(Plan *lefttree, MotionType motionType,
 	node->hashToSelfOnly = false;
 	node->fixedToSelfOnly = false;
 
-	if ( motionType == MOTIONTYPE_HASH )
-	{
-		node->numHashSegs = numHashSegs;
-		node->hashSegIdx = hashSegIdx;
-	}
-
 	node->hashExpr = hashExpr;
 	node->hashDataTypes = hashDataTypes;
 	node->numOutputSegs = numOutputSegs;
@@ -904,16 +885,28 @@ Motion *make_motion(Plan *lefttree, MotionType motionType,
 	node->sortColIdx = sortColIdx;
 	node->sortOperators = sortOperators;
 
-	if ( sendSorted )
-	{
-		node->numInputSegs = numInputSegs;
-		node->inputSegIdx = inputSegIdx;
-	}
-	
 	plan->extParam = bms_copy(lefttree->extParam);
 	plan->allParam = bms_copy(lefttree->allParam);
 	
-	/* TODO Should we attach a descriptive Flow here?
+    /* If hashed redistribution, fill in the receiving segment info. */
+	node->numHashSegs = 0;
+	node->hashSegIdx = NULL;
+	if ( motionType == MOTIONTYPE_HASH )
+    {
+        node->numHashSegs = CdbIdentity.numsegments;
+        node->hashSegIdx = makeDefaultSegIdxArray(CdbIdentity.numsegments);
+    }
+
+    /* If merging, fill in the sending segment info. */
+    node->numInputSegs = 0;
+    node->inputSegIdx = NULL;
+	if ( sendSorted )
+    {
+        node->numInputSegs = CdbIdentity.numsegments;
+        node->inputSegIdx = makeDefaultSegIdxArray(CdbIdentity.numsegments);
+    }
+
+    /* TODO Should we attach a descriptive Flow here?
 	 *      What about setXxxToSelfOnly() calls?
 	 */
 
@@ -927,14 +920,13 @@ Motion *make_union_motion(Plan *lefttree, bool sendToSecondary, int destSegIndex
 
 	return 	make_motion(lefttree, MOTIONTYPE_FIXED,
 						sendToSecondary, false,
-						0, NULL, NIL,
+						NIL,
 						1, outputSegIdx,
-						0, NULL, NULL, 0, NULL );
+						0, NULL, NULL );
 }
 
 Motion *make_sorted_union_motion(Plan *lefttree, bool sendToSecondary, int destSegIndex,
-								int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators,
-								int numInputSegs, int *inputSegIdx )
+								int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators )
 {
 	int *outputSegIdx = palloc( sizeof(int) );
     int mySegIdx;
@@ -945,50 +937,48 @@ Motion *make_sorted_union_motion(Plan *lefttree, bool sendToSecondary, int destS
 
 	return 	make_motion(lefttree, MOTIONTYPE_FIXED,
 						sendToSecondary, true,
-						0, NULL, NIL,
+						NIL,
 						1, outputSegIdx,
-						numSortCols, sortColIdx, sortOperators, numInputSegs, inputSegIdx);
+						numSortCols, sortColIdx, sortOperators);
 }
 
 Motion *make_hashed_motion(Plan *lefttree, bool sendToSecondary,
-							int numHashSegs, int *hashSegIdx, List *hashExpr)
+						   List *hashExpr)
 {
 	return make_motion(lefttree, MOTIONTYPE_HASH,
 						sendToSecondary, false,
-						numHashSegs, hashSegIdx, hashExpr,
-						0, NULL, 0, NULL, NULL, 0, NULL);
+						hashExpr,
+						0, NULL, 0, NULL, NULL);
 }
 
 Motion *make_sorted_hashed_motion(Plan *lefttree, bool sendToSecondary,
-								int numHashSegs, int *hashSegIdx, List *hashExpr,
-								int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators,
-								int numInputSegs, int *inputSegIdx )
+								List *hashExpr,
+								int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators )
 {
 	return make_motion(lefttree, MOTIONTYPE_HASH,
 						sendToSecondary, true,
-						numHashSegs, hashSegIdx, hashExpr,
+						hashExpr,
 						0, NULL,
-						numSortCols, sortColIdx, sortOperators, numInputSegs, inputSegIdx );
+						numSortCols, sortColIdx, sortOperators );
 }
 
 Motion *make_broadcast_motion(Plan *lefttree, bool sendToSecondary)
 {
 	return make_motion(lefttree, MOTIONTYPE_FIXED,
 						sendToSecondary, false,
-						0, NULL, NIL,
+						NIL,
 						0, NULL,
-						0, NULL, NULL, 0, NULL );
+						0, NULL, NULL );
 }
 
 Motion *make_sorted_broadcast_motion(Plan *lefttree, bool sendToSecondary,
-								int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators,
-								int numInputSegs, int *inputSegIdx )
+								int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators )
 {
 	return make_motion(lefttree, MOTIONTYPE_FIXED,
 						sendToSecondary, true,
-						0, NULL, NIL,
+						NIL,
 						0, NULL,
-						numSortCols, sortColIdx, sortOperators, numInputSegs, inputSegIdx );
+						numSortCols, sortColIdx, sortOperators );
 }
 
 /*
@@ -1067,10 +1057,9 @@ int *makeDefaultSegIdxArray(int numSegs)
  */
 void validateMotionNodeParms(MotionType motionType,
 			bool sendToSecondary, bool sendSorted,
-			int numHashSegs, int *hashSegIdx, List *hashExpr,
+			List *hashExpr,
 			int numOutputSegs, int *outputSegIdx,
-			int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators,
-			int numInputSegs, int *inputSegIdx )
+			int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators )
 {
 	/*
 	 *  Perform validation based on motionType.
@@ -1085,12 +1074,6 @@ void validateMotionNodeParms(MotionType motionType,
 			if ( hashExpr == NIL )
 				elog(ERROR, "motion type 'hash' node must have non-NULL hashExpr");
 				
-		/*
-		 *  A Hash motion node must have hash segment info specified.
-		 */
-			if ( numHashSegs <= 0 || hashSegIdx == NULL )
-				elog(ERROR, "motion type 'hash' node must have numHashSegs > 0 and non-NULL hashSegIdx");
-
 		/*
 		 *  A Hash motion node shouldn't have FixedMotionDefn specified.
 		 */
@@ -1111,7 +1094,7 @@ void validateMotionNodeParms(MotionType motionType,
 		/*
 		 *  A Fixed motion node shouldn't have HashMotionDefn specified.
 		 */
-			Assert( numHashSegs == 0 && hashSegIdx == NULL && hashExpr == NIL);
+			Assert( hashExpr == NIL);
 				
 			break;	
 			
@@ -1133,20 +1116,13 @@ void validateMotionNodeParms(MotionType motionType,
 		 */
 		if (numSortCols == 0 || sortColIdx == NULL || sortOperators == NULL)
 			elog(ERROR, "sorted motion node must have numSortCols > 0 and non-NULL sortColIdx and sortOperators");
-
-		/*
-		 *  A sorted motion node must have input Segs info specified
-		 */
-		if (numInputSegs == 0 || inputSegIdx == NULL)
-			elog(ERROR, "sorted motion node must have numInputSegs > 0 and non-NULL inputSegIdx");
 	}
 	else
 	{
 		/*
 		 *  A non-sorted motion node should not have SortMotionDefn specified
 		 */
-		Assert(numSortCols == 0 && sortColIdx == NULL && sortOperators == NULL &&
-				numInputSegs == 0 && inputSegIdx == NULL);
+		Assert(numSortCols == 0 && sortColIdx == NULL && sortOperators == NULL);
 	}
 }			
 

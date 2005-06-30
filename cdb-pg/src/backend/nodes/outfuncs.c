@@ -1020,9 +1020,66 @@ _outFlow(StringInfo str, Flow *node)
 
 /*****************************************************************************
  *
+ *	Stuff from cdbpathlocus.h.
+ *
+ *****************************************************************************/
+
+/*
+ * _outCdbPathLocus
+ */
+static void
+_outCdbPathLocus(StringInfo str, CdbPathLocus *node)
+{
+    WRITE_ENUM_FIELD(locustype, CdbLocusType);
+    WRITE_NODE_FIELD(partkey);
+}                               /* _outCdbPathLocus */
+
+
+/*****************************************************************************
+ *
  *	Stuff from relation.h.
  *
  *****************************************************************************/
+
+static void
+_outRelOptInfo(StringInfo str, RelOptInfo *node)
+{
+    WRITE_NODE_TYPE("RELOPTINFO");
+
+    /* NB: this isn't a complete set of fields */
+    WRITE_ENUM_FIELD(type, NodeTag);
+    WRITE_ENUM_FIELD(reloptkind, RelOptKind);
+    WRITE_BITMAPSET_FIELD(relids);
+    WRITE_FLOAT_FIELD(rows, "%.0f");
+    WRITE_INT_FIELD(width);
+    WRITE_INT_FIELD(relid);
+    WRITE_ENUM_FIELD(rtekind, RTEKind);
+    WRITE_INT_FIELD(min_attr);
+    WRITE_INT_FIELD(max_attr);
+    WRITE_INT_FIELD(pages);
+    WRITE_FLOAT_FIELD(tuples, "%.0f");
+    WRITE_BITMAPSET_FIELD(outerjoinset);
+    WRITE_BITMAPSET_FIELD(index_outer_relids);
+}
+
+static void
+_outIndexOptInfo(StringInfo str, IndexOptInfo *node)
+{
+    WRITE_NODE_TYPE("INDEXOPTINFO");
+
+    /* NB: this isn't a complete set of fields */
+    WRITE_ENUM_FIELD(type, NodeTag);
+    WRITE_OID_FIELD(indexoid);
+    WRITE_INT_FIELD(pages);
+    WRITE_FLOAT_FIELD(tuples, "%.0f");
+    WRITE_INT_FIELD(ncolumns);
+    WRITE_OID_FIELD(relam);
+    WRITE_NODE_FIELD(indexprs);
+    WRITE_NODE_FIELD(indpred);
+    WRITE_BOOL_FIELD(predOK);
+    WRITE_BOOL_FIELD(unique);
+    WRITE_BITMAPSET_FIELD(outer_relids);
+}
 
 /*
  * print the basic stuff of all nodes that inherit from Path
@@ -1035,6 +1092,7 @@ _outPathInfo(StringInfo str, Path *node)
 	WRITE_ENUM_FIELD(pathtype, NodeTag);
 	WRITE_FLOAT_FIELD(startup_cost, "%.2f");
 	WRITE_FLOAT_FIELD(total_cost, "%.2f");
+    _outCdbPathLocus(str, &node->locus);
 	WRITE_NODE_FIELD(pathkeys);
 }
 
@@ -1058,6 +1116,7 @@ _outPath(StringInfo str, Path *node)
 	WRITE_NODE_TYPE("PATH");
 
 	_outPathInfo(str, (Path *) node);
+    WRITE_NODE_FIELD(parent);
 }
 
 /*
@@ -1159,6 +1218,17 @@ _outHashPath(StringInfo str, HashPath *node)
 	_outJoinPathInfo(str, (JoinPath *) node);
 
 	WRITE_NODE_FIELD(path_hashclauses);
+}
+
+static void
+_outCdbMotionPath(StringInfo str, CdbMotionPath *node)
+{
+    WRITE_NODE_TYPE("MOTIONPATH");
+
+    _outPathInfo(str, &node->path);
+    WRITE_BOOL_FIELD(hashToSelfOnly);
+
+    WRITE_NODE_FIELD(subpath);
 }
 
 static void
@@ -1332,7 +1402,7 @@ _outRenameStmt(StringInfo str, RenameStmt *node)
 	
 }
 
-static void 
+static void
 _outCreateSeqStmt(StringInfo str, CreateSeqStmt *node)
 {
 	WRITE_NODE_TYPE("CREATESEQSTMT");
@@ -1341,7 +1411,7 @@ _outCreateSeqStmt(StringInfo str, CreateSeqStmt *node)
 	WRITE_OID_FIELD(relOid);
 }
 
-static void 
+static void
 _outCreatedbStmt(StringInfo str, CreatedbStmt *node)
 {
 	WRITE_NODE_TYPE("CREATEDBSTMT");
@@ -2122,7 +2192,14 @@ _outNode(StringInfo str, void *obj)
 			case T_RemoteParamData:
 				_outRemoteParamData(str, obj);
 				break;
-			case T_Path:
+
+            case T_RelOptInfo:
+                _outRelOptInfo(str, obj);
+                break;
+            case T_IndexOptInfo:
+                _outIndexOptInfo(str, obj);
+                break;
+            case T_Path:
 				_outPath(str, obj);
 				break;
 			case T_IndexPath:
@@ -2152,6 +2229,9 @@ _outNode(StringInfo str, void *obj)
 			case T_HashPath:
 				_outHashPath(str, obj);
 				break;
+            case T_CdbMotionPath:
+                _outCdbMotionPath(str, obj);
+                break;
 			case T_PathKeyItem:
 				_outPathKeyItem(str, obj);
 				break;

@@ -834,10 +834,9 @@ plan_tree_mutator(Node *node,
 				Flow *flow = (Flow*)node;
 				Flow *newflow;
 				FLATCOPY(newflow, flow, Flow);
-				/* For now, just shallow copy.  Eventually, though, flow
-				 * characterization will be complex, which is why it's a
-				 * node.
-				 */
+                MUTATE(newflow->hashExpr, flow->hashExpr, List*);
+                COPYARRAY(newflow, flow, numSortCols, sortColIdx);
+                COPYARRAY(newflow, flow, numSortCols, sortOperators);
 				return (Node*)newflow;
 			}
 			break;

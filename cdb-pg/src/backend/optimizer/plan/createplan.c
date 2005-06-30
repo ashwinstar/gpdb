@@ -35,7 +35,8 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
-#include "cdb/cdbpath.h"        /* cdbpath_add_flow_to_plan() */
+#include "cdb/cdbpath.h"        /* cdbpath_rows() */
+#include "cdb/cdbpathtoplan.h"  /* cdbpathtoplan_create_flow() etc. */
 
 
 static Scan *create_scan_plan(Query *root, Path *best_path);
@@ -47,6 +48,7 @@ static Append *create_append_plan(Query *root, AppendPath *best_path);
 static Result *create_result_plan(Query *root, ResultPath *best_path);
 static Material *create_material_plan(Query *root, MaterialPath *best_path);
 static Plan *create_unique_plan(Query *root, UniquePath *best_path);
+static Plan *create_motion_plan(Query *root, CdbMotionPath *path);
 static SeqScan *create_seqscan_plan(Query *root, Path *best_path,
 					List *tlist, List *scan_clauses);
 static IndexScan *create_indexscan_plan(Query *root, IndexPath *best_path,
@@ -108,8 +110,6 @@ static MergeJoin *make_mergejoin(List *tlist,
 			   JoinType jointype);
 static Sort *make_sort(Query *root, Plan *lefttree, int numCols,
 		  AttrNumber *sortColIdx, Oid *sortOperators);
-static Sort *make_sort_from_pathkeys(Query *root, Plan *lefttree,
-						List *pathkeys);
 
 
 /*
@@ -164,10 +164,10 @@ create_plan(Query *root, Path *best_path, bool parent_finished)
 											   (UniquePath *) best_path);
 			break;
         case T_Motion:
-            /* CDB TODO: create Motion plan */
-            plan = create_plan(root, ((CdbMotionPath *)best_path)->subpath, best_path->isFinished);
+            plan = create_motion_plan(root, (CdbMotionPath *)best_path);
             break;
         default:
+            Assert(false);
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) best_path->pathtype);
 			plan = NULL;		/* keep compiler quiet */
@@ -182,7 +182,7 @@ create_plan(Query *root, Path *best_path, bool parent_finished)
     if (plan &&
         !parent_finished &&
         best_path->isFinished)
-        cdbpath_add_flow_to_plan(root, best_path, plan);
+        plan->flow = cdbpathtoplan_create_flow(root, best_path, plan);
 
     return plan;
 }
@@ -209,7 +209,6 @@ create_scan_plan(Query *root, Path *best_path)
 	 * possible.  (Note that planner.c may replace the tlist we generate
 	 * here, forcing projection to occur.)
 	 */
-#ifdef CDB_FULL_PROJECTION /*kh 20050405*/
 	if (use_physical_tlist(rel))
 	{
 		tlist = build_physical_tlist(root, rel);
@@ -218,7 +217,6 @@ create_scan_plan(Query *root, Path *best_path)
 			tlist = build_relation_tlist(rel);
 	}
 	else
-#endif /*kh 20050405*/
 		tlist = build_relation_tlist(rel);
 
 	/*
@@ -265,6 +263,7 @@ create_scan_plan(Query *root, Path *best_path)
 			break;
 
 		default:
+            Assert(false);
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) best_path->pathtype);
 			plan = NULL;		/* keep compiler quiet */
@@ -398,6 +397,7 @@ create_join_plan(Query *root, JoinPath *best_path)
 												 inner_plan);
 			break;
 		default:
+            Assert(false);
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) best_path->path.pathtype);
 			plan = NULL;		/* keep compiler quiet */
@@ -651,6 +651,39 @@ create_unique_plan(Query *root, UniquePath *best_path)
 
 	return plan;
 }
+
+
+/*
+ * create_motion_plan
+ */
+Plan *
+create_motion_plan(Query           *root,
+                   CdbMotionPath   *path)
+{
+    Motion *motion;
+    Plan   *subplan = create_plan(root, path->subpath, path->path.isFinished);
+
+    /* Post-parallelizer takes care of motion in unfinished portion of plan. */
+    if (!path->path.isFinished)
+        return subplan;
+
+    /*
+     * If data is everywhere, no motion is needed; in this case the
+     * CdbMotionPath node was used merely to relabel the subpath
+     * with a specific locus.
+     */
+    if (CdbPathLocus_IsGeneral(path->subpath->locus))
+        return subplan;
+
+    /* Only the needed columns should be projected from base rel. */
+    disuse_physical_tlist(subplan, path->subpath);
+
+    /* Add motion operator. */
+    motion = cdbpathtoplan_create_motion_plan(root, path, subplan);
+
+    copy_path_costsize(&motion->plan, (Path *)path);
+    return (Plan *)motion;
+}                               /* create_motion_plan */
 
 
 /*****************************************************************************
@@ -1481,7 +1514,7 @@ copy_path_costsize(Plan *dest, Path *src)
 	{
 		dest->startup_cost = src->startup_cost;
 		dest->total_cost = src->total_cost;
-		dest->plan_rows = src->parent->rows;
+		dest->plan_rows = cdbpath_rows(src);
 		dest->plan_width = src->parent->width;
 	}
 	else
@@ -1849,7 +1882,7 @@ add_sort_column(AttrNumber colIdx, Oid sortOp,
  * If the input plan type isn't one that can do projections, this means
  * adding a Result node just to do the projection.
  */
-static Sort *
+Sort *
 make_sort_from_pathkeys(Query *root, Plan *lefttree, List *pathkeys)
 {
 	List	   *tlist = lefttree->targetlist;

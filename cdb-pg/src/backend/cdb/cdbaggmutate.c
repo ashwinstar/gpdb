@@ -340,8 +340,7 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 			
 		case AGG_HASHED:
 			plan->lefttree = (Plan*)make_hashed_motion(
-				inner_plan, false, CdbIdentity.numsegments,
-				makeDefaultSegIdxArray(CdbIdentity.numsegments),
+				inner_plan, false, 
 				getHashMotionInfoList(inner_plan, INFOTYPE_LEFTEXPR)
 				);
 			inner_plan->flow = makeFlow(FLOW_PARTITIONED);

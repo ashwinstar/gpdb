@@ -4,6 +4,7 @@
  *	  Post-processing of a completed plan tree: fix references to subplan
  *	  vars, and compute regproc values for operators
  *
+ * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -171,8 +172,6 @@ set_plan_references(Plan *plan, List *rtable)
 		case T_Sort:
 		case T_Unique:
 		case T_SetOp:
-		case T_Motion:
-
 			/*
 			 * These plan types don't actually bother to evaluate their
 			 * targetlists or quals (because they just return their
@@ -225,7 +224,20 @@ set_plan_references(Plan *plan, List *rtable)
 			foreach(l, ((Append *) plan)->appendplans)
 				set_plan_references((Plan *) lfirst(l), rtable);
 			break;
+        case T_Motion:
+            {
+                Motion *motion = (Motion *)plan;
+                motion->hashExpr = join_references(motion->hashExpr,
+                                                   rtable,
+                                                   motion->plan.lefttree->targetlist,
+                                                   NIL,
+                                                   (Index) 0,
+                                                   false);
+                fix_expr_references(plan, (Node *)motion->hashExpr);
+            }
+            break;
 		default:
+            Assert(false);
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) nodeTag(plan));
 			break;

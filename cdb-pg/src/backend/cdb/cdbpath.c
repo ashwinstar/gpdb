@@ -17,9 +17,12 @@
 #include "optimizer/paths.h"    /* compare_pathkeys() */
 
 #include "cdb/cdbllize.h"       /* makeFlow() */
-#include "cdb/cdbvars.h"        /* CdbIdentity */
 
 #include "cdb/cdbpath.h"        /* me */
+
+#ifdef small                    /* <socket.h> might #define small */
+#undef small                    /*  but I want it for a variable name */
+#endif
 
 
 /* Globals */
@@ -27,47 +30,13 @@ Cost        cdb_motion_tuple_cost   = 0.0;
 
 
 /*
- * cdbpath_add_flow_to_plan
- */
-void
-cdbpath_add_flow_to_plan(Query *root,
-                         Path  *path,
-                         Plan  *plan)
-{
-    Flow       *flow;
-    
-    if (CdbPathLocus_IsRoot(path->locus))
-    {
-        flow = makeFlow(FLOW_SINGLETON);
-        flow->segindex = -1;
-    }
-    else if (CdbPathLocus_IsReplicated(path->locus) ||
-             CdbPathLocus_IsGeneral(path->locus))
-    {
-        flow = makeFlow(FLOW_REPLICATED);
-    }
-    else if (CdbPathLocus_IsHashed(path->locus) ||
-             CdbPathLocus_IsHashedOJ(path->locus))
-    {
-        flow = makeFlow(FLOW_PARTITIONED);
-        flow->hashExpr = cdbpathlocus_get_partkey_exprs(path->locus,
-                                                        path->parent->relids);
-    }
-    else
-        Assert(false);
-    
-    plan->flow = flow;
-}                               /* cdbpath_add_flow_to_plan */
-
-
-/*
  * cdbpath_create_motion_path
- *    Returns a Path that delivers the subpath result to the 
- *    given locus, or NULL if it can't be done.  
+ *    Returns a Path that delivers the subpath result to the
+ *    given locus, or NULL if it can't be done.
  */
 Path *
-cdbpath_create_motion_path(Path            *subpath,    
-                           List            *pathkeys,  
+cdbpath_create_motion_path(Path            *subpath,
+                           List            *pathkeys,
                            CdbPathLocus     locus)
 {
     CdbMotionPath      *pathnode;
@@ -112,11 +81,25 @@ cdbpath_create_motion_path(Path            *subpath,
         pathkeys = NIL;
     }
 
-    /* Don't materialize before motion. */
-    if (IsA(subpath, MaterialPath))
-        subpath = ((MaterialPath *)subpath)->subpath;
+    /* NB: If data is everywhere, no motion is needed; the CdbMotionPath
+     * node merely assigns the subpath a specific locus.
+     */
 
-    /* CDB TODO: If subpath->motionHazard, materialize before motion. */
+    /* Execution might deadlock if a Merge Receive is fed by a lower
+     * Motion operator, unless the two Motion operators are decoupled
+     * by an intervening slackening operator such as Material, Hash or Sort.
+     */
+    if (!CdbPathLocus_IsGeneral(subpath->locus))
+    {
+        /* Materialize before motion if needed to avoid deadlock hazard. */
+        if (pathkeys &&
+            subpath->motionHazard)
+            subpath = (Path *)create_material_path(subpath->parent, subpath);
+
+        /* Otherwise don't materialize before motion. */
+        else if (IsA(subpath, MaterialPath))
+            subpath = ((MaterialPath *)subpath)->subpath;
+    }
 
     /* Allocate CdbMotionPath node. */
     pathnode = makeNode(CdbMotionPath);
@@ -124,6 +107,8 @@ cdbpath_create_motion_path(Path            *subpath,
     pathnode->path.parent = subpath->parent;
     pathnode->path.locus = locus;
     pathnode->path.pathkeys = pathkeys;
+    pathnode->path.isFinished = subpath->isFinished;
+    pathnode->path.motionHazard = subpath->motionHazard;
     pathnode->subpath = subpath;
     pathnode->hashToSelfOnly = hashToSelfOnly;
 
@@ -132,37 +117,18 @@ cdbpath_create_motion_path(Path            *subpath,
     pathnode->path.memory = subpath->memory;
 
     /*
-     * If data is everywhere, no motion is needed; but the 
-     * CdbMotionPath node can be used to relabel the subpath
-     * with a specific locus.
-     */
-    if (CdbPathLocus_IsGeneral(subpath->locus))
-    {
-        pathnode->path.motionHazard = subpath->motionHazard;
-        pathnode->path.isFinished = false;      /* CDB TODO: fix */
-    }
-
-    /*
      * Cost of motion
      */
-    else
+    if (!CdbPathLocus_IsGeneral(subpath->locus))
     {
         Cost    cost_per_row = (cdb_motion_tuple_cost > 0.0)
                              ? cdb_motion_tuple_cost
                              : cpu_tuple_cost;
-        double  rows = IsA(subpath, UniquePath)
-                     ? ((UniquePath *)subpath)->rows
-                     : subpath->parent->rows;
-
-        /* Does each receiver get whole rel? */
-        if (CdbPathLocus_IsRoot(locus) ||
-            CdbPathLocus_IsReplicated(locus))
-            rows *= CdbIdentity.numsegments;
+        double  rows = cdbpath_rows(&pathnode->path);
 
         pathnode->path.total_cost += rows * cost_per_row;
 
         pathnode->path.motionHazard = true;
-        pathnode->path.isFinished = false;      /* CDB TODO: fix */
     }
 
     return (Path *)pathnode;
@@ -180,7 +146,7 @@ cdbpath_create_motion_path(Path            *subpath,
  *          find_mergeclauses_for_pathkeys() in pathkeys.c
  */
 
-typedef struct 
+typedef struct
 {
     Query          *root;
     List           *mergeclause_list;
@@ -191,7 +157,7 @@ typedef struct
 
 
 static bool
-cdbpath_match_preds_to_partkey_tail(CdbpathMatchPredsContext   *ctx,     
+cdbpath_match_preds_to_partkey_tail(CdbpathMatchPredsContext   *ctx,
                                     ListCell                   *partkeycell)
 {
     List       *copathkey = NIL;
@@ -215,16 +181,16 @@ cdbpath_match_preds_to_partkey_tail(CdbpathMatchPredsContext   *ctx,
         }
         else if (CdbPathLocus_IsHashedOJ(ctx->locus))
         {
-            if (list_member_ptr(sublist, rinfo->left_pathkey)) 
+            if (list_member_ptr(sublist, rinfo->left_pathkey))
                 copathkey = rinfo->right_pathkey;
             else if (rinfo->left_pathkey != rinfo->right_pathkey &&
-                     list_member_ptr(sublist, rinfo->right_pathkey)) 
+                     list_member_ptr(sublist, rinfo->right_pathkey))
                 copathkey = rinfo->left_pathkey;
         }
 
         if (copathkey)
-            break; 
-    }                
+            break;
+    }
 
     /* Fail if didn't find an equijoin predicate on this partkey item. */
     if (!copathkey)
@@ -240,7 +206,7 @@ cdbpath_match_preds_to_partkey_tail(CdbpathMatchPredsContext   *ctx,
     {
         if (!cdbpath_match_preds_to_partkey_tail(ctx, partkeycell))
             return false;
-    } 
+    }
 
     /* Success!  Matched all items.  Return co-locus if requested. */
     if (ctx->colocus)
@@ -283,7 +249,7 @@ cdbpath_match_preds_to_partkey(Query           *root,
     ctx.locus               = locus;
     ctx.colocus             = colocus;
     ctx.colocus_eq_locus    = true;
-    
+
     return cdbpath_match_preds_to_partkey_tail(&ctx, list_head(locus.partkey));
 }                               /* cdbpath_match_preds_to_partkey */
 
@@ -291,7 +257,7 @@ cdbpath_match_preds_to_partkey(Query           *root,
 /*
  * cdbpath_match_preds_to_both_partkeys
  *
- * Returns true if the mergeclause_list contains equijoin 
+ * Returns true if the mergeclause_list contains equijoin
  * predicates between each item of the outer_locus partkey and
  * the corresponding item of the inner_locus partkey.
  *
@@ -309,7 +275,7 @@ cdbpath_match_preds_to_both_partkeys(Query         *root,
     ListCell   *innercell;
 
     if (!mergeclause_list ||
-        !outer_locus.partkey || 
+        !outer_locus.partkey ||
         !inner_locus.partkey ||
         CdbPathLocus_Degree(outer_locus) != CdbPathLocus_Degree(inner_locus))
         return false;
@@ -326,22 +292,22 @@ cdbpath_match_preds_to_both_partkeys(Query         *root,
             if (!rinfo->left_pathkey)
                 cache_mergeclause_pathkeys(root, rinfo);
 
-            /* Skip predicate if neither side matches outer partkey item. */ 
+            /* Skip predicate if neither side matches outer partkey item. */
             if (CdbPathLocus_IsHashed(outer_locus))
             {
                 if (outersublist != rinfo->left_pathkey &&
                     outersublist != rinfo->right_pathkey)
                     continue;
             }
-            else 
+            else
             {
                 Assert(CdbPathLocus_IsHashedOJ(outer_locus));
                 if (!list_member_ptr(outersublist, rinfo->left_pathkey) &&
-                    !list_member_ptr(outersublist, rinfo->right_pathkey)) 
+                    !list_member_ptr(outersublist, rinfo->right_pathkey))
                     continue;
-            } 
+            }
 
-            /* Skip predicate if neither side matches inner partkey item. */ 
+            /* Skip predicate if neither side matches inner partkey item. */
             if (innersublist == outersublist)
             {}                  /* do nothing */
             else if (CdbPathLocus_IsHashed(inner_locus))
@@ -350,13 +316,13 @@ cdbpath_match_preds_to_both_partkeys(Query         *root,
                     innersublist != rinfo->right_pathkey)
                     continue;
             }
-            else 
+            else
             {
                 Assert(CdbPathLocus_IsHashedOJ(inner_locus));
                 if (!list_member_ptr(innersublist, rinfo->left_pathkey) &&
-                    !list_member_ptr(innersublist, rinfo->right_pathkey)) 
+                    !list_member_ptr(innersublist, rinfo->right_pathkey))
                     continue;
-            } 
+            }
 
             /* Found equijoin between outer partkey item & inner partkey item */
             break;
@@ -366,14 +332,14 @@ cdbpath_match_preds_to_both_partkeys(Query         *root,
         if (!rcell)
             return false;
     }
-    return true;               
+    return true;
 }                               /* cdbpath_match_preds_to_both_partkeys */
 
 
 /*
  * cdbpath_partkeys_from_preds
  *
- * Makes a CdbPathLocus for repartitioning, driven by 
+ * Makes a CdbPathLocus for repartitioning, driven by
  * the equijoin predicates in the mergeclause_list.
  * Returns true if successful, or false if no usable equijoin predicates.
  *
@@ -383,7 +349,7 @@ cdbpath_match_preds_to_both_partkeys(Query         *root,
  */
 static bool
 cdbpath_partkeys_from_preds(Query          *root,
-                            List           *mergeclause_list, 
+                            List           *mergeclause_list,
                             Path           *a_path,
                             CdbPathLocus   *a_locus,            /* OUT */
                             CdbPathLocus   *b_locus)            /* OUT */
@@ -459,176 +425,221 @@ cdbpath_partkeys_from_preds(Query          *root,
  * cdbpath_motion_for_join
  *
  * Decides where a join should be done.  Adds Motion operators atop
- * the subpaths if needed to deliver their results to the join locus.  
+ * the subpaths if needed to deliver their results to the join locus.
  * Returns the join locus if ok, or a null locus otherwise.
  *
  * mergeclause_list is a List of RestrictInfo.  Its members are
- * the equijoin predicates between the outer and inner rel.  
+ * the equijoin predicates between the outer and inner rel.
  * It comes from select_mergejoin_clauses() in joinpath.c.
  */
-CdbPathLocus
-cdbpath_motion_for_join(Query  *root,
-                        Path  **outer_path,         /* INOUT */
-                        Path  **inner_path,         /* INOUT */
-                        List   *mergeclause_list,   
-                        List   *outer_pathkeys,
-                        List   *inner_pathkeys,
-                        bool    must_preserve_order)
+
+typedef struct
 {
-    Path           *outer = *outer_path;
-    Path           *inner = *inner_path;
-    CdbPathLocus    outer_move_to;
-    CdbPathLocus    inner_move_to;
+        CdbPathLocus    locus;
+        CdbPathLocus    move_to;
+        double          rows;
+        double          bytes;
+        Path           *path;
+        bool            oj_preserved;
+        bool            require_existing_order;
+} CdbpathMfjRel;
 
-    CdbPathLocus_MakeNull(&outer_move_to);  
-    CdbPathLocus_MakeNull(&inner_move_to);
+CdbPathLocus
+cdbpath_motion_for_join(Query      *root,
+                        JoinType    jointype,
+                        Path      **outer_path,         /* INOUT */
+                        Path      **inner_path,         /* INOUT */
+                        List       *mergeclause_list,
+                        List       *outer_pathkeys,
+                        List       *inner_pathkeys,
+                        bool        outer_require_existing_order,
+                        bool        inner_require_existing_order)
+{
+    CdbpathMfjRel   outer;
+    CdbpathMfjRel   inner;
 
-    /* Motion not needed if either rel is everywhere (e.g. a constant). */
-    if (CdbPathLocus_IsGeneral(outer->locus))
-        return inner->locus;
-    else if (CdbPathLocus_IsGeneral(inner->locus))
-        return outer->locus;
+    outer.path  = *outer_path;
+    inner.path  = *inner_path;
+    outer.locus = outer.path->locus;
+    inner.locus = inner.path->locus;
+    CdbPathLocus_MakeNull(&outer.move_to);
+    CdbPathLocus_MakeNull(&inner.move_to);
+    outer.oj_preserved = (jointype == JOIN_FULL) || (jointype == JOIN_LEFT);
+    inner.oj_preserved = (jointype == JOIN_FULL) || (jointype == JOIN_RIGHT);
 
-    /* Join must be done on qDisp if either rel is on qDisp. */
-    else if (CdbPathLocus_IsRoot(outer->locus))
-        inner_move_to = outer->locus;
-    else if (CdbPathLocus_IsRoot(inner->locus))
-        outer_move_to = inner->locus;   /* can merge to preserve ordering */
+    /*
+     * Caller can specify an ordering for each source path that is
+     * the same as or weaker than the path's existing ordering.
+     * For merge join we must maintain the given ordering, if any.
+     * It is preferred but not required for other join methods.
+     */
+    outer.require_existing_order = outer_require_existing_order;
+    inner.require_existing_order = inner_require_existing_order;
 
-    /* Motion not needed if either rel is replicated. */
-    else if (CdbPathLocus_IsReplicated(outer->locus))
-        return inner->locus;
-    else if (CdbPathLocus_IsReplicated(inner->locus))
-        return outer->locus;
+    /*
+     * Join must be done sequentially on qDisp if either source is on qDisp.
+     * Ordering can be maintained, if requested, by using Merge Receive.
+     */
+    if (CdbPathLocus_IsRoot(outer.locus))
+        inner.move_to = outer.locus;
+    else if (CdbPathLocus_IsRoot(inner.locus))
+        outer.move_to = inner.locus;
 
-    /* No motion if partitioned alike and joining on the partitioning keys. */
-    else if (cdbpath_match_preds_to_both_partkeys(root, mergeclause_list, 
-                                                  outer->locus, inner->locus))
-        return cdbpathlocus_join(outer->locus, inner->locus);
+    /*
+     * Motion not needed if either source is everywhere (e.g. a constant).
+     */
+    else if (CdbPathLocus_IsGeneral(outer.locus))
+    {
+        if (outer.oj_preserved &&
+            !CdbPathLocus_IsGeneral(inner.locus))
+        {
+            CdbPathLocus_MakeRoot(&outer.move_to);
+            CdbPathLocus_MakeRoot(&inner.move_to);
+        }
+        else
+            return inner.locus;
+    }
+    else if (CdbPathLocus_IsGeneral(inner.locus))
+    {
+        if (inner.oj_preserved &&
+            !CdbPathLocus_IsGeneral(outer.locus))
+        {
+            CdbPathLocus_MakeRoot(&outer.move_to);
+            CdbPathLocus_MakeRoot(&inner.move_to);
+        }
+        else
+            return outer.locus;
+    }
 
-    /* Replicate or redistribute one rel or both.  First get rel sizes. */
+    /*
+     * Replicated paths shouldn't occur loose, for now.
+     */
+    else if (CdbPathLocus_IsReplicated(outer.locus) ||
+             CdbPathLocus_IsReplicated(inner.locus))
+    {
+        Assert(false);
+        goto fail;
+    }
+
+    /*
+     * No motion if partitioned alike and joining on the partitioning keys.
+     */
+    else if (cdbpath_match_preds_to_both_partkeys(root, mergeclause_list,
+                                                  outer.locus, inner.locus))
+        return cdbpathlocus_join(outer.locus, inner.locus);
+
+    /*
+     * Redistribute or replicate one source or both.
+     */
     else
     {
-        double          outer_rows = IsA(outer, UniquePath) 
-                                     ? ((UniquePath *)outer)->rows
-                                     : outer->parent->rows;
-        double          outer_bytes = outer_rows * outer->parent->width;
-        double          inner_rows = IsA(inner, UniquePath) 
-                                     ? ((UniquePath *)inner)->rows
-                                     : inner->parent->rows;
-        double          inner_bytes = inner_rows * inner->parent->width;
-        double          large_bytes;
-        double          small_bytes;
-        Path           *large;
-        Path           *small;
-        CdbPathLocus    large_move_to;
-        CdbPathLocus    small_move_to;
-        bool            large_preserve_order;
-        bool            small_preserve_order;
+        CdbpathMfjRel  *large;
+        CdbpathMfjRel  *small;
 
-        CdbPathLocus_MakeNull(&large_move_to);  
-        CdbPathLocus_MakeNull(&small_move_to);
+        /* Get rel sizes. */
+        outer.rows  = cdbpath_rows(outer.path);
+        outer.bytes = outer.rows * outer.path->parent->width;
+        inner.rows  = cdbpath_rows(inner.path);
+        inner.bytes = inner.rows * inner.path->parent->width;
 
         /* Which rel is bigger? */
-        if (outer_bytes < inner_bytes)
-        {
-            large = inner;
-            small = outer;
-            large_bytes = inner_bytes;
-            small_bytes = outer_bytes;
-            large_preserve_order = must_preserve_order && inner_pathkeys;
-            small_preserve_order = must_preserve_order && outer_pathkeys;
-        }
-        else
-        {
-            large = outer;
-            small = inner;
-            large_bytes = outer_bytes;
-            small_bytes = inner_bytes;
-            large_preserve_order = must_preserve_order && outer_pathkeys;
-            small_preserve_order = must_preserve_order && inner_pathkeys;
-        }
-        
+        small = (outer.bytes < inner.bytes) ? &outer : &inner;
+        large = (outer.bytes < inner.bytes) ? &inner : &outer;
+
         /* If joining on larger rel's partitioning key, redistribute smaller. */
-        if (!small_preserve_order &&
-            cdbpath_match_preds_to_partkey(root, 
-                                           mergeclause_list, 
+        if (!small->require_existing_order &&
+            cdbpath_match_preds_to_partkey(root,
+                                           mergeclause_list,
                                            large->locus,
-                                           &small_move_to))    /* OUT */
+                                           &small->move_to))    /* OUT */
         {}
 
-        /* Replicate smaller rel if it appears likely to fit in memory. */
-        else if (!small_preserve_order &&
-                 small_bytes * CdbIdentity.numsegments < 0.5 * work_mem * 1024.0)
-            CdbPathLocus_MakeReplicated(&small_move_to);
+        /* Replicate smaller rel if cheaper than redistributing larger rel.
+         * But don't replicate a rel that is to be preserved in outer join.
+         */
+        else if (!small->require_existing_order &&
+                 !small->oj_preserved &&
+                 small->bytes * CdbIdentity.numsegments < large->bytes)
+            CdbPathLocus_MakeReplicated(&small->move_to);
 
         /* If joining on smaller rel's partitioning key, redistribute larger. */
-        else if (!large_preserve_order &&
-                 cdbpath_match_preds_to_partkey(root, 
-                                                mergeclause_list, 
+        else if (!large->require_existing_order &&
+                 cdbpath_match_preds_to_partkey(root,
+                                                mergeclause_list,
                                                 small->locus,
-                                                &large_move_to))    /* OUT */
+                                                &large->move_to))   /* OUT */
         {}
+
+        /* Replicate smaller rel if cheaper than redistributing both rels. */
+        else if (!small->require_existing_order &&
+                 !small->oj_preserved &&
+                 small->bytes * CdbIdentity.numsegments < large->bytes + small->bytes)
+            CdbPathLocus_MakeReplicated(&small->move_to);
 
         /* Redistribute both rels on equijoin cols. */
-        else if (!must_preserve_order &&
-                 cdbpath_partkeys_from_preds(root, 
+        else if (!small->require_existing_order &&
+                 !large->require_existing_order &&
+                 cdbpath_partkeys_from_preds(root,
                                              mergeclause_list,
-                                             large,
-                                             &large_move_to,
-                                             &small_move_to))
+                                             large->path,
+                                             &large->move_to,
+                                             &small->move_to))
         {}
 
-        /* Last resort if no usable equijoin preds: Move both rels to qDisp. */
-        else
-        {
-            CdbPathLocus_MakeRoot(&large_move_to);
-            CdbPathLocus_MakeRoot(&small_move_to);
-        }
+        /* No usable equijoin preds.  Replicate smaller rel if possible. */
+        /* CDB TODO: Consider number of seg dbs per host. */
+        else if (!small->require_existing_order &&
+                 !small->oj_preserved)
+            CdbPathLocus_MakeReplicated(&small->move_to);
 
-        if (outer == large)
-        {
-            outer_move_to = large_move_to;
-            inner_move_to = small_move_to;
-        }
+        /* Last resort: Move both rels to qDisp. */
         else
         {
-            outer_move_to = small_move_to;
-            inner_move_to = large_move_to;
+            CdbPathLocus_MakeRoot(&outer.move_to);
+            CdbPathLocus_MakeRoot(&inner.move_to);
         }
     }
 
-    /* Move outer. */
-    if (!CdbPathLocus_IsNull(outer_move_to))
+    /*
+     * Move outer.
+     */
+    if (!CdbPathLocus_IsNull(outer.move_to))
     {
-        outer = cdbpath_create_motion_path(outer, outer_pathkeys, outer_move_to);
-        if (!outer)
-            goto fail;          /* can't join these two */
-        if (must_preserve_order &&
-            outer_pathkeys &&
-            !outer->pathkeys)
+        outer.path = cdbpath_create_motion_path(outer.path,
+                                                outer_pathkeys,
+                                                outer.move_to);
+        if (!outer.path)            /* fail if motion not feasible */
+            goto fail;
+        if (outer.require_existing_order &&
+            outer.path->pathkeys != outer_pathkeys)
+            goto fail;              /* fail if motion loses required ordering */
+    }
+
+    /*
+     * Move inner.
+     */
+    if (!CdbPathLocus_IsNull(inner.move_to))
+    {
+        inner.path = cdbpath_create_motion_path(inner.path,
+                                                inner_pathkeys,
+                                                inner.move_to);
+        if (!inner.path)
+            goto fail;
+        if (inner.require_existing_order &&
+            inner.path->pathkeys != inner_pathkeys)
             goto fail;
     }
 
-    /* Move inner. */
-    if (!CdbPathLocus_IsNull(inner_move_to))
-    {
-        inner = cdbpath_create_motion_path(inner, inner_pathkeys, inner_move_to);
-        if (!inner)
-            goto fail;          /* can't join these two */
-        if (must_preserve_order &&
-            inner_pathkeys &&
-            !inner->pathkeys)
-            goto fail;
-    }
+    /*
+     * ok to join
+     */
+    *outer_path = outer.path;
+    *inner_path = inner.path;
+    return cdbpathlocus_join(outer.path->locus, inner.path->locus);
 
-    *outer_path = outer;
-    *inner_path = inner;
-    return cdbpathlocus_join(outer->locus, inner->locus);   /* ok to join */
-
-fail:
-    CdbPathLocus_MakeNull(&outer_move_to);  
-    return outer_move_to;
+fail:                           /* can't do this join */
+    CdbPathLocus_MakeNull(&outer.move_to);
+    return outer.move_to;
 }                               /* cdbpath_motion_for_join */
 
 

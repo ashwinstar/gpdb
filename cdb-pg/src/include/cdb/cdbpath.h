@@ -12,28 +12,53 @@
 #ifndef CDBPATH_H
 #define CDBPATH_H
 
+#include "cdb/cdbvars.h"        /* CdbIdentity */
+
 
 /* globals */
 extern Cost     cdb_motion_tuple_cost;
 
 
-void
-cdbpath_add_flow_to_plan(Query *root,
-                         Path  *path,
-                         Plan  *plan);
-
 Path *
-cdbpath_create_motion_path(Path            *subpath,    
-                           List            *pathkeys,   
+cdbpath_create_motion_path(Path            *subpath,
+                           List            *pathkeys,
                            CdbPathLocus     locus);
 
 CdbPathLocus
-cdbpath_motion_for_join(Query  *root,
-                        Path  **outer_path,         /* INOUT */
-                        Path  **inner_path,         /* INOUT */
-                        List   *mergeclause_list,   
-                        List   *outer_pathkeys,
-                        List   *inner_pathkeys,
-                        bool    must_preserve_order);
+cdbpath_motion_for_join(Query      *root,
+                        JoinType    jointype,
+                        Path      **outer_path,         /* INOUT */
+                        Path      **inner_path,         /* INOUT */
+                        List       *mergeclause_list,
+                        List       *outer_pathkeys,
+                        List       *inner_pathkeys,
+                        bool        outer_require_existing_order,
+                        bool        inner_require_existing_order);
+
+/*
+ * cdbpath_rows
+ *
+ * Returns a Path's estimated number of result rows.
+ */
+static __inline__ double
+cdbpath_rows(Path *path)
+{
+    double rows;
+
+    if (IsA(path, UniquePath))
+        rows = ((UniquePath *)path)->rows;
+    else
+        rows = path->parent->rows;
+
+    /* Just one partition, or whole rel? */
+    if (CdbPathLocus_IsRoot(path->locus) ||
+        CdbPathLocus_IsReplicated(path->locus))
+    {
+        if (CdbIdentity.numsegments > 1)
+            rows *= CdbIdentity.numsegments;
+    }
+
+    return rows;
+}                               // cdbpath_rows
 
 #endif   /* CDBPATH_H */

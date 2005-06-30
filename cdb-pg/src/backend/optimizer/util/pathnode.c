@@ -278,7 +278,7 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 
     if (!new_path)
         return;
-    
+
     /*
 	 * Loop to check proposed new path against old paths.  Note it is
 	 * possible for more than one old path to be tossed out because
@@ -413,7 +413,7 @@ create_seqscan_path(Query *root, RelOptInfo *rel)
 	pathnode->pathtype = T_SeqScan;
 	pathnode->parent = rel;
 	pathnode->pathkeys = NIL;	/* seqscan has unordered result */
-    
+
     pathnode->locus = cdbpathlocus_from_baserel(root, rel);
     pathnode->motionHazard = false;
     pathnode->isFinished = true;
@@ -549,12 +549,12 @@ create_append_path(RelOptInfo *rel, List *subpaths)
 			pathnode->path.startup_cost = subpath->startup_cost;
 		pathnode->path.total_cost += subpath->total_cost;
 
-        /* 
-         * CDB: At present this function is called only when combining rel 
+        /*
+         * CDB: At present this function is called only when combining rel
          * scans in an inheritance tree.  Allow inheritance on root only.
          */
-        if (l == list_head(subpaths))	            
-            pathnode->path.locus = subpath->locus;  
+        if (l == list_head(subpaths))
+            pathnode->path.locus = subpath->locus;
         if (!CdbPathLocus_IsRoot(subpath->locus))
             ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
                             errmsg("Distributed tables cannot use inheritance")));
@@ -628,14 +628,14 @@ create_material_path(RelOptInfo *rel, Path *subpath)
 	pathnode->path.pathkeys = subpath->pathkeys;
 
     pathnode->path.locus = subpath->locus;
-    pathnode->path.motionHazard = false;    
+    pathnode->path.motionHazard = false;
     pathnode->path.isFinished = subpath->isFinished;
 
 	pathnode->subpath = subpath;
 
 	cost_material(&pathnode->path,
 				  subpath->total_cost,
-				  rel->rows,
+				  cdbpath_rows(subpath),
 				  rel->width);
 
 	return pathnode;
@@ -920,7 +920,7 @@ create_subqueryscan_path(RelOptInfo *rel, List *pathkeys)
     /* CDB TODO: handle subquery */
     CdbPathLocus_MakeRoot(&pathnode->locus);
     pathnode->motionHazard = false;
-    pathnode->isFinished = false;  
+    pathnode->isFinished = false;
 
 	cost_subqueryscan(pathnode, rel);
 
@@ -979,14 +979,16 @@ create_nestloop_path(Query *root,
 {
 	NestPath       *pathnode;
     CdbPathLocus    join_locus;
-    
+
     /* Add motion nodes above subpaths and decide where to join. */
     join_locus = cdbpath_motion_for_join(root,
-                                         &outer_path,       /* INOUT */      
+                                         jointype,
+                                         &outer_path,       /* INOUT */
                                          &inner_path,       /* INOUT */
-                                         mergeclause_list,  
+                                         mergeclause_list,
                                          pathkeys,
                                          NIL,
+                                         false,
                                          false);
     if (CdbPathLocus_IsNull(join_locus))
         return NULL;
@@ -1010,7 +1012,7 @@ create_nestloop_path(Query *root,
 
     pathnode->path.locus = join_locus;
     pathnode->path.motionHazard = outer_path->motionHazard || inner_path->motionHazard;
-    //pathnode->path.isFinished = outer_path->isFinished && inner_path->isFinished;
+    pathnode->path.isFinished = outer_path->isFinished && inner_path->isFinished;
 
 	cost_nestloop(pathnode, root);
 
@@ -1049,46 +1051,54 @@ create_mergejoin_path(Query *root,
 {
     MergePath      *pathnode;
     CdbPathLocus    join_locus;
-    List           *osk = NIL;
-    List           *isk = NIL;
+    List           *outermotionkeys;
+    List           *innermotionkeys;
 
-    /* 
-     * If subpaths have useful ordering, and motion is needed, request
-     * order-preserving motion.  (A request that might not be granted).
+    /*
+     * Do subpaths have useful ordering?
      */
-    if (!outersortkeys)
-        osk = outer_path->pathkeys;
+    if (outersortkeys == NIL)           /* must preserve existing ordering */
+        outermotionkeys = outer_path->pathkeys;
     else if (pathkeys_contained_in(outersortkeys, outer_path->pathkeys))
-        osk = outersortkeys;
-    if (!innersortkeys)
-        isk = inner_path->pathkeys;
+        outermotionkeys = outersortkeys;/* lucky coincidence, already ordered */
+    else                                /* existing order useless; must sort */
+        outermotionkeys = NIL;
+
+    if (innersortkeys == NIL)
+        innermotionkeys = inner_path->pathkeys;
     else if (pathkeys_contained_in(innersortkeys, inner_path->pathkeys))
-        isk = innersortkeys;
+        innermotionkeys = innersortkeys;
+    else
+        innermotionkeys = NIL;
 
-    /* CDB TODO: If motionHazard, materialize smaller input. */
+    /*
+     * CDB TODO: If motionHazard, materialize smaller input.
+     */
 
-    /* 
-     * Add motion nodes above subpaths and decide where to join. 
+    /*
+     * Add motion nodes above subpaths and decide where to join.
      */
     join_locus = cdbpath_motion_for_join(root,
-                                         &outer_path,       /* INOUT */      
+                                         jointype,
+                                         &outer_path,       /* INOUT */
                                          &inner_path,       /* INOUT */
-                                         mergeclauses,  
-                                         osk,
-                                         isk,
-                                         true);     /* must_preserve_order */
+                                         mergeclauses,
+                                         outermotionkeys,
+                                         innermotionkeys,
+                                         outersortkeys == NIL,
+                                         innersortkeys == NIL);
     if (CdbPathLocus_IsNull(join_locus))
         return NULL;
 
 	/*
-	 * Sort is not needed if subpath is already well enough ordered 
-     * and a disordering motion node hasn't been added.
+	 * Sort is not needed if subpath is already well enough ordered and a
+     * disordering motion node (with pathkeys == NIL) hasn't been added.
 	 */
-	if (osk &&
-		osk == outer_path->pathkeys)
+	if (outermotionkeys &&
+		outer_path->pathkeys)
 		outersortkeys = NIL;
-	if (isk &&
-		isk == inner_path->pathkeys)
+	if (innermotionkeys &&
+		inner_path->pathkeys)
 		innersortkeys = NIL;
 
     pathnode = makeNode(MergePath);
@@ -1118,7 +1128,7 @@ create_mergejoin_path(Query *root,
 	pathnode->jpath.path.pathkeys = pathkeys;
     pathnode->jpath.path.locus = join_locus;
     pathnode->jpath.path.motionHazard = outer_path->motionHazard || inner_path->motionHazard;
-    //pathnode->jpath.path.isFinished = outer_path->isFinished && inner_path->isFinished;
+    pathnode->jpath.path.isFinished = outer_path->isFinished && inner_path->isFinished;
 	pathnode->path_mergeclauses = mergeclauses;
 	pathnode->outersortkeys = outersortkeys;
 	pathnode->innersortkeys = innersortkeys;
@@ -1155,11 +1165,13 @@ create_hashjoin_path(Query *root,
 
     /* Add motion nodes above subpaths and decide where to join. */
     join_locus = cdbpath_motion_for_join(root,
-                                         &outer_path,       /* INOUT */      
+                                         jointype,
+                                         &outer_path,       /* INOUT */
                                          &inner_path,       /* INOUT */
-                                         mergeclause_list,  
+                                         mergeclause_list,
                                          NIL,   /* don't care about ordering */
-                                         NIL,               
+                                         NIL,
+                                         false,
                                          false);
     if (CdbPathLocus_IsNull(join_locus))
         return NULL;
@@ -1176,7 +1188,7 @@ create_hashjoin_path(Query *root,
 	pathnode->jpath.path.pathkeys = NIL;
     pathnode->jpath.path.locus = join_locus;
     pathnode->jpath.path.motionHazard = false;  /* outer + inner are materialized */
-    //pathnode->jpath.path.isFinished = outer_path->isFinished && inner_path->isFinished;
+    pathnode->jpath.path.isFinished = outer_path->isFinished && inner_path->isFinished;
 	pathnode->path_hashclauses = hashclauses;
 
 	cost_hashjoin(pathnode, root);

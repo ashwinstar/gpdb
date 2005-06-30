@@ -70,6 +70,8 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbpath.h"        /* cdbpath_rows() */
+
 
 #define LOG2(x)  (log(x) / 0.693147180559945)
 #define LOG6(x)  (log(x) / 1.79175946922805)
@@ -78,11 +80,7 @@
  * Some Paths return less than the nominal number of rows of their parent
  * relations; join nodes need to do this to get the correct input count:
  */
-#define PATH_ROWS(path) \
-	(IsA(path, UniquePath) ? \
-	 ((UniquePath *) (path))->rows : \
-	 (path)->parent->rows)
-
+#define PATH_ROWS(path) (cdbpath_rows(path))
 
 double		effective_cache_size = DEFAULT_EFFECTIVE_CACHE_SIZE;
 double		random_page_cost = DEFAULT_RANDOM_PAGE_COST;

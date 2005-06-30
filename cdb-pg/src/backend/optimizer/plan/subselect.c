@@ -3,6 +3,7 @@
  * subselect.c
  *	  Planning routines for subselects and parameters.
  *
+ * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -1071,6 +1072,11 @@ finalize_plan(Plan *plan, List *rtable,
 							  &context);
 			break;
 
+		case T_Motion:
+			finalize_primnode((Node *) ((Motion *) plan)->hashExpr,
+							  &context);
+			break;
+
 		case T_Limit:
 			finalize_primnode(((Limit *) plan)->limitOffset,
 							  &context);
@@ -1089,6 +1095,7 @@ finalize_plan(Plan *plan, List *rtable,
 			break;
 
 		default:
+            Assert(false);
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) nodeTag(plan));
 	}

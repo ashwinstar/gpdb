@@ -3,7 +3,7 @@
  * cdbllize.h
  *	  definitions for cdbmutate.c utilities
  *
- * Copyright (c) 2004, Metapa
+ * Copyright (c) 2005, greenplum inc
  *
  *
  * IDENTIFICATION
@@ -62,25 +62,21 @@ extern List *getExprListFromTargetList(List *tlist, int numCols, AttrNumber *col
 
 extern Motion *make_motion(Plan *lefttree, MotionType motionType,
 			bool sendToSecondary, bool sendSorted,
-			int numHashSegs, int *hashSegIdx, List *hashExpr,
+			List *hashExpr,
 			int numOutputSegs, int *outputSegIdx,
-			int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators,
-			int numInputSegs, int *inputSegIdx );
+			int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators );
 			
 extern Motion *make_union_motion(Plan *lefttree, bool sendToSecondary, int destSegIndex );
 extern Motion *make_sorted_union_motion(Plan *lefttree, bool sendToSecondary, int destSegIndex,
-								int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators,
-								int numInputSegs, int *inputSegIdx );
+								int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators );
 extern Motion *make_hashed_motion(Plan *lefttree, bool sendToSecondary,
-							int numHashSegs, int *hashSegIdx, List *hashExpr);
+							      List *hashExpr);
 extern Motion *make_sorted_hashed_motion(Plan *lefttree, bool sendToSecondary,
-								int numHashSegs, int *hashSegIdx, List *hashExpr,
-								int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators,
-								int numInputSegs, int *inputSegIdx );
+								List *hashExpr,
+								int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators );
 extern Motion *make_broadcast_motion(Plan *lefttree, bool sendToSecondary);
 extern Motion *make_sorted_broadcast_motion(Plan *lefttree, bool sendToSecondary,
-								int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators,
-								int numInputSegs, int *inputSegIdx );
+								int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators );
 extern void setHashToSelfOnly( Motion *motion );
 extern void setFixedToSelfOnly( Motion *motion );
 

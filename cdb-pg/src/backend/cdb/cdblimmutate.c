@@ -142,9 +142,7 @@ apply_limit_motion(Plan *plan, ApplyMotionState *state)
 		-1,
 		input_plan->flow->numSortCols,
 		input_plan->flow->sortColIdx,
-		input_plan->flow->sortOperators,
-		CdbIdentity.numsegments, 
-		makeDefaultSegIdxArray(CdbIdentity.numsegments)
+		input_plan->flow->sortOperators
 		);
 		
 
