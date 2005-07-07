@@ -16,6 +16,7 @@
 #include "commands/explain.h"
 #include "commands/cdbexec.h"
 #include "executor/executor.h"
+#include "nodes/print.h"
 #include "utils/guc.h"
 #include "utils/elog.h"
 #include "optimizer/planner.h"
@@ -37,10 +38,12 @@ CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
 {
 	Query *query = NULL;
 	Plan *plan = NULL;
+	SliceTable *sliceTable = NULL;
 	ParamListInfo paramLI = NULL;
 	MemoryContext oldctx = NULL, qctx;
 	int i, n;
 	ListCell *pc;
+	char *cstr = NULL;
 	
 	/* tcop shouldn't call unless the role is right! */
 	Assert(Cdb_role == CDB_ROLE_EXECUTE );
@@ -51,20 +54,29 @@ CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
 	
 	/* Deserialize the strings from the CDBEXEC statement. */
 	Assert(stmt->ser_query != NULL );
-	Assert(IsA(stmt->ser_query, String));
-	char *pszQuery = strVal(stmt->ser_query);
-	Assert(pszQuery != NULL );
-	query = (Query *)deserializeNode(pszQuery);
-	pfree(pszQuery);
+	Assert( IsA(stmt->ser_query, String) );
+	cstr = strVal(stmt->ser_query);
+	Assert(cstr != NULL );
+	query = (Query *)deserializeNode(cstr);
+	pfree(cstr);
+	
+	if ( stmt->ser_sliceinfo != NULL )
+	{
+		Assert( IsA(stmt->ser_sliceinfo, String) );
+		cstr = strVal(stmt->ser_sliceinfo);
+		Assert(cstr != NULL);
+		sliceTable = (SliceTable*)deserializeNode(cstr);
+		pfree(cstr);
+	}
 
 	if (query->commandType != CMD_UTILITY)
 	{
 		Assert(stmt->ser_plan != NULL );
 		Assert(IsA(stmt->ser_plan, String));
-		char *pszPlan = strVal(stmt->ser_plan);
-		Assert(pszPlan != NULL );
-		plan = (Plan *)deserializeNode(pszPlan);
-		pfree(pszPlan);
+		cstr = strVal(stmt->ser_plan);
+		Assert(cstr != NULL );
+		plan = (Plan *)deserializeNode(cstr);
+		pfree(cstr);
 
 		/*
 		 * Any parameters were serialized as RemoteParmData nodes.
@@ -132,14 +144,38 @@ CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
 	 */
 	PortalStart(portal, paramLI, ActiveSnapshot);
 	
-	/* TODO: If we're running as a QE and this is an executor-driven
-	 *       portal, we need to do a little surgery on the Estate 
-	 *       before we run the portal.
+	/* 
+	 * If we're running as a QE and this is an executor-driven portal, 
+	 * we need to do a little surgery on the Estate before we run the portal.  
+	 * Our Estate was set up by the call to ExecutorStart in PortalStart, but
+	 * since we're a QE, the slice table wasn't initialized.  Instead, we plug
+	 * in the one from the QD.
 	 */
 	if ( Cdb_role == CDB_ROLE_EXECUTE && portal->queryDesc != NULL )
 	{
+		Node * slice;
 		EState * es = portal->queryDesc->estate;
+		if ( sliceTable == NULL )
+		{
+			ereport( ERROR,
+						(errcode ( ERRCODE_CDB_COMMAND_ERROR ),
+						errmsg("cdbexec plan has empty slice table")
+					));
+		}
+		
+		es->es_sliceTable = sliceTable;
+		es->es_cur_slice_idx = sliceTable->localSlice;
+		slice = list_nth(sliceTable->slices, sliceTable->localSlice);
+		Assert( IsA(slice,Slice) );
+		es->es_cur_root_idx = ((Slice*)slice)->rootIndex;
+		
+		/* TODO Remove this notice. */
 		elog(NOTICE, "QE[%d] patching queryDesc Estate at %lx.", CdbIdentity.segindex, (unsigned long) es);
+		
+		elog_node_display(DEBUG1, 
+						  "local slice table", 
+						  es->es_sliceTable,
+						  Debug_pretty_print);
 	}
 
 	(void) PortalRun(portal, FETCH_ALL, dest, dest, completionTag);

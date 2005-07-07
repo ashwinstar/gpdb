@@ -2576,6 +2576,7 @@ _copyCdbExecStmt(CdbExecStmt *from)
 	COPY_NODE_FIELD(ser_query);
 	COPY_NODE_FIELD(ser_plan);
 	COPY_NODE_FIELD(ser_params);
+	COPY_NODE_FIELD(ser_sliceinfo);
 	
 	return newnode;
 }
@@ -2618,6 +2619,7 @@ _copySliceTable(SliceTable *from)
 	COPY_SCALAR_FIELD(nMotions);
 	COPY_SCALAR_FIELD(nextInitPlan);
 	COPY_SCALAR_FIELD(nSubplans);
+	COPY_SCALAR_FIELD(localSlice);
 	COPY_NODE_FIELD(slices);
 		
 	return newnode;

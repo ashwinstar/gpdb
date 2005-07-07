@@ -1716,6 +1716,7 @@ _readSliceTable(void)
 	READ_INT_FIELD(nMotions);
 	READ_INT_FIELD(nextInitPlan);
 	READ_INT_FIELD(nSubplans);
+	READ_INT_FIELD(localSlice);
 	READ_NODE_FIELD(slices); /* List of Slice* */
 	
 	READ_DONE();

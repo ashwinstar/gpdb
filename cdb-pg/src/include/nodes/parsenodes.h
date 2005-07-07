@@ -1841,6 +1841,7 @@ typedef struct CdbExecStmt
 	Node *		ser_query;		/* Serialized query tree. */
 	Node *		ser_plan;		/* Serialized plan tree. */
 	List *		ser_params;		/* List of serialized ParamInfoData structs. */
+	Node *		ser_sliceinfo;	/* Optional serialized SliceTable. */
 } CdbExecStmt;
 
 

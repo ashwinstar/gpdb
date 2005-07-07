@@ -278,21 +278,24 @@ typedef struct ResultRelInfo
  * This structure represents the global information about a worker process.
  * It is contructed on the entry process (QD) and transmitted as part of
  * the global slice table to the involved QEs.  Note that this is an 
- * immutable, fixed-size structure so it can be held in a contiguous. 
+ * immutable, fixed-size structure so it can be held in a contiguous
+ * array. In the Slice node, however, it is held in a List.
  * ----------------
  */ 
  typedef struct CdbProcess
  {
 	NodeTag type;
 	
-	/* The  fields are estabished at connection (libpq) time and, for
-	 * QEs, are available in the PGconn structure.  Consider replacing
+	/* These fields are estabished at connection (libpq) time and are
+	 * available to the QD in PGconn structure associated with connected
+	 * QE.  It needs to be explicitly transmitted to QE's,  however,
 	 */
 	 
 	char *listenerAddr; /* Interconnect listener IPv4 address, a C-string */
 	int listenerPort; /* Interconnect listener port */
 	
-	/* Unclear about why we need these.
+	/* Unclear about why we need these, however, it is no trouble to carry
+	 * them.
 	 */
 	
 	int contentid;
@@ -393,6 +396,7 @@ typedef struct SliceTable
 	int nMotions;		/* The number Motion nodes in the entire plan */
 	int nextInitPlan;	/* Next available subplan slice index */
 	int nSubplans;		/* The number of subplan slices allocated */
+	int localSlice;		/* Index of the slice to execute. */
  	List *slices;		/* List of slices */
 	
 } SliceTable;

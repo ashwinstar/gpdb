@@ -1466,6 +1466,7 @@ _outCdbExecStmt(StringInfo str, CdbExecStmt *node)
 	WRITE_NODE_FIELD(ser_query);
 	WRITE_NODE_FIELD(ser_plan);
 	WRITE_NODE_FIELD(ser_params);
+	WRITE_NODE_FIELD(ser_sliceinfo);
 }
 
 static void
@@ -1987,6 +1988,7 @@ _outSliceTable(StringInfo str, SliceTable *node)
 	WRITE_INT_FIELD(nMotions);
 	WRITE_INT_FIELD(nextInitPlan);
 	WRITE_INT_FIELD(nSubplans);
+	WRITE_INT_FIELD(localSlice);
 	WRITE_NODE_FIELD(slices); /* List of int */
 }
 

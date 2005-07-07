@@ -215,7 +215,7 @@ static void doNegateFloat(Value *v);
 				opt_distinct opt_definition func_args
 				func_args_list func_as createfunc_opt_list
 				oper_argtypes RuleActionList RuleActionMulti
-				opt_cdb_string_list cdb_string_list
+				opt_cdb_string opt_cdb_string_list cdb_string_list
 				opt_column_list columnList opt_name_list
 				sort_clause opt_sort_clause sortby_list index_params
 				name_list from_clause from_list opt_array_bounds
@@ -4638,17 +4638,18 @@ DeallocateStmt: DEALLOCATE name
 /*****************************************************************************
  *
  *		QUERY :
- *				CDBEXEC query plan [ ( parameter [, ...] ) ]
+ *				CDBEXEC query plan [ ( parameter [, ...] ) ] [ sliceinfo ]
  *
  *****************************************************************************/
 
-CdbExecStmt:	CDBEXEC cdb_string cdb_string opt_cdb_string_list
+CdbExecStmt:	CDBEXEC cdb_string cdb_string opt_cdb_string_list opt_cdb_string
 				{
 					CdbExecStmt *n = makeNode(CdbExecStmt);
 
 					n->ser_query = ($2);
 					n->ser_plan = ($3);
 					n->ser_params = ($4);
+					n->ser_sliceinfo = ($5);
 					$$ = (Node *)n;
 				}
 		;
@@ -4663,6 +4664,11 @@ opt_cdb_string_list:
 cdb_string_list:
 			cdb_string							{ $$ = list_make1($1); }								
 			| cdb_string_list ',' cdb_string	{ $$ = lappend($1, $3); }
+		;
+
+opt_cdb_string:
+			cdb_string							{ $$ = $1; }
+			| /* EMPTY */						{ $$ = NIL; }
 		;
 
 cdb_string:

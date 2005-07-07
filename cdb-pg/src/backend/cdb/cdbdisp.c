@@ -20,6 +20,9 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdbtm.h"
 
+#include "cdb/cdbsrlz.h"
+#include "cdb/cdbsubplan.h"
+
 /*
  * Parameter structure for the DispatchCommand threads
  */
@@ -104,6 +107,9 @@ static void addSegDBToDispatchThreadPool( DispatchCommandParms *ParmsAr, int *se
 static CdbDispatchResults *initCdbDispatchResults(void);
 static void CdbDumpDispatchResult( CdbDispatchResult *result, bool verbose, StringInfo message );
 static void setCancelFlag(void);
+
+static int fillSliceVector(SliceTable *sliceTable, int sliceIndex, int *indexVector, int len, int next);
+
 
 /*
  * Static Variables.  These contain the thread count and array of 
@@ -191,7 +197,7 @@ void CdbDispatchCommandInt( const char *szCommand, DispatchTargetSet targetSet,
     
     /* set result set variables if return of result set is required */
     if (resultSets != NULL)
-        dispatchCommandParmsAr->resultSets = resultSets;
+        dispatchCommandParmsAr->resultSets = (PGresult***) resultSets;
 
 	/*
 	 * Compute the thread count based on how many segdbs were added into the 
@@ -1086,7 +1092,7 @@ bool CdbDoCommandInt( const char *szCommand, DispatchTargetSet targetSet,
 	CdbDispatchResults* results = NULL;
 	bool				rtn		= true;
 	char				*message_do;
-	char				*message_undo;
+
 
 	Assert(szCommand != NULL);
 
@@ -1227,4 +1233,241 @@ void setCancelFlag(void)
 		InterruptPending = true;
 		QueryCancelPending = true;
 	}
+}
+
+
+
+/*
+ * Note that the  slice tree dispatched is the one specified in the EState
+ * of the argument QueryDesc as es_cur_root_slice.
+ */
+void CdbDispatchPlan(QueryDesc *queryDesc)
+{
+	StringInfoData strinfo;
+	ParamListInfo pli;
+	char *squery, *splan, *ssliceinfo;
+	char *cdbexecPrefix;
+	SliceTable *sliceTbl;
+	int rootIdx;
+	int oldLocalSlice;
+	int *sliceVector, nSlices, sliceLim;
+	int i;
+	
+	Assert( Cdb_role == CDB_ROLE_DISPATCH );	
+	Assert( queryDesc != NULL && queryDesc->estate != NULL);
+	
+	/* 
+	 * Later we'll need to operate with the slice table provided via the
+	 * EState structure in the argument QueryDesc.  Cache this information
+	 * locally and assert our expectations about it.  
+	 */
+	sliceTbl = queryDesc->estate->es_sliceTable;
+	rootIdx = queryDesc->estate->es_cur_root_idx;
+	
+	Assert( sliceTbl!=NULL );
+	Assert( rootIdx==0 || ( rootIdx>sliceTbl->nMotions && rootIdx<sliceTbl->nextInitPlan ));
+	
+	/*
+	 * Keep old value so we can restore it.  We use this field as a parameter.
+	 */
+	oldLocalSlice = sliceTbl->localSlice;
+
+	/* 
+	 * Serialize plan and query trees. Build the common prefix of the
+	 * CDBEXEC commands we'll issue.  Note that we're called for a single
+	 * slice tree (corresponding to an initPlan or the main plan), so the
+	 * parameters are fixed and we can include them in the prefix.
+	 */
+	squery = serializeNode((Node *)queryDesc->parsetree);
+	splan = serializeNode((Node *)queryDesc->plantree);
+	
+	Assert(squery != NULL && splan != NULL);
+	
+	initStringInfo( &strinfo );
+	appendStringInfo(&strinfo, "cdbexec '%s' '%s'", squery, splan);
+	
+	pfree(squery);
+	pfree(splan);
+
+
+	/* 
+	 * Start with any external parameters sitting in queryDesc->params.
+	 * Then call addRemoteExecParamsToParamList to add parameters to
+	 * represent the preprocessed initPlan query results.  Mark these with 
+	 * a new paramkind field PARAM_EXEC_REMOTE so as to not interfere with 
+	 * any existing code. 
+	 */
+	pli = addRemoteExecParamsToParamList( 
+			queryDesc->plantree, 
+			queryDesc->params, 
+			queryDesc->estate->es_param_exec_vals, 
+			queryDesc->plantree->nParamExec );
+			
+	 
+	/* 
+	 * Next, continue building the CDBEXEC command by adding all the parameters
+	 * serialized into RemoteParamData structs, which is just a node wrapper 
+	 * around ParamListInfo.
+	 * 
+	 * Add parameters to the cdbexec command by enclosing the whole set with
+	 * ()  and separating individual ones with a comma, so it looks like:
+	 * ('Param1', 'Param2', ...) at the end of the cdbexec command.
+	 */
+	if ( pli != NULL )
+	{
+		bool bFirstTime = true;
+		ParamListInfo q = pli;
+		appendStringInfo(&strinfo, " (");
+		while ( q->kind != PARAM_INVALID )
+		{
+			char *sparms;
+			RemoteParamData *rpd;
+			
+			rpd = makeNode(RemoteParamData);
+			memcpy( &rpd->paramData, q, sizeof(ParamListInfoData) );
+			sparms = serializeNode((Node *)rpd);
+			if ( !bFirstTime )
+				appendStringInfo(&strinfo, ", ");
+			else
+				bFirstTime = false;
+
+			appendStringInfo(&strinfo, " '%s'", sparms);
+
+			pfree(sparms);
+			pfree( rpd );
+			q++;
+		}
+		appendStringInfo(&strinfo, ")");
+		pfree(pli);
+	}
+	
+	/* 
+	 * Hang on to the command so far.  It will serve as the prefix for each
+	 * of the CDBEXEC commands we dispatch.  Clear the buffer for use in 
+	 * constructing the final CDBEXEC command(s).
+	 */
+	cdbexecPrefix = strinfo.data;
+	initStringInfo( &strinfo );
+
+		 
+	/* 
+	 * Traverse the slice tree in sliceTbl rooted at rootIdx and build a
+	 * vector of slice indexes specifying the order of [potential] dispatch.
+	 */
+	sliceLim = list_length(sliceTbl->slices);
+	sliceVector = palloc(sliceLim * sizeof(int));
+	nSlices = fillSliceVector(sliceTbl, rootIdx, sliceVector, sliceLim, 0);
+
+	
+	/*
+	 * Set up the slice info parameter for the calls to CDBEXEC about to be
+	 * dispatched by CDBDispatchCommand. .
+	 * There is a call to CDBDispatchCommand per slice.  Each call
+	 * dispatches the supplied CDBEXEC command to each QE assigned to the 
+	 * slice.  We need to send each QE the correct local slice value and 
+	 * QE list.
+	 *
+	 *	 *, for 
+	 * each slice that requires it (all except, possibly, the root),
+	 * dispatch the command to the specified processes.
+
+	 * The information is packaged in two places: In the argument to the
+	 * function CDBDispatchCommand, and in the serialized CDBEXEC command
+	 * sent to the QEs.
+	 */
+	
+	/* 
+	 * For each slice in the tree...
+	 */
+	for ( i = 0; i < nSlices; i++ )
+	{
+		Slice *slice = (Slice *)list_nth(sliceTbl->slices, sliceVector[i]);
+		
+
+		if ( false ) /* TODO - Is this a slice we should dispatch? */
+		{
+			/* Most slices are dispatched, however, in many  cases the
+			 * root runs only on the QD and is not dispatched to the QEs.
+			 */
+			continue;
+		}
+	
+		/*
+		 * Set up the slice info parameter for this slice and use it to
+		 * construct a finished CDBEXEC command.
+		 */
+		sliceTbl->localSlice = slice->sliceIndex;
+		ssliceinfo = serializeNode((Node *)sliceTbl);
+		appendStringInfo(&strinfo, "%s '%s'", cdbexecPrefix, ssliceinfo);
+		pfree(ssliceinfo);
+		
+		
+		/* 
+		 * TODO - Need to know how to specify target set from CDBProcesses list 
+		 *
+		 * The information In the argument to CDBDispatchCommand must specify
+		 * the same QEs as are carried in the serialized CDBEXEC command. 
+		 * In addition, we need (in case of writers) specify two QE lists
+		 * (primary and mirror).  This could be via extended arguments to 
+		 * or, perhaps, by making two calls, to CDBDispatchCommand.
+		 *
+		 * TODO - Maybe we should call CDBDispatchCommandInt instead.
+		 */
+		DispatchTargetSet set;
+		if ( queryDesc->operation == CMD_SELECT )
+			set = DTS_SEGMENT;
+		else
+			set = DTS_SEGDB;
+	
+		/*
+		 * This call returns after launching the threads that send the command to the appropriate
+		 * segdbs.  It does not wait for them to finish.
+		 */
+		CdbDispatchCommand(strinfo.data, set, NULL, 0, true );
+		
+		pfree(strinfo.data);
+		initStringInfo( &strinfo );
+	}
+}
+
+
+/*
+ * Helper for CdbDispatchPlan
+ *
+ * Add the indexes of the slices in the subtree of the slice table rooted
+ * at the given index in the order in which they should be dispatched. Used
+ * locally in CdbDispatchPlan to decide the order of calls to CdbDispatch. 
+ * 
+ * Arguments:
+ * 
+ *	sliceTable	- slice table
+ *	sliceIndex	- index of the subtree root in slice table
+ *	IndexVector	- index vector under contruction
+ *	len			- number of positions allocated in the index vector
+ *	next		- position at which to write the next index
+ *  
+ * Returns new value of count.
+ */
+int fillSliceVector(SliceTable *sliceTable, int sliceIndex, int *indexVector, int len, int next)
+{
+	int childIndex;
+	ListCell *sublist;
+	Slice *slice = (Slice*)list_nth(sliceTable->slices, sliceIndex);
+	
+	foreach( sublist, slice->children )
+	{
+		childIndex = lfirst_int(sublist);
+		next = fillSliceVector(sliceTable, childIndex, indexVector, len, next);
+	}
+	
+	if ( next >= len )
+	{
+		ereport( ERROR,
+			(errcode ( ERRCODE_CDB_INTERNAL_ERROR ),
+			errmsg("bad slice vector allocation")
+		));
+	}
+	
+	indexVector[next++] = sliceIndex;
+	return next;
 }

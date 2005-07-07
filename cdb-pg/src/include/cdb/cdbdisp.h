@@ -13,6 +13,7 @@
 #ifndef CDBDISP_H
 #define CDBDISP_H
 
+#include "executor/execdesc.h"
 
 /*
  * Enumeration for defining the target subset of all segdbs 
@@ -130,5 +131,9 @@ extern bool CdbDoCommand( const char *szCommand,
 
 extern bool CdbDoCommandInt( const char *szCommand, DispatchTargetSet targetSet, 
                     bool cancelFromBelow, void ***resultSets );
+
+
+extern void CdbDispatchPlan(QueryDesc *queryDesc);
+
                     
 #endif	/* CDBDISP_H */

@@ -317,6 +317,7 @@ ExecutorRun(QueryDesc *queryDesc,
 			
 			char *pszQuery = serializeNode((Node *)queryDesc->parsetree);
 			char *pszPlan = serializeNode((Node *)queryDesc->plantree);
+			char *pszSliceInfo = serializeNode((Node *)estate->es_sliceTable);
 
 			Assert(pszQuery != NULL && pszPlan != NULL);
 
@@ -378,6 +379,27 @@ ExecutorRun(QueryDesc *queryDesc,
 				appendStringInfo(&buffer, ")");
 				pfree(p);
 			}
+			
+			/*
+			 * Here we set up the slice info parameter for the call to CDBEXEC.
+			 *
+			 * *** TODO ***
+			 * This actually needs to be done per QE that we send to in order
+			 * to send each QE the correct local slice value. In other words,
+			 * it must happen inside CdbDispatchCommand.
+			 *
+			 * We need to invent this mechanism. Might just add the slice
+			 * table to CdbDispatchCommand as a parameter.  If null, no new
+			 * behavior.  If non-null, then CdbDispatchCommand iterates and
+			 * concatenates the slice table (with suitable alteration of 
+			 * localSlice for the target).  Probably need to pass in more
+			 * info that now, e.g., INSTEAD of DTS stuff, pass in GANGTYPE
+			 * stuff.
+			 *
+			 * Just for now, however, ...
+			 */
+			appendStringInfo(&buffer, " '%s'", pszSliceInfo);
+			pfree(pszSliceInfo);
 
 			DispatchTargetSet set;
 			if ( operation == CMD_SELECT )
