@@ -667,14 +667,6 @@ create_motion_plan(Query           *root,
     if (!path->path.isFinished)
         return subplan;
 
-    /*
-     * If data is everywhere, no motion is needed; in this case the
-     * CdbMotionPath node was used merely to relabel the subpath
-     * with a specific locus.
-     */
-    if (CdbPathLocus_IsGeneral(path->subpath->locus))
-        return subplan;
-
     /* Only the needed columns should be projected from base rel. */
     disuse_physical_tlist(subplan, path->subpath);
 

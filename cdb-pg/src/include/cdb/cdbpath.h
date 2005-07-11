@@ -20,7 +20,8 @@ extern Cost     cdb_motion_tuple_cost;
 
 
 Path *
-cdbpath_create_motion_path(Path            *subpath,
+cdbpath_create_motion_path(Query           *root,
+                           Path            *subpath,
                            List            *pathkeys,
                            CdbPathLocus     locus);
 

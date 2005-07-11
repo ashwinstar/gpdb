@@ -3,6 +3,7 @@
  * planner.c
  *	  The query optimizer external interface.
  *
+ * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -604,6 +605,7 @@ grouping_planner(Query *parse, double tuple_fraction)
 	Plan	   *result_plan;
 	List	   *current_pathkeys;
 	List	   *sort_pathkeys;
+    Path       *best_path;
 
 	if (parse->setOperations)
 	{
@@ -1119,15 +1121,17 @@ grouping_planner(Query *parse, double tuple_fraction)
 		 */
 		if (sorted_path && !use_hashed_grouping)
 		{
-            if (Debug_print_prelim_plan)    /*CDB*/                                            
-                elog_node_display(DEBUG1, "Path chosen (ordered)", sorted_path, true);      
+            best_path = sorted_path;
+            if (Debug_print_prelim_plan)    /*CDB*/
+                elog_node_display(DEBUG1, "Path chosen (ordered)", best_path, true);
 			result_plan = create_plan(parse, sorted_path, false);
 			current_pathkeys = sorted_path->pathkeys;
 		}
 		else
 		{
-            if (Debug_print_prelim_plan)    /*CDB*/                                        
-                elog_node_display(DEBUG1, "Path chosen (unordered)", cheapest_path, true);  
+            best_path = cheapest_path;
+            if (Debug_print_prelim_plan)    /*CDB*/
+                elog_node_display(DEBUG1, "Path chosen (unordered)", best_path, true);
 			result_plan = create_plan(parse, cheapest_path, false);
 			current_pathkeys = cheapest_path->pathkeys;
 		}

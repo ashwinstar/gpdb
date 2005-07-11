@@ -9,6 +9,7 @@
  * shorn of features like subselects, inheritance, aggregates, grouping,
  * and so on.  (Those are the things planner.c deals with.)
  *
+ * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -25,6 +26,8 @@
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
 #include "optimizer/planmain.h"
+
+#include "cdb/cdbpath.h"        /* cdbpath_rows() */
 
 
 /*--------------------
@@ -211,7 +214,7 @@ query_planner(Query *root, List *tlist, double tuple_fraction,
 			/* Figure cost for sorting */
 			cost_sort(&sort_path, root, root->query_pathkeys,
 					  cheapestpath->total_cost,
-					  final_rel->rows, final_rel->width);
+					  cdbpath_rows(cheapestpath), final_rel->width);
 		}
 
 		if (compare_fractional_path_costs(sortedpath, &sort_path,

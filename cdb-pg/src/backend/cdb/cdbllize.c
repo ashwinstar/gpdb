@@ -461,19 +461,18 @@ prescan_walker(Node *node, PlanProfile *context)
 								goto return_true;
 							popLocals(context);
 							
-                            Assert(!finished);
                             if ( !finished )
 							{
 								plan->flow = pull_up_Flow(plan, subqueryscan->subplan, true);
                                 Assert(plan->flow);
 								/* Don't use expressions from the wrong range table */
 								plan->flow->hashExpr = NIL; 
-							}
 							
-							if ( ((Plan*)node)->flow == NULL || ((Plan*)node)->flow->flotype == FLOW_UNDEFINED )
-							{
-								detail = "Can't characterize flow from SubqueryScan.";
-								break; /* Fail */
+							    if ( ((Plan*)node)->flow == NULL || ((Plan*)node)->flow->flotype == FLOW_UNDEFINED )
+							    {
+								    detail = "Can't characterize flow from SubqueryScan.";
+								    break; /* Fail */
+                                }
 							}
 							
 							goto return_false;

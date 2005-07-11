@@ -77,6 +77,11 @@ cdbpathtoplan_create_motion_plan(Query         *root,
 {
     Motion *motion;
 
+    /* Decorate the subplan with a Flow node telling the plan slicer
+     * what kind of gang will be needed to execute the subplan. 
+     */
+    subplan->flow = cdbpathtoplan_create_flow(root, path->subpath, subplan);
+
     /* Send all tuples to dispatcher... */
     if (CdbPathLocus_IsRoot(path->path.locus))
     {
@@ -118,8 +123,11 @@ cdbpathtoplan_create_motion_plan(Query         *root,
     else
         Assert(false);          /* CDB TODO: raise error here */
 
+    /* Should sender discard rows that hash to other partitions? */
+    if (path->hashToSelfOnly)
+        setHashToSelfOnly(motion);
+
     return motion;
 }                               /* cdbpathtoplan_create_motion_plan */
-
 
 

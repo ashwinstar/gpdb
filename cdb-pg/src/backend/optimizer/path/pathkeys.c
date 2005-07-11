@@ -640,71 +640,6 @@ get_cheapest_fractional_path_for_pathkeys(List *paths,
  ****************************************************************************/
 
 /*
- * cdb_build_distribution_pathkeys
- *	  Build canonicalized pathkeys list for given columns of rel.
- *
- *    Returns a List, of length 'nattrs': each of its members is
- *    a List of one or more PathKeyItem nodes.  The returned List
- *    might contain duplicate entries: this occurs when the
- *    corresponding columns are constrained to be equal.
- *
- *    The caller receives ownership of the returned List, freshly
- *    palloc'ed in the caller's context.  The members of the returned
- *    List are shared and might belong to the caller's context or
- *    other contexts.
- *
- *    The 'sortop' field of each PathKeyItem node is filled in
- *    with the Oid of the sort operator that would be used for a
- *    merge join on an "=" predicate with another column of the
- *    same data type.  We won't actually use the sort operator,
- *    but we store its Oid so that the PathKeyItem will fall
- *    into the same equivalence class (canonical pathkey) as any
- *    other expressions to which our column is related by "="
- *    predicates.  We assume in a temporary fit of optimism
- *    that our hash distribution function implements the same
- *    notion of equality as all these "=" operators.
- */
-List *
-cdb_build_distribution_pathkeys(Query      *root,
-					            RelOptInfo *rel,
-                                int         nattrs,
-                                AttrNumber *attrs)
-{
-	List   *retval = NIL;
-    List   *eq = list_make1(makeString("="));
-    int     i;
-    for (i = 0; i < nattrs; ++i)
-    {
-        Node	       *expr = (Node*)find_indexkey_var(root, rel, attrs[i]);
-        Oid             typeoid;
-        Oid	            eqopoid;
-        Oid             leftsortop;
-        Oid             rightsortop;
-        PathKeyItem    *item;
-        List	       *cpathkey;
-
-        /* Get oid of the "=" operator for the column's data type. */
-        typeoid = exprType(expr);
-        eqopoid = compatible_oper_opid(eq, typeoid, typeoid, true);
-
-        /* Get the corresponding sort operator. */
-        if (eqopoid == InvalidOid ||
-            !op_mergejoinable(eqopoid, &leftsortop, &rightsortop))
-            leftsortop = InvalidOid;
-
-        /* Find or create canonical pathkey for this column. */
-        item = makePathKeyItem(expr, leftsortop, false);
-        cpathkey = make_canonical_pathkey(root, item);
-
-        /* Append to pathkey list for caller. */
-        retval = lappend(retval, cpathkey);
-    }
-    list_free_deep(eq);
-	return retval;
-}                               /* cdb_build_distribution_pathkeys */
-
-
-/*
  * build_index_pathkeys
  *	  Build a pathkeys list that describes the ordering induced by an index
  *	  scan using the given index.  (Note that an unordered index doesn't
@@ -951,6 +886,101 @@ build_join_pathkeys(Query *root,
 	 */
 	return truncate_useless_pathkeys(root, joinrel, outer_pathkeys);
 }
+
+
+/****************************************************************************
+ *		PATHKEYS FOR PARTITIONING
+ ****************************************************************************/
+
+/*
+ * cdb_make_pathkey_for_expr
+ *	  Returns a canonicalized pathkey (a List of PathKeyItem) 
+ *    which represents an equivalence class of expressions 
+ *    that must be equal to the given expression.  
+ *
+ *    The caller specifies the name of the equality operator thus:
+ *          list_make1(makeString("="))
+ *
+ *    The 'sortop' field of the expr's PathKeyItem node is filled
+ *    with the Oid of the sort operator that would be used for a
+ *    merge join with another expr of the same data type, using the
+ *    equality operator whose name is given.  Partitioning doesn't
+ *    itself use the sort operator, but its Oid is needed to
+ *    associate the PathKeyItem with the same equivalence class 
+ *    (canonical pathkey) as any other expressions to which 
+ *    our expr is constrained by compatible merge-joinable 
+ *    equality operators.  (We assume, in what may be a temporary 
+ *    excess of optimism, that our hashed partitioning function 
+ *    implements the same notion of equality as these operators.)
+ */
+static List *
+cdb_make_pathkey_for_expr(Query    *root,
+					      Node     *expr,
+                          List     *eqopname)
+{
+    Oid             typeoid;
+    Oid	            eqopoid;
+    Oid             leftsortop;
+    Oid             rightsortop;
+    PathKeyItem    *item;
+
+    /* Get the expr's data type. */
+    typeoid = exprType(expr);
+
+    /* Get oid of the equality operator applied to two values of that type. */
+    eqopoid = compatible_oper_opid(eqopname, typeoid, typeoid, true);
+
+    /* Get oid of the sort operator that would be used for a
+     * sort-merge equijoin on a pair of exprs of the same type.
+     */ 
+    if (eqopoid == InvalidOid ||
+        !op_mergejoinable(eqopoid, &leftsortop, &rightsortop))
+        leftsortop = InvalidOid;
+
+    /* Find or create canonical pathkey for this expr. */
+    item = makePathKeyItem((Node *)expr, leftsortop, false);
+    return make_canonical_pathkey(root, item);
+}                               /* cdb_make_pathkey_for_expr */
+
+
+/*
+ * cdb_build_distribution_pathkeys
+ *	  Build canonicalized pathkeys list for given columns of rel.
+ *
+ *    Returns a List, of length 'nattrs': each of its members is
+ *    a List of one or more PathKeyItem nodes.  The returned List
+ *    might contain duplicate entries: this occurs when the
+ *    corresponding columns are constrained to be equal.
+ *
+ *    The caller receives ownership of the returned List, freshly
+ *    palloc'ed in the caller's context.  The members of the returned
+ *    List are shared and might belong to the caller's context or
+ *    other contexts.
+ */
+List *
+cdb_build_distribution_pathkeys(Query      *root,
+					            RelOptInfo *rel,
+                                int         nattrs,
+                                AttrNumber *attrs)
+{
+	List   *retval = NIL;
+    List   *eq = list_make1(makeString("="));
+    int     i;
+    for (i = 0; i < nattrs; ++i)
+    {
+        /* Find or create a Var node that references the specified column. */
+        Var    *expr = find_indexkey_var(root, rel, attrs[i]);
+
+        /* Find or create canonical pathkey. */
+        List   *cpathkey = cdb_make_pathkey_for_expr(root, (Node *)expr, eq);
+
+        /* Append to list of pathkeys. */
+        retval = lappend(retval, cpathkey);
+    }
+    list_free_deep(eq);
+	return retval;
+}                               /* cdb_build_distribution_pathkeys */
+
 
 /****************************************************************************
  *		PATHKEYS AND SORT CLAUSES

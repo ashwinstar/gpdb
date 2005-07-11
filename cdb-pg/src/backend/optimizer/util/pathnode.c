@@ -660,13 +660,14 @@ create_unique_path(Query *root, RelOptInfo *rel, Path *subpath)
 	List	   *sub_targetlist;
 	ListCell   *l;
 	int			numCols;
-
-    /* Caller made a mistake if subpath isn't cheapest_total */
-	Assert(subpath == rel->cheapest_total_path);
+    double      subpath_rows;
 
 	/* If result already cached, return it */
-	if (rel->cheapest_unique_path)
-		return (UniquePath *) rel->cheapest_unique_path;
+    if (subpath == rel->cheapest_total_path &&
+        rel->cheapest_unique_path)
+        return (UniquePath *) rel->cheapest_unique_path;
+
+    subpath_rows = cdbpath_rows(subpath);
 
 	/*
 	 * We must ensure path struct is allocated in same context as parent
@@ -685,8 +686,8 @@ create_unique_path(Query *root, RelOptInfo *rel, Path *subpath)
 
     pathnode->path.locus = subpath->locus;
     pathnode->path.motionHazard = subpath->motionHazard;
-    pathnode->path.isFinished = false;  /* CDB TODO: support UniquePath */
-
+    pathnode->path.isFinished = subpath->isFinished;
+                                   
 	/*
 	 * Treat the output as always unsorted, since we don't necessarily
 	 * have pathkeys to represent it.
@@ -706,12 +707,13 @@ create_unique_path(Query *root, RelOptInfo *rel, Path *subpath)
 		if (is_distinct_query(rte->subquery))
 		{
 			pathnode->umethod = UNIQUE_PATH_NOOP;
-			pathnode->rows = rel->rows;
+			pathnode->rows = subpath_rows;
 			pathnode->path.startup_cost = subpath->startup_cost;
 			pathnode->path.total_cost = subpath->total_cost;
 			pathnode->path.pathkeys = subpath->pathkeys;
 
-			rel->cheapest_unique_path = (Path *) pathnode;
+            if (subpath == rel->cheapest_total_path)
+    			rel->cheapest_unique_path = (Path *) pathnode;
 
 			return pathnode;
 		}
@@ -740,12 +742,12 @@ create_unique_path(Query *root, RelOptInfo *rel, Path *subpath)
 	 */
 	if (sub_targetlist)
 	{
-		pathnode->rows = estimate_num_groups(root, sub_targetlist, rel->rows);
+		pathnode->rows = estimate_num_groups(root, sub_targetlist, subpath_rows);
 		numCols = list_length(sub_targetlist);
 	}
 	else
 	{
-		pathnode->rows = rel->rows;
+		pathnode->rows = subpath_rows;
 		numCols = list_length(rel->reltargetlist);
 	}
 
@@ -754,7 +756,7 @@ create_unique_path(Query *root, RelOptInfo *rel, Path *subpath)
 	 */
 	cost_sort(&sort_path, root, NIL,
 			  subpath->total_cost,
-			  rel->rows,
+			  subpath_rows,
 			  rel->width);
 
 	/*
@@ -763,7 +765,7 @@ create_unique_path(Query *root, RelOptInfo *rel, Path *subpath)
 	 * probably this is an overestimate.)  This should agree with
 	 * make_unique.
 	 */
-	sort_path.total_cost += cpu_operator_cost * rel->rows * numCols;
+	sort_path.total_cost += cpu_operator_cost * subpath_rows * numCols;
 
 	/*
 	 * Is it safe to use a hashed implementation?  If so, estimate and
@@ -806,16 +808,8 @@ create_unique_path(Query *root, RelOptInfo *rel, Path *subpath)
     /* hash or sort implies materialization and breaks deadlock cycle */
     pathnode->path.motionHazard = false;
 
-    /*
-     * CDB TODO: handle partitioned subplan
-     */
-    if (!CdbPathLocus_IsRoot(subpath->locus))
-    {
-        pathnode->path.total_cost = pathnode->path.startup_cost = 1001000000e0;
-        return pathnode;
-    }
-
-	rel->cheapest_unique_path = (Path *) pathnode;
+    if (subpath == rel->cheapest_total_path)
+    	rel->cheapest_unique_path = (Path *) pathnode;
 
 	return pathnode;
 }
@@ -917,10 +911,12 @@ create_subqueryscan_path(RelOptInfo *rel, List *pathkeys)
 	pathnode->parent = rel;
 	pathnode->pathkeys = pathkeys;
 
-    /* CDB TODO: handle subquery */
+    /* CDB TODO: if subquery result is partitioned, don't move it
+     * to dispatcher unnecessarily.  (see cdbmutate.c)
+     */
     CdbPathLocus_MakeRoot(&pathnode->locus);
     pathnode->motionHazard = false;
-    pathnode->isFinished = false;
+    pathnode->isFinished = true;
 
 	cost_subqueryscan(pathnode, rel);
 
