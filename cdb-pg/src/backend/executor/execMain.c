@@ -178,6 +178,16 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 	 * Initialize the plan state tree
 	 */
 	InitPlan(queryDesc, explainOnly);
+	
+	if ( Cdb_role == CDB_ROLE_DISPATCH )
+	{
+		/* TODO - Inventory the slice tree, allocate gangs, associate slices
+		 * with gangs.
+		 *
+		 * Chuck, This is where the allocate calls will go. 
+		 * John, This is where the CDBProcess lists will be generated.)
+		 */
+	}
 
 	MemoryContextSwitchTo(oldcontext);
 	
@@ -265,7 +275,6 @@ ExecutorRun(QueryDesc *queryDesc,
 
 		if ( shouldDispatch )
 		{
-			StringInfoData buffer;
 			bool bChangedQueryTree = false;
 			CmdType origCmdType;
 			RTEKind origRTEKind;
@@ -276,13 +285,17 @@ ExecutorRun(QueryDesc *queryDesc,
 			if ( queryDesc->plantree->nParamExec > 0 )
 			{
 				preprocess_initplans( queryDesc );
-			}
+				
+				/* Copy the values of the preprocessed subplans to the 
+				 * external parameters.
+				 */
+				queryDesc->params = addRemoteExecParamsToParamList( 
+						queryDesc->plantree, 
+						queryDesc->params, 
+						queryDesc->estate->es_param_exec_vals, 
+						queryDesc->plantree->nParamExec );
 
-			
-			/*
-			 * Serialize the plan and query trees, and create the sql statement: cdbexec ....
-			 */
-			initStringInfo( &buffer );
+			}
 
 			/*
 			 * Hack for insert selects into local tables
@@ -315,11 +328,12 @@ ExecutorRun(QueryDesc *queryDesc,
 				pfree(policy);
 			}
 			
-			char *pszQuery = serializeNode((Node *)queryDesc->parsetree);
-			char *pszPlan = serializeNode((Node *)queryDesc->plantree);
-			char *pszSliceInfo = serializeNode((Node *)estate->es_sliceTable);
-
-			Assert(pszQuery != NULL && pszPlan != NULL);
+			/*
+			 * This call returns after launching the threads that send the command to the appropriate
+			 * segdbs.  It does not wait for them to finish.
+			 */
+			CdbDispatchPlan(queryDesc);
+			hasDispatched = true;
 
 			if ( bChangedQueryTree )
 			{
@@ -332,93 +346,7 @@ ExecutorRun(QueryDesc *queryDesc,
 				Assert(rte != NULL);
 				rte->rtekind = origRTEKind;
 			}
-
-			appendStringInfo(&buffer, "cdbexec '%s' '%s'", pszQuery, pszPlan);
-			pfree(pszQuery);
-			pfree(pszPlan);
-
-			/*
-			 * Start with any external parameters sitting in queryDesc->params.
-			 * Then we call addRemoteExecParamsToParamList to 
-			 * add on parameters that represent the preprocessed initPlan query results.
-			 * We mark these with a new paramkind field PARAM_EXEC_REMOTE so as to not
-			 * interfere with any existing code.
-			 * Then we serialize the parameters into RemoteParamData structs, which is just
-			 * a node wrapper around ParamListInfo.
-			 * We add parameters to the cdbexec command by enclosing the whole set with ()
-			 * and separating individual ones with a comma, so it looks like:
-			 * ('Param1', 'Param2', ...) at the end of the cdbexec command.
-			 */
-			ParamListInfo p = addRemoteExecParamsToParamList( queryDesc->plantree, queryDesc->params, 
-																estate->es_param_exec_vals, 
-																queryDesc->plantree->nParamExec );
-			if ( p != NULL )
-			{
-				bool bFirstTime = true;
-				ParamListInfo q = p;
-				appendStringInfo(&buffer, " (");
-				while ( q->kind != PARAM_INVALID )
-				{
-					char *pszParams;
-					RemoteParamData *rpd;
-					
-					rpd = makeNode(RemoteParamData);
-					memcpy( &rpd->paramData, q, sizeof(ParamListInfoData) );
-					pszParams = serializeNode((Node *)rpd);
-					if ( !bFirstTime )
-						appendStringInfo(&buffer, ", ");
-					else
-						bFirstTime = false;
-
-					appendStringInfo(&buffer, " '%s'", pszParams);
-
-					pfree(pszParams);
-					pfree( rpd );
-					q++;
-				}
-				appendStringInfo(&buffer, ")");
-				pfree(p);
-			}
-			
-			/*
-			 * Here we set up the slice info parameter for the call to CDBEXEC.
-			 *
-			 * *** TODO ***
-			 * This actually needs to be done per QE that we send to in order
-			 * to send each QE the correct local slice value. In other words,
-			 * it must happen inside CdbDispatchCommand.
-			 *
-			 * We need to invent this mechanism. Might just add the slice
-			 * table to CdbDispatchCommand as a parameter.  If null, no new
-			 * behavior.  If non-null, then CdbDispatchCommand iterates and
-			 * concatenates the slice table (with suitable alteration of 
-			 * localSlice for the target).  Probably need to pass in more
-			 * info that now, e.g., INSTEAD of DTS stuff, pass in GANGTYPE
-			 * stuff.
-			 *
-			 * Just for now, however, ...
-			 */
-			appendStringInfo(&buffer, " '%s'", pszSliceInfo);
-			pfree(pszSliceInfo);
-
-			DispatchTargetSet set;
-			if ( operation == CMD_SELECT )
-				set = DTS_SEGMENT;
-			else
-				set = DTS_SEGDB;
-
-			/*
-			 * This call returns after launching the threads that send the command to the appropriate
-			 * segdbs.  It does not wait for them to finish.
-			 */
-			CdbDispatchCommand(buffer.data, set, NULL, 0, true );
-			hasDispatched = true;
-			pfree(buffer.data);
 		}
-
-		/* For now, query executors only do SELECTs. */
-/*		Assert( !( Cdb_role==CDB_ROLE_EXECUTE  && operation != CMD_SELECT ) ); */
-
 
 		/*
 		* run plan on the dispatcher (entry) process.

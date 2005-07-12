@@ -826,11 +826,14 @@ ExecInitMotion(Motion *node, EState *estate)
 		Assert(thisSlice->sliceIndex = -1);
 
 		thisSlice->sliceIndex = node->motionID;
-		thisSlice->rootIndex = parentSlice->rootIndex;
-		/* thisSlice->gangType = ???; */ 
-		/* thisSlice->gangSize = ???; */ 
-		thisSlice->parentIndex = estate->es_cur_slice_idx;
+		thisSlice->rootIndex = parentSlice->rootIndex; 
 		
+		/* The gang beneath a Motion will be a reader, but size is
+		 * undetermined at the moment. */
+		thisSlice->gangType = GANGTYPE_READER;
+		thisSlice->gangSize = -1; 
+		
+		thisSlice->parentIndex = estate->es_cur_slice_idx;		
 		parentSlice->children = lappend_int(parentSlice->children, thisSlice->sliceIndex);
 		
 		estate->es_cur_slice_idx = thisSlice->sliceIndex;

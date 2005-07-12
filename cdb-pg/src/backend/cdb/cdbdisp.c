@@ -1238,13 +1238,24 @@ void setCancelFlag(void)
 
 
 /*
- * Note that the  slice tree dispatched is the one specified in the EState
+ * Compose and dispatch the CDBEXEC commands corresponding to a plan tree
+ * within a complete parallel plan.  (A plan tree will correspond either
+ * to an initPlan or to the main plan.)
+ *
+ * The actual dispatch is performed by CdbDispatchCommand(), which is called
+ * once for each slice of the tree.
+ *
+ * Note that the slice tree dispatched is the one specified in the EState
  * of the argument QueryDesc as es_cur_root_slice.
+ *
+ * Note that the QueryDesc params must include PARAM_EXEC_REMOTE parameters 
+ * containing the values of any initplans required by the slice to be run.
+ * (This is handled by calls to addRemoteExecParamsToParamList() from the
+ * functions preprocess_initplans() and ExecutorRun().)
  */
 void CdbDispatchPlan(QueryDesc *queryDesc)
 {
 	StringInfoData strinfo;
-	ParamListInfo pli;
 	char *squery, *splan, *ssliceinfo;
 	char *cdbexecPrefix;
 	SliceTable *sliceTbl;
@@ -1252,6 +1263,9 @@ void CdbDispatchPlan(QueryDesc *queryDesc)
 	int oldLocalSlice;
 	int *sliceVector, nSlices, sliceLim;
 	int i;
+	
+	/* TODO - Remove expedient kludge, when time is right. */
+	bool kludge = TRUE;
 	
 	Assert( Cdb_role == CDB_ROLE_DISPATCH );	
 	Assert( queryDesc != NULL && queryDesc->estate != NULL);
@@ -1265,7 +1279,7 @@ void CdbDispatchPlan(QueryDesc *queryDesc)
 	rootIdx = queryDesc->estate->es_cur_root_idx;
 	
 	Assert( sliceTbl!=NULL );
-	Assert( rootIdx==0 || ( rootIdx>sliceTbl->nMotions && rootIdx<sliceTbl->nextInitPlan ));
+	Assert( rootIdx==0 || ( rootIdx>sliceTbl->nMotions && rootIdx<sliceTbl->nextInitPlan ) );
 	
 	/*
 	 * Keep old value so we can restore it.  We use this field as a parameter.
@@ -1288,21 +1302,6 @@ void CdbDispatchPlan(QueryDesc *queryDesc)
 	
 	pfree(squery);
 	pfree(splan);
-
-
-	/* 
-	 * Start with any external parameters sitting in queryDesc->params.
-	 * Then call addRemoteExecParamsToParamList to add parameters to
-	 * represent the preprocessed initPlan query results.  Mark these with 
-	 * a new paramkind field PARAM_EXEC_REMOTE so as to not interfere with 
-	 * any existing code. 
-	 */
-	pli = addRemoteExecParamsToParamList( 
-			queryDesc->plantree, 
-			queryDesc->params, 
-			queryDesc->estate->es_param_exec_vals, 
-			queryDesc->plantree->nParamExec );
-			
 	 
 	/* 
 	 * Next, continue building the CDBEXEC command by adding all the parameters
@@ -1313,10 +1312,10 @@ void CdbDispatchPlan(QueryDesc *queryDesc)
 	 * ()  and separating individual ones with a comma, so it looks like:
 	 * ('Param1', 'Param2', ...) at the end of the cdbexec command.
 	 */
-	if ( pli != NULL )
+	if ( queryDesc->params != NULL )
 	{
 		bool bFirstTime = true;
-		ParamListInfo q = pli;
+		ParamListInfo q = queryDesc->params;
 		appendStringInfo(&strinfo, " (");
 		while ( q->kind != PARAM_INVALID )
 		{
@@ -1338,7 +1337,6 @@ void CdbDispatchPlan(QueryDesc *queryDesc)
 			q++;
 		}
 		appendStringInfo(&strinfo, ")");
-		pfree(pli);
 	}
 	
 	/* 
@@ -1360,24 +1358,15 @@ void CdbDispatchPlan(QueryDesc *queryDesc)
 
 	
 	/*
-	 * Set up the slice info parameter for the calls to CDBEXEC about to be
-	 * dispatched by CDBDispatchCommand. .
-	 * There is a call to CDBDispatchCommand per slice.  Each call
-	 * dispatches the supplied CDBEXEC command to each QE assigned to the 
-	 * slice.  We need to send each QE the correct local slice value and 
-	 * QE list.
+	 * Now we need to call CDBDispatchCommand once per slice.  Each such 
+	 * call dispatches a CDBEXEC command to each of the QEs assigned to 
+	 * the slice.  
 	 *
-	 *	 *, for 
-	 * each slice that requires it (all except, possibly, the root),
-	 * dispatch the command to the specified processes.
-
-	 * The information is packaged in two places: In the argument to the
-	 * function CDBDispatchCommand, and in the serialized CDBEXEC command
-	 * sent to the QEs.
-	 */
-	
-	/* 
-	 * For each slice in the tree...
+	 * The QE information goes in two places: (1) in the argument to the
+	 * function CDBDispatchCommand, and (2) in the serialized CDBEXEC 
+	 * command sent to the QEs.
+	 * 
+	 * So, for each slice in the tree...
 	 */
 	for ( i = 0; i < nSlices; i++ )
 	{
@@ -1403,7 +1392,8 @@ void CdbDispatchPlan(QueryDesc *queryDesc)
 		
 		
 		/* 
-		 * TODO - Need to know how to specify target set from CDBProcesses list 
+		 * TODO - Need to know how to specify target set: from CDBProcess
+		 * list, a group identifier, or how.
 		 *
 		 * The information In the argument to CDBDispatchCommand must specify
 		 * the same QEs as are carried in the serialized CDBEXEC command. 
@@ -1423,7 +1413,13 @@ void CdbDispatchPlan(QueryDesc *queryDesc)
 		 * This call returns after launching the threads that send the command to the appropriate
 		 * segdbs.  It does not wait for them to finish.
 		 */
-		CdbDispatchCommand(strinfo.data, set, NULL, 0, true );
+		 
+		/* TODO - Remove expedient kludge to force single dispatch. */
+		if ( kludge )
+		{
+			CdbDispatchCommand(strinfo.data, set, NULL, 0, true );
+			kludge = FALSE;
+		}
 		
 		pfree(strinfo.data);
 		initStringInfo( &strinfo );

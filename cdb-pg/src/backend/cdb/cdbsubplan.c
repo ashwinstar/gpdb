@@ -24,13 +24,17 @@ static bool param_walker(Node *node, ParamWalkerContext *context);
 static Oid findParamType( List *params, int paramid );
 
 /*
- * preprocess_initplans:
- * This function is called from ExecutorRun.
- * It loops through the estate->es_param_exec_vals array, 
- * which has count plan->nParamExec.
- * Each element of the array is a ParamExecData struct.
- * The index of the element in the array is the paramid of the
- * Param struct that is in the Plan where the subquery is used.
+ * Function preprocess_initplans() is called from ExecutorRun running a
+ * parallel plan on the QD.  The call happens prior to dispatch of the
+ * main plan, and only if there are some initplans.
+ *
+ * Argument queryDesc is the one passed in to ExecutorRun.
+ *
+ * The function loops through the estate->es_param_exec_vals array, which 
+ * has plan->nParamExec elements.  Each element is a ParamExecData struct,
+ * and the index of the element in the array is the paramid of the Param 
+ * node in the Plan that corresponds to the result of the subquery.
+ *
  * The execPlan member points to a SubPlanState struct for the
  * subquery.  The value and isnull members hold the result
  * of executing the SubPlan.
@@ -52,6 +56,7 @@ static Oid findParamType( List *params, int paramid );
  */
 void preprocess_initplans( QueryDesc *queryDesc )
 {
+	ParamListInfo originalPli, augmentedPli;
 	int i;
 	Plan *plan = queryDesc->plantree;
 	EState *estate = queryDesc->estate;
@@ -59,15 +64,15 @@ void preprocess_initplans( QueryDesc *queryDesc )
 	if ( plan->nParamExec == 0 )
 		return;
 
-	ParamListInfo p = queryDesc->params;
-	ParamListInfo q;
+	originalPli = queryDesc->params;
 
-	// Loop through the estate->es_param_exec_vals.
-	// This array has an element for each PARAM_EXEC param,
-	// and a pointer to the SubPlanState to execute to evaluate it.
-	// It seems that they are created in the proper order,
-	// i.e. if a subplan x has a sublan y, then y will come before x in 
-	// the es_param_exec_vals array.
+	/* Loop through the estate->es_param_exec_vals.
+	 * This array has an element for each PARAM_EXEC (internal) param,
+	 * and a pointer to the SubPlanState to execute to evaluate it.
+	 * It seems that they are created in the proper order,
+	 * i.e. if a subplan x has a sublan y, then y will come before x in 
+	 * the es_param_exec_vals array.
+	 */
 	for ( i=0; i<plan->nParamExec; i++ )
 	{
 		ParamExecData *prm;
@@ -76,10 +81,17 @@ void preprocess_initplans( QueryDesc *queryDesc )
 		sps = (SubPlanState *)prm->execPlan;
 
 		/*
-		 * Append all the es_param_exec_vals datun values on to the external parameter list
-		 * so they can be serialized in the cdbexec call to the qExecs.
+		 * Append all the es_param_exec_vals datum values on to the external 
+		 * parameter list so they can be serialized in the cdbexec call to the 
+		 * QEs.  Do this inside the loop since later initplans may depend on
+		 * the results of earlier ones.
 		 */
-		q = addRemoteExecParamsToParamList( queryDesc->plantree, p, estate->es_param_exec_vals, plan->nParamExec );
+		augmentedPli = addRemoteExecParamsToParamList( 
+			queryDesc->plantree, 
+			originalPli, 
+			estate->es_param_exec_vals, 
+			plan->nParamExec 
+		);
 
 		if ( sps != NULL )
 		{
@@ -97,92 +109,96 @@ void preprocess_initplans( QueryDesc *queryDesc )
 			/*
 			 * This runs the SubPlan and puts the answer back into prm->value.
 			 */
-			ExecSetParamPlan(sps, sps->planstate->ps_ExprContext, q);
+			ExecSetParamPlan(sps, sps->planstate->ps_ExprContext, augmentedPli);
 		}
 
-		pfree(q);
+		pfree(augmentedPli);
 	}
 }
 
 /*
- * Creates a new ParamListInfo array from the exisiting one by appending
- * the array of ParamExecData values as a new type of Param:
- * PARAM_EXEC_REMOTE.
+ * Function: addRemoteExecParamsToParamList()
  *
- * Getting the oid of the param type proved to be a little problematic.
- * It didn't seem to be directly available anywhere, so I created a 
- * Plan walker function that would put all Param nodes of type PARAM_EXEC
- * into a list.  Then, I created a function (findParamType) that would walk the list looking for a
- * specific paramid, and return its type.
+ * Creates a new ParamListInfo array from the existing one by appending
+ * the array of ParamExecData (internal parameter) values as a new Param 
+ * type: PARAM_EXEC_REMOTE.
  *
- * The query running on the qExec will have the ParamListInfo serialized to it,
- * and then will just look up the param value in the ParamListInfo
- * instead of trying to execute the SubPlan when it needs the value of the SubPlan.
+ * When the query eventually runs (on the QD or a QE), it will have access 
+ * to the augmented ParamListInfo (locally or through CDBEXEC serialization).
+ *
+ * Then, rather than lazily-evaluating the SubPlan to get its value (as for 
+ * an internal parameter), the plan will just look up the param value in the 
+ * ParamListInfo (as for an external parameter).
  */
-ParamListInfo addRemoteExecParamsToParamList( Plan *plan, ParamListInfo p, ParamExecData *prm, int nprm )
+ParamListInfo addRemoteExecParamsToParamList( Plan *plan, ParamListInfo extPrm, ParamExecData *intPrm, int nIntPrm )
 {
-	int nParams = 0;
-	int i;
-	ParamListInfo q = p;
+	ParamListInfo augPrm, q;
+	int i, j;
+	int nParams;
 
-	if ( nprm == 0 )
-		return p;
+	if ( nIntPrm == 0 )
+		return extPrm;
+	Assert( intPrm != NULL );  /* So there must be some internal parameters. */
 
-	Assert( prm != NULL );
-
-	if ( q != NULL )
-	{
-		while ( q->kind != PARAM_INVALID )
-		{
-			nParams++;
-			q++;
-		}
-	}
-
-	ParamListInfo pli = palloc0( (nprm + nParams + 1) * sizeof(ParamListInfoData) );
-	pli[nprm + nParams].kind	= PARAM_INVALID;
-
-	q = p;
+	/* Count existing external parameters. */
 	nParams = 0;
-	if ( q != NULL )
+	if ( extPrm != NULL )
 	{
-		while ( q->kind != PARAM_INVALID )
+		for ( q = extPrm; q->kind != PARAM_INVALID; q++ )
 		{
-			memcpy( &pli[nParams], q, sizeof(ParamListInfoData) );
-			q++;
 			nParams++;
 		}
 	}
 
-	// Walk the plan, looking for param nodes
-	// that are kind PARAM_EXEC.
-	// We need these for their paramtype field,
-	// which doesn't seem to be available in either
-	// the ParamExecData struct or the SubPlan struct. 
+	/* Allocate space for augmented array and set final sentinel. */
+	augPrm = palloc0( (nIntPrm + nParams + 1) * sizeof(ParamListInfoData) );
+	augPrm[nIntPrm + nParams].kind = PARAM_INVALID;
+
+	/* Copy in the existing external parameter entries. */
+	for ( i = 0; i < nParams; i++ )
+	{
+		memcpy( &augPrm[i], &extPrm[i], sizeof(ParamListInfoData) );
+	}
+
+	/* Walk the plan, looking for Param nodes of kind PARAM_EXEC, i.e.,
+	 * executor internal parameters.
+	 * 
+	 * We need these for their paramtype field, which isn't available in 
+	 * either the ParamExecData struct or the SubPlan struct. 
+	 */
 	ParamWalkerContext context;
 	memset( &context, 0, sizeof(context) );
 	param_walker((Node*)plan, &context);
 	Assert( context.params != NIL );
 
-	for ( i=0; i<nprm; i++ )
+	/*
+	 * Now initialize the ParamListInfo elements corresponding to the
+	 * initplans we're "parameterizing".  Use the datatype info harvested
+	 * above.
+	 */
+	for ( i=0; i<nIntPrm; i++ )
 	{
-		pli[nParams].kind	= PARAM_EXEC_REMOTE;
-		pli[nParams].name	= NULL;
-		pli[nParams].id		= i;
-		pli[nParams].ptype	= findParamType(context.params, i);
-		pli[nParams].isnull	= prm[i].isnull;
-		pli[nParams].value	= prm[i].value;
-		nParams++;
+		j = nParams + i;
+		
+		augPrm[j].kind	= PARAM_EXEC_REMOTE;
+		augPrm[j].name	= NULL;
+		augPrm[j].id = i;
+		augPrm[j].ptype = findParamType(context.params, i);
+		augPrm[j].isnull = intPrm[i].isnull;
+		augPrm[j].value = intPrm[i].value;
 	}
 
 	list_free( context.params );
 
-	return pli;
+	return augPrm;
 }
 
 /*
- * param_walker:
- * Simple plan walker that adds any Param nodes it finds to a list in the ParamWalkerContext.
+ * Helper function param_walker() walks a plan and adds any Param nodes
+ * to a list in the ParamWalkerContext.
+ *
+ * This list is input to the function findParamType(), which loops over the 
+ * list looking for a specific paramid, and returns its type.
  */
 bool param_walker(Node *node, ParamWalkerContext *context)
 {	
@@ -203,9 +219,9 @@ bool param_walker(Node *node, ParamWalkerContext *context)
 }
 
 /*
- * findParamType:
- * Iterates through a list of Param nodes, trying to match on the passed-in
- * paramid.  If it matches, it returns the paramtype.
+ * Helper function findParamType() iterates over a list of Param nodes, 
+ * trying to match on the passed-in paramid. Returns the paramtype of a 
+ * match, else error.
  */
 Oid findParamType( List *params, int paramid )
 {
@@ -220,7 +236,7 @@ Oid findParamType( List *params, int paramid )
 	}
 
 	ereport( ERROR,
-				(errcode( ERRCODE_CDB_COMMAND_ERROR ),
+				(errcode( ERRCODE_CDB_INTERNAL_ERROR ),
 				errmsg("Failed to locate datatype for paramid %d",
 				paramid
 			)));

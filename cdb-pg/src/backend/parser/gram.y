@@ -215,7 +215,7 @@ static void doNegateFloat(Value *v);
 				opt_distinct opt_definition func_args
 				func_args_list func_as createfunc_opt_list
 				oper_argtypes RuleActionList RuleActionMulti
-				opt_cdb_string opt_cdb_string_list cdb_string_list
+				opt_cdb_string_list cdb_string_list
 				opt_column_list columnList opt_name_list
 				sort_clause opt_sort_clause sortby_list index_params
 				name_list from_clause from_list opt_array_bounds
@@ -272,7 +272,7 @@ static void doNegateFloat(Value *v);
 
 %type <node>	TableElement ConstraintElem TableFuncElement
 %type <node>	columnDef
-%type <node>	cdb_string
+%type <node>	cdb_string opt_cdb_string
 %type <defelt>	def_elem
 %type <node>	def_arg columnElem where_clause
 				a_expr b_expr c_expr func_expr AexprConst indirection_el
@@ -4668,7 +4668,7 @@ cdb_string_list:
 
 opt_cdb_string:
 			cdb_string							{ $$ = $1; }
-			| /* EMPTY */						{ $$ = NIL; }
+			| /* EMPTY */						{ $$ = NULL; }
 		;
 
 cdb_string:

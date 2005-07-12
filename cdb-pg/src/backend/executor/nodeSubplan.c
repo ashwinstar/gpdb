@@ -964,58 +964,48 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, ParamListInfo p)
 	{
 		if ( shouldDispatch )
 		{
-			/*
-				* Serialize the plan and query trees, and create the sql statement: cdbexec ....
-				*/
-			StringInfoData buffer;
-			initStringInfo( &buffer );
+			Query *query;
+			QueryDesc *queryDesc;
+			EState *local; /* The EState to use. */
+						
+			/* There are two EState structures available:
+			 *   node->planstate->state
+			 *   node->sub_estate
+			 */  
+			local = node->sub_estate;
 			
-			Query *query = makeNode(Query);
+			/* Fake a Query node to hold the range table. */
+			query = makeNode(Query);
 			query->rtable = subplan->rtable;
 			query->commandType = CMD_SELECT;
+			
+			/* Fake a QueryDesc stucture for CdbDispatchPlan call. */
+			queryDesc = palloc(sizeof(QueryDesc));
+			queryDesc->operation = query->commandType;
+			queryDesc->parsetree = query;
+			queryDesc->plantree = planstate->plan; /* be sure nParamExec is set */
+			queryDesc->params = p; /* need to set this! */
+			queryDesc->estate = local; /* be sure slicetable, cur_root_idx, param_exec_vals, are set */
+			
+			/* There are unused, but set them so they aren't garbage. */
+			queryDesc->snapshot = NULL;
+			queryDesc->crosscheck_snapshot = NULL;
+			queryDesc->dest = NULL;
+			queryDesc->doInstrument = FALSE;
+			queryDesc->tupDesc = NULL;
+			queryDesc->planstate = NULL;
 
-			char *pszQuery = serializeNode((Node *)query);
-			char *pszPlan = serializeNode((Node *)planstate->plan);
-
-			Assert(pszQuery != NULL && pszPlan != NULL);
-			appendStringInfo(&buffer, "cdbexec '%s' '%s'", pszQuery, pszPlan);
-			pfree(query);
-			pfree(pszQuery);
-			pfree(pszPlan);
-
-			if ( p != NULL )
-			{
-				bool bFirstTime = true;
-				appendStringInfo(&buffer, " (");
-				while ( p->kind != PARAM_INVALID )
-				{
-					char *pszParams;
-					RemoteParamData *rpd;
-					
-					rpd = makeNode(RemoteParamData);
-					memcpy( &rpd->paramData, p, sizeof(ParamListInfoData) );
-					pszParams = serializeNode((Node *)rpd);
-					if ( !bFirstTime )
-						appendStringInfo(&buffer, ", ");
-					else
-						bFirstTime = false;
-
-					appendStringInfo(&buffer, " '%s'", pszParams);
-
-					pfree(pszParams);
-					pfree( rpd );
-					p++;
-				}
-				appendStringInfo(&buffer, ")");
-			}
+			/* TODO - Verify the EState for this subplan */
+			/*   queryDesc->estate->es_sliceTable -- the slice table  */
+			/*   queryDesc->estate->es_cur_root_idx -- the root to execute  */
 
 			/*
-				* This call returns after launching the threads that send the command to the appropriate
-				* segdbs.  It does not wait for them to finish.
-				*/
-			CdbDispatchCommand(buffer.data, DTS_SEGMENT, NULL, 0, true );
+			 * This call returns after launching the threads that send the command to the appropriate
+			 * segdbs.  It does not wait for them to finish.
+			 */
+
+			CdbDispatchPlan(queryDesc);
 			hasDispatched = true;
-			pfree(buffer.data);
 		}
 
 		/*
