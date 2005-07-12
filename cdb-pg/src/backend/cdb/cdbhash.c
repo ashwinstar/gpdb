@@ -142,6 +142,7 @@ void cdbhash(CdbHash *h, Datum datum, Oid type)
 	Interval *intervalptr;
 	Numeric num;
 	bool bool_buf;
+	Name namebuf;
 	uint32 nanbuf; 
 	
 	/*
@@ -263,6 +264,16 @@ void cdbhash(CdbHash *h, Datum datum, Oid type)
 				len = ignoreblanks((char *)buf, len); 
 			break;
 		
+		case NAMEOID:
+			namebuf = DatumGetName(datum);
+			len = NAMEDATALEN;
+			buf = NameStr(*namebuf);
+			
+			/* adjust length to not include trailing blanks */
+			if(len > 1)
+				len = ignoreblanks((char *)buf, len); 
+			break;
+			
 				
 	   /*=====================================================
 		* DATE/TIME TYPES
