@@ -52,6 +52,10 @@
 #include "utils/relcache.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbvars.h"
+#include "nodes/primnodes.h"
+#include "nodes/execnodes.h"
+
 
 /* ----------------------------------------------------------------
  *		global counters for number of tuples processed, retrieved,
@@ -1050,5 +1054,352 @@ void InitSliceTable(EState *estate, int nMotions, int nSubplans)
 	estate->es_cur_slice_idx = 0;
 	
 	MemoryContextSwitchTo(oldcontext);
+}
+
+
+/* Assign gang descriptions to the root slices of the slice forest.
+ *
+ * The root slices of initPlan slice trees will always run on the QD, 
+ * which, for the time being, we represent as <GANGTYPE_UNALLOCATED, 0>.
+ *
+ * The root slice of the main plan wil run on the QD in case it's a 
+ * SELECT,  but will run on QE(s) in case it's an INSERT, UPDATE, or
+ * DELETE. Because we restrict UPDATE and DELETE to have no motions
+ * (i.e., one slice) and because INSERT must always route tuples, 
+ * the assigment for these will be primary and mirror writer gangs, 
+ * which we represent as <GANGTYPE_PRIMARY_WRITER,  N>
+ */
+void InitRootSlices(QueryDesc *queryDesc)
+{
+	EState *estate = queryDesc->estate;
+	SliceTable *sliceTable = estate->es_sliceTable;
+	ListCell *cell;
+	Slice *slice;
+	int i;
+	
+	foreach (cell, sliceTable->slices)
+	{
+		slice = (Slice *)lfirst(cell);
+		i = slice->sliceIndex;
+		if ( i == 0 )
+		{
+			/* Main plan root slice */
+			switch( queryDesc->operation )
+			{
+				case CMD_SELECT:
+					Assert( slice->gangType == GANGTYPE_UNALLOCATED && slice->gangSize == 0 );
+					break;
+					
+				case CMD_INSERT:
+				case CMD_UPDATE:
+				case CMD_DELETE:
+					slice->gangType = GANGTYPE_PRIMARY_WRITER;
+					slice->gangSize = CdbIdentity.numsegments;
+					break;
+				
+				default:
+					Assert( FALSE ); 
+			}
+		}
+		if ( i <= sliceTable->nMotions )
+		{
+			/* Non-root slice */
+			continue;
+		}
+		else
+		{
+			/* InitPlan root slice */
+			Assert( slice->gangType == GANGTYPE_UNALLOCATED && slice->gangSize == 0 );
+		}
+	}
+}
+
+/* ** *** **** TODO Remove Stub Executor Factory **** *** ** */
+
+typedef struct Gang {GangType type; int size;} Gang;
+
+static Gang *allocateGang(GangType type, int size, int content);
+static List *getCdbProcessList(Gang *gang);
+
+
+Gang *allocateGang(GangType type, int size, int content)
+{
+	Gang *gp;
+	static Gang wp = {GANGTYPE_PRIMARY_WRITER, 0};
+	static Gang wm = {GANGTYPE_PRIMARY_WRITER, 0};
+	static Gang rn = {GANGTYPE_READER, 0};
+	static Gang r1 = {GANGTYPE_READER, 1};
+	
+	wp.size = wm.size = rn.size = CdbIdentity.numsegments;
+	
+	switch (type)
+	{
+		case GANGTYPE_PRIMARY_WRITER:
+			gp = &wp;
+			break;
+			
+		case GANGTYPE_MIRROR_WRITER:
+			gp = &wm;
+			break;
+			
+		case GANGTYPE_READER:
+			if ( size == 1 )
+				gp = &r1;
+			else if ( size == CdbIdentity.numsegments )
+				gp = &rn;
+			else
+				Assert(FALSE);
+			break;
+			
+		case GANGTYPE_UNALLOCATED:
+			gp = NULL;
+			break;
+	}
+	return gp;
+}
+
+List *getCdbProcessList(Gang *gang)
+{
+	int i;
+	List *list = NIL;
+	
+	if ( gang != NULL || gang->type != GANGTYPE_UNALLOCATED )
+	{
+		for ( i = 0; i < gang->size; i++ )
+		{
+			CdbProcess *process = (CdbProcess*)makeNode(CdbProcess);
+			process->listenerAddr = pstrdup("Your IP address here!");
+			process->listenerPort = 108000 + i;
+			process->contentid = i;
+			process->routeid = i*10;
+			
+			list = lappend(list, process);
+		}
+	}
+	return list;
+}
+
+/* ** *** **** END Stub Executor Factory **** *** ** */
+
+
+/*
+ * Context for AssignGangs() and helper functions.
+ */
+typedef struct SliceReq {
+	int numNgangs;
+	int num1gangs;
+	bool writer;
+	Gang **vecNgangs;
+	Gang **vec1gangs; 
+	Gang *mirrorWriterGang;
+	int nxtNgang;
+	int nxt1gang;
+	
+} SliceReq;
+
+/* Forward declarations */
+static void InitSliceReq(SliceReq* req);
+static void AccumSliceReq(SliceReq *inv, SliceReq *req);
+static void InventorySliceTree(Slice **sliceMap, int sliceIndex, SliceReq *req);
+static void AssociateSlicesToProcesses(Slice **sliceMap, int sliceIndex, SliceReq *req);
+
+void AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
+{
+	EState *estate = queryDesc->estate;
+	SliceTable *sliceTable = estate->es_sliceTable;
+	ListCell *cell;
+	Slice *slice;
+	int i,  nslices;
+	Slice **sliceMap;	
+	SliceReq req, inv;
+	
+	/* Make a map so we can access slices quickly by index.  */
+	nslices = list_length(sliceTable->slices);
+	sliceMap = palloc(nslices * sizeof(int));
+	i = 0;
+	foreach (cell, sliceTable->slices)
+	{
+		slice = (Slice *)lfirst(cell);
+		Assert( i == slice->sliceIndex );
+		sliceMap[i] = slice;
+		i++;
+	}
+	
+	/* Initialize gang requirement inventory */
+	InitSliceReq(&inv);
+
+	/* Capture main slice tree requirement. */
+	InventorySliceTree(sliceMap, 0, &inv);
+
+	/* Capture initPlan slice tree requirements. */
+	for ( i = sliceTable->nMotions + 1; i < nslices; i++ )
+	{
+		InitSliceReq(&req);
+		InventorySliceTree(sliceMap, i, &req);
+		AccumSliceReq(&inv, &req);
+	}
+	
+	/* Get the gangs we'll use. */
+	if ( inv.numNgangs > 0 )
+	{
+		inv.vecNgangs =  (Gang**)palloc(sizeof(Gang) * inv.numNgangs);
+		for ( i = 0; i < inv.numNgangs; i++ )
+		{
+			if ( i == 0 )
+			{
+				inv.vecNgangs[i] = allocateGang(GANGTYPE_PRIMARY_WRITER, CdbIdentity.numsegments, 0);
+				if ( inv.writer )
+				{
+					inv.mirrorWriterGang = allocateGang(GANGTYPE_MIRROR_WRITER, CdbIdentity.numsegments, 0);
+				}
+			}
+			else
+			{
+				inv.vecNgangs[i] = allocateGang(GANGTYPE_READER, CdbIdentity.numsegments, 0);
+			}
+		}
+	}
+	if ( inv.num1gangs > 0 )
+	{
+		inv.vec1gangs =  (Gang**)palloc(sizeof(Gang) * inv.num1gangs);
+		for ( i = 0; i < inv.num1gangs; i++ )
+		{
+			inv.vec1gangs[i] = allocateGang(GANGTYPE_READER, 1, utility_segment_index);
+		}
+	}
+	
+	/* Use the gangs to construct the CdbProcess lists in slices. */
+	
+	inv.nxtNgang = inv.nxt1gang = 0;
+	AssociateSlicesToProcesses(sliceMap, 0, &inv); /* Main tree. */
+	
+	for ( i = sliceTable->nMotions + 1; i < nslices; i++ )
+	{
+		inv.nxtNgang = inv.nxt1gang = 0;
+		AssociateSlicesToProcesses(sliceMap, i, &inv); /* An initPlan */
+	}
+	
+	/* Clean up */
+	pfree(sliceMap);
+	if ( inv.vecNgangs != NULL ) pfree(inv.vecNgangs);
+	if ( inv.vec1gangs != NULL ) pfree(inv.vec1gangs);
+
+}
+
+
+void InitSliceReq(SliceReq* req)
+{
+	req->numNgangs = req->num1gangs = 0;
+	req->writer = FALSE;
+	req->vecNgangs = NULL;
+	req->vec1gangs = NULL; 
+	req->mirrorWriterGang = NULL;
+}
+
+void AccumSliceReq(SliceReq *inv, SliceReq *req)
+{
+	inv->numNgangs = (inv->numNgangs >= req->numNgangs)? inv->numNgangs: req->numNgangs;
+	inv->num1gangs = (inv->num1gangs >= req->num1gangs)? inv->num1gangs: req->num1gangs;
+	inv->writer = (inv->writer || req->writer);
+}
+
+/*
+ * Helper for AssignGangs takes a simple inventory of the gangs required
+ * by a slice tree.  Recursive.  Closely coupled with AssignGangs.  Not
+ * generally useful.
+ */
+void InventorySliceTree (Slice **sliceMap, int sliceIndex, SliceReq *req)
+{
+	ListCell *cell;
+	int childIndex;
+	Slice *slice = sliceMap[sliceIndex];
+	switch ( slice->gangType )
+	{
+		case GANGTYPE_UNALLOCATED:
+			/* Roots that run on the  QD don't need a gang. */
+			break;
+			
+		case GANGTYPE_PRIMARY_WRITER:
+			req->writer = TRUE;
+			/* fall through */
+		case GANGTYPE_READER:
+			if ( slice->gangSize == 1 )
+			{
+				req->num1gangs++;
+			}
+			else
+			{
+				Assert( slice->gangSize == CdbIdentity.numsegments );
+				req->numNgangs++;
+			}
+			break;
+			
+		case GANGTYPE_MIRROR_WRITER:
+			/* Shouldn't see this in a slice->gangType. */
+			Assert( FALSE ); 
+			break;
+	}
+	
+	foreach( cell, slice->children )
+	{
+		childIndex = lfirst_int(cell);
+		InventorySliceTree(sliceMap, childIndex,  req);
+	}
+}
+
+
+/*
+ * Helper for AssignGangs uses the gangs in the inventory to fill in the
+ * CdbProcess lists in the slice tree.  Recursive.  Closely coupled with 
+ * AssignGangs.  Not generally useful.
+ */
+void AssociateSlicesToProcesses(Slice **sliceMap, int sliceIndex, SliceReq *req)
+{
+	ListCell *cell;
+	int childIndex;
+	Slice *slice = sliceMap[sliceIndex];
+	switch ( slice->gangType )
+	{
+		case GANGTYPE_UNALLOCATED:
+			/* Roots that run on the  QD don't need a gang. */
+			break;
+			
+		case GANGTYPE_PRIMARY_WRITER:
+			Assert( slice->gangSize == CdbIdentity.numsegments );
+			Assert( req->numNgangs > 0 &&  req->nxtNgang == 0 && req->writer );
+			Assert( req->vecNgangs[0] != NULL && req->mirrorWriterGang != NULL );
+			
+			slice->primaryProcesses = getCdbProcessList(req->vecNgangs[req->nxtNgang]);
+			slice->mirrorProcesses = getCdbProcessList(req->mirrorWriterGang);
+			
+			req->nxtNgang++;
+			break;
+			
+		case GANGTYPE_READER:
+			if ( slice->gangSize == 1 )
+			{
+				slice->primaryProcesses = getCdbProcessList(req->vec1gangs[req->nxt1gang]);
+				req->nxt1gang++;
+			}
+			else
+			{
+				Assert( slice->gangSize == CdbIdentity.numsegments );
+				slice->primaryProcesses = getCdbProcessList(req->vecNgangs[req->nxtNgang]);
+				req->nxtNgang++;
+			}
+			break;
+			
+		case GANGTYPE_MIRROR_WRITER:
+			/* Shouldn't see this in a slice->gangType. */
+			Assert( FALSE ); 
+			break;
+	}
+	
+	foreach( cell, slice->children )
+	{
+		childIndex = lfirst_int(cell);
+		AssociateSlicesToProcesses(sliceMap, childIndex,  req);
+	}
+	
 }
 

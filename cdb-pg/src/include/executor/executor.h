@@ -266,5 +266,7 @@ extern void UnregisterExprContextCallback(ExprContext *econtext,
 
 /* Additions for CDB Slice table utilities defined in execUtils.c */
 extern void InitSliceTable(EState *estate, int nMotions, int nSubplans);
+extern void InitRootSlices(QueryDesc *queryDesc);
+extern void AssignGangs(QueryDesc *queryDesc, int utility_segment_index);
 
 #endif   /* EXECUTOR_H  */

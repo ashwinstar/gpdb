@@ -828,10 +828,25 @@ ExecInitMotion(Motion *node, EState *estate)
 		thisSlice->sliceIndex = node->motionID;
 		thisSlice->rootIndex = parentSlice->rootIndex; 
 		
-		/* The gang beneath a Motion will be a reader, but size is
-		 * undetermined at the moment. */
+		/* The gang beneath a Motion will be a reader, but its size must
+		 * be determined. */
 		thisSlice->gangType = GANGTYPE_READER;
-		thisSlice->gangSize = -1; 
+		Assert ( node->plan.lefttree->flow != NULL );
+		switch ( node->plan.lefttree->flow->flotype )
+		{
+			case FLOW_SINGLETON:
+				thisSlice->gangSize = 1; 
+				break;
+				
+			case FLOW_REPLICATED:
+			case FLOW_PARTITIONED:
+				thisSlice->gangSize = CdbIdentity.numsegments;
+				break;
+				
+			default: 
+				/* Assert FALSE -- Above are only values we should see. */
+				Assert( node->plan.lefttree->flow->flotype == FLOW_SINGLETON );
+		}
 		
 		thisSlice->parentIndex = estate->es_cur_slice_idx;		
 		parentSlice->children = lappend_int(parentSlice->children, thisSlice->sliceIndex);

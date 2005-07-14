@@ -218,7 +218,7 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 	plan->initPlan = NIL; /* Does it matter which node get's the initPlan? */
 	plan->extParam = bms_copy(inner_plan->extParam);
 	plan->allParam = bms_copy(inner_plan->allParam);
-	inner_plan->flow = NULL;
+	plan->flow = NULL; /* Let the inner plan inherit the Flow. */
 	inner_plan->dispatch = DISPATCH_UNDETERMINED; /* Default */
 	agg->grpColIdx = NULL; /* Eventually, put a new one in. */
 	
@@ -330,7 +330,7 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 	inner_plan->targetlist = context.inner_tlist;
 	context.inner_tlist = NIL;
 	
-	/* Splice in Motion and set the flow of the inner plan. */
+	/* Splice in Motion and set the flow of the outer plan. */
 	switch ( agg->aggstrategy )
 	{
 		case AGG_PLAIN:
@@ -343,8 +343,8 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 				inner_plan, false, 
 				getHashMotionInfoList(inner_plan, INFOTYPE_LEFTEXPR)
 				);
-			inner_plan->flow = makeFlow(FLOW_PARTITIONED);
-			inner_plan->flow->hashExpr = ((Motion*)plan->lefttree)->hashExpr;
+			plan->flow = makeFlow(FLOW_PARTITIONED);
+			plan->flow->hashExpr = ((Motion*)plan->lefttree)->hashExpr;
 			break;
 			
 		default:

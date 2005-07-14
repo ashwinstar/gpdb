@@ -181,12 +181,16 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 	
 	if ( Cdb_role == CDB_ROLE_DISPATCH )
 	{
-		/* TODO - Inventory the slice tree, allocate gangs, associate slices
-		 * with gangs.
+		/* Assign gang descriptions to the root slices of the slice forest. */
+		InitRootSlices(queryDesc);
+		
+		/* Inventory the slice tree, allocate gangs, associate slices 
+		 * with gangs.  For now, use segment 0 for singleton gangs.
 		 *
-		 * Chuck, This is where the allocate calls will go. 
-		 * John, This is where the CDBProcess lists will be generated.)
+		 * Chuck, The allocate calls are in here go. 
+		 * John, The CDBProcess lists are generated in here.)
 		 */
+		 AssignGangs(queryDesc, 0);
 	}
 
 	MemoryContextSwitchTo(oldcontext);
