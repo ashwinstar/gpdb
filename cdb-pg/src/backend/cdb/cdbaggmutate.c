@@ -218,7 +218,8 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 	plan->initPlan = NIL; /* Does it matter which node get's the initPlan? */
 	plan->extParam = bms_copy(inner_plan->extParam);
 	plan->allParam = bms_copy(inner_plan->allParam);
-	plan->flow = NULL; /* Let the inner plan inherit the Flow. */
+	inner_plan->flow = pull_up_Flow(inner_plan, inner_plan->lefttree, FALSE); 
+	Assert (inner_plan->flow != NULL ); /* inner Agg inherits child flow. */
 	inner_plan->dispatch = DISPATCH_UNDETERMINED; /* Default */
 	agg->grpColIdx = NULL; /* Eventually, put a new one in. */
 	
