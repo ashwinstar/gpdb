@@ -16,6 +16,7 @@
 Flow *
 cdbpathtoplan_create_flow(Query    *root,
                           Path     *path,
+                          List     *pathkeys,
                           Plan     *plan);
 
 Motion *

@@ -26,6 +26,7 @@
 Flow *
 cdbpathtoplan_create_flow(Query    *root,
                           Path     *path,
+                          List     *pathkeys,
                           Plan     *plan)
 {
     Flow       *flow;
@@ -53,9 +54,9 @@ cdbpathtoplan_create_flow(Query    *root,
         Assert(false);
 
     /* Ordering */
-    if (path->pathkeys)
+    if (pathkeys)
     {
-        Sort   *sort = make_sort_from_pathkeys(root, plan, path->pathkeys);
+        Sort   *sort = make_sort_from_pathkeys(root, plan, pathkeys);
         flow->numSortCols = sort->numCols;
         flow->sortColIdx = sort->sortColIdx;
         flow->sortOperators = sort->sortOperators;
@@ -78,9 +79,12 @@ cdbpathtoplan_create_motion_plan(Query         *root,
     Motion *motion;
 
     /* Decorate the subplan with a Flow node telling the plan slicer
-     * what kind of gang will be needed to execute the subplan. 
+     * what kind of gang will be needed to execute the subplan.
      */
-    subplan->flow = cdbpathtoplan_create_flow(root, path->subpath, subplan);
+    subplan->flow = cdbpathtoplan_create_flow(root,
+                                              path->subpath,
+                                              path->subpath->pathkeys,
+                                              subplan);
 
     /* Send all tuples to dispatcher... */
     if (CdbPathLocus_IsRoot(path->path.locus))
@@ -121,7 +125,7 @@ cdbpathtoplan_create_motion_plan(Query         *root,
                                     hashExpr);
     }
     else
-        Assert(false);          /* CDB TODO: raise error here */
+        Assert(false);
 
     /* Should sender discard rows that hash to other partitions? */
     if (path->hashToSelfOnly)

@@ -55,13 +55,13 @@ cdbpath_create_motion_path(Query           *root,
         /* No motion needed if subpath can run anywhere giving same output. */
         if (CdbPathLocus_IsGeneral(subpath->locus))
             return subpath;
-        
+
         /* replicated-->root would send redundant copies to the qDisp. */
         if (CdbPathLocus_IsReplicated(subpath->locus))
             return NULL;
 
         /* hashed-->root */
-        Assert(CdbPathLocus_IsHashed(subpath->locus) || 
+        Assert(CdbPathLocus_IsHashed(subpath->locus) ||
                CdbPathLocus_IsHashedOJ(subpath->locus));
     }
 
@@ -74,7 +74,7 @@ cdbpath_create_motion_path(Query           *root,
             return subpath;
 
         /* general-->hashed or replicated-->hashed */
-        Assert(CdbPathLocus_IsHashed(locus) || 
+        Assert(CdbPathLocus_IsHashed(locus) ||
                CdbPathLocus_IsHashedOJ(locus));
 
         /* Tell each qExec to filter on the hash key, passing rows that
@@ -92,11 +92,11 @@ cdbpath_create_motion_path(Query           *root,
         if (CdbPathLocus_IsRoot(subpath->locus))
             return NULL;
 
-        Assert(CdbPathLocus_IsHashed(subpath->locus) || 
+        Assert(CdbPathLocus_IsHashed(subpath->locus) ||
                CdbPathLocus_IsHashedOJ(subpath->locus));
 
         /* hashed-->hashed */
-        if (CdbPathLocus_IsHashed(locus) || 
+        if (CdbPathLocus_IsHashed(locus) ||
             CdbPathLocus_IsHashedOJ(locus))
         {
             /* No motion if subpath hash key matches caller's request. */
@@ -105,11 +105,11 @@ cdbpath_create_motion_path(Query           *root,
         }
 
         /* hashed-->replicated */
-        else 
+        else
             Assert(CdbPathLocus_IsReplicated(locus));
 
-        /* Output streams lose any ordering they had. 
-         * qExecs aren't allowed to merge sorted streams (for now).  
+        /* Output streams lose any ordering they had.
+         * qExecs aren't allowed to merge sorted streams (for now).
          */
         pathkeys = NIL;
     }
@@ -137,14 +137,13 @@ cdbpath_create_motion_path(Query           *root,
     pathnode->path.parent = subpath->parent;
     pathnode->path.locus = locus;
     pathnode->path.pathkeys = pathkeys;
-    pathnode->path.isFinished = subpath->isFinished;
     pathnode->subpath = subpath;
     pathnode->hashToSelfOnly = hashToSelfOnly;
 
     /* Cost of motion */
     cost_per_row = (cdb_motion_tuple_cost > 0.0)
                     ? cdb_motion_tuple_cost
-                    : 2.0 * cpu_tuple_cost; 
+                    : 2.0 * cpu_tuple_cost;
     rows = cdbpath_rows((Path *)pathnode);
 
     pathnode->path.total_cost = rows * cost_per_row + subpath->total_cost;
@@ -152,7 +151,7 @@ cdbpath_create_motion_path(Query           *root,
     pathnode->path.memory = subpath->memory;
 
     /* Tell operators above us if slack may be needed for deadlock safety. */
-    pathnode->path.motionHazard = hashToSelfOnly 
+    pathnode->path.motionHazard = hashToSelfOnly
                                     ? subpath->motionHazard
                                     : true;
     return (Path *)pathnode;

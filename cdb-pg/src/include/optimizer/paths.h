@@ -118,6 +118,10 @@ extern List *build_join_pathkeys(Query *root,
 					List *outer_pathkeys);
 
 List *
+cdb_make_pathkey_for_expr(Query    *root,
+                          Node     *expr,
+                          List     *eqopname);
+List *
 cdb_build_distribution_pathkeys(Query      *root,
                                 RelOptInfo *rel,
                                 int         nattrs,

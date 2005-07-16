@@ -33,7 +33,6 @@
 #include "cdb/cdbplan.h"
 #include "cdb/cdbllize.h"
 #include "cdb/cdbcat.h"
-#include "cdb/cdbjoin.h"
 #include "cdb/cdbagg.h"
 #include "cdb/cdbmutate.h"
 
@@ -82,9 +81,6 @@ typedef struct PlanProfile
 static bool prescan(Plan *plan, Query *query, PlanProfile *context);
 static bool prescan_walker(Node *node, PlanProfile *context);
 
-static bool prescan_hashjoin(Plan *plan, PlanProfile *context);
-static bool prescan_mergejoin(Plan *plan, PlanProfile *context);
-static bool prescan_nestloop(Plan *plan, PlanProfile *context);
 static bool prescan_agg(Plan *plan, PlanProfile *context);
 
 static void psError(PlanProfile *context, unsigned code, const char* message, const char* detail);
@@ -380,20 +376,23 @@ prescan_walker(Node *node, PlanProfile *context)
 			 */
 			goto return_false;
 		
-		case T_Motion:
-			/* If we see a Motion node, it must be part of a finished plan
-			 * produced by the planner.  We still need to walk into it,  
-			 * though, in case it contains an unfinished subplan.
+		case T_SeqScan:
+        case T_IndexScan:
+		case T_TidScan:
+		case T_FunctionScan:
+        case T_NestLoop:
+        case T_MergeJoin:
+        case T_HashJoin:
+        case T_Hash:
+        case T_Motion:
+			/* Node is part of a finished plan produced by the planner.  
+             * Keep walking in search of subqueries with unfinished plans.
 			 */
-			Assert(finished);
-			if (plan_tree_walker(node, prescan_walker, context))
+            Assert(finished);
+            if ( plan_tree_walker(node, prescan_walker, context) )
                 goto return_true;
             goto return_false;
-		
-		case T_SeqScan:
-		case T_TidScan:
-		case T_IndexScan:
-		case T_FunctionScan:
+
 		case T_SubqueryScan:
 			/* A Scan is a source of tuples and thus occurs as a leaf of the
 			 * plan tree.  Note, however, that scans may include SubPlan nodes 
@@ -405,20 +404,11 @@ prescan_walker(Node *node, PlanProfile *context)
 				Plan *plan = (Plan*)node;
 				Scan *scan = (Scan*)plan;
 				Index rtindex = scan->scanrelid;
-                RangeTblEntry *rte;
+                RangeTblEntry  *rte;
+                SubqueryScan   *subqueryscan = (SubqueryScan*)node;
+                Plan           *subplan;
 				
-				/* Make sure this is first time. 
-				 * TODO: Clean-up this mess. Our contract with the planner
-				 *       specifies that that there will be a finish flow on
-				 *       a relation scanning node so we shouldn't need to
-				 *       look up relation policy, etc.  But we have to keep
-				 *       working until the planner is ready.  Another part
-				 *       of the contract says that a node in an unfinished
-				 *       part of the plan will have a flow allocated but with
-				 *       a type of FLOW_UNDEFINED. So we accept that but
-				 *       just orphan it to be cleaned up with the memory
-				 *       context.
-				 */
+				/* Make sure this is first time. */
 				Assert( finished || plan->flow == NULL || plan->flow->flotype == FLOW_UNDEFINED );
 				
 				/* Make sure we have a valid index. */
@@ -428,59 +418,40 @@ prescan_walker(Node *node, PlanProfile *context)
 				rte = rt_fetch(rtindex, localRangeTable(context));
 				
 				/* The entry type is related to the to the scan type. */
-				switch (nodeTag(node))
-				{
-					case T_SeqScan:
-					case T_TidScan:
-					case T_IndexScan:
-                    case T_FunctionScan:
-                        Assert(finished);
-						if ( plan_tree_walker(node, prescan_walker, context) )
-							goto return_true;
-						goto return_false;
-										
-					case T_SubqueryScan:
-						Assert( rte->rtekind == RTE_SUBQUERY );
-						/*
-						 * Parallelize a Subquery in the FROM clause.
-						 *
-						 * TODO Is there any special handling needed for
-						 *      parameters?
-						 */
-						{
-							SubqueryScan *subqueryscan = (SubqueryScan*)node;
-							Plan *subplan = subqueryscan->subplan;
-							
-							/* The subplan uses the range table of the
-							 * Query node atttached to the subquery RTE.
-							 * Also, the local context forces reexamination
-							 * of the contained query.
-							 */
-							pushLocals(context, rte->subquery->rtable);
-							if ( prescan_walker((Node*)subplan, context) )
-								goto return_true;
-							popLocals(context);
-							
-                            if ( !finished )
-							{
-								plan->flow = pull_up_Flow(plan, subqueryscan->subplan, true);
-                                Assert(plan->flow);
-								/* Don't use expressions from the wrong range table */
-								plan->flow->hashExpr = NIL; 
-							
-							    if ( ((Plan*)node)->flow == NULL || ((Plan*)node)->flow->flotype == FLOW_UNDEFINED )
-							    {
-								    detail = "Can't characterize flow from SubqueryScan.";
-								    break; /* Fail */
-                                }
-							}
-							
-							goto return_false;
-						}
-					
-					default: /* Never happens, but makes the compiler happy. */
-						Assert( false );
-				} /* inner switch */
+                Assert( rte->rtekind == RTE_SUBQUERY );
+
+                /*
+                 * Parallelize a Subquery in the FROM clause.
+                 *
+                 * TODO Is there any special handling needed for
+                 *      parameters?
+                 */
+                subplan = subqueryscan->subplan;
+
+                /* The subplan uses the range table of the
+                 * Query node atttached to the subquery RTE.
+                 * Also, the local context forces reexamination
+                 * of the contained query.
+                 */
+                pushLocals(context, rte->subquery->rtable);
+                if ( prescan_walker((Node*)subplan, context) )
+                    goto return_true;
+                popLocals(context);
+
+                if ( !finished )
+                {
+                    plan->flow = pull_up_Flow(plan, subqueryscan->subplan, true);
+                    Assert(plan->flow);
+                    /* Don't use expressions from the wrong range table */
+                    plan->flow->hashExpr = NIL; 
+
+                    if ( ((Plan*)node)->flow == NULL || ((Plan*)node)->flow->flotype == FLOW_UNDEFINED )
+                    {
+                        detail = "Can't characterize flow from SubqueryScan.";
+                        break; /* Fail */
+                    }
+                }
+                goto return_false;
 			}
 			break;  /* Fall through to report error. */
 		
@@ -518,7 +489,6 @@ prescan_walker(Node *node, PlanProfile *context)
 			goto return_false;
 
 		case T_Material:
-		case T_Hash:
 			/* First prescan children */
 			if ( plan_tree_walker(node, prescan_walker, context) )
 				goto return_true;
@@ -530,7 +500,7 @@ prescan_walker(Node *node, PlanProfile *context)
 					
 				if ( plan->flow == NULL || plan->flow->flotype == FLOW_UNDEFINED )
 				{
-					detail = "Can't characterize flow from Hash or Material node.";
+					detail = "Can't characterize flow from Material node.";
 					break;
 				}
 			}
@@ -604,54 +574,6 @@ prescan_walker(Node *node, PlanProfile *context)
 				/* TODO - Implement the above. */
 			}
 			detail = "Query involves partitioned duplicate removal.";
-			break; /* Fall through to report error. */
-		
-		case T_NestLoop:
-		case T_MergeJoin:
-		case T_HashJoin:
-			{
-				Plan *plan = (Plan*)node;
-				Join *join = (Join*)plan;
-				
-				Assert ( join->jointype == JOIN_INNER
-					|| join->jointype == JOIN_LEFT
-					|| join->jointype == JOIN_FULL
-					|| join->jointype == JOIN_RIGHT
-					|| join->jointype == JOIN_IN ); /* Remove later. */
-						
-				/* Walk into subnodes */
-				if ( plan_tree_walker(node, prescan_walker, context) )
-					goto return_true;
-				
-				if ( finished )
-					goto return_false;
-					
-				Assert( plan->flow == NULL || plan->flow->flotype == FLOW_UNDEFINED ); 
-				
-				switch (nodeTag(node))
-				{
-					case T_NestLoop:
-						/* Sets its own error information, if necessary. */
-						if (prescan_nestloop(plan, context))
-                            goto return_true;
-                        goto return_false;
-						
-					case T_MergeJoin:
-						/* Sets its own error information, if necessary. */
-						if (prescan_mergejoin(plan, context))
-                            goto return_true;
-                        goto return_false;
-						
-					case T_HashJoin:
-						/* Sets its own error information, if necessary. */
-				        if (prescan_hashjoin(plan, context))
-                            goto return_true;
-                        goto return_false;
-						
-					default:
-						break; /* Can't happen but compiler likes it. */
-				}
-			}
 			break; /* Fall through to report error. */
 		
 		case T_SetOp:
@@ -811,643 +733,6 @@ return_false:
     context->local->finished = parent_finished;
     return false;
 }
-
-
-/* Helper for prescan_walker() does processing for a HashJoin.
- *
- * Note that prescan_walker has already finished scaning the child nodes
- * of the join.
- *
- * Return false to indicate successful prescan.  Else set error info
- * in the context and return true.
- */
-bool prescan_hashjoin(Plan *plan, PlanProfile *context)
-{	
-	List *strategies;
-	ListCell *cell;
-	CdbJoinStrategy *strategy = NULL;
-
-	List *outerexpr = NULL;
-	List *innerexpr = NULL;
-	
-	Plan *outer = outerPlan(plan);
-	Plan *inner = innerPlan(plan);
-	
-	/* The expected pattern is:
-	 *
-	 *          plan 
-	 *       (HashJoin)
-	 *        /     \ 
-	 *     outer   inner
-	 *    (Plan)   (Hash)
-	 *               |              
-	 *          inner->lefttree 
-	 *             (Plan)
-	 */
-	Assert( IsA(plan, HashJoin) );
-	Assert( IsA(inner, Hash) );
-	Assert( is_plan_node((Node*)(inner->lefttree)) );
-	Assert( is_plan_node((Node*)outer) );
-	
-	
-	/* Get a list of possible strategies sorted by cost and 
-	 * use the first strategy that we can actually implement
-	 * for a hash join in this context. 
-	 */
-	strategies = getJoinStrategyList((Join*)plan);
-	
-	foreach ( cell, strategies )
-	{
-		bool canUse;
-		CdbJoinStrategy *s = (CdbJoinStrategy*)lfirst(cell);
-		
-		/* Pre-flight check the outer relation. */
-		switch ( s->leftmove )
-		{
-			case MOVEMENT_NONE:
-				canUse = true;
-				break;
-				
-			case MOVEMENT_FOCUS:
-				canUse = focusPlan(plan->lefttree, false, false, false, 0);
-				break;
-				
-			case MOVEMENT_BROADCAST:
-				canUse = broadcastPlan(plan->lefttree, false, false, false);
-				break;
-				
-			case MOVEMENT_REPARTITION:
-				outerexpr = getHashMotionInfoList(plan, INFOTYPE_LEFTEXPR);
-				canUse = repartitionPlan(plan->lefttree, false, false, false, outerexpr);
-				break;
-				
-			default:
-				canUse = false;
-				break;
-		}
-		
-		if ( !canUse )
-			continue; /* next strategy */
-		
-		/* Pre-flight check the inner relation. */
-		switch ( s->rightmove )
-		{
-			case MOVEMENT_NONE:
-				canUse = true;
-				break;
-				
-			case MOVEMENT_FOCUS:
-				canUse = focusPlan(plan->righttree, false, false, false, 0);
-				break;
-				
-			case MOVEMENT_BROADCAST:
-				canUse = broadcastPlan(plan->righttree, false, false, false);
-				break;
-				
-			case MOVEMENT_REPARTITION:
-				innerexpr = getHashMotionInfoList(plan, INFOTYPE_RIGHTEXPR);
-				canUse = repartitionPlan(plan->righttree, false, false, false, innerexpr);
-				break;
-				
-			default:
-				canUse = false;
-				break;
-		}
-		
-		if ( canUse )
-		{
-			strategy = copyJoinStrategy(s);
-			break;
-		}
-		
-		/* Else, next strategy. */
-	}
-	
-	/* Clean up */
-	if ( strategies != NIL )
-	{
-		freeJoinStrategyList(strategies);
-		strategies = NIL;
-	}
-	
-	/* If we didn't find a useable strategy, bail out. */
-	if ( strategy == NULL )
-	{
-		psErrorNonce(context, "No strategy available to parallelize that hash join.");
-		/* Hint: Try again with set enable_hashjoin = false */
-		return true;	 
-	}
-	
-
-	/*
-	 * Annotate the outer plan by updating Flow nodes as necessary.
-	 */
-	switch ( strategy->leftmove )
-	{
-		case MOVEMENT_NONE:
-			break;
-			
-		case MOVEMENT_FOCUS:
-			focusPlan(plan->lefttree, true, false, false, 0);
-			break;
-			
-		case MOVEMENT_BROADCAST:
-			broadcastPlan(plan->lefttree, true, false, false);
-			break;
-			
-		case MOVEMENT_REPARTITION:
-			repartitionPlan(plan->lefttree, true, false, false, outerexpr);
-			break;
-			
-		default:
-			Assert(false);
-			break;
-	}
-	
-	/*
-	 * Annotate the inner plan by updating Flow nodes as necessary.
-	 */
-	switch ( strategy->rightmove )
-	{
-		case MOVEMENT_NONE:
-			break;
-			
-		case MOVEMENT_FOCUS:
-			focusPlan(plan->righttree, true, false, false, 0);
-			break;
-			
-		case MOVEMENT_BROADCAST:
-			broadcastPlan(plan->righttree, true, false, false);
-			break;
-			
-		case MOVEMENT_REPARTITION:
-			repartitionPlan(plan->righttree, true, false, false, innerexpr);
-			break;
-			
-		default:
-			Assert(false);
-			break;
-	}
-	
-	/*
-	 * Annotate this HashJoin plan -- attach a Flow describing the result
-	 * of adopting the proposed strategy. 
-	 *
-	 * TODO It might be a good idea to try to track whether the join
-	 *      will preserve sort order or partitioning (or even to add
-	 *      junk attributes to facilitate it), but for now we track
-	 *      only flow type.
-	 */
-	plan->flow = makeFlow(strategy->resultflowtype);
-	return false;	 
-}
-
-
-
-/* Helper for prescan_walker() does processing for a MergeJoin.
- *
- * Note that prescan_walker has already finished scaning the child nodes
- * of the join.
- *
- * Return false to indicate successful prescan.  Else set error info
- * in the context and return true.
- */
-bool prescan_mergejoin(Plan *plan, PlanProfile *context)
-{	
-	List *strategies;
-	ListCell *cell;
-	CdbJoinStrategy *strategy = NULL;
-	
-	List *outerexpr = NULL;
-	List *innerexpr = NULL;
-
-	Plan *outer = outerPlan(plan);
-	Plan *inner = innerPlan(plan);
-	
-	/* This is the expected pattern:
-	 *
-	 *          plan 
-	 *       (MergeJoin)
-	 *        /      \ 
-	 *     outer    inner
-	 *    (Plan)    (Plan)
-	 *    ordered   ordered       
-	 *              rescan (via mark,restore)               
-	 */
-	Assert( IsA(plan, MergeJoin) );	
-	Assert( is_plan_node((Node*)inner) && inner->flow != NULL );
-	Assert( is_plan_node((Node*)outer) && outer->flow != NULL );
-
-	/* Get a list of possible strategies sorted by cost and 
-	 * use the first strategy that we can actually implement
-	 * for a hash join in this context. 
-	 */
-	strategies = getJoinStrategyList((Join*)plan);
-	
-	foreach( cell, strategies)
-	{
-		bool canUse;
-		CdbJoinStrategy *s = (CdbJoinStrategy*)lfirst(cell);
-		
-		/* Make sure we have ordering information for any argument we
-		 * need to apply motion to. 
-		 */
-		if ( s->leftmove != MOVEMENT_NONE && outer->flow->numSortCols < 1 )
-			continue;
-		if ( s->rightmove != MOVEMENT_NONE && inner->flow->numSortCols < 1 )
-			continue;
-	
-		/* Pre-flight check the outer relation. */
-		switch ( s->leftmove )
-		{
-			case MOVEMENT_NONE:
-				canUse = true;
-				break;
-				
-			case MOVEMENT_FOCUS:
-				canUse = focusPlan(plan->lefttree, false, true, false, 0);
-				break;
-				
-			case MOVEMENT_BROADCAST:
-				canUse = broadcastPlan(plan->lefttree, false, true, false);
-				break;
-				
-			case MOVEMENT_REPARTITION:
-				outerexpr = getHashMotionInfoList(plan, INFOTYPE_LEFTEXPR);
-				canUse = repartitionPlan(plan->lefttree, false, true, false, outerexpr);
-				break;
-				
-			default:
-				canUse = false;
-				break;
-		}
-		
-		if ( !canUse )
-			continue; /* next strategy */
-		
-		/* Pre-flight check the inner relation. */
-		switch ( s->rightmove )
-		{
-			case MOVEMENT_NONE:
-				canUse = true;
-				break;
-				
-			case MOVEMENT_FOCUS:
-				canUse = focusPlan(plan->righttree, false, true, true, 0);
-				break;
-				
-			case MOVEMENT_BROADCAST:
-				canUse = broadcastPlan(plan->righttree, false, true, true);
-				break;
-				
-			case MOVEMENT_REPARTITION:
-				innerexpr = getHashMotionInfoList(plan, INFOTYPE_RIGHTEXPR);
-				canUse = repartitionPlan(plan->righttree, false, true, true, innerexpr);
-				break;
-				
-			default:
-				canUse = false;
-				break;
-		}
-		
-		if ( canUse )
-		{
-			strategy = copyJoinStrategy(s);
-			break;
-		}
-		
-		/* Else, next strategy. */
-	}		
-
-	/* Clean up */
-	if ( strategies != NIL )
-	{
-		freeJoinStrategyList(strategies);
-		strategies = NIL;
-	}
-	
-	/* If we didn't find a useable strategy, bail out. */
-	if ( strategy == NULL )
-	{
-		psErrorNonce(context, "No strategy available to parallelize that merge join.");
-		/* Hint: Try again with set enable_mergejoin = false */
-		return true;	 
-	}
-	
-	/*
-	 * Annotate the outer plan by updating Flow nodes as necessary.
-	 */
-	switch ( strategy->leftmove )
-	{
-		case MOVEMENT_NONE:
-			break;
-			
-		case MOVEMENT_FOCUS:
-			focusPlan(plan->lefttree, true, true, false, 0);
-			break;
-			
-		case MOVEMENT_BROADCAST:
-			broadcastPlan(plan->lefttree, true, true, false);
-			break;
-			
-		case MOVEMENT_REPARTITION:
-			repartitionPlan(plan->lefttree, true, true, false, outerexpr);
-			break;
-			
-		default:
-			Assert(false);
-			break;
-	}
-	
-	/*
-	 * Annotate the inner plan by updating Flow nodes as necessary.
-	 */
-	switch ( strategy->rightmove )
-	{
-		case MOVEMENT_NONE:
-			break;
-			
-		case MOVEMENT_FOCUS:
-			focusPlan(plan->righttree, true, true, true, 0);
-			break;
-			
-		case MOVEMENT_BROADCAST:
-			broadcastPlan(plan->righttree, true, true, true);
-			break;
-			
-		case MOVEMENT_REPARTITION:
-			repartitionPlan(plan->righttree, true, true, true, innerexpr);
-			break;
-			
-		default:
-			Assert(false);
-			break;
-	}
-	
-	/*
-	 * Annotate this MergeJoin plan -- attach a Flow describing the result
-	 * of adopting the proposed strategy. 
-	 *
-	 * TODO It might be a good idea to try to track whether the join
-	 *      will preserve sort order or partitioning (or even to add
-	 *      junk attributes to facilitate it), but for now we track
-	 *      only flow type.
-	 */
-	plan->flow = makeFlow(strategy->resultflowtype);
-	return false;	 
-}
-
-
-
-/* Helper for prescan_walker() does processing for a NestLoop join.
- *
- * Note that prescan_walker has already finished scaning the child nodes
- * of the join.
- *
- * Return false to indicate successful prescan.  Else set error info
- * in the context and return true.
- */
-bool prescan_nestloop(Plan *plan, PlanProfile *context)
-{	
-	List *strategies;
-	ListCell *cell;
-	CdbJoinStrategy *strategy = NULL;
-
-	List *outerexpr = NIL;
-	List *innerexpr = NIL;
-	List *hashExpr = NIL;
-	bool attemptedHashExtract = false;
-
-	Plan *outer = outerPlan(plan);
-	Plan *inner = innerPlan(plan);	
-			
-	/* There are two expected patterns:
-	 *
-	 *          plan 
-	 *       (NestLoop)
-	 *        /     \ 
-	 *     outer   inner
-	 *    (Plan) (IndexScan)
-	 *  
-	 *
-	 *          plan 
-	 *       (NestLoop)
-	 *        /     \ 
-	 *     outer   inner
-	 *    (Plan)   (Plan)
-	 *             rescan
-	 *
-	 * The first pattern is special because the NestLoop passes its
-	 * context down to IndexScan which uses it to obtain the index
-	 * key.  Therefore, we can't insert a motion in between.
-	 *
-	 * In the second pattern the inner plan will usually be a Material
-	 * node but we can't assume this. The real requirement is that it
-	 * be rescanable.
-	 *			
-	 * TODO: Need a way to communicate (in a Flow) to the mutator
-	 *       that it should add a Material node above an added Motion.
-	 *       This would avoid the special requirement.  Note that we
-	 *       eliminate strategies that don't match the pattern in
-	 *       the filter stage above, so the Assert should never trip.
-	 */
-	Assert( IsA(plan, NestLoop) && plan->flow == NULL );
-	Assert( is_plan_node((Node*)inner) && inner->flow != NULL );
-	Assert( is_plan_node((Node*)outer) && outer->flow != NULL );
-	
-	
-	/* Get a list of possible strategies sorted by cost and 
-	 * use the first strategy that we can actually implement
-	 * for a hash join in this context. 
-	 */
-	strategies = getJoinStrategyList((Join*)plan);
-	
-	foreach( cell, strategies)
-	{
-		bool canUse;
-		CdbJoinStrategy *s = (CdbJoinStrategy*)lfirst(cell);
-		
-		
-		/*
-		 * If the strategy requires repartitioning, we can only do it if we
-		 * can extract hashing information from the joinqual.
-		 */
-		if ( s->leftmove == MOVEMENT_REPARTITION || s->rightmove == MOVEMENT_REPARTITION )
-		{
-			if ( hashExpr == NIL && ! attemptedHashExtract )
-			{
-				ListCell *xc;
-				/* Try to extract hash criteria from joinqual. */
-				if ( extractHashExprFromQual( ((Join*)plan)->joinqual, &hashExpr ))
-				{
-					/* Repartitioning is possible, dissect expressions. */
-					foreach ( xc, hashExpr )
-					{
-						OpExpr *op = (OpExpr*)lfirst(xc);
-						Assert( list_length(op->args) == 2 );
-						outerexpr = lappend(outerexpr, linitial(op->args));
-						innerexpr = lappend(innerexpr, lsecond(op->args));
-					}
-				}
-				else
-				{
-					hashExpr = NIL;  /* Just to be sure. */
-				}
-				attemptedHashExtract = true;
-            }
-			
-			if ( hashExpr == NIL )
-				continue; /* Not hashable, so can't use this strategy. */
-		}
-		
-		/*
-		 * If the inner relation is an IndexScan, the NestLoop is tightly 
-		 * coupled to it (needs to pass index keys on ExecReScan calls) 
-		 * so we can't insert any motion in between.
-		 */
-		 if ( IsA(inner, IndexScan) && s->rightmove != MOVEMENT_NONE )
-			continue;
-			
-	
-		/* Pre-flight check the outer relation. */
-		switch ( s->leftmove )
-		{
-			case MOVEMENT_NONE:
-				canUse = true;
-				break;
-				
-			case MOVEMENT_FOCUS:
-				canUse = focusPlan(plan->lefttree, false, false, false, 0);
-				break;
-				
-			case MOVEMENT_BROADCAST:
-				canUse = broadcastPlan(plan->lefttree, false, false, false);
-				break;
-				
-			case MOVEMENT_REPARTITION:
-				canUse = repartitionPlan(plan->lefttree, false, false, false, outerexpr);
-				break;
-				
-			default:
-				canUse = false;
-				break;
-		}
-		
-		if ( !canUse )
-			continue; /* next strategy */
-		
-		/* Pre-flight check the inner relation. */
-		switch ( s->rightmove )
-		{
-			case MOVEMENT_NONE:
-				canUse = true;
-				break;
-				
-			case MOVEMENT_FOCUS:
-				canUse = focusPlan(plan->righttree, false, false, true, 0);
-				break;
-				
-			case MOVEMENT_BROADCAST:
-				canUse = broadcastPlan(plan->righttree, false, false, true);
-				break;
-				
-			case MOVEMENT_REPARTITION:
-				canUse = repartitionPlan(plan->righttree, false, false, true, innerexpr);
-				break;
-				
-			default:
-				canUse = false;
-				break;
-		}
-		
-		if ( canUse )
-		{
-			strategy = copyJoinStrategy(s);
-			break;
-		}
-		
-		/* Else, next strategy. */
-	}
-	
-	/* Clean up */
-	if ( strategies != NIL )
-	{
-		freeJoinStrategyList(strategies);
-		strategies = NIL;
-	}
-	
-	/* If we didn't find a useable strategy, bail out. */
-	if ( strategy == NULL )
-	{
-		psErrorNonce(context, "No strategy available to parallelize that nested-loop join.");
-		/* Hint: Try again with set enable_nestloop = false */
-		return true;	 
-	}
-	
-	/*
-	 * Annotate the outer plan by updating Flow nodes as necessary.
-	 */
-	switch ( strategy->leftmove )
-	{
-		case MOVEMENT_NONE:
-			break;
-			
-		case MOVEMENT_FOCUS:
-			focusPlan(plan->lefttree, true, false, false, 0);
-			break;
-			
-		case MOVEMENT_BROADCAST:
-			broadcastPlan(plan->lefttree, true, false, false);
-			break;
-			
-		case MOVEMENT_REPARTITION:
-			repartitionPlan(plan->lefttree, true, false, false, outerexpr);
-			break;
-			
-		default:
-			Assert(false);
-			break;
-	}
-	
-	
-	/*
-	 * Annotate the inner plan by updating Flow nodes as necessary.
-	 */
-	switch ( strategy->rightmove )
-	{
-		case MOVEMENT_NONE:
-			break;
-			
-		case MOVEMENT_FOCUS:
-			focusPlan(plan->righttree, true, false, true, 0);
-			break;
-			
-		case MOVEMENT_BROADCAST:
-			broadcastPlan(plan->righttree, true, false, true);
-			break;
-			
-		case MOVEMENT_REPARTITION:
-			repartitionPlan(plan->righttree, true, false, true, innerexpr);
-			break;
-			
-		default:
-			Assert(false);
-			break;
-	}
-	
-	/*
-	 * Annotate this NestLoop plan -- attach a Flow describing the result
-	 * of adopting the proposed strategy. 
-	 *
-	 * TODO It might be a good idea to try to track whether the join
-	 *      will preserve sort order or partitioning (or even to add
-	 *      junk attributes to facilitate it), but for now we track
-	 *      only flow type.
-	 */
-    plan->flow = makeFlow(strategy->resultflowtype);
-	return false;	 
-}
-
 
 
 /* Helper for prescan_walker() does processing for an Agg node.
@@ -1900,7 +1185,10 @@ scanForManagedTables_walker(Node *node, PlanProfile *context)
 	
     switch (nodeTag(node))
 	{
-		case T_SeqScan:
+		case T_Motion:
+            return true;
+
+        case T_SeqScan:
 		case T_TidScan:
 		case T_IndexScan:
 			{

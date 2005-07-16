@@ -20,8 +20,6 @@
 
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
-#include "cdb/cdbvars.h"
-#include "cdb/cdbllize.h"
 #include "executor/executor.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
@@ -42,6 +40,10 @@
 #include "parser/parse_oper.h"
 #include "utils/selfuncs.h"
 #include "utils/syscache.h"
+
+#include "cdb/cdbllize.h"
+#include "cdb/cdbpathtoplan.h"  /* cdbpathtoplan_create_flow() */
+#include "cdb/cdbvars.h"
 
 
 ParamListInfo PlannerBoundParamList = NULL;		/* current boundParams */
@@ -1123,16 +1125,16 @@ grouping_planner(Query *parse, double tuple_fraction)
 		{
             best_path = sorted_path;
             if (Debug_print_prelim_plan)    /*CDB*/
-                elog_node_display(DEBUG1, "Path chosen (ordered)", best_path, true);
-			result_plan = create_plan(parse, sorted_path, false);
+                elog_node_display(DEBUG1, "Path chosen: ordered", best_path, true);
+			result_plan = create_plan(parse, sorted_path);
 			current_pathkeys = sorted_path->pathkeys;
 		}
 		else
 		{
             best_path = cheapest_path;
             if (Debug_print_prelim_plan)    /*CDB*/
-                elog_node_display(DEBUG1, "Path chosen (unordered)", best_path, true);
-			result_plan = create_plan(parse, cheapest_path, false);
+                elog_node_display(DEBUG1, "Path chosen: unordered", best_path, true);
+			result_plan = create_plan(parse, cheapest_path);
 			current_pathkeys = cheapest_path->pathkeys;
 		}
 
@@ -1198,6 +1200,18 @@ grouping_planner(Query *parse, double tuple_fraction)
 			locate_grouping_columns(parse, tlist, result_plan->targetlist,
 									groupColIdx);
 		}
+
+        /*
+         * CDB: Decorate the top node of the plan with a Flow node.
+         *
+         * The Flow node lets the post-parallelizer know that the plan
+         * from here downward is 'finished' (already parallelized), and
+         * describes some characteristics of the plan and its output.
+         */
+        result_plan->flow = cdbpathtoplan_create_flow(parse,
+                                                      best_path,
+                                                      current_pathkeys,
+                                                      result_plan);
 
 		/*
 		 * Insert AGG or GROUP node if needed, plus an explicit sort step
@@ -1350,7 +1364,22 @@ grouping_planner(Query *parse, double tuple_fraction)
 										  parse->limitCount);
 	}
 
-	/*
+    /*
+     * CDB: If the final join or scan is done on the qDisp, all
+     * subsequent operators must execute on the qDisp (for now).
+     * Add a Flow node telling the post-parallelizer that this
+     * portion of the plan is finished.  This allows GB/OB/etc in
+     * a subquery scan if we already know its output will be on
+     * the qDisp.
+     */
+    if (!result_plan->flow &&
+        CdbPathLocus_IsRoot(best_path->locus))
+        result_plan->flow = cdbpathtoplan_create_flow(parse,
+                                                      best_path,
+                                                      current_pathkeys,
+                                                      result_plan);
+
+    /*
 	 * Return the actual output ordering in query_pathkeys for possible
 	 * use by an outer query level.
 	 */

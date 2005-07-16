@@ -889,14 +889,14 @@ build_join_pathkeys(Query *root,
 
 
 /****************************************************************************
- *		PATHKEYS FOR PARTITIONING
+ *		PATHKEYS FOR DISTRIBUTED QUERIES
  ****************************************************************************/
 
 /*
  * cdb_make_pathkey_for_expr
- *	  Returns a canonicalized pathkey (a List of PathKeyItem) 
- *    which represents an equivalence class of expressions 
- *    that must be equal to the given expression.  
+ *	  Returns a canonicalized pathkey (a List of PathKeyItem)
+ *    which represents an equivalence class of expressions
+ *    that must be equal to the given expression.
  *
  *    The caller specifies the name of the equality operator thus:
  *          list_make1(makeString("="))
@@ -906,14 +906,14 @@ build_join_pathkeys(Query *root,
  *    merge join with another expr of the same data type, using the
  *    equality operator whose name is given.  Partitioning doesn't
  *    itself use the sort operator, but its Oid is needed to
- *    associate the PathKeyItem with the same equivalence class 
- *    (canonical pathkey) as any other expressions to which 
- *    our expr is constrained by compatible merge-joinable 
- *    equality operators.  (We assume, in what may be a temporary 
- *    excess of optimism, that our hashed partitioning function 
+ *    associate the PathKeyItem with the same equivalence class
+ *    (canonical pathkey) as any other expressions to which
+ *    our expr is constrained by compatible merge-joinable
+ *    equality operators.  (We assume, in what may be a temporary
+ *    excess of optimism, that our hashed partitioning function
  *    implements the same notion of equality as these operators.)
  */
-static List *
+List *
 cdb_make_pathkey_for_expr(Query    *root,
 					      Node     *expr,
                           List     *eqopname)
@@ -932,7 +932,7 @@ cdb_make_pathkey_for_expr(Query    *root,
 
     /* Get oid of the sort operator that would be used for a
      * sort-merge equijoin on a pair of exprs of the same type.
-     */ 
+     */
     if (eqopoid == InvalidOid ||
         !op_mergejoinable(eqopoid, &leftsortop, &rightsortop))
         leftsortop = InvalidOid;

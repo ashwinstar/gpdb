@@ -35,7 +35,6 @@
 #include "cdb/cdbplan.h"
 #include "cdb/cdbllize.h"
 #include "cdb/cdbcat.h"
-#include "cdb/cdbjoin.h"
 #include "cdb/cdbagg.h"
 #include "cdb/cdbmutate.h"
 
@@ -54,7 +53,6 @@ static void validateMotionNodeParms(MotionType motionType,
 			List *hashExpr,
 			int numOutputSegs, int *outputSegIdx,
 			int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators );
-static List *getExprListFromCondList(List *clist, HashMotionInfoType type);
 static bool motion_expr_walker(Node *node, char *not_used);
 #ifdef UNUSED
 static List * makeMotionTargetList(Plan *arg);
@@ -335,7 +333,7 @@ Plan* apply_motion(Plan*  plan, Query* query)
 Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 {
 	Node   *newnode;
-    
+
     if ( node == NULL )
 		return NULL;
 	
@@ -346,7 +344,7 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 	newnode = plan_tree_mutator(node, apply_motion_mutator, context);
 	
 	/* Perform special transformation, if specified. */
-	if ( is_plan_node(node) && 
+	if ( is_plan_node(node) &&
          ((Plan*)node)->flow != NULL &&
          ((Plan*)node)->flow->req_xform != MOVEMENT_NONE )
 	{
@@ -386,7 +384,7 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 		/* Pre-existing Motion nodes must be renumbered. */
 		case T_Motion:
 			/* Motion nodes can't specify motion. */
-			Assert( ((Plan*)newnode)->flow == NULL || 
+			Assert( ((Plan*)newnode)->flow == NULL ||
                     ((Plan*)newnode)->flow->req_move == MOVEMENT_NONE );
 			/* Assign unique node number to the new node. */
 			assignMotionID(newnode, context, node);
@@ -419,7 +417,7 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 				bool sendToSecondary = false; /* always for now */
 				
                 /* If no Flow node, we're in a portion of the tree
-                 * that was finished by the planner. 
+                 * that was finished by the planner.
                  */
                 if (!flow)
                     break;
@@ -563,68 +561,6 @@ void assignMotionID(Node* newnode, ApplyMotionState* context, Node* oldnode)
 
 
 /*
- * This function is problematic. It is written just to get the sample
- * INSERTs to the tiny schema to flow through EXPLAIN:
- *
- *   insert into sale
- *     select * from sale where pn > 1000;
- *
- *   insert into sale(pn,vn,cn)
- *     select p.pn, v.vn, c.cn
- *     from customer c, vendor v, product p
- *     where pn=0 and vn=0 and  cn=0;
- *
- * TODO This function needs to be revisited!
- */
-/*
-void set_hash_in_flow(Plan *plan, int nattrs, int *attrs)
-{
-	int i;
-	AttrNumber attr;
-	TargetEntry *tle;
-	Node *expr;
-	List *exprs = NIL;
-	
-	for ( i = 0; i < nattrs; i++ )
-	{
-		attr = attrs[i];
-		tle = get_tle_by_resno(plan->targetlist, attr);
-		Assert( tle != NULL );
-		
-		expr = copyObject(tle->expr);
-		Index x = OUTER;
-		force_vars_walker(expr,(void*)x);
-		
-		exprs = lappend(exprs, expr);
-	}
-	
-	plan->flow->hashExpr = exprs;
-	return;
-}
-*/
-
-/*
- * This quick hack just forces all the Var nodes in the argument to
- * specify the given varno.  It is supplied as (void*)(Index)x in the
- * caller, set_hash_in_flow().
- */
-/*
-bool force_vars_walker(Node *node, void *varno)
-{
-	if (node == NULL)
-		return false;
-	
-	if (IsA(node, Var))
-	{
-		((Var*)node)->varno = (Index)varno;
-		return false;
-	}
-	return expression_tree_walker(node, force_vars_walker, varno);
-}
-*/
-
-
-/*
  * Given the targetlist of a [potentially] projecting Plan operator and
  * a vector of attribute numbers of the single argument relation of the
  * plan, try to create a palloc'd vector of attribute numbers of the given
@@ -704,7 +640,7 @@ bool invertGrpColIdx(Agg *agg, AttrNumber **pinverse)
 
 
 /* -----------------------------------------------------------------------
- * Helper functions for extracting Lists of join expressions 
+ * Helper functions for extracting Lists of join expressions
  * from nodes, where the logic varies by node type
  * -----------------------------------------------------------------------
  */
@@ -714,56 +650,6 @@ List *getHashMotionInfoList( Plan *node, HashMotionInfoType type )
 	
 	switch ( nodeTag(node) )
 	{
-		case T_HashJoin:
-			/*
-			 * Deconstruct the hash clauses into outer and inner argument values,
-			 * so that we can evaluate those subexpressions separately.
-			 */
-			{
-				HashJoin *hjnode = (HashJoin *)node;
-				List *hclist = hjnode->hashclauses;
-				if ( hclist == NIL )
-					elog( ERROR, "Empty hashclauses list encountered in getHashMotionInfoList for HashJoin node");
-					
-    			hashinfo = getExprListFromCondList(hclist, type);
-			}
-				
-			break;
-			
-		case T_Hash:
-			elog( ERROR, "Musn't use a Hash Node in getHashMotionInfoList.  Use the parent HashJoin node instead." );
-			break;
-			
-		case T_MergeJoin:
-			/*
-			 * Deconstruct the merge clauses into outer and inner argument values,
-			 * so that we can evaluate those subexpressions separately.
-			 */
-			{
-				MergeJoin *mjnode = (MergeJoin *)node;
-				List *mclist = mjnode->mergeclauses;
-				if ( mclist == NIL )
-					elog( ERROR, "Empty mergeclauses list encountered in getHashMotionInfoList for MergeJoin node");
-				
-				hashinfo = getExprListFromCondList(mclist, type);
-			}
-				
-			break;
-			
-		case T_NestLoop:
-			{
-				NestLoop *nlnode = (NestLoop *)node;
-				List *jqlist = nlnode->join.joinqual;
-				if ( jqlist == NIL )
-					elog( ERROR,
-							"Not yet implemented: calling getHashMotionInfoList for a NestLoop node with no joinqual list.  "
-							"This can happen with an IndexScan node as the inner child." );
-				
-				hashinfo = getExprListFromCondList(jqlist, type);
-			}
-				
-			break;
-			
 		case T_Sort:
 			{
 				Sort		*snode = (Sort *)node;
@@ -1162,48 +1048,6 @@ bool motion_expr_walker(Node *node, char *not_used)
 	}
 	
 }
-
-/* ----------------------------------------------------------------
- * getExprListFromCondList
- *
- * Extracts either the left or right arguments or operators from
- * the given join condition list.
- *
- * The entries returned are copies of the expressions from the
- * condition list in which any Var references to INNER have been
- * replaced by references to OUTER.
- * ----------------------------------------------------------------
- */
-List *getExprListFromCondList(List *clist, HashMotionInfoType type)
-{
-	List *elist = NIL;
-	ListCell *l;
-	Node *expr;
-	Node *node;
-		
-	foreach(l, clist)
-	{
-		OpExpr	*opexpr = (OpExpr *) lfirst(l);
-
-		Assert(IsA(opexpr, OpExpr));
-		Assert(list_length(opexpr->args) == 2);
-		
-		if (type == INFOTYPE_LEFTEXPR)
-			node = linitial(opexpr->args);
-		else if (type == INFOTYPE_RIGHTEXPR)	
-			node = lsecond(opexpr->args);
-		else
-			Assert(0);	
-			
-		/* Assert(IsA(node, Expr)); -- Expr is abstract, IsA is not smart enought to deal with this. */
-		expr = copyObject(node);
-		
-		motion_expr_walker(expr, NULL);
-		elist = lappend(elist, expr);
-	}
-	
-	return elist;
-}	
 
 /* ----------------------------------------------------------------
  * getExprListFromTargetList

@@ -27,7 +27,7 @@ extern void query_planner(Query *root, List *tlist, double tuple_fraction,
 /*
  * prototypes for plan/createplan.c
  */
-extern Plan *create_plan(Query *root, Path *best_path, bool parent_finished);
+extern Plan *create_plan(Query *root, Path *best_path);
 extern SubqueryScan *make_subqueryscan(List *qptlist, List *qpqual,
 				  Index scanrelid, Plan *subplan);
 extern Append *make_append(List *appendplans, bool isTarget, List *tlist);

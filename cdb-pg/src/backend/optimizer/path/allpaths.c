@@ -394,7 +394,7 @@ set_subquery_pathlist(Query *root, RelOptInfo *rel,
 	pathkeys = build_subquery_pathkeys(root, rel, subquery);
 
 	/* Generate appropriate path */
-	add_path(rel, create_subqueryscan_path(rel, pathkeys));
+	add_path(rel, create_subqueryscan_path(root, rel, pathkeys));
 
 	/* Select cheapest path (pretty easy in this case...) */
 	set_cheapest(rel);

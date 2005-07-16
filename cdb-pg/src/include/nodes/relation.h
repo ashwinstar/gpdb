@@ -345,10 +345,9 @@ typedef struct Path
     EstimatedBytes  memory;     /* executor RAM needed for Path + kids */
 
     CdbPathLocus    locus;      /* distribution of the result tuples */
-    
-    bool        motionHazard;   /* true => path contains a CdbMotion operator 
+
+    bool        motionHazard;   /* true => path contains a CdbMotion operator
                                  *    without a slackening operator above it */
-    bool        isFinished;     /* true => post-parallelization not needed */
 
     List	   *pathkeys;		/* sort ordering of path's output */
 	/* pathkeys is a List of Lists of PathKeyItem nodes; see above */
@@ -428,7 +427,7 @@ typedef struct CdbMotionPath
 {
 	Path		path;
     Path	   *subpath;
-    bool		hashToSelfOnly; /* if true, only pass tuple when it hashes 
+    bool		hashToSelfOnly; /* if true, only pass tuple when it hashes
                                  * to same node ("deep-six the rest") */
 } CdbMotionPath;
 

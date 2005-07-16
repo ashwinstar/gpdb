@@ -11,6 +11,8 @@
 #include "postgres.h"
 
 #include "cdb/cdbcat.h"         /* CdbPolicy */
+#include "nodes/makefuncs.h"    /* makeVar() */
+#include "nodes/plannodes.h"    /* Plan */
 #include "nodes/relation.h"     /* RelOptInfo */
 #include "optimizer/pathnode.h" /* Path */
 #include "optimizer/paths.h"    /* cdb_build_distribution_pathkeys() */
@@ -163,6 +165,79 @@ cdbpathlocus_from_baserel(struct Query         *root,
 
     return result;
 }                               /* cdbpathlocus_from_baserel */
+
+
+/*
+ * cdbpathlocus_from_subquery
+ *
+ * Returns a locus describing the distribution of a subquery.
+ * The subquery plan should have been generated already.
+ */
+CdbPathLocus
+cdbpathlocus_from_subquery(struct Query         *root,
+                           struct RelOptInfo    *rel)
+{
+    CdbPathLocus    locus;
+    Plan           *plan = rel->subplan;
+    Flow           *flow = plan->flow;
+
+    CdbPathLocus_MakeNull(&locus);
+
+    /* Absence of a Flow node means the plan contains operators
+     * whose parallelization is delegated to the post-parallelizer.
+     * We don't know the output locus because the p.p. isn't
+     * called until later.
+     */
+    if (!flow)
+        goto done;
+
+    switch (flow->flotype)
+    {
+        case FLOW_SINGLETON:
+            if (flow->segindex == -1)
+                CdbPathLocus_MakeRoot(&locus);
+            break;
+        case FLOW_REPLICATED:
+            CdbPathLocus_MakeReplicated(&locus);
+            break;
+        case FLOW_PARTITIONED:
+        {
+            List       *partkey = NIL;
+            ListCell   *hashexprcell;
+            List       *eq = list_make1(makeString("="));
+            foreach(hashexprcell, flow->hashExpr)
+            {
+                Node           *expr = (Node *)lfirst(hashexprcell);
+                TargetEntry    *tle = tlistentry_member(expr, plan->targetlist);
+                Var            *var;
+                List           *pathkey;
+                if (!tle)
+                    break;
+                var = makeVar(rel->relid,
+                              tle->resdom->resno,
+                              tle->resdom->restype,
+                              tle->resdom->restypmod,
+                              0);
+                pathkey = cdb_make_pathkey_for_expr(root, (Node *)var, eq);
+                partkey = lappend(partkey, pathkey);
+            }
+            if (partkey &&
+                !hashexprcell)
+                CdbPathLocus_MakeHashed(&locus, partkey);
+            list_free_deep(eq);
+            break;
+        }
+        default:
+            Assert(false);
+    }
+
+done:
+    if (CdbPathLocus_IsNull(locus))
+        ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+                        errmsg("Unsupported subquery")
+                       ));
+    return locus;
+}                               /* cdbpathlocus_from_subquery */
 
 
 /*

@@ -416,7 +416,6 @@ create_seqscan_path(Query *root, RelOptInfo *rel)
 
     pathnode->locus = cdbpathlocus_from_baserel(root, rel);
     pathnode->motionHazard = false;
-    pathnode->isFinished = true;
 
     cost_seqscan(pathnode, root, rel);
 
@@ -481,7 +480,6 @@ create_index_path(Query *root,
     /* Distribution is same as the base table. */
     pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
     pathnode->path.motionHazard = false;
-    pathnode->path.isFinished = true;
 
 	cost_index(&pathnode->path, root, rel, index, indexquals, false);
 
@@ -507,7 +505,6 @@ create_tidscan_path(Query *root, RelOptInfo *rel, List *tideval)
     /* Distribution is same as the base table. */
     pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
     pathnode->path.motionHazard = false;
-    pathnode->path.isFinished = true;
 
 	cost_tidscan(&pathnode->path, root, rel, tideval);
 
@@ -537,7 +534,6 @@ create_append_path(RelOptInfo *rel, List *subpaths)
 	pathnode->subpaths = subpaths;
 
     pathnode->path.motionHazard = false;
-    pathnode->path.isFinished = true;
 
 	pathnode->path.startup_cost = 0;
 	pathnode->path.total_cost = 0;
@@ -561,8 +557,6 @@ create_append_path(RelOptInfo *rel, List *subpaths)
 
         if (subpath->motionHazard)
             pathnode->path.motionHazard = true;
-        if (!subpath->isFinished)
-            pathnode->path.isFinished = false;
 	}
 
 	return pathnode;
@@ -597,7 +591,6 @@ create_result_path(RelOptInfo *rel, Path *subpath, List *constantqual)
 
         pathnode->path.locus = subpath->locus;
         pathnode->path.motionHazard = subpath->motionHazard;
-        pathnode->path.isFinished = subpath->isFinished;
 	}
 	else
 	{
@@ -606,7 +599,6 @@ create_result_path(RelOptInfo *rel, Path *subpath, List *constantqual)
 
         CdbPathLocus_MakeGeneral(&pathnode->path.locus);
         pathnode->path.motionHazard = false;
-        pathnode->path.isFinished = true;
 	}
 
     return pathnode;
@@ -629,7 +621,6 @@ create_material_path(RelOptInfo *rel, Path *subpath)
 
     pathnode->path.locus = subpath->locus;
     pathnode->path.motionHazard = false;
-    pathnode->path.isFinished = subpath->isFinished;
 
 	pathnode->subpath = subpath;
 
@@ -686,8 +677,7 @@ create_unique_path(Query *root, RelOptInfo *rel, Path *subpath)
 
     pathnode->path.locus = subpath->locus;
     pathnode->path.motionHazard = subpath->motionHazard;
-    pathnode->path.isFinished = subpath->isFinished;
-                                   
+
 	/*
 	 * Treat the output as always unsorted, since we don't necessarily
 	 * have pathkeys to represent it.
@@ -903,7 +893,7 @@ hash_safe_tlist(List *tlist)
  *	  returning the pathnode.
  */
 Path *
-create_subqueryscan_path(RelOptInfo *rel, List *pathkeys)
+create_subqueryscan_path(Query *root, RelOptInfo *rel, List *pathkeys)
 {
 	Path	   *pathnode = makeNode(Path);
 
@@ -911,12 +901,8 @@ create_subqueryscan_path(RelOptInfo *rel, List *pathkeys)
 	pathnode->parent = rel;
 	pathnode->pathkeys = pathkeys;
 
-    /* CDB TODO: if subquery result is partitioned, don't move it
-     * to dispatcher unnecessarily.  (see cdbmutate.c)
-     */
-    CdbPathLocus_MakeRoot(&pathnode->locus);
-    pathnode->motionHazard = false;
-    pathnode->isFinished = true;
+    pathnode->locus = cdbpathlocus_from_subquery(root, rel);
+    pathnode->motionHazard = true;          /* better safe than sorry */
 
 	cost_subqueryscan(pathnode, rel);
 
@@ -941,7 +927,6 @@ create_functionscan_path(Query *root, RelOptInfo *rel)
     /* Assign all function evaluations to the query dispatcher, for now. */
     CdbPathLocus_MakeRoot(&pathnode->locus);
     pathnode->motionHazard = false;
-    pathnode->isFinished = true;
 
 	cost_functionscan(pathnode, root, rel);
 
@@ -1008,7 +993,6 @@ create_nestloop_path(Query *root,
 
     pathnode->path.locus = join_locus;
     pathnode->path.motionHazard = outer_path->motionHazard || inner_path->motionHazard;
-    pathnode->path.isFinished = outer_path->isFinished && inner_path->isFinished;
 
 	cost_nestloop(pathnode, root);
 
@@ -1124,7 +1108,6 @@ create_mergejoin_path(Query *root,
 	pathnode->jpath.path.pathkeys = pathkeys;
     pathnode->jpath.path.locus = join_locus;
     pathnode->jpath.path.motionHazard = outer_path->motionHazard || inner_path->motionHazard;
-    pathnode->jpath.path.isFinished = outer_path->isFinished && inner_path->isFinished;
 	pathnode->path_mergeclauses = mergeclauses;
 	pathnode->outersortkeys = outersortkeys;
 	pathnode->innersortkeys = innersortkeys;
@@ -1184,7 +1167,6 @@ create_hashjoin_path(Query *root,
 	pathnode->jpath.path.pathkeys = NIL;
     pathnode->jpath.path.locus = join_locus;
     pathnode->jpath.path.motionHazard = false;  /* outer + inner are materialized */
-    pathnode->jpath.path.isFinished = outer_path->isFinished && inner_path->isFinished;
 	pathnode->path_hashclauses = hashclauses;
 
 	cost_hashjoin(pathnode, root);

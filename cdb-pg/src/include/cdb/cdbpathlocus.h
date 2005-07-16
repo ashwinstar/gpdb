@@ -120,9 +120,9 @@ typedef struct CdbPathLocus
 
 #define CdbPathLocus_Make(plocus, _locustype, _partkey) \
     do {                                                \
-        CdbPathLocus *locus = (plocus);                 \
-        locus->locustype = (_locustype);                \
-        locus->partkey = (_partkey);                    \
+        CdbPathLocus *_locus = (plocus);                \
+        _locus->locustype = (_locustype);               \
+        _locus->partkey = (_partkey);                   \
     } while (0)
 
 #define CdbPathLocus_MakeNull(plocus)                   \
@@ -156,7 +156,9 @@ cdbpathlocus_compare(CdbPathLocus_Comparison    op,
 CdbPathLocus
 cdbpathlocus_from_baserel(struct Query         *root,
                           struct RelOptInfo    *rel);
-
+CdbPathLocus
+cdbpathlocus_from_subquery(struct Query         *root,
+                           struct RelOptInfo    *rel);
 
 CdbPathLocus
 cdbpathlocus_join(CdbPathLocus a, CdbPathLocus b);

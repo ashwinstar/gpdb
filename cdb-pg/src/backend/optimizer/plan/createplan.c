@@ -128,7 +128,7 @@ static Sort *make_sort(Query *root, Plan *lefttree, int numCols,
  *	  Returns a Plan tree.
  */
 Plan *
-create_plan(Query *root, Path *best_path, bool parent_finished)
+create_plan(Query *root, Path *best_path)
 {
 	Plan	   *plan;
 
@@ -178,11 +178,6 @@ create_plan(Query *root, Path *best_path, bool parent_finished)
         CdbPathLocus_IsHashed(best_path->locus) ||
         CdbPathLocus_IsHashedOJ(best_path->locus))
         plan->dispatch = DISPATCH_PARALLEL;
-
-    if (plan &&
-        !parent_finished &&
-        best_path->isFinished)
-        plan->flow = cdbpathtoplan_create_flow(root, best_path, plan);
 
     return plan;
 }
@@ -373,8 +368,8 @@ create_join_plan(Query *root, JoinPath *best_path)
 	Plan	   *inner_plan;
 	Join	   *plan;
 
-	outer_plan = create_plan(root, best_path->outerjoinpath, best_path->path.isFinished);
-	inner_plan = create_plan(root, best_path->innerjoinpath, best_path->path.isFinished);
+	outer_plan = create_plan(root, best_path->outerjoinpath);
+	inner_plan = create_plan(root, best_path->innerjoinpath);
 
 	switch (best_path->path.pathtype)
 	{
@@ -439,7 +434,7 @@ create_append_plan(Query *root, AppendPath *best_path)
 	{
 		Path	   *subpath = (Path *) lfirst(subpaths);
 
-		subplans = lappend(subplans, create_plan(root, subpath, best_path->path.isFinished));
+		subplans = lappend(subplans, create_plan(root, subpath));
 	}
 
 	plan = make_append(subplans, false, tlist);
@@ -468,7 +463,7 @@ create_result_plan(Query *root, ResultPath *best_path)
 		tlist = NIL;			/* will be filled in later */
 
 	if (best_path->subpath)
-		subplan = create_plan(root, best_path->subpath, best_path->path.isFinished);
+		subplan = create_plan(root, best_path->subpath);
 	else
 		subplan = NULL;
 
@@ -492,7 +487,7 @@ create_material_plan(Query *root, MaterialPath *best_path)
 	Material   *plan;
 	Plan	   *subplan;
 
-	subplan = create_plan(root, best_path->subpath, best_path->path.isFinished);
+	subplan = create_plan(root, best_path->subpath);
 
 	/* We don't want any excess columns in the materialized tuples */
 	disuse_physical_tlist(subplan, best_path->subpath);
@@ -525,7 +520,7 @@ create_unique_plan(Query *root, UniquePath *best_path)
 	bool		newitems;
 	ListCell   *l;
 
-	subplan = create_plan(root, best_path->subpath, best_path->path.isFinished);
+	subplan = create_plan(root, best_path->subpath);
 
 	/*
 	 * As constructed, the subplan has a "flat" tlist containing just the
@@ -661,11 +656,7 @@ create_motion_plan(Query           *root,
                    CdbMotionPath   *path)
 {
     Motion *motion;
-    Plan   *subplan = create_plan(root, path->subpath, path->path.isFinished);
-
-    /* Post-parallelizer takes care of motion in unfinished portion of plan. */
-    if (!path->path.isFinished)
-        return subplan;
+    Plan   *subplan = create_plan(root, path->subpath);
 
     /* Only the needed columns should be projected from base rel. */
     disuse_physical_tlist(subplan, path->subpath);
