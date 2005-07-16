@@ -206,9 +206,9 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 	FLATCOPY(inner_agg, agg, Agg);
 	inner_plan = (Plan*)inner_agg;
 	
-	/* The attached flow is no longer interesting.  It flagged the need to
-	 * call this function, but from here on, all the information we need to
-	 * make the transformation is readily available in the plan itself.
+	/* Retain the attached flow, which may specify a motion to be applied
+	 * after this transformation; but clear the flag that caused the call 
+	 * to this function.
 	 */
 	plan->flow->req_xform = MOVEMENT_NONE;
 	
@@ -331,12 +331,12 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 	inner_plan->targetlist = context.inner_tlist;
 	context.inner_tlist = NIL;
 	
-	/* Splice in Motion and set the flow of the outer plan. */
+	/* Splice in Motion and adjust the flow of the outer plan, if needed. */
 	switch ( agg->aggstrategy )
 	{
 		case AGG_PLAIN:
 			plan->lefttree =(Plan*)make_union_motion(inner_plan, false, -1);
-			plan->flow = makeFlow(FLOW_SINGLETON);
+			Assert(plan->flow->flotype == FLOW_SINGLETON);
 			break;
 			
 		case AGG_HASHED:
@@ -344,7 +344,7 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 				inner_plan, false, 
 				getHashMotionInfoList(inner_plan, INFOTYPE_LEFTEXPR)
 				);
-			plan->flow = makeFlow(FLOW_PARTITIONED);
+			Assert(plan->flow->flotype == FLOW_PARTITIONED);
 			plan->flow->hashExpr = ((Motion*)plan->lefttree)->hashExpr;
 			break;
 			
