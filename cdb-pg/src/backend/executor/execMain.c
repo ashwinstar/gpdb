@@ -171,7 +171,13 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 	 */
 	 if ( Cdb_role == CDB_ROLE_DISPATCH )
 	 {
+		/* Set up blank slice table to be filled in during InitPlan. */
 		InitSliceTable(estate, queryDesc->plantree->nMotionNodes, queryDesc->plantree->nParamExec);
+	 }
+	 else if ( Cdb_role == CDB_ROLE_EXECUTE )
+	 {
+		/* Set up blank map (motionID -> MotionState*) to be filled in during InitPlan */
+		estate->es_slice_map = (MotionState**)palloc0((1+queryDesc->plantree->nMotionNodes) * sizeof(MotionState*));
 	 }
 
 	/*
@@ -195,7 +201,10 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 
 	MemoryContextSwitchTo(oldcontext);
 	
-	/* TODO: Remove this or replace with configurable trace. */
+	/* TODO - SLICE PLAN INTEGRATION
+	 *
+	 * Remove this or replace with configurable trace. 
+	 */
 	if ( Cdb_role == CDB_ROLE_DISPATCH )
 	{
 		elog_node_display(DEBUG1, 
@@ -353,17 +362,46 @@ ExecutorRun(QueryDesc *queryDesc,
 		}
 
 		/*
-		* run plan on the dispatcher (entry) process.
+		* Run the plan.
 		*/
 		if (direction == NoMovementScanDirection)
+		{
 			result = NULL;
+		}
+		else if ( FALSE && Cdb_role == CDB_ROLE_EXECUTE && estate->es_cur_slice_idx != estate->es_cur_root_idx )
+		{
+			/* Executing a non-root slice on a QE.  Note that the top Plan
+			 * node of the slice must be a (Sending) Motion in this case,
+			 * so we know we want to run the plan forward to completion.
+			 * Also, the destination and command type are uninteresting
+			 * and the node won't return any tuples locally.  (All go out
+			 * over the interconnect to corresponding receivers.)
+			 * 
+			 * TODO - SLICE PLAN INTEGRATION
+			 *
+			 *        Debug this code path once multi-gang query is
+			 *        switched on.  There are likely to be issues related
+			 *        to our blundering into the middle of the plan!
+			 */
+			result = ExecutePlan(estate,
+								(PlanState*)(estate->es_slice_map[estate->es_cur_slice_idx]),
+								CMD_SELECT,
+								0,
+								ForwardScanDirection,
+								dest);
+		}
 		else
+		{
+			/* On the QD or executing a root on a QE or running in the role 
+			 * of a utility.
+			 */
 			result = ExecutePlan(estate,
 								queryDesc->planstate,
 								operation,
 								count,
 								direction,
 								dest);
+		}
 	}
 	PG_CATCH();
 	{

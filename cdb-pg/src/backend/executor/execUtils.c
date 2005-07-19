@@ -221,6 +221,7 @@ CreateExecutorState(void)
 	estate->es_cur_slice_idx = 0;
 	estate->es_cur_root_idx = 0;
 	estate->es_sliceTable = NULL;
+	estate->es_slice_map = NULL;
 
 	/*
 	 * Return the executor state structure
@@ -1114,7 +1115,10 @@ void InitRootSlices(QueryDesc *queryDesc)
 	}
 }
 
-/* ** *** **** TODO Remove Stub Executor Factory **** *** ** */
+/* TODO - SLICE PLAN INTEGRATION
+ *
+ ** *** **** Remove Stub Executor Factory **** *** ** 
+ */
 
 typedef struct Gang {GangType type; int size;} Gang;
 

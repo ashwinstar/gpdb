@@ -721,13 +721,14 @@ ExecInitSubPlan(SubPlanState *node, EState *estate)
 	sp_estate->es_instrument = estate->es_instrument;
 	
 	/*
-	 * "Loan" the global slice table to the subplan EState.  The global
-	 * state is already set up by the code that called up, e.g., it this
-	 * is an initPlan subplan, then the current slice will be a root.
+	 * "Loan" the global slice table and map to the subplan EState.  The 
+	 * global state is already set up by the code that called up, e.g., if 
+	 * this is an initPlan subplan, then the current slice will be a root.
 	 */
 	 sp_estate->es_cur_root_idx = estate->es_cur_root_idx;
 	 sp_estate->es_cur_slice_idx = estate->es_cur_slice_idx;
 	 sp_estate->es_sliceTable = estate->es_sliceTable;
+	 sp_estate->es_slice_map = estate->es_slice_map;
 
 	/*
 	 * Start up the subplan (this is a very cut-down form of InitPlan())
@@ -994,10 +995,6 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, ParamListInfo p)
 			queryDesc->doInstrument = FALSE;
 			queryDesc->tupDesc = NULL;
 			queryDesc->planstate = NULL;
-
-			/* TODO - Verify the EState for this subplan */
-			/*   queryDesc->estate->es_sliceTable -- the slice table  */
-			/*   queryDesc->estate->es_cur_root_idx -- the root to execute  */
 
 			/*
 			 * This call returns after launching the threads that send the command to the appropriate

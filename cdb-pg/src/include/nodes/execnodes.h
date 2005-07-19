@@ -466,6 +466,7 @@ typedef struct EState
 	int es_cur_root_idx;
 	int es_cur_slice_idx;
  	SliceTable *es_sliceTable;
+	struct MotionState **es_slice_map;
 
 } EState;
 

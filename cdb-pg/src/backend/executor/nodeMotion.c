@@ -807,7 +807,9 @@ ExecInitMotion(Motion *node, EState *estate)
 	motionstate->ps.state = estate;
 	
 	/*
-	 * CDB Slice Plan: QD must initialize the global slice table.
+	 * CDB Slice Plan: 
+	 *   QD must initialize the global slice table.
+	 *   QE must fill in map from motionID to MotionState node.
 	 */
 	if ( Cdb_role == CDB_ROLE_DISPATCH )
 	{
@@ -854,6 +856,11 @@ ExecInitMotion(Motion *node, EState *estate)
 		estate->es_cur_slice_idx = thisSlice->sliceIndex;
 		
 		MemoryContextSwitchTo(oldcxt);
+	}
+	else if ( Cdb_role == CDB_ROLE_EXECUTE )
+	{
+		Assert( estate->es_slice_map != NULL && estate->es_slice_map[0] == NULL );
+		estate->es_slice_map[node->motionID] = motionstate;
 	}
     
     readFromChild = (Cdb_role != CDB_ROLE_DISPATCH);

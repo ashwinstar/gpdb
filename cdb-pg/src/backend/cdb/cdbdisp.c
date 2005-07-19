@@ -1264,7 +1264,15 @@ void CdbDispatchPlan(QueryDesc *queryDesc)
 	int *sliceVector, nSlices, sliceLim;
 	int i;
 	
-	/* TODO - Remove expedient kludge, when time is right. */
+	/* TODO - SLICE PLAN INTEGRATION
+	 *
+	 * When time is right, remove this expedient kludge, which prevents the
+	 * loop below from dispatching the plan multiple times to the same QEs.
+	 * Once executor factory and new interconnect are ready, the loop should
+	 * setup for the correct dispatches, but the actual call to dispatch a
+	 * slice  to a gang (CdbDispatchCommand) may need adjustment per the
+	 * implementation of executor factory.
+	 */
 	bool kludge = TRUE;
 	
 	Assert( Cdb_role == CDB_ROLE_DISPATCH );	
@@ -1372,8 +1380,11 @@ void CdbDispatchPlan(QueryDesc *queryDesc)
 	{
 		Slice *slice = (Slice *)list_nth(sliceTbl->slices, sliceVector[i]);
 		
-
-		if ( false ) /* TODO - Is this a slice we should dispatch? */
+		 /* Is this a slice we should dispatch?
+		  *
+		  * TODO - SLICE PLAN INTEGRATION - Eliminate FALSE in test below.
+		  */
+		if ( FALSE && slice->gangType == GANGTYPE_UNALLOCATED )
 		{
 			/* Most slices are dispatched, however, in many  cases the
 			 * root runs only on the QD and is not dispatched to the QEs.
@@ -1392,7 +1403,9 @@ void CdbDispatchPlan(QueryDesc *queryDesc)
 		
 		
 		/* 
-		 * TODO - Need to know how to specify target set: from CDBProcess
+		 * TODO - SLICE PLAN INTEGRATION
+		 * 
+		 * Need to know how to specify target set: from CDBProcess
 		 * list, a group identifier, or how.
 		 *
 		 * The information In the argument to CDBDispatchCommand must specify
@@ -1414,7 +1427,7 @@ void CdbDispatchPlan(QueryDesc *queryDesc)
 		 * segdbs.  It does not wait for them to finish.
 		 */
 		 
-		/* TODO - Remove expedient kludge to force single dispatch. */
+		/* TODO - SLICE PLAN INTEGRATION - Remove expedient kludge to force single dispatch. */
 		if ( kludge )
 		{
 			CdbDispatchCommand(strinfo.data, set, NULL, 0, true );

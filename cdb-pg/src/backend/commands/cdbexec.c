@@ -44,12 +44,15 @@ CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
 	int i, n;
 	ListCell *pc;
 	char *cstr = NULL;
+	EState *estate = NULL;
 	
 	/* tcop shouldn't call unless the role is right! */
 	Assert(Cdb_role == CDB_ROLE_EXECUTE );
 	
-	/* TODO - Something smart with the memory context. */
-	qctx = CurrentMemoryContext; /* Should prpbably be some portal context? */
+	/* TODO - SLICE PLAN INTEGRATION 
+	 * Do something smart with the memory context. 
+	 */
+	qctx = CurrentMemoryContext; /* Should probably be some portal context? */
 	oldctx = MemoryContextSwitchTo(qctx);
 	
 	/* Deserialize the strings from the CDBEXEC statement. */
@@ -107,21 +110,13 @@ CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
 				i++;
 			}
 		}
-		Assert( query->commandType != CMD_UTILITY );
 	}
 	else
 	{
 		plan = NULL;
-		elog(NOTICE, "Received a utility Command\n");
-		/*ProcessUtility(query->utilityStmt,
-			   NULL,
-			   dest,
-			   completionTag); 
-		return */
+		elog(DEBUG2, "cdbexec received a utility command\n");
 	}
 
-	EState	   *estate = NULL;
-	/*Assert( query->commandType != CMD_UTILITY );*/
 
 	/*
 	 * Create a new portal to run the query in
@@ -140,7 +135,8 @@ CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
 					  qctx);
 	
 	/*
-	 * Run the portal to completion.
+	 * Run the portal to completion.  Note that ExecutorStart is called
+	 * in here.
 	 */
 	PortalStart(portal, paramLI, ActiveSnapshot);
 	
@@ -149,11 +145,16 @@ CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
 	 * we need to do a little surgery on the Estate before we run the portal.  
 	 * Our Estate was set up by the call to ExecutorStart in PortalStart, but
 	 * since we're a QE, the slice table wasn't initialized.  Instead, we plug
-	 * in the one from the QD.
+	 * in the one from the QD. 
+	 *
+	 * Further, if we're  running a non-root slice, we need to arrange to
+	 * enter the plan at the (sending) Motion at the top of the slice instead
+	 * of entering at the root.
 	 */
 	if ( Cdb_role == CDB_ROLE_EXECUTE && portal->queryDesc != NULL )
 	{
 		Node * slice;
+		MotionState *motionstate = NULL;
 		EState * es = portal->queryDesc->estate;
 		if ( sliceTable == NULL )
 		{
@@ -169,7 +170,15 @@ CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
 		Assert( IsA(slice,Slice) );
 		es->es_cur_root_idx = ((Slice*)slice)->rootIndex;
 		
-		/* TODO Remove this notice. */
+		if ( es->es_cur_slice_idx != es->es_cur_root_idx )
+		{
+			motionstate = es->es_slice_map[es->es_cur_slice_idx];
+			Assert( motionstate != NULL && IsA(motionstate, MotionState) );
+		}
+		
+		/* TODO - SLICE PLAN INTEGRATION
+		 * Remove this notice or replace with debugging message.
+		 */
 		elog(NOTICE, "QE[%d] patching queryDesc Estate at %lx.", CdbIdentity.segindex, (unsigned long) es);
 		
 		elog_node_display(DEBUG1, 
