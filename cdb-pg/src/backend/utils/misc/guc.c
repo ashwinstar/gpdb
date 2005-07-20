@@ -886,6 +886,16 @@ static struct config_bool ConfigureNamesBool[] =
 		true, NULL, NULL
 	},
 
+	{
+		{"cdb_is_primary", PGC_BACKEND, UNGROUPED,
+			gettext_noop("Reports session type as primary or mirror."),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+		},
+		&Cdb_is_primary,
+		true, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL

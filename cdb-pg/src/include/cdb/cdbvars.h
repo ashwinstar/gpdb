@@ -119,6 +119,19 @@ extern char			  * cdb_role_string;	/* Use by guc.c as staging area for value. */
 extern const char	  * assign_cdb_role( const char *newval, bool doit, GucSource source );
 extern const char	  * show_cdb_role( void );
 
+/* Parameter cdb_is_primary
+ * 
+ * This run_time parameter indicates whether session is associated with the
+ * primary copy of its database's content or with a mirror.  It defaults to
+ * true (primary), but may be specified as false using a connect option, e.g,
+ *
+ * 	  PGOPTIONS='-c cdb_is_primary=false' psql test
+ *
+ * Though it will ordinarily be set by a QD connecting to a QE, rather than
+ * directly.  It may not be reset in a running session.
+ */
+extern bool				Cdb_is_primary;
+
 /* Parameter debug_print_prelim_plan
  * 
  * This run-time parameter is closely related to the PostgreSQL parameter
