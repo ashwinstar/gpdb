@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/dbcommands.c,v 1.148 2004/12/31 21:59:41 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/dbcommands.c,v 1.148.4.2 2005/03/23 00:04:23 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -486,23 +486,17 @@ createdb(CreatedbStmt *stmt)
 		/* Record the filesystem change in XLOG */
 		{
 			xl_dbase_create_rec xlrec;
-			XLogRecData rdata[3];
+			XLogRecData rdata[1];
 
 			xlrec.db_id = dboid;
+			xlrec.tablespace_id = dsttablespace;
+			xlrec.src_db_id = src_dboid;
+			xlrec.src_tablespace_id = srctablespace;
+
 			rdata[0].buffer = InvalidBuffer;
 			rdata[0].data = (char *) &xlrec;
-			rdata[0].len = offsetof(xl_dbase_create_rec, src_path);
-			rdata[0].next = &(rdata[1]);
-
-			rdata[1].buffer = InvalidBuffer;
-			rdata[1].data = (char *) srcpath;
-			rdata[1].len = strlen(srcpath) + 1;
-			rdata[1].next = &(rdata[2]);
-
-			rdata[2].buffer = InvalidBuffer;
-			rdata[2].data = (char *) dstpath;
-			rdata[2].len = strlen(dstpath) + 1;
-			rdata[2].next = NULL;
+			rdata[0].len = sizeof(xl_dbase_create_rec);
+			rdata[0].next = NULL;
 
 			(void) XLogInsert(RM_DBASE_ID, XLOG_DBASE_CREATE, rdata);
 		}
@@ -825,8 +819,8 @@ RenameDatabase(const char *oldname, const char *newname)
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_DATABASE,
 					   oldname);
 
-	/* must have createdb */
-	if (!have_createdb_privilege())
+	/* must have createdb rights */
+	if (!superuser() && !have_createdb_privilege())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied to rename database")));
@@ -990,8 +984,7 @@ AlterDatabaseOwner(const char *dbname, AclId newOwnerSysId)
 		bool		isNull;
 		HeapTuple	newtuple;
 
-		/* changing owner's database for someone else: must be superuser */
-		/* note that the someone else need not have any permissions */
+		/* must be superuser to change ownership */
 		if (!superuser())
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
@@ -1112,24 +1105,22 @@ get_db_info(const char *name, Oid *dbIdP, int4 *ownerIdP,
 	return gottuple;
 }
 
+/* Check if current user has createdb privileges */
 static bool
 have_createdb_privilege(void)
 {
+	bool		result = false;
 	HeapTuple	utup;
-	bool		retval;
 
 	utup = SearchSysCache(SHADOWSYSID,
 						  Int32GetDatum(GetUserId()),
 						  0, 0, 0);
-
-	if (!HeapTupleIsValid(utup))
-		retval = false;
-	else
-		retval = ((Form_pg_shadow) GETSTRUCT(utup))->usecreatedb;
-
-	ReleaseSysCache(utup);
-
-	return retval;
+	if (HeapTupleIsValid(utup))
+	{
+		result = ((Form_pg_shadow) GETSTRUCT(utup))->usecreatedb;
+		ReleaseSysCache(utup);
+	}
+	return result;
 }
 
 /*
@@ -1174,18 +1165,15 @@ remove_dbtablespaces(Oid db_id)
 		/* Record the filesystem change in XLOG */
 		{
 			xl_dbase_drop_rec xlrec;
-			XLogRecData rdata[2];
+			XLogRecData rdata[1];
 
 			xlrec.db_id = db_id;
+			xlrec.tablespace_id = dsttablespace;
+
 			rdata[0].buffer = InvalidBuffer;
 			rdata[0].data = (char *) &xlrec;
-			rdata[0].len = offsetof(xl_dbase_drop_rec, dir_path);
-			rdata[0].next = &(rdata[1]);
-
-			rdata[1].buffer = InvalidBuffer;
-			rdata[1].data = (char *) dstpath;
-			rdata[1].len = strlen(dstpath) + 1;
-			rdata[1].next = NULL;
+			rdata[0].len = sizeof(xl_dbase_drop_rec);
+			rdata[0].next = NULL;
 
 			(void) XLogInsert(RM_DBASE_ID, XLOG_DBASE_DROP, rdata);
 		}
@@ -1288,6 +1276,86 @@ dbase_redo(XLogRecPtr lsn, XLogRecord *record)
 	if (info == XLOG_DBASE_CREATE)
 	{
 		xl_dbase_create_rec *xlrec = (xl_dbase_create_rec *) XLogRecGetData(record);
+		char	   *src_path;
+		char	   *dst_path;
+		struct stat st;
+
+#ifndef WIN32
+		char		buf[2 * MAXPGPATH + 100];
+#endif
+
+		src_path = GetDatabasePath(xlrec->src_db_id, xlrec->src_tablespace_id);
+		dst_path = GetDatabasePath(xlrec->db_id, xlrec->tablespace_id);
+
+		/*
+		 * Our theory for replaying a CREATE is to forcibly drop the
+		 * target subdirectory if present, then re-copy the source data.
+		 * This may be more work than needed, but it is simple to
+		 * implement.
+		 */
+		if (stat(dst_path, &st) == 0 && S_ISDIR(st.st_mode))
+		{
+			if (!rmtree(dst_path, true))
+				ereport(WARNING,
+					(errmsg("could not remove database directory \"%s\"",
+							dst_path)));
+		}
+
+		/*
+		 * Force dirty buffers out to disk, to ensure source database is
+		 * up-to-date for the copy.  (We really only need to flush buffers for
+		 * the source database, but bufmgr.c provides no API for that.)
+		 */
+		BufferSync(-1, -1);
+
+#ifndef WIN32
+
+		/*
+		 * Copy this subdirectory to the new location
+		 *
+		 * XXX use of cp really makes this code pretty grotty, particularly
+		 * with respect to lack of ability to report errors well.  Someday
+		 * rewrite to do it for ourselves.
+		 */
+
+		/* We might need to use cp -R one day for portability */
+		snprintf(buf, sizeof(buf), "cp -r '%s' '%s'",
+				 src_path, dst_path);
+		if (system(buf) != 0)
+			ereport(ERROR,
+					(errmsg("could not initialize database directory"),
+					 errdetail("Failing system command was: %s", buf),
+					 errhint("Look in the postmaster's stderr log for more information.")));
+#else							/* WIN32 */
+		if (copydir(src_path, dst_path) != 0)
+		{
+			/* copydir should already have given details of its troubles */
+			ereport(ERROR,
+					(errmsg("could not initialize database directory")));
+		}
+#endif   /* WIN32 */
+	}
+	else if (info == XLOG_DBASE_DROP)
+	{
+		xl_dbase_drop_rec *xlrec = (xl_dbase_drop_rec *) XLogRecGetData(record);
+		char	   *dst_path;
+
+		dst_path = GetDatabasePath(xlrec->db_id, xlrec->tablespace_id);
+
+		/*
+		 * Drop pages for this database that are in the shared buffer
+		 * cache
+		 */
+		DropBuffers(xlrec->db_id);
+
+		if (!rmtree(dst_path, true))
+			ereport(WARNING,
+					(errmsg("could not remove database directory \"%s\"",
+							dst_path)));
+	}
+	else if (info == XLOG_DBASE_CREATE_OLD)
+	{
+		xl_dbase_create_rec_old *xlrec = (xl_dbase_create_rec_old *) XLogRecGetData(record);
 		char	   *dst_path = xlrec->src_path + strlen(xlrec->src_path) + 1;
 		struct stat st;
 
@@ -1343,9 +1411,9 @@ dbase_redo(XLogRecPtr lsn, XLogRecord *record)
 		}
 #endif   /* WIN32 */
 	}
-	else if (info == XLOG_DBASE_DROP)
+	else if (info == XLOG_DBASE_DROP_OLD)
 	{
-		xl_dbase_drop_rec *xlrec = (xl_dbase_drop_rec *) XLogRecGetData(record);
+		xl_dbase_drop_rec_old *xlrec = (xl_dbase_drop_rec_old *) XLogRecGetData(record);
 
 		/*
 		 * Drop pages for this database that are in the shared buffer
@@ -1376,14 +1444,29 @@ dbase_desc(char *buf, uint8 xl_info, char *rec)
 	if (info == XLOG_DBASE_CREATE)
 	{
 		xl_dbase_create_rec *xlrec = (xl_dbase_create_rec *) rec;
+
+		sprintf(buf + strlen(buf), "create db: copy dir %u/%u to %u/%u",
+				xlrec->src_db_id, xlrec->src_tablespace_id,
+				xlrec->db_id, xlrec->tablespace_id);
+	}
+	else if (info == XLOG_DBASE_DROP)
+	{
+		xl_dbase_drop_rec *xlrec = (xl_dbase_drop_rec *) rec;
+
+		sprintf(buf + strlen(buf), "drop db: dir %u/%u",
+				xlrec->db_id, xlrec->tablespace_id);
+	}
+	else if (info == XLOG_DBASE_CREATE_OLD)
+	{
+		xl_dbase_create_rec_old *xlrec = (xl_dbase_create_rec_old *) rec;
 		char	   *dst_path = xlrec->src_path + strlen(xlrec->src_path) + 1;
 
 		sprintf(buf + strlen(buf), "create db: %u copy \"%s\" to \"%s\"",
 				xlrec->db_id, xlrec->src_path, dst_path);
 	}
-	else if (info == XLOG_DBASE_DROP)
+	else if (info == XLOG_DBASE_DROP_OLD)
 	{
-		xl_dbase_drop_rec *xlrec = (xl_dbase_drop_rec *) rec;
+		xl_dbase_drop_rec_old *xlrec = (xl_dbase_drop_rec_old *) rec;
 
 		sprintf(buf + strlen(buf), "drop db: %u directory: \"%s\"",
 				xlrec->db_id, xlrec->dir_path);

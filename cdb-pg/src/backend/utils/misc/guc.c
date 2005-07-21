@@ -10,7 +10,7 @@
  * Written by Peter Eisentraut <peter_e@gmx.net>.
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/misc/guc.c,v 1.252 2005/01/01 05:43:08 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/misc/guc.c,v 1.252.4.1 2005/03/25 16:17:38 tgl Exp $
  *
  *--------------------------------------------------------------------
  */
@@ -4310,6 +4310,8 @@ DefineCustomIntVariable(
 						const char *short_desc,
 						const char *long_desc,
 						int *valueAddr,
+						int minValue,
+						int maxValue,
 						GucContext context,
 						GucIntAssignHook assign_hook,
 						GucShowHook show_hook)
@@ -4322,6 +4324,8 @@ DefineCustomIntVariable(
 
 	var->variable = valueAddr;
 	var->reset_val = *valueAddr;
+	var->min = minValue;
+	var->max = maxValue;
 	var->assign_hook = assign_hook;
 	var->show_hook = show_hook;
 	define_custom_variable(&var->gen);
@@ -4333,6 +4337,8 @@ DefineCustomRealVariable(
 						 const char *short_desc,
 						 const char *long_desc,
 						 double *valueAddr,
+						 double minValue,
+						 double maxValue,
 						 GucContext context,
 						 GucRealAssignHook assign_hook,
 						 GucShowHook show_hook)
@@ -4345,6 +4351,8 @@ DefineCustomRealVariable(
 
 	var->variable = valueAddr;
 	var->reset_val = *valueAddr;
+	var->min = minValue;
+	var->max = maxValue;
 	var->assign_hook = assign_hook;
 	var->show_hook = show_hook;
 	define_custom_variable(&var->gen);

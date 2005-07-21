@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/planner.c,v 1.177 2004/12/31 22:00:09 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/planner.c,v 1.177.4.1 2005/01/28 19:36:02 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -21,6 +21,7 @@
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
 #include "executor/executor.h"
+#include "executor/nodeAgg.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/print.h"
@@ -669,9 +670,11 @@ grouping_planner(Query *parse, double tuple_fraction)
 		Path	   *sorted_path;
 		double		dNumGroups = 0;
 		long		numGroups = 0;
-		int			numAggs = 0;
+		AggClauseCounts agg_counts;
 		int			numGroupCols = list_length(parse->groupClause);
 		bool		use_hashed_grouping = false;
+
+		MemSet(&agg_counts, 0, sizeof(AggClauseCounts));
 
 		/* Preprocess targetlist in case we are inside an INSERT/UPDATE. */
 		tlist = preprocess_targetlist(tlist,
@@ -761,8 +764,10 @@ grouping_planner(Query *parse, double tuple_fraction)
 		 * the aggregate semantics (eg, producing only one output row).
 		 */
 		if (parse->hasAggs)
-			numAggs = count_agg_clause((Node *) tlist) +
-				count_agg_clause(parse->havingQual);
+		{
+			count_agg_clauses((Node *) tlist, &agg_counts);
+			count_agg_clauses(parse->havingQual, &agg_counts);
+		}
 
 		/*
 		 * Figure out whether we need a sorted result from query_planner.
@@ -999,9 +1004,7 @@ grouping_planner(Query *parse, double tuple_fraction)
 			 */
 			if (!enable_hashagg || !hash_safe_grouping(parse))
 				use_hashed_grouping = false;
-			else if (parse->hasAggs &&
-					 (contain_distinct_agg_clause((Node *) tlist) ||
-					  contain_distinct_agg_clause(parse->havingQual)))
+			else if (agg_counts.numDistinctAggs != 0)
 				use_hashed_grouping = false;
 			else
 			{
@@ -1012,13 +1015,15 @@ grouping_planner(Query *parse, double tuple_fraction)
 				 * the need for sorted input is usually a win, the fact
 				 * that the output won't be sorted may be a loss; so we
 				 * need to do an actual cost comparison.
-				 *
-				 * In most cases we have no good way to estimate the size of
-				 * the transition value needed by an aggregate;
-				 * arbitrarily assume it is 100 bytes.	Also set the
-				 * overhead per hashtable entry at 64 bytes.
 				 */
-				int			hashentrysize = cheapest_path_width + 64 + numAggs * 100;
+				Size		hashentrysize;
+
+				/* Estimate per-hash-entry space at tuple width... */
+				hashentrysize = cheapest_path_width;
+				/* plus space for pass-by-ref transition values... */
+				hashentrysize += agg_counts.transitionSpace;
+				/* plus the per-hash-entry overhead */
+				hashentrysize += hash_agg_entry_size(agg_counts.numAggs);
 
 				if (hashentrysize * dNumGroups <= work_mem * 1024L)
 				{
@@ -1039,7 +1044,7 @@ grouping_planner(Query *parse, double tuple_fraction)
 					Path		sorted_p;
 
 					cost_agg(&hashed_p, parse,
-							 AGG_HASHED, numAggs,
+							 AGG_HASHED, agg_counts.numAggs,
 							 numGroupCols, dNumGroups,
 							 cheapest_path->startup_cost,
 							 cheapest_path->total_cost,
@@ -1074,7 +1079,7 @@ grouping_planner(Query *parse, double tuple_fraction)
 					}
 					if (parse->hasAggs)
 						cost_agg(&sorted_p, parse,
-								 AGG_SORTED, numAggs,
+								 AGG_SORTED, agg_counts.numAggs,
 								 numGroupCols, dNumGroups,
 								 sorted_p.startup_cost,
 								 sorted_p.total_cost,
@@ -1229,7 +1234,7 @@ grouping_planner(Query *parse, double tuple_fraction)
 											numGroupCols,
 											groupColIdx,
 											numGroups,
-											numAggs,
+											agg_counts.numAggs,
 											result_plan);
 			/* Hashed aggregation produces randomly-ordered results */
 			current_pathkeys = NIL;
@@ -1271,7 +1276,7 @@ grouping_planner(Query *parse, double tuple_fraction)
 											numGroupCols,
 											groupColIdx,
 											numGroups,
-											numAggs,
+											agg_counts.numAggs,
 											result_plan);
 		}
 		else

@@ -5,7 +5,7 @@
 # Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
-# $PostgreSQL: pgsql/src/interfaces/libpq/Makefile,v 1.126 2005/01/06 21:41:44 tgl Exp $
+# $PostgreSQL: pgsql/src/interfaces/libpq/Makefile,v 1.126.4.4 2005/04/29 14:07:34 momjian Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -16,8 +16,8 @@ include $(top_builddir)/src/Makefile.global
 
 # shared library parameters
 NAME= pq
-SO_MAJOR_VERSION= 3
-SO_MINOR_VERSION= 2
+SO_MAJOR_VERSION= 4
+SO_MINOR_VERSION= 0
 
 DLTYPE= library
 
@@ -56,7 +56,7 @@ endif
 # matter.)
 SHLIB_LINK += $(filter -lcrypt -ldes -lkrb -lcom_err -lcrypto -lk5crypto -lkrb5 -lssl -lsocket -lnsl -lresolv -lintl, $(LIBS)) $(PTHREAD_LIBS)
 ifeq ($(PORTNAME), win32)
-SHLIB_LINK += -lwsock32 -lws2_32 -lshell32 $(filter -leay32 -lssleay32, $(LIBS))
+SHLIB_LINK += -lshfolder -lwsock32 -lws2_32 $(filter -leay32 -lssleay32 -lcomerr32 -lkrb5_32, $(LIBS))
 endif
 
 
@@ -147,6 +147,7 @@ uninstall: uninstall-lib
 
 clean distclean: clean-lib
 	rm -f $(OBJS) crypt.c getaddrinfo.c inet_aton.c noblock.c pgstrcasecmp.c snprintf.c strerror.c open.c thread.c md5.c ip.c encnames.c wchar.c pthread.h
+	rm -f pg_config_paths.h	# Might be left over from a Win32 client-only build
 
 maintainer-clean: distclean
 	rm -f $(srcdir)/libpqdll.def $(srcdir)/libpqddll.def $(srcdir)/blibpqdll.def $(srcdir)/libpq.rc

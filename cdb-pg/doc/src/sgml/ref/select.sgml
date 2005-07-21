@@ -1,5 +1,5 @@
 <!--
-$PostgreSQL: pgsql/doc/src/sgml/ref/select.sgml,v 1.80 2005/01/04 08:59:45 tgl Exp $
+$PostgreSQL: pgsql/doc/src/sgml/ref/select.sgml,v 1.80.4.2 2005/04/22 15:53:27 momjian Exp $
 PostgreSQL documentation
 -->
 
@@ -819,6 +819,16 @@ FOR UPDATE [ OF <replaceable class="parameter">table_name</replaceable> [, ...] 
    </para>
 
    <para>
+    It is possible for a <command>SELECT</> command using both 
+    <literal>LIMIT</literal> and  <literal>FOR UPDATE</literal> 
+    clauses to return fewer rows than specified by <literal>LIMIT</literal>.
+    This is because <literal>LIMIT</> selects a number of rows,
+    but might then block requesting a <literal>FOR UPDATE</literal> lock.
+    Once the <literal>SELECT</> unblocks, the query qualification might not
+    be met and the row not be returned by <literal>SELECT</>.
+   </para>
+
+   <para>
     <literal>FOR UPDATE</literal> may appear before
     <literal>LIMIT</literal> for compatibility with
     <productname>PostgreSQL</productname> versions before 7.3.  It
@@ -874,7 +884,7 @@ SELECT kind, sum(len) AS total FROM films GROUP BY kind;
 SELECT kind, sum(len) AS total
     FROM films
     GROUP BY kind
-    HAVING sum(len) < interval '5 hours';
+    HAVING sum(len) &lt; interval '5 hours';
 
    kind   | total
 ----------+-------

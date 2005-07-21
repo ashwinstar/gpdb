@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	$PostgreSQL: pgsql/src/backend/utils/adt/oracle_compat.c,v 1.57 2004/12/31 22:01:22 pgsql Exp $
+ *	$PostgreSQL: pgsql/src/backend/utils/adt/oracle_compat.c,v 1.57.4.2 2005/03/16 01:49:20 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -29,6 +29,7 @@
 #endif
 
 #include "utils/builtins.h"
+#include "utils/pg_locale.h"
 #include "mb/pg_wchar.h"
 
 
@@ -166,8 +167,8 @@ Datum
 lower(PG_FUNCTION_ARGS)
 {
 #ifdef USE_WIDE_UPPER_LOWER
-	/* use wide char code only when max encoding length > one */
-	if (pg_database_encoding_max_length() > 1)
+	/* use wide char code only when max encoding length > 1 and ctype != C */
+	if (pg_database_encoding_max_length() > 1 && !lc_ctype_is_c())
 	{
 		text	   *string = PG_GETARG_TEXT_P(0);
 		text	   *result;
@@ -228,8 +229,8 @@ Datum
 upper(PG_FUNCTION_ARGS)
 {
 #ifdef USE_WIDE_UPPER_LOWER
-	/* use wide char code only when max encoding length > one */
-	if (pg_database_encoding_max_length() > 1)
+	/* use wide char code only when max encoding length > 1 and ctype != C */
+	if (pg_database_encoding_max_length() > 1 && !lc_ctype_is_c())
 	{
 		text	   *string = PG_GETARG_TEXT_P(0);
 		text	   *result;
@@ -293,8 +294,8 @@ Datum
 initcap(PG_FUNCTION_ARGS)
 {
 #ifdef USE_WIDE_UPPER_LOWER
-	/* use wide char code only when max encoding length > one */
-	if (pg_database_encoding_max_length() > 1)
+	/* use wide char code only when max encoding length > 1 and ctype != C */
+	if (pg_database_encoding_max_length() > 1 && !lc_ctype_is_c())
 	{
 		text	   *string = PG_GETARG_TEXT_P(0);
 		text	   *result;

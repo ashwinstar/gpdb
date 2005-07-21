@@ -13,7 +13,7 @@
  *
  *	Copyright (c) 2001-2005, PostgreSQL Global Development Group
  *
- *	$PostgreSQL: pgsql/src/backend/postmaster/pgstat.c,v 1.87 2005/01/01 05:43:07 momjian Exp $
+ *	$PostgreSQL: pgsql/src/backend/postmaster/pgstat.c,v 1.87.4.2 2005/03/31 23:21:09 tgl Exp $
  * ----------
  */
 #include "postgres.h"
@@ -160,6 +160,7 @@ NON_EXEC_STATIC void PgstatCollectorMain(int argc, char *argv[]);
 static void pgstat_recvbuffer(void);
 static void pgstat_exit(SIGNAL_ARGS);
 static void pgstat_die(SIGNAL_ARGS);
+static void pgstat_beshutdown_hook(int code, Datum arg);
 
 static int	pgstat_add_backend(PgStat_MsgHdr *msg);
 static void pgstat_sub_backend(int procpid);
@@ -422,7 +423,7 @@ pgstat_init(void)
 	 * messages will be discarded; backends won't block waiting to send
 	 * messages to the collector.
 	 */
-	if (!set_noblock(pgStatSock))
+	if (!pg_set_noblock(pgStatSock))
 	{
 		ereport(LOG,
 				(errcode_for_socket_access(),
@@ -670,6 +671,25 @@ pgstat_bestart(void)
 
 	pgstat_setheader(&msg.m_hdr, PGSTAT_MTYPE_BESTART);
 	pgstat_send(&msg, sizeof(msg));
+
+	/*
+	 * Set up a process-exit hook to ensure we flush the last batch of
+	 * statistics to the collector.
+	 */
+	on_proc_exit(pgstat_beshutdown_hook, 0);
+}
+
+/*
+ * Flush any remaining statistics counts out to the collector at process
+ * exit.   Without this, operations triggered during backend exit (such as
+ * temp table deletions) won't be counted.  This is an on_proc_exit hook,
+ * not on_shmem_exit, so that everything interesting must have happened
+ * already.
+ */
+static void
+pgstat_beshutdown_hook(int code, Datum arg)
+{
+	pgstat_report_tabstat();
 }
 
 
@@ -1766,7 +1786,7 @@ pgstat_recvbuffer(void)
 	 * Set the write pipe to nonblock mode, so that we cannot block when
 	 * the collector falls behind.
 	 */
-	if (!set_noblock(writePipe))
+	if (!pg_set_noblock(writePipe))
 		ereport(ERROR,
 				(errcode_for_socket_access(),
 				 errmsg("could not set statistics collector pipe to nonblocking mode: %m")));

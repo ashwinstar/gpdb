@@ -1,4 +1,4 @@
-/* $PostgreSQL: pgsql/src/include/port/win32.h,v 1.42 2004/12/26 19:20:33 tgl Exp $ */
+/* $PostgreSQL: pgsql/src/include/port/win32.h,v 1.42.4.2 2005/03/24 04:37:01 momjian Exp $ */
 
 /* undefine and redefine after #include */
 #undef mkdir
@@ -17,6 +17,7 @@
 
 
 #define fsync(a)	_commit(a)
+#define FSYNC_IS_WRITE_THROUGH
 #define ftruncate(a,b)	chsize(a,b)
 
 #define USES_WINSOCK
@@ -182,6 +183,14 @@ typedef int pid_t;
  * Supplement to <sys/stat.h>.
  */
 #define lstat(path, sb)	stat((path), (sb))
+
+/*
+ * Supplement to <fcntl.h>.
+ * This is the same value as _O_NOINHERIT in the MS header file. This is
+ * to ensure that we don't collide with a future definition. It means
+ * we cannot use _O_NOINHERIT ourselves.
+ */
+#define O_DSYNC 0x0080
 
 /*
  * Supplement to <errno.h>.

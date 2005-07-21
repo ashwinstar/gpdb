@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-connect.c,v 1.301 2005/01/14 00:25:56 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-connect.c,v 1.301.4.3 2005/05/05 16:36:20 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -38,7 +38,7 @@
 #ifdef _WIN32_IE
 #undef _WIN32_IE
 #endif
-#define _WIN32_IE 0x0400
+#define _WIN32_IE 0x0500
 #ifdef near
 #undef near
 #endif
@@ -1211,7 +1211,7 @@ keep_going:						/* We will come back to here until there
 							continue;
 						}
 					}
-					if (!set_noblock(conn->sock))
+					if (!pg_set_noblock(conn->sock))
 					{
 						printfPQExpBuffer(&conn->errorMessage,
 										  libpq_gettext("could not set socket to non-blocking mode: %s\n"),
@@ -2033,6 +2033,10 @@ freePGconn(PGconn *conn)
 {
 	PGnotify   *notify;
 	pgParameterStatus *pstatus;
+
+#ifdef WIN32
+	WSACleanup();
+#endif
 
 	if (!conn)
 		return;
@@ -3296,7 +3300,7 @@ pqGetHomeDirectory(char *buf, int bufsize)
 	char		tmppath[MAX_PATH];
 
 	ZeroMemory(tmppath, sizeof(tmppath));
-	if (!SHGetSpecialFolderPath(NULL, tmppath, CSIDL_APPDATA, FALSE))
+	if (SHGetFolderPath(NULL, CSIDL_APPDATA, NULL, 0, tmppath) != S_OK)
 		return false;
 	snprintf(buf, bufsize, "%s/postgresql", tmppath);
 	return true;

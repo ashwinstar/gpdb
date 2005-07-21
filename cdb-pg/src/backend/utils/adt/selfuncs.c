@@ -15,7 +15,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/selfuncs.c,v 1.169 2004/12/31 22:01:22 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/selfuncs.c,v 1.169.4.4 2005/04/01 20:32:09 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -118,6 +118,7 @@ typedef struct
 	RelOptInfo *rel;			/* Relation, or NULL if not identifiable */
 	HeapTuple	statsTuple;		/* pg_statistic tuple, or NULL if none */
 	/* NB: if statsTuple!=NULL, it must be freed when caller is done */
+	Oid			vartype;		/* exposed type of expression */
 	Oid			atttype;		/* type to pass to get_attstatsslot */
 	int32		atttypmod;		/* typmod to pass to get_attstatsslot */
 	bool		isunique;		/* true if matched to a unique index */
@@ -546,7 +547,7 @@ scalarineqsel(Query *root, Oid operator, bool isgt,
 					 */
 					if (convert_to_scalar(constval, consttype, &val,
 										  values[i - 1], values[i],
-										  vardata->atttype,
+										  vardata->vartype,
 										  &low, &high))
 					{
 						if (high <= low)
@@ -862,23 +863,18 @@ patternsel(PG_FUNCTION_ARGS, Pattern_Type ptype)
 	}
 
 	/*
-	 * The var, on the other hand, might be a binary-compatible type;
-	 * particularly a domain.  Try to fold it if it's not recognized
-	 * immediately.
-	 */
-	vartype = vardata.atttype;
-	if (vartype != consttype)
-		vartype = getBaseType(vartype);
-
-	/*
-	 * We should now be able to recognize the var's datatype.  Choose the
-	 * index opclass from which we must draw the comparison operators.
+	 * Similarly, the exposed type of the left-hand side should be one
+	 * of those we know.  (Do not look at vardata.atttype, which might be
+	 * something binary-compatible but different.)  We can use it to choose
+	 * the index opclass from which we must draw the comparison operators.
 	 *
 	 * NOTE: It would be more correct to use the PATTERN opclasses than the
 	 * simple ones, but at the moment ANALYZE will not generate statistics
 	 * for the PATTERN operators.  But our results are so approximate
 	 * anyway that it probably hardly matters.
 	 */
+	vartype = vardata.vartype;
+
 	switch (vartype)
 	{
 		case TEXTOID:
@@ -1937,10 +1933,13 @@ add_unique_group_var(Query *root, List *varinfos,
  *		if we considered ones of the same rel, we'd be double-counting the
  *		restriction selectivity of the equality in the next step.
  *	3.	For Vars within a single source rel, we multiply together the numbers
- *		of values, clamp to the number of rows in the rel, and then multiply
- *		by the selectivity of the restriction clauses for that rel.  The
- *		initial product is probably too high (it's the worst case) but since
- *		we can clamp to the rel's rows it won't be hugely bad.	Multiplying
+ *		of values, clamp to the number of rows in the rel (divided by 10 if
+ *		more than one Var), and then multiply by the selectivity of the
+ *		restriction clauses for that rel.  When there's more than one Var,
+ *		the initial product is probably too high (it's the worst case) but
+ *		clamping to a fraction of the rel's rows seems to be a helpful
+ *		heuristic for not letting the estimate get out of hand.  (The factor
+ *		of 10 is derived from pre-Postgres-7.4 practice.)  Multiplying
  *		by the restriction selectivity is effectively assuming that the
  *		restriction clauses are independent of the grouping, which is a crummy
  *		assumption, but it's hard to do better.
@@ -2040,6 +2039,8 @@ estimate_num_groups(Query *root, List *groupExprs, double input_rows)
 		GroupVarInfo *varinfo1 = (GroupVarInfo *) linitial(varinfos);
 		RelOptInfo *rel = varinfo1->rel;
 		double		reldistinct = varinfo1->ndistinct;
+		double		relmaxndistinct = reldistinct;
+		int			relvarcount = 1;
 		List	   *newvarinfos = NIL;
 
 		/*
@@ -2051,7 +2052,12 @@ estimate_num_groups(Query *root, List *groupExprs, double input_rows)
 			GroupVarInfo *varinfo2 = (GroupVarInfo *) lfirst(l);
 
 			if (varinfo2->rel == varinfo1->rel)
+			{
 				reldistinct *= varinfo2->ndistinct;
+				if (relmaxndistinct < varinfo2->ndistinct)
+					relmaxndistinct = varinfo2->ndistinct;
+				relvarcount++;
+			}
 			else
 			{
 				/* not time to process varinfo2 yet */
@@ -2066,10 +2072,31 @@ estimate_num_groups(Query *root, List *groupExprs, double input_rows)
 		if (rel->tuples > 0)
 		{
 			/*
-			 * Clamp to size of rel, multiply by restriction selectivity.
+			 * Clamp to size of rel, or size of rel / 10 if multiple Vars.
+			 * The fudge factor is because the Vars are probably correlated
+			 * but we don't know by how much.  We should never clamp to less
+			 * than the largest ndistinct value for any of the Vars, though,
+			 * since there will surely be at least that many groups.
 			 */
-			if (reldistinct > rel->tuples)
-				reldistinct = rel->tuples;
+			double		clamp = rel->tuples;
+
+			if (relvarcount > 1)
+			{
+				clamp *= 0.1;
+				if (clamp < relmaxndistinct)
+				{
+					clamp = relmaxndistinct;
+					/* for sanity in case some ndistinct is too large: */
+					if (clamp > rel->tuples)
+						clamp = rel->tuples;
+				}
+			}
+			if (reldistinct > clamp)
+				reldistinct = clamp;
+
+			/*
+			 * Multiply by restriction selectivity.
+			 */
 			reldistinct *= rel->rows / rel->tuples;
 
 			/*
@@ -2273,19 +2300,20 @@ convert_to_scalar(Datum value, Oid valuetypid, double *scaledvalue,
 				  double *scaledlobound, double *scaledhibound)
 {
 	/*
-	 * In present usage, we can assume that the valuetypid exactly matches
-	 * the declared input type of the operator we are invoked for (because
-	 * constant-folding will ensure that any Const passed to the operator
-	 * has been reduced to the correct type).  However, the boundstypid is
-	 * the type of some variable that might be only binary-compatible with
-	 * the declared type; in particular it might be a domain type.	Must
-	 * fold the variable type down to base type so we can recognize it.
-	 * (But we can skip that lookup if the variable type matches the
-	 * const.)
+	 * Both the valuetypid and the boundstypid should exactly match
+	 * the declared input type(s) of the operator we are invoked for,
+	 * so we just error out if either is not recognized.
+	 *
+	 * XXX The histogram we are interpolating between points of could belong
+	 * to a column that's only binary-compatible with the declared type.
+	 * In essence we are assuming that the semantics of binary-compatible
+	 * types are enough alike that we can use a histogram generated with one
+	 * type's operators to estimate selectivity for the other's.  This is
+	 * outright wrong in some cases --- in particular signed versus unsigned
+	 * interpretation could trip us up.  But it's useful enough in the
+	 * majority of cases that we do it anyway.  Should think about more
+	 * rigorous ways to do it.
 	 */
-	if (boundstypid != valuetypid)
-		boundstypid = getBaseType(boundstypid);
-
 	switch (valuetypid)
 	{
 			/*
@@ -2817,8 +2845,7 @@ convert_timevalue_to_scalar(Datum value, Oid typid)
  *
  * Outputs: (these are valid only if TRUE is returned)
  *	*vardata: gets information about variable (see examine_variable)
- *	*other: gets other clause argument, stripped of binary relabeling,
- *		and aggressively reduced to a constant
+ *	*other: gets other clause argument, aggressively reduced to a constant
  *	*varonleft: set TRUE if variable is on the left, FALSE if on the right
  *
  * Returns TRUE if a variable is identified, otherwise FALSE.
@@ -2908,12 +2935,15 @@ get_join_variables(Query *root, List *args,
  *	varRelid: see specs for restriction selectivity functions
  *
  * Outputs: *vardata is filled as follows:
- *	var: the input expression (with any binary relabeling stripped)
+ *	var: the input expression (with any binary relabeling stripped, if
+ *		it is or contains a variable; but otherwise the type is preserved)
  *	rel: RelOptInfo for relation containing variable; NULL if expression
  *		contains no Vars (NOTE this could point to a RelOptInfo of a
  *		subquery, not one in the current query).
  *	statsTuple: the pg_statistic entry for the variable, if one exists;
  *		otherwise NULL.
+ *	vartype: exposed type of the expression; this should always match
+ *		the declared input type of the operator we are estimating for.
  *	atttype, atttypmod: type data to pass to get_attstatsslot().  This is
  *		commonly the same as the exposed type of the variable argument,
  *		but can be different in binary-compatible-type cases.
@@ -2924,27 +2954,32 @@ static void
 examine_variable(Query *root, Node *node, int varRelid,
 				 VariableStatData *vardata)
 {
+	Node	   *basenode;
 	Relids		varnos;
 	RelOptInfo *onerel;
 
 	/* Make sure we don't return dangling pointers in vardata */
 	MemSet(vardata, 0, sizeof(VariableStatData));
 
-	/* Ignore any binary-compatible relabeling */
+	/* Save the exposed type of the expression */
+	vardata->vartype = exprType(node);
+
+	/* Look inside any binary-compatible relabeling */
 
 	if (IsA(node, RelabelType))
-		node = (Node *) ((RelabelType *) node)->arg;
-
-	vardata->var = node;
+		basenode = (Node *) ((RelabelType *) node)->arg;
+	else
+		basenode = node;
 
 	/* Fast path for a simple Var */
 
-	if (IsA(node, Var) &&
-		(varRelid == 0 || varRelid == ((Var *) node)->varno))
+	if (IsA(basenode, Var) &&
+		(varRelid == 0 || varRelid == ((Var *) basenode)->varno))
 	{
-		Var		   *var = (Var *) node;
+		Var		   *var = (Var *) basenode;
 		Oid			relid;
 
+		vardata->var = basenode;	/* return Var without relabeling */
 		vardata->rel = find_base_rel(root, var->varno);
 		vardata->atttype = var->vartype;
 		vardata->atttypmod = var->vartypmod;
@@ -2978,7 +3013,7 @@ examine_variable(Query *root, Node *node, int varRelid,
 	 * membership.	Note that when varRelid isn't zero, only vars of that
 	 * relation are considered "real" vars.
 	 */
-	varnos = pull_varnos(node);
+	varnos = pull_varnos(basenode);
 
 	onerel = NULL;
 
@@ -2993,6 +3028,7 @@ examine_variable(Query *root, Node *node, int varRelid,
 				onerel = find_base_rel(root,
 				   (varRelid ? varRelid : bms_singleton_member(varnos)));
 				vardata->rel = onerel;
+				node = basenode; /* strip any relabeling */
 			}
 			/* else treat it as a constant */
 			break;
@@ -3001,11 +3037,13 @@ examine_variable(Query *root, Node *node, int varRelid,
 			{
 				/* treat it as a variable of a join relation */
 				vardata->rel = find_join_rel(root, varnos);
+				node = basenode; /* strip any relabeling */
 			}
 			else if (bms_is_member(varRelid, varnos))
 			{
 				/* ignore the vars belonging to other relations */
 				vardata->rel = find_base_rel(root, varRelid);
+				node = basenode; /* strip any relabeling */
 				/* note: no point in expressional-index search here */
 			}
 			/* else treat it as a constant */
@@ -3014,6 +3052,7 @@ examine_variable(Query *root, Node *node, int varRelid,
 
 	bms_free(varnos);
 
+	vardata->var = node;
 	vardata->atttype = exprType(node);
 	vardata->atttypmod = exprTypmod(node);
 
@@ -3113,7 +3152,7 @@ get_variable_numdistinct(VariableStatData *vardata)
 		stats = (Form_pg_statistic) GETSTRUCT(vardata->statsTuple);
 		stadistinct = stats->stadistinct;
 	}
-	else if (vardata->atttype == BOOLOID)
+	else if (vardata->vartype == BOOLOID)
 	{
 		/*
 		 * Special-case boolean columns: presumably, two distinct values.

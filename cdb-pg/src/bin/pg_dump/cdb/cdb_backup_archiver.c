@@ -34,13 +34,6 @@
 #include "libpq/libpq-fs.h"
 
 
-typedef enum _teReqs_
-{
-	REQ_SCHEMA = 1,
-	REQ_DATA = 2,
-	REQ_ALL = REQ_SCHEMA + REQ_DATA
-} teReqs;
-
 const char *progname;
 static char *modulename = gettext_noop("archiver");
 
@@ -1537,7 +1530,7 @@ getTocEntryByDumpId(ArchiveHandle *AH, DumpId id)
 	return NULL;
 }
 
-int
+teReqs
 TocIDRequired(ArchiveHandle *AH, DumpId id, RestoreOptions *ropt)
 {
 	TocEntry   *te = getTocEntryByDumpId(AH, id);

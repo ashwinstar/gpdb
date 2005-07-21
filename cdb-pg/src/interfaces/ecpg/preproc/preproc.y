@@ -1,4 +1,4 @@
-/* $PostgreSQL: pgsql/src/interfaces/ecpg/preproc/preproc.y,v 1.303 2005/01/10 12:58:30 meskes Exp $ */
+/* $PostgreSQL: pgsql/src/interfaces/ecpg/preproc/preproc.y,v 1.303.4.3 2005/02/10 08:07:46 meskes Exp $ */
 
 /* Copyright comment */
 %{
@@ -1580,7 +1580,7 @@ CreateAsStmt:  CREATE OptTemp TABLE qualified_name OptCreateAs WithOidsAs
 			if (FoundInto == 1)
 				mmerror(PARSE_ERROR, ET_ERROR, "CREATE TABLE / AS SELECT may not specify INTO");
 
-			$$ = cat_str(8, make_str("create"), $2, make_str("table"), $4, $5, $6, $8);
+			$$ = cat_str(7, make_str("create"), $2, make_str("table"), $4, $5, $6, $8);
 		}
 		;
 
@@ -1621,7 +1621,7 @@ CreateAsElement:  ColId { $$ = $1; }
  *****************************************************************************/
 
 CreateSeqStmt:	CREATE OptTemp SEQUENCE qualified_name OptSeqList
-			{ $$ = cat_str(4, make_str("create"), $2, make_str("sequence"), $4, $5); }
+			{ $$ = cat_str(5, make_str("create"), $2, make_str("sequence"), $4, $5); }
 		;
 
 AlterSeqStmt: ALTER SEQUENCE qualified_name OptSeqList
@@ -2705,7 +2705,7 @@ DropdbStmt: DROP DATABASE database_name
 
 CreateDomainStmt:  CREATE DOMAIN_P any_name opt_as Typename ColQualList
 			{
-				$$ = cat_str(55555, make_str("create domain"), $3, $4, $5, $6);
+				$$ = cat_str(5, make_str("create domain"), $3, $4, $5, $6);
  			}
 		;
 
@@ -4690,7 +4690,7 @@ type_declaration: S_TYPEDEF
 			this->type->type_index = length;    /* length of string */
 			this->type->type_sizeof = ECPGstruct_sizeof;
 			this->struct_member_list = ($3.type_enum == ECPGt_struct || $3.type_enum == ECPGt_union) ?
-				struct_member_list[struct_level] : NULL;
+				ECPGstruct_member_dup(struct_member_list[struct_level]) : NULL;
 
 			if ($3.type_enum != ECPGt_varchar &&
 			    $3.type_enum != ECPGt_char &&
@@ -5556,7 +5556,7 @@ ECPGTypedef: TYPE_P
 				this->type->type_index = length;	/* length of string */
 				this->type->type_sizeof = ECPGstruct_sizeof;
 				this->struct_member_list = ($5.type_enum == ECPGt_struct || $5.type_enum == ECPGt_union) ?
-					struct_member_list[struct_level] : NULL;
+					ECPGstruct_member_dup(struct_member_list[struct_level]) : NULL;
 
 				if ($5.type_enum != ECPGt_varchar &&
 					$5.type_enum != ECPGt_char &&

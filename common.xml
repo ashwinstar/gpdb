@@ -27,7 +27,7 @@
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <target name="-init"
             depends="-setTstamp,-setPlatform,-checkJavaVersion,-setTools,
-                     -setJava,-setJavaLibraries,-checkBash,-setRelease">
+                     -setJava,-checkBash,-setRelease">
 
         <!-- Remember if user set installRoot -->
         <condition property="installRootDefaulted">
@@ -255,77 +255,6 @@
             <arg value="${os.CDB_TOOLS}"/>
         </exec>
     </target>
-
-
-    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
-    <!-- Prepare for Java cross-compiling.                              -->
-    <!--                                                                -->
-    <!-- Java cross-compiling requires access to boot class libraries   -->
-    <!-- and the extension class libraries of the target release.       -->
-    <!-- For the CDB project, copies of these libraries are contained   -->
-    <!-- in the cdb-tools project.                                      -->
-    <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
-    <target name="-setJavaLibraries"
-            depends="-setTools"
-            unless="javaLibrariesSet">
-
-        <!-- -->
-        <patternset id="jarfiles">
-          <include name="*.jar"/>
-          <include name="*.zip"/>
-        </patternset>
-
-        <!-- Define bootclasspath and extdirs for JDK 1.1.x -->
-        <path id="jdk11x.bootclasspath">
-          <fileset dir="${tools}/java/jdk1.1.x/lib">
-            <patternset refid="jarfiles"/>
-          </fileset>
-        </path>
-        <property name="jdk11x.extdirs" value=""/>
-
-        <!-- Define bootclasspath and extdirs for JDK 1.2.x -->
-        <path id="jdk12x.bootclasspath">
-          <fileset dir="${tools}/java/jdk1.2.x/jre/lib">
-            <patternset refid="jarfiles"/>
-          </fileset>
-        </path>
-        <path id="jdk12x.extdirs.path">
-          <dirset dir="${tools}/java/jdk1.2.x/jre/lib">
-            <include name="ext"/>
-          </dirset>
-        </path>
-        <property name="jdk12x.extdirs" refid="jdk12x.extdirs.path"/>
-
-        <!-- Define bootclasspath and extdirs for JDK 1.3.x -->
-        <path id="jdk13x.bootclasspath">
-          <fileset dir="${tools}/java/jdk1.3.x/jre/lib">
-            <patternset refid="jarfiles"/>
-          </fileset>
-        </path>
-        <path id="jdk13x.extdirs.path">
-          <dirset dir="${tools}/java/jdk1.3.x/jre/lib">
-            <include name="ext"/>
-          </dirset>
-        </path>
-        <property name="jdk13x.extdirs" refid="jdk13x.extdirs.path"/>
-
-        <!-- Define bootclasspath and extdirs for JDK 1.4.x -->
-        <path id="jdk14x.bootclasspath">
-          <fileset dir="${tools}/java/j2sdk1.4.x/jre/lib">
-            <patternset refid="jarfiles"/>
-          </fileset>
-        </path>
-        <path id="jdk14x.extdirs.path">
-          <dirset dir="${tools}/java/j2sdk1.4.x/jre/lib">
-            <include name="ext"/>
-          </dirset>
-        </path>
-        <property name="jdk14x.extdirs" refid="jdk14x.extdirs.path"/>
-
-        <property name="javaLibrariesSet" value="true"/>
-
-    </target>
-
 
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <!-- Check the version of Java under which we're running.           -->
@@ -876,7 +805,7 @@ Set release properties:
     <!-- bootclasspath, & extdirs).                                     -->
     <!-- =-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
     <target name="-modifyJavacTask"
-            depends="-setJavaLibraries,-checkBeanshell">
+            depends="-checkBeanshell">
 
       <script language="beanshell"><![CDATA[
           import org.apache.tools.ant.*;

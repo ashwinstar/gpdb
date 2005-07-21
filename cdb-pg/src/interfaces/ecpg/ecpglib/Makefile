@@ -4,7 +4,7 @@
 #
 # Copyright (c) 1994, Regents of the University of California
 #
-# $PostgreSQL: pgsql/src/interfaces/ecpg/ecpglib/Makefile,v 1.29 2004/11/20 21:13:05 tgl Exp $
+# $PostgreSQL: pgsql/src/interfaces/ecpg/ecpglib/Makefile,v 1.29.4.2 2005/03/13 22:04:45 momjian Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -13,8 +13,8 @@ top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
 NAME= ecpg
-SO_MAJOR_VERSION= 4
-SO_MINOR_VERSION= 2
+SO_MAJOR_VERSION= 5
+SO_MINOR_VERSION= 0
 DLTYPE= library
 
 override CPPFLAGS := -DFRONTEND -I$(top_srcdir)/src/interfaces/ecpg/include \
@@ -29,6 +29,11 @@ OBJS= execute.o typename.o descriptor.o data.o error.o prepare.o memory.o \
 
 SHLIB_LINK = -L../pgtypeslib -lpgtypes $(libpq) \
 	$(filter -lintl -lssl -lcrypto -lkrb5 -lcrypt -lm, $(LIBS)) $(PTHREAD_LIBS)
+
+ifeq ($(PORTNAME), win32)
+# Link to shfolder.dll instead of shell32.dll
+SHLIB_LINK += -lshfolder
+endif
 
 all: all-lib
 

@@ -179,19 +179,6 @@ Using toolsLib=${toolsLib}
              target="package">
         </ant>
 
-
-        <!--
-            Build commands subproject
-          -->
-        <ant antfile="build.xml"
-             dir="cdb-loader"
-             target="package">
-            <property name="build" value="build"/>
-            <property name="commonDone" value="true"/>
-            <property name="jdbcDone" value="true"/>
-        </ant>
-
-
     </target>
 
 
@@ -232,7 +219,6 @@ Using toolsLib=${toolsLib}
             <sourcepath>
                 <pathelement location="cdb-management/src" />
                 <pathelement location="common/cdb-commons/src" />
-                <pathelement location="cdb-loader/src" />
             </sourcepath>
 
             <package name="com.metapa.*" />
@@ -471,159 +457,6 @@ The "install" target is allowed for devo builds only.  Use the
         <mkdir dir="${IcdbclientDir}/docs"/> 
         <mkdir dir="${IcdbclientDir}/bin"/> 
         <mkdir dir="${IcdbclientDir}/jre"/> 
-
-        <!--
-            Copy the necessary JAR files for the CDB-Loader
-          -->
-
-        <mkdir dir="${IcdbclientDir}/cdb-loader"/> 
-        <mkdir dir="${IcdbclientDir}/cdb-loader/bin"/> 
-        <mkdir dir="${IcdbclientDir}/cdb-loader/lib"/> 
-        <mkdir dir="${IcdbclientDir}/cdb-loader/conf"/> 
-
-        <copy todir="${IcdbclientDir}/cdb-loader/bin"
-              preservelastmodified="true">
-            <fileset dir="cdb-loader/bin">
-              <or>
-                 <filename name="loader.sh"/>
-              </or>
-            </fileset>
-        </copy>
-
-        <copy todir="${IcdbclientDir}/cdb-loader/conf"
-              preservelastmodified="true">
-            <fileset dir="cdb-loader/conf">
-              <or>
-                 <filename name="*.properties"/>
-              </or>
-            </fileset>
-        </copy>
-
-        <copy todir="${IcdbclientDir}/cdb-loader/lib"
-              preservelastmodified="true">
-            <fileset dir="common/cdb-commons/build">
-                <or>
-                    <filename name="cdb-commons.jar"/>
-                </or>
-            </fileset>
-            <fileset dir="common/cdb-commons/lib">
-                <or>
-                    <filename name="log4j*.jar"/>
-                </or>
-            </fileset>
-            <fileset dir="cdb-loader/lib">
-                <or>
-                    <filename name="antlrall.jar"/>
-                    <filename name="concurrent.jar"/>
-                </or>
-            </fileset>
-            <fileset dir="cdb-loader/build">
-                <or>
-                    <filename name="cdb-loader.jar"/>
-                    <filename name="libloader.so"/>
-                    <filename name="libloader.jnilib"/>
-                </or>
-            </fileset>
-        </copy>
-
-        <!--
-            Copy command executables
-          -->
-        <!-- 
-        <copy todir="${IcommandsDir}/bin"
-              preservelastmodified="true">
-            <fileset dir="commands/bin">
-                <or>
-                    <filename name="loader.sh"/>
-                </or>
-            </fileset>
-            <fileset dir="commands">
-                <or>
-                    <filename name="loader-logger.properties"/>
-                </or>
-            </fileset>
-        </copy>
-        <chmod type="file" perm="755">
-            <fileset dir="${IcommandsDir}/bin"/>
-        </chmod>
-        -->
-
-        <!--
-            Copy tools shell scripts
-          -->
-        <!--
-        <copy todir="${IcdbtoolsDir}/bin"
-              preservelastmodified="true">
-            <fileset dir="test/bin">
-                <and>
-                    <depth max="0"/>
-                    <or>
-                        <filename name="cdbcast"/>
-                        <filename name="cdbfuncs"/>
-                        <filename name="cdb_admin_functions.sql"/>
-                    </or>
-                </and>
-            </fileset>
-        </copy>
-        <copy todir="${IcdbtoolsDir}/support/bin"
-              preservelastmodified="true">
-            <fileset dir="test/bin">
-                <and>
-                    <depth max="0"/>
-                    <or>
-                        <filename name="cdbcreatedb"/>
-                        <filename name="cdbinitdb"/>
-                        <filename name="cdbpsql"/>
-                        <filename name="cdbstart"/>
-                        <filename name="cdbstop"/>
-                        <filename name="cvpschema.sql"/>
-                        <filename name="cvpdata.sql"/>
-                        <filename name="cvphead.sql"/>
-                        <filename name="cvptail.sql"/>
-                    </or>
-                </and>
-            </fileset>
-        </copy>
-        <chmod type="file" perm="755">
-            <fileset dir="${IcdbtoolsDir}">
-                <exclude name="**/*.sql"/>
-            </fileset>
-        </chmod>  
-        -->
-
-        <!--
-            Copy (generated) jar files to mgmt library directory
-          -->
-        <!--
-        <copy todir="${ImgmtDir}/lib"
-              preservelastmodified="true">
-            <fileset dir="mgmt/build">
-                <or>
-                    <filename name="cdb-mgmt.jar"/>
-                    <filename name="cdb-agent.jar"/>
-                </or>
-            </fileset>
-        </copy>
-        -->
-
-        <!--
-            Copy command executables
-          -->
-        <!--
-        <copy todir="${ImgmtDir}/bin"
-              preservelastmodified="true">
-            <fileset dir="mgmt">
-                <or>
-                  <filename name="runAgent.sh"/>
-                  <filename name="launchGui.sh"/>
-		  <filename name="cdbmgmt.properties"/>
-		  <filename name="logging.properties"/>
-                </or>
-            </fileset>
-        </copy>
-        <chmod type="file" perm="755" file="${ImgmtDir}/bin/runAgent.sh"/>
-        <chmod type="file" perm="755" file="${ImgmtDir}/bin/launchGui.sh"/>
-        -->
 
         <!--
             Create the agent.properties file from the template

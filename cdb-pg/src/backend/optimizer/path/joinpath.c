@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/path/joinpath.c,v 1.91 2004/12/31 22:00:04 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/path/joinpath.c,v 1.91.4.1 2005/01/23 02:22:27 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -278,7 +278,8 @@ sort_inner_and_outer(Query *root,
 												   cur_mergeclauses,
 												   innerrel);
 		/* Build pathkeys representing output sort order. */
-		merge_pathkeys = build_join_pathkeys(root, joinrel, outerkeys);
+		merge_pathkeys = build_join_pathkeys(root, joinrel, jointype,
+											 outerkeys);
 
 		/*
 		 * And now we can make the path.
@@ -438,7 +439,7 @@ match_unsorted_outer(Query *root,
 		 * as a nestloop, and even if some of the mergeclauses are
 		 * implemented by qpquals rather than as true mergeclauses):
 		 */
-		merge_pathkeys = build_join_pathkeys(root, joinrel,
+		merge_pathkeys = build_join_pathkeys(root, joinrel, jointype,
 											 outerpath->pathkeys);
 
 		if (nestjoinOK)
