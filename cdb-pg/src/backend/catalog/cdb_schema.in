@@ -163,13 +163,15 @@ COMMENT ON TABLE cdb.cdb IS 'the affiliation of this database with its CDB';
 
 create table CDB.VERSION
 (
-    schemaversion integer
+    schemaversion integer,
+    productversion text
 );
 
 -- 1 is the initial version defined in 2004 and never released.
 -- 2 is the version defined in Feb 2005.
 
 INSERT INTO CDB.VERSION(schemaversion) VALUES ( 2 );
+INSERT INTO CDB.VERSION(productversion) VALUES ( '$$Name:  $$' );
 
 COMMENT ON TABLE cdb.version IS 'vintage of schema "cdb" in this database';
 
