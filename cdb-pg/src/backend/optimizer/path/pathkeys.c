@@ -32,6 +32,8 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 
+#include "cdb/cdbdef.h"         /* CdbSwap() */
+
 
 static PathKeyItem *makePathKeyItem(Node *key, Oid sortop, bool checkType);
 static List *make_canonical_pathkey(Query *root, PathKeyItem *item);

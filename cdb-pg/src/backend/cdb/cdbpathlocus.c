@@ -11,6 +11,7 @@
 #include "postgres.h"
 
 #include "cdb/cdbcat.h"         /* CdbPolicy */
+#include "cdb/cdbdef.h"         /* CdbSwap() */
 #include "nodes/makefuncs.h"    /* makeVar() */
 #include "nodes/plannodes.h"    /* Plan */
 #include "nodes/relation.h"     /* RelOptInfo */
