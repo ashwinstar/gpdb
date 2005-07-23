@@ -99,11 +99,7 @@ cdbpathlocus_compare(CdbPathLocus_Comparison    op,
         CdbPathLocus_IsHashed(b))
     {
         if (op == CdbPathLocus_Comparison_Equal)
-        {
-            CdbPathLocus t = a;
-            a = b;
-            b = t;
-        }
+            CdbSwap(CdbPathLocus, a, b);
         else
         {
             forboth(acell, a.partkey, bcell, b.partkey)
@@ -259,11 +255,12 @@ cdbpathlocus_get_pathkeyitem(List          *pathkey,
         Assert(IsA(item, PathKeyItem));
         if (bms_is_subset(item->cdb_key_relids, relids))
         {
+            if (item->cdb_num_relids == 0)
+                return item;
             if (targetlist &&
                 !tlist_member(item->key, targetlist))
                 continue;
-            if (IsA(item->key, Var) ||
-                item->cdb_num_relids == 0)
+            if (IsA(item->key, Var))
                 return item;
             if (!initial ||
                 item->cdb_num_relids < initial->cdb_num_relids)
@@ -376,11 +373,7 @@ cdbpathlocus_join(CdbPathLocus a, CdbPathLocus b)
     }
 
     if (!CdbPathLocus_IsHashedOJ(a))
-    {
-        CdbPathLocus tmp = a;
-        a = b;
-        b = tmp;
-    }
+        CdbSwap(CdbPathLocus, a, b);
 
     Assert(CdbPathLocus_IsHashedOJ(a));
     Assert(CdbPathLocus_IsHashed(b) ||

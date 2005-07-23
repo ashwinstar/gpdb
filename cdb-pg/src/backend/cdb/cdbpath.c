@@ -159,6 +159,31 @@ cdbpath_create_motion_path(Query           *root,
 
 
 /*
+ * cdbpath_partkeyitem_eq_constant
+ */
+static __inline__ bool
+cdbpath_partkeyitem_eq_constant(CdbLocusType   locustype,
+                                 List          *partkeyitem)
+{
+    if (locustype == CdbLocusType_Hashed)
+        return CdbPathkeyEqualsConstant(partkeyitem);
+    else if (locustype == CdbLocusType_HashedOJ)
+    {
+        ListCell   *cell;
+        foreach(cell, partkeyitem)
+        {
+            List   *pathkey = (List*)lfirst(cell);
+            if (CdbPathkeyEqualsConstant(pathkey))
+               return true;
+        }
+    }
+    else
+        Assert(false);
+    return false;
+}                               /* cdbpath_partkeyitem_eq_constant */
+
+
+/*
  * cdbpath_match_preds_to_partkey_tail
  *
  * Returns true if all of the locus's partitioning key expressions are
@@ -187,37 +212,56 @@ cdbpath_match_preds_to_partkey_tail(CdbpathMatchPredsContext   *ctx,
     List       *sublist;
     ListCell   *rcell;
 
+    /* Get current item of partkey. */
     sublist = (List *)lfirst(partkeycell);
-    foreach(rcell, ctx->mergeclause_list)
+
+    /* Is there a "<partkey item> = <constant expr>" predicate?  
+     *
+     *  If table T is distributed on cols (C,D,E) and query contains preds
+     *          T.C = U.A AND T.D = <constant expr> AND T.E = U.B 
+     *  then we would like to report a match and return the colocus
+     *          (U.A, <constant expr>, U.B)
+     *  so the caller can join T and U by redistributing only U.
+     *  (Note that "T.D = <constant expr>" won't be in the mergeclause_list
+     *  because it isn't a join pred.)
+     */
+    if (cdbpath_partkeyitem_eq_constant(ctx->locus.locustype, sublist))
+        copathkey = sublist;
+
+    /* Look for an equijoin comparison to the partkey item. */
+    else
     {
-        RestrictInfo   *rinfo = (RestrictInfo *)lfirst(rcell);
-
-        if (!rinfo->left_pathkey)
-            cache_mergeclause_pathkeys(ctx->root, rinfo);
-
-        if (CdbPathLocus_IsHashed(ctx->locus))
+        foreach(rcell, ctx->mergeclause_list)
         {
-            if (sublist == rinfo->left_pathkey)
-                copathkey = rinfo->right_pathkey;
-            else if (sublist == rinfo->right_pathkey)
-                copathkey = rinfo->left_pathkey;
-        }
-        else if (CdbPathLocus_IsHashedOJ(ctx->locus))
-        {
-            if (list_member_ptr(sublist, rinfo->left_pathkey))
-                copathkey = rinfo->right_pathkey;
-            else if (rinfo->left_pathkey != rinfo->right_pathkey &&
-                     list_member_ptr(sublist, rinfo->right_pathkey))
-                copathkey = rinfo->left_pathkey;
+            RestrictInfo   *rinfo = (RestrictInfo *)lfirst(rcell);
+
+            if (!rinfo->left_pathkey)
+                cache_mergeclause_pathkeys(ctx->root, rinfo);
+
+            if (CdbPathLocus_IsHashed(ctx->locus))
+            {
+                if (sublist == rinfo->left_pathkey)
+                    copathkey = rinfo->right_pathkey;
+                else if (sublist == rinfo->right_pathkey)
+                    copathkey = rinfo->left_pathkey;
+            }
+            else if (CdbPathLocus_IsHashedOJ(ctx->locus))
+            {
+                if (list_member_ptr(sublist, rinfo->left_pathkey))
+                    copathkey = rinfo->right_pathkey;
+                else if (rinfo->left_pathkey != rinfo->right_pathkey &&
+                    list_member_ptr(sublist, rinfo->right_pathkey))
+                    copathkey = rinfo->left_pathkey;
+            }
+
+            if (copathkey)
+                break;
         }
 
-        if (copathkey)
-            break;
+        /* Fail if didn't find a match for this partkey item. */
+        if (!copathkey)
+            return false;
     }
-
-    /* Fail if didn't find an equijoin predicate on this partkey item. */
-    if (!copathkey)
-        return false;
 
     /* Might need to build co-locus if locus is outer join source or result. */
     if (copathkey != sublist)
@@ -248,8 +292,10 @@ cdbpath_match_preds_to_partkey_tail(CdbpathMatchPredsContext   *ctx,
 /*
  * cdbpath_match_preds_to_partkey
  *
- * Returns true if all of the locus's partitioning key expressions are
- * found as comparands of equijoin predicates in the mergeclause_list.
+ * Returns true if an equijoin predicate is found in the mergeclause_list
+ * for each item of the locus's partitioning key.  
+ *
+ * (Also, a partkey item that is equal to a constant is treated as a match.)
  *
  * Readers may refer also to these related functions:
  *          select_mergejoin_clauses() in joinpath.c

@@ -320,6 +320,26 @@ typedef struct PathKeyItem
 
 
 /*
+ * CdbPathKeyItemIsConstant
+ *      is true if there is no Var of the current level in the expr
+ *      referenced by a given PathKeyItem.
+ */
+#define CdbPathKeyItemIsConstant(_pathkeyitem)  \
+    ((_pathkeyitem)->cdb_num_relids == 0)
+
+/*
+ * CdbPathkeyEqualsConstant
+ *      is true if there is a constant expr in a given set of
+ *      equijoin-equivalent exprs represented by a pathkey
+ *      (i.e. a List of PathKeyItem).  If there is a constant
+ *      expr, it will be at the head of the list.
+ */
+#define CdbPathkeyEqualsConstant(_pathkey)  \
+    ( (_pathkey) != NIL &&                  \
+      CdbPathKeyItemIsConstant((PathKeyItem *)linitial(_pathkey)) )
+
+
+/*
  * Type "Path" is used as-is for sequential-scan paths.  For other
  * path types it is the first component of a larger struct.
  *

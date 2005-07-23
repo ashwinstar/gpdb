@@ -662,6 +662,19 @@ typedef NameData *Name;
 	} while (0)
 
 
+/*
+ * CdbSwap
+ *      Exchange the contents of two variables.
+ */
+#define CdbSwap(_type, _x, _y)  \
+    do                          \
+    {                           \
+        _type _t = (_x);        \
+        _x = (_y);              \
+        _y = (_t);              \
+    } while (0)
+
+
 /* ----------------------------------------------------------------
  *				Section 7:	random stuff
  * ----------------------------------------------------------------

@@ -48,7 +48,7 @@ makePathKeyItem(Node *key, Oid sortop, bool checkType)
 {
 	PathKeyItem *item = makeNode(PathKeyItem);
 
-    /* Store the set of relids referenced by the key expr. */
+    /* CDB: Store the set of relids referenced by the key expr. */
     item->cdb_key_relids = pull_varnos(key);
     item->cdb_num_relids = bms_num_members(item->cdb_key_relids);
 
@@ -91,6 +91,13 @@ makePathKeyItem(Node *key, Oid sortop, bool checkType)
  * any two in a set to be equal).  As described above, we will subsequently
  * use direct pointers to one of these sublists to represent any pathkey
  * that involves an equijoined variable.
+ *
+ * CDB: Within an equijoin set, the order of the PathKeyItem nodes is
+ * arbitrary; except that, if a set contains one or more constant exprs,
+ * then a constant expr is kept at the head of the list.  By looking
+ * at the first item, the CdbPathkeyIsConstant() macro can quickly test
+ * whether there is a constant expr in the set.  (Here a "constant expr"
+ * is one that mentions no Vars of the current level.)
  */
 void
 add_equijoined_keys(Query *root, RestrictInfo *restrictinfo)
@@ -102,77 +109,85 @@ add_equijoined_keys(Query *root, RestrictInfo *restrictinfo)
 	PathKeyItem *item2 = makePathKeyItem(get_rightop(clause),
 										 restrictinfo->right_sortop,
 										 false);
-	List	   *newset;
-	ListCell   *cursetlink;
+    List       *set1 = NULL;
+    List       *set2 = NULL;
+    List       *newset;
+    ListCell   *equi_key_cell;
 
 	/* We might see a clause X=X; don't make a single-element list from it */
 	if (equal(item1, item2))
 		return;
 
-	/*
-	 * Our plan is to make a two-element set, then sweep through the
-	 * existing equijoin sets looking for matches to item1 or item2.  When
-	 * we find one, we remove that set from equi_key_list and union it
-	 * into our new set. When done, we add the new set to the front of
-	 * equi_key_list.
-	 *
-	 * It may well be that the two items we're given are already known to be
-	 * equijoin-equivalent, in which case we don't need to change our data
-	 * structure.  If we find both of them in the same equivalence set to
-	 * start with, we can quit immediately.
-	 *
-	 * This is a standard UNION-FIND problem, for which there exist better
-	 * data structures than simple lists.  If this code ever proves to be
-	 * a bottleneck then it could be sped up --- but for now, simple is
-	 * beautiful.
-	 */
-	newset = NIL;
+    /* Find first equijoin set that contains either item. */
+    foreach(equi_key_cell, root->equi_key_list)
+    {
+        set1 = (List *)lfirst(equi_key_cell);
+        if (list_member(set1, item1))
+        {
+            /* All done if the items are already in the same equijoin set. */
+            if (list_member(set1, item2))
+                return;
+            break;
+        }
+        if (list_member(set1, item2))
+        {
+            /* Let item1 be the item found in set1. */
+            CdbSwap(PathKeyItem *, item1, item2);
+            break;
+        }
+    }
 
-	/* cannot use foreach here because of possible lremove */
-	cursetlink = list_head(root->equi_key_list);
-	while (cursetlink)
-	{
-		List	   *curset = (List *) lfirst(cursetlink);
-		bool		item1here = list_member(curset, item1);
-		bool		item2here = list_member(curset, item2);
+    /* Build new set if neither item was found. */
+    if (!equi_key_cell)
+    {
+        /* CDB: If item2 is a constant expr, swap it to the front. */
+        if (CdbPathKeyItemIsConstant(item2))
+            CdbSwap(PathKeyItem *, item1, item2);
 
-		/* must advance cursetlink before lremove possibly pfree's it */
-		cursetlink = lnext(cursetlink);
+        newset = list_make2(item1, item2);
+        root->equi_key_list = lcons(newset, root->equi_key_list);
+        return;
+    }
 
-		if (item1here || item2here)
-		{
-			/*
-			 * If find both in same equivalence set, no need to do any
-			 * more
-			 */
-			if (item1here && item2here)
-			{
-				/* Better not have seen only one in an earlier set... */
-				Assert(newset == NIL);
-				return;
-			}
+    /* Found item1.  Keep looking for a set that contains item2. */
+    for_each_cell(equi_key_cell, lnext(equi_key_cell))
+    {
+        set2 = (List *)lfirst(equi_key_cell);
+        if (list_member(set2, item2))
+            break;
+    }
 
-			/* Build the new set only when we know we must */
-			if (newset == NIL)
-				newset = list_make2(item1, item2);
+    /* Add item2 to item1's set if didn't find it in another set. */
+    if (!equi_key_cell)
+    {
+        if (CdbPathKeyItemIsConstant(item2))
+            newset = lcons(item2, set1);
+        else
+            newset = lappend(set1, item2);
+    }
 
-			/* Found a set to merge into our new set */
-			newset = list_union(newset, curset);
+    /* Combine two existing sets. */
+    else
+    {
+        /* CDB: If set2 contains a constant expr, swap it to the front. */
+        if (CdbPathkeyEqualsConstant(set2))
+            CdbSwap(List *, set1, set2);
 
-			/*
-			 * Remove old set from equi_key_list.
-			 */
-			root->equi_key_list = list_delete_ptr(root->equi_key_list, curset);
-			list_free(curset);	/* might as well recycle old cons cells */
-		}
-	}
+        /* Alter set1 in place to append the members of set2. */
+        newset = list_concat(set1, set2);
+        Assert(newset == set1);
 
-	/* Build the new set only when we know we must */
-	if (newset == NIL)
-		newset = list_make2(item1, item2);
+        /* Remove the set2 List node from equi_key_list and free it.
+         * Don't free its members... they belong to set1 now.
+         */
+        root->equi_key_list = list_delete_ptr(root->equi_key_list, set2);
+        pfree(set2);
+        pfree(item2);
+    }
 
-	root->equi_key_list = lcons(newset, root->equi_key_list);
-}
+    pfree(item1);
+}                               /* add_equijoined_keys */
+
 
 /*
  * generate_implied_equalities
