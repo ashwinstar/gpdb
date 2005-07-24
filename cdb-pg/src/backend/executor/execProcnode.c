@@ -265,7 +265,7 @@ ExecInitNode(Plan *node, EState *estate)
 			estate->es_cur_root_idx = idx;
 			thisSlice =  (Slice*)list_nth(estate->es_sliceTable->slices, idx);
 			
-			Assert(thisSlice->sliceIndex = -1);
+			Assert(thisSlice->sliceIndex == -1);
 			
 			thisSlice->sliceIndex = idx;
 			thisSlice->rootIndex = idx;
