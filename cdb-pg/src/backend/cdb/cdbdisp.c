@@ -983,8 +983,10 @@ void createThreadPoolEnumeration( DispatchCommandParms *dispatchCommandParmsAr, 
 
 	for ( x=0; x<segdbListCount; x++)
 	{
-		Assert( segdbDesc != NULL );
+		
 		segdbDesc = segdbList[x];
+		Assert( segdbDesc != NULL );
+		
 		if ( segdbDesc->conn == NULL )
 		{
 			q = segdbDesc->segment_database_info;
