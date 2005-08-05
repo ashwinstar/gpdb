@@ -28,8 +28,8 @@
 typedef enum
 {
 	DTS_SEGDB,		/* Send to all connected segdbs */
-	DTS_SEGMENT,	/* Send to only one segdb per segindex */
-	DTS_LISTENER,	/* Send ot only one segdb per listener */
+	/*DTS_SEGMENT,	 * Send to only one segdb per segindex */
+	/*DTS_LISTENER,	 * Send ot only one segdb per listener */
 	DTS_ENUMERATION /* Send to a specific set of segdbs specified by an array of SegmentDatabaseDescriptor's */
 } DispatchTargetSet;
 

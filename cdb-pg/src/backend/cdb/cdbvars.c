@@ -56,7 +56,9 @@ bool				enable_cdbrepartition;
 bool				enable_cdbbroadcast;
 bool				enable_agg_restruct;
 
-int 				ams_wait_time;  /*time in microseconds for motion layer to wait. */
+int					Cdb_listener_port;
+
+int interconnect_setup_timeout;
 
 /* 
  * The single row from cdb.cdb for this database is held in this variable,
@@ -270,6 +272,25 @@ assign_cdb_connections_per_thread( int newval, bool doit, GucSource source )
 }
 
 /*
+ * Assign hook routine for "cdb_interconnect_setup_timeout" option.
+ *
+ */
+bool
+assign_interconnect_setup_timeout( int newval, bool doit, GucSource source )
+{
+
+	if( doit )
+	{
+		if( newval < 0 )
+			return false;
+			
+		interconnect_setup_timeout = newval;
+	
+	}
+	return true;
+}
+
+/*
  * Show hook routine for "cdb_session_role" option.
  *
  * See src/backend/util/misc/guc.c for option definition.
@@ -308,6 +329,27 @@ show_cdb_connections_per_thread( void )
 	initStringInfo(&buffer);
 	
 	appendStringInfo( &buffer, "%d", cdb_connections_per_thread );
+
+    return buffer.data;
+}
+
+/* 
+ * Show hook routine for "cdb_interconnect_setup_timeout" option.
+ *
+ * See guc.c for option definition.
+ *
+ */
+const char *
+show_interconnect_setup_timeout( void )
+{
+	/*
+	 * We rely on the fact that the memory context will clean up the memory
+	 * for the buffer.data.
+	 */
+	StringInfoData buffer;
+	initStringInfo(&buffer);
+	
+	appendStringInfo( &buffer, "%d", interconnect_setup_timeout );
 
     return buffer.data;
 }

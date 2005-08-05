@@ -71,11 +71,12 @@ int ispowof2(int numsegs);
  */
 CdbHash *makeCdbHash(int numsegs, CdbHashAlg algorithm)
 {	
+	CdbHash *h;
 	assert(numsegs > 0); /* verify number of segments is legal. */	
 	assert( algorithm == HASH_FNV_1 || algorithm == HASH_FNV_1A );
 	
 	/* Create a pointer to a CdbHash that includes the hash properties */ 
-	CdbHash *h = palloc(sizeof(CdbHash));
+	h = palloc(sizeof(CdbHash));
 	
 	/*
 	 * set this hash session characteristics.
@@ -370,12 +371,13 @@ void cdbhashnull(CdbHash *h)
  */
 unsigned int cdbhashreduce(CdbHash *h)
 {
-	assert( h->reducealg == REDUCE_BITMASK ||  h->reducealg == REDUCE_LAZYMOD);
 	
 	int result = 0; /* TODO: what is a good initialization value? could we 
 					   guarantee at this point that there will not be a negative 
 					   segid in CDB and therefore initialize to this value for error
 					   checking? */
+					   
+	assert( h->reducealg == REDUCE_BITMASK ||  h->reducealg == REDUCE_LAZYMOD);
 	
 	/*
 	 * Reduce our 32-bit hash value to a segment number

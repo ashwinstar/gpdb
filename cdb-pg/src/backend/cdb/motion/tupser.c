@@ -470,8 +470,7 @@ HeapTuple DeserializeTuple(SerTupInfo *pSerInfo, StringInfo serialTup)
 
 
 TupleChunkList CvtHeapTupToChunks(HeapTuple htup, SerTupInfo *pSerInfo,
-    int maxChunkDataSize, uint16 motNodeID, MotionNodeInfo *mn_info,
-    int16 tgtSegIdx)
+    int maxChunkDataSize)
 {
     StringInfoData serialTup;
     TupleChunkList tcList;
@@ -484,7 +483,6 @@ TupleChunkList CvtHeapTupToChunks(HeapTuple htup, SerTupInfo *pSerInfo,
     AssertArg(pSerInfo != NULL);
     AssertArg(maxChunkDataSize >= MIN_TC_DATA_SIZE);
     AssertArg(maxChunkDataSize <= MAX_TC_DATA_SIZE);
-    AssertArg(mn_info != NULL);
 
     /* Generate serialized version of heap tuple into the string info. */
 
@@ -501,7 +499,7 @@ TupleChunkList CvtHeapTupToChunks(HeapTuple htup, SerTupInfo *pSerInfo,
         /* Create the new tuple chunk. */
         chunkDataSize = serialTup.len;
         tcItem = makeTupleChunkListItem(TC_WHOLE, serialTup.data,
-            chunkDataSize, mn_info->segment_id, tgtSegIdx, motNodeID);
+            chunkDataSize);
 
         /* Update the chunk list. */
         appendChunkToTCList(tcList, tcItem);
@@ -539,7 +537,7 @@ TupleChunkList CvtHeapTupToChunks(HeapTuple htup, SerTupInfo *pSerInfo,
             }
 
             tcItem = makeTupleChunkListItem(tcType, serialTup.data + i,
-                chunkDataSize, mn_info->segment_id, tgtSegIdx, motNodeID);
+                chunkDataSize );
 
             /* Update the chunk list. */
             appendChunkToTCList(tcList, tcItem);

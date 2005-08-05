@@ -13,14 +13,10 @@ subdir = src/backend/cdb/motion
 top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
-# Everything in this directory is built with MPI support.
-override CC := $(MPICC)
-override LIBS := $(MPILIBS) $(LIBS)
-
 override CPPFLAGS := -I$(libpq_srcdir) $(CPPFLAGS)
 
 OBJS = cdbmotion.o tupchunk.o tupchunklist.o tupser.o  \
-	ml_ipc.o ams.o ams-net.o mpiutils.o htupfifo.o
+	ml_ipc.o htupfifo.o
 
 all: SUBSYS.o
 

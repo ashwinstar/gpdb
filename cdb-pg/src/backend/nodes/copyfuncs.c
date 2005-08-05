@@ -90,6 +90,7 @@ CopyPlanFields(Plan *from, Plan *newnode)
 	COPY_NODE_FIELD(flow);
 	COPY_SCALAR_FIELD(dispatch);
 	COPY_SCALAR_FIELD(nMotionNodes);
+	COPY_NODE_FIELD(sliceTable);
 }
 
 /*
@@ -1191,6 +1192,7 @@ _copyFlow(Flow *from)
 
 	return newnode;
 }
+
 
 /* ****************************************************************
  *						relation.h copy functions
@@ -2588,6 +2590,7 @@ _copyCdbProcess(CdbProcess *from)
 	
 	COPY_STRING_FIELD(listenerAddr); 
 	COPY_SCALAR_FIELD(listenerPort);
+	COPY_SCALAR_FIELD(pid);
 	COPY_SCALAR_FIELD(contentid);
 	COPY_SCALAR_FIELD(routeid);
 	
@@ -2603,6 +2606,8 @@ _copySlice(Slice *from)
 	COPY_SCALAR_FIELD(rootIndex);
 	COPY_SCALAR_FIELD(gangType);
 	COPY_SCALAR_FIELD(gangSize);
+	newnode->primaryGang = from->primaryGang;
+	newnode->mirrorGang = from->mirrorGang;
 	COPY_SCALAR_FIELD(parentIndex);
 	COPY_NODE_FIELD(children);
 	COPY_NODE_FIELD(primaryProcesses);
@@ -2898,7 +2903,7 @@ copyObject(void *from)
 		case T_Flow:
 			retval = _copyFlow(from);
 			break;
-
+	
 			/*
 			 * RELATION NODES
 			 */
@@ -3242,7 +3247,7 @@ copyObject(void *from)
 			break;
 		case T_CdbExecStmt:
 			retval = _copyCdbExecStmt(from);
-			break;
+			break;	
 		case T_CdbProcess:
 			retval = _copyCdbProcess(from);
 			break;

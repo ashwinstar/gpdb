@@ -51,6 +51,8 @@
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbsubplan.h"
 #include "cdb/cdbvars.h"
+#include "cdb/ml_ipc.h"
+#include "cdb/cdbmotion.h"
 
 typedef struct execRowMark
 {
@@ -172,7 +174,27 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 	 if ( Cdb_role == CDB_ROLE_DISPATCH )
 	 {
 		/* Set up blank slice table to be filled in during InitPlan. */
-		InitSliceTable(estate, queryDesc->plantree->nMotionNodes, queryDesc->plantree->nParamExec);
+		int nExtraRoots;
+		
+		/* 
+		 * We know that, if this query is to dispatched in parallel, then
+		 * it can't contain any correlated sub-queries.  Therefore, any
+		 * PARAM_EXEC style parameters will correspond to single-valued
+		 * initPlans which is the number of slice tree roots we'll need.
+		 * Otherwise, the slice table won't be used for dispatch, so don't
+		 * put extra roots in it, even if there are some subplans.
+		 *
+		 * TODO -- EITHER decide to live with this baroque justification 
+		 *         OR clean up the determination of the number of extra roots 
+		 *        needed, e.g., by actually counting initplans during 
+		 *        cdb_apply_motion() and noting it in the top plan node.
+		 */
+		if ( queryDesc->plantree->dispatch == DISPATCH_PARALLEL )
+			nExtraRoots = queryDesc->plantree->nParamExec;
+		else
+			nExtraRoots = 0;
+		
+		InitSliceTable(estate, queryDesc->plantree->nMotionNodes, nExtraRoots);
 	 }
 	 else if ( Cdb_role == CDB_ROLE_EXECUTE )
 	 {
@@ -233,8 +255,7 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
  * ----------------------------------------------------------------
  */
 TupleTableSlot *
-ExecutorRun(QueryDesc *queryDesc,
-			ScanDirection direction, long count)
+ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 {
 	EState	   *estate;
 	CmdType		operation;
@@ -269,6 +290,54 @@ ExecutorRun(QueryDesc *queryDesc,
 	estate->es_lastoid = InvalidOid;
 
 	(*dest->rStartup) (dest, operation, queryDesc->tupDesc);
+	
+	/* If we're running as a QE and there's a slice table in our queryDesc,
+	 * then we need to finish the EState setup we prepared for back in 
+	 * CdbExecQuery.
+	 */
+	if ( Cdb_role == CDB_ROLE_EXECUTE && queryDesc->gbl_sliceTable != NULL )
+	{
+		Node * slice;
+		MotionState *motionstate = NULL;
+		
+		/* From the QD via CDBEXEC! */
+		SliceTable *sliceTable = queryDesc->gbl_sliceTable;
+		int nMotionNodes = queryDesc->gbl_nMotionNodes;
+		int nExtraRoots = queryDesc->gbl_nExtraRoots;
+		 		
+		estate->es_sliceTable = sliceTable;
+		estate->es_cur_slice_idx = sliceTable->localSlice;
+		slice = list_nth(sliceTable->slices, sliceTable->localSlice);
+		Assert( IsA(slice,Slice) );
+		estate->es_cur_root_idx = ((Slice*)slice)->rootIndex;
+		
+		/* If responsible for a non-root slice, arrange to enter the plan 
+		 * at the slice's sending Motion node rather than at the top.
+		 */
+		if ( estate->es_cur_slice_idx != estate->es_cur_root_idx )
+		{
+			motionstate = estate->es_slice_map[estate->es_cur_slice_idx];
+			Assert( motionstate != NULL && IsA(motionstate, MotionState) );
+			
+			/* Patch Motion node so it looks like a top node. */
+			motionstate->ps.plan->nMotionNodes = nMotionNodes;
+			motionstate->ps.plan->nParamExec = nExtraRoots;
+		}
+		
+		elog_node_display(DEBUG1, 
+			"local slice table",
+			estate->es_sliceTable,
+			Debug_pretty_print
+			);
+		
+		elog(DEBUG1, 
+			"Segment %d (%s) executing slice %d under root %d.", 
+			CdbIdentity.segindex,
+			(Cdb_is_primary ? "primary" : "mirror"),
+			estate->es_cur_slice_idx,
+			estate->es_cur_root_idx
+			);
+	}
 
 	bool hasDispatched = false;
 	bool shouldDispatch =  Cdb_role == CDB_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL;
@@ -362,29 +431,53 @@ ExecutorRun(QueryDesc *queryDesc,
 		}
 
 		/*
-		* Run the plan.
+		* Run the plan locally.  There are three ways;
+		*
+		* 1. Do nothing -- this occurs when the specified direction is
+		*    NoMovementScanDirection or when Cdb_role is CDB_ROLE_DISPATCH
+		*    and the current slice belongs to a QE.
+		*
+		* 2. Run a root slice -- this occurs when Cdb_role is CDB_ROLE_UTILITY
+		*    or the current slice is a root.  It corresponds to the "normal"
+		*    path through the executor in that we enter the plan at the top
+		*    and count on the motion nodes at the fringe of the top slice to
+		*    return without ever calling nodes below them.
+		*
+		* 3. Run a non-root slice -- this occurs when Cdb_role is 
+		*    CDB_ROLE_EXECUTE and the current slice is not a root slice.
+		*    It corresponds to a QE running a slice with a motion node on
+		*    top.  The call, thus, returns no tuples (since they all go out
+		*    on the interconnect to the receiver version of the motion node),
+		*    but it does execute the indicated slice down to any fringe
+		*    motion nodes (as in case 2).
 		*/
 		if (direction == NoMovementScanDirection)
 		{
 			result = NULL;
 		}
-		else if ( FALSE && Cdb_role == CDB_ROLE_EXECUTE && estate->es_cur_slice_idx != estate->es_cur_root_idx )
+		else if ( Cdb_role == CDB_ROLE_DISPATCH && sliceRunsOnQE(getCurrentSlice(estate)) )
 		{
-			/* Executing a non-root slice on a QE.  Note that the top Plan
-			 * node of the slice must be a (Sending) Motion in this case,
-			 * so we know we want to run the plan forward to completion.
-			 * Also, the destination and command type are uninteresting
-			 * and the node won't return any tuples locally.  (All go out
-			 * over the interconnect to corresponding receivers.)
+			result = NULL;
+		}
+		else if ( Cdb_role == CDB_ROLE_EXECUTE && estate->es_cur_slice_idx != estate->es_cur_root_idx )
+		{
+			/* Run a non-root slice on a QE.  
 			 * 
-			 * TODO - SLICE PLAN INTEGRATION
+			 * Since the top Plan node is a (Sending) Motion, run the plan
+			 * forward to completion. The plan won't return tuples locally 
+			 * (tuples go out over the interconnect), so the destination is 
+			 * uninteresting.  The command type should be SELECT, however,
+			 * to avoid other sorts of DML processing..
 			 *
-			 *        Debug this code path once multi-gang query is
-			 *        switched on.  There are likely to be issues related
-			 *        to our blundering into the middle of the plan!
+			 * This is the center of slice plan activity -- here we arrange 
+			 * to blunder into the middle of the plan rather than entering
+			 * at the root.
 			 */
+			MotionState *motionState = (estate->es_slice_map[estate->es_cur_slice_idx]);
+			Assert( IsA(motionState->ps.plan, Motion) );
+			
 			result = ExecutePlan(estate,
-								(PlanState*)(estate->es_slice_map[estate->es_cur_slice_idx]),
+								(PlanState*) motionState,
 								CMD_SELECT,
 								0,
 								ForwardScanDirection,
@@ -392,8 +485,7 @@ ExecutorRun(QueryDesc *queryDesc,
 		}
 		else
 		{
-			/* On the QD or executing a root on a QE or running in the role 
-			 * of a utility.
+			/* Run a root slice. 
 			 */
 			result = ExecutePlan(estate,
 								queryDesc->planstate,
@@ -407,15 +499,16 @@ ExecutorRun(QueryDesc *queryDesc,
 	{
 		if ( hasDispatched )
 		{
+			/*
+			 * We need to wait for the threads to finish.  This allows for proper cleanup
+			 * of the results from the async command executions.
+			 */
 			char *message;
 
 			/*
-			 *  We need to wait for the threads to finish.  This allows for proper cleanup
-			 * of the results from the async command executions.
-			 */
-
-			/*
 			 * Set this to force any remaining commands executing on qExecs to stop.
+			 * TODO Check this out. How does this stop running sessions? 
+			 *      Brian 2005-07-20
 			 */
 			QueryCancelPending = true;
 
@@ -445,6 +538,9 @@ ExecutorRun(QueryDesc *queryDesc,
 			}
 			DestroyCdbDispatchResults( results );
 			hasDispatched = false;
+			
+			/* clean up our own motion layer. */	
+			ResetMotionLayer(true);
 		}
 		PG_RE_THROW();
 	}
@@ -495,8 +591,6 @@ ExecutorRun(QueryDesc *queryDesc,
 	 * shutdown receiver
 	 */
 	(*dest->rShutdown) (dest);
-
-
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -1311,6 +1405,17 @@ ExecutePlan(EState *estate,
 			break;
 	}
 
+
+	/* activate the connections.
+	 * 
+	 */
+	if ( Cdb_role != CDB_ROLE_UTILITY && planstate->plan->nMotionNodes > 0 )
+	{	
+		SetupInterconnect( estate->es_sliceTable, estate->es_cur_slice_idx );	
+	}
+	
+
+
 	/*
 	 * Loop until we've processed the proper number of tuples from the
 	 * plan.
@@ -1509,6 +1614,10 @@ lnext:	;
 		if (numberTuples && numberTuples == current_tuple_count)
 			break;
 	}
+	
+	
+	if ( Cdb_role != CDB_ROLE_UTILITY && planstate->plan->nMotionNodes > 0 )
+		TeardownInterconnect( );
 
 	/*
 	 * Process AFTER EACH STATEMENT triggers

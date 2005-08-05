@@ -131,7 +131,8 @@ static void doNegateFloat(Value *v);
 %type <node>	stmt schema_stmt
 		AlterDatabaseSetStmt AlterDomainStmt AlterGroupStmt AlterOwnerStmt
 		AlterSeqStmt AlterTableStmt AlterUserStmt AlterUserSetStmt
-		AnalyzeStmt CdbExecStmt ClosePortalStmt ClusterStmt CommentStmt
+		AnalyzeStmt CdbExecStmt ClosePortalStmt 
+		ClusterStmt CommentStmt
 		ConstraintsSetStmt CopyStmt CreateAsStmt CreateCastStmt
 		CreateDomainStmt CreateGroupStmt CreateOpClassStmt CreatePLangStmt
 		CreateSchemaStmt CreateSeqStmt CreateStmt CreateTableSpaceStmt
@@ -4634,10 +4635,12 @@ DeallocateStmt: DEALLOCATE name
 						$$ = (Node *) n;
 					}
 		;
+		
 
 /*****************************************************************************
  *
  *		QUERY :
+ *
  *				CDBEXEC query plan [ ( parameter [, ...] ) ] [ sliceinfo ]
  *
  *****************************************************************************/

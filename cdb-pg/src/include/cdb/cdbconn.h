@@ -98,6 +98,20 @@ typedef struct segment_database_descriptor
 	 * The SQL statement command status, from PQcmdStatus.
 	 */
 	char						*cmdStatus;
+	
+	/* 
+	 * interconnect Listener port 
+	 * 
+	 */
+	int4		motionListener; 
+	
+	/* segindex
+	 * 
+	 * Identifies the segment this group of databases is serving.  This is the
+	 * segindex assigned to the segment in cdb.segment.  Duplicate of segment_descriptor.segindex
+	 */
+	int4         					segindex;
+	
 } SegmentDatabaseDescriptor;
 
 /* --------------------------------------------------------------------------------------------------
@@ -175,7 +189,7 @@ typedef struct cdb_cluster_descriptor {
 /*
  * External declarations
  */
-extern CdbClusterDescriptor	   *CdbClusterDefinition;
+//extern CdbClusterDescriptor	   *CdbClusterDefinition;
 
 
 #endif   /* CDBCONN_H */

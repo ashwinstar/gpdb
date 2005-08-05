@@ -18,8 +18,7 @@
 
 
 TupleChunkListItem makeTupleChunkListItem(TupleChunkType chunkType,
-										  void *pChunkData, uint16 chunkDataSize,
-										  int16 srcSegIdx, int16 tgtSegIdx, uint16 mnid)
+										  void *pChunkData, uint16 chunkDataSize)
 {
     int chunkSize;
     TupleChunkListItem tcItem;
@@ -34,15 +33,10 @@ TupleChunkListItem makeTupleChunkListItem(TupleChunkType chunkType,
     
     chunkSize = TUPLE_CHUNK_HEADER_SIZE + chunkDataSize;
     
-    tcItem = (TupleChunkListItem) palloc0(sizeof(TupleChunkListData) +
-										  chunkSize);
+    tcItem = (TupleChunkListItem) palloc0(sizeof(TupleChunkListData) + chunkSize);
 	
     /* Fill in chunk details. */
 	
-    SetTargetSegIdx( tcItem->chunk_data, tgtSegIdx);
-	/*    SetQueryGroupID( tcItem->chunk_data, mnInfo->process_group_id); */
-    SetSourceSegIdx( tcItem->chunk_data, srcSegIdx);
-    SetMotionNodeID( tcItem->chunk_data, mnid);
     SetChunkDataSize(tcItem->chunk_data, chunkDataSize);
     SetChunkType(tcItem->chunk_data, chunkType);
 	

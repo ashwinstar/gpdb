@@ -54,12 +54,11 @@ CdbHeap *CreateCdbTupleHeap( int nSourceSegments,
 						cmpinfo);
 }
 
-void SetCdbTupleHeapInitialValue( CdbHeap *cdbheap, HeapTuple tuple, bool shouldFree, int sourceSegIndex )
+void SetCdbTupleHeapInitialValue( CdbHeap *cdbheap, HeapTuple tuple, int sourceSegIndex )
 {
 	CdbTupleHeapInfo info;
 
 	info.tuple = tuple;
-	info.shouldFree = shouldFree;
 	info.sourceSegIndex = sourceSegIndex;
 
 	SetCdbHeapInitialValue( cdbheap, &info);
@@ -71,12 +70,11 @@ CdbTupleHeapInfo *GetLowestValueFromCdbTupleHeap( CdbHeap *cdbheap )
 	return (CdbTupleHeapInfo *)GetLowestValueFromCdbHeap( cdbheap );
 }
 
-void MergeNewValueIntoCdbTupleHeap( CdbHeap *cdbheap, HeapTuple h, bool shouldFree, int sourceSegIndex )
+void MergeNewValueIntoCdbTupleHeap( CdbHeap *cdbheap, HeapTuple h, int sourceSegIndex )
 {
 	CdbTupleHeapInfo info;
 
 	info.tuple = h;
-	info.shouldFree = shouldFree;
 	info.sourceSegIndex = sourceSegIndex;
 
 	MergeNewValueIntoCdbHeap( cdbheap, &info );
@@ -90,29 +88,30 @@ void MergeNewValueIntoCdbTupleHeap( CdbHeap *cdbheap, HeapTuple h, bool shouldFr
 
 int CmpTuplesForSortedMotion( void *lhs, void *rhs ) 
 {
-	CdbTupleHeapInfo *linfo = (CdbTupleHeapInfo *)lhs;
-	CdbTupleHeapInfo *rinfo = (CdbTupleHeapInfo *)rhs;
-	HeapTuple ltup;
-	HeapTuple rtup;
-	FmgrInfo *sortFunctions;
-	SortFunctionKind *sortFnKinds;
-	int numSortCols;
-	AttrNumber *sortColIdx;
-	TupleDesc tupDesc;
-	int nkey;
+	CdbHeapTupleCompareInfo *cmpinfo;
+	CdbTupleHeapInfo 		*linfo = (CdbTupleHeapInfo *)lhs;
+	CdbTupleHeapInfo 		*rinfo = (CdbTupleHeapInfo *)rhs;
+	HeapTuple 				ltup, rtup;
+	FmgrInfo 				*sortFunctions;
+	SortFunctionKind 		*sortFnKinds;
+	int 					numSortCols;
+	AttrNumber 				*sortColIdx;
+	TupleDesc 				tupDesc;
+	int 					nkey;
+	
 
 	Assert( linfo->cmpinfo != NULL &&
 		linfo->cmpinfo == rinfo->cmpinfo );
 
-	CdbHeapTupleCompareInfo *cmpinfo = linfo->cmpinfo;
-
-	ltup = linfo->tuple;
-	rtup = rinfo->tuple; 
+	cmpinfo = linfo->cmpinfo;
+	ltup    = linfo->tuple;
+	rtup    = rinfo->tuple;
+	
 	sortFunctions = cmpinfo->sortFunctions;
-	sortFnKinds = cmpinfo->sortFnKinds;
-    numSortCols = cmpinfo->numSortCols;
-	sortColIdx = cmpinfo->sortColIdx;
-	tupDesc = cmpinfo->tupDesc;
+	sortFnKinds   = cmpinfo->sortFnKinds;
+    numSortCols   = cmpinfo->numSortCols;
+	sortColIdx    = cmpinfo->sortColIdx;
+	tupDesc       = cmpinfo->tupDesc;
 
 	// NULL is greater than any non-NULL tuple.
 	if ( ltup == NULL )
@@ -166,7 +165,6 @@ void *CreateCdbTupleHeapInfo( void *createData, void *initData )
 	info = palloc0( sizeof(CdbTupleHeapInfo) );
 
 	info->tuple = initTupleHeapInfo->tuple;
-	info->shouldFree = initTupleHeapInfo->shouldFree;
 	info->sourceSegIndex = initTupleHeapInfo->sourceSegIndex;
 	info->cmpinfo = cmpinfo;
 
@@ -185,32 +183,27 @@ void CopyCdbTupleHeapInfo( void *destination, void *source )
 	infoSrc = (CdbTupleHeapInfo *)source;
 
 	infoDest->tuple = infoSrc->tuple;
-	infoDest->shouldFree = infoSrc->shouldFree;
 	infoDest->sourceSegIndex = infoSrc->sourceSegIndex;
 }
 
 void SwitchCdbTupleHeapInfo( void *left, void *right )
 {
-	CdbTupleHeapInfo *infoLeft;
-	CdbTupleHeapInfo *infoRight;
-	HeapTuple tempTuple;
-	bool tempShouldFree;
-	int tempSegIndex;
+	CdbTupleHeapInfo 	*infoLeft, *infoRight;
+	HeapTuple 			tempTuple;
+	int 				tempSegIndex;
 
 	Assert( left != NULL );
 	Assert( right != NULL );
 
-	infoLeft = (CdbTupleHeapInfo *)left;
+	infoLeft  = (CdbTupleHeapInfo *)left;
 	infoRight = (CdbTupleHeapInfo *)right;
 
-	tempTuple = infoLeft->tuple;
-	tempShouldFree = infoLeft->shouldFree;
+	tempTuple    = infoLeft->tuple;
 	tempSegIndex = infoLeft->sourceSegIndex;
 
-	infoLeft->tuple = infoRight->tuple;
-	infoLeft->sourceSegIndex = infoRight->sourceSegIndex;
-	infoRight->tuple = tempTuple;
-	infoRight->shouldFree = tempShouldFree;
+	infoLeft->tuple 		  = infoRight->tuple;
+	infoLeft->sourceSegIndex  = infoRight->sourceSegIndex;
+	infoRight->tuple 		  = tempTuple;
 	infoRight->sourceSegIndex = tempSegIndex;
 }
 
@@ -253,7 +246,7 @@ CdbHeap *CreateCdbHeap( int nSlots,
 						void *createData)
 {
 	CdbHeap *result;
-	void **heap;
+	void 	**heap;
 
 	Assert( cmpfn != NULL 
 			&& createfn != NULL
@@ -266,13 +259,13 @@ CdbHeap *CreateCdbHeap( int nSlots,
 
 	heap = (void **)palloc0( (nSlots + 1) * sizeof(void *) );
 
-	result->heap = (void **)heap;
+	result->heap 			= (void **)heap;
 	result->initialSortDone = false;
-	result->cmpfn = cmpfn;
-	result->createfn = createfn;
-	result->copyfn = copyfn;
-	result->switchfn = switchfn;
-	result->createdata = createData;
+	result->cmpfn 			= cmpfn;
+	result->createfn 		= createfn;
+	result->copyfn 			= copyfn;
+	result->switchfn 		= switchfn;
+	result->createdata 		= createData;
 
 	return result;
 }

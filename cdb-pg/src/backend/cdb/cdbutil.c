@@ -32,7 +32,9 @@
 #include "cdb/cdblink.h"
 #include "cdb/cdbmotion.h"
 #include "cdb/cdbvars.h"
-#include "cdb/ams.h"
+#include "cdb/cdbgang.h"
+#include "cdb/ml_ipc.h"   /*listener_setup*/
+#include "cdb/cdbtm.h"
 
 
 
@@ -714,8 +716,9 @@ void cdb_setup(void)
 {
 	elog( DEBUG1, "Initializing CDB components...");
 	
-	elog( DEBUG1, "Registering with amsd...");
-	ams_setup();
+	elog( DEBUG1, "Setting Up Interconnect Listener Port...");
+	if ( Cdb_role != CDB_ROLE_UTILITY )
+		Cdb_listener_port = ListenerSetup();
 	
 	elog( DEBUG1, "Establishing Connections to QEs...");
 	cdblink_setup();
@@ -738,11 +741,10 @@ void cdb_cleanup(void)
 {
 	elog( DEBUG1, "Cleaning up CDB components...");
 	
-	cdblink_disconnect( 0, 0 );
+	disconnectAndDestroyAllGangs();
 	
-	ams_cleanup();
-		
-	/*TODO: we probably need something to clean up the MotionLayer. */
+
+	//TODO: we probably need something to clean up the MotionLayer.
 }
 
 

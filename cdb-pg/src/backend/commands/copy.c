@@ -49,6 +49,7 @@
 #include "utils/syscache.h"
 
 #include "cdb/cdbvars.h"
+#include "cdb/cdblink.h"
 #include "cdb/cdbcopy.h"
 #include "cdb/cdbcat.h"
 #include "cdb/cdbhash.h"
@@ -1916,7 +1917,7 @@ CopyFrom(Relation rel, List *attnumlist, bool binary, bool oids,
 		/* 
 		 * start a transaction and a COPY command in every db of every segment in CDB 
 		 */
-		seg_count = cdbCopyGetNumSegs();
+		seg_count = getCdbSegmentCount();
 		Assert(seg_count > 0);
 
 		for(i = 0 ; i < seg_count ; i++)
@@ -3326,7 +3327,7 @@ FastDispatcherCopyFrom(Relation rel, List *attnumlist, bool binary, bool oids,
 	/* 
 		* start a transaction and a COPY command in every db of every segment in CDB 
 	 */
-	seg_count = cdbCopyGetNumSegs();
+	seg_count = getCdbSegmentCount();
 	Assert(seg_count > 0);
 	
 	for(i = 0 ; i < seg_count ; i++)

@@ -91,6 +91,11 @@
 	(appendStringInfo(str, " :" CppAsString(fldname) " "), \
 	 _outBitmapset(str, node->fldname))
 
+/* Write a dummy field -- value not displayable or copyable */
+#define WRITE_DUMMY_FIELD(fldname) \
+	(appendStringInfo(str, " :" CppAsString(fldname) " "), \
+	 _outToken(str, NULL))
+
 
 #define booltostr(x)  ((x) ? "true" : "false")
 
@@ -257,6 +262,7 @@ _outPlanInfo(StringInfo str, Plan *node)
 	WRITE_NODE_FIELD(flow);
 	WRITE_ENUM_FIELD(dispatch,DispatchMethod);
 	WRITE_INT_FIELD(nMotionNodes);
+	WRITE_NODE_FIELD(sliceTable);
 }
 
 /*
@@ -1469,6 +1475,7 @@ _outCdbExecStmt(StringInfo str, CdbExecStmt *node)
 	WRITE_NODE_FIELD(ser_sliceinfo);
 }
 
+
 static void
 _outSelectStmt(StringInfo str, SelectStmt *node)
 {
@@ -1963,6 +1970,7 @@ _outCdbProcess(StringInfo str, CdbProcess *node)
 	WRITE_NODE_TYPE("CDBPROCESS");
 	WRITE_STRING_FIELD(listenerAddr);
 	WRITE_INT_FIELD(listenerPort);
+	WRITE_INT_FIELD(pid);
 	WRITE_INT_FIELD(contentid);
 	WRITE_INT_FIELD(routeid);
 }
@@ -1975,6 +1983,8 @@ _outSlice(StringInfo str, Slice *node)
 	WRITE_INT_FIELD(rootIndex);
 	WRITE_ENUM_FIELD(gangType,GangType);
 	WRITE_INT_FIELD(gangSize);
+	WRITE_DUMMY_FIELD(primaryGang);
+	WRITE_DUMMY_FIELD(mirrorGang);
 	WRITE_INT_FIELD(parentIndex);
 	WRITE_NODE_FIELD(children); /* List of int index */
 	WRITE_NODE_FIELD(primaryProcesses); /* List of (CDBProcess *) */
@@ -2369,7 +2379,7 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_VacuumStmt:
 				_outVacuumStmt(str, obj);
-				break;
+				break;			
 			case T_CdbProcess:
 				_outCdbProcess(str, obj);
 				break;

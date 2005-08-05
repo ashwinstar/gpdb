@@ -23,6 +23,7 @@
 #include <math.h>
 
 #include "nodes/parsenodes.h"
+
 #include "nodes/execnodes.h" /* Just for Slice and SliceTable */
 #include "nodes/readfuncs.h"
 #include "utils/lsyscache.h"  /* For get_typlenbyval */
@@ -110,10 +111,16 @@
 	token = pg_strtok(&length);		/* skip :fldname */ \
 	local_node->fldname = nodeRead(NULL, 0)
 
-/* Write a bitmapset field */
+/* Read a bitmapset field */
 #define READ_BITMAPSET_FIELD(fldname) \
 	token = pg_strtok(&length);		/* skip :fldname */ \
 	 local_node->fldname = bitmapsetRead()
+
+/* Read a dummy field */
+#define READ_DUMMY_FIELD(fldname,fldvalue) \
+	token = pg_strtok(&length);		/* skip :fldname */ \
+	token = pg_strtok(&length);		/* get field value */ \
+	local_node->fldname = (fldvalue)
 
 /* Routine exit */
 #define READ_DONE() \
@@ -1678,6 +1685,7 @@ _readRemoteParamData(void)
 	READ_DONE();
 }
 
+
 static CdbProcess *
 _readCdbProcess(void)
 {
@@ -1685,6 +1693,7 @@ _readCdbProcess(void)
 	
 	READ_STRING_FIELD(listenerAddr);
 	READ_INT_FIELD(listenerPort);
+	READ_INT_FIELD(pid);
 	READ_INT_FIELD(contentid);
 	READ_INT_FIELD(routeid);
 	
@@ -1700,6 +1709,8 @@ _readSlice(void)
 	READ_INT_FIELD(rootIndex);
 	READ_ENUM_FIELD(gangType, GangType);
 	READ_INT_FIELD(gangSize);
+	READ_DUMMY_FIELD(primaryGang, NULL);
+	READ_DUMMY_FIELD(mirrorGang, NULL);
 	READ_INT_FIELD(parentIndex);
 	READ_NODE_FIELD(children); /* List of int index */
 	READ_NODE_FIELD(primaryProcesses); /* List of (CDBProcess *) */
@@ -1721,6 +1732,7 @@ _readSliceTable(void)
 	
 	READ_DONE();
 }
+
 
 void readScanInfo(Scan *local_node)
 {
@@ -1750,6 +1762,7 @@ void readPlanInfo(Plan *local_node)
 	READ_NODE_FIELD(flow);
 	READ_ENUM_FIELD(dispatch, DispatchMethod);
 	READ_INT_FIELD(nMotionNodes);
+	READ_NODE_FIELD(sliceTable);
 }
 
 void readJoinInfo(Join *local_node)

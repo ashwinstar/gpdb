@@ -30,6 +30,8 @@
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbvars.h"
 
+#include "cdb/cdbmotion.h"
+
 /*
  * Implements the 'CDBEXEC' utility statement.
  */
@@ -56,8 +58,7 @@ CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
 	oldctx = MemoryContextSwitchTo(qctx);
 	
 	/* Deserialize the strings from the CDBEXEC statement. */
-	Assert(stmt->ser_query != NULL );
-	Assert( IsA(stmt->ser_query, String) );
+	Assert(stmt->ser_query != NULL && IsA(stmt->ser_query, String) );
 	cstr = strVal(stmt->ser_query);
 	Assert(cstr != NULL );
 	query = (Query *)deserializeNode(cstr);
@@ -74,8 +75,7 @@ CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
 
 	if (query->commandType != CMD_UTILITY)
 	{
-		Assert(stmt->ser_plan != NULL );
-		Assert(IsA(stmt->ser_plan, String));
+		Assert(stmt->ser_plan != NULL && IsA(stmt->ser_plan, String) );
 		cstr = strVal(stmt->ser_plan);
 		Assert(cstr != NULL );
 		plan = (Plan *)deserializeNode(cstr);
@@ -110,14 +110,27 @@ CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
 				i++;
 			}
 		}
+		
+		/* 
+		 * Since we're running as a QE, we need to put need to the slice 
+		 * table and associated values determined by the QD that called 
+		 * CDBEXEC into the EState before we run the executor.  We can't 
+		 * it do now because our EState isn't ready.  Instead, stick it
+		 * into the top plan node (along with nParamExec and nMotionNodes)
+		 * and let the code that eventually sets up the QueryDesc sort it
+		 * out.
+		 */
+		Assert ( plan->sliceTable == NULL );  /* Accept no imposters. */
+		plan->sliceTable = (Node*)sliceTable; /* Cache for CreateQueryDesc */
 	}
 	else
 	{
 		plan = NULL;
+		paramLI = NULL;
 		elog(DEBUG2, "cdbexec received a utility command\n");
 	}
 
-
+ 	{
 	/*
 	 * Create a new portal to run the query in
 	 */
@@ -133,70 +146,38 @@ CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
 					  query_list,
 					  plan_list,
 					  qctx);
-	
-	/*
-	 * Run the portal to completion.  Note that ExecutorStart is called
-	 * in here.
-	 */
-	PortalStart(portal, paramLI, ActiveSnapshot);
-	
-	/* 
-	 * If we're running as a QE and this is an executor-driven portal, 
-	 * we need to do a little surgery on the Estate before we run the portal.  
-	 * Our Estate was set up by the call to ExecutorStart in PortalStart, but
-	 * since we're a QE, the slice table wasn't initialized.  Instead, we plug
-	 * in the one from the QD. 
-	 *
-	 * Further, if we're  running a non-root slice, we need to arrange to
-	 * enter the plan at the (sending) Motion at the top of the slice instead
-	 * of entering at the root.
-	 */
-	if ( Cdb_role == CDB_ROLE_EXECUTE && portal->queryDesc != NULL )
-	{
-		Node * slice;
-		MotionState *motionstate = NULL;
-		EState * es = portal->queryDesc->estate;
-		if ( sliceTable == NULL )
-		{
-			ereport( ERROR,
-						(errcode ( ERRCODE_CDB_COMMAND_ERROR ),
-						errmsg("cdbexec plan has empty slice table")
-					));
-		}
-		
-		es->es_sliceTable = sliceTable;
-		es->es_cur_slice_idx = sliceTable->localSlice;
-		slice = list_nth(sliceTable->slices, sliceTable->localSlice);
-		Assert( IsA(slice,Slice) );
-		es->es_cur_root_idx = ((Slice*)slice)->rootIndex;
-		
-		if ( es->es_cur_slice_idx != es->es_cur_root_idx )
-		{
-			motionstate = es->es_slice_map[es->es_cur_slice_idx];
-			Assert( motionstate != NULL && IsA(motionstate, MotionState) );
-		}
-		
-		/* TODO - SLICE PLAN INTEGRATION
-		 * Remove this notice or replace with debugging message.
+
+	PG_TRY();
+	{	
+		/*
+		 * Start the portal.  Note that ExecutorStart is called in here for
+		 * SELECT, but deferred until PortalRun for other DML.
 		 */
-		elog(NOTICE, "QE[%d] patching queryDesc Estate at %lx.", CdbIdentity.segindex, (unsigned long) es);
-		
-		elog_node_display(DEBUG1, 
-						  "local slice table", 
-						  es->es_sliceTable,
-						  Debug_pretty_print);
+		PortalStart(portal, paramLI, ActiveSnapshot);
+	
+		/*
+		 * Run the portal to completion. */
+		(void) PortalRun(portal, FETCH_ALL, dest, dest, completionTag);
 	}
+	PG_CATCH();
+	{
 
-	(void) PortalRun(portal, FETCH_ALL, dest, dest, completionTag);
+		elog( DEBUG4, "CdbExec had an error, resetting motion layer.");
+		ResetMotionLayer(true);
+		PG_RE_THROW();
 
+	}
+	PG_END_TRY();
+	
 	PortalDrop(portal, false);
-
+	
 	if (estate)
 		FreeExecutorState(estate);
 
 	 /* Restore state prior to return. */
 	if ( paramLI != NULL )
 		pfree(paramLI); /* Maybe should let context free it. */
+ 	}
 
 	 if ( oldctx )
 		MemoryContextSwitchTo(oldctx);
