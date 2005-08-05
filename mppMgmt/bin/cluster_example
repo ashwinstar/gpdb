@@ -1,0 +1,100 @@
+#	Filename:-		cluster_example
+#	Version:-		1.0
+#	Updated:-		08/02/2005
+#	Status:-		Beta testing
+#	Author:-		G Coombe
+#	Contact:-		gcoombe@greenplum.com
+#	Release date:-		TBC
+#	Release stat:-		Metapa Co internal
+#                               Copyright (c) Metapa 2005. All Rights Reserved.
+#                               Copyright (c) Greenplum 2005. All Rights Reserved
+#	Brief descn:-		Contains parmeters for cluster configuration
+#******************************************************************************
+# Update History
+#******************************************************************************
+# Ver	Date		Who		Update
+#******************************************************************************
+# Detailed Description
+#******************************************************************************
+# CLUSTER_NAME
+# The name that will be updated in the cdb.cdb table on QD and all QE's.
+# Note to enclose in quotes if text contains a space(s).
+# MACHINE_LIST_FILE
+# A file that contains a list of machine names on which the cluster will be
+# installed.
+#
+# SEG_PREFIX
+# The directory prefix where the segment database will be created, each segment
+# name will be created as $DATA_DIRECTORY/$SEG_PREFIX[Seg#] where Seg# will
+# start at 0 for the QD directory and increase sequentially for each QE
+# directory.
+#
+# PORT_BASE
+# The starting point for the port numbers. QD port will be $PORT_BASE, each
+# QE will start at $PORT_BASE+1 for each QE on a host, so for 3 QE's per host,
+# these will have ports 60001, 60002 and 60003 in this example.
+#
+# DATA_DIRECTORY
+# The top level directory where each QE database directory will be created.
+# So, for the first host with 3 QE's per host will have the following database
+# directories /dbfast1/dwh1, /dbfast2/dwh2 and /dbfast3/dwh3.
+# NOTE, the number in DATA_DIRECTORY determines the number of primary QE's
+# per host.
+#
+# QD_HOSTNAME
+# The hostname of the assigned QD for this cluster.
+#
+# QD_DATA_DIRECTORY
+# The top level directory where the QD database will be created, in this example
+# file the QD database directory will be /dbfast1/dwh0
+#
+# IP_ALLOW
+# The access IP that will be placed in each QE pg_hba.conf file
+#
+# TRUSTED_SHELL
+# The mechanism to access each QE from the QD
+#
+# ENV_SETUP
+# The file that must be sourced on each QE to access the postgreSQL binaries.
+#
+# CHECK_POINT_SEGMENTS
+# Number of check point segments that will be added to each QD and QE
+# postgresql.conf file.
+#
+# ENCODING
+# The encoding that will be added each QD and QE postgresql.conf file.
+# 
+# MIRROR_PORT_BASE
+# If uncommented will set mppcreatecluster.sh to build mirror'd configuration
+# using this port base for each mirror QE process.
+#
+# MIRROR_DATA_DIRECTORY
+# If uncommented will set mppcreatecluster.sh to build mirror'd configuration
+# using this top level directory for the mirror database directories
+#
+# STANDBY_HOST & STANDBY_IP_ALLOW
+# Not configured at this release. 
+#******************************************************************************
+# Cluster Configuration Parameters 
+#******************************************************************************
+CLUSTER_NAME="DWh  Cluster"
+MACHINE_LIST_FILE=`pwd`/examplempphostlist
+SEG_PREFIX=dwh
+PORT_BASE=60000
+declare -a DATA_DIRECTORY=(/dbfast1 /dbfast2 /dbfast3)
+DATABASE_PREFIX=zdwh
+QD_HOSTNAME=falcon1
+QD_DATA_DIRECTORY=/dbfast1
+IP_ALLOW="172.16.1.0/24"
+TRUSTED_SHELL="ssh"
+ENV_SETUP="/usr/local/mpp/cdb-pgsql/cdb.rc"
+CHECK_POINT_SEGMENTS=8
+ENCODING=UNICODE
+
+#Mirror parameters, comment out if mirroring not required
+##MIRROR_PORT_BASE=45000
+##declare -a MIRROR_DATA_DIRECTORY=(/dbfast3)
+
+#Standby host parameters, comment out if not required
+###STANDBY_HOST=falcon6
+####STANDBY_IP_ALLOW="172.16.1.14"
