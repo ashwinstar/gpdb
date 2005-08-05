@@ -49,6 +49,8 @@
 #include "utils/resowner.h"
 #include "pgstat.h"
 
+#include "cdb/cdbgang.h"
+
 
 /*
  *	User-tweakable parameters
@@ -1970,6 +1972,8 @@ CommitTransaction(void)
 	s->state = TRANS_DEFAULT;
 
 	RESUME_INTERRUPTS();
+	
+	freeGangs();
 }
 
 /*
@@ -2099,6 +2103,8 @@ AbortTransaction(void)
     
     /* abort all QE as cleanup process, ignore all errors */
     rollbackDtxTransaction();
+    
+    freeGangs();
 }
 
 /*

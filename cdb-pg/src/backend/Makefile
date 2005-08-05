@@ -13,11 +13,6 @@ subdir = src/backend
 top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 
-# Link of postgres backend must incorporate MPI symbols/libs.
-# NOTE:  Only the parts of the backend that need MPI are built with MPICC.
-override CC := $(MPICC)
-override LIBS := $(MPILIBS) $(LIBS)
-
 DIRS := access bootstrap catalog parser commands executor lib libpq \
 	main nodes optimizer port postmaster regex rewrite \
 	storage tcop utils $(top_builddir)/src/timezone cdb

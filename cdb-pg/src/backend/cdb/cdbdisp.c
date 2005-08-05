@@ -20,6 +20,9 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdbtm.h"
 
+#include "cdb/cdbgang.h"
+#include "cdb/cdblink.h"  /* just for our CdbProcess population hack. */
+
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbsubplan.h"
 
@@ -34,22 +37,22 @@ typedef struct DispatchCommandParms
 	char					*szCommand;
 
 	/*
-	 * db_count: The number of segdbs that this thread is responsible 
+	 * db_count: The number of segdbs that this thread is responsible
 	 * for dispatching the command to.
 	 * Equals the count of segdbDescPtrArray below.
-	 */ 
+	 */
 	int							db_count;
 	
 	/*
-	 * segdbDescPtrArray: Array of SegmentDatabaseDescriptor* 's that this thread is 
+	 * segdbDescPtrArray: Array of SegmentDatabaseDescriptor* 's that this thread is
 	 * responsible for dispatching the command to. Has size equal to db_count.
-	 */ 
+	 */
 	SegmentDatabaseDescriptor	**segdbDescPtrArray;
 
 	/*
 	 * A flag indicating whether a failure of the command for one connection
 	 * should act to requestCancel for all the other connections.
-	 * 
+	 *
 	 */
 	bool						cancelFromBelow;
 	
@@ -57,18 +60,18 @@ typedef struct DispatchCommandParms
 	 * The pthread_t thread handle.
 	 */
 	pthread_t					thread;
-    
+
     /*
      * Returned resultset
      */
     PGresult                      ***resultSets;
-    
+
 } DispatchCommandParms;
 
 /*
  * Structure used in thread proc for keeping track of
  * commands that are still running.  For each command
- * that has not yet finished, we keep the segdbDesc pointer and 
+ * that has not yet finished, we keep the segdbDesc pointer and
  * a flag indicating whether we've  requested cancel.
  */
 typedef struct
@@ -92,17 +95,17 @@ typedef struct
  * Static Helper functions
  */
 static void *thread_DispatchCommand(void *arg);
-static int listenerSegDBPairCompare(const void *p1, const void *p2);
+/*static int listenerSegDBPairCompare(const void *p1, const void *p2);
 static void createThreadPoolPerListener( DispatchCommandParms *dispatchCommandParmsAr, int *psegdbs_in_thread_pool,
 										 const char *szCommand, bool cancelFromBelow);
 static void createThreadPoolPerSegment( DispatchCommandParms *dispatchCommandParmsAr, int *psegdbs_in_thread_pool,
-										 const char *szCommand, bool cancelFromBelow);
+										 const char *szCommand, bool cancelFromBelow); 
 static void createThreadPoolPerSegDB( DispatchCommandParms *dispatchCommandParmsAr, int *psegdbs_in_thread_pool,
-										 const char *szCommand, bool cancelFromBelow);
+										 const char *szCommand, bool cancelFromBelow);*/
 static void createThreadPoolEnumeration( DispatchCommandParms *dispatchCommandParmsAr, int *psegdbs_in_thread_pool,
-										 const char *szCommand, bool cancelFromBelow, 
+										 const char *szCommand, bool cancelFromBelow,
 										 SegmentDatabaseDescriptor **segdbList, int segdbListCount);
-static void addSegDBToDispatchThreadPool( DispatchCommandParms *ParmsAr, int *segdbCount, const char *szCommand, 
+static void addSegDBToDispatchThreadPool( DispatchCommandParms *ParmsAr, int *segdbCount, const char *szCommand,
 										bool cancelFromBelow, SegmentDatabaseDescriptor *segdbDesc);
 static CdbDispatchResults *initCdbDispatchResults(void);
 static void CdbDumpDispatchResult( CdbDispatchResult *result, bool verbose, StringInfo message );
@@ -112,14 +115,14 @@ static int fillSliceVector(SliceTable *sliceTable, int sliceIndex, int *indexVec
 
 
 /*
- * Static Variables.  These contain the thread count and array of 
+ * Static Variables.  These contain the thread count and array of
  * DispatchCommandParms structures after a call to CdbDispatchCommand.
  * They are used by CdbCheckDispatchResult to check thread termination and status.
  * Since postgres is single-threaded, this is OK.
  * We could have passed them back as out parameters from CdbDispatchCommand
  * and then passed them in to CdbCheckDispatchResult to avoid using static variables.
  * But keeping them static seems fine for now.
- * 
+ *
  */
 static DispatchCommandParms* dispatchCommandParmsAr = NULL;
 static int	threadCount = 0;
@@ -134,22 +137,24 @@ static int	threadCount = 0;
  * The number of segdbs handled by any one thread is determined by the
  * guc variable cdb_connections_per_thread.
  */
-void CdbDispatchCommandInt( const char *szCommand, DispatchTargetSet targetSet, 
-                        SegmentDatabaseDescriptor **segdbList, int segdbListCount, 
+void CdbDispatchCommandInt( const char *szCommand, DispatchTargetSet targetSet,
+                        SegmentDatabaseDescriptor **segdbList, int segdbListCount,
                         bool cancelFromBelow, void ***resultSets )
 {
 	int i;
 	int max_threads;
 	int segdbs_in_thread_pool;
+	//int segdb_count;
 	
 	if ( Cdb_role != CDB_ROLE_DISPATCH )
 		return;
 
-	Assert( segdbList == NULL || targetSet == DTS_ENUMERATION ); 
+	Assert( segdbList == NULL || targetSet == DTS_ENUMERATION );
 	Assert( segdbListCount == 0 || targetSet == DTS_ENUMERATION );
 	Assert( segdbList == NULL || segdbListCount > 0 );
 	
-	int segdb_count = CdbClusterDefinition->segdb_count;
+	//segdb_count = CdbClusterDefinition->segdb_count;
+	//Assert( segdb_count > 0 );
 	
 	/*
 	 * The most threads we could have is segdb_count / cdb_connections_per_thread, rounded up.
@@ -158,20 +163,57 @@ void CdbDispatchCommandInt( const char *szCommand, DispatchTargetSet targetSet,
 	 * even though we may not use them all.
 	 */
 	Assert( cdb_connections_per_thread > 0 );
-	Assert( segdb_count > 0 );
 	
-	max_threads =  1 + (segdb_count-1) / cdb_connections_per_thread;
-	dispatchCommandParmsAr = (DispatchCommandParms *)
-							palloc0( max_threads * sizeof(DispatchCommandParms) );
 	segdbs_in_thread_pool = 0;
 	
+	if ( targetSet == DTS_SEGDB )
+	{
+		int k = 0;
+		int m = 0;
+		
+		Gang * primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, getCdbSegmentCount(), -1);
+		Gang * mirrorGang = allocateGang(GANGTYPE_MIRROR_WRITER, getCdbSegmentCount() , -1);
+		Assert(primaryGang != NULL);
+		
+		m = primaryGang->segdb_count;
+		if (mirrorGang != NULL)
+			m += mirrorGang->segdb_count;
+			
+		max_threads =  1 + (m-1) / cdb_connections_per_thread;
+		dispatchCommandParmsAr = (DispatchCommandParms *)
+							palloc0( max_threads * sizeof(DispatchCommandParms) );
+		
+		segdbList = palloc(m * sizeof(SegmentDatabaseDescriptor*));
+		segdbListCount = 0;
+		for (k = 0; k < primaryGang->segdb_count; k++)
+		{
+			segdbList[segdbListCount] = &primaryGang->db_descriptors[k];
+			segdbListCount++;
+		}
+		if (mirrorGang != NULL)
+			for (k = 0; k < mirrorGang->segdb_count; k++)
+			{
+				segdbList[segdbListCount] = &primaryGang->db_descriptors[k];
+				segdbListCount++;
+			}
+		
+		elog(DEBUG2,"CdbDispatchCommandInt Dispatching to DTS_SEGDB segdbs = %d", segdbListCount);	
+		
+		
+	} 
+	else
+	{
+		max_threads =  1 + (segdbListCount-1) / cdb_connections_per_thread;
+		dispatchCommandParmsAr = (DispatchCommandParms *)
+							palloc0( max_threads * sizeof(DispatchCommandParms) );
+	}
 	/*
 	 * Create the thread parms structures based targetSet parameter.
-	 * This will add the segdbDesc pointers appropriate to the 
+	 * This will add the segdbDesc pointers appropriate to the
 	 * targetSet into the thread Parms structures, amking sure that each thread
 	 * handles cdb_connections_per_thread segdbs.
 	 */
-	switch ( targetSet )
+	/*switch ( targetSet )
 	{
 		case DTS_LISTENER:
 			createThreadPoolPerListener( dispatchCommandParmsAr, &segdbs_in_thread_pool,
@@ -181,26 +223,26 @@ void CdbDispatchCommandInt( const char *szCommand, DispatchTargetSet targetSet,
 		case DTS_SEGMENT:
 			createThreadPoolPerSegment( dispatchCommandParmsAr, &segdbs_in_thread_pool,
 										 szCommand, cancelFromBelow);
-			break;
+			break; 
 
 		case DTS_SEGDB:
 			createThreadPoolPerSegDB( dispatchCommandParmsAr, &segdbs_in_thread_pool,
 										 szCommand, cancelFromBelow);
 			break;
 
-		case DTS_ENUMERATION:
+		case DTS_ENUMERATION:*/
 			createThreadPoolEnumeration( dispatchCommandParmsAr, &segdbs_in_thread_pool,
 										 szCommand, cancelFromBelow, segdbList, segdbListCount);
-			break;
+			/*break;
 
-	}
-    
+	}*/
+
     /* set result set variables if return of result set is required */
     if (resultSets != NULL)
         dispatchCommandParmsAr->resultSets = (PGresult***) resultSets;
 
 	/*
-	 * Compute the thread count based on how many segdbs were added into the 
+	 * Compute the thread count based on how many segdbs were added into the
 	 * thread pool, knowing that each thread handles cdb_connections_per_thread
 	 * segdbs.
 	 */						
@@ -209,6 +251,9 @@ void CdbDispatchCommandInt( const char *szCommand, DispatchTargetSet targetSet,
 	else	
 		threadCount = 1 + (segdbs_in_thread_pool - 1) / cdb_connections_per_thread;
 		
+	elog(DEBUG4,"CdbDispatchCommandInt threadCount %d, segdbs_in_thread_pool %d, conns_per_thread %d", threadCount, segdbs_in_thread_pool, cdb_connections_per_thread );	
+	
+
 	/*
 	 * Create the threads.
 	 */						
@@ -216,12 +261,15 @@ void CdbDispatchCommandInt( const char *szCommand, DispatchTargetSet targetSet,
 	{
 		DispatchCommandParms* pParms = &dispatchCommandParmsAr[i];
 
-		elog(DEBUG2, "Creating thread %d of %d for CommandDispatch", i+1, threadCount);
+		elog(DEBUG2, "CdbDispatchCommandInt Creating thread %d of %d for CommandDispatch", i+1, threadCount);
 
-		pthread_create(&pParms->thread, 
-						NULL, 
-						thread_DispatchCommand, 
-						pParms);
+		if (0!=pthread_create(&pParms->thread,
+						NULL,
+						thread_DispatchCommand,
+						pParms))
+						{
+							elog(NOTICE, "pthread_create failed");
+						}
 	}
 }
 
@@ -236,13 +284,13 @@ void CdbDispatchCommandInt( const char *szCommand, DispatchTargetSet targetSet,
  * guc variable cdb_connections_per_thread.
  * Called by general users, this method includes global transaction control.
  */
-void CdbDispatchCommand( const char *szCommand, DispatchTargetSet targetSet, 
-                        SegmentDatabaseDescriptor **segdbList, int segdbListCount, 
+void CdbDispatchCommand( const char *szCommand, DispatchTargetSet targetSet,
+                        SegmentDatabaseDescriptor **segdbList, int segdbListCount,
                         bool cancelFromBelow )
 {
     condStartDtxTransaction();
-    CdbDispatchCommandInt( szCommand, targetSet, 
-                        segdbList, segdbListCount, 
+    CdbDispatchCommandInt( szCommand, targetSet,
+                        segdbList, segdbListCount,
                         cancelFromBelow, NULL );
 }
 
@@ -250,18 +298,21 @@ void CdbDispatchCommand( const char *szCommand, DispatchTargetSet targetSet,
  * CdbCheckDispatchResult:
  * Waits for threads that were launched in CdbDispatchCommand
  * to finish, and then checks to see whether they all succeeded.
- * If so, returns true.  If not, returns false, and fills in pszError 
+ * If so, returns true.  If not, returns false, and fills in pszError
  * out parameter with a concatenation of errors from any failed command.
  */
 CdbDispatchResults *CdbCheckDispatchResult(void)
 {
 	int							i;
 	int							j;
+	int x = 0;
 	SegmentDatabaseDescriptor	*segdbDesc;
 	DispatchCommandParms		*pParms;
 	CdbDispatchResults			*results = initCdbDispatchResults();
 
 	Assert( results != NULL );
+	
+	elog(DEBUG4,"CheckDispatchResult threadCount %d", threadCount );	
 
 	if ( threadCount == 0 )
 		return results;
@@ -275,16 +326,20 @@ CdbDispatchResults *CdbCheckDispatchResult(void)
 		
 		elog(DEBUG2, "Joining to thread %d of %d for CommandDispatch", i+1, threadCount);
 		
-		pthread_join( pParms->thread, NULL );
+		if (0!=pthread_join( pParms->thread, NULL ))
+		{
+			elog(NOTICE, "pthread_join failed");
+		}
 	}
 	
 	/*
 	 * Check whether there were error messages.
 	 * This is stored in the error_message field of the
-	 * segment_database_descriptor.  
+	 * segment_database_descriptor.
 	 */			
 
-	int x = 0;
+	elog(DEBUG4,"CheckDispatchResult joined, checking" );	
+	x = 0;
 
 	for ( i=0; i<threadCount; i++ )
 	{
@@ -292,13 +347,16 @@ CdbDispatchResults *CdbCheckDispatchResult(void)
 		
 		for ( j=0; j<pParms->db_count; j++ )
 		{
+			CdbDispatchResult *result;
+			
 			segdbDesc = pParms->segdbDescPtrArray[j];
 			Assert(	segdbDesc != NULL );
 
-			CdbDispatchResult *result = &results->pResults[x++];
+			result = &results->pResults[x++];
 			
 			if ( segdbDesc->error_message != NULL )
 			{
+				char *pszErrMsg;
 				results->success = false;
 				
 	 		/* Because we cannot use palloc inside a thread, the error messages
@@ -306,7 +364,7 @@ CdbDispatchResults *CdbCheckDispatchResult(void)
 	 		 * appending them to the StringInfoData.
 	 		 * We must zero out the segdbDesc->error_message too.
 			 */
-				char *pszErrMsg = segdbDesc->error_message;
+				pszErrMsg = segdbDesc->error_message;
 				segdbDesc->error_message = NULL;
 				
 				result->error_message = pstrdup( pszErrMsg );
@@ -330,25 +388,31 @@ CdbDispatchResults *CdbCheckDispatchResult(void)
 		}
 	}	
 	
+	elog(DEBUG4,"CheckDispatchResult freeing" );	
+	
 	/*
 	 * pfree the memory allocated for the dispatchCommandParmsAr
 	 */
 	if ( dispatchCommandParmsAr != NULL )
 	{
-		for ( i=0; i<threadCount; i++ ) 
+		for ( i=0; i<threadCount; i++ )
 		{
 			pParms = &dispatchCommandParmsAr[i];
 			Assert( pParms != NULL && pParms->segdbDescPtrArray != NULL);
 			pfree( pParms->segdbDescPtrArray );
+			pParms->segdbDescPtrArray = NULL;
 			Assert( pParms->szCommand != NULL );
 			pfree(  pParms->szCommand );
+			pParms->szCommand = NULL;
 		}
 		pfree( dispatchCommandParmsAr );
 		dispatchCommandParmsAr = NULL;
 	}
+	
+	elog(DEBUG4,"CheckDispatchResult done" );	
     	
 	threadCount = 0;
-    
+
 	return results;	
 }
 
@@ -368,13 +432,14 @@ void *thread_DispatchCommand(void *arg)
 	PGconn						*conn;
 	RunningInfo					*stillRunning = NULL;
 	int							stillRunningCount = 0;
+	PGresult **pqresults = NULL;
 
-	/* 
-	 * In threads, we cannot use palloc, because it's not thread safe.  
+	/*
+	 * In threads, we cannot use palloc, because it's not thread safe.
 	 */
 	stillRunning = (RunningInfo *)calloc(db_count, sizeof(RunningInfo));
+
     
-    PGresult **pqresults = NULL;
     if (pParms->resultSets != NULL)
     {
         pqresults = (PGresult **)calloc(db_count, sizeof(pqresults));
@@ -387,6 +452,7 @@ void *thread_DispatchCommand(void *arg)
 	 */
 	for ( i=0; i<db_count; i++ )
 	{
+		//elog(DEBUG3, "thread_DispatchCommand working on %d", i);
 		segdbDesc = segdbDescPtrArray[i];
 		conn = segdbDesc->conn;
 		q = segdbDesc->segment_database_info;
@@ -402,7 +468,7 @@ void *thread_DispatchCommand(void *arg)
 			initPQExpBuffer(&buffer);
 			
 			appendPQExpBuffer(&buffer, "Cancellation request noticed before command was issued to segment database"
-										"segindex %d isprimary %c", 
+										"segindex %d isprimary %c",
 										q->segindex, (q->isprimary ? 't' : 'f')),
 									
 			segdbDesc->error_message = buffer.data;
@@ -417,9 +483,10 @@ void *thread_DispatchCommand(void *arg)
 		{
 			PQExpBufferData buffer;
 			initPQExpBuffer(&buffer);
+			//elog(DEBUG3, "thread_DispatchCommand connection bad ");
 			
 			appendPQExpBuffer(&buffer, "Cannot issue command to segment database"
-										"segindex %d isprimary %c, because there is no connection", 
+										"segindex %d isprimary %c, because there is no connection",
 										q->segindex, (q->isprimary ? 't' : 'f')),
 									
 			segdbDesc->error_message = buffer.data;
@@ -427,7 +494,7 @@ void *thread_DispatchCommand(void *arg)
 				setCancelFlag();
 			continue;
 		}
-		
+		//elog(DEBUG3, "thread_DispatchCommand sending %s", szCommand);
 		/*
 		 * Submit the command asynchronously.
 		 */
@@ -436,8 +503,10 @@ void *thread_DispatchCommand(void *arg)
 			PQExpBufferData buffer;
 			initPQExpBuffer(&buffer);
 			
+			//elog(DEBUG3, "thread_DispatchCommand failed to send %s", szCommand);
+			
 			appendPQExpBuffer( &buffer, "SQL Command error: "
-										"segindex %d isprimary %c, %s", 
+										"segindex %d isprimary %c, %s",
 										q->segindex, (q->isprimary ? 't' : 'f'),
 										PQerrorMessage(conn) );
 			segdbDesc->error_message = buffer.data;
@@ -465,25 +534,36 @@ void *thread_DispatchCommand(void *arg)
 		 * Make sure to do the setup for input_mask and tv each time that
 		 * select is called.  select changes their values!
 		 */
+		fd_set input_mask;
+		int max_sock = 0;
+		int n;
+		int x = 0;
 		struct timeval tv;
 		tv.tv_sec = 2;
 		tv.tv_usec = 0;
-		fd_set input_mask;
+		
+		
 		FD_ZERO( &input_mask );
-		int max_sock = 0;
+		
 		
 		for ( i=0; i<stillRunningCount; i++ )
 		{
+			int sock;
 			conn = stillRunning[i].segdbDesc->conn;
-			int sock = PQsocket( conn );
+			sock = PQsocket( conn );
 			FD_SET( sock, &input_mask );
 			max_sock = max_sock < sock ? sock : max_sock;
 		}
+		
+		 
 	
-		int n = select( max_sock+1, &input_mask, NULL, NULL, &tv );
+		n = select( max_sock+1, &input_mask, NULL, NULL, &tv );
+		
+		//elog(DEBUG3, "thread_DispatchCommand done socket select %d ", n);
 	
 		if ( n < 0 )
 		{
+			PQExpBufferData buffer;
 			if ( SOCK_ERRNO == EINTR )
 			{
 				continue;		
@@ -496,7 +576,7 @@ void *thread_DispatchCommand(void *arg)
 			 * Since this is most likely a programming error or a bad system
 			 * failure, we will just error out all remaining threads.
 			 */
-			PQExpBufferData buffer;
+			
 			initPQExpBuffer(&buffer);
 			appendPQExpBuffer( &buffer, "SQL Command error: socket select returned error, command ststus unknown.");
 			for ( i=0; i<stillRunningCount; i++ )
@@ -516,20 +596,22 @@ void *thread_DispatchCommand(void *arg)
 		 * Before doing anything else, see whether any of the remaining connections went down.
 		 * Hopefully in this way we can detect a dropped connection quickly.
 		 */
-		int x = 0;
+		x = 0;
+		//elog(DEBUG3, "thread_DispatchCommand check for bad connections ");
 		for ( i=0; i<stillRunningCount; i++ )
 		{
 			segdbDesc = stillRunning[i].segdbDesc;
 			conn = segdbDesc->conn;
 			if ( PQstatus( conn ) == CONNECTION_BAD )
 			{
+				PQExpBufferData buffer;
 				q = segdbDesc->segment_database_info;
 				Assert( q != NULL );
 				
-				PQExpBufferData buffer;
+				
 				initPQExpBuffer(&buffer);
 				appendPQExpBuffer( &buffer, "SQL Command error: lost connection for "
-											"segindex %d isprimary %c", 
+											"segindex %d isprimary %c",
 											q->segindex, (q->isprimary ? 't' : 'f') );
 				segdbDesc->error_message = buffer.data;
 				if ( cancelFromBelow )
@@ -542,6 +624,7 @@ void *thread_DispatchCommand(void *arg)
 		}
 		
 		stillRunningCount = x;
+		//elog(DEBUG3, "thread_DispatchCommand stillRunningCount %d ",stillRunningCount);
 		
 		if ( n == 0  )
 		{
@@ -572,12 +655,16 @@ void *thread_DispatchCommand(void *arg)
 			int x = 0;
 			for ( i=0; i<stillRunningCount; i++ )
 			{
+				int sock;
 				segdbDesc = stillRunning[i].segdbDesc;
 				conn = segdbDesc->conn;
+				//elog(DEBUG3, "thread_DispatchCommand checking on connection %d ",i);
 				q = segdbDesc->segment_database_info;
 				Assert( q != NULL );
+				
 
-				int sock = PQsocket( conn );
+				sock = PQsocket( conn );
+				//elog(DEBUG3, "thread_DispatchCommand checking on sock %d ",sock);
 				if ( FD_ISSET( sock, &input_mask ) )
 				{
 					/*
@@ -586,7 +673,7 @@ void *thread_DispatchCommand(void *arg)
 					 * that really only return 1 result, not set returning commands
 					 * that might return many.
 					 */
-					 
+					
 					 /*
 					  * It is critical that for any connection that had an asynchronous
 					  * command sent thru it, we call PQgetResult until it returns NULL.
@@ -597,6 +684,7 @@ void *thread_DispatchCommand(void *arg)
 					while ( NULL != (pRes = PQgetResult(conn) ) )
 					{
 						segdbDesc->resultStatus = PQresultStatus( pRes );
+						//elog(DEBUG3, "thread_DispatchCommand resultStatus %d ",segdbDesc->resultStatus);
 						if ( PGRES_COMMAND_OK != segdbDesc->resultStatus &&
 							PGRES_TUPLES_OK != segdbDesc->resultStatus )
 						{
@@ -604,8 +692,8 @@ void *thread_DispatchCommand(void *arg)
 							initPQExpBuffer(&buffer);
 							appendPQExpBuffer( &buffer, "SQL Command error: "
 														"resultStatus %d "
-														"segindex %d isprimary %c, %s", 
-														segdbDesc->resultStatus, 
+														"segindex %d isprimary %c, %s",
+														segdbDesc->resultStatus,
 														q->segindex, (q->isprimary ? 't' : 'f'),
 														PQerrorMessage(conn) );
 							if ( segdbDesc->error_message != NULL )
@@ -622,22 +710,26 @@ void *thread_DispatchCommand(void *arg)
 						}
 						else
 						{
+							char *cmdTuples;
 							char *cmdStatus = PQcmdStatus(pRes);
 							if ( cmdStatus != NULL )
 								segdbDesc->cmdStatus = strdup(cmdStatus);
 
-							char *cmdTuples = PQcmdTuples(pRes);
+							cmdTuples = PQcmdTuples(pRes);
 							if ( cmdTuples != NULL )
 								segdbDesc->cmdTuples = atoi(cmdTuples);
 						}
+						
 				        if (pqresults != NULL)
                          {
                             /*
                              * TODO:   need to handle multiple result sets
                              * check the segindex for segment case
                              */
-                            Assert(pqresults[segdbDesc->segment_descriptor->segindex] == NULL);
-                            pqresults[segdbDesc->segment_descriptor->segindex] = pRes;
+                   
+                   // FIXME Turn off this assert because it keeps the system from coming up with mirroring defined
+                            //Assert(pqresults[segdbDesc->segindex] == NULL);
+                            pqresults[segdbDesc->segindex] = pRes;
                          }
                          else		
 						  PQclear( pRes );
@@ -668,12 +760,14 @@ void *thread_DispatchCommand(void *arg)
 			}
 		}
 	}
+	//elog(DEBUG3, "thread_DispatchCommand done ");
 	
 	free(stillRunning);
 	
 	return(NULL);
 }
 
+#if 0
 /*
  * createThreadPoolPerListener:
  * This function figures out a subset of the segdbs so that there is exactly
@@ -685,10 +779,10 @@ void createThreadPoolPerListener( DispatchCommandParms *dispatchCommandParmsAr, 
 								 const char *szCommand, bool cancelFromBelow)
 {
 	/*
-	 * The code in this function makes the assumption that 
+	 * The code in this function makes the assumption that
 	 * valid listenerids are always >= 0
 	 */
-	 
+	
 	/*
 	 * Here's the strategy.  We only want to send the command to
 	 * one segdb per listener.  In order to determine what this subset is,
@@ -697,7 +791,7 @@ void createThreadPoolPerListener( DispatchCommandParms *dispatchCommandParmsAr, 
 	 * pick out one segdbDesc to use per listener.
 	 * We also need to make sure that for each listenerid with at least one valid segdb,
 	 * we find a connected segdb.  If not, it's an error.
-	 * 
+	 *
 	 */
 	int segdb_count = CdbClusterDefinition->segdb_count;
 	int i;
@@ -707,10 +801,12 @@ void createThreadPoolPerListener( DispatchCommandParms *dispatchCommandParmsAr, 
 	SegmentDatabaseDescriptor *segdbDesc;
 	CdbComponentDatabaseInfo *q;
 	ListenerSegDBPair* pPairAr = NULL;
+	int lastListenerID = -1;
+	bool bFoundConnection = true;
 	
 	pPairAr = (ListenerSegDBPair *)palloc0( sizeof(ListenerSegDBPair) * segdb_count );
 	
-	for ( i=0; i<CdbClusterDefinition->segment_count; i++ )
+	for ( i=0; i<getCdbSegmentCount(); i++ )
 	{
 		segDesc	= &CdbClusterDefinition->segment_descriptors[i];
 		for ( j=0; j<segDesc->db_count; j++ )
@@ -731,12 +827,12 @@ void createThreadPoolPerListener( DispatchCommandParms *dispatchCommandParmsAr, 
 	 */
 	qsort( pPairAr, PairArCount, sizeof(ListenerSegDBPair),
 		  listenerSegDBPairCompare);
-			  
+			
 	/*
 	 * Pick out one segdbDesc per distinct listenerid, and avoid the listenerid
 	 * of the dispatcher.
 	 */
-	 
+	
 	 /*
 	  * We need to insure that for every listenerid in the pPairAr,
 	  * we find a connected segdb.  Otherwise, we need to report an error.
@@ -749,8 +845,7 @@ void createThreadPoolPerListener( DispatchCommandParms *dispatchCommandParmsAr, 
 	  * there was at least one connected segdb for each segindex.
 	  * But we would have no connection to listener2.
 	  */
-	int lastListenerID = -1;
-	bool bFoundConnection = true;
+	
 	for ( i=0; i<PairArCount; i++ )
 	{
 		if ( pPairAr[i].listenerid != lastListenerID  )
@@ -763,7 +858,7 @@ void createThreadPoolPerListener( DispatchCommandParms *dispatchCommandParmsAr, 
 							(errcode( ERRCODE_SQLSERVER_REJECTED_ESTABLISHMENT_OF_SQLCONNECTION ),
 							 errmsg("Cannot dispatch command %s to all listeners: "
 							 		"there is no connection to any segdbs for listenerid %d",
-							 		szCommand, lastListenerID 
+							 		szCommand, lastListenerID
 						)));
 				
 			}
@@ -792,7 +887,7 @@ void createThreadPoolPerListener( DispatchCommandParms *dispatchCommandParmsAr, 
 					(errcode( ERRCODE_SQLSERVER_REJECTED_ESTABLISHMENT_OF_SQLCONNECTION ),
 					 errmsg("Cannot dispatch command %s to all listeners: "
 					 		"there is no connection to any segdbs for listenerid %d",
-					 		szCommand, lastListenerID 
+					 		szCommand, lastListenerID
 				)));
 		
 	}
@@ -804,7 +899,7 @@ void createThreadPoolPerListener( DispatchCommandParms *dispatchCommandParmsAr, 
 /*
  * createThreadPoolPerSegment:
  * This function figures out a subset of the segdbs so that there is exactly
- * one segdb per segment.  It is used for commands that have database scope, but shouldn't 
+ * one segdb per segment.  It is used for commands that have database scope, but shouldn't
  * be executed for both primary and secondary copies, like
  * a select statement.  It assigns each segdb in the subset to a thread in the thread pool.
  * This is based on each thread handling cdb_connections_per_thread connections.
@@ -815,7 +910,7 @@ void createThreadPoolPerSegment( DispatchCommandParms *dispatchCommandParmsAr, i
 	int i;
 	SegmentDescriptor *segDesc;
 	
-	for ( i=0; i<CdbClusterDefinition->segment_count; i++ )
+	for ( i=0; i<getCdbSegmentCount(); i++ )
 	{
 		segDesc = &CdbClusterDefinition->segment_descriptors[i];
 
@@ -827,9 +922,10 @@ void createThreadPoolPerSegment( DispatchCommandParms *dispatchCommandParmsAr, i
 	}
 }
 
+
 /*
  * createThreadPoolPerSegDB:
- * This function uses all segdbs that have a valid connection.  It is used for commands that have database scope, 
+ * This function uses all segdbs that have a valid connection.  It is used for commands that have database scope,
  * and should be executed for both primary and secondary copies, like
  * a create table statement.  It assigns each segdb in the subset to a thread in the thread pool.
  * This is based on each thread handling cdb_connections_per_thread connections.
@@ -853,7 +949,7 @@ void createThreadPoolPerSegDB( DispatchCommandParms *dispatchCommandParmsAr, int
 				)));
 	}
 	
-	for ( i=0; i<CdbClusterDefinition->segment_count; i++ )
+	for ( i=0; i<getCdbSegmentCount(); i++ )
 	{
 		segDesc = &CdbClusterDefinition->segment_descriptors[i];
 		
@@ -868,6 +964,8 @@ void createThreadPoolPerSegDB( DispatchCommandParms *dispatchCommandParmsAr, int
 		}
 	} 	
 }
+#endif 
+
 
 /*
  * createThreadPoolEnumeration:
@@ -876,7 +974,7 @@ void createThreadPoolPerSegDB( DispatchCommandParms *dispatchCommandParmsAr, int
  * This is based on each thread handling cdb_connections_per_thread connections.
  */
 void createThreadPoolEnumeration( DispatchCommandParms *dispatchCommandParmsAr, int *psegdbs_in_thread_pool,
-									const char *szCommand, bool cancelFromBelow, 
+									const char *szCommand, bool cancelFromBelow,
 									SegmentDatabaseDescriptor **segdbList, int segdbListCount)
 {
 	int x;
@@ -902,7 +1000,7 @@ void createThreadPoolEnumeration( DispatchCommandParms *dispatchCommandParmsAr, 
 
 		}
 
-		addSegDBToDispatchThreadPool( dispatchCommandParmsAr, psegdbs_in_thread_pool, 
+		addSegDBToDispatchThreadPool( dispatchCommandParmsAr, psegdbs_in_thread_pool,
 									szCommand, cancelFromBelow, segdbDesc );
 	}
 }
@@ -913,13 +1011,13 @@ void createThreadPoolEnumeration( DispatchCommandParms *dispatchCommandParmsAr, 
  * that compares based on listenerid,
  * for use with qsort.
  */
-static int listenerSegDBPairCompare(const void *p1, const void *p2)
+/*static int listenerSegDBPairCompare(const void *p1, const void *p2)
 {
 	const ListenerSegDBPair *obj1 = (ListenerSegDBPair *)p1;
 	const ListenerSegDBPair *obj2 = (ListenerSegDBPair *)p2;
 	
 	return (obj1->listenerid - obj2->listenerid);
-}
+}*/
 
 /*
  * addSegDBToDispatchThreadPool
@@ -930,17 +1028,18 @@ static int listenerSegDBPairCompare(const void *p1, const void *p2)
 void addSegDBToDispatchThreadPool( DispatchCommandParms *ParmsAr, int *segdbCount, const char *szCommand, bool cancelFromBelow,  SegmentDatabaseDescriptor *segdbDesc)
 {
 	DispatchCommandParms *pParms;
+	int	ParmsIndex;
 	
 	Assert( segdbCount != NULL );
 	
 	/*
-	 * The proper index into the DispatchCommandParms array is computed, based on 
+	 * The proper index into the DispatchCommandParms array is computed, based on
 	 * having cdb_connections_per_thread segdbDesc's in each thread.
 	 * If it's the first access to an array location, determined
 	 * by (*segdbCount) % cdb_connections_per_thread == 0,
 	 * then we initialize the struct members for that array location first.
 	 */
-	int	ParmsIndex = (*segdbCount) / cdb_connections_per_thread;
+	ParmsIndex = (*segdbCount) / cdb_connections_per_thread;
 	pParms = &ParmsAr[ParmsIndex];
 	
 	if ( (*segdbCount) % cdb_connections_per_thread == 0 )
@@ -997,22 +1096,26 @@ CdbDispatchResults *initCdbDispatchResults(void)
 
 	if ( results->count > 0 )
 	{
+		int x = 0;
 		results->pResults = (CdbDispatchResult *)palloc0( results->count * sizeof(CdbDispatchResult) );
 		
-		int x = 0;
+		
 		for ( i=0; i<threadCount; i++ )
 		{
+			int j;
 			pParms = &dispatchCommandParmsAr[i];
 
-			int j;
+			
 			for ( j=0; j<pParms->db_count; j++ )
 			{
+				CdbDispatchResult *result;
+				
 				segdbDesc = pParms->segdbDescPtrArray[j];
 				Assert(	segdbDesc != NULL );
 				q = segdbDesc->segment_database_info;
 				Assert( q != NULL );
 
-				CdbDispatchResult *result = &results->pResults[x++];
+				result = &results->pResults[x++];
 
 				result->segdbDesc		= segdbDesc;
 				result->error_message	= NULL;
@@ -1034,6 +1137,8 @@ void DestroyCdbDispatchResults(CdbDispatchResults *results)
 {
 	if ( results == NULL )
 		return;
+		
+	elog(DEBUG4,"DestroyCdbDispatchResults" );	
 
 	if ( results->count > 0 )
 	{
@@ -1086,7 +1191,7 @@ int SumCmdTuples(CdbDispatchResults *results)
  * Combination of CdbDispatchCommand and then CdbCheckDispatchResult.
  * If the command successfully ran, returns true, else error is thrown.
  */
-bool CdbDoCommandInt( const char *szCommand, DispatchTargetSet targetSet, 
+bool CdbDoCommandInt( const char *szCommand, DispatchTargetSet targetSet,
 					bool cancelFromBelow, void ***resultSets )
 {
 	CdbDispatchResults* results = NULL;
@@ -1128,20 +1233,21 @@ bool CdbDoCommandInt( const char *szCommand, DispatchTargetSet targetSet,
 }
 
 /*
- * CdbDoCommand: 
+ * CdbDoCommand:
  * Combination of CdbDispatchCommand and then CdbCheckDispatchResult.
  * If the command successfully ran, returns true, else error is thrown.
  * Called by general users, this method includes global transaction control.
  */
-bool CdbDoCommand( const char *szCommand, 
-                    DispatchTargetSet targetSet, 
+bool CdbDoCommand( const char *szCommand,
+                    DispatchTargetSet targetSet,
                     bool cancelFromBelow, void ***resultSets )
 {
+	bool ret;
     /* need to start distributed transaction */
     condStartDtxTransaction();
-    bool ret = CdbDoCommandInt( szCommand, targetSet, 
+    ret = CdbDoCommandInt( szCommand, targetSet,
                             cancelFromBelow, resultSets );
-    return ret;            
+    return ret;
 }
 
 
@@ -1188,7 +1294,7 @@ void CdbDumpDispatchResult( CdbDispatchResult *result, bool verbose, StringInfo 
 		if ( result->error_message == NULL )
 			return;
 
-		appendStringInfo( message, "segindex %d isprimary %c : %s\n", 
+		appendStringInfo( message, "segindex %d isprimary %c : %s\n",
 							q->segindex, (q->isprimary ? 't' : 'f'),
 							result->error_message );
 	}
@@ -1248,7 +1354,7 @@ void setCancelFlag(void)
  * Note that the slice tree dispatched is the one specified in the EState
  * of the argument QueryDesc as es_cur_root_slice.
  *
- * Note that the QueryDesc params must include PARAM_EXEC_REMOTE parameters 
+ * Note that the QueryDesc params must include PARAM_EXEC_REMOTE parameters
  * containing the values of any initplans required by the slice to be run.
  * (This is handled by calls to addRemoteExecParamsToParamList() from the
  * functions preprocess_initplans() and ExecutorRun().)
@@ -1264,24 +1370,19 @@ void CdbDispatchPlan(QueryDesc *queryDesc)
 	int *sliceVector, nSlices, sliceLim;
 	int i;
 	
-	/* TODO - SLICE PLAN INTEGRATION
-	 *
-	 * When time is right, remove this expedient kludge, which prevents the
-	 * loop below from dispatching the plan multiple times to the same QEs.
-	 * Once executor factory and new interconnect are ready, the loop should
-	 * setup for the correct dispatches, but the actual call to dispatch a
-	 * slice  to a gang (CdbDispatchCommand) may need adjustment per the
-	 * implementation of executor factory.
-	 */
-	bool kludge = TRUE;
 	
 	Assert( Cdb_role == CDB_ROLE_DISPATCH );	
 	Assert( queryDesc != NULL && queryDesc->estate != NULL);
 	
-	/* 
+	elog(DEBUG4,"CdbDispatchPlan" );	
+	
+	 /* need to start distributed transaction */
+    condStartDtxTransaction();
+	
+	/*
 	 * Later we'll need to operate with the slice table provided via the
 	 * EState structure in the argument QueryDesc.  Cache this information
-	 * locally and assert our expectations about it.  
+	 * locally and assert our expectations about it.
 	 */
 	sliceTbl = queryDesc->estate->es_sliceTable;
 	rootIdx = queryDesc->estate->es_cur_root_idx;
@@ -1294,7 +1395,7 @@ void CdbDispatchPlan(QueryDesc *queryDesc)
 	 */
 	oldLocalSlice = sliceTbl->localSlice;
 
-	/* 
+	/*
 	 * Serialize plan and query trees. Build the common prefix of the
 	 * CDBEXEC commands we'll issue.  Note that we're called for a single
 	 * slice tree (corresponding to an initPlan or the main plan), so the
@@ -1310,12 +1411,12 @@ void CdbDispatchPlan(QueryDesc *queryDesc)
 	
 	pfree(squery);
 	pfree(splan);
-	 
-	/* 
+	
+	/*
 	 * Next, continue building the CDBEXEC command by adding all the parameters
-	 * serialized into RemoteParamData structs, which is just a node wrapper 
+	 * serialized into RemoteParamData structs, which is just a node wrapper
 	 * around ParamListInfo.
-	 * 
+	 *
 	 * Add parameters to the cdbexec command by enclosing the whole set with
 	 * ()  and separating individual ones with a comma, so it looks like:
 	 * ('Param1', 'Param2', ...) at the end of the cdbexec command.
@@ -1347,16 +1448,16 @@ void CdbDispatchPlan(QueryDesc *queryDesc)
 		appendStringInfo(&strinfo, ")");
 	}
 	
-	/* 
+	/*
 	 * Hang on to the command so far.  It will serve as the prefix for each
-	 * of the CDBEXEC commands we dispatch.  Clear the buffer for use in 
+	 * of the CDBEXEC commands we dispatch.  Clear the buffer for use in
 	 * constructing the final CDBEXEC command(s).
 	 */
 	cdbexecPrefix = strinfo.data;
 	initStringInfo( &strinfo );
 
-		 
-	/* 
+		
+	/*
 	 * Traverse the slice tree in sliceTbl rooted at rootIdx and build a
 	 * vector of slice indexes specifying the order of [potential] dispatch.
 	 */
@@ -1366,77 +1467,88 @@ void CdbDispatchPlan(QueryDesc *queryDesc)
 
 	
 	/*
-	 * Now we need to call CDBDispatchCommand once per slice.  Each such 
-	 * call dispatches a CDBEXEC command to each of the QEs assigned to 
-	 * the slice.  
+	 * Now we need to call CDBDispatchCommand once per slice.  Each such
+	 * call dispatches a CDBEXEC command to each of the QEs assigned to
+	 * the slice.
 	 *
 	 * The QE information goes in two places: (1) in the argument to the
-	 * function CDBDispatchCommand, and (2) in the serialized CDBEXEC 
+	 * function CDBDispatchCommand, and (2) in the serialized CDBEXEC
 	 * command sent to the QEs.
-	 * 
+	 *
 	 * So, for each slice in the tree...
 	 */
 	for ( i = 0; i < nSlices; i++ )
 	{
+		SegmentDatabaseDescriptor ** sdp;
+		
 		Slice *slice = (Slice *)list_nth(sliceTbl->slices, sliceVector[i]);
+		int    k;
+		
+		Gang * primaryGang = slice->primaryGang;
+		
 		
 		 /* Is this a slice we should dispatch?
 		  *
-		  * TODO - SLICE PLAN INTEGRATION - Eliminate FALSE in test below.
 		  */
-		if ( FALSE && slice->gangType == GANGTYPE_UNALLOCATED )
+		if ( slice->gangType == GANGTYPE_UNALLOCATED )
 		{
 			/* Most slices are dispatched, however, in many  cases the
 			 * root runs only on the QD and is not dispatched to the QEs.
 			 */
 			continue;
 		}
+		
+		Assert(primaryGang != NULL);   /* Must have a gang to dispatch to */
+		
 	
 		/*
 		 * Set up the slice info parameter for this slice and use it to
 		 * construct a finished CDBEXEC command.
-		 */
+		 */				
 		sliceTbl->localSlice = slice->sliceIndex;
 		ssliceinfo = serializeNode((Node *)sliceTbl);
 		appendStringInfo(&strinfo, "%s '%s'", cdbexecPrefix, ssliceinfo);
 		pfree(ssliceinfo);
 		
 		
-		/* 
+		/*
 		 * TODO - SLICE PLAN INTEGRATION
-		 * 
+		 *
 		 * Need to know how to specify target set: from CDBProcess
 		 * list, a group identifier, or how.
 		 *
 		 * The information In the argument to CDBDispatchCommand must specify
-		 * the same QEs as are carried in the serialized CDBEXEC command. 
+		 * the same QEs as are carried in the serialized CDBEXEC command.
 		 * In addition, we need (in case of writers) specify two QE lists
-		 * (primary and mirror).  This could be via extended arguments to 
+		 * (primary and mirror).  This could be via extended arguments to
 		 * or, perhaps, by making two calls, to CDBDispatchCommand.
 		 *
-		 * TODO - Maybe we should call CDBDispatchCommandInt instead.
 		 */
-		DispatchTargetSet set;
-		if ( queryDesc->operation == CMD_SELECT )
-			set = DTS_SEGMENT;
-		else
-			set = DTS_SEGDB;
+
+
+					
+					
+		sdp = palloc(primaryGang->segdb_count * sizeof(SegmentDatabaseDescriptor*));
+		for (k = 0; k < primaryGang->segdb_count; k++)
+		{
+			sdp[k] = &primaryGang->db_descriptors[k];
+		}
+		
+		
 	
 		/*
 		 * This call returns after launching the threads that send the command to the appropriate
 		 * segdbs.  It does not wait for them to finish.
 		 */
-		 
-		/* TODO - SLICE PLAN INTEGRATION - Remove expedient kludge to force single dispatch. */
-		if ( kludge )
-		{
-			CdbDispatchCommand(strinfo.data, set, NULL, 0, true );
-			kludge = FALSE;
-		}
+		
+
+		CdbDispatchCommandInt(strinfo.data, DTS_ENUMERATION, sdp, primaryGang->segdb_count, true, NULL );
+
 		
 		pfree(strinfo.data);
 		initStringInfo( &strinfo );
 	}
+	elog(DEBUG4,"CdbDispatchPlan done" );	
 }
 
 
@@ -1445,16 +1557,16 @@ void CdbDispatchPlan(QueryDesc *queryDesc)
  *
  * Add the indexes of the slices in the subtree of the slice table rooted
  * at the given index in the order in which they should be dispatched. Used
- * locally in CdbDispatchPlan to decide the order of calls to CdbDispatch. 
- * 
+ * locally in CdbDispatchPlan to decide the order of calls to CdbDispatch.
+ *
  * Arguments:
- * 
+ *
  *	sliceTable	- slice table
  *	sliceIndex	- index of the subtree root in slice table
  *	IndexVector	- index vector under contruction
  *	len			- number of positions allocated in the index vector
  *	next		- position at which to write the next index
- *  
+ *
  * Returns new value of count.
  */
 int fillSliceVector(SliceTable *sliceTable, int sliceIndex, int *indexVector, int len, int next)

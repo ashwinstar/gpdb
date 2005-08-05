@@ -15,23 +15,31 @@
 
 #include <assert.h>
 
-#include "cdb/cdbcopy.h"
+#include "postgres.h"
+#include "libpq-fe.h"
+#include "libpq-int.h"
+#include "miscadmin.h"
 #include "cdb/cdbconn.h"
-/*
- * returns the number of segments in CDB.
- */
-int cdbCopyGetNumSegs(void)
-{
-	return CdbClusterDefinition->segment_count;
-}
+#include "cdb/cdbdisp.h"
+#include "cdb/cdbvars.h"
+#include "cdb/cdblink.h"
+#include "cdb/cdbgang.h"
+#include "cdb/cdbcopy.h"
+
+
 
 /*
  * returns the number of segment databases for a given segment.
  */
-int cdbCopyGetDbCount(int seg_num)
+int cdbCopyGetDbCount(int seg)
 {
-	SegmentDescriptor *p = &(CdbClusterDefinition->segment_descriptors[seg_num]);
-	return p->db_count;
+	Gang * gp = allocateGang(GANGTYPE_MIRROR_WRITER, getCdbSegmentCount(), -1);
+	
+	if (gp != NULL && &(gp->db_descriptors[seg]) != NULL)
+		return 2;
+	else
+		return 1;
+
 }
 
 /*
@@ -44,9 +52,15 @@ int cdbCopyStart(int seg, int db, char *copyCmd)
      * the result of sending the COPY command.
      */
     PGresult *res;
+    SegmentDatabaseDescriptor *q;
 
-	SegmentDescriptor *p = &(CdbClusterDefinition->segment_descriptors[seg]);
-	SegmentDatabaseDescriptor *q = &(p->db_descriptors[db]);
+	Gang * gp;
+	if (db==0)
+		gp = allocateGang(GANGTYPE_PRIMARY_WRITER, getCdbSegmentCount(), -1);
+	else
+		gp = allocateGang(GANGTYPE_MIRROR_WRITER, getCdbSegmentCount(), -1);
+	
+	q = &(gp->db_descriptors[seg]);
 	
 	/* send COPY command to the segment DB */
     res = PQexec(q->conn, copyCmd);
@@ -63,11 +77,18 @@ int cdbCopyStart(int seg, int db, char *copyCmd)
  */
 int cdbCopySendData(int seg, int db, const char *buffer, int nbytes)
 {
-	SegmentDescriptor *p = &(CdbClusterDefinition->segment_descriptors[seg]);
-	SegmentDatabaseDescriptor *q = &(p->db_descriptors[db]);
+	SegmentDatabaseDescriptor *q;
+	Gang * gp;
+	int result;
+	if (db==0)
+		gp = allocateGang(GANGTYPE_PRIMARY_WRITER, getCdbSegmentCount(), -1);
+	else
+		gp = allocateGang(GANGTYPE_MIRROR_WRITER, getCdbSegmentCount(), -1);
+	
+	q = &(gp->db_descriptors[seg]);
 
 	/* transmit the COPY data */
-    int result = PQputCopyData(q->conn, buffer, nbytes);
+    result = PQputCopyData(q->conn, buffer, nbytes);
 	
 	/* if an error occured */
     if (result < 1)
@@ -94,10 +115,18 @@ int cdbCopySendData(int seg, int db, const char *buffer, int nbytes)
  */
 int cdbCopyEnd(int seg, int db, char *errMessage)
 {
-	SegmentDescriptor *p = &(CdbClusterDefinition->segment_descriptors[seg]);
-	SegmentDatabaseDescriptor *q = &(p->db_descriptors[db]);
- 
+	SegmentDatabaseDescriptor *q;
+	Gang * gp;
 	int result; /* final result of COPY command execution */
+	
+	if (db==0)
+		gp = allocateGang(GANGTYPE_PRIMARY_WRITER, getCdbSegmentCount(), -1);
+	else
+		gp = allocateGang(GANGTYPE_MIRROR_WRITER, getCdbSegmentCount(), -1);
+	
+	q = &(gp->db_descriptors[seg]);
+ 
+	
 	
     result = PQputCopyEnd(q->conn, NULL); /* second argument HAS to be NULL for operation to pass! */
 	
@@ -134,11 +163,18 @@ int cdbCopyExecTrax(int seg, int db, char *sql)
 {
 	/*assert(sql == "BEGIN" || sql == "ROLLBACK" || sql == "COMMIT");*/
 	
-	SegmentDescriptor *p = &(CdbClusterDefinition->segment_descriptors[seg]);
-	SegmentDatabaseDescriptor *q = &(p->db_descriptors[db]);
-
-    /* the result of sending the sql trax command */
+	/* the result of sending the sql trax command */
     PGresult *res;
+	SegmentDatabaseDescriptor *q;
+	Gang * gp;
+	if (db==0)
+		gp = allocateGang(GANGTYPE_PRIMARY_WRITER, getCdbSegmentCount(), -1);
+	else
+		gp = allocateGang(GANGTYPE_MIRROR_WRITER, getCdbSegmentCount(), -1);
+	
+	q = &(gp->db_descriptors[seg]);
+
+    
 		
     res = PQexec(q->conn, sql);
 	

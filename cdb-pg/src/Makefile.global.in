@@ -185,11 +185,6 @@ CC = @CC@
 GCC = @GCC@
 CFLAGS = @CFLAGS@
 
-# MPI compiler-wrappers and libraries
-MPICC = @MPICC@
-MPICXX = @MPICXX@
-MPILIBS = @MPILIBS@
-
 # Kind-of compilers
 
 YACC = @YACC@

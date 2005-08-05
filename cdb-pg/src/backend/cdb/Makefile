@@ -23,7 +23,7 @@ OBJS = cdbvars.o cdbplan.o cdbllize.o cdbcat.o cdbutil.o cdblink.o \
 	   cdbaggtactic.o cdbaggmutate.o cdbanalyze.o cdbcopy.o cdblimmutate.o \
 	   cdbsubplan.o cdbtm.o cdbtmlog.o \
 	   cdbpath.o cdbpathlocus.o cdbpathtoplan.o \
-	   cdbbackup.o
+	   cdbbackup.o cdbgang.o
 
 ifeq ($(PORTNAME),cygwin)
 .LIBPATTERNS := $(filter-out %.so,$(.LIBPATTERNS))
