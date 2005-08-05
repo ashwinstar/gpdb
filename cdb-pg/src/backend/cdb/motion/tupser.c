@@ -149,7 +149,7 @@ int SerializeTuple(HeapTuple tuple, SerTupInfo *pSerInfo, StringInfo strInfo)
 	TupleDesc tupdesc;
     int natts;
 
-    int i, j, k;
+    int i;
     int origLen;
 	bool fHandled;
 	
@@ -170,28 +170,8 @@ int SerializeTuple(HeapTuple tuple, SerTupInfo *pSerInfo, StringInfo strInfo)
     /* deconstruct the tuple (faster than a heap_getattr loop) */
     heap_deformtuple(tuple, tupdesc, pSerInfo->values, pSerInfo->nulls);
 
-#ifdef TUPSER_BITPACK_NULLMASK
-    /* send a bitmap of which attributes are not null */
-    j = 0;
-    k = 1 << 7;
-    for (i = 0; i < natts; ++i)
-    {
-        if (pSerInfo->nulls[i] != 'n')
-            j |= k;             /* set bit if not null */
-        k >>= 1;
-        if (k == 0)             /* end of byte? */
-        {
-            pq_sendint(strInfo, j, 1);
-            j = 0;
-            k = 1 << 7;
-        }
-    }
-    if (k != (1 << 7))          /* flush last partial byte */
-        pq_sendint(strInfo, j, 1);
-#else
 	/* Send the nulls character-array. */
 	appendBinaryStringInfo(strInfo, pSerInfo->nulls, natts);
-#endif
 
     /* send the attributes of this tuple */
     for (i = 0; i < natts; ++i)
@@ -293,7 +273,7 @@ HeapTuple DeserializeTuple(SerTupInfo *pSerInfo, StringInfo serialTup)
 	SerAttrInfo *attrInfo;
 	uint32 attr_size;
 
-    int i, j, k;
+    int i;
     int origLen;
     StringInfoData attr_data;
 	bool fHandled;
@@ -311,29 +291,8 @@ HeapTuple DeserializeTuple(SerTupInfo *pSerInfo, StringInfo serialTup)
 	AssertState(s_tupSerMemCtxt != NULL);
 	oldCtxt = MemoryContextSwitchTo(s_tupSerMemCtxt);
 	
-#ifdef TUPSER_BITPACK_NULLMASK
-    /* Receive and process the "non-NULL values" bitmap. */
-    for (i = 0, k = 0; i < natts; ++i)
-    {
-        if (k == 0)
-        {
-            /* Get the next byte in the bitmap. */
-            j = pq_getmsgbyte(serialTup);
-            k = 1 << 7;
-        }
-        
-        /* If bit cleared, set null; otherwise, set not null. */
-        if ((j & k) != 0)
-            pSerInfo->nulls[i] = ' ';
-        else
-            pSerInfo->nulls[i] = 'n';
-        
-        k >>= 1;
-    }
-#else
 	/* Receive nulls character-array. */
 	pq_copymsgbytes(serialTup, pSerInfo->nulls, natts);
-#endif
 
     /* Deserialize the non-NULL attributes of this tuple */
     initStringInfo(&attr_data);

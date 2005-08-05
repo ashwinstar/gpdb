@@ -119,7 +119,7 @@ typedef struct StopSendingMessage
  */
 
 /* Socket file descriptor for the listener. */
-int sockfd;
+int listenerFd;
 
 /* TODO: not sure we need this. could just push it as a local variable
  *       into ListenerSetup()
@@ -158,10 +158,9 @@ MotionLayerState  *startConnections(Slice *mySlice, int *highsock, fd_set *wset)
 void sendRegisterMessage(MotionLayerState *pEntry, MotionConn *conn);
 void readRegisterMessage(MotionConn *in_conn, int *incoming_count);
 void acceptIncomingConnection(fd_set *rset, int *highsock);
-bool sendPt2Pt(MotionConn *conn, TupleChunkListItem tcItem);
+
+bool sendChunk(MotionConn *conn, TupleChunkListItem tcItem);
 void readPacket(MotionConn *conn);
-bool flushBuffer(MotionConn *conn);
-void setPacketSize(MotionConn *conn);
 bool doBroadcast(MotionLayerState *pEntry, TupleChunkListItem tcItem);
 int findMyRouteId(Slice *slice);
 CdbProcess *findCdbProcess(RegisterMessage *msg);
@@ -212,8 +211,8 @@ void CleanUpMotionLayerIPC(void)
 	hash_destroy(hashtab);
 	
 	/* close down the Interconnect listener socket. */
-	shutdown(sockfd, SHUT_RDWR);
-	close(sockfd);
+	shutdown(listenerFd, SHUT_RDWR);
+	close(listenerFd);
 }
 
 
@@ -239,6 +238,16 @@ bool SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem 
 	pEntry = getMotionState(motNodeID);	
 	
 	currItem = tcItem;
+
+#ifdef AMS_VERBOSE_LOGGING
+	{
+		struct timeval snapTime;
+
+		gettimeofday(&snapTime, NULL);
+		elog(DEBUG3, "starting chunklist @%s.%d time is %ld.%d", 
+			 __FILE__, __LINE__, snapTime.tv_sec, snapTime.tv_usec);
+	}
+#endif
 	
 	while (currItem != NULL)
 	{
@@ -252,12 +261,22 @@ bool SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem 
 		{
 			/* handle pt-to-pt message. */
 			conn = pEntry->conns + targetRoute;
-			if (!sendPt2Pt(conn, tcItem))
+			if (!sendChunk(conn, tcItem))
 				return false;
 		}
 	
 		currItem = tcItem->p_next;
 	}
+
+#ifdef AMS_VERBOSE_LOGGING
+	{
+		struct timeval snapTime;
+
+		gettimeofday(&snapTime, NULL);
+		elog(DEBUG3, "done with chunklist @%s.%d time is %ld.%d", 
+			 __FILE__, __LINE__, snapTime.tv_sec, snapTime.tv_usec);
+	}
+#endif
 	
 #ifdef AMS_VERBOSE_LOGGING	
 	elog(DEBUG3, "SendTupleChunkToAMS() Leaving");
@@ -271,8 +290,6 @@ bool SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem 
 void SendEosToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcItem)
 {
 	MotionLayerState 	*pEntry;	
-	MotionConn 			*conn;
-	int 				i;
 
 	Assert(activated);
 
@@ -285,17 +302,8 @@ void SendEosToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcItem)
 
 	pEntry = getMotionState(motNodeID);
 
-	/* we want to add our tcItem onto each of the outgoing buffers and
-	 * then flush the buffers. 
-	 */
+	/* we want to add our tcItem onto each of the outgoing buffers */
 	doBroadcast(pEntry, tcItem);
-	
-	/* now flush all of the buffers.*/	
-	for (i=0; i < pEntry->numConns; i++)
-	{		
-		conn = pEntry->conns + i;
-		flushBuffer(conn);
-	}
 
 #ifdef AMS_VERBOSE_LOGGING	
 	elog(DEBUG3, "SendEosToAMS() Leaving");
@@ -397,6 +405,9 @@ TupleChunkListItem RecvTupleChunkFrom(int16 motNodeID, int16 srcRoute)
 	{
 		tcSize = TUPLE_CHUNK_HEADER_SIZE + GetChunkDataSize(conn->pBuff + bytesProcessed);
 		
+		if (tcSize >= conn->msgSize) {
+			elog(ERROR, "tcSize %d >= conn->msgSize %d !", tcSize, conn->msgSize);
+		}
 		Assert(tcSize < conn->msgSize);
 		
 		tcItem = (TupleChunkListItem)palloc0(sizeof(TupleChunkListData) + tcSize);
@@ -446,7 +457,7 @@ int ListenerSetup(void)
 	struct 		sockaddr_in addr;
 	socklen_t 	addrlen;
 	
-	if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+	if ((listenerFd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
 	{
 		/* TODO: would be nice to read the errno and try and provide
 		 * 		 more useful info as to why this happened.
@@ -464,7 +475,7 @@ int ListenerSetup(void)
 	/* we let the system pick the TCP port here so we don't have to 
  	 * manage port resources ourselves.  
  	 */
-	if (bind(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
+	if (bind(listenerFd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
 	{
 		/* TODO: would be nice to read the errno and try and provide more
 		 * 		 useful info as to why this happened.
@@ -475,7 +486,7 @@ int ListenerSetup(void)
 			
 	}
 
-	if (listen(sockfd, LISTEN_BACK_LOG) < 0)
+	if (listen(listenerFd, LISTEN_BACK_LOG) < 0)
 	{
 		/* TODO: would be nice to read the errno and try and provide
 		 * 		 more useful info as to why this happened.
@@ -488,7 +499,7 @@ int ListenerSetup(void)
 	
 	addrlen = sizeof(struct sockaddr_in);
 
-	if (getsockname(sockfd, (struct sockaddr *)&addr,  &addrlen) < 0)
+	if (getsockname(listenerFd, (struct sockaddr *)&addr,  &addrlen) < 0)
 	{
 		/* TODO: would be nice to read the errno and try and provide
 		 * 		 more useful info as to why this happened.
@@ -520,6 +531,7 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 	MotionLayerState 	*pEntry;
 
 	struct timeval startTime;
+	struct timeval snapTime;
 	struct timeval stopTime;
 	
 	int incoming_count 		  = 0;
@@ -529,14 +541,18 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 	
 	/* we can have at most one of these. */
 	MotionLayerState *sendingMotionState = NULL;
+
+	gettimeofday(&snapTime, NULL);
+	elog(DEBUG3, "in SetupInterconnect @%d time is %ld.%d", 
+		 __LINE__, snapTime.tv_sec, snapTime.tv_usec);
 	
 	sliceTable = mySliceTable;
 	sliceId = mySliceId;
 	
 	FD_ZERO(&rset);
 	FD_ZERO(&wset);
-	FD_SET(sockfd, &rset);
-	highsock = sockfd;
+	FD_SET(listenerFd, &rset);
+	highsock = listenerFd;
 	
 	elog(DEBUG3, "Interconnect Activating Routes");
 	
@@ -620,7 +636,7 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 		elog(DEBUG3, "select() returned %d ready sockets", n);
 
 		/* is it someone tickling our listener port? */
-		if (FD_ISSET(sockfd, &rrset))
+		if (FD_ISSET(listenerFd, &rrset))
 		{
 			elog(DEBUG5, "accepting an Incoming Connection ");
 			acceptIncomingConnection(&rset, &highsock);
@@ -667,7 +683,7 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 				list_delete(incompleteConns, cell);
 			}
 		}
-		
+
 		elog(DEBUG3, "%d of %d outgoing conns and %d of %d incoming conns completed",
 			  outgoing_count, expectedTotalOutgoing, incoming_count, expectedTotalIncoming);
 	}
@@ -675,6 +691,10 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 
 	activated = true;
 	elog(DEBUG3, "FINISHED ACTIVATING ROUTES. (out: %d , in: %d)", outgoing_count, incoming_count);
+
+	gettimeofday(&snapTime, NULL);
+	elog(DEBUG3, "exiting SetupInterconnect @%d time is %ld.%d", 
+		 __LINE__, snapTime.tv_sec, snapTime.tv_usec);
 }
 
 
@@ -1039,8 +1059,9 @@ void sendRegisterMessage(MotionLayerState *pEntry, MotionConn *conn)
 	int   	n;
 	int16 	netval;	
 	int32   netval2;
+	RegisterMessage regMsg;
 	int 	msglen = sizeof(RegisterMessage);
-	uint8 	*msg = palloc(msglen);
+	uint8 	*msg = (uint8 *)&regMsg;
 	
 	/* motNodeId */
 	netval = htons(pEntry->motNodeId);
@@ -1085,8 +1106,6 @@ void sendRegisterMessage(MotionLayerState *pEntry, MotionConn *conn)
 								  "'%s':%d with contentid = %d", n, msglen, conn->remoteHost, 
 								  conn->remotePort, conn->remoteContentId)));  
 	}
-
-	pfree(msg);
 }
 
 
@@ -1111,7 +1130,8 @@ void readRegisterMessage(MotionConn *conn, int *incoming_count)
 	CdbProcess			*proc;
 
 	int msgSize = sizeof(RegisterMessage);
-	uint8 *buff = palloc(msgSize);
+	RegisterMessage		regMsg;
+	uint8 *buff = (uint8 *)&regMsg;
 
 	/* loop till we read in the entire RegisterMessage. */
 	while (bytesRead < msgSize)
@@ -1169,13 +1189,7 @@ void readRegisterMessage(MotionConn *conn, int *incoming_count)
 		pEntry->highReadSock = conn->sockfd;
 
 	(*incoming_count)++;
-
-	pfree(buff);	
 }
-
-
-
-
 
 /* Function acceptIncomingConnection() is used to accept() and setup an 
  * incoming connection on the Interconnect Listener socket.  
@@ -1203,7 +1217,7 @@ void acceptIncomingConnection(fd_set *rset, int *highsock)
 	bzero(&addr, sizeof(addr));
 	addrlen = sizeof(addr);
 
-	if ((newsockfd = accept(sockfd, (struct sockaddr *)&addr, &addrlen)) < 0)
+	if ((newsockfd = accept(listenerFd, (struct sockaddr *)&addr, &addrlen)) < 0)
 	{
 		/* TODO: would be nice to read the errno and try and provide more
 		 * 		 useful info as to why this happened.
@@ -1248,27 +1262,123 @@ void acceptIncomingConnection(fd_set *rset, int *highsock)
 		incompleteConns = lappend(incompleteConns, conn);		
 }
 
-
-/* Function sendPt2Pt() is used to send a tcItem to a single destination. 
- * Normally this means just adding it to our outgoing buffer, if we can't fit
- * it, then we'll flush the buffer (i.e. write it out to the network).
+/* The Function sendChunk() is used to send a tcItem to a single
+ * destination.
  *
  * PARAMETERS
  *   conn - MotionConn that the tcItem is to be sent to.
  *   tcItem - message to be sent.
  */
-bool sendPt2Pt(MotionConn *conn, TupleChunkListItem tcItem) 
+bool sendChunk(MotionConn *conn, TupleChunkListItem tcItem) 
 {
-	Assert(conn->msgSize > 0);		
-	
-	if (conn->msgSize + tcItem->chunk_length > MAX_PACKET_SIZE)
+	char		*sendptr;
+	int16		header;
+	int			n, sent = 0;
+	fd_set		wset;
+	fd_set		rset;
+
+#ifdef AMS_VERBOSE_LOGGING
 	{
-		if (flushBuffer(conn))
-			return false;
+		struct timeval snapTime;
+
+		gettimeofday(&snapTime, NULL);
+		elog(DEBUG3, "----sending chunk @%s.%d time is %ld.%d", 
+			 __FILE__, __LINE__, snapTime.tv_sec, snapTime.tv_usec);
 	}
-	
-	memcpy(conn->pBuff + conn->msgSize, tcItem->chunk_data, tcItem->chunk_length);
-	conn->msgSize += tcItem->chunk_length;
+#endif
+
+	/* first send header */
+	header = htons(sizeof(header) + tcItem->chunk_length);
+	sendptr = (char *)&header;
+	sent = 0;
+	do {
+		if ((n = write(conn->sockfd, sendptr + sent, sizeof(header) - sent)) < 0)
+		{
+			if (errno == EWOULDBLOCK)
+			{
+				FD_ZERO(&rset);
+				FD_ZERO(&wset);
+				do
+				{
+					FD_SET(conn->sockfd, &wset);
+					/* TODO: uncomment this when ready to support "STOP MESSAGES" */
+					//FD_SET(conn->sockfd, &rset);
+					if ((n = select(conn->sockfd + 1, &rset, &wset, NULL, &tval)) < 0)
+					{
+						ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+										 errmsg("Interconnect error writing an outgoing packet"),
+										 errdetail("error during select() call (error:%d).\n"
+												   "For Remote Connection: contentId=%d at '%s':%d",
+												   errno, conn->remoteContentId, conn->remoteHost,
+												   conn->remotePort)));
+					}
+
+					/* as a sender... if there is something to read... it must
+					 * mean its a StopSendingMessage.  we don't even bother to
+					 * read it. 
+					 */
+					if (FD_ISSET(conn->sockfd, &rset))
+					{
+						conn->stillActive = false;
+						return false;
+					}
+
+					/* make sure we check for these. */
+					CHECK_FOR_INTERRUPTS();
+				} while (n < 1);
+			}
+		}
+		else
+		{
+			sent += n;
+		}
+	} while (sent < sizeof(header));
+
+	/* now send body */
+	sendptr = (char *)tcItem->chunk_data;
+	sent = 0;
+	do {
+		if ((n = write(conn->sockfd, sendptr + sent, tcItem->chunk_length - sent)) < 0)
+		{
+			if (errno == EWOULDBLOCK)
+			{
+				FD_ZERO(&rset);
+				FD_ZERO(&wset);
+				do
+				{
+					FD_SET(conn->sockfd, &wset);
+					/* TODO: uncomment this when ready to support "STOP MESSAGES" */
+					//FD_SET(conn->sockfd, &rset);
+					if ((n = select(conn->sockfd + 1, &rset, &wset, NULL, &tval)) < 0)
+					{
+						ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+										 errmsg("Interconnect error writing an outgoing packet"),
+										 errdetail("error during select() call (error:%d).\n"
+												   "For Remote Connection: contentId=%d at '%s':%d",
+												   errno, conn->remoteContentId, conn->remoteHost,
+												   conn->remotePort)));
+					}
+
+					/* as a sender... if there is something to read... it must
+					 * mean its a StopSendingMessage.  we don't even bother to
+					 * read it. 
+					 */
+					if (FD_ISSET(conn->sockfd, &rset))
+					{
+						conn->stillActive = false;
+						return false;
+					}
+
+					/* make sure we check for these. */
+					CHECK_FOR_INTERRUPTS();
+				} while (n < 1);
+			}
+		}
+		else
+		{
+			sent += n;
+		}
+	} while (sent < tcItem->chunk_length);
 	
 	conn->tupleCount++;	
 	return true;
@@ -1289,14 +1399,9 @@ bool sendPt2Pt(MotionConn *conn, TupleChunkListItem tcItem)
  */
 void readPacket(MotionConn *conn)
 {
-	int 	bytesRead = 0;
-	fd_set 	rset,rrset;	
-	int n;	
-	
-	FD_ZERO(&rset);
-	FD_SET(conn->sockfd, &rset);
-	
-	
+	int 	n, bytesRead = 0;
+	fd_set 	rset;	
+
 	/* read in the header. */
 	while (bytesRead < PACKET_HEADER_SIZE)
 	{
@@ -1305,10 +1410,11 @@ void readPacket(MotionConn *conn)
 		{
 			if (errno == EWOULDBLOCK)
 			{
+				FD_ZERO(&rset);
 				do
 				{
-					memcpy(&rrset, &rset, sizeof(fd_set));
-					if ((n = select(conn->sockfd + 1, &rrset, NULL, NULL, &tval)) < 0)
+					FD_SET(conn->sockfd, &rset);
+					if ((n = select(conn->sockfd + 1, &rset, NULL, NULL, &tval)) < 0)
 					{
 						/* TODO: would be nice to read the errno and try and provide more
 						 * 		 useful info as to why this happened.
@@ -1368,13 +1474,13 @@ void readPacket(MotionConn *conn)
 		if ((n = read(conn->sockfd, conn->pBuff + bytesRead, 
 			       conn->msgSize - bytesRead)) < 0)
 		{
-		
 			if (errno == EWOULDBLOCK)
 			{
+				FD_ZERO(&rset);
 				do
 				{
-					memcpy(&rrset, &rset, sizeof(fd_set));
-					if ((n = select(conn->sockfd + 1, &rrset, NULL, NULL, &tval)) < 0)
+					FD_SET(conn->sockfd, &rset);
+					if ((n = select(conn->sockfd + 1, &rset, NULL, NULL, &tval)) < 0)
 					{
 						/* TODO: would be nice to read the errno and try and provide more
 						 * 		 useful info as to why this happened.
@@ -1424,123 +1530,6 @@ void readPacket(MotionConn *conn)
 	}
 }
 
-
-/* Function flushBuffer() is used to write the contents of a MotionConn buffer
- * out to the network.  This function blocks until the entire contents have
- * been written to the socket.
- *
- * We also have to check for reads here.  Having data to read on a "sending"
- * socket means the receiver is sending us a stopSending Message.  Below, we 
- * only check during select() and don't have to worry about write().  The reason
- * is that if the Receiver sends us a stopSending message it will also stop 
- * reading data from the socket.  This guarantees that eventually our write() 
- * call will get an EWOULDBLOCK and our select() call will pick it up.
- *
- *
- * PARAMETERS
- *
- *   conn - MotionConn whose buffer needs to be flushed.
- *
- */
-bool flushBuffer(MotionConn *conn)
-{				 
-	int 	bytesWritten = 0;
-	fd_set 	wset;
-	fd_set  rset;
-	int 	n;
-
-	setPacketSize(conn);
-
-	do
-	{
-		if ((n = write(conn->sockfd, conn->pBuff + bytesWritten,
-						conn->msgSize - bytesWritten)) < 0)
-		{
-			if (errno == EWOULDBLOCK)
-			{
-				do
-				{
-					FD_ZERO(&rset);
-					FD_ZERO(&wset);
-					FD_SET(conn->sockfd, &wset);
-					/* TODO: uncomment this when ready to support "STOP MESSAGES" */
-					//FD_SET(conn->sockfd, &rset);
-
-					if ((n = select(conn->sockfd + 1, &rset, &wset, NULL, &tval)) < 0)
-					{
-						/* TODO: would be nice to read the errno and
-						 * 		 try and provide more useful info as
-						 * 		 to why this happened.
-						 */
-						ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-										 errmsg("Interconnect error writing an outgoing packet"),
-										 errdetail("error during select() call (error:%d).\n"
-												   "For Remote Connection: contentId=%d at '%s':%d",
-												   errno, conn->remoteContentId, conn->remoteHost,
-												   conn->remotePort)));
-						
-					}
-
-					/* as a sender... if there is something to read... it must
-					 * mean its a StopSendingMessage.  we don't even bother to
-					 * read it. 
-					 */
-					if (FD_ISSET(conn->sockfd, &rset))
-					{
-						conn->stillActive = false;
-						return false;
-					}
-
-					/* make sure we check for these. */
-					CHECK_FOR_INTERRUPTS();
-	
-				}
-				while (n < 1);
-			}
-			else
-			{
-				/* TODO: would be nice to read the errno and try and provide more
-				 * 		 useful info as to why this happened.
-				 */
-				ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-								 errmsg("Interconnect error writing an outgoing packet"),
-								 errdetail("error during write() call (error:%d).\n"
-										   "For Remote Connection: contentId=%d at '%s':%d",
-										   errno, conn->remoteContentId, conn->remoteHost,
-										   conn->remotePort)));
-			}
-		}
-		else
-		{		
-			bytesWritten += n;
-		}
-	}
-	while (bytesWritten < conn->msgSize);
-	
-
-	conn->tupleCount = 0;	
-	conn->msgSize = PACKET_HEADER_SIZE;
-	
-	return true;
-}
-
-/* Function setPacketSize() is used to set the size of the packet at the head
- * of the MotionConn's buffer.
- *
- * TODO: make this into a macro.
- *
- * PARAMETERS
- *   conn - MotionConn whose buffer needs the packetsize set for. 
- */
-void setPacketSize(MotionConn *conn)
-{
-	int16 sz;
-	
-	sz = htons(conn->msgSize);
-	memcpy(conn->pBuff, &sz, 2);	
-}
-
-
 /* Function doBroadcast() is used to send a TupleChunk to all recipients.
  *
  * PARAMETERS
@@ -1560,9 +1549,9 @@ bool doBroadcast(MotionLayerState *pEntry, TupleChunkListItem tcItem)
 	{
 		conn = pEntry->conns + i;	
 		
-		if (conn->stillActive) /*only send to still interested receivers. */
+		if (conn->stillActive) /* only send to still interested receivers. */
 		{
-			if (sendPt2Pt(conn, tcItem))				 
+			if (sendChunk(conn, tcItem))				 
 				count++;
 		}	
 	}
