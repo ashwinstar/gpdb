@@ -35,16 +35,12 @@ typedef enum TupleChunkType
  * byte in this header.  The break-down is as follows:
  *
  *    Offset      Description           Size
- *       0    Target Segment Index     2 bytes
- *       2    Group ID                 2 bytes
- *       4    Source Segment Index     2 bytes
- *       6    Motion Node ID           2 bytes
- *       8    Tuple Chunk Size         2 bytes
- *      10    Tuple Type               1 byte
+ *      0    Tuple Chunk Size         2 bytes
+ *      2    Tuple Type               1 byte
  *   ------------------------------------------
- *                            TOTAL:  11 BYTES
+ *                            TOTAL:  3 BYTES
  */
-#define TUPLE_CHUNK_HEADER_SIZE 11
+#define TUPLE_CHUNK_HEADER_SIZE 3
 
 
 /* The target segment index also encodes whether the data should go only to
@@ -66,28 +62,20 @@ typedef enum TupleChunkType
 #define BROADCAST_SEGIDX        0xFF
 /*#define ALL_SEGDBS_MASK         0x8000*/
 
-/*#define GetSegIdx(x)            ((x) & ~ALL_SEGDBS_MASK)*/
+#define ANY_ROUTE -100
+
 #define GetSegIdx(x)            (x)
 #define IsBroadcastSegIdx(x)    (GetSegIdx(x) == BROADCAST_SEGIDX)
-/*#define IsActiveOnlySegIdx(x)   ( ((x) & ALL_SEGDBS_MASK) == 0 )*/
-/*#define SetAllSegdbsFlag(x)     ((x) | ALL_SEGDBS_MASK)*/
 
 /* Simple accessors/mutators for parts of the tuple-chunk header.  These
  * functions store multibyte integers in network byte order, and convert
  * back to hardware byte order on retrieval.
  */
 
-extern int16  GetTargetSegIdx(uint8 *tc_data);
-extern uint16 GetQueryGroupID(uint8 *tc_data);
-extern int16  GetSourceSegIdx(uint8 *tc_data);
-extern uint16 GetMotionNodeID(uint8 *tc_data);
+
 extern uint16 GetChunkDataSize(uint8 *tc_data);
 extern uint8  GetChunkType(uint8 *tc_data);
 
-extern void  SetTargetSegIdx(uint8 *tc_data, int16 value);
-extern void  SetQueryGroupID(uint8 *tc_data, uint16 value);
-extern void  SetSourceSegIdx(uint8 *tc_data, int16 value);
-extern void  SetMotionNodeID(uint8 *tc_data, uint16 value);
 extern void  SetChunkDataSize(uint8 *tc_data, uint16 value);
 extern void  SetChunkType(uint8 *tc_data, TupleChunkType value);
 

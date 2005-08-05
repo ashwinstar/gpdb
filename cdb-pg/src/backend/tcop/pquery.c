@@ -55,6 +55,11 @@ static void DoPortalRewind(Portal portal);
 
 /*
  * CreateQueryDesc
+ *
+ * N.B. If sliceTable is non-NULL in the top node of plantree, then 
+ * nMotionNodes and nParamExec must be set correctly, as well, and
+ * the QueryDesc will be arranged so that ExecutorStart and ExecutorRun
+ * will handle plan slicing.
  */
 QueryDesc *
 CreateQueryDesc(Query *parsetree,
@@ -80,6 +85,20 @@ CreateQueryDesc(Query *parsetree,
 	qd->tupDesc = NULL;
 	qd->estate = NULL;
 	qd->planstate = NULL;
+	
+	/* Setup these fields from info cached by CdbExecQuery on a QE */
+	if ( qd->plantree->sliceTable != NULL )
+	{
+		qd->gbl_sliceTable = (SliceTable*)plantree->sliceTable;
+		qd->gbl_nMotionNodes = plantree->nMotionNodes;
+		qd->gbl_nExtraRoots = plantree->nParamExec;
+	}
+	else
+	{
+		qd->gbl_sliceTable = NULL;
+		qd->gbl_nMotionNodes = 0;
+		qd->gbl_nExtraRoots = 0;
+	}
 
 	return qd;
 }

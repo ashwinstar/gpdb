@@ -43,6 +43,14 @@ typedef struct QueryDesc
 	TupleDesc	tupDesc;		/* descriptor for result tuples */
 	EState	   *estate;			/* executor's query-wide state */
 	PlanState  *planstate;		/* tree of per-plan-node state */
+	
+	/* These fields carry slice info from QD to QEs via CDBEXEC 
+	 * and CreateQueryDesc.
+	 */
+	SliceTable *gbl_sliceTable;
+	int gbl_nMotionNodes;
+	int gbl_nExtraRoots;
+	
 } QueryDesc;
 
 /* in pquery.c */

@@ -74,8 +74,7 @@ typedef struct TupleChunkListData
 
 
 extern TupleChunkListItem makeTupleChunkListItem(TupleChunkType chunkType,
-    void *pChunkData, uint16 chunkDataSize, int16 srcSegIdx,
-    int16 tgtSegIdx, uint16 mnid);
+    void *pChunkData, uint16 chunkDataSize);
 
 /* Add another item to the end of a tuple chunk list. */
 extern void appendChunkToTCList(TupleChunkList tcList, TupleChunkListItem tcItem);

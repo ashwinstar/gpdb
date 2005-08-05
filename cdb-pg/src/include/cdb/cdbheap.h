@@ -51,7 +51,6 @@ typedef struct CdbHeapTupleCompareInfo
  * It includes:
  *		1) The actual HeapTuple data from the executor
  *			( tuple)
- *		2) The shouldFree flag.
  *		3) The segindex that this data came from
  *			(sourceSegIndex)
  *		4) A pointer to the CdbHeapTupleCompareInfo
@@ -62,7 +61,6 @@ typedef struct CdbHeapTupleCompareInfo
 typedef struct CdbTupleHeapInfo
 {
 	HeapTuple					tuple;
-	bool						shouldFree;
 	int							sourceSegIndex;
 	CdbHeapTupleCompareInfo*	cmpinfo;
 } CdbTupleHeapInfo;
@@ -146,9 +144,9 @@ extern void DestroyCdbHeap( CdbHeap *cdbheap );
  * Specific heap functions, specific to 
  * heaps of CdbTupleHeapInfo data.
  */
-extern void SetCdbTupleHeapInitialValue( CdbHeap *cdbheap, HeapTuple tuple, bool shouldFree, int sourceSegIndex );
+extern void SetCdbTupleHeapInitialValue( CdbHeap *cdbheap, HeapTuple tuple, int sourceSegIndex );
 extern CdbTupleHeapInfo *GetLowestValueFromCdbTupleHeap( CdbHeap *cdbheap );
-extern void MergeNewValueIntoCdbTupleHeap( CdbHeap *cdbheap, HeapTuple h, bool shouldFree, int sourceSegIndex );
+extern void MergeNewValueIntoCdbTupleHeap( CdbHeap *cdbheap, HeapTuple h, int sourceSegIndex );
 extern int GetCountCdbHeap( CdbHeap *cdbheap );
 
 /*

@@ -2008,6 +2008,8 @@ makeEmptyPGconn(void)
 	conn->outBufSize = 16 * 1024;
 	conn->outBuffer = (char *) malloc(conn->outBufSize);
 	conn->nonblocking = FALSE;
+	conn->motion_listener = 0;
+	
 	initPQExpBuffer(&conn->errorMessage);
 	initPQExpBuffer(&conn->workBuffer);
 
@@ -2935,6 +2937,42 @@ PQoptions(const PGconn *conn)
 	return conn->pgoptions;
 }
 
+/* CDB added function. */
+int	PQmotionListener( PGconn *conn)
+{
+	if (!conn)
+		return -1;
+	
+	/* return it immediately if we've already fetched it. */
+	if( conn->motion_listener != 0 )
+		return conn->motion_listener;
+	
+	/* send a request to fetch the motion listener port. */
+	pqPacketSend( conn, 'W', NULL, 0 );
+	
+	conn->asyncStatus = PGASYNC_BUSY;
+	
+	
+	/* wait for a response. */
+	if (PG_PROTOCOL_MAJOR(conn->pversion) >= 3)
+		pqParseInput3(conn);
+	else
+		return -1;
+	
+	while( conn->motion_listener == 0 )
+	{
+		pqWait(TRUE, FALSE, conn );
+		pqReadData(conn);
+		
+		if (PG_PROTOCOL_MAJOR(conn->pversion) >= 3)
+			pqParseInput3(conn);
+		else
+			return -1;
+	}
+	
+	return conn->motion_listener;
+}
+
 ConnStatusType
 PQstatus(const PGconn *conn)
 {
@@ -3351,3 +3389,5 @@ PQregisterThreadLock(pgthreadlock_t newhandler)
 
 	return prev;
 }
+
+

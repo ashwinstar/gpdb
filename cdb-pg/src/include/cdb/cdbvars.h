@@ -169,7 +169,8 @@ extern bool Debug_print_prelim_plan;
 extern int			cdb_connections_per_thread;     /* GUC var - server operating mode.  */
 extern bool			assign_cdb_connections_per_thread( int newval, bool doit, GucSource source );
 extern const char	*show_cdb_connections_per_thread( void );
-
+extern bool			assign_interconnect_setup_timeout( int newval, bool doit, GucSource source );
+extern const char   *show_interconnect_setup_timeout( void );
 
 /*
  * Parameter cdb_max_tuple_chunk_size
@@ -230,18 +231,14 @@ extern bool enable_cdbbroadcast;
  */
 extern bool enable_agg_restruct;
 
-/*
- * Parameter ams_wait_time
+/* 
+ * Parameter interconnect_setup_timeout
  *
- * The run-time parameter (GUC variable) ams_wait_time controls the
- * amount of time that the motion layer polls when checking to see if more
- * work can be performed.  This time is in microseconds.
- *
- * The minimum value of this parameter is 1 bytes, and the maximum is
- * 1,000,000.
+ * The run-time parameter (GUC variable) interconnect_setup_timeout is used
+ * during SetupInterconnect() to timeout the operation.  This value is in 
+ * seconds.  Setting it to zero effectively disables the timeout.
  */
-extern int ams_wait_time;    /* GUC var */
-
+extern int interconnect_setup_timeout;
 
 
 /* --------------------------------------------------------------------------------------------------
@@ -259,5 +256,11 @@ typedef struct CdbCdb
  * Global variable declaration for the data for the single row of cdb.cdb table
  */
 extern CdbCdb CdbIdentity;
+
+
+/* Stores the listener port that this process uses to listen for incoming 
+ * Interconnect connections from other Motion nodes.
+ */
+extern int Cdb_listener_port;
 
 #endif	/* CDBVARS_H */

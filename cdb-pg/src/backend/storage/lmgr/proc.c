@@ -1163,6 +1163,7 @@ CheckStatementTimeout(void)
 	{
 		/* Time to die */
 		statement_timeout_active = false;
+		
 		kill(MyProcPid, SIGINT);
 	}
 	else

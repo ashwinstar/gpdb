@@ -14,14 +14,9 @@
 #include "access/htup.h"
 #include "cdb/tupchunk.h"
 #include "cdb/tupchunklist.h"
+#include "nodes/primnodes.h"
+#include "nodes/execnodes.h" //SliceTable
 
-
-/* constants associated with the ams_wait_time GUC Var.  All values are in 
- * microseconds. 
- */
-#define DEFAULT_AMS_WAIT_TIME 2000
-#define MIN_AMS_WAIT_TIME 1
-#define MAX_AMS_WAIT_TIME 1000000
 
 
 /* Define this if you want tons of logs! */
@@ -31,7 +26,7 @@
 typedef enum SendReturnCode
 {
 	SEND_COMPLETE,
-	SEND_INCOMPLETE
+	STOP_SENDING
 } SendReturnCode;
 
 
@@ -43,53 +38,6 @@ typedef enum ReceiveReturnCode
 } ReceiveReturnCode;
 
 
-/* Used to keep track of a Tuple that is attempting to be sent.
- *
- * FIELDS:
- *
- *	heap_tuple:  Heap tuple to be sent.
- *
- *            TODO:  change this below
- *	target_segment:  The target destination segment; -1 indicates broadcast.
- *
- *	flags:	indicates if the tuple should be delivered to the active
- *		segment database or to both the active and backup.
- *
- *	total_tuple_bytes: The total number of bytes that the serialized tuple
- *			   will occupy.
- *
- *	total_bytes_sent:  The total number of bytes that have been written
- *			   into the local AMS buffers.  This is NOT the number
- *			   of bytes that have been copied to the network. 
- *
- *	last_bytes_written:   The number of bytes that were written the last
- *			      time the SentTuple() function was called.
- *
- */
-typedef struct TupleSendContext
-{
-	HeapTuple heap_tuple;
-	int16 target_segment;
-	unsigned char flags;
-
-	long total_tuple_bytes;
-    long tuple_bytes_sent;      /* Bytes of tuple data sent. */
-	long total_bytes_sent;      /* Bytes sent, including chunk header info. */
-	long last_bytes_written;    /* Bytes sent in the last operation. */
-    
-    /*
-     * The following information is initialized and managed by the Motion
-     * Layer.  DON'T MESS WITH IT, or you will make the Motion Layer ANGRY.
-     *
-     * Data structures referenced below are allocated with palloc().
-     */
-    
-    TupleChunkList tuple_chunk_list;
-    TupleChunkListItem next_tuple_chunk;
-    
-} TupleSendContext;
-
-
 
 /* API FUNCTION CALLS */
 
@@ -97,12 +45,13 @@ typedef struct TupleSendContext
 /* One-time initialization of motion layer. */
 extern void InitMotionLayer(void);
 
+
 /* Initialization of each motion node in execution plan. */
-extern void InitMotionLayerNode(uint16 motNodeID, bool includeBackupSegDB,
-    bool preserveOrder, TupleDesc tupDesc);
+extern void InitMotionLayerNode(int16 motNodeID, bool preserveOrder, 
+		TupleDesc tupDesc);
 
 /* Cleanup of each motion node in execution plan (normal termination). */
-extern void EndMotionLayerNode(uint16 motNodeID, bool flushCommLayer);
+extern void EndMotionLayerNode(int16 motNodeID, bool flushCommLayer);
 
 /* Reset the Motion Layer's state between query executions (normal termination
  * or error-cleanup). */
@@ -130,13 +79,9 @@ extern void ResetMotionLayer(bool flushCommLayer);
  *				AMS send-buffers, but as far as the motion node
  *				is concerned the send is done.
  *
- *		SEND_INCOMPLETE - Not all of the tuple could be sent in this 
- *				  call.  Zero or more bytes may have been sent;
- *				  the TupleSendContext structure will be updated
- *				  with the change in status.
+ *		STOP_SENDING - Receiver no longer wants to receive from us.
  */
-extern SendReturnCode SendTuple(uint16 motNodeID, TupleSendContext *tupCtxt);
-
+extern SendReturnCode SendTuple(int16 motNodeID, HeapTuple tuple, int16 targetRoute);
 
 
 /* Send or broadcast an END_OF_STREAM token to the corresponding motion-node
@@ -157,7 +102,7 @@ extern SendReturnCode SendTuple(uint16 motNodeID, TupleSendContext *tupCtxt);
  *				  were full and the operation should be tried
  *				  later.  (Real errors are signalled via ereport().)
  */
-extern SendReturnCode SendEndOfStream(uint16 motNodeID, int16 target_segment);
+extern SendReturnCode SendEndOfStream(int16 motNodeID, int16 targetRoute);
 
 
 /* Receive a tuple from the corresponding motion-node on any query-executor
@@ -172,56 +117,8 @@ extern SendReturnCode SendEndOfStream(uint16 motNodeID, int16 target_segment);
  *
  *		END_OF_STREAM - No tuple was received, and no more are expected.
  */
-extern ReceiveReturnCode RecvTuple(uint16 motNodeID, HeapTuple *tup_i);
-extern ReceiveReturnCode RecvTupleFrom(uint16 motNodeID, HeapTuple *tup_i,
-                                       int16 srcSegIdx);
-
-
-/* Proposed API call.  Would block until there was something to be received
- * with RecvTuple().  This function could ONLY EVER be called 
- * after its own local tuples had all been sent out. 
- *
- * It would prevent the local motion node from having to spin or poll.
- * 
- * we can probably skip implementing this initially... but i think its a good
- * thing that we should ultimately.
- */
-extern void CanReadTuple(void);		    
-
-
-/* to be used with waitForEvent in the segId field to specify interest
- * in all reads 
- */
-#define READ_INTEREST_ALL -32768
-#define WRITE_INTEREST_ALL -32768
-
-/* Allows the caller to wait on a combination of specified read and write
- * interest.   Read interest is further specified by a segId.  One can
- * specify interest in of any read by specifying READ_INTEREST_ALL.
- *
- * Specifying read interest will block on this call until a Tuple becomes
- * available to read from the specified segId.
- *
- * If both read and write interest is specified, the function will block
- * until one of the two operations becomes possible.  Currently, this 
- * function does not provide any feedback as to what event actually occured.
- *
- * NOTE: currently only READ_INTEREST_ALL is supported for segId!!! 
- *
- * PARAMETERS:
- *
- *  - motNodeID: motion id that interest is registered for.
- *
- *  - readInterest:  signals if interested in knowing when to read again.
- *
- *  - segId:  significant only when readInterest is true.  Specifies which
- *            segId we are interested in reading.
- *
- *  - writeInterest:  signals if interested in knowing when we can write
- *                    again.
- *
- */
-void waitForEvent( uint16 motNodeID, bool readInterest, int segId, bool writeInterest);
-
+extern ReceiveReturnCode RecvTuple(int16 motNodeID, HeapTuple *tup_i);
+extern ReceiveReturnCode RecvTupleFrom(int16 motNodeID, HeapTuple *tup_i,
+                                       int16 srcRoute);
 
 #endif /*CDBMOTION_H */

@@ -46,18 +46,9 @@ extern void cdblink_setup(void);
  * Called by on_proc_exit processing (in /backend/storage/ipc/ipc.c) to drop 
  * the connections to the tails. 
  */
-extern void cdblink_disconnect( int exit_code, Datum arg );
+//extern void cdblink_disconnect( int exit_code, Datum arg );
 
-/* 
- * Returns my_segindex and my_isprimary in out parameters
- * for the postgres process.  If either pointer is NULL,
- * it skips returning that parameter.
- * 
- * N.B.  Cdb_role must be either dispatch or execute, since
- * when utiliy  no cdb catalog tables are read.  An Assert is
- * thrown if Cdb_role = utility.
- */
-extern void getCdbIdentity(int *segindex, bool *isprimary);
+
 
 /* 
  * Returns the number of segments
@@ -78,5 +69,7 @@ extern int getCdbSegmentCount(void);
  * This is implemented in cdbl
  */
 extern int *getCdbSegments(int *segcount);
+
+//extern struct CdbComponentDatabaseInfo *getComponentDatabaseInfo( int segId, int instId );
 
 #endif   /* CDBLINK_H */

@@ -16,7 +16,6 @@
 
 #include "access/relscan.h"
 #include "cdb/cdbhash.h"
-#include "cdb/cdbmotion.h"
 #include "executor/hashjoin.h"
 #include "executor/tuptable.h"
 #include "fmgr.h"
@@ -290,9 +289,11 @@ typedef struct ResultRelInfo
 	 * available to the QD in PGconn structure associated with connected
 	 * QE.  It needs to be explicitly transmitted to QE's,  however,
 	 */
-	 
+
 	char *listenerAddr; /* Interconnect listener IPv4 address, a C-string */
+
 	int listenerPort; /* Interconnect listener port */
+	int pid; /* Backend PID of the process. */
 	
 	/* Unclear about why we need these, however, it is no trouble to carry
 	 * them.
@@ -335,8 +336,16 @@ typedef struct Slice
 	int gangSize;			/* How many gang members needed? 
 							 *
 							 * This may seem redundant, but it is set before
-							 * the process lists belo and used to decide how
+							 * the process lists below and used to decide how
 							 * to initialize them.
+							 */
+							 
+	struct Gang *primaryGang;
+	struct Gang *mirrorGang;   /* These are significant ONLY in the master
+							 * slice table on the QD where they are used to 
+							 * note the gangs assigned by the the executor
+							 * factory during gang allocation.  
+							 * They correspond to the CDBProcessLists below.
 							 */
 							 
 	int parentIndex;		/* The index in the global slice table (origin
@@ -1348,7 +1357,6 @@ typedef struct MotionState
 	int					segindexNext;		/* for a sorted motion node, the segindex to get next (same as the segindex last returned ) */
 	bool				tupleheapReady;		/* for a sorted motion node, false until we have a tuple from each source segindex */
 
-    TupleSendContext tupSendCtxt;   /* Context for in-flight tuples being sent. */
 
 	/* The following can be used for debugging, usage stats, etc.  */
 	int			numTuplesFromChild;	/* Number of tuples received from child */

@@ -8,43 +8,91 @@
 #ifndef ML_IPC_H
 #define ML_IPC_H
 
-#include <mpi.h>
 
+#include "nodes/primnodes.h"
 #include "cdb/tupchunklist.h"
+#include "nodes/execnodes.h"
 
 
-extern void setMpiComm( MPI_Comm comm );
+/* size of the largest packet that will be sent over the interconnect.
+ * A packet can contain one or more TupleChunks.  A TupleChunk is either an
+ * entire Tuple or a piece of one.
+ */
+#define MAX_PACKET_SIZE 8192
+
 
 /* Performs initialization of the MotionLayerIPC.  This should be called before
- * any work is performed through functions here.
+ * any work is performed through functions here.  Generally, this should only 
+ * need to be called only once during process startup.
+ *
+ * Errors are indicated by calls to ereport(), and are therefore not indicated
+ * by a return code.
+ *
+ */
+extern void InitMotionLayerIPC( void );
+
+
+/* Performs any cleanup necessary by the Motion Layer IPC.  This is the cleanup
+ * function that matches InitMotionLayerIPC, it should only be called during
+ * shutdown of the process.
  *
  * Errors are indicated by calls to ereport(), and are therefore not indicated
  * in the return code.
  *
- * PARAMETERS:
- *   - segmentId:  The segmentId for this SegmentDatabase.
- *
- * RETURN:
- *   - none.
  */
-extern void InitMotionLayerIPC( int segmentId );
+extern void CleanUpMotionLayerIPC( void );
 
 
-/* Performs any cleanup necessary by the Motion Layer IPC.  The cleanup is for
- * connection level cleanup that should happen during connection teardown.
+
+/* ListenerSetup
  *
- * TODO: is this statement level or connection level?
+ * Returns a system assigned TCP port that will be used to "listen" for
+ * incoming connections from other postgres ml_ipc layers LATER during
+ * query initialization.  
  *
- * Errors are indicated by calls to ereport(), and are therefore not indicated
- * in the return code.
+ * This port is used for the duration of this process and should never change.
  *
- * PARAMETERS:
- *   - none.
- *
- * RETURN:
- *   - none.
+ * RETURNS
+ *    System picked TCP port that listener is using.
  */
-extern void CleanUpMotionLayerIPC(void);
+extern int ListenerSetup( void );
+
+
+
+/* The SetupInterconnect() function should be called at the beginning of
+ * executing any DML statement that will need to use the interconnect.
+ *
+ * This function goes through the slicetable and makes any appropriate
+ * outgoing connections as well as accepts any incoming connections.  Incoming
+ * connections will have a "Register" message from them to see which remote
+ * CdbProcess sent it.  
+ *
+ * So this function essentially performs all of the setup the interconnect has
+ * to perform for all of the motion nodes in the upcoming DML statement.
+ *
+ * PARAMETERS
+ * 
+ *   mySliceTable - slicetable structure that correlates to the upcoming DML 
+ *					statement.
+ *
+ *   mySliceId - the index of the slice in the slicetable that we are a member of.
+ *
+ */
+extern void SetupInterconnect( SliceTable *mySliceTable, int mySliceId );
+
+
+
+/* The TeardownInterconnect() function should be called at the end of executing
+ * a DML statement to close down all TCP socket resources that were setup during
+ * SetupInterconnect(). 
+ *
+ * NOTE: it is important that TeardownInterconnect() happens regardless of the
+ *       outcome of the statement.  i.e. gets called even if an ERROR occurs
+ *		 during the statement.
+ *
+ */
+extern void TeardownInterconnect( void );
+
 
 
 /* Sends a tuple chunk from the Postgres process to the local AMS process via
@@ -54,40 +102,77 @@ extern void CleanUpMotionLayerIPC(void);
  * Errors are indicated by calls to ereport(), and are therefore not indicated
  * in the return code.
  *
- * PARAMETERS:
- *   - tcItem:  The tuple-chunk data to send.
  *
- * RETURN:
- *   - false if the chunk could not be sent, or true if it could be sent.
+ * PARAMETERS:
+ *   - motNodeID:   motion node Id that the tcItem belongs to.
+ *   - targetRoute: route to send this tcItem out over.
+ *   - tcItem:      The tuple-chunk data to send.
+ *
  */
-extern bool SendTupleChunkToAMS(TupleChunkListItem tcItem);
+extern bool SendTupleChunkToAMS( int16 motNodeID, 
+								 int16 targetRoute,
+								 TupleChunkListItem tcItem);
 
 
-/* Attempts to Receive one or more tuple chunks from the local AMS process
- * via IPC.  This function does not block; if there is no tuple chunk available,
- * does not block; then NULL is returned.  
+
+/* The SendEosToAMS() function is used to send an "End Of Stream" message to
+ * the specified targetRoute. (generally this is a broadcast)
+ *
+ * PARAMETERS:
+ *   - motNodeID:   motion node Id that the tcItem belongs to.
+ *   - targetRoute: route to send this tcItem out over.
+ *   - tcItem:      The tuple-chunk data to send.
  * 
- * NOTE: Although this function returns a chain of TupleChunkListItem's, they
- *       are not necessarily all for the same motion node.  The caller of this
- *       function will have to go through and put them back together as needed.
+ */
+extern void SendEosToAMS( int16 motNodeID,
+						  int16 targetRoute,
+						  TupleChunkListItem tcItem );
+
+
+
+/* The RecvTupleChunkFromAny() function attempts to receive one or more tuple 
+ * chunks from any of the incoming connections.  This function blocks until
+ * at least one TupleChunk is received. (Although PG Interrupts are still
+ * checked for within this call).
  *
- * Errors are indicated by calls to ereport(), and are therefore not indicated
- * in the return code.
+ * NOTE: The TupleChunkListItem can have other's chained to it.  The caller
+ *		 should check and process all in list.
  *
  * PARAMETERS:
- *   - none.
+ *  - motNodeID:  motion node id to receive for.
+ *  - srcRoute: output parameter that allows the function to return back which
+ *			    route the TupleChunkListItem is from.
  *
  * RETURN:
- *   - A populated TupleChunkListItemData structure (allocated with palloc()),
- *     or NULL if no chunk is available at time of call.
+ *   - A populated TupleChunkListItemData structure (allocated with palloc()).
  */
-extern TupleChunkListItem RecvTupleChunkFromAMS(void);
+extern TupleChunkListItem RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute );
 
-/* used to send a shutdown message to the ams. 
+
+
+/* The RecvTupleChunkFrom() function is similar to the RecvTupleChunkFromAny()
+ * function except that the connection we are interested in is specified with
+ * srcRoute.
+ *
+ * PARAMETERS:
+ *   - motNodeID: motion node id to receive for.
+ *   - srcRoute:  which connection to receive on.
+ * RETURN:
+ *   - A populated TupleChunkListItemData structure (allocated with palloc()).
  */
-extern bool SendShutdownToAMS(TupleChunkListItem tcItem);
+extern TupleChunkListItem RecvTupleChunkFrom( int16 motNodeID, int16 srcRoute );
+	
 
-
-extern bool CanWriteToAMS( int segId );
+/* The DeregisterReadInterest() function is used to specify that we are no 
+ * longer interested in reading from the specified srcRoute. After calling this
+ * function, we should no longer ever return TupleChunks from this srcRoute 
+ * when calling RecvTupleChunkFromAny().
+ *
+ * PARAMTERS:
+ *	 - motNodeID: motion node id that this applies to.
+ *   - srcRoute:  which connection to turn off reads for.
+ *
+ */
+extern void	DeregisterReadInterest( int16 motNodeID, int16 srcRoute );	
 
 #endif /* ML_IPC_H */

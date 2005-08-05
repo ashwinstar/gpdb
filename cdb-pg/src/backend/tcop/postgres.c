@@ -360,6 +360,10 @@ SocketBackend(StringInfo inBuf)
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
 					 errmsg("invalid frontend message type %d", qtype)));
 			break;
+		
+		case 'W':   /* CDB command for transmitting listener port. */
+			
+			break;
 
 		default:
 
@@ -2770,7 +2774,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 
 		pq_beginmessage(&buf, 'K');
 		pq_sendint(&buf, (int32) MyProcPid, sizeof(int32));
-		pq_sendint(&buf, (int32) MyCancelKey, sizeof(int32));
+		pq_sendint(&buf, (int32) MyCancelKey, sizeof(int32));				
 		pq_endmessage(&buf);
 		/* Need not flush since ReadyForQuery will do it. */
 	}
@@ -3035,7 +3039,17 @@ PostgresMain(int argc, char *argv[], const char *username)
 									   paramTypes, numParams);
 				}
 				break;
-
+			case 'W':    /*Cdb Motion Listener. */
+				{
+					StringInfoData buf;
+				
+					pq_beginmessage(&buf, 'w');
+					pq_sendint(&buf, (int32) Cdb_listener_port, sizeof(int32));			
+					pq_endmessage(&buf);
+					pq_flush();
+				}
+				break;
+				
 			case 'B':			/* bind */
 
 				/*

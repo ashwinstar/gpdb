@@ -29,34 +29,6 @@
 #define VARLEN_SCRATCH_SIZE 500
 
 
-/* Used to encapsulate a motion node's core identity.
- *
- * FIELDS:
- *
- *	query_group_id:  When a user connects to the CDB, a postgres process
- *			   will be started for every segment-database in the CDB.
- *			   All of these postgres processes are part of the same 
- *			   group of processes serving that user's connection and
- *			   so all will have the same globally unique 
- *			   "process_group_id" that identifies this group from
- *			   other groups within the CDB.  
- *
- *			   TODO:  This id is assigned by the AMS?
- *
- *	segment_id: The segment id for the local segment database.
- *
- *	host_id: The host id for the local segment database.
- *
- */
-typedef struct MotionNodeInfo
-{
-	int query_group_id;
-	int segment_id;
-	int host_id;
-    
-} MotionNodeInfo;
-
-
 /*
  * The next two structures are for cached tuple serialization and
  * deserialization information.  This information is cached since there will
@@ -128,17 +100,13 @@ extern HeapTuple DeserializeTuple(SerTupInfo *pSerInfo, StringInfo serialTup);
  * tuple data.
  */
 extern TupleChunkList CvtHeapTupToChunks(HeapTuple htup, SerTupInfo *pSerInfo,
-    int maxChunkDataSize, uint16 motNodeID, MotionNodeInfo *mn_info,
-    int16 tgtSegIdx);
+    int maxChunkDataSize);
 
 /* Convert a sequence of chunks containing serialized tuple data into a
  * HeapTuple.
  */
 extern HeapTuple CvtChunksToHeapTup(TupleChunkList tclist, SerTupInfo *pSerInfo);
 
-/* Create an "end of stream" tuple chunk. */
-extern TupleChunkListItem MakeEndOfStreamChunk(int16 srcSegIdx,
-    MotionNodeInfo *mn_info);
 
 
 #endif /* TUPSER_H */

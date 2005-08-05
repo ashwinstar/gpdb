@@ -247,7 +247,12 @@ pqParseInput3(PGconn *conn)
 					if (pqGetInt(&(conn->be_pid), 4, conn))
 						return;
 					if (pqGetInt(&(conn->be_key), 4, conn))
-						return;
+						return;	
+					break;
+				case 'w':  /* get the Cdb Motion Listener. */
+					if (pqGetInt(&(conn->motion_listener), 4, conn))
+						return;	
+					conn->asyncStatus = PGASYNC_IDLE;
 					break;
 				case 'T':		/* Row Description */
 					if (conn->result == NULL)

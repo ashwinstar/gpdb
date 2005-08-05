@@ -7,7 +7,7 @@
 #ifndef CDBTMLOG_H
 #define CDBTMLOG_H
 
-#include "utils/pg_crc.h";
+#include "utils/pg_crc.h"
 #include "cdb/cdbtm.h"
 
 /* recType  states */

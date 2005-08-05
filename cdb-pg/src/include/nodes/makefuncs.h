@@ -15,6 +15,7 @@
 #define MAKEFUNC_H
 
 #include "nodes/parsenodes.h"
+#include "nodes/primnodes.h"
 
 
 extern A_Expr *makeA_Expr(A_Expr_Kind kind, List *name,

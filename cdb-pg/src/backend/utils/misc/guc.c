@@ -1388,16 +1388,6 @@ static struct config_int ConfigureNamesInt[] =
         DEFAULT_TC_DATA_SIZE, MIN_TC_DATA_SIZE, MAX_TC_DATA_SIZE, NULL, NULL
     },
 
-    {
-        {"ams_wait_time", PGC_SUSET, UNGROUPED,
-            gettext_noop("Sets the wait time (in microseconds) the Motion Layer"
-                         " uses to check on whether work can be done."),
-			NULL
-        },
-        &ams_wait_time,
-        DEFAULT_AMS_WAIT_TIME, MIN_AMS_WAIT_TIME, MAX_AMS_WAIT_TIME , NULL, NULL
-    },
-
 	{
 		{"cdb_connections_per_thread", PGC_SUSET, UNGROUPED,
 			gettext_noop("Sets the number of client connections handled in each thread."),
@@ -1418,6 +1408,16 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&Cdb_querygroup_id,
 		0, INT_MIN, INT_MAX, NULL, NULL
+	},
+	
+	
+	{
+		{"cdb_interconnect_setup_timeout", PGC_USERSET, UNGROUPED,
+			gettext_noop("Timeout on interconnect setup that occurs at query start"),
+			gettext_noop("Used by Interconnect to timeout the setup of the communication fabric.")	
+		},
+		&interconnect_setup_timeout,
+		10, INT_MIN, INT_MAX, assign_interconnect_setup_timeout, show_interconnect_setup_timeout
 	},
 
 
