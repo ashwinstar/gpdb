@@ -118,9 +118,9 @@ endif
 
 all: all-spi
 
-.PHONY: all-spi
-all-spi:
-	$(MAKE) -C $(contribdir)/spi refint$(DLSUFFIX) autoinc$(DLSUFFIX)
+#.PHONY: all-spi
+#all-spi:
+#	$(MAKE) -C $(contribdir)/spi refint$(DLSUFFIX) autoinc$(DLSUFFIX)
 
 
 ##
