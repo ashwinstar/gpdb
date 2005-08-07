@@ -20,16 +20,24 @@
 #******************************************************************************
 #******************************************************************************
 # Prep Code
+
+WORKDIR=`dirname $0`
+
 # Source required functions file, this required for script to run
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
-WORKDIR=`dirname $0`
 FUNCTIONS=$WORKDIR/mpp_bash_functions.sh
 if [ -f $FUNCTIONS ];then
-        . $FUNCTIONS
+  . $FUNCTIONS
 else
-        echo "[FATAL:]-Cannot source $FUNCTIONS file Script Exits!"
-        exit 2;fi
+  echo "[FATAL:]-Cannot source $FUNCTIONS file Script Exits!"
+  exit 2
+fi
+
+LOGDIR=`pwd`/logs
+if [ ! -d $LOGDIR ];then
+  mkdir $LOGDIR
+fi
 #******************************************************************************
 # Location Variables
 #******************************************************************************
@@ -44,7 +52,7 @@ else
 # Log file that will record script actions
 CUR_DATE=`$DATE +%Y%m%d`
 PROG_NAME=`$BASENAME $0`
-BACKOUT_FILE=$WORKDIR/logs/backout_mppcreatecluster_$CUR_DATE
+BACKOUT_FILE=$LOGDIR/backout_mppcreatecluster_$CUR_DATE
 # Level of script feedback 0=small 1=verbose
 VERBOSE=1
 INTERACTIVE=1
@@ -104,94 +112,125 @@ USAGE () {
         exit $EXIT_STATUS
 }
 
-
 CHK_PARAMS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+
 	#Make sure that script has been supplied a config file
-	if [ ! $CLUSTER_CONFIG ];then
-		ERROR_EXIT "[FATAL]:-MPP configuration filename [-c] option not provided." 2;fi
+	if [ x"" = x"$CLUSTER_CONFIG" ];then
+		ERROR_EXIT "[FATAL]:-MPP configuration filename [-c] option not provided." 2
+	fi
+
 	#Check that we have a non-zero configuration file
 	CHK_FILE $CLUSTER_CONFIG
+
 	if [ $EXISTS -ne 0 ];then
-		ERROR_EXIT "[FATAL]:-Problem with $CLUSTER_CONFIG file" 2;fi
+		ERROR_EXIT "[FATAL]:-Problem with $CLUSTER_CONFIG file" 2
+	fi
+
 	#Source the cluster configuration file
 	LOG_MSG "[INFO]:-Reading MPP configuration file $CLUSTER_CONFIG"
 	. $CLUSTER_CONFIG
+
 	#Check the other files that are required to be able to continue
 	FILE_LIST=($MACHINE_LIST_FILE)
 	for FILE in "${FILE_LIST[@]}"
 	do
 		CHK_FILE $FILE
 		if [ $EXISTS -ne 0 ];then
-		ERROR_EXIT "[FATAL]:-Problem with $FILE file" 2
-		LOG_MSG "[INFO]:-Completed check of file $FILE"
+		  ERROR_EXIT "[FATAL]:-Problem with $FILE file" 2
+		  LOG_MSG "[INFO]:-Completed check of file $FILE"
 		fi
 	done
+
 	CHK_DUPLICATES
 	#Set up the machine list array
 	LOG_MSG "[INFO]:-Setting up QE list array"
 	declare -a MACHINE_LIST=(`$CAT $MACHINE_LIST_FILE`)
+
 	#Now process contents for the configuration file
 	if [ ! "$CLUSTER_NAME" ];then
 		LOG_MSG "[WARN]:-CLUSTER_NAME variable not set, will provide default value"
-		CLUSTER_NAME="MPP Cluster";fi
+		CLUSTER_NAME="MPP Cluster"
+	fi
 	export $CLUSTER_NAME
-	if [ ! $QD_HOSTNAME ];then
-		ERROR_EXIT "[FATAL]:QD_HOSTNAME variable not set" 2;fi
+
+	if [ x"" = x"$QD_HOSTNAME" ];then
+		ERROR_EXIT "[FATAL]:QD_HOSTNAME variable not set" 2
+	fi
+
 	#Make sure that this script is running on the QD host
 	if [ $QD_HOSTNAME != `$HOSTNAME` ];then
-		ERROR_EXIT "[FATAL]:-This script must be executed on the QD host $QD_HOSTNAME" 2;fi 
+		ERROR_EXIT "[FATAL]:-This script must be executed on the QD host $QD_HOSTNAME" 2
+	fi 
+
 #SEG_PREFIX
 	if [ ! $SEG_PREFIX ];then
-		ERROR_EXIT "[FATAL]:-SEG_PREFIX variable not set" 2;fi
+		ERROR_EXIT "[FATAL]:-SEG_PREFIX variable not set" 2
+	fi
+
 	# Deal with issue of mixed case segment names being created in all lower case on tails but mixed
 	# case in head system tables.
 	LWR_CASE_SEG_PREFIX=`$ECHO $SEG_PREFIX|$TR '[A-Z]' '[a-z]'`
 	SEG_PREFIX=$LWR_CASE_SEG_PREFIX
+
 #PORT_BASE
 	if [ ! $PORT_BASE ];then
-		ERROR_EXIT "[FATAL]:-PORT_BASE variable not set"2;fi
+		ERROR_EXIT "[FATAL]:-PORT_BASE variable not set"2
+	fi
 	QD_PORT=$PORT_BASE
+
 #DATA_DIRECTORY
 	((QE_PRIMARY_COUNT=${#DATA_DIRECTORY[@]}))
 	if [ $QE_PRIMARY_COUNT -eq 0 ];then
-		ERROR_EXIT "[FATAL]:-Number of primary directories 0 (zero)" 2;fi
+		ERROR_EXIT "[FATAL]:-Number of primary directories 0 (zero)" 2
+	fi
+
 #QD_DATA_DIRECTORY
 	if [ ! $QD_DATA_DIRECTORY ];then
-		ERROR_EXIT "[FATAL]:-QD_DATA_DIRECTORY variable not set" 2;fi
+		ERROR_EXIT "[FATAL]:-QD_DATA_DIRECTORY variable not set" 2
+	fi
 #DATABASE_PREFIX
 	if [ ! $DATABASE_PREFIX ];then
-		ERROR_EXIT "[FATAL]:-DATABASE_PREFIX variable not set" 2;fi
+		ERROR_EXIT "[FATAL]:-DATABASE_PREFIX variable not set" 2
+	fi
 #IP_ALLOW
 	if [ ! $IP_ALLOW ];then
-		ERROR_EXIT "[FATAL]:-IP_ALLOW variable not set" 2;fi
+		ERROR_EXIT "[FATAL]:-IP_ALLOW variable not set" 2
+	fi
 #TRUSTED_SHELL
 	if [ ! $TRUSTED_SHELL ];then
-		ERROR_EXIT "[FATAL]:-TRUSTED_SHELL variable not set" 2;fi
+		ERROR_EXIT "[FATAL]:-TRUSTED_SHELL variable not set" 2
+	fi
 #CHECK_POINT_SEGMENTS
 	if [ ! $CHECK_POINT_SEGMENTS ];then
-		ERROR_EXIT "[FATAL]:-CHECK_POINT_SEGMENTS variable not set" 2;fi
+		ERROR_EXIT "[FATAL]:-CHECK_POINT_SEGMENTS variable not set" 2
+	fi
 #ENCODING
 	if [ ! $ENCODING ];then
 		LOG_MSG "[WARN]:-ENCODING variable not set, will set to default SQL_ASCII"
-		ENCODING="SQL_ASCII";fi
+		ENCODING="SQL_ASCII"
+	fi
 #Number of QE hosts in this configuration
 	((NUM_QES=${#MACHINE_LIST[*]}))
 	if [ $NUM_QES -eq 0 ];then
-		ERROR_EXIT "[FATAL]:-Number of QE's 0 (zero)" 2;fi
+		ERROR_EXIT "[FATAL]:-Number of QE's 0 (zero)" 2
+	fi
 #Mirror configuration
 	if [ $MIRROR_PORT_BASE ];then
 		MIRRORING=1
 		((NUM_MIRROR_DIRECTORY=${#MIRROR_DATA_DIRECTORY[@]}))
 		if [ $NUM_MIRROR_DIRECTORY -ne $QE_PRIMARY_COUNT ];then
-		  	ERROR_EXIT "[FATAL]:-Number of primary directories does not match number of mirror directories" 2;fi
+		  	ERROR_EXIT "[FATAL]:-Number of primary directories does not match number of mirror directories" 2
+		fi
 	fi
 #Below commented out until standby QD tests completed (25/07/2005)
 ##	if [ $STANDBY_IP_ALLOW ]&& [ $STANDBY_QD_MASK ];then
 ##		LOG_MSG "[INFO]:-Standby QD IP = $STANDBY_QD_IP"
 ##		LOG_MSG "[INFO]:-Standby QD Netmask = $STANDBY_QD_MASK"
 ##	else
-##		LOG_MSG "[INFO]:-Standby QD = off";fi
+##		LOG_MSG "[INFO]:-Standby QD = off"
+
+}
 
 CHK_DUPLICATES () {
   LOG_MSG "[INFO]:-Start Function $FUNCNAME"
@@ -246,19 +285,21 @@ CHK_QES () {
 			$TRUSTED_SHELL $MPP_HOSTNAME "$LS $MPP_DIR" >> $LOG_FILE 2>&1
 			RETVAL=$?
 			if [ $RETVAL -eq 0 ];then
-				ERROR_EXIT "[FATAL]:-Instance directory $MPP_DIR exists on QE $MPP_HOSTNAME" 2;fi
+				ERROR_EXIT "[FATAL]:-Instance directory $MPP_DIR exists on QE $MPP_HOSTNAME" 2
+			fi
 		done
 		#Check for mirror directories if nirroring configured
 		if [ $MIRRORING -ne 0 ];then
 			LOG_MSG "[INFO]:-Mirror QE directory check"
 			for I in "${QE_MIRROR_ARRAY[@]}"
 			do
-			SET_VAR $I
-			LOG_MSG "[INFO]:-Checking $MPP_HOSTNAME for dir $MPP_DIR"
-			$TRUSTED_SHELL $MPP_HOSTNAME "$LS $MPP_DIR" > /dev/null 2>&1
-			RETVAL=$?
-			if [ $RETVAL -eq 0 ];then
-				ERROR_EXIT "[FATAL]:-Instance directory $MPP_DIR exists on QE $MPP_HOSTNAME" 2;fi
+			  SET_VAR $I
+			  LOG_MSG "[INFO]:-Checking $MPP_HOSTNAME for dir $MPP_DIR"
+			  $TRUSTED_SHELL $MPP_HOSTNAME "$LS $MPP_DIR" > /dev/null 2>&1
+			  RETVAL=$?
+			  if [ $RETVAL -eq 0 ];then
+				  ERROR_EXIT "[FATAL]:-Instance directory $MPP_DIR exists on QE $MPP_HOSTNAME" 2
+			  fi
 			done
 		else
 			LOG_MSG "[INFO]:-Mirror QE directory check skipped, mirroring=Off";fi 
@@ -272,7 +313,8 @@ GET_HOST_ID () {
 	for MPP_HOST in "${MACHINE_LIST[@]}"	
 	do	
 		if [ $1 == ${MACHINE_LIST[$MPP_INDEX]} ];then
-			FOUND=$MPP_INDEX;fi
+			FOUND=$MPP_INDEX
+		fi
 		((MPP_INDEX=$MPP_INDEX+1))
 	done
 	MPP_INDEX=$FOUND
@@ -282,7 +324,8 @@ GET_HOST_ID () {
 		if [ $1 == $QD_HOSTNAME ];then
 			MPP_INDEX=1
 		else
-			((MPP_INDEX=$MPP_INDEX+1));fi
+			((MPP_INDEX=$MPP_INDEX+1))
+		fi
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -294,7 +337,8 @@ LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	if [ `$CAT ${MACHINE_LIST_FILE}|$GREP -c $QD_HOSTNAME` -eq 0 ];then
 		declare -a MACHINE_LIST=(`$CAT $MACHINE_LIST_FILE`)
 	else
-		declare -a MACHINE_LIST=($QD_HOSTNAME `$CAT $MACHINE_LIST_FILE|$GREP -v "${QD_HOSTNAME}\$"`);fi
+		declare -a MACHINE_LIST=($QD_HOSTNAME `$CAT $MACHINE_LIST_FILE|$GREP -v "${QD_HOSTNAME}\$"`)
+	fi
 	NUM_QE_HOSTS="${#MACHINE_LIST[@]}"
 	MIRROR_HOST_LIST=("${MACHINE_LIST[@]}" "${MACHINE_LIST[@]}")
 	DBID_COUNT=2
@@ -336,12 +380,14 @@ LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 					do
 						if [ $QE_NAME ==  "${MACHINE_LIST[$IDX]}" ];then
 							((IDX=$IDX+1))
-							break;fi
+							break
+						fi
 						((IDX=$IDX+1))
 					done
 					MIR_IDX=$IDX
 				else
-					((MIR_IDX=$QE_NAME_INDEX+$QE_DIR_INDEX+1));fi
+					((MIR_IDX=$QE_NAME_INDEX+$QE_DIR_INDEX+1))
+				fi
 				QE_NAME="${MIRROR_HOST_LIST[$MIR_IDX]}"
 				HOST_INDEX=0
 				GET_HOST_ID $QE_NAME
@@ -355,7 +401,8 @@ LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 				((QE_MIR_VECTOR=$QE_MIR_VECTOR+1))
 			fi
 		if [ $NUM_QE_HOSTS -ne 1 ];then 
-			((QE_DIR_INDEX=$QE_DIR_INDEX+1));fi
+			((QE_DIR_INDEX=$QE_DIR_INDEX+1))
+		fi
 		((SEG_COUNT=$SEG_COUNT+1))
 		((PORT_COUNT=$PORT_COUNT+1))
 		((ARRAY_INDEX=$ARRAY_INDEX+1))
@@ -376,17 +423,20 @@ DISPLAY_CONFIG () {
 	if [ `$CAT ${MACHINE_LIST_FILE}|$GREP -c $QD_HOSTNAME` -eq 0 ];then
 		declare -a MACHINE_LIST=(`$CAT $MACHINE_LIST_FILE`)
 	else
-		declare -a MACHINE_LIST=($QD_HOSTNAME `$CAT $MACHINE_LIST_FILE|$GREP -v "${QD_HOSTNAME}\$"`);fi
+		declare -a MACHINE_LIST=($QD_HOSTNAME `$CAT $MACHINE_LIST_FILE|$GREP -v "${QD_HOSTNAME}\$"`)
+	fi
 	((NUM_QES=${#MACHINE_LIST[*]}))
 	if [ $MIRRORING -eq 1 ];then
 ##CMcD Test		((TOTAL_SEG=${NUM_QES}*$QE_PRIMARY_COUNT*2))
 		((TOTAL_SEG=${NUM_QES}*$QE_PRIMARY_COUNT))
 	else
-		((TOTAL_SEG=${NUM_QES}*$QE_PRIMARY_COUNT));fi
+		((TOTAL_SEG=${NUM_QES}*$QE_PRIMARY_COUNT))
+	fi
 	if [ -f $PG_CONF_ADD_FILE ];then
 		PG_ADD=On
 	else
-		PG_ADD=Off;fi
+		PG_ADD=Off
+	fi
 	SET_VAR $QD_PRIMARY_ARRAY
         LOG_MSG "[INFO]:-MPP Creation Parameters"
         LOG_MSG "[INFO]:------------------------"
@@ -439,11 +489,13 @@ DISPLAY_CONFIG () {
 		if [ -z $REPLY ];then
 			LOG_MSG "[WARN]:-User abort requested, Script Exits!"
                         EXIT_STATUS=1
-                        exit $EXIT_STATUS;fi
+                        exit $EXIT_STATUS
+		fi
 		if [ $REPLY != Y ] && [ $REPLY != y ];then
 			LOG_MSG "[WARN]:-User abort requested, Script Exits!"
 			EXIT_STATUS=1
-			exit $EXIT_STATUS;fi
+			exit $EXIT_STATUS
+		fi
 	fi
   	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -465,7 +517,8 @@ CREATE_QD_DB () {
 	SET_VAR $QD_PRIMARY_ARRAY
 	CHK_DIR $MPP_DIR 
 	if [ $EXISTS -eq 0 ];then
-		ERROR_EXIT "[FATAL]:-QD directory $MPP_DIR already exists" 2;fi
+		ERROR_EXIT "[FATAL]:-QD directory $MPP_DIR already exists" 2
+	fi
 	LOG_MSG "[INFO]:-Initializing QD Postgres instance $MPP_DIR"
 	RUN_COMMAND "$INITDB -E $ENCODING -D $MPP_DIR" >> $LOG_FILE 2>&1
 	LOG_MSG "[INFO]:-Completed QD instance initialization"
@@ -473,7 +526,9 @@ CREATE_QD_DB () {
 ##	BACKOUT_COMMAND "$ECHO \"Removing QD data directory\""
 	LOG_MSG "[INFO]:-Setting the QD port to $MPP_PORT"
 	$ECHO "port=$MPP_PORT" >> ${MPP_DIR}/$PG_CONF
-	if [ $? -ne 0 ];then ERROR_EXIT "[FATAL]:-Failed to set QD port in $PG_CONF" 2;fi
+	if [ $? -ne 0 ];then
+	  ERROR_EXIT "[FATAL]:-Failed to set QD port in $PG_CONF" 2
+	fi
 	LOG_MSG "[INFO]:-Completed setting the QD port to $QD_PORT"
 	if [ -f $PG_CONF_ADD_FILE ];then
 		LOG_MSG "[INFO]:-Processing additional configuration parameters"
@@ -485,13 +540,16 @@ CREATE_QD_DB () {
 	fi
 	LOG_MSG "[INFO]:-Setting IP Allow in $PG_HBA to value $IP_ALLOW"
 	$ECHO "host    all         all         $IP_ALLOW        $QD_MASK      trust" >> ${MPP_DIR}/$PG_HBA
-	if [ $? -ne 0 ];then ERROR_EXIT "[FATAL]:-Failed to set IP Allow in $PG_HBA" 2;fi
+	if [ $? -ne 0 ];then 
+	  ERROR_EXIT "[FATAL]:-Failed to set IP Allow in $PG_HBA" 2
+	fi
 	LOG_MSG "[INFO]:-Completed setting IP Allow to $IP_ALLOW"
 	LOG_MSG "[INFO]:-Starting the QD in admin mode"
 	export PGPORT=$MPP_PORT;$PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o "-i -p $MPP_PORT" start >> $LOG_FILE 2>&1
 	if [ $? -ne 0 ];then
 		$CAT ${MPP_DIR}.log|$TEE -a $LOG_FILE
-		ERROR_EXIT "[FATAL]:-Failed to start the QD database in admin mode" 2;fi
+		ERROR_EXIT "[FATAL]:-Failed to start the QD database in admin mode" 2
+	fi
 	BACKOUT_COMMAND "$KILL -9 \`$PS ax|$GREP postmaster|$GREP ${MPP_PORT}|$AWK '{print \$1}'\`"
 	BACKOUT_COMMAND "$ECHO Removing QD process"
 	BACKOUT_COMMAND "$RM -f /tmp/.s.PGSQL.${MPP_PORT}*"
@@ -512,7 +570,8 @@ CREATE_QD_DB () {
 	env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $MPP_PORT template1 -c "create database ${MPP_DBNAME};" >> $LOG_FILE 2>&1
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ];then
-		ERROR_EXIT "[FATAL]:-Failed to create QD db $MPP_DBNAME" 2;fi
+		ERROR_EXIT "[FATAL]:-Failed to create QD db $MPP_DBNAME" 2
+	fi
 	LOG_MSG "[INFO]:-Completed creating the $MPP_DBNAME database"
 	LOG_MSG "[INFO]:-Commencing MPP system table updates for QD host"
   	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -531,17 +590,20 @@ UPDATE_PGDATABASE () {
 	CHK_COUNT=`env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from cdb.pgdatabase where listenerid=${U_LISTENERID} and content=${U_CONTENT};" 2>/dev/null` >> $LOG_FILE 2>&1
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ];then
-		ERROR_EXIT "[FATAL]:-Unable to obtain psql count of QD pgdatabase system table" 2;fi
+		ERROR_EXIT "[FATAL]:-Unable to obtain psql count of QD pgdatabase system table" 2
+	fi
 	if [ $CHK_COUNT -eq 0 ];then
 		LOG_MSG "[INFO]:-Adding $U_CONTENT to system pgdatabase table"
 		env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into cdb.pgdatabase values (${U_DBID},'${U_PRIMARY}','${U_DBNAME}',${U_CONTENT},${U_LISTENERID});" >> $LOG_FILE 2>&1
 		RETVAL=$?
         	if [ $RETVAL -ne 0 ];then
-			ERROR_EXIT "[FATAL]:-Failed to add $U_CONTENT to system pgdatabase table" 2
-		else
-			LOG_MSG "[INFO]:-Successfully added $U_CONTENT to system pgdatabase table";fi
+			  ERROR_EXIT "[FATAL]:-Failed to add $U_CONTENT to system pgdatabase table" 2
+	        else
+		      LOG_MSG "[INFO]:-Successfully added $U_CONTENT to system pgdatabase table"
+	        fi
 	else
-		LOG_MSG "[INFO]:-Listenerid $U_CONTENT already exists in pgdatabase system table";fi
+		LOG_MSG "[INFO]:-Listenerid $U_CONTENT already exists in pgdatabase system table"
+	fi
   	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -559,17 +621,21 @@ UPDATE_LISTENER () {
 	CHK_COUNT=`env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from cdb.listener where listenerid=${U_LISTENERID};" 2>/dev/null` >> $LOG_FILE 2>&1
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ];then
-		ERROR_EXIT "[FATAL]:-Unable to obtain psql count of QD listener system table" 2;fi
+		ERROR_EXIT "[FATAL]:-Unable to obtain psql count of QD listener system table" 2
+	fi
 	if [ $CHK_COUNT -eq 0 ];then
 		LOG_MSG "[INFO]:-Adding $U_LISTENERID to system listener table"
 		env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into cdb.listener values (${U_LISTENERID},${U_HOSTID},${U_PORT},'${U_DIR}','${U_USER}','${U_PASSWD}');" >> $LOG_FILE 2>&1
 		RETVAL=$?
         	if [ $RETVAL -ne 0 ];then
-			ERROR_EXIT "[FATAL]:-Failed to add $U_LISTENERID to system listener table" 2
-		else
-			LOG_MSG "[INFO]:-Successfully added $U_LISTENERID to system listener table";fi
+			  ERROR_EXIT "[FATAL]:-Failed to add $U_LISTENERID to system listener table" 2
+		    else
+			  LOG_MSG "[INFO]:-Successfully added $U_LISTENERID to system listener table"
+			fi
 	else
-		LOG_MSG "[INFO]:-Listenerid $U_LISTENERID already exists in listener system table";fi
+		LOG_MSG "[INFO]:-Listenerid $U_LISTENERID already exists in listener system table"
+	fi
+
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -613,7 +679,8 @@ UPDATE_HOST () {
 	CHK_COUNT=`env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from cdb.host where hostid=${U_HOSTID};" 2>/dev/null` >> $LOG_FILE 2>&1
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ];then
-		ERROR_EXIT "[FATAL]:-Unable to obtain psql count of QD host system table" 2;fi
+		ERROR_EXIT "[FATAL]:-Unable to obtain psql count of QD host system table" 2
+fi
 	if [ $CHK_COUNT -eq 0 ];then
 		LOG_MSG "[INFO]:-Adding $U_HOSTNAME to system host table"
 		env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into cdb.host values (${U_HOSTID},'${U_HOSTNAME}');" >> $LOG_FILE 2>&1
@@ -621,9 +688,11 @@ UPDATE_HOST () {
 		if [ $RETVAL -ne 0 ];then
 			ERROR_EXIT "[FATAL]:-Failed to add $U_HOSTNAME to system host table" 2
 		else
-			LOG_MSG "[INFO]:-Successfully added $U_HOSTNAME to system host table";fi
+			LOG_MSG "[INFO]:-Successfully added $U_HOSTNAME to system host table"
+fi
 	else
-		LOG_MSG "[INFO]:-Host $U_HOSTNAME already exists in host system table";fi
+		LOG_MSG "[INFO]:-Host $U_HOSTNAME already exists in host system table"
+fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -642,12 +711,14 @@ UPDATE_CDB () {
 		 env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into cdb.cdb values ('${U_CDBNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});" >> $LOG_FILE 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ];then
-			ERROR_EXIT "[FATAL]:-Unable to update cdb system table" 2;fi
+			ERROR_EXIT "[FATAL]:-Unable to update cdb system table" 2
+fi
 	else
 		RUN_COMMAND_REMOTE $U_HOST "env PGOPTIONS=\"-c cdb_session_role=utility\" $PSQL -p $U_PT $U_DB -c \"insert into cdb.cdb values ('${U_CDBNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" 2>&1" >> $LOG_FILE 2>&1
 	fi	
 	if [ $RETVAL -ne 0 ];then
-		ERROR_EXIT "[FATAL]:-Failed to update cdb system table" 2;fi
+		ERROR_EXIT "[FATAL]:-Failed to update cdb system table" 2
+fi
 	LOG_MSG "[INFO]:-Successfully updated cdb system table"
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -745,11 +816,13 @@ RESTART_QD_PRODUCTION () {
 		if [ -f $WORKDIR/mppstop.sh ];then
 			$WORKDIR/mppstop.sh -a -d $QD_DIR
 		else 
-			ERROR_EXIT "[FATAL]:-WORKDIR/mppstop.sh not located" 2;fi
+			ERROR_EXIT "[FATAL]:-WORKDIR/mppstop.sh not located" 2
+fi
 		if [ -f $WORKDIR/mppstart.sh ];then
 			$WORKDIR/mppstart.sh -a -d $QD_DIR
 		else
-			ERROR_EXIT "[FATAL]:-$WORKDIR/mppstart.sh not located" 2;fi
+			ERROR_EXIT "[FATAL]:-$WORKDIR/mppstart.sh not located" 2
+fi
 		LOG_MSG "[INFO]:-Completed restart of MPP cluster in production mode"
   	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -774,7 +847,8 @@ RESTART_QD_PRODUCTION () {
 if [ $LOG_DIR ]
 then
         CHK_DIR $LOG_DIR
-        if [ $EXISTS -eq 1 ];then ERROR_EXIT "[FATAL]:-Log directory $LOG_DIR does not exist" 2;fi
+        if [ $EXISTS -eq 1 ];then ERROR_EXIT "[FATAL]:-Log directory $LOG_DIR does not exist" 2
+fi
         LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
 else
         LOG_FILE=$WORKDIR/logs/${PROG_NAME}_${CUR_DATE}.log
@@ -804,7 +878,8 @@ if [ $STANDBY_QD_IP ] && [ $STANDBY_QD_MASK ];then
 	if [ $STANDBY_QD_NAME ];then
 		$WORKDIR/mppinitstandby.bsh -h $STANDBY_QD_NAME
 	else
-	LOG_MSG "[INFO]:-To initialize standby QE run mppinitstandby.bsh -h <standby QD hostname>";fi
+	LOG_MSG "[INFO]:-To initialize standby QE run mppinitstandby.bsh -h <standby QD hostname>"
+fi
 	fi
 LOG_MSG "[INFO]:-End Main"
 exit $EXIT_STATUS
