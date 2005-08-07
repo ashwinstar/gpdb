@@ -9,27 +9,27 @@ top_builddir = .
 include $(top_builddir)/src/Makefile.global
 
 all:
-	$(MAKE) -C doc all
+#	$(MAKE) -C doc all
 	$(MAKE) -C src all
 	$(MAKE) -C config all
 	@echo "All of PostgreSQL successfully made. Ready to install."
 
 install:
-	$(MAKE) -C doc $@
+#	$(MAKE) -C doc $@
 	$(MAKE) -C src $@
 	$(MAKE) -C config $@
 	@echo "PostgreSQL installation complete."
 
 installdirs uninstall distprep:
-	$(MAKE) -C doc $@
+#	$(MAKE) -C doc $@
 	$(MAKE) -C src $@
 	$(MAKE) -C config $@
 
 # clean, distclean, etc should apply to contrib too, even though
 # it's not built by default
 clean:
-	$(MAKE) -C doc $@
-	$(MAKE) -C contrib $@
+#	$(MAKE) -C doc $@
+#	$(MAKE) -C contrib $@
 	$(MAKE) -C src $@
 	$(MAKE) -C config $@
 # Garbage from autoconf:
@@ -38,8 +38,8 @@ clean:
 # Important: distclean `src' last, otherwise Makefile.global
 # will be gone too soon.
 distclean maintainer-clean:
-	-$(MAKE) -C doc $@
-	-$(MAKE) -C contrib $@
+#	-$(MAKE) -C doc $@
+#	-$(MAKE) -C contrib $@
 	-$(MAKE) -C config $@
 	-$(MAKE) -C src $@
 	-rm -f config.cache config.log config.status GNUmakefile
@@ -75,7 +75,8 @@ opt_files := \
 	src/tools src/corba src/tutorial \
 	$(addprefix src/pl/, plperl plpython tcl)
 
-docs_files := doc/postgres.tar.gz doc/src doc/TODO.detail
+#docs_files := doc/postgres.tar.gz doc/src doc/TODO.detail
+docs_files :=
 
 postgresql-base-$(VERSION).tar: distdir
 	$(TAR) -c $(addprefix --exclude $(distdir)/, $(docs_files) $(opt_files) src/test) \
