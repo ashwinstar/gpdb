@@ -24,7 +24,7 @@
 # Source required functions file, this required for script to run
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
-WORKDIR=/usr/local/mpp/cdb-pgsql/tools/scripts
+WORKDIR=`dirname $0`
 FUNCTIONS=$WORKDIR/mpp_bash_functions.sh
 if [ -f $FUNCTIONS ];then
         . $FUNCTIONS

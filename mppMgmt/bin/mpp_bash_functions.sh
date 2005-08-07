@@ -28,11 +28,8 @@
 BIN=/bin
 SBIN=/sbin
 UBIN=/usr/bin
-CDBROOT=/usr/local/mpp/cdb-pgsql
-PSQLBIN=$CDBROOT/server/bin
+PSQLBIN=$WORKDIR/../../bin
 KERBIN=/usr/kerberos/bin
-ENV_SETUP="$CDBROOT/cdb.rc"
-WORKDIR=$CDBROOT/tools/scripts
 #******************************************************************************
 # MPP Command Variables
 #******************************************************************************
@@ -98,7 +95,6 @@ PG_PID=postmaster.pid
 PG_OPT=postmaster.opts
 PG_CONF=postgresql.conf
 PG_HBA=pg_hba.conf
-POSTGRES_CONF=$WORKDIR/postgres_config
 TRUSTED_SHELL="$SSH"
 TRUSTED_COPY="$SCP"
 PG_CONF_ADD_FILE=$WORKDIR/postgresql_conf_cdb_additions
@@ -494,7 +490,7 @@ PROCESS_QE () {
 		QE_DIR=$DIRECTORY_ARRAY/$INST_ARRAY
 		GET_QD_DB_NAME
 		LOG_MSG "[INFO]:-Creating QE data directory $QE_DIR"
-    		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} ". $ENV_SETUP; $INITDB -E $ENCODING -D $QE_DIR" 
+    		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "$INITDB -E $ENCODING -D $QE_DIR" 
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${HOSTNAME_ARRAY} \"$RM -rf $QE_DIR\""
 		BACKOUT_COMMAND "$ECHO \"removing directory $QE_DIR on $HOSTNAME_ARRAY\""
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${HOSTNAME_ARRAY} \"$PG_CTL stop -m immediate -D $QE_DIR\"" 
@@ -520,16 +516,16 @@ PROCESS_QE () {
 			done 
 		fi
 		LOG_MSG "[INFO]:-Starting Functioning instance on QE $HOSTNAME_ARRAY"
-    		$TRUSTED_SHELL ${HOSTNAME_ARRAY} ". $ENV_SETUP; export PGPORT=${PORT_ARRAY}; $PG_CTL -w -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${PORT_ARRAY}\" start" 
+    		$TRUSTED_SHELL ${HOSTNAME_ARRAY} "export PGPORT=${PORT_ARRAY}; $PG_CTL -w -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${PORT_ARRAY}\" start" 
 		if [ $? -ne 0 ];then
 			$TRUSTED_SHELL ${HOSTNAME_ARRAY} "$CAT ${QE_DIR}.log "|$TEE -a $LOG_FILE
 			ERROR_EXIT "[FATAL]:-Failed to start QE instance database" 2;fi
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${HOSTNAME_ARRAY} \"$RM -f ${QE_DIR}.log\""
 		BACKOUT_COMMAND "$ECHO \"Removing tail log file ${QE_DIR}.log on QE $HOSTNAME_ARRAY\""
 		LOG_MSG "[INFO]:-Creating database $SEG_ARRAY on $HOSTNAME_ARRAY"
-    		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} ". $ENV_SETUP;env PGOPTIONS=\"-c cdb_session_role=utility\" $PSQL -p ${PORT_ARRAY} template1 -c \"create database $SEG_ARRAY\"" 
+    		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "env PGOPTIONS=\"-c cdb_session_role=utility\" $PSQL -p ${PORT_ARRAY} template1 -c \"create database $SEG_ARRAY\"" 
 		LOG_MSG "[INFO]:-Updating the QE cdb catalog"
-		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} ". $ENV_SETUP;env PGOPTIONS=\"-c cdb_session_role=utility\" $PSQL -p ${PORT_ARRAY} $SEG_ARRAY -c \"insert into cdb.cdb values ('$CLUSTER_NAME',$NUMSEGMENTS,$DBID,$CONTENT)\""
+		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "env PGOPTIONS=\"-c cdb_session_role=utility\" $PSQL -p ${PORT_ARRAY} $SEG_ARRAY -c \"insert into cdb.cdb values ('$CLUSTER_NAME',$NUMSEGMENTS,$DBID,$CONTENT)\""
 		LOG_MSG "[INFO]:-Adding this QE instance to the QD host"
 		if [ $PRIMARY -eq 1 ];then
 		  LOG_MSG "[INFO]:-Adding the primary segment to the head admin schema"
