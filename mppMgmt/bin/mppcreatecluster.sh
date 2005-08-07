@@ -30,7 +30,6 @@ if [ -f $FUNCTIONS ];then
 else
         echo "[FATAL:]-Cannot source $FUNCTIONS file Script Exits!"
         exit 2;fi
-. $ENV_SETUP
 #******************************************************************************
 # Location Variables
 #******************************************************************************
@@ -119,7 +118,7 @@ CHK_PARAMS () {
 	LOG_MSG "[INFO]:-Reading MPP configuration file $CLUSTER_CONFIG"
 	. $CLUSTER_CONFIG
 	#Check the other files that are required to be able to continue
-	FILE_LIST=($MACHINE_LIST_FILE $ENV_SETUP)
+	FILE_LIST=($MACHINE_LIST_FILE)
 	for FILE in "${FILE_LIST[@]}"
 	do
 		CHK_FILE $FILE
@@ -193,13 +192,6 @@ CHK_PARAMS () {
 ##		LOG_MSG "[INFO]:-Standby QD Netmask = $STANDBY_QD_MASK"
 ##	else
 ##		LOG_MSG "[INFO]:-Standby QD = off";fi
-#ENV_SETUP
-	if [ ! $ENV_SETUP ];then
-		ERROR_EXIT "[FATAL]:-ENV_SETUP variable not set" 2;fi
-	LOG_MSG "[INFO]:-Sourcing environment file"
-	. $ENV_SETUP
-  	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
 
 CHK_DUPLICATES () {
   LOG_MSG "[INFO]:-Start Function $FUNCNAME"
@@ -665,7 +657,7 @@ CREATE_QES_PRIMARY () {
 	do
 		SET_VAR $I
 		LOG_MSG "[INFO]:-Processing QE $MPP_HOSTNAME"
-		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} ". $ENV_SETUP; $INITDB -E $ENCODING -D $MPP_DIR" >> $LOG_FILE 2>&1
+		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$INITDB -E $ENCODING -D $MPP_DIR" >> $LOG_FILE 2>&1
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -rf $MPP_DIR\""
                 BACKOUT_COMMAND "$ECHO \"removing directory $MPP_DIR on $MPP_HOSTNAME\""
 		LOG_MSG "[INFO]:-Configuring QE $PG_CONF"
@@ -685,20 +677,20 @@ CREATE_QES_PRIMARY () {
 		LOG_MSG "[INFO]:-Configuring QE $PG_HBA"
 		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host all all ${IP_ALLOW} trust >> ${MPP_DIR}/$PG_HBA"
 		LOG_MSG "[INFO]:-Starting Functioning instance on QE ${MPP_HOSTNAME}"
-		$TRUSTED_SHELL ${MPP_HOSTNAME} ". $ENV_SETUP; export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start" >> $LOG_FILE 2>&1
+		$TRUSTED_SHELL ${MPP_HOSTNAME} "export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start" >> $LOG_FILE 2>&1
 		if [ $? -ne 0 ];then
                 	BACKOUT_COMMAND "$ECHO \"Removing QE log file ${MPP_DIR}.log on QE $MPP_HOSTNAME\""
-			BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \". $ENV_SETUP; export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
+			BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
 			$TRUSTED_SHELL ${MPP_HOSTNAME} "$CAT ${MPP_DIR}.log "|$TEE -a $LOG_FILE
 			ERROR_EXIT "[FATAL]:-Failed to start QE instance database" 2;fi	
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -f ${MPP_DIR}.log\""
                 BACKOUT_COMMAND "$ECHO \"Removing QE log file ${MPP_DIR}.log on QE $MPP_HOSTNAME\""
-		BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \". $ENV_SETUP; export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
+		BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
 		BACKOUT_COMMAND "$ECHO \"Stopping QE instance on $MPP_HOSTNAME\""
 		LOG_MSG "[INFO]:-Successfully started QE instance on $MPP_HOSTNAME"
 		UPDATE_CDB $MPP_DBNAME $MPP_PORT "$CLUSTER_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
 		LOG_MSG "[INFO]:-Creating QE database $MPP_DBNAME"
-		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} ". $ENV_SETUP; env PGOPTIONS=\"-c cdb_session_role=utility\" $PSQL -p $MPP_PORT template1 -c \"create database ${MPP_DBNAME};\""
+		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "env PGOPTIONS=\"-c cdb_session_role=utility\" $PSQL -p $MPP_PORT template1 -c \"create database ${MPP_DBNAME};\""
 	done
   	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -709,7 +701,7 @@ CREATE_QES_MIRROR () {
         do
 		SET_VAR $I
 		LOG_MSG "[INFO]:-Processing QE $MPP_HOSTNAME"
-		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} ". $ENV_SETUP; $INITDB -E $ENCODING -D $MPP_DIR" >> $LOG_FILE 2>&1
+		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$INITDB -E $ENCODING -D $MPP_DIR" >> $LOG_FILE 2>&1
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -rf $MPP_DIR\""
                 BACKOUT_COMMAND "$ECHO \"removing directory $MPP_DIR on $MPP_HOSTNAME\""
 		LOG_MSG "[INFO]:-Configuring QE $PG_CONF"
@@ -729,20 +721,20 @@ CREATE_QES_MIRROR () {
 		LOG_MSG "[INFO]:-Configuring QE $PG_HBA"
 		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host all all ${IP_ALLOW} trust >> ${MPP_DIR}/$PG_HBA"
 		LOG_MSG "[INFO]:-Starting Functioning instance on QE ${MPP_HOSTNAME}"
-		$TRUSTED_SHELL ${MPP_HOSTNAME} ". $ENV_SETUP; export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start" >> $LOG_FILE 2>&1
+		$TRUSTED_SHELL ${MPP_HOSTNAME} "export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start" >> $LOG_FILE 2>&1
 		if [ $? -ne 0 ];then
                 	BACKOUT_COMMAND "$ECHO \"Removing QE log file ${MPP_DIR}.log on QE $MPP_HOSTNAME\""
-			BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \". $ENV_SETUP; export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
+			BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
 			$TRUSTED_SHELL ${MPP_HOSTNAME} "$CAT ${MPP_DIR}.log "|$TEE -a $LOG_FILE
 			ERROR_EXIT "[FATAL]:-Failed to start QE Mirror instance database" 2;fi	
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -f ${MPP_DIR}.log\""
                 BACKOUT_COMMAND "$ECHO \"Removing QE log file ${MPP_DIR}.log on QE $MPP_HOSTNAME\""
-		BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \". $ENV_SETUP; export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
+		BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
 		BACKOUT_COMMAND "$ECHO \"Stopping QE instance on $MPP_HOSTNAME\""
 		LOG_MSG "[INFO]:-Successfully started QE mirror instance on $MPP_HOSTNAME"
 		UPDATE_CDB $MPP_DBNAME $MPP_PORT "$CLUSTER_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
 		LOG_MSG "[INFO]:-Creating QE database $MPP_DBNAME"
-		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} ". $ENV_SETUP; env PGOPTIONS=\"-c cdb_session_role=utility\" $PSQL -p $MPP_PORT template1 -c \"create database ${MPP_DBNAME};\""
+		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "env PGOPTIONS=\"-c cdb_session_role=utility\" $PSQL -p $MPP_PORT template1 -c \"create database ${MPP_DBNAME};\""
         done
         LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }

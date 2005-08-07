@@ -47,7 +47,6 @@ unset TAIL_LOGS
 PROG_NAME=`$BASENAME $0`
 TIME=`$DATE +%H":"%M":"%S`
 CUR_DATE=`$DATE +%Y%m%d`
-. $ENV_SETUP
 QD_NAME=`hostname`
 EXIT_STATUS=0
 #******************************************************************************
@@ -151,7 +150,7 @@ DATABASE_STATUS () {
 				LOG_MSG "[WARN]:-Request for PID for $QE_NAME returned error code $RETVAL"
 				QE_PID=0
 			fi
-			STATUS=`$TRUSTED_SHELL $QE_NAME ". $ENV_SETUP;export PGPORT=${QE_PORT};$PG_CTL status -D $QE_DIR"|$HEAD -1|$GREP -c PID` 2>> $LOG_FILE
+			STATUS=`$TRUSTED_SHELL $QE_NAME "export PGPORT=${QE_PORT};$PG_CTL status -D $QE_DIR"|$HEAD -1|$GREP -c PID` 2>> $LOG_FILE
 			 RETVAL=$?
                         if [ $RETVAL -ne 0 ];then
 				LOG_MSG "[WARN]:-Request for pg_ctl status from $QE_NAME returned error code $RETVAL"

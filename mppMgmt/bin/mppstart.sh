@@ -48,7 +48,6 @@ MODE=smart
 TIME=`$DATE +%H":"%M":"%S`
 CUR_DATE=`$DATE +%Y%m%d`
 PROG_NAME=`$BASENAME $0`
-. $ENV_SETUP
 QD_NAME=`hostname`
 EXIT_STATUS=0
 declare -a FAILED_LIST_ARRAY
@@ -220,7 +219,7 @@ PROCESS_STARTUP () {
 ##MPP		((FAILED_COUNT=$FAILED_COUNT+1))
 ##MPP	  else
 ##CC	  	$TRUSTED_SHELL $QE_NAME ". $ENV_SETUP;export PGPORT=${QE_PORT};$PG_CTL $WAIT -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT} $MODE" >/dev/null 2>&1
-	  	$TRUSTED_SHELL $QE_NAME ". $ENV_SETUP;export PGPORT=${QE_PORT};$PG_CTL $WAIT -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start" >> $LOG_FILE 2>&1
+	  	$TRUSTED_SHELL $QE_NAME "export PGPORT=${QE_PORT};$PG_CTL $WAIT -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start" >> $LOG_FILE 2>&1
 	  	RETVAL=$?
 	  	if [ $RETVAL -ne 0 ];then
 			((FAILED_COUNT=$FAILED_COUNT+1))
@@ -245,7 +244,7 @@ PROCESS_STARTUP () {
 		fi
 #Now check status of postmaster on the tail
 		LOG_MSG "[INFO]:-Checking status via pg_ctl"
-		RET_TEXT=`$TRUSTED_SHELL $QE_NAME ". $ENV_SETUP;$PG_CTL status -D $QE_DIR"`
+		RET_TEXT=`$TRUSTED_SHELL $QE_NAME "$PG_CTL status -D $QE_DIR"`
 		RUNNING=`$ECHO $RET_TEXT|$GREP -c "not running"`
 		if [ $RUNNING -ne 0 ];then
 			LOG_MSG "[WARN]:-Command pg_ctl reports $QE_NAME for directory $QE_DIR port $QE_PORT not running"

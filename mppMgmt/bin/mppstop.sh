@@ -46,7 +46,6 @@ MODE=smart
 TIME=`$DATE +%H":"%M":"%S`
 CUR_DATE=`$DATE +%Y%m%d`
 PROG_NAME=`$BASENAME $0`
-. $ENV_SETUP
 QD_NAME=`$HOSTNAME`
 EXIT_STATUS=0
 KILL_INVALID=false
@@ -200,7 +199,7 @@ PROCESS_SHUTDOWN () {
 ##MPP		if [ $TAIL_VALID != 't' ] && [ $KILL_INVALID != 'true' ];then
 ##MPP		  LOG_MSG "[WARN]:-Host $TAIL_NAME segment $TAIL_DIR marked as invalid, will not try to stop instance"
 ##MPP		else
-		  $TRUSTED_SHELL $QE_NAME ". $ENV_SETUP;$PG_CTL $WAIT stop -D $QE_DIR -m $MODE -l ${QE_DIR}.log " >/dev/null 2>&1
+		  $TRUSTED_SHELL $QE_NAME "$PG_CTL $WAIT stop -D $QE_DIR -m $MODE -l ${QE_DIR}.log " >/dev/null 2>&1
 		  RETVAL=$?
 ##MPP		  if [ $RETVAL -ne 0 ] && [ $KILL_INVALID != 'true' ];then
 		  if [ $RETVAL -ne 0 ];then
