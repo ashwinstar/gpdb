@@ -22,12 +22,14 @@
 #******************************************************************************
 # Prep Code
 #
+#***************************************************************
+# Location Functions
 #******************************************************************************
-# Location Variables
-#******************************************************************************
+
 #CMDPATH is the list of locations to search for commands, in precedence order
 declare -a CMDPATH
 CMDPATH=(/usr/kerberos/bin /usr/sfw/bin /opt/sfw/bin /usr/local/bin /bin /usr/bin /sbin /usr/sbin)
+
 #MPPPATH is the list of possible locations for the Bizgres binaries, in precedence order
 declare -a MPPPATH
 MPPPATH=($BIZHOME /usr/local /opt/local `pwd`)
@@ -81,8 +83,10 @@ DU=`findCmdInPath du`
 ECHO=`findCmdInPath echo`
 #ETHTOOL=`findCmdInPath ethtool`
 EXPR=`findCmdInPath expr`
-TABECHO="$ECHO -e \t"
-PROMPT="$ECHO -n -e \t"
+TABECHO=$ECHO
+PROMPT="$ECHO -n"
+#TABECHO="$ECHO -e \t"
+#PROMPT="$ECHO -n -e \t"
 GREP=`findCmdInPath grep`
 HEAD=`findCmdInPath head`
 HOSTNAME=`findCmdInPath hostname`
@@ -112,11 +116,38 @@ WC=`findCmdInPath wc`
 WHICH=`findCmdInPath which`
 WHOAMI=`findCmdInPath whoami`
 
+#***************#******************************************************************************
+# Script Specific Variables
+#******************************************************************************
+# By default set error logging level to verbose
+VERBOSE=1
+USER_NAME=`$WHOAMI`
+PROG_NAME=`echo $0 | $TR -d '-'`
+PROG_NAME=`$BASENAME $PROG_NAME`
+CALL_HOST=`$HOSTNAME|$CUT -d. -f1`
+
 #******************************************************************************
 # Locate the postgres routines from the MPP release
 #******************************************************************************
 PSQLBIN=`findMppPath`
 PSQLBIN=`$DIRNAME $PSQLBIN`
+
+#******************************************************************************
+# Setup logging directory
+#******************************************************************************
+DEFLOGDIR=`pwd`/logs
+if [ ! -d $DEFLOGDIR ]; then
+		mkdir $DEFLOGDIR
+fi
+if [ $LOG_DIR ]; then
+		CHK_DIR $LOG_DIR
+		if [ $EXISTS -eq 1 ]; then
+				ERROR_EXIT "[FATAL]:-Log directory $LOG_DIR does not exist" 2
+		fi
+		LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
+else
+		LOG_FILE=$DEFLOGDIR/${PROG_NAME}_${CUR_DATE}.log
+fi
 
 #******************************************************************************
 # MPP Command Variables
@@ -140,16 +171,6 @@ TRUSTED_SHELL="$SSH"
 TRUSTED_COPY="$SCP"
 PG_CONF_ADD_FILE=$WORKDIR/postgresql_conf_cdb_additions
 RECOVER_FLAG=/tmp/active_recovery_in_progress
-
-#******************************************************************************
-# Script Specific Variables
-#******************************************************************************
-# By default set error logging level to verbose
-VERBOSE=1
-USER_NAME=`$WHOAMI`
-PROG_NAME=`echo $0 | $TR -d '-'`
-PROG_NAME=`$BASENAME $PROG_NAME`
-CALL_HOST=`$HOSTNAME|$CUT -d. -f1`
 
 #******************************************************************************
 # Functions

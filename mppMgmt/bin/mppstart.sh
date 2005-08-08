@@ -140,6 +140,7 @@ CHK_QD_DB_RUNNING () {
 				ERROR_EXIT "[FATAL]:- $PG_PID file exists, is MPP database already running?" 2
 		fi
 }
+
 GET_DETAILS () {
 		#Get the database name
 		#Start the head datase in admin mode
@@ -149,26 +150,24 @@ GET_DETAILS () {
 		$PG_CTL -w -D $QD_DATA_DIRECTORY -l ${QD_DATA_DIRECTORY}.log -o "-i -p $QD_PORT"  start >/dev/null 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
-				##MPP		ERROR_EXIT "[FATAL]:-Could not start head database in admin mode" 2
+				ERROR_EXIT "[FATAL]:-Could not start QD database" 2
+		else
+				LOG_MSG "[INFO]:-Successfully started QD database"
 		fi
-		ERROR_EXIT "[FATAL]:-Could not start QD database" 2
-else
-		LOG_MSG "[INFO]:-Successfully started QD database"
-fi
-LOG_MSG "[INFO]:-Obtaining MPP QE catalog information"
-#Now get tail details
-##MPP	TAIL_ARRAY=(`$PSQL -p $HEAD_PORT $HEAD_DBNAME -A -t -c"select host,datadir,port,valid from cdb_instance;"`)	
-GET_QE_DETAILS
-QE_COUNT=${#QE_ARRAY[@]}
-#Shutdown the head database
-LOG_MSG "[INFO]:-Shutting down QD database"
-$PG_CTL $WAIT stop -D $QD_DATA_DIRECTORY -m $MODE	 >/dev/null 2>&1
-RETVAL=$?
-if [ $RETVAL -ne 0 ]; then
-		ERROR_EXIT "[FATAL]:-Could not shutdown QD database" 2
-else
-		LOG_MSG "[INFO]:-Successfully shutdown the QD database"
-fi
+		LOG_MSG "[INFO]:-Obtaining MPP QE catalog information"
+		#Now get tail details
+		##MPP	TAIL_ARRAY=(`$PSQL -p $HEAD_PORT $HEAD_DBNAME -A -t -c"select host,datadir,port,valid from cdb_instance;"`)	
+		GET_QE_DETAILS
+		QE_COUNT=${#QE_ARRAY[@]}
+		#Shutdown the head database
+		LOG_MSG "[INFO]:-Shutting down QD database"
+		$PG_CTL $WAIT stop -D $QD_DATA_DIRECTORY -m $MODE	 >/dev/null 2>&1
+		RETVAL=$?
+		if [ $RETVAL -ne 0 ]; then
+				ERROR_EXIT "[FATAL]:-Could not shutdown QD database" 2
+		else
+				LOG_MSG "[INFO]:-Successfully shutdown the QD database"
+		fi
 }
 
 START_ADMIN () {
@@ -333,15 +332,7 @@ if [ $FAILED ] && [ $WAIT == "-W" ]
 		then
 		ERROR_EXIT "[FATAL]:-Cannot use -x and -n options together" 2
 fi
-if [ $LOG_DIR ]
-		then
-		CHK_DIR $LOG_DIR
-		if [ $EXISTS -eq 1 ]; then ERROR_EXIT "[FATAL]:-Log directory $LOG_DIR does not exist" 2
-		fi
-		LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
-else
-		LOG_FILE=$WORKDIR/logs/${PROG_NAME}_${CUR_DATE}.log
-fi
+
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 CHK_QD_DB_RUNNING

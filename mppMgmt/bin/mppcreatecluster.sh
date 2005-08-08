@@ -23,11 +23,6 @@
 
 WORKDIR=`dirname $0`
 
-DEFLOGDIR=`pwd`/logs
-if [ ! -d $DEFLOGDIR ]; then
-		mkdir $DEFLOGDIR
-fi
-
 # Source required functions file, this required for script to run
 # exit if cannot locate this file. Change location of FUNCTIONS variable
 # as required.
@@ -846,16 +841,6 @@ done
 
 if [ x"$CLUSTER_CONFIG" = x ]; then
 		USAGE
-fi
-
-if [ $LOG_DIR ]; then
-		CHK_DIR $LOG_DIR
-		if [ $EXISTS -eq 1 ]; then
-				ERROR_EXIT "[FATAL]:-Log directory $LOG_DIR does not exist" 2
-		fi
-		LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
-else
-		LOG_FILE=$DEFLOGDIR/${PROG_NAME}_${CUR_DATE}.log
 fi
 
 LOG_MSG "[INFO]:-Start Main"
