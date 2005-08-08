@@ -20,6 +20,7 @@ all : devel
 
 devel : INSTCFLAGS=$(DEBUGFLAGS)
 devel : INSTLOC=$(DEVPATH)
+devel : CONFIGFLAGS+=--enable-cassert --enable-debug
 devel : HOMEDEP $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(MPPPGDIR); make install
