@@ -28,7 +28,7 @@
 
 #CMDPATH is the list of locations to search for commands, in precedence order
 declare -a CMDPATH
-CMDPATH=(/usr/kerberos/bin /usr/sfw/bin /opt/sfw/bin /usr/local/bin /bin /usr/bin /sbin /usr/sbin)
+CMDPATH=(/usr/kerberos/bin /usr/sfw/bin /opt/sfw/bin /usr/local/bin /usr/ucb /bin /usr/bin /sbin /usr/sbin)
 
 #MPPPATH is the list of possible locations for the Bizgres binaries, in precedence order
 declare -a MPPPATH
