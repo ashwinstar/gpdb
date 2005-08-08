@@ -2,26 +2,31 @@ MPPPGDIR=cdb-pg
 MPPMGMT=mppMgmt
 ISCONFIG=$(MPPPGDIR)/GNUmakefile
 
-#MPPCFLAGS=-O3 -funroll-loops -fomit-frame-pointer -fargument-noalias-global $(COPTX)
-MPPCFLAGS=-O0 -g
+MPPDIR=mpp-pgsql-2.0
 
-DISTPATH=$(BIZHOME)/mpp-pgsql-2.0
-
-DOCDIR=$(DISTPATH)/doc
 DEFPORT=10000
 
-CONFIGFLAGS=--prefix=$(DISTPATH) --enable-thread-safety --enable-multibyte=UNICODE --with-maxbackends=1024 --enable-integer-datetimes --with-docdir=$(DOCDIR) --mandir=$(DOCDIR)/man --with-pgport=$(DEFPORT)
+OPTFLAGS="-O3 -funroll-loops -fomit-frame-pointer -fargument-noalias-global $(COPTX)"
+DEBUGFLAGS="-O0 -g"
 
-all: BIZHOMESET $(ISCONFIG) 
-	@cd $(MPPPGDIR); make
+DISTPATH=$(BIZHOME)/$(MPPDIR)
+DEVPATH=$(HOME)/$(MPPDIR)
 
-.PHONY: BIZHOMESET
+CONFIGFLAGS=--enable-thread-safety --enable-multibyte=UNICODE --with-maxbackends=1024 --enable-integer-datetimes --with-pgport=$(DEFPORT)
 
-BIZHOMESET:
-	@#If the BIZHOME variable isn't set, then execute the usage() path
-	@if [ x"$(BIZHOME)" = x ]; then make BIZDEP; fi
+all : devel
 
-dist:
+.PHONY : RECONFIG BIZDEP HOMEDEP clean distclean
+
+devel : INSTCFLAGS=$(DEBUGFLAGS)
+devel : INSTLOC=$(DEVPATH)
+devel : HOMEDEP $(ISCONFIG)
+	@if [ x"$(HOME)" = x ]; then make HOMEDEP; fi
+	@cd $(MPPPGDIR); make install
+
+dist : INSTCFLAGS:=$(OPTFLAGS)
+dist : INSTLOC:=$(DISTPATH)
+dist : BIZDEP RECONFIG $(ISCONFIG)
 	@rm -rf $(DISTPATH)
 	@cd $(MPPPGDIR); make install
 	@#Copy the management utilities
@@ -31,26 +36,39 @@ dist:
 	@rm -rf $(DISTPATH)/$(MPPMGMT)/bin/CVS
 	@rm -rf $(DISTPATH)/$(MPPMGMT)/doc/CVS
 
-$(ISCONFIG):
-	cd $(MPPPGDIR); CFLAGS=$(MPPCFLAGS) ./configure $(CONFIGFLAGS)
+RECONFIG :
+	rm -f $(ISCONFIG)
 
-BIZDEP:
+$(ISCONFIG) :
+	cd $(MPPPGDIR); CFLAGS=$(INSTCFLAGS) ./configure $(CONFIGFLAGS) --prefix=$(INSTLOC) --with-docdir=$(INSTLOC)/doc --mandir=$(INSTLOC)/man
+
+HOMEDEP :
+	@#If the BIZHOME variable isn't set, then execute the usage() path
+	@if [ x"$(HOME)" = x ]; then make HOMEFAIL; fi
+
+BIZDEP :
+	@#If the BIZHOME variable isn't set, then execute the usage() path
+	@if [ x"$(BIZHOME)" = x ]; then make BIZFAIL; fi
+
+BIZFAIL :
 	@echo
 	@echo "	The BIZHOME path variable is not set."
 	@echo
 	@echo "	You must install bizgres first, then source the file with path variables prior to"
 	@echo "	installing the MPP module with this Makefile."
 	@echo
-	@echo "	If you want a developer build, go to the directory $(MPPPGDIR) and configure/make from there."
+	@exit 1
+
+HOMEFAIL :
+	@echo
+	@echo "	The HOME environment variable is not set. Please set it to continue."
 	@echo
 	@exit 1
 
-.PHONY: clean
-
-clean:
+clean :
+	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, no need to clean"; exit 1; fi
 	@cd $(MPPPGDIR); make clean
 
-.PHONY: distclean
-
-distclean:
+distclean :
+	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, no need to clean"; exit 1; fi
 	@cd $(MPPPGDIR); make distclean
