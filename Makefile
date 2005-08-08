@@ -21,14 +21,14 @@ all : devel
 devel : INSTCFLAGS=$(DEBUGFLAGS)
 devel : INSTLOC=$(DEVPATH)
 devel : HOMEDEP $(ISCONFIG)
-	@if [ x"$(HOME)" = x ]; then make HOMEDEP; fi
+	@rm -rf $(INSTLOC)
 	@cd $(MPPPGDIR); make install
 	@make mgmtcopy INSTLOC=$(INSTLOC)
 
 dist : INSTCFLAGS=$(OPTFLAGS)
 dist : INSTLOC=$(DISTPATH)
 dist : BIZDEP RECONFIG $(ISCONFIG)
-	@rm -rf $(DISTPATH)
+	@rm -rf $(INSTLOC)
 	@cd $(MPPPGDIR); make install
 	@make mgmtcopy INSTLOC=$(INSTLOC)
 
