@@ -23,14 +23,14 @@ devel : INSTLOC=$(DEVPATH)
 devel : HOMEDEP $(ISCONFIG)
 	@if [ x"$(HOME)" = x ]; then make HOMEDEP; fi
 	@cd $(MPPPGDIR); make install
-	@make mgmtcopy
+	@make mgmtcopy INSTLOC=$(INSTLOC)
 
-dist : INSTCFLAGS:=$(OPTFLAGS)
-dist : INSTLOC:=$(DISTPATH)
+dist : INSTCFLAGS=$(OPTFLAGS)
+dist : INSTLOC=$(DISTPATH)
 dist : BIZDEP RECONFIG $(ISCONFIG)
 	@rm -rf $(DISTPATH)
 	@cd $(MPPPGDIR); make install
-	@make mgmtcopy
+	@make mgmtcopy INSTLOC=$(INSTLOC)
 
 mgmtcopy :
 	@#Copy the management utilities
