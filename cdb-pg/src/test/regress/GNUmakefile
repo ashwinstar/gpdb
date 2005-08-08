@@ -116,7 +116,8 @@ endif
 
 # And finally some extra C modules...
 
-all: all-spi
+#all: all-spi
+all:
 
 #.PHONY: all-spi
 #all-spi:
@@ -162,7 +163,7 @@ bigcheck:
 
 clean distclean maintainer-clean:
 # things built by `all' target
-	$(MAKE) -C $(contribdir)/spi clean
+#	$(MAKE) -C $(contribdir)/spi clean
 	rm -f $(output_files) $(input_files) $(DLOBJS) regress.o pg_regress
 # things created by various check targets
 	rm -rf testtablespace
