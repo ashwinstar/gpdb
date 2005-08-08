@@ -65,50 +65,42 @@ MPP_PASSWD=""
 # Functions
 #******************************************************************************
 USAGE () {
-		$TABECHO
-		$TABECHO $0
-		$TABECHO "Creates a new MPP database on a QD host and a number of QE hosts."
-		$TABECHO "Reads configuration input from the files listed below."
-		$TABECHO "Process wil abort if either of these files cannot be located, files expected"
-		$TABECHO "to be in the same directory as this utility."
-		$TABECHO
-		$TABECHO "File:- mpp_config [mandatory]"
-		$TABECHO "Supplies all MPP configuration information required by this utility."
-		$TABECHO "Full description of all parameters contained within the example file"
-		$TABECHO "supplied with this distribution"
-		$TABECHO
-		$TABECHO "File:- mpphostlist [mandatory]"
-		$TABECHO "Contains a list of all QE hostnames required to participate in"
-		$TABECHO "the new MPP database."
-		$TABECHO
-		$TABECHO "File:- postgresql_conf_cdb_additions [optional]"
-		$TABECHO "List of additional PostgreSQL parameters to be applied to each QD/QE"
-		$TABECHO "postgresql.conf file during MPP database initialization."
-		$TABECHO
-		$TABECHO "Usage:"
-		$TABECHO $0 "-c <MPP configuration filename> [OPTIONS]"
-		$TABECHO
+		$TABECHO "*******************************************************************"
+		$TABECHO "usage: `basename $0` -c mpp_config_file [OPTIONS]"
+		$TABECHO ""
+		$TABECHO "  Creates a new MPP database on a QD host and a number of QE hosts."
+		$TABECHO "*******************************************************************"
 		$TABECHO "General options:"
-		$TABECHO "-?, display this help message & exit"
-		$TABECHO "-v, display version information & exit"
+		$TABECHO "	-?, display this help message & exit"
+		$TABECHO "	-v, display version information & exit"
+		$TABECHO
+	    $TABECHO "Configuration options:"
+		$TABECHO "	-c  mpp_config_file [mandatory]"
+		$TABECHO "		Supplies all MPP configuration information required by this utility."
+		$TABECHO "		Full description of all parameters contained within the example file"
+		$TABECHO "		supplied with this distribution."
+		$TABECHO "	-h mpp_hostlist_file [optional]"
+		$TABECHO "		Contains a list of all QE hostnames required to participate in"
+		$TABECHO "		the new MPP database. Normally set in mpp_config_file."
+		$TABECHO "	-d postgresql_conf_mpp_additions [optional]"
+		$TABECHO "		List of additional PostgreSQL parameters to be applied to each QD/QE"
+		$TABECHO "		postgresql.conf file during MPP database initialization."
+		$TABECHO "	-s standby_hostname [optional]"
+		$TABECHO "		Setup standby QD host named \"standby_hostname\". (if configured in MPP configuration file)"
+		$TABECHO "	-o, create QD only, do not configure QE hosts"
 		$TABECHO
 		$TABECHO "Logging options:"
-		$TABECHO "-q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
-		$TABECHO "-l, <logfile directory> alternative logfile directory [optional]"
-		$TABECHO "-a, don't ask to confirm database creation [default:- ask]"
-		$TABECHO
-		$TABECHO "Configuration options:"
-		$TABECHO "-c, <MPP configuration filename> File containing cluster configuration"
-		$TABECHO "    information [mandatory]"
-		$TABECHO "-h, <mpphostlist> alternative MPP host list file [optional]"
-		$TABECHO "-s, <standby hostname> setup standby QD host (if configured in MPP configuration file)"
-		$TABECHO "-o, create QD only, do not configure QE hosts"
+		$TABECHO "	-q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
+		$TABECHO "	-a, don't ask to confirm database creation [default:- ask]"
+		$TABECHO "	-l logfile_directory [optional]"
+		$TABECHO "		Alternative logfile directory"
 		$TABECHO
 		$TABECHO "Return codes:"
-		$TABECHO "0 No problems encountered with requested operation"
-		$TABECHO "1 Warning generated, but database operational"
-		$TABECHO "2 Fatal error, database not created/started, or in an inconsistent state,"
-		$TABECHO "  see log file for failure reason."
+		$TABECHO "	0 - No problems encountered with requested operation"
+		$TABECHO "	1 - Warning generated, but database operational"
+		$TABECHO "	2 - Fatal error, database not created/started, or in an inconsistent state,"
+	    $TABECHO "	    see log file for failure reason."
+		$TABECHO "*******************************************************************"
 		$TABECHO
 		exit $EXIT_STATUS
 }
@@ -842,14 +834,19 @@ while getopts ":v'?'aqc:l:d:h:o:s:" opt
 				'?' ) USAGE ;;
 				a ) unset INTERACTIVE ;;
 				q ) unset VERBOSE ;;
-				l ) LOG_DIR=$OPTARG ;;
 				c ) CLUSTER_CONFIG=$OPTARG ;;
+				l ) LOG_DIR=$OPTARG ;;
+				d ) PGCONFADDS=$OPTARG ;;
 				h ) MACHINE_LIST_FILE=$OPTARG ;;
-				s ) STANDBY_HOST_NAME=$OPTARG ;;
 				o ) QD_ONLY=1 ;;
+				s ) STANDBY_HOST_NAME=$OPTARG ;;
 				* ) USAGE ;;
 		esac
 done
+
+if [ x"$CLUSTER_CONFIG" = x ]; then
+		USAGE
+fi
 
 if [ $LOG_DIR ]; then
 		CHK_DIR $LOG_DIR
