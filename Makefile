@@ -23,18 +23,22 @@ devel : INSTLOC=$(DEVPATH)
 devel : HOMEDEP $(ISCONFIG)
 	@if [ x"$(HOME)" = x ]; then make HOMEDEP; fi
 	@cd $(MPPPGDIR); make install
+	@make mgmtcopy
 
 dist : INSTCFLAGS:=$(OPTFLAGS)
 dist : INSTLOC:=$(DISTPATH)
 dist : BIZDEP RECONFIG $(ISCONFIG)
 	@rm -rf $(DISTPATH)
 	@cd $(MPPPGDIR); make install
+	@make mgmtcopy
+
+mgmtcopy :
 	@#Copy the management utilities
-	@mkdir $(DISTPATH)/$(MPPMGMT)
-	@cp -rp $(MPPMGMT)/bin $(DISTPATH)/$(MPPMGMT)
-	@cp -rp $(MPPMGMT)/doc $(DISTPATH)/$(MPPMGMT)
-	@rm -rf $(DISTPATH)/$(MPPMGMT)/bin/CVS
-	@rm -rf $(DISTPATH)/$(MPPMGMT)/doc/CVS
+	@mkdir $(INSTLOC)/$(MPPMGMT)
+	@cp -rp $(MPPMGMT)/bin $(INSTLOC)/$(MPPMGMT)
+	@cp -rp $(MPPMGMT)/doc $(INSTLOC)/$(MPPMGMT)
+	@rm -rf $(INSTLOC)/$(MPPMGMT)/bin/CVS
+	@rm -rf $(INSTLOC)/$(MPPMGMT)/doc/CVS
 
 RECONFIG :
 	rm -f $(ISCONFIG)
