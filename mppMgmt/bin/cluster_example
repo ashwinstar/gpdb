@@ -1,3 +1,38 @@
+# Set this to anything you like
+CLUSTER_NAME="LAL Laptop Cluster"
+
+# This file must exist in the same directory that you execute mppcreatecluster.sh in
+MACHINE_LIST_FILE=hostlist
+
+# This names the data directories for the Segment Instances and the Entry Postmaster
+SEG_PREFIX=lal
+
+# This is the port at which to contact the resulting MPP database, e.g. 
+#   psql -p $PORT_BASE template1
+PORT_BASE=60000
+
+# Prefix for script created database
+DATABASE_PREFIX=zlal
+
+# Array of data locations for each hosts Segment Instances, the number of directories in this array will
+# set the number of segment instances per host
+declare -a DATA_DIRECTORY=(/Users/lukelonergan/datadirs/dbfast1 /Users/lukelonergan/datadirs/dbfast2 /Users/lukelonergan/datadirs/dbfast3)
+
+# Name of host on which to setup the QD
+QD_HOSTNAME=Luke-Lonergans-Computer.local
+# Name of directory on that host in which to setup the QD
+QD_DATA_DIRECTORY=/Users/lukelonergan/datadirs/dbfast1
+
+# Hosts to allow to connect to the QD (and Segment Instances)
+# By default, allow everyone to connect (0.0.0.0/0)
+IP_ALLOW="0.0.0.0/0"
+
+# Shell to use to execute commands on all hosts
+TRUSTED_SHELL="ssh"
+
+CHECK_POINT_SEGMENTS=8
+ENCODING=UNICODE
+
 #	Filename:-		cluster_example
 #	Version:-		1.0
 #	Updated:-		08/02/2005
@@ -77,20 +112,6 @@
 #******************************************************************************
 # Cluster Configuration Parameters 
 #******************************************************************************
-CLUSTER_NAME="DWh  Cluster"
-MACHINE_LIST_FILE=`pwd`/examplempphostlist
-SEG_PREFIX=dwh
-PORT_BASE=60000
-declare -a DATA_DIRECTORY=(/dbfast1 /dbfast2 /dbfast3)
-DATABASE_PREFIX=zdwh
-QD_HOSTNAME=falcon1
-QD_DATA_DIRECTORY=/dbfast1
-IP_ALLOW="172.16.1.0/24"
-TRUSTED_SHELL="ssh"
-ENV_SETUP="/usr/local/mpp/cdb-pgsql/cdb.rc"
-CHECK_POINT_SEGMENTS=8
-ENCODING=UNICODE
-
 #Mirror parameters, comment out if mirroring not required
 ##MIRROR_PORT_BASE=45000
 ##declare -a MIRROR_DATA_DIRECTORY=(/dbfast3)
