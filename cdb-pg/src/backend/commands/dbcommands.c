@@ -98,7 +98,11 @@ createdb(CreatedbStmt *stmt)
 #endif
 
 	bool hasDispatched = false;
-	bool shouldDispatch =  Cdb_role == CDB_ROLE_DISPATCH && !IsBootstrapProcessingMode();
+	bool shouldDispatch =  (Cdb_role == CDB_ROLE_DISPATCH); // && !IsBootstrapProcessingMode();
+	
+	if (shouldDispatch)
+		if (IsBootstrapProcessingMode())
+			elog(NOTICE, " Create database dispatch in bootstrap mode!");
 
 
 	/* don't call this in a transaction block */
