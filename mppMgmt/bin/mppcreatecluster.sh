@@ -103,8 +103,11 @@ CHK_PARAMS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 
 		#Check the MPPHOME variable
-		if [ x"" = x"$MPPHOME" ]; then
-				ERROR_EXIT "[FATAL]:-Environment variable MPPHOME is not set, set this to be the top dir for MPP install " 2
+		if [ x"" = x"$MPPHOME" ] || [ x"" =x"$BIZHOME" ]; then
+				LOG_MSG "[WARN]:-Environment variable MPPHOME or BIZHOME is not set"
+				LOG_MSG "[WARN]:-this may cause script to fail."
+				LOG_MSG "[WARN]:-If this is the case check the script log file."
+				ERROR_EXIT=1
 		fi
 		#Make sure that script has been supplied a config file
 		if [ x"" = x"$CLUSTER_CONFIG" ]; then
