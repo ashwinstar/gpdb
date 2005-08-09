@@ -257,5 +257,5 @@ do
     echo "Starting DB instance ($PGDATA at $PGPORT)"
     echo "The logfile can be found at $PGROOT/logfile.$db"
 
-    pg_ctl -l "$PGROOT"/logfile.$db -o "-B 16 -d 4 -i ${stats_options[@]} $utility" start
+    pg_ctl -l "$PGROOT"/logfile.$db -o "-B 1000 -d 4 -i ${stats_options[@]} $utility" start
 done
