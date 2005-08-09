@@ -1,6 +1,6 @@
 #!/bin/bash
 #	Filename:-		mppcreatecluster.sh
-#	Version:-		1.2
+#	Version:-		1.3
 #	Updated:-		09/08/2005	
 #	Status:-		MPP Conversion SE Co Internal	
 #	Author:-		L Lonergan/G Coombe	
@@ -18,6 +18,8 @@
 # 1.2	09/08/2005	G Coombe	Corrected CVS conversion errors.
 #			Corrected error exit message display for QD init
 #			failure.
+# 1.3	09/08/2005	G Coombe	Corrected fault where template1 database table
+#					cdb.pgdatabase has incorrect db name.
 #******************************************************************************
 # Detailed Description
 #******************************************************************************
@@ -103,7 +105,7 @@ CHK_PARAMS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 
 		#Check the MPPHOME variable
-		if [ x"" = x"$MPPHOME" ] || [ x"" =x"$BIZHOME" ]; then
+		if [ x"" = x"$MPPHOME" ] || [ x"" = x"$BIZHOME" ]; then
 				LOG_MSG "[WARN]:-Environment variable MPPHOME or BIZHOME is not set"
 				LOG_MSG "[WARN]:-this may cause script to fail."
 				LOG_MSG "[WARN]:-If this is the case check the script log file."
@@ -179,9 +181,9 @@ CHK_PARAMS () {
 				ERROR_EXIT "[FATAL]:-Number of primary directories 0 (zero)" 2
 		fi
 
-		#QD_DATA_DIRECTORY
-		if [ ! $QD_DATA_DIRECTORY ]; then
-				ERROR_EXIT "[FATAL]:-QD_DATA_DIRECTORY variable not set" 2
+		#QD_DIRECTORY
+		if [ ! $QD_DIRECTORY ]; then
+				ERROR_EXIT "[FATAL]:-QD_DIRECTORY variable not set" 2
 		fi
 		#DATABASE_PREFIX
 		if [ ! $DATABASE_PREFIX ]; then
@@ -351,7 +353,7 @@ CREATE_QE_ARRAY () {
 		((QDDBID_COUNT=$DBID_COUNT-1))
 		((QDDB_COUNT=$DB_COUNT-1))
 		((QDCONTENT_COUNT=$CONTENT_COUNT-1))
-		QD_PRIMARY_ARRAY=${QD_HOSTNAME}:${QDHOSTID_COUNT}:${QD_LISTNERID}:${QD_PORT}:${QD_DATA_DIRECTORY}/${SEG_PREFIX}${QDSEG_COUNT}:${QDDBID_COUNT}:${DATABASE_PREFIX}${QDDB_COUNT}:${QDCONTENT_COUNT}
+		QD_PRIMARY_ARRAY=${QD_HOSTNAME}:${QDHOSTID_COUNT}:${QD_LISTNERID}:${QD_PORT}:${QD_DIRECTORY}/${SEG_PREFIX}${QDSEG_COUNT}:${QDDBID_COUNT}:${DATABASE_PREFIX}${QDDB_COUNT}:${QDCONTENT_COUNT}
 		QE_NAME_INDEX=0
 		for QE_NAME in "${MACHINE_LIST[@]}"
 				do
@@ -558,8 +560,8 @@ CREATE_QD_DB () {
 		UPDATE_CDB $MPP_DBNAME $MPP_PORT "$CLUSTER_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 0 X
 		UPDATE_HOST $MPP_DBNAME $MPP_PORT $MPP_HOSTID $MPP_HOSTNAME
 		UPDATE_LISTENER $MPP_DBNAME $MPP_PORT $MPP_LISTENID $MPP_HOSTID $MPP_PORT $MPP_DIR $MPP_USER $MPP_PASSWD
-		UPDATE_PGDATABASE $MPP_DBNAME $MPP_PORT $MPP_DBID $MPP_DBNAME $MPP_CONTENT $MPP_LISTENID t
-		LOAD_QE_SYSTEM_DATA
+		UPDATE_PGDATABASE $MPP_DBNAME $MPP_PORT $MPP_DBID template1 $MPP_CONTENT $MPP_LISTENID t
+		LOAD_QE_SYSTEM_DATA template1
 		SET_VAR $QD_PRIMARY_ARRAY
 		LOG_MSG "[INFO]:-Creating the QD $MPP_DBNAME database"
 		env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $MPP_PORT template1 -c "create database ${MPP_DBNAME};" >> $LOG_FILE 2>&1
@@ -567,6 +569,21 @@ CREATE_QD_DB () {
 		if [ $RETVAL -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Failed to create QD db $MPP_DBNAME" 2
 		fi
+		LOG_MSG "[INFO]:-Updating cdb.pgdatabase table for ${MPP_DBNAME}"
+		QD_DBNAME=$MPP_DBNAME
+		QD_PORT=$MPP_PORT
+		env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $QD_PORT $QD_DBNAME -c "update cdb.pgdatabase set dbname='${MPP_DBNAME}' where dbid=${MPP_DBID};" >> $LOG_FILE 2>&1
+		for I in "${QE_PRIMARY_ARRAY[@]}"
+		do
+			SET_VAR $I
+			env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $QD_PORT $QD_DBNAME -c "update cdb.pgdatabase set dbname='${MPP_DBNAME}' where dbid=${MPP_DBID};" >> $LOG_FILE 2>&1
+			RETVAL=$?
+			if [ $RETVAL -ne 0 ]; then
+					ERROR_EXIT "[FATAL]:-Failed to update $MPP_DBNAME cdb.pgdatabase table" 2
+			else
+					LOG_MSG "[INFO]:-Successfully updated $MPP_DBNAME cdb.pgdatabase table"
+			fi
+		done
 		LOG_MSG "[INFO]:-Completed creating the $MPP_DBNAME database"
 		LOG_MSG "[INFO]:-Commencing MPP system table updates for QD host"
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -575,13 +592,13 @@ CREATE_QD_DB () {
 UPDATE_PGDATABASE () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		U_DB=$1
-		U_DB=template1
 		U_PT=$2
 		U_DBID=$3
 		U_DBNAME=$4
 		U_CONTENT=$5
 		U_LISTENERID=$6
 		U_PRIMARY=$7
+		U_DB=template1
 		CHK_COUNT=`env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from cdb.pgdatabase where listenerid=${U_LISTENERID} and content=${U_CONTENT};" 2>/dev/null` >> $LOG_FILE 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
@@ -639,6 +656,7 @@ LOAD_QE_SYSTEM_DATA () {
 		SET_VAR $QD_PRIMARY_ARRAY
 		QD_PORT=$MPP_PORT
 		###	QD_DBNAME=$MPP_DBNAME
+		TARGET_DB=$1
 		QD_DBNAME=template1
 		for I in "${QE_PRIMARY_ARRAY[@]}"
 				do
@@ -646,7 +664,7 @@ LOAD_QE_SYSTEM_DATA () {
 				LOG_MSG "[INFO]:-Adding QE $MPP_HOSTNAME to QD system tables"
 				UPDATE_HOST $QD_DBNAME $QD_PORT $MPP_HOSTID $MPP_HOSTNAME
 				UPDATE_LISTENER $QD_DBNAME $QD_PORT $MPP_LISTENID $MPP_HOSTID $MPP_PORT $MPP_DIR $MPP_USER $MPP_PASSWD
-				UPDATE_PGDATABASE $QD_DBNAME $QD_PORT $MPP_DBID $MPP_DBNAME $MPP_CONTENT $MPP_LISTENID t
+				UPDATE_PGDATABASE $QD_DBNAME $QD_PORT $MPP_DBID template1 $MPP_CONTENT $MPP_LISTENID t
 				LOG_MSG "[INFO]:-Successfully added QE $MPP_HOSTNAME to QD system tables"
 		done
 		if [ $MIRRORING -eq 1 ]; then
@@ -656,7 +674,7 @@ LOAD_QE_SYSTEM_DATA () {
 						LOG_MSG "[INFO]:-Adding QE $MPP_HOSTNAME to QD system tables as mirror"
 						UPDATE_HOST $QD_DBNAME $QD_PORT $MPP_HOSTID $MPP_HOSTNAME
 						UPDATE_LISTENER $QD_DBNAME $QD_PORT $MPP_LISTENID $MPP_HOSTID $MPP_PORT $MPP_DIR $MPP_USER $MPP_PASSWD
-						UPDATE_PGDATABASE $QD_DBNAME $QD_PORT $MPP_DBID $MPP_DBNAME $MPP_CONTENT $MPP_LISTENID f
+						UPDATE_PGDATABASE $QD_DBNAME $QD_PORT $MPP_DBID template1 $MPP_CONTENT $MPP_LISTENID f
 						LOG_MSG "[INFO]:-Successfully added QE $MPP_HOSTNAME to QD system tables as mirror"
 				done
 		fi
@@ -881,10 +899,10 @@ LOG_MSG "[INFO]:-MPP cluster successfully created"
 LOG_MSG "[INFO]:-------------------------------------------------------"
 LOG_MSG "[INFO]:-To access the mpp scripts for this cluster:"
 LOG_MSG "[INFO]:-In user $USER_NAME environment file add following line"
-LOG_MSG "[INFO]:-export QD_DATA_DIRECTORY=${QD_DATA_DIRECTORY}/${SEG_PREFIX}0"
-LOG_MSG "[INFO]:-or, use -d ${QD_DATA_DIRECTORY}/${SEG_PREFIX}0"
+LOG_MSG "[INFO]:-export QD_DATA_DIRECTORY=${QD_DIRECTORY}/${SEG_PREFIX}0"
+LOG_MSG "[INFO]:-or, use -d ${QD_DIRECTORY}/${SEG_PREFIX}0"
 LOG_MSG "[INFO]:-option for the mpp scripts"
-LOG_MSG "[INFO]:-Example ./mppstate.sh -d ${QD_DATA_DIRECTORY}/${SEG_PREFIX}0"
+LOG_MSG "[INFO]:-Example ./mppstate.sh -d ${QD_DIRECTORY}/${SEG_PREFIX}0"
 LOG_MSG "[INFO]:-Script log file = $LOG_FILE"
 LOG_MSG "[INFO]:-Script backout file = $BACKOUT_FILE"
 LOG_MSG "[INFO]:-To remove cluster, run"
