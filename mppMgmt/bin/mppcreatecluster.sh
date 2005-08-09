@@ -1,7 +1,7 @@
 #!/bin/bash
 #	Filename:-		mppcreatecluster.sh
-#	Version:-		1.1
-#	Updated:-		27/07/2005	
+#	Version:-		1.2
+#	Updated:-		09/08/2005	
 #	Status:-		MPP Conversion SE Co Internal	
 #	Author:-		L Lonergan/G Coombe	
 #	Contact:-		gcoombe@greenplum.com
@@ -15,6 +15,9 @@
 #******************************************************************************
 # Ver	Date		Who		Update
 # 1.1	27/07/2005	G Coombe	Configured mirroring functionality
+# 1.2	09/08/2005	G Coombe	Corrected CVS conversion errors.
+#			Corrected error exit message display for QD init
+#			failure.
 #******************************************************************************
 # Detailed Description
 #******************************************************************************
@@ -39,8 +42,9 @@ fi
 #******************************************************************************
 # Log file that will record script actions
 CUR_DATE=`$DATE +%Y%m%d`
+TIME=`$DATE +%H%M%S`
 PROG_NAME=`$BASENAME $0`
-BACKOUT_FILE=$DEFLOGDIR/backout_mppcreatecluster_$CUR_DATE
+BACKOUT_FILE=$DEFLOGDIR/backout_mppcreatecluster_${USER_NAME}_${CUR_DATE}_$TIME
 # Level of script feedback 0=small 1=verbose
 VERBOSE=1
 INTERACTIVE=1
@@ -70,9 +74,11 @@ USAGE () {
 		$TABECHO "	-h mpp_hostlist_file [optional]"
 		$TABECHO "		Contains a list of all QE hostnames required to participate in"
 		$TABECHO "		the new MPP database. Normally set in mpp_config_file."
-		$TABECHO "	-d postgresql_conf_mpp_additions [optional]"
+		$TABECHO "	-p postgresql_conf_mpp_additions [optional]"
 		$TABECHO "		List of additional PostgreSQL parameters to be applied to each QD/QE"
 		$TABECHO "		postgresql.conf file during MPP database initialization."
+		$TABECHO "		File ./postgresql_conf_cdb_additions will be read by default if no -p"
+		$TABECHO "		option supplied"
 		$TABECHO "	-s standby_hostname [optional]"
 		$TABECHO "		Setup standby QD host named \"standby_hostname\". (if configured in MPP configuration file)"
 		$TABECHO "	-o, create QD only, do not configure QE hosts"
@@ -96,6 +102,10 @@ USAGE () {
 CHK_PARAMS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 
+		#Check the MPPHOME variable
+		if [ x"" = x"$MPPHOME" ]; then
+				ERROR_EXIT "[FATAL]:-Environment variable MPPHOME is not set, set this to be the top dir for MPP install " 2
+		fi
 		#Make sure that script has been supplied a config file
 		if [ x"" = x"$CLUSTER_CONFIG" ]; then
 				ERROR_EXIT "[FATAL]:-MPP configuration filename [-c] option not provided." 2
@@ -815,7 +825,7 @@ RESTART_QD_PRODUCTION () {
 #******************************************************************************
 # Main Section
 #******************************************************************************
-while getopts ":v'?'aqc:l:d:h:o:s:" opt
+while getopts ":v'?'aqc:l:p:h:o:s:" opt
 		do
 		case $opt in
 				v ) VERSION_INFO ;;
@@ -824,7 +834,7 @@ while getopts ":v'?'aqc:l:d:h:o:s:" opt
 				q ) unset VERBOSE ;;
 				c ) CLUSTER_CONFIG=$OPTARG ;;
 				l ) LOG_DIR=$OPTARG ;;
-				d ) PGCONFADDS=$OPTARG ;;
+				p ) PG_CONF_ADD_FILE=$OPTARG ;;
 				h ) MACHINE_LIST_FILE=$OPTARG ;;
 				o ) QD_ONLY=1 ;;
 				s ) STANDBY_HOST_NAME=$OPTARG ;;
@@ -865,7 +875,18 @@ RESTART_QD_PRODUCTION
 $ECHO "$RM $BACKOUT_FILE" >> $BACKOUT_FILE
 
 LOG_MSG "[INFO]:-MPP cluster successfully created"
-
+LOG_MSG "[INFO]:-------------------------------------------------------"
+LOG_MSG "[INFO]:-To access the mpp scripts for this cluster:"
+LOG_MSG "[INFO]:-In user $USER_NAME environment file add following line"
+LOG_MSG "[INFO]:-export QD_DATA_DIRECTORY=${QD_DATA_DIRECTORY}/${SEG_PREFIX}0"
+LOG_MSG "[INFO]:-or, use -d ${QD_DATA_DIRECTORY}/${SEG_PREFIX}0"
+LOG_MSG "[INFO]:-option for the mpp scripts"
+LOG_MSG "[INFO]:-Example ./mppstate.sh -d ${QD_DATA_DIRECTORY}/${SEG_PREFIX}0"
+LOG_MSG "[INFO]:-Script log file = $LOG_FILE"
+LOG_MSG "[INFO]:-Script backout file = $BACKOUT_FILE"
+LOG_MSG "[INFO]:-To remove cluster, run"
+LOG_MSG "[INFO]:-/bin/bash $BACKOUT_FILE"
+LOG_MSG "[INFO]:-------------------------------------------------------"
 if [ $STANDBY_QD_IP ] && [ $STANDBY_QD_MASK ]; then
 		if [ $STANDBY_QD_NAME ]; then
 				$WORKDIR/mppinitstandby.bsh -h $STANDBY_QD_NAME
