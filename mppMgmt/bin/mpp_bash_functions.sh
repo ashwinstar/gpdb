@@ -30,9 +30,18 @@
 declare -a CMDPATH
 CMDPATH=(/usr/kerberos/bin /usr/sfw/bin /opt/sfw/bin /usr/local/bin /usr/ucb /bin /usr/bin /sbin /usr/sbin)
 
-#MPPPATH is the list of possible locations for the Bizgres binaries, in precedence order
-declare -a MPPPATH
-MPPPATH=( $MPPHOME $BIZHOME )
+if [ x"$MPPHOME" = x ]; then
+  if [ x"$BIZHOME" = x ]; then
+    echo "Neither MPPHOME or BIZHOME are set.  Set one of these variables to point to the location"
+	echo "of the MPP installation directory."
+    echo ""
+	exit 1
+  fi
+fi
+
+#MPPSEARCH is the list of possible locations for the Bizgres binaries, in precedence order
+declare -a MPPSEARCH
+MPPSEARCH=( $MPPHOME $BIZHOME )
 
 #MPP_UNIQUE_COMMAND is used to identify the binary directory
 MPP_UNIQUE_COMMAND=cdb_dump
@@ -55,7 +64,7 @@ findCmdInPath() {
 findMppPath() {
 		cmdtofind=$MPP_UNIQUE_COMMAND
 
-		for pathel in ${MPPPATH[@]}
+		for pathel in ${MPPSEARCH[@]}
 				do
 				CMD=`find $pathel -name $cmdtofind | tail -1`
 				if [ -x $CMD ]; then
