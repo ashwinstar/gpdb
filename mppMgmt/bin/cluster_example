@@ -11,8 +11,8 @@ SEG_PREFIX=lal
 #   psql -p $PORT_BASE template1
 PORT_BASE=60000
 
-# Prefix for script created database
-DATABASE_PREFIX=zlal
+# Name for script created database, if commented out, will not create any database within cluster.
+DATABASE_NAME=zlal
 
 # Array of data locations for each hosts Segment Instances, the number of directories in this array will
 # set the number of segment instances per host
@@ -22,6 +22,9 @@ declare -a DATA_DIRECTORY=(/Users/lukelonergan/datadirs/dbfast1 /Users/lukeloner
 QD_HOSTNAME=Luke-Lonergans-Computer.local
 # Name of directory on that host in which to setup the QD
 QD_DIRECTORY=/Users/lukelonergan/datadirs/dbfast1
+
+# Specific port number for the QD instance
+QD_PORT=50000
 
 # Hosts to allow to connect to the QD (and Segment Instances)
 # By default, allow everyone to connect (0.0.0.0/0)
