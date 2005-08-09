@@ -104,6 +104,9 @@ dbroot=
 port=
 nlisteners=
 dbname=
+nsegs=1
+hostname="localhost"
+username="$(whoami)"
 
 # Ok, loop through the command line args
 #
@@ -127,6 +130,9 @@ do
                    ;;
                 D)
                    dbroot="$OPTARG"
+                   ;;
+                n)
+                   nsegs="$OPTARG"
                    ;;
                 p)
                    port="$OPTARG"
@@ -270,6 +276,11 @@ then
 
 fi
 
+# Set this value
+PGOPTIONS='-c cdb_session_role=utility'
+
+total_content_segs=$((nlisteners-1))
+PGPORT2=$PGPORT
 
 # ---------------------------------------------------------------------
 # CDB database processing
@@ -288,8 +299,34 @@ do
        echo "initdb failed for database $i; terminating"
        exit 1
     fi
+    
+    current_segment=i;
+     dbid=$((current_segment+1));
+     contentid=$((current_segment-1));
+     
+	 db=$(basename "$PGDATA")
+	
+    pg_ctl -D $PGDATA -l "$PGROOT"/logfile.$db -o "-d 4 -c cdb_session_role=utility" start
+    sleep 2
+     
+    psql -q -p $PGPORT template1 -c "select cdb.add_host('$hostname');"
+    
+    for (( j = 0; j < nlisteners; j++ ))
+	do
+		PGDATAJ="$PGROOT/$dbname$j"
+		PGPORTJ=$(( $PGPORT2 + $j ))
+		psql -o /dev/null -q -p $PGPORT template1 -c "select cdb.add_listener('$hostname', $PGPORTJ, '$PGDATAJ', '$username', NULL);"
+		psql -o /dev/null -q -p $PGPORT template1 -c "select cdb.add_segment_database('template1', '$hostname', $PGPORTJ, true, $((j-1)));"
+    done
+    
+    
+    psql -o /dev/null -q -p $PGPORT template1 -c "select cdb.add_entry_database('template1', '$hostname', $PGPORT2, true);"
+    
+    psql -o /dev/null -q -p $PGPORT template1 -c "select cdb.cdb_set_identity('Default Cluster', '$((total_content_segs))', $dbid, $contentid);"
 
+	pg_ctl -D $PGDATA -l "$PGROOT"/logfile.$db -o "-c cdb_session_role=utility" stop
     # Increment our port number
     PGPORT=$(( PGPORT + 1 ))
 
 done
+
