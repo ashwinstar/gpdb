@@ -29,7 +29,7 @@ typedef struct CdbComponentDatabaseInfo
 	int4		dbid;			/* the dbid of this database */
 	int4		segindex;		/* content indicator: -1 for entry database, 0, ..., n-1 for segment database */
     bool		isprimary;  	/* true if this is the primary segment, false if it's the secondary */
-    char		*dbname; 		/* segment database name */
+    //char		*dbname; 		/* segment database name */
     char		*hostname;  	/* name or ip address of host machine */
     int4		port;     		/* port that instance is listening on */
     char		*datadir;   	/* directory where instance was initialized into */
