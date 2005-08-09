@@ -21,7 +21,7 @@ declare -a DATA_DIRECTORY=(/Users/lukelonergan/datadirs/dbfast1 /Users/lukeloner
 # Name of host on which to setup the QD
 QD_HOSTNAME=Luke-Lonergans-Computer.local
 # Name of directory on that host in which to setup the QD
-QD_DATA_DIRECTORY=/Users/lukelonergan/datadirs/dbfast1
+QD_DIRECTORY=/Users/lukelonergan/datadirs/dbfast1
 
 # Hosts to allow to connect to the QD (and Segment Instances)
 # By default, allow everyone to connect (0.0.0.0/0)
