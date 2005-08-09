@@ -31,6 +31,7 @@
 
 #include "nodes/primnodes.h"
 #include "nodes/execnodes.h"
+#include "commands/dbcommands.h"
 
 
 #include "cdb/cdbcat.h"
@@ -285,9 +286,9 @@ Gang *createGang(GangType type, int size, int content)
 					*/
 				ereport(WARNING,
 						(errcode(ERRCODE_WARNING),
-							errmsg("CDBLINK_SETUP--- Could not establish connection with segment database "
-								"segindex %d isprimary %c", 
-								q->segindex, (q->isprimary ? 't' : 'f')),
+							errmsg("CDBGANG_SETUP--- Could not establish connection with segment database "
+								"segindex %d isprimary %c dbname %s", 
+								q->segindex, (q->isprimary ? 't' : 'f'), get_database_name(MyDatabaseId)),
 							errdetail("%s", segdbDesc->error_message)));
 							
 				newGangDefinition->all_valid_segdbs_connected = false;
@@ -384,7 +385,7 @@ Gang *buildGangDefinition(GangType type, int size)
 	newGangDefinition->type = type;
     newGangDefinition->size = size;
     
-
+	 
 	 
 	
 	switch (type)
@@ -643,7 +644,7 @@ static void *thread_DoConnect(void *arg)
 			appendPQExpBuffer(&buffer, "host=%s ", q->hostname );
 					
 		appendPQExpBuffer(&buffer, "port=%u ", q->port);
-		appendPQExpBuffer(&buffer, "dbname=%s ", q->dbname);
+		appendPQExpBuffer(&buffer, "dbname=%s ", get_database_name(MyDatabaseId));
 		appendPQExpBuffer(&buffer, "user=%s ", q->cdbsuperuser);
 
 		if ( q->cdbsuperpswd != NULL )

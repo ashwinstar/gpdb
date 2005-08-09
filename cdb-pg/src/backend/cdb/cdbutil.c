@@ -202,7 +202,6 @@ void freeCdbCdb(void)
  *			 d.dbid,
  *			 d.content,
  * 			 d.isprimary, 
- * 			 d.dbname, 
  * 			 h.hostname,
  * 			 l.port, 
  * 			 l.datadir, 
@@ -284,7 +283,7 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 	int					listenerid;
 	int					hostid;
 	bool				isprimary;
-	char				*dbname;
+
 
 	int i;
 
@@ -377,12 +376,7 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 		Assert( !isNull );
 		isprimary = DatumGetBool(attr);
 
-		/*
-		* dbname
-		*/
-		attr = heap_getattr(cdb_pgdatabase_tuple, Anum_cdb_pgdatabase_dbname, cdb_pgdatabase_rel->rd_att, &isNull);
-		Assert( !isNull );
-		dbname = DatumGetCString(DirectFunctionCall1(textout, attr));
+
 
 		/*
 		* Determine which array to place this rows data in: content or segment, based on the content field.
@@ -425,7 +419,6 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 		pRow->listenerid = listenerid;
 		pRow->segindex = content;
 		pRow->isprimary = isprimary;
-		pRow->dbname = dbname;
 
 		/*
 		* Now, scan the cdb.listener table for this listenerid
@@ -695,8 +688,6 @@ void freeCdbComponentDatabaseInfo( CdbComponentDatabaseInfo *cdi )
 	if ( cdi == NULL )
 		return;
 
-	if ( cdi->dbname != NULL )
-	    pfree(cdi->dbname);
 	if ( cdi->hostname != NULL )
 	    pfree(cdi->hostname);
 	if ( cdi->datadir != NULL )
