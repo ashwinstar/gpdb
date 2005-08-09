@@ -1,6 +1,6 @@
 #!/bin/bash
 #	Filename:-		mppcreatecluster.sh
-#	Version:-		1.3
+#	Version:-		1.4
 #	Updated:-		09/08/2005	
 #	Status:-		MPP Conversion SE Co Internal	
 #	Author:-		L Lonergan/G Coombe	
@@ -20,6 +20,8 @@
 #			failure.
 # 1.3	09/08/2005	G Coombe	Corrected fault where template1 database table
 #					cdb.pgdatabase has incorrect db name.
+# 1.4	09/08/2005	G Coombe	Changed the create database code to use revised
+#					MPP ability to now create database within QD.
 #******************************************************************************
 # Detailed Description
 #******************************************************************************
@@ -160,7 +162,7 @@ CHK_PARAMS () {
 		fi 
 
 		#SEG_PREFIX
-		if [ ! $SEG_PREFIX ]; then
+		if [ x"" =  X"$SEG_PREFIX" ]; then
 				ERROR_EXIT "[FATAL]:-SEG_PREFIX variable not set" 2
 		fi
 
@@ -169,11 +171,16 @@ CHK_PARAMS () {
 		LWR_CASE_SEG_PREFIX=`$ECHO $SEG_PREFIX|$TR '[A-Z]' '[a-z]'`
 		SEG_PREFIX=$LWR_CASE_SEG_PREFIX
 
+		#QD_PORT
+		if [ x"" = x"$QD_PORT" ]; then
+				ERROR_EXIT "[FATAL]:-QD_PORT variable not set" 2
+		fi
+
 		#PORT_BASE
-		if [ ! $PORT_BASE ]; then
+		if [ x"" = x"$PORT_BASE" ]; then
 				ERROR_EXIT "[FATAL]:-PORT_BASE variable not set"2
 		fi
-		QD_PORT=$PORT_BASE
+		QE_PORT=$PORT_BASE
 
 		#DATA_DIRECTORY
 		((QE_PRIMARY_COUNT=${#DATA_DIRECTORY[@]}))
@@ -182,12 +189,14 @@ CHK_PARAMS () {
 		fi
 
 		#QD_DIRECTORY
-		if [ ! $QD_DIRECTORY ]; then
+		if [ x"" = x"$QD_DIRECTORY" ]; then
 				ERROR_EXIT "[FATAL]:-QD_DIRECTORY variable not set" 2
 		fi
 		#DATABASE_PREFIX
-		if [ ! $DATABASE_PREFIX ]; then
-				ERROR_EXIT "[FATAL]:-DATABASE_PREFIX variable not set" 2
+		if [ x"" = x"$DATABASE_NAME" ]; then
+				LOG_MSG "[INFO]:-No DATABASE_NAME set, will exit following template1 updates"
+		else
+				LOG_MSG "[INFO]:-Will create database $DATABASE_NAME" 
 		fi
 		#IP_ALLOW
 		if [ ! $IP_ALLOW ]; then
@@ -348,12 +357,12 @@ CREATE_QE_ARRAY () {
 		PORT_COUNT=1
 		((QD_LISTNERID=$LISTENERID_COUNT-1))
 		QDHOSTID_COUNT=1
-		QD_PORT=$PORT_BASE
+		QE_PORT=$PORT_BASE
 		((QDSEG_COUNT=$SEG_COUNT-1))
 		((QDDBID_COUNT=$DBID_COUNT-1))
 		((QDDB_COUNT=$DB_COUNT-1))
 		((QDCONTENT_COUNT=$CONTENT_COUNT-1))
-		QD_PRIMARY_ARRAY=${QD_HOSTNAME}:${QDHOSTID_COUNT}:${QD_LISTNERID}:${QD_PORT}:${QD_DIRECTORY}/${SEG_PREFIX}${QDSEG_COUNT}:${QDDBID_COUNT}:${DATABASE_PREFIX}${QDDB_COUNT}:${QDCONTENT_COUNT}
+		QD_PRIMARY_ARRAY=${QD_HOSTNAME}:${QDHOSTID_COUNT}:${QD_LISTNERID}:${QD_PORT}:${QD_DIRECTORY}/${SEG_PREFIX}${QDSEG_COUNT}:${QDDBID_COUNT}:${DATABASE_NAME}${QDDB_COUNT}:${QDCONTENT_COUNT}
 		QE_NAME_INDEX=0
 		for QE_NAME in "${MACHINE_LIST[@]}"
 				do
@@ -441,7 +450,7 @@ DISPLAY_CONFIG () {
 		LOG_MSG "[INFO]:-QD hostname          = $MPP_HOSTNAME"
 		LOG_MSG "[INFO]:-MPP segment prefix   = $SEG_PREFIX"
 		LOG_MSG "[INFO]:-Primary QE Dir #     = $QE_PRIMARY_COUNT"
-		LOG_MSG "[INFO]:-QD Database prefix   = $DATABASE_PREFIX"
+		LOG_MSG "[INFO]:-QD Database          = $DATABASE_NAME"
 		LOG_MSG "[INFO]:-QD IP allow          = $IP_ALLOW"
 		LOG_MSG "[INFO]:-Total MPP segments   = $TOTAL_SEG"
 		LOG_MSG "[INFO]:-Trusted shell        = $TRUSTED_SHELL"
@@ -460,8 +469,7 @@ DISPLAY_CONFIG () {
 		fi
 		LOG_MSG "[INFO]:-QD Primary MPP Configuration"
 		LOG_MSG "[INFO]:-----------------------------"
-		LOG_MSG "[INFO]:-QD database name     = $MPP_DBNAME"
-		LOG_MSG "[INFO]:-QD port              = $MPP_PORT"
+		LOG_MSG "[INFO]:-QD port              = $QD_PORT"
 		LOG_MSG "[INFO]:-QD instance dir      = $MPP_DIR"
 		LOG_MSG "[INFO]:-QE Primary MPP Configuration"
 		LOG_MSG "[INFO]:-----------------------------"
@@ -519,8 +527,6 @@ CREATE_QD_DB () {
 		LOG_MSG "[INFO]:-Initializing QD Postgres instance $MPP_DIR"
 		RUN_COMMAND "$INITDB -E $ENCODING -D $MPP_DIR" >> $LOG_FILE 2>&1
 		LOG_MSG "[INFO]:-Completed QD instance initialization"
-		##	BACKOUT_COMMAND "$RM -fr $MPP_DIR" 	
-		##	BACKOUT_COMMAND "$ECHO \"Removing QD data directory\""
 		LOG_MSG "[INFO]:-Setting the QD port to $MPP_PORT"
 		$ECHO "port=$MPP_PORT" >> ${MPP_DIR}/$PG_CONF
 		if [ $? -ne 0 ]; then
@@ -563,29 +569,6 @@ CREATE_QD_DB () {
 		UPDATE_PGDATABASE $MPP_DBNAME $MPP_PORT $MPP_DBID template1 $MPP_CONTENT $MPP_LISTENID t
 		LOAD_QE_SYSTEM_DATA template1
 		SET_VAR $QD_PRIMARY_ARRAY
-		LOG_MSG "[INFO]:-Creating the QD $MPP_DBNAME database"
-		env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $MPP_PORT template1 -c "create database ${MPP_DBNAME};" >> $LOG_FILE 2>&1
-		RETVAL=$?
-		if [ $RETVAL -ne 0 ]; then
-				ERROR_EXIT "[FATAL]:-Failed to create QD db $MPP_DBNAME" 2
-		fi
-		LOG_MSG "[INFO]:-Updating cdb.pgdatabase table for ${MPP_DBNAME}"
-		QD_DBNAME=$MPP_DBNAME
-		QD_PORT=$MPP_PORT
-		env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $QD_PORT $QD_DBNAME -c "update cdb.pgdatabase set dbname='${MPP_DBNAME}' where dbid=${MPP_DBID};" >> $LOG_FILE 2>&1
-		for I in "${QE_PRIMARY_ARRAY[@]}"
-		do
-			SET_VAR $I
-			env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $QD_PORT $QD_DBNAME -c "update cdb.pgdatabase set dbname='${MPP_DBNAME}' where dbid=${MPP_DBID};" >> $LOG_FILE 2>&1
-			RETVAL=$?
-			if [ $RETVAL -ne 0 ]; then
-					ERROR_EXIT "[FATAL]:-Failed to update $MPP_DBNAME cdb.pgdatabase table" 2
-			else
-					LOG_MSG "[INFO]:-Successfully updated $MPP_DBNAME cdb.pgdatabase table"
-			fi
-		done
-		LOG_MSG "[INFO]:-Completed creating the $MPP_DBNAME database"
-		LOG_MSG "[INFO]:-Commencing MPP system table updates for QD host"
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -654,7 +637,6 @@ UPDATE_LISTENER () {
 LOAD_QE_SYSTEM_DATA () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		SET_VAR $QD_PRIMARY_ARRAY
-		QD_PORT=$MPP_PORT
 		###	QD_DBNAME=$MPP_DBNAME
 		TARGET_DB=$1
 		QD_DBNAME=template1
@@ -775,8 +757,6 @@ CREATE_QES_PRIMARY () {
 				BACKOUT_COMMAND "$ECHO \"Stopping QE instance on $MPP_HOSTNAME\""
 				LOG_MSG "[INFO]:-Successfully started QE instance on $MPP_HOSTNAME"
 				UPDATE_CDB $MPP_DBNAME $MPP_PORT "$CLUSTER_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
-				LOG_MSG "[INFO]:-Creating QE database $MPP_DBNAME"
-				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "env PGOPTIONS=\"-c cdb_session_role=utility\" $PSQL -p $MPP_PORT template1 -c \"create database ${MPP_DBNAME};\""
 		done
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -820,8 +800,6 @@ CREATE_QES_MIRROR () {
 				BACKOUT_COMMAND "$ECHO \"Stopping QE instance on $MPP_HOSTNAME\""
 				LOG_MSG "[INFO]:-Successfully started QE mirror instance on $MPP_HOSTNAME"
 				UPDATE_CDB $MPP_DBNAME $MPP_PORT "$CLUSTER_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
-				LOG_MSG "[INFO]:-Creating QE database $MPP_DBNAME"
-				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "env PGOPTIONS=\"-c cdb_session_role=utility\" $PSQL -p $MPP_PORT template1 -c \"create database ${MPP_DBNAME};\""
 		done
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -840,6 +818,19 @@ RESTART_QD_PRODUCTION () {
 				ERROR_EXIT "[FATAL]:-$WORKDIR/mppstart.sh not located" 2
 		fi
 		LOG_MSG "[INFO]:-Completed restart of MPP cluster in production mode"
+		LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+CREATE_DATABASE () {
+		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+		SET_VAR $QD_PRIMARY_ARRAY
+		$PSQL -p $MPP_PORT template1 -c"create database ${DATABASE_NAME};" >> $LOG_FILE 2>&1
+		RETVAL=$?
+		if [ $RETVAL -ne 0 ]; then
+				ERROR_EXIT "[FATAL]:-Failed to create database $DATABASE_NAME" 2
+		else
+				LOG_MSG "[INFO]:-Successfully created database $DATABASE_NAME"
+		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -889,6 +880,10 @@ CREATE_QES_PRIMARY
 
 if [ $MIRRORING -ne 0 ]; then
 		CREATE_QES_MIRROR
+fi
+
+if [ x"" != x"$DATABASE_NAME" ]; then
+	CREATE_DATABASE
 fi
 
 RESTART_QD_PRODUCTION
