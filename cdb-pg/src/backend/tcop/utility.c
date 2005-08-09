@@ -947,7 +947,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_CreatedbStmt:
-			CdbSentry(CDB_WARN, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			createdb((CreatedbStmt *) parsetree);
 			break;
 
