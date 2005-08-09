@@ -1,0 +1,142 @@
+Author:-	G L Coombe
+Updated:-	9th August 2005
+
+This document describes ohow to configure and use the mppcreatecluster.sh script
+
+Overview
+--------
+
+The mppcreatecluster.sh script creates a QD and a number of QE's which can be on
+a single machine or multiple machines. Configuration is a three stage process:
+1.	Update the cluster configuration file
+2.	Select the machine/machines upon which the cluster will be built
+3. 	Run the script ./mppcreatecluster.sh -c <cluster configuration filename>
+
+The mppcreatecluster.sh script has one manadatory parameter [ -c <cluster configuration filename].
+The cluster configuration file can be any name you choose, but must contain the expected
+number of variables.
+
+The Cluster Configuration File
+------------------------------
+CVS contains an example file cluster_example, which is configured for a single node QD/QE
+environment.
+
+The following provides an overview of each of the variables contained within the file.
+
+CLUSTER_NAME="XXX YYY"	
+			This sets the cluster name within the cdb.cdb table on the QD
+			and QE's. This can be any text as required, if this variable
+			is not set, the mppcreatecluster.sh script will set this to
+			a default value of "MPP Cluster"
+
+MACHINE_LIST_FILE=<name of file containing the machine hostnames to be configured as QE's
+			Format for this file is
+			hostname1
+			hostname2
+			hostname3
+			..etc..
+			If the required configuration is a single host with a QD and a
+			number of QE's, just enter that hostname in the file.
+			For a multi-host cluster, if the file contains the name of the
+			QD host, QE's will be created on the QD host, if the QD hostname
+			is not in this file, the QD will be created as a single instance
+			with no QE's on that same host.
+
+SEG_PREFIX="SSS"
+			This variable sets the naming prefix for the QD and QE postmaster
+			data directories.
+			The mppcreatecluster.sh script will create a sub-directory named
+			${SEG_PREFIX}0, the QE's will be named as follows (depending
+			on the number of QE's being created)
+			${SEG_PREFIX}1
+			${SEG_PREFIX}2
+			
+PORT_BASE=nnnnn		
+			This variable sets the port range for the QE postmasters.
+			Where there are multiple QE's/host, ports will be assigned
+			as nnnnnn+1, nnnnnn+2, nnnnnn+3 etc.
+			Port numbers across QE's will be the same, so for example if
+			there are 2 hosts, each with 2 QE's, ports will be
+			host1		QE1	60001
+			host1		QE2	60002
+			host2		QE3	60001
+			host2		QE4	60002
+			It should be noted that the PORT_BASE should be set at a value
+			that is not expected to clash with other ports that may already
+			be assigned on a QD/QE.
+
+declare -a DATA_DIRECTORY=(/dir1 /dir2 /dir3)
+			This array determines the number of primary QE's that will be created
+			on a host machine.
+			In the above example, each machine will be configured with 3 QE's.
+			The resulting data directory for each QE will be:
+				/dir1/${SEG_PREFIX}[QE number]
+				/dir2/${SEG_PREFIX}[QE number]
+				/dir3/${SEG_PREFIX}[QE number]
+
+QD_HOSTNAME="testhost"
+			This variable sets the name on which the QD instance will be created, the
+			mppcreatecluster.sh expects to be executed on this host, and will exit if
+			this is not the case.
+
+QD_DIRECTORY=/xxxx
+			This sets where the QD data sub-directory will be created.
+
+QD_PORT=nnnnnn		
+			This sets a specific port number of the QD instance.
+
+IP_ALLOW="XXX.YYY.ZZZ.AAA/CC"
+			This is the value that will be added to each pg_hba.conf file
+			to allow the QE's to connect to the QD instance.
+
+TRUSTED_SHELL="ssh"
+			This determines the mechanism that will be used to configure remote
+			QE hosts.
+DATABASE_NAME="dbname"
+			if this variable is set, the mppcreatecluster.sh script will create
+			the $DATABASE_NAME database when all QE's have been created. If this
+			variable is not set, the mppcreatecluster.sh script will not create
+			this database.
+
+CHECK_POINT_SEGMENTS=X
+			This value will ba added to each postgresql.conf file.
+
+ENCODING=UNICODE
+			This is used when each instance is initialized.
+
+MIRROR_PORT_BASE=nnnnnn
+			NOT CONFIGURED AT THIS TIME. DO NOT UNCOMMENT.
+
+declare -a MIRROR_DATA_DIRECTORY=(/dir4 /dir5 /dir6)
+			NOT CONFIGURED AT THIS TIME. DO NOT UNCOMMENT.
+
+STANDBY_HOST=hostname
+			NOT CONFIGURED AT THIS TIME. DO NOT UNCOMMENT.
+
+STANDBY_IP_ALLOW="XXX.YYY.ZZZ.AAA/CC"
+			NOT CONFIGURED AT THIS TIME. DO NOT UNCOMMENT.
+
+Single Host Configuration Example
+---------------------------------
+
+The following variable settings will create a 3 QE cluster on a single host called testhost.
+CLUSTER_NAME="Test Cluster"
+MACHINE_LIST_FILE=hostlist #This file should contain "testhost"
+SEG_PREFIX=testdb
+PORT_BASE=45000
+declare -a DATA_DIRECTORY=(/dbfast1 /dbfast2 /dbfast3)
+QD_HOSTNAME=testhost
+QD_DIRECTORY=/dbfast4
+QD_PORT=5431
+IP_ALLOW=<IP address of testhost"
+TRUSTED_SHELL="ssh"
+CHECK_POINT_SEGMENTS=8
+ENCODING=UNICODE
+
+If the above variables were contained in a file named cluster_test to create the cluster
+issue the below command
+
+$> ./mppcreatecluster.sh -c cluster_test
+
+
+
