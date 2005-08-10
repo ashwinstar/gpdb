@@ -589,7 +589,7 @@ UPDATE_PGDATABASE () {
 		fi
 		if [ $CHK_COUNT -eq 0 ]; then
 				LOG_MSG "[INFO]:-Adding $U_CONTENT to system pgdatabase table"
-				env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into cdb.pgdatabase values (${U_DBID},'${U_PRIMARY}','${U_DBNAME}',${U_CONTENT},${U_LISTENERID});" >> $LOG_FILE 2>&1
+				env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into cdb.pgdatabase (dbid, isprimary, content, listenerid) values (${U_DBID},'${U_PRIMARY}',${U_CONTENT},${U_LISTENERID});" >> $LOG_FILE 2>&1
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
 						ERROR_EXIT "[FATAL]:-Failed to add $U_CONTENT to system pgdatabase table" 2
