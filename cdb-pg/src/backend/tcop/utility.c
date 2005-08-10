@@ -400,20 +400,20 @@ CdbSentry(CdbAction dispatch, Node *parsetree, const char *altname)
 	case CDB_WARN:
 		ereport(WARNING, (
 			errcode(ERRCODE_WARNING_CDB_INTERIM_FEATURE),
-			errmsg("CDB support for %s may change or be revoked in the future.", cmdname)
+			errmsg("Bizgres MPP support for %s may change or be revoked in the future.", cmdname)
 			));
 		return;
 		
 	case CDB_NONCE:
 		ereport(ERROR, (
 			errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-			errmsg("CDB support for %s is not available yet.", cmdname)
+			errmsg("Bizgres MPP support for %s is not available yet.", cmdname)
 			));
 		
 	case CDB_REJECT:
 		ereport(ERROR, (
 			errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-			errmsg("CDB does not support %s.", cmdname)
+			errmsg("Bizgres MPP does not support %s.", cmdname)
 			));
 	
 	default:
@@ -729,7 +729,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_CommentStmt:
-			CdbSentry(CDB_WARN, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			CommentObject((CommentStmt *) parsetree);
 			break;
 
@@ -784,7 +784,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_AlterTableStmt:
-			CdbSentry(CDB_NONCE, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			AlterTable((AlterTableStmt *) parsetree);
 			break;
 
