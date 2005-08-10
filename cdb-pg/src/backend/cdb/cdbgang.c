@@ -428,7 +428,7 @@ Gang *buildGangDefinition(GangType type, int size)
 	
 	
 
-	newGangDefinition->segdb_count	= cdb_component_dbs->total_segment_dbs;
+	newGangDefinition->segdb_count	= cdb_component_dbs->total_segments;
 	if (type == GANGTYPE_READER && size == 1)
 		newGangDefinition->segdb_count = size;
 	else
@@ -493,7 +493,8 @@ Gang *buildGangDefinition(GangType type, int size)
 			    		p = &cdb_component_dbs->segment_db_info[j];
 			    	else
 			    	{
-			    		return NULL; /* no mirror for this primary! */
+                     elog(NOTICE,"building Gang:  No mirror segdb found!!!!");
+			    		continue; /* no mirror for this primary! */
 			    	}
 			    
 			    }
@@ -509,11 +510,12 @@ Gang *buildGangDefinition(GangType type, int size)
 			    	else
 			    		{
 			    			elog(NOTICE,"building Gang:  No primary segdb found!!!!");
+                         continue;
 			    		}
 			    
 			    }
 			
-			segdbDesc = &newGangDefinition->db_descriptors[j];
+			segdbDesc = &newGangDefinition->db_descriptors[seg_count];
 			 
 			segdbDesc->segment_descriptor = NULL;
 			segdbDesc->segment_database_info = p;
