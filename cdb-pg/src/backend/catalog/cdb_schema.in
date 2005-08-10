@@ -100,13 +100,12 @@ create table CDB.PGDATABASE
 (
 	dbid integer,
 	isprimary boolean,
-	dbname text not null,
 	content integer not null,
 	listenerid integer not null,
 	
 	primary key (dbid),
 	unique (content, isprimary),
-	unique (dbname, listenerid),
+	unique (listenerid),
 	foreign key (listenerid) references CDB.listener(listenerid)
 );
 
@@ -357,15 +356,13 @@ COMMENT ON FUNCTION cdb.add_listener(cdb.host.hostname%TYPE,
 --
 -- Used to add a Database to the CDB
 --
-CREATE OR REPLACE FUNCTION cdb.add_segment_database( cdb.pgdatabase.dbname%TYPE,
-											         cdb.host.hostname%TYPE,
+CREATE OR REPLACE FUNCTION cdb.add_segment_database( cdb.host.hostname%TYPE,
 			 					     		         cdb.listener.port%TYPE, 
 											         cdb.pgdatabase.isprimary%TYPE,
 					   						         cdb.pgdatabase.content%TYPE)
 	RETURNS void 
 	AS '
 		DECLARE
-			arg_dbname			ALIAS FOR $1;
 			arg_hostname		ALIAS FOR $2;
 			arg_port			ALIAS FOR $3;
 			arg_isprimary   	ALIAS FOR $4;
@@ -380,10 +377,6 @@ CREATE OR REPLACE FUNCTION cdb.add_segment_database( cdb.pgdatabase.dbname%TYPE,
 			--
 			-- Perform a little validation on the input parameters
 			--
-			IF arg_dbname IS NULL OR arg_dbname = ''''
-			THEN
-				RAISE EXCEPTION ''dbname must be specified'';
-			END IF;
 			
 			IF arg_hostname IS NULL or arg_hostname = ''''
 			THEN
@@ -433,18 +426,6 @@ CREATE OR REPLACE FUNCTION cdb.add_segment_database( cdb.pgdatabase.dbname%TYPE,
 				RAISE EXCEPTION ''Listener %:% is not in the cdb.listener table'', arg_hostname, arg_port;
 			END IF;
 			
-			--
-			-- Make sure the database name is available on the listener.
-			--
-			SELECT INTO db_row
-					*
-				FROM cdb.pgdatabase WHERE pgdatabase.dbname = arg_dbname
-				AND pgdatabase.listenerid = f_listenerid;
-				
-			IF FOUND
-			THEN
-				RAISE EXCEPTION ''Database % on listener %:% is already in the cdb.pgdatabase table'', arg_dbname, arg_hostname, arg_port;
-			END IF;
 			
 			--
 			-- Make sure the content and primary is available in the CDB.
@@ -484,14 +465,14 @@ CREATE OR REPLACE FUNCTION cdb.add_segment_database( cdb.pgdatabase.dbname%TYPE,
 			--
 			-- Add an entry to cdb.pgdatabase table
 			--
-			INSERT INTO cdb.pgdatabase(dbid, isprimary, dbname, content, listenerid)
-			VALUES ( lastid, arg_isprimary, arg_dbname, arg_content, f_listenerid );
+			INSERT INTO cdb.pgdatabase(dbid, isprimary, content, listenerid)
+			VALUES ( lastid, arg_isprimary, arg_content, f_listenerid );
 			
 			RETURN;
 		END;
 	' LANGUAGE 'plpgsql';
 			
-COMMENT ON FUNCTION cdb.add_segment_database( cdb.pgdatabase.dbname%TYPE,
+COMMENT ON FUNCTION cdb.add_segment_database( 
 											  cdb.host.hostname%TYPE,
 			 					     		  cdb.listener.port%TYPE, 
 											  cdb.pgdatabase.isprimary%TYPE,
@@ -502,14 +483,13 @@ COMMENT ON FUNCTION cdb.add_segment_database( cdb.pgdatabase.dbname%TYPE,
 --
 -- Used to add an Entry Database to the CDB
 --
-CREATE OR REPLACE FUNCTION cdb.add_entry_database( cdb.pgdatabase.dbname%TYPE,
+CREATE OR REPLACE FUNCTION cdb.add_entry_database( 
 												   cdb.host.hostname%TYPE,
 			 					     			   cdb.listener.port%TYPE, 
 												   cdb.pgdatabase.isprimary%TYPE)
 	RETURNS void
 	AS '
 		DECLARE
-			dbname			ALIAS FOR $1;
 			hostname		ALIAS FOR $2;
 			port			ALIAS FOR $3;
 			isprimary   	ALIAS FOR $4;
@@ -519,13 +499,13 @@ CREATE OR REPLACE FUNCTION cdb.add_entry_database( cdb.pgdatabase.dbname%TYPE,
 			-- Just call add_segment_database to do the work.
 			--
 
-			PERFORM cdb.add_segment_database( dbname, hostname, port, isprimary, -1 );
+			PERFORM cdb.add_segment_database( hostname, port, isprimary, -1 );
 			
 			RETURN;
 		END;
 	' LANGUAGE 'plpgsql';
 			
-COMMENT ON FUNCTION cdb.add_entry_database( cdb.pgdatabase.dbname%TYPE,
+COMMENT ON FUNCTION cdb.add_entry_database( 
 											cdb.host.hostname%TYPE,
 			 					     		cdb.listener.port%TYPE, 
 											cdb.pgdatabase.isprimary%TYPE)
@@ -838,7 +818,7 @@ COMMENT ON FUNCTION cdb.cdb_set_identity( cdb.cdb.cdbname%TYPE,
 
 CREATE OR REPLACE VIEW cdb.component_database
 		
-	AS SELECT d.content as "segindex", d.dbname as "dbname", 
+	AS SELECT d.content as "segindex", 
 			  d.isprimary as "isprimary", h.hostname as "hostname", 
 			  l.port as "port", l.datadir as "datadir"
 	   FROM cdb.host h, cdb.listener l, cdb.pgdatabase d
@@ -849,7 +829,7 @@ COMMENT ON VIEW cdb.component_database
 
 
 CREATE OR REPLACE VIEW cdb.segment_database
-	AS SELECT coalesce(generate_series, segindex) as "segindex", dbname, 
+	AS SELECT coalesce(generate_series, segindex) as "segindex", 
 			  isprimary, hostname, port, datadir, true as "isvalid"
 		FROM generate_series(0, (select numsegments from cdb.cdb)) 
 		     FULL OUTER JOIN cdb.component_database

@@ -22,12 +22,11 @@
  */
 #define CdbSegmentRelationName			"pgdatabase"
 #define CdbSegmentPrimaryKeyIndexName	"pgdatabase_pkey"
-#define Natts_cdb_pgdatabase			5
+#define Natts_cdb_pgdatabase			4
 #define Anum_cdb_pgdatabase_dbid		1
 #define Anum_cdb_pgdatabase_isprimary	2
-#define Anum_cdb_pgdatabase_dbname		3
-#define Anum_cdb_pgdatabase_content		4
-#define Anum_cdb_pgdatabase_listenerid	5
+#define Anum_cdb_pgdatabase_content		3
+#define Anum_cdb_pgdatabase_listenerid	4
 
 /*
  * Defines for cdb.listener table
