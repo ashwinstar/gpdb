@@ -26,7 +26,7 @@
 #include "nodes/plannodes.h"
 #include "nodes/execnodes.h" /* CdbProcess, Slice, and SliceTable. */
 #include "nodes/relation.h"
-#include "utils/datum.h"s
+#include "utils/datum.h"
 
 
 /*

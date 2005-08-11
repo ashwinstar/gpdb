@@ -1790,12 +1790,14 @@ StartTransaction(void)
 static void
 CommitTransaction(void)
 {
+	TransactionState s;
+	
     /* commit all QE as cleanup process, ignore all errors
      * commit should have been called from ProcessUtility and CdbDispatchCommand
      */
     commitDtxTransaction(false);
     
-	TransactionState s = CurrentTransactionState;
+	s = CurrentTransactionState;
 
 	ShowTransactionState("CommitTransaction");
 

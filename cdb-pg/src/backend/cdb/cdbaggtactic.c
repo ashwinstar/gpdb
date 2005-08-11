@@ -119,7 +119,9 @@ freeAggTactic(CdbAggTactic *tactic)
 CdbAggTactic *
 getAggTactic(Aggref* aggref, char **msg)
 {
-char *nowhere;
+	char *nowhere;
+	CdbAggTactic *tactic = NULL;
+	
 	if ( msg == NULL )
 		msg = &nowhere;
 	*msg = NULL;
@@ -168,7 +170,6 @@ char *nowhere;
 #define CDB_INT8_TO_FLOAT8_OID		482
 #define CDB_FLOAT4_TO_FLOAT8		311
 	
-	CdbAggTactic *tactic = NULL;
 	
 	if ( aggref->aggfnoid == CDB_COUNT_OID )
 	{
@@ -243,6 +244,7 @@ char *nowhere;
 	else if ( CDB_AVG_OID_LO <= aggref->aggfnoid
 			  && aggref->aggfnoid <= CDB_AVG_OID_HI )
 	{
+		bool dataTypesOk = false;
 		/* AVG */
 		
 		Oid argTypeOid = exprType((Node*)(aggref->target));
@@ -257,7 +259,6 @@ char *nowhere;
 		tactic->partials[1].aggfnoid = CDB_COUNT_OID;
 		tactic->partials[1].rettype = INT8OID;  /* COUNT returns int8 */
 		
-		bool dataTypesOk = false;
 		
 		switch ( argTypeOid )
 		{

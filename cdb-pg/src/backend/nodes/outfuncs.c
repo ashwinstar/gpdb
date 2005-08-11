@@ -1612,7 +1612,7 @@ _outQuery(StringInfo str, Query *node)
 
 			default:
 				appendStringInfo(str, " :utilityStmt ?");
-				appendStringInfo(str, "%ld", nodeTag(node->utilityStmt));
+				appendStringInfo(str, "%ud", nodeTag(node->utilityStmt));
 				break;
 		}
 	}
