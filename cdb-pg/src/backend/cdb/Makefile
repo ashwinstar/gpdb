@@ -60,7 +60,7 @@ $(pqlibs) : submake-libpq
 
 ifeq ($(PORTNAME),darwin)
 libpq_local.sym.mac: $(top_srcdir)/$(subdir)/libpq_local.sym
-	sed -e '/^#/!s/^[[:space:]]*/_/' $(top_srcdir)/$(subdir)/libpq_local.sym > libpq_local.sym.mac
+	grep -v pqsignal $(top_srcdir)/$(subdir)/libpq_local.sym | sed -e '/^#/!s/^[[:space:]]*/_/' > libpq_local.sym.mac
 endif	
 
 $(SUBDIROBJS): $(SUBDIRS:%=%-recursive) ;
