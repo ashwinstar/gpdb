@@ -493,8 +493,7 @@ Gang *buildGangDefinition(GangType type, int size)
 			    		p = &cdb_component_dbs->segment_db_info[j];
 			    	else
 			    	{
-                     elog(NOTICE,"building Gang:  No mirror segdb found!!!!");
-			    		continue; /* no mirror for this primary! */
+                     return NULL;
 			    	}
 			    
 			    }
@@ -545,7 +544,7 @@ Gang *buildGangDefinition(GangType type, int size)
 		}
 	}
 		
-	Assert( seg_count == cdb_component_dbs->total_segments );
+	//Assert( seg_count == cdb_component_dbs->total_segments );
 		
 	
 	return newGangDefinition;
@@ -1129,4 +1128,42 @@ void disconnectAndDestroyAllGangs(void)
 	disconnectAndDestroyGang(mirrorWriterGang);
 	mirrorWriterGang = NULL;
 	elog(DEBUG2, "disconnectAndDestroyAllGangs done");
+}
+
+
+bool
+reconnectSegDB(SegmentDatabaseDescriptor *failedDB)
+{
+    int segdbs_in_thread_pool = 0;
+    bool ret = true;
+    
+    /* close bad connection first */
+    PQfinish(failedDB->conn);
+    failedDB->conn = NULL;
+    
+    DoConnectParms *doConnectParmsAr = (DoConnectParms *)palloc0( sizeof(DoConnectParms) );
+    
+    addSegDBToConnThreadPool( doConnectParmsAr, &segdbs_in_thread_pool, failedDB); 
+    
+    /*
+    elog(DEBUG2, "reconnectSegDB reconnect segDB: %d", failedDB->segment_database_info->dbid);
+    */        
+    thread_DoConnect( (void*)doConnectParmsAr );
+
+    /* release connectParms */
+    pfree( doConnectParmsAr->segdbDescPtrArray );
+    pfree( doConnectParmsAr );
+
+    /* check new connection */
+    if ( PQstatus(failedDB->conn) == CONNECTION_BAD )
+    {
+        PQfinish(failedDB->conn);
+        ret = false;
+    }
+    else
+    {
+        elog(LOG, "FTS: segdb %d reconnect ok", failedDB->segment_database_info->dbid);
+    }
+    
+    return ret;
 }
