@@ -580,7 +580,7 @@ HeapTuple CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo *pSerInfo)
 
         /* Copy this chunk into the tuple data.  Don't include the header! */
         appendBinaryStringInfo(&serData,
-            tcItem->chunk_data + TUPLE_CHUNK_HEADER_SIZE,
+            (const char *)(tcItem->chunk_data + TUPLE_CHUNK_HEADER_SIZE),
             tcItem->chunk_length - TUPLE_CHUNK_HEADER_SIZE);
 
         /* Go to the next chunk. */
