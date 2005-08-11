@@ -543,7 +543,7 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 	MotionLayerState *sendingMotionState = NULL;
 
 	gettimeofday(&snapTime, NULL);
-	elog(DEBUG3, "in SetupInterconnect @%d time is %ld.%d", 
+	elog(DEBUG3, "in SetupInterconnect @%d time is %ld.%ld", 
 		 __LINE__, snapTime.tv_sec, snapTime.tv_usec);
 	
 	sliceTable = mySliceTable;
@@ -693,7 +693,7 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 	elog(DEBUG3, "FINISHED ACTIVATING ROUTES. (out: %d , in: %d)", outgoing_count, incoming_count);
 
 	gettimeofday(&snapTime, NULL);
-	elog(DEBUG3, "exiting SetupInterconnect @%d time is %ld.%d", 
+	elog(DEBUG3, "exiting SetupInterconnect @%d time is %ld.%ld", 
 		 __LINE__, snapTime.tv_sec, snapTime.tv_usec);
 }
 
@@ -1151,7 +1151,7 @@ void readRegisterMessage(MotionConn *conn, int *incoming_count)
 		}
 	
 		bytesRead += n;		
-		Assert(bytesRead <= sizeof(RegisterMessage));
+		Assert(bytesRead <= (int)sizeof(RegisterMessage));
 	}
 	
 	msg.motNodeId 		= getInt16(buff + 0);
@@ -1334,7 +1334,7 @@ bool sendChunk(MotionConn *conn, TupleChunkListItem tcItem)
 		{
 			sent += n;
 		}
-	} while (sent < sizeof(header));
+	} while (sent < (int)sizeof(header));
 
 	/* now send body */
 	sendptr = (char *)tcItem->chunk_data;
@@ -1380,7 +1380,7 @@ bool sendChunk(MotionConn *conn, TupleChunkListItem tcItem)
 		{
 			sent += n;
 		}
-	} while (sent < tcItem->chunk_length);
+	} while (sent < (int)(tcItem->chunk_length));
 	
 	conn->tupleCount++;	
 	return true;
