@@ -727,6 +727,7 @@ void TeardownInterconnect(void)
 			{
 				conn = pEntry->conns + i;
 				shutdown(conn->sockfd, SHUT_WR);
+				close(pEntry->conns[i].sockfd);
 
 				pfree(conn->pBuff);
 			}
@@ -752,6 +753,7 @@ void TeardownInterconnect(void)
 			{
 				conn = pEntry->conns + i;
 				shutdown(pEntry->conns[i].sockfd, SHUT_WR);	
+				close(pEntry->conns[i].sockfd);
 				
 				pfree(conn->pBuff);
 			}
