@@ -26,4 +26,4 @@ pg_wchar_table
 promote_v4_to_v6_addr
 promote_v4_to_v6_mask
 rangeSockAddr
-#pqsignal
+pqsignal
