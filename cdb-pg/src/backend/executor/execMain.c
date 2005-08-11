@@ -263,6 +263,8 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 	TupleTableSlot *result;
 	MemoryContext oldcontext;
 	RangeTblEntry *rte;
+	bool hasDispatched = false;
+	bool shouldDispatch;
 
 	/* sanity checks */
 	Assert(queryDesc != NULL);
@@ -339,8 +341,7 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 			);
 	}
 
-	bool hasDispatched = false;
-	bool shouldDispatch =  Cdb_role == CDB_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL;
+	shouldDispatch =  Cdb_role == CDB_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL;
 
 	/*
 	 * Need a try/catch block here so that if an ereport is called from
@@ -504,7 +505,9 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 			 * of the results from the async command executions.
 			 */
 			char *message;
+			char *szCommand;
 
+			CdbDispatchResults* results;
 			/*
 			 * Set this to force any remaining commands executing on qExecs to stop.
 			 * TODO Check this out. How does this stop running sessions? 
@@ -512,10 +515,10 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 			 */
 			QueryCancelPending = true;
 
-			CdbDispatchResults* results = CdbCheckDispatchResult();
+			results = CdbCheckDispatchResult();
 
 			message = CdbDumpDispatchResults(results, true);
-			char *szCommand = results->szCommand;
+			szCommand = results->szCommand;
 			if ( szCommand == NULL )
 				szCommand = "";
 			Assert( message != NULL );
@@ -549,6 +552,7 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 	if ( hasDispatched )
 	{
 		char *message;
+		char *szCommand;
 		/*
 		 * We successfully completed on the Dispatcher.  Now check the results
 		 * from the qExecs.  This internally waits for them to all finish.
@@ -557,7 +561,7 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 
 
 		message = CdbDumpDispatchResults(results, true);
-		char *szCommand = results->szCommand;
+		szCommand = results->szCommand;
 		if ( szCommand == NULL )
 			szCommand = "";
 		Assert( message != NULL );

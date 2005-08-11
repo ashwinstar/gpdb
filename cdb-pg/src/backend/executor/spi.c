@@ -56,6 +56,10 @@ static MemoryContext _SPI_execmem(void);
 static MemoryContext _SPI_procmem(void);
 static bool _SPI_checktuples(void);
 
+/* used only in testing in test/libcdbtest ?? */
+extern int  
+SPI_execute_cdb( const char *src, Plan* pPlan, Query* pQuery, bool read_only, int tcount);
+
 
 /* =================== interface functions =================== */
 
@@ -1770,6 +1774,7 @@ SPI_execute_cdb( const char *src, Plan* pPlan, Query* pQuery, bool read_only, in
 {
 	_SPI_plan	plan;
 	int			res;
+	List* query_list = NIL;
 
 	if (src == NULL || pPlan == NULL || pQuery == NULL || tcount < 0)
 		return SPI_ERROR_ARGUMENT;
@@ -1786,7 +1791,7 @@ SPI_execute_cdb( const char *src, Plan* pPlan, Query* pQuery, bool read_only, in
 	plan.qtlist = NIL;
 	
 	plan.ptlist = lappend(plan.ptlist, pPlan );
-	List* query_list = NIL;
+	
 	query_list = lappend(query_list, pQuery);
 	plan.qtlist = lappend(plan.qtlist, query_list);
 

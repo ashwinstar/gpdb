@@ -133,6 +133,7 @@ void preprocess_initplans( QueryDesc *queryDesc )
 ParamListInfo addRemoteExecParamsToParamList( Plan *plan, ParamListInfo extPrm, ParamExecData *intPrm, int nIntPrm )
 {
 	ParamListInfo augPrm, q;
+	ParamWalkerContext context;
 	int i, j;
 	int nParams;
 
@@ -166,7 +167,7 @@ ParamListInfo addRemoteExecParamsToParamList( Plan *plan, ParamListInfo extPrm, 
 	 * We need these for their paramtype field, which isn't available in 
 	 * either the ParamExecData struct or the SubPlan struct. 
 	 */
-	ParamWalkerContext context;
+	
 	memset( &context, 0, sizeof(context) );
 	param_walker((Node*)plan, &context);
 	Assert( context.params != NIL );
