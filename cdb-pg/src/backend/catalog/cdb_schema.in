@@ -363,10 +363,10 @@ CREATE OR REPLACE FUNCTION cdb.add_segment_database( cdb.host.hostname%TYPE,
 	RETURNS void 
 	AS '
 		DECLARE
-			arg_hostname		ALIAS FOR $2;
-			arg_port			ALIAS FOR $3;
-			arg_isprimary   	ALIAS FOR $4;
-			arg_content         ALIAS FOR $5;
+			arg_hostname		ALIAS FOR $1;
+			arg_port			ALIAS FOR $2;
+			arg_isprimary   	ALIAS FOR $3;
+			arg_content         ALIAS FOR $4;
 			host_row			cdb.host%ROWTYPE;			
 			db_row				cdb.pgdatabase%ROWTYPE;			
 			f_hostid			cdb.host.hostid%TYPE;
@@ -490,9 +490,9 @@ CREATE OR REPLACE FUNCTION cdb.add_entry_database(
 	RETURNS void
 	AS '
 		DECLARE
-			hostname		ALIAS FOR $2;
-			port			ALIAS FOR $3;
-			isprimary   	ALIAS FOR $4;
+			hostname		ALIAS FOR $1;
+			port			ALIAS FOR $2;
+			isprimary   	ALIAS FOR $3;
 		
 		BEGIN
 			--
