@@ -901,12 +901,15 @@ static char *escape_quotes(const char *src);
  */
 char *serializeNode(Node *node)
 {
+	char *pszNode;
+	char *sNode;
+	
 	Assert( node != NULL );
 
-	char *pszNode = nodeToString( node );
+	pszNode = nodeToString( node );
 	Assert( pszNode != NULL );
 
-	char *sNode = escape_quotes(pszNode);
+	sNode = escape_quotes(pszNode);
 	pfree( pszNode);
 
 	return sNode;
@@ -920,13 +923,16 @@ char *serializeNode(Node *node)
  */
 Node *deserializeNode(char *strNode)
 {
+	char *sNode;
+	Node *node;
+	
 	Assert( strNode != NULL );
 
-	char *sNode = unescape_quotes( strNode );
+	sNode = unescape_quotes( strNode );
 
 	Assert( sNode != NULL );
 
-	Node *node = stringToNode( sNode );
+	node = stringToNode( sNode );
 
 	pfree( sNode );
 

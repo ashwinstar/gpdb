@@ -61,6 +61,9 @@ void getCdbCdb(void)
 	Oid					cdb_namespace_oid;
 	bool				isNull;
 	Datum				attr;
+	Name cdbname;
+	MemoryContext oldContext;
+	MemoryContext permanentContext = TopMemoryContext;
 
 	/*
 	 * Release storage for the cdbname if not NULL
@@ -111,10 +114,9 @@ void getCdbCdb(void)
 	*/
 	attr = heap_getattr(cdb_cdb_tuple, Anum_cdb_cdb_cdbname, cdb_cdb_rel->rd_att, &isNull);
 	Assert( !isNull );
-	Name cdbname = DatumGetName(attr);
+	cdbname = DatumGetName(attr);
 
-	MemoryContext oldContext;
-	MemoryContext permanentContext = TopMemoryContext;
+	
 
 
 	/*
@@ -286,6 +288,7 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 
 
 	int i;
+	int x = 0;
 
 	/*
 	 * Allocate component_databases return structure and 
@@ -347,6 +350,7 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 		* We do this first, because until we read them, we don't know whether
 		* this is an entry database row or a segment database row.
 		*/
+		CdbComponentDatabaseInfo *pRow;
 
 		/*
 		* dbid
@@ -381,16 +385,17 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 		/*
 		* Determine which array to place this rows data in: content or segment, based on the content field.
 		*/
-		CdbComponentDatabaseInfo *pRow;
+		
 		if ( content >= 0 )
 		{
 			if ( component_databases->total_segment_dbs >= segment_array_size )
 			{
+				CdbComponentDatabaseInfo *pOld;
 				/*
 				* Expand CdbComponentDatabaseInfo array if we've used up currently allocated space
 				*/
 				segment_array_size *= 2;
-				CdbComponentDatabaseInfo *pOld = component_databases->segment_db_info;
+				pOld = component_databases->segment_db_info;
 				component_databases->segment_db_info = (CdbComponentDatabaseInfo *)
 													repalloc(pOld, sizeof(CdbComponentDatabaseInfo) * segment_array_size);
 			}
@@ -402,11 +407,12 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 		{
 			if ( component_databases->total_entry_dbs >= entry_array_size )
 			{
+				CdbComponentDatabaseInfo *pOld;
 				/*
 				* Expand CdbComponentDatabaseInfo array if we've used up currently allocated space
 				*/
 				entry_array_size *= 2;
-				CdbComponentDatabaseInfo *pOld = component_databases->entry_db_info;
+				pOld = component_databases->entry_db_info;
 				component_databases->entry_db_info = (CdbComponentDatabaseInfo *)
 													repalloc(pOld, sizeof(CdbComponentDatabaseInfo) * entry_array_size);
 			}
@@ -600,7 +606,7 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 	 * Now validate that the segindexes for the segment databases are between 0 and CdbIdentity.numsegments-1 inclusive,
 	 * and that we hit them all. Since it's sorted, this is relatively easy.
 	 */
-	int x = 0;
+	x = 0;
 	for ( i=0; i<CdbIdentity.numsegments; i++ )
 	{
 		int this_segindex;
