@@ -193,7 +193,7 @@ void CdbDispatchCommandInt( const char *szCommand, DispatchTargetSet targetSet,
 		if (mirrorGang != NULL)
 			for (k = 0; k < mirrorGang->segdb_count; k++)
 			{
-				segdbList[segdbListCount] = &primaryGang->db_descriptors[k];
+				segdbList[segdbListCount] = &mirrorGang->db_descriptors[k];
 				segdbListCount++;
 			}
 		
