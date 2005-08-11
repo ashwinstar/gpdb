@@ -1133,6 +1133,8 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, ParamListInfo p)
 		if ( hasDispatched )
 		{
 			char *message;
+			CdbDispatchResults* results;
+			char *szCommand;
 
 			/*
 			 *  We need to wait for the threads to finish.  This allows for proper cleanup
@@ -1144,10 +1146,10 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, ParamListInfo p)
 			 */
 			QueryCancelPending = true;
 
-			CdbDispatchResults* results = CdbCheckDispatchResult();
+			results = CdbCheckDispatchResult();
 
 			message = CdbDumpDispatchResults(results, true);
-			char *szCommand = results->szCommand;
+			szCommand = results->szCommand;
 			if ( szCommand == NULL )
 				szCommand = "";
 			Assert( message != NULL );
@@ -1178,6 +1180,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, ParamListInfo p)
 	if ( hasDispatched )
 	{
 		char *message;
+		char *szCommand;
 		/*
 		 * We successfully completed on the Dispatcher.  Now check the results
 		 * from the qExecs.  This internally waits for them to all finish.
@@ -1186,7 +1189,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, ParamListInfo p)
 
 
 		message = CdbDumpDispatchResults(results, true);
-		char *szCommand = results->szCommand;
+		szCommand = results->szCommand;
 		if ( szCommand == NULL )
 			szCommand = "";
 		Assert( message != NULL );
