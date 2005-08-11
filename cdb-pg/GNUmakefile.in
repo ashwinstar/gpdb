@@ -12,13 +12,13 @@ all:
 #	$(MAKE) -C doc all
 	$(MAKE) -C src all
 	$(MAKE) -C config all
-	@echo "All of PostgreSQL successfully made. Ready to install."
+	@echo "All of MPP successfully made. Ready to install."
 
 install:
 #	$(MAKE) -C doc $@
 	$(MAKE) -C src $@
 	$(MAKE) -C config $@
-	@echo "PostgreSQL installation complete."
+	@echo "MPP installation complete."
 
 installdirs uninstall distprep:
 #	$(MAKE) -C doc $@
