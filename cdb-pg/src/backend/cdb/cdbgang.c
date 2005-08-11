@@ -706,6 +706,7 @@ static List *allocatedReaderGangs1 = NIL;
 static List *availableReaderGangs1 = NIL;
 static Gang * primaryWriterGang = NULL;
 static Gang * mirrorWriterGang = NULL;
+static bool mirroringNotConfigured = false;
 
 Gang *allocateGang(GangType type, int size, int content)
 {
@@ -739,8 +740,12 @@ Gang *allocateGang(GangType type, int size, int content)
 			break;
 			
 		case GANGTYPE_MIRROR_WRITER:
-			if (mirrorWriterGang == NULL)
+			if (mirrorWriterGang == NULL && !mirroringNotConfigured)
+			{
 				gp = mirrorWriterGang = createGang(type, size, content);
+				if (gp == NULL)
+					mirroringNotConfigured = true;
+			}
 			else 
 				gp = mirrorWriterGang;
 			break;
@@ -1136,12 +1141,13 @@ reconnectSegDB(SegmentDatabaseDescriptor *failedDB)
 {
     int segdbs_in_thread_pool = 0;
     bool ret = true;
+    DoConnectParms *doConnectParmsAr;
     
     /* close bad connection first */
     PQfinish(failedDB->conn);
     failedDB->conn = NULL;
     
-    DoConnectParms *doConnectParmsAr = (DoConnectParms *)palloc0( sizeof(DoConnectParms) );
+    doConnectParmsAr = (DoConnectParms *)palloc0( sizeof(DoConnectParms) );
     
     addSegDBToConnThreadPool( doConnectParmsAr, &segdbs_in_thread_pool, failedDB); 
     
