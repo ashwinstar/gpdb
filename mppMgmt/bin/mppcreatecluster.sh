@@ -1,7 +1,7 @@
 #!/bin/bash
 #	Filename:-		mppcreatecluster.sh
-#	Version:-		1.4
-#	Updated:-		09/08/2005	
+#	Version:-		1.5
+#	Updated:-		11/08/2005	
 #	Status:-		MPP Conversion SE Co Internal	
 #	Author:-		L Lonergan/G Coombe	
 #	Contact:-		gcoombe@greenplum.com
@@ -22,6 +22,10 @@
 #					cdb.pgdatabase has incorrect db name.
 # 1.4	09/08/2005	G Coombe	Changed the create database code to use revised
 #					MPP ability to now create database within QD.
+# 1.5	11/09/2005	G Coombe	Updates to UPDATE_PGDATABASE in response to
+#					MPP code change where dbname column on longer used.
+#					Correct error message where blank lines appear in
+#					the hostlist file.
 #******************************************************************************
 # Detailed Description
 #******************************************************************************
@@ -56,7 +60,11 @@ MIRRORING=0
 # MPP database specific parameters
 MPP_USER=$USER_NAME
 MPP_PASSWD=""
-
+# System table names
+CDB_TBL=cdb.cdb
+CDB_HOST_TBL=cdb.host
+CDB_PGDATABASE_TBL=cdb.pgdatabase
+CDB_LISTENER_TBL=cdb.listener
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -75,6 +83,8 @@ USAGE () {
 		$TABECHO "		Supplies all MPP configuration information required by this utility."
 		$TABECHO "		Full description of all parameters contained within the example file"
 		$TABECHO "		supplied with this distribution."
+		$TABECHO "		Also see mppcreatecluster_INSTRUCTIONS file for greater detail on"
+		$TABECHO "		the operation and configuration of this script"
 		$TABECHO "	-h mpp_hostlist_file [optional]"
 		$TABECHO "		Contains a list of all QE hostnames required to participate in"
 		$TABECHO "		the new MPP database. Normally set in mpp_config_file."
@@ -106,12 +116,10 @@ USAGE () {
 CHK_PARAMS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 
-		#Check the MPPHOME variable
-		if [ x"" = x"$MPPHOME" ] || [ x"" = x"$BIZHOME" ]; then
-				LOG_MSG "[WARN]:-Environment variable MPPHOME or BIZHOME is not set"
-				LOG_MSG "[WARN]:-this may cause script to fail."
-				LOG_MSG "[WARN]:-If this is the case check the script log file."
-				ERROR_EXIT=1
+		if [ x"" = x"$MPPHOME" ] && [ x"" = x"$BIZHOME" ]; then
+				LOG_MSG "[FATAL]:-Environment variables MPPHOME and BIZHOME not set"
+				LOG_MSG "[FATAL]:-At least one of these must be set for this script to continue"
+				ERROR_EXIT "[FATAL]:-Unable to continue" 2
 		fi
 		#Make sure that script has been supplied a config file
 		if [ x"" = x"$CLUSTER_CONFIG" ]; then
@@ -239,7 +247,7 @@ CHK_PARAMS () {
 
 CHK_DUPLICATES () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		if [ `$CAT $MACHINE_LIST_FILE|$WC -l` -ne `$CAT $MACHINE_LIST_FILE|$SORT -u|$WC -l` ]
+		if [ `$CAT $MACHINE_LIST_FILE|$GREP -v $"^$"|$WC -l` -ne `$CAT $MACHINE_LIST_FILE|$GREP -v "^$"|$SORT -u|$WC -l` ]
 				then
 				ERROR_EXIT "[FATAL]:-Duplicate QE hostname exists in $MACHINE_LIST_FILE" 2
 		fi
@@ -399,7 +407,7 @@ CREATE_QE_ARRAY () {
 								GET_HOST_ID $QE_NAME
 								((HOST_INDEX=$HOST_INDEX+1))
 								((MIRROR_MPP_PORT=$MIRROR_PORT_BASE+$PORT_COUNT))
-								##CMcD Test				((CONTENT_COUNT=$CONTENT_COUNT+1))
+								((CONTENT_COUNT=$CONTENT_COUNT+1))
 								((DBID_COUNT=$DBID_COUNT+1))
 								QE_MIRROR_ARRAY[$ARRAY_INDEX]=${QE_NAME}:${MPP_INDEX}:${LISTENERID_COUNT}:${MIRROR_MPP_PORT}:${MPP_DIR}:${DBID_COUNT}:${DATABASE_PREFIX}${DB_COUNT}:$CONTENT_COUNT
 								((LISTENERID_COUNT=$LISTENERID_COUNT+1))
@@ -433,8 +441,7 @@ DISPLAY_CONFIG () {
 		fi
 		((NUM_QES=${#MACHINE_LIST[*]}))
 		if [ $MIRRORING -eq 1 ]; then
-				##CMcD Test		((TOTAL_SEG=${NUM_QES}*$QE_PRIMARY_COUNT*2))
-				((TOTAL_SEG=${NUM_QES}*$QE_PRIMARY_COUNT))
+				((TOTAL_SEG=${NUM_QES}*$QE_PRIMARY_COUNT*2))
 		else
 				((TOTAL_SEG=${NUM_QES}*$QE_PRIMARY_COUNT))
 		fi
@@ -582,14 +589,14 @@ UPDATE_PGDATABASE () {
 		U_LISTENERID=$6
 		U_PRIMARY=$7
 		U_DB=template1
-		CHK_COUNT=`env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from cdb.pgdatabase where listenerid=${U_LISTENERID} and content=${U_CONTENT};" 2>/dev/null` >> $LOG_FILE 2>&1
+		CHK_COUNT=`env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from $CDB_PGDATABASE_TBL where listenerid=${U_LISTENERID} and content=${U_CONTENT};" 2>/dev/null` >> $LOG_FILE 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Unable to obtain psql count of QD pgdatabase system table" 2
 		fi
 		if [ $CHK_COUNT -eq 0 ]; then
 				LOG_MSG "[INFO]:-Adding $U_CONTENT to system pgdatabase table"
-				env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into cdb.pgdatabase (dbid, isprimary, content, listenerid) values (${U_DBID},'${U_PRIMARY}',${U_CONTENT},${U_LISTENERID});" >> $LOG_FILE 2>&1
+				env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $CDB_PGDATABASE_TBL (dbid, isprimary, content, listenerid) values (${U_DBID},'${U_PRIMARY}',${U_CONTENT},${U_LISTENERID});" >> $LOG_FILE 2>&1
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
 						ERROR_EXIT "[FATAL]:-Failed to add $U_CONTENT to system pgdatabase table" 2
@@ -613,14 +620,14 @@ UPDATE_LISTENER () {
 		U_DIR=$6
 		U_USER=$7
 		U_PASSWD=$8
-		CHK_COUNT=`env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from cdb.listener where listenerid=${U_LISTENERID};" 2>/dev/null` >> $LOG_FILE 2>&1
+		CHK_COUNT=`env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from $CDB_LISTENER_TBL where listenerid=${U_LISTENERID};" 2>/dev/null` >> $LOG_FILE 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Unable to obtain psql count of QD listener system table" 2
 		fi
 		if [ $CHK_COUNT -eq 0 ]; then
 				LOG_MSG "[INFO]:-Adding $U_LISTENERID to system listener table"
-				env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into cdb.listener values (${U_LISTENERID},${U_HOSTID},${U_PORT},'${U_DIR}','${U_USER}','${U_PASSWD}');" >> $LOG_FILE 2>&1
+				env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $CDB_LISTENER_TBL (listenerid, hostid, port, datadir, cdbsuperuser, cdbsuperpswd) values (${U_LISTENERID},${U_HOSTID},${U_PORT},'${U_DIR}','${U_USER}','${U_PASSWD}');" >> $LOG_FILE 2>&1
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
 						ERROR_EXIT "[FATAL]:-Failed to add $U_LISTENERID to system listener table" 2
@@ -671,14 +678,14 @@ UPDATE_HOST () {
 		U_HOSTID=$3
 		U_HOSTNAME=$4
 		#First check to ensure that U_HOSTID not already in the host table
-		CHK_COUNT=`env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from cdb.host where hostid=${U_HOSTID};" 2>/dev/null` >> $LOG_FILE 2>&1
+		CHK_COUNT=`env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from $CDB_HOST_TBL where hostid=${U_HOSTID};" 2>/dev/null` >> $LOG_FILE 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Unable to obtain psql count of QD host system table" 2
 		fi
 		if [ $CHK_COUNT -eq 0 ]; then
 				LOG_MSG "[INFO]:-Adding $U_HOSTNAME to system host table"
-				env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into cdb.host values (${U_HOSTID},'${U_HOSTNAME}');" >> $LOG_FILE 2>&1
+				env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $CDB_HOST_TBL (hostid, hostname) values (${U_HOSTID},'${U_HOSTNAME}');" >> $LOG_FILE 2>&1
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
 						ERROR_EXIT "[FATAL]:-Failed to add $U_HOSTNAME to system host table" 2
@@ -703,13 +710,13 @@ UPDATE_CDB () {
 		TYPE=$7
 		U_HOST=$8
 		if [ $TYPE -eq 0 ]; then
-				env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into cdb.cdb values ('${U_CDBNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});" >> $LOG_FILE 2>&1
+				env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $CDB_TBL values ('${U_CDBNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});" >> $LOG_FILE 2>&1
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
 						ERROR_EXIT "[FATAL]:-Unable to update cdb system table" 2
 				fi
 		else
-				RUN_COMMAND_REMOTE $U_HOST "env PGOPTIONS=\"-c cdb_session_role=utility\" $PSQL -p $U_PT $U_DB -c \"insert into cdb.cdb values ('${U_CDBNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" 2>&1" >> $LOG_FILE 2>&1
+				RUN_COMMAND_REMOTE $U_HOST "env PGOPTIONS=\"-c cdb_session_role=utility\" $PSQL -p $U_PT $U_DB -c \"insert into $CDB_TBL (cdbname, numsegments, dbid, content) values ('${U_CDBNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" 2>&1" >> $LOG_FILE 2>&1
 		fi	
 		if [ $RETVAL -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Failed to update cdb system table" 2
