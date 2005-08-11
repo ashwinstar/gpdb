@@ -4,7 +4,7 @@ ISCONFIG=$(MPPPGDIR)/GNUmakefile
 
 MPPDIR=mpp-pgsql-2.0
 
-DEFPORT=10000
+DEFPORT=5432
 
 OPTFLAGS="-O3 -funroll-loops -fomit-frame-pointer -fargument-noalias-global $(COPTX)"
 DEBUGFLAGS="-O0 -g"
@@ -38,8 +38,10 @@ mgmtcopy :
 	@mkdir $(INSTLOC)/$(MPPMGMT)
 	@cp -rp $(MPPMGMT)/bin $(INSTLOC)/$(MPPMGMT)
 	@cp -rp $(MPPMGMT)/doc $(INSTLOC)/$(MPPMGMT)
+	@cp -rp $(MPPMGMT)/demo $(INSTLOC)/$(MPPMGMT)
 	@rm -rf $(INSTLOC)/$(MPPMGMT)/bin/CVS
 	@rm -rf $(INSTLOC)/$(MPPMGMT)/doc/CVS
+	@rm -rf $(INSTLOC)/$(MPPMGMT)/demo/CVS
 
 RECONFIG :
 	rm -f $(ISCONFIG)
