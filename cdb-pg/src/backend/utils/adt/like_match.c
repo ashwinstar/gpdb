@@ -254,9 +254,9 @@ do_like_escape(text *pat, text *esc)
 				elen;
 	bool		afterescape;
 
-	p = VARDATA(pat);
+	p = (unsigned char *)VARDATA(pat);
 	plen = (VARSIZE(pat) - VARHDRSZ);
-	e = VARDATA(esc);
+	e = (unsigned char *)VARDATA(esc);
 	elen = (VARSIZE(esc) - VARHDRSZ);
 
 	/*
@@ -264,7 +264,7 @@ do_like_escape(text *pat, text *esc)
 	 * trying to calculate the size more accurately than that.
 	 */
 	result = (text *) palloc(plen * 2 + VARHDRSZ);
-	r = VARDATA(result);
+	r = (unsigned char *)VARDATA(result);
 
 	if (elen == 0)
 	{
@@ -291,7 +291,7 @@ do_like_escape(text *pat, text *esc)
 					 errmsg("invalid escape string"),
 			  errhint("Escape string must be empty or one character.")));
 
-		e = VARDATA(esc);
+		e = (unsigned char *)VARDATA(esc);
 
 		/*
 		 * If specified escape is '\', just copy the pattern as-is.
