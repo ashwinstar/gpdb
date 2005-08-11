@@ -49,9 +49,9 @@ readTmLogRecordNext(int offset)
 {
     int loffset, participant_len=0;
     TmLogRecord *record = NULL;
+    TmLogRecordHeader header;
     
     elog(DEBUG1, "readTmLogRecord (%d)", offset);
-    TmLogRecordHeader header;
     
     if (offset == -1)
         offset = currentOffset;

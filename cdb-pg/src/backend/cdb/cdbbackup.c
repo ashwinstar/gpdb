@@ -17,6 +17,7 @@
 #include "funcapi.h"
 #include "utils/builtins.h"
 #include "cdb/cdbvars.h"
+#include "cdb/cdbutil.h"
 #include "cdb/cdbbackup.h"
 #include "miscadmin.h"
 #include "postmaster/postmaster.h"

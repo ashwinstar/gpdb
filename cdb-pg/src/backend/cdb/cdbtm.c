@@ -447,6 +447,7 @@ initGxact( TMGXACT *gxact )
 TMGXACT *
 allocGxact(void)
 {
+	TMGXACT *gxact;
     getTmLock();
     
     if ( *shmNumGxacts >= max_tm_gxacts )
@@ -456,7 +457,7 @@ allocGxact(void)
                     (errmsg("can not allocate global transaction")));
     }
     
-    TMGXACT *gxact = shmGxactArray[(*shmNumGxacts)++];
+    gxact = shmGxactArray[(*shmNumGxacts)++];
     initGxact( gxact );
     releaseTmLock();
 
