@@ -23,7 +23,7 @@ TupleChunkListItem makeTupleChunkListItem(TupleChunkType chunkType,
     int chunkSize;
     TupleChunkListItem tcItem;
     
-    AssertArg(chunkType >= 0);
+    /* AssertArg(chunkType >= 0); -- chunkType is unsigned, so this AssertArg is a constant expression */
     AssertArg(chunkType < TC_MAXVAL);
 	
 	if( chunkDataSize > 0 )
