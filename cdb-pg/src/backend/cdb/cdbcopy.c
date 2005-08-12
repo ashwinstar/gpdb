@@ -31,22 +31,21 @@
 /*
  * returns the number of segment databases for a given segment.
  */
-int cdbCopyGetDbCount(int seg)
+int cdbCopyGetDbCount(int total_segs, int seg)
 {
-	Gang * gp = allocateGang(GANGTYPE_MIRROR_WRITER, getCdbSegmentCount(), -1);
+	Gang * gp = allocateGang(GANGTYPE_MIRROR_WRITER, total_segs, -1);
 	
 	if (gp != NULL && &(gp->db_descriptors[seg]) != NULL)
 		return 2;
 	else
 		return 1;
-
 }
 
 /*
  * starts a copy command on a specific segment database. 
  * Returns 0 for success, -1 for error and an error message.
  */
-int cdbCopyStart(int seg, int db, char *copyCmd)
+int cdbCopyStart(int total_segs, int seg, int db, char *copyCmd)
 {
 	/*
      * the result of sending the COPY command.
@@ -56,9 +55,9 @@ int cdbCopyStart(int seg, int db, char *copyCmd)
 
 	Gang * gp;
 	if (db==0)
-		gp = allocateGang(GANGTYPE_PRIMARY_WRITER, getCdbSegmentCount(), -1);
+		gp = allocateGang(GANGTYPE_PRIMARY_WRITER, total_segs, -1);
 	else
-		gp = allocateGang(GANGTYPE_MIRROR_WRITER, getCdbSegmentCount(), -1);
+		gp = allocateGang(GANGTYPE_MIRROR_WRITER, total_segs, -1);
 	
 	q = &(gp->db_descriptors[seg]);
 	
@@ -75,15 +74,15 @@ int cdbCopyStart(int seg, int db, char *copyCmd)
  * sends data to a copy command on a specific segment database. 
  * Returns 0 for success, -1 for error and an error message.
  */
-int cdbCopySendData(int seg, int db, const char *buffer, int nbytes)
+int cdbCopySendData(int total_segs, int seg, int db, const char *buffer, int nbytes)
 {
 	SegmentDatabaseDescriptor *q;
 	Gang * gp;
 	int result;
 	if (db==0)
-		gp = allocateGang(GANGTYPE_PRIMARY_WRITER, getCdbSegmentCount(), -1);
+		gp = allocateGang(GANGTYPE_PRIMARY_WRITER, total_segs, -1);
 	else
-		gp = allocateGang(GANGTYPE_MIRROR_WRITER, getCdbSegmentCount(), -1);
+		gp = allocateGang(GANGTYPE_MIRROR_WRITER, total_segs, -1);
 	
 	q = &(gp->db_descriptors[seg]);
 
@@ -107,37 +106,39 @@ int cdbCopySendData(int seg, int db, const char *buffer, int nbytes)
 
 /*
  * ends the copy command on a specific segment database. 
- * Returns -1 if the command did not end successfully (I/O error etc). errMsg
+ * Returns -1 if the command did not end successfully (I/O error etc). errMessage
  * will include the error msg.
  * Returns 0 if the termination data was successfully sent 
  * Returns 1 if the termination data was successfully sent but there
  * was a data error in the copy command. errMessage will include the error msg.
  */
-int cdbCopyEnd(int seg, int db, char *errMessage)
+int cdbCopyEnd(int total_segs, int seg, int db, StringInfoData errMessage)
 {
 	SegmentDatabaseDescriptor *q;
 	Gang * gp;
 	int result; /* final result of COPY command execution */
 	
 	if (db==0)
-		gp = allocateGang(GANGTYPE_PRIMARY_WRITER, getCdbSegmentCount(), -1);
+		gp = allocateGang(GANGTYPE_PRIMARY_WRITER, total_segs, -1);
 	else
-		gp = allocateGang(GANGTYPE_MIRROR_WRITER, getCdbSegmentCount(), -1);
+		gp = allocateGang(GANGTYPE_MIRROR_WRITER, total_segs, -1);
 	
 	q = &(gp->db_descriptors[seg]);
- 
-	
-	
-    result = PQputCopyEnd(q->conn, NULL); /* second argument HAS to be NULL for operation to pass! */
+ 	
+	/*
+	 * End this COPY command.
+	 */
+    result = PQputCopyEnd(q->conn, NULL);
 	
     if (result < 1)
     {
-        //if(result == 0)  //IO error status
-        //    sprintf(errMsg, "Failed to end COPY command in seg %d db %d, attempt blocked",seg,db);			
-		
-        //else if(result == -1)  //IO error status
-		//	sprintf(errMsg, "An error occured while trying to end COPY command in seg %d db %d",seg,db);			
-		
+        /*
+		 if(result == 0)  //IO error status
+		 sprintf(errMsg, "Failed to end COPY command in seg %d db %d, attempt blocked",seg,db);			
+		 
+		 else if(result == -1)  //IO error status
+		 sprintf(errMsg, "An error occured while trying to end COPY command in seg %d db %d",seg,db);			
+		 */
 		return -1;
     }
     else //result = 1 and termination data was successfully sent.
@@ -148,7 +149,7 @@ int cdbCopyEnd(int seg, int db, char *errMessage)
         /* if the COPY command had a data error */
         if ( PQresultStatus(res) == PGRES_FATAL_ERROR )
 		{
-            sprintf(errMessage, "Error in segment %d db %d -- %s", seg, db, PQresultErrorMessage(res));
+            appendStringInfo(&errMessage, "Reporting segment %d db %d: %s", seg, db, PQresultErrorMessage(res));
 		    return 1;
 		}
 	}
@@ -156,10 +157,11 @@ int cdbCopyEnd(int seg, int db, char *errMessage)
 	return 0;	
 }
 
+
 /*
  * Execute a transactional command on a segment database.
  */
-int cdbCopyExecTrax(int seg, int db, char *sql)
+int cdbCopyExecTrax(int total_segs, int seg, int db, char *sql)
 {
 	/*assert(sql == "BEGIN" || sql == "ROLLBACK" || sql == "COMMIT");*/
 	
@@ -168,9 +170,9 @@ int cdbCopyExecTrax(int seg, int db, char *sql)
 	SegmentDatabaseDescriptor *q;
 	Gang * gp;
 	if (db==0)
-		gp = allocateGang(GANGTYPE_PRIMARY_WRITER, getCdbSegmentCount(), -1);
+		gp = allocateGang(GANGTYPE_PRIMARY_WRITER, total_segs, -1);
 	else
-		gp = allocateGang(GANGTYPE_MIRROR_WRITER, getCdbSegmentCount(), -1);
+		gp = allocateGang(GANGTYPE_MIRROR_WRITER, total_segs, -1);
 	
 	q = &(gp->db_descriptors[seg]);
 
