@@ -133,23 +133,6 @@ CALL_HOST=`$HOSTNAME|$CUT -d. -f1`
 PSQLBIN=`findMppPath`
 PSQLBIN=`$DIRNAME $PSQLBIN`
 
-#******************************************************************************
-# Setup logging directory
-#******************************************************************************
-CUR_DATE=`$DATE +%Y%m%d`
-DEFLOGDIR=`pwd`/logs
-if [ ! -d $DEFLOGDIR ]; then
-		mkdir $DEFLOGDIR
-fi
-if [ $LOG_DIR ]; then
-		CHK_DIR $LOG_DIR
-		if [ $EXISTS -eq 1 ]; then
-				ERROR_EXIT "[FATAL]:-Log directory $LOG_DIR does not exist" 2
-		fi
-		LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
-else
-		LOG_FILE=$DEFLOGDIR/${PROG_NAME}_${CUR_DATE}.log
-fi
 
 #******************************************************************************
 # MPP Command Variables
@@ -630,6 +613,24 @@ PROCESS_QE () {
 #******************************************************************************
 # Main Section
 #******************************************************************************
+#******************************************************************************
+# Setup logging directory
+#******************************************************************************
+CUR_DATE=`$DATE +%Y%m%d`
+DEFLOGDIR=`pwd`/logs
+if [ ! -d $DEFLOGDIR ]; then
+		mkdir $DEFLOGDIR
+fi
+if [ $LOG_DIR ]; then
+		CHK_DIR $LOG_DIR
+		if [ $EXISTS -eq 1 ]; then
+				ERROR_EXIT "[FATAL]:-Log directory $LOG_DIR does not exist" 2
+		fi
+		LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
+else
+		LOG_FILE=$DEFLOGDIR/${PROG_NAME}_${CUR_DATE}.log
+fi
+
 if [ $# -ne 0 ]; then
 		if [ $1 == "-v" ]; then
 				VERSION_INFO
