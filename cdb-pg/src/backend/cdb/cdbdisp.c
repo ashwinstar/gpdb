@@ -144,6 +144,7 @@ void CdbDispatchCommandInt( const char *szCommand, DispatchTargetSet targetSet,
 	int i;
 	int max_threads;
 	int segdbs_in_thread_pool;
+	bool mustFreeSegdbList = false;
 	//int segdb_count;
 	
 	if ( Cdb_role != CDB_ROLE_DISPATCH )
@@ -184,6 +185,7 @@ void CdbDispatchCommandInt( const char *szCommand, DispatchTargetSet targetSet,
 							palloc0( max_threads * sizeof(DispatchCommandParms) );
 		
 		segdbList = palloc(m * sizeof(SegmentDatabaseDescriptor*));
+		mustFreeSegdbList = true;
 		segdbListCount = 0;
 		for (k = 0; k < primaryGang->segdb_count; k++)
 		{
@@ -271,6 +273,9 @@ void CdbDispatchCommandInt( const char *szCommand, DispatchTargetSet targetSet,
 							elog(NOTICE, "pthread_create failed");
 						}
 	}
+	
+	if (mustFreeSegdbList)
+		pfree(segdbList);
 }
 
 /*
@@ -442,6 +447,7 @@ void *thread_DispatchCommand(void *arg)
     
     if (pParms->resultSets != NULL)
     {
+    	elog(DEBUG3,"doing calloc for pgresults");
         pqresults = (PGresult **)calloc(db_count, sizeof(pqresults));
         *pParms->resultSets = pqresults;
     }
@@ -589,6 +595,7 @@ void *thread_DispatchCommand(void *arg)
 				setCancelFlag();
 				
 			free( buffer.data );
+			free(stillRunning);
 			return NULL;	
 		}
 		
