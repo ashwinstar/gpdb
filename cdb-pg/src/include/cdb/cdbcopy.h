@@ -15,12 +15,13 @@
 #ifndef CDBCOPY_H
 #define CDBCOPY_H
 
+#include "lib/stringinfo.h"
+
 /* global function declarations */
-int cdbCopyGetNumSegs(void);
-int cdbCopyGetDbCount(int seg_num);
-int cdbCopyStart(int seg, int db, char *copyCmd);
-int cdbCopySendData(int seg, int db, const char *buffer, int nbytes);
-int cdbCopyEnd(int seg, int db, char *errMessage);
-int cdbCopyExecTrax(int seg, int db, char *sql);
+int cdbCopyGetDbCount(int total_segs, int seg);
+int cdbCopyStart(int total_segs, int seg, int db, char *copyCmd);
+int cdbCopySendData(int total_segs, int seg, int db, const char *buffer, int nbytes);
+int cdbCopyEnd(int total_segs, int seg, int db, StringInfoData errMessage);
+int cdbCopyExecTrax(int total_segs, int seg, int db, char *sql);
 
 #endif   /* CDBCOPY_H */
