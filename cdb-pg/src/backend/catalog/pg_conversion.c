@@ -331,7 +331,7 @@ pg_convert_using(PG_FUNCTION_ARGS)
 	 * textin assumes that input string encoding is same as database
 	 * encoding.
 	 */
-	len = strlen(result) + VARHDRSZ;
+	len = strlen((char *)result) + VARHDRSZ;
 	retval = palloc(len);
 	VARATT_SIZEP(retval) = len;
 	memcpy(VARDATA(retval), result, len - VARHDRSZ);
