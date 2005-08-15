@@ -531,7 +531,7 @@ CREATE_QD_DB () {
 				ERROR_EXIT "[FATAL]:-QD directory $MPP_DIR already exists" 2
 		fi
 		LOG_MSG "[INFO]:-Initializing QD Postgres instance $MPP_DIR"
-		RUN_COMMAND "$INITDB -E $ENCODING -D $MPP_DIR" >> $LOG_FILE 2>&1
+		RUN_COMMAND "$INITDB -E $ENCODING -D $MPP_DIR" 
 		LOG_MSG "[INFO]:-Completed QD instance initialization"
 		LOG_MSG "[INFO]:-Setting the QD port to $MPP_PORT"
 		$ECHO "port=$MPP_PORT" >> ${MPP_DIR}/$PG_CONF
