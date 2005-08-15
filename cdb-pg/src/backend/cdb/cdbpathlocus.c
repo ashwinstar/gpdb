@@ -240,8 +240,10 @@ done:
 /*
  * cdbpathlocus_get_pathkeyitem
  *
- * Search equivalence class for an item that uses no rels outside
- * the given set, and is in the targetlist (if given).
+ * Searches the equivalence class 'pathkey' for a PathKeyItem that
+ * uses no rels outside the 'relids' set.  Prefers an item that is a
+ * member of 'targetlist'.  Returns 'initial' if no better choice is
+ * found.
  */
 static PathKeyItem *
 cdbpathlocus_get_pathkeyitem(List          *pathkey,
@@ -250,18 +252,18 @@ cdbpathlocus_get_pathkeyitem(List          *pathkey,
                              PathKeyItem   *initial)
 {
     ListCell   *pathkeycell;
+
+    if (initial &&
+        tlist_member(initial->key, targetlist))
+        return initial;
+
     foreach(pathkeycell, pathkey)
     {
         PathKeyItem    *item = lfirst(pathkeycell);
         Assert(IsA(item, PathKeyItem));
         if (bms_is_subset(item->cdb_key_relids, relids))
         {
-            if (item->cdb_num_relids == 0)
-                return item;
-            if (targetlist &&
-                !tlist_member(item->key, targetlist))
-                continue;
-            if (IsA(item->key, Var))
+            if (tlist_member(item->key, targetlist))
                 return item;
             if (!initial ||
                 item->cdb_num_relids < initial->cdb_num_relids)
@@ -302,22 +304,9 @@ cdbpathlocus_get_partkey_exprs(CdbPathLocus     locus,
                                                     relids,
                                                     targetlist,
                                                     item);
-                if (item)
-                {
-                    if (IsA(item->key, Var) ||
-                        item->cdb_num_relids == 0)
-                        break;
-                }
-           }
+            }
         }
-
-        /* Return NIL if distribution key column is not in the target list. */
-        if (!item)
-        {
-            list_free(result);
-            return NIL;
-        }
-
+        Assert(item);
         result = lappend(result, item->key);
     }
     return result;
