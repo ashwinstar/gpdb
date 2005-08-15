@@ -90,6 +90,8 @@ typedef struct DoConnectParms
  */
 static void addSegDBToConnThreadPool( DoConnectParms *ParmsAr, int *segdbCount, SegmentDatabaseDescriptor *segdbDesc);
 
+
+static char * myDatabaseName = NULL;
 /*
  * creates a new gang by logging on a session to each segDB involved
  * 
@@ -131,13 +133,14 @@ Gang *createGang(GangType type, int size, int content)
 	}
 	gangsCreated++;
 	
-	
-	
     /*
 	 * MemoryContexts used in this routine.
 	 */
 
     oldContext = MemoryContextSwitchTo(TopMemoryContext);
+    
+    if (myDatabaseName == NULL)
+		myDatabaseName = get_database_name(MyDatabaseId);
     
 	newGangDefinition = buildGangDefinition(type, size);
 	
@@ -288,7 +291,7 @@ Gang *createGang(GangType type, int size, int content)
 						(errcode(ERRCODE_WARNING),
 							errmsg("CDBGANG_SETUP--- Could not establish connection with segment database "
 								"segindex %d isprimary %c dbname %s", 
-								q->segindex, (q->isprimary ? 't' : 'f'), get_database_name(MyDatabaseId)),
+								q->segindex, (q->isprimary ? 't' : 'f'), myDatabaseName),
 							errdetail("%s", segdbDesc->error_message)));
 							
 				newGangDefinition->all_valid_segdbs_connected = false;
@@ -645,7 +648,7 @@ static void *thread_DoConnect(void *arg)
 			appendPQExpBuffer(&buffer, "host=%s ", q->hostname );
 					
 		appendPQExpBuffer(&buffer, "port=%u ", q->port);
-		appendPQExpBuffer(&buffer, "dbname=%s ", get_database_name(MyDatabaseId));
+		appendPQExpBuffer(&buffer, "dbname=%s ", myDatabaseName);
 		appendPQExpBuffer(&buffer, "user=%s ", q->cdbsuperuser);
 
 		if ( q->cdbsuperpswd != NULL )
