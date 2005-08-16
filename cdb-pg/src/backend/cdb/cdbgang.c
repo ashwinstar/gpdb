@@ -51,7 +51,7 @@ static Gang *createGang(GangType type, int size, int content);
 
 static void disconnectAndDestroyGang(Gang * gp);
 
-static Gang *buildGangDefinition(GangType type, int size);
+static Gang *buildGangDefinition(GangType type, int size, int content);
 
 /*
  * Points to the result of getCdbComponentDatabases()
@@ -142,7 +142,7 @@ Gang *createGang(GangType type, int size, int content)
     if (myDatabaseName == NULL)
 		myDatabaseName = get_database_name(MyDatabaseId);
     
-	newGangDefinition = buildGangDefinition(type, size);
+	newGangDefinition = buildGangDefinition(type, size, content);
 	
 	if (type == GANGTYPE_MIRROR_WRITER && newGangDefinition == NULL)
 	{
@@ -361,7 +361,7 @@ Gang *createGang(GangType type, int size, int content)
  *	It then converts this to a Gang structure and initializes
  *	all the non-connection related fields.
  */
-Gang *buildGangDefinition(GangType type, int size)
+Gang *buildGangDefinition(GangType type, int size, int content)
 {
 	Gang 		*newGangDefinition = NULL;
 	//SegmentDescriptor			*segDesc;
@@ -387,9 +387,7 @@ Gang *buildGangDefinition(GangType type, int size)
 	
 	newGangDefinition->type = type;
     newGangDefinition->size = size;
-    
-	 
-	 
+   
 	
 	switch (type)
 	{
@@ -516,6 +514,10 @@ Gang *buildGangDefinition(GangType type, int size)
 			    		}
 			    
 			    }
+			    
+			if (newGangDefinition->segdb_count == 1 &&
+			    content != p->segindex)
+			    continue;
 			
 			segdbDesc = &newGangDefinition->db_descriptors[seg_count];
 			 
@@ -534,6 +536,7 @@ Gang *buildGangDefinition(GangType type, int size)
 			
 			
 			seg_count++;
+			Assert(seg_count <= newGangDefinition->segdb_count);
 		}
 		else
 		{
