@@ -25,6 +25,7 @@
 
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbsubplan.h"
+#include "cdb/cdbfts.h"
 
 /*
  * Parameter structure for the DispatchCommand threads
@@ -176,9 +177,9 @@ void CdbDispatchCommandInt( const char *szCommand, DispatchTargetSet targetSet,
 		Gang * mirrorGang = allocateGang(GANGTYPE_MIRROR_WRITER, getCdbSegmentCount() , -1);
 		Assert(primaryGang != NULL);
 		
-		m = primaryGang->segdb_count;
+		m = primaryGang->size;
 		if (mirrorGang != NULL)
-			m += mirrorGang->segdb_count;
+			m += mirrorGang->size;
 			
 		max_threads =  1 + (m-1) / cdb_connections_per_thread;
 		dispatchCommandParmsAr = (DispatchCommandParms *)
@@ -187,13 +188,13 @@ void CdbDispatchCommandInt( const char *szCommand, DispatchTargetSet targetSet,
 		segdbList = palloc(m * sizeof(SegmentDatabaseDescriptor*));
 		mustFreeSegdbList = true;
 		segdbListCount = 0;
-		for (k = 0; k < primaryGang->segdb_count; k++)
+		for (k = 0; k < primaryGang->size; k++)
 		{
 			segdbList[segdbListCount] = &primaryGang->db_descriptors[k];
 			segdbListCount++;
 		}
 		if (mirrorGang != NULL)
-			for (k = 0; k < mirrorGang->segdb_count; k++)
+			for (k = 0; k < mirrorGang->size; k++)
 			{
 				segdbList[segdbListCount] = &mirrorGang->db_descriptors[k];
 				segdbListCount++;
@@ -293,9 +294,19 @@ void CdbDispatchCommand( const char *szCommand, DispatchTargetSet targetSet,
                         SegmentDatabaseDescriptor **segdbList, int segdbListCount,
                         bool cancelFromBelow )
 {
+    /* need to start distributed transaction */
     condStartDtxTransaction();
-    CdbDispatchCommandInt( szCommand, targetSet,
-                        segdbList, segdbListCount,
+    
+    /* check fts sync count */
+    if ( !verifyFtsSyncCount() )
+    {
+        /* recofig cdb connections */
+        if ( !FtsReConfigureMPP() )
+            elog(PANIC, "FTS: reconfigMPP failed");
+    }
+    
+    CdbDispatchCommandInt( szCommand, targetSet, 
+                        segdbList, segdbListCount, 
                         cancelFromBelow, NULL );
 }
 
@@ -307,6 +318,11 @@ void CdbDispatchCommand( const char *szCommand, DispatchTargetSet targetSet,
  * out parameter with a concatenation of errors from any failed command.
  */
 CdbDispatchResults *CdbCheckDispatchResult(void)
+{
+    return CdbCheckDispatchResultInt(NULL,NULL);
+}
+
+CdbDispatchResults *CdbCheckDispatchResultInt(SegmentDatabaseDescriptor ***failedSegDB, int *numOfFailed)
 {
 	int							i;
 	int							j;
@@ -363,7 +379,17 @@ CdbDispatchResults *CdbCheckDispatchResult(void)
 			{
 				char *pszErrMsg;
 				results->success = false;
-				
+
+                 if (PQstatus( segdbDesc->conn ) == CONNECTION_BAD)
+                 {
+                    if (failedSegDB != NULL)
+                    {
+                        if (*failedSegDB == NULL)
+                            *failedSegDB = palloc(sizeof(SegmentDatabaseDescriptor*) * pParms->db_count);
+                        (*failedSegDB)[(*numOfFailed)++] = segdbDesc;
+                    }
+                 }         
+
 	 		/* Because we cannot use palloc inside a thread, the error messages
 	 		 * were malloc'd. So we must free the malloc'd memory after
 	 		 * appending them to the StringInfoData.
@@ -417,6 +443,10 @@ CdbDispatchResults *CdbCheckDispatchResult(void)
 	elog(DEBUG4,"CheckDispatchResult done" );	
     	
 	threadCount = 0;
+    
+    /* handle network failures */
+    if (numOfFailed != NULL && *numOfFailed > 0)
+        handleNetFailure( *failedSegDB, *numOfFailed );
 
 	return results;	
 }
@@ -437,7 +467,8 @@ void *thread_DispatchCommand(void *arg)
 	PGconn						*conn;
 	RunningInfo					*stillRunning = NULL;
 	int							stillRunningCount = 0;
-	PGresult **pqresults = NULL;
+    int                           counter = 0;
+	PGresult                      **pqresults = NULL;
 
 	/*
 	 * In threads, we cannot use palloc, because it's not thread safe.
@@ -505,7 +536,7 @@ void *thread_DispatchCommand(void *arg)
 		 * Submit the command asynchronously.
 		 */
 		if ( 0 == PQsendQuery(conn, szCommand) )
-		{
+		{             
 			PQExpBufferData buffer;
 			initPQExpBuffer(&buffer);
 			
@@ -650,6 +681,34 @@ void *thread_DispatchCommand(void *arg)
 					}
 				}
 			}
+            
+            // check the connection still valid, set 1 min time interval
+            if ( counter++ > 30 )
+            {
+                int x=0;
+                for ( i=0; i<stillRunningCount; i++ )
+                {
+                    segdbDesc = stillRunning[i].segdbDesc;
+                    if (!FtsTestConnection(segdbDesc))
+                    {
+                        q = segdbDesc->segment_database_info;
+                        PQExpBufferData buffer;
+                        initPQExpBuffer(&buffer);
+                        appendPQExpBuffer( &buffer, "SQL Command error: lost connection for "
+                                                    "segindex %d isprimary %c", 
+                                                    q->segindex, (q->isprimary ? 't' : 'f') );
+                        segdbDesc->error_message = buffer.data;
+                        PQfinish(segdbDesc->conn);
+                    }
+                    else
+                    {
+                        stillRunning[x++] = stillRunning[i];
+                    }
+                }
+                stillRunningCount = x;
+
+                counter = 0;
+            }
 			
 			continue;
 		}
@@ -1254,6 +1313,15 @@ bool CdbDoCommand( const char *szCommand,
 	bool ret;
     /* need to start distributed transaction */
     condStartDtxTransaction();
+
+    /* check fts sync count */
+    if ( !verifyFtsSyncCount() )
+    {
+        /* recofig cdb connections */
+        if ( !FtsReConfigureMPP() )
+            elog(PANIC, "FTS: reconfigMPP failed");
+    }
+    
     ret = CdbDoCommandInt( szCommand, targetSet,
                             cancelFromBelow, resultSets );
     return ret;
@@ -1537,8 +1605,8 @@ void CdbDispatchPlan(QueryDesc *queryDesc)
 
 					
 					
-		sdp = palloc(primaryGang->segdb_count * sizeof(SegmentDatabaseDescriptor*));
-		for (k = 0; k < primaryGang->segdb_count; k++)
+		sdp = palloc(primaryGang->size * sizeof(SegmentDatabaseDescriptor*));
+		for (k = 0; k < primaryGang->size; k++)
 		{
 			sdp[k] = &primaryGang->db_descriptors[k];
 		}
@@ -1549,7 +1617,7 @@ void CdbDispatchPlan(QueryDesc *queryDesc)
 		 * This call returns after launching the threads that send the command to the appropriate
 		 * segdbs.  It does not wait for them to finish.
 		 */
-		CdbDispatchCommandInt(strinfo.data, DTS_ENUMERATION, sdp, primaryGang->segdb_count, true, NULL );
+		CdbDispatchCommandInt(strinfo.data, DTS_ENUMERATION, sdp, primaryGang->size, true, NULL );
 
 
 		/* dispatch the plan to our mirrorGang if we have one. */

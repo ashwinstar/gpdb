@@ -285,6 +285,8 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 	int					listenerid;
 	int					hostid;
 	bool				isprimary;
+    bool             valid;
+    bool             definedprimary;
 
 
 	int i;
@@ -380,6 +382,19 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 		Assert( !isNull );
 		isprimary = DatumGetBool(attr);
 
+        /*
+        * valid
+        */
+        attr = heap_getattr(cdb_pgdatabase_tuple, Anum_cdb_pgdatabase_valid, cdb_pgdatabase_rel->rd_att, &isNull);
+        Assert( !isNull );
+        valid = DatumGetBool(attr);
+        
+        /*
+        * isprimary
+        */
+        attr = heap_getattr(cdb_pgdatabase_tuple, Anum_cdb_pgdatabase_definedprimary, cdb_pgdatabase_rel->rd_att, &isNull);
+        Assert( !isNull );
+        definedprimary = DatumGetBool(attr);
 
 
 		/*
@@ -425,6 +440,8 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 		pRow->listenerid = listenerid;
 		pRow->segindex = content;
 		pRow->isprimary = isprimary;
+        pRow->valid = valid;
+        pRow->definedprimary = definedprimary;
 
 		/*
 		* Now, scan the cdb.listener table for this listenerid

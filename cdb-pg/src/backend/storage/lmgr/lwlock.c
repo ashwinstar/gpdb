@@ -119,6 +119,9 @@ NumLWLocks(void)
     
     /* cdbtm.c needs one lock */
     numLocks++;
+    
+    /* cdbfts.c needs one lock */
+    numLocks++;
 
 	/* Perhaps create a few more for use by user-defined modules? */
 

@@ -172,6 +172,11 @@ extern const char	*show_cdb_connections_per_thread( void );
 extern bool			assign_interconnect_setup_timeout( int newval, bool doit, GucSource source );
 extern const char   *show_interconnect_setup_timeout( void );
 
+extern char           * cdb_fault_action_string;  /* Use by guc.c as user defined fault action */ 
+extern bool             cdb_set_read_only;
+extern bool             assign_cdb_set_read_only( bool newval, bool doit, GucSource source );
+extern const char       * show_cdb_set_read_only( void );
+
 /*
  * Parameter cdb_max_tuple_chunk_size
  *

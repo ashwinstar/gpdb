@@ -18,6 +18,8 @@
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbvars.h"
 #include "libpq-fe.h"
+#include "access/xact.h"
+#include "cdb/cdbfts.h"
 
 
 static LWLockId     shmControlLock;
@@ -28,7 +30,7 @@ int    *shmLatestLogFileNo;
 int    *shmEarliestLogFileNo;
 
 static int          ControlLockCount=0;
-static char         errMessage[500];
+static char         *errMessage=NULL;
 
 char dtm_dir[MAXPGPATH];
 
@@ -249,14 +251,38 @@ condRollbackDtxTransaction(void)
 int
 execCommand(void)
 {
-    char cmdbuf[50];
+    char cmdbuf[60];
     CdbDispatchResults* results = NULL;
+    SegmentDatabaseDescriptor **failedSegDB=NULL;
+    int numOfFailed=0;
     int ret = DTX_OK;
     
     switch (currentGxact->state)
     {
         case DTX_STATE_IN_PROGRESS:
-            sprintf(cmdbuf, "%s'%s'", "BEGIN ", currentGxact->gid); 
+
+            if ( XactIsoLevel != DefaultXactIsoLevel )
+            {
+                char *isoLevel;
+                switch( XactIsoLevel)
+                {
+                    case XACT_READ_UNCOMMITTED:
+                        isoLevel = "ISOLATION LEVEL READ UNCOMMITTED";
+                        break;
+                    case XACT_READ_COMMITTED:
+                        isoLevel = "ISOLATION LEVEL READ COMMITTED";
+                        break;
+                    case XACT_REPEATABLE_READ:
+                        isoLevel = "ISOLATION LEVEL REPEATABLE READ";
+                        break;
+                    case XACT_SERIALIZABLE:
+                        isoLevel = "ISOLATION LEVEL SERIALIZABLE";
+                        break;
+                }
+                sprintf(cmdbuf, "%s'%s' %s", "BEGIN ", currentGxact->gid, isoLevel); 
+            }
+            else
+                sprintf(cmdbuf, "%s'%s'", "BEGIN ", currentGxact->gid); 
             break;
         case DTX_STATE_PREPARED:
             sprintf(cmdbuf, "%s'%s'", "PREPARE ", currentGxact->gid); 
@@ -280,18 +306,50 @@ execCommand(void)
    
     /* dispatch command */ 
     CdbDispatchCommandInt(cmdbuf, DTS_SEGDB, NULL, 0, false, NULL);
-    results = CdbCheckDispatchResult();
+    results = CdbCheckDispatchResultInt(&failedSegDB,&numOfFailed);
 
     if ( !results->success )
     {
         // no need to free errMessage, it will be freed automatically.
         char *error = CdbDumpDispatchResults(results, true);
-        strncpy(errMessage, error, sizeof(errMessage));
+        if (errMessage == NULL || strlen(errMessage) < strlen(error))
+        {
+            if (errMessage != NULL)
+                free(errMessage);
+            errMessage = malloc(strlen(error)+1);
+        }
+        strcpy(errMessage, error);
 
         /* if error returned */
         switch (currentGxact->state)
         {
             case DTX_STATE_IN_PROGRESS:
+                /*
+                 * no need to retry, query plan contains gang info, so no way
+                 * to retry now.
+                for (i=0;i<numOfFailed;i++)
+                {
+                    SegmentDatabaseDescriptor *segDB=failedSegDB[i];
+                    if (PQstatus(segDB->conn) != CONNECTION_OK)
+                    {
+                        retry = false;
+                        break;
+                    }
+                }
+
+                if ( retry )
+                {
+                    / * dispatch command * / 
+                    CdbDispatchCommandInt(cmdbuf, DTS_ENUMERATION, failedSegDB, numOfFailed, false, NULL);
+                    results = CdbCheckDispatchResult();
+                }
+                */
+                if ( !results->success )
+                {
+                    updateDtxState( DTX_STATE_ABORT );
+                    ret = DTX_ERR_COMM;
+                }
+                break;
             case DTX_STATE_PREPARED:
             case DTX_STATE_ROLLBACK:
             case DTX_STATE_1P_COMMIT:
@@ -427,6 +485,16 @@ tmShmemInit(void)
 bool
 isInGlobalTransaction(void)
 {
+    if ( Cdb_role != CDB_ROLE_DISPATCH )
+        return false;
+        
+    /* check fts sync count */
+    if ( !verifyFtsSyncCount() )
+    {
+        /* recofig cdb connections */
+        if ( !FtsReConfigureMPP() )
+            elog(PANIC, "FTS: reconfigMPP failed");
+    }
     return (currentGxact!=NULL);
 }
 
@@ -659,6 +727,9 @@ recoverTM(void)
     PGresult **pgresultSets;
     
     duringRecovery = true;
+    
+    /* intialize fts sync count */
+    verifyFtsSyncCount();
 
     /* phase 1 recovery
      * read and roll forward tm log
@@ -677,8 +748,10 @@ recoverTM(void)
         /* still have in-doubt transactions, save it to log */
         int i=0;
         for ( i=0;i<*shmNumGxacts;i++ )
-            ereport(FATAL, 
+            ereport(LOG,
                     (errmsg("global xact %s pending on TM", shmGxactArray[i]->gid)));
+        ereport(FATAL, 
+                (errmsg("global xact is not clean in TM")));
     }
 
     /* check again to see any un-resolved transactions in QE */
@@ -850,9 +923,11 @@ recoverRMs(PGresult ***pgresultSets)
     {
         PGresult *rs = (*pgresultSets)[i];
         if (PQntuples(rs) != 0)
+            /* need recovery */
             return true;
     }
     
+    /* do not need recovery */
     return false;
 }
 
@@ -911,4 +986,18 @@ semanticCheckingOnQE(bool commit)
     else
         Assert(lastGxactState == DTX_STATE_ROLLBACK ||
                 lastGxactState == DTX_STATE_ROLLBACK_DONE);
+}
+
+/*
+ * discardDtxTransaction: called by fts to discard it
+ */
+void
+discardDtxTransaction()
+{
+    if (currentGxact != NULL)
+    {
+        /* update tm state first */
+        updateDtxState(DTX_STATE_ABORT);
+        condRollbackDtxTransaction();
+    }
 }

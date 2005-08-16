@@ -895,7 +895,16 @@ static struct config_bool ConfigureNamesBool[] =
 		&Cdb_is_primary,
 		true, NULL, NULL
 	},
-
+    
+    {
+        {"cdb_set_read_only", PGC_SUSET, UNGROUPED,
+            gettext_noop("Sets the system read only"),
+            GUC_NOT_IN_SAMPLE
+        },
+        &cdb_set_read_only,
+        false, assign_cdb_set_read_only, NULL
+    },
+    
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL
@@ -1961,6 +1970,15 @@ static struct config_string ConfigureNamesString[] =
 		&cdb_role_string,
 		"dispatch", assign_cdb_role, show_cdb_role
 	},
+    
+    {
+       {"MPPFaultAction", PGC_POSTMASTER, UNGROUPED,
+           gettext_noop("Sets the fault action for fault tolerance management."),
+           gettext_noop("Valid values are CONTINUE, READONLY, and SHUTDOWN.")
+       },
+       &cdb_fault_action_string,
+       "continue", NULL, NULL
+    }, 
 
 	/* End-of-list marker */
 	{

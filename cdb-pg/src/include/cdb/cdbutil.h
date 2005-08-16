@@ -30,6 +30,8 @@ typedef struct CdbComponentDatabaseInfo
 	int4		segindex;		/* content indicator: -1 for entry database, 0, ..., n-1 for segment database */
     bool		isprimary;  	/* true if this is the primary segment, false if it's the secondary */
     //char		*dbname; 		/* segment database name */
+    bool     valid;      /* true if this segdb is up */
+    bool     definedprimary;      /* true if this seg db is originally defined as primary */
     char		*hostname;  	/* name or ip address of host machine */
     int4		port;     		/* port that instance is listening on */
     char		*datadir;   	/* directory where instance was initialized into */

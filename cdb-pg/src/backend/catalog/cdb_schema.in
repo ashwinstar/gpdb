@@ -102,9 +102,11 @@ create table CDB.PGDATABASE
 	isprimary boolean,
 	content integer not null,
 	listenerid integer not null,
+    valid boolean,
+    definedprimary boolean,
 	
 	primary key (dbid),
-	unique (content, isprimary),
+	unique (content, definedprimary),
 	unique (listenerid),
 	foreign key (listenerid) references CDB.listener(listenerid)
 );
@@ -465,8 +467,8 @@ CREATE OR REPLACE FUNCTION cdb.add_segment_database( cdb.host.hostname%TYPE,
 			--
 			-- Add an entry to cdb.pgdatabase table
 			--
-			INSERT INTO cdb.pgdatabase(dbid, isprimary, content, listenerid)
-			VALUES ( lastid, arg_isprimary, arg_content, f_listenerid );
+			INSERT INTO cdb.pgdatabase(dbid, isprimary, content, listenerid, valid, definedprimary)
+			VALUES ( lastid, arg_isprimary, arg_content, f_listenerid, true, arg_isprimary );
 			
 			RETURN;
 		END;
@@ -814,15 +816,95 @@ COMMENT ON FUNCTION cdb.cdb_set_identity( cdb.cdb.cdbname%TYPE,
 	IS 'used to set the identity of a component database of the CDB';
 
 
+CREATE OR REPLACE FUNCTION cdb.cdb_set_segdb_state( cdb.pgdatabase.dbid%TYPE,
+			 					     			 cdb.pgdatabase.valid%TYPE	 
+												)
+	RETURNS void
+	AS '
+		DECLARE
+			arg_dbid				ALIAS FOR $1;
+			arg_valid			    ALIAS FOR $2;
+            dprimary                cdb.pgdatabase.definedprimary%TYPE;
+            segindex                cdb.pgdatabase.content%TYPE;
+			
+		BEGIN		
+			--
+			-- Perform a little validation on the input parameters
+			--
+			IF arg_dbid IS NULL OR arg_valid IS NULL
+			THEN
+				RAISE EXCEPTION ''argument can not be NULL'';
+			END IF;
+
+            -- 
+            -- Determine this segdb is primary
+            --  
+            SELECT INTO dprimary, segindex
+                    definedprimary, content
+                FROM cdb.pgdatabase
+                WHERE dbid = arg_dbid;
+                
+            IF NOT FOUND
+            THEN
+				RAISE EXCEPTION ''dbid not found in catalog'';
+            END IF;
+
+			--
+			-- update the row in cdb.pgdatabase
+			--
+			UPDATE cdb.pgdatabase SET valid = arg_valid, isprimary = (arg_valid and definedprimary)
+			WHERE dbid = arg_dbid;
+			IF NOT FOUND
+			THEN
+				RAISE EXCEPTION ''Failed to set state'';
+			END IF;
+
+			--
+			-- update the its isprimary column if primary is down
+			--
+            IF NOT dprimary and arg_valid
+            THEN
+                UPDATE cdb.pgdatabase SET isprimary = arg_valid 
+				where dbid = arg_dbid and
+                      valid != (select valid from cdb.pgdatabase where dbid != arg_dbid and content = segindex);
+            END IF;
+
+			--
+			-- update the its mirror entry in cdb.pgdatabase
+			--
+			IF dprimary
+            THEN
+                UPDATE cdb.pgdatabase SET isprimary = NOT arg_valid 
+                where dbid != arg_dbid and content = segindex and valid = true;
+
+            END IF;
+
+            SELECT INTO dprimary
+                    definedprimary
+                   FROM cdb.pgdatabase where content = segindex and valid = true;
+    		IF NOT FOUND
+			THEN
+				RAISE WARNING ''No valid db of this segment is active'';
+			END IF;
+
+			RETURN;
+		END;
+	' LANGUAGE 'plpgsql';
+	
+COMMENT ON FUNCTION cdb.cdb_set_segdb_state( cdb.pgdatabase.dbid%TYPE,
+	 					     			   cdb.pgdatabase.valid%TYPE )
+	IS 'used to set the state of a component database of the CDB';
 
 
 CREATE OR REPLACE VIEW cdb.component_database
 		
 	AS SELECT d.content as "segindex", 
-			  d.isprimary as "isprimary", h.hostname as "hostname", 
+			  d.isprimary as "isprimary", d.valid as "valid", 
+              d.definedprimary as "definedprimary", h.hostname as "hostname", 
 			  l.port as "port", l.datadir as "datadir"
 	   FROM cdb.host h, cdb.listener l, cdb.pgdatabase d
-	   WHERE h.hostid = l.hostid AND l.listenerid = d.listenerid;
+	   WHERE h.hostid = l.hostid AND l.listenerid = d.listenerid
+       ORDER BY segindex;;
 
 COMMENT ON VIEW cdb.component_database
 	IS 'CDB component databases registered in this database';
@@ -830,7 +912,7 @@ COMMENT ON VIEW cdb.component_database
 
 CREATE OR REPLACE VIEW cdb.segment_database
 	AS SELECT coalesce(generate_series, segindex) as "segindex", 
-			  isprimary, hostname, port, datadir, true as "isvalid"
+			  isprimary, valid, definedprimary, hostname, port, datadir
 		FROM generate_series(0, (select numsegments from cdb.cdb)) 
 		     FULL OUTER JOIN cdb.component_database
 		     ON generate_series = segindex

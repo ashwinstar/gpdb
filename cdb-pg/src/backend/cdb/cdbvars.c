@@ -38,6 +38,8 @@
  
 CdbRoleValue		Cdb_role;			/* Role paid by this CDB backend */
 char			   *cdb_role_string;	/* Staging area for guc.c */
+char            *cdb_fault_action_string; /* Staging area for guc.c */
+bool             cdb_set_read_only; /* Staging area for guc.c */
 
 CdbRoleValue		Cdb_session_role;	/* Role paid by this CDB backend */
 char			   *cdb_session_role_string; /* Staging area for guc.c */

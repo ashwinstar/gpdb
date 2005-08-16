@@ -78,6 +78,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate,
 		size += CLOGShmemSize();
 		size += SUBTRANSShmemSize();
 		size += TwoPhaseShmemSize();
+        size += FtsShmemSize();
          size += tmShmemSize();
 		size += LWLockShmemSize();
 		size += SInvalShmemSize(maxBackends);
@@ -145,6 +146,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate,
 	CLOGShmemInit();
 	SUBTRANSShmemInit();
 	TwoPhaseShmemInit();
+    FtsShmemInit();
     tmShmemInit();
 	InitBufferPool();
 

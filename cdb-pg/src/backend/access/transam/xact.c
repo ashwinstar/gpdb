@@ -48,6 +48,7 @@
 #include "utils/relcache.h"
 #include "utils/resowner.h"
 #include "pgstat.h"
+#include "cdb/cdbfts.h"
 
 #include "cdb/cdbgang.h"
 
@@ -1294,6 +1295,8 @@ PrepareTransaction(void)
       AtEOXact_Files();
       /* TODO: */
       /* pgstat_count_xact_commit(); */
+      /* release GUC, we do not know to keep GUC or not, so rollback now */
+      AtEOXact_GUC(false, false);
 
       CurrentResourceOwner = NULL;
 
@@ -1727,6 +1730,8 @@ StartTransaction(void)
 	FreeXactSnapshot();
 	XactIsoLevel = DefaultXactIsoLevel;
 	XactReadOnly = DefaultXactReadOnly;
+    if (*ftsReadOnlyFlag)
+        XactReadOnly = *ftsReadOnlyFlag;
 
 	/*
 	 * reinitialize within-transaction counters
@@ -1782,6 +1787,7 @@ StartTransaction(void)
 	s->state = TRANS_INPROGRESS;
 
 	ShowTransactionState("StartTransaction");
+    
 }
 
 /*
@@ -1792,11 +1798,6 @@ CommitTransaction(void)
 {
 	TransactionState s;
 	
-    /* commit all QE as cleanup process, ignore all errors
-     * commit should have been called from ProcessUtility and CdbDispatchCommand
-     */
-    commitDtxTransaction(false);
-    
 	s = CurrentTransactionState;
 
 	ShowTransactionState("CommitTransaction");
@@ -1868,6 +1869,10 @@ CommitTransaction(void)
 	/*
 	 * Here is where we really truly commit.
 	 */
+    /* commit all QE
+     * commit should have been called from ProcessUtility
+     */
+    commitDtxTransaction(false);
 	RecordTransactionCommit();
 
 	/*

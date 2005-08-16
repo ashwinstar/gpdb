@@ -200,7 +200,7 @@ endif
 ##########################################################################
 
 uninstall:
-	rm -f $(DESTDIR)$(bindir)/postgres$(X) $(DESTDIR)$(bindir)/postmaster
+	rm -f $(DESTDIR)$(bindir)/postgres$(X) $(DESTDIR)$(bindir)/postmaster $(DESTDIR)$(bindir)/cdbsyncmaster
 ifeq ($(MAKE_EXPORTS), true)
 	rm -f $(DESTDIR)$(pkglibdir)/$(POSTGRES_IMP)
 endif

@@ -74,6 +74,7 @@ extern void tmShmemInit(void);
 extern void restoreGxact(TMGXACT *gxact);
 extern void initTM(void);
 extern void semanticCheckingOnQE(bool commit);
+extern void discardDtxTransaction();
 
 extern int *shmLatestLogFileNo;
 extern int *shmEarliestLogFileNo;
@@ -98,5 +99,7 @@ void recoverCommittedDtx(void);
 void recoverRollbackedDtx(void);
 void getTmLock(void);
 void releaseTmLock(void);
+
+extern char dtm_dir[MAXPGPATH];
 
 #endif /* CDBTM_H */

@@ -41,6 +41,7 @@
 #include "cdb/cdbconn.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbgang.h"
+#include "cdb/cdbfts.h"
 
 /*
  *	thread_DoConnect is the thread proc used to perform the connection to one of the qExecs.
@@ -161,7 +162,7 @@ Gang *createGang(GangType type, int size, int content)
 	 * If no database serving a segindex is available, fail the user's connection request.
 	 */
 
-	segdb_count = newGangDefinition->segdb_count;
+	segdb_count = newGangDefinition->size;
 	
 	Assert( cdb_connections_per_thread > 0 );
 	Assert( segdb_count > 0 );
@@ -184,7 +185,7 @@ Gang *createGang(GangType type, int size, int content)
 	 * If a segment has no valid segdbs, we recognize that here and give
 	 * an error message.
 	 */
-	for ( i=0; i<newGangDefinition->segdb_count; i++ )
+	for ( i=0; i<segdb_count; i++ )
 	{
 		 
 			
@@ -263,12 +264,16 @@ Gang *createGang(GangType type, int size, int content)
 	 * If not, we recreate the error message with palloc and show it as
 	 * a warning.  
 	 */
-	for ( i=0; i<newGangDefinition->segdb_count; i++ )
+	for ( i=0; i<segdb_count; i++ )
 	{
 		
 			segdbDesc = &newGangDefinition->db_descriptors[i];
 			q = segdbDesc->segment_database_info;
-			if ( segdbDesc->conn == NULL )
+		    
+             /* check connection established or not,
+              * if not, we may have to re-build this gang.
+              */
+             if ( segdbDesc->conn == NULL )
 			{
 				/*
 					* The error message in segdbDesc->error_message
@@ -316,11 +321,11 @@ Gang *createGang(GangType type, int size, int content)
 	 * loop from the preceding one to make sure all error messages were
 	 * palloced before potentially calling ereport.
 	 */
-	for ( i=0; i<newGangDefinition->segdb_count; i++ )
+	for ( i=0; i<segdb_count; i++ )
 	{
 		segdbDesc = &newGangDefinition->db_descriptors[i];
 			q = segdbDesc->segment_database_info;
-		if (successful_connections == 0)
+		if (successful_connections == 0 && type !=GANGTYPE_MIRROR_WRITER)
 		{
 			StringInfoData buffer;
 
@@ -350,8 +355,14 @@ Gang *createGang(GangType type, int size, int content)
 
     elog(DEBUG1, "createGang CDB segment databases: askedfor=%d, connected=%d", 
 			size, successful_connections);
-    elog(DEBUG1, "createGang CDB segments: defined = %d", newGangDefinition->segdb_count);
+    elog(DEBUG1, "createGang CDB segments: defined = %d", newGangDefinition->size);
     
+    if (successful_connections != newGangDefinition->size)
+    {
+        markGangStatus(newGangDefinition->db_descriptors, newGangDefinition->size);
+        disconnectAndDestroyGang(newGangDefinition);
+        newGangDefinition->size = 0;
+    }
     return newGangDefinition;
 }
 
@@ -369,7 +380,7 @@ Gang *buildGangDefinition(GangType type, int size, int content)
 	CdbComponentDatabaseInfo	*p;
 	
 	int seg_count = 0; 
-	int last_segindex;
+	int last_segindex=-1;
 	int i;
 	
 	MemoryContext oldContext;
@@ -386,18 +397,15 @@ Gang *buildGangDefinition(GangType type, int size, int content)
 	newGangDefinition = (Gang *)palloc0( sizeof(Gang) );
 	
 	newGangDefinition->type = type;
-    newGangDefinition->size = size;
    
 	
 	switch (type)
 	{
 		case GANGTYPE_PRIMARY_WRITER:
-			Assert(newGangDefinition->size == CdbIdentity.numsegments);
 			elog(DEBUG4, "building Gang.  Gang is primary writer" );	
 			break;
 			
 		case GANGTYPE_MIRROR_WRITER:
-			Assert(newGangDefinition->size == CdbIdentity.numsegments);
 			elog(DEBUG4, "building Gang.  Gang is mirror writer" );	
 			break;
 			
@@ -430,17 +438,19 @@ Gang *buildGangDefinition(GangType type, int size, int content)
 	
 
 	newGangDefinition->segdb_count	= cdb_component_dbs->total_segments;
+    /*
 	if (type == GANGTYPE_READER && size == 1)
-		newGangDefinition->segdb_count = size;
+		newGangDefinition->size = size;
 	else
 	{
 		Assert(size == newGangDefinition->segdb_count);
 	}
-		
+    */		
 	Assert(newGangDefinition->segdb_count > 0);
-	
+
+    	
 	newGangDefinition->db_descriptors = 
-			(SegmentDatabaseDescriptor *) palloc0 ( newGangDefinition->segdb_count * sizeof( SegmentDatabaseDescriptor ) );
+			(SegmentDatabaseDescriptor *) palloc0 ( cdb_component_dbs->total_segments * sizeof( SegmentDatabaseDescriptor ) );
 	
 
 
@@ -478,65 +488,78 @@ Gang *buildGangDefinition(GangType type, int size, int content)
 			 */
 			//segDesc++;
 			 
-			last_segindex = p->segindex;
 			//segDesc->segindex = p->segindex;
 			//segDesc->db_count = 1;
 			//segDesc->error_message = NULL;
 			//segDesc->query_db = NULL;
 			//segDesc->sql = NULL;
 			
-			if (p->isprimary && 
+			if (p->definedprimary && 
 			    type == GANGTYPE_MIRROR_WRITER) 
 			    {
 			    	j++;
 			    	if (cdb_component_dbs->segment_db_info[j].segindex == p->segindex &&
-			    		!cdb_component_dbs->segment_db_info[j].isprimary)
+			    		!cdb_component_dbs->segment_db_info[j].definedprimary)
+                 {
 			    		p = &cdb_component_dbs->segment_db_info[j];
-			    	else
+                     i=j;
+                 }
+                 else
 			    	{
                      return NULL;
 			    	}
 			    
 			    }
-			else if ((!p->isprimary)) 
+			else if ((!p->definedprimary && !p->isprimary)) 
 			    {
 			    	j++;
 			    	if (cdb_component_dbs->segment_db_info[j].segindex == p->segindex &&
-			    		cdb_component_dbs->segment_db_info[j].isprimary)
+			    		cdb_component_dbs->segment_db_info[j].definedprimary)
 			    		{
 			    			/* Do we want to change p ? */
 			    			p = &cdb_component_dbs->segment_db_info[j];	
+                         i=j;
 			    		}
 			    	else
 			    		{
-			    			elog(NOTICE,"building Gang:  No primary segdb found!!!!");
+			    			elog(PANIC,"building Gang:  No primary segdb found!!!!");
                          continue;
 			    		}
 			    
 			    }
-			    
-			if (newGangDefinition->segdb_count == 1 &&
-			    content != p->segindex)
-			    continue;
-			
-			segdbDesc = &newGangDefinition->db_descriptors[seg_count];
-			 
-			segdbDesc->segment_descriptor = NULL;
-			segdbDesc->segment_database_info = p;
-			segdbDesc->conn = NULL;		
-			segdbDesc->thread = (pthread_t)NULL;
-			segdbDesc->error_message = NULL;
-			segdbDesc->cmdTuples = 0;
-			segdbDesc->resultStatus = PGRES_COMMAND_OK;
-			segdbDesc->cmdStatus = NULL;
-			segdbDesc->segindex = p->segindex;
-			
-			
-			
-			
-			
-			seg_count++;
-			Assert(seg_count <= newGangDefinition->segdb_count);
+                
+            if (p->valid)
+            {
+                if ( type == GANGTYPE_MIRROR_WRITER && p->isprimary )
+                {
+                    /* this segdb has been used by primary gang, can not be used
+                     * by mirror gang again
+                     */
+                    CondSetMPPReadonly();
+                }
+                else
+                {
+                    segdbDesc = &newGangDefinition->db_descriptors[seg_count];
+                     
+                    segdbDesc->segment_descriptor = NULL;
+                    segdbDesc->segment_database_info = p;
+                    segdbDesc->conn = NULL;		
+                    segdbDesc->thread = (pthread_t)NULL;
+                    segdbDesc->error_message = NULL;
+                    segdbDesc->cmdTuples = 0;
+                    segdbDesc->resultStatus = PGRES_COMMAND_OK;
+                    segdbDesc->cmdStatus = NULL;
+                    segdbDesc->segindex = p->segindex;
+                    
+                    seg_count++;
+
+                }
+                last_segindex = p->segindex;
+            }
+            else
+            {
+                CondSetMPPReadonly();
+            }
 		}
 		else
 		{
@@ -551,8 +574,17 @@ Gang *buildGangDefinition(GangType type, int size, int content)
 	}
 		
 	//Assert( seg_count == cdb_component_dbs->total_segments );
+    
+    if (type == GANGTYPE_PRIMARY_WRITER && seg_count != cdb_component_dbs->total_segments )
+    {
+        elog(PANIC, "Not all primary dbs is active and connected");
+    }
+    else if (type == GANGTYPE_MIRROR_WRITER && seg_count == 0)
+    {
+        return NULL;
+    }
 		
-	
+    newGangDefinition->size = seg_count;
 	return newGangDefinition;
 }
 
@@ -738,19 +770,27 @@ Gang *allocateGang(GangType type, int size, int content)
     
 	switch (type)
 	{
-		case GANGTYPE_PRIMARY_WRITER:
+		case GANGTYPE_PRIMARY_WRITER: 
 			if (primaryWriterGang == NULL)
-				gp = primaryWriterGang = createGang(type, size, content);
-			else
-				gp = primaryWriterGang;
+             {
+                do {
+				   gp = primaryWriterGang = createGang(type, size, content);
+                } while (gp->size == 0);
+             }
+             else
+		      	gp = primaryWriterGang;
 			break;
 			
 		case GANGTYPE_MIRROR_WRITER:
 			if (mirrorWriterGang == NULL && !mirroringNotConfigured)
 			{
-				gp = mirrorWriterGang = createGang(type, size, content);
-				if (gp == NULL)
-					mirroringNotConfigured = true;
+                 do
+                 {
+			         gp = mirrorWriterGang = createGang(type, size, content);
+                 } while (gp != NULL && gp->size == 0);
+
+                if (gp == NULL)
+                   mirroringNotConfigured = true;
 			}
 			else 
 				gp = mirrorWriterGang;
@@ -859,8 +899,9 @@ List *getCdbProcessList(Gang *gang)
 		bool primary;
 		int k = 0;		
 		
+        /*
 		Assert( gang->size == 1 || gang->size == CdbIdentity.numsegments );
-	
+	    */
 	
 		primary = ( gang->type != GANGTYPE_MIRROR_WRITER );
 		
@@ -965,7 +1006,7 @@ void disconnectAndDestroyGang(Gang * gp)
 	 *     2) disconnect the session, and
 	 *     3) discard any connection error message.
 	 */
-	for ( i = 0; i < gp->segdb_count; i++ )
+	for ( i = 0; i < gp->size; i++ )
 	{
 	
 		
@@ -1178,4 +1219,29 @@ reconnectSegDB(SegmentDatabaseDescriptor *failedDB)
     }
     
     return ret;
+}
+
+/* set segdb states, called by FtsReConfigureMPP and lock should be held there */
+void
+detectFailedConnections(void)
+{
+    int i;
+    /* check primary gang */
+    for ( i = 0; i < primaryWriterGang->size; i++ )
+    {
+        SegmentDatabaseDescriptor *segdbDesc = &(primaryWriterGang->db_descriptors[i]);
+        
+        if ( !FtsTestConnection( segdbDesc ) )
+            markSegDBStatus(segdbDesc->segment_database_info->dbid, false);
+    }  
+    
+    /* check mirrored gang */
+    for ( i = 0; i < mirrorWriterGang->size; i++ )
+    {
+        SegmentDatabaseDescriptor *segdbDesc = &(mirrorWriterGang->db_descriptors[i]);
+        
+        if ( !FtsTestConnection( segdbDesc ) )
+            markSegDBStatus(segdbDesc->segment_database_info->dbid, false);
+    }  
+    
 }
