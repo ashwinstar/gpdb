@@ -404,7 +404,7 @@ Gang *buildGangDefinition(GangType type, int size, int content)
 		case GANGTYPE_READER:
 			/* Must be size 1 or size numsegments */
 			/* If size 1, then content tells us what? */
-			elog(DEBUG4, "building Gang.  Gang is reader size %d", size );	
+			elog(DEBUG4, "building Gang.  Gang is reader size %d for content %d", size, content );	
 			break;
 			
 		case GANGTYPE_UNALLOCATED:
@@ -816,7 +816,7 @@ Gang *allocateGang(GangType type, int size, int content)
 				}
 				if (gp == NULL) /* no pre-created gang exists */
 				{
-					elog(DEBUG4, "creating a new 1 gang" );
+					elog(DEBUG4, "creating a new 1 gang for content %d", content );
 					gp = createGang(type, size, content);
 				}
 				allocatedReaderGangs1 = lappend(allocatedReaderGangs1,gp);
