@@ -957,7 +957,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_DropdbStmt:
-			CdbSentry(CDB_REJECT, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			{
 				DropdbStmt *stmt = (DropdbStmt *) parsetree;
 
