@@ -64,6 +64,10 @@ typedef struct MotionConn
  	char *remoteHost;
  	int  remotePort;
  	int  remoteContentId;
+ 	
+ 	bool hasMirrorConn;
+ 	struct MotionConn *mirrorConn;
+ 	
 } MotionConn;
 
 /* used to organize all of the information for a given motion node. 
@@ -76,6 +80,13 @@ typedef struct MotionLayerState
 	int 		numConns;
 
 	MotionConn 	*conns;
+	
+	int 		numMirrorConns;
+	
+	MotionConn  *mirrorConns;   /* only used by the sender.  the receiver has no
+								 * concept of whether its a mirror or not. so it
+								 * always stores its connections in conns.
+								 */
 
 	int			myRouteId;
 
@@ -154,14 +165,15 @@ MotionLayerState *createMotionState(int16 motNodeID, int numConns);
 MotionLayerState *getMotionState(int16 motNodeID);
 MotionLayerState *removeMotionState(int16 motNodeID);
 
-MotionLayerState  *startConnections(Slice *mySlice, int *highsock, fd_set *wset);
+MotionLayerState  *startConnections(Slice *mySlice, int *highsock, fd_set *wset, int *connsStarted);
+void setupOutgoingConnection( MotionConn *conn, CdbProcess *cdbProc,int *highsock, fd_set *wset );
 void sendRegisterMessage(MotionLayerState *pEntry, MotionConn *conn);
 void readRegisterMessage(MotionConn *in_conn, int *incoming_count);
 void acceptIncomingConnection(fd_set *rset, int *highsock);
 
 bool sendChunk(MotionConn *conn, TupleChunkListItem tcItem);
 void readPacket(MotionConn *conn);
-bool doBroadcast(MotionLayerState *pEntry, TupleChunkListItem tcItem);
+void doBroadcast(MotionLayerState *pEntry, TupleChunkListItem tcItem);
 int findMyRouteId(Slice *slice);
 CdbProcess *findCdbProcess(RegisterMessage *msg);
 
@@ -220,7 +232,7 @@ void CleanUpMotionLayerIPC(void)
 bool SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcItem)
 {
 	MotionLayerState	*pEntry;
-	MotionConn		*conn;
+	MotionConn		    *conn;
 	TupleChunkListItem	currItem;
 
 	Assert(activated);
@@ -254,15 +266,17 @@ bool SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem 
 		
 		if (targetRoute == BROADCAST_SEGIDX)
 		{		
-			if (!doBroadcast(pEntry, tcItem))
-				return false;
+			doBroadcast(pEntry, tcItem);
 		}
 		else
 		{
 			/* handle pt-to-pt message. */
 			conn = pEntry->conns + targetRoute;
-			if (!sendChunk(conn, tcItem))
-				return false;
+			sendChunk(conn, tcItem );
+			
+			if( conn->hasMirrorConn )
+				sendChunk(conn->mirrorConn, tcItem);
+				
 		}
 	
 		currItem = tcItem->p_next;
@@ -544,7 +558,7 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 
 	gettimeofday(&snapTime, NULL);
 	elog(DEBUG3, "in SetupInterconnect @%d time is %ld.%ld", 
-		 __LINE__, snapTime.tv_sec, snapTime.tv_usec);
+		 __LINE__, (long int)snapTime.tv_sec, (long int)snapTime.tv_usec);
 	
 	sliceTable = mySliceTable;
 	sliceId = mySliceId;
@@ -572,11 +586,10 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 		Assert(sendingMotionState == NULL);
 		
 		/* MotionEntry created inside of startConnections. */
-		pEntry = startConnections(mySlice, &highsock, &wset);
+		pEntry = startConnections(mySlice, &highsock, &wset, &expectedTotalOutgoing);
 
 		pEntry->myRouteId = findMyRouteId(list_nth(sliceTable->slices, mySlice->sliceIndex));
-		
-		expectedTotalOutgoing = pEntry->numConns;		
+			
 		sendingMotionState    = pEntry;
 	}
 
@@ -661,6 +674,21 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 					outgoing_count++;
 					n--;
 				}
+				
+				if( conn->hasMirrorConn )
+				{
+					if( FD_ISSET( conn->mirrorConn->sockfd, &wwset))
+					{
+						elog(DEBUG5, "Sending a register message to sockfd: %d", conn->mirrorConn->sockfd);
+						sendRegisterMessage(sendingMotionState, conn->mirrorConn); 
+						
+						/*no longer interested in this for now.*/
+						FD_CLR(conn->mirrorConn->sockfd, &wset);
+						
+						outgoing_count++;
+						n--;
+					}
+				}
 			}
 
 		}
@@ -694,7 +722,7 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 
 	gettimeofday(&snapTime, NULL);
 	elog(DEBUG3, "exiting SetupInterconnect @%d time is %ld.%ld", 
-		 __LINE__, snapTime.tv_sec, snapTime.tv_usec);
+		 __LINE__, (long int)snapTime.tv_sec, (long int)snapTime.tv_usec);
 }
 
 
@@ -727,11 +755,19 @@ void TeardownInterconnect(void)
 			{
 				conn = pEntry->conns + i;
 				shutdown(conn->sockfd, SHUT_WR);
-				close(pEntry->conns[i].sockfd);
-
+				close(conn->sockfd);
+				
+				if( conn->hasMirrorConn )
+				{
+					shutdown(conn->mirrorConn->sockfd, SHUT_WR);
+					close(conn->mirrorConn->sockfd);
+					pfree(conn->mirrorConn);
+				}
+				
 				pfree(conn->pBuff);
 			}
 			pfree(pEntry->conns);
+			
 	 	}
 	}
 
@@ -817,13 +853,13 @@ MotionLayerState *createMotionState(int16 motNodeID, int numConns)
             motNodeID)));
     }
 
-    pEntry->motNodeId 	 = motNodeID;
-    pEntry->numConns 	 = numConns;
-    pEntry->conns 		 = palloc(pEntry->numConns * sizeof(MotionConn));
-    bzero(pEntry->conns, pEntry->numConns * sizeof(MotionConn));
+    pEntry->motNodeId 	   = motNodeID;
+    pEntry->numConns 	   = numConns;
+    pEntry->conns 		   = palloc(pEntry->numConns * sizeof(MotionConn));
+	pEntry->highReadSock   = 0;
 
-	pEntry->highReadSock = 0;
-
+	bzero(pEntry->conns, pEntry->numConns * sizeof(MotionConn));
+	
 	FD_ZERO(&(pEntry->readSet));
 
 	return pEntry;
@@ -925,14 +961,14 @@ MotionLayerState *removeMotionState(int16 motNodeID)
  * RETURNS
  *   Initialized MotionLayerState for the Sending Motion Node Id.	
  */
-MotionLayerState  *startConnections(Slice *mySlice, int *highsock, fd_set *wset)
+MotionLayerState  *startConnections(Slice *mySlice, int *highsock, fd_set *wset, int *connsStarted)
 {
 	MotionLayerState	*pEntry;
 	MotionConn			*conn;
 	Slice				*recvSlice;
 	int					i, n, motNodeId;
 	CdbProcess			*cdbProc;
-	struct sockaddr_in	addr;
+	
 
 	/* for sending motion nodes... motionNodeId = sliceIndex. */
 	motNodeId = mySlice->sliceIndex;
@@ -946,105 +982,128 @@ MotionLayerState  *startConnections(Slice *mySlice, int *highsock, fd_set *wset)
 	pEntry = createMotionState(motNodeId, list_length(recvSlice->primaryProcesses));
 	
 	/* Setup an outgoing socket to the right place for each of our outbound 
-	 * connections. 
+	 * connections for the primary Connections.
 	 */
 	for (i=0; i < pEntry->numConns; i++)
 	{
 		conn = pEntry->conns + i;
 	
 		cdbProc = (CdbProcess*) list_nth(recvSlice->primaryProcesses, i);
+		setupOutgoingConnection( conn, cdbProc, highsock, wset );	
+		(*connsStarted)++;
+		
+		/*setup mirror connection if not null*/
+		if( recvSlice->mirrorProcesses != NIL )
+		{
+			cdbProc = (CdbProcess*) list_nth(recvSlice->mirrorProcesses, i);
+			if( cdbProc != NULL )
+			{
+				conn->mirrorConn = palloc( sizeof(MotionConn) );
+				conn->hasMirrorConn = true;
+			
+				setupOutgoingConnection( conn->mirrorConn, cdbProc, highsock, wset );
+				(*connsStarted)++;
+			}
+		}
+	}
 	
-		conn->sockfd			= socket(AF_INET, SOCK_STREAM, 0);
-		conn->pBuff				= palloc(MAX_PACKET_SIZE);
-		conn->msgSize			= PACKET_HEADER_SIZE;
-		conn->tupleCount		= 0;
-		conn->stillActive		= true;
-		conn->remoteHost		= cdbProc->listenerAddr;
-		conn->remotePort		= cdbProc->listenerPort;
-		conn->remoteContentId	= cdbProc->contentid;
+	return pEntry;
+}
 
-		if (conn->sockfd < 0)
+void setupOutgoingConnection( MotionConn *conn, CdbProcess *cdbProc, int *highsock, fd_set *wset )
+{
+	struct sockaddr_in	addr;
+	int n;
+	
+	conn->sockfd			= socket(AF_INET, SOCK_STREAM, 0);
+	conn->pBuff				= palloc(MAX_PACKET_SIZE);
+	conn->msgSize			= PACKET_HEADER_SIZE;
+	conn->tupleCount		= 0;
+	conn->stillActive		= true;
+	conn->remoteHost		= cdbProc->listenerAddr;
+	conn->remotePort		= cdbProc->listenerPort;
+	conn->remoteContentId	= cdbProc->contentid;
+	conn->hasMirrorConn		= false;
+
+	if (conn->sockfd < 0)
+	{
+		/* TODO: would be nice to read the errno and try and provide more
+		 * 		 useful info as to why this happened.
+		 */
+		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						errmsg("Interconnect Error: Could not create outbound socket: %s", strerror(errno)),
+						errdetail("error during socket() call (error:%d) to outgoing"
+								  "CdbProcess with contentId=%d at: '%s':%d", errno, 
+								  cdbProc->contentid, cdbProc->listenerAddr, 
+								  cdbProc->listenerPort)));
+	}
+
+	/* make socket non-blocking BEFORE we connect. */
+	if (fcntl(conn->sockfd, F_SETFL, O_NONBLOCK) < 0)
+	{
+		/* TODO: would be nice to read the errno and try and
+		 * 		 provide more useful info as to why this happened.
+		 */
+		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						errmsg("Interconnect Error: Could not set outbound socket to non-blocking mode"),
+						errdetail("error during fcntl() call (error:%d) for sockfd: %d",
+								  errno, conn->sockfd)));          
+	}
+	
+	
+	addr.sin_family = AF_INET;
+	
+	if ((n = inet_pton(AF_INET, cdbProc->listenerAddr, &addr.sin_addr)) < 1)
+	{
+		if (n == 0)
+		{
+			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+							errmsg("Interconnect Error: Could not parse remote listener" 
+								   "address: '%s'", cdbProc->listenerAddr),
+							errdetail("inet_pton() unable to parse address: '%s'", 
+									  cdbProc->listenerAddr))); 
+		}
+		else
+		{
+			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+							errmsg("Interconnect Error: System error occured during parsing"
+								   " of remote listener address: '%s'", cdbProc->listenerAddr),
+							errdetail("inet_pton()  (errno: %d) unable to parse address: '%s'", 
+									  errno, cdbProc->listenerAddr))); 
+		}
+	}
+
+	addr.sin_port = htons(cdbProc->listenerPort);
+
+	/* Since our socket is set to non-blocking, then connect can return 
+	 * immediately with an error of EINPROGRESS but the TCP connection is 
+	 * still continuing to be made.  we will later use select() to find out
+	 * when its actually done.
+	 */
+	if ((n = connect(conn->sockfd, (struct sockaddr *)&addr, sizeof(addr))) < 0)
+	{
+		if (errno != EINPROGRESS)
 		{
 			/* TODO: would be nice to read the errno and try and provide more
 			 * 		 useful info as to why this happened.
 			 */
 			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-							errmsg("Interconnect Error: Could not create outbound socket: %s", strerror(errno)),
-							errdetail("error during socket() call (error:%d) to outgoing"
-									  "CdbProcess #%d (contentId=%d) at: '%s':%d", errno, 
-									  i, cdbProc->contentid, cdbProc->listenerAddr, 
-									  cdbProc->listenerPort)));
+							errmsg("Interconnect Error: Could not connect() to remote destination: %s", strerror(errno)),
+							errdetail("error during connect() call (error:%d) to outgoing"
+									  "CdbProcess with contentId=%d at: '%s':%d", errno, 
+									  cdbProc->contentid, cdbProc->listenerAddr, 
+									  cdbProc->listenerPort)));	
 		}
-
-		/* make socket non-blocking BEFORE we connect. */
-		if (fcntl(conn->sockfd, F_SETFL, O_NONBLOCK) < 0)
-		{
-			/* TODO: would be nice to read the errno and try and
-			 * 		 provide more useful info as to why this happened.
-			 */
-			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-							errmsg("Interconnect Error: Could not set outbound socket to non-blocking mode"),
-							errdetail("error during fcntl() call (error:%d) for sockfd: %d",
-									  errno, conn->sockfd)));          
-		}
-		
-		
-		addr.sin_family = AF_INET;
-		
-		if ((n = inet_pton(AF_INET, cdbProc->listenerAddr, &addr.sin_addr)) < 1)
-		{
-			if (n == 0)
-			{
-				ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-								errmsg("Interconnect Error: Could not parse remote listener" 
-									   "address: '%s'", cdbProc->listenerAddr),
-								errdetail("inet_pton() unable to parse address: '%s'", 
-										  cdbProc->listenerAddr))); 
-			}
-			else
-			{
-				ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-								errmsg("Interconnect Error: System error occured during parsing"
-									   " of remote listener address: '%s'", cdbProc->listenerAddr),
-								errdetail("inet_pton()  (errno: %d) unable to parse address: '%s'", 
-										  errno, cdbProc->listenerAddr))); 
-			}
-		}
-
-		addr.sin_port = htons(cdbProc->listenerPort);
-
-		/* Since our socket is set to non-blocking, then connect can return 
-		 * immediately with an error of EINPROGRESS but the TCP connection is 
-		 * still continuing to be made.  we will later use select() to find out
-		 * when its actually done.
-		 */
-		if ((n = connect(conn->sockfd, (struct sockaddr *)&addr, sizeof(addr))) < 0)
-		{
-			if (errno != EINPROGRESS)
-			{
-				/* TODO: would be nice to read the errno and try and provide more
-				 * 		 useful info as to why this happened.
-				 */
-				ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-								errmsg("Interconnect Error: Could not connect() to remote destination: %s", strerror(errno)),
-								errdetail("error during connect() call (error:%d) to outgoing"
-										  "CdbProcess #%d (contentId=%d) at: '%s':%d", errno, 
-										  i, cdbProc->contentid, cdbProc->listenerAddr, 
-										  cdbProc->listenerPort)));	
-			}
-		}
-
-		FD_SET(conn->sockfd, wset);
-
-		if (conn->sockfd > *highsock)
-			*highsock = conn->sockfd;
-
-		elog(DEBUG5, "Interconnect started outgoing connection to route #: %d (contentId=%d) "
-			 "to: '%s':%d with sockfd: %d", i, cdbProc->contentid, 
-			 cdbProc->listenerAddr, cdbProc->listenerPort, conn->sockfd);
 	}
-	
-	return pEntry;
+
+	FD_SET(conn->sockfd, wset);
+
+	if (conn->sockfd > *highsock)
+		*highsock = conn->sockfd;
+
+	elog(DEBUG5, "Interconnect started outgoing connection to CdbProcess with contentId=%d "
+		 "to: '%s':%d with sockfd: %d", cdbProc->contentid, cdbProc->listenerAddr, 
+		 cdbProc->listenerPort, conn->sockfd);
 }
 
 
@@ -1537,14 +1596,11 @@ void readPacket(MotionConn *conn)
  * PARAMETERS
  *   pEntry - MotionLayerState context that contains everything we need to send.
  *   tcItem - TupleChunk to send.
- * RETURN
- *   if successful, returns true.  if not successful, return false
  */
-bool doBroadcast(MotionLayerState *pEntry, TupleChunkListItem tcItem)
+void doBroadcast(MotionLayerState *pEntry, TupleChunkListItem tcItem)
 {	
 	MotionConn 	*conn;
 	int 		i;
-	int 		count = 0;
 	
 	/* add our tcItem to each of the outgoing buffers. */
 	for (i= 0; i < pEntry->numConns; i++)
@@ -1552,16 +1608,13 @@ bool doBroadcast(MotionLayerState *pEntry, TupleChunkListItem tcItem)
 		conn = pEntry->conns + i;	
 		
 		if (conn->stillActive) /* only send to still interested receivers. */
-		{
-			if (sendChunk(conn, tcItem))				 
-				count++;
-		}	
+			sendChunk(conn, tcItem);
+		
+		if( conn->hasMirrorConn && conn->mirrorConn->stillActive )
+			sendChunk(conn->mirrorConn, tcItem);		
+		
 	}
 	
-	if (count == 0)	
-		return true;
-	else
-		return false;
 }
 
 

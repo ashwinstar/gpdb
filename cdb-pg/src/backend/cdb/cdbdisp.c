@@ -1494,7 +1494,7 @@ void CdbDispatchPlan(QueryDesc *queryDesc)
 		int    k;
 		
 		Gang * primaryGang = slice->primaryGang;
-		
+		Gang * mirrorGang = slice->mirrorGang;
 		
 		 /* Is this a slice we should dispatch?
 		  *
@@ -1549,10 +1549,25 @@ void CdbDispatchPlan(QueryDesc *queryDesc)
 		 * This call returns after launching the threads that send the command to the appropriate
 		 * segdbs.  It does not wait for them to finish.
 		 */
-		
-
 		CdbDispatchCommandInt(strinfo.data, DTS_ENUMERATION, sdp, primaryGang->segdb_count, true, NULL );
 
+
+		/* dispatch the plan to our mirrorGang if we have one. */
+		if( mirrorGang != NULL )
+		{
+			SegmentDatabaseDescriptor ** sdpMirror;
+			
+			elog( DEBUG3, "Slice #%d has a non-null mirror gang.", i );
+			sdpMirror = palloc(mirrorGang->segdb_count * sizeof(SegmentDatabaseDescriptor*));
+			for (k = 0; k < mirrorGang->segdb_count; k++)
+			{
+				sdpMirror[k] = &mirrorGang->db_descriptors[k];
+			}
+			
+			CdbDispatchCommandInt(strinfo.data, DTS_ENUMERATION, sdpMirror, mirrorGang->segdb_count, true, NULL );
+
+		}
+		
 		
 		pfree(strinfo.data);
 		initStringInfo( &strinfo );
