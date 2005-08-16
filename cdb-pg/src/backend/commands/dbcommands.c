@@ -677,6 +677,28 @@ dropdb(const char *dbname)
 				(errcode(ERRCODE_OBJECT_IN_USE),
 			   errmsg("database \"%s\" is being accessed by other users",
 					  dbname)));
+					  
+					  
+	/*
+	 * Free the database on the segDBs 
+	 * 
+	 */
+	if (Cdb_role == CDB_ROLE_DISPATCH)
+	{
+		
+			
+
+		StringInfoData buffer;
+		
+		initStringInfo( &buffer );
+
+		appendStringInfo(&buffer, "DROP DATABASE %s", dbname);
+
+
+
+		CdbDoCommandInt( buffer.data, DTS_SEGDB, false, NULL );
+
+	}
 
 	/*
 	 * Find the database's tuple by OID (should be unique).
@@ -748,6 +770,8 @@ dropdb(const char *dbname)
 
 	/* Close pg_database, but keep exclusive lock till commit */
 	heap_close(pgdbrel, NoLock);
+	
+
 }
 
 
