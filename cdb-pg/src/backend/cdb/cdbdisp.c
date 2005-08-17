@@ -264,7 +264,6 @@ void CdbDispatchCommandInt( const char *szCommand, DispatchTargetSet targetSet,
 	{
 		DispatchCommandParms* pParms = &dispatchCommandParmsAr[i];
 
-		elog(DEBUG2, "CdbDispatchCommandInt Creating thread %d of %d for CommandDispatch", i+1, threadCount);
 
 		if (0!=pthread_create(&pParms->thread,
 						NULL,
@@ -273,6 +272,9 @@ void CdbDispatchCommandInt( const char *szCommand, DispatchTargetSet targetSet,
 						{
 							elog(NOTICE, "pthread_create failed");
 						}
+						
+		elog(DEBUG2, "CdbDispatchCommandInt Creating thread %d of %d for CommandDispatch %x", i+1, threadCount, (unsigned int)pParms->thread);
+
 	}
 	
 	if (mustFreeSegdbList)
@@ -346,7 +348,7 @@ CdbDispatchResults *CdbCheckDispatchResultInt(void ***p_failedSegDB, int *numOfF
 	{
 		pParms = &dispatchCommandParmsAr[i];
 		
-		elog(DEBUG2, "Joining to thread %d of %d for CommandDispatch", i+1, threadCount);
+		elog(DEBUG2, "Joining to thread %d of %d for CommandDispatch %x", i+1, threadCount, (unsigned int)pParms->thread);
 		
 		if (0!=pthread_join( pParms->thread, NULL ))
 		{
@@ -692,8 +694,9 @@ void *thread_DispatchCommand(void *arg)
                     segdbDesc = stillRunning[i].segdbDesc;
                     if (!FtsTestConnection(segdbDesc))
                     {
+                    	PQExpBufferData buffer;
                         q = segdbDesc->segment_database_info;
-                        PQExpBufferData buffer;
+                        
                         initPQExpBuffer(&buffer);
                         appendPQExpBuffer( &buffer, "SQL Command error: lost connection for "
                                                     "segindex %d isprimary %c", 
