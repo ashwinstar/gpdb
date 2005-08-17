@@ -835,7 +835,7 @@ ProcessUtility(Node *parsetree,
 
 
 		case T_GrantStmt:
-			CdbSentry(CDB_WARN, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			ExecuteGrantStmt((GrantStmt *) parsetree);
 			break;
 
