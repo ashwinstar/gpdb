@@ -177,6 +177,8 @@ void doBroadcast(MotionLayerState *pEntry, TupleChunkListItem tcItem);
 int findMyRouteId(Slice *slice);
 CdbProcess *findCdbProcess(RegisterMessage *msg);
 
+bool flushBuffer(MotionConn *conn);
+
 /*=========================================================================
  * VISIBLE FUNCTIONS
  */
@@ -304,6 +306,8 @@ bool SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem 
 void SendEosToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcItem)
 {
 	MotionLayerState 	*pEntry;	
+	MotionConn 			*conn;
+	int 				i;
 
 	Assert(activated);
 
@@ -318,6 +322,13 @@ void SendEosToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcItem)
 
 	/* we want to add our tcItem onto each of the outgoing buffers */
 	doBroadcast(pEntry, tcItem);
+
+	/* now flush all of the buffers.*/	
+	for (i=0; i < pEntry->numConns; i++)
+	{		
+		conn = pEntry->conns + i;
+		flushBuffer(conn);
+	}
 
 #ifdef AMS_VERBOSE_LOGGING	
 	elog(DEBUG3, "SendEosToAMS() Leaving");
@@ -966,7 +977,7 @@ MotionLayerState  *startConnections(Slice *mySlice, int *highsock, fd_set *wset,
 	MotionLayerState	*pEntry;
 	MotionConn			*conn;
 	Slice				*recvSlice;
-	int					i, n, motNodeId;
+	int					i, motNodeId;
 	CdbProcess			*cdbProc;
 	
 
@@ -1324,13 +1335,48 @@ void acceptIncomingConnection(fd_set *rset, int *highsock)
 }
 
 /* The Function sendChunk() is used to send a tcItem to a single
- * destination.
+ * destination. Tuples often are *very small* we aggregate in our
+ * local buffer before sending into the kernel.
  *
  * PARAMETERS
  *   conn - MotionConn that the tcItem is to be sent to.
  *   tcItem - message to be sent.
  */
 bool sendChunk(MotionConn *conn, TupleChunkListItem tcItem) 
+{
+	Assert(conn->msgSize > 0);		
+	
+	if (conn->msgSize + tcItem->chunk_length > MAX_PACKET_SIZE)
+	{
+		if (flushBuffer(conn))
+			return false;
+	}
+	
+	memcpy(conn->pBuff + conn->msgSize, tcItem->chunk_data, tcItem->chunk_length);
+	conn->msgSize += tcItem->chunk_length;
+	
+	conn->tupleCount++;	
+	return true;
+}
+
+/* Function flushBuffer() is used to write the contents of a MotionConn buffer
+ * out to the network.  This function blocks until the entire contents have
+ * been written to the socket.
+ *
+ * We also have to check for reads here.  Having data to read on a "sending"
+ * socket means the receiver is sending us a stopSending Message.  Below, we 
+ * only check during select() and don't have to worry about write().  The reason
+ * is that if the Receiver sends us a stopSending message it will also stop 
+ * reading data from the socket.  This guarantees that eventually our write() 
+ * call will get an EWOULDBLOCK and our select() call will pick it up.
+ *
+ *
+ * PARAMETERS
+ *
+ *   conn - MotionConn whose buffer needs to be flushed.
+ *
+ */
+bool flushBuffer(MotionConn *conn)
 {
 	char		*sendptr;
 	int16		header;
@@ -1348,12 +1394,15 @@ bool sendChunk(MotionConn *conn, TupleChunkListItem tcItem)
 	}
 #endif
 
-	/* first send header */
-	header = htons(sizeof(header) + tcItem->chunk_length);
-	sendptr = (char *)&header;
+	/* first set header length */
+	header = htons(conn->msgSize);
+	memcpy(conn->pBuff, &header, sizeof(header));
+
+	/* now send message */
+	sendptr = (char *)conn->pBuff;
 	sent = 0;
 	do {
-		if ((n = write(conn->sockfd, sendptr + sent, sizeof(header) - sent)) < 0)
+		if ((n = write(conn->sockfd, sendptr + sent, conn->msgSize - sent)) < 0)
 		{
 			if (errno == EWOULDBLOCK)
 			{
@@ -1393,58 +1442,13 @@ bool sendChunk(MotionConn *conn, TupleChunkListItem tcItem)
 		{
 			sent += n;
 		}
-	} while (sent < (int)sizeof(header));
-
-	/* now send body */
-	sendptr = (char *)tcItem->chunk_data;
-	sent = 0;
-	do {
-		if ((n = write(conn->sockfd, sendptr + sent, tcItem->chunk_length - sent)) < 0)
-		{
-			if (errno == EWOULDBLOCK)
-			{
-				FD_ZERO(&rset);
-				FD_ZERO(&wset);
-				do
-				{
-					FD_SET(conn->sockfd, &wset);
-					/* TODO: uncomment this when ready to support "STOP MESSAGES" */
-					//FD_SET(conn->sockfd, &rset);
-					if ((n = select(conn->sockfd + 1, &rset, &wset, NULL, &tval)) < 0)
-					{
-						ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-										 errmsg("Interconnect error writing an outgoing packet"),
-										 errdetail("error during select() call (error:%d).\n"
-												   "For Remote Connection: contentId=%d at '%s':%d",
-												   errno, conn->remoteContentId, conn->remoteHost,
-												   conn->remotePort)));
-					}
-
-					/* as a sender... if there is something to read... it must
-					 * mean its a StopSendingMessage.  we don't even bother to
-					 * read it. 
-					 */
-					if (FD_ISSET(conn->sockfd, &rset))
-					{
-						conn->stillActive = false;
-						return false;
-					}
-
-					/* make sure we check for these. */
-					CHECK_FOR_INTERRUPTS();
-				} while (n < 1);
-			}
-		}
-		else
-		{
-			sent += n;
-		}
-	} while (sent < (int)(tcItem->chunk_length));
+	} while (sent < conn->msgSize);
 	
-	conn->tupleCount++;	
+	conn->tupleCount = 0;
+	conn->msgSize = PACKET_HEADER_SIZE;
+	
 	return true;
 }
-
 
 /* Function readPacket() is used to read in the next packet from the given 
  * MotionConn.  
@@ -1722,3 +1726,48 @@ CdbProcess *findCdbProcess(RegisterMessage *msg)
 	return proc;
 }
 
+#if 0
+/* declared in cdbmotion.h */
+/* Function SendStopMessage() sends a short "cancel" message to all motion-nodes
+ * which are sending us tuples. This is the communication that is passed outbound 
+ * on the receive socket.
+ *
+ * We re-implement doBroadcast here, but instead of sending a tuple we send a
+ * stop message.
+ *
+ * PARAMETERS
+ *
+ *   motNodeID - motion node identifier
+ */
+void SendStopMessage(int16 motNodeID)
+{
+	MotionLayerState	*pEntry;
+	MotionConn			*conn;
+	int					i;
+	char				m = 'S';
+	ssize_t				written;
+
+	pEntry = getMotionState(motNodeID);
+	Assert(pEntry != NULL);
+
+	/* Note: we're only concerned with receivers here, so mirrors don't matter */
+	for (i = 0; i < pEntry->highReadSock; i++)
+	{
+		conn = pEntry->conns + i;
+
+		if (FD_ISSET(conn->sockfd, &pEntry->readSet)) {
+			/* someone is trying to send stuff to us, let's stop 'em */
+			written = write(conn->sockfd, &m, sizeof(m));
+
+			if (written != sizeof(m)) {
+				/* how can this happen ? the kernel buffer should be
+				 * empty in the send direction */
+				elog(LOG, "SendStopMessage: failed on write %d", errno);
+			}
+
+			/* this connection will be shutdown() and close()d in
+			 * CleanUpMotionLayerIPC() */
+		}
+	}
+}
+#endif
