@@ -48,9 +48,10 @@
 #include "utils/relcache.h"
 #include "utils/resowner.h"
 #include "pgstat.h"
-#include "cdb/cdbfts.h"
 
 #include "cdb/cdbgang.h"
+
+extern int *ftsReadOnlyFlag;
 
 
 /*

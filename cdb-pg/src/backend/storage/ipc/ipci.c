@@ -33,6 +33,7 @@
 #include "storage/sinval.h"
 #include "storage/spin.h"
 #include "cdb/cdbtm.h"
+#include "cdb/cdbfts.h"
 
 
 /*

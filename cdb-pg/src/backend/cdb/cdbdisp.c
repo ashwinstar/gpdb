@@ -322,7 +322,7 @@ CdbDispatchResults *CdbCheckDispatchResult(void)
     return CdbCheckDispatchResultInt(NULL,NULL);
 }
 
-CdbDispatchResults *CdbCheckDispatchResultInt(SegmentDatabaseDescriptor ***failedSegDB, int *numOfFailed)
+CdbDispatchResults *CdbCheckDispatchResultInt(void ***p_failedSegDB, int *numOfFailed)
 {
 	int							i;
 	int							j;
@@ -330,6 +330,7 @@ CdbDispatchResults *CdbCheckDispatchResultInt(SegmentDatabaseDescriptor ***faile
 	SegmentDatabaseDescriptor	*segdbDesc;
 	DispatchCommandParms		*pParms;
 	CdbDispatchResults			*results = initCdbDispatchResults();
+    SegmentDatabaseDescriptor   ***failedSegDB = (SegmentDatabaseDescriptor   ***)p_failedSegDB;
 
 	Assert( results != NULL );
 	

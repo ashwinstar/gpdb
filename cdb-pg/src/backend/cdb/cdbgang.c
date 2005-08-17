@@ -1184,12 +1184,13 @@ void disconnectAndDestroyAllGangs(void)
 
 
 bool
-reconnectSegDB(SegmentDatabaseDescriptor *failedDB)
+reconnectSegDB(void *p_failedDB)
 {
     int segdbs_in_thread_pool = 0;
     bool ret = true;
     DoConnectParms *doConnectParmsAr;
-    
+    SegmentDatabaseDescriptor *failedDB = (SegmentDatabaseDescriptor *)p_failedDB;
+
     /* close bad connection first */
     PQfinish(failedDB->conn);
     failedDB->conn = NULL;

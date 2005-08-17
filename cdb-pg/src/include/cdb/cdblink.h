@@ -72,6 +72,6 @@ extern int *getCdbSegments(int *segcount);
 
 //extern struct CdbComponentDatabaseInfo *getComponentDatabaseInfo( int segId, int instId );
 
-extern CdbComponentDatabaseInfo *getEntrySegDB(int *);
+extern void *getEntrySegDB(int *);
 
 #endif   /* CDBLINK_H */

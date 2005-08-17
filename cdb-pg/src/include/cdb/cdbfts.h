@@ -8,6 +8,8 @@
 #define CDBFTS_H
 
 #include "storage/lwlock.h"
+#include "cdb/cdbconn.h"
+#include "utils/guc.h"
 
 typedef struct FtsControlBlock
 {
@@ -35,7 +37,7 @@ extern bool *ftsReadOnlyFlag;
 extern int FtsShmemSize(void);
 extern void FtsShmemInit(void);
 extern void CondSetMPPReadonly(void);
-extern bool FtsReConnectDB(SegmentDatabaseDescriptor *);
+extern bool FtsReConnectDB(void *);
 extern bool FtsTestConnection(SegmentDatabaseDescriptor *);
 extern bool FtsReConfigureMPP(void);
 extern void handleNetFailure( SegmentDatabaseDescriptor **, int);

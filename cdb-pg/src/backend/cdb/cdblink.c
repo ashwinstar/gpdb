@@ -351,3 +351,11 @@ CdbComponentDatabaseInfo * getComponentDatabaseInfo( int segId, int instId )
 		return NULL;
 	
 }*/
+
+void *
+getEntrySegDB(int *count)
+{
+    *count = cdb_component_dbs->total_entry_dbs;
+    return cdb_component_dbs->entry_db_info;
+}
+

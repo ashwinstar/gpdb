@@ -21,6 +21,8 @@
 #include "cdb/cdbgang.h"
 #include "cdb/cdblink.h"
 #include "cdb/cdbtm.h"
+#include "commands/dbcommands.h"
+
 
 static bool         *ftsEnabled;
 static LWLockId     ftsControlLock;
@@ -141,7 +143,7 @@ void CondSetMPPReadonly(void)
 /*
  * Re-Connect segDB
  */
-bool FtsReConnectDB(SegmentDatabaseDescriptor *failedDB)
+bool FtsReConnectDB(void *failedDB)
 {
     bool dbconnstatus = reconnectSegDB(failedDB);
     return dbconnstatus;

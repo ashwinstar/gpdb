@@ -64,6 +64,28 @@ static const int transitionState[8][8]=
 //#define GET_SEQ_NODE_NO(shmGIDSeq)               ((segno & 0xFF000000) >> 24)
 */
 
+
+int execCommand(void);
+bool isInGlobalTransaction(void);
+void initGxact( TMGXACT *gxact );
+TMGXACT *allocGxact(void);
+void restoreGxact(TMGXACT *gxact);
+void releaseGxact(void);
+void updateDtxState(DtxState state);
+void generateGID(char *gid);
+void shutdownTM(void);
+void recoverTM(void);
+bool phase2Recovery(void);
+void cleanRMResultSets( PGresult **pgresultSets );
+bool dumpRMxacts( PGresult **pgresultSets );
+bool checkRM( PGresult **pgresultSets ); 
+bool recoverRMs(PGresult ***pgresultSets);
+void recoverCommittedDtx(void); 
+void recoverRollbackedDtx(void);
+void getTmLock(void);
+void releaseTmLock(void);
+
+
 /*
  *  starting a global transaction, called by user begin
  *  or by CdbDispatchCommand
@@ -263,7 +285,7 @@ execCommand(void)
 
             if ( XactIsoLevel != DefaultXactIsoLevel )
             {
-                char *isoLevel;
+                char *isoLevel = NULL;
                 switch( XactIsoLevel)
                 {
                     case XACT_READ_UNCOMMITTED:
@@ -306,7 +328,7 @@ execCommand(void)
    
     /* dispatch command */ 
     CdbDispatchCommandInt(cmdbuf, DTS_SEGDB, NULL, 0, false, NULL);
-    results = CdbCheckDispatchResultInt(&failedSegDB,&numOfFailed);
+    results = CdbCheckDispatchResultInt((void***)&failedSegDB,&numOfFailed);
 
     if ( !results->success )
     {
@@ -992,7 +1014,7 @@ semanticCheckingOnQE(bool commit)
  * discardDtxTransaction: called by fts to discard it
  */
 void
-discardDtxTransaction()
+discardDtxTransaction(void)
 {
     if (currentGxact != NULL)
     {

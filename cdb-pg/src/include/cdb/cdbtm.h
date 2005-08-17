@@ -9,7 +9,6 @@
 
 #include "storage/lwlock.h"
 #include "utils/hsearch.h"
-#include "cdb/cdbconn.h"
 
 #define TMGIDSIZE 22
 
@@ -60,7 +59,6 @@ typedef enum
 	DTX_ERR_INTERR	/* Internal error */
 } DTXErrorCode;
 
-//extern int startDtxTransaction( SegmentDatabaseDescriptor *dbs, int count );
 extern int startDtxTransaction(void);
 extern int commitDtxTransaction(bool onephase);
 extern int rollbackDtxTransaction(void);
@@ -74,32 +72,13 @@ extern void tmShmemInit(void);
 extern void restoreGxact(TMGXACT *gxact);
 extern void initTM(void);
 extern void semanticCheckingOnQE(bool commit);
-extern void discardDtxTransaction();
+extern void discardDtxTransaction(void);
 
 extern int *shmLatestLogFileNo;
 extern int *shmEarliestLogFileNo;
 
-int execCommand(void);
-int tmShmemSize(void);
-bool isInGlobalTransaction(void);
-void initGxact( TMGXACT *gxact );
-TMGXACT *allocGxact(void);
-void restoreGxact(TMGXACT *gxact);
-void releaseGxact(void);
-void updateDtxState(DtxState state);
-void generateGID(char *gid);
-void shutdownTM(void);
-void recoverTM(void);
-bool phase2Recovery(void);
-void cleanRMResultSets( PGresult **pgresultSets );
-bool dumpRMxacts( PGresult **pgresultSets );
-bool checkRM( PGresult **pgresultSets );
-bool recoverRMs(PGresult ***pgresultSets);
-void recoverCommittedDtx(void);
-void recoverRollbackedDtx(void);
-void getTmLock(void);
-void releaseTmLock(void);
-
 extern char dtm_dir[MAXPGPATH];
+extern int tmShmemSize(void);
+
 
 #endif /* CDBTM_H */

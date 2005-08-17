@@ -92,7 +92,7 @@ extern void CdbDispatchCommandInt( const char *szCommand, DispatchTargetSet targ
  * on this pointer to pfree all the memory.
  */
 extern CdbDispatchResults *CdbCheckDispatchResult(void);
-extern CdbDispatchResults *CdbCheckDispatchResultInt(SegmentDatabaseDescriptor ***, int *);
+extern CdbDispatchResults *CdbCheckDispatchResultInt(void ***, int *);
 
 /*
  * CdbDumpDispatchResults:
