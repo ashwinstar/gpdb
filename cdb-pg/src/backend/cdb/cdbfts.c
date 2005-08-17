@@ -136,7 +136,8 @@ void CondSetMPPReadonly(void)
     if (*ftsAction == FTS_READONLY)
     {
         elog(LOG, "FTS: MPP system is set read only");
-        assign_cdb_set_read_only(true, true, (GucSource)NULL);
+
+        assign_cdb_set_read_only(true, true, PGC_S_DEFAULT);
     }
 }
 
@@ -154,11 +155,12 @@ bool FtsReConnectDB(void *failedDB)
  */
 bool FtsTestConnection(SegmentDatabaseDescriptor *failedDB)
 {
+    PGconn *conn;
     bool ret = true;
     PQExpBuffer buffer = createPQExpBuffer();
     initPQConnectionBuffer(failedDB->segment_database_info, buffer, true);
     
-    PGconn *conn = PQconnectdb(buffer->data);
+    conn = PQconnectdb(buffer->data);
 
     if ( PQstatus(conn) == CONNECTION_BAD )
         ret = false;
@@ -221,11 +223,11 @@ bool isFtsEnabled(void)
 
 void handleNetFailure( SegmentDatabaseDescriptor **segDB, int numOfFailed )
 {
+    int i;
+    SegmentDatabaseDescriptor *failedDB;
     if (!ftsEnabled)
         return;
     
-    SegmentDatabaseDescriptor *failedDB;
-    int i;
     for (i=0;i<numOfFailed;i++)
     {
         failedDB = segDB[i];
@@ -275,6 +277,8 @@ static void initPQConnectionBuffer(CdbComponentDatabaseInfo *q, PQExpBuffer buff
 void markSegDBStatus( int dbid, bool state )
 {
     int count;
+    char cmd[100];
+    PGresult *rs;
     CdbComponentDatabaseInfo *q = getEntrySegDB(&count);
     /* can only be maximum 2 dbs */
     if (count > 1)
@@ -314,10 +318,9 @@ void markSegDBStatus( int dbid, bool state )
         elog(PANIC, "FTS: setting segDB state failed, error connecting to entry db" );
     }
     
-    char cmd[100];
     sprintf(cmd, "select cdb.cdb_set_segdb_state(%d,%s)", dbid, state?"TRUE":"FALSE");
     
-    PGresult *rs = PQexec(entryConn, cmd);
+    rs = PQexec(entryConn, cmd);
     
     if (PQresultStatus(rs) != PGRES_TUPLES_OK)
     {
