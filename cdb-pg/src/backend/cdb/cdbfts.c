@@ -136,7 +136,7 @@ void CondSetMPPReadonly(void)
     if (*ftsAction == FTS_READONLY)
     {
         elog(LOG, "FTS: MPP system is set read only");
-        assign_cdb_set_read_only(true, true, NULL);
+        assign_cdb_set_read_only(true, true, (GucSource)NULL);
     }
 }
 
