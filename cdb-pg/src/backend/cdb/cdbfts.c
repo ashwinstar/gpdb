@@ -235,10 +235,12 @@ void handleNetFailure( SegmentDatabaseDescriptor **segDB, int numOfFailed )
     
     for (i=0;i<numOfFailed;i++)
     {
+    	int nextAction;
+    	
         failedDB = segDB[i];
 
         curAction = 0;
-        int nextAction;
+        
         while ((nextAction=FtsNextAction()) != -1)
         {
             if ( !FtsDoAction(nextAction, failedDB) )
