@@ -1,0 +1,3 @@
+17:00 17 Aug 2005
+mppcreatecluster.sh:-Corrected bug where QD host not in hostlist file, but script still creates QE(s) on
+QD host.
