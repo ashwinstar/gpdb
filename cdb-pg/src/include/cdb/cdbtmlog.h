@@ -65,4 +65,6 @@ void switchTmLogFile(void);
 void removeTmLogFileUntil(int seqno);
 int initTmLog( char *dir);
 
+extern void redoTmLog(TmLogRecord *glog);
+
 #endif /* CDBTMLOG_H */

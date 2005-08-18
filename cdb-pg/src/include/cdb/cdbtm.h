@@ -24,7 +24,7 @@ typedef enum
     DTX_STATE_ABORT,          /* abort */
     DTX_STATE_COMMIT_DONE,    /* commit done */
     DTX_STATE_ROLLBACK_DONE   /* rollback done */
-} DtxState;;
+} DtxState;
 
 
 #define GXACT_STATUS_PERSISTENT   0x01
@@ -80,7 +80,5 @@ extern int *shmEarliestLogFileNo;
 extern char dtm_dir[MAXPGPATH];
 extern int tmShmemSize(void);
 extern bool isInGlobalTransaction(void);
-extern void redoTmLog(TmLogRecord *glog);
-
 
 #endif /* CDBTM_H */
