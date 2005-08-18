@@ -257,7 +257,7 @@ CHK_DUPLICATES () {
 
 CHK_QES () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		for QE_ID in `$CAT $MACHINE_LIST_FILE|$GREP -v $HOSTNAME|$SORT`
+		for QE_ID in `$CAT $MACHINE_LIST_FILE|$GREP -v "${HOSTNAME}\$"|$SORT`
 				do
 				$PING -c 1 $QE_ID > /dev/null 2>&1
 				case $? in
@@ -332,7 +332,7 @@ GET_HOST_ID () {
 				((MPP_INDEX=$MPP_INDEX+1))
 		done
 		MPP_INDEX=$FOUND
-		if [ `$ECHO ${MACHINE_LIST[@]}|$GREP -c $QD_HOSTNAME` -eq 0 ]; then
+		if [ `$ECHO ${MACHINE_LIST[@]}|$GREP -c "${QD_HOSTNAME}\$"` -eq 0 ]; then
 				((MPP_INDEX=$MPP_INDEX+2))
 		else
 				if [ $1 == $QD_HOSTNAME ]; then
@@ -433,7 +433,7 @@ CREATE_QE_ARRAY () {
 DISPLAY_CONFIG () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		. $CLUSTER_CONFIG
-		if [ `$CAT ${MACHINE_LIST_FILE}|$GREP -c $QD_HOSTNAME` -eq 0 ]; then
+		if [ `$CAT ${MACHINE_LIST_FILE}|$GREP -c "${QD_HOSTNAME}\$"` -eq 0 ]; then
 				declare -a MACHINE_LIST=(`$CAT $MACHINE_LIST_FILE`)
 		else
 				declare -a MACHINE_LIST=($QD_HOSTNAME `$CAT $MACHINE_LIST_FILE|$GREP -v "${QD_HOSTNAME}\$"`)
@@ -815,11 +815,17 @@ RESTART_QD_PRODUCTION () {
 		LOG_MSG "[INFO]:-Restarting the MPP cluster in production mode"
 		if [ -f $WORKDIR/mppstop.sh ]; then
 				$WORKDIR/mppstop.sh -a -d $QD_DIR
+				if [ $? -ne 0 ]; then
+					ERROR_EXIT "[FATAL]:-Failed to stop new MPP cluster, check log file" 2
+				fi
 		else 
 				ERROR_EXIT "[FATAL]:-WORKDIR/mppstop.sh not located" 2
 		fi
 		if [ -f $WORKDIR/mppstart.sh ]; then
 				$WORKDIR/mppstart.sh -a -d $QD_DIR
+				if [ $? -ne 0 ]; then
+					ERROR_EXIT "[FATAL]:-Failed to start new MPP cluster, check log file" 2
+				fi
 		else
 				ERROR_EXIT "[FATAL]:-$WORKDIR/mppstart.sh not located" 2
 		fi
