@@ -537,7 +537,8 @@ Gang *buildGangDefinition(GangType type, int size, int content)
                      */
                     CondSetMPPReadonly();
                 }
-                else if ( type == GANGTYPE_READER && content != -1 && content != p->segindex )
+                else if ( type == GANGTYPE_READER && size == 1 && 
+                          content != p->segindex )
                 {
                     continue;
                 }
