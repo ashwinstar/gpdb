@@ -348,7 +348,7 @@ GET_HOST_ID () {
 CREATE_QE_ARRAY () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		. $CLUSTER_CONFIG
-		if [ `$CAT ${MACHINE_LIST_FILE}|$GREP -c $QD_HOSTNAME` -eq 0 ]; then
+		if [ `$CAT ${MACHINE_LIST_FILE}|$GREP -c "${QD_HOSTNAME}\$"` -eq 0 ]; then
 				declare -a MACHINE_LIST=(`$CAT $MACHINE_LIST_FILE`)
 		else
 				declare -a MACHINE_LIST=($QD_HOSTNAME `$CAT $MACHINE_LIST_FILE|$GREP -v "${QD_HOSTNAME}\$"`)
