@@ -66,7 +66,6 @@ static const int transitionState[8][8]=
 
 
 int execCommand(void);
-bool isInGlobalTransaction(void);
 void initGxact( TMGXACT *gxact );
 TMGXACT *allocGxact(void);
 void restoreGxact(TMGXACT *gxact);

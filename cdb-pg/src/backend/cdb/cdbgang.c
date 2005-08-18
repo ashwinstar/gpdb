@@ -537,6 +537,10 @@ Gang *buildGangDefinition(GangType type, int size, int content)
                      */
                     CondSetMPPReadonly();
                 }
+                else if ( type == GANGTYPE_READER && content != -1 && content != p->segindex )
+                {
+                    continue;
+                }
                 else
                 {
                     segdbDesc = &newGangDefinition->db_descriptors[seg_count];

@@ -177,7 +177,12 @@ bool FtsReConfigureMPP(void)
     /* synchronzie fts */
     LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
 
-    if (!verifyFtsSyncCount())
+    /* this code copied from verifyFtsSyncCount to avoid lock deadlock */
+    if ( localFtsSyncCount == -1 )
+    {
+        localFtsSyncCount = *ftsSyncCount;
+    }
+    else if ( localFtsSyncCount != *ftsSyncCount )
     {
         localFtsSyncCount = *ftsSyncCount;
     }

@@ -79,6 +79,8 @@ extern int *shmEarliestLogFileNo;
 
 extern char dtm_dir[MAXPGPATH];
 extern int tmShmemSize(void);
+extern bool isInGlobalTransaction(void);
+extern void redoTmLog(TmLogRecord *glog);
 
 
 #endif /* CDBTM_H */
