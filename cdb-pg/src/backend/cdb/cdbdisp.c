@@ -622,6 +622,10 @@ void *thread_DispatchCommand(void *arg)
 			for ( i=0; i<stillRunningCount; i++ )
 			{
 				segdbDesc = stillRunning[i].segdbDesc;
+				if (segdbDesc->error_message != NULL) {
+					free(segdbDesc->error_message);
+					segdbDesc->error_message = NULL;
+				}
 				segdbDesc->error_message = strdup(buffer.data);
 			}
 
@@ -782,11 +786,17 @@ void *thread_DispatchCommand(void *arg)
 						{
 							char *cmdTuples;
 							char *cmdStatus = PQcmdStatus(pRes);
-							if ( cmdStatus != NULL )
+
+							if (segdbDesc->cmdStatus != NULL) {
+								free(segdbDesc->cmdStatus);
+								segdbDesc->cmdStatus = NULL;
+							}
+
+							if (cmdStatus != NULL)
 								segdbDesc->cmdStatus = strdup(cmdStatus);
 
 							cmdTuples = PQcmdTuples(pRes);
-							if ( cmdTuples != NULL )
+							if (cmdTuples != NULL)
 								segdbDesc->cmdTuples = atoi(cmdTuples);
 						}
 						
