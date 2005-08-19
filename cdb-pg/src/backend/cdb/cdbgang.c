@@ -115,12 +115,12 @@ Gang *createGang(GangType type, int size, int content)
 	int									segdbs_in_thread_pool;
 	int									segdb_count;
 	
-	Assert(size == 1 || size == CdbIdentity.numsegments);
+	Assert(size == 1 || size == getCdbSegmentCount());
 	
 	
 	   
     /* We can't allocate more segments than we know about */
-	Assert(size <=  CdbIdentity.numsegments);
+	Assert(size <=  getCdbSegmentCount());
 
 
 	if (gangsCreated==0)
@@ -920,7 +920,7 @@ List *getCdbProcessList(Gang *gang)
 		int k = 0;		
 		
         /*
-		Assert( gang->size == 1 || gang->size == CdbIdentity.numsegments );
+		Assert( gang->size == 1 || gang->size == getCdbSegmentCount() );
 	    */
 	
 		primary = ( gang->type != GANGTYPE_MIRROR_WRITER );

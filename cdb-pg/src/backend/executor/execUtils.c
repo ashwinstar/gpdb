@@ -1104,7 +1104,7 @@ void InitRootSlices(QueryDesc *queryDesc)
 				case CMD_UPDATE:
 				case CMD_DELETE:
 					slice->gangType = GANGTYPE_PRIMARY_WRITER;
-					slice->gangSize = CdbIdentity.numsegments;
+					slice->gangSize = getCdbSegmentCount();
 					break;
 				
 				default:
@@ -1217,16 +1217,16 @@ void AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 		{
 			if ( i == 0 )
 			{
-				inv.vecNgangs[i] = allocateGang(GANGTYPE_PRIMARY_WRITER, CdbIdentity.numsegments, 0);
+				inv.vecNgangs[i] = allocateGang(GANGTYPE_PRIMARY_WRITER, getCdbSegmentCount(), 0);
 				Assert(inv.vecNgangs[i] != NULL);
 				if ( inv.writer )
 				{
-					inv.mirrorWriterGang = allocateGang(GANGTYPE_MIRROR_WRITER, CdbIdentity.numsegments, 0);
+					inv.mirrorWriterGang = allocateGang(GANGTYPE_MIRROR_WRITER, getCdbSegmentCount(), 0);
 				}
 			}
 			else
 			{
-				inv.vecNgangs[i] = allocateGang(GANGTYPE_READER, CdbIdentity.numsegments, 0);
+				inv.vecNgangs[i] = allocateGang(GANGTYPE_READER, getCdbSegmentCount(), 0);
 			}
 		}
 	}
@@ -1300,7 +1300,7 @@ void InventorySliceTree (Slice **sliceMap, int sliceIndex, SliceReq *req)
 			}
 			else
 			{
-				Assert( slice->gangSize == CdbIdentity.numsegments );
+				Assert( slice->gangSize == getCdbSegmentCount() );
 				req->numNgangs++;
 			}
 			break;
@@ -1339,7 +1339,7 @@ void AssociateSlicesToProcesses(Slice **sliceMap, int sliceIndex, SliceReq *req)
 			break;
 			
 		case GANGTYPE_PRIMARY_WRITER:
-			Assert( slice->gangSize == CdbIdentity.numsegments );
+			Assert( slice->gangSize == getCdbSegmentCount() );
 			Assert( req->numNgangs > 0 &&  req->nxtNgang == 0 && req->writer );
 			Assert( req->vecNgangs[0] != NULL );
 			
@@ -1364,7 +1364,7 @@ void AssociateSlicesToProcesses(Slice **sliceMap, int sliceIndex, SliceReq *req)
 			}
 			else
 			{
-				Assert( slice->gangSize == CdbIdentity.numsegments );
+				Assert( slice->gangSize == getCdbSegmentCount() );
 				slice->primaryGang = req->vecNgangs[req->nxtNgang];
 				slice->primaryProcesses = getCdbProcessList(slice->primaryGang);
 				req->nxtNgang++;

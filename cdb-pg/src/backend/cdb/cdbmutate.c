@@ -779,8 +779,8 @@ Motion *make_motion(Plan *lefttree, MotionType motionType,
 	node->hashSegIdx = NULL;
 	if ( motionType == MOTIONTYPE_HASH )
     {
-        node->numHashSegs = CdbIdentity.numsegments;
-        node->hashSegIdx = makeDefaultSegIdxArray(CdbIdentity.numsegments);
+        node->numHashSegs = getCdbSegmentCount();
+        node->hashSegIdx = makeDefaultSegIdxArray(getCdbSegmentCount());
     }
 
     /* If merging, fill in the sending segment info. */
@@ -788,8 +788,8 @@ Motion *make_motion(Plan *lefttree, MotionType motionType,
     node->inputSegIdx = NULL;
 	if ( sendSorted )
     {
-        node->numInputSegs = CdbIdentity.numsegments;
-        node->inputSegIdx = makeDefaultSegIdxArray(CdbIdentity.numsegments);
+        node->numInputSegs = getCdbSegmentCount();
+        node->inputSegIdx = makeDefaultSegIdxArray(getCdbSegmentCount());
     }
 
     /* TODO Should we attach a descriptive Flow here?

@@ -542,7 +542,7 @@ ExecInitMotion(Motion *node, EState *estate)
 				
 			case FLOW_REPLICATED:
 			case FLOW_PARTITIONED:
-				thisSlice->gangSize = CdbIdentity.numsegments;
+				thisSlice->gangSize = getCdbSegmentCount();
 				break;
 				
 			default:

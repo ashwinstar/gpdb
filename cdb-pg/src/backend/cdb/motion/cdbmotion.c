@@ -443,7 +443,7 @@ void InitMotionLayerNode(int16 motNodeID, bool preserveOrder, TupleDesc tupDesc)
 
 
     /* TODO:  Hard-coded right now. */
-    pEntry->num_senders = CdbIdentity.numsegments;
+    pEntry->num_senders = getCdbSegmentCount();
     pEntry->num_stream_ends_recvd = 0;
 
 

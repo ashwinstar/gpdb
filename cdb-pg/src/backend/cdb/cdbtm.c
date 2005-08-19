@@ -865,7 +865,7 @@ cleanRMResultSets( PGresult **pgresultSets )
     /* 
      int tolaldbs = CdbClusterDefinition->segment_count * CdbClusterDefinition->db_count;
      */
-    int totaldbs = CdbIdentity.numsegments;
+    int totaldbs = getCdbSegmentCount();
     int i;
     
     for ( i=0;i<totaldbs;i++ )
@@ -880,7 +880,7 @@ cleanRMResultSets( PGresult **pgresultSets )
 bool
 dumpRMxacts( PGresult **pgresultSets )
 {
-    int totaldbs = CdbIdentity.numsegments;
+    int totaldbs = getCdbSegmentCount();
     int i,j;
     
     for ( i=0;i<totaldbs;i++ )
@@ -905,7 +905,7 @@ dumpRMxacts( PGresult **pgresultSets )
 bool
 checkRM( PGresult **pgresultSets )
 {
-    int totaldbs = CdbIdentity.numsegments;
+    int totaldbs = getCdbSegmentCount();
     int i,j;
     
     for ( i=0;i<totaldbs;i++ )
@@ -938,7 +938,7 @@ recoverRMs(PGresult ***pgresultSets)
         return true;
     }
     
-    totaldbs = CdbIdentity.numsegments;
+    totaldbs = getCdbSegmentCount();
     
     for ( i=0;i<totaldbs;i++ )
     {

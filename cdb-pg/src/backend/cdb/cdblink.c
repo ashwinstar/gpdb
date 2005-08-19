@@ -145,7 +145,7 @@ cdblink_setup( void )
  */
 int getCdbSegmentCount(void)
 {
-	Assert( Cdb_role != CDB_ROLE_UTILITY );
+	//Assert( Cdb_role != CDB_ROLE_UTILITY );
 
 	return CdbIdentity.numsegments;
 }

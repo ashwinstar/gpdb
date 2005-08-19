@@ -614,12 +614,12 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 	 /*
 	  *  Validate that cdb_numsegments == segment_databases->total_segment_dbs
 	  */
-	 if ( CdbIdentity.numsegments != component_databases->total_segments )
+	 if ( getCdbSegmentCount() != component_databases->total_segments )
 	 {
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_EXCEPTION),
 				 errmsg("CDB number of segments inconsistency: count is %d from %s.%s table, but %d from getCdbComponentDatabases()",
-		    CdbIdentity.numsegments, CdbNamespaceName, CdbCdbRelationName, component_databases->total_segments )));
+		    getCdbSegmentCount(), CdbNamespaceName, CdbCdbRelationName, component_databases->total_segments )));
 	 }
 
 	/*
@@ -646,7 +646,7 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 	 * and that we hit them all. Since it's sorted, this is relatively easy.
 	 */
 	x = 0;
-	for ( i=0; i<CdbIdentity.numsegments; i++ )
+	for ( i=0; i<getCdbSegmentCount(); i++ )
 	{
 		int this_segindex;
 		while ( x < component_databases->total_segment_dbs )
@@ -661,7 +661,7 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATA_EXCEPTION),
 						errmsg("Content values not valid in cdb.pgdatabase table.  They must be in the range 0 to %d inclusive",
-						CdbIdentity.numsegments - 1 )));
+						getCdbSegmentCount() - 1 )));
 			}
 		}
 		if ( this_segindex != i )
@@ -669,7 +669,7 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATA_EXCEPTION),
 					errmsg("Content values not valid in cdb.pgdatabase table.  They must be in the range 0 to %d inclusive",
-					CdbIdentity.numsegments - 1 )));
+					getCdbSegmentCount() - 1 )));
 		}
 	}
 
