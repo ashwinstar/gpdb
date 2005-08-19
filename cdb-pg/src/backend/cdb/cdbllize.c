@@ -43,6 +43,8 @@
 		memcpy((to), (from), _size); \
 	} while (0)
 
+/* #define CDBLLIZE_NEEDS_PS_ERROR_INTERNAL 0 */
+
 /*
  * Substructure for a PlanProfile to hold "stackable" information like
  * the range table.  
@@ -85,7 +87,9 @@ static bool prescan_agg(Plan *plan, PlanProfile *context);
 
 static void psError(PlanProfile *context, unsigned code, const char* message, const char* detail);
 static void psErrorNonce(PlanProfile *context,  const char* detail);
+#ifdef CDBLLIZE_NEEDS_PS_ERROR_INTERNAL
 static void psErrorInternal(PlanProfile *context,  const char* detail);
+#endif
 static void issuePsError(PlanProfile *context);
 
 static bool initPlanProfile(PlanProfile *context, Query *query);
@@ -955,6 +959,7 @@ void psErrorNonce(PlanProfile *context,  const char* detail)
 }
 
 
+#ifdef CDBLLIZE_NEEDS_PS_ERROR_INTERNAL
 /* 
  * Helper for prescan() -- Write error info into a PlanProfile.
  */
@@ -964,6 +969,7 @@ void psErrorInternal(PlanProfile *context,  const char* detail)
 	context->message ="Unexpected error parallelizing a query.";
 	context->detail = detail;
 }
+#endif
 
 /* 
  * Helper for prescan() -- Issue the error specified in a PlanProfile.
