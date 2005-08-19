@@ -18,6 +18,8 @@
 /* globals */
 extern Cost     cdb_motion_tuple_cost;
 
+extern int getCdbSegmentCount(void);
+
 
 Path *
 cdbpath_create_motion_path(Query           *root,
@@ -55,8 +57,8 @@ cdbpath_rows(Path *path)
     if (CdbPathLocus_IsRoot(path->locus) ||
         CdbPathLocus_IsReplicated(path->locus))
     {
-        if (CdbIdentity.numsegments > 1)
-            rows *= CdbIdentity.numsegments;
+        if (getCdbSegmentCount() > 1)
+            rows *= getCdbSegmentCount();
     }
 
     return rows;
