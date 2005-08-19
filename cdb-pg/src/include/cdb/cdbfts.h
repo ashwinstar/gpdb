@@ -29,6 +29,8 @@ typedef enum
     FTS_SHUTDOWN		    /* shutdown */
 } FtsAction;
 
+#define isMirroringEnabled(void) (*ftsEnabled)
+
 
 extern int *ftsSyncCount;
 extern bool *ftsReadOnlyFlag;
@@ -47,5 +49,6 @@ extern const char * show_cdb_set_read_only(void);
 extern bool assign_cdb_set_read_only( bool, bool, GucSource);
 extern int convertFaultActionValue(char *);
 extern bool verifyFtsSyncCount(void);
+extern void enableMirroring(void);
 
 #endif /* CDBFTS_H */

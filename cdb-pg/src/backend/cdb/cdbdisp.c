@@ -706,7 +706,12 @@ void *thread_DispatchCommand(void *arg)
                                                     "segindex %d isprimary %c", 
                                                     q->segindex, (q->isprimary ? 't' : 'f') );
                         segdbDesc->error_message = buffer.data;
+                        conn->status = CONNECTION_BAD;
+                        /* free connection is done in ftsReconnect */
+                        /*
                         PQfinish(segdbDesc->conn);
+                        segdbDesc->conn = NULL;
+                        */
                     }
                     else
                     {

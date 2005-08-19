@@ -192,6 +192,7 @@ bool FtsReConfigureMPP(void)
         detectFailedConnections();
     }
     
+    elog(LOG, "FTS: reconfiguration is in progress");
     disconnectAndDestroyAllGangs();
     allocateGang(GANGTYPE_PRIMARY_WRITER, getCdbSegmentCount(), -1);
     allocateGang(GANGTYPE_MIRROR_WRITER, getCdbSegmentCount(), -1);
@@ -219,18 +220,16 @@ static int getFtsSyncCount(void)
 }
 */
 
-/*
-bool isFtsEnabled(void)
+void enableMirroring(void)
 {
-    return *ftsEnabled;
+    *ftsEnabled = true;
 }
-*/
 
 void handleNetFailure( SegmentDatabaseDescriptor **segDB, int numOfFailed )
 {
     int i;
     SegmentDatabaseDescriptor *failedDB;
-    if (!ftsEnabled)
+    if (!*ftsEnabled)
         return;
     
     for (i=0;i<numOfFailed;i++)
@@ -348,6 +347,8 @@ void
 markGangStatus(SegmentDatabaseDescriptor *segdbDesc, int size)
 {
     int i;
+    if (!isMirroringEnabled())
+        return;
     
     LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
     incFtsSyncCount();
@@ -452,7 +453,10 @@ bool verifyFtsSyncCount(void)
     if ( localFtsSyncCount == -1 )
         localFtsSyncCount = *ftsSyncCount;
     else if ( localFtsSyncCount != *ftsSyncCount )
+    {
+        elog(LOG, "FTS: detects re-configuration required");
         ret = false;
+    }
         
     LWLockRelease(ftsControlLock);
     return ret;

@@ -1017,8 +1017,25 @@ discardDtxTransaction(void)
 {
     if (currentGxact != NULL)
     {
-        /* update tm state first */
-        updateDtxState(DTX_STATE_ABORT);
-        condRollbackDtxTransaction();
+        if (currentGxact->state == DTX_STATE_2P_COMMIT)
+        {
+            // has to commit the transaction
+            recoverCommittedDtx();
+        }
+        else if (currentGxact->state == DTX_STATE_PREPARED)
+        {
+            /* update tm state first and send rollback to all qe */
+            updateDtxState(DTX_STATE_ABORT);
+            condRollbackDtxTransaction();
+        }
+        else
+        {
+            /* discard the transaction, update tm state only.
+             * in this case, all connection should be restarted and
+             * this global transaction should be automatically rollback
+             */
+            updateDtxState(DTX_STATE_ROLLBACK);
+            updateDtxState(DTX_STATE_ROLLBACK_DONE);
+        }
     }
 }

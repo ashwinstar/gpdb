@@ -50,6 +50,7 @@
 #include "pgstat.h"
 
 #include "cdb/cdbgang.h"
+#include "cdb/cdbtm.h"
 
 extern int *ftsReadOnlyFlag;
 
@@ -1714,10 +1715,6 @@ StartTransaction(void)
 		elog(WARNING, "StartTransaction while in %s state",
 			 TransStateAsString(s->state));
              
-    /* check DTM transaction */
-    if (isInGlobalTransaction())
-        elog(ERROR, "DTM transaction leftover");
-
 	/*
 	 * set the current transaction state information appropriately during
 	 * start processing
@@ -1788,6 +1785,10 @@ StartTransaction(void)
 	s->state = TRANS_INPROGRESS;
 
 	ShowTransactionState("StartTransaction");
+    
+    /* check DTM transaction */
+    if (isInGlobalTransaction())
+        elog(ERROR, "DTM transaction leftover");
     
 }
 
@@ -3238,6 +3239,7 @@ DefineSavepoint(char *name)
 		case TBLOCK_SUBABORT_PENDING:
 		case TBLOCK_SUBRESTART:
 		case TBLOCK_SUBABORT_RESTART:
+        case TBLOCK_PREPARE:
 			elog(FATAL, "DefineSavepoint: unexpected state %s",
 				 BlockStateAsString(s->blockState));
 			break;

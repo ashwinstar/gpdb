@@ -58,6 +58,7 @@ static Gang *buildGangDefinition(GangType type, int size, int content);
  * Points to the result of getCdbComponentDatabases()
  */
 static CdbComponentDatabases *cdb_component_dbs	= NULL;
+static bool mirroringNotConfigured = false;
 
 /*
  * Parameter structure for the DoConnect threads
@@ -325,7 +326,9 @@ Gang *createGang(GangType type, int size, int content)
 	{
 		segdbDesc = &newGangDefinition->db_descriptors[i];
 			q = segdbDesc->segment_database_info;
-		if (successful_connections == 0 && type !=GANGTYPE_MIRROR_WRITER)
+		if (successful_connections != newGangDefinition->size &&
+            type !=GANGTYPE_MIRROR_WRITER &&
+            mirroringNotConfigured)
 		{
 			StringInfoData buffer;
 
@@ -434,6 +437,15 @@ Gang *buildGangDefinition(GangType type, int size, int content)
         return NULL;
 	}
 	
+    /* setting mirroring flag */
+    if (cdb_component_dbs->total_segments < cdb_component_dbs->total_segment_dbs)
+    {
+        enableMirroring();
+    }
+    else
+    {
+        mirroringNotConfigured = true;
+    }
 	
 	
 
@@ -749,7 +761,6 @@ static List *allocatedReaderGangs1 = NIL;
 static List *availableReaderGangs1 = NIL;
 static Gang * primaryWriterGang = NULL;
 static Gang * mirrorWriterGang = NULL;
-static bool mirroringNotConfigured = false;
 
 Gang *allocateGang(GangType type, int size, int content)
 {
@@ -1233,21 +1244,27 @@ detectFailedConnections(void)
 {
     int i;
     /* check primary gang */
-    for ( i = 0; i < primaryWriterGang->size; i++ )
+    if ( primaryWriterGang != NULL )
     {
-        SegmentDatabaseDescriptor *segdbDesc = &(primaryWriterGang->db_descriptors[i]);
-        
-        if ( !FtsTestConnection( segdbDesc ) )
-            markSegDBStatus(segdbDesc->segment_database_info->dbid, false);
+        for ( i = 0; i < primaryWriterGang->size; i++ )
+        {
+            SegmentDatabaseDescriptor *segdbDesc = &(primaryWriterGang->db_descriptors[i]);
+            
+            if ( !FtsTestConnection( segdbDesc ) )
+                markSegDBStatus(segdbDesc->segment_database_info->dbid, false);
+        }
     }  
     
     /* check mirrored gang */
-    for ( i = 0; i < mirrorWriterGang->size; i++ )
+    if ( mirrorWriterGang != NULL )
     {
-        SegmentDatabaseDescriptor *segdbDesc = &(mirrorWriterGang->db_descriptors[i]);
-        
-        if ( !FtsTestConnection( segdbDesc ) )
-            markSegDBStatus(segdbDesc->segment_database_info->dbid, false);
-    }  
+        for ( i = 0; i < mirrorWriterGang->size; i++ )
+        {
+            SegmentDatabaseDescriptor *segdbDesc = &(mirrorWriterGang->db_descriptors[i]);
+            
+            if ( !FtsTestConnection( segdbDesc ) )
+                markSegDBStatus(segdbDesc->segment_database_info->dbid, false);
+        }  
+    }
     
 }
