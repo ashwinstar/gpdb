@@ -693,8 +693,8 @@ static void *thread_DoConnect(void *arg)
 		 * Build the connection string
 		 */
 		appendPQExpBuffer(&buffer,
-			"options='-c cdb_session_role=EXECUTE -c cdb_querygroup_id=%d' ",
-			Cdb_querygroup_id);
+			"options='-c cdb_session_role=EXECUTE -c cdb_segment=%d' ",
+			q->segindex);
 		
 		if ( q->hostname == NULL ) 
 			appendPQExpBufferStr(&buffer, "host='' " );

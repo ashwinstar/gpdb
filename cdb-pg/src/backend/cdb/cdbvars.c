@@ -52,7 +52,7 @@ int					cdb_connections_per_thread;	/* How many libpq connections are handled in
 
 int					Cdb_max_tuple_chunk_size;   /* CDB Motion Layer -> AMS */
 
-int					Cdb_querygroup_id;		/* Per-session ID, same across all backends in the session. */
+int					Cdb_segment;		/* What content this QE is handling. */
 
 bool				enable_cdbrepartition;
 bool				enable_cdbbroadcast;
