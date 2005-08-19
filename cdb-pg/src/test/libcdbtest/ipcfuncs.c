@@ -32,6 +32,7 @@
 
 #include "cdbtest.h"
 
+#if 0
 
 #define GET_STR(textp) DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(textp)))
 
@@ -59,7 +60,7 @@ Datum ml_ipc_getMsg__text1(PG_FUNCTION_ARGS)
 
     
     /* Initialize the Motion Layer IPC subsystem. */			
-	InitMotionLayerIPC( mySegIndex );
+	InitMotionLayerIPC();
 
     /* Form a tuplechunk with the message as a payload */
     TupleChunkListItem tcItem = (TupleChunkListItem) 
@@ -127,3 +128,4 @@ Datum ml_ipc_getMsg__text1(PG_FUNCTION_ARGS)
     //PG_RETURN_TEXT_P( PG_GETARG_TEXT_P(0) );
 }
 
+#endif

@@ -17,7 +17,7 @@ override CFLAGS += $(PTHREAD_CFLAGS)
 # Need to recomple any libpgport object files
 LIBS := $(patsubst -lpgport,, $(LIBS))
 
-OBJS=	chunkfuncs.o cdbexecplan.o cdbshowalias.o ipcfuncs.o mlapi_access.o hashapi_access.o mlipc_access.o \
+OBJS=	chunkfuncs.o cdbexecplan.o cdbshowalias.o ipcfuncs.o hashapi_access.o \
 		cdbheaptest.o cdboid.o \
 	$(filter crypt.o getaddrinfo.o inet_aton.o open.o snprintf.o strerror.o, $(LIBOBJS))
 

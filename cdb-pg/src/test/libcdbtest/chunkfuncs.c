@@ -304,19 +304,10 @@ Datum GetChunkedRows__text1(PG_FUNCTION_ARGS)
 
         if (s_rac_state->rowIdx < SPI_processed)
         {
-            MotionNodeInfo mnInfo = {
-                0,                          /* query_group_id */
-                s_rac_state->srcSegIdx,     /* segment_id       */
-                0                           /* host_id          */
-            };
-            
-            s_rac_state->rowChunks = CvtHeapTupToChunks(
-                SPI_tuptable->vals[s_rac_state->rowIdx],
-                SPI_tuptable->tupdesc,
-                s_rac_state->maxChunkDataSize,
-                s_rac_state->mnid,
-                &mnInfo,
-                s_rac_state->tgtSegIdx);
+            s_rac_state->rowChunks =
+				CvtHeapTupToChunks(SPI_tuptable->vals[s_rac_state->rowIdx],
+								   &s_rac_state->serInfo,
+								   Cdb_max_tuple_chunk_size);
 
             s_rac_state->nextChunk = s_rac_state->rowChunks->p_first;
             s_rac_state->chunkNum = 0;
@@ -355,8 +346,8 @@ Datum GetChunkedRows__text1(PG_FUNCTION_ARGS)
         resultValues[2] = Int32GetDatum(s_rac_state->nextChunk->chunk_length);
 
         pq_begintypsend(&serChunkData);   /* Does initStringInfo() call. */
-        pq_sendbytes(&serChunkData, s_rac_state->nextChunk->chunk_data,
-            s_rac_state->nextChunk->chunk_length);
+        pq_sendbytes(&serChunkData, (const char *)s_rac_state->nextChunk->chunk_data,
+					 s_rac_state->nextChunk->chunk_length);
         chunkData = pq_endtypsend(&serChunkData);
 
         resultValues[3] = PointerGetDatum(chunkData);
@@ -642,8 +633,7 @@ Datum GetDechunkedRows__text1_regtype1(PG_FUNCTION_ARGS)
                s_dcr_state->rowIdx < SPI_processed);
 
         /* Deserialize the chunk sequence into a tuple. */
-
-        htup = CvtChunksToHeapTup(&tcListData, funcctx->tuple_desc);
+        htup = CvtChunksToHeapTup(&tcListData, &s_dcr_state->serInfo);
         resultTuple = HeapTupleGetDatum(htup);
 
         /* Return our result! */
