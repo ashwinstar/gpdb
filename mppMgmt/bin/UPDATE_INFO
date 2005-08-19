@@ -1,8 +1,9 @@
 17:00 17 Aug 2005
-mppcreatecluster.sh:-Corrected bug where QD host not in hostlist file, but script still creates QE(s) on
-QD host.
+mppcreatecluster.sh:-	Corrected bug where QD host not in hostlist file, but script still creates 
+			QE(s) on QD host.
 
 09:00 19 Aug 2005
-mppstop.sh:-Removed check that did not allow QD_DATA_DIRECTORY value to end with /
-mpp_bash_functions.sh:-Removed stdout and stderror re-direction to RUN_REMOTE_COMMAND function
-cluster_example:-Tidy up of comments to ease use
+mppstop.sh:-		Removed check that did not allow QD_DATA_DIRECTORY value to end with /
+mpp_bash_functions.sh:-	Removed stdout and stderror re-direction to RUN_REMOTE_COMMAND function
+cluster_example:-	Tidy up of comments to ease use
+mppcreatecluster.sh:-	Added to config display which initdb script will use to build the cluster
