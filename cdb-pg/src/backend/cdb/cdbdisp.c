@@ -96,13 +96,7 @@ typedef struct
  * Static Helper functions
  */
 static void *thread_DispatchCommand(void *arg);
-/*static int listenerSegDBPairCompare(const void *p1, const void *p2);
-static void createThreadPoolPerListener( DispatchCommandParms *dispatchCommandParmsAr, int *psegdbs_in_thread_pool,
-										 const char *szCommand, bool cancelFromBelow);
-static void createThreadPoolPerSegment( DispatchCommandParms *dispatchCommandParmsAr, int *psegdbs_in_thread_pool,
-										 const char *szCommand, bool cancelFromBelow); 
-static void createThreadPoolPerSegDB( DispatchCommandParms *dispatchCommandParmsAr, int *psegdbs_in_thread_pool,
-										 const char *szCommand, bool cancelFromBelow);*/
+
 static void createThreadPoolEnumeration( DispatchCommandParms *dispatchCommandParmsAr, int *psegdbs_in_thread_pool,
 										 const char *szCommand, bool cancelFromBelow,
 										 SegmentDatabaseDescriptor **segdbList, int segdbListCount);
@@ -216,30 +210,10 @@ void CdbDispatchCommandInt( const char *szCommand, DispatchTargetSet targetSet,
 	 * targetSet into the thread Parms structures, amking sure that each thread
 	 * handles cdb_connections_per_thread segdbs.
 	 */
-	/*switch ( targetSet )
-	{
-		case DTS_LISTENER:
-			createThreadPoolPerListener( dispatchCommandParmsAr, &segdbs_in_thread_pool,
-										 szCommand, cancelFromBelow);
-			break;
 
-		case DTS_SEGMENT:
-			createThreadPoolPerSegment( dispatchCommandParmsAr, &segdbs_in_thread_pool,
-										 szCommand, cancelFromBelow);
-			break; 
-
-		case DTS_SEGDB:
-			createThreadPoolPerSegDB( dispatchCommandParmsAr, &segdbs_in_thread_pool,
-										 szCommand, cancelFromBelow);
-			break;
-
-		case DTS_ENUMERATION:*/
-			createThreadPoolEnumeration( dispatchCommandParmsAr, &segdbs_in_thread_pool,
+	createThreadPoolEnumeration( dispatchCommandParmsAr, &segdbs_in_thread_pool,
 										 szCommand, cancelFromBelow, segdbList, segdbListCount);
-			/*break;
-
-	}*/
-
+			
     /* set result set variables if return of result set is required */
     if (resultSets != NULL)
         dispatchCommandParmsAr->resultSets = (PGresult***) resultSets;
@@ -845,7 +819,7 @@ void *thread_DispatchCommand(void *arg)
 			}
 		}
 	}
-	//elog(DEBUG3, "thread_DispatchCommand done ");
+ 
 	
 	free(stillRunning);
 	
