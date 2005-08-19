@@ -1409,14 +1409,14 @@ static struct config_int ConfigureNamesInt[] =
 	},
 	
 	{
-		{"cdb_querygroup_id", PGC_BACKEND, UNGROUPED,
-			gettext_noop("Per-session ID, same across all backends in the session."),
-			gettext_noop("Used by Interconnect to establish communication fabric "
-						 "between all processes serving a user-connection to the CDB."),
+		{"cdb_segment", PGC_BACKEND, UNGROUPED,
+			gettext_noop("The segment (content) controlled by this instance."),
+			gettext_noop("Used to know what content this QE handles "
+						 ),
 			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
-		&Cdb_querygroup_id,
-		0, INT_MIN, INT_MAX, NULL, NULL
+		&Cdb_segment,
+		-999, INT_MIN, INT_MAX, NULL, NULL
 	},
 	
 	
