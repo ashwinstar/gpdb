@@ -161,6 +161,9 @@ assign_cdb_session_role( const char *newval, bool doit, GucSource source )
     {
         Cdb_session_role = newrole;
    		Cdb_role = Cdb_session_role;
+   		
+   		if (Cdb_role == CDB_ROLE_DISPATCH)
+   			Cdb_segment = -1;
    	}
     return newval;
 }
