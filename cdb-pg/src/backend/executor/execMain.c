@@ -353,7 +353,7 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 		
 		elog(DEBUG1, 
 			"Segment %d (%s) executing slice %d under root %d.", 
-			CdbIdentity.segindex,
+			Cdb_segment,
 			(Cdb_is_primary ? "primary" : "mirror"),
 			estate->es_cur_slice_idx,
 			estate->es_cur_root_idx

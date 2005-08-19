@@ -1144,7 +1144,7 @@ void sendRegisterMessage(MotionLayerState *pEntry, MotionConn *conn)
 	memcpy(msg + 2, &netval, 2);
 
 	/* srcContentId */
-	netval = htons(CdbIdentity.segindex);
+	netval = htons(Cdb_segment);
 	memcpy(msg + 4, &netval, 2);
 
 	/* srcListenerPort */
@@ -1645,11 +1645,11 @@ int findMyRouteId(Slice *slice)
 #ifdef AMS_VERBOSE_LOGGING		
 		elog(DEBUG3, "Checking if CdbProc is our own: segid: (ours is %d ==  CdbProc's is %d) "
 		      " listenerPort:  (ours is %d == CdbProc's is %d)", 
-		      CdbIdentity.segindex, proc->contentid, 
+		      Cdb_segment, proc->contentid, 
 		      listenerPort , proc->listenerPort);
 #endif
 		
-		if (proc->contentid == CdbIdentity.segindex && 
+		if (proc->contentid == Cdb_segment && 
 		    proc->listenerPort == listenerPort)
 			return id;
 			

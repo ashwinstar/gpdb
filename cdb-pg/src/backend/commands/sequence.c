@@ -160,7 +160,7 @@ DefineSequence(CreateSeqStmt *seq)
 				coldef->colname = "last_value";
 				
 				if (Cdb_role == CDB_ROLE_EXECUTE)
-					new.last_value += ((CdbIdentity.segindex+1) << 24);
+					new.last_value += ((Cdb_segment+1) << 24);
 
 				value[i - 1] = Int64GetDatumFast(new.last_value);
 
@@ -179,7 +179,7 @@ DefineSequence(CreateSeqStmt *seq)
 				typnam->typeid = INT8OID;
 				coldef->colname = "min_value";
 				if (Cdb_role == CDB_ROLE_EXECUTE)
-					new.min_value += ((CdbIdentity.segindex+1) << 24);
+					new.min_value += ((Cdb_segment+1) << 24);
 
 				value[i - 1] = Int64GetDatumFast(new.min_value);
 				

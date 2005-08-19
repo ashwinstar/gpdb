@@ -68,9 +68,8 @@ int interconnect_setup_timeout;
  * getCdbCdb(), which is called from cdblink_setup() 
  * for both dispatch and execute modes.
  *
- * Any code needing the "mysegindex" ot "numsegments"
+ * Any code needing the  "numsegments"
  * can simply #include cdbvars.h, and use CdbIdentity.numsegments
- * or CdbIdentity.segindex.
  */
 CdbCdb				CdbIdentity = {NULL, 0, 0, 0};  
 

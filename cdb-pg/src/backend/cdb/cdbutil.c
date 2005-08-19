@@ -99,10 +99,11 @@ void getCdbCdb(void)
 	cdb_cdb_tuple = heap_getnext(cdb_cdb_scan, ForwardScanDirection);
 	if ( !HeapTupleIsValid(cdb_cdb_tuple) )
 	{
-		ereport(ERROR,
+		ereport(WARNING,
 				(errcode(ERRCODE_CARDINALITY_VIOLATION),
 				 errmsg("No rows found in %s.%s.",
 				 CdbNamespaceName, CdbCdbRelationName)));
+		return;
 	}
 	
 	/*
@@ -177,10 +178,22 @@ void getCdbCdb(void)
 	
 	if ( Cdb_role != CDB_ROLE_UTILITY && CdbIdentity.segindex != Cdb_segment )
 	{
-		ereport(ERROR,
-				(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-				 errmsg("Cdb.Cdb segindex not same as Cdb_segment." 
-				 		)));
+		if (Cdb_segment < -1)
+		{
+			Cdb_segment = CdbIdentity.segindex;
+			ereport(WARNING,
+					(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
+					 errmsg("Cdb.Cdb segindex not same as Cdb_segment." 
+					 		)));
+		}
+		else
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
+					 errmsg("Cdb.Cdb segindex not same as Cdb_segment." 
+					 		)));
+		}
+		
 	}
 }
 
@@ -191,6 +204,7 @@ void getCdbCdb(void)
  */
 void freeCdbCdb(void)
 {
+	 
 	if ( CdbIdentity.cdbname != NULL )
 	{
 		pfree( CdbIdentity.cdbname );

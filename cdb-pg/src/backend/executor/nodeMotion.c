@@ -402,7 +402,7 @@ void execMotionSortedReceiverFirstTime(MotionState *node )
 
     ReceiveReturnCode recvRC;
 
-    mySegIdx = CdbIdentity.segindex;
+    mySegIdx = Cdb_segment;
 
     /* INITIALIZATION -
      *
@@ -655,7 +655,7 @@ ExecInitMotion(Motion *node, EState *estate)
 			motionstate->hashSegIdxMask = palloc0( node->numHashSegs * sizeof(bool) );
 			for ( i=0; i<node->numHashSegs; i++ )
 			{
-				if ( node->hashSegIdx[i] == CdbIdentity.segindex )
+				if ( node->hashSegIdx[i] == Cdb_segment )
 					motionstate->hashSegIdxMask[i] = true;
 				else
 					motionstate->hashSegIdxMask[i] = false;
@@ -680,7 +680,7 @@ ExecInitMotion(Motion *node, EState *estate)
 			motionstate->fixedSegIdxMask = palloc0( node->numOutputSegs * sizeof(bool) );
 			for ( i=0; i<node->numOutputSegs; i++ )
 			{
-				if ( node->outputSegIdx[i] == CdbIdentity.segindex )
+				if ( node->outputSegIdx[i] == Cdb_segment )
 					motionstate->fixedSegIdxMask[i] = true;
 				else
 					motionstate->fixedSegIdxMask[i] = false;
@@ -905,7 +905,7 @@ bool setReadFromAMS(Motion *node)
     AssertArg(node != NULL);
 
     /* TODO:  Figure out whether we need is-primary here. */
-    mySegIdx = CdbIdentity.segindex;
+    mySegIdx = Cdb_segment;
 
     switch (node->motionType)
     {
