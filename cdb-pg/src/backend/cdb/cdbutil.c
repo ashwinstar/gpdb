@@ -628,7 +628,7 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 	for ( i=0; i<component_databases->total_entry_dbs; i++ )
 	{
 		CdbComponentDatabaseInfo* pInfo = &component_databases->entry_db_info[i];
-		if ( pInfo->dbid == CdbIdentity.dbid && pInfo->segindex == CdbIdentity.segindex )
+		if ( pInfo->dbid == CdbIdentity.dbid && pInfo->segindex == Cdb_segment )
 		{
 			break;
 		}
@@ -638,7 +638,7 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_EXCEPTION),
 				errmsg("Cannot locate entry database represented by cdb.cdb row in cdb.pgdatabase: dbid %d content %d",
-				CdbIdentity.dbid, CdbIdentity.segindex )));
+				CdbIdentity.dbid, Cdb_segment )));
 	}
 
 	/*
