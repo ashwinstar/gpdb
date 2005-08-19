@@ -214,6 +214,8 @@ extern int Cdb_max_tuple_chunk_size;    /* GUC var */
  */
 extern int Cdb_segment;           /* GUC var */
 
+extern int getCdbSegmentCount(void);
+
 
 /*
  * Parameters enable_cdbrepartition and enable_cdbbroadcast
