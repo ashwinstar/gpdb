@@ -322,16 +322,21 @@ Gang *createGang(GangType type, int size, int content)
 	 * loop from the preceding one to make sure all error messages were
 	 * palloced before potentially calling ereport.
 	 */
-	for ( i=0; i<segdb_count; i++ )
+    if (successful_connections != newGangDefinition->size &&
+        type !=GANGTYPE_MIRROR_WRITER &&
+        mirroringNotConfigured)
 	{
-		segdbDesc = &newGangDefinition->db_descriptors[i];
-			q = segdbDesc->segment_database_info;
-		if (successful_connections != newGangDefinition->size &&
-            type !=GANGTYPE_MIRROR_WRITER &&
-            mirroringNotConfigured)
-		{
+        for ( i=0; i<segdb_count; i++ )		
+        {
 			StringInfoData buffer;
+             segdbDesc = &newGangDefinition->db_descriptors[i];
+             /*
+             q = segdbDesc->segment_database_info;
+             */
 
+             if ( segdbDesc->conn != NULL )
+                continue;
+                
 			/* 
 			 * Initialize the StringInfo object using our "desired" memory
 			 * context.  Future expansions of this StringInfo will occur in
@@ -345,11 +350,10 @@ Gang *createGang(GangType type, int size, int content)
 					                  " database for segindex %d", 
 					                  i);
 
-			ereport(ERROR,
+			ereport(FATAL,
 					(errcode(ERRCODE_SQLSERVER_REJECTED_ESTABLISHMENT_OF_SQLCONNECTION),
 					 errmsg(buffer.data),
 					 errdetail("see previous warnings or server log")));
-
 			segdbDesc->error_message = buffer.data;
 		}
 	}	
