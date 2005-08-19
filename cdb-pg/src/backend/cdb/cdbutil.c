@@ -174,6 +174,14 @@ void getCdbCdb(void)
 				 errmsg("Cannot have a Cdb_role of execute when connected to an entry database." 
 				 		)));
 	}
+	
+	if ( Cdb_role != CDB_ROLE_UTILITY && CdbIdentity.segindex != Cdb_segment )
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
+				 errmsg("Cdb.Cdb segindex not same as Cdb_segment." 
+				 		)));
+	}
 }
 
 /*
