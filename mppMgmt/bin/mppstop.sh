@@ -134,15 +134,15 @@ DISPLAY_PARAM () {
 STOP_ADMIN () {
 		##MPP Disabled call to this function 22/07/2005
 		LOG_MSG "[INFO]:-Stopping the head in admin mode"
-		if [ ! -s $HEAD_DATA_DIRECTORY/$PG_PID ]; then
+		if [ ! -s $QD_DATA_DIRECTORY/$PG_PID ]; then
 				ERROR_EXIT "[WARN]:- No $PG_PID file, is database already stopped?" 1
 		fi
-		$PG_CTL $WAIT stop -D $HEAD_DATA_DIRECTORY -m smart      >/dev/null 2>&1
+		$PG_CTL $WAIT stop -D $QD_DATA_DIRECTORY -m smart      >/dev/null 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
-				ERROR_EXIT "[FATAL]:-Could not shutdown head database in admin mode" 2
+				ERROR_EXIT "[FATAL]:-Could not shutdown QD database in admin mode" 2
 		fi
-		LOG_MSG "[INFO]:-Successfully shutdown the head in admin mode"
+		LOG_MSG "[INFO]:-Successfully shutdown the QD in admin mode"
 }
 
 CHK_QD_DB_RUNNING () {
@@ -151,9 +151,6 @@ CHK_QD_DB_RUNNING () {
 		fi
 		QD_PID=`$HEAD -1 $QD_DATA_DIRECTORY/$PG_PID`
 		QD_PID_DIR=`$HEAD -2 $QD_DATA_DIRECTORY/$PG_PID|$TAIL -1`
-		if [ $QD_PID_DIR != $QD_DATA_DIRECTORY ]; then
-				ERROR_EXIT "[FATAL]:-QD database directory does not match $QD_PID_DIR" 2
-		fi
 }
 
 PROMPT_CONTINUE () {
