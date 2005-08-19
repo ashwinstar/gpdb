@@ -2,13 +2,17 @@
 CLUSTER_NAME="LAL Laptop Cluster"
 
 # This file must exist in the same directory that you execute mppcreatecluster.sh in
+# and contains a list of hostnames that will form the cluster.
+# If the QD hostname is in this file, QE's will also be created on the QD host.
 MACHINE_LIST_FILE=hostlist
 
 # This names the data directories for the Segment Instances and the Entry Postmaster
+# The QD will be the fist segment to be created as the segment name will end with a 0
+# (zero), all other segments will be incremented from zero.
 SEG_PREFIX=lal
 
-# This is the port at which to contact the resulting MPP database, e.g. 
-#   psql -p $PORT_BASE template1
+# This is the port range for the primary QE's, the QD can be assigned its own specific port number
+# via the QD_PORT variable. 
 PORT_BASE=60000
 
 # Name for script created database, if commented out, will not create any database within cluster.
@@ -20,6 +24,7 @@ declare -a DATA_DIRECTORY=(/Users/lukelonergan/datadirs/dbfast1 /Users/lukeloner
 
 # Name of host on which to setup the QD
 QD_HOSTNAME=Luke-Lonergans-Computer.local
+
 # Name of directory on that host in which to setup the QD
 QD_DIRECTORY=/Users/lukelonergan/datadirs/dbfast1
 
@@ -36,89 +41,17 @@ TRUSTED_SHELL="ssh"
 CHECK_POINT_SEGMENTS=8
 ENCODING=UNICODE
 
-#	Filename:-		cluster_example
-#	Version:-		1.0
-#	Updated:-		08/02/2005
-#	Status:-		Beta testing
-#	Author:-		G Coombe
-#	Contact:-		gcoombe@greenplum.com
-#	Release date:-		TBC
-#	Release stat:-		Metapa Co internal
-#                               Copyright (c) Metapa 2005. All Rights Reserved.
-#                               Copyright (c) Greenplum 2005. All Rights Reserved
-#	Brief descn:-		Contains parmeters for cluster configuration
-#******************************************************************************
-# Update History
-#******************************************************************************
-# Ver	Date		Who		Update
-#******************************************************************************
-# Detailed Description
-#******************************************************************************
-# CLUSTER_NAME
-# The name that will be updated in the cdb.cdb table on QD and all QE's.
-# Note to enclose in quotes if text contains a space(s).
-# MACHINE_LIST_FILE
-# A file that contains a list of machine names on which the cluster will be
-# installed.
-#
-# SEG_PREFIX
-# The directory prefix where the segment database will be created, each segment
-# name will be created as $DATA_DIRECTORY/$SEG_PREFIX[Seg#] where Seg# will
-# start at 0 for the QD directory and increase sequentially for each QE
-# directory.
-#
-# PORT_BASE
-# The starting point for the port numbers. QD port will be $PORT_BASE, each
-# QE will start at $PORT_BASE+1 for each QE on a host, so for 3 QE's per host,
-# these will have ports 60001, 60002 and 60003 in this example.
-#
-# DATA_DIRECTORY
-# The top level directory where each QE database directory will be created.
-# So, for the first host with 3 QE's per host will have the following database
-# directories /dbfast1/dwh1, /dbfast2/dwh2 and /dbfast3/dwh3.
-# NOTE, the number in DATA_DIRECTORY determines the number of primary QE's
-# per host.
-#
-# QD_HOSTNAME
-# The hostname of the assigned QD for this cluster.
-#
-# QD_DATA_DIRECTORY
-# The top level directory where the QD database will be created, in this example
-# file the QD database directory will be /dbfast1/dwh0
-#
-# IP_ALLOW
-# The access IP that will be placed in each QE pg_hba.conf file
-#
-# TRUSTED_SHELL
-# The mechanism to access each QE from the QD
-#
-# ENV_SETUP
-# The file that must be sourced on each QE to access the postgreSQL binaries.
-#
-# CHECK_POINT_SEGMENTS
-# Number of check point segments that will be added to each QD and QE
-# postgresql.conf file.
-#
-# ENCODING
-# The encoding that will be added each QD and QE postgresql.conf file.
-# 
-# MIRROR_PORT_BASE
-# If uncommented will set mppcreatecluster.sh to build mirror'd configuration
-# using this port base for each mirror QE process.
-#
-# MIRROR_DATA_DIRECTORY
-# If uncommented will set mppcreatecluster.sh to build mirror'd configuration
-# using this top level directory for the mirror database directories
-#
-# STANDBY_HOST & STANDBY_IP_ALLOW
-# Not configured at this release. 
-#******************************************************************************
-# Cluster Configuration Parameters 
-#******************************************************************************
 #Mirror parameters, comment out if mirroring not required
-##MIRROR_PORT_BASE=45000
-##declare -a MIRROR_DATA_DIRECTORY=(/dbfast3)
 
+# Set the mirror port base to a different range from that of the primary port base.
+#MIRROR_PORT_BASE=45000
+
+# These are the directories where the mirror segments will be created on each host, make sure
+# that the number of directories here match the number of primary directories, or the script
+# will exit with an error
+#declare -a MIRROR_DATA_DIRECTORY=(/dbfast3)
+
+# This to be implemented at a later date when this functionality available to MPP
 #Standby host parameters, comment out if not required
 ###STANDBY_HOST=falcon6
 ####STANDBY_IP_ALLOW="172.16.1.14"
