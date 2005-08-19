@@ -1659,6 +1659,8 @@ void CdbDispatchPlan(QueryDesc *queryDesc)
 		pfree(strinfo.data);
 		initStringInfo( &strinfo );
 	}
+	
+	sliceTbl->localSlice = oldLocalSlice;	
 	elog(DEBUG4,"CdbDispatchPlan done" );	
 }
 

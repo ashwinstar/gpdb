@@ -200,6 +200,21 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 	 {
 		/* Set up blank map (motionID -> MotionState*) to be filled in during InitPlan */
 		estate->es_slice_map = (MotionState**)palloc0((1+queryDesc->plantree->nMotionNodes) * sizeof(MotionState*));
+		
+		/* Set up slice table, if one is available at this point. */
+		if ( queryDesc->plantree != NULL && queryDesc->plantree->sliceTable != NULL )
+		{
+			SliceTable *sliceTable;
+			Slice *slice;
+			
+			/* From the QD via CDBEXEC! */
+			sliceTable = (SliceTable*)queryDesc->plantree->sliceTable;
+			estate->es_sliceTable = sliceTable;
+			estate->es_cur_slice_idx = sliceTable->localSlice;
+			slice = list_nth(sliceTable->slices, sliceTable->localSlice);
+			Assert( IsA(slice,Slice) );
+			estate->es_cur_root_idx = ((Slice*)slice)->rootIndex;
+		}
 	 }
 
 	/*
@@ -303,15 +318,19 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 		MotionState *motionstate = NULL;
 		
 		/* From the QD via CDBEXEC! */
+		
+		/* TODO Delete from here ... */
 		SliceTable *sliceTable = queryDesc->gbl_sliceTable;
 		int nMotionNodes = queryDesc->gbl_nMotionNodes;
 		int nExtraRoots = queryDesc->gbl_nExtraRoots;
 		 		
-		estate->es_sliceTable = sliceTable;
-		estate->es_cur_slice_idx = sliceTable->localSlice;
+		Assert(estate->es_sliceTable == sliceTable);
+		Assert(estate->es_cur_slice_idx == sliceTable->localSlice);
 		slice = list_nth(sliceTable->slices, sliceTable->localSlice);
 		Assert( IsA(slice,Slice) );
-		estate->es_cur_root_idx = ((Slice*)slice)->rootIndex;
+		Assert(estate->es_cur_root_idx == ((Slice*)slice)->rootIndex);
+		/* ... to here, once we verify the asserted conditions, which 
+		 * replaced previous assignments now done in ExecutorStart.  */
 		
 		/* If responsible for a non-root slice, arrange to enter the plan 
 		 * at the slice's sending Motion node rather than at the top.

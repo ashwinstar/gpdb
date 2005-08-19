@@ -14,6 +14,7 @@
 #include "cdb/cdbplan.h"
 #include "cdb/cdbllize.h"
 #include "cdb/cdbsubplan.h"
+#include "cdb/ml_ipc.h"
 
 typedef struct ParamWalkerContext
 {
@@ -60,11 +61,14 @@ void preprocess_initplans( QueryDesc *queryDesc )
 	int i;
 	Plan *plan = queryDesc->plantree;
 	EState *estate = queryDesc->estate;
+	int originalRoot, rootIndex;
 
 	if ( plan->nParamExec == 0 )
 		return;
 
 	originalPli = queryDesc->params;
+	Assert(queryDesc->estate->es_sliceTable->localSlice == 0);
+	originalRoot = queryDesc->estate->es_cur_root_idx;
 
 	/* Loop through the estate->es_param_exec_vals.
 	 * This array has an element for each PARAM_EXEC (internal) param,
@@ -85,6 +89,9 @@ void preprocess_initplans( QueryDesc *queryDesc )
 		 * parameter list so they can be serialized in the cdbexec call to the 
 		 * QEs.  Do this inside the loop since later initplans may depend on
 		 * the results of earlier ones.
+		 *
+		 * TODO Some of the work of addRemoteExecParamsToParmList could be
+		 *      factored out of the loop.
 		 */
 		augmentedPli = addRemoteExecParamsToParamList( 
 			queryDesc->plantree, 
@@ -95,23 +102,29 @@ void preprocess_initplans( QueryDesc *queryDesc )
 
 		if ( sps != NULL )
 		{
-			/*
-			 * In the case of a SubPlan of a SubPlan, 
-			 */
 			sps->planstate->plan->nParamExec = plan->nParamExec;
-
-			/*
-			 * TODO: Remove this when the dispatch member of the subplans is
-			 * set properly.  Currenly, it may be DISPATCH_UNDETERMINED
-			 */
+			sps->planstate->plan->nMotionNodes = plan->nMotionNodes;
 			sps->planstate->plan->dispatch = DISPATCH_PARALLEL;
+			
+			/* 
+			 * Adjust for the slice to execute on the QD.
+			 */
+			rootIndex =  1 + queryDesc->estate->es_sliceTable->nMotions + i;
+			queryDesc->estate->es_sliceTable->localSlice = rootIndex;
+			queryDesc->estate->es_cur_root_idx = rootIndex; /* ! */
 
 			/*
 			 * This runs the SubPlan and puts the answer back into prm->value.
 			 */
-			ExecSetParamPlan(sps, sps->planstate->ps_ExprContext, augmentedPli);
+			queryDesc->params = augmentedPli;
+			
+			ExecSetParamPlan(sps, sps->planstate->ps_ExprContext, queryDesc);
 		}
 
+		queryDesc->params = originalPli;
+		queryDesc->estate->es_sliceTable->localSlice = 0; /* Original value. */
+		queryDesc->estate->es_cur_root_idx = originalRoot;
+		
 		pfree(augmentedPli);
 	}
 }

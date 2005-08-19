@@ -115,7 +115,7 @@ CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
 		 * Since we're running as a QE, we need to put need to the slice 
 		 * table and associated values determined by the QD that called 
 		 * CDBEXEC into the EState before we run the executor.  We can't 
-		 * it do now because our EState isn't ready.  Instead, stick it
+		 * do it now because our EState isn't ready.  Instead, stick it
 		 * into the top plan node (along with nParamExec and nMotionNodes)
 		 * and let the code that eventually sets up the QueryDesc sort it
 		 * out.

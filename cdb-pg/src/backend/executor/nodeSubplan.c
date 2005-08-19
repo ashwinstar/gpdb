@@ -23,6 +23,7 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbdisp.h"
+#include "cdb/ml_ipc.h"
 #include "miscadmin.h"
 #include "executor/executor.h"
 #include "executor/nodeSubplan.h"
@@ -935,7 +936,7 @@ ExecInitSubPlan(SubPlanState *node, EState *estate)
  * function: ParamListInfo p.  This may be NULL in the non-dispatch case.
  */
 void
-ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, ParamListInfo p)
+ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_queryDesc)
 {
 	SubPlan    *subplan = (SubPlan *) node->xprstate.expr;
 	PlanState  *planstate = node->planstate;
@@ -953,7 +954,6 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, ParamListInfo p)
 		planstate->plan != NULL && 
 		planstate->plan->dispatch == DISPATCH_PARALLEL )
 		shouldDispatch = true;
-
 
 	/*
 	 * Need a try/catch block here so that if an ereport is called from
@@ -980,21 +980,26 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, ParamListInfo p)
 			query->rtable = subplan->rtable;
 			query->commandType = CMD_SELECT;
 			
-			/* Fake a QueryDesc stucture for CdbDispatchPlan call. */
-			queryDesc = palloc(sizeof(QueryDesc));
-			queryDesc->operation = query->commandType;
-			queryDesc->parsetree = query;
-			queryDesc->plantree = planstate->plan; /* be sure nParamExec is set */
-			queryDesc->params = p; /* need to set this! */
-			queryDesc->estate = local; /* be sure slicetable, cur_root_idx, param_exec_vals, are set */
+			/* 
+			 * Fake a QueryDesc stucture for CdbDispatchPlan call. It should
+			 * look like the one passed in as the argument which carries the
+			 * global query, plan, parameters, and slice table, and specifies
+			 * the initplan root of interest.
+			 */
+			queryDesc = CreateQueryDesc(
+				gbl_queryDesc->parsetree,
+				gbl_queryDesc->plantree,
+				gbl_queryDesc->snapshot,
+				gbl_queryDesc->crosscheck_snapshot,
+				NULL, /* Null destination for the QE */
+				gbl_queryDesc->params,
+				gbl_queryDesc->doInstrument
+				);
 			
-			/* There are unused, but set them so they aren't garbage. */
-			queryDesc->snapshot = NULL;
-			queryDesc->crosscheck_snapshot = NULL;
-			queryDesc->dest = NULL;
-			queryDesc->doInstrument = FALSE;
-			queryDesc->tupDesc = NULL;
-			queryDesc->planstate = NULL;
+			queryDesc->estate = CreateExecutorState();
+			queryDesc->estate->es_sliceTable = gbl_queryDesc->estate->es_sliceTable;
+			queryDesc->estate->es_cur_root_idx = gbl_queryDesc->estate->es_cur_root_idx;
+			queryDesc->estate->es_param_exec_vals = gbl_queryDesc->estate->es_param_exec_vals;
 
 			/*
 			 * This call returns after launching the threads that send the command to the appropriate
@@ -1003,11 +1008,17 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, ParamListInfo p)
 
 			CdbDispatchPlan(queryDesc);
 			hasDispatched = true;
+
+			/*
+			 * Set up the interconnect for execution of the initplan root slice.
+			 */
+			SetupInterconnect(queryDesc->estate->es_sliceTable, queryDesc->estate->es_sliceTable->localSlice);
 		}
+		
 
 		/*
-		* Must switch to child query's per-query memory context.
-		*/
+		 * Must switch to child query's per-query memory context.
+		 */
 		oldcontext = MemoryContextSwitchTo(node->sub_estate->es_query_cxt);
 
 		if (subLinkType == ANY_SUBLINK ||
@@ -1147,6 +1158,8 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, ParamListInfo p)
 			QueryCancelPending = true;
 
 			results = CdbCheckDispatchResult();
+			
+			TeardownInterconnect(); /* Is this needed following failure on QD? */
 
 			message = CdbDumpDispatchResults(results, true);
 			szCommand = results->szCommand;
@@ -1162,6 +1175,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, ParamListInfo p)
 			if ( !results->success )
 			{
 				char *message = CdbDumpDispatchResults(results, false);
+			
 				ereport( NOTICE,
 							(errcode( ERRCODE_CDB_COMMAND_ERROR ),
 							errmsg("cdbexec command failed on one or more segment databases: %s",
@@ -1186,6 +1200,8 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, ParamListInfo p)
 		 * from the qExecs.  This internally waits for them to all finish.
 		 */
 		CdbDispatchResults* results = CdbCheckDispatchResult();
+		
+		TeardownInterconnect(); /* following success on QD */
 
 
 		message = CdbDumpDispatchResults(results, true);

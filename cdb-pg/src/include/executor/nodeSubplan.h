@@ -15,6 +15,7 @@
 #define NODESUBPLAN_H
 
 #include "nodes/execnodes.h"
+#include "executor/execdesc.h"
 
 extern void ExecInitSubPlan(SubPlanState *node, EState *estate);
 extern Datum ExecSubPlan(SubPlanState *node,
@@ -26,6 +27,6 @@ extern void ExecReScanSetParamPlan(SubPlanState *node, PlanState *parent);
 /*
  * CDB Change: Added a parameter (ParamListInfo p) to this function.  See comments in nodeSubplan.cpp
  */
-extern void ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, ParamListInfo p);
+extern void ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_queryDesc);
 
 #endif   /* NODESUBPLAN_H */
