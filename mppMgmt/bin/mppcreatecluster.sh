@@ -121,6 +121,12 @@ CHK_PARAMS () {
 				LOG_MSG "[FATAL]:-At least one of these must be set for this script to continue"
 				ERROR_EXIT "[FATAL]:-Unable to continue" 2
 		fi
+		#Check that we can see initdb
+		INITDB_CHK=`$WHICH initdb`
+		RETVAL=$?
+		if [ $RETVAL -ne 0 ]; then
+			ERROR_EXIT "[FATAL]:-Unable to locate initdb" $RETVAL
+		fi
 		#Make sure that script has been supplied a config file
 		if [ x"" = x"$CLUSTER_CONFIG" ]; then
 				ERROR_EXIT "[FATAL]:-MPP configuration filename [-c] option not provided." 2
@@ -463,6 +469,7 @@ DISPLAY_CONFIG () {
 		LOG_MSG "[INFO]:-Checkpoint segments  = $CHECK_POINT_SEGMENTS"
 		LOG_MSG "[INFO]:-Encoding             = $ENCODING"
 		LOG_MSG "[INFO]:-Pg Conf add file     = $PG_ADD"
+		LOG_MSG "[INFO]:-Initdb to be used    = $INITDB_CHK"
 		((NUM_QES=${#MACHINE_LIST[*]}))
 		LOG_MSG "[INFO]:-Number QE hosts      = $NUM_QES"
 		if [ $MIRROR_PORT_BASE ]; then
