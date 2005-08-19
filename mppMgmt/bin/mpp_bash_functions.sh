@@ -414,7 +414,7 @@ RUN_COMMAND_REMOTE () {
 		HOST=$1
 		COMMAND=$2
 		LOG_MSG "[INFO]:-Commencing remote $TRUSTED_SHELL $HOST $COMMAND"
-		$TRUSTED_SHELL $HOST $COMMAND  >> $LOG_FILE 2>&1
+		$TRUSTED_SHELL $HOST $COMMAND
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then ERROR_EXIT "[FATAL]:- Command $COMMAND on $HOST failed with error status $RETVAL" 2
 		else LOG_MSG "[INFO]:-Completed $TRUSTED_SHELL $HOST $COMMAND"
