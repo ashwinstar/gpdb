@@ -353,20 +353,21 @@ TupleChunkListItem RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 	pEntry = getMotionState(motNodeID);
 	do
 	{
+        struct timeval timeout = tval;
+		
+		/* make sure we check for these. */
+		CHECK_FOR_INTERRUPTS();
+
 		memcpy(&rset, &(pEntry->readSet), sizeof(fd_set));
-		if ((n = select(pEntry->highReadSock + 1, &rset, NULL, NULL, &tval)) < 0)
+		n = select(pEntry->highReadSock + 1, &rset, NULL, NULL, &timeout);
+        if (n < 0)
 		{
-			/* TODO: would be nice to read the errno and try and
-			 * 		 provide more useful info as to why this happened.
-			 *       (select sets either EINTR or EBADF)
-			 */
+            if (errno == EINTR)
+                continue;
 			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 							errmsg("Interconnect error receiving an incoming packet: %s", strerror(errno)),
 							errdetail("error during select() call (error:%d).\n", errno)));
 		}
-		
-		/* make sure we check for these. */
-		CHECK_FOR_INTERRUPTS();
 #ifdef AMS_VERBOSE_LOGGING
 		elog(DEBUG5, "RecvTupleChunkFromAny() select() returned %d ready sockets", n);
 #endif
@@ -628,7 +629,9 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 	 */
 	do
 	{
-		/* since we might be here for a bit, we should prolly check
+        struct timeval timeout = tval;
+
+        /* since we might be here for a bit, we should prolly check
 		 * for any interrupts that come in.
 		 */
 		CHECK_FOR_INTERRUPTS();
@@ -644,17 +647,14 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 		memcpy(&rrset, &rset, sizeof(fd_set));
 		memcpy(&wwset, &wset, sizeof(fd_set));
 
-		if ((n = select(highsock + 1, &rrset, &wwset, NULL, &tval)) < 0)
+		n = select(highsock + 1, &rrset, &wwset, NULL, &timeout);
+        if (n < 0)
 		{
-			if (errno != EINTR)
-			{
-				/* TODO: would be nice to read the errno and try and provide more
-				 * 		 useful info as to why this happened.
-				 */
-				ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-								 errmsg("Interconnect error setting up: %s", strerror(errno)),
-								 errdetail("error during select() call (error:%d).",errno)));
-			}
+			if (errno == EINTR)
+                continue;
+			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+							 errmsg("Interconnect error setting up: %s", strerror(errno)),
+							 errdetail("error during select() call (error:%d).",errno)));
 		}
 
 		elog(DEBUG3, "select() returned %d ready sockets", n);
@@ -1155,12 +1155,12 @@ void sendRegisterMessage(MotionLayerState *pEntry, MotionConn *conn)
 	 * dedicated TCP buffer space.  so we should be able to use a blocking 
 	 * send() call to write it out.
 	 */	
-	if ((n = write(conn->sockfd, msg, msglen)) < 0)
+	while ((n = write(conn->sockfd, msg, msglen)) < 0)
+        if (errno != EINTR)
+            break;
+
+    if (n < 0)
 	{
-		/* TODO: would be nice to read the errno and try and provide more
-		 * 		 useful info as to why this happened.
-		 */
-		elog(DEBUG3, "n = %d", n);
 		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 						errmsg("Interconnect Error: Could not write() Register message to remote destination: %s", strerror(errno)),
 						errdetail("error during write() call (error:%d) to remote destination"
@@ -1208,11 +1208,12 @@ void readRegisterMessage(MotionConn *conn, int *incoming_count)
 	/* loop till we read in the entire RegisterMessage. */
 	while (bytesRead < msgSize)
 	{
-		if ((n = read(conn->sockfd, buff + bytesRead, msgSize - bytesRead)) < 0)
+		while ((n = read(conn->sockfd, buff + bytesRead, msgSize - bytesRead)) < 0)
+            if (errno != EINTR)
+                break;
+        
+        if (n < 0)
 		{
-			/* TODO: would be nice to read the errno and try and provide more
-			 * 		 useful info as to why this happened.
-			 */
 			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 							errmsg("Interconnect Error: Could not read() Register message "
 								   "from remote destination"),
@@ -1404,18 +1405,26 @@ bool flushBuffer(MotionConn *conn)
 	do {
 		if ((n = write(conn->sockfd, sendptr + sent, conn->msgSize - sent)) < 0)
 		{
+            if (errno == EINTR)
+                continue;
 			if (errno == EWOULDBLOCK)
 			{
-				FD_ZERO(&rset);
-				FD_ZERO(&wset);
 				do
 				{
-					FD_SET(conn->sockfd, &wset);
+                    struct timeval timeout = tval;
+
+                    CHECK_FOR_INTERRUPTS();
+                    FD_ZERO(&rset);
+                    FD_ZERO(&wset);
+                    FD_SET(conn->sockfd, &wset);
 					/* TODO: uncomment this when ready to support "STOP MESSAGES" */
 					//FD_SET(conn->sockfd, &rset);
-					if ((n = select(conn->sockfd + 1, &rset, &wset, NULL, &tval)) < 0)
+					n = select(conn->sockfd + 1, &rset, &wset, NULL, &timeout);
+                    if (n < 0)
 					{
-						ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						if (errno == EINTR)
+                            continue;
+                        ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 										 errmsg("Interconnect error writing an outgoing packet"),
 										 errdetail("error during select() call (error:%d).\n"
 												   "For Remote Connection: contentId=%d at '%s':%d",
@@ -1432,9 +1441,6 @@ bool flushBuffer(MotionConn *conn)
 						conn->stillActive = false;
 						return false;
 					}
-
-					/* make sure we check for these. */
-					CHECK_FOR_INTERRUPTS();
 				} while (n < 1);
 			}
 		}
@@ -1473,36 +1479,36 @@ void readPacket(MotionConn *conn)
 		if ((n = read(conn->sockfd, conn->pBuff + bytesRead, 
 			       PACKET_HEADER_SIZE - bytesRead)) < 0)
 		{
-			if (errno == EWOULDBLOCK)
+			if (errno == EINTR)
+                continue;
+            if (errno == EWOULDBLOCK)
 			{
-				FD_ZERO(&rset);
 				do
 				{
+                    struct timeval timeout = tval;
+
+					/* see if user canceled and stuff like that */
+					CHECK_FOR_INTERRUPTS();
+
+                    FD_ZERO(&rset);
 					FD_SET(conn->sockfd, &rset);
-					if ((n = select(conn->sockfd + 1, &rset, NULL, NULL, &tval)) < 0)
+					n = select(conn->sockfd + 1, &rset, NULL, NULL, &timeout);
+                    if (n < 0)
 					{
-						/* TODO: would be nice to read the errno and try and provide more
-						 * 		 useful info as to why this happened.
-						 */
-						ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+                        if (errno == EINTR)
+                            continue;
+                        ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 										 errmsg("Interconnect error reading an incoming packet"),
 										 errdetail("error during select() call (error:%d).\n"
 												   "From Remote Connection: contentId=%d at '%s':%d",
 												   errno, conn->remoteContentId, conn->remoteHost,
 												   conn->remotePort)));	
 					}
-
-					/* see if user canceled and stuff like that */
-					CHECK_FOR_INTERRUPTS();
 				}
 				while (n < 1); 
 			}
 			else
 			{
-				/* TODO: would be nice to read the errno and try and
-				 * 		 provide more useful info as to why this
-				 * 		 happened.
-				 */
 				ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 						 errmsg("Interconnect error reading an incoming packet"),
 						 errdetail("error during read() call (error:%d).\n"
@@ -1513,9 +1519,6 @@ void readPacket(MotionConn *conn)
 		}
 		else if (n == 0)
 		{
-			/* TODO: would be nice to read the errno and try and
-			 * 		 provide more useful info as to why this happened.
-			 */
 			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 					 errmsg("Interconnect error reading an incoming packet"),
 					 errdetail("Socket closed from remote connection).\n"
@@ -1539,17 +1542,24 @@ void readPacket(MotionConn *conn)
 		if ((n = read(conn->sockfd, conn->pBuff + bytesRead, 
 			       conn->msgSize - bytesRead)) < 0)
 		{
+            if (errno == EINTR)
+                continue;
 			if (errno == EWOULDBLOCK)
 			{
-				FD_ZERO(&rset);
 				do
 				{
+                    struct timeval timeout = tval;
+
+					/* make sure we check for these. */
+					CHECK_FOR_INTERRUPTS();
+
+                    FD_ZERO(&rset);
 					FD_SET(conn->sockfd, &rset);
-					if ((n = select(conn->sockfd + 1, &rset, NULL, NULL, &tval)) < 0)
+					n = select(conn->sockfd + 1, &rset, NULL, NULL, &timeout);
+                    if (n < 0)
 					{
-						/* TODO: would be nice to read the errno and try and provide more
-						 * 		 useful info as to why this happened.
-						 */
+                        if (errno == EINTR)
+                            continue;
 						ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 										 errmsg("Interconnect error reading an incoming packet"),
 										 errdetail("error during select() call (error:%d).\n"
@@ -1557,17 +1567,11 @@ void readPacket(MotionConn *conn)
 												   errno, conn->remoteContentId, conn->remoteHost,
 												   conn->remotePort)));				
 					}					
-
-					/* make sure we check for these. */
-					CHECK_FOR_INTERRUPTS();
 				}
 				while (n < 1); 
 			}
 			else
 			{
-				/* TODO: would be nice to read the errno and try and provide more
-				 * 		 useful info as to why this happened.
-				 */
 				ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 						 errmsg("Interconnect error reading an incoming packet"),
 						 errdetail("error during read() call (error:%d).\n"
@@ -1757,7 +1761,9 @@ void SendStopMessage(int16 motNodeID)
 
 		if (FD_ISSET(conn->sockfd, &pEntry->readSet)) {
 			/* someone is trying to send stuff to us, let's stop 'em */
-			written = write(conn->sockfd, &m, sizeof(m));
+			while ((written = write(conn->sockfd, &m, sizeof(m))) < 0)
+                if (errno != EINTR)
+                    break;
 
 			if (written != sizeof(m)) {
 				/* how can this happen ? the kernel buffer should be
