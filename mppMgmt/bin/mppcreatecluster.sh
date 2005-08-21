@@ -164,7 +164,7 @@ CHK_PARAMS () {
 				LOG_MSG "[WARN]:-CLUSTER_NAME variable not set, will provide default value"
 				CLUSTER_NAME="MPP Cluster"
 		fi
-		export $CLUSTER_NAME
+		export CLUSTER_NAME
 
 		if [ x"" = x"$QD_HOSTNAME" ]; then
 				ERROR_EXIT "[FATAL]:QD_HOSTNAME variable not set" 2
