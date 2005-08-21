@@ -152,8 +152,8 @@ PG_PID=postmaster.pid
 PG_OPT=postmaster.opts
 PG_CONF=postgresql.conf
 PG_HBA=pg_hba.conf
-TRUSTED_SHELL="$SSH"
-TRUSTED_COPY="$SCP"
+if [ x"$TRUSTED_SHELL" = x"" ]; then TRUSTED_SHELL="$SSH"; fi
+if [ x"$TRUSTED_COPY" = x"" ]; then TRUSTED_COPY="$SCP"; fi
 PG_CONF_ADD_FILE=$WORKDIR/postgresql_conf_cdb_additions
 RECOVER_FLAG=/tmp/active_recovery_in_progress
 
