@@ -323,3 +323,7 @@
 # - Other Platforms & Clients -
 
 #transform_null_equals = false
+
+#MPPFaultAction = none     # none for disabling Fault Tolerance feature,
+                           # other valid parameters are readonly, continue and shutdown.
+  
