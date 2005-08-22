@@ -455,6 +455,7 @@ void *thread_DispatchCommand(void *arg)
 	int							stillRunningCount = 0;
     int                           counter = 0;
 	PGresult                      **pqresults = NULL;
+    int                            resultSetCounter = 0;
 
 	/*
 	 * In threads, we cannot use palloc, because it's not thread safe.
@@ -794,14 +795,8 @@ void *thread_DispatchCommand(void *arg)
 						
 				        if (pqresults != NULL)
                          {
-                            /*
-                             * TODO:   need to handle multiple result sets
-                             * check the segindex for segment case
-                             */
-                   
-                   // FIXME Turn off this assert because it keeps the system from coming up with mirroring defined
-                            //Assert(pqresults[segdbDesc->segindex] == NULL);
-                            pqresults[segdbDesc->segindex] = pRes;
+                            Assert(pqresults[resultSetCounter] == NULL);
+                            pqresults[resultSetCounter++] = pRes;
                          }
                          else		
 						  PQclear( pRes );

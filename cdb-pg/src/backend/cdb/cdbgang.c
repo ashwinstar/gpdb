@@ -1216,9 +1216,7 @@ reconnectSegDB(void *p_failedDB)
     bool ret = true;
     DoConnectParms *doConnectParmsAr;
     SegmentDatabaseDescriptor *failedDB = (SegmentDatabaseDescriptor *)p_failedDB;
-
-    /* close bad connection first */
-    PQfinish(failedDB->conn);
+    PGconn *orig_conn = failedDB->conn;
     failedDB->conn = NULL;
     
     doConnectParmsAr = (DoConnectParms *)palloc0( sizeof(DoConnectParms) );
@@ -1239,6 +1237,14 @@ reconnectSegDB(void *p_failedDB)
     {
         PQfinish(failedDB->conn);
         ret = false;
+        
+        /* set the orginal db back, otherwise it is set to NULL which may cause 
+         * dispatch code to fail.
+         */
+        if (!isMirroringEnabled())
+            failedDB->conn = orig_conn;
+        else
+            PQfinish(orig_conn);
     }
     else
     {

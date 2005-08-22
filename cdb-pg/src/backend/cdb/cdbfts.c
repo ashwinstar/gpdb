@@ -200,14 +200,14 @@ void FtsHandleNetFailure( SegmentDatabaseDescriptor **segDB, int numOfFailed )
             
         if (*ftsAction == FTS_SHUTDOWN)
         {
-            elog(ERROR, "MPP detects segment failures, system shuted down" );
+            elog(LOG, "MPP detects segment failures, system shuted down" );
             CdbShutdown();
             break;
         }
         else
         {
-            elog(ERROR, "MPP detects segment failures, system restarted" );
             FtsReConfigureMPP();
+            elog(ERROR, "MPP detects segment failures, system restarted" );
             break;
         }
     }
