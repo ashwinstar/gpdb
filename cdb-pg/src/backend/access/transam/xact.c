@@ -52,8 +52,6 @@
 #include "cdb/cdbgang.h"
 #include "cdb/cdbtm.h"
 
-extern int *ftsReadOnlyFlag;
-
 
 /*
  *	User-tweakable parameters
@@ -262,6 +260,7 @@ static void ShowTransactionStateRec(TransactionState state);
 static const char *BlockStateAsString(TBlockState blockState);
 static const char *TransStateAsString(TransState state);
 
+extern void FtsCondSetTxnReadOnly(bool *);
 
 /* ----------------------------------------------------------------
  *	transaction state accessors
@@ -1728,8 +1727,9 @@ StartTransaction(void)
 	FreeXactSnapshot();
 	XactIsoLevel = DefaultXactIsoLevel;
 	XactReadOnly = DefaultXactReadOnly;
-    if (*ftsReadOnlyFlag)
-        XactReadOnly = *ftsReadOnlyFlag;
+   
+    /* set read only by fts, if any fts action is read only */ 
+    FtsCondSetTxnReadOnly(&XactReadOnly);
 
 	/*
 	 * reinitialize within-transaction counters
