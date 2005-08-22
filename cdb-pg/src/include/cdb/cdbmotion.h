@@ -121,4 +121,6 @@ extern ReceiveReturnCode RecvTuple(int16 motNodeID, HeapTuple *tup_i);
 extern ReceiveReturnCode RecvTupleFrom(int16 motNodeID, HeapTuple *tup_i,
                                        int16 srcRoute);
 
+extern void SendStopMessage(int16 motNodeID);
+
 #endif /*CDBMOTION_H */

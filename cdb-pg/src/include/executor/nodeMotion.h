@@ -19,5 +19,6 @@ extern MotionState *ExecInitMotion(Motion *node, EState *estate);
 extern TupleTableSlot *ExecMotion(MotionState *node);
 extern void ExecEndMotion(MotionState *node);
 
+extern void ExecStopMotion(MotionState *node);
 
 #endif   /* NODEMOTION_H */

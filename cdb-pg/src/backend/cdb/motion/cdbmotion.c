@@ -441,11 +441,9 @@ void InitMotionLayerNode(int16 motNodeID, bool preserveOrder, TupleDesc tupDesc)
         pEntry->ready_tuples = NULL;
     }
 
-
     /* TODO:  Hard-coded right now. */
     pEntry->num_senders = getCdbSegmentCount();
     pEntry->num_stream_ends_recvd = 0;
-
 
     /* Initialize statistics counters. */
     pEntry->stat_total_chunks_sent 		= 0;
@@ -486,7 +484,6 @@ SendReturnCode SendTuple(int16 motNodeID, HeapTuple tuple, int16 targetRoute)
 	elog(DEBUG3, "Serializing HeapTuple for sending.");
 #endif
 
-
 	/* Create and store the serialized form, and some stats about it. */
 	oldCtxt = MemoryContextSwitchTo(s_motion_layer_state.motion_layer_mctx);
 	tcList = CvtHeapTupToChunks(tuple,&pMNEntry->ser_tup_info, 
@@ -506,13 +503,9 @@ SendReturnCode SendTuple(int16 motNodeID, HeapTuple tuple, int16 targetRoute)
     
     
     /* do the send. */
-    if( ! SendTupleChunkToAMS(motNodeID,targetRoute,tcList->p_first) )
+    if (!SendTupleChunkToAMS(motNodeID, targetRoute, tcList->p_first))
     {
-    	/* TODO: work must happen before we enable this. especially in
-    	 *		 the users of this function (nodeMotion.c)
-    	 */
-  		//rc = STOP_SENDING;
-  		rc = SEND_COMPLETE;
+  		rc = STOP_SENDING;
     }
     else
     {
@@ -521,7 +514,6 @@ SendReturnCode SendTuple(int16 motNodeID, HeapTuple tuple, int16 targetRoute)
     	
     	rc = SEND_COMPLETE;
     }
-    
     
     /* cleanup */
     deleteTCList( &tcList );
@@ -559,8 +551,7 @@ SendReturnCode SendEndOfStream(int16 motNodeID, int16 targetRoute)
     pData = s_eos_chunk_data.chunk_data;
 
     SetChunkDataSize(pData, 0);
-    SetChunkType(pData, TC_END_OF_STREAM);
-	
+    SetChunkType(pData, TC_END_OF_STREAM);	
 		
     SendEosToAMS(motNodeID, targetRoute, &s_eos_chunk_data);
 
@@ -593,8 +584,6 @@ ReceiveReturnCode RecvTuple(int16 motNodeID, HeapTuple *tup_i)
 
     pMNEntry = getMotionNodeEntry(motNodeID, "RecvTuple");
 
-	
-
     if (pMNEntry->preserve_order)
     {
         ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
@@ -607,8 +596,7 @@ ReceiveReturnCode RecvTuple(int16 motNodeID, HeapTuple *tup_i)
 
 	do
 	{
-
-		if( *tup_i == NULL && pMNEntry->moreNetWork )
+		if (*tup_i == NULL && pMNEntry->moreNetWork)
 		{
 			processIncomingChunks( pMNEntry, motNodeID, ANY_ROUTE );
 			*tup_i = htfifo_gettuple(pMNEntry->ready_tuples);

@@ -277,7 +277,7 @@ bool SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem 
 			conn = pEntry->conns + targetRoute;
 			sendChunk(conn, tcItem );
 			
-			if( conn->hasMirrorConn )
+			if (conn->hasMirrorConn)
 				sendChunk(conn->mirrorConn, tcItem);
 				
 		}
@@ -330,7 +330,7 @@ void SendEosToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcItem)
 		conn = pEntry->conns + i;
 		flushBuffer(conn);
 		
-		if( conn->hasMirrorConn )
+		if ( conn->hasMirrorConn )
 			flushBuffer( conn->mirrorConn );
 	}
 
@@ -692,12 +692,12 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 				
 				if( conn->hasMirrorConn )
 				{
-					if( FD_ISSET( conn->mirrorConn->sockfd, &wwset))
+					if(FD_ISSET(conn->mirrorConn->sockfd, &wwset))
 					{
 						elog(DEBUG5, "Sending a register message to sockfd: %d", conn->mirrorConn->sockfd);
 						sendRegisterMessage(sendingMotionState, conn->mirrorConn); 
 						
-						/*no longer interested in this for now.*/
+						/* no longer interested in this for now. */
 						FD_CLR(conn->mirrorConn->sockfd, &wset);
 						
 						outgoing_count++;
@@ -772,13 +772,16 @@ void TeardownInterconnect(void)
 				conn = pEntry->conns + i;
 				shutdown(conn->sockfd, SHUT_WR);
 				close(conn->sockfd);
+				conn->sockfd = -1;
 				
 				if( conn->hasMirrorConn )
 				{
 					shutdown(conn->mirrorConn->sockfd, SHUT_WR);
 					close(conn->mirrorConn->sockfd);
+
+					conn->mirrorConn->sockfd = -1;
 					pfree(conn->mirrorConn->pBuff);
-					pfree(conn->mirrorConn);					
+					pfree(conn->mirrorConn);
 				}
 				
 				pfree(conn->pBuff);
@@ -807,6 +810,7 @@ void TeardownInterconnect(void)
 				conn = pEntry->conns + i;
 				shutdown(pEntry->conns[i].sockfd, SHUT_WR);	
 				close(pEntry->conns[i].sockfd);
+				pEntry->conns[i].sockfd = -1;
 				
 				pfree(conn->pBuff);
 			}
@@ -848,6 +852,7 @@ MotionLayerState *createMotionState(int16 motNodeID, int numConns)
 {
 	MotionLayerState 	*pEntry;
 	bool 				found;
+	int					i;
 
 	pEntry = (MotionLayerState *)hash_search(hashtab, &motNodeID, HASH_ENTER, &found);
 
@@ -873,10 +878,16 @@ MotionLayerState *createMotionState(int16 motNodeID, int numConns)
     pEntry->motNodeId 	   = motNodeID;
     pEntry->numConns 	   = numConns;
     pEntry->conns 		   = palloc(pEntry->numConns * sizeof(MotionConn));
+
 	pEntry->highReadSock   = 0;
 
 	bzero(pEntry->conns, pEntry->numConns * sizeof(MotionConn));
 	
+	for (i=0; i<numConns; i++)
+	{
+		pEntry->conns[i].sockfd = -1;
+	}
+
 	FD_ZERO(&(pEntry->readSet));
 
 	return pEntry;
@@ -1009,16 +1020,17 @@ MotionLayerState  *startConnections(Slice *mySlice, int *highsock, fd_set *wset,
 		setupOutgoingConnection( conn, cdbProc, highsock, wset );	
 		(*connsStarted)++;
 		
-		/*setup mirror connection if not null*/
+		/* setup mirror connection if not null */
 		if( recvSlice->mirrorProcesses != NIL )
 		{
 			cdbProc = (CdbProcess*) list_nth(recvSlice->mirrorProcesses, i);
 			if( cdbProc != NULL )
 			{
-				conn->mirrorConn = palloc( sizeof(MotionConn) );
+				conn->mirrorConn = palloc(sizeof(MotionConn));
+				conn->mirrorConn->sockfd = -1;
 				conn->hasMirrorConn = true;
 			
-				setupOutgoingConnection( conn->mirrorConn, cdbProc, highsock, wset );
+				setupOutgoingConnection(conn->mirrorConn, cdbProc, highsock, wset);
 				(*connsStarted)++;
 			}
 		}
@@ -1244,7 +1256,7 @@ void readRegisterMessage(MotionConn *conn, int *incoming_count)
 	pEntry = getMotionState(msg.motNodeId);
 	
 	/* store the MotionConn in the right slot, make sure no one is there. */
-	if ((pEntry->conns + msg.srcRouteId)->sockfd != 0)
+	if ((pEntry->conns + msg.srcRouteId)->sockfd != -1)
 	{
 		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 						errmsg("Interconnect Error: Already a conn for (mnId=%d,routeId=%d)", 
@@ -1434,8 +1446,7 @@ bool flushBuffer(MotionConn *conn)
                     FD_ZERO(&rset);
                     FD_ZERO(&wset);
                     FD_SET(conn->sockfd, &wset);
-					/* TODO: uncomment this when ready to support "STOP MESSAGES" */
-					//FD_SET(conn->sockfd, &rset);
+					FD_SET(conn->sockfd, &rset);
 					n = select(conn->sockfd + 1, &rset, &wset, NULL, &timeout);
                     if (n < 0)
 					{
@@ -1641,7 +1652,7 @@ void doBroadcast(MotionLayerState *pEntry, TupleChunkListItem tcItem)
 		if (conn->stillActive) /* only send to still interested receivers. */
 			sendChunk(conn, tcItem);
 		
-		if( conn->hasMirrorConn && conn->mirrorConn->stillActive )
+		if (conn->hasMirrorConn && conn->mirrorConn->stillActive)
 			sendChunk(conn->mirrorConn, tcItem);		
 		
 	}
@@ -1777,7 +1788,6 @@ void dumpEntryConnections( MotionLayerState *pEntry )
 	elog( DEBUG3, "----------------------------------------------------------------");
 }
 
-#if 0
 /* declared in cdbmotion.h */
 /* Function SendStopMessage() sends a short "cancel" message to all motion-nodes
  * which are sending us tuples. This is the communication that is passed outbound 
@@ -1823,4 +1833,3 @@ void SendStopMessage(int16 motNodeID)
 		}
 	}
 }
-#endif

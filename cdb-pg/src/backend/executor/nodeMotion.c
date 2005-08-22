@@ -28,7 +28,6 @@
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 
-
 /*=========================================================================
  * FUNCTIONS PROTOTYPES
  */
@@ -70,8 +69,6 @@ ExecMotion(MotionState *node)
 	if( node->ps.state->es_cur_slice_idx == motion->motionID )
     	isReceiver = false;
     	
-	
-
     /* at the top here we basically decide:
      * -- SENDER vs. RECEIVER and
      * -- SORTED vs. UNSORTED
@@ -93,8 +90,6 @@ ExecMotion(MotionState *node)
 
 }
 
-
-
 static TupleTableSlot *execMotionUnsortedSender(MotionState *node)
 {
 	/* SENDER LOGIC */
@@ -110,8 +105,9 @@ static TupleTableSlot *execMotionUnsortedSender(MotionState *node)
 	
 	while( !done )
 	{
-		/*grab TupleTableSlot from our child.*/
+		/* grab TupleTableSlot from our child. */
 		outerNode = outerPlanState(node);		
+
 		outerTupleSlot = ExecProcNode(outerNode);
 		
 		if ( TupIsNull(outerTupleSlot) )
@@ -125,7 +121,8 @@ static TupleTableSlot *execMotionUnsortedSender(MotionState *node)
 		}
 		else
 		{
-			doSendTuple( motion, node, outerTupleSlot );	
+			doSendTuple(motion, node, outerTupleSlot);
+			/* doSendTuple() may have set node->stopRequested as a side-effect */
 		}	
 	}
 	
@@ -147,6 +144,11 @@ static TupleTableSlot *execMotionUnsortedReceiver(MotionState *node)
 	AssertState(motion->motionType == MOTIONTYPE_HASH ||
         (motion->motionType == MOTIONTYPE_FIXED && motion->numOutputSegs <= 1));
 
+	if (node->stopRequested)
+	{
+		SendStopMessage(motion->motionID);
+		return NULL;
+	}
 
 	recvRC = RecvTuple(motion->motionID, &tuple);
 	
@@ -199,8 +201,7 @@ static TupleTableSlot *execMotionSortedSender(MotionState *node)
 	PlanState  		*outerNode;
 	
 	/* TODO: remove shouldFree now with slice plans its not needed. */
-	Motion 			*motion = (Motion *)node->ps.plan;
-	
+	Motion 			*motion = (Motion *)node->ps.plan;	
 
     SendReturnCode 		sendRC;
     int16 				targetSegId;
@@ -215,20 +216,18 @@ static TupleTableSlot *execMotionSortedSender(MotionState *node)
     AssertState(node->tupleheap != NULL);
 
 
-	while( !done )
+	while(!done)
 	{	
 		AssertState(!node->noMoreChildTuples);
 	
-	
 		/* grab TupleTableSlot from our child. */
 		outerNode = outerPlanState(node);
-		
+
 		outerTupleSlot = ExecProcNode(outerNode);
-		if ( TupIsNull(outerTupleSlot) )
+		if (TupIsNull(outerTupleSlot))
 		{
 			/* Child plan says "No more tuples!" */
 			node->noMoreChildTuples = true;
-			
 			
 			/* Send an End-Of-Stream token, if it is broadcast. */
 			if (motion->numOutputSegs == 0)
@@ -250,20 +249,26 @@ static TupleTableSlot *execMotionSortedSender(MotionState *node)
 			/* should be a broadcast. */
 			Assert(motion->numOutputSegs == 0);
 			targetSegId = BROADCAST_SEGIDX;
-			
-			
+						
 			/* send the tuple out. */
-			sendRC = SendTuple(motion->motionID, outerTupleSlot->val, targetSegId+1 );
+			sendRC = SendTuple(motion->motionID, outerTupleSlot->val, targetSegId+1);
 			
 			if (sendRC == SEND_COMPLETE)
 				node->numTuplesToAMS++;
+			else if (sendRC == STOP_SENDING)
+			{
+				/* mark this slice as stopping, it would be nice if we
+				 * could walk the plan and find lower motion nodes and
+				 * tell them without setting something in the
+				 * Execution State ... but then we'd have to touch
+				 * every node */
+				node->stopRequested = true;
+			}
 			
 		}		
 	}
 	
 	return NULL;
-
-
 }
 
 
@@ -321,9 +326,13 @@ static TupleTableSlot *execMotionSortedReceiver(MotionState *node)
     AssertState(motion->motionType == MOTIONTYPE_FIXED &&
                 motion->numOutputSegs <= 1);
     AssertState(motion->sendSorted);
-    AssertState(node->tupleheap != NULL);
+    AssertState(node->tupleheap != NULL);	
 
-
+	if (node->stopRequested)
+	{
+		SendStopMessage(motion->motionID);
+		return NULL;
+	}
 
 	/* RECEIVER LOGIC */
 	if (!node->tupleheapReady)
@@ -392,7 +401,7 @@ static TupleTableSlot *execMotionSortedReceiver(MotionState *node)
 
 
 
-void execMotionSortedReceiverFirstTime(MotionState *node )
+void execMotionSortedReceiverFirstTime(MotionState *node)
 {
 	HeapTuple inputTuple;
 	Motion 	  *motion = (Motion *)node->ps.plan;
@@ -498,7 +507,6 @@ ExecInitMotion(Motion *node, EState *estate)
 	prior_es_cur_slice_idx = estate->es_cur_slice_idx; /* save */
 	prior_es_cur_root_idx = estate->es_cur_root_idx; /* save */
 
-
 	/*
 	 * create state structure
 	 */
@@ -582,6 +590,8 @@ ExecInitMotion(Motion *node, EState *estate)
 	motionstate->numTuplesToParent  = 0;
 	motionstate->numTuplesToDeepSix = 0;
 	motionstate->numTuplesInHeap    = 0;
+
+	motionstate->stopRequested = false;
 	
     elog(DEBUG2, "Motion-node %d type %s:  read from child = %s, from AMS = %s",
         node->motionID,
@@ -1003,7 +1013,7 @@ void doSendEndOfStream( Motion *motion, MotionState *node )
  *			Also, the contentid maps directly to the routeid.
  *
  */
-void doSendTuple( Motion *motion, MotionState *node, TupleTableSlot *outerTupleSlot )
+void doSendTuple(Motion *motion, MotionState *node, TupleTableSlot *outerTupleSlot)
 {
 	int16 targetRoute;
 	
@@ -1060,21 +1070,38 @@ void doSendTuple( Motion *motion, MotionState *node, TupleTableSlot *outerTupleS
 		Assert( node->numTuplesByHashSegIdx != NULL );
 		node->numTuplesByHashSegIdx[ hval ]++;
 
-		if( node->hashSegIdxMask != NULL && !node->hashSegIdxMask[hval] )
+		if(node->hashSegIdxMask != NULL && !node->hashSegIdxMask[hval])
 		{
 			/* this tuple will be deep-sixed! */
 			node->numTuplesToDeepSix++;
 			return;
 		}
-
 	}
 	
-	
 	/* send the tuple out. */
-	sendRC = SendTuple(motion->motionID, outerTupleSlot->val, targetRoute );
+	sendRC = SendTuple(motion->motionID, outerTupleSlot->val, targetRoute);
 	
+	Assert(sendRC == SEND_COMPLETE || sendRC == STOP_SENDING);
+
 	if (sendRC == SEND_COMPLETE)
 		node->numTuplesToAMS++;
-	
+	else if (sendRC == STOP_SENDING)
+		node->stopRequested = true;
 
+	return;
+}
+
+/* 
+ * Mark this node as "stopped." When ExecProcNode() is called on a
+ * stopped motion node it should behave as if there are no tuples
+ * available.
+ *
+ * ExecProcNode() on a stopped motion node should also notify the
+ * "other end" of the motion node of the stoppage.
+ */
+void ExecStopMotion(MotionState *node)
+{
+    AssertArg(node != NULL);
+
+	node->stopRequested = true;
 }
