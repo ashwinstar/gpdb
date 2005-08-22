@@ -510,40 +510,38 @@ Gang *buildGangDefinition(GangType type, int size, int content)
 			//segDesc->query_db = NULL;
 			//segDesc->sql = NULL;
 			
-			if (p->definedprimary && 
-			    type == GANGTYPE_MIRROR_WRITER) 
-			    {
-			    	j++;
-			    	if (cdb_component_dbs->segment_db_info[j].segindex == p->segindex &&
+			if (p->definedprimary && type == GANGTYPE_MIRROR_WRITER) 
+			{
+				j++;
+				if (cdb_component_dbs->segment_db_info[j].segindex == p->segindex &&
 			    		!cdb_component_dbs->segment_db_info[j].definedprimary)
-                 {
-			    		p = &cdb_component_dbs->segment_db_info[j];
-                     i=j;
-                 }
-                 else
-			    	{
-                     return NULL;
-			    	}
-			    
-			    }
-			else if ((!p->definedprimary && !p->isprimary)) 
+                {
+			    	p = &cdb_component_dbs->segment_db_info[j];
+                	i=j;
+                }
+                else
 			    {
-			    	j++;
-			    	if (cdb_component_dbs->segment_db_info[j].segindex == p->segindex &&
-			    		cdb_component_dbs->segment_db_info[j].definedprimary)
-			    		{
-			    			/* Do we want to change p ? */
-			    			p = &cdb_component_dbs->segment_db_info[j];	
-                         i=j;
-			    		}
-			    	else
-			    		{
-			    			elog(PANIC,"building Gang:  No primary segdb found!!!!");
-                         continue;
-			    		}
-			    
+                    return NULL;
+			    }    
+			}
+			else if ((!p->definedprimary && !p->isprimary)) 
+			{
+			   	j++;
+			   	if (cdb_component_dbs->segment_db_info[j].segindex == p->segindex &&
+				   		cdb_component_dbs->segment_db_info[j].definedprimary)
+			    {
+			    	/* Do we want to change p ? */
+			    	p = &cdb_component_dbs->segment_db_info[j];	
+                    i=j;
 			    }
-                
+			    else
+			    {
+			    	elog(PANIC,"building Gang:  No primary segdb found!!!!");
+                    continue;
+			    }
+			}
+			
+			
             if (p->valid)
             {
                 if ( type == GANGTYPE_MIRROR_WRITER && p->isprimary )

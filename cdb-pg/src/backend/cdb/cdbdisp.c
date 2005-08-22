@@ -165,21 +165,27 @@ void CdbDispatchCommandInt( const char *szCommand, DispatchTargetSet targetSet,
 	if ( targetSet == DTS_SEGDB )
 	{
 		int k = 0;
-		int m = 0;
+		int totalParticipants = 0;
 		
+		/* TODO: is getCdbSegmentCount() really the right call here.  shouldn't we allocate
+		 *       gangs based on information from segdbList above?
+		 *
+		 * TODO: why are we allocating a mirrorGang EVERY SINGLE time.  i think 
+		 *		 this should only happen for top-slices.  
+		 */
 		Gang * primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, getCdbSegmentCount(), -1);
 		Gang * mirrorGang = allocateGang(GANGTYPE_MIRROR_WRITER, getCdbSegmentCount() , -1);
 		Assert(primaryGang != NULL);
 		
-		m = primaryGang->size;
+		totalParticipants = primaryGang->size;
 		if (mirrorGang != NULL)
-			m += mirrorGang->size;
+			totalParticipants += mirrorGang->size;
 			
-		max_threads =  1 + (m-1) / cdb_connections_per_thread;
+		max_threads =  1 + (totalParticipants-1) / cdb_connections_per_thread;
 		dispatchCommandParmsAr = (DispatchCommandParms *)
 							palloc0( max_threads * sizeof(DispatchCommandParms) );
 		
-		segdbList = palloc(m * sizeof(SegmentDatabaseDescriptor*));
+		segdbList = palloc(totalParticipants * sizeof(SegmentDatabaseDescriptor*));
 		mustFreeSegdbList = true;
 		segdbListCount = 0;
 		for (k = 0; k < primaryGang->size; k++)
@@ -187,12 +193,15 @@ void CdbDispatchCommandInt( const char *szCommand, DispatchTargetSet targetSet,
 			segdbList[segdbListCount] = &primaryGang->db_descriptors[k];
 			segdbListCount++;
 		}
+		
 		if (mirrorGang != NULL)
+		{
 			for (k = 0; k < mirrorGang->size; k++)
 			{
 				segdbList[segdbListCount] = &mirrorGang->db_descriptors[k];
 				segdbListCount++;
 			}
+		}
 		
 		elog(DEBUG2,"CdbDispatchCommandInt Dispatching to DTS_SEGDB segdbs = %d", segdbListCount);	
 		
@@ -466,7 +475,7 @@ void *thread_DispatchCommand(void *arg)
 	 */
 	for ( i=0; i<db_count; i++ )
 	{
-		//elog(DEBUG3, "thread_DispatchCommand working on %d", i);
+		elog(DEBUG3, "thread_DispatchCommand working on %d of %d commands", i, db_count);
 		segdbDesc = segdbDescPtrArray[i];
 		conn = segdbDesc->conn;
 		q = segdbDesc->segment_database_info;
@@ -508,7 +517,11 @@ void *thread_DispatchCommand(void *arg)
 				setCancelFlag();
 			continue;
 		}
-		//elog(DEBUG3, "thread_DispatchCommand sending %s", szCommand);
+		
+		elog( DEBUG5, "thread_DispatchCommand sending command %.8s... sent to "
+				"port: %s with options %s and motionListener: %d", szCommand,
+				PQport(conn), PQoptions(conn), PQmotionListener(conn) );
+		
 		/*
 		 * Submit the command asynchronously.
 		 */
@@ -517,7 +530,7 @@ void *thread_DispatchCommand(void *arg)
 			PQExpBufferData buffer;
 			initPQExpBuffer(&buffer);
 			
-			//elog(DEBUG3, "thread_DispatchCommand failed to send %s", szCommand);
+			elog(DEBUG3, "thread_DispatchCommand failed to send %s", szCommand);
 			
 			appendPQExpBuffer( &buffer, "SQL Command error: "
 										"segindex %d isprimary %c, %s",
@@ -1614,7 +1627,7 @@ void CdbDispatchPlan(QueryDesc *queryDesc)
 
 
 		/* dispatch the plan to our mirrorGang if we have one. */
-		if( mirrorGang != NULL )
+		if( mirrorGang != NULL && queryDesc->operation != CMD_SELECT)
 		{
 			SegmentDatabaseDescriptor ** sdpMirror;
 			

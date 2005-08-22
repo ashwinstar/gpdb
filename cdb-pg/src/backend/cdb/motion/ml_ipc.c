@@ -178,6 +178,7 @@ int findMyRouteId(Slice *slice);
 CdbProcess *findCdbProcess(RegisterMessage *msg);
 
 bool flushBuffer(MotionConn *conn);
+void dumpEntryConnections( MotionLayerState *pEntry );
 
 /*=========================================================================
  * VISIBLE FUNCTIONS
@@ -328,6 +329,9 @@ void SendEosToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcItem)
 	{		
 		conn = pEntry->conns + i;
 		flushBuffer(conn);
+		
+		if( conn->hasMirrorConn )
+			flushBuffer( conn->mirrorConn );
 	}
 
 #ifdef AMS_VERBOSE_LOGGING	
@@ -718,8 +722,9 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 				elog(DEBUG3, "conn # %d has data!", conn->sockfd);
 				
 				readRegisterMessage(conn, &incoming_count);				
-				FD_CLR(conn->sockfd, &rset);
+				FD_CLR(conn->sockfd, &rset);	
 				list_delete(incompleteConns, cell);
+				pfree(conn->pBuff);
 			}
 		}
 
@@ -772,7 +777,8 @@ void TeardownInterconnect(void)
 				{
 					shutdown(conn->mirrorConn->sockfd, SHUT_WR);
 					close(conn->mirrorConn->sockfd);
-					pfree(conn->mirrorConn);
+					pfree(conn->mirrorConn->pBuff);
+					pfree(conn->mirrorConn);					
 				}
 				
 				pfree(conn->pBuff);
@@ -1196,6 +1202,7 @@ void sendRegisterMessage(MotionLayerState *pEntry, MotionConn *conn)
 void readRegisterMessage(MotionConn *conn, int *incoming_count)
 {
 	MotionLayerState 	*pEntry;	
+	MotionConn			*newConn;
 	RegisterMessage 	msg;
 	int 				n;
 	int 				bytesRead = 0;	
@@ -1245,21 +1252,31 @@ void readRegisterMessage(MotionConn *conn, int *incoming_count)
 						errdetail("Should not have a non-NULL connection in that slot.")));	
 	}
 	
-	pEntry->conns[msg.srcRouteId] = (MotionConn)*conn;
 	
 	/* find and validate our RegisterMessage based on the CdbProcess. */
 	proc = findCdbProcess(&msg);
-		
-	conn->remoteHost 	  = proc->listenerAddr;
-	conn->remotePort 	  = msg.srcListenerPort;
-	conn->remoteContentId = msg.srcContentId;
 	
-	elog(DEBUG3, "readRegisterMessage: conn->sockfd: %d", conn->sockfd);
+	newConn = pEntry->conns + msg.srcRouteId;	
 	
-	FD_SET(conn->sockfd, &(pEntry->readSet));
+	newConn->sockfd		   	 = conn->sockfd;
+	newConn->pBuff	     	 = palloc(MAX_PACKET_SIZE);
+	newConn->msgSize 		 = 0;
+	newConn->tupleCount 	 = 0;
+	newConn->stillActive 	 = true;
+	newConn->remoteHost 	 = proc->listenerAddr;
+	newConn->remotePort 	 = msg.srcListenerPort;
+	newConn->remoteContentId = msg.srcContentId;
+	newConn->hasMirrorConn   = false;
 	
-	if (conn->sockfd > pEntry->highReadSock)
-		pEntry->highReadSock = conn->sockfd;
+	
+	FD_SET(newConn->sockfd, &(pEntry->readSet));
+	
+	if (newConn->sockfd > pEntry->highReadSock)
+		pEntry->highReadSock = newConn->sockfd;
+	
+#ifdef AMS_VERBOSE_LOGGING	
+	dumpEntryConnections( pEntry );
+#endif
 
 	(*incoming_count)++;
 }
@@ -1509,6 +1526,12 @@ void readPacket(MotionConn *conn)
 			}
 			else
 			{
+
+				/* TODO: would be nice to read the errno and try and
+				 * 		 provide more useful info as to why this
+				 * 		 happened.
+				 */
+
 				ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 						 errmsg("Interconnect error reading an incoming packet"),
 						 errdetail("error during read() call (error:%d).\n"
@@ -1521,8 +1544,8 @@ void readPacket(MotionConn *conn)
 		{
 			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 					 errmsg("Interconnect error reading an incoming packet"),
-					 errdetail("Socket closed from remote connection).\n"
-						   "contentId=%d at '%s':%d",conn->remoteContentId, 
+					 errdetail("Socket (fd=%d) closed from remote connection).\n"
+						   "contentId=%d at '%s':%d",conn->sockfd, conn->remoteContentId, 
 						   conn->remoteHost,conn->remotePort)));
 		}
 		else
@@ -1728,6 +1751,30 @@ CdbProcess *findCdbProcess(RegisterMessage *msg)
 	}
 
 	return proc;
+}
+
+void dumpEntryConnections( MotionLayerState *pEntry )
+{
+	int i;
+	
+	elog( DEBUG3, "----------------pEntry motNodeID: %d conn dump------------------", pEntry->motNodeId);
+	for( i=0; i < pEntry->numConns; i++ )
+	{
+		MotionConn *conn = pEntry->conns + i;
+		
+		elog( DEBUG3, "conn#%d (sockfd=%d, remote host= '%s' port=%d, contentId: %d )",
+				i, conn->sockfd, conn->remoteHost,	conn->remotePort, conn->remoteContentId );
+		
+		if( conn->hasMirrorConn )
+		{
+			conn = conn->mirrorConn;
+			elog( DEBUG3, "conn#%d MIRROR (sockfd=%d, remote host= '%s' port=%d, contentId: %d )",
+				i, conn->sockfd, conn->remoteHost,	conn->remotePort, conn->remoteContentId );
+		
+		}	
+		
+	}
+	elog( DEBUG3, "----------------------------------------------------------------");
 }
 
 #if 0
