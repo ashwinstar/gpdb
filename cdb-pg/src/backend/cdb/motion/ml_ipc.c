@@ -725,6 +725,7 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 				FD_CLR(conn->sockfd, &rset);	
 				list_delete(incompleteConns, cell);
 				pfree(conn->pBuff);
+				conn->pBuff = NULL;
 			}
 		}
 
@@ -774,17 +775,20 @@ void TeardownInterconnect(void)
 				close(conn->sockfd);
 				conn->sockfd = -1;
 				
-				if( conn->hasMirrorConn )
+				if (conn->hasMirrorConn)
 				{
 					shutdown(conn->mirrorConn->sockfd, SHUT_WR);
 					close(conn->mirrorConn->sockfd);
 
 					conn->mirrorConn->sockfd = -1;
 					pfree(conn->mirrorConn->pBuff);
+					conn->mirrorConn->pBuff = NULL;
 					pfree(conn->mirrorConn);
+					conn->mirrorConn = NULL;
 				}
 				
 				pfree(conn->pBuff);
+				conn->pBuff = NULL;
 			}
 			pfree(pEntry->conns);
 			
@@ -813,10 +817,39 @@ void TeardownInterconnect(void)
 				pEntry->conns[i].sockfd = -1;
 				
 				pfree(conn->pBuff);
+				conn->pBuff = NULL;
 			}
 
 			pfree(pEntry->conns);
 		}		
+	}
+
+	/* free resources (we're especially concerned about the sockets)
+	 * associated with incomplete connections: when we start up a
+	 * query like an INSERT, we have an instantiated gang, so the
+	 * interconnect has some connections stitting around which never
+	 * are used. We need to free them! */
+	foreach(cell, incompleteConns)
+	{
+		conn = (MotionConn *)lfirst(cell);
+
+#ifdef AMS_VERBOSE_LOGGING
+		elog(LOG, "Found incomplete conn.");
+#endif
+
+		if (conn->sockfd != -1)
+		{
+			shutdown(conn->sockfd, SHUT_WR);	
+			close(conn->sockfd);
+			conn->sockfd = -1;
+		}
+		if (conn->pBuff != NULL)
+		{
+			pfree(conn->pBuff);
+			conn->pBuff = NULL;
+		}
+		
+		list_delete(incompleteConns, cell);
 	}
 
 	list_free(incompleteConns);
@@ -870,9 +903,9 @@ MotionLayerState *createMotionState(int16 motNodeID, int numConns)
          * with the same ID is also not allowed.  So, this is pretty likely a
          * serious problem.
          */
-        ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-            errmsg("Interconect Error: A HTAB entry for motion node %d already exists.",
-            motNodeID)));
+		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						errmsg("Interconect Error: A HTAB entry for motion node %d already exists.", motNodeID),
+						errdetail("conns %p numConns %d first sock %d highreadsock %d", pEntry->conns, pEntry->numConns, pEntry->conns[0].sockfd, pEntry->highReadSock)));
     }
 
     pEntry->motNodeId 	   = motNodeID;
@@ -1259,9 +1292,9 @@ void readRegisterMessage(MotionConn *conn, int *incoming_count)
 	if ((pEntry->conns + msg.srcRouteId)->sockfd != -1)
 	{
 		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-						errmsg("Interconnect Error: Already a conn for (mnId=%d,routeId=%d)", 
-							   msg.motNodeId, msg.srcRouteId),
-						errdetail("Should not have a non-NULL connection in that slot.")));	
+						errmsg("Interconnect Error: Already a conn for (mnId=%d,routeId=%d,%d)", 
+							   msg.motNodeId, msg.srcRouteId, (pEntry->conns + msg.srcRouteId)->sockfd),
+						errdetail("Should not have a non-NULL connection in that slot.")));
 	}
 	
 	
