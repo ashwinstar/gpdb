@@ -18,7 +18,6 @@
 #include "cdb/cdbdisp.h"
 #include "access/xact.h"
 #include "cdb/cdbfts.h"
-#include "cdb/cdbgang.h"
 #include "cdb/cdblink.h"
 #include "cdb/cdbtm.h"
 #include "commands/dbcommands.h"
@@ -26,18 +25,14 @@
 
 static bool         *ftsEnabled;
 static LWLockId     ftsControlLock;
-int                 *ftsSyncCount;
+static int          *ftsSyncCount;
 static int          *ftsAction;
-bool                *ftsReadOnlyFlag;
+static bool         *ftsReadOnlyFlag;
 
-static int          curAction;
 static PQExpBuffer  entryBuffer=NULL;
 static PGconn       *entryConn=NULL;
 static int          localFtsSyncCount=-1;
 
-
-static bool FtsDoAction(int, SegmentDatabaseDescriptor *);
-static int FtsNextAction(void);
 static void CdbShutdown(void);
 static void initPQConnectionBuffer(CdbComponentDatabaseInfo *, PQExpBuffer, bool);
 static void incFtsSyncCount(void);
@@ -81,52 +76,6 @@ void FtsShmemInit(void)
         }
     }
 }
-
-/*
- * do action
- */
-static bool FtsDoAction(int p_action, SegmentDatabaseDescriptor *failedDB)
-{
-    bool ret=false;
-    switch ( p_action )
-    {
-        case FTS_RECONNECT:
-            ret = FtsReConnectDB(failedDB);
-            break;
-        case FTS_READONLY:
-            CondSetMPPReadonly();
-        case FTS_CONTINUE:
-            FtsReConfigureMPP();
-            elog(ERROR, "MPP detects segment failures, system restarted" );
-            break;
-        case FTS_SHUTDOWN:
-            CdbShutdown();
-            break;
-    }
-    
-    return ret;
-}
-
-/*
- * Get Next Action
- */
-static int FtsNextAction(void)
-{
-    switch ( curAction )
-    {
-        case FTS_RECONNECT:
-            return curAction++;
-        case FTS_CONTINUE:
-        case FTS_READONLY:
-        case FTS_SHUTDOWN:
-            curAction = -1;
-            return *ftsAction;
-        default:
-            /* error case */
-            return -1;
-    }
-}
-
 
 /*
  * Set System Read Only
@@ -176,7 +125,10 @@ bool FtsReConfigureMPP(void)
 {
     /* synchronzie fts */
     LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
-
+    
+    /* set MPP to be read only if necessary */
+    CondSetMPPReadonly();
+    
     /* this code copied from verifyFtsSyncCount to avoid lock deadlock */
     if ( localFtsSyncCount == -1 )
     {
@@ -222,35 +174,71 @@ static int getFtsSyncCount(void)
 
 void enableMirroring(void)
 {
-    *ftsEnabled = true;
+    if (*ftsAction != FTS_NONE)
+        *ftsEnabled = true;
 }
 
-void handleNetFailure( SegmentDatabaseDescriptor **segDB, int numOfFailed )
+bool isMirroringEnabled(void)
 {
-    int i;
+    return *ftsEnabled;
+}
+
+void FtsHandleNetFailure( SegmentDatabaseDescriptor **segDB, int numOfFailed )
+{
     SegmentDatabaseDescriptor *failedDB;
-    if (!*ftsEnabled)
-        return;
-    
+
+    int i;
     for (i=0;i<numOfFailed;i++)
     {
-    	int nextAction;
-    	
         failedDB = segDB[i];
 
-        curAction = 0;
-        
-        while ((nextAction=FtsNextAction()) != -1)
+        if (FtsReConnectDB(failedDB))
+            continue;
+            
+        if (!*ftsEnabled)
+            continue;
+            
+        if (*ftsAction == FTS_SHUTDOWN)
         {
-            if ( !FtsDoAction(nextAction, failedDB) )
-            {
-                if (nextAction > FTS_RECONNECT)
-                    return;
-            }
-            else
-                break;
+            elog(ERROR, "MPP detects segment failures, system shuted down" );
+            CdbShutdown();
+            break;
+        }
+        else
+        {
+            elog(ERROR, "MPP detects segment failures, system restarted" );
+            FtsReConfigureMPP();
+            break;
         }
     }
+}
+
+/* call by createGang during creating connections */
+void
+FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor *segdbDesc, int size)
+{
+    int i;
+    if (!isMirroringEnabled())
+        return;
+        
+    /* set MPP to be read only if necessary */
+    CondSetMPPReadonly();
+
+    LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+    incFtsSyncCount();
+    for ( i=0;i<size;i++ )
+    {
+        if ( (segdbDesc+i)->conn == NULL )
+            markSegDBStatus((segdbDesc+i)->segment_database_info->dbid, false);
+    }
+    incFtsSyncCount();
+    LWLockRelease(ftsControlLock);
+    
+    /* error out if this sets read only flag, at this stage the read only transaction
+     * checking has passed, so error out, but do not error out if tm is in recoery
+     */
+    if (*ftsReadOnlyFlag && !isTMInRecovery())
+        elog(ERROR, "MPP detects segment failures" );
 }
 
 static void initPQConnectionBuffer(CdbComponentDatabaseInfo *q, PQExpBuffer buffer, bool utility)
@@ -342,25 +330,6 @@ void markSegDBStatus( int dbid, bool state )
     entryConn = NULL;
 }
 
-/* call by createGang during creating connections */
-void
-markGangStatus(SegmentDatabaseDescriptor *segdbDesc, int size)
-{
-    int i;
-    if (!isMirroringEnabled())
-        return;
-    
-    LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
-    incFtsSyncCount();
-    for ( i=0;i<size;i++ )
-    {
-        if ( (segdbDesc+i)->conn == NULL )
-            markSegDBStatus((segdbDesc+i)->segment_database_info->dbid, false);
-    }
-    incFtsSyncCount();
-    LWLockRelease(ftsControlLock);
-}
-
 /*
  * Show hook routine for "cdb_role" option.
  *
@@ -371,14 +340,19 @@ show_cdb_set_read_only( void )
 {
     return *ftsReadOnlyFlag?"TRUE":"FALSE";
 }
+
+void
+FtsCondSetTxnReadOnly( bool *XactFlag)
+{
+    if (!isMirroringEnabled())
+        return;
+    
+    if (*ftsReadOnlyFlag && Cdb_role != CDB_ROLE_UTILITY)
+        *XactFlag = true;
+}
+
 /*
- * Assign hook routine for "cdb_role" option.  This variablle has context
- * PGC_SUSET so that is can only be set by a superuser via the SET command.
- * (It can also be set using an option on postmaster start, but this isn't
- * interesting beccause the derived global CdbRole is always set (along with
- * CdbSessionRole) on backend startup for a new connection.
- *
- * See src/backend/util/misc/guc.c for option definition.
+ * Set Read only 
  */
 bool
 assign_cdb_set_read_only( bool newval, bool doit, GucSource source )
@@ -424,6 +398,8 @@ int convertFaultActionValue(char *action)
     	    return FTS_SHUTDOWN;
     else if (strcasecmp(action, "continue") == 0)
 	    return FTS_CONTINUE;
+    else if (strcasecmp(action, "none") == 0)
+        return FTS_NONE;
     else
     {
 	    elog(LOG, "FTS: Invalid Fault Tolerance Action: %s", cdb_fault_action_string);

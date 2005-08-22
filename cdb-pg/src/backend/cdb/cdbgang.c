@@ -42,6 +42,7 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdbgang.h"
 #include "cdb/cdbfts.h"
+#include "cdb/cdbtm.h"
 
 /*
  *	thread_DoConnect is the thread proc used to perform the connection to one of the qExecs.
@@ -323,8 +324,8 @@ Gang *createGang(GangType type, int size, int content)
 	 * palloced before potentially calling ereport.
 	 */
     if (successful_connections != newGangDefinition->size &&
-        type !=GANGTYPE_MIRROR_WRITER &&
-        mirroringNotConfigured)
+        ((type !=GANGTYPE_MIRROR_WRITER && mirroringNotConfigured) ||
+          !isMirroringEnabled()))
 	{
         for ( i=0; i<segdb_count; i++ )		
         {
@@ -349,7 +350,10 @@ Gang *createGang(GangType type, int size, int content)
 			appendStringInfo(&buffer, "CDBGANG --- Could not establish connection with any" 
 					                  " database for segindex %d", 
 					                  i);
-
+                                      
+            /* claenup and rollback current DTM transaction */
+            discardDtxTransaction();
+            
 			ereport(FATAL,
 					(errcode(ERRCODE_SQLSERVER_REJECTED_ESTABLISHMENT_OF_SQLCONNECTION),
 					 errmsg(buffer.data),
@@ -366,7 +370,8 @@ Gang *createGang(GangType type, int size, int content)
     
     if (successful_connections != newGangDefinition->size)
     {
-        markGangStatus(newGangDefinition->db_descriptors, newGangDefinition->size);
+        FtsHandleGangConnectionFailure(newGangDefinition->db_descriptors,
+                                       newGangDefinition->size);
         disconnectAndDestroyGang(newGangDefinition);
         newGangDefinition->size = 0;
     }
@@ -791,9 +796,10 @@ Gang *allocateGang(GangType type, int size, int content)
 		case GANGTYPE_PRIMARY_WRITER: 
 			if (primaryWriterGang == NULL)
              {
-                do {
-				   gp = primaryWriterGang = createGang(type, size, content);
-                } while (gp->size == 0);
+                /* try twice for creating gang */
+		        gp = primaryWriterGang = createGang(type, size, content);
+                if (gp->size == 0)
+                    gp = primaryWriterGang = createGang(type, size, content);
              }
              else
 		      	gp = primaryWriterGang;
@@ -802,10 +808,12 @@ Gang *allocateGang(GangType type, int size, int content)
 		case GANGTYPE_MIRROR_WRITER:
 			if (mirrorWriterGang == NULL && !mirroringNotConfigured)
 			{
-                 do
-                 {
+                /* try twice for creating gang */
+                gp = mirrorWriterGang = createGang(type, size, content);
+                if (gp != NULL && gp->size == 0)
+                {
 			         gp = mirrorWriterGang = createGang(type, size, content);
-                 } while (gp != NULL && gp->size == 0);
+                }
 
                 if (gp == NULL)
                    mirroringNotConfigured = true;

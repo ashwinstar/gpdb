@@ -1039,3 +1039,9 @@ discardDtxTransaction(void)
         }
     }
 }
+
+bool
+isTMInRecovery(void)
+{
+    return duringRecovery;
+}

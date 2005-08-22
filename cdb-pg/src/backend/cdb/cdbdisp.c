@@ -432,7 +432,7 @@ CdbDispatchResults *CdbCheckDispatchResultInt(void ***p_failedSegDB, int *numOfF
     
     /* handle network failures */
     if (numOfFailed != NULL && *numOfFailed > 0)
-        handleNetFailure( *failedSegDB, *numOfFailed );
+        FtsHandleNetFailure( *failedSegDB, *numOfFailed );
 
 	return results;	
 }
