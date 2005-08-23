@@ -540,6 +540,8 @@ CREATE_QD_DB () {
 		LOG_MSG "[INFO]:-Initializing QD Postgres instance $MPP_DIR"
 		RUN_COMMAND "$INITDB -E $ENCODING -D $MPP_DIR" 
 		LOG_MSG "[INFO]:-Completed QD instance initialization"
+		$ECHO "#MPP specific configuration parameters for QD instance database" >> ${MPP_DIR}/$PG_CONF
+		$ECHO "#--------------------------------------------------------------" >> ${MPP_DIR}/$PG_CONF
 		LOG_MSG "[INFO]:-Setting the QD port to $MPP_PORT"
 		$ECHO "port=$MPP_PORT" >> ${MPP_DIR}/$PG_CONF
 		if [ $? -ne 0 ]; then
