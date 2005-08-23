@@ -164,11 +164,9 @@ int getCdbSegmentCount(void)
 	if ( Cdb_role == CDB_ROLE_UTILITY )
 	{
 		
-		/*log_backtrace();*/
-		
 		if (CdbIdentity.numsegments <= 0) 
 		{
-			elog(DEBUG5, "getCdbSegmentCount called when Cdb_role == utility");
+			elog(DEBUG5, "getCdbSegmentCount called when Cdb_role == utility. returning zero segments.");
 			return 0;
 		}
 		
