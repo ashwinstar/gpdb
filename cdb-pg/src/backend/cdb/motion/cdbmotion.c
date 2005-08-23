@@ -290,6 +290,8 @@ void ResetMotionLayer(bool flushCommLayer)
 	/* TODO:  Any clearing or resetting of the networking layer should happen
 	 *        here.
 	 */
+	hash_destroy(s_motion_layer_state.motionnode_map);
+	hash_destroy(s_motion_layer_state.chunksort_map);
 
 	/* Free all memory used by the Motion Layer in the processing of the
 	 * previous query.
@@ -298,8 +300,6 @@ void ResetMotionLayer(bool flushCommLayer)
 
 	/* Reinitialize the dynamic data-structures that the Motion Layer uses. */
 	initMotionLayerStructs();
-	
-	TeardownInterconnect();
 }
 
 
