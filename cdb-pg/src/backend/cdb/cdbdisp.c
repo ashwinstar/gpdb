@@ -167,11 +167,18 @@ void CdbDispatchCommandInt( const char *szCommand, DispatchTargetSet targetSet,
 		int k = 0;
 		int totalParticipants = 0;
 		
-		/* TODO: is getCdbSegmentCount() really the right call here.  shouldn't we allocate
+		/* Q: is getCdbSegmentCount() really the right call here.  shouldn't we allocate
 		 *       gangs based on information from segdbList above?
+		 * 
+		 * A: yes, if targetSet is DTS_SEGDB, the segdbList isn't passed in.
 		 *
-		 * TODO: why are we allocating a mirrorGang EVERY SINGLE time.  i think 
+		 * Q: why are we allocating a mirrorGang EVERY SINGLE time.  i think 
 		 *		 this should only happen for top-slices.  
+		 * 
+		 * A: allocating a gang DOES NOT create a new gang, unless there isn't a gang of that
+		 * 		type available.  primary_writer and mirror_writer gangs always get re-used, as 
+		 * 		there can't be more than one primary_writer or mirror_writer.  So, these 
+		 * 		calls just keep getting the same pointer back each time they are called.
 		 */
 		Gang * primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, getCdbSegmentCount(), -1);
 		Gang * mirrorGang = allocateGang(GANGTYPE_MIRROR_WRITER, getCdbSegmentCount() , -1);
