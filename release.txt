@@ -1,4 +1,8 @@
 <<<NEW vi: set expandtab ts=4: >>>
+COPY command integration with DTM completed. COPY now relies on the 
+    transaction manager to issue a ROLLBACK if the dispatcher throws
+    an error.
+NAME datatype is now valid for hashing.
 Major simplifications to the cdbloader front end: removed the hashing
     logic, removed all communications to the admin schema. The loader
     now connects only to the entry node, and the entry node information
