@@ -454,7 +454,7 @@ void *thread_DispatchCommand(void *arg)
 {
 	DispatchCommandParms		*pParms				= (DispatchCommandParms *)arg;
 	const char					*szCommand			= pParms->szCommand;
-	SegmentDatabaseDescriptor **segdbDescPtrArray	= pParms->segdbDescPtrArray;
+	SegmentDatabaseDescriptor	**segdbDescPtrArray	= pParms->segdbDescPtrArray;
 	int							db_count			= pParms->db_count;
 	bool						cancelFromBelow		= pParms->cancelFromBelow;
 	int							i;
@@ -463,9 +463,9 @@ void *thread_DispatchCommand(void *arg)
 	PGconn						*conn;
 	RunningInfo					*stillRunning = NULL;
 	int							stillRunningCount = 0;
-    int                           counter = 0;
-	PGresult                      **pqresults = NULL;
-    int                            resultSetCounter = 0;
+    int							counter = 0;
+	PGresult					**pqresults = NULL;
+    int							resultSetCounter = 0;
 
 	/*
 	 * In threads, we cannot use palloc, because it's not thread safe.
@@ -477,7 +477,7 @@ void *thread_DispatchCommand(void *arg)
     {
     	/* Don't use elog, it's not thread-safe */
     	if (DEBUG3 <= log_min_messages)
-    		fprintf(stderr,"doing calloc for pgresults");
+    		fprintf(stderr,"doing calloc for pgresults\n");
         pqresults = (PGresult **)calloc(db_count, sizeof(pqresults));
         *pParms->resultSets = pqresults;
     }
@@ -490,7 +490,7 @@ void *thread_DispatchCommand(void *arg)
 	{
 		/* Don't use elog, it's not thread-safe */
     	if (DEBUG3 <= log_min_messages)
-			fprintf(stderr, "thread_DispatchCommand working on %d of %d commands", i, db_count);
+			fprintf(stderr, "thread_DispatchCommand working on %d of %d commands\n", i, db_count);
 		segdbDesc = segdbDescPtrArray[i];
 		conn = segdbDesc->conn;
 		q = segdbDesc->segment_database_info;
@@ -523,7 +523,7 @@ void *thread_DispatchCommand(void *arg)
 			initPQExpBuffer(&buffer);
 			/* Don't use elog, it's not thread-safe */
     		//if (DEBUG3 <= log_min_messages)
-			//fprintf(stderr,, "thread_DispatchCommand connection bad ");
+			//fprintf(stderr,, "thread_DispatchCommand connection bad \n");
 			
 			appendPQExpBuffer(&buffer, "Cannot issue command to segment database"
 										"segindex %d isprimary %c, because there is no connection",
@@ -538,7 +538,7 @@ void *thread_DispatchCommand(void *arg)
 		/* Don't use elog, it's not thread-safe */
     	if (DEBUG3 <= log_min_messages)
 			fprintf(stderr, "thread_DispatchCommand sending command %.8s... sent to "
-				"port: %s with options %s and motionListener: %d", szCommand,
+				"port: %s with options %s and motionListener: %d\n", szCommand,
 				PQport(conn), PQoptions(conn), PQmotionListener(conn) );
 		
 		/*
@@ -551,7 +551,7 @@ void *thread_DispatchCommand(void *arg)
 			
 			/* Don't use elog, it's not thread-safe */
     		if (DEBUG3 <= log_min_messages)
-				fprintf(stderr, "thread_DispatchCommand failed to send %s", szCommand);
+				fprintf(stderr, "thread_DispatchCommand failed to send %s\n", szCommand);
 			
 			appendPQExpBuffer( &buffer, "SQL Command error: "
 										"segindex %d isprimary %c, %s",
@@ -678,7 +678,7 @@ void *thread_DispatchCommand(void *arg)
 		stillRunningCount = x;
 		/* Don't use elog, it's not thread-safe */
     	//if (DEBUG3 <= log_min_messages)
-		//	fprintf(stderr, "thread_DispatchCommand stillRunningCount %d ",stillRunningCount);
+		//	fprintf(stderr, "thread_DispatchCommand stillRunningCount %d \n",stillRunningCount);
 		
 		if ( n == 0  )
 		{
@@ -748,7 +748,7 @@ void *thread_DispatchCommand(void *arg)
 				conn = segdbDesc->conn;
 				/* Don't use elog, it's not thread-safe */
 		    	//if (DEBUG3 <= log_min_messages)
-				//	fprintf(stderr, "thread_DispatchCommand checking on connection %d ",i);
+				//	fprintf(stderr, "thread_DispatchCommand checking on connection %d \n",i);
 				q = segdbDesc->segment_database_info;
 				Assert( q != NULL );
 				
@@ -756,7 +756,7 @@ void *thread_DispatchCommand(void *arg)
 				sock = PQsocket( conn );
 				/* Don't use elog, it's not thread-safe */
     			//if (DEBUG3 <= log_min_messages)
-						//fprintf(stderr, "thread_DispatchCommand checking on sock %d ",sock);
+						//fprintf(stderr, "thread_DispatchCommand checking on sock %d \n",sock);
 				if ( FD_ISSET( sock, &input_mask ) )
 				{
 					/*
@@ -778,7 +778,7 @@ void *thread_DispatchCommand(void *arg)
 						segdbDesc->resultStatus = PQresultStatus( pRes );
 						//* Don't use elog, it's not thread-safe */
 				    	//if (DEBUG3 <= log_min_messages)
-						//	fprintf(stderr, "thread_DispatchCommand resultStatus %d ",segdbDesc->resultStatus);
+						//	fprintf(stderr, "thread_DispatchCommand resultStatus %d\n",segdbDesc->resultStatus);
 						if ( PGRES_COMMAND_OK != segdbDesc->resultStatus &&
 							PGRES_TUPLES_OK != segdbDesc->resultStatus )
 						{
