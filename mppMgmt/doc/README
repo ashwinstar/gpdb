@@ -1,0 +1,77 @@
+MPP Bash Shell Scripts
+----------------------
+Brief user guide
+----------------
+Updated		02/08/2005
+By		G Coombe
+--------------------------------------------------------------------
+Each script provides the following standard functionality
+
+<script_name> -?	Provides details of all switches that can
+			be used with script.
+
+<script_name> -v	Provides version details of the script.
+
+<script_name> -l	Changes default location of the script log
+			file.
+
+<script_name> -a	Will not ask if the user wishes to continue
+			with a script.
+
+<script_name> -q	Runs script in quiet mode, but will still write
+			to the script log file.
+
+<script_name> -d	Alternative QD data directory.
+
+Error Codes
+-----------
+
+All scripts return following error codes.
+
+	0	Completed without error
+	1	Completed, but a non fatal warning was encountered
+	2	Failed with fatal error
+
+Logging
+-------
+
+All scripts (except mpp_bash_functions.sh) log to the logs sub-directory,
+with log file name <script_name>_YYYYMMDD.log
+
+Log format
+----------
+All scripts have log entry lines that contain the following prefix for
+each line, except for re-directed output.
+
+YYYYMMDD:HH:MM:SS:<script_name>:<hostname>:<user>:-[INFO|WARN|FATAL]:-<Message text>
+
+mpp_bash_functions.sh
+---------------------
+
+This is sourced by all scripts and contains global parameters and functions, if
+a script cannot located this file it will exit.
+
+Configuration
+-------------
+
+QD_DATA_DIRECTORY		Set this either via .bashrc etc to be the
+				location of the QD database directory.
+				eg export QD_DATA_DIRECTORY=/dbfast1/dwh0
+				For most scripts, this is the only setting
+				that is required to be able to obtain
+				QE information from the QD database.
+
+WORKDIR				In each script, except mpp_bash_functions.sh
+				this is set to the directory where the scripts
+				are located.
+				Default value is:
+				WORKDIR=/usr/local/mpp/cdb-pgsql/tools/scripts
+				If you change the location of these scripts, the
+				above variable must be changed in each script.
+
+CDBROOT				This is set in mpp_bash_functions.sh, default value
+				is:
+				CDBROOT=/usr/local/mpp/cdb-pgsql
+				Once again, if you move the scripts, ensure that this
+				value is updated to the revised location.
+
