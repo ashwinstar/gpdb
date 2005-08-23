@@ -134,6 +134,9 @@ cdblink_setup( void )
 	return;
 }
 
+/* Alas, Darwin doesn't have this very useful facility. */
+#if !defined(__darwin__)
+
 #include <execinfo.h>
 
 static void
@@ -148,9 +151,11 @@ log_backtrace(void)
     for (i=0;i<size;i++)
         elog(DEBUG3,"%s\n",strings[i]);
     free(strings);
-
 }
-
+#else
+/* assume that we're using GNU compiler */
+#define log_backtrace() elog(DEBUG3, "called by %p", __builtin_return_address(0))
+#endif
 
 /* 
  * Returns the number of segments
