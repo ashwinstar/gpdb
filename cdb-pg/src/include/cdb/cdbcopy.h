@@ -16,12 +16,28 @@
 #define CDBCOPY_H
 
 #include "lib/stringinfo.h"
+#include "cdb/cdbgang.h"
+
+
+typedef struct CdbCopy
+{
+	Gang    *primary_writer;
+	Gang    *mirror_writer;
+	int      total_segs;     /* total number of segments in cdb */
+	int     *mirror_map;     /* indicates how many db's each segment has */
+	bool     data_errors;    /* true if any data parsing/partitioning/inserting error occured */
+	bool     io_errors;      /* true if any I/O error occured trying to communicate with segDB's */
+	StringInfoData err_msg;  /* error message for cdbcopy operations */
+	
+} CdbCopy;
 
 /* global function declarations */
+CdbCopy *makeCdbCopy(void);
 int cdbCopyGetDbCount(int total_segs, int seg);
-int cdbCopyStart(int total_segs, int seg, int db, char *copyCmd);
-int cdbCopySendData(int total_segs, int seg, int db, const char *buffer, int nbytes);
-int cdbCopyEnd(int total_segs, int seg, int db, StringInfoData errMessage);
-int cdbCopyExecTrax(int total_segs, int seg, int db, char *sql);
+int cdbCopyStart(CdbCopy *cdbCopy, char *copyCmd);
+void cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer, 
+					int nbytes);
+void cdbCopyEnd(CdbCopy *c);
+void cdbCopyStartTransaction(void);
 
 #endif   /* CDBCOPY_H */

@@ -1357,12 +1357,11 @@ copy_in_error_callback(void *arg)
 			limit_printout_length(&attr_buf);
 			
 			if(Cdb_role != CDB_ROLE_UTILITY) /* omit segDB line number, it is confusing to the user */
-				errcontext("COPY %s, column %s: \"%s\"",
-						   copy_relname, copy_attname, attr_buf.data);
+				errcontext("COPY %s, column %s",
+						   copy_relname, copy_attname);
 			else
-				errcontext("COPY %s, line %d, column %s: \"%s\"",
-						   copy_relname, copy_lineno, copy_attname,
-						   attr_buf.data);				
+				errcontext("COPY %s, line %d, column %s",
+						   copy_relname, copy_lineno, copy_attname);				
 		}
 		else
 		{
@@ -1441,8 +1440,8 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	TupleDesc	tupDesc;
 	Form_pg_attribute *attr;
 	AttrNumber	num_phys_attrs,
-		attr_count,
-		num_defaults;
+                attr_count,
+				num_defaults;
 	FmgrInfo   *in_functions;
 	FmgrInfo	oid_in_function;
 	Oid		   *typioparams;
@@ -1451,13 +1450,12 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	bool	   *force_notnull;
 	bool		hasConstraints = false;
 	int			attnum;
-	int			i,j;
+	int			i;
 	int         p_index;
 	Oid			in_func_oid;
 	Datum	   *values;
 	char	   *nulls;
 	int		   *attr_offsets;
-	int        *mirror_map;
 	bool		isnull;
 	int			null_print_len; /* length of null print */
 	ResultRelInfo *resultRelInfo;
@@ -1473,6 +1471,8 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	bool		no_more_data = false;
 	bool        is_first_col;
 	ListCell   *cur;
+	
+	CdbCopy *cdbCopy;
 	
 	/*
 	 * This stringInfo will contain 2 types of error messages: 
@@ -1496,14 +1496,11 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	 */
 	StringInfoData cdbcopy_cmd; 
 	
-	bool data_errors = false;    /* TRUE if any data parsing/partitioning/inserting error occured */
-	bool io_errors = false;      /* TRUE if any I/O error occured trying to communicate with segDB's */
     MemoryContext beforeError;  
 	
 	/*
 	 * Variables for cdbpolicy
 	 */
-	int seg_count;       /* number of segments in CDB (not segment databases) */
 	CdbPolicy *policy;   /* the partitioning policy for this table            */
 	int p_nattrs;		 /* num of partitioning keys in the policy            */
 	
@@ -1548,7 +1545,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	/*
 	 * Pick up the required catalog information for each attribute in the
 	 * relation, including the input function, the element type (to pass
-																 * to the input function), and info about defaults and constraints.
+	 * to the input function), and info about defaults and constraints.
 	 * (Which input function we use depends on text/binary format choice.)
 	 */
 	in_functions = (FmgrInfo *) palloc(num_phys_attrs * sizeof(FmgrInfo));
@@ -1623,11 +1620,13 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 			hasConstraints = true;
 		}
 	}
+	
+	cdbCopy = makeCdbCopy();
 
 	/*
 	 * prepare to COPY data into segDBs:
 	 * 1 - re-construct the orignial COPY command sent from the client.
-	 * 2 - execute a BEGIN transaction on all segment databases.
+	 * 2 - execute a BEGIN DTM transaction.
 	 * 2 - send the COPY command to all segment databases.
 	 * 3 - get the partitioning policy for this table.
 	 * 4 - prepare cdbhash for hashing on row values.
@@ -1635,8 +1634,8 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	
 	/* allocate memory for error and copy strings */
 	initStringInfo(&cdbcopy_err); 
-	initStringInfo(&cdbcopy_cmd); 
-	
+	initStringInfo(&cdbcopy_cmd);
+		
 	/* append schema and tablename */
 	appendStringInfo(&cdbcopy_cmd, "COPY %s.%s", 
 					 get_namespace_name(RelationGetNamespace(rel)),
@@ -1680,63 +1679,50 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 		/* do NOT include HEADER. Header row is swallowed by dispatcher COPY */
 	}
 	
-    /* get segment count across cdb */
-	seg_count = getCdbSegmentCount();
 
-    if(seg_count < 1)
-		ereport(ERROR,
-				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
-				 errmsg("Got an invalid segment database count of 0.")));
-
-   /*
-	* Initialize mirror (secondary) database count for each segment.
-	* mirror_map is indexed by segment number and will contain the
-	* number of databases for this segment (1 if there is only a 
-	* primary or 2 if a mirror exists).
-	*/
-    mirror_map = (int *) palloc(seg_count * sizeof(int));
-	
-    for(i = 0 ; i < seg_count ; i++)
-    {
-		mirror_map[i] = cdbCopyGetDbCount(seg_count, i);
-	}
-		
    /* 
-    * start a transaction and a COPY command in every db of every segment in CDB 
+    * get the CDB policy for this table and prepare for hashing.
     */
-	for(i = 0 ; i < seg_count ; i++)
-	{
-		for(j = 0 ; j < mirror_map[i] ; j++)
-		{
-			int trax_result = cdbCopyExecTrax(seg_count, i, j, "BEGIN");
-			int copy_result;
-			
-			if(trax_result == -1)
-				ereport(ERROR,
-					   (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-						errmsg("Error trying to start a transaction for the COPY command on segment %d db %d", i, j)));
-			
-			copy_result = cdbCopyStart(seg_count, i, j, cdbcopy_cmd.data);
-			
-			if(copy_result == -1)
-				ereport(ERROR,
-						(errcode(ERRCODE_CDB_INTERNAL_ERROR),
-						 errmsg("Error trying to send the COPY command to segment %d db %d", i, j)));
-		}
-	}
-	
-	/* 
-	 * get the CDB policy for this table and prepare for hashing.
-	 */
-	policy = get_table_policy(rel->rd_id);
-	
+    policy = get_table_policy(rel->rd_id);
+
 	if(policy->ptype != POLICYTYPE_PARTITIONED)
 		ereport(ERROR, 	
 				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
 				 errmsg("Unexpected CdbPolicyType: %d.", policy->ptype)));
-	
+
 	p_nattrs = policy->nattrs; /* number of partitioning keys */
-	cdbHash = makeCdbHash(seg_count, HASH_FNV_1); /* Create hash API reference */
+	cdbHash = makeCdbHash(cdbCopy->total_segs, HASH_FNV_1); /* Create hash API reference */
+
+   		
+   /* 
+    * start a transaction
+    */
+    cdbCopyStartTransaction();
+
+    /*
+	 * Start a COPY command in every db of every segment in CDB.
+	 * 
+	 * From this point in the code we need to be extra careful 
+	 * about error handling. ereport() must not be called until
+	 * the COPY command sessions are closed on the executors. 
+	 * Calling ereport() will leave the executors hanging in 
+	 * COPY state.
+	 *
+	 * For errors detected by the dispatcher, we save the 
+	 * error message in cdbcopy_err StringInfo, move on 
+	 * to closing all COPY sessions on the executors and 
+	 * only then raise an error. We need to make sure to
+	 * TRY/CATCH all other errors that may be raised from
+	 * elsewhere in the backend. All error during COPY on the 
+	 * executors will be detected only when we end the COPY
+	 * session there, so we are fine there. 
+	 */
+	if(cdbCopyStart(cdbCopy, cdbcopy_cmd.data) == -1)
+		/* TODO: not throw error yet, unless the first one failed */
+		ereport(ERROR,
+				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
+				 errmsg("Error starting the COPY command")));
+	
 	
 	/*
 	 * Prepare to catch AFTER triggers.
@@ -1769,66 +1755,90 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 		appendBinaryStringInfo(&header_buf, readSig, 11);
 		
 		if (CopyGetEof() || memcmp(readSig, BinarySignature, 11) != 0)
-			ereport(ERROR,
-					(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-					 errmsg("COPY file signature not recognized")));
-		/* Flags field */
-		tmp = CopyGetInt32();
-
-		appendBinaryStringInfo(&header_buf, (char *)&tmp, sizeof(int32));
-
-		if (CopyGetEof())
-			ereport(ERROR,
-					(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-					 errmsg("invalid COPY file header (missing flags)")));
-		file_has_oids = (tmp & (1 << 16)) != 0;
-		tmp &= ~(1 << 16);
-		if ((tmp >> 16) != 0)
-			ereport(ERROR,
-					(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-					 errmsg("unrecognized critical flags in COPY file header")));
-		/* Header extension length */
-		tmp = CopyGetInt32();
-
-		appendBinaryStringInfo(&header_buf, (char *)&tmp, sizeof(int32));
-
-		if (CopyGetEof() || tmp < 0)
-			ereport(ERROR,
-					(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-					 errmsg("invalid COPY file header (missing length)")));
-		/* Skip extension header, if present */
-		while (tmp-- > 0)
+        {
+			appendStringInfo(&cdbcopy_err, "COPY file signature not recognized");
+		    cdbCopy->data_errors = true;
+		}
+		
+		if(!cdbCopy->data_errors)
 		{
-			CopyGetData(readSig, 1);
+			/* Flags field */
+			tmp = CopyGetInt32();
 
-			if(Cdb_role == CDB_ROLE_DISPATCH)
-				appendBinaryStringInfo(&header_buf, readSig, 1);
+			appendBinaryStringInfo(&header_buf, (char *)&tmp, sizeof(int32));
 
 			if (CopyGetEof())
-				ereport(ERROR,
-						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-						 errmsg("invalid COPY file header (wrong length)")));
+				appendStringInfo(&cdbcopy_err, "invalid COPY file header (missing flags)");
+
+			file_has_oids = (tmp & (1 << 16)) != 0;
+			tmp &= ~(1 << 16);
+			if ((tmp >> 16) != 0)
+			{
+				appendStringInfo(&cdbcopy_err, "unrecognized critical flags in COPY file header");
+				cdbCopy->data_errors = true;
+			}
+		}
+		
+		if(!cdbCopy->data_errors)
+		{
+			/* Header extension length */
+			tmp = CopyGetInt32();
+
+			appendBinaryStringInfo(&header_buf, (char *)&tmp, sizeof(int32));
+
+			if (CopyGetEof() || tmp < 0)
+			{
+				appendStringInfo(&cdbcopy_err, "invalid COPY file header (missing length)");
+				cdbCopy->data_errors = true;
+			}
+		}
+		
+		if(!cdbCopy->data_errors)
+		{
+			/* Skip extension header, if present */
+			while (tmp-- > 0)
+			{
+				CopyGetData(readSig, 1);
+
+				if(Cdb_role == CDB_ROLE_DISPATCH)
+					appendBinaryStringInfo(&header_buf, readSig, 1);
+
+				if (CopyGetEof())
+				{
+					appendStringInfo(&cdbcopy_err, "invalid COPY file header (wrong length)");
+					cdbCopy->data_errors = true;
+				}
+			}
 		}
 		
 		/*
-		 * Send binary header to all databases.
-		 */				
-		for(i = 0 ; i < seg_count ; i++)
+		 * Send binary header to all databases if the header is valid.
+		 */
+		if(!cdbCopy->data_errors)
 		{
-			for(j = 0 ; j < mirror_map[i] ; j++)
+			for(i = 0 ; i < cdbCopy->total_segs ; i++)
 			{
-				int result = cdbCopySendData(seg_count, i, j, header_buf.data, header_buf.len);
-			    if(result == -1)
-					ereport(ERROR,
-						   (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-						    errmsg("An error occured while trying to send COPY data to seg %d db %d",
-								   i,j)));
+					cdbCopySendData(cdbCopy, i, header_buf.data, header_buf.len);
+					
+					if(cdbCopy->io_errors)
+						appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
 			}
-		}
 	
-		pfree(header_buf.data);
-
-		line_buf.len = 0;		/* we can reset line buffer now. */
+		    pfree(header_buf.data);
+		}
+		else 
+		{
+			/* Binary header not valid, end COPY and throw an error */
+			cdbCopyEnd(cdbCopy);
+				
+			ereport(ERROR,
+					(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+					 errmsg("%s", cdbcopy_err.data)));
+			
+		}
+		
+		/* we can reset line buffer now, after copyGetIntX() are done */
+		line_buf.len = 0;		
 		line_buf.data[0] = '\0';
 		line_buf.cursor = 0;		
 	}
@@ -1951,19 +1961,52 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 													 &isnull);
 						
 						if (isnull)
-							ereport(ERROR,
-									(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-									 errmsg("null OID in COPY data")));
+						{
+							appendStringInfo(&cdbcopy_err, "\n\nCDBCOPY ERROR: null OID in COPY data."
+											 "\nRow number: %d\nData row: %s", copy_lineno, line_buf.data);
+							cdbCopy->data_errors = true;
+						}
 						else
 						{
-							copy_attname = "oid";
-							loaded_oid = DatumGetObjectId(DirectFunctionCall1(oidin,
-																			  CStringGetDatum(oid_string)));
+							beforeError = CurrentMemoryContext;
+							
+							PG_TRY(); 
+							{
+								copy_attname = "oid";
+								loaded_oid = DatumGetObjectId(DirectFunctionCall1(oidin,
+																				  CStringGetDatum(oid_string)));
+							}
+							PG_CATCH();
+							{
+								ErrorData  *edata;
+								MemoryContextSwitchTo(beforeError);
+								edata = CopyErrorData(); /* get the original error message */
+								FlushErrorState();
+								appendStringInfo(&cdbcopy_err, "\n\nCDBCOPY ERROR: Error processing OID column."
+												 "\nRow number: %d\nDescription: %s\nData row: %s", 
+												 copy_lineno, edata->message, line_buf.data);
+								FreeErrorData(edata);
+								cdbCopy->data_errors = true;
+							}
+							PG_END_TRY();
+							
+							MemoryContextSwitchTo(beforeError);
+							
+							
 							if (loaded_oid == InvalidOid)
-								ereport(ERROR,
-										(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-										 errmsg("invalid OID in COPY data")));
+							{
+								appendStringInfo(&cdbcopy_err, "\n\nCDBCOPY ERROR: invalid OID in COPY data."
+												 "\nRow number: %d\nData row: %s", copy_lineno, line_buf.data);
+								cdbCopy->data_errors = true;
+							}
+
 							copy_attname = NULL;
+							
+							if(cdbCopy->data_errors) /* if data error occured, break out of all loops */
+							{
+								no_more_data = true;
+								break;
+							}				
 						}
 					}
 					
@@ -1972,7 +2015,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 					/* try to read a data line, if failed catch the error, flag it and break */
 					PG_TRY(); 
 					{
-						/* parse all the attribute in the data line */
+						/* parse all the attributes in the data line */
 						if(csv_mode)
 							CopyReadAttributesCSV(delim, null_print, quote, escape, null_print_len, 
 												  nulls, attnumlist, attr_offsets, num_phys_attrs, attr);
@@ -1986,17 +2029,17 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 						MemoryContextSwitchTo(beforeError);
 						edata = CopyErrorData(); /* get the original error message */
 						FlushErrorState();
-						appendStringInfo(&cdbcopy_err, "Error while parsing attributes.\nRow number: %d"
-										 "\nDescription: %s\nData row: %s", copy_lineno, edata->message, 
-										 line_buf.data);
+						appendStringInfo(&cdbcopy_err, "\n\nCDBCOPY ERROR: Error while parsing attributes."
+										 "\nRow number: %d\nDescription: %s\nData row: %s", 
+										 copy_lineno, edata->message, line_buf.data);
 						FreeErrorData(edata);
-						data_errors = true;
+						cdbCopy->data_errors = true;
 					}
 					PG_END_TRY();
 					
 					MemoryContextSwitchTo(beforeError);
 					
-					if(data_errors) /* if data error occured, break out of all loops */
+					if(cdbCopy->data_errors) /* if data error occured, break out of all loops */
 					{
 						no_more_data = true;
 						break;
@@ -2050,10 +2093,10 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 									{
 										limit_printout_length(&line_buf);
 										appendStringInfo(&cdbcopy_err, 
-														 "Incompatiable value for partitioning column '%s' type. \nRow number: %d"
-														 "\nData Value: '%s'. \nData row: %s",copy_attname, copy_lineno, 
-														 string, line_buf.data);
-										data_errors = true;
+														 "\n\nCDBCOPY ERROR: Incompatiable value for partitioning "
+														 "column '%s' type. \nRow number: %d\nData Value: '%s'.\nData row: %s",
+														 copy_attname, copy_lineno, string, line_buf.data);
+										cdbCopy->data_errors = true;
 									}
 									PG_END_TRY();									
 									
@@ -2065,7 +2108,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 					    }/* end foreach */
 					}/* end for partitioning indexes */
 					
-					if(data_errors) /* if data error occured, break out of all loops */
+					if(cdbCopy->data_errors) /* if data error occured, break out of all loops */
 					{
 						no_more_data = true;
 						break;
@@ -2087,11 +2130,14 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 					}
 					
 					if (fld_count != attr_count)
-						ereport(ERROR,
-								(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-								 errmsg("row field count is %d, expected %d",
-										(int) fld_count, attr_count)));
-					
+					{
+						appendStringInfo(&cdbcopy_err, "\n\nCDBCOPY ERROR: row field count is %d, expected %d",
+										 (int) fld_count, attr_count);
+						cdbCopy->data_errors = true;
+						no_more_data = true;
+						break;
+					}
+						
 					if (file_has_oids)
 					{
 						copy_attname = "oid";
@@ -2101,9 +2147,13 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 																	 oid_typioparam,
 																	 &isnull));
 						if (isnull || loaded_oid == InvalidOid)
-							ereport(ERROR,
-									(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-									 errmsg("invalid OID in COPY data")));
+						{
+							appendStringInfo(&cdbcopy_err, "\n\nCDBCOPY ERROR: invalid OID in COPY data");
+							cdbCopy->data_errors = true;
+							no_more_data = true;
+							break;
+						}
+				
 						copy_attname = NULL;
 					}
 					
@@ -2194,24 +2244,22 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 				
 				/*
 				 * Send data row to all databases for this segment.
-				 */				
-				for(i = 0 ; i < mirror_map[target_seg] ; i++)
+				 */		
+		        cdbCopySendData(cdbCopy, target_seg, line_buf.data, line_buf.len); 
+				
+                if(cdbCopy->io_errors)
 				{
-					int result = cdbCopySendData(seg_count, target_seg, i, line_buf.data, line_buf.len);
-					if(result == -1)
-						ereport(ERROR,
-								(errcode(ERRCODE_CDB_INTERNAL_ERROR),
-								 errmsg("An error occured while trying to send COPY data to seg %d db %d",
-										target_seg,i)));
+					appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);					
+					no_more_data = true;
+					break;
 				}
 				
 				line_buf.len = 0;		/* we can reset line buffer now. */
 				line_buf.data[0] = '\0';
 				line_buf.cursor = 0;
-			}					/* end while(!buf_done) */
-		}						/* end if (bytesread > 0 || !fe_eof) */
-		else
-			/* no bytes read, end of data */
+			}	/* end while(!buf_done) */
+		}	/* end if (bytesread > 0 || !fe_eof) */
+		else /* no bytes read, end of data */
 		{
 			no_more_data = true;
 		}
@@ -2220,63 +2268,25 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	/*
 	 * Done reading input data and sending it off to the segment 
 	 * databases Now we would like to end the copy command on 
-	 * all segment databases across the cluster.
+	 * all segment databases across the cluster. 
 	 */
-	for(i = 0 ; i < seg_count ; i++)
-	{
-		for(j = 0 ; j < mirror_map[i] ; j++)
-		{
-			/* end COPY successfully, regardless if we encoutered any errors previously. We
-			will issue a ROLLBACK later on if necessary */
-			int result = cdbCopyEnd(seg_count, i, j, cdbcopy_err);
-			
-			if (result == -1) /* encoutered an I/O error */ 
-				io_errors = true;
-			else if(result == 1) /* encountered a data error */
-				data_errors = true;
-		}
-	}
+	cdbCopyEnd(cdbCopy);
 	
-	/* rollback and report data errors back to the client if there were any. commit otherwize */
-	if(data_errors || io_errors)
-	{
-		for(i = 0 ; i < seg_count ; i++)
-		{
-			for(j = 0 ; j < mirror_map[i] ; j++)
-			{
-				int trax_result = cdbCopyExecTrax(seg_count, i, j, "ROLLBACK");
-				if(trax_result == -1)
-				{
-					ereport(WARNING,
-							(errcode(ERRCODE_CDB_INTERNAL_ERROR),
-							 errmsg("\nCDBCOPY-- Failed to issue a ROLLBACK on seg %d db %d", i, j)));
-					
-					/* TODO: react to trax failure */
-				}
-			}
-		}
-		
-		/* errors are reported below after freeing some resources */
-	}
-	else
-	{
-		for(i = 0 ; i < seg_count ; i++)
-		{
-			for(j = 0 ; j < mirror_map[i] ; j++)
-			{
-				int trax_result = cdbCopyExecTrax(seg_count, i, j, "COMMIT");
-				if(trax_result == -1)
-				{
-					ereport(WARNING,
-							(errcode(ERRCODE_CDB_INTERNAL_ERROR),
-							 errmsg("\nCDBCOPY-- Failed to issue a COMMIT on seg %d db %d", i, j)));
-					
-					/* TODO: react to trax failure */
-				}
-			}
-		}
-		
-	}
+	if(cdbCopy->data_errors) 
+		appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
+	
+
+	/*
+	 * report all accumulated errors back to the client.
+	 */
+	if(cdbCopy->data_errors)
+		ereport(ERROR,
+				(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+				 errmsg("%s", cdbcopy_err.data)));
+	if(cdbCopy->io_errors)
+		ereport(ERROR,
+				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
+				 errmsg("%s", cdbcopy_err.data)));
 
 	/*
 	 * Done, clean up
@@ -2298,12 +2308,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	/* 
 	 * free all resources besides ones that are needed for error reporting 
 	 */
-	if (cdbHash != NULL)
-	{
-		pfree(cdbHash);
-		cdbHash = NULL;
-	}	
-
+	pfree(cdbHash);
 	pfree(values);
 	pfree(nulls);
 	pfree(attr_offsets);
@@ -2313,21 +2318,9 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	pfree(defexprs);
 	pfree(constraintexprs);
 	pfree(force_notnull);
-
-	/*
-	 * report all accumulated errors back to the client.
-	 */
-	if(data_errors)
-		ereport(ERROR,
-				(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-				 errmsg("CDBCOPY-- %s", cdbcopy_err.data)));
-	if(io_errors)
-		ereport(ERROR,
-				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
-				 errmsg("CDBCOPY-- %s", cdbcopy_err.data)));
-	
 	pfree(cdbcopy_cmd.data);
 	pfree(cdbcopy_err.data);
+    pfree(cdbCopy);
 
 	ExecDropTupleTable(tupleTable, true);
 
@@ -3167,6 +3160,19 @@ CopyReadLineText(size_t bytesread, char *escape)
 
 	if (end_marker)
 	{
+		/*
+		 * Reached end marker. In protocol version 3 we
+		 * should ignore anything after \. up to protocol
+		 * end of copy data.
+		 */
+		if(copy_dest == COPY_NEW_FE)
+		{
+			while(!fe_eof) 
+			{
+				CopyGetData(input_buf, COPY_BUF_SIZE); /* eat data */
+			}
+		}
+		
 		fe_eof = true;
 		/* we don't want to process a \. as data line, want to quit. */
 		line_done = false;
@@ -3395,6 +3401,19 @@ CopyReadLineCSV(size_t bytesread, char *quote, char *escape)
 
 	if (end_marker)
 	{
+		/*
+		 * Reached end marker. In protocol version 3 we
+		 * should ignore anything after \. up to protocol
+		 * end of copy data.
+		 */
+		if(copy_dest == COPY_NEW_FE)
+		{
+			while(!fe_eof) 
+			{
+				CopyGetData(input_buf, COPY_BUF_SIZE); /* eat data */
+			}
+		}
+		
 		fe_eof = true;
 		/* we don't want to process a \. as data line, want to quit. */
 		line_done = false;
