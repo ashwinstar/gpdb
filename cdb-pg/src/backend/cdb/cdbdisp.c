@@ -795,6 +795,7 @@ void *thread_DispatchCommand(void *arg)
 						
 				        if (pqresults != NULL)
                          {
+                         	Assert(resultSetCounter < db_count);	/* check array index is in bounds */
                             Assert(pqresults[resultSetCounter] == NULL);
                             pqresults[resultSetCounter++] = pRes;
                          }
