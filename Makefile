@@ -37,7 +37,7 @@ mgmtcopy :
 	@#Copy the management utilities
 	@mkdir $(INSTLOC)/$(MPPMGMT)
 	@cp -rp $(MPPMGMT)/bin $(INSTLOC)/$(MPPMGMT)
-	@cp -rp $(MPPMGMT)/doc $(INSTLOC)/$(MPPMGMT)
+	@if [ -d $(MPPMGMT)/doc ]; then cp -rp $(MPPMGMT)/doc $(INSTLOC)/$(MPPMGMT); fi
 	@cp -rp $(MPPMGMT)/demo $(INSTLOC)/$(MPPMGMT)
 	@rm -rf $(INSTLOC)/$(MPPMGMT)/bin/CVS
 	@rm -rf $(INSTLOC)/$(MPPMGMT)/doc/CVS
