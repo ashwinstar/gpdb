@@ -338,7 +338,7 @@ GET_HOST_ID () {
 				((MPP_INDEX=$MPP_INDEX+1))
 		done
 		MPP_INDEX=$FOUND
-		if [ `$ECHO ${MACHINE_LIST[@]}|$GREP -c "${QD_HOSTNAME} "` -eq 0 ]; then
+		if [ `$ECHO ${MACHINE_LIST[@]}|$TR ' ' '\n'|$GREP -c "^${QD_HOSTNAME}$"` -eq 0 ]; then
 				((MPP_INDEX=$MPP_INDEX+2))
 		else
 				if [ $1 == $QD_HOSTNAME ]; then
@@ -490,7 +490,7 @@ DISPLAY_CONFIG () {
 		for I in "${QE_PRIMARY_ARRAY[@]}"
 				do
 				SET_VAR $I
-				LOG_MSG  "[INFO]:-Primary QE on  $MPP_HOSTNAME $MPP_PORT $MPP_DIR"
+				LOG_MSG  "[INFO]:-Primary QE on  $MPP_HOSTNAME $MPP_PORT $MPP_DIR $MPP_HOSTID $MPP_LISTENID $MPP_DBID $MPP_CONTENT"
 		done
 		if [ $MIRRORING -ne 0 ]; then
 				LOG_MSG "[INFO]:-QE Mirror MPP Configuration"
@@ -498,7 +498,7 @@ DISPLAY_CONFIG () {
 				for I in  "${QE_MIRROR_ARRAY[@]}"
 						do
 						SET_VAR $I
-						LOG_MSG  "[INFO]:-Mirror QE on   $MPP_HOSTNAME $MPP_PORT $MPP_DIR"
+						LOG_MSG  "[INFO]:-Mirror QE on   $MPP_HOSTNAME $MPP_PORT $MPP_DIR $MPP_HOSTID $MPP_LISTENID $MPP_DBID $MPP_CONTENT"
 				done
 		fi
 		if [ $INTERACTIVE ]; then
@@ -686,7 +686,7 @@ UPDATE_HOST () {
 		U_HOSTID=$3
 		U_HOSTNAME=$4
 		#First check to ensure that U_HOSTID not already in the host table
-		CHK_COUNT=`env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from $CDB_HOST_TBL where hostid=${U_HOSTID};" 2>/dev/null` >> $LOG_FILE 2>&1
+		CHK_COUNT=`env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from $CDB_HOST_TBL where hostid='${U_HOSTID}';" 2>/dev/null` >> $LOG_FILE 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Unable to obtain psql count of QD host system table" 2
