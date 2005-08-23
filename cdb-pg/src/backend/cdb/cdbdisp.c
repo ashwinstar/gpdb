@@ -261,7 +261,10 @@ void CdbDispatchCommandInt( const char *szCommand, DispatchTargetSet targetSet,
 	}
 	
 	if (mustFreeSegdbList)
+	{
+		elog(DEBUG4, "freeing segdbList");
 		pfree(segdbList);
+	}
 }
 
 /*
@@ -465,7 +468,9 @@ void *thread_DispatchCommand(void *arg)
     
     if (pParms->resultSets != NULL)
     {
-    	elog(DEBUG3,"doing calloc for pgresults");
+    	/* Don't use elog, it's not thread-safe */
+    	if (DEBUG3 <= log_min_messages)
+    		fprintf(stderr,"doing calloc for pgresults");
         pqresults = (PGresult **)calloc(db_count, sizeof(pqresults));
         *pParms->resultSets = pqresults;
     }
@@ -476,7 +481,9 @@ void *thread_DispatchCommand(void *arg)
 	 */
 	for ( i=0; i<db_count; i++ )
 	{
-		elog(DEBUG3, "thread_DispatchCommand working on %d of %d commands", i, db_count);
+		/* Don't use elog, it's not thread-safe */
+    	if (DEBUG3 <= log_min_messages)
+			fprintf(stderr, "thread_DispatchCommand working on %d of %d commands", i, db_count);
 		segdbDesc = segdbDescPtrArray[i];
 		conn = segdbDesc->conn;
 		q = segdbDesc->segment_database_info;
@@ -507,7 +514,9 @@ void *thread_DispatchCommand(void *arg)
 		{
 			PQExpBufferData buffer;
 			initPQExpBuffer(&buffer);
-			//elog(DEBUG3, "thread_DispatchCommand connection bad ");
+			/* Don't use elog, it's not thread-safe */
+    		//if (DEBUG3 <= log_min_messages)
+			//fprintf(stderr,, "thread_DispatchCommand connection bad ");
 			
 			appendPQExpBuffer(&buffer, "Cannot issue command to segment database"
 										"segindex %d isprimary %c, because there is no connection",
@@ -519,7 +528,9 @@ void *thread_DispatchCommand(void *arg)
 			continue;
 		}
 		
-		elog( DEBUG5, "thread_DispatchCommand sending command %.8s... sent to "
+		/* Don't use elog, it's not thread-safe */
+    	if (DEBUG3 <= log_min_messages)
+			fprintf(stderr, "thread_DispatchCommand sending command %.8s... sent to "
 				"port: %s with options %s and motionListener: %d", szCommand,
 				PQport(conn), PQoptions(conn), PQmotionListener(conn) );
 		
@@ -531,7 +542,9 @@ void *thread_DispatchCommand(void *arg)
 			PQExpBufferData buffer;
 			initPQExpBuffer(&buffer);
 			
-			elog(DEBUG3, "thread_DispatchCommand failed to send %s", szCommand);
+			/* Don't use elog, it's not thread-safe */
+    		if (DEBUG3 <= log_min_messages)
+				fprintf(stderr, "thread_DispatchCommand failed to send %s", szCommand);
 			
 			appendPQExpBuffer( &buffer, "SQL Command error: "
 										"segindex %d isprimary %c, %s",
@@ -587,7 +600,6 @@ void *thread_DispatchCommand(void *arg)
 	
 		n = select( max_sock+1, &input_mask, NULL, NULL, &tv );
 		
-		//elog(DEBUG3, "thread_DispatchCommand done socket select %d ", n);
 	
 		if ( n < 0 )
 		{
@@ -630,7 +642,7 @@ void *thread_DispatchCommand(void *arg)
 		 * Hopefully in this way we can detect a dropped connection quickly.
 		 */
 		x = 0;
-		//elog(DEBUG3, "thread_DispatchCommand check for bad connections ");
+		
 		for ( i=0; i<stillRunningCount; i++ )
 		{
 			segdbDesc = stillRunning[i].segdbDesc;
@@ -657,7 +669,9 @@ void *thread_DispatchCommand(void *arg)
 		}
 		
 		stillRunningCount = x;
-		//elog(DEBUG3, "thread_DispatchCommand stillRunningCount %d ",stillRunningCount);
+		/* Don't use elog, it's not thread-safe */
+    	//if (DEBUG3 <= log_min_messages)
+		//	fprintf(stderr, "thread_DispatchCommand stillRunningCount %d ",stillRunningCount);
 		
 		if ( n == 0  )
 		{
@@ -725,13 +739,17 @@ void *thread_DispatchCommand(void *arg)
 				int sock;
 				segdbDesc = stillRunning[i].segdbDesc;
 				conn = segdbDesc->conn;
-				//elog(DEBUG3, "thread_DispatchCommand checking on connection %d ",i);
+				/* Don't use elog, it's not thread-safe */
+		    	//if (DEBUG3 <= log_min_messages)
+				//	fprintf(stderr, "thread_DispatchCommand checking on connection %d ",i);
 				q = segdbDesc->segment_database_info;
 				Assert( q != NULL );
 				
 
 				sock = PQsocket( conn );
-				//elog(DEBUG3, "thread_DispatchCommand checking on sock %d ",sock);
+				/* Don't use elog, it's not thread-safe */
+    			//if (DEBUG3 <= log_min_messages)
+						//fprintf(stderr, "thread_DispatchCommand checking on sock %d ",sock);
 				if ( FD_ISSET( sock, &input_mask ) )
 				{
 					/*
@@ -751,7 +769,9 @@ void *thread_DispatchCommand(void *arg)
 					while ( NULL != (pRes = PQgetResult(conn) ) )
 					{
 						segdbDesc->resultStatus = PQresultStatus( pRes );
-						//elog(DEBUG3, "thread_DispatchCommand resultStatus %d ",segdbDesc->resultStatus);
+						//* Don't use elog, it's not thread-safe */
+				    	//if (DEBUG3 <= log_min_messages)
+						//	fprintf(stderr, "thread_DispatchCommand resultStatus %d ",segdbDesc->resultStatus);
 						if ( PGRES_COMMAND_OK != segdbDesc->resultStatus &&
 							PGRES_TUPLES_OK != segdbDesc->resultStatus )
 						{
@@ -835,205 +855,6 @@ void *thread_DispatchCommand(void *arg)
 	return(NULL);
 }
 
-#if 0
-/*
- * createThreadPoolPerListener:
- * This function figures out a subset of the segdbs so that there is exactly
- * one segdb per listener.  It is used for commands that have listener scope, like
- * create user.  It assigns each segdb in the subset to a thread in the thread pool.
- * This is based on each thread handling cdb_connections_per_thread connections.
- */
-void createThreadPoolPerListener( DispatchCommandParms *dispatchCommandParmsAr, int *psegdbs_in_thread_pool,
-								 const char *szCommand, bool cancelFromBelow)
-{
-	/*
-	 * The code in this function makes the assumption that
-	 * valid listenerids are always >= 0
-	 */
-	
-	/*
-	 * Here's the strategy.  We only want to send the command to
-	 * one segdb per listener.  In order to determine what this subset is,
-	 * we create a structure with the segdbDesc and listenerid for each
-	 * valid segdb, sort it by listenered.  Then we can loop through and easily
-	 * pick out one segdbDesc to use per listener.
-	 * We also need to make sure that for each listenerid with at least one valid segdb,
-	 * we find a connected segdb.  If not, it's an error.
-	 *
-	 */
-	int segdb_count = CdbClusterDefinition->segdb_count;
-	int i;
-	int j;
-	int	PairArCount = 0;
-	SegmentDescriptor *segDesc;
-	SegmentDatabaseDescriptor *segdbDesc;
-	CdbComponentDatabaseInfo *q;
-	ListenerSegDBPair* pPairAr = NULL;
-	int lastListenerID = -1;
-	bool bFoundConnection = true;
-	
-	pPairAr = (ListenerSegDBPair *)palloc0( sizeof(ListenerSegDBPair) * segdb_count );
-	
-	for ( i=0; i<getCdbSegmentCount(); i++ )
-	{
-		segDesc	= &CdbClusterDefinition->segment_descriptors[i];
-		for ( j=0; j<segDesc->db_count; j++ )
-		{
-			segdbDesc = &segDesc->db_descriptors[j];
-			q	= segdbDesc->segment_database_info;
-
-			pPairAr[PairArCount].listenerid = q->listenerid;
-			pPairAr[PairArCount].segdbDesc = segdbDesc;
-			PairArCount++;
-		}
-	}
-	
-	Assert( PairArCount == segdb_count -1 );
-	
-	/*
-	 *  Sort pPairAr by listenerid
-	 */
-	qsort( pPairAr, PairArCount, sizeof(ListenerSegDBPair),
-		  listenerSegDBPairCompare);
-			
-	/*
-	 * Pick out one segdbDesc per distinct listenerid, and avoid the listenerid
-	 * of the dispatcher.
-	 */
-	
-	 /*
-	  * We need to insure that for every listenerid in the pPairAr,
-	  * we find a connected segdb.  Otherwise, we need to report an error.
-	  * An example where this could happen:
-	  * 2 listeners, 2 segments, 4 segdb's.
-	  * listener 1: segindex 1 primary, segindex 2 secondary.
-	  * listener 2: segindex 2 primary, segindex 1 secondary.
-	  * If during cdblink_connect, we failed to connect to segindex 2 primary
-	  * and segindex 1 secondary, we  would have passes cdblink_setup, because
-	  * there was at least one connected segdb for each segindex.
-	  * But we would have no connection to listener2.
-	  */
-	
-	for ( i=0; i<PairArCount; i++ )
-	{
-		if ( pPairAr[i].listenerid != lastListenerID  )
-		{
-			/* Check to see if we got a connection for the last listenerid */
-			if ( !bFoundConnection )
-			{
-				/* This is an error condition */	
-				ereport( ERROR,
-							(errcode( ERRCODE_SQLSERVER_REJECTED_ESTABLISHMENT_OF_SQLCONNECTION ),
-							 errmsg("Cannot dispatch command %s to all listeners: "
-							 		"there is no connection to any segdbs for listenerid %d",
-							 		szCommand, lastListenerID
-						)));
-				
-			}
-			
-			bFoundConnection = false;
-			lastListenerID = pPairAr[i].listenerid;
-		}
-		
-		if ( !bFoundConnection )
-		{
-			segdbDesc = pPairAr[i].segdbDesc;
-		
-			if ( segdbDesc->conn != NULL )
-			{
-				addSegDBToDispatchThreadPool( dispatchCommandParmsAr, psegdbs_in_thread_pool, szCommand, cancelFromBelow, segdbDesc );
-				bFoundConnection = true;
-			}
-		}
-	}
-	
-	/* Check to see if we got a connection for the last listenerid */
-	if ( !bFoundConnection )
-	{
-		/* This is an error condition	 */
-		ereport( ERROR,
-					(errcode( ERRCODE_SQLSERVER_REJECTED_ESTABLISHMENT_OF_SQLCONNECTION ),
-					 errmsg("Cannot dispatch command %s to all listeners: "
-					 		"there is no connection to any segdbs for listenerid %d",
-					 		szCommand, lastListenerID
-				)));
-		
-	}
-			
-	
-	pfree( pPairAr );
-}
-
-/*
- * createThreadPoolPerSegment:
- * This function figures out a subset of the segdbs so that there is exactly
- * one segdb per segment.  It is used for commands that have database scope, but shouldn't
- * be executed for both primary and secondary copies, like
- * a select statement.  It assigns each segdb in the subset to a thread in the thread pool.
- * This is based on each thread handling cdb_connections_per_thread connections.
- */
-void createThreadPoolPerSegment( DispatchCommandParms *dispatchCommandParmsAr, int *psegdbs_in_thread_pool,
-								 const char *szCommand, bool cancelFromBelow)
-{
-	int i;
-	SegmentDescriptor *segDesc;
-	
-	for ( i=0; i<getCdbSegmentCount(); i++ )
-	{
-		segDesc = &CdbClusterDefinition->segment_descriptors[i];
-
-		/*
-		 * The query_db was set up for just this purpose.  So use it.
-		 */
-		Assert( segDesc->query_db != NULL );
-		addSegDBToDispatchThreadPool( dispatchCommandParmsAr, psegdbs_in_thread_pool, szCommand, cancelFromBelow, segDesc->query_db );
-	}
-}
-
-
-/*
- * createThreadPoolPerSegDB:
- * This function uses all segdbs that have a valid connection.  It is used for commands that have database scope,
- * and should be executed for both primary and secondary copies, like
- * a create table statement.  It assigns each segdb in the subset to a thread in the thread pool.
- * This is based on each thread handling cdb_connections_per_thread connections.
- */
-void createThreadPoolPerSegDB( DispatchCommandParms *dispatchCommandParmsAr, int *psegdbs_in_thread_pool,
-								 const char *szCommand, bool cancelFromBelow)
-{
-	int i;
-	int j;
-	SegmentDescriptor *segDesc;
-	SegmentDatabaseDescriptor *segdbDesc;
-	
-	/* Validate that we have connections that we need */
-	if ( !CdbClusterDefinition->all_valid_segdbs_connected )
-	{
-		ereport( ERROR,
-					(errcode( ERRCODE_SQLSERVER_REJECTED_ESTABLISHMENT_OF_SQLCONNECTION ),
-					 errmsg("Cannot dispatch command %s to all segdbs: "
-					 		"there is no connection to at least one valid segdb",
-					 		szCommand
-				)));
-	}
-	
-	for ( i=0; i<getCdbSegmentCount(); i++ )
-	{
-		segDesc = &CdbClusterDefinition->segment_descriptors[i];
-		
-		for ( j=0; j<segDesc->db_count; j++ )
-		{
-			segdbDesc = &segDesc->db_descriptors[j];
-		
-			if ( segdbDesc->conn != NULL )
-			{
-				addSegDBToDispatchThreadPool( dispatchCommandParmsAr, psegdbs_in_thread_pool, szCommand, cancelFromBelow, segdbDesc );
-			}
-		}
-	} 	
-}
-#endif 
-
 
 /*
  * createThreadPoolEnumeration:
@@ -1075,19 +896,7 @@ void createThreadPoolEnumeration( DispatchCommandParms *dispatchCommandParmsAr, 
 	}
 }
 
-/*
- * listenerSegDBPairCompare:
- * A compare function for ListenerSegDBPair structs
- * that compares based on listenerid,
- * for use with qsort.
- */
-/*static int listenerSegDBPairCompare(const void *p1, const void *p2)
-{
-	const ListenerSegDBPair *obj1 = (ListenerSegDBPair *)p1;
-	const ListenerSegDBPair *obj2 = (ListenerSegDBPair *)p2;
-	
-	return (obj1->listenerid - obj2->listenerid);
-}*/
+
 
 /*
  * addSegDBToDispatchThreadPool
