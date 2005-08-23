@@ -572,6 +572,8 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 	/* we can have at most one of these. */
 	MotionLayerState *sendingMotionState = NULL;
 
+	Assert(!activated);
+
 	gettimeofday(&snapTime, NULL);
 	elog(DEBUG3, "in SetupInterconnect @%d time is %ld.%ld", 
 		 __LINE__, (long int)snapTime.tv_sec, (long int)snapTime.tv_usec);
@@ -751,6 +753,9 @@ void TeardownInterconnect(void)
 	int				i;
 	Slice 			*mySlice;
 	MotionConn		*conn;	
+
+	/* setup/teardown *really* should occur in pairs */
+	Assert(activated);
 
 	if (!activated)
 		return;

@@ -280,6 +280,7 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 	RangeTblEntry *rte;
 	bool hasDispatched = false;
 	bool shouldDispatch;
+	bool interconnectStarted = false;
 
 	/* sanity checks */
 	Assert(queryDesc != NULL);
@@ -371,9 +372,9 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 	PG_TRY();
 	{
 		/*
-		* if in dispatch mode, time to serialize plan and query trees, and
-		* fire off cdb_exec command to each of the qexecs
-		*/
+		 * if in dispatch mode, time to serialize plan and query
+		 * trees, and fire off cdb_exec command to each of the qexecs
+		 */
 
 		if ( shouldDispatch )
 		{
@@ -495,7 +496,13 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 			 */
 			MotionState *motionState = (estate->es_slice_map[estate->es_cur_slice_idx]);
 			Assert( IsA(motionState->ps.plan, Motion) );
-			
+
+			/* activate the connections, if needed */
+			if (((PlanState *)motionState)->plan->nMotionNodes > 0) {
+				SetupInterconnect(estate->es_sliceTable, estate->es_cur_slice_idx);
+				interconnectStarted = true;
+			}
+
 			result = ExecutePlan(estate,
 								(PlanState*) motionState,
 								CMD_SELECT,
@@ -505,8 +512,13 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 		}
 		else
 		{
-			/* Run a root slice. 
-			 */
+			/* Run a root slice. */
+
+			if (queryDesc->planstate->plan->nMotionNodes > 0) {
+				SetupInterconnect(estate->es_sliceTable, estate->es_cur_slice_idx);
+				interconnectStarted = true;
+			}
+
 			result = ExecutePlan(estate,
 								queryDesc->planstate,
 								operation,
@@ -517,6 +529,10 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 	}
 	PG_CATCH();
 	{
+		/* clean up the interconnect first */
+		if (interconnectStarted)
+			TeardownInterconnect();
+
 		if ( hasDispatched )
 		{
 			/*
@@ -567,6 +583,10 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
+
+	/* clean up the interconnect if necessary */
+	if (interconnectStarted)
+		TeardownInterconnect();
 
 	if ( hasDispatched )
 	{
@@ -1428,17 +1448,6 @@ ExecutePlan(EState *estate,
 			break;
 	}
 
-
-	/* activate the connections.
-	 * 
-	 */
-	if ( Cdb_role != CDB_ROLE_UTILITY && planstate->plan->nMotionNodes > 0 )
-	{	
-		SetupInterconnect( estate->es_sliceTable, estate->es_cur_slice_idx );	
-	}
-	
-
-
 	/*
 	 * Loop until we've processed the proper number of tuples from the
 	 * plan.
@@ -1638,10 +1647,6 @@ lnext:	;
 			break;
 	}
 	
-	
-	if ( Cdb_role != CDB_ROLE_UTILITY && planstate->plan->nMotionNodes > 0 )
-		TeardownInterconnect( );
-
 	/*
 	 * Process AFTER EACH STATEMENT triggers
 	 */
