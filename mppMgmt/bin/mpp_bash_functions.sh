@@ -182,9 +182,9 @@ LOG_MSG () {
 		TIME=`$DATE +%H":"%M":"%S`
 		CUR_DATE=`$DATE +%Y%m%d`
 		if [ $VERBOSE ]; then
-				$ECHO "$1" | $TEE -a $LOG_FILE
+			        $ECHO "${CUR_DATE}:${TIME}:${PROG_NAME}:${CALL_HOST}:${USER_NAME}-$1" | $TEE -a $LOG_FILE	
 		else
-				$ECHO "$1" >> $LOG_FILE
+				$ECHO "${CUR_DATE}:${TIME}:${PROG_NAME}:${CALL_HOST}:${USER_NAME}-$1" >> $LOG_FILE
 		fi
 }
 
@@ -192,7 +192,7 @@ LOG_MSG () {
 ERROR_EXIT () {
 		TIME=`$DATE +%H":"%M":"%S`
 		CUR_DATE=`$DATE +%Y%m%d`
-		$ECHO "$1 Script Exiting!" | $TEE -a $LOG_FILE
+		$ECHO "${CUR_DATE}:${TIME}:${PROG_NAME}:${CALL_HOST}:${USER_NAME}-$1 Script Exiting!" | $TEE -a $LOG_FILE
 		if [ $BACKOUT_FILE ]; then
 				if [ -s $BACKOUT_FILE ]; then
 						LOG_MSG "[WARN]:-Script has left MPP configuration in an incomplete state"
