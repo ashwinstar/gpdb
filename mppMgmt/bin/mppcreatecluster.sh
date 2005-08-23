@@ -338,7 +338,7 @@ GET_HOST_ID () {
 				((MPP_INDEX=$MPP_INDEX+1))
 		done
 		MPP_INDEX=$FOUND
-		if [ `$ECHO ${MACHINE_LIST[@]}|$GREP -c "${QD_HOSTNAME}\$"` -eq 0 ]; then
+		if [ `$ECHO ${MACHINE_LIST[@]}|$GREP -c "${QD_HOSTNAME} "` -eq 0 ]; then
 				((MPP_INDEX=$MPP_INDEX+2))
 		else
 				if [ $1 == $QD_HOSTNAME ]; then
