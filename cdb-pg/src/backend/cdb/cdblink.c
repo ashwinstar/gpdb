@@ -134,6 +134,22 @@ cdblink_setup( void )
 	return;
 }
 
+#include <execinfo.h>
+
+static void
+log_backtrace(void)
+{
+    void * array[10];
+    size_t size;
+    char ** strings;
+    size_t i;
+    size = backtrace(array,10);
+    strings = backtrace_symbols(array,size);
+    for (i=0;i<size;i++)
+        elog(DEBUG3,"%s\n",strings[i]);
+    free(strings);
+
+}
 
 
 /* 
@@ -145,6 +161,33 @@ cdblink_setup( void )
  */
 int getCdbSegmentCount(void)
 {
+	if ( Cdb_role == CDB_ROLE_UTILITY )
+	{
+		
+		/*log_backtrace();*/
+		
+		if (CdbIdentity.numsegments <= 0) 
+		{
+			elog(DEBUG5, "getCdbSegmentCount called when Cdb_role == utility");
+			return 0;
+		}
+		
+		elog(DEBUG1, "getCdbSegmentCount called when Cdb_role == utility, but is relying on cdb.cdb info");
+		
+	}
+		
+	if ( Cdb_role == CDB_ROLE_EXECUTE )
+	{
+		elog(DEBUG1, "getCdbSegmentCount called when Cdb_role == execute");
+		log_backtrace();
+	}
+		
+	if ( CdbIdentity.numsegments <= 0 )
+	{
+		elog(DEBUG1, "getCdbSegmentCount called BEFORE cdb.cdb record has been read in.");
+		log_backtrace();
+	}
+		
 	//Assert( Cdb_role != CDB_ROLE_UTILITY );
 
 	return CdbIdentity.numsegments;

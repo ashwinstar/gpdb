@@ -212,8 +212,8 @@ void freeCdbCdb(void)
 	}
 
 	CdbIdentity.numsegments = 0;
-	CdbIdentity.dbid = 0;
-	CdbIdentity.segindex = 0;
+	CdbIdentity.dbid = -1;
+	CdbIdentity.segindex = -999;
 }
 
 

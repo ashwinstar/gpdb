@@ -71,7 +71,7 @@ int interconnect_setup_timeout;
  * Any code needing the  "numsegments"
  * can simply #include cdbvars.h, and use CdbIdentity.numsegments
  */
-CdbCdb				CdbIdentity = {NULL, 0, 0, 0};  
+CdbCdb				CdbIdentity = {NULL, 0, -1, -999};  
 
 /*
  * Local macro to provide string values of numeric defines.
