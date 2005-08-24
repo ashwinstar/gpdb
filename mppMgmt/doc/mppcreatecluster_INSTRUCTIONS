@@ -1,5 +1,6 @@
 Author:-	G L Coombe
-Updated:-	9th August 2005
+Updated:-	23rd August 2005
+Update:-	Added script functuonal overview (Search for SCRIPT OVERVIEW)
 
 This document describes ohow to configure and use the mppcreatecluster.sh script
 
@@ -139,4 +140,102 @@ issue the below command
 $> ./mppcreatecluster.sh -c cluster_test
 
 
+SCRIPT OVERVIEW
+---------------
+The following provides a functional overview of the mppcreatecluster.sh scripts.
 
+1.	Checks for mpp_bash_functions.sh file, exits if unable to locate file.
+
+2.	Sets script specific parameters.
+
+3.	Checks if -c parameter supplied, if not calls USAGE function.
+
+4.	Calls CHK_PARAMS function, which undertakes the following:
+	a.	Checks if both MPPHOME and BIZHOME unset, if so, exits with suitable error
+		message.
+	b.	Checks to ensure that can find an initdb, if not, exits with suitable error
+                message.
+	c.	Checks to make sure that there is a valid cluster configuration file supplied
+		to script with the -c paramater, if not, exits with suitable error
+                message.
+	d.	Sources the contents of the cluster configuration file.
+	e.	Checks the host file named in the cluster configuration file, exits if issue
+		with file with suitable error message.
+	f.	Checks for duplicate hostnames in the host file, exits with suitable error
+		message if any duplicate hostnames found.
+	g.	Checks CLUSTER_NAME parameter, if unset, sets to a default value of "MPP Cluster"
+	h.	Checks QD_HOSTNAME paramater, if unset, exits with suitable error message.
+	j.	Checks SEG_PREFIX paramater, if unset, exits with suitable error message.
+	k.	Checks QD_PORT, if unset, exits with suitable error message.
+	l.	Checks PORT_BASE, if unset, exits with suitable error message.
+	m.	Checks number of values in DATA_DIRECTORY, if zero exits with suitable error message.
+	n.	Checks QD_DIRECTORY paramater, if unset, exits with suitable error message.
+	o.	Checks DATABASE_NAME, if unset, creates MPP cluster without creating the database
+		name contained in DATABASE_NAME variable.
+	p.	Checks IP_ALLOW, if unset, exits with suitable error message.
+	q.	Checks TRUSTED_SHELL, if unset, exits with suitable error message.
+	r.	Checks CHECK_POINT_SEGMENTS, if unset, exits with suitable error message.
+	s.	Checks ENCODING, if unset, exits with suitable error message.
+	t.	Checks number of primary QE's, exits with suitable error message if zero.
+	u.	If mirroring configured checks to ensure that the number of primary and mirror
+		directories match, if not exits with suitable error message.
+
+5.	Calls CREATE_QE_ARRAY function, which undertakes the following
+	a.	Builds an array of primary QE's, with required/calculated paramaters
+	b.	If mirroring configured, creates a mirror QE array.
+	NOTE:-	For mirroring:
+		If single host cluster, all mirrors created on that host.
+		if multiple host, all primary QE instances for a single host, will be spread
+		across the other hosts, so that no two mirrors from a host are located on another
+		host where possible.
+
+6.	Calls CHK_QES function, which undertakes the following
+	a.	For each host, checks via ping, if any error, exits with suitable error message.
+	b.	For each host, checks that data directories exist, if not exits with suitable error message.
+	c.	For each host, checks to ensure that the intended QE instance directory does not exist, if
+		it does exits with suitable error message.
+	d.	If mirroring configured repeats directory check.
+
+7.	Calls DISPLAY_CONFIG function, which undertakes the following
+	a.	Displays QD details and other parameters passed or calculated by the script.
+	b.	Displays a list of primary QE settings.
+	c.	If mirroring configured, displays a list of mirror QE settings.	
+	d.	Displays a continue prompt (If -a parameter not passed to script).
+
+8.	Calls CREATE_QD_DB function, which undertakes the following
+	a.	Checks to ensure that the intended QD instance directory does not exist, if so
+		exist with suitable error message.
+	b.	Calls initdb to create QD database, if error, exits with suitable error message.
+	c.	Sets port# in QD postgresql.conf file, if error, exits with suitable error message.
+	d.	If postgresql_conf_cdb_additions file exists, adds lines from this file to
+		QD postgresql.conf file.
+	f.	Adds IP_ALLOW value to QD pg_hba.conf file, if error, exits with suitable error message.
+	g.	Starts QD instance, if error copies QD database log to script log file and exits
+		with suitable error message..
+	h.	Creates required backout commands.
+	i.	Updates MPP system tables, with QD and QE details.
+
+9.	Calls CREATE_QES_PRIMARY function, which undertakes the following
+	a.	For each primary QE instance directory per host
+		i)	Calls initdb, if error , exits with suitable error message. 
+		ii)	Updates QE postgresql.conf file, if error, exits with suitable error message.
+		iii)	If postgresql_conf_cdb_additions file exists, adds lines from that
+			file to the QE postgresql.conf.
+		iv)	Updates QE pg_hba.conf file, if error, exits with suitable error message.
+		v)	Starts QE instance, if error, exits with suitable error message.
+		vi)	Creates required backout commands (Note, this done at various stages
+			throughout this fucntion).
+		vii)	Updates QE cdb.cdb table.
+
+10.	Calls CREATE_QES_MIRROR if mirroring configured, see 9. for details.
+
+11.	If DATABASE_NAME variable set, creates the named database, if error, exits with 
+	suitable error message.
+
+12.	Calls RESTART_QD_PRODUCTION function, which undertakes the following
+	a.	Calls mppstop.sh to stop the cluster, if error, exits with suitable error message.
+	b.	Calls mppstart.sh to start the cluster, if error, exits with suitable error message.
+
+13.	Displays useful information following cluster restart.
+
+14.	Exits with zero.
