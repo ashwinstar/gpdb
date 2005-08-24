@@ -162,7 +162,9 @@ CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
 	PG_CATCH();
 	{
 
-		elog( DEBUG4, "CdbExec had an error, resetting motion layer.");
+		elog( INFO, "------------ERROR DURING CDBEXEC STMT-----------------");
+		EmitErrorReport();
+		elog( INFO, "------------------------------------------------------");
 		ResetMotionLayer(true);
 		PG_RE_THROW();
 
