@@ -48,6 +48,8 @@ bool				Cdb_is_primary;		/* Is this session primary (or mirror) */
 
 bool				Debug_print_prelim_plan; /* Shall we log argument of cdbparallelize? */
 
+bool				Debug_print_slice_table; /* Shall we log the slice table? */
+
 int					cdb_connections_per_thread;	/* How many libpq connections are handled in each thread */
 
 int					Cdb_max_tuple_chunk_size;   /* CDB Motion Layer -> AMS */

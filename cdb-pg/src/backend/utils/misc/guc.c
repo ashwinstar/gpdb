@@ -550,6 +550,14 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 	},
 	{
+		{"debug_print_slice_table", PGC_USERSET, LOGGING_WHAT,
+			gettext_noop("Prints the slice table to server log."),
+			NULL
+		},
+		&Debug_print_slice_table,
+		false, NULL, NULL
+	},
+	{
 		{"debug_print_plan", PGC_USERSET, LOGGING_WHAT,
 			gettext_noop("Prints the execution plan to server log."),
 			NULL

@@ -142,6 +142,15 @@ extern bool				Cdb_is_primary;
  */
 extern bool Debug_print_prelim_plan;
 
+/* Parameter debug_print_slice_table
+ * 
+ * This run-time parameter, if true, causes the slice table for a plan to 
+ * display on the server log.  On a QD this occurs prior to sending the
+ * slice table to any QE.  On a QE it occurs just prior to execution of 
+ * the plan slice. 
+ */
+extern bool Debug_print_slice_table;
+
 
 /*
  * Parameter cdb_connections_per_thread

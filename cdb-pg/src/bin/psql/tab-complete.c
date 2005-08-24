@@ -526,6 +526,7 @@ psql_completion(char *text, int start, int end)
 		"debug_print_plan",
 		"debug_print_prelim_plan",
 		"debug_print_rewritten",
+		"debug_print_slice_table",
 		"default_statistics_target",
 		"default_tablespace",
 		"default_transaction_isolation",

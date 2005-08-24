@@ -232,6 +232,7 @@
 #debug_print_rewritten = false
 #debug_print_prelim_plan = false
 #debug_print_plan = false
+#debug_print_slice_table = false
 #debug_pretty_print = false
 #log_connections = false
 #log_disconnections = false

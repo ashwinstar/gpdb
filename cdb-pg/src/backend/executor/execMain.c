@@ -225,24 +225,20 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 	if ( Cdb_role == CDB_ROLE_DISPATCH )
 	{
 		/* Assign gang descriptions to the root slices of the slice forest. */
-		InitRootSlices(queryDesc);
+		InitRootSlices(queryDesc);		
 		
 		/* Inventory the slice tree, allocate gangs, associate slices 
 		 * with gangs.  For now, use segment 0 for singleton gangs.
 		 *
-		 * Chuck, The allocate calls are in here go. 
-		 * John, The CDBProcess lists are generated in here.)
+		 * On returns, gangs have been allocated and CDBProcess lists 
+		 * have been filled in in the slice table.)
 		 */
 		 AssignGangs(queryDesc, 0);
 	}
 
 	MemoryContextSwitchTo(oldcontext);
 	
-	/* TODO - SLICE PLAN INTEGRATION
-	 *
-	 * Remove this or replace with configurable trace. 
-	 */
-	if ( Cdb_role == CDB_ROLE_DISPATCH )
+	if ( Debug_print_slice_table && Cdb_role == CDB_ROLE_DISPATCH )
 	{
 		elog_node_display(DEBUG1, 
 						  "global (QD) slice table", 
@@ -313,27 +309,16 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 	 * then we need to finish the EState setup we prepared for back in 
 	 * CdbExecQuery.
 	 */
-	if ( Cdb_role == CDB_ROLE_EXECUTE && queryDesc->gbl_sliceTable != NULL )
+	if ( Cdb_role == CDB_ROLE_EXECUTE && estate->es_sliceTable != NULL )
 	{
-		Node * slice;
 		MotionState *motionstate = NULL;
 		
-		/* From the QD via CDBEXEC! */
-		
-		/* TODO Delete from here ... */
-		SliceTable *sliceTable = queryDesc->gbl_sliceTable;
-		int nMotionNodes = queryDesc->gbl_nMotionNodes;
-		int nExtraRoots = queryDesc->gbl_nExtraRoots;
-		 		
-		Assert(estate->es_sliceTable == sliceTable);
-		Assert(estate->es_cur_slice_idx == sliceTable->localSlice);
-		slice = list_nth(sliceTable->slices, sliceTable->localSlice);
-		Assert( IsA(slice,Slice) );
-		Assert(estate->es_cur_root_idx == ((Slice*)slice)->rootIndex);
-		/* ... to here, once we verify the asserted conditions, which 
-		 * replaced previous assignments now done in ExecutorStart.  */
-		
-		/* If responsible for a non-root slice, arrange to enter the plan 
+		/* Note that, at this point on a QE, the estate is setup (based on
+		 * the slice table transmitted from the QD via CDBEXEC) so that fields
+		 * es_sliceTable, cur_root_idx and es_cur_slice_idx are correct for
+		 * the QE.
+		 *
+		 * If responsible for a non-root slice, arrange to enter the plan 
 		 * at the slice's sending Motion node rather than at the top.
 		 */
 		if ( estate->es_cur_slice_idx != estate->es_cur_root_idx )
@@ -342,15 +327,18 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 			Assert( motionstate != NULL && IsA(motionstate, MotionState) );
 			
 			/* Patch Motion node so it looks like a top node. */
-			motionstate->ps.plan->nMotionNodes = nMotionNodes;
-			motionstate->ps.plan->nParamExec = nExtraRoots;
+			motionstate->ps.plan->nMotionNodes = estate->es_sliceTable->nMotions;
+			motionstate->ps.plan->nParamExec = estate->es_sliceTable->nextInitPlan-estate->es_sliceTable->nMotions-1;
 		}
 		
-		elog_node_display(DEBUG1, 
-			"local slice table",
-			estate->es_sliceTable,
-			Debug_pretty_print
-			);
+		if ( Debug_print_slice_table )
+		{
+			elog_node_display(DEBUG1, 
+				"local slice table",
+				estate->es_sliceTable,
+				Debug_pretty_print
+				);
+		}
 		
 		elog(DEBUG1, 
 			"Segment %d (%s) executing slice %d under root %d.", 
