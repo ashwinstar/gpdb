@@ -441,8 +441,12 @@ void InitMotionLayerNode(int16 motNodeID, bool preserveOrder, TupleDesc tupDesc)
         pEntry->ready_tuples = NULL;
     }
 
-    /* TODO:  Hard-coded right now. */
-    pEntry->num_senders = getCdbSegmentCount();
+
+    /* we'll just set this to 0.  later, ml_ipc will call setExpectedReceivers() 
+     * to set this if we are a "Receiving" motion node.
+     */
+    pEntry->num_senders = 0;
+
     pEntry->num_stream_ends_recvd = 0;
 
     /* Initialize statistics counters. */
@@ -461,6 +465,13 @@ void InitMotionLayerNode(int16 motNodeID, bool preserveOrder, TupleDesc tupDesc)
     MemoryContextSwitchTo(oldCtxt);
 }
 
+
+void setExpectedReceivers( int16 motNodeID, int expectedReceivers )
+{
+	MotionNodeEntry *pEntry = getMotionNodeEntry(motNodeID,"setExpectedReceivers");
+			
+	pEntry->num_senders = expectedReceivers;		
+}
 
 /*
  * Function:  SendTuple - Sends a portion or whole tuple to the AMS layer.

@@ -614,13 +614,18 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 	/* now we'll do some setup for each of our Receiving Motion Nodes. */
 	foreach(cell, mySlice->children)
 	{
+		int numProcs;
 		int childId = (int)lfirst(cell);
 	
 		elog(DEBUG5, "--Setting up RECEIVING motion node: %d", childId);
 		
 		aSlice = (Slice*)list_nth(sliceTable->slices, childId);
+		numProcs = list_length(aSlice->primaryProcesses);
 		
-		pEntry = createMotionState(childId, list_length(aSlice->primaryProcesses));
+		pEntry = createMotionState(childId, numProcs);
+		
+		/* let cdbmotion now how many receivers to expect. */
+		setExpectedReceivers( childId, numProcs );
 		
 		pEntry->myRouteId = 0; // DOH: do i need this for receivers?
 		
@@ -754,9 +759,14 @@ void TeardownInterconnect(void)
 	Slice 			*mySlice;
 	MotionConn		*conn;	
 
-	/* setup/teardown *really* should occur in pairs */
-	Assert(activated);
+	/* setup/teardown *really* should occur in pairs.  Asserting activated doesn't really do that 
+	 * though.  If SetupInterconnect doesn't finish all the way and has an error, activated won't be 
+	 * true but ResetMotionLayer() will still call this method.
+	 *
+	 */
 
+
+	
 	if (!activated)
 		return;
 

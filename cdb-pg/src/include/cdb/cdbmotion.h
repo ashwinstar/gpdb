@@ -123,4 +123,10 @@ extern ReceiveReturnCode RecvTupleFrom(int16 motNodeID, HeapTuple *tup_i,
 
 extern void SendStopMessage(int16 motNodeID);
 
+/* used by ml_ipc to set the number of receivers that the motion node is expecting.
+ * This is used by cdbmotion to keep track of when its seen enough EndOfStream
+ * messages.
+ */ 
+extern void setExpectedReceivers( int16 motNodeID, int expectedReceivers );
+
 #endif /*CDBMOTION_H */
