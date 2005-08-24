@@ -3,6 +3,7 @@
  * nodeLimit.c
  *	  Routines to handle limiting of query results where appropriate
  *
+ * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -76,6 +77,14 @@ ExecLimit(LimitState *node)
 			if (node->count <= 0 && !node->noCount)
 			{
 				node->lstate = LIMIT_EMPTY;
+
+			    /* CDB: We'll read no more from outer subtree.
+                 * To keep our sibling QEs from being starved,
+                 * tell source QEs not to clog up the pipeline
+                 * with our never-to-be-consumed data.
+                 */
+                ExecSquelchNode(outerPlan);
+
 				return NULL;
 			}
 
@@ -111,6 +120,7 @@ ExecLimit(LimitState *node)
 			 * The subplan is known to return no tuples (or not more than
 			 * OFFSET tuples, in general).	So we return no tuples.
 			 */
+            ExecSquelchNode(outerPlan);             /*CDB*/
 			return NULL;
 
 		case LIMIT_INWINDOW:
@@ -127,6 +137,7 @@ ExecLimit(LimitState *node)
 					node->position >= node->offset + node->count)
 				{
 					node->lstate = LIMIT_WINDOWEND;
+                    ExecSquelchNode(outerPlan);     /*CDB*/
 					return NULL;
 				}
 
@@ -152,6 +163,7 @@ ExecLimit(LimitState *node)
 				if (node->position <= node->offset + 1)
 				{
 					node->lstate = LIMIT_WINDOWSTART;
+                    ExecSquelchNode(outerPlan);     /*CDB*/
 					return NULL;
 				}
 

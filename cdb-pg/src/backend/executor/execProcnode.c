@@ -7,6 +7,7 @@
  *	 ExecProcNode, or ExecEndNode on its subnodes and do the appropriate
  *	 processing.
  *
+ * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -22,6 +23,8 @@
  *		ExecInitNode	-		initialize a plan node and its subplans
  *		ExecProcNode	-		get a tuple by executing the plan node
  *		ExecEndNode		-		shut down a plan node and its subplans
+ *      ExecSquelchNode     -   notify subtree that no more tuples are needed
+ *      ExecStateTreeWalker -   call given function for each node of plan state
  *
  *	 NOTES
  *		This used to be three files.  It is now all combined into
@@ -530,6 +533,33 @@ ExecCountSlotsNode(Plan *node)
 	return 0;
 }
 
+
+/* ----------------------------------------------------------------
+ *		ExecSquelchNode
+ *
+ *      When a node decides that it will not consume any more
+ *      input tuples from a subtree that has not yet returned
+ *      end-of-data, it must call ExecSquelchNode() on the subtree.
+ * ----------------------------------------------------------------
+ */
+
+static bool
+squelchNodeWalker(PlanState    *node,
+                  void         *context)
+{
+    if (IsA(node, MotionState))
+        ExecStopMotion((MotionState *)node);
+    return false;
+}                               /* squelchNodeWalker */
+
+
+void
+ExecSquelchNode(PlanState *node)
+{
+    ExecStateTreeWalker(node, squelchNodeWalker, NULL, NULL);
+}                               /* ExecSquelchNode */
+
+
 /* ----------------------------------------------------------------
  *		ExecEndNode
  *
@@ -801,4 +831,122 @@ ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result)
 	return;
 }
 #endif /* CDB_TRACE_EXECUTOR */
+
+
+/* ----------------------------------------------------------------
+ *		ExecStateTreeWalker
+ *
+ *		Visit the nodes of a plan state tree in depth-first
+ *      order, passing each node (including the starting node)
+ *      to the given callback function(s).
+ *
+ *      The 'visit_preorder' function is called before a node's
+ *      subtrees are visited.  The 'visit_postorder' is called
+ *      afterward.  Either can be NULL.
+ *
+ *      If a callback returns true, the walk ends immediately
+ *      without making any further calls, and true is returned.
+ *      Otherwise false is returned when the walk is complete.
+ * ----------------------------------------------------------------
+ */
+
+typedef struct ExecStateTreeWalkerContext
+{
+    bool      (*visit_preorder)(PlanState *node, void *context);
+    bool      (*visit_postorder)(PlanState *node, void *context);
+    void       *context;
+} ExecStateTreeWalkerContext;
+
+
+static bool
+stateTreeWalker(PlanState                  *node,
+                ExecStateTreeWalkerContext *ctx)
+{
+    PlanState  *next;
+    PlanState  *subtree;
+    int         i;
+
+    for (; node; node = next)
+    {
+        next = NULL;
+
+        /* Visit this node ... preorder */
+        if (ctx->visit_preorder &&
+            ctx->visit_preorder(node, ctx->context))
+            return true;
+
+        /* Some node types have their own subtree ptr fields */
+        switch (nodeTag(node))
+        {
+            case T_AppendState:
+            {
+                AppendState    *as = (AppendState *)node;
+                for (i = 0; i < as->as_nplans; i++)
+                {
+                    subtree = as->appendplans[i];
+                    if (subtree)
+                    {
+                        if (next && stateTreeWalker(next, ctx))
+                            return true;
+                        next = subtree;
+                    }
+                }
+                break;
+            }
+            case T_SubqueryScanState:
+                next = ((SubqueryScanState *)node)->subplan;
+                break;
+            default:
+                break;
+        }
+
+        /* Left subtree */
+        subtree = node->lefttree;
+        if (subtree)
+        {
+            if (next && stateTreeWalker(next, ctx))
+                return true;
+            next = subtree;
+        }
+
+        /* Right subtree */
+        subtree = node->righttree;
+        if (subtree)
+        {
+            if (next && stateTreeWalker(next, ctx))
+                return true;
+            next = subtree;
+        }
+
+        /* Visit this node ... postorder */
+        if (ctx->visit_postorder)
+        {
+            if (next && stateTreeWalker(next, ctx))
+                return true;
+            if (ctx->visit_postorder(node, ctx->context))
+                return true;
+            break;
+        }
+    }
+    return false;
+}                               /* stateTreeWalker */
+
+
+bool
+ExecStateTreeWalker(PlanState  *node,
+                    bool      (*visit_preorder)(PlanState *node, void *context),
+                    bool      (*visit_postorder)(PlanState *node, void *context),
+                    void       *context)
+{
+	ExecStateTreeWalkerContext ctx;
+
+    if (!node)
+        return false;
+
+    ctx.visit_preorder = visit_preorder;
+    ctx.visit_postorder = visit_postorder;
+    ctx.context = context;
+    return stateTreeWalker(node, &ctx);
+}                               /* ExecStateTreeWalker */
+
 

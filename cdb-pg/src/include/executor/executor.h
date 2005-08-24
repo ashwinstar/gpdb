@@ -4,6 +4,7 @@
  *	  support for the POSTGRES executor module
  *
  *
+ * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -118,6 +119,15 @@ extern PlanState *ExecInitNode(Plan *node, EState *estate);
 extern TupleTableSlot *ExecProcNode(PlanState *node);
 extern int	ExecCountSlotsNode(Plan *node);
 extern void ExecEndNode(PlanState *node);
+
+void
+ExecSquelchNode(PlanState *node);
+
+bool
+ExecStateTreeWalker(PlanState  *node,
+                    bool      (*visit_preorder)(PlanState *node, void *context),
+                    bool      (*visit_postorder)(PlanState *node, void *context),
+                    void       *context);
 
 /*
  * prototypes from functions in execQual.c

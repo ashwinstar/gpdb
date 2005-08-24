@@ -3,6 +3,7 @@
  * nodeHashjoin.c
  *	  Routines to handle hash join nodes
  *
+ * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -136,14 +137,12 @@ ExecHashJoin(HashJoinState *node)
 			ExecHashTableDestroy(hashtable);
 			node->hj_HashTable = NULL;
 
-			/* To avoid hang ups in AMS */
-			/* TODO: Think of a better way to do this */
-			while ( true )
-			{
-				outerTupleSlot = ExecProcNode(outerNode);
-				if ( TupIsNull(outerTupleSlot))
-					break;
-			}
+			/* CDB: We'll read no more from outer subtree.
+             * To keep our sibling QEs from being starved,
+             * tell source QEs not to clog up the pipeline
+             * with our never-to-be-consumed data.
+             */
+            ExecSquelchNode(outerNode);
 
 			return NULL;
 		}
