@@ -3644,7 +3644,7 @@ CopyReadAttributesText(const char *delim, const char *escape, const char *null_p
 						ereport(ERROR,
 								(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 								 errmsg("missing data for column \"%s\"",
-										NameStr(attr[m + 1]->attname))));
+										NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname))));
 					else
 						return;
 				}
