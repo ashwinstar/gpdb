@@ -736,7 +736,7 @@ static void *thread_DoConnect(void *arg)
 			segdbDesc->motionListener = PQmotionListener(conn);
 			
 			/* Don't use elog, it's not thread-safe */
-    		//if (DEBUG3 <= log_min_messages)
+    		//if (DEBUG3 >= log_min_messages)
 			//fprintf(stderr, "createGang: motionListener for this connection is %d", segdbDesc->motionListener);*/
 			
 			if( segdbDesc->motionListener == -1 )
