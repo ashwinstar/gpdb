@@ -543,13 +543,16 @@ ExecCountSlotsNode(Plan *node)
  * ----------------------------------------------------------------
  */
 
-static bool
+static CdbVisitOpt
 squelchNodeWalker(PlanState    *node,
                   void         *context)
 {
     if (IsA(node, MotionState))
+    {
         ExecStopMotion((MotionState *)node);
-    return false;
+        return CdbVisit_Skip;   /* don't visit subtree */
+    }
+    return CdbVisit_Walk;
 }                               /* squelchNodeWalker */
 
 
@@ -836,29 +839,42 @@ ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result)
 /* ----------------------------------------------------------------
  *		ExecStateTreeWalker
  *
- *		Visit the nodes of a plan state tree in depth-first
+ *		Visits the nodes of a plan state tree in depth-first
  *      order, passing each node (including the starting node)
- *      to the given callback function(s).
+ *      to the given callback function(s).  
  *
- *      The 'visit_preorder' function is called before a node's
- *      subtrees are visited.  The 'visit_postorder' is called
- *      afterward.  Either can be NULL.
+ *      Returns the result from the last callback.  (If 'node' 
+ *      is NULL, CdbVisit_Walk is returned.)
  *
- *      If a callback returns true, the walk ends immediately
- *      without making any further calls, and true is returned.
- *      Otherwise false is returned when the walk is complete.
+ *      The 'visit_preorder' function is called when the walker
+ *      reaches a node.  
+ *        - If it returns CdbVisit_Walk, or if 'visit_preorder' is
+ *          NULL, then the node's subtrees are visited and the 
+ *          visit_postorder function is called.
+ *        - If it returns CdbVisit_Skip, the walk continues without
+ *          visiting the node's subtrees and without calling the
+ *          visit_postorder function.
+ *        - If it returns CdbVisit_Stop or another value, the 
+ *          walk ends immediately with no further callbacks.
+ *
+ *      The 'visit_postorder' function is called after visiting a
+ *      node's subtrees (if any).  If it returns CdbVisit_Walk
+ *      or CdbVisit_Skip, or if 'visit_postorder' is NULL, the 
+ *      walk continues.  If it returns CdbVisit_Stop or another 
+ *      value, the walk ends immediately with no further callbacks.
  * ----------------------------------------------------------------
  */
 
 typedef struct ExecStateTreeWalkerContext
 {
-    bool      (*visit_preorder)(PlanState *node, void *context);
-    bool      (*visit_postorder)(PlanState *node, void *context);
-    void       *context;
+    CdbVisitOpt   (*visit_preorder)(PlanState *node, void *context);
+    CdbVisitOpt   (*visit_postorder)(PlanState *node, void *context);
+    void           *context;
+    CdbVisitOpt     result;
 } ExecStateTreeWalkerContext;
 
 
-static bool
+static bool                     /* returns true to continue, false to stop */
 stateTreeWalker(PlanState                  *node,
                 ExecStateTreeWalkerContext *ctx)
 {
@@ -871,9 +887,12 @@ stateTreeWalker(PlanState                  *node,
         next = NULL;
 
         /* Visit this node ... preorder */
-        if (ctx->visit_preorder &&
-            ctx->visit_preorder(node, ctx->context))
-            return true;
+        if (ctx->visit_preorder)
+        {
+            ctx->result = ctx->visit_preorder(node, ctx->context);
+            if (ctx->result != CdbVisit_Walk)
+                return (ctx->result == CdbVisit_Skip);
+        }
 
         /* Some node types have their own subtree ptr fields */
         switch (nodeTag(node))
@@ -886,8 +905,8 @@ stateTreeWalker(PlanState                  *node,
                     subtree = as->appendplans[i];
                     if (subtree)
                     {
-                        if (next && stateTreeWalker(next, ctx))
-                            return true;
+                        if (next && !stateTreeWalker(next, ctx))
+                            return false;
                         next = subtree;
                     }
                 }
@@ -904,8 +923,8 @@ stateTreeWalker(PlanState                  *node,
         subtree = node->lefttree;
         if (subtree)
         {
-            if (next && stateTreeWalker(next, ctx))
-                return true;
+            if (next && !stateTreeWalker(next, ctx))
+                return false;
             next = subtree;
         }
 
@@ -913,40 +932,42 @@ stateTreeWalker(PlanState                  *node,
         subtree = node->righttree;
         if (subtree)
         {
-            if (next && stateTreeWalker(next, ctx))
-                return true;
+            if (next && !stateTreeWalker(next, ctx))
+                return false;
             next = subtree;
         }
 
         /* Visit this node ... postorder */
         if (ctx->visit_postorder)
         {
-            if (next && stateTreeWalker(next, ctx))
-                return true;
-            if (ctx->visit_postorder(node, ctx->context))
-                return true;
+            if (next && !stateTreeWalker(next, ctx))
+                return false;
+            ctx->result = ctx->visit_postorder(node, ctx->context);
+            if (ctx->result != CdbVisit_Walk)
+                return (ctx->result == CdbVisit_Skip);
             break;
         }
     }
-    return false;
+    return true;
 }                               /* stateTreeWalker */
 
 
-bool
-ExecStateTreeWalker(PlanState  *node,
-                    bool      (*visit_preorder)(PlanState *node, void *context),
-                    bool      (*visit_postorder)(PlanState *node, void *context),
-                    void       *context)
+CdbVisitOpt
+ExecStateTreeWalker(PlanState      *node,
+                    CdbVisitOpt   (*visit_preorder)(PlanState *node, void *context),
+                    CdbVisitOpt   (*visit_postorder)(PlanState *node, void *context),
+                    void           *context)
 {
 	ExecStateTreeWalkerContext ctx;
 
-    if (!node)
-        return false;
-
+    ctx.result = CdbVisit_Walk;
     ctx.visit_preorder = visit_preorder;
     ctx.visit_postorder = visit_postorder;
     ctx.context = context;
-    return stateTreeWalker(node, &ctx);
+
+    stateTreeWalker(node, &ctx);
+    
+    return ctx.result;
 }                               /* ExecStateTreeWalker */
 
 

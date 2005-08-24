@@ -123,11 +123,19 @@ extern void ExecEndNode(PlanState *node);
 void
 ExecSquelchNode(PlanState *node);
 
-bool
-ExecStateTreeWalker(PlanState  *node,
-                    bool      (*visit_preorder)(PlanState *node, void *context),
-                    bool      (*visit_postorder)(PlanState *node, void *context),
-                    void       *context);
+
+typedef enum 
+{
+    CdbVisit_Walk,    
+    CdbVisit_Skip,
+    CdbVisit_Stop
+} CdbVisitOpt;
+
+CdbVisitOpt
+ExecStateTreeWalker(PlanState      *node,
+                    CdbVisitOpt   (*visit_preorder)(PlanState *node, void *context),
+                    CdbVisitOpt   (*visit_postorder)(PlanState *node, void *context),
+                    void           *context);
 
 /*
  * prototypes from functions in execQual.c
