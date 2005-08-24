@@ -459,7 +459,7 @@ CdbDispatchResults *CdbCheckDispatchResultInt(void ***p_failedSegDB, int *numOfF
  * NOTE: This function MUST NOT contain elog or ereport statements. (or most any other backend code)
  *       elog is NOT thread-safe.  Developers should instead use something like:
  *
- *  if (DEBUG3 <= log_min_messages)
+ *  if (DEBUG3 >= log_min_messages)
  *   		fprintf(stderr,"my brilliant log statement here.\n");
  *		
  */
@@ -489,7 +489,7 @@ void *thread_DispatchCommand(void *arg)
     if (pParms->resultSets != NULL)
     {
     	/* Don't use elog, it's not thread-safe */
-    	if (DEBUG3 <= log_min_messages)
+    	if (DEBUG3 >= log_min_messages)
     		fprintf(stderr,"doing calloc for pgresults\n");
     		
         pqresults = (PGresult **)calloc(db_count, sizeof(pqresults));
@@ -503,7 +503,7 @@ void *thread_DispatchCommand(void *arg)
 	for ( i=0; i<db_count; i++ )
 	{
 		/* Don't use elog, it's not thread-safe */
-    	if (DEBUG3 <= log_min_messages)
+    	if (DEBUG3 >= log_min_messages)
 			fprintf(stderr, "thread_DispatchCommand working on %d of %d commands\n", i, db_count);
 
 		segdbDesc = segdbDescPtrArray[i];
@@ -537,7 +537,7 @@ void *thread_DispatchCommand(void *arg)
 			PQExpBufferData buffer;
 			initPQExpBuffer(&buffer);
 			/* Don't use elog, it's not thread-safe */
-    		//if (DEBUG3 <= log_min_messages)
+    		//if (DEBUG3 >= log_min_messages)
 			//fprintf(stderr,, "thread_DispatchCommand connection bad \n");
 			
 			appendPQExpBuffer(&buffer, "Cannot issue command to segment database"
@@ -552,7 +552,7 @@ void *thread_DispatchCommand(void *arg)
 		
 
 		/* Don't use elog, it's not thread-safe */
-    	if (DEBUG3 <= log_min_messages)
+    	if (DEBUG3 >= log_min_messages)
 			fprintf(stderr, "thread_DispatchCommand sending command %.8s... sent to "
 				"port: %s with options %s and motionListener: %d\n", szCommand,
 				PQport(conn), PQoptions(conn), PQmotionListener(conn) );
@@ -566,7 +566,7 @@ void *thread_DispatchCommand(void *arg)
 			initPQExpBuffer(&buffer);
 			
 			/* Don't use elog, it's not thread-safe */
-    		if (DEBUG3 <= log_min_messages)
+    		if (DEBUG3 >= log_min_messages)
 				fprintf(stderr, "thread_DispatchCommand failed to send %s\n", szCommand);
 			
 			appendPQExpBuffer( &buffer, "SQL Command error: "
@@ -693,7 +693,7 @@ void *thread_DispatchCommand(void *arg)
 		
 		stillRunningCount = x;
 		/* Don't use elog, it's not thread-safe */
-    	//if (DEBUG3 <= log_min_messages)
+    	//if (DEBUG3 >= log_min_messages)
 		//	fprintf(stderr, "thread_DispatchCommand stillRunningCount %d \n",stillRunningCount);
 		
 		if ( n == 0  )
@@ -763,7 +763,7 @@ void *thread_DispatchCommand(void *arg)
 				segdbDesc = stillRunning[i].segdbDesc;
 				conn = segdbDesc->conn;
 				/* Don't use elog, it's not thread-safe */
-		    	//if (DEBUG3 <= log_min_messages)
+		    	//if (DEBUG3 >= log_min_messages)
 				//	fprintf(stderr, "thread_DispatchCommand checking on connection %d \n",i);
 				q = segdbDesc->segment_database_info;
 				Assert( q != NULL );
@@ -771,7 +771,7 @@ void *thread_DispatchCommand(void *arg)
 
 				sock = PQsocket( conn );
 				/* Don't use elog, it's not thread-safe */
-    			//if (DEBUG3 <= log_min_messages)
+    			//if (DEBUG3 >= log_min_messages)
 						//fprintf(stderr, "thread_DispatchCommand checking on sock %d \n",sock);
 				if ( FD_ISSET( sock, &input_mask ) )
 				{
@@ -793,7 +793,7 @@ void *thread_DispatchCommand(void *arg)
 					{
 						segdbDesc->resultStatus = PQresultStatus( pRes );
 						//* Don't use elog, it's not thread-safe */
-				    	//if (DEBUG3 <= log_min_messages)
+				    	//if (DEBUG3 >= log_min_messages)
 						//	fprintf(stderr, "thread_DispatchCommand resultStatus %d\n",segdbDesc->resultStatus);
 						if ( PGRES_COMMAND_OK != segdbDesc->resultStatus &&
 							PGRES_TUPLES_OK != segdbDesc->resultStatus )
