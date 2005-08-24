@@ -1133,12 +1133,12 @@ void InitRootSlices(QueryDesc *queryDesc)
 typedef struct SliceReq {
 	int numNgangs;
 	int num1gangs;
-	bool writer;
+	int nxtNgang;
+	int nxt1gang;
 	Gang **vecNgangs;
 	Gang **vec1gangs; 
 	Gang *mirrorWriterGang;
-	int nxtNgang;
-	int nxt1gang;
+	bool writer;
 	
 } SliceReq;
 
@@ -1185,7 +1185,7 @@ void AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 	
 	/* Make a map so we can access slices quickly by index.  */
 	nslices = list_length(sliceTable->slices);
-	sliceMap = palloc(nslices * sizeof(int));
+	sliceMap = (Slice **)palloc(nslices * sizeof(Slice *));
 	i = 0;
 	foreach (cell, sliceTable->slices)
 	{
@@ -1212,7 +1212,7 @@ void AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 	/* Get the gangs we'll use. */
 	if ( inv.numNgangs > 0 )
 	{
-		inv.vecNgangs =  (Gang**)palloc(sizeof(Gang) * inv.numNgangs);
+		inv.vecNgangs =  (Gang**)palloc(sizeof(Gang *) * inv.numNgangs);
 		for ( i = 0; i < inv.numNgangs; i++ )
 		{
 			if ( i == 0 )
@@ -1232,7 +1232,7 @@ void AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 	}
 	if ( inv.num1gangs > 0 )
 	{
-		inv.vec1gangs =  (Gang**)palloc(sizeof(Gang) * inv.num1gangs);
+		inv.vec1gangs =  (Gang**)palloc(sizeof(Gang *) * inv.num1gangs);
 		for ( i = 0; i < inv.num1gangs; i++ )
 		{
 			inv.vec1gangs[i] = allocateGang(GANGTYPE_READER, 1, utility_segment_index);
