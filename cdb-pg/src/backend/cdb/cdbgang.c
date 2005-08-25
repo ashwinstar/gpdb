@@ -559,6 +559,7 @@ Gang *buildGangDefinition(GangType type, int size, int content)
                 else if ( type == GANGTYPE_READER && size == 1 && 
                           content != p->segindex )
                 {
+                    last_segindex = p->segindex;
                     continue;
                 }
                 else
