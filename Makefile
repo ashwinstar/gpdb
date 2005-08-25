@@ -4,6 +4,8 @@ ISCONFIG=$(MPPPGDIR)/GNUmakefile
 
 MPPDIR=mpp-pgsql-2.0
 
+TARBALL=/tmp/$(MPPDIR).tar.gz
+
 DEFPORT=5432
 
 OPTFLAGS="-O3 -funroll-loops -fomit-frame-pointer -fargument-noalias-global $(COPTX)"
@@ -32,16 +34,19 @@ dist : BIZDEP RECONFIG $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(MPPPGDIR); make install
 	@make mgmtcopy INSTLOC=$(INSTLOC)
+	@make $(TARBALL) INSTLOC=$(INSTLOC)
+
+$(TARBALL) :
+	@gtar czf $(TARBALL) $(INSTLOC)
 
 mgmtcopy :
 	@#Copy the management utilities
 	@mkdir $(INSTLOC)/$(MPPMGMT)
 	@cp -rp $(MPPMGMT)/bin $(INSTLOC)/$(MPPMGMT)
 	@if [ -d $(MPPMGMT)/doc ]; then cp -rp $(MPPMGMT)/doc $(INSTLOC)/$(MPPMGMT); fi
-	@cp -rp $(MPPMGMT)/demo $(INSTLOC)/$(MPPMGMT)
+	@if [ -d $(MPPMGMT)/demo/mppdemo ]; then mkdir $(INSTLOC)/$(MPPMGMT)/demo; gtar czf $(INSTLOC)/$(MPPMGMT)/demo/mppdemo.tar.gz $(MPPMGMT)/demo/mppdemo; fi
 	@rm -rf $(INSTLOC)/$(MPPMGMT)/bin/CVS
 	@rm -rf $(INSTLOC)/$(MPPMGMT)/doc/CVS
-	@rm -rf $(INSTLOC)/$(MPPMGMT)/demo/CVS
 
 RECONFIG :
 	rm -f $(ISCONFIG)
