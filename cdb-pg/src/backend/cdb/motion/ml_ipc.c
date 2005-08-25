@@ -239,7 +239,7 @@ bool SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem 
 	CHECK_FOR_INTERRUPTS();
 
 #ifdef AMS_VERBOSE_LOGGING	
-	elog(DEBUG3, "SendTupleChunkToAMS()");
+	elog(DEBUG3, "SendTupleChunkToAMS( motNodeID: %d, targetRoute: %d)", motNodeID, targetRoute);
 #endif
 
 
@@ -1421,7 +1421,7 @@ bool sendChunk(MotionConn *conn, TupleChunkListItem tcItem)
 	
 	if (conn->msgSize + tcItem->chunk_length > Cdb_max_packet_size)
 	{
-		if (flushBuffer(conn))
+		if (!flushBuffer(conn))
 			return false;
 	}
 	
