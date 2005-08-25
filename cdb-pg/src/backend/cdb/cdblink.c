@@ -176,14 +176,21 @@ int getCdbSegmentCount(void)
 		}
 		
 		elog(DEBUG1, "getCdbSegmentCount called when Cdb_role == utility, but is relying on cdb.cdb info");
+		log_backtrace();	
 		
 	}
 		
 	if ( Cdb_role == CDB_ROLE_EXECUTE )
 	{
-		elog(DEBUG1, "getCdbSegmentCount called when Cdb_role == execute");
-		log_backtrace();
+		if (CdbIdentity.numsegments <= 0) 
+		{
+			elog(DEBUG5, "getCdbSegmentCount called when Cdb_role == execute. returning zero segments.");
+			return 0;
+		}
+		elog(DEBUG1, "getCdbSegmentCount called when Cdb_role == execute, but is relying on cdb.cdb info");
+		log_backtrace();	
 	}
+	//Assert( Cdb_role != CDB_ROLE_EXECUTE );
 		
 	if ( CdbIdentity.numsegments <= 0 )
 	{

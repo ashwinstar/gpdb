@@ -144,8 +144,9 @@ void CdbDispatchCommandInt( const char *szCommand, DispatchTargetSet targetSet,
 	
 	if ( Cdb_role != CDB_ROLE_DISPATCH )
 		elog( ERROR, "CdbDispatchCommandInt should not be called while not in DISPATCH mode.");
+			
 		
-
+	Assert( Cdb_role == CDB_ROLE_DISPATCH );
 	Assert( segdbList == NULL || targetSet == DTS_ENUMERATION );
 	Assert( segdbListCount == 0 || targetSet == DTS_ENUMERATION );
 	Assert( segdbList == NULL || segdbListCount > 0 );

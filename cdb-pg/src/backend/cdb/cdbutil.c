@@ -64,6 +64,9 @@ void getCdbCdb(void)
 	Name cdbname;
 	MemoryContext oldContext;
 	MemoryContext permanentContext = TopMemoryContext;
+	
+	if (Cdb_role == CDB_ROLE_UTILITY)
+		elog(DEBUG1, "WARNING: called getCdbCdb when in utility mode");
 
 	/*
 	 * Release storage for the cdbname if not NULL
