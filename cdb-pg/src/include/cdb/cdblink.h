@@ -42,13 +42,6 @@
  */
 extern void cdblink_setup(void);
 
-/* 
- * Called by on_proc_exit processing (in /backend/storage/ipc/ipc.c) to drop 
- * the connections to the tails. 
- */
-//extern void cdblink_disconnect( int exit_code, Datum arg );
-
-
 
 /* 
  * Returns the number of segments
@@ -59,18 +52,6 @@ extern void cdblink_setup(void);
  */
 extern int getCdbSegmentCount(void);
 
-/* 
- * Returns an array of the segindexes, and fills in the segment count
- * in the out parameter.
- * 
- * N.B.  Cdb_role must be either dispatch or execute, since
- * when utiliy  no cdb catalog tables are read.  An Assert is
- * thrown if Cdb_role = utility.
- * This is implemented in cdbl
- */
-extern int *getCdbSegments(int *segcount);
-
-//extern struct CdbComponentDatabaseInfo *getComponentDatabaseInfo( int segId, int instId );
 
 extern void *getEntrySegDB(int *);
 
