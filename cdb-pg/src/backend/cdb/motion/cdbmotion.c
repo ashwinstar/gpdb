@@ -232,7 +232,7 @@ static void reconstructTuple(MotionNodeEntry *pMNEntry, ChunkSorterEntry *pCSEnt
 /* Stats-function declarations. */
 static void statSendTuple(MotionNodeEntry *pMNEntry, TupleChunkList tcList);
 static void statSendEOS(MotionNodeEntry *pMNEntry);
-static void statChunksProcessed(int chunksProcessed, int chunkBytes, int tupleBytes);
+static void statChunksProcessed(MotionNodeEntry *pMNEntry, int chunksProcessed, int chunkBytes, int tupleBytes);
 static void statNewTupleArrived(MotionNodeEntry *pMNEntry, ChunkSorterEntry *pCSEntry);
 static void statRecvTuple(MotionNodeEntry *pMNEntry,
                           ChunkSorterEntry *pCSEntry,
@@ -652,21 +652,17 @@ ReceiveReturnCode RecvTuple(int16 motNodeID, HeapTuple *tup_i)
 }
 
 
-ReceiveReturnCode RecvTupleFrom(int16 motNodeID, HeapTuple *tup_i,
-    int16 srcRoute)
+ReceiveReturnCode RecvTupleFrom(int16 motNodeID, HeapTuple *tup_i, int16 srcRoute)
 {
-    MotionNodeEntry *pMNEntry;
-    ChunkSorterEntry *pCSEntry;
-    ReceiveReturnCode recvRC;
+    MotionNodeEntry 	*pMNEntry;
+    ChunkSorterEntry 	*pCSEntry;
+    ReceiveReturnCode 	recvRC;
   
+  
+#ifdef AMS_VERBOSE_LOGGING
+	elog( DEBUG3, "RecvTupleFrom( motNodeID = %d, srcRoute = %d )", motNodeID, srcRoute );
+#endif	
 
-	//elog( DEBUG3, "RecvTupleFrom( motNodeID = %d, srcRoute = %d", motNodeID, srcRoute );
-	
-    /* Process all chunks in our incoming queue, regardless of which motion
-     * nodes they are coming from.
-     */
-
-    /* Get the tuple-store that should contain heap-tuples that we want. */
 
     pMNEntry = getMotionNodeEntry(motNodeID, "RecvTupleFrom");
 
@@ -780,7 +776,7 @@ void processIncomingChunks(  MotionNodeEntry *pMNEntry, int16 motNodeID, int16 s
 		}
 		else
 		{
-			elog(WARNING, "Received tuple-chunk of size %u; smaller than"
+			elog(ERROR, "Received tuple-chunk of size %u; smaller than"
 				" chunk header size %d!", tcItem->chunk_length,
 				TUPLE_CHUNK_HEADER_SIZE);
 		}
@@ -792,7 +788,7 @@ void processIncomingChunks(  MotionNodeEntry *pMNEntry, int16 motNodeID, int16 s
     }
 
     /* Stats */
-    statChunksProcessed(numChunks, chunkBytes, tupleBytes);
+    statChunksProcessed(pMNEntry, numChunks, chunkBytes, tupleBytes);
 
     MemoryContextSwitchTo(oldCtxt);
 }
@@ -895,22 +891,19 @@ void EndMotionLayerNode(int16 motNodeID, bool flushCommLayer)
     }
 
     /* Clean up the motion-node entry, then remove it from the hash table. */
-
-    elog(DEBUG1, "Motion node %d statistics:\n"
-        "\tTotal Send Attempts:      %u\n"
-        "\tTotal Receive Attempts:   %u\n"
-        "\tAvailable Tuples High-Watermark:  %u\n"
-        "\tTotal Tuple-Chunks Sent:  %u\n"
-        "\tTuple Data Bytes Sent:    %u\n"
-        "\tTotal Bytes Sent:         %u",
-        motNodeID,
-        pMNEntry->stat_total_sends,
-        pMNEntry->stat_total_recvs,
-        pMNEntry->stat_tuples_available_hwm,
-        pMNEntry->stat_total_chunks_sent,
-        pMNEntry->stat_tuple_bytes_sent,
-        pMNEntry->stat_total_bytes_sent
-        );
+	elog(DEBUG1, "Motion Node %d Statistics:\n"
+	    	"-- Sending:   Attempts: %u Chunks Sent: %u  Tuple Bytes: %u  Total Bytes: %u \n"
+	    	"-- Receiving: Attempts: %u Chunks Received: %u Tuple Bytes: %u Total Bytes: %u\n",
+	    	motNodeID, 
+	    	pMNEntry->stat_total_sends,  
+	    	pMNEntry->stat_total_chunks_sent,
+        	pMNEntry->stat_tuple_bytes_sent,
+        	pMNEntry->stat_total_bytes_sent,
+        	pMNEntry->stat_total_recvs,
+        	pMNEntry->stat_total_chunks_recvd,
+        	pMNEntry->stat_tuple_bytes_recvd,
+        	pMNEntry->stat_total_bytes_recvd
+        	);
 
     elog(DEBUG3, "Cleaning up motion-node entry %d.", motNodeID);
 
@@ -1269,17 +1262,22 @@ void statSendEOS(MotionNodeEntry *pMNEntry)
 }
 
 
-void statChunksProcessed(int chunksProcessed, int chunkBytes, int tupleBytes)
+void statChunksProcessed(MotionNodeEntry *pMNEntry, int chunksProcessed, int chunkBytes, int tupleBytes)
 {
 	AssertArg(chunksProcessed >= 0);
 	AssertArg(chunkBytes >= 0);
 	AssertArg(tupleBytes >= 0);
 	
-    s_motion_layer_state.stat_total_chunks_recvd += chunksProcessed;
-	
+	/* Update Global Motion Layer Stats. */
+    s_motion_layer_state.stat_total_chunks_recvd += chunksProcessed;	
     s_motion_layer_state.stat_total_chunkproc_calls++;
 	s_motion_layer_state.stat_total_bytes_recvd += chunkBytes;
 	s_motion_layer_state.stat_tuple_bytes_recvd += tupleBytes;
+	
+	/* Update Motion-node stats. */
+	pMNEntry->stat_total_chunks_recvd += chunksProcessed;
+	pMNEntry->stat_total_bytes_recvd += chunkBytes;
+	pMNEntry->stat_tuple_bytes_recvd += tupleBytes;
 }
 
 
