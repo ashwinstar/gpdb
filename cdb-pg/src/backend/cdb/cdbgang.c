@@ -697,8 +697,8 @@ static void *thread_DoConnect(void *arg)
 		 * Build the connection string
 		 */
 		appendPQExpBuffer(&buffer,
-			"options='-c cdb_session_role=EXECUTE -c cdb_segment=%d' ",
-			q->segindex);
+			"options='-c cdb_session_role=EXECUTE -c cdb_segment=%d -c cdb_max_packet_size=%d' ",
+			q->segindex, Cdb_max_packet_size);
 		
 		if ( q->hostname == NULL ) 
 			appendPQExpBufferStr(&buffer, "host='' " );

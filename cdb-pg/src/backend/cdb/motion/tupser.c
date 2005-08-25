@@ -440,8 +440,6 @@ TupleChunkList CvtHeapTupToChunks(HeapTuple htup, SerTupInfo *pSerInfo,
 
     AssertArg(htup != NULL);
     AssertArg(pSerInfo != NULL);
-    AssertArg(maxChunkDataSize >= MIN_TC_DATA_SIZE);
-    AssertArg(maxChunkDataSize <= MAX_TC_DATA_SIZE);
 
     /* Generate serialized version of heap tuple into the string info. */
 

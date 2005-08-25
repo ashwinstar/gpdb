@@ -186,30 +186,26 @@ extern bool             cdb_set_read_only;
 extern bool             assign_cdb_set_read_only( bool newval, bool doit, GucSource source );
 extern const char       * show_cdb_set_read_only( void );
 
-/*
- * Parameter cdb_max_tuple_chunk_size
- *
- * The run-time parameter (GUC variable) cdb_max_tuple_chunk_size controls the
- * maximum size of a block of data that the Motion Layer will move from the
- * postgres process to the AMS process through IPC.
- * 
- * When a tuple is sent to a different backend by a motion node, it is
- * serialized into a byte-sequence (called its "serialized form").  If a
- * tuple's serialized form is less than the maximum tuple chunk size, then the
- * tuple will be moved as a complete unit to the AMS.  However, if the tuple's
- * serialized form is larger than the maximum tuple chunk size then the tuple
- * will be split into two or more chunks and moved piecemeal to the AMS.
- *
- * Ideally, most tuples being moved by motion nodes will have serialized forms
- * that are smaller than the maximum tuple chunk size.  However, it is
- * reasonable to expect that at least some tuples will need to be broken into
- * smaller chunks.
- * 
- * The minimum value of this parameter is 64 bytes, and the maximum is
- * slightly less than 64KB.
- */
-extern int Cdb_max_tuple_chunk_size;    /* GUC var */
 
+/* 
+ * Parameter Cdb_max_packet_size
+ *
+ * The run-time parameter cdb_max_packet_size controls the largest packet
+ * size that the interconnect will transmit.  In general, the interconnect
+ * tries to squeeze as many tuplechunks as possible into a packet without going
+ * above this size limit.
+ *
+ * The largest tuple chunk size that the system will form can be derived 
+ * from this with:
+ *		MAX_CHUNK_SIZE = Cdb_max_packet_size - PACKET_HEADER_SIZE - TUPLE_CHUNK_HEADER_SIZE
+ *
+ * 
+ */
+extern int Cdb_max_packet_size; /* GUC var */
+
+#define DEFAULT_PACKET_SIZE 8192
+#define MIN_PACKET_SIZE 512
+#define MAX_PACKET_SIZE 65536
 
 /*
  * Parameter cdb_segment

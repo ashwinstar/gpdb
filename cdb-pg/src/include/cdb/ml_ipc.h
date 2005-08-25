@@ -14,12 +14,11 @@
 #include "nodes/execnodes.h"
 
 
-/* size of the largest packet that will be sent over the interconnect.
- * A packet can contain one or more TupleChunks.  A TupleChunk is either an
- * entire Tuple or a piece of one.
+/* 2 bytes to store the size of the entire packet.  a packet is composed of
+ * of one or more serialized TupleChunks (each of which has a TupleChunk 
+ * header. 
  */
-#define MAX_PACKET_SIZE 8192
-
+#define PACKET_HEADER_SIZE 2
 
 /* Performs initialization of the MotionLayerIPC.  This should be called before
  * any work is performed through functions here.  Generally, this should only 

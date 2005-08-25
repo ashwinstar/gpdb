@@ -79,19 +79,4 @@ extern uint8  GetChunkType(uint8 *tc_data);
 extern void  SetChunkDataSize(uint8 *tc_data, uint16 value);
 extern void  SetChunkType(uint8 *tc_data, TupleChunkType value);
 
-
-/* This is the maximum allowable tuple-chunk data-payload size.  It is based
- * on the maximum message size that we want to support by the underlying IPC
- * and network transports used by the Motion Layer and AMS.
- *
- * TODO:  Calculate max from max_msg_size - ams_pkt_hdr - tuple_chunk_hdr.
- */
-#define MIN_TC_DATA_SIZE 64
-#define MAX_TC_DATA_SIZE 32768
-#define DEFAULT_TC_DATA_SIZE 1024
-
-
-#define MAX_TUPLE_CHUNK_SIZE (TUPLE_CHUNK_HEADER_SIZE + MAX_TC_DATA_SIZE)
-
-
 #endif /* TUPCHUNK_H */

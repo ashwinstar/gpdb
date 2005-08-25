@@ -209,6 +209,7 @@ static MotionLayerState s_motion_layer_state;
 static TupleChunkListItemData s_eos_chunk_data =
     { NULL, TUPLE_CHUNK_HEADER_SIZE, "                " };
 
+static int Cdb_max_tuple_chunk_size;
 
 /*=========================================================================
  * HELPER FUNCTION DECLARATIONS
@@ -256,10 +257,13 @@ void InitMotionLayer(void)
 	 * The tuple-serial memory-context is a child of the Motion Layer
 	 * memory-context 
 	 */
-
 	s_motion_layer_state.motion_layer_mctx = AllocSetContextCreate(
 		TopMemoryContext, "MotionLayerMemCtxt",
 		ALLOCSET_SMALL_MINSIZE, ALLOCSET_SMALL_INITSIZE, ALLOCSET_SMALL_MAXSIZE);
+
+
+	Cdb_max_tuple_chunk_size = Cdb_max_packet_size - PACKET_HEADER_SIZE - TUPLE_CHUNK_HEADER_SIZE;
+	
 
 	/* Initialize the Motion Layer IPC subsystem. */
 	InitMotionLayerIPC( );
@@ -269,6 +273,8 @@ void InitMotionLayer(void)
 	 */
 	initMotionLayerStructs();
 }
+
+
 
 /* This function completely resets the Motion Layer at the end of a query
  * execution.
@@ -497,8 +503,7 @@ SendReturnCode SendTuple(int16 motNodeID, HeapTuple tuple, int16 targetRoute)
 
 	/* Create and store the serialized form, and some stats about it. */
 	oldCtxt = MemoryContextSwitchTo(s_motion_layer_state.motion_layer_mctx);
-	tcList = CvtHeapTupToChunks(tuple,&pMNEntry->ser_tup_info, 
-			Cdb_max_tuple_chunk_size );
+	tcList = CvtHeapTupToChunks(tuple,&pMNEntry->ser_tup_info, Cdb_max_tuple_chunk_size );
 	MemoryContextSwitchTo(oldCtxt);
 
 #ifdef AMS_VERBOSE_LOGGING

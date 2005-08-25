@@ -52,7 +52,6 @@ bool				Debug_print_slice_table; /* Shall we log the slice table? */
 
 int					cdb_connections_per_thread;	/* How many libpq connections are handled in each thread */
 
-int					Cdb_max_tuple_chunk_size;   /* CDB Motion Layer -> AMS */
 
 int					Cdb_segment;		/* What content this QE is handling. */
 
@@ -61,6 +60,8 @@ bool				enable_cdbbroadcast;
 bool				enable_agg_restruct;
 
 int					Cdb_listener_port;
+
+int					Cdb_max_packet_size;  /* max Interconnect packet size */
 
 int interconnect_setup_timeout;
 

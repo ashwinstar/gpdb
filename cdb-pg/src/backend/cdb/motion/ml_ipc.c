@@ -37,11 +37,6 @@
 #define getInt16(pNetData)    ntohs(*((int16 *)(pNetData)))
 #define getInt32(pNetData)    ntohl(*((int32 *)(pNetData)))
 
- /* 2 bytes to store the size of the entire packet.  a packet is composed of
-  * of one or more serialized TupleChunks (each of which has a TupleChunk 
-  * header. 
-  */
- #define PACKET_HEADER_SIZE	  2
 
 /* Structure used for keeping track of a pt-to-pt connection between two 
  * Cdb Entities (either QE or QD).
@@ -1093,7 +1088,7 @@ void setupOutgoingConnection( MotionConn *conn, CdbProcess *cdbProc, int *highso
 	int n;
 	
 	conn->sockfd			= socket(AF_INET, SOCK_STREAM, 0);
-	conn->pBuff				= palloc(MAX_PACKET_SIZE);
+	conn->pBuff				= palloc(Cdb_max_packet_size);
 	conn->msgSize			= PACKET_HEADER_SIZE;
 	conn->tupleCount		= 0;
 	conn->stillActive		= true;
@@ -1319,7 +1314,7 @@ void readRegisterMessage(MotionConn *conn, int *incoming_count)
 	newConn = pEntry->conns + msg.srcRouteId;	
 	
 	newConn->sockfd		   	 = conn->sockfd;
-	newConn->pBuff	     	 = palloc(MAX_PACKET_SIZE);
+	newConn->pBuff	     	 = palloc(Cdb_max_packet_size);
 	newConn->msgSize 		 = 0;
 	newConn->tupleCount 	 = 0;
 	newConn->stillActive 	 = true;
@@ -1398,7 +1393,7 @@ void acceptIncomingConnection(fd_set *rset, int *highsock)
 	
 	conn = palloc(sizeof(MotionConn));	
 	conn->sockfd     = newsockfd;
-	conn->pBuff      = palloc(MAX_PACKET_SIZE);
+	conn->pBuff      = palloc(Cdb_max_packet_size);
 	conn->msgSize    = 0;
 	conn->tupleCount = 0;
 	conn->stillActive = true;
@@ -1424,7 +1419,7 @@ bool sendChunk(MotionConn *conn, TupleChunkListItem tcItem)
 {
 	Assert(conn->msgSize > 0);		
 	
-	if (conn->msgSize + tcItem->chunk_length > MAX_PACKET_SIZE)
+	if (conn->msgSize + tcItem->chunk_length > Cdb_max_packet_size)
 	{
 		if (flushBuffer(conn))
 			return false;

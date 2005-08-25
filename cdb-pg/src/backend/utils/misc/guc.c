@@ -1395,16 +1395,16 @@ static struct config_int ConfigureNamesInt[] =
 		BLCKSZ, BLCKSZ, BLCKSZ, NULL, NULL
 	},
     
-    {
-        {"cdb_max_tuple_chunk_size", PGC_SUSET, UNGROUPED,
-            gettext_noop("Sets the max tuple data size that Motion Layer can move at once."),
-            gettext_noop("Tuples that serialize to a larger data-block than this are "
-                         "broken into multiple chunks before sending them to the AMS.")
+	{
+		 {"cdb_max_packet_size", PGC_BACKEND, UNGROUPED,
+            gettext_noop("Sets the max packet size for the Interconnect."),
+            
         },
-        &Cdb_max_tuple_chunk_size,
-        DEFAULT_TC_DATA_SIZE, MIN_TC_DATA_SIZE, MAX_TC_DATA_SIZE, NULL, NULL
-    },
-
+        &Cdb_max_packet_size,
+        DEFAULT_PACKET_SIZE, MIN_PACKET_SIZE, MAX_PACKET_SIZE, NULL, NULL
+	},
+	
+	
 	{
 		{"cdb_connections_per_thread", PGC_SUSET, UNGROUPED,
 			gettext_noop("Sets the number of client connections handled in each thread."),
