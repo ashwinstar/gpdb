@@ -1,4 +1,11 @@
 <<<NEW vi: set expandtab ts=4: >>>
+Added new GUC variable Cdb_max_packet_size.  This specifies the largest packet
+	size that the interconnect will send messages with.  Like cdb_session_role, 
+	this can only be set before startup.  The value that is set on the QD is
+	always set on all of the QEs as part of the QE connection process. The 
+	default value is 8 kBytes and valid are from 512-64k bytes.  The GUC 
+	Cdb_max_tuple_chunk_size has been removed.  The tuple chunk size is now
+	derived from Cdb_max_packet_size.
 COPY command integration with DTM completed. COPY now relies on the 
     transaction manager to issue a ROLLBACK if the dispatcher throws
     an error.
