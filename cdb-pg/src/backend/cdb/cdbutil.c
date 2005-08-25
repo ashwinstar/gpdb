@@ -59,6 +59,7 @@ void getCdbCdb(void)
 	HeapTuple			cdb_cdb_tuple = NULL;
 	HeapScanDesc		cdb_cdb_scan;
 	Oid					cdb_namespace_oid;
+	Oid 				cdb_oid;
 	bool				isNull;
 	Datum				attr;
 	Name cdbname;
@@ -83,11 +84,27 @@ void getCdbCdb(void)
 	cdb_namespace_oid = getCDBNamespaceOid();
 	if ( cdb_namespace_oid == InvalidOid )
 	{
-		ereport(ERROR,
+		ereport(WARNING,
 				(errcode(ERRCODE_CARDINALITY_VIOLATION),
 				 errmsg("Cannot retrieve oid of %s namespace", 
 				 		CdbNamespaceName )));
+		return;
 	}
+	
+	cdb_oid = get_relname_relid(CdbCdbRelationName, cdb_namespace_oid);
+	
+	/*
+	 * If the cdb.cdb table isn't there we continue if not dispatch.
+	 */	
+	if ( cdb_oid == InvalidOid )
+	{
+		ereport(WARNING,
+				(errcode(ERRCODE_CARDINALITY_VIOLATION),
+				 errmsg("Table does not exist %s.%s.",
+				 CdbNamespaceName, CdbCdbRelationName)));
+		return;
+	}
+		
 
 	/*
 	 * Open the cdb.cdb table relation
@@ -613,6 +630,14 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 		 	component_databases->segment_db_info[i-1].segindex ) )
 			component_databases->total_segments++;	 		
 	}
+	 
+	 
+	 if ( CdbIdentity.numsegments <= 0 ) /* cdb.cdb not available or not read in yet */
+	 {
+	 	CdbIdentity.numsegments = component_databases->total_segments;
+	 	CdbIdentity.segindex = -1;
+	 	CdbIdentity.dbid = 1;
+	 }
 	 
 	 /*
 	  *  Validate that cdb_numsegments == segment_databases->total_segment_dbs
