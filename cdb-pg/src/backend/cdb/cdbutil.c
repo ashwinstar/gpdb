@@ -69,6 +69,9 @@ void getCdbCdb(void)
 	if (Cdb_role == CDB_ROLE_UTILITY)
 		elog(DEBUG1, "WARNING: called getCdbCdb when in utility mode");
 
+	if (Cdb_role == CDB_ROLE_DISPATCH && Cdb_segment < -1)
+		Cdb_segment = -1;
+		
 	/*
 	 * Release storage for the cdbname if not NULL
 	 */
@@ -815,7 +818,7 @@ void cdb_cleanup(void)
 /*
  * CdbComponentDatabaseInfoCompare:
  * A compare function for CdbComponentDatabaseInfo structs
- * that compares based on segindex, isprimary desc
+ * that compares based on , isprimary desc
  * for use with qsort.
  */
 static int CdbComponentDatabaseInfoCompare(const void *p1, const void *p2)
