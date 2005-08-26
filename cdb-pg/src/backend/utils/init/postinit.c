@@ -477,6 +477,8 @@ InitPostgres(const char *dbname, const char *username)
  * callbacks because we still want this one to happen if the user-level
  * cleanup fails.
  */
+void shutdownTM(void);
+
 static void
 ShutdownPostgres(int code, Datum arg)
 {
