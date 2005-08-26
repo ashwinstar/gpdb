@@ -317,7 +317,7 @@ List *getAggStrategyList(Agg* agg)
 					as = NULL;
 				*/
 			}
-			else if ( isgrouped && state->ndistinct == 0 )
+			else if ( isgrouped )
 			{
 				/* Can partition on grouping exprs. */
 				as = makeAggStrategy(MOVEMENT_REPARTITION, FLOW_PARTITIONED);
