@@ -180,7 +180,7 @@ create_statement(int lineno, int compat, int force_indicator, struct connection 
 #if defined(__GNUC__) && (defined (__powerpc__) || defined(__AMD64__))
 			ECPGget_variable(ap, type, var, true);
 #else
-			ECPGget_variable(&ap, type, var, true);
+			ECPGget_variable(*ap, type, var, true);
 #endif
 
 			/* if variable is NULL, the statement hasn't been prepared */
