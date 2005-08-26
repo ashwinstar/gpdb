@@ -47,10 +47,11 @@ extern bool bTreatLocalsAsPartitioned;
  */
 void cdb_get_relstats(Oid relid, BlockNumber *pages, double *tuples)
 {
-	StringInfoData	buffer;
-	int				rtn;
-	HeapTuple		tup;
-	TupleDesc		tupdesc;
+	StringInfoData		buffer;
+	int					rtn;
+	HeapTuple			tup;
+	TupleDesc			tupdesc;
+	char				*tmp;
 
 	Assert( Cdb_role == CDB_ROLE_DISPATCH );
 	Assert( pages != NULL );
@@ -63,15 +64,15 @@ void cdb_get_relstats(Oid relid, BlockNumber *pages, double *tuples)
 	/*
 	 * First, create a select statment
 	 */
-	initStringInfo( &buffer );
-	appendStringInfo( &buffer, "select avg(reltuples), max(reltuples), avg(relpages), max(relpages)" );
-	appendStringInfo( &buffer, " from pg_class" );
-	appendStringInfo( &buffer, " where oid=%u", relid );
+	initStringInfo(&buffer);
+	appendStringInfo(&buffer, "select avg(reltuples), max(reltuples), avg(relpages), max(relpages)" );
+	appendStringInfo(&buffer, " from pg_class");
+	appendStringInfo(&buffer, " where oid=%u", relid);
 
 	/*
 	 * Next, use SPI to execute it.
 	 */
-	if ( SPI_OK_CONNECT != SPI_connect() )
+	if (SPI_OK_CONNECT != SPI_connect())
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
@@ -87,7 +88,7 @@ void cdb_get_relstats(Oid relid, BlockNumber *pages, double *tuples)
 	rtn = SPI_execute( buffer.data, false, 0 );
 	bTreatLocalsAsPartitioned = false;
 
-	if ( SPI_OK_SELECT != rtn )
+	if (SPI_OK_SELECT != rtn)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
@@ -102,8 +103,23 @@ void cdb_get_relstats(Oid relid, BlockNumber *pages, double *tuples)
 	tupdesc = SPI_tuptable->tupdesc;
 	Assert(tup != NULL && tupdesc != NULL);
 
-	*tuples = atof(SPI_getvalue(tup, tupdesc, Anum_pg_class_max_tuples));
-	*pages = atoi(SPI_getvalue(tup, tupdesc, Anum_pg_class_max_pages));
+	tmp = SPI_getvalue(tup, tupdesc, Anum_pg_class_max_tuples);
+	if (tmp == NULL)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+				errmsg("cdb_update_relstats: invalid tuple count string")));
+	}
+	*tuples = atof(tmp);
+
+	tmp = SPI_getvalue(tup, tupdesc, Anum_pg_class_max_pages);
+	if (tmp == NULL)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+				errmsg("cdb_update_relstats: invalid page count string")));
+	}
+	*pages = atoi(tmp);
 
 	/*
 	 * Clean up.
