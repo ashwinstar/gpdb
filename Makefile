@@ -44,7 +44,7 @@ mgmtcopy :
 	@mkdir $(INSTLOC)/$(MPPMGMT)
 	@cp -rp $(MPPMGMT)/bin $(INSTLOC)/$(MPPMGMT)
 	@if [ -d $(MPPMGMT)/doc ]; then cp -rp $(MPPMGMT)/doc $(INSTLOC)/$(MPPMGMT); fi
-	@if [ -d $(MPPMGMT)/demo/mppdemo ]; then mkdir $(INSTLOC)/$(MPPMGMT)/demo; gtar czf $(INSTLOC)/$(MPPMGMT)/demo/mppdemo.tar.gz $(MPPMGMT)/demo/mppdemo; fi
+	@if [ -d $(MPPMGMT)/demo/mppdemo ]; then mkdir $(INSTLOC)/$(MPPMGMT)/demo; gtar -C $(MPPMGMT)/demo -czf $(INSTLOC)/$(MPPMGMT)/demo/mppdemo.tar.gz mppdemo; fi
 	@rm -rf $(INSTLOC)/$(MPPMGMT)/bin/CVS
 	@rm -rf $(INSTLOC)/$(MPPMGMT)/doc/CVS
 
