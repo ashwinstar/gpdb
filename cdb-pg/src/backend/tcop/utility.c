@@ -59,6 +59,7 @@
 #include "utils/syscache.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbcat.h"
+#include "cdb/cdbtm.h"
 /*
  * Error-checking support for DROP commands
  */
@@ -369,7 +370,7 @@ typedef enum
 static void
 CdbSentry(CdbAction dispatch, Node *parsetree, const char *altname)
 {
-	CdbAction action;
+	CdbAction action = (CdbAction) NULL;
 	const char *cmdname;
 	
 	switch ( Cdb_role )
