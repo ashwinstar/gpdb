@@ -79,6 +79,7 @@ HOMEFAIL :
 
 clean :
 	@if [ ! -f $(ISCONFIG) ]; then echo "not configured, no need to clean"; exit 1; fi
+	@rm -f $(TARBALL)
 	@cd $(MPPPGDIR); make clean
 
 distclean :
