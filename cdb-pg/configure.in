@@ -261,6 +261,9 @@ if test "$GCC" = yes; then
 
   # Disable strict-aliasing rules; needed for gcc 3.3+
   PGAC_PROG_CC_CFLAGS_OPT([-fno-strict-aliasing])
+
+  # Disable pointer signedness warnings; needed for gcc 4+
+  PGAC_PROG_CC_CFLAGS_OPT([-Wno-pointer-sign])
 fi
 
 # supply -g if --enable-debug
