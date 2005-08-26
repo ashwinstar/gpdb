@@ -907,6 +907,7 @@ static struct config_bool ConfigureNamesBool[] =
     {
         {"cdb_set_read_only", PGC_SUSET, UNGROUPED,
             gettext_noop("Sets the system read only"),
+			NULL,
             GUC_NOT_IN_SAMPLE
         },
         &cdb_set_read_only,
