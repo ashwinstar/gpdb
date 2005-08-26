@@ -131,6 +131,7 @@ RestoreArchive(Archive *AHX, RestoreOptions *ropt)
 	OutputContext sav;
 	int			impliedDataOnly;
 	bool		defnDumped;
+    bool bConnectionCreated;
 
 	AH->ropt = ropt;
 	AH->stage = STAGE_INITIALIZING;
@@ -151,7 +152,7 @@ RestoreArchive(Archive *AHX, RestoreOptions *ropt)
 	 * If we're using a DB connection, then connect it.
 	 */
     /* CDB Specific */
-    bool bConnectionCreated = false;
+    bConnectionCreated = false;
     if (ropt->useDB && AH->connection == NULL )
     /* End CDB Specific */
 	{
@@ -1218,6 +1219,7 @@ void
 write_msg(const char *modulename, const char *fmt,...)
 {
 	va_list		ap;
+    char* pszRe;
 
     /* The following code is CDB Specific.  It's purpose is to
      * create a char* with the error message that is the evaluation of the fmt and
@@ -1251,7 +1253,7 @@ write_msg(const char *modulename, const char *fmt,...)
         }
 
         nBytes *= 2;
-        char* pszRe = (char *)realloc( psz, nBytes );
+        pszRe = (char *)realloc( psz, nBytes );
         if ( pszRe == NULL )
         {
             free(psz);
@@ -1298,6 +1300,10 @@ void
 exit_horribly(Archive *AH, const char *modulename, const char *fmt,...)
 {
 	va_list		ap;
+    va_list     args;
+    int         nprinted;
+    char* pszRe;
+    char* pszMsg;
 
     /* The following code is CDB Specific.  It's purpose is to
      * create a char* with the error message that is the evaluation of the fmt and
@@ -1312,8 +1318,6 @@ exit_horribly(Archive *AH, const char *modulename, const char *fmt,...)
         /*
          * Try to format the given string into the available space;
          */
-        va_list     args;
-        int         nprinted;
 
         va_start(args, fmt);
         nprinted = vsnprintf(psz, nBytes, fmt, args);
@@ -1331,7 +1335,7 @@ exit_horribly(Archive *AH, const char *modulename, const char *fmt,...)
         }
 
         nBytes *= 2;
-        char* pszRe = (char *)realloc( psz, nBytes );
+        pszRe = (char *)realloc( psz, nBytes );
         if ( pszRe == NULL )
         {
             free(psz);
@@ -1345,7 +1349,7 @@ exit_horribly(Archive *AH, const char *modulename, const char *fmt,...)
 
     if ( psz != NULL )
     {
-        char* pszMsg = MakeString( "*** aborted because of error: %s\n", psz );
+        pszMsg = MakeString( "*** aborted because of error: %s\n", psz );
         free(psz);
 
         if ( pszMsg != NULL )
@@ -1368,6 +1372,9 @@ void
 die_horribly(ArchiveHandle *AH, const char *modulename, const char *fmt,...)
 {
 	va_list		ap;
+    char* pszRe;
+    char* pszConnErr;
+    char* pszMsg;
 
     /* The following code is CDB Specific.  It's purpose is to
      * create a char* with the error message that is the evaluation of the fmt and
@@ -1401,7 +1408,7 @@ die_horribly(ArchiveHandle *AH, const char *modulename, const char *fmt,...)
         }
 
         nBytes *= 2;
-        char* pszRe = (char *)realloc( psz, nBytes );
+        pszRe = (char *)realloc( psz, nBytes );
         if ( pszRe == NULL )
         {
             free(psz);
@@ -1416,11 +1423,11 @@ die_horribly(ArchiveHandle *AH, const char *modulename, const char *fmt,...)
     if ( psz != NULL )
     {
         /* cdb change */
-        char* pszConnErr = "";
+        pszConnErr = "";
         if ( AH && AH->connection )
             pszConnErr = PQerrorMessage(AH->connection);
 
-        char* pszMsg = MakeString( "*** aborted because of error: %s: %s\n", psz, pszConnErr );
+        pszMsg = MakeString( "*** aborted because of error: %s: %s\n", psz, pszConnErr );
         free(psz);
 
         if ( pszMsg != NULL )

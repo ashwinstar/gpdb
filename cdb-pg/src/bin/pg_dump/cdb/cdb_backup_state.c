@@ -155,6 +155,7 @@ bool IsFinalState( BackupStateMachine* pStateMachine )
  */
 void ProcessInput( BackupStateMachine* pStateMachine )
 {
+	int i;
 	if ( pStateMachine->nArCount == 0 )
 	{
 		/* NULL input means that the timer on the socket select expired with no notifications.
@@ -178,7 +179,6 @@ void ProcessInput( BackupStateMachine* pStateMachine )
 	
 	qsort( pStateMachine->ppNotifyAr, pStateMachine->nArCount, sizeof(PGnotify*), cmpNotifyStructs );
 	
-	int i;
 	for ( i=0; i<pStateMachine->nArCount; i++ )
 	{
 		PGnotify* pNotify =  pStateMachine->ppNotifyAr[i];

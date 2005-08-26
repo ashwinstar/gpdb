@@ -120,7 +120,18 @@ main(int argc, char **argv)
 	extern char *optarg;
 	static int	use_setsessauth = 0;
 	static int	disable_triggers = 0;
-    PGresult   *res;
+    SegmentInstance SegInst;
+    StatusOp* pOp;
+    struct sigaction act, oact;
+    pid_t newpid;
+    char* pszOnErrorStop    = "-v ON_ERROR_STOP=";
+    int len;  /* psql */
+    int i;
+    char* pszCmdLine;
+    int status;
+    int rc;
+    char* pszErrorMsg;
+    ArchiveHandle* pAH;
 
 	struct option cmdopts[] = {
 		{"clean", 0, NULL, 'c'},
@@ -392,7 +403,6 @@ main(int argc, char **argv)
     }
    
      /* cdb additions */
-    SegmentInstance SegInst;
     SegInst.segid       = g_CDBSegID;
     SegInst.instid      = g_CDBInstID;
     SegInst.port        = opts->pgport ? atoi( opts->pgport ) : 5432;
@@ -499,7 +509,7 @@ main(int argc, char **argv)
             }
         }
 
-        StatusOp* pOp = CreateStatusOp( TASK_START, TASK_RC_SUCCESS, SUFFIX_START, TASK_MSG_SUCCESS );
+        pOp = CreateStatusOp( TASK_START, TASK_RC_SUCCESS, SUFFIX_START, TASK_MSG_SUCCESS );
         if ( pOp == NULL )
         {
             exit_horribly(NULL, NULL, "cannot allocate memory for cdb_backup_status operation\n");
@@ -511,8 +521,6 @@ main(int argc, char **argv)
     if ( bUsePSQL )
     {
         // Install Ctrl-C interrupt handler, now that we have a connection
-        struct sigaction act, oact;
-
         act.sa_handler = myChildHandler;
         sigemptyset(&act.sa_mask);
         act.sa_flags = 0;
@@ -523,20 +531,19 @@ main(int argc, char **argv)
             exit(1);
         }
 
-        pid_t newpid = fork();
+        newpid = fork();
         if ( newpid < 0 )
         {
             write_msg(NULL, "failed to fork in cdb_backup\n");
         }
         else if ( newpid == 0 )
         {
-            char* pszOnErrorStop    = "-v ON_ERROR_STOP=";
+            pszOnErrorStop    = "-v ON_ERROR_STOP=";
 //          char* pszOutFile        = "~/cdb_restore.out";
 
             /* Child Process */
             // launch psql, wait for it to finish
-            int len = 4;  /* psql */
-            int i;
+            len = 4;  /* psql */
             for ( i=1; i<argc - 1; i++ )
             {
                 if ( strncmp( argv[i], "--cdb-", 6 ) == 0 )
@@ -555,7 +562,7 @@ main(int argc, char **argv)
 
     //      len += 2 + strlen( pszOutFile );  // " >"
 
-            char* pszCmdLine = (char *) calloc( len+1, 1 );
+            pszCmdLine = (char *) calloc( len+1, 1 );
             strcpy( pszCmdLine, "psql" );
             for ( i=1; i<argc-1; i++ )
             {
@@ -600,15 +607,14 @@ main(int argc, char **argv)
                 sleep( 5 );
             }
 
-            int status;
             waitpid( newpid, &status, 0 );
             if ( WIFEXITED(status) )
             {
-                int rc = WEXITSTATUS(status);
+                rc = WEXITSTATUS(status);
                 write_msg(NULL, "psql finished with rc %d.\n", rc );
                 if ( rc != 0 )
                 {
-                    char* pszErrorMsg = MakeString( "psql finished abnormally with return code %d.\n", rc  );
+                    pszErrorMsg = MakeString( "psql finished abnormally with return code %d.\n", rc  );
 
                     makeSureMonitorThreadEnds( TASK_RC_FAILURE, pszErrorMsg );
                     free( pszErrorMsg );
@@ -617,7 +623,7 @@ main(int argc, char **argv)
             }
             else if( WIFSIGNALED(status) )
             {
-                char* pszErrorMsg = MakeString( "psql finished abnormally with signal number %d.\n", WTERMSIG(status)  );
+                pszErrorMsg = MakeString( "psql finished abnormally with signal number %d.\n", WTERMSIG(status)  );
                 write_msg(NULL, pszErrorMsg);
                 makeSureMonitorThreadEnds( TASK_RC_FAILURE, pszErrorMsg );
                 free( pszErrorMsg );
@@ -625,7 +631,7 @@ main(int argc, char **argv)
             }
             else
             {
-                char* pszErrorMsg = MakeString( "psql crashed or finished badly.\n" );
+                pszErrorMsg = MakeString( "psql crashed or finished badly.\n" );
                 write_msg(NULL, pszErrorMsg);
                 makeSureMonitorThreadEnds( TASK_RC_FAILURE, pszErrorMsg );
                 free( pszErrorMsg );
@@ -653,7 +659,7 @@ main(int argc, char **argv)
 			PrintTOCSummary(AH, opts);
 		else
         {
-            ArchiveHandle* pAH = (ArchiveHandle *) AH;
+            pAH = (ArchiveHandle *) AH;
 
             if (opts->useDB)
             {
@@ -785,6 +791,7 @@ void myChildHandler(int signo)
  */  
 void makeSureMonitorThreadEnds( int TaskRC, char* pszErrorMsg )
 {
+	StatusOp* pOp;
 	if ( g_monitor_tid )
 	{
 		char* pszSuffix;
@@ -793,7 +800,7 @@ void makeSureMonitorThreadEnds( int TaskRC, char* pszErrorMsg )
 		else
 			pszSuffix = SUFFIX_FAIL;
 			
-		StatusOp* pOp = CreateStatusOp( TASK_FINISH, TaskRC, pszSuffix, pszErrorMsg );
+		pOp = CreateStatusOp( TASK_FINISH, TaskRC, pszSuffix, pszErrorMsg );
 		if ( pOp == NULL )
 		{
 			/* This is really bad, since the only way we cab shut down gracefully is
@@ -819,6 +826,17 @@ void makeSureMonitorThreadEnds( int TaskRC, char* pszErrorMsg )
  */
 void* monitorThreadProc(void *arg)
 {
+	int sock;
+	bool bGotFinished;
+	bool bGotCancelRequest;
+	int PID;
+	struct timeval tv;
+	int nNotifies;
+	bool bFromOtherProcess;
+	StatusOp* pOp;
+	char* pszMsg;
+	fd_set input_mask;
+	PGnotify* notify;
 	
 	// Block SIGINT and SIGKILL signals (we want them only ion main thread)
 	sigset_t newset;
@@ -833,18 +851,16 @@ void* monitorThreadProc(void *arg)
 	DoCancelNotifyListen( g_conn_status, true, g_CDBDumpKey, g_CDBInstID, g_CDBSegID, NULL );
 	
 	// Now wait for a cancel notification
-	int sock = PQsocket( g_conn_status );
-	fd_set input_mask;
+	sock = PQsocket( g_conn_status );
 	FD_ZERO( &input_mask );
 	FD_SET( sock, &input_mask );
-	bool bGotFinished = false;
-	bool bGotCancelRequest = false;
-	int PID = PQbackendPID( g_conn_status );
+	bGotFinished = false;
+	bGotCancelRequest = false;
+	PID = PQbackendPID( g_conn_status );
 
 	/* Once we've seen the TASK_FINISH insert request, we know to leave */ 	
 	while ( !bGotFinished )
 	{
-		struct timeval tv;
 		tv.tv_sec = 2;
 		tv.tv_usec = 0;
 	
@@ -863,9 +879,8 @@ void* monitorThreadProc(void *arg)
 		}
 		
 		PQconsumeInput( g_conn_status );
-		PGnotify* notify;
-		int nNotifies = 0;
-		bool bFromOtherProcess = false;
+		nNotifies = 0;
+		bFromOtherProcess = false;
 		while ( NULL != (notify = PQnotifies(g_conn_status)))
 		{
 			nNotifies++;
@@ -892,7 +907,6 @@ void* monitorThreadProc(void *arg)
 		
 		/* Now deal with any insert requests */
 		Lock( g_pStatusOpList );
-		StatusOp* pOp;
 		while ( NULL != (pOp = TakeFromStatusOpList(g_pStatusOpList)) )
 		{
 			DoCancelNotifyListen( g_conn_status, false, g_CDBDumpKey, g_CDBInstID, g_CDBSegID, pOp->pszSuffix );
@@ -901,7 +915,6 @@ void* monitorThreadProc(void *arg)
 			{
 				bGotFinished = true;
 
-				char* pszMsg;
 				if ( pOp->TaskRC == TASK_RC_SUCCESS )
 					pszMsg = "Succeeded\n";	
 				else
@@ -997,6 +1010,7 @@ bool execCDBCatalogFunction(PGconn* pConn)
 	bool		bRtn				= false;
 	PQExpBuffer bufQry				= NULL;
 	PGresult*	pRes				= NULL;
+	int ntups;
 	
 	bufQry = createPQExpBuffer();
 	
@@ -1015,7 +1029,7 @@ bool execCDBCatalogFunction(PGconn* pConn)
 		goto cleanup;
 	}			
 									
-	int ntups = PQntuples(pRes);
+	ntups = PQntuples(pRes);
 	if ( ntups == 0 )
 	{
 		write_err_msg("Query %s Command failed: %s",

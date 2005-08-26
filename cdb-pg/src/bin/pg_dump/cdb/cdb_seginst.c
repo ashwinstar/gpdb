@@ -32,11 +32,13 @@ static int cmpInstSeg( const void* l, const void* r );
  */
 int CountInstanceHosts( CDBSet* pSet )
 {
+	int i;
+	int x;
+
 	if ( pSet->type != SET_INDIVIDUAL || pSet->count == 0 )
 		return 0;
 	
-	int i;
-	int x = 0;
+	x = 0;
 	for ( i=0; i<pSet->count; i++ )
 	{
 		if ( pSet->pData[i].instVal.val_type == DEFN_TYPE_HOST )
@@ -61,7 +63,22 @@ bool FillCDBSet( CDBSet* pSet, char* pszControlFile )
 	bool		bRtn	= true;
 	FILE*		f		= NULL;
 	char*		fbuf	= NULL;
+
+	char* pBeg;
+	char* pEnd;
 	
+	static regex_t rFinder;
+	static regex_t rWhitespace;
+	static bool bCompiled;
+	
+	struct stat buf;
+	int lineno;
+	int rtn;
+	regmatch_t matches[11];
+	char errbuf[1024];
+	InstSeg* newp;
+	int index;
+
 	int nAllocated = 20;
 	pSet->type = SET_INDIVIDUAL;
 	pSet->count = 0;
@@ -74,7 +91,6 @@ bool FillCDBSet( CDBSet* pSet, char* pszControlFile )
 	}
 	
 	/* Make sure that the file exists, and get its size in bytes. */
-	struct stat buf;
 	if ( 0 > stat( pszControlFile, &buf ) )
 	{
 		write_err_msg( "Error accessing backup control file %s\n", pszControlFile );
@@ -118,12 +134,9 @@ bool FillCDBSet( CDBSet* pSet, char* pszControlFile )
 	fbuf[buf.st_size ] = '\0';
 	
 	/* Allocate enough memory for entire file, and read it in. */
-	char* pBeg = fbuf;
-	char* pEnd;
+	pBeg = fbuf;
 	
-	static regex_t rFinder;
-	static regex_t rWhitespace;
-	static bool bCompiled = false;
+	bCompiled = false;
 	
 	/* Compile the regex on first use. */
 	if ( !bCompiled )
@@ -171,8 +184,7 @@ bool FillCDBSet( CDBSet* pSet, char* pszControlFile )
 		assert( rFinder.re_nsub == 10 );
 	}
 	
-	int lineno = 0;
-	int rtn;
+	lineno = 0;
 	
 	/* Loop through the input buffer, finding \n's.  Then operate on each line separately. */
 	while ( pBeg != NULL && *pBeg != '\0' )
@@ -188,26 +200,23 @@ bool FillCDBSet( CDBSet* pSet, char* pszControlFile )
 		if ( rtn == 0 )
 			continue;
 		
-		regmatch_t matches[11];
-		
 		/* match the line against the regex.  If it fails, print lineno and error message */
 		rtn = regexec( &rFinder, pBeg, 11, matches, 0 );
 		if ( rtn != 0 )
 		{
-			char errbuf[1024];
 			regerror( rtn, &rFinder, errbuf, 1024 );
 			write_err_msg( "Error on line %d of file of control file %s: not a valid line: %s\n", lineno, pszControlFile, errbuf );
 			bRtn = false;
 			goto cleanup;
 		}
 		
-		int index = pSet->count;
+		index = pSet->count;
 		
 		/* reallocate array if necessary. */
 		if ( index == nAllocated )
 		{
 			// Reallocate the memory
-			InstSeg* newp = (InstSeg *)realloc( pSet->pData, 2 * nAllocated * sizeof(InstSeg) );
+			newp = (InstSeg *)realloc( pSet->pData, 2 * nAllocated * sizeof(InstSeg) );
 			if ( newp == NULL )
 			{
 				write_err_msg( "Error reallocating memory for InstSeg array: couldn't allocate %d bytes\n", nAllocated * sizeof(InstSeg) );
@@ -309,6 +318,7 @@ cleanup:
  */
 bool FindInCDBSet( CDBSet* pSet, int instID, int segID )
 {
+	InstSeg test;
 	switch ( pSet->type )
 	{
 		case SET_ALL:
@@ -322,7 +332,6 @@ bool FindInCDBSet( CDBSet* pSet, int instID, int segID )
 	}	
 	
 	/* See whether *, * is in pData */
-	InstSeg test;
 	test.instVal.val_type = DEFN_TYPE_ALL;
 	test.segVal.val_type = DEFN_TYPE_ALL;
 	
@@ -359,10 +368,10 @@ bool FindInCDBSet( CDBSet* pSet, int instID, int segID )
  */
 void FreeCDBSet( CDBSet* pSet )
 {
+	int i;
 	if ( pSet == NULL || pSet->count == 0 || pSet->pData == NULL )
 		return;
 	
-	int i;
 	for ( i=0; i<pSet->count; i++ )
 	{
 		InstSeg* pInstSeg = &pSet->pData[i];
@@ -379,10 +388,10 @@ void FreeCDBSet( CDBSet* pSet )
  */
 void FreeSegmentInstanceArray( SegmentInstanceArray* pSegInstAr )
 {
+	int i;
 	if ( pSegInstAr == NULL )
 		return;
 	
-	int i;
 	for ( i=0; i<pSegInstAr->count; i++ )
 	{
 		SegmentInstance* pSegInst = &pSegInstAr->pData[i];
@@ -416,17 +425,18 @@ bool GetSegmentInstanceArray(PGconn* pConn, char* pszDBName, CDBSet* pSet, Segme
 	bool		bRtn = true;
 	PQExpBuffer pQry = NULL;
 	PGresult*	pRes = NULL;
-	
-	/* First, read all rows from cdb_seg  */	
-	//CDBSegArray SegAr;
-	//memset( &SegAr, 0, sizeof(SegAr) );
-	/*
-	if ( !GetCDBSegArray( pConn, pszDBName, &SegAr ) )
-	{
-		bRtn = false;
-		goto cleanup;
-	}
-    */
+	int ntups;
+	int count;
+	int i_segid;
+	int i_instid;
+	int i_host;
+	int i_port;
+	int i_dbname;
+	int i_dbuser;
+	int i_dbpswd;
+	int i;
+	int x;
+	SegmentInstance* pSegInst;
 	
 	/* Now select from cdb_segment_instance_map() */
 	pQry = createPQExpBuffer();
@@ -456,7 +466,7 @@ bool GetSegmentInstanceArray(PGconn* pConn, char* pszDBName, CDBSet* pSet, Segme
 		goto cleanup;		  
 	}
 	
-	int ntups = PQntuples(pRes);
+	ntups = PQntuples(pRes);
 	if (ntups <= 0)
 	{
 		write_err_msg("no CDB segment/instances for database \"%s\"\n", pszDBName);
@@ -464,7 +474,7 @@ bool GetSegmentInstanceArray(PGconn* pConn, char* pszDBName, CDBSet* pSet, Segme
 		goto cleanup;		  
 	}
 	
-	int count = ntups + 1;
+	count = ntups + 1;
 	// See how many set elements there are that were specified by HostIP or name.
 	count += CountInstanceHosts( pSet );
 
@@ -478,18 +488,17 @@ bool GetSegmentInstanceArray(PGconn* pConn, char* pszDBName, CDBSet* pSet, Segme
 		goto cleanup;		  
 	}
 
-	int i_segid		= PQfnumber(pRes, "dbid");
-	int i_instid	= PQfnumber(pRes, "content");
+	i_segid		= PQfnumber(pRes, "dbid");
+	i_instid	= PQfnumber(pRes, "content");
 	//int i_isprimary	= PQfnumber(pRes, "isprimary");
-	int i_host		= PQfnumber(pRes, "hostname");
-	int i_port		= PQfnumber(pRes, "port");
-	int i_dbname	= PQfnumber(pRes, "dbname");
-	int i_dbuser	= PQfnumber(pRes, "cdbsuperuser");
-	int i_dbpswd	= PQfnumber(pRes, "cdbsuperpswd");
+	i_host		= PQfnumber(pRes, "hostname");
+	i_port		= PQfnumber(pRes, "port");
+	i_dbname	= PQfnumber(pRes, "dbname");
+	i_dbuser	= PQfnumber(pRes, "cdbsuperuser");
+	i_dbpswd	= PQfnumber(pRes, "cdbsuperpswd");
 
 	/* Read through the results set.  */
-	int i;
-	int x = 0;
+	x = 0;
 	for ( i=0; i<ntups; i++ )
 	{
 		int segid	= atoi(PQgetvalue(pRes, i, i_segid));
@@ -499,7 +508,7 @@ bool GetSegmentInstanceArray(PGconn* pConn, char* pszDBName, CDBSet* pSet, Segme
 		if ( !FindInCDBSet( pSet, instid, segid ) )
 			continue;
 						
-		SegmentInstance* pSegInst = &pSegInstAr->pData[x++];
+		pSegInst = &pSegInstAr->pData[x++];
 		pSegInst->segid		= segid; 
 		pSegInst->instid   	= instid;
 		pSegInst->port		= atoi(PQgetvalue(pRes, i, i_port));
@@ -513,92 +522,6 @@ bool GetSegmentInstanceArray(PGconn* pConn, char* pszDBName, CDBSet* pSet, Segme
 		else
 			pSegInst->pszDBPswd = strdup(PQgetvalue(pRes, i, i_dbpswd));
 	}
-	
-	/* Now consider the head */
-    /*
-	if ( !bExcludeHead && FindInCDBSet( pSet, 0, 0 ) )
-	{
-		SegmentInstance* pSegInst = &pSegInstAr->pData[x++];
-	
-		pSegInst->segid = 0;
-		pSegInst->instid = 0;
-		pSegInst->isPrimary = true;
-		
-		char* pszHost = PQhost( pConn );
-		if ( pszHost == NULL || *pszHost == '\0' )
-			pSegInst->pszHost = NULL;
-		else
-			pSegInst->pszHost = strdup(pszHost);
-		
-		char* pszPort = PQport( pConn );
-		pSegInst->port = ( pszPort == NULL ? 5432 : atoi(pszPort) );
-		
-		char* pszDBName = PQdb( pConn );
-		if ( pszDBName == NULL || *pszDBName == '\0' )
-			pSegInst->pszDBName = NULL;
-		else
-			pSegInst->pszDBName = strdup( pszDBName );
-		
-		char* pszDBUser = PQuser( pConn );
-		if ( pszDBUser == NULL || *pszDBUser == '\0' )
-			pSegInst->pszDBUser = NULL;
-		else
-			pSegInst->pszDBUser = strdup( pszDBUser );
-		
-		char* pszDBPswd = PQpass( pConn );
-		if ( pszDBPswd == NULL || *pszDBPswd == '\0' )
-			pSegInst->pszDBPswd = NULL;
-		else
-			pSegInst->pszDBPswd = strdup( pszDBPswd );
-	}
-    */
-	
-    /*
-	// Now consider any elements of the set that were specified by host ip or name
-	if ( pSet->type == SET_INDIVIDUAL && pSet->count > 0 )
-	{
-		for ( i=0; i<pSet->count; i++ )
-		{
-			if ( pSet->pData[i].instVal.val_type == DEFN_TYPE_HOST )
-			{
-				assert( pSet->pData[i].segVal.val_type == DEFN_TYPE_ID );
-				int segid	= pSet->pData[i].segVal.val_id;
-				int instid	= 0;
-				
-				// try to find this segid in the array
-				int j;
-				CDBSeg* pSeg = NULL;
-				for ( j=0; j<SegAr.count; j++ )
-				{
-					if ( SegAr.pData[j].segid == segid )
-					{
-						pSeg = &SegAr.pData[j];
-						break;
-					}
-				}
-					
-				if ( pSeg == NULL )
-				{
-					write_err_msg("Cannot find segid %d used with instance %s in list of cdb segments",
-									segid, pSet->pData[i].instVal.val_pszHost );
-					bRtn = false;
-					goto cleanup;		  
-				}
-				
-				/* See whether this instid, segid pair is part of the set definition.  * /
-				SegmentInstance* pSegInst = &pSegInstAr->pData[x++];
-				pSegInst->segid		= segid; 
-				pSegInst->instid	= instid;
-				pSegInst->port		= pSet->pData[i].instVal.val_port;
-				pSegInst->isPrimary	= false;
-				pSegInst->pszHost	= Safe_strdup(pSet->pData[i].instVal.val_pszHost);
-				pSegInst->pszDBName	= Safe_strdup( pSeg->pszDBName ); 
-				pSegInst->pszDBUser	= Safe_strdup( pSeg->pszDBUser );
-				pSegInst->pszDBPswd = Safe_strdup( pSeg->pszDBPswd );
-			}
-		}
-	}
-    */
 	
 	/* set the count to be the number that passed the set inclusion test */
 	pSegInstAr->count = x;
@@ -618,6 +541,7 @@ cleanup:
  */
 int cmpInstSeg( const void* l, const void* r )
 {
+	int cmp;
 	InstSeg* lhs = (InstSeg*) l;
 	InstSeg* rhs = (InstSeg*) r;
 	
@@ -639,7 +563,7 @@ int cmpInstSeg( const void* l, const void* r )
 			break;
 		case DEFN_TYPE_HOST:
 			assert( lhs->instVal.val_pszHost != NULL && rhs->instVal.val_pszHost != NULL );
-			int cmp = strcmp( lhs->instVal.val_pszHost, rhs->instVal.val_pszHost );
+			cmp = strcmp( lhs->instVal.val_pszHost, rhs->instVal.val_pszHost );
 			if ( cmp != 0 )
 				return cmp;
 			break;

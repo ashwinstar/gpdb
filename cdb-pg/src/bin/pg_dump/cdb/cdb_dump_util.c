@@ -100,12 +100,14 @@ int GetMatchInt(regmatch_t* pMatch, char* pszInput )
 {
 	int start	= pMatch->rm_so;
 	int end		= pMatch->rm_eo;
+	char save;
+	int rtn;
 		
 	assert( end >= start );
 	
-	char save = pszInput[end];
+	save = pszInput[end];
 	pszInput[end] = '\0';
-	int rtn = atoi( pszInput + start );
+	rtn = atoi( pszInput + start );
 	pszInput[end] = save;
 	
 	return rtn;
@@ -119,13 +121,15 @@ char* GetMatchString(regmatch_t* pMatch, char* pszInput )
 {
 	int start	= pMatch->rm_so;
 	int end		= pMatch->rm_eo;
+	char save;
+	char *pszRtn;
 		
 	assert( end >= start );
-	char* pszRtn = (char *) malloc( end - start + 1 );
+	pszRtn = (char *) malloc( end - start + 1 );
 	if ( pszRtn == NULL )
 		return NULL;
 	
-	char save = pszInput[end];
+	save = pszInput[end];
 	pszInput[end] = '\0';
 	strcpy(	pszRtn, pszInput + start );
 	pszInput[end] = save;
@@ -167,6 +171,7 @@ PGconn* MakeConnectionToDatabase(const char* dbname,
 	char*	pszPassword = NULL;
 	bool	need_pass = false;
 	PGconn*	pConn = NULL;
+	SegmentInstance segInst;
 
 	if (reqPwd)
 	{
@@ -178,7 +183,6 @@ PGconn* MakeConnectionToDatabase(const char* dbname,
 		}
 	}
 	
-	SegmentInstance segInst;
 	segInst.segid		= 0; 
 	segInst.instid		= 0;
 	segInst.port		= pgport ? atoi(pgport) : 5432;
@@ -243,6 +247,7 @@ PGconn* MakeDBConnection( const SegmentInstance* pSegInst, bool bDispatch )
 	char* pszUser;
 	char* pszDBPswd;
 	char* pszConnInfo;
+	PGconn* pConn;
 	
     /*
 	if ( pSegInst->segid > 0 )
@@ -281,7 +286,7 @@ PGconn* MakeDBConnection( const SegmentInstance* pSegInst, bool bDispatch )
 								StringNotNull(pszUser, ""),
 								StringNotNull(pszDBPswd, "") );
 								
-	PGconn* pConn = PQconnectdb(pszConnInfo);
+	pConn = PQconnectdb(pszConnInfo);
 	
 	if ( pszOptions != NULL )
 		free( pszOptions );
@@ -308,6 +313,8 @@ PGconn* MakeDBConnection( const SegmentInstance* pSegInst, bool bDispatch )
 char* MakeString( const char* fmt, ... )
 {
 	size_t nBytes = 128;
+    char* pszNew;
+
 	char* pszRtn = (char *)malloc(nBytes);
 	if ( pszRtn == NULL )
 		return NULL;
@@ -336,7 +343,7 @@ char* MakeString( const char* fmt, ... )
 		}
 		
 		nBytes *= 2;
-		char* pszNew = (char *)realloc( pszRtn, nBytes );
+		pszNew = (char *)realloc( pszRtn, nBytes );
 		if ( pszNew == NULL )
 		{
 			free(pszRtn);
@@ -358,6 +365,10 @@ char* MakeString( const char* fmt, ... )
  */  
 bool ParseCDBDumpInfo( char* pszCDBDumpInfo, char** ppCDBDumpKey, int* pCDBInstID, int* pCDBSegID, char** ppCDBPassThroughCredentials )
 {
+	int rtn;
+
+	regmatch_t matches[5];
+
 	regex_t rCDBDumpInfo;
 	if ( 0 != regcomp( &rCDBDumpInfo, "([0-9]+)_([0-9]+)_([0-9]+)_([^[:space:]]*)", REG_EXTENDED ) )
 	{
@@ -366,10 +377,9 @@ bool ParseCDBDumpInfo( char* pszCDBDumpInfo, char** ppCDBDumpKey, int* pCDBInstI
 	}
 	
 	assert( rCDBDumpInfo.re_nsub == 4 );
-	regmatch_t matches[5];
 		
 	/* match the pszCDBDumpInfo against the regex. */
-	int rtn = regexec( &rCDBDumpInfo, pszCDBDumpInfo, 5, matches, 0 );
+	rtn = regexec( &rCDBDumpInfo, pszCDBDumpInfo, 5, matches, 0 );
 	if ( rtn != 0 )
 	{
 		char errbuf[1024];
@@ -410,6 +420,8 @@ char* ReadBackendBackupFile( PGconn* pConn, const char* pszBackupDirectory, cons
 {
 	char* pszRtn = NULL;
 	char* pszFileType;
+	PQExpBuffer Qry;
+	PGresult* pRes; 
 	
 	switch ( fileType )
 	{
@@ -427,13 +439,13 @@ char* ReadBackendBackupFile( PGconn* pConn, const char* pszBackupDirectory, cons
 			return NULL;
 	}
 	
-	PQExpBuffer Qry = createPQExpBuffer();
+	Qry = createPQExpBuffer();
 	appendPQExpBuffer( Qry, "SELECT * FROM cdb_read_backup_file('%s', '%s', %s)", 
 					StringNotNull( pszBackupDirectory, ""), 
 					StringNotNull( pszKey, "" ), 
 					pszFileType );
 					
-	PGresult* pRes = PQexec(pConn, Qry->data ); 
+	pRes = PQexec(pConn, Qry->data ); 
 	if (!pRes || PQresultStatus(pRes) != PGRES_TUPLES_OK || PQntuples(pRes) == 0 )
 	{
 		write_err_msg("Error executing query %s : %s\n",
@@ -488,6 +500,9 @@ void write_err_msg(const char *fmt,...)
 char* WriteBackendBackupFile( PGconn* pConn, const char* pszBackupDirectory, const char* pszKey, const char* pszBackupScript )
 {
 	char* pszRtn = NULL;
+	PQExpBuffer Qry;
+	PGresult* pRes; 
+
 	char* pszBackupScriptEscaped = malloc( 2 * strlen(pszBackupScript) + 1 );
 	if ( pszBackupScriptEscaped == NULL )
 	{
@@ -497,7 +512,7 @@ char* WriteBackendBackupFile( PGconn* pConn, const char* pszBackupDirectory, con
 	
 	PQescapeString( pszBackupScriptEscaped, pszBackupScript, strlen(pszBackupScript) );
 	
-	PQExpBuffer Qry = createPQExpBuffer();
+	Qry = createPQExpBuffer();
 	appendPQExpBuffer( Qry, "SELECT * FROM cdb_write_backup_file('%s', '%s', '%s')", 
 					StringNotNull( pszBackupDirectory, ""), 
 					StringNotNull( pszKey, "" ),
@@ -505,7 +520,7 @@ char* WriteBackendBackupFile( PGconn* pConn, const char* pszBackupDirectory, con
 					
 	free( pszBackupScriptEscaped );					
 					
-	PGresult* pRes = PQexec(pConn, Qry->data); 
+	pRes = PQexec(pConn, Qry->data); 
 	if (!pRes || PQresultStatus(pRes) != PGRES_TUPLES_OK || PQntuples(pRes) == 0 )
 	{
 		write_err_msg("Error executing query %s : %s\n",
@@ -522,60 +537,6 @@ char* WriteBackendBackupFile( PGconn* pConn, const char* pszBackupDirectory, con
 	
 	return pszRtn;
 }
-
-/* WriteStatusToFile: This function writes an error or status message to a file
- * whose name is constructed in a well-defined way from the instid, segid, key, and 
- * whether it is a backup or restore operation.
- */
- /*
-bool WriteStatusToFile( const char* pszMessage, const char* pszDirectory, const char* pszKey, int instid, int segid, bool bIsBackup )
-{
-	assert( pszDirectory != NULL && pszKey != NULL && segid >= 0 && instid >= 0);
-
-	bool	bRtn				= false;
-	char*	pszSeparator		= "";
-	char*	pszStatusFileName	= NULL;
-	FILE*	f					= NULL;
-	
-	if ( strlen(pszDirectory) == 0 || pszDirectory[strlen(pszDirectory)-1] != '/')
-		pszSeparator = "/";
-		
-	/* Form status filename * /
-	pszStatusFileName = MakeString( "%s%scdb_%s_status_%d_%d_%s",
-								pszDirectory,
-								pszSeparator,
-								(bIsBackup ? "dump" : "restore"), 
-								instid, segid, pszKey );
-	/* Append message to file * /
-	f = fopen(pszStatusFileName, "a");
-	if ( f == NULL )
-	{
-		write_err_msg("Error opening file %s for writing.", pszStatusFileName);
-		goto cleanup;
-	}
-	
-	int nBytes = strlen(pszMessage);
-	if ( nBytes > 0 )
-	{
-		if ( nBytes != fwrite( pszMessage, 1, nBytes, f ) )
-		{
-			write_err_msg("Error writing to file %s.", pszStatusFileName);
-			goto cleanup;
-		}
-	}
-	
-	bRtn = true;
-	
-cleanup:
-	if ( f != NULL )
-		fclose( f );
-	
-	if ( pszStatusFileName != NULL )
-		free( pszStatusFileName );
-	
-	return bRtn;
-}
-*/
 
 /* Base64 Encoding and Decoding Routines - copied form encode.c and then modified.
  * Base64 Data is assumed to be in a NULL terminated string.
@@ -614,6 +575,12 @@ static const char b64lookup[128] = {
 
 char* DataToBase64(char* pszIn, unsigned int InLen )
 {
+	char* 			p;
+	const char*		s;
+	const char* 	end = pszIn + InLen;
+	int				pos = 2;
+	uint32			buf = 0;
+
 	unsigned int OutLen = b64_enc_len(pszIn, InLen);
 	char*	pszOut = (char*)malloc( OutLen + 1 );
 	if ( pszOut == NULL )
@@ -621,12 +588,6 @@ char* DataToBase64(char* pszIn, unsigned int InLen )
 	
 	memset( pszOut, 0, OutLen + 1 );
 	
-	char* 			p;
-	const char*		s;
-	const char* 	end = pszIn + InLen;
-	int				pos = 2;
-	uint32			buf = 0;
-
 	s = pszIn;
 	p = pszOut;
 
@@ -661,23 +622,27 @@ char* DataToBase64(char* pszIn, unsigned int InLen )
 
 char* Base64ToData(char* pszIn, unsigned int* pOutLen )
 {
+	const char*		srcend;
+	const char*		s;
+	char*			p;
+	unsigned		c;
+	int				b = 0;
+	uint32			buf = 0;
+	int				pos = 0, end = 0;
+	char*	pszOut;
 	unsigned int InLen	= strlen(pszIn);
 	unsigned int OutLen = b64_dec_len(pszIn, InLen);
 	*pOutLen = OutLen;
-	char*	pszOut = (char*)malloc( OutLen );
+	pszOut = (char*)malloc( OutLen );
 	if ( pszOut == NULL )
 		return NULL;
 	
 	memset( pszOut, 0, OutLen );
+
+	srcend	= pszIn + InLen;
+	s		= pszIn;
+	p		= pszOut;
 	
-	const char*		srcend	= pszIn + InLen;
-	const char*		s		= pszIn;
-	char*			p		= pszOut;
-	unsigned		c;
-	int				b = 0;
-	uint32			buf = 0;
-	int				pos = 0,
-					end = 0;
 
 	while (s < srcend)
 	{

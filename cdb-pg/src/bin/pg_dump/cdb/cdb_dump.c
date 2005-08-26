@@ -87,6 +87,7 @@ int main( int argc, char** argv)
 {
 	PGconn* pConn	= NULL;
     int failCount    = -1;
+	char szErrortmp[PQERRORMSG_LENGTH];
 	
 	/* This struct holds the values of the command line parameters */
 	InputOptions			inputOpts;
@@ -105,7 +106,6 @@ int main( int argc, char** argv)
 		goto cleanup;
 	
 	/* Connect to database on the head*/
-	char szErrortmp[PQERRORMSG_LENGTH];
 	write_err_msg( "Connecting to head instance on host %s port %s database %s.\n",
 				StringNotNull( inputOpts.pszPGHost, "localhost"), 
 				StringNotNull( inputOpts.pszPGPort, "5432"),
@@ -198,12 +198,12 @@ char* addPassThroughParm( char Parm, const char* pszValue, char* pszPassThroughP
  */
 bool createThreadParmArray( int nCount, ThreadParmArray* pParmAr)
 {
+	int i;
 	pParmAr->count = nCount;
 	pParmAr->pData = (ThreadParm *)calloc( nCount, sizeof(ThreadParm) );
 	if ( pParmAr->pData == NULL )
 		return false;
 	
-	int i;
 	for ( i=0; i<nCount; i++ )
 	{
 		ThreadParm* p = &pParmAr->pData[i];
@@ -247,6 +247,7 @@ bool doInitialActions(PGconn* pConn, const char* pszDBName)
 	PQExpBuffer	pQry = NULL;
 	PGresult*	pRes = NULL;
 	CDBBaseTableArray TableAr;
+	int i;
 	
 	memset( &TableAr, 0, sizeof(TableAr) );
 	
@@ -285,7 +286,6 @@ bool doInitialActions(PGconn* pConn, const char* pszDBName)
 		// Now issue lock table statements for each table in BaseTablesAr
 		appendPQExpBuffer(pQry, "LOCK TABLE");
 		
-		int i;
 		for ( i=0; i<TableAr.count; i++ )
 		{
 			if ( i > 0 )
@@ -380,6 +380,9 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 	int				outputClean = 0;
 	int				outputCreate = 0;
 	int				outputNoOwner = 0;
+	bool bSawCDB_S_Option;
+	int lenCmdLineParms;
+	int i;
 
 	
 	static struct option long_options[] = 
@@ -446,9 +449,9 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 
 	dataOnly = schemaOnly = dumpData = attrNames = false;
 
-	progname = get_progname(argv[0]);
+	progname = (char *)get_progname(argv[0]);
 	
-	bool bSawCDB_S_Option = false;
+	bSawCDB_S_Option = false;
 
 	if (argc == 1)
 	{
@@ -471,8 +474,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 	}
 	
 	// Record the command line parms as a string for documentation in the ouput report
-	int lenCmdLineParms = 0;
-	int i;
+	lenCmdLineParms = 0;
 	for ( i=1; i<argc; i++ )
 	{
 		if ( i > 1 )
@@ -963,22 +965,27 @@ bool parmValNeedsQuotes( const char* Value )
  */
 int reportBackupResults( const char* pszReportDirectory, const ThreadParmArray* pParmAr )
 {
+	FILE* fRptFile = NULL;
+	FILE* fRpt = NULL;
+	char* pszReportPathName = NULL;
+	char* pszFormat;
+	ThreadParm* pParm0;
+	int i;
+    int failCount;
+	char* pszStatus;
+	char* pszMsg;
+	
 	if ( pParmAr == NULL || pParmAr->count == 0 )
 	{
 		write_err_msg( "No results to report." );
 		return 0;
 	}
 	
-	FILE* fRptFile = NULL;
-	FILE* fRpt = NULL;
-	char* pszReportPathName = NULL;
-	
 	if ( pszReportDirectory == NULL || *pszReportDirectory == '\0' )
 		fRpt = stdout;
 	else
 	{
 		/* See whether we can create the file in the report directory */
-		char* pszFormat;
 		if ( pszReportDirectory[ strlen(pszReportDirectory) - 1] != '/'  )
 			pszFormat = "%s/cdb_dump_%s.rpt";
 		else
@@ -1002,7 +1009,7 @@ int reportBackupResults( const char* pszReportDirectory, const ThreadParmArray* 
 	/* Write to FILE a report showing the timestamp key, what the command line options were,
 	 * .which segments/instance pairs were backed up, to where, and any errors that occurred.
 	 */
-	ThreadParm* pParm0 = &pParmAr->pData[0];
+	pParm0 = &pParmAr->pData[0];
 	
 	fprintf( fRpt, "CDB Backup Report\n" );
 	fprintf( fRpt, "Timestamp Key: %s\n", pParm0->pOptionsData->pszKey );
@@ -1019,16 +1026,15 @@ int reportBackupResults( const char* pszReportDirectory, const ThreadParmArray* 
 	fprintf( fRpt, "\n" );
 	fprintf( fRpt, "Individual Results\n" );
 	
-	int i;
-    int failCount=0;
+    failCount=0;
 	for ( i=0; i<pParmAr->count; i++ )
 	{
 		ThreadParm* pParm = &pParmAr->pData[i];
 		
         if ( !pParm->bSuccess )
             failCount++;
-		char* pszStatus = pParm->bSuccess ? "Succeeded" : "Failed with error: \n{";
-		char* pszMsg = pParm->pszErrorMsg;
+		pszStatus = pParm->bSuccess ? "Succeeded" : "Failed with error: \n{";
+		pszMsg = pParm->pszErrorMsg;
 		if ( pszMsg == NULL )
 			pszMsg = "";
 		
@@ -1077,6 +1083,8 @@ int reportBackupResults( const char* pszReportDirectory, const ThreadParmArray* 
  */
 void spinOffThreads(PGconn* pConn, InputOptions* pInputOpts, const SegmentInstanceArray* pSegInstAr, ThreadParmArray* pParmAr )
 {
+	int i;
+	ThreadParm* pParm;
 	pthread_cond_init( &MyCondVar, NULL );
 	pthread_mutex_init( &MyMutex, NULL );
 	
@@ -1095,10 +1103,9 @@ void spinOffThreads(PGconn* pConn, InputOptions* pInputOpts, const SegmentInstan
 
 	write_err_msg( "About to spin off %d threads with timestamp key %s\n",
 				nThreadsFinishedLaunch, pInputOpts->pszKey );
-	int i;
 	for (i=0; i<pParmAr->count; i++)
 	{
-		ThreadParm* pParm = &pParmAr->pData[i];
+		pParm = &pParmAr->pData[i];
 		
 		pParm->pSegInstData = &pSegInstAr->pData[i];
 		pParm->pOptionsData = pInputOpts;
@@ -1169,7 +1176,18 @@ void* threadProc(void *arg)
 	const SegmentInstance* pSegInst	= pParm->pSegInstData;
 	const InputOptions* pInputOpts	= pParm->pOptionsData;
 	const char* pszKey				= pInputOpts->pszKey;
+	PGconn* pConn;
 	
+	char* pszPassThroughCredentials;
+	PQExpBuffer Qry;
+	PGresult* pRes; 
+	int sock;
+	fd_set input_mask;
+	bool bSentCancelMessage;
+	BackupStateMachine* pState;
+	struct timeval tv;
+	PGnotify* pNotify;
+
 	/* Block SIGINT and SIGKILL signals (we can handle them in the main thread) */
 	sigset_t newset;
 	sigemptyset( &newset );
@@ -1178,7 +1196,7 @@ void* threadProc(void *arg)
 	pthread_sigmask( SIG_SETMASK, &newset, NULL );
 			
 	/* Create a connection for this thread */
-	PGconn* pConn = MakeDBConnection( pSegInst, false );
+	pConn = MakeDBConnection( pSegInst, false );
 	if ( PQstatus(pConn) == CONNECTION_BAD )
 	{
 		g_b_SendCancelMessage = true;
@@ -1203,11 +1221,11 @@ void* threadProc(void *arg)
 	 * If there is a password associated with this login, we pass it as a base64 encoded string
 	 * in the parameter pszPassThroughCredentials
 	 */
-	char* pszPassThroughCredentials = NULL;
+	pszPassThroughCredentials = NULL;
 	if ( pSegInst->pszDBPswd != NULL && *pSegInst->pszDBPswd != '\0' )
 		pszPassThroughCredentials = DataToBase64( pSegInst->pszDBPswd, strlen(pSegInst->pszDBPswd) );
 	
-	PQExpBuffer Qry = createPQExpBuffer();
+	Qry = createPQExpBuffer();
 	appendPQExpBuffer( Qry, "SELECT * FROM cdb_backup_launch('%s', '%s', '%s', '%s', '%s')", 
 					StringNotNull( pInputOpts->pszBackupDirectory, ""), 
 					pszKey, 
@@ -1219,7 +1237,7 @@ void* threadProc(void *arg)
 	if ( pszPassThroughCredentials != NULL )
 		free( pszPassThroughCredentials );
  					
-	PGresult* pRes = PQexec(pConn, Qry->data ); 
+	pRes = PQexec(pConn, Qry->data ); 
 	if (!pRes || PQresultStatus(pRes) != PGRES_TUPLES_OK || PQntuples(pRes) == 0 )
 	{
 		g_b_SendCancelMessage = true;
@@ -1237,14 +1255,13 @@ void* threadProc(void *arg)
 	destroyPQExpBuffer(Qry);
 	
 	/* Now wait for notifications from the back end back end */
-	int sock = PQsocket( pConn );
-	fd_set input_mask;
+	sock = PQsocket( pConn );
 	FD_ZERO( &input_mask );
 	FD_SET( sock, &input_mask );
 	
-	bool bSentCancelMessage = false;
+	bSentCancelMessage = false;
 	
-	BackupStateMachine* pState = CreateBackupStateMachine( pszKey, pSegInst->instid, pSegInst->segid );
+	pState = CreateBackupStateMachine( pszKey, pSegInst->instid, pSegInst->segid );
 	if ( pState == NULL )
 	{
 		g_b_SendCancelMessage = true;
@@ -1279,7 +1296,6 @@ void* threadProc(void *arg)
 			bSentCancelMessage = true;
 		}
 		
-		struct timeval tv;
 		tv.tv_sec = 2;
 		tv.tv_usec = 0;
 		
@@ -1319,8 +1335,6 @@ void* threadProc(void *arg)
 		
 		PQconsumeInput( pConn );
 
-		PGnotify* pNotify;
-		
 		CleanupNotifications( pState );
 
 		while ( NULL != (pNotify = PQnotifies(pConn)))

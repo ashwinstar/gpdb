@@ -64,10 +64,10 @@ void FreeCDBAssignmentArray( CDBAssignmentArray* pAssignmentAr )
 
 void FreeCDBBaseTableArray( CDBBaseTableArray* pTableAr )
 {
+	int i;
 	if ( pTableAr == NULL )
 		return;
 	
-	int i;
 	for ( i=0; i<pTableAr->count; i++ )
 	{
 		CDBBaseTable* pBaseTable = &pTableAr->pData[i]; 
@@ -327,6 +327,11 @@ bool GetCDBBaseTableArray(PGconn* pConn, const char* pszDBName, CDBBaseTableArra
 	PQExpBuffer pQry = NULL;
 	PGresult*	pRes = NULL;
 	char*		pszPartitionedWhere = NULL;
+	int ntups;
+	int i_tbloid;
+	int i_relname;
+	int i_nspname;
+	int i;
 	
 	pTableAr->count = 0;
 	pTableAr->pData = NULL;
@@ -364,7 +369,7 @@ bool GetCDBBaseTableArray(PGconn* pConn, const char* pszDBName, CDBBaseTableArra
 		goto cleanup;
 	}
 
-	int ntups = PQntuples(pRes);
+	ntups = PQntuples(pRes);
 	if (ntups <= 0)
 	{
 		write_err_msg("no CDB managed tables for database \"%s\"\n", pszDBName);
@@ -379,12 +384,11 @@ bool GetCDBBaseTableArray(PGconn* pConn, const char* pszDBName, CDBBaseTableArra
 		goto cleanup;
 	}
 
-	int i_tbloid = PQfnumber(pRes, "localoid");
-	int i_relname = PQfnumber(pRes, "relname");
-	int i_nspname = PQfnumber(pRes, "nspname");
+	i_tbloid = PQfnumber(pRes, "localoid");
+	i_relname = PQfnumber(pRes, "relname");
+	i_nspname = PQfnumber(pRes, "nspname");
 	//int i_partitioned = PQfnumber(pRes, "partitioned");
 
-	int i;
 	for ( i=0; i<ntups; i++ )
 	{
 		CDBBaseTable* pBaseTable = &pTableAr->pData[i]; 
@@ -407,312 +411,6 @@ cleanup:
 
 /*-------------------------------------------------------------------------
  *
- * GetCDBInstanceArray(PGconn* pConn, const char* pszDBName, CDBInstanceArray* pInstanceAr ) 
- * returns bool
- *
- * This reads all rows from cdb_instance.
- *
- * After using it, call FreeCDBInstanceArray.
- *-------------------------------------------------------------------------
- */
-/*
-bool GetCDBInstanceArray(PGconn* pConn, const char* pszDBName, CDBInstanceArray* pInstanceAr )
-{
-	bool		bRtn = false;
-	PQExpBuffer pQry = NULL;
-	PGresult*	pRes = NULL;
-	
-	pInstanceAr->count = 0;
-	pInstanceAr->pData = NULL;
-	
-	pQry = createPQExpBuffer();
-	appendPQExpBuffer(pQry, 	" SELECT" 
-							"   d.dbid," 
-							//"	d.valid,"  
-							"	l.port,"
-							"	h.hostname,"
-							"	l.datadir"
-							"	FROM"
-							"	cdb.pgdatabase d,"
-                              "   cdb.listener l,"
-                              "   cdb.host h"
-                              "   where d.listenerid = l.listenerid"
-                              "   and l.hostid = h.hostid"
-							"	ORDER BY"
-							"	1" );
-
-	pRes = PQexec(pConn, pQry->data);
-
-	if ( pRes == NULL || PQresultStatus(pRes) != PGRES_TUPLES_OK )
-	{
-		write_err_msg("query to obtain list of cdb instances failed : %s",
-				  PQerrorMessage(pConn));
-		goto cleanup;
-	}
-
-	int ntups = PQntuples(pRes);
-	if (ntups <= 0)
-	{
-		write_err_msg("no CDB instances for database \"%s\"\n", pszDBName);
-		goto cleanup;
-	}
-	
-	pInstanceAr->count = ntups;
-	pInstanceAr->pData = (CDBInstance *)malloc( ntups * sizeof(CDBInstance) );
-	if ( pInstanceAr->pData == NULL )
-	{
-		write_err_msg("cannot allocate memory for query results in GetCDBInstanceArray\n");
-		goto cleanup;
-	}
-
-	int i_instid	= PQfnumber(pRes, "dbid");
-	//int i_valid		= PQfnumber(pRes, "valid");
-	int i_port		= PQfnumber(pRes, "port");
-	int i_host		= PQfnumber(pRes, "hostname");
-	int i_datadir	= PQfnumber(pRes, "datadir");
-
-	int i;
-	for ( i=0; i<ntups; i++ )
-	{
-		CDBInstance* pInstance = &pInstanceAr->pData[i]; 
-		pInstance->instid			= atoi(PQgetvalue(pRes, i, i_instid));
-		//pInstance->valid			= (strcmp( PQgetvalue(pRes, i, i_valid), "t") == 0);
-		pInstance->port				= atoi(PQgetvalue(pRes, i, i_port));
-		if ( PQgetisnull(pRes, i, i_host))
-			pInstance->pszHost = NULL;
-		else
-			pInstance->pszHost			= strdup(PQgetvalue(pRes, i, i_host));
-		
-		if ( PQgetisnull(pRes, i, i_datadir))
-			pInstance->pszDataDir = NULL;
-		else
-			pInstance->pszDataDir = strdup(PQgetvalue(pRes, i, i_datadir));
-	}
-	
-	bRtn = true;
-	
-cleanup:
-	if ( pRes != NULL )
-		PQclear(pRes);
-	if ( pQry != NULL )
-		destroyPQExpBuffer(pQry);
-
-	return bRtn;
-}
-*/
-
-/*-------------------------------------------------------------------------
- *
- * GetCDBPolicyArray(PGconn* pConn, const char* pszDBName, CDBPolicyArray* pPolicyAr ) 
- * returns bool
- *
- * This reads all rows from cdb_policy, 
- * joining with pg_class and pg_namespace to get the table and schema names.
- *
- * After using it, call FreeCDBPolicyArray.
- *-------------------------------------------------------------------------
- */
- /*
-bool GetCDBPolicyArray(PGconn* pConn, const char* pszDBName, CDBPolicyArray* pPolicyAr )
-{
-	bool		bRtn = false;
-	PQExpBuffer pQry = NULL;
-	PGresult*	pRes = NULL;
-
-	pPolicyAr->count = 0;
-	pPolicyAr->pData = NULL;
-	
-	pQry = createPQExpBuffer();
-	appendPQExpBuffer(pQry, 	" SELECT" 
-							"	p.localoid," 
-							"	c.relname,"  
-							"	n.nspname,"
-							//"	p.seqno,"
-							"	p.attrnums"
-							//"	p.nparts,"
-							//"	p.type,"
-							//"	p.parameters"
-							"	FROM"
-							"	cdb.policy p,"
-							"	pg_class c,"
-							"	pg_namespace n"
-							"	WHERE"
-							"	p.localoid = c.oid"
-							" 	AND c.relnamespace = n.oid"
-							"	ORDER BY"
-							"	2" );
-
-	pRes = PQexec(pConn, pQry->data);
-
-	if ( pRes == NULL || PQresultStatus(pRes) != PGRES_TUPLES_OK )
-	{
-		write_err_msg("query to obtain list of cdb policies failed : %s",
-				  PQerrorMessage(pConn));
-		goto cleanup;
-	}
-
-	int ntups = PQntuples(pRes);
-	if (ntups <= 0)
-	{
-		write_err_msg("no CDB policies for database \"%s\"\n", pszDBName);
-		goto cleanup;
-	}
-	
-	pPolicyAr->count = ntups;
-	pPolicyAr->pData = (CDBPolicy *)malloc( ntups * sizeof(CDBPolicy) );
-	if ( pPolicyAr->pData == NULL )
-	{
-		write_err_msg("cannot allocate memory for query results in GetCDBPolicyArray\n");
-		goto cleanup;
-	}
-
-	int i_tbloid		= PQfnumber(pRes, "localoid");
-	int i_relname		= PQfnumber(pRes, "relname");
-	int i_nspname		= PQfnumber(pRes, "nspname");
-	//int i_seqno			= PQfnumber(pRes, "seqno");
-	//int i_attnum		= PQfnumber(pRes, "attrnums");
-	//int i_nparts		= PQfnumber(pRes, "nparts");
-	//int i_type			= PQfnumber(pRes, "type");
-	//int i_parameters	= PQfnumber(pRes, "parameters");
-
-	int i;
-	for ( i=0; i<ntups; i++ )
-	{
-		CDBPolicy* pPolicy = &pPolicyAr->pData[i]; 
-		pPolicy->tbloid			= atoi(PQgetvalue(pRes, i, i_tbloid));
-		pPolicy->pszTableName	= strdup(PQgetvalue(pRes, i, i_relname));
-		pPolicy->pszNspName		= strdup(PQgetvalue(pRes, i, i_nspname));
-		//pPolicy->seqno			= atoi(PQgetvalue(pRes, i, i_seqno));
-		//pPolicy->attnum			= atoi(PQgetvalue(pRes, i, i_attnum));
-		//pPolicy->nparts			= atoi(PQgetvalue(pRes, i, i_nparts));
-		
-        /*
-		if ( PQgetisnull(pRes, i, i_type))
-			pPolicy->type	= '\0';
-		else
-			pPolicy->type			= (PQgetvalue(pRes, i, i_type))[0];
-		
-		if ( PQgetisnull(pRes, i, i_parameters))
-			pPolicy->pszParameters = NULL;
-		else
-			pPolicy->pszParameters	= strdup(PQgetvalue(pRes, i, i_parameters));
-	    * /
-    }
-	
-	bRtn = true;
-	
-cleanup:
-	if ( pRes != NULL )
-		PQclear(pRes);
-	if ( pQry != NULL )
-		destroyPQExpBuffer(pQry);
-
-	return bRtn;
-}
-*/
-
-/*-------------------------------------------------------------------------
- *
- * GetCDBSegArray(PGconn* pConn, const char* pszDBName, CDBSegArray* pSegAr ) 
- * returns bool
- *
- * This reads all rows from cdb_seg.
- *
- * After using it, call FreeCDBSegArray.
- *-------------------------------------------------------------------------
- */
- /*
-bool GetCDBSegArray(PGconn* pConn, const char* pszDBName, CDBSegArray* pSegAr )
-{
-	bool		bRtn = false;
-	PQExpBuffer pQry = NULL;
-	PGresult*	pRes = NULL;
-
-	pSegAr->count = 0;
-	pSegAr->pData = NULL;
-	
-	pQry = createPQExpBuffer();
-	appendPQExpBuffer(pQry, 	" SELECT" 
-							"	d.dbid," 
-							//"	primary_inst,"  
-							//"	valid,"
-							"	d.dbname,"
-							"	l.cdbsuperuser,"
-							"	l.cdbsuperpswd"
-							"	FROM"
-                              "   cdb.pgdatabase d,"
-							"	cdb.listener l"
-                              "   where d.listenerid = l.listenerid"
-							"	ORDER BY"
-							"	1" );
-
-	pRes = PQexec(pConn, pQry->data);
-	if ( pRes == NULL || PQresultStatus(pRes) != PGRES_TUPLES_OK )
-	{
-		write_err_msg("query to obtain list of cdb segs failed : %s",
-				  PQerrorMessage(pConn));
-		goto cleanup;
-	}
-
-	int ntups = PQntuples(pRes);
-	if (ntups <= 0)
-	{
-		write_err_msg("no CDB segs for database \"%s\"\n", pszDBName);
-		goto cleanup;
-	}
-	
-	pSegAr->count = ntups;
-	pSegAr->pData = (CDBSeg *)malloc( ntups * sizeof(CDBSeg) );
-	if ( pSegAr->pData == NULL )
-	{
-		write_err_msg("cannot allocate memory for query results in GetCDBSegArray\n");
-		goto cleanup;
-	}
-
-	int i_segid			= PQfnumber(pRes, "dbid");
-	//int i_primary_inst	= PQfnumber(pRes, "primary_inst");
-	//int i_valid			= PQfnumber(pRes, "valid");
-	int i_dbname		= PQfnumber(pRes, "dbname");
-	int i_dbuser		= PQfnumber(pRes, "cdbsuperuser");
-	int i_dbpswd		= PQfnumber(pRes, "cdbsuperpswd");
-
-	int i;
-	for ( i=0; i<ntups; i++ )
-	{
-		CDBSeg* pSeg = &pSegAr->pData[i]; 
-		pSeg->segid			= atoi(PQgetvalue(pRes, i, i_segid));
-		//pSeg->primary_inst	= atoi(PQgetvalue(pRes, i, i_primary_inst));
-		//pSeg->valid			= (strcmp( PQgetvalue(pRes, i, i_valid), "t") == 0);
-		if ( PQgetisnull(pRes, i, i_dbname))
-			pSeg->pszDBName = NULL;
-		else
-			pSeg->pszDBName	= strdup(PQgetvalue(pRes, i, i_dbname));
-		
-		if ( PQgetisnull(pRes, i, i_dbuser))
-			pSeg->pszDBUser = NULL;
-		else
-			pSeg->pszDBUser	= strdup(PQgetvalue(pRes, i, i_dbuser));
-		
-		if ( PQgetisnull(pRes, i, i_dbpswd))
-			pSeg->pszDBPswd = NULL;
-		else
-			pSeg->pszDBPswd	= strdup(PQgetvalue(pRes, i, i_dbpswd));
-	}
-	
-	bRtn = true;
-	
-cleanup:
-	if ( pRes != NULL )
-		PQclear(pRes);
-	if ( pQry != NULL )
-		destroyPQExpBuffer(pQry);
-
-	return bRtn;
-}
-*/
-
-/*-------------------------------------------------------------------------
- *
  * GetCDBSegmentInstanceArray(PGconn* pConn, const char* pszDBName, CDBSegmentInstanceArray* pSegmentInstanceAr ) 
  * returns bool
  *
@@ -723,6 +421,15 @@ cleanup:
  */
 bool GetCDBSegmentInstanceArray(PGconn* pConn, const char* pszDBName, CDBSegmentInstanceArray* pSegmentInstanceAr )
 {
+	int ntups;
+	int i_segid;
+    int i_dbname;
+    int i_hostname;
+    int i_port;
+    int i_datadir;
+	int i_superuser;
+	int i;
+
 	bool		bRtn = false;
 	PQExpBuffer pQry = NULL;
 	PGresult*	pRes = NULL;
@@ -754,7 +461,7 @@ bool GetCDBSegmentInstanceArray(PGconn* pConn, const char* pszDBName, CDBSegment
 		goto cleanup;
 	}
 
-	int ntups = PQntuples(pRes);
+	ntups = PQntuples(pRes);
 	if (ntups <= 0)
 	{
 		write_err_msg("no CDB segment instances for database \"%s\"\n", pszDBName);
@@ -769,15 +476,14 @@ bool GetCDBSegmentInstanceArray(PGconn* pConn, const char* pszDBName, CDBSegment
 		goto cleanup;
 	}
 
-	int i_segid		= PQfnumber(pRes, "dbid");
+	i_segid		= PQfnumber(pRes, "dbid");
     //bool i_isPrimary = PQfnumber(pRes, "isPrimary");
-    int i_dbname    = PQfnumber(pRes, "dbname");
-    int i_hostname  = PQfnumber(pRes, "hostname");
-    int i_port      = PQfnumber(pRes, "port");
-    int i_datadir   = PQfnumber(pRes, "datadir");
-	int i_superuser = PQfnumber(pRes, "cdbsuperuser");
+    i_dbname    = PQfnumber(pRes, "dbname");
+    i_hostname  = PQfnumber(pRes, "hostname");
+    i_port      = PQfnumber(pRes, "port");
+    i_datadir   = PQfnumber(pRes, "datadir");
+	i_superuser = PQfnumber(pRes, "cdbsuperuser");
 
-	int i;
 	for ( i=0; i<ntups; i++ )
 	{
 		CDBSegmentInstance* pSegmentInstance = &pSegmentInstanceAr->pData[i]; 

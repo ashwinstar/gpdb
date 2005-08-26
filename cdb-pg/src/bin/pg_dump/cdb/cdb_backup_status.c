@@ -73,12 +73,12 @@ StatusOp* CreateStatusOp( int TaskID, int TaskRC, const char* pszSuffix, const c
  */
 StatusOpList* CreateStatusOpList(void)
 {
+	pthread_mutexattr_t MyAttr;
 	StatusOpList* pList = (StatusOpList*)calloc( 1, sizeof(StatusOpList) );
 	if ( pList == NULL )
 		return NULL;
 	
 	pList->pHead = NULL;
-	pthread_mutexattr_t MyAttr;
 	pthread_mutexattr_init( &MyAttr );
 	pthread_mutexattr_settype( &MyAttr, PTHREAD_MUTEX_RECURSIVE);
 	pthread_mutex_init( &pList->mGuard, &MyAttr );
@@ -92,11 +92,12 @@ StatusOpList* CreateStatusOpList(void)
  */
 void DestroyStatusOpList(StatusOpList* pList)
 {
+	StatusOp* pHead;
 	if ( pList == NULL )
 		return;
 	
 	pthread_mutex_lock(&pList->mGuard);
-	StatusOp* pHead = pList->pHead;
+	pHead = pList->pHead;
 	while ( pHead != NULL )
 	{
 		pList->pHead = pHead->pNext;
@@ -140,9 +141,10 @@ void Lock( StatusOpList* pList )
  */
 StatusOp* TakeFromStatusOpList(StatusOpList* pList)
 {
+	StatusOp* pOp;
 	pthread_mutex_lock( &pList->mGuard );
 	
-	StatusOp* pOp = pList->pHead;
+	pOp = pList->pHead;
 	
 	if ( pOp != NULL )
 	{

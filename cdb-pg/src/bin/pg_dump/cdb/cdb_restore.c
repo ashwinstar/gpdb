@@ -59,6 +59,9 @@ main(int argc, char **argv)
 {
 	PGconn* pConn = NULL;
     int failCount=-1;
+	char szErrortmp[PQERRORMSG_LENGTH];
+    int i;
+    SegmentInstance *segAr;
 	
 	/* This struct holds the values of the command line parameters */
 	InputOptions			inputOpts;
@@ -78,7 +81,6 @@ main(int argc, char **argv)
 	fillInputOptions( argc, argv, &inputOpts );
 
 	/* Connect to database on the head*/
-	char szErrortmp[PQERRORMSG_LENGTH];
 	write_err_msg( "Connecting to head instance on host %s port %s database %s.\n",
 				StringNotNull( inputOpts.pszPGHost, "localhost"), 
 				StringNotNull( inputOpts.pszPGPort, "5432"),
@@ -96,8 +98,7 @@ main(int argc, char **argv)
 		goto cleanup;
     
     // find head node
-    int i;
-    SegmentInstance *segAr = NULL;
+    segAr = NULL;
     for (i=0; i<segInstAr.count; i++)
     {
         segAr = segInstAr.pData+i;
@@ -213,6 +214,10 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 	extern char *optarg;
 	static int	use_setsessauth = 0;
 	static int	disable_triggers = 0;
+	bool bSawCDB_S_Option;
+	char *progname;
+	int lenCmdLineParms;
+	int i;
 
 	struct option cmdopts[] = {
 		{"clean", 0, NULL, 'c'},
@@ -287,9 +292,9 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 	opts->format = archUnknown;
 	opts->suppressDumpWarnings = false;
 
-	progname = get_progname(argv[0]);
+	progname = (char *)get_progname(argv[0]);
 	
-	bool bSawCDB_S_Option = false;
+	bSawCDB_S_Option = false;
 
 	if (argc == 1)
 	{
@@ -312,8 +317,7 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 	}
 
 	// Record the command line parms as a string for documentation in the ouput report
-	int lenCmdLineParms = 0;
-	int i;
+	lenCmdLineParms = 0;
 	for ( i=1; i<argc; i++ )
 	{
 		if ( i > 1 )
@@ -742,7 +746,24 @@ void* threadProc(void *arg)
 	SegmentInstance* pSegInst	= pParm->pSegInstData;
 	const InputOptions* pInputOpts	= pParm->pOptionsData;
 	const char* pszKey				= pInputOpts->pszKey;
-	
+	PGconn* pConn;
+	char* pszPassThroughCredentials;
+	PQExpBuffer Qry;
+	PGresult* pRes; 
+	int sock;
+	fd_set input_mask;
+	bool	bSentCancelMessage;
+	bool	bIsFinished;
+	bool	bIsStarted;
+	int		nTries;
+	char* pszNotifyRelName;
+	char* pszNotifyRelNameStart;
+	char* pszNotifyRelNameSucceed;
+	char* pszNotifyRelNameFail;
+	struct timeval tv;
+	PGnotify* pNotify;
+	int nNotifies;
+		
 	/* Block SIGINT and SIGKILL signals (we can handle them in the main thread) */
 	sigset_t newset;
 	sigemptyset( &newset );
@@ -759,7 +780,7 @@ void* threadProc(void *arg)
 		pSegInst->pszDBName 	= Safe_strdup( pInputOpts->pszDBName );
 	}
 	
-	PGconn* pConn = MakeDBConnection( pSegInst, false );
+	pConn = MakeDBConnection( pSegInst, false );
 	if ( PQstatus(pConn) == CONNECTION_BAD )
 	{
 		g_b_SendCancelMessage = true;
@@ -781,11 +802,11 @@ void* threadProc(void *arg)
 	 * If there is a password associated with this login, we pass it as a base64 encoded string
 	 * in the parameter pszPassThroughCredentials
 	 */
-	char* pszPassThroughCredentials = NULL;
+	pszPassThroughCredentials = NULL;
 	if ( pSegInst->pszDBPswd != NULL && *pSegInst->pszDBPswd != '\0' )
 		pszPassThroughCredentials = DataToBase64( pSegInst->pszDBPswd, strlen(pSegInst->pszDBPswd) );
 	
-	PQExpBuffer Qry = createPQExpBuffer();
+	Qry = createPQExpBuffer();
 	appendPQExpBuffer( Qry, "SELECT * FROM cdb_restore_launch('%s', '%s', '%s', '%s', '%s', %s)", 
 					StringNotNull( pInputOpts->pszBackupDirectory, ""), 
 					pszKey, 
@@ -797,7 +818,7 @@ void* threadProc(void *arg)
 	if ( pszPassThroughCredentials != NULL )
 		free( pszPassThroughCredentials );
  					
-	PGresult* pRes = PQexec(pConn, Qry->data ); 
+	pRes = PQexec(pConn, Qry->data ); 
 	if (!pRes || PQresultStatus(pRes) != PGRES_TUPLES_OK || PQntuples(pRes) == 0 )
 	{
 		g_b_SendCancelMessage = true;
@@ -813,21 +834,20 @@ void* threadProc(void *arg)
 	destroyPQExpBuffer(Qry);
 	
 	/* Now wait for notifications from the back end back end */
-	int sock = PQsocket( pConn );
-	fd_set input_mask;
+	sock = PQsocket( pConn );
 	FD_ZERO( &input_mask );
 	FD_SET( sock, &input_mask );
 	
-	bool	bSentCancelMessage = false;
-	bool	bIsFinished = false;
-	bool	bIsStarted = false;
-	int		nTries = 0;
+	bSentCancelMessage = false;
+	bIsFinished = false;
+	bIsStarted = false;
+	nTries = 0;
 
-	char* pszNotifyRelName = MakeString("N%s_%d_%d",
+	pszNotifyRelName = MakeString("N%s_%d_%d",
 							pszKey, pSegInst->instid, pSegInst->segid );
-	char* pszNotifyRelNameStart = MakeString("%s_%s", pszNotifyRelName, SUFFIX_START);
-	char* pszNotifyRelNameSucceed = MakeString("%s_%s", pszNotifyRelName, SUFFIX_SUCCEED);
-	char* pszNotifyRelNameFail = MakeString("%s_%s", pszNotifyRelName, SUFFIX_FAIL);
+	pszNotifyRelNameStart = MakeString("%s_%s", pszNotifyRelName, SUFFIX_START);
+	pszNotifyRelNameSucceed = MakeString("%s_%s", pszNotifyRelName, SUFFIX_SUCCEED);
+	pszNotifyRelNameFail = MakeString("%s_%s", pszNotifyRelName, SUFFIX_FAIL);
 							
 	while ( !bIsFinished )
 	{
@@ -841,7 +861,6 @@ void* threadProc(void *arg)
 			bSentCancelMessage = true;
 		}
 		
-		struct timeval tv;
 		tv.tv_sec = 2;
 		tv.tv_usec = 0;
 		
@@ -868,8 +887,7 @@ void* threadProc(void *arg)
 		
 		PQconsumeInput( pConn );
 
-		PGnotify* pNotify;
-		int nNotifies = 0;
+		nNotifies = 0;
 		while ( NULL != (pNotify = PQnotifies(pConn)))
 		{
 			if ( strncasecmp( pszNotifyRelName, pNotify->relname, strlen(pszNotifyRelName) ) == 0 )
@@ -935,14 +953,13 @@ void* threadProc(void *arg)
 bool restoreHead( InputOptions* pInputOpts, PGconn *pConn, SegmentInstance *pSegInst, ThreadParm* pParm )
 {
 	bool				rtn			= false;
+	bool bForcePassword = false;
+	bool bIgnoreVersion = false;
 	
 	memset( pParm, 0, sizeof(ThreadParm) );
 	
 	// We need to restore the head
 	write_err_msg("Starting to restore the head.\n" );
-		
-	bool bForcePassword = false;
-	bool bIgnoreVersion = false;
 		
 	if (opts != NULL && opts->requirePassword)
 		bForcePassword = true;
@@ -1005,6 +1022,8 @@ bool restoreHead( InputOptions* pInputOpts, PGconn *pConn, SegmentInstance *pSeg
  */
 void spinOffThreads(PGconn* pConn, InputOptions* pInputOpts, const SegmentInstanceArray* pSegInstAr, ThreadParmArray* pParmAr )
 {
+	int i;
+
 	/* Create a thread and have it work on executing the dump on the
 	* appropriate tail.
 	*/
@@ -1014,7 +1033,6 @@ void spinOffThreads(PGconn* pConn, InputOptions* pInputOpts, const SegmentInstan
 		exit(-1);
 	}
 	
-	int i;
 	for (i=0; i<pParmAr->count; i++)
 	{
 		ThreadParm* pParm = &pParmAr->pData[i];
@@ -1086,12 +1104,13 @@ void freeThreadParmArray( ThreadParmArray* pParmAr )
  */
 bool createThreadParmArray( int nCount, ThreadParmArray* pParmAr)
 {
+	int i;
+
 	pParmAr->count = nCount;
 	pParmAr->pData = (ThreadParm *)malloc( nCount * sizeof(ThreadParm) );
 	if ( pParmAr->pData == NULL )
 		return false;
 	
-	int i;
 	for ( i=0; i<nCount; i++ )
 	{
 		ThreadParm* p = &pParmAr->pData[i];
@@ -1112,6 +1131,17 @@ bool createThreadParmArray( int nCount, ThreadParmArray* pParmAr)
  */
 int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pHeadParm, const ThreadParmArray* pParmAr )
 {
+	InputOptions* pOptions;
+	FILE* fRptFile = NULL;
+	FILE* fRpt = NULL;
+	char* pszReportPathName = NULL;
+	char* pszFormat;
+	int i;
+    int failCount;
+	const ThreadParm* pParm;
+	char* pszStatus;
+	char* pszMsg;
+	
 	assert( pParmAr != NULL &&  pHeadParm != NULL );
 	
 	if ( pParmAr->count == 0 && pHeadParm->pOptionsData == NULL )
@@ -1120,19 +1150,14 @@ int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pHea
 		return 0;
 	}
 	
-	InputOptions* pOptions = ( pParmAr->count > 0) ?  pParmAr->pData[0].pOptionsData : pHeadParm->pOptionsData;
+	pOptions = ( pParmAr->count > 0) ?  pParmAr->pData[0].pOptionsData : pHeadParm->pOptionsData;
 	assert( pOptions != NULL );
-	
-	FILE* fRptFile = NULL;
-	FILE* fRpt = NULL;
-	char* pszReportPathName = NULL;
 	
 	if ( pszReportDirectory == NULL || *pszReportDirectory == '\0' )
 		fRpt = stdout;
 	else
 	{
 		/* See whether we can create the file in the report directory */
-		char* pszFormat;
 		if ( pszReportDirectory[ strlen(pszReportDirectory) - 1] != '/'  )
 			pszFormat = "%s/cdb_dump_%s.rpt";
 		else
@@ -1171,11 +1196,9 @@ int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pHea
 	fprintf( fRpt, "\n" );
 	fprintf( fRpt, "Individual Results\n" );
 	
-	int i;
-    int failCount=0;
+    failCount=0;
 	for ( i=0; i<pParmAr->count + 1; i++ )
 	{
-		const ThreadParm* pParm;
 		if ( i == 0 )
 		{
 			if ( pHeadParm->pOptionsData != NULL )
@@ -1192,8 +1215,8 @@ int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pHea
 		
 		if (!pParm->bSuccess)
             failCount++;
-		char* pszStatus = pParm->bSuccess ? "Succeeded" : "Failed with error: \n{";
-		char* pszMsg = pParm->pszErrorMsg;
+		pszStatus = pParm->bSuccess ? "Succeeded" : "Failed with error: \n{";
+		pszMsg = pParm->pszErrorMsg;
 		if ( pszMsg == NULL )
 			pszMsg = "";
 		

@@ -218,7 +218,7 @@ main(int argc, char **argv)
 	const char *pgport = NULL;
 	const char *username = NULL;
 	bool		oids = false;
-    PGresult   *res;
+    PGresult   *res = NULL;
 	TableInfo  *tblinfo;
 	int			numTables;
 	DumpableObject **dobjs;
@@ -235,6 +235,12 @@ main(int argc, char **argv)
 	static int	use_setsessauth = 0;
 	static int	disable_triggers = 0;
 	char	   *outputSuperuser = NULL;
+    SegmentInstance SegInst;
+    unsigned int nBytes;
+    char* pszDBPswd;
+    ArchiveHandle *AH;
+    struct sigaction act, oact;
+    StatusOp* pOp;
 
 	RestoreOptions *ropt;
 
@@ -589,7 +595,6 @@ main(int argc, char **argv)
 							 username, force_password, ignore_version);
     */
      /* cdb additions */
-    SegmentInstance SegInst;
     SegInst.segid       = g_CDBSegID;
     SegInst.instid      = g_CDBInstID;
     SegInst.port        = pgport ? atoi( pgport ) : 5432;
@@ -606,8 +611,7 @@ main(int argc, char **argv)
      */
     if ( g_CDBPassThroughCredentials != NULL && *g_CDBPassThroughCredentials != '\0' )
     {
-        unsigned int nBytes;
-        char* pszDBPswd = Base64ToData( g_CDBPassThroughCredentials, &nBytes );
+        pszDBPswd = Base64ToData( g_CDBPassThroughCredentials, &nBytes );
         if ( pszDBPswd == NULL )
         {
             write_msg(NULL, "Invalid CDB Credentials:  %s\n", g_CDBPassThroughCredentials );
@@ -644,7 +648,7 @@ main(int argc, char **argv)
 */
    
     /* check for version mismatch */
-    ArchiveHandle *AH = (ArchiveHandle *)g_fout;
+    AH = (ArchiveHandle *)g_fout;
     AH->connection = g_conn;
     _check_database_version(AH, ignore_version);
    
@@ -688,7 +692,6 @@ main(int argc, char **argv)
                         NULL );
 
         // Install Ctrl-C interrupt handler, now that we have a connection
-        struct sigaction act, oact;
 
         act.sa_handler = myHandler;
         sigemptyset(&act.sa_mask);
@@ -717,7 +720,7 @@ main(int argc, char **argv)
             write_msg(NULL, "Error trying to set SIGTERM interrupt handler\n");
         }
 
-        StatusOp* pOp = CreateStatusOp( TASK_START, TASK_RC_SUCCESS, SUFFIX_START, TASK_MSG_SUCCESS );
+        pOp = CreateStatusOp( TASK_START, TASK_RC_SUCCESS, SUFFIX_START, TASK_MSG_SUCCESS );
         if ( pOp == NULL )
         {
             exit_horribly(g_fout, NULL, "cannot allocate memory for cdb_backup_status operation\n");
@@ -761,7 +764,7 @@ main(int argc, char **argv)
     res = PQexec(g_conn, "SELECT count(*) FROM pg_class");
     if (!res || PQresultStatus(res) != PGRES_TUPLES_OK)
     {
-        StatusOp* pOp = CreateStatusOp( TASK_SET_SERIALIZABLE, TASK_RC_FAILURE, SUFFIX_FAIL, "could not set transaction isolation level to serializable"  );
+        pOp = CreateStatusOp( TASK_SET_SERIALIZABLE, TASK_RC_FAILURE, SUFFIX_FAIL, "could not set transaction isolation level to serializable"  );
         if ( pOp == NULL )
         {
             exit_horribly(g_fout, NULL, "could not allocate memory for cdb_backup_status operation\n");
@@ -773,7 +776,7 @@ main(int argc, char **argv)
     }
     PQclear(res);
 
-    StatusOp* pOp = CreateStatusOp( TASK_SET_SERIALIZABLE, TASK_RC_SUCCESS, SUFFIX_SET_SERIALIZABLE, TASK_MSG_SUCCESS );
+    pOp = CreateStatusOp( TASK_SET_SERIALIZABLE, TASK_RC_SUCCESS, SUFFIX_SET_SERIALIZABLE, TASK_MSG_SUCCESS );
     if ( pOp == NULL )
     {
         exit_horribly(g_fout, NULL, "could not allocate memory for cdb_backup_status operation\n");
@@ -8453,15 +8456,17 @@ void _check_database_version(ArchiveHandle *AH, bool ignoreVersion)
  */  
 void makeSureMonitorThreadEnds( int TaskRC, char* pszErrorMsg )
 {
+	StatusOp* pOp;
+    char* pszSuffix;
+
 	if ( g_monitor_tid )
 	{
-		char* pszSuffix;
 		if ( TaskRC == TASK_RC_SUCCESS )
 			pszSuffix = SUFFIX_SUCCEED;
 		else
 			pszSuffix = SUFFIX_FAIL;
 		
-		StatusOp* pOp = CreateStatusOp( TASK_FINISH, TaskRC, pszSuffix, pszErrorMsg );
+		pOp = CreateStatusOp( TASK_FINISH, TaskRC, pszSuffix, pszErrorMsg );
 		if ( pOp == NULL )
 		{
 			/* This is really bad, since the only way we cab shut down gracefully is
@@ -8488,6 +8493,17 @@ void makeSureMonitorThreadEnds( int TaskRC, char* pszErrorMsg )
  */
 void* monitorThreadProc(void *arg)
 {
+	int sock;
+	fd_set input_mask;
+	bool bGotFinished;
+	bool bGotCancelRequest;
+	int PID;
+	struct timeval tv;
+	PGnotify* notify;
+	int nNotifies;
+	bool bFromOtherProcess;
+	StatusOp* pOp;
+	char* pszMsg;
 	
 	// Block SIGINT and SIGKILL signals (we want them only ion main thread)
 	sigset_t newset;
@@ -8502,18 +8518,16 @@ void* monitorThreadProc(void *arg)
 	DoCancelNotifyListen( g_conn_status, true, g_CDBDumpKey, g_CDBInstID, g_CDBSegID, NULL );
 	
 	// Now wait for a cancel notification
-	int sock = PQsocket( g_conn_status );
-	fd_set input_mask;
+	sock = PQsocket( g_conn_status );
 	FD_ZERO( &input_mask );
 	FD_SET( sock, &input_mask );
-	bool bGotFinished = false;
-	bool bGotCancelRequest = false;
-	int PID = PQbackendPID( g_conn_status );
+	bGotFinished = false;
+	bGotCancelRequest = false;
+	PID = PQbackendPID( g_conn_status );
 
 	/* Once we've seen the TASK_FINISH insert request, we know to leave */ 	
 	while ( !bGotFinished )
 	{
-		struct timeval tv;
 		tv.tv_sec = 2;
 		tv.tv_usec = 0;
 	
@@ -8532,9 +8546,8 @@ void* monitorThreadProc(void *arg)
 		}
 		
 		PQconsumeInput( g_conn_status );
-		PGnotify* notify;
-		int nNotifies = 0;
-		bool bFromOtherProcess = false;
+		nNotifies = 0;
+		bFromOtherProcess = false;
 		while ( NULL != (notify = PQnotifies(g_conn_status)))
 		{
 			nNotifies++;
@@ -8561,7 +8574,6 @@ void* monitorThreadProc(void *arg)
 		
 		/* Now deal with any insert requests */
 		Lock( g_pStatusOpList );
-		StatusOp* pOp;
 		while ( NULL != (pOp = TakeFromStatusOpList(g_pStatusOpList)) )
 		{
 			DoCancelNotifyListen( g_conn_status, false, g_CDBDumpKey, g_CDBInstID, g_CDBSegID, pOp->pszSuffix );
@@ -8570,7 +8582,6 @@ void* monitorThreadProc(void *arg)
 			{
 				bGotFinished = true;
 
-				char* pszMsg;
 				if ( pOp->TaskRC == TASK_RC_SUCCESS )
 					pszMsg = "Succeeded\n";	
 				else
@@ -8627,10 +8638,12 @@ void myHandler(int signo)
 void exit_nicely(void)
 {
 	char* lastMsg = g_LastMsg;
+	char* pszErrorMsg;
+
 	if ( lastMsg == NULL )
 		lastMsg = PQerrorMessage(g_conn);
 		
-	char* pszErrorMsg = MakeString( "*** aborted because of error: %s\n", lastMsg );
+	pszErrorMsg = MakeString( "*** aborted because of error: %s\n", lastMsg );
 
 	write_msg(NULL, pszErrorMsg);
 
@@ -8657,24 +8670,31 @@ void exit_nicely(void)
  */
 void createCDBCatalogFunction(PGconn* pConn, const char* pszDBName)
 {
-	/* Get the data from the cdb_instance table */
-	PQExpBuffer bufCDBInstance = createPQExpBuffer();
+    char* pszBackupFileName;
+    FILE* fcat;
+    int i;
+	PQExpBuffer bufCDBInstance;
+
 	CDBSegmentInstanceArray InstanceAr;
+
+    /* Get the data from the cdb_instance table */
+	bufCDBInstance = createPQExpBuffer();
+
 	InstanceAr.count = 0;
 	InstanceAr.pData = NULL;
-	
+
 	if ( !GetCDBSegmentInstanceArray( pConn, pszDBName, &InstanceAr ) )
 	{
 		write_msg(NULL, "GetCDBSegmentInstanceArray failed in createCDBCatalogFunction\n");
 		exit_nicely();
 	}
    
-    char* pszBackupFileName = formCatalogFilePathName( g_pszCDBOutputDirectory,
+    pszBackupFileName = formCatalogFilePathName( g_pszCDBOutputDirectory,
                                 g_CDBDumpKey, g_CDBInstID, g_CDBSegID );
     /* Make sure we can create this file before we spin off sh
      * cause we don't get a good error message from sh if we can't write to the file
      */
-    FILE* fcat = fopen( pszBackupFileName, "w" );
+    fcat = fopen( pszBackupFileName, "w" );
     free(pszBackupFileName);
     if ( fcat == NULL )
     {
@@ -8683,7 +8703,6 @@ void createCDBCatalogFunction(PGconn* pConn, const char* pszDBName)
     }
 
     fprintf(fcat, "NumSegments=%d\n", InstanceAr.count);
-    int i;
 	for ( i=0; i<InstanceAr.count; i++ )
 	{
         CDBSegmentInstance* pSegmentInstance = &InstanceAr.pData[i]; 
@@ -8709,11 +8728,13 @@ char* formCatalogFilePathName( char* pszBackupDirectory, char* pszBackupKey, int
 {
     /* First form the prefix */
     char szFileNamePrefix[1+PATH_MAX];
+    int len;
+    char* pszBackupFileName;
 
     sprintf( szFileNamePrefix, "cdb_catalog_%d_%d_", pszInstID, pszSegID );
 
     /* Now add up the length of the pieces */
-    int len = strlen(pszBackupDirectory);
+    len = strlen(pszBackupDirectory);
     if ( pszBackupDirectory[ strlen(pszBackupDirectory)-1 ] != '/' )
         len++;
 
@@ -8726,7 +8747,7 @@ char* formCatalogFilePathName( char* pszBackupDirectory, char* pszBackupKey, int
             pszBackupDirectory, pszBackupKey);
     }
 
-    char* pszBackupFileName = (char *) malloc( sizeof(char) * (1+len) );
+    pszBackupFileName = (char *) malloc( sizeof(char) * (1+len) );
     if ( pszBackupFileName == NULL )
     {
         write_msg(NULL, "out of memory");
