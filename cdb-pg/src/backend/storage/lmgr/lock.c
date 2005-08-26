@@ -39,6 +39,7 @@
 #include "miscadmin.h"
 #include "storage/proc.h"
 #include "storage/lockrmgr.h"
+#include "storage/sinval.h"
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
 #include "utils/resowner.h"

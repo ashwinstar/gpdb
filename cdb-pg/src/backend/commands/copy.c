@@ -1462,7 +1462,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	EState	   *estate = CreateExecutorState(); /* for ExecConstraints() */
 	TupleTable	tupleTable;
 	TupleTableSlot *slot;
-	bool		file_has_oids;
+	bool		file_has_oids = false;
 	int		   *defmap;
 	ExprState **defexprs;		/* array of default att expressions */
 	ExprContext *econtext;		/* used for ExecEvalExpr for default atts */

@@ -608,7 +608,7 @@ grouping_planner(Query *parse, double tuple_fraction)
 	Plan	   *result_plan;
 	List	   *current_pathkeys;
 	List	   *sort_pathkeys;
-    Path       *best_path;
+    Path       *best_path = NULL;
 
 	if (parse->setOperations)
 	{

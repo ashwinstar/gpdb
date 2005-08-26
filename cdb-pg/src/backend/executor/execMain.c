@@ -273,7 +273,7 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 	DestReceiver *dest;
 	TupleTableSlot *result;
 	MemoryContext oldcontext;
-	RangeTblEntry *rte;
+	RangeTblEntry *rte = NULL;
 	bool hasDispatched = false;
 	bool shouldDispatch;
 	bool interconnectStarted = false;
@@ -367,8 +367,8 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 		if ( shouldDispatch )
 		{
 			bool bChangedQueryTree = false;
-			CmdType origCmdType;
-			RTEKind origRTEKind;
+			CmdType origCmdType = (CmdType) NULL;
+			RTEKind origRTEKind = (RTEKind) NULL;
 
 			/*
 			 * First, see whether we need to pre-execute any initPlan subplans.

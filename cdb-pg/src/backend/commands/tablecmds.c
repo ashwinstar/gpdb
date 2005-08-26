@@ -274,7 +274,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 	char		relname[NAMEDATALEN];
 	Oid			namespaceId;
 	List	   *schema = stmt->tableElts;
-	Oid			relationId;
+	Oid			relationId = (Oid) NULL;
 	Oid			tablespaceId;
 	Relation	rel;
 	TupleDesc	descriptor;

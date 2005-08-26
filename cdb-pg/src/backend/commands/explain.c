@@ -341,7 +341,7 @@ explain_outNode(StringInfo str,
 				int indent, ExplainState *es)
 {
 	ListCell   *l;
-	char	   *pname;
+	char	   *pname = NULL;
 	int			i;
 
 	if (plan == NULL)
