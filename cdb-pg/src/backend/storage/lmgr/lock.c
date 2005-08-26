@@ -2165,13 +2165,13 @@ lock_recover_record(TransactionId xid, void *recdata, uint32 len)
 }
 
 void
-lock_postcommit(TransactionId xid)
+lock_postcommit(TransactionId xid, void *dummy1, uint32 dummy2)
 {
       lock_cleanup();
 }
 
 void
-lock_postabort(TransactionId xid)
+lock_postabort(TransactionId xid, void *dummy1, uint32 dummy2)
 {
       lock_cleanup();
 }

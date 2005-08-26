@@ -1094,7 +1094,7 @@ AbortPreparedTransaction(char *gid)
       ProcessRecords(fd, xid, postabort_callbacks);
       close(fd);
       RemoveTwoPhaseFile(xid);
-      lock_postabort(xid);
+      lock_postabort(xid, (void *)NULL, (uint32) NULL);
 }     
 
 /*    
@@ -1118,7 +1118,7 @@ CommitPreparedTransaction(char *gid)
       ProcessRecords(fd, xid, postcommit_callbacks);
       close(fd);
       RemoveTwoPhaseFile(xid);
-      lock_postcommit(xid);
+      lock_postcommit(xid, (void *)NULL, (uint32) NULL);
 }
 
 /*
