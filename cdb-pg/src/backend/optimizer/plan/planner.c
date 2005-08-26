@@ -1378,6 +1378,7 @@ grouping_planner(Query *parse, double tuple_fraction)
      * the qDisp.
      */
     if (!result_plan->flow &&
+        best_path &&
         CdbPathLocus_IsRoot(best_path->locus))
         result_plan->flow = cdbpathtoplan_create_flow(parse,
                                                       best_path,

@@ -601,7 +601,7 @@ TransactionIdIsInProgress(TransactionId xid)
 
 	/*
      * Prepared transactions are considered in-progress.
-     */     
+     */
     if(TransactionIdIsPrepared(xid)) {
 	    result = true;
         goto result_known;
@@ -806,7 +806,7 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 	 * lock; if not, this is a read-only operation so it can be shared.
 	 */
 	LWLockAcquire(SInvalLock, serializable ? LW_EXCLUSIVE : LW_SHARED);
-	StartPreparedTransactionListScan();
+	nPrepared = StartPreparedTransactionListScan();
 
 	/*--------------------
 	 * Unfortunately, we have to call ReadNewTransactionId() after acquiring

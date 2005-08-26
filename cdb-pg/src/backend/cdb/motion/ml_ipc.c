@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------
  * ml_ipc.c
- *     Motion Layer IPC Layer.  
+ *     Motion Layer IPC Layer.
  *
  * Copyright (c) 2005, Green Plum
  *
@@ -28,23 +28,23 @@
 
 
 /*=========================================================================
- * STRUCTS 
+ * STRUCTS
  */
- 
+
  /* backlog for listen() call */
 #define LISTEN_BACK_LOG 5
- 
+
 #define getInt16(pNetData)    ntohs(*((int16 *)(pNetData)))
 #define getInt32(pNetData)    ntohl(*((int32 *)(pNetData)))
 
 
-/* Structure used for keeping track of a pt-to-pt connection between two 
+/* Structure used for keeping track of a pt-to-pt connection between two
  * Cdb Entities (either QE or QD).
  */
 typedef struct MotionConn
 {
 	/* socket file descriptor. */
- 	int sockfd;  
+ 	int sockfd;
 
  	/* pointer to the data buffer. */
  	uint8 *pBuff;
@@ -65,9 +65,9 @@ typedef struct MotionConn
  	
 } MotionConn;
 
-/* used to organize all of the information for a given motion node. 
+/* used to organize all of the information for a given motion node.
  *
- */ 
+ */
 typedef struct MotionLayerState
 {
 	int16 		motNodeId;
@@ -196,7 +196,7 @@ void InitMotionLayerIPC(void)
 	}
 
 	incompleteConns = NIL;
-    
+
 	tval.tv_sec = 0;
 	tval.tv_usec = 500000;
 	
@@ -210,7 +210,7 @@ void CleanUpMotionLayerIPC(void)
 	/* DOH: do we shutdown the listener socket?  need to figure out who actually
 	 *      calls this and when
 	 */
-#ifdef AMS_VERBOSE_LOGGING	 
+#ifdef AMS_VERBOSE_LOGGING	
 	elog(DEBUG3, "CleanUpMotionLayerIPC()");
 #endif
 
@@ -254,7 +254,7 @@ bool SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem 
 		struct timeval snapTime;
 
 		gettimeofday(&snapTime, NULL);
-		elog(DEBUG3, "starting chunklist @%s.%d time is %ld.%d", 
+		elog(DEBUG3, "starting chunklist @%s.%d time is %ld.%d",
 			 __FILE__, __LINE__, snapTime.tv_sec, snapTime.tv_usec);
 	}
 #endif
@@ -285,7 +285,7 @@ bool SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem 
 		struct timeval snapTime;
 
 		gettimeofday(&snapTime, NULL);
-		elog(DEBUG3, "done with chunklist @%s.%d time is %ld.%d", 
+		elog(DEBUG3, "done with chunklist @%s.%d time is %ld.%d",
 			 __FILE__, __LINE__, snapTime.tv_sec, snapTime.tv_usec);
 	}
 #endif
@@ -415,7 +415,7 @@ TupleChunkListItem RecvTupleChunkFrom(int16 motNodeID, int16 srcRoute)
 
 #ifdef AMS_VERBOSE_LOGGING	
 	elog(DEBUG3, "RecvTupleChunkFrom(motNodID=%d, srcRoute=%d)", motNodeID, srcRoute);
-#endif 
+#endif
 
 	pEntry = getMotionState(motNodeID);
 	conn = pEntry->conns + srcRoute;
@@ -497,8 +497,8 @@ int ListenerSetup(void)
 	serv_addr.sin_addr.s_addr	= INADDR_ANY;
 	serv_addr.sin_port			= htons(0);  /* system picks port */
 	
-	/* we let the system pick the TCP port here so we don't have to 
- 	 * manage port resources ourselves.  
+	/* we let the system pick the TCP port here so we don't have to
+ 	 * manage port resources ourselves.
  	 */
 	if (bind(listenerFd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
 	{
@@ -570,7 +570,7 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 	Assert(!activated);
 
 	gettimeofday(&snapTime, NULL);
-	elog(DEBUG3, "in SetupInterconnect @%d time is %ld.%ld", 
+	elog(DEBUG3, "in SetupInterconnect @%d time is %ld.%ld",
 		 __LINE__, (long int)snapTime.tv_sec, (long int)snapTime.tv_usec);
 	
 	sliceTable = mySliceTable;
@@ -610,7 +610,7 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 	foreach(cell, mySlice->children)
 	{
 		int numProcs;
-		int childId = (int)lfirst(cell);
+		int childId = lfirst_int(cell);
 	
 		elog(DEBUG5, "--Setting up RECEIVING motion node: %d", childId);
 		
@@ -645,7 +645,7 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 		/* Have we been here too long ? */
 		gettimeofday(&stopTime, NULL);
 
-		if (interconnect_setup_timeout != 0 && 
+		if (interconnect_setup_timeout != 0 &&
 			(stopTime.tv_sec - startTime.tv_sec) > interconnect_setup_timeout)
 			elog(ERROR, "Aborting activating_routes.... TIMEOUT (%lu)",
 				 stopTime.tv_sec - startTime.tv_sec);
@@ -683,7 +683,7 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 				if (FD_ISSET(conn->sockfd, &wwset))
 				{			
 					elog(DEBUG5, "Sending a register message to sockfd: %d", conn->sockfd);
-					sendRegisterMessage(sendingMotionState, conn); 
+					sendRegisterMessage(sendingMotionState, conn);
 					
 					/*no longer interested in this for now.*/
 					FD_CLR(conn->sockfd, &wset);
@@ -697,7 +697,7 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 					if(FD_ISSET(conn->mirrorConn->sockfd, &wwset))
 					{
 						elog(DEBUG5, "Sending a register message to sockfd: %d", conn->mirrorConn->sockfd);
-						sendRegisterMessage(sendingMotionState, conn->mirrorConn); 
+						sendRegisterMessage(sendingMotionState, conn->mirrorConn);
 						
 						/* no longer interested in this for now. */
 						FD_CLR(conn->mirrorConn->sockfd, &wset);
@@ -740,7 +740,7 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 	elog(DEBUG3, "FINISHED ACTIVATING ROUTES. (out: %d , in: %d)", outgoing_count, incoming_count);
 
 	gettimeofday(&snapTime, NULL);
-	elog(DEBUG3, "exiting SetupInterconnect @%d time is %ld.%ld", 
+	elog(DEBUG3, "exiting SetupInterconnect @%d time is %ld.%ld",
 		 __LINE__, (long int)snapTime.tv_sec, (long int)snapTime.tv_usec);
 }
 
@@ -754,8 +754,8 @@ void TeardownInterconnect(void)
 	Slice 			*mySlice;
 	MotionConn		*conn;	
 
-	/* setup/teardown *really* should occur in pairs.  Asserting activated doesn't really do that 
-	 * though.  If SetupInterconnect doesn't finish all the way and has an error, activated won't be 
+	/* setup/teardown *really* should occur in pairs.  Asserting activated doesn't really do that
+	 * though.  If SetupInterconnect doesn't finish all the way and has an error, activated won't be
 	 * true but ResetMotionLayer() will still call this method.
 	 *
 	 */
@@ -772,7 +772,7 @@ void TeardownInterconnect(void)
 	if (mySlice->parentIndex != -1)
 	{
 		/* cleanup a Sending motion node. */
-		elog(DEBUG3, "close down incoming connections for motion id: %d", 
+		elog(DEBUG3, "close down incoming connections for motion id: %d",
 				mySlice->sliceIndex);
 		pEntry = removeMotionState(mySlice->sliceIndex);
 
@@ -809,8 +809,7 @@ void TeardownInterconnect(void)
 	foreach(cell, mySlice->children)
 	{
 		Slice *aSlice;
-
-		int childId = (int)lfirst(cell);
+		int childId = lfirst_int(cell);
 
 		aSlice = (Slice*)list_nth(sliceTable->slices, childId);
 
@@ -883,7 +882,7 @@ void TeardownInterconnect(void)
  *   motNodeID - motion node ID for this MotionState.
  *
  *	 numConns  - number of connections for this motion node. These could be all
- *				 incoming or outgoing connections depending on if this is a 
+ *				 incoming or outgoing connections depending on if this is a
  *				 Sending or Receiving motion node (motNodeID).
  *
  * RETURNS
@@ -937,7 +936,7 @@ MotionLayerState *createMotionState(int16 motNodeID, int numConns)
 }
 
 
-/* Function getMotionState() is used to retrieve a MotionLayerState from the 
+/* Function getMotionState() is used to retrieve a MotionLayerState from the
  * hashtab hashtable based on the given motNodeID.  This function should only
  * be called after createMotionState() for a given motion node has been called
  * first.
@@ -984,7 +983,7 @@ MotionLayerState *getMotionState(int16 motNodeID)
  * PARAMETERS
  *
  *   motNodeID - motion node ID to lookup the MotionLayerState.
- * 
+ *
  * RETURNS
  *   The MotionLayerState that was removed from the hashtab hashtable.
  */
@@ -1009,7 +1008,7 @@ MotionLayerState *removeMotionState(int16 motNodeID)
 		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 						errmsg("Interconnect Error: Could not find a MotionLayerState entry"
 							   "for motion node %d.", motNodeID)));
-	}  
+	}
 
 	return pEntry;
 }
@@ -1019,11 +1018,11 @@ MotionLayerState *removeMotionState(int16 motNodeID)
  * connections for mySlice.
  *
  * This should not be called for root slices (i.e. QD ones) since they don't
- * ever have outgoing connections. 
+ * ever have outgoing connections.
  *
  * PARAMETERS
  *	
- *   mySlice  - Slice that this process is a member of. 
+ *   mySlice  - Slice that this process is a member of.
  *
  *   highsock - Current highest valued socket filedescriptor (used for select())
  *
@@ -1052,7 +1051,7 @@ MotionLayerState  *startConnections(Slice *mySlice, int *highsock, fd_set *wset,
 	
 	pEntry = createMotionState(motNodeId, list_length(recvSlice->primaryProcesses));
 	
-	/* Setup an outgoing socket to the right place for each of our outbound 
+	/* Setup an outgoing socket to the right place for each of our outbound
 	 * connections for the primary Connections.
 	 */
 	for (i=0; i < pEntry->numConns; i++)
@@ -1105,8 +1104,8 @@ void setupOutgoingConnection( MotionConn *conn, CdbProcess *cdbProc, int *highso
 		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 						errmsg("Interconnect Error: Could not create outbound socket: %s", strerror(errno)),
 						errdetail("error during socket() call (error:%d) to outgoing"
-								  "CdbProcess with contentId=%d at: '%s':%d", errno, 
-								  cdbProc->contentid, cdbProc->listenerAddr, 
+								  "CdbProcess with contentId=%d at: '%s':%d", errno,
+								  cdbProc->contentid, cdbProc->listenerAddr,
 								  cdbProc->listenerPort)));
 	}
 
@@ -1119,7 +1118,7 @@ void setupOutgoingConnection( MotionConn *conn, CdbProcess *cdbProc, int *highso
 		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 						errmsg("Interconnect Error: Could not set outbound socket to non-blocking mode"),
 						errdetail("error during fcntl() call (error:%d) for sockfd: %d",
-								  errno, conn->sockfd)));          
+								  errno, conn->sockfd)));
 	}
 	
 	
@@ -1130,25 +1129,25 @@ void setupOutgoingConnection( MotionConn *conn, CdbProcess *cdbProc, int *highso
 		if (n == 0)
 		{
 			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-							errmsg("Interconnect Error: Could not parse remote listener" 
+							errmsg("Interconnect Error: Could not parse remote listener"
 								   "address: '%s'", cdbProc->listenerAddr),
-							errdetail("inet_pton() unable to parse address: '%s'", 
-									  cdbProc->listenerAddr))); 
+							errdetail("inet_pton() unable to parse address: '%s'",
+									  cdbProc->listenerAddr)));
 		}
 		else
 		{
 			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 							errmsg("Interconnect Error: System error occured during parsing"
 								   " of remote listener address: '%s'", cdbProc->listenerAddr),
-							errdetail("inet_pton()  (errno: %d) unable to parse address: '%s'", 
-									  errno, cdbProc->listenerAddr))); 
+							errdetail("inet_pton()  (errno: %d) unable to parse address: '%s'",
+									  errno, cdbProc->listenerAddr)));
 		}
 	}
 
 	addr.sin_port = htons(cdbProc->listenerPort);
 
-	/* Since our socket is set to non-blocking, then connect can return 
-	 * immediately with an error of EINPROGRESS but the TCP connection is 
+	/* Since our socket is set to non-blocking, then connect can return
+	 * immediately with an error of EINPROGRESS but the TCP connection is
 	 * still continuing to be made.  we will later use select() to find out
 	 * when its actually done.
 	 */
@@ -1162,8 +1161,8 @@ void setupOutgoingConnection( MotionConn *conn, CdbProcess *cdbProc, int *highso
 			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 							errmsg("Interconnect Error: Could not connect() to remote destination: %s", strerror(errno)),
 							errdetail("error during connect() call (error:%d) to outgoing"
-									  "CdbProcess with contentId=%d at: '%s':%d", errno, 
-									  cdbProc->contentid, cdbProc->listenerAddr, 
+									  "CdbProcess with contentId=%d at: '%s':%d", errno,
+									  cdbProc->contentid, cdbProc->listenerAddr,
 									  cdbProc->listenerPort)));	
 		}
 	}
@@ -1174,12 +1173,12 @@ void setupOutgoingConnection( MotionConn *conn, CdbProcess *cdbProc, int *highso
 		*highsock = conn->sockfd;
 
 	elog(DEBUG5, "Interconnect started outgoing connection to CdbProcess with contentId=%d "
-		 "to: '%s':%d with sockfd: %d", cdbProc->contentid, cdbProc->listenerAddr, 
+		 "to: '%s':%d with sockfd: %d", cdbProc->contentid, cdbProc->listenerAddr,
 		 cdbProc->listenerPort, conn->sockfd);
 }
 
 
-/* Function sendRegisterMessage() used to send a Register message to the 
+/* Function sendRegisterMessage() used to send a Register message to the
  * remote destination on the other end of the provided conn.
  *
  * PARAMETERS
@@ -1212,8 +1211,8 @@ void sendRegisterMessage(MotionLayerState *pEntry, MotionConn *conn)
 	netval2 = htonl(listenerPort);
 	memcpy(msg + 6, &netval2, 4);
 
-	/* Since our message is very small and we should have at least some 
-	 * dedicated TCP buffer space.  so we should be able to use a blocking 
+	/* Since our message is very small and we should have at least some
+	 * dedicated TCP buffer space.  so we should be able to use a blocking
 	 * send() call to write it out.
 	 */	
 	while ((n = write(conn->sockfd, msg, msglen)) < 0)
@@ -1225,7 +1224,7 @@ void sendRegisterMessage(MotionLayerState *pEntry, MotionConn *conn)
 		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 						errmsg("Interconnect Error: Could not write() Register message to remote destination: %s", strerror(errno)),
 						errdetail("error during write() call (error:%d) to remote destination"
-								  "'%s':%d with contentid = %d", errno, conn->remoteHost, 
+								  "'%s':%d with contentid = %d", errno, conn->remoteHost,
 								  conn->remotePort, conn->remoteContentId)));
 	}
 
@@ -1233,11 +1232,11 @@ void sendRegisterMessage(MotionLayerState *pEntry, MotionConn *conn)
 	{
 		elog(DEBUG3, "n = %d", n);
 		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-						errmsg("Interconnect Error: Could not write() complete Register" 
+						errmsg("Interconnect Error: Could not write() complete Register"
 							   "message to remote destination"),
 						errdetail("sent: %d of %d bytes during write() call to remote destination"
-								  "'%s':%d with contentid = %d", n, msglen, conn->remoteHost, 
-								  conn->remotePort, conn->remoteContentId)));  
+								  "'%s':%d with contentid = %d", n, msglen, conn->remoteHost,
+								  conn->remotePort, conn->remoteContentId)));
 	}
 }
 
@@ -1248,7 +1247,7 @@ void sendRegisterMessage(MotionLayerState *pEntry, MotionConn *conn)
  * of the register message.
  *
  * PARAMETERS
- * 
+ *
  *   conn - MotionConn to read the register messagefrom.
  *	 incoming_count - ptr to number of incoming connections that have been set
  *					  up so far.
@@ -1273,13 +1272,13 @@ void readRegisterMessage(MotionConn *conn, int *incoming_count)
 		while ((n = read(conn->sockfd, buff + bytesRead, msgSize - bytesRead)) < 0)
             if (errno != EINTR)
                 break;
-        
+
         if (n < 0)
 		{
 			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 							errmsg("Interconnect Error: Could not read() Register message "
 								   "from remote destination"),
-							errdetail("error during read() call (error:%d) from remote" 
+							errdetail("error during read() call (error:%d) from remote"
 									  "sockfd = %d", errno, conn->sockfd)));
 		}
 	
@@ -1293,7 +1292,7 @@ void readRegisterMessage(MotionConn *conn, int *incoming_count)
 	msg.srcListenerPort = getInt32(buff + 6);
 
 	elog(DEBUG5, "Read a Register Message: (motNodeID: %d, srcRouteId: %d, "
-	      "srcContentId: %d, srcListenerPort: %d\n", 
+	      "srcContentId: %d, srcListenerPort: %d\n",
 	      msg.motNodeId,msg.srcRouteId,msg.srcContentId,msg.srcListenerPort);
 
 	pEntry = getMotionState(msg.motNodeId);
@@ -1302,7 +1301,7 @@ void readRegisterMessage(MotionConn *conn, int *incoming_count)
 	if ((pEntry->conns + msg.srcRouteId)->sockfd != -1)
 	{
 		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-						errmsg("Interconnect Error: Already a conn for (mnId=%d,routeId=%d,%d)", 
+						errmsg("Interconnect Error: Already a conn for (mnId=%d,routeId=%d,%d)",
 							   msg.motNodeId, msg.srcRouteId, (pEntry->conns + msg.srcRouteId)->sockfd),
 						errdetail("Should not have a non-NULL connection in that slot.")));
 	}
@@ -1336,8 +1335,8 @@ void readRegisterMessage(MotionConn *conn, int *incoming_count)
 	(*incoming_count)++;
 }
 
-/* Function acceptIncomingConnection() is used to accept() and setup an 
- * incoming connection on the Interconnect Listener socket.  
+/* Function acceptIncomingConnection() is used to accept() and setup an
+ * incoming connection on the Interconnect Listener socket.
  *
  * This function should not be called unless we know we have a connection
  * waiting (by using select() or something).  We add the MotionConn created
@@ -1382,7 +1381,7 @@ void acceptIncomingConnection(fd_set *rset, int *highsock)
 		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 						errmsg("Interconnect Error: Could not set outbound socket to non-blocking mode"),
 						errdetail("error during fcntl() call (error:%d) for sockfd: %d",
-								  errno, newsockfd)));          
+								  errno, newsockfd)));
 	}
 		
 
@@ -1415,7 +1414,7 @@ void acceptIncomingConnection(fd_set *rset, int *highsock)
  *   conn - MotionConn that the tcItem is to be sent to.
  *   tcItem - message to be sent.
  */
-bool sendChunk(MotionConn *conn, TupleChunkListItem tcItem) 
+bool sendChunk(MotionConn *conn, TupleChunkListItem tcItem)
 {
 	Assert(conn->msgSize > 0);		
 	
@@ -1437,10 +1436,10 @@ bool sendChunk(MotionConn *conn, TupleChunkListItem tcItem)
  * been written to the socket.
  *
  * We also have to check for reads here.  Having data to read on a "sending"
- * socket means the receiver is sending us a stopSending Message.  Below, we 
+ * socket means the receiver is sending us a stopSending Message.  Below, we
  * only check during select() and don't have to worry about write().  The reason
- * is that if the Receiver sends us a stopSending message it will also stop 
- * reading data from the socket.  This guarantees that eventually our write() 
+ * is that if the Receiver sends us a stopSending message it will also stop
+ * reading data from the socket.  This guarantees that eventually our write()
  * call will get an EWOULDBLOCK and our select() call will pick it up.
  *
  *
@@ -1462,7 +1461,7 @@ bool flushBuffer(MotionConn *conn)
 		struct timeval snapTime;
 
 		gettimeofday(&snapTime, NULL);
-		elog(DEBUG3, "----sending chunk @%s.%d time is %ld.%d", 
+		elog(DEBUG3, "----sending chunk @%s.%d time is %ld.%d",
 			 __FILE__, __LINE__, snapTime.tv_sec, snapTime.tv_usec);
 	}
 #endif
@@ -1505,7 +1504,7 @@ bool flushBuffer(MotionConn *conn)
 
 					/* as a sender... if there is something to read... it must
 					 * mean its a StopSendingMessage.  we don't even bother to
-					 * read it. 
+					 * read it.
 					 */
 					if (FD_ISSET(conn->sockfd, &rset))
 					{
@@ -1527,8 +1526,8 @@ bool flushBuffer(MotionConn *conn)
 	return true;
 }
 
-/* Function readPacket() is used to read in the next packet from the given 
- * MotionConn.  
+/* Function readPacket() is used to read in the next packet from the given
+ * MotionConn.
  *
  * This call blocks until the packet is read in, and is part of a
  * global scheme where senders block until the entire message is sent, and
@@ -1547,7 +1546,7 @@ void readPacket(MotionConn *conn)
 	/* read in the header. */
 	while (bytesRead < PACKET_HEADER_SIZE)
 	{
-		if ((n = read(conn->sockfd, conn->pBuff + bytesRead, 
+		if ((n = read(conn->sockfd, conn->pBuff + bytesRead,
 			       PACKET_HEADER_SIZE - bytesRead)) < 0)
 		{
 			if (errno == EINTR)
@@ -1576,7 +1575,7 @@ void readPacket(MotionConn *conn)
 												   conn->remotePort)));	
 					}
 				}
-				while (n < 1); 
+				while (n < 1);
 			}
 			else
 			{
@@ -1599,7 +1598,7 @@ void readPacket(MotionConn *conn)
 			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 					 errmsg("Interconnect error reading an incoming packet"),
 					 errdetail("Socket (fd=%d) closed from remote connection).\n"
-						   "contentId=%d at '%s':%d",conn->sockfd, conn->remoteContentId, 
+						   "contentId=%d at '%s':%d",conn->sockfd, conn->remoteContentId,
 						   conn->remoteHost,conn->remotePort)));
 		}
 		else
@@ -1616,7 +1615,7 @@ void readPacket(MotionConn *conn)
 	/* read in the rest of the message. */
 	while (bytesRead != conn->msgSize)
 	{
-		if ((n = read(conn->sockfd, conn->pBuff + bytesRead, 
+		if ((n = read(conn->sockfd, conn->pBuff + bytesRead,
 			       conn->msgSize - bytesRead)) < 0)
 		{
             if (errno == EINTR)
@@ -1645,7 +1644,7 @@ void readPacket(MotionConn *conn)
 												   conn->remotePort)));				
 					}					
 				}
-				while (n < 1); 
+				while (n < 1);
 			}
 			else
 			{
@@ -1666,7 +1665,7 @@ void readPacket(MotionConn *conn)
 			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 					 errmsg("Interconnect error reading an incoming packet"),
 					 errdetail("Socket closed from remote connection).\n"
-						   "contentId=%d at '%s':%d",conn->remoteContentId, 
+						   "contentId=%d at '%s':%d",conn->remoteContentId,
 						   conn->remoteHost,conn->remotePort)));
 		}
 		else
@@ -1706,7 +1705,7 @@ void doBroadcast(MotionLayerState *pEntry, TupleChunkListItem tcItem)
 /* Function findMyRouteId() is used to search through the given slice and find
  * the position in the slice->primaryProcesses list where "we" are located at.
  * This is done by matching up the contentid and listenerPort.
- * 
+ *
  * PARAMETERS
  *	
  *   slice - Slice to search through.
@@ -1725,12 +1724,12 @@ int findMyRouteId(Slice *slice)
 
 #ifdef AMS_VERBOSE_LOGGING		
 		elog(DEBUG3, "Checking if CdbProc is our own: segid: (ours is %d ==  CdbProc's is %d) "
-		      " listenerPort:  (ours is %d == CdbProc's is %d)", 
-		      Cdb_segment, proc->contentid, 
+		      " listenerPort:  (ours is %d == CdbProc's is %d)",
+		      Cdb_segment, proc->contentid,
 		      listenerPort , proc->listenerPort);
 #endif
 		
-		if (proc->contentid == Cdb_segment && 
+		if (proc->contentid == Cdb_segment &&
 		    proc->listenerPort == listenerPort)
 			return id;
 			
@@ -1745,13 +1744,13 @@ int findMyRouteId(Slice *slice)
 
 
 
-/* Function findCdbProcess() takes the info in the RegisterMessage and looks up 
+/* Function findCdbProcess() takes the info in the RegisterMessage and looks up
  * the CdbProcess that corresponds to it.  Part of the reason for doing this is
  * to verify that the RegisterMessage is a valid one.
  *
  * PARAMETERS
  *
- *   msg - RegisterMessage that contains the info of which CdbProcess we are 
+ *   msg - RegisterMessage that contains the info of which CdbProcess we are
  *		   	looking for.
  *
  * RETURNS
@@ -1782,7 +1781,7 @@ CdbProcess *findCdbProcess(RegisterMessage *msg)
 	{
 		proc = (CdbProcess*) lfirst(cell);
 		
-		if (count == msg->srcRouteId && proc->contentid == msg->srcContentId && 
+		if (count == msg->srcRouteId && proc->contentid == msg->srcContentId &&
 		    proc->listenerPort == msg->srcListenerPort)
 		{
 			found = true;
@@ -1799,7 +1798,7 @@ CdbProcess *findCdbProcess(RegisterMessage *msg)
 							   "unknown CdbProcess"), 						
 						errdetail("Received register message from: (mnId=%d, routeId=%d,"
 								  "contentId=%d, listenerPort=%d) but was unable to find"
-								  " a matching CdbProcess in our sliceTable.", 
+								  " a matching CdbProcess in our sliceTable.",
 								  msg->motNodeId,msg->srcRouteId,msg->srcContentId,
 								  msg->srcListenerPort)));	
 	}
@@ -1833,7 +1832,7 @@ void dumpEntryConnections( MotionLayerState *pEntry )
 
 /* declared in cdbmotion.h */
 /* Function SendStopMessage() sends a short "cancel" message to all motion-nodes
- * which are sending us tuples. This is the communication that is passed outbound 
+ * which are sending us tuples. This is the communication that is passed outbound
  * on the receive socket.
  *
  * We re-implement doBroadcast here, but instead of sending a tuple we send a
