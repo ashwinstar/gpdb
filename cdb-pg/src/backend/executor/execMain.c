@@ -227,13 +227,18 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 		/* Assign gang descriptions to the root slices of the slice forest. */
 		InitRootSlices(queryDesc);		
 		
-		/* Inventory the slice tree, allocate gangs, associate slices 
-		 * with gangs.  For now, use segment 0 for singleton gangs.
-		 *
-		 * On returns, gangs have been allocated and CDBProcess lists 
-		 * have been filled in in the slice table.)
-		 */
-		 AssignGangs(queryDesc, 0);
+		 if ( !explainOnly )
+		 {
+			/* Since we intend to execute the plan, inventory the slice tree, 
+			 * allocate gangs, and associate them with slices.  
+			 *
+			 * For now, always use segment 0 for singleton gangs.
+			 *
+			 * On return, gangs have been allocated and CDBProcess lists 
+			 * have been filled in in the slice table.)
+			 */
+			AssignGangs(queryDesc, 0);
+		 }
 	}
 
 	MemoryContextSwitchTo(oldcontext);

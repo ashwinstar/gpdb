@@ -1624,6 +1624,7 @@ _readFlow(void)
 	READ_LOCALS(Flow);
 
 	READ_ENUM_FIELD(flotype, FlowType);
+	READ_ENUM_FIELD(base_flotype, FlowType);
 	READ_ENUM_FIELD(req_move, Movement);
 	READ_ENUM_FIELD(req_xform, Movement);
 	READ_INT_FIELD(segindex);

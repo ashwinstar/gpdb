@@ -542,7 +542,7 @@ ExecInitMotion(Motion *node, EState *estate)
 		 * be determined. */
 		thisSlice->gangType = GANGTYPE_READER;
 		Assert ( node->plan.lefttree->flow != NULL );
-		switch ( node->plan.lefttree->flow->flotype )
+		switch ( node->plan.lefttree->flow->base_flotype )
 		{
 			case FLOW_SINGLETON:
 				thisSlice->gangSize = 1;

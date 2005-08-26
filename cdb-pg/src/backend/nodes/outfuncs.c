@@ -1006,6 +1006,7 @@ _outFlow(StringInfo str, Flow *node)
 	WRITE_NODE_TYPE("FLOW");
 
 	WRITE_ENUM_FIELD(flotype, FlowType);
+	WRITE_ENUM_FIELD(base_flotype, FlowType);
 	WRITE_ENUM_FIELD(req_move, Movement);
 	WRITE_ENUM_FIELD(req_xform, Movement);
 	WRITE_INT_FIELD(segindex);

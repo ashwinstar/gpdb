@@ -966,7 +966,9 @@ typedef enum Movement
 typedef struct Flow
 {
 	NodeTag		type;			/* T_Flow */
-	FlowType	flotype;		/* Type of flow. */
+	FlowType	flotype;		/* Type of flow produced by the plan. */
+	FlowType	base_flotype;	/* Type of flow produced by the plan prior
+	                             * to application of any req_move. */
 	
 	/* What motion (including none) should be applied to this Plan's output. */
 	Movement	req_move;

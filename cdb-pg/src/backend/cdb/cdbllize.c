@@ -1002,20 +1002,19 @@ Flow *makeFlow(FlowType flotype)
 {
 	Flow *flow = makeNode(Flow);
 	flow->flotype = flotype;
+	flow->base_flotype = flotype;
 	flow->req_move = MOVEMENT_NONE;
 	flow->req_xform = MOVEMENT_NONE;
 	
 	/* TODO
-	 * Put this back to 0 and work out the problem
-	 * with count(*) returning n-1 tuples with 0
-	 * along with 1 tuple with the correct count
-	 * on a select count(*) from foo query.
-	 * Also, work out the AMS problem with
-	 * the focus node (0) getting 1 more End of Stream notifications
-	 * than there are segments, thereby causing an infinite loop.
-	 * see cdbmotion.c in RecvTuple:
-	 *     else if (pMNEntry->num_stream_ends_recvd == pMNEntry->num_senders)
-	 * we were ending up with num_stream_ends_recvd == num_senders+1
+	 * Change this to default to 0.  But first figure out why doing so
+	 * causes 
+	 *     explain select count(*) from util;
+	 *     PANIC:  building Gang:  No primary segdb found!!!!
+	 *     server closed the connection unexpectedly
+	 *
+	 * For that matter, why are we getting gangs set up for a mere
+	 * EXPLAIN?
 	 */
 	flow->segindex = -1;
 	

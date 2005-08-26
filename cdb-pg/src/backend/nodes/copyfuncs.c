@@ -1182,6 +1182,7 @@ _copyFlow(Flow *from)
 	Flow   *newnode = makeNode(Flow);
 
 	COPY_SCALAR_FIELD(flotype);
+	COPY_SCALAR_FIELD(base_flotype);
 	COPY_SCALAR_FIELD(req_move);
 	COPY_SCALAR_FIELD(req_xform);
 	COPY_SCALAR_FIELD(segindex);

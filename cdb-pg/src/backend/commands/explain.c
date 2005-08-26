@@ -216,6 +216,7 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 	double		totaltime = 0;
 	ExplainState *es;
 	StringInfo	str;
+	Node *saved_es_sliceTable;
 
 	gettimeofday(&starttime, NULL);
 
@@ -248,7 +249,19 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 		char	   *s;
 		char	   *f;
 
-		s = nodeToString(queryDesc->plantree);
+		if ( queryDesc->plantree && queryDesc->estate && queryDesc->estate->es_sliceTable )
+		{
+			/* Little two-step to get EXPLAIN VERBOSE to show slice table. */
+			saved_es_sliceTable = queryDesc->plantree->sliceTable; /* probably NULL */
+			queryDesc->plantree->sliceTable = (Node*)queryDesc->estate->es_sliceTable;
+			s = nodeToString(queryDesc->plantree);
+			queryDesc->plantree->sliceTable = saved_es_sliceTable;
+		}
+		else
+		{
+			s = nodeToString(queryDesc->plantree);
+		}
+		
 		if (s)
 		{
 			if (Explain_pretty_print)
@@ -503,13 +516,13 @@ explain_outNode(StringInfo str,
 				switch(pMotion->motionType)
 				{
 					case MOTIONTYPE_HASH:
-						pname = "CDB Hash Motion";
+						pname = "Hash Motion";
 						break;
 					case MOTIONTYPE_FIXED:
 						if ( pMotion->numOutputSegs > 0 )
-							pname = "CDB Fixed Motion";
+							pname = "Fixed Motion";
 						else
-							pname = "CDB Broadcast Motion";
+							pname = "Broadcast Motion";
 						break;
 				}
 			}
