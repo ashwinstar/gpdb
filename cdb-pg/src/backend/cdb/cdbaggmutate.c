@@ -177,7 +177,7 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 	Plan *inner_plan;
 	int i, n;
 	ListCell *cell;
-	TargetEntry *tle, *new_tle;
+	TargetEntry *tle=NULL, *new_tle;
 	AttrNumber attno;
 	SplitAggsContext context;
 	

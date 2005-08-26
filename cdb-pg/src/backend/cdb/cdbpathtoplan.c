@@ -29,7 +29,7 @@ cdbpathtoplan_create_flow(Query    *root,
                           List     *pathkeys,
                           Plan     *plan)
 {
-    Flow       *flow;
+    Flow       *flow = NULL;
 
     /* Distribution */
     if (CdbPathLocus_IsRoot(path->locus))
@@ -76,7 +76,7 @@ cdbpathtoplan_create_motion_plan(Query         *root,
                                  CdbMotionPath *path,
                                  Plan          *subplan)
 {
-    Motion *motion;
+    Motion *motion = NULL;
 
     /* Decorate the subplan with a Flow node telling the plan slicer
      * what kind of gang will be needed to execute the subplan.

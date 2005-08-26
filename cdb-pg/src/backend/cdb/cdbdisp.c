@@ -474,7 +474,7 @@ void *thread_DispatchCommand(void *arg)
 	int							i;
 	SegmentDatabaseDescriptor	*segdbDesc;
 	CdbComponentDatabaseInfo	*q;
-	PGconn						*conn;
+	PGconn						*conn = NULL;
 	RunningInfo					*stillRunning = NULL;
 	int							stillRunningCount = 0;
     int							counter = 0;

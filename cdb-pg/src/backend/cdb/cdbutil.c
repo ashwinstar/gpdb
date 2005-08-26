@@ -679,7 +679,7 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 	x = 0;
 	for ( i=0; i<getCdbSegmentCount(); i++ )
 	{
-		int this_segindex;
+		int this_segindex=-1;
 		while ( x < component_databases->total_segment_dbs )
 		{
 			this_segindex = component_databases->segment_db_info[x].segindex;

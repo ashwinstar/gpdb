@@ -127,8 +127,8 @@ void cdbhashinit(CdbHash *h)
 void cdbhash(CdbHash *h, Datum datum, Oid type)
 {
 	
-	void *buf;     /* pointer to the data */
-	size_t len;    /* length for the data buffer */
+	void *buf = NULL;     /* pointer to the data */
+	size_t len = 0;    /* length for the data buffer */
 	int64 intbuf;  /* an 8 byte buffer for all integer sizes */
 	BpChar  *bp;   /* a variable length struct (varlena) for blank padded strings */
 	text *txt;     /* a variable length struct (varlena) for text */
