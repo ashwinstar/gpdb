@@ -44,11 +44,13 @@
 #include "storage/fd.h"
 #include "storage/lock.h"
 #include "storage/lwlock.h"
+#include "storage/sinval.h"
 #include "miscadmin.h"
 
 #include "access/xact.h"
 #include "access/twophase.h"
 #include "access/twophase_rmgr.h"
+#include "access/subtrans.h"
 
 
 /*
