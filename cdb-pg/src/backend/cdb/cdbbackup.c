@@ -58,6 +58,18 @@ cdb_backup_launch__(PG_FUNCTION_ARGS)
 	char* pszPassThroughParameters = "";
 	char* pszPassThroughCredentials = "";
     char* pszDataOption = "";
+	char *pszBackupFileName,*pszStatusFileName;
+	FILE* ftest;
+	char *pszDBName,*pszUserName;
+	pid_t newpid;
+	char* pszCmdLine;
+	int port;
+	char* pszKeyParm; /*dispatch node*/	
+	int segid;
+	int len,len_name;
+	text* result;
+	char* ptr;
+    int instid; /*dispatch node*/	
 	
 	if ( !PG_ARGISNULL(0) )
 	{
@@ -92,12 +104,12 @@ cdb_backup_launch__(PG_FUNCTION_ARGS)
 	 validateBackupDirectory( pszBackupDirectory ); 
 	
 	/* Form backup file path name */
-	char* pszBackupFileName = formBackupFilePathName( pszBackupDirectory, pszBackupKey );
-    char* pszStatusFileName = formStatusFilePathName( pszBackupDirectory, pszBackupKey, true );
+	pszBackupFileName = formBackupFilePathName( pszBackupDirectory, pszBackupKey );
+    pszStatusFileName = formStatusFilePathName( pszBackupDirectory, pszBackupKey, true );
 	/* Make sure we can create this file before we spin off sh
 	 * cause we don't get a good error message from sh if we can't write to the file
 	 */
-	FILE* ftest = fopen( pszBackupFileName, "w" );
+	ftest = fopen( pszBackupFileName, "w" );
 	if ( ftest == NULL )
 	{
 		ereport(ERROR,
@@ -110,8 +122,8 @@ cdb_backup_launch__(PG_FUNCTION_ARGS)
 	/* Validate existence of cdb_dump_agent and compression program, if possible */
 	testCmdsExist( pszCompressionProgram, "cdb_dump_agent" );
 	
-	char* pszDBName = NULL;
-	char* pszUserName = NULL;
+	pszDBName = NULL;
+	pszUserName = (char *)NULL;
 	if ( MyProcPort != NULL )
 	{
 		pszDBName = MyProcPort->database_name;
@@ -124,7 +136,7 @@ cdb_backup_launch__(PG_FUNCTION_ARGS)
 		pszUserName = "";
 	
 	// Fork off cdb_dump_agent 
-	pid_t newpid = fork();
+	newpid = fork();
 	if ( newpid < 0 )
 	{
 		ereport(ERROR,
@@ -134,13 +146,10 @@ cdb_backup_launch__(PG_FUNCTION_ARGS)
 	else if ( newpid == 0 )
 	{
 		/* Child Process */
-		char* pszCmdLine;
-		
-		
-		int port = PostPortNumber;
+		port = PostPortNumber;
 	
 		/* Create the --cdb-k parameter string */
-		char* pszKeyParm = (char *)palloc( strlen(pszBackupKey) + 
+		pszKeyParm = (char *)palloc( strlen(pszBackupKey) + 
 											strlen(pszPassThroughCredentials) + 
 											3 + 10 + 10 + 1  );
 		if ( pszKeyParm == NULL )
@@ -151,8 +160,8 @@ cdb_backup_launch__(PG_FUNCTION_ARGS)
 		}
  						
         getCdbCdb();			
-		int instid	= (Cdb_segment==-1)?1:0; /*dispatch node*/	
-		int segid	= CdbIdentity.dbid;
+		instid	= (Cdb_segment==-1)?1:0; /*dispatch node*/	
+		segid	= CdbIdentity.dbid;
         /* dump schema only for entry db, and data only for segment db */
          pszDataOption = (instid==1)?"-s":"-a";									
 		sprintf( pszKeyParm, "%s_%d_%d_%s", pszBackupKey, instid, segid, pszPassThroughCredentials );
@@ -162,7 +171,7 @@ cdb_backup_launch__(PG_FUNCTION_ARGS)
 		 * after that piece, e.g. -p comes out 2 for the -p and 1 for the space
 		 * after the -p  The last 1 is for the binary zero at the end.
 		 */
-		int len = 14 + 1  /* cdb_dump_agent */
+		len = 14 + 1  /* cdb_dump_agent */
 				+ 7 + 1  /* --cdb-k */
 				+ strlen(pszKeyParm) + 1
 				+ 7 + 1  /* --cdb-d */
@@ -225,9 +234,9 @@ cdb_backup_launch__(PG_FUNCTION_ARGS)
 	}
 	
 	assert( pszBackupFileName != NULL && pszBackupFileName[0] != '\0' );
-	int len_name = strlen(pszBackupFileName);
-	int len = len_name + VARHDRSZ;
-	text* result = (text *) palloc(len);
+	len_name = strlen(pszBackupFileName);
+	len = len_name + VARHDRSZ;
+	result = (text *) palloc(len);
 	if ( result == NULL )
 	{
 		ereport(ERROR,
@@ -239,7 +248,7 @@ cdb_backup_launch__(PG_FUNCTION_ARGS)
 	VARATT_SIZEP(result) = len;
 
 	/* Fill data field of result string... */
-	char* ptr = VARDATA(result);
+	ptr = VARDATA(result);
 	memcpy(ptr, pszBackupFileName, len_name);
 
 	PG_RETURN_TEXT_P(result);
@@ -261,10 +270,25 @@ cdb_restore_launch__(PG_FUNCTION_ARGS)
 	char*	pszPassThroughParameters = "";
 	char*	pszPassThroughCredentials = "";
 	bool	bOnErrorStop = false;
+    int instid; /*dispatch node*/ 
+    int segid;                                     
+	char* pszOnErrorStop; 
+	char* pszBackupFileName;
+    char* pszStatusFileName;
+	struct stat info;
+	char* pszDBName;
+	char* pszUserName;
+	pid_t newpid;
+	char* pszCmdLine;
+	int port;
+	char* pszKeyParm;
+	int len,len_name;
+	text* result;
+	char* ptr;
 	
     getCdbCdb();
-    int instid  = (Cdb_segment==-1)?1:0; /*dispatch node*/ 
-    int segid   = CdbIdentity.dbid;                                     
+    instid  = (Cdb_segment==-1)?1:0; /*dispatch node*/ 
+    segid   = CdbIdentity.dbid;                                     
 											
 	if ( !PG_ARGISNULL(0) )
 	{
@@ -288,7 +312,7 @@ cdb_restore_launch__(PG_FUNCTION_ARGS)
 	if ( !PG_ARGISNULL(5) )
 		bOnErrorStop = PG_GETARG_BOOL(5);
 	
-	char* pszOnErrorStop = bOnErrorStop ? "--cdb-e" : ""; 
+	pszOnErrorStop = bOnErrorStop ? "--cdb-e" : ""; 
 		
 	/*
 	 * if BackupDirectory is relative, make it absolute based on the directory
@@ -297,11 +321,10 @@ cdb_restore_launch__(PG_FUNCTION_ARGS)
 	pszBackupDirectory = relativeToAbsolute( pszBackupDirectory );
 	
 	/* Form backup file path name */
-	char* pszBackupFileName = formBackupFilePathName( pszBackupDirectory, pszBackupKey );
-    char* pszStatusFileName = formStatusFilePathName( pszBackupDirectory, pszBackupKey, false );
+	pszBackupFileName = formBackupFilePathName( pszBackupDirectory, pszBackupKey );
+    pszStatusFileName = formStatusFilePathName( pszBackupDirectory, pszBackupKey, false );
     
 	/* Make sure pszBackupFileName exists */
-	struct stat info;
 	if ( 0 != stat( pszBackupFileName, &info ) )
 	{
 		pszBackupFileName = findAcceptableBackupFilePathName( pszBackupDirectory, pszBackupKey, segid );
@@ -314,8 +337,8 @@ cdb_restore_launch__(PG_FUNCTION_ARGS)
 	/* Validate existence of compression program and cdb_restore_agent program */
 	testCmdsExist( pszCompressionProgram, "cdb_restore_agent" );
 	
-	char* pszDBName = NULL;
-	char* pszUserName = NULL;
+	pszDBName = NULL;
+	pszUserName = NULL;
 	if ( MyProcPort != NULL )
 	{
 		pszDBName = MyProcPort->database_name;
@@ -328,7 +351,7 @@ cdb_restore_launch__(PG_FUNCTION_ARGS)
 		pszUserName = "";
 	
 	// Fork off cdb_restore_agent 
-	pid_t newpid = fork();
+	newpid = fork();
 	if ( newpid < 0 )
 	{
 		ereport(ERROR,
@@ -338,12 +361,10 @@ cdb_restore_launch__(PG_FUNCTION_ARGS)
 	else if ( newpid == 0 )
 	{
 		/* Child Process */
-		char* pszCmdLine;
-		
-		int port = PostPortNumber;
+		port = PostPortNumber;
 	
 		/* Create the --cdb-k parameter string */
-		char* pszKeyParm = (char *)palloc( strlen(pszBackupKey) + 
+		pszKeyParm = (char *)palloc( strlen(pszBackupKey) + 
 											strlen(pszPassThroughCredentials) + 
 											3 + 10 + 10 + 1 );
 		if ( pszKeyParm == NULL )
@@ -360,7 +381,7 @@ cdb_restore_launch__(PG_FUNCTION_ARGS)
 		* after that piece, e.g. -p comes out 2 for the -p and 1 for the space
 		* after the -p  The last 1 is for the binary zero at the end.
 		*/
-		int len = 17 + 1  /* cdb_restore_agent */
+		len = 17 + 1  /* cdb_restore_agent */
 				+ 7 + 1  /* --cdb-k */
 				+ strlen(pszKeyParm) + 1
 				+ 7 + 1  /* --cdb-d */
@@ -427,9 +448,9 @@ cdb_restore_launch__(PG_FUNCTION_ARGS)
 	
 	assert( pszBackupFileName != NULL && pszBackupFileName[0] != '\0' );
 	
-	int len_name = strlen(pszBackupFileName);
-	int len = len_name + VARHDRSZ;
-	text* result = (text *) palloc(len);
+	len_name = strlen(pszBackupFileName);
+	len = len_name + VARHDRSZ;
+	result = (text *) palloc(len);
 	if ( result == NULL )
 	{
 		ereport(ERROR,
@@ -441,7 +462,7 @@ cdb_restore_launch__(PG_FUNCTION_ARGS)
 	VARATT_SIZEP(result) = len;
 
 	/* Fill data field of result string... */
-	char* ptr = VARDATA(result);
+	ptr = VARDATA(result);
 	memcpy(ptr, pszBackupFileName, len_name);
 
 	PG_RETURN_TEXT_P(result);
@@ -459,6 +480,13 @@ cdb_read_backup_file__(PG_FUNCTION_ARGS)
 	char*	pszBackupDirectory = "./";
 	char*	pszBackupKey = "";
 	int		fileType = 0;
+	char* pszFileName;
+	struct stat info;
+	char* pszBackup;
+	FILE* f;
+	int len,len_status;
+	text* result;
+	char* ptr;
 	
 	if ( !PG_ARGISNULL(0) )
 	{
@@ -480,7 +508,7 @@ cdb_read_backup_file__(PG_FUNCTION_ARGS)
 	pszBackupDirectory = relativeToAbsolute( pszBackupDirectory );
 	
 	/* Form backup file path name */
-	char* pszFileName = NULL;
+	pszFileName = NULL;
 	switch ( fileType )
 	{
 		case BFT_BACKUP:
@@ -498,7 +526,6 @@ cdb_read_backup_file__(PG_FUNCTION_ARGS)
 	}
 	
 	/* Make sure pszFileName exists */
-	struct stat info;
 	if ( 0 != stat( pszFileName, &info ) )
 	{
 		ereport(ERROR,
@@ -515,7 +542,7 @@ cdb_read_backup_file__(PG_FUNCTION_ARGS)
 	}
 	
 	/* Allocate enough memory for entire file, and read it in. */
-	char* pszBackup = (char *)palloc( info.st_size + 1 );
+	pszBackup = (char *)palloc( info.st_size + 1 );
 	if ( pszBackup == NULL )
 	{
 		ereport(ERROR,
@@ -523,7 +550,7 @@ cdb_read_backup_file__(PG_FUNCTION_ARGS)
 				 errmsg("out of memory")));
 	}
 	
-	FILE* f = fopen( pszFileName, "r" );
+	f = fopen( pszFileName, "r" );
 	if ( f == NULL )
 	{
 		ereport(ERROR,
@@ -543,9 +570,9 @@ cdb_read_backup_file__(PG_FUNCTION_ARGS)
 	f = NULL;
 	pszBackup[info.st_size ] = '\0';
 	
-	int len_status = strlen(pszBackup);
-	int len = len_status + VARHDRSZ;
-	text* result = (text *) palloc(len);
+	len_status = strlen(pszBackup);
+	len = len_status + VARHDRSZ;
+	result = (text *) palloc(len);
 	if ( result == NULL )
 	{
 		ereport(ERROR,
@@ -557,7 +584,7 @@ cdb_read_backup_file__(PG_FUNCTION_ARGS)
 	VARATT_SIZEP(result) = len;
 
 	/* Fill data field of result string... */
-	char* ptr = VARDATA(result);
+	ptr = VARDATA(result);
 	memcpy(ptr, pszBackup, len_status);
 
 	PG_RETURN_TEXT_P(result);
@@ -575,6 +602,12 @@ cdb_write_backup_file__(PG_FUNCTION_ARGS)
 	char*	pszBackupDirectory = "./";
 	char*	pszBackupKey = "";
 	char*	pszBackup = "";
+	char* pszFileName;
+	FILE* f;
+	int nBytes; 
+	int len,len_name;
+	text* result;
+	char* ptr;
 	
 	if ( !PG_ARGISNULL(0) )
 	{
@@ -603,10 +636,10 @@ cdb_write_backup_file__(PG_FUNCTION_ARGS)
 	 validateBackupDirectory( pszBackupDirectory ); 
 	
 	/* Form backup file path name */
-	char* pszFileName = formBackupFilePathName( pszBackupDirectory, pszBackupKey );
+	pszFileName = formBackupFilePathName( pszBackupDirectory, pszBackupKey );
 	
 	/* Write file */
-	FILE* f = fopen( pszFileName, "w" );
+	f = fopen( pszFileName, "w" );
 	if ( f == NULL )
 	{
 		ereport(ERROR,
@@ -614,7 +647,7 @@ cdb_write_backup_file__(PG_FUNCTION_ARGS)
 				errmsg("Backup File %s cannot be opened", pszFileName )));
 	}
 	
-	int nBytes = strlen(pszBackup); 
+	nBytes = strlen(pszBackup); 
 	if ( nBytes != fwrite( pszBackup, 1, nBytes, f ) )
 	{
 		fclose( f );
@@ -627,9 +660,9 @@ cdb_write_backup_file__(PG_FUNCTION_ARGS)
 	f = NULL;
 	
 	assert( pszFileName != NULL && pszFileName[0] != '\0' );
-	int len_name = strlen(pszFileName);
-	int len = len_name + VARHDRSZ;
-	text* result = (text *) palloc(len);
+	len_name = strlen(pszFileName);
+	len = len_name + VARHDRSZ;
+	result = (text *) palloc(len);
 	if ( result == NULL )
 	{
 		ereport(ERROR,
@@ -641,7 +674,7 @@ cdb_write_backup_file__(PG_FUNCTION_ARGS)
 	VARATT_SIZEP(result) = len;
 
 	/* Fill data field of result string... */
-	char* ptr = VARDATA(result);
+	ptr = VARDATA(result);
 	memcpy(ptr, pszFileName, len_name);
 
 	PG_RETURN_TEXT_P(result);
@@ -659,6 +692,7 @@ cdb_write_backup_file__(PG_FUNCTION_ARGS)
 bool createBackupDirectory( char* pszPathName )
 { 
 	struct stat info;
+	char* pSlash;
 
 	/* Does pszPathName already exist?  If so, return */
 	if ( 0 == stat( pszPathName, &info ) )
@@ -669,7 +703,7 @@ bool createBackupDirectory( char* pszPathName )
 		return true;
 	
 	/* Try to create each level of the hierarchy that doesn't already exist */
-	char* pSlash = pszPathName+1;
+	pSlash = pszPathName+1;
 	
 	while ( pSlash != NULL && *pSlash != '\0' )
 	{
@@ -727,10 +761,14 @@ char* findAcceptableBackupFilePathName( char* pszBackupDirectory, char* pszBacku
 	
 	static regex_t rFindFileName;
 	static bool bFirstTime = true;
+	char* pszRegex;
+	char* pszFileName;
+	char* pszSep;
+	struct stat info;
 	
 	if ( bFirstTime )
 	{
-		char* pszRegex = (char *)palloc( 19 + 10 + strlen(pszBackupKey) + 1);
+		pszRegex = (char *)palloc( 19 + 10 + strlen(pszBackupKey) + 1);
 		if ( pszRegex == NULL )
 		{
 			ereport(ERROR,
@@ -773,11 +811,11 @@ char* findAcceptableBackupFilePathName( char* pszBackupDirectory, char* pszBacku
 	
 	while ( NULL != (dirp = readdir( dp )))
 	{
-		char* pszFileName = dirp->d_name;
+		pszFileName = dirp->d_name;
 			
 		if ( 0 == regexec( &rFindFileName, pszFileName, 0, NULL, 0 ) )
 		{
-			char* pszSep = "/";
+			pszSep = "/";
 			if ( strlen(pszBackupDirectory) >= 1 && pszBackupDirectory[strlen(pszBackupDirectory) - 1] == '/' )
 				pszSep = "";
 			
@@ -785,7 +823,6 @@ char* findAcceptableBackupFilePathName( char* pszBackupDirectory, char* pszBacku
 			sprintf( pszBackupFilePathName, "%s%s%s", pszBackupDirectory, pszSep, pszFileName );
 
 			/* Make sure that this is a regular file */
-			struct stat info;
 			if ( 0 == stat( pszBackupFilePathName, &info ) && S_ISREG(info.st_mode))
 			{
 				break;
@@ -807,15 +844,19 @@ char* formBackupFilePathName( char* pszBackupDirectory, char* pszBackupKey )
 {
 	/* First form the prefix */
 	char szFileNamePrefix[1+PATH_MAX];
+    int instid; /*dispatch node*/ 
+    int segid;                                     
+	int len;
+	char* pszBackupFileName;
 
     getCdbCdb();
-    int instid  = (Cdb_segment==-1)?1:0; /*dispatch node*/ 
-    int segid   = CdbIdentity.dbid;                                     
+    instid  = (Cdb_segment==-1)?1:0; /*dispatch node*/ 
+    segid   = CdbIdentity.dbid;                                     
 											
 	sprintf( szFileNamePrefix, "cdb_dump_%d_%d_", instid, segid );
 	
 	/* Now add up the length of the pieces */
-	int len = strlen(pszBackupDirectory);
+	len = strlen(pszBackupDirectory);
 	assert( len >= 1 );
 	if ( pszBackupDirectory[ strlen(pszBackupDirectory)-1 ] != '/' )
 		len++;
@@ -830,7 +871,7 @@ char* formBackupFilePathName( char* pszBackupDirectory, char* pszBackupKey )
 				 errmsg("Backup FileName based on path %s and key %s too long", pszBackupDirectory, pszBackupKey)));
 	}
 	 
-	char* pszBackupFileName = (char *) palloc( sizeof(char) * (1+len) );
+	pszBackupFileName = (char *) palloc( sizeof(char) * (1+len) );
 	if ( pszBackupFileName == NULL )
 	{
 		ereport(ERROR,
@@ -858,16 +899,20 @@ char* formStatusFilePathName( char* pszBackupDirectory, char* pszBackupKey, bool
 {
 	/* First form the prefix */
 	char szFileNamePrefix[1+PATH_MAX];
+    int instid; /*dispatch node*/ 
+    int segid;                                     
+	int len;
+	char* pszFileName;
 
     getCdbCdb();
-    int instid  = (Cdb_segment==-1)?1:0; /*dispatch node*/ 
-    int segid   = CdbIdentity.dbid;                                     
+    instid  = (Cdb_segment==-1)?1:0; /*dispatch node*/ 
+    segid   = CdbIdentity.dbid;                                     
 											
 	sprintf( szFileNamePrefix, "cdb_%s_status_%d_%d_", (bIsBackup ? "dump" : "restore"), 
 						instid, segid );
 	
 	/* Now add up the length of the pieces */
-	int len = strlen(pszBackupDirectory);
+	len = strlen(pszBackupDirectory);
 	assert( len >= 1 );
 	if ( pszBackupDirectory[ strlen(pszBackupDirectory)-1 ] != '/' )
 		len++;
@@ -882,7 +927,7 @@ char* formStatusFilePathName( char* pszBackupDirectory, char* pszBackupKey, bool
 				 errmsg("Status FileName based on path %s and key %s too long", pszBackupDirectory, pszBackupKey)));
 	}
 	 
-	char* pszFileName = (char *) palloc( sizeof(char) * (1+len) );
+	pszFileName = (char *) palloc( sizeof(char) * (1+len) );
 	if ( pszFileName == NULL )
 	{
 		ereport(ERROR,
@@ -910,10 +955,12 @@ char* formStatusFilePathName( char* pszBackupDirectory, char* pszBackupKey, bool
  */
 char* relativeToAbsolute( char* pszRelativeDirectory )
 {
+	char* pszAbsolutePath;
+
 	if ( pszRelativeDirectory[0] == '/' )
 		return pszRelativeDirectory;
 	
-	char* pszAbsolutePath = (char *) palloc( strlen(DataDir) + 1 + strlen(pszRelativeDirectory) + 1);
+	pszAbsolutePath = (char *) palloc( strlen(DataDir) + 1 + strlen(pszRelativeDirectory) + 1);
 	if ( pszAbsolutePath == NULL )
 	{
 		ereport(ERROR,
@@ -962,8 +1009,15 @@ void testCmdsExist( char* pszCompressionProgram, char* pszBackupProgram )
  */
 bool testProgramExists(char* pszProgramName)
 {
+	char* pszProgramNameLocal;
+	char* p;
 	/* Now see what the length of the file is  - 0 means not there */
 	struct stat buf;
+	char* pszEnvPath;
+	char* pszPath;
+	char* pColon;
+	char* pColonNext;
+	char* pszTestPath;
 
 	if ( pszProgramName == NULL || *pszProgramName == '\0' )
 		return false;
@@ -971,7 +1025,7 @@ bool testProgramExists(char* pszProgramName)
 	/* The pszProgramName might have command line arguments, so we need to
 	 * stop at the first whitespace 
 	 */
-	char* pszProgramNameLocal = palloc( strlen(pszProgramName) + 1 );
+	pszProgramNameLocal = palloc( strlen(pszProgramName) + 1 );
 	if ( pszProgramNameLocal == NULL )
 	{
 		ereport(ERROR,
@@ -981,7 +1035,7 @@ bool testProgramExists(char* pszProgramName)
 	
 	strcpy( pszProgramNameLocal, pszProgramName );
 	
-	char* p = pszProgramNameLocal;
+	p = pszProgramNameLocal;
 	while ( *p != '\0' )
 	{
 		if ( *p == ' ' || *p == '\t' || *p == '\n' )
@@ -992,11 +1046,11 @@ bool testProgramExists(char* pszProgramName)
 	
 	*p = '\0';
 	
-	char* pszEnvPath = getenv( "PATH" );
+	pszEnvPath = getenv( "PATH" );
 	if ( pszEnvPath == NULL )
 		return false;
 	
-	char* pszPath = (char *) palloc( strlen(pszEnvPath) + 1 );
+	pszPath = (char *) palloc( strlen(pszEnvPath) + 1 );
 	if ( pszPath == NULL )
 	{
 		ereport(ERROR,
@@ -1007,8 +1061,7 @@ bool testProgramExists(char* pszProgramName)
 	strcpy( pszPath, pszEnvPath );
 	
 	/* Try to create each level of the hierarchy that doesn't already exist */
-	char* pColon = pszPath;
-	char* pColonNext;
+	pColon = pszPath;
 	
 	while ( pColon != NULL && *pColon != '\0' )
 	{
@@ -1024,7 +1077,7 @@ bool testProgramExists(char* pszProgramName)
 		if ( pColonNext == NULL )
 		{
 			// See whether pszProgramName exists in subdirectory pColon
-			char* pszTestPath = (char *)palloc( strlen(pColon) + 1 + strlen(pszProgramNameLocal) + 1 );
+			pszTestPath = (char *)palloc( strlen(pColon) + 1 + strlen(pszProgramNameLocal) + 1 );
 			if ( pszTestPath == NULL )
 			{
 				ereport(ERROR,
@@ -1043,7 +1096,7 @@ bool testProgramExists(char* pszProgramName)
 		*pColonNext = '\0';
 
 		// See whether pszProgramName exists in subdirectory pColon
-		char* pszTestPath = (char *)palloc( strlen(pColon) + 1 + strlen(pszProgramNameLocal) + 1 );
+		pszTestPath = (char *)palloc( strlen(pColon) + 1 + strlen(pszProgramNameLocal) + 1 );
 		if ( pszTestPath == NULL )
 		{
 			ereport(ERROR,
