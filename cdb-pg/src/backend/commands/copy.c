@@ -3791,7 +3791,7 @@ CopyReadAttributesText(const char *delim, const char *escape, const char *null_p
 	 * - Before:  f  1	|  f  \|  2  |	f  3
 	 * - After :  f  1 \0  f   |  2 \0	f  3
 	 */
-	for (attribute = 1; attribute < num_phys_attrs; attribute++)
+	for (attribute = 0; attribute < num_phys_attrs; attribute++)
 	{
 		if (attr_offsets[attribute] != 0)
 			*(attr_buf.data + attr_offsets[attribute] - 1) = '\0';
