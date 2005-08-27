@@ -1,3 +1,6 @@
+\qecho =================================================================
+\qecho ========================= Query Number 21 =======================
+\qecho =================================================================
 -- @(#)21.sql	2.1.8.1
 -- TPC-H/TPC-R Suppliers Who Kept Orders Waiting Query (Q21)
 -- Functional Query Definition
@@ -42,5 +45,5 @@ group by
 	s_name
 order by
 	numwait desc,
-	s_name;
-:n 100
+	s_name
+:n 100;

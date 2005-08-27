@@ -1,3 +1,6 @@
+\qecho =================================================================
+\qecho ========================= Query Number  9 =======================
+\qecho =================================================================
 -- @(#)9.sql	2.1.8.1
 -- TPC-H/TPC-R Product Type Profit Measure Query (Q9)
 -- Functional Query Definition
@@ -36,4 +39,3 @@ group by
 order by
 	nation,
 	o_year desc;
-:n -1

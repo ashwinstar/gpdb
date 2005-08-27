@@ -34,12 +34,12 @@
  * database portability defines
  */
 #ifdef POSTGRES
-#define GEN_QUERY_PLAN  "NOT SUPPORTED;"
+#define GEN_QUERY_PLAN  "EXPLAIN"
 #define START_TRAN      "BEGIN;"
 #define END_TRAN        "COMMIT;"
-#define SET_OUTPUT      "\o"
-#define SET_ROWCOUNT    "LIMIT %d"
-#define SET_DBASE       "\c %s ;\n"
+#define SET_OUTPUT      "\o %s \n"
+#define SET_ROWCOUNT    "LIMIT %d;"
+#define SET_DBASE       "\c %s \n"
 #endif
 
 #ifdef DB2

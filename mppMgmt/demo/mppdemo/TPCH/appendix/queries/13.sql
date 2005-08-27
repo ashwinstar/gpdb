@@ -1,3 +1,6 @@
+\qecho =================================================================
+\qecho ========================= Query Number 13 =======================
+\qecho =================================================================
 -- @(#)13.sql	2.1.8.1
 -- TPC-H/TPC-R Customer Distribution Query (Q13)
 -- Functional Query Definition
@@ -24,4 +27,3 @@ group by
 order by
 	custdist desc,
 	c_count desc;
-:n -1

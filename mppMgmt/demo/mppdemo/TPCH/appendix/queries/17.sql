@@ -1,3 +1,6 @@
+\qecho =================================================================
+\qecho ========================= Query Number 17 =======================
+\qecho =================================================================
 -- @(#)17.sql	2.1.8.1
 -- TPC-H/TPC-R Small-Quantity-Order Revenue Query (Q17)
 -- Functional Query Definition
@@ -21,4 +24,3 @@ where
 		where
 			l_partkey = p_partkey
 	);
-:n -1

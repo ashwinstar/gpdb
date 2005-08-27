@@ -1,3 +1,6 @@
+\qecho =================================================================
+\qecho ========================= Query Number 11 =======================
+\qecho =================================================================
 -- @(#)11.sql	2.1.8.1
 -- TPC-H/TPC-R Important Stock Identification Query (Q11)
 -- Functional Query Definition
@@ -31,4 +34,3 @@ group by
 		)
 order by
 	value desc;
-:n -1

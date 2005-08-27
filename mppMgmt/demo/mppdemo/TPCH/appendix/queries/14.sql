@@ -1,3 +1,6 @@
+\qecho =================================================================
+\qecho ========================= Query Number 14 =======================
+\qecho =================================================================
 -- @(#)14.sql	2.1.8.1
 -- TPC-H/TPC-R Promotion Effect Query (Q14)
 -- Functional Query Definition
@@ -16,5 +19,4 @@ from
 where
 	l_partkey = p_partkey
 	and l_shipdate >= date ':1'
-	and l_shipdate < date ':1' + interval '1' month;
-:n -1
+	and l_shipdate < date ':1' + interval '1 month';

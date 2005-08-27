@@ -1,3 +1,6 @@
+\qecho =================================================================
+\qecho ========================= Query Number 22 =======================
+\qecho =================================================================
 -- @(#)22.sql	2.1.8.1
 -- TPC-H/TPC-R Global Sales Opportunity Query (Q22)
 -- Functional Query Definition
@@ -41,4 +44,3 @@ group by
 	cntrycode
 order by
 	cntrycode;
-:n -1

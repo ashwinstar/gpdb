@@ -1,3 +1,6 @@
+\qecho =================================================================
+\qecho ========================= Query Number 19 =======================
+\qecho =================================================================
 -- @(#)19.sql	2.1.8.1
 -- TPC-H/TPC-R Discounted Revenue Query (Q19)
 -- Functional Query Definition
@@ -39,4 +42,3 @@ where
 		and l_shipmode in ('AIR', 'AIR REG')
 		and l_shipinstruct = 'DELIVER IN PERSON'
 	);
-:n -1

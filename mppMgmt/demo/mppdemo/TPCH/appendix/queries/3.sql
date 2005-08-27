@@ -1,3 +1,6 @@
+\qecho =================================================================
+\qecho ========================= Query Number  3 =======================
+\qecho =================================================================
 -- @(#)3.sql	2.1.8.1
 -- TPC-H/TPC-R Shipping Priority Query (Q3)
 -- Functional Query Definition
@@ -25,5 +28,5 @@ group by
 	o_shippriority
 order by
 	revenue desc,
-	o_orderdate;
-:n 10
+	o_orderdate
+:n 10;

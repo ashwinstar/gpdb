@@ -1,3 +1,6 @@
+\qecho =================================================================
+\qecho ========================= Query Number  7 =======================
+\qecho =================================================================
 -- @(#)7.sql	2.1.8.1
 -- TPC-H/TPC-R Volume Shipping Query (Q7)
 -- Functional Query Definition
@@ -43,4 +46,3 @@ order by
 	supp_nation,
 	cust_nation,
 	l_year;
-:n -1

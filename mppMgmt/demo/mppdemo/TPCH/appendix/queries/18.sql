@@ -1,3 +1,6 @@
+\qecho =================================================================
+\qecho ========================= Query Number 18 =======================
+\qecho =================================================================
 -- @(#)18.sql	2.1.8.1
 -- TPC-H/TPC-R Large Volume Customer Query (Q18)
 -- Function Query Definition
@@ -35,5 +38,5 @@ group by
 	o_totalprice
 order by
 	o_totalprice desc,
-	o_orderdate;
-:n 100
+	o_orderdate
+:n 100;

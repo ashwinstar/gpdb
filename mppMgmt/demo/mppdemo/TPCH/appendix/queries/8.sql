@@ -1,3 +1,6 @@
+\qecho =================================================================
+\qecho ========================= Query Number  8 =======================
+\qecho =================================================================
 -- @(#)8.sql	2.1.8.1
 -- TPC-H/TPC-R National Market Share Query (Q8)
 -- Functional Query Definition
@@ -41,4 +44,3 @@ group by
 	o_year
 order by
 	o_year;
-:n -1

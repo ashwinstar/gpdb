@@ -1,3 +1,6 @@
+\qecho =================================================================
+\qecho ========================= Query Number  2 =======================
+\qecho =================================================================
 -- @(#)2.sql	2.1.8.2
 -- TPC-H/TPC-R Minimum Cost Supplier Query (Q2)
 -- Functional Query Definition
@@ -46,5 +49,5 @@ order by
 	s_acctbal desc,
 	n_name,
 	s_name,
-	p_partkey;
-:n 100
+	p_partkey
+:n 100;

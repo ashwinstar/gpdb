@@ -1,3 +1,6 @@
+\qecho =================================================================
+\qecho ========================= Query Number  1 =======================
+\qecho =================================================================
 -- @(#)1.sql	2.1.8.1
 -- TPC-H/TPC-R Pricing Summary Report Query (Q1)
 -- Functional Query Definition
@@ -18,11 +21,10 @@ select
 from
 	lineitem
 where
-	l_shipdate <= date '1998-12-01' - interval ':1' day (3)
+	l_shipdate <= date '1998-12-01' - interval ':1 day'
 group by
 	l_returnflag,
 	l_linestatus
 order by
 	l_returnflag,
 	l_linestatus;
-:n -1

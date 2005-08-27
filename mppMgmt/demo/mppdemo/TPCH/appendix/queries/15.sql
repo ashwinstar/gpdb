@@ -1,3 +1,6 @@
+\qecho =================================================================
+\qecho ========================= Query Number 15 =======================
+\qecho =================================================================
 -- @(#)15.sql	2.1.8.1
 -- TPC-H/TPC-R Top Supplier Query (Q15)
 -- Functional Query Definition
@@ -11,7 +14,7 @@ create view revenue:s (supplier_no, total_revenue) as
 		lineitem
 	where
 		l_shipdate >= date ':1'
-		and l_shipdate < date ':1' + interval '3' month
+		and l_shipdate < date ':1' + interval '3 month'
 	group by
 		l_suppkey;
 
@@ -37,4 +40,3 @@ order by
 	s_suppkey;
 
 drop view revenue:s;
-:n -1

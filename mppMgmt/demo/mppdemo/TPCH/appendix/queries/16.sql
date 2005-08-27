@@ -1,3 +1,6 @@
+\qecho =================================================================
+\qecho ========================= Query Number 16 =======================
+\qecho =================================================================
 -- @(#)16.sql	2.1.8.1
 -- TPC-H/TPC-R Parts/Supplier Relationship Query (Q16)
 -- Functional Query Definition
@@ -34,4 +37,3 @@ order by
 	p_brand,
 	p_type,
 	p_size;
-:n -1
