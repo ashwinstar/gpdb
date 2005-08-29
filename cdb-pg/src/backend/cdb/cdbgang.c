@@ -1030,7 +1030,7 @@ void cleanupGang(Gang * gp)
 	if ( gp == NULL  )
 		return;
 	
-	elog(DEBUG2, "cleanupGang");
+	elog(DEBUG5, "cleanupGang");
 	/*
 	 * Loop through the segment_database_descriptors array and, for each
 	 * SegmentDatabaseDescriptor:
@@ -1057,7 +1057,7 @@ void cleanupGang(Gang * gp)
 		}
 		
 	}
-	elog(DEBUG2, "cleanupGang done");
+	elog(DEBUG5, "cleanupGang done");
 
 }
 
