@@ -55,6 +55,8 @@ static void disconnectAndDestroyGang(Gang * gp);
 
 static Gang *buildGangDefinition(GangType type, int size, int content);
 
+static void cleanupGang(Gang * gp);
+
 /*
  * Points to the result of getCdbComponentDatabases()
  */
@@ -1020,6 +1022,46 @@ List *getCdbProcessesForQD(int isPrimary)
 }
 
 
+
+void cleanupGang(Gang * gp)
+{
+	int		i;
+	
+	if ( gp == NULL  )
+		return;
+	
+	elog(DEBUG2, "cleanupGang");
+	/*
+	 * Loop through the segment_database_descriptors array and, for each
+	 * SegmentDatabaseDescriptor:
+	 *     1) discard the query results (if any)
+	 */
+	for ( i = 0; i < gp->size; i++ )
+	{
+	
+		
+		SegmentDatabaseDescriptor *segdbDesc = &(gp->db_descriptors[i]);
+		
+		/* TODO: Perform cancellation of "still running" queries */
+
+		if ( segdbDesc->conn && PQstatus( segdbDesc->conn ) == CONNECTION_OK )
+		{
+ 
+			PGresult *pRes;
+			while ( NULL != (pRes = PQgetResult(segdbDesc->conn) ) )
+			{
+				elog(DEBUG1, "WARNING: Leftover results from gang a freeGang time");
+				PQclear(pRes);
+			};
+
+		}
+		
+	}
+	elog(DEBUG2, "cleanupGang done");
+
+}
+
+
 void disconnectAndDestroyGang(Gang * gp)
 {
 	int		i;
@@ -1100,6 +1142,9 @@ void freeGangs(void)
 
 	elog(DEBUG2, "freeGangs: allocatedReaderGangsN %d, availableReaderGangsN %d",list_length(allocatedReaderGangsN),list_length(availableReaderGangsN));
 	
+	cleanupGang(primaryWriterGang);
+	cleanupGang(mirrorWriterGang);
+	
 	if (allocatedReaderGangsN != NIL) 
 	{
 		Gang * gp = linitial(allocatedReaderGangsN);
@@ -1108,6 +1153,7 @@ void freeGangs(void)
 		while (gp != NULL)
 		{
 			elog(DEBUG4,"Returning an N gang to the available list");
+			cleanupGang(gp);
 			availableReaderGangsN = lappend(availableReaderGangsN, gp);
 			allocatedReaderGangsN = list_delete_first(allocatedReaderGangsN);
 			if (allocatedReaderGangsN != NIL)
@@ -1125,6 +1171,7 @@ void freeGangs(void)
 		while (gp != NULL)
 		{
 			elog(DEBUG4,"Returning a 1 gang to the available list");
+			cleanupGang(gp);
 			availableReaderGangs1 = lappend(availableReaderGangs1, gp);
 			allocatedReaderGangs1 = list_delete_first(allocatedReaderGangs1);
 			if (allocatedReaderGangs1 != NIL)
