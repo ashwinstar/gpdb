@@ -144,13 +144,13 @@ int listenerPort;
 /* our timeout value for select() and other socket operations. */
 struct timeval 		tval;
 
-List *incompleteConns;
+List *incompleteConns=NIL;
 
 /* keeps track of if we've "activated" connections via SetupInterconnect(). */
 bool activated;
 
 /*slice table stuff. */
-SliceTable *sliceTable;
+SliceTable *sliceTable=NULL;
 int	sliceId;
 
 /*=========================================================================
@@ -270,10 +270,13 @@ bool SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem 
 		{
 			/* handle pt-to-pt message. */
 			conn = pEntry->conns + targetRoute;
-			sendChunk(conn, tcItem );
+			/* only send to interested connections */
+			if (conn->stillActive) {
+				sendChunk(conn, tcItem );
 			
-			if (conn->hasMirrorConn)
-				sendChunk(conn->mirrorConn, tcItem);
+				if (conn->hasMirrorConn)
+					sendChunk(conn->mirrorConn, tcItem);
+			}
 				
 		}
 	
@@ -588,7 +591,7 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 		elog(ERROR, "SetupInterconnect() called with a NULL sliceTable.");
 	}
 
-	mySlice = (Slice*)list_nth(sliceTable->slices, mySliceId);
+	mySlice = (Slice *)list_nth(sliceTable->slices, mySliceId);
 
 	if (mySlice->parentIndex != -1)
 	{
@@ -614,7 +617,7 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 	
 		elog(DEBUG5, "--Setting up RECEIVING motion node: %d", childId);
 		
-		aSlice = (Slice*)list_nth(sliceTable->slices, childId);
+		aSlice = (Slice *)list_nth(sliceTable->slices, childId);
 		numProcs = list_length(aSlice->primaryProcesses);
 		
 		pEntry = createMotionState(childId, numProcs);
@@ -672,6 +675,8 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 			acceptIncomingConnection(&rset, &highsock);
 			n--;
 		}
+		if (!n)
+			continue;
 
 		/* check our outgoing connections. */
 		if (outgoing_count < expectedTotalOutgoing)
@@ -689,7 +694,8 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 					FD_CLR(conn->sockfd, &wset);
 					
 					outgoing_count++;
-					n--;
+					if (--n == 0)
+						break; /* leave for loop */
 				}
 				
 				if( conn->hasMirrorConn )
@@ -703,12 +709,14 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 						FD_CLR(conn->mirrorConn->sockfd, &wset);
 						
 						outgoing_count++;
-						n--;
+						if (--n == 0)
+							break; /* leave for loop */
 					}
 				}
 			}
-
 		}
+		if (!n)
+			continue;
 
 		/* check our connections that are accepted'd but no register message.
 		 * we don't know which motion node these apply to until we actually
@@ -717,7 +725,7 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 		 */
 		foreach(cell, incompleteConns)
 		{
-			MotionConn *conn = (MotionConn*)lfirst(cell);
+			MotionConn *conn = (MotionConn *)lfirst(cell);
 		
 			if (FD_ISSET(conn->sockfd, &rrset))
 			{
@@ -757,17 +765,15 @@ void TeardownInterconnect(void)
 	/* setup/teardown *really* should occur in pairs.  Asserting activated doesn't really do that
 	 * though.  If SetupInterconnect doesn't finish all the way and has an error, activated won't be
 	 * true but ResetMotionLayer() will still call this method.
-	 *
 	 */
-
-
-	
-	if (!activated)
+	if (!activated) {
+		elog(DEBUG3, "TeardownInterconnect(): Nothing to do");
 		return;
+	}
 
 	elog(DEBUG3, "Interconnect cleanup.");
 
-	mySlice = (Slice*)list_nth(sliceTable->slices, sliceId);
+	mySlice = (Slice *)list_nth(sliceTable->slices, sliceId);
 
 	if (mySlice->parentIndex != -1)
 	{
@@ -811,7 +817,7 @@ void TeardownInterconnect(void)
 		Slice *aSlice;
 		int childId = lfirst_int(cell);
 
-		aSlice = (Slice*)list_nth(sliceTable->slices, childId);
+		aSlice = (Slice *)list_nth(sliceTable->slices, childId);
 
 		pEntry = removeMotionState(aSlice->sliceIndex);
 		elog(DEBUG3, "close down connections for motion Id: %d", pEntry->motNodeId);
@@ -866,6 +872,7 @@ void TeardownInterconnect(void)
 	incompleteConns = NIL;
 
 	activated = false;
+	sliceTable = NULL;
 }
 
 
@@ -1047,7 +1054,7 @@ MotionLayerState  *startConnections(Slice *mySlice, int *highsock, fd_set *wset,
 	elog(DEBUG3, "Interconnect - Starting Outgoing Connections");
 #endif	
 	
-	recvSlice = (Slice*)list_nth(sliceTable->slices, mySlice->parentIndex);
+	recvSlice = (Slice *)list_nth(sliceTable->slices, mySlice->parentIndex);
 	
 	pEntry = createMotionState(motNodeId, list_length(recvSlice->primaryProcesses));
 	
@@ -1057,15 +1064,16 @@ MotionLayerState  *startConnections(Slice *mySlice, int *highsock, fd_set *wset,
 	for (i=0; i < pEntry->numConns; i++)
 	{
 		conn = pEntry->conns + i;
+		conn->sockfd = -1;
 	
-		cdbProc = (CdbProcess*) list_nth(recvSlice->primaryProcesses, i);
+		cdbProc = (CdbProcess *)list_nth(recvSlice->primaryProcesses, i);
 		setupOutgoingConnection( conn, cdbProc, highsock, wset );	
 		(*connsStarted)++;
 		
 		/* setup mirror connection if not null */
 		if( recvSlice->mirrorProcesses != NIL )
 		{
-			cdbProc = (CdbProcess*) list_nth(recvSlice->mirrorProcesses, i);
+			cdbProc = (CdbProcess *)list_nth(recvSlice->mirrorProcesses, i);
 			if( cdbProc != NULL )
 			{
 				conn->mirrorConn = palloc(sizeof(MotionConn));
@@ -1474,6 +1482,22 @@ bool flushBuffer(MotionConn *conn)
 	sendptr = (char *)conn->pBuff;
 	sent = 0;
 	do {
+		struct timeval timeout;
+
+		/* check for stop message before sending anything  */
+		timeout.tv_sec = 0;
+		timeout.tv_usec = 0;
+		FD_ZERO(&rset);
+		FD_SET(conn->sockfd, &rset);
+		n = select(conn->sockfd + 1, &rset, NULL, NULL, &timeout);
+		/* handle errors at the write call, below */
+		if (n > 0  && FD_ISSET(conn->sockfd, &rset))
+		{
+			/* got a stop message */
+			conn->stillActive = false;
+			return false;
+		}
+
 		if ((n = write(conn->sockfd, sendptr + sent, conn->msgSize - sent)) < 0)
 		{
             if (errno == EINTR)
@@ -1482,7 +1506,7 @@ bool flushBuffer(MotionConn *conn)
 			{
 				do
 				{
-                    struct timeval timeout = tval;
+                    timeout = tval;
 
                     CHECK_FOR_INTERRUPTS();
                     FD_ZERO(&rset);
@@ -1720,7 +1744,7 @@ int findMyRouteId(Slice *slice)
 	
 	foreach(cell, slice->primaryProcesses)
 	{
-		CdbProcess *proc = (CdbProcess*) lfirst(cell);
+		CdbProcess *proc = (CdbProcess *)lfirst(cell);
 
 #ifdef AMS_VERBOSE_LOGGING		
 		elog(DEBUG3, "Checking if CdbProc is our own: segid: (ours is %d ==  CdbProc's is %d) "
@@ -1774,12 +1798,12 @@ CdbProcess *findCdbProcess(RegisterMessage *msg)
 	}
 	
 	
-	slice = (Slice*)list_nth(sliceTable->slices,  msg->motNodeId);		
+	slice = (Slice *)list_nth(sliceTable->slices,  msg->motNodeId);
 	
 	
 	foreach(cell, slice->primaryProcesses)
 	{
-		proc = (CdbProcess*) lfirst(cell);
+		proc = (CdbProcess *)lfirst(cell);
 		
 		if (count == msg->srcRouteId && proc->contentid == msg->srcContentId &&
 		    proc->listenerPort == msg->srcListenerPort)

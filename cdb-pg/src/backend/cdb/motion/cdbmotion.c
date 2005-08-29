@@ -264,7 +264,6 @@ void InitMotionLayer(void)
 
 	Cdb_max_tuple_chunk_size = Cdb_max_packet_size - PACKET_HEADER_SIZE - TUPLE_CHUNK_HEADER_SIZE;
 	
-
 	/* Initialize the Motion Layer IPC subsystem. */
 	InitMotionLayerIPC( );
 
@@ -296,6 +295,8 @@ void ResetMotionLayer(bool flushCommLayer)
 	/* TODO:  Any clearing or resetting of the networking layer should happen
 	 *        here.
 	 */
+	TeardownInterconnect();
+
 	hash_destroy(s_motion_layer_state.motionnode_map);
 	hash_destroy(s_motion_layer_state.chunksort_map);
 
@@ -306,6 +307,12 @@ void ResetMotionLayer(bool flushCommLayer)
 
 	/* Reinitialize the dynamic data-structures that the Motion Layer uses. */
 	initMotionLayerStructs();
+}
+
+void CleanUpMotionLayer(void)
+{
+	/* shutdown our listener socket */
+	CleanUpMotionLayerIPC();
 }
 
 
