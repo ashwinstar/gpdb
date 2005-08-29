@@ -522,10 +522,6 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 	}
 	PG_CATCH();
 	{
-		/* clean up the interconnect first */
-		if (interconnectStarted)
-			TeardownInterconnect();
-
 		if ( hasDispatched )
 		{
 			/*
@@ -569,17 +565,17 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 			}
 			DestroyCdbDispatchResults( results );
 			hasDispatched = false;
-			
-			/* clean up our own motion layer. */	
-			ResetMotionLayer(true);
 		}
+
+		/* clean up the interconnect after we clean results */
+		if (interconnectStarted)
+			TeardownInterconnect();
+
+		/* clean up our own motion layer. */	
+		ResetMotionLayer(true);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
-
-	/* clean up the interconnect if necessary */
-	if (interconnectStarted)
-		TeardownInterconnect();
 
 	if ( hasDispatched )
 	{
@@ -590,7 +586,6 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 		 * from the qExecs.  This internally waits for them to all finish.
 		 */
 		CdbDispatchResults* results = CdbCheckDispatchResult();
-
 
 		message = CdbDumpDispatchResults(results, true);
 		szCommand = results->szCommand;
@@ -622,6 +617,10 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 
 		DestroyCdbDispatchResults( results );
 	}
+
+	/* clean up the interconnect if necessary */
+	if (interconnectStarted)
+		TeardownInterconnect();
 
 	/*
 	 * shutdown receiver
