@@ -165,7 +165,6 @@ CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
 		elog( INFO, "------------ERROR DURING CDBEXEC STMT-----------------");
 		EmitErrorReport();
 		elog( INFO, "------------------------------------------------------");
-		ResetMotionLayer(true);
 		PG_RE_THROW();
 
 	}
