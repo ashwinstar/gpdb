@@ -44,7 +44,7 @@ typedef enum ReceiveReturnCode
 
 /* One-time initialization of motion layer. */
 extern void InitMotionLayer(void);
-
+extern void CleanUpMotionLayer(void);
 
 /* Initialization of each motion node in execution plan. */
 extern void InitMotionLayerNode(int16 motNodeID, bool preserveOrder, 
