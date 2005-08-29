@@ -810,8 +810,8 @@ void cdb_cleanup(void)
 	
 	disconnectAndDestroyAllGangs();
 	
-
-	//TODO: we probably need something to clean up the MotionLayer.
+	if (Cdb_role != CDB_ROLE_UTILITY)
+		CleanUpMotionLayer();
 }
 
 
