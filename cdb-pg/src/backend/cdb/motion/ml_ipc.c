@@ -52,6 +52,9 @@ typedef struct MotionConn
  	/* size of the message in the buffer, if any. */
  	int32 msgSize;
 
+	/* recv bytes: we can have more than one message/message fragment in recv queue at once */
+ 	int32 recvBytes;
+
  	int tupleCount;
 
  	bool stillActive;
@@ -426,6 +429,10 @@ TupleChunkListItem RecvTupleChunkFrom(int16 motNodeID, int16 srcRoute)
 	/* read the packet in from the network. */
 	readPacket(conn);
 
+#ifdef AMS_VERBOSE_LOGGING	
+	elog(DEBUG3, "read packet recv bytes %d msgsize %d", conn->recvBytes, conn->msgSize);
+#endif
+
 	/* go through and form us some TupleChunks. */
 	bytesProcessed = PACKET_HEADER_SIZE;
 	
@@ -456,6 +463,16 @@ TupleChunkListItem RecvTupleChunkFrom(int16 motNodeID, int16 srcRoute)
 			lastTcItem = tcItem;
 		}
 	}
+
+	conn->recvBytes -= conn->msgSize;
+	if (conn->recvBytes != 0)
+	{
+		/* partial message waiting in recv buffer! Move to head of buffer */
+#ifdef AMS_VERBOSE_LOGGING	
+		elog(DEBUG3, "residual message %d bytes", conn->recvBytes);
+#endif
+		memcpy(conn->pBuff, conn->pBuff + conn->msgSize, conn->recvBytes);
+	}
 	
 	conn->msgSize = 0;
 	
@@ -470,7 +487,7 @@ void DeregisterReadInterest(int16 motNodeID, int16 srcRoute)
 	MotionConn 		 	*conn;
 		
 	Assert(activated);
-		
+
 	pEntry = getMotionState(motNodeID);
 	conn = pEntry->conns + srcRoute;
 	
@@ -1323,13 +1340,13 @@ void readRegisterMessage(MotionConn *conn, int *incoming_count)
 	newConn->sockfd		   	 = conn->sockfd;
 	newConn->pBuff	     	 = palloc(Cdb_max_packet_size);
 	newConn->msgSize 		 = 0;
+	newConn->recvBytes 		 = 0;
 	newConn->tupleCount 	 = 0;
 	newConn->stillActive 	 = true;
 	newConn->remoteHost 	 = proc->listenerAddr;
 	newConn->remotePort 	 = msg.srcListenerPort;
 	newConn->remoteContentId = msg.srcContentId;
 	newConn->hasMirrorConn   = false;
-	
 	
 	FD_SET(newConn->sockfd, &(pEntry->readSet));
 	
@@ -1402,6 +1419,7 @@ void acceptIncomingConnection(fd_set *rset, int *highsock)
 	conn->sockfd     = newsockfd;
 	conn->pBuff      = palloc(Cdb_max_packet_size);
 	conn->msgSize    = 0;
+	conn->recvBytes  = 0;
 	conn->tupleCount = 0;
 	conn->stillActive = true;
 	conn->remoteHost = "unknown";
@@ -1558,24 +1576,39 @@ bool flushBuffer(MotionConn *conn)
  * receivers block until the entire message is read.  Both use non-blocking
  * socket calls so that we can handle any PG interrupts.
  *
+ * Note, that for speed we want to read a message all in one go,
+ * header and all. A consequence is that we may read in part of the
+ * next message, which we've got to keep track of ... recvBytes holds
+ * the byte-count of the unprocessed messages.
+ *
  * PARAMETERS
  *   conn - MotionConn to read the packet from.
  *
  */
 void readPacket(MotionConn *conn)
 {
-	int 	n, bytesRead = 0;
-	fd_set 	rset;	
+	int			n, bytesRead = conn->recvBytes;
+	bool		gotHeader = false, gotPacket=false;
+	fd_set		rset;
 
-	/* read in the header. */
-	while (bytesRead < PACKET_HEADER_SIZE)
+	/* do we have a complete message waiting to be processed ? */
+	if (conn->recvBytes >= PACKET_HEADER_SIZE)
 	{
+		conn->msgSize = getInt16(conn->pBuff);
+		gotHeader = true;
+		if (conn->recvBytes >= conn->msgSize)
+			return;
+	}
+
+	while (!gotPacket && bytesRead < Cdb_max_packet_size)
+	{
+		   
 		if ((n = read(conn->sockfd, conn->pBuff + bytesRead,
-			       PACKET_HEADER_SIZE - bytesRead)) < 0)
+					  Cdb_max_packet_size - bytesRead)) < 0)
 		{
 			if (errno == EINTR)
-                continue;
-            if (errno == EWOULDBLOCK)
+				continue;
+			if (errno == EWOULDBLOCK)
 			{
 				do
 				{
@@ -1592,11 +1625,11 @@ void readPacket(MotionConn *conn)
                         if (errno == EINTR)
                             continue;
                         ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-										 errmsg("Interconnect error reading an incoming packet"),
-										 errdetail("error during select() call (error:%d).\n"
-												   "From Remote Connection: contentId=%d at '%s':%d",
-												   errno, conn->remoteContentId, conn->remoteHost,
-												   conn->remotePort)));	
+										errmsg("Interconnect error reading an incoming packet"),
+										errdetail("error during select() call (error:%d).\n"
+												  "From Remote Connection: contentId=%d at '%s':%d",
+												  errno, conn->remoteContentId, conn->remoteHost,
+												  conn->remotePort)));	
 					}
 				}
 				while (n < 1);
@@ -1608,95 +1641,32 @@ void readPacket(MotionConn *conn)
 				 * 		 provide more useful info as to why this
 				 * 		 happened.
 				 */
-
 				ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-						 errmsg("Interconnect error reading an incoming packet"),
-						 errdetail("error during read() call (error:%d).\n"
-							   "From Remote Connection: contentId=%d at '%s':%d",
-							   errno, conn->remoteContentId, conn->remoteHost,
-							   conn->remotePort)));								
+								errmsg("Interconnect error reading an incoming packet"),
+								errdetail("error during read() call (error:%d).\n"
+										  "From Remote Connection: contentId=%d at '%s':%d",
+										  errno, conn->remoteContentId, conn->remoteHost,
+										  conn->remotePort)));								
 			}
-		}
-		else if (n == 0)
+		} else if (n == 0) 
 		{
-			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-					 errmsg("Interconnect error reading an incoming packet"),
-					 errdetail("Socket (fd=%d) closed from remote connection).\n"
-						   "contentId=%d at '%s':%d",conn->sockfd, conn->remoteContentId,
-						   conn->remoteHost,conn->remotePort)));
+			break;
 		}
 		else
-			bytesRead += n;
-			
-	}
-	
-	/* now we've read in the header, go ahead and figure out how big the whole
-	 * packet is.
-	 */	
-	conn->msgSize = getInt16(conn->pBuff);
-	Assert(conn->msgSize > 0);
-
-	/* read in the rest of the message. */
-	while (bytesRead != conn->msgSize)
-	{
-		if ((n = read(conn->sockfd, conn->pBuff + bytesRead,
-			       conn->msgSize - bytesRead)) < 0)
 		{
-            if (errno == EINTR)
-                continue;
-			if (errno == EWOULDBLOCK)
-			{
-				do
-				{
-                    struct timeval timeout = tval;
-
-					/* make sure we check for these. */
-					CHECK_FOR_INTERRUPTS();
-
-                    FD_ZERO(&rset);
-					FD_SET(conn->sockfd, &rset);
-					n = select(conn->sockfd + 1, &rset, NULL, NULL, &timeout);
-                    if (n < 0)
-					{
-                        if (errno == EINTR)
-                            continue;
-						ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-										 errmsg("Interconnect error reading an incoming packet"),
-										 errdetail("error during select() call (error:%d).\n"
-												   "From Remote Connection: contentId=%d at '%s':%d",
-												   errno, conn->remoteContentId, conn->remoteHost,
-												   conn->remotePort)));				
-					}					
-				}
-				while (n < 1);
-			}
-			else
-			{
-				ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-						 errmsg("Interconnect error reading an incoming packet"),
-						 errdetail("error during read() call (error:%d).\n"
-							   "From Remote Connection: contentId=%d at '%s':%d",
-							   errno, conn->remoteContentId, conn->remoteHost,
-							   conn->remotePort)));
-			}
-		}
-		else if (n == 0)
-		{
-			
-			/* TODO: would be nice to read the errno and try and provide more
-			 * 		 useful info as to why this happened.
-			 */
-			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-					 errmsg("Interconnect error reading an incoming packet"),
-					 errdetail("Socket closed from remote connection).\n"
-						   "contentId=%d at '%s':%d",conn->remoteContentId,
-						   conn->remoteHost,conn->remotePort)));
-		}
-		else
 			bytesRead += n;
-				
-		Assert(bytesRead <= conn->msgSize);
+
+			if (!gotHeader && bytesRead >= PACKET_HEADER_SIZE)
+			{
+				conn->msgSize = getInt16(conn->pBuff);
+			}
+			conn->recvBytes = bytesRead;
+
+			if (gotHeader && bytesRead >= conn->msgSize)
+				gotPacket = true;
+		}
 	}
+	elog(DEBUG3, "readpacket: got %d bytes", conn->recvBytes);
 }
 
 /* Function doBroadcast() is used to send a TupleChunk to all recipients.
