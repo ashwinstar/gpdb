@@ -98,13 +98,7 @@ typedef struct
  */
 static void *thread_DispatchCommand(void *arg);
 
-static void createThreadPoolEnumeration(DispatchCommandParms *
-							dispatchCommandParmsAr,
-							int *psegdbs_in_thread_pool,
-							const char *szCommand,
-							bool cancelFromBelow,
-							SegmentDatabaseDescriptor ** segdbList,
-							int segdbListCount);
+
 
 static void
 addSegDBToDispatchThreadPool(DispatchCommandParms * ParmsAr,
@@ -156,6 +150,7 @@ CdbDispatchToGang(const char *szCommand, Gang * gp,
 	int			max_threads;
 	int			segdbs_in_thread_pool = 0;
 	int			k;
+	int			x;
 
 	SegmentDatabaseDescriptorPtr *segdbList = 0;
 	int			segdbListCount = 0;
@@ -213,9 +208,39 @@ CdbDispatchToGang(const char *szCommand, Gang * gp,
 	 * targetSet into the thread Parms structures, making sure that each thread
 	 * handles cdb_connections_per_thread segdbs.
 	 */
-	createThreadPoolEnumeration(dispatchCommandParmsAr, &segdbs_in_thread_pool,
-								szCommand, cancelFromBelow, segdbList,
-								segdbListCount);
+
+	
+
+	elog(DEBUG3, "createThreadPoolEnumeration");
+
+	for (x = 0; x < gp->size; x++)
+	{
+
+		SegmentDatabaseDescriptor *segdbDesc = &gp->db_descriptors[x];
+		Assert(segdbDesc != NULL);
+
+		if (segdbDesc->conn == NULL)
+		{
+			CdbComponentDatabaseInfo *q = segdbDesc->segment_database_info;
+			Assert(q != NULL);
+
+			/*
+			 * This is an error condition
+			 */
+			ereport(ERROR,
+					(errcode
+				 (ERRCODE_SQLSERVER_REJECTED_ESTABLISHMENT_OF_SQLCONNECTION),
+					 errmsg
+					 ("Cannot dispatch command %s to segindex %d isprimary %c, because "
+					  "there is no connection.", szCommand, q->segindex,
+					  (q->isprimary ? 't' : 'f'))));
+
+		}
+
+		addSegDBToDispatchThreadPool(dispatchCommandParmsAr,
+									 &segdbs_in_thread_pool, szCommand,
+									 cancelFromBelow, segdbDesc);
+	}
 
 	elog(DEBUG1, "segdbs_in_thread_pool %d", segdbs_in_thread_pool);
 	/*
@@ -247,8 +272,7 @@ CdbDispatchToGang(const char *szCommand, Gang * gp,
 		DispatchCommandParms *pParms = &dispatchCommandParmsAr[i];
 
 
-		if (0 != pthread_create(&pParms->thread, NULL, thread_DispatchCommand,
-								pParms))
+		if (0 != pthread_create(&pParms->thread, NULL, thread_DispatchCommand, pParms))
 		{
 			elog(NOTICE, "pthread_create failed");
 		}
@@ -264,11 +288,11 @@ CdbDispatchToGang(const char *szCommand, Gang * gp,
 
 /*
  * CdbDispatchCommandInt:
- * Send ths szCommand SQL statement to the subset of all segdbs in the cluster
- * specified by the targetSet parameter.  cancelFromBelow indicates whether an error
+ * Send ths szCommand SQL statement to all segdbs in the cluster
+ * cancelFromBelow indicates whether an error
  * occurring on one of the qExec segdbs should cause all still-executing commands to cancel
  * on other qExecs. Normally this would be true.  The commands are sent over the libpq
- * connections that were established during cdblink_setup.	They are run inside of threads.
+ * connections that were established during gang creation.	They are run inside of threads.
  * The number of segdbs handled by any one thread is determined by the
  * guc variable cdb_connections_per_thread.
  */
@@ -286,6 +310,7 @@ CdbDispatchCommandInt(const char *szCommand, bool cancelFromBelow,
 	int			totalParticipants = 0;
 	Gang	   *primaryGang = NULL;
 	Gang	   *mirrorGang = NULL;
+	int			x;
 
 	if (Cdb_role != CDB_ROLE_DISPATCH)
 		elog(ERROR, "CdbDispatchCommandInt should not be called while not in DISPATCH mode.");
@@ -305,20 +330,9 @@ CdbDispatchCommandInt(const char *szCommand, bool cancelFromBelow,
 
 	segdbs_in_thread_pool = 0;
 
-
 	/*
-	 * Q: is getCdbSegmentCount() really the right call here.  shouldn't we allocate
-	 * *	   gangs based on information from segdbList above?
-	 * *
-	 * * A: yes, if targetSet is DTS_SEGDB, the segdbList isn't passed in.
-	 * *
-	 * * Q: why are we allocating a mirrorGang EVERY SINGLE time.  i think
-	 * *	   this should only happen for top-slices.
-	 * *
-	 * * A: allocating a gang DOES NOT create a new gang, unless there isn't a gang of that
-	 * *	  type available.  primary_writer and mirror_writer gangs always get re-used, as
-	 * *	  there can't be more than one primary_writer or mirror_writer.  So, these
-	 * *	  calls just keep getting the same pointer back each time they are called.
+	 * We want to send to every available segDB in the system.
+	 * 
 	 */
 	primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, getCdbSegmentCount(), -1);
 	mirrorGang = allocateGang(GANGTYPE_MIRROR_WRITER, getCdbSegmentCount(), -1);
@@ -369,9 +383,66 @@ CdbDispatchCommandInt(const char *szCommand, bool cancelFromBelow,
 	 * targetSet into the thread Parms structures, making sure that each thread
 	 * handles cdb_connections_per_thread segdbs.
 	 */
-	createThreadPoolEnumeration(dispatchCommandParmsAr, &segdbs_in_thread_pool,
-								szCommand, cancelFromBelow, segdbList,
-								segdbListCount);
+
+
+	for (x = 0; x < primaryGang->size; x++)
+	{
+
+		SegmentDatabaseDescriptor *segdbDesc = &primaryGang->db_descriptors[x];
+		Assert(segdbDesc != NULL);
+
+		if (segdbDesc->conn == NULL)
+		{
+			CdbComponentDatabaseInfo *q = segdbDesc->segment_database_info;
+			Assert(q != NULL);
+
+			/*
+			 * This is an error condition
+			 */
+			ereport(ERROR,
+					(errcode
+				 (ERRCODE_SQLSERVER_REJECTED_ESTABLISHMENT_OF_SQLCONNECTION),
+					 errmsg
+					 ("Cannot dispatch command %s to segindex %d isprimary %c, because "
+					  "there is no connection.", szCommand, q->segindex,
+					  (q->isprimary ? 't' : 'f'))));
+
+		}
+
+		addSegDBToDispatchThreadPool(dispatchCommandParmsAr,
+									 &segdbs_in_thread_pool, szCommand,
+									 cancelFromBelow, segdbDesc);
+	}
+	if (mirrorGang)
+		for (x = 0; x < mirrorGang->size; x++)
+		{
+	
+			SegmentDatabaseDescriptor *segdbDesc = &mirrorGang->db_descriptors[x];
+			Assert(segdbDesc != NULL);
+	
+			if (segdbDesc->conn == NULL)
+			{
+				CdbComponentDatabaseInfo *q = segdbDesc->segment_database_info;
+				Assert(q != NULL);
+	
+				/*
+				 * This is an error condition
+				 */
+				ereport(ERROR,
+						(errcode
+					 (ERRCODE_SQLSERVER_REJECTED_ESTABLISHMENT_OF_SQLCONNECTION),
+						 errmsg
+						 ("Cannot dispatch command %s to segindex %d isprimary %c, because "
+						  "there is no connection.", szCommand, q->segindex,
+						  (q->isprimary ? 't' : 'f'))));
+	
+			}
+	
+			addSegDBToDispatchThreadPool(dispatchCommandParmsAr,
+										 &segdbs_in_thread_pool, szCommand,
+										 cancelFromBelow, segdbDesc);
+		}
+	 
 
 	/*
 	 * set result set variables if return of result set is required
@@ -420,10 +491,10 @@ CdbDispatchCommandInt(const char *szCommand, bool cancelFromBelow,
 /*
  * CdbDispatchCommandIntEnumeration:
  * Send ths szCommand SQL statement to the subset of all segdbs in the cluster
- * specified by the targetSet parameter.  cancelFromBelow indicates whether an error
+ * specified by the segdbList parameter.  cancelFromBelow indicates whether an error
  * occurring on one of the qExec segdbs should cause all still-executing commands to cancel
  * on other qExecs. Normally this would be true.  The commands are sent over the libpq
- * connections that were established during cdblink_setup.	They are run inside of threads.
+ * connections that were established during gang setup.	They are run inside of threads.
  * The number of segdbs handled by any one thread is determined by the
  * guc variable cdb_connections_per_thread.
  */
@@ -436,6 +507,7 @@ CdbDispatchCommandIntEnumeration(const char *szCommand,
 	int			i;
 	int			max_threads;
 	int			segdbs_in_thread_pool;
+	int			x;
 
 
 
@@ -473,9 +545,37 @@ CdbDispatchCommandIntEnumeration(const char *szCommand,
 	 * targetSet into the thread Parms structures, making sure that each thread
 	 * handles cdb_connections_per_thread segdbs.
 	 */
-	createThreadPoolEnumeration(dispatchCommandParmsAr, &segdbs_in_thread_pool,
-								szCommand, cancelFromBelow, segdbList,
-								segdbListCount);
+	
+
+	for (x = 0; x < segdbListCount; x++)
+	{
+
+		SegmentDatabaseDescriptor *segdbDesc = segdbList[x];
+		Assert(segdbDesc != NULL);
+
+		if (segdbDesc->conn == NULL)
+		{
+			CdbComponentDatabaseInfo *q = segdbDesc->segment_database_info;
+			Assert(q != NULL);
+
+			/*
+			 * This is an error condition
+			 */
+			ereport(ERROR,
+					(errcode
+				 (ERRCODE_SQLSERVER_REJECTED_ESTABLISHMENT_OF_SQLCONNECTION),
+					 errmsg
+					 ("Cannot dispatch command %s to segindex %d isprimary %c, because "
+					  "there is no connection.", szCommand, q->segindex,
+					  (q->isprimary ? 't' : 'f'))));
+
+		}
+
+		addSegDBToDispatchThreadPool(dispatchCommandParmsAr,
+									 &segdbs_in_thread_pool, szCommand,
+									 cancelFromBelow, segdbDesc);
+	}
+
 
 	/*
 	 * set result set variables if return of result set is required
@@ -526,7 +626,7 @@ CdbDispatchCommandIntEnumeration(const char *szCommand,
  * cancelFromBelow indicates whether an error
  * occurring on one of the qExec segdbs should cause all still-executing commands to cancel
  * on other qExecs. Normally this would be true.  The commands are sent over the libpq
- * connections that were established during cdblink_setup.	They are run inside of threads.
+ * connections that were established during gang creation.	They are run inside of threads.
  * The number of segdbs handled by any one thread is determined by the
  * guc variable cdb_connections_per_thread.
  * Called by general users, this method includes global transaction control.
@@ -1191,56 +1291,6 @@ thread_DispatchCommand(void *arg)
 	return (NULL);
 }
 
-
-/*
- * createThreadPoolEnumeration:
- * This function uses the parameter segdbList as the subset definition.
- * It assigns each segdb in the subset to a thread in the thread pool.
- * This is based on each thread handling cdb_connections_per_thread connections.
- */
-void
-createThreadPoolEnumeration(DispatchCommandParms * dispatchCommandParmsAr,
-						  int *psegdbs_in_thread_pool, const char *szCommand,
-							bool cancelFromBelow,
-							SegmentDatabaseDescriptor ** segdbList,
-							int segdbListCount)
-{
-	int			x;
-	SegmentDatabaseDescriptor *segdbDesc;
-	CdbComponentDatabaseInfo *q;
-
-	elog(DEBUG3, "createThreadPoolEnumeration");
-
-	for (x = 0; x < segdbListCount; x++)
-	{
-
-		segdbDesc = segdbList[x];
-		Assert(segdbDesc != NULL);
-
-		if (segdbDesc->conn == NULL)
-		{
-			q = segdbDesc->segment_database_info;
-			Assert(q != NULL);
-
-			/*
-			 * This is an error condition
-			 */
-			ereport(ERROR,
-					(errcode
-				 (ERRCODE_SQLSERVER_REJECTED_ESTABLISHMENT_OF_SQLCONNECTION),
-					 errmsg
-					 ("Cannot dispatch command %s to segindex %d isprimary %c, because "
-					  "there is no connection.", szCommand, q->segindex,
-					  (q->isprimary ? 't' : 'f'))));
-
-		}
-
-		addSegDBToDispatchThreadPool(dispatchCommandParmsAr,
-									 psegdbs_in_thread_pool, szCommand,
-									 cancelFromBelow, segdbDesc);
-	}
-	elog(DEBUG3, "createThreadPoolEnumeration done");
-}
 
 
 
