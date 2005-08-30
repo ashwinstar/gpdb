@@ -292,11 +292,6 @@ void ResetMotionLayer(bool flushCommLayer)
 	elog(DEBUG1, "   tuple bytes: %u", s_motion_layer_state.stat_tuple_bytes_recvd);
 	elog(DEBUG1, "  Chunkproc call count: %u", s_motion_layer_state.stat_total_chunkproc_calls);
 
-	/* TODO:  Any clearing or resetting of the networking layer should happen
-	 *        here.
-	 */
-	TeardownInterconnect();
-
 	hash_destroy(s_motion_layer_state.motionnode_map);
 	hash_destroy(s_motion_layer_state.chunksort_map);
 
