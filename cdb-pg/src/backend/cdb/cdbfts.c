@@ -381,7 +381,7 @@ assign_cdb_set_read_only( bool newval, bool doit, GucSource source )
             strcpy( cmdbuf, "set cdb_set_read_only=" );
             strcat( cmdbuf, newval?"true":"false");
             
-            if ( !CdbDoCommandInt(cmdbuf, DTS_SEGDB, false, NULL) )
+            if ( !CdbDoCommandInt(cmdbuf, false, NULL) )
                 elog(PANIC, "cdb_set_read_only failed on QE");
         }
         */
