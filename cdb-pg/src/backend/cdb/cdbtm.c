@@ -326,7 +326,7 @@ execCommand(void)
     }
    
     /* dispatch command */ 
-    CdbDispatchCommandInt(cmdbuf, DTS_SEGDB, NULL, 0, false, NULL);
+    CdbDispatchCommandInt(cmdbuf, false, NULL);
     results = CdbCheckDispatchResultInt((void***)&failedSegDB,&numOfFailed);
 
     if ( !results->success )
@@ -361,7 +361,7 @@ execCommand(void)
                 if ( retry )
                 {
                     / * dispatch command * / 
-                    CdbDispatchCommandInt(cmdbuf, DTS_ENUMERATION, failedSegDB, numOfFailed, false, NULL);
+                    CdbDispatchCommandIntEnumeration(cmdbuf, failedSegDB, numOfFailed, false, NULL);
                     results = CdbCheckDispatchResult();
                 }
                 */
@@ -933,7 +933,7 @@ recoverRMs(PGresult ***pgresultSets)
     int totaldbs, i;
     
     /* call to all QE to get in-doubt transactions */
-    if ( !CdbDoCommandInt(cmdbuf, DTS_SEGDB, false, (void ***)pgresultSets) )
+    if ( !CdbDoCommandInt(cmdbuf, false, (void ***)pgresultSets) )
     {
         return true;
     }
