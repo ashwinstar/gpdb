@@ -147,28 +147,17 @@ CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
 					  plan_list,
 					  qctx);
 
-	PG_TRY();
-	{	
-		/*
-		 * Start the portal.  Note that ExecutorStart is called in here for
-		 * SELECT, but deferred until PortalRun for other DML.
-		 */
-		PortalStart(portal, paramLI, ActiveSnapshot);
+
+	/*
+	 * Start the portal.  Note that ExecutorStart is called in here for
+	 * SELECT, but deferred until PortalRun for other DML.
+	 */
+	PortalStart(portal, paramLI, ActiveSnapshot);
+
+	/*
+	 * Run the portal to completion. */
+	(void) PortalRun(portal, FETCH_ALL, dest, dest, completionTag);
 	
-		/*
-		 * Run the portal to completion. */
-		(void) PortalRun(portal, FETCH_ALL, dest, dest, completionTag);
-	}
-	PG_CATCH();
-	{
-
-		elog( INFO, "------------ERROR DURING CDBEXEC STMT-----------------");
-		EmitErrorReport();
-		elog( INFO, "------------------------------------------------------");
-		PG_RE_THROW();
-
-	}
-	PG_END_TRY();
 	
 	PortalDrop(portal, false);
 	
