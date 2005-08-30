@@ -309,10 +309,22 @@ void ResetMotionLayer(bool flushCommLayer)
 	initMotionLayerStructs();
 }
 
+
+/* CleanUpMotionLayer function used to shutdown the Motion Layer and associated
+ * interconnect code.  This includes shutting down the Motion Listener that 
+ * ml_ipc sets up.  
+ *
+ * Generally, this function should only be called on process exit or when 
+ * switching out of a cdb mode.
+ */
 void CleanUpMotionLayer(void)
 {
+	elog( DEBUG3, "Cleaning Up Motion Layer...");
+	
 	/* shutdown our listener socket */
 	CleanUpMotionLayerIPC();
+	
+	MemoryContextDelete(s_motion_layer_state.motion_layer_mctx);
 }
 
 

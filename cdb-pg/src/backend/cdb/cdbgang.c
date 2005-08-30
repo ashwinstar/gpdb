@@ -107,7 +107,6 @@ static char *myDatabaseName = NULL;
 Gang *
 createGang(GangType type, int size, int content)
 {
-	static int	gangsCreated = 0;
 	Gang	   *newGangDefinition;
 	MemoryContext oldContext;
 	MemoryContext permanentContext = TopMemoryContext;
@@ -131,18 +130,6 @@ createGang(GangType type, int size, int content)
 	 */
 	Assert(size <= getCdbSegmentCount());
 
-
-	if (gangsCreated == 0)
-	{
-		/*
-		 * Establish a call-back to disconnect any connections we
-		 * create here.  We do it at this point to make sure we
-		 * disconnect any connections established up to the point
-		 * of a failed one that takes us down.
-		 */
-		atexit(disconnectAndDestroyAllGangs);
-	}
-	gangsCreated++;
 
 	/*
 	 * MemoryContexts used in this routine.

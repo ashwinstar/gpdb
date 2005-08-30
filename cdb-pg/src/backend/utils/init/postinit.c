@@ -447,6 +447,7 @@ InitPostgres(const char *dbname, const char *username)
     if (!bootstrap && IsUnderPostmaster)
     {
 		cdb_setup();
+		on_proc_exit( cdb_cleanup, 0 );
     }
 
 	/*

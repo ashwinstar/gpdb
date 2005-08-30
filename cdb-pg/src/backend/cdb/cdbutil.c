@@ -783,11 +783,6 @@ void cdb_setup(void)
 {
 	elog( DEBUG1, "Initializing CDB components...");
 	
-	elog( DEBUG1, "Setting Up Interconnect Listener Port...");
-	if ( Cdb_role != CDB_ROLE_UTILITY )
-		Cdb_listener_port = ListenerSetup();
-	
-	elog( DEBUG1, "Establishing Connections to QEs...");
 	cdblink_setup();
 	
 	/* If cdb_role is UTILITY, skip this call. */
@@ -801,10 +796,15 @@ void cdb_setup(void)
 
 
 /*
- * performs all necessary cleanup required when leaving cdb mode.
+ * performs all necessary cleanup required when leaving cdb mode.  This is also
+ * called when the process exits.
+ *
+ * NOTE: the arguments to this function are here only so that we can
+ *       register it with on_proc_exit().  These parameters should not be 
+ *		 used since there are some callers to this that pass them as NULL.
  *
  */
-void cdb_cleanup(void)
+void cdb_cleanup(int code, Datum arg)
 {
 	elog( DEBUG1, "Cleaning up CDB components...");
 	

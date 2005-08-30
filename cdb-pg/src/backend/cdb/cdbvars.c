@@ -219,7 +219,7 @@ assign_cdb_role( const char *newval, bool doit, GucSource source )
     	}
     	
     	if ( do_disconnect )
-    		cdb_cleanup();
+    		cdb_cleanup(0, (Datum)NULL);
 	    	
         Cdb_role = newrole;
         
@@ -237,7 +237,7 @@ assign_cdb_role( const char *newval, bool doit, GucSource source )
 			}
 			PG_CATCH();
 			{
-	    		cdb_cleanup();
+	    		cdb_cleanup(0, (Datum)NULL);
 				Cdb_role = oldrole;
 				if ( Cdb_role != CDB_ROLE_UTILITY )
 		  			cdb_setup();

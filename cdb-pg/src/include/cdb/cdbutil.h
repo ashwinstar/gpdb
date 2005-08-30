@@ -72,7 +72,7 @@ extern void cdb_setup(void);
  * when disabling CDB functionality.
  *
  */
-extern void cdb_cleanup(void);
+extern void cdb_cleanup(int code, Datum arg);
 
 
 /*
