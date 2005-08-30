@@ -676,28 +676,11 @@ prescan_walker(Node *node, PlanProfile *context)
 					goto return_false;
 				}
 			}
-			/*  Deal with partitioned LIMIT and OFFSET. 
-			 */
-			 
-			/* There are currently a number of restrictions due to
-			 * inadequacies in our implementation or understanding.
-			 */
+			
+			/*  Deal with partitioned LIMIT and OFFSET.  */
 			{
 				Limit *limit = (Limit*)node;
 				
-				if ( (limit->limitOffset != NULL && !IsA(limit->limitOffset, Const))
-					|| (limit->limitCount != NULL && !IsA(limit->limitCount, Const)) )
-				{
-					detail ="LIMIT offset or count not a constant";
-					break; /* Fall through to report error. */
-				}
-	
-				if ( limit->plan.lefttree->flow->numSortCols < 1 )
-				{
-					detail = "LIMIT sort order uncertain";
-					break; /* Fall through to report error. */
-				}
-
 				/* Specify restructuring.  The resulting flow will retain
 				 * any sort specified in the input plan, but will become
 				 * singleton.  The restructuring is flagged by the xform
@@ -706,7 +689,7 @@ prescan_walker(Node *node, PlanProfile *context)
 					
 				if ( limit->plan.flow == NULL || limit->plan.flow->flotype == FLOW_UNDEFINED )
 				{
-					detail = "Sort criteria missing from Limit node.";
+					detail = "Flow criteria missing from Limit node.";
 					break;
 				}
 				limit->plan.flow->flotype = FLOW_SINGLETON;
