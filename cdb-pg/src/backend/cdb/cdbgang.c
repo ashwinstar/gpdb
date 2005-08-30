@@ -77,7 +77,7 @@ typedef struct DoConnectParms
 	int			db_count;
 
 	/*
-	 * segdbDescPtrArray: Array of SegmentDatabaseDescriptor* 's that this thread is 
+	 * segdbDescPtrArray: Array of SegmentDatabaseDescriptor* 's that this thread is
 	 * responsible for connecting to. Has size equal to db_count.
 	 */
 	SegmentDatabaseDescriptor **segdbDescPtrArray;
@@ -86,7 +86,7 @@ typedef struct DoConnectParms
 	 * The pthread_t thread handle.
 	 */
 	pthread_t	thread;
-} DoConnectParms;
+}	DoConnectParms;
 
 /*
  * AddSegDBToConnThreadPool
@@ -95,7 +95,7 @@ typedef struct DoConnectParms
  * cdb_connections_per_thread.
  */
 static void addSegDBToConnThreadPool(DoConnectParms * ParmsAr, int *segdbCount,
-									 SegmentDatabaseDescriptor * segdbDesc);
+						 SegmentDatabaseDescriptor * segdbDesc);
 
 
 static char *myDatabaseName = NULL;
@@ -127,7 +127,7 @@ createGang(GangType type, int size, int content)
 
 
 	/*
-	 * We can't allocate more segments than we know about 
+	 * We can't allocate more segments than we know about
 	 */
 	Assert(size <= getCdbSegmentCount());
 
@@ -367,7 +367,7 @@ createGang(GangType type, int size, int content)
 			MemoryContextSwitchTo(oldContext);
 
 			appendStringInfo(&buffer,
-							 "CDBGANG --- Could not establish connection with any"
+						"CDBGANG --- Could not establish connection with any"
 							 " database for segindex %d", i);
 
 			/*
@@ -377,7 +377,7 @@ createGang(GangType type, int size, int content)
 
 			ereport(FATAL,
 					(errcode
-					 (ERRCODE_SQLSERVER_REJECTED_ESTABLISHMENT_OF_SQLCONNECTION),
+				 (ERRCODE_SQLSERVER_REJECTED_ESTABLISHMENT_OF_SQLCONNECTION),
 					 errmsg(buffer.data),
 					 errdetail("see previous warnings or server log")));
 			segdbDesc->error_message = buffer.data;
@@ -551,21 +551,10 @@ buildGangDefinition(GangType type, int size, int content)
 			 */
 			/*
 			 * segDesc++;
-			 */
-
-			/*
 			 * segDesc->segindex = p->segindex;
-			 */
-			/*
 			 * segDesc->db_count = 1;
-			 */
-			/*
 			 * segDesc->error_message = NULL;
-			 */
-			/*
 			 * segDesc->query_db = NULL;
-			 */
-			/*
 			 * segDesc->sql = NULL;
 			 */
 
@@ -654,8 +643,6 @@ buildGangDefinition(GangType type, int size, int content)
 			 */
 			/*
 			 * segDesc->db_count++;
-			 */
-			/*
 			 * Assert( segDesc->db_count <= 2 );
 			 */
 		}
@@ -814,11 +801,11 @@ thread_DoConnect(void *arg)
 			/*
 			 * Don't use elog, it's not thread-safe
 			 */
-			 
+
 			/*
 			 * if (DEBUG3 >= log_min_messages)
 			 * fprintf(stderr, "createGang: motionListener for this connection is %d", segdbDesc->motionListener);
-			 */  
+			 */
 			if (segdbDesc->motionListener == -1)
 			{
 				segdbDesc->error_message =
@@ -914,15 +901,14 @@ allocateGang(GangType type, int size, int content)
 		case GANGTYPE_READER:
 			/*
 			 * Must be size 1 or size numsegments
-			 */
-			/*
 			 * If size 1, then content tells us which segment we want
 			 */
 			elog(DEBUG4, "building Gang.  Gang is reader size %d", size);
 			if (size != 1)
 			{
 
-				if (availableReaderGangsN != NIL)		/* There are gangs already created */
+				if (availableReaderGangsN != NIL)		/* There are gangs
+														 * already created */
 				{
 					elog(DEBUG4, "reusing an old gang");
 
@@ -960,7 +946,8 @@ allocateGang(GangType type, int size, int content)
 				 */
 			{
 
-				if (availableReaderGangs1 != NIL)		/* There are gangs already created */
+				if (availableReaderGangs1 != NIL)		/* There are gangs
+														 * already created */
 				{
 					elog(DEBUG4, "reusing an old gang?");
 
@@ -1200,19 +1187,11 @@ disconnectAndDestroyGang(Gang * gp)
 		 * TODO: Perform cancellation of "still running" queries
 		 */
 
-/*				if ( pairDesc->query_result )
-				{
-					elog(DEBUG3, "Clearing result block for segment %d (current status = %s)",
-							pairDesc->segment_instance_info->segid,
-							PQresStatus(PQresultStatus(pairDesc->query_result)));
-					PQclear(pairDesc->query_result);
-					pairDesc->query_result = NULL;
-				}
-*/
 		if (segdbDesc->conn)
 		{
 			PGTransactionStatusType status =
-				PQtransactionStatus(segdbDesc->conn);
+			PQtransactionStatus(segdbDesc->conn);
+
 			elog(DEBUG2,
 				 "Finishing connection with segindex %d isprimary %c (current status = %d)",
 				 segdbDesc->segment_database_info->segindex,
@@ -1261,7 +1240,7 @@ freeGangs(void)
 	oldContext = MemoryContextSwitchTo(TopMemoryContext);
 
 	elog(DEBUG2, "freeGangs: allocatedReaderGangsN %d, availableReaderGangsN %d",
-		 list_length(allocatedReaderGangsN), list_length(availableReaderGangsN));
+	 list_length(allocatedReaderGangsN), list_length(availableReaderGangsN));
 
 	cleanupGang(primaryWriterGang);
 	cleanupGang(mirrorWriterGang);
@@ -1392,7 +1371,7 @@ reconnectSegDB(void *p_failedDB)
 	bool		ret = true;
 	DoConnectParms *doConnectParmsAr;
 	SegmentDatabaseDescriptor *failedDB =
-		(SegmentDatabaseDescriptor *) p_failedDB;
+	(SegmentDatabaseDescriptor *) p_failedDB;
 	PGconn	   *orig_conn = failedDB->conn;
 
 	failedDB->conn = NULL;
@@ -1452,7 +1431,7 @@ detectFailedConnections(void)
 		for (i = 0; i < primaryWriterGang->size; i++)
 		{
 			SegmentDatabaseDescriptor *segdbDesc =
-				&(primaryWriterGang->db_descriptors[i]);
+			&(primaryWriterGang->db_descriptors[i]);
 
 			if (!FtsTestConnection(segdbDesc))
 				markSegDBStatus(segdbDesc->segment_database_info->dbid, false);
@@ -1467,7 +1446,7 @@ detectFailedConnections(void)
 		for (i = 0; i < mirrorWriterGang->size; i++)
 		{
 			SegmentDatabaseDescriptor *segdbDesc =
-				&(mirrorWriterGang->db_descriptors[i]);
+			&(mirrorWriterGang->db_descriptors[i]);
 
 			if (!FtsTestConnection(segdbDesc))
 				markSegDBStatus(segdbDesc->segment_database_info->dbid, false);
