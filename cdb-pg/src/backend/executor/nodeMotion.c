@@ -804,7 +804,13 @@ ExecEndMotion(MotionState *node)
 	}
 	else
 	{
-		Assert(node->numTuplesFromChild == node->numTuplesToAMS + node->numTuplesToDeepSix + node->numTuplesInHeap);
+		
+		/* I notice that it is wrong, at least, in the case of a LIMIT which calls 
+		 * ExecStopMotion which (correctly) sets node->stopRequested to true.
+		 * So I made it conditional as a stopgap.  I doubt this is the correct
+		 * permanent fix.  Brian 8/2005 
+		 */
+		Assert(node->stopRequested || node->numTuplesFromChild == node->numTuplesToAMS + node->numTuplesToDeepSix + node->numTuplesInHeap);
 		/* Hmmm... It this " - node->numTuplesInHeap" correct? */
 		Assert(node->numTuplesFromAMS - node->numTuplesInHeap == node->numTuplesToParent);
 	}
