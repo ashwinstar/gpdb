@@ -15,23 +15,7 @@
 
 #include "executor/execdesc.h"
 
-/*
- * Enumeration for defining the target subset of all segdbs 
- * to send a command to.  This is determined by considering the
- * "scope" of a command.  For example, 
- * 		1) a create user command has listener scope. Use DTS_LISTENER
- * 		2) A create table command has database scope, and should include
- * 			secondaries as well as primaries.  Use DTS_SEGDB.
- * 		3) A select stament would have database scope but only one per segindex.
- * 			Use DTS_SEGMENT.
- */
-typedef enum
-{
-	DTS_SEGDB,		/* Send to all connected segdbs */
-	/*DTS_SEGMENT,	 * Send to only one segdb per segindex */
-	/*DTS_LISTENER,	 * Send ot only one segdb per listener */
-	DTS_ENUMERATION /* Send to a specific set of segdbs specified by an array of SegmentDatabaseDescriptor's */
-} DispatchTargetSet;
+
 
 /*
  * CdbDispatchResult:
@@ -63,25 +47,24 @@ typedef struct CdbDispatchResults
 
 /*
  * CdbDispatchCommand:
- * Send ths szCommand SQL statement to the subset of all segdbs in the cluster
- * specified by the targetSet parameter. If DTS_ENUMERATION is DispatchTargetSet,
+ * Send ths szCommand SQL statement to the subset of all segdbs in the cluster, or,
+ * If CdbDispatchCommandIntEnumeriaction is called,
  * then the segdbList parameter points to an array of SegmentDatabaseDescriptor*'s
  * to send the command to, with lenght segdbListCount. 
- * Any other targetSet value should have NULL as the segdbList, and 0 for segdbListCount.
  * The cancelFromBelow indicates whether an error
  * occurring on one of the qExec segdbs should cause all still-executing commands to cancel
- * on other qExecs. Normally this would be true.  The commands are sent over the libpq
- * connections that were established during cdblink_setup.  They are run inside of threads.
+ * on other qExecs. Normally this would be true.  The commands are run inside of threads.
  * The number of segdbs handled by any one thread is determined by the
  * guc variable cdb_connections_per_thread.
  */
-extern void CdbDispatchCommand( const char *szCommand, DispatchTargetSet targetSet, 
-							   struct segment_database_descriptor **segdbList, int segdbListCount,
-							   bool cancelFromBelow );
+extern void CdbDispatchCommand( const char *szCommand, bool cancelFromBelow );
 
-extern void CdbDispatchCommandInt( const char *szCommand, DispatchTargetSet targetSet, 
+extern void CdbDispatchCommandInt( const char *szCommand, bool cancelFromBelow, void ***resultSets );
+                               
+extern void CdbDispatchCommandIntEnumeration( const char *szCommand, 
                                struct segment_database_descriptor **segdbList, int segdbListCount,
                                bool cancelFromBelow, void ***resultSets );
+
 
 /*
  * CdbCheckDispatchResult:
@@ -125,11 +108,9 @@ extern int SumCmdTuples(CdbDispatchResults *results);
  * If it failed on at least one target, and the undo was successful, then returns false.
  * If it failed but the undo failed, ereport is called.
  */
-extern bool CdbDoCommand( const char *szCommand, 
-						 DispatchTargetSet targetSet, bool cancelFromBelow,
-                          void ***resultSets );  /* resultSets points to PGresult */
+extern bool CdbDoCommand( const char *szCommand,  bool cancelFromBelow );  /* resultSets points to PGresult */
 
-extern bool CdbDoCommandInt( const char *szCommand, DispatchTargetSet targetSet, 
+extern bool CdbDoCommandInt( const char *szCommand,  
                     bool cancelFromBelow, void ***resultSets );
 
 

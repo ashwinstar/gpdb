@@ -252,7 +252,7 @@ DefineSequence(CreateSeqStmt *seq)
 
 			pfree(szCommand);
 
-        CdbDoCommand( buffer.data, DTS_SEGDB, true, NULL );
+        CdbDoCommand( buffer.data, true );
 
 	}
 

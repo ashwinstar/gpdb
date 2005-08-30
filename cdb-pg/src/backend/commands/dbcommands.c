@@ -354,7 +354,7 @@ createdb(CreatedbStmt *stmt)
 		{
 
 			char *pszCreateDb;
-			DispatchTargetSet set;
+
 
 			/*
 			 * Serialize the stmt tree, and create the sql statement: cdbexec ....
@@ -383,17 +383,12 @@ createdb(CreatedbStmt *stmt)
 
 			pfree(pszCreateDb);
 
-			
-			
-			set = DTS_SEGDB;
-			
-			
 
 			/*
 			 * This call returns after launching the threads that send the command to the appropriate
 			 * segdbs.  It does not wait for them to finish.
 			 */
-			CdbDispatchCommandInt(buffer.data, set, NULL, 0, true, NULL );
+			CdbDispatchCommandInt(buffer.data, true, NULL );
 			hasDispatched = true;
 			pfree(buffer.data);
 		}
@@ -696,7 +691,7 @@ dropdb(const char *dbname)
 
 
 
-		CdbDoCommandInt( buffer.data, DTS_SEGDB, false, NULL );
+		CdbDoCommandInt( buffer.data, false, NULL );
 
 	}
 

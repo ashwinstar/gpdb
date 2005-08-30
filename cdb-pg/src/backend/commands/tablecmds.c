@@ -462,7 +462,6 @@ DefineRelation(CreateStmt *stmt, char relkind)
 		{
 
 			char *pszCreateTable;
-			DispatchTargetSet set;
 
 			/*
 			 * Serialize the stmt tree, and create the sql statement: cdbexec ....
@@ -491,17 +490,11 @@ DefineRelation(CreateStmt *stmt, char relkind)
 
 			pfree(pszCreateTable);
 
-			
-			
-			set = DTS_SEGDB;
-			
-			
-
 			/*
 			 * This call returns after launching the threads that send the command to the appropriate
 			 * segdbs.  It does not wait for them to finish.
 			 */
-			CdbDispatchCommand(buffer.data, set, NULL, 0, true );
+			CdbDispatchCommand(buffer.data, true );
 			hasDispatched = true;
 			pfree(buffer.data);
 		}
@@ -708,7 +701,7 @@ RemoveRelation(const RangeVar *relation, DropStmt   *stmt)
 
 			pfree(szCommand);
 
-        CdbDoCommand( buffer.data, DTS_SEGDB, false, NULL );
+        CdbDoCommand( buffer.data, false );
         
 	}
 	performDeletion(&object, behavior);
@@ -804,7 +797,7 @@ TruncateRelation(TruncateStmt *stmt)
 
 			pfree(szCommand);
 
-        CdbDoCommand( buffer.data, DTS_SEGDB, false, NULL );
+        CdbDoCommand( buffer.data, false );
 
 	}
 
@@ -1774,7 +1767,7 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 
 			pfree(szCommand);
 
-        CdbDoCommand( buffer.data, DTS_SEGDB, false, NULL );
+        CdbDoCommand( buffer.data, false );
 
 	}
 

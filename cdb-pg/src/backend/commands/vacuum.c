@@ -3469,7 +3469,7 @@ vacuum_delay_point(void)
 static void dispatchVacuum(VacuumStmt *vacstmt)
 {
 	char *pszVacuum;
-	DispatchTargetSet set;
+
 	Query *q;
 	StringInfoData buffer;
 
@@ -3499,13 +3499,13 @@ static void dispatchVacuum(VacuumStmt *vacstmt)
 
 	pfree(pszVacuum);
 
-	set = DTS_SEGDB;
+	
 	
 	/* Combination of CdbDispatchCommand and then CdbCheckDispatchResult.
 	 * If it fails on any of the targets, ereport(ERROR, ...) is called.
      * call CdbDoCommandInt since it can not start in a transaction
 	 */	
-	CdbDoCommandInt( buffer.data, set, true, NULL );
+	CdbDoCommandInt( buffer.data, true, NULL );
 
 	pfree(buffer.data);
 

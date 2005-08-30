@@ -403,7 +403,7 @@ DefineView(ViewStmt* stmt)
 
 			pfree(szCommand);
 
-		CdbDoCommand( buffer.data, DTS_SEGDB, false, NULL  );
+		CdbDoCommand( buffer.data, false  );
 
 	}
 }
@@ -464,7 +464,7 @@ RemoveView(const RangeVar *view, DropStmt * stmt)
 
 			pfree(szCommand);
 
-		CdbDoCommand( buffer.data, DTS_SEGDB, false, NULL  );
+		CdbDoCommand( buffer.data, false  );
 
 	}
 }

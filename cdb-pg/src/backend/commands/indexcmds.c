@@ -438,7 +438,6 @@ DefineIndex(RangeVar *heapRelation,
 		{
 
 			char *pszCreateIndex;
-			DispatchTargetSet set;
 
 			/*
 			 * Serialize the stmt tree, and create the sql statement: cdbexec ....
@@ -467,17 +466,12 @@ DefineIndex(RangeVar *heapRelation,
 
 			pfree(pszCreateIndex);
 
-			
-			
-			set = DTS_SEGDB;
-			
-			
 
 			/*
 			 * This call returns after launching the threads that send the command to the appropriate
 			 * segdbs.  It does not wait for them to finish.
 			 */
-			CdbDispatchCommand(buffer.data, set, NULL, 0, true );
+			CdbDispatchCommand(buffer.data, true );
 			hasDispatched = true;
 			pfree(buffer.data);
 		}
@@ -1056,7 +1050,7 @@ RemoveIndex(RangeVar *relation, DropStmt * stmt)
 
 			pfree(szCommand);
 
-		CdbDoCommand( buffer.data, DTS_SEGDB, false, NULL );
+		CdbDoCommand( buffer.data, false );
 
 	}
 }
