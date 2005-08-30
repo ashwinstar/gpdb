@@ -77,9 +77,9 @@ CdbDispatchCommandIntEnumeration(const char *szCommand,
 								 ** segdbList, int segdbListCount,
 								 bool cancelFromBelow, void ***resultSets);
 
-/*extern void
+extern void
 CdbDispatchToGang(const char *szCommand, struct Gang * gp,
-				  bool cancelFromBelow, void ***resultSets)*/
+				  bool cancelFromBelow, void ***resultSets);
 
 /*
  * CdbCheckDispatchResult:
