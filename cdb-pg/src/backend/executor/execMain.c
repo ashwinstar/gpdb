@@ -281,7 +281,7 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 	RangeTblEntry *rte = NULL;
 	bool hasDispatched = false;
 	bool shouldDispatch;
-	bool interconnectStarted = false;
+	bool shouldSetupInterconnect = false;
 
 	/* sanity checks */
 	Assert(queryDesc != NULL);
@@ -491,9 +491,10 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 			Assert( IsA(motionState->ps.plan, Motion) );
 
 			/* activate the connections, if needed */
-			if (((PlanState *)motionState)->plan->nMotionNodes > 0) {
+			if (((PlanState *)motionState)->plan->nMotionNodes > 0) 
+			{
+				shouldSetupInterconnect = true;
 				SetupInterconnect(estate->es_sliceTable, estate->es_cur_slice_idx);
-				interconnectStarted = true;
 			}
 
 			result = ExecutePlan(estate,
@@ -507,9 +508,10 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 		{
 			/* Run a root slice. */
 
-			if (queryDesc->planstate->plan->nMotionNodes > 0) {
+			if (queryDesc->planstate->plan->nMotionNodes > 0) 
+			{
+				shouldSetupInterconnect = true;
 				SetupInterconnect(estate->es_sliceTable, estate->es_cur_slice_idx);
-				interconnectStarted = true;
 			}
 
 			result = ExecutePlan(estate,
@@ -568,7 +570,7 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 		}
 
 		/* clean up the interconnect after we clean results */
-		if (interconnectStarted)
+		if (shouldSetupInterconnect)
 			TeardownInterconnect();
 
 		/* clean up our own motion layer. */	
@@ -619,7 +621,7 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 	}
 
 	/* clean up the interconnect if necessary */
-	if (interconnectStarted)
+	if (shouldSetupInterconnect)
 		TeardownInterconnect();
 
 	/*

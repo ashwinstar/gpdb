@@ -159,21 +159,23 @@ int	sliceId;
 /*=========================================================================
  * FUNCTIONS PROTOTYPES
  */
-MotionLayerState *createMotionState(int16 motNodeID, int numConns);
-MotionLayerState *getMotionState(int16 motNodeID);
-MotionLayerState *removeMotionState(int16 motNodeID);
+static int listenerSetup( void );
+ 
+static MotionLayerState *createMotionState(int16 motNodeID, int numConns);
+static MotionLayerState *getMotionState(int16 motNodeID);
+static MotionLayerState *removeMotionState(int16 motNodeID);
 
-MotionLayerState  *startConnections(Slice *mySlice, int *highsock, fd_set *wset, int *connsStarted);
-void setupOutgoingConnection( MotionConn *conn, CdbProcess *cdbProc,int *highsock, fd_set *wset );
-void sendRegisterMessage(MotionLayerState *pEntry, MotionConn *conn);
-void readRegisterMessage(MotionConn *in_conn, int *incoming_count);
-void acceptIncomingConnection(fd_set *rset, int *highsock);
+static MotionLayerState  *startConnections(Slice *mySlice, int *highsock, fd_set *wset, int *connsStarted);
+static void setupOutgoingConnection( MotionConn *conn, CdbProcess *cdbProc,int *highsock, fd_set *wset );
+static void sendRegisterMessage(MotionLayerState *pEntry, MotionConn *conn);
+static void readRegisterMessage(MotionConn *in_conn, int *incoming_count);
+static void acceptIncomingConnection(fd_set *rset, int *highsock);
 
-bool sendChunk(MotionConn *conn, TupleChunkListItem tcItem);
-void readPacket(MotionConn *conn);
-void doBroadcast(MotionLayerState *pEntry, TupleChunkListItem tcItem);
-int findMyRouteId(Slice *slice);
-CdbProcess *findCdbProcess(RegisterMessage *msg);
+static bool sendChunk(MotionConn *conn, TupleChunkListItem tcItem);
+static void readPacket(MotionConn *conn);
+static void doBroadcast(MotionLayerState *pEntry, TupleChunkListItem tcItem);
+static int findMyRouteId(Slice *slice);
+static CdbProcess *findCdbProcess(RegisterMessage *msg);
 
 bool flushBuffer(MotionConn *conn);
 void dumpEntryConnections( MotionLayerState *pEntry );
@@ -204,28 +206,34 @@ void InitMotionLayerIPC(void)
 	tval.tv_usec = 500000;
 	
 	activated = false;
+	
+	elog( DEBUG1, "Setting Up Interconnect Listener Port...");
+	Cdb_listener_port = listenerSetup();
 }
 
 
 /* See ml_ipc.h */
 void CleanUpMotionLayerIPC(void)
 {
-	/* DOH: do we shutdown the listener socket?  need to figure out who actually
-	 *      calls this and when
-	 */
+
 #ifdef AMS_VERBOSE_LOGGING	
 	elog(DEBUG3, "CleanUpMotionLayerIPC()");
 #endif
 
-	/*DOH: any memory to clean up?*/
-	
-	/*DOH: incompleteConns? */
-	
 	hash_destroy(hashtab);
 	
 	/* close down the Interconnect listener socket. */
 	shutdown(listenerFd, SHUT_RDWR);
 	close(listenerFd);
+	
+	/* be safe and reset global state variables. */
+	activated 	 = false;
+	listenerPort = -1;
+	listenerFd   = -1;
+	sliceTable   = NULL;
+	sliceId 	 = -1;
+	
+	list_free( incompleteConns );
 }
 
 
@@ -497,74 +505,6 @@ void DeregisterReadInterest(int16 motNodeID, int16 srcRoute)
 
 
 /* See ml_ipc.h */
-int ListenerSetup(void)
-{
-	struct 		sockaddr_in addr;
-	socklen_t 	addrlen;
-	
-	if ((listenerFd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
-	{
-		/* TODO: would be nice to read the errno and try and provide
-		 * 		 more useful info as to why this happened.
-		 */
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-						errmsg("Interconnect Error: Could not setup listener socket: %s", strerror(errno)),
-						errdetail("error during socket() call (error:%d).", errno)));	
-	}
-
-	bzero(&addr, sizeof(addr));
-	serv_addr.sin_family		= AF_INET;
-	serv_addr.sin_addr.s_addr	= INADDR_ANY;
-	serv_addr.sin_port			= htons(0);  /* system picks port */
-	
-	/* we let the system pick the TCP port here so we don't have to
- 	 * manage port resources ourselves.
- 	 */
-	if (bind(listenerFd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
-	{
-		/* TODO: would be nice to read the errno and try and provide more
-		 * 		 useful info as to why this happened.
-		 */
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-						errmsg("Interconnect Error: Could not setup listener socket"),
-						errdetail("error during bind() call (error:%d).", errno)));
-			
-	}
-
-	if (listen(listenerFd, LISTEN_BACK_LOG) < 0)
-	{
-		/* TODO: would be nice to read the errno and try and provide
-		 * 		 more useful info as to why this happened.
-		 */
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-						errmsg("Interconnect Error: Could not setup listener socket: %s", strerror(errno)),
-						errdetail("error during listen() call (error:%d).", errno)));
-	}
-
-	
-	addrlen = sizeof(struct sockaddr_in);
-
-	if (getsockname(listenerFd, (struct sockaddr *)&addr,  &addrlen) < 0)
-	{
-		/* TODO: would be nice to read the errno and try and provide
-		 * 		 more useful info as to why this happened.
-		 */
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-						errmsg("Interconnect Error: Could not setup listener socket: %s", strerror(errno)),
-						errdetail("error during getsockname() call (error:%d).", errno)));	
-	}
-		
-	
-	/* display which port was chosen by the system. */
-	listenerPort = ntohs(addr.sin_port);
-		
-	elog(DEBUG1, "Interconnect listener on port: %d", listenerPort);
-	
-	return listenerPort;
-}
-
-
-/* See ml_ipc.h */
 void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 {
 	int					i, n, highsock = 0;
@@ -739,28 +679,40 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 		 * we don't know which motion node these apply to until we actually
 		 * receive the REGISTER message.  this is why they are all in a single
 		 * list.
+		 *
+		 * NOTE: we don't use foreach() here because we want to trim from 
+		 * the list as we go.
 		 */
-		foreach(cell, incompleteConns)
+		cell = list_head(incompleteConns); 
+		while( cell != NULL )
 		{
-			MotionConn *conn = (MotionConn *)lfirst(cell);
-		
+			MotionConn *conn = (MotionConn*)lfirst(cell);
+
+			/* we'll get the next cell ready now in case we need to delete the
+			 * cell that corresponds to our MotionConn 
+			 */
+			cell = lnext(cell);			
+			
 			if (FD_ISSET(conn->sockfd, &rrset))
 			{
-				elog(DEBUG3, "conn # %d has data!", conn->sockfd);
+				elog(DEBUG5, "conn # %d has data!", conn->sockfd);
 				
 				readRegisterMessage(conn, &incoming_count);				
 				FD_CLR(conn->sockfd, &rset);	
-				list_delete(incompleteConns, cell);
-				pfree(conn->pBuff);
-				conn->pBuff = NULL;
+				incompleteConns = list_delete_ptr(incompleteConns, conn);	
 			}
 		}
-
+		
 		elog(DEBUG3, "%d of %d outgoing conns and %d of %d incoming conns completed",
 			  outgoing_count, expectedTotalOutgoing, incoming_count, expectedTotalIncoming);
 	}
 	while ((outgoing_count != expectedTotalOutgoing) || (incoming_count != expectedTotalIncoming));
 
+
+	/* if everything really got setup properly then we shouldn't have any incomplete connections. */
+	Assert( list_length(incompleteConns) == 0 );
+
+	
 	activated = true;
 	elog(DEBUG3, "FINISHED ACTIVATING ROUTES. (out: %d , in: %d)", outgoing_count, incoming_count);
 
@@ -770,27 +722,31 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 }
 
 
-/* See ml_ipc.h */
+/* TeardownInterconnect() function is used to cleanup interconnect resources that
+ * were allocated during SetupInterconnect().  This function should ALWAYS be
+ * called after SetupInterconnect to avoid leaking resources (like sockets)
+ * even if SetupInterconnect did not complete correctly.  As a result, this 
+ * function must complete successfully even if SetupInterconnect didn't.
+ * 
+ * SetupInterconnect() always gets called under the ExecutorState MemoryContext.
+ * This context is destroyed at the end of the query and all memory that gets 
+ * allocated under it is free'd.  We don't have have to worry about pfree() but
+ * we definitely have to worry about socket resources.
+ * 
+ */
 void TeardownInterconnect(void)
 {
-	ListCell 		*cell;
-	MotionLayerState 	*pEntry;
-	int				i;
-	Slice 			*mySlice;
-	MotionConn		*conn;	
-
-	/* setup/teardown *really* should occur in pairs.  Asserting activated doesn't really do that
-	 * though.  If SetupInterconnect doesn't finish all the way and has an error, activated won't be
-	 * true but ResetMotionLayer() will still call this method.
-	 */
-	if (!activated) {
-		elog(DEBUG3, "TeardownInterconnect(): Nothing to do");
-		return;
-	}
+	ListCell 		    *cell;
+	MotionLayerState   	*pEntry;
+	int					i;
+	Slice 				*mySlice;
+	MotionConn			*conn;	
 
 	elog(DEBUG3, "Interconnect cleanup.");
+	Assert( sliceTable != NULL );
+	
+	mySlice = (Slice*)list_nth(sliceTable->slices, sliceId);
 
-	mySlice = (Slice *)list_nth(sliceTable->slices, sliceId);
 
 	if (mySlice->parentIndex != -1)
 	{
@@ -799,33 +755,31 @@ void TeardownInterconnect(void)
 				mySlice->sliceIndex);
 		pEntry = removeMotionState(mySlice->sliceIndex);
 
-	 	if (activated)
-	 	{
-	 		for (i=0; i < pEntry->numConns; i++)
+	 	
+		for (i=0; i < pEntry->numConns; i++)
+		{
+			conn = pEntry->conns + i;
+			
+			if( conn == NULL )
+				continue;
+			
+			if( conn->sockfd != -1 )
 			{
-				conn = pEntry->conns + i;
 				shutdown(conn->sockfd, SHUT_WR);
 				close(conn->sockfd);
 				conn->sockfd = -1;
-				
-				if (conn->hasMirrorConn)
+			}
+			
+			if (conn->hasMirrorConn)
+			{
+				if( conn->mirrorConn->sockfd != -1 )
 				{
 					shutdown(conn->mirrorConn->sockfd, SHUT_WR);
 					close(conn->mirrorConn->sockfd);
-
 					conn->mirrorConn->sockfd = -1;
-					pfree(conn->mirrorConn->pBuff);
-					conn->mirrorConn->pBuff = NULL;
-					pfree(conn->mirrorConn);
-					conn->mirrorConn = NULL;
 				}
-				
-				pfree(conn->pBuff);
-				conn->pBuff = NULL;
 			}
-			pfree(pEntry->conns);
-			
-	 	}
+		}
 	}
 
 	/* cleanup all of our Receiving Motion nodes. */
@@ -839,32 +793,36 @@ void TeardownInterconnect(void)
 		pEntry = removeMotionState(aSlice->sliceIndex);
 		elog(DEBUG3, "close down connections for motion Id: %d", pEntry->motNodeId);
 
-    	if (activated)
-	 	{
-			for (i=0; i < pEntry->numConns; i++)
-			{
-				conn = pEntry->conns + i;
-				shutdown(pEntry->conns[i].sockfd, SHUT_WR);	
-				close(pEntry->conns[i].sockfd);
-				pEntry->conns[i].sockfd = -1;
+    
+		for (i=0; i < pEntry->numConns; i++)
+		{
+			conn = pEntry->conns + i;
+			
+			if( conn == NULL )
+				continue;
 				
-				pfree(conn->pBuff);
-				conn->pBuff = NULL;
+			if( conn->sockfd != -1 )
+			{
+				shutdown(conn->sockfd, SHUT_WR);
+				close(conn->sockfd);
+				conn->sockfd = -1;
 			}
-
-			pfree(pEntry->conns);
-		}		
+		}
 	}
 
-	/* free resources (we're especially concerned about the sockets)
-	 * associated with incomplete connections: when we start up a
-	 * query like an INSERT, we have an instantiated gang, so the
-	 * interconnect has some connections stitting around which never
-	 * are used. We need to free them! */
-	foreach(cell, incompleteConns)
+	/* The incompleteConns list is only used as a staging area for MotionConns 
+	 * during by SetupInterconnect().  So we only expect to have entries here
+	 * if SetupInterconnect() did not finish correctly.
+	 *
+	 * NOTE: we don't use foreach() here because we want to trim from 
+     * the list as we go.
+     */
+	cell = list_head(incompleteConns); 
+	while( cell != NULL )
 	{
-		conn = (MotionConn *)lfirst(cell);
+		MotionConn *conn = (MotionConn*)lfirst(cell);
 
+	
 #ifdef AMS_VERBOSE_LOGGING
 		elog(LOG, "Found incomplete conn.");
 #endif
@@ -875,16 +833,9 @@ void TeardownInterconnect(void)
 			close(conn->sockfd);
 			conn->sockfd = -1;
 		}
-		if (conn->pBuff != NULL)
-		{
-			pfree(conn->pBuff);
-			conn->pBuff = NULL;
-		}
-		
+	
 		list_delete(incompleteConns, cell);
 	}
-
-	list_free(incompleteConns);
 
 	incompleteConns = NIL;
 
@@ -897,6 +848,82 @@ void TeardownInterconnect(void)
  * HELPER FUNCTIONS
  */
 
+/* listenerSetup
+ *
+ * Returns a system assigned TCP port that will be used to "listen" for
+ * incoming connections from other postgres ml_ipc layers LATER during
+ * query initialization.  
+ *
+ * This port is used for the duration of this process and should never change.
+ *
+ * RETURNS
+ *    System picked TCP port that listener is using.
+ */
+int listenerSetup(void)
+{
+	struct 		sockaddr_in addr;
+	socklen_t 	addrlen;
+	
+	if ((listenerFd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+	{
+		/* TODO: would be nice to read the errno and try and provide
+		 * 		 more useful info as to why this happened.
+		 */
+		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						errmsg("Interconnect Error: Could not setup listener socket: %s", strerror(errno)),
+						errdetail("error during socket() call (error:%d).", errno)));	
+	}
+
+	bzero(&addr, sizeof(addr));
+	serv_addr.sin_family		= AF_INET;
+	serv_addr.sin_addr.s_addr	= INADDR_ANY;
+	serv_addr.sin_port			= htons(0);  /* system picks port */
+	
+	/* we let the system pick the TCP port here so we don't have to 
+ 	 * manage port resources ourselves.  
+ 	 */
+	if (bind(listenerFd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
+	{
+		/* TODO: would be nice to read the errno and try and provide more
+		 * 		 useful info as to why this happened.
+		 */
+		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						errmsg("Interconnect Error: Could not setup listener socket"),
+						errdetail("error during bind() call (error:%d).", errno)));
+			
+	}
+
+	if (listen(listenerFd, LISTEN_BACK_LOG) < 0)
+	{
+		/* TODO: would be nice to read the errno and try and provide
+		 * 		 more useful info as to why this happened.
+		 */
+		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						errmsg("Interconnect Error: Could not setup listener socket: %s", strerror(errno)),
+						errdetail("error during listen() call (error:%d).", errno)));
+	}
+
+	
+	addrlen = sizeof(struct sockaddr_in);
+
+	if (getsockname(listenerFd, (struct sockaddr *)&addr,  &addrlen) < 0)
+	{
+		/* TODO: would be nice to read the errno and try and provide
+		 * 		 more useful info as to why this happened.
+		 */
+		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						errmsg("Interconnect Error: Could not setup listener socket: %s", strerror(errno)),
+						errdetail("error during getsockname() call (error:%d).", errno)));	
+	}
+		
+	
+	/* display which port was chosen by the system. */
+	listenerPort = ntohs(addr.sin_port);
+		
+	elog(DEBUG1, "Interconnect listener on port: %d", listenerPort);
+	
+	return listenerPort;
+}
 
 /* Function createMotionState() is used to create a MotionLayerState struct and
  * place it in the hashtab hashtable based on the motNodeID.
@@ -1017,22 +1044,6 @@ MotionLayerState *removeMotionState(int16 motNodeID)
 	bool 				found;
 	
 	pEntry = (MotionLayerState *)hash_search(hashtab, &motNodeID, HASH_REMOVE, &found);
-	
-	if (pEntry == NULL)
-	{
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-						errmsg("Interconnect Error: Could not find a MotionLayerState entry"
-							   "for motion node ID: %d", motNodeID)));
-	}
-
-	if (!found)
-	{
-		/* not sure why we would be cleaning up a motion node we never setup.
-		 * so this seems like a problem. */
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-						errmsg("Interconnect Error: Could not find a MotionLayerState entry"
-							   "for motion node %d.", motNodeID)));
-	}
 
 	return pEntry;
 }

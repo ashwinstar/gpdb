@@ -43,21 +43,6 @@ extern void CleanUpMotionLayerIPC( void );
 
 
 
-/* ListenerSetup
- *
- * Returns a system assigned TCP port that will be used to "listen" for
- * incoming connections from other postgres ml_ipc layers LATER during
- * query initialization.  
- *
- * This port is used for the duration of this process and should never change.
- *
- * RETURNS
- *    System picked TCP port that listener is using.
- */
-extern int ListenerSetup( void );
-
-
-
 /* The SetupInterconnect() function should be called at the beginning of
  * executing any DML statement that will need to use the interconnect.
  *
