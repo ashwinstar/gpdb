@@ -114,22 +114,27 @@ cdbpath_create_motion_path(Query           *root,
         pathkeys = NIL;
     }
 
-    /* Materialize before motion only if needed to avoid deadlock hazard.
+    /* Don't materialize before motion. */
+    if (IsA(subpath, MaterialPath))
+        subpath = ((MaterialPath *)subpath)->subpath;
+
+    /* Materialize before motion if needed to avoid deadlock hazard.
+     * Tell Material operator to read and store all input tuples
+     * before yielding first output tuple.
      * Execution might deadlock if a Merge Receive is fed by a lower
-     * Motion operator, unless the two Motion operators are decoupled
-     * by an intervening slackening operator such as Hash or Sort.
-     * CDB TODO: Merge join and nested join might need slack in one subpath.
+     * Motion operator, unless the two are decoupled by an intervening
+     * slackening operator such as Hash or Sort.
+     * CDB TODO: A less heavy-handed solution is needed.
      */
     if (pathkeys &&
         !hashToSelfOnly &&
         subpath->motionHazard)
     {
-        /* CDB TODO: Material operator doesn't give slack.  Solution needed. */
-        if (!IsA(subpath, MaterialPath))
-            subpath = (Path *)create_material_path(subpath->parent, subpath);
+        MaterialPath *mtlpath = create_material_path(subpath->parent, subpath);
+        mtlpath->cdb_strict = true;
+        mtlpath->path.motionHazard = false;
+        subpath = (Path *)mtlpath;
     }
-    else if (IsA(subpath, MaterialPath))
-        subpath = ((MaterialPath *)subpath)->subpath;
 
     /* Create CdbMotionPath node. */
     pathnode = makeNode(CdbMotionPath);
@@ -215,10 +220,10 @@ cdbpath_match_preds_to_partkey_tail(CdbpathMatchPredsContext   *ctx,
     /* Get current item of partkey. */
     sublist = (List *)lfirst(partkeycell);
 
-    /* Is there a "<partkey item> = <constant expr>" predicate?  
+    /* Is there a "<partkey item> = <constant expr>" predicate?
      *
      *  If table T is distributed on cols (C,D,E) and query contains preds
-     *          T.C = U.A AND T.D = <constant expr> AND T.E = U.B 
+     *          T.C = U.A AND T.D = <constant expr> AND T.E = U.B
      *  then we would like to report a match and return the colocus
      *          (U.A, <constant expr>, U.B)
      *  so the caller can join T and U by redistributing only U.
@@ -293,7 +298,7 @@ cdbpath_match_preds_to_partkey_tail(CdbpathMatchPredsContext   *ctx,
  * cdbpath_match_preds_to_partkey
  *
  * Returns true if an equijoin predicate is found in the mergeclause_list
- * for each item of the locus's partitioning key.  
+ * for each item of the locus's partitioning key.
  *
  * (Also, a partkey item that is equal to a constant is treated as a match.)
  *

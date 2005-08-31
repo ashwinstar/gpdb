@@ -3,6 +3,7 @@
  * outfuncs.c
  *	  Output functions for Postgres tree nodes.
  *
+ * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -453,6 +454,8 @@ static void
 _outMaterial(StringInfo str, Material *node)
 {
 	WRITE_NODE_TYPE("MATERIAL");
+
+    WRITE_BOOL_FIELD(cdb_strict);
 
 	_outPlanInfo(str, (Plan *) node);
 }
@@ -1181,8 +1184,9 @@ _outMaterialPath(StringInfo str, MaterialPath *node)
 	WRITE_NODE_TYPE("MATERIALPATH");
 
 	_outPathInfo(str, (Path *) node);
+    WRITE_BOOL_FIELD(cdb_strict);
 
-	WRITE_NODE_FIELD(subpath);
+    WRITE_NODE_FIELD(subpath);
 }
 
 static void

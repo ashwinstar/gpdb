@@ -58,8 +58,11 @@ cdbpath_rows(Path *path)
         CdbPathLocus_IsReplicated(path->locus))
     {
     	if (Cdb_role == CDB_ROLE_DISPATCH)
-          if (getCdbSegmentCount() > 1)
-            rows *= getCdbSegmentCount();
+        {
+            int numSegments = getCdbSegmentCount();
+            if (numSegments > 1)
+                rows *= numSegments;
+        }
     }
 
     return rows;

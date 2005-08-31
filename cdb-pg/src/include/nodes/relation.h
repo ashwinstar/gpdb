@@ -487,6 +487,10 @@ typedef struct MaterialPath
 {
 	Path		path;
 	Path	   *subpath;
+    bool        cdb_strict;     /* true  => consume and store all input tuples
+                                 *            before yielding output tuples
+                                 * false => memoize tuples as they stream thru
+                                 */
 } MaterialPath;
 
 /*

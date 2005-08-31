@@ -11,6 +11,7 @@
  * be handled easily in a simple depth-first traversal.
  *
  *
+ * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -390,8 +391,8 @@ _copyMaterial(Material *from)
 	 * copy node superclass fields
 	 */
 	CopyPlanFields((Plan *) from, (Plan *) newnode);
-
-	return newnode;
+    COPY_SCALAR_FIELD(cdb_strict);
+    return newnode;
 }
 
 
@@ -2589,7 +2590,7 @@ _copyCdbProcess(CdbProcess *from)
 {
 	CdbProcess *newnode = makeNode(CdbProcess);
 	
-	COPY_STRING_FIELD(listenerAddr); 
+	COPY_STRING_FIELD(listenerAddr);
 	COPY_SCALAR_FIELD(listenerPort);
 	COPY_SCALAR_FIELD(pid);
 	COPY_SCALAR_FIELD(contentid);

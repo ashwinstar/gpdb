@@ -620,7 +620,8 @@ create_material_path(RelOptInfo *rel, Path *subpath)
 	pathnode->path.pathkeys = subpath->pathkeys;
 
     pathnode->path.locus = subpath->locus;
-    pathnode->path.motionHazard = false;
+    pathnode->path.motionHazard = subpath->motionHazard;
+    pathnode->cdb_strict = false;
 
 	pathnode->subpath = subpath;
 
@@ -1050,10 +1051,6 @@ create_mergejoin_path(Query *root,
         innermotionkeys = innersortkeys;
     else
         innermotionkeys = NIL;
-
-    /*
-     * CDB TODO: If motionHazard, materialize smaller input.
-     */
 
     /*
      * Add motion nodes above subpaths and decide where to join.

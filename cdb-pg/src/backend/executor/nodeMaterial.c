@@ -3,6 +3,7 @@
  * nodeMaterial.c
  *	  Routines to handle materialization nodes.
  *
+ * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -65,6 +66,25 @@ ExecMaterial(MaterialState *node)
 		tuplestorestate = tuplestore_begin_heap(true, false, work_mem);
 
 		node->tuplestorestate = (void *) tuplestorestate;
+
+        /*
+         * CDB: If requested, fetch all rows from subplan and put them
+         * in the tuplestore.  This decouples a middle slice's receiving
+         * and sending Motion operators to neutralize a deadlock hazard.
+         * CDB TODO: Remove when a better solution is implemented.
+         */
+        while (((Material *)node->ss.ps.plan)->cdb_strict)
+        {
+            TupleTableSlot *outerslot = ExecProcNode(outerPlanState(node));
+            if (TupIsNull(outerslot))
+            {
+                node->eof_underlying = true;
+                tuplestore_rescan(tuplestorestate);
+                break;
+            }
+            tuplestore_puttuple(tuplestorestate, outerslot->val);
+        }
+
 	}
 
 	/*

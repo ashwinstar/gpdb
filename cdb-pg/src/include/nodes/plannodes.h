@@ -4,6 +4,7 @@
  *	  definitions for query plan nodes
  *
  *
+ * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -87,7 +88,7 @@ typedef struct Plan
 								 * to get Executor know about how many
 								 * PARAM_EXEC there are in query plan. */
 	
-	/* 
+	/*
 	 * CDB needs to keep track of the characteristics of flow of output
 	 * tuple of Plan nodes.
 	 */
@@ -95,8 +96,8 @@ typedef struct Plan
 								 * Set during parallelization.
 								 */
 	
-	/* 
-	 * CDB:  How should this plan tree be dispatched?  Initially this is set 
+	/*
+	 * CDB:  How should this plan tree be dispatched?  Initially this is set
 	 * to DISPATCH_UNDETERMINED and, in non-root nodes, may remain so.
 	 * However, in Plan nodes at the root of any separately dispatchable plan
 	 * fragment, it must be set to a specific dispatch type.  This field
@@ -105,14 +106,14 @@ typedef struct Plan
 	 */
 	DispatchMethod dispatch;
 	
-	/* 
-	 * CDB: Now many motion nodes are there in the Plan.  Another plan 
+	/*
+	 * CDB: Now many motion nodes are there in the Plan.  Another plan
 	 * tree global significant only in the root node.
 	 */
 	 int nMotionNodes;
-	 
+	
 	 /*
-	  * CDB: This allows the slice table to accompany the plan as it 
+	  * CDB: This allows the slice table to accompany the plan as it
 	  * moves around the executor. This is anoter plan tree global that
 	  * should be non-NULL only in the top node of a dispatchable tree.
 	  * It could (and should) move to a TopPlan node if we ever do that.
@@ -313,6 +314,7 @@ typedef struct HashJoin
 typedef struct Material
 {
 	Plan		plan;
+    bool        cdb_strict;
 } Material;
 
 /* ----------------
@@ -438,7 +440,7 @@ typedef enum MotionType
 
 /*
  * Motion Node
- * 
+ *
  */
 typedef struct Motion
 {
@@ -463,7 +465,7 @@ typedef struct Motion
 	/* The following field is only used when sendSorted == true */
 	int			numSortCols;		/* number of sort key columns */
 	AttrNumber	*sortColIdx;		/* their indexes in target list */
-	Oid			*sortOperators;		/* OID of operators to sort them by */ 
+	Oid			*sortOperators;		/* OID of operators to sort them by */
 	int			numInputSegs;		/* number of segindexes in inputSegIdx array */
 	int			*inputSegIdx;		/* array of input segindexes */
 } Motion;

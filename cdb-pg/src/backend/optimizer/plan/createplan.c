@@ -494,6 +494,8 @@ create_material_plan(Query *root, MaterialPath *best_path)
 
 	plan = make_material(subplan);
 
+    plan->cdb_strict = best_path->cdb_strict;
+
 	copy_path_costsize(&plan->plan, (Path *) best_path);
 
 	return plan;

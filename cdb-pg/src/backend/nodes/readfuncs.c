@@ -3,6 +3,7 @@
  * readfuncs.c
  *	  Reader functions for Postgres tree nodes.
  *
+ * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -547,11 +548,11 @@ _readDefElem(void)
 static A_Const *
 _readAConst(void)
 {
-	READ_LOCALS(A_Const);  
+	READ_LOCALS(A_Const);
 
 	token = pg_strtok(&length);	
 	local_node->val.type = T_String;
-	 
+	
 	if (token[0] == '"')
 	{
 		local_node->val.val.str = palloc(length - 1);
@@ -564,7 +565,7 @@ _readAConst(void)
 		strcpy(local_node->val.val.str , token);
 	}
 	
-	 
+	
 	READ_DONE();
 }
 
@@ -1235,9 +1236,9 @@ _readCreateSeqStmt(void)
 	READ_LOCALS(CreateSeqStmt);
 	READ_NODE_FIELD(sequence);
 	READ_NODE_FIELD(options);
-	 
+	
 	READ_OID_FIELD(relOid);
-	 
+	
 	READ_DONE();
 }
 
@@ -1247,9 +1248,9 @@ _readCreatedbStmt(void)
 	READ_LOCALS(CreatedbStmt);
 	READ_STRING_FIELD(dbname);
 	READ_NODE_FIELD(options);
-	 
+	
 	READ_OID_FIELD(dbOid);
-	 
+	
 	READ_DONE();
 }
 
@@ -1484,9 +1485,10 @@ _readGroup(void)
 static Material *
 _readMaterial(void)
 {
-	READ_LOCALS_NO_FIELDS(Material);
+	READ_LOCALS(Material);
 
-	readPlanInfo((Plan *)local_node);
+    READ_BOOL_FIELD(cdb_strict);
+    readPlanInfo((Plan *)local_node);
 
 	READ_DONE();
 }
