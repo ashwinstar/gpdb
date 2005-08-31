@@ -130,6 +130,7 @@ static int fillSliceVector(SliceTable * sliceTable, int sliceIndex,
  *
  */
 static DispatchCommandParms *dispatchCommandParmsAr = NULL;
+static int  dispatchCommandParmsArSize = 0;
 static int	threadCount = 0;
 
 /*
@@ -186,11 +187,15 @@ CdbDispatchToGang(const char *szCommand, Gang * gp,
 		if (threadCount == 0)
 		{
 			dispatchCommandParmsAr =
-				(DispatchCommandParms *) palloc0((max_threads) *
+				(DispatchCommandParms *) palloc0((max_threads) * 20 *
 												 sizeof(DispatchCommandParms));
+			dispatchCommandParmsArSize = max_threads * 20;
 		}
 		else
-		{									 
+		{			
+			if (dispatchCommandParmsArSize < (threadCount+max_threads))
+				elog(NOTICE, "BUG: Reallocating dispatchCommandParmsAr");
+										 
 			dispatchCommandParmsAr =
 				(DispatchCommandParms *) repalloc(dispatchCommandParmsAr, (threadCount+max_threads) *
 												 sizeof(DispatchCommandParms));
