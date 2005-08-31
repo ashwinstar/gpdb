@@ -149,11 +149,9 @@ CdbDispatchToGang(const char *szCommand, Gang * gp,
 	int			i;
 	int			max_threads;
 	int			segdbs_in_thread_pool = 0;
-	int			k;
 	int			x;
 
-	SegmentDatabaseDescriptorPtr *segdbList = 0;
-	int			segdbListCount = 0;
+	int 		newThreads = 0;
 
 
 
@@ -165,25 +163,8 @@ CdbDispatchToGang(const char *szCommand, Gang * gp,
 	Assert(gp != NULL);
 	Assert(gp->size > 0);
 
-	elog(DEBUG1, "CdbDispatchToGang gangize %d", gp->size);
+	elog(DEBUG1, "CdbDispatchToGang gangize %d -> %.20s", gp->size, szCommand);
 
-
-	/*
-	 * segdbList = &gp->db_descriptors;
-	 * segdbListCount = gp->size;
-	 */
-
-
-
-	segdbList = palloc(gp->size * sizeof(SegmentDatabaseDescriptor *));
-	for (k = 0; k < gp->size; k++)
-	{
-		segdbList[segdbListCount] = &gp->db_descriptors[k];
-		segdbListCount++;
-	}
-
-	Assert(segdbList != NULL);
-	Assert(segdbListCount > 0);
 
 
 	/*
@@ -197,10 +178,27 @@ CdbDispatchToGang(const char *szCommand, Gang * gp,
 	segdbs_in_thread_pool = 0;
 
 
-	max_threads = 1 + (segdbListCount - 1) / cdb_connections_per_thread;
-	dispatchCommandParmsAr =
-		(DispatchCommandParms *) palloc0(max_threads *
-										 sizeof(DispatchCommandParms));
+	max_threads = 1 + (gp->size - 1) / cdb_connections_per_thread;
+	
+	{
+		MemoryContext oldContext = MemoryContextSwitchTo(TopMemoryContext);
+		
+		if (threadCount == 0)
+		{
+			dispatchCommandParmsAr =
+				(DispatchCommandParms *) palloc0((max_threads) *
+												 sizeof(DispatchCommandParms));
+		}
+		else
+		{									 
+			dispatchCommandParmsAr =
+				(DispatchCommandParms *) repalloc(dispatchCommandParmsAr, (threadCount+max_threads) *
+												 sizeof(DispatchCommandParms));
+			memset(dispatchCommandParmsAr+threadCount,0,max_threads*sizeof(DispatchCommandParms));
+		}
+	
+		MemoryContextSwitchTo(oldContext);
+	}
 
 	/*
 	 * Create the thread parms structures based targetSet parameter.
@@ -237,27 +235,36 @@ CdbDispatchToGang(const char *szCommand, Gang * gp,
 
 		}
 
-		addSegDBToDispatchThreadPool(dispatchCommandParmsAr,
+		addSegDBToDispatchThreadPool(dispatchCommandParmsAr+threadCount,
 									 &segdbs_in_thread_pool, szCommand,
 									 cancelFromBelow, segdbDesc);
 	}
 
 	elog(DEBUG1, "segdbs_in_thread_pool %d", segdbs_in_thread_pool);
+	
 	/*
 	 * set result set variables if return of result set is required
+	 * 
+	 * This is a problem... This can only work if there aren't already threads running,
+	 * and if we are using exactly one thread for dispatching this set.
+	 * 
 	 */
 	if (resultSets != NULL)
 		dispatchCommandParmsAr->resultSets = (PGresult ***) resultSets;
+		// This is obviously wrong... Shoud this be something like:
+		//(dispatchCommandParmsAr+threadCount)->resultSets = (PGresult ***) resultSets; ??
+		// Or should we ignore this if threads are already running?
 
 	/*
 	 * Compute the thread count based on how many segdbs were added into the
 	 * thread pool, knowing that each thread handles cdb_connections_per_thread
 	 * segdbs.
 	 */
-	if (segdbs_in_thread_pool == 0)
-		threadCount = 0;
-	else
-		threadCount = 1 + (segdbs_in_thread_pool - 1) / cdb_connections_per_thread;
+	
+	if (segdbs_in_thread_pool > 0)
+		newThreads += 1 + (segdbs_in_thread_pool - 1) / cdb_connections_per_thread;
+		
+	
 
 	elog(DEBUG4,
 		 "CdbDispatchToGang threadCount %d, segdbs_in_thread_pool %d, conns_per_thread %d",
@@ -267,10 +274,12 @@ CdbDispatchToGang(const char *szCommand, Gang * gp,
 	/*
 	 * Create the threads. (which also starts the dispatching).
 	 */
-	for (i = 0; i < threadCount; i++)
+	for (i = 0; i < newThreads; i++)
 	{
-		DispatchCommandParms *pParms = &dispatchCommandParmsAr[i];
+		DispatchCommandParms *pParms = &(dispatchCommandParmsAr+threadCount)[i];
 
+		Assert(pParms != NULL);
+		 
 
 		if (0 != pthread_create(&pParms->thread, NULL, thread_DispatchCommand, pParms))
 		{
@@ -278,11 +287,13 @@ CdbDispatchToGang(const char *szCommand, Gang * gp,
 		}
 
 		elog(DEBUG2, "CdbDispatchToGang Creating thread %d of %d for CommandDispatch %x",
-			 i + 1, threadCount, (unsigned int) pParms->thread);
+			 i + 1, newThreads, (unsigned int) pParms->thread);
 
 	}
+	
+	threadCount += newThreads;
 
-	pfree(segdbList);
+	 
 
 }
 
@@ -301,13 +312,9 @@ CdbDispatchCommandInt(const char *szCommand, bool cancelFromBelow,
 					  void ***resultSets)
 {
 	int			i;
-	int			max_threads;
+
 	int			segdbs_in_thread_pool;
 
-	SegmentDatabaseDescriptor **segdbList = NULL;
-	int			segdbListCount = 0;
-	int			k = 0;
-	int			totalParticipants = 0;
 	Gang	   *primaryGang = NULL;
 	Gang	   *mirrorGang = NULL;
 	int			x;
@@ -315,10 +322,16 @@ CdbDispatchCommandInt(const char *szCommand, bool cancelFromBelow,
 	if (Cdb_role != CDB_ROLE_DISPATCH)
 		elog(ERROR, "CdbDispatchCommandInt should not be called while not in DISPATCH mode.");
 
-	elog(DEBUG1, "CdbDispatchCommandInt %s", szCommand);
+	elog(DEBUG1, "CdbDispatchCommandInt %.40s", szCommand);
 
 	Assert(Cdb_role == CDB_ROLE_DISPATCH);
 
+
+	/*
+	 * There should be no outstanding threads when we are here
+	 * 
+	 */
+	Assert(threadCount == 0);
 
 	/*
 	 * The most threads we could have is segdb_count / cdb_connections_per_thread, rounded up.
@@ -337,153 +350,44 @@ CdbDispatchCommandInt(const char *szCommand, bool cancelFromBelow,
 	primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, getCdbSegmentCount(), -1);
 	mirrorGang = allocateGang(GANGTYPE_MIRROR_WRITER, getCdbSegmentCount(), -1);
 	Assert(primaryGang != NULL);
-
-	totalParticipants = primaryGang->size;
-	if (mirrorGang != NULL)
-		totalParticipants += mirrorGang->size;
-
-
-
-	Assert(cdb_connections_per_thread > 0);
-	max_threads = 1 + (totalParticipants - 1) / cdb_connections_per_thread;
-	dispatchCommandParmsAr = (DispatchCommandParms *)
-		palloc0(max_threads * sizeof(DispatchCommandParms));
-
-
-	segdbList = palloc(totalParticipants * sizeof(SegmentDatabaseDescriptor *));
-
-	segdbListCount = 0;
-
-	for (k = 0; k < primaryGang->size; k++)
-	{
-		segdbList[segdbListCount] = &primaryGang->db_descriptors[k];
-		segdbListCount++;
-	}
-
-	if (mirrorGang != NULL)
-	{
-		for (k = 0; k < mirrorGang->size; k++)
-		{
-			segdbList[segdbListCount] = &mirrorGang->db_descriptors[k];
-			segdbListCount++;
-		}
-	}
-
-	elog(DEBUG2, "CdbDispatchCommandInt Dispatching to DTS_SEGDB: primary segdbs = %d"
-		 "mirror segdbs = %d", primaryGang->size,
-		 (mirrorGang == NULL) ? 0 : mirrorGang->size);
-
-
-
-
-
+	
 	/*
-	 * Create the thread parms structures based targetSet parameter.
-	 * This will add the segdbDesc pointers appropriate to the
-	 * targetSet into the thread Parms structures, making sure that each thread
-	 * handles cdb_connections_per_thread segdbs.
+	 * This is a workaround.  Right now, the code that handle resturning results for the DTM
+	 * code doesn't work if there is more than one thread doing the dispatching.  If we dispatch
+	 * the primmary gang and the mirror gang separately, we use at least one thread each.
+	 * So, let's merge the two gangs into one fake gang, so we can dispatch it in a single
+	 * call to CdbDispatchToGang.  
+	 * Later, we should remove this hack.
+	 * 
 	 */
-
-
-	for (x = 0; x < primaryGang->size; x++)
-	{
-
-		SegmentDatabaseDescriptor *segdbDesc = &primaryGang->db_descriptors[x];
-		Assert(segdbDesc != NULL);
-
-		if (segdbDesc->conn == NULL)
-		{
-			CdbComponentDatabaseInfo *q = segdbDesc->segment_database_info;
-			Assert(q != NULL);
-
-			/*
-			 * This is an error condition
-			 */
-			ereport(ERROR,
-					(errcode
-				 (ERRCODE_SQLSERVER_REJECTED_ESTABLISHMENT_OF_SQLCONNECTION),
-					 errmsg
-					 ("Cannot dispatch command %s to segindex %d isprimary %c, because "
-					  "there is no connection.", szCommand, q->segindex,
-					  (q->isprimary ? 't' : 'f'))));
-
-		}
-
-		addSegDBToDispatchThreadPool(dispatchCommandParmsAr,
-									 &segdbs_in_thread_pool, szCommand,
-									 cancelFromBelow, segdbDesc);
-	}
 	if (mirrorGang)
-		for (x = 0; x < mirrorGang->size; x++)
-		{
-	
-			SegmentDatabaseDescriptor *segdbDesc = &mirrorGang->db_descriptors[x];
-			Assert(segdbDesc != NULL);
-	
-			if (segdbDesc->conn == NULL)
-			{
-				CdbComponentDatabaseInfo *q = segdbDesc->segment_database_info;
-				Assert(q != NULL);
-	
-				/*
-				 * This is an error condition
-				 */
-				ereport(ERROR,
-						(errcode
-					 (ERRCODE_SQLSERVER_REJECTED_ESTABLISHMENT_OF_SQLCONNECTION),
-						 errmsg
-						 ("Cannot dispatch command %s to segindex %d isprimary %c, because "
-						  "there is no connection.", szCommand, q->segindex,
-						  (q->isprimary ? 't' : 'f'))));
-	
-			}
-	
-			addSegDBToDispatchThreadPool(dispatchCommandParmsAr,
-										 &segdbs_in_thread_pool, szCommand,
-										 cancelFromBelow, segdbDesc);
-		}
-	 
-
-	/*
-	 * set result set variables if return of result set is required
-	 */
-	if (resultSets != NULL)
-		dispatchCommandParmsAr->resultSets = (PGresult ***) resultSets;
-
-	/*
-	 * Compute the thread count based on how many segdbs were added into the
-	 * thread pool, knowing that each thread handles cdb_connections_per_thread
-	 * segdbs.
-	 */
-	if (segdbs_in_thread_pool == 0)
-		threadCount = 0;
-	else
-		threadCount = 1 + (segdbs_in_thread_pool - 1) / cdb_connections_per_thread;
-
-	elog(DEBUG4, "CdbDispatchCommandInt threadCount %d, segdbs_in_thread_pool %d, conns_per_thread %d",
-		 threadCount, segdbs_in_thread_pool, cdb_connections_per_thread);
-
-
-	/*
-	 * Create the threads. (which also starts the dispatching).
-	 */
-	for (i = 0; i < threadCount; i++)
 	{
-		DispatchCommandParms *pParms = &dispatchCommandParmsAr[i];
-
-
-		if (0 != pthread_create(&pParms->thread, NULL, thread_DispatchCommand,
-								pParms))
-		{
-			elog(NOTICE, "pthread_create failed");
-		}
-
-		elog(DEBUG2, "CdbDispatchCommandInt Creating thread %d of %d for CommandDispatch %x",
-			 i + 1, threadCount, (unsigned int) pParms->thread);
-
+		MemoryContext oldContext = MemoryContextSwitchTo(TopMemoryContext);
+		
+		Gang * newGangDefinition = (Gang *) palloc0(sizeof(Gang));
+		newGangDefinition->db_descriptors =
+		(SegmentDatabaseDescriptor *) palloc0((primaryGang->size + mirrorGang->size)*
+											  sizeof(SegmentDatabaseDescriptor));
+		newGangDefinition->type = primaryGang->type;
+		newGangDefinition->size = primaryGang->size + mirrorGang->size;
+		newGangDefinition->segdb_count = primaryGang->segdb_count + mirrorGang->segdb_count;
+		
+		MemoryContextSwitchTo(oldContext);
+		
+		x = 0;
+		for (i=0; i<primaryGang->size; i++)
+			newGangDefinition->db_descriptors[x++] = primaryGang->db_descriptors[i];
+		for (i=0; i<mirrorGang->size; i++)
+			newGangDefinition->db_descriptors[x++] = mirrorGang->db_descriptors[i];
+			
+		primaryGang = newGangDefinition;
+			
 	}
 
-	pfree(segdbList);
+	CdbDispatchToGang(szCommand, primaryGang, cancelFromBelow, resultSets);
+	
+	//if (mirrorGang)
+	//	CdbDispatchToGang(szCommand, mirrorGang, cancelFromBelow, resultSets);
 
 }
 
@@ -692,6 +596,8 @@ CdbCheckDispatchResultInt(void ***p_failedSegDB, int *numOfFailed)
 	for (i = 0; i < threadCount; i++)
 	{
 		pParms = &dispatchCommandParmsAr[i];
+		
+		Assert(pParms != NULL);
 
 		elog(DEBUG2, "Joining to thread %d of %d for CommandDispatch %x",
 			 i + 1, threadCount, (unsigned int) pParms->thread);
@@ -714,6 +620,8 @@ CdbCheckDispatchResultInt(void ***p_failedSegDB, int *numOfFailed)
 	for (i = 0; i < threadCount; i++)
 	{
 		pParms = &dispatchCommandParmsAr[i];
+		
+		Assert(pParms != NULL);
 
 		for (j = 0; j < pParms->db_count; j++)
 		{
@@ -734,6 +642,9 @@ CdbCheckDispatchResultInt(void ***p_failedSegDB, int *numOfFailed)
 				{
 					if (failedSegDB != NULL)
 					{
+						/*
+						 * What memory context is this palloc coming from?
+						 */
 						if (*failedSegDB == NULL)
 							*failedSegDB = palloc(sizeof(SegmentDatabaseDescriptor *) *
 												  pParms->db_count);
@@ -750,6 +661,9 @@ CdbCheckDispatchResultInt(void ***p_failedSegDB, int *numOfFailed)
 				pszErrMsg = segdbDesc->error_message;
 				segdbDesc->error_message = NULL;
 
+				/*
+				 * What memory context is this palloc coming from?
+				 */
 				result->error_message = pstrdup(pszErrMsg);
 				free(pszErrMsg);
 			}
@@ -849,6 +763,8 @@ thread_DispatchCommand(void *arg)
 			fprintf(stderr, "doing calloc for pgresults\n");
 
 		pqresults = (PGresult **) calloc(db_count, sizeof(pqresults));
+		if (*pParms->resultSets != NULL)
+			fprintf(stderr,"Warning:  pParms->resultSets not null prior to assignment\n");
 		*pParms->resultSets = pqresults;
 	}
 
@@ -1694,6 +1610,13 @@ CdbDispatchPlan(QueryDesc *queryDesc)
 	 * need to start distributed transaction
 	 */
 	condStartDtxTransaction();
+	
+	/*
+	 * There should be no outstanding threads when we are here
+	 * 
+	 */
+	Assert(threadCount == 0);
+	 
 
 	/*
 	 * Later we'll need to operate with the slice table provided via the
