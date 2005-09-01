@@ -427,7 +427,7 @@ TupleChunkListItem RecvTupleChunkFrom(int16 motNodeID, int16 srcRoute)
 	/* check em' */
 	CHECK_FOR_INTERRUPTS();
 
-#ifdef AMS_VERBOSE_LOGGING	
+#ifdef AMS_VERBOSE_LOGGING
 	elog(DEBUG3, "RecvTupleChunkFrom(motNodID=%d, srcRoute=%d)", motNodeID, srcRoute);
 #endif
 
@@ -437,7 +437,7 @@ TupleChunkListItem RecvTupleChunkFrom(int16 motNodeID, int16 srcRoute)
 	/* read the packet in from the network. */
 	readPacket(conn);
 
-#ifdef AMS_VERBOSE_LOGGING	
+#ifdef AMS_VERBOSE_LOGGING
 	elog(DEBUG3, "read packet recv bytes %d msgsize %d", conn->recvBytes, conn->msgSize);
 #endif
 
@@ -476,9 +476,10 @@ TupleChunkListItem RecvTupleChunkFrom(int16 motNodeID, int16 srcRoute)
 	if (conn->recvBytes != 0)
 	{
 		/* partial message waiting in recv buffer! Move to head of buffer */
-#ifdef AMS_VERBOSE_LOGGING	
+#ifdef AMS_VERBOSE_LOGGING
 		elog(DEBUG3, "residual message %d bytes", conn->recvBytes);
 #endif
+
 		memcpy(conn->pBuff, conn->pBuff + conn->msgSize, conn->recvBytes);
 	}
 	
@@ -1602,14 +1603,26 @@ void readPacket(MotionConn *conn)
 	bool		gotHeader = false, gotPacket=false;
 	fd_set		rset;
 
+#ifdef AMS_VERBOSE_LOGGING
+	elog(DEBUG3, "readpacket: (max %d) outstanding bytes %d", Cdb_max_packet_size, conn->recvBytes);
+#endif
+
 	/* do we have a complete message waiting to be processed ? */
 	if (conn->recvBytes >= PACKET_HEADER_SIZE)
 	{
 		conn->msgSize = getInt16(conn->pBuff);
 		gotHeader = true;
-		if (conn->recvBytes >= conn->msgSize)
+		if (conn->recvBytes >= conn->msgSize) {
+#ifdef AMS_VERBOSE_LOGGING
+			elog(DEBUG3, "readpacket: returning previously read data (%d)", conn->recvBytes);
+#endif
 			return;
+		}
 	}
+
+#ifdef AMS_VERBOSE_LOGGING
+	elog(DEBUG3, "readpacket: %s on previous call msgSize %d", gotHeader ? "got header" : "no header", conn->msgSize);
+#endif
 
 	while (!gotPacket && bytesRead < Cdb_max_packet_size)
 	{
@@ -1661,7 +1674,32 @@ void readPacket(MotionConn *conn)
 			}
 		} else if (n == 0) 
 		{
-			break;
+#ifdef AMS_VERBOSE_LOGGING
+			elog(DEBU3, "readpacket(); breaking in while recvBytes %d msgSize %d", conn->recvBytes, conn->msgSize);
+#endif
+			/* Either we're done, or there is something seriously wrong */
+
+			if (conn->recvBytes == 0) {
+				conn->recvBytes = conn->msgSize = PACKET_HEADER_SIZE;
+				break;
+			}
+			else if (conn->recvBytes == conn->msgSize)
+			{
+				/* got a completed message before the connection
+				 * closed; probably this is an EOS message */
+				break;
+			}
+			else
+			{
+				/* TODO: would be nice to read the errno and try and provide more
+				 * 		 useful info as to why this happened.
+				 */
+				ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+								errmsg("Interconnect error reading an incoming packet"),
+								errdetail("Socket closed from remote connection).\n"
+										  "contentId=%d at '%s':%d",conn->remoteContentId,
+										  conn->remoteHost,conn->remotePort)));
+			}
 		}
 		else
 		{
@@ -1677,7 +1715,9 @@ void readPacket(MotionConn *conn)
 				gotPacket = true;
 		}
 	}
+#ifdef AMS_VERBOSE_LOGGING
 	elog(DEBUG3, "readpacket: got %d bytes", conn->recvBytes);
+#endif
 }
 
 /* Function doBroadcast() is used to send a TupleChunk to all recipients.
