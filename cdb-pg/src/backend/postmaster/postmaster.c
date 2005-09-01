@@ -120,6 +120,7 @@
 #include "utils/ps_status.h"
 #include "bootstrap/bootstrap.h"
 #include "pgstat.h"
+#include "cdb/cdblogsync.h"
 
 #ifdef EXEC_BACKEND
 #include "storage/spin.h"
@@ -358,6 +359,18 @@ static void ShmemBackendArrayRemove(pid_t pid);
 
 #define StartupDataBase()		StartChildProcess(BS_XLOG_STARTUP)
 #define StartBackgroundWriter() StartChildProcess(BS_XLOG_BGWRITER)
+
+static bool SyncMaster = false;
+
+/*
+ * MPPSyncMaster main entry point
+ */
+int
+MPPSyncMain(int argc, char *argv[])
+{
+    SyncMaster = true;
+    return PostmasterMain( argc, argv );
+}
 
 
 /*
@@ -886,7 +899,8 @@ PostmasterMain(int argc, char *argv[])
 	/*
 	 * If enabled, start up syslogger collection subprocess
 	 */
-	SysLoggerPID = SysLogger_Start();
+    if ( !SyncMaster ) 
+	   SysLoggerPID = SysLogger_Start();
 
 	/*
 	 * Reset whereToSendOutput from Debug (its starting state) to None.
@@ -913,7 +927,8 @@ PostmasterMain(int argc, char *argv[])
 	/*
 	 * We're ready to rock and roll...
 	 */
-	StartupPID = StartupDataBase();
+    if ( !SyncMaster )
+	   StartupPID = StartupDataBase();
 
 	status = ServerLoop();
 
@@ -1143,6 +1158,10 @@ ServerLoop(void)
 	last_touch_time = time(NULL);
 
 	nSockets = initMasks(&readmask);
+    
+    /* initialize tm sync */
+    if ( SyncMaster )
+        cdb_init_log_sync();
 
 	for (;;)
 	{
@@ -1233,7 +1252,7 @@ ServerLoop(void)
 		}
 
 		/* If we have lost the system logger, try to start a new one */
-		if (SysLoggerPID == 0 && Redirect_stderr)
+		if (SysLoggerPID == 0 && Redirect_stderr && !SyncMaster)
 			SysLoggerPID = SysLogger_Start();
 
 		/*
@@ -1241,7 +1260,7 @@ ServerLoop(void)
 		 * state that prevents it, start one.  It doesn't matter if this
 		 * fails, we'll just try again later.
 		 */
-		if (BgWriterPID == 0 && StartupPID == 0 && !FatalError)
+		if (BgWriterPID == 0 && StartupPID == 0 && !FatalError && !SyncMaster)
 		{
 			BgWriterPID = StartBackgroundWriter();
 			/* If shutdown is pending, set it going */
@@ -1251,12 +1270,12 @@ ServerLoop(void)
 
 		/* If we have lost the archiver, try to start a new one */
 		if (XLogArchivingActive() && PgArchPID == 0 &&
-			StartupPID == 0 && !FatalError && Shutdown == NoShutdown)
+			StartupPID == 0 && !FatalError && Shutdown == NoShutdown && !SyncMaster)
 			PgArchPID = pgarch_start();
 
 		/* If we have lost the stats collector, try to start a new one */
 		if (PgStatPID == 0 &&
-			StartupPID == 0 && !FatalError && Shutdown == NoShutdown)
+			StartupPID == 0 && !FatalError && Shutdown == NoShutdown && !SyncMaster)
 			PgStatPID = pgstat_start();
 
 		/*
@@ -1848,7 +1867,7 @@ pmdie(SIGNAL_ARGS)
 	ereport(DEBUG2,
 			(errmsg_internal("postmaster received signal %d",
 							 postgres_signal_arg)));
-
+                        
 	switch (postgres_signal_arg)
 	{
 		case SIGTERM:
@@ -1873,7 +1892,7 @@ pmdie(SIGNAL_ARGS)
 			if (StartupPID != 0 || FatalError)
 				break;			/* let reaper() handle this */
 			/* Start the bgwriter if not running */
-			if (BgWriterPID == 0)
+			if (BgWriterPID == 0 && !SyncMaster)
 				BgWriterPID = StartBackgroundWriter();
 			/* And tell it to shut down */
 			if (BgWriterPID != 0)
@@ -1887,7 +1906,6 @@ pmdie(SIGNAL_ARGS)
 			break;
 
 		case SIGINT:
-
 			/*
 			 * Fast Shutdown:
 			 *
@@ -1921,7 +1939,7 @@ pmdie(SIGNAL_ARGS)
 			if (StartupPID != 0 || FatalError)
 				break;			/* let reaper() handle this */
 			/* Start the bgwriter if not running */
-			if (BgWriterPID == 0)
+			if (BgWriterPID == 0 && !SyncMaster)
 				BgWriterPID = StartBackgroundWriter();
 			/* And tell it to shut down */
 			if (BgWriterPID != 0)
@@ -1961,6 +1979,15 @@ pmdie(SIGNAL_ARGS)
 	PG_SETMASK(&UnBlockSig);
 
 	errno = save_errno;
+    
+    /* for CdbSyncMaster */                         
+    if (SyncMaster)
+    {
+        shmem_exit(0);
+        ereport(LOG,
+                (errmsg("MPP sync master is shut down")));
+        exit(0);
+    }
 }
 
 /*
@@ -2152,7 +2179,8 @@ reaper(SIGNAL_ARGS)
 		shmem_exit(0);
 		reset_shared(PostPortNumber);
 
-		StartupPID = StartupDataBase();
+        if ( !SyncMaster )
+		  StartupPID = StartupDataBase();
 
 		goto reaper_done;
 	}
@@ -2836,7 +2864,10 @@ BackendRun(Port *port)
 	ClientAuthInProgress = false;		/* client_min_messages is active
 										 * now */
 
-	return (PostgresMain(ac, av, port->user_name));
+    if ( SyncMaster )
+       return (SyncMasterMain(ac, av, port->user_name));
+    else
+       return (PostgresMain(ac, av, port->user_name));
 }
 
 

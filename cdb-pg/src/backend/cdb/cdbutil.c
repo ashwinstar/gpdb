@@ -789,9 +789,13 @@ void cdb_setup(void)
 	if ( Cdb_role != CDB_ROLE_UTILITY )
 		InitMotionLayer();
         
-    /* initialize TM */
     if ( Cdb_role == CDB_ROLE_DISPATCH )
+    {
+        /* connect to mirrored entry db */
+        buildMirrorQDDefinition();
+        /* initialize TM */
         initTM();
+    }
 }
 
 
@@ -809,6 +813,8 @@ void cdb_cleanup(int code, Datum arg)
 	elog( DEBUG1, "Cleaning up CDB components...");
 	
 	disconnectAndDestroyAllGangs();
+    
+    disconnectMirrorQD();
 	
 	if (Cdb_role != CDB_ROLE_UTILITY)
 		CleanUpMotionLayer();

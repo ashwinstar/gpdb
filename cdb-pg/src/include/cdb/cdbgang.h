@@ -2,6 +2,7 @@
 #define _CDBGANG_H_
 
 #include "nodes/primnodes.h"
+#include "cdb/cdbutil.h"
 
 /* forward declare segment_database_descriptor so everybody doesn't need to pull in it's definition */
 typedef struct segment_database_descriptor *SegmentDatabaseDescriptorPtr;
@@ -36,5 +37,8 @@ extern void disconnectAndDestroyAllGangs(void);
 extern bool reconnectSegDB(void *);
 
 extern void detectFailedConnections(void);
+
+extern CdbComponentDatabases * getComponentDatabases(void);
+
 
 #endif   /* _CDBGANG_H_ */

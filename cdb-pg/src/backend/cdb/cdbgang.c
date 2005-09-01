@@ -612,7 +612,9 @@ buildGangDefinition(GangType type, int size, int content)
 					segdbDesc->segindex = p->segindex;
 
 					seg_count++;
-
+                     if (type == GANGTYPE_READER && size == 1)
+                        /* we are done */
+                        break;
 				}
 				last_segindex = p->segindex;
 			}
@@ -1440,4 +1442,12 @@ detectFailedConnections(void)
 		}
 	}
 
+}
+
+CdbComponentDatabases *
+getComponentDatabases(void)
+{
+    if (cdb_component_dbs == NULL)
+        cdb_component_dbs = getCdbComponentDatabases();
+    return cdb_component_dbs;
 }

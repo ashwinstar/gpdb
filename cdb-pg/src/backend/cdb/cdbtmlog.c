@@ -14,10 +14,10 @@
 #include <sys/uio.h>
 
 #include "cdb/cdbtmlog.h"
+#include "cdb/cdblink.h"
 #include "storage/fd.h"
 
 extern int errno;
-extern char dtm_dir[MAXPGPATH];
 
 /*
  * Dir is set during TmShmemInit and does not change thereafter.
@@ -41,10 +41,25 @@ static TmLogFileControlBlock tmLogFileHeader={TM_FILE_MAGIC,0,0,{0}};
 static int  currentOffset=-1;
 static int  logFileFD=-1, logFileNo;
 
+static bool mirrorQDInited = false;
+
+
+static TmLogRecord * readTmLogRecordNext(int offset);
+static void writeTmControlBlock(int offset);
+static void initTmLogFile(int seqno);
+static void closeTmLogFile(void);
+static void removeTmLogFile(int seqno);
+static bool validateLogFileControlBlock(TmLogFileControlBlock *header);
+static crc64 calculateCRC(void *buf, int len);
+static bool read_with_ereport(int fd, void *data, int len);
+static void switchTmLogFile(void);
+static void removeTmLogFileUntil(int seqno);
+
+
 /*
  * read next log record. if offset is given, read from that offset.
  */
-TmLogRecord *
+static TmLogRecord *
 readTmLogRecordNext(int offset)
 {
     int loffset, participant_len=0;
@@ -140,12 +155,15 @@ writeTmLogRecord(TmLogRecord *record)
     
     /* Read record header */
     write_with_ereport(logFileFD, record, len);
+
+    /* sync to mirror db */
+    write_to_mirror(record, record->header.thisOffset, len);
 }
 
 /*
  * write tm control block, which is located in the begining of each tm log file. 
  */
-void
+static void
 writeTmControlBlock(int offset)
 {
     lseek(logFileFD, 0, SEEK_SET);
@@ -156,6 +174,9 @@ writeTmControlBlock(int offset)
     
     /* write control block */
     write_with_ereport(logFileFD, &tmLogFileHeader, sizeof(TmLogFileControlBlock));
+    
+    /* sync to mirror db */
+    write_to_mirror(&tmLogFileHeader, 0, sizeof(TmLogFileControlBlock));
 }
 
 /*
@@ -175,7 +196,7 @@ checkPointTm(void)
     for ( i=0;i<n;i++ )
     {
         gxact = getNextTMXact(i);
-        memcpy(&record->participants[i], gxact, sizeof(TMGXACT));
+        memcpy(&((TMGXACT*)record->participants)[i], gxact, sizeof(TMGXACT));
         if ( earlierFileNo == -1 || gxact->fileno < earlierFileNo )
             earlierFileNo = gxact->fileno;
     }
@@ -206,7 +227,7 @@ checkPointTm(void)
 /*
  * initialize, creating, a tm log file
  */
-void
+static void
 initTmLogFile(int seqno)
 {
     char        path[MAXPATH];
@@ -240,7 +261,11 @@ openTmLogFile(int seqno)
 	TmLogFilePath(path, seqno);
 
 	elog(LOG, "OpenTmLogFile (%d)", seqno);
-
+    
+    // clean the log file descriptor first
+    if (logFileFD >= 0)
+        closeTmLogFile();
+        
     logFileFD = open(path, O_RDWR, 0);
 	if (logFileFD < 0)
 	{
@@ -277,7 +302,7 @@ openTmLogFile(int seqno)
 /*
  * closing a tm log file
  */
-void
+static void
 closeTmLogFile(void)
 {
     if ( logFileFD >= 0 )
@@ -291,7 +316,7 @@ closeTmLogFile(void)
 /*
  * switch to next tm log file when log file size limit is reached.
  */
-void
+static void
 switchTmLogFile(void)
 {
     int seqno = ++logFileNo;
@@ -318,7 +343,7 @@ flushTmLogFile(void)
 }
 
 /* remove useless tm log file */
-void
+static void
 removeTmLogFileUntil(int seqno)
 {
     int i=0;
@@ -331,7 +356,7 @@ removeTmLogFileUntil(int seqno)
 }
 
 /* delete a tm log file */
-void
+static void
 removeTmLogFile(int seqno)
 {
 	char path[MAXPGPATH];
@@ -468,13 +493,13 @@ recoverTmLog(void)
  * Validates the log file header. Returns true if
  * it looks OK.
  */
-bool
+static bool
 validateLogFileControlBlock(TmLogFileControlBlock *header)
 {
     return EQ_CRC64(calculateCRC(header,3*sizeof(uint32)), header->crc);
 }
 
-crc64
+static crc64
 calculateCRC(void *buf, int len)
 {
     crc64 calc_crc;
@@ -486,7 +511,7 @@ calculateCRC(void *buf, int len)
     return calc_crc;
 }
 
-bool
+static bool
 read_with_ereport(int fd, void *data, int len)
 {
     int read_len;
@@ -523,5 +548,21 @@ write_with_ereport(int fd, void *data, int len)
                 (errcode_for_file_access(),
                  errmsg("error writing tm log file: %m")));
     }
+}
+
+void
+write_to_mirror(void *buf, int offset, int len)
+{
+    char cmd[40];
+    
+    /* initialize mirror qd sync */
+    if (!mirrorQDInited)
+    {
+        mirrorQDInited = true;
+        write_to_mirror(NULL, offset, 0);
+    }
+    
+    sprintf(cmd, "tmlog %08x %d %d", logFileNo, offset, len);
+    write_qd_sync(cmd, buf, len); 
 }
 

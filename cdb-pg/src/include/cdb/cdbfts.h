@@ -19,6 +19,7 @@ typedef struct FtsControlBlock
     int         ftsSyncCount;
     int         ftsAction;
     bool        ftsReadOnlyFlag;
+    bool        ftsQDMirroring;;
 } FtsControlBlock;
 
 
@@ -48,5 +49,6 @@ extern bool verifyFtsSyncCount(void);
 extern void enableMirroring(void);
 extern void FtsCondSetTxnReadOnly(bool *);
 extern bool isMirroringEnabled(void);
+extern void disableQDMirroring(void);
 
 #endif /* CDBFTS_H */

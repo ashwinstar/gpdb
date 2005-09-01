@@ -52,7 +52,14 @@ extern void cdblink_setup(void);
  */
 extern int getCdbSegmentCount(void);
 
+extern void buildMirrorQDDefinition(void);
 
 extern void *getEntrySegDB(int *);
+
+extern bool isQDMirroringEnabled(void);
+
+extern void write_qd_sync(char *, void *, int);
+
+extern void disconnectMirrorQD(void);
 
 #endif   /* CDBLINK_H */

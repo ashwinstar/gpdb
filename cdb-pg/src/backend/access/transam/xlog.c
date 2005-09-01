@@ -44,6 +44,7 @@
 #include "utils/guc.h"
 #include "utils/relcache.h"
 
+#include "cdb/cdblink.h"
 
 /*
  * This chunk of hackery attempts to determine which file sync methods
@@ -160,6 +161,10 @@ static bool recoveryStopAfter;
 
 /* constraint set by read_backup_label */
 static XLogRecPtr recoveryMinXlogOffset = {0, 0};
+
+/*
+#define XLOG_OFFSET()  (XLogCtl->xlblocks[curridx].xrecoff + (int)((int)Insert->currpos - (int)Insert->currpage))
+*/
 
 /*
  * During normal operation, the only timeline we care about is ThisTimeLineID.
@@ -769,6 +774,15 @@ begin:;
 	record->xl_len = len;		/* doesn't include backup blocks */
 	record->xl_info = info;
 	record->xl_rmid = rmid;
+    
+    /* for debugging purpose */
+    /*
+    int offsetxx = XLOG_OFFSET();
+    int total_len = write_len + SizeOfXLogRecord;
+
+    elog(LOG, "%d  rmid: %d  len: %d   nextLSN: %d", offsetxx, rmid, total_len, offsetxx + total_len);
+    offsetxx += total_len;
+    */
 
 	/* Now we can finish computing the main CRC */
 	COMP_CRC64(rdata_crc, (char *) record + sizeof(crc64),
@@ -854,9 +868,25 @@ begin:;
 		contrecord->xl_rem_len = write_len;
 		Insert->currpos += SizeOfXLogContRecord;
 		freespace = INSERT_FREESPACE(Insert);
+        
+        /* for debugging purpose */
+        /*
+        elog(LOG, "    use next buffer: %d", XLOG_OFFSET() + write_len);
+        offsetxx = XLOG_OFFSET() + write_len;
+        */
 	}
 
 	/* Ensure next record will be properly aligned */
+    /*
+    int x=0;
+    if ( Insert->currpos != (char *) Insert->currpage + 
+                            MAXALIGN(Insert->currpos - (char *) Insert->currpage) )
+    {
+        x = MAXALIGN(Insert->currpos - (char *) Insert->currpage) - (int)(Insert->currpos - (char *) Insert->currpage);
+        elog(LOG, "    shift %d   nextOffset: %d", x,
+                                offsetxx + x); 
+    }
+    */
 	Insert->currpos = (char *) Insert->currpage +
 		MAXALIGN(Insert->currpos - (char *) Insert->currpage);
 	freespace = INSERT_FREESPACE(Insert);
@@ -1286,7 +1316,26 @@ XLogWrite(XLogwrtRqst WriteRqst)
 					 errmsg("could not write to log file %u, segment %u at offset %u: %m",
 							openLogId, openLogSeg, openLogOff)));
 		}
-		openLogOff += BLCKSZ;
+        
+        /* ***********************************************************
+         * if qd mirroring is on, sync the xlog write to mirrorred qd.
+         * ***********************************************************
+         */
+        if ( isQDMirroringEnabled() ) 
+        {
+            char cmd[50], tmpfname[24];
+
+            /*
+            elog(LOG, "**XLogWrite-   offset: %d   len: %d",
+                openLogOff, BLCKSZ);
+            */
+    
+            XLogFileName(tmpfname, ThisTimeLineID, openLogId, openLogSeg);
+            sprintf(cmd, "xlog %s %d %d", tmpfname, openLogOff, BLCKSZ);
+            write_qd_sync(cmd, from, BLCKSZ);
+        }
+        
+        openLogOff += BLCKSZ;
 
 		/*
 		 * If we just wrote the whole last page of a logfile segment,

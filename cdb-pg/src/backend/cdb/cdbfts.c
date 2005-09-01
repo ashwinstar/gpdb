@@ -28,6 +28,7 @@ static LWLockId     ftsControlLock;
 static int          *ftsSyncCount;
 static int          *ftsAction;
 static bool         *ftsReadOnlyFlag;
+static bool         *ftsQDMirroring;
 
 static PQExpBuffer  entryBuffer=NULL;
 static PGconn       *entryConn=NULL;
@@ -64,11 +65,13 @@ void FtsShmemInit(void)
         ftsSyncCount  = &shared->ftsSyncCount;
         ftsAction = &shared->ftsAction;
         ftsReadOnlyFlag = &shared->ftsReadOnlyFlag;
+        ftsQDMirroring = &shared->ftsQDMirroring;
         
         //initialize
         shared->ftsSyncCount = 0;
         shared->ftsReadOnlyFlag = cdb_set_read_only;
         shared->ftsEnabled = false;
+        shared->ftsQDMirroring = true;  /* set default to true, will be set to false if connection failed */
         if (Cdb_role == CDB_ROLE_DISPATCH)
         {
             shared->ftsAction = convertFaultActionValue(cdb_fault_action_string);
@@ -183,6 +186,17 @@ bool isMirroringEnabled(void)
     return *ftsEnabled;
 }
 
+void disableQDMirroring(void)
+{
+    elog(LOG, "FTS: QD mirroring disabled");
+    *ftsQDMirroring = false;
+}
+
+bool isQDMirroringEnabled(void)
+{
+    return *ftsQDMirroring;
+}
+
 void FtsHandleNetFailure( SegmentDatabaseDescriptor **segDB, int numOfFailed )
 {
     SegmentDatabaseDescriptor *failedDB;
@@ -276,7 +290,7 @@ void markSegDBStatus( int dbid, bool state )
     CdbComponentDatabaseInfo *q = getEntrySegDB(&count);
     /* can only be maximum 2 dbs */
     if (count > 1)
-        	if (!(q->dbid != CdbIdentity.dbid))
+        	if (q->dbid != CdbIdentity.dbid)
 			q = q+1;
      
     /*
@@ -307,9 +321,11 @@ void markSegDBStatus( int dbid, bool state )
          * checks for errors, it makes a palloc copy of this, and frees
          * this.
          */                 
+        char *error_message = strdup(PQerrorMessage(entryConn));
+         
         PQfinish(entryConn);
         entryConn = NULL;
-        elog(PANIC, "FTS: setting segDB state failed, error connecting to entry db" );
+        elog(PANIC, "FTS: setting segDB state failed, error connecting to entry db, error: %s", error_message );
     }
     
     sprintf(cmd, "select cdb.cdb_set_segdb_state(%d,%s)", dbid, state?"TRUE":"FALSE");

@@ -267,6 +267,18 @@ main(int argc, char *argv[])
 		/* Called as "postmaster" */
 		exit(PostmasterMain(argc, argv));
 	}
+    
+    
+    /* for mppsyncmaster */
+    if ((len >= 13 && strcmp(argv[0] + len - 13, "mppsyncmaster") == 0)
+#ifdef WIN32
+      || (len >= 17 && strcmp(argv[0] + len - 17, "mppsyncmaster.exe") == 0)
+#endif
+        )
+    {
+        /* Called as "postmaster" */
+        exit(MPPSyncMain(argc, argv));
+    }
 
 	/*
 	 * If the first argument begins with "-fork", then invoke

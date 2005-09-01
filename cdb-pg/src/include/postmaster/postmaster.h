@@ -37,6 +37,8 @@ extern HANDLE PostmasterHandle;
 
 extern int	PostmasterMain(int argc, char *argv[]);
 extern void ClosePostmasterPorts(bool am_syslogger);
+extern int MPPSyncMain(int argc, char *argv[]);
+
 
 #ifdef EXEC_BACKEND
 extern pid_t postmaster_forkexec(int argc, char *argv[]);

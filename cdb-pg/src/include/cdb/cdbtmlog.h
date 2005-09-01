@@ -50,21 +50,10 @@ extern void writeTmLogRecord(TmLogRecord *record);
 extern void recoverTmLog(void);
 extern void checkPointTm(void);
 extern void flushTmLogFile(void);
-
-TmLogRecord * readTmLogRecordNext(int offset);
-void writeTmControlBlock(int offset);
-bool openTmLogFile(int seqno);
-void initTmLogFile(int seqno);
-void closeTmLogFile(void);
-void removeTmLogFile(int seqno);
-bool validateLogFileControlBlock(TmLogFileControlBlock *header);
-crc64 calculateCRC(void *buf, int len);
-bool read_with_ereport(int fd, void *data, int len);
-void write_with_ereport(int fd, void *data, int len);
-void switchTmLogFile(void);
-void removeTmLogFileUntil(int seqno);
-int initTmLog( char *dir);
-
+extern void write_to_mirror(void *, int, int);
+extern void write_with_ereport(int fd, void *data, int len);
+extern int initTmLog( char *dir);
 extern void redoTmLog(TmLogRecord *glog);
+extern bool openTmLogFile(int seqno);
 
 #endif /* CDBTMLOG_H */

@@ -61,6 +61,7 @@
 #include "utils/ps_status.h"
 #include "mb/pg_wchar.h"
 #include "cdb/cdbvars.h"
+#include "cdb/cdblogsync.h"
 
 #include "pgstat.h"
 
@@ -3417,4 +3418,798 @@ log_disconnections(int code, Datum arg)
 			(errmsg("disconnection: session time: %s%s%s%s%s",
 				session_time, uname, dbname, remote_host, remote_port)));
 
+}
+
+int
+SyncMasterMain(int argc, char *argv[], const char *username)
+{
+	int			flag;
+	const char *dbname = NULL;
+	char	   *userDoption = NULL;
+	bool		secure;
+	int			errs = 0;
+	int			debug_flag = -1;		/* -1 means not given */
+	List	   *guc_names = NIL;		/* for SUSET options */
+	List	   *guc_values = NIL;
+	GucContext	ctx;
+	GucSource	gucsource;
+	char	   *tmp;
+	int			firstchar;
+	char		stack_base;
+	StringInfoData input_message;
+	sigjmp_buf	local_sigjmp_buf;
+	volatile bool send_rfq = true;
+
+#define PendingConfigOption(name,val) \
+	(guc_names = lappend(guc_names, pstrdup(name)), \
+	 guc_values = lappend(guc_values, pstrdup(val)))
+
+	/*
+	 * Catch standard options before doing much else.  This even works on
+	 * systems without getopt_long.
+	 */
+	if (!IsUnderPostmaster && argc > 1)
+	{
+		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
+		{
+			usage(argv[0]);
+			exit(0);
+		}
+		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
+		{
+			puts(PG_VERSIONSTR);
+			exit(0);
+		}
+	}
+
+	/*
+	 * initialize globals (already done if under postmaster, but not if
+	 * standalone; cheap enough to do over)
+	 */
+	MyProcPid = getpid();
+
+	/*
+	 * Fire up essential subsystems: error and memory management
+	 *
+	 * If we are running under the postmaster, this is done already.
+	 */
+	if (!IsUnderPostmaster)
+		MemoryContextInit();
+
+	set_ps_display("startup");
+
+	SetProcessingMode(InitProcessing);
+
+	/* Set up reference point for stack depth checking */
+	stack_base_ptr = &stack_base;
+
+	/* Compute paths, if we didn't inherit them from postmaster */
+	if (my_exec_path[0] == '\0')
+	{
+		if (find_my_exec(argv[0], my_exec_path) < 0)
+			elog(FATAL, "%s: could not locate my own executable path",
+				 argv[0]);
+	}
+
+	if (pkglib_path[0] == '\0')
+		get_pkglib_path(my_exec_path, pkglib_path);
+
+	/*
+	 * Set default values for command-line options.
+	 */
+	EchoQuery = false;
+
+	if (!IsUnderPostmaster)
+		InitializeGUCOptions();
+
+	/* ----------------
+	 *	parse command line arguments
+	 *
+	 *	There are now two styles of command line layout for the backend:
+	 *
+	 *	For interactive use (not started from postmaster) the format is
+	 *		postgres [switches] [databasename]
+	 *	If the databasename is omitted it is taken to be the user name.
+	 *
+	 *	When started from the postmaster, the format is
+	 *		postgres [secure switches] -p databasename [insecure switches]
+	 *	Switches appearing after -p came from the client (via "options"
+	 *	field of connection request).  For security reasons we restrict
+	 *	what these switches can do.
+	 * ----------------
+	 */
+
+	/* all options are allowed until '-p' */
+	secure = true;
+	ctx = PGC_POSTMASTER;
+	gucsource = PGC_S_ARGV;		/* initial switches came from command line */
+
+	while ((flag = getopt(argc, argv, "A:B:c:D:d:Eef:FiNOPo:p:S:st:v:W:-:")) != -1)
+	{
+		switch (flag)
+		{
+			case 'A':
+#ifdef USE_ASSERT_CHECKING
+				SetConfigOption("debug_assertions", optarg, ctx, gucsource);
+#else
+				ereport(WARNING,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("assert checking is not compiled in")));
+#endif
+				break;
+
+			case 'B':
+
+				/*
+				 * specify the size of buffer pool
+				 */
+				SetConfigOption("shared_buffers", optarg, ctx, gucsource);
+				break;
+
+			case 'D':			/* PGDATA or config directory */
+				if (secure)
+					userDoption = optarg;
+				break;
+
+			case 'd':			/* debug level */
+				debug_flag = atoi(optarg);
+				break;
+
+			case 'E':
+
+				/*
+				 * E - echo the query the user entered
+				 */
+				EchoQuery = true;
+				break;
+
+			case 'e':
+
+				/*
+				 * Use European date input format (DMY)
+				 */
+				SetConfigOption("datestyle", "euro", ctx, gucsource);
+				break;
+
+			case 'F':
+
+				/*
+				 * turn off fsync
+				 */
+				SetConfigOption("fsync", "false", ctx, gucsource);
+				break;
+
+			case 'f':
+
+				/*
+				 * f - forbid generation of certain plans
+				 */
+				tmp = NULL;
+				switch (optarg[0])
+				{
+					case 's':	/* seqscan */
+						tmp = "enable_seqscan";
+						break;
+					case 'i':	/* indexscan */
+						tmp = "enable_indexscan";
+						break;
+					case 't':	/* tidscan */
+						tmp = "enable_tidscan";
+						break;
+					case 'n':	/* nestloop */
+						tmp = "enable_nestloop";
+						break;
+					case 'm':	/* mergejoin */
+						tmp = "enable_mergejoin";
+						break;
+					case 'h':	/* hashjoin */
+						tmp = "enable_hashjoin";
+						break;
+					default:
+						errs++;
+				}
+				if (tmp)
+					SetConfigOption(tmp, "false", ctx, gucsource);
+				break;
+
+			case 'N':
+
+				/*
+				 * N - Don't use newline as a query delimiter
+				 */
+				UseNewLine = 0;
+				break;
+
+			case 'O':
+
+				/*
+				 * allow system table structure modifications
+				 */
+				if (secure)		/* XXX safe to allow from client??? */
+					allowSystemTableMods = true;
+				break;
+
+			case 'P':
+
+				/*
+				 * ignore system indexes
+				 *
+				 * As of PG 7.4 this is safe to allow from the client, since
+				 * it only disables reading the system indexes, not
+				 * writing them.  Worst case consequence is slowness.
+				 */
+				IgnoreSystemIndexes(true);
+				break;
+
+			case 'o':
+
+				/*
+				 * o - send output (stdout and stderr) to the given file
+				 */
+				if (secure)
+					StrNCpy(OutputFileName, optarg, MAXPGPATH);
+				break;
+
+			case 'p':
+
+				/*
+				 * p - special flag passed if backend was forked by a
+				 * postmaster.
+				 */
+				if (secure)
+				{
+					dbname = strdup(optarg);
+
+					secure = false;		/* subsequent switches are NOT
+										 * secure */
+					ctx = PGC_BACKEND;
+					gucsource = PGC_S_CLIENT;
+				}
+				break;
+
+			case 'S':
+
+				/*
+				 * S - amount of sort memory to use in 1k bytes
+				 */
+				SetConfigOption("work_mem", optarg, ctx, gucsource);
+				break;
+
+			case 's':
+
+				/*
+				 * s - report usage statistics (timings) after each query
+				 *
+				 * Since log options are SUSET, we need to postpone unless
+				 * still in secure context
+				 */
+				if (ctx == PGC_BACKEND)
+					PendingConfigOption("log_statement_stats", "true");
+				else
+					SetConfigOption("log_statement_stats", "true",
+									ctx, gucsource);
+				break;
+
+			case 't':
+				/* ---------------
+				 *	tell postgres to report usage statistics (timings) for
+				 *	each query
+				 *
+				 *	-tpa[rser] = print stats for parser time of each query
+				 *	-tpl[anner] = print stats for planner time of each query
+				 *	-te[xecutor] = print stats for executor time of each query
+				 *	caution: -s can not be used together with -t.
+				 * ----------------
+				 */
+				tmp = NULL;
+				switch (optarg[0])
+				{
+					case 'p':
+						if (optarg[1] == 'a')
+							tmp = "log_parser_stats";
+						else if (optarg[1] == 'l')
+							tmp = "log_planner_stats";
+						else
+							errs++;
+						break;
+					case 'e':
+						tmp = "log_executor_stats";
+						break;
+					default:
+						errs++;
+						break;
+				}
+				if (tmp)
+				{
+					if (ctx == PGC_BACKEND)
+						PendingConfigOption(tmp, "true");
+					else
+						SetConfigOption(tmp, "true", ctx, gucsource);
+				}
+				break;
+
+			case 'v':
+				if (secure)
+					FrontendProtocol = (ProtocolVersion) atoi(optarg);
+				break;
+
+			case 'W':
+
+				/*
+				 * wait N seconds to allow attach from a debugger
+				 */
+				pg_usleep(atoi(optarg) * 1000000L);
+				break;
+
+			case 'c':
+			case '-':
+				{
+					char	   *name,
+							   *value;
+
+					ParseLongOption(optarg, &name, &value);
+					if (!value)
+					{
+						if (flag == '-')
+							ereport(ERROR,
+									(errcode(ERRCODE_SYNTAX_ERROR),
+									 errmsg("--%s requires a value",
+											optarg)));
+						else
+							ereport(ERROR,
+									(errcode(ERRCODE_SYNTAX_ERROR),
+									 errmsg("-c %s requires a value",
+											optarg)));
+					}
+
+					/*
+					 * If a SUSET option, must postpone evaluation, unless
+					 * we are still reading secure switches.
+					 */
+					if (ctx == PGC_BACKEND && IsSuperuserConfigOption(name))
+						PendingConfigOption(name, value);
+					else
+						SetConfigOption(name, value, ctx, gucsource);
+					free(name);
+					if (value)
+						free(value);
+					break;
+				}
+
+			default:
+				errs++;
+				break;
+		}
+	}
+
+	/*
+	 * Process any additional GUC variable settings passed in startup
+	 * packet.  These are handled exactly like command-line variables.
+	 */
+	if (MyProcPort != NULL)
+	{
+		ListCell   *gucopts = list_head(MyProcPort->guc_options);
+
+		while (gucopts)
+		{
+			char	   *name;
+			char	   *value;
+
+			name = lfirst(gucopts);
+			gucopts = lnext(gucopts);
+
+			value = lfirst(gucopts);
+			gucopts = lnext(gucopts);
+
+			if (IsSuperuserConfigOption(name))
+				PendingConfigOption(name, value);
+			else
+				SetConfigOption(name, value, PGC_BACKEND, PGC_S_CLIENT);
+		}
+	}
+
+	/* Acquire configuration parameters, unless inherited from postmaster */
+	if (!IsUnderPostmaster)
+	{
+		if (!SelectConfigFiles(userDoption, argv[0]))
+			proc_exit(1);
+	}
+
+	/*
+	 * Set up signal handlers and masks.
+	 *
+	 * Note that postmaster blocked all signals before forking child process,
+	 * so there is no race condition whereby we might receive a signal
+	 * before we have set up the handler.
+	 *
+	 * Also note: it's best not to use any signals that are SIG_IGNored in
+	 * the postmaster.	If such a signal arrives before we are able to
+	 * change the handler to non-SIG_IGN, it'll get dropped.  Instead,
+	 * make a dummy handler in the postmaster to reserve the signal. (Of
+	 * course, this isn't an issue for signals that are locally generated,
+	 * such as SIGALRM and SIGPIPE.)
+	 */
+	pqsignal(SIGHUP, SigHupHandler);	/* set flag to read config file */
+	pqsignal(SIGINT, StatementCancelHandler);	/* cancel current query */
+	pqsignal(SIGTERM, die);		/* cancel current query and exit */
+	pqsignal(SIGQUIT, quickdie);	/* hard crash time */
+	pqsignal(SIGALRM, handle_sig_alarm);		/* timeout conditions */
+
+	/*
+	 * Ignore failure to write to frontend. Note: if frontend closes
+	 * connection, we will notice it and exit cleanly when control next
+	 * returns to outer loop.  This seems safer than forcing exit in the
+	 * midst of output during who-knows-what operation...
+	 */
+	pqsignal(SIGPIPE, SIG_IGN);
+	pqsignal(SIGUSR1, CatchupInterruptHandler);
+	pqsignal(SIGUSR2, NotifyInterruptHandler);
+	pqsignal(SIGFPE, FloatExceptionHandler);
+
+	/*
+	 * Reset some signals that are accepted by postmaster but not by
+	 * backend
+	 */
+	pqsignal(SIGCHLD, SIG_DFL); /* system() requires this on some
+								 * platforms */
+
+	pqinitmask();
+
+	/* We allow SIGQUIT (quickdie) at all times */
+#ifdef HAVE_SIGPROCMASK
+	sigdelset(&BlockSig, SIGQUIT);
+#else
+	BlockSig &= ~(sigmask(SIGQUIT));
+#endif
+
+	PG_SETMASK(&BlockSig);		/* block everything except SIGQUIT */
+
+
+	if (IsUnderPostmaster)
+	{
+		/* noninteractive case: nothing should be left after switches */
+		if (errs || argc != optind || dbname == NULL)
+		{
+			ereport(FATAL,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+			 errmsg("invalid command-line arguments for server process"),
+			errhint("Try \"%s --help\" for more information.", argv[0])));
+		}
+
+		XLOGPathInit();
+
+		BaseInit();
+	}
+	else
+	{
+		/* interactive case: database name can be last arg on command line */
+		if (errs || argc - optind > 1)
+		{
+			ereport(FATAL,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("%s: invalid command-line arguments",
+							argv[0]),
+			errhint("Try \"%s --help\" for more information.", argv[0])));
+		}
+		else if (argc - optind == 1)
+			dbname = argv[optind];
+		else if ((dbname = username) == NULL)
+		{
+			ereport(FATAL,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("%s: no database nor user name specified",
+							argv[0])));
+		}
+
+		/*
+		 * Validate we have been given a reasonable-looking DataDir (if
+		 * under postmaster, assume postmaster did this already).
+		 */
+		Assert(DataDir);
+		ValidatePgVersion(DataDir);
+
+		/*
+		 * Create lockfile for data directory.
+		 */
+		CreateDataDirLockFile(DataDir, false);
+
+		XLOGPathInit();
+		BaseInit();
+
+		/*
+		 * Start up xlog for standalone backend, and register to have it
+		 * closed down at exit.
+		 */
+		StartupXLOG();
+		on_shmem_exit(ShutdownXLOG, 0);
+
+		/*
+		 * Read any existing FSM cache file, and register to write one out
+		 * at exit.
+		 */
+		LoadFreeSpaceMap();
+		on_shmem_exit(DumpFreeSpaceMap, 0);
+	}
+
+	/*
+	 * General initialization.
+	 *
+	 * NOTE: if you are tempted to add code in this vicinity, consider
+	 * putting it inside InitPostgres() instead.  In particular, anything
+	 * that involves database access should be there, not here.
+	 */
+	ereport(DEBUG3,
+			(errmsg_internal("InitPostgres")));
+	//am_superuser = InitPostgres(dbname, username);
+
+	SetProcessingMode(NormalProcessing);
+
+	/*
+	 * Now that we know if client is a superuser, we can try to apply SUSET
+	 * GUC options that came from the client.
+	 */
+	ctx = PGC_SUSET;
+
+	if (debug_flag >= 0)
+		set_debug_options(debug_flag, ctx, PGC_S_CLIENT);
+
+	if (guc_names != NIL)
+	{
+		ListCell   *namcell,
+				   *valcell;
+
+		forboth(namcell, guc_names, valcell, guc_values)
+		{
+			char	   *name = (char *) lfirst(namcell);
+			char	   *value = (char *) lfirst(valcell);
+
+			SetConfigOption(name, value, ctx, PGC_S_CLIENT);
+			pfree(name);
+			pfree(value);
+		}
+	}
+
+	/*
+	 * Also set up handler to log session end; we have to wait till now
+	 * to be sure Log_disconnections has its final value.
+	 */
+	if (IsUnderPostmaster && Log_disconnections)
+		on_proc_exit(log_disconnections, 0);
+
+	/*
+	 * Send this backend's cancellation info to the frontend.
+	 */
+	if (whereToSendOutput == Remote &&
+		PG_PROTOCOL_MAJOR(FrontendProtocol) >= 2)
+	{
+		StringInfoData buf;
+
+		pq_beginmessage(&buf, 'K');
+		pq_sendint(&buf, (int32) MyProcPid, sizeof(int32));
+		pq_sendint(&buf, (int32) MyCancelKey, sizeof(int32));				
+		pq_endmessage(&buf);
+		/* Need not flush since ReadyForQuery will do it. */
+	}
+
+	/* Welcome banner for standalone case */
+	if (whereToSendOutput == Debug)
+		printf("\nPostgreSQL stand-alone backend %s\n", PG_VERSION);
+
+	/*
+	 * POSTGRES main processing loop begins here
+	 *
+	 * If an exception is encountered, processing resumes here so we abort
+	 * the current transaction and start a new one.
+	 *
+	 * You might wonder why this isn't coded as an infinite loop around a
+	 * PG_TRY construct.  The reason is that this is the bottom of the
+	 * exception stack, and so with PG_TRY there would be no exception
+	 * handler in force at all during the CATCH part.  By leaving the
+	 * outermost setjmp always active, we have at least some chance of
+	 * recovering from an error during error recovery.	(If we get into an
+	 * infinite loop thereby, it will soon be stopped by overflow of
+	 * elog.c's internal state stack.)
+	 */
+
+	if (sigsetjmp(local_sigjmp_buf, 1) != 0)
+	{
+		/*
+		 * NOTE: if you are tempted to add more code in this if-block,
+		 * consider the high probability that it should be in
+		 * AbortTransaction() instead.	The only stuff done directly here
+		 * should be stuff that is guaranteed to apply *only* for
+		 * outer-level error recovery, such as adjusting the FE/BE
+		 * protocol status.
+		 */
+
+		/* Since not using PG_TRY, must reset error stack by hand */
+		error_context_stack = NULL;
+
+		/* Prevent interrupts while cleaning up */
+		HOLD_INTERRUPTS();
+
+		/*
+		 * Forget any pending QueryCancel request, since we're returning
+		 * to the idle loop anyway, and cancel the statement timer if
+		 * running.
+		 */
+		QueryCancelPending = false;
+		disable_sig_alarm(true);
+		QueryCancelPending = false;		/* again in case timeout occurred */
+
+		/*
+		 * Turn off these interrupts too.  This is only needed here and
+		 * not in other exception-catching places since these interrupts
+		 * are only enabled while we wait for client input.
+		 */
+		DisableNotifyInterrupt();
+		DisableCatchupInterrupt();
+
+		/* Make sure libpq is in a good state */
+		pq_comm_reset();
+
+		/* Report the error to the client and/or server log */
+		EmitErrorReport();
+
+		/*
+		 * Make sure debug_query_string gets reset before we possibly
+		 * clobber the storage it points at.
+		 */
+		debug_query_string = NULL;
+
+		FlushErrorState();
+		QueryContext = NULL;
+
+		/*
+		 * If we were handling an extended-query-protocol message,
+		 * initiate skip till next Sync.  This also causes us not to issue
+		 * ReadyForQuery (until we get Sync).
+		 */
+		if (doing_extended_query_message)
+			ignore_till_sync = true;
+
+		/* We don't have a transaction command open anymore */
+		xact_started = false;
+
+		/* Now we can allow interrupts again */
+		RESUME_INTERRUPTS();
+	}
+
+	/* We can now handle ereport(ERROR) */
+	PG_exception_stack = &local_sigjmp_buf;
+
+	PG_SETMASK(&UnBlockSig);
+
+	if (!ignore_till_sync)
+		send_rfq = true;		/* initially, or after error */
+
+	/*
+	 * Non-error queries loop here.
+	 */
+
+	for (;;)
+	{
+		/*
+		 * At top of loop, reset extended-query-message flag, so that any
+		 * errors encountered in "idle" state don't provoke skip.
+		 */
+		doing_extended_query_message = false;
+
+		initStringInfo(&input_message);
+
+		/*
+		 * (1) If we've reached idle state, tell the frontend we're ready
+		 * for a new query.
+		 *
+		 * Note: this includes fflush()'ing the last of the prior output.
+		 *
+		 * This is also a good time to send collected statistics to the
+		 * collector, and to update the PS stats display.  We avoid doing
+		 * those every time through the message loop because it'd slow
+		 * down processing of batched messages, and because we don't want
+		 * to report uncommitted updates (that confuses autovacuum).
+		 */
+		if (send_rfq)
+		{
+			set_ps_display("idle");
+
+			ReadyForQuery(whereToSendOutput);
+			send_rfq = false;
+		}
+
+		/*
+		 * (2) deal with pending asynchronous NOTIFY from other backends,
+		 * and enable async.c's signal handler to execute NOTIFY directly.
+		 * Then set up other stuff needed before blocking for input.
+		 */
+		QueryCancelPending = false;		/* forget any earlier CANCEL
+										 * signal */
+
+		EnableNotifyInterrupt();
+		EnableCatchupInterrupt();
+
+		/* Allow "die" interrupt to be processed while waiting */
+		ImmediateInterruptOK = true;
+		/* and don't forget to detect one that already arrived */
+		QueryCancelPending = false;
+		CHECK_FOR_INTERRUPTS();
+
+		/*
+		 * (3) read a command (loop blocks here)
+		 */
+		firstchar = ReadCommand(&input_message);
+
+		/*
+		 * (4) disable async signal conditions again.
+		 */
+		ImmediateInterruptOK = false;
+		QueryCancelPending = false;		/* forget any CANCEL signal */
+
+		DisableNotifyInterrupt();
+		DisableCatchupInterrupt();
+
+		/*
+		 * (5) check for any other interesting events that happened while
+		 * we slept.
+		 */
+		if (got_SIGHUP)
+		{
+			got_SIGHUP = false;
+			ProcessConfigFile(PGC_SIGHUP);
+		}
+
+		/*
+		 * (6) process the command.  But ignore it if we're skipping till
+		 * Sync.
+		 */
+		if (ignore_till_sync && firstchar != EOF)
+			continue;
+
+		switch (firstchar)
+		{
+            case 'Q':           /* simple query */
+                {
+                    const char *query_string;
+
+                    query_string = pq_getmsgstring(&input_message);
+                    pq_getmsgend(&input_message);
+
+                    cdb_sync_command(query_string);
+                    
+                    send_rfq = true;
+                    pq_getmsgend(&input_message);
+                }
+                break;
+
+            case 'X':
+            case EOF:
+
+                /*
+                 * Reset whereToSendOutput to prevent ereport from
+                 * attempting to send any more messages to client.
+                 */
+                if (whereToSendOutput == Remote)
+                    whereToSendOutput = None;
+
+                /*
+                 * NOTE: if you are tempted to add more code here, DON'T!
+                 * Whatever you had in mind to do should be set up as an
+                 * on_proc_exit or on_shmem_exit callback, instead.
+                 * Otherwise it will fail to be called during other
+                 * backend-shutdown scenarios.
+                 */
+                proc_exit(0);
+
+            default:
+                ereport(FATAL,
+                        (errcode(ERRCODE_PROTOCOL_VIOLATION),
+                         errmsg("invalid frontend message type %d",
+                                firstchar)));
+        }
+	}							/* end of input-reading loop */
+
+	/* can't get here because the above loop never exits */
+	Assert(false);
+
+	return 1;					/* keep compiler quiet */
 }
