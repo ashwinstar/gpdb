@@ -1675,7 +1675,7 @@ void readPacket(MotionConn *conn)
 		} else if (n == 0) 
 		{
 #ifdef AMS_VERBOSE_LOGGING
-			elog(DEBU3, "readpacket(); breaking in while recvBytes %d msgSize %d", conn->recvBytes, conn->msgSize);
+			elog(DEBUG3, "readpacket(); breaking in while recvBytes %d msgSize %d", conn->recvBytes, conn->msgSize);
 #endif
 			/* Either we're done, or there is something seriously wrong */
 
