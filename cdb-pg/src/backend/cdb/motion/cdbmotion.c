@@ -998,6 +998,8 @@ ChunkSorterEntry *getChunkSorterEntry( MotionNodeEntry *motNodeEntry,
         elog(DEBUG3, "Tuple chunk sorter allocated new HTAB entry for"
             " [src=%d,mn=%d].", srcRoute, motNodeID);
 
+		chunkSorterEntry->chunk_list.serialized_data_length = 0;
+        chunkSorterEntry->chunk_list.num_chunks = 0;
         chunkSorterEntry->chunk_list.p_first = NULL;
         chunkSorterEntry->chunk_list.p_last = NULL;
         chunkSorterEntry->end_of_stream = false;
@@ -1066,7 +1068,7 @@ bool addChunkToSorter(MotionNodeEntry *pMNEntry, TupleChunkListItem tcItem,
     /* Look at the chunk's type, to figure out what to do with it. */
 
     tcType = GetChunkType(tcItem->chunk_data);
-    
+
     switch (tcType)
     {
     case TC_WHOLE:
