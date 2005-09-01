@@ -456,8 +456,10 @@ DefineRelation(CreateStmt *stmt, char relkind)
 		Assert(stmt->relOid == 0);
 		stmt->relOid = relationId;
 		stmt->relKind = relkind;
+		stmt->relation->schemaname = get_namespace_name(namespaceId);
 
-		elog( DEBUG5,"shouldDispatch = true, relOid = %d",relationId);
+		elog( DEBUG4,"shouldDispatch = true, relOid = %d, schemaname %s ",relationId,stmt->relation->schemaname);
+		
 		if ( shouldDispatch )
 		{
 
