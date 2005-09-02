@@ -102,7 +102,9 @@ cdblink_setup(void)
 	return;
 }
 
+#if 0
 /* Alas, Darwin doesn't have this very useful facility. */
+/* Solaris 10 doesn't either... But how to know we are on that? */
 #if !defined(__darwin__)
 
 #include <execinfo.h>
@@ -126,6 +128,7 @@ log_backtrace(void)
 /* assume that we're using GNU compiler */
 #define log_backtrace() elog(DEBUG3, "called by %p", __builtin_return_address(0))
 #endif
+#endif
 
 /*
  * Returns the number of segments
@@ -147,7 +150,7 @@ getCdbSegmentCount(void)
 		}
 
 		elog(DEBUG1, "getCdbSegmentCount called when Cdb_role == utility, but is relying on cdb.cdb info");
-		log_backtrace();
+		//log_backtrace();
 
 	}
 
@@ -159,14 +162,14 @@ getCdbSegmentCount(void)
 			return 0;
 		}
 		elog(DEBUG1, "getCdbSegmentCount called when Cdb_role == execute, but is relying on cdb.cdb info");
-		log_backtrace();
+		//log_backtrace();
 	}
 	/* Assert( Cdb_role != CDB_ROLE_EXECUTE ); */
 
 	if (CdbIdentity.numsegments <= 0)
 	{
 		elog(DEBUG1, "getCdbSegmentCount called BEFORE cdb.cdb record has been read in.");
-		log_backtrace();
+		//log_backtrace();
 	}
 
 	/* Assert( Cdb_role != CDB_ROLE_UTILITY ); */
