@@ -1707,7 +1707,9 @@ void readPacket(MotionConn *conn)
 
 			if (!gotHeader && bytesRead >= PACKET_HEADER_SIZE)
 			{
+				/* got the header */
 				conn->msgSize = getInt16(conn->pBuff);
+				gotHeader = true;
 			}
 			conn->recvBytes = bytesRead;
 
