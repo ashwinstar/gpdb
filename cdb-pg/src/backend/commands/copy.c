@@ -118,7 +118,6 @@ static bool line_done;			/* finished processing the whole line or
 /* these are for CSV format */
 static bool	in_quote;
 static bool last_was_esc;
-
 /* these are for TEXT format */
 static bool esc_in_prevbuf;		/* escape was last character of the data
 * input buffer */
@@ -156,15 +155,16 @@ static void CopyTo(Relation rel, List *attnumlist, bool binary, bool oids,
 				   List *force_quote_atts);
 static void CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 			             char *delim, char *null_print, bool csv_mode, char *quote,
-						 char *escape, List *force_notnull_atts);
+						 char *escape, List *force_notnull_atts, bool escape_off);
 static void CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 			             char *delim, char *null_print, bool csv_mode, char *quote,
-						 char *escape, List *force_notnull_atts);
-static bool CopyReadLineText(size_t bytesread, char *escape);
+						 char *escape, List *force_notnull_atts, bool escape_off);
+static bool CopyReadLineText(size_t bytesread, char *escape, bool escape_off);
 static bool CopyReadLineCSV(size_t bytesread, char *quote, char *escape);
 static void CopyReadAttributesText(const char *delim, const char *escape, const char *null_print,
 								   int null_print_len, char *nulls, List *attnumlist, 
-								   int *attr_offsets, int num_phys_attrs, Form_pg_attribute *attr);
+								   int *attr_offsets, int num_phys_attrs, Form_pg_attribute *attr,
+								   bool escape_off);
 static void CopyReadAttributesCSV(const char *delim, const char *null_print, char *quote,
 								  char *escape, int null_print_len, char *nulls, List *attnumlist, 
 								  int *attr_offsets, int num_phys_attrs, Form_pg_attribute *attr);
@@ -618,6 +618,7 @@ DoCopy(const CopyStmt *stmt)
 	bool		fe_copy = false;
 	bool		binary = false;
 	bool		oids = false;
+	bool		escape_off = false;
 	bool		csv_mode = false;
 	char	   *delim = NULL;
 	char	   *quote = NULL;
@@ -742,6 +743,9 @@ DoCopy(const CopyStmt *stmt)
 		if (!escape)
 			escape = quote;
 	}
+	
+    if(!binary && !csv_mode && !escape)
+		escape = "\\"; /* default escape for text mode */
 
 	/*
 	 * Only single-character delimiter strings are supported.
@@ -767,16 +771,26 @@ DoCopy(const CopyStmt *stmt)
 	/*
 	 * Check escape
 	 */
-	if (!csv_mode && escape != NULL)
+	if (binary && escape != NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("COPY escape available only in CSV mode")));
-
+				 errmsg("COPY escape is not available in binary mode")));
+    
 	if (csv_mode && strlen(escape) != 1)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("COPY escape must be a single character")));
-
+				 errmsg("COPY escape in CSV format must be a single character")));
+	
+	if (!csv_mode && !binary && strlen(escape) != 1)
+	{
+		if(!strcmp(escape, "OFF") || !strcmp(escape, "off"))
+			escape_off = true;
+		else
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("COPY escape must be a single character, or [OFF/off] to disable escapes")));
+	}
+			
 	/*
 	 * Check force_quote
 	 */
@@ -928,9 +942,6 @@ DoCopy(const CopyStmt *stmt)
 			client_encoding_only = false;
 	}
 	
-	if(!csv_mode)
-	    escape = "\\";		/* default for text format */
-	
 	copy_dest = COPY_FILE;		/* default */
 	copy_file = NULL;
 	copy_msgbuf = NULL;
@@ -987,18 +998,13 @@ DoCopy(const CopyStmt *stmt)
 
 		if(Cdb_role == CDB_ROLE_DISPATCH)
 		{
-			//if(binary)
-			//	ereport(ERROR, 	
-			//			(errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-			//			 errmsg("COPY WITH BINARY is not yet supported in dispatch mode")));
-			//else
-				CopyFromDispatch(rel, attnumlist, binary, oids, delim, null_print, csv_mode,
-									   quote, escape, force_notnull_atts);
+			CopyFromDispatch(rel, attnumlist, binary, oids, delim, null_print, csv_mode,
+									   quote, escape, force_notnull_atts, escape_off);
 		}		
 		else /* execute or utility mode */
 		{
 			CopyFromExec(rel, attnumlist, binary, oids, delim, null_print, csv_mode,
-									 quote, escape, force_notnull_atts);
+									 quote, escape, force_notnull_atts, escape_off);
 		}
 	
 		
@@ -1435,7 +1441,7 @@ limit_printout_length(StringInfo buf)
 static void
 CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 			 char *delim, char *null_print, bool csv_mode, char *quote,
-			 char *escape, List *force_notnull_atts)
+			 char *escape, List *force_notnull_atts, bool escape_off)
 {
 	TupleDesc	tupDesc;
 	Form_pg_attribute *attr;
@@ -1669,6 +1675,8 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	    appendStringInfo(&cdbcopy_cmd, " DELIMITER AS '%s'", delim);
 	    if(strcmp(null_print,"\\N") != 0) /* if default leave it out */
 	       appendStringInfo(&cdbcopy_cmd, " NULL AS '%s'", null_print);
+		if(strcmp(escape,"\\") != 0) /* if default leave it out */
+		   appendStringInfo(&cdbcopy_cmd, " ESCAPE AS '%s'", escape);
 	}
 
 	if(csv_mode)
@@ -1938,7 +1946,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 					/* Actually read the line into memory here */
 					line_done = csv_mode ?
 					CopyReadLineCSV(bytesread, quote, escape) : 
-					CopyReadLineText(bytesread, escape);
+					CopyReadLineText(bytesread, escape, escape_off);
 					
 					/*
 					 * if finished processing data line - increment line count.
@@ -2020,8 +2028,8 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 							CopyReadAttributesCSV(delim, null_print, quote, escape, null_print_len, 
 												  nulls, attnumlist, attr_offsets, num_phys_attrs, attr);
 						else
-							CopyReadAttributesText(delim, escape, null_print, null_print_len,
-												   nulls, attnumlist, attr_offsets, num_phys_attrs, attr);
+							CopyReadAttributesText(delim, escape, null_print, null_print_len, nulls, 
+												   attnumlist, attr_offsets, num_phys_attrs, attr, escape_off);
 					}
 					PG_CATCH();
 					{
@@ -2335,7 +2343,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 static void
 CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 		 char *delim, char *null_print, bool csv_mode, char *quote,
-		 char *escape, List *force_notnull_atts)
+		 char *escape, List *force_notnull_atts, bool escape_off)
 {
 	HeapTuple	tuple;
 	TupleDesc	tupDesc;
@@ -2634,7 +2642,7 @@ CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 					/* Actually read the line into memory here */
 					line_done = csv_mode ?
 					CopyReadLineCSV(bytesread, quote, escape) : 
-					CopyReadLineText(bytesread, escape);
+					CopyReadLineText(bytesread, escape, escape_off);
 					
 					/*
 					 * if finished processing data line - increment line count.
@@ -2678,8 +2686,8 @@ CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 						CopyReadAttributesCSV(delim, null_print, quote, escape, null_print_len, 
 											  nulls, attnumlist, attr_offsets, num_phys_attrs, attr);
 					else
-						CopyReadAttributesText(delim, escape, null_print, null_print_len,
-											   nulls, attnumlist, attr_offsets, num_phys_attrs, attr);
+						CopyReadAttributesText(delim, escape, null_print, null_print_len, nulls, 
+											   attnumlist, attr_offsets, num_phys_attrs, attr, escape_off);
 					
 					/*
 					 * Loop to read the user attributes on the line.
@@ -2921,7 +2929,7 @@ CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
  * line buffer then returns false.
  */
 static bool
-CopyReadLineText(size_t bytesread, char *escape)
+CopyReadLineText(size_t bytesread, char *escape, bool escape_off)
 {
 	int			linesize;
 	bool		transcode = (client_encoding != server_encoding);
@@ -3004,7 +3012,7 @@ CopyReadLineText(size_t bytesread, char *escape)
 			{
 				char	   *last_ch = line_buf.data + line_buf.len - 1; /* before terminating \0 */
 				
-				if (*last_ch == escapec)
+				if (*last_ch == escapec && !escape_off)
 				{
 					esc_in_prevbuf = true;
 					
@@ -3030,7 +3038,7 @@ CopyReadLineText(size_t bytesread, char *escape)
 			/* found the 1st eol ch in input_buf. */
 		{
 			bool		eol_found = true;
-			bool		eol_escaped = true;
+			bool		eol_escaped = (escape_off ? false : true);
 			
 			/*
 			 * Load that piece of data (potentially a data line) into the line buffer,
@@ -3109,9 +3117,14 @@ CopyReadLineText(size_t bytesread, char *escape)
 				break;
 			}
 			else
+			{
 				/* stay in the loop and process some more data. */
 				line_done = false;
-			
+				
+				if(eol_found)
+					copy_lineno++; /* increase line index for error reporting */
+			}
+						
 		}						/* end of found eol_ch */
 	}
 
@@ -3547,7 +3560,8 @@ return false;
 static void 
 CopyReadAttributesText(const char *delim, const char *escape, const char *null_print,
 					   int null_print_len, char *nulls, List *attnumlist, 
-					   int *attr_offsets, int num_phys_attrs, Form_pg_attribute *attr)
+					   int *attr_offsets, int num_phys_attrs, Form_pg_attribute *attr,
+					   bool escape_off)
 {
 	char		delimc = delim[0];		/* delimiter character */
 	char        escapec = escape[0];    /* escape character    */
@@ -3579,6 +3593,9 @@ CopyReadAttributesText(const char *delim, const char *escape, const char *null_p
 		chunk_len = 0;
 		attr_pre_len = 0;
 		attr_post_len = 0;
+		
+		if(escape_off)
+			escapec = delimc; /* look only for delimiters, escapes are disabled */
 		
 		/*
 		 * Scan through the line buffer to read all attributes data
