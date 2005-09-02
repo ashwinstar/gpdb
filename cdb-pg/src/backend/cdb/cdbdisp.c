@@ -66,7 +66,7 @@ typedef struct DispatchCommandParms
 	/*
 	 * Returned resultset
 	 */
-	PGresult ***resultSets;
+	PGresult **resultSets;
 
 }	DispatchCommandParms;
 
@@ -145,7 +145,7 @@ static int	threadCount = 0;
  */
 void
 CdbDispatchToGang(const char *szCommand, Gang * gp,
-				  bool cancelFromBelow, void ***resultSets)
+				  bool cancelFromBelow, void ***resultSet)
 {
 	int			i;
 	int			max_threads;
@@ -153,6 +153,7 @@ CdbDispatchToGang(const char *szCommand, Gang * gp,
 	int			x;
 
 	int 		newThreads = 0;
+    PGresult ***pgresultsets = (PGresult ***)resultSet;
 
 
 
@@ -248,19 +249,6 @@ CdbDispatchToGang(const char *szCommand, Gang * gp,
 	elog(DEBUG1, "segdbs_in_thread_pool %d", segdbs_in_thread_pool);
 	
 	/*
-	 * set result set variables if return of result set is required
-	 * 
-	 * This is a problem... This can only work if there aren't already threads running,
-	 * and if we are using exactly one thread for dispatching this set.
-	 * 
-	 */
-	if (resultSets != NULL)
-		dispatchCommandParmsAr->resultSets = (PGresult ***) resultSets;
-		// This is obviously wrong... Shoud this be something like:
-		//(dispatchCommandParmsAr+threadCount)->resultSets = (PGresult ***) resultSets; ??
-		// Or should we ignore this if threads are already running?
-
-	/*
 	 * Compute the thread count based on how many segdbs were added into the
 	 * thread pool, knowing that each thread handles cdb_connections_per_thread
 	 * segdbs.
@@ -269,7 +257,25 @@ CdbDispatchToGang(const char *szCommand, Gang * gp,
 	if (segdbs_in_thread_pool > 0)
 		newThreads += 1 + (segdbs_in_thread_pool - 1) / cdb_connections_per_thread;
 		
-	
+    /*
+     * set result set variables if return of result set is required
+     */
+    if (pgresultsets != NULL)
+    {
+        /*
+         * Don't use elog, it's not thread-safe
+         */
+        if (DEBUG3 >= log_min_messages)
+            fprintf(stderr, "doing calloc for pgresults\n");
+
+        *pgresultsets = (PGresult **)calloc(gp->size, sizeof(PGresult*));
+
+        for (i = 0; i < newThreads; i++)
+        {
+            DispatchCommandParms *pParms = &(dispatchCommandParmsAr+threadCount)[i];
+            pParms->resultSets = *pgresultsets+(i*cdb_connections_per_thread);
+        }
+    }
 
 	elog(DEBUG4,
 		 "CdbDispatchToGang threadCount %d, segdbs_in_thread_pool %d, conns_per_thread %d",
@@ -411,12 +417,13 @@ void
 CdbDispatchCommandIntEnumeration(const char *szCommand,
 								 SegmentDatabaseDescriptor ** segdbList,
 								 int segdbListCount, bool cancelFromBelow,
-								 void ***resultSets)
+								 void ***resultSet)
 {
 	int			i;
 	int			max_threads;
 	int			segdbs_in_thread_pool;
 	int			x;
+    PGresult     ***pgresultsets = (PGresult***)resultSet;
 
 
 
@@ -485,13 +492,6 @@ CdbDispatchCommandIntEnumeration(const char *szCommand,
 									 cancelFromBelow, segdbDesc);
 	}
 
-
-	/*
-	 * set result set variables if return of result set is required
-	 */
-	if (resultSets != NULL)
-		dispatchCommandParmsAr->resultSets = (PGresult ***) resultSets;
-
 	/*
 	 * Compute the thread count based on how many segdbs were added into the
 	 * thread pool, knowing that each thread handles cdb_connections_per_thread
@@ -505,6 +505,25 @@ CdbDispatchCommandIntEnumeration(const char *szCommand,
 	elog(DEBUG4, "CdbDispatchCommandInt threadCount %d, segdbs_in_thread_pool %d, conns_per_thread %d",
 		 threadCount, segdbs_in_thread_pool, cdb_connections_per_thread);
 
+    /*
+     * set result set variables if return of result set is required
+     */
+    if (pgresultsets != NULL)
+    {
+        /*
+         * Don't use elog, it's not thread-safe
+         */
+        if (DEBUG3 >= log_min_messages)
+            fprintf(stderr, "doing calloc for pgresults\n");
+
+        *pgresultsets = (PGresult **)calloc(segdbListCount, sizeof(PGresult*));
+
+        for (i = 0; i < threadCount; i++)
+        {
+            DispatchCommandParms *pParms = &(dispatchCommandParmsAr+threadCount)[i];
+            pParms->resultSets = *pgresultsets+(i*cdb_connections_per_thread);
+        }
+    }
 
 	/*
 	 * Create the threads. (which also starts the dispatching).
@@ -758,20 +777,8 @@ thread_DispatchCommand(void *arg)
 	 */
 	stillRunning = (RunningInfo *) calloc(db_count, sizeof(RunningInfo));
 
-
 	if (pParms->resultSets != NULL)
-	{
-		/*
-		 * Don't use elog, it's not thread-safe
-		 */
-		if (DEBUG3 >= log_min_messages)
-			fprintf(stderr, "doing calloc for pgresults\n");
-
-		pqresults = (PGresult **) calloc(db_count, sizeof(pqresults));
-		if (*pParms->resultSets != NULL)
-			fprintf(stderr,"Warning:  pParms->resultSets not null prior to assignment\n");
-		*pParms->resultSets = pqresults;
-	}
+        pqresults = pParms->resultSets;
 
 	/*
 	 * The pParms contains an array of SegmentDatabaseDescriptors
