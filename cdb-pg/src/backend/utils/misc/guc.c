@@ -60,6 +60,7 @@
 #include "utils/pg_locale.h"
 #include "pgstat.h"
 #include "cdb/cdbvars.h"
+#include "cdb/cdbdisp.h"
 
 
 #ifndef PG_KRB_SRVTAB
@@ -4170,6 +4171,8 @@ void
 SetPGVariable(const char *name, List *args, bool is_local)
 {
 	char	   *argstring = flatten_set_variable_args(name, args);
+	
+	
 
 	/* Note SET DEFAULT (argstring == NULL) is equivalent to RESET */
 	set_config_option(name,
@@ -4178,6 +4181,22 @@ SetPGVariable(const char *name, List *args, bool is_local)
 					  PGC_S_SESSION,
 					  is_local,
 					  true);
+					  
+	if (Cdb_role == CDB_ROLE_DISPATCH && !IsBootstrapProcessingMode())
+	{
+
+		StringInfoData buffer;
+		
+		initStringInfo( &buffer );
+
+		appendStringInfo(&buffer, "SET ");
+		if (is_local)
+			appendStringInfo(&buffer, "LOCAL ");
+		appendStringInfo(&buffer, "%s TO %s", name, argstring);
+
+        CdbDoCommandInt( buffer.data, false, NULL );
+		
+	}
 }
 
 /*
