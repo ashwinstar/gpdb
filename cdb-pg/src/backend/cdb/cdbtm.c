@@ -865,14 +865,12 @@ cleanRMResultSets( PGresult **pgresultSets )
     /* 
      int tolaldbs = CdbClusterDefinition->segment_count * CdbClusterDefinition->db_count;
      */
-    int totaldbs = getCdbSegmentCount();
-    int i;
-    
-    for ( i=0;i<totaldbs;i++ )
+    int i=0;
+    PGresult *rs = pgresultSets[0];
+    do
     {
-        PGresult *rs = pgresultSets[i];
         PQclear(rs);
-    }
+    } while ((rs = pgresultSets[++i]) != NULL);
     free(pgresultSets);
 }
 
@@ -881,11 +879,11 @@ bool
 dumpRMxacts( PGresult **pgresultSets )
 {
     int totaldbs = getCdbSegmentCount();
-    int i,j;
+    int i=0,j;
     
-    for ( i=0;i<totaldbs;i++ )
+    PGresult *rs = pgresultSets[0];
+    do
     {
-        PGresult *rs = pgresultSets[i];
         int rows = PQntuples(rs);
         {
             for (j=0;j<rows;j++)
@@ -895,7 +893,8 @@ dumpRMxacts( PGresult **pgresultSets )
                         PQgetvalue(rs,j,0),i)));
             }
         }
-    }
+    } while ((rs = pgresultSets[++i]) != NULL);
+
     return false;
 }
 
@@ -906,11 +905,11 @@ bool
 checkRM( PGresult **pgresultSets )
 {
     int totaldbs = getCdbSegmentCount();
-    int i,j;
-    
-    for ( i=0;i<totaldbs;i++ )
+    int i=0,j;
+
+    PGresult *rs = pgresultSets[0];
+    do
     {
-        PGresult *rs = pgresultSets[i];
         int rows = PQntuples(rs);
         {
             for (j=0;j<rows;j++)
@@ -919,7 +918,8 @@ checkRM( PGresult **pgresultSets )
                     return true;
             }
         }
-    }
+    } while ((rs = pgresultSets[++i]) != NULL);
+    
     return false;
 }
 
@@ -937,16 +937,16 @@ recoverRMs(PGresult ***pgresultSets)
     {
         return true;
     }
-    
-    totaldbs = getCdbSegmentCount();
-    
-    for ( i=0;i<totaldbs;i++ )
+
+    i=0;
+    PGresult *rs = (*pgresultSets)[0];    
+    do
     {
-        PGresult *rs = (*pgresultSets)[i];
         if (PQntuples(rs) != 0)
             /* need recovery */
             return true;
-    }
+           
+    } while ((rs = (*pgresultSets)[++i]) != NULL);
     
     /* do not need recovery */
     return false;

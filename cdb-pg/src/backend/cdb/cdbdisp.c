@@ -268,7 +268,10 @@ CdbDispatchToGang(const char *szCommand, Gang * gp,
         if (DEBUG3 >= log_min_messages)
             fprintf(stderr, "doing calloc for pgresults\n");
 
-        *pgresultsets = (PGresult **)calloc(gp->size, sizeof(PGresult*));
+        /* allocate one more slot to indicate the end of array, so caller don't
+         * need to get the length of the array.
+         */ 
+        *pgresultsets = (PGresult **)calloc(gp->size+1, sizeof(PGresult*));
 
         for (i = 0; i < newThreads; i++)
         {
@@ -516,7 +519,10 @@ CdbDispatchCommandIntEnumeration(const char *szCommand,
         if (DEBUG3 >= log_min_messages)
             fprintf(stderr, "doing calloc for pgresults\n");
 
-        *pgresultsets = (PGresult **)calloc(segdbListCount, sizeof(PGresult*));
+        /* allocate one more slot to indicate the end of array, so caller don't
+         * need to get the length of the array
+         */ 
+        *pgresultsets = (PGresult **)calloc(segdbListCount+1, sizeof(PGresult*));
 
         for (i = 0; i < threadCount; i++)
         {
@@ -1178,8 +1184,9 @@ thread_DispatchCommand(void *arg)
 
 						if (pqresults != NULL)
 						{
-							Assert(resultSetCounter < db_count);		/* check array index is
-																		 * in bounds */
+                             /* check array index is in bounds */
+							Assert(resultSetCounter < db_count);
+                             /* TODO: not handling multiple result sets */
 							Assert(pqresults[resultSetCounter] == NULL);
 							pqresults[resultSetCounter++] = pRes;
 						}
