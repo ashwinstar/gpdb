@@ -1436,7 +1436,7 @@ static struct config_int ConfigureNamesInt[] =
 			gettext_noop("Used by Interconnect to timeout the setup of the communication fabric.")	
 		},
 		&interconnect_setup_timeout,
-		10, INT_MIN, INT_MAX, assign_interconnect_setup_timeout, show_interconnect_setup_timeout
+		60, INT_MIN, INT_MAX, assign_interconnect_setup_timeout, show_interconnect_setup_timeout
 	},
 
 
