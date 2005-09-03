@@ -364,44 +364,11 @@ CdbDispatchCommandInt(const char *szCommand, bool cancelFromBelow,
 	primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, getCdbSegmentCount(), -1);
 	mirrorGang = allocateGang(GANGTYPE_MIRROR_WRITER, getCdbSegmentCount(), -1);
 	Assert(primaryGang != NULL);
-	
-	/*
-	 * This is a workaround.  Right now, the code that handle resturning results for the DTM
-	 * code doesn't work if there is more than one thread doing the dispatching.  If we dispatch
-	 * the primmary gang and the mirror gang separately, we use at least one thread each.
-	 * So, let's merge the two gangs into one fake gang, so we can dispatch it in a single
-	 * call to CdbDispatchToGang.  
-	 * Later, we should remove this hack.
-	 * 
-	 */
-	if (mirrorGang)
-	{
-		MemoryContext oldContext = MemoryContextSwitchTo(TopMemoryContext);
-		
-		Gang * newGangDefinition = (Gang *) palloc0(sizeof(Gang));
-		newGangDefinition->db_descriptors =
-		(SegmentDatabaseDescriptor *) palloc0((primaryGang->size + mirrorGang->size)*
-											  sizeof(SegmentDatabaseDescriptor));
-		newGangDefinition->type = primaryGang->type;
-		newGangDefinition->size = primaryGang->size + mirrorGang->size;
-		newGangDefinition->segdb_count = primaryGang->segdb_count + mirrorGang->segdb_count;
-		
-		MemoryContextSwitchTo(oldContext);
-		
-		x = 0;
-		for (i=0; i<primaryGang->size; i++)
-			newGangDefinition->db_descriptors[x++] = primaryGang->db_descriptors[i];
-		for (i=0; i<mirrorGang->size; i++)
-			newGangDefinition->db_descriptors[x++] = mirrorGang->db_descriptors[i];
-			
-		primaryGang = newGangDefinition;
-			
-	}
 
 	CdbDispatchToGang(szCommand, primaryGang, cancelFromBelow, resultSets);
 	
-	//if (mirrorGang)
-	//	CdbDispatchToGang(szCommand, mirrorGang, cancelFromBelow, resultSets);
+	if (mirrorGang)
+		CdbDispatchToGang(szCommand, mirrorGang, cancelFromBelow, resultSets);
 
 }
 
