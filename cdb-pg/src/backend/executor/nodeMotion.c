@@ -31,9 +31,8 @@
 /*=========================================================================
  * FUNCTIONS PROTOTYPES
  */
-static TupleTableSlot *execMotionUnsortedSender(MotionState *node);
+static TupleTableSlot *execMotionSender(MotionState *node); 
 static TupleTableSlot *execMotionUnsortedReceiver(MotionState *node);
-static TupleTableSlot *execMotionSortedSender(MotionState *node);
 static TupleTableSlot *execMotionSortedReceiver(MotionState *node);
 
 static void execMotionSortedReceiverFirstTime(MotionState *node );
@@ -41,7 +40,6 @@ static void execMotionSortedReceiverFirstTime(MotionState *node );
 static uint32 evalHashKey(ExprContext *econtext, List *hashkeys, List* hashtypes, CdbHash *h);
 static bool setReadFromAMS(Motion *node);
 
-//new helper
 static void doSendEndOfStream( Motion *motion, MotionState *node );
 static void doSendTuple( Motion *motion, MotionState *node, TupleTableSlot 	*outerTupleSlot );
 
@@ -61,36 +59,33 @@ ExecMotion(MotionState *node)
 	bool isReceiver;
 	
 	Motion *motion = (Motion *)node->ps.plan;
-	
 
     /* TODO: it would be nice to store this isReceiver somewhere maybe in
-     * 		 MotionState.
+     * 		 MotionState.  
      */
 	if( node->ps.state->es_cur_slice_idx == motion->motionID )
     	isReceiver = false;
-    	
-    /* at the top here we basically decide:
+    else
+    	isReceiver = true;
+
+
+	 /* at the top here we basically decide:
      * -- SENDER vs. RECEIVER and
      * -- SORTED vs. UNSORTED
      */
-    if (motion->sendSorted && !node->noMoreAMSTuples)   /* sorted. */
-    {    	
-    	if( node->ps.state->es_cur_slice_idx == motion->motionID )
-    		return execMotionSortedSender(node);
-    	else
-    		return execMotionSortedReceiver(node);    		
-    }
-    else	/* unsorted. */
-    {    	
-    	if( node->ps.state->es_cur_slice_idx == motion->motionID )
-    		return execMotionUnsortedSender(node);
-    	else
-    		return execMotionUnsortedReceiver(node);	
-    }
-
+	if( isReceiver )
+	{
+		if( motion->sendSorted )
+			return execMotionSortedReceiver(node);
+		else
+			return execMotionUnsortedReceiver(node);
+	}
+	else
+		return execMotionSender(node);
 }
 
-static TupleTableSlot *execMotionUnsortedSender(MotionState *node)
+
+static TupleTableSlot *execMotionSender(MotionState *node)
 {
 	/* SENDER LOGIC */
 	TupleTableSlot 	*outerTupleSlot;
@@ -98,7 +93,7 @@ static TupleTableSlot *execMotionUnsortedSender(MotionState *node)
 	Motion 			*motion = (Motion *)node->ps.plan;
 	bool 			done = false;
 	
-	SO1_printf("ExecMotion: %s\n","entering routine");
+	SO1_printf("execMotionSender: %s\n","entering routine");
 	
 	AssertState(motion->motionType == MOTIONTYPE_HASH ||
         (motion->motionType == MOTIONTYPE_FIXED && motion->numOutputSegs <= 1));
@@ -115,8 +110,7 @@ static TupleTableSlot *execMotionUnsortedSender(MotionState *node)
 			/* Child plan says "No more tuples!" */
 			node->noMoreChildTuples = true;
 			
-			doSendEndOfStream( motion, node );
-			
+			doSendEndOfStream( motion, node );	
 			done = true;
 		}
 		else
@@ -126,6 +120,7 @@ static TupleTableSlot *execMotionUnsortedSender(MotionState *node)
 		}	
 	}
 	
+	/* nothing else to send out, so we return NULL up the tree. */
 	return NULL;
 }
 
@@ -170,104 +165,6 @@ static TupleTableSlot *execMotionUnsortedReceiver(MotionState *node)
 		return ExecStoreTuple(tuple, slot, InvalidBuffer, true /*shouldFree*/);
 	}	
 
-	return NULL;
-}
-
-
-
-/*
- * General background on Sorted Motion:
- * -----------------------------------
- * NOTE: This function is only used for order-preserving motion.  There are
- * only 2 types of motion that order-preserving makes sense for: FIXED and
- * BROADCAST (HASH does not make sense). so we have:
- *
- * CASE 1:   broadcast order-preserving fixed motion.  This should only be
- *			 called for SENDERs.
- *
- * CASE 2:   single-destination order-preserving fixed motion.  The SENDER
- *			 side will act like Unsorted motion and won't call this. So only
- *			 the RECEIVER should be called for this case.
- *
- * Sorted Receive Notes:
- * --------------------
- *
- * TODO:
- *
- */
-static TupleTableSlot *execMotionSortedSender(MotionState *node)
-{
-	TupleTableSlot 	*outerTupleSlot;
-	PlanState  		*outerNode;
-	
-	/* TODO: remove shouldFree now with slice plans its not needed. */
-	Motion 			*motion = (Motion *)node->ps.plan;	
-
-    SendReturnCode 		sendRC;
-    int16 				targetSegId;
-	bool 				done = false;
-
-	SO1_printf("execMotionSorted: %s\n",
-			   "entering routine");
-
-    AssertState(motion->motionType == MOTIONTYPE_FIXED &&
-                motion->numOutputSegs <= 1);
-    AssertState(motion->sendSorted);
-    AssertState(node->tupleheap != NULL);
-
-
-	while(!done)
-	{	
-		AssertState(!node->noMoreChildTuples);
-	
-		/* grab TupleTableSlot from our child. */
-		outerNode = outerPlanState(node);
-
-		outerTupleSlot = ExecProcNode(outerNode);
-		if (TupIsNull(outerTupleSlot))
-		{
-			/* Child plan says "No more tuples!" */
-			node->noMoreChildTuples = true;
-			
-			/* Send an End-Of-Stream token, if it is broadcast. */
-			if (motion->numOutputSegs == 0)
-			{
-				sendRC = SendEndOfStream(motion->motionID, BROADCAST_SEGIDX);
-				node->sentEndOfStream = (sendRC == SEND_COMPLETE);
-			}
-			
-			/* no more child tuples means we are done. */
-			done = true;
-		}
-		else
-		{
-			/* We got a tuple from the child-plan. */
-			SendReturnCode sendRC;
-			node->numTuplesFromChild++;
-			node->numTuplesInHeap++;
-			
-			/* should be a broadcast. */
-			Assert(motion->numOutputSegs == 0);
-			targetSegId = BROADCAST_SEGIDX;
-						
-			/* send the tuple out. */
-			sendRC = SendTuple(motion->motionID, outerTupleSlot->val, targetSegId+1);
-			
-			if (sendRC == SEND_COMPLETE)
-				node->numTuplesToAMS++;
-			else if (sendRC == STOP_SENDING)
-			{
-				/* mark this slice as stopping, it would be nice if we
-				 * could walk the plan and find lower motion nodes and
-				 * tell them without setting something in the
-				 * Execution State ... but then we'd have to touch
-				 * every node */
-				node->stopRequested = true;
-			}
-			
-		}		
-	}
-	
 	return NULL;
 }
 
