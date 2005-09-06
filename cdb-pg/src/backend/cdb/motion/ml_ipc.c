@@ -25,6 +25,15 @@
 #include <arpa/inet.h>
 #include <sys/time.h>
 
+#include "port.h"
+
+#ifdef WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#define SHUT_RDWR SD_BOTH
+#endif
+
 /*=========================================================================
  * STRUCTS
  */
@@ -919,7 +928,7 @@ int listenerSetup(void)
 						errdetail("error during socket() call (error:%d).", errno)));	
 	}
 
-	bzero(&addr, sizeof(addr));
+	memset(&addr, 0, sizeof(addr));
 	serv_addr.sin_family		= AF_INET;
 	serv_addr.sin_addr.s_addr	= INADDR_ANY;
 	serv_addr.sin_port			= htons(0);  /* system picks port */
@@ -1019,7 +1028,7 @@ MotionLayerState *createMotionState(int16 motNodeID, int numConns)
 
 	pEntry->highReadSock   = 0;
 
-	bzero(pEntry->conns, pEntry->numConns * sizeof(MotionConn));
+	memset(pEntry->conns, 0, pEntry->numConns * sizeof(MotionConn));
 	
 	for (i=0; i<numConns; i++)
 	{
@@ -1191,7 +1200,7 @@ void setupOutgoingConnection( MotionConn *conn, CdbProcess *cdbProc, int *highso
 	}
 
 	/* make socket non-blocking BEFORE we connect. */
-	if (fcntl(conn->sockfd, F_SETFL, O_NONBLOCK) < 0)
+	if (!pg_set_noblock(conn->sockfd))
 	{
 		/* TODO: would be nice to read the errno and try and
 		 * 		 provide more useful info as to why this happened.
@@ -1438,7 +1447,7 @@ void acceptIncomingConnection(fd_set *rset, int *highsock)
 	socklen_t 	addrlen;
 	MotionConn 	*conn;
 	
-	bzero(&addr, sizeof(addr));
+	memset(&addr, 0, sizeof(addr));
 	addrlen = sizeof(addr);
 
 	if ((newsockfd = accept(listenerFd, (struct sockaddr *)&addr, &addrlen)) < 0)
@@ -1453,7 +1462,7 @@ void acceptIncomingConnection(fd_set *rset, int *highsock)
 
 
 	//make socket non-blocking BEFORE we connect.
-	if (fcntl(newsockfd, F_SETFL, O_NONBLOCK) < 0)
+	if (!pg_set_noblock(newsockfd))
 	{
 		/* TODO: would be nice to read the errno and try and provide more
 		 * 		 useful info as to why this happened.
