@@ -376,15 +376,6 @@ TupleChunkListItem RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 
 		memcpy(&rset, &(pEntry->readSet), sizeof(fd_set));
 
-		{
-			int count=0;
-
-			for (i=0; i < pEntry->highReadSock + 1; i++)
-				if (FD_ISSET(i, &rset))
-					count++;
-			elog(LOG, "RecvTupleChunkFromAny(): doing select on %d sockets", count);
-		}
-
 		/* since we may have data in a local buffer, we may be able to
 		 * short-circuit the select() call (and if we don't do this we
 		 * may wait when we have data ready, since it has already been
