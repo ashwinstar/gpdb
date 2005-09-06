@@ -18,6 +18,10 @@
 #ifndef HTUPFIFO_H
 #define HTUPFIFO_H
 
+#ifdef WIN32
+typedef unsigned int uint;
+#endif
+
 
 /* An entry in the HeapTuple FIFO.  Entries are formed into queues. */
 typedef struct htf_entry_data
