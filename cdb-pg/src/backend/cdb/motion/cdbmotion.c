@@ -374,7 +374,7 @@ void initMotionLayerStructs(void)
 	
 	/* Clear out statistics values.
 	 *
-	 * TODO:  Perhaps move these to a separate struct so we can just bzero()
+	 * TODO:  Perhaps move these to a separate struct so we can just memset()
 	 *        them all out?
 	 */
     s_motion_layer_state.stat_total_chunks_sent = 0;
@@ -972,7 +972,7 @@ ChunkSorterEntry *getChunkSorterEntry( MotionNodeEntry *motNodeEntry,
 
     motNodeID = motNodeEntry->motion_node_id;
 
-    bzero(&csKey, sizeof(csKey));
+    memset(&csKey, 0, sizeof(csKey));
     csKey.srcRoute = srcRoute;
     csKey.motion_node_id = motNodeID;
 
