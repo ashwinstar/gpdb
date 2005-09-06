@@ -398,8 +398,6 @@ TupleChunkListItem RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 				FD_ZERO(&rset);
 				FD_SET(conn->sockfd, &rset);
 
-				elog(LOG, "skipping select");
-
 				skipSelect = true;
 			}
 		}
@@ -420,8 +418,6 @@ TupleChunkListItem RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 #endif
 	} while (n < 1);
 
-
-	elog(LOG, "RecvTupleChunkFromAny: numconns %d", pEntry->numConns);
 	/* We scan the file descriptors starting from where we left off in
 	 * the last call (don't continually poll the first when others may
 	 * be ready!).
@@ -434,8 +430,6 @@ TupleChunkListItem RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 	{	
 		index = ((scanStart + i) % pEntry->numConns);
 		conn = pEntry->conns + index;
-
-		elog(LOG, "RecvTupleChunkFromAny: scanning at %d from %d", index, scanStart);
 
 		if (!conn->stillActive)
 		{
