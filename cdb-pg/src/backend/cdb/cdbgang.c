@@ -604,7 +604,7 @@ buildGangDefinition(GangType type, int size, int content)
 					segdbDesc->segment_descriptor = NULL;
 					segdbDesc->segment_database_info = p;
 					segdbDesc->conn = NULL;
-					segdbDesc->thread = (pthread_t) NULL;
+					memset(&segdbDesc->thread, 0, sizeof(pthread_t));
 					segdbDesc->error_message = NULL;
 					segdbDesc->cmdTuples = 0;
 					segdbDesc->resultStatus = PGRES_COMMAND_OK;
@@ -689,7 +689,7 @@ addSegDBToConnThreadPool(DoConnectParms * ParmsAr, int *segdbCount,
 												   sizeof
 												   (SegmentDatabaseDescriptor
 													*));
-		pParms->thread = (pthread_t) 0;
+		memset(&pParms->thread, 0, sizeof(pthread_t));
 		pParms->db_count = 0;
 	}
 

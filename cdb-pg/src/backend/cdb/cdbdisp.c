@@ -300,8 +300,8 @@ CdbDispatchToGang(const char *szCommand, Gang * gp,
 			elog(NOTICE, "pthread_create failed");
 		}
 
-		elog(DEBUG2, "CdbDispatchToGang Creating thread %d of %d for CommandDispatch %x",
-			 i + 1, newThreads, (unsigned int) pParms->thread);
+		elog(DEBUG2, "CdbDispatchToGang Creating thread %d of %d for CommandDispatch",
+			 i + 1, newThreads);
 
 	}
 	
@@ -512,8 +512,8 @@ CdbDispatchCommandIntEnumeration(const char *szCommand,
 			elog(NOTICE, "pthread_create failed");
 		}
 
-		elog(DEBUG2, "CdbDispatchCommandInt Creating thread %d of %d for CommandDispatch %x",
-			 i + 1, threadCount, (unsigned int) pParms->thread);
+		elog(DEBUG2, "CdbDispatchCommandInt Creating thread %d of %d for CommandDispatch",
+			 i + 1, threadCount);
 
 	}
 
@@ -596,8 +596,8 @@ CdbCheckDispatchResultInt(void ***p_failedSegDB, int *numOfFailed)
 		
 		Assert(pParms != NULL);
 
-		elog(DEBUG2, "Joining to thread %d of %d for CommandDispatch %x",
-			 i + 1, threadCount, (unsigned int) pParms->thread);
+		elog(DEBUG2, "Joining to thread %d of %d for CommandDispatch",
+			 i + 1, threadCount);
 
 		if (0 != pthread_join(pParms->thread, NULL))
 		{
@@ -1230,7 +1230,7 @@ addSegDBToDispatchThreadPool(DispatchCommandParms * ParmsAr, int *segdbCount,
 			(SegmentDatabaseDescriptor **) palloc0(cdb_connections_per_thread *
 										sizeof(SegmentDatabaseDescriptor *));
 		pParms->cancelFromBelow = cancelFromBelow;
-		pParms->thread = (pthread_t) 0;
+		memset(&pParms->thread, 0 , sizeof(pthread_t));
 		pParms->db_count = 0;
 	}
 

@@ -11,7 +11,9 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <sys/types.h>
+#if defined(HAVE_STRUCT_CMSGCRED) || defined(HAVE_STRUCT_FCRED) || defined(HAVE_STRUCT_SOCKCRED)
 #include <sys/uio.h>
+#endif
 
 #include "cdb/cdbtmlog.h"
 #include "cdb/cdblink.h"
