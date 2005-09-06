@@ -59,7 +59,7 @@ void InitSerTupInfo(TupleDesc tupdesc, SerTupInfo *pSerInfo)
     elog(DEBUG2, "Initializing cached tuple serialization information.");
 
 	/* Set contents to all 0, just to make things clean and easy. */
-	bzero(pSerInfo, sizeof(SerTupInfo));
+	memset(pSerInfo, 0, sizeof(SerTupInfo));
 	
 	/* Store the tuple-descriptor so we can use it later. */
     pSerInfo->tupdesc = tupdesc;
