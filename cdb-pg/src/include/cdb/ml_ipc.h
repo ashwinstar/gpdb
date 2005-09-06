@@ -13,6 +13,9 @@
 #include "cdb/tupchunklist.h"
 #include "nodes/execnodes.h"
 
+#ifndef MAX
+#define MAX(x, y) ((x) > (y) ? (x) : (y))
+#endif
 
 /* 2 bytes to store the size of the entire packet.  a packet is composed of
  * of one or more serialized TupleChunks (each of which has a TupleChunk 
@@ -112,7 +115,14 @@ extern void SendEosToAMS( int16 motNodeID,
 						  int16 targetRoute,
 						  TupleChunkListItem tcItem );
 
-
+/* The SendEosAck() function is used to synchronize the end of a query
+ * between a sender and receiver. The sender should start tearing down
+ * the interconnect until the receiver is happy.
+ *
+ * PARAMETERS:
+ *   - motNodeID:   motion node Id that the tcItem belongs to.
+ */
+extern void SendEosAck(int16 motNodeID, int16 route);
 
 /* The RecvTupleChunkFromAny() function attempts to receive one or more tuple 
  * chunks from any of the incoming connections.  This function blocks until

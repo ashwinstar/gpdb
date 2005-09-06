@@ -645,7 +645,6 @@ ReceiveReturnCode RecvTuple(int16 motNodeID, HeapTuple *tup_i)
 			 * has been marked.  No more tuples are going to show up.
 			 */
 			recvRC = END_OF_STREAM;
-			
 		}
 		else
 		{
@@ -767,8 +766,7 @@ void processIncomingChunks(  MotionNodeEntry *pMNEntry, int16 motNodeID, int16 s
 		tcItem = RecvTupleChunkFromAny( motNodeID, &srcRoute);
 	else
 		tcItem = RecvTupleChunkFrom( motNodeID, srcRoute );
-	
-	
+
     numChunks = 0;
     chunkBytes = 0;
     tupleBytes = 0;
@@ -986,7 +984,7 @@ ChunkSorterEntry *getChunkSorterEntry( MotionNodeEntry *motNodeEntry,
     if (chunkSorterEntry == NULL)
     {
         ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
-            errmsg("Could not allocate htab entry for tuple chunk sorter.")));
+						errmsg("Could not allocate htab entry for tuple chunk sorter.")));
     }
 
     if (!found)
@@ -996,7 +994,7 @@ ChunkSorterEntry *getChunkSorterEntry( MotionNodeEntry *motNodeEntry,
          */
 
         elog(DEBUG3, "Tuple chunk sorter allocated new HTAB entry for"
-            " [src=%d,mn=%d].", srcRoute, motNodeID);
+			 " [src=%d,mn=%d].", srcRoute, motNodeID);
 
 		chunkSorterEntry->chunk_list.serialized_data_length = 0;
         chunkSorterEntry->chunk_list.num_chunks = 0;
@@ -1011,8 +1009,8 @@ ChunkSorterEntry *getChunkSorterEntry( MotionNodeEntry *motNodeEntry,
         if (motNodeEntry->preserve_order)
         {
             elog(DEBUG3, "Motion node %d is order-preserving.  Creating"
-                " tuple-store for entry [src=%d,mn=%d].", motNodeID,
-                srcRoute, motNodeID);
+				 " tuple-store for entry [src=%d,mn=%d].", motNodeID,
+				 srcRoute, motNodeID);
 
             chunkSorterEntry->ready_tuples = htfifo_create(work_mem);
 
@@ -1022,8 +1020,8 @@ ChunkSorterEntry *getChunkSorterEntry( MotionNodeEntry *motNodeEntry,
         else
         {
             elog(DEBUG3, "Motion node %d is not order-preserving.  Using"
-                " shared tuple-store for entry [src=%d,mn=%d].", motNodeID,
-                srcRoute, motNodeID);
+				 " shared tuple-store for entry [src=%d,mn=%d].", motNodeID,
+				 srcRoute, motNodeID);
 
             chunkSorterEntry->ready_tuples = motNodeEntry->ready_tuples;
 
@@ -1169,7 +1167,8 @@ bool addChunkToSorter(MotionNodeEntry *pMNEntry, TupleChunkListItem tcItem,
 		/* Since we received an end-of-stream.  Then we no longer need read
 		 * interest in the interconnect. 
 		 */
-		DeregisterReadInterest( motNodeID, srcRoute );
+		DeregisterReadInterest(motNodeID, srcRoute);
+		SendEosAck(motNodeID, srcRoute);
         
         break;
         
@@ -1181,7 +1180,7 @@ bool addChunkToSorter(MotionNodeEntry *pMNEntry, TupleChunkListItem tcItem,
         
         elog(DEBUG2, "Received TC_ABORT_STREAM from [src=%d,mn=%d].",
             srcRoute, motNodeID);
-        
+
         /* Make sure that we haven't already received end-of-stream! */
         
         if (chunkSorterEntry->end_of_stream)
@@ -1195,6 +1194,9 @@ bool addChunkToSorter(MotionNodeEntry *pMNEntry, TupleChunkListItem tcItem,
         /* Mark the state as "end of stream." */
         chunkSorterEntry->end_of_stream = true;
         pMNEntry->num_stream_ends_recvd++;
+
+		DeregisterReadInterest(motNodeID, srcRoute);
+		SendEosAck(motNodeID, srcRoute);
         
         break;
         

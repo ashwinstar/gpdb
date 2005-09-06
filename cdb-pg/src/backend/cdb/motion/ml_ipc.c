@@ -20,12 +20,10 @@
 #include "cdb/cdbmotion.h"
 #include "cdb/cdbvars.h"
 
-
 #include <fcntl.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/time.h>
-
 
 /*=========================================================================
  * STRUCTS
@@ -36,7 +34,6 @@
 
 #define getInt16(pNetData)    ntohs(*((int16 *)(pNetData)))
 #define getInt32(pNetData)    ntohl(*((int32 *)(pNetData)))
-
 
 /* Structure used for keeping track of a pt-to-pt connection between two
  * Cdb Entities (either QE or QD).
@@ -179,6 +176,8 @@ static CdbProcess *findCdbProcess(RegisterMessage *msg);
 
 bool flushBuffer(MotionConn *conn);
 void dumpEntryConnections( MotionLayerState *pEntry );
+
+void waitOnEosAck(MotionLayerState *pEntry);
 
 /*=========================================================================
  * VISIBLE FUNCTIONS
@@ -343,6 +342,8 @@ void SendEosToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcItem)
 			flushBuffer( conn->mirrorConn );
 	}
 
+	waitOnEosAck(pEntry);
+
 #ifdef AMS_VERBOSE_LOGGING	
 	elog(DEBUG3, "SendEosToAMS() Leaving");
 #endif
@@ -351,11 +352,13 @@ void SendEosToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcItem)
 /* See ml_ipc.h */
 TupleChunkListItem RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 {
-	MotionLayerState 		*pEntry;
-	MotionConn 				*conn;
-	TupleChunkListItem 		tcItem;
-	fd_set 					rset;
-	int 					n,i;
+	static int			scanStart = 0;
+	MotionLayerState	*pEntry;
+	MotionConn			*conn;
+	TupleChunkListItem	tcItem;
+	fd_set				rset;
+	int					n, i, index;
+	bool				skipSelect = false;
 
 	Assert(activated);
 
@@ -372,6 +375,37 @@ TupleChunkListItem RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 		CHECK_FOR_INTERRUPTS();
 
 		memcpy(&rset, &(pEntry->readSet), sizeof(fd_set));
+
+		{
+			int count=0;
+
+			for (i=0; i < pEntry->highReadSock + 1; i++)
+				if (FD_ISSET(i, &rset))
+					count++;
+			elog(LOG, "RecvTupleChunkFromAny(): doing select on %d sockets", count);
+		}
+
+		/* since we may have data in a local buffer, we may be able to
+		 * short-circuit the select() call (and if we don't do this we
+		 * may wait when we have data ready, since it has already been
+		 * read) */
+		for (i=0; i < pEntry->numConns; i++)
+		{
+			conn = pEntry->conns + i;
+
+			if (FD_ISSET(conn->sockfd, &rset) && conn->recvBytes != 0) {
+				/* we have data on this socket, let's short-circuit our select */
+				FD_ZERO(&rset);
+				FD_SET(conn->sockfd, &rset);
+
+				elog(LOG, "skipping select");
+
+				skipSelect = true;
+			}
+		}
+		if (skipSelect)
+			break;
+
 		n = select(pEntry->highReadSock + 1, &rset, NULL, NULL, &timeout);
         if (n < 0)
 		{
@@ -385,42 +419,58 @@ TupleChunkListItem RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 		elog(DEBUG5, "RecvTupleChunkFromAny() select() returned %d ready sockets", n);
 #endif
 	} while (n < 1);
-	
-	for (i=0; i < pEntry->numConns; i++)
+
+
+	elog(LOG, "RecvTupleChunkFromAny: numconns %d", pEntry->numConns);
+	/* We scan the file descriptors starting from where we left off in
+	 * the last call (don't continually poll the first when others may
+	 * be ready!).
+	 * 
+	 * The calculation of scanEnd looks weird. we're calculating
+	 * (scanStart - 1)modN, but C doesn't like mixing the "mod"
+	 * operator with negative numbers (-1 mod N != N -  )
+	 */
+	for (i = 0; i < pEntry->numConns; i++)
 	{	
-		conn = pEntry->conns + i;
+		index = ((scanStart + i) % pEntry->numConns);
+		conn = pEntry->conns + index;
+
+		elog(LOG, "RecvTupleChunkFromAny: scanning at %d from %d", index, scanStart);
+
+		if (!conn->stillActive)
+		{
+			elog(LOG, "RecvTupleChunkFromAny: trying to read on inactive socket %d", conn->sockfd);
+		}
 			
-		/* TODO: should probably start from a random location in the
-		 *		 list else things won't be that fair. In small tests,
-		 *		 it looks like we usually only have one fd ready at a
-		 *		 time; so scan order doesn't help much in the few-QE
-		 *		 case.
-		 */
 		if (FD_ISSET(conn->sockfd, &rset))
 		{		
-			tcItem = RecvTupleChunkFrom(motNodeID, i);
-			*srcRoute = i;
-			
+			elog(DEBUG5, "RecvTupleChunkFromAny() (fd %d) %d/%d", conn->sockfd, motNodeID, index);
+			tcItem = RecvTupleChunkFrom(motNodeID, index);
+
+			*srcRoute = index;
+
+			/* advance start point */
+			scanStart = (index + 1) % pEntry->numConns;
+
 			return tcItem;
 		}
 	}
 
 	/* we should never ever get here... */
 	elog(ERROR, "for some reason RecvTupleFromAny didn't return anything.");
-	return NULL;	
+	return NULL;
 }
 
 /* See ml_ipc.h */
 TupleChunkListItem RecvTupleChunkFrom(int16 motNodeID, int16 srcRoute)
 {
-
-	MotionLayerState 	*pEntry;
-	MotionConn 			*conn;
-	TupleChunkListItem 	tcItem;
-	TupleChunkListItem 	firstTcItem = NULL;
-	TupleChunkListItem 	lastTcItem = NULL;
-	uint16 				tcSize;
-	int 				bytesProcessed = 0;
+	MotionLayerState	*pEntry;
+	MotionConn			*conn;
+	TupleChunkListItem	tcItem;
+	TupleChunkListItem	firstTcItem = NULL;
+	TupleChunkListItem	lastTcItem = NULL;
+	uint16				tcSize;
+	int					bytesProcessed = 0;
 
 	Assert(activated);
 
@@ -484,7 +534,7 @@ TupleChunkListItem RecvTupleChunkFrom(int16 motNodeID, int16 srcRoute)
 	}
 	
 	conn->msgSize = 0;
-	
+
 	return firstTcItem;
 }
 
@@ -496,6 +546,10 @@ void DeregisterReadInterest(int16 motNodeID, int16 srcRoute)
 	MotionConn 		 	*conn;
 		
 	Assert(activated);
+
+#ifdef AMS_VERBOSE_LOGGING
+	elog(DEBUG3, "DeregisterReadInterest()");
+#endif
 
 	pEntry = getMotionState(motNodeID);
 	conn = pEntry->conns + srcRoute;
@@ -748,7 +802,6 @@ void TeardownInterconnect(void)
 	
 	mySlice = (Slice*)list_nth(sliceTable->slices, sliceId);
 
-
 	if (mySlice->parentIndex != -1)
 	{
 		/* cleanup a Sending motion node. */
@@ -756,26 +809,25 @@ void TeardownInterconnect(void)
 				mySlice->sliceIndex);
 		pEntry = removeMotionState(mySlice->sliceIndex);
 
-	 	
 		for (i=0; i < pEntry->numConns; i++)
 		{
 			conn = pEntry->conns + i;
 			
-			if( conn == NULL )
+			if (conn == NULL)
 				continue;
 			
-			if( conn->sockfd != -1 )
+			if (conn->sockfd != -1)
 			{
-				shutdown(conn->sockfd, SHUT_WR);
+				shutdown(conn->sockfd, SHUT_RDWR);
 				close(conn->sockfd);
 				conn->sockfd = -1;
 			}
 			
 			if (conn->hasMirrorConn)
 			{
-				if( conn->mirrorConn->sockfd != -1 )
+				if (conn->mirrorConn->sockfd != -1)
 				{
-					shutdown(conn->mirrorConn->sockfd, SHUT_WR);
+					shutdown(conn->mirrorConn->sockfd, SHUT_RDWR);
 					close(conn->mirrorConn->sockfd);
 					conn->mirrorConn->sockfd = -1;
 				}
@@ -794,17 +846,19 @@ void TeardownInterconnect(void)
 		pEntry = removeMotionState(aSlice->sliceIndex);
 		elog(DEBUG3, "close down connections for motion Id: %d", pEntry->motNodeId);
 
-    
+		/* receivers know that they no longer care about data from
+		 * below ... so we can safely discard data queued in both
+		 * directions */
 		for (i=0; i < pEntry->numConns; i++)
 		{
 			conn = pEntry->conns + i;
 			
-			if( conn == NULL )
+			if (conn == NULL)
 				continue;
 				
-			if( conn->sockfd != -1 )
+			if (conn->sockfd != -1)
 			{
-				shutdown(conn->sockfd, SHUT_WR);
+				shutdown(conn->sockfd, SHUT_RDWR);
 				close(conn->sockfd);
 				conn->sockfd = -1;
 			}
@@ -818,24 +872,23 @@ void TeardownInterconnect(void)
 	 * NOTE: we don't use foreach() here because we want to trim from 
      * the list as we go.
      */
-	cell = list_head(incompleteConns); 
-	while( cell != NULL )
+	while ((cell = list_head(incompleteConns)) != NULL)
 	{
 		MotionConn *conn = (MotionConn*)lfirst(cell);
-
 	
 #ifdef AMS_VERBOSE_LOGGING
-		elog(LOG, "Found incomplete conn.");
+		elog(LOG, "Found incomplete conn. length %d", list_length(incompleteConns));
 #endif
 
 		if (conn->sockfd != -1)
 		{
-			shutdown(conn->sockfd, SHUT_WR);	
+			shutdown(conn->sockfd, SHUT_RDWR);
 			close(conn->sockfd);
 			conn->sockfd = -1;
 		}
 	
-		list_delete(incompleteConns, cell);
+		incompleteConns = list_delete(incompleteConns, cell);
+		cell = list_head(incompleteConns);
 	}
 
 	incompleteConns = NIL;
@@ -1121,7 +1174,7 @@ MotionLayerState  *startConnections(Slice *mySlice, int *highsock, fd_set *wset,
 void setupOutgoingConnection( MotionConn *conn, CdbProcess *cdbProc, int *highsock, fd_set *wset )
 {
 	struct sockaddr_in	addr;
-	int n;
+	int					n;
 	
 	conn->sockfd			= socket(AF_INET, SOCK_STREAM, 0);
 	conn->pBuff				= palloc(Cdb_max_packet_size);
@@ -1157,7 +1210,6 @@ void setupOutgoingConnection( MotionConn *conn, CdbProcess *cdbProc, int *highso
 						errdetail("error during fcntl() call (error:%d) for sockfd: %d",
 								  errno, conn->sockfd)));
 	}
-	
 	
 	addr.sin_family = AF_INET;
 	
@@ -1231,7 +1283,7 @@ void sendRegisterMessage(MotionLayerState *pEntry, MotionConn *conn)
 	RegisterMessage regMsg;
 	int 	msglen = sizeof(RegisterMessage);
 	uint8 	*msg = (uint8 *)&regMsg;
-	
+
 	/* motNodeId */
 	netval = htons(pEntry->motNodeId);
 	memcpy(msg + 0, &netval, 2);
@@ -1604,7 +1656,7 @@ void readPacket(MotionConn *conn)
 	fd_set		rset;
 
 #ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG3, "readpacket: (max %d) outstanding bytes %d", Cdb_max_packet_size, conn->recvBytes);
+	elog(DEBUG3, "readpacket: (fd %d) (max %d) outstanding bytes %d", conn->sockfd, Cdb_max_packet_size, conn->recvBytes);
 #endif
 
 	/* do we have a complete message waiting to be processed ? */
@@ -1675,18 +1727,33 @@ void readPacket(MotionConn *conn)
 		} else if (n == 0) 
 		{
 #ifdef AMS_VERBOSE_LOGGING
-			elog(DEBUG3, "readpacket(); breaking in while recvBytes %d msgSize %d", conn->recvBytes, conn->msgSize);
+			elog(DEBUG3, "readpacket(); breaking in while (fd %d) recvBytes %d msgSize %d", conn->sockfd, conn->recvBytes, conn->msgSize);
 #endif
-			/* Either we're done, or there is something seriously wrong */
-
+			/* Either we're done, or there is something seriously
+			 * wrong */
 			if (conn->recvBytes == 0) {
+				elog(LOG, "INTERCONNECT: Connection ended prematurely????");
 				conn->recvBytes = conn->msgSize = PACKET_HEADER_SIZE;
+#if 0
+				conn->stillActive = false;
+#endif
+				if (Cdb_role == CDB_ROLE_DISPATCH)
+				{
+					elog(LOG, "ending prematurely in dispatcher");
+				} 
+				else if (Cdb_role == CDB_ROLE_EXECUTE)
+				{
+					elog(LOG, "ending prematurely in executor");
+				}
+				elog(LOG, "my listener port %d remote host %s remote port %d remote contentId %d",
+					 listenerPort, conn->remoteHost, conn->remotePort, conn->remoteContentId);
 				break;
 			}
 			else if (conn->recvBytes == conn->msgSize)
 			{
 				/* got a completed message before the connection
 				 * closed; probably this is an EOS message */
+				elog(LOG, "INTERCONNECT: breaking with data %d", conn->msgSize);
 				break;
 			}
 			else
@@ -1905,13 +1972,15 @@ void SendStopMessage(int16 motNodeID)
 	{
 		conn = pEntry->conns + i;
 
-		if (FD_ISSET(conn->sockfd, &pEntry->readSet)) {
+		if (FD_ISSET(conn->sockfd, &pEntry->readSet))
+		{
 			/* someone is trying to send stuff to us, let's stop 'em */
 			while ((written = write(conn->sockfd, &m, sizeof(m))) < 0)
                 if (errno != EINTR)
                     break;
 
-			if (written != sizeof(m)) {
+			if (written != sizeof(m))
+			{
 				/* how can this happen ? the kernel buffer should be
 				 * empty in the send direction */
 				elog(LOG, "SendStopMessage: failed on write %d", errno);
@@ -1921,4 +1990,139 @@ void SendStopMessage(int16 motNodeID)
 			 * CleanUpMotionLayerIPC() */
 		}
 	}
+}
+
+/* Function SendStopMessage() sends a short "ack" message, to one node
+ * tell it that we've received its EOS notifier. This is pretty much
+ * exactly the same code as SendStopMessage(), but without the
+ * broadcast loop.
+ *
+ * PARAMETERS
+ *
+ *   motNodeID - motion node identifier
+ *   route - route identifier
+ */
+void SendEosAck(int16 motNodeID, int16 route)
+{
+	MotionLayerState	*pEntry;
+	MotionConn			*conn;
+	ssize_t				written;
+	char				m = 'A';
+
+#ifdef AMS_VERBOSE_LOGGING
+	elog(DEBUG3, "Sending EOS ack to route %d", route);
+#endif
+
+	pEntry = getMotionState(motNodeID);
+	Assert(pEntry != NULL);
+
+	conn = pEntry->conns + route;
+	Assert(conn != NULL);
+
+	while ((written = write(conn->sockfd, &m, sizeof(m))) < 0)
+		if (errno != EINTR)
+			break;
+
+	if (written != sizeof(m))
+	{
+		/* how can this happen ? the kernel buffer should be
+		 * empty in the send direction */
+		elog(ERROR, "SendEosAck: failed on write %d", errno);
+	}
+
+#ifdef AMS_VERBOSE_LOGGING
+	elog(DEBUG3, "Sent EOS ack (fd %d)", conn->sockfd);
+#endif
+}
+
+void waitOnEosAck(MotionLayerState *pEntry)
+{
+	MotionConn	*conn;
+	int			i, n, limit, readCount, waitCount;
+	char		response;
+	fd_set		waitset;
+
+	do {
+		struct timeval timeout = tval;
+
+		waitCount = 0;
+
+		FD_ZERO(&waitset);
+		for (i= 0; i < pEntry->numConns; i++)
+		{
+			conn = pEntry->conns + i;	
+		
+			if (conn->stillActive)
+			{
+				FD_SET(conn->sockfd, &waitset);
+				limit = MAX(limit, conn->sockfd);
+				waitCount++;
+			}
+		
+			if (conn->hasMirrorConn && conn->mirrorConn->stillActive)
+			{
+				FD_SET(conn->mirrorConn->sockfd, &waitset);
+				limit = MAX(limit, conn->sockfd);
+				waitCount++;
+			}
+		}
+		if (!waitCount)
+			break;
+
+		n = select(limit+1, &waitset, NULL, NULL, &timeout);
+		if (n < 0)
+		{
+			if (errno == EINTR)
+				continue;
+			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+							errmsg("Interconnect error waiting for EOS Ack"),
+							errdetail("Select errno %d).\n"
+									  "contentId=%d at '%s':%d",
+									  errno, conn->remoteContentId,
+									  conn->remoteHost,conn->remotePort)));
+		}
+		else if (n > 0) {
+			for (i= 0; i < pEntry->numConns; i++)
+			{
+				conn = pEntry->conns + i;
+
+				if (conn->stillActive &&
+					FD_ISSET(conn->sockfd, &waitset)) {
+					readCount = read(conn->sockfd, &response, sizeof(response));
+					if (readCount != sizeof(response))
+					{
+						ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+										errmsg("Interconnect error reading EOS Ack"),
+										errdetail("Select errno %d).\n"
+												  "contentId=%d at '%s':%d",
+												  errno, conn->remoteContentId,
+												  conn->remoteHost,conn->remotePort)));
+					}
+					if (response == 'A' || response == 'S')
+					{
+						/* successfully acknowledged */
+						conn->stillActive = false;
+#ifdef AMS_VERBOSE_LOGGING
+						elog(DEBUG3, "Received EOS ack from route %d", i);
+#endif
+					}
+					else
+					{
+						ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+										errmsg("Interconnect error reading EOS Ack"),
+										errdetail("invalid Ack message (%c).\n"
+												  "contentId=%d at '%s':%d",
+												  response, conn->remoteContentId,
+												  conn->remoteHost,conn->remotePort)));
+					}
+				}
+			}
+		}
+#ifdef AMS_VERBOSE_LOGGING
+		if (n == 0) {
+			elog(DEBUG3, "waitOnEosAck(): timeout");
+		}
+#endif
+	} while (waitCount != 0);
+
 }
