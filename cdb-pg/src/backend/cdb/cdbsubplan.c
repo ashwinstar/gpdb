@@ -183,7 +183,21 @@ ParamListInfo addRemoteExecParamsToParamList( Plan *plan, ParamListInfo extPrm, 
 	
 	memset( &context, 0, sizeof(context) );
 	param_walker((Node*)plan, &context);
-	Assert( context.params != NIL );
+
+	/* TODO Revisit this error condition!  The error replaces an
+	 * assertion that was tripping on, e.g., 
+	 *   select * from generate_series(0,(select count(*) from sale));
+	 *
+	 * This appears to be a case of an initplan with no corresponding
+	 * parameter, but needs more analysis.  In the meantime, plug
+	 * with an internal error.
+	 */
+	if( context.params == NIL )
+	{
+		ereport( ERROR,
+			(errcode( ERRCODE_CDB_INTERNAL_ERROR ),
+			errmsg("Subquery datatype information unavailable.")));
+	}
 
 	/*
 	 * Now initialize the ParamListInfo elements corresponding to the

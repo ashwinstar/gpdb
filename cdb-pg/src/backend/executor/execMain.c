@@ -171,10 +171,9 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 	/* 
 	 * Handling of the Slice table depends on context.
 	 */
-	 if ( Cdb_role == CDB_ROLE_DISPATCH )
+	 if ( Cdb_role == CDB_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL )
 	 {
 		/* Set up blank slice table to be filled in during InitPlan. */
-		int nExtraRoots;
 		
 		/* 
 		 * We know that, if this query is to dispatched in parallel, then
@@ -189,12 +188,7 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 		 *        needed, e.g., by actually counting initplans during 
 		 *        cdb_apply_motion() and noting it in the top plan node.
 		 */
-		if ( queryDesc->plantree->dispatch == DISPATCH_PARALLEL )
-			nExtraRoots = queryDesc->plantree->nParamExec;
-		else
-			nExtraRoots = 0;
-		
-		InitSliceTable(estate, queryDesc->plantree->nMotionNodes, nExtraRoots);
+		InitSliceTable(estate, queryDesc->plantree->nMotionNodes, queryDesc->plantree->nParamExec);
 	 }
 	 else if ( Cdb_role == CDB_ROLE_EXECUTE )
 	 {
@@ -222,7 +216,7 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 	 */
 	InitPlan(queryDesc, explainOnly);
 	
-	if ( Cdb_role == CDB_ROLE_DISPATCH )
+	if ( Cdb_role == CDB_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL )
 	{
 		/* Assign gang descriptions to the root slices of the slice forest. */
 		InitRootSlices(queryDesc);		
@@ -309,6 +303,11 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 	estate->es_lastoid = InvalidOid;
 
 	(*dest->rStartup) (dest, operation, queryDesc->tupDesc);
+
+	/* Are we going to dispatch this plan parallel?  Only if we're running
+	 * as a QD and the plan is a parallel plan.
+	 */
+	shouldDispatch =  Cdb_role == CDB_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL;
 	
 	/* If we're running as a QE and there's a slice table in our queryDesc,
 	 * then we need to finish the EState setup we prepared for back in 
@@ -353,8 +352,6 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 			estate->es_cur_root_idx
 			);
 	}
-
-	shouldDispatch =  Cdb_role == CDB_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL;
 
 	/*
 	 * Need a try/catch block here so that if an ereport is called from

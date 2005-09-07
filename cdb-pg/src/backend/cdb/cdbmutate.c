@@ -117,12 +117,24 @@ Plan* apply_motion(Plan*  plan, Query* query)
 			{
 				/* Flow is singleton on dispatcher.  Already focused. */
 			}
+			else if ( plan->flow->flotype == FLOW_REPLICATED )
+			{
+				/* Flow is replicated (e.g., a Result node). Focus. */
+				
+				/* TODO Something like ...
+				 *    plan->flow->req_move = MOVEMENT_REP2FOCUS;
+				 *    plan->flow->segindex = -1; 
+				 * ...perhaps.  Until then, this seems to work for cases
+				 * discovered so far, e.g., 
+				 *    select sqrt((select count(*) from sale));
+				 * however those extra tuples are going somewhere!  Where?
+				 */
+			}
 			else
 			{
 				/*
 				 * TODO  Are the other flows we might legitimately see at the
-				 * top level.  E.g., a replicated flow that we would convert
-				 * with some hypothetical REPLICATED-to-SINGLETON(-1) motion!
+				 * top level?
 				 */
 				 ereport(ERROR, (
 					errcode(ERRCODE_CDB_INTERNAL_ERROR),

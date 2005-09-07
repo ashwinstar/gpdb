@@ -43,8 +43,6 @@
 		memcpy((to), (from), _size); \
 	} while (0)
 
-/* #define CDBLLIZE_NEEDS_PS_ERROR_INTERNAL 0 */
-
 /*
  * Substructure for a PlanProfile to hold "stackable" information like
  * the range table.  
@@ -84,12 +82,11 @@ static bool prescan(Plan *plan, Query *query, PlanProfile *context);
 static bool prescan_walker(Node *node, PlanProfile *context);
 
 static bool prescan_agg(Plan *plan, PlanProfile *context);
+static bool prescan_unique(Plan *plan, PlanProfile *context);
 
 static void psError(PlanProfile *context, unsigned code, const char* message, const char* detail);
 static void psErrorNonce(PlanProfile *context,  const char* detail);
-#ifdef CDBLLIZE_NEEDS_PS_ERROR_INTERNAL
 static void psErrorInternal(PlanProfile *context,  const char* detail);
-#endif
 static void issuePsError(PlanProfile *context);
 
 static bool initPlanProfile(PlanProfile *context, Query *query);
@@ -322,7 +319,7 @@ prescan_walker(Node *node, PlanProfile *context)
 				
 				/* Set local state for the subplan.  This has two effects. 
 				 * The local state now has the new rangetable.  Also, the 
-				 * "finished" indicator is cleared, so that when recur to
+				 * "finished" indicator is cleared, so that when we recur to
 				 * parallelize the plan in the SubPlan expression, we will
 				 * make a fresh determination of how to interpret the plan: 
 				 * as sequential or as already parallel (down to the next 
@@ -545,40 +542,11 @@ prescan_walker(Node *node, PlanProfile *context)
 			if ( finished )
 				goto return_false;
 				
+			if ( prescan_unique((Plan*)node, context) )
 			{
-				/* Flow is same as leftree's Flow. */
-				Plan *plan = (Plan*)node;
-				Plan *child = outerPlan(node);
-
-				Assert( child != NULL && child->flow != NULL );
-				if ( child->flow->flotype == FLOW_REPLICATED
-					|| child ->flow->flotype == FLOW_SINGLETON )
-				{
-					/* No motion required so inherit flow characteristics. */
-					plan->flow = pull_up_Flow(plan, child, true);
-						
-					if ( plan->flow == NULL || plan->flow->flotype == FLOW_UNDEFINED )
-					{
-						detail = "Can't characterize flow from Unique node.";
-						break;
-					}
-					goto return_false;
-				}
-				
-				/* The argument flow is partitioned, so we need to make sure
-				 * that tuples are collocated on the input attributes to be
-				 * uniqued, i.e., the numCols element array of AttrNumber as
-				 * uniqColIdx.
-				 *
-				 * Note the input flow is certainly sorted this way and
-				 * that no projection is done by this node, however, we
-				 * must prove that the unique attributes are a prefix of
-				 * the hash attributes.
-				 */
-				/* TODO - Implement the above. */
+				goto return_true; /* prescan_unique sets its own detail in context. */
 			}
-			detail = "Query involves partitioned duplicate removal.";
-			break; /* Fall through to report error. */
+			goto return_false;
 		
 		case T_SetOp:
 			/*
@@ -916,6 +884,68 @@ bool prescan_agg(Plan *plan, PlanProfile *context)
 	return false;	 
 }
 
+/* Helper for prescan_walker() does processing for a Unique node.
+ *
+ * Note that prescan_walker has already finished scaning the child nodes
+ * of the node.
+ *
+ * Return false to indicate successful prescan.  Else set error info
+ * in the context and return true.
+ */
+bool prescan_unique(Plan *plan, PlanProfile *context)
+{
+	Unique *unique = (Unique*)plan;
+	Plan *child = outerPlan((Node*)plan); /* already scanned */
+	bool prefix_condition = true;
+	int i;
+
+	Flow *newflow = NULL;
+	
+	List *hashExpr = NIL;
+	
+	/* Argument is a prescaned plan. */
+	Assert( is_plan_node((Node*)child) && child->flow != NULL  );
+	
+	Assert( child->flow );
+	
+	if ( child->flow->flotype == FLOW_REPLICATED
+		|| child ->flow->flotype == FLOW_SINGLETON )
+	{
+		/* No motion required so inherit flow characteristics. */
+		plan->flow = pull_up_Flow(plan, child, true);
+			
+		if ( plan->flow == NULL || plan->flow->flotype == FLOW_UNDEFINED )
+		{
+			psErrorNonce(context, "Can't characterize flow from Unique node.");
+			return true;
+		}
+		return false;
+	}
+	
+	/* The argument flow is partitioned and ordered.  We need to make sure
+	 * that tuples are collocated on the attributes to be "uniqued" and that
+	 * the result order is preserved.
+	 */
+	 
+	/* The parser/planner guarantees that the unique attributes are a prefix
+	 * of the input sort attributes.  We should check, however.
+	 */
+	 prefix_condition = ( unique->numCols <= child->flow->numSortCols );
+	 for ( i = 0; prefix_condition && i < unique->numCols; i++ )
+	 {
+	 	prefix_condition = (unique->uniqColIdx[i] == child->flow->sortColIdx[i] );
+	 }
+	 if ( !prefix_condition )
+	 {
+	 	psErrorInternal(context, "Plan violates DISTINCT/ORDER BY prefix condition");
+	 	return true;
+	 }
+	
+	/* TODO prescan_unique isn't ready yet!!! Finish it. */
+	psErrorNonce(context, "Query plan employs partitioned duplicate removal");
+	return true;
+}
+
 
 /* 
  * Helper for prescan() -- Write error info into a PlanProfile.
@@ -942,7 +972,6 @@ void psErrorNonce(PlanProfile *context,  const char* detail)
 }
 
 
-#ifdef CDBLLIZE_NEEDS_PS_ERROR_INTERNAL
 /* 
  * Helper for prescan() -- Write error info into a PlanProfile.
  */
@@ -952,7 +981,6 @@ void psErrorInternal(PlanProfile *context,  const char* detail)
 	context->message ="Unexpected error parallelizing a query.";
 	context->detail = detail;
 }
-#endif
 
 /* 
  * Helper for prescan() -- Issue the error specified in a PlanProfile.
@@ -1202,6 +1230,7 @@ scanForManagedTables_walker(Node *node, PlanProfile *context)
 				rte = rt_fetch(rtindex, localRangeTable(context));
 				Assert(rte->rtekind == RTE_SUBQUERY);
 				
+				Assert( rte->subquery->rtable != NULL );
 				pushLocals(context, rte->subquery->rtable);
 				
 				if ( plan_tree_walker(node, scanForManagedTables_walker, context) )
