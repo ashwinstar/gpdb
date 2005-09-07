@@ -166,7 +166,7 @@ int	sliceId;
  * FUNCTIONS PROTOTYPES
  */
 static int listenerSetup( void );
- 
+
 static MotionLayerState *createMotionState(int16 motNodeID, int numConns);
 static MotionLayerState *getMotionState(int16 motNodeID);
 static MotionLayerState *removeMotionState(int16 motNodeID);
@@ -421,7 +421,7 @@ TupleChunkListItem RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 	/* We scan the file descriptors starting from where we left off in
 	 * the last call (don't continually poll the first when others may
 	 * be ready!).
-	 * 
+	 *
 	 * The calculation of scanEnd looks weird. we're calculating
 	 * (scanStart - 1)modN, but C doesn't like mixing the "mod"
 	 * operator with negative numbers (-1 mod N != N -  )
@@ -729,16 +729,16 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 		 * receive the REGISTER message.  this is why they are all in a single
 		 * list.
 		 *
-		 * NOTE: we don't use foreach() here because we want to trim from 
+		 * NOTE: we don't use foreach() here because we want to trim from
 		 * the list as we go.
 		 */
-		cell = list_head(incompleteConns); 
+		cell = list_head(incompleteConns);
 		while( cell != NULL )
 		{
 			MotionConn *conn = (MotionConn*)lfirst(cell);
 
 			/* we'll get the next cell ready now in case we need to delete the
-			 * cell that corresponds to our MotionConn 
+			 * cell that corresponds to our MotionConn
 			 */
 			cell = lnext(cell);			
 			
@@ -774,14 +774,14 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 /* TeardownInterconnect() function is used to cleanup interconnect resources that
  * were allocated during SetupInterconnect().  This function should ALWAYS be
  * called after SetupInterconnect to avoid leaking resources (like sockets)
- * even if SetupInterconnect did not complete correctly.  As a result, this 
+ * even if SetupInterconnect did not complete correctly.  As a result, this
  * function must complete successfully even if SetupInterconnect didn't.
- * 
+ *
  * SetupInterconnect() always gets called under the ExecutorState MemoryContext.
- * This context is destroyed at the end of the query and all memory that gets 
+ * This context is destroyed at the end of the query and all memory that gets
  * allocated under it is free'd.  We don't have have to worry about pfree() but
  * we definitely have to worry about socket resources.
- * 
+ *
  */
 void TeardownInterconnect(void)
 {
@@ -859,11 +859,11 @@ void TeardownInterconnect(void)
 		}
 	}
 
-	/* The incompleteConns list is only used as a staging area for MotionConns 
+	/* The incompleteConns list is only used as a staging area for MotionConns
 	 * during by SetupInterconnect().  So we only expect to have entries here
 	 * if SetupInterconnect() did not finish correctly.
 	 *
-	 * NOTE: we don't use foreach() here because we want to trim from 
+	 * NOTE: we don't use foreach() here because we want to trim from
      * the list as we go.
      */
 	while ((cell = list_head(incompleteConns)) != NULL)
@@ -900,7 +900,7 @@ void TeardownInterconnect(void)
  *
  * Returns a system assigned TCP port that will be used to "listen" for
  * incoming connections from other postgres ml_ipc layers LATER during
- * query initialization.  
+ * query initialization.
  *
  * This port is used for the duration of this process and should never change.
  *
@@ -927,8 +927,8 @@ int listenerSetup(void)
 	serv_addr.sin_addr.s_addr	= INADDR_ANY;
 	serv_addr.sin_port			= htons(0);  /* system picks port */
 	
-	/* we let the system pick the TCP port here so we don't have to 
- 	 * manage port resources ourselves.  
+	/* we let the system pick the TCP port here so we don't have to
+ 	 * manage port resources ourselves.
  	 */
 	if (bind(listenerFd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0)
 	{
@@ -1349,6 +1349,9 @@ void readRegisterMessage(MotionConn *conn, int *incoming_count)
 	/* loop till we read in the entire RegisterMessage. */
 	while (bytesRead < msgSize)
 	{
+        /* see if user canceled and stuff like that */
+        CHECK_FOR_INTERRUPTS();
+
 		while ((n = read(conn->sockfd, buff + bytesRead, msgSize - bytesRead)) < 0)
             if (errno != EINTR)
                 break;
@@ -1669,7 +1672,7 @@ void readPacket(MotionConn *conn)
 
 	while (!gotPacket && bytesRead < Cdb_max_packet_size)
 	{
-		   
+		
 		if ((n = read(conn->sockfd, conn->pBuff + bytesRead,
 					  Cdb_max_packet_size - bytesRead)) < 0)
 		{
@@ -1715,7 +1718,7 @@ void readPacket(MotionConn *conn)
 										  errno, conn->remoteContentId, conn->remoteHost,
 										  conn->remotePort)));								
 			}
-		} else if (n == 0) 
+		} else if (n == 0)
 		{
 #ifdef AMS_VERBOSE_LOGGING
 			elog(DEBUG3, "readpacket(); breaking in while (fd %d) recvBytes %d msgSize %d", conn->sockfd, conn->recvBytes, conn->msgSize);
@@ -1731,7 +1734,7 @@ void readPacket(MotionConn *conn)
 				if (Cdb_role == CDB_ROLE_DISPATCH)
 				{
 					elog(LOG, "ending prematurely in dispatcher");
-				} 
+				}
 				else if (Cdb_role == CDB_ROLE_EXECUTE)
 				{
 					elog(LOG, "ending prematurely in executor");
@@ -2010,6 +2013,8 @@ void SendEosAck(int16 motNodeID, int16 route)
 	conn = pEntry->conns + route;
 	Assert(conn != NULL);
 
+    /* TODO: Return with no action if already sent Stop message. */
+
 	while ((written = write(conn->sockfd, &m, sizeof(m))) < 0)
 		if (errno != EINTR)
 			break;
@@ -2029,14 +2034,15 @@ void SendEosAck(int16 motNodeID, int16 route)
 void waitOnEosAck(MotionLayerState *pEntry)
 {
 	MotionConn	*conn;
-	int			i, n, limit, readCount, waitCount;
+	int			i, n, readCount, waitCount;
 	char		response;
 	fd_set		waitset;
 
 	do {
-		struct timeval timeout = tval;
-
-		waitCount = 0;
+		struct timeval  timeout = tval;
+		int             limit = 0;
+        
+        waitCount = 0;
 
 		FD_ZERO(&waitset);
 		for (i= 0; i < pEntry->numConns; i++)
@@ -2060,6 +2066,9 @@ void waitOnEosAck(MotionLayerState *pEntry)
 		if (!waitCount)
 			break;
 
+        /* see if user canceled and stuff like that */
+        CHECK_FOR_INTERRUPTS();
+
 		n = select(limit+1, &waitset, NULL, NULL, &timeout);
 		if (n < 0)
 		{
@@ -2078,18 +2087,38 @@ void waitOnEosAck(MotionLayerState *pEntry)
 				conn = pEntry->conns + i;
 
 				if (conn->stillActive &&
-					FD_ISSET(conn->sockfd, &waitset)) {
+					FD_ISSET(conn->sockfd, &waitset))
+                {
 					readCount = read(conn->sockfd, &response, sizeof(response));
-					if (readCount != sizeof(response))
-					{
+                    if (readCount < 0)
+                    {
+                        if (errno == EINTR)
+                            continue;
 						ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 										errmsg("Interconnect error reading EOS Ack"),
-										errdetail("Select errno %d).\n"
+										errdetail("read() errno=%d "
 												  "contentId=%d at '%s':%d",
 												  errno, conn->remoteContentId,
 												  conn->remoteHost,conn->remotePort)));
+                    }
+                    else if (readCount == 0)
+                    {
+                        /* peer has closed its socket */
+                        conn->stillActive = false;
+#ifdef AMS_VERBOSE_LOGGING
+                        elog(DEBUG3, "Peer closed route %d without EOS ack", i);
+#endif
+                    }
+					else if (readCount != sizeof(response))
+					{
+						ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+										errmsg("Interconnect error reading EOS Ack"),
+										errdetail("count=%d "
+												  "contentId=%d at '%s':%d",
+												  readCount, conn->remoteContentId,
+												  conn->remoteHost,conn->remotePort)));
 					}
-					if (response == 'A' || response == 'S')
+					else if (response == 'A' || response == 'S')
 					{
 						/* successfully acknowledged */
 						conn->stillActive = false;
