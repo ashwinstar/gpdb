@@ -49,19 +49,18 @@ typedef struct CdbHeapTupleCompareInfo
  * CdbTupleHeapInfo:
  * This is the data that the heap contains and orders.
  * It includes:
- *		1) The actual HeapTuple data from the executor
- *			( tuple)
- *		3) The segindex that this data came from
- *			(sourceSegIndex)
- *		4) A pointer to the CdbHeapTupleCompareInfo
- *			that is global to this heap (i.e. doesn't
- *			vary by heap tuple )
- *			(cmpInfo)
+ *		1) The actual HeapTuple data from the executor (tuple)
+ *
+ *		3) The routeId that this data came from. (the place in the 
+ *			slicetable process list )
+ *			
+ *		4) A pointer to the CdbHeapTupleCompareInfo	that is global to
+ *			this heap (i.e. doesn't vary by heap tuple ) (cmpInfo)
  */
 typedef struct CdbTupleHeapInfo
 {
 	HeapTuple					tuple;
-	int							sourceSegIndex;
+	int							sourceRouteId;
 	CdbHeapTupleCompareInfo*	cmpinfo;
 } CdbTupleHeapInfo;
 
@@ -144,16 +143,16 @@ extern void DestroyCdbHeap( CdbHeap *cdbheap );
  * Specific heap functions, specific to 
  * heaps of CdbTupleHeapInfo data.
  */
-extern void SetCdbTupleHeapInitialValue( CdbHeap *cdbheap, HeapTuple tuple, int sourceSegIndex );
+extern void SetCdbTupleHeapInitialValue( CdbHeap *cdbheap, HeapTuple tuple, int sourceRouteId );
 extern CdbTupleHeapInfo *GetLowestValueFromCdbTupleHeap( CdbHeap *cdbheap );
-extern void MergeNewValueIntoCdbTupleHeap( CdbHeap *cdbheap, HeapTuple h, int sourceSegIndex );
+extern void MergeNewValueIntoCdbTupleHeap( CdbHeap *cdbheap, HeapTuple h, int sourceRouteId );
 extern int GetCountCdbHeap( CdbHeap *cdbheap );
 
 /*
  * Create heap functions, specific to 
  * heaps of CdbTupleHeapInfo data.
  */
-extern CdbHeap *CreateCdbTupleHeap( int nSourceSegments,
+extern CdbHeap *CreateCdbTupleHeap( int numRoutes,
 									MotionState *node,
 									Motion *motion);
 

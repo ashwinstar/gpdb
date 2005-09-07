@@ -1,8 +1,8 @@
 /*-------------------------------------------------------------------------
  *
  * cdbheap.c
- * Functions for managing a heap of tuple results
- * for use by sorted motion nodes *
+ * Functions for managing a set of streams of heap tuple results
+ * for use by sorted motion nodes. *
  *
  *-------------------------------------------------------------------------
  */
@@ -28,13 +28,13 @@ static void SwitchCdbTupleHeapInfo( void *left, void *right );
  * Specific CdbTupleHeapInfo heap implementation
  */
 
-CdbHeap *CreateCdbTupleHeap( int nSourceSegments,
+CdbHeap *CreateCdbTupleHeap( int numRoutes,
 							MotionState *node,
 							Motion *motion)
 {
 	CdbHeapTupleCompareInfo *cmpinfo;
 
-	Assert( nSourceSegments >= 1 
+	Assert( numRoutes >= 1 
 			&& node != NULL 
 			&& motion != NULL );
 
@@ -46,7 +46,7 @@ CdbHeap *CreateCdbTupleHeap( int nSourceSegments,
 	cmpinfo->tupDesc		= ExecGetResultType(&node->ps);
 
 
-	return CreateCdbHeap( nSourceSegments,
+	return CreateCdbHeap( numRoutes,
 						CmpTuplesForSortedMotion,
 						CreateCdbTupleHeapInfo,
 						CopyCdbTupleHeapInfo,
@@ -54,12 +54,12 @@ CdbHeap *CreateCdbTupleHeap( int nSourceSegments,
 						cmpinfo);
 }
 
-void SetCdbTupleHeapInitialValue( CdbHeap *cdbheap, HeapTuple tuple, int sourceSegIndex )
+void SetCdbTupleHeapInitialValue( CdbHeap *cdbheap, HeapTuple tuple, int sourceRouteId )
 {
 	CdbTupleHeapInfo info;
 
 	info.tuple = tuple;
-	info.sourceSegIndex = sourceSegIndex;
+	info.sourceRouteId = sourceRouteId;
 
 	SetCdbHeapInitialValue( cdbheap, &info);
 }
@@ -70,12 +70,12 @@ CdbTupleHeapInfo *GetLowestValueFromCdbTupleHeap( CdbHeap *cdbheap )
 	return (CdbTupleHeapInfo *)GetLowestValueFromCdbHeap( cdbheap );
 }
 
-void MergeNewValueIntoCdbTupleHeap( CdbHeap *cdbheap, HeapTuple h, int sourceSegIndex )
+void MergeNewValueIntoCdbTupleHeap( CdbHeap *cdbheap, HeapTuple h, int sourceRouteId )
 {
 	CdbTupleHeapInfo info;
 
 	info.tuple = h;
-	info.sourceSegIndex = sourceSegIndex;
+	info.sourceRouteId = sourceRouteId;
 
 	MergeNewValueIntoCdbHeap( cdbheap, &info );
 }
@@ -113,7 +113,7 @@ int CmpTuplesForSortedMotion( void *lhs, void *rhs )
 	sortColIdx    = cmpinfo->sortColIdx;
 	tupDesc       = cmpinfo->tupDesc;
 
-	// NULL is greater than any non-NULL tuple.
+	/* NULL is greater than any non-NULL tuple. */
 	if ( ltup == NULL )
 	{
 		if ( rtup == NULL )
@@ -165,7 +165,7 @@ void *CreateCdbTupleHeapInfo( void *createData, void *initData )
 	info = palloc0( sizeof(CdbTupleHeapInfo) );
 
 	info->tuple = initTupleHeapInfo->tuple;
-	info->sourceSegIndex = initTupleHeapInfo->sourceSegIndex;
+	info->sourceRouteId = initTupleHeapInfo->sourceRouteId;
 	info->cmpinfo = cmpinfo;
 
 	return info;
@@ -183,14 +183,14 @@ void CopyCdbTupleHeapInfo( void *destination, void *source )
 	infoSrc = (CdbTupleHeapInfo *)source;
 
 	infoDest->tuple = infoSrc->tuple;
-	infoDest->sourceSegIndex = infoSrc->sourceSegIndex;
+	infoDest->sourceRouteId = infoSrc->sourceRouteId;
 }
 
 void SwitchCdbTupleHeapInfo( void *left, void *right )
 {
 	CdbTupleHeapInfo 	*infoLeft, *infoRight;
 	HeapTuple 			tempTuple;
-	int 				tempSegIndex;
+	int 				tempRouteId;
 
 	Assert( left != NULL );
 	Assert( right != NULL );
@@ -199,12 +199,12 @@ void SwitchCdbTupleHeapInfo( void *left, void *right )
 	infoRight = (CdbTupleHeapInfo *)right;
 
 	tempTuple    = infoLeft->tuple;
-	tempSegIndex = infoLeft->sourceSegIndex;
+	tempRouteId = infoLeft->sourceRouteId;
 
 	infoLeft->tuple 		  = infoRight->tuple;
-	infoLeft->sourceSegIndex  = infoRight->sourceSegIndex;
+	infoLeft->sourceRouteId  = infoRight->sourceRouteId;
 	infoRight->tuple 		  = tempTuple;
-	infoRight->sourceSegIndex = tempSegIndex;
+	infoRight->sourceRouteId = tempRouteId;
 }
 
 int GetCountCdbHeap( CdbHeap *cdbheap )
@@ -322,13 +322,13 @@ void SetCdbHeapInitialValue( CdbHeap *cdbheap, void *value )
 		}
 	}
 
-	/* Oops, found no open slot  
-	 * This is a programming error 
-	 * Caller didn't pass correct nSlots in createCdbHeap,
-	 * or is calling this function too many times.
-	 */
-
-	Assert( false );
+	/* Oops, found no open slot. we should NEVER get here. */
+	ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+			 errmsg("cdbheap could not find an open slot."),
+			 errdetail("Programming Error probably a result of the caller not "
+			 		   "passing the correct value of nSlots in createCdbHeap "
+			 		   "or is calling this function too many times. "))); 
+	
 }
 
 
@@ -364,7 +364,7 @@ void *GetLowestValueFromCdbHeap( CdbHeap *cdbheap )
 		}
 	}
 
-	// Return a pointer to top of heap
+	/* Return a pointer to top of heap */
 	return cdbheap->heap[1];
 }
 
@@ -381,7 +381,7 @@ void MergeNewValueIntoCdbHeap( CdbHeap *cdbheap, void *value )
 	heap = cdbheap->heap;
 	copyfn = cdbheap->copyfn;
 
-	// Replace top value and sift down
+	/* Replace top value and sift down */
 	(*copyfn)( heap[1], value );
 
 	SiftDown( cdbheap, 1, cdbheap->size );

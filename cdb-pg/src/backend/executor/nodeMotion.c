@@ -28,6 +28,8 @@
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 
+#include <unistd.h>  /* gettimeofday */
+
 /*=========================================================================
  * FUNCTIONS PROTOTYPES
  */
@@ -38,7 +40,6 @@ static TupleTableSlot *execMotionSortedReceiver(MotionState *node);
 static void execMotionSortedReceiverFirstTime(MotionState *node );
 
 static uint32 evalHashKey(ExprContext *econtext, List *hashkeys, List* hashtypes, CdbHash *h);
-static bool setReadFromAMS(Motion *node);
 
 static void doSendEndOfStream( Motion *motion, MotionState *node );
 static void doSendTuple( Motion *motion, MotionState *node, TupleTableSlot 	*outerTupleSlot );
@@ -56,29 +57,47 @@ static void doSendTuple( Motion *motion, MotionState *node, TupleTableSlot 	*out
 TupleTableSlot *
 ExecMotion(MotionState *node)
 {
-	bool isReceiver;
-	
-	Motion *motion = (Motion *)node->ps.plan;
-
-    /* TODO: it would be nice to store this isReceiver somewhere maybe in
-     * 		 MotionState.  
-     */
-	if( node->ps.state->es_cur_slice_idx == motion->motionID )
-    	isReceiver = false;
-    else
-    	isReceiver = true;
-
+	Motion  *motion = (Motion *)node->ps.plan;
+	TupleTableSlot *tuple;
 
 	 /* at the top here we basically decide:
      * -- SENDER vs. RECEIVER and
      * -- SORTED vs. UNSORTED
      */
-	if( isReceiver )
+	if( node->isReceiver )
 	{
+		struct timeval startTime;
+		struct timeval stopTime;
+		
+		gettimeofday(&startTime, NULL);
+		
+		
 		if( motion->sendSorted )
-			return execMotionSortedReceiver(node);
+			tuple = execMotionSortedReceiver(node);
 		else
-			return execMotionUnsortedReceiver(node);
+			tuple = execMotionUnsortedReceiver(node);
+		
+		
+		
+		gettimeofday(&stopTime, NULL);
+		
+		node->motionTime.tv_sec += stopTime.tv_sec - startTime.tv_sec;
+		node->motionTime.tv_usec += stopTime.tv_usec - startTime.tv_usec;
+		
+		while (node->motionTime.tv_usec < 0)
+		{
+			node->motionTime.tv_usec += 1000000;
+			node->motionTime.tv_sec--;
+		}
+		
+		while (node->motionTime.tv_usec >= 1000000)
+		{
+			node->motionTime.tv_usec -= 1000000;
+			node->motionTime.tv_sec++;
+		}
+		
+		
+		return tuple;	
 	}
 	else
 		return execMotionSender(node);
@@ -92,12 +111,16 @@ static TupleTableSlot *execMotionSender(MotionState *node)
 	PlanState  		*outerNode;
 	Motion 			*motion = (Motion *)node->ps.plan;
 	bool 			done = false;
+	struct timeval 	time1;
+	struct timeval 	time2;
 	
 	SO1_printf("execMotionSender: %s\n","entering routine");
 	
 	AssertState(motion->motionType == MOTIONTYPE_HASH ||
         (motion->motionType == MOTIONTYPE_FIXED && motion->numOutputSegs <= 1));
 	
+	gettimeofday(&time1, NULL);
+		
 	while( !done )
 	{
 		/* grab TupleTableSlot from our child. */
@@ -105,11 +128,26 @@ static TupleTableSlot *execMotionSender(MotionState *node)
 
 		outerTupleSlot = ExecProcNode(outerNode);
 		
+		gettimeofday(&time2, NULL);
+		
+		node->otherTime.tv_sec += time2.tv_sec - time1.tv_sec;
+		node->otherTime.tv_usec += time2.tv_usec - time1.tv_usec;
+		
+		while (node->otherTime.tv_usec < 0)
+		{
+			node->otherTime.tv_usec += 1000000;
+			node->otherTime.tv_sec--;
+		}
+		
+		while (node->otherTime.tv_usec >= 1000000)
+		{
+			node->otherTime.tv_usec -= 1000000;
+			node->otherTime.tv_sec++;
+		}
+	
+		
 		if ( TupIsNull(outerTupleSlot) )
 		{
-			/* Child plan says "No more tuples!" */
-			node->noMoreChildTuples = true;
-			
 			doSendEndOfStream( motion, node );	
 			done = true;
 		}
@@ -118,7 +156,27 @@ static TupleTableSlot *execMotionSender(MotionState *node)
 			doSendTuple(motion, node, outerTupleSlot);
 			/* doSendTuple() may have set node->stopRequested as a side-effect */
 		}	
+		
+		gettimeofday(&time1, NULL);
+		
+		node->motionTime.tv_sec += time1.tv_sec - time2.tv_sec;
+		node->motionTime.tv_usec += time1.tv_usec - time2.tv_usec;
+		
+		while (node->motionTime.tv_usec < 0)
+		{
+			node->motionTime.tv_usec += 1000000;
+			node->motionTime.tv_sec--;
+		}
+		
+		while (node->motionTime.tv_usec >= 1000000)
+		{
+			node->motionTime.tv_usec -= 1000000;
+			node->motionTime.tv_sec++;
+		}
+		
+		
 	}
+	
 	
 	/* nothing else to send out, so we return NULL up the tree. */
 	return NULL;
@@ -132,7 +190,6 @@ static TupleTableSlot *execMotionUnsortedReceiver(MotionState *node)
 	HeapTuple			tuple;
 	Motion 				*motion = (Motion *)node->ps.plan;
 	ReceiveReturnCode 	recvRC;
-
 
     SO1_printf("ExecMotion: %s\n","entering routine");
 	
@@ -150,7 +207,6 @@ static TupleTableSlot *execMotionUnsortedReceiver(MotionState *node)
 	if (recvRC == END_OF_STREAM)
 	{
 		elog(DEBUG4, "motionID=%d saw END_OF_STREAM", motion->motionID );
-		node->noMoreAMSTuples = true;				
 		
 		return NULL;
 	}
@@ -212,13 +268,10 @@ static TupleTableSlot *execMotionSortedReceiver(MotionState *node)
 	TupleTableSlot 		*slot;
 	HeapTuple 			tuple, inputTuple;
 	Motion 				*motion = (Motion *)node->ps.plan;
-    SendReturnCode 		sendRC;
     ReceiveReturnCode 	recvRC;
     CdbTupleHeapInfo 	*tupHeapInfo;
 
-
-	SO1_printf("execMotionSorted: %s\n",
-			   "entering routine");
+	SO1_printf("execMotionSorted: %s\n", "entering routine");
 
     AssertState(motion->motionType == MOTIONTYPE_FIXED &&
                 motion->numOutputSegs <= 1);
@@ -237,10 +290,8 @@ static TupleTableSlot *execMotionSortedReceiver(MotionState *node)
 		execMotionSortedReceiverFirstTime(node);
 	}
 	else
-	{
-		// we don't add a 1 here since route 0 is segId 0 for some strange
-		// reason.
-		recvRC = RecvTupleFrom(motion->motionID, &inputTuple, node->segindexNext);
+	{		
+		recvRC = RecvTupleFrom(motion->motionID, &inputTuple, node->routeIdNext);
 		
 		if (recvRC == GOT_TUPLE)
 		{
@@ -248,7 +299,7 @@ static TupleTableSlot *execMotionSortedReceiver(MotionState *node)
 			node->numTuplesInHeap++;
 		}			
 			
-		MergeNewValueIntoCdbTupleHeap(node->tupleheap, inputTuple, node->segindexNext);
+		MergeNewValueIntoCdbTupleHeap(node->tupleheap, inputTuple, node->routeIdNext);
 					
 	}
 	
@@ -259,7 +310,7 @@ static TupleTableSlot *execMotionSortedReceiver(MotionState *node)
 	
 	tupHeapInfo = GetLowestValueFromCdbTupleHeap(node->tupleheap);
 	tuple = tupHeapInfo->tuple;
-	node->segindexNext = tupHeapInfo->sourceSegIndex;
+	node->routeIdNext = tupHeapInfo->sourceRouteId;
 	
 	if (tuple != NULL)
 	{
@@ -276,21 +327,6 @@ static TupleTableSlot *execMotionSortedReceiver(MotionState *node)
 	}
 	else    /* tuple is null */
 	{
-		AssertState(node->noMoreChildTuples);
-		while (!node->sentEndOfStream)
-		{
-			/* Try to complete the End-Of-Stream send.  We know this
-			 * is the broadcast scenario because we won't have a
-			 * pending EOS send if we are the single receiver of a
-			 * order-preserving motion.  (This is because a single
-			 * receiver won't be sending to anybody.)
-			 */
-			AssertState(motion->numOutputSegs == 0);
-			
-			sendRC = SendEndOfStream(motion->motionID, BROADCAST_SEGIDX);
-			node->sentEndOfStream = (sendRC == SEND_COMPLETE);
-		}
-		
 		return NULL;
 	}
 	
@@ -315,15 +351,11 @@ void execMotionSortedReceiverFirstTime(MotionState *node)
      * We need to get a tuple from every sender, and stick it into the heap.
      *
      * To keep all the initialize-logic in one place, we will pull a single
-     * tuple from our child plan-node, IF noMoreChildTuples is false, AND if
-     * this segment is in the output segindex array.  (The second condition is
-     * true by default, if we are calling this function.  Thus, we assert it
-     * too.)
+     * tuple from our child plan-node, 
      */
 
 
     /* These are all kinda different ways of saying the same thing... */
-    AssertState(!node->noMoreAMSTuples);
     AssertState(motion->numOutputSegs == 0 ||
                 motion->outputSegIdx[0] == mySegIdx);
 
@@ -340,7 +372,9 @@ void execMotionSortedReceiverFirstTime(MotionState *node)
 			continue;
 		
 		
-		//don't add 1 since route0 = segid0
+		/* another place where we are mapping segid space to routeid space.
+		 * so route[x] = inputSegIdx[x] now.
+		 */
 		recvRC = RecvTupleFrom(motion->motionID, &inputTuple,
 			motion->inputSegIdx[i]);
 		
@@ -388,14 +422,13 @@ void execMotionSortedReceiverFirstTime(MotionState *node)
 MotionState *
 ExecInitMotion(Motion *node, EState *estate)
 {
-	MotionState* motionstate;
-	bool readFromChild, readFromAMS;
-	int i;
-	TupleDesc tupDesc;
-	Slice *parentSlice;
-	Slice *thisSlice;
-	int prior_es_cur_slice_idx;
-	int prior_es_cur_root_idx;
+	MotionState *motionstate;
+	int 		i;
+	TupleDesc 	tupDesc;
+	Slice 		*parentSlice;
+	Slice 		*thisSlice;
+	int 		prior_es_cur_slice_idx;
+	int 		prior_es_cur_root_idx;
 
 	SO_printf("ExecInitMotion: initializing motion node\n");
 	
@@ -468,19 +501,14 @@ ExecInitMotion(Motion *node, EState *estate)
 		estate->es_slice_map[node->motionID] = motionstate;
 	}
 
-    readFromChild = (Cdb_role != CDB_ROLE_DISPATCH);
-    readFromAMS = setReadFromAMS(node);
 
-    /* Short-circuit these values right away, if we shouldn't read from these
-     * sources of tuples.
-     */
-	motionstate->noMoreChildTuples = !readFromChild;
-	motionstate->noMoreAMSTuples = !readFromAMS;
+    motionstate->sentEndOfStream = false;
 
-    /* Query Dispatcher top motion-node doesn't send anything to qExecs. */
-    motionstate->sentEndOfStream = (Cdb_role == CDB_ROLE_DISPATCH);
-    Assert(motionstate->noMoreChildTuples || !motionstate->sentEndOfStream);
-
+	motionstate->otherTime.tv_sec  = 0;
+	motionstate->otherTime.tv_usec = 0;
+	motionstate->motionTime.tv_sec  = 0;
+	motionstate->motionTime.tv_usec = 0;
+	
 	motionstate->numTuplesFromChild = 0;
 	motionstate->numTuplesToAMS     = 0;
 	motionstate->numTuplesFromAMS   = 0;
@@ -490,12 +518,7 @@ ExecInitMotion(Motion *node, EState *estate)
 
 	motionstate->stopRequested = false;
 	
-    elog(DEBUG2, "Motion-node %d type %s:  read from child = %s, from AMS = %s",
-        node->motionID,
-        (node->motionType == MOTIONTYPE_HASH ? "hash" : "fixed"),
-        (readFromChild ? "true" : "false"),
-        (readFromAMS ? "true" : "false")
-        );
+   
 
 	/*
 	 * Miscellaneous initialization
@@ -523,7 +546,17 @@ ExecInitMotion(Motion *node, EState *estate)
 	 */
 	 estate->es_cur_slice_idx =	prior_es_cur_slice_idx;
 	 estate->es_cur_root_idx =	prior_es_cur_root_idx;
+	 
+	if( motionstate->ps.state->es_cur_slice_idx == node->motionID )
+	 	motionstate->isReceiver = false;
+	 else
+	 	motionstate->isReceiver = true;
 	
+	 elog(DEBUG2, "Motion-node %d type %s is a %s",
+        node->motionID,
+        (node->motionType == MOTIONTYPE_HASH ? "hash" : "fixed"),
+        motionstate->isReceiver?"RECEIVER":"SENDER");
+        
 	/*
 	 * initialize tuple type.  no need to initialize projection info
 	 * because this node doesn't do projections.
@@ -622,7 +655,12 @@ ExecInitMotion(Motion *node, EState *estate)
 													motionstate,
 													node);
 		motionstate->tupleheapReady = false;
-		motionstate->segindexNext = node->inputSegIdx[0];
+		
+		
+		/* Here is a leap of faith where we are implicitly mapping from a
+		 * segment id space to the routeId space of the interconnect. 
+		 */
+		motionstate->routeIdNext = node->inputSegIdx[0];
 	}
 	
     /*
@@ -661,7 +699,9 @@ ExecEndMotion(MotionState *node)
 	Motion *motion;
     uint16 motNodeID;
 	int i;
-
+	double otherTimeSec;
+	double motionTimeSec;
+	
 	SO1_printf("ExecEndMotion: %s\n",
 			   "shutting down motion node");
 
@@ -677,15 +717,25 @@ ExecEndMotion(MotionState *node)
     motion = (Motion *)node->ps.plan;
 	Assert( motion != NULL );
 
-	elog( DEBUG1,
-		"Motion Node %d counts: \n"
-		"numTuplesFromChild: %d\n"
-		"numTuplesFromAMS: %d\n"
-		"numTuplesToAMS: %d\n"
-		"numTuplesToParent: %d\n"
-		"numTuplesToDeepSix: %d\n"
-		"numTuplesInHeap: %d\n",
+	motionTimeSec = (double) node->motionTime.tv_sec + (double) node->motionTime.tv_usec / 1000000.0;
+	
+		
+	if( node->isReceiver )
+	{
+		
+		elog( DEBUG1,
+		"Motion Node %d (RECEIVER) Statistics:\n"
+		"Timing:  \n"
+		"\t Time receiving the tuple: %f sec\n"
+		"Counters: \n"
+		"\tnumTuplesFromChild: %d\n"
+		"\tnumTuplesFromAMS: %d\n"
+		"\tnumTuplesToAMS: %d\n"
+		"\tnumTuplesToParent: %d\n"
+		"\tnumTuplesToDeepSix: %d\n"
+		"\tnumTuplesInHeap: %d\n",
 		motNodeID,
+		motionTimeSec,
 		node->numTuplesFromChild,
 		node->numTuplesFromAMS,
 		node->numTuplesToAMS,
@@ -693,6 +743,39 @@ ExecEndMotion(MotionState *node)
 		node->numTuplesToDeepSix,
 		node->numTuplesInHeap
 		);
+	}
+	else
+	{
+		otherTimeSec = (double) node->otherTime.tv_sec + (double) node->otherTime.tv_usec / 1000000.0;
+		
+		
+		elog( DEBUG1,
+		"Motion Node %d (SENDER) Statistics:\n"
+		"Timing:  \n"
+		"\t Time getting next tuple to send: %f sec \n"
+		"\t Time sending the tuple:          %f  sec\n"
+		"\t Percentage of time sending:      %2.2f%% \n"
+		"Counters: \n"
+		"\tnumTuplesFromChild: %d\n"
+		"\tnumTuplesFromAMS: %d\n"
+		"\tnumTuplesToAMS: %d\n"
+		"\tnumTuplesToParent: %d\n"
+		"\tnumTuplesToDeepSix: %d\n"
+		"\tnumTuplesInHeap: %d\n",
+		motNodeID,
+		otherTimeSec,
+		motionTimeSec,
+		(double)(motionTimeSec/(otherTimeSec+motionTimeSec)) * 100,
+		node->numTuplesFromChild,
+		node->numTuplesFromAMS,
+		node->numTuplesToAMS,
+		node->numTuplesToParent,
+		node->numTuplesToDeepSix,
+		node->numTuplesInHeap
+		);
+	}
+	
+	
 
 	if ( motion->motionType == MOTIONTYPE_FIXED && motion->numOutputSegs == 0 )
 	{
@@ -807,73 +890,11 @@ uint32 evalHashKey(ExprContext *econtext, List *hashkeys, List* hashtypes, CdbHa
 }
 
 
-/* Helper function to determine whether the motion node needs to read from the
- * Motion Layer (aka AMS).
- */
-bool setReadFromAMS(Motion *node)
-{
-    int i, mySegIdx;
-    bool readFromAMS = true;
-
-    AssertArg(node != NULL);
-
-    /* TODO:  Figure out whether we need is-primary here. */
-    mySegIdx = Cdb_segment;
-
-    switch (node->motionType)
-    {
-        case MOTIONTYPE_HASH:
-            AssertState(node->numHashSegs > 0);
-            AssertState(node->hashSegIdx != NULL);
-
-            readFromAMS = false;
-            for (i = 0; i < node->numHashSegs; i++)
-            {
-                if (node->hashSegIdx[i] == mySegIdx)
-                {
-                    readFromAMS = true;
-                    break;
-                }
-            }
-
-            break;
-
-        case MOTIONTYPE_FIXED:
-            AssertState(node->numOutputSegs >= 0);
-            AssertState(node->numOutputSegs == 0 || node->outputSegIdx != NULL);
-
-            if (node->numOutputSegs == 0)
-            {
-                readFromAMS = true;
-            }
-            else
-            {
-                readFromAMS = false;
-                for (i = 0; i < node->numOutputSegs; i++)
-                {
-                    if (node->outputSegIdx[i] == mySegIdx)
-                    {
-                        readFromAMS = true;
-                        break;
-                    }
-                }
-            }
-
-            break;
-
-        default:
-            AssertState(false);
-    }
-
-    return readFromAMS;
-}
-
-
 void doSendEndOfStream( Motion *motion, MotionState *node )
 {
-	int targetRoute;
 	SendReturnCode 	sendRC;
-	
+	int 			targetRoute;
+		
 	/* We have no more child tuples, but we have not successfully
 	 * sent an End-of-Stream token yet.
 	 *
@@ -886,7 +907,11 @@ void doSendEndOfStream( Motion *motion, MotionState *node )
 		targetRoute = BROADCAST_SEGIDX;
 	
 	sendRC = SendEndOfStream(motion->motionID, targetRoute);
-	node->sentEndOfStream = (sendRC == SEND_COMPLETE);
+	
+	
+	Assert( sendRC == SEND_COMPLETE );
+	
+	node->sentEndOfStream = true;
 	elog(DEBUG4, "motionID=%d node->sentEndOfStream=%d", motion->motionID, node->sentEndOfStream);
 }
 

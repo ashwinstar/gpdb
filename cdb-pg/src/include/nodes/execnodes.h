@@ -1344,8 +1344,7 @@ typedef struct LimitState
 typedef struct MotionState
 {
 	PlanState			ps;					/* its first field is NodeTag */
-	bool				noMoreChildTuples;	/* set when child node returns NULL */
-	bool				noMoreAMSTuples;	/* set when AMS indicates all peers are done sending tuples */
+	bool				isReceiver;			/* if this is a receiving motion node (else a sender) */
     bool				sentEndOfStream;    /* set when end-of-stream has successfully been sent */
 	bool				stopRequested;      /* set when we want transfer to stop */
 	List				*hashExprState;		/* state struct used for evaluating the hash expressions */
@@ -1355,7 +1354,7 @@ typedef struct MotionState
 	FmgrInfo			*sortFunctions;		/* functions to sort the tuples for a sorted motion node */
 	SortFunctionKind	*sortFnKinds;		/* kind of sort function for sorted motion node */
 	struct CdbHeap		*tupleheap;			/* data structure for match merge in sorted motion node */
-	int					segindexNext;		/* for a sorted motion node, the segindex to get next (same as the segindex last returned ) */
+	int					routeIdNext;		/* for a sorted motion node, the routeId to get next (same as the routeId last returned ) */
 	bool				tupleheapReady;		/* for a sorted motion node, false until we have a tuple from each source segindex */
 
 
@@ -1367,6 +1366,17 @@ typedef struct MotionState
 	int			numTuplesToDeepSix;	/* Number of tuples that were not passed on due to hashSegIdxMask or fixedSegIdxMask being true*/
 	int			*numTuplesByHashSegIdx; /* Distribution of number of tuples from child by hash seg index */
 	int			numTuplesInHeap;	/* Number of tuples that are currently sitting in tupleheap*/
+	
+	struct timeval otherTime;  /* time accumulator used in sending motion node to keep track of time
+								 * spent getting the next tuple (not sending). this could mean time spent
+								 * in another motion node receiving. */
+							
+	struct timeval motionTime;  /* time accumulator for time spent in motion node.  For sending motion node
+							     * it is just the amount of time actually sending the tuple thru the 
+								 * interconnect.  For receiving motion node, it is the time spent waiting 
+								 * and processing of the next incoming tuple.
+								 */
+		
 } MotionState;
 
 #endif   /* EXECNODES_H */
