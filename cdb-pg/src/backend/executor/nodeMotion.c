@@ -1026,10 +1026,18 @@ void doSendTuple(Motion *motion, MotionState *node, TupleTableSlot *outerTupleSl
  *
  * ExecProcNode() on a stopped motion node should also notify the
  * "other end" of the motion node of the stoppage.
+ *
+ * Note: once this is called, it is possible that the motion node will
+ * never be called again, so we *must* send the stop message now.
  */
 void ExecStopMotion(MotionState *node)
 {
+	Motion		*motion;
+
     AssertArg(node != NULL);
 
+	motion = (Motion *)node->ps.plan;
+
 	node->stopRequested = true;
+	SendStopMessage(motion->motionID);
 }

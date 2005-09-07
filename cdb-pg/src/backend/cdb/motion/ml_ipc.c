@@ -421,12 +421,7 @@ TupleChunkListItem RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 
 	/* We scan the file descriptors starting from where we left off in
 	 * the last call (don't continually poll the first when others may
-	 * be ready!).
-	 *
-	 * The calculation of scanEnd looks weird. we're calculating
-	 * (scanStart - 1)modN, but C doesn't like mixing the "mod"
-	 * operator with negative numbers (-1 mod N != N -  )
-	 */
+	 * be ready!). */
 	for (i = 0; i < pEntry->numConns; i++)
 	{	
 		index = ((scanStart + i) % pEntry->numConns);
@@ -1962,7 +1957,7 @@ void SendStopMessage(int16 motNodeID)
 	Assert(pEntry != NULL);
 
 	/* Note: we're only concerned with receivers here, so mirrors don't matter */
-	for (i = 0; i < pEntry->highReadSock; i++)
+	for (i = 0; i < pEntry->numConns; i++)
 	{
 		conn = pEntry->conns + i;
 
