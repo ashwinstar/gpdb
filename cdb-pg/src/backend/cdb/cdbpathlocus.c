@@ -188,6 +188,7 @@ cdbpathlocus_from_subquery(struct Query         *root,
     if (!flow)
         goto done;
 
+    /* Flow node was made from CdbPathLocus by cdbpathtoplan_create_flow() */
     switch (flow->flotype)
     {
         case FLOW_SINGLETON:
@@ -195,7 +196,22 @@ cdbpathlocus_from_subquery(struct Query         *root,
                 CdbPathLocus_MakeRoot(&locus);
             break;
         case FLOW_REPLICATED:
-            CdbPathLocus_MakeReplicated(&locus);
+            /* Locus could have been either 'replicated' or 'general'.
+             * If replicated, the plan node should have been marked
+             * DISPATCH_PARALLEL by create_plan().
+             */
+            switch (plan->dispatch)
+            {
+                case DISPATCH_PARALLEL:
+                    CdbPathLocus_MakeReplicated(&locus);
+                    break;
+                case DISPATCH_UNDETERMINED:
+                    CdbPathLocus_MakeGeneral(&locus);
+                    break;
+                case DISPATCH_SEQUENTIAL:
+                default:
+                    Assert(false);
+            }
             break;
         case FLOW_PARTITIONED:
         {
