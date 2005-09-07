@@ -1018,13 +1018,10 @@ MotionLayerState *createMotionState(int16 motNodeID, int numConns)
 
     pEntry->motNodeId 	   = motNodeID;
     pEntry->numConns 	   = numConns;
-    pEntry->conns 		   = palloc(pEntry->numConns * sizeof(MotionConn));
-
 	pEntry->highReadSock   = 0;
-
-	memset(&pEntry->conns, 0, pEntry->numConns * sizeof(MotionConn));
+    pEntry->conns 		   = palloc0(pEntry->numConns * sizeof(MotionConn));
 	
-	for (i=0; i<numConns; i++)
+	for (i=0; i < numConns; i++)
 	{
 		pEntry->conns[i].sockfd = -1;
 	}
