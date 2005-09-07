@@ -186,6 +186,7 @@ static CdbProcess *findCdbProcess(RegisterMessage *msg);
 bool flushBuffer(MotionConn *conn);
 void dumpEntryConnections( MotionLayerState *pEntry );
 
+static void getEosAck(MotionConn *conn);
 void waitOnEosAck(MotionLayerState *pEntry);
 
 /*=========================================================================
@@ -2030,11 +2031,64 @@ void SendEosAck(int16 motNodeID, int16 route)
 #endif
 }
 
+static void getEosAck(MotionConn *conn)
+{
+	int			readCount;
+	char		response;
+
+	readCount = read(conn->sockfd, &response, sizeof(response));
+	if (readCount < 0)
+	{
+		if (errno == EINTR)
+			return;
+		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						errmsg("Interconnect error reading EOS Ack"),
+						errdetail("read() errno=%d "
+								  "contentId=%d at '%s':%d",
+								  errno, conn->remoteContentId,
+								  conn->remoteHost,conn->remotePort)));
+	}
+	else if (readCount == 0)
+	{
+		/* peer has closed its socket */
+		conn->stillActive = false;
+#ifdef AMS_VERBOSE_LOGGING
+		elog(DEBUG3, "Peer closed route %d without EOS ack", i);
+#endif
+	}
+	else if (readCount != sizeof(response))
+	{
+		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						errmsg("Interconnect error reading EOS Ack"),
+						errdetail("count=%d "
+								  "contentId=%d at '%s':%d",
+								  readCount, conn->remoteContentId,
+								  conn->remoteHost,conn->remotePort)));
+	}
+	else if (response == 'A' || response == 'S')
+	{
+		/* successfully acknowledged */
+		conn->stillActive = false;
+#ifdef AMS_VERBOSE_LOGGING
+		elog(DEBUG3, "Received EOS ack from route %d", i);
+#endif
+	}
+	else
+	{
+		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						errmsg("Interconnect error reading EOS Ack"),
+						errdetail("invalid Ack message (%c).\n"
+								  "contentId=%d at '%s':%d",
+								  response, conn->remoteContentId,
+								  conn->remoteHost,conn->remotePort)));
+	}
+
+}
+
 void waitOnEosAck(MotionLayerState *pEntry)
 {
 	MotionConn	*conn;
-	int			i, n, readCount, waitCount;
-	char		response;
+	int			i, n, waitCount;
 	fd_set		waitset;
 
 	do {
@@ -2058,7 +2112,7 @@ void waitOnEosAck(MotionLayerState *pEntry)
 			if (conn->hasMirrorConn && conn->mirrorConn->stillActive)
 			{
 				FD_SET(conn->mirrorConn->sockfd, &waitset);
-				limit = MAX(limit, conn->sockfd);
+				limit = MAX(limit, conn->mirrorConn->sockfd);
 				waitCount++;
 			}
 		}
@@ -2088,53 +2142,13 @@ void waitOnEosAck(MotionLayerState *pEntry)
 
 				if (conn->stillActive &&
 					FD_ISSET(conn->sockfd, &waitset))
-                {
-					readCount = read(conn->sockfd, &response, sizeof(response));
-                    if (readCount < 0)
-                    {
-                        if (errno == EINTR)
-                            continue;
-						ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-										errmsg("Interconnect error reading EOS Ack"),
-										errdetail("read() errno=%d "
-												  "contentId=%d at '%s':%d",
-												  errno, conn->remoteContentId,
-												  conn->remoteHost,conn->remotePort)));
-                    }
-                    else if (readCount == 0)
-                    {
-                        /* peer has closed its socket */
-                        conn->stillActive = false;
-#ifdef AMS_VERBOSE_LOGGING
-                        elog(DEBUG3, "Peer closed route %d without EOS ack", i);
-#endif
-                    }
-					else if (readCount != sizeof(response))
-					{
-						ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-										errmsg("Interconnect error reading EOS Ack"),
-										errdetail("count=%d "
-												  "contentId=%d at '%s':%d",
-												  readCount, conn->remoteContentId,
-												  conn->remoteHost,conn->remotePort)));
-					}
-					else if (response == 'A' || response == 'S')
-					{
-						/* successfully acknowledged */
-						conn->stillActive = false;
-#ifdef AMS_VERBOSE_LOGGING
-						elog(DEBUG3, "Received EOS ack from route %d", i);
-#endif
-					}
-					else
-					{
-						ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-										errmsg("Interconnect error reading EOS Ack"),
-										errdetail("invalid Ack message (%c).\n"
-												  "contentId=%d at '%s':%d",
-												  response, conn->remoteContentId,
-												  conn->remoteHost,conn->remotePort)));
-					}
+				{
+					getEosAck(conn);
+				}
+				if (conn->hasMirrorConn && conn->mirrorConn->stillActive &&
+					FD_ISSET(conn->mirrorConn->sockfd, &waitset))
+				{
+					getEosAck(conn->mirrorConn);
 				}
 			}
 		}
