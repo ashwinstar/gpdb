@@ -1102,6 +1102,7 @@ _outPathInfo(StringInfo str, Path *node)
 	WRITE_ENUM_FIELD(pathtype, NodeTag);
 	WRITE_FLOAT_FIELD(startup_cost, "%.2f");
 	WRITE_FLOAT_FIELD(total_cost, "%.2f");
+    WRITE_NODE_FIELD(parent);
     _outCdbPathLocus(str, &node->locus);
 	WRITE_NODE_FIELD(pathkeys);
 }
@@ -1126,7 +1127,6 @@ _outPath(StringInfo str, Path *node)
 	WRITE_NODE_TYPE("PATH");
 
 	_outPathInfo(str, (Path *) node);
-    WRITE_NODE_FIELD(parent);
 }
 
 /*
