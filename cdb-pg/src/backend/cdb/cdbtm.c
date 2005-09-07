@@ -878,7 +878,6 @@ cleanRMResultSets( PGresult **pgresultSets )
 bool
 dumpRMxacts( PGresult **pgresultSets )
 {
-    int totaldbs = getCdbSegmentCount();
     int i=0,j;
     
     PGresult *rs = pgresultSets[0];
@@ -904,7 +903,6 @@ dumpRMxacts( PGresult **pgresultSets )
 bool
 checkRM( PGresult **pgresultSets )
 {
-    int totaldbs = getCdbSegmentCount();
     int i=0,j;
 
     PGresult *rs = pgresultSets[0];
@@ -930,7 +928,8 @@ bool
 recoverRMs(PGresult ***pgresultSets)
 {
     char cmdbuf[] = "select gid from pg_prepared_xacts";
-    int totaldbs, i;
+    int i;
+    PGresult *rs;
     
     /* call to all QE to get in-doubt transactions */
     if ( !CdbDoCommandInt(cmdbuf, false, (void ***)pgresultSets) )
@@ -939,7 +938,7 @@ recoverRMs(PGresult ***pgresultSets)
     }
 
     i=0;
-    PGresult *rs = (*pgresultSets)[0];    
+    rs = (*pgresultSets)[0];
     do
     {
         if (PQntuples(rs) != 0)

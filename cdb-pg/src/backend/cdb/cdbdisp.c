@@ -325,13 +325,10 @@ void
 CdbDispatchCommandInt(const char *szCommand, bool cancelFromBelow,
 					  void ***resultSets)
 {
-	int			i;
-
 	int			segdbs_in_thread_pool;
 
 	Gang	   *primaryGang = NULL;
 	Gang	   *mirrorGang = NULL;
-	int			x;
 
 	if (Cdb_role != CDB_ROLE_DISPATCH)
 		elog(ERROR, "CdbDispatchCommandInt should not be called while not in DISPATCH mode.");
