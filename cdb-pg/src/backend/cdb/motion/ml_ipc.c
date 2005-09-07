@@ -882,7 +882,6 @@ void TeardownInterconnect(void)
 		}
 	
 		incompleteConns = list_delete(incompleteConns, cell);
-		cell = list_head(incompleteConns);
 	}
 
 	incompleteConns = NIL;
@@ -2081,7 +2080,8 @@ void waitOnEosAck(MotionLayerState *pEntry)
 									  errno, conn->remoteContentId,
 									  conn->remoteHost,conn->remotePort)));
 		}
-		else if (n > 0) {
+		else if (n > 0)
+		{
 			for (i= 0; i < pEntry->numConns; i++)
 			{
 				conn = pEntry->conns + i;
@@ -2139,7 +2139,8 @@ void waitOnEosAck(MotionLayerState *pEntry)
 			}
 		}
 #ifdef AMS_VERBOSE_LOGGING
-		if (n == 0) {
+		if (n == 0)
+		{
 			elog(DEBUG3, "waitOnEosAck(): timeout");
 		}
 #endif
