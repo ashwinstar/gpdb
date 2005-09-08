@@ -1230,7 +1230,6 @@ scanForManagedTables_walker(Node *node, PlanProfile *context)
 				rte = rt_fetch(rtindex, localRangeTable(context));
 				Assert(rte->rtekind == RTE_SUBQUERY);
 				
-				Assert( rte->subquery->rtable != NULL );
 				pushLocals(context, rte->subquery->rtable);
 				
 				if ( plan_tree_walker(node, scanForManagedTables_walker, context) )
