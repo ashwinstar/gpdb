@@ -116,6 +116,9 @@ USAGE () {
 CHK_PARAMS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 
+		if [ $USER == "root" ]; then
+				ERROR_EXIT "[FATAL]:-Unable to run this script as $USER" 2
+		fi
 		if [ x"" = x"$MPPHOME" ] && [ x"" = x"$BIZHOME" ]; then
 				LOG_MSG "[FATAL]:-Environment variables MPPHOME and BIZHOME not set"
 				LOG_MSG "[FATAL]:-At least one of these must be set for this script to continue"
