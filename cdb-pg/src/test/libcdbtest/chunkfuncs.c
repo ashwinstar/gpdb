@@ -31,7 +31,7 @@
 
 #define GET_STR(textp) DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(textp)))
 
-
+extern int Cdb_max_tuple_chunk_size;
 
 typedef struct ChunkedRowState
 {

@@ -32,7 +32,7 @@
 /*=========================================================================
  * MOTION NODE INFO DATA STRUCTURES
  */
-
+int Cdb_max_tuple_chunk_size;
 
 /* Keys in the motion-node info HTAB are motion node IDs. */
 
@@ -208,8 +208,6 @@ static MotionLayerState s_motion_layer_state;
 
 static TupleChunkListItemData s_eos_chunk_data =
     { NULL, TUPLE_CHUNK_HEADER_SIZE, "                " };
-
-static int Cdb_max_tuple_chunk_size;
 
 /*=========================================================================
  * HELPER FUNCTION DECLARATIONS

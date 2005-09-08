@@ -16,6 +16,9 @@
 #include "utils/date.h"
 #include "utils/numeric.h"
 
+#ifndef MAX
+#define MAX(x, y) ((x) > (y) ? (x) : (y))
+#endif
 
 /* A MemoryContext used within the tuple serialize code, so that freeing of
  * space is SUPAFAST.  It is initialized in the first call to InitSerTupInfo()
@@ -24,12 +27,38 @@
  */
 static MemoryContext s_tupSerMemCtxt = NULL;
 
+/*
+ * appendStringInfoInt32
+ *
+ * Append a 4-byte integer to str.  The result is not necessarily in network
+ * byte-ordering, and is architecture dependent.
+ *
+ * Hopefully this is faster than the stuff in stringinfo.c or pqformat.c!
+ * 
+ * Rewriting this as a macro gives a 20% speedup in the libcdbtest
+ * "GetSerialized" test.
+ */
+#define appendStringInfoInt32(/*StringInfo*/ str, /*int32*/ i)	\
+{ \
+	/* Make more room if needed */ \
+	if (str->len + 4 >= str->maxlen) \
+		enlargeStringInfo(str, 4); \
+\
+	/* Store the int32.  We cast the pointer to the next part of the data to \
+	 * an int32 pointer, and just store the integer into that location of the \
+	 * array. \
+	 * \
+	 * NOTE: WE ASSUME THAT EITHER WE HAVE THE ALIGNMENT WE NEED, OR THE ARCH. DOESN'T CARE \
+	 */ \
+	*((int32 *) (str->data + str->len)) = i; \
+	\
+	/* Update the count, and 0-terminate the string. */ \
+	str->len += 4; \
+	str->data[str->len] = '\0'; \
+}
 
 
-static void appendStringInfoInt32(StringInfo str, int32 i);
 static int32 stringInfoGetInt32(StringInfo str);
-
-
 
 /* Look up all of the information that SerializeTuple() and DeserializeTuple()
  * need to perform their jobs quickly.  Also, scratchpad space is allocated
@@ -442,8 +471,8 @@ TupleChunkList CvtHeapTupToChunks(HeapTuple htup, SerTupInfo *pSerInfo,
     AssertArg(pSerInfo != NULL);
 
     /* Generate serialized version of heap tuple into the string info. */
-
     initStringInfo(&serialTup);
+
     SerializeTuple(htup, pSerInfo, &serialTup);
 
     /* Create the tuple-chunk list from the serialized data. */
@@ -596,33 +625,6 @@ HeapTuple CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo *pSerInfo)
     return htup;
 }
 
-
-/*
- * appendStringInfoInt32
- *
- * Append a 4-byte integer to str.  The result is not necessarily in network
- * byte-ordering, and is architecture dependent.
- *
- * Hopefully this is faster than the stuff in stringinfo.c or pqformat.c!
- */
-void appendStringInfoInt32(StringInfo str, int32 i)
-{
-	/* Make more room if needed */
-	if (str->len + 4 >= str->maxlen)
-		enlargeStringInfo(str, 4);
-
-	/* Store the int32.  We cast the pointer to the next part of the data to
-	 * an int32 pointer, and just store the integer into that location of the
-	 * array.
-	 */
-	*((int32 *) (str->data + str->len)) = i;
-	
-	/* Update the count, and 0-terminate the string. */
-	str->len += 4;
-	str->data[str->len] = '\0';
-}
-
-
 /*
  * stringInfoGetInt32
  *
@@ -656,6 +658,3 @@ int32 stringInfoGetInt32(StringInfo str)
 	
 	return res;
 }
-
-
-
