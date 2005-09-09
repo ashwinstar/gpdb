@@ -484,6 +484,16 @@ _readDropStmt(void)
 	READ_DONE();
 }
 
+static TruncateStmt *
+_readTruncateStmt(void)
+{
+	READ_LOCALS(TruncateStmt);
+
+	READ_NODE_FIELD(relation);
+
+	READ_DONE();
+}
+
 
 static CreateUserStmt *
 _readCreateUserStmt(void)
@@ -1924,6 +1934,7 @@ static ParseNodeInfo infoAr[] =
 	{"SUBQUERYSCAN", (ReadFn)_readSubqueryScan},
 	{"TARGETENTRY", (ReadFn)_readTargetEntry},
 	{"TIDSCAN", (ReadFn)_readTidScan},
+	{"TRUNCATESTMT", (ReadFn)_readTruncateStmt},
 	{"TYPENAME", (ReadFn)_readTypeName},
 	{"UNIQUE", (ReadFn)_readUnique},
 	{"VACUUMSTMT", (ReadFn)_readVacuumStmt},

@@ -1358,6 +1358,15 @@ _outDropStmt(StringInfo str, DropStmt *node)
 }
 
 static void
+_outTruncateStmt(StringInfo str, TruncateStmt *node)
+{
+	WRITE_NODE_TYPE("TRUNCATESTMT");
+
+	WRITE_NODE_FIELD(relation);
+	
+}
+
+static void
 _outAlterTableStmt(StringInfo str, AlterTableStmt *node)
 {
 	WRITE_NODE_TYPE("ALTERTABLESTMT");
@@ -1597,6 +1606,7 @@ _outQuery(StringInfo str, Query *node)
 		{
 			case T_CreateStmt:
 			case T_DropStmt:
+			case T_TruncateStmt:
 			case T_AlterTableStmt:
 			case T_AlterTableCmd:
 			case T_ViewStmt:
@@ -2273,6 +2283,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_DropStmt:
 				_outDropStmt(str, obj);
+				break;
+			case T_TruncateStmt:
+				_outTruncateStmt(str, obj);
 				break;
 
 			case T_AlterTableStmt:
