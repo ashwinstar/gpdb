@@ -2433,7 +2433,15 @@ get_names_for_var(Var *var, int levelsup, deparse_context *context,
 	else
 		rte = NULL;
 	if (rte == NULL)
-		elog(ERROR, "bogus varno: %d", var->varno);
+    {
+        char    buf[50];
+        sprintf(buf, "(bogus var %d %d)", var->varno, var->varattno);
+        *attname = pstrdup(buf);
+        *schemaname = NULL;
+        *refname = NULL;
+        elog(WARNING, "bogus varno %d", var->varno);
+        return;
+    }
 
 	/* Emit results */
 	*schemaname = NULL;			/* default assumptions */
@@ -3910,7 +3918,7 @@ get_from_clause_item(Node *jtnode, Query *query, deparse_context *context)
 		bool		need_paren_on_right;
 
 		need_paren_on_right = PRETTY_PAREN(context) &&
-			!IsA(j->rarg, RangeTblRef) && 
+			!IsA(j->rarg, RangeTblRef) &&
 			!(IsA(j->rarg, JoinExpr) && ((JoinExpr*) j->rarg)->alias != NULL);
 
 		if (!PRETTY_PAREN(context) || j->alias != NULL)

@@ -33,11 +33,25 @@ Cost        cdb_motion_tuple_cost   = 0.0;
  * cdbpath_create_motion_path
  *    Returns a Path that delivers the subpath result to the
  *    given locus, or NULL if it can't be done.
+ *
+ *    'pathkeys' must specify an ordering equal to or weaker than the
+ *    subpath's existing ordering.
+ *
+ *    If no motion is needed, the caller's subpath is returned unchanged.
+ *    Else if require_existing_order is true, NULL is returned if the
+ *      motion would not preserve an ordering at least as strong as the
+ *      specified ordering; also NULL is returned if pathkeys is NIL
+ *      meaning the caller is just checking and doesn't want to add motion.
+ *    Else a CdbMotionPath is returned having the either specified pathkeys
+ *      (if given and the motion uses Merge Receive), or the pathkeys
+ *      of the original subpath (if the motion is one-to-one), or no
+ *      pathkeys otherwise (the usual case).
  */
 Path *
 cdbpath_create_motion_path(Query           *root,
                            Path            *subpath,
                            List            *pathkeys,
+                           bool             require_existing_order,
                            CdbPathLocus     locus)
 {
     CdbMotionPath      *pathnode;
@@ -63,6 +77,11 @@ cdbpath_create_motion_path(Query           *root,
         /* hashed-->root */
         Assert(CdbPathLocus_IsHashed(subpath->locus) ||
                CdbPathLocus_IsHashedOJ(subpath->locus));
+
+        /* Fail if caller wants no motion. */
+        if (require_existing_order &&
+            !pathkeys)
+            return NULL;
     }
 
     /* Does subpath produce same multiset of rows on every qExec of its gang? */
@@ -77,10 +96,17 @@ cdbpath_create_motion_path(Query           *root,
         Assert(CdbPathLocus_IsHashed(locus) ||
                CdbPathLocus_IsHashedOJ(locus));
 
+        /* Fail if caller wants no motion. */
+        if (require_existing_order &&
+            !pathkeys)
+            return NULL;
+
+        /* Since the motion is 1-to-1, the rows remain in the same order. */
+        pathkeys = subpath->pathkeys;
+
         /* Tell each qExec to filter on the hash key, passing rows that
          * belong to its own partition and discarding rows that belong
          * to other partitions.  Rows don't move (not far, anyway).
-         * Since the motion is 1-to-1, the rows remain in the same order.
          */
         hashToSelfOnly = true;
     }
@@ -107,6 +133,10 @@ cdbpath_create_motion_path(Query           *root,
         /* hashed-->replicated */
         else
             Assert(CdbPathLocus_IsReplicated(locus));
+
+        /* Fail if caller insists on ordered result or no motion. */
+        if (require_existing_order)
+            return NULL;
 
         /* Output streams lose any ordering they had.
          * qExecs aren't allowed to merge sorted streams (for now).
@@ -155,10 +185,9 @@ cdbpath_create_motion_path(Query           *root,
     pathnode->path.startup_cost = subpath->startup_cost;
     pathnode->path.memory = subpath->memory;
 
-    /* Tell operators above us if slack may be needed for deadlock safety. */
-    pathnode->path.motionHazard = hashToSelfOnly
-                                    ? subpath->motionHazard
-                                    : true;
+    /* Tell operators above us that slack may be needed for deadlock safety. */
+    pathnode->path.motionHazard = true;
+
     return (Path *)pathnode;
 }                               /* cdbpath_create_motion_path */
 
@@ -520,10 +549,10 @@ typedef struct
 
 CdbPathLocus
 cdbpath_motion_for_join(Query      *root,
-                        JoinType    jointype,
+                        JoinType    jointype,           /* JOIN_INNER, JOIN_FULL, JOIN_LEFT, JOIN_RIGHT */
                         Path      **outer_path,         /* INOUT */
                         Path      **inner_path,         /* INOUT */
-                        List       *mergeclause_list,
+                        List       *mergeclause_list,   /* equijoin RestrictInfo list */
                         List       *outer_pathkeys,
                         List       *inner_pathkeys,
                         bool        outer_require_existing_order,
@@ -543,8 +572,10 @@ cdbpath_motion_for_join(Query      *root,
 
     /* Caller can specify an ordering for each source path that is
      * the same as or weaker than the path's existing ordering.
-     * For merge join we must maintain the given ordering, if any.
-     * It is preferred but not required for other join methods.
+     * Caller may insist that we do not add motion that would
+     * lose the specified ordering property; otherwise the given
+     * ordering is preferred but not required.
+     * A required NIL ordering means no motion is allowed for that path.
      */
     outer.require_existing_order = outer_require_existing_order;
     inner.require_existing_order = inner_require_existing_order;
@@ -698,12 +729,10 @@ cdbpath_motion_for_join(Query      *root,
         outer.path = cdbpath_create_motion_path(root,
                                                 outer.path,
                                                 outer_pathkeys,
+                                                outer.require_existing_order,
                                                 outer.move_to);
-        if (!outer.path)            /* fail if motion not feasible */
+        if (!outer.path)            /* fail if outer motion not feasible */
             goto fail;
-        if (outer.require_existing_order &&
-            outer.path->pathkeys != outer_pathkeys)
-            goto fail;              /* fail if motion loses required ordering */
    }
 
     /*
@@ -714,18 +743,16 @@ cdbpath_motion_for_join(Query      *root,
         inner.path = cdbpath_create_motion_path(root,
                                                 inner.path,
                                                 inner_pathkeys,
+                                                inner.require_existing_order,
                                                 inner.move_to);
-        if (!inner.path)
-            goto fail;
-        if (inner.require_existing_order &&
-            inner.path->pathkeys != inner_pathkeys)
+        if (!inner.path)            /* fail if inner motion not feasible */
             goto fail;
     }
 
     /*
-     * ok to join
+     * Ok to join.  Finalize outer subpath.
      */
-    if (!CdbPathLocus_IsNull(outer.move_to))
+    if (IsA(outer.path, CdbMotionPath))
     {
         /* Add Unique operator on top if original subpath was Unique. */
         if (IsA(*outer_path, UniquePath))
@@ -734,7 +761,9 @@ cdbpath_motion_for_join(Query      *root,
         /* Give modified subpath to caller. */
         *outer_path = outer.path;
     }
-    if (!CdbPathLocus_IsNull(inner.move_to))
+
+    /* Add finishing touches to inner subpath. */
+    if (IsA(inner.path, CdbMotionPath))
     {
         /* Add Unique operator on top if original subpath was Unique. */
         if (IsA(*inner_path, UniquePath))
@@ -743,6 +772,8 @@ cdbpath_motion_for_join(Query      *root,
         /* Give modified subpath to caller. */
         *inner_path = inner.path;
     }
+
+    /* Tell caller where the join will be done. */
     return cdbpathlocus_join(outer.path->locus, inner.path->locus);
 
 fail:                           /* can't do this join */

@@ -796,7 +796,10 @@ create_unique_path(Query *root, RelOptInfo *rel, Path *subpath)
 		pathnode->path.total_cost = sort_path.total_cost;
 	}
 
-    /* hash or sort implies materialization and breaks deadlock cycle */
+    /* Hash or sort implies materialization and breaks deadlock cycle.
+     *  (NB: Must not reset motionHazard when sort is eliminated due to
+     *  existing ordering; but Unique sort is never optimized away at present.)
+     */
     pathnode->path.motionHazard = false;
 
     if (subpath == rel->cheapest_total_path)
@@ -961,6 +964,15 @@ create_nestloop_path(Query *root,
 {
 	NestPath       *pathnode;
     CdbPathLocus    join_locus;
+    Path           *unmoved_inner_path = inner_path;
+    bool            inner_must_be_local = false;
+
+    /* CDB: Inner indexpath must execute in the same backend as the
+     * nested join to receive input values from the outer rel.
+     */
+    if (IsA(inner_path, IndexPath) &&
+        ((IndexPath *)inner_path)->isjoininner)
+        inner_must_be_local = true;
 
     /* Add motion nodes above subpaths and decide where to join. */
     join_locus = cdbpath_motion_for_join(root,
@@ -971,16 +983,20 @@ create_nestloop_path(Query *root,
                                          pathkeys,
                                          NIL,
                                          false,
-                                         false);
+                                         inner_must_be_local);
     if (CdbPathLocus_IsNull(join_locus))
         return NULL;
 
     /* Outer might not be ordered anymore after motion. */
-    if (IsA(outer_path, CdbMotionPath))
-        pathkeys = outer_path->pathkeys;
+    if (!outer_path->pathkeys)
+        pathkeys = NULL;
 
-    /* Materialize inner after motion (could omit if outer is unique). */
-    if (IsA(inner_path, CdbMotionPath))
+    /* Materialize inner rel after motion, so NJ can loop over results.
+     * Skip if an intervening Unique operator will materialize.
+     * CDB TODO: Can skip if outer has at most one row.
+     */
+    if (inner_path != unmoved_inner_path &&
+        inner_path->motionHazard)
         inner_path = (Path *)create_material_path(inner_path->parent, inner_path);
 
     pathnode = makeNode(NestPath);

@@ -25,14 +25,15 @@ Path *
 cdbpath_create_motion_path(Query           *root,
                            Path            *subpath,
                            List            *pathkeys,
+                           bool             require_existing_order,
                            CdbPathLocus     locus);
 
 CdbPathLocus
 cdbpath_motion_for_join(Query      *root,
-                        JoinType    jointype,
+                        JoinType    jointype,           /* JOIN_INNER, JOIN_FULL, JOIN_LEFT, JOIN_RIGHT */
                         Path      **outer_path,         /* INOUT */
                         Path      **inner_path,         /* INOUT */
-                        List       *mergeclause_list,
+                        List       *mergeclause_list,   /* equijoin RestrictInfo list */
                         List       *outer_pathkeys,
                         List       *inner_pathkeys,
                         bool        outer_require_existing_order,
