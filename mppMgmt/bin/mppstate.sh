@@ -113,6 +113,13 @@ DISPLAY_PARAM () {
 		exit $EXIT_STATUS
 }
 
+CHK_PG_PID () {
+		OS_PID_COUNT=`$PS ax|$GREP $1|$GREP -v grep|$WC -l`
+		if [ $OS_PID_COUNT = 0 ]; then
+			ERROR_EXIT "[FATAL]:-Have postmaster.pid, but no process with PID = $1, check postmaster log file" 2
+		fi
+
+}
 
 DATABASE_STATUS () {
 		#MPP converted 21/07/2005
@@ -121,9 +128,10 @@ DATABASE_STATUS () {
 		if [ ! -s $QD_DATA_DIRECTORY/$PG_PID ]; then
 				ERROR_EXIT "[WARN]:-Query Dispatch database down" 1
 		else
+				QD_PID=`$HEAD -1 $QD_DATA_DIRECTORY/$PG_PID`
+				CHK_PG_PID $QD_PID
 				GET_QE_DETAILS
 				GET_MPP_VERSION	
-				QD_PID=`$HEAD -1 $QD_DATA_DIRECTORY/$PG_PID`
 				LOG_MSG "[INFO]:-QD Configuration & Status"
 				LOG_MSG "[INFO]:--------------------------"
 				LOG_MSG "[INFO]:-QD host = $QD_NAME" 
