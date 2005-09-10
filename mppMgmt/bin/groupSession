@@ -1,0 +1,274 @@
+#!/usr/bin/env python
+
+# groupSession -- ssh access to multiple hosts at once
+"""
+Usage:
+	groupSession <options> hostfile
+
+hostfile - a list of remote hosts, each entry of the form:
+	username@host
+	username@host2
+	...
+	userN@hostN
+or just:
+	host1
+	host2
+	...
+	hostN
+
+Options:
+-h        Print usage summary and exit
+-v        Report all commands sent to host and output received.
+-p <port> Connect on a particular port in place of 22
+-s        Disable the setup of trusted hosts key access
+
+Runs commands on a list of hosts.  Manages passwords and trusted key access
+using ssh.
+
+From the early implementation by Eric S. Raymond <esr@thyrsus.com>
+Author: Luke Lonergan <llonergan@greenplum.com>"""
+
+# $Id$
+
+import os, sys, threading, time, lib.sshSessionModule, string, getpass, getopt, tempfile
+
+def die(msg):
+	print msg + 'exiting.'
+    	raise SystemExit, 1
+
+def fixperms(session, file):
+	"Force perms of remote file to user read on, group/other write off."
+	perms = session.exists(file)
+	if perms is None:
+		print "File " + file + " doesn't exist."
+		return None
+	else:
+		ok = (perms[1] == 'r' and perms[4] == '-' and perms[5] == '-' and perms[6] == '-' and \
+		      perms[7] == '-' and perms[8] == '-')
+		if not ok:
+	    		session.ssh("/bin/chmod 700 %s" % file)
+	return ok
+
+def forcefile(session, file, command):
+    "Create file with command if it does not already exist."
+    perms = session.exists(file)
+    if perms is None:
+	   session.ssh(command)
+	   perms = session.exists(file)
+
+    return perms
+
+def setupKeyAccessRemote(session):
+    # Verify that key pairs are present on the local side 
+    try:
+	    os.chdir(os.getenv("HOME"))
+    except:
+	    die("Can't find your home directory!")
+
+    if not os.access(".", os.R_OK):
+	    die("Your home directory is not readable by you. That's weird.")
+	    die("This probably means $HOME is incorrect.")
+
+    if not os.path.exists(".ssh"):
+	    os.mkdir(".ssh")
+
+    if not os.access(".ssh", os.R_OK):
+	    die("Your .ssh directory is not readable by you. That's weird.")
+	    die("This probabably means $HOME is incorrect.")
+
+    try:
+	    os.chdir(".ssh")
+    except:
+	    die("Can't chdir into your .ssh directory!")
+
+    public_keys  = filter(lambda f: os.access(f, os.R_OK), ("id_dsa.pub", "id_rsa.pub", "identity.pub"))
+
+    if not public_keys:
+	public_keys = []
+	for (keytype, file) in (("rsa1", "identity"), ("dsa", "id_dsa")):
+	    print "About to generate a %s key. You will be prompted for a passphrase," % keytype
+	    print "Pressing enter at that prompt will create a key with no passphrase" 
+	    os.system("ssh-keygen -t %s -f %s" % (keytype, file))
+	    public_keys.append(file + ".pub")
+
+    #print "I see the following public keys:", string.join(public_keys,", ")
+    for file in public_keys:
+	private_key = file[:-4]
+	legend = private_key + " corresponding to " + file + " " 
+	if not os.access(private_key, os.R_OK):
+		die(legend + "does not exist or is unreadable.")
+
+# Update remote authorized_keys files
+    try:
+	 keyfile = tempfile.mktemp()
+	 os.system("cat " + string.join(public_keys, " ") + " >" + keyfile)
+	 if verbose:
+		 print "Public keys consolidated in %s" % keyfile
+
+	 # Permissions checks
+	 fixperms(session, "~")
+	 forcefile(session, "~/.ssh", "mkdir ~/.ssh")
+	 fixperms(session, "~/.ssh")
+
+	 # OK, install keys remotely if they don't exist
+	 if not session.exists("~/.ssh/authorized_keys"):
+		 session.scp(keyfile, "~/.ssh/authorized_keys")
+	 else:
+	   keyfile_remote = tempfile.mktemp()
+	   session.scprem("~/.ssh/authorized_keys",keyfile_remote)
+	   keyfile_merged = tempfile.mktemp()
+	   os.system("cat " + keyfile + " " + keyfile_remote + " >" + keyfile_merged)
+	   session.scp(keyfile_merged, "~/.ssh/authorized_keys")
+
+	   # Cleanup temp files
+	   try:
+      	        os.remove(keyfile)
+      	        os.remove(keyfile_remote)
+      	        os.remove(keyfile_merged)
+	   except:
+				pass
+
+	 fixperms(session, "~/.ssh/authorized_keys")
+
+    except SystemExit:
+			    pass
+
+    except:
+	    print "Unexpected error:", sys.exc_info()[0]
+	    raise
+
+    else:
+	    print "Keys for %s on %s have been installed." % (session.user, session.host)
+
+if __name__ == '__main__': 
+	# Process options
+	(options, arguments) = getopt.getopt(sys.argv[1:], "hvp:s")
+	verbose = 0
+	port = 22
+	setupKeys = 1
+
+	for (switch, val) in options:
+		if (switch == '-p'):
+			port = val;
+		elif (switch == '-s'):
+		    setupKeys = 0
+		elif (switch == '-h'):
+			print __doc__
+			raise SystemExit, 0
+		elif (switch == '-v'):
+			verbose = 1
+
+	if not arguments:
+		print "\nNo remote host list specified."
+		print __doc__
+		raise SystemExit, 0
+	else:
+		filename = arguments[0]
+
+	try:
+		hostFile=open(filename,'r')
+
+	except IOError:
+		print 'Error opening file named: ' + filename
+		raise SystemExit, 1
+
+	except:
+		print 'Unexpected error:', sys.exc_info()[0]
+		raise
+
+	# Create an sshSession object for each host in the file
+	sessions = []
+
+	for h in hostFile:
+		#Strip out the hostname and user, if there is a user present in the record
+		#(e.g. user@host)
+		host = h.strip()
+		if verbose:
+			print 'Working on host: ' + host
+
+		if '@' in host:
+			(user, host) = string.split(host, '@')
+		else:
+			user = os.environ.get('LOGNAME') or os.environ.get('USER')
+
+		#Create a new instance of an sshSession object initialized with this
+		#host/user/port
+		a = lib.sshSessionModule.sshSession(user,port,host)
+		#Perform a check to see if this host requires a password
+		a.PWCheck = 1
+		a.setCMD('ssh',['ls -ld ~'])
+		a.timeout=30
+		sessions.append(a)
+
+	#Run the first pass to get the password status of the hosts
+	ssh_agent_key=None
+
+	defaultPassword = None
+	for th in sessions:
+	  th.run()
+	  if th.PWRequired == 1:
+		if defaultPassword is not None:
+		  	#Try the previous password
+			th.password = defaultPassword
+			th.PWCheck = 1
+			th.PWRequired = 0
+			th.run()
+
+		#If a password is still required, ask for one
+		if th.PWRequired == 1:
+			prompt = 'Remote password for host ' + th.host + ':'
+			th.password = getpass.getpass(prompt)
+			defaultPassword = th.password
+
+		#Setup ssh trusted key access for this host
+		if setupKeys:
+		  	setupKeyAccessRemote(th)
+
+	  elif th.PPRequired == 1:
+		  if ssh_agent_key is None:
+			prompt = 'ssh-agent pass key phrase:'
+			ssh_agent_key = getpass.getpass(prompt)
+		  th.hostKeyPhrase = ssh_agent_key
+
+	print 'Acquired passwords, keys.\n'
+
+	print 'Entering command prompt, ssh commands are executed on all hosts:\n'
+	#Run a command pass
+	while True:
+		print 'enter command (q to quit)> ',
+		command = sys.stdin.readline().strip()
+		print ""
+		if command == 'q':
+			break
+
+		elif command != '':
+
+			sessionsTmp = []
+			for th in sessions:
+				th.setName('Thread for host - ' + th.host)
+				#For some reason, we can't reuse the old objects, but must create new
+				#ones for new threads.  So we create copies.
+
+				sTmp = lib.sshSessionModule.sshSession(th.user,th.port,th.host)
+				sTmp.password = th.password
+				sTmp.hostKeyPhrase = th.hostKeyPhrase
+				sTmp.setCMD('ssh',[command])
+				sessionsTmp.append(sTmp)
+				sTmp.start()
+
+			lastTmp = None
+			for th in sessionsTmp:
+				th.join()
+				if th.lastoutput == lastTmp:
+					print 'Output from host ' + th.host + ' is the same as the last'
+				else:
+				  print 'Output from host ' + th.host + ':'
+				  print '------------------->'
+				  print th.lastoutput,
+				  print '<-------------------'
+				  lastTmp = th.lastoutput
+				del th
+			del sessionsTmp
+		print ""
+
+	print '\nDone with group session.'
