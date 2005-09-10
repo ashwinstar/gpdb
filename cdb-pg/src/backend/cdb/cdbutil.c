@@ -600,14 +600,14 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_CARDINALITY_VIOLATION),
-				 errmsg("CDB number of segment databases cannot be 0"
+				 errmsg("MPP number of segment databases cannot be 0"
 		     )));
 	}
 	if ( component_databases->total_entry_dbs == 0 )
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_CARDINALITY_VIOLATION),
-				 errmsg("CDB number of entry databases cannot be 0"
+				 errmsg("MPP number of entry databases cannot be 0"
 		     )));
 	}
 
@@ -649,7 +649,7 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 	 {
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_EXCEPTION),
-				 errmsg("CDB number of segments inconsistency: count is %d from %s.%s table, but %d from getCdbComponentDatabases()",
+				 errmsg("MPP number of segments inconsistency: count is %d from %s.%s table, but %d from getCdbComponentDatabases()",
 		    getCdbSegmentCount(), CdbNamespaceName, CdbCdbRelationName, component_databases->total_segments )));
 	 }
 
@@ -781,7 +781,7 @@ void freeCdbComponentDatabaseInfo( CdbComponentDatabaseInfo *cdi )
  */
 void cdb_setup(void)
 {
-	elog( DEBUG1, "Initializing CDB components...");
+	elog( DEBUG1, "Initializing MPP components...");
 	
 	cdblink_setup();
 	
@@ -810,7 +810,7 @@ void cdb_setup(void)
  */
 void cdb_cleanup(int code, Datum arg)
 {
-	elog( DEBUG1, "Cleaning up CDB components...");
+	elog( DEBUG1, "Cleaning up MPP components...");
 	
 	disconnectAndDestroyAllGangs();
     
