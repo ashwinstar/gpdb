@@ -58,6 +58,9 @@ typedef struct MotionConn
  	/* size of the message in the buffer, if any. */
  	int32 msgSize;
 
+	/* position of message inside of buffer, "cursor" pointer */
+	uint8 *msgPos;
+
 	/* recv bytes: we can have more than one message/message fragment in recv queue at once */
  	int32 recvBytes;
 
@@ -486,7 +489,7 @@ TupleChunkListItem RecvTupleChunkFrom(int16 motNodeID, int16 srcRoute)
 	
 	while (bytesProcessed != conn->msgSize )
 	{
-		tcSize = TUPLE_CHUNK_HEADER_SIZE + GetChunkDataSize(conn->pBuff + bytesProcessed);
+		tcSize = TUPLE_CHUNK_HEADER_SIZE + GetChunkDataSize(conn->msgPos + bytesProcessed);
 		
 		if (tcSize >= conn->msgSize) {
 			elog(ERROR, "tcSize %d >= conn->msgSize %d !", tcSize, conn->msgSize);
@@ -495,8 +498,7 @@ TupleChunkListItem RecvTupleChunkFrom(int16 motNodeID, int16 srcRoute)
 		
 		tcItem = (TupleChunkListItem)palloc0(sizeof(TupleChunkListData) + tcSize);
 		tcItem->chunk_length = tcSize;
-		
-		memcpy(tcItem->chunk_data, conn->pBuff + bytesProcessed, tcSize);
+		memcpy(tcItem->chunk_data, conn->msgPos + bytesProcessed, tcSize);
 		
 		bytesProcessed += tcSize;
 		
@@ -515,12 +517,10 @@ TupleChunkListItem RecvTupleChunkFrom(int16 motNodeID, int16 srcRoute)
 	conn->recvBytes -= conn->msgSize;
 	if (conn->recvBytes != 0)
 	{
-		/* partial message waiting in recv buffer! Move to head of buffer */
 #ifdef AMS_VERBOSE_LOGGING
 		elog(DEBUG3, "residual message %d bytes", conn->recvBytes);
 #endif
-
-		memcpy(conn->pBuff, conn->pBuff + conn->msgSize, conn->recvBytes);
+		conn->msgPos += conn->msgSize;
 	}
 	
 	conn->msgSize = 0;
@@ -1394,6 +1394,7 @@ void readRegisterMessage(MotionConn *conn, int *incoming_count)
 	newConn->pBuff	     	 = palloc(Cdb_max_packet_size);
 	newConn->msgSize 		 = 0;
 	newConn->recvBytes 		 = 0;
+	newConn->msgPos 		 = 0;
 	newConn->tupleCount 	 = 0;
 	newConn->stillActive 	 = true;
 	newConn->remoteHost 	 = proc->listenerAddr;
@@ -1473,6 +1474,7 @@ void acceptIncomingConnection(fd_set *rset, int *highsock)
 	conn->pBuff      = palloc(Cdb_max_packet_size);
 	conn->msgSize    = 0;
 	conn->recvBytes  = 0;
+	conn->msgPos     = 0;
 	conn->tupleCount = 0;
 	conn->stillActive = true;
 	conn->remoteHost = "unknown";
@@ -1651,7 +1653,7 @@ void readPacket(MotionConn *conn)
 	/* do we have a complete message waiting to be processed ? */
 	if (conn->recvBytes >= PACKET_HEADER_SIZE)
 	{
-		conn->msgSize = getInt16(conn->pBuff);
+		conn->msgSize = getInt16(conn->msgPos);
 		gotHeader = true;
 		if (conn->recvBytes >= conn->msgSize) {
 #ifdef AMS_VERBOSE_LOGGING
@@ -1660,6 +1662,13 @@ void readPacket(MotionConn *conn)
 			return;
 		}
 	}
+	/* partial message waiting in recv buffer! Move to head of buffer:
+	 * eliminate the slack (which will always be at the beginning) in
+	 * the buffer */
+	if (conn->recvBytes != 0)
+		memcpy(conn->pBuff, conn->msgPos, conn->recvBytes);
+
+	conn->msgPos = conn->pBuff;
 
 #ifdef AMS_VERBOSE_LOGGING
 	elog(DEBUG3, "readpacket: %s on previous call msgSize %d", gotHeader ? "got header" : "no header", conn->msgSize);
@@ -1667,7 +1676,7 @@ void readPacket(MotionConn *conn)
 
 	while (!gotPacket && bytesRead < Cdb_max_packet_size)
 	{
-		
+		/* we read at the end of the buffer, we've eliminated any slack above */
 		if ((n = read(conn->sockfd, conn->pBuff + bytesRead,
 					  Cdb_max_packet_size - bytesRead)) < 0)
 		{
@@ -1764,7 +1773,7 @@ void readPacket(MotionConn *conn)
 			if (!gotHeader && bytesRead >= PACKET_HEADER_SIZE)
 			{
 				/* got the header */
-				conn->msgSize = getInt16(conn->pBuff);
+				conn->msgSize = getInt16(conn->msgPos);
 				gotHeader = true;
 			}
 			conn->recvBytes = bytesRead;
