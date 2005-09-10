@@ -233,16 +233,41 @@ if __name__ == '__main__':
 	print 'Acquired passwords, keys.\n'
 
 	print 'Entering command prompt, ssh commands are executed on all hosts:\n'
+
+	cmd = None
+	args = []
 	#Run a command pass
 	while True:
-		print 'enter command (q to quit)> ',
+		print 'enter command (q to quit, @copy to copy file)> ',
 		command = sys.stdin.readline().strip()
 		print ""
 		if command == 'q':
 			break
 
-		elif command != '':
+		if command == '':
+			pass
 
+		else:
+			if command[0] == '@':
+			  if command[1:] == 'copy':
+				print 'source file (on this host): ',
+				source = sys.stdin.readline().strip()
+				print ''
+				print 'destination file on remote host <'+source+'>: ',
+				dest = sys.stdin.readline().strip()
+				print ''
+				if dest == '':
+					dest = source
+				cmd = 'scp'
+				args = [source,dest]
+			  else:
+				#Not a known @ command
+				print 'That is not a known @ command'
+				continue
+			else:
+				cmd = 'ssh'
+				args = [command,None]
+			
 			sessionsTmp = []
 			for th in sessions:
 				th.setName('Thread for host - ' + th.host)
@@ -252,7 +277,7 @@ if __name__ == '__main__':
 				sTmp = lib.sshSessionModule.sshSession(th.user,th.port,th.host)
 				sTmp.password = th.password
 				sTmp.hostKeyPhrase = th.hostKeyPhrase
-				sTmp.setCMD('ssh',[command])
+				sTmp.setCMD(cmd,args)
 				sessionsTmp.append(sTmp)
 				sTmp.start()
 
@@ -271,4 +296,4 @@ if __name__ == '__main__':
 			del sessionsTmp
 		print ""
 
-	print '\nDone with group session.'
+	print 'Done with group session.'
