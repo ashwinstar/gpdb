@@ -264,6 +264,8 @@ if __name__ == '__main__':
 				#Not a known @ command
 				print 'That is not a known @ command'
 				continue
+			elif command == '!!':
+				pass
 			else:
 				cmd = 'ssh'
 				args = [command,None]
