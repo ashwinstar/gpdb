@@ -54,6 +54,7 @@ class sshSession(threading.Thread):
     def __exec(self, command):
 	"Execute a command on the remote host.  Return the output."
 	child = lib.pexpect.spawn(command,[],self.timeout)
+	child.setmaxread (1000) # Sets buffer to 1000 characters.
 	if self.verbose:
 		sys.stderr.write("-> " + command + "\n")
 
@@ -65,7 +66,7 @@ class sshSession(threading.Thread):
 	    if self.verbose:
 		    sys.stderr.write("<- " + child.before + "\n")
 
-	    #The command ran successfully if something other than the above was seen
+	    #The command ran successfully if EOF was seen
 	    if seen == 0:
 		    #Exit the while loop, we've run the command
 		    break
@@ -121,8 +122,9 @@ class sshSession(threading.Thread):
 		child.sendline(self.hostKeyPhrase)
 
 	except:
-		print "Error processing login: " + sys.exc_info()[0]
-		raise SystemExit, 1
+		#print "Error processing login!"
+		raise
+		#raise SystemExit, 1
 
 
 	#If this was a password check, reset the flag
@@ -134,7 +136,7 @@ class sshSession(threading.Thread):
     	return child.before
 
     def ssh(self, command):
-	    return self.__exec("ssh -p %s -l %s %s \"%s\""%(self.port, self.user,self.host,command))
+	    return self.__exec("ssh -n -p %s -l %s %s \"%s\""%(self.port, self.user,self.host,command))
 
     def scp(self, src, dst):
 	    return self.__exec("scp -P %s %s %s@%s:%s" % (self.port, src, self.user, self.host, dst))
