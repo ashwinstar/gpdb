@@ -168,14 +168,14 @@ int	sliceId;
 /*=========================================================================
  * FUNCTIONS PROTOTYPES
  */
-static int listenerSetup( void );
+static int listenerSetup(void);
 
 static MotionLayerState *createMotionState(int16 motNodeID, int numConns);
 static MotionLayerState *getMotionState(int16 motNodeID);
 static MotionLayerState *removeMotionState(int16 motNodeID);
 
 static MotionLayerState  *startConnections(Slice *mySlice, int *highsock, fd_set *wset, int *connsStarted);
-static void setupOutgoingConnection( MotionConn *conn, CdbProcess *cdbProc,int *highsock, fd_set *wset );
+static void setupOutgoingConnection(MotionConn *conn, CdbProcess *cdbProc,int *highsock, fd_set *wset);
 static void sendRegisterMessage(MotionLayerState *pEntry, MotionConn *conn);
 static void readRegisterMessage(MotionConn *in_conn, int *incoming_count);
 static void acceptIncomingConnection(fd_set *rset, int *highsock);
@@ -187,7 +187,7 @@ static int findMyRouteId(Slice *slice);
 static CdbProcess *findCdbProcess(RegisterMessage *msg);
 
 bool flushBuffer(MotionConn *conn);
-void dumpEntryConnections( MotionLayerState *pEntry );
+void dumpEntryConnections(MotionLayerState *pEntry);
 
 static void getEosAck(MotionConn *conn, int16 route);
 void waitOnEosAck(MotionLayerState *pEntry);
@@ -219,7 +219,7 @@ void InitMotionLayerIPC(void)
 	
 	activated = false;
 	
-	elog( DEBUG1, "Setting Up Interconnect Listener Port...");
+	elog(DEBUG1, "Setting Up Interconnect Listener Port...");
 	Cdb_listener_port = listenerSetup();
 }
 
@@ -245,7 +245,7 @@ void CleanUpMotionLayerIPC(void)
 	sliceTable   = NULL;
 	sliceId 	 = -1;
 	
-	list_free( incompleteConns );
+	list_free(incompleteConns);
 }
 
 
@@ -262,7 +262,7 @@ bool SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem 
 	CHECK_FOR_INTERRUPTS();
 
 #ifdef AMS_VERBOSE_LOGGING	
-	elog(DEBUG3, "SendTupleChunkToAMS( motNodeID: %d, targetRoute: %d)", motNodeID, targetRoute);
+	elog(DEBUG3, "SendTupleChunkToAMS(motNodeID: %d, targetRoute: %d)", motNodeID, targetRoute);
 #endif
 
 
@@ -295,7 +295,7 @@ bool SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem 
 			conn = pEntry->conns + targetRoute;
 			/* only send to interested connections */
 			if (conn->stillActive) {
-				sendChunk(conn, tcItem );
+				sendChunk(conn, tcItem);
 			
 				if (conn->hasMirrorConn)
 					sendChunk(conn->mirrorConn, tcItem);
@@ -351,8 +351,8 @@ void SendEosToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcItem)
 		conn = pEntry->conns + i;
 		flushBuffer(conn);
 		
-		if ( conn->hasMirrorConn )
-			flushBuffer( conn->mirrorConn );
+		if (conn->hasMirrorConn)
+			flushBuffer(conn->mirrorConn);
 	}
 
 	waitOnEosAck(pEntry);
@@ -487,7 +487,7 @@ TupleChunkListItem RecvTupleChunkFrom(int16 motNodeID, int16 srcRoute)
 	/* go through and form us some TupleChunks. */
 	bytesProcessed = PACKET_HEADER_SIZE;
 	
-	while (bytesProcessed != conn->msgSize )
+	while (bytesProcessed != conn->msgSize)
 	{
 		tcSize = TUPLE_CHUNK_HEADER_SIZE + GetChunkDataSize(conn->msgPos + bytesProcessed);
 		
@@ -625,7 +625,7 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 		pEntry = createMotionState(childId, numProcs);
 		
 		/* let cdbmotion now how many receivers to expect. */
-		setExpectedReceivers( childId, numProcs );
+		setExpectedReceivers(childId, numProcs);
 		
 		pEntry->myRouteId = 0; // DOH: do i need this for receivers?
 		
@@ -700,9 +700,9 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 						break; /* leave for loop */
 				}
 				
-				if( conn->hasMirrorConn )
+				if (conn->hasMirrorConn)
 				{
-					if(FD_ISSET(conn->mirrorConn->sockfd, &wwset))
+					if (FD_ISSET(conn->mirrorConn->sockfd, &wwset))
 					{
 						elog(DEBUG5, "Sending a register message to sockfd: %d", conn->mirrorConn->sockfd);
 						sendRegisterMessage(sendingMotionState, conn->mirrorConn);
@@ -729,7 +729,7 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 		 * the list as we go.
 		 */
 		cell = list_head(incompleteConns);
-		while( cell != NULL )
+		while (cell != NULL)
 		{
 			MotionConn *conn = (MotionConn*)lfirst(cell);
 
@@ -755,8 +755,7 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 
 
 	/* if everything really got setup properly then we shouldn't have any incomplete connections. */
-	Assert( list_length(incompleteConns) == 0 );
-
+	Assert(list_length(incompleteConns) == 0);
 	
 	activated = true;
 	elog(DEBUG3, "FINISHED ACTIVATING ROUTES. (out: %d , in: %d)", outgoing_count, incoming_count);
@@ -788,7 +787,7 @@ void TeardownInterconnect(void)
 	MotionConn			*conn;	
 
 	elog(DEBUG3, "Interconnect cleanup.");
-	Assert( sliceTable != NULL );
+	Assert(sliceTable != NULL);
 	
 	mySlice = (Slice*)list_nth(sliceTable->slices, sliceId);
 
@@ -864,7 +863,7 @@ void TeardownInterconnect(void)
      */
 	while ((cell = list_head(incompleteConns)) != NULL)
 	{
-		MotionConn *conn = (MotionConn*)lfirst(cell);
+		MotionConn *conn = (MotionConn *)lfirst(cell);
 	
 #ifdef AMS_VERBOSE_LOGGING
 		elog(LOG, "Found incomplete conn. length %d", list_length(incompleteConns));
@@ -877,7 +876,16 @@ void TeardownInterconnect(void)
 			conn->sockfd = -1;
 		}
 	
-		incompleteConns = list_delete(incompleteConns, cell);
+		/* The list operations are kind of confusing (see list.c), we
+		 * could alternatively write the following line as:
+		 *
+		 * incompleteConns = list_delete_cell(incompleteConns, cell, NULL);
+		 * or 
+		 * incompleteConns = list_delete_first(incompleteConns);
+		 * or
+		 * incompleteConns = list_delete_ptr(incompleteConns, conn)
+		 */
+		incompleteConns = list_delete(incompleteConns, conn);
 	}
 
 	incompleteConns = NIL;
@@ -1135,14 +1143,14 @@ MotionLayerState  *startConnections(Slice *mySlice, int *highsock, fd_set *wset,
 		conn->sockfd = -1;
 	
 		cdbProc = (CdbProcess *)list_nth(recvSlice->primaryProcesses, i);
-		setupOutgoingConnection( conn, cdbProc, highsock, wset );	
+		setupOutgoingConnection(conn, cdbProc, highsock, wset);
 		(*connsStarted)++;
 		
 		/* setup mirror connection if not null */
-		if( recvSlice->mirrorProcesses != NIL )
+		if (recvSlice->mirrorProcesses != NIL)
 		{
 			cdbProc = (CdbProcess *)list_nth(recvSlice->mirrorProcesses, i);
-			if( cdbProc != NULL )
+			if (cdbProc != NULL)
 			{
 				conn->mirrorConn = palloc(sizeof(MotionConn));
 				conn->mirrorConn->sockfd = -1;
@@ -1157,7 +1165,7 @@ MotionLayerState  *startConnections(Slice *mySlice, int *highsock, fd_set *wset,
 	return pEntry;
 }
 
-void setupOutgoingConnection( MotionConn *conn, CdbProcess *cdbProc, int *highsock, fd_set *wset )
+void setupOutgoingConnection(MotionConn *conn, CdbProcess *cdbProc, int *highsock, fd_set *wset)
 {
 	struct sockaddr_in	addr;
 	int					n;
@@ -1918,28 +1926,28 @@ CdbProcess *findCdbProcess(RegisterMessage *msg)
 	return proc;
 }
 
-void dumpEntryConnections( MotionLayerState *pEntry )
+void dumpEntryConnections(MotionLayerState *pEntry)
 {
 	int i;
 	
-	elog( DEBUG3, "----------------pEntry motNodeID: %d conn dump------------------", pEntry->motNodeId);
-	for( i=0; i < pEntry->numConns; i++ )
+	elog(DEBUG3, "----------------pEntry motNodeID: %d conn dump------------------", pEntry->motNodeId);
+	for(i=0; i < pEntry->numConns; i++)
 	{
 		MotionConn *conn = pEntry->conns + i;
 		
-		elog( DEBUG3, "conn#%d (sockfd=%d, remote host= '%s' port=%d, contentId: %d )",
-				i, conn->sockfd, conn->remoteHost,	conn->remotePort, conn->remoteContentId );
+		elog(DEBUG3, "conn#%d (sockfd=%d, remote host= '%s' port=%d, contentId: %d)",
+				i, conn->sockfd, conn->remoteHost,	conn->remotePort, conn->remoteContentId);
 		
-		if( conn->hasMirrorConn )
+		if (conn->hasMirrorConn)
 		{
 			conn = conn->mirrorConn;
-			elog( DEBUG3, "conn#%d MIRROR (sockfd=%d, remote host= '%s' port=%d, contentId: %d )",
-				i, conn->sockfd, conn->remoteHost,	conn->remotePort, conn->remoteContentId );
+			elog(DEBUG3, "conn#%d MIRROR (sockfd=%d, remote host= '%s' port=%d, contentId: %d)",
+				i, conn->sockfd, conn->remoteHost,	conn->remotePort, conn->remoteContentId);
 		
 		}	
 		
 	}
-	elog( DEBUG3, "----------------------------------------------------------------");
+	elog(DEBUG3, "----------------------------------------------------------------");
 }
 
 /* declared in cdbmotion.h */
