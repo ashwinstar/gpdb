@@ -897,11 +897,8 @@ bool prescan_unique(Plan *plan, PlanProfile *context)
 	Unique *unique = (Unique*)plan;
 	Plan *child = outerPlan((Node*)plan); /* already scanned */
 	bool prefix_condition = true;
+	bool match_condition = true;
 	int i;
-
-	Flow *newflow = NULL;
-	
-	List *hashExpr = NIL;
 	
 	/* Argument is a prescaned plan. */
 	Assert( is_plan_node((Node*)child) && child->flow != NULL  );
@@ -940,8 +937,49 @@ bool prescan_unique(Plan *plan, PlanProfile *context)
 	 	psErrorInternal(context, "Plan violates DISTINCT/ORDER BY prefix condition");
 	 	return true;
 	 }
+	 
+	/* If the existing partition does not match the unique attributes, we need
+	 * to repartition on the unique attributes and preserve the sort order.
+	 */
+	match_condition = ( unique->numCols == list_length(child->flow->hashExpr) );
+	if ( match_condition )
+	{
+		int tidx;
+		Node *hexpr;
+		Node *texpr;	
+		ListCell *cell;
+		
+		i = 0;
+		foreach (cell, child->flow->hashExpr)
+		{
+			tidx = unique->uniqColIdx[i];
+			match_condition = ( tidx < list_length(plan->targetlist) );
+			if ( ! match_condition )
+				break; /* foreach */
+			texpr = (Node*)((TargetEntry*)list_nth(plan->targetlist, tidx))->expr;
+			hexpr = lfirst(cell);
+			match_condition = ( IsA(hexpr,Var) && IsA(texpr,Var) 
+				&& ((Var*)hexpr)->varattno == ((Var*)texpr)->varattno );
+			if ( !match_condition )
+				break; /* foreach */
+			i++;
+		}
+	}
+	if ( !match_condition )
+	{
+		List *hashExpr = getExprListFromTargetList(child->targetlist, unique->numCols, unique->uniqColIdx);
+		 
+		if ( !repartitionPlan(child, false, true, false, hashExpr) )
+		{
+			psErrorNonce(context, "Can't implement that partitioned duplicate removal");
+			return true;
+		 }
+		repartitionPlan(child, true, true, false, hashExpr);
+	}
+	plan->flow = pull_up_Flow(plan,child,true);
 	
-	/* TODO prescan_unique isn't ready yet!!! Finish it. */
+	return false;
+	
 	psErrorNonce(context, "Query plan employs partitioned duplicate removal");
 	return true;
 }
@@ -1589,7 +1627,7 @@ bool adjustPlanFlow(Plan *plan, Flow *target, bool stable, bool rescanable, bool
 					break;
 				case FLOW_PARTITIONED:
 					plan->flow->flotype = FLOW_PARTITIONED;
-					/* TODO - Can we fill in criteria? */
+					plan->flow->hashExpr = copyObject(plan->lefttree->flow->hashExpr);
 					break;
 				default:
 					return false; /* TODO */
