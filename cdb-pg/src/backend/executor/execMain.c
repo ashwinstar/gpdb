@@ -554,9 +554,9 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 			if ( !results->success )
 			{
 				char *message = CdbDumpDispatchResults(results, false);
-				ereport( NOTICE,
+				ereport( ERROR,
 							(errcode( ERRCODE_CDB_COMMAND_ERROR ),
-							errmsg("cdbexec command failed on one or more segment databases: %s",
+							errmsg("%s",
 							message
 						)));
 
@@ -602,7 +602,7 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 			char *message = CdbDumpDispatchResults(results, false);
 			ereport( ERROR,
 						(errcode( ERRCODE_CDB_COMMAND_ERROR ),
-						errmsg("cdbexec command failed on one or more segment databases: %s",
+						errmsg("%s",
 						message
 					)));
 				

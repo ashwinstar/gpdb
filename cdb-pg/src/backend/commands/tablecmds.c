@@ -638,7 +638,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 			char *message = CdbDumpDispatchResults(results, false);
 			ereport( ERROR,
 						(errcode( ERRCODE_CDB_COMMAND_ERROR ),
-						errmsg("cdbexec command failed on one or more segment databases: %s",
+						errmsg("%s",
 						message
 					)));
 				
