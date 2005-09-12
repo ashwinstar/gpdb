@@ -62,6 +62,13 @@ typedef struct DispatchCommandParms
 	 * The pthread_t thread handle.
 	 */
 	pthread_t	thread;
+	
+	/*
+	 * Is this a primary gang?  Only count activity for primary, not mirror gangs
+	 */
+	 
+	bool 	isPrimary;
+	 
 
 	/*
 	 * Returned resultset
@@ -105,6 +112,7 @@ addSegDBToDispatchThreadPool(DispatchCommandParms * ParmsAr,
 							 int *segdbCount,
 							 const char *szCommand,
 							 bool cancelFromBelow,
+							 bool isPrimary,
 							 SegmentDatabaseDescriptor *
 							 segdbDesc);
 
@@ -132,7 +140,7 @@ static int fillSliceVector(SliceTable * sliceTable, int sliceIndex,
 static DispatchCommandParms *dispatchCommandParmsAr = NULL;
 static int  dispatchCommandParmsArSize = 0;
 static int	threadCount = 0;
-
+static volatile bool 		cancelledByUs = false;
 /*
  * CdbDispatchToGang:
  * Send ths szCommand SQL statement to the subset of all segdbs in the cluster
@@ -243,7 +251,7 @@ CdbDispatchToGang(const char *szCommand, Gang * gp,
 
 		addSegDBToDispatchThreadPool(dispatchCommandParmsAr+threadCount,
 									 &segdbs_in_thread_pool, szCommand,
-									 cancelFromBelow, segdbDesc);
+									 cancelFromBelow, gp->type == GANGTYPE_PRIMARY_WRITER, segdbDesc);
 	}
 
 	elog(DEBUG1, "segdbs_in_thread_pool %d", segdbs_in_thread_pool);
@@ -456,7 +464,7 @@ CdbDispatchCommandIntEnumeration(const char *szCommand,
 
 		addSegDBToDispatchThreadPool(dispatchCommandParmsAr,
 									 &segdbs_in_thread_pool, szCommand,
-									 cancelFromBelow, segdbDesc);
+									 cancelFromBelow, true, segdbDesc);
 	}
 
 	/*
@@ -625,6 +633,8 @@ CdbCheckDispatchResultInt(void ***p_failedSegDB, int *numOfFailed)
 			Assert(segdbDesc != NULL);
 
 			result = &results->pResults[x++];
+			
+			result->isPrimary = pParms->isPrimary;
 
 			if (segdbDesc->error_message != NULL)
 			{
@@ -676,7 +686,7 @@ CdbCheckDispatchResultInt(void ***p_failedSegDB, int *numOfFailed)
 			segdbDesc->cmdTuples = 0;
 
 			result->resultStatus = segdbDesc->resultStatus;
-			segdbDesc->resultStatus = PGRES_COMMAND_OK;;
+			segdbDesc->resultStatus = PGRES_COMMAND_OK;
 		}
 	}
 
@@ -700,6 +710,9 @@ CdbCheckDispatchResultInt(void ***p_failedSegDB, int *numOfFailed)
 		pfree(dispatchCommandParmsAr);
 		dispatchCommandParmsAr = NULL;
 	}
+	
+		
+	cancelledByUs = false;
 
 	elog(DEBUG4, "CheckDispatchResult done");
 
@@ -713,6 +726,7 @@ CdbCheckDispatchResultInt(void ***p_failedSegDB, int *numOfFailed)
 
 	return results;
 }
+
 
 /*
  * thread_DispatchCommand is the thread proc used to dispatch the command to one or more of the qExecs.
@@ -741,6 +755,7 @@ thread_DispatchCommand(void *arg)
 	int			counter = 0;
 	PGresult  **pqresults = NULL;
 	int			resultSetCounter = 0;
+	
 
 	/*
 	 * In threads, we cannot use palloc, because it's not thread safe.
@@ -773,7 +788,15 @@ thread_DispatchCommand(void *arg)
 			 * If there was a cancellation notice before we submit the command,
 			 * then don't submit.
 			 */
+				
 			PQExpBufferData buffer;
+			
+			if (segdbDesc->error_message != NULL)
+				free(segdbDesc->error_message);
+			segdbDesc->error_message = NULL;
+			
+			if (cancelledByUs)
+				continue;
 
 			initPQExpBuffer(&buffer);
 
@@ -808,7 +831,10 @@ thread_DispatchCommand(void *arg)
 							  q->segindex, (q->isprimary ? 't' : 'f')),
 				segdbDesc->error_message = buffer.data;
 			if (cancelFromBelow)
+			{
 				setCancelFlag();
+				cancelledByUs = true;
+			}
 			continue;
 		}
 
@@ -839,13 +865,16 @@ thread_DispatchCommand(void *arg)
 				fprintf(stderr, "thread_DispatchCommand failed to send %s\n",
 						szCommand);
 
-			appendPQExpBuffer(&buffer, "SQL Command error: "
+			appendPQExpBuffer(&buffer, "SQL Command dispatch error: "
 							  "segindex %d isprimary %c, %s",
 							  q->segindex, (q->isprimary ? 't' : 'f'),
 							  PQerrorMessage(conn));
 			segdbDesc->error_message = buffer.data;
 			if (cancelFromBelow)
+			{
 				setCancelFlag();
+				cancelledByUs = true;
+			}
 			continue;
 		}
 
@@ -914,7 +943,7 @@ thread_DispatchCommand(void *arg)
 			 */
 
 			initPQExpBuffer(&buffer);
-			appendPQExpBuffer(&buffer, "SQL Command error: socket select returned error, command ststus unknown.");
+			appendPQExpBuffer(&buffer, "SQL Command error: socket select returned error, command status unknown.");
 			for (i = 0; i < stillRunningCount; i++)
 			{
 				segdbDesc = stillRunning[i].segdbDesc;
@@ -927,7 +956,10 @@ thread_DispatchCommand(void *arg)
 			}
 
 			if (cancelFromBelow)
+			{
 				setCancelFlag();
+				cancelledByUs = true;
+			}
 
 			free(buffer.data);
 			free(stillRunning);
@@ -959,7 +991,10 @@ thread_DispatchCommand(void *arg)
 								  (q->isprimary ? 't' : 'f'));
 				segdbDesc->error_message = buffer.data;
 				if (cancelFromBelow)
+				{
 					setCancelFlag();
+					cancelledByUs = true;
+				}
 			}
 			else
 			{
@@ -1106,25 +1141,47 @@ thread_DispatchCommand(void *arg)
 							PGRES_TUPLES_OK != segdbDesc->resultStatus)
 						{
 							PQExpBufferData buffer;
-
-							initPQExpBuffer(&buffer);
-							appendPQExpBuffer(&buffer, "SQL Command error: "
-											  "resultStatus %d "
-											  "segindex %d isprimary %c, %s",
-											  segdbDesc->resultStatus,
-											  q->segindex,
-											  (q->isprimary ? 't' : 'f'),
-											  PQerrorMessage(conn));
+							
+							char * pqerrormsg = PQerrorMessage(conn);
+							
 							if (segdbDesc->error_message != NULL)
 							{
 								free(segdbDesc->error_message);
 								segdbDesc->error_message = NULL;
 							}
 
-							segdbDesc->error_message = buffer.data;
+							initPQExpBuffer(&buffer);
+							
+							/*
+							 * If we requested a cancel, and we got back "cancelled", that's not really an error
+							 *
+							 */
+							
+							if (cancelledByUs && stillRunning[i].requestedCancel &&
+								strcmp(pqerrormsg, "ERROR:  canceling query due to user request\n")==0)
+							{
+								segdbDesc->resultStatus = 0;
+							}
+							else
+			 				{
+								appendPQExpBuffer(&buffer, "%s          error reported by segment database: "
+												  "segindex %d isprimary %c\n",
+												  pqerrormsg,
+												  q->segindex,
+												  (q->isprimary ? 't' : 'f')
+												  );
+								segdbDesc->error_message = buffer.data;
+			 				}
+			 		
+							
+
+							
 
 							if (cancelFromBelow)
+							{
 								setCancelFlag();
+								cancelledByUs = true;
+							}
 
 						}
 						else
@@ -1201,7 +1258,7 @@ thread_DispatchCommand(void *arg)
  */
 void
 addSegDBToDispatchThreadPool(DispatchCommandParms * ParmsAr, int *segdbCount,
-							 const char *szCommand, bool cancelFromBelow,
+							 const char *szCommand, bool cancelFromBelow, bool isPrimary,
 							 SegmentDatabaseDescriptor * segdbDesc)
 {
 	DispatchCommandParms *pParms;
@@ -1227,6 +1284,7 @@ addSegDBToDispatchThreadPool(DispatchCommandParms * ParmsAr, int *segdbCount,
 			(SegmentDatabaseDescriptor **) palloc0(cdb_connections_per_thread *
 										sizeof(SegmentDatabaseDescriptor *));
 		pParms->cancelFromBelow = cancelFromBelow;
+		pParms->isPrimary = isPrimary;
 		memset(&pParms->thread, 0 , sizeof(pthread_t));
 		pParms->db_count = 0;
 	}
@@ -1242,6 +1300,7 @@ addSegDBToDispatchThreadPool(DispatchCommandParms * ParmsAr, int *segdbCount,
 	 */
 	(*segdbCount)++;
 	elog(DEBUG3, "addSegDBtoDispatchThreadPool %d done", (*segdbCount));
+
 }
 
 /*
@@ -1309,6 +1368,7 @@ initCdbDispatchResults(void)
 				result->cmdTuples = 0;
 				result->cmdStatus = NULL;
 				result->resultStatus = PGRES_COMMAND_OK;
+				result->isPrimary = false;
 			}
 		}
 	}
@@ -1369,7 +1429,8 @@ SumCmdTuples(CdbDispatchResults * results)
 	{
 		CdbDispatchResult *result = &results->pResults[i];
 
-		cmdTuples += result->cmdTuples;
+		if (result->isPrimary)
+			cmdTuples += result->cmdTuples;
 	}
 
 	return cmdTuples;
@@ -1390,6 +1451,8 @@ CdbDoCommandInt(const char *szCommand,
 
 
 	Assert(szCommand != NULL);
+		
+	cancelledByUs = false;
 
 	elog(DEBUG3, "DoCommandInt calling DispatchCommandInt");
 	CdbDispatchCommandInt(szCommand, cancelFromBelow, resultSets);
@@ -1411,8 +1474,8 @@ CdbDoCommandInt(const char *szCommand,
 		ereport(ERROR,
 				(errcode(ERRCODE_CDB_COMMAND_ERROR),
 				 errmsg
-			 ("Command \"%s\" failed on at least one segment database: %s, ",
-			  szCommand, message_do)));
+			 ("%s",
+			  message_do)));
 
 		pfree(message_do);
 	}
@@ -1467,6 +1530,7 @@ CdbDumpDispatchResults(CdbDispatchResults * results, bool verbose)
 {
 	StringInfoData buffer;
 	int			i;
+	char temp[20];
 
 	Assert(results != NULL);
 
@@ -1481,6 +1545,13 @@ CdbDumpDispatchResults(CdbDispatchResults * results, bool verbose)
 
 		CdbDumpDispatchResult(result, verbose, &buffer);
 	}
+	
+	
+	strcpy(temp,gettext("ERROR"));
+	strcat(temp,":  ");
+	
+	if (strncmp(buffer.data,temp,strlen(temp))==0)
+		return buffer.data+8;
 
 	return buffer.data;
 }
@@ -1502,10 +1573,10 @@ CdbDumpDispatchResult(CdbDispatchResult * result, bool verbose,
 	{
 		if (result->error_message == NULL)
 			return;
+			
 
-		appendStringInfo(message, "segindex %d isprimary %c : %s\n",
-						 q->segindex, (q->isprimary ? 't' : 'f'),
-						 result->error_message);
+
+		appendStringInfo(message, result->error_message);
 	}
 	else
 	{
@@ -1586,6 +1657,9 @@ CdbDispatchPlan(QueryDesc *queryDesc)
 
 	Assert(Cdb_role == CDB_ROLE_DISPATCH);
 	Assert(queryDesc != NULL && queryDesc->estate != NULL);
+	
+		
+	cancelledByUs = false;
 
 	elog(DEBUG4, "CdbDispatchPlan");
 

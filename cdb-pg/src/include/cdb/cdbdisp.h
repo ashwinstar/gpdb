@@ -38,7 +38,8 @@ typedef struct CdbDispatchResult
 	char	   *cmdStatus;		/* The value of PQcmdStatus for the command on
 								 * the segdb */
 	int			resultStatus;	/* The value of PQresultStatus for the command
-								 * on the segdb */
+								 * on the segdb */								 
+	bool		isPrimary;      /* If this is a primary gang member */
 }	CdbDispatchResult;
 
 /*
