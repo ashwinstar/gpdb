@@ -116,21 +116,14 @@ typedef struct MotionLayerState
  */
 typedef struct RegisterMessage
 {
-	int16 	motNodeId;
-	int16   srcRouteId;
-	int16 	srcContentId;
-	int32   srcListenerPort;
+	int16		motNodeId;
+	int16		srcRouteId;
+	int16		srcContentId;
+	int32		srcListenerPort;
+#ifdef AMS_VERBOSE_LOGGING
+	int32		srcPid;
+#endif
 } RegisterMessage;
-
-
-/* message used to indicate that the receiver is no longer interested
- * in receiving tuples from this sender.
- */
-typedef struct StopSendingMessage
-{
-	int16   motNodeId;
-	int16   srcRouteId;
-} StopSendingMessage;
 
 /*=========================================================================
  * GLOBAL STATE VARIABLES
@@ -191,6 +184,10 @@ void dumpEntryConnections(MotionLayerState *pEntry);
 
 static void getEosAck(MotionConn *conn, int16 route);
 void waitOnEosAck(MotionLayerState *pEntry);
+
+void print_connection(int fd, const char *msg);
+
+static void flushListenerBacklog(void);
 
 /*=========================================================================
  * VISIBLE FUNCTIONS
@@ -753,7 +750,6 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 	}
 	while ((outgoing_count != expectedTotalOutgoing) || (incoming_count != expectedTotalIncoming));
 
-
 	/* if everything really got setup properly then we shouldn't have any incomplete connections. */
 	Assert(list_length(incompleteConns) == 0);
 	
@@ -794,7 +790,7 @@ void TeardownInterconnect(void)
 	if (mySlice->parentIndex != -1)
 	{
 		/* cleanup a Sending motion node. */
-		elog(DEBUG3, "close down incoming connections for motion id: %d",
+		elog(DEBUG3, "close down outgoing connections for motion id: %d",
 				mySlice->sliceIndex);
 		pEntry = removeMotionState(mySlice->sliceIndex);
 
@@ -812,14 +808,11 @@ void TeardownInterconnect(void)
 				conn->sockfd = -1;
 			}
 			
-			if (conn->hasMirrorConn)
+			if (conn->hasMirrorConn && conn->mirrorConn->sockfd != -1)
 			{
-				if (conn->mirrorConn->sockfd != -1)
-				{
-					shutdown(conn->mirrorConn->sockfd, SHUT_RDWR);
-					close(conn->mirrorConn->sockfd);
-					conn->mirrorConn->sockfd = -1;
-				}
+				shutdown(conn->mirrorConn->sockfd, SHUT_RDWR);
+				close(conn->mirrorConn->sockfd);
+				conn->mirrorConn->sockfd = -1;
 			}
 		}
 	}
@@ -853,6 +846,12 @@ void TeardownInterconnect(void)
 			}
 		}
 	}
+
+	/* If there are clients waiting on our listener; we *must*
+	 * disconnect them; otherwise we'll be out of sync with the
+	 * client (we may accept them on a subsequent query!) */
+	if (listenerFd != -1)
+		flushListenerBacklog();
 
 	/* The incompleteConns list is only used as a staging area for MotionConns
 	 * during by SetupInterconnect().  So we only expect to have entries here
@@ -1126,9 +1125,10 @@ MotionLayerState  *startConnections(Slice *mySlice, int *highsock, fd_set *wset,
 	/* for sending motion nodes... motionNodeId = sliceIndex. */
 	motNodeId = mySlice->sliceIndex;
 
-#ifdef AMS_VERBOSE_LOGGING		
-	elog(DEBUG3, "Interconnect - Starting Outgoing Connections");
-#endif	
+#ifdef AMS_VERBOSE_LOGGING
+	elog(DEBUG3, "Interconnect - Starting Outgoing Connections (I'm slice %d parent is %d)",
+		 mySlice->sliceIndex, mySlice->parentIndex);
+#endif
 	
 	recvSlice = (Slice *)list_nth(sliceTable->slices, mySlice->parentIndex);
 	
@@ -1169,7 +1169,7 @@ void setupOutgoingConnection(MotionConn *conn, CdbProcess *cdbProc, int *highsoc
 {
 	struct sockaddr_in	addr;
 	int					n;
-	
+
 	conn->sockfd			= socket(AF_INET, SOCK_STREAM, 0);
 	conn->pBuff				= palloc(Cdb_max_packet_size);
 	conn->msgSize			= PACKET_HEADER_SIZE;
@@ -1278,6 +1278,9 @@ void sendRegisterMessage(MotionLayerState *pEntry, MotionConn *conn)
 	int 	msglen = sizeof(RegisterMessage);
 	uint8 	*msg = (uint8 *)&regMsg;
 
+#ifdef AMS_VERBOSE_LOGGING
+	print_connection(conn->sockfd, "send register message");
+#endif
 	/* motNodeId */
 	netval = htons(pEntry->motNodeId);
 	memcpy(msg + 0, &netval, 2);
@@ -1293,6 +1296,12 @@ void sendRegisterMessage(MotionLayerState *pEntry, MotionConn *conn)
 	/* srcListenerPort */
 	netval2 = htonl(listenerPort);
 	memcpy(msg + 6, &netval2, 4);
+
+#ifdef AMS_VERBOSE_LOGGING
+	/* srcPid */
+	netval2 = htonl(getpid());
+	memcpy(msg + 10, &netval2, 4);
+#endif
 
 	/* Since our message is very small and we should have at least some
 	 * dedicated TCP buffer space.  so we should be able to use a blocking
@@ -1349,6 +1358,10 @@ void readRegisterMessage(MotionConn *conn, int *incoming_count)
 	RegisterMessage		regMsg;
 	uint8 *buff = (uint8 *)&regMsg;
 
+#ifdef AMS_VERBOSE_LOGGING
+	print_connection(conn->sockfd, "register message on");
+#endif
+
 	/* loop till we read in the entire RegisterMessage. */
 	while (bytesRead < msgSize)
 	{
@@ -1372,14 +1385,18 @@ void readRegisterMessage(MotionConn *conn, int *incoming_count)
 		Assert(bytesRead <= (int)sizeof(RegisterMessage));
 	}
 	
-	msg.motNodeId 		= getInt16(buff + 0);
-	msg.srcRouteId 		= getInt16(buff + 2);
-	msg.srcContentId 	= getInt16(buff + 4);
-	msg.srcListenerPort = getInt32(buff + 6);
+	msg.motNodeId		= getInt16(buff + 0);
+	msg.srcRouteId		= getInt16(buff + 2);
+	msg.srcContentId	= getInt16(buff + 4);
+	msg.srcListenerPort	= getInt32(buff + 6);
 
-	elog(DEBUG5, "Read a Register Message: (motNodeID: %d, srcRouteId: %d, "
-	      "srcContentId: %d, srcListenerPort: %d\n",
-	      msg.motNodeId,msg.srcRouteId,msg.srcContentId,msg.srcListenerPort);
+#ifdef AMS_VERBOSE_LOGGING
+	msg.srcPid			= getInt32(buff + 10);
+
+	elog(DEBUG3, "Read a Register Message: (motNodeID: %d, srcRouteId: %d, "
+	      "srcContentId: %d, srcListenerPort: %d srcPid: %d",
+		 msg.motNodeId,msg.srcRouteId,msg.srcContentId,msg.srcListenerPort, msg.srcPid);
+#endif
 
 	pEntry = getMotionState(msg.motNodeId);
 	
@@ -1414,9 +1431,9 @@ void readRegisterMessage(MotionConn *conn, int *incoming_count)
 	
 	if (newConn->sockfd > pEntry->highReadSock)
 		pEntry->highReadSock = newConn->sockfd;
-	
+
 #ifdef AMS_VERBOSE_LOGGING	
-	dumpEntryConnections( pEntry );
+	dumpEntryConnections(pEntry);
 #endif
 
 	(*incoming_count)++;
@@ -1574,6 +1591,9 @@ bool flushBuffer(MotionConn *conn)
 		/* handle errors at the write call, below */
 		if (n > 0  && FD_ISSET(conn->sockfd, &rset))
 		{
+#ifdef AMS_VERBOSE_LOGGING
+			print_connection(conn->sockfd, "stop from");
+#endif
 			/* got a stop message */
 			conn->stillActive = false;
 			return false;
@@ -1613,6 +1633,9 @@ bool flushBuffer(MotionConn *conn)
 					 */
 					if (FD_ISSET(conn->sockfd, &rset))
 					{
+#ifdef AMS_VERBOSE_LOGGING
+						print_connection(conn->sockfd, "stop from");
+#endif
 						conn->stillActive = false;
 						return false;
 					}
@@ -1740,6 +1763,10 @@ void readPacket(MotionConn *conn)
 			if (conn->recvBytes == 0) {
 				elog(LOG, "INTERCONNECT: Connection ended prematurely????");
 				conn->recvBytes = conn->msgSize = PACKET_HEADER_SIZE;
+
+#ifdef AMS_VERBOSE_LOGGING
+				print_connection(conn->sockfd, "interconnect error on");
+#endif
 #if 0
 				conn->stillActive = false;
 #endif
@@ -2051,7 +2078,7 @@ static void getEosAck(MotionConn *conn, int16 route)
 	readCount = read(conn->sockfd, &response, sizeof(response));
 	if (readCount < 0)
 	{
-		if (errno == EINTR)
+		if (errno == EINTR || errno == EWOULDBLOCK)
 			return;
 		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 						errmsg("Interconnect error reading EOS Ack"),
@@ -2082,6 +2109,7 @@ static void getEosAck(MotionConn *conn, int16 route)
 		/* successfully acknowledged */
 		conn->stillActive = false;
 #ifdef AMS_VERBOSE_LOGGING
+		print_connection(conn->sockfd, "EOS from");
 		elog(DEBUG3, "Received EOS ack from route %d", route);
 #endif
 	}
@@ -2106,7 +2134,7 @@ void waitOnEosAck(MotionLayerState *pEntry)
 	do {
 		struct timeval  timeout = tval;
 		int             limit = 0;
-        
+
         waitCount = 0;
 
 		FD_ZERO(&waitset);
@@ -2174,4 +2202,69 @@ void waitOnEosAck(MotionLayerState *pEntry)
 
 	} while (waitCount != 0);
 
+}
+
+void print_connection(int fd, const char *msg)
+{
+	struct sockaddr_in local, remote;
+	socklen_t len;
+	
+	len = sizeof(remote);
+	if (getpeername(fd, (struct sockaddr *)&remote, &len) < 0)
+	{
+		elog(ERROR, "print_connection(): can't get peername for sock %d err: %s",
+			 fd, strerror(errno));
+	}
+
+	len = sizeof(local);
+	if (getsockname(fd, (struct sockaddr *)&local, &len) < 0)
+	{
+		elog(ERROR, "print_connection(): can't get localname for sock %d err: %s",
+			 fd, strerror(errno));
+	}
+
+	elog(DEBUG3, "%s: w/ports (%d/%d)",
+		 msg, ntohs(local.sin_port), ntohs(remote.sin_port));
+}
+
+static void flushListenerBacklog(void)
+{
+	int				   	pendingConn, newfd;
+	fd_set			   	rset;
+	struct timeval	   	timeout;
+	struct sockaddr_in	peer;
+	socklen_t			peerlen;
+
+	do
+	{
+		FD_ZERO(&rset);
+		FD_SET(listenerFd, &rset);
+		timeout.tv_sec = 0;
+		timeout.tv_usec = 0;
+
+		pendingConn = select(listenerFd+1, &rset, NULL, NULL, &timeout);
+		if (pendingConn > 0)
+		{
+#ifdef AMS_VERBOSE_LOGGING
+			elog(DEBUG3, "flushListenerBacklog(): accepting and closing client conn");
+#endif
+			peerlen = sizeof(peer);
+			newfd = accept(listenerFd, (struct sockaddr *)&peer, &peerlen);
+			if (newfd < 0)
+			{
+				elog(DEBUG1, "flushListenerBacklog: %s during accept", strerror(errno));
+				continue;
+			}
+			/* shutdown this socket */
+			shutdown(newfd, SHUT_RDWR);
+			close(newfd);
+		}
+		else if (pendingConn < 0 && errno != EINTR)
+		{
+			elog(ERROR, "%s during listener cleanup", strerror(errno));
+		}
+		/* now we either loop through for another check (on EINTR
+		 * or if we cleaned one client) or we're done */
+	}
+	while (pendingConn != 0);
 }
