@@ -475,7 +475,9 @@ void InitMotionLayerNode(int16 motNodeID, bool preserveOrder, TupleDesc tupDesc)
     pEntry->stat_total_recvs 			= 0;
     pEntry->stat_tuples_available 		= 0;
     pEntry->stat_tuples_available_hwm 	= 0;
-    
+	pEntry->stat_total_chunks_recvd		= 0;
+	pEntry->stat_tuple_bytes_recvd		= 0;
+
     pEntry->cleanedUp = false;
     pEntry->moreNetWork = true;
       
