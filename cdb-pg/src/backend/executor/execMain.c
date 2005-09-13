@@ -607,6 +607,11 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 
 		pfree(message);
 
+		/* clean up the interconnect if necessary (do this before we
+		 * issue an error) */
+		if (shouldSetupInterconnect)
+			TeardownInterconnect();
+
 		if ( !results->success )
 		{
 			char *message = CdbDumpDispatchResults(results, false);
@@ -618,7 +623,7 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 				
 		}
 
-		if ( operation != CMD_SELECT )
+		if (operation != CMD_SELECT)
 		{
 			/*  Plug the nuber of rows affected for non selects */
 			queryDesc->estate->es_processed += SumCmdTuples(results);
@@ -626,10 +631,11 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 
 		DestroyCdbDispatchResults( results );
 	}
-
-	/* clean up the interconnect if necessary */
-	if (shouldSetupInterconnect)
+	else if (shouldSetupInterconnect)
+	{
+		/* clean up the interconnect if necessary */
 		TeardownInterconnect();
+	}
 
 	/*
 	 * shutdown receiver
