@@ -1110,6 +1110,12 @@ void spinOffThreads(PGconn* pConn, InputOptions* pInputOpts, const SegmentInstan
 		pParm->pSegInstData = &pSegInstAr->pData[i];
 		pParm->pOptionsData = pInputOpts;
 		pParm->bSuccess		= false;
+        
+        if (!pParm->pSegInstData->isValid)
+        {
+            decrementFinishedLaunchCount();
+            continue;
+        }
 		
 		write_err_msg( "Creating thread to backup segment %d instance %d: host %s port %d database %s\n",
 				pParm->pSegInstData->segid,
@@ -1151,7 +1157,9 @@ void spinOffThreads(PGconn* pConn, InputOptions* pInputOpts, const SegmentInstan
 	/* Wait for all threads to complete */
 	for (i=0; i<pParmAr->count; i++)
 	{
-		ThreadParm* pParm = &pParmAr->pData[i]; 
+		ThreadParm* pParm = &pParmAr->pData[i];
+        if (pParm->thread == (pthread_t)NULL)
+            continue;
 		pthread_join( pParm->thread, NULL);
 		pParm->thread = (pthread_t)NULL;
 	}

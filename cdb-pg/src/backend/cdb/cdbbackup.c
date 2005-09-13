@@ -160,7 +160,7 @@ cdb_backup_launch__(PG_FUNCTION_ARGS)
 		}
  						
         getCdbCdb();			
-		instid	= (Cdb_segment==-1)?1:0; /*dispatch node*/	
+		instid	= (CdbIdentity.segindex==-1)?1:0; /*dispatch node*/	
 		segid	= CdbIdentity.dbid;
         /* dump schema only for entry db, and data only for segment db */
          pszDataOption = (instid==1)?"-s":"-a";									
@@ -287,7 +287,7 @@ cdb_restore_launch__(PG_FUNCTION_ARGS)
 	char* ptr;
 	
     getCdbCdb();
-    instid  = (Cdb_segment==-1)?1:0; /*dispatch node*/ 
+    instid  = (CdbIdentity.segindex==-1)?1:0; /*dispatch node*/ 
     segid   = CdbIdentity.dbid;                                     
 											
 	if ( !PG_ARGISNULL(0) )
@@ -850,7 +850,7 @@ char* formBackupFilePathName( char* pszBackupDirectory, char* pszBackupKey )
 	char* pszBackupFileName;
 
     getCdbCdb();
-    instid  = (Cdb_segment==-1)?1:0; /*dispatch node*/ 
+    instid  = (CdbIdentity.segindex==-1)?1:0; /*dispatch node*/ 
     segid   = CdbIdentity.dbid;                                     
 											
 	sprintf( szFileNamePrefix, "cdb_dump_%d_%d_", instid, segid );
@@ -905,7 +905,7 @@ char* formStatusFilePathName( char* pszBackupDirectory, char* pszBackupKey, bool
 	char* pszFileName;
 
     getCdbCdb();
-    instid  = (Cdb_segment==-1)?1:0; /*dispatch node*/ 
+    instid  = (CdbIdentity.segindex==-1)?1:0; /*dispatch node*/ 
     segid   = CdbIdentity.dbid;                                     
 											
 	sprintf( szFileNamePrefix, "cdb_%s_status_%d_%d_", (bIsBackup ? "dump" : "restore"), 

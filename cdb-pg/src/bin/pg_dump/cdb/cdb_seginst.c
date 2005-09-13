@@ -398,8 +398,10 @@ void FreeSegmentInstanceArray( SegmentInstanceArray* pSegInstAr )
 			
 		if ( pSegInst->pszHost != NULL )
 			free( pSegInst->pszHost );
+        /*
 		if ( pSegInst->pszDBName != NULL )
 			free( pSegInst->pszDBName );
+         */
 		if ( pSegInst->pszDBUser != NULL )
 			free( pSegInst->pszDBUser );
 		if ( pSegInst->pszDBPswd != NULL )
@@ -429,9 +431,10 @@ bool GetSegmentInstanceArray(PGconn* pConn, char* pszDBName, CDBSet* pSet, Segme
 	int count;
 	int i_segid;
 	int i_instid;
+    int i_isvalid;
+    int i_isprimary;
 	int i_host;
 	int i_port;
-	int i_dbname;
 	int i_dbuser;
 	int i_dbpswd;
 	int i;
@@ -443,10 +446,10 @@ bool GetSegmentInstanceArray(PGconn* pConn, char* pszDBName, CDBSet* pSet, Segme
 	appendPQExpBuffer(pQry,  "SELECT" 
 							 " d.dbid," 
 							 " d.content,"  
-							 //" isprimary,"
+							 " d.valid,"
+                               " d.isPrimary,"
 							 " h.hostname,"
 							 " l.port,"
-							 " d.dbname,"
 							 " l.cdbsuperuser,"
 							 " l.cdbsuperpswd"
 							 " FROM"
@@ -454,7 +457,7 @@ bool GetSegmentInstanceArray(PGconn* pConn, char* pszDBName, CDBSet* pSet, Segme
                                " cdb.listener l,"
                                " cdb.host h"
 							 " WHERE d.listenerid = l.listenerid"
-                               " and l.hostid = h.hostid"
+                               " and l.hostid = h.hostid and d.valid = 't'"
 							 );
 
 	pRes = PQexec(pConn, pQry->data);
@@ -490,12 +493,12 @@ bool GetSegmentInstanceArray(PGconn* pConn, char* pszDBName, CDBSet* pSet, Segme
 
 	i_segid		= PQfnumber(pRes, "dbid");
 	i_instid	= PQfnumber(pRes, "content");
-	//int i_isprimary	= PQfnumber(pRes, "isprimary");
+	i_isvalid	= PQfnumber(pRes, "valid");
 	i_host		= PQfnumber(pRes, "hostname");
 	i_port		= PQfnumber(pRes, "port");
-	i_dbname	= PQfnumber(pRes, "dbname");
 	i_dbuser	= PQfnumber(pRes, "cdbsuperuser");
 	i_dbpswd	= PQfnumber(pRes, "cdbsuperpswd");
+    i_isprimary = PQfnumber(pRes, "isPrimary");
 
 	/* Read through the results set.  */
 	x = 0;
@@ -503,6 +506,11 @@ bool GetSegmentInstanceArray(PGconn* pConn, char* pszDBName, CDBSet* pSet, Segme
 	{
 		int segid	= atoi(PQgetvalue(pRes, i, i_segid));
 		int instid	= (atoi(PQgetvalue(pRes, i, i_instid))==-1)?1:0;
+         int isprimary = (strcmp(PQgetvalue(pRes, i, i_isprimary), "t")==0);
+         
+         /* skip mirror qd node */
+         if (instid && !isprimary)
+            continue;
 			
 		/* See whether this instid, segid pair is part of the set definition.  */
 		if ( !FindInCDBSet( pSet, instid, segid ) )
@@ -512,9 +520,9 @@ bool GetSegmentInstanceArray(PGconn* pConn, char* pszDBName, CDBSet* pSet, Segme
 		pSegInst->segid		= segid; 
 		pSegInst->instid   	= instid;
 		pSegInst->port		= atoi(PQgetvalue(pRes, i, i_port));
-		//pSegInst->isPrimary	= ( strcmp(PQgetvalue(pRes, i, i_isprimary), "t") == 0 );
+		pSegInst->isValid	= ( strcmp(PQgetvalue(pRes, i, i_isvalid), "t") == 0 );
 		pSegInst->pszHost	= strdup(PQgetvalue(pRes, i, i_host));
-		pSegInst->pszDBName	= strdup(PQgetvalue(pRes, i, i_dbname));
+        pSegInst->pszDBName = pszDBName;
 		pSegInst->pszDBUser	= strdup(PQgetvalue(pRes, i, i_dbuser));
 	
 		if ( PQgetisnull(pRes, i, i_dbpswd))

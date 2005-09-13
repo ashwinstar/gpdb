@@ -133,7 +133,7 @@ typedef struct cdb_seg_array
 typedef struct cdb_segment_instance 
 {
     int		segid;
-    bool     isPrimary;			
+    bool     isValid;			
     char    *dbname;
     char    *dbhostname;
     int      dbport;

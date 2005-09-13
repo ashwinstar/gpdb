@@ -423,7 +423,7 @@ bool GetCDBSegmentInstanceArray(PGconn* pConn, const char* pszDBName, CDBSegment
 {
 	int ntups;
 	int i_segid;
-    int i_dbname;
+    int i_isValid;
     int i_hostname;
     int i_port;
     int i_datadir;
@@ -440,8 +440,7 @@ bool GetCDBSegmentInstanceArray(PGconn* pConn, const char* pszDBName, CDBSegment
 	pQry = createPQExpBuffer();
 	appendPQExpBuffer(pQry, 	" SELECT" 
 							"	d.dbid,"
-//                              "   d.isprimary,"
-                              "   d.dbname,"
+                              "   d.valid,"
                               "   h.hostname,"
                               "   l.port," 
                               "   l.datadir,"
@@ -477,8 +476,7 @@ bool GetCDBSegmentInstanceArray(PGconn* pConn, const char* pszDBName, CDBSegment
 	}
 
 	i_segid		= PQfnumber(pRes, "dbid");
-    //bool i_isPrimary = PQfnumber(pRes, "isPrimary");
-    i_dbname    = PQfnumber(pRes, "dbname");
+    i_isValid    = PQfnumber(pRes, "valid");
     i_hostname  = PQfnumber(pRes, "hostname");
     i_port      = PQfnumber(pRes, "port");
     i_datadir   = PQfnumber(pRes, "datadir");
@@ -488,7 +486,8 @@ bool GetCDBSegmentInstanceArray(PGconn* pConn, const char* pszDBName, CDBSegment
 	{
 		CDBSegmentInstance* pSegmentInstance = &pSegmentInstanceAr->pData[i]; 
         pSegmentInstance->segid		= atoi(PQgetvalue(pRes, i, i_segid));
-        pSegmentInstance->dbname      = PQgetvalue(pRes, i, i_dbname);
+        pSegmentInstance->isValid     = ( strcmp(PQgetvalue(pRes, i, i_isValid), "t") == 0 );
+        pSegmentInstance->dbname      = strdup(pszDBName);
         pSegmentInstance->dbhostname  = PQgetvalue(pRes, i, i_hostname);
         pSegmentInstance->dbport      = atoi(PQgetvalue(pRes, i, i_port));
         pSegmentInstance->dbdatadir   = PQgetvalue(pRes, i, i_datadir);

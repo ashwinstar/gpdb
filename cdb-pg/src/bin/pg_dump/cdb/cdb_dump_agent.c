@@ -598,7 +598,7 @@ main(int argc, char **argv)
     SegInst.segid       = g_CDBSegID;
     SegInst.instid      = g_CDBInstID;
     SegInst.port        = pgport ? atoi( pgport ) : 5432;
-    SegInst.isPrimary   = true;
+    SegInst.isValid     = true;
     SegInst.pszHost     = pghost ? strdup(pghost) : NULL;
     SegInst.pszDBName   = dbname ? strdup(dbname) : NULL;
     SegInst.pszDBUser   = username ? strdup(username) : NULL;

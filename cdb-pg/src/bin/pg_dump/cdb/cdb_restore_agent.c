@@ -181,6 +181,9 @@ main(int argc, char **argv)
 
 	opts = NewRestoreOptions();
 
+    /* set format default */
+    opts->formatName = "p";
+
 	progname = get_progname(argv[0]);
 
 	if (argc > 1)
@@ -406,7 +409,7 @@ main(int argc, char **argv)
     SegInst.segid       = g_CDBSegID;
     SegInst.instid      = g_CDBInstID;
     SegInst.port        = opts->pgport ? atoi( opts->pgport ) : 5432;
-    SegInst.isPrimary   = true;
+    SegInst.isValid     = true;
     SegInst.pszHost     = opts->pghost ? strdup(opts->pghost) : NULL;
     SegInst.pszDBName   = opts->dbname ? strdup(opts->dbname) : NULL;
     SegInst.pszDBUser   = opts->username ? strdup(opts->username) : NULL;

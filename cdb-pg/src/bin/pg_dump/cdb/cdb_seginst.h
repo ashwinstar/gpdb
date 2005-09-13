@@ -19,7 +19,7 @@ typedef struct segment_instance
 	int4	segid;              // segment id for this pair
     int4	instid;             // instance id for this pair
     int4	port;               // copy of cdb_instance.port
-    bool	isPrimary;          // true iff cdb_seg.primary_inst == instid
+    bool	isValid;          // true iff cdb_seg.primary_inst == instid
     char*	pszHost;            // copy of cdb_instance.host
     char*	pszDBName;          // copy of cdb_seg.dbname
     char*	pszDBUser;          // copy of cdb_seg.dbuser

@@ -186,7 +186,7 @@ PGconn* MakeConnectionToDatabase(const char* dbname,
 	segInst.segid		= 0; 
 	segInst.instid		= 0;
 	segInst.port		= pgport ? atoi(pgport) : 5432;
-	segInst.isPrimary	= true;
+	segInst.isValid	= true;
 	segInst.pszHost		= (char *)pghost; 
 	segInst.pszDBName	= (char *)dbname;
 	segInst.pszDBUser	= (char *)username;

@@ -38,7 +38,7 @@ static bool createThreadParmArray( int nCount, ThreadParmArray* pParmAr);
 static char* addPassThroughParm( char Parm, const char* pszValue, char* pszPassThroughParmString );
 static void	fillInputOptions(int argc, char** argv, InputOptions* pInputOpts);
 static bool parmValNeedsQuotes( const char* Value );
-static void usage(const char *progname);
+static void usage();
 static void* threadProc(void *arg);
 static bool restoreHead( InputOptions* pInputOpts, PGconn *pConn, SegmentInstance *pSegInst, ThreadParm* pParm );
 static void spinOffThreads(PGconn* pConn, InputOptions* pInputOpts, const SegmentInstanceArray* pSegInstAr, ThreadParmArray* pParmAr );
@@ -124,7 +124,6 @@ main(int argc, char **argv)
 	}
 	
 	/* Produce results report */
-report:	
 	failCount = reportRestoreResults( inputOpts.pszReportDirectory, &headParm, &parmAr );
 	
 cleanup:	
@@ -147,7 +146,7 @@ cleanup:
 }
 
 static void
-usage(const char *progname)
+usage()
 {
 	printf(("%s restores a PostgreSQL database from an archive created by pg_dump.\n\n"), progname);
 	printf(("Usage:\n"));
@@ -215,7 +214,6 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 	static int	use_setsessauth = 0;
 	static int	disable_triggers = 0;
 	bool bSawCDB_S_Option;
-	char *progname;
 	int lenCmdLineParms;
 	int i;
 
@@ -298,7 +296,7 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 
 	if (argc == 1)
 	{
-		usage(progname);
+		usage();
 		exit(0);
 	}
 	
@@ -306,7 +304,7 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 	{
 		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
 		{
-			usage(progname);
+			usage();
 			exit(0);
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
@@ -615,8 +613,11 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 
 	if (opts->formatName == NULL)
 	{
+        /*
 		write_err_msg( "Error: %s command line missing the format parameter (-F)\n", progname );
 		exit(1);
+        */
+        opts->formatName = "p";
 	}
 
 	opts->disable_triggers = disable_triggers;
@@ -1042,7 +1043,7 @@ void spinOffThreads(PGconn* pConn, InputOptions* pInputOpts, const SegmentInstan
 		pParm->bSuccess		= false;
         
         // exclude head node
-        if (pParm->pSegInstData->instid == 1)
+        if (pParm->pSegInstData->instid == 1 || !pParm->pSegInstData->isValid)
             continue;
 		
 		write_err_msg( "Creating thread to restore segment %d instance %d: host %s port %d database %s\n",
@@ -1066,8 +1067,8 @@ void spinOffThreads(PGconn* pConn, InputOptions* pInputOpts, const SegmentInstan
 	for (i=0; i<pParmAr->count; i++)
 	{
 		ThreadParm* pParm = &pParmAr->pData[i]; 
-        // exclude head node
-        if (pParm->pSegInstData->instid == 1)
+        // exclude head node and not valid node
+        if (pParm->thread == (pthread_t)NULL)
             continue;
 		pthread_join( pParm->thread, NULL);
 		pParm->thread = (pthread_t)NULL;
