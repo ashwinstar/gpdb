@@ -521,7 +521,7 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 	}
 	PG_CATCH();
 	{
-		if ( hasDispatched )
+		if (hasDispatched)
 		{
 			/*
 			 * We need to wait for the threads to finish.  This allows for proper cleanup
@@ -551,9 +551,17 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 
 			pfree(message);
 
-			if ( !results->success )
+			/* clean up the interconnect */
+			if (shouldSetupInterconnect)
+				TeardownInterconnect();
+
+			/* clean up our own motion layer. */	
+			ResetMotionLayer(true);
+
+			if (!results->success)
 			{
 				char *message = CdbDumpDispatchResults(results, false);
+
 				ereport( ERROR,
 							(errcode( ERRCODE_CDB_COMMAND_ERROR ),
 							errmsg("%s",
@@ -565,13 +573,15 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 			DestroyCdbDispatchResults( results );
 			hasDispatched = false;
 		}
+		else
+		{
+			/* clean up the interconnect */
+			if (shouldSetupInterconnect)
+				TeardownInterconnect();
 
-		/* clean up the interconnect after we clean results */
-		if (shouldSetupInterconnect)
-			TeardownInterconnect();
-
-		/* clean up our own motion layer. */	
-		ResetMotionLayer(true);
+			/* clean up our own motion layer. */	
+			ResetMotionLayer(true);
+		}
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
