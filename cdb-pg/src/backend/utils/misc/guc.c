@@ -4192,7 +4192,11 @@ SetPGVariable(const char *name, List *args, bool is_local)
 		appendStringInfo(&buffer, "SET ");
 		if (is_local)
 			appendStringInfo(&buffer, "LOCAL ");
-		appendStringInfo(&buffer, "%s TO %s", name, argstring);
+			
+		if (argstring[0]!='\'')
+			appendStringInfo(&buffer, "%s TO '%s'", name, argstring);
+		else
+			appendStringInfo(&buffer, "%s TO %s", name, argstring);
 
         CdbDoCommandInt( buffer.data, false, NULL );
 		
