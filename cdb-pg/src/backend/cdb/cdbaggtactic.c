@@ -238,7 +238,7 @@ getAggTactic(Aggref* aggref, char **msg)
 			*/
 			freeAggTactic(tactic);
 			tactic = NULL;
-			*msg = "CDB cannot SUM partitioned attribute of that datatype yet";
+			*msg = "Cannot SUM partitioned attribute of that datatype yet";
 		}
 	}
 	else if ( CDB_AVG_OID_LO <= aggref->aggfnoid
@@ -397,7 +397,7 @@ getAggTactic(Aggref* aggref, char **msg)
 		{
 			freeAggTactic(tactic);
 			tactic = NULL;
-			*msg = "CDB cannot AVG partitioned attribute of that datatype yet";
+			*msg = "Cannot AVG partitioned attribute of that datatype yet";
 		}
 	}
 	else if ( ( CDB_MAX_OID_LO <= aggref->aggfnoid
@@ -421,17 +421,17 @@ getAggTactic(Aggref* aggref, char **msg)
 			  && aggref->aggfnoid <= CDB_VARIANCE_OID_HI )
 	{
 		/* VARIANCE */
-		*msg = "CDB cannot find VARIANCE of partitioned attribute yet";
+		*msg = "Cannot find VARIANCE of partitioned attribute yet";
 	}
 	else if ( CDB_STDDEV_OID_LO <= aggref->aggfnoid
 			  && aggref->aggfnoid <= CDB_STDDEV_OID_HI )
 	{
 		/* STDDEV */
-		*msg = "CDB cannot find STDDEV of partitioned attribute yet";
+		*msg = "Cannot find STDDEV of partitioned attribute yet";
 	}
 	else
 	{
-		*msg = "CDB cannot aggregate partitioned attribute";
+		*msg = "Cannot aggregate partitioned attribute";
 	}
 	return tactic;
 }

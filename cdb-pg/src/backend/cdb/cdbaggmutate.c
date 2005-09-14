@@ -322,7 +322,7 @@ apply_agg_motion(Plan *plan, ApplyMotionState *state)
 	{
 		ereport(ERROR, (
 			errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-			errmsg("CDB cannot parallelize that command yet"),
+			errmsg("Cannot parallelize that command yet"),
 			errdetail(context.errmsg)
 		));
 	}
@@ -431,13 +431,13 @@ splitAggs_mutator(Node* node, SplitAggsContext *context)
 		{
 			freeAggTactic(tactic);
 			if ( context->errmsg == NULL )
-				context->errmsg = "CDB has no tactic for implementing this aggregation";
+				context->errmsg = "No tactic for implementing this aggregation";
 			context->mutatingAggref = FALSE;
 			
 			/******/
 			ereport(ERROR, (
 				errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-				errmsg("CDB cannot parallelize that command yet"),
+				errmsg("Cannot parallelize that command yet"),
 				errdetail(context->errmsg)
 			));
 			

@@ -224,7 +224,7 @@ List *getAggStrategyList(Agg* agg)
 			{
 				ereport(ERROR,(
 					errcode(ERRCODE_CDB_INTERNAL_ERROR),
-					errmsg("CDB: problem in Agg targetlist")
+					errmsg("problem in Agg targetlist")
 				));
 			}
 			

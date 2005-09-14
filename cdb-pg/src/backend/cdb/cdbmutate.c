@@ -192,7 +192,7 @@ Plan* apply_motion(Plan*  plan, Query* query)
 							*/
 							ereport(ERROR, (
 								errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-								errmsg("CDB cannot parallelize that INSERT yet")
+								errmsg("Cannot parallelize that INSERT yet")
 							));
 						}
 
@@ -224,7 +224,7 @@ Plan* apply_motion(Plan*  plan, Query* query)
 							*/
 							ereport(ERROR, (
 								errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-								errmsg("CDB cannot parallelize that INSERT yet")
+								errmsg("Cannot parallelize that INSERT yet")
 							));
 						}
 						else
@@ -270,7 +270,7 @@ Plan* apply_motion(Plan*  plan, Query* query)
 						{
 							ereport(ERROR, (
 								errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-									errmsg("CDB cannot parallelize that %s yet",
+									errmsg("Cannot parallelize that %s yet",
 										query->commandType==CMD_UPDATE ? "UPDATE" : "DELETE")
 							));
 						}
@@ -283,7 +283,7 @@ Plan* apply_motion(Plan*  plan, Query* query)
 						{
 							ereport(ERROR, (
 								errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-									errmsg("CDB cannot parallelize an update that involves the partitioning columns")
+									errmsg("Cannot parallelize an update that involves the partitioning columns")
 							));
 						}
 
@@ -296,7 +296,7 @@ Plan* apply_motion(Plan*  plan, Query* query)
 						{
 							ereport(ERROR, (
 								errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-									errmsg("CDB cannot parallelize that %s yet",
+									errmsg("Cannot parallelize that %s yet",
 										query->commandType==CMD_UPDATE ? "UPDATE" : "DELETE")
 							));
 						}
@@ -311,7 +311,7 @@ Plan* apply_motion(Plan*  plan, Query* query)
 						{
 							ereport(ERROR, (
 								errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-									errmsg("CDB cannot parallelize that %s yet",
+									errmsg("Cannot parallelize that %s yet",
 										query->commandType==CMD_UPDATE ? "UPDATE" : "DELETE")
 							));
 						}
@@ -376,7 +376,7 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 		{
 			 ereport(ERROR, (
 				errcode(ERRCODE_CDB_INTERNAL_ERROR),
-				errmsg("Unknown CDB restructuring transformation %d for node type %d",
+				errmsg("Unknown restructuring transformation %d for node type %d",
 					plan->flow->req_xform,
 					node->type)
 			 ));
