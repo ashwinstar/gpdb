@@ -1675,7 +1675,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	    appendStringInfo(&cdbcopy_cmd, " DELIMITER AS '%s'", delim);
 	    if(strcmp(null_print,"\\N") != 0) /* if default leave it out */
 	       appendStringInfo(&cdbcopy_cmd, " NULL AS '%s'", null_print);
-		if(strcmp(escape,"\\") != 0) /* if default leave it out */
+		if(strcmp(escape,"\\") != 0 && !csv_mode) /* if default leave it out */
 		   appendStringInfo(&cdbcopy_cmd, " ESCAPE AS '%s'", escape);
 	}
 
