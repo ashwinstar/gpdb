@@ -208,6 +208,85 @@ cdbparallelize(	Plan* plan,
 	return plan;
 }
 
+/* ------------------------------------------------------------------------- *
+ * Function cdbparallelize_subquery() is an entry point for the planner.  
+ *
+ * Parallelize a single PostgreSQL sequential or partially parallel plan. 
+ * The input plan is modified in that Flow nodes are attached to Plan nodes
+ * in the input as appropriate.
+ * 
+ * The caller (planner) has the following responsibilities:
+ * 
+ * Memory context.
+ * 
+ * The argument Plan node must be suitable for use in a SubqueryScan 
+ * node and the result Plan node should be installed in one.
+ * 
+ * The argument Query node must contain [a copy of] the range table 
+ * used by the top-level Scans in the argument Plan node.
+ * 
+ * The argument Query node should have a commandType value of 
+ * CMD_SELECT and should not specify a target (as would, e.g., 
+ * an INSERT).
+ * 
+ * Various fields of the top node of the argument are assumed to be 
+ * insignificant.  For example, nParamExec and dispatch are ignored.
+ *
+ * The input plan must be suitable to be parallelized.  E.g., don't call
+ * this function with a plan that references catalog tables.
+ * 
+ * 
+ * On successful return:
+ * 
+ * The result plan will be a "finished", annotated plan -- in 
+ * particular, it will not yet contain any Motion nodes, only Flow 
+ * nodes with instructions.
+ * 
+ * The result may or may not be at the same address as the input 
+ * plan.  It may share nodes with the input plan.  (These are just 
+ * defensive restrictions and may not be necessary.)
+ * 
+ * The flow field will be set to characterize the result of the 
+ * subquery.  Note that "partitioned anonymously" is a possibility
+ * and is represented by 
+ *   flotype == FLOW_PARTITIONED
+ *   hashExpr == NIL
+ * 
+ * The dispatch field of the resulting plan will not be set since it
+ * assumed that that overall plan will specifiy DISPATCH_PARALLEL.
+ * 
+ * In case of failure, an error is thrown.
+ * ----------------------------------------------------------------------- *
+ */
+Plan *
+cdbparallelize_subquery( Plan* plan, Query *query )
+{
+	PlanProfile profile; /* Will be initialized by prescan(). */
+	
+	Assert( is_plan_node((Node*)plan) );	
+	Assert( query != NULL && IsA(query, Query) );
+	
+	/* TODO Remove this when the implementation is ready to test.
+	 *      Until then issue an error to avoid masking caller bugs
+	 *      with bugs presumed to be in this untested support.
+	 */
+	ereport(ERROR, (
+			errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+			errmsg("Cannot parallelize that query yet"),
+			errdetail("Unsupported subquery")
+			));
+
+	/* Prescan the plan and attach Flow nodes to its Plan nodes. These
+	 * nodes describe how to parallelize the plan.  We also accumulate
+	 * summary information in the profile stucture.
+	 */
+	if ( !prescan(plan, query, &profile) )
+		issuePsError(&profile);	
+	
+	return plan;
+}
+
+ 
 
 /* ----------------------------------------------------------------------- *
  * Functions prescan() and prescan_walker() use the plan_tree_walker() 
@@ -1005,7 +1084,7 @@ void psError(PlanProfile *context,
 void psErrorNonce(PlanProfile *context,  const char* detail)
 {
 	context->code = ERRCODE_CDB_FEATURE_NOT_YET; 
-	context->message = "CDB cannot parallelize that query yet.";
+	context->message = "Cannot parallelize that query yet.";
 	context->detail = detail;
 }
 
@@ -1346,7 +1425,7 @@ bool initPlanProfile(PlanProfile *context, Query *query)
 				/* Perhaps this should be an Assert(?) rather than an error. */
 				psError(context,  ERRCODE_CDB_INTERNAL_ERROR,
 					"Unexpected relation specified as target of modification.", 
-					"CDB expects a single result relation without inheritance." );
+					"Target must be a single result relation without inheritance." );
 				return false;
 			}
 			else
@@ -1379,7 +1458,7 @@ bool initPlanProfile(PlanProfile *context, Query *query)
 		
 		default:
 			psError(context,  ERRCODE_CDB_INTERNAL_ERROR,
-				"CDB cannot parallelize unrecognized query type.", NULL );
+				"Cannot parallelize unrecognized query type.", NULL );
 			return false;
 	}
 	

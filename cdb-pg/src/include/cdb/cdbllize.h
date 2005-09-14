@@ -26,6 +26,9 @@
 extern Plan *
 cdbparallelize(Plan* plan, Query *query, bool isCursor, int cursorOptions, ParamListInfo boundParams);
 
+extern Plan *
+cdbparallelize_subquery( Plan* plan, Query *query );
+
 extern bool 
 is_plan_node(Node* node);
 
