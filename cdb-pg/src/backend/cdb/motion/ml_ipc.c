@@ -164,7 +164,7 @@ int	sliceId;
 static int listenerSetup(void);
 
 static MotionLayerState *createMotionState(int16 motNodeID, int numConns);
-static MotionLayerState *getMotionState(int16 motNodeID);
+static inline MotionLayerState *getMotionState(int16 motNodeID);
 static MotionLayerState *removeMotionState(int16 motNodeID);
 
 static MotionLayerState  *startConnections(Slice *mySlice, int *highsock, fd_set *wset, int *connsStarted);
@@ -174,12 +174,12 @@ static void readRegisterMessage(MotionConn *in_conn, int *incoming_count);
 static void acceptIncomingConnection(fd_set *rset, int *highsock);
 
 static bool sendChunk(MotionConn *conn, TupleChunkListItem tcItem);
-static void readPacket(MotionConn *conn);
+static inline void readPacket(MotionConn *conn);
 static void doBroadcast(MotionLayerState *pEntry, TupleChunkListItem tcItem);
 static int findMyRouteId(Slice *slice);
 static CdbProcess *findCdbProcess(RegisterMessage *msg);
 
-bool flushBuffer(MotionConn *conn);
+static bool flushBuffer(MotionConn *conn);
 void dumpEntryConnections(MotionLayerState *pEntry);
 
 static void getEosAck(MotionConn *conn, int16 route);
@@ -188,6 +188,8 @@ void waitOnEosAck(MotionLayerState *pEntry);
 void print_connection(int fd, const char *msg);
 
 static void flushListenerBacklog(void);
+
+static inline TupleChunkListItem RecvTupleChunk(MotionConn *conn);
 
 /*=========================================================================
  * VISIBLE FUNCTIONS
@@ -435,7 +437,7 @@ TupleChunkListItem RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 		if (FD_ISSET(conn->sockfd, &rset))
 		{		
 			elog(DEBUG5, "RecvTupleChunkFromAny() (fd %d) %d/%d", conn->sockfd, motNodeID, index);
-			tcItem = RecvTupleChunkFrom(motNodeID, index);
+			tcItem = RecvTupleChunk(conn);
 
 			*srcRoute = index;
 
@@ -456,11 +458,6 @@ TupleChunkListItem RecvTupleChunkFrom(int16 motNodeID, int16 srcRoute)
 {
 	MotionLayerState	*pEntry;
 	MotionConn			*conn;
-	TupleChunkListItem	tcItem;
-	TupleChunkListItem	firstTcItem = NULL;
-	TupleChunkListItem	lastTcItem = NULL;
-	uint16				tcSize;
-	int					bytesProcessed = 0;
 
 	Assert(activated);
 
@@ -473,7 +470,18 @@ TupleChunkListItem RecvTupleChunkFrom(int16 motNodeID, int16 srcRoute)
 
 	pEntry = getMotionState(motNodeID);
 	conn = pEntry->conns + srcRoute;
-	
+
+	return RecvTupleChunk(conn);
+}
+
+static inline TupleChunkListItem RecvTupleChunk(MotionConn *conn)
+{
+	TupleChunkListItem	tcItem;
+	TupleChunkListItem	firstTcItem = NULL;
+	TupleChunkListItem	lastTcItem = NULL;
+	uint16				tcSize;
+	int					bytesProcessed = 0;
+
 	/* read the packet in from the network. */
 	readPacket(conn);
 
@@ -525,7 +533,6 @@ TupleChunkListItem RecvTupleChunkFrom(int16 motNodeID, int16 srcRoute)
 	return firstTcItem;
 }
 
-
 /* See ml_ipc.h */
 void DeregisterReadInterest(int16 motNodeID, int16 srcRoute)
 {
@@ -543,8 +550,6 @@ void DeregisterReadInterest(int16 motNodeID, int16 srcRoute)
 	
 	FD_CLR(conn->sockfd, &(pEntry->readSet));
 }
-
-
 
 /* See ml_ipc.h */
 void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
@@ -909,7 +914,7 @@ void TeardownInterconnect(void)
  * RETURNS
  *    System picked TCP port that listener is using.
  */
-int listenerSetup(void)
+static int listenerSetup(void)
 {
 	struct 		sockaddr_in addr;
 	socklen_t 	addrlen;
@@ -991,7 +996,7 @@ int listenerSetup(void)
  *   a MotionState struct is already registered for the motNodeID an ERROR is
  *	 thrown.
  */
-MotionLayerState *createMotionState(int16 motNodeID, int numConns)
+static MotionLayerState *createMotionState(int16 motNodeID, int numConns)
 {
 	MotionLayerState 	*pEntry;
 	bool 				found;
@@ -1046,7 +1051,7 @@ MotionLayerState *createMotionState(int16 motNodeID, int numConns)
  * RETURNS
  *   The MotionLayerState struct for the given motNodeID.	
  */
-MotionLayerState *getMotionState(int16 motNodeID)
+static inline MotionLayerState *getMotionState(int16 motNodeID)
 {
 	MotionLayerState 	*pEntry;
 	bool 				found;
@@ -1085,7 +1090,7 @@ MotionLayerState *getMotionState(int16 motNodeID)
  * RETURNS
  *   The MotionLayerState that was removed from the hashtab hashtable.
  */
-MotionLayerState *removeMotionState(int16 motNodeID)
+static MotionLayerState *removeMotionState(int16 motNodeID)
 {
 	MotionLayerState 	*pEntry;
 	bool 				found;
@@ -1113,7 +1118,7 @@ MotionLayerState *removeMotionState(int16 motNodeID)
  * RETURNS
  *   Initialized MotionLayerState for the Sending Motion Node Id.	
  */
-MotionLayerState  *startConnections(Slice *mySlice, int *highsock, fd_set *wset, int *connsStarted)
+static MotionLayerState  *startConnections(Slice *mySlice, int *highsock, fd_set *wset, int *connsStarted)
 {
 	MotionLayerState	*pEntry;
 	MotionConn			*conn;
@@ -1165,7 +1170,7 @@ MotionLayerState  *startConnections(Slice *mySlice, int *highsock, fd_set *wset,
 	return pEntry;
 }
 
-void setupOutgoingConnection(MotionConn *conn, CdbProcess *cdbProc, int *highsock, fd_set *wset)
+static void setupOutgoingConnection(MotionConn *conn, CdbProcess *cdbProc, int *highsock, fd_set *wset)
 {
 	struct sockaddr_in	addr;
 	int					n;
@@ -1269,7 +1274,7 @@ void setupOutgoingConnection(MotionConn *conn, CdbProcess *cdbProc, int *highsoc
  *   pEntry - MotionLayerState.
  *   conn   - MotionConn to send message out on.
  */
-void sendRegisterMessage(MotionLayerState *pEntry, MotionConn *conn)
+static void sendRegisterMessage(MotionLayerState *pEntry, MotionConn *conn)
 {
 	int   	n;
 	int16 	netval;	
@@ -1345,7 +1350,7 @@ void sendRegisterMessage(MotionLayerState *pEntry, MotionConn *conn)
  *					  up so far.
  *
  */
-void readRegisterMessage(MotionConn *conn, int *incoming_count)
+static void readRegisterMessage(MotionConn *conn, int *incoming_count)
 {
 	MotionLayerState 	*pEntry;	
 	MotionConn			*newConn;
@@ -1455,7 +1460,7 @@ void readRegisterMessage(MotionConn *conn, int *incoming_count)
  *  highsock - ptr to highest socket filedescriptor. (needed for select())
  *
  */
-void acceptIncomingConnection(fd_set *rset, int *highsock)
+static void acceptIncomingConnection(fd_set *rset, int *highsock)
 {
 	int 		newsockfd;
 	struct 		sockaddr_in addr;
@@ -1520,7 +1525,7 @@ void acceptIncomingConnection(fd_set *rset, int *highsock)
  *   conn - MotionConn that the tcItem is to be sent to.
  *   tcItem - message to be sent.
  */
-bool sendChunk(MotionConn *conn, TupleChunkListItem tcItem)
+static bool sendChunk(MotionConn *conn, TupleChunkListItem tcItem)
 {
 	Assert(conn->msgSize > 0);		
 	
@@ -1554,7 +1559,7 @@ bool sendChunk(MotionConn *conn, TupleChunkListItem tcItem)
  *   conn - MotionConn whose buffer needs to be flushed.
  *
  */
-bool flushBuffer(MotionConn *conn)
+static bool flushBuffer(MotionConn *conn)
 {
 	char		*sendptr;
 	int16		header;
@@ -1671,7 +1676,7 @@ bool flushBuffer(MotionConn *conn)
  *   conn - MotionConn to read the packet from.
  *
  */
-void readPacket(MotionConn *conn)
+static inline void readPacket(MotionConn *conn)
 {
 	int			n, bytesRead = conn->recvBytes;
 	bool		gotHeader = false, gotPacket=false;
@@ -1828,7 +1833,7 @@ void readPacket(MotionConn *conn)
  *   pEntry - MotionLayerState context that contains everything we need to send.
  *   tcItem - TupleChunk to send.
  */
-void doBroadcast(MotionLayerState *pEntry, TupleChunkListItem tcItem)
+static void doBroadcast(MotionLayerState *pEntry, TupleChunkListItem tcItem)
 {	
 	MotionConn 	*conn;
 	int 		i;
@@ -1860,7 +1865,7 @@ void doBroadcast(MotionLayerState *pEntry, TupleChunkListItem tcItem)
  * RETURN
  *   An int which is "our" position in the slice->primaryProcesses list.
  */
-int findMyRouteId(Slice *slice)
+static int findMyRouteId(Slice *slice)
 {
 	ListCell 	*cell;
 	int 		id = 0;
@@ -1903,7 +1908,7 @@ int findMyRouteId(Slice *slice)
  * RETURNS
  *   The CdbProcess that matches with the info in the RegisterMessage.
  */
-CdbProcess *findCdbProcess(RegisterMessage *msg)
+static CdbProcess *findCdbProcess(RegisterMessage *msg)
 {
 	CdbProcess 	*proc = NULL;
 	Slice 		*slice;
