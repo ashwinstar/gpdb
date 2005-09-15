@@ -541,7 +541,7 @@ extern DLLIMPORT bool assert_enabled;
 
 extern int ExceptionalCondition(char *conditionName, char *errorType,
 					 char *fileName, int lineNumber);
-extern int SyncMasterMain(int, char **, const char *);
+extern int SyncAgentMain(int, char **, const char *);
 
 /* ----------------------------------------------------------------
  *				Section 4: genbki macros used by catalog/pg_xxx.h files
