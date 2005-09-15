@@ -952,7 +952,7 @@ connectDatabase(const char *dbname, const char *pghost, const char *pgport,
 	{
 		need_pass = false;
 		conn = PQsetdbLogin(pghost, pgport, 
-		                    "-c cdb_session_role=utility", 
+		                    "-c mpp_session_role=utility", 
 							NULL, dbname, pguser, password);
 
 		if (!conn)

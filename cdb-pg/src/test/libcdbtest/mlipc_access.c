@@ -67,7 +67,7 @@ Datum ml_ipc_bench(PG_FUNCTION_ARGS)
 	char *msg;
 	uint64 totalMsec;
 	
-	CdbRoleValue oldRole = Cdb_role;
+	MppRoleValue oldRole = Mpp_role;
 	
     
     if( SRF_IS_FIRSTCALL() )

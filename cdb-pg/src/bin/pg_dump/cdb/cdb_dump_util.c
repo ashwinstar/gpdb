@@ -256,7 +256,7 @@ PGconn* MakeDBConnection( const SegmentInstance* pSegInst, bool bDispatch )
 	if ( bDispatch )
         pszOptions = NULL;
     else
-        pszOptions = MakeString( "options='-c cdb_session_role=UTILITY'");
+        pszOptions = MakeString( "options='-c mpp_session_role=UTILITY'");
     
     if ( pSegInst->pszHost == NULL || *pSegInst->pszHost == '\0' ) 
 		pszHost = strdup( "host=''" );

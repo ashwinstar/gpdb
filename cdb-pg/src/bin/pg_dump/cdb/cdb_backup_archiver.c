@@ -218,7 +218,7 @@ RestoreArchive(Archive *AHX, RestoreOptions *ropt)
 	ahprintf(AH, "--\n-- PostgreSQL database dump\n--\n\n");
     /* for segment databases only */
     if ( g_CDBInstID != 1)
-        ahprintf(AH, "\n\n-- cdb specific\nSET cdb_role=UTILITY;\n--end cdb specific\n\n");
+        ahprintf(AH, "\n\n-- cdb specific\nSET mpp_role=UTILITY;\n--end cdb specific\n\n");
 
 
 	/*
@@ -287,7 +287,7 @@ RestoreArchive(Archive *AHX, RestoreOptions *ropt)
 			{
 				ahlog(AH, 1, "connecting to new database \"%s\"\n", te->tag);
 				_reconnectToDB(AH, te->tag);
-                ahprintf(AH, "\n\n-- cdb specific\nSET cdb_role=UTILITY;\n--end cdb specific\n\n");
+                ahprintf(AH, "\n\n-- cdb specific\nSET mpp_role=UTILITY;\n--end cdb specific\n\n");
 
 			}
 		}

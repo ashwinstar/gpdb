@@ -639,7 +639,7 @@ main(int argc, char **argv)
     }
 
 /*
-    res = PQexec(g_conn, "SET cdb_role=UTILITY");
+    res = PQexec(g_conn, "SET mpp_role=UTILITY");
     if (!res || PQresultStatus(res) != PGRES_COMMAND_OK)
         exit_horribly(g_fout, NULL, "SET command failed: %s",
                       PQerrorMessage(g_conn));
@@ -667,7 +667,7 @@ main(int argc, char **argv)
         }
 
 /*
-        res = PQexec(g_conn_status, "SET cdb_role=UTILITY");
+        res = PQexec(g_conn_status, "SET mpp_role=UTILITY");
         if (!res || PQresultStatus(res) != PGRES_COMMAND_OK)
         {
             exit_horribly(g_fout, NULL, "SET command failed: %s",

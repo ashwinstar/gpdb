@@ -372,7 +372,7 @@ test_postmaster_connection(void)
 	int			i;
 	char		portstr[32];
 	char	   *p;
-	static const char *backend_options = "-c cdb_session_role=utility";
+	static const char *backend_options = "-c mpp_session_role=utility";
 
 	*portstr = '\0';
 

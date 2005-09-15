@@ -128,9 +128,9 @@ typedef struct cdb_seg_array
 } CDBSegArray;
 */
 /* --------------------------------------------------------------------------------------------------
- * Structure for reading cdb_segment_instance
+ * Structure for reading mpp_segment_instance
  */
-typedef struct cdb_segment_instance 
+typedef struct mpp_segment_instance 
 {
     int		segid;
     bool     isValid;			
@@ -144,7 +144,7 @@ typedef struct cdb_segment_instance
 /* --------------------------------------------------------------------------------------------------
  * Structure for an array of CDBSegmentInstances
  */
-typedef struct cdb_segment_instance_array 
+typedef struct mpp_segment_instance_array 
 {
     int					count;		// count
     CDBSegmentInstance*	pData;		// array of count CDBSegmentInstances
@@ -173,7 +173,7 @@ extern bool GetCDBBaseTableArray(PGconn* pConn, const char* pszDBName, CDBBaseTa
 //extern bool GetCDBPolicyArray(PGconn* pConn, const char* pszDBName, CDBPolicyArray* pPolicyAr );
 /* Read all the rows in the cdb_seg table */
 //extern bool GetCDBSegArray(PGconn* pConn, const char* pszDBName, CDBSegArray* pSegAr );
-/* Read all the rows in the cdb_segment_instance table */
+/* Read all the rows in the mpp_segment_instance table */
 extern bool GetCDBSegmentInstanceArray(PGconn* pConn, const char* pszDBName, CDBSegmentInstanceArray* pSegmentInstanceAr );
 
 #endif /* CDB_TABLE_H */

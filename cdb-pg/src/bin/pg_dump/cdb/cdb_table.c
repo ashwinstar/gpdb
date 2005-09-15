@@ -414,7 +414,7 @@ cleanup:
  * GetCDBSegmentInstanceArray(PGconn* pConn, const char* pszDBName, CDBSegmentInstanceArray* pSegmentInstanceAr ) 
  * returns bool
  *
- * This reads all rows from cdb_segment_instance.
+ * This reads all rows from mpp_segment_instance.
  *
  * After using it, call FreeCDBSegmentInstanceArray.
  *-------------------------------------------------------------------------

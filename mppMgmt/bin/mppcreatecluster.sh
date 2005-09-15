@@ -599,14 +599,14 @@ UPDATE_PGDATABASE () {
 		U_LISTENERID=$6
 		U_PRIMARY=$7
 		U_DB=template1
-		CHK_COUNT=`env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from $CDB_PGDATABASE_TBL where listenerid=${U_LISTENERID} and content=${U_CONTENT};" 2>/dev/null` >> $LOG_FILE 2>&1
+		CHK_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from $CDB_PGDATABASE_TBL where listenerid=${U_LISTENERID} and content=${U_CONTENT};" 2>/dev/null` >> $LOG_FILE 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Unable to obtain psql count of QD pgdatabase system table" 2
 		fi
 		if [ $CHK_COUNT -eq 0 ]; then
 				LOG_MSG "[INFO]:-Adding $U_CONTENT to system pgdatabase table"
-				env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $CDB_PGDATABASE_TBL (dbid, isprimary, content, listenerid, valid, definedprimary) values (${U_DBID},'${U_PRIMARY}',${U_CONTENT},${U_LISTENERID},'t', '${U_PRIMARY}');" >> $LOG_FILE 2>&1
+				env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $CDB_PGDATABASE_TBL (dbid, isprimary, content, listenerid, valid, definedprimary) values (${U_DBID},'${U_PRIMARY}',${U_CONTENT},${U_LISTENERID},'t', '${U_PRIMARY}');" >> $LOG_FILE 2>&1
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
 						ERROR_EXIT "[FATAL]:-Failed to add $U_CONTENT to system pgdatabase table" 2
@@ -630,14 +630,14 @@ UPDATE_LISTENER () {
 		U_DIR=$6
 		U_USER=$7
 		U_PASSWD=$8
-		CHK_COUNT=`env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from $CDB_LISTENER_TBL where listenerid=${U_LISTENERID};" 2>/dev/null` >> $LOG_FILE 2>&1
+		CHK_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from $CDB_LISTENER_TBL where listenerid=${U_LISTENERID};" 2>/dev/null` >> $LOG_FILE 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Unable to obtain psql count of QD listener system table" 2
 		fi
 		if [ $CHK_COUNT -eq 0 ]; then
 				LOG_MSG "[INFO]:-Adding $U_LISTENERID to system listener table"
-				env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $CDB_LISTENER_TBL (listenerid, hostid, port, datadir, mppsuperuser, mppsuperpswd) values (${U_LISTENERID},${U_HOSTID},${U_PORT},'${U_DIR}','${U_USER}','${U_PASSWD}');" >> $LOG_FILE 2>&1
+				env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $CDB_LISTENER_TBL (listenerid, hostid, port, datadir, mppsuperuser, mppsuperpswd) values (${U_LISTENERID},${U_HOSTID},${U_PORT},'${U_DIR}','${U_USER}','${U_PASSWD}');" >> $LOG_FILE 2>&1
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
 						ERROR_EXIT "[FATAL]:-Failed to add $U_LISTENERID to system listener table" 2
@@ -688,14 +688,14 @@ UPDATE_HOST () {
 		U_HOSTID=$3
 		U_HOSTNAME=$4
 		#First check to ensure that U_HOSTID not already in the host table
-		CHK_COUNT=`env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from $CDB_HOST_TBL where hostid='${U_HOSTID}';" 2>/dev/null` >> $LOG_FILE 2>&1
+		CHK_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from $CDB_HOST_TBL where hostid='${U_HOSTID}';" 2>/dev/null` >> $LOG_FILE 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Unable to obtain psql count of QD host system table" 2
 		fi
 		if [ $CHK_COUNT -eq 0 ]; then
 				LOG_MSG "[INFO]:-Adding $U_HOSTNAME to system host table"
-				env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $CDB_HOST_TBL (hostid, hostname) values (${U_HOSTID},'${U_HOSTNAME}');" >> $LOG_FILE 2>&1
+				env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $CDB_HOST_TBL (hostid, hostname) values (${U_HOSTID},'${U_HOSTNAME}');" >> $LOG_FILE 2>&1
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
 						ERROR_EXIT "[FATAL]:-Failed to add $U_HOSTNAME to system host table" 2
@@ -720,13 +720,13 @@ UPDATE_CDB () {
 		TYPE=$7
 		U_HOST=$8
 		if [ $TYPE -eq 0 ]; then
-				env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $CDB_TBL values ('${U_CDBNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});" >> $LOG_FILE 2>&1
+				env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $CDB_TBL values ('${U_CDBNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});" >> $LOG_FILE 2>&1
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
 						ERROR_EXIT "[FATAL]:-Unable to update mpp system table" 2
 				fi
 		else
-				RUN_COMMAND_REMOTE $U_HOST "env PGOPTIONS=\"-c cdb_session_role=utility\" $PSQL -p $U_PT $U_DB -c \"insert into $CDB_TBL (mppname, numsegments, dbid, content) values ('${U_CDBNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" 2>&1" >> $LOG_FILE 2>&1
+				RUN_COMMAND_REMOTE $U_HOST "env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $U_PT $U_DB -c \"insert into $CDB_TBL (mppname, numsegments, dbid, content) values ('${U_CDBNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" 2>&1" >> $LOG_FILE 2>&1
 		fi	
 		if [ $RETVAL -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Failed to update mpp system table" 2

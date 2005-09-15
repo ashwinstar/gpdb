@@ -11,7 +11,7 @@
  * Structure for segment/instance pair information
  *
  * The information contained in this structure represents a row from a join of rows from the tables
- * cdb_seg, cdb_segment_instance, and cdb_instance.
+ * cdb_seg, mpp_segment_instance, and cdb_instance.
  *
  */
 typedef struct segment_instance 

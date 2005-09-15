@@ -3,7 +3,7 @@
  * cdb_seginst.c
  *
  * Structures and functions to read a join of cdb_seg, cdb_instance, and 
- * cdb_segment_instance tables using libpq
+ * mpp_segment_instance tables using libpq
  *
  * Portions Copyright (c) 1996-2003, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
@@ -415,7 +415,7 @@ void FreeSegmentInstanceArray( SegmentInstanceArray* pSegInstAr )
 	pSegInstAr->pData = NULL;
 }
 
-/* GetSegmentInstanceArray: This function reads all active instance segment pairs from the function cdb_segment_instance_map().
+/* GetSegmentInstanceArray: This function reads all active instance segment pairs from the function mpp_segment_instance_map().
  * It then uses the set specification fo filter out any instid, segid combinations
  * that don't match the set.  bExcludeHead = true is used for restoring, because
  * the head is restored first seperately from the rest of the databases. 
@@ -441,7 +441,7 @@ bool GetSegmentInstanceArray(PGconn* pConn, char* pszDBName, CDBSet* pSet, Segme
 	int x;
 	SegmentInstance* pSegInst;
 	
-	/* Now select from cdb_segment_instance_map() */
+	/* Now select from mpp_segment_instance_map() */
 	pQry = createPQExpBuffer();
 	appendPQExpBuffer(pQry,  "SELECT" 
 							 " d.dbid," 

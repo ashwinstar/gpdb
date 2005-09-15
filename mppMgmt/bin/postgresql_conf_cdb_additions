@@ -12,4 +12,4 @@ log_hostname = true
 log_statement = all
 stats_command_string=true
 #debug_pretty_print = true
-cdb_interconnect_setup_timeout = 60
+

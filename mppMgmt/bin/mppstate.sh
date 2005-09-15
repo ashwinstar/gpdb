@@ -306,7 +306,7 @@ CLUSTER_CONFIG () {
 }
 
 LIST_MPP_PORTS () {
-		PORT_ARRAY=(`env PGOPTIONS="-c cdb_session_role=utility" $PSQL -q -p $QD_PORT $QD_DBNAME -A -t -c"select b.hostname, a.port from mpp.listener a, mpp.host b where listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid;" 2>|/dev/null`)
+		PORT_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $QD_PORT $QD_DBNAME -A -t -c"select b.hostname, a.port from mpp.listener a, mpp.host b where listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid;" 2>|/dev/null`)
 		LOG_MSG "[INFO]:-Port assignments"
 		for PMODE in "${PORT_ARRAY[@]}"
 				do
@@ -317,7 +317,7 @@ LIST_MPP_PORTS () {
 }
 
 LIST_MPP_LOGS () {
-		LOG_ARRAY=(`env PGOPTIONS="-c cdb_session_role=utility" $PSQL -q -p $QD_PORT $QD_DBNAME -A -t -c "select b.hostname,  a.datadir from mpp.listener a, mpp.host b where listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid;" 2>|/dev/null`)
+		LOG_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $QD_PORT $QD_DBNAME -A -t -c "select b.hostname,  a.datadir from mpp.listener a, mpp.host b where listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid;" 2>|/dev/null`)
 		LOG_MSG "[INFO]:-QE MPP database instance log file names"
 		for LOGCHK in "${LOG_ARRAY[@]}"
 				do
@@ -336,7 +336,7 @@ LIST_MPP_LOGS () {
 }
 
 GET_MPP_VERSION () {
-		MPP_VERSION=`env PGOPTIONS="-c cdb_session_role=utility" $PSQL -q -p $QD_PORT $QD_DBNAME -A -t -c "select * from mpp.version" 2>/dev/null`
+		MPP_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $QD_PORT $QD_DBNAME -A -t -c "select * from mpp.version" 2>/dev/null`
 }
 
 NOT_ACTIVE () {

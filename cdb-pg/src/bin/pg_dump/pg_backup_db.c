@@ -161,7 +161,7 @@ _connectDB(ArchiveHandle *AH, const char *reqdb, const char *requser)
 	{
 		need_pass = false;
 		newConn = PQsetdbLogin(PQhost(AH->connection), PQport(AH->connection),
-							   "-c cdb_session_role=utility", 
+							   "-c mpp_session_role=utility", 
 							   NULL, newdb,
 							   newuser, password);
 		if (!newConn)
@@ -245,7 +245,7 @@ ConnectDatabase(Archive *AHX,
 	{
 		need_pass = false;
 		AH->connection = PQsetdbLogin(pghost, pgport, 
-		                              "-c cdb_session_role=utility", /* options */
+		                              "-c mpp_session_role=utility", /* options */
 									  NULL,
 									  dbname, username, password);
 

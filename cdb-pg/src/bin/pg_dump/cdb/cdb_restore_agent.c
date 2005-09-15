@@ -463,7 +463,7 @@ main(int argc, char **argv)
         }   
 
 /*
-        res = PQexec(g_conn_status, "SET cdb_role=UTILITY");
+        res = PQexec(g_conn_status, "SET mpp_role=UTILITY");
         if (!res || PQresultStatus(res) != PGRES_COMMAND_OK)
         {       
             exit_horribly(NULL, NULL, "SET command failed: %s",
@@ -592,7 +592,7 @@ main(int argc, char **argv)
 //          strcat( pszCmdLine, pszOutFile );
 
             if ( g_CDBInstID == 0 )
-                putenv( "PGOPTIONS=-c cdb_session_role=UTILITY" );
+                putenv( "PGOPTIONS=-c mpp_session_role=UTILITY" );
 
             write_msg(NULL, "Command Line: %s\n", pszCmdLine );
 
