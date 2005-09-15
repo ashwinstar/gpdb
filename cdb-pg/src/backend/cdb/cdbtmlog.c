@@ -568,3 +568,35 @@ write_to_mirror(void *buf, int offset, int len)
     write_qd_sync(cmd, buf, len); 
 }
 
+bool
+resync_tmlog_to_mirror(int startoff, int stopoff)
+{
+    char buf[8000], cmd[50];
+    int len, loffset;
+    len = stopoff - startoff;
+    loffset = lseek(logFileFD, startoff, SEEK_SET);
+    Assert(loffset == startoff);
+    elog(LOG, "resyncing start offset: %d, stop offset: %d", startoff, stopoff);
+    while (len != 0)
+    {
+        int read_len = sizeof(buf);
+        if (len < sizeof(buf))
+            read_len = len; 
+        if (!read_with_ereport(logFileFD, buf, read_len))
+        {
+            elog(LOG, "failed to resync tmlog at offset: %d", loffset);
+            return false;
+        }
+
+        /* write to symc agent */
+        sprintf(cmd, "tmlog %08x %d %d resync", logFileNo, loffset, read_len);
+        write_qd_sync(cmd, buf, read_len); 
+        
+        loffset += read_len;
+        len -= read_len;
+    }
+
+    /* successful */
+    return true;
+}
+

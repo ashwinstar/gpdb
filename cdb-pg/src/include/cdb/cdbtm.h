@@ -60,7 +60,7 @@ typedef enum
 } DTXErrorCode;
 
 extern int startDtxTransaction(void);
-extern int commitDtxTransaction(bool onephase);
+extern int commitDtxTransaction(void);
 extern int rollbackDtxTransaction(void);
 extern int condStartDtxTransaction(void);
 extern int condCommitDtxTransaction(bool onephase);
@@ -81,5 +81,6 @@ extern char dtm_dir[MAXPGPATH];
 extern int tmShmemSize(void);
 extern bool isInGlobalTransaction(void);
 extern bool isTMInRecovery(void);
+extern void setDtxDirty(void);
 
 #endif /* CDBTM_H */

@@ -58,6 +58,7 @@
 #include "utils/memutils.h"
 #include "nodes/makefuncs.h"
 #include "commands/dbcommands.h"
+#include "access/xlog.h"
 
 #include "cdb/cdbcat.h"
 #include "cdb/cdbconn.h"
@@ -65,6 +66,7 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbfts.h"
+#include "cdb/cdbtmlog.h"
 
 
 static void CdbDoConnect(SegmentDatabaseDescriptor *);
@@ -73,6 +75,7 @@ static void CdbDoConnect(SegmentDatabaseDescriptor *);
  * Points to the SegmentDatabaseDescriptor of mirrored entry database
  */
 static SegmentDatabaseDescriptor *cdb_mirrored_entry_db = NULL;
+static bool resync = false;
 
 
 /*
@@ -333,7 +336,43 @@ write_qd_sync(char *cmd, void *buf, int len)
             cdb_mirrored_entry_db->resultStatus = PQresultStatus( pRes );
             if ( PGRES_COMMAND_OK != cdb_mirrored_entry_db->resultStatus &&
                 PGRES_TUPLES_OK != cdb_mirrored_entry_db->resultStatus )
+            {
                 failed = true;
+                if (!resync && strstr(PQresultErrorMessage(pRes), "resync") != NULL)
+                {
+                    char dummy[100];
+                    /* be careful going into an infinite loop */
+                    resync = true;
+                    
+                    /* resync tmlog and xlog */
+                    int pfileoff, mfileoff;
+                    sscanf(PQresultErrorMessage(pRes), "%s%s pdboff: %d, mdboff: %d",
+                            dummy,dummy,&pfileoff,&mfileoff);
+                    
+                    /* cleanup connection */
+                    do
+                    {
+                        PQclear(pRes);
+                    }
+                    while ((pRes = PQgetResult(conn)) != NULL);
+                    
+                    if (resync_xlog_to_mirror() &&
+                        resync_tmlog_to_mirror(mfileoff, pfileoff))
+                    {
+                        /* resync is successful */
+                        failed = false;
+                    }
+                    
+                    /* reset resync flag */
+                    resync = false;
+                }
+            }
+            /* cleanup connection */
+            do
+            {
+                PQclear(pRes);
+            }
+            while ((pRes = PQgetResult(conn)) != NULL);
         }
         
         if ( PQstatus( conn ) == CONNECTION_BAD )
@@ -347,6 +386,7 @@ write_qd_sync(char *cmd, void *buf, int len)
              (errcode(ERRCODE_WARNING),
                  errmsg("mirrored entry database write error "),
                  errdetail("%s", error_message)));
+        PQfinish(conn);
         cdb_mirrored_entry_db->conn = NULL;
         disableQDMirroring();
     }

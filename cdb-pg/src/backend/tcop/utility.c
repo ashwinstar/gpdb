@@ -501,7 +501,7 @@ ProcessUtility(Node *parsetree,
                         else
                         {
                             /* commit all QE */
-                            commitDtxTransaction(false);
+                            commitDtxTransaction();
                         }
 						break;
 

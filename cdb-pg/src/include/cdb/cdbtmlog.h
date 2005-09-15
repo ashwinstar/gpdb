@@ -46,14 +46,15 @@ typedef struct TmLogFileControlBlock
     crc64       crc;
 } TmLogFileControlBlock;
 
-extern void writeTmLogRecord(TmLogRecord *record);
+extern void writeTmLogRecord(TmLogRecord *);
 extern void recoverTmLog(void);
 extern void checkPointTm(void);
 extern void flushTmLogFile(void);
 extern void write_to_mirror(void *, int, int);
-extern void write_with_ereport(int fd, void *data, int len);
-extern int initTmLog( char *dir);
-extern void redoTmLog(TmLogRecord *glog);
-extern bool openTmLogFile(int seqno);
+extern void write_with_ereport(int, void *, int);
+extern int initTmLog( char *);
+extern void redoTmLog(TmLogRecord *);
+extern bool openTmLogFile(int);
+extern bool resync_tmlog_to_mirror(int, int);
 
 #endif /* CDBTMLOG_H */

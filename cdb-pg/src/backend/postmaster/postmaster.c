@@ -2757,7 +2757,10 @@ BackendRun(Port *port)
 	 * title for ps.  It's good to do this as early as possible in
 	 * startup.
 	 */
-	init_ps_display(port->user_name, port->database_name, remote_ps_data);
+    if ( SyncMaster )
+        init_ps_display("mppsyncagent process", "", "");
+    else
+	    init_ps_display(port->user_name, port->database_name, remote_ps_data);
 	set_ps_display("authentication");
 
 	/*
@@ -2865,7 +2868,7 @@ BackendRun(Port *port)
 										 * now */
 
     if ( SyncMaster )
-       return (SyncMasterMain(ac, av, port->user_name));
+       return (SyncAgentMain(ac, av, port->user_name));
     else
        return (PostgresMain(ac, av, port->user_name));
 }

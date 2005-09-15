@@ -43,6 +43,7 @@ static int checkpoint_interval = 5000;
 
 /* for semantic checking - debugging purpose */
 static int lastGxactState;
+static bool isDirty = false;
 
 static const int transitionState[8][8]=
 {
@@ -109,11 +110,15 @@ startDtxTransaction(void)
  * or by CommitTransaction
  */
 int
-commitDtxTransaction(bool onephase)
+commitDtxTransaction(void)
 {
     if (Cdb_role != CDB_ROLE_DISPATCH || currentGxact == NULL)
         return DTX_OK;
-    return condCommitDtxTransaction(onephase); 
+
+	/* temporary set all transaction dirty */
+    isDirty = true;
+
+    return condCommitDtxTransaction(!isDirty); 
 }
 
 /*
@@ -634,6 +639,7 @@ releaseGxact(void)
     }
     currentGxact = NULL;
     releaseTmLock();
+    isDirty = false;
 }
 
 
@@ -1043,4 +1049,10 @@ bool
 isTMInRecovery(void)
 {
     return duringRecovery;
+}
+
+void
+setDtxDirty(void)
+{
+    isDirty = true;
 }

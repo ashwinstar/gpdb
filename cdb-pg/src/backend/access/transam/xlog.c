@@ -924,7 +924,7 @@ begin:;
 	ProcLastRecEnd = RecPtr;
 
 	END_CRIT_SECTION();
-
+    
 	return (RecPtr);
 }
 
@@ -5730,4 +5730,45 @@ remove_backup_label(void)
 					(errcode_for_file_access(),
 					 errmsg("could not remove file \"%s\": %m",
 							labelfilepath)));
+}
+
+#define MAXPATH 1024
+
+bool
+resync_xlog_to_mirror(void)
+{
+    int blocksz = 64536;  /* 64k */
+    int readlen, xlogfilefd, offset=0;
+    char        path[MAXPATH], buf[blocksz], tmpfname[24];
+        
+    XLogFileName(tmpfname, ThisTimeLineID, openLogId, openLogSeg);
+    snprintf(path, MAXPGPATH, "%s/%s", XLogDir, tmpfname);
+    xlogfilefd = open(path, O_RDONLY, 0);
+    if (xlogfilefd < 0)
+    {
+        elog(LOG, "QDSYNC: error opening xlog file %s", tmpfname);
+        return false;
+    }
+    
+    lseek( xlogfilefd, offset, SEEK_SET);
+    while ( (readlen = read(xlogfilefd, buf, blocksz)) != 0)
+    {
+        char cmd[50];
+        if (readlen == -1)
+        {
+            elog(LOG, "QDSYNC: error reading xlog file %s at offset %d", tmpfname, offset);
+            return false;
+        }
+
+        elog(LOG, "xlog resync -   offset: %d   len: %d",
+            offset, readlen);
+
+        sprintf(cmd, "xlog %s %d %d resync", tmpfname, offset, readlen);
+        write_qd_sync(cmd, buf, readlen);
+        offset += readlen;
+    }
+    
+    close(xlogfilefd);
+    /* finished successfully */
+    return true;
 }

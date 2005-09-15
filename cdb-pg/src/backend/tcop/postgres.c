@@ -3421,7 +3421,7 @@ log_disconnections(int code, Datum arg)
 }
 
 int
-SyncMasterMain(int argc, char *argv[], const char *username)
+SyncAgentMain(int argc, char *argv[], const char *username)
 {
 	int			flag;
 	const char *dbname = NULL;

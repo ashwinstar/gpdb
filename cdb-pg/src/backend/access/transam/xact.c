@@ -1874,7 +1874,7 @@ CommitTransaction(void)
     /* commit all QE
      * commit should have been called from ProcessUtility
      */
-    commitDtxTransaction(false);
+    commitDtxTransaction();
 	RecordTransactionCommit();
 
 	/*
