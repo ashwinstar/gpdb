@@ -122,7 +122,7 @@ static bool repartitionBasePlan(Plan *plan, Flow *target, bool stable, bool resc
  * already final.
  *
  * The result is [a copy of] the input plan with alterations to make the 
- * plan suitable for execution by CDB.
+ * plan suitable for execution by MPP.
  *
  *
  * TODO: Much investigation remains in the areas of 

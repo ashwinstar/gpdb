@@ -1205,7 +1205,7 @@ InitPlan(QueryDesc *queryDesc, bool explainOnly)
  * Initialize ResultRelInfo data for one result relation
  */
 /* 
- * Added the shouldDispatch parameter for CDB.
+ * Added the shouldDispatch parameter for MPP.
  * This is true iff the Cdb_role is CDB_ROLE_DISPATCH, 
  * and the plan dispatch type is DISPATCH_PARALLEL.
  * When true, the lock type passed to heap_open is set to 

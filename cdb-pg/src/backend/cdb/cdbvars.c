@@ -66,7 +66,7 @@ int					Cdb_max_packet_size;  /* max Interconnect packet size */
 int interconnect_setup_timeout;
 
 /* 
- * The single row from cdb.cdb for this database is held in this variable,
+ * The single row from mpp.mpp for this database is held in this variable,
  * which is initialized in cdbutil.c in the function
  * getCdbCdb(), which is called from cdblink_setup() 
  * for both dispatch and execute modes.

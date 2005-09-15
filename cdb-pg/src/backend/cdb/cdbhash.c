@@ -1,7 +1,7 @@
 /*--------------------------------------------------------------------------
  *
  * cdbhash.c
- *    Rrovides hashing routines to support consistant data distribution/location within CDB.
+ *    Rrovides hashing routines to support consistant data distribution/location within MPP.
  *
  * Copyright (c) 2005, Metapa
  *
@@ -63,7 +63,7 @@ int ispowof2(int numsegs);
  * In here we set the variables that should not change in the scope of the newly created
  * CdbHash, these are:
  *
- * 1 - number of segments in CDB.
+ * 1 - number of segments in MPP.
  * 2 - hashingalgorithm used.
  * 3 - reduction method.
  *

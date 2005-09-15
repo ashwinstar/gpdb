@@ -34,7 +34,7 @@ MPPPATH=`dirname $MPPPATH`
 #***********************************************************
 # Create a list of catalog tables to printout
 #***********************************************************
-declare -a TABLES=(cdb host listener pgdatabase policy version)
+declare -a TABLES=(mpp host listener pgdatabase policy version)
 
 #***********************************************************
 # Declare the max and min port numbers to probe
@@ -57,9 +57,9 @@ do
   for table in ${TABLES[@]}
   do
     echo "**************************"
-    echo "Table: cdb.$table"
+    echo "Table: mpp.$table"
     PGOPTIONS="-c cdb_session_role=utility" $MPPPATH/psql -p ${PORTS[$i]} template1 -c \
-    "select * from cdb."$table
+    "select * from mpp."$table
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ]; then
 	  echo "$0 failed."

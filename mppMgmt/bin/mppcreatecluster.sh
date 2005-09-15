@@ -8,8 +8,7 @@
 #	Release date:-		TBC
 #	Release stat:-		Metapa Co Internal
 #                               Copyright (c) Metapa 2005. All Rights Reserved.
-#                               Copyright (c) Greenplum 2005. All Rights Reserved
-#	Brief descn:-		Creates initial CDB database cluster
+#                               Copyright MPP database cluster
 #******************************************************************************
 # Update History
 #******************************************************************************
@@ -19,7 +18,7 @@
 #			Corrected error exit message display for QD init
 #			failure.
 # 1.3	09/08/2005	G Coombe	Corrected fault where template1 database table
-#					cdb.pgdatabase has incorrect db name.
+#					mpp.pgdatabase has incorrect db name.
 # 1.4	09/08/2005	G Coombe	Changed the create database code to use revised
 #					MPP ability to now create database within QD.
 # 1.5	11/09/2005	G Coombe	Updates to UPDATE_PGDATABASE in response to
@@ -61,10 +60,10 @@ MIRRORING=0
 MPP_USER=$USER_NAME
 MPP_PASSWD=""
 # System table names
-CDB_TBL=cdb.cdb
-CDB_HOST_TBL=cdb.host
-CDB_PGDATABASE_TBL=cdb.pgdatabase
-CDB_LISTENER_TBL=cdb.listener
+CDB_TBL=mpp.mpp
+CDB_HOST_TBL=mpp.host
+CDB_PGDATABASE_TBL=mpp.pgdatabase
+CDB_LISTENER_TBL=mpp.listener
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -638,7 +637,7 @@ UPDATE_LISTENER () {
 		fi
 		if [ $CHK_COUNT -eq 0 ]; then
 				LOG_MSG "[INFO]:-Adding $U_LISTENERID to system listener table"
-				env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $CDB_LISTENER_TBL (listenerid, hostid, port, datadir, cdbsuperuser, cdbsuperpswd) values (${U_LISTENERID},${U_HOSTID},${U_PORT},'${U_DIR}','${U_USER}','${U_PASSWD}');" >> $LOG_FILE 2>&1
+				env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $CDB_LISTENER_TBL (listenerid, hostid, port, datadir, mppsuperuser, mppsuperpswd) values (${U_LISTENERID},${U_HOSTID},${U_PORT},'${U_DIR}','${U_USER}','${U_PASSWD}');" >> $LOG_FILE 2>&1
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
 						ERROR_EXIT "[FATAL]:-Failed to add $U_LISTENERID to system listener table" 2
@@ -724,15 +723,15 @@ UPDATE_CDB () {
 				env PGOPTIONS="-c cdb_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $CDB_TBL values ('${U_CDBNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});" >> $LOG_FILE 2>&1
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
-						ERROR_EXIT "[FATAL]:-Unable to update cdb system table" 2
+						ERROR_EXIT "[FATAL]:-Unable to update mpp system table" 2
 				fi
 		else
-				RUN_COMMAND_REMOTE $U_HOST "env PGOPTIONS=\"-c cdb_session_role=utility\" $PSQL -p $U_PT $U_DB -c \"insert into $CDB_TBL (cdbname, numsegments, dbid, content) values ('${U_CDBNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" 2>&1" >> $LOG_FILE 2>&1
+				RUN_COMMAND_REMOTE $U_HOST "env PGOPTIONS=\"-c cdb_session_role=utility\" $PSQL -p $U_PT $U_DB -c \"insert into $CDB_TBL (mppname, numsegments, dbid, content) values ('${U_CDBNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" 2>&1" >> $LOG_FILE 2>&1
 		fi	
 		if [ $RETVAL -ne 0 ]; then
-				ERROR_EXIT "[FATAL]:-Failed to update cdb system table" 2
+				ERROR_EXIT "[FATAL]:-Failed to update mpp system table" 2
 		fi
-		LOG_MSG "[INFO]:-Successfully updated cdb system table"
+		LOG_MSG "[INFO]:-Successfully updated mpp system table"
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 

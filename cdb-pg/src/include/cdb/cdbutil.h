@@ -17,7 +17,7 @@
  * Structure for cdb 2.0 database information
  *
  * The information contained in this structure represents logically a row from  
- * cdb.component_database view.  It is used to describe either an entry
+ * mpp.component_database view.  It is used to describe either an entry
  * database or a segment database.
  *
  * Storage for instances of this structure are palloc'd.  Storage for the values
@@ -98,14 +98,14 @@ extern CdbComponentDatabases *getCdbComponentDatabases(void);
 extern void freeCdbComponentDatabases(CdbComponentDatabases *pDBs);
 
 /*
- * getCdbCdb() causes the cdb.cdb table's singleton row to be read into a global structure
+ * getCdbCdb() causes the mpp.mpp table's singleton row to be read into a global structure
  * This is called from cdblink_setup().
  * The global variable is declared in cdbvars.h and defined in cdbvars.c.
  */
 extern void getCdbCdb(void);
 
 /*
- * freeCdbCdb() causes the global variable holding the cdb.cdb table's singleton row to be 
+ * freeCdbCdb() causes the global variable holding the mpp.mpp table's singleton row to be 
  * reinitialized to empty, releasing memory that was allocated when it was loaded.
  */
 extern void freeCdbCdb(void);

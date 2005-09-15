@@ -251,7 +251,7 @@ extern int interconnect_setup_timeout;
 
 
 /* --------------------------------------------------------------------------------------------------
- * Structure for row of cdb.cdb table
+ * Structure for row of mpp.mpp table
  */
 typedef struct CdbCdb
 {
@@ -262,7 +262,7 @@ typedef struct CdbCdb
 } CdbCdb;
 
 /* --------------------------------------------------------------------------------------------------
- * Global variable declaration for the data for the single row of cdb.cdb table
+ * Global variable declaration for the data for the single row of mpp.mpp table
  */
 extern CdbCdb CdbIdentity;
 

@@ -1708,7 +1708,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
     cdbCopyStartTransaction();
 
     /*
-	 * Start a COPY command in every db of every segment in CDB.
+	 * Start a COPY command in every db of every segment in MPP.
 	 * 
 	 * From this point in the code we need to be extra careful 
 	 * about error handling. ereport() must not be called until

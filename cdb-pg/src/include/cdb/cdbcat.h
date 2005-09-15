@@ -15,62 +15,62 @@
 #include "access/genam.h"
 #include "access/heapam.h"
 
-#define CdbNamespaceName			"cdb"
+#define MppNamespaceName			"mpp"
 
 /*
- * Defines for cdb.pgdatabase table
+ * Defines for mpp.pgdatabase table
  */
-#define CdbSegmentRelationName			"pgdatabase"
-#define CdbSegmentPrimaryKeyIndexName	"pgdatabase_pkey"
-#define Natts_cdb_pgdatabase			6
-#define Anum_cdb_pgdatabase_dbid		1
-#define Anum_cdb_pgdatabase_isprimary	2
-#define Anum_cdb_pgdatabase_content		3
-#define Anum_cdb_pgdatabase_listenerid 	4
-#define Anum_cdb_pgdatabase_valid         5
-#define Anum_cdb_pgdatabase_definedprimary  6
+#define MppSegmentRelationName			"pgdatabase"
+#define MppSegmentPrimaryKeyIndexName	"pgdatabase_pkey"
+#define Natts_mpp_pgdatabase			6
+#define Anum_mpp_pgdatabase_dbid		1
+#define Anum_mpp_pgdatabase_isprimary	2
+#define Anum_mpp_pgdatabase_content		3
+#define Anum_mpp_pgdatabase_listenerid 	4
+#define Anum_mpp_pgdatabase_valid         5
+#define Anum_mpp_pgdatabase_definedprimary  6
 
 
 /*
- * Defines for cdb.listener table
+ * Defines for mpp.listener table
  */
-#define CdbListenerRelationName			"listener"
-#define CdbListenerPrimaryKeyIndexName	"listener_pkey"
-#define Natts_cdb_listener				6
-#define Anum_cdb_listener_listenerid	1
-#define Anum_cdb_listener_hostid		2
-#define Anum_cdb_listener_port			3
-#define Anum_cdb_listener_datadir		4
-#define Anum_cdb_listener_cdbsuperuser	5
-#define Anum_cdb_listener_cdbsuperpswd	6
+#define MppListenerRelationName			"listener"
+#define MppListenerPrimaryKeyIndexName	"listener_pkey"
+#define Natts_mpp_listener				6
+#define Anum_mpp_listener_listenerid	1
+#define Anum_mpp_listener_hostid		2
+#define Anum_mpp_listener_port			3
+#define Anum_mpp_listener_datadir		4
+#define Anum_mpp_listener_mppsuperuser	5
+#define Anum_mpp_listener_mppsuperpswd	6
 
 /*
- * Defines for cdb.host table
+ * Defines for mpp.host table
  */
-#define CdbHostRelationName			"host"
-#define CdbHostPrimaryKeyIndexName	"host_pkey"
-#define Natts_cdb_host				2
-#define Anum_cdb_host_hostid		1
-#define Anum_cdb_host_hostname		2
+#define MppHostRelationName			"host"
+#define MppHostPrimaryKeyIndexName	"host_pkey"
+#define Natts_mpp_host				2
+#define Anum_mpp_host_hostid		1
+#define Anum_mpp_host_hostname		2
 
 /*
- * Defines for cdb.cdb table
+ * Defines for mpp.mpp table
  */
-#define CdbCdbRelationName			"cdb"
-#define Natts_cdb_cdb				4
-#define Anum_cdb_cdb_cdbname		1
-#define Anum_cdb_cdb_numsegments	2
-#define Anum_cdb_cdb_dbid			3
-#define Anum_cdb_cdb_content		4
+#define MppMppRelationName			"mpp"
+#define Natts_mpp_mpp				4
+#define Anum_mpp_mpp_mppname		1
+#define Anum_mpp_mpp_numsegments	2
+#define Anum_mpp_mpp_dbid			3
+#define Anum_mpp_mpp_content		4
 
 /*
- * Defines for cdb.policy
+ * Defines for mpp.policy
  */
-#define CdbPolicyRelationName		"policy"
-#define CdbPolicyLocalOidIndexName	"policy_localoid_key"
-#define Natts_cdb_policy			2
-#define Anum_cdb_policy_localoid	1
-#define Anum_cdb_policy_attrnums	2
+#define MppPolicyRelationName		"policy"
+#define MppPolicyLocalOidIndexName	"policy_localoid_key"
+#define Natts_mpp_policy			2
+#define Anum_mpp_policy_localoid	1
+#define Anum_mpp_policy_attrnums	2
 
 /*
  * CdbPolicyType represents a type of policy under which a relation's
@@ -120,9 +120,9 @@ extern CdbPolicy *get_table_policy(Oid tbloid);
 extern void set_table_policy(Oid tbloid, CdbPolicy * policy);
 
 /*
- * getCDBNamespaceOid: gets the oid of the cdb namespace.
+ * getMPPNamespaceOid: gets the oid of the cdb namespace.
  */
-extern Oid getCDBNamespaceOid(void);
+extern Oid getMPPNamespaceOid(void);
 
 /*
  * HeapOpenCDBObject: opens a relation (either a table or an index) by name

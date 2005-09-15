@@ -109,7 +109,7 @@ typedef struct segment_database_descriptor
 	/* segindex
 	 * 
 	 * Identifies the segment this group of databases is serving.  This is the
-	 * segindex assigned to the segment in cdb.segment.  Duplicate of segment_descriptor.segindex
+	 * segindex assigned to the segment in mpp.segment.  Duplicate of segment_descriptor.segindex
 	 */
 	int4         					segindex;
 	
@@ -123,7 +123,7 @@ typedef struct segment_descriptor
 	/* segindex
 	 * 
 	 * Identifies the segment this group of databases is serving.  This is the
-	 * segindex assigned to the segment in cdb.segment.
+	 * segindex assigned to the segment in mpp.segment.
 	 */
 	int4         					segindex;
 	

@@ -85,7 +85,7 @@ bool FillCDBSet( CDBSet* pSet, char* pszControlFile )
 	pSet->pData = (InstSeg *)calloc( nAllocated, sizeof(InstSeg) );
 	if ( pSet->pData == NULL )
 	{
-		write_err_msg( "Unable to allocate memory for cdb set information\n" );
+		write_err_msg( "Unable to allocate memory for MPP set information\n" );
 		bRtn = false;
 		goto cleanup;
 	}
@@ -450,12 +450,12 @@ bool GetSegmentInstanceArray(PGconn* pConn, char* pszDBName, CDBSet* pSet, Segme
                                " d.isPrimary,"
 							 " h.hostname,"
 							 " l.port,"
-							 " l.cdbsuperuser,"
-							 " l.cdbsuperpswd"
+							 " l.mppsuperuser,"
+							 " l.mppsuperpswd"
 							 " FROM"
-							 " cdb.pgdatabase d,"
-                               " cdb.listener l,"
-                               " cdb.host h"
+							 " mpp.pgdatabase d,"
+                               " mpp.listener l,"
+                               " mpp.host h"
 							 " WHERE d.listenerid = l.listenerid"
                                " and l.hostid = h.hostid and d.valid = 't'"
 							 );
@@ -463,7 +463,7 @@ bool GetSegmentInstanceArray(PGconn* pConn, char* pszDBName, CDBSet* pSet, Segme
 	pRes = PQexec(pConn, pQry->data);
 	if (!pRes || PQresultStatus(pRes) != PGRES_TUPLES_OK)
 	{
-		write_err_msg("query to obtain list of cdb segments and instances failed: %s",
+		write_err_msg("query to obtain list of MPP segments and instances failed: %s",
 				  PQerrorMessage(pConn));
 		bRtn = false;
 		goto cleanup;		  
@@ -472,7 +472,7 @@ bool GetSegmentInstanceArray(PGconn* pConn, char* pszDBName, CDBSet* pSet, Segme
 	ntups = PQntuples(pRes);
 	if (ntups <= 0)
 	{
-		write_err_msg("no CDB segment/instances for database \"%s\"\n", pszDBName);
+		write_err_msg("no MPP segment/instances for database \"%s\"\n", pszDBName);
 		bRtn = false;
 		goto cleanup;		  
 	}
@@ -486,7 +486,7 @@ bool GetSegmentInstanceArray(PGconn* pConn, char* pszDBName, CDBSet* pSet, Segme
 	pSegInstAr->pData = (SegmentInstance *) calloc( count,  sizeof(SegmentInstance) );
 	if ( pSegInstAr->pData == NULL )
 	{
-		write_err_msg("Unable to allocate memory for CDB segment/instances information\n");
+		write_err_msg("Unable to allocate memory for MPP segment/instances information\n");
 		bRtn = false;
 		goto cleanup;		  
 	}
@@ -496,8 +496,8 @@ bool GetSegmentInstanceArray(PGconn* pConn, char* pszDBName, CDBSet* pSet, Segme
 	i_isvalid	= PQfnumber(pRes, "valid");
 	i_host		= PQfnumber(pRes, "hostname");
 	i_port		= PQfnumber(pRes, "port");
-	i_dbuser	= PQfnumber(pRes, "cdbsuperuser");
-	i_dbpswd	= PQfnumber(pRes, "cdbsuperpswd");
+	i_dbuser	= PQfnumber(pRes, "mppsuperuser");
+	i_dbpswd	= PQfnumber(pRes, "mppsuperpswd");
     i_isprimary = PQfnumber(pRes, "isPrimary");
 
 	/* Read through the results set.  */

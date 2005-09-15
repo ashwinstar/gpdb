@@ -348,7 +348,7 @@ bool GetCDBBaseTableArray(PGconn* pConn, const char* pszDBName, CDBBaseTableArra
 							"	n.nspname"
 							//"	b.partitioned"
 							"	FROM"
-							"	cdb.policy p,"
+							"	mpp.policy p,"
 							"	pg_class c,"
 							"	pg_namespace n"
 							"	WHERE"
@@ -364,7 +364,7 @@ bool GetCDBBaseTableArray(PGconn* pConn, const char* pszDBName, CDBBaseTableArra
 
 	if ( pRes == NULL || PQresultStatus(pRes) != PGRES_TUPLES_OK )
 	{
-		write_err_msg("query to obtain list of cdb managed tables failed : %s",
+		write_err_msg("query to obtain list of MPP managed tables failed : %s",
 				  PQerrorMessage(pConn));
 		goto cleanup;
 	}
@@ -372,7 +372,7 @@ bool GetCDBBaseTableArray(PGconn* pConn, const char* pszDBName, CDBBaseTableArra
 	ntups = PQntuples(pRes);
 	if (ntups <= 0)
 	{
-		write_err_msg("no CDB managed tables for database \"%s\"\n", pszDBName);
+		write_err_msg("no MPP managed tables for database \"%s\"\n", pszDBName);
 		goto cleanup;
 	}
 	
@@ -444,18 +444,18 @@ bool GetCDBSegmentInstanceArray(PGconn* pConn, const char* pszDBName, CDBSegment
                               "   h.hostname,"
                               "   l.port," 
                               "   l.datadir,"
-                              "   l.cdbsuperuser"
+                              "   l.mppsuperuser"
 							"	FROM"
-							"	cdb.pgdatabase d,"
-                              "   cdb.listener l,"
-                              "   cdb.host h"
+							" mpp.pgdatabase d,"
+                              "   mpp.listener l,"
+                              "   mpp.host h"
                               "   where d.listenerid = l.listenerid"
                               "   and l.hostId = h.hostid" );
 
 	pRes = PQexec(pConn, pQry->data);
 	if ( pRes == NULL || PQresultStatus(pRes) != PGRES_TUPLES_OK )
 	{
-		write_err_msg("query to obtain list of cdb segment instances failed : %s",
+		write_err_msg("query to obtain list of MPP segment instances failed : %s",
 				  PQerrorMessage(pConn));
 		goto cleanup;
 	}
@@ -463,7 +463,7 @@ bool GetCDBSegmentInstanceArray(PGconn* pConn, const char* pszDBName, CDBSegment
 	ntups = PQntuples(pRes);
 	if (ntups <= 0)
 	{
-		write_err_msg("no CDB segment instances for database \"%s\"\n", pszDBName);
+		write_err_msg("no MPP segment instances for database \"%s\"\n", pszDBName);
 		goto cleanup;
 	}
 	
@@ -480,7 +480,7 @@ bool GetCDBSegmentInstanceArray(PGconn* pConn, const char* pszDBName, CDBSegment
     i_hostname  = PQfnumber(pRes, "hostname");
     i_port      = PQfnumber(pRes, "port");
     i_datadir   = PQfnumber(pRes, "datadir");
-	i_superuser = PQfnumber(pRes, "cdbsuperuser");
+	i_superuser = PQfnumber(pRes, "mppsuperuser");
 
 	for ( i=0; i<ntups; i++ )
 	{

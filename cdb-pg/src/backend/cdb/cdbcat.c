@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * cdbcat.c
- *	  Provides routines for reading info from cdb schema tables
+ *	  Provides routines for reading info from mpp schema tables
  *
  * Copyright (c) 2003-2005, Metapa
  *
@@ -58,19 +58,19 @@ CdbPolicyCopy(const CdbPolicy *src)
 }                                       /* CdbPolicyCopy */
  
 /*
- * Returns the policy of a table as determined from the cdb.policy table
+ * Returns the policy of a table as determined from the mpp.policy table
  * in a CdbPolicy structure allocated in the current memory context.
  *
  * The caller is responsible for passing in a valid relation oid.  This
  * function does not check and assigns a policy of type POLICYTYPE_ENTRY
- * for any oid not found in cdb.policy.
+ * for any oid not found in .policy.
  */
 CdbPolicy *get_table_policy(Oid tbloid)
 {
 	CdbPolicy *		policy = NULL;  /* The result */
 	Relation		cdb_policy_rel;
 	Oid				cdb_policy_index_oid;
-    Oid             cdb_namespace_oid;
+    Oid             mpp_namespace_oid;
 	ScanKeyData		policy_key[1];
 	SysScanDesc		cdb_policy_scan;
 	HeapTuple		cdb_policy_tuple = NULL;
@@ -82,31 +82,31 @@ CdbPolicy *get_table_policy(Oid tbloid)
         return NULL;
 
     /*
-	 * We need to read the cdb.policy table
+	 * We need to read the mpp.policy table
 	 */	
 	
 	/*
 	 * first, get the oid of the cdb namespace
 	 */
-	cdb_namespace_oid = getCDBNamespaceOid();
-	if ( cdb_namespace_oid == InvalidOid )
+	mpp_namespace_oid = getMPPNamespaceOid();
+	if ( mpp_namespace_oid == InvalidOid )
 		return NULL; 
 		
 	/*
 	 * Then, open the table and and find the oid of the index
 	 */
-	cdb_policy_rel = HeapOpenCDBObject( CdbPolicyRelationName, cdb_namespace_oid, true );
+	cdb_policy_rel = HeapOpenCDBObject( MppPolicyRelationName, mpp_namespace_oid, true );
 
 	/*
 	 * We scan based on the unique index on localoid
 	 */
-	cdb_policy_index_oid = get_relname_relid(CdbPolicyLocalOidIndexName, 
-												cdb_namespace_oid);
+	cdb_policy_index_oid = get_relname_relid(MppPolicyLocalOidIndexName, 
+												mpp_namespace_oid);
 
 	/*
 	 * Set up a ScanKey for the value of the localoid field
 	 */
-	ScanKeyInit(&policy_key[0], Anum_cdb_policy_localoid, BTEqualStrategyNumber,
+	ScanKeyInit(&policy_key[0], Anum_mpp_policy_localoid, BTEqualStrategyNumber,
 					F_OIDEQ, ObjectIdGetDatum(tbloid) );
 					
 	/*
@@ -134,7 +134,7 @@ CdbPolicy *get_table_policy(Oid tbloid)
 		/*
 		 * Get the attributes on which to partition.
 		 */
-		attr = heap_getattr(cdb_policy_tuple, Anum_cdb_policy_attrnums, cdb_policy_rel->rd_att, &isNull);
+		attr = heap_getattr(cdb_policy_tuple, Anum_mpp_policy_attrnums, cdb_policy_rel->rd_att, &isNull);
 		Assert( !isNull );
 		extract_INT2OID_array(attr, &nattrs, &attrnums);
 		Assert( nattrs >= 0 );
@@ -167,9 +167,9 @@ CdbPolicy *get_table_policy(Oid tbloid)
 }
 
 /*
- * getCDBNamespaceOid: gets the oid of the cdb namespace.
+ * getMPPNamespaceOid: gets the oid of the mpp namespace.
  */
-Oid getCDBNamespaceOid(void)
+Oid getMPPNamespaceOid(void)
 {
 	Oid				cdbOid = InvalidOid;
 	Relation		pg_namespace_rel;
@@ -181,7 +181,7 @@ Oid getCDBNamespaceOid(void)
 	/*
 	 * We need to read the pg_namespace table
 	 */	
-	namestrcpy(&nname, CdbNamespaceName);
+	namestrcpy(&nname, MppNamespaceName);
 
 	/*
 	 * Set up a ScanKey based on the namespace name field
@@ -242,7 +242,7 @@ Relation HeapOpenCDBObject( const char *pszName, Oid cdb_namespace_oid, bool bTa
 	if ( cdb_oid == InvalidOid )
        ereport(ERROR, 
 		(errcode(ERRCODE_EXTERNAL_ROUTINE_INVOCATION_EXCEPTION),
-	        errmsg("Cannot retrieve oid of %s.%s", CdbNamespaceName, pszName)));
+	        errmsg("Cannot retrieve oid of %s.%s", MppNamespaceName, pszName)));
 
 	/*
 	 * If its a table, use heap_open. If an index, use index_open
@@ -341,7 +341,7 @@ SysScanDesc cdbtable_beginscan(Relation heapRelation,
  }	
  
 /*
- * Sets the policy of a table into the cdb.policy table
+ * Sets the policy of a table into the mpp.policy table
  * from a CdbPolicy structure.
  *
  */
@@ -365,7 +365,7 @@ set_table_policy(Oid tbloid, CdbPolicy * policy)
 	/*
 	 * first, get the oid of the cdb namespace
 	 */
-	Oid cdb_namespace_oid = getCDBNamespaceOid();
+	Oid cdb_namespace_oid = getMPPNamespaceOid();
 	if ( cdb_namespace_oid == InvalidOid )
 	{
 		ereport(ERROR, (	
@@ -386,7 +386,7 @@ set_table_policy(Oid tbloid, CdbPolicy * policy)
 		/*
 		 * Get the oid of the policy table, using the cdb namespace oid and the table name
 		 */	
-		Oid cdb_oid = get_relname_relid(CdbPolicyRelationName, cdb_namespace_oid);
+		Oid cdb_oid = get_relname_relid(MppPolicyRelationName, cdb_namespace_oid);
 		
 		/*
 		 * If the policy table wasn't there, we consider this a fatal error.
@@ -394,7 +394,7 @@ set_table_policy(Oid tbloid, CdbPolicy * policy)
 		if ( cdb_oid == InvalidOid )
 		 ereport(ERROR, 
 			(errcode(ERRCODE_EXTERNAL_ROUTINE_INVOCATION_EXCEPTION),
-				errmsg("Cannot retrieve oid of %s.%s", CdbNamespaceName, CdbPolicyRelationName)));
+				errmsg("Cannot retrieve oid of %s.%s", MppNamespaceName, MppPolicyRelationName)));
 
 		cdb_policy_rel = heap_open(cdb_oid, RowExclusiveLock);
 	}

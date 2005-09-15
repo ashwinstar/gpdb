@@ -50,7 +50,7 @@ typedef struct CdbHash
 
 /*
  * Create and initialize a CdbHash in the current memory context.
- * Parameter numsegs - number of segments in CDB. 
+ * Parameter numsegs - number of segments in MPP. 
  * Parameter algorithm - the hash algorithm, either HASH_FNV_1 or HASH_FNV_1A 
  */
 extern CdbHash *makeCdbHash(int numsegs, CdbHashAlg algorithm); 

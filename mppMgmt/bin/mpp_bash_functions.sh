@@ -274,7 +274,7 @@ GET_QD_DB_NAME () {
 GET_QE_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_QD_DB_NAME
-		QE_ARRAY=(`env PGOPTIONS="-c cdb_session_role=utility" $PSQL -q -p $QD_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port from cdb.listener a, cdb.host b where listenerid<> (select listenerid from cdb.pgdatabase where content=-1) and a.hostid=b.hostid;" 2>/dev/null`) > /dev/null 2>&1
+		QE_ARRAY=(`env PGOPTIONS="-c cdb_session_role=utility" $PSQL -q -p $QD_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port from mpp.listener a, mpp.host b where listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid;" 2>/dev/null`) > /dev/null 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 				LOG_MSG "[WARN]:-Unable to obtain QE host details from QD db, error code $RETVAL returned"
@@ -287,7 +287,7 @@ GET_QE_PRIMARY_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_QD_DB_NAME
 
-		QE_PRIMARY_ARRAY=(`env PGOPTIONS="-c cdb_session_role=utility" $PSQL -q -p $QD_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port from cdb.listener a, cdb.host b where listenerid<> (select listenerid from cdb.pgdatabase where content=-1) and a.hostid=b.hostid and listenerid in (select listenerid from cdb.pgdatabase where isprimary='t') order by a.datadir;" 2>/dev/null`) > /dev/null 2>&1
+		QE_PRIMARY_ARRAY=(`env PGOPTIONS="-c cdb_session_role=utility" $PSQL -q -p $QD_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port from mpp.listener a, mpp.host b where listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid and listenerid in (select listenerid from mpp.pgdatabase where isprimary='t') order by a.datadir;" 2>/dev/null`) > /dev/null 2>&1
 
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
@@ -301,7 +301,7 @@ GET_QE_MIRROR_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_QD_DB_NAME
 
-		QE_MIRROR_ARRAY=(`env PGOPTIONS="-c cdb_session_role=utility" $PSQL -q -p $QD_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port from cdb.listener a, cdb.host b where listenerid<> (select listenerid from cdb.pgdatabase where content=-1) and a.hostid=b.hostid and listenerid in (select listenerid from cdb.pgdatabase where isprimary='f') order by a.datadir;" 2>/dev/null`) > /dev/null 2>&1
+		QE_MIRROR_ARRAY=(`env PGOPTIONS="-c cdb_session_role=utility" $PSQL -q -p $QD_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port from mpp.listener a, mpp.host b where listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid and listenerid in (select listenerid from mpp.pgdatabase where isprimary='f') order by a.datadir;" 2>/dev/null`) > /dev/null 2>&1
 
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
@@ -318,7 +318,7 @@ GET_HOSTNAMES () {
 		CHK_DB_RUNNING
 		GET_QD_DB_NAME
 		unset HOSTNAME_LIST
-		HOSTNAME_LIST=`$PSQL -p $QD_PORT $QD_DBNAME -A -t -c"select distinct(hostname) from cdb.host;"` > /dev/null 2>&1
+		HOSTNAME_LIST=`$PSQL -p $QD_PORT $QD_DBNAME -A -t -c"select distinct(hostname) from mpp.host;"` > /dev/null 2>&1
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -327,7 +327,7 @@ INVALID_SEG_CHECK () {
 		echo "This facility not supported by MPP as at 20/07/2005"
 		exit
 		GET_QD_DB_NAME
-		INVALID_COUNT=`$PSQL -p $QD_PORT $QD_DBNAME -A -t -c"select count(*) from cdb.pgdatabase where valid <> 't';"`
+		INVALID_COUNT=`$PSQL -p $QD_PORT $QD_DBNAME -A -t -c"select count(*) from mpp.pgdatabase where valid <> 't';"`
 		return $INVALID_COUNT
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -597,12 +597,12 @@ PROCESS_QE () {
 		BACKOUT_COMMAND "$ECHO \"Removing tail log file ${QE_DIR}.log on QE $HOSTNAME_ARRAY\""
 		LOG_MSG "[INFO]:-Creating database $SEG_ARRAY on $HOSTNAME_ARRAY"
 		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "env PGOPTIONS=\"-c cdb_session_role=utility\" $PSQL -p ${PORT_ARRAY} template1 -c \"create database $SEG_ARRAY\"" 
-		LOG_MSG "[INFO]:-Updating the QE cdb catalog"
-		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "env PGOPTIONS=\"-c cdb_session_role=utility\" $PSQL -p ${PORT_ARRAY} $SEG_ARRAY -c \"insert into cdb.cdb values ('$CLUSTER_NAME',$NUMSEGMENTS,$DBID,$CONTENT)\""
+		LOG_MSG "[INFO]:-Updating the QE mpp catalog"
+		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "env PGOPTIONS=\"-c cdb_session_role=utility\" $PSQL -p ${PORT_ARRAY} $SEG_ARRAY -c \"insert into mpp.mpp values ('$CLUSTER_NAME',$NUMSEGMENTS,$DBID,$CONTENT)\""
 		LOG_MSG "[INFO]:-Adding this QE instance to the QD host"
 		if [ $PRIMARY -eq 1 ]; then
 				LOG_MSG "[INFO]:-Adding the primary segment to the head admin schema"
-				RUN_COMMAND "$PSQL -p $HEAD_PORT $HEAD_DBNAME -c \"SET search_path TO public;select cdb.add_segment('$SEG_ARRAY','$USER','',$SEG_NUM_ARRAY)\"" 
+				RUN_COMMAND "$PSQL -p $HEAD_PORT $HEAD_DBNAME -c \"SET search_path TO public;select mpp.add_segment('$SEG_ARRAY','$USER','',$SEG_NUM_ARRAY)\"" 
 		else
 				LOG_MSG "[INFO]:-Adding secondary service for $SEG_ARRAY to this instance."
 				RUN_COMMAND "$PSQL -p $HEAD_PORT $HEAD_DBNAME -c \"insert into cdb_segment_instance values($SEG_NUM_ARRAY,$INST_NUM_ARRAY,true)\""

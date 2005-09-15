@@ -3,7 +3,7 @@
 * cdbcopy.h
 *    Definitions and API functions for cdbcopy.c 
 *    These are functions that are used by the backend
-*    COPY command in CDB.
+*    COPY command in MPP.
 *
 * Copyright (c) 2005, Metapa
 *

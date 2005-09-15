@@ -344,7 +344,7 @@ typedef enum
 {
 	CDB_ACCEPT,	/* This action issues no message and thus allows the code
 				 * that follows it to execute.  It is suitable when the
-				 * command is currently fully supported by CDB.
+				 * command is currently fully supported by MPP.
 				 */
 	CDB_WARN,	/* This action issues a warning and then allows the code
 				 * that follows it to execute.  It is intended for cases
