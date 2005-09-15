@@ -1,11 +1,11 @@
 <<<NEW vi: set expandtab ts=4: >>>
-Added new GUC variable Cdb_max_packet_size.  This specifies the largest packet
-	size that the interconnect will send messages with.  Like cdb_session_role, 
+Added new GUC variable Mpp_max_packet_size.  This specifies the largest packet
+	size that the interconnect will send messages with.  Like Mpp_session_role, 
 	this can only be set before startup.  The value that is set on the QD is
 	always set on all of the QEs as part of the QE connection process. The 
 	default value is 8 kBytes and valid are from 512-64k bytes.  The GUC 
-	Cdb_max_tuple_chunk_size has been removed.  The tuple chunk size is now
-	derived from Cdb_max_packet_size.
+	Mpp_max_tuple_chunk_size has been removed.  The tuple chunk size is now
+	derived from Mpp_max_packet_size.
 COPY command integration with DTM completed. COPY now relies on the 
     transaction manager to issue a ROLLBACK if the dispatcher throws
     an error.
@@ -23,8 +23,8 @@ Added support for hashing on FLOAT4 and FLOAT8. Also added the option
 CDB Hash API added. So far support for hashing on INT2,INT4,INT8,
     TEXT,VARCHAR(n),CHAR(n) is added. Corresponding manual tests
     are located in libcdbtest. 
-CDBEXEC command added.
-    The command CDBEXEC is for internal use  only.
+MPPEXEC command added.
+    The command MPPEXEC is for internal use  only.
 Log4j is the new CDB-Loader logger. Logging is now configurable from
     a properties config file and also some config options exist in the
     command line argument options (command line on higher priority).
@@ -50,17 +50,17 @@ Fixed some traffic control and message issues (CDB-5)
     the documented behavior vis a vis rejection versus interim rejection
 Special handling of SQL commands for CDB users.
     Added "traffic control" for SQL commands to issue errors or warnings 
-    as appropriate when cdb_role=dispatch.  Modified PostgreSQL utilities 
+    as appropriate when Mpp_role=dispatch.  Modified PostgreSQL utilities 
     (e.g, initdb, createdb) to override external specification of 
-    cdb_session_role, thus preserving their old behavior.
-New run-time variables cdb_session_role and cdb_role.
-    The run-time parameters cdb_session_role and cdb_role report and provide 
+    Mpp_session_role, thus preserving their old behavior.
+New run-time variables Mpp_session_role and Mpp_role.
+    The run-time parameters Mpp_session_role and Mpp_role report and provide 
     control over the role assumed by a postgres process.  The roles are 
     dispatch (process acts as a parallel SQL dispatcher), execute (process 
     acts as a parallel SQL executor), and utility (process acts as a simple 
     SQL engine. They are initialized to the same value at connection time and 
-    are local to the resulting session. A super user can modify cdb_role via 
-    the SET command, but cdb_session_role may not be modified.  
+    are local to the resulting session. A super user can modify Mpp_role via 
+    the SET command, but Mpp_session_role may not be modified.  
 
 Release-2_0_0:  18/Nov/2004  jeshleman
 
