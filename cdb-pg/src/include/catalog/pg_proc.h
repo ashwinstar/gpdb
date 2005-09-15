@@ -3607,7 +3607,7 @@ DATA(insert OID = 2550 ( integer_pl_date			PGNSP PGUID 14 f f t f i 2 1082 "23 1
 DATA(insert OID = 2556 ( pg_tablespace_databases	PGNSP PGUID 12 f f t t s 1 26 "26" _null_ pg_tablespace_databases - _null_));
 DESCR("returns database oids in a tablespace");
 
-/* Metapa CDB exposed internally-defined functions. */ 
+/* Greenplum CDB exposed internally-defined functions. */ 
 DATA(insert OID = 6003 (  cdb_backup_launch    PGNSP PGUID 12 f f f f v 5 25 "25 25 25 25 25" _null_ cdb_backup_launch__  - _null_  ));
 DESCR("launch cdb backup on outboard Postgres instances");
 DATA(insert OID = 6004 (  cdb_restore_launch   PGNSP PGUID 12 f f f f v 6 25 "25 25 25 25 25 16" _null_ cdb_restore_launch__  - _null_  ));

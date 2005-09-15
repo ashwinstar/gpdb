@@ -3,7 +3,7 @@
  * cdbsubplan.h
  * routines for preprocessing initPlan subplans
  *		and executing queries with initPlans *
- * Copyright (c) 2003-2005, Metapa
+ * Copyright (c) 2003-2005, Greenplum
  *
  *-------------------------------------------------------------------------
  */

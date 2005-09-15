@@ -4,7 +4,7 @@
  *	  Provides storage areas and processing routines for CDB variables
  *	  managed by GUC.
  *
- * Copyright (c) 2003-2004, Metapa
+ * Copyright (c) 2003-2004, Greenplum
  *
  *
  * IDENTIFICATION

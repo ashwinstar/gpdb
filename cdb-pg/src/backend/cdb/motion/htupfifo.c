@@ -3,7 +3,7 @@
  * htupfifo.c
  *     A FIFO queue for HeapTuples.
  *
- * Copyright (c) 2005, Metapa
+ * Copyright (c) 2005, Greenplum
  *
  * IDENTIFICATION
  *     $Id$

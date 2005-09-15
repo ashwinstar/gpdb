@@ -4,7 +4,7 @@
  *	  Parallelize a PostgreSQL sequential plan tree.
  *
  * Copyright (c) 2005, greenplum inc
- * Copyright (c) 2004, Metapa
+ * Copyright (c) 2004, Greenplum
  *
  * IDENTIFICATION
  *	  $Id$

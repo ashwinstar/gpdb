@@ -5,7 +5,7 @@
 *    routines are called from the backend COPY command whenever CDB is in the 
 *    default dispatch mode.
 *
-* Copyright (c) 2005, Metapa
+* Copyright (c) 2005, Greenplum
 *
 * IDENTIFICATION
 *    $Id$

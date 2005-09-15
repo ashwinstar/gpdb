@@ -9,7 +9,7 @@
  *     would mean we would possibly need to make copies of tuples when they
  *     are added and/or when they are retrieved.
  *
- * Copyright (c) 2005, Metapa
+ * Copyright (c) 2005, Greenplum
  *
  * IDENTIFICATION
  *     $Id$

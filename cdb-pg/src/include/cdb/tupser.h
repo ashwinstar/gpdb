@@ -2,7 +2,7 @@
  * tupser.h
  *     Functions for serializing and deserializing heap tuples.
  *
- * Copyright (c) 2005, Metapa
+ * Copyright (c) 2005, Greenplum
  *-------------------------------------------------------------------------
  */
 #ifndef TUPSER_H

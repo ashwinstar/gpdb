@@ -3,7 +3,7 @@
  * cdtm.c
  *	  Provides routines for performing distributed transaction
  *
- * Copyright (c) 2003-2004, Metapa
+ * Copyright (c) 2003-2004, Greenplum
  *
  *-------------------------------------------------------------------------
  */

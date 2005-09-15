@@ -5,7 +5,7 @@
  * routines for dispatching commands from the dispatcher process
  * to the qExec processes.
  *
- * Copyright (c) 2003-2004, Metapa
+ * Copyright (c) 2003-2004, Greenplum
  *
  *
  *-------------------------------------------------------------------------

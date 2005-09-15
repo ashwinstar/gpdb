@@ -3,7 +3,7 @@
  * cdbcat.c
  *	  Provides routines for reading info from mpp schema tables
  *
- * Copyright (c) 2003-2005, Metapa
+ * Copyright (c) 2003-2005, Greenplum
  *
  *-------------------------------------------------------------------------
  */

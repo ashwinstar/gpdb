@@ -3,7 +3,7 @@
  * cdbanalyze.c
  *	  Provides routines for performing distributed analyze cdb
  *
- * Copyright (c) 2003-2004, Metapa
+ * Copyright (c) 2003-2004, Greenplum
  *
  *-------------------------------------------------------------------------
  */

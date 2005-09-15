@@ -5,7 +5,7 @@
 *    These are functions that are used by the backend
 *    COPY command in MPP.
 *
-* Copyright (c) 2005, Metapa
+* Copyright (c) 2005, Greenplum
 *
 * IDENTIFICATION
 *    $Id$

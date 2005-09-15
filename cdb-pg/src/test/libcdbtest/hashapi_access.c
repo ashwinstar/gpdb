@@ -3,7 +3,7 @@
 * hashapi_access.c
 *     Test functions for accessing the Cdb Hash API.
 *
-* Copyright (c) 2005, Metapa
+* Copyright (c) 2005, Greenplum
 *
 * IDENTIFICATION
 *     $Id$

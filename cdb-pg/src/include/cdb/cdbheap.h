@@ -3,7 +3,7 @@
  * cdbheap.h
  * Functions for managing a heap of tuple results
  * for use by sorted motion nodes
- * Copyright (c) 2003-2005, Metapa
+ * Copyright (c) 2003-2005, Greenplum
  *
  *
  *-------------------------------------------------------------------------

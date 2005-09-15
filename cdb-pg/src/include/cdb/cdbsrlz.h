@@ -3,7 +3,7 @@
  * cdbsrlz.h
  *	  definitions for paln serialization utilities
  *
- * Copyright (c) 2004, Metapa
+ * Copyright (c) 2004, Greenplum
  *
  * NOTES
  *	 

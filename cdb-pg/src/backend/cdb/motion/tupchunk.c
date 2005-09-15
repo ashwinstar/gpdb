@@ -6,7 +6,7 @@
  *               be sure that if you change this file you aren't pulling in
  *			     postgres guts that will break building amsd.
  *
- * Copyright (c) 2005, Metapa
+ * Copyright (c) 2005, Greenplum
  *
  * IDENTIFICATION:
  *     $Id$

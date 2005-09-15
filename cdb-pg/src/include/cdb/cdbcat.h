@@ -3,7 +3,7 @@
  * cdbcat.h
  *	  routines for reading info from cdb schema tables
  *
- * Copyright (c) 2003-2005, Metapa
+ * Copyright (c) 2003-2005, Greenplum
  *
  *
  *-------------------------------------------------------------------------

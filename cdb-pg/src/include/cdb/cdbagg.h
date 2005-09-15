@@ -3,7 +3,7 @@
  * cdbagg.h
  *	  definitions for cdbagg.c and users of same
  *
- * Copyright (c) 2004, Metapa
+ * Copyright (c) 2004, Greenplum
  *
  *
  * IDENTIFICATION

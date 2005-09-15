@@ -4,7 +4,7 @@
  *     Test functions for Motion Layer IPC API.  These are to be called from SQL
  *     for testing purposes.
  *
- * Copyright (c) 2005, Metapa Inc.  All rights reserved.
+ * Copyright (c) 2005, Greenplum Inc.  All rights reserved.
  *
  *
  * IDENTIFICATION

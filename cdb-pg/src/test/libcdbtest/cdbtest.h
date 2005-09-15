@@ -2,7 +2,7 @@
  * cdbtest.h
  *     Declarations of functions in the cdbtest library.
  *
- * Copyright (c) 2005, Metapa
+ * Copyright (c) 2005, Greenplum
  *-------------------------------------------------------------------------
  */
 #ifndef CDBTEST_H

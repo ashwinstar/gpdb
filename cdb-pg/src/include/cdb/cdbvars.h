@@ -3,7 +3,7 @@
  * cdbvars.h
  *	  definitions for CDB global variables
  *
- * Copyright (c) 2003-2004, Metapa
+ * Copyright (c) 2003-2004, Greenplum
  *
  *
  * IDENTIFICATION

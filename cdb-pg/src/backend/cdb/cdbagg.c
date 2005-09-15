@@ -3,7 +3,7 @@
  * cdbagg.c
  *	  Generate aggregation strategies.
  *
- * Copyright (c) 2004, Metapa
+ * Copyright (c) 2004, Greenplum
  *
  * IDENTIFICATION
  *	  $Id$

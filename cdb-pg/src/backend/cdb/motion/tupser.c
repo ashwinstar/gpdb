@@ -2,7 +2,7 @@
  * tupser.c
  *     Functions for serializing and deserializing a heap tuple.
  *
- * Copyright (c) 2005, Metapa
+ * Copyright (c) 2005, Greenplum
  *
  * IDENTIFICATION:
  *     $Id$
