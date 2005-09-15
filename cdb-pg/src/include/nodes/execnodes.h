@@ -14,6 +14,10 @@
 #ifndef EXECNODES_H
 #define EXECNODES_H
 
+#ifdef HAVE_SYS_TIME_H
+#include <sys/time.h>
+#endif
+
 #include "access/relscan.h"
 #include "cdb/cdbhash.h"
 #include "executor/hashjoin.h"
