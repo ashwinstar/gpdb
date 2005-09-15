@@ -93,11 +93,11 @@ void
 cdblink_setup(void)
 {
 	/*
-	 * If cdb_role is UTILITY, skip this call.
+	 * If mpp_role is UTILITY, skip this call.
 	 */
 
 
-	if (Cdb_role == CDB_ROLE_UTILITY)
+	if (Mpp_role == MPP_ROLE_UTILITY)
 		return;
 
 	getCdbCdb();
@@ -136,38 +136,38 @@ log_backtrace(void)
 /*
  * Returns the number of segments
  *
- * N.B.  Cdb_role must be either dispatch or execute, since
+ * N.B.  Mpp_role must be either dispatch or execute, since
  * when utiliy	no cdb catalog tables are read.  An Assert is
- * thrown if Cdb_role = utility.
+ * thrown if Mpp_role = utility.
  */
 int
 getCdbSegmentCount(void)
 {
-	if (Cdb_role == CDB_ROLE_UTILITY)
+	if (Mpp_role == MPP_ROLE_UTILITY)
 	{
 
 		if (CdbIdentity.numsegments <= 0)
 		{
-			elog(DEBUG5, "getCdbSegmentCount called when Cdb_role == utility. returning zero segments.");
+			elog(DEBUG5, "getCdbSegmentCount called when Mpp_role == utility. returning zero segments.");
 			return 0;
 		}
 
-		elog(DEBUG1, "getCdbSegmentCount called when Cdb_role == utility, but is relying on mpp.mpp info");
+		elog(DEBUG1, "getCdbSegmentCount called when Mpp_role == utility, but is relying on mpp.mpp info");
 		//log_backtrace();
 
 	}
 
-	if (Cdb_role == CDB_ROLE_EXECUTE)
+	if (Mpp_role == MPP_ROLE_EXECUTE)
 	{
 		if (CdbIdentity.numsegments <= 0)
 		{
-			elog(DEBUG5, "getCdbSegmentCount called when Cdb_role == execute. returning zero segments.");
+			elog(DEBUG5, "getCdbSegmentCount called when Mpp_role == execute. returning zero segments.");
 			return 0;
 		}
-		elog(DEBUG1, "getCdbSegmentCount called when Cdb_role == execute, but is relying on mpp.mpp info");
+		elog(DEBUG1, "getCdbSegmentCount called when Mpp_role == execute, but is relying on mpp.mpp info");
 		//log_backtrace();
 	}
-	/* Assert( Cdb_role != CDB_ROLE_EXECUTE ); */
+	/* Assert( Mpp_role != MPP_ROLE_EXECUTE ); */
 
 	if (CdbIdentity.numsegments <= 0)
 	{
@@ -175,7 +175,7 @@ getCdbSegmentCount(void)
 		//log_backtrace();
 	}
 
-	/* Assert( Cdb_role != CDB_ROLE_UTILITY ); */
+	/* Assert( Mpp_role != MPP_ROLE_UTILITY ); */
 
 	return CdbIdentity.numsegments;
 }

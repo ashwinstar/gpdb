@@ -53,7 +53,7 @@ void cdb_get_relstats(Oid relid, BlockNumber *pages, double *tuples)
 	TupleDesc			tupdesc;
 	char				*tmp;
 
-	Assert( Cdb_role == CDB_ROLE_DISPATCH );
+	Assert( Mpp_role == MPP_ROLE_DISPATCH );
 	Assert( pages != NULL );
 	Assert( tuples != NULL );
 

@@ -95,7 +95,7 @@ startDtxTransaction(void)
 {
     int ret=DTX_OK;
     
-    if (Cdb_role != CDB_ROLE_DISPATCH)
+    if (Mpp_role != MPP_ROLE_DISPATCH)
         return DTX_OK;
     if ( currentGxact == NULL )
     {
@@ -112,7 +112,7 @@ startDtxTransaction(void)
 int
 commitDtxTransaction(void)
 {
-    if (Cdb_role != CDB_ROLE_DISPATCH || currentGxact == NULL)
+    if (Mpp_role != MPP_ROLE_DISPATCH || currentGxact == NULL)
         return DTX_OK;
 
 	/* temporary set all transaction dirty */
@@ -128,7 +128,7 @@ commitDtxTransaction(void)
 int
 rollbackDtxTransaction(void)
 {
-    if (Cdb_role != CDB_ROLE_DISPATCH || currentGxact == NULL)
+    if (Mpp_role != MPP_ROLE_DISPATCH || currentGxact == NULL)
         return DTX_OK;
         
     /* temporary ignore this call if it is in phase 2 commit, which can not
@@ -455,7 +455,7 @@ initTM(void)
 int
 tmShmemSize(void)
 {
-    if (Cdb_role != CDB_ROLE_DISPATCH)
+    if (Mpp_role != MPP_ROLE_DISPATCH)
         return 0;
     return MAXALIGN(sizeof(TmControlBlock) +
         max_tm_gxacts * (sizeof(TMGXACT*) + sizeof(TMGXACT)));
@@ -472,7 +472,7 @@ tmShmemInit(void)
     bool found;
     TmControlBlock *shared;
     
-    if (Cdb_role != CDB_ROLE_DISPATCH)
+    if (Mpp_role != MPP_ROLE_DISPATCH)
         return;
 
     shared = (TmControlBlock *)ShmemInitStruct("Transaction manager", tmShmemSize(), &found);
@@ -511,7 +511,7 @@ tmShmemInit(void)
 bool
 isInGlobalTransaction(void)
 {
-    if ( Cdb_role != CDB_ROLE_DISPATCH )
+    if ( Mpp_role != MPP_ROLE_DISPATCH )
         return false;
         
     /* check fts sync count */

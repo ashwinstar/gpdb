@@ -789,7 +789,7 @@ CreateUser(CreateUserStmt *stmt)
 	 */
 	user_file_update_needed();
 
-	if (Cdb_role == CDB_ROLE_DISPATCH)
+	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
 			char *szCommand;
 			
@@ -1244,7 +1244,7 @@ DropUser(DropUserStmt *stmt)
 	 */
 	user_file_update_needed();
 
-		if (Cdb_role == CDB_ROLE_DISPATCH)
+		if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
 			char *szCommand;
 			

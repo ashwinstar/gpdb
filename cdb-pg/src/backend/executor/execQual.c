@@ -598,7 +598,7 @@ ExecEvalParam(ExprState *exprstate, ExprContext *econtext,
 		prm = &(econtext->ecxt_param_exec_vals[thisParamId]);
 		if (prm->execPlan != NULL)
 		{
-			if ( Cdb_role == CDB_ROLE_EXECUTE )
+			if ( Mpp_role == MPP_ROLE_EXECUTE )
 			{
 				paramInfo = lookupParam(econtext->ecxt_param_list_info,
 										PARAM_EXEC_REMOTE,

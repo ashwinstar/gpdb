@@ -65,7 +65,7 @@ typedef struct CdbDispatchResults
  * occurring on one of the qExec segdbs should cause all still-executing commands to cancel
  * on other qExecs. Normally this would be true.  The commands are run inside of threads.
  * The number of segdbs handled by any one thread is determined by the
- * guc variable cdb_connections_per_thread.
+ * guc variable mpp_connections_per_thread.
  */
 extern void CdbDispatchCommand(const char *szCommand, bool cancelFromBelow);
 

@@ -155,7 +155,7 @@ planner(Query *parse, bool isCursor, int cursorOptions,
 	PlannerParamList = save_PlannerParamList;
 	PlannerBoundParamList = save_PlannerBoundParamList;
 	
-	if ( Cdb_role == CDB_ROLE_DISPATCH )
+	if ( Mpp_role == MPP_ROLE_DISPATCH )
 	{
 		result_plan = cdbparallelize(result_plan, parse, isCursor, cursorOptions, boundParams);
 	}

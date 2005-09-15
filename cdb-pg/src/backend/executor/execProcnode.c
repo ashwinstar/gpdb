@@ -253,7 +253,7 @@ ExecInitNode(Plan *node, EState *estate)
 		prior_es_cur_slice_idx = estate->es_cur_slice_idx; /* save */
 		prior_es_cur_root_idx = estate->es_cur_root_idx; /* save */
 		
-		if ( Cdb_role == CDB_ROLE_DISPATCH && estate->es_sliceTable != NULL )
+		if ( Mpp_role == MPP_ROLE_DISPATCH && estate->es_sliceTable != NULL )
 		{
 			MemoryContext oldcxt;
 			int idx;

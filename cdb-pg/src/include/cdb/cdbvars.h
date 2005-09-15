@@ -25,10 +25,10 @@
  */
  
 /*
- * Parameters cdb_session_role and cdb_role
+ * Parameters mpp_session_role and mpp_role
  * 
- * The run-time parameters (GUC variables) cdb_session_role and
- * cdb_role report and provide control over the role assumed by a
+ * The run-time parameters (GUC variables) mpp_session_role and
+ * mpp_role report and provide control over the role assumed by a
  * postgres process.  
  * 
  * Valid  roles are the following:
@@ -43,48 +43,48 @@
  * for a user of CDB connecting to a node of  the CDB cluster.
  * Neither parameter appears in the configuration file.
  * 
- * cdb_session_role 
+ * mpp_session_role 
  * 
  * - does not affect the operation of the backend, and  
  * - does not change during the lifetime of PostgreSQL session.  
  * 
- * cdb_role 
+ * mpp_role 
  * 
  * - determines the operating role of the backend, and
  * - may be changed by a superuser via the SET command.	
  * 
- * The connection time value of cdb_session_role used by a
+ * The connection time value of mpp_session_role used by a
  * libpq-based client application can be specified using the
  * environment variable PGOPTIONS.  For example, this is how to
  * invoke psql on database test as a utility:
  * 
- * 	PGOPTIONS='-c cdb_session_role=utility' psql test
+ * 	PGOPTIONS='-c mpp_session_role=utility' psql test
  * 
  * Alternatively, libpq-based applications can be modified to set
  * the value directly via an argument to one of the libpq functions
  * PQconnectdb, PQsetdbLogin or PQconnectStart.
  *
- * Don't try to set cdb_role this way.  At the time options are
+ * Don't try to set mpp_role this way.  At the time options are
  * processed it is unknown whether the user is a superuser, so
  * the attempt will be rejected.
  * 
  * ----------
  * 
  * CDB Developers can access the values of these parameters via the
- * global variables Cdb_session_role and Cdb_role of type
- * CdbRoleValue. For example
+ * global variables Mpp_session_role and Mpp_role of type
+ * MppRoleValue. For example
  * 
  * 	#include "cdb/cdbvars.h"
  * 	
- * 	switch ( Cdb_role  )
+ * 	switch ( Mpp_role  )
  * 	{
- * 		case CDB_ROLE_DISPATCH:
+ * 		case MPP_ROLE_DISPATCH:
  * 			... Act like a query dispatcher ...
  * 			break;
- * 		case CDB_ROLE_EXECUTE:
+ * 		case MPP_ROLE_EXECUTE:
  * 			... Act like a query executor ...
  * 			break;
- * 		case CDB_ROLE_UTILITY:
+ * 		case MPP_ROLE_UTILITY:
  * 			... Act like an unmodified PostgreSQL backend. ...
  * 			break;
  * 		default:
@@ -92,45 +92,45 @@
  * 			break;
  * 	}
  * 
- * You can also modify Cdb_role (even if the session doesn't have
+ * You can also modify Mpp_role (even if the session doesn't have
  * superuser privileges) by setting it to one of the three valid
  * values, however this must be well documented to avoid
  * disagreements between modules.  Don't modify the value  of
- * Cdb_session_role. 
+ * Mpp_session_role. 
  *
  */
 
 typedef enum 
 {
-	CDB_ROLE_UTILITY = 0,	/* Operating as a simple database engine */
-	CDB_ROLE_DISPATCH,		/* Operating as the parallel query dispatcher */
-	CDB_ROLE_EXECUTE,		/* Operating as a parallel query executor */
-	CDB_ROLE_UNDEFINED		/* Should never see this role in use */
-} CdbRoleValue;
+	MPP_ROLE_UTILITY = 0,	/* Operating as a simple database engine */
+	MPP_ROLE_DISPATCH,		/* Operating as the parallel query dispatcher */
+	MPP_ROLE_EXECUTE,		/* Operating as a parallel query executor */
+	MPP_ROLE_UNDEFINED		/* Should never see this role in use */
+} MppRoleValue;
 
 
-extern CdbRoleValue		Cdb_session_role; /* GUC var - server startup mode.  */
-extern char			  * cdb_session_role_string;	/* Use by guc.c as staging area for value. */
-extern const char	  * assign_cdb_session_role( const char *newval, bool doit, GucSource source );
-extern const char	  * show_cdb_session_role( void );
+extern MppRoleValue		Mpp_session_role; /* GUC var - server startup mode.  */
+extern char			  * mpp_session_role_string;	/* Use by guc.c as staging area for value. */
+extern const char	  * assign_mpp_session_role( const char *newval, bool doit, GucSource source );
+extern const char	  * show_mpp_session_role( void );
 
-extern CdbRoleValue		Cdb_role;	/* GUC var - server operating mode.  */
-extern char			  * cdb_role_string;	/* Use by guc.c as staging area for value. */
-extern const char	  * assign_cdb_role( const char *newval, bool doit, GucSource source );
-extern const char	  * show_cdb_role( void );
+extern MppRoleValue		Mpp_role;	/* GUC var - server operating mode.  */
+extern char			  * mpp_role_string;	/* Use by guc.c as staging area for value. */
+extern const char	  * assign_mpp_role( const char *newval, bool doit, GucSource source );
+extern const char	  * show_mpp_role( void );
 
-/* Parameter cdb_is_primary
+/* Parameter mpp_is_primary
  * 
  * This run_time parameter indicates whether session is associated with the
  * primary copy of its database's content or with a mirror.  It defaults to
  * true (primary), but may be specified as false using a connect option, e.g,
  *
- * 	  PGOPTIONS='-c cdb_is_primary=false' psql test
+ * 	  PGOPTIONS='-c mpp_is_primary=false' psql test
  *
  * Though it will ordinarily be set by a QD connecting to a QE, rather than
  * directly.  It may not be reset in a running session.
  */
-extern bool				Cdb_is_primary;
+extern bool				Mpp_is_primary;
 
 /* Parameter debug_print_prelim_plan
  * 
@@ -153,9 +153,9 @@ extern bool Debug_print_slice_table;
 
 
 /*
- * Parameter cdb_connections_per_thread
+ * Parameter mpp_connections_per_thread
  *
- * The run-time parameter (GUC variables) cdb_connections_per_thread
+ * The run-time parameter (GUC variables) mpp_connections_per_thread
  * controls how many libpq connections to qExecs are processed in each
  * thread.
  *
@@ -164,7 +164,7 @@ extern bool Debug_print_slice_table;
  * 1 means each connection has its own thread.
  *
  * This can be set in the config file, or at runtime by a superuser using
- * SQL: set cdb_connections_per_thread = x;
+ * SQL: set mpp_connections_per_thread = x;
  *
  * The default is 256.  So, if there are fewer than 256 segdbs, all would be handled
  * by the same thread.
@@ -175,40 +175,40 @@ extern bool Debug_print_slice_table;
  *      2) In CdbDispatchCommand, when commands are sent from the dispatcher to the qExecs.
  *
  */
-extern int			cdb_connections_per_thread;     /* GUC var - server operating mode.  */
-extern bool			assign_cdb_connections_per_thread( int newval, bool doit, GucSource source );
-extern const char	*show_cdb_connections_per_thread( void );
+extern int			mpp_connections_per_thread;     /* GUC var - server operating mode.  */
+extern bool			assign_mpp_connections_per_thread( int newval, bool doit, GucSource source );
+extern const char	*show_mpp_connections_per_thread( void );
 extern bool			assign_interconnect_setup_timeout( int newval, bool doit, GucSource source );
 extern const char   *show_interconnect_setup_timeout( void );
 
-extern char           * cdb_fault_action_string;  /* Use by guc.c as user defined fault action */ 
-extern bool             cdb_set_read_only;
-extern bool             assign_cdb_set_read_only( bool newval, bool doit, GucSource source );
-extern const char       * show_cdb_set_read_only( void );
+extern char           * mpp_fault_action_string;  /* Use by guc.c as user defined fault action */ 
+extern bool             mpp_set_read_only;
+extern bool             assign_mpp_set_read_only( bool newval, bool doit, GucSource source );
+extern const char       * show_mpp_set_read_only( void );
 
 
 /* 
- * Parameter Cdb_max_packet_size
+ * Parameter Mpp_max_packet_size
  *
- * The run-time parameter cdb_max_packet_size controls the largest packet
+ * The run-time parameter mpp_max_packet_size controls the largest packet
  * size that the interconnect will transmit.  In general, the interconnect
  * tries to squeeze as many tuplechunks as possible into a packet without going
  * above this size limit.
  *
  * The largest tuple chunk size that the system will form can be derived 
  * from this with:
- *		MAX_CHUNK_SIZE = Cdb_max_packet_size - PACKET_HEADER_SIZE - TUPLE_CHUNK_HEADER_SIZE
+ *		MAX_CHUNK_SIZE = Mpp_max_packet_size - PACKET_HEADER_SIZE - TUPLE_CHUNK_HEADER_SIZE
  *
  * 
  */
-extern int Cdb_max_packet_size; /* GUC var */
+extern int Mpp_max_packet_size; /* GUC var */
 
 #define DEFAULT_PACKET_SIZE 8192
 #define MIN_PACKET_SIZE 512
 #define MAX_PACKET_SIZE 65536
 
 /*
- * Parameter cdb_segment
+ * Parameter mpp_segment
  *
  * The segment (content) controlled by this QE
  * content indicator: -1 for entry database, 0, ..., n-1 for segment database
@@ -217,13 +217,13 @@ extern int Cdb_max_packet_size; /* GUC var */
  * Query Dispatcher, and is propagated to Query Executors in the connection
  * parameters.  It is not modifiable by any user, ever.
  */
-extern int Cdb_segment;           /* GUC var */
+extern int Mpp_segment;           /* GUC var */
 
 extern int getCdbSegmentCount(void);
 
 
 /*
- * Parameters enable_cdbrepartition and enable_cdbbroadcast
+ * Parameters mpp_enable_repartition and mpp_enable_broadcast
  *
  * These run-time parameters (GUC variables) influence the cdb join strategies.
  * These are analagous to the enable_nestloop, enable_mergejoin etc variable
@@ -231,8 +231,8 @@ extern int getCdbSegmentCount(void);
  * strategy is increased by a very large amount.  This will effectively
  * cause the code to not choose this strategy unless there is no other.
  */
-extern bool enable_cdbrepartition;
-extern bool enable_cdbbroadcast;
+extern bool mpp_enable_repartition;
+extern bool mpp_enable_broadcast;
 
 /*
  * Unlike the above, enable_agg_restruct is not cost based. When set to
@@ -270,6 +270,6 @@ extern CdbCdb CdbIdentity;
 /* Stores the listener port that this process uses to listen for incoming 
  * Interconnect connections from other Motion nodes.
  */
-extern int Cdb_listener_port;
+extern int Mpp_listener_port;
 
 #endif	/* CDBVARS_H */

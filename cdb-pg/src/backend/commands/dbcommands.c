@@ -98,7 +98,7 @@ createdb(CreatedbStmt *stmt)
 #endif
 
 	bool hasDispatched = false;
-	bool shouldDispatch =  (Cdb_role == CDB_ROLE_DISPATCH); // && !IsBootstrapProcessingMode();
+	bool shouldDispatch =  (Mpp_role == MPP_ROLE_DISPATCH); // && !IsBootstrapProcessingMode();
 	
 	if (shouldDispatch)
 		if (IsBootstrapProcessingMode())
@@ -338,7 +338,7 @@ createdb(CreatedbStmt *stmt)
 	 * Preassign OID for pg_database tuple, so that we can compute db
 	 * path.
 	 */
-	if (Cdb_role == CDB_ROLE_EXECUTE && stmt->dbOid != 0)
+	if (Mpp_role == MPP_ROLE_EXECUTE && stmt->dbOid != 0)
 		dboid = stmt->dbOid;
 	else
 		dboid = newoid();
@@ -678,7 +678,7 @@ dropdb(const char *dbname)
 	 * Free the database on the segDBs 
 	 * 
 	 */
-	if (Cdb_role == CDB_ROLE_DISPATCH)
+	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
 		
 			

@@ -240,7 +240,7 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 		case RELKIND_RELATION:
 		case RELKIND_INDEX:
 		case RELKIND_TOASTVALUE:
-			if ( Cdb_role == CDB_ROLE_DISPATCH )
+			if ( Mpp_role == MPP_ROLE_DISPATCH )
 			{
 				*pages = (BlockNumber) rel->rd_rel->relpages;
 				*tuples = (double) rel->rd_rel->reltuples;

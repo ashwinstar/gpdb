@@ -509,7 +509,7 @@ ShutdownPostgres(int code, Datum arg)
     /*
      * shutdown TM
      */
-    if ( Cdb_role == CDB_ROLE_DISPATCH )
+    if ( Mpp_role == MPP_ROLE_DISPATCH )
         shutdownTM();
 }
 

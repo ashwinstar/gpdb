@@ -36,32 +36,32 @@
  
  
  
-CdbRoleValue		Cdb_role;			/* Role paid by this CDB backend */
-char			   *cdb_role_string;	/* Staging area for guc.c */
-char            *cdb_fault_action_string; /* Staging area for guc.c */
-bool             cdb_set_read_only; /* Staging area for guc.c */
+MppRoleValue		Mpp_role;			/* Role paid by this CDB backend */
+char			   *mpp_role_string;	/* Staging area for guc.c */
+char            *mpp_fault_action_string; /* Staging area for guc.c */
+bool             mpp_set_read_only; /* Staging area for guc.c */
 
-CdbRoleValue		Cdb_session_role;	/* Role paid by this CDB backend */
-char			   *cdb_session_role_string; /* Staging area for guc.c */
+MppRoleValue		Mpp_session_role;	/* Role paid by this CDB backend */
+char			   *mpp_session_role_string; /* Staging area for guc.c */
 
-bool				Cdb_is_primary;		/* Is this session primary (or mirror) */
+bool				Mpp_is_primary;		/* Is this session primary (or mirror) */
 
 bool				Debug_print_prelim_plan; /* Shall we log argument of cdbparallelize? */
 
 bool				Debug_print_slice_table; /* Shall we log the slice table? */
 
-int					cdb_connections_per_thread;	/* How many libpq connections are handled in each thread */
+int					mpp_connections_per_thread;	/* How many libpq connections are handled in each thread */
 
 
-int					Cdb_segment;		/* What content this QE is handling. */
+int					Mpp_segment;		/* What content this QE is handling. */
 
-bool				enable_cdbrepartition;
-bool				enable_cdbbroadcast;
+bool				mpp_enable_repartition;
+bool				mpp_enable_broadcast;
 bool				enable_agg_restruct;
 
-int					Cdb_listener_port;
+int					Mpp_listener_port;
 
-int					Cdb_max_packet_size;  /* max Interconnect packet size */
+int					Mpp_max_packet_size;  /* max Interconnect packet size */
 
 int interconnect_setup_timeout;
 
@@ -84,51 +84,51 @@ CdbCdb				CdbIdentity = {NULL, 0, -1, -999};
 /* 
  *	Forward declarations of local function.
  */
-CdbRoleValue string_to_role( const char *string );
-const char * role_to_string( CdbRoleValue role );
+MppRoleValue string_to_role( const char *string );
+const char * role_to_string( MppRoleValue role );
 
 
 /*
- * Convert a CDB role string (as for cdb_session_role or cdb_role) to an 
- * enum value of type CdbRoleValue. Return CDB_ROLE_UNDEFINED in case the 
+ * Convert a CDB role string (as for mpp_session_role or mpp_role) to an 
+ * enum value of type MppRoleValue. Return MPP_ROLE_UNDEFINED in case the 
  * string is unrecognized.
  */
-CdbRoleValue string_to_role( const char *string )
+MppRoleValue string_to_role( const char *string )
 {
-	CdbRoleValue role = CDB_ROLE_UNDEFINED;
+	MppRoleValue role = MPP_ROLE_UNDEFINED;
 	
 	if ( strcasecmp( string, "dispatch" ) == 0 || strcasecmp( string, "" ) == 0 )
     {
-        role = CDB_ROLE_DISPATCH;
+        role = MPP_ROLE_DISPATCH;
     }
 	else if ( strcasecmp( string, "execute" ) == 0 )
     {
-        role = CDB_ROLE_EXECUTE;
+        role = MPP_ROLE_EXECUTE;
     }
     else if ( strcasecmp( string, "utility" ) == 0 )
     {
-        role = CDB_ROLE_UTILITY;
+        role = MPP_ROLE_UTILITY;
     }
 	
 	return role;
 }
 
 /* 
- * Convert a CdbRoleValue to a role string (as for cdb_session_role or 
- * cdb_role).  Return eyecatcher in the unexpected event that the value
+ * Convert a MppRoleValue to a role string (as for mpp_session_role or 
+ * mpp_role).  Return eyecatcher in the unexpected event that the value
  * is unknown or undefined.
  */
-const char * role_to_string( CdbRoleValue role )
+const char * role_to_string( MppRoleValue role )
 {
 	switch ( role )
 	{
-	case CDB_ROLE_DISPATCH:
+	case MPP_ROLE_DISPATCH:
 		return "dispatch";
-	case CDB_ROLE_EXECUTE:
+	case MPP_ROLE_EXECUTE:
 		return "execute";
-	case CDB_ROLE_UTILITY:
+	case MPP_ROLE_UTILITY:
 		return "utility";
-	case CDB_ROLE_UNDEFINED:
+	case MPP_ROLE_UNDEFINED:
 	default:
 		return "*undefined*";
 	}
@@ -136,7 +136,7 @@ const char * role_to_string( CdbRoleValue role )
 
 
 /*
- * Assign hook routine for "cdb_session_role" option.  Because this variable
+ * Assign hook routine for "mpp_session_role" option.  Because this variable
  * has context PGC_BACKEND, we expect this assigment to happen only during
  * setup of a BACKEND, e.g., based on the role value specified on the connect
  * request.
@@ -144,28 +144,28 @@ const char * role_to_string( CdbRoleValue role )
  * See src/backend/util/misc/guc.c for option definition.
  */
 const char *
-assign_cdb_session_role( const char *newval, bool doit, GucSource source )
+assign_mpp_session_role( const char *newval, bool doit, GucSource source )
 {
     
 #if FALSE
-    elog(DEBUG1, "assign_cdb_session_role: cdb_session_role=%s, newval=%s, doit=%s",
-            show_cdb_session_role(), newval, ( doit ? "true" : "false" ) );
+    elog(DEBUG1, "assign_mpp_session_role: mpp_session_role=%s, newval=%s, doit=%s",
+            show_mpp_session_role(), newval, ( doit ? "true" : "false" ) );
 #endif
 
-	CdbRoleValue newrole = string_to_role(newval);
+	MppRoleValue newrole = string_to_role(newval);
 	
-	if ( newrole  == CDB_ROLE_UNDEFINED )
+	if ( newrole  == MPP_ROLE_UNDEFINED )
 	{
 		return NULL;
 	}
 	
     if ( doit )
     {
-        Cdb_session_role = newrole;
-   		Cdb_role = Cdb_session_role;
+        Mpp_session_role = newrole;
+   		Mpp_role = Mpp_session_role;
    		
-   		if (Cdb_role == CDB_ROLE_DISPATCH)
-   			Cdb_segment = -1;
+   		if (Mpp_role == MPP_ROLE_DISPATCH)
+   			Mpp_segment = -1;
    	}
     return newval;
 }
@@ -173,7 +173,7 @@ assign_cdb_session_role( const char *newval, bool doit, GucSource source )
 
 
 /*
- * Assign hook routine for "cdb_role" option.  This variablle has context
+ * Assign hook routine for "mpp_role" option.  This variablle has context
  * PGC_SUSET so that is can only be set by a superuser via the SET command.
  * (It can also be set using an option on postmaster start, but this isn't
  * interesting beccause the derived global CdbRole is always set (along with 
@@ -182,19 +182,19 @@ assign_cdb_session_role( const char *newval, bool doit, GucSource source )
  * See src/backend/util/misc/guc.c for option definition.
  */
 const char *
-assign_cdb_role( const char *newval, bool doit, GucSource source )
+assign_mpp_role( const char *newval, bool doit, GucSource source )
 {
 
 #if FALSE
-    elog(DEBUG1, "assign_cdb_role: cdb_role=%s, newval=%s, doit=%s",
-            show_cdb_role(), newval, ( doit ? "true" : "false" ));
+    elog(DEBUG1, "assign_mpp_role: mpp_role=%s, newval=%s, doit=%s",
+            show_mpp_role(), newval, ( doit ? "true" : "false" ));
 #endif
 
 
-	CdbRoleValue newrole = string_to_role(newval);
-	CdbRoleValue oldrole = Cdb_role;
+	MppRoleValue newrole = string_to_role(newval);
+	MppRoleValue oldrole = Mpp_role;
 	
-	if ( newrole  == CDB_ROLE_UNDEFINED )
+	if ( newrole  == MPP_ROLE_UNDEFINED )
 	{
 		return NULL;
 	}
@@ -209,26 +209,26 @@ assign_cdb_role( const char *newval, bool doit, GucSource source )
     	bool do_disconnect = false;
     	bool do_connect = false;
     	
-    	if ( Cdb_role != newrole && IsUnderPostmaster )
+    	if ( Mpp_role != newrole && IsUnderPostmaster )
     	{
-    		if ( Cdb_role != CDB_ROLE_UTILITY )
+    		if ( Mpp_role != MPP_ROLE_UTILITY )
     			do_disconnect = true;
 
-    		if ( newrole != CDB_ROLE_UTILITY )
+    		if ( newrole != MPP_ROLE_UTILITY )
     			do_connect = true;
     	}
     	
     	if ( do_disconnect )
     		cdb_cleanup(0, (Datum)NULL);
 	    	
-        Cdb_role = newrole;
+        Mpp_role = newrole;
         
     	if ( do_connect )
     	{
     		/*
     		 * In case there are problems with the cdb tables or data,
     		 * we catch any error coming out of cdblink_setup so we can set the
-    		 * cdb_role back to what it was.  Otherwise we may be left with
+    		 * mpp_role back to what it was.  Otherwise we may be left with
     		 * inappropriate connections for the new role.
     		 */
 			PG_TRY();
@@ -238,8 +238,8 @@ assign_cdb_role( const char *newval, bool doit, GucSource source )
 			PG_CATCH();
 			{
 	    		cdb_cleanup(0, (Datum)NULL);
-				Cdb_role = oldrole;
-				if ( Cdb_role != CDB_ROLE_UTILITY )
+				Mpp_role = oldrole;
+				if ( Mpp_role != MPP_ROLE_UTILITY )
 		  			cdb_setup();
 				PG_RE_THROW();
 			}
@@ -252,19 +252,19 @@ assign_cdb_role( const char *newval, bool doit, GucSource source )
 
 
 /*
- * Assign hook routine for "cdb_connections_per_thread" option.  This variablle has context
+ * Assign hook routine for "mpp_connections_per_thread" option.  This variablle has context
  * PGC_SUSET so that is can only be set by a superuser via the SET command.
  * (It can also be set in config file, but not inside of PGOPTIONS.)
  *
  * See src/backend/util/misc/guc.c for option definition.
  */
 bool
-assign_cdb_connections_per_thread( int newval, bool doit, GucSource source )
+assign_mpp_connections_per_thread( int newval, bool doit, GucSource source )
 {
 
 #if FALSE
-    elog(DEBUG1, "assign_cdb_connections_per_thread: cdb_connections_per_thread=%s, newval=%d, doit=%s",
-            show_cdb_connections_per_thread(), newval, ( doit ? "true" : "false" ));
+    elog(DEBUG1, "assign_mpp_connections_per_thread: mpp_connections_per_thread=%s, newval=%d, doit=%s",
+            show_mpp_connections_per_thread(), newval, ( doit ? "true" : "false" ));
 #endif
             
     if ( doit )
@@ -272,14 +272,14 @@ assign_cdb_connections_per_thread( int newval, bool doit, GucSource source )
     	if ( newval < 1 )
     		return false;
     		
-        cdb_connections_per_thread = newval;
+        mpp_connections_per_thread = newval;
     }
    	
     return true;
 }
 
 /*
- * Assign hook routine for "cdb_interconnect_setup_timeout" option.
+ * Assign hook routine for "mpp_interconnect_setup_timeout" option.
  *
  */
 bool
@@ -298,35 +298,35 @@ assign_interconnect_setup_timeout( int newval, bool doit, GucSource source )
 }
 
 /*
- * Show hook routine for "cdb_session_role" option.
+ * Show hook routine for "mpp_session_role" option.
  *
  * See src/backend/util/misc/guc.c for option definition.
  */
 const char *
-show_cdb_session_role( void )
+show_mpp_session_role( void )
 {
-    return role_to_string(Cdb_session_role);
+    return role_to_string(Mpp_session_role);
 }
 
 
 /*
- * Show hook routine for "cdb_role" option.
+ * Show hook routine for "mpp_role" option.
  *
  * See src/backend/util/misc/guc.c for option definition.
  */
 const char *
-show_cdb_role( void )
+show_mpp_role( void )
 {
-    return role_to_string(Cdb_role);
+    return role_to_string(Mpp_role);
 }
 
 /*
- * Show hook routine for "cdb_connections_per_thread" option.
+ * Show hook routine for "mpp_connections_per_thread" option.
  *
  * See src/backend/util/misc/guc.c for option definition.
  */
 const char *
-show_cdb_connections_per_thread( void )
+show_mpp_connections_per_thread( void )
 {
 	/*
 	 * We rely on the fact that the memory context will clean up the memory
@@ -335,13 +335,13 @@ show_cdb_connections_per_thread( void )
 	StringInfoData buffer;
 	initStringInfo(&buffer);
 	
-	appendStringInfo( &buffer, "%d", cdb_connections_per_thread );
+	appendStringInfo( &buffer, "%d", mpp_connections_per_thread );
 
     return buffer.data;
 }
 
 /* 
- * Show hook routine for "cdb_interconnect_setup_timeout" option.
+ * Show hook routine for "mpp_interconnect_setup_timeout" option.
  *
  * See guc.c for option definition.
  *

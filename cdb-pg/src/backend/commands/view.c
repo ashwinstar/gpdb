@@ -370,7 +370,7 @@ DefineView(ViewStmt* stmt)
 	 */
 	DefineViewRules(view, viewParse, replace);
 
-	if (Cdb_role == CDB_ROLE_DISPATCH)
+	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
 			char *szCommand;
 			
@@ -432,7 +432,7 @@ RemoveView(const RangeVar *view, DropStmt * stmt)
 
 	performDeletion(&object, behavior);
 
-	if (Cdb_role == CDB_ROLE_DISPATCH)
+	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
 			char *szCommand;
 			

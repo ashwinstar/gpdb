@@ -220,7 +220,7 @@ void InitMotionLayerIPC(void)
 	activated = false;
 	
 	elog(DEBUG1, "Setting Up Interconnect Listener Port...");
-	Cdb_listener_port = listenerSetup();
+	Mpp_listener_port = listenerSetup();
 }
 
 
@@ -1177,7 +1177,7 @@ static void setupOutgoingConnection(MotionConn *conn, CdbProcess *cdbProc, int *
 	int					n;
 
 	conn->sockfd			= socket(AF_INET, SOCK_STREAM, 0);
-	conn->pBuff				= palloc(Cdb_max_packet_size);
+	conn->pBuff				= palloc(Mpp_max_packet_size);
 	conn->msgSize			= PACKET_HEADER_SIZE;
 	conn->tupleCount		= 0;
 	conn->stillActive		= true;
@@ -1296,7 +1296,7 @@ static void sendRegisterMessage(MotionLayerState *pEntry, MotionConn *conn)
 	memcpy(msg + 2, &netval, 2);
 
 	/* srcContentId */
-	netval = htons(Cdb_segment);
+	netval = htons(Mpp_segment);
 	memcpy(msg + 4, &netval, 2);
 
 	/* srcListenerPort */
@@ -1422,7 +1422,7 @@ static void readRegisterMessage(MotionConn *conn, int *incoming_count)
 	newConn = pEntry->conns + msg.srcRouteId;	
 	
 	newConn->sockfd		   	 = conn->sockfd;
-	newConn->pBuff	     	 = palloc(Cdb_max_packet_size);
+	newConn->pBuff	     	 = palloc(Mpp_max_packet_size);
 	newConn->msgSize 		 = 0;
 	newConn->recvBytes 		 = 0;
 	newConn->msgPos 		 = 0;
@@ -1502,7 +1502,7 @@ static void acceptIncomingConnection(fd_set *rset, int *highsock)
 	
 	conn = palloc(sizeof(MotionConn));	
 	conn->sockfd     = newsockfd;
-	conn->pBuff      = palloc(Cdb_max_packet_size);
+	conn->pBuff      = palloc(Mpp_max_packet_size);
 	conn->msgSize    = 0;
 	conn->recvBytes  = 0;
 	conn->msgPos     = 0;
@@ -1530,7 +1530,7 @@ static bool sendChunk(MotionConn *conn, TupleChunkListItem tcItem)
 {
 	Assert(conn->msgSize > 0);		
 	
-	if (conn->msgSize + tcItem->chunk_length > Cdb_max_packet_size)
+	if (conn->msgSize + tcItem->chunk_length > Mpp_max_packet_size)
 	{
 		if (!flushBuffer(conn))
 			return false;
@@ -1684,7 +1684,7 @@ static inline void readPacket(MotionConn *conn)
 	fd_set		rset;
 
 #ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG3, "readpacket: (fd %d) (max %d) outstanding bytes %d", conn->sockfd, Cdb_max_packet_size, conn->recvBytes);
+	elog(DEBUG3, "readpacket: (fd %d) (max %d) outstanding bytes %d", conn->sockfd, Mpp_max_packet_size, conn->recvBytes);
 #endif
 
 	/* do we have a complete message waiting to be processed ? */
@@ -1711,11 +1711,11 @@ static inline void readPacket(MotionConn *conn)
 	elog(DEBUG3, "readpacket: %s on previous call msgSize %d", gotHeader ? "got header" : "no header", conn->msgSize);
 #endif
 
-	while (!gotPacket && bytesRead < Cdb_max_packet_size)
+	while (!gotPacket && bytesRead < Mpp_max_packet_size)
 	{
 		/* we read at the end of the buffer, we've eliminated any slack above */
 		if ((n = read(conn->sockfd, conn->pBuff + bytesRead,
-					  Cdb_max_packet_size - bytesRead)) < 0)
+					  Mpp_max_packet_size - bytesRead)) < 0)
 		{
 			if (errno == EINTR)
 				continue;
@@ -1776,11 +1776,11 @@ static inline void readPacket(MotionConn *conn)
 #if 0
 				conn->stillActive = false;
 #endif
-				if (Cdb_role == CDB_ROLE_DISPATCH)
+				if (Mpp_role == MPP_ROLE_DISPATCH)
 				{
 					elog(LOG, "ending prematurely in dispatcher");
 				}
-				else if (Cdb_role == CDB_ROLE_EXECUTE)
+				else if (Mpp_role == MPP_ROLE_EXECUTE)
 				{
 					elog(LOG, "ending prematurely in executor");
 				}
@@ -1878,11 +1878,11 @@ static int findMyRouteId(Slice *slice)
 #ifdef AMS_VERBOSE_LOGGING		
 		elog(DEBUG3, "Checking if CdbProc is our own: segid: (ours is %d ==  CdbProc's is %d) "
 		      " listenerPort:  (ours is %d == CdbProc's is %d)",
-		      Cdb_segment, proc->contentid,
+		      Mpp_segment, proc->contentid,
 		      listenerPort , proc->listenerPort);
 #endif
 		
-		if (proc->contentid == Cdb_segment &&
+		if (proc->contentid == Mpp_segment &&
 		    proc->listenerPort == listenerPort)
 			return id;
 			

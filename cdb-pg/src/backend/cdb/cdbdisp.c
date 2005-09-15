@@ -149,7 +149,7 @@ static volatile bool 		cancelledByUs = false;
  * on other qExecs. Normally this would be true.  The commands are sent over the libpq
  * connections that were established during cdblink_setup.	They are run inside of threads.
  * The number of segdbs handled by any one thread is determined by the
- * guc variable cdb_connections_per_thread.
+ * guc variable mpp_connections_per_thread.
  */
 void
 CdbDispatchToGang(const char *szCommand, Gang * gp,
@@ -165,11 +165,11 @@ CdbDispatchToGang(const char *szCommand, Gang * gp,
 
 
 
-	if (Cdb_role != CDB_ROLE_DISPATCH)
+	if (Mpp_role != MPP_ROLE_DISPATCH)
 		elog(ERROR, "CdbDispatchToGang must be called in DISPATCH mode.");
 
 
-	Assert(Cdb_role == CDB_ROLE_DISPATCH);
+	Assert(Mpp_role == MPP_ROLE_DISPATCH);
 	Assert(gp != NULL);
 	Assert(gp->size > 0);
 
@@ -178,17 +178,17 @@ CdbDispatchToGang(const char *szCommand, Gang * gp,
 
 
 	/*
-	 * The most threads we could have is segdb_count / cdb_connections_per_thread, rounded up.
-	 * This is equivalent to 1 + (segdb_count-1) / cdb_connections_per_thread.
+	 * The most threads we could have is segdb_count / mpp_connections_per_thread, rounded up.
+	 * This is equivalent to 1 + (segdb_count-1) / mpp_connections_per_thread.
 	 * We allocate enough memory for this many DispoatchCommandParms structures,
 	 * even though we may not use them all.
 	 */
-	Assert(cdb_connections_per_thread > 0);
+	Assert(mpp_connections_per_thread > 0);
 
 	segdbs_in_thread_pool = 0;
 
 
-	max_threads = 1 + (gp->size - 1) / cdb_connections_per_thread;
+	max_threads = 1 + (gp->size - 1) / mpp_connections_per_thread;
 	
 	{
 		MemoryContext oldContext = MemoryContextSwitchTo(TopMemoryContext);
@@ -218,7 +218,7 @@ CdbDispatchToGang(const char *szCommand, Gang * gp,
 	 * Create the thread parms structures based targetSet parameter.
 	 * This will add the segdbDesc pointers appropriate to the
 	 * targetSet into the thread Parms structures, making sure that each thread
-	 * handles cdb_connections_per_thread segdbs.
+	 * handles mpp_connections_per_thread segdbs.
 	 */
 
 	
@@ -258,12 +258,12 @@ CdbDispatchToGang(const char *szCommand, Gang * gp,
 	
 	/*
 	 * Compute the thread count based on how many segdbs were added into the
-	 * thread pool, knowing that each thread handles cdb_connections_per_thread
+	 * thread pool, knowing that each thread handles mpp_connections_per_thread
 	 * segdbs.
 	 */
 	
 	if (segdbs_in_thread_pool > 0)
-		newThreads += 1 + (segdbs_in_thread_pool - 1) / cdb_connections_per_thread;
+		newThreads += 1 + (segdbs_in_thread_pool - 1) / mpp_connections_per_thread;
 		
     /*
      * set result set variables if return of result set is required
@@ -284,13 +284,13 @@ CdbDispatchToGang(const char *szCommand, Gang * gp,
         for (i = 0; i < newThreads; i++)
         {
             DispatchCommandParms *pParms = &(dispatchCommandParmsAr+threadCount)[i];
-            pParms->resultSets = *pgresultsets+(i*cdb_connections_per_thread);
+            pParms->resultSets = *pgresultsets+(i*mpp_connections_per_thread);
         }
     }
 
 	elog(DEBUG4,
 		 "CdbDispatchToGang threadCount %d, segdbs_in_thread_pool %d, conns_per_thread %d",
-		 threadCount, segdbs_in_thread_pool, cdb_connections_per_thread);
+		 threadCount, segdbs_in_thread_pool, mpp_connections_per_thread);
 
 
 	/*
@@ -327,7 +327,7 @@ CdbDispatchToGang(const char *szCommand, Gang * gp,
  * on other qExecs. Normally this would be true.  The commands are sent over the libpq
  * connections that were established during gang creation.	They are run inside of threads.
  * The number of segdbs handled by any one thread is determined by the
- * guc variable cdb_connections_per_thread.
+ * guc variable mpp_connections_per_thread.
  */
 void
 CdbDispatchCommandInt(const char *szCommand, bool cancelFromBelow,
@@ -338,12 +338,12 @@ CdbDispatchCommandInt(const char *szCommand, bool cancelFromBelow,
 	Gang	   *primaryGang = NULL;
 	Gang	   *mirrorGang = NULL;
 
-	if (Cdb_role != CDB_ROLE_DISPATCH)
+	if (Mpp_role != MPP_ROLE_DISPATCH)
 		elog(ERROR, "CdbDispatchCommandInt should not be called while not in DISPATCH mode.");
 
 	elog(DEBUG1, "CdbDispatchCommandInt %.40s", szCommand);
 
-	Assert(Cdb_role == CDB_ROLE_DISPATCH);
+	Assert(Mpp_role == MPP_ROLE_DISPATCH);
 
 
 	/*
@@ -353,12 +353,12 @@ CdbDispatchCommandInt(const char *szCommand, bool cancelFromBelow,
 	Assert(threadCount == 0);
 
 	/*
-	 * The most threads we could have is segdb_count / cdb_connections_per_thread, rounded up.
-	 * This is equivalent to 1 + (segdb_count-1) / cdb_connections_per_thread.
+	 * The most threads we could have is segdb_count / mpp_connections_per_thread, rounded up.
+	 * This is equivalent to 1 + (segdb_count-1) / mpp_connections_per_thread.
 	 * We allocate enough memory for this many DispoatchCommandParms structures,
 	 * even though we may not use them all.
 	 */
-	Assert(cdb_connections_per_thread > 0);
+	Assert(mpp_connections_per_thread > 0);
 
 	segdbs_in_thread_pool = 0;
 
@@ -386,7 +386,7 @@ CdbDispatchCommandInt(const char *szCommand, bool cancelFromBelow,
  * on other qExecs. Normally this would be true.  The commands are sent over the libpq
  * connections that were established during gang setup.	They are run inside of threads.
  * The number of segdbs handled by any one thread is determined by the
- * guc variable cdb_connections_per_thread.
+ * guc variable mpp_connections_per_thread.
  */
 void
 CdbDispatchCommandIntEnumeration(const char *szCommand,
@@ -402,30 +402,30 @@ CdbDispatchCommandIntEnumeration(const char *szCommand,
 
 
 
-	if (Cdb_role != CDB_ROLE_DISPATCH)
+	if (Mpp_role != MPP_ROLE_DISPATCH)
 		elog(ERROR,
 			 "CdbDispatchCommandIntEnumeration should not be called while not in DISPATCH mode.");
 
 	elog(DEBUG1, "CdbDispatchCommandInt %s", szCommand);
 
-	Assert(Cdb_role == CDB_ROLE_DISPATCH);
+	Assert(Mpp_role == MPP_ROLE_DISPATCH);
 	Assert(segdbList != NULL);
 	Assert(segdbListCount > 0);
 
 
 
 	/*
-	 * The most threads we could have is segdb_count / cdb_connections_per_thread, rounded up.
-	 * This is equivalent to 1 + (segdb_count-1) / cdb_connections_per_thread.
+	 * The most threads we could have is segdb_count / mpp_connections_per_thread, rounded up.
+	 * This is equivalent to 1 + (segdb_count-1) / mpp_connections_per_thread.
 	 * We allocate enough memory for this many DispoatchCommandParms structures,
 	 * even though we may not use them all.
 	 */
-	Assert(cdb_connections_per_thread > 0);
+	Assert(mpp_connections_per_thread > 0);
 
 	segdbs_in_thread_pool = 0;
 
 
-	max_threads = 1 + (segdbListCount - 1) / cdb_connections_per_thread;
+	max_threads = 1 + (segdbListCount - 1) / mpp_connections_per_thread;
 	dispatchCommandParmsAr = (DispatchCommandParms *)
 		palloc0(max_threads * sizeof(DispatchCommandParms));
 
@@ -434,7 +434,7 @@ CdbDispatchCommandIntEnumeration(const char *szCommand,
 	 * Create the thread parms structures based targetSet parameter.
 	 * This will add the segdbDesc pointers appropriate to the
 	 * targetSet into the thread Parms structures, making sure that each thread
-	 * handles cdb_connections_per_thread segdbs.
+	 * handles mpp_connections_per_thread segdbs.
 	 */
 	
 
@@ -469,16 +469,16 @@ CdbDispatchCommandIntEnumeration(const char *szCommand,
 
 	/*
 	 * Compute the thread count based on how many segdbs were added into the
-	 * thread pool, knowing that each thread handles cdb_connections_per_thread
+	 * thread pool, knowing that each thread handles mpp_connections_per_thread
 	 * segdbs.
 	 */
 	if (segdbs_in_thread_pool == 0)
 		threadCount = 0;
 	else
-		threadCount = 1 + (segdbs_in_thread_pool - 1) / cdb_connections_per_thread;
+		threadCount = 1 + (segdbs_in_thread_pool - 1) / mpp_connections_per_thread;
 
 	elog(DEBUG4, "CdbDispatchCommandInt threadCount %d, segdbs_in_thread_pool %d, conns_per_thread %d",
-		 threadCount, segdbs_in_thread_pool, cdb_connections_per_thread);
+		 threadCount, segdbs_in_thread_pool, mpp_connections_per_thread);
 
     /*
      * set result set variables if return of result set is required
@@ -499,7 +499,7 @@ CdbDispatchCommandIntEnumeration(const char *szCommand,
         for (i = 0; i < threadCount; i++)
         {
             DispatchCommandParms *pParms = &(dispatchCommandParmsAr+threadCount)[i];
-            pParms->resultSets = *pgresultsets+(i*cdb_connections_per_thread);
+            pParms->resultSets = *pgresultsets+(i*mpp_connections_per_thread);
         }
     }
 
@@ -534,7 +534,7 @@ CdbDispatchCommandIntEnumeration(const char *szCommand,
  * on other qExecs. Normally this would be true.  The commands are sent over the libpq
  * connections that were established during gang creation.	They are run inside of threads.
  * The number of segdbs handled by any one thread is determined by the
- * guc variable cdb_connections_per_thread.
+ * guc variable mpp_connections_per_thread.
  * Called by general users, this method includes global transaction control.
  */
 void
@@ -1254,7 +1254,7 @@ thread_DispatchCommand(void *arg)
  * addSegDBToDispatchThreadPool
  * Helper function used to add a segdb's segdbDesc to the thread pool to have commands dispatched to.
  * It figures out which thread will handle it, based on the setting of
- * cdb_connections_per_thread.
+ * mpp_connections_per_thread.
  */
 void
 addSegDBToDispatchThreadPool(DispatchCommandParms * ParmsAr, int *segdbCount,
@@ -1269,19 +1269,19 @@ addSegDBToDispatchThreadPool(DispatchCommandParms * ParmsAr, int *segdbCount,
 
 	/*
 	 * The proper index into the DispatchCommandParms array is computed, based on
-	 * having cdb_connections_per_thread segdbDesc's in each thread.
+	 * having mpp_connections_per_thread segdbDesc's in each thread.
 	 * If it's the first access to an array location, determined
-	 * by (*segdbCount) % cdb_connections_per_thread == 0,
+	 * by (*segdbCount) % mpp_connections_per_thread == 0,
 	 * then we initialize the struct members for that array location first.
 	 */
-	ParmsIndex = (*segdbCount) / cdb_connections_per_thread;
+	ParmsIndex = (*segdbCount) / mpp_connections_per_thread;
 	pParms = &ParmsAr[ParmsIndex];
 
-	if ((*segdbCount) % cdb_connections_per_thread == 0)
+	if ((*segdbCount) % mpp_connections_per_thread == 0)
 	{
 		pParms->szCommand = pstrdup(szCommand);
 		pParms->segdbDescPtrArray =
-			(SegmentDatabaseDescriptor **) palloc0(cdb_connections_per_thread *
+			(SegmentDatabaseDescriptor **) palloc0(mpp_connections_per_thread *
 										sizeof(SegmentDatabaseDescriptor *));
 		pParms->cancelFromBelow = cancelFromBelow;
 		pParms->isPrimary = isPrimary;
@@ -1655,7 +1655,7 @@ CdbDispatchPlan(QueryDesc *queryDesc)
 	int			i;
 
 
-	Assert(Cdb_role == CDB_ROLE_DISPATCH);
+	Assert(Mpp_role == MPP_ROLE_DISPATCH);
 	Assert(queryDesc != NULL && queryDesc->estate != NULL);
 	
 		

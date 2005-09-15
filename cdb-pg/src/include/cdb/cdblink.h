@@ -46,9 +46,9 @@ extern void cdblink_setup(void);
 /* 
  * Returns the number of segments
  * 
- * N.B.  Cdb_role must be either dispatch or execute, since
+ * N.B.  Mpp_role must be either dispatch or execute, since
  * when utiliy  no cdb catalog tables are read.  An Assert is
- * thrown if Cdb_role = utility.
+ * thrown if Mpp_role = utility.
  */
 extern int getCdbSegmentCount(void);
 

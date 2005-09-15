@@ -535,7 +535,7 @@ CopyGetInt32(void)
 	CopyGetData(&buf, sizeof(buf));
 	
 	/* load raw data into line buf for dispatching later */
-	if(Cdb_role == CDB_ROLE_DISPATCH)
+	if(Mpp_role == MPP_ROLE_DISPATCH)
 	   appendBinaryStringInfo(&line_buf, (char *)&buf, sizeof(buf));
 	
 	return (int32) ntohl(buf);
@@ -564,7 +564,7 @@ CopyGetInt16(void)
     CopyGetData(&buf, sizeof(buf));
 	
 	/* load raw data into line buf for dispatching later */
-	if(Cdb_role == CDB_ROLE_DISPATCH)
+	if(Mpp_role == MPP_ROLE_DISPATCH)
 		appendBinaryStringInfo(&line_buf, (char *)&buf, sizeof(buf));
 	
 	return (int16) ntohs(buf);
@@ -996,7 +996,7 @@ DoCopy(const CopyStmt *stmt)
 			}
 		}
 
-		if(Cdb_role == CDB_ROLE_DISPATCH)
+		if(Mpp_role == MPP_ROLE_DISPATCH)
 		{
 			CopyFromDispatch(rel, attnumlist, binary, oids, delim, null_print, csv_mode,
 									   quote, escape, force_notnull_atts, escape_off);
@@ -1362,7 +1362,7 @@ copy_in_error_callback(void *arg)
 			/* error is relevant to a particular column */
 			limit_printout_length(&attr_buf);
 			
-			if(Cdb_role != CDB_ROLE_UTILITY) /* omit segDB line number, it is confusing to the user */
+			if(Mpp_role != MPP_ROLE_UTILITY) /* omit segDB line number, it is confusing to the user */
 				errcontext("COPY %s, column %s",
 						   copy_relname, copy_attname);
 			else
@@ -1377,7 +1377,7 @@ copy_in_error_callback(void *arg)
 			{
 				limit_printout_length(&line_buf);
 				
-				if(Cdb_role != CDB_ROLE_UTILITY) /* omit segDB line number, it is confusing to the user */
+				if(Mpp_role != MPP_ROLE_UTILITY) /* omit segDB line number, it is confusing to the user */
 					errcontext("COPY %s: \"%s\"", copy_relname, line_buf.data);
 				else
 					errcontext("COPY %s, line %d: \"%s\"", copy_relname, copy_lineno, line_buf.data);
@@ -1392,7 +1392,7 @@ copy_in_error_callback(void *arg)
 				 * to regurgitate it without conversion.  So we have to punt
 				 * and just report the line number.
 				 */
-				if(Cdb_role != CDB_ROLE_UTILITY) /* omit segDB line number, it is confusing to the user */				
+				if(Mpp_role != MPP_ROLE_UTILITY) /* omit segDB line number, it is confusing to the user */				
 				    errcontext("COPY %s", copy_relname);
 				else
 				    errcontext("COPY %s, line %d", copy_relname, copy_lineno);
@@ -1498,7 +1498,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	/* 
 	 * contains a copy of the original COPY command string that was issued by the 
 	 * client. This copy of the COPY command string is sent to all the segment
-	 * databases to execute there in cdb_role execute
+	 * databases to execute there in mpp_role execute
 	 */
 	StringInfoData cdbcopy_cmd; 
 	
@@ -1808,7 +1808,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 			{
 				CopyGetData(readSig, 1);
 
-				if(Cdb_role == CDB_ROLE_DISPATCH)
+				if(Mpp_role == MPP_ROLE_DISPATCH)
 					appendBinaryStringInfo(&header_buf, readSig, 1);
 
 				if (CopyGetEof())
@@ -3857,7 +3857,7 @@ CopyReadBinaryAttribute(int column_no, FmgrInfo *flinfo, Oid typioparam,
 				 errmsg("unexpected EOF in COPY data")));
 	
 	/* load raw data into line buf for dispatching later */
-	if(Cdb_role == CDB_ROLE_DISPATCH)
+	if(Mpp_role == MPP_ROLE_DISPATCH)
 		appendBinaryStringInfo(&line_buf, attr_buf.data, fld_size);
 	
 	attr_buf.len = fld_size;

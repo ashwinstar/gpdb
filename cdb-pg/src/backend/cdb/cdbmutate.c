@@ -830,7 +830,7 @@ Motion *make_sorted_union_motion(Plan *lefttree, bool sendToSecondary, int destS
     int mySegIdx;
 
     /* TODO:  Pete needs to work with Brian on this part.  Donnie is clueless. */
-    mySegIdx = Cdb_segment;
+    mySegIdx = Mpp_segment;
 	outputSegIdx[0] = mySegIdx;
 
 	return 	make_motion(lefttree, MOTIONTYPE_FIXED,

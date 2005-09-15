@@ -69,13 +69,13 @@ void FtsShmemInit(void)
         
         //initialize
         shared->ftsSyncCount = 0;
-        shared->ftsReadOnlyFlag = cdb_set_read_only;
+        shared->ftsReadOnlyFlag = mpp_set_read_only;
         shared->ftsEnabled = false;
         shared->ftsQDMirroring = true;  /* set default to true, will be set to false if connection failed */
-        if (Cdb_role == CDB_ROLE_DISPATCH)
+        if (Mpp_role == MPP_ROLE_DISPATCH)
         {
-            shared->ftsAction = convertFaultActionValue(cdb_fault_action_string);
-            elog(LOG, "FTS: Fault Tolerance Action is set to : %s", cdb_fault_action_string);
+            shared->ftsAction = convertFaultActionValue(mpp_fault_action_string);
+            elog(LOG, "FTS: Fault Tolerance Action is set to : %s", mpp_fault_action_string);
         }
     }
 }
@@ -89,7 +89,7 @@ void CondSetMPPReadonly(void)
     {
         elog(LOG, "FTS: MPP system is set read only");
 
-        assign_cdb_set_read_only(true, true, PGC_S_DEFAULT);
+        assign_mpp_set_read_only(true, true, PGC_S_DEFAULT);
     }
 }
 
@@ -264,7 +264,7 @@ static void initPQConnectionBuffer(CdbComponentDatabaseInfo *q, PQExpBuffer buff
      */
     if ( utility )
         appendPQExpBuffer(buffer,
-            "options='-c cdb_session_role=UTILITY' ");
+            "options='-c mpp_session_role=UTILITY' ");
     
     if ( q->hostname == NULL ) 
         appendPQExpBufferStr(buffer, "host='' " );
@@ -347,12 +347,12 @@ void markSegDBStatus( int dbid, bool state )
 }
 
 /*
- * Show hook routine for "cdb_role" option.
+ * Show hook routine for "mpp_role" option.
  *
  * See src/backend/util/misc/guc.c for option definition.
  */
 const char *
-show_cdb_set_read_only( void )
+show_mpp_set_read_only( void )
 {
     return *ftsReadOnlyFlag?"TRUE":"FALSE";
 }
@@ -363,7 +363,7 @@ FtsCondSetTxnReadOnly( bool *XactFlag)
     if (!isMirroringEnabled())
         return;
     
-    if (*ftsReadOnlyFlag && Cdb_role != CDB_ROLE_UTILITY)
+    if (*ftsReadOnlyFlag && Mpp_role != MPP_ROLE_UTILITY)
         *XactFlag = true;
 }
 
@@ -371,11 +371,11 @@ FtsCondSetTxnReadOnly( bool *XactFlag)
  * Set Read only 
  */
 bool
-assign_cdb_set_read_only( bool newval, bool doit, GucSource source )
+assign_mpp_set_read_only( bool newval, bool doit, GucSource source )
 {
 
 #if FALSE
-    elog(DEBUG1, "cdb_set_read_only: %s, doit=%s",
+    elog(DEBUG1, "mpp_set_read_only: %s, doit=%s",
             newval, ( doit ? "true" : "false" ));
 #endif
 
@@ -391,14 +391,14 @@ assign_cdb_set_read_only( bool newval, bool doit, GucSource source )
         
   
         /*      
-        if (Cdb_role == CDB_ROLE_DISPATCH)
+        if (Mpp_role == MPP_ROLE_DISPATCH)
         {
             char cmdbuf[30];
-            strcpy( cmdbuf, "set cdb_set_read_only=" );
+            strcpy( cmdbuf, "set mpp_set_read_only=" );
             strcat( cmdbuf, newval?"true":"false");
             
             if ( !CdbDoCommandInt(cmdbuf, false, NULL) )
-                elog(PANIC, "cdb_set_read_only failed on QE");
+                elog(PANIC, "mpp_set_read_only failed on QE");
         }
         */
     }
@@ -418,8 +418,8 @@ int convertFaultActionValue(char *action)
         return FTS_NONE;
     else
     {
-	    elog(LOG, "FTS: Invalid Fault Tolerance Action: %s", cdb_fault_action_string);
-	    cdb_fault_action_string = "continue";
+	    elog(LOG, "FTS: Invalid Fault Tolerance Action: %s", mpp_fault_action_string);
+	    mpp_fault_action_string = "continue";
 	    return FTS_CONTINUE;
     }
 }
@@ -432,7 +432,7 @@ bool convertReadOnlyValue(char *action)
     else if (strcasecmp(action, "false")==0)
         return false;
     else
-        elog(ERROR, "invalid string for cdb_set_read_only - %s", action );
+        elog(ERROR, "invalid string for mpp_set_read_only - %s", action );
 }
 */
 

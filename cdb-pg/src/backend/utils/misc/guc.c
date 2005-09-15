@@ -870,25 +870,25 @@ static struct config_bool ConfigureNamesBool[] =
 #endif
 	},
 	{
-		{"enable_cdbrepartition", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enables the cdb parallelizer's use of the repartition strategy."),
+		{"mpp_enable_repartition", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the MPP parallelizer's use of the repartition strategy."),
 			NULL
 		},
-		&enable_cdbrepartition,
+		&mpp_enable_repartition,
 		true, NULL, NULL
 	},
 	{
-		{"enable_cdbbroadcast", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enables the cdb parallelizer's use of the broadcast strategy."),
+		{"mpp_enable_broadcast", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the MPP parallelizer's use of the broadcast strategy."),
 			NULL
 		},
-		&enable_cdbbroadcast,
+		&mpp_enable_broadcast,
 		true, NULL, NULL
 	},
 
 	{
 		{"enable_agg_restructure", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enables the cdb parallelizer to use a restructuring strategy for aggregation."),
+			gettext_noop("Enables the MPP parallelizer to use a restructuring strategy for aggregation."),
 			NULL
 		},
 		&enable_agg_restruct,
@@ -896,23 +896,23 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"cdb_is_primary", PGC_BACKEND, UNGROUPED,
+		{"mpp_is_primary", PGC_BACKEND, UNGROUPED,
 			gettext_noop("Reports session type as primary or mirror."),
 			NULL,
 			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
-		&Cdb_is_primary,
+		&Mpp_is_primary,
 		true, NULL, NULL
 	},
     
     {
-        {"cdb_set_read_only", PGC_SUSET, UNGROUPED,
+        {"mpp_set_read_only", PGC_SUSET, UNGROUPED,
             gettext_noop("Sets the system read only"),
 			NULL,
             GUC_NOT_IN_SAMPLE
         },
-        &cdb_set_read_only,
-        false, assign_cdb_set_read_only, NULL
+        &mpp_set_read_only,
+        false, assign_mpp_set_read_only, NULL
     },
     
 	/* End-of-list marker */
@@ -1398,40 +1398,40 @@ static struct config_int ConfigureNamesInt[] =
 	},
     
 	{
-		 {"cdb_max_packet_size", PGC_BACKEND, UNGROUPED,
+		 {"mpp_max_packet_size", PGC_BACKEND, UNGROUPED,
             gettext_noop("Sets the max packet size for the Interconnect."),
             
         },
-        &Cdb_max_packet_size,
+        &Mpp_max_packet_size,
         DEFAULT_PACKET_SIZE, MIN_PACKET_SIZE, MAX_PACKET_SIZE, NULL, NULL
 	},
 	
 	
 	{
-		{"cdb_connections_per_thread", PGC_SUSET, UNGROUPED,
+		{"mpp_connections_per_thread", PGC_SUSET, UNGROUPED,
 			gettext_noop("Sets the number of client connections handled in each thread."),
 			NULL,
 			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 
 		},
-		&cdb_connections_per_thread,
-		256, 1, INT_MAX, assign_cdb_connections_per_thread, show_cdb_connections_per_thread
+		&mpp_connections_per_thread,
+		256, 1, INT_MAX, assign_mpp_connections_per_thread, show_mpp_connections_per_thread
 	},
 	
 	{
-		{"cdb_segment", PGC_BACKEND, UNGROUPED,
+		{"mpp_segment", PGC_BACKEND, UNGROUPED,
 			gettext_noop("The segment (content) controlled by this instance."),
 			gettext_noop("Used to know what content this QE handles "
 						 ),
 			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
-		&Cdb_segment,
+		&Mpp_segment,
 		-999, INT_MIN, INT_MAX, NULL, NULL
 	},
 	
 	
 	{
-		{"cdb_interconnect_setup_timeout", PGC_USERSET, UNGROUPED,
+		{"mpp_interconnect_setup_timeout", PGC_USERSET, UNGROUPED,
 			gettext_noop("Timeout on interconnect setup that occurs at query start"),
 			gettext_noop("Used by Interconnect to timeout the setup of the communication fabric.")	
 		},
@@ -1961,24 +1961,24 @@ static struct config_string ConfigureNamesString[] =
 	},
 
 	{
-		{"cdb_session_role", PGC_BACKEND, UNGROUPED,
+		{"mpp_session_role", PGC_BACKEND, UNGROUPED,
 			gettext_noop("Reports the default role for the session."),
 			gettext_noop("Valid values are DISPATCH, EXECUTE, and UTILITY."),
 			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 		},
-		&cdb_session_role_string,
-		"dispatch", assign_cdb_session_role, show_cdb_session_role
+		&mpp_session_role_string,
+		"dispatch", assign_mpp_session_role, show_mpp_session_role
 	},
 
 	{
-		{"cdb_role", PGC_SUSET, UNGROUPED,
+		{"mpp_role", PGC_SUSET, UNGROUPED,
 			gettext_noop("Sets the role for the session."),
 			gettext_noop("Valid values are DISPATCH, EXECUTE, and UTILITY."),
 			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
 
 		},
-		&cdb_role_string,
-		"dispatch", assign_cdb_role, show_cdb_role
+		&mpp_role_string,
+		"dispatch", assign_mpp_role, show_mpp_role
 	},
     
     {
@@ -1986,7 +1986,7 @@ static struct config_string ConfigureNamesString[] =
            gettext_noop("Sets the fault action for fault tolerance management."),
            gettext_noop("Valid values are CONTINUE, READONLY, and SHUTDOWN.")
        },
-       &cdb_fault_action_string,
+       &mpp_fault_action_string,
        "continue", NULL, NULL
     }, 
 
@@ -4182,7 +4182,7 @@ SetPGVariable(const char *name, List *args, bool is_local)
 					  is_local,
 					  true);
 					  
-	if (Cdb_role == CDB_ROLE_DISPATCH && !IsBootstrapProcessingMode())
+	if (Mpp_role == MPP_ROLE_DISPATCH && !IsBootstrapProcessingMode())
 	{
 
 		StringInfoData buffer;

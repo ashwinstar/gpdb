@@ -373,13 +373,13 @@ CdbSentry(CdbAction dispatch, Node *parsetree, const char *altname)
 	CdbAction action = (CdbAction) NULL;
 	const char *cmdname;
 	
-	switch ( Cdb_role )
+	switch ( Mpp_role )
 	{
-	case CDB_ROLE_UTILITY:
-	case CDB_ROLE_EXECUTE:
+	case MPP_ROLE_UTILITY:
+	case MPP_ROLE_EXECUTE:
 		action = CDB_ACCEPT;
 		break;
-	case CDB_ROLE_DISPATCH:
+	case MPP_ROLE_DISPATCH:
 		action = dispatch;
 		break;
 	default:
@@ -611,7 +611,7 @@ ProcessUtility(Node *parsetree,
 				Oid			relOid;
 				char relKind = RELKIND_RELATION;
 
-				if ( Cdb_role == CDB_ROLE_EXECUTE )
+				if ( Mpp_role == MPP_ROLE_EXECUTE )
 				  if ( ((CreateStmt *)parsetree)->relKind != 0 )
 					relKind = ((CreateStmt *)parsetree)->relKind;
 
@@ -759,7 +759,7 @@ ProcessUtility(Node *parsetree,
 			 * only in the EXECUTE role, i.e., it is supplied by a dispatch
 			 * process to a qexec process. The cryptic message avoids mention
 			 * of roles to discourage experimentation by users. */
-			if ( Cdb_role != CDB_ROLE_EXECUTE )
+			if ( Mpp_role != MPP_ROLE_EXECUTE )
 			{
 				ereport(ERROR, (
 					errcode(ERRCODE_CDB_COMMAND_ERROR),

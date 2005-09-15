@@ -1441,7 +1441,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 	CdbPolicy * policy = NULL;
 	int colindex = 0;
 	int maxattrs = 200;
-	if ( Cdb_role != CDB_ROLE_DISPATCH )
+	if ( Mpp_role != MPP_ROLE_DISPATCH )
 	{
 		*policyp = NULL;
 		return;

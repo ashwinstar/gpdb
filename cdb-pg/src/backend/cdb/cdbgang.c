@@ -92,7 +92,7 @@ typedef struct DoConnectParms
  * AddSegDBToConnThreadPool
  * Helper function used to add a segdb's segdbDesc to the thread pool to be connected to.
  * It figures out which thread will handle it, based on the setting of
- * cdb_connections_per_thread.
+ * mpp_connections_per_thread.
  */
 static void addSegDBToConnThreadPool(DoConnectParms * ParmsAr, int *segdbCount,
 						 SegmentDatabaseDescriptor * segdbDesc);
@@ -161,16 +161,16 @@ createGang(GangType type, int size, int content)
 
 	segdb_count = newGangDefinition->size;
 
-	Assert(cdb_connections_per_thread > 0);
+	Assert(mpp_connections_per_thread > 0);
 	Assert(segdb_count > 0);
 
 	/*
-	 * The most threads we could have is segdb_count / cdb_connections_per_thread, rounded up.
-	 * This is equivalent to 1 + (segdb_count-1) / cdb_connections_per_thread.
+	 * The most threads we could have is segdb_count / mpp_connections_per_thread, rounded up.
+	 * This is equivalent to 1 + (segdb_count-1) / mpp_connections_per_thread.
 	 * We allocate enough memory for this many DoConnectParms structures,
 	 * even though we may not use them all.
 	 */
-	max_threads = 1 + (segdb_count - 1) / cdb_connections_per_thread;
+	max_threads = 1 + (segdb_count - 1) / mpp_connections_per_thread;
 	Assert(max_threads > 0);
 	doConnectParmsAr = (DoConnectParms *)
 		palloc0(max_threads * sizeof(DoConnectParms));
@@ -199,7 +199,7 @@ createGang(GangType type, int size, int content)
 
 		/*
 		 * This function handles putting the segdbDesc into the proper thread's Parms
-		 * structure, based on cdb_connections_per_thread.
+		 * structure, based on mpp_connections_per_thread.
 		 * It does this based on the value of segdbs_in_thread_pool,
 		 * which it increments each time it is called.
 		 */
@@ -214,7 +214,7 @@ createGang(GangType type, int size, int content)
 	if (segdbs_in_thread_pool == 0)
 		threadCount = 0;
 	else
-		threadCount = 1 + (segdbs_in_thread_pool - 1) / cdb_connections_per_thread;
+		threadCount = 1 + (segdbs_in_thread_pool - 1) / mpp_connections_per_thread;
 
 	for (i = 0; i < threadCount; i++)
 	{
@@ -660,7 +660,7 @@ buildGangDefinition(GangType type, int size, int content)
  * AddSegDBToConnThreadPool
  * Helper function used to add a segdb's segdbDesc to the thread pool to be connected to.
  * It figures out which thread will handle it, based on the setting of
- * cdb_connections_per_thread.
+ * mpp_connections_per_thread.
  */
 void
 addSegDBToConnThreadPool(DoConnectParms * ParmsAr, int *segdbCount,
@@ -673,19 +673,19 @@ addSegDBToConnThreadPool(DoConnectParms * ParmsAr, int *segdbCount,
 
 	/*
 	 * The proper index into the DoConnectParms array is computed, based on
-	 * having cdb_connections_per_thread segdbDesc's in each thread.
+	 * having mpp_connections_per_thread segdbDesc's in each thread.
 	 * If it's the first access to an array location, determined
-	 * by (*segdbCount) % cdb_connections_per_thread == 0,
+	 * by (*segdbCount) % mpp_connections_per_thread == 0,
 	 * then we initialize the struct members for that array location first.
 	 */
-	ParmsIndex = (*segdbCount) / cdb_connections_per_thread;
+	ParmsIndex = (*segdbCount) / mpp_connections_per_thread;
 	pParms = &ParmsAr[ParmsIndex];
 
-	if ((*segdbCount) % cdb_connections_per_thread == 0)
+	if ((*segdbCount) % mpp_connections_per_thread == 0)
 	{
-		Assert(cdb_connections_per_thread > 0);
+		Assert(mpp_connections_per_thread > 0);
 		pParms->segdbDescPtrArray =
-			(SegmentDatabaseDescriptor **) palloc0(cdb_connections_per_thread *
+			(SegmentDatabaseDescriptor **) palloc0(mpp_connections_per_thread *
 												   sizeof
 												   (SegmentDatabaseDescriptor
 													*));
@@ -746,8 +746,8 @@ thread_DoConnect(void *arg)
 		 * Build the connection string
 		 */
 		appendPQExpBuffer(&buffer,
-						  "options='-c cdb_session_role=EXECUTE -c cdb_segment=%d -c cdb_max_packet_size=%d' ",
-						  q->segindex, Cdb_max_packet_size);
+						  "options='-c mpp_session_role=EXECUTE -c mpp_segment=%d -c mpp_max_packet_size=%d' ",
+						  q->segindex, Mpp_max_packet_size);
 
 		if (q->hostname == NULL)
 			appendPQExpBufferStr(&buffer, "host='' ");
@@ -840,9 +840,9 @@ allocateGang(GangType type, int size, int content)
 
 	Gang	   *gp = NULL;
 
-	Assert(Cdb_role == CDB_ROLE_DISPATCH);
+	Assert(Mpp_role == MPP_ROLE_DISPATCH);
 
-	if (Cdb_role != CDB_ROLE_DISPATCH)
+	if (Mpp_role != MPP_ROLE_DISPATCH)
 		return NULL;
 
 	elog(DEBUG4, "allocateGang: allocatedReaderGangsN %d, availableReaderGangsN %d",
@@ -997,7 +997,7 @@ getCdbProcessList(Gang * gang)
 	List	   *list = NIL;
 
 
-	Assert(Cdb_role == CDB_ROLE_DISPATCH && Cdb_is_primary);
+	Assert(Mpp_role == MPP_ROLE_DISPATCH && Mpp_is_primary);
 	Assert(gang != NULL);
 	elog(DEBUG1, "getCdbProcessList, gangtype = %d, gangsize = %d", gang->type, gang->size);
 
@@ -1070,7 +1070,7 @@ getCdbProcessesForQD(int isPrimary)
 	CdbProcess *proc;
 
 
-	Assert(Cdb_role == CDB_ROLE_DISPATCH && Cdb_is_primary);
+	Assert(Mpp_role == MPP_ROLE_DISPATCH && Mpp_is_primary);
 	if (!isPrimary)
 	{
 		elog(FATAL, "getCdbProcessesForQD: unsupported request for QD mirror process");
@@ -1091,7 +1091,7 @@ getCdbProcessesForQD(int isPrimary)
 	proc = makeNode(CdbProcess);
 	proc->listenerAddr =
 		pstrdup(inet_ntoa(*(struct in_addr *) (theHost->h_addr_list[0])));
-	proc->listenerPort = Cdb_listener_port;
+	proc->listenerPort = Mpp_listener_port;
 	proc->pid = getpid();
 	proc->contentid = -1;
 	proc->routeid = 0;
@@ -1223,7 +1223,7 @@ freeGangs(void)
 {
 	MemoryContext oldContext;
 
-	if (Cdb_role != CDB_ROLE_DISPATCH)
+	if (Mpp_role != MPP_ROLE_DISPATCH)
 		return;
 
 	oldContext = MemoryContextSwitchTo(TopMemoryContext);

@@ -54,7 +54,7 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 	AclResult	aclresult;
 
 	bool hasDispatched = false;
-	bool shouldDispatch =  Cdb_role == CDB_ROLE_DISPATCH && !IsBootstrapProcessingMode();
+	bool shouldDispatch =  Mpp_role == MPP_ROLE_DISPATCH && !IsBootstrapProcessingMode();
 
 	saved_userid = GetUserId();
 
@@ -112,7 +112,7 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 	 
 
 	/* Create the schema's namespace */
-	if (shouldDispatch || Cdb_role != CDB_ROLE_EXECUTE)
+	if (shouldDispatch || Mpp_role != MPP_ROLE_EXECUTE)
 	{
 	namespaceId = NamespaceCreate(schemaName, owner_userid, 0);
 
@@ -167,7 +167,7 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 		}
 	
 	}
-	else if (Cdb_role == CDB_ROLE_EXECUTE)
+	else if (Mpp_role == MPP_ROLE_EXECUTE)
 	{
 		namespaceId = NamespaceCreate(schemaName, owner_userid, stmt->schemaOid);
 	}

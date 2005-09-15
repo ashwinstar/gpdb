@@ -344,7 +344,7 @@ void execMotionSortedReceiverFirstTime(MotionState *node)
 
     ReceiveReturnCode recvRC;
 
-    mySegIdx = Cdb_segment;
+    mySegIdx = Mpp_segment;
 
     /* INITIALIZATION -
      *
@@ -432,7 +432,7 @@ ExecInitMotion(Motion *node, EState *estate)
 
 	SO_printf("ExecInitMotion: initializing motion node\n");
 	
-    AssertState(Cdb_role != CDB_ROLE_UTILITY);
+    AssertState(Mpp_role != MPP_ROLE_UTILITY);
 	
 	prior_es_cur_slice_idx = estate->es_cur_slice_idx; /* save */
 	prior_es_cur_root_idx = estate->es_cur_root_idx; /* save */
@@ -449,7 +449,7 @@ ExecInitMotion(Motion *node, EState *estate)
 	 *   QD must initialize the global slice table.
 	 *   QE must fill in map from motionID to MotionState node.
 	 */
-	if ( Cdb_role == CDB_ROLE_DISPATCH )
+	if ( Mpp_role == MPP_ROLE_DISPATCH )
 	{
 		MemoryContext oldcxt;
 		oldcxt = MemoryContextSwitchTo(estate->es_query_cxt);
@@ -495,7 +495,7 @@ ExecInitMotion(Motion *node, EState *estate)
 		
 		MemoryContextSwitchTo(oldcxt);
 	}
-	else if ( Cdb_role == CDB_ROLE_EXECUTE )
+	else if ( Mpp_role == MPP_ROLE_EXECUTE )
 	{
 		Assert( estate->es_slice_map != NULL && estate->es_slice_map[0] == NULL );
 		estate->es_slice_map[node->motionID] = motionstate;
@@ -595,7 +595,7 @@ ExecInitMotion(Motion *node, EState *estate)
 			motionstate->hashSegIdxMask = palloc0( node->numHashSegs * sizeof(bool) );
 			for ( i=0; i<node->numHashSegs; i++ )
 			{
-				if ( node->hashSegIdx[i] == Cdb_segment )
+				if ( node->hashSegIdx[i] == Mpp_segment )
 					motionstate->hashSegIdxMask[i] = true;
 				else
 					motionstate->hashSegIdxMask[i] = false;
@@ -620,7 +620,7 @@ ExecInitMotion(Motion *node, EState *estate)
 			motionstate->fixedSegIdxMask = palloc0( node->numOutputSegs * sizeof(bool) );
 			for ( i=0; i<node->numOutputSegs; i++ )
 			{
-				if ( node->outputSegIdx[i] == Cdb_segment )
+				if ( node->outputSegIdx[i] == Mpp_segment )
 					motionstate->fixedSegIdxMask[i] = true;
 				else
 					motionstate->fixedSegIdxMask[i] = false;

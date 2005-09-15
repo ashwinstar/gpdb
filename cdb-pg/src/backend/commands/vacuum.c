@@ -251,7 +251,7 @@ vacuum(VacuumStmt *vacstmt)
 	 * If we are in Cdb Dispatch Mode, first send off
 	 * vacuum calls to all the qExecs
 	 */
-	if ( Cdb_role == CDB_ROLE_DISPATCH )
+	if ( Mpp_role == MPP_ROLE_DISPATCH )
 		dispatchVacuum(vacstmt);
 
 	if (vacstmt->verbose)
@@ -672,7 +672,7 @@ vac_update_relstats(Oid relid, BlockNumber num_pages, double num_tuples,
 		elog(ERROR, "pg_class entry for relid %u vanished during vacuuming",
 			relid);
 
-	if ( Cdb_role == CDB_ROLE_DISPATCH )
+	if ( Mpp_role == MPP_ROLE_DISPATCH )
 	{
 		cdb_get_relstats(relid, &num_pages, &num_tuples);
 		elog( DEBUG1, "After cdb_get_relstats numpages=%d and num_tuples=%lf", (int)num_pages, num_tuples);
@@ -3473,7 +3473,7 @@ static void dispatchVacuum(VacuumStmt *vacstmt)
 	Query *q;
 	StringInfoData buffer;
 
-	Assert( Cdb_role == CDB_ROLE_DISPATCH );
+	Assert( Mpp_role == MPP_ROLE_DISPATCH );
 
 	/*
 	 * Serialize the stmt tree, and create the sql statement: cdbexec ....

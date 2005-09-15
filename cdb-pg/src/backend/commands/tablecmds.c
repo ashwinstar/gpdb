@@ -288,7 +288,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 	AttrNumber	attnum;
 
 	bool hasDispatched = false;
-	bool shouldDispatch =  Cdb_role == CDB_ROLE_DISPATCH && !IsBootstrapProcessingMode() && relkind != RELKIND_SEQUENCE;
+	bool shouldDispatch =  Mpp_role == MPP_ROLE_DISPATCH && !IsBootstrapProcessingMode() && relkind != RELKIND_SEQUENCE;
 
 	/*
 	 * Truncate relname to appropriate length (probably a waste of time,
@@ -435,7 +435,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 
 	
 	/* If we are the dispatcher, we need to create the table to get the new relid */
-	if (Cdb_role == CDB_ROLE_DISPATCH || Cdb_role == CDB_ROLE_UTILITY)
+	if (Mpp_role == MPP_ROLE_DISPATCH || Mpp_role == MPP_ROLE_UTILITY)
 	{
 		relationId = heap_create_with_catalog(relname,
 											  namespaceId,
@@ -502,7 +502,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 		}
 	}
 
-	if (Cdb_role == CDB_ROLE_EXECUTE) 
+	if (Mpp_role == MPP_ROLE_EXECUTE) 
 	{
 		elog( DEBUG5,"CdbRole Execute of CREATE TABLE, relationid %d",stmt->relOid);
 		Assert(stmt->relOid != 0);
@@ -602,7 +602,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 
 		 
 
-		if ( Cdb_role == CDB_ROLE_DISPATCH && stmt != 0 && relkind == RELKIND_RELATION)
+		if ( Mpp_role == MPP_ROLE_DISPATCH && stmt != 0 && relkind == RELKIND_RELATION)
 				{
 					/* dispatch node needs to update policy */
 							 
@@ -671,7 +671,7 @@ RemoveRelation(const RangeVar *relation, DropStmt   *stmt)
 	object.objectId = relOid;
 	object.objectSubId = 0;
 
-	if (Cdb_role == CDB_ROLE_DISPATCH)
+	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
 			char *szCommand;
 			
@@ -767,7 +767,7 @@ TruncateRelation(TruncateStmt *stmt)
 	 */
 	heap_truncate_check_FKs(rel);
 
-	if (Cdb_role == CDB_ROLE_DISPATCH)
+	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
 			char *szCommand;
 			
@@ -1737,7 +1737,7 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 	/* keep the system catalog indexes current */
 	CatalogUpdateIndexes(relrelation, reltup);
 
-	if (Cdb_role == CDB_ROLE_DISPATCH)
+	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
 			char *szCommand;
 			
@@ -2362,28 +2362,28 @@ ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd)
 	switch (cmd->subtype)
 	{
 		case AT_AddColumn:		/* ADD COLUMN */
-		if (Cdb_role == CDB_ROLE_DISPATCH)
+		if (Mpp_role == MPP_ROLE_DISPATCH)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 			  errmsg("ALTER TABLE add column is not supported")));
 			ATExecAddColumn(tab, rel, (ColumnDef *) cmd->def);
 			break;
 		case AT_ColumnDefault:	/* ALTER COLUMN DEFAULT */
-		if (Cdb_role == CDB_ROLE_DISPATCH)
+		if (Mpp_role == MPP_ROLE_DISPATCH)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 			  errmsg("ALTER TABLE column default is not supported")));
 			ATExecColumnDefault(rel, cmd->name, cmd->def);
 			break;
 		case AT_DropNotNull:	/* ALTER COLUMN DROP NOT NULL */
-		if (Cdb_role == CDB_ROLE_DISPATCH)
+		if (Mpp_role == MPP_ROLE_DISPATCH)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 			  errmsg("ALTER TABLE drop not null is not supported")));
 			ATExecDropNotNull(rel, cmd->name);
 			break;
 		case AT_SetNotNull:		/* ALTER COLUMN SET NOT NULL */
-		if (Cdb_role == CDB_ROLE_DISPATCH)
+		if (Mpp_role == MPP_ROLE_DISPATCH)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 			  errmsg("ALTER TABLE set not null is not supported")));
@@ -2394,21 +2394,21 @@ ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd)
 			ATExecSetStatistics(rel, cmd->name, cmd->def);
 			break;
 		case AT_SetStorage:		/* ALTER COLUMN STORAGE */
-		if (Cdb_role == CDB_ROLE_DISPATCH)
+		if (Mpp_role == MPP_ROLE_DISPATCH)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 			  errmsg("ALTER TABLE set storage is not supported")));
 			ATExecSetStorage(rel, cmd->name, cmd->def);
 			break;
 		case AT_DropColumn:		/* DROP COLUMN */
-		if (Cdb_role == CDB_ROLE_DISPATCH)
+		if (Mpp_role == MPP_ROLE_DISPATCH)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 			  errmsg("ALTER TABLE drop column is not supported")));
 			ATExecDropColumn(rel, cmd->name, cmd->behavior, false, false);
 			break;
 		case AT_DropColumnRecurse:		/* DROP COLUMN with recursion */
-		if (Cdb_role == CDB_ROLE_DISPATCH)
+		if (Mpp_role == MPP_ROLE_DISPATCH)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 			  errmsg("ALTER TABLE drop column is not supported")));
@@ -2424,21 +2424,21 @@ ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd)
 			ATExecAddConstraint(tab, rel, cmd->def);
 			break;
 		case AT_DropConstraint:	/* DROP CONSTRAINT */
-		if (Cdb_role == CDB_ROLE_DISPATCH)
+		if (Mpp_role == MPP_ROLE_DISPATCH)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 			  errmsg("ALTER TABLE drop constraint is not supported")));
 			ATExecDropConstraint(rel, cmd->name, cmd->behavior, false);
 			break;
 		case AT_DropConstraintQuietly:	/* DROP CONSTRAINT for child */
-		if (Cdb_role == CDB_ROLE_DISPATCH)
+		if (Mpp_role == MPP_ROLE_DISPATCH)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 			  errmsg("ALTER TABLE drop constraint is not supported")));
 			ATExecDropConstraint(rel, cmd->name, cmd->behavior, true);
 			break;
 		case AT_AlterColumnType:		/* ALTER COLUMN TYPE */
-		if (Cdb_role == CDB_ROLE_DISPATCH)
+		if (Mpp_role == MPP_ROLE_DISPATCH)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 			  errmsg("ALTER TABLE alter column type is not supported")));
@@ -2449,21 +2449,21 @@ ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd)
 			break;
 		case AT_ChangeOwner:	/* ALTER OWNER */
 			/* get_usesysid raises an error if no such user */
-			if (Cdb_role == CDB_ROLE_DISPATCH)
+			if (Mpp_role == MPP_ROLE_DISPATCH)
 			ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 			  errmsg("ALTER TABLE change owner is not supported")));
 			ATExecChangeOwner(RelationGetRelid(rel), get_usesysid(cmd->name));
 			break;
 		case AT_ClusterOn:		/* CLUSTER ON */
-		if (Cdb_role == CDB_ROLE_DISPATCH)
+		if (Mpp_role == MPP_ROLE_DISPATCH)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 			  errmsg("ALTER TABLE cluster on is not supported")));
 			ATExecClusterOn(rel, cmd->name);
 			break;
 		case AT_DropCluster:	/* SET WITHOUT CLUSTER */
-		if (Cdb_role == CDB_ROLE_DISPATCH)
+		if (Mpp_role == MPP_ROLE_DISPATCH)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 			  errmsg("ALTER TABLE set without cluster is not supported")));
@@ -4125,7 +4125,7 @@ ATAddForeignKeyConstraint(AlteredTableInfo *tab, Relation rel,
 	Oid			indexOid;
 	Oid			constrOid;
 
-	if (Cdb_role == CDB_ROLE_DISPATCH)
+	if (Mpp_role == MPP_ROLE_DISPATCH)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 			  errmsg("Referential integrity (FOREIGN KEY) constraints are not supported in Bizgres MPP")));

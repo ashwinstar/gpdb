@@ -79,7 +79,7 @@ static void initResultRelInfo(ResultRelInfo *resultRelInfo,
 				  /* 
 				   * Added the following parameter for CDB,
 				   * so that when the relation is opened for insert, update or delete,
-				   * and the Cdb_role is CDB_ROLE_DISPATCH, 
+				   * and the Mpp_role is MPP_ROLE_DISPATCH, 
 				   * and the plan dispatch type is DISPATCH_PARALLEL,
 				   * the lock type passed to heap_open is set to ExclusiveLock instead of RowExclusiveLock.
 				   */
@@ -171,7 +171,7 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 	/* 
 	 * Handling of the Slice table depends on context.
 	 */
-	 if ( Cdb_role == CDB_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL )
+	 if ( Mpp_role == MPP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL )
 	 {
 		/* Set up blank slice table to be filled in during InitPlan. */
 		
@@ -190,7 +190,7 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 		 */
 		InitSliceTable(estate, queryDesc->plantree->nMotionNodes, queryDesc->plantree->nParamExec);
 	 }
-	 else if ( Cdb_role == CDB_ROLE_EXECUTE )
+	 else if ( Mpp_role == MPP_ROLE_EXECUTE )
 	 {
 		/* Set up blank map (motionID -> MotionState*) to be filled in during InitPlan */
 		estate->es_slice_map = (MotionState**)palloc0((1+queryDesc->plantree->nMotionNodes) * sizeof(MotionState*));
@@ -216,7 +216,7 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 	 */
 	InitPlan(queryDesc, explainOnly);
 	
-	if ( Cdb_role == CDB_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL )
+	if ( Mpp_role == MPP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL )
 	{
 		/* Assign gang descriptions to the root slices of the slice forest. */
 		InitRootSlices(queryDesc);		
@@ -237,7 +237,7 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 
 	MemoryContextSwitchTo(oldcontext);
 	
-	if ( Debug_print_slice_table && Cdb_role == CDB_ROLE_DISPATCH )
+	if ( Debug_print_slice_table && Mpp_role == MPP_ROLE_DISPATCH )
 	{
 		elog_node_display(DEBUG1, 
 						  "global (QD) slice table", 
@@ -307,13 +307,13 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 	/* Are we going to dispatch this plan parallel?  Only if we're running
 	 * as a QD and the plan is a parallel plan.
 	 */
-	shouldDispatch =  Cdb_role == CDB_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL;
+	shouldDispatch =  Mpp_role == MPP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL;
 	
 	/* If we're running as a QE and there's a slice table in our queryDesc,
 	 * then we need to finish the EState setup we prepared for back in 
 	 * CdbExecQuery.
 	 */
-	if ( Cdb_role == CDB_ROLE_EXECUTE && estate->es_sliceTable != NULL )
+	if ( Mpp_role == MPP_ROLE_EXECUTE && estate->es_sliceTable != NULL )
 	{
 		MotionState *motionstate = NULL;
 		
@@ -346,8 +346,8 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 		
 		elog(DEBUG1, 
 			"Segment %d (%s) executing slice %d under root %d.", 
-			Cdb_segment,
-			(Cdb_is_primary ? "primary" : "mirror"),
+			Mpp_segment,
+			(Mpp_is_primary ? "primary" : "mirror"),
 			estate->es_cur_slice_idx,
 			estate->es_cur_root_idx
 			);
@@ -445,17 +445,17 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 		* Run the plan locally.  There are three ways;
 		*
 		* 1. Do nothing -- this occurs when the specified direction is
-		*    NoMovementScanDirection or when Cdb_role is CDB_ROLE_DISPATCH
+		*    NoMovementScanDirection or when Mpp_role is MPP_ROLE_DISPATCH
 		*    and the current slice belongs to a QE.
 		*
-		* 2. Run a root slice -- this occurs when Cdb_role is CDB_ROLE_UTILITY
+		* 2. Run a root slice -- this occurs when Mpp_role is MPP_ROLE_UTILITY
 		*    or the current slice is a root.  It corresponds to the "normal"
 		*    path through the executor in that we enter the plan at the top
 		*    and count on the motion nodes at the fringe of the top slice to
 		*    return without ever calling nodes below them.
 		*
-		* 3. Run a non-root slice -- this occurs when Cdb_role is 
-		*    CDB_ROLE_EXECUTE and the current slice is not a root slice.
+		* 3. Run a non-root slice -- this occurs when Mpp_role is 
+		*    MPP_ROLE_EXECUTE and the current slice is not a root slice.
 		*    It corresponds to a QE running a slice with a motion node on
 		*    top.  The call, thus, returns no tuples (since they all go out
 		*    on the interconnect to the receiver version of the motion node),
@@ -466,11 +466,11 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 		{
 			result = NULL;
 		}
-		else if ( Cdb_role == CDB_ROLE_DISPATCH && sliceRunsOnQE(getCurrentSlice(estate)) )
+		else if ( Mpp_role == MPP_ROLE_DISPATCH && sliceRunsOnQE(getCurrentSlice(estate)) )
 		{
 			result = NULL;
 		}
-		else if ( Cdb_role == CDB_ROLE_EXECUTE && estate->es_cur_slice_idx != estate->es_cur_root_idx )
+		else if ( Mpp_role == MPP_ROLE_EXECUTE && estate->es_cur_slice_idx != estate->es_cur_root_idx )
 		{
 			/* Run a non-root slice on a QE.  
 			 * 
@@ -870,7 +870,7 @@ InitPlan(QueryDesc *queryDesc, bool explainOnly)
 	Relation	intoRelationDesc;
 	bool		do_select_into;
 	TupleDesc	tupType;
-	bool shouldDispatch =  Cdb_role == CDB_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL;
+	bool shouldDispatch =  Mpp_role == MPP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL;
 
 	/*
 	 * Do permissions checks.  It's sufficient to examine the query's top
@@ -1206,7 +1206,7 @@ InitPlan(QueryDesc *queryDesc, bool explainOnly)
  */
 /* 
  * Added the shouldDispatch parameter for MPP.
- * This is true iff the Cdb_role is CDB_ROLE_DISPATCH, 
+ * This is true iff the Mpp_role is MPP_ROLE_DISPATCH, 
  * and the plan dispatch type is DISPATCH_PARALLEL.
  * When true, the lock type passed to heap_open is set to 
  * ExclusiveLock instead of RowExclusiveLock.

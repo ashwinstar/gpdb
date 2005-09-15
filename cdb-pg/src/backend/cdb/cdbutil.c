@@ -66,11 +66,11 @@ void getCdbCdb(void)
 	MemoryContext oldContext;
 	MemoryContext permanentContext = TopMemoryContext;
 	
-	if (Cdb_role == CDB_ROLE_UTILITY)
+	if (Mpp_role == MPP_ROLE_UTILITY)
 		elog(DEBUG1, "WARNING: called getCdbCdb when in utility mode");
 
-	if (Cdb_role == CDB_ROLE_DISPATCH && Cdb_segment < -1)
-		Cdb_segment = -1;
+	if (Mpp_role == MPP_ROLE_DISPATCH && Mpp_segment < -1)
+		Mpp_segment = -1;
 		
 	/*
 	 * Release storage for the cdbname if not NULL
@@ -180,40 +180,40 @@ void getCdbCdb(void)
 	heap_close(cdb_cdb_rel, AccessShareLock);
 
 	/*
-	 * Validate the cdb_role against the content.
+	 * Validate the mpp_role against the content.
 	 * If the role is DISPATCH, we must be an entry database,
 	 * and if the role is EXECUTE, we must be a segment database.
 	 */
-	if ( Cdb_role == CDB_ROLE_DISPATCH && CdbIdentity.segindex >= 0 )
+	if ( Mpp_role == MPP_ROLE_DISPATCH && CdbIdentity.segindex >= 0 )
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-				 errmsg("Cannot have a Cdb_role of dispatch when connected to a segment database." 
+				 errmsg("Cannot have a Mpp_role of dispatch when connected to a segment database." 
 				 		)));
 	}
-	else if ( Cdb_role == CDB_ROLE_EXECUTE && CdbIdentity.segindex < 0 )
+	else if ( Mpp_role == MPP_ROLE_EXECUTE && CdbIdentity.segindex < 0 )
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-				 errmsg("Cannot have a Cdb_role of execute when connected to an entry database." 
+				 errmsg("Cannot have a Mpp_role of execute when connected to an entry database." 
 				 		)));
 	}
 	
-	if ( Cdb_role != CDB_ROLE_UTILITY && CdbIdentity.segindex != Cdb_segment )
+	if ( Mpp_role != MPP_ROLE_UTILITY && CdbIdentity.segindex != Mpp_segment )
 	{
-		if (Cdb_segment < -1)
+		if (Mpp_segment < -1)
 		{
-			Cdb_segment = CdbIdentity.segindex;
+			Mpp_segment = CdbIdentity.segindex;
 			ereport(WARNING,
 					(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-					 errmsg("Mpp.Mpp segindex not same as Cdb_segment." 
+					 errmsg("Mpp.Mpp segindex not same as Mpp_segment." 
 					 		)));
 		}
 		else
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-					 errmsg("mpp.mpp segindex not same as Cdb_segment." 
+					 errmsg("mpp.mpp segindex not same as Mpp_segment." 
 					 		)));
 		}
 		
@@ -659,7 +659,7 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 	for ( i=0; i<component_databases->total_entry_dbs; i++ )
 	{
 		CdbComponentDatabaseInfo* pInfo = &component_databases->entry_db_info[i];
-		if ( pInfo->dbid == CdbIdentity.dbid && pInfo->segindex == Cdb_segment )
+		if ( pInfo->dbid == CdbIdentity.dbid && pInfo->segindex == Mpp_segment )
 		{
 			break;
 		}
@@ -669,7 +669,7 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_EXCEPTION),
 				errmsg("Cannot locate entry database represented by mpp.mpp row in mpp.pgdatabase: dbid %d content %d",
-				CdbIdentity.dbid, Cdb_segment )));
+				CdbIdentity.dbid, Mpp_segment )));
 	}
 
 	/*
@@ -785,11 +785,11 @@ void cdb_setup(void)
 	
 	cdblink_setup();
 	
-	/* If cdb_role is UTILITY, skip this call. */
-	if ( Cdb_role != CDB_ROLE_UTILITY )
+	/* If mpp_role is UTILITY, skip this call. */
+	if ( Mpp_role != MPP_ROLE_UTILITY )
 		InitMotionLayer();
         
-    if ( Cdb_role == CDB_ROLE_DISPATCH )
+    if ( Mpp_role == MPP_ROLE_DISPATCH )
     {
         /* connect to mirrored entry db */
         buildMirrorQDDefinition();
@@ -816,7 +816,7 @@ void cdb_cleanup(int code, Datum arg)
     
     disconnectMirrorQD();
 	
-	if (Cdb_role != CDB_ROLE_UTILITY)
+	if (Mpp_role != MPP_ROLE_UTILITY)
 		CleanUpMotionLayer();
 }
 

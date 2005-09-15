@@ -102,7 +102,7 @@ DefineSequence(CreateSeqStmt *seq)
 	NameData	name;
 
 	
-	bool shouldDispatch =  Cdb_role == CDB_ROLE_DISPATCH && !IsBootstrapProcessingMode();
+	bool shouldDispatch =  Mpp_role == MPP_ROLE_DISPATCH && !IsBootstrapProcessingMode();
 
 	/* Check and set all option values */
 	init_params(seq->options, &new, true);
@@ -118,7 +118,7 @@ DefineSequence(CreateSeqStmt *seq)
 		
 			/* stmt->relOid = newOid(); */
 	}
-	else if (Cdb_role == CDB_ROLE_EXECUTE)
+	else if (Mpp_role == MPP_ROLE_EXECUTE)
 	{
 
 			stmt->relOid = seq->relOid;
@@ -159,8 +159,8 @@ DefineSequence(CreateSeqStmt *seq)
 				typnam->typeid = INT8OID;
 				coldef->colname = "last_value";
 				
-				if (Cdb_role == CDB_ROLE_EXECUTE)
-					new.last_value += ((Cdb_segment+1) << 24);
+				if (Mpp_role == MPP_ROLE_EXECUTE)
+					new.last_value += ((Mpp_segment+1) << 24);
 
 				value[i - 1] = Int64GetDatumFast(new.last_value);
 
@@ -178,8 +178,8 @@ DefineSequence(CreateSeqStmt *seq)
 			case SEQ_COL_MINVALUE:
 				typnam->typeid = INT8OID;
 				coldef->colname = "min_value";
-				if (Cdb_role == CDB_ROLE_EXECUTE)
-					new.min_value += ((Cdb_segment+1) << 24);
+				if (Mpp_role == MPP_ROLE_EXECUTE)
+					new.min_value += ((Mpp_segment+1) << 24);
 
 				value[i - 1] = Int64GetDatumFast(new.min_value);
 				

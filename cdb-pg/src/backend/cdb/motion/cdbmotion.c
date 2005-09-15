@@ -260,7 +260,7 @@ void InitMotionLayer(void)
 		ALLOCSET_SMALL_MINSIZE, ALLOCSET_SMALL_INITSIZE, ALLOCSET_SMALL_MAXSIZE);
 
 
-	Cdb_max_tuple_chunk_size = Cdb_max_packet_size - PACKET_HEADER_SIZE - TUPLE_CHUNK_HEADER_SIZE;
+	Cdb_max_tuple_chunk_size = Mpp_max_packet_size - PACKET_HEADER_SIZE - TUPLE_CHUNK_HEADER_SIZE;
 	
 	/* Initialize the Motion Layer IPC subsystem. */
 	InitMotionLayerIPC( );

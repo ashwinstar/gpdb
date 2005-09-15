@@ -49,7 +49,7 @@ CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
 	EState *estate = NULL;
 	
 	/* tcop shouldn't call unless the role is right! */
-	Assert(Cdb_role == CDB_ROLE_EXECUTE );
+	Assert(Mpp_role == MPP_ROLE_EXECUTE );
 	
 	/* TODO - SLICE PLAN INTEGRATION 
 	 * Do something smart with the memory context. 

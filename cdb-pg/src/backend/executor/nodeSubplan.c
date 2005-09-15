@@ -949,7 +949,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 
 	bool hasDispatched = false;
 	bool shouldDispatch = false;
-    if ( Cdb_role == CDB_ROLE_DISPATCH && 
+    if ( Mpp_role == MPP_ROLE_DISPATCH && 
 		planstate != NULL && 
 		planstate->plan != NULL && 
 		planstate->plan->dispatch == DISPATCH_PARALLEL )

@@ -3045,7 +3045,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 					StringInfoData buf;
 				
 					pq_beginmessage(&buf, 'w');
-					pq_sendint(&buf, (int32) Cdb_listener_port, sizeof(int32));			
+					pq_sendint(&buf, (int32) Mpp_listener_port, sizeof(int32));			
 					pq_endmessage(&buf);
 					pq_flush();
 				}
