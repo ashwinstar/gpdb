@@ -1,5 +1,5 @@
 /*
- * cdbexecplan.h
+ * mppexecplan.h
  *
  *
  * Copyright (c) 2001-2003, PostgreSQL Global Development Group
@@ -24,8 +24,8 @@
  *
  */
 
-#ifndef CDBEXECPLAN_H
-#define CDBEXECPLAN_H
+#ifndef MPPEXECPLAN_H
+#define MPPEXECPLAN_H
 
 /*
  * External declarations
@@ -35,5 +35,5 @@ extern Datum cdb_exec_plan(PG_FUNCTION_ARGS);
 extern Datum cdb_serialize_plan(PG_FUNCTION_ARGS);
 extern Datum cdb_serialize_query(PG_FUNCTION_ARGS);
 extern Datum cdb_exec_indirect(PG_FUNCTION_ARGS);
-extern Datum cdb_test_cdbexec(PG_FUNCTION_ARGS);
-#endif   /* CDBEXECPLAN_H */
+extern Datum cdb_test_mppexec(PG_FUNCTION_ARGS);
+#endif   /* MPPEXECPLAN_H */

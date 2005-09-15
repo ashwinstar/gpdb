@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------
  *
- * cdbexecplan.c
+ * mppexecplan.c
  *
  *
  *     Copyright (c) 2001-2003, PostgreSQL Global Development Group
@@ -48,7 +48,7 @@
 #include "nodes/print.h"
 #include "cdb/cdbsrlz.h"
 
-#include "cdbexecplan.h"
+#include "mppexecplan.h"
 
 // Added to spi.c
 extern int  SPI_execute_cdb( const char *src, Plan* pPlan, Query* pQuery, bool read_only, int tcount);
@@ -539,9 +539,9 @@ cdb_exec_indirect(PG_FUNCTION_ARGS)
 	SRF_RETURN_DONE(funcctx);
 }
 
-PG_FUNCTION_INFO_V1(cdb_test_cdbexec);
+PG_FUNCTION_INFO_V1(cdb_test_mppexec);
 Datum
-cdb_test_cdbexec(PG_FUNCTION_ARGS)
+cdb_test_mppexec(PG_FUNCTION_ARGS)
 {
 	char* pszSQL = NULL;
 	char* pszPlan = NULL;
@@ -553,7 +553,7 @@ cdb_test_cdbexec(PG_FUNCTION_ARGS)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				errmsg("SPI_connect failed in cdb_test_cdbexec" )));
+				errmsg("SPI_connect failed in cdb_test_mppexec" )));
 	}
 
 	/*
@@ -575,7 +575,7 @@ cdb_test_cdbexec(PG_FUNCTION_ARGS)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				errmsg("cdb_test_cdbexec can only handle 1 sql statement, but there were %d", list_length(thePlan->ptlist) )));
+				errmsg("cdb_test_mppexec can only handle 1 sql statement, but there were %d", list_length(thePlan->ptlist) )));
 	}
 	
 	ListCell   *plan_list_item = list_head(thePlan->ptlist);
@@ -601,7 +601,7 @@ cdb_test_cdbexec(PG_FUNCTION_ARGS)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				errmsg("cdb_test_cdbexec can only handle 1 sql statement, but there were %d", list_length(query_list_list) )));
+				errmsg("cdb_test_mppexec can only handle 1 sql statement, but there were %d", list_length(query_list_list) )));
 	}
 	
 	ListCell   *query_list_list_item;
@@ -614,7 +614,7 @@ cdb_test_cdbexec(PG_FUNCTION_ARGS)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-					errmsg("cdb_test_cdbexec can only handle 1 sql statement, but there were %d", list_length(query_list) )));
+					errmsg("cdb_test_mppexec can only handle 1 sql statement, but there were %d", list_length(query_list) )));
 		}
 		
 		foreach(query_list_item, query_list)
@@ -640,13 +640,13 @@ cdb_test_cdbexec(PG_FUNCTION_ARGS)
 	StringInfoData buffer;
 	initStringInfo( &buffer );
 
-	appendStringInfo( &buffer, "cdbexec '%s' '%s'", pszQuery, pszPlan);
+	appendStringInfo( &buffer, "mppexec '%s' '%s'", pszQuery, pszPlan);
 
 	if ( SPI_OK_SELECT != SPI_execute( buffer.data, false, 0 ) )
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				errmsg("SPI_execute failed in cdb_test_cdbexec" )));
+				errmsg("SPI_execute failed in cdb_test_mppexec" )));
 	}
 
 	bool bRtn = true;	

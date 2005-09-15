@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * cdbexec.h
- *	  CDBEXEC command
+ *	  MPPEXEC command
  *
  *
  * Copyright (c) 2002-2004, PostgreSQL Global Development Group
@@ -19,7 +19,7 @@
 #include "tcop/dest.h"
 
 
-/* Utility statement CDBEXEC */
+/* Utility statement MPPEXEC */
 extern void CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag);
 
 #endif   /* CDBEXEC_H */

@@ -1830,7 +1830,7 @@ typedef struct DeallocateStmt
 
 
 /* ----------------------
- *		CDBEXEC Statement
+ *		MPPEXEC Statement
  *
  * Serialized items are Value nodes (NodeTag T_String).
  * ----------------------

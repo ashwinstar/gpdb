@@ -119,8 +119,8 @@ typedef struct Plan
 	  * It could (and should) move to a TopPlan node if we ever do that.
 	  *
 	  * Currently, the slice table should not be installed on the QD.
-	  * Rather is it shipped to QEs as a separate parameter to CDBEXEC.
-	  * The implementation of CDBEXEC, which runs on the QEs, installs
+	  * Rather is it shipped to QEs as a separate parameter to MPPEXEC.
+	  * The implementation of MPPEXEC, which runs on the QEs, installs
 	  * the slice table in the plan as required there.
 	  */
 	Node *sliceTable;
