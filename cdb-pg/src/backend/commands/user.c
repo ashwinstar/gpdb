@@ -795,7 +795,7 @@ CreateUser(CreateUserStmt *stmt)
 			
 
 			/*
-			 * Serialize the stmt tree, and create the sql statement: cdbexec ....
+			 * Serialize the stmt tree, and create the sql statement: mppexec ....
 			 */
 			Query * q = makeNode(Query);
 
@@ -817,7 +817,7 @@ CreateUser(CreateUserStmt *stmt)
 
 			elog( DEBUG5,"Comand %s", szCommand);
 
-			appendStringInfo(&buffer, "cdbexec '%s' ''", szCommand);
+			appendStringInfo(&buffer, "mppexec '%s' ''", szCommand);
 
 			pfree(szCommand);
 
@@ -1250,7 +1250,7 @@ DropUser(DropUserStmt *stmt)
 			
 
 			/*
-			 * Serialize the stmt tree, and create the sql statement: cdbexec ....
+			 * Serialize the stmt tree, and create the sql statement: mppexec ....
 			 */
 			Query * q = makeNode(Query);
 
@@ -1272,7 +1272,7 @@ DropUser(DropUserStmt *stmt)
 
 			elog( DEBUG5,"Comand %s", szCommand);
 
-			appendStringInfo(&buffer, "cdbexec '%s' ''", szCommand);
+			appendStringInfo(&buffer, "mppexec '%s' ''", szCommand);
 
 			pfree(szCommand);
 

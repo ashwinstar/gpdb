@@ -466,7 +466,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 			char *pszCreateTable;
 
 			/*
-			 * Serialize the stmt tree, and create the sql statement: cdbexec ....
+			 * Serialize the stmt tree, and create the sql statement: mppexec ....
 			 */
 			Query * q = makeNode(Query);
 
@@ -488,7 +488,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 
 			elog( DEBUG5,"Comand %s", pszCreateTable);
 
-			appendStringInfo(&buffer, "cdbexec '%s' ''", pszCreateTable);
+			appendStringInfo(&buffer, "mppexec '%s' ''", pszCreateTable);
 
 			pfree(pszCreateTable);
 
@@ -628,7 +628,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 			szCommand = "";
 		Assert( message != NULL );
 		elog( DEBUG5,
-				"cdbexec command results for \"%s\": %s",
+				"mppexec command results for \"%s\": %s",
 				szCommand, message );
 
 		pfree(message);
@@ -677,7 +677,7 @@ RemoveRelation(const RangeVar *relation, DropStmt   *stmt)
 			
 
 			/*
-			 * Serialize the stmt tree, and create the sql statement: cdbexec ....
+			 * Serialize the stmt tree, and create the sql statement: mppexec ....
 			 */
 			Query * q = makeNode(Query);
 
@@ -699,7 +699,7 @@ RemoveRelation(const RangeVar *relation, DropStmt   *stmt)
 
 			elog( DEBUG1,"Comand %s", szCommand);
 
-			appendStringInfo(&buffer, "cdbexec '%s' ''", szCommand);
+			appendStringInfo(&buffer, "mppexec '%s' ''", szCommand);
 
 			pfree(szCommand);
 
@@ -773,7 +773,7 @@ TruncateRelation(TruncateStmt *stmt)
 			
 
 			/*
-			 * Serialize the stmt tree, and create the sql statement: cdbexec ....
+			 * Serialize the stmt tree, and create the sql statement: mppexec ....
 			 */
 			Query * q = makeNode(Query);
 
@@ -795,7 +795,7 @@ TruncateRelation(TruncateStmt *stmt)
 
 			elog( DEBUG1,"Comand %s", szCommand);
 
-			appendStringInfo(&buffer, "cdbexec '%s' ''", szCommand);
+			appendStringInfo(&buffer, "mppexec '%s' ''", szCommand);
 
 			pfree(szCommand);
 
@@ -1743,7 +1743,7 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 			
 
 			/*
-			 * Serialize the stmt tree, and create the sql statement: cdbexec ....
+			 * Serialize the stmt tree, and create the sql statement: mppexec ....
 			 */
 			Query * q = makeNode(Query);
 
@@ -1765,7 +1765,7 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 
 			elog( DEBUG1,"Comand %s", szCommand);
 
-			appendStringInfo(&buffer, "cdbexec '%s' ''", szCommand);
+			appendStringInfo(&buffer, "mppexec '%s' ''", szCommand);
 
 			pfree(szCommand);
 

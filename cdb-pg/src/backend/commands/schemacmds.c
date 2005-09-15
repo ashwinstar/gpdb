@@ -122,7 +122,7 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 			char *pscCreateSchema;
 
 			/*
-			 * Serialize the stmt tree, and create the sql statement: cdbexec ....
+			 * Serialize the stmt tree, and create the sql statement: mppexec ....
 			 */
 			Query * q = makeNode(Query);
 
@@ -152,7 +152,7 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 
 			elog( DEBUG5 ,"Dispatch Comand %s", pscCreateSchema);
 
-			appendStringInfo(&buffer, "cdbexec '%s' ''", pscCreateSchema);
+			appendStringInfo(&buffer, "mppexec '%s' ''", pscCreateSchema);
 
 			pfree(pscCreateSchema);
 
@@ -197,7 +197,7 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 			szCommand = "";
 		Assert( message != NULL );
 		elog( DEBUG5,
-				"cdbexec command results for \"%s\": %s",
+				"mppexec command results for \"%s\": %s",
 				szCommand, message );
 
 		pfree(message);
@@ -207,7 +207,7 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 			char *message = CdbDumpDispatchResults(results, false);
 			ereport( ERROR,
 						(errcode( ERRCODE_CDB_COMMAND_ERROR ),
-						errmsg("cdbexec command failed on one or more segment databases: %s",
+						errmsg("mppexec command failed on one or more segment databases: %s",
 						message
 					)));
 				

@@ -376,7 +376,7 @@ DefineView(ViewStmt* stmt)
 			
 
 			/*
-			 * Serialize the stmt tree, and create the sql statement: cdbexec ....
+			 * Serialize the stmt tree, and create the sql statement: mppexec ....
 			 */
 			Query * q = makeNode(Query);
 
@@ -399,7 +399,7 @@ DefineView(ViewStmt* stmt)
 
 			elog( DEBUG1,"Comand %s", szCommand);
 
-			appendStringInfo(&buffer, "cdbexec '%s' ''", szCommand);
+			appendStringInfo(&buffer, "mppexec '%s' ''", szCommand);
 
 			pfree(szCommand);
 
@@ -438,7 +438,7 @@ RemoveView(const RangeVar *view, DropStmt * stmt)
 			
 
 			/*
-			 * Serialize the stmt tree, and create the sql statement: cdbexec ....
+			 * Serialize the stmt tree, and create the sql statement: mppexec ....
 			 */
 			Query * q = makeNode(Query);
 
@@ -460,7 +460,7 @@ RemoveView(const RangeVar *view, DropStmt * stmt)
 
 			elog( DEBUG1,"Comand %s", szCommand);
 
-			appendStringInfo(&buffer, "cdbexec '%s' ''", szCommand);
+			appendStringInfo(&buffer, "mppexec '%s' ''", szCommand);
 
 			pfree(szCommand);
 

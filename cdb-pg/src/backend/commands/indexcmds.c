@@ -440,7 +440,7 @@ DefineIndex(RangeVar *heapRelation,
 			char *pszCreateIndex;
 
 			/*
-			 * Serialize the stmt tree, and create the sql statement: cdbexec ....
+			 * Serialize the stmt tree, and create the sql statement: mppexec ....
 			 */
 			Query * q = makeNode(Query);
 
@@ -462,7 +462,7 @@ DefineIndex(RangeVar *heapRelation,
 
 			elog( DEBUG5,"Comand %s", pszCreateIndex);
 
-			appendStringInfo(&buffer, "cdbexec '%s' ''", pszCreateIndex);
+			appendStringInfo(&buffer, "mppexec '%s' ''", pszCreateIndex);
 
 			pfree(pszCreateIndex);
 
@@ -497,7 +497,7 @@ DefineIndex(RangeVar *heapRelation,
 			szCommand = "";
 		Assert( message != NULL );
 		elog( DEBUG5,
-				"cdbexec command results for \"%s\": %s",
+				"mppexec command results for \"%s\": %s",
 				szCommand, message );
 
 		pfree(message);
@@ -1024,7 +1024,7 @@ RemoveIndex(RangeVar *relation, DropStmt * stmt)
 			
 
 			/*
-			 * Serialize the stmt tree, and create the sql statement: cdbexec ....
+			 * Serialize the stmt tree, and create the sql statement: mppexec ....
 			 */
 			Query * q = makeNode(Query);
 
@@ -1046,7 +1046,7 @@ RemoveIndex(RangeVar *relation, DropStmt * stmt)
 
 			elog( DEBUG1,"Comand %s", szCommand);
 
-			appendStringInfo(&buffer, "cdbexec '%s' ''", szCommand);
+			appendStringInfo(&buffer, "mppexec '%s' ''", szCommand);
 
 			pfree(szCommand);
 

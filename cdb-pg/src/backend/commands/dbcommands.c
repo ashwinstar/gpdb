@@ -357,7 +357,7 @@ createdb(CreatedbStmt *stmt)
 
 
 			/*
-			 * Serialize the stmt tree, and create the sql statement: cdbexec ....
+			 * Serialize the stmt tree, and create the sql statement: mppexec ....
 			 */
 			Query * q = makeNode(Query);
 
@@ -379,7 +379,7 @@ createdb(CreatedbStmt *stmt)
 
 			elog( DEBUG5,"Comand %s", pszCreateDb);
 
-			appendStringInfo(&buffer, "cdbexec '%s' ''", pszCreateDb);
+			appendStringInfo(&buffer, "mppexec '%s' ''", pszCreateDb);
 
 			pfree(pszCreateDb);
 
@@ -588,7 +588,7 @@ createdb(CreatedbStmt *stmt)
 			szCommand = "";
 		Assert( message != NULL );
 		elog( DEBUG5,
-				"cdbexec command results for \"%s\": %s",
+				"mppexec command results for \"%s\": %s",
 				szCommand, message );
 
 		pfree(message);

@@ -1167,7 +1167,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 				szCommand = "";
 			Assert( message != NULL );
 			elog( DEBUG4,
-					"cdbexec command results for \"%s\": %s",
+					"mppexec command results for \"%s\": %s",
 					szCommand, message );
 
 			pfree(message);
@@ -1178,7 +1178,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			
 				ereport( NOTICE,
 							(errcode( ERRCODE_CDB_COMMAND_ERROR ),
-							errmsg("cdbexec command failed on one or more segment databases: %s",
+							errmsg("mppexec command failed on one or more segment databases: %s",
 							message
 						)));
 
@@ -1210,7 +1210,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			szCommand = "";
 		Assert( message != NULL );
 		elog( DEBUG4,
-				"cdbexec command results for \"%s\": %s",
+				"mppexec command results for \"%s\": %s",
 				szCommand, message );
 
 		pfree(message);
@@ -1220,7 +1220,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			char *message = CdbDumpDispatchResults(results, false);
 			ereport( ERROR,
 						(errcode( ERRCODE_CDB_COMMAND_ERROR ),
-						errmsg("cdbexec command failed on one or more segment databases: %s",
+						errmsg("mppexec command failed on one or more segment databases: %s",
 						message
 					)));
 				

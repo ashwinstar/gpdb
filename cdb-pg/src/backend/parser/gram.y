@@ -342,7 +342,7 @@ static void doNegateFloat(Value *v);
 	BACKWARD BEFORE BEGIN_P BETWEEN BIGINT BINARY BIT
 	BOOLEAN_P BOTH BY
 
-	CACHE CALLED CASCADE CASE CAST CDBEXEC CHAIN CHAR_P
+	CACHE CALLED CASCADE CASE CAST MPPEXEC CHAIN CHAR_P
 	CHARACTER CHARACTERISTICS CHECK CHECKPOINT CLASS CLOSE
 	CLUSTER COALESCE COLLATE COLUMN COMMENT COMMIT
 	COMMITTED CONSTRAINT CONSTRAINTS CONVERSION_P CONVERT COPY CREATE CREATEDB
@@ -4641,11 +4641,11 @@ DeallocateStmt: DEALLOCATE name
  *
  *		QUERY :
  *
- *				CDBEXEC query plan [ ( parameter [, ...] ) ] [ sliceinfo ]
+ *				MPPEXEC query plan [ ( parameter [, ...] ) ] [ sliceinfo ]
  *
  *****************************************************************************/
 
-CdbExecStmt:	CDBEXEC cdb_string cdb_string opt_cdb_string_list opt_cdb_string
+CdbExecStmt:	MPPEXEC cdb_string cdb_string opt_cdb_string_list opt_cdb_string
 				{
 					CdbExecStmt *n = makeNode(CdbExecStmt);
 
@@ -7757,7 +7757,7 @@ unreserved_keyword:
 			| CACHE
 			| CALLED
 			| CASCADE
-			| CDBEXEC
+			| MPPEXEC
 			| CHAIN
 			| CHARACTERISTICS
 			| CHECKPOINT

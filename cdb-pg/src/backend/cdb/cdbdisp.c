@@ -1462,7 +1462,7 @@ CdbDoCommandInt(const char *szCommand,
 	message_do = CdbDumpDispatchResults(results, true);
 	Assert(message_do != NULL);
 	elog(DEBUG5,
-		 "cdbexec command results for \"%s\": %s", szCommand, message_do);
+		 "mppexec command results for \"%s\": %s", szCommand, message_do);
 
 	pfree(message_do);
 
@@ -1623,7 +1623,7 @@ setCancelFlag(void)
 
 
 /*
- * Compose and dispatch the CDBEXEC commands corresponding to a plan tree
+ * Compose and dispatch the MPPEXEC commands corresponding to a plan tree
  * within a complete parallel plan.  (A plan tree will correspond either
  * to an initPlan or to the main plan.)
  *
@@ -1645,7 +1645,7 @@ CdbDispatchPlan(QueryDesc *queryDesc)
 	char	   *squery,
 			   *splan,
 			   *ssliceinfo;
-	char	   *cdbexecPrefix;
+	char	   *mppexecPrefix;
 	SliceTable *sliceTbl;
 	int			rootIdx;
 	int			oldLocalSlice;
@@ -1695,7 +1695,7 @@ CdbDispatchPlan(QueryDesc *queryDesc)
 
 	/*
 	 * Serialize plan and query trees. Build the common prefix of the
-	 * CDBEXEC commands we'll issue.  Note that we're called for a single
+	 * MPPEXEC commands we'll issue.  Note that we're called for a single
 	 * slice tree (corresponding to an initPlan or the main plan), so the
 	 * parameters are fixed and we can include them in the prefix.
 	 */
@@ -1705,19 +1705,19 @@ CdbDispatchPlan(QueryDesc *queryDesc)
 	Assert(squery != NULL && splan != NULL);
 
 	initStringInfo(&strinfo);
-	appendStringInfo(&strinfo, "cdbexec '%s' '%s'", squery, splan);
+	appendStringInfo(&strinfo, "mppexec '%s' '%s'", squery, splan);
 
 	pfree(squery);
 	pfree(splan);
 
 	/*
-	 * Next, continue building the CDBEXEC command by adding all the parameters
+	 * Next, continue building the MPPEXEC command by adding all the parameters
 	 * serialized into RemoteParamData structs, which is just a node wrapper
 	 * around ParamListInfo.
 	 *
-	 * Add parameters to the cdbexec command by enclosing the whole set with
+	 * Add parameters to the mppexec command by enclosing the whole set with
 	 * ()  and separating individual ones with a comma, so it looks like:
-	 * ('Param1', 'Param2', ...) at the end of the cdbexec command.
+	 * ('Param1', 'Param2', ...) at the end of the mppexec command.
 	 */
 	if (queryDesc->params != NULL)
 	{
@@ -1749,10 +1749,10 @@ CdbDispatchPlan(QueryDesc *queryDesc)
 
 	/*
 	 * Hang on to the command so far.  It will serve as the prefix for each
-	 * of the CDBEXEC commands we dispatch.  Clear the buffer for use in
-	 * constructing the final CDBEXEC command(s).
+	 * of the MPPEXEC commands we dispatch.  Clear the buffer for use in
+	 * constructing the final MPPEXEC command(s).
 	 */
-	cdbexecPrefix = strinfo.data;
+	mppexecPrefix = strinfo.data;
 	initStringInfo(&strinfo);
 
 
@@ -1767,11 +1767,11 @@ CdbDispatchPlan(QueryDesc *queryDesc)
 
 	/*
 	 * Now we need to call CDBDispatchCommand once per slice.  Each such
-	 * call dispatches a CDBEXEC command to each of the QEs assigned to
+	 * call dispatches a MPPEXEC command to each of the QEs assigned to
 	 * the slice.
 	 *
 	 * The QE information goes in two places: (1) in the argument to the
-	 * function CDBDispatchCommand, and (2) in the serialized CDBEXEC
+	 * function CDBDispatchCommand, and (2) in the serialized MPPEXEC
 	 * command sent to the QEs.
 	 *
 	 * So, for each slice in the tree...
@@ -1807,11 +1807,11 @@ CdbDispatchPlan(QueryDesc *queryDesc)
 
 		/*
 		 * Set up the slice info parameter for this slice and use it to
-		 * construct a finished CDBEXEC command.
+		 * construct a finished MPPEXEC command.
 		 */
 		sliceTbl->localSlice = slice->sliceIndex;
 		ssliceinfo = serializeNode((Node *) sliceTbl);
-		appendStringInfo(&strinfo, "%s '%s'", cdbexecPrefix, ssliceinfo);
+		appendStringInfo(&strinfo, "%s '%s'", mppexecPrefix, ssliceinfo);
 		pfree(ssliceinfo);
 
 
@@ -1843,7 +1843,7 @@ CdbDispatchPlan(QueryDesc *queryDesc)
 		initStringInfo(&strinfo);
 	}
 
-	pfree(cdbexecPrefix);
+	pfree(mppexecPrefix);
 
 	sliceTbl->localSlice = oldLocalSlice;
 	elog(DEBUG4, "CdbDispatchPlan done");

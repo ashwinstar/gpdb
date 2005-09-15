@@ -52,7 +52,7 @@ static Oid findParamType( List *params, int paramid );
  * setParam list in the SubPlan node.
  * In order to handle SubPlans of SubPlans, we pass in the values of the
  * estate->es_param_exec_vals as ParamListInfo structs to the ExecSetParamPlan call.
- * These are then serialized into the cdbexec all as parameters.  In this manner, the
+ * These are then serialized into the mppexec all as parameters.  In this manner, the
  * result of a SubPlan of a SubPlan is available.
  */
 void preprocess_initplans( QueryDesc *queryDesc )
@@ -86,7 +86,7 @@ void preprocess_initplans( QueryDesc *queryDesc )
 
 		/*
 		 * Append all the es_param_exec_vals datum values on to the external 
-		 * parameter list so they can be serialized in the cdbexec call to the 
+		 * parameter list so they can be serialized in the mppexec call to the 
 		 * QEs.  Do this inside the loop since later initplans may depend on
 		 * the results of earlier ones.
 		 *
@@ -137,7 +137,7 @@ void preprocess_initplans( QueryDesc *queryDesc )
  * type: PARAM_EXEC_REMOTE.
  *
  * When the query eventually runs (on the QD or a QE), it will have access 
- * to the augmented ParamListInfo (locally or through CDBEXEC serialization).
+ * to the augmented ParamListInfo (locally or through MPPEXEC serialization).
  *
  * Then, rather than lazily-evaluating the SubPlan to get its value (as for 
  * an internal parameter), the plan will just look up the param value in the 

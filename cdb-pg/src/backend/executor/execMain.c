@@ -201,7 +201,7 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 			SliceTable *sliceTable;
 			Slice *slice;
 			
-			/* From the QD via CDBEXEC! */
+			/* From the QD via MPPEXEC! */
 			sliceTable = (SliceTable*)queryDesc->plantree->sliceTable;
 			estate->es_sliceTable = sliceTable;
 			estate->es_cur_slice_idx = sliceTable->localSlice;
@@ -318,7 +318,7 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 		MotionState *motionstate = NULL;
 		
 		/* Note that, at this point on a QE, the estate is setup (based on
-		 * the slice table transmitted from the QD via CDBEXEC) so that fields
+		 * the slice table transmitted from the QD via MPPEXEC) so that fields
 		 * es_sliceTable, cur_root_idx and es_cur_slice_idx are correct for
 		 * the QE.
 		 *
@@ -546,7 +546,7 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 				szCommand = "";
 			Assert( message != NULL );
 			elog( DEBUG4,
-					"cdbexec command results for \"%s\": %s",
+					"mppexec command results for \"%s\": %s",
 					szCommand, message );
 
 			pfree(message);
@@ -602,7 +602,7 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 			szCommand = "";
 		Assert( message != NULL );
 		elog( DEBUG4,
-				"cdbexec command results for \"%s\": %s",
+				"mppexec command results for \"%s\": %s",
 				szCommand, message );
 
 		pfree(message);

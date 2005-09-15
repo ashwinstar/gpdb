@@ -763,7 +763,7 @@ ProcessUtility(Node *parsetree,
 			{
 				ereport(ERROR, (
 					errcode(ERRCODE_CDB_COMMAND_ERROR),
-					errmsg("CDBEXEC is not available for external use.")
+					errmsg("MPPEXEC is not available for external use.")
 			));
 				
 			}
@@ -1862,7 +1862,7 @@ CreateCommandTag(Node *parsetree)
 			break;
 
 		case T_CdbExecStmt:
-			tag = "CDBEXEC";
+			tag = "MPPEXEC";
 			break;
 
 		default:

@@ -3476,7 +3476,7 @@ static void dispatchVacuum(VacuumStmt *vacstmt)
 	Assert( Mpp_role == MPP_ROLE_DISPATCH );
 
 	/*
-	 * Serialize the stmt tree, and create the sql statement: cdbexec ....
+	 * Serialize the stmt tree, and create the sql statement: mppexec ....
 	 */
 	q = makeNode(Query);
 
@@ -3495,7 +3495,7 @@ static void dispatchVacuum(VacuumStmt *vacstmt)
 
 	elog( DEBUG5, "Command %s", pszVacuum);
 
-	appendStringInfo(&buffer, "cdbexec '%s' ''", pszVacuum);
+	appendStringInfo(&buffer, "mppexec '%s' ''", pszVacuum);
 
 	pfree(pszVacuum);
 

@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * cdbexec.c
- *	  The CDB command CDBEXEC (modelled on PostgreSQL EXECUTE)
+ *	  The CDB command MPPEXEC (modelled on PostgreSQL EXECUTE)
  *
  * Copyright (c) 2002-2004, PostgreSQL Global Development Group
  * Copyright (c) 2005, Greenplum Inc.
@@ -33,7 +33,7 @@
 #include "cdb/cdbmotion.h"
 
 /*
- * Implements the 'CDBEXEC' utility statement.
+ * Implements the 'MPPEXEC' utility statement.
  */
 void
 CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
@@ -57,7 +57,7 @@ CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
 	qctx = CurrentMemoryContext; /* Should probably be some portal context? */
 	oldctx = MemoryContextSwitchTo(qctx);
 	
-	/* Deserialize the strings from the CDBEXEC statement. */
+	/* Deserialize the strings from the MPPEXEC statement. */
 	Assert(stmt->ser_query != NULL && IsA(stmt->ser_query, String) );
 	cstr = strVal(stmt->ser_query);
 	Assert(cstr != NULL );
@@ -114,7 +114,7 @@ CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
 		/* 
 		 * Since we're running as a QE, we need to put need to the slice 
 		 * table and associated values determined by the QD that called 
-		 * CDBEXEC into the EState before we run the executor.  We can't 
+		 * MPPEXEC into the EState before we run the executor.  We can't 
 		 * do it now because our EState isn't ready.  Instead, stick it
 		 * into the top plan node (along with nParamExec and nMotionNodes)
 		 * and let the code that eventually sets up the QueryDesc sort it
@@ -127,7 +127,7 @@ CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
 	{
 		plan = NULL;
 		paramLI = NULL;
-		elog(DEBUG2, "cdbexec received a utility command\n");
+		elog(DEBUG2, "mppexec received a utility command\n");
 	}
 
  	{

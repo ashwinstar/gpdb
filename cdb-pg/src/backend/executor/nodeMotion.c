@@ -415,7 +415,7 @@ void execMotionSortedReceiverFirstTime(MotionState *node)
  *
  * NOTE: have to be a bit careful, estate->es_cur_slice_idx is not the
  *		 ultimate correct value that it should be on the QE. this happens
- *		 after this call in cdbexec.c.  This is ok since we don't need it,
+ *		 after this call in mppexec.c.  This is ok since we don't need it,
  *		 but just be aware before you try and use it here.
  * ----------------------------------------------------------------
  */

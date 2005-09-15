@@ -1196,7 +1196,7 @@ _readRangeTblEntry(void)
 }
 
 /*
- * Cdb additions for serialization support
+ * MPP additions for serialization support
  */
 #include "nodes/plannodes.h"
 
@@ -1819,12 +1819,12 @@ bitmapsetRead(void)
 }
 
 /*
- * Cdb developers added code to improve performance over the
+ * MPP developers added code to improve performance over the
  * linear searching that existed in the postgres version of
  * parseNodeString.  We introduced a struct containing
  * the node type string and read function pointer.
  * We created a sorted array of these for all node types supported
- * by parseNodeString, with cdb extensions.
+ * by parseNodeString, with MPP extensions.
  * This array is searched for a node type string.   If found,
  * the function pointer is excuted.
  */
