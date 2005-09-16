@@ -573,13 +573,13 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 			DestroyCdbDispatchResults( results );
 			hasDispatched = false;
 		}
-		else
+		else if (Mpp_role != MPP_ROLE_UTILITY)
 		{
 			/* clean up the interconnect */
 			if (shouldSetupInterconnect)
 				TeardownInterconnect();
 
-			/* clean up our own motion layer. */	
+			/* clean up our own motion layer. */
 			ResetMotionLayer(true);
 		}
 		PG_RE_THROW();
