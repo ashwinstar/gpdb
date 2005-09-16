@@ -187,10 +187,7 @@ typedef struct cdb_cluster_descriptor {
 } CdbClusterDescriptor;
 
 
-/*
- * External declarations
- */
-//extern CdbClusterDescriptor	   *CdbClusterDefinition;
+
 
 
 #endif   /* CDBCONN_H */

@@ -1436,7 +1436,7 @@ bool initPlanProfile(PlanProfile *context, Query *query)
 				 */
 				Oid reloid;
 				RangeTblEntry *rte;
-				CdbPolicy *policy;
+				MppPolicy *policy;
 				
 				Assert( query->resultRelation<=list_length(localRangeTable(context)) );
 				rte = rt_fetch(query->resultRelation, localRangeTable(context));

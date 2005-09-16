@@ -72,11 +72,6 @@ extern void CdbDispatchCommand(const char *szCommand, bool cancelFromBelow);
 extern void CdbDispatchCommandInt(const char *szCommand, bool cancelFromBelow,
 					  void ***resultSets);
 
-extern void
-CdbDispatchCommandIntEnumeration(const char *szCommand,
-								 struct segment_database_descriptor
-								 ** segdbList, int segdbListCount,
-								 bool cancelFromBelow, void ***resultSets);
 
 extern void
 CdbDispatchToGang(const char *szCommand, struct Gang * gp,

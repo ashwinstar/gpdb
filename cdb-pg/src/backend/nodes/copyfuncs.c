@@ -1842,7 +1842,7 @@ _copyCreateStmt(CreateStmt *from)
 	COPY_NODE_FIELD(distributedBy);
 	COPY_SCALAR_FIELD(relOid);
 	COPY_SCALAR_FIELD(relKind);
-	COPY_POINTER_FIELD(policy,sizeof(CdbPolicy) + from->policy->nattrs*sizeof(from->policy->attrs[0]));
+	COPY_POINTER_FIELD(policy,sizeof(MppPolicy) + from->policy->nattrs*sizeof(from->policy->attrs[0]));
 
 
 	return newnode;

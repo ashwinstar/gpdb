@@ -68,13 +68,13 @@ int interconnect_setup_timeout;
 /* 
  * The single row from mpp.mpp for this database is held in this variable,
  * which is initialized in cdbutil.c in the function
- * getCdbCdb(), which is called from cdblink_setup() 
+ * getMppMpp(), which is called from cdblink_setup() 
  * for both dispatch and execute modes.
  *
  * Any code needing the  "numsegments"
- * can simply #include cdbvars.h, and use CdbIdentity.numsegments
+ * can simply #include cdbvars.h, and use MppIdentity.numsegments
  */
-CdbCdb				CdbIdentity = {NULL, 0, -1, -999};  
+MppMpp				MppIdentity = {NULL, 0, -1, -999};  
 
 /*
  * Local macro to provide string values of numeric defines.

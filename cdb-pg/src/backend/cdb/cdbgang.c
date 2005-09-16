@@ -121,14 +121,14 @@ createGang(GangType type, int size, int content)
 	int			segdbs_in_thread_pool;
 	int			segdb_count;
 
-	Assert(size == 1 || size == getCdbSegmentCount());
+	Assert(size == 1 || size == getMPPSegmentCount());
 
 
 
 	/*
 	 * We can't allocate more segments than we know about
 	 */
-	Assert(size <= getCdbSegmentCount());
+	Assert(size <= getMPPSegmentCount());
 
 
 	/*
@@ -299,7 +299,7 @@ createGang(GangType type, int size, int content)
 			ereport(WARNING,
 					(errcode(ERRCODE_WARNING),
 					 errmsg
-					 ("CDBGANG_SETUP--- Could not establish connection with segment database "
+					 ("MPP GANG SETUP--- Could not establish connection with segment database "
 					  "segindex %d isprimary %c dbname %s", q->segindex,
 					  (q->isprimary ? 't' : 'f'), myDatabaseName),
 					 errdetail("%s", segdbDesc->error_message)));
@@ -373,9 +373,9 @@ createGang(GangType type, int size, int content)
 
 	MemoryContextSwitchTo(oldContext);
 
-	elog(DEBUG1, "createGang CDB segment databases: askedfor=%d, connected=%d",
+	elog(DEBUG1, "createGang MPP segment databases: askedfor=%d, connected=%d",
 		 size, successful_connections);
-	elog(DEBUG1, "createGang CDB segments: defined = %d",
+	elog(DEBUG1, "createGang MPP segments: defined = %d",
 		 newGangDefinition->size);
 
 	if (successful_connections != newGangDefinition->size)
@@ -390,7 +390,7 @@ createGang(GangType type, int size, int content)
 
 
 /*
- *	buildGangDefinition: reads the Cdb catalog tables and build a CdbComponentDatabases structure.
+ *	buildGangDefinition: reads the MPP catalog tables and build a CdbComponentDatabases structure.
  *	It then converts this to a Gang structure and initializes
  *	all the non-connection related fields.
  */
@@ -462,7 +462,7 @@ buildGangDefinition(GangType type, int size, int content)
 		|| cdb_component_dbs->total_segment_dbs <= 0)
 	{
 		MemoryContextSwitchTo(oldContext);
-		elog(ERROR, "building Gang:  CDB schema not populated");
+		elog(ERROR, "building Gang:  MPP schema not populated");
 		return NULL;
 	}
 
@@ -758,10 +758,10 @@ thread_DoConnect(void *arg)
 
 		appendPQExpBuffer(&buffer, "port=%u ", q->port);
 		appendPQExpBuffer(&buffer, "dbname=%s ", myDatabaseName);
-		appendPQExpBuffer(&buffer, "user=%s ", q->cdbsuperuser);
+		appendPQExpBuffer(&buffer, "user=%s ", q->mppsuperuser);
 
-		if (q->cdbsuperpswd != NULL)
-			appendPQExpBuffer(&buffer, "password='%s' ", q->cdbsuperpswd);
+		if (q->mppsuperpswd != NULL)
+			appendPQExpBuffer(&buffer, "password='%s' ", q->mppsuperpswd);
 
 
 		/*
@@ -1009,7 +1009,7 @@ getCdbProcessList(Gang * gang)
 		int			k = 0;
 
 		/*
-		 * Assert( gang->size == 1 || gang->size == getCdbSegmentCount() );
+		 * Assert( gang->size == 1 || gang->size == getMPPSegmentCount() );
 		 */
 
 		primary = (gang->type != GANGTYPE_MIRROR_WRITER);

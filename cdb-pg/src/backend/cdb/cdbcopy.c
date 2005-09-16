@@ -48,7 +48,7 @@ CdbCopy *makeCdbCopy(void)
 
 	
 	/* init total_segs */
-	c->total_segs = getCdbSegmentCount();
+	c->total_segs = getMPPSegmentCount();
 	
     if(c->total_segs < 1)
 		ereport(ERROR,

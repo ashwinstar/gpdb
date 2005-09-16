@@ -47,10 +47,10 @@ extern void cdblink_setup(void);
  * Returns the number of segments
  * 
  * N.B.  Mpp_role must be either dispatch or execute, since
- * when utiliy  no cdb catalog tables are read.  An Assert is
+ * when utiliy  no mpp catalog tables are read.  An Assert is
  * thrown if Mpp_role = utility.
  */
-extern int getCdbSegmentCount(void);
+extern int getMPPSegmentCount(void);
 
 extern void buildMirrorQDDefinition(void);
 

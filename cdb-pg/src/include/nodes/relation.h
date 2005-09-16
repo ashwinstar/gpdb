@@ -213,7 +213,7 @@ typedef struct RelOptInfo
 	List	   *indexlist;
 	BlockNumber	pages;
 	double		tuples;
-    struct CdbPolicy   *cdbpolicy;      /* distribution of stored tuples */
+    struct MppPolicy   *cdbpolicy;      /* distribution of stored tuples */
 	struct Plan *subplan;		/* if subquery */
 
 	/* used by various scans and joins: */

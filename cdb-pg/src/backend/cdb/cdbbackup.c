@@ -159,9 +159,9 @@ cdb_backup_launch__(PG_FUNCTION_ARGS)
 					 errmsg("out of memory")));
 		}
  						
-        getCdbCdb();			
-		instid	= (CdbIdentity.segindex==-1)?1:0; /*dispatch node*/	
-		segid	= CdbIdentity.dbid;
+        getMppMpp();			
+		instid	= (MppIdentity.segindex==-1)?1:0; /*dispatch node*/	
+		segid	= MppIdentity.dbid;
         /* dump schema only for entry db, and data only for segment db */
          pszDataOption = (instid==1)?"-s":"-a";									
 		sprintf( pszKeyParm, "%s_%d_%d_%s", pszBackupKey, instid, segid, pszPassThroughCredentials );
@@ -286,9 +286,9 @@ cdb_restore_launch__(PG_FUNCTION_ARGS)
 	text* result;
 	char* ptr;
 	
-    getCdbCdb();
-    instid  = (CdbIdentity.segindex==-1)?1:0; /*dispatch node*/ 
-    segid   = CdbIdentity.dbid;                                     
+    getMppMpp();
+    instid  = (MppIdentity.segindex==-1)?1:0; /*dispatch node*/ 
+    segid   = MppIdentity.dbid;                                     
 											
 	if ( !PG_ARGISNULL(0) )
 	{
@@ -849,9 +849,9 @@ char* formBackupFilePathName( char* pszBackupDirectory, char* pszBackupKey )
 	int len;
 	char* pszBackupFileName;
 
-    getCdbCdb();
-    instid  = (CdbIdentity.segindex==-1)?1:0; /*dispatch node*/ 
-    segid   = CdbIdentity.dbid;                                     
+    getMppMpp();
+    instid  = (MppIdentity.segindex==-1)?1:0; /*dispatch node*/ 
+    segid   = MppIdentity.dbid;                                     
 											
 	sprintf( szFileNamePrefix, "cdb_dump_%d_%d_", instid, segid );
 	
@@ -904,9 +904,9 @@ char* formStatusFilePathName( char* pszBackupDirectory, char* pszBackupKey, bool
 	int len;
 	char* pszFileName;
 
-    getCdbCdb();
-    instid  = (CdbIdentity.segindex==-1)?1:0; /*dispatch node*/ 
-    segid   = CdbIdentity.dbid;                                     
+    getMppMpp();
+    instid  = (MppIdentity.segindex==-1)?1:0; /*dispatch node*/ 
+    segid   = MppIdentity.dbid;                                     
 											
 	sprintf( szFileNamePrefix, "cdb_%s_status_%d_%d_", (bIsBackup ? "dump" : "restore"), 
 						instid, segid );

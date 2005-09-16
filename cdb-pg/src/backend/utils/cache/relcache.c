@@ -67,7 +67,7 @@
 #include "utils/syscache.h"
 #include "utils/typcache.h"
 
-#include "cdb/cdbcat.h"         /* CdbPolicy */
+#include "cdb/cdbcat.h"         /* MppPolicy */
 
 
 /*
@@ -2621,13 +2621,13 @@ CheckConstraintFetch(Relation relation)
 
 
 /*
- * RelationGetPartitioningKey -- get CdbPolicy struct for distributed relation
+ * RelationGetPartitioningKey -- get MppPolicy struct for distributed relation
  *
- * Returns a copy of the relation's CdbPolicy object, palloc'd in
+ * Returns a copy of the relation's MppPolicy object, palloc'd in
  * the caller's context.  Celler should pfree() it.  If NULL is
  * returned, relation should be accessed locally.
  */
-CdbPolicy*
+MppPolicy*
 RelationGetPartitioningKey(Relation relation)
 {
     if (!relation->rd_cdbpolicy)
@@ -2636,7 +2636,7 @@ RelationGetPartitioningKey(Relation relation)
       relation->rd_cdbpolicy = get_table_policy(relation->rd_id);
       MemoryContextSwitchTo(oldcxt);
     }
-    return CdbPolicyCopy(relation->rd_cdbpolicy);
+    return MppPolicyCopy(relation->rd_cdbpolicy);
 }                                       /* RelationGetPartitioningKey */
 
 

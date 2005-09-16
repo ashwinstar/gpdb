@@ -680,7 +680,7 @@ cdbpath_motion_for_join(Query      *root,
          */
         else if (!small->require_existing_order &&
                  !small->oj_preserved &&
-                 small->bytes * getCdbSegmentCount() < large->bytes)
+                 small->bytes * getMPPSegmentCount() < large->bytes)
             CdbPathLocus_MakeReplicated(&small->move_to);
 
         /* If joining on smaller rel's partitioning key, redistribute larger. */
@@ -694,7 +694,7 @@ cdbpath_motion_for_join(Query      *root,
         /* Replicate smaller rel if cheaper than redistributing both rels. */
         else if (!small->require_existing_order &&
                  !small->oj_preserved &&
-                 small->bytes * getCdbSegmentCount() < large->bytes + small->bytes)
+                 small->bytes * getMPPSegmentCount() < large->bytes + small->bytes)
             CdbPathLocus_MakeReplicated(&small->move_to);
 
         /* Redistribute both rels on equijoin cols. */

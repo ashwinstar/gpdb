@@ -12,13 +12,13 @@
 #ifndef CDBPATH_H
 #define CDBPATH_H
 
-#include "cdb/cdbvars.h"        /* CdbIdentity */
+#include "cdb/cdbvars.h"        /* MppIdentity */
 
 
 /* globals */
 extern Cost     cdb_motion_tuple_cost;
 
-extern int getCdbSegmentCount(void);
+extern int getMPPSegmentCount(void);
 
 
 Path *
@@ -60,7 +60,7 @@ cdbpath_rows(Path *path)
     {
     	if (Mpp_role == MPP_ROLE_DISPATCH)
         {
-            int numSegments = getCdbSegmentCount();
+            int numSegments = getMPPSegmentCount();
             if (numSegments > 1)
                 rows *= numSegments;
         }

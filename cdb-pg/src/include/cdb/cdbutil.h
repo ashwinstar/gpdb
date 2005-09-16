@@ -36,8 +36,8 @@ typedef struct CdbComponentDatabaseInfo
     int4		port;     		/* port that instance is listening on */
     char		*datadir;   	/* directory where instance was initialized into */
     int4		listenerid;		/* id of listener for this database. */
-    char		*cdbsuperuser;	/* user name for cdb connection */
-    char		*cdbsuperpswd;	/* password for cdb connection */
+    char		*mppsuperuser;	/* user name for cdb connection */
+    char		*mppsuperpswd;	/* password for cdb connection */
 } CdbComponentDatabaseInfo;
 
 /* --------------------------------------------------------------------------------------------------
@@ -98,17 +98,17 @@ extern CdbComponentDatabases *getCdbComponentDatabases(void);
 extern void freeCdbComponentDatabases(CdbComponentDatabases *pDBs);
 
 /*
- * getCdbCdb() causes the mpp.mpp table's singleton row to be read into a global structure
+ * getMppMpp() causes the mpp.mpp table's singleton row to be read into a global structure
  * This is called from cdblink_setup().
  * The global variable is declared in cdbvars.h and defined in cdbvars.c.
  */
-extern void getCdbCdb(void);
+extern void getMppMpp(void);
 
 /*
- * freeCdbCdb() causes the global variable holding the mpp.mpp table's singleton row to be 
+ * freeMppMpp() causes the global variable holding the mpp.mpp table's singleton row to be 
  * reinitialized to empty, releasing memory that was allocated when it was loaded.
  */
-extern void freeCdbCdb(void);
+extern void freeMppMpp(void);
 
 
 #endif   /* CDBUTIL_H */

@@ -57,7 +57,7 @@ static bool motion_expr_walker(Node *node, char *not_used);
 #ifdef UNUSED
 static List * makeMotionTargetList(Plan *arg);
 #endif /*UNUSED*/
-static bool doesUpdateAffectPartitionCols( CdbPolicy *policy, List *rte );
+static bool doesUpdateAffectPartitionCols( MppPolicy *policy, List *rte );
 
 
 /* ------------------------------------------------------------------------- *
@@ -152,7 +152,7 @@ Plan* apply_motion(Plan*  plan, Query* query)
 			 */
 			{
 				RangeTblEntry *rte;
-				CdbPolicy *policy;
+				MppPolicy *policy;
 
 				/* TODO Are we sure the INSERT target isn't an inheritance set?
 				 *      Should we check, or would it work fine anyway?
@@ -254,7 +254,7 @@ Plan* apply_motion(Plan*  plan, Query* query)
 			 */
 			{
 				RangeTblEntry *rte;
-				CdbPolicy *policy;
+				MppPolicy *policy;
 
 				rte = rt_fetch(query->resultRelation, query->rtable);
 				Assert( rte->rtekind == RTE_RELATION);
@@ -791,8 +791,8 @@ Motion *make_motion(Plan *lefttree, MotionType motionType,
 	node->hashSegIdx = NULL;
 	if ( motionType == MOTIONTYPE_HASH )
     {
-        node->numHashSegs = getCdbSegmentCount();
-        node->hashSegIdx = makeDefaultSegIdxArray(getCdbSegmentCount());
+        node->numHashSegs = getMPPSegmentCount();
+        node->hashSegIdx = makeDefaultSegIdxArray(getMPPSegmentCount());
     }
 
     /* If merging, fill in the sending segment info. */
@@ -800,8 +800,8 @@ Motion *make_motion(Plan *lefttree, MotionType motionType,
     node->inputSegIdx = NULL;
 	if ( sendSorted )
     {
-        node->numInputSegs = getCdbSegmentCount();
-        node->inputSegIdx = makeDefaultSegIdxArray(getCdbSegmentCount());
+        node->numInputSegs = getMPPSegmentCount();
+        node->inputSegIdx = makeDefaultSegIdxArray(getMPPSegmentCount());
     }
 
     /* TODO Should we attach a descriptive Flow here?
@@ -1190,7 +1190,7 @@ List *getOpListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
  * This checks to see whether an update query's target list
  * shows that
  */
-bool doesUpdateAffectPartitionCols( CdbPolicy *policy, List *targetlist )
+bool doesUpdateAffectPartitionCols( MppPolicy *policy, List *targetlist )
 {
 	/*
 	 * Want to test whether an update statement possibly changes the

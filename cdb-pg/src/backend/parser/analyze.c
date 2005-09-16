@@ -132,7 +132,7 @@ static void transformInhRelation(ParseState *pstate, CreateStmtContext *cxt,
 static void transformIndexConstraints(ParseState *pstate,
 						  CreateStmtContext *cxt);
 static void transformDistributedBy(ParseState *pstate,
-								   CreateStmtContext *cxt, List * distributedBy, CdbPolicy ** policy);
+								   CreateStmtContext *cxt, List * distributedBy, MppPolicy ** policy);
 static void transformFKConstraints(ParseState *pstate,
 					   CreateStmtContext *cxt,
 					   bool skipValidation,
@@ -1432,13 +1432,13 @@ transformIndexConstraints(ParseState *pstate, CreateStmtContext *cxt)
 }
 /*************************************/
 static void
-transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distributedBy, CdbPolicy ** policyp)
+transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distributedBy, MppPolicy ** policyp)
 {
 	 
 	 
 	ListCell   *keys = NULL;
 	 
-	CdbPolicy * policy = NULL;
+	MppPolicy * policy = NULL;
 	int colindex = 0;
 	int maxattrs = 200;
 	if ( Mpp_role != MPP_ROLE_DISPATCH )
@@ -1448,7 +1448,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 	}
 	
 	
-	policy = (CdbPolicy*) palloc(sizeof(CdbPolicy) + maxattrs*sizeof(policy->attrs[0]));
+	policy = (MppPolicy*) palloc(sizeof(MppPolicy) + maxattrs*sizeof(policy->attrs[0]));
 	policy->ptype = POLICYTYPE_PARTITIONED;
 	policy->nattrs = 0;
 	policy->attrs[0] = 1;

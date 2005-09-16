@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * cdbvars.h
- *	  definitions for CDB global variables
+ *	  definitions for MPP global variables
  *
  * Copyright (c) 2003-2004, Greenplum
  *
@@ -21,7 +21,7 @@
 #include "utils/guc.h"
 
 /* 
- * ----- Declarations of CDB global variables ------ 
+ * ----- Declarations of MPP global variables ------ 
  */
  
 /*
@@ -40,7 +40,7 @@
  * Both parameters are initialized to the same value at connection
  * time and are local to the backend process resulting from the
  * connection.  The default is dispatch which is the normal setting
- * for a user of CDB connecting to a node of  the CDB cluster.
+ * for a user of MPP connecting to a node of  the MPP cluster.
  * Neither parameter appears in the configuration file.
  * 
  * mpp_session_role 
@@ -70,7 +70,7 @@
  * 
  * ----------
  * 
- * CDB Developers can access the values of these parameters via the
+ * MPP Developers can access the values of these parameters via the
  * global variables Mpp_session_role and Mpp_role of type
  * MppRoleValue. For example
  * 
@@ -219,13 +219,13 @@ extern int Mpp_max_packet_size; /* GUC var */
  */
 extern int Mpp_segment;           /* GUC var */
 
-extern int getCdbSegmentCount(void);
+extern int getMPPSegmentCount(void);
 
 
 /*
  * Parameters mpp_enable_repartition and mpp_enable_broadcast
  *
- * These run-time parameters (GUC variables) influence the cdb join strategies.
+ * These run-time parameters (GUC variables) influence the mpp join strategies.
  * These are analagous to the enable_nestloop, enable_mergejoin etc variable
  * for the postgres planner.  When set to false, the cost for that type of
  * strategy is increased by a very large amount.  This will effectively
@@ -253,18 +253,18 @@ extern int interconnect_setup_timeout;
 /* --------------------------------------------------------------------------------------------------
  * Structure for row of mpp.mpp table
  */
-typedef struct CdbCdb
+typedef struct MppMpp
 {
-    char	*cdbname; 		/* array of SegmentDatabaseInfo's for segment databases */
+    char	*mppname; 		/* array of SegmentDatabaseInfo's for segment databases */
     int4	numsegments;	/* count of distinct segindexes */
 	int4	dbid;			/* the dbid of this database */
 	int4	segindex;		/* content indicator: -1 for entry database, 0, ..., n-1 for segment database */
-} CdbCdb;
+} MppMpp;
 
 /* --------------------------------------------------------------------------------------------------
  * Global variable declaration for the data for the single row of mpp.mpp table
  */
-extern CdbCdb CdbIdentity;
+extern MppMpp MppIdentity;
 
 
 /* Stores the listener port that this process uses to listen for incoming 

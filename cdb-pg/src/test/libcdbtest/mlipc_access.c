@@ -100,7 +100,7 @@ Datum ml_ipc_bench(PG_FUNCTION_ARGS)
 
 		
         //set things up
-	    getCdbIdentity( &mySegIndex, &isPrimary );
+	    getMppIdentity( &mySegIndex, &isPrimary );
 
         //create our test message
         msg = palloc(data_size);

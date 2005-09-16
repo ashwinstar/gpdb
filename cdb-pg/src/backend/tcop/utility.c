@@ -332,7 +332,7 @@ check_xact_readonly(Node *parsetree)
 
 
 
-/* CDB utility command handling. */
+/* MPP utility command handling. */
 
 /*
  * The possible actions for a utility command.  These values are of

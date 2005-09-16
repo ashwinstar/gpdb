@@ -1507,7 +1507,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	/*
 	 * Variables for cdbpolicy
 	 */
-	CdbPolicy *policy;   /* the partitioning policy for this table            */
+	MppPolicy *policy;   /* the partitioning policy for this table            */
 	int p_nattrs;		 /* num of partitioning keys in the policy            */
 	
 	/*
@@ -1696,7 +1696,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	if(policy->ptype != POLICYTYPE_PARTITIONED)
 		ereport(ERROR, 	
 				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
-				 errmsg("Unexpected CdbPolicyType: %d.", policy->ptype)));
+				 errmsg("Unexpected MppPolicyType: %d.", policy->ptype)));
 
 	p_nattrs = policy->nattrs; /* number of partitioning keys */
 	cdbHash = makeCdbHash(cdbCopy->total_segs, HASH_FNV_1); /* Create hash API reference */

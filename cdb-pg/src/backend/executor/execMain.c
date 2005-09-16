@@ -395,7 +395,7 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 			 */
 			if ( queryDesc->parsetree->commandType == CMD_INSERT )
 			{
-				CdbPolicy *policy;
+				MppPolicy *policy;
 
 				rte = rt_fetch(queryDesc->parsetree->resultRelation, queryDesc->parsetree->rtable);
 				Assert( rte->rtekind == RTE_RELATION);

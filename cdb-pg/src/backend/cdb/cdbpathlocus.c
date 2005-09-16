@@ -10,7 +10,7 @@
  */
 #include "postgres.h"
 
-#include "cdb/cdbcat.h"         /* CdbPolicy */
+#include "cdb/cdbcat.h"         /* MppPolicy */
 #include "cdb/cdbdef.h"         /* CdbSwap() */
 #include "nodes/makefuncs.h"    /* makeVar() */
 #include "nodes/plannodes.h"    /* Plan */
@@ -146,7 +146,7 @@ cdbpathlocus_from_baserel(struct Query         *root,
                           struct RelOptInfo    *rel)
 {
     CdbPathLocus result;
-    CdbPolicy   *policy = rel->cdbpolicy;
+    MppPolicy   *policy = rel->cdbpolicy;
 
     if (policy &&
         policy->ptype == POLICYTYPE_PARTITIONED)

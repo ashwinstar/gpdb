@@ -73,69 +73,69 @@
 #define Anum_mpp_policy_attrnums	2
 
 /*
- * CdbPolicyType represents a type of policy under which a relation's
+ * MppPolicyType represents a type of policy under which a relation's
  * tuples may be assigned to a component database.
  */
-typedef enum CdbPolicyType
+typedef enum MppPolicyType
 {
 	POLICYTYPE_UNDEFINED,	
 	POLICYTYPE_PARTITIONED,	/* Tuples partitioned onto segment database. */
 	POLICYTYPE_ENTRY		/* Tuples stored on enty database. */
-} CdbPolicyType;
+} MppPolicyType;
 
 /*
- * CdbPolicy represents a CDB data distribution policy. The ptype field
+ * MppPolicy represents a MPP data distribution policy. The ptype field
  * is always significant.  Other fields may be specific to a particular
  * type.
  *
- * A CdbPolicy is typically palloc'd with space for nattrs integer
- * attribute numbers (attrs) in addition to sizeof(CdbPolicy).
+ * A MppPolicy is typically palloc'd with space for nattrs integer
+ * attribute numbers (attrs) in addition to sizeof(MppPolicy).
  */
 typedef
-struct CdbPolicy
+struct MppPolicy
 {
-	CdbPolicyType ptype;
+	MppPolicyType ptype;
 	
 	/* These fields apply to POLICYTYPE_PARTITIONED. */
 	int nattrs;
 	AttrNumber attrs[0]; /* the first of nattrs attribute numbers.  */
-} CdbPolicy;
+} MppPolicy;
 
 /*
- * CdbPolicyCopy -- Return a copy of a CdbPolicy object.
+ * MppPolicyCopy -- Return a copy of a MppPolicy object.
  *
  * The copy is palloc'ed in the caller's context.
  */
-CdbPolicy *
-CdbPolicyCopy(const CdbPolicy *src);
+MppPolicy *
+MppPolicyCopy(const MppPolicy *src);
 
 /*
- * get_table_policy: returns a palloc'd CdbPolicy for a table oid.
+ * get_table_policy: returns a palloc'd MppPolicy for a table oid.
  */
-extern CdbPolicy *get_table_policy(Oid tbloid);
+extern MppPolicy *get_table_policy(Oid tbloid);
 
 /*
- * set_table_policy: sets the CdbPolicy for a table.
+ * set_table_policy: sets the MppPolicy for a table.
  */
-extern void set_table_policy(Oid tbloid, CdbPolicy * policy);
+extern void set_table_policy(Oid tbloid, MppPolicy * policy);
 
 /*
- * getMPPNamespaceOid: gets the oid of the cdb namespace.
+ * getMPPNamespaceOid: gets the oid of the MPP namespace.
  */
 extern Oid getMPPNamespaceOid(void);
 
 /*
- * HeapOpenCDBObject: opens a relation (either a table or an index) by name
- * that is part of the cdb namespace.
+ * HeapOpenMPPObject: opens a relation (either a table or an index) by name
+ * that is part of the MPP namespace.
  */
-extern Relation HeapOpenCDBObject( const char *pszName, Oid cdb_namespace_oid, bool bTable );
+extern Relation HeapOpenMPPObject( const char *pszName, Oid mpp_namespace_oid, bool bTable );
 
 /*
- * cdbtable_beginscan --- set up for heap-or-index scan
+ * mpptable_beginscan --- set up for heap-or-index scan
  *
  * similar to systable_beginscan, but using an Oid for index, instead of name
  */
-extern SysScanDesc cdbtable_beginscan(Relation heapRelation,
+extern SysScanDesc mpptable_beginscan(Relation heapRelation,
 				   			   			   Oid indexOid,
 										   bool indexOK,
 										   Snapshot snapshot,

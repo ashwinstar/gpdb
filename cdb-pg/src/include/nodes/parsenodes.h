@@ -964,7 +964,7 @@ typedef struct CreateStmt
 	List       *distributedBy;   /* what columns we distribute the data by */
 	Oid        relOid;			/* create table with this relOid */
 	char	   relKind;         /* CDB: force relkind to this */
-	CdbPolicy  *policy;
+	MppPolicy  *policy;
 } CreateStmt;
 
 /* ----------

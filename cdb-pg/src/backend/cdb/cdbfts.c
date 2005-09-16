@@ -149,8 +149,8 @@ bool FtsReConfigureMPP(void)
     
     elog(LOG, "FTS: reconfiguration is in progress");
     disconnectAndDestroyAllGangs();
-    allocateGang(GANGTYPE_PRIMARY_WRITER, getCdbSegmentCount(), -1);
-    allocateGang(GANGTYPE_MIRROR_WRITER, getCdbSegmentCount(), -1);
+    allocateGang(GANGTYPE_PRIMARY_WRITER, getMPPSegmentCount(), -1);
+    allocateGang(GANGTYPE_MIRROR_WRITER, getMPPSegmentCount(), -1);
     
     /* rollback current DTM transaction */
     discardDtxTransaction();
@@ -275,10 +275,10 @@ static void initPQConnectionBuffer(CdbComponentDatabaseInfo *q, PQExpBuffer buff
                 
     appendPQExpBuffer(buffer, "port=%u ", q->port);
     appendPQExpBuffer(buffer, "dbname=%s ", get_database_name(MyDatabaseId));
-    appendPQExpBuffer(buffer, "user=%s ", q->cdbsuperuser);
+    appendPQExpBuffer(buffer, "user=%s ", q->mppsuperuser);
 
-    if ( q->cdbsuperpswd != NULL )
-        appendPQExpBuffer(buffer, "password='%s' ", q->cdbsuperpswd);
+    if ( q->mppsuperpswd != NULL )
+        appendPQExpBuffer(buffer, "password='%s' ", q->mppsuperpswd);
 }
 
 /* set seg db states */
@@ -290,7 +290,7 @@ void markSegDBStatus( int dbid, bool state )
     CdbComponentDatabaseInfo *q = getEntrySegDB(&count);
     /* can only be maximum 2 dbs */
     if (count > 1)
-        	if (q->dbid != CdbIdentity.dbid)
+        	if (q->dbid != MppIdentity.dbid)
 			q = q+1;
      
     /*

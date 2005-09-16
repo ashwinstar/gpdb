@@ -100,7 +100,7 @@ cdblink_setup(void)
 	if (Mpp_role == MPP_ROLE_UTILITY)
 		return;
 
-	getCdbCdb();
+	getMppMpp();
 
 	return;
 }
@@ -137,47 +137,47 @@ log_backtrace(void)
  * Returns the number of segments
  *
  * N.B.  Mpp_role must be either dispatch or execute, since
- * when utiliy	no cdb catalog tables are read.  An Assert is
+ * when utiliy	no MPP catalog tables are read.  An Assert is
  * thrown if Mpp_role = utility.
  */
 int
-getCdbSegmentCount(void)
+getMPPSegmentCount(void)
 {
 	if (Mpp_role == MPP_ROLE_UTILITY)
 	{
 
-		if (CdbIdentity.numsegments <= 0)
+		if (MppIdentity.numsegments <= 0)
 		{
-			elog(DEBUG5, "getCdbSegmentCount called when Mpp_role == utility. returning zero segments.");
+			elog(DEBUG5, "getMPPSegmentCount called when Mpp_role == utility. returning zero segments.");
 			return 0;
 		}
 
-		elog(DEBUG1, "getCdbSegmentCount called when Mpp_role == utility, but is relying on mpp.mpp info");
+		elog(DEBUG1, "getMPPSegmentCount called when Mpp_role == utility, but is relying on mpp.mpp info");
 		//log_backtrace();
 
 	}
 
 	if (Mpp_role == MPP_ROLE_EXECUTE)
 	{
-		if (CdbIdentity.numsegments <= 0)
+		if (MppIdentity.numsegments <= 0)
 		{
-			elog(DEBUG5, "getCdbSegmentCount called when Mpp_role == execute. returning zero segments.");
+			elog(DEBUG5, "getMPPSegmentCount called when Mpp_role == execute. returning zero segments.");
 			return 0;
 		}
-		elog(DEBUG1, "getCdbSegmentCount called when Mpp_role == execute, but is relying on mpp.mpp info");
+		elog(DEBUG1, "getMPPSegmentCount called when Mpp_role == execute, but is relying on mpp.mpp info");
 		//log_backtrace();
 	}
 	/* Assert( Mpp_role != MPP_ROLE_EXECUTE ); */
 
-	if (CdbIdentity.numsegments <= 0)
+	if (MppIdentity.numsegments <= 0)
 	{
-		elog(DEBUG1, "getCdbSegmentCount called BEFORE mpp.mpp record has been read in.");
+		elog(DEBUG1, "getMPPSegmentCount called BEFORE mpp.mpp record has been read in.");
 		//log_backtrace();
 	}
 
 	/* Assert( Mpp_role != MPP_ROLE_UTILITY ); */
 
-	return CdbIdentity.numsegments;
+	return MppIdentity.numsegments;
 }
 
 /*
@@ -195,7 +195,7 @@ buildMirrorQDDefinition(void)
          /* it should have maximum 2 dbs now */
          CdbComponentDatabaseInfo *entryDb = cdb_component_dbs->entry_db_info;
          CdbComponentDatabaseInfo *mirrorDb;
-         if (entryDb->dbid == CdbIdentity.dbid)
+         if (entryDb->dbid == MppIdentity.dbid)
             mirrorDb = entryDb + 1;
          else
          {
@@ -223,8 +223,11 @@ buildMirrorQDDefinition(void)
              if ( cdb_mirrored_entry_db->conn == NULL )
              {
                  char* pszErrorMessage = cdb_mirrored_entry_db->error_message;
-                 Assert( pszErrorMessage != NULL );
+                 
                  MemoryContext oldContext = MemoryContextSwitchTo(TopMemoryContext);
+                 
+                 Assert( pszErrorMessage != NULL );
+                 
                  cdb_mirrored_entry_db->error_message = pstrdup(pszErrorMessage);
                  MemoryContextSwitchTo(oldContext);
                  free( pszErrorMessage );
@@ -278,10 +281,10 @@ CdbDoConnect( SegmentDatabaseDescriptor *segdbDesc )
                  
     appendPQExpBuffer(&buffer, "port=%u ", q->port);
     appendPQExpBuffer(&buffer, "dbname=%s ", get_database_name(MyDatabaseId));
-    appendPQExpBuffer(&buffer, "user=%s ", q->cdbsuperuser);
+    appendPQExpBuffer(&buffer, "user=%s ", q->mppsuperuser);
 
-    if ( q->cdbsuperpswd != NULL )
-        appendPQExpBuffer(&buffer, "password='%s' ", q->cdbsuperpswd);
+    if ( q->mppsuperpswd != NULL )
+        appendPQExpBuffer(&buffer, "password='%s' ", q->mppsuperpswd);
 
     /*
      * Call libpq to connect
@@ -307,10 +310,11 @@ CdbDoConnect( SegmentDatabaseDescriptor *segdbDesc )
 void
 write_qd_sync(char *cmd, void *buf, int len)
 {
+	PGconn *conn;
     elog(DEBUG3, "%s", cmd);
     if ( cdb_mirrored_entry_db == NULL || cdb_mirrored_entry_db->conn == NULL )
         return;
-    PGconn *conn = cdb_mirrored_entry_db->conn;
+    conn = cdb_mirrored_entry_db->conn;
     bool failed = false;
 
     if (0 == PQsendQuery(conn, cmd))
@@ -341,11 +345,13 @@ write_qd_sync(char *cmd, void *buf, int len)
                 if (!resync && strstr(PQresultErrorMessage(pRes), "resync") != NULL)
                 {
                     char dummy[100];
+                    int pfileoff, mfileoff;
+                    
                     /* be careful going into an infinite loop */
                     resync = true;
                     
                     /* resync tmlog and xlog */
-                    int pfileoff, mfileoff;
+                    
                     sscanf(PQresultErrorMessage(pRes), "%s%s pdboff: %d, mdboff: %d",
                             dummy,dummy,&pfileoff,&mfileoff);
                     

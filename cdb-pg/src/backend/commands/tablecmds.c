@@ -606,7 +606,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 				{
 					/* dispatch node needs to update policy */
 							 
-					CdbPolicy * policy = stmt->policy;
+					MppPolicy * policy = stmt->policy;
 					
 					if (policy)
 						set_table_policy(relationId, policy);

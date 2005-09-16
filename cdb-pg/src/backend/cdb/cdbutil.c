@@ -46,14 +46,14 @@ static int CdbComponentDatabaseInfoCompare(const void *p1, const void *p2);
 static void freeCdbComponentDatabaseInfo( CdbComponentDatabaseInfo *cdi );
 
 /*
- * getCdbCdb() causes the mpp.mpp table's singleton row to be read into a global structure
+ * getMppMpp() causes the mpp.mpp table's singleton row to be read into a global structure
  * This is called from cdblink_setup().
- * The global variable is named CdbIdentity, and is declared in cdbvars.h and defined in cdbvars.c.
+ * The global variable is named MppIdentity, and is declared in cdbvars.h and defined in cdbvars.c.
  * There is one member variable that is a string.  It is allocated from the TopMemoryContext
  * because this information is intended to last for the life of the connection.
  * This call is made whether the database is an entry database or a segment database.
  */
-void getCdbCdb(void)
+void getMppMpp(void)
 {
 	Relation			cdb_cdb_rel;
 	HeapTuple			cdb_cdb_tuple = NULL;
@@ -67,7 +67,7 @@ void getCdbCdb(void)
 	MemoryContext permanentContext = TopMemoryContext;
 	
 	if (Mpp_role == MPP_ROLE_UTILITY)
-		elog(DEBUG1, "WARNING: called getCdbCdb when in utility mode");
+		elog(DEBUG1, "WARNING: called getMppMpp when in utility mode");
 
 	if (Mpp_role == MPP_ROLE_DISPATCH && Mpp_segment < -1)
 		Mpp_segment = -1;
@@ -75,10 +75,10 @@ void getCdbCdb(void)
 	/*
 	 * Release storage for the cdbname if not NULL
 	 */
-	if ( CdbIdentity.cdbname != NULL )
+	if ( MppIdentity.mppname != NULL )
 	{
-		pfree( CdbIdentity.cdbname );
-		CdbIdentity.cdbname = NULL;
+		pfree( MppIdentity.mppname );
+		MppIdentity.mppname = NULL;
 	}
 
 	/*
@@ -112,7 +112,7 @@ void getCdbCdb(void)
 	/*
 	 * Open the mpp.mpp table relation
 	 */
-	cdb_cdb_rel = HeapOpenCDBObject( MppMppRelationName, cdb_namespace_oid, true );
+	cdb_cdb_rel = HeapOpenMPPObject( MppMppRelationName, cdb_namespace_oid, true );
 
 	/*
 	 * Read the one row table mpp.mpp.
@@ -145,11 +145,11 @@ void getCdbCdb(void)
 
 	/*
 	* Switch to the TopMemoryContext for the cdbname, so it lasts for the life
-	* of the connection.  It is released in freeCdbCdb, which is called from 
+	* of the connection.  It is released in freeMppMpp, which is called from 
 	* cdblink_disconnect().
 	*/
     oldContext = MemoryContextSwitchTo(permanentContext);
-	CdbIdentity.cdbname = pstrdup( cdbname->data );
+	MppIdentity.mppname = pstrdup( cdbname->data );
     MemoryContextSwitchTo(oldContext);
 		
 	/*
@@ -157,21 +157,21 @@ void getCdbCdb(void)
 	*/
 	attr = heap_getattr(cdb_cdb_tuple, Anum_mpp_mpp_numsegments, cdb_cdb_rel->rd_att, &isNull);
 	Assert( !isNull );
-	CdbIdentity.numsegments = DatumGetInt32(attr);
+	MppIdentity.numsegments = DatumGetInt32(attr);
 	
 	/*
 	* dbid
 	*/
 	attr = heap_getattr(cdb_cdb_tuple, Anum_mpp_mpp_dbid, cdb_cdb_rel->rd_att, &isNull);
 	Assert( !isNull );
-	CdbIdentity.dbid = DatumGetInt32(attr);
+	MppIdentity.dbid = DatumGetInt32(attr);
 		
 	/*
 	* content
 	*/
 	attr = heap_getattr(cdb_cdb_tuple, Anum_mpp_mpp_content, cdb_cdb_rel->rd_att, &isNull);
 	Assert( !isNull );
-	CdbIdentity.segindex = DatumGetInt32(attr);
+	MppIdentity.segindex = DatumGetInt32(attr);
 
 	/*
 	 * End the heapscan and close the relation that we opened.
@@ -184,14 +184,14 @@ void getCdbCdb(void)
 	 * If the role is DISPATCH, we must be an entry database,
 	 * and if the role is EXECUTE, we must be a segment database.
 	 */
-	if ( Mpp_role == MPP_ROLE_DISPATCH && CdbIdentity.segindex >= 0 )
+	if ( Mpp_role == MPP_ROLE_DISPATCH && MppIdentity.segindex >= 0 )
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
 				 errmsg("Cannot have a Mpp_role of dispatch when connected to a segment database." 
 				 		)));
 	}
-	else if ( Mpp_role == MPP_ROLE_EXECUTE && CdbIdentity.segindex < 0 )
+	else if ( Mpp_role == MPP_ROLE_EXECUTE && MppIdentity.segindex < 0 )
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
@@ -199,11 +199,11 @@ void getCdbCdb(void)
 				 		)));
 	}
 	
-	if ( Mpp_role != MPP_ROLE_UTILITY && CdbIdentity.segindex != Mpp_segment )
+	if ( Mpp_role != MPP_ROLE_UTILITY && MppIdentity.segindex != Mpp_segment )
 	{
 		if (Mpp_segment < -1)
 		{
-			Mpp_segment = CdbIdentity.segindex;
+			Mpp_segment = MppIdentity.segindex;
 			ereport(WARNING,
 					(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
 					 errmsg("Mpp.Mpp segindex not same as Mpp_segment." 
@@ -221,22 +221,22 @@ void getCdbCdb(void)
 }
 
 /*
- * freeCdbCdb() causes the global variable holding the mpp.mpp table's singleton row to be 
+ * freeMppMpp() causes the global variable holding the mpp.mpp table's singleton row to be 
  * reinitialized to empty, releasing memory that was allocated when it was loaded.
  * It is called from cdblink_disconnect().
  */
-void freeCdbCdb(void)
+void freeMppMpp(void)
 {
 	 
-	if ( CdbIdentity.cdbname != NULL )
+	if ( MppIdentity.mppname != NULL )
 	{
-		pfree( CdbIdentity.cdbname );
-		CdbIdentity.cdbname = NULL;
+		pfree( MppIdentity.mppname );
+		MppIdentity.mppname = NULL;
 	}
 
-	CdbIdentity.numsegments = 0;
-	CdbIdentity.dbid = -1;
-	CdbIdentity.segindex = -999;
+	MppIdentity.numsegments = 0;
+	MppIdentity.dbid = -1;
+	MppIdentity.segindex = -999;
 }
 
 
@@ -373,9 +373,9 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 	 * First, open all the table relations.
 	 * This will ereport an ERROR is unsuccessful in opening the relation.
 	 */
-	cdb_pgdatabase_rel = HeapOpenCDBObject( MppSegmentRelationName, cdb_namespace_oid, true );
-	cdb_listener_rel = HeapOpenCDBObject( MppListenerRelationName, cdb_namespace_oid, true );
-	cdb_host_rel = HeapOpenCDBObject( MppHostRelationName, cdb_namespace_oid, true );
+	cdb_pgdatabase_rel = HeapOpenMPPObject( MppSegmentRelationName, cdb_namespace_oid, true );
+	cdb_listener_rel = HeapOpenMPPObject( MppListenerRelationName, cdb_namespace_oid, true );
+	cdb_host_rel = HeapOpenMPPObject( MppHostRelationName, cdb_namespace_oid, true );
 	
 	/*
 	 * Convert index names to Oids
@@ -495,7 +495,7 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 		ScanKeyInit(&listener_key[0], Anum_mpp_listener_listenerid, BTEqualStrategyNumber,
 					F_INT4EQ, Int32GetDatum(listenerid));
 					
-		cdb_listener_scan = cdbtable_beginscan(cdb_listener_rel, 
+		cdb_listener_scan = mpptable_beginscan(cdb_listener_rel, 
 											  cdb_listener_index_oid, 
 											   (cdb_listener_index_oid != InvalidOid), 
 												SnapshotNow, 
@@ -545,14 +545,14 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 		*/
 		attr = heap_getattr(cdb_listener_tuple, Anum_mpp_listener_mppsuperuser, cdb_listener_rel->rd_att, &isNull);
 		Assert( !isNull );
-		pRow->cdbsuperuser = DatumGetCString(DirectFunctionCall1(textout, attr));
+		pRow->mppsuperuser = DatumGetCString(DirectFunctionCall1(textout, attr));
 		
 		/*
 		* mppsuperpswd
 		*/
 		attr = heap_getattr(cdb_listener_tuple, Anum_mpp_listener_mppsuperpswd, cdb_listener_rel->rd_att, &isNull);
 		if ( !isNull )
-			pRow->cdbsuperpswd = DatumGetCString(DirectFunctionCall1(textout, attr));
+			pRow->mppsuperpswd = DatumGetCString(DirectFunctionCall1(textout, attr));
 
 		systable_endscan(cdb_listener_scan);
 		
@@ -563,7 +563,7 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 		ScanKeyInit(&host_key[0], Anum_mpp_host_hostid, BTEqualStrategyNumber,
 					F_INT4EQ, Int32GetDatum(hostid));
 					
-		cdb_host_scan = cdbtable_beginscan(cdb_host_rel, 
+		cdb_host_scan = mpptable_beginscan(cdb_host_rel, 
 											  cdb_host_index_oid, 
 											   (cdb_host_index_oid != InvalidOid), 
 												SnapshotNow, 
@@ -635,22 +635,22 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 	}
 	 
 	 
-	 if ( CdbIdentity.numsegments <= 0 ) /* mpp.mpp not available or not read in yet */
+	 if ( MppIdentity.numsegments <= 0 ) /* mpp.mpp not available or not read in yet */
 	 {
-	 	CdbIdentity.numsegments = component_databases->total_segments;
-	 	CdbIdentity.segindex = -1;
-	 	CdbIdentity.dbid = 1;
+	 	MppIdentity.numsegments = component_databases->total_segments;
+	 	MppIdentity.segindex = -1;
+	 	MppIdentity.dbid = 1;
 	 }
 	 
 	 /*
 	  *  Validate that cdb_numsegments == segment_databases->total_segment_dbs
 	  */
-	 if ( getCdbSegmentCount() != component_databases->total_segments )
+	 if ( getMPPSegmentCount() != component_databases->total_segments )
 	 {
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_EXCEPTION),
 				 errmsg("MPP number of segments inconsistency: count is %d from %s.%s table, but %d from getCdbComponentDatabases()",
-		    getCdbSegmentCount(), MppNamespaceName, MppMppRelationName, component_databases->total_segments )));
+		    getMPPSegmentCount(), MppNamespaceName, MppMppRelationName, component_databases->total_segments )));
 	 }
 
 	/*
@@ -659,7 +659,7 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 	for ( i=0; i<component_databases->total_entry_dbs; i++ )
 	{
 		CdbComponentDatabaseInfo* pInfo = &component_databases->entry_db_info[i];
-		if ( pInfo->dbid == CdbIdentity.dbid && pInfo->segindex == Mpp_segment )
+		if ( pInfo->dbid == MppIdentity.dbid && pInfo->segindex == Mpp_segment )
 		{
 			break;
 		}
@@ -669,15 +669,15 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_EXCEPTION),
 				errmsg("Cannot locate entry database represented by mpp.mpp row in mpp.pgdatabase: dbid %d content %d",
-				CdbIdentity.dbid, Mpp_segment )));
+				MppIdentity.dbid, Mpp_segment )));
 	}
 
 	/*
-	 * Now validate that the segindexes for the segment databases are between 0 and CdbIdentity.numsegments-1 inclusive,
+	 * Now validate that the segindexes for the segment databases are between 0 and MppIdentity.numsegments-1 inclusive,
 	 * and that we hit them all. Since it's sorted, this is relatively easy.
 	 */
 	x = 0;
-	for ( i=0; i<getCdbSegmentCount(); i++ )
+	for ( i=0; i<getMPPSegmentCount(); i++ )
 	{
 		int this_segindex=-1;
 		while ( x < component_databases->total_segment_dbs )
@@ -692,7 +692,7 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 				ereport(ERROR,
 						(errcode(ERRCODE_DATA_EXCEPTION),
 						errmsg("Content values not valid in mpp.pgdatabase table.  They must be in the range 0 to %d inclusive",
-						getCdbSegmentCount() - 1 )));
+						getMPPSegmentCount() - 1 )));
 			}
 		}
 		if ( this_segindex != i )
@@ -700,7 +700,7 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATA_EXCEPTION),
 					errmsg("Content values not valid in mpp.pgdatabase table.  They must be in the range 0 to %d inclusive",
-					getCdbSegmentCount() - 1 )));
+					getMPPSegmentCount() - 1 )));
 		}
 	}
 
@@ -768,10 +768,10 @@ void freeCdbComponentDatabaseInfo( CdbComponentDatabaseInfo *cdi )
 	    pfree(cdi->hostname);
 	if ( cdi->datadir != NULL )
 	    pfree(cdi->datadir);
-	if ( cdi->cdbsuperuser != NULL )
-	    pfree(cdi->cdbsuperuser);
-	if ( cdi->cdbsuperpswd != NULL )
-	    pfree(cdi->cdbsuperpswd);
+	if ( cdi->mppsuperuser != NULL )
+	    pfree(cdi->mppsuperuser);
+	if ( cdi->mppsuperpswd != NULL )
+	    pfree(cdi->mppsuperpswd);
 }
 
 /*
