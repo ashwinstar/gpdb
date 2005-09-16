@@ -199,7 +199,6 @@ static int16 CopyGetInt16(void);
 /* byte scaning utils */
 static char *scanTextLine(const char *s, char c, size_t len);
 static char *scanCSVLine(const char *s, char c1, char c2, char c3, size_t len);
-static char *scanTextAttr(const char *s, char c1, char c2, size_t len);
 
 
 /*
@@ -1698,6 +1697,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
 				 errmsg("Unexpected MppPolicyType: %d.", policy->ptype)));
 
+
 	p_nattrs = policy->nattrs; /* number of partitioning keys */
 	cdbHash = makeCdbHash(cdbCopy->total_segs, HASH_FNV_1); /* Create hash API reference */
 
@@ -1970,7 +1970,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 						
 						if (isnull)
 						{
-							appendStringInfo(&cdbcopy_err, "\n\nCDBCOPY ERROR: null OID in COPY data."
+							appendStringInfo(&cdbcopy_err, "\n\nMPPCOPY ERROR: null OID in COPY data."
 											 "\nRow number: %d\nData row: %s", copy_lineno, line_buf.data);
 							cdbCopy->data_errors = true;
 						}
@@ -1990,7 +1990,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 								MemoryContextSwitchTo(beforeError);
 								edata = CopyErrorData(); /* get the original error message */
 								FlushErrorState();
-								appendStringInfo(&cdbcopy_err, "\n\nCDBCOPY ERROR: Error processing OID column."
+								appendStringInfo(&cdbcopy_err, "\n\nMPPCOPY ERROR: Error processing OID column."
 												 "\nRow number: %d\nDescription: %s\nData row: %s", 
 												 copy_lineno, edata->message, line_buf.data);
 								FreeErrorData(edata);
@@ -2003,7 +2003,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 							
 							if (loaded_oid == InvalidOid)
 							{
-								appendStringInfo(&cdbcopy_err, "\n\nCDBCOPY ERROR: invalid OID in COPY data."
+								appendStringInfo(&cdbcopy_err, "\n\nMPPCOPY ERROR: invalid OID in COPY data."
 												 "\nRow number: %d\nData row: %s", copy_lineno, line_buf.data);
 								cdbCopy->data_errors = true;
 							}
@@ -2037,7 +2037,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 						MemoryContextSwitchTo(beforeError);
 						edata = CopyErrorData(); /* get the original error message */
 						FlushErrorState();
-						appendStringInfo(&cdbcopy_err, "\n\nCDBCOPY ERROR: Error while parsing attributes."
+						appendStringInfo(&cdbcopy_err, "\n\nMPPCOPY ERROR: Error while parsing attributes."
 										 "\nRow number: %d\nDescription: %s\nData row: %s", 
 										 copy_lineno, edata->message, line_buf.data);
 						FreeErrorData(edata);
@@ -2101,7 +2101,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 									{
 										limit_printout_length(&line_buf);
 										appendStringInfo(&cdbcopy_err, 
-														 "\n\nCDBCOPY ERROR: Incompatiable value for partitioning "
+														 "\n\nMPPCOPY ERROR: Incompatiable value for partitioning "
 														 "column '%s' type. \nRow number: %d\nData Value: '%s'.\nData row: %s",
 														 copy_attname, copy_lineno, string, line_buf.data);
 										cdbCopy->data_errors = true;
@@ -2139,7 +2139,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 					
 					if (fld_count != attr_count)
 					{
-						appendStringInfo(&cdbcopy_err, "\n\nCDBCOPY ERROR: row field count is %d, expected %d",
+						appendStringInfo(&cdbcopy_err, "\n\nMPPCOPY ERROR: row field count is %d, expected %d",
 										 (int) fld_count, attr_count);
 						cdbCopy->data_errors = true;
 						no_more_data = true;
@@ -2156,7 +2156,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 																	 &isnull));
 						if (isnull || loaded_oid == InvalidOid)
 						{
-							appendStringInfo(&cdbcopy_err, "\n\nCDBCOPY ERROR: invalid OID in COPY data");
+							appendStringInfo(&cdbcopy_err, "\n\nMPPCOPY ERROR: invalid OID in COPY data");
 							cdbCopy->data_errors = true;
 							no_more_data = true;
 							break;
@@ -3567,6 +3567,8 @@ CopyReadAttributesText(const char *delim, const char *escape, const char *null_p
 	char        escapec = escape[0];    /* escape character    */
 	char	   *scan_start;		/* pointer to line buffer for scan start. */
 	char	   *scan_end;		/* pointer to line buffer where char was found */
+    char	   *stop;
+	char	   *scanner;			
 	int			attr_pre_len;	/* attr raw len, before processing escapes */
 	int			attr_post_len;	/* current attr len after escaping */
 	int			m;				/* attribute index being parsed */
@@ -3603,9 +3605,14 @@ CopyReadAttributesText(const char *delim, const char *escape, const char *null_p
 		while (line_buf.cursor < line_buf.len)
 		{
 			bytes_remaining = line_buf.len - line_buf.cursor;
+            stop = scan_start + bytes_remaining;
 			
-			if ((scan_end = scanTextAttr(scan_start, delimc, escapec, bytes_remaining))
-				== NULL)
+			for (scanner = scan_start; *scanner != delimc && *scanner != escapec && scanner < stop; scanner++)
+				;
+					
+			scan_end = (*scanner != '\0' ? (char *) scanner : NULL);
+			
+			if (scan_end == NULL)
 			{
 				/* GOT TO END OF LINE BUFFER */
 				
@@ -4369,18 +4376,3 @@ scanCSVLine(const char *s, char eol, char escapec, char quotec, size_t len)
 	return ((*s == eol) ? (char *) s : NULL);
 }
 
-/*
- * Scan for 1 of 2 characters necessary for attribute parsing. No need
- * for checking for multi-byte characters since conversion already 
- * happened.
- */
-char *
-scanTextAttr(const char *s, char c1, char c2, size_t len)
-{
-	const char *start;
-	
-	for (start = s; *s != c1 && *s != c2 && s < start + len; s++)
-		;
-	
-	return (*s != '\0' ? (char *) s : NULL);
-}
