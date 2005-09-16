@@ -161,12 +161,12 @@ void cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer,
 		{
 			if(result == 0)
 				appendStringInfo(&(c->err_msg), 
-								 "\n\nCDBCOPY ERROR: Failed to send data to segment %d db %d, attempt blocked", 
+								 "\n\nMPPCOPY ERROR: Failed to send data to segment %d db %d, attempt blocked", 
 								 target_seg, db);
 				
 			if(result == -1)
 				appendStringInfo(&(c->err_msg), 
-								 "\n\nCDBCOPY ERROR: Failed to send data to segment %d db %d: %s", 
+								 "\n\nMPPCOPY ERROR: Failed to send data to segment %d db %d: %s", 
 								 target_seg, db, PQerrorMessage(q->conn));
 			
 			c->io_errors = true;
@@ -216,7 +216,7 @@ void cdbCopyEnd(CdbCopy *c)
 			{
 				/* attempt blocked */
 				appendStringInfo(&(c->err_msg), 
-								 "\n\nCDBCOPY ERROR: Failed to end COPY command in seg %d db %d, attempt blocked", 
+								 "\n\nMPPCOPY ERROR: Failed to end COPY command in seg %d db %d, attempt blocked", 
 								 seg, db);
 				c->io_errors = true;
 			}
@@ -224,7 +224,7 @@ void cdbCopyEnd(CdbCopy *c)
 			{
 				/* command error */
 				appendStringInfo(&(c->err_msg), 
-								 "\n\nCDBCOPY ERROR: Reporting segment %d db %d: %s", 
+								 "\n\nMPPCOPY ERROR: Reporting segment %d db %d: %s", 
 								 seg, db, PQerrorMessage(q->conn));
 				c->io_errors = true;
 			}	 
@@ -244,7 +244,7 @@ void cdbCopyEnd(CdbCopy *c)
 					/* if the COPY command had a data error */
 					if ( PQresultStatus(res) == PGRES_FATAL_ERROR )
 					{
-						appendStringInfo(&(c->err_msg), "\n\nCDBCOPY ERROR: Reporting segment %d db %d: %s", 
+						appendStringInfo(&(c->err_msg), "\n\nMPPCOPY ERROR: Reporting segment %d db %d: %s", 
 										 seg, db, PQresultErrorMessage(res));
 						c->data_errors = true;
 					}
