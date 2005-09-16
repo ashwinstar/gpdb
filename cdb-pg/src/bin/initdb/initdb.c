@@ -1818,7 +1818,7 @@ setup_cdb_schema(void)
 	char	  **line;
 	char	  **lines;
 
-	fputs(_("creating cdb schema ... "), stdout);
+	fputs(_("creating MPP schema ... "), stdout);
 	fflush(stdout);
 
 	lines = readfile(cdb_schema_file);
@@ -2658,7 +2658,7 @@ main(int argc, char *argv[])
 
 	setup_schema();
 	
-	/* sets up the CDB admin schema */
+	/* sets up the MPP admin schema */
 	setup_cdb_schema();
 
 	vacuum_db();
