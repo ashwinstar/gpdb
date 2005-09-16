@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * cdbvars.c
- *	  Provides storage areas and processing routines for CDB variables
+ *	  Provides storage areas and processing routines for MPP variables
  *	  managed by GUC.
  *
  * Copyright (c) 2003-2004, Greenplum
@@ -36,12 +36,12 @@
  
  
  
-MppRoleValue		Mpp_role;			/* Role paid by this CDB backend */
+MppRoleValue		Mpp_role;			/* Role paid by this MPP backend */
 char			   *mpp_role_string;	/* Staging area for guc.c */
 char            *mpp_fault_action_string; /* Staging area for guc.c */
 bool             mpp_set_read_only; /* Staging area for guc.c */
 
-MppRoleValue		Mpp_session_role;	/* Role paid by this CDB backend */
+MppRoleValue		Mpp_session_role;	/* Role paid by this MPP backend */
 char			   *mpp_session_role_string; /* Staging area for guc.c */
 
 bool				Mpp_is_primary;		/* Is this session primary (or mirror) */
@@ -89,7 +89,7 @@ const char * role_to_string( MppRoleValue role );
 
 
 /*
- * Convert a CDB role string (as for mpp_session_role or mpp_role) to an 
+ * Convert a MPP role string (as for mpp_session_role or mpp_role) to an 
  * enum value of type MppRoleValue. Return MPP_ROLE_UNDEFINED in case the 
  * string is unrecognized.
  */
@@ -226,7 +226,7 @@ assign_mpp_role( const char *newval, bool doit, GucSource source )
     	if ( do_connect )
     	{
     		/*
-    		 * In case there are problems with the cdb tables or data,
+    		 * In case there are problems with the MPP tables or data,
     		 * we catch any error coming out of cdblink_setup so we can set the
     		 * mpp_role back to what it was.  Otherwise we may be left with
     		 * inappropriate connections for the new role.

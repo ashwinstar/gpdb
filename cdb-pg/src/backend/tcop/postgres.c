@@ -362,7 +362,7 @@ SocketBackend(StringInfo inBuf)
 					 errmsg("invalid frontend message type %d", qtype)));
 			break;
 		
-		case 'W':   /* CDB command for transmitting listener port. */
+		case 'W':   /* MPP command for transmitting listener port. */
 			
 			break;
 

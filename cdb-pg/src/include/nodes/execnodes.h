@@ -276,7 +276,7 @@ typedef struct ResultRelInfo
 } ResultRelInfo;
 
 /* ----------------
- * CDB Worker Process information
+ * MPP Worker Process information
  *
  * This structure represents the global information about a worker process.
  * It is contructed on the entry process (QD) and transmitted as part of
@@ -309,7 +309,7 @@ typedef struct ResultRelInfo
  } CdbProcess;
 
 /* ----------------
- * CDB Plan Slice information
+ * MPP Plan Slice information
  *
  * These structures summarize how a plan tree is sliced up into separate
  * units of execution or slices. A slice will execute on a each worker within 
@@ -369,7 +369,7 @@ typedef struct Slice
 							 * this plan slice.
 							 *
 							 * The number of processes must agree with the
-							 * the plan slice to be implemented.  In CDB 2
+							 * the plan slice to be implemented.  In MPP 2
 							 * the possibilities are 1 for a slice that 
 							 * operates on a single stream of tuples (e.g., 
 							 * the receiver of a fixed motion, a 1-gang), or 
@@ -398,7 +398,7 @@ typedef struct Slice
  * Slices nMotion+1 and on are root slices of initPlans.
  *
  * There may be unused slices in case the plan contains subplans that
- * are  not initPlans.  (This won't happen unless CDB decides to support
+ * are  not initPlans.  (This won't happen unless MPP decides to support
  * subplans similarly to PostgreSQL, which isn't the current plan.)
  * 
  */
@@ -475,7 +475,7 @@ typedef struct EState
 	HeapTuple  *es_evTuple;		/* shared array of EPQ substitute tuples */
 	bool		es_useEvalPlan; /* evaluating EPQ tuples? */
 	
-	/* Additions for CDB plan slicing. */
+	/* Additions for MPP plan slicing. */
 	int es_cur_root_idx;
 	int es_cur_slice_idx;
  	SliceTable *es_sliceTable;

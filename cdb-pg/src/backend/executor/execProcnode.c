@@ -248,7 +248,7 @@ ExecInitNode(Plan *node, EState *estate)
 		sstate = ExecInitExprInitPlan(subplan, result);
 		
 		/*
-		 * CDB Slice Plan:  QD must initialize the global slice table.
+		 * MPP Slice Plan:  QD must initialize the global slice table.
 		 */
 		prior_es_cur_slice_idx = estate->es_cur_slice_idx; /* save */
 		prior_es_cur_root_idx = estate->es_cur_root_idx; /* save */

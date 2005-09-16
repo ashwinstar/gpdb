@@ -308,7 +308,7 @@ void ResetMotionLayer(bool flushCommLayer)
  * ml_ipc sets up.  
  *
  * Generally, this function should only be called on process exit or when 
- * switching out of a cdb mode.
+ * switching out of a MPP mode.
  */
 void CleanUpMotionLayer(void)
 {

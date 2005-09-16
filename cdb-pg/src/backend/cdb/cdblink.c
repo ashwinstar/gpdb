@@ -258,6 +258,8 @@ buildMirrorQDDefinition(void)
 static void
 CdbDoConnect( SegmentDatabaseDescriptor *segdbDesc )
 {
+	PGconn *conn;
+	
     CdbComponentDatabaseInfo *q = segdbDesc->segment_database_info;
     /*
      * We use PQExpBufferData instead of StringInfoData
@@ -289,7 +291,7 @@ CdbDoConnect( SegmentDatabaseDescriptor *segdbDesc )
     /*
      * Call libpq to connect
      */                 
-    PGconn *conn = PQconnectdb(buffer.data);
+    conn = PQconnectdb(buffer.data);
 
     if ( PQstatus(conn) == CONNECTION_BAD )
     {
@@ -311,11 +313,13 @@ void
 write_qd_sync(char *cmd, void *buf, int len)
 {
 	PGconn *conn;
+	bool failed = false;
+	
     elog(DEBUG3, "%s", cmd);
     if ( cdb_mirrored_entry_db == NULL || cdb_mirrored_entry_db->conn == NULL )
         return;
     conn = cdb_mirrored_entry_db->conn;
-    bool failed = false;
+    
 
     if (0 == PQsendQuery(conn, cmd))
     {

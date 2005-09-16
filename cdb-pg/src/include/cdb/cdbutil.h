@@ -14,7 +14,7 @@
 #include "c.h"
 
 /* --------------------------------------------------------------------------------------------------
- * Structure for cdb 2.0 database information
+ * Structure for MPP 2.0 database information
  *
  * The information contained in this structure represents logically a row from  
  * mpp.component_database view.  It is used to describe either an entry
@@ -36,8 +36,8 @@ typedef struct CdbComponentDatabaseInfo
     int4		port;     		/* port that instance is listening on */
     char		*datadir;   	/* directory where instance was initialized into */
     int4		listenerid;		/* id of listener for this database. */
-    char		*mppsuperuser;	/* user name for cdb connection */
-    char		*mppsuperpswd;	/* password for cdb connection */
+    char		*mppsuperuser;	/* user name for mpp connection */
+    char		*mppsuperpswd;	/* password for mpp connection */
 } CdbComponentDatabaseInfo;
 
 /* --------------------------------------------------------------------------------------------------
@@ -59,7 +59,7 @@ typedef struct CdbComponentDatabases
 } CdbComponentDatabases;
 
 /*
- * performs all necessary setup required for initializing CDB components.
+ * performs all necessary setup required for initializing MPP components.
  *
  * This includes cdblink_setup() and initializing the Motion Layer.
  *
@@ -68,8 +68,8 @@ extern void cdb_setup(void);
 
 
 /*
- * performs all necessary cleanup required when cleaning up CDB components
- * when disabling CDB functionality.
+ * performs all necessary cleanup required when cleaning up MPP components
+ * when disabling MPP functionality.
  *
  */
 extern void cdb_cleanup(int code, Datum arg);

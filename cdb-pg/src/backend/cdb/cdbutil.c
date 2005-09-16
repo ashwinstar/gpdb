@@ -55,14 +55,14 @@ static void freeCdbComponentDatabaseInfo( CdbComponentDatabaseInfo *cdi );
  */
 void getMppMpp(void)
 {
-	Relation			cdb_cdb_rel;
-	HeapTuple			cdb_cdb_tuple = NULL;
-	HeapScanDesc		cdb_cdb_scan;
-	Oid					cdb_namespace_oid;
-	Oid 				cdb_oid;
+	Relation			mpp_mpp_rel;
+	HeapTuple			mpp_mpp_tuple = NULL;
+	HeapScanDesc		mpp_mpp_scan;
+	Oid					mpp_namespace_oid;
+	Oid 				mpp_oid;
 	bool				isNull;
 	Datum				attr;
-	Name cdbname;
+	Name mppname;
 	MemoryContext oldContext;
 	MemoryContext permanentContext = TopMemoryContext;
 	
@@ -82,10 +82,10 @@ void getMppMpp(void)
 	}
 
 	/*
-	 * Get oid of cdb namespace
+	 * Get oid of mpp namespace
 	 */
-	cdb_namespace_oid = getMPPNamespaceOid();
-	if ( cdb_namespace_oid == InvalidOid )
+	mpp_namespace_oid = getMPPNamespaceOid();
+	if ( mpp_namespace_oid == InvalidOid )
 	{
 		ereport(WARNING,
 				(errcode(ERRCODE_CARDINALITY_VIOLATION),
@@ -94,12 +94,12 @@ void getMppMpp(void)
 		return;
 	}
 	
-	cdb_oid = get_relname_relid(MppMppRelationName, cdb_namespace_oid);
+	mpp_oid = get_relname_relid(MppMppRelationName, mpp_namespace_oid);
 	
 	/*
 	 * If the mpp.mpp table isn't there we continue if not dispatch.
 	 */	
-	if ( cdb_oid == InvalidOid )
+	if ( mpp_oid == InvalidOid )
 	{
 		ereport(WARNING,
 				(errcode(ERRCODE_CARDINALITY_VIOLATION),
@@ -112,15 +112,15 @@ void getMppMpp(void)
 	/*
 	 * Open the mpp.mpp table relation
 	 */
-	cdb_cdb_rel = HeapOpenMPPObject( MppMppRelationName, cdb_namespace_oid, true );
+	mpp_mpp_rel = HeapOpenMPPObject( MppMppRelationName, mpp_namespace_oid, true );
 
 	/*
 	 * Read the one row table mpp.mpp.
 	 * We currently require that this be there or else we ereport an ERROR.
 	 */
-	cdb_cdb_scan = heap_beginscan(cdb_cdb_rel, SnapshotNow, 0, NULL);
-	cdb_cdb_tuple = heap_getnext(cdb_cdb_scan, ForwardScanDirection);
-	if ( !HeapTupleIsValid(cdb_cdb_tuple) )
+	mpp_mpp_scan = heap_beginscan(mpp_mpp_rel, SnapshotNow, 0, NULL);
+	mpp_mpp_tuple = heap_getnext(mpp_mpp_scan, ForwardScanDirection);
+	if ( !HeapTupleIsValid(mpp_mpp_tuple) )
 	{
 		ereport(WARNING,
 				(errcode(ERRCODE_CARDINALITY_VIOLATION),
@@ -136,9 +136,9 @@ void getMppMpp(void)
 	/*
 	* mppname
 	*/
-	attr = heap_getattr(cdb_cdb_tuple, Anum_mpp_mpp_mppname, cdb_cdb_rel->rd_att, &isNull);
+	attr = heap_getattr(mpp_mpp_tuple, Anum_mpp_mpp_mppname, mpp_mpp_rel->rd_att, &isNull);
 	Assert( !isNull );
-	cdbname = DatumGetName(attr);
+	mppname = DatumGetName(attr);
 
 	
 
@@ -149,35 +149,35 @@ void getMppMpp(void)
 	* cdblink_disconnect().
 	*/
     oldContext = MemoryContextSwitchTo(permanentContext);
-	MppIdentity.mppname = pstrdup( cdbname->data );
+	MppIdentity.mppname = pstrdup( mppname->data );
     MemoryContextSwitchTo(oldContext);
 		
 	/*
 	* numsegments
 	*/
-	attr = heap_getattr(cdb_cdb_tuple, Anum_mpp_mpp_numsegments, cdb_cdb_rel->rd_att, &isNull);
+	attr = heap_getattr(mpp_mpp_tuple, Anum_mpp_mpp_numsegments, mpp_mpp_rel->rd_att, &isNull);
 	Assert( !isNull );
 	MppIdentity.numsegments = DatumGetInt32(attr);
 	
 	/*
 	* dbid
 	*/
-	attr = heap_getattr(cdb_cdb_tuple, Anum_mpp_mpp_dbid, cdb_cdb_rel->rd_att, &isNull);
+	attr = heap_getattr(mpp_mpp_tuple, Anum_mpp_mpp_dbid, mpp_mpp_rel->rd_att, &isNull);
 	Assert( !isNull );
 	MppIdentity.dbid = DatumGetInt32(attr);
 		
 	/*
 	* content
 	*/
-	attr = heap_getattr(cdb_cdb_tuple, Anum_mpp_mpp_content, cdb_cdb_rel->rd_att, &isNull);
+	attr = heap_getattr(mpp_mpp_tuple, Anum_mpp_mpp_content, mpp_mpp_rel->rd_att, &isNull);
 	Assert( !isNull );
 	MppIdentity.segindex = DatumGetInt32(attr);
 
 	/*
 	 * End the heapscan and close the relation that we opened.
 	 */
-	heap_endscan(cdb_cdb_scan);
-	heap_close(cdb_cdb_rel, AccessShareLock);
+	heap_endscan(mpp_mpp_scan);
+	heap_close(mpp_mpp_rel, AccessShareLock);
 
 	/*
 	 * Validate the mpp_role against the content.
@@ -275,34 +275,34 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 	/*
 	 * Relations for each of the 3 tables we need to read
 	 */
-	Relation			cdb_pgdatabase_rel;
-	Relation			cdb_listener_rel;
-	Relation			cdb_host_rel;
+	Relation			mpp_pgdatabase_rel;
+	Relation			mpp_listener_rel;
+	Relation			mpp_host_rel;
 
 	/*
 	 * HeapTuples for each of the 3 tables we need to read
 	 */
-	HeapTuple			cdb_pgdatabase_tuple = NULL;
-	HeapTuple			cdb_listener_tuple = NULL;
-	HeapTuple			cdb_host_tuple = NULL;
+	HeapTuple			mpp_pgdatabase_tuple = NULL;
+	HeapTuple			mpp_listener_tuple = NULL;
+	HeapTuple			mpp_host_tuple = NULL;
 	
 	/*
 	 * ScanDescs for each of the 3 tables we need to read
 	 */
-	HeapScanDesc		cdb_pgdatabase_scan;
-	SysScanDesc			cdb_listener_scan;
-	SysScanDesc			cdb_host_scan;
+	HeapScanDesc		mpp_pgdatabase_scan;
+	SysScanDesc			mpp_listener_scan;
+	SysScanDesc			mpp_host_scan;
 	
 	/*
 	 * Index Oids for each of the 2 indexes we use
 	 */
-	Oid					cdb_listener_index_oid;
-	Oid					cdb_host_index_oid;
+	Oid					mpp_listener_index_oid;
+	Oid					mpp_host_index_oid;
 
 	/*
-	 * Oid for cdb namespace
+	 * Oid for MPP namespace
 	 */
-	Oid					cdb_namespace_oid;
+	Oid					mpp_namespace_oid;
 	
 	/*
 	 * Initial size for info arrays.
@@ -352,10 +352,10 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 		(CdbComponentDatabaseInfo *)palloc0(sizeof(CdbComponentDatabaseInfo) * entry_array_size);
 
 	/*
-	 * Get oid of cdb namespace
+	 * Get oid of mpp namespace
 	 */
-	cdb_namespace_oid = getMPPNamespaceOid();
-	if ( cdb_namespace_oid == InvalidOid )
+	mpp_namespace_oid = getMPPNamespaceOid();
+	if ( mpp_namespace_oid == InvalidOid )
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_CARDINALITY_VIOLATION),
@@ -373,24 +373,24 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 	 * First, open all the table relations.
 	 * This will ereport an ERROR is unsuccessful in opening the relation.
 	 */
-	cdb_pgdatabase_rel = HeapOpenMPPObject( MppSegmentRelationName, cdb_namespace_oid, true );
-	cdb_listener_rel = HeapOpenMPPObject( MppListenerRelationName, cdb_namespace_oid, true );
-	cdb_host_rel = HeapOpenMPPObject( MppHostRelationName, cdb_namespace_oid, true );
+	mpp_pgdatabase_rel = HeapOpenMPPObject( MppSegmentRelationName, mpp_namespace_oid, true );
+	mpp_listener_rel = HeapOpenMPPObject( MppListenerRelationName, mpp_namespace_oid, true );
+	mpp_host_rel = HeapOpenMPPObject( MppHostRelationName, mpp_namespace_oid, true );
 	
 	/*
 	 * Convert index names to Oids
 	 */
-	cdb_listener_index_oid = get_relname_relid(MppListenerPrimaryKeyIndexName, 
-												cdb_namespace_oid);
-	cdb_host_index_oid = get_relname_relid(MppHostPrimaryKeyIndexName, 
-												cdb_namespace_oid);
+	mpp_listener_index_oid = get_relname_relid(MppListenerPrimaryKeyIndexName, 
+												mpp_namespace_oid);
+	mpp_host_index_oid = get_relname_relid(MppHostPrimaryKeyIndexName, 
+												mpp_namespace_oid);
 	
 	/*
 	 * Main loop: loop through mpp.pgdatabase by doing a heap scan
 	 */
-	cdb_pgdatabase_scan = heap_beginscan(cdb_pgdatabase_rel, SnapshotNow, 0, NULL);
+	mpp_pgdatabase_scan = heap_beginscan(mpp_pgdatabase_rel, SnapshotNow, 0, NULL);
 	
-	while ( HeapTupleIsValid(cdb_pgdatabase_tuple = heap_getnext(cdb_pgdatabase_scan, ForwardScanDirection)) )
+	while ( HeapTupleIsValid(mpp_pgdatabase_tuple = heap_getnext(mpp_pgdatabase_scan, ForwardScanDirection)) )
 	{
 		/*
 		* Grab the fields that we need from mpp.pgdatabase.
@@ -402,42 +402,42 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 		/*
 		* dbid
 		*/
-		attr = heap_getattr(cdb_pgdatabase_tuple, Anum_mpp_pgdatabase_dbid, cdb_pgdatabase_rel->rd_att, &isNull);
+		attr = heap_getattr(mpp_pgdatabase_tuple, Anum_mpp_pgdatabase_dbid, mpp_pgdatabase_rel->rd_att, &isNull);
 		Assert( !isNull );
 		dbid = DatumGetInt32(attr);
 		
 		/*
 		* listenerid
 		*/
-		attr = heap_getattr(cdb_pgdatabase_tuple, Anum_mpp_pgdatabase_listenerid, cdb_pgdatabase_rel->rd_att, &isNull);
+		attr = heap_getattr(mpp_pgdatabase_tuple, Anum_mpp_pgdatabase_listenerid, mpp_pgdatabase_rel->rd_att, &isNull);
 		Assert( !isNull );
 		listenerid = DatumGetInt32(attr);
 
 		/*
 		* content
 		*/
-		attr = heap_getattr(cdb_pgdatabase_tuple, Anum_mpp_pgdatabase_content, cdb_pgdatabase_rel->rd_att, &isNull);
+		attr = heap_getattr(mpp_pgdatabase_tuple, Anum_mpp_pgdatabase_content, mpp_pgdatabase_rel->rd_att, &isNull);
 		Assert( !isNull );
 		content = DatumGetInt32(attr);
 
 		/*
 		* isprimary
 		*/
-		attr = heap_getattr(cdb_pgdatabase_tuple, Anum_mpp_pgdatabase_isprimary, cdb_pgdatabase_rel->rd_att, &isNull);
+		attr = heap_getattr(mpp_pgdatabase_tuple, Anum_mpp_pgdatabase_isprimary, mpp_pgdatabase_rel->rd_att, &isNull);
 		Assert( !isNull );
 		isprimary = DatumGetBool(attr);
 
         /*
         * valid
         */
-        attr = heap_getattr(cdb_pgdatabase_tuple, Anum_mpp_pgdatabase_valid, cdb_pgdatabase_rel->rd_att, &isNull);
+        attr = heap_getattr(mpp_pgdatabase_tuple, Anum_mpp_pgdatabase_valid, mpp_pgdatabase_rel->rd_att, &isNull);
         Assert( !isNull );
         valid = DatumGetBool(attr);
         
         /*
         * isprimary
         */
-        attr = heap_getattr(cdb_pgdatabase_tuple, Anum_mpp_pgdatabase_definedprimary, cdb_pgdatabase_rel->rd_att, &isNull);
+        attr = heap_getattr(mpp_pgdatabase_tuple, Anum_mpp_pgdatabase_definedprimary, mpp_pgdatabase_rel->rd_att, &isNull);
         Assert( !isNull );
         definedprimary = DatumGetBool(attr);
 
@@ -495,15 +495,15 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 		ScanKeyInit(&listener_key[0], Anum_mpp_listener_listenerid, BTEqualStrategyNumber,
 					F_INT4EQ, Int32GetDatum(listenerid));
 					
-		cdb_listener_scan = mpptable_beginscan(cdb_listener_rel, 
-											  cdb_listener_index_oid, 
-											   (cdb_listener_index_oid != InvalidOid), 
+		mpp_listener_scan = mpptable_beginscan(mpp_listener_rel, 
+											  mpp_listener_index_oid, 
+											   (mpp_listener_index_oid != InvalidOid), 
 												SnapshotNow, 
 											   1, 
 											   listener_key);
 		
-		cdb_listener_tuple = systable_getnext(cdb_listener_scan);
-		if ( !HeapTupleIsValid(cdb_listener_tuple) )
+		mpp_listener_tuple = systable_getnext(mpp_listener_scan);
+		if ( !HeapTupleIsValid(mpp_listener_tuple) )
 		{
 			/*
 			 * This should never happen because of the foreign key constraint we have on
@@ -522,39 +522,39 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 		/*
 		* port
 		*/
-		attr = heap_getattr(cdb_listener_tuple, Anum_mpp_listener_port, cdb_listener_rel->rd_att, &isNull);
+		attr = heap_getattr(mpp_listener_tuple, Anum_mpp_listener_port, mpp_listener_rel->rd_att, &isNull);
 		Assert( !isNull );
 		pRow->port = DatumGetInt32(attr);
 
 		/*
 		* datadir
 		*/
-		attr = heap_getattr(cdb_listener_tuple, Anum_mpp_listener_datadir, cdb_listener_rel->rd_att, &isNull);
+		attr = heap_getattr(mpp_listener_tuple, Anum_mpp_listener_datadir, mpp_listener_rel->rd_att, &isNull);
 		Assert( !isNull );
 		pRow->datadir = DatumGetCString(DirectFunctionCall1(textout, attr));
 
 		/*
 		* hostid
 		*/
-		attr = heap_getattr(cdb_listener_tuple, Anum_mpp_listener_hostid, cdb_listener_rel->rd_att, &isNull);
+		attr = heap_getattr(mpp_listener_tuple, Anum_mpp_listener_hostid, mpp_listener_rel->rd_att, &isNull);
 		Assert( !isNull );
 		hostid = DatumGetInt32(attr);
 
 		/*
 		* mppsuperuser
 		*/
-		attr = heap_getattr(cdb_listener_tuple, Anum_mpp_listener_mppsuperuser, cdb_listener_rel->rd_att, &isNull);
+		attr = heap_getattr(mpp_listener_tuple, Anum_mpp_listener_mppsuperuser, mpp_listener_rel->rd_att, &isNull);
 		Assert( !isNull );
 		pRow->mppsuperuser = DatumGetCString(DirectFunctionCall1(textout, attr));
 		
 		/*
 		* mppsuperpswd
 		*/
-		attr = heap_getattr(cdb_listener_tuple, Anum_mpp_listener_mppsuperpswd, cdb_listener_rel->rd_att, &isNull);
+		attr = heap_getattr(mpp_listener_tuple, Anum_mpp_listener_mppsuperpswd, mpp_listener_rel->rd_att, &isNull);
 		if ( !isNull )
 			pRow->mppsuperpswd = DatumGetCString(DirectFunctionCall1(textout, attr));
 
-		systable_endscan(cdb_listener_scan);
+		systable_endscan(mpp_listener_scan);
 		
 		/*
 		* Now, scan the mpp.host table for this hostid
@@ -563,15 +563,15 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 		ScanKeyInit(&host_key[0], Anum_mpp_host_hostid, BTEqualStrategyNumber,
 					F_INT4EQ, Int32GetDatum(hostid));
 					
-		cdb_host_scan = mpptable_beginscan(cdb_host_rel, 
-											  cdb_host_index_oid, 
-											   (cdb_host_index_oid != InvalidOid), 
+		mpp_host_scan = mpptable_beginscan(mpp_host_rel, 
+											  mpp_host_index_oid, 
+											   (mpp_host_index_oid != InvalidOid), 
 												SnapshotNow, 
 											   1, 
 											   host_key);
 		
-		cdb_host_tuple = systable_getnext(cdb_host_scan);
-		if ( !HeapTupleIsValid(cdb_host_tuple))
+		mpp_host_tuple = systable_getnext(mpp_host_scan);
+		if ( !HeapTupleIsValid(mpp_host_tuple))
 		{
 			/*
 			 * This should never happen because of the foreign key constraint we have on
@@ -586,11 +586,11 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 		/*
 		* Grab the fields that we need from mpp.host
 		*/
-		attr = heap_getattr(cdb_host_tuple, Anum_mpp_host_hostname, cdb_host_rel->rd_att, &isNull);
+		attr = heap_getattr(mpp_host_tuple, Anum_mpp_host_hostname, mpp_host_rel->rd_att, &isNull);
 		Assert( !isNull );
 		pRow->hostname = DatumGetCString(DirectFunctionCall1(textout, attr));
 
-		systable_endscan(cdb_host_scan);
+		systable_endscan(mpp_host_scan);
 	}
 	
 	/*
@@ -643,7 +643,7 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 	 }
 	 
 	 /*
-	  *  Validate that cdb_numsegments == segment_databases->total_segment_dbs
+	  *  Validate that mpp_numsegments == segment_databases->total_segment_dbs
 	  */
 	 if ( getMPPSegmentCount() != component_databases->total_segments )
 	 {
@@ -707,11 +707,11 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 	/*
 	 * Cleanup invoves ending the heap scan of mpp.pgdatabase, and closing all the relations we opened.
 	 */
-	heap_endscan(cdb_pgdatabase_scan);
+	heap_endscan(mpp_pgdatabase_scan);
 
-	heap_close(cdb_pgdatabase_rel, AccessShareLock);
-	heap_close(cdb_listener_rel, AccessShareLock);
-	heap_close(cdb_host_rel, AccessShareLock);
+	heap_close(mpp_pgdatabase_rel, AccessShareLock);
+	heap_close(mpp_listener_rel, AccessShareLock);
+	heap_close(mpp_host_rel, AccessShareLock);
 	
 	return component_databases;
 }

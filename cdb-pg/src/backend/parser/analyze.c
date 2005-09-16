@@ -826,7 +826,7 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 	transformFKConstraints(pstate, &cxt, true, false);
 
 	/*
-	 * Postprocess CDB distribution columns
+	 * Postprocess MPP distribution columns
 	 */
 	transformDistributedBy(pstate, &cxt, stmt->distributedBy, &stmt->policy);
 

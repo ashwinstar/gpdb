@@ -154,7 +154,7 @@ cdbpath_create_motion_path(Query           *root,
      * Execution might deadlock if a Merge Receive is fed by a lower
      * Motion operator, unless the two are decoupled by an intervening
      * slackening operator such as Hash or Sort.
-     * CDB TODO: A less heavy-handed solution is needed.
+     * MPP TODO: A less heavy-handed solution is needed.
      */
     if (pathkeys &&
         !hashToSelfOnly &&
@@ -708,7 +708,7 @@ cdbpath_motion_for_join(Query      *root,
         {}
 
         /* No usable equijoin preds.  Replicate smaller rel if possible. */
-        /* CDB TODO: Consider number of seg dbs per host. */
+        /* MPP TODO: Consider number of seg dbs per host. */
         else if (!small->require_existing_order &&
                  !small->oj_preserved)
             CdbPathLocus_MakeReplicated(&small->move_to);

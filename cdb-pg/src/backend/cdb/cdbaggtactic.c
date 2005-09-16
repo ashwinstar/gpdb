@@ -109,7 +109,7 @@ freeAggTactic(CdbAggTactic *tactic)
  * and sets an apppropriate errmsg in the context.
  *
  * The implementation is unfortunate.  It amounts to a table look-up and
- * should be driven by the PostgreSQL catalog plus some CDB extensions.
+ * should be driven by the PostgreSQL catalog plus some MPP extensions.
  * Instead, it depends on defined constants and various assumptions about
  * the contents of the PostgreSQL catalog.  These assumptions have been
  * validated against the following versions: 7.1, 7.2, 7.3, 8.0.

@@ -927,7 +927,7 @@ create_functionscan_path(Query *root, RelOptInfo *rel)
 	pathnode->parent = rel;
 	pathnode->pathkeys = NIL;	/* for now, assume unordered result */
 
-    /* CDB TODO: handle function scan */
+    /* MPP TODO: handle function scan */
     /* Assign all function evaluations to the query dispatcher, for now. */
     CdbPathLocus_MakeRoot(&pathnode->locus);
     pathnode->motionHazard = false;

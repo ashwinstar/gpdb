@@ -55,7 +55,7 @@ typedef struct segment_database_descriptor
 	 *
 	 * Points to the SegmentDatabaseInfo structure describing the 
 	 * parameters for this segment database.  Information in this structure is
-	 * obtained from the CDB administrative schema tables.
+	 * obtained from the MPP administrative schema tables.
 	 */
 	CdbComponentDatabaseInfo 	*segment_database_info;
 	
@@ -175,7 +175,7 @@ typedef struct segment_descriptor
  * The CdbClusterDescriptor is the root level structure created by
  * cdblink_setup().  This structure, along with SegmentDescriptor and
  * SegmentDatabaseDescriptor, identifies all of the logical segments
- * in the CDB cluster and the connections made to each of the segment dastabases.
+ * in the MPP cluster and the connections made to each of the segment dastabases.
  */
  
 typedef struct cdb_cluster_descriptor {

@@ -34,12 +34,12 @@ typedef enum
 typedef uint32 CdbHashFn(void *, size_t, uint32);
 
 /* 
- * Structure that holds CDB hashing information.
+ * Structure that holds MPP hashing information.
  */ 
 typedef struct CdbHash
 {
 	uint32 hash;				/* The result hash value                            */
-    int numsegs;				/* number of segments in CDB used for partitioning  */
+    int numsegs;				/* number of segments in MPP used for partitioning  */
 	CdbHashAlg hashalg;			/* the hashing algorithm                            */
     CdbHashFn *hashfn;			/* hashing function for the selected hash algorithm */
 	CdbHashReduce reducealg;	/* the algorithm used for reducing to buckets       */

@@ -517,7 +517,7 @@ isInGlobalTransaction(void)
     /* check fts sync count */
     if ( !verifyFtsSyncCount() )
     {
-        /* recofig cdb connections */
+        /* recofig mpp connections */
         if ( !FtsReConfigureMPP() )
             elog(PANIC, "FTS: reconfigMPP failed");
     }

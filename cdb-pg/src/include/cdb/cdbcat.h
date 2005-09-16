@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * cdbcat.h
- *	  routines for reading info from cdb schema tables
+ *	  routines for reading info from MPP schema tables
  *
  * Copyright (c) 2003-2005, Greenplum
  *

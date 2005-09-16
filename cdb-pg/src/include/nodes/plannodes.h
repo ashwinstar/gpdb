@@ -89,7 +89,7 @@ typedef struct Plan
 								 * PARAM_EXEC there are in query plan. */
 	
 	/*
-	 * CDB needs to keep track of the characteristics of flow of output
+	 * MPP needs to keep track of the characteristics of flow of output
 	 * tuple of Plan nodes.
 	 */
 	Flow		*flow;			/* Flow description.  Initially NULL.

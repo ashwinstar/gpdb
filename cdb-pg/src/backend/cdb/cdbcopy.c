@@ -1,8 +1,8 @@
 /*--------------------------------------------------------------------------
 *
 * cdbcopy.c
-*    Rrovides routines that executed a COPY command on a CDB cluster. These
-*    routines are called from the backend COPY command whenever CDB is in the 
+*    Rrovides routines that executed a COPY command on an MPP cluster. These
+*    routines are called from the backend COPY command whenever MPP is in the 
 *    default dispatch mode.
 *
 * Copyright (c) 2005, Greenplum

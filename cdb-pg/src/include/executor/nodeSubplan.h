@@ -25,7 +25,7 @@ extern Datum ExecSubPlan(SubPlanState *node,
 extern void ExecEndSubPlan(SubPlanState *node);
 extern void ExecReScanSetParamPlan(SubPlanState *node, PlanState *parent);
 /*
- * CDB Change: Added a parameter (ParamListInfo p) to this function.  See comments in nodeSubplan.cpp
+ * MPP Change: Added a parameter (ParamListInfo p) to this function.  See comments in nodeSubplan.cpp
  */
 extern void ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_queryDesc);
 

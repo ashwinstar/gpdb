@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  *
  * cdbexec.c
- *	  The CDB command MPPEXEC (modelled on PostgreSQL EXECUTE)
+ *	  The MPP command MPPEXEC (modelled on PostgreSQL EXECUTE)
  *
  * Copyright (c) 2002-2004, PostgreSQL Global Development Group
  * Copyright (c) 2005, Greenplum Inc.

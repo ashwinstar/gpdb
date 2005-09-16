@@ -374,7 +374,7 @@ unsigned int cdbhashreduce(CdbHash *h)
 	
 	int result = 0; /* TODO: what is a good initialization value? could we 
 					   guarantee at this point that there will not be a negative 
-					   segid in CDB and therefore initialize to this value for error
+					   segid in MPP and therefore initialize to this value for error
 					   checking? */
 					   
 	assert( h->reducealg == REDUCE_BITMASK ||  h->reducealg == REDUCE_LAZYMOD);

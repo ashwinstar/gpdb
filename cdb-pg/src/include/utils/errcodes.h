@@ -49,7 +49,7 @@
  * with 'P'. In addition, error codes defined by PostgreSQL clients
  * (such as ecpg) have a class value that begins with 'Y'.
  *
- * An additional convention is the new error codes defined by CDB and
+ * An additional convention is the new error codes defined by MPP and
  * that belong in a class defined by the standard have a subclass
  * beginning 'M'.
  */

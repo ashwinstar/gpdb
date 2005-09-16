@@ -567,7 +567,7 @@ ExecEvalConst(ExprState *exprstate, ExprContext *econtext,
  */
 
 /*
- * CDB Changes:
+ * MPP Changes:
  * In executor mode, a PARAM_EXEC parameter can not be evaluated by executing
  * the subplan.  The subplan was executed on the dispatcher prior to 
  * launching the main query.  The value of the result is passed to the qExec

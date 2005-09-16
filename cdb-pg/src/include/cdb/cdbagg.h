@@ -24,7 +24,7 @@
 /*
  * A CdbAggStrategy is the composite result of function getAggStrategyList.
  * It characterizes a way of transforming an Agg node (or related node) and
- * its argument in order to produce a correct result in the CDB parallel
+ * its argument in order to produce a correct result in the MPP parallel
  * execution environment.
  *
  * TODO Extend to support specification of a restructuring approach.

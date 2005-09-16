@@ -348,7 +348,7 @@ typedef enum
 				 */
 	CDB_WARN,	/* This action issues a warning and then allows the code
 				 * that follows it to execute.  It is intended for cases
-				 * where CDB support is not implemented yet and PostgreSQL
+				 * where MPP support is not implemented yet and PostgreSQL
 				 * support is enabled as a convenience.  The user is told
 				 * that support may change or be rescinded.
 				 */
@@ -359,7 +359,7 @@ typedef enum
 				 */
 	CDB_REJECT	/* This action issues an error and thus prevents the code
 				 * that follows from executing.  The message indicates to
-				 * the user that no CDB support is anticipated.
+				 * the user that no MPP support is anticipated.
 				 */
 } CdbAction;
 

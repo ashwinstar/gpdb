@@ -68,10 +68,10 @@ ExecMaterial(MaterialState *node)
 		node->tuplestorestate = (void *) tuplestorestate;
 
         /*
-         * CDB: If requested, fetch all rows from subplan and put them
+         * MPP: If requested, fetch all rows from subplan and put them
          * in the tuplestore.  This decouples a middle slice's receiving
          * and sending Motion operators to neutralize a deadlock hazard.
-         * CDB TODO: Remove when a better solution is implemented.
+         * MPP TODO: Remove when a better solution is implemented.
          */
         while (((Material *)node->ss.ps.plan)->cdb_strict)
         {

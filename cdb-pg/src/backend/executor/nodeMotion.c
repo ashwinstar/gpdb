@@ -445,7 +445,7 @@ ExecInitMotion(Motion *node, EState *estate)
 	motionstate->ps.state = estate;
 	
 	/*
-	 * CDB Slice Plan:
+	 *  MPP  Slice Plan:
 	 *   QD must initialize the global slice table.
 	 *   QE must fill in map from motionID to MotionState node.
 	 */

@@ -184,7 +184,7 @@ typedef enum NodeTag
 	T_InnerIndexscanInfo,
 	T_InClauseInfo,
 
-    /* Tags for CDB planner nodes (relation.h) */
+    /* Tags for MPP planner nodes (relation.h) */
     T_CdbMotionPath = 580,
 
 	/*
@@ -478,7 +478,7 @@ typedef enum JoinType
 /*
  * FlowType - kinds of tuple flows in parallelized plans.
  *
- * This enum is a CDB extension.
+ * This enum is a MPP extension.
  */
 typedef enum FlowType
 {
@@ -489,7 +489,7 @@ typedef enum FlowType
 } FlowType;
 
 /*
- * DispatchMethod - CDB dispatch method.
+ * DispatchMethod - MPP dispatch method.
  *
  * There are currently three possibilties, an initial value of undetermined,
  * and a value for each of the ways the dispatch code implements.

@@ -888,7 +888,7 @@ RelationBuildDesc(RelationBuildDescInfo buildinfo,
 	relation->rd_smgr = NULL;
 
     /*
-     * initialize CDB partitioning info
+     * initialize MPP partitioning info
      */
     relation->rd_cdbpolicy = NULL;
 

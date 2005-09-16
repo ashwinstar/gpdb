@@ -405,7 +405,7 @@ CdbDispatchCommand(const char *szCommand, bool cancelFromBelow)
 	if (!verifyFtsSyncCount())
 	{
 		/*
-		 * recofig cdb connections
+		 * recofig mpp connections
 		 */
 		if (!FtsReConfigureMPP())
 			elog(PANIC, "FTS: reconfigMPP failed");
@@ -1361,7 +1361,7 @@ CdbDoCommand(const char *szCommand, bool cancelFromBelow)
 	if (!verifyFtsSyncCount())
 	{
 		/*
-		 * recofig cdb connections
+		 * recofig mpp connections
 		 */
 		if (!FtsReConfigureMPP())
 			elog(PANIC, "FTS: reconfigMPP failed");

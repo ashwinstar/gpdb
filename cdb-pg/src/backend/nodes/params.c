@@ -94,7 +94,7 @@ lookupParam(ParamListInfo paramList, int thisParamKind,
 							return paramList;
 						break;
 					/*
-					 * PARAM_EXEC_REMOTE is a CDB Addition.  
+					 * PARAM_EXEC_REMOTE is an MPP Addition.  
 					 * represent parameters that started off as PARAM_EXEC on the dispatcher,
 					 * and were preprocessed there.  Obce their values are known,
 					 * they are passed to the qExecs as PARAM_EXEC_REMOTE parameters. 

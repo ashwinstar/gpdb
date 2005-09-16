@@ -438,7 +438,7 @@ InitPostgres(const char *dbname, const char *username)
 	InitializeClientEncoding();
 
 	/* 
-     * cdb package setup 
+     * MPP package setup 
      *
      * Primary function is to establish connctions to the qExecs.
      * This is SKIPPED when the database is in bootstrap mode or 

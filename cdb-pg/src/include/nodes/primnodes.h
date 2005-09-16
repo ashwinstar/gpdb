@@ -956,7 +956,7 @@ typedef enum Movement
 /*----------
  * Flow - describes a tuple flow in a parallelized plan
  *
- * This node type is a CDB extension.
+ * This node type is a MPP extension.
  *
  * Plan nodes contain a reference to a Flow that characterizes the output
  * tuple flow of the node.  In addition, the node contains fields used for
