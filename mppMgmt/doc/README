@@ -69,9 +69,9 @@ WORKDIR				In each script, except mpp_bash_functions.sh
 				If you change the location of these scripts, the
 				above variable must be changed in each script.
 
-CDBROOT				This is set in mpp_bash_functions.sh, default value
+MPPROOT				This is set in mpp_bash_functions.sh, default value
 				is:
-				CDBROOT=/usr/local/mpp/cdb-pgsql
+				MPPROOT=/usr/local/mpp/cdb-pgsql
 				Once again, if you move the scripts, ensure that this
 				value is updated to the revised location.
 

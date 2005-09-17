@@ -108,8 +108,8 @@ DISPLAY_PARAM () {
 		$ECHO
 		$ECHO "Current Default Startup Parameters"
 		$ECHO "----------------------------------"
-		$ECHO "CDB head database port      = $QD_PORT      [Override with -p <port number>]"
-		$ECHO "CDB head database directory = $QD_DATA_DIRECTORY [Override with -d <QE directory>]"
+		$ECHO "MPP head database port      = $QD_PORT      [Override with -p <port number>]"
+		$ECHO "MPP head database directory = $QD_DATA_DIRECTORY [Override with -d <QE directory>]"
 		if [ $INTERACTIVE ]; then
 				$ECHO "Interactive                 = True            [Override with -a]"
 		else
@@ -146,7 +146,7 @@ GET_DETAILS () {
 		#Start the head datase in admin mode
 		export PGPORT=$QD_PORT
 		LOG_MSG "[INFO]:-Starting QD database in admin mode"
-		##MPP	$PG_CTL -w -D $QD_DATA_DIRECTORY -l ${QD_DATA_DIRECTORY}.log -o "-i -p $QD_PORT -c "cdb_mode=off start"" >/dev/null 2>&1
+		##MPP	$PG_CTL -w -D $QD_DATA_DIRECTORY -l ${QD_DATA_DIRECTORY}.log -o "-i -p $QD_PORT -c "mpp_mode=off start"" >/dev/null 2>&1
 		$PG_CTL -w -D $QD_DATA_DIRECTORY -l ${QD_DATA_DIRECTORY}.log -o "-i -p $QD_PORT"  start >/dev/null 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
@@ -156,7 +156,7 @@ GET_DETAILS () {
 		fi
 		LOG_MSG "[INFO]:-Obtaining MPP QE catalog information"
 		#Now get tail details
-		##MPP	TAIL_ARRAY=(`$PSQL -p $HEAD_PORT $HEAD_DBNAME -A -t -c"select host,datadir,port,valid from cdb_instance;"`)	
+		##MPP	TAIL_ARRAY=(`$PSQL -p $HEAD_PORT $HEAD_DBNAME -A -t -c"select host,datadir,port,valid from mpp_instance;"`)	
 		GET_QE_DETAILS
 		QE_COUNT=${#QE_ARRAY[@]}
 		#Shutdown the head database
@@ -173,7 +173,7 @@ GET_DETAILS () {
 START_ADMIN () {
 		LOG_MSG "[INFO]:-Starting head database in admin mode"
 		export PGPORT=$HEAD_PORT
-		$PG_CTL -w -D $HEAD_DATA_DIRECTORY -l ${HEAD_DATA_DIRECTORY}.log -o "-i -p $HEAD_PORT -c "cdb_mode=off start"" >/dev/null 2>&1
+		$PG_CTL -w -D $HEAD_DATA_DIRECTORY -l ${HEAD_DATA_DIRECTORY}.log -o "-i -p $HEAD_PORT -c "mpp_mode=off start"" >/dev/null 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 				$TAIL ${HEAD_DATA_DIRECTORY}.log|$TEE -a $LOG_FILE
@@ -297,7 +297,7 @@ MARK_INVALID () {
 				QE_NAME=`$ECHO $TARGET|$CUT -d: -f1`
 				QE_DIR=`$ECHO $TARGET|$CUT -d: -f2`
 				QE_PORT=`$ECHO $TARGET|$CUT -d: -f3`
-				#MPP	$PSQL -p $QD_PORT $QD_DBNAME -A -t -c"update cdb_instance set valid='f' where host='$TAIL_NAME' and datadir='$TAIL_DIR' and port=$TAIL_PORT ;" >> $LOG_FILE 2>&1
+				#MPP	$PSQL -p $QD_PORT $QD_DBNAME -A -t -c"update mpp_instance set valid='f' where host='$TAIL_NAME' and datadir='$TAIL_DIR' and port=$TAIL_PORT ;" >> $LOG_FILE 2>&1
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
 						LOG_MSG "[WARN]:-Issue with marking $QE_NAME as invalid, check log file"

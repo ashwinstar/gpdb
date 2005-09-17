@@ -58,7 +58,7 @@ do
   do
     echo "**************************"
     echo "Table: mpp.$table"
-    PGOPTIONS="-c cdb_session_role=utility" $MPPPATH/psql -p ${PORTS[$i]} template1 -c \
+    PGOPTIONS="-c mpp_session_role=utility" $MPPPATH/psql -p ${PORTS[$i]} template1 -c \
     "select * from mpp."$table
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ]; then

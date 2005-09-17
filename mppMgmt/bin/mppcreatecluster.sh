@@ -60,10 +60,10 @@ MIRRORING=0
 MPP_USER=$USER_NAME
 MPP_PASSWD=""
 # System table names
-CDB_TBL=mpp.mpp
-CDB_HOST_TBL=mpp.host
-CDB_PGDATABASE_TBL=mpp.pgdatabase
-CDB_LISTENER_TBL=mpp.listener
+MPP_TBL=mpp.mpp
+MPP_HOST_TBL=mpp.host
+MPP_PGDATABASE_TBL=mpp.pgdatabase
+MPP_LISTENER_TBL=mpp.listener
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -90,7 +90,7 @@ USAGE () {
 		$TABECHO "	-p postgresql_conf_mpp_additions [optional]"
 		$TABECHO "		List of additional PostgreSQL parameters to be applied to each QD/QE"
 		$TABECHO "		postgresql.conf file during MPP database initialization."
-		$TABECHO "		File ./postgresql_conf_cdb_additions will be read by default if no -p"
+		$TABECHO "		File ./postgresql_conf_mpp_additions will be read by default if no -p"
 		$TABECHO "		option supplied"
 		$TABECHO "	-s standby_hostname [optional]"
 		$TABECHO "		Setup standby QD host named \"standby_hostname\". (if configured in MPP configuration file)"
@@ -175,7 +175,7 @@ CHK_PARAMS () {
 		#Make sure that this script is running on the QD host
 		if [ $QD_HOSTNAME != `$HOSTNAME` ]; then
 				ERROR_EXIT "[FATAL]:-This script must be executed on the QD host $QD_HOSTNAME" 2
-		fi 
+		fi
 
 		#SEG_PREFIX
 		if [ x"" =  X"$SEG_PREFIX" ]; then
@@ -212,7 +212,7 @@ CHK_PARAMS () {
 		if [ x"" = x"$DATABASE_NAME" ]; then
 				LOG_MSG "[INFO]:-No DATABASE_NAME set, will exit following template1 updates"
 		else
-				LOG_MSG "[INFO]:-Will create database $DATABASE_NAME" 
+				LOG_MSG "[INFO]:-Will create database $DATABASE_NAME"
 		fi
 		#IP_ALLOW
 		if [ ! $IP_ALLOW ]; then
@@ -269,11 +269,11 @@ CHK_QES () {
 				do
 				$PING -c 1 $QE_ID > /dev/null 2>&1
 				case $? in
-						0) 
+						0)
 						LOG_MSG "[INFO]:-$QE_ID contact established";;
 						1)
 						ERROR_EXIT "[FATAL]:-Unable to contact $QE_ID" 2;;
-						2) 
+						2)
 						ERROR_EXIT "[FATAL]:-Unknown host $QE_ID" 2;;
 				esac
 				#Check to ensure have required QE directories
@@ -288,13 +288,13 @@ CHK_QES () {
 								LOG_MSG "[INFO]:-$QE_ID $DIR checked"
 						fi
 				done
-				#Check that we have a CDBROOT directory on the QE
-				$TRUSTED_SHELL $QE_ID "$LS $CDBROOT"> /dev/null 2>&1
+				#Check that we have a MPPROOT directory on the QE
+				$TRUSTED_SHELL $QE_ID "$LS $MPPROOT"> /dev/null 2>&1
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
-						ERROR_EXIT "[FATAL]:-No $CDBROOT on QE $QE_ID" 2
+						ERROR_EXIT "[FATAL]:-No $MPPROOT on QE $QE_ID" 2
 				else
-						LOG_MSG "[INFO]:-QE $QE_ID $CDBROOT checked"
+						LOG_MSG "[INFO]:-QE $QE_ID $MPPROOT checked"
 				fi
 		done
 		#Check to ensure that instance directories do not exist on hosts
@@ -324,7 +324,7 @@ CHK_QES () {
 				done
 		else
 				LOG_MSG "[INFO]:-Mirror QE directory check skipped, mirroring=Off"
-		fi 
+		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -421,7 +421,7 @@ CREATE_QE_ARRAY () {
 								((QE_DIR_INDEX=$QE_DIR_INDEX+1))
 								((QE_MIR_VECTOR=$QE_MIR_VECTOR+1))
 						fi
-						if [ $NUM_QE_HOSTS -ne 1 ]; then 
+						if [ $NUM_QE_HOSTS -ne 1 ]; then
 								((QE_DIR_INDEX=$QE_DIR_INDEX+1))
 						fi
 						((SEG_COUNT=$SEG_COUNT+1))
@@ -535,12 +535,12 @@ SET_VAR () {
 CREATE_QD_DB () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		SET_VAR $QD_PRIMARY_ARRAY
-		CHK_DIR $MPP_DIR 
+		CHK_DIR $MPP_DIR
 		if [ $EXISTS -eq 0 ]; then
 				ERROR_EXIT "[FATAL]:-QD directory $MPP_DIR already exists" 2
 		fi
 		LOG_MSG "[INFO]:-Initializing QD Postgres instance $MPP_DIR"
-		RUN_COMMAND "$INITDB -E $ENCODING -D $MPP_DIR" 
+		RUN_COMMAND "$INITDB -E $ENCODING -D $MPP_DIR"
 		LOG_MSG "[INFO]:-Completed QD instance initialization"
 		$ECHO "#MPP specific configuration parameters for QD instance database" >> ${MPP_DIR}/$PG_CONF
 		$ECHO "#--------------------------------------------------------------" >> ${MPP_DIR}/$PG_CONF
@@ -560,7 +560,7 @@ CREATE_QD_DB () {
 		fi
 		LOG_MSG "[INFO]:-Setting IP Allow in $PG_HBA to value $IP_ALLOW"
 		$ECHO "host    all         all         $IP_ALLOW        $QD_MASK      trust" >> ${MPP_DIR}/$PG_HBA
-		if [ $? -ne 0 ]; then 
+		if [ $? -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Failed to set IP Allow in $PG_HBA" 2
 		fi
 		LOG_MSG "[INFO]:-Completed setting IP Allow to $IP_ALLOW"
@@ -580,7 +580,7 @@ CREATE_QD_DB () {
 		BACKOUT_COMMAND "$ECHO Removing QD log file"
 		LOG_MSG "[INFO]:-Compleleted starting the QD in admin mode"
 		$SLEEP 2
-		UPDATE_CDB $MPP_DBNAME $MPP_PORT "$CLUSTER_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 0 X
+		UPDATE_MPP $MPP_DBNAME $MPP_PORT "$CLUSTER_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 0 X
 		UPDATE_HOST $MPP_DBNAME $MPP_PORT $MPP_HOSTID $MPP_HOSTNAME
 		UPDATE_LISTENER $MPP_DBNAME $MPP_PORT $MPP_LISTENID $MPP_HOSTID $MPP_PORT $MPP_DIR $MPP_USER $MPP_PASSWD
 		UPDATE_PGDATABASE $MPP_DBNAME $MPP_PORT $MPP_DBID template1 $MPP_CONTENT $MPP_LISTENID t
@@ -599,14 +599,14 @@ UPDATE_PGDATABASE () {
 		U_LISTENERID=$6
 		U_PRIMARY=$7
 		U_DB=template1
-		CHK_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from $CDB_PGDATABASE_TBL where listenerid=${U_LISTENERID} and content=${U_CONTENT};" 2>/dev/null` >> $LOG_FILE 2>&1
+		CHK_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from $MPP_PGDATABASE_TBL where listenerid=${U_LISTENERID} and content=${U_CONTENT};" 2>/dev/null` >> $LOG_FILE 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Unable to obtain psql count of QD pgdatabase system table" 2
 		fi
 		if [ $CHK_COUNT -eq 0 ]; then
 				LOG_MSG "[INFO]:-Adding $U_CONTENT to system pgdatabase table"
-				env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $CDB_PGDATABASE_TBL (dbid, isprimary, content, listenerid, valid, definedprimary) values (${U_DBID},'${U_PRIMARY}',${U_CONTENT},${U_LISTENERID},'t', '${U_PRIMARY}');" >> $LOG_FILE 2>&1
+				env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $MPP_PGDATABASE_TBL (dbid, isprimary, content, listenerid, valid, definedprimary) values (${U_DBID},'${U_PRIMARY}',${U_CONTENT},${U_LISTENERID},'t', '${U_PRIMARY}');" >> $LOG_FILE 2>&1
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
 						ERROR_EXIT "[FATAL]:-Failed to add $U_CONTENT to system pgdatabase table" 2
@@ -630,14 +630,14 @@ UPDATE_LISTENER () {
 		U_DIR=$6
 		U_USER=$7
 		U_PASSWD=$8
-		CHK_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from $CDB_LISTENER_TBL where listenerid=${U_LISTENERID};" 2>/dev/null` >> $LOG_FILE 2>&1
+		CHK_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from $MPP_LISTENER_TBL where listenerid=${U_LISTENERID};" 2>/dev/null` >> $LOG_FILE 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Unable to obtain psql count of QD listener system table" 2
 		fi
 		if [ $CHK_COUNT -eq 0 ]; then
 				LOG_MSG "[INFO]:-Adding $U_LISTENERID to system listener table"
-				env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $CDB_LISTENER_TBL (listenerid, hostid, port, datadir, mppsuperuser, mppsuperpswd) values (${U_LISTENERID},${U_HOSTID},${U_PORT},'${U_DIR}','${U_USER}','${U_PASSWD}');" >> $LOG_FILE 2>&1
+				env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $MPP_LISTENER_TBL (listenerid, hostid, port, datadir, mppsuperuser, mppsuperpswd) values (${U_LISTENERID},${U_HOSTID},${U_PORT},'${U_DIR}','${U_USER}','${U_PASSWD}');" >> $LOG_FILE 2>&1
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
 						ERROR_EXIT "[FATAL]:-Failed to add $U_LISTENERID to system listener table" 2
@@ -688,14 +688,14 @@ UPDATE_HOST () {
 		U_HOSTID=$3
 		U_HOSTNAME=$4
 		#First check to ensure that U_HOSTID not already in the host table
-		CHK_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from $CDB_HOST_TBL where hostid='${U_HOSTID}';" 2>/dev/null` >> $LOG_FILE 2>&1
+		CHK_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from $MPP_HOST_TBL where hostid='${U_HOSTID}';" 2>/dev/null` >> $LOG_FILE 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Unable to obtain psql count of QD host system table" 2
 		fi
 		if [ $CHK_COUNT -eq 0 ]; then
 				LOG_MSG "[INFO]:-Adding $U_HOSTNAME to system host table"
-				env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $CDB_HOST_TBL (hostid, hostname) values (${U_HOSTID},'${U_HOSTNAME}');" >> $LOG_FILE 2>&1
+				env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $MPP_HOST_TBL (hostid, hostname) values (${U_HOSTID},'${U_HOSTNAME}');" >> $LOG_FILE 2>&1
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
 						ERROR_EXIT "[FATAL]:-Failed to add $U_HOSTNAME to system host table" 2
@@ -708,25 +708,25 @@ UPDATE_HOST () {
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
-UPDATE_CDB () {
+UPDATE_MPP () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		U_DB=$1
 		U_DB=template1
 		U_PT=$2
-		U_CDBNAME="$3"
+		U_MPPNAME="$3"
 		U_NUMSEG=$4
 		U_DBID=$5
 		U_CONTENT=$6
 		TYPE=$7
 		U_HOST=$8
 		if [ $TYPE -eq 0 ]; then
-				env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $CDB_TBL values ('${U_CDBNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});" >> $LOG_FILE 2>&1
+				env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $MPP_TBL values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});" >> $LOG_FILE 2>&1
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
 						ERROR_EXIT "[FATAL]:-Unable to update mpp system table" 2
 				fi
 		else
-				RUN_COMMAND_REMOTE $U_HOST "env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $U_PT $U_DB -c \"insert into $CDB_TBL (mppname, numsegments, dbid, content) values ('${U_CDBNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" 2>&1" >> $LOG_FILE 2>&1
+				RUN_COMMAND_REMOTE $U_HOST "env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $U_PT $U_DB -c \"insert into $MPP_TBL (mppname, numsegments, dbid, content) values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" 2>&1" >> $LOG_FILE 2>&1
 		fi	
 		if [ $RETVAL -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Failed to update mpp system table" 2
@@ -773,7 +773,7 @@ CREATE_QES_PRIMARY () {
 				BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
 				BACKOUT_COMMAND "$ECHO \"Stopping QE instance on $MPP_HOSTNAME\""
 				LOG_MSG "[INFO]:-Successfully started QE instance on $MPP_HOSTNAME"
-				UPDATE_CDB $MPP_DBNAME $MPP_PORT "$CLUSTER_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
+				UPDATE_MPP $MPP_DBNAME $MPP_PORT "$CLUSTER_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
 		done
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -816,7 +816,7 @@ CREATE_QES_MIRROR () {
 				BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
 				BACKOUT_COMMAND "$ECHO \"Stopping QE instance on $MPP_HOSTNAME\""
 				LOG_MSG "[INFO]:-Successfully started QE mirror instance on $MPP_HOSTNAME"
-				UPDATE_CDB $MPP_DBNAME $MPP_PORT "$CLUSTER_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
+				UPDATE_MPP $MPP_DBNAME $MPP_PORT "$CLUSTER_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
 		done
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -829,7 +829,7 @@ RESTART_QD_PRODUCTION () {
 				if [ $? -ne 0 ]; then
 					ERROR_EXIT "[FATAL]:-Failed to stop new MPP cluster, check log file" 2
 				fi
-		else 
+		else
 				ERROR_EXIT "[FATAL]:-WORKDIR/mppstop.sh not located" 2
 		fi
 		if [ -f $WORKDIR/mppstart.sh ]; then

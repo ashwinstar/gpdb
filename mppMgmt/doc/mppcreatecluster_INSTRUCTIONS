@@ -25,7 +25,7 @@ environment.
 The following provides an overview of each of the variables contained within the file.
 
 CLUSTER_NAME="XXX YYY"	
-			This sets the cluster name within the cdb.cdb table on the QD
+			This sets the cluster name within the mpp.mpp table on the QD
 			and QE's. This can be any text as required, if this variable
 			is not set, the mppcreatecluster.sh script will set this to
 			a default value of "MPP Cluster"
@@ -207,7 +207,7 @@ The following provides a functional overview of the mppcreatecluster.sh scripts.
 		exist with suitable error message.
 	b.	Calls initdb to create QD database, if error, exits with suitable error message.
 	c.	Sets port# in QD postgresql.conf file, if error, exits with suitable error message.
-	d.	If postgresql_conf_cdb_additions file exists, adds lines from this file to
+	d.	If postgresql_conf_mpp_additions file exists, adds lines from this file to
 		QD postgresql.conf file.
 	f.	Adds IP_ALLOW value to QD pg_hba.conf file, if error, exits with suitable error message.
 	g.	Starts QD instance, if error copies QD database log to script log file and exits
@@ -219,13 +219,13 @@ The following provides a functional overview of the mppcreatecluster.sh scripts.
 	a.	For each primary QE instance directory per host
 		i)	Calls initdb, if error , exits with suitable error message. 
 		ii)	Updates QE postgresql.conf file, if error, exits with suitable error message.
-		iii)	If postgresql_conf_cdb_additions file exists, adds lines from that
+		iii)	If postgresql_conf_mpp_additions file exists, adds lines from that
 			file to the QE postgresql.conf.
 		iv)	Updates QE pg_hba.conf file, if error, exits with suitable error message.
 		v)	Starts QE instance, if error, exits with suitable error message.
 		vi)	Creates required backout commands (Note, this done at various stages
 			throughout this fucntion).
-		vii)	Updates QE cdb.cdb table.
+		vii)	Updates QE mpp.mpp table.
 
 10.	Calls CREATE_QES_MIRROR if mirroring configured, see 9. for details.
 

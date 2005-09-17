@@ -14,7 +14,7 @@
 # Update History
 #******************************************************************************
 # Ver	Date		Who		Update
-#			cdbheadsync.bsh utility.
+#			mppheadsync.bsh utility.
 #******************************************************************************
 # Detailed Description
 #******************************************************************************
@@ -138,7 +138,7 @@ PSQLBIN=`$DIRNAME $PSQLBIN`
 # MPP Command Variables
 #******************************************************************************
 INITDB=$PSQLBIN/initdb
-CDBLOADER=$CMDBIN/loader.sh
+MPPLOADER=$CMDBIN/loader.sh
 PG_CTL=$PSQLBIN/pg_ctl
 PG_DUMP=$PSQLBIN/pg_dump
 PG_RESTORE=$PSQLBIN/pg_restore
@@ -154,7 +154,7 @@ PG_CONF=postgresql.conf
 PG_HBA=pg_hba.conf
 if [ x"$TRUSTED_SHELL" = x"" ]; then TRUSTED_SHELL="$SSH"; fi
 if [ x"$TRUSTED_COPY" = x"" ]; then TRUSTED_COPY="$SCP"; fi
-PG_CONF_ADD_FILE=$WORKDIR/postgresql_conf_cdb_additions
+PG_CONF_ADD_FILE=$WORKDIR/postgresql_conf_mpp_additions
 RECOVER_FLAG=/tmp/active_recovery_in_progress
 
 #******************************************************************************
@@ -486,7 +486,7 @@ MIRROR_CALCULATOR () {
 		#3. No tail will mirror more than one segment from another host
 		if [ $# -ne 4 ]; then
 				ERROR_EXIT "[FATAL]:-Incorrect number of parameters supplied, got $# expected 4"
-		fi 
+		fi
 		HOST_LIST=($1) #List of tail hostnames in the cluster
 		NUM_QE=${#QE_LIST[@]}
 		MIRROR_DIR_ARRAY=($2) #The directory mount points for the mirror data i.e. /dbfast3 /dbfast4 etc
@@ -561,18 +561,18 @@ PROCESS_QE () {
 		QE_DIR=$DIRECTORY_ARRAY/$INST_ARRAY
 		GET_QD_DB_NAME
 		LOG_MSG "[INFO]:-Creating QE data directory $QE_DIR"
-		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "$INITDB -E $ENCODING -D $QE_DIR" 
+		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "$INITDB -E $ENCODING -D $QE_DIR"
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${HOSTNAME_ARRAY} \"$RM -rf $QE_DIR\""
 		BACKOUT_COMMAND "$ECHO \"removing directory $QE_DIR on $HOSTNAME_ARRAY\""
-		BACKOUT_COMMAND "$TRUSTED_SHELL ${HOSTNAME_ARRAY} \"$PG_CTL stop -m immediate -D $QE_DIR\"" 
+		BACKOUT_COMMAND "$TRUSTED_SHELL ${HOSTNAME_ARRAY} \"$PG_CTL stop -m immediate -D $QE_DIR\""
 		BACKOUT_COMMAND "$ECHO \"Shutting down Postgres on $HOSTNAME_ARRAY\""
 		LOG_MSG "[INFO]:-Setting QE access permission"
-		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "$ECHO MPP Specific configuration >> $QE_DIR/pg_hba.conf" 
-		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "$ECHO host all all ${IP_ALLOW} trust >> $QE_DIR/pg_hba.conf" 
+		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "$ECHO MPP Specific configuration >> $QE_DIR/pg_hba.conf"
+		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "$ECHO host all all ${IP_ALLOW} trust >> $QE_DIR/pg_hba.conf"
 		LOG_MSG "[INFO]:-Setting default QE port to $PORT_ARRAY"
-		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "$ECHO port=${PORT_ARRAY} >> $QE_DIR/postgresql.conf" 
+		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "$ECHO port=${PORT_ARRAY} >> $QE_DIR/postgresql.conf"
 		LOG_MSG "[INFO]:-Setting number of redo segments"
-		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "$ECHO checkpoint_segments=$CHECK_POINT_SEGMENTS >> $QE_DIR/postgresql.conf" 
+		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "$ECHO checkpoint_segments=$CHECK_POINT_SEGMENTS >> $QE_DIR/postgresql.conf"
 		LOG_MSG "[INFO]:-Setting query status reporting"
 		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "$ECHO stats_command_string=true >> $QE_DIR/postgresql.conf"
 		LOG_MSG "[INFO]:-Setting listener configuration"
@@ -585,10 +585,10 @@ PROCESS_QE () {
 						do
 						LOG_MSG "[INFO]:-Adding $NEW_PARAM to QE postgresql.conf file"
 						RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "$ECHO $NEW_PARAM >> $QE_DIR/postgresql.conf"
-				done 
+				done
 		fi
 		LOG_MSG "[INFO]:-Starting Functioning instance on QE $HOSTNAME_ARRAY"
-		$TRUSTED_SHELL ${HOSTNAME_ARRAY} "export PGPORT=${PORT_ARRAY}; $PG_CTL -w -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${PORT_ARRAY}\" start" 
+		$TRUSTED_SHELL ${HOSTNAME_ARRAY} "export PGPORT=${PORT_ARRAY}; $PG_CTL -w -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${PORT_ARRAY}\" start"
 		if [ $? -ne 0 ]; then
 				$TRUSTED_SHELL ${HOSTNAME_ARRAY} "$CAT ${QE_DIR}.log "|$TEE -a $LOG_FILE
 				ERROR_EXIT "[FATAL]:-Failed to start QE instance database" 2
@@ -596,13 +596,13 @@ PROCESS_QE () {
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${HOSTNAME_ARRAY} \"$RM -f ${QE_DIR}.log\""
 		BACKOUT_COMMAND "$ECHO \"Removing tail log file ${QE_DIR}.log on QE $HOSTNAME_ARRAY\""
 		LOG_MSG "[INFO]:-Creating database $SEG_ARRAY on $HOSTNAME_ARRAY"
-		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p ${PORT_ARRAY} template1 -c \"create database $SEG_ARRAY\"" 
+		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p ${PORT_ARRAY} template1 -c \"create database $SEG_ARRAY\""
 		LOG_MSG "[INFO]:-Updating the QE mpp catalog"
 		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p ${PORT_ARRAY} $SEG_ARRAY -c \"insert into mpp.mpp values ('$CLUSTER_NAME',$NUMSEGMENTS,$DBID,$CONTENT)\""
 		LOG_MSG "[INFO]:-Adding this QE instance to the QD host"
 		if [ $PRIMARY -eq 1 ]; then
 				LOG_MSG "[INFO]:-Adding the primary segment to the head admin schema"
-				RUN_COMMAND "$PSQL -p $HEAD_PORT $HEAD_DBNAME -c \"SET search_path TO public;select mpp.add_segment('$SEG_ARRAY','$USER','',$SEG_NUM_ARRAY)\"" 
+				RUN_COMMAND "$PSQL -p $HEAD_PORT $HEAD_DBNAME -c \"SET search_path TO public;select mpp.add_segment('$SEG_ARRAY','$USER','',$SEG_NUM_ARRAY)\""
 		else
 				LOG_MSG "[INFO]:-Adding secondary service for $SEG_ARRAY to this instance."
 				RUN_COMMAND "$PSQL -p $HEAD_PORT $HEAD_DBNAME -c \"insert into mpp_segment_instance values($SEG_NUM_ARRAY,$INST_NUM_ARRAY,true)\""
