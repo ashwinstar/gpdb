@@ -1672,17 +1672,30 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	else
 	{
 	    appendStringInfo(&cdbcopy_cmd, " DELIMITER AS '%s'", delim);
-	    if(strcmp(null_print,"\\N") != 0) /* if default leave it out */
-	       appendStringInfo(&cdbcopy_cmd, " NULL AS '%s'", null_print);
-		if(strcmp(escape,"\\") != 0 && !csv_mode) /* if default leave it out */
-		   appendStringInfo(&cdbcopy_cmd, " ESCAPE AS '%s'", escape);
+		
+		if(null_print[0] == '\\') /* null value is de-escaped. re-escape for segdbs*/
+		   appendStringInfo(&cdbcopy_cmd," NULL AS '\\%s'", null_print); 
+		else
+		   appendStringInfo(&cdbcopy_cmd," NULL AS '%s'", null_print);
+
+		if(!csv_mode) 
+		{
+		   if(strcmp(escape,"\\") != 0 && !csv_mode) /* if default ("\") leave expression out */
+					 appendStringInfo(&cdbcopy_cmd, " ESCAPE AS '%s'", escape);
+		}
+
 	}
 
 	if(csv_mode)
 	{
 		appendStringInfo(&cdbcopy_cmd, " CSV");
 		appendStringInfo(&cdbcopy_cmd, " QUOTE AS '%s'", quote);
-		appendStringInfo(&cdbcopy_cmd, " ESCAPE AS '%s'", escape);
+
+		if(escape[0] == '\\') /* null value is de-escaped. re-escape for segdbs*/
+		   appendStringInfo(&cdbcopy_cmd," ESCAPE AS '\\%s'", escape); 
+		else
+		   appendStringInfo(&cdbcopy_cmd," ESCAPE AS '%s'", escape);
+		   
 		/* do NOT include HEADER. Header row is swallowed by dispatcher COPY */
 	}
 	
