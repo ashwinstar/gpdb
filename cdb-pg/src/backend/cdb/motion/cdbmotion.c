@@ -503,14 +503,13 @@ SendReturnCode SendTuple(int16 motNodeID, HeapTuple tuple, int16 targetRoute)
     TupleChunkList 		tcList;
     MemoryContext 		oldCtxt;
 	SendReturnCode		rc;
-	
+
     /* Pull up the motion node entry with the node's details.  This includes
      * details that affect sending, such as whether the motion node needs to
      * include backup segment-dbs.
      */
     pMNEntry = getMotionNodeEntry(motNodeID,"SendTuple");
-    
-    
+
 #ifdef AMS_VERBOSE_LOGGING
 	elog(DEBUG3, "Serializing HeapTuple for sending.");
 #endif
@@ -528,10 +527,8 @@ SendReturnCode SendTuple(int16 motNodeID, HeapTuple tuple, int16 targetRoute)
 		targetRoute,
 		tcList->serialized_data_length,
 		tcList->num_chunks);
-#endif
-    
-    
-    
+#endif    
+
     /* do the send. */
     if (!SendTupleChunkToAMS(motNodeID, targetRoute, tcList->p_first))
     {
@@ -541,13 +538,13 @@ SendReturnCode SendTuple(int16 motNodeID, HeapTuple tuple, int16 targetRoute)
     {
     	/* update stats */
     	statSendTuple(pMNEntry, tcList ); 
-    	
+
     	rc = SEND_COMPLETE;
     }
-    
+
     /* cleanup */
     deleteTCList( &tcList );
-	        
+
     return rc;
 }
 

@@ -121,7 +121,7 @@ static TupleTableSlot *execMotionSender(MotionState *node)
 	
 	gettimeofday(&time1, NULL);
 		
-	while( !done )
+	while(!done)
 	{
 		/* grab TupleTableSlot from our child. */
 		outerNode = outerPlanState(node);		
@@ -155,6 +155,12 @@ static TupleTableSlot *execMotionSender(MotionState *node)
 		{
 			doSendTuple(motion, node, outerTupleSlot);
 			/* doSendTuple() may have set node->stopRequested as a side-effect */
+			if (node->stopRequested)
+			{
+				/* propagate stop notification to our children */
+				ExecSquelchNode(outerNode);
+				done = true;
+			}
 		}	
 		
 		gettimeofday(&time1, NULL);
@@ -723,7 +729,7 @@ ExecEndMotion(MotionState *node)
 	if( node->isReceiver )
 	{
 		
-		elog( DEBUG1,
+		elog(DEBUG1,
 		"Motion Node %d (RECEIVER) Statistics:\n"
 		"Timing:  \n"
 		"\t Time receiving the tuple: %f sec\n"
@@ -749,7 +755,7 @@ ExecEndMotion(MotionState *node)
 		otherTimeSec = (double) node->otherTime.tv_sec + (double) node->otherTime.tv_usec / 1000000.0;
 		
 		
-		elog( DEBUG1,
+		elog(DEBUG1,
 		"Motion Node %d (SENDER) Statistics:\n"
 		"Timing:  \n"
 		"\t Time getting next tuple to send: %f sec \n"
@@ -775,21 +781,23 @@ ExecEndMotion(MotionState *node)
 		);
 	}
 	
-	
-
-	if ( motion->motionType == MOTIONTYPE_FIXED && motion->numOutputSegs == 0 )
+	/* I notice that it is wrong, at least, in the case of a LIMIT which calls 
+	 * ExecStopMotion which (correctly) sets node->stopRequested to true.
+	 * So I made it conditional as a stopgap.  I doubt this is the correct
+	 * permanent fix.  Brian 8/2005
+	 *
+	 * I extended Brian's temporary stopRequested fix while testing
+	 * early-end-of-retrieval support (stop messages are now actually
+	 * getting sent). We seem to have two choices, do it like this or 
+	 * fixup the tuple counts.  Tim 9/20/2005
+	 */
+	if (motion->motionType == MOTIONTYPE_FIXED && motion->numOutputSegs == 0)
 	{
-		Assert(node->numTuplesFromChild == node->numTuplesToAMS);
-		Assert(node->numTuplesFromAMS == node->numTuplesToParent);
+		Assert(node->stopRequested || node->numTuplesFromChild == node->numTuplesToAMS);
+		Assert(node->stopRequested || node->numTuplesFromAMS == node->numTuplesToParent);
 	}
 	else
 	{
-		
-		/* I notice that it is wrong, at least, in the case of a LIMIT which calls 
-		 * ExecStopMotion which (correctly) sets node->stopRequested to true.
-		 * So I made it conditional as a stopgap.  I doubt this is the correct
-		 * permanent fix.  Brian 8/2005 
-		 */
 		Assert(node->stopRequested || node->numTuplesFromChild == node->numTuplesToAMS + node->numTuplesToDeepSix + node->numTuplesInHeap);
 		/* Hmmm... It this " - node->numTuplesInHeap" correct? */
 		Assert(node->numTuplesFromAMS - node->numTuplesInHeap == node->numTuplesToParent);

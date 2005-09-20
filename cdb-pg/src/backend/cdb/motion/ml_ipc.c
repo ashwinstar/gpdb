@@ -176,7 +176,7 @@ static void acceptIncomingConnection(fd_set *rset, int *highsock);
 
 static bool sendChunk(MotionConn *conn, TupleChunkListItem tcItem);
 static inline void readPacket(MotionConn *conn);
-static void doBroadcast(MotionLayerState *pEntry, TupleChunkListItem tcItem);
+static inline int doBroadcast(MotionLayerState *pEntry, TupleChunkListItem tcItem);
 static int findMyRouteId(Slice *slice);
 static CdbProcess *findCdbProcess(RegisterMessage *msg);
 
@@ -248,16 +248,16 @@ void CleanUpMotionLayerIPC(void)
 	list_free(incompleteConns);
 }
 
-
 /* See ml_ipc.h */
 bool SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcItem)
 {
+	int					i, recount=0;
 	MotionLayerState	*pEntry;
 	MotionConn		    *conn;
 	TupleChunkListItem	currItem;
 
 	Assert(activated);
-	
+
 	/* check em' */
 	CHECK_FOR_INTERRUPTS();
 
@@ -265,62 +265,57 @@ bool SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem 
 	elog(DEBUG3, "SendTupleChunkToAMS(motNodeID: %d, targetRoute: %d)", motNodeID, targetRoute);
 #endif
 
-
 	/* tcItem can actually be a chain of tcItems.  we need to send out
 	 * all of them. */
 	pEntry = getMotionState(motNodeID);	
-	
+
 	currItem = tcItem;
 
-#ifdef AMS_VERBOSE_LOGGING
-	{
-		struct timeval snapTime;
-
-		gettimeofday(&snapTime, NULL);
-		elog(DEBUG3, "starting chunklist @%s.%d time is %ld.%d",
-			 __FILE__, __LINE__, snapTime.tv_sec, snapTime.tv_usec);
-	}
-#endif
-	
 	while (currItem != NULL)
 	{
-		
+
 		if (targetRoute == BROADCAST_SEGIDX)
 		{		
-			doBroadcast(pEntry, tcItem);
+			if (doBroadcast(pEntry, tcItem) != 0)
+				recount = 1;
 		}
 		else
 		{
 			/* handle pt-to-pt message. */
 			conn = pEntry->conns + targetRoute;
 			/* only send to interested connections */
-			if (conn->stillActive) {
+			if (conn->stillActive)
+			{
 				sendChunk(conn, tcItem);
-			
-				if (conn->hasMirrorConn)
-					sendChunk(conn->mirrorConn, tcItem);
+				if (!conn->stillActive)
+					recount = 1;
 			}
-				
+			if (conn->hasMirrorConn && conn->mirrorConn->stillActive)
+			{
+				sendChunk(conn->mirrorConn, tcItem);
+				if (conn->mirrorConn->stillActive)
+					recount = 1;
+			}
 		}
-	
+
 		currItem = tcItem->p_next;
 	}
 
-#ifdef AMS_VERBOSE_LOGGING
+	if (recount == 0)
+		return true;
+
+	/* if we don't have any connections active, return false */
+	for (i=0; i < pEntry->numConns; i++)
 	{
-		struct timeval snapTime;
-
-		gettimeofday(&snapTime, NULL);
-		elog(DEBUG3, "done with chunklist @%s.%d time is %ld.%d",
-			 __FILE__, __LINE__, snapTime.tv_sec, snapTime.tv_usec);
+		conn = pEntry->conns + i;
+		if (conn->stillActive)
+			break;
+		if (conn->hasMirrorConn && conn->mirrorConn->stillActive)
+			break;
 	}
-#endif
-	
-#ifdef AMS_VERBOSE_LOGGING	
-	elog(DEBUG3, "SendTupleChunkToAMS() Leaving");
-#endif
 
-	return true;
+	/* if we found an active connection we're not done */
+	return (i < pEntry->numConns);
 }
 
 
@@ -790,7 +785,7 @@ void TeardownInterconnect(void)
 
 	elog(DEBUG3, "Interconnect cleanup.");
 	Assert(sliceTable != NULL);
-	
+
 	mySlice = (Slice*)list_nth(sliceTable->slices, sliceId);
 
 	if (mySlice->parentIndex != -1)
@@ -1141,7 +1136,7 @@ static MotionLayerState  *startConnections(Slice *mySlice, int *highsock, fd_set
 	Assert(recvSlice->mirrorProcesses == NIL || (list_length(recvSlice->primaryProcesses) == list_length(recvSlice->mirrorProcesses)));
 	
 	pEntry = createMotionState(motNodeId, list_length(recvSlice->primaryProcesses));
-	
+
 	/* Setup an outgoing socket to the right place for each of our outbound
 	 * connections for the primary Connections.
 	 */
@@ -1836,24 +1831,32 @@ static inline void readPacket(MotionConn *conn)
  *   pEntry - MotionLayerState context that contains everything we need to send.
  *   tcItem - TupleChunk to send.
  */
-static void doBroadcast(MotionLayerState *pEntry, TupleChunkListItem tcItem)
+static int doBroadcast(MotionLayerState *pEntry, TupleChunkListItem tcItem)
 {	
 	MotionConn 	*conn;
-	int 		i;
+	int 		i, inactive=0;
 	
 	/* add our tcItem to each of the outgoing buffers. */
 	for (i= 0; i < pEntry->numConns; i++)
 	{
 		conn = pEntry->conns + i;	
-		
-		if (conn->stillActive) /* only send to still interested receivers. */
+		/* only send to still interested receivers. */
+		if (conn->stillActive)
+		{
 			sendChunk(conn, tcItem);
+			if (!conn->stillActive)
+				inactive++;
+		}
 		
 		if (conn->hasMirrorConn && conn->mirrorConn->stillActive)
-			sendChunk(conn->mirrorConn, tcItem);		
-		
+		{
+			sendChunk(conn->mirrorConn, tcItem);
+			if (!conn->mirrorConn->stillActive)
+				inactive++;
+		}
 	}
-	
+
+	return inactive;
 }
 
 
