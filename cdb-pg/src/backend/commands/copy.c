@@ -1010,7 +1010,14 @@ DoCopy(const CopyStmt *stmt)
 	}
 	else
 	{							/* copy from database to file */
-		if (rel->rd_rel->relkind != RELKIND_RELATION)
+		
+        if(Mpp_role == MPP_ROLE_DISPATCH)
+            ereport(ERROR,
+		           (errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
+		            errmsg("COPY TO file from database is not yet supported in bizgres MPP dispatch mode")
+				    ));
+
+        if (rel->rd_rel->relkind != RELKIND_RELATION)
 		{
 			if (rel->rd_rel->relkind == RELKIND_VIEW)
 				ereport(ERROR,
@@ -1742,7 +1749,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 		/* TODO: not throw error yet, unless the first one failed */
 		ereport(ERROR,
 				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
-				 errmsg("Error starting the COPY command")));
+				 errmsg("%s",cdbCopy->err_msg.data)));
 	
 	
 	/*

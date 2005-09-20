@@ -100,6 +100,11 @@ int cdbCopyStart(CdbCopy *c, char *copyCmd)
     Gang * gp;
 	int    seg;
 	int    db;
+
+	/* clean err message */
+	c->err_msg.len = 0;		
+	c->err_msg.data[0] = '\0';
+	c->err_msg.cursor = 0;
 	
 	for(seg = 0 ; seg < c->total_segs ; seg++)
 	{
@@ -116,9 +121,19 @@ int cdbCopyStart(CdbCopy *c, char *copyCmd)
 			res = PQexec(q->conn, copyCmd);
 			
 			if(PQresultStatus(res) != PGRES_COPY_IN)
-				/* TODO: try to end COPY in prev segs */
-				/*       before returning error code  */
-				return -1;
+			{
+				if(db == 0)
+			 	   appendStringInfo(&(c->err_msg), 
+								    "\n\nMPPCOPY ERROR: %s -> failed to start on primary segment %d. "
+									"See log file of this segdb for more information", 
+								    copyCmd,seg + 1);
+			    else
+					appendStringInfo(&(c->err_msg), 
+									 "\n\nMPPCOPY ERROR: %s -> failed to start on mirrored segment %d. "
+									 "See log file of this segdb for more information",
+									 copyCmd,seg + 1);
+			    return -1;
+			}
 			
 			PQclear(res);
 		}
