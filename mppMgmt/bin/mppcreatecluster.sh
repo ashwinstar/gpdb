@@ -140,6 +140,12 @@ CHK_PARAMS () {
 		if [ $EXISTS -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Problem with $CLUSTER_CONFIG file" 2
 		fi
+	
+		#Now check to see if we have suitable contents in the CLUSTER_CONFIG file
+
+		if [ `$EGREP "PORT_BASE=|SEG_PREFIX=| DATA_DIRECTORY=" $CLUSTER_CONFIG|$WC -l` -ne 4 ]; then
+				ERROR_EXIT "[FATAL]:-Unable to locate some of the required parameters in $CLUSTER_CONFIG file, is this the correct cluster configuration file." 2
+		fi
 
 		#Source the cluster configuration file
 		LOG_MSG "[INFO]:-Reading MPP configuration file $CLUSTER_CONFIG"
