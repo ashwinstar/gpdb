@@ -11,3 +11,9 @@ mppcreatecluster.sh:-	Added to config display which initdb script will use to bu
 12:37 GMT 23 Aug 2005
 mppcreatecluster.sh	Added additional echo to postgresql.conf file during QE instance build to
 			deal with issue of no newline at end of postgresql.conf.sample file.
+
+15:55 PST 20 Sept 2005
+mppcreatecluster.sh	Added simple check for some of the known parameter names that are expected
+to be in the cluster config file, if not found, script now exits with a suitable error message.
+
+mpp_bash_functions.sh	Added egrep parameter.
