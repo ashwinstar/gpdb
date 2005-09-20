@@ -422,13 +422,20 @@ TupleChunkListItem RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 	 * be ready!). */
 	for (i = 0; i < pEntry->numConns; i++)
 	{	
-		index = ((scanStart + i) % pEntry->numConns);
+		/* avoid division ? 
+		 * index = ((scanStart + i) % pEntry->numConns); */
+		index = scanStart + i;
+		if (index >= pEntry->numConns)
+			index -= pEntry->numConns;
+
 		conn = pEntry->conns + index;
 
+#ifdef AMS_VERBOSE_LOGGING
 		if (!conn->stillActive)
 		{
 			elog(LOG, "RecvTupleChunkFromAny: trying to read on inactive socket %d", conn->sockfd);
 		}
+#endif
 			
 		if (FD_ISSET(conn->sockfd, &rset))
 		{		
@@ -437,8 +444,8 @@ TupleChunkListItem RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 
 			*srcRoute = index;
 
-			/* advance start point */
-			scanStart = (index + 1) % pEntry->numConns;
+			/* advance start point (avoid doing division/modulus operation here) */
+			scanStart = index + 1;
 
 			return tcItem;
 		}
@@ -2138,7 +2145,7 @@ static void getEosAck(MotionConn *conn, int16 route)
 
 void waitOnEosAck(MotionLayerState *pEntry)
 {
-	MotionConn	*conn;
+	MotionConn	*conn=NULL;
 	int			i, n, waitCount;
 	fd_set		waitset;
 
