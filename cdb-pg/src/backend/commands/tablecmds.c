@@ -288,7 +288,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 	AttrNumber	attnum;
 
 	bool hasDispatched = false;
-	bool shouldDispatch =  Mpp_role == MPP_ROLE_DISPATCH && !IsBootstrapProcessingMode() && relkind != RELKIND_SEQUENCE;
+	bool shouldDispatch =  Mpp_role == MPP_ROLE_DISPATCH && !IsBootstrapProcessingMode() && relkind != RELKIND_SEQUENCE && relkind != RELKIND_VIEW;
 
 	/*
 	 * Truncate relname to appropriate length (probably a waste of time,
@@ -504,21 +504,33 @@ DefineRelation(CreateStmt *stmt, char relkind)
 
 	if (Mpp_role == MPP_ROLE_EXECUTE) 
 	{
-		elog( DEBUG5,"CdbRole Execute of CREATE TABLE, relationid %d",stmt->relOid);
+		elog( DEBUG1,"CdbRole Execute of CREATE TABLE, relationid %d",stmt->relOid);
 		Assert(stmt->relOid != 0);
 		relationId = stmt->relOid;
 
-		heap_create_with_catalog_with_relid(relname,
-											  namespaceId,
-											  tablespaceId,
-											  descriptor,
-											  relkind,
-											  false,
-											  localHasOids,
-											  parentOidCount,
-											  stmt->oncommit,
-											  allowSystemTableMods,
-											  relationId);
+		if (relationId != 0)
+			heap_create_with_catalog_with_relid(relname,
+												  namespaceId,
+												  tablespaceId,
+												  descriptor,
+												  relkind,
+												  false,
+												  localHasOids,
+												  parentOidCount,
+												  stmt->oncommit,
+												  allowSystemTableMods,
+												  relationId);
+		else
+			relationId = heap_create_with_catalog(relname,
+												  namespaceId,
+												  tablespaceId,
+												  descriptor,
+												  relkind,
+												  false,
+												  localHasOids,
+												  parentOidCount,
+												  stmt->oncommit,
+												  allowSystemTableMods);
 
 		StoreCatalogInheritance(relationId, inheritOids);
 

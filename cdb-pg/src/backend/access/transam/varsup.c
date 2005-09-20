@@ -18,6 +18,10 @@
 #include "access/transam.h"
 #include "storage/ipc.h"
 #include "storage/proc.h"
+#include "cdb/cdbvars.h"
+
+#include <execinfo.h>
+
 
 
 /* Number of OIDs to prefetch (preallocate) per XLOG write */
@@ -179,6 +183,15 @@ GetNewObjectId(void)
 	LWLockRelease(OidGenLock);
 
 	lastSeenOid = result;
+	
+	if (Mpp_role == MPP_ROLE_EXECUTE)
+	{
+		elog(DEBUG5,"Allocating Oid %u in EXECUTE mode",result);
+	}
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		elog(DEBUG5,"Allocating Oid %u in DISPATCH mode",result);
+	}
 
 	return result;
 }

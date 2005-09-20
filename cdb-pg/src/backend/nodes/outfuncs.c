@@ -1343,6 +1343,7 @@ _outViewStmt(StringInfo str, ViewStmt *node)
 	WRITE_NODE_FIELD(aliases);
 	WRITE_NODE_FIELD(query);
 	WRITE_BOOL_FIELD(replace);
+	WRITE_OID_FIELD(relOid);
 }
 
 static void

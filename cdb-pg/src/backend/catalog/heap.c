@@ -780,6 +780,7 @@ heap_create_with_catalog(const char *relname,
 				(errcode(ERRCODE_DUPLICATE_TABLE),
 				 errmsg("relation \"%s\" already exists", relname)));
 
+	elog(DEBUG5,"heap_create_with_catalog");
 	/*
 	 * Create the relcache entry (mostly dummy at this point) and the
 	 * physical disk file.	(If we fail further down, it's the smgr's
@@ -914,7 +915,20 @@ heap_create_with_catalog_with_relid(const char *relname,
 				(errcode(ERRCODE_DUPLICATE_TABLE),
 				 errmsg("relation \"%s\" already exists", relname)));
 
-	elog(DEBUG5, "Creating table with oid %d", new_rel_oid);
+	elog(DEBUG4, "Creating table with oid %d", new_rel_oid);
+	
+	{
+		Oid tempOid = newoid();
+		if (tempOid > new_rel_oid)
+		{
+			elog(WARNING,"Local Oid counter %u greater than expected %u",tempOid, new_rel_oid);
+		}
+		else if (tempOid < new_rel_oid)
+		{
+			elog(DEBUG4,"Local Oid counter %u less than %u, moving it up",tempOid, new_rel_oid);
+			while(newoid() < new_rel_oid);
+		}
+	}
 
 	/*
 	 * Create the relcache entry (mostly dummy at this point) and the
@@ -931,13 +945,16 @@ heap_create_with_catalog_with_relid(const char *relname,
 							   new_rel_oid,
 							   false);
 
-	while(newoid() < new_rel_oid);
+	
 
 	/* Fetch the relation OID assigned by heap_create */
 	Assert(new_rel_oid == RelationGetRelid(new_rel_desc));
 
 	/* Assign an OID for the relation's tuple type */
+
 	new_type_oid = newoid();
+	
+	elog(DEBUG1, "new_type_oid = %u",new_type_oid);
 
 	/*
 	 * now create an entry in pg_class for the relation.

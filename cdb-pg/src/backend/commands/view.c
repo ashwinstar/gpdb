@@ -48,15 +48,14 @@ static void checkViewTupleDesc(TupleDesc newdesc, TupleDesc olddesc);
  *---------------------------------------------------------------------
  */
 static Oid
-DefineVirtualRelation(const RangeVar *relation, List *tlist, bool replace)
+DefineVirtualRelation(const RangeVar *relation, List *tlist, bool replace, Oid viewOid)
 {
-	Oid			viewOid,
-				namespaceId;
+	Oid			namespaceId;
 	CreateStmt *createStmt = makeNode(CreateStmt);
 	List	   *attrList;
 	ListCell   *t;
 
-	createStmt->relOid = 0;
+	createStmt->relOid = viewOid;
 	/*
 	 * create a list of ColumnDef nodes based on the names and types of
 	 * the (non-junk) targetlist items from the view's SELECT list.
@@ -337,12 +336,13 @@ UpdateRangeTableOfViewParse(Oid viewOid, Query *viewParse)
 void
 DefineView(ViewStmt* stmt)
 {
-	Oid			viewOid;
-		const RangeVar *view = stmt->view;
+	Oid			viewOid = stmt->relOid;
+	const RangeVar *view = stmt->view;
 	Query *viewParse = stmt->query;
 	bool replace = stmt->replace;
 
-
+	if (Mpp_role != MPP_ROLE_EXECUTE)
+		viewOid = 0;
 	/*
 	 * Create the view relation
 	 *
@@ -350,7 +350,9 @@ DefineView(ViewStmt* stmt)
 	 * aborted.
 	 */
 
-	viewOid = DefineVirtualRelation(view, viewParse->targetList, replace);
+	viewOid = DefineVirtualRelation(view, viewParse->targetList, replace, viewOid);
+	
+	stmt->relOid = viewOid;
 
 	/*
 	 * The relation we have just created is not visible to any other
