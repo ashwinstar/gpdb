@@ -1137,6 +1137,8 @@ static MotionLayerState  *startConnections(Slice *mySlice, int *highsock, fd_set
 #endif
 	
 	recvSlice = (Slice *)list_nth(sliceTable->slices, mySlice->parentIndex);
+
+	Assert(recvSlice->mirrorProcesses == NIL || (list_length(recvSlice->primaryProcesses) == list_length(recvSlice->mirrorProcesses)));
 	
 	pEntry = createMotionState(motNodeId, list_length(recvSlice->primaryProcesses));
 	
