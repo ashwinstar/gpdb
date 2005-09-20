@@ -89,6 +89,7 @@ PROMPT="$ECHO -n"
 #TABECHO="$ECHO -e \t"
 #PROMPT="$ECHO -n -e \t"
 GREP=`findCmdInPath grep`
+EGREP=`findCmdInPath egrep`
 HEAD=`findCmdInPath head`
 HOSTNAME=`findCmdInPath hostname`
 IPCS=`findCmdInPath ipcs`
