@@ -1361,9 +1361,9 @@ copy_in_error_callback(void *arg)
 			/* error is relevant to a particular column */
 			limit_printout_length(&attr_buf);
 			
-			if(Mpp_role != MPP_ROLE_UTILITY) /* omit segDB line number, it is confusing to the user */
-				errcontext("COPY %s, column %s",
-						   copy_relname, copy_attname);
+			if(Mpp_role != MPP_ROLE_EXECUTE)
+				errcontext("COPY %s, line %d of this segment db input data, column %s",
+						   copy_relname, copy_lineno, copy_attname);				
 			else
 				errcontext("COPY %s, line %d, column %s",
 						   copy_relname, copy_lineno, copy_attname);				
@@ -1376,8 +1376,8 @@ copy_in_error_callback(void *arg)
 			{
 				limit_printout_length(&line_buf);
 				
-				if(Mpp_role != MPP_ROLE_UTILITY) /* omit segDB line number, it is confusing to the user */
-					errcontext("COPY %s: \"%s\"", copy_relname, line_buf.data);
+				if(Mpp_role != MPP_ROLE_EXECUTE) 
+					errcontext("COPY %s, line %d of this segment db input data: \"%s\"", copy_relname, copy_lineno, line_buf.data);
 				else
 					errcontext("COPY %s, line %d: \"%s\"", copy_relname, copy_lineno, line_buf.data);
 			}
@@ -1391,8 +1391,8 @@ copy_in_error_callback(void *arg)
 				 * to regurgitate it without conversion.  So we have to punt
 				 * and just report the line number.
 				 */
-				if(Mpp_role != MPP_ROLE_UTILITY) /* omit segDB line number, it is confusing to the user */				
-				    errcontext("COPY %s", copy_relname);
+				if(Mpp_role != MPP_ROLE_EXECUTE) /* omit segDB line number, it is confusing to the user */				
+				    errcontext("COPY %s, line %d of this segment db input data", copy_relname, copy_lineno);
 				else
 				    errcontext("COPY %s, line %d", copy_relname, copy_lineno);
 			}
@@ -3339,6 +3339,11 @@ CopyReadLineCSV(size_t bytesread, char *quote, char *escape)
 			if(in_quote)
 			{
 				line_done = false;
+				
+				/* update file line for error message */
+				/* TODO: for dos line end we need to do check before incrementing! */
+				copy_lineno++;
+				
 				/* buf done, but still in quote */
 				if (buffer_index >= bytesread)
 				{
@@ -3994,6 +3999,7 @@ CopyReadAttributesCSV(const char *delim, const char *null_print, char *quote,
 						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 						 errmsg("extra data after last expected column")));
 			
+			saw_quote = false;
 			attnum = lfirst_int(cur);
 			m = attnum - 1;
 			attr_offsets[m] = attr_buf.cursor;
