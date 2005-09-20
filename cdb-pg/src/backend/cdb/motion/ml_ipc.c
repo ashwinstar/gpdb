@@ -2145,14 +2145,15 @@ static void getEosAck(MotionConn *conn, int16 route)
 
 void waitOnEosAck(MotionLayerState *pEntry)
 {
-	MotionConn	*conn=NULL;
-	int			i, n, waitCount;
-	fd_set		waitset;
+	MotionConn			*conn=NULL;
+	int					i, n, waitCount;
+	fd_set				waitset;
+	struct timeval		timeout;
+	int					limit;
 
 	do {
-		struct timeval  timeout = tval;
-		int             limit = 0;
-
+		timeout = tval;
+		limit = 0;
         waitCount = 0;
 
 		FD_ZERO(&waitset);
