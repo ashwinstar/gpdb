@@ -34,7 +34,7 @@ dist : BIZDEP RECONFIG $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(MPPPGDIR); make install
 	@make mgmtcopy INSTLOC=$(INSTLOC)
-	@make $(TARBALL) INSTLOC=$(INSTLOC)
+	@rm -f $(TARBALL); make $(TARBALL) INSTLOC=$(INSTLOC)
 
 $(TARBALL) :
 	@gtar czf $(TARBALL) $(INSTLOC)
