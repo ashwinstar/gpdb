@@ -51,6 +51,7 @@ QD_NAME=`$HOSTNAME`
 EXIT_STATUS=0
 KILL_INVALID=false
 ADMIN=0
+STOP_INVALID=0
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -80,6 +81,7 @@ USAGE () {
 		$TABECHO "-i, Immediate shutdown, active transaction aborted [Use this option with care]"
 		$TABECHO "-s, Smart shutdown, wait for active transaction to complete [default]"
 		$TABECHO "-n, Do not wait for shutdown return code of each node [default:- wait]"
+		$TABECHO "-z, Force shutdown of segment instances marked as invalid"
 		##MPP	$TABECHO "-k, Attempt to kill any orphaned postmaster processes on nodes" 
 		##MPP	$TABECHO "-m, Stop QD started in maintenance mode"
 		$TABECHO
@@ -204,7 +206,7 @@ PROCESS_SHUTDOWN () {
 				QE_DIR=`$ECHO $QNODE|$CUT -d"|" -f2`
 				QE_PORT=`$ECHO $QNODE|$CUT -d"|" -f3`
 				QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
-				if [ "$QE_VALID" == "t" ];then
+				if [ "$QE_VALID" == "t" ] || [ $STOP_INVALID -eq 1 ];then
 					LOG_MSG "[INFO]:-Stopping QE $QE_NAME directory $QE_DIR"
 					$TRUSTED_SHELL $QE_NAME "$PG_CTL $WAIT stop -D $QE_DIR -m $MODE -l ${QE_DIR}.log " >/dev/null 2>&1
 					RETVAL=$?
@@ -236,7 +238,7 @@ PROCESS_SHUTDOWN () {
 #Check to see if we have a parameter supplied to script
 if [ $# -ne 0 ]; then
 		##MPP	while getopts ":viskft'?'aqnml:d:" opt;do
-		while getopts ":viskft'?'aqnl:d:" opt;do
+		while getopts ":viskzft'?'aqnl:d:" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						i ) MODE=immediate ;;
@@ -250,6 +252,7 @@ if [ $# -ne 0 ]; then
 						q ) unset VERBOSE ;;
 						##MPP		k ) KILL_INVALID=true ;;
 						##MPP		m ) ADMIN=1 ;;
+						z)	STOP_INVALID=1 ;;
 						n ) WAIT="-W" ;; 
 						l ) LOG_DIR=$OPTARG ;;
 						* ) UNKNOWN_OPTION ;;
