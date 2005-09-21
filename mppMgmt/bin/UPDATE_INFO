@@ -17,3 +17,16 @@ mppcreatecluster.sh	Added simple check for some of the known parameter names tha
 to be in the cluster config file, if not found, script now exits with a suitable error message.
 
 mpp_bash_functions.sh	Added egrep parameter.
+
+17:10 PST 20 Sept 2005
+mpp_bash_functions.sh	Updates re standard naiming convention
+
+mppcreatecluster.sh	Updates re standard naiming convention
+
+mppstart.sh		Updates re standard naiming convention
+
+mppstop.sh		Updates re standard naiming convention
+
+mppstate.sh		Updates re standard naiming convention
+
+cluster_example		Updates re standard naiming convention
