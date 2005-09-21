@@ -56,6 +56,7 @@ unset FAILED
 unset ADMIN
 FAILED_COUNT=0
 TAIL_COUNT=0
+START_INVALID=0
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -86,6 +87,7 @@ USAGE () {
 		$TABECHO "-n, do not wait for startup return code of each node [default:- wait]"
 		##MPP	$TABECHO "-m, start QE only in maintenance mode [default:- full MPP startup]"
 		$TABECHO "-x, mark failed segment as down [default:- do not mark segment as down on startup failure]"
+		$TABECHO "-z, force startup of segment instance marked as invalid"
 		$TABECHO
 		$TABECHO "Return codes:"
 		$TABECHO "0 No problems encountered with requested operation"
@@ -230,7 +232,7 @@ PROCESS_STARTUP () {
 				QE_PORT=`$ECHO $QNODE|$CUT -d"|" -f3`
 				QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
 				QE_PRIMARY=`$ECHO $QNODE|$CUT -d"|" -f5`
-				if [ "$QE_VALID" == "t" ];then
+				if [ "$QE_VALID" == "t" ] || [ $START_INVALID -eq 1 ];then
 					LOG_MSG "[INFO]:-Starting QE $QE_NAME directory $QE_DIR"
 					$TRUSTED_SHELL $QE_NAME "export PGPORT=${QE_PORT};$PG_CTL $WAIT -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start" >> $LOG_FILE 2>&1
 				RETVAL=$?
@@ -259,6 +261,7 @@ PROCESS_STARTUP () {
 				fi
 				if [ $RUNNING -eq 0 ] && [ $RETVAL -ne 0 ]; then
 						LOG_MSG "[WARN]:-Could not start instance, BUT pg_ctl reports instance active, check instance log file via mppstate.bsh -e"
+						EXIT_STATUS=1
 				fi
 				if [ $RUNNING -eq 0 ] && [ $RETVAL -eq 0 ]; then
 						LOG_MSG "[INFO]:-Command pg_ctl indicates started QE $QE_NAME database"
@@ -268,6 +271,7 @@ PROCESS_STARTUP () {
 				((INDEX=$INDEX+1))
 				else
 						LOG_MSG "[WARN]:-QE $QE_NAME directory $QE_DIR invalid will not start"
+						EXIT_STATUS=1
 				fi
 		done
 		LOG_MSG "[INFO]:-Starting Master $QD_NAME directory $MASTER_DATA_DIRECTORY"
@@ -297,7 +301,10 @@ MARK_INVALID () {
 				QE_NAME=`$ECHO $TARGET|$CUT -d: -f1`
 				QE_DIR=`$ECHO $TARGET|$CUT -d: -f2`
 				QE_PORT=`$ECHO $TARGET|$CUT -d: -f3`
-				#MPP	$PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"update mpp_instance set valid='f' where host='$TAIL_NAME' and datadir='$TAIL_DIR' and port=$TAIL_PORT ;" >> $LOG_FILE 2>&1
+				QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
+				QE_PRIMARY=`$ECHO $QNODE|$CUT -d"|" -f5`
+				QE_LISTENID=`$PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select listenerid from mpp.listener where datadir='{$QE_DIR}' and port=${QE_PORT};"`
+				$PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"update mpp.pgdatabase set valid='f' where listenerid=${QE_LISTENID};" >> $LOG_FILE 2>&1
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
 						LOG_MSG "[WARN]:-Issue with marking $QE_NAME as invalid, check log file"
@@ -312,7 +319,7 @@ MARK_INVALID () {
 # Main Section
 #******************************************************************************
 if [ $# -ne 0 ]; then
-		while getopts ":vt'?'axqnml:d:" opt;do
+		while getopts ":vt'?'axqznml:d:" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						t ) DISPLAY_PARAM ;;
@@ -323,6 +330,7 @@ if [ $# -ne 0 ]; then
 						q ) unset VERBOSE ;;
 						n ) WAIT="-W" ;; 
 						m ) ADMIN=1 ;;
+						z )	START_INVALID=1 ;;
 						l ) LOG_DIR=$OPTARG ;;
 						* ) USAGE ;;
 				esac
