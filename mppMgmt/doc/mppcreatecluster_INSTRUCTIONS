@@ -75,15 +75,15 @@ declare -a DATA_DIRECTORY=(/dir1 /dir2 /dir3)
 				/dir2/${SEG_PREFIX}[QE number]
 				/dir3/${SEG_PREFIX}[QE number]
 
-QD_HOSTNAME="testhost"
+MASTER_HOSTNAME="testhost"
 			This variable sets the name on which the QD instance will be created, the
 			mppcreatecluster.sh expects to be executed on this host, and will exit if
 			this is not the case.
 
-QD_DIRECTORY=/xxxx
+MASTER_DIRECTORY=/xxxx
 			This sets where the QD data sub-directory will be created.
 
-QD_PORT=nnnnnn		
+MASTER_PORT=nnnnnn		
 			This sets a specific port number of the QD instance.
 
 IP_ALLOW="XXX.YYY.ZZZ.AAA/CC"
@@ -126,9 +126,9 @@ MACHINE_LIST_FILE=hostlist #This file should contain "testhost"
 SEG_PREFIX=testdb
 PORT_BASE=45000
 declare -a DATA_DIRECTORY=(/dbfast1 /dbfast2 /dbfast3)
-QD_HOSTNAME=testhost
-QD_DIRECTORY=/dbfast4
-QD_PORT=5431
+MASTER_HOSTNAME=testhost
+MASTER_DIRECTORY=/dbfast4
+MASTER_PORT=5431
 IP_ALLOW=<IP address of testhost"
 TRUSTED_SHELL="ssh"
 CHECK_POINT_SEGMENTS=8
@@ -164,12 +164,12 @@ The following provides a functional overview of the mppcreatecluster.sh scripts.
 	f.	Checks for duplicate hostnames in the host file, exits with suitable error
 		message if any duplicate hostnames found.
 	g.	Checks CLUSTER_NAME parameter, if unset, sets to a default value of "MPP Cluster"
-	h.	Checks QD_HOSTNAME paramater, if unset, exits with suitable error message.
+	h.	Checks MASTER_HOSTNAME paramater, if unset, exits with suitable error message.
 	j.	Checks SEG_PREFIX paramater, if unset, exits with suitable error message.
-	k.	Checks QD_PORT, if unset, exits with suitable error message.
+	k.	Checks MASTER_PORT, if unset, exits with suitable error message.
 	l.	Checks PORT_BASE, if unset, exits with suitable error message.
 	m.	Checks number of values in DATA_DIRECTORY, if zero exits with suitable error message.
-	n.	Checks QD_DIRECTORY paramater, if unset, exits with suitable error message.
+	n.	Checks MASTER_DIRECTORY paramater, if unset, exits with suitable error message.
 	o.	Checks DATABASE_NAME, if unset, creates MPP cluster without creating the database
 		name contained in DATABASE_NAME variable.
 	p.	Checks IP_ALLOW, if unset, exits with suitable error message.

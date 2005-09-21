@@ -141,15 +141,23 @@ CHK_PARAMS () {
 				ERROR_EXIT "[FATAL]:-Problem with $CLUSTER_CONFIG file" 2
 		fi
 	
-		#Now check to see if we have suitable contents in the CLUSTER_CONFIG file
-
-		if [ `$EGREP "PORT_BASE=|SEG_PREFIX=| DATA_DIRECTORY=" $CLUSTER_CONFIG|$WC -l` -ne 4 ]; then
-				ERROR_EXIT "[FATAL]:-Unable to locate some of the required parameters in $CLUSTER_CONFIG file, is this the correct cluster configuration file." 2
-		fi
+		#Make sure old CLUSTER_CONFIG settings are not hanging around.
+		unset PORT_BASE SEG_PREFIX DATA_DIRECTORY
 
 		#Source the cluster configuration file
 		LOG_MSG "[INFO]:-Reading MPP configuration file $CLUSTER_CONFIG"
 		. $CLUSTER_CONFIG
+
+		#Check for required definitions in the CLUSTER_CONFIG file
+		if [ x"" = x"$PORT_BASE" ]; then
+				ERROR_EXIT "[FATAL]:-PORT_BASE not specified in $CLUSTER_CONFIG file, is this the correct cluster configuration file." 2
+		fi
+		if [ x"" = x"$SEG_PREFIX" ]; then
+				ERROR_EXIT "[FATAL]:-SEG_PREFIX not specified in $CLUSTER_CONFIG file, is this the correct cluster configuration file." 2
+		fi
+		if [ x"" = x"$DATA_DIRECTORY" ]; then
+				ERROR_EXIT "[FATAL]:-DATA_DIRECTORY not specified in $CLUSTER_CONFIG file, is this the correct cluster configuration file." 2
+		fi
 
 		#Check the other files that are required to be able to continue
 		FILE_LIST=($MACHINE_LIST_FILE)

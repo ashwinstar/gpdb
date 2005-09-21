@@ -101,13 +101,13 @@ echo "# set the number of segment instances per host" >> $CLUSTER_CONFIG
 echo "declare -a DATA_DIRECTORY=(${DIRVEC[@]})" >> $CLUSTER_CONFIG
 echo "" >> $CLUSTER_CONFIG
 echo "# Name of host on which to setup the QD" >> $CLUSTER_CONFIG
-echo "QD_HOSTNAME=$LOCALHOST" >> $CLUSTER_CONFIG
+echo "MASTER_HOSTNAME=$LOCALHOST" >> $CLUSTER_CONFIG
 echo "" >> $CLUSTER_CONFIG
 echo "# Name of directory on that host in which to setup the QD" >> $CLUSTER_CONFIG
-echo "QD_DIRECTORY=$QDDIR" >> $CLUSTER_CONFIG
-echo "QD_DATA_DIRECTORY=$QDDIR/${SEG_PREFIX}0" >> $CLUSTER_CONFIG
+echo "MASTER_DIRECTORY=$QDDIR" >> $CLUSTER_CONFIG
+echo "MASTER_DATA_DIRECTORY=$QDDIR/${SEG_PREFIX}0" >> $CLUSTER_CONFIG
 echo "" >> $CLUSTER_CONFIG
-echo "QD_PORT=5432" >> $CLUSTER_CONFIG
+echo "MASTER_PORT=5432" >> $CLUSTER_CONFIG
 echo "" >> $CLUSTER_CONFIG
 echo "# Hosts to allow to connect to the QD (and Segment Instances)" >> $CLUSTER_CONFIG
 echo "# By default, allow everyone to connect (0.0.0.0/0)" >> $CLUSTER_CONFIG
@@ -125,7 +125,7 @@ echo "PATH=$MPPHOME/bin:$MPPHOME/mppMgmt/bin:$PATH" >> $CLUSTER_CONFIG
 echo "LD_LIBRARY_PATH=$MPPHOME/lib:$LD_LIBRARY_PATH" >> $CLUSTER_CONFIG
 echo "export PATH" >> $CLUSTER_CONFIG
 echo "export LD_LIBRARY_PATH" >> $CLUSTER_CONFIG
-echo "export QD_DATA_DIRECTORY" >> $CLUSTER_CONFIG
+echo "export MASTER_DATA_DIRECTORY" >> $CLUSTER_CONFIG
 echo "export TRUSTED_SHELL" >> $CLUSTER_CONFIG
 
 #*****************************************************************************************

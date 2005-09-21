@@ -12,7 +12,7 @@ MACHINE_LIST_FILE=hostlist
 SEG_PREFIX=lal
 
 # This is the port range for the primary QE's, the QD can be assigned its own specific port number
-# via the QD_PORT variable. 
+# via the MASTER_PORT variable. 
 PORT_BASE=60000
 
 # Name for script created database, if commented out, will not create any database within cluster.

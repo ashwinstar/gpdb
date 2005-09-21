@@ -54,9 +54,9 @@ a script cannot located this file it will exit.
 Configuration
 -------------
 
-QD_DATA_DIRECTORY		Set this either via .bashrc etc to be the
+MASTER_DATA_DIRECTORY		Set this either via .bashrc etc to be the
 				location of the QD database directory.
-				eg export QD_DATA_DIRECTORY=/dbfast1/dwh0
+				eg export MASTER_DATA_DIRECTORY=/dbfast1/dwh0
 				For most scripts, this is the only setting
 				that is required to be able to obtain
 				QE information from the QD database.
