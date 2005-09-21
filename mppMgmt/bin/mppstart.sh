@@ -234,7 +234,7 @@ PROCESS_STARTUP () {
 				QE_PRIMARY=`$ECHO $QNODE|$CUT -d"|" -f5`
 				if [ "$QE_VALID" == "t" ] || [ $START_INVALID -eq 1 ];then
 					LOG_MSG "[INFO]:-Starting QE $QE_NAME directory $QE_DIR"
-					$TRUSTED_SHELL $QE_NAME "export PGPORT=${QE_PORT};$PG_CTL $WAIT -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start" >> $LOG_FILE 2>&1
+					$TRUSTED_SHELL $QE_NAME "export PGPATH=${MPPHOME}/bin;export PGPORT=${QE_PORT};$PG_CTL $WAIT -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start" >> $LOG_FILE 2>&1
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
 						((FAILED_COUNT=$FAILED_COUNT+1))
