@@ -4396,7 +4396,7 @@ scanCSVLine(const char *s, char eol, char escapec, char quotec, size_t len)
 		
 	}
 	
-	if(*s != escapec) /* found eol_ch */
+	if(*s == eol)
 		last_was_esc = false;
 	
 	return ((*s == eol) ? (char *) s : NULL);
