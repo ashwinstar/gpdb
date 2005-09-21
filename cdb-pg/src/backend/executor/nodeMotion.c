@@ -28,7 +28,11 @@
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 
+/* #define MEASURE_MOTION_TIME */
+
+#ifdef MEASURE_MOTION_TIME
 #include <unistd.h>  /* gettimeofday */
+#endif
 
 /*=========================================================================
  * FUNCTIONS PROTOTYPES
@@ -64,39 +68,39 @@ ExecMotion(MotionState *node)
      * -- SENDER vs. RECEIVER and
      * -- SORTED vs. UNSORTED
      */
-	if( node->isReceiver )
+	if (node->isReceiver)
 	{
+#ifdef MEASURE_MOTION_TIME
 		struct timeval startTime;
 		struct timeval stopTime;
 		
 		gettimeofday(&startTime, NULL);
-		
+#endif
 		
 		if( motion->sendSorted )
 			tuple = execMotionSortedReceiver(node);
 		else
 			tuple = execMotionUnsortedReceiver(node);
-		
-		
-		
+
+#ifdef MEASURE_MOTION_TIME
 		gettimeofday(&stopTime, NULL);
-		
+
 		node->motionTime.tv_sec += stopTime.tv_sec - startTime.tv_sec;
 		node->motionTime.tv_usec += stopTime.tv_usec - startTime.tv_usec;
-		
+
 		while (node->motionTime.tv_usec < 0)
 		{
 			node->motionTime.tv_usec += 1000000;
 			node->motionTime.tv_sec--;
 		}
-		
+
 		while (node->motionTime.tv_usec >= 1000000)
 		{
 			node->motionTime.tv_usec -= 1000000;
 			node->motionTime.tv_sec++;
 		}
-		
-		
+#endif
+
 		return tuple;	
 	}
 	else
@@ -111,41 +115,44 @@ static TupleTableSlot *execMotionSender(MotionState *node)
 	PlanState  		*outerNode;
 	Motion 			*motion = (Motion *)node->ps.plan;
 	bool 			done = false;
+#ifdef MEASURE_MOTION_TIME
 	struct timeval 	time1;
 	struct timeval 	time2;
-	
+#endif
 	SO1_printf("execMotionSender: %s\n","entering routine");
-	
+
 	AssertState(motion->motionType == MOTIONTYPE_HASH ||
         (motion->motionType == MOTIONTYPE_FIXED && motion->numOutputSegs <= 1));
-	
+
+#ifdef MEASURE_MOTION_TIME
 	gettimeofday(&time1, NULL);
-		
+#endif
+
 	while(!done)
 	{
 		/* grab TupleTableSlot from our child. */
 		outerNode = outerPlanState(node);		
 
 		outerTupleSlot = ExecProcNode(outerNode);
-		
+
+#ifdef MEASURE_MOTION_TIME
 		gettimeofday(&time2, NULL);
 		
 		node->otherTime.tv_sec += time2.tv_sec - time1.tv_sec;
 		node->otherTime.tv_usec += time2.tv_usec - time1.tv_usec;
-		
+
 		while (node->otherTime.tv_usec < 0)
 		{
 			node->otherTime.tv_usec += 1000000;
 			node->otherTime.tv_sec--;
 		}
-		
+
 		while (node->otherTime.tv_usec >= 1000000)
 		{
 			node->otherTime.tv_usec -= 1000000;
 			node->otherTime.tv_sec++;
 		}
-	
-		
+#endif
 		if ( TupIsNull(outerTupleSlot) )
 		{
 			doSendEndOfStream( motion, node );	
@@ -162,28 +169,26 @@ static TupleTableSlot *execMotionSender(MotionState *node)
 				done = true;
 			}
 		}	
-		
+#ifdef MEASURE_MOTION_TIME
 		gettimeofday(&time1, NULL);
-		
+
 		node->motionTime.tv_sec += time1.tv_sec - time2.tv_sec;
 		node->motionTime.tv_usec += time1.tv_usec - time2.tv_usec;
-		
+
 		while (node->motionTime.tv_usec < 0)
 		{
 			node->motionTime.tv_usec += 1000000;
 			node->motionTime.tv_sec--;
 		}
-		
+
 		while (node->motionTime.tv_usec >= 1000000)
 		{
 			node->motionTime.tv_usec -= 1000000;
 			node->motionTime.tv_sec++;
 		}
-		
-		
+#endif
 	}
-	
-	
+
 	/* nothing else to send out, so we return NULL up the tree. */
 	return NULL;
 }
@@ -198,7 +203,7 @@ static TupleTableSlot *execMotionUnsortedReceiver(MotionState *node)
 	ReceiveReturnCode 	recvRC;
 
     SO1_printf("ExecMotion: %s\n","entering routine");
-	
+
 	AssertState(motion->motionType == MOTIONTYPE_HASH ||
         (motion->motionType == MOTIONTYPE_FIXED && motion->numOutputSegs <= 1));
 
@@ -209,21 +214,21 @@ static TupleTableSlot *execMotionUnsortedReceiver(MotionState *node)
 	}
 
 	recvRC = RecvTuple(motion->motionID, &tuple);
-	
+
 	if (recvRC == END_OF_STREAM)
 	{
 		elog(DEBUG4, "motionID=%d saw END_OF_STREAM", motion->motionID );
-		
+
 		return NULL;
 	}
 	else if (recvRC == GOT_TUPLE)
 	{
 		node->numTuplesFromAMS++;
-		
+
 		/* store it in our result slot and return this. */
 		slot = node->ps.ps_ResultTupleSlot;			
 		node->numTuplesToParent++;
-		
+
 		return ExecStoreTuple(tuple, slot, InvalidBuffer, true /*shouldFree*/);
 	}	
 
@@ -298,44 +303,42 @@ static TupleTableSlot *execMotionSortedReceiver(MotionState *node)
 	else
 	{		
 		recvRC = RecvTupleFrom(motion->motionID, &inputTuple, node->routeIdNext);
-		
+
 		if (recvRC == GOT_TUPLE)
 		{
 			node->numTuplesFromAMS++;
 			node->numTuplesInHeap++;
 		}			
-			
+
 		MergeNewValueIntoCdbTupleHeap(node->tupleheap, inputTuple, node->routeIdNext);
-					
 	}
-	
+
 	/* THE HEAP SHOULD NOW HAVE A TUPLE FROM EVERY SOURCE.
 	 *
 	 * Pull out the next tuple and pass it back.
 	 */
-	
+
 	tupHeapInfo = GetLowestValueFromCdbTupleHeap(node->tupleheap);
 	tuple = tupHeapInfo->tuple;
 	node->routeIdNext = tupHeapInfo->sourceRouteId;
-	
+
 	if (tuple != NULL)
 	{
 		/*
 		 * store it in our result slot and return this.
 		 */
 		slot = node->ps.ps_ResultTupleSlot;
-		
+
 		node->numTuplesToParent++;
 		node->numTuplesInHeap--;
 		Assert( node->numTuplesInHeap >= 0 );
-	
+
 		return ExecStoreTuple(tuple, slot, InvalidBuffer, true /*shouldFree*/);
 	}
 	else    /* tuple is null */
 	{
 		return NULL;
 	}
-	
 }
 
 
@@ -365,25 +368,23 @@ void execMotionSortedReceiverFirstTime(MotionState *node)
     AssertState(motion->numOutputSegs == 0 ||
                 motion->outputSegIdx[0] == mySegIdx);
 
-
 	/* Now we iterate over the tuple-heap, and try to receive a tuple for
 	 * each entry that doesn't yet have a tuple.
 	 */	
 	tupsReceived = (bool *) palloc0(sizeof(bool) * motion->numInputSegs);
-		
 
 	for (i = 0; i < motion->numInputSegs; i++)
 	{
 		if (motion->inputSegIdx[i] == mySegIdx || tupsReceived[i])
 			continue;
-		
-		
+
+
 		/* another place where we are mapping segid space to routeid space.
 		 * so route[x] = inputSegIdx[x] now.
 		 */
 		recvRC = RecvTupleFrom(motion->motionID, &inputTuple,
 			motion->inputSegIdx[i]);
-		
+
 		if (recvRC != NO_TUPLE)
 		{
 			SetCdbTupleHeapInitialValue(node->tupleheap, inputTuple,
@@ -410,7 +411,7 @@ void execMotionSortedReceiverFirstTime(MotionState *node)
 
 	/* Be nice and clean up. */
 	pfree(tupsReceived);
-	
+
 	node->tupleheapReady = true;
 
 }
@@ -437,9 +438,9 @@ ExecInitMotion(Motion *node, EState *estate)
 	int 		prior_es_cur_root_idx;
 
 	SO_printf("ExecInitMotion: initializing motion node\n");
-	
+
     AssertState(Mpp_role != MPP_ROLE_UTILITY);
-	
+
 	prior_es_cur_slice_idx = estate->es_cur_slice_idx; /* save */
 	prior_es_cur_root_idx = estate->es_cur_root_idx; /* save */
 
@@ -449,7 +450,7 @@ ExecInitMotion(Motion *node, EState *estate)
 	motionstate = makeNode(MotionState);
 	motionstate->ps.plan = (Plan *) node;
 	motionstate->ps.state = estate;
-	
+
 	/*
 	 *  MPP  Slice Plan:
 	 *   QD must initialize the global slice table.
@@ -459,21 +460,21 @@ ExecInitMotion(Motion *node, EState *estate)
 	{
 		MemoryContext oldcxt;
 		oldcxt = MemoryContextSwitchTo(estate->es_query_cxt);
-		
+
 		parentSlice = (Slice*)list_nth(estate->es_sliceTable->slices, estate->es_cur_slice_idx);
-		
+
 		Assert(IsA(parentSlice, Slice));
 		Assert(parentSlice->sliceIndex == estate->es_cur_slice_idx);
 		Assert(0 < node->motionID && node->motionID <= estate->es_sliceTable->nMotions);
-		
+
 		thisSlice = (Slice*)list_nth(estate->es_sliceTable->slices, node->motionID);
-		
+
 		Assert(IsA(thisSlice, Slice));
 		Assert(thisSlice->sliceIndex == -1);
 
 		thisSlice->sliceIndex = node->motionID;
 		thisSlice->rootIndex = parentSlice->rootIndex;
-		
+
 		/* The gang beneath a Motion will be a reader, but its size must
 		 * be determined. */
 		thisSlice->gangType = GANGTYPE_READER;
@@ -483,22 +484,20 @@ ExecInitMotion(Motion *node, EState *estate)
 			case FLOW_SINGLETON:
 				thisSlice->gangSize = 1;
 				break;
-				
 			case FLOW_REPLICATED:
 			case FLOW_PARTITIONED:
 				thisSlice->gangSize = getMPPSegmentCount();
 				break;
-				
 			default:
 				/* Assert FALSE -- Above are only values we should see. */
 				Assert( node->plan.lefttree->flow->flotype == FLOW_SINGLETON );
 		}
-		
+
 		thisSlice->parentIndex = estate->es_cur_slice_idx;		
 		parentSlice->children = lappend_int(parentSlice->children, thisSlice->sliceIndex);
-		
+
 		estate->es_cur_slice_idx = thisSlice->sliceIndex;
-		
+
 		MemoryContextSwitchTo(oldcxt);
 	}
 	else if ( Mpp_role == MPP_ROLE_EXECUTE )
@@ -507,14 +506,13 @@ ExecInitMotion(Motion *node, EState *estate)
 		estate->es_slice_map[node->motionID] = motionstate;
 	}
 
-
     motionstate->sentEndOfStream = false;
 
 	motionstate->otherTime.tv_sec  = 0;
 	motionstate->otherTime.tv_usec = 0;
 	motionstate->motionTime.tv_sec  = 0;
 	motionstate->motionTime.tv_usec = 0;
-	
+
 	motionstate->numTuplesFromChild = 0;
 	motionstate->numTuplesToAMS     = 0;
 	motionstate->numTuplesFromAMS   = 0;
@@ -523,8 +521,6 @@ ExecInitMotion(Motion *node, EState *estate)
 	motionstate->numTuplesInHeap    = 0;
 
 	motionstate->stopRequested = false;
-	
-   
 
 	/*
 	 * Miscellaneous initialization
@@ -545,24 +541,24 @@ ExecInitMotion(Motion *node, EState *estate)
 	 * initializes child nodes
 	 */
 	outerPlanState(motionstate) = ExecInitNode(outerPlan(node), estate);
-	
+
 	/*
 	 * restore state that might have changed in recursion for our caller
 	 * (and for ourself).
 	 */
 	 estate->es_cur_slice_idx =	prior_es_cur_slice_idx;
 	 estate->es_cur_root_idx =	prior_es_cur_root_idx;
-	 
+
 	if( motionstate->ps.state->es_cur_slice_idx == node->motionID )
 	 	motionstate->isReceiver = false;
 	 else
 	 	motionstate->isReceiver = true;
-	
+
 	 elog(DEBUG2, "Motion-node %d type %s is a %s",
         node->motionID,
         (node->motionType == MOTIONTYPE_HASH ? "hash" : "fixed"),
         motionstate->isReceiver?"RECEIVER":"SENDER");
-        
+
 	/*
 	 * initialize tuple type.  no need to initialize projection info
 	 * because this node doesn't do projections.
@@ -571,17 +567,17 @@ ExecInitMotion(Motion *node, EState *estate)
 	motionstate->ps.ps_ProjInfo = NULL;
 	motionstate->hashExprState = NULL;
 	motionstate->cdbhash = NULL;
-		
+
 	if ( node->motionType == MOTIONTYPE_HASH )
 	{
 		int			nkeys;
-		
+
 		/*
 		 * Get info about the hash functions to be used for each hash key.
 		 */
 		Assert( node->hashDataTypes != NULL );
 		Assert( node->numHashSegs > 0 );
-		
+
 		nkeys = list_length(node->hashDataTypes);
 		motionstate->hashExprState = (List *)ExecInitExpr( (Expr *)node->hashExpr,
 														 (PlanState *) motionstate);
@@ -609,7 +605,8 @@ ExecInitMotion(Motion *node, EState *estate)
 		}
 
 		/*
-		 * Create buckets to hold counts of tuples hashing to each destination segindex (for debugging purposes)
+		 * Create buckets to hold counts of tuples hashing to each
+		 * destination segindex (for debugging purposes)
 		 */
 		motionstate->numTuplesByHashSegIdx = (int *)palloc0( node->numHashSegs * sizeof(int) );
 	}
@@ -618,13 +615,13 @@ ExecInitMotion(Motion *node, EState *estate)
 		/*
 		 * Create bit vector of masks if this is a "deep-six" fixed motion node
 		 */
-		if ( node->fixedToSelfOnly )
+		if (node->fixedToSelfOnly)
 		{
-			Assert( node->numOutputSegs > 0 );
-			Assert( !node->sendSorted );
+			Assert(node->numOutputSegs > 0);
+			Assert(!node->sendSorted);
 
 			motionstate->fixedSegIdxMask = palloc0( node->numOutputSegs * sizeof(bool) );
-			for ( i=0; i<node->numOutputSegs; i++ )
+			for (i=0; i<node->numOutputSegs; i++)
 			{
 				if ( node->outputSegIdx[i] == Mpp_segment )
 					motionstate->fixedSegIdxMask[i] = true;
@@ -634,7 +631,7 @@ ExecInitMotion(Motion *node, EState *estate)
 		}
 	}
 
-	if ( node->sendSorted )
+	if (node->sendSorted)
 	{
 		Assert( node->numSortCols > 0 );
 		Assert( node->numInputSegs > 0 );
@@ -655,20 +652,18 @@ ExecInitMotion(Motion *node, EState *estate)
 
 			fmgr_info(sortFunction, &motionstate->sortFunctions[i]);
 		}
-		
-		
+
 		motionstate->tupleheap = CreateCdbTupleHeap( node->numInputSegs,
-													motionstate,
-													node);
+													 motionstate,
+													 node);
 		motionstate->tupleheapReady = false;
-		
-		
+
 		/* Here is a leap of faith where we are implicitly mapping from a
 		 * segment id space to the routeId space of the interconnect. 
 		 */
 		motionstate->routeIdNext = node->inputSegIdx[0];
 	}
-	
+
     /*
      * Perform per-node initialization in the motion layer.
      */
@@ -705,30 +700,31 @@ ExecEndMotion(MotionState *node)
 	Motion *motion;
     uint16 motNodeID;
 	int i;
+#ifdef MEASURE_MOTION_TIME
 	double otherTimeSec;
 	double motionTimeSec;
-	
+#endif
+
 	SO1_printf("ExecEndMotion: %s\n",
 			   "shutting down motion node");
 
     motNodeID = ((Motion *) node->ps.plan)->motionID;
 
 	ExecFreeExprContext(&node->ps);
-	
+
 	/*
 	 * shut down the subplan
 	 */
 	ExecEndNode(outerPlanState(node));
 
     motion = (Motion *)node->ps.plan;
-	Assert( motion != NULL );
+	Assert(motion != NULL);
 
+#ifdef MEASURE_MOTION_TIME
 	motionTimeSec = (double) node->motionTime.tv_sec + (double) node->motionTime.tv_usec / 1000000.0;
-	
-		
-	if( node->isReceiver )
+
+	if(node->isReceiver)
 	{
-		
 		elog(DEBUG1,
 		"Motion Node %d (RECEIVER) Statistics:\n"
 		"Timing:  \n"
@@ -753,8 +749,6 @@ ExecEndMotion(MotionState *node)
 	else
 	{
 		otherTimeSec = (double) node->otherTime.tv_sec + (double) node->otherTime.tv_usec / 1000000.0;
-		
-		
 		elog(DEBUG1,
 		"Motion Node %d (SENDER) Statistics:\n"
 		"Timing:  \n"
@@ -780,7 +774,8 @@ ExecEndMotion(MotionState *node)
 		node->numTuplesInHeap
 		);
 	}
-	
+#endif
+
 	/* I notice that it is wrong, at least, in the case of a LIMIT which calls 
 	 * ExecStopMotion which (correctly) sets node->stopRequested to true.
 	 * So I made it conditional as a stopgap.  I doubt this is the correct
@@ -891,9 +886,9 @@ uint32 evalHashKey(ExprContext *econtext, List *hashkeys, List* hashtypes, CdbHa
 		else
 			cdbhashnull(h);
 	}
-	
+
 	MemoryContextSwitchTo(oldContext);
-	
+
 	return cdbhashreduce(h);
 }
 
@@ -902,7 +897,7 @@ void doSendEndOfStream( Motion *motion, MotionState *node )
 {
 	SendReturnCode 	sendRC;
 	int 			targetRoute;
-		
+
 	/* We have no more child tuples, but we have not successfully
 	 * sent an End-of-Stream token yet.
 	 *
@@ -915,10 +910,9 @@ void doSendEndOfStream( Motion *motion, MotionState *node )
 		targetRoute = BROADCAST_SEGIDX;
 	
 	sendRC = SendEndOfStream(motion->motionID, targetRoute);
-	
-	
-	Assert( sendRC == SEND_COMPLETE );
-	
+
+	Assert(sendRC == SEND_COMPLETE);
+
 	node->sentEndOfStream = true;
 	elog(DEBUG4, "motionID=%d node->sentEndOfStream=%d", motion->motionID, node->sentEndOfStream);
 }
@@ -952,10 +946,10 @@ void doSendEndOfStream( Motion *motion, MotionState *node )
 void doSendTuple(Motion *motion, MotionState *node, TupleTableSlot *outerTupleSlot)
 {
 	int16 targetRoute;
-	
+
 	SendReturnCode sendRC;
 	ExprContext *econtext = node->ps.ps_ExprContext;
-	
+
 	/* We got a tuple from the child-plan. */
 	node->numTuplesFromChild++;
 
@@ -968,7 +962,7 @@ void doSendTuple(Motion *motion, MotionState *node, TupleTableSlot *outerTupleSl
 		else									/* Fixed Motion. */
 		{
 			AssertState(motion->outputSegIdx != NULL);
-			
+
 			/* TODO:  We can only support one output-segment right now! */
 			AssertState(motion->numOutputSegs == 1);
 
@@ -995,7 +989,7 @@ void doSendTuple(Motion *motion, MotionState *node, TupleTableSlot *outerTupleSl
 		 * so 0 maps to segID with contentId = 0
 		 */
 		uint32 hval = 0;
-		
+
 		Assert( motion->numHashSegs > 0 && motion->hashSegIdx != NULL );
 
 		econtext->ecxt_outertuple = outerTupleSlot;
@@ -1013,10 +1007,10 @@ void doSendTuple(Motion *motion, MotionState *node, TupleTableSlot *outerTupleSl
 			return;
 		}
 	}
-	
+
 	/* send the tuple out. */
 	sendRC = SendTuple(motion->motionID, outerTupleSlot->val, targetRoute);
-	
+
 	Assert(sendRC == SEND_COMPLETE || sendRC == STOP_SENDING);
 
 	if (sendRC == SEND_COMPLETE)
