@@ -109,12 +109,11 @@ typedef struct MotionNodeEntry
 /* This is the key for the chunk-sorter.  Incoming chunks are grouped by
  * sourceRoute-index and destination motion-node.
  */
-typedef struct ChunkSorterKey
-{
-    int16 srcRoute;
-    int16 motion_node_id;
-} ChunkSorterKey;
+typedef int32 ChunkSorterKey;
 
+#define makeChunkSorterKey(key, route, id) (*(key) = ((route) << 16)|(id))
+#define ChunkSorterKey_route(key) (key >> 16)
+#define ChunkSorterKey_id(key) (key & 0x0ffff)
 
 /* This structure is used to keep track of partially completed tuples, and
  * tuples that have been completed but have not been consumed by the executor
@@ -218,10 +217,10 @@ static MotionNodeEntry *getMotionNodeEntry(int16 motNodeID, char *errString);
 static ChunkSorterEntry *getChunkSorterEntry(MotionNodeEntry *motNodeEntry,
                                              int16 srcRoute);
 static bool addChunkToSorter(MotionNodeEntry *pMNEntry, TupleChunkListItem tcItem, 
-		int16 motNodeID, int16 srcRoute);
+							 int16 motNodeID, int16 srcRoute);
 
-static void processIncomingChunks( MotionNodeEntry *pMNEntry, int16 motNodeID, 
-		int16 srcRoute );
+static void processIncomingChunks(MotionNodeEntry *pMNEntry, int16 motNodeID,
+								   int16 srcRoute);
 
 static inline void reconstructTuple(MotionNodeEntry *pMNEntry, ChunkSorterEntry *pCSEntry);
 
@@ -802,10 +801,10 @@ void EndMotionLayerNode(int16 motNodeID, bool flushCommLayer)
      */
     hash_seq_init(&seqStatus, s_motion_layer_state.chunksort_map);
 
-    while ((pCSEntry = (ChunkSorterEntry *) hash_seq_search(&seqStatus)) != NULL)
+    while ((pCSEntry = (ChunkSorterEntry *)hash_seq_search(&seqStatus)) != NULL)
     {
         /* Skip entries for motion nodes we don't care about. */
-        if (pCSEntry->key.motion_node_id != motNodeID)
+        if (ChunkSorterKey_id(pCSEntry->key) != motNodeID)
             continue;
 
         if (pMNEntry->preserve_order)
@@ -814,12 +813,13 @@ void EndMotionLayerNode(int16 motNodeID, bool flushCommLayer)
 
             elog(DEBUG1, "Chunk-sorter entry [src=%d,mn=%d] statistics:\n"
                 "\tAvailable Tuples High-Watermark:  %u\n",
-                pCSEntry->key.srcRoute, pCSEntry->key.motion_node_id,
-                pMNEntry->stat_tuples_available_hwm);
+				 ChunkSorterKey_route(pCSEntry->key), 
+				 ChunkSorterKey_id(pCSEntry->key),
+				 pMNEntry->stat_tuples_available_hwm);
         }
 
         elog(DEBUG3, "Cleaning up chunk-sorter entry [src=%d,mn=%d].",
-            pCSEntry->key.srcRoute, pCSEntry->key.motion_node_id);
+			 ChunkSorterKey_route(pCSEntry->key), ChunkSorterKey_id(pCSEntry->key));
 
         /* If we haven't gotten the end-of-stream yet, handle it according to
          * the caller's request.
@@ -830,7 +830,7 @@ void EndMotionLayerNode(int16 motNodeID, bool flushCommLayer)
             {
                 elog(DEBUG2, "Motion layer node %d cleanup - did not receive"
                     " end-of-stream from sender %d.  Waiting.", motNodeID,
-                    pCSEntry->key.srcRoute);
+					 ChunkSorterKey_route(pCSEntry->key));
 
                 /*** TODO - get chunks until end-of-stream comes in. ***/
                 Assert(false);
@@ -839,7 +839,7 @@ void EndMotionLayerNode(int16 motNodeID, bool flushCommLayer)
             {
                 elog(WARNING, "Motion layer node %d cleanup - did not receive"
                     " end-of-stream from sender %d.", motNodeID,
-                    pCSEntry->key.srcRoute);
+					 ChunkSorterKey_route(pCSEntry->key));
             }
         }
         else
@@ -851,9 +851,9 @@ void EndMotionLayerNode(int16 motNodeID, bool flushCommLayer)
             if (pCSEntry->chunk_list.num_chunks > 0)
             {
                 elog(WARNING, "Motion layer node %d cleanup - there are still"
-                    " %d chunks enqueued from sender %d.", motNodeID,
-                    pCSEntry->chunk_list.num_chunks,
-                    pCSEntry->key.srcRoute);
+					 " %d chunks enqueued from sender %d.", motNodeID,
+					 pCSEntry->chunk_list.num_chunks,
+					 ChunkSorterKey_route(pCSEntry->key));
             }
 
             /***
@@ -922,7 +922,6 @@ MotionNodeEntry *getMotionNodeEntry(int16 motNodeID, char *errString)
     return pMNEntry;
 }
 
-
 /* Retrieve the chunk-sorter entry for the specified motion-node/source pair.
  * If one doesn't exist, it is created and initialized.
  *
@@ -931,8 +930,8 @@ MotionNodeEntry *getMotionNodeEntry(int16 motNodeID, char *errString)
  * represented in the chunk-sorter.  The motion-node's entry is typically
  * retrieved using getMotionNodeEntry() before this function is called.
  */
-ChunkSorterEntry *getChunkSorterEntry( MotionNodeEntry *motNodeEntry,
-    								   int16 srcRoute)
+ChunkSorterEntry *getChunkSorterEntry(MotionNodeEntry *motNodeEntry,
+									  int16 srcRoute)
 {
     int16 motNodeID;
     MemoryContext oldCtxt;
@@ -944,9 +943,7 @@ ChunkSorterEntry *getChunkSorterEntry( MotionNodeEntry *motNodeEntry,
 
     motNodeID = motNodeEntry->motion_node_id;
 
-    memset(&csKey, 0, sizeof(csKey));
-    csKey.srcRoute = srcRoute;
-    csKey.motion_node_id = motNodeID;
+	makeChunkSorterKey(&csKey, srcRoute, motNodeID);
 
     chunkSorterEntry = (ChunkSorterEntry *)hash_search(
         s_motion_layer_state.chunksort_map, &csKey, HASH_FIND, &found);
@@ -1013,6 +1010,7 @@ ChunkSorterEntry *getChunkSorterEntry( MotionNodeEntry *motNodeEntry,
     MemoryContextSwitchTo(oldCtxt);
 
     Assert(chunkSorterEntry != NULL);
+
     return chunkSorterEntry;
 }
 
