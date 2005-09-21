@@ -41,3 +41,10 @@ mppstate.sh		Updates re failed segment processing
 mppstop.sh		Updates re failed segment processing
 
 mppstart.sh		Updates re failed segment processing
+
+14:55 PST 21 Sept 2005
+mppstate.sh		Added additional state information re failed segments
+
+mppstart.sh		Added ability to attempt force failed segment startup
+
+mppstop.sh		Added ability to attempt force failed segment shutdown
