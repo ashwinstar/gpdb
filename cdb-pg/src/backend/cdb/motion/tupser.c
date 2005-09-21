@@ -57,8 +57,7 @@ static MemoryContext s_tupSerMemCtxt = NULL;
 	str->data[str->len] = '\0'; \
 }
 
-
-static int32 stringInfoGetInt32(StringInfo str);
+static inline int32 stringInfoGetInt32(StringInfo str);
 
 /* Look up all of the information that SerializeTuple() and DeserializeTuple()
  * need to perform their jobs quickly.  Also, scratchpad space is allocated
@@ -636,7 +635,7 @@ HeapTuple CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo *pSerInfo)
  *
  * Hopefully this is faster than the stuff in stringinfo.c or pqformat.c!
  */
-int32 stringInfoGetInt32(StringInfo str)
+static inline int32 stringInfoGetInt32(StringInfo str)
 {
 	int32 res;
 	
