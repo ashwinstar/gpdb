@@ -30,3 +30,14 @@ mppstop.sh		Updates re standard naiming convention
 mppstate.sh		Updates re standard naiming convention
 
 cluster_example		Updates re standard naiming convention
+
+14:15 PST 21 Sept 2005
+mpp_bash_functions.sh	Updates to support below script changes
+
+mppcreatecluster.sh	Update re error messages to screen
+
+mppstate.sh		Updates re failed segment processing
+
+mppstop.sh		Updates re failed segment processing
+
+mppstart.sh		Updates re failed segment processing
