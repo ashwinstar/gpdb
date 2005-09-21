@@ -973,9 +973,17 @@ ChunkSorterEntry *getChunkSorterEntry( MotionNodeEntry *motNodeEntry,
     csKey.srcRoute = srcRoute;
     csKey.motion_node_id = motNodeID;
 
+    chunkSorterEntry = (ChunkSorterEntry *)hash_search(
+        s_motion_layer_state.chunksort_map, &csKey, HASH_FIND, &found);
+
+	/* if we found an entry, return immediately */
+	if (chunkSorterEntry != NULL)
+		return chunkSorterEntry;
+
+	/* We have to create an entry */
     oldCtxt = MemoryContextSwitchTo(s_motion_layer_state.motion_layer_mctx);
 
-    chunkSorterEntry = (ChunkSorterEntry *) hash_search(
+    chunkSorterEntry = (ChunkSorterEntry *)hash_search(
         s_motion_layer_state.chunksort_map, &csKey, HASH_ENTER, &found);
 
     if (chunkSorterEntry == NULL)
