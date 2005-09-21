@@ -8,6 +8,7 @@
  * vacuumlazy.c and analyze.c for the rest of the code for the latter two.
  *
  *
+ * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -660,6 +661,12 @@ vac_update_relstats(Oid relid, BlockNumber num_pages, double num_tuples,
 	Form_pg_class pgcform;
 	Buffer		buffer;
 
+    /*
+     * CDB: Query the segment db local catalogs to get summary statistics.
+     */
+    if ( Mpp_role == MPP_ROLE_DISPATCH )
+        cdbanalyze_get_relstats(relid, &num_pages, &num_tuples);
+
 	/*
 	* update number of tuples and number of pages in pg_class
 	*/
@@ -671,12 +678,6 @@ vac_update_relstats(Oid relid, BlockNumber num_pages, double num_tuples,
 	if (!HeapTupleIsValid(ctup))
 		elog(ERROR, "pg_class entry for relid %u vanished during vacuuming",
 			relid);
-
-	if ( Mpp_role == MPP_ROLE_DISPATCH )
-	{
-		cdb_get_relstats(relid, &num_pages, &num_tuples);
-		elog( DEBUG1, "After cdb_get_relstats numpages=%d and num_tuples=%lf", (int)num_pages, num_tuples);
-	}
 
 	/* get the buffer cache tuple */
 	rtup.t_self = ctup->t_self;

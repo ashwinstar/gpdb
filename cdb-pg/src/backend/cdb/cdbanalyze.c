@@ -3,18 +3,19 @@
  * cdbanalyze.c
  *	  Provides routines for performing distributed analyze cdb
  *
- * Copyright (c) 2003-2004, Greenplum
+ * Copyright (c) 2005, greenplum inc
+ *
+ * $Id$
  *
  *-------------------------------------------------------------------------
  */
 
 #include "postgres.h"
-#include "commands/vacuum.h" /* For vac_update_relstats */
 #include "executor/spi.h"
 #include "lib/stringinfo.h"
-#include "utils/relcache.h"  /* For RelationGetIndexList */
-#include "cdb/cdbvars.h"
-#include "cdb/cdbanalyze.h"
+#include "cdb/cdbcat.h"         /* bTreatLocalsAsPartitioned */
+#include "cdb/cdbvars.h"        /* Mpp_role */
+#include "cdb/cdbanalyze.h"     /* me */
 
 /*
  * Flag used to tell "get_table_policy" to report that local tables are partitioned.
@@ -25,16 +26,132 @@
 extern bool bTreatLocalsAsPartitioned;
 
 /*
+ * cdbanalyze_query_local_catalogs
+ *
+ * Execute a DML statement upon the segment databases' local catalogs.
+ * This must only be called from the dispatcher.
+ */
+static void
+cdbanalyze_query_local_catalogs(StringInfoData *sqlstmt,
+                                void          (*callback)(int   spiresult,
+                                                          void *context),
+                                void           *context)
+{
+	int     spiresult;
+    bool    connected = false;
+
+    Assert( callback &&
+            Mpp_role == MPP_ROLE_DISPATCH );
+
+    PG_TRY();
+    {
+        /* Establish an SPI session as a client of myself. */
+        if (SPI_OK_CONNECT != SPI_connect())
+        {
+            ereport(ERROR,
+                (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+                errmsg("SPI_connect failed in cdbanalyze_query_local_catalogs" )));
+        }
+        connected = true;
+
+        /* Make the sqlstmt access QE local catalogs instead of global catalog,
+         * by treating catalog tables as if they are partitioned user tables.
+         */
+        bTreatLocalsAsPartitioned = true;   /* (kludgy trick) */
+
+        /* Do the query. */
+        spiresult = SPI_execute( sqlstmt->data, false, 0 );
+
+        /* Restore catalog access to normal. */
+        bTreatLocalsAsPartitioned = false;
+
+        /* Invoke caller's callback function to process the result. */
+        callback(spiresult, context);
+
+        /* End recursive session. */
+        connected = false;
+        SPI_finish();
+    }
+
+    /* Clean up in case of error. */
+    PG_CATCH();
+    {
+        /* Restore catalog queries to normal. */
+        bTreatLocalsAsPartitioned = false;
+
+        /* End recursive session. */
+        if (connected)
+            SPI_finish();
+
+        /* Carry on with error handling. */
+        PG_RE_THROW();
+    }
+    PG_END_TRY();
+}                               /* cdbanalyze_query_local_catalogs */
+
+
+/*
  * These defines represent the column positions of the fields in the query we
  * create to select from pg_class on the qExecs.
  */
-#define Anum_pg_class_avg_tuples	1
-#define Anum_pg_class_max_tuples	2
-#define Anum_pg_class_avg_pages		3
-#define Anum_pg_class_max_pages		4
+#define Anum_pg_class_max_tuples	1
+#define Anum_pg_class_max_pages		2
+
 
 /*
- * cdb_get_relstats:
+ * cdbanalyze_callback
+ *
+ * Called by cdbanalyze_query_local_catalogs to process the result of the
+ * segdb local catalog query.
+ */
+typedef struct Cdbanalyze_Ctx
+{
+    BlockNumber     pages;
+    double          tuples;
+} Cdbanalyze_Ctx;
+
+static void
+cdbanalyze_callback(int     spiresult,
+                    void   *context)
+{
+    HeapTuple       tup;
+    TupleDesc       tupdesc;
+    char           *tmp;
+    Cdbanalyze_Ctx *ctx = (Cdbanalyze_Ctx *)context;
+
+    /* Did the query succeed? */
+    if (spiresult != SPI_OK_SELECT ||
+        SPI_processed != 1)
+        goto fail;
+
+	/* Grab the results of the query and stuff them into the context. */
+	tup = SPI_tuptable->vals[0];
+	tupdesc = SPI_tuptable->tupdesc;
+	if (!tup ||
+        !tupdesc)
+        goto fail;
+
+	tmp = SPI_getvalue(tup, tupdesc, Anum_pg_class_max_tuples);
+	if (!tmp)
+        goto fail;
+	ctx->tuples = atof(tmp);
+
+	tmp = SPI_getvalue(tup, tupdesc, Anum_pg_class_max_pages);
+    if (!tmp)
+        goto fail;
+	ctx->pages = atoi(tmp);
+
+    return;
+
+fail:
+	ereport(ERROR,
+            (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+             errmsg("ANALYZE segment db catalog query failed")));
+}                               /* cdbanalyze_callback */
+
+
+/*
+ * cdbanalyze_get_relstats:
  * This takes the oid of a relation as a parameter, and returns
  * aggregate numbers for the number of pages and number of tuples in out parameters.
  * These are obtained by running a query, using SPI, against pg_class
@@ -45,85 +162,33 @@ extern bool bTreatLocalsAsPartitioned;
  * and number of tuples over the qExecs.
  * This must only be called from the dispatcher.
  */
-void cdb_get_relstats(Oid relid, BlockNumber *pages, double *tuples)
+void cdbanalyze_get_relstats(Oid relid, BlockNumber *pages, double *tuples)
 {
-	StringInfoData		buffer;
-	int					rtn;
-	HeapTuple			tup;
-	TupleDesc			tupdesc;
-	char				*tmp;
+    StringInfoData		buffer;
+    Cdbanalyze_Ctx      ctx;
 
-	Assert( Mpp_role == MPP_ROLE_DISPATCH );
-	Assert( pages != NULL );
-	Assert( tuples != NULL );
+    *pages = 0;
+    *tuples = 0;
 
-	/*
-	 * Get aggregate pages and tuples from qExecs
-	 */
-
-	/*
-	 * First, create a select statment
+    /*
+	 * First, create a select statement
 	 */
 	initStringInfo(&buffer);
-	appendStringInfo(&buffer, "select avg(reltuples), max(reltuples), avg(relpages), max(relpages)" );
+	appendStringInfo(&buffer, "select max(reltuples), max(relpages)" );
 	appendStringInfo(&buffer, " from pg_class");
 	appendStringInfo(&buffer, " where oid=%u", relid);
 
 	/*
 	 * Next, use SPI to execute it.
+     * (If unsuccessful, throws an error and does not return here.)
 	 */
-	if (SPI_OK_CONNECT != SPI_connect())
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				errmsg("SPI_connect failed in cdb_update_relstats" )));
-	}
-
-	/*
-	 * Flip the switch to turn local tables into partitioned for the parallelizer.
-	 * Do the query.
-	 * Flip the switch back.
-	 */
-	bTreatLocalsAsPartitioned = true;
-	rtn = SPI_execute( buffer.data, false, 0 );
-	bTreatLocalsAsPartitioned = false;
-
-	if (SPI_OK_SELECT != rtn)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				errmsg("SPI_execute failed in cdb_update_relstats" )));
-	}
+    cdbanalyze_query_local_catalogs(&buffer, cdbanalyze_callback, &ctx);
 
 	/*
 	 * Grab the results of the query and stuff them into the out parameters.
 	 */
-	Assert( SPI_processed == 1 );
-	tup = SPI_tuptable->vals[0];
-	tupdesc = SPI_tuptable->tupdesc;
-	Assert(tup != NULL && tupdesc != NULL);
+	*tuples = ctx.tuples;
+    *pages = ctx.pages;
+}                               /* cdbanalyze_get_relstats */
 
-	tmp = SPI_getvalue(tup, tupdesc, Anum_pg_class_max_tuples);
-	if (tmp == NULL)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				errmsg("cdb_update_relstats: invalid tuple count string")));
-	}
-	*tuples = atof(tmp);
 
-	tmp = SPI_getvalue(tup, tupdesc, Anum_pg_class_max_pages);
-	if (tmp == NULL)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				errmsg("cdb_update_relstats: invalid page count string")));
-	}
-	*pages = atoi(tmp);
-
-	/*
-	 * Clean up.
-	 */
-	SPI_finish();
-
-}

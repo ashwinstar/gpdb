@@ -3,7 +3,9 @@
  * cdbcat.c
  *	  Provides routines for reading info from mpp schema tables
  *
- * Copyright (c) 2003-2005, Greenplum
+ * Copyright (c) 2005, greenplum inc
+ *
+ * $Id$
  *
  *-------------------------------------------------------------------------
  */
@@ -27,14 +29,7 @@ static void  extract_INT2OID_array(Datum array_datum, int* lenp, int16** vecp);
  * It's a kludge put in to allow us to do
  * distributed queries on catalog tables, like pg_class
  * and pg_statistic.
- * To use it, simply set it to true before running a catalog query, then set 
- * it back to false.
- */
-extern bool bTreatLocalsAsPartitioned;
-
-/*
- * Initially, and normally, false.
- * To use it, simply set it to true before running a catalog query, then set 
+ * To use it, simply set it to true before running a catalog query, then set
  * it back to false.
  */
 bool bTreatLocalsAsPartitioned = false;
@@ -56,7 +51,7 @@ MppPolicyCopy(const MppPolicy *src)
     memcpy(tgt, src, nb);
     return tgt;
 }                                       /* MppPolicyCopy */
- 
+
 /*
  * Returns the policy of a table as determined from the mpp.policy table
  * in a MppPolicy structure allocated in the current memory context.
@@ -90,7 +85,7 @@ MppPolicy *get_table_policy(Oid tbloid)
 	 */
 	mpp_namespace_oid = getMPPNamespaceOid();
 	if ( mpp_namespace_oid == InvalidOid )
-		return NULL; 
+		return NULL;
 		
 	/*
 	 * Then, open the table and and find the oid of the index
@@ -100,7 +95,7 @@ MppPolicy *get_table_policy(Oid tbloid)
 	/*
 	 * We scan based on the unique index on localoid
 	 */
-	mpp_policy_index_oid = get_relname_relid(MppPolicyLocalOidIndexName, 
+	mpp_policy_index_oid = get_relname_relid(MppPolicyLocalOidIndexName,
 												mpp_namespace_oid);
 
 	/*
@@ -112,11 +107,11 @@ MppPolicy *get_table_policy(Oid tbloid)
 	/*
 	 * Begin the scan
 	 */
-	mpp_policy_scan = mpptable_beginscan(mpp_policy_rel, 
-										 mpp_policy_index_oid, 
-									     (mpp_policy_index_oid != InvalidOid), 
-										  SnapshotNow, 
-										  1, 
+	mpp_policy_scan = mpptable_beginscan(mpp_policy_rel,
+										 mpp_policy_index_oid,
+									     (mpp_policy_index_oid != InvalidOid),
+										  SnapshotNow,
+										  1,
 										  policy_key);
 		
 	/*
@@ -186,20 +181,20 @@ Oid getMPPNamespaceOid(void)
 	/*
 	 * Set up a ScanKey based on the namespace name field
 	 */	
-	ScanKeyEntryInitialize(&namespace_key[0], 
+	ScanKeyEntryInitialize(&namespace_key[0],
 							0x0,
-							Anum_pg_namespace_nspname, 
+							Anum_pg_namespace_nspname,
 							InvalidStrategy, InvalidOid,
 							F_NAMEEQ,
   						    NameGetDatum(&nname) );
-							   
+							
 	/*
 	 * We do a heap scan
 	 */	
-	pg_namespace_rel = heap_openr("pg_namespace", AccessShareLock);							   
-	pg_namespace_scan = heap_beginscan(pg_namespace_rel, 
-										   SnapshotNow, 
-										   1, 
+	pg_namespace_rel = heap_openr("pg_namespace", AccessShareLock);							
+	pg_namespace_scan = heap_beginscan(pg_namespace_rel,
+										   SnapshotNow,
+										   1,
 										   namespace_key);
 			
 	/*
@@ -240,7 +235,7 @@ Relation HeapOpenMPPObject( const char *pszName, Oid mpp_namespace_oid, bool bTa
 	 * If the table or index wasn't there, we consider this a fatal error.
 	 */	
 	if ( mpp_oid == InvalidOid )
-       ereport(ERROR, 
+       ereport(ERROR,
 		(errcode(ERRCODE_EXTERNAL_ROUTINE_INVOCATION_EXCEPTION),
 	        errmsg("Cannot retrieve oid of %s.%s", MppNamespaceName, pszName)));
 
@@ -319,7 +314,7 @@ SysScanDesc mpptable_beginscan(Relation heapRelation,
 
 
 /*
- * Extract len and pointer to buffer from an int16[] (vector) Datum 
+ * Extract len and pointer to buffer from an int16[] (vector) Datum
  * representing a PostgreSQL INT2OID type.
  */
  static void
@@ -339,7 +334,7 @@ SysScanDesc mpptable_beginscan(Relation heapRelation,
 	
 	return;
  }	
- 
+
 /*
  * Sets the policy of a table into the mpp.policy table
  * from a MppPolicy structure.
@@ -392,7 +387,7 @@ set_table_policy(Oid tbloid, MppPolicy * policy)
 		 * If the policy table wasn't there, we consider this a fatal error.
 		 */	
 		if ( mpp_oid == InvalidOid )
-		 ereport(ERROR, 
+		 ereport(ERROR,
 			(errcode(ERRCODE_EXTERNAL_ROUTINE_INVOCATION_EXCEPTION),
 				errmsg("Cannot retrieve oid of %s.%s", MppNamespaceName, MppPolicyRelationName)));
 

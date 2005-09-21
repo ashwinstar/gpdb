@@ -3,8 +3,9 @@
  * cdbcat.h
  *	  routines for reading info from MPP schema tables
  *
- * Copyright (c) 2003-2005, Greenplum
+ * Copyright (c) 2005, greenplum inc
  *
+ * $Id$
  *
  *-------------------------------------------------------------------------
  */
@@ -14,6 +15,19 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
+
+/*
+ * This flag controls the policy type returned from
+ * get_table_policy for non-partitioned tables.
+ * It's a kludge put in to allow us to do
+ * distributed queries on catalog tables, like pg_class
+ * and pg_statistic.
+ * To use it, simply set it to true before running a catalog query, then set
+ * it back to false.
+ */
+extern bool bTreatLocalsAsPartitioned;
+
+
 
 #define MppNamespaceName			"mpp"
 
