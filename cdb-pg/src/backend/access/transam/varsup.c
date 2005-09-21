@@ -20,9 +20,6 @@
 #include "storage/proc.h"
 #include "cdb/cdbvars.h"
 
-#include <execinfo.h>
-
-
 
 /* Number of OIDs to prefetch (preallocate) per XLOG write */
 #define VAR_OID_PREFETCH		8192
