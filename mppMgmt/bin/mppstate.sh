@@ -174,7 +174,7 @@ DATABASE_STATUS () {
 						STATUS=`$TRUSTED_SHELL $QE_NAME "export PGPORT=${QE_PORT};$PG_CTL status -D $QE_DIR"|$HEAD -1|$GREP -c PID` 2>> $LOG_FILE
 						RETVAL=$?
 						if [ $RETVAL -ne 0 ]; then
-								LOG_MSG "[WARN]:-Request for pg_ctl status from $QE_NAME returned error code $RETVAL"
+								LOG_MSG "[WARN]:-pg_ctl status from $QE_NAME port = $QE_PORT returned error code $RETVAL"
 								((QD_FAILED_COUNT=$QD_FAILED_COUNT+1))	
 								STATUS=0
 						fi
