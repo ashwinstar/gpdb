@@ -193,7 +193,8 @@ LOG_MSG () {
 ERROR_EXIT () {
 		TIME=`$DATE +%H":"%M":"%S`
 		CUR_DATE=`$DATE +%Y%m%d`
-		$ECHO "${CUR_DATE}:${TIME}:${PROG_NAME}:${CALL_HOST}:${USER_NAME}-$1 Script Exiting!" | $TEE -a $LOG_FILE
+		$ECHO "${CUR_DATE}:${TIME}:${PROG_NAME}:${CALL_HOST}:${USER_NAME}-$1 Script Exiting!" >> $LOG_FILE
+		$ECHO "${CUR_DATE}:${TIME}:${PROG_NAME}:${CALL_HOST}:${USER_NAME}-$1 Script Exiting!" 
 		if [ $BACKOUT_FILE ]; then
 				if [ -s $BACKOUT_FILE ]; then
 						LOG_MSG "[WARN]:-Script has left MPP configuration in an incomplete state"
@@ -275,7 +276,7 @@ GET_QD_DB_NAME () {
 GET_QE_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_QD_DB_NAME
-		QE_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port from mpp.listener a, mpp.host b where listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid;" 2>/dev/null`) > /dev/null 2>&1
+		QE_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port, c.valid, c.definedprimary from mpp.listener a, mpp.host b, mpp.pgdatabase c where a.listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid and a.listenerid=c.listenerid;" 2>/dev/null`) > /dev/null 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 				LOG_MSG "[WARN]:-Unable to obtain QE host details from Master db, error code $RETVAL returned"
@@ -287,8 +288,7 @@ GET_QE_DETAILS () {
 GET_QE_PRIMARY_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_QD_DB_NAME
-
-		QE_PRIMARY_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port from mpp.listener a, mpp.host b where listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid and listenerid in (select listenerid from mpp.pgdatabase where isprimary='t') order by a.datadir;" 2>/dev/null`) > /dev/null 2>&1
+		QE_PRIMARY_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port, c.valid, c.definedprimary from mpp.listener a, mpp.host b, mpp.pgdatabase c where a.listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid and a.listenerid in (select listenerid from mpp.pgdatabase where definedprimary='t') and a.listenerid=c.listenerid order by a.datadir;" 2>/dev/null`) > /dev/null 2>&1
 
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
@@ -302,7 +302,7 @@ GET_QE_MIRROR_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_QD_DB_NAME
 
-		QE_MIRROR_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port from mpp.listener a, mpp.host b where listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid and listenerid in (select listenerid from mpp.pgdatabase where isprimary='f') order by a.datadir;" 2>/dev/null`) > /dev/null 2>&1
+		QE_MIRROR_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port, c.valid, c.isprimary from mpp.listener a, mpp.host b, mpp.pgdatabase c where a.listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid  and a.listenerid=c.listenerid and c.definedprimary='f' order by a.datadir;" 2>/dev/null`) > /dev/null 2>&1
 
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
@@ -402,8 +402,9 @@ RUN_COMMAND () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		COMMAND="$1"
 		LOG_MSG "[INFO]:-Commencing local $COMMAND"
-		eval $COMMAND  >> $LOG_FILE 2>&1
+		$COMMAND 
 		RETVAL=$?
+		echo "Return code = $RETVAL"
 		if [ $RETVAL -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:- Command $COMMAND failed with error status $RETVAL" 2
 		fi
