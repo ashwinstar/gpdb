@@ -176,8 +176,7 @@ PROMPT_CONTINUE () {
 						QE_NAME=`$ECHO $QNODE|$CUT -d"|" -f1`
 						QE_DIR=`$ECHO $QNODE|$CUT -d"|" -f2`
 						QE_PORT=`$ECHO $QNODE|$CUT -d"|" -f3`
-						##MPP		TAIL_VALID=`$ECHO $TNODE|$CUT -d"|" -f3`
-						##MPP		$TABECHO "Tail .. $TAIL_NAME directory $TAIL_DIR status $TAIL_VALID"
+						QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
 						$TABECHO "QE [$COUNT] $QE_NAME data directory = $QE_DIR port = $QE_PORT" |$TEE -a $LOG_FILE
 						((COUNT=$COUNT+1))
 				done
@@ -203,22 +202,23 @@ PROCESS_SHUTDOWN () {
 				do
 				QE_NAME=`$ECHO $QNODE|$CUT -d"|" -f1`
 				QE_DIR=`$ECHO $QNODE|$CUT -d"|" -f2`
-				##MPP		TAIL_VALID=`$ECHO $TNODE|$CUT -d"|" -f3`
-				LOG_MSG "[INFO]:-Stopping QE $QE_NAME directory $QE_DIR"
-				##MPP		if [ $TAIL_VALID != 't' ] && [ $KILL_INVALID != 'true' ]; then
-				##MPP		  LOG_MSG "[WARN]:-Host $TAIL_NAME segment $TAIL_DIR marked as invalid, will not try to stop instance"
-				##MPP		else
-				$TRUSTED_SHELL $QE_NAME "$PG_CTL $WAIT stop -D $QE_DIR -m $MODE -l ${QE_DIR}.log " >/dev/null 2>&1
-				RETVAL=$?
-				##MPP		  if [ $RETVAL -ne 0 ] && [ $KILL_INVALID != 'true' ]; then
-				if [ $RETVAL -ne 0 ]; then
+				QE_PORT=`$ECHO $QNODE|$CUT -d"|" -f3`
+				QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
+				if [ "$QE_VALID" == "t" ];then
+					LOG_MSG "[INFO]:-Stopping QE $QE_NAME directory $QE_DIR"
+					$TRUSTED_SHELL $QE_NAME "$PG_CTL $WAIT stop -D $QE_DIR -m $MODE -l ${QE_DIR}.log " >/dev/null 2>&1
+					RETVAL=$?
+					if [ $RETVAL -ne 0 ]; then
 						LOG_MSG "[WARN]:-Issue with shutdown of $QE_NAME QE database"
 						EXIT_STATUS=1
-				else
+					else
 						LOG_MSG "[INFO]:-Successfully shutdown QE Host $QE_NAME database"
+					fi
+					((QD_STOP_COUNT=$QD_STOP_COUNT+1))
+				else
+					LOG_MSG "[WARN]:-Not processing $QE_NAME directory $QE_DIR marked invalid"
+					EXIT_STATUS=1
 				fi
-				((QD_STOP_COUNT=$QD_STOP_COUNT+1))
-				##MPP		fi
 		done
 		LOG_MSG "[INFO]:-Stopping Master $QD_NAME directory $MASTER_DATA_DIRECTORY"
 		$PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m $MODE -l ${MASTER_DATA_DIRECTORY}.log >/dev/null 2>&1

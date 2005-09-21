@@ -125,6 +125,8 @@ DATABASE_STATUS () {
 		#MPP converted 21/07/2005
 		QD_STATE_COUNT=0
 		QD_FAILED_COUNT=0
+		QD_VALID_COUNT=0
+		QD_NOTVALID_COUNT=0
 		if [ ! -s $MASTER_DATA_DIRECTORY/$PG_PID ]; then
 				ERROR_EXIT "[WARN]:-Query Dispatch database down" 1
 		else
@@ -155,6 +157,13 @@ DATABASE_STATUS () {
 								QE_NAME=`$ECHO $TNODE|$CUT -d"|" -f1`
 								QE_DIR=`$ECHO $TNODE|$CUT -d"|" -f2`
 								QE_PORT=`$ECHO $TNODE|$CUT -d"|" -f3`
+								QE_VALID=`$ECHO $TNODE|$CUT -d"|" -f4`
+								QE_PRIMARY=`$ECHO $TNODE|$CUT -d"|" -f5`
+								if [ "$QE_PRIMARY" == "t" ];then
+									TYPE="primary"
+								else
+									TYPE="mirror "
+								fi
 								QE_PID=`$TRUSTED_SHELL $QE_NAME "if [ -f $QE_DIR/$PG_PID ]; then $HEAD -1 $QE_DIR/$PG_PID;else echo 0
 						fi"` 2>> $LOG_FILE
 						RETVAL=$?
@@ -170,22 +179,35 @@ DATABASE_STATUS () {
 								STATUS=0
 						fi
 						if [ $QE_PID -eq 0 ]; then
-								LOG_MSG "[WARN]:-QE host $QE_NAME port $QE_PORT postmaster PID = NOT RUNNING"
+								LOG_MSG "[WARN]:-QE $TYPE $QE_NAME port $QE_PORT postmaster PID = NOT RUNNING"
 								EXIT_STATUS=1
 						else
-								LOG_MSG "[INFO]:-QE host $QE_NAME port $QE_PORT postmaster PID = $QE_PID" 
+								LOG_MSG "[INFO]:-QE $TYPE $QE_NAME port $QE_PORT postmaster PID = $QE_PID" 
 						fi
 						if [ $STATUS -eq 1 ]; then
-								LOG_MSG "[INFO]:-QE host $QE_NAME pg_ctl reports status = Active"
+								LOG_MSG "[INFO]:-QE $TYPE $QE_NAME port $QE_PORT pg_ctl status  = Active"
 								((QD_STATE_COUNT=$QD_STATE_COUNT+1))
 						else
-								LOG_MSG "[WARN]:-QE host $QE_NAME pg_ctl reports status = Failed"
+								LOG_MSG "[WARN]:-QE $TYPE $QE_NAME port $QE_PORT pg_ctl status  = Failed"
 								EXIT_STATUS=1
 						fi
+						if [ "$QE_VALID" == "t" ]; then
+							((QD_VALID_COUNT=$QD_VALID_COUNT+1))
+							LOG_MSG "[INFO]:-QE $TYPE $QE_NAME port $QE_PORT segment status = Valid"
+						else
+							((QD_NOTVALID_COUNT=$QD_NOTVALID_COUNT+1))
+							LOG_MSG "[WARN]:-QE $TYPE $QE_NAME port $QE_PORT segment status = Invalid"
+							EXIT_STATUS=1
+						fi
+						$ECHO
 				done
 		fi
-		LOG_MSG "[INFO]:---------------------------------------------------"
-		LOG_MSG "[INFO]:-State reports $QD_STATE_COUNT QE's active $QD_FAILED_COUNT Failed and Master active"
+		LOG_MSG "[INFO]:-QE Instance Status Report"
+		LOG_MSG "[INFO]:--------------------------"
+		LOG_MSG "[INFO]:-QE's reported active via pg_ctl = $QD_STATE_COUNT "
+		LOG_MSG "[INFO]:-QE's reported failed via pg_ctl = $QD_FAILED_COUNT"
+		LOG_MSG "[INFO]:-QE's marked as vaild            = $QD_VALID_COUNT"
+		LOG_MSG "[INFO]:-QE's marked as invalid          = $QD_NOTVALID_COUNT"
 fi
 }
 
@@ -198,7 +220,14 @@ MIRROR_LIST () {
 						QE_NAME=`$ECHO $MNODE|$CUT -d"|" -f1`
 						QE_DIR=`$ECHO $MNODE|$CUT -d"|" -f2`
 						QE_PORT=`$ECHO $MNODE|$CUT -d"|" -f3`
-						$TABECHO "[INFO]:-Mirror QE = $QE_NAME data directory = $QE_DIR port = $QE_PORT"
+						QE_VALID=`$ECHO $MNODE|$CUT -d"|" -f4`
+						QE_PRIMARY=`$ECHO $MNODE|$CUT -d"|" -f5`
+						if [ "$QE_PRIMARY" == "t" ];then
+							STATUS="Active"
+						else
+							STATUS="Passive"
+						fi
+						$TABECHO "[INFO]:-Mirror QE = $QE_NAME data directory = $QE_DIR port = $QE_PORT status = $STATUS"
 						EXIT_STATUS=0
 				done
 		else
@@ -211,6 +240,8 @@ SET_VAR () {
 		QE_NAME=`$ECHO $TNODE|$CUT -d"|" -f1`
 		QE_DIR=`$ECHO $TNODE|$CUT -d"|" -f2`
 		QE_PORT=`$ECHO $TNODE|$CUT -d"|" -f3`
+		QE_VALID=`$ECHO $TNODE|$CUT -d"|" -f4`
+		QE_PRIMARY=`$ECHO $TNODE|$CUT -d"|" -f5`
 }
 
 SUMMARY_STATUS () {
@@ -218,6 +249,10 @@ SUMMARY_STATUS () {
 		QE_PRIMARY_FAILED_COUNT=0
 		QE_MIRROR_STATE_COUNT=0
 		QE_MIRROR_FAILED_COUNT=0
+		QE_PRIMARY_VALID=0
+		QE_PRIMARY_INVALID=0
+		QE_MIRROR_PASSIVE=0
+		QE_MIRROR_ACTIVE=0
 		QE_COUNT=0
 		if [ ! -s $MASTER_DATA_DIRECTORY/$PG_PID ]; then
 				ERROR_EXIT "[WARN]:-Query Dispatch database down" 1
@@ -229,6 +264,11 @@ SUMMARY_STATUS () {
 		for TNODE in "${QE_PRIMARY_ARRAY[@]}"
 				do
 				SET_VAR
+				if [ "$QE_VALID" == "t" ]; then
+					((QE_PRIMARY_VALID=$QE_PRIMARY_VALID+1))
+				else
+					((QE_PRIMARY_INVALID=$QE_PRIMARY_INVALID+1))
+				fi
 				QE_PID=`$TRUSTED_SHELL $QE_NAME "if [ -f $QE_DIR/$PG_PID ]; then $HEAD -1 $QE_DIR/$PG_PID;else echo 0
 		fi"` 2>> $LOG_FILE
 		RETVAL=$?
@@ -243,6 +283,11 @@ done
 for TNODE in "${QE_MIRROR_ARRAY[@]}"
 		do
 		SET_VAR
+		if [ "$QE_PRIMARY" == "t" ]; then
+			((QE_MIRROR_ACTIVE=$QE_MIRROR_ACTIVE+1))
+		else
+			((QE_MIRROR_PASSIVE=$QE_MIRROR_PASSIVE+1))
+		fi
 		QE_PID=`$TRUSTED_SHELL $QE_NAME "if [ -f $QE_DIR/$PG_PID ]; then $HEAD -1 $QE_DIR/$PG_PID;else echo 0
 fi"` 2>> $LOG_FILE
 RETVAL=$?
@@ -259,19 +304,35 @@ $ECHO -n .
 		LOG_MSG "[INFO]:---------------------------"
 		LOG_MSG "[INFO]:-Master db $QD_DBNAME active" 
 		LOG_MSG "[INFO]:---------------------------"
-		LOG_MSG "[INFO]:-Total QE MPP count      = $QE_COUNT"
-		LOG_MSG "[INFO]:-Total QE primary active = $QE_PRIMARY_STATE_COUNT"
+		LOG_MSG "[INFO]:-Total QE MPP count              = $QE_COUNT"
+		LOG_MSG "[INFO]:-Total QE primary PID active     = $QE_PRIMARY_STATE_COUNT"
 		if [ $QE_PRIMARY_FAILED_COUNT -eq 0 ]; then
-				LOG_MSG "[INFO]:-Total QE primary failed = $QE_PRIMARY_FAILED_COUNT"
+				LOG_MSG "[INFO]:-Total QE primary PID failed     = $QE_PRIMARY_FAILED_COUNT"
 		else
-				LOG_MSG "[WARN]:-Total QE primary failed = $QE_PRIMARY_FAILED_COUNT"
+				LOG_MSG "[WARN]:-Total QE primary PID failed     = $QE_PRIMARY_FAILED_COUNT"
+				EXIT_STATUS=1
 		fi	
-		LOG_MSG "[INFO]:-Total QE mirror active  = $QE_MIRROR_STATE_COUNT"
-		if [ $QE_MIRROR_FAILED_COUNT -eq 0 ]; then
-				LOG_MSG "[INFO]:-Total QE mirror failed  = $QE_MIRROR_FAILED_COUNT"
+		LOG_MSG "[INFO]:-Total QE primary db active      = $QE_PRIMARY_VALID"
+		if [ $QE_PRIMARY_INVALID -eq 0 ]; then
+			LOG_MSG "[INFO]:-Total QE primary db failed      = $QE_PRIMARY_INVALID"
 		else
-				LOG_MSG "[WARN]:-Total QE mirror failed  = $QE_MIRROR_FAILED_COUNT"
+			LOG_MSG "[WARN]:-Total QE primary db failed      = $QE_PRIMARY_INVALID"
+			EXIT_STATUS=1
 		fi
+		LOG_MSG "[INFO]:-Total QE mirror PID active      = $QE_MIRROR_STATE_COUNT"
+		if [ $QE_MIRROR_FAILED_COUNT -eq 0 ]; then
+				LOG_MSG "[INFO]:-Total QE mirror PID failed      = $QE_MIRROR_FAILED_COUNT"
+		else
+				LOG_MSG "[WARN]:-Total QE mirror PID failed      = $QE_MIRROR_FAILED_COUNT"
+				EXIT_STATUS=1
+		fi
+		if [ $QE_MIRROR_ACTIVE -ne 0 ];then
+			LOG_MSG "[WARN]:-Total QE mirror active primary  = $QE_MIRROR_ACTIVE"
+			EXIT_STATUS=1
+		else
+			LOG_MSG "[INFO]:-Total QE mirror active primary  = $QE_MIRROR_ACTIVE"
+		fi
+		LOG_MSG "[INFO]:-Total QE mirror passive primary = $QE_MIRROR_PASSIVE"
 }
 
 CLUSTER_CONFIG () {

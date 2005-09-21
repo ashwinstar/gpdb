@@ -198,7 +198,13 @@ PROMPT_CONTINUE () {
 				QE_NAME=`$ECHO $QNODE|$CUT -d"|" -f1`
 				QE_DIR=`$ECHO $QNODE|$CUT -d"|" -f2`
 				QE_PORT=`$ECHO $QNODE|$CUT -d"|" -f3`
-				$TABECHO "QE [$COUNT] $QE_NAME data directory = $QE_DIR port = $QE_PORT"
+				QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
+				QE_PRIMARY=`$ECHO $QNODE|$CUT -d"|" -f5`
+				if [ "$QE_VALID" == "t" ]; then
+					$TABECHO "QE [$COUNT] $QE_NAME data directory = $QE_DIR port = $QE_PORT"
+				else
+					$TABECHO "QE [$COUNT] $QE_NAME data directory = $QE_DIR port = $QE_PORT invalid will not start"
+				fi
 				((COUNT=$COUNT+1))
 		done
 		$ECHO
@@ -222,14 +228,11 @@ PROCESS_STARTUP () {
 				QE_NAME=`$ECHO $QNODE|$CUT -d"|" -f1`
 				QE_DIR=`$ECHO $QNODE|$CUT -d"|" -f2`
 				QE_PORT=`$ECHO $QNODE|$CUT -d"|" -f3`
-				##MPP	  TAIL_VALID=`$ECHO $TNODE|$CUT -d"|" -f4`
-				LOG_MSG "[INFO]:-Starting QE $QE_NAME directory $QE_DIR"
-				##MPP	  if [ $TAIL_VALID != "t" ]; then
-				##MPP	  	LOG_MSG "[WARN]:-Host $TAIL_NAME segment $TAIL_DIR marked as invalid, will not try to start"
-				##MPP		((FAILED_COUNT=$FAILED_COUNT+1))
-				##MPP	  else
-				##CC	  	$TRUSTED_SHELL $QE_NAME ". $ENV_SETUP;export PGPORT=${QE_PORT};$PG_CTL $WAIT -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT} $MODE" >/dev/null 2>&1
-				$TRUSTED_SHELL $QE_NAME "export PGPORT=${QE_PORT};$PG_CTL $WAIT -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start" >> $LOG_FILE 2>&1
+				QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
+				QE_PRIMARY=`$ECHO $QNODE|$CUT -d"|" -f5`
+				if [ "$QE_VALID" == "t" ];then
+					LOG_MSG "[INFO]:-Starting QE $QE_NAME directory $QE_DIR"
+					$TRUSTED_SHELL $QE_NAME "export PGPORT=${QE_PORT};$PG_CTL $WAIT -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start" >> $LOG_FILE 2>&1
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
 						((FAILED_COUNT=$FAILED_COUNT+1))
@@ -243,12 +246,6 @@ PROCESS_STARTUP () {
 								LOG_MSG "[WARN]:-Issue with $TRUSTED_SHELL to $QE_NAME for $QE_DIR database"
 								EXIT_STATUS=1
 						fi
-						#MPP			if [ $FAILED ]; then
-						#MPP				LOG_MSG "[INFO]:-Adding $TAIL_NAME to failed list"
-						#MPP				FAILED_LIST_ARRAY[$INDEX]=${TAIL_NAME}:${TAIL_DIR}:${TAIL_PORT}
-						#MPP			else
-						#MPP				LOG_MSG "[WARN]:-Option -x not supplied, will not add $TAIL_NAME to failed list"	
-						#MPP			fi
 				else
 						LOG_MSG "[INFO]:-Successfully started QE $QE_NAME database"
 				fi
@@ -269,6 +266,9 @@ PROCESS_STARTUP () {
 				((QE_START_COUNT=$QE_START_COUNT+1))
 				##MPP		fi
 				((INDEX=$INDEX+1))
+				else
+						LOG_MSG "[WARN]:-QE $QE_NAME directory $QE_DIR invalid will not start"
+				fi
 		done
 		LOG_MSG "[INFO]:-Starting Master $QD_NAME directory $MASTER_DATA_DIRECTORY"
 		if [ $WAIT == "-W" ]; then
