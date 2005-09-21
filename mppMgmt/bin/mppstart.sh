@@ -279,6 +279,7 @@ PROCESS_STARTUP () {
 				$SLEEP 2
 		fi
 		export PGPORT=${MASTER_PORT}
+		export PGPATH=${MPPHOME}/bin
 		$PG_CTL $WAIT  -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -p $MASTER_PORT " start -m $MODE  >/dev/null 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
