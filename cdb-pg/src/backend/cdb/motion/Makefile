@@ -15,7 +15,7 @@ include $(top_builddir)/src/Makefile.global
 
 override CPPFLAGS := -I$(libpq_srcdir) $(CPPFLAGS)
 
-OBJS = cdbmotion.o tupchunk.o tupchunklist.o tupser.o  \
+OBJS = cdbmotion.o tupchunklist.o tupser.o  \
 	ml_ipc.o htupfifo.o
 
 all: SUBSYS.o

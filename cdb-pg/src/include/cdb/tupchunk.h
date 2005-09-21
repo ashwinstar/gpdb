@@ -67,16 +67,18 @@ typedef enum TupleChunkType
 #define GetSegIdx(x)            (x)
 #define IsBroadcastSegIdx(x)    (GetSegIdx(x) == BROADCAST_SEGIDX)
 
-/* Simple accessors/mutators for parts of the tuple-chunk header.  These
- * functions store multibyte integers in network byte order, and convert
- * back to hardware byte order on retrieval.
- */
+/* Simple macros for accessing tuple-chunk headers; NOTE: we no longer
+ * use network byte order */
+#define GetChunkDataSize(/* uint8 * */tc_data) \
+	(*(uint16 *)(tc_data))
 
+#define SetChunkDataSize(/* uint8 * */tc_data, /* uint16 */value) \
+	(*(uint16 *)(tc_data) = (value))
 
-extern uint16 GetChunkDataSize(uint8 *tc_data);
-extern uint8  GetChunkType(uint8 *tc_data);
+#define GetChunkType(/* uint 8 * */tc_data) \
+	(*((tc_data) + 2))
 
-extern void  SetChunkDataSize(uint8 *tc_data, uint16 value);
-extern void  SetChunkType(uint8 *tc_data, TupleChunkType value);
+#define SetChunkType(/* uint 8 * */tc_data, /* TupleChunkType */value) \
+    (*((tc_data) + 2) = (uint8)(value))
 
 #endif /* TUPCHUNK_H */
