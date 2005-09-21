@@ -162,8 +162,8 @@ RECOVER_FLAG=/tmp/active_recovery_in_progress
 # Functions
 #******************************************************************************
 CHK_DB_QD_SET () {
-		if [ ! $QD_DATA_DIRECTORY ]; then
-				ERROR_EXIT "[FATAL]:-QD_DATA_DIRECTORY parameter not set, update user start-up file [i.e. .bashrc]." 2
+		if [ ! $MASTER_DATA_DIRECTORY ]; then
+				ERROR_EXIT "[FATAL]:-MASTER_DATA_DIRECTORY parameter not set, update user start-up file [i.e. .bashrc]." 2
 		fi
 }
 
@@ -207,9 +207,9 @@ ERROR_EXIT () {
 CHK_EXISTS_TABLE () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		TABLENAME=$1
-		QD_PORT=$2
+		MASTER_PORT=$2
 		QD_DBNAME=$3
-		$PSQL -q -p  $QD_PORT $QD_DBNAME -c"\d $TABLENAME;" -o /dev/null
+		$PSQL -q -p  $MASTER_PORT $QD_DBNAME -c"\d $TABLENAME;" -o /dev/null
 		EXISTS=$?
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -239,35 +239,35 @@ CHK_DIR () {
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
-GET_QD_PORT () {
+GET_MASTER_PORT () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		QD_DATA_DIRECTORY=$1
-		if [ ! -d $QD_DATA_DIRECTORY ]; then
-				ERROR_EXIT "[FATAL]:-No $QD_DATA_DIRECTORY directory" 2
+		MASTER_DATA_DIRECTORY=$1
+		if [ ! -d $MASTER_DATA_DIRECTORY ]; then
+				ERROR_EXIT "[FATAL]:-No $MASTER_DATA_DIRECTORY directory" 2
 		fi
-		QD_PORT=`$GREP "^port" $QD_DATA_DIRECTORY/$PG_CONF |$GREP -v "^#"|$CUT -d= -f2|$AWK '{print $1}'`
+		MASTER_PORT=`$GREP "^port" $MASTER_DATA_DIRECTORY/$PG_CONF |$GREP -v "^#"|$CUT -d= -f2|$AWK '{print $1}'`
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 CHK_DB_RUNNING () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		if [ ! -d $QD_DATA_DIRECTORY ]; then
-				ERROR_EXIT "[FATAL]:-No QD $QD_DATA_DIRECTORY directory" 2
+		if [ ! -d $MASTER_DATA_DIRECTORY ]; then
+				ERROR_EXIT "[FATAL]:-No Master $MASTER_DATA_DIRECTORY directory" 2
 		fi
-		if [ ! -f $QD_DATA_DIRECTORY/$PG_PID ]; then
-				ERROR_EXIT "[FATAL]:-No $QD_DATA_DIRECTORY/$PG_PID file" 2
+		if [ ! -f $MASTER_DATA_DIRECTORY/$PG_PID ]; then
+				ERROR_EXIT "[FATAL]:-No $MASTER_DATA_DIRECTORY/$PG_PID file" 2
 		fi		
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 GET_QD_DB_NAME () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		GET_QD_PORT $QD_DATA_DIRECTORY
+		GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 
-		QD_DBNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $QD_PORT template1 -A -t -c"\l" 2>/dev/null|$GREP -v template|$HEAD -1|$CUT -d"|" -f1` > /dev/null 2>&1
+		QD_DBNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c"\l" 2>/dev/null|$GREP -v template|$HEAD -1|$CUT -d"|" -f1` > /dev/null 2>&1
 
 		if [ ! $QD_DBNAME ]; then
-				LOG_MSG "[INFO]:-Unable to obtain QD database name, setting value to template1"
+				LOG_MSG "[INFO]:-Unable to obtain Master database name, setting value to template1"
 				QD_DBNAME=template1
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -275,10 +275,10 @@ GET_QD_DB_NAME () {
 GET_QE_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_QD_DB_NAME
-		QE_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $QD_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port from mpp.listener a, mpp.host b where listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid;" 2>/dev/null`) > /dev/null 2>&1
+		QE_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port from mpp.listener a, mpp.host b where listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid;" 2>/dev/null`) > /dev/null 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
-				LOG_MSG "[WARN]:-Unable to obtain QE host details from QD db, error code $RETVAL returned"
+				LOG_MSG "[WARN]:-Unable to obtain QE host details from Master db, error code $RETVAL returned"
 				EXIT_STATUS=1
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -288,11 +288,11 @@ GET_QE_PRIMARY_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_QD_DB_NAME
 
-		QE_PRIMARY_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $QD_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port from mpp.listener a, mpp.host b where listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid and listenerid in (select listenerid from mpp.pgdatabase where isprimary='t') order by a.datadir;" 2>/dev/null`) > /dev/null 2>&1
+		QE_PRIMARY_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port from mpp.listener a, mpp.host b where listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid and listenerid in (select listenerid from mpp.pgdatabase where isprimary='t') order by a.datadir;" 2>/dev/null`) > /dev/null 2>&1
 
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
-				LOG_MSG "[WARN]:-Unable to obtain QE primary host details from QD db, error code $RETVAL returned"
+				LOG_MSG "[WARN]:-Unable to obtain QE primary host details from Master db, error code $RETVAL returned"
 				EXIT_STATUS=1
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -302,11 +302,11 @@ GET_QE_MIRROR_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_QD_DB_NAME
 
-		QE_MIRROR_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $QD_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port from mpp.listener a, mpp.host b where listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid and listenerid in (select listenerid from mpp.pgdatabase where isprimary='f') order by a.datadir;" 2>/dev/null`) > /dev/null 2>&1
+		QE_MIRROR_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port from mpp.listener a, mpp.host b where listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid and listenerid in (select listenerid from mpp.pgdatabase where isprimary='f') order by a.datadir;" 2>/dev/null`) > /dev/null 2>&1
 
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
-				LOG_MSG "[WARN]:-Unable to obtain QE mirror host details from QD db, error code $RETVAL returned"
+				LOG_MSG "[WARN]:-Unable to obtain QE mirror host details from Master db, error code $RETVAL returned"
 				EXIT_STATUS=1
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -314,12 +314,12 @@ GET_QE_MIRROR_DETAILS () {
 
 GET_HOSTNAMES () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		QD_DATA_DIRECTORY=$1
-		GET_QD_PORT $QD_DATA_DIRECTORY
+		MASTER_DATA_DIRECTORY=$1
+		GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 		CHK_DB_RUNNING
 		GET_QD_DB_NAME
 		unset HOSTNAME_LIST
-		HOSTNAME_LIST=`$PSQL -p $QD_PORT $QD_DBNAME -A -t -c"select distinct(hostname) from mpp.host;"` > /dev/null 2>&1
+		HOSTNAME_LIST=`$PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select distinct(hostname) from mpp.host;"` > /dev/null 2>&1
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -328,7 +328,7 @@ INVALID_SEG_CHECK () {
 		echo "This facility not supported by MPP as at 20/07/2005"
 		exit
 		GET_QD_DB_NAME
-		INVALID_COUNT=`$PSQL -p $QD_PORT $QD_DBNAME -A -t -c"select count(*) from mpp.pgdatabase where valid <> 't';"`
+		INVALID_COUNT=`$PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from mpp.pgdatabase where valid <> 't';"`
 		return $INVALID_COUNT
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -449,12 +449,12 @@ CREATE_PRIMARY_ARRAY () {
 		ARRAY_INDEX=0
 		INST_COUNT=1
 		DIRECTORY_VECTOR=0
-		((PRI_QD_PORT=$PORT_BASE))
+		((PRI_MASTER_PORT=$PORT_BASE))
 		PORT_COUNT=1
 		#Set up the port array
 		while [ $PORT_COUNT -le $INSTANCES_PER_QE ]
 				do
-				((PORT=$PRI_QD_PORT+$PORT_COUNT))
+				((PORT=$PRI_MASTER_PORT+$PORT_COUNT))
 				PORT_ARRAY[$DIRECTORY_VECTOR]=$PORT
 				((PORT_COUNT=$PORT_COUNT+1))
 				((DIRECTORY_VECTOR=$DIRECTORY_VECTOR+1))
@@ -599,8 +599,8 @@ PROCESS_QE () {
 		LOG_MSG "[INFO]:-Creating database $SEG_ARRAY on $HOSTNAME_ARRAY"
 		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p ${PORT_ARRAY} template1 -c \"create database $SEG_ARRAY\""
 		LOG_MSG "[INFO]:-Updating the QE mpp catalog"
-		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p ${PORT_ARRAY} $SEG_ARRAY -c \"insert into mpp.mpp values ('$CLUSTER_NAME',$NUMSEGMENTS,$DBID,$CONTENT)\""
-		LOG_MSG "[INFO]:-Adding this QE instance to the QD host"
+		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p ${PORT_ARRAY} $SEG_ARRAY -c \"insert into mpp.mpp values ('$ARRAY_NAME',$NUMSEGMENTS,$DBID,$CONTENT)\""
+		LOG_MSG "[INFO]:-Adding this QE instance to the Master host"
 		if [ $PRIMARY -eq 1 ]; then
 				LOG_MSG "[INFO]:-Adding the primary segment to the head admin schema"
 				RUN_COMMAND "$PSQL -p $HEAD_PORT $HEAD_DBNAME -c \"SET search_path TO public;select mpp.add_segment('$SEG_ARRAY','$USER','',$SEG_NUM_ARRAY)\""

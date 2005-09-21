@@ -58,7 +58,7 @@ ADMIN=0
 USAGE () {
 		$TABECHO	
 		$TABECHO "$0 "
-		$TABECHO "Stops the MPP database, or stops the QD database from maintenance mode"
+		$TABECHO "Stops the MPP database, or stops the Master database from maintenance mode"
 		$TABECHO
 		$TABECHO $0 "[OPTIONS]"
 		$TABECHO
@@ -73,7 +73,7 @@ USAGE () {
 		$TABECHO "-a, don't ask to confirm shutdown [default:- ask]"
 		$TABECHO
 		$TABECHO "Connection options:"
-		$TABECHO "-d, <QD database directory> name of alternative QD database to shutdown [optional]"
+		$TABECHO "-d, <Master database directory> name of alternative Master database to shutdown [optional]"
 		$TABECHO
 		$TABECHO "Database shutdown options:"
 		$TABECHO "-f, Fast shutdown, active transactions interrupted and rolled back"
@@ -100,17 +100,17 @@ UNKNOWN_OPTION () {
 
 DISPLAY_PARAM () {
 		#Check to see if postgres env variables set within calling users environment
-		if [ -z $QD_PORT ]; then
-				QD_PORT="Not set in ENV"
+		if [ -z $MASTER_PORT ]; then
+				MASTER_PORT="Not set in ENV"
 		fi
-		if [ -z $QD_DATA_DIRECTORY ]; then
-				QD_DATA_DIRECTORY="Not set in ENV"
+		if [ -z $MASTER_DATA_DIRECTORY ]; then
+				MASTER_DATA_DIRECTORY="Not set in ENV"
 		fi
 		$ECHO
 		$ECHO "Current Default Shutdown Parameters"
 		$ECHO "-----------------------------------"
-		$ECHO "QD database port            = $QD_PORT      [Override with -p <port number>]"
-		$ECHO "QD database directory       = $QD_DATA_DIRECTORY [Override with -d <QD directory>]"
+		$ECHO "Master database port            = $MASTER_PORT      [Override with -p <port number>]"
+		$ECHO "Master database directory       = $MASTER_DATA_DIRECTORY [Override with -d <Master directory>]"
 		$ECHO "Default shutdown mode       = $MODE           [Override with -f or -i]"
 		if [ $INTERACTIVE ]; then
 				$ECHO "Interactive                 = True            [Override with -a]"
@@ -134,34 +134,34 @@ DISPLAY_PARAM () {
 STOP_ADMIN () {
 		##MPP Disabled call to this function 22/07/2005
 		LOG_MSG "[INFO]:-Stopping the head in admin mode"
-		if [ ! -s $QD_DATA_DIRECTORY/$PG_PID ]; then
+		if [ ! -s $MASTER_DATA_DIRECTORY/$PG_PID ]; then
 				ERROR_EXIT "[WARN]:- No $PG_PID file, is database already stopped?" 1
 		fi
-		$PG_CTL $WAIT stop -D $QD_DATA_DIRECTORY -m smart      >/dev/null 2>&1
+		$PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m smart      >/dev/null 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
-				ERROR_EXIT "[FATAL]:-Could not shutdown QD database in admin mode" 2
+				ERROR_EXIT "[FATAL]:-Could not shutdown Master database in admin mode" 2
 		fi
-		LOG_MSG "[INFO]:-Successfully shutdown the QD in admin mode"
+		LOG_MSG "[INFO]:-Successfully shutdown the Master in admin mode"
 }
 
 CHK_QD_DB_RUNNING () {
-		if [ ! -s $QD_DATA_DIRECTORY/$PG_PID ]; then
+		if [ ! -s $MASTER_DATA_DIRECTORY/$PG_PID ]; then
 				ERROR_EXIT "[FATAL]:- No $PG_PID file, is MPP database already stopped?" 2
 		fi
-		QD_PID=`$HEAD -1 $QD_DATA_DIRECTORY/$PG_PID`
-		QD_PID_DIR=`$HEAD -2 $QD_DATA_DIRECTORY/$PG_PID|$TAIL -1`
+		QD_PID=`$HEAD -1 $MASTER_DATA_DIRECTORY/$PG_PID`
+		QD_PID_DIR=`$HEAD -2 $MASTER_DATA_DIRECTORY/$PG_PID|$TAIL -1`
 }
 
 PROMPT_CONTINUE () {
 		$ECHO
-		$TABECHO "QD parameters" |$TEE -a $LOG_FILE
-		$TABECHO "-------------" |$TEE -a $LOG_FILE
-		$TABECHO "QD MPP database process active PID = $QD_PID" |$TEE -a $LOG_FILE
-		$TABECHO "Database        = $QD_DBNAME" |$TEE -a $LOG_FILE
-		$TABECHO "QD port         = $QD_PORT" |$TEE -a $LOG_FILE
-		$TABECHO "QD directory    = $QD_DATA_DIRECTORY" |$TEE -a $LOG_FILE
-		$TABECHO "Shutdown mode   = $MODE" |$TEE -a $LOG_FILE
+		$TABECHO "Master parameters" |$TEE -a $LOG_FILE
+		$TABECHO "-----------------" |$TEE -a $LOG_FILE
+		$TABECHO "Master MPP database process active PID = $QD_PID" |$TEE -a $LOG_FILE
+		$TABECHO "Database                               = $QD_DBNAME" |$TEE -a $LOG_FILE
+		$TABECHO "Master port                            = $MASTER_PORT" |$TEE -a $LOG_FILE
+		$TABECHO "Master directory                       = $MASTER_DATA_DIRECTORY" |$TEE -a $LOG_FILE
+		$TABECHO "Shutdown mode                          = $MODE" |$TEE -a $LOG_FILE
 		$TABECHO |$TEE -a $LOG_FILE
 		$TABECHO "QE instances that will be shutdown:" |$TEE -a $LOG_FILE
 		$TABECHO "-----------------------------------" |$TEE -a $LOG_FILE
@@ -220,14 +220,14 @@ PROCESS_SHUTDOWN () {
 				((QD_STOP_COUNT=$QD_STOP_COUNT+1))
 				##MPP		fi
 		done
-		LOG_MSG "[INFO]:-Stopping QD $QD_NAME directory $QD_DATA_DIRECTORY"
-		$PG_CTL $WAIT stop -D $QD_DATA_DIRECTORY -m $MODE -l ${QD_DATA_DIRECTORY}.log >/dev/null 2>&1
+		LOG_MSG "[INFO]:-Stopping Master $QD_NAME directory $MASTER_DATA_DIRECTORY"
+		$PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m $MODE -l ${MASTER_DATA_DIRECTORY}.log >/dev/null 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
-				ERROR_EXIT "[FATAL]:-Issue with shutdown of QD database" 2
+				ERROR_EXIT "[FATAL]:-Issue with shutdown of Master database" 2
 		else
 				LOG_MSG "[INFO]:-------------------------------------------------------"
-				LOG_MSG "[INFO]:-Successfully shutdown $QD_STOP_COUNT QE instances and QD instance"
+				LOG_MSG "[INFO]:-Successfully shutdown $QD_STOP_COUNT QE instances and Master instance"
 		fi
 }
 #******************************************************************************
@@ -244,7 +244,7 @@ if [ $# -ne 0 ]; then
 						f ) MODE=fast ;;
 						t ) DISPLAY_PARAM ;;
 						'?' ) USAGE ;;
-						d ) QD_DATA_DIRECTORY=$OPTARG ;;
+						d ) MASTER_DATA_DIRECTORY=$OPTARG ;;
 						###GET_HEAD_PORT ;;
 						a ) unset INTERACTIVE ;;
 						q ) unset VERBOSE ;;
@@ -260,7 +260,7 @@ fi
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 CHK_DB_QD_SET
-GET_QD_PORT $QD_DATA_DIRECTORY
+GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 
 if [ $ADMIN -eq 1 ]; then
 		STOP_ADMIN

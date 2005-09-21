@@ -72,7 +72,7 @@ USAGE () {
 		$TABECHO "-l, <logfile directory> alternative logfile directory [optional]"
 		$TABECHO
 		$TABECHO "Connection options:"
-		$TABECHO "-d, <QD database directory> name of alternative QD database to report status of [optional]"
+		$TABECHO "-d, <Master database directory> name of alternative Master database to report status of [optional]"
 		$TABECHO
 		$TABECHO "Status options:"
 		$TABECHO "-s, Display MPP database status [default]"
@@ -98,12 +98,12 @@ UNKNOWN_OPTION () {
 }
 
 DISPLAY_PARAM () {
-		GET_QD_PORT $QD_DATA_DIRECTORY
+		GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 		$ECHO
 		$ECHO "Current Default State Parameters"
 		$ECHO "-----------------------------------"
-		$ECHO "MPP QD database port      =$QD_PORT"
-		$ECHO "MPP QD database directory = $QD_DATA_DIRECTORY [Override with -d <head directory>]"
+		$ECHO "MPP Master database port      =$MASTER_PORT"
+		$ECHO "MPP Master database directory = $MASTER_DATA_DIRECTORY [Override with -d <head directory>]"
 		if [ $VERBOSE ]; then
 				$ECHO "Verbose                   = True            [Override with -q]"
 		else
@@ -125,24 +125,24 @@ DATABASE_STATUS () {
 		#MPP converted 21/07/2005
 		QD_STATE_COUNT=0
 		QD_FAILED_COUNT=0
-		if [ ! -s $QD_DATA_DIRECTORY/$PG_PID ]; then
+		if [ ! -s $MASTER_DATA_DIRECTORY/$PG_PID ]; then
 				ERROR_EXIT "[WARN]:-Query Dispatch database down" 1
 		else
-				QD_PID=`$HEAD -1 $QD_DATA_DIRECTORY/$PG_PID`
+				QD_PID=`$HEAD -1 $MASTER_DATA_DIRECTORY/$PG_PID`
 				CHK_PG_PID $QD_PID
 				GET_QE_DETAILS
 				GET_MPP_VERSION	
-				LOG_MSG "[INFO]:-QD Configuration & Status"
+				LOG_MSG "[INFO]:-Master Configuration & Status"
 				LOG_MSG "[INFO]:--------------------------"
-				LOG_MSG "[INFO]:-QD host = $QD_NAME" 
-				LOG_MSG "[INFO]:-QD Postmaster process PID = $QD_PID" 
-				LOG_MSG "[INFO]:-Database name = $QD_DBNAME "
-				LOG_MSG "[INFO]:-QD port = $QD_PORT"
-				LOG_MSG "[INFO]:-MPP software version = $MPP_VERSION"
+				LOG_MSG "[INFO]:-Master host                   = $QD_NAME" 
+				LOG_MSG "[INFO]:-Master Postmaster process PID = $QD_PID" 
+				LOG_MSG "[INFO]:-Database name                 = $QD_DBNAME "
+				LOG_MSG "[INFO]:-Master port                   = $MASTER_PORT"
+				LOG_MSG "[INFO]:-MPP software version          = $MPP_VERSION"
 				if [ -f $RECOVER_FLAG ]; then
-						LOG_MSG "[WARN]:-Active mpprecovernode.bsh = True"
+						LOG_MSG "[WARN]:-Active mpprecovernode.bsh     = True"
 				else
-						LOG_MSG "[INFO]:-Active mpprecovernode.bsh = False"
+						LOG_MSG "[INFO]:-Active mpprecovernode.bsh     = False"
 				fi
 				LOG_MSG "[INFO]:-QE cluster node status"
 				if [ ${#QE_ARRAY[@]} -eq 0 ]; then
@@ -185,7 +185,7 @@ DATABASE_STATUS () {
 				done
 		fi
 		LOG_MSG "[INFO]:---------------------------------------------------"
-		LOG_MSG "[INFO]:-State reports $QD_STATE_COUNT QE's active $QD_FAILED_COUNT Failed and QD active"
+		LOG_MSG "[INFO]:-State reports $QD_STATE_COUNT QE's active $QD_FAILED_COUNT Failed and Master active"
 fi
 }
 
@@ -219,7 +219,7 @@ SUMMARY_STATUS () {
 		QE_MIRROR_STATE_COUNT=0
 		QE_MIRROR_FAILED_COUNT=0
 		QE_COUNT=0
-		if [ ! -s $QD_DATA_DIRECTORY/$PG_PID ]; then
+		if [ ! -s $MASTER_DATA_DIRECTORY/$PG_PID ]; then
 				ERROR_EXIT "[WARN]:-Query Dispatch database down" 1
 		else
 				GET_QE_PRIMARY_DETAILS
@@ -257,7 +257,7 @@ $ECHO -n .
 		$ECHO
 		LOG_MSG "[INFO]:-MPP cluster status summary"
 		LOG_MSG "[INFO]:---------------------------"
-		LOG_MSG "[INFO]:-QD db $QD_DBNAME active" 
+		LOG_MSG "[INFO]:-Master db $QD_DBNAME active" 
 		LOG_MSG "[INFO]:---------------------------"
 		LOG_MSG "[INFO]:-Total QE MPP count      = $QE_COUNT"
 		LOG_MSG "[INFO]:-Total QE primary active = $QE_PRIMARY_STATE_COUNT"
@@ -306,7 +306,7 @@ CLUSTER_CONFIG () {
 }
 
 LIST_MPP_PORTS () {
-		PORT_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $QD_PORT $QD_DBNAME -A -t -c"select b.hostname, a.port from mpp.listener a, mpp.host b where listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid;" 2>|/dev/null`)
+		PORT_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.port from mpp.listener a, mpp.host b where listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid;" 2>|/dev/null`)
 		LOG_MSG "[INFO]:-Port assignments"
 		for PMODE in "${PORT_ARRAY[@]}"
 				do
@@ -317,7 +317,7 @@ LIST_MPP_PORTS () {
 }
 
 LIST_MPP_LOGS () {
-		LOG_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $QD_PORT $QD_DBNAME -A -t -c "select b.hostname,  a.datadir from mpp.listener a, mpp.host b where listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid;" 2>|/dev/null`)
+		LOG_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select b.hostname,  a.datadir from mpp.listener a, mpp.host b where listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid;" 2>|/dev/null`)
 		LOG_MSG "[INFO]:-QE MPP database instance log file names"
 		for LOGCHK in "${LOG_ARRAY[@]}"
 				do
@@ -330,13 +330,13 @@ LIST_MPP_LOGS () {
 						$ECHO
 						LOG_MSG "[INFO]:-QE host $HOST log file tail END-----------------"
 				else
-						LOG_MSG "[INFO]:-QE Host assgined logfile ${DIR}.log database logfile"
+						LOG_MSG "[INFO]:-QE Host assigned logfile ${DIR}.log database logfile"
 				fi
 		done	
 }
 
 GET_MPP_VERSION () {
-		MPP_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $QD_PORT $QD_DBNAME -A -t -c "select * from mpp.version" 2>/dev/null`
+		MPP_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select * from mpp.version" 2>/dev/null`
 }
 
 NOT_ACTIVE () {
@@ -354,7 +354,7 @@ if [ $# -ne 0 ]; then
 						v ) VERSION_INFO ;;
 						t ) DISPLAY_PARAM ;;
 						'?' ) USAGE ;;
-						d ) QD_DATA_DIRECTORY=$OPTARG ;;
+						d ) MASTER_DATA_DIRECTORY=$OPTARG ;;
 						q ) unset VERBOSE ;;
 						s ) ;;
 						m ) SELECT=2 ;;
@@ -382,7 +382,7 @@ fi
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 CHK_DB_RUNNING
-GET_QD_PORT $QD_DATA_DIRECTORY
+GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 GET_QD_DB_NAME
 case $SELECT in
 		1 ) DATABASE_STATUS ;; 

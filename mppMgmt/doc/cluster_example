@@ -1,5 +1,5 @@
 # Set this to anything you like
-CLUSTER_NAME="LAL Laptop Cluster"
+ARRAY_NAME="LAL Laptop Cluster"
 
 # This file must exist in the same directory that you execute mppcreatecluster.sh in
 # and contains a list of hostnames that will form the cluster.
@@ -23,13 +23,13 @@ DATABASE_NAME=zlal
 declare -a DATA_DIRECTORY=(/Users/lukelonergan/datadirs/dbfast1 /Users/lukelonergan/datadirs/dbfast2 /Users/lukelonergan/datadirs/dbfast3)
 
 # Name of host on which to setup the QD
-QD_HOSTNAME=Luke-Lonergans-Computer.local
+MASTER_HOSTNAME=Luke-Lonergans-Computer.local
 
 # Name of directory on that host in which to setup the QD
-QD_DIRECTORY=/Users/lukelonergan/datadirs/dbfast1
+MASTER_DIRECTORY=/Users/lukelonergan/datadirs/dbfast1
 
 # Specific port number for the QD instance
-QD_PORT=50000
+MASTER_PORT=50000
 
 # Hosts to allow to connect to the QD (and Segment Instances)
 # By default, allow everyone to connect (0.0.0.0/0)

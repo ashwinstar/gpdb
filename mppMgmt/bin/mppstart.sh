@@ -102,14 +102,14 @@ UNKNOWN_OPTION () {
 }
 
 DISPLAY_PARAM () {
-		if [ -z $QD_PORT ]; then
-				QD_PORT="Not set in ENV"
+		if [ -z $MASTER_PORT ]; then
+				MASTER_PORT="Not set in ENV"
 		fi
 		$ECHO
 		$ECHO "Current Default Startup Parameters"
 		$ECHO "----------------------------------"
-		$ECHO "MPP head database port      = $QD_PORT      [Override with -p <port number>]"
-		$ECHO "MPP head database directory = $QD_DATA_DIRECTORY [Override with -d <QE directory>]"
+		$ECHO "MPP head database port      = $MASTER_PORT      [Override with -p <port number>]"
+		$ECHO "MPP head database directory = $MASTER_DATA_DIRECTORY [Override with -d <QE directory>]"
 		if [ $INTERACTIVE ]; then
 				$ECHO "Interactive                 = True            [Override with -a]"
 		else
@@ -136,7 +136,7 @@ DISPLAY_PARAM () {
 
 
 CHK_QD_DB_RUNNING () {
-		if [  -s $QD_DATA_DIRECTORY/$PG_PID ]; then
+		if [  -s $MASTER_DATA_DIRECTORY/$PG_PID ]; then
 				ERROR_EXIT "[FATAL]:- $PG_PID file exists, is MPP database already running?" 2
 		fi
 }
@@ -144,15 +144,15 @@ CHK_QD_DB_RUNNING () {
 GET_DETAILS () {
 		#Get the database name
 		#Start the head datase in admin mode
-		export PGPORT=$QD_PORT
-		LOG_MSG "[INFO]:-Starting QD database in admin mode"
-		##MPP	$PG_CTL -w -D $QD_DATA_DIRECTORY -l ${QD_DATA_DIRECTORY}.log -o "-i -p $QD_PORT -c "mpp_mode=off start"" >/dev/null 2>&1
-		$PG_CTL -w -D $QD_DATA_DIRECTORY -l ${QD_DATA_DIRECTORY}.log -o "-i -p $QD_PORT"  start >/dev/null 2>&1
+		export PGPORT=$MASTER_PORT
+		LOG_MSG "[INFO]:-Starting Master database in admin mode"
+		##MPP	$PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -p $MASTER_PORT -c "mpp_mode=off start"" >/dev/null 2>&1
+		$PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -p $MASTER_PORT"  start >/dev/null 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
-				ERROR_EXIT "[FATAL]:-Could not start QD database" 2
+				ERROR_EXIT "[FATAL]:-Could not start Master database" 2
 		else
-				LOG_MSG "[INFO]:-Successfully started QD database"
+				LOG_MSG "[INFO]:-Successfully started Master database"
 		fi
 		LOG_MSG "[INFO]:-Obtaining MPP QE catalog information"
 		#Now get tail details
@@ -160,13 +160,13 @@ GET_DETAILS () {
 		GET_QE_DETAILS
 		QE_COUNT=${#QE_ARRAY[@]}
 		#Shutdown the head database
-		LOG_MSG "[INFO]:-Shutting down QD database"
-		$PG_CTL $WAIT stop -D $QD_DATA_DIRECTORY -m $MODE	 >/dev/null 2>&1
+		LOG_MSG "[INFO]:-Shutting down Master database"
+		$PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m $MODE	 >/dev/null 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
-				ERROR_EXIT "[FATAL]:-Could not shutdown QD database" 2
+				ERROR_EXIT "[FATAL]:-Could not shutdown Master database" 2
 		else
-				LOG_MSG "[INFO]:-Successfully shutdown the QD database"
+				LOG_MSG "[INFO]:-Successfully shutdown the Master database"
 		fi
 }
 
@@ -185,11 +185,11 @@ START_ADMIN () {
 
 PROMPT_CONTINUE () {
 		$ECHO
-		$TABECHO "QD parameters"
-		$TABECHO "-------------"
-		$TABECHO "Database       = $QD_DBNAME"
-		$TABECHO "QD Port        = $QD_PORT"
-		$TABECHO "QD directory   = $QD_DATA_DIRECTORY"
+		$TABECHO "Master parameters:"
+		$TABECHO "------------------"
+		$TABECHO "Database           = $QD_DBNAME"
+		$TABECHO "Master Port        = $MASTER_PORT"
+		$TABECHO "Master directory   = $MASTER_DATA_DIRECTORY"
 		$TABECHO "QE instances that will be started:"
 		$TABECHO "----------------------------------"
 		COUNT=1
@@ -270,23 +270,23 @@ PROCESS_STARTUP () {
 				##MPP		fi
 				((INDEX=$INDEX+1))
 		done
-		LOG_MSG "[INFO]:-Starting QD $QD_NAME directory $QD_DATA_DIRECTORY"
+		LOG_MSG "[INFO]:-Starting Master $QD_NAME directory $MASTER_DATA_DIRECTORY"
 		if [ $WAIT == "-W" ]; then
 				$SLEEP 2
 		fi
-		export PGPORT=${QD_PORT}
-		$PG_CTL $WAIT  -D $QD_DATA_DIRECTORY -l ${QD_DATA_DIRECTORY}.log -o "-i -p $QD_PORT " start -m $MODE  >/dev/null 2>&1
+		export PGPORT=${MASTER_PORT}
+		$PG_CTL $WAIT  -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -p $MASTER_PORT " start -m $MODE  >/dev/null 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
-				ERROR_EXIT "[FATAL]:-Issue with startup of QD database" 2
+				ERROR_EXIT "[FATAL]:-Issue with startup of Master database" 2
 		else
-				LOG_MSG "[INFO]:-Successfully started QD $QD_NAME database"
+				LOG_MSG "[INFO]:-Successfully started Master $QD_NAME database"
 		fi
 		if [ $FAILED_COUNT -ne 0 ]; then
 				LOG_MSG "[WARN]:-Failed to start $FAILED_COUNT of a total of $QE_COUNT QE instances"
 		else
 				LOG_MSG "[INFO]:----------------------------------------------------------"
-				LOG_MSG "[INFO]:-Successfully started $QE_START_COUNT QE instances and QD instance"
+				LOG_MSG "[INFO]:-Successfully started $QE_START_COUNT QE instances and Master instance"
 		fi
 }
 
@@ -297,7 +297,7 @@ MARK_INVALID () {
 				QE_NAME=`$ECHO $TARGET|$CUT -d: -f1`
 				QE_DIR=`$ECHO $TARGET|$CUT -d: -f2`
 				QE_PORT=`$ECHO $TARGET|$CUT -d: -f3`
-				#MPP	$PSQL -p $QD_PORT $QD_DBNAME -A -t -c"update mpp_instance set valid='f' where host='$TAIL_NAME' and datadir='$TAIL_DIR' and port=$TAIL_PORT ;" >> $LOG_FILE 2>&1
+				#MPP	$PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"update mpp_instance set valid='f' where host='$TAIL_NAME' and datadir='$TAIL_DIR' and port=$TAIL_PORT ;" >> $LOG_FILE 2>&1
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
 						LOG_MSG "[WARN]:-Issue with marking $QE_NAME as invalid, check log file"
@@ -317,7 +317,7 @@ if [ $# -ne 0 ]; then
 						v ) VERSION_INFO ;;
 						t ) DISPLAY_PARAM ;;
 						'?' ) USAGE ;;
-						d ) QD_DATA_DIRECTORY=$OPTARG ;;
+						d ) MASTER_DATA_DIRECTORY=$OPTARG ;;
 						a ) unset INTERACTIVE ;;
 						x ) FAILED=1 ;;
 						q ) unset VERBOSE ;;
@@ -337,7 +337,7 @@ LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 CHK_QD_DB_RUNNING
 CHK_DB_QD_SET
-GET_QD_PORT $QD_DATA_DIRECTORY
+GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 if [ $ADMIN ]; then
 		START_ADMIN
 		exit

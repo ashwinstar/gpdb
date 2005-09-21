@@ -15,12 +15,12 @@
 # Ver	Date		Who		Update
 # 1.1	27/07/2005	G Coombe	Configured mirroring functionality
 # 1.2	09/08/2005	G Coombe	Corrected CVS conversion errors.
-#			Corrected error exit message display for QD init
+#			Corrected error exit message display for Master init
 #			failure.
 # 1.3	09/08/2005	G Coombe	Corrected fault where template1 database table
 #					mpp.pgdatabase has incorrect db name.
 # 1.4	09/08/2005	G Coombe	Changed the create database code to use revised
-#					MPP ability to now create database within QD.
+#					MPP ability to now create database within Master.
 # 1.5	11/09/2005	G Coombe	Updates to UPDATE_PGDATABASE in response to
 #					MPP code change where dbname column on longer used.
 #					Correct error message where blank lines appear in
@@ -71,7 +71,7 @@ USAGE () {
 		$TABECHO "*******************************************************************"
 		$TABECHO "usage: `basename $0` -c mpp_config_file [OPTIONS]"
 		$TABECHO ""
-		$TABECHO "  Creates a new MPP database on a QD host and a number of QE hosts."
+		$TABECHO "  Creates a new MPP database on a Master host and a number of QE hosts."
 		$TABECHO "*******************************************************************"
 		$TABECHO "General options:"
 		$TABECHO "	-?, display this help message & exit"
@@ -88,13 +88,13 @@ USAGE () {
 		$TABECHO "		Contains a list of all QE hostnames required to participate in"
 		$TABECHO "		the new MPP database. Normally set in mpp_config_file."
 		$TABECHO "	-p postgresql_conf_mpp_additions [optional]"
-		$TABECHO "		List of additional PostgreSQL parameters to be applied to each QD/QE"
+		$TABECHO "		List of additional PostgreSQL parameters to be applied to each Master/QE"
 		$TABECHO "		postgresql.conf file during MPP database initialization."
 		$TABECHO "		File ./postgresql_conf_mpp_additions will be read by default if no -p"
 		$TABECHO "		option supplied"
 		$TABECHO "	-s standby_hostname [optional]"
-		$TABECHO "		Setup standby QD host named \"standby_hostname\". (if configured in MPP configuration file)"
-		$TABECHO "	-o, create QD only, do not configure QE hosts"
+		$TABECHO "		Setup standby Master host named \"standby_hostname\". (if configured in MPP configuration file)"
+		$TABECHO "	-o, create Master only, do not configure QE hosts"
 		$TABECHO
 		$TABECHO "Logging options:"
 		$TABECHO "	-q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
@@ -168,19 +168,19 @@ CHK_PARAMS () {
 		declare -a MACHINE_LIST=(`$CAT $MACHINE_LIST_FILE`)
 
 		#Now process contents for the configuration file
-		if [ ! "$CLUSTER_NAME" ]; then
-				LOG_MSG "[WARN]:-CLUSTER_NAME variable not set, will provide default value"
-				CLUSTER_NAME="MPP Cluster"
+		if [ ! "$ARRAY_NAME" ]; then
+				LOG_MSG "[WARN]:-ARRAY_NAME variable not set, will provide default value"
+				ARRAY_NAME="MPP Cluster"
 		fi
-		export CLUSTER_NAME
+		export ARRAY_NAME
 
-		if [ x"" = x"$QD_HOSTNAME" ]; then
-				ERROR_EXIT "[FATAL]:QD_HOSTNAME variable not set" 2
+		if [ x"" = x"$MASTER_HOSTNAME" ]; then
+				ERROR_EXIT "[FATAL]:MASTER_HOSTNAME variable not set" 2
 		fi
 
 		#Make sure that this script is running on the QD host
-		if [ $QD_HOSTNAME != `$HOSTNAME` ]; then
-				ERROR_EXIT "[FATAL]:-This script must be executed on the QD host $QD_HOSTNAME" 2
+		if [ $MASTER_HOSTNAME != `$HOSTNAME` ]; then
+				ERROR_EXIT "[FATAL]:-This script must be executed on the Master host $MASTER_HOSTNAME" 2
 		fi
 
 		#SEG_PREFIX
@@ -193,9 +193,9 @@ CHK_PARAMS () {
 		LWR_CASE_SEG_PREFIX=`$ECHO $SEG_PREFIX|$TR '[A-Z]' '[a-z]'`
 		SEG_PREFIX=$LWR_CASE_SEG_PREFIX
 
-		#QD_PORT
-		if [ x"" = x"$QD_PORT" ]; then
-				ERROR_EXIT "[FATAL]:-QD_PORT variable not set" 2
+		#MASTER_PORT
+		if [ x"" = x"$MASTER_PORT" ]; then
+				ERROR_EXIT "[FATAL]:-MASTER_PORT variable not set" 2
 		fi
 
 		#PORT_BASE
@@ -210,9 +210,9 @@ CHK_PARAMS () {
 				ERROR_EXIT "[FATAL]:-Number of primary directories 0 (zero)" 2
 		fi
 
-		#QD_DIRECTORY
-		if [ x"" = x"$QD_DIRECTORY" ]; then
-				ERROR_EXIT "[FATAL]:-QD_DIRECTORY variable not set" 2
+		#MASTER_DIRECTORY
+		if [ x"" = x"$MASTER_DIRECTORY" ]; then
+				ERROR_EXIT "[FATAL]:-MASTER_DIRECTORY variable not set" 2
 		fi
 		#DATABASE_PREFIX
 		if [ x"" = x"$DATABASE_NAME" ]; then
@@ -252,10 +252,10 @@ CHK_PARAMS () {
 		fi
 		#Below commented out until standby QD tests completed (25/07/2005)
 		##	if [ $STANDBY_IP_ALLOW ]&& [ $STANDBY_QD_MASK ]; then
-		##		LOG_MSG "[INFO]:-Standby QD IP = $STANDBY_QD_IP"
-		##		LOG_MSG "[INFO]:-Standby QD Netmask = $STANDBY_QD_MASK"
+		##		LOG_MSG "[INFO]:-Standby Master IP = $STANDBY_QD_IP"
+		##		LOG_MSG "[INFO]:-Standby Master Netmask = $STANDBY_QD_MASK"
 		##	else
-		##		LOG_MSG "[INFO]:-Standby QD = off"
+		##		LOG_MSG "[INFO]:-Standby Master = off"
 
 }
 
@@ -346,10 +346,10 @@ GET_HOST_ID () {
 				((MPP_INDEX=$MPP_INDEX+1))
 		done
 		MPP_INDEX=$FOUND
-		if [ `$ECHO ${MACHINE_LIST[@]}|$TR ' ' '\n'|$GREP -c "^${QD_HOSTNAME}$"` -eq 0 ]; then
+		if [ `$ECHO ${MACHINE_LIST[@]}|$TR ' ' '\n'|$GREP -c "^${MASTER_HOSTNAME}$"` -eq 0 ]; then
 				((MPP_INDEX=$MPP_INDEX+2))
 		else
-				if [ $1 == $QD_HOSTNAME ]; then
+				if [ $1 == $MASTER_HOSTNAME ]; then
 						MPP_INDEX=1
 				else
 						((MPP_INDEX=$MPP_INDEX+1))
@@ -362,10 +362,10 @@ GET_HOST_ID () {
 CREATE_QE_ARRAY () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		. $CLUSTER_CONFIG
-		if [ `$CAT ${MACHINE_LIST_FILE}|$GREP -c "${QD_HOSTNAME}\$"` -eq 0 ]; then
+		if [ `$CAT ${MACHINE_LIST_FILE}|$GREP -c "${MASTER_HOSTNAME}\$"` -eq 0 ]; then
 				declare -a MACHINE_LIST=(`$CAT $MACHINE_LIST_FILE`)
 		else
-				declare -a MACHINE_LIST=($QD_HOSTNAME `$CAT $MACHINE_LIST_FILE|$GREP -v "${QD_HOSTNAME}\$"`)
+				declare -a MACHINE_LIST=($MASTER_HOSTNAME `$CAT $MACHINE_LIST_FILE|$GREP -v "${MASTER_HOSTNAME}\$"`)
 		fi
 		NUM_QE_HOSTS="${#MACHINE_LIST[@]}"
 		MIRROR_HOST_LIST=("${MACHINE_LIST[@]}" "${MACHINE_LIST[@]}")
@@ -384,7 +384,7 @@ CREATE_QE_ARRAY () {
 		((QDDBID_COUNT=$DBID_COUNT-1))
 		((QDDB_COUNT=$DB_COUNT-1))
 		((QDCONTENT_COUNT=$CONTENT_COUNT-1))
-		QD_PRIMARY_ARRAY=${QD_HOSTNAME}:${QDHOSTID_COUNT}:${QD_LISTNERID}:${QD_PORT}:${QD_DIRECTORY}/${SEG_PREFIX}${QDSEG_COUNT}:${QDDBID_COUNT}:${DATABASE_NAME}${QDDB_COUNT}:${QDCONTENT_COUNT}
+		QD_PRIMARY_ARRAY=${MASTER_HOSTNAME}:${QDHOSTID_COUNT}:${QD_LISTNERID}:${MASTER_PORT}:${MASTER_DIRECTORY}/${SEG_PREFIX}${QDSEG_COUNT}:${QDDBID_COUNT}:${DATABASE_NAME}${QDDB_COUNT}:${QDCONTENT_COUNT}
 		QE_NAME_INDEX=0
 		for QE_NAME in "${MACHINE_LIST[@]}"
 				do
@@ -447,10 +447,10 @@ CREATE_QE_ARRAY () {
 DISPLAY_CONFIG () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		. $CLUSTER_CONFIG
-		if [ `$CAT ${MACHINE_LIST_FILE}|$GREP -c "${QD_HOSTNAME}\$"` -eq 0 ]; then
+		if [ `$CAT ${MACHINE_LIST_FILE}|$GREP -c "${MASTER_HOSTNAME}\$"` -eq 0 ]; then
 				declare -a MACHINE_LIST=(`$CAT $MACHINE_LIST_FILE`)
 		else
-				declare -a MACHINE_LIST=($QD_HOSTNAME `$CAT $MACHINE_LIST_FILE|$GREP -v "${QD_HOSTNAME}\$"`)
+				declare -a MACHINE_LIST=($MASTER_HOSTNAME `$CAT $MACHINE_LIST_FILE|$GREP -v "${MASTER_HOSTNAME}\$"`)
 		fi
 		((NUM_QES=${#MACHINE_LIST[*]}))
 		if [ $MIRRORING -eq 1 ]; then
@@ -466,12 +466,12 @@ DISPLAY_CONFIG () {
 		SET_VAR $QD_PRIMARY_ARRAY
 		LOG_MSG "[INFO]:-MPP Creation Parameters"
 		LOG_MSG "[INFO]:------------------------"
-		LOG_MSG "[INFO]:-QD cluster name      = $CLUSTER_NAME"
-		LOG_MSG "[INFO]:-QD hostname          = $MPP_HOSTNAME"
+		LOG_MSG "[INFO]:-Master cluster name  = $ARRAY_NAME"
+		LOG_MSG "[INFO]:-Master hostname      = $MPP_HOSTNAME"
 		LOG_MSG "[INFO]:-MPP segment prefix   = $SEG_PREFIX"
 		LOG_MSG "[INFO]:-Primary QE Dir #     = $QE_PRIMARY_COUNT"
-		LOG_MSG "[INFO]:-QD Database          = $DATABASE_NAME"
-		LOG_MSG "[INFO]:-QD IP allow          = $IP_ALLOW"
+		LOG_MSG "[INFO]:-Master Database      = $DATABASE_NAME"
+		LOG_MSG "[INFO]:-Master IP allow      = $IP_ALLOW"
 		LOG_MSG "[INFO]:-Total MPP segments   = $TOTAL_SEG"
 		LOG_MSG "[INFO]:-Trusted shell        = $TRUSTED_SHELL"
 		LOG_MSG "[INFO]:-Checkpoint segments  = $CHECK_POINT_SEGMENTS"
@@ -488,10 +488,10 @@ DISPLAY_CONFIG () {
 		else
 				LOG_MSG "[INFO]:-Mirroring config     = OFF"
 		fi
-		LOG_MSG "[INFO]:-QD Primary MPP Configuration"
-		LOG_MSG "[INFO]:-----------------------------"
-		LOG_MSG "[INFO]:-QD port              = $QD_PORT"
-		LOG_MSG "[INFO]:-QD instance dir      = $MPP_DIR"
+		LOG_MSG "[INFO]:-Master Primary MPP Configuration"
+		LOG_MSG "[INFO]:---------------------------------"
+		LOG_MSG "[INFO]:-Master port              = $MASTER_PORT"
+		LOG_MSG "[INFO]:-Master instance dir      = $MPP_DIR"
 		LOG_MSG "[INFO]:-QE Primary MPP Configuration"
 		LOG_MSG "[INFO]:-----------------------------"
 		export QD_DIR=$MPP_DIR
@@ -543,24 +543,24 @@ CREATE_QD_DB () {
 		SET_VAR $QD_PRIMARY_ARRAY
 		CHK_DIR $MPP_DIR
 		if [ $EXISTS -eq 0 ]; then
-				ERROR_EXIT "[FATAL]:-QD directory $MPP_DIR already exists" 2
+				ERROR_EXIT "[FATAL]:-Master directory $MPP_DIR already exists" 2
 		fi
-		LOG_MSG "[INFO]:-Initializing QD Postgres instance $MPP_DIR"
+		LOG_MSG "[INFO]:-Initializing Master Postgres instance $MPP_DIR"
 		RUN_COMMAND "$INITDB -E $ENCODING -D $MPP_DIR"
-		LOG_MSG "[INFO]:-Completed QD instance initialization"
-		$ECHO "#MPP specific configuration parameters for QD instance database" >> ${MPP_DIR}/$PG_CONF
+		LOG_MSG "[INFO]:-Completed Master instance initialization"
+		$ECHO "#MPP specific configuration parameters for Master instance database" >> ${MPP_DIR}/$PG_CONF
 		$ECHO "#--------------------------------------------------------------" >> ${MPP_DIR}/$PG_CONF
-		LOG_MSG "[INFO]:-Setting the QD port to $MPP_PORT"
+		LOG_MSG "[INFO]:-Setting the Master port to $MPP_PORT"
 		$ECHO "port=$MPP_PORT" >> ${MPP_DIR}/$PG_CONF
 		if [ $? -ne 0 ]; then
-				ERROR_EXIT "[FATAL]:-Failed to set QD port in $PG_CONF" 2
+				ERROR_EXIT "[FATAL]:-Failed to set Master port in $PG_CONF" 2
 		fi
-		LOG_MSG "[INFO]:-Completed setting the QD port to $QD_PORT"
+		LOG_MSG "[INFO]:-Completed setting the Master port to $MASTER_PORT"
 		if [ -f $PG_CONF_ADD_FILE ]; then
 				LOG_MSG "[INFO]:-Processing additional configuration parameters"
 				for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
 						do
-						LOG_MSG "[INFO]:-Adding config $NEW_PARAM to QD"
+						LOG_MSG "[INFO]:-Adding config $NEW_PARAM to Master"
 						$ECHO $NEW_PARAM >> ${MPP_DIR}/$PG_CONF
 				done
 		fi
@@ -570,23 +570,23 @@ CREATE_QD_DB () {
 				ERROR_EXIT "[FATAL]:-Failed to set IP Allow in $PG_HBA" 2
 		fi
 		LOG_MSG "[INFO]:-Completed setting IP Allow to $IP_ALLOW"
-		LOG_MSG "[INFO]:-Starting the QD in admin mode"
+		LOG_MSG "[INFO]:-Starting the Master in admin mode"
 		export PGPORT=$MPP_PORT;$PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o "-i -p $MPP_PORT" start >> $LOG_FILE 2>&1
 		if [ $? -ne 0 ]; then
 				$CAT ${MPP_DIR}.log|$TEE -a $LOG_FILE
-				ERROR_EXIT "[FATAL]:-Failed to start the QD database in admin mode" 2
+				ERROR_EXIT "[FATAL]:-Failed to start the Master database in admin mode" 2
 		fi
 		BACKOUT_COMMAND "$KILL -9 \`$PS ax|$GREP postmaster|$GREP ${MPP_PORT}|$AWK '{print \$1}'\`"
-		BACKOUT_COMMAND "$ECHO Removing QD process"
+		BACKOUT_COMMAND "$ECHO Removing Master process"
 		BACKOUT_COMMAND "$RM -f /tmp/.s.PGSQL.${MPP_PORT}*"
-		BACKOUT_COMMAND "$ECHO Removing QD lock files"
+		BACKOUT_COMMAND "$ECHO Removing Master lock files"
 		BACKOUT_COMMAND "$RM -Rf $MPP_DIR"
-		BACKOUT_COMMAND "$ECHO \"Removing QD instance directory\""
+		BACKOUT_COMMAND "$ECHO \"Removing Master instance directory\""
 		BACKOUT_COMMAND "$RM -f ${MPP_DIR}.log"
-		BACKOUT_COMMAND "$ECHO Removing QD log file"
-		LOG_MSG "[INFO]:-Compleleted starting the QD in admin mode"
+		BACKOUT_COMMAND "$ECHO Removing Master log file"
+		LOG_MSG "[INFO]:-Compleleted starting the Master in admin mode"
 		$SLEEP 2
-		UPDATE_MPP $MPP_DBNAME $MPP_PORT "$CLUSTER_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 0 X
+		UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 0 X
 		UPDATE_HOST $MPP_DBNAME $MPP_PORT $MPP_HOSTID $MPP_HOSTNAME
 		UPDATE_LISTENER $MPP_DBNAME $MPP_PORT $MPP_LISTENID $MPP_HOSTID $MPP_PORT $MPP_DIR $MPP_USER $MPP_PASSWD
 		UPDATE_PGDATABASE $MPP_DBNAME $MPP_PORT $MPP_DBID template1 $MPP_CONTENT $MPP_LISTENID t
@@ -608,7 +608,7 @@ UPDATE_PGDATABASE () {
 		CHK_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from $MPP_PGDATABASE_TBL where listenerid=${U_LISTENERID} and content=${U_CONTENT};" 2>/dev/null` >> $LOG_FILE 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
-				ERROR_EXIT "[FATAL]:-Unable to obtain psql count of QD pgdatabase system table" 2
+				ERROR_EXIT "[FATAL]:-Unable to obtain psql count of Master pgdatabase system table" 2
 		fi
 		if [ $CHK_COUNT -eq 0 ]; then
 				LOG_MSG "[INFO]:-Adding $U_CONTENT to system pgdatabase table"
@@ -639,7 +639,7 @@ UPDATE_LISTENER () {
 		CHK_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from $MPP_LISTENER_TBL where listenerid=${U_LISTENERID};" 2>/dev/null` >> $LOG_FILE 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
-				ERROR_EXIT "[FATAL]:-Unable to obtain psql count of QD listener system table" 2
+				ERROR_EXIT "[FATAL]:-Unable to obtain psql count of Master listener system table" 2
 		fi
 		if [ $CHK_COUNT -eq 0 ]; then
 				LOG_MSG "[INFO]:-Adding $U_LISTENERID to system listener table"
@@ -666,21 +666,21 @@ LOAD_QE_SYSTEM_DATA () {
 		for I in "${QE_PRIMARY_ARRAY[@]}"
 				do
 				SET_VAR $I
-				LOG_MSG "[INFO]:-Adding QE $MPP_HOSTNAME to QD system tables"
-				UPDATE_HOST $QD_DBNAME $QD_PORT $MPP_HOSTID $MPP_HOSTNAME
-				UPDATE_LISTENER $QD_DBNAME $QD_PORT $MPP_LISTENID $MPP_HOSTID $MPP_PORT $MPP_DIR $MPP_USER $MPP_PASSWD
-				UPDATE_PGDATABASE $QD_DBNAME $QD_PORT $MPP_DBID template1 $MPP_CONTENT $MPP_LISTENID t
-				LOG_MSG "[INFO]:-Successfully added QE $MPP_HOSTNAME to QD system tables"
+				LOG_MSG "[INFO]:-Adding QE $MPP_HOSTNAME to Master system tables"
+				UPDATE_HOST $QD_DBNAME $MASTER_PORT $MPP_HOSTID $MPP_HOSTNAME
+				UPDATE_LISTENER $QD_DBNAME $MASTER_PORT $MPP_LISTENID $MPP_HOSTID $MPP_PORT $MPP_DIR $MPP_USER $MPP_PASSWD
+				UPDATE_PGDATABASE $QD_DBNAME $MASTER_PORT $MPP_DBID template1 $MPP_CONTENT $MPP_LISTENID t
+				LOG_MSG "[INFO]:-Successfully added QE $MPP_HOSTNAME to Master system tables"
 		done
 		if [ $MIRRORING -eq 1 ]; then
 				for I in "${QE_MIRROR_ARRAY[@]}"
 						do
 						SET_VAR $I
-						LOG_MSG "[INFO]:-Adding QE $MPP_HOSTNAME to QD system tables as mirror"
-						UPDATE_HOST $QD_DBNAME $QD_PORT $MPP_HOSTID $MPP_HOSTNAME
-						UPDATE_LISTENER $QD_DBNAME $QD_PORT $MPP_LISTENID $MPP_HOSTID $MPP_PORT $MPP_DIR $MPP_USER $MPP_PASSWD
-						UPDATE_PGDATABASE $QD_DBNAME $QD_PORT $MPP_DBID template1 $MPP_CONTENT $MPP_LISTENID f
-						LOG_MSG "[INFO]:-Successfully added QE $MPP_HOSTNAME to QD system tables as mirror"
+						LOG_MSG "[INFO]:-Adding QE $MPP_HOSTNAME to Master system tables as mirror"
+						UPDATE_HOST $QD_DBNAME $MASTER_PORT $MPP_HOSTID $MPP_HOSTNAME
+						UPDATE_LISTENER $QD_DBNAME $MASTER_PORT $MPP_LISTENID $MPP_HOSTID $MPP_PORT $MPP_DIR $MPP_USER $MPP_PASSWD
+						UPDATE_PGDATABASE $QD_DBNAME $MASTER_PORT $MPP_DBID template1 $MPP_CONTENT $MPP_LISTENID f
+						LOG_MSG "[INFO]:-Successfully added QE $MPP_HOSTNAME to Master system tables as mirror"
 				done
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -697,7 +697,7 @@ UPDATE_HOST () {
 		CHK_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from $MPP_HOST_TBL where hostid='${U_HOSTID}';" 2>/dev/null` >> $LOG_FILE 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
-				ERROR_EXIT "[FATAL]:-Unable to obtain psql count of QD host system table" 2
+				ERROR_EXIT "[FATAL]:-Unable to obtain psql count of Master host system table" 2
 		fi
 		if [ $CHK_COUNT -eq 0 ]; then
 				LOG_MSG "[INFO]:-Adding $U_HOSTNAME to system host table"
@@ -779,7 +779,7 @@ CREATE_QES_PRIMARY () {
 				BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
 				BACKOUT_COMMAND "$ECHO \"Stopping QE instance on $MPP_HOSTNAME\""
 				LOG_MSG "[INFO]:-Successfully started QE instance on $MPP_HOSTNAME"
-				UPDATE_MPP $MPP_DBNAME $MPP_PORT "$CLUSTER_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
+				UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
 		done
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -822,7 +822,7 @@ CREATE_QES_MIRROR () {
 				BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
 				BACKOUT_COMMAND "$ECHO \"Stopping QE instance on $MPP_HOSTNAME\""
 				LOG_MSG "[INFO]:-Successfully started QE mirror instance on $MPP_HOSTNAME"
-				UPDATE_MPP $MPP_DBNAME $MPP_PORT "$CLUSTER_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
+				UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
 		done
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -901,7 +901,7 @@ DISPLAY_CONFIG
 CREATE_QD_DB		
 
 if [ $QD_ONLY ]; then
-		LOG_MSG "[INFO]:-QD only End Main"
+		LOG_MSG "[INFO]:-Master only End Main"
 		exit 0
 fi
 
@@ -923,10 +923,10 @@ LOG_MSG "[INFO]:-MPP cluster successfully created"
 LOG_MSG "[INFO]:-------------------------------------------------------"
 LOG_MSG "[INFO]:-To access the mpp scripts for this cluster:"
 LOG_MSG "[INFO]:-In user $USER_NAME environment file add following line"
-LOG_MSG "[INFO]:-export QD_DATA_DIRECTORY=${QD_DIRECTORY}/${SEG_PREFIX}0"
-LOG_MSG "[INFO]:-or, use -d ${QD_DIRECTORY}/${SEG_PREFIX}0"
+LOG_MSG "[INFO]:-export MASTER_DATA_DIRECTORY=${MASTER_DIRECTORY}/${SEG_PREFIX}0"
+LOG_MSG "[INFO]:-or, use -d ${MASTER_DIRECTORY}/${SEG_PREFIX}0"
 LOG_MSG "[INFO]:-option for the mpp scripts"
-LOG_MSG "[INFO]:-Example ./mppstate.sh -d ${QD_DIRECTORY}/${SEG_PREFIX}0"
+LOG_MSG "[INFO]:-Example ./mppstate.sh -d ${MASTER_DIRECTORY}/${SEG_PREFIX}0"
 LOG_MSG "[INFO]:-Script log file = $LOG_FILE"
 LOG_MSG "[INFO]:-Script backout file = $BACKOUT_FILE"
 LOG_MSG "[INFO]:-To remove cluster, run"
@@ -936,7 +936,7 @@ if [ $STANDBY_QD_IP ] && [ $STANDBY_QD_MASK ]; then
 		if [ $STANDBY_QD_NAME ]; then
 				$WORKDIR/mppinitstandby.bsh -h $STANDBY_QD_NAME
 		else
-				LOG_MSG "[INFO]:-To initialize standby QE run mppinitstandby.bsh -h <standby QD hostname>"
+				LOG_MSG "[INFO]:-To initialize standby QE run mppinitstandby.bsh -h <standby Master hostname>"
 		fi
 fi
 
