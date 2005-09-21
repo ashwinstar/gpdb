@@ -439,7 +439,9 @@ TupleChunkListItem RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 			
 		if (FD_ISSET(conn->sockfd, &rset))
 		{		
-			elog(DEBUG5, "RecvTupleChunkFromAny() (fd %d) %d/%d", conn->sockfd, motNodeID, index);
+#ifdef AMS_VERBOSE_LOGGING
+			elog(DEBUG3, "RecvTupleChunkFromAny() (fd %d) %d/%d", conn->sockfd, motNodeID, index);
+#endif
 			tcItem = RecvTupleChunk(conn);
 
 			*srcRoute = index;
@@ -530,7 +532,7 @@ static inline TupleChunkListItem RecvTupleChunk(MotionConn *conn)
 #endif
 		conn->msgPos += conn->msgSize;
 	}
-	
+
 	conn->msgSize = 0;
 
 	return firstTcItem;
@@ -568,12 +570,12 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 	struct timeval startTime;
 	struct timeval snapTime;
 	struct timeval stopTime;
-	
+
 	int incoming_count 		  = 0;
 	int outgoing_count 		  = 0;
 	int expectedTotalIncoming = 0;
 	int expectedTotalOutgoing = 0;
-	
+
 	/* we can have at most one of these. */
 	MotionLayerState *sendingMotionState = NULL;
 
@@ -696,15 +698,15 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 				{			
 					elog(DEBUG5, "Sending a register message to sockfd: %d", conn->sockfd);
 					sendRegisterMessage(sendingMotionState, conn);
-					
+
 					/*no longer interested in this for now.*/
 					FD_CLR(conn->sockfd, &wset);
-					
+
 					outgoing_count++;
 					if (--n == 0)
 						break; /* leave for loop */
 				}
-				
+
 				if (conn->hasMirrorConn)
 				{
 					if (FD_ISSET(conn->mirrorConn->sockfd, &wwset))
