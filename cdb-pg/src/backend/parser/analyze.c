@@ -1441,6 +1441,8 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 	MppPolicy * policy = NULL;
 	int colindex = 0;
 	int maxattrs = 200;
+	int numUniqueIndexes = 0;
+	
 	if ( Mpp_role != MPP_ROLE_DISPATCH )
 	{
 		*policyp = NULL;
@@ -1477,6 +1479,71 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 		}
 		if (distributedBy)
 			elog( NOTICE,"Table doesn't have 'distributed by' clause, defaulting to primary key columns");
+
+
+	}
+	
+	
+	if (cxt && cxt->ixconstraints != NULL)
+	{
+		
+		ListCell * lc = NULL;
+		
+		foreach(lc,cxt->ixconstraints)
+		{
+
+			IndexStmt * index = lfirst(lc);
+			if (index->unique)
+			{
+				numUniqueIndexes++;
+				if (cxt->pkey)
+				{
+					ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					errmsg("Bizgres MPP does not allow having both PRIMARY KEY and UNIQUE contraints")));
+				}
+			}
+		}
+		if (numUniqueIndexes>1)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					errmsg("Bizgres MPP does not allow having multiple UNIQUE contraints")));
+		}
+	}
+	
+	if (distributedBy==0 && cxt && cxt->ixconstraints != NULL && numUniqueIndexes > 0)
+	{
+		ListCell * lc = NULL;
+		
+		foreach(lc,cxt->ixconstraints)
+		{
+
+			IndexStmt * index = lfirst(lc);
+			if (index->unique)
+			{
+			List * indexParams;
+			ListCell * ip = NULL;
+			Assert(index->indexParams != NULL);
+			indexParams = index->indexParams;
+	
+			foreach(ip, indexParams)
+			{
+				IndexElem  *iparam = lfirst(ip);
+				if (iparam && iparam->name != 0)
+				{
+					 
+					if (distributedBy)
+						distributedBy = lappend(distributedBy, (Node *) makeString(iparam->name));
+					else
+						distributedBy = list_make1((Node *) makeString(iparam->name));
+					 
+				}
+			}
+			}
+		}
+		if (distributedBy)
+			elog( NOTICE,"Table doesn't have 'distributed by' clause, defaulting to unique column(s)");
 
 
 	}
