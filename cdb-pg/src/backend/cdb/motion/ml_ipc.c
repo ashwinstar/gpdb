@@ -108,9 +108,9 @@ typedef struct MotionLayerState
 
 	/* highest file descriptor in the readSet. */
 	int highReadSock;
+
+	int valid;
 } MotionLayerState;
-
-
 
 /*DOH: include a routeId and move away from using contentId and
  *	   isPrimary for validation.  use ip address and port instead.
@@ -138,8 +138,14 @@ int listenerFd;
  */
 struct sockaddr_in serv_addr;
 
+#ifdef USE_MLSHASH
 /* Hash table mapping motion node Id --> MotionLayerState */
 HTAB *hashtab;	
+#else
+int mlsSize=0;
+MotionLayerState *mlsStates=NULL;
+#define MLS_INITIAL_SIZE (10)
+#endif
 
 /* TCP port the Interconnect listens on for incoming connections from other
  * remote Interconnect entities.  The listenerPort is assigned at process startup
@@ -199,6 +205,7 @@ static inline TupleChunkListItem RecvTupleChunk(MotionConn *conn);
 /* See ml_ipc.h */
 void InitMotionLayerIPC(void)
 {
+#ifdef USE_MLSHASH
 	HASHCTL hctl;
 	
 	/* Initialize our hashtable */
@@ -211,6 +218,7 @@ void InitMotionLayerIPC(void)
 		ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
 						errmsg("ml_ipc Could not allocate hash table for MotionState info.")));
 	}
+#endif
 
 	incompleteConns = NIL;
 
@@ -232,8 +240,10 @@ void CleanUpMotionLayerIPC(void)
 	elog(DEBUG3, "CleanUpMotionLayerIPC()");
 #endif
 
+#ifdef USE_MLSHASH	
 	hash_destroy(hashtab);
-	
+#endif
+
 	/* close down the Interconnect listener socket. */
 	shutdown(listenerFd, SHUT_RDWR);
 	close(listenerFd);
@@ -581,6 +591,17 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 
 	Assert(!activated);
 
+#ifndef USE_MLSHASH
+	if (mlsStates != NULL)
+	{
+		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						errmsg("SetupInterconnect: MLS table not cleaned.")));
+	}
+	mlsSize = MLS_INITIAL_SIZE;
+	mlsStates = palloc(MLS_INITIAL_SIZE * sizeof(MotionLayerState));
+	memset(mlsStates, 0, MLS_INITIAL_SIZE * sizeof(MotionLayerState));
+#endif
+
 	gettimeofday(&snapTime, NULL);
 	elog(DEBUG3, "in SetupInterconnect @%d time is %ld.%ld",
 		 __LINE__, (long int)snapTime.tv_sec, (long int)snapTime.tv_usec);
@@ -855,6 +876,7 @@ void TeardownInterconnect(void)
 				conn->sockfd = -1;
 			}
 		}
+		pfree(pEntry->conns);
 	}
 
 	/* If there are clients waiting on our listener; we *must*
@@ -898,6 +920,15 @@ void TeardownInterconnect(void)
 	}
 
 	incompleteConns = NIL;
+
+#ifndef USE_MLSHASH
+	if (mlsStates != NULL)
+	{
+		pfree(mlsStates);
+		mlsStates = NULL;
+		mlsSize = 0;
+	}
+#endif
 
 	activated = false;
 	sliceTable = NULL;
@@ -1003,6 +1034,7 @@ static int listenerSetup(void)
  */
 static MotionLayerState *createMotionState(int16 motNodeID, int numConns)
 {
+#ifdef USE_MLSHASH
 	MotionLayerState 	*pEntry;
 	bool 				found;
 	int					i;
@@ -1027,6 +1059,36 @@ static MotionLayerState *createMotionState(int16 motNodeID, int numConns)
 						errmsg("Interconect Error: A HTAB entry for motion node %d already exists.", motNodeID),
 						errdetail("conns %p numConns %d first sock %d highreadsock %d", pEntry->conns, pEntry->numConns, pEntry->conns[0].sockfd, pEntry->highReadSock)));
     }
+#else
+	MotionLayerState	*pEntry;
+	int					i;
+
+	if (motNodeID > mlsSize)
+	{
+		/* increase size of our table */
+		MotionLayerState *newTable;
+
+		newTable = repalloc(mlsStates, motNodeID * sizeof(MotionLayerState));
+		if (newTable == NULL)
+		{
+			ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
+							errmsg("Could not re-allocate motion layer state table.")));
+		}
+		/* zero-out the new piece at the end*/
+		memset(&mlsStates[mlsSize], 0, (motNodeID - mlsSize) * sizeof(MotionLayerState));
+	}
+
+	pEntry = &mlsStates[motNodeID - 1];
+
+	if (pEntry->valid)
+	{
+		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						errmsg("Interconect Error: A HTAB entry for motion node %d already exists.", motNodeID),
+						errdetail("conns %p numConns %d first sock %d highreadsock %d", pEntry->conns, pEntry->numConns, pEntry->conns[0].sockfd, pEntry->highReadSock)));
+	}
+
+	pEntry->valid = 1;
+#endif
 
     pEntry->motNodeId 	   = motNodeID;
     pEntry->numConns 	   = numConns;
@@ -1058,6 +1120,7 @@ static MotionLayerState *createMotionState(int16 motNodeID, int numConns)
  */
 static inline MotionLayerState *getMotionState(int16 motNodeID)
 {
+#ifdef USE_MLS_HASH
 	MotionLayerState 	*pEntry;
 	bool 				found;
 	
@@ -1080,6 +1143,21 @@ static inline MotionLayerState *getMotionState(int16 motNodeID)
 	}
 
 	return pEntry;
+#else
+	MotionLayerState 	*pEntry=NULL;
+
+	if (motNodeID > mlsSize || mlsStates[motNodeID - 1].valid == 0)
+	{
+		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+               errmsg("Interconect Error: Unexpected Motion Node Id: %d.  This means"
+                   " a motion node that wasn't setup is requesting interconnect"
+                   " resources.", motNodeID)));
+	}
+	else
+		pEntry = &mlsStates[motNodeID - 1];
+
+	return pEntry;
+#endif
 }
 
 
@@ -1097,12 +1175,30 @@ static inline MotionLayerState *getMotionState(int16 motNodeID)
  */
 static MotionLayerState *removeMotionState(int16 motNodeID)
 {
+#ifdef USE_MLSHASH
 	MotionLayerState 	*pEntry;
 	bool 				found;
 	
 	pEntry = (MotionLayerState *)hash_search(hashtab, &motNodeID, HASH_REMOVE, &found);
 
 	return pEntry;
+#else
+	MotionLayerState 	*pEntry=NULL;
+
+	if (motNodeID > mlsSize || mlsStates[motNodeID - 1].valid == 0)
+	{
+		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						errmsg("Interconect Error: Unexpected Motion Node Id: %d. During remove.",
+							   motNodeID)));
+	}
+	else
+	{
+		mlsStates[motNodeID - 1].valid = 0;
+		pEntry = &mlsStates[motNodeID - 1];
+	}
+
+	return pEntry;
+#endif
 }
 
 
