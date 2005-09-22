@@ -893,7 +893,7 @@ thread_DispatchCommand(void *arg)
 				for (i = 0; i < stillRunningCount; i++)
 				{
 					segdbDesc = stillRunning[i].segdbDesc;
-					if (!FtsTestConnection(segdbDesc))
+					if (!FtsTestConnection(segdbDesc->segment_database_info))
 					{
 						PQExpBufferData buffer;
 

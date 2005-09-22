@@ -35,6 +35,7 @@
 #include "cdb/cdbgang.h"
 #include "cdb/ml_ipc.h"   /*listener_setup*/
 #include "cdb/cdbtm.h"
+#include "cdb/cdbfts.h"
 
 
 
@@ -44,7 +45,7 @@
  */
 static int CdbComponentDatabaseInfoCompare(const void *p1, const void *p2);
 static void freeCdbComponentDatabaseInfo( CdbComponentDatabaseInfo *cdi );
-
+static CdbComponentDatabases *getCdbComponentInfo(void);
 /*
  * getMppMpp() causes the mpp.mpp table's singleton row to be read into a global structure
  * This is called from cdblink_setup().
@@ -268,7 +269,7 @@ void freeMppMpp(void)
  * Storage for the SegmentInstances block and all subsidiary
  * strucures are allocated from the caller's context.
  */
-CdbComponentDatabases *getCdbComponentDatabases(void)
+static CdbComponentDatabases *getCdbComponentInfo(void)
 {
 	CdbComponentDatabases	*component_databases = NULL;
 
@@ -714,6 +715,39 @@ CdbComponentDatabases *getCdbComponentDatabases(void)
 	heap_close(mpp_host_rel, AccessShareLock);
 	
 	return component_databases;
+}
+
+/*
+ * getCdbComponentDatabases
+ *
+ * Obtains a structure representing the following JOIN:
+ *
+ *   SELECT 
+ *           d.dbid,
+ *           d.content,
+ *           d.isprimary, 
+ *           h.hostname,
+ *           l.port, 
+ *           l.datadir, 
+ *           l.listenerid,
+ *           l.mppsuperuser,
+ *           l.mppsuperpswd
+ *       FROM
+ *           mpp.host h,
+ *           mpp.listener l,
+ *           mpp.pgdatabase d,
+ *       WHERE
+ *           h.hostid = l.hostid
+ *           AND l.listenerid = d.listenerid
+ *       ORDER BY 
+ *           d.dbid, d.isprimary DESC
+ *
+ * Storage for the SegmentInstances block and all subsidiary
+ * strucures are allocated from the caller's context.
+ */
+CdbComponentDatabases *getCdbComponentDatabases(void)
+{
+    return applyTransientState(getCdbComponentInfo());
 }
 
 

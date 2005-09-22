@@ -330,7 +330,7 @@ createGang(GangType type, int size, int content)
 	 */
 	if (successful_connections != newGangDefinition->size &&
 		((type != GANGTYPE_MIRROR_WRITER && mirroringNotConfigured) ||
-		 !isMirroringEnabled()))
+		 !isFTSEnabled()))
 	{
 		for (i = 0; i < segdb_count; i++)
 		{
@@ -361,13 +361,16 @@ createGang(GangType type, int size, int content)
 			 * claenup and rollback current DTM transaction
 			 */
 			discardDtxTransaction();
+            
+             /* clean the gang before error out */
+             disconnectAndDestroyGang(newGangDefinition);
+             segdbDesc->error_message = buffer.data;
 
 			ereport(FATAL,
 					(errcode
 				 (ERRCODE_SQLSERVER_REJECTED_ESTABLISHMENT_OF_SQLCONNECTION),
 					 errmsg(buffer.data),
 					 errdetail("see previous warnings or server log")));
-			segdbDesc->error_message = buffer.data;
 		}
 	}
 
@@ -380,10 +383,19 @@ createGang(GangType type, int size, int content)
 
 	if (successful_connections != newGangDefinition->size)
 	{
-		FtsHandleGangConnectionFailure(newGangDefinition->db_descriptors,
+        bool errorOut;
+        if (type == GANGTYPE_MIRROR_WRITER && successful_connections == 0)
+            mirroringNotConfigured = true;
+            
+		errorOut = FtsHandleGangConnectionFailure(newGangDefinition->db_descriptors,
 									   newGangDefinition->size);
-		disconnectAndDestroyGang(newGangDefinition);
-		newGangDefinition->size = 0;
+        
+        disconnectAndDestroyGang(newGangDefinition);
+        
+        if (errorOut)
+            elog(ERROR, "MPP detects segment failures, system is reconnected" );
+
+         newGangDefinition = NULL;
 	}
 	return newGangDefinition;
 }
@@ -454,7 +466,9 @@ buildGangDefinition(GangType type, int size, int content)
 
 	newGangDefinition->all_valid_segdbs_connected = false;
 
-
+    /* retry transient failed dbs */
+    if (type == GANGTYPE_PRIMARY_WRITER)
+        FtsEvaluateTransientState(); 
 
 	cdb_component_dbs = getCdbComponentDatabases();
 
@@ -465,21 +479,6 @@ buildGangDefinition(GangType type, int size, int content)
 		elog(ERROR, "building Gang:  MPP schema not populated");
 		return NULL;
 	}
-
-	/*
-	 * setting mirroring flag
-	 */
-	if (cdb_component_dbs->total_segments <
-		cdb_component_dbs->total_segment_dbs)
-	{
-		enableMirroring();
-	}
-	else
-	{
-		mirroringNotConfigured = true;
-	}
-
-
 
 	newGangDefinition->segdb_count = cdb_component_dbs->total_segments;
 	/*
@@ -575,7 +574,7 @@ buildGangDefinition(GangType type, int size, int content)
 				}
 				else
 				{
-					elog(PANIC, "building Gang:  No primary segdb found!!!!");
+					elog(PANIC, "building Gang:  No primary segdb found, both primary and mirror segdb could be down !!!!");
 					continue;
 				}
 			}
@@ -646,9 +645,15 @@ buildGangDefinition(GangType type, int size, int content)
 	{
 		elog(PANIC, "Not all primary dbs is active and connected");
 	}
-	else if (type == GANGTYPE_MIRROR_WRITER && seg_count == 0)
+	else if (type == GANGTYPE_MIRROR_WRITER)
 	{
-		return NULL;
+        /* setup mirroring */
+        if (seg_count == 0)
+        {
+            disableFTS();
+            mirroringNotConfigured = true;
+            return NULL;
+        }
 	}
 
 	newGangDefinition->size = seg_count;
@@ -861,9 +866,9 @@ allocateGang(GangType type, int size, int content)
 				 * try twice for creating gang
 				 */
 				gp = primaryWriterGang = createGang(type, size, content);
-				if (gp->size == 0)
+				if (gp == NULL)
 					gp = primaryWriterGang = createGang(type, size, content);
-			}
+             }
 			else
 				gp = primaryWriterGang;
 			break;
@@ -875,13 +880,8 @@ allocateGang(GangType type, int size, int content)
 				 * try twice for creating gang
 				 */
 				gp = mirrorWriterGang = createGang(type, size, content);
-				if (gp != NULL && gp->size == 0)
-				{
+				if (gp == NULL && !mirroringNotConfigured)
 					gp = mirrorWriterGang = createGang(type, size, content);
-				}
-
-				if (gp == NULL)
-					mirroringNotConfigured = true;
 			}
 			else
 				gp = mirrorWriterGang;
@@ -917,8 +917,13 @@ allocateGang(GangType type, int size, int content)
 				{
 					elog(DEBUG4, "creating a new gang");
 					gp = createGang(type, size, content);
+                     //try again
+                     if (gp == NULL)
+                         gp = createGang(type, size, content);
 				}
 				Assert(gp != NULL);
+                 if (gp == NULL)
+                    elog(ERROR, "No reader gang allocated");
 
 				if (allocatedReaderGangsN != NIL)
 					elog(DEBUG4, "allocatedReaderGangsN Exists");
@@ -963,7 +968,12 @@ allocateGang(GangType type, int size, int content)
 				{
 					elog(DEBUG4, "creating a new 1 gang for content %d", content);
 					gp = createGang(type, size, content);
+                     //try again
+                     if (gp->size == 0)
+                         gp = createGang(type, size, content);
 				}
+                 if (gp == NULL)
+                     elog(ERROR, "No reader gang allocated");
 				allocatedReaderGangs1 = lappend(allocatedReaderGangs1, gp);
 
 			}
@@ -1208,10 +1218,13 @@ disconnectAndDestroyGang(Gang * gp)
 	/*
 	 * Discard the segment array and the cluster descriptor
 	 */
-	pfree(gp->db_descriptors);
-	gp->db_descriptors = NULL;
+    pfree(gp->db_descriptors);
+    gp->db_descriptors = NULL;
+    gp->size = 0;
 	pfree(gp);
+    /* this is confusing, gp is local variable, no need to null it.
 	gp = NULL;
+    */
 	elog(DEBUG2, "disconnectAndDestroyGang done");
 
 
@@ -1346,9 +1359,9 @@ disconnectAndDestroyAllGangs(void)
 	availableReaderGangs1 = NIL;
 
 	disconnectAndDestroyGang(primaryWriterGang);
-	primaryWriterGang = NULL;
+    primaryWriterGang=NULL;
 	disconnectAndDestroyGang(mirrorWriterGang);
-	mirrorWriterGang = NULL;
+    mirrorWriterGang=NULL;
 	elog(DEBUG2, "disconnectAndDestroyAllGangs done");
 }
 
@@ -1393,7 +1406,7 @@ reconnectSegDB(void *p_failedDB)
 		 * set the orginal db back, otherwise it is set to NULL which may cause
 		 * * dispatch code to fail.
 		 */
-		if (!isMirroringEnabled())
+		if (!isFTSEnabled())
 			failedDB->conn = orig_conn;
 		else
 			PQfinish(orig_conn);
@@ -1422,7 +1435,7 @@ detectFailedConnections(void)
 			SegmentDatabaseDescriptor *segdbDesc =
 			&(primaryWriterGang->db_descriptors[i]);
 
-			if (!FtsTestConnection(segdbDesc))
+			if (!FtsTestConnection(segdbDesc->segment_database_info))
 				markSegDBStatus(segdbDesc->segment_database_info->dbid, false);
 		}
 	}
@@ -1437,7 +1450,7 @@ detectFailedConnections(void)
 			SegmentDatabaseDescriptor *segdbDesc =
 			&(mirrorWriterGang->db_descriptors[i]);
 
-			if (!FtsTestConnection(segdbDesc))
+			if (!FtsTestConnection(segdbDesc->segment_database_info))
 				markSegDBStatus(segdbDesc->segment_database_info->dbid, false);
 		}
 	}
@@ -1447,7 +1460,16 @@ detectFailedConnections(void)
 CdbComponentDatabases *
 getComponentDatabases(void)
 {
-    if (cdb_component_dbs == NULL)
-        cdb_component_dbs = getCdbComponentDatabases();
-    return cdb_component_dbs;
+    return (cdb_component_dbs == NULL)? getCdbComponentDatabases():cdb_component_dbs;
+}
+
+bool
+isGangExisted(void)
+{
+    return (primaryWriterGang != NULL ||
+            mirrorWriterGang != NULL ||
+            allocatedReaderGangsN != NIL ||
+            availableReaderGangsN != NIL ||
+            allocatedReaderGangs1 != NIL ||
+            availableReaderGangs1 != NIL);
 }

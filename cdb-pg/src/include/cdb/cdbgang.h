@@ -40,5 +40,7 @@ extern void detectFailedConnections(void);
 
 extern CdbComponentDatabases * getComponentDatabases(void);
 
+extern bool isGangExisted(void);
+
 
 #endif   /* _CDBGANG_H_ */
