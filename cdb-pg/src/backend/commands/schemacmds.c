@@ -313,7 +313,7 @@ RemoveSchema(List *names, DropBehavior behavior)
 		
 		initStringInfo( &buffer );
 
-		appendStringInfo(&buffer, "DROP SCHEMA %s ", namespaceName);
+		appendStringInfo(&buffer, "DROP SCHEMA %s CASCADE", namespaceName);
 
 		CdbDoCommand( buffer.data, false );
 
