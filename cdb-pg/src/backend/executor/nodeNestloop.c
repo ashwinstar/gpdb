@@ -3,6 +3,7 @@
  * nodeNestloop.c
  *	  routines to support nest-loop joins
  *
+ * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -140,7 +141,17 @@ ExecNestLoop(NestLoopState *node)
 			 */
 			if (TupIsNull(outerTupleSlot))
 			{
-				ENL1_printf("no outer tuple, ending join");
+                ENL1_printf("no outer tuple, ending join");
+
+                /*
+                 * CDB: If outer tuple stream was empty, notify inner
+                 * subplan that we won't fetch its results, so QEs in
+                 * lower gangs won't keep trying to send to us.  Else
+                 * we have reached inner end-of-data at least once and
+                 * squelch is not needed.
+                 */
+                if (node->nl_Untouched)
+                    ExecSquelchNode(innerPlan);
 				return NULL;
 			}
 
@@ -149,6 +160,7 @@ ExecNestLoop(NestLoopState *node)
 			econtext->ecxt_outertuple = outerTupleSlot;
 			node->nl_NeedNewOuter = false;
 			node->nl_MatchedOuter = false;
+            node->nl_Untouched = false;     /*CDB*/
 
 			/*
 			 * now rescan the inner plan
@@ -350,6 +362,7 @@ ExecInitNestLoop(NestLoop *node, EState *estate)
 	nlstate->js.ps.ps_TupFromTlist = false;
 	nlstate->nl_NeedNewOuter = true;
 	nlstate->nl_MatchedOuter = false;
+    nlstate->nl_Untouched = true;       /*CDB*/
 
 	NL1_printf("ExecInitNestLoop: %s\n",
 			   "node initialized");
@@ -421,4 +434,5 @@ ExecReScanNestLoop(NestLoopState *node, ExprContext *exprCtxt)
 	node->js.ps.ps_TupFromTlist = false;
 	node->nl_NeedNewOuter = true;
 	node->nl_MatchedOuter = false;
+    /* CDB: We intentionally leave node->nl_Untouched unchanged on ReScan. */
 }

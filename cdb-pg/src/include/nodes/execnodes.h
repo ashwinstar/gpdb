@@ -4,6 +4,7 @@
  *	  definitions for executor state nodes
  *
  *
+ * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -280,11 +281,11 @@ typedef struct ResultRelInfo
  *
  * This structure represents the global information about a worker process.
  * It is contructed on the entry process (QD) and transmitted as part of
- * the global slice table to the involved QEs.  Note that this is an 
+ * the global slice table to the involved QEs.  Note that this is an
  * immutable, fixed-size structure so it can be held in a contiguous
  * array. In the Slice node, however, it is held in a List.
  * ----------------
- */ 
+ */
  typedef struct CdbProcess
  {
 	NodeTag type;
@@ -312,8 +313,8 @@ typedef struct ResultRelInfo
  * MPP Plan Slice information
  *
  * These structures summarize how a plan tree is sliced up into separate
- * units of execution or slices. A slice will execute on a each worker within 
- * a gang of processes. Some gangs have a worker process on each of several 
+ * units of execution or slices. A slice will execute on a each worker within
+ * a gang of processes. Some gangs have a worker process on each of several
  * databases, others have a single worker.
  * ----------------
  */
@@ -321,12 +322,12 @@ typedef struct Slice
 {
 	NodeTag type;
 	
-	int sliceIndex;			/* The index in the global slice table of this 
+	int sliceIndex;			/* The index in the global slice table of this
 							 * slice.  The root slice of the main plan is
 							 * always 0. Slices that have senders at their
 							 * local root have a sliceIndex equal to the
-							 * motionID of their sender Motion. 
-							 * 
+							 * motionID of their sender Motion.
+							 *
 							 * Undefined slices should have this set to
 							 * -1.
 							 */
@@ -334,31 +335,31 @@ typedef struct Slice
 	int rootIndex;			/* The root slice of the slice tree of which
 							 * this slice is a part.
 							 */
-							 
+							
 	GangType gangType;		/* What kind of gang does this slice need? */
 	
-	int gangSize;			/* How many gang members needed? 
+	int gangSize;			/* How many gang members needed?
 							 *
 							 * This may seem redundant, but it is set before
 							 * the process lists below and used to decide how
 							 * to initialize them.
 							 */
-							 
+							
 	struct Gang *primaryGang;
 	struct Gang *mirrorGang;   /* These are significant ONLY in the master
-							 * slice table on the QD where they are used to 
+							 * slice table on the QD where they are used to
 							 * note the gangs assigned by the the executor
-							 * factory during gang allocation.  
+							 * factory during gang allocation.
 							 * They correspond to the CDBProcessLists below.
 							 */
-							 
+							
 	int parentIndex;		/* The index in the global slice table (origin
 							 * 0) of the parent of this slice, or -1 if
 							 * this is a root slice
 							 */
-							 
+							
 	List *children;			/* An integer list of indices in the global slice
-							 * table (origin  0) of the child slices of 
+							 * table (origin  0) of the child slices of
 							 * this slice, or -1 if this is a leaf slice.
 							 * A child slice corresponds to a receiving
 							 * motion in this slice.
@@ -370,28 +371,28 @@ typedef struct Slice
 							 *
 							 * The number of processes must agree with the
 							 * the plan slice to be implemented.  In MPP 2
-							 * the possibilities are 1 for a slice that 
-							 * operates on a single stream of tuples (e.g., 
-							 * the receiver of a fixed motion, a 1-gang), or 
-							 * the number of segments (e.g., a parallel 
-							 * operation or the receiver of the results of a 
+							 * the possibilities are 1 for a slice that
+							 * operates on a single stream of tuples (e.g.,
+							 * the receiver of a fixed motion, a 1-gang), or
+							 * the number of segments (e.g., a parallel
+							 * operation or the receiver of the results of a
 							 * parallel operation, an N-gang).
 							 *
 							 * The processes of an N-gang must be in hash
-							 * value order -- a hash value of H used to direct 
+							 * value order -- a hash value of H used to direct
 							 * an input tuple to this slice will direct it to
 							 * the H+1st process in the list.
 							 */
-							 
-	List *mirrorProcesses;	/* A list of CDBProcess nodes corresponding to 
-							 * the mirrors of the primaryProcesses list entries, 
+							
+	List *mirrorProcesses;	/* A list of CDBProcess nodes corresponding to
+							 * the mirrors of the primaryProcesses list entries,
 							 * or NIL if no mirroring is needed in this slice.
 							 */
 } Slice;
 
 /* The SliceTable is a list of Slice structures organized into root slices
  * and motion slices as follows:
- * 
+ *
  * Slice 0 is the root slice of plan as a whole.
  * Slices 1 through nMotion are motion slices with a sending motion at
  *  the root of the slice.
@@ -400,7 +401,7 @@ typedef struct Slice
  * There may be unused slices in case the plan contains subplans that
  * are  not initPlans.  (This won't happen unless MPP decides to support
  * subplans similarly to PostgreSQL, which isn't the current plan.)
- * 
+ *
  */
 typedef struct SliceTable
 {
@@ -414,7 +415,7 @@ typedef struct SliceTable
 	
 } SliceTable;
 
- 
+
 
 /* ----------------
  *	  EState information
@@ -1102,6 +1103,7 @@ typedef struct NestLoopState
 	JoinState	js;				/* its first field is NodeTag */
 	bool		nl_NeedNewOuter;
 	bool		nl_MatchedOuter;
+    bool        nl_Untouched;   /*CDB */
 	TupleTableSlot *nl_NullInnerTupleSlot;
 } NestLoopState;
 
@@ -1376,8 +1378,8 @@ typedef struct MotionState
 								 * in another motion node receiving. */
 							
 	struct timeval motionTime;  /* time accumulator for time spent in motion node.  For sending motion node
-							     * it is just the amount of time actually sending the tuple thru the 
-								 * interconnect.  For receiving motion node, it is the time spent waiting 
+							     * it is just the amount of time actually sending the tuple thru the
+								 * interconnect.  For receiving motion node, it is the time spent waiting
 								 * and processing of the next incoming tuple.
 								 */
 		
