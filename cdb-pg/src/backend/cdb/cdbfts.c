@@ -311,7 +311,7 @@ void markSegDBTransientState( int dbid, bool state )
     {
         /* set transient state if state is false */
         int i, segindex;
-        CdbComponentDatabaseInfo *segDb;
+        CdbComponentDatabaseInfo *segDb=NULL;
         CdbComponentDatabases *cdb_component_dbs = getComponentDatabases();        
         *(ftsSegDBTransientState+*ftsSegDBTransientCount) =
                                         SET_TRANSIENT_SEGDB_STATE_INVALID(dbid);
