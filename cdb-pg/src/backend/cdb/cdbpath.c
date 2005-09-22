@@ -707,11 +707,14 @@ cdbpath_motion_for_join(Query      *root,
                                              &small->move_to))
         {}
 
-        /* No usable equijoin preds.  Replicate smaller rel if possible. */
+        /* No usable equijoin preds.  Replicate one rel if possible. */
         /* MPP TODO: Consider number of seg dbs per host. */
         else if (!small->require_existing_order &&
                  !small->oj_preserved)
             CdbPathLocus_MakeReplicated(&small->move_to);
+        else if (!large->require_existing_order &&
+                 !large->oj_preserved)
+            CdbPathLocus_MakeReplicated(&large->move_to);
 
         /* Last resort: Move both rels to qDisp. */
         else
