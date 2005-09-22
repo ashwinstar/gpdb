@@ -115,6 +115,7 @@ static char *endloc;
 static bool buf_done;			/* finished processing the current buffer */
 static bool line_done;			/* finished processing the whole line or
 * stopped in the middle */
+static int last_hash_field;
 /* these are for CSV format */
 static bool	in_quote;
 static bool last_was_esc;
@@ -1368,7 +1369,7 @@ copy_in_error_callback(void *arg)
 			/* error is relevant to a particular column */
 			limit_printout_length(&attr_buf);
 			
-			if(Mpp_role != MPP_ROLE_EXECUTE)
+			if(Mpp_role == MPP_ROLE_EXECUTE)
 				errcontext("COPY %s, line %d of this segment db input data, column %s",
 						   copy_relname, copy_lineno, copy_attname);				
 			else
@@ -1383,7 +1384,7 @@ copy_in_error_callback(void *arg)
 			{
 				limit_printout_length(&line_buf);
 				
-				if(Mpp_role != MPP_ROLE_EXECUTE) 
+				if(Mpp_role == MPP_ROLE_EXECUTE) 
 					errcontext("COPY %s, line %d of this segment db input data: \"%s\"", copy_relname, copy_lineno, line_buf.data);
 				else
 					errcontext("COPY %s, line %d: \"%s\"", copy_relname, copy_lineno, line_buf.data);
@@ -1398,7 +1399,7 @@ copy_in_error_callback(void *arg)
 				 * to regurgitate it without conversion.  So we have to punt
 				 * and just report the line number.
 				 */
-				if(Mpp_role != MPP_ROLE_EXECUTE) /* omit segDB line number, it is confusing to the user */				
+				if(Mpp_role == MPP_ROLE_EXECUTE)				
 				    errcontext("COPY %s, line %d of this segment db input data", copy_relname, copy_lineno);
 				else
 				    errcontext("COPY %s, line %d", copy_relname, copy_lineno);
@@ -1721,7 +1722,35 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	p_nattrs = policy->nattrs; /* number of partitioning keys */
 	cdbHash = makeCdbHash(cdbCopy->total_segs, HASH_FNV_1); /* Create hash API reference */
 
-   		
+   	/*
+	 * for optimized parsing - get the last field number in the
+	 * file that we need to parse to have all values for the hash keys.
+	 */
+     last_hash_field = 0;
+
+     for(p_index = 0 ; p_index < p_nattrs ; p_index++)
+     {
+		 i = 1;
+		 
+	     /*
+	      * for this partitioning key, search for its location in the attr list.
+	      * (note that fields may be out of order).
+	      */
+	      foreach(cur, attnumlist)
+          {
+		      int			attnum = lfirst_int(cur);
+		      
+		      if(attnum == policy->attrs[p_index] )
+		      {
+				  if(i > last_hash_field)
+					  last_hash_field = i;
+			  }
+			  
+			  i++;
+		  }
+	 }
+			
+
    /* 
     * start a transaction
     */
@@ -3264,44 +3293,44 @@ CopyReadLineCSV(size_t bytesread, char *quote, char *escape)
 	 * unescaped CR and 1st byte of current buffer is NL. We check for
 	 * that here.
 	 */
-				if (eol_type == EOL_CRNL)
-				{
-					/* if we started scanning from the 1st byte of the buffer */
-					if (begloc == input_buf)
-					{
-						/* and had a CR in last byte of prev buf */
-						if (cr_in_prevbuf)
-						{
-							/*
-							 * if this 1st byte in buffer is 2nd byte of line end sequence
-							 * (linefeed)
-							 */
-							if (*begloc == eol_ch[1])
-							{
-								/*
-								 * load that one linefeed byte and indicate we are done
-								 * with the data line
-								 */
-								appendBinaryStringInfo(&line_buf, begloc, 1);
-								buffer_index++;
-								begloc++;
-								
-								line_done = true;
-								esc_in_prevbuf = false;
-								cr_in_prevbuf = false;
-								
-								return line_done;
-							}
-						}
-						
-						cr_in_prevbuf = false;
-					}
-				}
-	
+	if (eol_type == EOL_CRNL)
+	{
+		/* if we started scanning from the 1st byte of the buffer */
+		if (begloc == input_buf)
+		{
+			/* and had a CR in last byte of prev buf */
+			if (cr_in_prevbuf)
+			{
 				/*
-				 * (we need a loop so that if eol_ch is found, but we are in quotes,
-					* we can search for the next eol_ch)
+				 * if this 1st byte in buffer is 2nd byte of line end sequence
+				 * (linefeed)
 				 */
+				if (*begloc == eol_ch[1])
+				{
+					/*
+					 * load that one linefeed byte and indicate we are done
+					 * with the data line
+					 */
+					appendBinaryStringInfo(&line_buf, begloc, 1);
+					buffer_index++;
+					begloc++;
+					
+					line_done = true;
+					esc_in_prevbuf = false;
+					cr_in_prevbuf = false;
+					
+					return line_done;
+				}
+			}
+			
+			cr_in_prevbuf = false;
+		}
+	}
+
+	/*
+	 * (we need a loop so that if eol_ch is found, but we are in quotes,
+		* we can search for the next eol_ch)
+	 */
 	while (true)
 	{
 		/* reached end of buffer */
@@ -3620,6 +3649,7 @@ CopyReadAttributesText(const char *delim, const char *escape, const char *null_p
 		chunk_len = 0;
 		attr_pre_len = 0;
 		attr_post_len = 0;
+		attribute = 1;
 		
 		if(escape_off)
 			escapec = delimc; /* look only for delimiters, escapes are disabled */
@@ -3738,6 +3768,23 @@ CopyReadAttributesText(const char *delim, const char *escape, const char *null_p
 					cur = lnext(cur);
 					attr_pre_len = 0;
 					attr_post_len = 0;
+
+					/*
+					 * for the dispatcher - stop parsing once we have
+					 * all the hash field values. We don't need the rest.
+					 */
+					if(Mpp_role == MPP_ROLE_DISPATCH)
+					{
+						if(attribute == last_hash_field)
+						{
+							/* load the chunk from chunk_start to end of current attribute, not including delimiter */
+							chunk_len = line_buf.cursor - chunk_start - 1;
+							appendBinaryStringInfo(&attr_buf, line_buf.data + chunk_start, chunk_len);
+							break;
+					    }
+					}
+					
+					attribute++; 
 				}
 				else
 					/* found an escape character */
@@ -3939,6 +3986,7 @@ CopyReadAttributesCSV(const char *delim, const char *null_print, char *quote,
 	int			attnum;			/* attribute number being parsed */
 	int			m;				/* attribute index being parsed */
 	ListCell   *cur;			/* cursor to attribute list used for this COPY */
+	int         attribute;
 	
 	/*
 	 * init variables for attribute scan
@@ -3951,6 +3999,7 @@ CopyReadAttributesCSV(const char *delim, const char *null_print, char *quote,
 	attnum = lfirst_int(cur);
 	m = attnum - 1;
 	input_len = 0;
+	attribute = 1;
 	
 	
 	for (;;)
@@ -4011,6 +4060,18 @@ CopyReadAttributesCSV(const char *delim, const char *null_print, char *quote,
 			m = attnum - 1;
 			attr_offsets[m] = attr_buf.cursor;
 			start_cursor = line_buf.cursor;
+			
+			/*
+			 * for the dispatcher - stop parsing once we have
+			 * all the hash field values. We don't need the rest.
+			 */
+			if(Mpp_role == MPP_ROLE_DISPATCH)
+			{
+				if(attribute == last_hash_field)
+					break;
+			}
+			
+			attribute++; 
 			continue;
 		}
 		
@@ -4046,7 +4107,7 @@ CopyReadAttributesCSV(const char *delim, const char *null_print, char *quote,
 		/*
 		 * end of quoted field. Must do this test after testing for escape
 		 * in case quote char and escape char are the same (which is the
-															* common case).
+	     * common case).
 		 */
 		if (in_quote && c == quotec)
 		{
@@ -4395,10 +4456,12 @@ scanCSVLine(const char *s, char eol, char escapec, char quotec, size_t len)
 		}
 		
 	}
-	
+
 	if(*s == eol)
 		last_was_esc = false;
 	
 	return ((*s == eol) ? (char *) s : NULL);
 }
+
+
 
