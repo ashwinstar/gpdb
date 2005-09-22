@@ -1225,3 +1225,148 @@ bool doesUpdateAffectPartitionCols( MppPolicy *policy, List *targetlist )
 
 	return false;
 }
+
+
+/* ----------------------------------------------------------------
+ * findHashAttrsInTargetList
+ *
+ * For each hash expression, find the first matching target list 
+ * entry and store its attribute number (or 0, for no match) in the 
+ * corresponding element of the given integer vector.   Note that 
+ * an element with value V corresponds to attribute number V+1.
+ *
+ * The length of the given vector must be equal to length of the 
+ * given list of hash expressions.
+ *
+ * Return true, if all hash expressions appear as attributes in 
+ * the target list; else return false.
+ * ----------------------------------------------------------------
+ */
+bool findHashAttrsInTargetList(List* targetlist, List* hashExprs, AttrNumber* attrs)
+{
+	int ntles;
+	int nattrs;
+	Node** map;
+	ListCell *cell;
+	int i,j;
+	bool miss;
+	
+	nattrs = list_length(hashExprs);
+	if ( nattrs == 0 )
+		return TRUE;
+	
+	/* Make a map of pointers to the expressions in the input target list
+	 * in attribute number order (usually but not necessarily target entry
+	 * order).  Note that map index 0 corresponds to attribute number 1. */	
+	ntles = list_length(targetlist);
+	map = (Node**)palloc0(ntles * sizeof(Node*));
+	foreach ( cell, targetlist )
+	{
+		TargetEntry* tle = (TargetEntry*)lfirst(cell);
+		j = tle->resdom->resno - 1;
+		Assert( 0 <= j && j < ntles && map[j] == NULL );
+		map[j] = (Node*)tle->expr;
+	}
+	
+	/* Record 1st occurance of each hash expr in the target list. */
+	miss = FALSE;
+	i = 0;
+	foreach ( cell, hashExprs )
+	{
+		Node* hexpr = (Node*)lfirst(cell);
+		for ( j = 0; j < ntles; j++ )
+		{
+			if ( equal(map[j], hexpr) )
+				break;
+		}
+		if ( j < ntles )
+		{
+			attrs[i] = 1 + j;
+		}
+		else
+		{
+			attrs[i] = 0;
+			miss = TRUE;
+		}
+		i++;
+	}
+	pfree(map);
+	
+	return !miss;
+}
+
+
+/* ------------------------------------------------------------------------
+ * getExprListForSubqueryScan
+ *
+ * Given the target list and hash expression list from the partitioned
+ * argument plan of a SubqueryScan, return a hash expression list to
+ * characterize the partitioning of the SubqueryScan in terms of the
+ * attributes of the argument relation.
+ *
+ * This could be NIL, if the argument partitioning is "anonymous" 
+ * or the argument relation does not contain attributes corresonding
+ * to all of its partitioning criteria.  In this case, the SubqueryScan
+ * will have anonymous partitioning.
+ *
+ * Otherwise, it will be a list of Var nodes referencing the attributes
+ * of the argument (the given targetlist) correspond to its partitioning
+ * hash expressions (the given hashExprs).
+ * ------------------------------------------------------------------------
+ */
+List* getExprListForSubqueryScan(List* targetlist, List* hashExprs)
+{
+	int ntles;
+	int nattrs;
+	TargetEntry** map, *tle;
+	ListCell *cell;
+	int i;
+	List *resultExprs = NIL;
+	
+	nattrs = list_length(hashExprs);
+	if ( nattrs == 0 )
+		return NIL;
+	
+	/* Make a map taking attribute numbers (minus 1) to pointers to the 
+	 * target entries in the input target list.  Note that attribute 
+	 * number order is usually, but not necessarily, target entry
+	 * order.  Note that map index 0 corresponds to attribute number 1. 
+	 */	
+	ntles = list_length(targetlist);
+	map = (TargetEntry**)palloc0(ntles * sizeof(TargetEntry*));
+	foreach ( cell, targetlist )
+	{
+		tle = (TargetEntry*)lfirst(cell);
+		i = tle->resdom->resno - 1;
+		Assert( 0 <= i && i < ntles && map[i] == NULL );
+		map[i] = tle;
+	}
+	
+	/* Generate a Var referencing the target entry corresponding to the 1st 
+	 * occurance of each hash expr in the target list. 
+	 */
+	foreach ( cell, hashExprs )
+	{
+		Node* hexpr = (Node*)lfirst(cell);
+		for ( i = 0; i < ntles; i++ )
+		{
+			if ( equal(map[i]->expr, hexpr) )
+				break;
+		}
+		if ( i < ntles )
+		{
+			tle = map[i];
+			Var *var = makeVar(OUTER, 1+i, tle->resdom->restype, tle->resdom->restypmod, 0);
+			resultExprs = lappend(resultExprs, var);
+		}
+		else
+		{
+			list_free_deep(resultExprs);
+			resultExprs = NIL;
+			break;
+		}
+	}
+	pfree(map);
+	
+	return resultExprs;
+}

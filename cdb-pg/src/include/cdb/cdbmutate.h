@@ -82,4 +82,7 @@ extern void setFixedToSelfOnly( Motion *motion );
 
 extern int *makeDefaultSegIdxArray(int numSegs);
 
+extern bool findHashAttrsInTargetList(List* targetlist, List* hashExprs, AttrNumber* attrs);
+extern List* getExprListForSubqueryScan(List* targetlist, List* hashExprs);
+
 #endif /* CDBMUTATE_H */

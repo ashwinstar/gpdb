@@ -75,6 +75,43 @@ typedef struct PlanProfile
 } PlanProfile;
 
 
+
+/*
+ * For Append node prescan: Strategies we might adopt as well as
+ * states/transitions for the FSM used to derive the strategy.
+ */
+typedef enum AppendStrategy
+{
+	AFS_0 = 0,	/* Null (pseudo-identity) */
+	AFS_D,		/* Singleton on entry database */
+	AFS_S,		/* Singleton on segment (assumed same thruout plan) */
+	AFS_Pa, 	/* Partitioned on same attributes as initial term. */
+	AFS_P,		/* Partitioned anonymously. */
+	AFS_R,		/* Replicated. */
+	AFS_XP,		/* Transform to AFS_P by adjusting non-partitioned terms. */
+	AFS_X,		/* Invalid, no transformation known */
+	AFS_COUNT,
+	AFS_CP		/* AFS_Pa, if atttributes match, else AFS_P */
+} AppendStrategy;
+
+/*
+ * For Append node prescan: An FSM used to derive the strategy to
+ * use for parallelizing an Append node.  See fn chooseAppendStrategy.
+ */
+static const AppendStrategy append_FSM[][AFS_COUNT] = 
+{
+	{	AFS_0,	AFS_D,	AFS_S,	AFS_Pa,	AFS_P,	AFS_R,	AFS_XP,	AFS_X },
+	{ 	AFS_D,	AFS_D,	AFS_XP,	AFS_XP,	AFS_XP,	AFS_XP,	AFS_XP,	AFS_X },
+	{ 	AFS_S,	AFS_XP,	AFS_S,	AFS_P,	AFS_P,	AFS_XP,	AFS_XP,	AFS_X },
+	{ 	AFS_Pa,	AFS_XP,	AFS_P,	AFS_CP,	AFS_P,	AFS_XP,	AFS_XP,	AFS_X },
+	{ 	AFS_P,	AFS_XP,	AFS_P,	AFS_P,	AFS_P,	AFS_XP,	AFS_XP,	AFS_X },
+	{ 	AFS_R,	AFS_XP,	AFS_XP,	AFS_XP,	AFS_XP,	AFS_R,	AFS_XP,	AFS_X },
+	{ 	AFS_XP,	AFS_XP,	AFS_XP,	AFS_XP,	AFS_XP,	AFS_XP,	AFS_XP,	AFS_X },
+	{ 	AFS_X,	AFS_X,	AFS_X,	AFS_X,	AFS_X,	AFS_X,	AFS_X,	AFS_X }
+};
+
+
+
 /*
  * Forward Declarations
  */
@@ -83,6 +120,7 @@ static bool prescan_walker(Node *node, PlanProfile *context);
 
 static bool prescan_agg(Plan *plan, PlanProfile *context);
 static bool prescan_unique(Plan *plan, PlanProfile *context);
+static bool prescan_append(Plan *plan, PlanProfile *context);
 
 static void psError(PlanProfile *context, unsigned code, const char* message, const char* detail);
 static void psErrorNonce(PlanProfile *context,  const char* detail);
@@ -523,7 +561,13 @@ prescan_walker(Node *node, PlanProfile *context)
                     plan->flow = pull_up_Flow(plan, subqueryscan->subplan, true);
                     Assert(plan->flow);
                     /* Don't use expressions from the wrong range table */
-                    plan->flow->hashExpr = NIL; 
+                    plan->flow->hashExpr = NIL;
+					if ( plan->flow->flotype == FLOW_PARTITIONED )
+					{
+						plan->flow->hashExpr = getExprListForSubqueryScan(
+							subqueryscan->subplan->targetlist,
+							subqueryscan->subplan->flow->hashExpr );
+					}
 
                     if ( ((Plan*)node)->flow == NULL || ((Plan*)node)->flow->flotype == FLOW_UNDEFINED )
                     {
@@ -649,8 +693,14 @@ prescan_walker(Node *node, PlanProfile *context)
                 goto return_true;
             if (finished)
                 goto return_false;
-			detail = "Query involves multiset union.";
-			break; /* Fall through to report error. */
+			if ( prescan_append((Plan*)node, context) )
+			{
+				goto return_true;
+			}
+			goto return_false;
+			
+			//detail = "Query involves multiset union.";
+			//break; /* Fall through to report error. */
 		
 		case T_Agg:
 			{
@@ -1061,6 +1111,180 @@ bool prescan_unique(Plan *plan, PlanProfile *context)
 	
 	psErrorNonce(context, "Query plan employs partitioned duplicate removal");
 	return true;
+}
+
+
+
+
+/* Helper for prescan_walker() does processing for an Append node.
+ *
+ * Note that prescan_walker has already finished scaning the child nodes
+ * of the node.
+ *
+ * Return false to indicate successful prescan.  Else set error info
+ * in the context and return true.
+ */
+bool prescan_append(Plan *plan, PlanProfile *context)
+{
+	ListCell *cell;
+	int nattrs;
+	AttrNumber *attrs;
+	AppendStrategy cumstate;
+	Plan *prototype;
+	
+	Append *append = (Append*)plan;
+	
+	Assert ( IsA(append, Append) && plan->flow == NULL );
+
+	/*
+	 * Choose an approach to parallelizing the Append node by examining the
+	 * flow characteristics of the list of argument plans.  The approach 
+	 * uses a state machine (append_FSM) to increment the strategy chosen
+	 * so far by the "natural" stategy of the next item.
+	 * 
+	 * If the result strategy is AFS_D, AFS_S, AFS_R, or AFS_P, then no
+	 * additional determination is required, and the Append can marked as
+	 * singleton (on dispatcher or on segment), replicated, or anonymously 
+	 * partitioned, respectively.
+	 * 
+	 * If the result strategy is AFS_Pa, the hash expressions of the first
+	 * argument plan can be copied and used for the Append.
+	 * 
+	 * If the result strategy is AFS_XP, then a transformation can be
+	 * applied to make the the Append partitioned, but should be deferred
+	 * in case the Append is an argument of a Sort/SetOp and, therefore, 
+	 * has an external (and at this point unknown) partitioning requirement.
+	 * 
+	 * If the result strategy is AFS_X, then no strategy was chosen.
+	 */
+	cumstate = AFS_0;
+	attrs = NULL;
+	nattrs = 0;
+	 
+	foreach ( cell, append->appendplans )
+	{	
+		AppendStrategy nxtstate;
+		int nxtnattrs;
+		AttrNumber *nxtattrs;
+		
+		Plan *nxt = (Plan*)lfirst(cell);
+		
+		/* For the next Append element plan (nxt), determine the state value
+		 * by which to increment the state machine. 
+		 */
+		switch ( nxt->flow->flotype )
+		{
+		case FLOW_UNDEFINED:
+			nxtstate = AFS_X;
+			break;
+			
+		case FLOW_SINGLETON:
+			if ( nxt->flow->segindex == -1 )
+			{
+				nxtstate = AFS_D;
+			}
+			else
+			{
+				Assert( nxt->flow->segindex == 0 );
+				nxtstate = AFS_S;
+			}
+			break;
+			
+		case FLOW_REPLICATED:
+			nxtstate = AFS_R;
+			break;
+			
+		case FLOW_PARTITIONED:
+			if ( nxt->flow->hashExpr == NIL )
+			{
+				nxtstate = AFS_P;
+			}
+			else
+			{
+				nxtnattrs = list_length(nxt->flow->hashExpr);
+				nxtattrs = (AttrNumber*)palloc0( sizeof(AttrNumber) * nxtnattrs);
+				if ( findHashAttrsInTargetList(nxt->targetlist, nxt->flow->hashExpr, nxtattrs) )
+				{
+					nxtstate = AFS_Pa;	
+				}
+				else
+				{
+					pfree(nxtattrs);
+					nxtattrs = NULL;
+					nxtnattrs = 0;
+					nxtstate = AFS_P;
+				}
+			}
+			break;
+		}
+		
+		/* Calculate the cumulative state.
+		 */
+		cumstate = append_FSM[cumstate][nxtstate];
+		
+		
+		if ( cumstate == AFS_Pa) 
+		{
+			Assert( nxtattrs != NULL && attrs == NULL && nxtnattrs == list_length(nxt->flow->hashExpr) );
+			nattrs = nxtnattrs;
+			attrs = nxtattrs;
+			nxtnattrs = 0;
+			nxtattrs = NULL;
+		}
+		else if ( cumstate == AFS_CP )
+		{
+			bool match;
+			int i;
+			Assert( nxtattrs != NULL && attrs != NULL  );
+			match = ( nattrs == nxtnattrs );
+			for ( i = 0; match && i < nattrs; i++ )
+			{
+				match = ( attrs[i] == nxtattrs[i] );
+			}
+			nxtnattrs = 0;
+			nxtattrs = NULL;
+			
+			cumstate = match ? AFS_Pa : AFS_P;
+		}
+		
+		Assert ( AFS_0 < cumstate && cumstate < AFS_COUNT );
+	}
+	if ( attrs != NULL )
+		pfree(attrs);
+	
+	switch ( cumstate )
+	{
+	case AFS_D: /* Singleton on entry database */
+		plan->flow = makeFlow(FLOW_SINGLETON);
+		plan->flow->segindex = -1;
+		break;
+		
+	case AFS_S: /* Singleton on segment (assumed same thruout plan) */
+		plan->flow = makeFlow(FLOW_SINGLETON);
+		plan->flow->segindex = 0;
+		break;
+		
+	case AFS_Pa: /* Partitioned on same attributes as initial term. */
+		plan->flow = makeFlow(FLOW_PARTITIONED);
+		prototype = (Plan*)linitial(append->appendplans);
+		plan->flow->hashExpr = copyObject(prototype->flow->hashExpr);
+		break;
+		
+	case AFS_P: /* Partitioned anonymously. */
+		plan->flow = makeFlow(FLOW_PARTITIONED);
+		break;
+		
+	case AFS_R: /* Replicated. */
+		plan->flow = makeFlow(FLOW_REPLICATED);
+		break;
+		
+	case AFS_XP: /* Transform to AFS_P by adjusting non-partitioned terms. */
+	case AFS_X:/* Invalid, no transformation known */
+	default:
+		psErrorNonce(context, "Terms of multiset union are not congruent.");
+		return true;
+	}
+	return false;
 }
 
 
