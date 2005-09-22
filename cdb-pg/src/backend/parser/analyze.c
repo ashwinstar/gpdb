@@ -1493,7 +1493,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 		{
 
 			IndexStmt * index = lfirst(lc);
-			if (index->unique)
+			if (index->unique && !index->primary)
 			{
 				numUniqueIndexes++;
 				if (cxt->pkey)
