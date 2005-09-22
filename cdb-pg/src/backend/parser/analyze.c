@@ -1442,6 +1442,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 	int colindex = 0;
 	int maxattrs = 200;
 	int numUniqueIndexes = 0;
+	Constraint * uniqueindex = NULL;
 	
 	if ( Mpp_role != MPP_ROLE_DISPATCH )
 	{
@@ -1488,13 +1489,16 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 	{
 		
 		ListCell * lc = NULL;
-		
+		 
 		foreach(lc,cxt->ixconstraints)
 		{
-
-			IndexStmt * index = lfirst(lc);
-			if (index->unique && !index->primary)
+			Constraint * cons = lfirst(lc);
+			 
+			if ( cons->contype == CONSTR_UNIQUE )
 			{
+						 
+				if (uniqueindex==NULL)
+					uniqueindex = cons;
 				numUniqueIndexes++;
 				if (cxt->pkey)
 				{
@@ -1519,24 +1523,23 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 		foreach(lc,cxt->ixconstraints)
 		{
 
-			IndexStmt * index = lfirst(lc);
-			if (index->unique)
+			Constraint * constraint = lfirst(lc);
+			if ( constraint->contype == CONSTR_UNIQUE )
 			{
-			List * indexParams;
+			 
 			ListCell * ip = NULL;
-			Assert(index->indexParams != NULL);
-			indexParams = index->indexParams;
+			 
 	
-			foreach(ip, indexParams)
+			foreach(ip, constraint->keys)
 			{
-				IndexElem  *iparam = lfirst(ip);
-				if (iparam && iparam->name != 0)
+				Value  *v = lfirst(ip);
+				if (v && v->val.str != 0)
 				{
 					 
 					if (distributedBy)
-						distributedBy = lappend(distributedBy, (Node *) makeString(iparam->name));
+						distributedBy = lappend(distributedBy, (Node *) makeString(v->val.str));
 					else
-						distributedBy = list_make1((Node *) makeString(iparam->name));
+						distributedBy = list_make1((Node *) makeString(v->val.str));
 					 
 				}
 			}
@@ -1660,12 +1663,13 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 
 	*policyp = policy;
 
-	if (cxt && cxt->pkey != NULL) /* Primary key specified.  Make sure distribution columns match */
+	if (cxt && cxt->pkey) /* Primary key  specified.  Make sure distribution columns match */
 	{
 		int i = 0;
 		IndexStmt * index = cxt->pkey;
 		List * indexParams = index->indexParams;
 		ListCell * ip;
+
 		foreach(ip, indexParams)
 		{
 			IndexElem  *iparam;
@@ -1693,10 +1697,64 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 				}
 				 
 				if (colindex != policy->attrs[i])
+				{
+					 
 					ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 					errmsg("When there is both a PRIMARY KEY, and a DISTRIBUTED BY clause, the DISTRIBUTED BY clause must be equal to or a left-subset of the PRIMARY KEY"
 					)));
+			 
+				}
+
+				i++;
+				 
+			}
+		}
+	}
+	
+	
+	
+	if (uniqueindex) /* UNIQUE specified.  Make sure distribution columns match */
+	{
+		int i = 0;
+		 
+		List * keys = uniqueindex->keys;
+		ListCell * ip;
+
+		foreach(ip, keys)
+		{
+			IndexElem  *iparam;
+
+			if (i >= policy->nattrs)
+				break;
+
+			iparam = lfirst(ip);
+			if (iparam->name != 0)
+			{
+				ColumnDef  *column = NULL;
+				ListCell   *columns;
+
+				colindex = 0;
+				foreach(columns, cxt->columns)
+				{
+					column = (ColumnDef *) lfirst(columns);
+					Assert(IsA(column, ColumnDef));
+					colindex++;
+					if (strcmp(column->colname, iparam->name) == 0)
+					{
+						/*found = true;*/
+						break;
+					}
+				}
+				 
+				if (colindex != policy->attrs[i])
+				{
+					
+					ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					errmsg("When there is both a UNIQUE contraint, and a DISTRIBUTED BY clause, the DISTRIBUTED BY clause must be equal to or a left-subset of the UNIQUE columns"
+					)));
+				}
 
 				i++;
 				 
