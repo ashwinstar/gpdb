@@ -305,6 +305,19 @@ RemoveSchema(List *names, DropBehavior behavior)
 	object.objectSubId = 0;
 
 	performDeletion(&object, behavior);
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{	
+
+		StringInfoData buffer;
+		
+		initStringInfo( &buffer );
+
+		appendStringInfo(&buffer, "DROP SCHEMA %s ", namespaceName);
+
+		CdbDoCommand( buffer.data, false );
+
+	}
 }
 
 
@@ -386,13 +399,27 @@ RenameSchema(const char *oldname, const char *newname)
 
 	heap_close(rel, NoLock);
 	heap_freetuple(tup);
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{	
+
+		StringInfoData buffer;
+		
+		initStringInfo( &buffer );
+
+		appendStringInfo(&buffer, "ALTER SCHEMA %s RENAME TO %s ", oldname, newname);
+
+		CdbDoCommand( buffer.data, false );
+
+	}
+	
 }
 
 /*
  * Change schema owner
  */
 void
-AlterSchemaOwner(const char *name, AclId newOwnerSysId)
+AlterSchemaOwner(const char *name, AclId newOwnerSysId, const char * newownername)
 {
 	HeapTuple	tup;
 	Relation	rel;
@@ -456,6 +483,19 @@ AlterSchemaOwner(const char *name, AclId newOwnerSysId)
 		CatalogUpdateIndexes(rel, newtuple);
 
 		heap_freetuple(newtuple);
+		
+		if (Mpp_role == MPP_ROLE_DISPATCH)
+		{	
+	
+			StringInfoData buffer;
+			
+			initStringInfo( &buffer );
+	
+			appendStringInfo(&buffer, "ALTER SCHEMA %s OWNER TO %s ", name, newownername);
+	
+			CdbDoCommand( buffer.data, false );
+	
+		}
 	}
 
 	ReleaseSysCache(tup);

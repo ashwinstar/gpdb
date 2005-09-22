@@ -578,12 +578,12 @@ ProcessUtility(Node *parsetree,
 			 * Portal (cursor) manipulation
 			 */
 		case T_DeclareCursorStmt:
-			CdbSentry(CDB_REJECT, parsetree, NULL);
+			CdbSentry(CDB_WARN, parsetree, NULL);
 			PerformCursorOpen((DeclareCursorStmt *) parsetree, params);
 			break;
 
 		case T_ClosePortalStmt:
-			CdbSentry(CDB_REJECT, parsetree, NULL);
+			CdbSentry(CDB_WARN, parsetree, NULL);
 			{
 				ClosePortalStmt *stmt = (ClosePortalStmt *) parsetree;
 
@@ -592,7 +592,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_FetchStmt:
-			CdbSentry(CDB_REJECT, parsetree, NULL);
+			CdbSentry(CDB_WARN, parsetree, NULL);
 			PerformPortalFetch((FetchStmt *) parsetree, dest,
 							   completionTag);
 			break;
@@ -678,7 +678,7 @@ ProcessUtility(Node *parsetree,
 							break;
 
 						case OBJECT_TYPE:
-							CdbSentry(CDB_REJECT, parsetree, NULL);
+							CdbSentry(CDB_NONCE, parsetree, NULL);
 							/* RemoveType does its own permissions checks */
 							RemoveType(names, stmt->behavior);
 							break;
@@ -698,7 +698,7 @@ ProcessUtility(Node *parsetree,
 							break;
 
 						case OBJECT_SCHEMA:
-							CdbSentry(CDB_NONCE, parsetree, NULL);
+							CdbSentry(CDB_ACCEPT, parsetree, NULL);
 							/*
 							 * RemoveSchema does its own permissions
 							 * checks
@@ -780,7 +780,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_AlterOwnerStmt:
-			CdbSentry(CDB_NONCE, parsetree, "ALTER OWNER"); /* NB covers some ALTER OWNER */
+			CdbSentry(CDB_ACCEPT, parsetree, NULL); /* NB covers some ALTER OWNER */
 			ExecAlterOwnerStmt((AlterOwnerStmt *) parsetree);
 			break;
 
@@ -1172,7 +1172,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_ConstraintsSetStmt:
-			CdbSentry(CDB_NONCE, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			AfterTriggerSetState((ConstraintsSetStmt *) parsetree);
 			break;
 

@@ -168,7 +168,7 @@ ExecAlterOwnerStmt(AlterOwnerStmt *stmt)
 			break;
 
 		case OBJECT_DATABASE:
-			AlterDatabaseOwner((char *) linitial(stmt->object), newowner);
+			AlterDatabaseOwner((char *) linitial(stmt->object), newowner, stmt->newowner);
 			break;
 
 		case OBJECT_FUNCTION:
@@ -187,7 +187,7 @@ ExecAlterOwnerStmt(AlterOwnerStmt *stmt)
 			break;
 
 		case OBJECT_SCHEMA:
-			AlterSchemaOwner((char *) linitial(stmt->object), newowner);
+			AlterSchemaOwner((char *) linitial(stmt->object), newowner, stmt->newowner);
 			break;
 
 		case OBJECT_TABLESPACE:

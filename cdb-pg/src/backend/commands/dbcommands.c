@@ -866,6 +866,19 @@ RenameDatabase(const char *oldname, const char *newname)
 
 	/* Close pg_database, but keep exclusive lock till commit */
 	heap_close(rel, NoLock);
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{	
+
+		StringInfoData buffer;
+		
+		initStringInfo( &buffer );
+
+		appendStringInfo(&buffer, "ALTER DATABASE %s RENAME TO %s", oldname, newname);
+
+		CdbDoCommand( buffer.data, false );
+
+	}
 }
 
 
@@ -966,7 +979,7 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
  * ALTER DATABASE name OWNER TO newowner
  */
 void
-AlterDatabaseOwner(const char *dbname, AclId newOwnerSysId)
+AlterDatabaseOwner(const char *dbname, AclId newOwnerSysId, const char * newownername)
 {
 	HeapTuple	tuple;
 	Relation	rel;
@@ -1057,6 +1070,19 @@ AlterDatabaseOwner(const char *dbname, AclId newOwnerSysId)
 
 	/* Close pg_database, but keep exclusive lock till commit */
 	heap_close(rel, NoLock);
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{	
+
+		StringInfoData buffer;
+		
+		initStringInfo( &buffer );
+
+		appendStringInfo(&buffer, "ALTER DATABASE %s OWNER TO %s", dbname, newownername);
+
+		CdbDoCommand( buffer.data, false );
+
+	}
 }
 
 
