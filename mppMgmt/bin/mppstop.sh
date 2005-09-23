@@ -83,7 +83,7 @@ USAGE () {
 		$TABECHO "-n, Do not wait for shutdown return code of each node [default:- wait]"
 		$TABECHO "-z, Force shutdown of segment instances marked as invalid"
 		##MPP	$TABECHO "-k, Attempt to kill any orphaned postmaster processes on nodes" 
-		##MPP	$TABECHO "-m, Stop QD started in maintenance mode"
+		$TABECHO "-m, Stop master db started in maintenance mode"
 		$TABECHO
 		$TABECHO "Return codes:"
 		$TABECHO "0 No problems encountered with requested operation"
@@ -139,7 +139,7 @@ STOP_ADMIN () {
 		if [ ! -s $MASTER_DATA_DIRECTORY/$PG_PID ]; then
 				ERROR_EXIT "[WARN]:- No $PG_PID file, is database already stopped?" 1
 		fi
-		$PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m smart      >/dev/null 2>&1
+		env PGOPTIONS="-c mpp_session_role=utility" $PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m smart      >/dev/null 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Could not shutdown Master database in admin mode" 2
@@ -238,7 +238,7 @@ PROCESS_SHUTDOWN () {
 #Check to see if we have a parameter supplied to script
 if [ $# -ne 0 ]; then
 		##MPP	while getopts ":viskft'?'aqnml:d:" opt;do
-		while getopts ":viskzft'?'aqnl:d:" opt;do
+		while getopts ":vmiskzft'?'aqnl:d:" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						i ) MODE=immediate ;;
@@ -251,7 +251,7 @@ if [ $# -ne 0 ]; then
 						a ) unset INTERACTIVE ;;
 						q ) unset VERBOSE ;;
 						##MPP		k ) KILL_INVALID=true ;;
-						##MPP		m ) ADMIN=1 ;;
+						m ) ADMIN=1 ;;
 						z)	STOP_INVALID=1 ;;
 						n ) WAIT="-W" ;; 
 						l ) LOG_DIR=$OPTARG ;;
