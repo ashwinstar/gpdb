@@ -3,6 +3,7 @@
  * explain.c
  *	  Explain query execution plans
  *
+ * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994-5, Regents of the University of California
  *
@@ -516,14 +517,20 @@ explain_outNode(StringInfo str,
 				switch(pMotion->motionType)
 				{
 					case MOTIONTYPE_HASH:
-						pname = "Hash Motion";
+                        if (pMotion->hashToSelfOnly)
+                            pname = "Cull Motion";
+                        else
+                            pname = "Scatter Motion";
 						break;
 					case MOTIONTYPE_FIXED:
-						if ( pMotion->numOutputSegs > 0 )
-							pname = "Fixed Motion";
+                        if ( pMotion->numOutputSegs == 0 )
+                            pname = "Broadcast Motion";
 						else
-							pname = "Broadcast Motion";
+                            pname = "Gather Motion";
 						break;
+                    default:
+                        pname = "Motion ???";
+                        break;
 				}
 			}
 			
@@ -616,7 +623,11 @@ explain_outNode(StringInfo str,
 								 quote_identifier(rte->eref->aliasname));
 			}
 			break;
-		default:
+        case T_Material:
+            if (((Material *) plan)->cdb_strict)
+                appendStringInfo(str, " for deadlock safety");
+            break;
+        default:
 			break;
 	}
 	if (es->printCost)
@@ -745,16 +756,22 @@ explain_outNode(StringInfo str,
 							str, indent, es);
 			break;
 		case T_Motion:
-			if ( ((Motion *) plan)->motionType == MOTIONTYPE_HASH )
-			{
-				show_upper_qual(((Motion *) plan)->hashExpr,
-								"Hash Expression",
-								"outer", OUTER, outerPlan(plan),
-								"", 0, NULL,
-								str, indent, es);
-			}
-			
-			break;
+            {
+                Motion *pMotion = (Motion *) plan;
+                if (pMotion->sendSorted)
+			        show_sort_keys(plan->targetlist,
+						           pMotion->numSortCols,
+						           pMotion->sortColIdx,
+						           "Merge Key",
+						           str, indent, es);
+                if (pMotion->motionType == MOTIONTYPE_HASH)
+                    show_upper_qual(pMotion->hashExpr,
+                                    "Hash Key",
+                                    "subplan", OUTER, outerPlan(plan),
+                                    "", 0, NULL,
+                                    str, indent, es);
+            }
+            break;
 		default:
 			break;
 	}
