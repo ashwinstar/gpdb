@@ -37,6 +37,7 @@ static int          *ftsSegDBTransientCount;
 static PQExpBuffer  entryBuffer=NULL;
 static PGconn       *entryConn=NULL;
 static int          localFtsSyncCount=-1;
+static bool         InReConfigure = false;
 
 static void CdbShutdown(void);
 static void initPQConnectionBuffer(CdbComponentDatabaseInfo *, PQExpBuffer, bool);
@@ -142,6 +143,7 @@ bool FtsReConfigureMPP(void)
 {
     /* synchronzie fts */
     LWLockAcquire(ftsControlLock, LW_EXCLUSIVE);
+    InReConfigure = true;
     
     /* this code copied from verifyFtsSyncCount to avoid lock deadlock */
     if ( localFtsSyncCount == -1 )
@@ -166,6 +168,7 @@ bool FtsReConfigureMPP(void)
     /* rollback current DTM transaction */
     discardDtxTransaction();
     
+    InReConfigure = false;
     LWLockRelease(ftsControlLock);
     
     return true;
@@ -312,12 +315,15 @@ void markSegDBTransientState( int dbid, bool state )
         /* set transient state if state is false */
         int i, segindex;
         CdbComponentDatabaseInfo *segDb=NULL;
+
+        if (*ftsSegDBTransientCount >= FTS_MAX_TRANSIENT_STATE)
+            elog(ERROR, "FTS: the number of failed segdb exceeds the MPP limit");     
+
         CdbComponentDatabases *cdb_component_dbs = getComponentDatabases();        
         *(ftsSegDBTransientState+*ftsSegDBTransientCount) =
                                         SET_TRANSIENT_SEGDB_STATE_INVALID(dbid);
         
-        if (*ftsSegDBTransientCount >= FTS_MAX_TRANSIENT_STATE)
-            elog(ERROR, "FTS: the number of failed segdb exceeds the MPP limit");     
+        elog(LOG, "FTS: mark segDB %d as invalid", dbid );        
         
         (*ftsSegDBTransientCount)++;
         for (i=0;i<cdb_component_dbs->total_segment_dbs;i++)
@@ -574,7 +580,7 @@ void FtsEvaluateTransientState(void)
     CdbComponentDatabases *cdb_component_dbs;
     CdbComponentDatabaseInfo *segDbInfo;
     
-    if (*ftsSegDBTransientCount <= 0)
+    if (*ftsSegDBTransientCount <= 0 || InReConfigure)
         return;
 
     cdb_component_dbs = getComponentDatabases();

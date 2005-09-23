@@ -3616,6 +3616,8 @@ DATA(insert OID = 6005 (  cdb_read_backup_file PGNSP PGUID 12 f f f f v 3 25 "25
 DESCR("read cdb backup file on outboard Postgres instances");
 DATA(insert OID = 6006 (  cdb_write_backup_file PGNSP PGUID 12 f f f f v 3 25 "25 25 25" _null_ cdb_write_backup_file__  - _null_  )); 
 DESCR("write cdb backup file on outboard Postgres instances");
+DATA(insert OID = 6007 (  mpp_pgdatabase   PGNSP PGUID 12 f f f t v 0 2249 "" _null_ mpp_pgdatabase__ - _null_ ));
+DESCR("view mpp pgdatabase state");
 
 
 /*

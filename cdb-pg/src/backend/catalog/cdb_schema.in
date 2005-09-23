@@ -85,11 +85,11 @@ COMMENT ON TABLE mpp.listener IS 'a listener (database group) within the mpp';
 create table mpp.PGDATABASE
 (
 	dbid integer,
-	isprimary boolean,
+	isprimary boolean not null,
 	content integer not null,
 	listenerid integer not null,
-    valid boolean,
-    definedprimary boolean,
+    valid boolean not null,
+    definedprimary boolean not null,
 	
 	primary key (dbid),
 	unique (content, definedprimary),
@@ -258,6 +258,10 @@ CREATE OR REPLACE FUNCTION mpp.mpp_set_segdb_state( mpp.pgdatabase.dbid%TYPE,
 COMMENT ON FUNCTION mpp.mpp_set_segdb_state( mpp.pgdatabase.dbid%TYPE,
 	 					     			   mpp.pgdatabase.valid%TYPE )
 	IS 'used to set the state of a component database of the mpp';
+	
+CREATE VIEW mpp.mpp_pgdatabase AS 
+    SELECT *
+      FROM mpp_pgdatabase() AS L(dbid integer, isprimary boolean, content integer, listenerid integer, valid boolean, definedprimary boolean);
 
 
 
