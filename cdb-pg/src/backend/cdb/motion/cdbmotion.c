@@ -283,13 +283,9 @@ void ResetMotionLayer(bool flushCommLayer)
 	elog(DEBUG1, "   tuple bytes: %u", s_motion_layer_state.stat_tuple_bytes_recvd);
 	elog(DEBUG1, "  Chunkproc call count: %u", s_motion_layer_state.stat_total_chunkproc_calls);
 
-#ifdef USE_MNEHASH
-	hash_destroy(s_motion_layer_state.motionnode_map);
-#else
 	pfree(s_motion_layer_state.mnEntries);
 	s_motion_layer_state.mnEntries = NULL;
 	s_motion_layer_state.mneCount = 0;
-#endif
 
 	hash_destroy(s_motion_layer_state.chunksort_map);
 
@@ -331,23 +327,6 @@ static void initMotionLayerStructs(void)
      */
     oldCtxt = MemoryContextSwitchTo(s_motion_layer_state.motion_layer_mctx);
 
-#ifdef USE_MNEHASH
-    /* Initialize motion-node hashtable.  The initial number of bins is chosen
-     * to be relatively small, since the max number of bins is just the number
-     * of motion nodes in the plan.
-     */
-    hctl.keysize = sizeof(int16);
-    hctl.entrysize = sizeof(MotionNodeEntry);
-    hctl.hash = tag_hash;
-    htab = hash_create("MotionNodeInfo", 10, &hctl, HASH_ELEM | HASH_FUNCTION);
-    if (htab == NULL)
-    {
-        ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
-            errmsg("Could not allocate hash table for motion node info.")));
-    }
-    
-    s_motion_layer_state.motionnode_map = htab;
-#else
 	if (s_motion_layer_state.mnEntries != NULL)
 	{
 		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
@@ -361,7 +340,6 @@ static void initMotionLayerStructs(void)
     }
 	memset(s_motion_layer_state.mnEntries, 0, MNE_INITIAL_COUNT * sizeof(MotionNodeEntry));
 	s_motion_layer_state.mneCount = MNE_INITIAL_COUNT;
-#endif
 
     /* Initialize tuple-data hashtable.  The initial number of bins is chosen
      * to be relatively small, since the max number of bins is just the number
@@ -420,35 +398,6 @@ void InitMotionLayerNode(int16 motNodeID, bool preserveOrder, TupleDesc tupDesc)
     elog(DEBUG2, "Initializing entry for motion node %d in Motion Layer.",
         motNodeID);
 
-#ifdef USE_MNEHASH
-    bool found = false;
-
-    /* Create a new MotionNodeEntry.  If one already exists, complain! */
-
-	do
-	{
-		pEntry = (MotionNodeEntry *) hash_search(
-			s_motion_layer_state.motionnode_map, &motNodeID, HASH_ENTER, &found);
-	
-		if (pEntry == NULL)
-		{
-			ereport(ERROR, (errcode(ERRCODE_OUT_OF_MEMORY),
-				errmsg("Could not allocate HTAB entry for motion node %d.",
-				motNodeID)));
-		}
-	
-		if (found)
-		{
-			/* An entry for this motion node ID already existed.  Initializing
-			 * twice for a given motion node is not allowed.  Having two nodes
-			 * with the same ID is also not allowed.  So, this is pretty likely a
-			 * serious problem.
-			 */
-			EndMotionLayerNode(motNodeID, false);
-		}
-	}
-	while(found);
-#else
 	if (motNodeID > s_motion_layer_state.mneCount)
 	{
 		/* increase size of our table */
@@ -484,7 +433,6 @@ void InitMotionLayerNode(int16 motNodeID, bool preserveOrder, TupleDesc tupDesc)
 	pEntry->motion_node_id = motNodeID;
 
 	pEntry->valid = true;
-#endif
 
     /* Finish up initialization of the motion node entry. */
     pEntry->preserve_order = preserveOrder;
@@ -951,12 +899,7 @@ void EndMotionLayerNode(int16 motNodeID, bool flushCommLayer)
     if (!pMNEntry->preserve_order)
         htfifo_destroy(pMNEntry->ready_tuples);
 
-#ifdef USE_MNEHASH
-    hash_search(s_motion_layer_state.motionnode_map,
-				&pMNEntry->motion_node_id, HASH_REMOVE, NULL);
-#else
 	pMNEntry->valid = false;
-#endif
 }
 
 /* Helper function to get the motion node entry for a given ID.  NULL is
@@ -964,21 +907,6 @@ void EndMotionLayerNode(int16 motNodeID, bool flushCommLayer)
  */
 MotionNodeEntry *getMotionNodeEntry(int16 motNodeID, char *errString)
 {
-#ifdef USE_MNEHASH
-	MotionNodeEntry *pMNEntry;
-
-    pMNEntry = (MotionNodeEntry *)hash_search(
-        s_motion_layer_state.motionnode_map, &motNodeID, HASH_FIND, NULL);
-
-	if (pMNEntry == NULL)
-    {
-        ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-            errmsg("%s called for unrecognized motion-node ID %d.",
-            errString, motNodeID)));
-    }
-
-    return pMNEntry;
-#else
 	MotionNodeEntry 	*pMNEntry=NULL;
 
 	if (motNodeID > s_motion_layer_state.mneCount || 
@@ -996,7 +924,6 @@ MotionNodeEntry *getMotionNodeEntry(int16 motNodeID, char *errString)
 		Assert(pMNEntry->motion_node_id == motNodeID);
 
 	return pMNEntry;
-#endif
 }
 
 /* Retrieve the chunk-sorter entry for the specified motion-node/source pair.
