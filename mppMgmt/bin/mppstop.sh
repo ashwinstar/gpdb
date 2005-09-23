@@ -209,6 +209,7 @@ PROCESS_SHUTDOWN () {
 				if [ "$QE_VALID" == "t" ] || [ $STOP_INVALID -eq 1 ];then
 					LOG_MSG "[INFO]:-Stopping QE $QE_NAME directory $QE_DIR"
 					$TRUSTED_SHELL $QE_NAME "$PG_CTL $WAIT stop -D $QE_DIR -m $MODE -l ${QE_DIR}.log " >/dev/null 2>&1
+					$TRUSTED_SHELL $QE_NAME "$RM -f /tmp/.s.PGSQL.${QE_PORT}.lock /tmp/.s.PGSQL.${QE_PORT}"
 					RETVAL=$?
 					if [ $RETVAL -ne 0 ]; then
 						LOG_MSG "[WARN]:-Issue with shutdown of $QE_NAME QE database"
