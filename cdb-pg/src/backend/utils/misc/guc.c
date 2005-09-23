@@ -4185,6 +4185,7 @@ SetPGVariable(const char *name, List *args, bool is_local)
 	if (Mpp_role == MPP_ROLE_DISPATCH && !IsBootstrapProcessingMode())
 	{
 
+		ListCell * l;
 		StringInfoData buffer;
 		
 		initStringInfo( &buffer );
@@ -4193,11 +4194,50 @@ SetPGVariable(const char *name, List *args, bool is_local)
 		if (is_local)
 			appendStringInfo(&buffer, "LOCAL ");
 			
-		if (argstring[0]!='\'')
-			appendStringInfo(&buffer, "%s TO '%s'", name, argstring);
-		else
-			appendStringInfo(&buffer, "%s TO %s", name, argstring);
+		appendStringInfo(&buffer, "%s TO ", name);
 
+		foreach(l, args)
+		{
+			A_Const    *arg = (A_Const *) lfirst(l);
+			char	   *val;
+	
+			if (l != list_head(args))
+				appendStringInfo(&buffer, ", ");
+	
+			if (!IsA(arg, A_Const))
+				elog(ERROR, "unrecognized node type: %d", (int) nodeTag(arg));
+	
+			switch (nodeTag(&arg->val))
+			{
+				case T_Integer:
+					appendStringInfo(&buffer, "%ld", intVal(&arg->val));
+					break;
+				case T_Float:
+					/* represented as a string, so just copy it */
+					appendStringInfoString(&buffer, strVal(&arg->val));
+					break;
+				case T_String:
+					val = strVal(&arg->val);
+		
+						/*
+						 * Plain string literal or identifier., quote it  
+						 */
+
+					if (val[0] != '\'') 
+						appendStringInfo(&buffer, "'%s'",val);
+					else
+						appendStringInfo(&buffer, "%s",val);
+				
+				
+					break;
+				default:
+					elog(ERROR, "unrecognized node type: %d",
+						 (int) nodeTag(&arg->val));
+					break;
+			}
+		}
+		
+		
         CdbDoCommandInt( buffer.data, false, NULL );
 		
 	}
