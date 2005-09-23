@@ -74,11 +74,9 @@ typedef struct MotionNodeEntry
     uint num_stream_ends_recvd;
     
     bool cleanedUp;
-    
+	bool valid;
     bool moreNetWork;
   
-    
-
     /*----------------------------*/
     /* PER-MOTION-NODE STATISTICS */
     /*----------------------------*/
@@ -172,8 +170,9 @@ typedef struct MotionLayerState
     /* MOTION NODE STATE - Initialized and used on per-statement basis. */
     /*------------------------------------------------------------------*/
 
-    /* Map to store information about each motion node in a plan. */
-    HTAB *motionnode_map;
+#define MNE_INITIAL_COUNT (1)
+	int					mneCount;
+	MotionNodeEntry		*mnEntries;
 
     /* Map to store incomplete tuples (and completed ones, when
      * order_preserving == true), associated with the sender and intended
@@ -201,8 +200,6 @@ typedef struct MotionLayerState
 /*=========================================================================
  * STATIC STATE VARS
  */
-
-
 static MotionLayerState s_motion_layer_state;
 
 static TupleChunkListItemData s_eos_chunk_data =
@@ -286,7 +283,14 @@ void ResetMotionLayer(bool flushCommLayer)
 	elog(DEBUG1, "   tuple bytes: %u", s_motion_layer_state.stat_tuple_bytes_recvd);
 	elog(DEBUG1, "  Chunkproc call count: %u", s_motion_layer_state.stat_total_chunkproc_calls);
 
+#ifdef USE_MNEHASH
 	hash_destroy(s_motion_layer_state.motionnode_map);
+#else
+	pfree(s_motion_layer_state.mnEntries);
+	s_motion_layer_state.mnEntries = NULL;
+	s_motion_layer_state.mneCount = 0;
+#endif
+
 	hash_destroy(s_motion_layer_state.chunksort_map);
 
 	/* Free all memory used by the Motion Layer in the processing of the
@@ -327,11 +331,11 @@ static void initMotionLayerStructs(void)
      */
     oldCtxt = MemoryContextSwitchTo(s_motion_layer_state.motion_layer_mctx);
 
+#ifdef USE_MNEHASH
     /* Initialize motion-node hashtable.  The initial number of bins is chosen
      * to be relatively small, since the max number of bins is just the number
      * of motion nodes in the plan.
      */
-
     hctl.keysize = sizeof(int16);
     hctl.entrysize = sizeof(MotionNodeEntry);
     hctl.hash = tag_hash;
@@ -343,7 +347,22 @@ static void initMotionLayerStructs(void)
     }
     
     s_motion_layer_state.motionnode_map = htab;
-    
+#else
+	if (s_motion_layer_state.mnEntries != NULL)
+	{
+		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						errmsg("initMotionLayerStructs: MNE table not clean.")));
+	}
+	s_motion_layer_state.mnEntries = palloc(MNE_INITIAL_COUNT * sizeof(MotionNodeEntry));
+    if (s_motion_layer_state.mnEntries == NULL)
+    {
+        ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
+            errmsg("Could not allocate motion node table.")));
+    }
+	memset(s_motion_layer_state.mnEntries, 0, MNE_INITIAL_COUNT * sizeof(MotionNodeEntry));
+	s_motion_layer_state.mneCount = MNE_INITIAL_COUNT;
+#endif
+
     /* Initialize tuple-data hashtable.  The initial number of bins is chosen
      * to be relatively small, since the max number of bins is just the number
      * of segment databases multiplied by the number of motion nodes in the
@@ -390,7 +409,6 @@ void InitMotionLayerNode(int16 motNodeID, bool preserveOrder, TupleDesc tupDesc)
 {
     MemoryContext oldCtxt;
     MotionNodeEntry *pEntry;
-    bool found = false;
 
     AssertArg(tupDesc != NULL);
 
@@ -402,11 +420,13 @@ void InitMotionLayerNode(int16 motNodeID, bool preserveOrder, TupleDesc tupDesc)
     elog(DEBUG2, "Initializing entry for motion node %d in Motion Layer.",
         motNodeID);
 
+#ifdef USE_MNEHASH
+    bool found = false;
+
     /* Create a new MotionNodeEntry.  If one already exists, complain! */
 
 	do
 	{
-			
 		pEntry = (MotionNodeEntry *) hash_search(
 			s_motion_layer_state.motionnode_map, &motNodeID, HASH_ENTER, &found);
 	
@@ -424,15 +444,49 @@ void InitMotionLayerNode(int16 motNodeID, bool preserveOrder, TupleDesc tupDesc)
 			 * with the same ID is also not allowed.  So, this is pretty likely a
 			 * serious problem.
 			 */
-			EndMotionLayerNode( motNodeID,false );
+			EndMotionLayerNode(motNodeID, false);
 		}
 	}
-	while( found );
+	while(found);
+#else
+	if (motNodeID > s_motion_layer_state.mneCount)
+	{
+		/* increase size of our table */
+		MotionNodeEntry *newTable;
 
+		newTable = repalloc(s_motion_layer_state.mnEntries, motNodeID * sizeof(MotionNodeEntry));
+		if (newTable == NULL)
+		{
+			ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
+							errmsg("Could not re-allocate motion layer state table.")));
+		}
+		s_motion_layer_state.mnEntries = newTable;
+		/* zero-out the new piece at the end */
+		memset(&s_motion_layer_state.mnEntries[s_motion_layer_state.mneCount],
+			   0,
+			   (motNodeID - s_motion_layer_state.mneCount) * sizeof(MotionNodeEntry));
+		s_motion_layer_state.mneCount = motNodeID;
+	}
+	do { 
+		pEntry = &s_motion_layer_state.mnEntries[motNodeID - 1];
 
+		if (pEntry->valid)
+		{
+			/* An entry for this motion node ID already existed.  Initializing
+			 * twice for a given motion node is not allowed.  Having two nodes
+			 * with the same ID is also not allowed.  So, this is pretty likely a
+			 * serious problem.
+			 */
+			EndMotionLayerNode(motNodeID, false);
+		}
+	} while (pEntry->valid);
+
+	pEntry->motion_node_id = motNodeID;
+
+	pEntry->valid = true;
+#endif
 
     /* Finish up initialization of the motion node entry. */
-
     pEntry->preserve_order = preserveOrder;
     pEntry->tuple_desc = CreateTupleDescCopy(tupDesc);
 	InitSerTupInfo(pEntry->tuple_desc, &pEntry->ser_tup_info);
@@ -453,7 +507,6 @@ void InitMotionLayerNode(int16 motNodeID, bool preserveOrder, TupleDesc tupDesc)
 
         pEntry->ready_tuples = NULL;
     }
-
 
     /* we'll just set this to 0.  later, ml_ipc will call setExpectedReceivers() 
      * to set this if we are a "Receiving" motion node.
@@ -647,7 +700,7 @@ ReceiveReturnCode RecvTuple(int16 motNodeID, HeapTuple *tup_i)
 	    /* Stats */
     	statRecvTuple(pMNEntry, NULL, recvRC);
 	}
-	while( recvRC == NO_TUPLE );
+	while(recvRC == NO_TUPLE);
 
     return recvRC;
 }
@@ -659,7 +712,7 @@ ReceiveReturnCode RecvTupleFrom(int16 motNodeID, HeapTuple *tup_i, int16 srcRout
     ReceiveReturnCode 	recvRC;
 
 #ifdef AMS_VERBOSE_LOGGING
-	elog( DEBUG3, "RecvTupleFrom( motNodeID = %d, srcRoute = %d )", motNodeID, srcRoute );
+	elog(DEBUG3, "RecvTupleFrom( motNodeID = %d, srcRoute = %d )", motNodeID, srcRoute);
 #endif	
 
     pMNEntry = getMotionNodeEntry(motNodeID, "RecvTupleFrom");
@@ -729,7 +782,7 @@ ReceiveReturnCode RecvTupleFrom(int16 motNodeID, HeapTuple *tup_i, int16 srcRout
  * operations if that seems like a good idea.  For example, it can be called
  * sometime during send-tuple operations as well.
  */
-static void processIncomingChunks(  MotionNodeEntry *pMNEntry, int16 motNodeID, int16 srcRoute )
+static void processIncomingChunks(MotionNodeEntry *pMNEntry, int16 motNodeID, int16 srcRoute)
 {
     TupleChunkListItem tcItem, tcNext;
     MemoryContext oldCtxt;
@@ -742,10 +795,10 @@ static void processIncomingChunks(  MotionNodeEntry *pMNEntry, int16 motNodeID, 
     /* Get all of the currently available tuple-chunks, and push each one into
      * the chunk-sorter.
      */     
-	if( srcRoute == ANY_ROUTE )
-		tcItem = RecvTupleChunkFromAny( motNodeID, &srcRoute);
+	if(srcRoute == ANY_ROUTE)
+		tcItem = RecvTupleChunkFromAny(motNodeID, &srcRoute);
 	else
-		tcItem = RecvTupleChunkFrom( motNodeID, srcRoute );
+		tcItem = RecvTupleChunkFrom(motNodeID, srcRoute);
 
     numChunks = 0;
     chunkBytes = 0;
@@ -787,11 +840,11 @@ static void processIncomingChunks(  MotionNodeEntry *pMNEntry, int16 motNodeID, 
 
 void EndMotionLayerNode(int16 motNodeID, bool flushCommLayer)
 {
-    HASH_SEQ_STATUS seqStatus;
-    MotionNodeEntry *pMNEntry;
-    ChunkSorterEntry *pCSEntry;
+    HASH_SEQ_STATUS		seqStatus;
+	MotionNodeEntry		*pMNEntry;
+    ChunkSorterEntry	*pCSEntry;
 
-    pMNEntry = getMotionNodeEntry(motNodeID, "EndMotionLayerNode");
+	pMNEntry = getMotionNodeEntry(motNodeID, "EndMotionLayerNode");
 
     elog(DEBUG2, "Cleaning up Motion Layer details for motion node %d.",
         motNodeID);
@@ -874,6 +927,7 @@ void EndMotionLayerNode(int16 motNodeID, bool flushCommLayer)
 
         pMNEntry->cleanedUp = true;
     }
+	pMNEntry->cleanedUp = true;
 
     /* Clean up the motion-node entry, then remove it from the hash table. */
 	elog(DEBUG1, "Motion Node %d Statistics:\n"
@@ -897,16 +951,20 @@ void EndMotionLayerNode(int16 motNodeID, bool flushCommLayer)
     if (!pMNEntry->preserve_order)
         htfifo_destroy(pMNEntry->ready_tuples);
 
+#ifdef USE_MNEHASH
     hash_search(s_motion_layer_state.motionnode_map,
-        &pMNEntry->motion_node_id, HASH_REMOVE, NULL);
+				&pMNEntry->motion_node_id, HASH_REMOVE, NULL);
+#else
+	pMNEntry->valid = false;
+#endif
 }
-
 
 /* Helper function to get the motion node entry for a given ID.  NULL is
  * returned if the ID is unrecognized.
  */
 MotionNodeEntry *getMotionNodeEntry(int16 motNodeID, char *errString)
 {
+#ifdef USE_MNEHASH
 	MotionNodeEntry *pMNEntry;
 
     pMNEntry = (MotionNodeEntry *)hash_search(
@@ -920,6 +978,25 @@ MotionNodeEntry *getMotionNodeEntry(int16 motNodeID, char *errString)
     }
 
     return pMNEntry;
+#else
+	MotionNodeEntry 	*pMNEntry=NULL;
+
+	if (motNodeID > s_motion_layer_state.mneCount || 
+		!s_motion_layer_state.mnEntries[motNodeID - 1].valid)
+	{
+		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+               errmsg("Interconect Error: Unexpected Motion Node Id: %d.  This means"
+                   " a motion node that wasn't setup is requesting interconnect"
+                   " resources.", motNodeID)));
+	}
+	else
+		pMNEntry = &s_motion_layer_state.mnEntries[motNodeID - 1];
+
+	if (pMNEntry != NULL)
+		Assert(pMNEntry->motion_node_id == motNodeID);
+
+	return pMNEntry;
+#endif
 }
 
 /* Retrieve the chunk-sorter entry for the specified motion-node/source pair.
