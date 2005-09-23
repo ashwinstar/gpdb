@@ -728,13 +728,10 @@ DefineRelation(CreateStmt *stmt, char relkind)
  *		Deletes a relation.
  */
 void
-RemoveRelation(const RangeVar *relation, DropStmt   *stmt)
+RemoveRelation(const RangeVar *relation, DropBehavior behavior)
 {
 	Oid			relOid;
 	ObjectAddress object;
-	DropBehavior behavior;
-
-	behavior = stmt->behavior;
 
 	relOid = RangeVarGetRelid(relation, false);
 
@@ -742,41 +739,6 @@ RemoveRelation(const RangeVar *relation, DropStmt   *stmt)
 	object.objectId = relOid;
 	object.objectSubId = 0;
 
-	if (Mpp_role == MPP_ROLE_DISPATCH)
-	{
-			char *szCommand;
-			
-
-			/*
-			 * Serialize the stmt tree, and create the sql statement: mppexec ....
-			 */
-			Query * q = makeNode(Query);
-
-			StringInfoData buffer;
-			
-			initStringInfo( &buffer );
-
-			q->commandType = CMD_UTILITY;
-			q->utilityStmt = (Node *)stmt;
-
-			q->querySource = QSRC_ORIGINAL;
-			q->canSetTag = true; /*?*/
-		
-
-			szCommand = serializeNode((Node *)q);
-			
-
-			Assert(szCommand != NULL );
-
-			elog( DEBUG1,"Comand %s", szCommand);
-
-			appendStringInfo(&buffer, "mppexec '%s' ''", szCommand);
-
-			pfree(szCommand);
-
-        CdbDoCommand( buffer.data, false );
-        
-	}
 	performDeletion(&object, behavior);
 }
 
@@ -840,37 +802,7 @@ TruncateRelation(TruncateStmt *stmt)
 
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-			char *szCommand;
-			
-
-			/*
-			 * Serialize the stmt tree, and create the sql statement: mppexec ....
-			 */
-			Query * q = makeNode(Query);
-
-			StringInfoData buffer;
-			
-			initStringInfo( &buffer );
-
-			q->commandType = CMD_UTILITY;
-			q->utilityStmt = (Node *)stmt;
-
-			q->querySource = QSRC_ORIGINAL;
-			q->canSetTag = true; /*?*/
-		
-
-			szCommand = serializeNode((Node *)q);
-			
-
-			Assert(szCommand != NULL );
-
-			elog( DEBUG1,"Comand %s", szCommand);
-
-			appendStringInfo(&buffer, "mppexec '%s' ''", szCommand);
-
-			pfree(szCommand);
-
-        CdbDoCommand( buffer.data, false );
+			CdbDispatchUtilityStatement(stmt);		
 
 	}
 
@@ -1810,38 +1742,7 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-			char *szCommand;
-			
-
-			/*
-			 * Serialize the stmt tree, and create the sql statement: mppexec ....
-			 */
-			Query * q = makeNode(Query);
-
-			StringInfoData buffer;
-			
-			initStringInfo( &buffer );
-
-			q->commandType = CMD_UTILITY;
-			q->utilityStmt = (Node *)stmt;
-
-			q->querySource = QSRC_ORIGINAL;
-			q->canSetTag = true; /*?*/
-		
-
-			szCommand = serializeNode((Node *)q);
-			
-
-			Assert(szCommand != NULL );
-
-			elog( DEBUG1,"Comand %s", szCommand);
-
-			appendStringInfo(&buffer, "mppexec '%s' ''", szCommand);
-
-			pfree(szCommand);
-
-        CdbDoCommand( buffer.data, false );
-
+			CdbDispatchUtilityStatement(stmt);
 	}
 
 	heap_freetuple(reltup);

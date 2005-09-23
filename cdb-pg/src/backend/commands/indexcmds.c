@@ -997,12 +997,11 @@ relationHasPrimaryKey(Relation rel)
  *		Deletes an index.
  */
 void
-RemoveIndex(RangeVar *relation, DropStmt * stmt)
+RemoveIndex(RangeVar *relation, DropBehavior behavior)
 {
 	Oid			indOid;
 	char		relkind;
 	ObjectAddress object;
-	DropBehavior behavior = stmt->behavior;
 
 	indOid = RangeVarGetRelid(relation, false);
 	relkind = get_rel_relkind(indOid);
@@ -1018,41 +1017,6 @@ RemoveIndex(RangeVar *relation, DropStmt * stmt)
 
 	performDeletion(&object, behavior);
 
-	if (Mpp_role == MPP_ROLE_DISPATCH)
-	{
-			char *szCommand;
-			
-
-			/*
-			 * Serialize the stmt tree, and create the sql statement: mppexec ....
-			 */
-			Query * q = makeNode(Query);
-
-			StringInfoData buffer;
-			
-			initStringInfo( &buffer );
-
-			q->commandType = CMD_UTILITY;
-			q->utilityStmt = (Node *)stmt;
-
-			q->querySource = QSRC_ORIGINAL;
-			q->canSetTag = true; /*?*/
-		
-
-			szCommand = serializeNode((Node *)q);
-			
-
-			Assert(szCommand != NULL );
-
-			elog( DEBUG1,"Comand %s", szCommand);
-
-			appendStringInfo(&buffer, "mppexec '%s' ''", szCommand);
-
-			pfree(szCommand);
-
-		CdbDoCommand( buffer.data, false );
-
-	}
 }
 
 /*

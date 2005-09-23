@@ -222,38 +222,7 @@ DefineSequence(CreateSeqStmt *seq)
 
 	if (shouldDispatch)
 	{
-			char *szCommand;
-			
-
-			/*
-			 * Serialize the stmt tree, and create the sql statement: mppexec ....
-			 */
-			Query * q = makeNode(Query);
-
-			StringInfoData buffer;
-			
-			initStringInfo( &buffer );
-
-			q->commandType = CMD_UTILITY;
-			q->utilityStmt = (Node *)seq;
-
-			q->querySource = QSRC_ORIGINAL;
-			q->canSetTag = true; /*?*/
-		
-
-			szCommand = serializeNode((Node *)q);
-			
-
-			Assert(szCommand != NULL );
-
-			elog( DEBUG5,"Comand %s", szCommand);
-
-			appendStringInfo(&buffer, "mppexec '%s' ''", szCommand);
-
-			pfree(szCommand);
-
-        CdbDoCommand( buffer.data, true );
-
+		CdbDispatchUtilityStatement(seq);
 	}
 
 	rel = heap_open(seqoid, AccessExclusiveLock);

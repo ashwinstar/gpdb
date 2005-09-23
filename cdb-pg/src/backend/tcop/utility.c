@@ -57,9 +57,14 @@
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
+#include "lib/stringinfo.h"
+
 #include "cdb/cdbvars.h"
 #include "cdb/cdbcat.h"
 #include "cdb/cdbtm.h"
+#include "cdb/cdbdisp.h"
+#include "cdb/cdbsrlz.h"
+
 /*
  * Error-checking support for DROP commands
  */
@@ -641,6 +646,8 @@ ProcessUtility(Node *parsetree,
 			{
 				DropStmt   *stmt = (DropStmt *) parsetree;
 				ListCell   *arg;
+				
+				CdbSentry(CDB_ACCEPT, parsetree, NULL);
 
 				foreach(arg, stmt->objects)
 				{
@@ -650,41 +657,35 @@ ProcessUtility(Node *parsetree,
 					switch (stmt->removeType)
 					{
 						case OBJECT_TABLE:
-							CdbSentry(CDB_ACCEPT, parsetree, NULL);
 							rel = makeRangeVarFromNameList(names);
 							CheckDropPermissions(rel, RELKIND_RELATION);
-							RemoveRelation(rel, stmt);
+							RemoveRelation(rel, stmt->behavior);
 							break;
 
 						case OBJECT_SEQUENCE:
-							CdbSentry(CDB_ACCEPT, parsetree, NULL);
 							rel = makeRangeVarFromNameList(names);
 							CheckDropPermissions(rel, RELKIND_SEQUENCE);
-							RemoveRelation(rel, stmt);
+							RemoveRelation(rel, stmt->behavior);
 							break;
 
 						case OBJECT_VIEW:
-							CdbSentry(CDB_ACCEPT, parsetree, NULL);
 							rel = makeRangeVarFromNameList(names);
 							CheckDropPermissions(rel, RELKIND_VIEW);
-							RemoveView(rel, stmt);
+							RemoveView(rel, stmt->behavior);
 							break;
 
 						case OBJECT_INDEX:
-							CdbSentry(CDB_ACCEPT, parsetree, NULL);
 							rel = makeRangeVarFromNameList(names);
 							CheckDropPermissions(rel, RELKIND_INDEX);
-							RemoveIndex(rel, stmt);
+							RemoveIndex(rel, stmt->behavior);
 							break;
 
 						case OBJECT_TYPE:
-							CdbSentry(CDB_NONCE, parsetree, NULL);
 							/* RemoveType does its own permissions checks */
 							RemoveType(names, stmt->behavior);
 							break;
 
 						case OBJECT_DOMAIN:
-							CdbSentry(CDB_NONCE, parsetree, NULL);
 							/*
 							 * RemoveDomain does its own permissions
 							 * checks
@@ -693,12 +694,10 @@ ProcessUtility(Node *parsetree,
 							break;
 
 						case OBJECT_CONVERSION:
-							CdbSentry(CDB_REJECT, parsetree, NULL);
 							DropConversionCommand(names, stmt->behavior);
 							break;
 
 						case OBJECT_SCHEMA:
-							CdbSentry(CDB_ACCEPT, parsetree, NULL);
 							/*
 							 * RemoveSchema does its own permissions
 							 * checks
@@ -716,6 +715,16 @@ ProcessUtility(Node *parsetree,
 					 * We used to need to do CommandCounterIncrement()
 					 * here, but now it's done inside performDeletion().
 					 */
+					 
+					
+				}
+				
+				/*
+				 * If we are the QD, dispatch this DROP command to all the QEs
+				 */
+				if (Mpp_role == MPP_ROLE_DISPATCH)
+				{
+					CdbDispatchUtilityStatement((Node *)stmt);
 				}
 			}
 			break;

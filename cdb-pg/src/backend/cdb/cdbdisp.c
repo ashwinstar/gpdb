@@ -1745,3 +1745,39 @@ fillSliceVector(SliceTable * sliceTable, int sliceIndex, int *indexVector,
 	indexVector[next++] = sliceIndex;
 	return next;
 }
+
+
+void CdbDispatchUtilityStatement(Node * stmt)
+{
+	char *szCommand;
+	
+	/*
+	 * Serialize the stmt tree, and create the sql statement: mppexec ....
+	 */
+	Query * q = makeNode(Query);
+
+	StringInfoData buffer;
+	
+	initStringInfo( &buffer );
+
+	q->commandType = CMD_UTILITY;
+	q->utilityStmt = (Node *)stmt;
+
+	q->querySource = QSRC_ORIGINAL;
+	q->canSetTag = true; /*?*/
+
+
+	szCommand = serializeNode((Node *)q);
+	
+	Assert(szCommand != NULL );
+	Assert(Mpp_role == MPP_ROLE_DISPATCH);
+
+	elog( DEBUG1,"Comand %s", szCommand);
+
+	appendStringInfo(&buffer, "mppexec '%s' ''", szCommand);
+
+	pfree(szCommand);
+
+	CdbDoCommand( buffer.data, false );
+    
+}

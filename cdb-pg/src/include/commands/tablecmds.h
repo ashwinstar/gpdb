@@ -19,7 +19,7 @@
 
 extern Oid	DefineRelation(CreateStmt *stmt, char relkind);
 
-extern void RemoveRelation(const RangeVar *relation, DropStmt   *stmt);
+extern void RemoveRelation(const RangeVar *relation, DropBehavior behavior);
 
 extern void AlterTable(AlterTableStmt *stmt);
 

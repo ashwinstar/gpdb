@@ -128,5 +128,7 @@ extern bool CdbDoCommandInt(const char *szCommand,
 
 extern void CdbDispatchPlan(QueryDesc *queryDesc);
 
+extern void CdbDispatchUtilityStatement(Node * stmt);
+
 
 #endif   /* CDBDISP_H */

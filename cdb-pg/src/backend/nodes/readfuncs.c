@@ -584,7 +584,7 @@ _readAConst(void)
 		}
 		else
 		{
-			elog(NOTICE,"Serialization problem:  A_Const not string on int");
+			elog(NOTICE,"Serialization problem:  A_Const not string or int");
 			local_node->val.val.str = palloc(length + 1);
 			strcpy(local_node->val.val.str , token);
 		}

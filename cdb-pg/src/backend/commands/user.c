@@ -791,38 +791,7 @@ CreateUser(CreateUserStmt *stmt)
 
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-			char *szCommand;
-			
-
-			/*
-			 * Serialize the stmt tree, and create the sql statement: mppexec ....
-			 */
-			Query * q = makeNode(Query);
-
-			StringInfoData buffer;
-			
-			initStringInfo( &buffer );
-
-			q->commandType = CMD_UTILITY;
-			q->utilityStmt = (Node *)stmt;
-
-			q->querySource = QSRC_ORIGINAL;
-			q->canSetTag = true; /*?*/
-		
-
-			szCommand = serializeNode((Node *)q);
-			
-
-			Assert(szCommand != NULL );
-
-			elog( DEBUG5,"Comand %s", szCommand);
-
-			appendStringInfo(&buffer, "mppexec '%s' ''", szCommand);
-
-			pfree(szCommand);
-
-        CdbDoCommand( buffer.data, true );
-
+			CdbDispatchUtilityStatement(stmt);
 	}
 }
 
@@ -1244,39 +1213,9 @@ DropUser(DropUserStmt *stmt)
 	 */
 	user_file_update_needed();
 
-		if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-			char *szCommand;
-			
-
-			/*
-			 * Serialize the stmt tree, and create the sql statement: mppexec ....
-			 */
-			Query * q = makeNode(Query);
-
-			StringInfoData buffer;
-			
-			initStringInfo( &buffer );
-
-			q->commandType = CMD_UTILITY;
-			q->utilityStmt = (Node *)stmt;
-
-			q->querySource = QSRC_ORIGINAL;
-			q->canSetTag = true; /*?*/
-		
-
-			szCommand = serializeNode((Node *)q);
-			
-
-			Assert(szCommand != NULL );
-
-			elog( DEBUG5,"Comand %s", szCommand);
-
-			appendStringInfo(&buffer, "mppexec '%s' ''", szCommand);
-
-			pfree(szCommand);
-
-        CdbDoCommand( buffer.data, true );
+			CdbDispatchUtilityStatement(stmt);
 
 	}
 }

@@ -306,18 +306,6 @@ RemoveSchema(List *names, DropBehavior behavior)
 
 	performDeletion(&object, behavior);
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH)
-	{	
-
-		StringInfoData buffer;
-		
-		initStringInfo( &buffer );
-
-		appendStringInfo(&buffer, "DROP SCHEMA %s CASCADE", namespaceName);
-
-		CdbDoCommand( buffer.data, false );
-
-	}
 }
 
 
