@@ -24,17 +24,6 @@
 static void  extract_INT2OID_array(Datum array_datum, int* lenp, int16** vecp);
 
 /*
- * This flag controls the policy type returned from
- * get_table_policy for non-partitioned tables.
- * It's a kludge put in to allow us to do
- * distributed queries on catalog tables, like pg_class
- * and pg_statistic.
- * To use it, simply set it to true before running a catalog query, then set
- * it back to false.
- */
-bool bTreatLocalsAsPartitioned = false;
-
-/*
  * MppPolicyCopy -- Return a copy of a MppPolicy object.
  *
  * The copy is palloc'ed in the caller's context.
@@ -154,7 +143,7 @@ MppPolicy *get_table_policy(Oid tbloid)
 	if ( policy == NULL )
 	{
 		policy = palloc(sizeof(MppPolicy));
-		policy->ptype = bTreatLocalsAsPartitioned ? POLICYTYPE_PARTITIONED : POLICYTYPE_ENTRY;
+		policy->ptype = POLICYTYPE_ENTRY;
 		policy->nattrs= 0;
 	}
 			

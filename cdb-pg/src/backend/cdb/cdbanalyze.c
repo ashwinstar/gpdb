@@ -13,7 +13,7 @@
 #include "postgres.h"
 #include "executor/spi.h"
 #include "lib/stringinfo.h"
-#include "cdb/cdbcat.h"         /* bTreatLocalsAsPartitioned */
+#include "cdb/cdbpathlocus.h"   /* cdbpathlocus_querysegmentcatalogs */
 #include "cdb/cdbvars.h"        /* Mpp_role */
 #include "cdb/cdbanalyze.h"     /* me */
 
@@ -54,16 +54,16 @@ cdbanalyze_query_local_catalogs(StringInfoData *sqlstmt,
         }
         connected = true;
 
-        /* Make the sqlstmt access QE local catalogs instead of global catalog,
+        /* Make the query access QE local catalogs instead of global catalog,
          * by treating catalog tables as if they are partitioned user tables.
          */
-        bTreatLocalsAsPartitioned = true;   /* (kludgy trick) */
+        cdbpathlocus_querysegmentcatalogs = true;   /* (kludgy trick) */
 
         /* Do the query. */
         spiresult = SPI_execute( sqlstmt->data, false, 0 );
 
         /* Restore catalog access to normal. */
-        bTreatLocalsAsPartitioned = false;
+        cdbpathlocus_querysegmentcatalogs = false;
 
         /* Invoke caller's callback function to process the result. */
         callback(spiresult, context);
@@ -77,7 +77,7 @@ cdbanalyze_query_local_catalogs(StringInfoData *sqlstmt,
     PG_CATCH();
     {
         /* Restore catalog queries to normal. */
-        bTreatLocalsAsPartitioned = false;
+        cdbpathlocus_querysegmentcatalogs = false;
 
         /* End recursive session. */
         if (connected)

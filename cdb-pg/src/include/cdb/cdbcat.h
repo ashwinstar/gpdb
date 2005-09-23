@@ -16,19 +16,6 @@
 #include "access/genam.h"
 #include "access/heapam.h"
 
-/*
- * This flag controls the policy type returned from
- * get_table_policy for non-partitioned tables.
- * It's a kludge put in to allow us to do
- * distributed queries on catalog tables, like pg_class
- * and pg_statistic.
- * To use it, simply set it to true before running a catalog query, then set
- * it back to false.
- */
-extern bool bTreatLocalsAsPartitioned;
-
-
-
 #define MppNamespaceName			"mpp"
 
 /*

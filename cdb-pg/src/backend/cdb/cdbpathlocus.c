@@ -23,6 +23,18 @@
 
 
 /*
+ * This flag controls the policy type returned from
+ * cdbpathlocus_from_baserel() for non-partitioned tables.
+ * It's a kludge put in to allow us to do
+ * distributed queries on catalog tables, like pg_class
+ * and pg_statistic.
+ * To use it, simply set it to true before running a catalog query, then set
+ * it back to false.
+ */
+bool cdbpathlocus_querysegmentcatalogs = false;
+
+
+/*
  * cdbpathlocus_compare
  *
  *    - Returns true if locus a and locus b have the same 'locustype' and
@@ -157,6 +169,12 @@ cdbpathlocus_from_baserel(struct Query         *root,
                                                         policy->attrs);
         CdbPathLocus_MakeHashed(&result, partkey);
     }
+
+    /* Kludge used internally for querying catalogs on segment dbs */
+    else if (cdbpathlocus_querysegmentcatalogs)
+        CdbPathLocus_MakeHashed(&result, NULL);
+
+    /* Normal catalog access */
     else
         CdbPathLocus_MakeRoot(&result);
 
