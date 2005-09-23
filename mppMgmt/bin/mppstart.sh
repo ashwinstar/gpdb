@@ -85,7 +85,7 @@ USAGE () {
 		$TABECHO
 		$TABECHO "Database startup options:"
 		$TABECHO "-n, do not wait for startup return code of each node [default:- wait]"
-		##MPP	$TABECHO "-m, start QE only in maintenance mode [default:- full MPP startup]"
+		$TABECHO "-m, start master db only in maintenance mode [default:- full MPP startup]"
 		$TABECHO "-x, mark failed segment as down [default:- do not mark segment as down on startup failure]"
 		$TABECHO "-z, force startup of segment instance marked as invalid"
 		$TABECHO
@@ -173,15 +173,15 @@ GET_DETAILS () {
 }
 
 START_ADMIN () {
-		LOG_MSG "[INFO]:-Starting head database in admin mode"
-		export PGPORT=$HEAD_PORT
-		$PG_CTL -w -D $HEAD_DATA_DIRECTORY -l ${HEAD_DATA_DIRECTORY}.log -o "-i -p $HEAD_PORT -c "mpp_mode=off start"" >/dev/null 2>&1
+		LOG_MSG "[INFO]:-Starting master database in admin mode"
+		export PGPORT=$MASTER_PORT
+		env PGOPTIONS="-c mpp_session_role=utility" $PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -p $MASTER_PORT " start >/dev/null 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
-				$TAIL ${HEAD_DATA_DIRECTORY}.log|$TEE -a $LOG_FILE
-				ERROR_EXIT "[FATAL]:-Could not start head database in admin mode" 2
+				$TAIL ${MASTER_DATA_DIRECTORY}.log|$TEE -a $LOG_FILE
+				ERROR_EXIT "[FATAL]:-Could not start master database in admin mode" 2
 		fi
-		LOG_MSG "[INFO]:-Successfully started head node in admin mode"
+		LOG_MSG "[INFO]:-Successfully started master database in admin mode"
 }
 
 
