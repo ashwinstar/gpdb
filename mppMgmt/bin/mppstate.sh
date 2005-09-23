@@ -121,6 +121,10 @@ CHK_PG_PID () {
 
 }
 
+GET_FAIL_SETTING () {
+	FAIL_TYPE=`$PSQL -p $MASTER_PORT $QD_DBNAME -R" " -A -t -c"show MPPFaultAction;"`
+}
+
 DATABASE_STATUS () {
 		#MPP converted 21/07/2005
 		QD_STATE_COUNT=0
@@ -133,7 +137,8 @@ DATABASE_STATUS () {
 				QD_PID=`$HEAD -1 $MASTER_DATA_DIRECTORY/$PG_PID`
 				CHK_PG_PID $QD_PID
 				GET_QE_DETAILS
-				GET_MPP_VERSION	
+				GET_MPP_VERSION
+				GET_FAIL_SETTING
 				LOG_MSG "[INFO]:-Master Configuration & Status"
 				LOG_MSG "[INFO]:--------------------------"
 				LOG_MSG "[INFO]:-Master host                   = $QD_NAME" 
@@ -141,6 +146,7 @@ DATABASE_STATUS () {
 				LOG_MSG "[INFO]:-Database name                 = $QD_DBNAME "
 				LOG_MSG "[INFO]:-Master port                   = $MASTER_PORT"
 				LOG_MSG "[INFO]:-MPP software version          = $MPP_VERSION"
+				LOG_MSG "[INFO]:-MPP failure action            = $FAIL_TYPE"
 				if [ -f $RECOVER_FLAG ]; then
 						LOG_MSG "[WARN]:-Active mpprecovernode.bsh     = True"
 				else
