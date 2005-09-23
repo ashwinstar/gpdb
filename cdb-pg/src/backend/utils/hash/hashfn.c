@@ -40,3 +40,12 @@ tag_hash(const void *key, Size keysize)
 	return DatumGetUInt32(hash_any((const unsigned char *) key,
 								   (int) keysize));
 }
+
+/*
+ * int32_hash: hash function for int32: no-op
+ */
+uint32
+int32_hash(const void *key, Size keysize)
+{
+	return *(uint32 *)key;
+}
