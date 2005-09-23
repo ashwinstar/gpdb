@@ -44,7 +44,7 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/syscache.h"
-
+#include "cdb/cdbvars.h"
 
 /*
  * The namespace search path is a possibly-empty list of namespace OIDs.
@@ -233,6 +233,7 @@ RangeVarGetCreationNamespace(const RangeVar *newRelation)
 	if (newRelation->istemp)
 	{
 		/* TEMP tables are created in our backend-local temp namespace */
+		if (Mpp_role != MPP_ROLE_EXECUTE)
 		if (newRelation->schemaname)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
