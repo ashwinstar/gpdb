@@ -495,6 +495,32 @@ _readTruncateStmt(void)
 	READ_DONE();
 }
 
+static AlterTableStmt *
+_readAlterTableStmt(void)
+{
+	READ_LOCALS(AlterTableStmt);
+
+	READ_NODE_FIELD(relation);
+	READ_NODE_FIELD(cmds);
+	READ_ENUM_FIELD(relkind, ObjectType);
+	
+	READ_DONE();
+}
+
+static AlterTableCmd *
+_readAlterTableCmd(void)
+{
+	READ_LOCALS(AlterTableCmd);
+
+	READ_ENUM_FIELD(subtype, AlterTableType);
+	READ_STRING_FIELD(name);
+	READ_NODE_FIELD(def);
+	READ_NODE_FIELD(transform);
+	READ_ENUM_FIELD(behavior, DropBehavior);
+	
+	READ_DONE();
+}
+
 
 static CreateUserStmt *
 _readCreateUserStmt(void)
@@ -1871,6 +1897,8 @@ static ParseNodeInfo infoAr[] =
 	{"AGG", (ReadFn)_readAgg},
 	{"AGGREF", (ReadFn)_readAggref},
 	{"ALIAS", (ReadFn)_readAlias},
+	{"ALTERTABLECMD", (ReadFn)_readAlterTableCmd},
+	{"ALTERTABLESTMT", (ReadFn)_readAlterTableStmt},
 	{"APPEND", (ReadFn)_readAppend},
 	{"ARRAY", (ReadFn)_readArrayExpr},
 	{"ARRAYREF", (ReadFn)_readArrayRef},

@@ -802,7 +802,7 @@ TruncateRelation(TruncateStmt *stmt)
 
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-			CdbDispatchUtilityStatement(stmt);		
+			CdbDispatchUtilityStatement((Node *)stmt);		
 
 	}
 
@@ -1742,7 +1742,7 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-			CdbDispatchUtilityStatement(stmt);
+			CdbDispatchUtilityStatement((Node *)stmt);
 	}
 
 	heap_freetuple(reltup);
@@ -2046,6 +2046,9 @@ AlterTable(AlterTableStmt *stmt)
 	ATController(relation_openrv(stmt->relation, AccessExclusiveLock),
 				 stmt->cmds,
 				 interpretInhOption(stmt->relation->inhOpt));
+				 
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+		CdbDispatchUtilityStatement((Node *)stmt);
 }
 
 /*
@@ -2334,56 +2337,27 @@ ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd)
 	switch (cmd->subtype)
 	{
 		case AT_AddColumn:		/* ADD COLUMN */
-		if (Mpp_role == MPP_ROLE_DISPATCH)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-			  errmsg("ALTER TABLE add column is not supported")));
 			ATExecAddColumn(tab, rel, (ColumnDef *) cmd->def);
 			break;
 		case AT_ColumnDefault:	/* ALTER COLUMN DEFAULT */
-		if (Mpp_role == MPP_ROLE_DISPATCH)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-			  errmsg("ALTER TABLE column default is not supported")));
 			ATExecColumnDefault(rel, cmd->name, cmd->def);
 			break;
 		case AT_DropNotNull:	/* ALTER COLUMN DROP NOT NULL */
-		if (Mpp_role == MPP_ROLE_DISPATCH)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-			  errmsg("ALTER TABLE drop not null is not supported")));
 			ATExecDropNotNull(rel, cmd->name);
 			break;
 		case AT_SetNotNull:		/* ALTER COLUMN SET NOT NULL */
-		if (Mpp_role == MPP_ROLE_DISPATCH)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-			  errmsg("ALTER TABLE set not null is not supported")));
 			ATExecSetNotNull(tab, rel, cmd->name);
 			break;
 		case AT_SetStatistics:	/* ALTER COLUMN STATISTICS */
-		
 			ATExecSetStatistics(rel, cmd->name, cmd->def);
 			break;
 		case AT_SetStorage:		/* ALTER COLUMN STORAGE */
-		if (Mpp_role == MPP_ROLE_DISPATCH)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-			  errmsg("ALTER TABLE set storage is not supported")));
 			ATExecSetStorage(rel, cmd->name, cmd->def);
 			break;
 		case AT_DropColumn:		/* DROP COLUMN */
-		if (Mpp_role == MPP_ROLE_DISPATCH)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-			  errmsg("ALTER TABLE drop column is not supported")));
 			ATExecDropColumn(rel, cmd->name, cmd->behavior, false, false);
 			break;
 		case AT_DropColumnRecurse:		/* DROP COLUMN with recursion */
-		if (Mpp_role == MPP_ROLE_DISPATCH)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-			  errmsg("ALTER TABLE drop column is not supported")));
 			ATExecDropColumn(rel, cmd->name, cmd->behavior, true, false);
 			break;
 		case AT_AddIndex:		/* ADD INDEX */
@@ -2396,24 +2370,12 @@ ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd)
 			ATExecAddConstraint(tab, rel, cmd->def);
 			break;
 		case AT_DropConstraint:	/* DROP CONSTRAINT */
-		if (Mpp_role == MPP_ROLE_DISPATCH)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-			  errmsg("ALTER TABLE drop constraint is not supported")));
 			ATExecDropConstraint(rel, cmd->name, cmd->behavior, false);
 			break;
 		case AT_DropConstraintQuietly:	/* DROP CONSTRAINT for child */
-		if (Mpp_role == MPP_ROLE_DISPATCH)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-			  errmsg("ALTER TABLE drop constraint is not supported")));
 			ATExecDropConstraint(rel, cmd->name, cmd->behavior, true);
 			break;
 		case AT_AlterColumnType:		/* ALTER COLUMN TYPE */
-		if (Mpp_role == MPP_ROLE_DISPATCH)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-			  errmsg("ALTER TABLE alter column type is not supported")));
 			ATExecAlterColumnType(tab, rel, cmd->name, (TypeName *) cmd->def);
 			break;
 		case AT_ToastTable:		/* CREATE TOAST TABLE */
@@ -2421,24 +2383,12 @@ ATExecCmd(AlteredTableInfo *tab, Relation rel, AlterTableCmd *cmd)
 			break;
 		case AT_ChangeOwner:	/* ALTER OWNER */
 			/* get_usesysid raises an error if no such user */
-			if (Mpp_role == MPP_ROLE_DISPATCH)
-			ereport(ERROR,
-				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-			  errmsg("ALTER TABLE change owner is not supported")));
 			ATExecChangeOwner(RelationGetRelid(rel), get_usesysid(cmd->name));
 			break;
 		case AT_ClusterOn:		/* CLUSTER ON */
-		if (Mpp_role == MPP_ROLE_DISPATCH)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-			  errmsg("ALTER TABLE cluster on is not supported")));
 			ATExecClusterOn(rel, cmd->name);
 			break;
 		case AT_DropCluster:	/* SET WITHOUT CLUSTER */
-		if (Mpp_role == MPP_ROLE_DISPATCH)
-		ereport(ERROR,
-				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-			  errmsg("ALTER TABLE set without cluster is not supported")));
 			ATExecDropCluster(rel);
 			break;
 		case AT_DropOids:		/* SET WITHOUT OIDS */
