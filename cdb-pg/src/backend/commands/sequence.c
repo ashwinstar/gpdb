@@ -160,7 +160,7 @@ DefineSequence(CreateSeqStmt *seq)
 				coldef->colname = "last_value";
 				
 				if (Mpp_role == MPP_ROLE_EXECUTE)
-					new.last_value += ((Mpp_segment+1) << 24);
+					new.last_value += ((Mpp_segment+1) * 100000000);
 
 				value[i - 1] = Int64GetDatumFast(new.last_value);
 
@@ -179,7 +179,7 @@ DefineSequence(CreateSeqStmt *seq)
 				typnam->typeid = INT8OID;
 				coldef->colname = "min_value";
 				if (Mpp_role == MPP_ROLE_EXECUTE)
-					new.min_value += ((Mpp_segment+1) << 24);
+					new.min_value += ((Mpp_segment+1)* 100000000);
 
 				value[i - 1] = Int64GetDatumFast(new.min_value);
 				
