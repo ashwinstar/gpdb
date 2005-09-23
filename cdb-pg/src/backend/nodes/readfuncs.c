@@ -572,11 +572,25 @@ _readAConst(void)
 	}
 	else
 	{
-		local_node->val.val.str = palloc(length + 1);
-		strcpy(local_node->val.val.str , token);
+		bool isInt = true;
+		int i;
+		for (i = 0; i < strlen(token); i++)
+	 	   if (token[0] < '0' || token[0] > '9')
+	 	   	 isInt = false;
+	 	if (isInt)
+		{
+			local_node->val.type = T_Integer;
+			local_node->val.val.ival = atol(token);
+		}
+		else
+		{
+			elog(NOTICE,"Serialization problem:  A_Const not string on int");
+			local_node->val.val.str = palloc(length + 1);
+			strcpy(local_node->val.val.str , token);
+		}
 	}
 	
-	
+	local_node->typename = NULL;
 	READ_DONE();
 }
 
