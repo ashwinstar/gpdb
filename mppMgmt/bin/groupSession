@@ -287,12 +287,10 @@ if __name__ == '__main__':
 			for th in sessionsTmp:
 				th.join()
 				if th.lastoutput == lastTmp:
-					print 'Output from host ' + th.host + ' is the same as the last'
+					print '%-8s: %-s' % (th.host, 'Output from host ' + th.host + ' is the same as the last host')
 				else:
-				  print 'Output from host ' + th.host + ':'
-				  print '------------------->'
-				  print th.lastoutput,
-				  print '<-------------------'
+				  for str in th.lastoutput.splitlines(True):
+				    print '%-8s: %-s' % (th.host, str),
 				  lastTmp = th.lastoutput
 				del th
 			del sessionsTmp
