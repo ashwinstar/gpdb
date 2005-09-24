@@ -25,12 +25,12 @@ Options:
 Runs commands on a list of hosts.  Manages passwords and trusted key access
 using ssh.
 
-From the early implementation by Eric S. Raymond <esr@thyrsus.com>
 Author: Luke Lonergan <llonergan@greenplum.com>"""
 
 # $Id$
 
-import os, sys, threading, time, lib.sshSessionModule, string, getpass, getopt, tempfile
+import os, sys, threading, time, string, getpass, getopt, tempfile
+import lib.sshSessionModule as sshSessionModule, lib.threadpool as threadpool
 
 def die(msg):
 	print msg + 'exiting.'
@@ -193,7 +193,7 @@ if __name__ == '__main__':
 
 		#Create a new instance of an sshSession object initialized with this
 		#host/user/port
-		a = lib.sshSessionModule.sshSession(user,port,host)
+		a = sshSessionModule.sshSession(user,port,host)
 		#Perform a check to see if this host requires a password
 		a.PWCheck = 1
 		a.setCMD('ssh',['ls -ld ~'])
@@ -234,6 +234,9 @@ if __name__ == '__main__':
 
 	print 'Entering command prompt, ssh commands are executed on all hosts:\n'
 
+	#Create a threadpool to run the commands
+	pool = threadpool.ThreadPool(len(sessions))
+
 	cmd = None
 	args = []
 	#Run a command pass
@@ -269,31 +272,36 @@ if __name__ == '__main__':
 			else:
 				cmd = 'ssh'
 				args = [command,None]
-			
-			sessionsTmp = []
+		
+			#Put commands into threaded queue
 			for th in sessions:
-				th.setName('Thread for host - ' + th.host)
-				#For some reason, we can't reuse the old objects, but must create new
-				#ones for new threads.  So we create copies.
+				th.setCMD(cmd,args)
+				pool.putRequest(threadpool.WorkRequest(th.run,None,None,None))
 
-				sTmp = lib.sshSessionModule.sshSession(th.user,th.port,th.host)
-				sTmp.password = th.password
-				sTmp.hostKeyPhrase = th.hostKeyPhrase
-				sTmp.setCMD(cmd,args)
-				sessionsTmp.append(sTmp)
-				sTmp.start()
+		    #Wait for completion of all in queue, or a keyboard interrupt
+		    	while True:
+        			try:
+          				pool.poll()
+        			except (threadpool.NoResultsPending):
+					interrupted=False
+          				break
+        			except (KeyboardInterrupt,threadpool.NoResultsPending):
+					interrupted=True
+          				break
 
-			lastTmp = None
-			for th in sessionsTmp:
-				th.join()
-				if th.lastoutput == lastTmp:
-					print '%-8s: %-s' % (th.host, 'Output from host ' + th.host + ' is the same as the last host')
-				else:
-				  for str in th.lastoutput.splitlines(True):
-				    print '%-8s: %-s' % (th.host, str),
-				  lastTmp = th.lastoutput
-				del th
-			del sessionsTmp
+			if not interrupted:
+				#Print the output
+				lastTmp = None
+				for th in sessions:
+					if th.lastoutput == lastTmp:
+						print '%-8s: %-s' % (th.host, 'Output from host ' + th.host + ' is the same as the last host')
+					else:
+				  		for str in th.lastoutput.splitlines(True):
+				    			print '%-8s: %-s' % (th.host, str),
+				  		lastTmp = th.lastoutput
+			else:
+					print 'Command interrupted.'
+
 		print ""
 
 	print 'Done with group session.'
