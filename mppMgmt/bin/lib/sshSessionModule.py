@@ -5,7 +5,7 @@
 From the early implementation by Eric S. Raymond <esr@thyrsus.com>
 Author: Luke Lonergan <llonergan@greenplum.com>"""
 
-import os, sys, getopt, string, getpass, lib.pexpect, threading
+import os, sys, getopt, string, getpass, lib.pexpect, threading, signal
 
 class sshSession(threading.Thread):
     "Session with extra state including the password to be used."
@@ -32,6 +32,8 @@ class sshSession(threading.Thread):
 	self.hostKeyPhrase = None
 	self.PPRequired = None
 
+	self.child = None
+
     def run(self):
 	    if self.cmd is "ssh":
 		    self.lastoutput = self.ssh(self.args[0])
@@ -53,18 +55,18 @@ class sshSession(threading.Thread):
 
     def __exec(self, command):
 	"Execute a command on the remote host.  Return the output."
-	child = lib.pexpect.spawn(command,[],self.timeout)
-	child.setmaxread (1000) # Sets buffer to 1000 characters.
+	self.child = lib.pexpect.spawn(command,[],self.timeout)
+	self.child.setmaxread (1000) # Sets buffer to 1000 characters.
 	if self.verbose:
 		sys.stderr.write("-> " + command + "\n")
 
 	try:
 	  pwpass=0
 	  while True:
-	    seen=child.expect([lib.pexpect.EOF,'assword:','continue connecting (yes/no)?','Enter passphrase for key.*:'])
+	    seen=self.child.expect([lib.pexpect.EOF,'assword:','continue connecting (yes/no)?','Enter passphrase for key.*:'])
 
 	    if self.verbose:
-		    sys.stderr.write("<- " + child.before + "\n")
+		    sys.stderr.write("<- " + self.child.before + "\n")
 
 	    #The command ran successfully if EOF was seen
 	    if seen == 0:
@@ -87,11 +89,11 @@ class sshSession(threading.Thread):
 		#If we have a password and we're on the first pass, try it
 		if pwpass == 1:
 		  if self.password:
-			child.sendline(self.password)
+			self.child.sendline(self.password)
 
 		  elif not self.password:
 			self.password = getpass.getpass('Remote password: ')
-		    	child.sendline(self.password)
+		    	self.child.sendline(self.password)
 
 		elif pwpass > 1:
 				if self.PWCheck == 1:
@@ -107,7 +109,7 @@ class sshSession(threading.Thread):
 	    elif seen == 2:
 		if self.verbose:
 			sys.stderr.write("Saw 'continue connecting' prompt...\n")
-		child.sendline("yes")
+		self.child.sendline("yes")
 
 	    #A password protected local public key is being exported by ssh-agent
 	    #Ask for the key passphrase if necessary, then output it to continue
@@ -119,7 +121,7 @@ class sshSession(threading.Thread):
 			break
 		if not self.hostKeyPhrase:
 			self.hostKeyPhrase = getpass.getpass('ssh-agent pass key phrase: ')
-		child.sendline(self.hostKeyPhrase)
+		self.child.sendline(self.hostKeyPhrase)
 
 	except:
 		#print "Error processing login!"
@@ -129,11 +131,10 @@ class sshSession(threading.Thread):
 
 	#If this was a password check, reset the flag
 	if self.PWCheck is 1:
-		if child.isalive():
-			child.kill(9)
+		self.killCMD(9)
 		self.PWCheck = 0
 
-    	return child.before
+    	return self.child.before
 
     def ssh(self, command):
 	    return self.__exec("ssh -n -p %s -l %s %s \"%s\""%(self.port, self.user,self.host,command))
@@ -155,6 +156,11 @@ class sshSession(threading.Thread):
 		return seen.split()[0]	# Return permission field of listing.
 
     def setCMD(self,cmd,args=[]):
-        self.cmd=cmd
-	self.args=args
+		self.cmd=cmd
+		self.args=args
+
+    #Public interface to signal the child with signal sig (default signal is 15, or TERM)
+    def killCMD(self,sig=signal.SIGTERM):
+	if self.child.isalive():
+		self.child.kill(sig)
 

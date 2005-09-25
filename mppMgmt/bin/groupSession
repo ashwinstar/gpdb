@@ -29,9 +29,16 @@ Author: Luke Lonergan <llonergan@greenplum.com>"""
 
 # $Id$
 
-import os, sys, threading, time, string, getpass, getopt, tempfile
+import os, sys, threading, time, string, getpass, getopt, tempfile, signal
 import lib.sshSessionModule as sshSessionModule, lib.threadpool as threadpool
 
+def handlerTERM(signo,frame):
+	print 'Killing commands on remote hosts...'
+	for th in sessions:
+		th.killCMD(signal.SIGKILL)
+	print 'done.  Exiting.'
+	die('\nSignal caught, program ')
+	
 def die(msg):
 	print msg + 'exiting.'
     	raise SystemExit, 1
@@ -140,6 +147,9 @@ def setupKeyAccessRemote(session):
     else:
 	    print "Keys for %s on %s have been installed." % (session.user, session.host)
 
+# Create an sshSession object for each host in the file (global, to allow for a signal handler)
+sessions = []
+
 if __name__ == '__main__': 
 	# Process options
 	(options, arguments) = getopt.getopt(sys.argv[1:], "hvp:s")
@@ -175,9 +185,6 @@ if __name__ == '__main__':
 	except:
 		print 'Unexpected error:', sys.exc_info()[0]
 		raise
-
-	# Create an sshSession object for each host in the file
-	sessions = []
 
 	for h in hostFile:
 		#Strip out the hostname and user, if there is a user present in the record
@@ -234,6 +241,9 @@ if __name__ == '__main__':
 
 	print 'Entering command prompt, ssh commands are executed on all hosts:\n'
 
+	#Register a signal handler for the TERM signal
+	signal.signal(signal.SIGTERM,handlerTERM)
+
 	#Create a threadpool to run the commands
 	pool = threadpool.ThreadPool(len(sessions))
 
@@ -285,7 +295,10 @@ if __name__ == '__main__':
         			except (threadpool.NoResultsPending):
 					interrupted=False
           				break
-        			except (KeyboardInterrupt,threadpool.NoResultsPending):
+        			except (KeyboardInterrupt):
+					for th in sessions:
+						th.killCMD(signal.SIGKILL)
+					pool.wait()
 					interrupted=True
           				break
 
