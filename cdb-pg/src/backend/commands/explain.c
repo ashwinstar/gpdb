@@ -520,7 +520,7 @@ explain_outNode(StringInfo str,
                         if (pMotion->hashToSelfOnly)
                             pname = "Cull Motion";
                         else
-                            pname = "Scatter Motion";
+                            pname = "Redistribute Motion";
 						break;
 					case MOTIONTYPE_FIXED:
                         if ( pMotion->numOutputSegs == 0 )
