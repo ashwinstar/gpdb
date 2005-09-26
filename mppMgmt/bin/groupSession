@@ -29,126 +29,165 @@ Author: Luke Lonergan <llonergan@greenplum.com>"""
 
 # $Id$
 
-import os, sys, threading, time, string, getpass, getopt, tempfile, signal
+import os, sys, threading, time, string, getpass, getopt, signal
 import lib.sshSessionModule as sshSessionModule, lib.threadpool as threadpool
 
-def handlerTERM(signo,frame):
-	print 'Killing commands on remote hosts...'
-	for th in sessions:
-		th.killCMD(signal.SIGKILL)
-	print 'done.  Exiting.'
-	die('\nSignal caught, program ')
+class groupSession:
+	"A group of sessions attached to a set of remote hosts"
+
+	"""Init Args:
+		hosts 	= an array of tuples (hostname,user)
+		port	= the port to communicate with
+		"""
+	def __init__(self,hosts,port=22):
+
+		self.verbose = False
+
+		#Create a threadpool to run the commands
+		self.pool = threadpool.ThreadPool(len(hosts))
+
+		# Create an sshSession object for each host
+		self.sessions = []
+		for host,user in hosts:
+			#Create a new instance of an sshSession object initialized with this
+			#host/user/port
+			a = sshSessionModule.sshSession(user,port,host)
+			self.sessions.append(a)
+
+		self.__setupHostAccess()
+
+		#i = 0
+		#for th in self.sessions:
+			#i = i+1
+			#print '%d %s %s %s' % (i, th.user, th.host, th.port)
+
+	def runCommand(self,cmd,args,begin=0,end=0):
+		#This kludge is here because python doesn't support copiable iterators
+		if end == 0:
+			end = len(self.sessions)
+
+		#Put commands into threaded queue
+		for i in range(begin,end):
+			th = self.sessions[i]
+			if self.verbose:
+				print 'LAL in runCommand host: %s' % (th.host)
+			th.setCMD(cmd,args)
+			self.pool.putRequest(threadpool.WorkRequest(th.run,None,None,None))
+
+		interrupted = False
+		#Wait for completion of all in queue, or a keyboard interrupt
+		while True:
+        		try:
+				self.pool.poll()
+			except (threadpool.NoResultsPending):
+				interrupted=False
+				break
+        		except (KeyboardInterrupt):
+				for i in range(begin,end):
+					th = self.sessions[i]
+					th.killCMD(signal.SIGKILL)
+				pool.wait()
+				interrupted=True
+          			break
+
+		return interrupted
+
+	def handlerTERM(self,signo,frame):
+		print 'Killing commands on remote hosts...'
+		for th in self.sessions:
+			th.killCMD(signal.SIGKILL)
+		print 'done.  Exiting.'
+		self.die('\nSignal caught, program ')
 	
-def die(msg):
-	print msg + 'exiting.'
-    	raise SystemExit, 1
+	def die(self,msg):
+		print msg + 'exiting.'
+    		raise SystemExit, 1
 
-def fixperms(session, file):
-	"Force perms of remote file to user read on, group/other write off."
-	perms = session.exists(file)
-	if perms is None:
-		print "File " + file + " doesn't exist."
-		return None
-	else:
-		ok = (perms[1] == 'r' and perms[4] == '-' and perms[5] == '-' and perms[6] == '-' and \
-		      perms[7] == '-' and perms[8] == '-')
-		if not ok:
-	    		session.ssh("/bin/chmod 700 %s" % file)
-	return ok
+	def __initializeSessions(self,defaultPassword=None,defaultPassPhrase=None,ibegin=0,iend=0):
+		if iend == 0:
+			iend = len(self.sessions)
 
-def forcefile(session, file, command):
-    "Create file with command if it does not already exist."
-    perms = session.exists(file)
-    if perms is None:
-	   session.ssh(command)
-	   perms = session.exists(file)
+		#Set the password check flag to 1 for all sessions
+		for i in range(ibegin,iend):
+			th = self.sessions[i]
+			if self.verbose:
+				print 'LAL in initializeSessions host: %s' % (th.host)
+			th.PWCheck = True
+			th.PWRequired = 0
+			th.timeout=30
+			if defaultPassword is not None:
+				th.password = defaultPassword
+			if defaultPassPhrase is not None:
+				th.hostKeyPhrase = defaultPassPhrase
+	
+	def __setupHostAccess(self,setupKeys=True):
+		#Set the default state of all of the sessions
+		self.__initializeSessions()
 
-    return perms
+		defaultPassword=None
+		#Loop on sessions to get enough passwords for all
+		icurr = 0
+		while icurr < len(self.sessions):
+				th = self.sessions[icurr]
+				stopAfter=3
+				#Password is required for this session
+				while stopAfter != 0 and not th.isReady():
+					stopAfter = stopAfter-1
+					if self.verbose:
+						print 'LAL in setupHostAccess host: %s' % (th.host)
 
-def setupKeyAccessRemote(session):
-    # Verify that key pairs are present on the local side 
-    try:
-	    os.chdir(os.getenv("HOME"))
-    except:
-	    die("Can't find your home directory!")
+					#Initialize the remaining sessions to use the
+					#new default password and hostKeyPhrase
+					self.__initializeSessions(th.password,th.hostKeyPhrase,icurr)
+					#Run a parallel command to discover whether each host needs a PW or not
+					self.runCommand('ssh',['ls -ld '],icurr)
 
-    if not os.access(".", os.R_OK):
-	    die("Your home directory is not readable by you. That's weird.")
-	    die("This probably means $HOME is incorrect.")
 
-    if not os.path.exists(".ssh"):
-	    os.mkdir(".ssh")
+					if not th.isReady():
+                                         if th.PWRequired:
+						prompt = 'groupSession: Remote password for host ' + th.host + ':'
+						th.password = getpass.getpass(prompt)
+ 
+                                         if th.PPRequired:
+						prompt = 'groupSession: ssh-agent pass key phrase:'
+						th.hostKeyPhrase = getpass.getpass(prompt)
+ 
+					else:
+						break
 
-    if not os.access(".ssh", os.R_OK):
-	    die("Your .ssh directory is not readable by you. That's weird.")
-	    die("This probabably means $HOME is incorrect.")
+				icurr = icurr + 1
 
-    try:
-	    os.chdir(".ssh")
-    except:
-	    die("Can't chdir into your .ssh directory!")
+		#Setup the ssh host keys if any session required a password
+		pwrequired = False
+		for i in range(0,len(self.sessions)):
+			if self.sessions[i].PWRequired: pwrequired = True
 
-    public_keys  = filter(lambda f: os.access(f, os.R_OK), ("id_dsa.pub", "id_rsa.pub", "identity.pub"))
+		if setupKeys and pwrequired:
+			#Copy the first session's passphrase to all
+			prompt = 'groupSession: ssh-agent pass key phrase:'
+			pphrasedef = getpass.getpass(prompt)
+			for i in range(0,len(self.sessions)):
+				self.sessions[i].hostKeyPhrase = pphrasedef
 
-    if not public_keys:
-	public_keys = []
-	for (keytype, file) in (("rsa1", "identity"), ("dsa", "id_dsa")):
-	    print "About to generate a %s key. You will be prompted for a passphrase," % keytype
-	    print "Pressing enter at that prompt will create a key with no passphrase" 
-	    os.system("ssh-keygen -t %s -f %s" % (keytype, file))
-	    public_keys.append(file + ".pub")
+			#Setup ssh host keys for all sessions in parallel
+			for i in range(0,len(self.sessions)):
+				th = self.sessions[i]
+				#Setup ssh trusted key access for this host
+		  			#th.__setupKeyAccessRemote()
+				self.pool.putRequest(\
+						threadpool.WorkRequest(th.setupKeyAccessRemote,\
+						None,None,None))
 
-    #print "I see the following public keys:", string.join(public_keys,", ")
-    for file in public_keys:
-	private_key = file[:-4]
-	legend = private_key + " corresponding to " + file + " " 
-	if not os.access(private_key, os.R_OK):
-		die(legend + "does not exist or is unreadable.")
+			#Wait for completion of all in queue, or a keyboard interrupt
+			while True:
+        			try:
+					self.pool.poll()
 
-# Update remote authorized_keys files
-    try:
-	 keyfile = tempfile.mktemp()
-	 os.system("cat " + string.join(public_keys, " ") + " >" + keyfile)
-	 if verbose:
-		 print "Public keys consolidated in %s" % keyfile
+				except (threadpool.NoResultsPending,KeyboardInterrupt):
+					break
 
-	 # Permissions checks
-	 fixperms(session, "~")
-	 forcefile(session, "~/.ssh", "mkdir ~/.ssh")
-	 fixperms(session, "~/.ssh")
+		print 'Acquired passwords, keys.\n'
 
-	 # OK, install keys remotely if they don't exist
-	 if not session.exists("~/.ssh/authorized_keys"):
-		 session.scp(keyfile, "~/.ssh/authorized_keys")
-	 else:
-	   keyfile_remote = tempfile.mktemp()
-	   session.scprem("~/.ssh/authorized_keys",keyfile_remote)
-	   keyfile_merged = tempfile.mktemp()
-	   os.system("cat " + keyfile + " " + keyfile_remote + " >" + keyfile_merged)
-	   session.scp(keyfile_merged, "~/.ssh/authorized_keys")
-
-	   # Cleanup temp files
-	   try:
-      	        os.remove(keyfile)
-      	        os.remove(keyfile_remote)
-      	        os.remove(keyfile_merged)
-	   except:
-				pass
-
-	 fixperms(session, "~/.ssh/authorized_keys")
-
-    except SystemExit:
-			    pass
-
-    except:
-	    print "Unexpected error:", sys.exc_info()[0]
-	    raise
-
-    else:
-	    print "Keys for %s on %s have been installed." % (session.user, session.host)
-
-# Create an sshSession object for each host in the file (global, to allow for a signal handler)
-sessions = []
 
 if __name__ == '__main__': 
 	# Process options
@@ -186,6 +225,7 @@ if __name__ == '__main__':
 		print 'Unexpected error:', sys.exc_info()[0]
 		raise
 
+	allHosts = []
 	for h in hostFile:
 		#Strip out the hostname and user, if there is a user present in the record
 		#(e.g. user@host)
@@ -198,54 +238,15 @@ if __name__ == '__main__':
 		else:
 			user = os.environ.get('LOGNAME') or os.environ.get('USER')
 
-		#Create a new instance of an sshSession object initialized with this
-		#host/user/port
-		a = sshSessionModule.sshSession(user,port,host)
-		#Perform a check to see if this host requires a password
-		a.PWCheck = 1
-		a.setCMD('ssh',['ls -ld ~'])
-		a.timeout=30
-		sessions.append(a)
+		allHosts.append((host,user))
 
-	#Run the first pass to get the password status of the hosts
-	ssh_agent_key=None
-
-	defaultPassword = None
-	for th in sessions:
-	  th.run()
-	  if th.PWRequired == 1:
-		if defaultPassword is not None:
-		  	#Try the previous password
-			th.password = defaultPassword
-			th.PWCheck = 1
-			th.PWRequired = 0
-			th.run()
-
-		#If a password is still required, ask for one
-		if th.PWRequired == 1:
-			prompt = 'Remote password for host ' + th.host + ':'
-			th.password = getpass.getpass(prompt)
-			defaultPassword = th.password
-
-		#Setup ssh trusted key access for this host
-		if setupKeys:
-		  	setupKeyAccessRemote(th)
-
-	  elif th.PPRequired == 1:
-		  if ssh_agent_key is None:
-			prompt = 'ssh-agent pass key phrase:'
-			ssh_agent_key = getpass.getpass(prompt)
-		  th.hostKeyPhrase = ssh_agent_key
-
-	print 'Acquired passwords, keys.\n'
+	#Create a groupSession object
+	gsession = groupSession(allHosts,22)
 
 	print 'Entering command prompt, ssh commands are executed on all hosts:\n'
 
 	#Register a signal handler for the TERM signal
-	signal.signal(signal.SIGTERM,handlerTERM)
-
-	#Create a threadpool to run the commands
-	pool = threadpool.ThreadPool(len(sessions))
+	signal.signal(signal.SIGTERM,gsession.handlerTERM)
 
 	cmd = None
 	args = []
@@ -283,29 +284,13 @@ if __name__ == '__main__':
 				cmd = 'ssh'
 				args = [command,None]
 		
-			#Put commands into threaded queue
-			for th in sessions:
-				th.setCMD(cmd,args)
-				pool.putRequest(threadpool.WorkRequest(th.run,None,None,None))
-
-		    #Wait for completion of all in queue, or a keyboard interrupt
-		    	while True:
-        			try:
-          				pool.poll()
-        			except (threadpool.NoResultsPending):
-					interrupted=False
-          				break
-        			except (KeyboardInterrupt):
-					for th in sessions:
-						th.killCMD(signal.SIGKILL)
-					pool.wait()
-					interrupted=True
-          				break
+			#Run the command on all sessions
+			interrupted = gsession.runCommand(cmd,args)
 
 			if not interrupted:
 				#Print the output
 				lastTmp = None
-				for th in sessions:
+				for th in gsession.sessions:
 					if th.lastoutput == lastTmp:
 						print '%-8s: %-s' % (th.host, 'Output from host ' + th.host + ' is the same as the last host')
 					else:

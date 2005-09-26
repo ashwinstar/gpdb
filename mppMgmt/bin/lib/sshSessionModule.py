@@ -5,12 +5,37 @@
 From the early implementation by Eric S. Raymond <esr@thyrsus.com>
 Author: Luke Lonergan <llonergan@greenplum.com>"""
 
-import os, sys, getopt, string, getpass, lib.pexpect, threading, signal
+import os, sys, getopt, string, getpass, lib.pexpect, threading, signal, tempfile
+
+# Exception classes used by this module.
+class ExceptionSshSession(Exception):
+	"""Base class for all exceptions raised by this module."""
+	def __init__(self, value):
+		self.value = value
+	def __str__(self):
+		return str(self.value)
+	def get_trace(self):
+		"""This returns an abbreviated stack trace with lines that only concern the caller.
+		In other words, the stack trace inside the Pexpect module is not included.
+       		"""
+        	tblist = traceback.extract_tb(sys.exc_info()[2])
+        	tblist = filter(self.__filter_not_sshSession, tblist)
+        	tblist = traceback.format_list(tblist)
+		return ''.join(tblist)
+	def __filter_not_sshSession(self, trace_list_item):
+		if trace_list_item[0].find('sshSession.py') == -1:
+			return True
+		else:
+			return False
+class NOTREADY(ExceptionSshSession):
+	    """Raised when the session isn't ready"""
 
 class sshSession(threading.Thread):
     "Session with extra state including the password to be used."
     def __init__(self, user, port, host, password=None, verbose=0):
         threading.Thread.__init__(self)        
+
+	self.verbose = False
 
 	self.user = user
 	self.port = port
@@ -25,36 +50,64 @@ class sshSession(threading.Thread):
 	self.args = []
 	self.timeout = 30
 
+	self.PWCheck = False
+	self.PWRequired = False
 	self.password = password
-	self.PWCheck = 0
-	self.PWRequired = None
 
+	self.PPRequired = False
 	self.hostKeyPhrase = None
-	self.PPRequired = None
 
 	self.child = None
 
+	#Flag that indicates if this session object is able to execute commands
+	self.ready = False
+	self.error = False
+
+    def __die(self,msg=None):
+	if not msg == None:
+	    print 'sshSession command exiting: %s' % (msg)
+	self.__setReady(False)
+	self.__setError()
+	raise NOTREADY ('sshSession command NOTREADY')
+
+    def readyOrDie(self):
+	if not self.isReady():
+		self.__die('ssh session not set up to run commands.')
+
+    def isReady(self):
+	return self.ready
+
+    def __setReady(self,ready=True):
+	self.ready = ready
+
+    def isError(self):
+	return self.error
+
+    def __setError(self,error=True):
+	self.error=error
+
     def run(self):
-	    if self.cmd is "ssh":
-		    self.lastoutput = self.ssh(self.args[0])
+	if self.cmd is "ssh":
+		self.lastoutput = self.ssh(self.args[0])
 
-	    elif self.cmd is "scp":
-		    self.lastoutput = self.scp(self.args[0], self.args[1])
+	elif self.cmd is "scp":
+		self.lastoutput = self.scp(self.args[0], self.args[1])
 
-	    elif self.cmd is "scprem":
-		    self.lastoutput = self.scprem(self.args[0], self.args[1])
+	elif self.cmd is "scprem":
+		self.lastoutput = self.scprem(self.args[0], self.args[1])
 
-	    elif self.cmd is "exists":
-		    self.lastoutput = self.exists(self.args[0])
+	elif self.cmd is "exists":
+		self.lastoutput = self.exists(self.args[0])
 
-	    else:
-		    self.lastoutput = "No interface selected"
-		    print "Host: " + self.host + ": No interface selected"
+	else:
+		self.lastoutput = "No interface selected"
+		print "Host: " + self.host + ": No interface selected"
 
-     	    return self.lastoutput
+	return self.lastoutput
 
     def __exec(self, command):
 	"Execute a command on the remote host.  Return the output."
+
 	self.child = lib.pexpect.spawn(command,[],self.timeout)
 	self.child.setmaxread (1000) # Sets buffer to 1000 characters.
 	if self.verbose:
@@ -62,6 +115,7 @@ class sshSession(threading.Thread):
 
 	try:
 	  pwpass=0
+	  pppass=0
 	  while True:
 	    seen=self.child.expect([lib.pexpect.EOF,'assword:','continue connecting (yes/no)?','Enter passphrase for key.*:'])
 
@@ -70,6 +124,8 @@ class sshSession(threading.Thread):
 
 	    #The command ran successfully if EOF was seen
 	    if seen == 0:
+		    self.__setError(False)
+		    self.__setReady(True)
 		    #Exit the while loop, we've run the command
 		    break
 
@@ -77,33 +133,29 @@ class sshSession(threading.Thread):
 	    elif seen == 1:
 		if self.verbose:
 		        sys.stderr.write("Saw password prompt...\n")
+		#Mark that a password is required for this connection
+		self.PWRequired = True
 		#Add one to the password prompt count
 		pwpass = pwpass + 1
 
-	    #This is a password check and we don't have a trial password
-		if self.PWCheck == 1 and not self.password:
-			#Mark that a password is required for this connection
-			self.PWRequired = 1
-			break
-
 		#If we have a password and we're on the first pass, try it
 		if pwpass == 1:
-		  if self.password:
-			self.child.sendline(self.password)
-
-		  elif not self.password:
-			self.password = getpass.getpass('Remote password: ')
-		    	self.child.sendline(self.password)
+			if self.password:
+				self.child.sendline(self.password)
+			else:
+				if self.PWCheck:
+					break
+				self.password = getpass.getpass(\
+						'sshSession: Remote password for host ' + self.host + ':')
+		    		self.child.sendline(self.password)
 
 		elif pwpass > 1:
-				if self.PWCheck == 1:
-					#Mark that a password is required for this connection
-					self.PWRequired = 1
+				if self.PWCheck:
 					#We've tried a trial password and we're on a password check, break
 					break
 				#We are here because the first password try failed, bomb out
 				print 'Too many password attempts for host ' + self.host + ', exiting.'
-				raise SystemExit, 1
+				self.__die('Too many password attempts for host ' + self.host + ', exiting.')
 
 	    #This host isn't in the known_hosts, enter 'yes' to continue...
 	    elif seen == 2:
@@ -116,12 +168,30 @@ class sshSession(threading.Thread):
 	    elif seen == 3:
 		if self.verbose:
 		        sys.stderr.write("Saw ssh-agent pass key prompt...\n")
-		self.PPRequired = 1
-		if self.PWCheck is 1:
-			break
-		if not self.hostKeyPhrase:
-			self.hostKeyPhrase = getpass.getpass('ssh-agent pass key phrase: ')
-		self.child.sendline(self.hostKeyPhrase)
+		#Mark that a passphrase is required for this connection
+		self.PPRequired = True
+		#Add one to the passphrase prompt count
+		pppass = pppass + 1
+
+		#If we have a passphrase and we're on the first pass, try it
+		if pppass == 1:
+
+			if self.hostKeyPhrase:
+				self.child.sendline(self.hostKeyPhrase)
+			else:
+				if self.PWCheck:
+					break
+				self.hostKeyPhrase = getpass.getpass(\
+						'sshSession: ssh-agent pass key phrase for host ' + self.host + ':')
+				self.child.sendline(self.hostKeyPhrase)
+
+		elif pppass > 1:
+				if self.PWCheck:
+					#We've tried a trial password and we're on a password check, break
+					break
+				#We are here because the first password try failed, bomb out
+				print 'Too many passphrase attempts for host ' + self.host + ', exiting.'
+				self.__die('Too many passphrase attempts for host ' + self.host + ', exiting.')
 
 	except:
 		#print "Error processing login!"
@@ -130,23 +200,30 @@ class sshSession(threading.Thread):
 
 
 	#If this was a password check, reset the flag
-	if self.PWCheck is 1:
+	if self.PWCheck:
 		self.killCMD(9)
-		self.PWCheck = 0
+		self.PWCheck = False
 
     	return self.child.before
 
     def ssh(self, command):
-	    return self.__exec("ssh -n -p %s -l %s %s \"%s\""%(self.port, self.user,self.host,command))
+	if not self.PWCheck:
+		self.readyOrDie()
+	return self.__exec("ssh -n -p %s -l %s %s \"%s\""%(self.port, self.user,self.host,command))
 
     def scp(self, src, dst):
-	    return self.__exec("scp -P %s %s %s@%s:%s" % (self.port, src, self.user, self.host, dst))
+	self.readyOrDie()
+	return self.__exec("scp -P %s %s %s@%s:%s" % (self.port, src, self.user, self.host, dst))
 
     def scprem(self, src, dst):
-	    return self.__exec("scp -P %s %s@%s:%s %s" % (self.port, self.user, self.host, src, dst))
+	self.readyOrDie()
+	return self.__exec("scp -P %s %s@%s:%s %s" % (self.port, self.user, self.host, src, dst))
 
     def exists(self, file):
 	"Retrieve file permissions of specified remote file."
+
+	self.readyOrDie()
+
 	seen = self.ssh("/bin/ls -ld %s" % file)
 	if  self.verbose:
 		sys.stderr.write("Existence check on %s gave %s\n" % (file,`seen`))
@@ -163,4 +240,111 @@ class sshSession(threading.Thread):
     def killCMD(self,sig=signal.SIGTERM):
 	if self.child.isalive():
 		self.child.kill(sig)
+
+    def __fixperms(self,file):
+		"Force perms of remote file to user read on, group/other write off."
+		perms = self.exists(file)
+		if perms is None:
+			print "File " + file + " doesn't exist."
+			return None
+		else:
+			ok = (perms[1] == 'r' and perms[4] == '-' and perms[5] == '-' and perms[6] == '-' and \
+		      	perms[7] == '-' and perms[8] == '-')
+			if not ok:
+	    			self.ssh("/bin/chmod 700 %s" % file)
+		return ok
+	
+    def __forcefile(self,file, command):
+    		"Create file with command if it does not already exist."
+    		perms = self.exists(file)
+    		if perms is None:
+	   		self.ssh(command)
+	   		perms = self.exists(file)
+	
+    		return perms
+
+    def setupKeyAccessRemote(self):
+    		# Verify that key pairs are present on the local side 
+    		try:
+	    		os.chdir(os.getenv("HOME"))
+    		except:
+	    		__die("Can't find your home directory!")
+	
+    		if not os.access(".", os.R_OK):
+	    		__die("Your home directory is not readable by you. That's weird.")
+	    		__die("This probably means $HOME is incorrect.")
+	
+    		if not os.path.exists(".ssh"):
+	    		os.mkdir(".ssh")
+
+    		if not os.access(".ssh", os.R_OK):
+	    		__die("Your .ssh directory is not readable by you. That's weird.")
+	    		__die("This probabably means $HOME is incorrect.")
+
+    		try:
+	    		os.chdir(".ssh")
+    		except:
+	    		__die("Can't chdir into your .ssh directory!")
+
+    		public_keys  = filter(lambda f: os.access(f, os.R_OK), ("id_dsa.pub", "id_rsa.pub", "identity.pub"))
+
+    		if not public_keys:
+			public_keys = []
+			for (keytype, file) in (("rsa1", "identity"), ("dsa", "id_dsa")):
+	    			print "About to generate a %s key. You will be prompted for a passphrase," % keytype
+	    			print "Pressing enter at that prompt will create a key with no passphrase" 
+	    			os.system("ssh-keygen -t %s -f %s" % (keytype, file))
+	    			public_keys.append(file + ".pub")
+
+    		#print "I see the following public keys:", string.join(public_keys,", ")
+    		for file in public_keys:
+			private_key = file[:-4]
+			legend = private_key + " corresponding to " + file + " " 
+			if not os.access(private_key, os.R_OK):
+				__die(legend + "does not exist or is unreadable.")
+
+		# Update remote authorized_keys files
+    		try:
+	 		keyfile = tempfile.mktemp()
+	 		os.system("cat " + string.join(public_keys, " ") + " >" + keyfile)
+	 		if self.verbose:
+		 		print "Public keys consolidated in %s" % keyfile
+
+	 		# Permissions checks
+	 		self.__fixperms(".")
+	 		self.__forcefile(".ssh", "mkdir .ssh")
+	 		self.__fixperms(".ssh")
+	
+	 		# OK, install keys remotely if they don't exist
+	 		if not self.exists(".ssh/authorized_keys"):
+		 		self.scp(keyfile, ".ssh/authorized_keys")
+	 		else:
+	   			keyfile_remote = tempfile.mktemp()
+	   			self.scprem(".ssh/authorized_keys",keyfile_remote)
+	   			keyfile_merged = tempfile.mktemp()
+	   			os.system("cat " + keyfile + " " + keyfile_remote + " >" + keyfile_merged)
+	   			self.scp(keyfile_merged, ".ssh/authorized_keys")
+
+	   		# Cleanup temp files
+	   		try:
+      	        		os.remove(keyfile)
+      	        		os.remove(keyfile_remote)
+      	        		os.remove(keyfile_merged)
+	   		except:
+				pass
+
+	 		self.__fixperms(".ssh/authorized_keys")
+
+    		except (SystemExit):
+			pass
+
+    		except (NOTREADY):
+	    		raise
+
+    		except:
+	    		print "Unexpected error:", sys.exc_info()[0]
+	    		raise
+
+    		else:
+	    		print "Keys for %s on %s have been installed." % (self.user, self.host)
 
