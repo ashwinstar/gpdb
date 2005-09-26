@@ -169,11 +169,14 @@ class groupSession:
 			for i in range(0,len(self.sessions)):
 				self.sessions[i].hostKeyPhrase = pphrasedef
 
+			#Setup/locate the local keys
+  			self.sessions[0].setupKeyAccessLocal()
+
 			#Setup ssh host keys for all sessions in parallel
 			for i in range(0,len(self.sessions)):
 				th = self.sessions[i]
 				#Setup ssh trusted key access for this host
-		  			#th.__setupKeyAccessRemote()
+				#th.setupKeyAccessRemote()
 				self.pool.putRequest(\
 						threadpool.WorkRequest(th.setupKeyAccessRemote,\
 						None,None,None))

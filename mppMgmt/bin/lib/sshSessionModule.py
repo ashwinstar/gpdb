@@ -35,6 +35,8 @@ class sshSession(threading.Thread):
     def __init__(self, user, port, host, password=None, verbose=0):
         threading.Thread.__init__(self)        
 
+	self.lock = threading.RLock()
+
 	self.verbose = False
 
 	self.user = user
@@ -263,28 +265,26 @@ class sshSession(threading.Thread):
 	
     		return perms
 
-    def setupKeyAccessRemote(self):
+    def setupKeyAccessLocal(self):
     		# Verify that key pairs are present on the local side 
     		try:
 	    		os.chdir(os.getenv("HOME"))
     		except:
-	    		__die("Can't find your home directory!")
+	    		self.__die("Can't find your home directory!")
 	
     		if not os.access(".", os.R_OK):
-	    		__die("Your home directory is not readable by you. That's weird.")
-	    		__die("This probably means $HOME is incorrect.")
+	    		self.__die("Your home directory is not readable by you. This probably means $HOME is incorrect.")
 	
     		if not os.path.exists(".ssh"):
 	    		os.mkdir(".ssh")
 
     		if not os.access(".ssh", os.R_OK):
-	    		__die("Your .ssh directory is not readable by you. That's weird.")
-	    		__die("This probabably means $HOME is incorrect.")
+	    		self.__die("Your .ssh directory is not readable by you. This probably means $HOME is incorrect.")
 
     		try:
 	    		os.chdir(".ssh")
     		except:
-	    		__die("Can't chdir into your .ssh directory!")
+	    		self.__die("Can't chdir into your .ssh directory!")
 
     		public_keys  = filter(lambda f: os.access(f, os.R_OK), ("id_dsa.pub", "id_rsa.pub", "identity.pub"))
 
@@ -296,16 +296,29 @@ class sshSession(threading.Thread):
 	    			os.system("ssh-keygen -t %s -f %s" % (keytype, file))
 	    			public_keys.append(file + ".pub")
 
+    def setupKeyAccessRemote(self):
+    		try:
+			#This is actually a no-no with threads, they all share a FS node in Python
+			self.lock.acquire()
+			dir = os.getenv("HOME") + '/.ssh'
+	    		os.chdir(dir)
+			self.lock.release()
+    		except:
+	    		self.__die("Can't chdir to your ssh directory!")
+	
+
+    		public_keys  = filter(lambda f: os.access(f, os.R_OK), ("id_dsa.pub", "id_rsa.pub", "identity.pub"))
+
     		#print "I see the following public keys:", string.join(public_keys,", ")
     		for file in public_keys:
 			private_key = file[:-4]
 			legend = private_key + " corresponding to " + file + " " 
 			if not os.access(private_key, os.R_OK):
-				__die(legend + "does not exist or is unreadable.")
+				self.__die(legend + "does not exist or is unreadable.")
 
 		# Update remote authorized_keys files
     		try:
-	 		keyfile = tempfile.mktemp()
+	 		keyfile = tempfile.mktemp() + self.host
 	 		os.system("cat " + string.join(public_keys, " ") + " >" + keyfile)
 	 		if self.verbose:
 		 		print "Public keys consolidated in %s" % keyfile
@@ -319,9 +332,9 @@ class sshSession(threading.Thread):
 	 		if not self.exists(".ssh/authorized_keys"):
 		 		self.scp(keyfile, ".ssh/authorized_keys")
 	 		else:
-	   			keyfile_remote = tempfile.mktemp()
+	   			keyfile_remote = tempfile.mktemp() + self.host
 	   			self.scprem(".ssh/authorized_keys",keyfile_remote)
-	   			keyfile_merged = tempfile.mktemp()
+	   			keyfile_merged = tempfile.mktemp() + self.host
 	   			os.system("cat " + keyfile + " " + keyfile_remote + " >" + keyfile_merged)
 	   			self.scp(keyfile_merged, ".ssh/authorized_keys")
 
