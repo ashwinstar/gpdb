@@ -1,4 +1,9 @@
 <<<NEW vi: set expandtab ts=4: >>>
+
+
+Release-0_0_0:  26/Sep/2005  builder
+    Dry Run for Oct 15 2005 Release
+
 Added new GUC variable Mpp_max_packet_size.  This specifies the largest packet
 	size that the interconnect will send messages with.  Like Mpp_session_role, 
 	this can only be set before startup.  The value that is set on the QD is
