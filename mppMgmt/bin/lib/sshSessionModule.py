@@ -1,9 +1,16 @@
 #! /usr/bin/env python
-# sshSession -- ssh access a hosts, implementing password memory
 """
-
-From the early implementation by Eric S. Raymond <esr@thyrsus.com>
+sshSession -- access a host using ssh, implementing password memory
 Author: Luke Lonergan <llonergan@greenplum.com>"""
+
+# $Id$
+
+__all__ = ['run', 'ssh', 'scp', 'scprem', 'exists', 'setCMD', 'killCMD',
+'setupKeyAccessLocal', 'setupKeyAccessRemote', 'isReady', 'isError']
+
+__author__ = "Luke Lonergan"
+__version__ = "1.0"
+__date__ = "2005-09-26"
 
 import os, sys, getopt, string, getpass, lib.pexpect, threading, signal, tempfile
 
@@ -72,7 +79,7 @@ class sshSession(threading.Thread):
 	self.__setError()
 	raise NOTREADY ('sshSession command NOTREADY')
 
-    def readyOrDie(self):
+    def __readyOrDie(self):
 	if not self.isReady():
 		self.__die('ssh session not set up to run commands.')
 
@@ -210,21 +217,21 @@ class sshSession(threading.Thread):
 
     def ssh(self, command):
 	if not self.PWCheck:
-		self.readyOrDie()
+		self.__readyOrDie()
 	return self.__exec("ssh -n -p %s -l %s %s \"%s\""%(self.port, self.user,self.host,command))
 
     def scp(self, src, dst):
-	self.readyOrDie()
+	self.__readyOrDie()
 	return self.__exec("scp -P %s %s %s@%s:%s" % (self.port, src, self.user, self.host, dst))
 
     def scprem(self, src, dst):
-	self.readyOrDie()
+	self.__readyOrDie()
 	return self.__exec("scp -P %s %s@%s:%s %s" % (self.port, self.user, self.host, src, dst))
 
     def exists(self, file):
 	"Retrieve file permissions of specified remote file."
 
-	self.readyOrDie()
+	self.__readyOrDie()
 
 	seen = self.ssh("/bin/ls -ld %s" % file)
 	if  self.verbose:

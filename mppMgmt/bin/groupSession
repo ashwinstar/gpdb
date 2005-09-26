@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
-# groupSession -- ssh access to multiple hosts at once
 """
+groupSession -- ssh access to multiple hosts at once
+
 Usage:
 	groupSession <options> hostfile
 
@@ -28,6 +29,12 @@ using ssh.
 Author: Luke Lonergan <llonergan@greenplum.com>"""
 
 # $Id$
+
+__all__ = ['runCommand', 'handlerTERM']
+
+__author__ = "Luke Lonergan"
+__version__ = "1.0"
+__date__ = "2005-09-26"
 
 import os, sys, threading, time, string, getpass, getopt, signal
 import lib.sshSessionModule as sshSessionModule, lib.threadpool as threadpool
@@ -97,9 +104,9 @@ class groupSession:
 		for th in self.sessions:
 			th.killCMD(signal.SIGKILL)
 		print 'done.  Exiting.'
-		self.die('\nSignal caught, program ')
+		self.__die('\nSignal caught, program ')
 	
-	def die(self,msg):
+	def __die(self,msg):
 		print msg + 'exiting.'
     		raise SystemExit, 1
 
