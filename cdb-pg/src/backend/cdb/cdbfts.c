@@ -38,9 +38,10 @@ static PQExpBuffer  entryBuffer=NULL;
 static PGconn       *entryConn=NULL;
 static int          localFtsSyncCount=-1;
 static bool         InReConfigure = false;
+static char         *currDbName;
 
 static void CdbShutdown(void);
-static void initPQConnectionBuffer(CdbComponentDatabaseInfo *, PQExpBuffer, bool);
+static void initPQConnectionBuffer(CdbComponentDatabaseInfo *, char *, PQExpBuffer, bool);
 static void markSegDBTransientState(int, bool);
 static void markSegDBPersistentState(int, bool);
 
@@ -120,12 +121,12 @@ bool FtsReConnectDB(void *failedDB)
 /*
  * Test-Connection
  */
-bool FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo)
+bool FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo, char *dbName)
 {
     PGconn *conn;
     bool ret = true;
     PQExpBuffer buffer = createPQExpBuffer();
-    initPQConnectionBuffer(failedDBInfo, buffer, true);
+    initPQConnectionBuffer(failedDBInfo, dbName, buffer, true);
     
     conn = PQconnectdb(buffer->data);
 
@@ -264,10 +265,20 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor *segdbDesc, int size)
     return false;
 }
 
-static void initPQConnectionBuffer(CdbComponentDatabaseInfo *q, PQExpBuffer buffer, bool utility)
+static void initPQConnectionBuffer(CdbComponentDatabaseInfo *q, char *dbName, PQExpBuffer buffer, bool utility)
 {
     initPQExpBuffer(buffer);
-    
+
+    /* get_database_name can not be called in a thread, so pass dbName from
+     * caller if necessary.
+     */
+    if (dbName == NULL)
+    {
+        if (currDbName == NULL)
+            currDbName = get_database_name(MyDatabaseId);
+        dbName = currDbName;
+    }
+        
     /*
      * Build the connection string
      */
@@ -283,7 +294,7 @@ static void initPQConnectionBuffer(CdbComponentDatabaseInfo *q, PQExpBuffer buff
         appendPQExpBuffer(buffer, "host=%s ", q->hostname );
                 
     appendPQExpBuffer(buffer, "port=%u ", q->port);
-    appendPQExpBuffer(buffer, "dbname=%s ", get_database_name(MyDatabaseId));
+    appendPQExpBuffer(buffer, "dbname=%s ", dbName);
     appendPQExpBuffer(buffer, "user=%s ", q->mppsuperuser);
 
     if ( q->mppsuperpswd != NULL )
@@ -391,7 +402,7 @@ void markSegDBPersistentState( int dbid, bool state )
         entryBuffer = createPQExpBuffer();
         
         /* initialize libpq connection buffer, we only need to initialize it once */
-        initPQConnectionBuffer(q, entryBuffer, true);
+        initPQConnectionBuffer(q, NULL, entryBuffer, true);
     }
     
     /*
@@ -598,7 +609,7 @@ void FtsEvaluateTransientState(void)
                 segDbInfo = cdb_component_dbs->segment_db_info+j;
                 if (segDbInfo->dbid == dbid)
                 {
-                    if (!FtsTestConnection(segDbInfo))
+                    if (!FtsTestConnection(segDbInfo, NULL))
                     {
                         /* reconnect failed, keep current state */
                         LWLockRelease(ftsControlLock);

@@ -885,15 +885,17 @@ thread_DispatchCommand(void *arg)
 
 			/*
 			 * check the connection still valid, set 1 min time interval
+              * this may affect performance, should turn it off if required.
 			 */
 			if (counter++ > 30)
 			{
 				int			x = 0;
+                 bool         sampling = true;
 
 				for (i = 0; i < stillRunningCount; i++)
 				{
 					segdbDesc = stillRunning[i].segdbDesc;
-					if (!FtsTestConnection(segdbDesc->segment_database_info))
+					if (!FtsTestConnection(segdbDesc->segment_database_info, segdbDesc->conn->dbName))
 					{
 						PQExpBufferData buffer;
 
@@ -907,6 +909,7 @@ thread_DispatchCommand(void *arg)
 										  (q->isprimary ? 't' : 'f'));
 						segdbDesc->error_message = buffer.data;
 						conn->status = CONNECTION_BAD;
+                          sampling = false;
 						/*
 						 * free connection is done in ftsReconnect
 						 */
@@ -918,6 +921,14 @@ thread_DispatchCommand(void *arg)
 					}
 					else
 					{
+                         /* for performance reason, we do just sampling here
+                          * for now, the first one is picked.
+                          */
+                         if (sampling)
+                         {
+                             counter = 0;
+                             continue;
+                         } 
 						stillRunning[x++] = stillRunning[i];
 					}
 				}

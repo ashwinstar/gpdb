@@ -1435,7 +1435,7 @@ detectFailedConnections(void)
 			SegmentDatabaseDescriptor *segdbDesc =
 			&(primaryWriterGang->db_descriptors[i]);
 
-			if (!FtsTestConnection(segdbDesc->segment_database_info))
+			if (!FtsTestConnection(segdbDesc->segment_database_info, NULL))
 				markSegDBStatus(segdbDesc->segment_database_info->dbid, false);
 		}
 	}
@@ -1450,7 +1450,7 @@ detectFailedConnections(void)
 			SegmentDatabaseDescriptor *segdbDesc =
 			&(mirrorWriterGang->db_descriptors[i]);
 
-			if (!FtsTestConnection(segdbDesc->segment_database_info))
+			if (!FtsTestConnection(segdbDesc->segment_database_info, NULL))
 				markSegDBStatus(segdbDesc->segment_database_info->dbid, false);
 		}
 	}
