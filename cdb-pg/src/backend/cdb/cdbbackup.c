@@ -32,8 +32,10 @@ static char* formBackupFilePathName( char* pszBackupDirectory, char* pszBackupKe
 static char* formStatusFilePathName( char* pszBackupDirectory, char* pszBackupKey, bool bIsBackup );
 static char* relativeToAbsolute( char* pszRelativeDirectory );
 static void testCmdsExist( char* pszCompressionProgram, char* pszBackupProgram );
-static bool testProgramExists(char* pszProgramName);
+static char* testProgramExists(char* pszProgramName);
 static void validateBackupDirectory( char* pszBackupDirectory );
+
+static char *compPg = NULL, *bkPg = NULL;
 
 typedef enum backup_file_type
 {
@@ -70,7 +72,8 @@ cdb_backup_launch__(PG_FUNCTION_ARGS)
 	text* result;
 	char* ptr;
     int instid; /*dispatch node*/	
-	
+
+
 	if ( !PG_ARGISNULL(0) )
 	{
 		pszBackupDirectory = GET_STR(PG_GETARG_TEXT_P(0));
@@ -171,7 +174,7 @@ cdb_backup_launch__(PG_FUNCTION_ARGS)
 		 * after that piece, e.g. -p comes out 2 for the -p and 1 for the space
 		 * after the -p  The last 1 is for the binary zero at the end.
 		 */
-		len = 14 + 1  /* cdb_dump_agent */
+		len = strlen(bkPg) + 1  /* cdb_dump_agent */
 				+ 7 + 1  /* --cdb-k */
 				+ strlen(pszKeyParm) + 1
 				+ 7 + 1  /* --cdb-d */
@@ -192,7 +195,7 @@ cdb_backup_launch__(PG_FUNCTION_ARGS)
 		if ( pszCompressionProgram[0] != '\0' )
 		{
 			len += 1 + 1		/* | */
-					+ strlen(pszCompressionProgram) + 1;
+					+ strlen(compPg) + 1;
 						
 			pszCmdLine = (char *) palloc( len );
 			if ( pszCmdLine == NULL )
@@ -202,9 +205,9 @@ cdb_backup_launch__(PG_FUNCTION_ARGS)
 						 errmsg("out of memory")));
 			}
 			
-			sprintf( pszCmdLine, "cdb_dump_agent --cdb-k %s --cdb-d %s -p %d -U %s %s %s %s | %s > %s 2> %s", 
-					pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName, 
-					pszCompressionProgram, pszBackupFileName, pszStatusFileName );
+			sprintf( pszCmdLine, "%s --cdb-k %s --cdb-d %s -p %d -U %s %s %s %s | %s > %s 2> %s", 
+					bkPg, pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName, 
+					compPg, pszBackupFileName, pszStatusFileName );
 		}
 		else
 		{
@@ -216,8 +219,8 @@ cdb_backup_launch__(PG_FUNCTION_ARGS)
 						 errmsg("out of memory")));
 			}
 			
-			sprintf( pszCmdLine, "cdb_dump_agent --cdb-k %s --cdb-d %s -p %d -U %s %s %s %s > %s 2> %s", 
-					pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName, 
+			sprintf( pszCmdLine, "%s --cdb-k %s --cdb-d %s -p %d -U %s %s %s %s > %s 2> %s", 
+					bkPg, pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName, 
 					pszBackupFileName, pszStatusFileName );
 		}
 
@@ -381,7 +384,7 @@ cdb_restore_launch__(PG_FUNCTION_ARGS)
 		* after that piece, e.g. -p comes out 2 for the -p and 1 for the space
 		* after the -p  The last 1 is for the binary zero at the end.
 		*/
-		len = 17 + 1  /* cdb_restore_agent */
+		len = strlen(bkPg) + 1  /* cdb_restore_agent */
 				+ 7 + 1  /* --cdb-k */
 				+ strlen(pszKeyParm) + 1
 				+ 7 + 1  /* --cdb-d */
@@ -401,7 +404,7 @@ cdb_restore_launch__(PG_FUNCTION_ARGS)
 		
 		if ( pszCompressionProgram[0] != '\0' )
 		{
-			len += 4 + strlen(pszCompressionProgram) + 
+			len += 4 + strlen(compPg) + 
 					+ strlen(pszBackupFileName); 
 						
 			pszCmdLine = (char *) palloc( len );
@@ -412,8 +415,8 @@ cdb_restore_launch__(PG_FUNCTION_ARGS)
 						errmsg("out of memory")));
 			}
 			
-			sprintf( pszCmdLine, "%s %s | cdb_restore_agent --cdb-k %s --cdb-d %s %s -p %d -U %s %s -d %s > %s 2>&1", 
-					pszCompressionProgram, pszBackupFileName, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName, 
+			sprintf( pszCmdLine, "%s %s | %s --cdb-k %s --cdb-d %s %s -p %d -U %s %s -d %s > %s 2>&1", 
+					compPg, pszBackupFileName, bkPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName, 
 					pszPassThroughParameters, pszDBName, pszStatusFileName );
 		}
 		else
@@ -428,8 +431,8 @@ cdb_restore_launch__(PG_FUNCTION_ARGS)
 						errmsg("out of memory")));
 			}
 			
-			sprintf( pszCmdLine, "cdb_restore_agent --cdb-k %s --cdb-d %s %s -p %d -U %s %s -d %s %s > %s 2>&1", 
-					pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName, pszPassThroughParameters, pszDBName, 
+			sprintf( pszCmdLine, "%s --cdb-k %s --cdb-d %s %s -p %d -U %s %s -d %s %s > %s 2>&1", 
+					bkPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName, pszPassThroughParameters, pszDBName, 
 					pszBackupFileName, pszStatusFileName );
 		}
 
@@ -983,7 +986,7 @@ void testCmdsExist( char* pszCompressionProgram, char* pszBackupProgram )
 	// Does pszBackupProgram exist?
 	if ( pszBackupProgram != NULL && 
 		*pszBackupProgram != '\0' && 
-		!testProgramExists( pszBackupProgram ) )
+		(bkPg = testProgramExists( pszBackupProgram )) == NULL )
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
@@ -993,7 +996,7 @@ void testCmdsExist( char* pszCompressionProgram, char* pszBackupProgram )
 	// Does compression utility exist?
 	if ( pszCompressionProgram != NULL && 
 		*pszCompressionProgram != '\0' && 
-		!testProgramExists(pszCompressionProgram) )
+		(compPg = testProgramExists(pszCompressionProgram)) == NULL )
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
@@ -1007,7 +1010,7 @@ void testCmdsExist( char* pszCompressionProgram, char* pszBackupProgram )
  * If the file is empty, then pszProgramName didn't exist 
  * on the path. 
  */
-bool testProgramExists(char* pszProgramName)
+char* testProgramExists(char* pszProgramName)
 {
 	char* pszProgramNameLocal;
 	char* p;
@@ -1020,7 +1023,7 @@ bool testProgramExists(char* pszProgramName)
 	char* pszTestPath;
 
 	if ( pszProgramName == NULL || *pszProgramName == '\0' )
-		return false;
+		return NULL;
 	
 	/* The pszProgramName might have command line arguments, so we need to
 	 * stop at the first whitespace 
@@ -1045,10 +1048,25 @@ bool testProgramExists(char* pszProgramName)
 	}
 	
 	*p = '\0';
-	
+    
+    pszEnvPath = getenv( "PGPATH" );
+    if ( pszEnvPath != NULL )
+    {
+        pszTestPath = (char *)palloc( strlen(pszEnvPath) + 1 + strlen(pszProgramNameLocal) + 1 );
+        if ( pszTestPath == NULL )
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_OUT_OF_MEMORY),
+                     errmsg("out of memory")));
+        }
+        
+        sprintf( pszTestPath, "%s/%s", pszEnvPath, pszProgramNameLocal );
+        if ( stat( pszTestPath, &buf ) >= 0 )
+            return pszTestPath;
+    }
 	pszEnvPath = getenv( "PATH" );
 	if ( pszEnvPath == NULL )
-		return false;
+		return NULL;
 	
 	pszPath = (char *) palloc( strlen(pszEnvPath) + 1 );
 	if ( pszPath == NULL )
@@ -1087,9 +1105,9 @@ bool testProgramExists(char* pszProgramName)
 			
 			sprintf( pszTestPath, "%s/%s", pColon, pszProgramNameLocal );
 			if ( stat( pszTestPath, &buf ) >= 0 )
-				return true;
+				return pszTestPath;
 			else
-				return false;
+				return NULL;
 		}
 
 		/* Temporarily end the string at the : we just found. */
@@ -1108,7 +1126,7 @@ bool testProgramExists(char* pszProgramName)
 		if ( stat( pszTestPath, &buf ) >= 0 )
 		{
 			*pColonNext = ':';
-			return true;
+			return pszTestPath;
 		}
 		
 		/* Put back the colon we overwrote above. */
@@ -1116,9 +1134,12 @@ bool testProgramExists(char* pszProgramName)
 
 		/* Advance past the colon. */
 		pColon = pColonNext + 1;
+        
+        /* free */
+        pfree(pszTestPath);
 	}
 	
-	return false;
+	return NULL;
 }
 
 /* validateBackupDirectory( char* pszBackupDirectory ) returns void
