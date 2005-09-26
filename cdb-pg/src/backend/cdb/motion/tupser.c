@@ -566,7 +566,7 @@ HeapTuple CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo *pSerInfo)
         {
             if (tcItem->p_next == NULL)
             {
-                if (GetChunkType(tcItem->chunk_data) != TC_WHOLE)
+                if (GetChunkType(tcItem) != TC_WHOLE)
                 {
                     ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
                         errmsg("Single chunk's type must be TC_WHOLE.")));
@@ -574,7 +574,7 @@ HeapTuple CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo *pSerInfo)
             }
             else    /* tcItem->p_next != NULL */
             {
-                if (GetChunkType(tcItem->chunk_data) != TC_PARTIAL_START)
+                if (GetChunkType(tcItem) != TC_PARTIAL_START)
                 {
                     ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
                         errmsg("First chunk of collection must have type"
@@ -586,7 +586,7 @@ HeapTuple CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo *pSerInfo)
         {
             if (tcItem->p_next == NULL)
             {
-                if (GetChunkType(tcItem->chunk_data) != TC_PARTIAL_END)
+                if (GetChunkType(tcItem) != TC_PARTIAL_END)
                 {
                     ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
                         errmsg("Last chunk of collection must have type"
@@ -595,7 +595,7 @@ HeapTuple CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo *pSerInfo)
             }
             else    /* tcItem->p_next != NULL */
             {
-                if (GetChunkType(tcItem->chunk_data) != TC_PARTIAL_MID)
+                if (GetChunkType(tcItem) != TC_PARTIAL_MID)
                 {
                     ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
                         errmsg("Last chunk of collection must have type"
@@ -606,8 +606,8 @@ HeapTuple CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo *pSerInfo)
 
         /* Copy this chunk into the tuple data.  Don't include the header! */
         appendBinaryStringInfo(&serData,
-            (const char *)(tcItem->chunk_data + TUPLE_CHUNK_HEADER_SIZE),
-            tcItem->chunk_length - TUPLE_CHUNK_HEADER_SIZE);
+							   (const char *)GetChunkDataPtr(tcItem) + TUPLE_CHUNK_HEADER_SIZE,
+							   tcItem->chunk_length - TUPLE_CHUNK_HEADER_SIZE);
 
         /* Go to the next chunk. */
         tcItem = tcItem->p_next;

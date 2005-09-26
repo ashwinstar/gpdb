@@ -203,7 +203,7 @@ typedef struct MotionLayerState
 static MotionLayerState s_motion_layer_state;
 
 static TupleChunkListItemData s_eos_chunk_data =
-    { NULL, TUPLE_CHUNK_HEADER_SIZE, "                " };
+{ NULL, TUPLE_CHUNK_HEADER_SIZE, NULL, "                " };
 
 /*=========================================================================
  * HELPER FUNCTION DECLARATIONS
@@ -759,7 +759,6 @@ static void processIncomingChunks(MotionNodeEntry *pMNEntry, int16 motNodeID, in
         tcNext = tcItem->p_next;
         tcItem->p_next = NULL;
 
-
 		/* Track stats. */
 		chunkBytes += tcItem->chunk_length;
 		if (tcItem->chunk_length >= TUPLE_CHUNK_HEADER_SIZE)
@@ -1017,6 +1016,38 @@ ChunkSorterEntry *getChunkSorterEntry(MotionNodeEntry *motNodeEntry,
     return chunkSorterEntry;
 }
 
+/*
+ * Helper function for converting chunks from the receive state (where
+ * they point into a share buffer) into the transient state (where they 
+ * have their own storage). We need to do this if we didn't receive enough
+ * information in one chunk to reconstruct a tuple.
+ */
+static void materializeChunk(TupleChunkListItem *tcItem)
+{
+	TupleChunkListItem newItem;
+
+	/* This chunk needs to be converted from pointing to global
+	 * receive buffer store to having its own storage */
+
+	Assert(tcItem != NULL);
+	Assert(*tcItem != NULL);
+
+	newItem = repalloc(*tcItem, sizeof(TupleChunkListData) + (*tcItem)->chunk_length);
+
+	if (newItem == NULL)
+	{
+		ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
+						errmsg("Could not re-allocate space for tuple-chunk.")));
+	}
+
+	memcpy(newItem->chunk_data, newItem->inplace, newItem->chunk_length);
+	newItem->inplace = NULL; /* no need to free, someone else owns it */
+
+	*tcItem = newItem;
+
+	return;
+}
+
 /* Add another tuple-chunk to the chunk sorter.  If the new chunk completes
  * another HeapTuple, that tuple will be deserialized and stored into a
  * tuple-store.   If not, the chunk is added to the appropriate list of
@@ -1042,7 +1073,7 @@ static bool addChunkToSorter(MotionNodeEntry *pMNEntry, TupleChunkListItem tcIte
 
     /* Look at the chunk's type, to figure out what to do with it. */
 
-    tcType = GetChunkType(tcItem->chunk_data);
+    tcType = GetChunkType(tcItem);
 
     switch (tcType)
     {
@@ -1056,7 +1087,6 @@ static bool addChunkToSorter(MotionNodeEntry *pMNEntry, TupleChunkListItem tcIte
         }
 
         /* Put this chunk into the list, then turn it into a HeapTuple! */
-
 		appendChunkToTCList(&chunkSorterEntry->chunk_list, tcItem);
 		reconstructTuple(pMNEntry, chunkSorterEntry);
 		tupleCompleted = true;
@@ -1073,6 +1103,10 @@ static bool addChunkToSorter(MotionNodeEntry *pMNEntry, TupleChunkListItem tcIte
                     " after partial tuple data.", srcRoute, motNodeID)));
         }
 
+		/* we don't have enough to reconstruct the tuple, we need to
+		 * copy the chunk data out of our shared buffer */
+		materializeChunk(&tcItem);
+
         /* Put this chunk into the list. */
         appendChunkToTCList(&chunkSorterEntry->chunk_list, tcItem);
 
@@ -1087,6 +1121,10 @@ static bool addChunkToSorter(MotionNodeEntry *pMNEntry, TupleChunkListItem tcIte
                 errmsg("Received TC_PARTIAL_MID chunk from [src=%d,mn=%d]"
                     " without any leading tuple data.", srcRoute, motNodeID)));
         }
+
+		/* we don't have enough to reconstruct the tuple, we need to
+		 * copy the chunk data out of our shared buffer */
+		materializeChunk(&tcItem);
 
         /* Append this chunk to the list. */
         appendChunkToTCList(&chunkSorterEntry->chunk_list, tcItem);
@@ -1174,9 +1212,11 @@ static bool addChunkToSorter(MotionNodeEntry *pMNEntry, TupleChunkListItem tcIte
         break;
 
     default:
+		Assert(0);
         ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
-            errmsg("Received tuple chunk of unrecognized type %d"
-                " from [src=%d,mn=%d].", tcType, srcRoute, motNodeID)));
+						errmsg("Received tuple chunk of unrecognized type %d (len %d)"
+							   " from [src=%d,mn=%d].",
+							   tcType, tcItem->chunk_length, srcRoute, motNodeID)));
     }
 
     MemoryContextSwitchTo(oldCtxt);

@@ -28,17 +28,20 @@
 */
 typedef struct TupleChunkListItemData
 {
-    /* Pointer to next item in the list. */
-    struct TupleChunkListItemData *p_next;
+	/* Pointer to next item in the list. */
+	struct TupleChunkListItemData *p_next;
     
-    /* Length of chunk, including header.  We could calculate this value, but
-	* why trouble ourselves???
-	*/
-    uint32 chunk_length;
+	/* Length of chunk, including header.  We could calculate this value, but
+	 * why trouble ourselves???
+	 */
+	uint32 chunk_length;
+
+   	/* pointer to any "shared" data, used to pass back items 'in
+	 * place' without copying */
+   	char *inplace;
     
-    /* Variable-length data portion of the struct. */
-    uint8 chunk_data[];
-    
+   	/* Variable-length data portion of the struct. */
+   	uint8 chunk_data[];
 } TupleChunkListItemData, *TupleChunkListItem;
 
 

@@ -486,16 +486,18 @@ static inline TupleChunkListItem RecvTupleChunk(MotionConn *conn)
 	
 	while (bytesProcessed != conn->msgSize)
 	{
-		tcSize = TUPLE_CHUNK_HEADER_SIZE + GetChunkDataSize(conn->msgPos + bytesProcessed);
-		
+		tcSize = TUPLE_CHUNK_HEADER_SIZE + (*(uint16 *)(conn->msgPos + bytesProcessed));
+
 		if (tcSize >= conn->msgSize) {
 			elog(ERROR, "tcSize %d >= conn->msgSize %d !", tcSize, conn->msgSize);
 		}
 		Assert(tcSize < conn->msgSize);
-		
-		tcItem = (TupleChunkListItem)palloc0(sizeof(TupleChunkListData) + tcSize);
+
+		/* We store the data inplace, and handle any necessary copying
+		 * later on */
+		tcItem = (TupleChunkListItem)palloc0(sizeof(TupleChunkListData));
 		tcItem->chunk_length = tcSize;
-		memcpy(tcItem->chunk_data, conn->msgPos + bytesProcessed, tcSize);
+		tcItem->inplace = conn->msgPos + bytesProcessed;
 		
 		bytesProcessed += tcSize;
 		

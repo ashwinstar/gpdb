@@ -36,11 +36,15 @@ typedef enum TupleChunkType
  *
  *    Offset      Description           Size
  *      0    Tuple Chunk Size         2 bytes
- *      2    Tuple Type               1 byte
+ *      2    Tuple Type               2 byte
  *   ------------------------------------------
- *                            TOTAL:  3 BYTES
+ *                            TOTAL:  4 BYTES
+ *
+ * Yes, we could make this smaller. But we're doing lots of memcpy()s
+ * of data immediately following these headers. Let's align the data on
+ * 32-bit boundaries!
  */
-#define TUPLE_CHUNK_HEADER_SIZE 3
+#define TUPLE_CHUNK_HEADER_SIZE 4
 
 
 /* The target segment index also encodes whether the data should go only to
@@ -69,16 +73,21 @@ typedef enum TupleChunkType
 
 /* Simple macros for accessing tuple-chunk headers; NOTE: we no longer
  * use network byte order */
-#define GetChunkDataSize(/* uint8 * */tc_data) \
-	(*(uint16 *)(tc_data))
+
+/* add support for "inplace" chunk items */
+#define GetChunkDataPtr(tcItem) \
+	(((tcItem)->inplace != NULL) ? ((char *)((tcItem)->inplace)) : ((char *)((tcItem)->chunk_data)))
+
+#define GetChunkDataSize(tcItem) \
+	(*(uint16 *)(GetChunkDataPtr(tcItem)))
+
+#define GetChunkType(/* uint 8 * */tcItem) \
+	(*(uint16 *)(GetChunkDataPtr(tcItem) + 2))
 
 #define SetChunkDataSize(/* uint8 * */tc_data, /* uint16 */value) \
 	(*(uint16 *)(tc_data) = (value))
 
-#define GetChunkType(/* uint 8 * */tc_data) \
-	(*((tc_data) + 2))
-
 #define SetChunkType(/* uint 8 * */tc_data, /* TupleChunkType */value) \
-    (*((tc_data) + 2) = (uint8)(value))
+    (*(uint16 *)((tc_data) + 2) = (value))
 
 #endif /* TUPCHUNK_H */
