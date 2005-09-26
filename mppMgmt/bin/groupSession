@@ -86,7 +86,7 @@ class groupSession:
 				for i in range(begin,end):
 					th = self.sessions[i]
 					th.killCMD(signal.SIGKILL)
-				pool.wait()
+				self.pool.wait()
 				interrupted=True
           			break
 
