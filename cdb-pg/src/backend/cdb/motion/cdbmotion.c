@@ -1212,7 +1212,6 @@ static bool addChunkToSorter(MotionNodeEntry *pMNEntry, TupleChunkListItem tcIte
         break;
 
     default:
-		Assert(0);
         ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
 						errmsg("Received tuple chunk of unrecognized type %d (len %d)"
 							   " from [src=%d,mn=%d].",
