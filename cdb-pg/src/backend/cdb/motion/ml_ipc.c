@@ -1626,6 +1626,7 @@ static bool flushBuffer(MotionConn *conn)
 
 		if ((n = write(conn->sockfd, sendptr + sent, conn->msgSize - sent)) < 0)
 		{
+			CHECK_FOR_INTERRUPTS();
             if (errno == EINTR)
                 continue;
 			if (errno == EWOULDBLOCK)
@@ -1634,7 +1635,8 @@ static bool flushBuffer(MotionConn *conn)
 				{
                     timeout = tval;
 
-                    CHECK_FOR_INTERRUPTS();
+					CHECK_FOR_INTERRUPTS();
+
                     FD_ZERO(&rset);
                     FD_ZERO(&wset);
                     FD_SET(conn->sockfd, &wset);
@@ -1736,6 +1738,8 @@ static inline void readPacket(MotionConn *conn)
 		if ((n = read(conn->sockfd, conn->pBuff + bytesRead,
 					  Mpp_max_packet_size - bytesRead)) < 0)
 		{
+			CHECK_FOR_INTERRUPTS();
+
 			if (errno == EINTR)
 				continue;
 			if (errno == EWOULDBLOCK)
@@ -1752,8 +1756,11 @@ static inline void readPacket(MotionConn *conn)
 					n = select(conn->sockfd + 1, &rset, NULL, NULL, &timeout);
                     if (n < 0)
 					{
+						CHECK_FOR_INTERRUPTS();
+
                         if (errno == EINTR)
                             continue;
+
                         ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 										errmsg("Interconnect error reading an incoming packet"),
 										errdetail("error during select() call (error:%d).\n"
@@ -1766,65 +1773,29 @@ static inline void readPacket(MotionConn *conn)
 			}
 			else
 			{
-
-				/* TODO: would be nice to read the errno and try and
-				 * 		 provide more useful info as to why this
-				 * 		 happened.
-				 */
+				CHECK_FOR_INTERRUPTS();
 				ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 								errmsg("Interconnect error reading an incoming packet"),
 								errdetail("error during read() call (error:%d).\n"
 										  "From Remote Connection: contentId=%d at '%s':%d",
 										  errno, conn->remoteContentId, conn->remoteHost,
-										  conn->remotePort)));								
+										  conn->remotePort)));
 			}
-		} else if (n == 0)
+		}
+		else if (n == 0)
 		{
 #ifdef AMS_VERBOSE_LOGGING
 			elog(DEBUG3, "readpacket(); breaking in while (fd %d) recvBytes %d msgSize %d", conn->sockfd, conn->recvBytes, conn->msgSize);
+			print_connection(conn->sockfd, "interconnect error on");
 #endif
-			/* Either we're done, or there is something seriously
-			 * wrong */
-			if (conn->recvBytes == 0) {
-				elog(LOG, "INTERCONNECT: Connection ended prematurely????");
-				conn->recvBytes = conn->msgSize = PACKET_HEADER_SIZE;
-
-#ifdef AMS_VERBOSE_LOGGING
-				print_connection(conn->sockfd, "interconnect error on");
-#endif
-#if 0
-				conn->stillActive = false;
-#endif
-				if (Mpp_role == MPP_ROLE_DISPATCH)
-				{
-					elog(LOG, "ending prematurely in dispatcher");
-				}
-				else if (Mpp_role == MPP_ROLE_EXECUTE)
-				{
-					elog(LOG, "ending prematurely in executor");
-				}
-				elog(LOG, "my listener port %d remote host %s remote port %d remote contentId %d",
-					 listenerPort, conn->remoteHost, conn->remotePort, conn->remoteContentId);
-				break;
-			}
-			else if (conn->recvBytes == conn->msgSize)
-			{
-				/* got a completed message before the connection
-				 * closed; probably this is an EOS message */
-				elog(LOG, "INTERCONNECT: breaking with data %d", conn->msgSize);
-				break;
-			}
-			else
-			{
-				/* TODO: would be nice to read the errno and try and provide more
-				 * 		 useful info as to why this happened.
-				 */
-				ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-								errmsg("Interconnect error reading an incoming packet"),
-								errdetail("Socket closed from remote connection).\n"
-										  "contentId=%d at '%s':%d",conn->remoteContentId,
-										  conn->remoteHost,conn->remotePort)));
-			}
+			CHECK_FOR_INTERRUPTS();
+			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+							errmsg("Interconnect error: connection closed prematurely."),
+							errdetail("error during read() call (error:%d).\n"
+									  "From Remote Connection: contentId=%d at '%s':%d",
+									  errno, conn->remoteContentId, conn->remoteHost,
+									  conn->remotePort)));
+			break;
 		}
 		else
 		{
