@@ -276,7 +276,7 @@ GET_QD_DB_NAME () {
 GET_QE_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_QD_DB_NAME
-		QE_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port, c.valid, c.definedprimary from mpp.listener a, mpp.host b, mpp.pgdatabase c where a.listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid and a.listenerid=c.listenerid;" 2>/dev/null`) > /dev/null 2>&1
+		QE_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port, c.valid, c.definedprimary from mpp.listener a, mpp.host b, mpp.mpp_pgdatabase c where a.listenerid<> (select listenerid from mpp.mpp_pgdatabase where content=-1) and a.hostid=b.hostid and a.listenerid=c.listenerid;" 2>/dev/null`) > /dev/null 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 				LOG_MSG "[WARN]:-Unable to obtain QE host details from Master db, error code $RETVAL returned"
@@ -288,7 +288,7 @@ GET_QE_DETAILS () {
 GET_QE_PRIMARY_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_QD_DB_NAME
-		QE_PRIMARY_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port, c.valid, c.definedprimary from mpp.listener a, mpp.host b, mpp.pgdatabase c where a.listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid and a.listenerid in (select listenerid from mpp.pgdatabase where definedprimary='t') and a.listenerid=c.listenerid order by a.datadir;" 2>/dev/null`) > /dev/null 2>&1
+		QE_PRIMARY_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port, c.valid, c.definedprimary from mpp.listener a, mpp.host b, mpp.mpp_pgdatabase c where a.listenerid<> (select listenerid from mpp.mpp_pgdatabase where content=-1) and a.hostid=b.hostid and a.listenerid in (select listenerid from mpp.mpp_pgdatabase where definedprimary='t') and a.listenerid=c.listenerid order by a.datadir;" 2>/dev/null`) > /dev/null 2>&1
 
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
