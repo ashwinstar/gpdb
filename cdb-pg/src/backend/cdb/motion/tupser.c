@@ -462,8 +462,7 @@ TupleChunkList CvtHeapTupToChunks(HeapTuple htup, SerTupInfo *pSerInfo,
     StringInfoData serialTup;
     TupleChunkList tcList;
     TupleChunkListItem tcItem;
-    int i;
-    uint16 chunkDataSize;
+    int i, chunkDataSize;
     TupleChunkType tcType;
 
     AssertArg(htup != NULL);
@@ -499,7 +498,6 @@ TupleChunkList CvtHeapTupToChunks(HeapTuple htup, SerTupInfo *pSerInfo,
             /* Calculate the size of the next chunk of data, and create the
              * new tuple chunk.
              */
-
             chunkDataSize = serialTup.len - i;
             if (chunkDataSize > maxChunkDataSize)
             {

@@ -16,65 +16,61 @@
 #include "cdb/tupser.h"
 #include "lib/stringinfo.h"
 
-
 TupleChunkListItem makeTupleChunkListItem(TupleChunkType chunkType,
 										  void *pChunkData, uint16 chunkDataSize)
 {
-    int chunkSize;
-    TupleChunkListItem tcItem;
-    
-    /* AssertArg(chunkType >= 0); -- chunkType is unsigned, so this AssertArg is a constant expression */
-    AssertArg(chunkType < TC_MAXVAL);
-	
-	if( chunkDataSize > 0 )
-    	AssertArg(pChunkData != NULL);
-    
-    /* Allocate tuple-chunk list item, including space for the header. */
-    
-    chunkSize = TUPLE_CHUNK_HEADER_SIZE + chunkDataSize;
-    
-    tcItem = (TupleChunkListItem) palloc0(sizeof(TupleChunkListData) + chunkSize);
-	
-    /* Fill in chunk details. */
-	
-    SetChunkDataSize(tcItem->chunk_data, chunkDataSize);
-    SetChunkType(tcItem->chunk_data, chunkType);
-	
-    tcItem->chunk_length = chunkSize;
-	
-    /* Copy in the data, starting right after the header. */
-    memcpy(tcItem->chunk_data + TUPLE_CHUNK_HEADER_SIZE, pChunkData,
-		   chunkDataSize);
-	
-    return tcItem;
-}
+	int chunkSize;
+	TupleChunkListItem tcItem;
 
+	/* AssertArg(chunkType >= 0); -- chunkType is unsigned, so this AssertArg is a constant expression */
+	AssertArg(chunkType < TC_MAXVAL);
+
+	if (chunkDataSize > 0)
+		AssertArg(pChunkData != NULL);
+
+	/* Allocate tuple-chunk list item, including space for the header. */
+
+	chunkSize = TUPLE_CHUNK_HEADER_SIZE + chunkDataSize;
+
+	tcItem = (TupleChunkListItem)palloc0(sizeof(TupleChunkListData) + chunkSize);
+
+	/* Fill in chunk details. */
+	SetChunkDataSize(tcItem->chunk_data, chunkDataSize);
+	SetChunkType(tcItem->chunk_data, chunkType);
+
+	tcItem->chunk_length = chunkSize;
+
+	/* Copy in the data, starting right after the header. */
+	memcpy(tcItem->chunk_data + TUPLE_CHUNK_HEADER_SIZE, pChunkData,
+		   chunkDataSize);
+
+	return tcItem;
+}
 
 /* Appends a TupleChunkListItem to the end of a TupleChunkList.  The list's
 * "num_chunks" value is incremented as well.
 */
 void appendChunkToTCList(TupleChunkList tcList, TupleChunkListItem tcItem)
 {
-    AssertArg(tcList != NULL);
-    AssertArg(tcItem != NULL);
-    
-    /* Append the chunk to the list. */
-    
-    tcList->num_chunks++;
-    
-    if (tcList->p_last != NULL)     /* List not empty. */
-    {
-        tcList->p_last->p_next = tcItem;
-        tcList->p_last = tcItem;
-    }
-    else                            /* List is empty. */
-    {
-        Assert(tcList->p_first == NULL);
-        tcList->p_first = tcItem;
-        tcList->p_last  = tcItem;
-    }
-}
+	AssertArg(tcList != NULL);
+	AssertArg(tcItem != NULL);
 
+	/* Append the chunk to the list. */
+
+	tcList->num_chunks++;
+
+	if (tcList->p_last != NULL)     /* List not empty. */
+	{
+		tcList->p_last->p_next = tcItem;
+		tcList->p_last = tcItem;
+	}
+	else                            /* List is empty. */
+	{
+		Assert(tcList->p_first == NULL);
+		tcList->p_first = tcItem;
+		tcList->p_last  = tcItem;
+	}
+}
 
 void clearTCList(TupleChunkList tcList)
 {
