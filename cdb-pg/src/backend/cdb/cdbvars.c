@@ -53,10 +53,8 @@ bool				Debug_print_slice_table; /* Shall we log the slice table? */
 int					mpp_connections_per_thread;	/* How many libpq connections are handled in each thread */
 
 
-int					Mpp_segment = -2;		/* What content this QE is handling. */
+int					Mpp_segment = UNDEF_SEGMENT;		/* What content this QE is handling. */
 
-bool				mpp_enable_repartition;
-bool				mpp_enable_broadcast;
 bool				enable_agg_restruct;
 
 int					Mpp_listener_port;

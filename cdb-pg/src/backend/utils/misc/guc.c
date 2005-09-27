@@ -869,22 +869,6 @@ static struct config_bool ConfigureNamesBool[] =
 		false, NULL, NULL
 #endif
 	},
-	{
-		{"mpp_enable_repartition", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enables the MPP parallelizer's use of the repartition strategy."),
-			NULL
-		},
-		&mpp_enable_repartition,
-		true, NULL, NULL
-	},
-	{
-		{"mpp_enable_broadcast", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enables the MPP parallelizer's use of the broadcast strategy."),
-			NULL
-		},
-		&mpp_enable_broadcast,
-		true, NULL, NULL
-	},
 
 	{
 		{"enable_agg_restructure", PGC_USERSET, QUERY_TUNING_METHOD,

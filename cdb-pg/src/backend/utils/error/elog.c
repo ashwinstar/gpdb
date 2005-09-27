@@ -1450,7 +1450,7 @@ log_line_prefix(StringInfo buf)
 				 * choose to not write anything for the very early log messages
 				 * before GUC variables are set.
 				 */
-				if( Mpp_segment != -2 )
+				if( Mpp_segment != UNDEF_SEGMENT )
 					appendStringInfo(buf, "%d", Mpp_segment );
 				break;
 			case 'I':

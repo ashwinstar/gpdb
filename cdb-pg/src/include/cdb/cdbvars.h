@@ -220,22 +220,11 @@ extern int Mpp_max_packet_size; /* GUC var */
  * Query Dispatcher, and is propagated to Query Executors in the connection
  * parameters.  It is not modifiable by any user, ever.
  */
+#define UNDEF_SEGMENT -2 
 extern int Mpp_segment;           /* GUC var */
 
 extern int getMPPSegmentCount(void);
 
-
-/*
- * Parameters mpp_enable_repartition and mpp_enable_broadcast
- *
- * These run-time parameters (GUC variables) influence the mpp join strategies.
- * These are analagous to the enable_nestloop, enable_mergejoin etc variable
- * for the postgres planner.  When set to false, the cost for that type of
- * strategy is increased by a very large amount.  This will effectively
- * cause the code to not choose this strategy unless there is no other.
- */
-extern bool mpp_enable_repartition;
-extern bool mpp_enable_broadcast;
 
 /*
  * Unlike the above, enable_agg_restruct is not cost based. When set to
