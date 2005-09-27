@@ -258,12 +258,15 @@ bool SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem 
 
 	currItem = tcItem;
 
-	while (currItem != NULL)
+	for (currItem = tcItem; currItem != NULL; currItem = currItem->p_next)
 	{
+#ifdef AMS_VERBOSE_LOGGING	
+		elog(DEBUG3, "SendTupleChunkToAMS: chunk length %d", currItem->chunk_length);
+#endif
 
 		if (targetRoute == BROADCAST_SEGIDX)
 		{		
-			if (doBroadcast(pEntry, tcItem) != 0)
+			if (doBroadcast(pEntry, currItem) != 0)
 				recount = 1;
 		}
 		else
@@ -273,19 +276,17 @@ bool SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem 
 			/* only send to interested connections */
 			if (conn->stillActive)
 			{
-				sendChunk(conn, tcItem);
+				sendChunk(conn, currItem);
 				if (!conn->stillActive)
 					recount = 1;
 			}
 			if (conn->hasMirrorConn && conn->mirrorConn->stillActive)
 			{
-				sendChunk(conn->mirrorConn, tcItem);
+				sendChunk(conn->mirrorConn, currItem);
 				if (conn->mirrorConn->stillActive)
 					recount = 1;
 			}
 		}
-
-		currItem = tcItem->p_next;
 	}
 
 	if (recount == 0)
@@ -498,7 +499,7 @@ static inline TupleChunkListItem RecvTupleChunk(MotionConn *conn)
 		tcItem = (TupleChunkListItem)palloc0(sizeof(TupleChunkListData));
 		tcItem->chunk_length = tcSize;
 		tcItem->inplace = conn->msgPos + bytesProcessed;
-		
+
 		bytesProcessed += tcSize;
 		
 		if (firstTcItem == NULL)
@@ -1548,6 +1549,10 @@ static void acceptIncomingConnection(fd_set *rset, int *highsock)
 static bool sendChunk(MotionConn *conn, TupleChunkListItem tcItem)
 {
 	Assert(conn->msgSize > 0);		
+
+#ifdef AMS_VERBOSE_LOGGING
+	elog(DEBUG3, "sendChunk: msgSize %d this chunk length %d", conn->msgSize, tcItem->chunk_length);
+#endif
 	
 	if (conn->msgSize + tcItem->chunk_length > Mpp_max_packet_size)
 	{
@@ -1674,7 +1679,7 @@ static bool flushBuffer(MotionConn *conn)
 			sent += n;
 		}
 	} while (sent < conn->msgSize);
-	
+
 	conn->tupleCount = 0;
 	conn->msgSize = PACKET_HEADER_SIZE;
 	
