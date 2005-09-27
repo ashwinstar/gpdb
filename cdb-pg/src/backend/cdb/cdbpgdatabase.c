@@ -74,6 +74,8 @@ mpp_pgdatabase__(PG_FUNCTION_ARGS)
 		mystatus = (Working_State *) palloc(sizeof(Working_State));
 		funcctx->user_fctx = (void *) mystatus;
 
+        FtsEvaluateTransientState();
+        
 		mystatus->cdb_component_dbs = getCdbComponentDatabases();
 		mystatus->currIdx = 0;
 
