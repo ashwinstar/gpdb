@@ -189,6 +189,9 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 		 *        cdb_apply_motion() and noting it in the top plan node.
 		 */
 		InitSliceTable(estate, queryDesc->plantree->nMotionNodes, queryDesc->plantree->nParamExec);
+		
+		/* JGE set our global sliceid variable for elog. */
+		currentSliceId = 0;
 	 }
 	 else if ( Mpp_role == MPP_ROLE_EXECUTE )
 	 {
@@ -208,6 +211,9 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 			slice = list_nth(sliceTable->slices, sliceTable->localSlice);
 			Assert( IsA(slice,Slice) );
 			estate->es_cur_root_idx = ((Slice*)slice)->rootIndex;
+			
+			/* JGE set our global sliceid variable for elog. */
+			currentSliceId = estate->es_cur_slice_idx;
 		}
 	 }
 
@@ -582,6 +588,9 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 			/* clean up our own motion layer. */
 			ResetMotionLayer(true);
 		}
+		
+		currentSliceId = UNSET_SLICE_ID;
+				
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -635,6 +644,8 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 	{
 		/* clean up the interconnect if necessary */
 		TeardownInterconnect();
+		
+		currentSliceId = UNSET_SLICE_ID;
 	}
 
 	/*

@@ -185,7 +185,10 @@ extern char           * mpp_fault_action_string;  /* Use by guc.c as user define
 extern bool             mpp_set_read_only;
 extern bool             assign_mpp_set_read_only( bool newval, bool doit, GucSource source );
 extern const char       * show_mpp_set_read_only( void );
+extern const char * role_to_string( MppRoleValue role );
 
+#define UNSET_SLICE_ID -1
+extern int currentSliceId;
 
 /* 
  * Parameter Mpp_max_packet_size

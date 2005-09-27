@@ -53,7 +53,7 @@ bool				Debug_print_slice_table; /* Shall we log the slice table? */
 int					mpp_connections_per_thread;	/* How many libpq connections are handled in each thread */
 
 
-int					Mpp_segment;		/* What content this QE is handling. */
+int					Mpp_segment = -2;		/* What content this QE is handling. */
 
 bool				mpp_enable_repartition;
 bool				mpp_enable_broadcast;
@@ -64,6 +64,8 @@ int					Mpp_listener_port;
 int					Mpp_max_packet_size;  /* max Interconnect packet size */
 
 int interconnect_setup_timeout;
+
+int currentSliceId = UNSET_SLICE_ID;  /*used by elog to show the current slice the process is executing. */
 
 /* 
  * The single row from mpp.mpp for this database is held in this variable,

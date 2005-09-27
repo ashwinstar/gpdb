@@ -244,7 +244,23 @@
 				# %c=session id %l=session line number
 				# %s=session start timestamp %x=transaction id
 				# %q=stop here in non-session processes
-				# %%='%'
+				# %%='%'				
+				#
+				# MPP specific options:
+				# %C  content id (or segment index)
+                # %I  prints a handy mixture of other elements:
+                #		'QD slice #0'  Query Dispatcher executing slice #0.
+                #		'QE#2P slice #1' Query Executor with content id 2 and is
+                #						 Primary executing slice #1.
+                #
+                # %P  if the content database is the primary or not. 
+                #	  	 'P' if primary, 'M' if mirror. blank if n/a.
+                # %R  role (dispatch, execute, utility).
+                # %S  slice index when applicable otherwise blank.
+                # %T  process Type. prints:
+                #	    QD if QueryDispatcher
+                #		QE if QueryExecutor
+                #		blank if other.
 #log_statement = 'none'		# none, mod, ddl, all
 #log_hostname = false
 

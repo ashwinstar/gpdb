@@ -68,6 +68,8 @@
 #include "utils/memutils.h"
 #include "utils/guc.h"
 
+#include "cdb/cdbvars.h"  /*Mpp_segment */
+
 
 /* Global variables */
 ErrorContextCallback *error_context_stack = NULL;
@@ -1440,6 +1442,48 @@ log_line_prefix(StringInfo buf)
 					else
 						appendStringInfo(buf, "%u", InvalidTransactionId);
 				}
+				break;
+				
+			/* MPP SPECIFIC OPTIONS. */	
+			case 'C':
+				/* we use -2 to indicate that it hasn't been set yet.  we'll
+				 * choose to not write anything for the very early log messages
+				 * before GUC variables are set.
+				 */
+				if( Mpp_segment != -2 )
+					appendStringInfo(buf, "%d", Mpp_segment );
+				break;
+			case 'I':
+				/* prints a succinct description of an MPP process. */
+				if( Mpp_role == MPP_ROLE_DISPATCH )
+					appendStringInfo(buf, "QD ");
+				else if( Mpp_role == MPP_ROLE_EXECUTE )
+					appendStringInfo( buf, "QE#%d%s ", Mpp_segment, Mpp_is_primary?"P":"M" );
+				
+				if( currentSliceId != -1 )
+					appendStringInfo( buf, "slice#:%d", currentSliceId );
+				break;
+			case 'P':
+				if( Mpp_role == MPP_ROLE_EXECUTE )
+				{
+					appendStringInfo(buf, "%s", Mpp_is_primary?"P":"M");
+				}
+				break;
+			case 'R':
+				appendStringInfo(buf, "%s", role_to_string(Mpp_role));	
+				break;
+			case 'S':
+				if( currentSliceId != -1 )
+				{
+					appendStringInfo(buf, "%d", currentSliceId );
+				}
+				break;
+			case 'T':
+				if( Mpp_role == MPP_ROLE_EXECUTE )
+					appendStringInfo(buf, "QE");
+				else if( Mpp_role == MPP_ROLE_DISPATCH )
+					appendStringInfo(buf, "QD");
+				
 				break;
 			case '%':
 				appendStringInfoChar(buf, '%');
