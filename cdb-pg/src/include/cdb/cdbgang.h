@@ -42,5 +42,7 @@ extern CdbComponentDatabases * getComponentDatabases(void);
 
 extern bool isGangExisted(void);
 
+extern SegmentDatabaseDescriptorPtr getSegmentDescriptorFromGang(const Gang * gp, int seg);
+
 
 #endif   /* _CDBGANG_H_ */

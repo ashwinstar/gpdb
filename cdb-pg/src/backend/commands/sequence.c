@@ -222,7 +222,7 @@ DefineSequence(CreateSeqStmt *seq)
 
 	if (shouldDispatch)
 	{
-		CdbDispatchUtilityStatement(seq);
+		CdbDispatchUtilityStatement((Node *)seq);
 	}
 
 	rel = heap_open(seqoid, AccessExclusiveLock);

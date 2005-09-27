@@ -1000,6 +1000,23 @@ allocateGang(GangType type, int size, int content)
 	return gp;
 }
 
+SegmentDatabaseDescriptorPtr getSegmentDescriptorFromGang(const Gang * gp, int seg)
+{
+
+	int i;
+	
+	if (gp == NULL)
+		return NULL;
+		
+	for (i = 0; i < gp->size; i++)
+	{
+		if (gp->db_descriptors[i].segindex == seg)
+			return &(gp->db_descriptors[i]);
+	}
+
+	return NULL;
+}
+
 List *
 getCdbProcessList(Gang * gang)
 {
@@ -1043,13 +1060,30 @@ getCdbProcessList(Gang * gang)
 			{
 				elog(FATAL, "getCdbProcessList: gethostbyname() failed for host '%s'", qeinfo->hostname);
 			}
+			
+			/*
+			 * We want the n-th element of the list to be the segDB that handled content n.
+			 * And if no segDb is available (down mirror), we want it to be null.
+			 * 
+			 * But the gang structure element n is not necessarily the guy who handles content n,
+			 * so we need to skip some slots.
+			 * 
+			 * 
+			 * We don't do this for reader 1-gangs
+			 * 
+			 */
 
+			if (gang->type != GANGTYPE_READER || gang->size > 1)
+			while (segdbDesc->segindex > i)
+			{
+				list = lappend(list, NULL); 
+			}
 
 
 			process->listenerAddr = pstrdup(inet_ntoa(*(struct in_addr *) (theHost->h_addr_list[0])));
 			process->listenerPort = segdbDesc->motionListener;
 			process->pid = PQbackendPID(segdbDesc->conn);
-			process->contentid = i;
+			process->contentid = segdbDesc->segindex;
 			process->routeid = k++;
 
 			elog(DEBUG1, "getCdbProcessesList --- %s, port %d, content %d, routeid %d",

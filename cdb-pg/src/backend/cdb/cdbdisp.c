@@ -173,7 +173,7 @@ CdbDispatchToGang(const char *szCommand, Gang * gp,
 	Assert(gp != NULL);
 	Assert(gp->size > 0);
 
-	elog(DEBUG1, "CdbDispatchToGang gangize %d -> %.20s", gp->size, szCommand);
+	elog(DEBUG1, "CdbDispatchToGang gangize %d -> %.50s", gp->size, szCommand);
 
 
 
@@ -341,7 +341,7 @@ CdbDispatchCommandInt(const char *szCommand, bool cancelFromBelow,
 	if (Mpp_role != MPP_ROLE_DISPATCH)
 		elog(ERROR, "CdbDispatchCommandInt should not be called while not in DISPATCH mode.");
 
-	elog(DEBUG1, "CdbDispatchCommandInt %.40s", szCommand);
+	elog(DEBUG1, "CdbDispatchCommandInt %.50s", szCommand);
 
 	Assert(Mpp_role == MPP_ROLE_DISPATCH);
 
@@ -698,7 +698,7 @@ thread_DispatchCommand(void *arg)
 		 */
 		if (DEBUG3 >= log_min_messages)
 			fprintf(stderr,
-					"thread_DispatchCommand sending command %.8s... sent to "
+					"thread_DispatchCommand sending command %.40s...\n sent to "
 					"port: %s with options %s and motionListener: %d\n",
 					szCommand, PQport(conn), PQoptions(conn),
 					PQmotionListener(conn));
@@ -1029,7 +1029,7 @@ thread_DispatchCommand(void *arg)
 							}
 							else
 			 				{
-								appendPQExpBuffer(&buffer, "%s          error reported by segment database: "
+								appendPQExpBuffer(&buffer, "%s\n          error reported by segment database: "
 												  "segindex %d isprimary %c\n",
 												  pqerrormsg,
 												  q->segindex,

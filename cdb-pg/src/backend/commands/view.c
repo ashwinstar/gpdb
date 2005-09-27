@@ -374,7 +374,7 @@ DefineView(ViewStmt* stmt)
 
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement(stmt);
+		CdbDispatchUtilityStatement((Node *)stmt);
 			
 	}
 }

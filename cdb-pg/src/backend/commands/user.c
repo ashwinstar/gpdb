@@ -791,7 +791,7 @@ CreateUser(CreateUserStmt *stmt)
 
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-			CdbDispatchUtilityStatement(stmt);
+			CdbDispatchUtilityStatement((Node *)stmt);
 	}
 }
 
@@ -1215,7 +1215,7 @@ DropUser(DropUserStmt *stmt)
 
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-			CdbDispatchUtilityStatement(stmt);
+			CdbDispatchUtilityStatement((Node *)stmt);
 
 	}
 }

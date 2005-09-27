@@ -25,6 +25,7 @@
 #include "cdb/cdblink.h"
 #include "cdb/cdbtm.h"
 #include "cdb/cdbcopy.h"
+#include "cdb/cdbgang.h"
 
 /*
  * Create a cdbCopy object that includes all the cdb
@@ -80,12 +81,20 @@ CdbCopy *makeCdbCopy(void)
  */
 int cdbCopyGetDbCount(int total_segs, int seg)
 {
+	int i;
+	
 	Gang * gp = allocateGang(GANGTYPE_MIRROR_WRITER, total_segs, -1);
 	
-	if (gp != NULL && &(gp->db_descriptors[seg]) != NULL)
-		return 2;
-	else
+	if (gp == NULL)
 		return 1;
+		
+	for (i = 0; i < gp->size; i++)
+	{
+		if (gp->db_descriptors[i].segindex == seg)
+			return 2;
+	}
+
+	return 1;
 }
 
 
@@ -115,7 +124,7 @@ int cdbCopyStart(CdbCopy *c, char *copyCmd)
 			else
 				gp = c->mirror_writer;			
 			
-			q = &(gp->db_descriptors[seg]);
+			q = getSegmentDescriptorFromGang(gp,seg);
 			
 			/* send COPY command to the segment DB */
 			res = PQexec(q->conn, copyCmd);
@@ -167,7 +176,7 @@ void cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer,
 		else
 			gp = c->mirror_writer;			
 		
-		q = &(gp->db_descriptors[target_seg]);
+		q = getSegmentDescriptorFromGang(gp,target_seg);
 		
 		/* transmit the COPY data */
 		result = PQputCopyData(q->conn, buffer, nbytes);
@@ -220,7 +229,7 @@ void cdbCopyEnd(CdbCopy *c)
 			else
 				gp = c->mirror_writer;			
 	
-			q = &(gp->db_descriptors[seg]);
+			q = getSegmentDescriptorFromGang(gp,seg);
 			
 			/* end this COPY command */
 			result = PQputCopyEnd(q->conn, NULL);
