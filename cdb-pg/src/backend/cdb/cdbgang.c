@@ -361,10 +361,10 @@ createGang(GangType type, int size, int content)
 			 * claenup and rollback current DTM transaction
 			 */
 			discardDtxTransaction();
-            
-             /* clean the gang before error out */
-             disconnectAndDestroyGang(newGangDefinition);
-             segdbDesc->error_message = buffer.data;
+
+			/* clean the gang before error out */
+			disconnectAndDestroyGang(newGangDefinition);
+			segdbDesc->error_message = buffer.data;
 
 			ereport(FATAL,
 					(errcode
@@ -383,19 +383,20 @@ createGang(GangType type, int size, int content)
 
 	if (successful_connections != newGangDefinition->size)
 	{
-        bool errorOut;
-        if (type == GANGTYPE_MIRROR_WRITER && successful_connections == 0)
-            mirroringNotConfigured = true;
-            
-		errorOut = FtsHandleGangConnectionFailure(newGangDefinition->db_descriptors,
-									   newGangDefinition->size);
-        
-        disconnectAndDestroyGang(newGangDefinition);
-        
-        if (errorOut)
-            elog(ERROR, "MPP detects segment failures, system is reconnected" );
+		bool		errorOut;
 
-         newGangDefinition = NULL;
+		if (type == GANGTYPE_MIRROR_WRITER && successful_connections == 0)
+			mirroringNotConfigured = true;
+
+		errorOut = FtsHandleGangConnectionFailure(newGangDefinition->db_descriptors,
+												  newGangDefinition->size);
+
+		disconnectAndDestroyGang(newGangDefinition);
+
+		if (errorOut)
+			elog(ERROR, "MPP detects segment failures, system is reconnected");
+
+		newGangDefinition = NULL;
 	}
 	return newGangDefinition;
 }
@@ -466,9 +467,9 @@ buildGangDefinition(GangType type, int size, int content)
 
 	newGangDefinition->all_valid_segdbs_connected = false;
 
-    /* retry transient failed dbs */
-    if (type == GANGTYPE_PRIMARY_WRITER)
-        FtsEvaluateTransientState(); 
+	/* retry transient failed dbs */
+	if (type == GANGTYPE_PRIMARY_WRITER)
+		FtsEvaluateTransientState();
 
 	cdb_component_dbs = getCdbComponentDatabases();
 
@@ -611,9 +612,9 @@ buildGangDefinition(GangType type, int size, int content)
 					segdbDesc->segindex = p->segindex;
 
 					seg_count++;
-                     if (type == GANGTYPE_READER && size == 1)
-                        /* we are done */
-                        break;
+					if (type == GANGTYPE_READER && size == 1)
+						/* we are done */
+						break;
 				}
 				last_segindex = p->segindex;
 			}
@@ -647,13 +648,13 @@ buildGangDefinition(GangType type, int size, int content)
 	}
 	else if (type == GANGTYPE_MIRROR_WRITER)
 	{
-        /* setup mirroring */
-        if (seg_count == 0)
-        {
-            disableFTS();
-            mirroringNotConfigured = true;
-            return NULL;
-        }
+		/* setup mirroring */
+		if (seg_count == 0)
+		{
+			disableFTS();
+			mirroringNotConfigured = true;
+			return NULL;
+		}
 	}
 
 	newGangDefinition->size = seg_count;
@@ -868,7 +869,7 @@ allocateGang(GangType type, int size, int content)
 				gp = primaryWriterGang = createGang(type, size, content);
 				if (gp == NULL)
 					gp = primaryWriterGang = createGang(type, size, content);
-             }
+			}
 			else
 				gp = primaryWriterGang;
 			break;
@@ -917,13 +918,13 @@ allocateGang(GangType type, int size, int content)
 				{
 					elog(DEBUG4, "creating a new gang");
 					gp = createGang(type, size, content);
-                     //try again
-                     if (gp == NULL)
-                         gp = createGang(type, size, content);
+					/* try again */
+					if (gp == NULL)
+						gp = createGang(type, size, content);
 				}
 				Assert(gp != NULL);
-                 if (gp == NULL)
-                    elog(ERROR, "No reader gang allocated");
+				if (gp == NULL)
+					elog(ERROR, "No reader gang allocated");
 
 				if (allocatedReaderGangsN != NIL)
 					elog(DEBUG4, "allocatedReaderGangsN Exists");
@@ -968,12 +969,12 @@ allocateGang(GangType type, int size, int content)
 				{
 					elog(DEBUG4, "creating a new 1 gang for content %d", content);
 					gp = createGang(type, size, content);
-                     //try again
-                     if (gp->size == 0)
-                         gp = createGang(type, size, content);
+					/* try again */
+					if (gp->size == 0)
+						gp = createGang(type, size, content);
 				}
-                 if (gp == NULL)
-                     elog(ERROR, "No reader gang allocated");
+				if (gp == NULL)
+					elog(ERROR, "No reader gang allocated");
 				allocatedReaderGangs1 = lappend(allocatedReaderGangs1, gp);
 
 			}
@@ -1000,14 +1001,15 @@ allocateGang(GangType type, int size, int content)
 	return gp;
 }
 
-SegmentDatabaseDescriptorPtr getSegmentDescriptorFromGang(const Gang * gp, int seg)
+SegmentDatabaseDescriptorPtr
+getSegmentDescriptorFromGang(const Gang * gp, int seg)
 {
 
-	int i;
-	
+	int			i;
+
 	if (gp == NULL)
 		return NULL;
-		
+
 	for (i = 0; i < gp->size; i++)
 	{
 		if (gp->db_descriptors[i].segindex == seg)
@@ -1034,6 +1036,7 @@ getCdbProcessList(Gang * gang)
 		struct hostent *theHost;
 		bool		primary;
 		int			k = 0;
+		int			listsize = 0;
 
 		/*
 		 * Assert( gang->size == 1 || gang->size == getMPPSegmentCount() );
@@ -1060,24 +1063,25 @@ getCdbProcessList(Gang * gang)
 			{
 				elog(FATAL, "getCdbProcessList: gethostbyname() failed for host '%s'", qeinfo->hostname);
 			}
-			
+
 			/*
 			 * We want the n-th element of the list to be the segDB that handled content n.
 			 * And if no segDb is available (down mirror), we want it to be null.
-			 * 
+			 *
 			 * But the gang structure element n is not necessarily the guy who handles content n,
 			 * so we need to skip some slots.
-			 * 
-			 * 
+			 *
+			 *
 			 * We don't do this for reader 1-gangs
-			 * 
+			 *
 			 */
 
 			if (gang->type != GANGTYPE_READER || gang->size > 1)
-			while (segdbDesc->segindex > i)
-			{
-				list = lappend(list, NULL); 
-			}
+				while (segdbDesc->segindex > i)
+				{
+					list = lappend(list, NULL);
+					listsize++;
+				}
 
 
 			process->listenerAddr = pstrdup(inet_ntoa(*(struct in_addr *) (theHost->h_addr_list[0])));
@@ -1091,7 +1095,21 @@ getCdbProcessList(Gang * gang)
 				 process->contentid, process->routeid);
 
 			list = lappend(list, process);
+			listsize++;
 		}
+
+		if ((gang->type != GANGTYPE_READER || gang->size > 1) && listsize < getMPPSegmentCount())
+		{
+			if (gang->type == GANGTYPE_PRIMARY_WRITER)
+				elog(ERROR, "Primary gang smaller than number of segments");
+
+			while (listsize < getMPPSegmentCount())
+			{
+				list = lappend(list, NULL);
+				listsize++;
+			}
+		}
+		Assert(listsize == 1 || listsize == getMPPSegmentCount());
 	}
 
 	return list;
@@ -1179,27 +1197,28 @@ cleanupGang(Gang * gp)
 		{
 
 			PGresult   *pRes;
-			int retry = 0;
+			int			retry = 0;
 			ExecStatusType stat;
+
 			while (NULL != (pRes = PQgetResult(segdbDesc->conn)))
 			{
 				elog(WARNING, "Leftover results from gang a freeGang time");
 				stat = PQresultStatus(pRes);
-				elog(WARNING, "PGresultStatus = %d",stat);
-			
+				elog(WARNING, "PGresultStatus = %d", stat);
+
 				PQclear(pRes);
 				if (stat == PGRES_FATAL_ERROR)
 					break;
 				if (stat == PGRES_BAD_RESPONSE)
 					break;
-				retry ++;
+				retry++;
 				if (retry > 20)
 				{
-					elog(NOTICE,"freeGang called when a gang member is still busy, and waiting didn't help, trying to destroy the gang");
+					elog(NOTICE, "freeGang called when a gang member is still busy, and waiting didn't help, trying to destroy the gang");
 					disconnectAndDestroyGang(gp);
-					elog(FATAL,"freeGang called when a gang member is still busy.  Fatal error.");
+					elog(FATAL, "freeGang called when a gang member is still busy.  Fatal error.");
 				}
-				
+
 			};
 
 		}
@@ -1268,13 +1287,14 @@ disconnectAndDestroyGang(Gang * gp)
 	/*
 	 * Discard the segment array and the cluster descriptor
 	 */
-    pfree(gp->db_descriptors);
-    gp->db_descriptors = NULL;
-    gp->size = 0;
+	pfree(gp->db_descriptors);
+	gp->db_descriptors = NULL;
+	gp->size = 0;
 	pfree(gp);
-    /* this is confusing, gp is local variable, no need to null it.
-	gp = NULL;
-    */
+
+	/*
+	 * this is confusing, gp is local variable, no need to null it. gp = NULL;
+	 */
 	elog(DEBUG2, "disconnectAndDestroyGang done");
 
 
@@ -1409,9 +1429,9 @@ disconnectAndDestroyAllGangs(void)
 	availableReaderGangs1 = NIL;
 
 	disconnectAndDestroyGang(primaryWriterGang);
-    primaryWriterGang=NULL;
+	primaryWriterGang = NULL;
 	disconnectAndDestroyGang(mirrorWriterGang);
-    mirrorWriterGang=NULL;
+	mirrorWriterGang = NULL;
 	elog(DEBUG2, "disconnectAndDestroyAllGangs done");
 }
 
@@ -1510,16 +1530,16 @@ detectFailedConnections(void)
 CdbComponentDatabases *
 getComponentDatabases(void)
 {
-    return (cdb_component_dbs == NULL)? getCdbComponentDatabases():cdb_component_dbs;
+	return (cdb_component_dbs == NULL) ? getCdbComponentDatabases() : cdb_component_dbs;
 }
 
 bool
 isGangExisted(void)
 {
-    return (primaryWriterGang != NULL ||
-            mirrorWriterGang != NULL ||
-            allocatedReaderGangsN != NIL ||
-            availableReaderGangsN != NIL ||
-            allocatedReaderGangs1 != NIL ||
-            availableReaderGangs1 != NIL);
+	return (primaryWriterGang != NULL ||
+			mirrorWriterGang != NULL ||
+			allocatedReaderGangsN != NIL ||
+			availableReaderGangsN != NIL ||
+			allocatedReaderGangs1 != NIL ||
+			availableReaderGangs1 != NIL);
 }
