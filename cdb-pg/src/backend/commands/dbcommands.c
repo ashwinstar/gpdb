@@ -98,7 +98,7 @@ createdb(CreatedbStmt *stmt)
 #endif
 
 	bool hasDispatched = false;
-	bool shouldDispatch =  (Mpp_role == MPP_ROLE_DISPATCH); // && !IsBootstrapProcessingMode();
+	bool shouldDispatch =  (Mpp_role == MPP_ROLE_DISPATCH);
 	
 	if (shouldDispatch)
 		if (IsBootstrapProcessingMode())
