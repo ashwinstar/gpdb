@@ -163,7 +163,7 @@ condStartDtxTransaction(void)
     if (execCommand() != DTX_OK)
     {
         ereport(ERROR,
-            (errmsg("DTM failed on command \"BEGIN %s\" with error: %s", currentGxact->gid, errMessage)));
+            (errmsg("Global transaction failed on command \"BEGIN %s\" due to error: %s", currentGxact->gid, errMessage)));
     }
     
     return DTX_OK;
@@ -191,7 +191,7 @@ condCommitDtxTransaction(bool onephase)
         if (execCommand() != DTX_OK)
         {
             ereport(ERROR,
-                (errmsg("DTM failed on command \"PREPARE %s\" with error: %s", currentGxact->gid, errMessage)));
+                (errmsg("Global transaction failed on command \"PREPARE %s\" due to error: %s", currentGxact->gid, errMessage)));
         }
 
         /* set the transaction to be prepared, so it will not be removed before
@@ -204,7 +204,7 @@ condCommitDtxTransaction(bool onephase)
         if (execCommand() != DTX_OK)
         {
             ereport(ERROR,
-                (errmsg("DTM failed on command \"COMMIT PREPARED %s\" with error: %s", currentGxact->gid, errMessage)));
+                (errmsg("Global transaction failed on command \"COMMIT PREPARED %s\" due to error: %s", currentGxact->gid, errMessage)));
         }
     }
     else
@@ -215,7 +215,7 @@ condCommitDtxTransaction(bool onephase)
         if (execCommand() != DTX_OK)
         {
             ereport(ERROR,
-                (errmsg("DTM failed on command \"COMMIT %s\" with error: %s", currentGxact->gid, errMessage)));
+                (errmsg("Global transaction failed on command \"COMMIT %s\" due to error: %s", currentGxact->gid, errMessage)));
         }
     }
     
@@ -262,7 +262,7 @@ condRollbackDtxTransaction(void)
         /* if the first time failure, throw exception, otherwise keep silent */
         if (!ignoreError)
             ereport(ERROR,
-                (errmsg("DTM failed on command \"ROLLBACK %s\" with error: %s", gid, errMessage)));
+                (errmsg("Global transaction failed on command \"ROLLBACK %s\" due to error: %s", gid, errMessage)));
     }
     else
         /* remove gxact either rollback is successful or xact is not prepared. */
