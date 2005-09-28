@@ -627,52 +627,52 @@ _readAExpr(void)
 	READ_LOCALS(A_Expr);
 	
 	token = pg_strtok(&length);	
-	elog(NOTICE,"A_Expr token %s",token);
-	if (strcmp(token,"OPER")==0)
+	 
+	if (strncmp(token,"OPER",length)==0)
 	{
 		local_node->kind = AEXPR_OP;
 		READ_NODE_FIELD(name);
 	}
-	else if (strcmp(token,"AND")==0)
+	else if (strncmp(token,"AND",length)==0)
 	{
 		local_node->kind = AEXPR_AND;
 	}
-	else if (strcmp(token,"OR")==0)
+	else if (strncmp(token,"OR",length)==0)
 	{
 		local_node->kind = AEXPR_OR;
 	}
-	else if (strcmp(token,"NOT")==0)
+	else if (strncmp(token,"NOT",length)==0)
 	{
 		local_node->kind = AEXPR_NOT;
 	}
-	else if (strcmp(token,"ANY")==0)
+	else if (strncmp(token,"ANY",length)==0)
 	{
 		local_node->kind = AEXPR_OP_ANY;
 		READ_NODE_FIELD(name);
 	}
-	else if (strcmp(token,"ALL")==0)
+	else if (strncmp(token,"ALL",length)==0)
 	{
 		local_node->kind = AEXPR_OP_ALL;
 		READ_NODE_FIELD(name);
 	}
-	else if (strcmp(token,"DISTINCT")==0)
+	else if (strncmp(token,"DISTINCT",length)==0)
 	{
 		local_node->kind = AEXPR_DISTINCT;
 		READ_NODE_FIELD(name);
 	}
-	else if (strcmp(token,"NULLIF")==0)
+	else if (strncmp(token,"NULLIF",length)==0)
 	{
 		local_node->kind = AEXPR_NULLIF;
 		READ_NODE_FIELD(name);
 	}
-	else if (strcmp(token,"OF")==0)
+	else if (strncmp(token,"OF",length)==0)
 	{
 		local_node->kind = AEXPR_OF;
 		READ_NODE_FIELD(name);
 	}
 	else 
 	{
-		elog(ERROR,"Unable to understand A_Expr node");
+		elog(ERROR,"Unable to understand A_Expr node %.30s",token);
 	}
 	
 
