@@ -927,7 +927,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_RuleStmt:		/* CREATE RULE */
-			CdbSentry(CDB_REJECT, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			DefineQueryRewrite((RuleStmt *) parsetree);
 			break;
 
