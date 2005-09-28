@@ -38,8 +38,8 @@ typedef struct CdbDispatchResult
 	char	   *cmdStatus;		/* The value of PQcmdStatus for the command on
 								 * the segdb */
 	int			resultStatus;	/* The value of PQresultStatus for the command
-								 * on the segdb */								 
-	bool		isPrimary;      /* If this is a primary gang member */
+								 * on the segdb */
+	bool		isPrimary;		/* If this is a primary gang member */
 }	CdbDispatchResult;
 
 /*
@@ -73,8 +73,7 @@ extern void CdbDispatchCommandInt(const char *szCommand, bool cancelFromBelow,
 					  void ***resultSets);
 
 
-extern void
-CdbDispatchToGang(const char *szCommand, struct Gang * gp,
+extern void CdbDispatchToGang(const char *szCommand, struct Gang * gp,
 				  bool cancelFromBelow, void ***resultSets);
 
 /*
@@ -128,7 +127,7 @@ extern bool CdbDoCommandInt(const char *szCommand,
 
 extern void CdbDispatchPlan(QueryDesc *queryDesc);
 
-extern void CdbDispatchUtilityStatement(Node * stmt);
+extern void CdbDispatchUtilityStatement(Node *stmt);
 
 
 #endif   /* CDBDISP_H */

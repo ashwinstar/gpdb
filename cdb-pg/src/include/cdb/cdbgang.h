@@ -16,7 +16,7 @@ typedef struct segment_database_descriptor *SegmentDatabaseDescriptorPtr;
 typedef struct Gang
 {
 	GangType	type;
-	int			size; 			  /* segment_count or segdb_count ? */
+	int			size;			/* segment_count or segdb_count ? */
 	int			segdb_count;
 	bool		all_valid_segdbs_connected;
 	SegmentDatabaseDescriptorPtr db_descriptors;		/* Array of QEs/segDBs
@@ -38,7 +38,7 @@ extern bool reconnectSegDB(void *);
 
 extern void detectFailedConnections(void);
 
-extern CdbComponentDatabases * getComponentDatabases(void);
+extern CdbComponentDatabases *getComponentDatabases(void);
 
 extern bool isGangExisted(void);
 
