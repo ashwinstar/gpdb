@@ -259,6 +259,9 @@ condRollbackDtxTransaction(void)
             /* leave it in the list for recovery */
             currentGxact = NULL;
             
+        /* destroy all gangs to clean up connections */
+        disconnectAndDestroyAllGangs();
+            
         /* if the first time failure, throw exception, otherwise keep silent */
         if (!ignoreError)
             ereport(ERROR,
