@@ -620,6 +620,68 @@ _readAConst(void)
 	READ_DONE();
 }
 
+
+static A_Expr *
+_readAExpr(void)
+{
+	READ_LOCALS(A_Expr);
+	
+	token = pg_strtok(&length);	
+	elog(NOTICE,"A_Expr token %s",token);
+	if (strcmp(token,"OPER")==0)
+	{
+		local_node->kind = AEXPR_OP;
+		READ_NODE_FIELD(name);
+	}
+	else if (strcmp(token,"AND")==0)
+	{
+		local_node->kind = AEXPR_AND;
+	}
+	else if (strcmp(token,"OR")==0)
+	{
+		local_node->kind = AEXPR_OR;
+	}
+	else if (strcmp(token,"NOT")==0)
+	{
+		local_node->kind = AEXPR_NOT;
+	}
+	else if (strcmp(token,"ANY")==0)
+	{
+		local_node->kind = AEXPR_OP_ANY;
+		READ_NODE_FIELD(name);
+	}
+	else if (strcmp(token,"ALL")==0)
+	{
+		local_node->kind = AEXPR_OP_ALL;
+		READ_NODE_FIELD(name);
+	}
+	else if (strcmp(token,"DISTINCT")==0)
+	{
+		local_node->kind = AEXPR_DISTINCT;
+		READ_NODE_FIELD(name);
+	}
+	else if (strcmp(token,"NULLIF")==0)
+	{
+		local_node->kind = AEXPR_NULLIF;
+		READ_NODE_FIELD(name);
+	}
+	else if (strcmp(token,"OF")==0)
+	{
+		local_node->kind = AEXPR_OF;
+		READ_NODE_FIELD(name);
+	}
+	else 
+	{
+		elog(ERROR,"Unable to understand A_Expr node");
+	}
+	
+
+	READ_NODE_FIELD(lexpr);
+	READ_NODE_FIELD(rexpr);
+	
+	READ_DONE();
+}
+
 /*
  * _readParam
  */
@@ -1173,6 +1235,16 @@ _readColumnDef(void)
 	READ_NODE_FIELD(constraints);
 	READ_NODE_FIELD(support);
 
+	READ_DONE();
+}
+
+static ColumnRef *
+_readColumnRef(void)
+{
+	READ_LOCALS(ColumnRef);
+
+	READ_NODE_FIELD(fields);
+	
 	READ_DONE();
 }
 
@@ -1894,6 +1966,7 @@ typedef struct ParseNodeInfo
  */
 static ParseNodeInfo infoAr[] =
 {
+	{"AEXPR", (ReadFn)_readAExpr},
 	{"AGG", (ReadFn)_readAgg},
 	{"AGGREF", (ReadFn)_readAggref},
 	{"ALIAS", (ReadFn)_readAlias},
@@ -1902,7 +1975,7 @@ static ParseNodeInfo infoAr[] =
 	{"APPEND", (ReadFn)_readAppend},
 	{"ARRAY", (ReadFn)_readArrayExpr},
 	{"ARRAYREF", (ReadFn)_readArrayRef},
-	{"A_CONST", (ReadFn)_readAConst},
+	{"A_CONST", (ReadFn)_readAConst},	
 	{"BOOLEANTEST", (ReadFn)_readBooleanTest},
 	{"BOOLEXPR", (ReadFn)_readBoolExpr},
 	{"CASE", (ReadFn)_readCaseExpr},
@@ -1912,6 +1985,7 @@ static ParseNodeInfo infoAr[] =
 	{"COERCETODOMAIN", (ReadFn)_readCoerceToDomain},
 	{"COERCETODOMAINVALUE", (ReadFn)_readCoerceToDomainValue},
 	{"COLUMNDEF", (ReadFn)_readColumnDef},
+	{"COLUMNREF", (ReadFn)_readColumnRef},
 	{"CONST", (ReadFn)_readConst},
 	{"CONSTRAINT", (ReadFn)_readConstraint},
 	{"CONVERTROWTYPEEXPR", (ReadFn)_readConvertRowtypeExpr},

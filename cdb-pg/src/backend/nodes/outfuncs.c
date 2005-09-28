@@ -1731,27 +1731,27 @@ _outAExpr(StringInfo str, A_Expr *node)
 	switch (node->kind)
 	{
 		case AEXPR_OP:
-			appendStringInfo(str, " ");
+			appendStringInfo(str, " OPER ");
 			WRITE_NODE_FIELD(name);
 			break;
 		case AEXPR_AND:
-			appendStringInfo(str, " AND");
+			appendStringInfo(str, " AND ");
 			break;
 		case AEXPR_OR:
-			appendStringInfo(str, " OR");
+			appendStringInfo(str, " OR ");
 			break;
 		case AEXPR_NOT:
-			appendStringInfo(str, " NOT");
+			appendStringInfo(str, " NOT ");
 			break;
 		case AEXPR_OP_ANY:
-			appendStringInfo(str, " ");
-			WRITE_NODE_FIELD(name);
 			appendStringInfo(str, " ANY ");
+			WRITE_NODE_FIELD(name);
+		
 			break;
 		case AEXPR_OP_ALL:
-			appendStringInfo(str, " ");
-			WRITE_NODE_FIELD(name);
 			appendStringInfo(str, " ALL ");
+			WRITE_NODE_FIELD(name);
+		
 			break;
 		case AEXPR_DISTINCT:
 			appendStringInfo(str, " DISTINCT ");
