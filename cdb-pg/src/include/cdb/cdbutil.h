@@ -1,8 +1,8 @@
 /*-------------------------------------------------------------------------
  *
  * cdbutil.h
- * 	  Header file for routines in cdbutil.c and results returned by
- * 	  those routines.
+ *	  Header file for routines in cdbutil.c and results returned by
+ *	  those routines.
  *
  *
  *-------------------------------------------------------------------------
@@ -16,7 +16,7 @@
 /* --------------------------------------------------------------------------------------------------
  * Structure for MPP 2.0 database information
  *
- * The information contained in this structure represents logically a row from  
+ * The information contained in this structure represents logically a row from
  * mpp.component_database view.  It is used to describe either an entry
  * database or a segment database.
  *
@@ -24,21 +24,25 @@
  * pointed to by non-NULL char*'s are also palloc'd.
  *
  */
-typedef struct CdbComponentDatabaseInfo 
+typedef struct CdbComponentDatabaseInfo
 {
 	int4		dbid;			/* the dbid of this database */
-	int4		segindex;		/* content indicator: -1 for entry database, 0, ..., n-1 for segment database */
-    bool		isprimary;  	/* true if this is the primary segment, false if it's the secondary */
-    //char		*dbname; 		/* segment database name */
-    bool     valid;      /* true if this segdb is up */
-    bool     definedprimary;      /* true if this seg db is originally defined as primary */
-    char		*hostname;  	/* name or ip address of host machine */
-    int4		port;     		/* port that instance is listening on */
-    char		*datadir;   	/* directory where instance was initialized into */
-    int4		listenerid;		/* id of listener for this database. */
-    char		*mppsuperuser;	/* user name for mpp connection */
-    char		*mppsuperpswd;	/* password for mpp connection */
-} CdbComponentDatabaseInfo;
+	int4		segindex;		/* content indicator: -1 for entry database,
+								 * 0, ..., n-1 for segment database */
+	bool		isprimary;		/* true if this is the primary segment, false
+								 * if it's the secondary */
+	 /* char	 *dbname;		 /* segment database name */ */
+	bool		valid;			/* true if this segdb is up */
+	bool		definedprimary; /* true if this seg db is originally defined
+								 * as primary */
+	char	   *hostname;		/* name or ip address of host machine */
+	int4		port;			/* port that instance is listening on */
+	char	   *datadir;		/* directory where instance was initialized
+								 * into */
+	int4		listenerid;		/* id of listener for this database. */
+	char	   *mppsuperuser;	/* user name for mpp connection */
+	char	   *mppsuperpswd;	/* password for mpp connection */
+}	CdbComponentDatabaseInfo;
 
 /* --------------------------------------------------------------------------------------------------
  * Structure for return value from getCdbSegmentDatabases()
@@ -48,15 +52,19 @@ typedef struct CdbComponentDatabaseInfo
  */
 typedef struct CdbComponentDatabases
 {
-    CdbComponentDatabaseInfo	*segment_db_info; 			/* array of SegmentDatabaseInfo's for segment databases */
-    int							total_segment_dbs;			/* count of the array  */
-    CdbComponentDatabaseInfo	*entry_db_info; 			/* array of SegmentDatabaseInfo's for entry databases */
-    int							total_entry_dbs;			/* count of the array  */
-    int							total_segments;				/* count of distinct segindexes */
-    int							my_dbid;					/* the dbid of this database */
-    int							my_segindex;				/* the content of this database */
-    bool						my_isprimary;				/* the isprimary flag of this database */
-} CdbComponentDatabases;
+	CdbComponentDatabaseInfo *segment_db_info;	/* array of
+												 * SegmentDatabaseInfo's for
+												 * segment databases */
+	int			total_segment_dbs;		/* count of the array  */
+	CdbComponentDatabaseInfo *entry_db_info;	/* array of
+												 * SegmentDatabaseInfo's for
+												 * entry databases */
+	int			total_entry_dbs;	/* count of the array  */
+	int			total_segments; /* count of distinct segindexes */
+	int			my_dbid;		/* the dbid of this database */
+	int			my_segindex;	/* the content of this database */
+	bool		my_isprimary;	/* the isprimary flag of this database */
+}	CdbComponentDatabases;
 
 /*
  * performs all necessary setup required for initializing MPP components.
@@ -77,14 +85,14 @@ extern void cdb_cleanup(int code, Datum arg);
 
 /*
  * getCdbComponentDatabases() returns a pointer to a CdbComponentDatabases
- * structure. Both the segment_db_info array and the entry_db_info_array are ordered by segindex, 
- * isprimary desc.   
- * 
+ * structure. Both the segment_db_info array and the entry_db_info_array are ordered by segindex,
+ * isprimary desc.
+ *
  * The CdbComponentDatabases structure, and the segment_db_info array and the entry_db_info_array
- * are contained in palloc'd storage allocated from the current storage context.  
- * The same is true for pointer-based values in CdbComponentDatabaseInfo.  The caller is responsible 
+ * are contained in palloc'd storage allocated from the current storage context.
+ * The same is true for pointer-based values in CdbComponentDatabaseInfo.  The caller is responsible
  * for setting the current storage context and releasing the storage occupied the returned values.
- * 
+ *
  * The function freeCdbComponentDatabases() is used to release the structure
  * returned by getCdbComponentDatabases().
  *
@@ -95,7 +103,7 @@ extern CdbComponentDatabases *getCdbComponentDatabases(void);
  * freeCdbComponentDatabases() releases the palloc'd storage returned by
  * getCdbComponentDatabases().
  */
-extern void freeCdbComponentDatabases(CdbComponentDatabases *pDBs);
+extern void freeCdbComponentDatabases(CdbComponentDatabases * pDBs);
 
 /*
  * getMppMpp() causes the mpp.mpp table's singleton row to be read into a global structure
@@ -105,7 +113,7 @@ extern void freeCdbComponentDatabases(CdbComponentDatabases *pDBs);
 extern void getMppMpp(void);
 
 /*
- * freeMppMpp() causes the global variable holding the mpp.mpp table's singleton row to be 
+ * freeMppMpp() causes the global variable holding the mpp.mpp table's singleton row to be
  * reinitialized to empty, releasing memory that was allocated when it was loaded.
  */
 extern void freeMppMpp(void);
