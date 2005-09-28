@@ -1179,11 +1179,27 @@ cleanupGang(Gang * gp)
 		{
 
 			PGresult   *pRes;
-
+			int retry = 0;
+			ExecStatusType stat;
 			while (NULL != (pRes = PQgetResult(segdbDesc->conn)))
 			{
-				elog(DEBUG1, "WARNING: Leftover results from gang a freeGang time");
+				elog(WARNING, "Leftover results from gang a freeGang time");
+				stat = PQresultStatus(pRes);
+				elog(WARNING, "PGresultStatus = %d",stat);
+			
 				PQclear(pRes);
+				if (stat == PGRES_FATAL_ERROR)
+					break;
+				if (stat == PGRES_BAD_RESPONSE)
+					break;
+				retry ++;
+				if (retry > 20)
+				{
+					elog(NOTICE,"freeGang called when a gang member is still busy, and waiting didn't help, trying to destroy the gang");
+					disconnectAndDestroyGang(gp);
+					elog(FATAL,"freeGang called when a gang member is still busy.  Fatal error.");
+				}
+				
 			};
 
 		}
