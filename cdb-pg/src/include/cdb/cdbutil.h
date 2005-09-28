@@ -31,7 +31,6 @@ typedef struct CdbComponentDatabaseInfo
 								 * 0, ..., n-1 for segment database */
 	bool		isprimary;		/* true if this is the primary segment, false
 								 * if it's the secondary */
-	 /* char	 *dbname;		 /* segment database name */ */
 	bool		valid;			/* true if this segdb is up */
 	bool		definedprimary; /* true if this seg db is originally defined
 								 * as primary */
