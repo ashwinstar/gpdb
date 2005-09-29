@@ -76,6 +76,7 @@ typedef struct MotionNodeEntry
     bool cleanedUp;
 	bool valid;
     bool moreNetWork;
+	bool stopped;
   
     /*----------------------------*/
     /* PER-MOTION-NODE STATISTICS */
@@ -475,18 +476,25 @@ void InitMotionLayerNode(int16 motNodeID, bool preserveOrder, TupleDesc tupDesc)
 	pEntry->stat_tuple_bytes_recvd		= 0;
 
     pEntry->cleanedUp = false;
+    pEntry->stopped = false;
     pEntry->moreNetWork = true;
       
     /* All done!  Go back to caller memory-context. */
     MemoryContextSwitchTo(oldCtxt);
 }
 
-
 void setExpectedReceivers(int16 motNodeID, int expectedReceivers)
 {
 	MotionNodeEntry *pEntry = getMotionNodeEntry(motNodeID,"setExpectedReceivers");
 			
-	pEntry->num_senders = expectedReceivers;		
+	pEntry->num_senders = expectedReceivers;
+}
+
+void setNodeStopped(int16 motNodeID)
+{
+	MotionNodeEntry *pEntry = getMotionNodeEntry(motNodeID,"setNodeStopped");
+			
+	pEntry->stopped = true;
 }
 
 /*
@@ -823,7 +831,7 @@ void EndMotionLayerNode(int16 motNodeID, bool flushCommLayer)
         /* If we haven't gotten the end-of-stream yet, handle it according to
          * the caller's request.
          */
-        if (!(pCSEntry->end_of_stream))
+        if (!pMNEntry->stopped && !pCSEntry->end_of_stream)
         {
             if (flushCommLayer)
             {

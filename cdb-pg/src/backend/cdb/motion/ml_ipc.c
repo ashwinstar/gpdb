@@ -2032,6 +2032,8 @@ void SendStopMessage(int16 motNodeID)
 			 * CleanUpMotionLayerIPC() */
 		}
 	}
+
+	setNodeStopped(motNodeID);
 }
 
 /* Function SendStopMessage() sends a short "ack" message, to one node

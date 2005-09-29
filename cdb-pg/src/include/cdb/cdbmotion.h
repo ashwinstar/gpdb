@@ -127,6 +127,12 @@ extern void SendStopMessage(int16 motNodeID);
  * This is used by cdbmotion to keep track of when its seen enough EndOfStream
  * messages.
  */ 
-extern void setExpectedReceivers( int16 motNodeID, int expectedReceivers );
+extern void setExpectedReceivers(int16 motNodeID, int expectedReceivers);
+
+/*
+ * Used by ml_ipc to tell the intermediate layer that we were stopped
+ * explicitly, so we should freak out about not being finished.
+ */
+extern void setExpectedReceivers(int16 motNodeID);
 
 #endif /*CDBMOTION_H */
