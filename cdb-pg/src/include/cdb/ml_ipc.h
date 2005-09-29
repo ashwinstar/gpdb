@@ -8,7 +8,6 @@
 #ifndef ML_IPC_H
 #define ML_IPC_H
 
-
 #include "nodes/primnodes.h"
 #include "cdb/tupchunklist.h"
 #include "nodes/execnodes.h"
@@ -31,8 +30,7 @@
  * by a return code.
  *
  */
-extern void InitMotionLayerIPC( void );
-
+extern void InitMotionLayerIPC(void);
 
 /* Performs any cleanup necessary by the Motion Layer IPC.  This is the cleanup
  * function that matches InitMotionLayerIPC, it should only be called during
@@ -42,9 +40,7 @@ extern void InitMotionLayerIPC( void );
  * in the return code.
  *
  */
-extern void CleanUpMotionLayerIPC( void );
-
-
+extern void CleanUpMotionLayerIPC(void);
 
 /* The SetupInterconnect() function should be called at the beginning of
  * executing any DML statement that will need to use the interconnect.
@@ -65,9 +61,7 @@ extern void CleanUpMotionLayerIPC( void );
  *   mySliceId - the index of the slice in the slicetable that we are a member of.
  *
  */
-extern void SetupInterconnect( SliceTable *mySliceTable, int mySliceId );
-
-
+extern void SetupInterconnect(SliceTable *mySliceTable, int mySliceId);
 
 /* The TeardownInterconnect() function should be called at the end of executing
  * a DML statement to close down all TCP socket resources that were setup during
@@ -78,9 +72,7 @@ extern void SetupInterconnect( SliceTable *mySliceTable, int mySliceId );
  *		 during the statement.
  *
  */
-extern void TeardownInterconnect( void );
-
-
+extern void TeardownInterconnect(void);
 
 /* Sends a tuple chunk from the Postgres process to the local AMS process via
  * IPC.  This function does not block; if the IPC channel cannot accept the
@@ -96,11 +88,7 @@ extern void TeardownInterconnect( void );
  *   - tcItem:      The tuple-chunk data to send.
  *
  */
-extern bool SendTupleChunkToAMS( int16 motNodeID, 
-								 int16 targetRoute,
-								 TupleChunkListItem tcItem);
-
-
+extern bool SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute,	TupleChunkListItem tcItem);
 
 /* The SendEosToAMS() function is used to send an "End Of Stream" message to
  * the specified targetRoute. (generally this is a broadcast)
@@ -111,9 +99,7 @@ extern bool SendTupleChunkToAMS( int16 motNodeID,
  *   - tcItem:      The tuple-chunk data to send.
  * 
  */
-extern void SendEosToAMS( int16 motNodeID,
-						  int16 targetRoute,
-						  TupleChunkListItem tcItem );
+extern void SendEosToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcItem);
 
 /* The SendEosAck() function is used to synchronize the end of a query
  * between a sender and receiver. The sender should start tearing down
@@ -140,8 +126,7 @@ extern void SendEosAck(int16 motNodeID, int16 route);
  * RETURN:
  *   - A populated TupleChunkListItemData structure (allocated with palloc()).
  */
-extern TupleChunkListItem RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute );
-
+extern TupleChunkListItem RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute);
 
 
 /* The RecvTupleChunkFrom() function is similar to the RecvTupleChunkFromAny()
@@ -154,8 +139,7 @@ extern TupleChunkListItem RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute
  * RETURN:
  *   - A populated TupleChunkListItemData structure (allocated with palloc()).
  */
-extern TupleChunkListItem RecvTupleChunkFrom( int16 motNodeID, int16 srcRoute );
-	
+extern TupleChunkListItem RecvTupleChunkFrom(int16 motNodeID, int16 srcRoute);
 
 /* The DeregisterReadInterest() function is used to specify that we are no 
  * longer interested in reading from the specified srcRoute. After calling this
@@ -167,6 +151,11 @@ extern TupleChunkListItem RecvTupleChunkFrom( int16 motNodeID, int16 srcRoute );
  *   - srcRoute:  which connection to turn off reads for.
  *
  */
-extern void	DeregisterReadInterest( int16 motNodeID, int16 srcRoute );	
+extern void	DeregisterReadInterest(int16 motNodeID, int16 srcRoute);
+
+/*
+ * doSendStopMessage() actually does the work of sending the stop message.
+ */
+extern void doSendStopMessage(int16 motNodeID);
 
 #endif /* ML_IPC_H */

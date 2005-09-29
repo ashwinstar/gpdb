@@ -1997,7 +1997,7 @@ void dumpEntryConnections(MotionLayerState *pEntry)
  *
  *   motNodeID - motion node identifier
  */
-void SendStopMessage(int16 motNodeID)
+void doSendStopMessage(int16 motNodeID)
 {
 	MotionLayerState	*pEntry;
 	MotionConn			*conn;
@@ -2031,8 +2031,6 @@ void SendStopMessage(int16 motNodeID)
 			 * CleanUpMotionLayerIPC() */
 		}
 	}
-
-	setNodeStopped(motNodeID);
 }
 
 /* Function SendStopMessage() sends a short "ack" message, to one node

@@ -490,11 +490,12 @@ void setExpectedReceivers(int16 motNodeID, int expectedReceivers)
 	pEntry->num_senders = expectedReceivers;
 }
 
-void setNodeStopped(int16 motNodeID)
+void SendStopMessage(int16 motNodeID)
 {
-	MotionNodeEntry *pEntry = getMotionNodeEntry(motNodeID,"setNodeStopped");
+	MotionNodeEntry *pEntry = getMotionNodeEntry(motNodeID,"SendStopMessage");
 			
 	pEntry->stopped = true;
+	doSendStopMessage(motNodeID);
 }
 
 /*
