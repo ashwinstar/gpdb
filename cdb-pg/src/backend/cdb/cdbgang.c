@@ -1477,16 +1477,16 @@ reconnectSegDB(void *p_failedDB)
 	 */
 	if (PQstatus(failedDB->conn) == CONNECTION_BAD)
 	{
+        elog(DEBUG1, "FTS: segdb %d dbname %s host %s port %d reconnect failed with error %s",
+                    failedDB->segment_database_info->dbid,
+                    orig_conn->dbName,
+                    failedDB->segment_database_info->hostname,
+                    failedDB->segment_database_info->port,
+                    failedDB->error_message);
+                
 		PQfinish(failedDB->conn);
 		ret = false;
         
-        elog(DEBUG3, "FTS: segdb %d dbname %s host %s port %s reconnect failed with error %s",
-                failedDB->segment_database_info->dbid,
-                failedDB->conn->dbName,
-                failedDB->conn->pghost,
-                failedDB->conn->pgport,
-                PQerrorMessage(failedDB->conn));
-                
 		/*
 		 * set the orginal db back, otherwise it is set to NULL which may cause
 		 * * dispatch code to fail.
