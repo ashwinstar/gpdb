@@ -926,15 +926,14 @@ thread_DispatchCommand(void *arg)
 					}
 					else
 					{
-						/*
-						 * for performance reason, we do just sampling here
-						 * for now, the first one is picked.
-						 */
-						if (sampling)
-						{
-							counter = 0;
-							continue;
-						}
+                         /* for performance reason, we do just sampling here
+                          * for now, the first one is picked.
+                          */
+                         if (sampling)
+                         {
+                             x = stillRunningCount;
+                             break;
+                         } 
 						stillRunning[x++] = stillRunning[i];
 					}
 				}
