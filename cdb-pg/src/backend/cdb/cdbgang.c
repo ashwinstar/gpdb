@@ -24,6 +24,7 @@
 #include <unistd.h>
 
 #include "libpq-fe.h"
+#include "libpq-int.h"
 #include "pqexpbuffer.h"
 #include "fmgr.h"
 #include "funcapi.h"
@@ -1487,7 +1488,13 @@ reconnectSegDB(void *p_failedDB)
 			failedDB->conn = orig_conn;
 		else
 			PQfinish(orig_conn);
-	}
+        elog(DEBUG3, "FTS: segdb %d dbname %s host %s port %s reconnect failed with error %s",
+                failedDB->segment_database_info->dbid,
+                failedDB->conn->dbName,
+                failedDB->conn->pghost,
+                failedDB->conn->pgport,
+                PQerrorMessage(failedDB->conn));
+    }
 	else
 	{
 		elog(LOG, "FTS: segdb %d reconnect ok", failedDB->segment_database_info->dbid);
