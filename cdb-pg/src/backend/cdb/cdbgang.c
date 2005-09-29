@@ -381,7 +381,7 @@ createGang(GangType type, int size, int content)
 	elog(DEBUG1, "createGang MPP segments: defined = %d",
 		 newGangDefinition->size);
 
-	if (successful_connections != newGangDefinition->size)
+	if (successful_connections != newGangDefinition->size && isFTSEnabled())
 	{
 		bool		errorOut;
 
@@ -480,6 +480,13 @@ buildGangDefinition(GangType type, int size, int content)
 		elog(ERROR, "building Gang:  MPP schema not populated");
 		return NULL;
 	}
+    
+    /* if mirroring is not configured */
+    if (cdb_component_dbs->total_segment_dbs == cdb_component_dbs->total_segments)
+    {
+        disableFTS();
+        mirroringNotConfigured = true;
+    }
 
 	newGangDefinition->segdb_count = cdb_component_dbs->total_segments;
 	/*
