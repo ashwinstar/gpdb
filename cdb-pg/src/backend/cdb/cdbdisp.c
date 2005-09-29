@@ -1033,13 +1033,8 @@ thread_DispatchCommand(void *arg)
 								segdbDesc->resultStatus = 0;
 							}
 							else
-							{
-								appendPQExpBuffer(&buffer, "%s\n          error reported by segment database: "
-												"segindex %d isprimary %c\n",
-												  pqerrormsg,
-												  q->segindex,
-												  (q->isprimary ? 't' : 'f')
-									);
+			 				{
+								appendPQExpBuffer(&buffer, "%s",pqerrormsg);
 								segdbDesc->error_message = buffer.data;
 							}
 
@@ -1399,8 +1394,7 @@ char *
 CdbDumpDispatchResults(CdbDispatchResults * results, bool verbose)
 {
 	StringInfoData buffer;
-	int			i;
-	char		temp[20];
+	int			   i;
 
 	Assert(results != NULL);
 
@@ -1408,7 +1402,8 @@ CdbDumpDispatchResults(CdbDispatchResults * results, bool verbose)
 		return NULL;
 
 	initStringInfo(&buffer);
-
+	appendStringInfo(&buffer, "results from QEs:\n");
+	
 	for (i = 0; i < results->count; i++)
 	{
 		CdbDispatchResult *result = &results->pResults[i];
@@ -1416,22 +1411,15 @@ CdbDumpDispatchResults(CdbDispatchResults * results, bool verbose)
 		CdbDumpDispatchResult(result, verbose, &buffer);
 	}
 
-
-	strcpy(temp, gettext("ERROR"));
-	strcat(temp, ":  ");
-
-	if (strncmp(buffer.data, temp, strlen(temp)) == 0)
-		return buffer.data + 8;
-
 	return buffer.data;
 }
 
 void
-CdbDumpDispatchResult(CdbDispatchResult * result, bool verbose,
-					  StringInfo message)
+CdbDumpDispatchResult(CdbDispatchResult * result, bool verbose, StringInfo message)
 {
 	CdbComponentDatabaseInfo *q;
-
+	char 					 *detailMsg = NULL;
+	
 	Assert(result != NULL);
 	Assert(result->segdbDesc != NULL);
 	Assert(message != NULL);
@@ -1439,38 +1427,47 @@ CdbDumpDispatchResult(CdbDispatchResult * result, bool verbose,
 	q = result->segdbDesc->segment_database_info;
 	Assert(q != NULL);
 
-	if (!verbose)
+	
+	if (!verbose && result->error_message == NULL)
+		return;
+
+	appendStringInfo(message, "\tdbId#%d seg#%d%c - ", q->dbid, q->segindex, (q->isprimary ? 'P': 'M'));
+	
+	if( verbose )
 	{
-		if (result->error_message == NULL)
-			return;
-
-
-
-		appendStringInfo(message, result->error_message);
-	}
-	else
-	{
-		/*
-		 * In verbose mode, dump out all fields
-		 */
-		char	   *error_message = result->error_message;
-		char	   *cmdStatus = result->cmdStatus;
+		char  *error_message = result->error_message;
+		char  *cmdStatus = result->cmdStatus;
 
 		if (error_message == NULL)
 			error_message = "NULL";
 
 		if (cmdStatus == NULL)
 			cmdStatus = "NULL";
-
-		appendStringInfo(message, "segindex %d isprimary %c \n"
-						 "error message: %s "
-						 "cmdTuples : %d "
-						 "cmdStatus : %s "
-						 "resultStatus : %d\n",
-						 q->segindex, (q->isprimary ? 't' : 'f'),
-						 error_message,
-						 result->cmdTuples, cmdStatus, result->resultStatus);
+		
+		/* TODO: convert resultStatus into a text string and not a cryptic number. */
+		appendStringInfo(message, "cmdTuples: %d cmdStatus: %s resultStatus: %d\n",
+			result->cmdTuples, cmdStatus, result->resultStatus );
 	}
+
+	/* see if the elog message has a DETAIL: part to it. if it does we'll split
+	 * the normal part of the message apart from the DETAIL portion so we can
+	 * format it better.
+	 */
+	if( result->error_message != NULL ) 
+		detailMsg = strstr( result->error_message, "DETAIL:");
+	
+	if( detailMsg != NULL )
+	{
+		int detailStart = detailMsg - (result->error_message);			
+			
+		appendBinaryStringInfo(message, result->error_message, detailStart ); 			
+		appendStringInfo(message, "\t\t\t%s", detailMsg );
+	}
+	else
+	{
+		appendStringInfo(message, "%s", result->error_message ); 
+	}
+
 }
 
 
