@@ -133,6 +133,6 @@ extern void setExpectedReceivers(int16 motNodeID, int expectedReceivers);
  * Used by ml_ipc to tell the intermediate layer that we were stopped
  * explicitly, so we should freak out about not being finished.
  */
-extern void setExpectedReceivers(int16 motNodeID);
+extern void setNodeStopped(int16 motNodeID);
 
 #endif /*CDBMOTION_H */
