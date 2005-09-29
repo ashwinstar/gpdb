@@ -409,7 +409,11 @@ getEntrySegDB(int *count)
 	static CdbComponentDatabases *cdb_component_dbs = NULL;
 
 	if (cdb_component_dbs == NULL)
+    {
+        MemoryContext oldContext = MemoryContextSwitchTo(TopMemoryContext);
 		cdb_component_dbs = getCdbComponentDatabases();
+        MemoryContextSwitchTo(oldContext);
+    }
 	*count = cdb_component_dbs->total_entry_dbs;
 	return cdb_component_dbs->entry_db_info;
 }
