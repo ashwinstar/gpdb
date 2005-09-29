@@ -315,9 +315,10 @@ write_qd_sync(char *cmd, void *buf, int len)
 	PGconn *conn;
 	bool failed = false;
 	
-    elog(DEBUG3, "%s", cmd);
     if ( cdb_mirrored_entry_db == NULL || cdb_mirrored_entry_db->conn == NULL )
         return;
+
+    elog(DEBUG3, "%s", cmd);
     conn = cdb_mirrored_entry_db->conn;
     
 
