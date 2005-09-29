@@ -20,6 +20,10 @@
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
 #endif
 
+#ifndef MIN
+#define MIN(x, y) ((x) > (y) ? (y) : (x))
+#endif
+
 /* A MemoryContext used within the tuple serialize code, so that freeing of
  * space is SUPAFAST.  It is initialized in the first call to InitSerTupInfo()
  * since that must be called before any tuple serialization or deserialization
@@ -27,35 +31,21 @@
  */
 static MemoryContext s_tupSerMemCtxt = NULL;
 
-/*
- * appendStringInfoInt32
- *
- * Append a 4-byte integer to str.  The result is not necessarily in network
- * byte-ordering, and is architecture dependent.
- *
- * Hopefully this is faster than the stuff in stringinfo.c or pqformat.c!
- * 
- * Rewriting this as a macro gives a 20% speedup in the libcdbtest
- * "GetSerialized" test.
- */
-#define appendStringInfoInt32(/*StringInfo*/ str, /*int32*/ i)	\
-{ \
-	/* Make more room if needed */ \
-	if (str->len + 4 >= str->maxlen) \
-		enlargeStringInfo(str, 4); \
-\
-	/* Store the int32.  We cast the pointer to the next part of the data to \
-	 * an int32 pointer, and just store the integer into that location of the \
-	 * array. \
-	 * \
-	 * NOTE: WE ASSUME THAT EITHER WE HAVE THE ALIGNMENT WE NEED, OR THE ARCH. DOESN'T CARE \
-	 */ \
-	*((int32 *) (str->data + str->len)) = i; \
-	\
-	/* Update the count, and 0-terminate the string. */ \
-	str->len += 4; \
-	str->data[str->len] = '\0'; \
-}
+static inline void addByteStringToChunkList(TupleChunkList tcList, char *data, int datalen);
+
+#define addCharToChunkList(tcList, x) \
+	do															\
+	{															\
+		char y = (x);											\
+		addByteStringToChunkList((tcList), (char *)&y, sizeof(y));	\
+	} while (0)
+
+#define addInt32ToChunkList(tcList, x) \
+	do															\
+	{															\
+		int32 y = (x);											\
+		addByteStringToChunkList((tcList), (char *)&y, sizeof(y));	\
+	} while (0)
 
 static inline int32 stringInfoGetInt32(StringInfo str);
 
@@ -74,7 +64,7 @@ void InitSerTupInfo(TupleDesc tupdesc, SerTupInfo *pSerInfo)
 
 	AssertArg(tupdesc != NULL);
 	AssertArg(pSerInfo != NULL);
-	
+
 	if (s_tupSerMemCtxt == NULL)
 	{
 		/* Create tuple-serialization memory context. */
@@ -83,23 +73,22 @@ void InitSerTupInfo(TupleDesc tupdesc, SerTupInfo *pSerInfo)
 			"TupSerMemCtxt", ALLOCSET_SMALL_MINSIZE, ALLOCSET_SMALL_INITSIZE,
 			ALLOCSET_SMALL_MAXSIZE);
 	}
-	
+
     elog(DEBUG2, "Initializing cached tuple serialization information.");
 
 	/* Set contents to all 0, just to make things clean and easy. */
 	memset(pSerInfo, 0, sizeof(SerTupInfo));
-	
+
 	/* Store the tuple-descriptor so we can use it later. */
     pSerInfo->tupdesc = tupdesc;
-	
+
 	/* If we have some attributes, go ahead and prepare the information for
 	 * each attribute in the descriptor.  Otherwise, we can return right away.
 	 */
-	
 	numAttrs = tupdesc->natts;
     if (numAttrs <= 0)
         return;
-	
+
     pSerInfo->myinfo = (SerAttrInfo *) palloc0(numAttrs * sizeof(SerAttrInfo));
 
     pSerInfo->values = (Datum *) palloc(numAttrs * sizeof(Datum));
@@ -113,7 +102,7 @@ void InitSerTupInfo(TupleDesc tupdesc, SerTupInfo *pSerInfo)
 		 * operations for some attribute-types.
 		 */
 		attrInfo->atttypid = tupdesc->attrs[i]->atttypid;
-		
+
         /* Info for sending the type. */
 
         getTypeBinaryOutputInfo(attrInfo->atttypid, &attrInfo->typsend,
@@ -127,7 +116,7 @@ void InitSerTupInfo(TupleDesc tupdesc, SerTupInfo *pSerInfo)
 			&attrInfo->recv_typio_param);
 
         fmgr_info(attrInfo->typrecv, &attrInfo->recv_finfo);
-		
+
 #ifdef TUPSER_SCRATCH_SPACE
 		/* If the field is a varlena, allocate some space to use for
 		 * deserializing it.  If most of the values are smaller than this
@@ -144,13 +133,13 @@ void InitSerTupInfo(TupleDesc tupdesc, SerTupInfo *pSerInfo)
 void CleanupSerTupInfo(SerTupInfo *pSerInfo)
 {
 	AssertArg(pSerInfo != NULL);
-	
+
     /*
 	 * Free any old data.
 	 *
 	 * NOTE:  This works because data-structure was bzero()ed in init call.
 	 */
-	
+
     if (pSerInfo->myinfo != NULL)
         pfree(pSerInfo->myinfo);
     pSerInfo->myinfo = NULL;
@@ -158,36 +147,93 @@ void CleanupSerTupInfo(SerTupInfo *pSerInfo)
     if (pSerInfo->values != NULL)
         pfree(pSerInfo->values);
     pSerInfo->values = NULL;
-    
+
 	if (pSerInfo->nulls != NULL)
         pfree(pSerInfo->nulls);
     pSerInfo->nulls = NULL;
-	
+
 	pSerInfo->tupdesc = NULL;
 }
 
+static inline void addByteStringToChunkList(TupleChunkList tcList, char *data, int datalen)
+{
+	TupleChunkListItem	tcItem;
+	int					remain, curSize, available, copyLen;
+	char				*pos;
 
-/* Convert a HeapTuple into a byte-sequence, and store it into the StringInfo.
+	AssertArg(tcList != NULL);
+	AssertArg(tcList->p_last != NULL);
+	AssertArg(data != NULL);
+
+	/* Add onto last chunk, lists always start with one chunk */
+	tcItem = tcList->p_last;
+
+	/* we'll need to add chunks */
+	remain = datalen;
+	pos = data;
+	do
+	{
+		curSize = tcItem->chunk_length - TUPLE_CHUNK_HEADER_SIZE;
+
+		available = tcList->max_chunk_length - curSize;
+		copyLen = MIN(available, remain);
+		if (copyLen > 0)
+		{
+			/* make sure we don't stomp on the serialized header */
+			memcpy(tcItem->chunk_data + TUPLE_CHUNK_HEADER_SIZE + curSize, pos, copyLen);
+
+			remain -= copyLen;
+			pos += copyLen;
+			tcList->serialized_data_length += copyLen;
+			curSize += copyLen;
+
+			SetChunkDataSize(tcItem->chunk_data, curSize);
+			tcItem->chunk_length = curSize + TUPLE_CHUNK_HEADER_SIZE;
+		}
+
+		if (remain == 0)
+			break;
+
+		tcItem = (TupleChunkListItem)
+			palloc0(sizeof(TupleChunkListData) + tcList->max_chunk_length);
+		tcItem->chunk_length = TUPLE_CHUNK_HEADER_SIZE;
+		SetChunkType(tcItem->chunk_data, TC_PARTIAL_MID);
+		appendChunkToTCList(tcList, tcItem);
+	} while (remain != 0);
+
+	return;
+}
+
+/* Convert a HeapTuple into a byte-sequence, and store it directly into
+ * a chunklist for transmission.
  *
  * This code is based on the printtup_internal_20() function in printtup.c.
  */
-int SerializeTuple(HeapTuple tuple, SerTupInfo *pSerInfo, StringInfo strInfo)
+TupleChunkList SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo *pSerInfo, int MaxChunkDataSize)
 {
-	MemoryContext oldCtxt;
-	TupleDesc tupdesc;
-    int natts;
+	TupleChunkList		tcList=NULL;
+	TupleChunkListItem	tcItem=NULL;
+	MemoryContext		oldCtxt;
+	TupleDesc			tupdesc;
+    int					i, natts;
+	bool				fHandled;
 
-    int i;
-    int origLen;
-	bool fHandled;
-	
 	AssertArg(tuple != NULL);
 	AssertArg(pSerInfo != NULL);
-	AssertArg(strInfo != NULL);
-	
+
 	tupdesc = pSerInfo->tupdesc;
     natts = tupdesc->natts;
-    origLen = strInfo->len;
+
+	/* get ready to go */
+    tcList = (TupleChunkList)palloc0(sizeof(TupleChunkListData));
+	tcList->max_chunk_length = MaxChunkDataSize;
+
+	tcItem = (TupleChunkListItem)
+		palloc0(sizeof(TupleChunkListData) + tcList->max_chunk_length);
+	/* assume that we'll take a single chunk */
+	SetChunkType(tcItem->chunk_data, TC_WHOLE);
+	tcItem->chunk_length = TUPLE_CHUNK_HEADER_SIZE;
+	appendChunkToTCList(tcList, tcItem);
 
 	/* Flip to our tuple-serialization memory-context, to speed up memory
 	 * reclamation operations.
@@ -198,24 +244,36 @@ int SerializeTuple(HeapTuple tuple, SerTupInfo *pSerInfo, StringInfo strInfo)
     /* deconstruct the tuple (faster than a heap_getattr loop) */
     heap_deformtuple(tuple, tupdesc, pSerInfo->values, pSerInfo->nulls);
 
-	/* Send the nulls character-array. */
-	appendBinaryStringInfo(strInfo, pSerInfo->nulls, natts);
+	MemoryContextSwitchTo(oldCtxt);
 
-    /* send the attributes of this tuple */
+	/* Send the nulls character-array. */
+	addByteStringToChunkList(tcList, pSerInfo->nulls, natts);
+
+    /* send the attributes of this tuple: NOTE anything which
+	 * allocates temporary space (e.g. could result in a
+	 * PG_DETOAST_DATUM) should be executed with the memory context
+	 * set to s_tupSerMemCtxt */
     for (i = 0; i < natts; ++i)
     {
         SerAttrInfo *attrInfo = pSerInfo->myinfo + i;
         Datum origattr = pSerInfo->values[i], attr;
         bytea *outputbytes;
 
+		/* skip null attributes (already taken care of above) */
         if (pSerInfo->nulls[i] == 'n')
             continue;
 
-        /* If we have a toasted datum, forcibly detoast it here to avoid
-         * memory leakage inside the type's output routine.
+        /* If we have a toasted datum, forcibly detoast it here to
+         * avoid memory leakage: we want to force the detoast
+         * allocation(s) to happen in our reset-able serialization
+         * context.
          */
         if (attrInfo->typisvarlena)
+		{
+			oldCtxt = MemoryContextSwitchTo(s_tupSerMemCtxt);
             attr = PointerGetDatum(PG_DETOAST_DATUM(origattr));
+			MemoryContextSwitchTo(oldCtxt);
+		}
         else
             attr = origattr;
 
@@ -226,30 +284,28 @@ int SerializeTuple(HeapTuple tuple, SerTupInfo *pSerInfo, StringInfo strInfo)
 		switch (attrInfo->atttypid)
 		{
 		case INT4OID:
-			appendStringInfoInt32(strInfo, DatumGetInt32(attr));
+			addInt32ToChunkList(tcList, DatumGetInt32(attr));
 			break;
-			
 		case CHAROID:
-			appendStringInfoCharMacro(strInfo, DatumGetChar(attr));
+			addCharToChunkList(tcList, DatumGetChar(attr));
 			break;
-			
 		case BPCHAROID:
 		case VARCHAROID:
 		{
 			text *pText = DatumGetTextP(attr);
 			int32 textSize = VARSIZE(pText) - VARHDRSZ;
-			appendStringInfoInt32(strInfo, textSize);
-			appendBinaryStringInfo(strInfo, (char *) VARDATA(pText), textSize);
+
+			addInt32ToChunkList(tcList, textSize);
+			addByteStringToChunkList(tcList, (char *)VARDATA(pText), textSize);
 			break;
 		}
-		
 		case DATEOID:
 		{
 			DateADT date = DatumGetDateADT(attr);
-			appendBinaryStringInfo(strInfo, (char *) &date, sizeof(DateADT));
+
+			addByteStringToChunkList(tcList, (char *)&date, sizeof(DateADT));
 			break;
 		}
-		
 		case NUMERICOID:
 		{
 			/* Treat the numeric as a varlena variable, and just push the
@@ -258,35 +314,52 @@ int SerializeTuple(HeapTuple tuple, SerTupInfo *pSerInfo, StringInfo strInfo)
 			 */
 			Numeric num = DatumGetNumeric(attr);
 			int32 numSize = VARSIZE(num) - VARHDRSZ;
-			appendStringInfoInt32(strInfo, numSize);
-			appendBinaryStringInfo(strInfo, (char *) VARDATA(num), numSize);
+
+			addInt32ToChunkList(tcList, numSize);
+			addByteStringToChunkList(tcList, (char *)VARDATA(num), numSize);
 			break;
 		}
-		
 		default:
 			fHandled = false;
 		}
-		
+
 		if (fHandled)
 			continue;
 
-        outputbytes = DatumGetByteaP(FunctionCall2(&attrInfo->send_finfo,
-            attr, ObjectIdGetDatum(attrInfo->send_typio_param)));
+        outputbytes =
+			DatumGetByteaP(FunctionCall2(&attrInfo->send_finfo,
+										 attr,
+										 ObjectIdGetDatum(attrInfo->send_typio_param)));
+
 
         /* We assume the result will not have been toasted */
-        appendStringInfoInt32(strInfo, VARSIZE(outputbytes) - VARHDRSZ);
-        appendBinaryStringInfo(strInfo, VARDATA(outputbytes),
-            VARSIZE(outputbytes) - VARHDRSZ);
+		addInt32ToChunkList(tcList, VARSIZE(outputbytes) - VARHDRSZ);
+		addByteStringToChunkList(tcList, VARDATA(outputbytes),
+								 VARSIZE(outputbytes) - VARHDRSZ);
     }
 
-	MemoryContextSwitchTo(oldCtxt);
-	
 	MemoryContextReset(s_tupSerMemCtxt);
 
-    /* Return the size of the serialized tuple in bytes. */
-    return strInfo->len - origLen;
-}
+	/* if we have more than 1 chunk we have to set the chunk types on
+	 * our first chunk and last chunk */
+	if (tcList->num_chunks > 1)
+	{
+		TupleChunkListItem	first, last;
 
+		first = tcList->p_first;
+		last = tcList->p_last;
+
+		Assert(first != NULL);
+		Assert (first != last);
+		Assert(last != NULL);
+
+		SetChunkType(first->chunk_data, TC_PARTIAL_START);
+		SetChunkType(last->chunk_data, TC_PARTIAL_END);
+		/* any intervening chunks are already set to TC_PARTIAL_MID when allocated */
+	}
+
+    return tcList;
+}
 
 /* Deserialize a HeapTuple's data from a byte-array.
  *
@@ -390,9 +463,9 @@ HeapTuple DeserializeTuple(SerTupInfo *pSerInfo, StringInfo serialTup)
 			 */
 			Numeric num;
 			int numSize;
-			
+
 			numSize = stringInfoGetInt32(serialTup);
-			
+
 #ifdef TUPSER_SCRATCH_SPACE
 			if (numSize + VARHDRSZ <= attrInfo->varlen_scratch_size)
 				num = (Numeric) attrInfo->pv_varlen_scratch;
@@ -401,20 +474,20 @@ HeapTuple DeserializeTuple(SerTupInfo *pSerInfo, StringInfo serialTup)
 #else
 			num = (Numeric) palloc(numSize + VARHDRSZ);
 #endif
-			
+
 			VARATT_SIZEP(num) = numSize + VARHDRSZ;
 			pq_copymsgbytes(serialTup, VARDATA(num), numSize);
 			pSerInfo->values[i] = NumericGetDatum(num);
 			break;
 		}
-		
+
 		default:
 			fHandled = false;
 		}
-		
+
 		if (fHandled)
 			continue;
-		
+
 		attr_size = stringInfoGetInt32(serialTup);
 
 		/* reset attr_data to empty, and load raw data into it */
@@ -443,7 +516,6 @@ HeapTuple DeserializeTuple(SerTupInfo *pSerInfo, StringInfo serialTup)
     /* Construct the tuple from the Datums and nulls values.  NOTE:  Switch
 	 * out of our temporary context before we form the tuple!
 	 */
-	
 	MemoryContextSwitchTo(oldCtxt);
 
     htup = heap_formtuple(tupdesc, pSerInfo->values, pSerInfo->nulls);
@@ -453,89 +525,6 @@ HeapTuple DeserializeTuple(SerTupInfo *pSerInfo, StringInfo serialTup)
 	/* All done.  Return the result. */
 	return htup;
 }
-
-
-
-TupleChunkList CvtHeapTupToChunks(HeapTuple htup, SerTupInfo *pSerInfo,
-    int maxChunkDataSize)
-{
-    StringInfoData serialTup;
-    TupleChunkList tcList;
-    TupleChunkListItem tcItem;
-    int i, chunkDataSize;
-    TupleChunkType tcType;
-
-    AssertArg(htup != NULL);
-    AssertArg(pSerInfo != NULL);
-
-    /* Generate serialized version of heap tuple into the string info. */
-    initStringInfo(&serialTup);
-
-    SerializeTuple(htup, pSerInfo, &serialTup);
-
-    /* Create the tuple-chunk list from the serialized data. */
-
-    tcList = (TupleChunkList) palloc0(sizeof(TupleChunkListData));
-    tcList->serialized_data_length = serialTup.len;
-
-    if (serialTup.len <= maxChunkDataSize)   /* Tuple fits in single chunk. */
-    {
-        /* Create the new tuple chunk. */
-        chunkDataSize = serialTup.len;
-        tcItem = makeTupleChunkListItem(TC_WHOLE, serialTup.data,
-            chunkDataSize);
-
-        /* Update the chunk list. */
-        appendChunkToTCList(tcList, tcItem);
-        Assert(tcList->num_chunks == 1);
-    }
-    else
-    {
-        /* Tuple requires at least two chunks. */
-        
-        for (i = 0; i < serialTup.len; /*nothing*/ )
-        {
-            /* Calculate the size of the next chunk of data, and create the
-             * new tuple chunk.
-             */
-            chunkDataSize = serialTup.len - i;
-            if (chunkDataSize > maxChunkDataSize)
-            {
-                chunkDataSize = maxChunkDataSize;
-                tcType = (i == 0 ? TC_PARTIAL_START : TC_PARTIAL_MID);
-            }
-            else
-            {
-                /* Sanity check:  If we get here, it's because the tuple data
-                 * won't fit in a single chunk.  So we shouldn't get in here
-                 * on the first iteration of the loop.
-                 */
-                Assert(i > 0);
-                
-                /* Since we finally got to the point where the whole rest of
-                 * the tuple fits in a chunk, this is the end chunk for the
-                 * tuple.
-                 */
-                tcType = TC_PARTIAL_END;
-            }
-
-            tcItem = makeTupleChunkListItem(tcType, serialTup.data + i,
-                chunkDataSize );
-
-            /* Update the chunk list. */
-            appendChunkToTCList(tcList, tcItem);
-
-            /* Finally, increment i! */
-            i += chunkDataSize;
-        }
-    }
-    
-    /* Free up memory we used. */
-    pfree(serialTup.data);
-    
-    return tcList;
-}
-
 
 HeapTuple CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo *pSerInfo)
 {

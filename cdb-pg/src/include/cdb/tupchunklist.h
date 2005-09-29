@@ -70,11 +70,9 @@ typedef struct TupleChunkListData
     
     /* Total bytes of serialized tuple data, not including chunk headers. */
     int serialized_data_length;
+	int max_chunk_length;
     
 } TupleChunkListData, *TupleChunkList;
-
-
-
 
 extern TupleChunkListItem makeTupleChunkListItem(TupleChunkType chunkType,
     void *pChunkData, uint16 chunkDataSize);

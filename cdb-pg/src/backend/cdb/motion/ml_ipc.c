@@ -1553,7 +1553,7 @@ static bool sendChunk(MotionConn *conn, TupleChunkListItem tcItem)
 #ifdef AMS_VERBOSE_LOGGING
 	elog(DEBUG3, "sendChunk: msgSize %d this chunk length %d", conn->msgSize, tcItem->chunk_length);
 #endif
-	
+
 	if (conn->msgSize + tcItem->chunk_length > Mpp_max_packet_size)
 	{
 		if (!flushBuffer(conn))
@@ -1587,7 +1587,7 @@ static bool sendChunk(MotionConn *conn, TupleChunkListItem tcItem)
 static bool flushBuffer(MotionConn *conn)
 {
 	char		*sendptr;
-	int16		header;
+
 	int			n, sent = 0;
 	fd_set		wset;
 	fd_set		rset;
@@ -1603,8 +1603,7 @@ static bool flushBuffer(MotionConn *conn)
 #endif
 
 	/* first set header length */
-	header = htons(conn->msgSize);
-	memcpy(conn->pBuff, &header, sizeof(header));
+	*(uint32 *)conn->pBuff = htonl(conn->msgSize);
 
 	/* now send message */
 	sendptr = (char *)conn->pBuff;
@@ -1716,7 +1715,7 @@ static inline void readPacket(MotionConn *conn)
 	/* do we have a complete message waiting to be processed ? */
 	if (conn->recvBytes >= PACKET_HEADER_SIZE)
 	{
-		conn->msgSize = getInt16(conn->msgPos);
+		conn->msgSize = getInt32(conn->msgPos);
 		gotHeader = true;
 		if (conn->recvBytes >= conn->msgSize) {
 #ifdef AMS_VERBOSE_LOGGING
@@ -1809,7 +1808,7 @@ static inline void readPacket(MotionConn *conn)
 			if (!gotHeader && bytesRead >= PACKET_HEADER_SIZE)
 			{
 				/* got the header */
-				conn->msgSize = getInt16(conn->msgPos);
+				conn->msgSize = getInt32(conn->msgPos);
 				gotHeader = true;
 			}
 			conn->recvBytes = bytesRead;

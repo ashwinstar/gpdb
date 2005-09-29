@@ -21,7 +21,7 @@
  * of one or more serialized TupleChunks (each of which has a TupleChunk 
  * header. 
  */
-#define PACKET_HEADER_SIZE 2
+#define PACKET_HEADER_SIZE 4
 
 /* Performs initialization of the MotionLayerIPC.  This should be called before
  * any work is performed through functions here.  Generally, this should only 

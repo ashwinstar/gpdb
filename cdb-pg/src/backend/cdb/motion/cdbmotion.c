@@ -520,7 +520,9 @@ SendReturnCode SendTuple(int16 motNodeID, HeapTuple tuple, int16 targetRoute)
 
 	/* Create and store the serialized form, and some stats about it. */
 	oldCtxt = MemoryContextSwitchTo(s_motion_layer_state.motion_layer_mctx);
-	tcList = CvtHeapTupToChunks(tuple,&pMNEntry->ser_tup_info, Mpp_max_tuple_chunk_size );
+
+	tcList = SerializeTupleIntoChunks(tuple, &pMNEntry->ser_tup_info, Mpp_max_tuple_chunk_size);
+
 	MemoryContextSwitchTo(oldCtxt);
 
 #ifdef AMS_VERBOSE_LOGGING
@@ -536,6 +538,7 @@ SendReturnCode SendTuple(int16 motNodeID, HeapTuple tuple, int16 targetRoute)
     /* do the send. */
     if (!SendTupleChunkToAMS(motNodeID, targetRoute, tcList->p_first))
     {
+		pMNEntry->stopped = true;
   		rc = STOP_SENDING;
     }
     else
@@ -828,8 +831,8 @@ void EndMotionLayerNode(int16 motNodeID, bool flushCommLayer)
         elog(DEBUG3, "Cleaning up chunk-sorter entry [src=%d,mn=%d].",
 			 ChunkSorterKey_route(pCSEntry->key), ChunkSorterKey_id(pCSEntry->key));
 
-        /* If we haven't gotten the end-of-stream yet, handle it according to
-         * the caller's request.
+        /* If we weren't stopped and haven't gotten the end-of-stream
+         * yet, handle it according to the caller's request.
          */
         if (!pMNEntry->stopped && !pCSEntry->end_of_stream)
         {
