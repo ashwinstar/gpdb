@@ -888,7 +888,7 @@ static struct config_bool ConfigureNamesBool[] =
 		&Mpp_is_primary,
 		true, NULL, NULL
 	},
-    
+
     {
         {"mpp_set_read_only", PGC_SUSET, UNGROUPED,
             gettext_noop("Sets the system read only"),
@@ -898,7 +898,7 @@ static struct config_bool ConfigureNamesBool[] =
         &mpp_set_read_only,
         false, assign_mpp_set_read_only, NULL
     },
-    
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL
@@ -1380,11 +1380,11 @@ static struct config_int ConfigureNamesInt[] =
 		&block_size,
 		BLCKSZ, BLCKSZ, BLCKSZ, NULL, NULL
 	},
-    
+
 	{
 		 {"mpp_max_packet_size", PGC_BACKEND, UNGROUPED,
             gettext_noop("Sets the max packet size for the Interconnect."),
-            
+
         },
         &Mpp_max_packet_size,
         DEFAULT_PACKET_SIZE, MIN_PACKET_SIZE, MAX_PACKET_SIZE, NULL, NULL
@@ -1416,7 +1416,7 @@ static struct config_int ConfigureNamesInt[] =
 	
 	{
 		{"mpp_interconnect_setup_timeout", PGC_USERSET, UNGROUPED,
-			gettext_noop("Timeout on interconnect setup that occurs at query start"),
+			gettext_noop("Timeout (in seconds) on interconnect setup that occurs at query start"),
 			gettext_noop("Used by Interconnect to timeout the setup of the communication fabric.")	
 		},
 		&interconnect_setup_timeout,
@@ -1964,7 +1964,7 @@ static struct config_string ConfigureNamesString[] =
 		&mpp_role_string,
 		"dispatch", assign_mpp_role, show_mpp_role
 	},
-    
+
     {
        {"MPPFaultAction", PGC_POSTMASTER, UNGROUPED,
            gettext_noop("Sets the fault action for fault tolerance management."),
@@ -1972,7 +1972,7 @@ static struct config_string ConfigureNamesString[] =
        },
        &mpp_fault_action_string,
        "continue", NULL, NULL
-    }, 
+    },
 
 	/* End-of-list marker */
 	{
@@ -4165,7 +4165,7 @@ SetPGVariable(const char *name, List *args, bool is_local)
 					  PGC_S_SESSION,
 					  is_local,
 					  true);
-					  
+					
 	if (Mpp_role == MPP_ROLE_DISPATCH && !IsBootstrapProcessingMode())
 	{
 
@@ -4204,10 +4204,10 @@ SetPGVariable(const char *name, List *args, bool is_local)
 					val = strVal(&arg->val);
 		
 						/*
-						 * Plain string literal or identifier., quote it  
+						 * Plain string literal or identifier., quote it
 						 */
 
-					if (val[0] != '\'') 
+					if (val[0] != '\'')
 						appendStringInfo(&buffer, "'%s'",val);
 					else
 						appendStringInfo(&buffer, "%s",val);
