@@ -1085,11 +1085,11 @@ getCdbProcessList(Gang * gang)
 			 */
 
 			if (gang->type != GANGTYPE_READER || gang->size > 1)
-				while (segdbDesc->segindex > i)
+				while (segdbDesc->segindex > listsize)
 				{
 					list = lappend(list, NULL);
 					listsize++;
-					i++;
+
 				}
 
 
