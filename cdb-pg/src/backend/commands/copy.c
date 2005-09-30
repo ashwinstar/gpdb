@@ -2697,7 +2697,7 @@ CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 				MemSet(values, 0, num_phys_attrs * sizeof(Datum));
 				MemSet(nulls, 'n', num_phys_attrs * sizeof(char));
 				/* reset attribute pointers */
-				
+				MemSet(attr_offsets, 0, num_phys_attrs * sizeof(int)); 
 				
 				if (!binary)
 				{
