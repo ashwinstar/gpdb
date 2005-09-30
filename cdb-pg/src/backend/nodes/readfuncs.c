@@ -1377,6 +1377,24 @@ _readCreatedbStmt(void)
 	READ_DONE();
 }
 
+
+static GrantStmt * 
+_readGrantStmt(void)
+{
+	READ_LOCALS(GrantStmt); 
+	
+	READ_BOOL_FIELD(is_grant);		 
+	READ_ENUM_FIELD(objtype,GrantObjectType);	 
+	READ_NODE_FIELD(objects);		 
+	READ_NODE_FIELD(privileges);		 
+	READ_NODE_FIELD(grantees);		 
+	READ_BOOL_FIELD(grant_option);	 
+	READ_ENUM_FIELD(behavior, DropBehavior);	
+	
+	READ_DONE();	 
+}
+
+
 /*
  * _readPlan
  */
@@ -2006,6 +2024,7 @@ static ParseNodeInfo infoAr[] =
 	{"FUNCCALL", (ReadFn)_readFuncCall},
 	{"FUNCEXPR", (ReadFn)_readFuncExpr},
 	{"FUNCTIONSCAN", (ReadFn)_readFunctionScan},
+	{"GRANTSTMT", (ReadFn)_readGrantStmt},
 	{"GROUP", (ReadFn)_readGroup},
 	{"GROUPCLAUSE", (ReadFn)_readGroupClause},
 	{"HASH", (ReadFn)_readHash},
