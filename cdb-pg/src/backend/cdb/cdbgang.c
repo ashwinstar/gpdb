@@ -1089,6 +1089,7 @@ getCdbProcessList(Gang * gang)
 				{
 					list = lappend(list, NULL);
 					listsize++;
+					i++;
 				}
 
 
