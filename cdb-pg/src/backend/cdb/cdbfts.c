@@ -131,7 +131,11 @@ bool FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo, char *dbName)
     conn = PQconnectdb(buffer->data);
 
     if ( PQstatus(conn) == CONNECTION_BAD )
+    {
+        elog(DEBUG1, "FTS: test connection failed, dbid %d dbname %s error message %s",
+                    failedDBInfo->dbid, dbName, PQerrorMessage(conn));
         ret = false;
+    }
     
     PQfinish(conn);
     return ret;
@@ -275,7 +279,11 @@ static void initPQConnectionBuffer(CdbComponentDatabaseInfo *q, char *dbName, PQ
     if (dbName == NULL)
     {
         if (currDbName == NULL)
+        {
+            MemoryContext oldContext = MemoryContextSwitchTo(TopMemoryContext);
             currDbName = get_database_name(MyDatabaseId);
+            MemoryContextSwitchTo(oldContext);
+        }
         dbName = currDbName;
     }
         
@@ -326,11 +334,12 @@ void markSegDBTransientState( int dbid, bool state )
         /* set transient state if state is false */
         int i, segindex;
         CdbComponentDatabaseInfo *segDb=NULL;
+        CdbComponentDatabases *cdb_component_dbs=NULL;
 
         if (*ftsSegDBTransientCount >= FTS_MAX_TRANSIENT_STATE)
             elog(ERROR, "FTS: the number of failed segdb exceeds the MPP limit");     
 
-        CdbComponentDatabases *cdb_component_dbs = getComponentDatabases();        
+        cdb_component_dbs = getComponentDatabases();        
         *(ftsSegDBTransientState+*ftsSegDBTransientCount) =
                                         SET_TRANSIENT_SEGDB_STATE_INVALID(dbid);
         
