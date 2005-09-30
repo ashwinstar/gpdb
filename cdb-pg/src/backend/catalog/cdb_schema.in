@@ -14,6 +14,8 @@
 -- --------------------------------------------------------------------
 
 
+SET log_min_messages = WARNING;
+
 
 -- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 --
@@ -21,8 +23,10 @@
 --
 -- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 CREATE SCHEMA mpp;
-COMMENT ON SCHEMA mpp
-    IS 'repository for mpp service functions and related schema objects';
+
+COMMENT ON SCHEMA mpp 
+	IS 'repository for mpp service functions and related schema objects';
+    
 GRANT USAGE ON SCHEMA mpp TO PUBLIC;
 
 
@@ -99,6 +103,8 @@ create table mpp.PGDATABASE
 
 COMMENT ON TABLE mpp.pgdatabase IS 'a component database of the mpp';
 
+GRANT SELECT ON mpp.pgdatabase TO PUBLIC;
+
 
 -- A row of POLICY corresponds to a partitioned table in the mpp and
 -- describes the policy under which table data is distributed to segment
@@ -117,6 +123,8 @@ create table mpp.POLICY
 );
 
 COMMENT ON TABLE mpp.policy IS 'a partitioned table in the mpp';
+
+GRANT SELECT ON mpp.policy TO PUBLIC;
 
 
 -- The sole row of table mpp represents (1) the mpp as a whole and (2) the
@@ -160,6 +168,8 @@ create table mpp.VERSION
 INSERT INTO mpp.VERSION(schemaversion,productversion) VALUES ( 2 , '$$Name:  $$');
 
 COMMENT ON TABLE mpp.version IS 'vintage of schema "mpp" in this database';
+
+GRANT SELECT ON mpp.version TO PUBLIC;
 
 
 -- Add PL/PGSQL to the database
@@ -263,8 +273,11 @@ CREATE VIEW mpp.mpp_pgdatabase AS
     SELECT *
       FROM mpp_pgdatabase() AS L(dbid integer, isprimary boolean, content integer, listenerid integer, valid boolean, definedprimary boolean);
 
+GRANT SELECT ON mpp.mpp_pgdatabase TO PUBLIC;
 
+REVOKE ALL PRIVILEGES ON mpp.listener FROM PUBLIC;
 
+RESET log_min_messages;
 
 
 
