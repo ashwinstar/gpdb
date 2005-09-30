@@ -35,6 +35,8 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 #include "utils/relcache.h"
+#include "cdb/cdbvars.h"
+#include "cdb/cdbdisp.h"
 
 
 /*
@@ -213,6 +215,11 @@ cluster(ClusterStmt *stmt)
 
 		/* Clean up working storage */
 		MemoryContextDelete(cluster_context);
+	}
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+			CdbDispatchUtilityStatement((Node *)stmt);
 	}
 }
 

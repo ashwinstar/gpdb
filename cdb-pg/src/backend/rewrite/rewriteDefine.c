@@ -31,6 +31,8 @@
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
+#include "cdb/cdbvars.h"
+#include "cdb/cdbdisp.h"
 
 
 static void setRuleCheckAsUser_Query(Query *qry, AclId userid);
@@ -490,6 +492,11 @@ DefineQueryRewrite(RuleStmt *stmt)
 
 	/* Close rel, but keep lock till commit... */
 	heap_close(event_relation, NoLock);
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+			CdbDispatchUtilityStatement((Node *)stmt);
+	}
 }
 
 /*

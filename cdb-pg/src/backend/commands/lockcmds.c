@@ -20,6 +20,8 @@
 #include "miscadmin.h"
 #include "utils/acl.h"
 #include "utils/lsyscache.h"
+#include "cdb/cdbvars.h"
+#include "cdb/cdbdisp.h"
 
 
 /*
@@ -69,5 +71,10 @@ LockTableCommand(LockStmt *lockstmt)
 							relation->relname)));
 
 		relation_close(rel, NoLock);	/* close rel, keep lock */
+	}
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+			CdbDispatchUtilityStatement((Node *)lockstmt);
 	}
 }

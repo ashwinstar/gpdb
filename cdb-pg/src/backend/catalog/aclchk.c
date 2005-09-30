@@ -39,6 +39,8 @@
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
+#include "cdb/cdbvars.h"
+#include "cdb/cdbdisp.h"
 
 
 static void ExecuteGrantStmt_Relation(GrantStmt *stmt);
@@ -216,6 +218,11 @@ ExecuteGrantStmt(GrantStmt *stmt)
 		default:
 			elog(ERROR, "unrecognized GrantStmt.objtype: %d",
 				 (int) stmt->objtype);
+	}
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+			CdbDispatchUtilityStatement((Node *)stmt);
 	}
 }
 

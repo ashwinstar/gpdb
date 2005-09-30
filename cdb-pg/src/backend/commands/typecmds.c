@@ -61,6 +61,8 @@
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
+#include "cdb/cdbvars.h"
+#include "cdb/cdbdisp.h"
 
 
 /* result structure for get_rels_with_domain() */
@@ -777,6 +779,11 @@ DefineDomain(CreateDomainStmt *stmt)
 	 * Now we can clean up.
 	 */
 	ReleaseSysCache(typeTup);
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+			CdbDispatchUtilityStatement((Node *)stmt);
+	}
 }
 
 

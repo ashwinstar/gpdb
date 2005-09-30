@@ -799,7 +799,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_AlterDomainStmt:
-			CdbSentry(CDB_NONCE, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			{
 				AlterDomainStmt *stmt = (AlterDomainStmt *) parsetree;
 
@@ -839,6 +839,11 @@ ProcessUtility(Node *parsetree,
 						elog(ERROR, "unrecognized alter domain type: %d",
 							 (int) stmt->subtype);
 						break;
+				}
+				
+				if (Mpp_role == MPP_ROLE_DISPATCH)
+				{
+						CdbDispatchUtilityStatement((Node *)stmt);
 				}
 			}
 			break;
@@ -884,6 +889,7 @@ ProcessUtility(Node *parsetree,
 				CompositeTypeStmt *stmt = (CompositeTypeStmt *) parsetree;
 
 				DefineCompositeType(stmt->typevar, stmt->coldeflist);
+				
 			}
 			break;
 
@@ -1018,7 +1024,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_ClusterStmt:
-			CdbSentry(CDB_NONCE, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			cluster((ClusterStmt *) parsetree);
 			break;
 
@@ -1094,9 +1100,14 @@ ProcessUtility(Node *parsetree,
 		case T_VariableResetStmt:
 			{
 				VariableResetStmt *n = (VariableResetStmt *) parsetree;
-				CdbSentry(CDB_NONCE, parsetree, NULL);
+				CdbSentry(CDB_ACCEPT, parsetree, NULL);
 
 				ResetPGVariable(n->name);
+				
+				if (Mpp_role == MPP_ROLE_DISPATCH)
+				{
+						CdbDispatchUtilityStatement((Node *)n);
+				}
 			}
 			break;
 
@@ -1135,12 +1146,12 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_CreatePLangStmt:
-			CdbSentry(CDB_REJECT, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			CreateProceduralLanguage((CreatePLangStmt *) parsetree);
 			break;
 
 		case T_DropPLangStmt:
-			CdbSentry(CDB_REJECT, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			DropProceduralLanguage((DropPLangStmt *) parsetree);
 			break;
 
@@ -1148,7 +1159,7 @@ ProcessUtility(Node *parsetree,
 			 * ******************************** DOMAIN statements ****
 			 */
 		case T_CreateDomainStmt:
-			CdbSentry(CDB_NONCE, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			DefineDomain((CreateDomainStmt *) parsetree);
 			break;
 
@@ -1161,12 +1172,12 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_AlterUserStmt:
-			CdbSentry(CDB_NONCE, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			AlterUser((AlterUserStmt *) parsetree);
 			break;
 
 		case T_AlterUserSetStmt:
-			CdbSentry(CDB_NONCE, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			AlterUserSet((AlterUserSetStmt *) parsetree);
 			break;
 
@@ -1176,7 +1187,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_LockStmt:
-			CdbSentry(CDB_NONCE, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			LockTableCommand((LockStmt *) parsetree);
 			break;
 
@@ -1186,17 +1197,17 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_CreateGroupStmt:
-			CdbSentry(CDB_NONCE, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			CreateGroup((CreateGroupStmt *) parsetree);
 			break;
 
 		case T_AlterGroupStmt:
-			CdbSentry(CDB_NONCE, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			AlterGroup((AlterGroupStmt *) parsetree, "ALTER GROUP");
 			break;
 
 		case T_DropGroupStmt:
-			CdbSentry(CDB_NONCE, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			DropGroup((DropGroupStmt *) parsetree);
 			break;
 
@@ -1210,7 +1221,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_ReindexStmt:
-			CdbSentry(CDB_NONCE, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			{
 				ReindexStmt *stmt = (ReindexStmt *) parsetree;
 
@@ -1230,7 +1241,11 @@ ProcessUtility(Node *parsetree,
 							 (int) stmt->kind);
 						break;
 				}
-				break;
+				
+				if (Mpp_role == MPP_ROLE_DISPATCH)
+				{
+						CdbDispatchUtilityStatement((Node *)stmt);
+				}
 			}
 			break;
 

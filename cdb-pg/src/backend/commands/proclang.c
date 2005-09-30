@@ -31,6 +31,8 @@
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
+#include "cdb/cdbvars.h"
+#include "cdb/cdbdisp.h"
 
 
 /* ---------------------------------------------------------------------
@@ -165,6 +167,12 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 	}
 
 	heap_close(rel, RowExclusiveLock);
+	
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+			CdbDispatchUtilityStatement((Node *)stmt);
+	}
 }
 
 
@@ -211,6 +219,11 @@ DropProceduralLanguage(DropPLangStmt *stmt)
 	 * Do the deletion
 	 */
 	performDeletion(&object, stmt->behavior);
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+			CdbDispatchUtilityStatement((Node *)stmt);
+	}
 }
 
 /*

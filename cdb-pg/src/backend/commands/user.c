@@ -990,6 +990,11 @@ AlterUser(AlterUserStmt *stmt)
 	 * Set flag to update flat password file at commit.
 	 */
 	user_file_update_needed();
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+			CdbDispatchUtilityStatement((Node *)stmt);
+	}
 }
 
 
@@ -1069,6 +1074,11 @@ AlterUserSet(AlterUserSetStmt *stmt)
 
 	ReleaseSysCache(oldtuple);
 	heap_close(rel, RowExclusiveLock);
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+			CdbDispatchUtilityStatement((Node *)stmt);
+	}
 }
 
 
@@ -1304,6 +1314,19 @@ RenameUser(const char *oldname, const char *newname)
 	heap_close(rel, NoLock);
 
 	user_file_update_needed();
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{	
+
+		StringInfoData buffer;
+		
+		initStringInfo( &buffer );
+
+		appendStringInfo(&buffer, "ALTER USER %s RENAME TO %s", oldname, newname);
+
+		CdbDoCommand( buffer.data, false );
+
+	}
 }
 
 
@@ -1509,6 +1532,11 @@ CreateGroup(CreateGroupStmt *stmt)
 	 * Set flag to update flat group file at commit.
 	 */
 	group_file_update_needed();
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+			CdbDispatchUtilityStatement((Node *)stmt);
+	}
 }
 
 
@@ -1661,6 +1689,11 @@ AlterGroup(AlterGroupStmt *stmt, const char *tag)
 	 * Set flag to update flat group file at commit.
 	 */
 	group_file_update_needed();
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+			CdbDispatchUtilityStatement((Node *)stmt);
+	}
 }
 
 /*
@@ -1801,6 +1834,11 @@ DropGroup(DropGroupStmt *stmt)
 	 * Set flag to update flat group file at commit.
 	 */
 	group_file_update_needed();
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+			CdbDispatchUtilityStatement((Node *)stmt);
+	}
 }
 
 
@@ -1847,4 +1885,17 @@ RenameGroup(const char *oldname, const char *newname)
 	heap_freetuple(tup);
 
 	group_file_update_needed();
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{	
+
+		StringInfoData buffer;
+		
+		initStringInfo( &buffer );
+
+		appendStringInfo(&buffer, "ALTER GROUP %s RENAME TO %s", oldname, newname);
+
+		CdbDoCommand( buffer.data, false );
+
+	}
 }
