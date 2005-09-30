@@ -1078,6 +1078,7 @@ List *getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
 {
 	int		i;
 	List	*elist = NIL;
+	Index varno = OUTER; /* Generated Var nodes must refer to OUTER */
 	
 	for (i=0; i<numCols; i++ )
 	{
@@ -1091,7 +1092,7 @@ List *getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
 			elog( ERROR, "no tlist entry for key %d", n );
 
 		/* Make a Var that references the target list entry at this offset, using OUTER as the varno */
-		new_var = makeVar(OUTER, n, target->resdom->restype, target->resdom->restypmod, 0);
+		new_var = makeVar(varno, n, target->resdom->restype, target->resdom->restypmod, 0);
 			
 		elist = lappend(elist, new_var);
 	}
@@ -1322,6 +1323,7 @@ List* getExprListForSubqueryScan(List* targetlist, List* hashExprs)
 	ListCell *cell;
 	int i;
 	List *resultExprs = NIL;
+	Index varno = 0; /* used to be OUTER */
 	
 	nattrs = list_length(hashExprs);
 	if ( nattrs == 0 )
@@ -1356,7 +1358,7 @@ List* getExprListForSubqueryScan(List* targetlist, List* hashExprs)
 		if ( i < ntles )
 		{
 			tle = map[i];
-			Var *var = makeVar(OUTER, 1+i, tle->resdom->restype, tle->resdom->restypmod, 0);
+			Var *var = makeVar(varno, 1+i, tle->resdom->restype, tle->resdom->restypmod, 0);
 			resultExprs = lappend(resultExprs, var);
 		}
 		else

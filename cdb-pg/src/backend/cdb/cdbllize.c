@@ -672,15 +672,102 @@ prescan_walker(Node *node, PlanProfile *context)
 			goto return_false;
 		
 		case T_SetOp:
-			/*
-			 * A SetOp node appears to have only a lefttree like this Lisp:
-			 * (Sort (Append (List (SubQueryScan ...) (SubQueryScan ....)))).
-			 * It does no projection.
-			 * 
-			 * TODO Implment special handling.
+			/* A SetOp node has only a lefttree headed by a Sort as in
+			 *
+			 *   (Sort (Append (SubqueryScan ...) (SubqueryScan ...)))
+			 *
+			 * The Sort argument is often, but not always, an Append of
+			 * SubqueryScan nodes.  SetOp is non-projecting.
 			 */
+			 
+			/* First prescan children */
+			if ( plan_tree_walker(node, prescan_walker, context) )
+				goto return_true;
+			if ( finished )
+				goto return_false;
+
+			 /* Default failure message for this case. */
+			detail = "Cannot parallelize a set or multiset operation.";
 				
-			detail = "Query involves a set or multiset operation.";
+			 {
+				Plan *plan = (Plan*)node;
+				Plan *child = plan->lefttree;				
+				
+				switch ( (child->flow==NULL)? FLOW_UNDEFINED: child->flow->flotype )
+				{
+				case FLOW_SINGLETON:
+				case FLOW_REPLICATED:
+						/* No motion required so inherit flow characteristics. */
+						plan->flow = pull_up_Flow(plan, child, true);
+							
+						if ( plan->flow == NULL || plan->flow->flotype == FLOW_UNDEFINED )
+						{
+							detail = "Cannot characterize output of set operation.";
+							break;
+						}
+						goto return_false;
+				
+				case FLOW_PARTITIONED:
+					/* I think this could be an assertion, but play it safe. */
+					if ( ! IsA(child, Sort) )
+					{
+						ereport(ERROR, (
+							errcode(ERRCODE_CDB_INTERNAL_ERROR),
+							errmsg("unexpected argument to set operator")
+						));
+					}
+					/* Since SetOp and Sort are non-projecting we can directly
+					 * compare the Sort's hash expressions to the expressions
+					 * in SetOp's target list. If the partitioning attributes 
+					 * of the Sort are a non-empty subset of the "duplicated"
+					 * attributes of the SetOp, then the existing partition
+					 * is suitable, else we need to repartition. In that case,
+					 * we choose to use the entire "duplicated" set in the
+					 * hope that it will be less skew than a subset.
+					 */	
+					{
+						SetOp *op;
+						List *hx;
+						int n;
+						bool isSubset = FALSE;
+					
+						n = list_length(child->flow->hashExpr);
+						if ( n > 0 )
+						{
+							AttrNumber * attrs = palloc(n * sizeof(AttrNumber));
+							isSubset = findHashAttrsInTargetList(plan->targetlist, child->flow->hashExpr, attrs);
+							pfree(attrs);
+						}
+						if ( isSubset )
+						{
+							plan->flow = pull_up_Flow(plan, child, true);
+							
+						if ( plan->flow == NULL || plan->flow->flotype == FLOW_UNDEFINED )
+						{
+							detail = "Can't characterize flow from SetOp node.";
+							break;
+						}
+						goto return_false;
+						}
+					
+						/* Repartition on the dupColIdx attrs of the SetOp. */
+						op = (SetOp*)plan;
+						hx = getExprListFromTargetList(child->targetlist, op->numCols, op->dupColIdx);
+						if ( repartitionPlan(child, true, true, false, hx ) )
+						{
+							plan->flow = pull_up_Flow(plan, child, true);
+							if (plan->flow != NULL )
+								goto return_false;
+						}
+					}
+					detail = "Can't characterize flow into SetOp node.";
+					break;
+				
+				default:
+					detail = "Can't characterize flow in argument to set operation.";
+					break; /* Fall through to report error. */
+				}
+			}
 			break; /* Fall through to report error. */			 
 		
 		case T_Append:
@@ -1138,9 +1225,9 @@ bool prescan_append(Plan *plan, PlanProfile *context)
 
 	/*
 	 * Choose an approach to parallelizing the Append node by examining the
-	 * flow characteristics of the list of argument plans.  The approach 
-	 * uses a state machine (append_FSM) to increment the strategy chosen
-	 * so far by the "natural" stategy of the next item.
+	 * flow characteristics of each item in the list of argument plans.  The 
+	 * approach uses a state machine (append_FSM) to increment the strategy 
+	 * chosen so far by the "natural" stategy of the next item.
 	 * 
 	 * If the result strategy is AFS_D, AFS_S, AFS_R, or AFS_P, then no
 	 * additional determination is required, and the Append can marked as
