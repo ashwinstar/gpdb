@@ -18,18 +18,28 @@
 #include "lib/stringinfo.h"
 #include "cdb/cdbgang.h"
 
+typedef enum SegDbState
+{
+	OUT,					/* Not participating in COPY (invalid etc...) */
+	IDLE,					/* Participating but COPY not yet started */
+	COPY,				    /* COPY in progress */
+	DONE					/* COPY completed (with or without errors) */
+} SegDbState;
 
 typedef struct CdbCopy
 {
-	Gang    *primary_writer;
-	Gang    *mirror_writer;
-	int      total_segs;     /* total number of segments in cdb */
-	int     *mirror_map;     /* indicates how many db's each segment has */
-	bool     data_errors;    /* true if any data parsing/partitioning/inserting error occured */
-	bool     io_errors;      /* true if any I/O error occured trying to communicate with segDB's */
+	Gang        *primary_writer;
+	Gang        *mirror_writer;
+	int          total_segs;     /* total number of segments in cdb */
+	int         *mirror_map;     /* indicates how many db's each segment has */
+	bool         data_errors;    /* true if any data parsing/partitioning/inserting error occured */
+	bool         io_errors;      /* true if any I/O error occured trying to communicate with segDB's */
+	SegDbState **segdb_state;
 	StringInfoData err_msg;  /* error message for cdbcopy operations */
 	
 } CdbCopy;
+
+
 
 /* global function declarations */
 CdbCopy *makeCdbCopy(void);

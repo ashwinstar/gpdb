@@ -1681,7 +1681,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	{
 	    appendStringInfo(&cdbcopy_cmd, " DELIMITER AS '%s'", delim);
 		
-		if(null_print[0] == '\\') /* null value is de-escaped. re-escape for segdbs*/
+		if(null_print[0] == '\\') /* escape value is de-escaped. re-escape for segdbs*/
 		   appendStringInfo(&cdbcopy_cmd," NULL AS '\\%s'", null_print); 
 		else
 		   appendStringInfo(&cdbcopy_cmd," NULL AS '%s'", null_print);
@@ -1775,10 +1775,22 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	 * session there, so we are fine there. 
 	 */
 	if(cdbCopyStart(cdbCopy, cdbcopy_cmd.data) == -1)
-		/* TODO: not throw error yet, unless the first one failed */
+    {
+		/* get error message from CopyStart */
+		appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);					
+
+		/* end COPY in all the segdbs in progress */
+		cdbCopyEnd(cdbCopy); 
+
+		/* get error message from CopyEnd*/
+		appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);					
+		
 		ereport(ERROR,
 				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
-				 errmsg("%s",cdbCopy->err_msg.data)));
+				 errmsg("%s Closing all other existing COPY sessions.",
+						cdbcopy_err.data)));		
+    }
+		
 	
 	
 	/*
@@ -2329,7 +2341,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	 */
 	cdbCopyEnd(cdbCopy);
 	
-	if(cdbCopy->data_errors) 
+	if(cdbCopy->data_errors || cdbCopy->io_errors) 
 		appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
 	
 
@@ -2341,10 +2353,12 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 				(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 				 errmsg("%s", cdbcopy_err.data)));
 	if(cdbCopy->io_errors)
+	{
+		
 		ereport(ERROR,
 				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
 				 errmsg("%s", cdbcopy_err.data)));
-
+	}
 	/*
 	 * Done, clean up
 	 */
@@ -2683,7 +2697,7 @@ CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 				MemSet(values, 0, num_phys_attrs * sizeof(Datum));
 				MemSet(nulls, 'n', num_phys_attrs * sizeof(char));
 				/* reset attribute pointers */
-				MemSet(attr_offsets, 0, num_phys_attrs * sizeof(int));
+				
 				
 				if (!binary)
 				{
