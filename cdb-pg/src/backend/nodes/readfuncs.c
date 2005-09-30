@@ -544,6 +544,67 @@ _readDropUserStmt(void)
 	
 }
 
+static  AlterUserStmt *
+_readAlterUserStmt(void)
+{
+	READ_LOCALS(AlterUserStmt);
+
+	READ_STRING_FIELD(user);
+	READ_NODE_FIELD(options);
+	
+	READ_DONE();
+	
+}
+
+static  AlterUserSetStmt *
+_readAlterUserSetStmt(void)
+{
+	READ_LOCALS(AlterUserSetStmt);
+
+	READ_STRING_FIELD(user);
+	READ_STRING_FIELD(variable);
+	READ_NODE_FIELD(value);
+	
+	READ_DONE();
+	
+}
+
+
+static CreateGroupStmt *
+_readCreateGroupStmt(void)
+{
+	READ_LOCALS(CreateGroupStmt);
+
+	READ_STRING_FIELD(name);
+	READ_NODE_FIELD(options);
+
+	READ_DONE();
+}
+
+static DropGroupStmt *
+_readDropGroupStmt(void)
+{
+	READ_LOCALS(DropGroupStmt);
+
+	READ_STRING_FIELD(name);
+
+	READ_DONE();
+	
+}
+
+static  AlterGroupStmt *
+_readAlterGroupStmt(void)
+{
+	READ_LOCALS(AlterGroupStmt);
+
+	READ_STRING_FIELD(name);
+	READ_INT_FIELD(action);
+	READ_NODE_FIELD(listUsers);
+	
+	READ_DONE();
+	
+}
+
 static RenameStmt *
 _readRenameStmt(void)
 {
@@ -1394,6 +1455,37 @@ _readGrantStmt(void)
 	READ_DONE();	 
 }
 
+static PrivGrantee *
+_readPrivGrantee(void)
+{
+	READ_LOCALS(PrivGrantee); 
+	READ_STRING_FIELD(username);
+	READ_STRING_FIELD(groupname);
+		
+	READ_DONE();		 
+}
+
+static FuncWithArgs * 
+_readFuncWithArgs(void)
+{
+	READ_LOCALS(FuncWithArgs); 
+	READ_NODE_FIELD(funcname);		 
+	READ_NODE_FIELD(funcargs);	
+		
+	READ_DONE();		 	 
+}
+
+static LockStmt * 
+_readLockStmt(void)
+{
+	READ_LOCALS(LockStmt);
+	READ_NODE_FIELD(relations);
+	READ_INT_FIELD(mode);
+	READ_BOOL_FIELD(nowait);
+		
+	READ_DONE();
+} 
+
 
 /*
  * _readPlan
@@ -1988,8 +2080,11 @@ static ParseNodeInfo infoAr[] =
 	{"AGG", (ReadFn)_readAgg},
 	{"AGGREF", (ReadFn)_readAggref},
 	{"ALIAS", (ReadFn)_readAlias},
+	{"ALTERGROUPSTMT", (ReadFn)_readAlterGroupStmt},
 	{"ALTERTABLECMD", (ReadFn)_readAlterTableCmd},
 	{"ALTERTABLESTMT", (ReadFn)_readAlterTableStmt},
+	{"ALTERUSERSTMT", (ReadFn)_readAlterUserStmt},
+	{"ALTERUSERSETSTMT", (ReadFn)_readAlterUserSetStmt},
 	{"APPEND", (ReadFn)_readAppend},
 	{"ARRAY", (ReadFn)_readArrayExpr},
 	{"ARRAYREF", (ReadFn)_readArrayRef},
@@ -2008,6 +2103,7 @@ static ParseNodeInfo infoAr[] =
 	{"CONSTRAINT", (ReadFn)_readConstraint},
 	{"CONVERTROWTYPEEXPR", (ReadFn)_readConvertRowtypeExpr},
 	{"CREATEDBSTMT", (ReadFn)_readCreatedbStmt},
+	{"CREATEGROUPSTMT", (ReadFn)_readCreateGroupStmt},
 	{"CREATESCHEMASTMT", (ReadFn)_readCreateSchemaStmt},
 	{"CREATESEQSTMT", (ReadFn)_readCreateSeqStmt},
 	{"CREATESTMT", (ReadFn)_readCreateStmt},
@@ -2015,6 +2111,7 @@ static ParseNodeInfo infoAr[] =
 	{"DECLARECURSOR", (ReadFn)_readDeclareCursorStmt},
 	{"DEFELEM", (ReadFn)_readDefElem},
 	{"DISTINCTEXPR", (ReadFn)_readDistinctExpr},
+	{"DROPGROUPSTMT", (ReadFn)_readDropGroupStmt},
 	{"DROPSTMT", (ReadFn)_readDropStmt},
 	{"DROPUSERSTMT", (ReadFn)_readDropUserStmt},
 	{"FIELDSELECT", (ReadFn)_readFieldSelect},
@@ -2024,6 +2121,7 @@ static ParseNodeInfo infoAr[] =
 	{"FUNCCALL", (ReadFn)_readFuncCall},
 	{"FUNCEXPR", (ReadFn)_readFuncExpr},
 	{"FUNCTIONSCAN", (ReadFn)_readFunctionScan},
+	{"FUNCWITHARGS", (ReadFn)_readFuncWithArgs},
 	{"GRANTSTMT", (ReadFn)_readGrantStmt},
 	{"GROUP", (ReadFn)_readGroup},
 	{"GROUPCLAUSE", (ReadFn)_readGroupClause},
@@ -2035,6 +2133,7 @@ static ParseNodeInfo infoAr[] =
 	{"JOIN", (ReadFn)_readJoin},
 	{"JOINEXPR", (ReadFn)_readJoinExpr},
 	{"LIMIT", (ReadFn)_readLimit},
+	{"LOCKSTMT", (ReadFn)_readLockStmt},
 	{"MATERIAL", (ReadFn)_readMaterial},
 	{"MERGEJOIN", (ReadFn)_readMergeJoin},
 	{"MOTION", (ReadFn)_readMotion},
@@ -2045,6 +2144,7 @@ static ParseNodeInfo infoAr[] =
 	{"OPEXPR", (ReadFn)_readOpExpr},
 	{"PARAM", (ReadFn)_readParam},
 	{"PLAN", (ReadFn)_readPlan},
+	{"PRIVGRANTEE", (ReadFn)_readPrivGrantee},
 	{"QUERY", (ReadFn)_readQuery},
 	{"RANGETBLREF", (ReadFn)_readRangeTblRef},
 	{"RANGEVAR", (ReadFn)_readRangeVar},

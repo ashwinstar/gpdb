@@ -1409,6 +1409,57 @@ _outDropUserStmt(StringInfo str, DropUserStmt *node)
 	WRITE_NODE_FIELD(users);
 }
 
+static  void
+_outAlterUserStmt(StringInfo str, AlterUserStmt *node)
+{
+	WRITE_NODE_TYPE("ALTERUSERSTMT");
+
+	WRITE_STRING_FIELD(user);
+	WRITE_NODE_FIELD(options);
+}
+
+static  void
+_outAlterUserSetStmt(StringInfo str, AlterUserSetStmt *node)
+{
+	WRITE_NODE_TYPE("ALTERUSERSETSTMT");
+
+	WRITE_STRING_FIELD(user);
+	WRITE_STRING_FIELD(variable);
+	WRITE_NODE_FIELD(value);
+}
+
+
+
+static void
+_outCreateGroupStmt(StringInfo str, CreateGroupStmt *node)
+{
+	WRITE_NODE_TYPE("CREATEGROUPSTMT");
+
+	WRITE_STRING_FIELD(name);
+	WRITE_NODE_FIELD(options);
+
+}
+
+static  void
+_outDropGroupStmt(StringInfo str, DropGroupStmt *node)
+{
+	WRITE_NODE_TYPE("DROPGROUPSTMT");
+
+	WRITE_STRING_FIELD(name);
+}
+
+static  void
+_outAlterGroupStmt(StringInfo str, AlterGroupStmt *node)
+{
+	WRITE_NODE_TYPE("ALTERGROUPSTMT");
+
+	WRITE_STRING_FIELD(name);
+	WRITE_INT_FIELD(action);
+	WRITE_NODE_FIELD(listUsers);
+}
+
+
+
 static void
 _outRenameStmt(StringInfo str, RenameStmt *node)
 {
@@ -1503,6 +1554,31 @@ _outGrantStmt(StringInfo str, GrantStmt *node)
 	WRITE_BOOL_FIELD(grant_option);	 
 	WRITE_ENUM_FIELD(behavior, DropBehavior);		 
 }
+
+static void 
+_outPrivGrantee(StringInfo str, PrivGrantee *node)
+{
+	WRITE_NODE_TYPE("PRIVGRANTEE");
+	WRITE_STRING_FIELD(username);
+	WRITE_STRING_FIELD(groupname);	 
+}
+
+static void 
+_outFuncWithArgs(StringInfo str, FuncWithArgs *node)
+{
+	WRITE_NODE_TYPE("FUNCWITHARGS"); 
+	WRITE_NODE_FIELD(funcname);		 
+	WRITE_NODE_FIELD(funcargs);		 	 
+}
+
+static void 
+_outLockStmt(StringInfo str, LockStmt *node)
+{
+	WRITE_NODE_TYPE("LOCKSTMT"); 
+	WRITE_NODE_FIELD(relations);
+	WRITE_INT_FIELD(mode);
+	WRITE_BOOL_FIELD(nowait);
+} 
 
 
 static void
@@ -1626,6 +1702,11 @@ _outQuery(StringInfo str, Query *node)
 			case T_AlterTableCmd:
 			case T_ViewStmt:
 			case T_CreateUserStmt:
+			case T_AlterUserStmt:
+			case T_AlterUserSetStmt:
+			case T_CreateGroupStmt:
+			case T_DropGroupStmt:
+			case T_AlterGroupStmt:
 			case T_DropUserStmt:
 			case T_RenameStmt:
 			case T_IndexStmt:
@@ -1638,6 +1719,7 @@ _outQuery(StringInfo str, Query *node)
 			case T_TransactionStmt:
 			case T_CdbExecStmt:
 			case T_GrantStmt:
+			case T_LockStmt:
 				WRITE_NODE_FIELD(utilityStmt);
 				break;
 
@@ -2293,6 +2375,15 @@ _outNode(StringInfo str, void *obj)
 			case T_GrantStmt:
 				_outGrantStmt(str, obj);
 				break;
+			case T_PrivGrantee:
+				_outPrivGrantee(str, obj);
+				break;
+			case T_FuncWithArgs:
+				_outFuncWithArgs(str, obj);
+				break;
+			case T_LockStmt:
+				_outLockStmt(str, obj);
+				break;
 
 			case T_CreateStmt:
 				_outCreateStmt(str, obj);
@@ -2322,6 +2413,21 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_DropUserStmt:
 				_outDropUserStmt(str, obj);
+				break;
+			case T_AlterUserStmt:
+				_outAlterUserStmt(str, obj);
+				break;
+			case T_AlterUserSetStmt:
+				_outAlterUserSetStmt(str, obj);
+				break;
+			case T_CreateGroupStmt:
+				_outCreateGroupStmt(str, obj);
+				break;
+			case T_DropGroupStmt:
+				_outDropGroupStmt(str, obj);
+				break;
+			case T_AlterGroupStmt:
+				_outAlterGroupStmt(str, obj);
 				break;
 
 			case T_RenameStmt:
