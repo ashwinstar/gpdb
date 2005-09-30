@@ -507,7 +507,13 @@ DefineRelation(CreateStmt *stmt, char relkind)
 					strcmp(n,"point") == 0)
 					ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					  errmsg("Datatype not supported by Bizgres MPP because we don't know how to hash it")));
+					  errmsg("Datatype is not yet supported by Bizgres MPP")));
+					  
+				if (colDef->typename->arrayBounds != NIL)
+					ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					  errmsg("Array Datatypes are not yet supported by Bizgres MPP")));
+			 	
 				
 			}
 			
@@ -3151,6 +3157,64 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 		}
 	}
 
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+			ListCell *listp2;
+			
+			foreach(listp2, colDef->typename->names) 
+			{
+				Value * v = lfirst(listp2);
+				char * n = NULL;
+				if (v)
+					n = v->val.str;
+				 
+	
+			 
+			 	if (n)
+				if (strcmp(n,"oid")==0 ||
+					strcmp(n,"path") == 0 ||
+					strcmp(n,"bit") == 0 ||
+					strcmp(n,"box") == 0 ||
+					strcmp(n,"circle") == 0 ||
+					strcmp(n,"inet") == 0 ||
+					strcmp(n,"abstime") == 0 ||
+					strcmp(n,"reltime") == 0 ||
+					strcmp(n,"tinterval") == 0 ||
+					strcmp(n,"bytea") == 0 ||
+					strcmp(n,"int2vector") == 0 ||
+					strcmp(n,"regproc") == 0 ||
+					strcmp(n,"vector") == 0 ||
+					strcmp(n,"lseg") == 0 ||
+					strcmp(n,"polygon") == 0 ||
+					strcmp(n,"line") == 0 ||
+					strcmp(n,"unknown") == 0 ||
+					strcmp(n,"cash") == 0 ||
+					strcmp(n,"macaddr") == 0 ||
+					strcmp(n,"cidr") == 0 ||
+					strcmp(n,"int4array") == 0 ||
+					strcmp(n,"aclitem") == 0 ||
+					strcmp(n,"varbit") == 0 ||
+					strcmp(n,"record") == 0 ||
+					strcmp(n,"any") == 0 ||
+					strcmp(n,"anyarray") == 0 ||
+					strcmp(n,"void") == 0 ||
+					strcmp(n,"opaque") == 0 ||
+					strcmp(n,"money") == 0 ||
+					strcmp(n,"anyelement") == 0 ||
+					strcmp(n,"cstring") == 0 ||
+					strcmp(n,"point") == 0)
+					ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					  errmsg("Datatype is not yet supported by Bizgres MPP")));
+					  
+				if (colDef->typename->arrayBounds != NIL)
+					ereport(ERROR,
+						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					  errmsg("Array Datatypes are not yet supported by Bizgres MPP")));
+			 	
+			}
+		
+	}
 	pgclass = heap_openr(RelationRelationName, RowExclusiveLock);
 
 	reltup = SearchSysCacheCopy(RELOID,
