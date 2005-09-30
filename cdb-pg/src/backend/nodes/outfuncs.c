@@ -1490,6 +1490,19 @@ _outCdbExecStmt(StringInfo str, CdbExecStmt *node)
 	WRITE_NODE_FIELD(ser_sliceinfo);
 }
 
+static void 
+_outGrantStmt(StringInfo str, GrantStmt *node)
+{
+	WRITE_NODE_TYPE("GRANTSTMT");
+	WRITE_BOOL_FIELD(is_grant);		 
+	WRITE_ENUM_FIELD(objtype,GrantObjectType);	 
+	WRITE_NODE_FIELD(objects);		 
+	WRITE_NODE_FIELD(privileges);		 
+	WRITE_NODE_FIELD(grantees);		 
+	WRITE_BOOL_FIELD(grant_option);	 
+	WRITE_ENUM_FIELD(behavior, DropBehavior);		 
+}
+
 
 static void
 _outSelectStmt(StringInfo str, SelectStmt *node)
@@ -1623,6 +1636,7 @@ _outQuery(StringInfo str, Query *node)
 			case T_CreatedbStmt:
 			case T_TransactionStmt:
 			case T_CdbExecStmt:
+			case T_GrantStmt:
 				WRITE_NODE_FIELD(utilityStmt);
 				break;
 
@@ -2274,6 +2288,10 @@ _outNode(StringInfo str, void *obj)
 			case T_InClauseInfo:
 				_outInClauseInfo(str, obj);
 				break;
+				
+			case T_GrantStmt:
+				_outGrantStmt(str, obj);
+				break;
 
 			case T_CreateStmt:
 				_outCreateStmt(str, obj);
@@ -2417,8 +2435,13 @@ _outNode(StringInfo str, void *obj)
 				 * to dump structures that _outNode only understands part
 				 * of.
 				 */
-				elog(WARNING, "could not dump unrecognized node type: %d",
-					 (int) nodeTag(obj));
+				if (Mpp_role == MPP_ROLE_DISPATCH)
+					elog(ERROR, "could not serialize unrecognized node type: %d",
+						 (int) nodeTag(obj));
+				else
+				
+					elog(WARNING, "could not dump unrecognized node type: %d",
+						 (int) nodeTag(obj));
 				break;
 		}
 		appendStringInfoChar(str, '}');
