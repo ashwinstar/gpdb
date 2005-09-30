@@ -2049,13 +2049,16 @@ ProcessInterrupts(void)
 	}
 	if (QueryCancelPending)
 	{
-		QueryCancelPending = false;
+        char   *msg = (Mpp_role == MPP_ROLE_EXECUTE)
+                        ? "canceled by QD"
+                        : "canceling query due to user request";
+        QueryCancelPending = false;
 		ImmediateInterruptOK = false;	/* not idle anymore */
 		DisableNotifyInterrupt();
 		DisableCatchupInterrupt();
 		ereport(ERROR,
 				(errcode(ERRCODE_QUERY_CANCELED),
-				 errmsg("canceling query due to user request")));
+				 errmsg(msg)));
 	}
 	/* If we get here, do nothing (probably, QueryCancelPending was reset) */
 }
