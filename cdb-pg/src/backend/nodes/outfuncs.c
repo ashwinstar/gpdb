@@ -31,6 +31,7 @@
 #include "nodes/relation.h"
 #include "utils/datum.h"
 #include "utils/lsyscache.h"  /* For get_typlenbyval */
+#include "cdb/cdbvars.h"
 
 /*
  * Macros to simplify output of different kinds of fields.	Use these
