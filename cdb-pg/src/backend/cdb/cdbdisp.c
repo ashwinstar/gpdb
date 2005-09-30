@@ -106,6 +106,23 @@ typedef struct
 static void *thread_DispatchCommand(void *arg);
 
 
+static bool shouldStillDispatchCommand( SegmentDatabaseDescriptor *segdbDesc, 
+							 			bool cancelFromBelow);
+							 			
+static bool dispatchCommand( SegmentDatabaseDescriptor *segdbDesc,
+							 const char *szCommand,
+							 bool cancelFromBelow );
+							 
+static void handleSelectError( RunningInfo *stillRunning,
+							   int stillRunningCount,	
+	  					       SegmentDatabaseDescriptor *segdbDesc, 
+					    	   bool cancelFromBelow );							 
+
+static void checkForBadConnections( RunningInfo *stillRunning ,int *stillRunningCount, bool cancelFromBelow);
+
+static void handleSelectTimeout( RunningInfo *stillRunning, int *stillRunningCount );
+static void processResults( RunningInfo *segInfo, bool cancelFromBelow, PGresult  **pqresults, int db_count, int *resultCount );
+
 
 static void
 addSegDBToDispatchThreadPool(DispatchCommandParms * ParmsAr,
@@ -250,6 +267,23 @@ CdbDispatchToGang(const char *szCommand, Gang * gp,
 					  "there is no connection.", szCommand, q->segindex,
 					  (q->isprimary ? 't' : 'f'))));
 
+		}
+		
+		/* TODO: is it really possible that all of these could be not null?
+		 *       mostly there were moved here to get them out of all the rest of
+		 *		 the code and to concentrate them here in one place. 
+		 */
+		 
+		if( segdbDesc->error_message != NULL )
+		{
+			pfree(segdbDesc->error_message);
+			segdbDesc->error_message = NULL;
+		}
+		
+		if( segdbDesc->cmdStatus != NULL )
+		{
+			pfree(segdbDesc->cmdStatus);
+			segdbDesc->cmdStatus = NULL;
 		}
 
 		addSegDBToDispatchThreadPool(dispatchCommandParmsAr + threadCount,
@@ -601,20 +635,22 @@ void *
 thread_DispatchCommand(void *arg)
 {
 	DispatchCommandParms *pParms = (DispatchCommandParms *) arg;
-	const char *szCommand = pParms->szCommand;
+	const char 			 *szCommand = pParms->szCommand;
 	SegmentDatabaseDescriptor **segdbDescPtrArray = pParms->segdbDescPtrArray;
 	int			db_count = pParms->db_count;
 	bool		cancelFromBelow = pParms->cancelFromBelow;
 	int			i;
 	SegmentDatabaseDescriptor *segdbDesc;
-	CdbComponentDatabaseInfo *q;
-	PGconn	   *conn = NULL;
+	PGconn	   	*conn = NULL;
 	RunningInfo *stillRunning = NULL;
+	PGresult  	**pqresults = NULL;
+	
 	int			stillRunningCount = 0;
-	int			counter = 0;
-	PGresult  **pqresults = NULL;
-	int			resultSetCounter = 0;
+	int 		resultCount = 0;	
+	
 
+	fd_set input_mask, input_mask_copy;
+	int max_sock = 0;
 
 	/*
 	 * In threads, we cannot use palloc, because it's not thread safe.
@@ -630,320 +666,92 @@ thread_DispatchCommand(void *arg)
 	 */
 	for (i = 0; i < db_count; i++)
 	{
-		/*
-		 * Don't use elog, it's not thread-safe
-		 */
+		/* Don't use elog, it's not thread-safe */
 		if (DEBUG3 >= log_min_messages)
 			fprintf(stderr, "thread_DispatchCommand working on %d of %d commands\n", i, db_count);
 
 		segdbDesc = segdbDescPtrArray[i];
-		conn = segdbDesc->conn;
-		q = segdbDesc->segment_database_info;
-		Assert(q != NULL);
 
-		if (QueryCancelPending)
+
+		if( shouldStillDispatchCommand( segdbDesc, cancelFromBelow) )
 		{
-			/*
-			 * If there was a cancellation notice before we submit the command,
-			 * then don't submit.
-			 */
-
-			PQExpBufferData buffer;
-
-			if (segdbDesc->error_message != NULL)
-				free(segdbDesc->error_message);
-			segdbDesc->error_message = NULL;
-
-			if (cancelledByUs)
-				continue;
-
-			initPQExpBuffer(&buffer);
-
-			appendPQExpBuffer(&buffer,
-							  "Cancellation request noticed before command was issued to segment database"
-							  "segindex %d isprimary %c", q->segindex,
-							  (q->isprimary ? 't' : 'f')),
-				segdbDesc->error_message = buffer.data;
-			continue;
-		}
-
-		/*
-		 * conn should never be NULL, but if it is, or if the status is BAD,
-		 * then don't submit.
-		 */
-		if (conn == NULL || PQstatus(conn) == CONNECTION_BAD)
-		{
-			PQExpBufferData buffer;
-
-			initPQExpBuffer(&buffer);
-			/*
-			 * Don't use elog, it's not thread-safe
-			 */
-			/*
-			 * if (DEBUG3 >= log_min_messages)
-			 * fprintf(stderr,, "thread_DispatchCommand connection bad \n");
-			 */
-
-			appendPQExpBuffer(&buffer,
-							  "Cannot issue command to segment database"
-				  "segindex %d isprimary %c, because there is no connection",
-							  q->segindex, (q->isprimary ? 't' : 'f')),
-				segdbDesc->error_message = buffer.data;
-			if (cancelFromBelow)
+			/* actually kick off the command over the libpq connection. */
+			if( dispatchCommand( segdbDesc, szCommand, cancelFromBelow ) )
 			{
-				setCancelFlag();
-				cancelledByUs = true;
+				/*
+				 * OK, command was successfully submitted. Add to the stillRunning array
+				 * so we can monitor it.
+				 */
+				stillRunning[stillRunningCount].segdbDesc = segdbDesc;
+				stillRunning[stillRunningCount].requestedCancel = false;
+				stillRunningCount++;
 			}
-			continue;
 		}
-
-
-		/*
-		 * Don't use elog, it's not thread-safe
-		 */
-		if (DEBUG3 >= log_min_messages)
-			fprintf(stderr,
-				 "thread_DispatchCommand sending command %.40s...\n sent to "
-					"port: %s with options %s and motionListener: %d\n",
-					szCommand, PQport(conn), PQoptions(conn),
-					PQmotionListener(conn));
-
-		/*
-		 * Submit the command asynchronously.
-		 */
-		if (0 == PQsendQuery(conn, szCommand))
-		{
-			PQExpBufferData buffer;
-
-			initPQExpBuffer(&buffer);
-
-			/*
-			 * Don't use elog, it's not thread-safe
-			 */
-			if (DEBUG3 >= log_min_messages)
-				fprintf(stderr, "thread_DispatchCommand failed to send %s\n",
-						szCommand);
-
-			appendPQExpBuffer(&buffer, "SQL Command dispatch error: "
-							  "segindex %d isprimary %c, %s",
-							  q->segindex, (q->isprimary ? 't' : 'f'),
-							  PQerrorMessage(conn));
-			segdbDesc->error_message = buffer.data;
-			if (cancelFromBelow)
-			{
-				setCancelFlag();
-				cancelledByUs = true;
-			}
-			continue;
-		}
-
-		/*
-		 * OK, command was successfully submitted. Add to the stillRunning array
-		 * so we can monitor it.
-		 */
-		stillRunning[stillRunningCount].segdbDesc = segdbDesc;
-		stillRunning[stillRunningCount].requestedCancel = false;
-		stillRunningCount++;
 	}
 
+
+	
+	FD_ZERO(&input_mask);
+	for (i = 0; i < stillRunningCount; i++)
+	{
+		int			sock;
+
+		conn = stillRunning[i].segdbDesc->conn;
+		sock = PQsocket(conn);
+		FD_SET(sock, &input_mask);
+		max_sock = max_sock < sock ? sock : max_sock;
+	}
+	
 	/*
 	 * OK, we are finished submitting the commnad to the segdbs.
 	 * Now, we have to wait for them to finish.
 	 */
 	while (stillRunningCount > 0)
 	{
-		/*
-		 * Make sure to do the setup for input_mask and tv each time that
-		 * select is called.  select changes their values!
-		 */
-		fd_set		input_mask;
-		int			max_sock = 0;
+		/* Make sure to do the setup for tv each time that select is called.  
+		 * select changes their values!
+		 */		
 		int			n;
-		int			x = 0;
 		struct timeval tv;
 
 		tv.tv_sec = 2;
 		tv.tv_usec = 0;
 
 
-		FD_ZERO(&input_mask);
 
+		/* reset out input_mask from the master copy. since select() 
+		   changes the values of input_mask_copy each time.
+		 */
+		memcpy(&input_mask_copy, &input_mask, sizeof(fd_set));
 
-		for (i = 0; i < stillRunningCount; i++)
-		{
-			int			sock;
-
-			conn = stillRunning[i].segdbDesc->conn;
-			sock = PQsocket(conn);
-			FD_SET(sock, &input_mask);
-			max_sock = max_sock < sock ? sock : max_sock;
-		}
-
-
-
-		n = select(max_sock + 1, &input_mask, NULL, NULL, &tv);
+		n = select(max_sock + 1, &input_mask_copy, NULL, NULL, &tv);
 
 
 		if (n < 0)
 		{
-			PQExpBufferData buffer;
-
 			if (SOCK_ERRNO == EINTR)
-			{
 				continue;
-			}
-
-			/*
-			 * Based on the select man page, we could get here with
-			 * errno == EBADF (bad descriptor), EINVAL (highest descriptor negative or negative timeout)
-			 * or ENOMEM (out of memory).
-			 * Since this is most likely a programming error or a bad system
-			 * failure, we will just error out all remaining threads.
-			 */
-
-			initPQExpBuffer(&buffer);
-			appendPQExpBuffer(&buffer, "SQL Command error: socket select returned error, command status unknown.");
-			for (i = 0; i < stillRunningCount; i++)
+			else
 			{
-				segdbDesc = stillRunning[i].segdbDesc;
-				if (segdbDesc->error_message != NULL)
-				{
-					free(segdbDesc->error_message);
-					segdbDesc->error_message = NULL;
-				}
-				segdbDesc->error_message = strdup(buffer.data);
+				handleSelectError( stillRunning, stillRunningCount, segdbDesc, cancelFromBelow );
+				return NULL;
 			}
-
-			if (cancelFromBelow)
-			{
-				setCancelFlag();
-				cancelledByUs = true;
-			}
-
-			free(buffer.data);
-			free(stillRunning);
-			return NULL;
 		}
+
 
 		/*
 		 * Before doing anything else, see whether any of the remaining connections went down.
 		 * Hopefully in this way we can detect a dropped connection quickly.
 		 */
-		x = 0;
+		checkForBadConnections( stillRunning, &stillRunningCount, cancelFromBelow);
 
-		for (i = 0; i < stillRunningCount; i++)
-		{
-			segdbDesc = stillRunning[i].segdbDesc;
-			conn = segdbDesc->conn;
-			if (PQstatus(conn) == CONNECTION_BAD)
-			{
-				PQExpBufferData buffer;
-
-				q = segdbDesc->segment_database_info;
-				Assert(q != NULL);
-
-
-				initPQExpBuffer(&buffer);
-				appendPQExpBuffer(&buffer,
-								  "SQL Command error: lost connection for "
-								  "segindex %d isprimary %c", q->segindex,
-								  (q->isprimary ? 't' : 'f'));
-				segdbDesc->error_message = buffer.data;
-				if (cancelFromBelow)
-				{
-					setCancelFlag();
-					cancelledByUs = true;
-				}
-			}
-			else
-			{
-				stillRunning[x++] = stillRunning[i];
-			}
-		}
-
-		stillRunningCount = x;
-		/*
-		 * Don't use elog, it's not thread-safe
-		 */
-		/*
-		 * if (DEBUG3 >= log_min_messages)
-		 * fprintf(stderr, "thread_DispatchCommand stillRunningCount %d \n",stillRunningCount);
-		 */
 
 		if (n == 0)
 		{
-			/*
-			 * This is a timeout.  Check to see whether we should cancel.
-			 */
-			if (QueryCancelPending)
-			{
-				for (i = 0; i < stillRunningCount; i++)
-				{
-					if (!stillRunning[i].requestedCancel)
-					{
-						conn = stillRunning[i].segdbDesc->conn;
-						PQrequestCancel(conn);
-						stillRunning[i].requestedCancel = true;
-					}
-				}
-			}
-
-			/*
-			 * check the connection still valid, set 1 min time interval
-			  * this may affect performance, should turn it off if required.
-			 */
-			if (counter++ > 30)
-			{
-				int			x = 0;
-				bool		sampling = true;
-
-				for (i = 0; i < stillRunningCount; i++)
-				{
-					segdbDesc = stillRunning[i].segdbDesc;
-					if (!FtsTestConnection(segdbDesc->segment_database_info, segdbDesc->conn->dbName))
-					{
-						PQExpBufferData buffer;
-
-						q = segdbDesc->segment_database_info;
-
-						initPQExpBuffer(&buffer);
-						appendPQExpBuffer(&buffer,
-									"SQL Command error: lost connection for "
-										  "segindex %d isprimary %c",
-										  q->segindex,
-										  (q->isprimary ? 't' : 'f'));
-						segdbDesc->error_message = buffer.data;
-						conn->status = CONNECTION_BAD;
-						sampling = false;
-						/*
-						 * free connection is done in ftsReconnect
-						 */
-
-						/*
-						 * PQfinish(segdbDesc->conn);
-						 * segdbDesc->conn = NULL;
-						 */
-					}
-					else
-					{
-                         /* for performance reason, we do just sampling here
-                          * for now, the first one is picked.
-                          */
-                         if (sampling)
-                         {
-                             x = stillRunningCount;
-                             break;
-                         } 
-						stillRunning[x++] = stillRunning[i];
-					}
-				}
-				stillRunningCount = x;
-
-				counter = 0;
-			}
-
+			handleSelectTimeout( stillRunning, &stillRunningCount );
 			continue;
 		}
+
 
 		if (n > 0)
 		{
@@ -954,131 +762,20 @@ thread_DispatchCommand(void *arg)
 
 			for (i = 0; i < stillRunningCount; i++)
 			{
-				int			sock;
-
-				segdbDesc = stillRunning[i].segdbDesc;
-				conn = segdbDesc->conn;
-				/*
-				 * Don't use elog, it's not thread-safe
-				 */
-
-				/*
-				 * if (DEBUG3 >= log_min_messages)
-				 * fprintf(stderr, "thread_DispatchCommand checking on connection %d \n",i);
-				 */
-				q = segdbDesc->segment_database_info;
-				Assert(q != NULL);
-
-
-				sock = PQsocket(conn);
-				/*
-				 * Don't use elog, it's not thread-safe
-				 */
+				PGconn *conn = stillRunning[i].segdbDesc->conn;
+				int sock = PQsocket(conn);
+				
+	
+				/* Don't use elog, it's not thread-safe */
+				 
 				/*
 				 * if (DEBUG3 >= log_min_messages)
 				 * fprintf(stderr, "thread_DispatchCommand checking on sock %d \n",sock);
 				 */
-				if (FD_ISSET(sock, &input_mask))
+				if (FD_ISSET(sock, &input_mask_copy))
 				{
-					/*
-					 * Our strategy is once we have some data for a socket,
-					 * wait for it all, since this function is used for commands
-					 * that really only return 1 result, not set returning commands
-					 * that might return many.
-					 */
-
-					/*
-					 * It is critical that for any connection that had an asynchronous
-					 * command sent thru it, we call PQgetResult until it returns NULL.
-					 * Otherwise, the next time a command is sent to that connection,
-					 * it will return an error that there's a command pending.
-					 */
-					PGresult   *pRes;
-
-					while (NULL != (pRes = PQgetResult(conn)))
-					{
-						segdbDesc->resultStatus = PQresultStatus(pRes);
-
-						/*
-						 * Don't use elog, it's not thread-safe
-						 *
-						 */
-						/*
-						 * if (DEBUG3 >= log_min_messages)
-						 * fprintf(stderr, "thread_DispatchCommand resultStatus %d\n",segdbDesc->resultStatus);
-						 */
-						if (PGRES_COMMAND_OK != segdbDesc->resultStatus &&
-							PGRES_TUPLES_OK != segdbDesc->resultStatus)
-						{
-							PQExpBufferData buffer;
-
-							char	   *pqerrormsg = PQerrorMessage(conn);
-
-							if (segdbDesc->error_message != NULL)
-							{
-								free(segdbDesc->error_message);
-								segdbDesc->error_message = NULL;
-							}
-
-							initPQExpBuffer(&buffer);
-
-							/*
-							 * If we requested a cancel, and we got back "cancelled", that's not really an error
-							 *
-							 */
-
-							if (cancelledByUs && stillRunning[i].requestedCancel &&
-								strcmp(pqerrormsg, "ERROR:  canceling query due to user request\n") == 0)
-							{
-								segdbDesc->resultStatus = 0;
-							}
-							else
-			 				{
-								appendPQExpBuffer(&buffer, "%s",pqerrormsg);
-								segdbDesc->error_message = buffer.data;
-							}
-
-
-
-
-
-							if (cancelFromBelow)
-							{
-								setCancelFlag();
-								cancelledByUs = true;
-							}
-
-						}
-						else
-						{
-							char	   *cmdTuples;
-							char	   *cmdStatus = PQcmdStatus(pRes);
-
-							if (segdbDesc->cmdStatus != NULL)
-							{
-								free(segdbDesc->cmdStatus);
-								segdbDesc->cmdStatus = NULL;
-							}
-
-							if (cmdStatus != NULL)
-								segdbDesc->cmdStatus = strdup(cmdStatus);
-
-							cmdTuples = PQcmdTuples(pRes);
-							if (cmdTuples != NULL)
-								segdbDesc->cmdTuples = atoi(cmdTuples);
-						}
-
-						if (pqresults != NULL)
-						{
-							/* check array index is in bounds */
-							Assert(resultSetCounter < db_count);
-							/* TODO: not handling multiple result sets */
-							Assert(pqresults[resultSetCounter] == NULL);
-							pqresults[resultSetCounter++] = pRes;
-						}
-						else
-							PQclear(pRes);
-					}
+					processResults( &(stillRunning[i]), cancelFromBelow, pqresults, db_count, &resultCount );
+					resultCount++;
 				}
 				else
 				{
@@ -1112,6 +809,416 @@ thread_DispatchCommand(void *arg)
 	return (NULL);
 }
 
+/* Helper function to thread_DispatchCommand that decides if we should dispatch
+ * to this segment database.
+ * 
+ * (1) don't dispatch if there is already a query cancel notice pending. 
+ * (2) make sure our libpq connection is still good.
+ *
+ * NOTE: since this is called via a thread, the same rules apply as to
+ *       thread_DispatchCommand absolutely no elog'ing.
+ *
+ * cancelledByUS is a global?
+ */
+bool
+shouldStillDispatchCommand( SegmentDatabaseDescriptor *segdbDesc, 
+							bool cancelFromBelow)
+{
+	CdbComponentDatabaseInfo *q    = segdbDesc->segment_database_info;
+	PGconn 					 *conn = segdbDesc->conn;
+		
+	Assert(q != NULL);
+
+	if (QueryCancelPending)
+	{
+		/* If there was a cancellation notice before we submit the command,
+		 * then don't submit.
+		 */
+		segdbDesc->error_message = NULL;
+
+		if ( !cancelledByUs )
+		{					
+			PQExpBufferData buffer;
+			initPQExpBuffer(&buffer);
+
+			appendPQExpBuffer(&buffer,
+							  "Cancellation request noticed before command was issued to segment database"
+							  "segindex %d isprimary %c", q->segindex,
+							  (q->isprimary ? 't' : 'f'));
+							  
+			segdbDesc->error_message = buffer.data;
+		}
+		
+		return false;
+	}
+
+	/*
+	 * conn should never be NULL, but if it is, or if the status is BAD,
+	 * then don't submit.
+	 */
+	if (conn == NULL || PQstatus(conn) != CONNECTION_OK)
+	{
+		PQExpBufferData buffer;
+		ConnStatusType connStatus;
+		
+		initPQExpBuffer(&buffer);
+		
+		connStatus = PQstatus(conn);
+		
+		/*Don't use elog, it's not thread-safe*/			
+		if (DEBUG3 >= log_min_messages)
+		{
+			fprintf(stderr, "thread_DispatchCommand connection bad: status: %d to segindex: %d "
+							"isprimary %c not dispatching command \n", connStatus,
+							q->segindex, (q->isprimary ? 't' : 'f'));
+		} 
+
+		appendPQExpBuffer(&buffer,
+						  "Cannot issue command to segment database"
+						  "segindex %d isprimary %c, because there is a problem with the connection:"
+						  " connStatus: %d", q->segindex, (q->isprimary ? 't' : 'f'), connStatus);
+						  
+		segdbDesc->error_message = buffer.data;
+		
+		if (cancelFromBelow)
+		{
+			setCancelFlag();
+			cancelledByUs = true;
+		}
+		
+		return false;
+	}
+	
+	return true;
+}
+
+
+/* Helper function to thread_DispatchCommand that actually kicks off the 
+ * command on the libpq connection.
+ *
+ * NOTE: since this is called via a thread, the same rules apply as to
+ *       thread_DispatchCommand absolutely no elog'ing.
+ *
+ * cancelledByUS is a global?
+ */
+bool
+dispatchCommand( SegmentDatabaseDescriptor *segdbDesc, const char *szCommand,
+				 bool cancelFromBelow)
+{
+	CdbComponentDatabaseInfo *q    = segdbDesc->segment_database_info;
+	PGconn 					 *conn = segdbDesc->conn;	
+
+	/*
+	 * Don't use elog, it's not thread-safe
+	 */
+	if (DEBUG3 >= log_min_messages)
+	{
+		fprintf(stderr,
+			 "thread_DispatchCommand sending command %.40s...\n sent to "
+				"port: %s with options %s and motionListener: %d\n",
+				szCommand, PQport(conn), PQoptions(conn),
+				PQmotionListener(conn));
+	}
+	
+	/*
+	 * Submit the command asynchronously.
+	 */
+	if (0 == PQsendQuery(conn, szCommand))
+	{
+		PQExpBufferData buffer;
+
+		initPQExpBuffer(&buffer);
+
+		/*
+		 * Don't use elog, it's not thread-safe
+		 */
+		if (DEBUG3 >= log_min_messages)
+			fprintf(stderr, "thread_DispatchCommand failed to send %s\n",
+					szCommand);
+
+		appendPQExpBuffer(&buffer, "SQL Command dispatch error: "
+						  "segindex %d isprimary %c, %s",
+						  q->segindex, (q->isprimary ? 't' : 'f'),
+						  PQerrorMessage(conn));
+		segdbDesc->error_message = buffer.data;
+		
+		if (cancelFromBelow)
+		{
+			setCancelFlag();
+			cancelledByUs = true;
+		}
+		
+		/* signal that we had some issues. */
+		return false;
+	}
+	
+	return true;
+}
+
+
+/* Helper function to thread_DispatchCommand that handles errors that occur
+ * during the select() call.
+ *
+ * NOTE: since this is called via a thread, the same rules apply as to
+ *       thread_DispatchCommand absolutely no elog'ing.
+ *
+ * cancelledByUS is a global?
+ */
+void handleSelectError( RunningInfo *stillRunning, 
+						int stillRunningCount,
+					    SegmentDatabaseDescriptor *segdbDesc, 
+					    bool cancelFromBelow )
+{
+	PQExpBufferData buffer;
+	int i;
+	
+	/*
+	 * Don't use elog, it's not thread-safe
+	 */
+	if (DEBUG3 >= log_min_messages)
+		fprintf(stderr, "thread_DispatchCommand encountered an error during select() with errno: %d\n",
+				errno);
+				
+	/*
+	 * Based on the select man page, we could get here with
+	 * errno == EBADF (bad descriptor), EINVAL (highest descriptor negative or negative timeout)
+	 * or ENOMEM (out of memory).
+	 * Since this is most likely a programming error or a bad system
+	 * failure, we will just error out all remaining threads.
+	 */
+
+	initPQExpBuffer(&buffer);
+	appendPQExpBuffer(&buffer, "SQL Command error: socket select returned error, command status unknown.");
+	
+	for (i = 0; i < stillRunningCount; i++)
+	{
+		segdbDesc = stillRunning[i].segdbDesc;	
+		segdbDesc->error_message = strdup(buffer.data);
+	}
+
+	if (cancelFromBelow)
+	{
+		setCancelFlag();
+		cancelledByUs = true;
+	}
+
+	free(buffer.data);
+	free(stillRunning);
+	
+}
+
+
+void checkForBadConnections( RunningInfo *stillRunning ,int *stillRunningCount, bool cancelFromBelow)
+{
+	SegmentDatabaseDescriptor *segdbDesc;
+	CdbComponentDatabaseInfo  *q;
+	PGconn 					  *conn;
+	
+	int x = 0;
+	int i;
+	
+	for (i = 0; i < *stillRunningCount; i++)
+	{
+		segdbDesc = stillRunning[i].segdbDesc;
+		conn = segdbDesc->conn;
+		
+		if (PQstatus(conn) == CONNECTION_BAD)
+		{
+			PQExpBufferData buffer;
+
+			q = segdbDesc->segment_database_info;
+			Assert(q != NULL);
+
+
+			initPQExpBuffer(&buffer);
+			appendPQExpBuffer(&buffer,
+							  "SQL Command error: lost connection for "
+							  "segindex %d isprimary %c", q->segindex,
+							  (q->isprimary ? 't' : 'f'));
+			segdbDesc->error_message = buffer.data;
+			if (cancelFromBelow)
+			{
+				setCancelFlag();
+				cancelledByUs = true;
+			}
+		}
+		else
+		{
+			stillRunning[x++] = stillRunning[i];
+		}
+	}
+
+	*stillRunningCount = x;
+}
+
+
+
+/* Helper function to thread_DispatchCommand that handles timeouts that occur
+ * during the select() call.
+ *
+ * NOTE: since this is called via a thread, the same rules apply as to
+ *       thread_DispatchCommand absolutely no elog'ing.
+ *
+ * cancelledByUS is a global?
+ */
+void handleSelectTimeout( RunningInfo *stillRunning, 
+						  int *stillRunningCount )
+{
+	int			counter = 0;
+	SegmentDatabaseDescriptor *segdbDesc;
+	CdbComponentDatabaseInfo  *q;
+	int i;
+	
+	/*
+	 * This is a timeout.  Check to see whether we should cancel.
+	 */
+	if (QueryCancelPending)
+	{
+		for (i = 0; i < *stillRunningCount; i++)
+		{
+			if (!stillRunning[i].requestedCancel)
+			{
+				PGconn *conn = stillRunning[i].segdbDesc->conn;
+				PQrequestCancel(conn);
+				stillRunning[i].requestedCancel = true;
+			}
+		}
+	}
+
+	/*
+	 * check the connection still valid, set 1 min time interval
+	  * this may affect performance, should turn it off if required.
+	 */
+	if (counter++ > 30)
+	{
+		int			x = 0;
+		bool		sampling = true;
+
+		for (i = 0; i < *stillRunningCount; i++)
+		{
+			segdbDesc = stillRunning[i].segdbDesc;
+			if (!FtsTestConnection(segdbDesc->segment_database_info, segdbDesc->conn->dbName))
+			{
+				PQExpBufferData buffer;
+
+				q = segdbDesc->segment_database_info;
+
+				initPQExpBuffer(&buffer);
+				appendPQExpBuffer(&buffer,
+							"SQL Command error: lost connection for "
+								  "segindex %d isprimary %c",
+								  q->segindex,
+								  (q->isprimary ? 't' : 'f'));
+				segdbDesc->error_message = buffer.data;
+				segdbDesc->conn->status = CONNECTION_BAD;
+				sampling = false;
+				
+				/* free connection and PQfinish() is done in ftsReconnect*/
+
+			}
+			else
+			{
+				 /* for performance reason, we do just sampling here
+				  * for now, the first one is picked.
+				  */
+				 if (sampling)
+				 {
+					 x = *stillRunningCount;
+					 break;
+				 } 
+				stillRunning[x++] = stillRunning[i];
+			}
+		}
+		*stillRunningCount = x;
+
+		counter = 0;
+	}
+
+}
+
+void processResults( RunningInfo *segInfo, bool cancelFromBelow, PGresult  	**pqresults, int db_count, int *resultCount )
+{
+	SegmentDatabaseDescriptor *segdbDesc = segInfo->segdbDesc;
+	CdbComponentDatabaseInfo  *q         = segdbDesc->segment_database_info;
+	PGconn 					  *conn      = segdbDesc->conn;				
+	
+	PGresult   *pRes;
+
+	
+	Assert(q != NULL);
+
+
+	/*
+	 * Our strategy is once we have some data for a socket,
+	 * wait for it all, since this function is used for commands
+	 * that really only return 1 result, not set returning commands
+	 * that might return many.
+	 */
+
+	/*
+	 * It is critical that for any connection that had an asynchronous
+	 * command sent thru it, we call PQgetResult until it returns NULL.
+	 * Otherwise, the next time a command is sent to that connection,
+	 * it will return an error that there's a command pending.
+	 */
+	while (NULL != (pRes = PQgetResult(conn)))
+	{
+		segdbDesc->resultStatus = PQresultStatus(pRes);
+		
+		if (PGRES_COMMAND_OK != segdbDesc->resultStatus &&
+			PGRES_TUPLES_OK != segdbDesc->resultStatus)
+		{
+			PQExpBufferData buffer;
+
+			char	   *pqerrormsg = PQerrorMessage(conn);
+
+			initPQExpBuffer(&buffer);
+
+			/* If we requested a cancel, and we got back "cancelled", 
+			 * that's not really an error
+			 */
+			if (cancelledByUs && segInfo->requestedCancel &&
+				strcmp(pqerrormsg, "ERROR:  canceling query due to user request\n") == 0)
+			{
+				segdbDesc->resultStatus = 0;
+			}
+			else
+			{
+				appendPQExpBuffer(&buffer, "%s",pqerrormsg);
+				segdbDesc->error_message = buffer.data;
+			}
+
+			if (cancelFromBelow)
+			{
+				setCancelFlag();
+				cancelledByUs = true;
+			}
+		}
+		else
+		{
+			char *cmdTuples;
+			char *cmdStatus = PQcmdStatus(pRes);
+
+			if (cmdStatus != NULL)
+				segdbDesc->cmdStatus = strdup(cmdStatus);
+
+			cmdTuples = PQcmdTuples(pRes);
+			if (cmdTuples != NULL)
+				segdbDesc->cmdTuples = atoi(cmdTuples);
+		}
+
+		if (pqresults != NULL)
+		{
+			/* check array index is in bounds */
+			Assert(*resultCount < db_count);
+			/* TODO: not handling multiple result sets */
+			Assert(pqresults[*resultCount] == NULL);
+			pqresults[*resultCount] = pRes;
+		}
+		else
+			PQclear(pRes);
+	}
+}
 
 
 
