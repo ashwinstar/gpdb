@@ -1348,6 +1348,20 @@ _outViewStmt(StringInfo str, ViewStmt *node)
 }
 
 static void
+_outRuleStmt(StringInfo str, RuleStmt *node)
+{
+	WRITE_NODE_TYPE("RULESTMT");
+
+	WRITE_NODE_FIELD(relation);
+	WRITE_STRING_FIELD(rulename);	
+	WRITE_NODE_FIELD(whereClause);
+	WRITE_ENUM_FIELD(event,CmdType);
+	WRITE_BOOL_FIELD(instead);
+	WRITE_NODE_FIELD(actions);	
+	WRITE_BOOL_FIELD(replace);
+}
+
+static void
 _outDropStmt(StringInfo str, DropStmt *node)
 {
 	WRITE_NODE_TYPE("DROPSTMT");
@@ -1701,6 +1715,7 @@ _outQuery(StringInfo str, Query *node)
 			case T_AlterTableStmt:
 			case T_AlterTableCmd:
 			case T_ViewStmt:
+			case T_RuleStmt:
 			case T_CreateUserStmt:
 			case T_AlterUserStmt:
 			case T_AlterUserSetStmt:
@@ -1725,7 +1740,7 @@ _outQuery(StringInfo str, Query *node)
 
 			default:
 				appendStringInfo(str, " :utilityStmt ?");
-				appendStringInfo(str, "%ud", nodeTag(node->utilityStmt));
+				appendStringInfo(str, "%u", nodeTag(node->utilityStmt));
 				break;
 		}
 	}
@@ -2393,6 +2408,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_ViewStmt:
 				_outViewStmt(str, obj);
+				break;
+			case T_RuleStmt:
+				_outRuleStmt(str, obj);
 				break;
 			case T_DropStmt:
 				_outDropStmt(str, obj);

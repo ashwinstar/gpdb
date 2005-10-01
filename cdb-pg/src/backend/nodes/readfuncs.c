@@ -473,6 +473,22 @@ _readViewStmt(void)
 	READ_DONE();
 }
 
+static RuleStmt *
+_readRuleStmt(void)
+{
+	READ_LOCALS(RuleStmt);
+
+	READ_NODE_FIELD(relation);
+	READ_STRING_FIELD(rulename);	
+	READ_NODE_FIELD(whereClause);
+	READ_ENUM_FIELD(event,CmdType);
+	READ_BOOL_FIELD(instead);
+	READ_NODE_FIELD(actions);	
+	READ_BOOL_FIELD(replace);	
+	
+	READ_DONE();
+}
+
 static DropStmt *
 _readDropStmt(void)
 {
@@ -2155,6 +2171,7 @@ static ParseNodeInfo infoAr[] =
 	{"RESULT", (ReadFn)_readResult},
 	{"ROW", (ReadFn)_readRowExpr},
 	{"RTE", (ReadFn)_readRangeTblEntry},
+	{"RULESTMT", (ReadFn)_readRuleStmt},
 	{"SCALARARRAYOPEXPR", (ReadFn)_readScalarArrayOpExpr},
 	{"SCAN", (ReadFn)_readScan},
 	{"SEQSCAN", (ReadFn)_readSeqScan},

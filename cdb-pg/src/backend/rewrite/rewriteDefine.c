@@ -493,10 +493,6 @@ DefineQueryRewrite(RuleStmt *stmt)
 	/* Close rel, but keep lock till commit... */
 	heap_close(event_relation, NoLock);
 	
-	if (Mpp_role == MPP_ROLE_DISPATCH)
-	{
-			CdbDispatchUtilityStatement((Node *)stmt);
-	}
 }
 
 /*

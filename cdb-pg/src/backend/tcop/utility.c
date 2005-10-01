@@ -935,6 +935,10 @@ ProcessUtility(Node *parsetree,
 		case T_RuleStmt:		/* CREATE RULE */
 			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			DefineQueryRewrite((RuleStmt *) parsetree);
+			if (Mpp_role == MPP_ROLE_DISPATCH)
+			{
+					CdbDispatchUtilityStatement((Node *)parsetree);
+			}
 			break;
 
 		case T_CreateSeqStmt:
