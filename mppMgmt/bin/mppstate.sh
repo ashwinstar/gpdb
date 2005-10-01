@@ -140,6 +140,12 @@ DATABASE_STATUS () {
 				GET_MPP_VERSION
 				GET_FAIL_SETTING
 				QD_PG_VERSION=`$PSQL -p $MASTER_PORT template1 -A -t -c"show server_version;"`
+				MIRROR_COUNT=`$PSQL -p $MASTER_PORT template1 -A -t -c"select count(dbid)/count(distinct(content)) from mpp.pgdatabase where content<>-1;"`
+				if [ $MIRROR_COUNT -ne 2 ]; then
+					MIRROR_CONFIG=Off
+				else
+					MIRROR_CONFIG=on
+				fi
 				LOG_MSG "[INFO]:-Master Configuration & Status"
 				LOG_MSG "[INFO]:--------------------------"
 				LOG_MSG "[INFO]:-Master host                   = $QD_NAME" 
@@ -149,6 +155,7 @@ DATABASE_STATUS () {
 				LOG_MSG "[INFO]:-MPP software version          = $MPP_VERSION"
 				LOG_MSG "[INFO]:-Postgres version              = $QD_PG_VERSION"
 				LOG_MSG "[INFO]:-MPP failure action            = $FAIL_TYPE"
+				LOG_MSG "[INFO]:-MPP mirroring status          = $MIRROR_CONFIG"
 				if [ -f $RECOVER_FLAG ]; then
 						LOG_MSG "[WARN]:-Active mpprecovernode.bsh     = True"
 				else
