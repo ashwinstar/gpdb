@@ -38,8 +38,17 @@ __date__ = "2005-09-26"
 
 import os, sys, threading, time, string, getpass, getopt, signal
 import lib.sshSessionModule as sshSessionModule, lib.threadpool as threadpool
+import readline, cmd, atexit
 
-class groupSession:
+#Read in the saved command history, if any
+histfile = os.path.join(os.environ["HOME"], ".gshist")
+try:
+    readline.read_history_file(histfile)
+except IOError:
+    pass
+atexit.register(readline.write_history_file, histfile)
+
+class groupSession(cmd.Cmd):
 	"A group of sessions attached to a set of remote hosts"
 
 	"""Init Args:
@@ -47,6 +56,10 @@ class groupSession:
 		port	= the port to communicate with
 		"""
 	def __init__(self,hosts,port=22):
+		cmd.Cmd.__init__(self)
+
+		self.prompt = "=> "
+		self.intro = "GroupSession - execute commands on a cluster of machines\n  \"help\" for a list of commands"
 
 		self.verbose = False
 
@@ -68,7 +81,119 @@ class groupSession:
 			#i = i+1
 			#print '%d %s %s %s' % (i, th.user, th.host, th.port)
 
-	def runCommand(self,cmd,args,begin=0,end=0):
+	#Command class overrides ------------------------------------------------
+	def default(self,line):
+		cmd = 'ssh'
+		args = [line,None]
+		
+		#Run the command on all sessions
+		interrupted = self.runCommand(cmd,args)
+
+
+	def do_rcopy(self,line):
+		i=0
+		source = None
+		dest = None
+		for str in line.split():
+			i = i+1
+			if i == 1:
+				source = str.strip()
+			if i == 2:
+				dest = str.strip()
+		if i > 2:
+			self.help_rcopy()
+			return
+
+		if source is None:
+			print 'source file (on this host): ',
+			source = sys.stdin.readline().strip()
+			print ''
+
+		if dest is None:
+			print 'destination file on remote host <'+source+'>: ',
+			dest = sys.stdin.readline().strip()
+			print ''
+
+		if dest == '':
+			dest = source
+
+		cmd = 'scp'
+		args = [source,dest]
+
+		#Run the command on all sessions
+		interrupted = self.runCommand(cmd,args)
+
+	def help_rcopy(self):
+		print '\nCopies the source file on this machine to a destination on the remote machine.'
+		print 'You can specify source and/or destination on the command line, or if either are'
+		print 'omitted, you will be prompted.\n'
+		print 'usage:\nrcopy [source_file] [dest_file]'
+
+	def emptyline(self):
+		pass
+
+	def do_hist(self, args):
+		"""Print a list of commands that have been entered"""
+		print self._hist
+
+	def precmd(self, line):
+		""" This method is called after the line has been input but before
+		it has been interpreted. If you want to modifdy the input line
+		before execution (for example, variable substitution) do it here.
+		"""
+		self._hist += [ line.strip() ]
+		return line
+
+	def postloop(self):
+		"""Take care of any unfinished business.
+		Despite the claims in the Cmd documentaion, Cmd.postloop() is not a stub.
+		"""
+		cmd.Cmd.postloop(self)   ## Clean up command completion
+		print "groupSession exit."
+
+	def preloop(self):
+		"""Initialization before prompting user for commands.
+		Despite the claims in the Cmd documentaion, Cmd.preloop() is not a stub.
+		"""
+		cmd.Cmd.preloop(self)   ## sets up command completion
+		self._hist    = []      ## No history yet
+		self._locals  = {}      ## Initialize execution namespace for user
+		self._globals = {}
+
+
+	def do_help(self, args):
+		"""groupSession help:
+		'help' or '?' with no arguments prints a list of commands for which help is available
+		'help <command>' or '? <command>' gives help on <command>
+		Other than these special commands, what you type will be executed on the remote hosts
+		"""
+		## The only reason to define this method is for the help text in the doc string
+		cmd.Cmd.do_help(self, args)
+
+	def do_exit(self, args):
+		"""Exits from the console"""
+		return -1
+
+	def do_quit(self,args):
+		"""Exits from the console"""
+		return -1
+
+	def do_q(self,args):
+		"""Exits from the console"""
+		return -1
+
+	## Command definitions to support Cmd object functionality ##
+	def do_EOF(self, args):
+		"""Exit on system end of file character"""
+		return self.do_exit(args)
+
+	def do_shell(self, args):
+		"""Pass command to a system shell when line begins with '!'"""
+		os.system(args)
+
+	#End command class overrides ------------------------------------------------
+
+	def runCommand(self,cmd,args,begin=0,end=0,quiet=False):
 		#This kludge is here because python doesn't support copiable iterators
 		if end == 0:
 			end = len(self.sessions)
@@ -96,6 +221,22 @@ class groupSession:
 				self.pool.wait()
 				interrupted=True
           			break
+
+		if not quiet:
+		  if not interrupted:
+			#Print the output
+			lastTmp = None
+			for th in self.sessions:
+				if th.lastoutput == lastTmp:
+					print '%-8s: %-s' % (th.host, 'Output from host ' + th.host + ' is the same as the last host')
+				else:
+			  		for str in th.lastoutput.splitlines(True):
+			    			print '%-8s: %-s' % (th.host, str),
+			  		lastTmp = th.lastoutput
+		  else:
+				print 'Command interrupted.'
+
+		  print ""
 
 		return interrupted
 
@@ -147,7 +288,7 @@ class groupSession:
 					#new default password and hostKeyPhrase
 					self.__initializeSessions(th.password,th.hostKeyPhrase,icurr)
 					#Run a parallel command to discover whether each host needs a PW or not
-					self.runCommand('ssh',['ls -ld '],icurr)
+					self.runCommand('ssh',['ls -ld '],icurr,len(self.sessions),True)
 
 
 					if not th.isReady():
@@ -253,63 +394,10 @@ if __name__ == '__main__':
 	#Create a groupSession object
 	gsession = groupSession(allHosts,22)
 
-	print 'Entering command prompt, ssh commands are executed on all hosts:\n'
-
 	#Register a signal handler for the TERM signal
 	signal.signal(signal.SIGTERM,gsession.handlerTERM)
 
-	cmd = None
-	args = []
-	#Run a command pass
-	while True:
-		print 'enter command (q to quit, @copy to copy file)> ',
-		command = sys.stdin.readline().strip()
-		print ""
-		if command == 'q':
-			break
-
-		if command == '':
-			pass
-
-		else:
-			if command[0] == '@':
-			  if command[1:] == 'copy':
-				print 'source file (on this host): ',
-				source = sys.stdin.readline().strip()
-				print ''
-				print 'destination file on remote host <'+source+'>: ',
-				dest = sys.stdin.readline().strip()
-				print ''
-				if dest == '':
-					dest = source
-				cmd = 'scp'
-				args = [source,dest]
-			  else:
-				#Not a known @ command
-				print 'That is not a known @ command'
-				continue
-			elif command == '!!':
-				pass
-			else:
-				cmd = 'ssh'
-				args = [command,None]
-		
-			#Run the command on all sessions
-			interrupted = gsession.runCommand(cmd,args)
-
-			if not interrupted:
-				#Print the output
-				lastTmp = None
-				for th in gsession.sessions:
-					if th.lastoutput == lastTmp:
-						print '%-8s: %-s' % (th.host, 'Output from host ' + th.host + ' is the same as the last host')
-					else:
-				  		for str in th.lastoutput.splitlines(True):
-				    			print '%-8s: %-s' % (th.host, str),
-				  		lastTmp = th.lastoutput
-			else:
-					print 'Command interrupted.'
-
-		print ""
+	#Run commands
+	gsession.cmdloop()
 
 	print 'Done with group session.'
