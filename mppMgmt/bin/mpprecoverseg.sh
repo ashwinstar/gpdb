@@ -107,6 +107,12 @@ GET_SETTING () {
 
 GET_MIRROR () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	#Now check to see that we have mirroring configured on this system
+	MIRROR_COUNT=`$PSQL -p $MASTER_PORT template1 -A -t -c"select count(dbid)/count(distinct(content)) from mpp.pgdatabase where content<>-1;"`
+	if [ $MIRROR_COUNT -ne 2 ]; then
+		LOG_MSG "[FATAL]:-Mirroring not configured on this MPP cluster"
+		ERROR_EXIT "[FATAL]:-Unable to continue" 2
+	fi
 	#Get a list of databases contained within the array
 	DB_LIST=(`$PSQL -p $MASTER_PORT template1 -R" " -A -t -c"select datname from pg_database where datallowconn<>'f';"`)
 	#Get a list of dbid's that are marked as invalid
@@ -129,12 +135,6 @@ GET_MIRROR () {
 	if [ ${#DB_MARKED_INVALID[@]} -eq 0 ];then
 		LOG_MSG "[INFO]:-No invalid segment instances located on array, script exits"
 		exit 0
-	fi
-	#Now check to see that we have mirroring configured on this system
-	MIRROR_COUNT=`$PSQL -p $MASTER_PORT template1 -A -t -c"select count(dbid)/count(distinct(content)) from mpp.pgdatabase where content<>-1;"`
-	if [ $MIRROR_COUNT -ne 2 ]; then
-		LOG_MSG "[FATAL]:-Mirroring not configured on this MPP cluster"
-		ERROR_EXIT "[FATAL]:-Unable to continue" 2
 	fi
 
 	#Now check to make sure that we can initiate recovery
