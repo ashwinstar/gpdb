@@ -38,15 +38,19 @@ __date__ = "2005-09-26"
 
 import os, sys, threading, time, string, getpass, getopt, signal
 import lib.sshSessionModule as sshSessionModule, lib.threadpool as threadpool
-import readline, cmd, atexit
-
-#Read in the saved command history, if any
-histfile = os.path.join(os.environ["HOME"], ".gshist")
+import cmd, atexit
 try:
-    readline.read_history_file(histfile)
-except IOError:
-    pass
-atexit.register(readline.write_history_file, histfile)
+	import readline
+	#Read in the saved command history, if any
+	histfile = os.path.join(os.environ["HOME"], ".gshist")
+	try:
+    		readline.read_history_file(histfile)
+	except IOError:
+    		pass
+	atexit.register(readline.write_history_file, histfile)
+except:
+	pass
+
 
 class groupSession(cmd.Cmd):
 	"A group of sessions attached to a set of remote hosts"
