@@ -53,3 +53,16 @@ mppstop.sh		Added ability to attempt force failed segment shutdown
 mppstart.sh		Added -m option to start master db in utility mode
 
 mppstop.sh		added -m option to shutdown master db in utility mode
+
+17:55 PST 30 Sept 2005
+mppstart.sh		Minor updates.
+
+mppstop.sh		Added additional processing to -z option
+			Added -r to restart cluster
+
+mppstate.sh		Provided additional status checking and QD postgres version #
+
+mpp_bash_functions.sh	Changes to support above updates and new recovery script.
+
+mpprecoverseg.sh	Script to recover failed primary or mirror segments.
+			Still under test at this stage.
