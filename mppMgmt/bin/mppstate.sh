@@ -132,13 +132,14 @@ DATABASE_STATUS () {
 		QD_VALID_COUNT=0
 		QD_NOTVALID_COUNT=0
 		if [ ! -s $MASTER_DATA_DIRECTORY/$PG_PID ]; then
-				ERROR_EXIT "[WARN]:-Query Dispatch database down" 1
+				ERROR_EXIT "[WARN]:-Master Dispatch database down" 1
 		else
 				QD_PID=`$HEAD -1 $MASTER_DATA_DIRECTORY/$PG_PID`
 				CHK_PG_PID $QD_PID
 				GET_QE_DETAILS
 				GET_MPP_VERSION
 				GET_FAIL_SETTING
+				QD_PG_VERSION=`$PSQL -p $MASTER_PORT template1 -A -t -c"show server_version;"`
 				LOG_MSG "[INFO]:-Master Configuration & Status"
 				LOG_MSG "[INFO]:--------------------------"
 				LOG_MSG "[INFO]:-Master host                   = $QD_NAME" 
@@ -146,6 +147,7 @@ DATABASE_STATUS () {
 				LOG_MSG "[INFO]:-Database name                 = $QD_DBNAME "
 				LOG_MSG "[INFO]:-Master port                   = $MASTER_PORT"
 				LOG_MSG "[INFO]:-MPP software version          = $MPP_VERSION"
+				LOG_MSG "[INFO]:-Postgres version              = $QD_PG_VERSION"
 				LOG_MSG "[INFO]:-MPP failure action            = $FAIL_TYPE"
 				if [ -f $RECOVER_FLAG ]; then
 						LOG_MSG "[WARN]:-Active mpprecovernode.bsh     = True"
@@ -170,13 +172,14 @@ DATABASE_STATUS () {
 								else
 									TYPE="mirror "
 								fi
-								QE_PID=`$TRUSTED_SHELL $QE_NAME "if [ -f $QE_DIR/$PG_PID ]; then $HEAD -1 $QE_DIR/$PG_PID;else echo 0
-						fi"` 2>> $LOG_FILE
+								QE_PID=`$TRUSTED_SHELL $QE_NAME "if [ -f $QE_DIR/$PG_PID ]; then $HEAD -1 $QE_DIR/$PG_PID;else echo 0; fi"` 2>> $LOG_FILE
 						RETVAL=$?
 						if [ $RETVAL -ne 0 ]; then
 								LOG_MSG "[WARN]:-Request for PID for $QE_NAME returned error code $RETVAL"
 								QE_PID=0
 						fi
+						QE_PID_ACTUAL=`$TRUSTED_SHELL $QE_NAME "$PS ax|$GREP postmaster|$GREP -v grep|$GREP ${QE_PORT}"|$AWK '{print $1}'`
+						LOG_MSG "[INFO]:-QE Physical PID for $QE_NAME port $QE_PORT       = $QE_PID_ACTUAL"
 						STATUS=`$TRUSTED_SHELL $QE_NAME "export PGPORT=${QE_PORT};$PG_CTL status -D $QE_DIR"|$HEAD -1|$GREP -c PID` 2>> $LOG_FILE
 						RETVAL=$?
 						if [ $RETVAL -ne 0 ]; then
