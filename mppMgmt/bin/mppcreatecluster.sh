@@ -258,6 +258,10 @@ CHK_PARAMS () {
 						ERROR_EXIT "[FATAL]:-Number of primary directories does not match number of mirror directories" 2
 				fi
 		fi
+
+		#Get IP address of the master host
+
+		MASTER_IP_ADDRESS=`$IFCONFIG |$GREP "inet addr"|$GREP -v addr:127|$AWK '{print $2}'|$CUT -d: -f2`
 		#Below commented out until standby QD tests completed (25/07/2005)
 		##	if [ $STANDBY_IP_ALLOW ]&& [ $STANDBY_QD_MASK ]; then
 		##		LOG_MSG "[INFO]:-Standby Master IP = $STANDBY_QD_IP"
@@ -480,6 +484,7 @@ DISPLAY_CONFIG () {
 		LOG_MSG "[INFO]:-Primary QE Dir #     = $QE_PRIMARY_COUNT"
 		LOG_MSG "[INFO]:-Master Database      = $DATABASE_NAME"
 		LOG_MSG "[INFO]:-Master IP allow      = $IP_ALLOW"
+		LOG_MSG "[INFO]:-Master IP address    = $MASTER_IP_ADDRESS"
 		LOG_MSG "[INFO]:-Total MPP segments   = $TOTAL_SEG"
 		LOG_MSG "[INFO]:-Trusted shell        = $TRUSTED_SHELL"
 		LOG_MSG "[INFO]:-Checkpoint segments  = $CHECK_POINT_SEGMENTS"
@@ -559,7 +564,7 @@ CREATE_QD_DB () {
 		$ECHO "#MPP specific configuration parameters for Master instance database" >> ${MPP_DIR}/$PG_CONF
 		$ECHO "#--------------------------------------------------------------" >> ${MPP_DIR}/$PG_CONF
 		LOG_MSG "[INFO]:-Setting the Master port to $MPP_PORT"
-		$ECHO "port=$MPP_PORT" >> ${MPP_DIR}/$PG_CONF
+		ED_FILE ${MPP_DIR}/$PG_CONF port port=$MPP_PORT
 		if [ $? -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Failed to set Master port in $PG_CONF" 2
 		fi
@@ -569,7 +574,8 @@ CREATE_QD_DB () {
 				for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
 						do
 						LOG_MSG "[INFO]:-Adding config $NEW_PARAM to Master"
-						$ECHO $NEW_PARAM >> ${MPP_DIR}/$PG_CONF
+						SEARCH_TXT=`$ECHO $NEW_PARAM |$CUT -d"=" -f1`
+						ED_FILE ${MPP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM 
 				done
 		fi
 		LOG_MSG "[INFO]:-Setting IP Allow in $PG_HBA to value $IP_ALLOW"
@@ -761,19 +767,20 @@ CREATE_QES_PRIMARY () {
 				LOG_MSG "[INFO]:-Configuring QE $PG_CONF"
 				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO \"#MPP Specifc parameters\" >> ${MPP_DIR}/$PG_CONF"
 				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO \"#----------------------\" >> ${MPP_DIR}/$PG_CONF"
-				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO port=$MPP_PORT >> ${MPP_DIR}/$PG_CONF"
-				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO listen_addresses=\'*\' >> ${MPP_DIR}/$PG_CONF"
-				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO checkpoint_segments=$CHECK_POINT_SEGMENTS >> ${MPP_DIR}/$PG_CONF"
+				ED_FILE ${MPP_DIR}/$PG_CONF port port=$MPP_PORT $MPP_HOSTNAME
+				ED_FILE ${MPP_DIR}/$PG_CONF listen_addresses listen_addresses=\'*\' $MPP_HOSTNAME
+				ED_FILE ${MPP_DIR}/$PG_CONF checkpoint_segments checkpoint_segments=$CHECK_POINT_SEGMENTS $MPP_HOSTNAME
 				if [ -f $PG_CONF_ADD_FILE ]; then
 						LOG_MSG "[INFO]:-Processing additional configuration parameters"
 						for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
 								do
 								LOG_MSG "[INFO]:-Adding config $NEW_PARAM to QE"
-								RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO \"$NEW_PARAM\" >> ${MPP_DIR}/$PG_CONF"
+								SEARCH_TXT=`$ECHO $NEW_PARAM |$CUT -d"=" -f1`
+								ED_FILE ${MPP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM $MPP_HOSTNAME
 						done
 				fi
 				LOG_MSG "[INFO]:-Configuring QE $PG_HBA"
-				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host all all ${IP_ALLOW} trust >> ${MPP_DIR}/$PG_HBA"
+				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host	all	all	${MASTER_IP_ADDRESS}/32	trust >> ${MPP_DIR}/$PG_HBA"
 				LOG_MSG "[INFO]:-Starting Functioning instance on QE ${MPP_HOSTNAME}"
 				$TRUSTED_SHELL ${MPP_HOSTNAME} "export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start" >> $LOG_FILE 2>&1
 				if [ $? -ne 0 ]; then
@@ -792,31 +799,71 @@ CREATE_QES_PRIMARY () {
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+PROCESS_QE () {
+		SET_VAR $I
+		LOG_MSG "[INFO]:-Processing QE $MPP_HOSTNAME"
+		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$INITDB -E $ENCODING -D $MPP_DIR"
+		BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -rf $MPP_DIR\""
+		BACKOUT_COMMAND "$ECHO \"removing directory $MPP_DIR on $MPP_HOSTNAME\""
+		LOG_MSG "[INFO]:-Configuring QE $PG_CONF"
+		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO \"#MPP Specifc parameters\" >> ${MPP_DIR}/$PG_CONF"
+		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO \"#----------------------\" >> ${MPP_DIR}/$PG_CONF"
+		ED_FILE ${MPP_DIR}/$PG_CONF port port=$MPP_PORT $MPP_HOSTNAME
+		ED_FILE ${MPP_DIR}/$PG_CONF listen_addresses listen_addresses=\'*\' $MPP_HOSTNAME
+		ED_FILE ${MPP_DIR}/$PG_CONF checkpoint_segments checkpoint_segments=$CHECK_POINT_SEGMENTS $MPP_HOSTNAME
+		if [ -f $PG_CONF_ADD_FILE ]; then
+				LOG_MSG "[INFO]:-Processing additional configuration parameters"
+				for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
+				do
+					LOG_MSG "[INFO]:-Adding config $NEW_PARAM to QE"
+					SEARCH_TXT=`$ECHO $NEW_PARAM |$CUT -d"=" -f1`
+					ED_FILE ${MPP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM $MPP_HOSTNAME
+				done
+		fi
+		LOG_MSG "[INFO]:-Configuring QE $PG_HBA"
+		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host	all	all	${MASTER_IP_ADDRESS}/32	trust >> ${MPP_DIR}/$PG_HBA"
+		LOG_MSG "[INFO]:-Starting Functioning instance on QE ${MPP_HOSTNAME}"
+		$TRUSTED_SHELL ${MPP_HOSTNAME} "export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start" >> $LOG_FILE 2>&1
+		if [ $? -ne 0 ]; then
+				BACKOUT_COMMAND "$ECHO \"Removing QE log file ${MPP_DIR}.log on QE $MPP_HOSTNAME\""
+				BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
+				$TRUSTED_SHELL ${MPP_HOSTNAME} "$CAT ${MPP_DIR}.log "|$TEE -a $LOG_FILE
+				ERROR_EXIT "[FATAL]:-Failed to start QE Mirror instance database" 2
+		fi	
+		BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -f ${MPP_DIR}.log\""
+		BACKOUT_COMMAND "$ECHO \"Removing QE log file ${MPP_DIR}.log on QE $MPP_HOSTNAME\""
+		BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
+		BACKOUT_COMMAND "$ECHO \"Stopping QE instance on $MPP_HOSTNAME\""
+		LOG_MSG "[INFO]:-Successfully started QE mirror instance on $MPP_HOSTNAME"
+		UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
+}
+
 CREATE_QES_MIRROR () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		for I in  "${QE_MIRROR_ARRAY[@]}"
-				do
+		do
 				SET_VAR $I
-				LOG_MSG "[INFO]:-Processing QE $MPP_HOSTNAME"
-				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$INITDB -E $ENCODING -D $MPP_DIR" >> $LOG_FILE 2>&1
+				LOG_MSG "[INFO]:-Processing Mirror QE $MPP_HOSTNAME"
+				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$INITDB -E $ENCODING -D $MPP_DIR" 
 				BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -rf $MPP_DIR\""
 				BACKOUT_COMMAND "$ECHO \"removing directory $MPP_DIR on $MPP_HOSTNAME\""
 				LOG_MSG "[INFO]:-Configuring QE $PG_CONF"
 				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO \"#MPP Specifc parameters\" >> ${MPP_DIR}/$PG_CONF"
 				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO \"#----------------------\" >> ${MPP_DIR}/$PG_CONF"
-				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO port=$MPP_PORT >> ${MPP_DIR}/$PG_CONF"
-				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO listen_addresses=\'*\' >> ${MPP_DIR}/$PG_CONF"
-				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO checkpoint_segments=$CHECK_POINT_SEGMENTS >> ${MPP_DIR}/$PG_CONF"
+				ED_FILE ${MPP_DIR}/$PG_CONF port port=$MPP_PORT $MPP_HOSTNAME
+				ED_FILE ${MPP_DIR}/$PG_CONF listen_addresses listen_addresses=\'*\' $MPP_HOSTNAME
+				ED_FILE ${MPP_DIR}/$PG_CONF checkpoint_segments checkpoint_segments=$CHECK_POINT_SEGMENTS $MPP_HOSTNAME
 				if [ -f $PG_CONF_ADD_FILE ]; then
 						LOG_MSG "[INFO]:-Processing additional configuration parameters"
 						for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
 								do
 								LOG_MSG "[INFO]:-Adding config $NEW_PARAM to QE"
-								RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO \"$NEW_PARAM\" >> ${MPP_DIR}/$PG_CONF"
+								SEARCH_TXT=`$ECHO $NEW_PARAM |$CUT -d"=" -f1`
+								ED_FILE ${MPP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM $MPP_HOSTNAME
 						done
 				fi
 				LOG_MSG "[INFO]:-Configuring QE $PG_HBA"
-				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host all all ${IP_ALLOW} trust >> ${MPP_DIR}/$PG_HBA"
+				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host	all	all	${MASTER_IP_ADDRESS}/32	trust >> ${MPP_DIR}/$PG_HBA"
 				LOG_MSG "[INFO]:-Starting Functioning instance on QE ${MPP_HOSTNAME}"
 				$TRUSTED_SHELL ${MPP_HOSTNAME} "export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start" >> $LOG_FILE 2>&1
 				if [ $? -ne 0 ]; then
