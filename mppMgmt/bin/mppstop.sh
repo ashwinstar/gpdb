@@ -1,7 +1,7 @@
 #!/bin/bash
 #	Filename:-		mppstop.sh
 #	Version:-		1.0
-#	Updated:-		22/07/2005
+#	Updated:-		30/09/2005
 #	Status:-		MPP Conversion SE Co Internal
 #	Author:-		G Coombe
 #	Contact:-		gcoombe@greenplum.com
@@ -81,7 +81,9 @@ USAGE () {
 		$TABECHO "-i, Immediate shutdown, active transaction aborted [Use this option with care]"
 		$TABECHO "-s, Smart shutdown, wait for active transaction to complete [default]"
 		$TABECHO "-n, Do not wait for shutdown return code of each node [default:- wait]"
-		$TABECHO "-z, Force shutdown of segment instances marked as invalid"
+		$TABECHO "-z, Force shutdown of segment instances marked as invalid. Kill postmaster PID,"
+		$TABECHO "    delete /tmp lock files and remove segment instance postmaster.pid file."
+		$TABECHO "-r, Restart array after successful mppstop.sh."
 		##MPP	$TABECHO "-k, Attempt to kill any orphaned postmaster processes on nodes" 
 		$TABECHO "-m, Stop master db started in maintenance mode"
 		$TABECHO
@@ -111,23 +113,23 @@ DISPLAY_PARAM () {
 		$ECHO
 		$ECHO "Current Default Shutdown Parameters"
 		$ECHO "-----------------------------------"
-		$ECHO "Master database port            = $MASTER_PORT      [Override with -p <port number>]"
-		$ECHO "Master database directory       = $MASTER_DATA_DIRECTORY [Override with -d <Master directory>]"
-		$ECHO "Default shutdown mode       = $MODE           [Override with -f or -i]"
+		$ECHO "Master database port           = $MASTER_PORT  [Override with -p <port number>]"
+		$ECHO "Master database directory      = $MASTER_DATA_DIRECTORY  [Override with -d <Master directory>]"
+		$ECHO "Default shutdown mode          = $MODE           [Override with -f or -i]"
 		if [ $INTERACTIVE ]; then
-				$ECHO "Interactive                 = True            [Override with -a]"
+				$ECHO "Interactive                    = True            [Override with -a]"
 		else
-				$ECHO "Interactive                 = False"
+				$ECHO "Interactive                    = False"
 		fi
 		if [ $VERBOSE ]; then
-				$ECHO "Verbose                     = True            [Override with -q]"
+				$ECHO "Verbose                        = True            [Override with -q]"
 		else
-				$ECHO "Verbose                     = False"
+				$ECHO "Verbose                        = False"
 		fi 
 		if [ "$WAIT" == "-w" ]; then
-				$ECHO "Wait for shutdown           = True"
+				$ECHO "Wait for shutdown              = True            [Override with -n]"
 		else
-				$ECHO "Wait for shutdown           = False"
+				$ECHO "Wait for shutdown              = False"
 		fi 
 		$ECHO
 		exit 0
@@ -209,13 +211,15 @@ PROCESS_SHUTDOWN () {
 				if [ "$QE_VALID" == "t" ] || [ $STOP_INVALID -eq 1 ];then
 					LOG_MSG "[INFO]:-Stopping QE $QE_NAME directory $QE_DIR"
 					$TRUSTED_SHELL $QE_NAME "$PG_CTL $WAIT stop -D $QE_DIR -m $MODE -l ${QE_DIR}.log " >/dev/null 2>&1
-					$TRUSTED_SHELL $QE_NAME "$RM -f /tmp/.s.PGSQL.${QE_PORT}.lock /tmp/.s.PGSQL.${QE_PORT}"
 					RETVAL=$?
 					if [ $RETVAL -ne 0 ]; then
 						LOG_MSG "[WARN]:-Issue with shutdown of $QE_NAME QE database"
 						EXIT_STATUS=1
 					else
 						LOG_MSG "[INFO]:-Successfully shutdown QE Host $QE_NAME database"
+					fi
+					if [ $STOP_INVALID -eq 1 ]; then       
+						FORCE_CLEAR
 					fi
 					((QD_STOP_COUNT=$QD_STOP_COUNT+1))
 				else
@@ -233,13 +237,32 @@ PROCESS_SHUTDOWN () {
 				LOG_MSG "[INFO]:-Successfully shutdown $QD_STOP_COUNT QE instances and Master instance"
 		fi
 }
+
+FORCE_CLEAR () {
+	LOG_MSG "[INFO]:-Clearing lock files on $QE_NAME for directory $QE_DIR"
+	$TRUSTED_SHELL $QE_NAME "$RM -f /tmp/.s.PGSQL.${QE_PORT}.lock /tmp/.s.PGSQL.${QE_PORT}"
+	RETVAL=$?
+    if [ $RETVAL -ne 0 ]; then
+		LOG_MSG "[WARN]:-Issue with clearing lock file on $QE_NAME for directory $QE_DIR"
+	    EXIT_STATUS=1
+	fi
+	LOG_MSG "[INFO]:-Clearing postmaster.pid file"
+	$TRUSTED_SHELL $QE_NAME "$RM -f ${QE_DIR}/postmaster.pid"
+	RETVAL=$?
+    if [ $RETVAL -ne 0 ]; then
+		LOG_MSG "[WARN]:-Issue with clearing postmaster.pid file on $QE_NAME for directory $QE_DIR"
+	    EXIT_STATUS=1
+	fi
+	LOG_MSG "[INFO]:-Killing postmaster process on $QE_NAME for port=$QE_PORT"
+	$TRUSTED_SHELL $QE_NAME "$KILL -9 \`$PS ax|$GREP postmaster|$GREP -v grep|$GREP \"${QE_DIR}\"|$GREP \"${QE_PORT}\"|$AWK '{print \$1}'\`" > $LOG_FILE 2>&1
+}
 #******************************************************************************
 # Main Section
 #******************************************************************************
 #Check to see if we have a parameter supplied to script
 if [ $# -ne 0 ]; then
 		##MPP	while getopts ":viskft'?'aqnml:d:" opt;do
-		while getopts ":vmiskzft'?'aqnl:d:" opt;do
+		while getopts ":vrmiskzft'?'aqnl:d:" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						i ) MODE=immediate ;;
@@ -256,6 +279,7 @@ if [ $# -ne 0 ]; then
 						z)	STOP_INVALID=1 ;;
 						n ) WAIT="-W" ;; 
 						l ) LOG_DIR=$OPTARG ;;
+						r ) RESTART=1 ;;
 						* ) UNKNOWN_OPTION ;;
 				esac
 		done	
@@ -276,5 +300,12 @@ if [ $INTERACTIVE ]; then
 		PROMPT_CONTINUE
 fi
 PROCESS_SHUTDOWN
+if [ $RESTART ]; then
+	if [ -f ${WORKDIR}/mppstart.sh ]; then
+		${WORKDIR}/mppstart.sh -a
+	else
+		LOG_MSG "[FATAL]:-No ${WORKDIR}/mppstart.sh" 2
+	fi
+fi
 LOG_MSG "[INFO]:-End Main"
 exit $EXIT_STATUS
