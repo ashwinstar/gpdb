@@ -93,6 +93,7 @@ EGREP=`findCmdInPath egrep`
 HEAD=`findCmdInPath head`
 HOSTNAME=`findCmdInPath hostname`
 IPCS=`findCmdInPath ipcs`
+IFCONFIG=`findCmdInPath ifconfig`
 KILL=`findCmdInPath kill`
 LS=`findCmdInPath ls`
 MV=`findCmdInPath mv`
@@ -169,7 +170,8 @@ CHK_DB_QD_SET () {
 
 VERSION_INFO () {
 		VERSION=`$HEAD -10 $0|$GREP -i Version: |$AWK '{print $3}'`
-		STATUS=`$HEAD -10 $0|$GREP -i Status: | $AWK '{print $3" "$4" "$5}'`
+##		STATUS=`$HEAD -10 $0|$GREP -i Status: | $AWK '{print $3" "$4" "$5 " " $6}'`
+		STATUS=`$HEAD -10 $0|$GREP -i Status: | $CUT -d# -f2|$CUT -d- -f2|$TR -d '\t'`
 		UPDATE=`$HEAD -10 $0|$GREP -i Updated:|$AWK '{print $3}'`
 		CHK_SUM=`$CKSUM $0|$AWK '{print $1" "$2}'`
 		$ECHO "`basename $0` Version   = $VERSION"
@@ -204,6 +206,87 @@ ERROR_EXIT () {
 		fi
 		exit $2
 }
+
+ED_FILE () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	ED_TMP_FILE=/tmp/ed_text.$$
+	APPEND=0
+	FILENAME=$1;shift
+	SEARCH_TXT=$1;shift
+	SUB_TXT=$1;shift
+	ED_HOST=$1
+	if [ x"" == x"$ED_HOST" ]; then
+			if [ `$GREP -c "${SEARCH_TXT}" $FILENAME` -gt 1 ]; then
+				LOG_MSG "[INFO]:-Found more than 1 instance of $SEARCH_TXT in $FILENAME, will append"
+				APPEND=1
+			fi
+			if [ `$GREP -c "${SEARCH_TXT}" $FILENAME` -eq 0 ] || [ $APPEND -eq 1 ]; then
+				$ECHO $SUB_TXT >> $FILENAME
+				RETVAL=$?
+				if [ $RETVAL -ne 0 ]; then
+					LOG_MSG "[WARN]:-Failed to append line $SUB_TXT to $FILENAME"
+				else
+					LOG_MSG "[INFO]:-Appended line $SUB_TXT to $FILENAME"
+				fi
+			else
+ed $FILENAME << _EOF_ > /dev/null 2>&1
+1
+/${SEARCH_TXT}
+.
+i
+$SUB_TXT #
+.
+.,.+1j
+.
+wq
+_EOF_
+				RETVAL=$?
+				if [ $RETVAL -ne 0 ]; then
+					LOG_MSG "[WARN]:-Failed to replace $SEARCH_TXT in $FILENAME"
+					ERROR_EXIT=1
+				else
+					LOG_MSG "[INFO]:-Replaced line in $FILENAME"
+				fi
+		fi
+	else
+		if [ `$TRUSTED_SHELL $ED_HOST "$GREP -c \"${SEARCH_TXT}\" $FILENAME"` -gt 1 ]; then
+			LOG_MSG "[INFO]:-Found more than 1 instance of $SEARCH_TXT in $FILENAME on $ED_HOST, will append"
+			APPEND=1
+		fi
+		if [ `$TRUSTED_SHELL $ED_HOST "$GREP -c \"${SEARCH_TXT}\" $FILENAME"` -eq 0 ] || [ $APPEND -eq 1 ]; then
+			$TRUSTED_SHELL $ED_HOST "$ECHO $SUB_TXT >> $FILENAME"
+			RETVAL=$?
+			if [ $RETVAL -ne 0 ]; then
+				LOG_MSG "[WARN]:-Failed to append line $SUB_TXT to $FILENAME on $ED_HOST"
+				ERROR_EXIT=1
+			else
+				LOG_MSG "[INFO]:-Appended line $SUB_TXT to $FILENAME on $ED_HOST"
+			fi
+		else
+			$ECHO 1 > $ED_TMP_FILE 
+			$ECHO "/${SEARCH_TXT}" >>  $ED_TMP_FILE
+			$ECHO i >>  $ED_TMP_FILE
+			$ECHO "$SUB_TXT #" >>  $ED_TMP_FILE
+			$ECHO . >>  $ED_TMP_FILE
+			$ECHO ".,.+1j" >> $ED_TMP_FILE
+			$ECHO . >>  $ED_TMP_FILE
+			$ECHO wq >>  $ED_TMP_FILE
+			$SCP $ED_TMP_FILE ${ED_HOST}:/tmp > /dev/null 2>&1
+			$TRUSTED_SHELL $ED_HOST "ed $FILENAME < $ED_TMP_FILE" > /dev/null 2>&1
+			RETVAL=$?
+			if [ $RETVAL -ne 0 ]; then
+				LOG_MSG "[WARN]:-Failed to insert $SUB_TXT in $FILENAME on $ED_HOST"
+				ERROR_EXIT=1
+			else
+				LOG_MSG "[INFO]:-Replaced line in $FILENAME on $ED_HOST"
+			fi
+			$TRUSTED_SHELL $ED_HOST "$RM -f $ED_TMP_FILE"
+			$RM -f $ED_TMP_FILE
+		fi
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 
 CHK_EXISTS_TABLE () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
