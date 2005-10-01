@@ -254,7 +254,7 @@ PROCESS_STARTUP () {
 				#Now check status of postmaster on the tail
 				LOG_MSG "[INFO]:-Checking status via pg_ctl"
 				RET_TEXT=`$TRUSTED_SHELL $QE_NAME "$PG_CTL status -D $QE_DIR"`
-				RUNNING=`$ECHO $RET_TEXT|$GREP -c "not running"`
+				RUNNING=`$ECHO $RET_TEXT|$EGREP -c "not running|neither"`
 				if [ $RUNNING -ne 0 ]; then
 						LOG_MSG "[WARN]:-Command pg_ctl reports $QE_NAME for directory $QE_DIR port $QE_PORT not running"
 						EXIT_STATUS=1
@@ -280,12 +280,20 @@ PROCESS_STARTUP () {
 		fi
 		export PGPORT=${MASTER_PORT}
 		export PGPATH=${MPPHOME}/bin
-		$PG_CTL $WAIT  -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -p $MASTER_PORT " start -m $MODE  >/dev/null 2>&1
+		$PG_CTL $WAIT  -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -p $MASTER_PORT " start -m $MODE  
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Issue with startup of Master database" 2
 		else
 				LOG_MSG "[INFO]:-Successfully started Master $QD_NAME database"
+		fi
+		RET_TEXT=`$PG_CTL status -D $MASTER_DATA_DIRECTORY`
+		RUNNING=`$ECHO $RET_TEXT|$EGREP -c "not running|neither"`
+		if [ $RUNNING -ne 0 ]; then
+			LOG_MSG "[WARN]:-Command pg_ctl reports $QD_NAME for directory $MASTER_DATA_DIRECTORY port $MASTER_PORT not running"
+						EXIT_STATUS=1
+		else
+			LOG_MSG "[INFO]:-Command pg_ctl reports Master $QD_NAME instance active"
 		fi
 		if [ $FAILED_COUNT -ne 0 ]; then
 				LOG_MSG "[WARN]:-Failed to start $FAILED_COUNT of a total of $QE_COUNT QE instances"
