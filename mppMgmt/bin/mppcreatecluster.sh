@@ -564,7 +564,7 @@ CREATE_QD_DB () {
 		$ECHO "#MPP specific configuration parameters for Master instance database" >> ${MPP_DIR}/$PG_CONF
 		$ECHO "#--------------------------------------------------------------" >> ${MPP_DIR}/$PG_CONF
 		LOG_MSG "[INFO]:-Setting the Master port to $MPP_PORT"
-		ED_FILE ${MPP_DIR}/$PG_CONF port port=$MPP_PORT
+		ED_FILE ${MPP_DIR}/$PG_CONF "#port" port=$MPP_PORT
 		if [ $? -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Failed to set Master port in $PG_CONF" 2
 		fi
@@ -598,6 +598,8 @@ CREATE_QD_DB () {
 		BACKOUT_COMMAND "$ECHO \"Removing Master instance directory\""
 		BACKOUT_COMMAND "$RM -f ${MPP_DIR}.log"
 		BACKOUT_COMMAND "$ECHO Removing Master log file"
+		BACKOUT_COMMAND "export PGPORT=$MPP_PORT;$PG_CTL -D $MPP_DIR stop"
+		BACKOUT_COMMAND "$ECHO \"Stopping Master instance\""
 		LOG_MSG "[INFO]:-Compleleted starting the Master in admin mode"
 		$SLEEP 2
 		UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 0 X
@@ -850,7 +852,7 @@ CREATE_QES_MIRROR () {
 				LOG_MSG "[INFO]:-Configuring QE $PG_CONF"
 				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO \"#MPP Specifc parameters\" >> ${MPP_DIR}/$PG_CONF"
 				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO \"#----------------------\" >> ${MPP_DIR}/$PG_CONF"
-				ED_FILE ${MPP_DIR}/$PG_CONF port port=$MPP_PORT $MPP_HOSTNAME
+				ED_FILE ${MPP_DIR}/$PG_CONF "#port" port=$MPP_PORT $MPP_HOSTNAME
 				ED_FILE ${MPP_DIR}/$PG_CONF listen_addresses listen_addresses=\'*\' $MPP_HOSTNAME
 				ED_FILE ${MPP_DIR}/$PG_CONF checkpoint_segments checkpoint_segments=$CHECK_POINT_SEGMENTS $MPP_HOSTNAME
 				if [ -f $PG_CONF_ADD_FILE ]; then
