@@ -455,6 +455,12 @@ DefineRelation(CreateStmt *stmt, char relkind)
 	if (shouldDispatch)
 	{
 		/*
+		 * disallow inheritance for now, as the optimizer doesn't support them.
+		 */
+		if (stmt->inhRelations != NIL)
+			ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
+                            errmsg("Distributed tables cannot use inheritance")));
+		/*
 		 * Check to see if we support the datatypes
 		 */
 		foreach(listptr, schema)
