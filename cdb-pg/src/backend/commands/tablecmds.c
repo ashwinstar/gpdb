@@ -3968,6 +3968,10 @@ ATExecAddIndex(AlteredTableInfo *tab, Relation rel,
 	bool		quiet;
 
 	Assert(IsA(stmt, IndexStmt));
+	
+	/* The index should already be built if we are a QE */
+	if (Mpp_role == MPP_ROLE_EXECUTE)
+		return;
 
 	/* suppress schema rights check when rebuilding existing index */
 	check_rights = !is_rebuild;

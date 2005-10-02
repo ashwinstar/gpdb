@@ -391,6 +391,42 @@ DefineIndex(RangeVar *heapRelation,
 			Assert(stmt->idxOid == 0);
 			stmt->idxOid = indexoid;
 		}
+		
+		/*
+		 * if unique index on distributed table, index must contain distribution columns
+		 * 
+		 */
+		if (unique || primary)
+		{
+		
+			MppPolicy *policy = get_table_policy(relationId);
+			
+			if (policy != NULL && policy->ptype == POLICYTYPE_PARTITIONED)
+			{
+				int ia = 0;
+			
+				for (ia = 0; ia < policy->nattrs && ia < numberOfAttributes; ia++)
+				{
+					if (indexInfo->ii_KeyAttrNumbers[ia] != policy->attrs[ia])
+					{
+						if (primary)
+						
+							ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("You can only add a primary key on the distribution column(s)")));
+						else
+							ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								 errmsg("you can only create a unique index on the distribution column(s)")));
+						
+					}
+					
+					
+				}
+			}
+		}
+		
+		
 	}
 	else if (Mpp_role == MPP_ROLE_EXECUTE)
 	{
