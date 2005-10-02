@@ -921,7 +921,7 @@ heap_create_with_catalog_with_relid(const char *relname,
 		Oid tempOid = newoid();
 		if (tempOid > new_rel_oid)
 		{
-			elog(WARNING,"Local Oid counter %u greater than expected %u",tempOid, new_rel_oid);
+			elog(DEBUG1,"Local Oid counter %u greater than expected %u",tempOid, new_rel_oid);
 		}
 		else if (tempOid < new_rel_oid)
 		{
