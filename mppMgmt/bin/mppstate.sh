@@ -77,10 +77,10 @@ USAGE () {
 		$TABECHO "Status options:"
 		$TABECHO "-s, Display MPP database status [default]"
 		$TABECHO "-m, List mirror segments of MPP database"
-		$TABECHO "-c, List primary/mirror segment mapping of MPP database"
+		$TABECHO "-c, List primary/mirror segment instance mapping of MPP database"
 		$TABECHO "-p, List MPP database ports"
 		$TABECHO "-n, List instance log file names"
-		$TABECHO "-e, Display end of each QE log file"
+		$TABECHO "-e, Display end of each segment instance log file"
 		$TABECHO "-b, Display a brief MPP cluster status summary"
 		$TABECHO
 		$TABECHO "Return codes:"
