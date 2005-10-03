@@ -583,12 +583,12 @@ ProcessUtility(Node *parsetree,
 			 * Portal (cursor) manipulation
 			 */
 		case T_DeclareCursorStmt:
-			CdbSentry(CDB_WARN, parsetree, NULL);
+			CdbSentry(CDB_NONCE, parsetree, NULL);
 			PerformCursorOpen((DeclareCursorStmt *) parsetree, params);
 			break;
 
 		case T_ClosePortalStmt:
-			CdbSentry(CDB_WARN, parsetree, NULL);
+			CdbSentry(CDB_NONCE, parsetree, NULL);
 			{
 				ClosePortalStmt *stmt = (ClosePortalStmt *) parsetree;
 
@@ -597,7 +597,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_FetchStmt:
-			CdbSentry(CDB_WARN, parsetree, NULL);
+			CdbSentry(CDB_NONCE, parsetree, NULL);
 			PerformPortalFetch((FetchStmt *) parsetree, dest,
 							   completionTag);
 			break;
