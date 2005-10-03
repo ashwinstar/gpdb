@@ -149,10 +149,18 @@ class SolarisHost(Host):
 		self.ostype='Solaris'
 
 if __name__ == '__main__':
+	import sys
+
+	if len(sys.argv) < 2:
+		print 'usage: %s hostname username' % (sys.argv[0])
+		raise SystemExit, -1
+
+	hostname = sys.argv[1]
+	user = sys.argv[2]
 
 	#print 'OS type is %s for host %s.' % (Host.getHostType('local1','demo1'),'local1')
 
-	a = Host.getHostObject('local1','demo1')
+	a = Host.getHostObject(hostname,user)
 	if a is None:
 		print 'No object returned for getHostObject call!'
 		raise SystemExit, -1
