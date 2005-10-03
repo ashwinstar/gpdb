@@ -165,6 +165,8 @@ if __name__ == '__main__':
 		print 'No object returned for getHostObject call!'
 		raise SystemExit, -1
 
+	print 'OS Type = %s' % (a.ostype)
+
 	a.addNIC()
 	a.addNIC('myNIC')
 
