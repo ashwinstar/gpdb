@@ -1,6 +1,10 @@
 <<<NEW vi: set expandtab ts=4: >>>
 
 
+Release-2_0_1:  03/Oct/2005  builder
+    Initial Release. 
+
+
 Release-0_0_0:  26/Sep/2005  builder
     Dry Run for Oct 15 2005 Release
 
