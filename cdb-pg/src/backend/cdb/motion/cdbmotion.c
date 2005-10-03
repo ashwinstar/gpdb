@@ -1040,12 +1040,10 @@ static void materializeChunk(TupleChunkListItem *tcItem)
 
 	/* This chunk needs to be converted from pointing to global
 	 * receive buffer store to having its own storage */
-
 	Assert(tcItem != NULL);
 	Assert(*tcItem != NULL);
 
-	newItem = repalloc(*tcItem, sizeof(TupleChunkListData) + (*tcItem)->chunk_length);
-
+	newItem = repalloc(*tcItem, sizeof(TupleChunkListItemData) + (*tcItem)->chunk_length);
 	if (newItem == NULL)
 	{
 		ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),

@@ -195,7 +195,7 @@ static inline void addByteStringToChunkList(TupleChunkList tcList, char *data, i
 			break;
 
 		tcItem = (TupleChunkListItem)
-			palloc0(sizeof(TupleChunkListData) + tcList->max_chunk_length);
+			palloc0(sizeof(TupleChunkListItemData) + tcList->max_chunk_length);
 		tcItem->chunk_length = TUPLE_CHUNK_HEADER_SIZE;
 		SetChunkType(tcItem->chunk_data, TC_PARTIAL_MID);
 		appendChunkToTCList(tcList, tcItem);
@@ -229,7 +229,7 @@ TupleChunkList SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo *pSerInfo, i
 	tcList->max_chunk_length = MaxChunkDataSize;
 
 	tcItem = (TupleChunkListItem)
-		palloc0(sizeof(TupleChunkListData) + tcList->max_chunk_length);
+		palloc0(sizeof(TupleChunkListItemData) + tcList->max_chunk_length);
 	/* assume that we'll take a single chunk */
 	SetChunkType(tcItem->chunk_data, TC_WHOLE);
 	tcItem->chunk_length = TUPLE_CHUNK_HEADER_SIZE;

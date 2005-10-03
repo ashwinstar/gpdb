@@ -496,7 +496,12 @@ static inline TupleChunkListItem RecvTupleChunk(MotionConn *conn)
 
 		/* We store the data inplace, and handle any necessary copying
 		 * later on */
-		tcItem = (TupleChunkListItem)palloc0(sizeof(TupleChunkListData));
+		tcItem = (TupleChunkListItem)palloc0(sizeof(TupleChunkListItemData));
+		if (tcItem == NULL)
+		{
+			ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
+							errmsg("Could not allocate space on interconnect rx.")));
+		}
 		tcItem->chunk_length = tcSize;
 		tcItem->inplace = conn->msgPos + bytesProcessed;
 
@@ -577,9 +582,12 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 						errmsg("SetupInterconnect: MLS table not cleaned.")));
 	}
 	mlsSize = MLS_INITIAL_SIZE;
-	mlsStates = palloc(MLS_INITIAL_SIZE * sizeof(MotionLayerState));
-	memset(mlsStates, 0, MLS_INITIAL_SIZE * sizeof(MotionLayerState));
-
+	mlsStates = palloc0(MLS_INITIAL_SIZE * sizeof(MotionLayerState));
+	if (mlsStates == NULL)
+	{
+		ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
+						errmsg("Could not allocate space for motion layer state.")));
+	}
 
 	gettimeofday(&snapTime, NULL);
 	elog(DEBUG3, "in SetupInterconnect @%d time is %ld.%ld",
@@ -1046,6 +1054,11 @@ static MotionLayerState *createMotionState(int16 motNodeID, int numConns)
     pEntry->numConns 	   = numConns;
 	pEntry->highReadSock   = 0;
     pEntry->conns 		   = palloc0(pEntry->numConns * sizeof(MotionConn));
+	if (pEntry->conns == NULL)
+	{
+		ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
+						errmsg("Could not allocate space for interconnect connection list")));
+	}
 	
 	for (i=0; i < numConns; i++)
 	{
@@ -1179,6 +1192,11 @@ static MotionLayerState  *startConnections(Slice *mySlice, int *highsock, fd_set
 			if (cdbProc != NULL)
 			{
 				conn->mirrorConn = palloc(sizeof(MotionConn));
+				if (conn->mirrorConn == NULL)
+				{
+					ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
+									errmsg("Could not allocate space for mirror connection detail.")));
+				}
 				conn->mirrorConn->sockfd = -1;
 				conn->hasMirrorConn = true;
 			
@@ -1198,6 +1216,11 @@ static void setupOutgoingConnection(MotionConn *conn, CdbProcess *cdbProc, int *
 
 	conn->sockfd			= socket(AF_INET, SOCK_STREAM, 0);
 	conn->pBuff				= palloc(Mpp_max_packet_size);
+	if (conn->pBuff == NULL)
+	{
+		ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
+						errmsg("Could not allocate space for interconnect tx-buffer")));
+	}
 	conn->msgSize			= PACKET_HEADER_SIZE;
 	conn->tupleCount		= 0;
 	conn->stillActive		= true;
@@ -1443,6 +1466,11 @@ static void readRegisterMessage(MotionConn *conn, int *incoming_count)
 	
 	newConn->sockfd		   	 = conn->sockfd;
 	newConn->pBuff	     	 = palloc(Mpp_max_packet_size);
+	if (conn->pBuff == NULL)
+	{
+		ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
+						errmsg("Could not allocate space for interconnect rx-buffer")));
+	}
 	newConn->msgSize 		 = 0;
 	newConn->recvBytes 		 = 0;
 	newConn->msgPos 		 = 0;
@@ -1521,8 +1549,18 @@ static void acceptIncomingConnection(fd_set *rset, int *highsock)
 		*highsock = newsockfd;
 	
 	conn = palloc(sizeof(MotionConn));	
+	if (conn == NULL)
+	{
+		ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
+						errmsg("Could not allocate space for incoming connection detail.")));
+	}
 	conn->sockfd     = newsockfd;
 	conn->pBuff      = palloc(Mpp_max_packet_size);
+	if (conn->pBuff == NULL)
+	{
+		ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
+						errmsg("Could not allocate space for incoming rx-buffer")));
+	}
 	conn->msgSize    = 0;
 	conn->recvBytes  = 0;
 	conn->msgPos     = 0;
