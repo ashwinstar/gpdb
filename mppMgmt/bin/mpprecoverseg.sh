@@ -84,7 +84,7 @@ USAGE () {
 		$ECHO "-f, force MPP cluster shutdown and restart"
         $ECHO
 		$ECHO "Connection options:"
-		$ECHO "-d, <QD database directory> name of alternative QD database to start up [optional]"
+		$ECHO "-d, <Master database directory> name of alternative Master database to start up [optional]"
 		$ECHO
 		$ECHO "Return codes:"
 		$ECHO "0 No problems encountered with requested operation"
@@ -241,7 +241,7 @@ STOP_DATABASE () {
                 ERROR_EXIT "[FATAL]:-Could not locate $WORKDIR/$STOP_PROG script"
 		fi
         LOG_MSG "[INFO]:-Shutting down the Cluster ... Please wait ..."
-        ${WORKDIR}/$STOP_PROG -za
+        ${WORKDIR}/$STOP_PROG -zfa
         RETVAL=$?
         if [ $RETVAL -gt 1 ];then
                 ERROR_EXIT "[FATAL]:-Could not shutdown the MPP array"

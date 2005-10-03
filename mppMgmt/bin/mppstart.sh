@@ -64,7 +64,7 @@ START_INVALID=0
 USAGE () {
 		$TABECHO	
 		$TABECHO $0 
-		$TABECHO "Starts the full MPP database, or QE only in utility mode"
+		$TABECHO "Starts the full MPP database, or Master database only in utility mode"
 		$TABECHO "Cannot use -x and -n options together as mutually exclusive"
 		$TABECHO
 		$TABECHO "Usage:"
@@ -81,11 +81,11 @@ USAGE () {
 		$TABECHO "-a, don't ask to confirm startup [default:- ask]"
 		$TABECHO
 		$TABECHO "Connection options:"
-		$TABECHO "-d, <QE database directory> name of alternative QE database to start up [optional]"
+		$TABECHO "-d, <Master database directory> name of alternative Master database to start up [optional]"
 		$TABECHO
 		$TABECHO "Database startup options:"
-		$TABECHO "-n, do not wait for startup return code of each node [default:- wait]"
-		$TABECHO "-m, start master db only in maintenance mode [default:- full MPP startup]"
+		$TABECHO "-n, do not wait for startup return code of each segment instance [default:- wait]"
+		$TABECHO "-m, start master database only in maintenance mode [default:- full MPP startup]"
 		$TABECHO "-x, mark failed segment as down [default:- do not mark segment as down on startup failure]"
 		$TABECHO "-z, force startup of segment instance marked as invalid"
 		$TABECHO

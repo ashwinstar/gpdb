@@ -165,7 +165,6 @@ DATABASE_STATUS () {
 				if [ ${#QE_ARRAY[@]} -eq 0 ]; then
 						LOG_MSG "[WARN]:-Could not obtain any QE host details"
 				else
-						LOG_MSG "[INFO]:-QE PID & pg_ctl Status"
 						LOG_MSG "[INFO]:-----------------------"
 						for TNODE in "${QE_ARRAY[@]}"
 								do

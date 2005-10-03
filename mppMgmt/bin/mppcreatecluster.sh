@@ -71,35 +71,36 @@ USAGE () {
 		$TABECHO "*******************************************************************"
 		$TABECHO "usage: `basename $0` -c mpp_config_file [OPTIONS]"
 		$TABECHO ""
-		$TABECHO "  Creates a new MPP database on a Master host and a number of QE hosts."
+		$TABECHO "  Creates a new MPP database on a Master host and a number of"
+		$TABECHO "  segment instance hosts."
 		$TABECHO "*******************************************************************"
 		$TABECHO "General options:"
 		$TABECHO "	-?, display this help message & exit"
 		$TABECHO "	-v, display version information & exit"
 		$TABECHO
 	    $TABECHO "Configuration options:"
-		$TABECHO "	-c  mpp_config_file [mandatory]"
+		$TABECHO "	-c,  mpp_config_file [mandatory]"
 		$TABECHO "		Supplies all MPP configuration information required by this utility."
 		$TABECHO "		Full description of all parameters contained within the example file"
 		$TABECHO "		supplied with this distribution."
 		$TABECHO "		Also see mppcreatecluster_INSTRUCTIONS file for greater detail on"
 		$TABECHO "		the operation and configuration of this script"
-		$TABECHO "	-h mpp_hostlist_file [optional]"
-		$TABECHO "		Contains a list of all QE hostnames required to participate in"
+		$TABECHO "	-h, mpp_hostlist_file [optional]"
+		$TABECHO "		Contains a list of all segment instance hostnames required to participate in"
 		$TABECHO "		the new MPP database. Normally set in mpp_config_file."
-		$TABECHO "	-p postgresql_conf_mpp_additions [optional]"
-		$TABECHO "		List of additional PostgreSQL parameters to be applied to each Master/QE"
+		$TABECHO "	-p, postgresql_conf_mpp_additions [optional]"
+		$TABECHO "		List of additional PostgreSQL parameters to be applied to each Master/Segment"
 		$TABECHO "		postgresql.conf file during MPP database initialization."
 		$TABECHO "		File ./postgresql_conf_mpp_additions will be read by default if no -p"
 		$TABECHO "		option supplied"
-		$TABECHO "	-s standby_hostname [optional]"
+		$TABECHO "	-s, standby_hostname [optional]"
 		$TABECHO "		Setup standby Master host named \"standby_hostname\". (if configured in MPP configuration file)"
-		$TABECHO "	-o, create Master only, do not configure QE hosts"
+		$TABECHO "	-o, create Master only, do not configure Segment instance hosts"
 		$TABECHO
 		$TABECHO "Logging options:"
 		$TABECHO "	-q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
 		$TABECHO "	-a, don't ask to confirm database creation [default:- ask]"
-		$TABECHO "	-l logfile_directory [optional]"
+		$TABECHO "	-l, logfile_directory [optional]"
 		$TABECHO "		Alternative logfile directory"
 		$TABECHO
 		$TABECHO "Return codes:"
@@ -989,12 +990,10 @@ LOG_MSG "[INFO]:-Script backout file = $BACKOUT_FILE"
 LOG_MSG "[INFO]:-To remove cluster, run"
 LOG_MSG "[INFO]:-/bin/bash $BACKOUT_FILE"
 LOG_MSG "[INFO]:-------------------------------------------------------"
-if [ $STANDBY_QD_IP ] && [ $STANDBY_QD_MASK ]; then
-		if [ $STANDBY_QD_NAME ]; then
-				$WORKDIR/mppinitstandby.bsh -h $STANDBY_QD_NAME
-		else
-				LOG_MSG "[INFO]:-To initialize standby QE run mppinitstandby.bsh -h <standby Master hostname>"
-		fi
+if [ $STANDBY_QD_NAME ]; then
+		$WORKDIR/mppinitstandby.bsh -h $STANDBY_QD_NAME
+else
+		LOG_MSG "[INFO]:-To initialize standby QE run mppinitstandby.bsh -h <standby Master hostname>"
 fi
 
 LOG_MSG "[INFO]:-End Main"
