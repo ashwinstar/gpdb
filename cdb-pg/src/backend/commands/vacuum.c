@@ -248,12 +248,7 @@ vacuum(VacuumStmt *vacstmt)
 				use_own_xacts;
 	List	   *relations;
 
-	/*
-	 * If we are in Cdb Dispatch Mode, first send off
-	 * vacuum calls to all the qExecs
-	 */
-	if ( Mpp_role == MPP_ROLE_DISPATCH )
-		dispatchVacuum(vacstmt);
+	
 
 	if (vacstmt->verbose)
 		elevel = INFO;
@@ -514,6 +509,13 @@ vacuum(VacuumStmt *vacstmt)
 		}
 	}
 
+	/*
+	 * If we are in Cdb Dispatch Mode, send off
+	 * vacuum calls to all the qExecs
+	 */
+	if ( Mpp_role == MPP_ROLE_DISPATCH )
+		dispatchVacuum(vacstmt);
+		
 	/*
 	 * Clean up working storage --- note we must do this after
 	 * StartTransactionCommand, else we might be trying to delete the
