@@ -6,13 +6,22 @@ Author: Luke Lonergan <llonergan@greenplum.com>"""
 # $Id$
 
 __all__ = ['run', 'ssh', 'scp', 'scprem', 'exists', 'setCMD', 'killCMD',
-'setupKeyAccessLocal', 'setupKeyAccessRemote', 'isReady', 'isError']
+'setupKeyAccessLocal', 'setupKeyAccessRemote', 'isReady', 'isError', 'makeReady']
 
 __author__ = "Luke Lonergan"
 __version__ = "1.0"
 __date__ = "2005-09-26"
 
-import os, sys, getopt, string, getpass, lib.pexpect, threading, signal, tempfile
+import os, sys, getopt, string, getpass, threading, signal, tempfile
+try:
+	import lib.pexpect as pexpect
+except ImportError:
+	try:
+		import pexpect
+	except ImportError:
+		raise
+	pass
+
 
 # Exception classes used by this module.
 class ExceptionSshSession(Exception):
@@ -37,9 +46,12 @@ class ExceptionSshSession(Exception):
 class NOTREADY(ExceptionSshSession):
 	    """Raised when the session isn't ready"""
 
+class PasswordFailure(ExceptionSshSession):
+	    """Raised when we can't get a password that works"""
+
 class sshSession(threading.Thread):
     "Session with extra state including the password to be used."
-    def __init__(self, user, port, host, password=None, verbose=0):
+    def __init__(self, user, port, host, password=None, verbose=False):
         threading.Thread.__init__(self)        
 
 	self.lock = threading.RLock()
@@ -75,7 +87,7 @@ class sshSession(threading.Thread):
     def __die(self,msg=None):
 	if not msg == None:
 	    print 'sshSession command exiting: %s' % (msg)
-	self.__setReady(False)
+	self.ready=False
 	self.__setError()
 	raise NOTREADY ('sshSession command NOTREADY')
 
@@ -85,9 +97,6 @@ class sshSession(threading.Thread):
 
     def isReady(self):
 	return self.ready
-
-    def __setReady(self,ready=True):
-	self.ready = ready
 
     def isError(self):
 	return self.error
@@ -117,7 +126,7 @@ class sshSession(threading.Thread):
     def __exec(self, command):
 	"Execute a command on the remote host.  Return the output."
 
-	self.child = lib.pexpect.spawn(command,[],self.timeout)
+	self.child = pexpect.spawn(command,[],self.timeout)
 	self.child.setmaxread (1000) # Sets buffer to 1000 characters.
 	if self.verbose:
 		sys.stderr.write("-> " + command + "\n")
@@ -126,7 +135,7 @@ class sshSession(threading.Thread):
 	  pwpass=0
 	  pppass=0
 	  while True:
-	    seen=self.child.expect([lib.pexpect.EOF,'assword:','continue connecting (yes/no)?','Enter passphrase for key.*:'])
+	    seen=self.child.expect([pexpect.EOF,'assword:','continue connecting (yes/no)?','Enter passphrase for key.*:'])
 
 	    if self.verbose:
 		    sys.stderr.write("<- " + self.child.before + "\n")
@@ -134,7 +143,7 @@ class sshSession(threading.Thread):
 	    #The command ran successfully if EOF was seen
 	    if seen == 0:
 		    self.__setError(False)
-		    self.__setReady(True)
+		    self.ready=True
 		    #Exit the while loop, we've run the command
 		    break
 
@@ -325,7 +334,10 @@ class sshSession(threading.Thread):
 
 		# Update remote authorized_keys files
     		try:
-	 		keyfile = tempfile.mktemp() + self.host
+	 		keyfile        = tempfile.mktemp() + self.host
+	   		keyfile_remote = tempfile.mktemp() + self.host
+	   		keyfile_merged = tempfile.mktemp() + self.host
+
 	 		os.system("cat " + string.join(public_keys, " ") + " >" + keyfile)
 	 		if self.verbose:
 		 		print "Public keys consolidated in %s" % keyfile
@@ -339,9 +351,7 @@ class sshSession(threading.Thread):
 	 		if not self.exists(".ssh/authorized_keys"):
 		 		self.scp(keyfile, ".ssh/authorized_keys")
 	 		else:
-	   			keyfile_remote = tempfile.mktemp() + self.host
 	   			self.scprem(".ssh/authorized_keys",keyfile_remote)
-	   			keyfile_merged = tempfile.mktemp() + self.host
 	   			os.system("cat " + keyfile + " " + keyfile_remote + " >" + keyfile_merged)
 	   			self.scp(keyfile_merged, ".ssh/authorized_keys")
 
@@ -367,4 +377,78 @@ class sshSession(threading.Thread):
 
     		else:
 	    		print "Keys for %s on %s have been installed." % (self.user, self.host)
+
+    def initializeSession(self,defaultPassword=None,defaultPassPhrase=None):
+	"""Initialize the session for checking of passwords and setup of keys"""
+
+	if self.verbose:
+		print 'LAL in initializeSession host: %s' % (th.host)
+
+	#Set the password check flags
+	self.PWCheck = True
+	self.PWRequired = 0
+	self.timeout=None
+	if defaultPassword is not None:
+		self.password = defaultPassword
+	if defaultPassPhrase is not None:
+		self.hostKeyPhrase = defaultPassPhrase
+	
+    def makeReady(self,setupKeys=True):
+    	"""Prepares session to run commands by gathering passwords, keys, etc"""
+
+	#Set the default state of all of the sessions
+	self.initializeSession()
+
+	defaultPassword=None
+	th = self
+	stopAfter=3
+	#Password is required for this session
+	while stopAfter != 0 and not th.isReady():
+		stopAfter -= 1
+		if self.verbose:
+			print 'LAL in setupHostAccess host: %s' % (th.host)
+
+		#Initialize the remaining sessions to use the
+		#new default password and hostKeyPhrase
+		self.initializeSession(th.password,th.hostKeyPhrase)
+		#Run a parallel command to discover whether each host needs a PW or not
+		self.ssh(['ls -ld '])
+
+		if not th.isReady():
+			if th.PWRequired:
+				prompt = 'groupSession: Remote password for host ' + th.host + ':'
+				th.password = getpass.getpass(prompt)
+
+			if th.PPRequired:
+				prompt = 'groupSession: ssh-agent pass key phrase:'
+				th.hostKeyPhrase = getpass.getpass(prompt)
+ 
+		else:
+			break
+
+	if stopAfter == 0 and not th.isReady():
+		raise PasswordFailure('sshSession: Failed to get password')
+
+	#Setup the ssh host keys if any session required a password
+	if setupKeys and self.PWRequired:
+		#Copy the first session's passphrase to all
+		prompt = 'sshSession: ssh-agent pass key phrase:'
+		self.hostKeyPhrase = getpass.getpass(prompt)
+
+		#Setup/locate the local keys
+  		self.setupKeyAccessLocal()
+
+		#Setup remote ssh host keys
+		self.setupKeyAccessRemote()
+
+	return 'sshSession: session is ready to execute commands'
+
+if __name__ == '__main__': 
+	a = sshSession('demo1',22,'local1')
+	a.makeReady()
+	a.setCMD('ssh',['ls'])
+        try:
+		print '%s' % (a.run())
+	except NOTREADY, e:
+		print '%s:%s' % (e,'ssh session for ' + a.hostname + ' not ready for commands.')
 

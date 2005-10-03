@@ -78,7 +78,11 @@ class groupSession(cmd.Cmd):
 			a = sshSessionModule.sshSession(user,port,host)
 			self.sessions.append(a)
 
-		self.__setupHostAccess()
+		try:
+			self.__setupHostAccess()
+		except sshSessionModule.PasswordFailure, e:
+			print '%s: %s' % (e,'groupSession: 3 attempts failed.')
+			raise SystemExit, -1
 
 		#i = 0
 		#for th in self.sessions:
@@ -256,6 +260,7 @@ class groupSession(cmd.Cmd):
     		raise SystemExit, 1
 
 	def __initializeSessions(self,defaultPassword=None,defaultPassPhrase=None,ibegin=0,iend=0):
+		"""Initialize all sessions for checking of passwords and setup of keys"""
 		if iend == 0:
 			iend = len(self.sessions)
 
@@ -264,13 +269,7 @@ class groupSession(cmd.Cmd):
 			th = self.sessions[i]
 			if self.verbose:
 				print 'LAL in initializeSessions host: %s' % (th.host)
-			th.PWCheck = True
-			th.PWRequired = 0
-			th.timeout=30
-			if defaultPassword is not None:
-				th.password = defaultPassword
-			if defaultPassPhrase is not None:
-				th.hostKeyPhrase = defaultPassPhrase
+			th.initializeSession(defaultPassword,defaultPassPhrase)
 	
 	def __setupHostAccess(self,setupKeys=True):
 		#Set the default state of all of the sessions
@@ -280,34 +279,23 @@ class groupSession(cmd.Cmd):
 		#Loop on sessions to get enough passwords for all
 		icurr = 0
 		while icurr < len(self.sessions):
-				th = self.sessions[icurr]
-				stopAfter=3
-				#Password is required for this session
-				while stopAfter != 0 and not th.isReady():
-					stopAfter = stopAfter-1
-					if self.verbose:
-						print 'LAL in setupHostAccess host: %s' % (th.host)
+			th = self.sessions[icurr]
+			#Password is required for this session
+			if not th.isReady():
+				try:
+					th.makeReady(False)
+				except sshSessionModule.PasswordFailure, e:
+					raise
 
-					#Initialize the remaining sessions to use the
-					#new default password and hostKeyPhrase
-					self.__initializeSessions(th.password,th.hostKeyPhrase,icurr)
-					#Run a parallel command to discover whether each host needs a PW or not
-					self.runCommand('ssh',['ls -ld '],icurr,len(self.sessions),True)
+				if self.verbose:
+					print 'LAL in setupHostAccess host: %s' % (th.host)
 
-
-					if not th.isReady():
-                                         if th.PWRequired:
-						prompt = 'groupSession: Remote password for host ' + th.host + ':'
-						th.password = getpass.getpass(prompt)
- 
-                                         if th.PPRequired:
-						prompt = 'groupSession: ssh-agent pass key phrase:'
-						th.hostKeyPhrase = getpass.getpass(prompt)
- 
-					else:
-						break
-
-				icurr = icurr + 1
+				#Initialize the remaining sessions to use the
+				#new default password and hostKeyPhrase
+				self.__initializeSessions(th.password,th.hostKeyPhrase,icurr)
+				#Run a parallel command to discover whether each host needs a PW or not
+				self.runCommand('ssh',['ls -ld '],icurr,len(self.sessions),True)
+			icurr += 1
 
 		#Setup the ssh host keys if any session required a password
 		pwrequired = False
