@@ -257,10 +257,14 @@ MIRROR_LIST () {
 						QE_PORT=`$ECHO $MNODE|$CUT -d"|" -f3`
 						QE_VALID=`$ECHO $MNODE|$CUT -d"|" -f4`
 						QE_PRIMARY=`$ECHO $MNODE|$CUT -d"|" -f5`
-						if [ "$QE_PRIMARY" == "t" ];then
+						if [ "$QE_PRIMARY" == "t" ] && [ "$QE_VALID" == 't' ];then
 							STATUS="Active"
 						else
-							STATUS="Passive"
+							if [ "$QE_PRIMARY" == "f" ] && [ "$QE_VALID" == 't' ]; then
+								STATUS="Passive"
+							else
+								STATUS="Failed"
+							fi
 						fi
 						$TABECHO "[INFO]:-Mirror  = $QE_NAME data directory = $QE_DIR port = $QE_PORT status = $STATUS"
 						EXIT_STATUS=0
