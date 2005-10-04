@@ -1,7 +1,7 @@
 #!/bin/bash
 #	Filename:-		mppstate.sh
-#	Version:-		$Id$	
-#	Updated:-		29/07/2005
+#	Version:-		$Revision$	
+#	Updated:-		$Date$
 #	Status:-		Conversion to MPP
 #	Author:-		G Coombe
 #	Contact:-		gcoombe@greenplum.com
