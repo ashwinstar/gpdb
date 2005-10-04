@@ -59,7 +59,7 @@ class groupSession(cmd.Cmd):
 		hosts 	= an array of tuples (hostname,user)
 		port	= the port to communicate with
 		"""
-	def __init__(self,hosts,port=22):
+	def __init__(self,hostuserport):
 		cmd.Cmd.__init__(self)
 
 		self.prompt = "=> "
@@ -68,11 +68,11 @@ class groupSession(cmd.Cmd):
 		self.verbose = False
 
 		#Create a threadpool to run the commands
-		self.pool = threadpool.ThreadPool(len(hosts))
+		self.pool = threadpool.ThreadPool(len(hostuserport))
 
 		# Create an sshSession object for each host
 		self.sessions = []
-		for host,user in hosts:
+		for host,user,port in hostuserport:
 			#Create a new instance of an sshSession object initialized with this
 			#host/user/port
 			a = sshSessionModule.sshSession(user,port,host)
@@ -336,15 +336,15 @@ if __name__ == '__main__':
 	# Process options
 	(options, arguments) = getopt.getopt(sys.argv[1:], "hvp:s")
 	verbose = 0
-	port = 22
+	defaultport = 22
 	setupKeys = 1
 
 	for (switch, val) in options:
 		if (switch == '-p'):
-			port = val;
+			defaultport = val;
 		elif (switch == '-s'):
 		    setupKeys = 0
-		elif (switch == '-h'):
+		elif (switch == '-h' or switch == '-?'):
 			print __doc__
 			raise SystemExit, 0
 		elif (switch == '-v'):
@@ -368,7 +368,7 @@ if __name__ == '__main__':
 		print 'Unexpected error:', sys.exc_info()[0]
 		raise
 
-	allHosts = []
+	hostuserport = []
 	for h in hostFile:
 		#Strip out the hostname and user, if there is a user present in the record
 		#(e.g. user@host)
@@ -381,10 +381,15 @@ if __name__ == '__main__':
 		else:
 			user = os.environ.get('LOGNAME') or os.environ.get('USER')
 
-		allHosts.append((host,user))
+		if ':' in host:
+			(host,port) = string.split(host, ':')
+		else:
+			port = defaultport
+
+		hostuserport.append((host,user,port))
 
 	#Create a groupSession object
-	gsession = groupSession(allHosts,22)
+	gsession = groupSession(hostuserport)
 
 	#Register a signal handler for the TERM signal
 	signal.signal(signal.SIGTERM,gsession.handlerTERM)
