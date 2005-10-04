@@ -170,12 +170,14 @@ class LinuxHost(Host):
 			if ':' in line:
 				nicname = line.split(':')[0]
 				if not (nicname.find('sit')!=-1 or nicname.find('lo')!=-1):
+				#if not ('sit' in nicname or 'lo' in nicname): #2.3 python allows this
 					self.addNIC(nicname.strip())
 
 	def discoverCPUs(self):
 		result = self.runSSH('cat /proc/cpuinfo')
 		for line in result.split('\n'):
 			if line.find('model name')!=-1:
+			#if 'model name' in line: #2.3 python allows this
 				modelname = line.split(':')[1]
 				self.addCPU(modelname.strip())
 
@@ -198,6 +200,43 @@ class OSXHost(Host):
 	def __init__(self, *args, **kwds):
 		super(OSXHost,self).__init__(*args, **kwds)
 		self.ostype='OSX'
+		self.discoverFilesystems()
+		self.discoverCPUs()
+		self.discoverNICs()
+
+	def discoverNICs(self):
+		result = self.runSSH('ifconfig -lu')
+		result.strip()
+		for nicname in result.split(' '):
+			if not (nicname.find('lo')!=-1 or \
+				nicname.find('gif')!=-1 or \
+				nicname.find('stf')!=-1 or \
+				nicname.find('fw')!=-1):
+				self.addNIC(nicname.strip())
+
+	def discoverCPUs(self):
+		result = self.runSSH('sysctl hw.ncpu')
+		result.strip()
+		ncpus = result.split(':')
+		ncpus = int(ncpus[1])
+		for i in range(ncpus):
+			self.addCPU('UnknownAppleCPU')
+
+	def discoverFilesystems(self):
+		result = self.runSSH('mount')
+		for line in result.split('\n'):
+			#print '%s' % self.stripComment(line)
+			if self.stripComment(line):
+				# partition,fsname,fstype,options,fsck1
+				items = line.split(' ')
+				#only allow filesystems with a leading slash in their partition
+				match = self.slashbeginspattern.match(items[0])
+				if match:
+					try:
+						self.addFilesystem(items[0],items[2],'UnknownType')
+					except DuplicateInfo:
+						pass
+
 
 class SolarisHost(Host):
 	def __init__(self, *args, **kwds):
@@ -266,7 +305,7 @@ if __name__ == '__main__':
 		port = defaultport
 
 	a = Host.getHostObject(host,user,port)
-	if a is None:
+	if not a:
 		print 'No object returned for getHostObject call!'
 		raise SystemExit, -1
 
