@@ -19,6 +19,8 @@ except:
 	print 'Unable to import the sshSession module'
 	raise SystemExit, 1
 
+import string
+
 class ExceptionHost(Exception):
         """Base class for all exceptions raised by this module."""
         def __init__(self, value):
@@ -101,13 +103,13 @@ class Host(object):
 		ostype = Host.getHostType(host,user,port)
 		#print 'OS type is %s for host %s.' % (ostype,host)
 		if ostype == 'Unknown':
-			return Host(host,user)
+			return Host(host,user,port)
 		elif 'Linux' in ostype:
-			return LinuxHost(host,user)
+			return LinuxHost(host,user,port)
 		elif 'Darwin' in ostype:
-			return OSXHost(host,user)
+			return OSXHost(host,user,port)
 		elif 'SunOS' in ostype:
-			return SolarisHost(host,user)
+			return SolarisHost(host,user,port)
 
 	#Mechanism used to create a static callable method from within this object
 	getHostObject = Callable(getHostObject)
@@ -134,33 +136,44 @@ class Host(object):
 
 #>>> Implementations of this class for known operating systems
 class LinuxHost(Host):
-	def __init__(self,hostname,user):
-		super(LinuxHost,self).__init__(hostname,user)
+	def __init__(self,hostname,user,port):
+		super(LinuxHost,self).__init__(hostname,user,port)
 		self.ostype='Linux'
 
 class OSXHost(Host):
-	def __init__(self,hostname,user):
-		super(OSXHost,self).__init__(hostname,user)
+	def __init__(self,hostname,user,port):
+		super(OSXHost,self).__init__(hostname,user,port)
 		self.ostype='OSX'
 
 class SolarisHost(Host):
-	def __init__(self,hostname,user):
-		super(SolarisHost,self).__init__(hostname,user)
+	def __init__(self,hostname,user,port):
+		super(SolarisHost,self).__init__(hostname,user,port)
 		self.ostype='Solaris'
 
 if __name__ == '__main__':
 	import sys
 
 	if len(sys.argv) < 2:
-		print 'usage: %s hostname username' % (sys.argv[0])
+		print 'usage: %s [username@]host[:port]' % (sys.argv[0])
 		raise SystemExit, -1
 
-	hostname = sys.argv[1]
-	user = sys.argv[2]
+	host = sys.argv[1]
+
+	defaultport = 22
 
 	#print 'OS type is %s for host %s.' % (Host.getHostType('local1','demo1'),'local1')
 
-	a = Host.getHostObject(hostname,user)
+	if '@' in host:
+		(user, host) = string.split(host, '@')
+	else:
+		user = os.environ.get('LOGNAME') or os.environ.get('USER')
+
+	if ':' in host:
+		(host,port) = string.split(host, ':')
+	else:
+		port = defaultport
+
+	a = Host.getHostObject(host,user,port)
 	if a is None:
 		print 'No object returned for getHostObject call!'
 		raise SystemExit, -1
