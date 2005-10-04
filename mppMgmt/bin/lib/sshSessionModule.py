@@ -416,11 +416,11 @@ class sshSession(threading.Thread):
 
 		if not th.isReady():
 			if th.PWRequired:
-				prompt = 'groupSession: Remote password for host ' + th.host + ':'
+				prompt = 'sshSession: Remote password for host ' + th.host + ':'
 				th.password = getpass.getpass(prompt)
 
 			if th.PPRequired:
-				prompt = 'groupSession: ssh-agent pass key phrase:'
+				prompt = 'sshSession: ssh-agent pass key phrase:'
 				th.hostKeyPhrase = getpass.getpass(prompt)
  
 		else:
