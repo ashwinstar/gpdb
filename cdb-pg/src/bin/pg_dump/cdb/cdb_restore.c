@@ -309,7 +309,7 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("cdb_restore (PostgreSQL) " PG_VERSION);
+			puts("cdb_restore (Bizgres MPP) " PG_VERSION);
 			exit(0);
 		}
 	}

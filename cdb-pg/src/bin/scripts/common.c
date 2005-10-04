@@ -66,7 +66,7 @@ handle_help_version_opts(int argc, char *argv[], const char *fixed_progname, hel
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			printf("%s (PostgreSQL) " PG_VERSION "\n", fixed_progname);
+			printf("%s (Bizgres MPP) " PG_VERSION "\n", fixed_progname);
 			exit(0);
 		}
 	}

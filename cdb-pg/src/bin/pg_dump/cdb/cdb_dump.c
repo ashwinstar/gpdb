@@ -468,7 +468,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("cdb_dump (PostgreSQL) " PG_VERSION);
+			puts("cdb_dump (Bizgres MPP) " PG_VERSION);
 			goto cleanup;
 		}
 	}

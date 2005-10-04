@@ -621,7 +621,7 @@ process_psqlrc_file(char *filename)
 static void
 showVersion(void)
 {
-	puts("psql (PostgreSQL) " PG_VERSION);
+	puts("psql (Bizgres MPP) " PG_VERSION);
 
 #if defined(USE_READLINE)
 	puts(gettext("contains support for command-line editing"));
