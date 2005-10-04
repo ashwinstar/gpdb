@@ -18,11 +18,11 @@
 Datum
 pgsql_version(PG_FUNCTION_ARGS)
 {
-	int			n = strlen(PG_VERSION_STR);
+	int			n = strlen(PG_VERSION_STR " compiled on " __DATE__ " " __TIME__);
 	text	   *ret = (text *) palloc(n + VARHDRSZ);
 
 	VARATT_SIZEP(ret) = n + VARHDRSZ;
-	memcpy(VARDATA(ret), PG_VERSION_STR, n);
+	memcpy(VARDATA(ret), PG_VERSION_STR " compiled on " __DATE__ " " __TIME__, n);
 
 	PG_RETURN_TEXT_P(ret);
 }
