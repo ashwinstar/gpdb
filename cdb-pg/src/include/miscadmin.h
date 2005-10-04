@@ -24,7 +24,7 @@
 #define MISCADMIN_H
 
 
-#define PG_VERSIONSTR "postgres (PostgreSQL) " PG_VERSION "\n"
+#define PG_VERSIONSTR "Bizgres MPP (PostgreSQL) " PG_VERSION "\n"
 
 
 /*****************************************************************************
