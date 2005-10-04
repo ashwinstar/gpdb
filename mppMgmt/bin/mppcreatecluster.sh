@@ -262,7 +262,7 @@ CHK_PARAMS () {
 
 		#Get IP address of the master host
 
-		MASTER_IP_ADDRESS=`$IFCONFIG |$GREP "inet addr"|$GREP -v addr:127|$AWK '{print $2}'|$CUT -d: -f2`
+		MASTER_IP_ADDRESS=(`$IFCONFIG |$GREP "inet addr"|$GREP -v addr:127|$AWK '{print $2}'|$CUT -d: -f2`)
 		#Below commented out until standby QD tests completed (25/07/2005)
 		##	if [ $STANDBY_IP_ALLOW ]&& [ $STANDBY_QD_MASK ]; then
 		##		LOG_MSG "[INFO]:-Standby Master IP = $STANDBY_QD_IP"
@@ -485,7 +485,10 @@ DISPLAY_CONFIG () {
 		LOG_MSG "[INFO]:-Primary QE Dir #     = $QE_PRIMARY_COUNT"
 		LOG_MSG "[INFO]:-Master Database      = $DATABASE_NAME"
 		LOG_MSG "[INFO]:-Master IP allow      = $IP_ALLOW"
-		LOG_MSG "[INFO]:-Master IP address    = $MASTER_IP_ADDRESS"
+		for MASTER_IP in "${MASTER_IP_ADDRESS[@]}"
+		do
+			LOG_MSG "[INFO]:-Master IP address    = $MASTER_IP"
+		done
 		LOG_MSG "[INFO]:-Total MPP segments   = $TOTAL_SEG"
 		LOG_MSG "[INFO]:-Trusted shell        = $TRUSTED_SHELL"
 		LOG_MSG "[INFO]:-Checkpoint segments  = $CHECK_POINT_SEGMENTS"
@@ -783,7 +786,10 @@ CREATE_QES_PRIMARY () {
 						done
 				fi
 				LOG_MSG "[INFO]:-Configuring QE $PG_HBA"
-				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host	all	all	${MASTER_IP_ADDRESS}/32	trust >> ${MPP_DIR}/$PG_HBA"
+				for MASTER_IP in "${MASTER_IP_ADDRESS[@]}"
+				do
+					RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host	all	all	${MASTER_IP}/32	trust >> ${MPP_DIR}/$PG_HBA"
+				done
 				LOG_MSG "[INFO]:-Starting Functioning instance on QE ${MPP_HOSTNAME}"
 				$TRUSTED_SHELL ${MPP_HOSTNAME} "export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start" >> $LOG_FILE 2>&1
 				if [ $? -ne 0 ]; then
