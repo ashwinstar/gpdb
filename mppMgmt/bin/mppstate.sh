@@ -1,6 +1,6 @@
 #!/bin/bash
 #	Filename:-		mppstate.sh
-#	Version:-		1.1
+#	Version:-		$Id$	
 #	Updated:-		29/07/2005
 #	Status:-		Conversion to MPP
 #	Author:-		G Coombe
@@ -82,6 +82,7 @@ USAGE () {
 		$TABECHO "-n, List instance log file names"
 		$TABECHO "-e, Display end of each segment instance log file"
 		$TABECHO "-b, Display a brief MPP cluster status summary"
+		$TABECHO "-i, Display system version information"
 		$TABECHO
 		$TABECHO "Return codes:"
 		$TABECHO "0 No problems encountered with requested operation"
@@ -224,6 +225,25 @@ DATABASE_STATUS () {
 		LOG_MSG "[INFO]:-Segment instance's marked as vaild            = $QD_VALID_COUNT"
 		LOG_MSG "[INFO]:-Segment instance's marked as invalid          = $QD_NOTVALID_COUNT"
 fi
+}
+
+VERSION_INFO () {
+	GET_QE_DETAILS
+	MASTER_POSTGRES_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT template1 -c"show server_version;"`
+	LOG_MSG "[INFO]:-Master database postgres version = $MASTER_POSTGRES_VERSION"
+	for TNODE in "${QE_ARRAY[@]}"
+	do
+		SET_VAR
+		POSTGRES_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $QE_PORT template1 -c"show server_version;"`
+		RETVAL=$?
+		if [ $RETVAL -ne 0 ]; then
+			LOG_MSG "[WARN]:-Unable to connect to $QE_NAME on port $QE_PORT"
+			ERROR_EXIT=1
+		else
+			LOG_MSG "[INFO]:-$QE_NAME segment directory $QE_DIR postgres version = $POSTGRES_VERSION"
+		fi
+	done
+
 }
 
 MIRROR_LIST () {
@@ -425,7 +445,7 @@ NOT_ACTIVE () {
 #Check to see if we have a parameter supplied to script
 SELECT=1
 if [ $# -ne 0 ]; then
-		while getopts ":vtbl:d:neqsmcp'?'" opt;do
+		while getopts ":vtbl:d:nieqsmcp'?'" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						t ) DISPLAY_PARAM ;;
@@ -438,6 +458,7 @@ if [ $# -ne 0 ]; then
 						p ) SELECT=4 ;; 
 						n ) SELECT=5 ;;
 						b ) SELECT=6 ;;
+						i ) SELECT=7 ;;
 						e ) TAIL_LOGS=1 
 						SELECT=5;;
 						l ) LOG_DIR=$OPTARG ;;
@@ -467,6 +488,7 @@ case $SELECT in
 		4 ) LIST_MPP_PORTS ;;
 		5 ) LIST_MPP_LOGS ;;
 		6 ) SUMMARY_STATUS ;;
+		7 ) VERSION_INFO
 esac
 LOG_MSG "[INFO]:-End Main"
 exit $EXIT_STATUS
