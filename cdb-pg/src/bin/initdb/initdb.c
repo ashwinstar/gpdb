@@ -68,7 +68,7 @@ int			optreset;
 #define _(x) gettext((x))
 
 /* version string we expect back from postgres */
-#define PG_VERSIONSTR "postgres (PostgreSQL) " PG_VERSION "\n"
+#define PG_VERSIONSTR "Bizgres MPP (PostgreSQL) " PG_VERSION "\n"
 
 /*
  * these values are passed in by makefile defines
