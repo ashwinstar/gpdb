@@ -19,7 +19,7 @@ except:
 	print 'Unable to import the sshSession module'
 	raise SystemExit, 1
 
-import string
+import string,re
 
 class ExceptionHost(Exception):
         """Base class for all exceptions raised by this module."""
@@ -36,11 +36,14 @@ class Callable:
 		self.__call__ = anycallable
 
 class Host(object):
-	def __init__(self,hostname,user=None,port=22):
+	def __init__(self,hostname,user=None,port=22,session=None):
 		self.hostname = hostname
 		if user != None:
-			self.addSession(user,port)
+			self.addSession(user,port,session)
 		self.ostype = 'Unknown'
+
+	hashcommentpattern = re.compile('.*(?=#)|.*(?!#)')
+	slashbeginspattern = re.compile('^\/.*')
 
 	hostname = None
 	filesystems = {}
@@ -51,9 +54,12 @@ class Host(object):
 	ostype = None
 
 	#>>> Generic methods that add to information about this host
-	def addSession(self,user,port=22):
+	def addSession(self,user,port=22,session=None):
 		"""Add an ssh session, keyed on the username"""
-		self.sshsessions[user] = sshSessionModule.sshSession(user,port,self.hostname)
+		if session is None:
+			self.sshsessions[user] = sshSessionModule.sshSession(user,port,self.hostname)
+		else:
+			self.sshsessions[user] = session
 
 	def addNIC(self,nicname=None):
 		if nicname is None:
@@ -67,9 +73,8 @@ class Host(object):
 		return
 
 	def addFilesystem(self,FSName,FSType='Unknown',FSPartition='Unknown'):
-		fsid = 'fs%d' % (len(self.filesystems))
 		if not self.filesystems.has_key(FSName):
-			self.filesystems[FSName] = (fsid,FSType,FSPartition)
+			self.filesystems[FSName] = (FSType,FSPartition)
 		else:
 			raise DuplicateInfo('Duplicate filesystem information:'+FSName)
 		return
@@ -93,29 +98,26 @@ class Host(object):
 			print '%s:%s' % (e,'ssh session for ' + a.hostname + ' not ready for commands.')
 			return 'Unknown'
 
-		return ostype
+		return (a,ostype)
 
 	#Mechanism used to create a static callable method from within this object
 	getHostType = Callable(getHostType)
 
 	#>>> Factory for returning an instance of Host subclassed for a specific OS type
 	def getHostObject(host,user,port=22):
-		ostype = Host.getHostType(host,user,port)
+		(session,ostype) = Host.getHostType(host,user,port)
 		#print 'OS type is %s for host %s.' % (ostype,host)
 		if ostype == 'Unknown':
-			return Host(host,user,port)
+			return Host(host,user,port,session)
 		elif 'Linux' in ostype:
-			return LinuxHost(host,user,port)
+			return LinuxHost(host,user,port,session)
 		elif 'Darwin' in ostype:
-			return OSXHost(host,user,port)
+			return OSXHost(host,user,port,session)
 		elif 'SunOS' in ostype:
-			return SolarisHost(host,user,port)
+			return SolarisHost(host,user,port,session)
 
 	#Mechanism used to create a static callable method from within this object
 	getHostObject = Callable(getHostObject)
-
-	#>>> Interfaces for methods to gather host information, meant to be overloaded for
-	#a given host type
 
 	def printHostinfo(self):
 		print 'Hostname:\t%s' % self.hostname
@@ -132,26 +134,78 @@ class Host(object):
 		for i in range(len(keysorted)):
 			key = keysorted[i]
 			print 'FS#%d:\t\t' % (i+1),
-			print '%s %s %s' % (self.filesystems[key])
+			print '%s %s %s' % (key,self.filesystems[key][0],self.filesystems[key][1])
+
+	def runSSH(self,command,session=None):
+		"""Run an ssh command on the first session (unless one passed in)"""
+
+		if not session:
+			keys = self.sshsessions.keys()
+			session = self.sshsessions[keys[0]]
+
+		session.setCMD('ssh',[command])
+		try:
+			result = session.run()
+		except sshSessionModule.NOTREADY, e:
+			print '%s:%s' % (e,'ssh session for ' + session.hostname + ' not ready for commands.')
+			return 'Unknown'
+		return result
+
+	def stripComment(self,line):
+		match = self.hashcommentpattern.match(line)
+		return match.group()
 
 #>>> Implementations of this class for known operating systems
 class LinuxHost(Host):
-	def __init__(self,hostname,user,port):
-		super(LinuxHost,self).__init__(hostname,user,port)
+	def __init__(self, *args, **kwds):
+		super(LinuxHost,self).__init__(*args, **kwds)
 		self.ostype='Linux'
+		self.discoverFilesystems()
+		self.discoverCPUs()
+		self.discoverNICs()
+
+	def discoverNICs(self):
+		result = self.runSSH('cat /proc/net/dev')
+		for line in result.split('\n'):
+			if ':' in line:
+				nicname = line.split(':')[0]
+				if not ('sit' in nicname or 'lo' in nicname):
+					self.addNIC(nicname.strip())
+
+	def discoverCPUs(self):
+		result = self.runSSH('cat /proc/cpuinfo')
+		for line in result.split('\n'):
+			if 'model name' in line:
+				modelname = line.split(':')[1]
+				self.addCPU(modelname.strip())
+
+	def discoverFilesystems(self):
+		result = self.runSSH('cat /etc/mtab')
+		for line in result.split('\n'):
+			#print '%s' % self.stripComment(line)
+			if self.stripComment(line):
+				# partition,fsname,fstype,options,fsck1,fsck2
+				items = line.split(' ')
+				#only allow filesystems with a leading slash in their partition
+				match = self.slashbeginspattern.match(items[0])
+				if match:
+					try:
+						self.addFilesystem(items[0],items[1],items[2])
+					except DuplicateInfo:
+						pass
 
 class OSXHost(Host):
-	def __init__(self,hostname,user,port):
-		super(OSXHost,self).__init__(hostname,user,port)
+	def __init__(self, *args, **kwds):
+		super(OSXHost,self).__init__(*args, **kwds)
 		self.ostype='OSX'
 
 class SolarisHost(Host):
-	def __init__(self,hostname,user,port):
-		super(SolarisHost,self).__init__(hostname,user,port)
+	def __init__(self, *args, **kwds):
+		super(SolarisHost,self).__init__(*args, **kwds)
 		self.ostype='Solaris'
 
 if __name__ == '__main__':
-	import sys
+	import sys,os
 
 	if len(sys.argv) < 2:
 		print 'usage: %s [username@]host[:port]' % (sys.argv[0])
@@ -180,38 +234,10 @@ if __name__ == '__main__':
 
 	print 'OS Type = %s' % (a.ostype)
 
-	a.addNIC()
-	a.addNIC('myNIC')
-
-	a.addCPU()
-	a.addCPU('Opteron')
-	a.addCPU('Xeon')
-
-	#a.addSession('demo1')
-
-	try:
-		a.addFilesystem('/dbfast1','ext3','/dev/md0')
-		a.addFilesystem('/dbfast2','ext2','/dev/md1')
-		a.addFilesystem('/dbfast3','reiserfs','/dev/md2')
-		a.addFilesystem('/dbfast4','ufs','/dev/md2')
-		a.addFilesystem('/dbfast4','ufs','/dev/md2')
-	except DuplicateInfo,e:
-		print '%s: %s' % (e,'Attempt to add filesystem added with duplicate name.')
-		pass
-
 	a.printHostinfo()
 
-	print 'Activating session...'
-	keysorted = a.sshsessions.keys()
-	keysorted.sort()
-	for key in keysorted:
-		try:
-			a.sshsessions[key].makeReady()
-		except sshSessionModule.PasswordFailure, e:
-			print '%s:%s' % (e,' for: ' + a.hostname)
-
-		a.sshsessions[key].setCMD('ssh',['ls'])
-		try:
-			print '%s' % (a.sshsessions[key].run())
-		except sshSessionModule.NOTREADY, e:
-			print '%s:%s' % (e,'ssh session for ' + a.hostname + ' not ready for commands.')
+	print 'Testing session...',
+	if a.runSSH('ls -d .').strip() == '.':
+		print 'session is ok.'
+	else:
+		print 'session is not ok.'
