@@ -107,13 +107,13 @@ class Host(object):
 	def getHostObject(host,user,port=22):
 		(session,ostype) = Host.getHostType(host,user,port)
 		#print 'OS type is %s for host %s.' % (ostype,host)
-		if ostype == 'Unknown':
+		if ostype.find('Unknown')!=-1:
 			return Host(host,user,port,session)
-		elif 'Linux' in ostype:
+		elif ostype.find('Linux')!=-1:
 			return LinuxHost(host,user,port,session)
-		elif 'Darwin' in ostype:
+		elif ostype.find('Darwin')!=-1:
 			return OSXHost(host,user,port,session)
-		elif 'SunOS' in ostype:
+		elif ostype.find('SunOS')!=-1:
 			return SolarisHost(host,user,port,session)
 
 	#Mechanism used to create a static callable method from within this object
@@ -169,13 +169,13 @@ class LinuxHost(Host):
 		for line in result.split('\n'):
 			if ':' in line:
 				nicname = line.split(':')[0]
-				if not ('sit' in nicname or 'lo' in nicname):
+				if not (nicname.find('sit')!=-1 or nicname.find('lo')!=-1):
 					self.addNIC(nicname.strip())
 
 	def discoverCPUs(self):
 		result = self.runSSH('cat /proc/cpuinfo')
 		for line in result.split('\n'):
-			if 'model name' in line:
+			if line.find('model name')!=-1:
 				modelname = line.split(':')[1]
 				self.addCPU(modelname.strip())
 
@@ -203,6 +203,44 @@ class SolarisHost(Host):
 	def __init__(self, *args, **kwds):
 		super(SolarisHost,self).__init__(*args, **kwds)
 		self.ostype='Solaris'
+		self.discoverFilesystems()
+		self.discoverCPUs()
+		self.discoverNICs()
+
+	def discoverNICs(self):
+		result = self.runSSH('netstat -i | tail +2')
+		for line in result.split('\n'):
+			if len(line) > 10:
+				nicname = line.split(' ')[0]
+				if not (nicname.find('lo')!=-1):
+					self.addNIC(nicname.strip())
+
+	def discoverCPUs(self):
+		modelname = self.runSSH('optisa `isalist`')
+		result = self.runSSH('prtconf -D | grep cpu')
+		for line in result.split('\n'):
+			if line.find('cpu, instance')!=-1:
+				self.addCPU(modelname.strip())
+
+	def discoverFilesystems(self):
+		result = self.runSSH('cat /etc/mnttab')
+		for line in result.split('\n'):
+			#print '%s' % self.stripComment(line)
+			if self.stripComment(line):
+				# partition,fsname,fstype,options,fsck1
+				items = line.split('\t')
+				#only allow filesystems with a leading slash in their partition
+				match = self.slashbeginspattern.match(items[0])
+				if match and not \
+				(items[2].find('lofs')!=-1 or \
+				 items[2].find('devfs')!=-1 or \
+				 items[2].find('udfs')!=-1 or \
+				 items[2].find('pcfs')!=-1):
+					try:
+						self.addFilesystem(items[0],items[1],items[2])
+					except DuplicateInfo:
+						pass
+
 
 if __name__ == '__main__':
 	import sys,os
