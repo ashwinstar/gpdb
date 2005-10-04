@@ -161,9 +161,9 @@ DATABASE_STATUS () {
 				else
 						LOG_MSG "[INFO]:-Active mpprecovernode.bsh     = False"
 				fi
-				LOG_MSG "[INFO]:-QE cluster node status"
+				LOG_MSG "[INFO]:-Segment instance cluster status"
 				if [ ${#QE_ARRAY[@]} -eq 0 ]; then
-						LOG_MSG "[WARN]:-Could not obtain any QE host details"
+						LOG_MSG "[WARN]:-Could not obtain any segment instance host details"
 				else
 						LOG_MSG "[INFO]:-----------------------"
 						for TNODE in "${QE_ARRAY[@]}"
@@ -185,7 +185,7 @@ DATABASE_STATUS () {
 								QE_PID=0
 						fi
 						QE_PID_ACTUAL=`$TRUSTED_SHELL $QE_NAME "$PS ax|$GREP postmaster|$GREP -v grep|$GREP ${QE_PORT}"|$AWK '{print $1}'`
-						LOG_MSG "[INFO]:-QE Physical PID for $QE_NAME port $QE_PORT       = $QE_PID_ACTUAL"
+						LOG_MSG "[INFO]:-Segment Instance Physical PID for $QE_NAME port $QE_PORT       = $QE_PID_ACTUAL"
 						STATUS=`$TRUSTED_SHELL $QE_NAME "export PGPORT=${QE_PORT};$PG_CTL status -D $QE_DIR"|$HEAD -1|$GREP -c PID` 2>> $LOG_FILE
 						RETVAL=$?
 						if [ $RETVAL -ne 0 ]; then
@@ -194,35 +194,35 @@ DATABASE_STATUS () {
 								STATUS=0
 						fi
 						if [ $QE_PID -eq 0 ]; then
-								LOG_MSG "[WARN]:-QE $TYPE $QE_NAME port $QE_PORT postmaster PID = NOT RUNNING"
+								LOG_MSG "[WARN]:-Segment instance $TYPE $QE_NAME port $QE_PORT postmaster PID = NOT RUNNING"
 								EXIT_STATUS=1
 						else
-								LOG_MSG "[INFO]:-QE $TYPE $QE_NAME port $QE_PORT postmaster PID = $QE_PID" 
+								LOG_MSG "[INFO]:-Segment instance $TYPE $QE_NAME port $QE_PORT postmaster PID = $QE_PID" 
 						fi
 						if [ $STATUS -eq 1 ]; then
-								LOG_MSG "[INFO]:-QE $TYPE $QE_NAME port $QE_PORT pg_ctl status  = Active"
+								LOG_MSG "[INFO]:-Segment instance $TYPE $QE_NAME port $QE_PORT pg_ctl status  = Active"
 								((QD_STATE_COUNT=$QD_STATE_COUNT+1))
 						else
-								LOG_MSG "[WARN]:-QE $TYPE $QE_NAME port $QE_PORT pg_ctl status  = Failed"
+								LOG_MSG "[WARN]:-Segment instance $TYPE $QE_NAME port $QE_PORT pg_ctl status  = Failed"
 								EXIT_STATUS=1
 						fi
 						if [ "$QE_VALID" == "t" ]; then
 							((QD_VALID_COUNT=$QD_VALID_COUNT+1))
-							LOG_MSG "[INFO]:-QE $TYPE $QE_NAME port $QE_PORT segment status = Valid"
+							LOG_MSG "[INFO]:-Segment instance $TYPE $QE_NAME port $QE_PORT segment status = Valid"
 						else
 							((QD_NOTVALID_COUNT=$QD_NOTVALID_COUNT+1))
-							LOG_MSG "[WARN]:-QE $TYPE $QE_NAME port $QE_PORT segment status = Invalid"
+							LOG_MSG "[WARN]:-Segment instance $TYPE $QE_NAME port $QE_PORT segment status = Invalid"
 							EXIT_STATUS=1
 						fi
 						$ECHO
 				done
 		fi
-		LOG_MSG "[INFO]:-QE Instance Status Report"
-		LOG_MSG "[INFO]:--------------------------"
-		LOG_MSG "[INFO]:-QE's reported active via pg_ctl = $QD_STATE_COUNT "
-		LOG_MSG "[INFO]:-QE's reported failed via pg_ctl = $QD_FAILED_COUNT"
-		LOG_MSG "[INFO]:-QE's marked as vaild            = $QD_VALID_COUNT"
-		LOG_MSG "[INFO]:-QE's marked as invalid          = $QD_NOTVALID_COUNT"
+		LOG_MSG "[INFO]:-Segment instance Instance Status Report"
+		LOG_MSG "[INFO]:----------------------------------------"
+		LOG_MSG "[INFO]:-Segment instance's reported active via pg_ctl = $QD_STATE_COUNT "
+		LOG_MSG "[INFO]:-Segment instance's reported failed via pg_ctl = $QD_FAILED_COUNT"
+		LOG_MSG "[INFO]:-Segment instance's marked as vaild            = $QD_VALID_COUNT"
+		LOG_MSG "[INFO]:-Segment instance's marked as invalid          = $QD_NOTVALID_COUNT"
 fi
 }
 
@@ -242,7 +242,7 @@ MIRROR_LIST () {
 						else
 							STATUS="Passive"
 						fi
-						$TABECHO "[INFO]:-Mirror QE = $QE_NAME data directory = $QE_DIR port = $QE_PORT status = $STATUS"
+						$TABECHO "[INFO]:-Mirror  = $QE_NAME data directory = $QE_DIR port = $QE_PORT status = $STATUS"
 						EXIT_STATUS=0
 				done
 		else
@@ -319,35 +319,35 @@ $ECHO -n .
 		LOG_MSG "[INFO]:---------------------------"
 		LOG_MSG "[INFO]:-Master db $QD_DBNAME active" 
 		LOG_MSG "[INFO]:---------------------------"
-		LOG_MSG "[INFO]:-Total QE MPP count              = $QE_COUNT"
-		LOG_MSG "[INFO]:-Total QE primary PID active     = $QE_PRIMARY_STATE_COUNT"
+		LOG_MSG "[INFO]:-Total segment instance MPP count              = $QE_COUNT"
+		LOG_MSG "[INFO]:-Total segment instance primary PID active     = $QE_PRIMARY_STATE_COUNT"
 		if [ $QE_PRIMARY_FAILED_COUNT -eq 0 ]; then
-				LOG_MSG "[INFO]:-Total QE primary PID failed     = $QE_PRIMARY_FAILED_COUNT"
+				LOG_MSG "[INFO]:-Total segment instance primary PID failed     = $QE_PRIMARY_FAILED_COUNT"
 		else
-				LOG_MSG "[WARN]:-Total QE primary PID failed     = $QE_PRIMARY_FAILED_COUNT"
+				LOG_MSG "[WARN]:-Total segment instance primary PID failed     = $QE_PRIMARY_FAILED_COUNT"
 				EXIT_STATUS=1
 		fi	
-		LOG_MSG "[INFO]:-Total QE primary db active      = $QE_PRIMARY_VALID"
+		LOG_MSG "[INFO]:-Total segment instance primary db active      = $QE_PRIMARY_VALID"
 		if [ $QE_PRIMARY_INVALID -eq 0 ]; then
-			LOG_MSG "[INFO]:-Total QE primary db failed      = $QE_PRIMARY_INVALID"
+			LOG_MSG "[INFO]:-Total segment instance primary db failed      = $QE_PRIMARY_INVALID"
 		else
-			LOG_MSG "[WARN]:-Total QE primary db failed      = $QE_PRIMARY_INVALID"
+			LOG_MSG "[WARN]:-Total segment instance primary db failed      = $QE_PRIMARY_INVALID"
 			EXIT_STATUS=1
 		fi
-		LOG_MSG "[INFO]:-Total QE mirror PID active      = $QE_MIRROR_STATE_COUNT"
+		LOG_MSG "[INFO]:-Total segment instance mirror PID active      = $QE_MIRROR_STATE_COUNT"
 		if [ $QE_MIRROR_FAILED_COUNT -eq 0 ]; then
-				LOG_MSG "[INFO]:-Total QE mirror PID failed      = $QE_MIRROR_FAILED_COUNT"
+				LOG_MSG "[INFO]:-Total segment instance mirror PID failed      = $QE_MIRROR_FAILED_COUNT"
 		else
-				LOG_MSG "[WARN]:-Total QE mirror PID failed      = $QE_MIRROR_FAILED_COUNT"
+				LOG_MSG "[WARN]:-Total segment instance mirror PID failed      = $QE_MIRROR_FAILED_COUNT"
 				EXIT_STATUS=1
 		fi
 		if [ $QE_MIRROR_ACTIVE -ne 0 ];then
-			LOG_MSG "[WARN]:-Total QE mirror active primary  = $QE_MIRROR_ACTIVE"
+			LOG_MSG "[WARN]:-Total segment instance mirror active primary  = $QE_MIRROR_ACTIVE"
 			EXIT_STATUS=1
 		else
-			LOG_MSG "[INFO]:-Total QE mirror active primary  = $QE_MIRROR_ACTIVE"
+			LOG_MSG "[INFO]:-Total segment instance mirror active primary  = $QE_MIRROR_ACTIVE"
 		fi
-		LOG_MSG "[INFO]:-Total QE mirror passive primary = $QE_MIRROR_PASSIVE"
+		LOG_MSG "[INFO]:-Total segment instance mirror passive primary = $QE_MIRROR_PASSIVE"
 }
 
 CLUSTER_CONFIG () {
@@ -388,25 +388,25 @@ LIST_MPP_PORTS () {
 				do
 				HOST=`$ECHO $PMODE|$CUT -d"|" -f1`
 				PORT=`$ECHO $PMODE|$CUT -d"|" -f2`
-				LOG_MSG "[INFO]:-QE host $HOST has assigned MPP port = $PORT"
+				LOG_MSG "[INFO]:-Segment instance host $HOST has assigned MPP port = $PORT"
 		done
 }
 
 LIST_MPP_LOGS () {
 		LOG_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select b.hostname,  a.datadir from mpp.listener a, mpp.host b where listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid;" 2>|/dev/null`)
-		LOG_MSG "[INFO]:-QE MPP database instance log file names"
+		LOG_MSG "[INFO]:-Segment instance MPP database instance log file names"
 		for LOGCHK in "${LOG_ARRAY[@]}"
 				do
 				HOST=`$ECHO $LOGCHK|$CUT -d"|" -f1`
 				DIR=`$ECHO $LOGCHK|$CUT -d"|" -f2`
 				if [ $TAIL_LOGS ]; then
-						LOG_MSG "[INFO]:-QE host $HOST log file tail START---------------"
+						LOG_MSG "[INFO]:-Segment instance host $HOST log file tail START---------------"
 						$ECHO
 						$TRUSTED_SHELL $HOST "$TAIL ${DIR}.log"|$TEE -a $LOG_FILE
 						$ECHO
-						LOG_MSG "[INFO]:-QE host $HOST log file tail END-----------------"
+						LOG_MSG "[INFO]:-Segment instance host $HOST log file tail END-----------------"
 				else
-						LOG_MSG "[INFO]:-QE Host assigned logfile ${DIR}.log database logfile"
+						LOG_MSG "[INFO]:-Segment instance Host assigned logfile ${DIR}.log database logfile"
 				fi
 		done	
 }
