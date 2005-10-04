@@ -8,6 +8,8 @@ Release-2_0_1:  03/Oct/2005  builder
 Release-0_0_0:  26/Sep/2005  builder
     Dry Run for Oct 15 2005 Release
 
+Fixes: mpp-55, mpp-63. Also added ctrl-c support and disabled COPY in 
+    read only transactions.
 Added new GUC variable Mpp_max_packet_size.  This specifies the largest packet
 	size that the interconnect will send messages with.  Like Mpp_session_role, 
 	this can only be set before startup.  The value that is set on the QD is
