@@ -326,11 +326,15 @@ TupleChunkList SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo *pSerInfo, i
 		if (fHandled)
 			continue;
 
+		/* the FunctionCall2 call into the send function may result in
+		 * some allocations which we'd like to have contained by our
+		 * reset-able context */
+		oldCtxt = MemoryContextSwitchTo(s_tupSerMemCtxt);
         outputbytes =
 			DatumGetByteaP(FunctionCall2(&attrInfo->send_finfo,
 										 attr,
 										 ObjectIdGetDatum(attrInfo->send_typio_param)));
-
+		MemoryContextSwitchTo(oldCtxt);
 
         /* We assume the result will not have been toasted */
 		addInt32ToChunkList(tcList, VARSIZE(outputbytes) - VARHDRSZ);
