@@ -12,6 +12,4 @@ log_hostname = true
 log_statement = all
 stats_command_string=true
 #debug_pretty_print = true
-fsync=false
-work_mem=131072
 checkpoint_segments = 128
