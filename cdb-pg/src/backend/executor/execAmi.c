@@ -170,6 +170,13 @@ ExecReScan(PlanState *node, ExprContext *exprCtxt)
 		case T_LimitState:
 			ExecReScanLimit((LimitState *) node, exprCtxt);
 			break;
+		
+		case T_MotionState:
+			ereport(ERROR, (
+				errcode(ERRCODE_CDB_INTERNAL_ERROR),
+				errmsg("unsupported call to rescan Motion operator")
+				));
+			break;
 
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
@@ -216,6 +223,14 @@ ExecMarkPos(PlanState *node)
 		case T_SortState:
 			ExecSortMarkPos((SortState *) node);
 			break;
+		
+		case T_MotionState:
+			ereport(ERROR, (
+				errcode(ERRCODE_CDB_INTERNAL_ERROR),
+				errmsg("unsupported call to mark position of Motion operator")
+				));
+			break;
+
 
 		default:
 			/* don't make hard error unless caller asks to restore... */
@@ -256,6 +271,13 @@ ExecRestrPos(PlanState *node)
 
 		case T_SortState:
 			ExecSortRestrPos((SortState *) node);
+			break;
+		
+		case T_MotionState:
+			ereport(ERROR, (
+				errcode(ERRCODE_CDB_INTERNAL_ERROR),
+				errmsg("unsupported call to restore position of Motion operator")
+				));
 			break;
 
 		default:

@@ -30,7 +30,7 @@
 #include "parser/parsetree.h"
 #include "parser/parse_clause.h"
 #include "rewrite/rewriteManip.h"
-
+#include "cdb/cdbllize.h"
 
 /* These parameters are set by GUC */
 bool		enable_geqo = false;	/* just in case GUC doesn't set it */
@@ -383,6 +383,9 @@ set_subquery_pathlist(Query *root, RelOptInfo *rel,
 
 	/* Generate the plan for the subquery */
 	rel->subplan = subquery_planner(subquery, 0.0 /* default case */ );
+	
+	/* Be sure it's fully parallelized */
+	rel->subplan = cdbparallelize_subquery(rel->subplan, subquery);
 
 	/* Copy number of output rows from subplan */
 	rel->tuples = rel->subplan->plan_rows;

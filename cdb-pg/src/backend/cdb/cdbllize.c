@@ -307,12 +307,12 @@ cdbparallelize_subquery( Plan* plan, Query *query )
 	/* TODO Remove this when the implementation is ready to test.
 	 *      Until then issue an error to avoid masking caller bugs
 	 *      with bugs presumed to be in this untested support.
-	 */
 	ereport(ERROR, (
 			errcode(ERRCODE_CDB_FEATURE_NOT_YET),
 			errmsg("Cannot parallelize that query yet"),
 			errdetail("Unsupported subquery")
 			));
+	 */
 
 	/* Prescan the plan and attach Flow nodes to its Plan nodes. These
 	 * nodes describe how to parallelize the plan.  We also accumulate
