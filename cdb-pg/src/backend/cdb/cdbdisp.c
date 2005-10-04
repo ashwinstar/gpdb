@@ -1882,6 +1882,11 @@ CdbDispatchUtilityStatement(Node *stmt)
 	initStringInfo(&buffer);
 
 	q->commandType = CMD_UTILITY;
+	
+	Assert(stmt!=NULL);
+	Assert(stmt->type < 1000);
+	Assert(stmt->type > 0);
+	
 	q->utilityStmt = stmt;
 
 	q->querySource = QSRC_ORIGINAL;
