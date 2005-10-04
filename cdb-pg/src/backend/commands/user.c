@@ -771,6 +771,8 @@ CreateUser(CreateUserStmt *stmt)
 	{
 		AlterGroupStmt ags;
 
+		ags.type = T_AlterGroupStmt;
+		
 		ags.name = strVal(lfirst(item));		/* the group name to add
 												 * this in */
 		ags.action = +1;
@@ -791,6 +793,8 @@ CreateUser(CreateUserStmt *stmt)
 
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
+			Assert(stmt->type==T_CreateUserStmt);
+			Assert(stmt->type < 1000);
 			CdbDispatchUtilityStatement((Node *)stmt);
 	}
 }
@@ -1192,6 +1196,8 @@ DropUser(DropUserStmt *stmt)
 		while ((tmp_tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 		{
 			AlterGroupStmt ags;
+			
+			ags.type = T_AlterGroupStmt;
 
 			/* the group name from which to try to drop the user: */
 			ags.name = pstrdup(NameStr(((Form_pg_group) GETSTRUCT(tmp_tuple))->groname));
@@ -1691,6 +1697,7 @@ AlterGroup(AlterGroupStmt *stmt, const char *tag)
 	group_file_update_needed();
 	
 	if (Mpp_role == MPP_ROLE_DISPATCH)
+	if (strcmp(tag, "ALTER GROUP") == 0)
 	{
 			CdbDispatchUtilityStatement((Node *)stmt);
 	}
