@@ -1,7 +1,7 @@
 #!/bin/bash
 #	Filename:-		mppstop.sh
-#	Version:-		1.0
-#	Updated:-		30/09/2005
+#	Version:-		$Revision$
+#	Updated:-		$Date$
 #	Status:-		MPP Conversion SE Co Internal
 #	Author:-		G Coombe
 #	Contact:-		gcoombe@greenplum.com

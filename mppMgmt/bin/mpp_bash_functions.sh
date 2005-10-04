@@ -1,7 +1,7 @@
 #!/bin/bash
 #	Filename:-		mpp_bash_functions.sh
-#	Version:-		1.0
-#	Updated:-		20/07/2005
+#	Version:-		$Revision$
+#	Updated:-		$Date$
 #	Status:-		MPP Conversion SE Co Internal	
 #	Author:-		G L Coombe (Greenplum)
 #	Contact:-		gcoombe@greenplum.com
@@ -169,10 +169,10 @@ CHK_DB_QD_SET () {
 }
 
 VERSION_INFO () {
-		VERSION=`$HEAD -10 $0|$GREP -i Version: |$AWK '{print $3}'`
+		VERSION=`$HEAD -10 $0|$GREP -i Version: | $CUT -d# -f2|$CUT -d- -f2|$TR -d '\t'`
 ##		STATUS=`$HEAD -10 $0|$GREP -i Status: | $AWK '{print $3" "$4" "$5 " " $6}'`
 		STATUS=`$HEAD -10 $0|$GREP -i Status: | $CUT -d# -f2|$CUT -d- -f2|$TR -d '\t'`
-		UPDATE=`$HEAD -10 $0|$GREP -i Updated:|$AWK '{print $3}'`
+		UPDATE=`$HEAD -10 $0|$GREP -i Updated:| $CUT -d# -f2|$CUT -d- -f2|$TR -d '\t'`
 		CHK_SUM=`$CKSUM $0|$AWK '{print $1" "$2}'`
 		$ECHO "`basename $0` Version   = $VERSION"
 		$ECHO "`basename $0` Status    = $STATUS"

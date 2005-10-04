@@ -1,7 +1,7 @@
 #!/bin/bash
 #	Filename:-		mpprecoverseg.bsh
-#	Version:-		1.0
-#	Updated:-		21/09/2005
+#	Version:-		$Revision$
+#	Updated:-		$Date$
 #	Status:-		Currently undergoing initial testing
 #	Author:-		G L Coombe
 #	Contact:-		gcoombe@greenplum.com	

@@ -1,7 +1,7 @@
 #!/bin/bash
 #	Filename:-		mppcreatecluster.sh
-#	Version:-		1.5
-#	Updated:-		11/08/2005	
+#	Version:-		$Revision$
+#	Updated:-		$Date$	
 #	Status:-		MPP Conversion SE Co Internal	
 #	Author:-		L Lonergan/G Coombe	
 #	Contact:-		gcoombe@greenplum.com
@@ -890,9 +890,12 @@ RESTART_QD_PRODUCTION () {
 		LOG_MSG "[INFO]:-Restarting the MPP cluster in production mode"
 		if [ -f $WORKDIR/mppstop.sh ]; then
 				$WORKDIR/mppstop.sh -a -d $QD_DIR
-				if [ $? -ne 0 ]; then
-					ERROR_EXIT "[FATAL]:-Failed to stop new MPP cluster, check log file" 2
-				fi
+				RETVAL=$?
+				case $RETVAL in
+				0 )	LOG_MSG "[INFO]:-Successfully shutdown the new MPP array" ;;
+				1 ) LOG_MSG "[WARN]:-Non fatal error from MPP array shutdown, check log files, will continue" ;;
+				2 ) ERROR_EXIT "[FATAL]:-Failed to stop new MPP cluster, check log file" 2
+				esac
 		else
 				ERROR_EXIT "[FATAL]:-WORKDIR/mppstop.sh not located" 2
 		fi

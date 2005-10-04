@@ -1,7 +1,7 @@
 #!/bin/bash
 #	Filename:-		mppstart.sh
-#	Version:-		1.0
-#	Updated:-		21/07/2005
+#	Version:-		$Revision$
+#	Updated:-		$Date$
 #	Status:-		MPP Conversion SE Co Internal
 #	Author:-		G Coombe
 #	Contact:-		gcoombe@greenplum.com
