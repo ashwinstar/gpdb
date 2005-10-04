@@ -1257,6 +1257,16 @@ void AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 
 }
 
+void ReleaseGangs(QueryDesc *queryDesc)
+{
+	/*
+	 * TODO Depending on how we eventually support named Portals for
+	 *      cursors, we may have to dig through the queryDesc in order
+	 *      to do a more precise job. Here we just free all the gangs.
+	 */
+	freeGangs();
+}
+
 
 void InitSliceReq(SliceReq* req)
 {

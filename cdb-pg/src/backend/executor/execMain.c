@@ -686,10 +686,15 @@ ExecutorEnd(QueryDesc *queryDesc)
 	ExecEndPlan(queryDesc->planstate, estate);
 
 	/*
+	 * Release any gangs we may have assigned.
+	 */
+	ReleaseGangs(queryDesc);
+
+	/*
 	 * Must switch out of context before destroying it
 	 */
 	MemoryContextSwitchTo(oldcontext);
-
+	
 	/*
 	 * Release EState and per-query memory context.  This should release
 	 * everything the executor has allocated.

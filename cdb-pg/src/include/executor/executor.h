@@ -286,6 +286,8 @@ extern void UnregisterExprContextCallback(ExprContext *econtext,
 extern void InitSliceTable(EState *estate, int nMotions, int nSubplans);
 extern void InitRootSlices(QueryDesc *queryDesc);
 extern void AssignGangs(QueryDesc *queryDesc, int utility_segment_index);
+extern void ReleaseGangs(QueryDesc *queryDesc);
+
 extern Slice *getCurrentSlice(EState* estate);
 extern bool sliceRunsOnQD(Slice *slice);
 extern bool sliceRunsOnQE(Slice *slice);
