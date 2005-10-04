@@ -276,7 +276,7 @@ RECOVER_DATA () {
 		#Run a checkpoint if STOPDB=0
 		if [ $STOPDB -eq 0 ]; then
 			LOG_MSG "[INFO]:-Issuing checkpoint on $MIR_QE_HOST port=$MIR_QE_PORT"
-			$TRUSTED_SHELL $FAIL_QE_HOST "env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $MIR_QE_PORT template1 -c \"checkpoint;\""
+			$TRUSTED_SHELL $MIR_QE_HOST "env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $MIR_QE_PORT template1 -c \"checkpoint;\""
 			RETVAL=$?
 			if [ $RETVAL -ne 0 ]; then
 				LOG_MSG "[WARN]:-Checkpoint failed on $MIR_QE_HOST port=$MIR_QE_PORT"
