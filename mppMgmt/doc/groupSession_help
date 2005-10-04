@@ -1,0 +1,178 @@
+COMMAND NAME: groupSession
+
+Starts an interactive command-line session with multiple hosts 
+specified in a host file. Will also perform SSH key exchanges 
+as the current user (or the user specified in the host file).
+
+*****************************************************
+SYNOPSIS
+*****************************************************
+
+groupSession <host_file> [-p <ssh_port>] [-s] [-v] [-h]
+
+
+*****************************************************
+DESCRIPTION
+*****************************************************
+
+The groupSession utility starts an interactive command-line 
+session that allows you to run bash shell commands on multiple 
+hosts at the same time. The groupSession utility uses a host list 
+file to determine the hosts (and optionally the users) involved in 
+a session. You cannot change the host list file mid-session. If you 
+want to change the host list file, you must start a new groupSession 
+instance after editing the file. 
+
+The groupSession utility will also exchange SSH keys between the hosts 
+at the start of a session if you do not have a trusted host environment 
+established already. This allows SSH connections to the remote hosts 
+without a password prompt. If a user name is not specified in the host 
+list file, then the current user will be used. 
+
+Greenplum recommends performing the key exchange process twice: 
+once as root and once as the mppadmin user (the user designated to own 
+your Bizgres MPP installation). The Bizgres MPP management scripts require 
+that the same non-root user be created on all hosts in the Bizgres MPP 
+system, and the scripts must be able to connect as that user to all 
+hosts without a password prompt.
+
+When exchanging SSH keys, hit the ENTER key when prompted for the 
+ssh-agent pass key phrase (do NOT enter a pass key phrase). 
+For example:
+
+groupSession: Remote password for host kite6: <user_password>
+groupSession: ssh-agent pass key phrase: [ENTER]
+
+Once your trusted host environment is established, you get the 
+groupSession command prompt (>). You can enter a command as you 
+would in a regular bash terminal command-line, and the command will be 
+executed on all hosts in the host list file. To run a command on the 
+local host only, prefix the command with ! or shell. Use rcopy to copy 
+a file to a specified location on all hosts.
+
+*****************************************************
+OPTIONS
+*****************************************************
+
+<host_file>
+
+Required. The name of a file that contains a list of hosts that 
+will participate in the group session. The groupSession utility will 
+also exchange SSH keys as either the current user or the username 
+specified in the host file. The format of the host file is as follows:
+
+username@host1
+username@host2
+...
+username@hostN
+
+OR (if you want to connect as the current user)
+
+host1
+host2
+...
+hostN
+
+
+
+-p <ssh_port>
+
+Optional. If you are using a different SSH port besides the default 
+port of 22, use this option to specify the SSH port number.
+
+-s
+
+Optional. Disable the setup of trusted host key exchange. The 
+default behavior is to exchange SSH keys as the specified user 
+between the hosts in the host list.
+
+-v
+
+Optional. Verbose mode will report all commands sent to a 
+host and the output received.
+
+-h
+
+Displays the online help.
+
+
+*****************************************************
+COMMANDS (AT THE groupSession COMMAND PROMPT)
+*****************************************************
+
+At the groupSession command prompt (>), you can enter a command 
+as you would in a regular bash terminal command-line and the 
+command will be executed on all hosts in the host list file. To run
+a command on the local host only, prefix the command with ! or shell. 
+Use the rcopy command to copy a file to a specified location on all hosts.
+
+<command>
+Enter any command as you would at a regular bash terminal command-line. This 
+will execute the given command on all of the hosts in the host list file.
+
+
+shell <command>
+Commands prefixed with shell will run the command on the local host only.
+
+
+! <command>
+Commands prefixed with ! will run the command on the local host only.
+
+
+rcopy [<filename> [<path_on_remote_hosts>]]
+The rcopy command is used to copy the specified file to the specified 
+directory location on all of the hosts in the host list file.
+
+
+*****************************************************
+EXAMPLES
+*****************************************************
+
+Start groupSession and exchange SSH keys as the current user with 
+the hosts listed in host_file:
+
+./groupSession host_file -v
+
+groupSession: Remote password for host kite6: <user_password>
+
+groupSession: ssh-agent pass key phrase: [ENTER]
+
+groupSession: Remote password for host kite7: <user_password>
+
+groupSession: ssh-agent pass key phrase: [ENTER]
+
+Keys for mppadmin on kite 7 have been installed.
+
+Keys for mppadmin on kite 6 have been installed.
+
+Acquired passwords, keys.
+
+Entering command prompt, shh commands are executed on all hosts:
+
+enter command (q to quit, rcopy to copy file)>
+
+
+
+At the groupSession command prompt, copy a file to the specified
+location on all the hosts in host_file.
+
+rcopy mpp-2.0.tar.gz /
+
+
+
+At the groupSession command prompt, run a shell command on all 
+the hosts in host_file.
+
+ls -a /mppdata/dbfast1
+
+
+
+At the groupSession command prompt, run a shell command on the 
+local host only.
+
+shell cat /etc/profile
+
+OR
+
+! cat /etc/profile
+
