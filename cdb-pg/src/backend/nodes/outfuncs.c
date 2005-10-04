@@ -1716,31 +1716,54 @@ _outQuery(StringInfo str, Query *node)
 			case T_AlterTableCmd:
 			case T_ViewStmt:
 			case T_RuleStmt:
+			
 			case T_CreateUserStmt:
 			case T_AlterUserStmt:
 			case T_AlterUserSetStmt:
+			case T_DropUserStmt:
+			
 			case T_CreateGroupStmt:
 			case T_DropGroupStmt:
 			case T_AlterGroupStmt:
-			case T_DropUserStmt:
+			
+			case T_CreateSchemaStmt:
+			case T_CreatePLangStmt:
+			case T_DropPLangStmt:
+			case T_AlterOwnerStmt:
+			
 			case T_RenameStmt:
 			case T_IndexStmt:
 			case T_NotifyStmt:
 			case T_DeclareCursorStmt:
-			case T_CreateSchemaStmt:
 			case T_VacuumStmt:
 			case T_CreateSeqStmt:
 			case T_CreatedbStmt:
+			case T_AlterDatabaseSetStmt:
+			case T_DropdbStmt:
+			case T_ClusterStmt:
+			
 			case T_TransactionStmt:
 			case T_CdbExecStmt:
 			case T_GrantStmt:
 			case T_LockStmt:
+			case T_CopyStmt:
+			case T_ReindexStmt:
 				WRITE_NODE_FIELD(utilityStmt);
 				break;
 
 			default:
 				appendStringInfo(str, " :utilityStmt ?");
 				appendStringInfo(str, "%u", nodeTag(node->utilityStmt));
+				if (Mpp_role == MPP_ROLE_DISPATCH)
+				{
+#ifdef _DEBUG
+					elog(ERROR, "could not serialize unrecognized utilityStmt node type: %d",
+						 (int) nodeTag(node->utilityStmt));
+#else
+					elog(WARNING, "could not serialize unrecognized utilityStmt node type: %d",
+						 (int) nodeTag(node->utilityStmt));
+#endif
+				}
 				break;
 		}
 	}
