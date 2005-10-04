@@ -292,6 +292,7 @@ SUMMARY_STATUS () {
 		QE_PRIMARY_INVALID=0
 		QE_MIRROR_PASSIVE=0
 		QE_MIRROR_ACTIVE=0
+		QE_MIRROR_FAILED=0
 		QE_COUNT=0
 		if [ ! -s $MASTER_DATA_DIRECTORY/$PG_PID ]; then
 				ERROR_EXIT "[WARN]:-Query Dispatch database down" 1
@@ -322,10 +323,14 @@ done
 for TNODE in "${QE_MIRROR_ARRAY[@]}"
 		do
 		SET_VAR
-		if [ "$QE_PRIMARY" == "t" ]; then
+		if [ "$QE_PRIMARY" == "t" ] && [ "$QE_VALID" == 't' ]; then
 			((QE_MIRROR_ACTIVE=$QE_MIRROR_ACTIVE+1))
 		else
-			((QE_MIRROR_PASSIVE=$QE_MIRROR_PASSIVE+1))
+			if [ "$QE_PRIMARY" == "f" ] && [ "$QE_VALID" == 't' ]; then
+				((QE_MIRROR_PASSIVE=$QE_MIRROR_PASSIVE+1))
+			else
+				((QE_MIRROR_FAILED=$QE_MIRROR_FAILED+1))
+			fi
 		fi
 		QE_PID=`$TRUSTED_SHELL $QE_NAME "if [ -f $QE_DIR/$PG_PID ]; then $HEAD -1 $QE_DIR/$PG_PID;else echo 0
 fi"` 2>> $LOG_FILE
@@ -370,6 +375,11 @@ $ECHO -n .
 			EXIT_STATUS=1
 		else
 			LOG_MSG "[INFO]:-Total segment instance mirror active primary  = $QE_MIRROR_ACTIVE"
+		fi
+		if [ $QE_MIRROR_FAILED -ne 0 ];then
+			LOG_MSG "[WARN]:-Total segment instance mirror failed          = $QE_MIRROR_FAILED"
+		else
+			LOG_MSG "[INFO]:-Total segment instance mirror vaild           = $QE_MIRROR_FAILED"
 		fi
 		LOG_MSG "[INFO]:-Total segment instance mirror passive primary = $QE_MIRROR_PASSIVE"
 }
