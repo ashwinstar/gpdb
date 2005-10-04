@@ -837,7 +837,7 @@ DoCopy(const CopyStmt *stmt)
 	rel = heap_openrv(relation, (is_from ? RowExclusiveLock : AccessShareLock));
 
 	/* check read-only transaction */
-	if (XactReadOnly && !is_from && !isTempNamespace(RelationGetNamespace(rel)))
+	if (XactReadOnly && is_from && !isTempNamespace(RelationGetNamespace(rel)))
 		ereport(ERROR,
 				(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
 				 errmsg("transaction is read-only")));
@@ -1353,6 +1353,7 @@ CopyTo(Relation rel, List *attnumlist, bool binary, bool oids,
 static void
 copy_in_error_callback(void *arg)
 {
+	
 	if (copy_binary)
 	{
 		/* can't usefully display the data */
@@ -1378,6 +1379,20 @@ copy_in_error_callback(void *arg)
 		}
 		else
 		{
+			int eol_len = 1;
+			int eol_loc = 0;
+			
+			if(eol_type == EOL_CRNL)
+				eol_len = 2;
+			
+            eol_loc = line_buf.len - eol_len;
+			
+			if(eol_loc < 0) /* just to be sure */
+				eol_loc = 0;
+			
+			/* remove LF from line before displaying it */
+			line_buf.data[line_buf.len - eol_len] = '\0';
+			
 			/* error is relevant to a particular line */
 			if (line_buf_converted ||
 				client_encoding == server_encoding)
@@ -1988,7 +2003,12 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 			{
 				Oid			loaded_oid = InvalidOid;
 				
-				CHECK_FOR_INTERRUPTS();
+				if(QueryCancelPending)
+				{
+					/* quit processing loop */
+					no_more_data = true;
+					break;
+				}
 				
 				/* Reset the per-tuple exprcontext */
 				ResetPerTupleExprContext(estate);
@@ -2031,8 +2051,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 						
 						if (isnull)
 						{
-							appendStringInfo(&cdbcopy_err, "\n\nMPPCOPY ERROR: null OID in COPY data."
-											 "\nRow number: %d\nData row: %s", copy_lineno, line_buf.data);
+							appendStringInfo(&cdbcopy_err, "\nMPPCOPY: null OID in COPY data.");
 							cdbCopy->data_errors = true;
 						}
 						else
@@ -2051,9 +2070,8 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 								MemoryContextSwitchTo(beforeError);
 								edata = CopyErrorData(); /* get the original error message */
 								FlushErrorState();
-								appendStringInfo(&cdbcopy_err, "\n\nMPPCOPY ERROR: Error processing OID column."
-												 "\nRow number: %d\nDescription: %s\nData row: %s", 
-												 copy_lineno, edata->message, line_buf.data);
+								appendStringInfo(&cdbcopy_err, "\nMPPCOPY: Error processing OID column."
+												 "\nDescription: %s", edata->message);
 								FreeErrorData(edata);
 								cdbCopy->data_errors = true;
 							}
@@ -2064,8 +2082,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 							
 							if (loaded_oid == InvalidOid)
 							{
-								appendStringInfo(&cdbcopy_err, "\n\nMPPCOPY ERROR: invalid OID in COPY data."
-												 "\nRow number: %d\nData row: %s", copy_lineno, line_buf.data);
+								appendStringInfo(&cdbcopy_err, "\nMPPCOPY: invalid OID in COPY data.");
 								cdbCopy->data_errors = true;
 							}
 
@@ -2098,9 +2115,8 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 						MemoryContextSwitchTo(beforeError);
 						edata = CopyErrorData(); /* get the original error message */
 						FlushErrorState();
-						appendStringInfo(&cdbcopy_err, "\n\nMPPCOPY ERROR: Error while parsing attributes."
-										 "\nRow number: %d\nDescription: %s\nData row: %s", 
-										 copy_lineno, edata->message, line_buf.data);
+						appendStringInfo(&cdbcopy_err, "\nMPPCOPY: Error while parsing attributes."
+										 "\nDescription: %s", edata->message);
 						FreeErrorData(edata);
 						cdbCopy->data_errors = true;
 					}
@@ -2162,9 +2178,9 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 									{
 										limit_printout_length(&line_buf);
 										appendStringInfo(&cdbcopy_err, 
-														 "\n\nMPPCOPY ERROR: Incompatiable value for partitioning "
-														 "column '%s' type. \nRow number: %d\nData Value: '%s'.\nData row: %s",
-														 copy_attname, copy_lineno, string, line_buf.data);
+														 "\n\nMPPCOPY: Incompatiable value for partitioning "
+														 "column '%s' type.\nData Value: '%s'",
+														 copy_attname,string);
 										cdbCopy->data_errors = true;
 									}
 									PG_END_TRY();									
@@ -2200,7 +2216,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 					
 					if (fld_count != attr_count)
 					{
-						appendStringInfo(&cdbcopy_err, "\n\nMPPCOPY ERROR: row field count is %d, expected %d",
+						appendStringInfo(&cdbcopy_err, "\n\nMPPCOPY: row field count is %d, expected %d",
 										 (int) fld_count, attr_count);
 						cdbCopy->data_errors = true;
 						no_more_data = true;
@@ -2217,7 +2233,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 																	 &isnull));
 						if (isnull || loaded_oid == InvalidOid)
 						{
-							appendStringInfo(&cdbcopy_err, "\n\nMPPCOPY ERROR: invalid OID in COPY data");
+							appendStringInfo(&cdbcopy_err, "\n\nMPPCOPY: invalid OID in COPY data");
 							cdbCopy->data_errors = true;
 							no_more_data = true;
 							break;
@@ -2341,10 +2357,17 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	 */
 	cdbCopyEnd(cdbCopy);
 	
+    /* 
+	 * If we quit the processing loop earlier due to a 
+     * cancel query signal, we now throw an error. 
+	 * (Safe to do only after cdbCopyEnd).
+	 */
+    CHECK_FOR_INTERRUPTS();
+
+
 	if(cdbCopy->data_errors || cdbCopy->io_errors) 
 		appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
 	
-
 	/*
 	 * report all accumulated errors back to the client.
 	 */
@@ -2353,12 +2376,9 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 				(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 				 errmsg("%s", cdbcopy_err.data)));
 	if(cdbCopy->io_errors)
-	{
-		
 		ereport(ERROR,
 				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
 				 errmsg("%s", cdbcopy_err.data)));
-	}
 	/*
 	 * Done, clean up
 	 */
@@ -3724,23 +3744,10 @@ CopyReadAttributesText(const char *delim, const char *escape, const char *null_p
 					* '\0' to exit loop */
 				
 				if (lnext(cur) != NULL)
-				{
-					/*
-					 * For an empty data line, the previous COPY code will
-					 * fail it during the conversion stage. We can fail it here
-					 * already, but then we will fail the regression tests b/c
-					 * of a different error message. that's why we return so we
-					 * can get the same error message that regress expects. ahh...
-					 * this conditional is unnecessary and should be removed soon.
-					 */
-					if (line_buf.len > 1)
 						ereport(ERROR,
 								(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 								 errmsg("missing data for column \"%s\"",
 										NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname))));
-					else
-						return;
-				}
 			}
 			else
 				/* FOUND A DELIMITER OR ESCAPE */
