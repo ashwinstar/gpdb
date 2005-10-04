@@ -775,6 +775,8 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 	cxt.alist = NIL;
 	cxt.pkey = NULL;
 	cxt.hasoids = interpretOidsOption(stmt->hasoids);
+	
+	stmt->policy = NULL;
 
 	/*
 	 * Run through each primary element in the table creation clause.
@@ -802,8 +804,26 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 				break;
 
 			case T_InhRelation:
+			{
+				bool isBeginning = (cxt.columns == NIL);
 				transformInhRelation(pstate, &cxt,
 									 (InhRelation *) element);
+									 
+				if (Mpp_role == MPP_ROLE_DISPATCH && stmt->distributedBy == NIL && isBeginning)
+				{
+					InhRelation * e = (InhRelation *) element;
+					Oid			relId = RangeVarGetRelid( e->relation, false);
+					
+					MppPolicy *oldTablePolicy = get_table_policy( relId );
+					
+					if(stmt->policy->ptype == POLICYTYPE_PARTITIONED)
+					{
+						stmt->policy = oldTablePolicy;
+					
+						elog( NOTICE,"Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table");
+					}
+				}
+			}
 				break;
 
 			default:
@@ -1449,6 +1469,9 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 		*policyp = NULL;
 		return;
 	}
+	
+	if (*policyp != NULL)
+		return;
 	
 	
 	policy = (MppPolicy*) palloc(sizeof(MppPolicy) + maxattrs*sizeof(policy->attrs[0]));
