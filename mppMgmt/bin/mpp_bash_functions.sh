@@ -33,7 +33,10 @@ CMDPATH=(/usr/kerberos/bin /usr/sfw/bin /opt/sfw/bin /usr/local/bin /bin /usr/bi
 #MPPPATH is the list of possible locations for the Bizgres binaries, in precedence order
 declare -a MPPPATH
 MPPPATH=( $MPPHOME $BIZHOME )
-
+if [ ${#MPPPATH[@]} -eq 0 ];then
+	echo "[FATAL]:-MPPHOME and BIZHOME are not set, need to set at least one of these within environment"  
+	exit 2
+fi
 #MPP_UNIQUE_COMMAND is used to identify the binary directory
 MPP_UNIQUE_COMMAND=cdb_dump
 
