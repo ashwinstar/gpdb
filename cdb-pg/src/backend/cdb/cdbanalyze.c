@@ -37,8 +37,8 @@ cdbanalyze_query_local_catalogs(StringInfoData *sqlstmt,
                                                           void *context),
                                 void           *context)
 {
-	int     spiresult;
-    bool    connected = false;
+	int             spiresult;
+    volatile bool   connected = false;
 
     Assert( callback &&
             Mpp_role == MPP_ROLE_DISPATCH );
