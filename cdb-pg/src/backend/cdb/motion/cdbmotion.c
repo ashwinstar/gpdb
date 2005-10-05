@@ -249,10 +249,12 @@ void InitMotionLayer(void)
 	 * The tuple-serial memory-context is a child of the Motion Layer
 	 * memory-context 
 	 */
-	s_motion_layer_state.motion_layer_mctx = AllocSetContextCreate(
-		TopMemoryContext, "MotionLayerMemCtxt",
-		ALLOCSET_SMALL_MINSIZE, ALLOCSET_SMALL_INITSIZE, ALLOCSET_SMALL_MAXSIZE);
-
+	s_motion_layer_state.motion_layer_mctx =
+		AllocSetContextCreate(
+			TopMemoryContext, "MotionLayerMemCtxt",
+			ALLOCSET_SMALL_MINSIZE,
+			ALLOCSET_SMALL_INITSIZE,
+			ALLOCSET_DEFAULT_MAXSIZE); /* use a setting bigger than "small" */
 
 	Mpp_max_tuple_chunk_size = Mpp_max_packet_size - PACKET_HEADER_SIZE - TUPLE_CHUNK_HEADER_SIZE;
 	
@@ -754,7 +756,7 @@ static void processIncomingChunks(MotionNodeEntry *pMNEntry, int16 motNodeID, in
     /* Get all of the currently available tuple-chunks, and push each one into
      * the chunk-sorter.
      */     
-	if(srcRoute == ANY_ROUTE)
+	if (srcRoute == ANY_ROUTE)
 		tcItem = RecvTupleChunkFromAny(motNodeID, &srcRoute);
 	else
 		tcItem = RecvTupleChunkFrom(motNodeID, srcRoute);
@@ -988,6 +990,7 @@ ChunkSorterEntry *getChunkSorterEntry(MotionNodeEntry *motNodeEntry,
 			 " [src=%d,mn=%d].", srcRoute, motNodeID);
 
 		chunkSorterEntry->chunk_list.serialized_data_length = 0;
+		chunkSorterEntry->chunk_list.max_chunk_length = Mpp_max_tuple_chunk_size;
         chunkSorterEntry->chunk_list.num_chunks = 0;
         chunkSorterEntry->chunk_list.p_first = NULL;
         chunkSorterEntry->chunk_list.p_last = NULL;

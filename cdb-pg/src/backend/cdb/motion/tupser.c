@@ -551,9 +551,13 @@ HeapTuple CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo *pSerInfo)
     /* Dump all of the data in the tuple chunk list into a single StringInfo,
      * so that we can convert it into a HeapTuple.  Check chunk types based on
      * whether there is only one chunk, or multiple chunks.
+	 *
+	 * We know roughly how much space we'll need, allocate all in one go.
+	 *
      */
-
     initStringInfo(&serData);
+	enlargeStringInfo(&serData, tcList->num_chunks * tcList->max_chunk_length);
+
     tcItem = tcList->p_first;
     i = 0;
     do
