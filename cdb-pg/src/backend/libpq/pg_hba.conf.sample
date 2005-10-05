@@ -67,6 +67,5 @@
 @remove-line-for-nolocal@local   all         all                               @authmethod@
 # IPv4 local connections:
 host    all         all         127.0.0.1/32          @authmethod@
-host    all         all         10.1.1.0/24           @authmethod@
 # IPv6 local connections:
 host    all         all         ::1/128               @authmethod@
