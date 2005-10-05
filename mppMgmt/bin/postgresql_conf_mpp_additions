@@ -9,7 +9,6 @@ log_disconnections = true
 log_duration = true
 log_line_prefix = '%t|%d|%p|:-'
 log_hostname = true
-log_statement = all
 stats_command_string=true
 #debug_pretty_print = true
 checkpoint_segments = 128
