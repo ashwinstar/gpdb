@@ -200,7 +200,16 @@ PROMPT_CONTINUE () {
 }	
 
 PROCESS_SHUTDOWN () {
-		#Shutdown QE hosts first
+		#Shutdown QD hosts first
+		LOG_MSG "[INFO]:-Stopping Master $QD_NAME directory $MASTER_DATA_DIRECTORY"
+		$PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m $MODE -l ${MASTER_DATA_DIRECTORY}.log >/dev/null 2>&1
+		RETVAL=$?
+		if [ $RETVAL -ne 0 ]; then
+				ERROR_EXIT "[FATAL]:-Issue with shutdown of Master database" 2
+		else
+				LOG_MSG "[INFO]:-------------------------------------------------------"
+				LOG_MSG "[INFO]:-Successfully shutdown $QD_STOP_COUNT Segment instances and Master instance"
+		fi
 		QD_STOP_COUNT=0
 		for QNODE in "${QE_ARRAY[@]}"
 				do
@@ -209,14 +218,14 @@ PROCESS_SHUTDOWN () {
 				QE_PORT=`$ECHO $QNODE|$CUT -d"|" -f3`
 				QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
 				if [ "$QE_VALID" == "t" ] || [ $STOP_INVALID -eq 1 ];then
-					LOG_MSG "[INFO]:-Stopping QE $QE_NAME directory $QE_DIR"
+					LOG_MSG "[INFO]:-Stopping Segment Instance $QE_NAME directory $QE_DIR"
 					$TRUSTED_SHELL $QE_NAME "$PG_CTL $WAIT stop -D $QE_DIR -m $MODE -l ${QE_DIR}.log " >/dev/null 2>&1
 					RETVAL=$?
 					if [ $RETVAL -ne 0 ]; then
-						LOG_MSG "[WARN]:-Issue with shutdown of $QE_NAME QE database"
+						LOG_MSG "[WARN]:-Issue with shutdown of $QE_NAME Segment Instance database"
 						EXIT_STATUS=1
 					else
-						LOG_MSG "[INFO]:-Successfully shutdown QE Host $QE_NAME database"
+						LOG_MSG "[INFO]:-Successfully shutdown Segment Instance Host $QE_NAME database"
 					fi
 					if [ $STOP_INVALID -eq 1 ]; then       
 						FORCE_CLEAR
@@ -227,15 +236,6 @@ PROCESS_SHUTDOWN () {
 					EXIT_STATUS=1
 				fi
 		done
-		LOG_MSG "[INFO]:-Stopping Master $QD_NAME directory $MASTER_DATA_DIRECTORY"
-		$PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m $MODE -l ${MASTER_DATA_DIRECTORY}.log >/dev/null 2>&1
-		RETVAL=$?
-		if [ $RETVAL -ne 0 ]; then
-				ERROR_EXIT "[FATAL]:-Issue with shutdown of Master database" 2
-		else
-				LOG_MSG "[INFO]:-------------------------------------------------------"
-				LOG_MSG "[INFO]:-Successfully shutdown $QD_STOP_COUNT QE instances and Master instance"
-		fi
 }
 
 FORCE_CLEAR () {
