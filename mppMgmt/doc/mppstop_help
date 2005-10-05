@@ -67,6 +67,10 @@ could cause data corruption.
 Smart shut down. Waits for active transactions to complete before shutting 
 down. This is the default shutdown mode.
 
+-r
+
+Restarts the system after shutdown is complete.
+
 -m
 
 Optional. Shuts down a MPP master instance that was started in 

@@ -1,0 +1,138 @@
+COMMAND NAME: mppstate.sh
+
+Shows the status of a running Bizgres MPP database management 
+server instance.
+
+
+*****************************************************
+SYNOPSIS
+*****************************************************
+
+mppstate.sh [-d <data_directory>] [-s] [-m] [-c] [-p] [-n] 
+[-e] [-b] [-q] [-l <logfile_directory>]
+
+mppstate.sh [-t | -? | -v]
+
+
+*****************************************************
+DESCRIPTION
+*****************************************************
+
+The mppstate.sh script is analogous to functionality offered by 
+the PostgreSQL pg_controldata command, which displays information 
+about a running database server instance. There is additional 
+information you may want to know about a Bizgres MPP database instance, 
+since it is comprised of multiple PostgreSQL instances spanning multiple 
+machines. The mppstate.sh script provides the following status information 
+for a Bizgres MPP system:
+
+* The location of the MPP master data directory.
+
+* The port the MPP master instance is running on.
+
+* The segment content ID, data directory, port, primary or mirror status, 
+  and valid status for each segment instance in the system.
+
+* Log files for each segment instance.
+
+* A mapping of primary segments to their corresponding mirror segments.
+
+*****************************************************
+OPTIONS
+*****************************************************
+
+-d <data_directory>
+
+Optional. The master host data directory. If not specified, the value 
+set for $MASTER_DATA_DIRECTORY will be used.
+
+-s
+
+Optional. Displays status information for the Bizgres MPP system such 
+as the master data directory and port, and the segment content ID, data 
+directory, port, primary or mirror status, and valid status for each segment 
+instance in the system. This is the default option.
+
+-m 
+
+Optional. List the mirror segment instances in the system.
+
+-c 
+
+Optional. Display mapping of primary segments to their corresponding 
+mirror segments.
+
+-p
+
+Optional. List the port numbers used throughout the Bizgres MPP system.
+
+-n
+
+Optional. List the log file names for the master instance and each 
+segment instance.
+
+-e
+
+Optional. Display the end of the log file for the master instance 
+and each segment instance.
+
+-b
+
+Optional. Display a brief summary of the state of the Bizgres MPP system.
+
+-q
+
+Optional. Run in quiet mode. Command output is not displayed on the 
+screen, but is still written to the log file.
+
+-l logfile_directory
+
+Optional. The directory to write the log file. Defaults to 
+<current_directory>/logs.
+
+-t
+
+Optional. Displays the default settings used by the mppstate.sh script 
+such as the master data directory and port.
+
+-?
+
+Displays the online help.
+
+-v
+
+Displays the version, status, last updated date, and check sum of 
+this script.
+
+
+*****************************************************
+EXAMPLES
+*****************************************************
+
+Show the complete status information of a Bizgres MPP system:
+
+./mppstate.sh
+
+Show the status summary of a Bizgres MPP system:
+
+./mppstate.sh -b
+
+Show information about mirror segment instances:
+
+./mppstate.sh -m -c
+
+Show the last log file message for all segment instances:
+
+./mppstop.sh -e
+
+Display the online help for the mppstate.sh script:
+
+./mppstate.sh -?
+
+
+*****************************************************
+SEE ALSO
+*****************************************************
+
+mppstart.sh
+
