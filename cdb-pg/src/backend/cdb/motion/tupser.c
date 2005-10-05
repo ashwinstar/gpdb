@@ -67,11 +67,13 @@ void InitSerTupInfo(TupleDesc tupdesc, SerTupInfo *pSerInfo)
 
 	if (s_tupSerMemCtxt == NULL)
 	{
-		/* Create tuple-serialization memory context. */
-		
-		s_tupSerMemCtxt = AllocSetContextCreate(TopMemoryContext,
-			"TupSerMemCtxt", ALLOCSET_SMALL_MINSIZE, ALLOCSET_SMALL_INITSIZE,
-			ALLOCSET_SMALL_MAXSIZE);
+		/* Create tuple-serialization memory context. */		
+		s_tupSerMemCtxt =
+			AllocSetContextCreate(TopMemoryContext,
+								  "TupSerMemCtxt",
+								  ALLOCSET_DEFAULT_INITSIZE, /* always have some memory */
+								  ALLOCSET_DEFAULT_INITSIZE,
+								  ALLOCSET_DEFAULT_MAXSIZE);
 	}
 
     elog(DEBUG2, "Initializing cached tuple serialization information.");
@@ -89,10 +91,10 @@ void InitSerTupInfo(TupleDesc tupdesc, SerTupInfo *pSerInfo)
     if (numAttrs <= 0)
         return;
 
-    pSerInfo->myinfo = (SerAttrInfo *) palloc0(numAttrs * sizeof(SerAttrInfo));
+    pSerInfo->myinfo = (SerAttrInfo *)palloc0(numAttrs * sizeof(SerAttrInfo));
 
-    pSerInfo->values = (Datum *) palloc(numAttrs * sizeof(Datum));
-    pSerInfo->nulls  = (char  *) palloc(numAttrs * sizeof(char ));
+    pSerInfo->values = (Datum *)palloc(numAttrs * sizeof(Datum));
+    pSerInfo->nulls  = (char  *)palloc(numAttrs * sizeof(char ));
 
     for (i = 0; i < numAttrs; i++)
     {
@@ -340,6 +342,11 @@ TupleChunkList SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo *pSerInfo, i
 		addInt32ToChunkList(tcList, VARSIZE(outputbytes) - VARHDRSZ);
 		addByteStringToChunkList(tcList, VARDATA(outputbytes),
 								 VARSIZE(outputbytes) - VARHDRSZ);
+
+		/* this was allocated in our reset-able context, but we *are*
+		 * done with it; and for tuples with several large columns
+		 * it'd be nice to free the memory back to the context */
+		pfree(outputbytes);
     }
 
 	MemoryContextReset(s_tupSerMemCtxt);
