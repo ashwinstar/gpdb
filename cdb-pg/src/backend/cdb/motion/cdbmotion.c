@@ -1243,14 +1243,11 @@ static inline void reconstructTuple(MotionNodeEntry *pMNEntry, ChunkSorterEntry 
 {
 	HeapTuple htup;
 
-	/* Convert the list of chunks into a tuple, then stow it away. */
-
+	/* Convert the list of chunks into a tuple, then stow it
+	 * away. This frees our TCList as a side-effect */
 	htup = CvtChunksToHeapTup(&pCSEntry->chunk_list, &pMNEntry->ser_tup_info);
 
 	htfifo_addtuple(pCSEntry->ready_tuples, htup);
-
-	/* Clean up the chunk-list to receive a new tuple. */
-	clearTCList(&pCSEntry->chunk_list);
 
 	/* Stats */
 	statNewTupleArrived(pMNEntry, pCSEntry);

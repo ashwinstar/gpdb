@@ -612,6 +612,9 @@ HeapTuple CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo *pSerInfo)
         i++;
     }
     while (tcItem != NULL);
+
+	/* we've finished with the TCList, free it now. */
+	clearTCList(tcList);
     
     /* Create the HeapTuple from the concatenated chunks. */
     htup = DeserializeTuple(pSerInfo, &serData);
