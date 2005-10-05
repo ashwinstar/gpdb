@@ -115,7 +115,6 @@ GET_MIRROR () {
 	fi
 	#Get a list of databases contained within the array
 	DB_LIST=(`$PSQL -p $MASTER_PORT template1 -R" " -A -t -c"select datname from pg_database where datallowconn<>'f';"`)
-	RESET_QE_CONNECT
 	#Get a list of dbid's that are marked as invalid
 	for DBNAME in ${DB_LIST[@]}
 	do
