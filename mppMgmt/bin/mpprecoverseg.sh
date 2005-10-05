@@ -115,6 +115,7 @@ GET_MIRROR () {
 	fi
 	#Get a list of databases contained within the array
 	DB_LIST=(`$PSQL -p $MASTER_PORT template1 -R" " -A -t -c"select datname from pg_database where datallowconn<>'f';"`)
+	RESET_QE_CONNECT
 	#Get a list of dbid's that are marked as invalid
 	for DBNAME in ${DB_LIST[@]}
 	do
@@ -353,7 +354,7 @@ RESET_QE_CONNECT () {
 	for MPP_DB in ${DB_LIST[@]}
 	do
 		TABLE_NAME=`$PSQL -p $MASTER_PORT $MPP_DB -A -t -c"select relname from pg_class where relkind='r' order by reltype desc limit(1);"`
-		$PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from ${TABLE_NAME};" 2>&1 >> $LOG_FILE
+		$PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from ${TABLE_NAME};" >> $LOG_FILE 2>&1
 	done
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }

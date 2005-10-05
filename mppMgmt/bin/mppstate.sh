@@ -379,7 +379,7 @@ $ECHO -n .
 		if [ $QE_MIRROR_FAILED -ne 0 ];then
 			LOG_MSG "[WARN]:-Total segment instance mirror failed          = $QE_MIRROR_FAILED"
 		else
-			LOG_MSG "[INFO]:-Total segment instance mirror vaild           = $QE_MIRROR_FAILED"
+			LOG_MSG "[INFO]:-Total segment instance mirror failed          = $QE_MIRROR_FAILED"
 		fi
 		LOG_MSG "[INFO]:-Total segment instance mirror passive primary = $QE_MIRROR_PASSIVE"
 }
