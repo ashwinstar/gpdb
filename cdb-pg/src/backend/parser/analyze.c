@@ -816,7 +816,7 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 					
 					MppPolicy *oldTablePolicy = get_table_policy( relId );
 					
-					if(stmt->policy->ptype == POLICYTYPE_PARTITIONED)
+					if(oldTablePolicy != NULL && oldTablePolicy->ptype == POLICYTYPE_PARTITIONED)
 					{
 						stmt->policy = oldTablePolicy;
 					
