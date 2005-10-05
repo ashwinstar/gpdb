@@ -573,6 +573,12 @@ CREATE_QD_DB () {
 				ERROR_EXIT "[FATAL]:-Failed to set Master port in $PG_CONF" 2
 		fi
 		LOG_MSG "[INFO]:-Completed setting the Master port to $MASTER_PORT"
+		LOG_MSG "[INFO]:-Setting Master logging option"
+		ED_FILE ${MPP_DIR}/$PG_CONF "#log_statement =" log_statement=all
+		if [ $? -ne 0 ]; then
+			LOG_MSG "[WARN:-Failed to set log_statement=all in ${MPP_DIR}/$PG_CONF"
+			ERROR_EXIT=1
+		fi
 		if [ -f $PG_CONF_ADD_FILE ]; then
 				LOG_MSG "[INFO]:-Processing additional configuration parameters"
 				for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
