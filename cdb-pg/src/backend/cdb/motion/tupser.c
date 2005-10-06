@@ -31,7 +31,7 @@
  */
 static MemoryContext s_tupSerMemCtxt = NULL;
 
-static inline void addByteStringToChunkList(TupleChunkList tcList, char *data, int datalen);
+static void addByteStringToChunkList(TupleChunkList tcList, char *data, int datalen);
 
 #define addCharToChunkList(tcList, x) \
 	do															\
@@ -157,7 +157,13 @@ void CleanupSerTupInfo(SerTupInfo *pSerInfo)
 	pSerInfo->tupdesc = NULL;
 }
 
-static inline void addByteStringToChunkList(TupleChunkList tcList, char *data, int datalen)
+/*
+ * When manipulating chunks before transmit, it is important to notice that the
+ * tcItem's chunk_length field *includes* the 4-byte chunk header, but that the
+ * length within the header itself does not. Getting the two confused results
+ * heap overruns and that way lies pain.
+ */
+static void addByteStringToChunkList(TupleChunkList tcList, char *data, int datalen)
 {
 	TupleChunkListItem	tcItem;
 	int					remain, curSize, available, copyLen;
@@ -175,22 +181,23 @@ static inline void addByteStringToChunkList(TupleChunkList tcList, char *data, i
 	pos = data;
 	do
 	{
-		curSize = tcItem->chunk_length - TUPLE_CHUNK_HEADER_SIZE;
+		curSize = tcItem->chunk_length;
 
 		available = tcList->max_chunk_length - curSize;
 		copyLen = MIN(available, remain);
 		if (copyLen > 0)
 		{
-			/* make sure we don't stomp on the serialized header */
-			memcpy(tcItem->chunk_data + TUPLE_CHUNK_HEADER_SIZE + curSize, pos, copyLen);
+			/* make sure we don't stomp on the serialized header,
+			 * chunk_length already accounts for it */
+			memcpy(tcItem->chunk_data + curSize, pos, copyLen);
 
 			remain -= copyLen;
 			pos += copyLen;
 			tcList->serialized_data_length += copyLen;
 			curSize += copyLen;
 
-			SetChunkDataSize(tcItem->chunk_data, curSize);
-			tcItem->chunk_length = curSize + TUPLE_CHUNK_HEADER_SIZE;
+			SetChunkDataSize(tcItem->chunk_data, curSize - TUPLE_CHUNK_HEADER_SIZE);
+			tcItem->chunk_length = curSize;
 		}
 
 		if (remain == 0)
@@ -198,6 +205,11 @@ static inline void addByteStringToChunkList(TupleChunkList tcList, char *data, i
 
 		tcItem = (TupleChunkListItem)
 			palloc0(sizeof(TupleChunkListItemData) + tcList->max_chunk_length);
+		if (tcItem == NULL)
+		{
+			ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
+							errmsg("Could not allocate space for new chunk. %d of %d bytes in %d chunks", tcList->serialized_data_length, datalen, tcList->num_chunks)));
+		}
 		tcItem->chunk_length = TUPLE_CHUNK_HEADER_SIZE;
 		SetChunkType(tcItem->chunk_data, TC_PARTIAL_MID);
 		appendChunkToTCList(tcList, tcItem);
@@ -228,10 +240,20 @@ TupleChunkList SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo *pSerInfo, i
 
 	/* get ready to go */
     tcList = (TupleChunkList)palloc0(sizeof(TupleChunkListData));
+	if (tcList == NULL)
+	{
+		ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
+						errmsg("Could not allocate space for new chunk list.")));
+	}
 	tcList->max_chunk_length = MaxChunkDataSize;
 
 	tcItem = (TupleChunkListItem)
 		palloc0(sizeof(TupleChunkListItemData) + tcList->max_chunk_length);
+	if (tcItem == NULL)
+	{
+		ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
+						errmsg("Could not allocate space for first chunk item in new chunk list.")));
+	}
 	/* assume that we'll take a single chunk */
 	SetChunkType(tcItem->chunk_data, TC_WHOLE);
 	tcItem->chunk_length = TUPLE_CHUNK_HEADER_SIZE;
@@ -547,7 +569,7 @@ HeapTuple CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo *pSerInfo)
     AssertArg(tcList != NULL);
     AssertArg(tcList->p_first != NULL);
     AssertArg(pSerInfo != NULL);
-    
+
     /* Dump all of the data in the tuple chunk list into a single StringInfo,
      * so that we can convert it into a HeapTuple.  Check chunk types based on
      * whether there is only one chunk, or multiple chunks.
