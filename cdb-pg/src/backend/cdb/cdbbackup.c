@@ -45,13 +45,13 @@ typedef enum backup_file_type
 } BackupFileType;
 
 /*
- * cdb_backup_launch__( TEXT, TEXT, TEXT, TEXT, TEXT ) returns TEXT
+ * mpp_backup_launch__( TEXT, TEXT, TEXT, TEXT, TEXT ) returns TEXT
  *
- * Called by cdb_dump.c to launch cdb_dump_agent on this host.
+ * Called by mpp_dump.c to launch mpp_dump_agent on this host.
  */
-PG_FUNCTION_INFO_V1(cdb_backup_launch__);
+PG_FUNCTION_INFO_V1(mpp_backup_launch__);
 Datum
-cdb_backup_launch__(PG_FUNCTION_ARGS)
+mpp_backup_launch__(PG_FUNCTION_ARGS)
 {
 	/* Fetch the parameters from the argument list.	*/
 	char* pszBackupDirectory = "./";
@@ -117,13 +117,13 @@ cdb_backup_launch__(PG_FUNCTION_ARGS)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				 errmsg("Error creating file %s in cdb_backup_launch", 
+				 errmsg("Error creating file %s in mpp_backup_launch", 
 				 pszBackupFileName)));
 	}
 	fclose( ftest );
 	
-	/* Validate existence of cdb_dump_agent and compression program, if possible */
-	testCmdsExist( pszCompressionProgram, "cdb_dump_agent" );
+	/* Validate existence of mpp_dump_agent and compression program, if possible */
+	testCmdsExist( pszCompressionProgram, "mpp_dump_agent" );
 	
 	pszDBName = NULL;
 	pszUserName = (char *)NULL;
@@ -138,7 +138,7 @@ cdb_backup_launch__(PG_FUNCTION_ARGS)
 	if ( pszUserName == NULL )
 		pszUserName = "";
 	
-	// Fork off cdb_dump_agent 
+	// Fork off mpp_dump_agent 
 	newpid = fork();
 	if ( newpid < 0 )
 	{
@@ -151,7 +151,7 @@ cdb_backup_launch__(PG_FUNCTION_ARGS)
 		/* Child Process */
 		port = PostPortNumber;
 	
-		/* Create the --cdb-k parameter string */
+		/* Create the --mpp-k parameter string */
 		pszKeyParm = (char *)palloc( strlen(pszBackupKey) + 
 											strlen(pszPassThroughCredentials) + 
 											3 + 10 + 10 + 1  );
@@ -174,10 +174,10 @@ cdb_backup_launch__(PG_FUNCTION_ARGS)
 		 * after that piece, e.g. -p comes out 2 for the -p and 1 for the space
 		 * after the -p  The last 1 is for the binary zero at the end.
 		 */
-		len = strlen(bkPg) + 1  /* cdb_dump_agent */
-				+ 7 + 1  /* --cdb-k */
+		len = strlen(bkPg) + 1  /* mpp_dump_agent */
+				+ 7 + 1  /* --mpp-k */
 				+ strlen(pszKeyParm) + 1
-				+ 7 + 1  /* --cdb-d */
+				+ 7 + 1  /* --mpp-d */
 				+ strlen(pszBackupDirectory) + 1
 				+ 2 + 1  /* -p */
 				+ 5 + 1  /* port */
@@ -205,7 +205,7 @@ cdb_backup_launch__(PG_FUNCTION_ARGS)
 						 errmsg("out of memory")));
 			}
 			
-			sprintf( pszCmdLine, "%s --cdb-k %s --cdb-d %s -p %d -U %s %s %s %s | %s > %s 2> %s", 
+			sprintf( pszCmdLine, "%s --mpp-k %s --mpp-d %s -p %d -U %s %s %s %s | %s > %s 2> %s", 
 					bkPg, pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName, 
 					compPg, pszBackupFileName, pszStatusFileName );
 		}
@@ -219,19 +219,19 @@ cdb_backup_launch__(PG_FUNCTION_ARGS)
 						 errmsg("out of memory")));
 			}
 			
-			sprintf( pszCmdLine, "%s --cdb-k %s --cdb-d %s -p %d -U %s %s %s %s > %s 2> %s", 
+			sprintf( pszCmdLine, "%s --mpp-k %s --mpp-d %s -p %d -U %s %s %s %s > %s 2> %s", 
 					bkPg, pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName, 
 					pszBackupFileName, pszStatusFileName );
 		}
 
-        elog(DEBUG1, "cdb_dump_agent command line: %s", pszCmdLine),
+        elog(DEBUG1, "mpp_dump_agent command line: %s", pszCmdLine),
 			
-		/* This execs a shell that runs the cdb_dump_agent program  */	
+		/* This execs a shell that runs the mpp_dump_agent program  */	
 		execl("/bin/sh", "sh", "-c", pszCmdLine, NULL );
 
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				 errmsg("Error in cdb_backup_launch - execl of %s with Command Line %s failed", 
+				 errmsg("Error in mpp_backup_launch - execl of %s with Command Line %s failed", 
 				 "/bin/sh", pszCmdLine)));
 		_exit(127);		
 	}
@@ -258,13 +258,13 @@ cdb_backup_launch__(PG_FUNCTION_ARGS)
 }
 
 /*
- * cdb_restore_launch__( TEXT, TEXT, TEXT, TEXT, TEXT, bool ) returns TEXT
+ * mpp_restore_launch__( TEXT, TEXT, TEXT, TEXT, TEXT, bool ) returns TEXT
  *
- * Called by cdb_restore.c to launch cdb_restore_agent on this host.
+ * Called by mpp_restore.c to launch mpp_restore_agent on this host.
  */
-PG_FUNCTION_INFO_V1(cdb_restore_launch__);
+PG_FUNCTION_INFO_V1(mpp_restore_launch__);
 Datum
-cdb_restore_launch__(PG_FUNCTION_ARGS)
+mpp_restore_launch__(PG_FUNCTION_ARGS)
 {
 	/* Fetch the parameters from the argument list.	*/
 	char*	pszBackupDirectory = "./";
@@ -315,7 +315,7 @@ cdb_restore_launch__(PG_FUNCTION_ARGS)
 	if ( !PG_ARGISNULL(5) )
 		bOnErrorStop = PG_GETARG_BOOL(5);
 	
-	pszOnErrorStop = bOnErrorStop ? "--cdb-e" : ""; 
+	pszOnErrorStop = bOnErrorStop ? "--mpp-e" : ""; 
 		
 	/*
 	 * if BackupDirectory is relative, make it absolute based on the directory
@@ -337,8 +337,8 @@ cdb_restore_launch__(PG_FUNCTION_ARGS)
 					errmsg("No Backup FileName could be found to restore segment %d from directory %s with backup key %s", segid, pszBackupDirectory, pszBackupKey )));
 	}
 	
-	/* Validate existence of compression program and cdb_restore_agent program */
-	testCmdsExist( pszCompressionProgram, "cdb_restore_agent" );
+	/* Validate existence of compression program and mpp_restore_agent program */
+	testCmdsExist( pszCompressionProgram, "mpp_restore_agent" );
 	
 	pszDBName = NULL;
 	pszUserName = NULL;
@@ -353,7 +353,7 @@ cdb_restore_launch__(PG_FUNCTION_ARGS)
 	if ( pszUserName == NULL )
 		pszUserName = "";
 	
-	// Fork off cdb_restore_agent 
+	// Fork off mpp_restore_agent 
 	newpid = fork();
 	if ( newpid < 0 )
 	{
@@ -366,7 +366,7 @@ cdb_restore_launch__(PG_FUNCTION_ARGS)
 		/* Child Process */
 		port = PostPortNumber;
 	
-		/* Create the --cdb-k parameter string */
+		/* Create the --mpp-k parameter string */
 		pszKeyParm = (char *)palloc( strlen(pszBackupKey) + 
 											strlen(pszPassThroughCredentials) + 
 											3 + 10 + 10 + 1 );
@@ -384,12 +384,12 @@ cdb_restore_launch__(PG_FUNCTION_ARGS)
 		* after that piece, e.g. -p comes out 2 for the -p and 1 for the space
 		* after the -p  The last 1 is for the binary zero at the end.
 		*/
-		len = strlen(bkPg) + 1  /* cdb_restore_agent */
-				+ 7 + 1  /* --cdb-k */
+		len = strlen(bkPg) + 1  /* mpp_restore_agent */
+				+ 7 + 1  /* --mpp-k */
 				+ strlen(pszKeyParm) + 1
-				+ 7 + 1  /* --cdb-d */
+				+ 7 + 1  /* --mpp-d */
 				+ strlen(pszBackupDirectory) + 1
-				+ 7 + 1  /* --cdb-e */
+				+ 7 + 1  /* --mpp-e */
 				+ 2 + 1  /* -p */
 				+ 5 + 1  /* port */
 				+ 2 + 1  /* -U */
@@ -415,7 +415,7 @@ cdb_restore_launch__(PG_FUNCTION_ARGS)
 						errmsg("out of memory")));
 			}
 			
-			sprintf( pszCmdLine, "%s %s | %s --cdb-k %s --cdb-d %s %s -p %d -U %s %s -d %s > %s 2>&1", 
+			sprintf( pszCmdLine, "%s %s | %s --mpp-k %s --mpp-d %s %s -p %d -U %s %s -d %s > %s 2>&1", 
 					compPg, pszBackupFileName, bkPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName, 
 					pszPassThroughParameters, pszDBName, pszStatusFileName );
 		}
@@ -431,20 +431,20 @@ cdb_restore_launch__(PG_FUNCTION_ARGS)
 						errmsg("out of memory")));
 			}
 			
-			sprintf( pszCmdLine, "%s --cdb-k %s --cdb-d %s %s -p %d -U %s %s -d %s %s > %s 2>&1", 
+			sprintf( pszCmdLine, "%s --mpp-k %s --mpp-d %s %s -p %d -U %s %s -d %s %s > %s 2>&1", 
 					bkPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName, pszPassThroughParameters, pszDBName, 
 					pszBackupFileName, pszStatusFileName );
 		}
 
 			
-		elog(DEBUG1, "cdb_restore_agent command line: %s", pszCmdLine),
+		elog(DEBUG1, "mpp_restore_agent command line: %s", pszCmdLine),
 		
-		/* This execs a shell that runs the cdb_restore_agent program  */	
+		/* This execs a shell that runs the mpp_restore_agent program  */	
 		execl("/bin/sh", "sh", "-c", pszCmdLine, NULL );
 
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				 errmsg("Error in cdb_restore_launch - execl of %s with Command Line %s failed", 
+				 errmsg("Error in mpp_restore_launch - execl of %s with Command Line %s failed", 
 				 "/bin/sh", pszCmdLine)));
 		_exit(127);		
 	}
@@ -472,12 +472,12 @@ cdb_restore_launch__(PG_FUNCTION_ARGS)
 }
 
 /*
- * cdb_read_backup_file__( TEXT, TEXT, int ) returns TEXT
+ * mpp_read_backup_file__( TEXT, TEXT, int ) returns TEXT
  *
  */
-PG_FUNCTION_INFO_V1(cdb_read_backup_file__);
+PG_FUNCTION_INFO_V1(mpp_read_backup_file__);
 Datum
-cdb_read_backup_file__(PG_FUNCTION_ARGS)
+mpp_read_backup_file__(PG_FUNCTION_ARGS)
 {
 	/* Fetch the parameters from the argument list.	*/
 	char*	pszBackupDirectory = "./";
@@ -524,7 +524,7 @@ cdb_read_backup_file__(PG_FUNCTION_ARGS)
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-					errmsg("Invalid filetype %d passed to cdb_read_backup_file", fileType )));
+					errmsg("Invalid filetype %d passed to mpp_read_backup_file", fileType )));
 			break;
 	}
 	
@@ -594,12 +594,12 @@ cdb_read_backup_file__(PG_FUNCTION_ARGS)
 }
 
 /*
- * cdb_write_backup_file__( TEXT, TEXT, TEXT ) returns TEXT
+ * mpp_write_backup_file__( TEXT, TEXT, TEXT ) returns TEXT
  *
  */
-PG_FUNCTION_INFO_V1(cdb_write_backup_file__);
+PG_FUNCTION_INFO_V1(mpp_write_backup_file__);
 Datum
-cdb_write_backup_file__(PG_FUNCTION_ARGS)
+mpp_write_backup_file__(PG_FUNCTION_ARGS)
 {
 	/* Fetch the parameters from the argument list.	*/
 	char*	pszBackupDirectory = "./";
@@ -779,7 +779,7 @@ char* findAcceptableBackupFilePathName( char* pszBackupDirectory, char* pszBacku
 					 errmsg("out of memory")));
 		}
 			
-		sprintf( pszRegex, "^cdb_dump_[0-9]+_%d_%s$", segid, pszBackupKey );   
+		sprintf( pszRegex, "^mpp_dump_[0-9]+_%d_%s$", segid, pszBackupKey );   
 		if ( 0 != regcomp( &rFindFileName, pszRegex, REG_EXTENDED ) )
 		{
 			ereport(ERROR,
@@ -856,7 +856,7 @@ char* formBackupFilePathName( char* pszBackupDirectory, char* pszBackupKey )
     instid  = (MppIdentity.segindex==-1)?1:0; /*dispatch node*/ 
     segid   = MppIdentity.dbid;                                     
 											
-	sprintf( szFileNamePrefix, "cdb_dump_%d_%d_", instid, segid );
+	sprintf( szFileNamePrefix, "mpp_dump_%d_%d_", instid, segid );
 	
 	/* Now add up the length of the pieces */
 	len = strlen(pszBackupDirectory);
@@ -911,7 +911,7 @@ char* formStatusFilePathName( char* pszBackupDirectory, char* pszBackupKey, bool
     instid  = (MppIdentity.segindex==-1)?1:0; /*dispatch node*/ 
     segid   = MppIdentity.dbid;                                     
 											
-	sprintf( szFileNamePrefix, "cdb_%s_status_%d_%d_", (bIsBackup ? "dump" : "restore"), 
+	sprintf( szFileNamePrefix, "mpp_%s_status_%d_%d_", (bIsBackup ? "dump" : "restore"), 
 						instid, segid );
 	
 	/* Now add up the length of the pieces */

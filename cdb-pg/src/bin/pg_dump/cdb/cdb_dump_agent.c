@@ -57,6 +57,7 @@ int			optreset;
 
 #include "libpq-fe.h"
 #include "libpq/libpq-fs.h"
+#include "libpq-int.h"
 
 #include "../pg_dump.h"
 #include "../pg_backup.h"
@@ -67,6 +68,7 @@ int			optreset;
 #include "cdb_table.h"
 #include <regex.h>
 #include <assert.h>
+#include <sys/wait.h>
 
 #define _(x) gettext((x))
 
@@ -118,6 +120,7 @@ static int	g_numNamespaces;
 /* flag to turn on/off dollar quoting */
 static int	disable_dollar_quoting = 0;
 
+static int   plainText = 0;
 
 static void help(const char *progname);
 static NamespaceInfo *findNamespace(Oid nsoid, Oid objoid);
@@ -182,12 +185,28 @@ static void check_sql_result(PGresult *res, PGconn *conn, const char *query,
 
 /* cdb additions */
 /* static functions */
-static void   createCDBCatalogFunction(PGconn* pConn, const char* pszDBName);
+static void   createCDBCatalogFunction(SegmentInstance* pSegInst);
 static void   _check_database_version(ArchiveHandle *AH, bool ignoreVersion);
 extern void       makeSureMonitorThreadEnds( int TaskRC, char* pszErrorMsg );
 static void*  monitorThreadProc(void *arg);
 static void       myHandler(int signo);
 static char* formCatalogFilePathName( char* pszBackupDirectory, char* pszBackupKey, int pszInstID, int pszSegID );
+static char* formCDatabaseFilePathName( char* pszBackupDirectory, char* pszBackupKey, int pszInstID, int pszSegID );
+static char* formGenericFilePathName( char *keyword, char* pszBackupDirectory, char* pszBackupKey, int pszInstID, int pszSegID );
+static void dumpMain(bool oids, int outputBlobs, int plainText, RestoreOptions *ropt);
+
+/* from pg_dump_all */
+static void makeAlterConfigCommand(ArchiveHandle *AH, const char *arrayitem, const char *type, const char *name);
+static void dumpUserConfig(ArchiveHandle *AH, PGconn *conn, const char *username);
+static void dumpUsers(ArchiveHandle *AH, PGconn *conn, RestoreOptions *ropt, bool initdbonly);
+static void dumpGroups(ArchiveHandle *AH, PGconn *conn, RestoreOptions *ropt);
+static void dumpTablespaces(ArchiveHandle *AH, PGconn *conn, RestoreOptions *ropt);
+static PGresult * executeQuery(PGconn *conn, const char *query);
+static void dumpCreateDB(FILE *fcat, PGconn *conn);
+static void getDatabaseConnections(PGconn ***conn_dbs, int *numberOfDbs, SegmentInstance SegInst);
+static void createCDBDatabaseFunction(void);
+static Archive *openOutputFile(const char *format, const char *filename,  int compressLevel);
+extern void reset(void);
 
 /* static variables */
 static PGconn*            g_conn_status = NULL;
@@ -217,17 +236,12 @@ main(int argc, char **argv)
 	const char *pghost = NULL;
 	const char *pgport = NULL;
 	const char *username = NULL;
+    //char *tmpStr = NULL;
 	bool		oids = false;
     PGresult   *res = NULL;
-	TableInfo  *tblinfo;
-	int			numTables;
-	DumpableObject **dobjs;
-	int			numObjs;
-	int			i;
 	bool		force_password = false;
 	int			compressLevel = -1;
 	bool		ignore_version = false;
-	int			plainText = 0;
 	int			outputClean = 0;
 	int			outputCreate = 0;
 	int			outputBlobs = 0;
@@ -241,9 +255,13 @@ main(int argc, char **argv)
     ArchiveHandle *AH;
     struct sigaction act, oact;
     StatusOp* pOp;
+    PGconn *conn_tpl1 = NULL;
+    PGconn **conn_dbs = NULL;
+    int    numberOfDbs = 0;
+    int    i;
 
-	RestoreOptions *ropt;
-
+    RestoreOptions *ropt;
+    
 	static struct option long_options[] = {
 		{"data-only", no_argument, NULL, 'a'},
 		{"blobs", no_argument, NULL, 'b'},
@@ -273,8 +291,8 @@ main(int argc, char **argv)
 		{"help", no_argument, NULL, '?'},
 		{"version", no_argument, NULL, 'V'},
 /* cdb additions */
-        {"cdb-k", required_argument, NULL, 1},
-        {"cdb-d", required_argument, NULL, 2},
+        {"mpp-k", required_argument, NULL, 1},
+        {"mpp-d", required_argument, NULL, 2},
 /* end cdb additions */
 
 		/*
@@ -288,7 +306,7 @@ main(int argc, char **argv)
 		{NULL, 0, NULL, 0}
 	};
 	int			optindex;
-
+    
 	set_pglocale_pgservice(argv[0], "pg_dump");
 
 	g_verbose = false;
@@ -468,7 +486,7 @@ main(int argc, char **argv)
 
                 break;
 
-            case 2:         /* --cdb-d CDB Output Directory */
+            case 2:         /* --mpp-d CDB Output Directory */
                 g_pszCDBOutputDirectory = strdup(optarg);
 
                 break;
@@ -536,11 +554,12 @@ main(int argc, char **argv)
 
     if ( g_CDBDumpInfo == NULL )
     {
-        write_msg(NULL, "missing required parameter cdb-k (backup key)\n");
+        write_msg(NULL, "missing required parameter mpp-k (backup key)\n");
         exit(1);
     }
 
 	/* open the output file */
+    /*
 	switch (format[0])
 	{
 		case 'c':
@@ -568,6 +587,8 @@ main(int argc, char **argv)
 			write_msg(NULL, "invalid output format \"%s\" specified\n", format);
 			exit(1);
 	}
+    */
+    g_fout = openOutputFile(format, filename, compressLevel);
 
 	if (g_fout == NULL)
 	{
@@ -600,7 +621,10 @@ main(int argc, char **argv)
     SegInst.port        = pgport ? atoi( pgport ) : 5432;
     SegInst.isValid     = true;
     SegInst.pszHost     = pghost ? strdup(pghost) : NULL;
+    /*
     SegInst.pszDBName   = dbname ? strdup(dbname) : NULL;
+    */
+    SegInst.pszDBName   = "template1";
     SegInst.pszDBUser   = username ? strdup(username) : NULL;
     SegInst.pszDBPswd   = NULL;
     
@@ -631,13 +655,15 @@ main(int argc, char **argv)
         }
     }
 
-    g_conn = MakeDBConnection( &SegInst, false );
+    g_conn = conn_tpl1 = MakeDBConnection( &SegInst, false );
     if (PQstatus(g_conn) == CONNECTION_BAD)
     {
         exit_horribly(g_fout, NULL, "connection to database \"%s\" failed: %s",
                    PQdb(g_conn), PQerrorMessage(g_conn));
     }
-
+    
+    getDatabaseConnections(&conn_dbs, &numberOfDbs, SegInst);
+    
 /*
     res = PQexec(g_conn, "SET mpp_role=UTILITY");
     if (!res || PQresultStatus(res) != PGRES_COMMAND_OK)
@@ -682,7 +708,7 @@ main(int argc, char **argv)
         g_pStatusOpList = CreateStatusOpList();
         if ( g_pStatusOpList == NULL )
         {
-            exit_horribly(NULL, NULL, "cannot allocate memory for cdb_backup_status operation\n");
+            exit_horribly(NULL, NULL, "cannot allocate memory for mpp_backup_status operation\n");
         }
 
         // Start monitoring for cancel requests
@@ -723,67 +749,180 @@ main(int argc, char **argv)
         pOp = CreateStatusOp( TASK_START, TASK_RC_SUCCESS, SUFFIX_START, TASK_MSG_SUCCESS );
         if ( pOp == NULL )
         {
-            exit_horribly(g_fout, NULL, "cannot allocate memory for cdb_backup_status operation\n");
+            exit_horribly(g_fout, NULL, "cannot allocate memory for mpp_backup_status operation\n");
         }
         AddToStatusOpList( g_pStatusOpList, pOp );
     }
     
     if (!dataOnly && g_CDBInstID == 1)
-        createCDBCatalogFunction(g_conn, dbname);
+    {
+        createCDBCatalogFunction(&SegInst);
+        createCDBDatabaseFunction();
+    }
     /* end cdb additions */
-
-	/*
-	 * Start serializable transaction to dump consistent data.
-	 */
-	do_sql_command(g_conn, "BEGIN");
-
-	/*
-	do_sql_command(g_conn, "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE");
-	*/
-    res = PQexec(g_conn, "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE");
-    if (!res || PQresultStatus(res) != PGRES_COMMAND_OK)
+    i=-1;
+    do
     {
-        StatusOp* pOp = CreateStatusOp( TASK_SET_SERIALIZABLE, TASK_RC_FAILURE, SUFFIX_FAIL, "could not set transaction isolation level to serializable"  );
-        if ( pOp == NULL )
+        	/*
+        	 * Start serializable transaction to dump consistent data.
+        	 */
+        	do_sql_command(g_conn, "BEGIN");
+        
+        	/*
+        	do_sql_command(g_conn, "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE");
+        	*/
+        res = PQexec(g_conn, "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE");
+        if (!res || PQresultStatus(res) != PGRES_COMMAND_OK)
         {
-            exit_horribly(g_fout, NULL, "could not allocate memory for cdb_backup_status operation\n");
+            StatusOp* pOp = CreateStatusOp( TASK_SET_SERIALIZABLE, TASK_RC_FAILURE, SUFFIX_FAIL, "could not set transaction isolation level to serializable"  );
+            if ( pOp == NULL )
+            {
+                exit_horribly(g_fout, NULL, "could not allocate memory for mpp_backup_status operation\n");
+            }
+    
+            AddToStatusOpList( g_pStatusOpList, pOp );
+            exit_horribly(g_fout, NULL, "could not set transaction isolation level to serializable: %s",
+                          PQerrorMessage(g_conn));
         }
-
-        AddToStatusOpList( g_pStatusOpList, pOp );
-        exit_horribly(g_fout, NULL, "could not set transaction isolation level to serializable: %s",
-                      PQerrorMessage(g_conn));
-    }
-    PQclear(res);
-
-    /* cdb addition  */
-   
-    /*
-     * Do a select statement to make sure that the view of the data from within this transaction
-     * has been fixed
-     */
-    res = PQexec(g_conn, "SELECT count(*) FROM pg_class");
-    if (!res || PQresultStatus(res) != PGRES_TUPLES_OK)
-    {
-        pOp = CreateStatusOp( TASK_SET_SERIALIZABLE, TASK_RC_FAILURE, SUFFIX_FAIL, "could not set transaction isolation level to serializable"  );
-        if ( pOp == NULL )
+        PQclear(res);
+    
+        /* cdb addition  */
+       
+        /*
+         * Do a select statement to make sure that the view of the data from within this transaction
+         * has been fixed
+         */
+        res = PQexec(g_conn, "SELECT count(*) FROM pg_class");
+        if (!res || PQresultStatus(res) != PGRES_TUPLES_OK)
         {
-            exit_horribly(g_fout, NULL, "could not allocate memory for cdb_backup_status operation\n");
+            pOp = CreateStatusOp( TASK_SET_SERIALIZABLE, TASK_RC_FAILURE, SUFFIX_FAIL, "could not set transaction isolation level to serializable"  );
+            if ( pOp == NULL )
+            {
+                exit_horribly(g_fout, NULL, "could not allocate memory for mpp_backup_status operation\n");
+            }
+    
+            AddToStatusOpList( g_pStatusOpList, pOp );
+            exit_horribly(g_fout, NULL, "First query within the transaction failed: %s",
+                          PQerrorMessage(g_conn));
         }
-
-        AddToStatusOpList( g_pStatusOpList, pOp );
-        exit_horribly(g_fout, NULL, "First query within the transaction failed: %s",
-                      PQerrorMessage(g_conn));
-    }
-    PQclear(res);
+        PQclear(res);
+        
+        /* next conn */
+        if (++i<numberOfDbs)
+            g_conn = conn_dbs[i]; 
+    } while (i<numberOfDbs);
 
     pOp = CreateStatusOp( TASK_SET_SERIALIZABLE, TASK_RC_SUCCESS, SUFFIX_SET_SERIALIZABLE, TASK_MSG_SUCCESS );
     if ( pOp == NULL )
     {
-        exit_horribly(g_fout, NULL, "could not allocate memory for cdb_backup_status operation\n");
+        exit_horribly(g_fout, NULL, "could not allocate memory for mpp_backup_status operation\n");
     }
     AddToStatusOpList( g_pStatusOpList, pOp );
     /* end cdb addition */
+    
+    if (plainText)
+    {
+        ropt = NewRestoreOptions();
+        ropt->filename = (char *) filename;
+        ropt->dropSchema = outputClean;
+        ropt->aclsSkip = aclsSkip;
+        ropt->superuser = outputSuperuser;
+        ropt->create = outputCreate;
+        ropt->noOwner = outputNoOwner;
+        ropt->disable_triggers = disable_triggers;
+        ropt->use_setsessauth = use_setsessauth;
 
+        if (compressLevel == -1)
+            ropt->compression = 0;
+        else
+            ropt->compression = compressLevel;
+
+        ropt->suppressDumpWarnings = true;      /* We've already shown
+                                                 * them */
+    }
+
+    ahprintf(AH, "\\connect \"template1\"\n\n");
+    g_conn = conn_tpl1;
+    
+    if (!dataOnly)
+    {
+        /* Dump all users excluding the initdb user */
+        dumpUsers(AH, conn_tpl1, ropt, false);
+        dumpGroups(AH, conn_tpl1, ropt);
+        dumpTablespaces(AH, conn_tpl1, ropt);
+        /*dumpCreateDB(AH, conn_tpl1, ropt); */
+        /* Dump alter command for initdb user */
+        dumpUsers(AH, conn_tpl1, ropt, true);
+    }
+
+    /* dumping all databasees */
+    i=-1;
+    do
+    {
+        write_msg(NULL, "%s: dumping database \"%s\"...\n", progname, g_conn->dbName);
+
+        ahprintf(AH, "\\connect %s\n\n", fmtId(g_conn->dbName));
+        dumpMain(oids, outputBlobs, plainText, ropt);
+        if (dataOnly && g_CDBInstID == 1 &&
+            selectSchemaName != NULL &&
+            strcmp(selectSchemaName, "mpp") == 0)
+        {
+            /* dumping mpp catalog from template1 only */
+            break;
+        }
+        reset();
+        if (++i<numberOfDbs)
+        {
+            Archive    *fout_temp; 
+            g_conn = conn_dbs[i];
+            /* cleanup */
+            CloseArchive(g_fout);
+            fout_temp = g_fout;
+            g_fout = openOutputFile(format, filename, compressLevel);
+            /* check for version mismatch */
+            AH = (ArchiveHandle *)g_fout;
+            AH->connection = g_conn;
+            
+            /* Let the archiver know how noisy to be */
+            g_fout->verbose = fout_temp->verbose;
+            g_fout->minRemoteVersion = fout_temp->minRemoteVersion;
+            g_fout->maxRemoteVersion = fout_temp->maxRemoteVersion;
+            g_fout->remoteVersion = fout_temp->remoteVersion;
+            g_fout->exit_on_error = fout_temp->exit_on_error;
+            g_fout->n_errors = fout_temp->n_errors;
+        }
+    } while (i < numberOfDbs);
+
+    /* cdb additions */
+    makeSureMonitorThreadEnds( TASK_RC_SUCCESS, TASK_MSG_SUCCESS );
+
+    DestroyStatusOpList( g_pStatusOpList );
+   
+    if ( g_pszCDBOutputDirectory != NULL )
+        free( g_pszCDBOutputDirectory );
+   
+    if ( SegInst.pszHost )
+        free( SegInst.pszHost );
+    if ( SegInst.pszDBUser )
+        free( SegInst.pszDBUser );
+    if ( SegInst.pszDBPswd )
+        free( SegInst.pszDBPswd );
+    /* end cdb additions */
+
+    PQfinish(g_conn);
+    write_msg(NULL, "Finished successfully\n");
+
+    exit(0);
+}
+
+void dumpMain(bool oids, int outputBlobs, int plainText, RestoreOptions *ropt)
+{
+    TableInfo      *tblinfo;
+    DumpableObject **dobjs;
+    int            numObjs;
+    int            numTables;
+    int            i;
+        
 	/* Set the datestyle to ISO to ensure the dump's portability */
 	do_sql_command(g_conn, "SET DATESTYLE = ISO");
 
@@ -853,7 +992,7 @@ main(int argc, char **argv)
 	/*
 	 f ( g_CDBDumpInfo == NULL )
     {
-        write_msg(NULL, "missing required parameter cdb-k (backup key)\n");
+        write_msg(NULL, "missing required parameter mpp-k (backup key)\n");
         exit(1);
     }
 * Create archive TOC entries for all the objects to be dumped, in a
@@ -880,57 +1019,15 @@ main(int argc, char **argv)
 
 	if (g_fout->verbose)
 		dumpTimestamp(g_fout, "Completed on");
-
-	/*
-	 * And finally we can do the actual output.
-	 */
-	if (plainText)
-	{
-		ropt = NewRestoreOptions();
-		ropt->filename = (char *) filename;
-		ropt->dropSchema = outputClean;
-		ropt->aclsSkip = aclsSkip;
-		ropt->superuser = outputSuperuser;
-		ropt->create = outputCreate;
-		ropt->noOwner = outputNoOwner;
-		ropt->disable_triggers = disable_triggers;
-		ropt->use_setsessauth = use_setsessauth;
-
-		if (compressLevel == -1)
-			ropt->compression = 0;
-		else
-			ropt->compression = compressLevel;
-
-		ropt->suppressDumpWarnings = true;		/* We've already shown
-												 * them */
-
-		RestoreArchive(g_fout, ropt);
-	}
-
-	CloseArchive(g_fout);
-
-    /* cdb additions */
-    makeSureMonitorThreadEnds( TASK_RC_SUCCESS, TASK_MSG_SUCCESS );
-
-    DestroyStatusOpList( g_pStatusOpList );
-   
-    if ( g_pszCDBOutputDirectory != NULL )
-        free( g_pszCDBOutputDirectory );
-   
-    if ( SegInst.pszHost )
-        free( SegInst.pszHost );
-    if ( SegInst.pszDBName )
-        free( SegInst.pszDBName );
-    if ( SegInst.pszDBUser )
-        free( SegInst.pszDBUser );
-    if ( SegInst.pszDBPswd )
-        free( SegInst.pszDBPswd );
-    /* end cdb additions */
-
-	PQfinish(g_conn);
-    write_msg(NULL, "Finished successfully\n");
-
-	exit(0);
+        
+    /*
+     * And finally we can do the actual output.
+     */
+    if (plainText)
+    {
+        RestoreArchive(g_fout, ropt);
+    }
+    
 }
 
 
@@ -983,8 +1080,8 @@ help(const char *progname)
 
     /* cdb additions */
     printf(("\nCDB specific options:\n"));
-    printf(("   --cdb-k=BACKUPKEY        key for CDB Backup\n"));
-    printf(("   --cdb-d=OUTPUTDIRECTORY  output directory for backup and error files\n"));
+    printf(("   --mpp-k=BACKUPKEY        key for CDB Backup\n"));
+    printf(("   --mpp-d=OUTPUTDIRECTORY  output directory for backup and error files\n"));
     /* end cdb additions */
 
 	printf(_("\nIf no database name is supplied, then the PGDATABASE environment\n"
@@ -1359,7 +1456,7 @@ dumpTableData(Archive *fout, TableDataInfo *tdinfo)
       * these entries will be regenerated from create table.
       */
      if (strcmp(tbinfo->dobj.name, "policy") == 0 &&
-         strcmp(tbinfo->dobj.namespace->dobj.name, "cdb") == 0)
+         strcmp(tbinfo->dobj.namespace->dobj.name, "mpp") == 0)
         return;
      /* end cdb addition */ 
 
@@ -4632,9 +4729,10 @@ dumpDumpableObject(Archive *fout, DumpableObject *dobj)
 {
      /* cdb addition */
      /* skip entries for cdb catalog */
-    if ((dobj->objType == DO_NAMESPACE && strcmp(dobj->name, "cdb") == 0) ||
-        (dobj->namespace != NULL && strcmp(dobj->namespace->dobj.name, "cdb") == 0))
-        return;
+    if (selectSchemaName == NULL)
+        if ((dobj->objType == DO_NAMESPACE && strcmp(dobj->name, "mpp") == 0) ||
+            (dobj->namespace != NULL && strcmp(dobj->namespace->dobj.name, "mpp") == 0))
+            return;
     /* end cdb addition */
 	switch (dobj->objType)
 	{
@@ -6776,7 +6874,6 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 	char	   *storage;
 	int			j,
 				k;
-
 	/* Make sure we are in proper schema */
 	selectSourceSchema(tbinfo->dobj.namespace->dobj.name);
 
@@ -6842,6 +6939,9 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 	}
 	else
 	{
+        char *policydef = NULL;
+        char *policycol = NULL;
+        
 		reltypename = "TABLE";
 		numParents = tbinfo->numParents;
 		parents = tbinfo->parents;
@@ -6960,6 +7060,37 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			}
 			appendPQExpBuffer(q, ")");
 		}
+        
+        /* dump distributed by clause */
+        appendPQExpBuffer(query,
+                              "select attrnums from pg_class as c, mpp.policy as p where relname = '%s' and c.relfilenode = p.localoid",
+                              tbinfo->dobj.name);
+        res = PQexec(g_conn, query->data);
+        check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+
+        if (PQntuples(res) != 1)
+        {
+            if (PQntuples(res) < 1)
+                write_msg(NULL, "query to obtain definition of table \"%s\" returned no data\n",
+                          tbinfo->dobj.name);
+            else
+                write_msg(NULL, "query to obtain definition of table \"%s\" returned more than one definition\n",
+                          tbinfo->dobj.name);
+            exit_nicely();
+        }
+        policydef = PQgetvalue(res, 0, 0);
+        policydef[strlen(policydef)-1] = '\0';
+        policydef++;
+        policycol = strsep(&policydef, ",");
+        appendPQExpBuffer(q, " distributed by (%s",
+              fmtId(tbinfo->attnames[atoi(policycol)-1]));
+        for (; (policycol = strsep(&policydef, ",")) != NULL;)
+        {
+            appendPQExpBuffer(q, " ,%s",
+                  fmtId(tbinfo->attnames[atoi(policycol)-1]));
+        }
+        appendPQExpBuffer(q, ")");
+        PQclear(res);
 
 		appendPQExpBuffer(q, ";\n");
 
@@ -8488,7 +8619,7 @@ void makeSureMonitorThreadEnds( int TaskRC, char* pszErrorMsg )
  * It listens using this connection for notifications.  A notification only arrives if we are to 
  * cancel. In that case, we cause the interrupt handler to be called by sending ourselves a SIGINT
  * signal.  The other duty of this thread, since it owns the g_conn_status, is to periodically examine
- * a linked list of cdb_backup_status insert command requests.  If any are there, it causes an insert and a notify
+ * a linked list of mpp_backup_status insert command requests.  If any are there, it causes an insert and a notify
  * to be sent.    
  */
 void* monitorThreadProc(void *arg)
@@ -8614,7 +8745,7 @@ void* monitorThreadProc(void *arg)
  * my_handler: This function is the signal handler for both SIGINT and SIGTERM signals.  
  * It checks to see whether there is an active transaction running on the g_conn connection
  * If so, it issues a PQrequestCancel.  This will cause the current statement to fail, which will
- * cause cdb_dump_agent to terminate gracefully.
+ * cause mpp_dump_agent to terminate gracefully.
  * If there's no active transaction, it does nothing.
  * This is set up to always run in the context of the main thread.
  */
@@ -8668,54 +8799,104 @@ void exit_nicely(void)
  * The inserts have to happen in the reverse order from the deletes, again so the contraints
  * don't get violated.
  */
-void createCDBCatalogFunction(PGconn* pConn, const char* pszDBName)
+void createCDBCatalogFunction(SegmentInstance* pSegInst)
 {
-    char* pszBackupFileName;
-    FILE* fcat;
-    int i;
-	PQExpBuffer bufCDBInstance;
+    char* pszBackupFileName, *pszCmdLine;
+    pid_t newpid;
+    int len;
 
-	CDBSegmentInstanceArray InstanceAr;
-
-    /* Get the data from the cdb_instance table */
-	bufCDBInstance = createPQExpBuffer();
-
-	InstanceAr.count = 0;
-	InstanceAr.pData = NULL;
-
-	if ( !GetCDBSegmentInstanceArray( pConn, pszDBName, &InstanceAr ) )
-	{
-		write_msg(NULL, "GetCDBSegmentInstanceArray failed in createCDBCatalogFunction\n");
-		exit_nicely();
-	}
-   
     pszBackupFileName = formCatalogFilePathName( g_pszCDBOutputDirectory,
                                 g_CDBDumpKey, g_CDBInstID, g_CDBSegID );
-    /* Make sure we can create this file before we spin off sh
-     * cause we don't get a good error message from sh if we can't write to the file
-     */
-    fcat = fopen( pszBackupFileName, "w" );
-    free(pszBackupFileName);
-    if ( fcat == NULL )
+    newpid = fork();
+    if ( newpid < 0 )
     {
-        write_msg(NULL, "Error creating file %s in cdb_dump_agent",
-                 pszBackupFileName);
+        write_msg(NULL, "failed to fork in mpp_backup_agent for catalog\n");
     }
+    else if ( newpid == 0 )
+    {
+        char port[10];
+        sprintf(port, "%d", pSegInst->port);
+/*        
+        if ( pSegInst->pszHost == NULL || *pSegInst->pszHost == '\0' )
+            pszHost = strdup( "host=''" );
+        else
+            pszHost = MakeString( "host=%s", pSegInst->pszHost );
 
-    fprintf(fcat, "NumSegments=%d\n", InstanceAr.count);
-	for ( i=0; i<InstanceAr.count; i++ )
-	{
-        CDBSegmentInstance* pSegmentInstance = &InstanceAr.pData[i]; 
-        fprintf(fcat, "DBNAME%d=%s\n", pSegmentInstance->segid, pSegmentInstance->dbname);
-        fprintf(fcat, "HOSTNAME%d=%s\n", pSegmentInstance->segid, pSegmentInstance->dbhostname);	
-        fprintf(fcat, "PORT%d=%d\n", pSegmentInstance->segid, pSegmentInstance->dbport);
-        fprintf(fcat, "DATADIR%d=%s\n", pSegmentInstance->segid, pSegmentInstance->dbdatadir);
-        fprintf(fcat, "SUPERUSER%d=%s\n", pSegmentInstance->segid, pSegmentInstance->dbsuperuser);
-	}
-    fclose( fcat );
-	
-	FreeCDBSegmentInstanceArray( &InstanceAr );
-	destroyPQExpBuffer(bufCDBInstance);
+        if ( pSegInst->pszDBUser != NULL &&  *pSegInst->pszDBUser != '\0' )
+            pszUser = MakeString("user=%s", pSegInst->pszDBUser );
+        else
+            pszUser = NULL;
+    
+        if ( pSegInst->pszDBPswd != NULL && *pSegInst->pszDBPswd != '\0' )
+            pszDBPswd = MakeString("password='%s'", pSegInst->pszDBPswd);
+        else
+            pszDBPswd = NULL;
+*/
+        /* Child Process */
+        // launch psql, wait for it to finish
+        
+        len = 14 + 1 +                         /* mpp_dump_agent */
+              2 + 1 + strlen(port) + 1 +       /* -p port */
+              2 + 1 +                          /* -a */
+              2 + 1 + 3 + 1 +                  /* -n mpp */
+              7 + 1 + strlen(g_CDBDumpInfo) + 1 + /* --mpp-k key */
+              1 + 1 +                          /* > */
+              strlen(pszBackupFileName);       /* catalog file */
+
+        pszCmdLine = (char *) calloc( len+1, 1 );
+        strcpy( pszCmdLine, "mpp_dump_agent -p ");
+        strcat( pszCmdLine, port);
+        strcat( pszCmdLine, " -a -n mpp");
+        strcat( pszCmdLine, " --mpp-k ");
+        strcat( pszCmdLine, g_CDBDumpInfo);
+        strcat( pszCmdLine, " > " );
+        strcat( pszCmdLine, pszBackupFileName );
+
+        putenv( "PGOPTIONS=-c mpp_session_role=UTILITY" );
+
+        write_msg(NULL, "Command Line: %s\n", pszCmdLine );
+
+        execl("/bin/sh", "sh", "-c", pszCmdLine, NULL );
+
+        write_msg(NULL, "Error in mpp_backup_agent - execl of %s with Command Line %s failed",
+                "/bin/sh", pszCmdLine );
+        exit(127);
+    }
+    else
+    {
+        int status, rc, exit_code;
+        // Parent .  Lets sleep and wake up until we see it's done
+        waitpid( newpid, &status, 0 );
+        if ( WIFEXITED(status) )
+        {
+            rc = WEXITSTATUS(status);
+            write_msg(NULL, "pg_dump finished with rc %d.\n", rc );
+            if ( rc != 0 )
+            {
+                exit_code=2;
+            }
+        }
+        else if( WIFSIGNALED(status) )
+        {
+            write_msg(NULL, "psql finished abnormally with signal number %d.\n", WTERMSIG(status));
+            exit_code=2;
+        }
+        else
+        {
+            write_msg(NULL, "psql crashed or finished badly.\n");
+            exit_code=2;
+        }
+    }
+}
+
+char* formCatalogFilePathName( char* pszBackupDirectory, char* pszBackupKey, int pszInstID, int pszSegID )
+{
+    return formGenericFilePathName( "catalog", pszBackupDirectory, pszBackupKey, pszInstID, pszSegID );
+}
+
+char* formCDatabaseFilePathName( char* pszBackupDirectory, char* pszBackupKey, int pszInstID, int pszSegID )
+{
+    return formGenericFilePathName( "cdatabase", pszBackupDirectory, pszBackupKey, pszInstID, pszSegID );
 }
 
 /* formBackupFilePathName( char* pszBackupDirectory, char* pszBackupKey ) returns char*
@@ -8724,14 +8905,14 @@ void createCDBCatalogFunction(PGconn* pConn, const char* pszDBName)
  * the path and filename of the backup output file
  * based on the naming convention for this.
  */
-char* formCatalogFilePathName( char* pszBackupDirectory, char* pszBackupKey, int pszInstID, int pszSegID )
+char* formGenericFilePathName( char* keyword, char* pszBackupDirectory, char* pszBackupKey, int pszInstID, int pszSegID )
 {
     /* First form the prefix */
     char szFileNamePrefix[1+PATH_MAX];
     int len;
     char* pszBackupFileName;
 
-    sprintf( szFileNamePrefix, "cdb_catalog_%d_%d_", pszInstID, pszSegID );
+    sprintf( szFileNamePrefix, "mpp_%s_%d_%d_", keyword, pszInstID, pszSegID );
 
     /* Now add up the length of the pieces */
     len = strlen(pszBackupDirectory);
@@ -8763,6 +8944,482 @@ char* formCatalogFilePathName( char* pszBackupDirectory, char* pszBackupKey, int
     return pszBackupFileName;
 }
 
+static void
+createCDBDatabaseFunction(void)
+{
+    char       *pszBackupFileName;
+    FILE       *fcat;
+    
+
+    pszBackupFileName = formCDatabaseFilePathName( g_pszCDBOutputDirectory,
+                                g_CDBDumpKey, g_CDBInstID, g_CDBSegID );
+    /* Make sure we can create this file before we spin off sh
+     * cause we don't get a good error message from sh if we can't write to the file
+     */
+    fcat = fopen( pszBackupFileName, "w" );
+    free(pszBackupFileName);
+    if ( fcat == NULL )
+    {
+        write_msg(NULL, "Error creating file %s in mpp_dump_agent",
+                 pszBackupFileName);
+    }
+    
+    dumpCreateDB(fcat, g_conn);
+}
+
+/*
+ * Dump commands to create each database.
+ *
+ * To minimize the number of reconnections (and possibly ensuing
+ * password prompts) required by the output script, we emit all CREATE
+ * DATABASE commands during the initial phase of the script, and then
+ * run pg_dump for each database to dump the contents of that
+ * database.  We skip databases marked not datallowconn, since we'd be
+ * unable to connect to them anyway (and besides, we don't want to
+ * dump template0).
+ */
+static void
+dumpCreateDB(FILE *fcat, PGconn *conn)
+{
+    PGresult   *res;
+    int         i;
+
+    /*
+    ahprintf(AH, "--\n-- Database creation\n--\n\n");
+    */
+    fprintf(fcat, "--\n-- Database creation\n--\n\n");
+
+    res = executeQuery(conn,
+                       "SELECT datname, "
+                       "coalesce(usename, (select usename from pg_shadow where usesysid=(select datdba from pg_database where datname='template0'))), "
+                       "pg_encoding_to_char(d.encoding), "
+                       "datistemplate, datacl, "
+                       "(SELECT spcname FROM pg_tablespace t WHERE t.oid = d.dattablespace) AS dattablespace "
+    "FROM pg_database d LEFT JOIN pg_shadow u ON (datdba = usesysid) "
+                       "WHERE datallowconn ORDER BY 1");
+
+    for (i = 0; i < PQntuples(res); i++)
+    {
+        PQExpBuffer buf;
+        char       *dbname = PQgetvalue(res, i, 0);
+        char       *dbowner = PQgetvalue(res, i, 1);
+        char       *dbencoding = PQgetvalue(res, i, 2);
+        char       *dbistemplate = PQgetvalue(res, i, 3);
+        char       *dbacl = PQgetvalue(res, i, 4);
+        char       *dbtablespace = PQgetvalue(res, i, 5);
+        char       *fdbname;
+
+        if (strcmp(dbname, "template1") == 0)
+            continue;
+
+        buf = createPQExpBuffer();
+
+        /* needed for buildACLCommands() */
+        fdbname = strdup(fmtId(dbname));
+    
+        /*
+        if (outputClean)
+            appendPQExpBuffer(buf, "DROP DATABASE %s;\n", fdbname);
+        */
+
+        appendPQExpBuffer(buf, "CREATE DATABASE %s", fdbname);
+
+        appendPQExpBuffer(buf, " WITH TEMPLATE = template1");
+
+        if (strlen(dbowner) != 0)
+            appendPQExpBuffer(buf, " OWNER = %s",
+                              fmtId(dbowner));
+
+        appendPQExpBuffer(buf, " ENCODING = ");
+        appendStringLiteral(buf, dbencoding, true);
+
+        /* Output tablespace if it isn't default */
+        if (strcmp(dbtablespace, "pg_default") != 0)
+            appendPQExpBuffer(buf, " TABLESPACE = %s",
+                              fmtId(dbtablespace));
+
+        appendPQExpBuffer(buf, ";\n");
+
+        if (strcmp(dbistemplate, "t") == 0)
+        {
+            appendPQExpBuffer(buf, "UPDATE pg_database SET datistemplate = 't' WHERE datname = ");
+            appendStringLiteral(buf, dbname, true);
+            appendPQExpBuffer(buf, ";\n");
+        }
+
+        if (!aclsSkip &&
+            !buildACLCommands(fdbname, "DATABASE", dbacl, dbowner,
+                              g_fout->remoteVersion, buf))
+        {
+            write_msg(NULL, "%s: could not parse ACL list (%s) for database \"%s\"\n",
+                    progname, dbacl, fdbname);
+            PQfinish(conn);
+            exit(1);
+        }
+
+        /*
+        ahprintf(AH, "%s", buf->data);
+        */
+        fprintf(fcat, "%s", buf->data);
+        destroyPQExpBuffer(buf);
+        free(fdbname);
+    }
+
+    PQclear(res);
+    fprintf(fcat, "\n\n");
+    fclose(fcat);
+}
+
+/*
+ * Run a query, return the results, exit program on failure.
+ */
+static PGresult *
+executeQuery(PGconn *conn, const char *query)
+{
+    PGresult   *res;
+
+    if (g_verbose)
+        write_msg(NULL, "%s: executing %s\n", progname, query);
+
+    res = PQexec(conn, query);
+    if (!res ||
+        PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        write_msg(NULL, "%s: query failed: %s", progname, PQerrorMessage(conn));
+        write_msg(NULL, "%s: query was: %s\n", progname, query);
+        PQfinish(conn);
+        exit(1);
+    }
+
+    return res;
+}
+
+/*
+ * Dump tablespaces.
+ */
+static void
+dumpTablespaces(ArchiveHandle *AH, PGconn *conn, RestoreOptions *ropt)
+{
+    PGresult   *res;
+    int         i;
+    int         outputClean = ropt->dropSchema;
+
+    /*
+     * Get all tablespaces except built-in ones (which we assume are named
+     * pg_xxx)
+     */
+    res = executeQuery(conn, "SELECT spcname, "
+                     "pg_catalog.pg_get_userbyid(spcowner) AS spcowner, "
+                       "spclocation, spcacl "
+                       "FROM pg_catalog.pg_tablespace "
+                       "WHERE spcname NOT LIKE 'pg\\_%'");
+
+    if (PQntuples(res) > 0)
+        ahprintf(AH, "--\n-- Tablespaces\n--\n\n");
+
+    for (i = 0; i < PQntuples(res); i++)
+    {
+        PQExpBuffer buf = createPQExpBuffer();
+        char       *spcname = PQgetvalue(res, i, 0);
+        char       *spcowner = PQgetvalue(res, i, 1);
+        char       *spclocation = PQgetvalue(res, i, 2);
+        char       *spcacl = PQgetvalue(res, i, 3);
+        char       *fspcname;
+
+        /* needed for buildACLCommands() */
+        fspcname = strdup(fmtId(spcname));
+
+        if (outputClean)
+            appendPQExpBuffer(buf, "DROP TABLESPACE %s;\n", fspcname);
+
+        appendPQExpBuffer(buf, "CREATE TABLESPACE %s", fspcname);
+        appendPQExpBuffer(buf, " OWNER %s", fmtId(spcowner));
+
+        appendPQExpBuffer(buf, " LOCATION ");
+        appendStringLiteral(buf, spclocation, true);
+        appendPQExpBuffer(buf, ";\n");
+
+        if (!aclsSkip &&
+            !buildACLCommands(fspcname, "TABLESPACE", spcacl, spcowner,
+                              g_fout->remoteVersion, buf))
+        {
+            write_msg(NULL, "%s: could not parse ACL list (%s) for tablespace \"%s\"\n",
+                    progname, spcacl, fspcname);
+            PQfinish(conn);
+            exit(1);
+        }
+
+        ahprintf(AH, "%s", buf->data);
+
+        free(fspcname);
+        destroyPQExpBuffer(buf);
+    }
+
+    PQclear(res);
+    ahprintf(AH, "\n\n");
+}
+
+/*
+ * Dump groups.
+ */
+static void
+dumpGroups(ArchiveHandle *AH, PGconn *conn, RestoreOptions *ropt)
+{
+    PGresult   *res;
+    int         i;
+    int         outputClean = ropt->dropSchema;
+
+    res = executeQuery(conn, "SELECT groname, grosysid, grolist FROM pg_group");
+
+    if (PQntuples(res) > 0 || outputClean)
+        ahprintf(AH, "--\n-- Groups\n--\n\n");
+    if (outputClean)
+        ahprintf(AH, "DELETE FROM pg_group;\n\n");
+
+    for (i = 0; i < PQntuples(res); i++)
+    {
+        PQExpBuffer buf = createPQExpBuffer();
+        char       *val;
+        char       *tok;
+
+        appendPQExpBuffer(buf, "CREATE GROUP %s WITH SYSID %s;\n",
+                          fmtId(PQgetvalue(res, i, 0)),
+                          PQgetvalue(res, i, 1));
+
+        val = strdup(PQgetvalue(res, i, 2));
+        tok = strtok(val, ",{}");
+        while (tok)
+        {
+            PGresult   *res2;
+            PQExpBuffer buf2 = createPQExpBuffer();
+            int         j;
+
+            appendPQExpBuffer(buf2, "SELECT usename FROM pg_shadow WHERE usesysid = %s;", tok);
+            res2 = executeQuery(conn, buf2->data);
+            destroyPQExpBuffer(buf2);
+
+            for (j = 0; j < PQntuples(res2); j++)
+            {
+                appendPQExpBuffer(buf, "ALTER GROUP %s ", fmtId(PQgetvalue(res, i, 0)));
+                appendPQExpBuffer(buf, "ADD USER %s;\n", fmtId(PQgetvalue(res2, j, 0)));
+            }
+
+            PQclear(res2);
+
+            tok = strtok(NULL, "{},");
+        }
+        free(val);
+
+        ahprintf(AH, "%s", buf->data);
+        destroyPQExpBuffer(buf);
+    }
+
+    PQclear(res);
+    ahprintf(AH, "\n\n");
+}
+
+/*
+ * Dump users
+ * Is able to dump all non initdb users or just the initdb user.
+ */
+static void
+dumpUsers(ArchiveHandle *AH, PGconn *conn, RestoreOptions *ropt, bool initdbonly)
+{
+    PGresult   *res;
+    int         i;
+    int         outputClean = ropt->dropSchema;
+
+    res = executeQuery(conn,
+                    "SELECT usename, usesysid, passwd, usecreatedb, "
+                       "usesuper, valuntil, "
+                       "(usesysid = (SELECT datdba FROM pg_database WHERE datname = 'template0')) AS clusterowner "
+                       "FROM pg_shadow");
+
+    if (PQntuples(res) > 0 || (!initdbonly && outputClean))
+        ahprintf(AH, "--\n-- Users\n--\n\n");
+    if (!initdbonly && outputClean)
+        ahprintf(AH, "DELETE FROM pg_shadow WHERE usesysid <> (SELECT datdba FROM pg_database WHERE datname = 'template0');\n\n");
+
+    for (i = 0; i < PQntuples(res); i++)
+    {
+        const char *username;
+        bool        clusterowner;
+        PQExpBuffer buf = createPQExpBuffer();
+
+        username = PQgetvalue(res, i, 0);
+        clusterowner = (strcmp(PQgetvalue(res, i, 6), "t") == 0);
+
+        /* Check which pass we're on */
+        if ((initdbonly && !clusterowner) || (!initdbonly && clusterowner))
+            continue;
+
+        /*
+         * Dump ALTER USER for the cluster owner and CREATE USER for all
+         * other users
+         */
+        if (!clusterowner)
+            appendPQExpBuffer(buf, "CREATE USER %s WITH SYSID %s",
+                              fmtId(username),
+                              PQgetvalue(res, i, 1));
+        else
+            appendPQExpBuffer(buf, "ALTER USER %s WITH",
+                              fmtId(username));
+
+        if (!PQgetisnull(res, i, 2))
+        {
+            appendPQExpBuffer(buf, " PASSWORD ");
+            appendStringLiteral(buf, PQgetvalue(res, i, 2), true);
+        }
+
+        if (strcmp(PQgetvalue(res, i, 3), "t") == 0)
+            appendPQExpBuffer(buf, " CREATEDB");
+        else
+            appendPQExpBuffer(buf, " NOCREATEDB");
+
+        if (strcmp(PQgetvalue(res, i, 4), "t") == 0)
+            appendPQExpBuffer(buf, " CREATEUSER");
+        else
+            appendPQExpBuffer(buf, " NOCREATEUSER");
+
+        if (!PQgetisnull(res, i, 5))
+            appendPQExpBuffer(buf, " VALID UNTIL '%s'",
+                              PQgetvalue(res, i, 5));
+
+        appendPQExpBuffer(buf, ";\n");
+
+        ahprintf(AH, "%s", buf->data);
+        destroyPQExpBuffer(buf);
+
+        dumpUserConfig(AH, conn, username);
+    }
+
+    PQclear(res);
+    ahprintf(AH, "\n\n");
+}
+
+/*
+ * Dump user-specific configuration
+ */
+static void
+dumpUserConfig(ArchiveHandle *AH, PGconn *conn, const char *username)
+{
+    PQExpBuffer buf = createPQExpBuffer();
+    int         count = 1;
+
+    for (;;)
+    {
+        PGresult   *res;
+
+        printfPQExpBuffer(buf, "SELECT useconfig[%d] FROM pg_shadow WHERE usename = ", count);
+        appendStringLiteral(buf, username, true);
+        appendPQExpBuffer(buf, ";");
+
+        res = executeQuery(conn, buf->data);
+        if (!PQgetisnull(res, 0, 0))
+        {
+            makeAlterConfigCommand(AH, PQgetvalue(res, 0, 0), "USER", username);
+            PQclear(res);
+            count++;
+        }
+        else
+        {
+            PQclear(res);
+            break;
+        }
+    }
+
+    destroyPQExpBuffer(buf);
+}
+
+/*
+ * Helper function for dumpXXXConfig().
+ */
+static void
+makeAlterConfigCommand(ArchiveHandle *AH, const char *arrayitem, const char *type, const char *name)
+{
+    char       *pos;
+    char       *mine;
+    PQExpBuffer buf = createPQExpBuffer();
+
+    mine = strdup(arrayitem);
+    pos = strchr(mine, '=');
+    if (pos == NULL)
+        return;
+
+    *pos = 0;
+    appendPQExpBuffer(buf, "ALTER %s %s ", type, fmtId(name));
+    appendPQExpBuffer(buf, "SET %s TO ", fmtId(mine));
+
+    /*
+     * Some GUC variable names are 'LIST' type and hence must not be
+     * quoted.
+     */
+    if (strcasecmp(mine, "DateStyle") == 0
+        || strcasecmp(mine, "search_path") == 0)
+        appendPQExpBuffer(buf, "%s", pos + 1);
+    else
+        appendStringLiteral(buf, pos + 1, false);
+    appendPQExpBuffer(buf, ";\n");
+
+    ahprintf(AH, "%s", buf->data);
+    destroyPQExpBuffer(buf);
+    free(mine);
+}
+
+void getDatabaseConnections(PGconn ***conn_dbs, int *numberOfDbs, SegmentInstance SegInst)
+{
+    PGresult   *res;
+    int         i;
+
+    res = executeQuery(g_conn, "SELECT datname FROM pg_database WHERE datallowconn and datname != 'template1' ORDER BY 1");
+
+    *conn_dbs = (PGconn **)malloc(sizeof(PGconn *) * PQntuples(res));
+
+    for (i = 0; i < PQntuples(res); i++)
+    {
+        SegInst.pszDBName = PQgetvalue(res, i, 0);
+        (*conn_dbs)[i] = MakeDBConnection( &SegInst, false );
+    }
+    
+    *numberOfDbs = i;
+    PQclear(res);
+}
+
+static Archive*
+openOutputFile(const char *format, const char *filename,  int compressLevel)
+{
+    Archive *fout;
+    /* open the output file */
+    switch (format[0])
+    {
+        case 'c':
+        case 'C':
+            fout = CreateArchive(filename, archCustom, compressLevel);
+            break;
+
+        case 'f':
+        case 'F':
+            fout = CreateArchive(filename, archFiles, compressLevel);
+            break;
+
+        case 'p':
+        case 'P':
+            plainText = 1;
+            fout = CreateArchive(filename, archNull, 0);
+            break;
+
+        case 't':
+        case 'T':
+            fout = CreateArchive(filename, archTar, compressLevel);
+            break;
+
+        default:
+            write_msg(NULL, "invalid output format \"%s\" specified\n", format);
+            exit(1);
+    }
+    
+    return fout;
+}
 
 /*
  * End CDB Additions

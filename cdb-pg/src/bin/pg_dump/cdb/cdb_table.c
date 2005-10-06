@@ -370,12 +370,14 @@ bool GetCDBBaseTableArray(PGconn* pConn, const char* pszDBName, CDBBaseTableArra
 	}
 
 	ntups = PQntuples(pRes);
+    /*
 	if (ntups <= 0)
 	{
 		write_err_msg("no MPP managed tables for database \"%s\"\n", pszDBName);
 		goto cleanup;
 	}
-	
+    */
+    	
 	pTableAr->count = ntups;
 	pTableAr->pData = (CDBBaseTable *)calloc( ntups, sizeof(CDBBaseTable) );
 	if ( pTableAr->pData == NULL )

@@ -68,6 +68,7 @@ static void findParentsByOid(TableInfo *self,
 				 InhInfo *inhinfo, int numInherits);
 static int	strInArray(const char *pattern, char **arr, int arr_size);
 
+void reset(void);
 
 /*
  * getSchemaData
@@ -813,3 +814,28 @@ strInArray(const char *pattern, char **arr, int arr_size)
 	}
 	return -1;
 }
+
+
+/* cdb addition */
+void
+reset(void)
+{
+    free(dumpIdMap);
+    dumpIdMap = NULL;
+    allocedDumpIds = 0;
+    lastDumpId = 0;
+
+/*
+ * Variables for mapping CatalogId to DumpableObject
+ */
+    catalogIdMapValid = false;
+    free(catalogIdMap);
+    catalogIdMap = NULL;
+    numCatalogIds = 0;
+
+    numTables = 0;
+    numTypes = 0;
+    numFuncs = 0;
+    numOperators = 0;
+}
+/* end cdb_addition */

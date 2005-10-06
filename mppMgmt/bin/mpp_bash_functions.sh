@@ -38,7 +38,7 @@ if [ ${#MPPPATH[@]} -eq 0 ];then
 	exit 2
 fi
 #MPP_UNIQUE_COMMAND is used to identify the binary directory
-MPP_UNIQUE_COMMAND=cdb_dump
+MPP_UNIQUE_COMMAND=mpp_dump
 
 findCmdInPath() {
 		cmdtofind=$1

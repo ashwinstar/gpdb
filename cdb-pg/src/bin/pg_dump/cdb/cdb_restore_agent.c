@@ -44,6 +44,9 @@
 #include "../dumputils.h"
 
 #include <ctype.h>
+//#include <sys/types.h>
+#include <sys/stat.h>
+
 
 #ifndef HAVE_STRDUP
 #include "strdup.h"
@@ -85,6 +88,7 @@ static void myHandler(int signo);
 static void* monitorThreadProc(void *arg);
 static void _check_database_version(ArchiveHandle *AH, bool ignoreVersion);
 static bool execCDBCatalogFunction(PGconn* pConn);
+static char* testProgramExists(char* pszProgramName);
 
 bool bUsePSQL = false;
 bool bPSQLDone = false;
@@ -170,9 +174,9 @@ main(int argc, char **argv)
         /*
          * the following are cdb specific, and don't have an equivalent short option
          */
-        {"cdb-d", required_argument, NULL, 1},
-        {"cdb-e", no_argument, NULL, 2},
-        {"cdb-k", required_argument, NULL, 3},
+        {"mpp-d", required_argument, NULL, 1},
+        {"mpp-e", no_argument, NULL, 2},
+        {"mpp-k", required_argument, NULL, 3},
 
 		{NULL, 0, NULL, 0}
 	};
@@ -322,15 +326,15 @@ main(int argc, char **argv)
 			case 0:
 				break;
 
-            case 1:         /* --cdb-d CDB Output Directory */
+            case 1:         /* --mpp-d CDB Output Directory */
                 g_pszCDBOutputDirectory = strdup(optarg);
                 break;
 
-            case 2:         /* --cdb-e On Error Stop for psql */
+            case 2:         /* --mpp-e On Error Stop for psql */
                 g_bOnErrorStop = opts->exit_on_error = true;
                 break;
 
-            case 3:         /* --cdb-k CDB Dump Info Format is Key_seg_inst*/
+            case 3:         /* --mpp-k CDB Dump Info Format is Key_seg_inst*/
                 g_CDBDumpInfo = strdup(optarg);
                 if ( !ParseCDBDumpInfo( g_CDBDumpInfo, &g_CDBDumpKey, &g_CDBInstID, &g_CDBSegID, &g_CDBPassThroughCredentials ) )
                 {
@@ -401,7 +405,7 @@ main(int argc, char **argv)
 
     if ( g_CDBDumpInfo == NULL )
     {
-        write_msg(NULL, "missing required parameter cdb-k (backup key)\n");
+        write_msg(NULL, "missing required parameter mpp-k (backup key)\n");
         exit(1);
     }
    
@@ -478,7 +482,7 @@ main(int argc, char **argv)
         g_pStatusOpList = CreateStatusOpList();
         if ( g_pStatusOpList == NULL )
         {
-            exit_horribly(NULL, NULL, "cannot allocate memory for cdb_backup_status operation\n");
+            exit_horribly(NULL, NULL, "cannot allocate memory for mpp_backup_status operation\n");
         }
 
         // Start monitoring for cancel requests
@@ -515,7 +519,7 @@ main(int argc, char **argv)
         pOp = CreateStatusOp( TASK_START, TASK_RC_SUCCESS, SUFFIX_START, TASK_MSG_SUCCESS );
         if ( pOp == NULL )
         {
-            exit_horribly(NULL, NULL, "cannot allocate memory for cdb_backup_status operation\n");
+            exit_horribly(NULL, NULL, "cannot allocate memory for mpp_backup_status operation\n");
         }
         AddToStatusOpList( g_pStatusOpList, pOp );
     }
@@ -537,21 +541,29 @@ main(int argc, char **argv)
         newpid = fork();
         if ( newpid < 0 )
         {
-            write_msg(NULL, "failed to fork in cdb_backup\n");
+            write_msg(NULL, "failed to fork in mppbackup\n");
         }
         else if ( newpid == 0 )
         {
+            char *psqlPg = NULL;
             pszOnErrorStop    = "-v ON_ERROR_STOP=";
-//          char* pszOutFile        = "~/cdb_restore.out";
+//          char* pszOutFile        = "~/mpp_restore.out";
 
             /* Child Process */
             // launch psql, wait for it to finish
-            len = 4;  /* psql */
+            
+            /* find psql in PATH or PGPATH */
+            if ((psqlPg = testProgramExists( "psql" )) == NULL )
+            {
+                write_err_msg(NULL, "%s not found in path", "psql");
+            }
+
+            len = strlen(psqlPg);  /* psql */
             for ( i=1; i<argc - 1; i++ )
             {
-                if ( strncmp( argv[i], "--cdb-", 6 ) == 0 )
+                if ( strncmp( argv[i], "--mpp-", 6 ) == 0 )
                 {
-                    if ( strcmp( argv[i], "--cdb-e" ) != 0 )
+                    if ( strcmp( argv[i], "--mpp-e" ) != 0 )
                         i++;
                     continue;
                 }
@@ -563,15 +575,17 @@ main(int argc, char **argv)
             if ( g_bOnErrorStop )
                 len += strlen( pszOnErrorStop ) + 1;
 
+            len += 4;  // " -a"
+            
     //      len += 2 + strlen( pszOutFile );  // " >"
 
             pszCmdLine = (char *) calloc( len+1, 1 );
-            strcpy( pszCmdLine, "psql" );
+            strcpy( pszCmdLine, psqlPg );
             for ( i=1; i<argc-1; i++ )
             {
-                if ( strncmp( argv[i], "--cdb-", 6 ) == 0 )
+                if ( strncmp( argv[i], "--mpp-", 6 ) == 0 )
                 {
-                    if ( strcmp( argv[i], "--cdb-e" ) != 0 )
+                    if ( strcmp( argv[i], "--mpp-e" ) != 0 )
                         i++;
                     continue;
                 }
@@ -581,7 +595,9 @@ main(int argc, char **argv)
             }
             strcat( pszCmdLine, " -f " );
             strcat( pszCmdLine, inputFileSpec );
-
+            
+            strcat( pszCmdLine, " -a " );
+            
             if ( g_bOnErrorStop )
             {
                 strcat( pszCmdLine, " ");
@@ -598,7 +614,7 @@ main(int argc, char **argv)
 
             execl("/bin/sh", "sh", "-c", pszCmdLine, NULL );
 
-            write_msg(NULL, "Error in cdb_restore_agent - execl of %s with Command Line %s failed",
+            write_msg(NULL, "Error in mpp_restore_agent - execl of %s with Command Line %s failed",
                     "/bin/sh", pszCmdLine );
             _exit(127);
         }
@@ -775,7 +791,7 @@ usage(const char *progname)
 	printf(_("  -e, --exit-on-error      exit on error, default is to continue\n"));
 
     printf(("\nCDB specific options:\n"));
-    printf(("   --cdb-k=BACKUPKEY        key for CDB Backup\n"));
+    printf(("   --mpp-k=BACKUPKEY        key for CDB Backup\n"));
 
 	printf(_("\nIf no input file name is supplied, then standard input is used.\n\n"));
 	printf(_("Report bugs to <pgsql-bugs@postgresql.org>.\n"));
@@ -824,7 +840,7 @@ void makeSureMonitorThreadEnds( int TaskRC, char* pszErrorMsg )
  * It listens using this connection for notifications.  A notification only arrives if we are to 
  * cancel. In that case, we cause the interrupt handler to be called by sending ourselves a SIGINT
  * signal.  The other duty of this thread, since it owns the g_conn_status, is to periodically examine
- * a linked list of cdb_backup_status insert command requests.  If any are there, it causes an insert and a notify
+ * a linked list of mpp_backup_status insert command requests.  If any are there, it causes an insert and a notify
  * to be sent.    
  */
 void* monitorThreadProc(void *arg)
@@ -948,7 +964,7 @@ void* monitorThreadProc(void *arg)
  * my_handler: This function is the signal handler for both SIGINT and SIGTERM signals.  
  * It checks to see whether there is an active transaction running on the g_conn connection
  * If so, it issues a PQrequestCancel.  This will cause the current statement to fail, which will
- * cause cdb_dump to terminate gracefully.
+ * cause mpp_dump to terminate gracefully.
  * If there's no active transaction, it does nothing.
  * This is set up to always run in the context of the main thread.
  */
@@ -1008,8 +1024,8 @@ void _check_database_version(ArchiveHandle *AH, bool ignoreVersion)
  */
 bool execCDBCatalogFunction(PGconn* pConn)
 {
-	const char* pszFunctionName		= "restore_cdb_catalog"; 
-	const char* pszNamespaceName	= "cdb"; 
+	const char* pszFunctionName		= "restore_mpp_catalog"; 
+	const char* pszNamespaceName	= "mpp"; 
 	bool		bRtn				= false;
 	PQExpBuffer bufQry				= NULL;
 	PGresult*	pRes				= NULL;
@@ -1072,3 +1088,130 @@ cleanup:
 	return bRtn;
 }
 
+/* testProgramExists(char* pszProgramName) returns bool
+ * This runs a shell with which pszProgramName > tempfile
+ * piping the output to a temp file.
+ * If the file is empty, then pszProgramName didn't exist 
+ * on the path. 
+ */
+static char* testProgramExists(char* pszProgramName)
+{
+    char* pszProgramNameLocal;
+    char* p;
+    /* Now see what the length of the file is  - 0 means not there */
+    struct stat buf;
+    char* pszEnvPath;
+    char* pszPath;
+    char* pColon;
+    char* pColonNext;
+    char* pszTestPath;
+
+    if ( pszProgramName == NULL || *pszProgramName == '\0' )
+        return NULL;
+    
+    /* The pszProgramName might have command line arguments, so we need to
+     * stop at the first whitespace 
+     */
+    pszProgramNameLocal = malloc( strlen(pszProgramName) + 1 );
+    if ( pszProgramNameLocal == NULL )
+    {
+        write_err_msg("out of memory");
+    }
+    
+    strcpy( pszProgramNameLocal, pszProgramName );
+    
+    p = pszProgramNameLocal;
+    while ( *p != '\0' )
+    {
+        if ( *p == ' ' || *p == '\t' || *p == '\n' )
+            break;
+        
+        p++;
+    }
+    
+    *p = '\0';
+    
+    pszEnvPath = getenv( "PGPATH" );
+    if ( pszEnvPath != NULL )
+    {
+        pszTestPath = (char *)malloc( strlen(pszEnvPath) + 1 + strlen(pszProgramNameLocal) + 1 );
+        if ( pszTestPath == NULL )
+        {
+            write_err_msg("out of memory");
+        }
+        
+        sprintf( pszTestPath, "%s/%s", pszEnvPath, pszProgramNameLocal );
+        if ( stat( pszTestPath, &buf ) >= 0 )
+            return pszTestPath;
+    }
+    pszEnvPath = getenv( "PATH" );
+    if ( pszEnvPath == NULL )
+        return NULL;
+    
+    pszPath = (char *) malloc( strlen(pszEnvPath) + 1 );
+    if ( pszPath == NULL )
+    {
+        write_err_msg("out of memory");
+    }
+    
+    strcpy( pszPath, pszEnvPath );
+    
+    /* Try to create each level of the hierarchy that doesn't already exist */
+    pColon = pszPath;
+    
+    while ( pColon != NULL && *pColon != '\0' )
+    {
+        /* Find next delimiter */
+        pColonNext = strchr( pColon, ':' );
+
+        if ( pColonNext == pColon )
+        {
+            pColon++;
+            continue;
+        }
+        
+        if ( pColonNext == NULL )
+        {
+            // See whether pszProgramName exists in subdirectory pColon
+            pszTestPath = (char *)malloc( strlen(pColon) + 1 + strlen(pszProgramNameLocal) + 1 );
+            if ( pszTestPath == NULL )
+            {
+                write_err_msg("out of memory");
+            }
+            
+            sprintf( pszTestPath, "%s/%s", pColon, pszProgramNameLocal );
+            if ( stat( pszTestPath, &buf ) >= 0 )
+                return pszTestPath;
+            else
+                return NULL;
+        }
+
+        /* Temporarily end the string at the : we just found. */
+        *pColonNext = '\0';
+
+        // See whether pszProgramName exists in subdirectory pColon
+        pszTestPath = (char *)malloc( strlen(pColon) + 1 + strlen(pszProgramNameLocal) + 1 );
+        if ( pszTestPath == NULL )
+        {
+            write_err_msg("out of memory");
+        }
+        
+        sprintf( pszTestPath, "%s/%s", pColon, pszProgramNameLocal );
+        if ( stat( pszTestPath, &buf ) >= 0 )
+        {
+            *pColonNext = ':';
+            return pszTestPath;
+        }
+        
+        /* Put back the colon we overwrote above. */
+        *pColonNext = ':';
+
+        /* Advance past the colon. */
+        pColon = pColonNext + 1;
+        
+        /* free */
+        free(pszTestPath);
+    }
+    
+    return NULL;
+}

@@ -52,7 +52,7 @@ static RestoreOptions *opts = NULL;
 
 static bool bForcePassword = false;
 static bool bIgnoreVersion = false;
-static const char* pszAgent = "cdb_restore_agent";
+static const char* pszAgent = "mpp_restore_agent";
 
 int
 main(int argc, char **argv)
@@ -65,7 +65,7 @@ main(int argc, char **argv)
 	
 	/* This struct holds the values of the command line parameters */
 	InputOptions			inputOpts;
-	/* This struct holds an array of the segment instance pairs from the head cdb tables */
+	/* This struct holds an array of the segment instance pairs from the head mpp tables */
 	SegmentInstanceArray	segInstAr;
 	/* This struct holds an array of the thread parameters */
 	ThreadParmArray			parmAr;
@@ -92,8 +92,8 @@ main(int argc, char **argv)
 	if ( pConn == NULL )
 		goto cleanup;
 
-	/* Read cdb segment/instance configuration from the head */
-	write_err_msg( "Reading cdb configuration info from head instance database.\n");
+	/* Read mpp segment/instance configuration from the head */
+	write_err_msg( "Reading mpp configuration info from head instance database.\n");
 	if ( !GetSegmentInstanceArray(pConn, inputOpts.pszHeadDBName, &inputOpts.set, &segInstAr, true) )
 		goto cleanup;
     
@@ -191,14 +191,14 @@ usage()
 	printf(("  -W, --password           force password prompt (should happen automatically)\n"));
 
 	printf(("\nCDB specific options:\n"));
-	printf(("  --cdb-c=UTILITY          compression utility name for in-line compression\n"));
-	//printf(("  --cdb-cf=CONTROLFILEPATH path to control file with restore set info\n"));
-	printf(("  --cdb-d=BACKUPFILEDIR    directory where backup files are located\n"));
-	printf(("  --cdb-i                  ignore error\n"));
-	//printf(("  --cdb-hdb=HEADDBNAME     name of head database\n"));
-	printf(("  --cdb-k=KEY              date time backup key from cdb_backup_driver run\n"));
-	printf(("  --cdb-r=REPORTFILEDIR    directory where report file is placed\n"));
-	//printf(("  --cdb-s=a|t|h            restore set indicator (all, tails only, or head only)\n"));
+	printf(("  --mpp-c=UTILITY          compression utility name for in-line compression\n"));
+	//printf(("  --mpp-cf=CONTROLFILEPATH path to control file with restore set info\n"));
+	printf(("  --mpp-d=BACKUPFILEDIR    directory where backup files are located\n"));
+	printf(("  --mpp-i                  ignore error\n"));
+	//printf(("  --mpp-hdb=HEADDBNAME     name of head database\n"));
+	printf(("  --mpp-k=KEY              date time backup key from mpp_backup_driver run\n"));
+	printf(("  --mpp-r=REPORTFILEDIR    directory where report file is placed\n"));
+	//printf(("  --mpp-s=a|t|h            restore set indicator (all, tails only, or head only)\n"));
 	
 	printf(("\nIf no input file name is supplied, then standard input is used.\n\n"));
 	printf(("Report bugs to <pgsql-bugs@postgresql.org>.\n"));
@@ -254,16 +254,16 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 		{"disable-triggers", no_argument, &disable_triggers, 1},
 
 		/*
-		 * the following are cdb specific, and don't have an equivalent short option
+		 * the following are mpp specific, and don't have an equivalent short option
 		 */
-		{"cdb-c", required_argument, NULL, 1},
-		//{"cdb-cf", required_argument, NULL, 2},
-		{"cdb-d", required_argument, NULL, 3},
-		{"cdb-i", no_argument, NULL, 4},
-		//{"cdb-hdb", required_argument, NULL, 5},
-		{"cdb-k", required_argument, NULL, 6},
-		{"cdb-r", required_argument, NULL, 7},
-		{"cdb-s", required_argument, NULL, 8},
+		{"mpp-c", required_argument, NULL, 1},
+		//{"mpp-cf", required_argument, NULL, 2},
+		{"mpp-d", required_argument, NULL, 3},
+		{"mpp-i", no_argument, NULL, 4},
+		//{"mpp-hdb", required_argument, NULL, 5},
+		{"mpp-k", required_argument, NULL, 6},
+		{"mpp-r", required_argument, NULL, 7},
+		{"mpp-s", required_argument, NULL, 8},
 		{NULL, 0, NULL, 0}
 	};
 
@@ -309,7 +309,7 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("cdb_restore (Bizgres MPP) " PG_VERSION);
+			puts("mpp_restore (Bizgres MPP) " PG_VERSION);
 			exit(0);
 		}
 	}
@@ -511,17 +511,17 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 				break;
 
 			case 1:
-				/* cdb-c remote compression program */
+				/* mpp-c remote compression program */
 				pInputOpts->pszCompressionProgram = Safe_strdup(optarg);
 				break;
 
 			case 2:
-				/* cdb-cf control file */
+				/* mpp-cf control file */
                  /* temporary disabled
 				if ( bSawCDB_S_Option )
 				{
-					// Ignore cdb_s option
-					write_err_msg( "ignoring the cdb-s option, since the cdb-cf option is set.\n");
+					// Ignore mpp_s option
+					write_err_msg( "ignoring the mpp-s option, since the mpp-cf option is set.\n");
 				}
 				
 				if ( !FillCDBSet( &pInputOpts->set, optarg ) )
@@ -531,37 +531,37 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 				break;
 				
 			case 3:
-				/* cdb-d backup remote directory */
+				/* mpp-d backup remote directory */
 				pInputOpts->pszBackupDirectory = Safe_strdup(optarg);
 				break;
 				
 			case 4:
-				/* cdb-e on error stop */
+				/* mpp-e on error stop */
 				pInputOpts->bOnErrorStop = false;
 				break;
 				
 			case 5:
-				/* cdb-hdb head database name */
+				/* mpp-hdb head database name */
 				//pInputOpts->pszHeadDBName = Safe_strdup(optarg);
 				break;
 				
 			case 6:
-				/* cdb-k backup timestamp key */
+				/* mpp-k backup timestamp key */
 				pInputOpts->pszKey = Safe_strdup(optarg);
 				break;
 				
 			case 7:
-				/* cdb-r report directory */
+				/* mpp-r report directory */
 				pInputOpts->pszReportDirectory = Safe_strdup(optarg);
 				break;
 			case 8:
-				/* cdb-s backup set specification */
+				/* mpp-s backup set specification */
                  /* temporay disabled
 				bSawCDB_S_Option = true;
 				if ( pInputOpts->set.type == SET_INDIVIDUAL )
 				{
 					// Ignore this, as we've already encountered an individual spec
-					write_err_msg( "ignoring the cdb-s option, since the cdb-cf option is set.\n");
+					write_err_msg( "ignoring the mpp-s option, since the mpp-cf option is set.\n");
 				}
 				else
                  */
@@ -574,7 +574,7 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 						pInputOpts->set.type = SET_HEAD_ONLY;
 					else
 					{
-						write_err_msg( "invalid cdb-s option %s.  Must be a, t, or h.\n", optarg);
+						write_err_msg( "invalid mpp-s option %s.  Must be a, t, or h.\n", optarg);
 						exit(1);
 					}
 				}
@@ -601,13 +601,13 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 
 	if (pInputOpts->pszKey == NULL)
 	{
-		write_err_msg( "Error: %s command line missing the date time backup key parameter (--cdb-k)\n", progname );
+		write_err_msg( "Error: %s command line missing the date time backup key parameter (--mpp-k)\n", progname );
 		exit(1);
 	}
 
 	if (pInputOpts->pszHeadDBName == NULL)
 	{
-		write_err_msg( "Error: %s command line missing the head database parameter (--cdb-hdb)\n", progname );
+		write_err_msg( "Error: %s command line missing the head database parameter (--mpp-hdb)\n", progname );
 		exit(1);
 	}
 
@@ -695,7 +695,7 @@ bool parmValNeedsQuotes( const char* Value )
 
 /*
  * addPassThroughParm: this function adds to the string of pass-through parameters.  These get sent to each
- * backend and get passed to the cdb_dump program.
+ * backend and get passed to the mpp_dump program.
  */
 char* addPassThroughParm( char Parm, const char* pszValue, char* pszPassThroughParmString )
 {
@@ -731,9 +731,9 @@ char* addPassThroughParm( char Parm, const char* pszValue, char* pszPassThroughP
 }
 
 /* threadProc: This function is used to connect to one database that needs to be restored,
- * make a cdb_restore_launch call to cause the restore process to begin on the instance hosting the
+ * make a mpp_restore_launch call to cause the restore process to begin on the instance hosting the
  * database.  Then it waits for notifications from the process.  It receives a notification
- * wnenever the cdb_restore_agent process signals with a NOTIFY. This happens when the process starts, 
+ * wnenever the mpp_restore_agent process signals with a NOTIFY. This happens when the process starts, 
  * and when it finishes.
  */
 void* threadProc(void *arg)
@@ -797,7 +797,7 @@ void* threadProc(void *arg)
 	DoCancelNotifyListen( pConn, true, pszKey, pSegInst->instid, pSegInst->segid, SUFFIX_SUCCEED );
 	DoCancelNotifyListen( pConn, true, pszKey, pSegInst->instid, pSegInst->segid, SUFFIX_FAIL );
 	
-	/* Execute cdb_restore_launch  */
+	/* Execute mpp_restore_launch  */
 	
 	/*
 	 * If there is a password associated with this login, we pass it as a base64 encoded string
@@ -808,7 +808,7 @@ void* threadProc(void *arg)
 		pszPassThroughCredentials = DataToBase64( pSegInst->pszDBPswd, strlen(pSegInst->pszDBPswd) );
 	
 	Qry = createPQExpBuffer();
-	appendPQExpBuffer( Qry, "SELECT * FROM cdb_restore_launch('%s', '%s', '%s', '%s', '%s', %s)", 
+	appendPQExpBuffer( Qry, "SELECT * FROM mpp_restore_launch('%s', '%s', '%s', '%s', '%s', %s)", 
 					StringNotNull( pInputOpts->pszBackupDirectory, ""), 
 					pszKey, 
 					StringNotNull( pInputOpts->pszCompressionProgram, ""), 
@@ -823,7 +823,7 @@ void* threadProc(void *arg)
 	if (!pRes || PQresultStatus(pRes) != PGRES_TUPLES_OK || PQntuples(pRes) == 0 )
 	{
 		g_b_SendCancelMessage = true;
-		pParm->pszErrorMsg = MakeString( "could not start cdb restore: %s", PQerrorMessage(pConn) );
+		pParm->pszErrorMsg = MakeString( "could not start mpp restore: %s", PQerrorMessage(pConn) );
 		write_err_msg(pParm->pszErrorMsg);
 		PQfinish( pConn );
 		return NULL;
@@ -1160,9 +1160,9 @@ int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pHea
 	{
 		/* See whether we can create the file in the report directory */
 		if ( pszReportDirectory[ strlen(pszReportDirectory) - 1] != '/'  )
-			pszFormat = "%s/cdb_dump_%s.rpt";
+			pszFormat = "%s/mpp_dump_%s.rpt";
 		else
-			pszFormat = "%scdb_dump_%s.rpt";
+			pszFormat = "%smpp_dump_%s.rpt";
 		
 		pszReportPathName = MakeString( pszFormat, pszReportDirectory, pOptions->pszKey );
 		
@@ -1185,7 +1185,7 @@ int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pHea
 	fprintf( fRpt, "CDB Restore Report\n" );
 	fprintf( fRpt, "Timestamp Key: %s\n", pOptions->pszKey );
 
-	fprintf( fRpt, "cdb_restore Command Line: %s\n",  
+	fprintf( fRpt, "mpp_restore Command Line: %s\n",  
 			StringNotNull( pOptions->pszCmdLineParms, "None" ) );
 
 	fprintf( fRpt, "Pass through Command Line Options: %s\n",  

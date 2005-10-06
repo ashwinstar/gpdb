@@ -28,7 +28,10 @@ cdb_dump: cdb_dump.o cdb_backup_status.o cdb_seginst.o cdb_backup_state.o cdb_ta
 
 cdb_dump_agent: cdb_dump_agent.o ../common.o ../pg_dump_sort.o cdb_backup_archiver.o cdb_dump_util.o cdb_seginst.o cdb_table.o cdb_backup_status.o $(OBJS) $(libpq_builddir)/libpq.a 
 	$(CC) $(CFLAGS) cdb_dump_agent.o ../common.o ../pg_dump_sort.o cdb_dump_util.o cdb_seginst.o cdb_table.o cdb_backup_archiver.o cdb_backup_status.o $(OBJS) $(EXTRA_OBJS) $(libpq) $(LDFLAGS) $(LIBS) -o $@
-	
+
+#cdb_dumpall_agent: cdb_dumpall_agent.o ../common.o cdb_backup_archiver.o cdb_dump_util.o cdb_seginst.o cdb_table.o cdb_backup_status.o $(OBJS) $(libpq_builddir)/libpq.a 
+#	$(CC) $(CFLAGS) cdb_dumpall_agent.o cdb_backup_archiver.o $(OBJS) $(EXTRA_OBJS) $(libpq) $(LDFLAGS) $(LIBS) -o $@
+
 cdb_restore: cdb_restore.o cdb_backup_status.o cdb_seginst.o cdb_backup_state.o cdb_table.o cdb_dump_util.o $(libpq_builddir)/libpq.a 
 	$(CC) $(CFLAGS) cdb_restore.o cdb_backup_status.o cdb_seginst.o cdb_backup_state.o cdb_table.o cdb_dump_util.o $(libpq) $(LDFLAGS) $(LIBS) -o $@
 	
@@ -40,10 +43,10 @@ submake-backend:
 	$(MAKE) -C $(top_builddir)/src/backend/parser keywords.o
 	
 install: all installdirs
-	$(INSTALL_PROGRAM) cdb_dump$(X) $(DESTDIR)$(bindir)/cdb_dump$(X)
-	$(INSTALL_PROGRAM) cdb_restore$(X) $(DESTDIR)$(bindir)/cdb_restore$(X)
-	$(INSTALL_PROGRAM) cdb_dump_agent$(X) $(DESTDIR)$(bindir)/cdb_dump_agent$(X)
-	$(INSTALL_PROGRAM) cdb_restore_agent$(X) $(DESTDIR)$(bindir)/cdb_restore_agent$(X)
+	$(INSTALL_PROGRAM) cdb_dump$(X) $(DESTDIR)$(bindir)/mpp_dump$(X)
+	$(INSTALL_PROGRAM) cdb_restore$(X) $(DESTDIR)$(bindir)/mpp_restore$(X)
+	$(INSTALL_PROGRAM) cdb_dump_agent$(X) $(DESTDIR)$(bindir)/mpp_dump_agent$(X)
+	$(INSTALL_PROGRAM) cdb_restore_agent$(X) $(DESTDIR)$(bindir)/mpp_restore_agent$(X)
 
 installdirs:
 	$(mkinstalldirs) $(DESTDIR)$(bindir)

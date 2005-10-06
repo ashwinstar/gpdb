@@ -218,7 +218,7 @@ RestoreArchive(Archive *AHX, RestoreOptions *ropt)
 	ahprintf(AH, "--\n-- PostgreSQL database dump\n--\n\n");
     /* for segment databases only */
     if ( g_CDBInstID != 1)
-        ahprintf(AH, "\n\n-- cdb specific\nSET mpp_role=UTILITY;\n--end cdb specific\n\n");
+        ahprintf(AH, "\n\n-- mpp specific\nSET mpp_role=UTILITY;\n--end mpp specific\n\n");
 
 
 	/*
@@ -287,7 +287,7 @@ RestoreArchive(Archive *AHX, RestoreOptions *ropt)
 			{
 				ahlog(AH, 1, "connecting to new database \"%s\"\n", te->tag);
 				_reconnectToDB(AH, te->tag);
-                ahprintf(AH, "\n\n-- cdb specific\nSET mpp_role=UTILITY;\n--end cdb specific\n\n");
+                ahprintf(AH, "\n\n-- mpp specific\nSET mpp_role=UTILITY;\n--end mpp specific\n\n");
 
 			}
 		}
@@ -1208,12 +1208,12 @@ _write_msg(const char *modulename, const char *fmt, va_list ap)
 	vfprintf(stderr, gettext(fmt), ap);
 }
 
-/* cdb change */
+/* mpp change */
 #include "cdb_backup_status.h"
 #include "cdb_dump_util.h"
 extern void makeSureMonitorThreadEnds( int TaskRC, char* pszErrorMsg );
 extern char* g_LastMsg;
-/* end cdb change */
+/* end mpp change */
 
 void
 write_msg(const char *modulename, const char *fmt,...)

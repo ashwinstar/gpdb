@@ -251,7 +251,7 @@ PGconn* MakeDBConnection( const SegmentInstance* pSegInst, bool bDispatch )
 	
     /*
 	if ( pSegInst->segid > 0 )
-		pszOptions = MakeString( "options='-c cdb_segid=%d -c cdb_instid=%d'", pSegInst->segid, pSegInst->instid );
+		pszOptions = MakeString( "options='-c mpp_segid=%d -c mpp_instid=%d'", pSegInst->segid, pSegInst->instid );
     */
 	if ( bDispatch )
         pszOptions = NULL;
@@ -412,7 +412,7 @@ bool ParseCDBDumpInfo( char* pszCDBDumpInfo, char** ppCDBDumpKey, int* pCDBInstI
 }
 
 /*
- * ReadBackendBackupFile: This function calls the backend function cdb_read_backup_file 
+ * ReadBackendBackupFile: This function calls the backend function mpp_read_backup_file 
  * which reads the contents out of the appropriate file on the database server.
  * If the call fails, it returns NULL.  The returned pointer must be freed by the caller.
  */
@@ -440,7 +440,7 @@ char* ReadBackendBackupFile( PGconn* pConn, const char* pszBackupDirectory, cons
 	}
 	
 	Qry = createPQExpBuffer();
-	appendPQExpBuffer( Qry, "SELECT * FROM cdb_read_backup_file('%s', '%s', %s)", 
+	appendPQExpBuffer( Qry, "SELECT * FROM mpp_read_backup_file('%s', '%s', %s)", 
 					StringNotNull( pszBackupDirectory, ""), 
 					StringNotNull( pszKey, "" ), 
 					pszFileType );
@@ -513,7 +513,7 @@ char* WriteBackendBackupFile( PGconn* pConn, const char* pszBackupDirectory, con
 	PQescapeString( pszBackupScriptEscaped, pszBackupScript, strlen(pszBackupScript) );
 	
 	Qry = createPQExpBuffer();
-	appendPQExpBuffer( Qry, "SELECT * FROM cdb_write_backup_file('%s', '%s', '%s')", 
+	appendPQExpBuffer( Qry, "SELECT * FROM mpp_write_backup_file('%s', '%s', '%s')", 
 					StringNotNull( pszBackupDirectory, ""), 
 					StringNotNull( pszKey, "" ),
 					StringNotNull( pszBackupScriptEscaped, "") );

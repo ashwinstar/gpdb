@@ -3608,14 +3608,14 @@ DATA(insert OID = 2556 ( pg_tablespace_databases	PGNSP PGUID 12 f f t t s 1 26 "
 DESCR("returns database oids in a tablespace");
 
 /* Greenplum MPP exposed internally-defined functions. */ 
-DATA(insert OID = 6003 (  cdb_backup_launch    PGNSP PGUID 12 f f f f v 5 25 "25 25 25 25 25" _null_ cdb_backup_launch__  - _null_  ));
-DESCR("launch cdb backup on outboard Postgres instances");
-DATA(insert OID = 6004 (  cdb_restore_launch   PGNSP PGUID 12 f f f f v 6 25 "25 25 25 25 25 16" _null_ cdb_restore_launch__  - _null_  ));
-DESCR("launch cdb restore on outboard Postgres instances");
-DATA(insert OID = 6005 (  cdb_read_backup_file PGNSP PGUID 12 f f f f v 3 25 "25 25 24" _null_ cdb_read_backup_file__  - _null_  ));
-DESCR("read cdb backup file on outboard Postgres instances");
-DATA(insert OID = 6006 (  cdb_write_backup_file PGNSP PGUID 12 f f f f v 3 25 "25 25 25" _null_ cdb_write_backup_file__  - _null_  )); 
-DESCR("write cdb backup file on outboard Postgres instances");
+DATA(insert OID = 6003 (  mpp_backup_launch    PGNSP PGUID 12 f f f f v 5 25 "25 25 25 25 25" _null_ mpp_backup_launch__  - _null_  ));
+DESCR("launch mpp backup on outboard Postgres instances");
+DATA(insert OID = 6004 (  mpp_restore_launch   PGNSP PGUID 12 f f f f v 6 25 "25 25 25 25 25 16" _null_ mpp_restore_launch__  - _null_  ));
+DESCR("launch mpp restore on outboard Postgres instances");
+DATA(insert OID = 6005 (  mpp_read_backup_file PGNSP PGUID 12 f f f f v 3 25 "25 25 24" _null_ mpp_read_backup_file__  - _null_  ));
+DESCR("read mpp backup file on outboard Postgres instances");
+DATA(insert OID = 6006 (  mpp_write_backup_file PGNSP PGUID 12 f f f f v 3 25 "25 25 25" _null_ mpp_write_backup_file__  - _null_  )); 
+DESCR("write mpp backup file on outboard Postgres instances");
 DATA(insert OID = 6007 (  mpp_pgdatabase   PGNSP PGUID 12 f f f t v 0 2249 "" _null_ mpp_pgdatabase__ - _null_ ));
 DESCR("view mpp pgdatabase state");
 

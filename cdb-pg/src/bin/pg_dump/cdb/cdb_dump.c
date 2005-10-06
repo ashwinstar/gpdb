@@ -52,6 +52,8 @@ static int reportBackupResults( const char* pszReportDirectory, const ThreadParm
 static void spinOffThreads( PGconn* pConn, InputOptions* pInputOpts, const SegmentInstanceArray* pSegInstAr, 
 							ThreadParmArray* pParmAr );
 static void* threadProc(void *arg);
+static void getDatabaseConnections(PGconn *conn, PGconn ***conn_dbs, int *numberOfDbs, InputOptions *inputOpts);
+static PGresult *executeQuery(PGconn *conn, const char *query);
 
 /*
  * static and extern global variables left over from pg_dump
@@ -81,7 +83,7 @@ static int nThreadsFinishedLaunch;
 static pthread_cond_t MyCondVar = PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t MyMutex = PTHREAD_MUTEX_INITIALIZER;
 static bool g_b_SendCancelMessage = false;
-static const char* pszAgent = "cdb_dump_agent";
+static const char* pszAgent = "mpp_dump_agent";
 
 int main( int argc, char** argv)
 {
@@ -91,11 +93,13 @@ int main( int argc, char** argv)
 	
 	/* This struct holds the values of the command line parameters */
 	InputOptions			inputOpts;
-	/* This struct holds an array of the segment instance pairs from the head cdb tables */
+	/* This struct holds an array of the segment instance pairs from the head mpp tables */
 	SegmentInstanceArray	segInstAr;
 	/* This struct holds an array of the thread parameters */
 	ThreadParmArray			parmAr;
-	
+	PGconn **conn_dbs;
+    int    numOfConns, i;
+    
 	memset( &inputOpts, 0, sizeof(inputOpts) );
 	memset( &segInstAr, 0, sizeof(segInstAr) );
 	memset( &parmAr, 0, sizeof(parmAr) );
@@ -117,15 +121,20 @@ int main( int argc, char** argv)
 	if ( pConn == NULL )
 		goto cleanup;
 
-	/* Read cdb segment/instance configuration from the head */
-	write_err_msg( "Reading cdb configuration info from head instance database.\n");
+	/* Read mpp segment/instance configuration from the head */
+	write_err_msg( "Reading mpp configuration info from head instance database.\n");
 	if ( !GetSegmentInstanceArray(pConn, inputOpts.pszDBName, &inputOpts.set, &segInstAr, false) )
 		goto cleanup;
 
-	/* Begin a transaction on the head and lock all cdb managed tables */
-	if ( !doInitialActions(pConn, inputOpts.pszDBName) )
-		goto cleanup;
-	
+    /* get connection to all databases of QD */
+    getDatabaseConnections(pConn, &conn_dbs, &numOfConns, &inputOpts);
+
+    for (i=0; i<numOfConns; i++)
+    {        
+	    /* Begin a transaction on the head and lock all mpp managed tables */
+	    if ( !doInitialActions(conn_dbs[i], conn_dbs[i]->dbName) )
+		   goto cleanup;
+    }
 	/* Install the SIGINT and SIGTERM handlers */  
 	installSignalHandlers();
 	
@@ -152,13 +161,15 @@ cleanup:
 	
 	if ( pConn != NULL )
 		PQfinish(pConn);
-
+    for (i=0; i<numOfConns; i++)
+        PQfinish(conn_dbs[i]);
+        
 	exit(failCount);
 }
 
 /*
  * addPassThroughParm: this function adds to the string of pass-through parameters.  These get sent to each
- * backend and get passed to the cdb_dump_agent program.
+ * backend and get passed to the mpp_dump_agent program.
  */
 char* addPassThroughParm( char Parm, const char* pszValue, char* pszPassThroughParmString )
 {
@@ -238,7 +249,7 @@ void decrementFinishedLaunchCount(void)
 
 /*
  * doInitialActions: This function uses the PGconn connection to begin a transaction. Then it reads an array 
- * of the cdb managed tables, along with their namespaces.  It then forms one LOCK TABLE 
+ * of the mpp managed tables, along with their namespaces.  It then forms one LOCK TABLE 
  * statement using each of the tables in the array, and executes it.
  */
 bool doInitialActions(PGconn* pConn, const char* pszDBName)
@@ -251,7 +262,7 @@ bool doInitialActions(PGconn* pConn, const char* pszDBName)
 	
 	memset( &TableAr, 0, sizeof(TableAr) );
 	
-	write_err_msg( "Starting a transaction on head instance database.\n");
+	write_err_msg( "Starting a transaction on head instance database %s.\n", pConn->dbName);
 	
 	pQry = createPQExpBuffer();
 	appendPQExpBuffer(pQry, "Begin;");
@@ -272,7 +283,7 @@ bool doInitialActions(PGconn* pConn, const char* pszDBName)
     pRes = NULL;
 	resetPQExpBuffer(pQry);
 	
-	write_err_msg( "Getting a list of cdb managed tables from cdb_basetable.\n");
+	write_err_msg( "Getting a list of mpp managed tables from mpp_basetable.\n");
 	
 	if ( !GetCDBBaseTableArray(pConn, pszDBName, &TableAr, NULL ) )
 	{
@@ -281,7 +292,7 @@ bool doInitialActions(PGconn* pConn, const char* pszDBName)
 	
 	if ( TableAr.count > 0 )
 	{
-		write_err_msg( "Issuing \"LOCK IN EXCLUSIVE MODE\" command for cdb managed tables.\n");
+		write_err_msg( "Issuing \"LOCK IN EXCLUSIVE MODE\" command for mpp managed tables on database %s.\n", pConn->dbName);
 		
 		// Now issue lock table statements for each table in BaseTablesAr
 		appendPQExpBuffer(pQry, "LOCK TABLE");
@@ -311,6 +322,8 @@ bool doInitialActions(PGconn* pConn, const char* pszDBName)
 			write_err_msg("bad result from server: %s", PQerrorMessage(pConn));
 			goto cleanup;
 		}
+        if (g_verbose)
+            write_err_msg("Executing %s\n", pQry->data);
 	}
 	
 	bRtn = true;
@@ -423,13 +436,13 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 		{"disable-triggers", no_argument, &disable_triggers, 1},
 		
 		/*
-		 * the following are cdb specific, and don't have an equivalent short option
+		 * the following are mpp specific, and don't have an equivalent short option
 		 */
-		{"cdb-c", required_argument, NULL, 1},
-		//{"cdb-cf", required_argument, NULL, 2},
-		{"cdb-d", required_argument, NULL, 3},
-		{"cdb-r", required_argument, NULL, 4},
-		//{"cdb-s", required_argument, NULL, 5},
+		{"mpp-c", required_argument, NULL, 1},
+		//{"mpp-cf", required_argument, NULL, 2},
+		{"mpp-d", required_argument, NULL, 3},
+		{"mpp-r", required_argument, NULL, 4},
+		//{"mpp-s", required_argument, NULL, 5},
 		{NULL, 0, NULL, 0}
 	};
 	
@@ -468,7 +481,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("cdb_dump (Bizgres MPP) " PG_VERSION);
+			puts("mpp_dump (Bizgres MPP) " PG_VERSION);
 			goto cleanup;
 		}
 	}
@@ -546,7 +559,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms ); 
 				break;
 
-/* Invalid for cdb_dump.
+/* Invalid for mpp_dump.
 			case 'f':
 				iopt->filename = optarg;
 				break;
@@ -593,7 +606,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms ); 
 				break;
 
-/* Invalid for cdb_dump.
+/* Invalid for mpp_dump.
 			case 'S':			
 				pInputOpts->pszOutputSuperuser = strdup(optarg);
 				break;
@@ -661,17 +674,17 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 				break;
 			
 			case 1:
-				/* cdb-c remote compression program */
+				/* mpp-c remote compression program */
 				pInputOpts->pszCompressionProgram = Safe_strdup(optarg);
 				break;
 
 			case 2:
-				/* cdb-cf control file */
+				/* mpp-cf control file */
                  /* temporary disabled
 				if ( bSawCDB_S_Option )
 				{
-					// Ignore cdb_s option
-					write_err_msg( "ignoring the cdb-s option, since the cdb-cf option is set.\n");
+					// Ignore mpp_s option
+					write_err_msg( "ignoring the mpp-s option, since the mpp-cf option is set.\n");
 				}
 				
 				if ( !FillCDBSet( &pInputOpts->set, optarg ) )
@@ -680,7 +693,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 				// Validate that none of the instid's are hosts
 				if ( 0 < CountInstanceHosts( &pInputOpts->set ) )
 				{
-					write_err_msg( "The control file %s contains cdb instances specifies as host name or ip address.  This is not allowed.\n",
+					write_err_msg( "The control file %s contains mpp instances specifies as host name or ip address.  This is not allowed.\n",
 									optarg);
 					goto cleanup;
 				}
@@ -689,22 +702,22 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 				break;
 				
 			case 3:
-				/* cdb-d backup remote directory */
+				/* mpp-d backup remote directory */
 				pInputOpts->pszBackupDirectory = Safe_strdup(optarg);
 				break;
 				
 			case 4:
-				/* cdb-r report directory */
+				/* mpp-r report directory */
 				pInputOpts->pszReportDirectory = Safe_strdup(optarg);
 				break;
 			case 5:
-				/* cdb-s backup set specification */
+				/* mpp-s backup set specification */
                  /* temporary disabled
 				bSawCDB_S_Option = true;
 				if ( pInputOpts->set.type == SET_INDIVIDUAL )
 				{
 					// Ignore this, as we've already encountered an individual spec
-					write_err_msg( "ignoring the cdb-s option, since the cdb-cf option is set.\n");
+					write_err_msg( "ignoring the mpp-s option, since the mpp-cf option is set.\n");
 				}
 				else
 				{
@@ -716,7 +729,7 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 						pInputOpts->set.type = SET_HEAD_ONLY;
 					else
 					{
-						write_err_msg( "invalid cdb-s option %s.  Must be a, t, or h.\n", optarg);
+						write_err_msg( "invalid mpp-s option %s.  Must be a, t, or h.\n", optarg);
 						goto cleanup;
 					}
 				}
@@ -739,8 +752,13 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 	}
 
 	/* Get database name from command line */
+    /* do not care dbname, always connecting to template1.
+     * 
 	if (optind < argc)
 		pInputOpts->pszDBName = Safe_strdup(argv[optind]);
+    */
+    
+    pInputOpts->pszDBName = Safe_strdup("template1");
 	
 	if (dataOnly && schemaOnly)
 	{
@@ -868,11 +886,11 @@ void help(const char *pszProgName)
 	printf(("  -W, --password           force password prompt (should happen automatically)\n"));
 	
 	printf(("\nCDB specific options:\n"));
-	printf(("  --cdb-c=UTILITY          compression utility name for in-line compression\n"));
-	//printf(("  --cdb-cf=CONTROLFILEPATH path to control file with backup set info\n"));
-	printf(("  --cdb-d=BACKUPFILEDIR    directory where backup files are placed\n"));
-	printf(("  --cdb-r=REPORTFILEDIR    directory where report file is placed\n"));
-	//printf(("  --cdb-s=a|t|h            backup set indicator (all, tails only, or head only)\n"));
+	printf(("  --mpp-c=UTILITY          compression utility name for in-line compression\n"));
+	//printf(("  --mpp-cf=CONTROLFILEPATH path to control file with backup set info\n"));
+	printf(("  --mpp-d=BACKUPFILEDIR    directory where backup files are placed\n"));
+	printf(("  --mpp-r=REPORTFILEDIR    directory where report file is placed\n"));
+	//printf(("  --mpp-s=a|t|h            backup set indicator (all, tails only, or head only)\n"));
 
 	printf(("\nIf no database name is supplied, then the PGDATABASE environment\n"
 			 "variable value is used.\n\n"));
@@ -987,9 +1005,9 @@ int reportBackupResults( const char* pszReportDirectory, const ThreadParmArray* 
 	{
 		/* See whether we can create the file in the report directory */
 		if ( pszReportDirectory[ strlen(pszReportDirectory) - 1] != '/'  )
-			pszFormat = "%s/cdb_dump_%s.rpt";
+			pszFormat = "%s/mpp_dump_%s.rpt";
 		else
-			pszFormat = "%scdb_dump_%s.rpt";
+			pszFormat = "%smpp_dump_%s.rpt";
 		
 		pszReportPathName = MakeString( pszFormat, pszReportDirectory, pParmAr->pData[0].pOptionsData->pszKey );
 		
@@ -1014,7 +1032,7 @@ int reportBackupResults( const char* pszReportDirectory, const ThreadParmArray* 
 	fprintf( fRpt, "CDB Backup Report\n" );
 	fprintf( fRpt, "Timestamp Key: %s\n", pParm0->pOptionsData->pszKey );
 
-	fprintf( fRpt, "cdb_dump Command Line: %s\n",  
+	fprintf( fRpt, "mpp_dump Command Line: %s\n",  
 			StringNotNull( pParm0->pOptionsData->pszCmdLineParms, "None" ) );
 
 	fprintf( fRpt, "Pass through Command Line Options: %s\n",  
@@ -1078,7 +1096,7 @@ int reportBackupResults( const char* pszReportDirectory, const ThreadParmArray* 
  * the thread synchronization objects.  Then it loops and creates each of the threads.  
  * It waits on a condition variable.  This will release when all threads have
  * attained the SET_SERIALIZABLE state. (or have failed to do so.)
- * It then commits the transaction, which releases the locks it holds on all the cdb managed tables.
+ * It then commits the transaction, which releases the locks it holds on all the mpp managed tables.
  * IOt then waits for all threads to finish. 
  */
 void spinOffThreads(PGconn* pConn, InputOptions* pInputOpts, const SegmentInstanceArray* pSegInstAr, ThreadParmArray* pParmAr )
@@ -1166,9 +1184,9 @@ void spinOffThreads(PGconn* pConn, InputOptions* pInputOpts, const SegmentInstan
 }
 
 /* threadProc: This function is used to connect to one database that needs to be backed up,
- * make a cdb_backup_launch call to cause the backup process to begin on the instance hosting the
+ * make a mpp_backup_launch call to cause the backup process to begin on the instance hosting the
  * database.  Then it waits for notifications from the process.  It receives a notification
- * wnenever the cdb_dump_agent process writes a row into the cdb_backup_status table.  This happens
+ * wnenever the mpp_dump_agent process writes a row into the mpp_backup_status table.  This happens
  * when the process starts, when it attains the SET_SERIALIZABLE state, and when it finishes.
  */
 void* threadProc(void *arg)
@@ -1223,7 +1241,7 @@ void* threadProc(void *arg)
 	DoCancelNotifyListen( pConn, true, pszKey, pSegInst->instid, pSegInst->segid, SUFFIX_SUCCEED );
 	DoCancelNotifyListen( pConn, true, pszKey, pSegInst->instid, pSegInst->segid, SUFFIX_FAIL );
 	
-	/* Execute cdb_backup_launch  */
+	/* Execute mpp_backup_launch  */
 	
 	/*
 	 * If there is a password associated with this login, we pass it as a base64 encoded string
@@ -1234,7 +1252,7 @@ void* threadProc(void *arg)
 		pszPassThroughCredentials = DataToBase64( pSegInst->pszDBPswd, strlen(pSegInst->pszDBPswd) );
 	
 	Qry = createPQExpBuffer();
-	appendPQExpBuffer( Qry, "SELECT * FROM cdb_backup_launch('%s', '%s', '%s', '%s', '%s')", 
+	appendPQExpBuffer( Qry, "SELECT * FROM mpp_backup_launch('%s', '%s', '%s', '%s', '%s')", 
 					StringNotNull( pInputOpts->pszBackupDirectory, ""), 
 					pszKey, 
 					StringNotNull( pInputOpts->pszCompressionProgram, ""), 
@@ -1249,7 +1267,7 @@ void* threadProc(void *arg)
 	if (!pRes || PQresultStatus(pRes) != PGRES_TUPLES_OK || PQntuples(pRes) == 0 )
 	{
 		g_b_SendCancelMessage = true;
-		pParm->pszErrorMsg = MakeString( "could not start cdb backup: %s", PQerrorMessage(pConn) );
+		pParm->pszErrorMsg = MakeString( "could not start mpp backup: %s", PQerrorMessage(pConn) );
 		write_err_msg(pParm->pszErrorMsg);
 		PQfinish( pConn );
 		decrementFinishedLaunchCount();
@@ -1273,7 +1291,7 @@ void* threadProc(void *arg)
 	if ( pState == NULL )
 	{
 		g_b_SendCancelMessage = true;
-		pParm->pszErrorMsg = "error allocating memory for cdb backup";
+		pParm->pszErrorMsg = "error allocating memory for mpp backup";
 		write_err_msg(pParm->pszErrorMsg);
 		PQfinish( pConn );
 		decrementFinishedLaunchCount();
@@ -1353,7 +1371,7 @@ void* threadProc(void *arg)
 				if ( !AddNotificationtoBackupStateMachine( pState, pNotify) )
 				{
 					g_b_SendCancelMessage = true;
-					pParm->pszErrorMsg = MakeString("error allocating memory for cdb backup\n");
+					pParm->pszErrorMsg = MakeString("error allocating memory for mpp backup\n");
 					write_err_msg( pParm->pszErrorMsg );
 					PQfinish(pConn);
 					DestroyBackupStateMachine(pState);
@@ -1439,5 +1457,50 @@ void* threadProc(void *arg)
 	
 	return(NULL);
 }
+
+static void getDatabaseConnections(PGconn *conn, PGconn ***conn_dbs, int *numberOfDbs, InputOptions *inputOpts)
+{
+    PGresult   *res;
+    int         i;
+
+    res = executeQuery(conn, "SELECT datname FROM pg_database WHERE datallowconn");
+    *numberOfDbs = PQntuples(res);
+    *conn_dbs = (PGconn **)malloc(sizeof(PGconn *) * *numberOfDbs);
+
+    for (i = 0; i < *numberOfDbs; i++)
+    {
+        (*conn_dbs)[i] = MakeConnectionToDatabase(PQgetvalue(res,i,0), inputOpts->pszPGHost, 
+                                    inputOpts->pszPGPort, inputOpts->pszUserName, 
+                                    bForcePassword, bIgnoreVersion, false);
+    }
+
+
+    PQclear(res);
+}
+
+/*
+ * Run a query, return the results, exit program on failure.
+ */
+static PGresult *
+executeQuery(PGconn *conn, const char *query)
+{
+    PGresult   *res;
+
+    if (g_verbose)
+        write_err_msg("%s: executing %s\n", progname, query);
+
+    res = PQexec(conn, query);
+    if (!res ||
+        PQresultStatus(res) != PGRES_TUPLES_OK)
+    {
+        write_err_msg("%s: query failed: %s", progname, PQerrorMessage(conn));
+        write_err_msg("%s: query was: %s\n", progname, query);
+        PQfinish(conn);
+        exit(1);
+    }
+
+    return res;
+}
+
 
 
