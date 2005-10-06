@@ -271,6 +271,7 @@ RECOVER_DATA () {
 		LOG_MSG "[INFO]:-Checking for invalid postmaster process on port ${FAIL_QE_HOST}"
 		RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$PS ax|$GREP postmaster|$GREP '\-p ${FAIL_QE_PORT}'|$GREP -v grep|$AWK '{print \$1}' >${FAIL_QE_TOP_DIR}/kill.pid" 
 		$TRUSTED_SHELL ${FAIL_QE_HOST} "kill -9 \`cat ${FAIL_QE_TOP_DIR}/kill.pid\`" 2>> $LOG_FILE
+		$TRUSTED_SHELL ${FAIL_QE_HOST} "$RM -f ${FAIL_QE_TOP_DIR}/kill.pid"
 		LOG_MSG "[INFO]:-Deleting failed database directory on ${FAIL_QE_HOST}"
 		RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$RM -Rf ${FAIL_QE_DIR}" 
 		#Run a checkpoint if STOPDB=0
