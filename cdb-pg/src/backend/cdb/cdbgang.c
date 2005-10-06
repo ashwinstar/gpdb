@@ -652,7 +652,7 @@ buildGangDefinition(GangType type, int size, int content)
 	if (type == GANGTYPE_PRIMARY_WRITER
 		&& seg_count != cdb_component_dbs->total_segments)
 	{
-		elog(PANIC, "Not all primary dbs is active and connected");
+		elog(PANIC, "Not all primary segment instances are active and connected");
 	}
 	else if (type == GANGTYPE_MIRROR_WRITER)
 	{
