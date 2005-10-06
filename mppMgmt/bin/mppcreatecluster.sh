@@ -991,7 +991,7 @@ fi
 RESTART_QD_PRODUCTION
 
 $ECHO "$RM $BACKOUT_FILE" >> $BACKOUT_FILE
-
+BACKOUT_COMMAND "if [ $MASTER_HOSTNAME != \`$HOSTNAME\` ];then $ECHO \"[FATAL]:-Not on original master host $MASTER_HOSTNAME, backout script exiting!\";exit 2;fi"
 LOG_MSG "[INFO]:-MPP cluster successfully created"
 LOG_MSG "[INFO]:-------------------------------------------------------"
 LOG_MSG "[INFO]:-To access the mpp scripts for this cluster:"

@@ -204,6 +204,7 @@ ERROR_EXIT () {
 				if [ -s $BACKOUT_FILE ]; then
 						LOG_MSG "[WARN]:-Script has left MPP configuration in an incomplete state"
 						LOG_MSG "[WARN]:-Run command /bin/bash $BACKOUT_FILE to remove these changes"
+						BACKOUT_COMMAND "if [ $MASTER_HOSTNAME != \`$HOSTNAME\` ];then $ECHO \"[FATAL]:-Not on original master host $MASTER_HOSTNAME, backout script exiting!\";exit 2;fi"
 						$ECHO "$RM -f $BACKOUT_FILE" >> $BACKOUT_FILE
 				fi
 		fi
@@ -365,7 +366,7 @@ GET_QE_DETAILS () {
 		QE_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port, c.valid, c.definedprimary from mpp.listener a, mpp.host b, mpp.mpp_pgdatabase c where a.listenerid<> (select listenerid from mpp.mpp_pgdatabase where content=-1) and a.hostid=b.hostid and a.listenerid=c.listenerid;" 2>/dev/null`) > /dev/null 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
-				LOG_MSG "[WARN]:-Unable to obtain QE host details from Master db, error code $RETVAL returned"
+				LOG_MSG "[WARN]:-Unable to obtain segment instance host details from Master db, error code $RETVAL returned"
 				EXIT_STATUS=1
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -378,7 +379,7 @@ GET_QE_PRIMARY_DETAILS () {
 
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
-				LOG_MSG "[WARN]:-Unable to obtain QE primary host details from Master db, error code $RETVAL returned"
+				LOG_MSG "[WARN]:-Unable to obtain segment instance primary host details from Master db, error code $RETVAL returned"
 				EXIT_STATUS=1
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -392,7 +393,7 @@ GET_QE_MIRROR_DETAILS () {
 
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
-				LOG_MSG "[WARN]:-Unable to obtain QE mirror host details from Master db, error code $RETVAL returned"
+				LOG_MSG "[WARN]:-Unable to obtain segment instance mirror host details from Master db, error code $RETVAL returned"
 				EXIT_STATUS=1
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -648,16 +649,16 @@ PROCESS_QE () {
 		CONTENT=$1
 		QE_DIR=$DIRECTORY_ARRAY/$INST_ARRAY
 		GET_QD_DB_NAME
-		LOG_MSG "[INFO]:-Creating QE data directory $QE_DIR"
+		LOG_MSG "[INFO]:-Creating segment instance data directory $QE_DIR"
 		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "$INITDB -E $ENCODING -D $QE_DIR"
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${HOSTNAME_ARRAY} \"$RM -rf $QE_DIR\""
 		BACKOUT_COMMAND "$ECHO \"removing directory $QE_DIR on $HOSTNAME_ARRAY\""
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${HOSTNAME_ARRAY} \"$PG_CTL stop -m immediate -D $QE_DIR\""
 		BACKOUT_COMMAND "$ECHO \"Shutting down Postgres on $HOSTNAME_ARRAY\""
-		LOG_MSG "[INFO]:-Setting QE access permission"
+		LOG_MSG "[INFO]:-Setting segment instance access permission"
 		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "$ECHO MPP Specific configuration >> $QE_DIR/pg_hba.conf"
 		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "$ECHO host all all ${IP_ALLOW} trust >> $QE_DIR/pg_hba.conf"
-		LOG_MSG "[INFO]:-Setting default QE port to $PORT_ARRAY"
+		LOG_MSG "[INFO]:-Setting default segment instance port to $PORT_ARRAY"
 		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "$ECHO port=${PORT_ARRAY} >> $QE_DIR/postgresql.conf"
 		LOG_MSG "[INFO]:-Setting number of redo segments"
 		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "$ECHO checkpoint_segments=$CHECK_POINT_SEGMENTS >> $QE_DIR/postgresql.conf"
@@ -671,23 +672,23 @@ PROCESS_QE () {
 				then
 				for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
 						do
-						LOG_MSG "[INFO]:-Adding $NEW_PARAM to QE postgresql.conf file"
+						LOG_MSG "[INFO]:-Adding $NEW_PARAM to segment instance postgresql.conf file"
 						RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "$ECHO $NEW_PARAM >> $QE_DIR/postgresql.conf"
 				done
 		fi
-		LOG_MSG "[INFO]:-Starting Functioning instance on QE $HOSTNAME_ARRAY"
+		LOG_MSG "[INFO]:-Starting Functioning instance on segment $HOSTNAME_ARRAY"
 		$TRUSTED_SHELL ${HOSTNAME_ARRAY} "export PGPORT=${PORT_ARRAY}; $PG_CTL -w -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${PORT_ARRAY}\" start"
 		if [ $? -ne 0 ]; then
 				$TRUSTED_SHELL ${HOSTNAME_ARRAY} "$CAT ${QE_DIR}.log "|$TEE -a $LOG_FILE
-				ERROR_EXIT "[FATAL]:-Failed to start QE instance database" 2
+				ERROR_EXIT "[FATAL]:-Failed to start segment instance database" 2
 		fi
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${HOSTNAME_ARRAY} \"$RM -f ${QE_DIR}.log\""
-		BACKOUT_COMMAND "$ECHO \"Removing tail log file ${QE_DIR}.log on QE $HOSTNAME_ARRAY\""
+		BACKOUT_COMMAND "$ECHO \"Removing tail log file ${QE_DIR}.log on segment $HOSTNAME_ARRAY\""
 		LOG_MSG "[INFO]:-Creating database $SEG_ARRAY on $HOSTNAME_ARRAY"
 		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p ${PORT_ARRAY} template1 -c \"create database $SEG_ARRAY\""
-		LOG_MSG "[INFO]:-Updating the QE mpp catalog"
+		LOG_MSG "[INFO]:-Updating the segment mpp catalog"
 		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p ${PORT_ARRAY} $SEG_ARRAY -c \"insert into mpp.mpp values ('$ARRAY_NAME',$NUMSEGMENTS,$DBID,$CONTENT)\""
-		LOG_MSG "[INFO]:-Adding this QE instance to the Master host"
+		LOG_MSG "[INFO]:-Adding this segment instance to the Master host"
 		if [ $PRIMARY -eq 1 ]; then
 				LOG_MSG "[INFO]:-Adding the primary segment to the head admin schema"
 				RUN_COMMAND "$PSQL -p $HEAD_PORT $HEAD_DBNAME -c \"SET search_path TO public;select mpp.add_segment('$SEG_ARRAY','$USER','',$SEG_NUM_ARRAY)\""
