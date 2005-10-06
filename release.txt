@@ -1,6 +1,10 @@
 <<<NEW vi: set expandtab ts=4: >>>
 
 
+Release-2_0_3:  05/Oct/2005  builder
+    Initial Release contains fixes from Oct 5 bang
+
+
 Release-2_0_2:  05/Oct/2005  builder
     Initial Release. 
 
