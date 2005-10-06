@@ -6,7 +6,7 @@
  * IDENTIFICATION
  *
  * $PostgreSQL: pgsql/src/backend/utils/adt/version.c,v 1.13 2003/11/29 19:52:00 pgsql Exp $
- *
+ * $Name: $
  *-------------------------------------------------------------------------
  */
 
