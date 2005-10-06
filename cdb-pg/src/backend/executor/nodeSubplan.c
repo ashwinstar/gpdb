@@ -947,8 +947,9 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 	bool		found = false;
 	ArrayBuildState *astate = NULL;
 
-	bool hasDispatched = false;
+	volatile bool hasDispatched = false;
 	bool shouldDispatch = false;
+
     if ( Mpp_role == MPP_ROLE_DISPATCH && 
 		planstate != NULL && 
 		planstate->plan != NULL && 
@@ -1144,7 +1145,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 		if ( hasDispatched )
 		{
 			char *message;
-			CdbDispatchResults* results;
+			CdbDispatchResults *results;
 			char *szCommand;
 
 			/*
@@ -1199,10 +1200,9 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 		 * We successfully completed on the Dispatcher.  Now check the results
 		 * from the qExecs.  This internally waits for them to all finish.
 		 */
-		CdbDispatchResults* results = CdbCheckDispatchResult();
+		CdbDispatchResults *results = CdbCheckDispatchResult();
 		
 		TeardownInterconnect(); /* following success on QD */
-
 
 		message = CdbDumpDispatchResults(results, true);
 		szCommand = results->szCommand;

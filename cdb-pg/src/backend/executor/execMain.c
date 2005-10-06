@@ -279,9 +279,9 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 	TupleTableSlot *result;
 	MemoryContext oldcontext;
 	RangeTblEntry *rte = NULL;
-	bool hasDispatched = false;
 	bool shouldDispatch;
-	bool shouldSetupInterconnect = false;
+	volatile bool hasDispatched = false;
+	volatile bool shouldSetupInterconnect = false;
 
 	/* sanity checks */
 	Assert(queryDesc != NULL);
