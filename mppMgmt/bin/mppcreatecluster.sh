@@ -335,7 +335,7 @@ CHK_QES () {
 						do
 						SET_VAR $I
 						LOG_MSG "[INFO]:-Checking $MPP_HOSTNAME for dir $MPP_DIR"
-						$TRUSTED_SHELL $MPP_HOSTNAME "$LS $MPP_DIR" > /dev/null 2>&1
+						$TRUSTED_SHELL $MPP_HOSTNAME "$LS $MPP_DIR" >> $LOG_FILE 2>&1
 						RETVAL=$?
 						if [ $RETVAL -eq 0 ]; then
 								ERROR_EXIT "[FATAL]:-Instance directory $MPP_DIR exists on segment instance $MPP_HOSTNAME" 2
