@@ -1966,7 +1966,7 @@ static struct config_string ConfigureNamesString[] =
 	},
 
     {
-       {"MPPFaultAction", PGC_POSTMASTER, UNGROUPED,
+       {"mpp_fault_action", PGC_POSTMASTER, UNGROUPED,
            gettext_noop("Sets the fault action for fault tolerance management."),
            gettext_noop("Valid values are CONTINUE, READONLY, and SHUTDOWN.")
        },
