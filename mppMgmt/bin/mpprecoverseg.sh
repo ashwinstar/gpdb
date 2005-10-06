@@ -96,7 +96,7 @@ USAGE () {
 GET_SETTING () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	GET_QD_DB_NAME
-	FAIL_TYPE=`$PSQL -p $MASTER_PORT $QD_DBNAME -R" " -A -t -c"show MPPFaultAction;"`
+	FAIL_TYPE=`$PSQL -p $MASTER_PORT $QD_DBNAME -R" " -A -t -c"show mpp_fault_action;"`
 	if [ "$FAIL_TYPE" == "readonly" ];then
 		STOPDB=0
 	else
@@ -177,9 +177,9 @@ DISPLAY_PARAM () {
 	done
 	$ECHO
 	if [ $STOPDB -eq 1 ]; then
-		LOG_MSG "[INFO]:-Procedure will STOP database as MPPFaultAction=$FAIL_TYPE"
+		LOG_MSG "[INFO]:-Procedure will STOP database as mpp_fault_action=$FAIL_TYPE"
 	else
-		LOG_MSG "[INFO]:-Procedure can continue without database interruption as MPPFaultAction=$FAIL_TYPE"
+		LOG_MSG "[INFO]:-Procedure can continue without database interruption as mpp_fault_action=$FAIL_TYPE"
 	fi
 	$ECHO
         $ECHO -n "Continue with recovery procedure yY|nN >"

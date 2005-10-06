@@ -123,7 +123,7 @@ CHK_PG_PID () {
 }
 
 GET_FAIL_SETTING () {
-	FAIL_TYPE=`$PSQL -p $MASTER_PORT $QD_DBNAME -R" " -A -t -c"show MPPFaultAction;"`
+	FAIL_TYPE=`$PSQL -p $MASTER_PORT $QD_DBNAME -R" " -A -t -c"show mpp_fault_action;"`
 }
 
 DATABASE_STATUS () {
