@@ -1,0 +1,100 @@
+COMMAND NAME: mpprecoverseg.sh
+
+Recovers a primary or mirror segment instance that has been marked 
+as invalid (if mirroring is enabled).
+
+*****************************************************
+SYNOPSIS
+*****************************************************
+
+mpprecoverseg.sh [-d <data_directory>] [-f] [-a] [-q] [-l <logfile_directory>]
+
+mpprecoverseg.sh [-? | -v]
+
+*****************************************************
+DESCRIPTION
+*****************************************************
+
+The mpprecoverseg.sh script recovers a failed segment instance if 
+you have mirroring enabled. A segment instance can fail for several 
+reasons, such as the host goes down, the segment instance process is 
+killed, or the data directory gets corrupted. When a segment instance 
+goes down it is marked as invalid in the Bizgres MPP global system 
+catalog. In order to bring the segment instance back into operation 
+again, you must first correct the problem that made it fail in the 
+first place, and then recover the segment instance in the 
+Bizgres MPP system.
+
+The Bizgres MPP can run in two modes with regards to mirroring and fault 
+tolerance  continue (read-write) mode and read-only mode. This mode is 
+set with the mpp_fault_action parameter in postgresql.conf at startup.
+
+If the system is in continue (read-write) mode, this script will shutdown 
+the system, copy the data directory of the active segment to the failed 
+segment, update the segment dbid and port on the failed segment after the 
+copy, mark the failed segment as valid again in the global system catalog, 
+and restart the system.
+
+If the system is in read-only mode, the script will recover the segment 
+without shutting down the system. Since the data is read-only, the active 
+segment and failed segment should not get out-of-sync in the event of a 
+failure.
+
+If your system is in shutdown mode, or if you do not have mirroring enabled, 
+you must take manual steps to recover a failed segment instance. To manually 
+mark a segment instance as valid again, run the following function on 
+the master:
+
+mpp.mpp_set_segdb_state(<dbid>, true|false)
+
+Where <dbid> is the unique ID for a segment instance. True marks the 
+segment as valid and false marks it as invalid.
+
+*****************************************************
+OPTIONS
+*****************************************************
+
+-d <data_directory>
+
+Optional. The master host data directory. If not specified, the value 
+set for $MASTER_DATA_DIRECTORY will be used.
+
+-f
+
+Optional. Force shutdown and startup of segment instances marked as invalid.
+
+-a
+
+Do not prompt the user for confirmation.
+
+-q
+
+Run in quiet mode. Command output is not displayed on the screen, 
+but is still written to the log file.
+
+-l <logfile_directory>
+
+The directory to write the log file. Defaults to <current_directory>/logs.
+
+-?
+
+Displays the online help.
+
+-v
+
+Displays the version, status, last updated date, and check sum of this script.
+
+*****************************************************
+EXAMPLES
+*****************************************************
+
+Recover and failed segment instances:
+
+./mpprecoverseg.sh
+
+*****************************************************
+SEE ALSO
+*****************************************************
+
+mppstart.sh, mppstop.sh
+
