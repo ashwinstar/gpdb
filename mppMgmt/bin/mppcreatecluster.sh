@@ -173,7 +173,7 @@ CHK_PARAMS () {
 
 		CHK_DUPLICATES
 		#Set up the machine list array
-		LOG_MSG "[INFO]:-Setting up QE list array"
+		LOG_MSG "[INFO]:-Setting up segment instance list array"
 		declare -a MACHINE_LIST=(`$CAT $MACHINE_LIST_FILE`)
 
 		#Now process contents for the configuration file
@@ -276,9 +276,9 @@ CHK_DUPLICATES () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		if [ `$CAT $MACHINE_LIST_FILE|$GREP -v $"^$"|$WC -l` -ne `$CAT $MACHINE_LIST_FILE|$GREP -v "^$"|$SORT -u|$WC -l` ]
 				then
-				ERROR_EXIT "[FATAL]:-Duplicate QE hostname exists in $MACHINE_LIST_FILE" 2
+				ERROR_EXIT "[FATAL]:-Duplicate segment instance hostname exists in $MACHINE_LIST_FILE" 2
 		fi
-		LOG_MSG "[INFO]:-No duplicate QE hostnames found, will proceed"
+		LOG_MSG "[INFO]:-No duplicate segment instance hostnames found, will proceed"
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -298,11 +298,11 @@ CHK_QES () {
 				#Check to ensure have required QE directories
 				for DIR in "${DATA_DIRECTORY[@]}"
 						do
-						LOG_MSG "[INFO]:-Checking QE $QE_ID directory $DIR"
+						LOG_MSG "[INFO]:-Checking segment instance $QE_ID directory $DIR"
 						$TRUSTED_SHELL $QE_ID "$LS $DIR" >> $LOG_FILE 2>&1
 						RETVAL=$?
 						if [ $RETVAL -ne 0 ]; then
-								ERROR_EXIT "[FATAL]:-No $DIR on QE $QE_ID" 2
+								ERROR_EXIT "[FATAL]:-No $DIR on segment instance $QE_ID" 2
 						else
 								LOG_MSG "[INFO]:-$QE_ID $DIR checked"
 						fi
@@ -311,13 +311,13 @@ CHK_QES () {
 				$TRUSTED_SHELL $QE_ID "$LS $MPPROOT"> /dev/null 2>&1
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
-						ERROR_EXIT "[FATAL]:-No $MPPROOT on QE $QE_ID" 2
+						ERROR_EXIT "[FATAL]:-No $MPPROOT on segment instance $QE_ID" 2
 				else
 						LOG_MSG "[INFO]:-QE $QE_ID $MPPROOT checked"
 				fi
 		done
 		#Check to ensure that instance directories do not exist on hosts
-		LOG_MSG "[INFO]:-Primary QE directory check"
+		LOG_MSG "[INFO]:-Primary segment instance directory check"
 		for I in "${QE_PRIMARY_ARRAY[@]}"
 				do
 				SET_VAR $I
@@ -325,12 +325,12 @@ CHK_QES () {
 				$TRUSTED_SHELL $MPP_HOSTNAME "$LS $MPP_DIR" >> $LOG_FILE 2>&1
 				RETVAL=$?
 				if [ $RETVAL -eq 0 ]; then
-						ERROR_EXIT "[FATAL]:-Instance directory $MPP_DIR exists on QE $MPP_HOSTNAME" 2
+						ERROR_EXIT "[FATAL]:-Instance directory $MPP_DIR exists on segment instance $MPP_HOSTNAME" 2
 				fi
 		done
 		#Check for mirror directories if nirroring configured
 		if [ $MIRRORING -ne 0 ]; then
-				LOG_MSG "[INFO]:-Mirror QE directory check"
+				LOG_MSG "[INFO]:-Mirror segment instance directory check"
 				for I in "${QE_MIRROR_ARRAY[@]}"
 						do
 						SET_VAR $I
@@ -338,11 +338,11 @@ CHK_QES () {
 						$TRUSTED_SHELL $MPP_HOSTNAME "$LS $MPP_DIR" > /dev/null 2>&1
 						RETVAL=$?
 						if [ $RETVAL -eq 0 ]; then
-								ERROR_EXIT "[FATAL]:-Instance directory $MPP_DIR exists on QE $MPP_HOSTNAME" 2
+								ERROR_EXIT "[FATAL]:-Instance directory $MPP_DIR exists on segment instance $MPP_HOSTNAME" 2
 						fi
 				done
 		else
-				LOG_MSG "[INFO]:-Mirror QE directory check skipped, mirroring=Off"
+				LOG_MSG "[INFO]:-Mirror segment instance directory check skipped, mirroring=Off"
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -413,7 +413,7 @@ CREATE_QE_ARRAY () {
 						((MPP_DIR_INDEX=$MPP_DIR_INDEX+1))
 						if [ $MIRRORING -eq 1 ]; then
 								#Have mirroring configured, process mirror QE's
-								LOG_MSG "[INFO]:-Configuring mirror for QE $QE_NAME"
+								LOG_MSG "[INFO]:-Configuring mirror for segment instance $QE_NAME"
 								MPP_DIR=${MIRROR_DATA_DIRECTORY[$QE_MIR_VECTOR]}/${SEG_PREFIX}${SEG_COUNT}
 								if [ $NUM_QE_HOSTS -le 2 ]; then
 										IDX=0
@@ -482,7 +482,7 @@ DISPLAY_CONFIG () {
 		LOG_MSG "[INFO]:-Master cluster name  = $ARRAY_NAME"
 		LOG_MSG "[INFO]:-Master hostname      = $MPP_HOSTNAME"
 		LOG_MSG "[INFO]:-MPP segment prefix   = $SEG_PREFIX"
-		LOG_MSG "[INFO]:-Primary QE Dir #     = $QE_PRIMARY_COUNT"
+		LOG_MSG "[INFO]:-Primary segment #    = $QE_PRIMARY_COUNT"
 		LOG_MSG "[INFO]:-Master Database      = $DATABASE_NAME"
 		LOG_MSG "[INFO]:-Master IP allow      = $IP_ALLOW"
 		for MASTER_IP in "${MASTER_IP_ADDRESS[@]}"
@@ -496,11 +496,11 @@ DISPLAY_CONFIG () {
 		LOG_MSG "[INFO]:-Pg Conf add file     = $PG_ADD"
 		LOG_MSG "[INFO]:-Initdb to be used    = $INITDB_CHK"
 		((NUM_QES=${#MACHINE_LIST[*]}))
-		LOG_MSG "[INFO]:-Number QE hosts      = $NUM_QES"
+		LOG_MSG "[INFO]:-Number segment hosts = $NUM_QES"
 		if [ $MIRROR_PORT_BASE ]; then
 				LOG_MSG "[INFO]:-Mirror port base     = $MIRROR_PORT_BASE"
 				((NUM_MIRROR_DIRECTORY=${#MIRROR_DATA_DIRECTORY[@]}))
-				LOG_MSG "[INFO]:-Mirror QE Dir #      = $NUM_MIRROR_DIRECTORY"
+				LOG_MSG "[INFO]:-Mirror segment #     = $NUM_MIRROR_DIRECTORY"
 				LOG_MSG "[INFO]:-Mirroring config     = ON"
 		else
 				LOG_MSG "[INFO]:-Mirroring config     = OFF"
@@ -515,15 +515,15 @@ DISPLAY_CONFIG () {
 		for I in "${QE_PRIMARY_ARRAY[@]}"
 				do
 				SET_VAR $I
-				LOG_MSG  "[INFO]:-Primary QE on  $MPP_HOSTNAME $MPP_PORT $MPP_DIR $MPP_HOSTID $MPP_LISTENID $MPP_DBID $MPP_CONTENT"
+				LOG_MSG  "[INFO]:-Primary segment on $MPP_HOSTNAME $MPP_PORT $MPP_DIR $MPP_HOSTID $MPP_LISTENID $MPP_DBID $MPP_CONTENT"
 		done
 		if [ $MIRRORING -ne 0 ]; then
-				LOG_MSG "[INFO]:-QE Mirror MPP Configuration"
-				LOG_MSG "[INFO]:----------------------------"
+				LOG_MSG "[INFO]:-Segment Mirror MPP Configuration"
+				LOG_MSG "[INFO]:---------------------------------"
 				for I in  "${QE_MIRROR_ARRAY[@]}"
 						do
 						SET_VAR $I
-						LOG_MSG  "[INFO]:-Mirror QE on   $MPP_HOSTNAME $MPP_PORT $MPP_DIR $MPP_HOSTID $MPP_LISTENID $MPP_DBID $MPP_CONTENT"
+						LOG_MSG  "[INFO]:-Mirror segment on $MPP_HOSTNAME $MPP_PORT $MPP_DIR $MPP_HOSTID $MPP_LISTENID $MPP_DBID $MPP_CONTENT"
 				done
 		fi
 		if [ $INTERACTIVE ]; then
@@ -692,21 +692,21 @@ LOAD_QE_SYSTEM_DATA () {
 		for I in "${QE_PRIMARY_ARRAY[@]}"
 				do
 				SET_VAR $I
-				LOG_MSG "[INFO]:-Adding QE $MPP_HOSTNAME to Master system tables"
+				LOG_MSG "[INFO]:-Adding segment $MPP_HOSTNAME to Master system tables"
 				UPDATE_HOST $QD_DBNAME $MASTER_PORT $MPP_HOSTID $MPP_HOSTNAME
 				UPDATE_LISTENER $QD_DBNAME $MASTER_PORT $MPP_LISTENID $MPP_HOSTID $MPP_PORT $MPP_DIR $MPP_USER $MPP_PASSWD
 				UPDATE_PGDATABASE $QD_DBNAME $MASTER_PORT $MPP_DBID template1 $MPP_CONTENT $MPP_LISTENID t
-				LOG_MSG "[INFO]:-Successfully added QE $MPP_HOSTNAME to Master system tables"
+				LOG_MSG "[INFO]:-Successfully added segment $MPP_HOSTNAME to Master system tables"
 		done
 		if [ $MIRRORING -eq 1 ]; then
 				for I in "${QE_MIRROR_ARRAY[@]}"
 						do
 						SET_VAR $I
-						LOG_MSG "[INFO]:-Adding QE $MPP_HOSTNAME to Master system tables as mirror"
+						LOG_MSG "[INFO]:-Adding segment $MPP_HOSTNAME to Master system tables as mirror"
 						UPDATE_HOST $QD_DBNAME $MASTER_PORT $MPP_HOSTID $MPP_HOSTNAME
 						UPDATE_LISTENER $QD_DBNAME $MASTER_PORT $MPP_LISTENID $MPP_HOSTID $MPP_PORT $MPP_DIR $MPP_USER $MPP_PASSWD
 						UPDATE_PGDATABASE $QD_DBNAME $MASTER_PORT $MPP_DBID template1 $MPP_CONTENT $MPP_LISTENID f
-						LOG_MSG "[INFO]:-Successfully added QE $MPP_HOSTNAME to Master system tables as mirror"
+						LOG_MSG "[INFO]:-Successfully added segment $MPP_HOSTNAME to Master system tables as mirror"
 				done
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -772,11 +772,11 @@ CREATE_QES_PRIMARY () {
 		for I in "${QE_PRIMARY_ARRAY[@]}"
 				do
 				SET_VAR $I
-				LOG_MSG "[INFO]:-Processing QE $MPP_HOSTNAME"
+				LOG_MSG "[INFO]:-Processing segment $MPP_HOSTNAME"
 				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$INITDB -E $ENCODING -D $MPP_DIR"
 				BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -rf $MPP_DIR\""
 				BACKOUT_COMMAND "$ECHO \"removing directory $MPP_DIR on $MPP_HOSTNAME\""
-				LOG_MSG "[INFO]:-Configuring QE $PG_CONF"
+				LOG_MSG "[INFO]:-Configuring segment $PG_CONF"
 				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO \"#MPP Specifc parameters\" >> ${MPP_DIR}/$PG_CONF"
 				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO \"#----------------------\" >> ${MPP_DIR}/$PG_CONF"
 				ED_FILE ${MPP_DIR}/$PG_CONF port port=$MPP_PORT $MPP_HOSTNAME
@@ -786,29 +786,29 @@ CREATE_QES_PRIMARY () {
 						LOG_MSG "[INFO]:-Processing additional configuration parameters"
 						for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
 								do
-								LOG_MSG "[INFO]:-Adding config $NEW_PARAM to QE"
+								LOG_MSG "[INFO]:-Adding config $NEW_PARAM to segment"
 								SEARCH_TXT=`$ECHO $NEW_PARAM |$CUT -d"=" -f1`
 								ED_FILE ${MPP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM $MPP_HOSTNAME
 						done
 				fi
-				LOG_MSG "[INFO]:-Configuring QE $PG_HBA"
+				LOG_MSG "[INFO]:-Configuring segment $PG_HBA"
 				for MASTER_IP in "${MASTER_IP_ADDRESS[@]}"
 				do
 					RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host	all	all	${MASTER_IP}/32	trust >> ${MPP_DIR}/$PG_HBA"
 				done
-				LOG_MSG "[INFO]:-Starting Functioning instance on QE ${MPP_HOSTNAME}"
+				LOG_MSG "[INFO]:-Starting Functioning instance on segment ${MPP_HOSTNAME}"
 				$TRUSTED_SHELL ${MPP_HOSTNAME} "export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start" >> $LOG_FILE 2>&1
 				if [ $? -ne 0 ]; then
-						BACKOUT_COMMAND "$ECHO \"Removing QE log file ${MPP_DIR}.log on QE $MPP_HOSTNAME\""
+						BACKOUT_COMMAND "$ECHO \"Removing segment log file ${MPP_DIR}.log on segment $MPP_HOSTNAME\""
 						BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
 						$TRUSTED_SHELL ${MPP_HOSTNAME} "$CAT ${MPP_DIR}.log "|$TEE -a $LOG_FILE
-						ERROR_EXIT "[FATAL]:-Failed to start QE instance database" 2
+						ERROR_EXIT "[FATAL]:-Failed to start segment instance database" 2
 				fi	
 				BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -f ${MPP_DIR}.log\""
-				BACKOUT_COMMAND "$ECHO \"Removing QE log file ${MPP_DIR}.log on QE $MPP_HOSTNAME\""
+				BACKOUT_COMMAND "$ECHO \"Removing segment log file ${MPP_DIR}.log on segment $MPP_HOSTNAME\""
 				BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
-				BACKOUT_COMMAND "$ECHO \"Stopping QE instance on $MPP_HOSTNAME\""
-				LOG_MSG "[INFO]:-Successfully started QE instance on $MPP_HOSTNAME"
+				BACKOUT_COMMAND "$ECHO \"Stopping segment instance on $MPP_HOSTNAME\""
+				LOG_MSG "[INFO]:-Successfully started segment instance on $MPP_HOSTNAME"
 				UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
 		done
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -816,11 +816,11 @@ CREATE_QES_PRIMARY () {
 
 PROCESS_QE () {
 		SET_VAR $I
-		LOG_MSG "[INFO]:-Processing QE $MPP_HOSTNAME"
+		LOG_MSG "[INFO]:-Processing segment $MPP_HOSTNAME"
 		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$INITDB -E $ENCODING -D $MPP_DIR"
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -rf $MPP_DIR\""
 		BACKOUT_COMMAND "$ECHO \"removing directory $MPP_DIR on $MPP_HOSTNAME\""
-		LOG_MSG "[INFO]:-Configuring QE $PG_CONF"
+		LOG_MSG "[INFO]:-Configuring segment $PG_CONF"
 		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO \"#MPP Specifc parameters\" >> ${MPP_DIR}/$PG_CONF"
 		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO \"#----------------------\" >> ${MPP_DIR}/$PG_CONF"
 		ED_FILE ${MPP_DIR}/$PG_CONF port port=$MPP_PORT $MPP_HOSTNAME
@@ -835,21 +835,21 @@ PROCESS_QE () {
 					ED_FILE ${MPP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM $MPP_HOSTNAME
 				done
 		fi
-		LOG_MSG "[INFO]:-Configuring QE $PG_HBA"
+		LOG_MSG "[INFO]:-Configuring segment $PG_HBA"
 		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host	all	all	${MASTER_IP_ADDRESS}/32	trust >> ${MPP_DIR}/$PG_HBA"
-		LOG_MSG "[INFO]:-Starting Functioning instance on QE ${MPP_HOSTNAME}"
+		LOG_MSG "[INFO]:-Starting Functioning instance on segment ${MPP_HOSTNAME}"
 		$TRUSTED_SHELL ${MPP_HOSTNAME} "export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start" >> $LOG_FILE 2>&1
 		if [ $? -ne 0 ]; then
-				BACKOUT_COMMAND "$ECHO \"Removing QE log file ${MPP_DIR}.log on QE $MPP_HOSTNAME\""
+				BACKOUT_COMMAND "$ECHO \"Removing segment log file ${MPP_DIR}.log on segment $MPP_HOSTNAME\""
 				BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
 				$TRUSTED_SHELL ${MPP_HOSTNAME} "$CAT ${MPP_DIR}.log "|$TEE -a $LOG_FILE
-				ERROR_EXIT "[FATAL]:-Failed to start QE Mirror instance database" 2
+				ERROR_EXIT "[FATAL]:-Failed to start segment Mirror instance database" 2
 		fi	
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -f ${MPP_DIR}.log\""
-		BACKOUT_COMMAND "$ECHO \"Removing QE log file ${MPP_DIR}.log on QE $MPP_HOSTNAME\""
+		BACKOUT_COMMAND "$ECHO \"Removing segment log file ${MPP_DIR}.log on segment $MPP_HOSTNAME\""
 		BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
-		BACKOUT_COMMAND "$ECHO \"Stopping QE instance on $MPP_HOSTNAME\""
-		LOG_MSG "[INFO]:-Successfully started QE mirror instance on $MPP_HOSTNAME"
+		BACKOUT_COMMAND "$ECHO \"Stopping segment instance on $MPP_HOSTNAME\""
+		LOG_MSG "[INFO]:-Successfully started segment mirror instance on $MPP_HOSTNAME"
 		UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
 }
 
@@ -858,11 +858,11 @@ CREATE_QES_MIRROR () {
 		for I in  "${QE_MIRROR_ARRAY[@]}"
 		do
 				SET_VAR $I
-				LOG_MSG "[INFO]:-Processing Mirror QE $MPP_HOSTNAME"
+				LOG_MSG "[INFO]:-Processing Mirror segment $MPP_HOSTNAME"
 				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$INITDB -E $ENCODING -D $MPP_DIR" 
 				BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -rf $MPP_DIR\""
 				BACKOUT_COMMAND "$ECHO \"removing directory $MPP_DIR on $MPP_HOSTNAME\""
-				LOG_MSG "[INFO]:-Configuring QE $PG_CONF"
+				LOG_MSG "[INFO]:-Configuring segment $PG_CONF"
 				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO \"#MPP Specifc parameters\" >> ${MPP_DIR}/$PG_CONF"
 				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO \"#----------------------\" >> ${MPP_DIR}/$PG_CONF"
 				ED_FILE ${MPP_DIR}/$PG_CONF "#port" port=$MPP_PORT $MPP_HOSTNAME
@@ -872,26 +872,26 @@ CREATE_QES_MIRROR () {
 						LOG_MSG "[INFO]:-Processing additional configuration parameters"
 						for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
 								do
-								LOG_MSG "[INFO]:-Adding config $NEW_PARAM to QE"
+								LOG_MSG "[INFO]:-Adding config $NEW_PARAM to segment"
 								SEARCH_TXT=`$ECHO $NEW_PARAM |$CUT -d"=" -f1`
 								ED_FILE ${MPP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM $MPP_HOSTNAME
 						done
 				fi
-				LOG_MSG "[INFO]:-Configuring QE $PG_HBA"
+				LOG_MSG "[INFO]:-Configuring segment $PG_HBA"
 				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host	all	all	${MASTER_IP_ADDRESS}/32	trust >> ${MPP_DIR}/$PG_HBA"
-				LOG_MSG "[INFO]:-Starting Functioning instance on QE ${MPP_HOSTNAME}"
+				LOG_MSG "[INFO]:-Starting Functioning instance on segment ${MPP_HOSTNAME}"
 				$TRUSTED_SHELL ${MPP_HOSTNAME} "export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start" >> $LOG_FILE 2>&1
 				if [ $? -ne 0 ]; then
-						BACKOUT_COMMAND "$ECHO \"Removing QE log file ${MPP_DIR}.log on QE $MPP_HOSTNAME\""
+						BACKOUT_COMMAND "$ECHO \"Removing segment log file ${MPP_DIR}.log on segment $MPP_HOSTNAME\""
 						BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
 						$TRUSTED_SHELL ${MPP_HOSTNAME} "$CAT ${MPP_DIR}.log "|$TEE -a $LOG_FILE
-						ERROR_EXIT "[FATAL]:-Failed to start QE Mirror instance database" 2
+						ERROR_EXIT "[FATAL]:-Failed to start segment Mirror instance database" 2
 				fi	
 				BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -f ${MPP_DIR}.log\""
-				BACKOUT_COMMAND "$ECHO \"Removing QE log file ${MPP_DIR}.log on QE $MPP_HOSTNAME\""
+				BACKOUT_COMMAND "$ECHO \"Removing segment log file ${MPP_DIR}.log on segment $MPP_HOSTNAME\""
 				BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
-				BACKOUT_COMMAND "$ECHO \"Stopping QE instance on $MPP_HOSTNAME\""
-				LOG_MSG "[INFO]:-Successfully started QE mirror instance on $MPP_HOSTNAME"
+				BACKOUT_COMMAND "$ECHO \"Stopping segment instance on $MPP_HOSTNAME\""
+				LOG_MSG "[INFO]:-Successfully started segment mirror instance on $MPP_HOSTNAME"
 				UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
 		done
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -1008,7 +1008,7 @@ LOG_MSG "[INFO]:-------------------------------------------------------"
 if [ $STANDBY_QD_NAME ]; then
 		$WORKDIR/mppinitstandby.bsh -h $STANDBY_QD_NAME
 else
-		LOG_MSG "[INFO]:-To initialize standby QE run mppinitstandby.bsh -h <standby Master hostname>"
+		LOG_MSG "[INFO]:-To initialize standby segment run mppinitstandby.bsh -h <standby Master hostname>"
 fi
 
 LOG_MSG "[INFO]:-End Main"

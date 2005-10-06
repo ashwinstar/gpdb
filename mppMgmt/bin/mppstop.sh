@@ -167,10 +167,10 @@ PROMPT_CONTINUE () {
 		$TABECHO "Master directory                       = $MASTER_DATA_DIRECTORY" |$TEE -a $LOG_FILE
 		$TABECHO "Shutdown mode                          = $MODE" |$TEE -a $LOG_FILE
 		$TABECHO |$TEE -a $LOG_FILE
-		$TABECHO "QE instances that will be shutdown:" |$TEE -a $LOG_FILE
+		$TABECHO "Segment instances that will be shutdown:" |$TEE -a $LOG_FILE
 		$TABECHO "-----------------------------------" |$TEE -a $LOG_FILE
 		if [ ${#QE_ARRAY[@]} -eq 0 ]; then
-				LOG_MSG "[WARN]:-Failed to obtain any QE node details, will only be able to shutdown QE host"
+				LOG_MSG "[WARN]:-Failed to obtain any Segment instance details, will only be able to shutdown Master host"
 				LOG_MSG "[WARN]:-This may indicate an inconsistent MPP database state"
 				EXIT_STATUS=1
 		else

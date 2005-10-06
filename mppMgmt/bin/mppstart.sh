@@ -111,7 +111,7 @@ DISPLAY_PARAM () {
 		$ECHO "Current Default Startup Parameters"
 		$ECHO "----------------------------------"
 		$ECHO "MPP head database port      = $MASTER_PORT      [Override with -p <port number>]"
-		$ECHO "MPP head database directory = $MASTER_DATA_DIRECTORY [Override with -d <QE directory>]"
+		$ECHO "MPP head database directory = $MASTER_DATA_DIRECTORY [Override with -d <Master directory>]"
 		if [ $INTERACTIVE ]; then
 				$ECHO "Interactive                 = True            [Override with -a]"
 		else
@@ -156,7 +156,7 @@ GET_DETAILS () {
 		else
 				LOG_MSG "[INFO]:-Successfully started Master database"
 		fi
-		LOG_MSG "[INFO]:-Obtaining MPP QE catalog information"
+		LOG_MSG "[INFO]:-Obtaining MPP Master catalog information"
 		#Now get tail details
 		##MPP	TAIL_ARRAY=(`$PSQL -p $HEAD_PORT $HEAD_DBNAME -A -t -c"select host,datadir,port,valid from mpp_instance;"`)	
 		GET_QE_DETAILS
@@ -192,8 +192,8 @@ PROMPT_CONTINUE () {
 		$TABECHO "Database           = $QD_DBNAME"
 		$TABECHO "Master Port        = $MASTER_PORT"
 		$TABECHO "Master directory   = $MASTER_DATA_DIRECTORY"
-		$TABECHO "QE instances that will be started:"
-		$TABECHO "----------------------------------"
+		$TABECHO "Segment instances that will be started:"
+		$TABECHO "--------------------------------------"
 		COUNT=1
 		for QNODE in "${QE_ARRAY[@]}"
 				do
@@ -239,17 +239,17 @@ PROCESS_STARTUP () {
 				if [ $RETVAL -ne 0 ]; then
 						((FAILED_COUNT=$FAILED_COUNT+1))
 						LOG_MSG "[WARN]:-Startup request returned error code $RETVAL"
-						LOG_MSG "[INFO]:-Tail'ing QE instance log file"
+						LOG_MSG "[INFO]:-Tail'ing Segment instance log file"
 						$TRUSTED_SHELL $QE_NAME "$LS $QE_DIR" > /dev/null 2>&1
 						if [ $? -ne 0 ]; then
-								LOG_MSG "[WARN]:-QE directory $QE_DIR on $QE_NAME does not exist"
+								LOG_MSG "[WARN]:-Segment directory $QE_DIR on $QE_NAME does not exist"
 						else
 								$TRUSTED_SHELL $QE_NAME "$TAIL ${QE_DIR}.log"|$TEE -a $LOG_FILE
 								LOG_MSG "[WARN]:-Issue with $TRUSTED_SHELL to $QE_NAME for $QE_DIR database"
 								EXIT_STATUS=1
 						fi
 				else
-						LOG_MSG "[INFO]:-Successfully started QE $QE_NAME database"
+						LOG_MSG "[INFO]:-Successfully started Segment instance $QE_NAME database"
 				fi
 				#Now check status of postmaster on the tail
 				LOG_MSG "[INFO]:-Checking status via pg_ctl"
@@ -264,13 +264,13 @@ PROCESS_STARTUP () {
 						EXIT_STATUS=1
 				fi
 				if [ $RUNNING -eq 0 ] && [ $RETVAL -eq 0 ]; then
-						LOG_MSG "[INFO]:-Command pg_ctl indicates started QE $QE_NAME database"
+						LOG_MSG "[INFO]:-Command pg_ctl indicates started Segment instance $QE_NAME database"
 				fi
 				((QE_START_COUNT=$QE_START_COUNT+1))
 				##MPP		fi
 				((INDEX=$INDEX+1))
 				else
-						LOG_MSG "[WARN]:-QE $QE_NAME directory $QE_DIR invalid will not start"
+						LOG_MSG "[WARN]:-Segment instance $QE_NAME directory $QE_DIR invalid will not start"
 						EXIT_STATUS=1
 				fi
 		done
@@ -296,10 +296,10 @@ PROCESS_STARTUP () {
 			LOG_MSG "[INFO]:-Command pg_ctl reports Master $QD_NAME instance active"
 		fi
 		if [ $FAILED_COUNT -ne 0 ]; then
-				LOG_MSG "[WARN]:-Failed to start $FAILED_COUNT of a total of $QE_COUNT QE instances"
+				LOG_MSG "[WARN]:-Failed to start $FAILED_COUNT of a total of $QE_COUNT Segment instances"
 		else
 				LOG_MSG "[INFO]:----------------------------------------------------------"
-				LOG_MSG "[INFO]:-Successfully started $QE_START_COUNT QE instances and Master instance"
+				LOG_MSG "[INFO]:-Successfully started $QE_START_COUNT Segment instances and Master instance"
 		fi
 }
 
