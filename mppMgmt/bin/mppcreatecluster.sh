@@ -64,6 +64,7 @@ MPP_TBL=mpp.mpp
 MPP_HOST_TBL=mpp.host
 MPP_PGDATABASE_TBL=mpp.pgdatabase
 MPP_LISTENER_TBL=mpp.listener
+unset PG_CONF_ADD_FILE
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -78,7 +79,7 @@ USAGE () {
 		$TABECHO "	-?, display this help message & exit"
 		$TABECHO "	-v, display version information & exit"
 		$TABECHO
-	    $TABECHO "Configuration options:"
+	        $TABECHO "      Configuration options:"
 		$TABECHO "	-c,  mpp_config_file [mandatory]"
 		$TABECHO "		Supplies all MPP configuration information required by this utility."
 		$TABECHO "		Full description of all parameters contained within the example file"
@@ -91,8 +92,6 @@ USAGE () {
 		$TABECHO "	-p, postgresql_conf_mpp_additions [optional]"
 		$TABECHO "		List of additional PostgreSQL parameters to be applied to each Master/Segment"
 		$TABECHO "		postgresql.conf file during MPP database initialization."
-		$TABECHO "		File ./postgresql_conf_mpp_additions will be read by default if no -p"
-		$TABECHO "		option supplied"
 		$TABECHO "	-s, standby_hostname [optional]"
 		$TABECHO "		Setup standby Master host named \"standby_hostname\". (if configured in MPP configuration file)"
 		$TABECHO "	-o, create Master only, do not configure Segment instance hosts"
@@ -471,10 +470,10 @@ DISPLAY_CONFIG () {
 		else
 				((TOTAL_SEG=${NUM_QES}*$QE_PRIMARY_COUNT))
 		fi
-		if [ -f $PG_CONF_ADD_FILE ]; then
-				PG_ADD=On
-		else
+		if [  x"" == x"$PG_CONF_ADD_FILE" ]; then
 				PG_ADD=Off
+		else
+				PG_ADD=On
 		fi
 		SET_VAR $QD_PRIMARY_ARRAY
 		LOG_MSG "[INFO]:-MPP Creation Parameters"
@@ -564,6 +563,8 @@ CREATE_QD_DB () {
 		fi
 		LOG_MSG "[INFO]:-Initializing Master Postgres instance $MPP_DIR"
 		RUN_COMMAND "$INITDB -E $ENCODING -D $MPP_DIR"
+		BACKOUT_COMMAND "$RM -Rf $MPP_DIR"
+		BACKOUT_COMMAND "$ECHO Removing Master data directory files"
 		LOG_MSG "[INFO]:-Completed Master instance initialization"
 		$ECHO "#MPP specific configuration parameters for Master instance database" >> ${MPP_DIR}/$PG_CONF
 		$ECHO "#--------------------------------------------------------------" >> ${MPP_DIR}/$PG_CONF
@@ -579,7 +580,7 @@ CREATE_QD_DB () {
 			LOG_MSG "[WARN:-Failed to set log_statement=all in ${MPP_DIR}/$PG_CONF"
 			ERROR_EXIT=1
 		fi
-		if [ -f $PG_CONF_ADD_FILE ]; then
+		if [  x"" != x"$PG_CONF_ADD_FILE" ]; then
 				LOG_MSG "[INFO]:-Processing additional configuration parameters"
 				for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
 						do
@@ -594,18 +595,22 @@ CREATE_QD_DB () {
 				ERROR_EXIT "[FATAL]:-Failed to set IP Allow in $PG_HBA" 2
 		fi
 		LOG_MSG "[INFO]:-Completed setting IP Allow to $IP_ALLOW"
+		PID_CHK=`$PS ax|$GREP postmaster|$GREP -v grep|$GREP $MPP_PORT|$WC -l|$AWK '{print $1}'`
+		if [ $PID_CHK -ne 0 ]; then
+			ERROR_EXIT "[FATAL]-Located another postmaster process on Master host on port $MPP_PORT" 2
+		fi
 		LOG_MSG "[INFO]:-Starting the Master in admin mode"
-		export PGPORT=$MPP_PORT;$PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o "-i -p $MPP_PORT" start >> $LOG_FILE 2>&1
-		if [ $? -ne 0 ]; then
+		export PGPORT=$MPP_PORT;$PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o "-i -p $MPP_PORT" start
+		RET_TEXT=`"$PG_CTL status -D $MPP_DIR"`
+		RUNNING=`$ECHO $RET_TEXT|$EGREP -c "not running|neither"`
+		if [ $RUNNING -ne 0 ]; then
 				$CAT ${MPP_DIR}.log|$TEE -a $LOG_FILE
 				ERROR_EXIT "[FATAL]:-Failed to start the Master database in admin mode" 2
 		fi
 		BACKOUT_COMMAND "$KILL -9 \`$PS ax|$GREP postmaster|$GREP ${MPP_PORT}|$AWK '{print \$1}'\`"
 		BACKOUT_COMMAND "$ECHO Removing Master process"
 		BACKOUT_COMMAND "$RM -f /tmp/.s.PGSQL.${MPP_PORT}*"
-		BACKOUT_COMMAND "$ECHO Removing Master lock files"
-		BACKOUT_COMMAND "$RM -Rf $MPP_DIR"
-		BACKOUT_COMMAND "$ECHO \"Removing Master instance directory\""
+		BACKOUT_COMMAND "$ECHO \"Removing Master lock files\""
 		BACKOUT_COMMAND "$RM -f ${MPP_DIR}.log"
 		BACKOUT_COMMAND "$ECHO Removing Master log file"
 		BACKOUT_COMMAND "export PGPORT=$MPP_PORT;$PG_CTL -D $MPP_DIR stop"
@@ -782,7 +787,7 @@ CREATE_QES_PRIMARY () {
 				ED_FILE ${MPP_DIR}/$PG_CONF port port=$MPP_PORT $MPP_HOSTNAME
 				ED_FILE ${MPP_DIR}/$PG_CONF listen_addresses listen_addresses=\'*\' $MPP_HOSTNAME
 				ED_FILE ${MPP_DIR}/$PG_CONF checkpoint_segments checkpoint_segments=$CHECK_POINT_SEGMENTS $MPP_HOSTNAME
-				if [ -f $PG_CONF_ADD_FILE ]; then
+				if [  x"" != x"$PG_CONF_ADD_FILE" ]; then
 						LOG_MSG "[INFO]:-Processing additional configuration parameters"
 						for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
 								do
@@ -826,7 +831,7 @@ PROCESS_QE () {
 		ED_FILE ${MPP_DIR}/$PG_CONF port port=$MPP_PORT $MPP_HOSTNAME
 		ED_FILE ${MPP_DIR}/$PG_CONF listen_addresses listen_addresses=\'*\' $MPP_HOSTNAME
 		ED_FILE ${MPP_DIR}/$PG_CONF checkpoint_segments checkpoint_segments=$CHECK_POINT_SEGMENTS $MPP_HOSTNAME
-		if [ -f $PG_CONF_ADD_FILE ]; then
+		if [ x"" != "$PG_CONF_ADD_FILE" ]; then
 				LOG_MSG "[INFO]:-Processing additional configuration parameters"
 				for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
 				do
@@ -868,7 +873,7 @@ CREATE_QES_MIRROR () {
 				ED_FILE ${MPP_DIR}/$PG_CONF "#port" port=$MPP_PORT $MPP_HOSTNAME
 				ED_FILE ${MPP_DIR}/$PG_CONF listen_addresses listen_addresses=\'*\' $MPP_HOSTNAME
 				ED_FILE ${MPP_DIR}/$PG_CONF checkpoint_segments checkpoint_segments=$CHECK_POINT_SEGMENTS $MPP_HOSTNAME
-				if [ -f $PG_CONF_ADD_FILE ]; then
+				if [ x"" != x"$PG_CONF_ADD_FILE" ]; then
 						LOG_MSG "[INFO]:-Processing additional configuration parameters"
 						for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
 								do
@@ -958,6 +963,12 @@ done
 
 if [ x"$CLUSTER_CONFIG" = x ]; then
 		USAGE
+fi
+if [ x"" != x"$PG_CONF_ADD_FILE" ]; then
+	CHK_FILE $PG_CONF_ADD_FILE
+	if [ $EXISTS -ne 0 ]; then
+		ERROR_EXIT "[FATAL]:-Issue with postgres additions file $PG_CONF_ADD_FILE" 2
+	fi
 fi
 
 LOG_MSG "[INFO]:-Start Main"
