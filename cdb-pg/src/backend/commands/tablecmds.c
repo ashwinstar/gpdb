@@ -513,6 +513,8 @@ DefineRelation(CreateStmt *stmt, char relkind)
 					strcmp(n,"anyelement") == 0 ||
 					strcmp(n,"cstring") == 0 ||
 					strcmp(n,"smgr") == 0 ||
+					strcmp(n,"serial") == 0 ||
+					strcmp(n,"bigserial") == 0 ||
 					strcmp(n,"point") == 0)
 					ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
@@ -3181,6 +3183,8 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 					strcmp(n,"anyelement") == 0 ||
 					strcmp(n,"cstring") == 0 ||
 					strcmp(n,"smgr") == 0 ||
+					strcmp(n,"serial") == 0 ||
+					strcmp(n,"bigserial") == 0 ||
 					strcmp(n,"point") == 0)
 					ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
