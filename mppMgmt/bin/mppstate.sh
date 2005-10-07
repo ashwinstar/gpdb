@@ -102,13 +102,13 @@ DISPLAY_PARAM () {
 		GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 		$ECHO
 		$ECHO "Current Default State Parameters"
-		$ECHO "-----------------------------------"
-		$ECHO "MPP Master database port      =$MASTER_PORT"
+		$ECHO "--------------------------------"
+		$ECHO "MPP Master database port      = $MASTER_PORT"
 		$ECHO "MPP Master database directory = $MASTER_DATA_DIRECTORY [Override with -d <head directory>]"
 		if [ $VERBOSE ]; then
-				$ECHO "Verbose                   = True            [Override with -q]"
+				$ECHO "Verbose                       = True             [Override with -q]"
 		else
-				$ECHO "Verbose                   = False"
+				$ECHO "Verbose                       = False"
 		fi 
 		$ECHO
 		exit $EXIT_STATUS
@@ -416,13 +416,14 @@ CLUSTER_CONFIG () {
 }
 
 LIST_MPP_PORTS () {
-		PORT_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.port from mpp.listener a, mpp.host b where listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid;" 2>|/dev/null`)
+		PORT_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.port, a.datadir from mpp.listener a, mpp.host b where listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid;" 2>|/dev/null`)
 		LOG_MSG "[INFO]:-Port assignments"
 		for PMODE in "${PORT_ARRAY[@]}"
 				do
 				HOST=`$ECHO $PMODE|$CUT -d"|" -f1`
 				PORT=`$ECHO $PMODE|$CUT -d"|" -f2`
-				LOG_MSG "[INFO]:-Segment instance host $HOST has assigned MPP port = $PORT"
+				DIR=`$ECHO $PMODE|$CUT -d"|" -f3`
+				LOG_MSG "[INFO]:-Segment instance $HOST $DIR  port = $PORT"
 		done
 }
 
