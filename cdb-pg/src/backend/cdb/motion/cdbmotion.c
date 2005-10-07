@@ -1091,6 +1091,7 @@ static bool addChunkToSorter(MotionNodeEntry *pMNEntry, TupleChunkListItem tcIte
     switch (tcType)
     {
     case TC_WHOLE:
+    case TC_EMPTY:
         /* There shouldn't be any partial tuple data in the list! */
         if (chunkSorterEntry->chunk_list.num_chunks != 0)
         {

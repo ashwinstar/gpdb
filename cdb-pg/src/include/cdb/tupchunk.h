@@ -15,17 +15,17 @@
 
 typedef enum TupleChunkType
 {
-    TC_WHOLE,           /* Contains a whole tuple. */
-    TC_PARTIAL_START,   /* Contains the starting portion of a tuple. */
-    TC_PARTIAL_MID,     /* Contains a middle part of a tuple. */
-    TC_PARTIAL_END,     /* Contains the final portion of a tuple. */
-    TC_END_OF_STREAM,   /* Indicates "end of tuples" from this source. */
-    TC_ABORT_STREAM,    /* Indicates abnormal termination of execution. */
-	TC_SHUTDOWN, 		/* Indicates normal shutdown to be performed. 
-						   Should only be sent from pg to ams-svc.
+    TC_WHOLE,			/* Contains a whole tuple. */
+    TC_PARTIAL_START,	/* Contains the starting portion of a tuple. */
+    TC_PARTIAL_MID,		/* Contains a middle part of a tuple. */
+    TC_PARTIAL_END,		/* Contains the final portion of a tuple. */
+    TC_END_OF_STREAM,	/* Indicates "end of tuples" from this source. */
+    TC_ABORT_STREAM,	/* Indicates abnormal termination of execution. */
+	TC_SHUTDOWN,		/* Indicates normal shutdown to be performed. 
+						 * Should only be sent from pg to ams-svc.
 						 */
-
-    TC_MAXVAL           /* For range checks on type values. */
+	TC_EMPTY,			/* Empty tuple */
+    TC_MAXVAL			/* For range checks on type values. */
 } TupleChunkType;
 
 

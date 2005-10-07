@@ -247,6 +247,23 @@ TupleChunkList SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo *pSerInfo, i
 	}
 	tcList->max_chunk_length = MaxChunkDataSize;
 
+	if (natts == 0)
+	{
+		tcItem = (TupleChunkListItem)
+			palloc0(sizeof(TupleChunkListItemData) + TUPLE_CHUNK_HEADER_SIZE);
+		if (tcItem == NULL)
+		{
+			ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
+							errmsg("Could not allocate space for first chunk item in new chunk list.")));
+		}
+		/* assume that we'll take a single chunk */
+		SetChunkType(tcItem->chunk_data, TC_EMPTY);
+		tcItem->chunk_length = TUPLE_CHUNK_HEADER_SIZE;
+		appendChunkToTCList(tcList, tcItem);
+
+		return tcList;
+	}
+
 	tcItem = (TupleChunkListItem)
 		palloc0(sizeof(TupleChunkListItemData) + tcList->max_chunk_length);
 	if (tcItem == NULL)
@@ -570,6 +587,20 @@ HeapTuple CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo *pSerInfo)
     AssertArg(tcList->p_first != NULL);
     AssertArg(pSerInfo != NULL);
 
+    tcItem = tcList->p_first;
+
+	if (tcList->num_chunks == 1 &&
+		GetChunkType(tcItem) == TC_EMPTY)
+	{
+		/* the sender is indicating that there was a row with no
+		 * attributes: return a NULL tuple */
+		clearTCList(tcList);
+
+		htup = heap_formtuple(pSerInfo->tupdesc, pSerInfo->values, pSerInfo->nulls);
+
+		return htup;
+	}
+
     /* Dump all of the data in the tuple chunk list into a single StringInfo,
      * so that we can convert it into a HeapTuple.  Check chunk types based on
      * whether there is only one chunk, or multiple chunks.
@@ -580,7 +611,6 @@ HeapTuple CvtChunksToHeapTup(TupleChunkList tcList, SerTupInfo *pSerInfo)
     initStringInfo(&serData);
 	enlargeStringInfo(&serData, tcList->num_chunks * tcList->max_chunk_length);
 
-    tcItem = tcList->p_first;
     i = 0;
     do
     {
