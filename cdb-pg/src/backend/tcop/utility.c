@@ -942,7 +942,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_CreateSeqStmt:
-			CdbSentry(CDB_WARN, parsetree, NULL);
+			CdbSentry(CDB_NONCE, parsetree, NULL);
 			DefineSequence((CreateSeqStmt *) parsetree);
 			break;
 
