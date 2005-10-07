@@ -35,7 +35,6 @@
 #include "catalog/pg_index.h"
 #include "cdb/cdbanalyze.h"
 #include "cdb/cdbdisp.h"
-#include "cdb/cdbsrlz.h"
 #include "cdb/cdbvars.h"
 #include "commands/vacuum.h"
 #include "executor/executor.h"
@@ -219,11 +218,6 @@ static int	vac_cmp_offno(const void *left, const void *right);
 static int	vac_cmp_vtlinks(const void *left, const void *right);
 static bool enough_space(VacPage vacpage, Size len);
 
-/*
- * Cdb Addition to send the vacuum statement from the dispatcher to the qExecs.
- */
-static void dispatchVacuum(VacuumStmt *vacstmt);
-
 
 /****************************************************************************
  *																			*
@@ -402,6 +396,14 @@ vacuum(VacuumStmt *vacstmt)
 		CommitTransactionCommand();
 	}
 
+	/*
+	 * If we are in Cdb Dispatch Mode, send off
+	 * vacuum calls to all the qExecs and wait for 
+     * them to finish, before we query their statistics.
+	 */
+	if ( Mpp_role == MPP_ROLE_DISPATCH )
+		CdbDispatchUtilityStatement(vacstmt);
+		
 	/* Turn vacuum cost accounting on or off */
 	PG_TRY();
 	{
@@ -509,13 +511,6 @@ vacuum(VacuumStmt *vacstmt)
 		}
 	}
 
-	/*
-	 * If we are in Cdb Dispatch Mode, send off
-	 * vacuum calls to all the qExecs
-	 */
-	if ( Mpp_role == MPP_ROLE_DISPATCH )
-		dispatchVacuum(vacstmt);
-		
 	/*
 	 * Clean up working storage --- note we must do this after
 	 * StartTransactionCommand, else we might be trying to delete the
@@ -697,7 +692,8 @@ vac_update_relstats(Oid relid, BlockNumber num_pages, double num_tuples,
 	pgcform->reltuples = (float4) num_tuples;
 	pgcform->relhasindex = hasindex;
 
-	elog( DEBUG1, "After pgcform update oid=%u numpages=%d and num_tuples=%lf", relid, (int)num_pages, num_tuples);
+	elog(DEBUG2, "ANALYZE oid=%u pages=%d tuples=%f", 
+         relid, pgcform->relpages, pgcform->reltuples);
 	/*
 	* If we have discovered that there are no indexes, then there's no
 	* primary key either.	This could be done more thoroughly...
@@ -3464,52 +3460,3 @@ vacuum_delay_point(void)
 	}
 }
 
-/*
- * dispatchVacuum:
- * Sends the vacuum statement to the qExecs.
- * must only be called in dispatch mode.
- */
-static void dispatchVacuum(VacuumStmt *vacstmt)
-{
-	char *pszVacuum;
-
-	Query *q;
-	StringInfoData buffer;
-
-	Assert( Mpp_role == MPP_ROLE_DISPATCH );
-
-	/*
-	 * Serialize the stmt tree, and create the sql statement: mppexec ....
-	 */
-	q = makeNode(Query);
-
-	initStringInfo( &buffer );
-
-	q->commandType = CMD_UTILITY;
-	q->utilityStmt = (Node *)vacstmt;
-	q->querySource = QSRC_ORIGINAL;
-	q->canSetTag = true; /*?*/
-
-	pszVacuum = serializeNode((Node *)q);
-
-	pfree(q);
-
-	Assert(pszVacuum != NULL);
-
-	elog( DEBUG5, "Command %s", pszVacuum);
-
-	appendStringInfo(&buffer, "mppexec '%s' ''", pszVacuum);
-
-	pfree(pszVacuum);
-
-	
-	
-	/* Combination of CdbDispatchCommand and then CdbCheckDispatchResult.
-	 * If it fails on any of the targets, ereport(ERROR, ...) is called.
-     * call CdbDoCommandInt since it can not start in a transaction
-	 */	
-	CdbDoCommandInt( buffer.data, true, NULL );
-
-	pfree(buffer.data);
-
-}

@@ -722,8 +722,8 @@ ExecInitSubPlan(SubPlanState *node, EState *estate)
 	sp_estate->es_instrument = estate->es_instrument;
 	
 	/*
-	 * "Loan" the global slice table and map to the subplan EState.  The 
-	 * global state is already set up by the code that called up, e.g., if 
+	 * "Loan" the global slice table and map to the subplan EState.  The
+	 * global state is already set up by the code that called up, e.g., if
 	 * this is an initPlan subplan, then the current slice will be a root.
 	 */
 	 sp_estate->es_cur_root_idx = estate->es_cur_root_idx;
@@ -930,7 +930,7 @@ ExecInitSubPlan(SubPlanState *node, EState *estate)
  * MPP Changes:
  * In the case where this is running on the dispatcher, and it's a parallel dispatch
  * subplan, we need to dispatch the query to the qExecs as well, like in ExecutorRun.
- * except in this case we don't have to worry about insert statements.  
+ * except in this case we don't have to worry about insert statements.
  * In order to serialize the parameters (including PARAM_EXEC parameters that
  * are converted into PARAM_EXEC_REMOTE parameters, I had to add a parameter to this
  * function: ParamListInfo p.  This may be NULL in the non-dispatch case.
@@ -947,14 +947,58 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 	bool		found = false;
 	ArrayBuildState *astate = NULL;
 
+	Query *query;
+	QueryDesc *queryDesc;
+	EState *local; /* The EState to use. */
 	volatile bool hasDispatched = false;
 	bool shouldDispatch = false;
 
-    if ( Mpp_role == MPP_ROLE_DISPATCH && 
-		planstate != NULL && 
-		planstate->plan != NULL && 
+    if ( Mpp_role == MPP_ROLE_DISPATCH &&
+		planstate != NULL &&
+		planstate->plan != NULL &&
 		planstate->plan->dispatch == DISPATCH_PARALLEL )
 		shouldDispatch = true;
+
+	/* Let's initialize 'queryDesc' before our PG_TRY, to ensure the
+     * correct value will be seen inside the PG_CATCH block without
+     * having to declare it 'volatile'.  (setjmp/longjmp foolishness)
+     */
+    if ( shouldDispatch )
+	{					
+
+		/* There are two EState structures available:
+		 *   node->planstate->state
+		 *   node->sub_estate
+		 */
+		local = node->sub_estate;
+		
+		/* Fake a Query node to hold the range table. */
+		query = makeNode(Query);
+		query->rtable = subplan->rtable;
+		query->commandType = CMD_SELECT;
+		
+		/*
+		 * Fake a QueryDesc stucture for CdbDispatchPlan call. It should
+		 * look like the one passed in as the argument which carries the
+		 * global query, plan, parameters, and slice table, and specifies
+		 * the initplan root of interest.
+		 */
+		queryDesc = CreateQueryDesc(
+			gbl_queryDesc->parsetree,
+			gbl_queryDesc->plantree,
+			gbl_queryDesc->snapshot,
+			gbl_queryDesc->crosscheck_snapshot,
+			NULL, /* Null destination for the QE */
+			gbl_queryDesc->params,
+			gbl_queryDesc->doInstrument
+			);
+		
+		queryDesc->estate = CreateExecutorState();
+		queryDesc->estate->es_sliceTable = gbl_queryDesc->estate->es_sliceTable;
+		queryDesc->estate->es_cur_root_idx = gbl_queryDesc->estate->es_cur_root_idx;
+		queryDesc->estate->es_param_exec_vals = gbl_queryDesc->estate->es_param_exec_vals;
+
+    }
 
 	/*
 	 * Need a try/catch block here so that if an ereport is called from
@@ -964,51 +1008,15 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 	 */
 	PG_TRY();
 	{
-		if ( shouldDispatch )
-		{
-			Query *query;
-			QueryDesc *queryDesc;
-			EState *local; /* The EState to use. */
-						
-			/* There are two EState structures available:
-			 *   node->planstate->state
-			 *   node->sub_estate
-			 */  
-			local = node->sub_estate;
-			
-			/* Fake a Query node to hold the range table. */
-			query = makeNode(Query);
-			query->rtable = subplan->rtable;
-			query->commandType = CMD_SELECT;
-			
-			/* 
-			 * Fake a QueryDesc stucture for CdbDispatchPlan call. It should
-			 * look like the one passed in as the argument which carries the
-			 * global query, plan, parameters, and slice table, and specifies
-			 * the initplan root of interest.
-			 */
-			queryDesc = CreateQueryDesc(
-				gbl_queryDesc->parsetree,
-				gbl_queryDesc->plantree,
-				gbl_queryDesc->snapshot,
-				gbl_queryDesc->crosscheck_snapshot,
-				NULL, /* Null destination for the QE */
-				gbl_queryDesc->params,
-				gbl_queryDesc->doInstrument
-				);
-			
-			queryDesc->estate = CreateExecutorState();
-			queryDesc->estate->es_sliceTable = gbl_queryDesc->estate->es_sliceTable;
-			queryDesc->estate->es_cur_root_idx = gbl_queryDesc->estate->es_cur_root_idx;
-			queryDesc->estate->es_param_exec_vals = gbl_queryDesc->estate->es_param_exec_vals;
 
-			/*
-			 * This call returns after launching the threads that send the command to the appropriate
-			 * segdbs.  It does not wait for them to finish.
-			 */
-
-			CdbDispatchPlan(queryDesc);
-			hasDispatched = true;
+        if ( shouldDispatch )
+        {					
+		    /*
+		     * This call returns after launching the threads that send the command to the appropriate
+		     * segdbs.  It does not wait for them to finish.
+		     */
+            hasDispatched = true;
+		    cdbdisp_dispatchPlan(queryDesc);
 
 			/*
 			 * Set up the interconnect for execution of the initplan root slice.
@@ -1144,49 +1152,26 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 	{
 		if ( hasDispatched )
 		{
-			char *message;
-			CdbDispatchResults *results;
-			char *szCommand;
-
-			/*
-			 *  We need to wait for the threads to finish.  This allows for proper cleanup
-			 * of the results from the async command executions.
-			 */
-
 			/*
 			 * Set this to force any remaining commands executing on qExecs to stop.
+             * CDB TODO: This is a bad way to stop them.  Provide a better way.
 			 */
 			QueryCancelPending = true;
 
-			results = CdbCheckDispatchResult();
-			
-			TeardownInterconnect(); /* Is this needed following failure on QD? */
+			/*
+			 * We need to wait for the threads to finish.  This allows for proper cleanup
+			 * of the results from the async command executions.
+			 */
+			CdbCheckDispatchResult();
 
-			message = CdbDumpDispatchResults(results, true);
-			szCommand = results->szCommand;
-			if ( szCommand == NULL )
-				szCommand = "";
-			Assert( message != NULL );
-			elog( DEBUG4,
-					"mppexec command results for \"%s\": %s",
-					szCommand, message );
+            /* Discard any remaining results from QEs; don't confuse matters
+             * by throwing a new error.  Any results of interest presumably
+             * should have been examined before the exception was thrown.
+             */
+            cdbdisp_destroyPlanResults(queryDesc);
 
-			pfree(message);
-
-			if ( !results->success )
-			{
-				char *message = CdbDumpDispatchResults(results, false);
-			
-				ereport( NOTICE,
-							(errcode( ERRCODE_CDB_COMMAND_ERROR ),
-							errmsg("mppexec command failed on one or more segment databases: %s",
-							message
-						)));
-
-				pfree(message);
-			}
-			DestroyCdbDispatchResults( results );
-			hasDispatched = false;
+            /* clean up the interconnect */
+            TeardownInterconnect(); /* Is this needed following failure on QD? */
 		}
 		PG_RE_THROW();
 	}
@@ -1194,39 +1179,18 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 
 	if ( hasDispatched )
 	{
-		char *message;
-		char *szCommand;
 		/*
 		 * We successfully completed on the Dispatcher.  Now check the results
 		 * from the qExecs.  This internally waits for them to all finish.
 		 */
-		CdbDispatchResults *results = CdbCheckDispatchResult();
-		
-		TeardownInterconnect(); /* following success on QD */
+        CdbCheckDispatchResult();
 
-		message = CdbDumpDispatchResults(results, true);
-		szCommand = results->szCommand;
-		if ( szCommand == NULL )
-			szCommand = "";
-		Assert( message != NULL );
-		elog( DEBUG4,
-				"mppexec command results for \"%s\": %s",
-				szCommand, message );
+        TeardownInterconnect(); /* following success on QD */
 
-		pfree(message);
-
-		if ( !results->success )
-		{
-			char *message = CdbDumpDispatchResults(results, false);
-			ereport( ERROR,
-						(errcode( ERRCODE_CDB_COMMAND_ERROR ),
-						errmsg("mppexec command failed on one or more segment databases: %s",
-						message
-					)));
-				
-		}
-
-		DestroyCdbDispatchResults( results );
+        /* Check and free the results of all gangs.
+		 * If any QE had an error, report it and exit via PG_THROW.
+         */
+        cdbdisp_dumpPlanResults(queryDesc);
 	}
 
 

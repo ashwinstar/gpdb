@@ -58,6 +58,7 @@
 
 #include "cdb/cdbutil.h"
 #include "cdb/cdbgang.h"
+#include "cdb/cdbvars.h"
 #include "utils/elog.h"
 
 /* ----------------------------------------------------------------
@@ -1012,9 +1013,9 @@ ShutdownExprContext(ExprContext *econtext)
  * ----------------------------------------------------------------
  */
 
-/* Attach a slice table to the given Estate structure.  It should 
- * consist of blank slices, one for the root plan, one for each 
- * Motion node (which roots a slice with a send node), and one for 
+/* Attach a slice table to the given Estate structure.  It should
+ * consist of blank slices, one for the root plan, one for each
+ * Motion node (which roots a slice with a send node), and one for
  * each subplan (which acts as an initplan root node).
  */
 void InitSliceTable(EState *estate, int nMotions, int nSubplans)
@@ -1065,17 +1066,17 @@ void InitSliceTable(EState *estate, int nMotions, int nSubplans)
 
 /* Assign gang descriptions to the root slices of the slice forest.
  *
- * The root slices of initPlan slice trees will always run on the QD, 
- * which, for the time being, we represent as 
+ * The root slices of initPlan slice trees will always run on the QD,
+ * which, for the time being, we represent as
  *
  *    (gangType, gangSize) = <GANGTYPE_UNALLOCATED, 0>.
  *
- * The root slice of the main plan wil run on the QD in case it's a 
+ * The root slice of the main plan wil run on the QD in case it's a
  * SELECT,  but will run on QE(s) in case it's an INSERT, UPDATE, or
  * DELETE. Because we restrict UPDATE and DELETE to have no motions
- * (i.e., one slice) and because INSERT must always route tuples, 
- * the assigment for these will be primary and mirror writer gangs, 
- * which we represent as 
+ * (i.e., one slice) and because INSERT must always route tuples,
+ * the assigment for these will be primary and mirror writer gangs,
+ * which we represent as
  *
  *    (gangType, gangSize) =  <GANGTYPE_PRIMARY_WRITER, N>
  */
@@ -1098,6 +1099,9 @@ void InitRootSlices(QueryDesc *queryDesc)
 			{
 				case CMD_SELECT:
 					Assert( slice->gangType == GANGTYPE_UNALLOCATED && slice->gangSize == 0 );
+
+                    /* Set our global sliceid variable for elog. */
+                    currentSliceId = 0;
 					break;
 					
 				case CMD_INSERT:
@@ -1105,10 +1109,11 @@ void InitRootSlices(QueryDesc *queryDesc)
 				case CMD_DELETE:
 					slice->gangType = GANGTYPE_PRIMARY_WRITER;
 					slice->gangSize = getMPPSegmentCount();
+                    currentSliceId = UNSET_SLICE_ID;
 					break;
 				
 				default:
-					Assert( FALSE ); 
+					Assert( FALSE );
 			}
 		}
 		if ( i <= sliceTable->nMotions )
@@ -1136,7 +1141,7 @@ typedef struct SliceReq {
 	int nxtNgang;
 	int nxt1gang;
 	Gang **vecNgangs;
-	Gang **vec1gangs; 
+	Gang **vec1gangs;
 	Gang *mirrorWriterGang;
 	bool writer;
 	
@@ -1162,8 +1167,8 @@ static void AssociateSlicesToProcesses(Slice **sliceMap, int sliceIndex, SliceRe
  * allocate a minimal set of gangs that can satisfy any of the slice trees,
  * and associating the allocated gangs with slices in the slice table.
  *
- * The argument utility_segment_index is the segment index to use for 
- * 1-gangs that run on QEs.  
+ * The argument utility_segment_index is the segment index to use for
+ * 1-gangs that run on QEs.
  *
  * TODO Currently (July 2005) this argument is always supplied as 0, but
  *      there are no cases of the planner specifying a fixed Motion to a
@@ -1273,7 +1278,7 @@ void InitSliceReq(SliceReq* req)
 	req->numNgangs = req->num1gangs = 0;
 	req->writer = FALSE;
 	req->vecNgangs = NULL;
-	req->vec1gangs = NULL; 
+	req->vec1gangs = NULL;
 	req->mirrorWriterGang = NULL;
 }
 
@@ -1317,7 +1322,7 @@ void InventorySliceTree (Slice **sliceMap, int sliceIndex, SliceReq *req)
 			
 		case GANGTYPE_MIRROR_WRITER:
 			/* Shouldn't see this in a slice->gangType. */
-			Assert( FALSE ); 
+			Assert( FALSE );
 			break;
 	}
 	
@@ -1331,7 +1336,7 @@ void InventorySliceTree (Slice **sliceMap, int sliceIndex, SliceReq *req)
 
 /*
  * Helper for AssignGangs uses the gangs in the inventory to fill in the
- * CdbProcess lists in the slice tree.  Recursive.  Closely coupled with 
+ * CdbProcess lists in the slice tree.  Recursive.  Closely coupled with
  * AssignGangs.  Not generally useful.
  */
 void AssociateSlicesToProcesses(Slice **sliceMap, int sliceIndex, SliceReq *req)
@@ -1384,7 +1389,7 @@ void AssociateSlicesToProcesses(Slice **sliceMap, int sliceIndex, SliceReq *req)
 			
 		case GANGTYPE_MIRROR_WRITER:
 			/* Shouldn't see this in a slice->gangType. */
-			Assert( FALSE ); 
+			Assert( FALSE );
 			break;
 	}
 	
@@ -1419,9 +1424,9 @@ Slice *getCurrentSlice(EState *estate)
 	return (Slice*)list_nth(sliceTable->slices, sliceIdx);
 }
 
-/* Should the slice run on the QD? 
+/* Should the slice run on the QD?
  *
- * N.B. Not the same as !sliceRunsOnQE(slice), when slice is NULL. 
+ * N.B. Not the same as !sliceRunsOnQE(slice), when slice is NULL.
  */
 bool sliceRunsOnQD(Slice *slice)
 {
@@ -1429,7 +1434,7 @@ bool sliceRunsOnQD(Slice *slice)
 }
 
 
-/* Should the slice run on a QE? 
+/* Should the slice run on a QE?
  *
  * N.B. Not the same as !sliceRunsOnQD(slice), when slice is NULL.
  */

@@ -405,20 +405,20 @@ CdbSentry(CdbAction dispatch, Node *parsetree, const char *altname)
 	{
 	case CDB_WARN:
 		ereport(WARNING, (
-			errcode(ERRCODE_WARNING_CDB_INTERIM_FEATURE),
+			errcode(ERRCODE_WARNING_MPP_INTERIM_FEATURE),
 			errmsg("Bizgres MPP support for %s may change or be revoked in the future.", cmdname)
 			));
 		return;
 		
 	case CDB_NONCE:
 		ereport(ERROR, (
-			errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+			errcode(ERRCODE_MPP_FEATURE_NOT_YET),
 			errmsg("Bizgres MPP support for %s is not available yet.", cmdname)
 			));
 		
 	case CDB_REJECT:
 		ereport(ERROR, (
-			errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
+			errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
 			errmsg("Bizgres MPP does not support %s.", cmdname)
 			));
 	
@@ -771,7 +771,7 @@ ProcessUtility(Node *parsetree,
 			if ( Mpp_role != MPP_ROLE_EXECUTE )
 			{
 				ereport(ERROR, (
-					errcode(ERRCODE_CDB_COMMAND_ERROR),
+					errcode(ERRCODE_MPP_COMMAND_ERROR),
 					errmsg("MPPEXEC is not available for external use.")
 			));
 				

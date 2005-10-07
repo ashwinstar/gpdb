@@ -32,10 +32,11 @@ extern bool bTreatLocalsAsPartitioned;
  * This must only be called from the dispatcher.
  */
 static void
-cdbanalyze_query_local_catalogs(StringInfoData *sqlstmt,
-                                void          (*callback)(int   spiresult,
-                                                          void *context),
-                                void           *context)
+cdbanalyze_query_local_catalogs(StringInfo  sqlstmt,
+                                void      (*callback)(StringInfo    sqlstmt,
+                                                      int           spiresult,
+                                                      void         *context),
+                                void       *context)
 {
 	int             spiresult;
     volatile bool   connected = false;
@@ -48,9 +49,9 @@ cdbanalyze_query_local_catalogs(StringInfoData *sqlstmt,
         /* Establish an SPI session as a client of myself. */
         if (SPI_OK_CONNECT != SPI_connect())
         {
-            ereport(ERROR,
-                (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-                errmsg("SPI_connect failed in cdbanalyze_query_local_catalogs" )));
+            ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+                errmsg("Unable to obtain statistics from segment databases."),
+                errdetail("SPI_connect failed in cdbanalyze_query_local_catalogs") ));
         }
         connected = true;
 
@@ -66,7 +67,7 @@ cdbanalyze_query_local_catalogs(StringInfoData *sqlstmt,
         cdbpathlocus_querysegmentcatalogs = false;
 
         /* Invoke caller's callback function to process the result. */
-        callback(spiresult, context);
+        callback(sqlstmt, spiresult, context);
 
         /* End recursive session. */
         connected = false;
@@ -106,13 +107,15 @@ cdbanalyze_query_local_catalogs(StringInfoData *sqlstmt,
  */
 typedef struct Cdbanalyze_Ctx
 {
+    Oid             relid;
     BlockNumber     pages;
     double          tuples;
 } Cdbanalyze_Ctx;
 
 static void
-cdbanalyze_callback(int     spiresult,
-                    void   *context)
+cdbanalyze_callback(StringInfo  sqlstmt,
+                    int         spiresult,
+                    void       *context)
 {
     HeapTuple       tup;
     TupleDesc       tupdesc;
@@ -141,12 +144,16 @@ cdbanalyze_callback(int     spiresult,
         goto fail;
 	ctx->pages = atoi(tmp);
 
+    elog(DEBUG3, "cdbanalyze oid=%d pages=%d tuples=%f",
+         ctx->relid, ctx->pages, ctx->tuples);
+
     return;
 
 fail:
-	ereport(ERROR,
-            (errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-             errmsg("ANALYZE segment db catalog query failed")));
+    ereport(ERROR, (errcode(ERRCODE_MPP_COMMAND_ERROR),
+            errmsg("Unable to obtain statistics from segment databases."),
+            errdetail("Segment db catalog query failed: %s",
+                      sqlstmt->data) ));
 }                               /* cdbanalyze_callback */
 
 
@@ -182,6 +189,7 @@ void cdbanalyze_get_relstats(Oid relid, BlockNumber *pages, double *tuples)
 	 * Next, use SPI to execute it.
      * (If unsuccessful, throws an error and does not return here.)
 	 */
+    ctx.relid = relid;
     cdbanalyze_query_local_catalogs(&buffer, cdbanalyze_callback, &ctx);
 
 	/*

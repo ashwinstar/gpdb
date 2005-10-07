@@ -118,9 +118,10 @@ DefineIndex(RangeVar *heapRelation,
 	int			numberOfAttributes;
 	Oid indexoid;
 
-	bool hasDispatched = false;
-	bool shouldDispatch =  Mpp_role == MPP_ROLE_DISPATCH && !IsBootstrapProcessingMode();
+    struct Gang    *primaryGang = NULL;
+    struct Gang    *mirrorGang = NULL;
 
+	bool shouldDispatch =  Mpp_role == MPP_ROLE_DISPATCH && !IsBootstrapProcessingMode();
 
 
 	/*
@@ -507,51 +508,18 @@ DefineIndex(RangeVar *heapRelation,
 			 * This call returns after launching the threads that send the command to the appropriate
 			 * segdbs.  It does not wait for them to finish.
 			 */
-			CdbDispatchCommand(buffer.data, true );
-			hasDispatched = true;
+			cdbdisp_dispatchCommand(buffer.data, true, NULL,
+                                    &primaryGang, &mirrorGang);
 			pfree(buffer.data);
 		}
 	}
 
-	if ( hasDispatched )
-	{
-		char *message;
-		char *szCommand;
-
-		CdbDispatchResults* results;
-
-		/*
-		 * We successfully completed on the Dispatcher.  Now check the results
-		 * from the qExecs.  This internally waits for them to all finish.
-		 */
-		results = CdbCheckDispatchResult();
-
-
-		message = CdbDumpDispatchResults(results, true);
-		szCommand = results->szCommand;
-		if ( szCommand == NULL )
-			szCommand = "";
-		Assert( message != NULL );
-		elog( DEBUG5,
-				"mppexec command results for \"%s\": %s",
-				szCommand, message );
-
-		pfree(message);
-
-		if ( !results->success )
-		{
-			char *message = CdbDumpDispatchResults(results, false);
-			ereport( ERROR,
-						(errcode( ERRCODE_CDB_COMMAND_ERROR ),
-						errmsg("%s",
-						message
-					)));
-				
-		}
-
-
-		DestroyCdbDispatchResults( results );
-	}
+    /*
+     * We successfully completed our work.  Now check the results from the
+     * qExecs, if dispatched.  This waits for them to all finish, and exits
+     * via ereport(ERROR,...) if unsuccessful.
+     */
+    cdbdisp_finishCommand(primaryGang, mirrorGang);
 }
 
 

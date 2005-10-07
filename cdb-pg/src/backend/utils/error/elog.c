@@ -37,6 +37,7 @@
  * overflow.)
  *
  *
+ * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -69,6 +70,7 @@
 #include "utils/guc.h"
 
 #include "cdb/cdbvars.h"  /*Mpp_segment */
+#include "utils/ps_status.h"    /* get_ps_display_username() */
 
 
 /* Global variables */
@@ -1322,7 +1324,7 @@ log_line_prefix(StringInfo buf)
 	if (Log_line_prefix == NULL)
 		return;					/* in case guc hasn't run yet */
 
-	format_len = strlen(Log_line_prefix);
+    format_len = strlen(Log_line_prefix);
 
 	for (i = 0; i < format_len; i++)
 	{
@@ -1349,7 +1351,7 @@ log_line_prefix(StringInfo buf)
 					const char *username = MyProcPort->user_name;
 
 					if (username == NULL || *username == '\0')
-						username = gettext("[unknown]");
+						username = "";
 					appendStringInfo(buf, "%s", username);
 				}
 				break;
@@ -1359,7 +1361,7 @@ log_line_prefix(StringInfo buf)
 					const char *dbname = MyProcPort->database_name;
 
 					if (dbname == NULL || *dbname == '\0')
-						dbname = gettext("[unknown]");
+						dbname = "";
 					appendStringInfo(buf, "%s", dbname);
 				}
 				break;
@@ -1455,22 +1457,42 @@ log_line_prefix(StringInfo buf)
 				break;
 			case 'I':
 				/* prints a succinct description of an MPP process. */
-				if( Mpp_role == MPP_ROLE_DISPATCH )
-					appendStringInfo(buf, "QD ");
-				else if( Mpp_role == MPP_ROLE_EXECUTE )
-					appendStringInfo( buf, "QE#%d%s ", Mpp_segment, Mpp_is_primary?"P":"M" );
-				
-				if( currentSliceId != -1 )
-					appendStringInfo( buf, "slice#:%d", currentSliceId );
+                if (!MyProcPort)
+                {
+                    const char *sp;
+                    const char *uname = get_ps_display_username();
+                    if (!uname || !uname[0])
+                        appendStringInfoString(buf, "postmaster");
+                    else if ((sp = strstr(uname, " process")) != NULL)
+                        appendBinaryStringInfo(buf, uname, sp - uname);
+                    else
+                        appendStringInfoString(buf, uname);
+                }
+                else if (Mpp_role == MPP_ROLE_DISPATCH)
+                    appendStringInfo(buf, "qd");
+				else if (Mpp_role == MPP_ROLE_EXECUTE)
+                {
+                    appendStringInfo(buf, "qe#%d", Mpp_segment);
+                    if (!Mpp_is_primary)
+                        appendStringInfoChar(buf, 'S');
+                }
+                if (currentSliceId >= 0)
+                    appendStringInfo(buf, " slice#%d", currentSliceId);
 				break;
 			case 'P':
 				if( Mpp_role == MPP_ROLE_EXECUTE )
 				{
-					appendStringInfo(buf, "%s", Mpp_is_primary?"P":"M");
+                    appendStringInfoChar(buf, Mpp_is_primary?'P':'S');
 				}
 				break;
 			case 'R':
-				appendStringInfo(buf, "%s", role_to_string(Mpp_role));	
+                if (!MyProcPort)
+                {
+                    const char *uname = get_ps_display_username();
+                    appendStringInfo(buf, uname && uname[0] ? uname : "postmaster");
+                }
+                else
+				    appendStringInfo(buf, "%s", role_to_string(Mpp_role));	
 				break;
 			case 'S':
 				if( currentSliceId != -1 )
@@ -1479,11 +1501,13 @@ log_line_prefix(StringInfo buf)
 				}
 				break;
 			case 'T':
-				if( Mpp_role == MPP_ROLE_EXECUTE )
-					appendStringInfo(buf, "QE");
-				else if( Mpp_role == MPP_ROLE_DISPATCH )
-					appendStringInfo(buf, "QD");
-				
+                if (MyProcPort)
+                {
+                    if (Mpp_role == MPP_ROLE_EXECUTE)
+                        appendStringInfo(buf, "qe");
+                    else if (Mpp_role == MPP_ROLE_DISPATCH)
+                        appendStringInfo(buf, "qd");
+                }
 				break;
 			case '%':
 				appendStringInfoChar(buf, '%');
@@ -1502,14 +1526,27 @@ log_line_prefix(StringInfo buf)
 static void
 send_message_to_server_log(ErrorData *edata)
 {
-	StringInfoData buf;
+	StringInfoData  buf;
+    StringInfoData  prefix;
+    int             nc;
 
-	initStringInfo(&buf);
+    /* Format message prefix. */
+    initStringInfo(&buf);
+    log_line_prefix(&buf);
+    nc = buf.len;
+    appendStringInfo(&buf, "%s:  ", error_severity(edata->elevel));
 
-	log_line_prefix(&buf);
-	appendStringInfo(&buf, "%s:  ", error_severity(edata->elevel));
+    /* Save copy of prefix for subsequent lines of multi-line message. */
+    initStringInfo(&prefix);
+    appendBinaryStringInfo(&prefix, buf.data, nc);
+    nc = 2 + buf.len - prefix.len;
+    enlargeStringInfo(&prefix, nc);
+    memset(prefix.data+prefix.len, ' ', nc);
+    prefix.len += nc;
+    prefix.data[prefix.len] = '\0';
 
-	if (Log_error_verbosity >= PGERROR_VERBOSE)
+	if (Log_error_verbosity >= PGERROR_VERBOSE &&
+        edata->sqlerrcode)
 	{
 		/* unpack MAKE_SQLSTATE code */
 		char		tbuf[12];
@@ -1523,7 +1560,7 @@ send_message_to_server_log(ErrorData *edata)
 			ssval >>= 6;
 		}
 		tbuf[i] = '\0';
-		appendStringInfo(&buf, "%s: ", tbuf);
+		appendStringInfo(&buf, "(%s) ", tbuf);
 	}
 
 	if (edata->message)
@@ -1544,46 +1581,48 @@ send_message_to_server_log(ErrorData *edata)
 	{
 		if (edata->detail)
 		{
-			log_line_prefix(&buf);
-			appendStringInfoString(&buf, gettext("DETAIL:  "));
+            appendBinaryStringInfo(&buf, prefix.data, prefix.len);
+			appendStringInfoString(&buf, gettext("Detail:  "));
 			append_with_tabs(&buf, edata->detail);
 			appendStringInfoChar(&buf, '\n');
 		}
 		if (edata->hint)
 		{
-			log_line_prefix(&buf);
-			appendStringInfoString(&buf, gettext("HINT:  "));
+            appendBinaryStringInfo(&buf, prefix.data, prefix.len);
+			appendStringInfoString(&buf, gettext("Hint:  "));
 			append_with_tabs(&buf, edata->hint);
 			appendStringInfoChar(&buf, '\n');
 		}
 		if (edata->internalquery)
 		{
-			log_line_prefix(&buf);
-			appendStringInfoString(&buf, gettext("QUERY:  "));
+            appendBinaryStringInfo(&buf, prefix.data, prefix.len);
+			appendStringInfoString(&buf, gettext("Query:  "));
 			append_with_tabs(&buf, edata->internalquery);
 			appendStringInfoChar(&buf, '\n');
 		}
 		if (edata->context)
 		{
-			log_line_prefix(&buf);
-			appendStringInfoString(&buf, gettext("CONTEXT:  "));
+            appendBinaryStringInfo(&buf, prefix.data, prefix.len);
+			appendStringInfoString(&buf, gettext("Context:  "));
 			append_with_tabs(&buf, edata->context);
 			appendStringInfoChar(&buf, '\n');
 		}
 		if (Log_error_verbosity >= PGERROR_VERBOSE)
 		{
-			/* assume no newlines in funcname or filename... */
-			if (edata->funcname && edata->filename)
+            if (edata->elevel == INFO)
+            {}
+            /* assume no newlines in funcname or filename... */
+			else if (edata->funcname && edata->filename)
 			{
-				log_line_prefix(&buf);
-				appendStringInfo(&buf, gettext("LOCATION:  %s, %s:%d\n"),
+                appendBinaryStringInfo(&buf, prefix.data, prefix.len);
+				appendStringInfo(&buf, gettext("Location:  %s, %s:%d\n"),
 								 edata->funcname, edata->filename,
 								 edata->lineno);
 			}
 			else if (edata->filename)
 			{
-				log_line_prefix(&buf);
-				appendStringInfo(&buf, gettext("LOCATION:  %s:%d\n"),
+                appendBinaryStringInfo(&buf, prefix.data, prefix.len);
+				appendStringInfo(&buf, gettext("Location:  %s:%d\n"),
 								 edata->filename, edata->lineno);
 			}
 		}
@@ -1595,8 +1634,8 @@ send_message_to_server_log(ErrorData *edata)
 	 */
 	if (edata->elevel >= log_min_error_statement && debug_query_string != NULL)
 	{
-		log_line_prefix(&buf);
-		appendStringInfoString(&buf, gettext("STATEMENT:  "));
+        appendBinaryStringInfo(&buf, prefix.data, prefix.len);
+		appendStringInfoString(&buf, gettext("Statement:  "));
 		append_with_tabs(&buf, debug_query_string);
 		appendStringInfoChar(&buf, '\n');
 	}
@@ -1696,6 +1735,7 @@ send_message_to_server_log(ErrorData *edata)
 	if (am_syslogger)
 		write_syslogger_file(buf.data, buf.len);
 
+    pfree(prefix.data);
 	pfree(buf.data);
 }
 
@@ -1714,6 +1754,7 @@ send_message_to_frontend(ErrorData *edata)
 	if (PG_PROTOCOL_MAJOR(FrontendProtocol) >= 3)
 	{
 		/* New style with separate fields */
+        StringInfoData sbuf;
 		char		tbuf[12];
 		int			ssval;
 		int			i;
@@ -1735,12 +1776,15 @@ send_message_to_frontend(ErrorData *edata)
 
 		/* M field is required per protocol, so always send something */
 		pq_sendbyte(&msgbuf, PG_DIAG_MESSAGE_PRIMARY);
-		if (edata->message)
-			pq_sendstring(&msgbuf, edata->message);
-		else
-			pq_sendstring(&msgbuf, gettext("missing error text"));
 
-		if (edata->detail)
+        initStringInfo(&sbuf);
+        appendStringInfoString(&sbuf,
+                               edata->message ? edata->message
+                                              : gettext("missing error text"));
+        pq_sendstring(&msgbuf, sbuf.data);
+        pfree(sbuf.data);
+
+        if (edata->detail)
 		{
 			pq_sendbyte(&msgbuf, PG_DIAG_MESSAGE_DETAIL);
 			pq_sendstring(&msgbuf, edata->detail);
@@ -1949,11 +1993,19 @@ error_severity(int elevel)
 	switch (elevel)
 	{
 		case DEBUG1:
+            prefix = gettext("DEBUG1");
+            break;
 		case DEBUG2:
+            prefix = gettext("DEBUG2");
+            break;
 		case DEBUG3:
+            prefix = gettext("DEBUG3");
+            break;
 		case DEBUG4:
+            prefix = gettext("DEBUG4");
+            break;
 		case DEBUG5:
-			prefix = gettext("DEBUG");
+			prefix = gettext("DEBUG5");
 			break;
 		case LOG:
 		case COMMERROR:

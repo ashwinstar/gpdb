@@ -45,7 +45,7 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 {
 	const char *schemaName = stmt->schemaname;
 	const char *authId = stmt->authid;
-	Oid			namespaceId;
+	Oid			namespaceId = 0;
 	List	   *parsetree_list;
 	ListCell   *parsetree_item;
 	const char *owner_name;
@@ -53,7 +53,9 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 	AclId		saved_userid;
 	AclResult	aclresult;
 
-	bool hasDispatched = false;
+    struct Gang    *primaryGang = NULL;
+    struct Gang    *mirrorGang = NULL;
+
 	bool shouldDispatch =  Mpp_role == MPP_ROLE_DISPATCH && !IsBootstrapProcessingMode();
 
 	saved_userid = GetUserId();
@@ -109,15 +111,15 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 		errdetail("The prefix \"pg_\" is reserved for system schemas.")));
 
 
-	 
+	
 
 	/* Create the schema's namespace */
 	if (shouldDispatch || Mpp_role != MPP_ROLE_EXECUTE)
 	{
-	namespaceId = NamespaceCreate(schemaName, owner_userid, 0);
+	    namespaceId = NamespaceCreate(schemaName, owner_userid, 0);
 
-	if (shouldDispatch)
-	{
+	    if (shouldDispatch)
+	    {
 		
 			char *pscCreateSchema;
 
@@ -161,8 +163,8 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 			 * This call returns after launching the threads that send the command to the appropriate
 			 * segdbs.  It does not wait for them to finish.
 			 */
-			CdbDispatchCommand(buffer.data, true );
-			hasDispatched = true;
+			cdbdisp_dispatchCommand(buffer.data, true, NULL,
+                                    &primaryGang, &mirrorGang);
 			pfree(buffer.data);
 		}
 	
@@ -175,49 +177,14 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 	/* Advance cmd counter to make the namespace visible */
 	CommandCounterIncrement();
 
+    /*
+     * We successfully completed our work.  Now check the results from the
+     * qExecs, if dispatched.  This waits for them to all finish, and exits
+     * via ereport(ERROR,...) if unsuccessful.
+     */
+    cdbdisp_finishCommand(primaryGang, mirrorGang);
 
-	if ( hasDispatched )
-	{
-		char *message;
-		char *szCommand;
-
-		CdbDispatchResults* results;
-
-		
-		/*
-		 * We successfully completed on the Dispatcher.  Now check the results
-		 * from the qExecs.  This internally waits for them to all finish.
-		 */
-		results = CdbCheckDispatchResult();
-
-
-		message = CdbDumpDispatchResults(results, true);
-		szCommand = results->szCommand;
-		if ( szCommand == NULL )
-			szCommand = "";
-		Assert( message != NULL );
-		elog( DEBUG5,
-				"mppexec command results for \"%s\": %s",
-				szCommand, message );
-
-		pfree(message);
-
-		if ( !results->success )
-		{
-			char *message = CdbDumpDispatchResults(results, false);
-			ereport( ERROR,
-						(errcode( ERRCODE_CDB_COMMAND_ERROR ),
-						errmsg("mppexec command failed on one or more segment databases: %s",
-						message
-					)));
-				
-		}
-
-
-		DestroyCdbDispatchResults( results );
-	}
-
-	/*
+    /*
 	 * Temporarily make the new namespace be the front of the search path,
 	 * as well as the default creation target namespace.  This will be
 	 * undone at the end of this routine, or upon error.

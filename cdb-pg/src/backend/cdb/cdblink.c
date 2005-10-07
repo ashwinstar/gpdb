@@ -4,42 +4,13 @@
  *
  *	  Setting up libpq connections to qRxecs from Dispatcher
  *
+ * Copyright (c) 2005, greenplum inc
  *
- * ATTRIBUTION
+ * $Id$
  *
- *	   Concept and initial logic based on contrib/dblink by:
- *
- *	   Joe Conway <mail@joeconway.com>
- *	   And contributors:
- *	   Darko Prenosil <Darko.Prenosil@finteh.hr>
- *	   Shridhar Daithankar <shridhar_daithankar@persistent.co.in>
- *
- *	   Copyright (c) 2001-2003, PostgreSQL Global Development Group
- *	   ALL RIGHTS RESERVED;
- *
- *	   Permission to use, copy, modify, and distribute this software and its
- *	   documentation for any purpose, without fee, and without a written agreement
- *	   is hereby granted, provided that the above copyright notice and this
- *	   paragraph and the following two paragraphs appear in all copies.
- *
- *	   IN NO EVENT SHALL THE AUTHOR OR DISTRIBUTORS BE LIABLE TO ANY PARTY FOR
- *	   DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES, INCLUDING
- *	   LOST PROFITS, ARISING OUT OF THE USE OF THIS SOFTWARE AND ITS
- *	   DOCUMENTATION, EVEN IF THE AUTHOR OR DISTRIBUTORS HAVE BEEN ADVISED OF THE
- *	   POSSIBILITY OF SUCH DAMAGE.
- *
- *	   THE AUTHOR AND DISTRIBUTORS SPECIFICALLY DISCLAIMS ANY WARRANTIES,
- *	   INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY
- *	   AND FITNESS FOR A PARTICULAR PURPOSE.  THE SOFTWARE PROVIDED HEREUNDER IS
- *	   ON AN "AS IS" BASIS, AND THE AUTHOR AND DISTRIBUTORS HAS NO OBLIGATIONS TO
- *	   PROVIDE MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
- *
- *
+ *-------------------------------------------------------------------------
  */
 #include "postgres.h"
-
-#include <ctype.h>
-#include <pthread.h>
 
 #include "libpq-fe.h"
 #include "libpq-int.h"
@@ -69,9 +40,7 @@
 #include "cdb/cdbtmlog.h"
 
 
-static void CdbDoConnect(SegmentDatabaseDescriptor *);
-
-/*     
+/*
  * Points to the SegmentDatabaseDescriptor of mirrored entry database
  */
 static SegmentDatabaseDescriptor *cdb_mirrored_entry_db = NULL;
@@ -183,13 +152,13 @@ getMPPSegmentCount(void)
 /*
  * Now we connect to mirrored entry db.
  */
-void 
+void
 buildMirrorQDDefinition(void)
 {
      CdbComponentDatabases *cdb_component_dbs;
      if ( !isQDMirroringEnabled() )
         return;
-     cdb_component_dbs = getComponentDatabases();        
+     cdb_component_dbs = getComponentDatabases();
      if ( cdb_component_dbs != NULL && cdb_component_dbs->total_entry_dbs > 1)
      {
          /* it should have maximum 2 dbs now */
@@ -202,7 +171,7 @@ buildMirrorQDDefinition(void)
             mirrorDb = entryDb;
             entryDb = entryDb + 1;
          }
-         
+
          if (!mirrorDb->isprimary)
          {
              /* if it is set to invalid, do not connect */
@@ -214,32 +183,22 @@ buildMirrorQDDefinition(void)
                      )));
                  return;
              }
-             
-             /* connect to mirrored QD */
+
+             /* create process descriptor */
              cdb_mirrored_entry_db = malloc(sizeof(SegmentDatabaseDescriptor));
              memset( cdb_mirrored_entry_db, 0, sizeof(SegmentDatabaseDescriptor));
-             cdb_mirrored_entry_db->segment_database_info = mirrorDb;
-             CdbDoConnect( cdb_mirrored_entry_db );
-             if ( cdb_mirrored_entry_db->conn == NULL )
+             cdbconn_initSegmentDescriptor(cdb_mirrored_entry_db, mirrorDb);
+
+             /* connect to mirrored QD */
+             if ( !cdbconn_doConnect( cdb_mirrored_entry_db, NULL ) )
              {
-                 char* pszErrorMessage = cdb_mirrored_entry_db->error_message;
-                 
-                 MemoryContext oldContext = MemoryContextSwitchTo(TopMemoryContext);
-                 
-                 Assert( pszErrorMessage != NULL );
-                 
-                 cdb_mirrored_entry_db->error_message = pstrdup(pszErrorMessage);
-                 MemoryContextSwitchTo(oldContext);
-                 free( pszErrorMessage );
-                 
                  disableQDMirroring();
- 
-                 ereport(WARNING,
-                     (errcode(ERRCODE_WARNING),
-                         errmsg("CDBLINK_SETUP--- Could not establish connection with mirrored entry database "
-                             "segindex %d isprimary %c", 
-                             mirrorDb->segindex, (mirrorDb->isprimary ? 't' : 'f')),
-                         errdetail("%s", cdb_mirrored_entry_db->error_message)));
+
+                 ereport(LOG,
+                         (errcode(ERRCODE_WARNING),     /* CDB TODO: better errcode */
+                          errmsg("Unable to connect: %s",
+                                 cdb_mirrored_entry_db->error_message.data)));
+                 resetPQExpBuffer(&cdb_mirrored_entry_db->error_message);
 
                  /* mark the db as down */
                  /*
@@ -255,60 +214,6 @@ buildMirrorQDDefinition(void)
      }
 }
 
-static void
-CdbDoConnect( SegmentDatabaseDescriptor *segdbDesc )
-{
-	PGconn *conn;
-	
-    CdbComponentDatabaseInfo *q = segdbDesc->segment_database_info;
-    /*
-     * We use PQExpBufferData instead of StringInfoData
-     * because the former uses malloc, the latter palloc.
-     * We are in a thread, and we CANNOT use palloc since it's not
-     * thread safe.  We cannot call elog or ereport either for the
-     * same reason.
-     */
-    PQExpBufferData buffer;
-    initPQExpBuffer(&buffer);
-     
-    /*
-     * Build the connection string
-     */    
-    if ( q->hostname == NULL ) 
-        appendPQExpBufferStr(&buffer, "host='' " );
-    else if ( isdigit(q->hostname[0]) )
-        appendPQExpBuffer(&buffer, "hostaddr=%s ", q->hostname );
-    else 
-        appendPQExpBuffer(&buffer, "host=%s ", q->hostname );
-                 
-    appendPQExpBuffer(&buffer, "port=%u ", q->port);
-    appendPQExpBuffer(&buffer, "dbname=%s ", get_database_name(MyDatabaseId));
-    appendPQExpBuffer(&buffer, "user=%s ", q->mppsuperuser);
-
-    if ( q->mppsuperpswd != NULL )
-        appendPQExpBuffer(&buffer, "password='%s' ", q->mppsuperpswd);
-
-    /*
-     * Call libpq to connect
-     */                 
-    conn = PQconnectdb(buffer.data);
-
-    if ( PQstatus(conn) == CONNECTION_BAD )
-    {
-        /*
-         * When we get an error, we strdup it here.  When the main thread
-         * checks for errors, it makes a palloc copy of this, and frees
-         * this.
-         */                 
-        segdbDesc->error_message = strdup(PQerrorMessage(conn));
-        PQfinish(conn);
-        conn = NULL;
-    }
-
-    segdbDesc->conn = conn;
-    free(buffer.data);
-}
-
 void
 write_qd_sync(char *cmd, void *buf, int len)
 {
@@ -320,7 +225,7 @@ write_qd_sync(char *cmd, void *buf, int len)
 
     elog(DEBUG3, "%s", cmd);
     conn = cdb_mirrored_entry_db->conn;
-    
+
 
     if (0 == PQsendQuery(conn, cmd))
     {
@@ -342,38 +247,38 @@ write_qd_sync(char *cmd, void *buf, int len)
         PGresult *pRes = PQgetResult(conn);
         if ( pRes != NULL )
         {
-            cdb_mirrored_entry_db->resultStatus = PQresultStatus( pRes );
-            if ( PGRES_COMMAND_OK != cdb_mirrored_entry_db->resultStatus &&
-                PGRES_TUPLES_OK != cdb_mirrored_entry_db->resultStatus )
+            ExecStatusType resultStatus = PQresultStatus( pRes );
+            if ( PGRES_COMMAND_OK != resultStatus &&
+                 PGRES_TUPLES_OK != resultStatus )
             {
                 failed = true;
                 if (!resync && strstr(PQresultErrorMessage(pRes), "resync") != NULL)
                 {
                     char dummy[100];
                     int pfileoff, mfileoff;
-                    
+
                     /* be careful going into an infinite loop */
                     resync = true;
-                    
+
                     /* resync tmlog and xlog */
-                    
+
                     sscanf(PQresultErrorMessage(pRes), "%s%s pdboff: %d, mdboff: %d",
                             dummy,dummy,&pfileoff,&mfileoff);
-                    
+
                     /* cleanup connection */
                     do
                     {
                         PQclear(pRes);
                     }
                     while ((pRes = PQgetResult(conn)) != NULL);
-                    
+
                     if (resync_xlog_to_mirror() &&
                         resync_tmlog_to_mirror(mfileoff, pfileoff))
                     {
                         /* resync is successful */
                         failed = false;
                     }
-                    
+
                     /* reset resync flag */
                     resync = false;
                 }
@@ -385,18 +290,17 @@ write_qd_sync(char *cmd, void *buf, int len)
             }
             while ((pRes = PQgetResult(conn)) != NULL);
         }
-        
+
         if ( PQstatus( conn ) == CONNECTION_BAD )
             failed = true;
     }
-    
+
     if (failed)
     {
-        char *error_message = strdup(PQerrorMessage(conn));
-        ereport(WARNING,
-             (errcode(ERRCODE_WARNING),
-                 errmsg("mirrored entry database write error "),
-                 errdetail("%s", error_message)));
+        ereport(LOG,
+                (errcode(ERRCODE_WARNING),      /* CDB TODO: better errcode */
+                 errmsg("mirrored entry database write error: %s",
+                        PQerrorMessage(conn))));
         PQfinish(conn);
         cdb_mirrored_entry_db->conn = NULL;
         disableQDMirroring();
@@ -409,11 +313,7 @@ getEntrySegDB(int *count)
 	static CdbComponentDatabases *cdb_component_dbs = NULL;
 
 	if (cdb_component_dbs == NULL)
-    {
-        MemoryContext oldContext = MemoryContextSwitchTo(TopMemoryContext);
 		cdb_component_dbs = getCdbComponentDatabases();
-        MemoryContextSwitchTo(oldContext);
-    }
 	*count = cdb_component_dbs->total_entry_dbs;
 	return cdb_component_dbs->entry_db_info;
 }
@@ -423,7 +323,7 @@ disconnectMirrorQD(void)
 {
     if ( cdb_mirrored_entry_db == NULL || cdb_mirrored_entry_db->conn == NULL )
         return;
-        
+
     write_qd_sync("close", NULL, 0);
     PQfinish(cdb_mirrored_entry_db->conn);
 }

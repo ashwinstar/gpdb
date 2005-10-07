@@ -21,4 +21,8 @@ extern void set_ps_display(const char *activity);
 
 extern const char *get_ps_display(void);
 
+/* CDB: Get the "username" string saved by init_ps_display().  */
+const char *
+get_ps_display_username(void);
+
 #endif   /* PS_STATUS_H */

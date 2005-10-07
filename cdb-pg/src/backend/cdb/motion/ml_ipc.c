@@ -410,7 +410,7 @@ TupleChunkListItem RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 	 * be ready!). */
 	for (i = 0; i < pEntry->numConns; i++)
 	{	
-		/* avoid division ? 
+		/* avoid division ?
 		 * index = ((scanStart + i) % pEntry->numConns); */
 		index = scanStart + i;
 		if (index >= pEntry->numConns)
@@ -683,12 +683,12 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 							errdetail("error during select() call (error:%d).",errno)));
 		}
 
-		elog(DEBUG3, "select() returned %d ready sockets", n);
+		elog(DEBUG5, "select() returned %d ready sockets", n);
 
 		/* is it someone tickling our listener port? */
 		if (FD_ISSET(listenerFd, &rrset))
 		{
-			elog(DEBUG5, "accepting an Incoming Connection ");
+			elog(DEBUG4, "accepting an Incoming Connection ");
 			acceptIncomingConnection(&rset, &highsock);
 			n--;
 		}
@@ -704,7 +704,7 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 
 				if (FD_ISSET(conn->sockfd, &wwset))
 				{			
-					elog(DEBUG5, "Sending a register message to sockfd: %d", conn->sockfd);
+					elog(DEBUG4, "Sending a register message to sockfd: %d", conn->sockfd);
 					sendRegisterMessage(sendingMotionState, conn);
 
 					/*no longer interested in this for now.*/
@@ -719,7 +719,7 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 				{
 					if (FD_ISSET(conn->mirrorConn->sockfd, &wwset))
 					{
-						elog(DEBUG5, "Sending a register message to sockfd: %d", conn->mirrorConn->sockfd);
+						elog(DEBUG4, "Sending a register message to sockfd: %d", conn->mirrorConn->sockfd);
 						sendRegisterMessage(sendingMotionState, conn->mirrorConn);
 						
 						/* no longer interested in this for now. */
@@ -755,7 +755,7 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 			
 			if (FD_ISSET(conn->sockfd, &rrset))
 			{
-				elog(DEBUG5, "conn # %d has data!", conn->sockfd);
+				elog(DEBUG4, "conn # %d has data!", conn->sockfd);
 				
 				readRegisterMessage(conn, &incoming_count);				
 				FD_CLR(conn->sockfd, &rset);	
@@ -898,7 +898,7 @@ void TeardownInterconnect(void)
 		 * could alternatively write the following line as:
 		 *
 		 * incompleteConns = list_delete_cell(incompleteConns, cell, NULL);
-		 * or 
+		 * or
 		 * incompleteConns = list_delete_first(incompleteConns);
 		 * or
 		 * incompleteConns = list_delete_ptr(incompleteConns, conn)
@@ -1304,7 +1304,7 @@ static void setupOutgoingConnection(MotionConn *conn, CdbProcess *cdbProc, int *
 	if (conn->sockfd > *highsock)
 		*highsock = conn->sockfd;
 
-	elog(DEBUG5, "Interconnect started outgoing connection to CdbProcess with contentId=%d "
+	elog(DEBUG4, "Interconnect started outgoing connection to CdbProcess with contentId=%d "
 		 "to: '%s':%d with sockfd: %d", cdbProc->contentid, cdbProc->listenerAddr,
 		 cdbProc->listenerPort, conn->sockfd);
 }
@@ -1591,7 +1591,7 @@ static bool sendChunk(MotionConn *conn, TupleChunkListItem tcItem)
 #ifdef AMS_VERBOSE_LOGGING
 	elog(DEBUG3, "sendChunk: msgSize %d this chunk length %d", conn->msgSize, tcItem->chunk_length);
 #endif
-
+	
 	if (conn->msgSize + tcItem->chunk_length > Mpp_max_packet_size)
 	{
 		if (!flushBuffer(conn))
@@ -2270,7 +2270,7 @@ void print_connection(int fd, const char *msg)
 			 fd, strerror(errno));
 	}
 
-	elog(DEBUG3, "%s: w/ports (%d/%d)",
+	elog(DEBUG2, "%s: w/ports (%d/%d)",
 		 msg, ntohs(local.sin_port), ntohs(remote.sin_port));
 }
 

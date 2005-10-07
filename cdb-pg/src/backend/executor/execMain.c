@@ -76,10 +76,10 @@ static void initResultRelInfo(ResultRelInfo *resultRelInfo,
 				  Index resultRelationIndex,
 				  List *rangeTable,
 				  CmdType operation,
-				  /* 
+				  /*
 				   * Added the following parameter for CDB,
 				   * so that when the relation is opened for insert, update or delete,
-				   * and the Mpp_role is MPP_ROLE_DISPATCH, 
+				   * and the Mpp_role is MPP_ROLE_DISPATCH,
 				   * and the plan dispatch type is DISPATCH_PARALLEL,
 				   * the lock type passed to heap_open is set to ExclusiveLock instead of RowExclusiveLock.
 				   */
@@ -168,14 +168,15 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 	estate->es_crosscheck_snapshot = queryDesc->crosscheck_snapshot;
 	estate->es_instrument = queryDesc->doInstrument;
 	
-	/* 
+	/*
 	 * Handling of the Slice table depends on context.
 	 */
+    currentSliceId = UNSET_SLICE_ID;
 	 if ( Mpp_role == MPP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL )
 	 {
 		/* Set up blank slice table to be filled in during InitPlan. */
 		
-		/* 
+		/*
 		 * We know that, if this query is to dispatched in parallel, then
 		 * it can't contain any correlated sub-queries.  Therefore, any
 		 * PARAM_EXEC style parameters will correspond to single-valued
@@ -183,15 +184,12 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 		 * Otherwise, the slice table won't be used for dispatch, so don't
 		 * put extra roots in it, even if there are some subplans.
 		 *
-		 * TODO -- EITHER decide to live with this baroque justification 
-		 *         OR clean up the determination of the number of extra roots 
-		 *        needed, e.g., by actually counting initplans during 
+		 * TODO -- EITHER decide to live with this baroque justification
+		 *         OR clean up the determination of the number of extra roots
+		 *        needed, e.g., by actually counting initplans during
 		 *        cdb_apply_motion() and noting it in the top plan node.
 		 */
 		InitSliceTable(estate, queryDesc->plantree->nMotionNodes, queryDesc->plantree->nParamExec);
-		
-		/* JGE set our global sliceid variable for elog. */
-		currentSliceId = 0;
 	 }
 	 else if ( Mpp_role == MPP_ROLE_EXECUTE )
 	 {
@@ -229,12 +227,12 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 		
 		 if ( !explainOnly )
 		 {
-			/* Since we intend to execute the plan, inventory the slice tree, 
-			 * allocate gangs, and associate them with slices.  
+			/* Since we intend to execute the plan, inventory the slice tree,
+			 * allocate gangs, and associate them with slices.
 			 *
 			 * For now, always use segment 0 for singleton gangs.
 			 *
-			 * On return, gangs have been allocated and CDBProcess lists 
+			 * On return, gangs have been allocated and CDBProcess lists
 			 * have been filled in in the slice table.)
 			 */
 			AssignGangs(queryDesc, 0);
@@ -245,8 +243,8 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 	
 	if ( Debug_print_slice_table && Mpp_role == MPP_ROLE_DISPATCH )
 	{
-		elog_node_display(DEBUG1, 
-						  "global (QD) slice table", 
+		elog_node_display(DEBUG1,
+						  "global (QD) slice table",
 						  estate->es_sliceTable,
 						  Debug_pretty_print);
 	}
@@ -279,9 +277,13 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 	TupleTableSlot *result;
 	MemoryContext oldcontext;
 	RangeTblEntry *rte = NULL;
-	bool shouldDispatch;
-	volatile bool hasDispatched = false;
-	volatile bool shouldSetupInterconnect = false;
+
+    /* Any local vars that are set in the PG_TRY block and examined in the
+     * PG_CATCH block should be declared 'volatile'. (setjmp shenanigans)
+     */
+    bool            shouldDispatch;
+	volatile bool   shouldSetupInterconnect = false;
+    volatile bool   hasDispatched = false;
 
 	/* sanity checks */
 	Assert(queryDesc != NULL);
@@ -316,7 +318,7 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 	shouldDispatch =  Mpp_role == MPP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL;
 	
 	/* If we're running as a QE and there's a slice table in our queryDesc,
-	 * then we need to finish the EState setup we prepared for back in 
+	 * then we need to finish the EState setup we prepared for back in
 	 * CdbExecQuery.
 	 */
 	if ( Mpp_role == MPP_ROLE_EXECUTE && estate->es_sliceTable != NULL )
@@ -328,7 +330,7 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 		 * es_sliceTable, cur_root_idx and es_cur_slice_idx are correct for
 		 * the QE.
 		 *
-		 * If responsible for a non-root slice, arrange to enter the plan 
+		 * If responsible for a non-root slice, arrange to enter the plan
 		 * at the slice's sending Motion node rather than at the top.
 		 */
 		if ( estate->es_cur_slice_idx != estate->es_cur_root_idx )
@@ -343,15 +345,15 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 		
 		if ( Debug_print_slice_table )
 		{
-			elog_node_display(DEBUG1, 
+			elog_node_display(DEBUG1,
 				"local slice table",
 				estate->es_sliceTable,
 				Debug_pretty_print
 				);
 		}
 		
-		elog(DEBUG1, 
-			"Segment %d (%s) executing slice %d under root %d.", 
+		elog(DEBUG1,
+			"Segment %d (%s) executing slice %d under root %d.",
 			Mpp_segment,
 			(Mpp_is_primary ? "primary" : "mirror"),
 			estate->es_cur_slice_idx,
@@ -385,13 +387,13 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 			{
 				preprocess_initplans( queryDesc );
 				
-				/* Copy the values of the preprocessed subplans to the 
+				/* Copy the values of the preprocessed subplans to the
 				 * external parameters.
 				 */
-				queryDesc->params = addRemoteExecParamsToParamList( 
-						queryDesc->plantree, 
-						queryDesc->params, 
-						queryDesc->estate->es_param_exec_vals, 
+				queryDesc->params = addRemoteExecParamsToParamList(
+						queryDesc->plantree,
+						queryDesc->params,
+						queryDesc->estate->es_param_exec_vals,
 						queryDesc->plantree->nParamExec );
 
 			}
@@ -431,8 +433,8 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 			 * This call returns after launching the threads that send the command to the appropriate
 			 * segdbs.  It does not wait for them to finish.
 			 */
-			CdbDispatchPlan(queryDesc);
-			hasDispatched = true;
+            hasDispatched = true;
+			cdbdisp_dispatchPlan(queryDesc);
 
 			if ( bChangedQueryTree )
 			{
@@ -460,7 +462,7 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 		*    and count on the motion nodes at the fringe of the top slice to
 		*    return without ever calling nodes below them.
 		*
-		* 3. Run a non-root slice -- this occurs when Mpp_role is 
+		* 3. Run a non-root slice -- this occurs when Mpp_role is
 		*    MPP_ROLE_EXECUTE and the current slice is not a root slice.
 		*    It corresponds to a QE running a slice with a motion node on
 		*    top.  The call, thus, returns no tuples (since they all go out
@@ -478,15 +480,15 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 		}
 		else if ( Mpp_role == MPP_ROLE_EXECUTE && estate->es_cur_slice_idx != estate->es_cur_root_idx )
 		{
-			/* Run a non-root slice on a QE.  
-			 * 
+			/* Run a non-root slice on a QE.
+			 *
 			 * Since the top Plan node is a (Sending) Motion, run the plan
-			 * forward to completion. The plan won't return tuples locally 
-			 * (tuples go out over the interconnect), so the destination is 
+			 * forward to completion. The plan won't return tuples locally
+			 * (tuples go out over the interconnect), so the destination is
 			 * uninteresting.  The command type should be SELECT, however,
 			 * to avoid other sorts of DML processing..
 			 *
-			 * This is the center of slice plan activity -- here we arrange 
+			 * This is the center of slice plan activity -- here we arrange
 			 * to blunder into the middle of the plan rather than entering
 			 * at the root.
 			 */
@@ -494,7 +496,7 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 			Assert( IsA(motionState->ps.plan, Motion) );
 
 			/* activate the connections, if needed */
-			if (((PlanState *)motionState)->plan->nMotionNodes > 0) 
+			if (((PlanState *)motionState)->plan->nMotionNodes > 0)
 			{
 				shouldSetupInterconnect = true;
 				SetupInterconnect(estate->es_sliceTable, estate->es_cur_slice_idx);
@@ -511,7 +513,7 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 		{
 			/* Run a root slice. */
 
-			if (queryDesc->planstate->plan->nMotionNodes > 0) 
+			if (queryDesc->planstate->plan->nMotionNodes > 0)
 			{
 				shouldSetupInterconnect = true;
 				SetupInterconnect(estate->es_sliceTable, estate->es_cur_slice_idx);
@@ -530,54 +532,28 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 		if (hasDispatched)
 		{
 			/*
-			 * We need to wait for the threads to finish.  This allows for proper cleanup
-			 * of the results from the async command executions.
-			 */
-			char *message;
-			char *szCommand;
-
-			CdbDispatchResults* results;
-			/*
 			 * Set this to force any remaining commands executing on qExecs to stop.
-			 * TODO Check this out. How does this stop running sessions? 
-			 *      Brian 2005-07-20
 			 */
 			QueryCancelPending = true;
 
-			results = CdbCheckDispatchResult();
+			/*
+			 * We need to wait for the threads to finish.  This allows for proper cleanup
+			 * of the results from the async command executions.
+			 */
+			CdbCheckDispatchResult();
 
-			message = CdbDumpDispatchResults(results, true);
-			szCommand = results->szCommand;
-			if ( szCommand == NULL )
-				szCommand = "";
-			Assert( message != NULL );
-			elog( DEBUG4,
-					"mppexec command results for \"%s\": %s",
-					szCommand, message );
+            /* Discard any remaining results from QEs; don't confuse matters
+             * by throwing a new error.  Any results of interest presumably
+             * should have been examined before the exception was thrown.
+             */
+            cdbdisp_destroyPlanResults(queryDesc);
 
-			pfree(message);
-
-			/* clean up the interconnect */
+            /* clean up the interconnect */
 			if (shouldSetupInterconnect)
 				TeardownInterconnect();
 
 			/* clean up our own motion layer. */	
 			ResetMotionLayer(true);
-
-			if (!results->success)
-			{
-				char *message = CdbDumpDispatchResults(results, false);
-
-				ereport( ERROR,
-							(errcode( ERRCODE_CDB_COMMAND_ERROR ),
-							errmsg("%s",
-							message
-						)));
-
-				pfree(message);
-			}
-			DestroyCdbDispatchResults( results );
-			hasDispatched = false;
 		}
 		else if (Mpp_role != MPP_ROLE_UTILITY)
 		{
@@ -597,48 +573,27 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 
 	if ( hasDispatched )
 	{
-		char *message;
-		char *szCommand;
+        Slice  *topslice = getCurrentSlice(estate);
+
 		/*
 		 * We successfully completed on the Dispatcher.  Now check the results
 		 * from the qExecs.  This internally waits for them to all finish.
 		 */
-		CdbDispatchResults* results = CdbCheckDispatchResult();
-
-		message = CdbDumpDispatchResults(results, true);
-		szCommand = results->szCommand;
-		if ( szCommand == NULL )
-			szCommand = "";
-		Assert( message != NULL );
-		elog( DEBUG4,
-				"mppexec command results for \"%s\": %s",
-				szCommand, message );
-
-		pfree(message);
+        CdbCheckDispatchResult();
 
 		/* clean up the interconnect if necessary (do this before we
 		 * issue an error) */
 		if (shouldSetupInterconnect)
 			TeardownInterconnect();
 
-		if ( !results->success )
-		{
-			char *message = CdbDumpDispatchResults(results, false);
-			ereport( ERROR,
-						(errcode( ERRCODE_CDB_COMMAND_ERROR ),
-						errmsg("%s",
-						message
-					)));
-				
-		}
+		/* If top slice was delegated to QEs, get number of rows processed. */
+        if (sliceRunsOnQE(topslice))
+            estate->es_processed += cdbdisp_sumGangCmdTuples(topslice->primaryGang);
 
-		if (operation != CMD_SELECT)
-		{
-			/*  Plug the nuber of rows affected for non selects */
-			queryDesc->estate->es_processed += SumCmdTuples(results);
-		}
-
-		DestroyCdbDispatchResults( results );
+        /* Check and free the results of all gangs.
+		 * If any QE had an error, report it and exit via PG_THROW.
+         */
+        cdbdisp_dumpPlanResults(queryDesc);
 	}
 	else if (shouldSetupInterconnect)
 	{
@@ -694,12 +649,14 @@ ExecutorEnd(QueryDesc *queryDesc)
 	 * Must switch out of context before destroying it
 	 */
 	MemoryContextSwitchTo(oldcontext);
-	
+
 	/*
 	 * Release EState and per-query memory context.  This should release
 	 * everything the executor has allocated.
 	 */
 	FreeExecutorState(estate);
+
+    currentSliceId = UNSET_SLICE_ID;    /*CDB*/
 
 	/* Reset queryDesc fields that no longer point to anything */
 	queryDesc->tupDesc = NULL;
@@ -1220,11 +1177,11 @@ InitPlan(QueryDesc *queryDesc, bool explainOnly)
 /*
  * Initialize ResultRelInfo data for one result relation
  */
-/* 
+/*
  * Added the shouldDispatch parameter for MPP.
- * This is true iff the Mpp_role is MPP_ROLE_DISPATCH, 
+ * This is true iff the Mpp_role is MPP_ROLE_DISPATCH,
  * and the plan dispatch type is DISPATCH_PARALLEL.
- * When true, the lock type passed to heap_open is set to 
+ * When true, the lock type passed to heap_open is set to
  * ExclusiveLock instead of RowExclusiveLock.
 */
 

@@ -3,14 +3,16 @@
  * cdtm.c
  *	  Provides routines for performing distributed transaction
  *
- * Copyright (c) 2003-2004, Greenplum
+ * Copyright (c) 2005, greenplum inc
+ *
+ * $Id$
  *
  *-------------------------------------------------------------------------
  */
+#include "postgres.h"
 
 #include <time.h>
 
-#include "postgres.h"
 #include "cdb/cdbtm.h"
 #include "cdb/cdbtmlog.h"
 #include "miscadmin.h"
@@ -20,6 +22,7 @@
 #include "libpq-fe.h"
 #include "access/xact.h"
 #include "cdb/cdbfts.h"
+#include "lib/stringinfo.h"
 
 
 static LWLockId     shmControlLock;
@@ -30,7 +33,7 @@ int    *shmLatestLogFileNo;
 int    *shmEarliestLogFileNo;
 
 static int          ControlLockCount=0;
-static char         *errMessage=NULL;
+static StringInfoData   errMessage;
 
 char dtm_dir[MAXPGPATH];
 
@@ -78,9 +81,9 @@ void recoverTM(void);
 bool phase2Recovery(void);
 void cleanRMResultSets( PGresult **pgresultSets );
 bool dumpRMxacts( PGresult **pgresultSets );
-bool checkRM( PGresult **pgresultSets ); 
+bool checkRM( PGresult **pgresultSets );
 bool recoverRMs(PGresult ***pgresultSets);
-void recoverCommittedDtx(void); 
+void recoverCommittedDtx(void);
 void recoverRollbackedDtx(void);
 void getTmLock(void);
 void releaseTmLock(void);
@@ -94,7 +97,7 @@ int
 startDtxTransaction(void)
 {
     int ret=DTX_OK;
-    
+
     if (Mpp_role != MPP_ROLE_DISPATCH)
         return DTX_OK;
     if ( currentGxact == NULL )
@@ -118,7 +121,7 @@ commitDtxTransaction(void)
 	/* temporary set all transaction dirty */
     isDirty = true;
 
-    return condCommitDtxTransaction(!isDirty); 
+    return condCommitDtxTransaction(!isDirty);
 }
 
 /*
@@ -130,13 +133,13 @@ rollbackDtxTransaction(void)
 {
     if (Mpp_role != MPP_ROLE_DISPATCH || currentGxact == NULL)
         return DTX_OK;
-        
+
     /* temporary ignore this call if it is in phase 2 commit, which can not
      * be rolled back. We may need to handle this case for FTS
      */
     if (currentGxact->state == DTX_STATE_2P_COMMIT)
         return DTX_OK;
-        
+
     return condRollbackDtxTransaction();
 }
 
@@ -156,16 +159,18 @@ condStartDtxTransaction(void)
         Assert( currentGxact->state == DTX_STATE_IN_PROGRESS );
         return DTX_OK;
     }
-    
-    ereport(DEBUG1, 
+
+    ereport(DEBUG1,
             (errmsg("condStartDtxTransaction:  %s", currentGxact->gid)));
     /* send additional begin transaction */
     if (execCommand() != DTX_OK)
     {
+        errMessage.len = 0;
         ereport(ERROR,
-            (errmsg("Global transaction failed on command \"BEGIN %s\" due to error: %s", currentGxact->gid, errMessage)));
+            (errmsg("Global transaction failed on command \"BEGIN %s\" due to error: %s",
+                    currentGxact->gid, errMessage.data)));
     }
-    
+
     return DTX_OK;
 }
 
@@ -180,45 +185,51 @@ condCommitDtxTransaction(bool onephase)
     {
         return DTX_ERR_PROTO;
     }
-    ereport(DEBUG1, 
+    ereport(DEBUG1,
         (errmsg("condCommitDtxTransaction:  %s", currentGxact->gid)));
     if (!onephase)
     {
         /* update the tm state first, so we know the latest state of the txn */
         updateDtxState(DTX_STATE_PREPARED);
-        
+
         /* send prepare to all RM */
         if (execCommand() != DTX_OK)
         {
+            errMessage.len = 0;
             ereport(ERROR,
-                (errmsg("Global transaction failed on command \"PREPARE %s\" due to error: %s", currentGxact->gid, errMessage)));
+                (errmsg("Global transaction failed on command \"PREPARE %s\" due to error: %s",
+                        currentGxact->gid, errMessage.data)));
         }
 
         /* set the transaction to be prepared, so it will not be removed before
          * all qe finish.
          */
         currentGxact->infomask |= GXACT_STATUS_PERSISTENT;
-            
+
         /* send phase 2 commit to all RM */
         updateDtxState(DTX_STATE_2P_COMMIT);
         if (execCommand() != DTX_OK)
         {
+            errMessage.len = 0;
             ereport(ERROR,
-                (errmsg("Global transaction failed on command \"COMMIT PREPARED %s\" due to error: %s", currentGxact->gid, errMessage)));
+                (errmsg("Global transaction failed on command \"COMMIT PREPARED %s\" due to error: %s",
+                        currentGxact->gid, errMessage.data)));
         }
     }
     else
     {
         /* one phase commit case */
         updateDtxState(DTX_STATE_1P_COMMIT);
-        
+
         if (execCommand() != DTX_OK)
         {
+            errMessage.len = 0;
             ereport(ERROR,
-                (errmsg("Global transaction failed on command \"COMMIT %s\" due to error: %s", currentGxact->gid, errMessage)));
+                (errmsg("Global transaction failed on command \"COMMIT %s\" due to error: %s",
+                        currentGxact->gid, errMessage.data)));
         }
     }
-    
+
     /* set txn tm state to be done, so it will be removed from cache */
     updateDtxState(DTX_STATE_COMMIT_DONE);
     return DTX_OK;
@@ -232,12 +243,12 @@ condRollbackDtxTransaction(void)
 {
     int ret;
     bool ignoreError;
-    
+
     if (currentGxact == NULL)
     {
         return DTX_ERR_PROTO;
     }
-    ereport(DEBUG1, 
+    ereport(DEBUG1,
         (errmsg("condRollbackDtxTransaction:  %s", currentGxact->gid)));
 
     /* keep previous state */
@@ -245,7 +256,7 @@ condRollbackDtxTransaction(void)
 
     /* update tm state first */
     updateDtxState(DTX_STATE_ROLLBACK);
-        
+
     /* send rollback to all RM */
     if ((ret=execCommand()) != DTX_OK)
     {
@@ -258,14 +269,16 @@ condRollbackDtxTransaction(void)
         else
             /* leave it in the list for recovery */
             currentGxact = NULL;
-            
+
         /* destroy all gangs to clean up connections */
         disconnectAndDestroyAllGangs();
-            
+
         /* if the first time failure, throw exception, otherwise keep silent */
+        errMessage.len = 0;
         if (!ignoreError)
             ereport(ERROR,
-                (errmsg("Global transaction failed on command \"ROLLBACK %s\" due to error: %s", gid, errMessage)));
+                (errmsg("Global transaction failed on command \"ROLLBACK %s\"", gid),
+                 errdetail("%s", errMessage.data)));
     }
     else
         /* remove gxact either rollback is successful or xact is not prepared. */
@@ -281,11 +294,12 @@ int
 execCommand(void)
 {
     char cmdbuf[60];
-    CdbDispatchResults* results = NULL;
+    struct Gang                *primaryGang = NULL;
+    struct Gang                *mirrorGang = NULL;
     SegmentDatabaseDescriptor **failedSegDB=NULL;
     int numOfFailed=0;
     int ret = DTX_OK;
-    
+
     switch (currentGxact->state)
     {
         case DTX_STATE_IN_PROGRESS:
@@ -308,54 +322,44 @@ execCommand(void)
                         isoLevel = "ISOLATION LEVEL SERIALIZABLE";
                         break;
                 }
-                sprintf(cmdbuf, "%s'%s' %s", "BEGIN ", currentGxact->gid, isoLevel); 
+                sprintf(cmdbuf, "%s'%s' %s", "BEGIN ", currentGxact->gid, isoLevel);
             }
             else
-                sprintf(cmdbuf, "%s'%s'", "BEGIN ", currentGxact->gid); 
+                sprintf(cmdbuf, "%s'%s'", "BEGIN ", currentGxact->gid);
             break;
         case DTX_STATE_PREPARED:
-            sprintf(cmdbuf, "%s'%s'", "PREPARE ", currentGxact->gid); 
+            sprintf(cmdbuf, "%s'%s'", "PREPARE ", currentGxact->gid);
             break;
         case DTX_STATE_1P_COMMIT:
-            sprintf(cmdbuf, "%s'%s'", "COMMIT ", currentGxact->gid); 
+            sprintf(cmdbuf, "%s'%s'", "COMMIT ", currentGxact->gid);
             break;
         case DTX_STATE_2P_COMMIT:
-            sprintf(cmdbuf, "%s'%s'", "COMMIT PREPARED ", currentGxact->gid); 
+            sprintf(cmdbuf, "%s'%s'", "COMMIT PREPARED ", currentGxact->gid);
             break;
         case DTX_STATE_ROLLBACK:
-            sprintf(cmdbuf, "%s'%s'", "ROLLBACK ", currentGxact->gid); 
+            sprintf(cmdbuf, "%s'%s'", "ROLLBACK ", currentGxact->gid);
             break;
         case DTX_STATE_ABORT:
         case DTX_STATE_COMMIT_DONE:
         case DTX_STATE_ROLLBACK_DONE:
             /* error */
             Assert( currentGxact->state == 0 );
-            break;        
+            break;
     }
-   
-    /* dispatch command */ 
-    CdbDispatchCommandInt(cmdbuf, false, NULL);
-    results = CdbCheckDispatchResultInt((void***)&failedSegDB,&numOfFailed);
 
-    if ( !results->success )
+    /* dispatch command */
+    cdbdisp_dispatchCommand(cmdbuf, false, NULL, &primaryGang, &mirrorGang);
+
+    /* wait for completion; if unsuccessful, handle error */
+    if ( !CdbCheckDispatchResultInt(&failedSegDB,&numOfFailed) )
     {
-        // no need to free errMessage, it will be freed automatically.
-        char *error = CdbDumpDispatchResults(results, true);
-        if (errMessage == NULL || strlen(errMessage) < strlen(error))
-        {
-            if (errMessage != NULL)
-                free(errMessage);
-            errMessage = malloc(strlen(error)+1);
-        }
-        strcpy(errMessage, error);
+        cdbdisp_dumpGangResults(primaryGang, &errMessage, false);
+        cdbdisp_dumpGangResults(mirrorGang, &errMessage, false);
 
-        /* if error returned */
         switch (currentGxact->state)
         {
+#if 0       /* query plan contains gang info, so no way to retry now. */
             case DTX_STATE_IN_PROGRESS:
-                /*
-                 * no need to retry, query plan contains gang info, so no way
-                 * to retry now.
                 for (i=0;i<numOfFailed;i++)
                 {
                     SegmentDatabaseDescriptor *segDB=failedSegDB[i];
@@ -368,16 +372,20 @@ execCommand(void)
 
                 if ( retry )
                 {
-                    / * dispatch command * / 
+                    / * dispatch command * /
                     CdbDispatchCommandIntEnumeration(cmdbuf, failedSegDB, numOfFailed, false, NULL);
                     results = CdbCheckDispatchResult();
                 }
-                */
                 if ( !results->success )
                 {
                     updateDtxState( DTX_STATE_ABORT );
                     ret = DTX_ERR_COMM;
                 }
+                break;
+#endif
+            case DTX_STATE_IN_PROGRESS:
+                updateDtxState( DTX_STATE_ABORT );
+                ret = DTX_ERR_COMM;
                 break;
             case DTX_STATE_PREPARED:
             case DTX_STATE_ROLLBACK:
@@ -386,7 +394,7 @@ execCommand(void)
                 ret = DTX_ERR_COMM;
                 break;
             case DTX_STATE_2P_COMMIT:
-                /* keep this transaction for recovery */ 
+                /* keep this transaction for recovery */
                 ret = DTX_ERR_COMM;
                 break;
             default:
@@ -394,10 +402,9 @@ execCommand(void)
                 Assert( currentGxact->state == 0 );
                 ret = DTX_ERR_COMM;
                 break;
-        } 
+        }
     }
-    
-    DestroyCdbDispatchResults( results );
+
     return ret;
 }
 
@@ -436,6 +443,7 @@ endTMXactScan(void)
 void
 initTM(void)
 {
+    initStringInfo(&errMessage);
     if (!*shmTmRecoverred)
     {
         getTmLock();
@@ -474,20 +482,20 @@ tmShmemInit(void)
 {
     bool found;
     TmControlBlock *shared;
-    
+
     if (Mpp_role != MPP_ROLE_DISPATCH)
         return;
 
     shared = (TmControlBlock *)ShmemInitStruct("Transaction manager", tmShmemSize(), &found);
     if(!shared)
         elog(FATAL, "could not initialize transaction manager share memory");
-   
+
     if (!IsUnderPostmaster)
             /* Initialize locks and shared memory area */
     {
         int i=0;
         TMGXACT *gxact = NULL;
-        
+
         shared->ControlLock = LWLockAssign();
         shmControlLock = shared->ControlLock;
         shmTmRecoverred  = &shared->recoverred;
@@ -496,7 +504,7 @@ tmShmemInit(void)
         shmEarliestLogFileNo = &shared->earliestLogFileNo;
         shmNumGxacts  = &shared->num_active_xacts;
         shmGxactArray = shared->gxact_array;
-        
+
         // initialize gxact array
         gxact = (TMGXACT *)(shmGxactArray + max_tm_gxacts);
         for ( i=0;i<max_tm_gxacts;i++ )
@@ -516,7 +524,7 @@ isInGlobalTransaction(void)
 {
     if ( Mpp_role != MPP_ROLE_DISPATCH )
         return false;
-        
+
     /* check fts sync count */
     if ( !verifyFtsSyncCount() )
     {
@@ -546,14 +554,14 @@ allocGxact(void)
 {
 	TMGXACT *gxact;
     getTmLock();
-    
+
     if ( *shmNumGxacts >= max_tm_gxacts )
     {
         releaseTmLock();
-        ereport(ERROR, 
+        ereport(ERROR,
                     (errmsg("can not allocate global transaction")));
     }
-    
+
     gxact = shmGxactArray[(*shmNumGxacts)++];
     initGxact( gxact );
     releaseTmLock();
@@ -569,10 +577,10 @@ restoreGxact(TMGXACT *gxact)
 {
     if ( *shmNumGxacts >= max_tm_gxacts )
     {
-        ereport(ERROR, 
+        ereport(ERROR,
                     (errmsg("can not allocate global transaction")));
     }
-    
+
     currentGxact = shmGxactArray[(*shmNumGxacts)++];
     if ( gxact != NULL )
         memcpy( currentGxact, gxact, sizeof(TMGXACT));
@@ -585,7 +593,7 @@ void
 redoTmLog(TmLogRecord *glog)
 {
     int i;
-    
+
     for (i=0;i<*shmNumGxacts;i++)
     {
         if (strcmp(glog->header.gid, shmGxactArray[i]->gid) == 0)
@@ -611,8 +619,8 @@ redoTmLog(TmLogRecord *glog)
     SET_DTX_STATE(currentGxact, glog->header.state);
     currentGxact->fileno = glog->header.thisFileNo;
     currentGxact->offset = glog->header.thisOffset;
-   
-    /* release it if it's done */ 
+
+    /* release it if it's done */
     if (currentGxact->state == DTX_STATE_ROLLBACK_DONE ||
         currentGxact->state == DTX_STATE_COMMIT_DONE)
         releaseGxact();
@@ -625,7 +633,7 @@ void
 releaseGxact(void)
 {
     int i;
-    
+
     getTmLock();
     /* find slot of current transaction */
 
@@ -650,10 +658,10 @@ releaseGxact(void)
  * update transaction state, this method writes transaction and checkpoint log
  */
 void
-updateDtxState(DtxState state) 
+updateDtxState(DtxState state)
 {
     TMGXACT *gxact = currentGxact;
-    
+
     Assert( gxact != NULL );
 
     ereport(DEBUG1, (errmsg("updateDtxState: %s to state: %d", gxact->gid, state)));
@@ -678,14 +686,14 @@ updateDtxState(DtxState state)
         default:
             break;
     }
-    
+
     /* write tm log */
     if ( state != DTX_STATE_ABORT )
     {
-        TmLogRecord record={{0,0,"",TM_LOG_XACT,0,0},{}};
+        TmLogRecord record={{0,0,"",TM_LOG_XACT,0,0},0};
         strcpy(record.header.gid, gxact->gid);
         record.header.state = state;
-        
+
         /* synchronizing log file write */
         getTmLock();
         writeTmLogRecord(&record);
@@ -696,8 +704,8 @@ updateDtxState(DtxState state)
 
     /* set memory state */
     SET_DTX_STATE(gxact, state);
-    
-    getTmLock(); 
+
+    getTmLock();
     if (state == DTX_STATE_COMMIT_DONE || state == DTX_STATE_ROLLBACK_DONE)
         releaseGxact();
 
@@ -710,7 +718,7 @@ updateDtxState(DtxState state)
     else
         flushTmLogFile();
     releaseTmLock();
-    
+
     lastGxactState = state;
 }
 
@@ -721,10 +729,10 @@ generateGID(char *gid)
     time_t t = time(NULL);
     if (t == (time_t)-1)
     {
-        ereport(LOG, 
+        ereport(LOG,
             (errmsg("can not generate global id properly")));
     }
-    
+
     /* tm lock acquired by caller */
     sprintf( gid, "%ld-%.10d", t, (*shmGIDSeq)++);
 }
@@ -755,9 +763,9 @@ void
 recoverTM(void)
 {
     PGresult **pgresultSets;
-    
+
     duringRecovery = true;
-    
+
     /* intialize fts sync count */
     verifyFtsSyncCount();
 
@@ -765,13 +773,13 @@ recoverTM(void)
      * read and roll forward tm log
      */
     recoverTmLog();
-    
+
     /* phase 2 recovery
      * go through all in-double transactions and resolve them
      */
     if ( !phase2Recovery() )
         return;
-    
+
     /* check any un-resolved transactions in TM */
     if ( *shmNumGxacts != 0 )
     {
@@ -780,7 +788,7 @@ recoverTM(void)
         for ( i=0;i<*shmNumGxacts;i++ )
             ereport(LOG,
                     (errmsg("global xact %s pending on TM", shmGxactArray[i]->gid)));
-        ereport(FATAL, 
+        ereport(FATAL,
                 (errmsg("global xact is not clean in TM")));
     }
 
@@ -789,12 +797,12 @@ recoverTM(void)
     {
         /* still have in-doubt transactions in QE, save it to log */
         dumpRMxacts( pgresultSets );
-        ereport(FATAL, 
+        ereport(FATAL,
             (errmsg("TM recovery failure, in-doubt transaction left on QE")));
     }
-    
+
     cleanRMResultSets( pgresultSets );
-    
+
     /* finish recovery, do checkpoint */
     checkPointTm();
     duringRecovery = false;
@@ -810,8 +818,8 @@ phase2Recovery(void)
     PGresult **pgresultSets;
     bool needRecovery = recoverRMs( &pgresultSets );
     int i=0;
-   
-    /* check to see if any in-doubt transaction exists */ 
+
+    /* check to see if any in-doubt transaction exists */
     if ( *shmNumGxacts == 0 && !needRecovery )
     {
         checkPointTm();
@@ -820,12 +828,12 @@ phase2Recovery(void)
         currentGxact = NULL;
         return false;
     }
-    
+
     /* recover in-doubt transaction in TM */
     for ( i=0;i<*shmNumGxacts;i++ )
     {
         currentGxact = shmGxactArray[i];
-        
+
         switch (currentGxact->state)
         {
             case DTX_STATE_IN_PROGRESS:
@@ -839,7 +847,7 @@ phase2Recovery(void)
                 else
                     updateDtxState(DTX_STATE_ROLLBACK_DONE);
                 break;
-                
+
             case DTX_STATE_2P_COMMIT:
                 if ( checkRM( pgresultSets ) )
                     recoverCommittedDtx();
@@ -851,18 +859,18 @@ phase2Recovery(void)
             case DTX_STATE_COMMIT_DONE:
             case DTX_STATE_ROLLBACK_DONE:
             default:
-                ereport(LOG, 
+                ereport(LOG,
                     (errmsg("invalid state during recovery gid: %s, state: %d", currentGxact->gid, currentGxact->state)));
                 releaseGxact();
                 break;
         }
-        
+
         i--;
     }
-    
+
     cleanRMResultSets( pgresultSets );
     currentGxact = NULL;
-    
+
     return true;
 }
 
@@ -871,7 +879,7 @@ void
 cleanRMResultSets( PGresult **pgresultSets )
 {
     /* TODO: need to handle multiple dbs in a segment case */
-    /* 
+    /*
      int tolaldbs = CdbClusterDefinition->segment_count * CdbClusterDefinition->db_count;
      */
     int i=0;
@@ -888,7 +896,7 @@ bool
 dumpRMxacts( PGresult **pgresultSets )
 {
     int i=0,j;
-    
+
     PGresult *rs = pgresultSets[0];
     do
     {
@@ -896,7 +904,7 @@ dumpRMxacts( PGresult **pgresultSets )
         {
             for (j=0;j<rows;j++)
             {
-                ereport(ERROR, 
+                ereport(ERROR,
                     (errmsg("global xact %s pending on QE%d and not found in TM",
                         PQgetvalue(rs,j,0),i)));
             }
@@ -926,7 +934,7 @@ checkRM( PGresult **pgresultSets )
             }
         }
     } while ((rs = pgresultSets[++i]) != NULL);
-    
+
     return false;
 }
 
@@ -939,12 +947,18 @@ recoverRMs(PGresult ***pgresultSets)
     char cmdbuf[] = "select gid from pg_prepared_xacts";
     int i;
     PGresult *rs;
-    
+
     /* call to all QE to get in-doubt transactions */
-    if ( !CdbDoCommandInt(cmdbuf, false, (void ***)pgresultSets) )
+    PG_TRY();
     {
+        CdbDoCommandInt(cmdbuf, false, pgresultSets);
+    }
+    PG_CATCH();
+    {
+        /* need recovery */
         return true;
     }
+    PG_END_TRY();
 
     i=0;
     rs = (*pgresultSets)[0];
@@ -953,9 +967,9 @@ recoverRMs(PGresult ***pgresultSets)
         if (PQntuples(rs) != 0)
             /* need recovery */
             return true;
-           
+
     } while ((rs = (*pgresultSets)[++i]) != NULL);
-    
+
     /* do not need recovery */
     return false;
 }
@@ -965,7 +979,7 @@ void
 recoverRollbackedDtx(void)
 {
     /* send second phase commit to QE */
-    ereport(DEBUG1, 
+    ereport(DEBUG1,
         (errmsg("recovery: rollback DtxTransaction:  %s", currentGxact->gid)));
     updateDtxState(DTX_STATE_ROLLBACK);
     /* ignore the error during recovery */
@@ -978,7 +992,7 @@ void
 recoverCommittedDtx(void)
 {
     /* send second phase commit to QE */
-    ereport(DEBUG1, 
+    ereport(DEBUG1,
         (errmsg("recovery: commit phase 2 DtxTransaction:  %s", currentGxact->gid)));
     /* ignore the error during recovery */
     execCommand();

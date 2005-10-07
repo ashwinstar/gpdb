@@ -7,6 +7,7 @@
  *
  * $PostgreSQL: pgsql/src/backend/utils/misc/ps_status.c,v 1.23 2005/01/01 05:43:08 momjian Exp $
  *
+ * Portions Copyright (c) 2005, greenplum inc
  * Copyright (c) 2000-2005, PostgreSQL Global Development Group
  * various details abducted from various places
  *--------------------------------------------------------------------
@@ -92,6 +93,8 @@ static size_t ps_buffer_size;	/* space determined at run time */
 #endif   /* PS_USE_CLOBBER_ARGV */
 
 static size_t ps_buffer_fixed_size;		/* size of the constant prefix */
+
+static char ps_username[64];            /*CDB*/
 
 /* save the original argv[] location here */
 static int	save_argc;
@@ -237,6 +240,8 @@ init_ps_display(const char *username, const char *dbname,
 	Assert(username);
 	Assert(dbname);
 	Assert(host_info);
+	
+	StrNCpy(ps_username, username, sizeof(ps_username));    /*CDB*/
 
 #ifndef PS_USE_NONE
 	/* no ps display for stand-alone backend */
@@ -380,3 +385,14 @@ get_ps_display(void)
 
 	return ps_buffer + ps_buffer_fixed_size;
 }
+
+
+/* CDB: Get the "username" string saved by init_ps_display().  */
+const char *
+get_ps_display_username(void)
+{
+    return ps_username;
+}                               /* get_ps_display_username */
+
+
+

@@ -67,7 +67,7 @@
 #define ERRCODE_WARNING_PRIVILEGE_NOT_REVOKED		MAKE_SQLSTATE('0','1', '0','0','6')
 #define ERRCODE_WARNING_STRING_DATA_RIGHT_TRUNCATION	MAKE_SQLSTATE('0','1', '0','0','4')
 #define ERRCODE_WARNING_DEPRECATED_FEATURE	MAKE_SQLSTATE('0','1', 'P','0','1')
-#define ERRCODE_WARNING_CDB_INTERIM_FEATURE	MAKE_SQLSTATE('0','1', 'M','0','1')
+#define ERRCODE_WARNING_MPP_INTERIM_FEATURE	MAKE_SQLSTATE('0','1', 'M','0','1')
 
 /* Class 02 - No Data --- this is also a warning class per SQL99 */
 /* (do not use this class for failure conditions!) */
@@ -78,6 +78,9 @@
 #define ERRCODE_SQL_STATEMENT_NOT_YET_COMPLETE		MAKE_SQLSTATE('0','3', '0','0','0')
 
 /* Class 08 - Connection Exception */
+/*  (MPP: In the QD, these should be generated only for client<-->QD
+ *   communication errors, not for QD<-->QE communication errors.
+ */
 #define ERRCODE_CONNECTION_EXCEPTION		MAKE_SQLSTATE('0','8', '0','0','0')
 #define ERRCODE_CONNECTION_DOES_NOT_EXIST	MAKE_SQLSTATE('0','8', '0','0','3')
 #define ERRCODE_CONNECTION_FAILURE			MAKE_SQLSTATE('0','8', '0','0','6')
@@ -91,8 +94,8 @@
 
 /* Class 0A - Feature Not Supported */
 #define ERRCODE_FEATURE_NOT_SUPPORTED		MAKE_SQLSTATE('0','A', '0','0','0')
-#define ERRCODE_CDB_FEATURE_NOT_SUPPORTED	MAKE_SQLSTATE('0','A', 'M','0','0')
-#define ERRCODE_CDB_FEATURE_NOT_YET			MAKE_SQLSTATE('0','A', 'M','0','1')
+#define ERRCODE_MPP_FEATURE_NOT_SUPPORTED	MAKE_SQLSTATE('0','A', 'M','0','0')
+#define ERRCODE_MPP_FEATURE_NOT_YET			MAKE_SQLSTATE('0','A', 'M','0','1')
 
 /* Class 0B - Invalid Transaction Initiation */
 #define ERRCODE_INVALID_TRANSACTION_INITIATION		MAKE_SQLSTATE('0','B', '0','0','0')
@@ -178,6 +181,7 @@
 #define ERRCODE_SCHEMA_AND_DATA_STATEMENT_MIXING_NOT_SUPPORTED	MAKE_SQLSTATE('2','5', '0','0','7')
 #define ERRCODE_NO_ACTIVE_SQL_TRANSACTION	MAKE_SQLSTATE('2','5', 'P','0','1')
 #define ERRCODE_IN_FAILED_SQL_TRANSACTION	MAKE_SQLSTATE('2','5', 'P','0','2')
+#define ERRCODE_MPP_OPERATION_CANCELED      MAKE_SQLSTATE('2','5', 'M','0','1')
 
 /* Class 26 - Invalid SQL Statement Name */
 /* (we take this to mean prepared statements) */
@@ -294,7 +298,7 @@
 #define ERRCODE_INVALID_SCHEMA_DEFINITION	MAKE_SQLSTATE('4','2', 'P','1','5')
 #define ERRCODE_INVALID_TABLE_DEFINITION	MAKE_SQLSTATE('4','2', 'P','1','6')
 #define ERRCODE_INVALID_OBJECT_DEFINITION	MAKE_SQLSTATE('4','2', 'P','1','7')
-#define ERRCODE_CDB_COMMAND_ERROR			MAKE_SQLSTATE('4','2', 'M','0','0')
+#define ERRCODE_MPP_COMMAND_ERROR			MAKE_SQLSTATE('4','2', 'M','0','0')
 
 /* Class 44 - WITH CHECK OPTION Violation */
 #define ERRCODE_WITH_CHECK_OPTION_VIOLATION MAKE_SQLSTATE('4','4', '0','0','0')
@@ -330,6 +334,7 @@
 #define ERRCODE_IO_ERROR					MAKE_SQLSTATE('5','8', '0','3','0')
 #define ERRCODE_UNDEFINED_FILE				MAKE_SQLSTATE('5','8', 'P','0','1')
 #define ERRCODE_DUPLICATE_FILE				MAKE_SQLSTATE('5','8', 'P','0','2')
+#define ERRCODE_MPP_QD_QE_CONNECTION_ERROR  MAKE_SQLSTATE('5','8', 'M','0','1')
 
 /* Class F0 - Configuration File Error (PostgreSQL-specific error class) */
 #define ERRCODE_CONFIG_FILE_ERROR			MAKE_SQLSTATE('F','0', '0','0','0')
@@ -344,4 +349,11 @@
 #define ERRCODE_INTERNAL_ERROR				MAKE_SQLSTATE('X','X', '0','0','0')
 #define ERRCODE_DATA_CORRUPTED				MAKE_SQLSTATE('X','X', '0','0','1')
 #define ERRCODE_INDEX_CORRUPTED				MAKE_SQLSTATE('X','X', '0','0','2')
-#define ERRCODE_CDB_INTERNAL_ERROR			MAKE_SQLSTATE('X','X', 'M','0','0')
+#define ERRCODE_MPP_INTERNAL_ERROR			MAKE_SQLSTATE('X','X', 'M','0','0')
+
+/* deprecated... */
+#define ERRCODE_CDB_FEATURE_NOT_SUPPORTED	ERRCODE_MPP_FEATURE_NOT_SUPPORTED
+#define ERRCODE_CDB_FEATURE_NOT_YET			ERRCODE_MPP_FEATURE_NOT_YET
+#define ERRCODE_CDB_COMMAND_ERROR			ERRCODE_MPP_COMMAND_ERROR
+#define ERRCODE_CDB_INTERNAL_ERROR			ERRCODE_MPP_INTERNAL_ERROR
+

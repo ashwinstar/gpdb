@@ -97,7 +97,9 @@ createdb(CreatedbStmt *stmt)
 	char		buf[2 * MAXPGPATH + 100];
 #endif
 
-	bool hasDispatched = false;
+	struct Gang    *primaryGang = NULL;
+    struct Gang    *mirrorGang = NULL;
+
 	bool shouldDispatch =  (Mpp_role == MPP_ROLE_DISPATCH);
 	
 	if (shouldDispatch)
@@ -388,8 +390,8 @@ createdb(CreatedbStmt *stmt)
 			 * This call returns after launching the threads that send the command to the appropriate
 			 * segdbs.  It does not wait for them to finish.
 			 */
-			CdbDispatchCommandInt(buffer.data, true, NULL );
-			hasDispatched = true;
+			cdbdisp_dispatchCommand(buffer.data, true, NULL,
+                                    &primaryGang, &mirrorGang);
 			pfree(buffer.data);
 		}
 	}
@@ -568,45 +570,12 @@ createdb(CreatedbStmt *stmt)
 	/* Close pg_database, but keep exclusive lock till commit */
 	heap_close(pg_database_rel, NoLock);
 
-	if ( hasDispatched )
-	{
-		char *message;
-		char *szCommand;
-
-		CdbDispatchResults* results;
-
-		/*
-		 * We successfully completed on the Dispatcher.  Now check the results
-		 * from the qExecs.  This internally waits for them to all finish.
-		 */
-		results = CdbCheckDispatchResult();
-
-
-		message = CdbDumpDispatchResults(results, true);
-		szCommand = results->szCommand;
-		if ( szCommand == NULL )
-			szCommand = "";
-		Assert( message != NULL );
-		elog( DEBUG5,
-				"mppexec command results for \"%s\": %s",
-				szCommand, message );
-
-		pfree(message);
-
-		if ( !results->success )
-		{
-			char *message = CdbDumpDispatchResults(results, false);
-			ereport( ERROR,
-						(errcode( ERRCODE_CDB_COMMAND_ERROR ),
-						errmsg("%s",
-						message
-					)));
-				
-		}
-
-
-		DestroyCdbDispatchResults( results );
-	}
+    /*
+     * We successfully completed our work.  Now check the results from the
+     * qExecs, if dispatched.  This waits for them to all finish, and exits
+     * via ereport(ERROR,...) if unsuccessful.
+     */
+    cdbdisp_finishCommand(primaryGang, mirrorGang);
 }
 
 
@@ -672,11 +641,11 @@ dropdb(const char *dbname)
 				(errcode(ERRCODE_OBJECT_IN_USE),
 			   errmsg("database \"%s\" is being accessed by other users",
 					  dbname)));
-					  
-					  
+					
+					
 	/*
-	 * Free the database on the segDBs 
-	 * 
+	 * Free the database on the segDBs
+	 *
 	 */
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{

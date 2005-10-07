@@ -287,7 +287,9 @@ DefineRelation(CreateStmt *stmt, char relkind)
 	int			i;
 	AttrNumber	attnum;
 
-	bool hasDispatched = false;
+    struct Gang    *primaryGang = NULL;
+    struct Gang    *mirrorGang = NULL;
+
 	bool shouldDispatch =  Mpp_role == MPP_ROLE_DISPATCH && !IsBootstrapProcessingMode() && relkind != RELKIND_SEQUENCE && relkind != RELKIND_VIEW;
 
 	/*
@@ -458,7 +460,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 		 * disallow inheritance for now, as the optimizer doesn't support them.
 		 */
 		if (stmt->inhRelations != NIL)
-			ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
+			ereport(ERROR, (errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
                             errmsg("Distributed tables cannot use inheritance")));
 		/*
 		 * Check to see if we support the datatypes
@@ -469,15 +471,15 @@ DefineRelation(CreateStmt *stmt, char relkind)
 			
 			ColumnDef  *colDef = lfirst(listptr);
 			
-			foreach(listp2, colDef->typename->names) 
+			foreach(listp2, colDef->typename->names)
 			{
 				Value * v = lfirst(listp2);
 				char * n = NULL;
 				if (v)
 					n = v->val.str;
-				 
+				
 	
-			 
+			
 			 	if (n)
 				if (strcmp(n,"oid")==0 ||
 					strcmp(n,"path") == 0 ||
@@ -515,7 +517,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 					ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 					  errmsg("Datatype is not yet supported by Bizgres MPP")));
-					  
+					
 				if (colDef->typename->arrayBounds != NIL)
 					ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
@@ -568,13 +570,13 @@ DefineRelation(CreateStmt *stmt, char relkind)
 			 * This call returns after launching the threads that send the command to the appropriate
 			 * segdbs.  It does not wait for them to finish.
 			 */
-			CdbDispatchCommand(buffer.data, true );
-			hasDispatched = true;
+			cdbdisp_dispatchCommand(buffer.data, true, NULL,
+                                    &primaryGang, &mirrorGang);
 			pfree(buffer.data);
 		}
 	}
 
-	if (Mpp_role == MPP_ROLE_EXECUTE) 
+	if (Mpp_role == MPP_ROLE_EXECUTE)
 	{
 		elog( DEBUG1,"CdbRole Execute of CREATE TABLE, relationid %d",stmt->relOid);
 		Assert(stmt->relOid != 0);
@@ -677,19 +679,13 @@ DefineRelation(CreateStmt *stmt, char relkind)
 	 */
 	relation_close(rel, NoLock);
 
-	if ( hasDispatched )
+	if ( primaryGang )
 	{
-		char *message;
-		char *szCommand;
-		
-		CdbDispatchResults* results;
 
-		 
-
-		if ( Mpp_role == MPP_ROLE_DISPATCH && stmt != 0 && relkind == RELKIND_RELATION)
+        if ( Mpp_role == MPP_ROLE_DISPATCH && stmt != 0 && relkind == RELKIND_RELATION)
 				{
 					/* dispatch node needs to update policy */
-							 
+							
 					MppPolicy * policy = stmt->policy;
 					
 					if (policy)
@@ -698,38 +694,13 @@ DefineRelation(CreateStmt *stmt, char relkind)
 						elog( NOTICE,"Table created in dispatch mode has no policy");
 				}
 		
-		 
-		/*
-		 * We successfully completed on the Dispatcher.  Now check the results
-		 * from the qExecs.  This internally waits for them to all finish.
-		 */
-		results = CdbCheckDispatchResult();
-
-
-		message = CdbDumpDispatchResults(results, true);
-		szCommand = results->szCommand;
-		if ( szCommand == NULL )
-			szCommand = "";
-		Assert( message != NULL );
-		elog( DEBUG5,
-				"mppexec command results for \"%s\": %s",
-				szCommand, message );
-
-		pfree(message);
-
-		if ( !results->success )
-		{
-			char *message = CdbDumpDispatchResults(results, false);
-			ereport( ERROR,
-						(errcode( ERRCODE_CDB_COMMAND_ERROR ),
-						errmsg("%s",
-						message
-					)));
-				
-		}
-
-
-		DestroyCdbDispatchResults( results );
+		
+        /*
+         * We successfully completed on the Dispatcher.  Now check the results
+         * from the qExecs.  This waits for them to all finish, and exits
+         * via ereport(ERROR,...) if unsuccessful.
+         */
+        cdbdisp_finishCommand(primaryGang, mirrorGang);
 	}
 
 
@@ -2059,7 +2030,7 @@ AlterTable(AlterTableStmt *stmt)
 	ATController(relation_openrv(stmt->relation, AccessExclusiveLock),
 				 stmt->cmds,
 				 interpretInhOption(stmt->relation->inhOpt));
-				 
+				
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 		CdbDispatchUtilityStatement((Node *)stmt);
 }
@@ -3168,15 +3139,15 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 	{
 			ListCell *listp2;
 			
-			foreach(listp2, colDef->typename->names) 
+			foreach(listp2, colDef->typename->names)
 			{
 				Value * v = lfirst(listp2);
 				char * n = NULL;
 				if (v)
 					n = v->val.str;
-				 
+				
 	
-			 
+			
 			 	if (n)
 				if (strcmp(n,"oid")==0 ||
 					strcmp(n,"path") == 0 ||
@@ -3214,7 +3185,7 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 					ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 					  errmsg("Datatype is not yet supported by Bizgres MPP")));
-					  
+					
 				if (colDef->typename->arrayBounds != NIL)
 					ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),

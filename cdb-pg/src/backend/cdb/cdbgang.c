@@ -1,50 +1,33 @@
-
 /*-------------------------------------------------------------------------
  *
  * cdbgang.c
  *	  Query Executor Factory for gangs of QEs
  *
- * Copyright (c) 2005, Greenplum
+ * Copyright (c) 2005, greenplum inc
  *
- *
+ * $Id$
  *
  *-------------------------------------------------------------------------
  */
-
-
 #include "postgres.h"
 
-#include <ctype.h>
+#include <unistd.h>                 /* getpid() */
+#include <arpa/inet.h>              /* inet_ntoa() */
 #include <pthread.h>
 
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-
-#include <unistd.h>
-
 #include "libpq-fe.h"
-#include "libpq-int.h"
-#include "pqexpbuffer.h"
-#include "fmgr.h"
-#include "funcapi.h"
-#include "miscadmin.h"
-#include "lib/stringinfo.h"
+#include "miscadmin.h"              /* MyDatabaseId */
+#include "commands/dbcommands.h"    /* get_database_name() */
 
-#include "nodes/primnodes.h"
-#include "nodes/execnodes.h"
-#include "commands/dbcommands.h"
-
-
-#include "cdb/cdbcat.h"
-#include "cdb/cdbutil.h"
-#include "cdb/cdblink.h"
-#include "cdb/cdbmotion.h"
-#include "cdb/cdbconn.h"
-#include "cdb/cdbvars.h"
-#include "cdb/cdbgang.h"
+#include "cdb/cdbconn.h"            /* SegmentDatabaseDescriptor */
+#include "cdb/cdbdisp.h"            /* cdbdisp_destroyDispatchResults() */
 #include "cdb/cdbfts.h"
-#include "cdb/cdbtm.h"
+#include "cdb/cdbgang.h"            /* me */
+#include "cdb/cdbmotion.h"          /* CdbProcess */
+#include "cdb/cdbtm.h"              /* discardDtxTransaction() */
+#include "cdb/cdbutil.h"            /* CdbComponentDatabaseInfo */
+#include "cdb/cdbvars.h"            /* Mpp_role, etc. */
+
 
 /*
  *	thread_DoConnect is the thread proc used to perform the connection to one of the qExecs.
@@ -101,6 +84,7 @@ static void addSegDBToConnThreadPool(DoConnectParms * ParmsAr, int *segdbCount,
 
 static char *myDatabaseName = NULL;
 
+
 /*
  * creates a new gang by logging on a session to each segDB involved
  *
@@ -110,7 +94,6 @@ createGang(GangType type, int size, int content)
 {
 	Gang	   *newGangDefinition;
 	MemoryContext oldContext;
-	MemoryContext permanentContext = TopMemoryContext;
 	int			successful_connections = 0;
 
 	SegmentDatabaseDescriptor *segdbDesc;
@@ -280,32 +263,19 @@ createGang(GangType type, int size, int content)
 		if (segdbDesc->conn == NULL)
 		{
 			/*
-			 * The error message in segdbDesc->error_message
-			 * was allocated with malloc, since it was done in a thread,
-			 * and we cannot use palloc in a thread, because it is not thread safe.
-			 * So we need to make a palloc copy of it here, and free the original.
-			 */
-			char	   *pszErrorMessage = segdbDesc->error_message;
-
-			Assert(pszErrorMessage != NULL);
-			oldContext = MemoryContextSwitchTo(permanentContext);
-			segdbDesc->error_message = pstrdup(pszErrorMessage);
-			MemoryContextSwitchTo(oldContext);
-			free(pszErrorMessage);
-
-			/*
 			 * Set a warning for failed connections.  Complete failures
 			 * are taken care of later.
 			 */
 			ereport(WARNING,
 					(errcode(ERRCODE_WARNING),
-					 errmsg
-					 ("MPP GANG SETUP--- Could not establish connection with segment database "
-					  "segindex %d isprimary %c dbname %s", q->segindex,
-					  (q->isprimary ? 't' : 'f'), myDatabaseName),
-					 errdetail("%s", segdbDesc->error_message)));
+                    errmsg("Unable to connect to segment database: "
+                            "dbname=%s  %s",
+                            myDatabaseName,
+					        segdbDesc->error_message.data)));
 
-			newGangDefinition->all_valid_segdbs_connected = false;
+            resetPQExpBuffer(&segdbDesc->error_message);
+			
+            newGangDefinition->all_valid_segdbs_connected = false;
 		}
 		else
 		{
@@ -316,8 +286,6 @@ createGang(GangType type, int size, int content)
 			/*
 			 * segDesc->connected_count++;
 			 */
-
-
 		}
 
 
@@ -335,43 +303,23 @@ createGang(GangType type, int size, int content)
 	{
 		for (i = 0; i < segdb_count; i++)
 		{
-			StringInfoData buffer;
-
 			segdbDesc = &newGangDefinition->db_descriptors[i];
-			/*
-			 * q = segdbDesc->segment_database_info;
-			 */
 
 			if (segdbDesc->conn != NULL)
 				continue;
 
 			/*
-			 * Initialize the StringInfo object using our "desired" memory
-			 * context.  Future expansions of this StringInfo will occur in
-			 * the "desired" context.
-			 */
-			oldContext = MemoryContextSwitchTo(permanentContext);
-			initStringInfo(&buffer);
-			MemoryContextSwitchTo(oldContext);
-
-			appendStringInfo(&buffer,
-						"CDBGANG --- Could not establish connection with any"
-							 " database for segindex %d", i);
-
-			/*
-			 * claenup and rollback current DTM transaction
+			 * cleanup and rollback current DTM transaction
 			 */
 			discardDtxTransaction();
 
 			/* clean the gang before error out */
 			disconnectAndDestroyGang(newGangDefinition);
-			segdbDesc->error_message = buffer.data;
 
 			ereport(FATAL,
-					(errcode
-				 (ERRCODE_SQLSERVER_REJECTED_ESTABLISHMENT_OF_SQLCONNECTION),
-					 errmsg(buffer.data),
-					 errdetail("see previous warnings or server log")));
+					(errcode(ERRCODE_SQLSERVER_REJECTED_ESTABLISHMENT_OF_SQLCONNECTION),
+                     errmsg("createGang could not establish connection with any"
+                            " database for segindex %d", i)));
 		}
 	}
 
@@ -437,7 +385,7 @@ buildGangDefinition(GangType type, int size, int content)
 	newGangDefinition = (Gang *) palloc0(sizeof(Gang));
 
 	newGangDefinition->type = type;
-
+    newGangDefinition->dispatchResults = NULL;
 
 	switch (type)
 	{
@@ -481,7 +429,7 @@ buildGangDefinition(GangType type, int size, int content)
 		elog(ERROR, "building Gang:  MPP schema not populated");
 		return NULL;
 	}
-    
+
     /* if mirroring is not configured */
     if (cdb_component_dbs->total_segment_dbs == cdb_component_dbs->total_segments)
     {
@@ -527,12 +475,7 @@ buildGangDefinition(GangType type, int size, int content)
 	 * We loop through the segment_db_info.  Each item has a segindex.
 	 * They are sorted by segindex, and there can be > 1 segment_db_info for
 	 * a given segindex (currently, there can be 1 or 2)
-	 * segDesc points to the SegmentDescriptor for the segindex
 	 */
-	/*
-	 * segDesc = ClusterDefn->segment_descriptors - 1;
-	 */
-
 
 	for (i = 0; i < cdb_component_dbs->total_segment_dbs; i++)
 	{
@@ -609,15 +552,7 @@ buildGangDefinition(GangType type, int size, int content)
 				{
 					segdbDesc = &newGangDefinition->db_descriptors[seg_count];
 
-					segdbDesc->segment_descriptor = NULL;
-					segdbDesc->segment_database_info = p;
-					segdbDesc->conn = NULL;
-					memset(&segdbDesc->thread, 0, sizeof(pthread_t));
-					segdbDesc->error_message = NULL;
-					segdbDesc->cmdTuples = 0;
-					segdbDesc->resultStatus = PGRES_COMMAND_OK;
-					segdbDesc->cmdStatus = NULL;
-					segdbDesc->segindex = p->segindex;
+                    cdbconn_initSegmentDescriptor(segdbDesc, p);
 
 					seg_count++;
 					if (type == GANGTYPE_READER && size == 1)
@@ -741,7 +676,6 @@ thread_DoConnect(void *arg)
 	for (i = 0; i < db_count; i++)
 	{
 		PQExpBufferData buffer;
-		PGconn	   *conn;
 
 		segdbDesc = segdbDescPtrArray[i];
 		q = segdbDesc->segment_database_info;
@@ -763,68 +697,23 @@ thread_DoConnect(void *arg)
 						  "options='-c mpp_session_role=EXECUTE -c mpp_segment=%d -c mpp_max_packet_size=%d' ",
 						  q->segindex, Mpp_max_packet_size);
 
-		if (q->hostname == NULL)
-			appendPQExpBufferStr(&buffer, "host='' ");
-		else if (isdigit(q->hostname[0]))
-			appendPQExpBuffer(&buffer, "hostaddr=%s ", q->hostname);
-		else
-			appendPQExpBuffer(&buffer, "host=%s ", q->hostname);
-
-		appendPQExpBuffer(&buffer, "port=%u ", q->port);
-		appendPQExpBuffer(&buffer, "dbname=%s ", myDatabaseName);
-		appendPQExpBuffer(&buffer, "user=%s ", q->mppsuperuser);
-
-		if (q->mppsuperpswd != NULL)
-			appendPQExpBuffer(&buffer, "password='%s' ", q->mppsuperpswd);
-
-
-		/*
-		 * Call libpq to connect
-		 */
-		conn = PQconnectdb(buffer.data);
-
-		if (PQstatus(conn) == CONNECTION_BAD)
+		if (cdbconn_doConnect(segdbDesc, buffer.data))
 		{
-			/*
-			 * When we get an error, we strdup it here.  When the main thread
-			 * checks for errors, it makes a palloc copy of this, and frees
-			 * this.
-			 */
-			segdbDesc->error_message = strdup(PQerrorMessage(conn));
-			PQfinish(conn);
-			conn = NULL;
-		}
-		else
-		{
-			/*
-			 * q->motionListener = PQmotionListener(conn);
-			 */
-			segdbDesc->motionListener = PQmotionListener(conn);
-
-			/*
-			 * Don't use elog, it's not thread-safe
-			 */
-
-			/*
-			 * if (DEBUG3 >= log_min_messages)
-			 * fprintf(stderr, "createGang: motionListener for this connection is %d", segdbDesc->motionListener);
-			 */
-			if (segdbDesc->motionListener == -1)
-			{
-				segdbDesc->error_message =
-					"QE Connection does not contain a valid motion listener port.";
-				PQfinish(conn);
-				conn = NULL;
-			}
-
+            if (segdbDesc->motionListener == -1)
+            {
+                appendPQExpBuffer(&segdbDesc->error_message,
+                    "(%s) Connection does not contain a valid motion listener port.\n",
+                    segdbDesc->whoami);
+                PQfinish(segdbDesc->conn);
+                segdbDesc->conn = NULL;
+            }
 		}
 
-		segdbDesc->conn = conn;
 		free(buffer.data);
 	}
 
 	return (NULL);
-}
+}                               /* thread_DoConnect */
 
 
 /*
@@ -862,7 +751,6 @@ allocateGang(GangType type, int size, int content)
 	elog(DEBUG4, "allocateGang: allocatedReaderGangsN %d, availableReaderGangsN %d",
 		 list_length(allocatedReaderGangsN),
 		 list_length(availableReaderGangsN));
-
 
 	oldContext = MemoryContextSwitchTo(TopMemoryContext);
 
@@ -994,7 +882,7 @@ allocateGang(GangType type, int size, int content)
 			break;
 	}
 
-	elog(DEBUG4,
+    elog(DEBUG4,
 		 "allocateGang on return: allocatedReaderGangsN %d, availableReaderGangsN %d",
 		 list_length(allocatedReaderGangsN),
 		 list_length(availableReaderGangsN));
@@ -1009,7 +897,7 @@ allocateGang(GangType type, int size, int content)
 	return gp;
 }
 
-SegmentDatabaseDescriptorPtr
+struct SegmentDatabaseDescriptor *
 getSegmentDescriptorFromGang(const Gang * gp, int seg)
 {
 
@@ -1017,7 +905,7 @@ getSegmentDescriptorFromGang(const Gang * gp, int seg)
 
 	if (gp == NULL)
 		return NULL;
-
+		
 	for (i = 0; i < gp->size; i++)
 	{
 		if (gp->db_descriptors[i].segindex == seg)
@@ -1036,7 +924,7 @@ getCdbProcessList(Gang * gang)
 
 	Assert(Mpp_role == MPP_ROLE_DISPATCH && Mpp_is_primary);
 	Assert(gang != NULL);
-	elog(DEBUG1, "getCdbProcessList, gangtype = %d, gangsize = %d", gang->type, gang->size);
+	elog(DEBUG4, "getCdbProcessList, gangtype = %d, gangsize = %d", gang->type, gang->size);
 
 	if (gang != NULL && gang->type != GANGTYPE_UNALLOCATED)
 	{
@@ -1071,7 +959,7 @@ getCdbProcessList(Gang * gang)
 			{
 				elog(FATAL, "getCdbProcessList: gethostbyname() failed for host '%s'", qeinfo->hostname);
 			}
-
+			
 			/*
 			 * We want the n-th element of the list to be the segDB that handled content n.
 			 * And if no segDb is available (down mirror), we want it to be null.
@@ -1089,7 +977,6 @@ getCdbProcessList(Gang * gang)
 				{
 					list = lappend(list, NULL);
 					listsize++;
-
 				}
 
 
@@ -1177,7 +1064,6 @@ getCdbProcessesForQD(int isPrimary)
 }
 
 
-
 void
 cleanupGang(Gang * gp)
 {
@@ -1207,13 +1093,14 @@ cleanupGang(Gang * gp)
 
 			PGresult   *pRes;
 			int			retry = 0;
-			ExecStatusType stat;
-
 			while (NULL != (pRes = PQgetResult(segdbDesc->conn)))
 			{
-				elog(WARNING, "Leftover results from gang a freeGang time");
-				stat = PQresultStatus(pRes);
-				elog(WARNING, "PGresultStatus = %d", stat);
+                ExecStatusType  stat = PQresultStatus(pRes);
+
+                elog(LOG, "(%s) Leftover result at freeGang time: %s %s",
+                     segdbDesc->whoami,
+                     PQresStatus(stat),
+                     PQerrorMessage(segdbDesc->conn));
 
 				PQclear(pRes);
 				if (stat == PGRES_FATAL_ERROR)
@@ -1223,16 +1110,38 @@ cleanupGang(Gang * gp)
 				retry++;
 				if (retry > 20)
 				{
-					elog(NOTICE, "freeGang called when a gang member is still busy, and waiting didn't help, trying to destroy the gang");
+					elog(LOG, "freeGang called when a gang member is still busy, and waiting didn't help, trying to destroy the gang");
 					disconnectAndDestroyGang(gp);
 					elog(FATAL, "freeGang called when a gang member is still busy.  Fatal error.");
+                    return;
 				}
-
+				
 			};
 
 		}
 
+        /* QE is no longer associated with a slice. */
+        cdbconn_setSliceIndex(segdbDesc, -1);
+
 	}
+
+    /*
+     * Free CdbDispatchResults.
+     */
+    if (gp->dispatchResults)
+    {
+        StringInfoData msg;
+
+        initStringInfo(&msg);
+        if (!cdbdisp_dumpGangResults(gp, &msg, false))
+        {
+            elog(LOG, "Leftover result at freeGang time: %s", msg.data);
+        }
+        pfree(msg.data);
+
+        cdbdisp_destroyGangResults(gp);
+    }
+
 	elog(DEBUG5, "cleanupGang done");
 
 }
@@ -1246,7 +1155,7 @@ disconnectAndDestroyGang(Gang * gp)
 	if (gp == NULL)
 		return;
 
-	elog(DEBUG2, "disconnectAndDestroyGang");
+	elog(DEBUG5, "disconnectAndDestroyGang");
 	/*
 	 * Loop through the segment_database_descriptors array and, for each
 	 * SegmentDatabaseDescriptor:
@@ -1270,28 +1179,22 @@ disconnectAndDestroyGang(Gang * gp)
 			PQtransactionStatus(segdbDesc->conn);
 
 			elog(DEBUG2,
-				 "Finishing connection with segindex %d isprimary %c (current status = %d)",
-				 segdbDesc->segment_database_info->segindex,
-				 (segdbDesc->segment_database_info->segindex ? 't' : 'f'),
-				 status);
+				 "Finishing connection with %s; transaction status %d",
+				 segdbDesc->whoami, status);
 			PQfinish(segdbDesc->conn);
 
 			segdbDesc->conn = NULL;
 		}
 
-		if (segdbDesc->error_message)
-		{
-			/*
-			 * pfree(segdbDesc->error_message);
-			 */
-			segdbDesc->error_message = NULL;
-		}
-
-
+        /* Free memory owned by the segdbDesc. */
+        cdbconn_termSegmentDescriptor(segdbDesc);
 	}
 
 
-
+    /*
+     * Free CdbDispatchResults.
+     */
+    cdbdisp_destroyGangResults(gp);
 
 	/*
 	 * Discard the segment array and the cluster descriptor
@@ -1304,7 +1207,7 @@ disconnectAndDestroyGang(Gang * gp)
 	/*
 	 * this is confusing, gp is local variable, no need to null it. gp = NULL;
 	 */
-	elog(DEBUG2, "disconnectAndDestroyGang done");
+	elog(DEBUG5, "disconnectAndDestroyGang done");
 
 
 }
@@ -1364,7 +1267,6 @@ freeGangs(void)
 		}
 	}
 
-
 	MemoryContextSwitchTo(oldContext);
 
 	elog(DEBUG2, "freeGangs done: allocatedReaderGangsN %d, availableReaderGangsN %d",
@@ -1379,8 +1281,9 @@ disconnectAndDestroyAllGangs(void)
 {
 	Gang	   *gp;
 
-	elog(DEBUG2, "disconnectAndDestroyAllGangs");
-	if (allocatedReaderGangsN != NIL)
+	elog(DEBUG5, "disconnectAndDestroyAllGangs");
+
+    if (allocatedReaderGangsN != NIL)
 	{
 		gp = linitial(allocatedReaderGangsN);
 		while (gp != NULL)
@@ -1441,7 +1344,8 @@ disconnectAndDestroyAllGangs(void)
 	primaryWriterGang = NULL;
 	disconnectAndDestroyGang(mirrorWriterGang);
 	mirrorWriterGang = NULL;
-	elog(DEBUG2, "disconnectAndDestroyAllGangs done");
+
+    elog(DEBUG5, "disconnectAndDestroyAllGangs done");
 }
 
 
@@ -1478,16 +1382,13 @@ reconnectSegDB(void *p_failedDB)
 	 */
 	if (PQstatus(failedDB->conn) == CONNECTION_BAD)
 	{
-        elog(DEBUG1, "FTS: segdb %d dbname %s host %s port %d reconnect failed with error %s",
-                    failedDB->segment_database_info->dbid,
-                    orig_conn->dbName,
-                    failedDB->segment_database_info->hostname,
-                    failedDB->segment_database_info->port,
-                    failedDB->error_message);
-                
+        elog(LOG, "FTS: dbname %s reconnect failed. %s",
+             orig_conn->dbName,
+             failedDB->error_message.data);
+
 		PQfinish(failedDB->conn);
 		ret = false;
-        
+
 		/*
 		 * set the orginal db back, otherwise it is set to NULL which may cause
 		 * * dispatch code to fail.
@@ -1496,7 +1397,7 @@ reconnectSegDB(void *p_failedDB)
 			failedDB->conn = orig_conn;
 		else
 			PQfinish(orig_conn);
-    }
+	}
 	else
 	{
 		elog(LOG, "FTS: segdb %d reconnect ok", failedDB->segment_database_info->dbid);
@@ -1559,3 +1460,5 @@ isGangExisted(void)
 			allocatedReaderGangs1 != NIL ||
 			availableReaderGangs1 != NIL);
 }
+
+

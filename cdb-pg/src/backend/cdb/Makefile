@@ -18,8 +18,9 @@ OBJCOPY ?= objcopy
 SUBDIRS := motion
 SUBDIROBJS := $(SUBDIRS:%=%/SUBSYS.o)
 
-OBJS = cdbvars.o cdbplan.o cdbllize.o cdbcat.o cdbutil.o cdblink.o \
-	   cdbdisp.o cdbsrlz.o cdbhash.o cdbheap.o cdbagg.o cdbmutate.o \
+OBJS = cdbvars.o cdbplan.o cdbllize.o cdbcat.o cdbutil.o \
+	   cdblink.o cdbconn.o cdbdisp.o cdbdispatchresult.o \
+	   cdbsrlz.o cdbhash.o cdbheap.o cdbagg.o cdbmutate.o \
 	   cdbaggtactic.o cdbaggmutate.o cdbanalyze.o cdbcopy.o cdblimmutate.o \
 	   cdbsubplan.o cdbtm.o cdbtmlog.o \
 	   cdbpath.o cdbpathlocus.o cdbpathtoplan.o \

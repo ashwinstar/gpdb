@@ -60,7 +60,6 @@
 #include "utils/pg_locale.h"
 #include "pgstat.h"
 #include "cdb/cdbvars.h"
-#include "cdb/cdbdisp.h"
 
 
 #ifndef PG_KRB_SRVTAB
