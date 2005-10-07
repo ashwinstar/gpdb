@@ -67,6 +67,7 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
     CdbComponentDatabaseInfo   *q = segdbDesc->segment_database_info;
     PQExpBufferData             buffer;
     int                         snipoff;
+	char						*tmp;
 
     /*
      * We use PQExpBufferData instead of StringInfoData
@@ -75,11 +76,15 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
      * thread safe.  We cannot call elog or ereport either for the
      * same reason.
      */
-    initPQExpBuffer(&buffer);
+	initPQExpBuffer(&buffer);
 
     /* Get the database name. */
-    free(segdbDesc->dbname);
-    segdbDesc->dbname = get_database_name(MyDatabaseId);
+	free(segdbDesc->dbname);
+	/* get_database_name returns a palloc()ed result, we want to
+	 * control the allocation differently */
+	tmp = get_database_name(MyDatabaseId);
+	segdbDesc->dbname = strdup(tmp);
+	pfree(tmp);
 
     /*
      * Build the connection string
