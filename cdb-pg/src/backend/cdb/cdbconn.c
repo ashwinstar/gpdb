@@ -13,8 +13,6 @@
 #include "postgres.h"
 
 #include "libpq-fe.h"
-#include "miscadmin.h"              /* MyDatabaseId */
-#include "commands/dbcommands.h"    /* get_database_name() */
 
 #include "cdb/cdbconn.h"            /* me */
 #include "cdb/cdbutil.h"            /* CdbComponentDatabaseInfo */
@@ -62,12 +60,12 @@ cdbconn_termSegmentDescriptor(SegmentDatabaseDescriptor *segdbDesc)
 /* Connect to a QE as a client via libpq. */
 bool                            /* returns true if connected */
 cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
+                  const char                   *dbname,
                   const char                   *options)
 {
     CdbComponentDatabaseInfo   *q = segdbDesc->segment_database_info;
     PQExpBufferData             buffer;
     int                         snipoff;
-	char						*tmp;
 
     /*
      * We use PQExpBufferData instead of StringInfoData
@@ -76,15 +74,11 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
      * thread safe.  We cannot call elog or ereport either for the
      * same reason.
      */
-	initPQExpBuffer(&buffer);
+    initPQExpBuffer(&buffer);
 
-    /* Get the database name. */
-	free(segdbDesc->dbname);
-	/* get_database_name returns a palloc()ed result, we want to
-	 * control the allocation differently */
-	tmp = get_database_name(MyDatabaseId);
-	segdbDesc->dbname = strdup(tmp);
-	pfree(tmp);
+    /* Save the database name. */
+    free(segdbDesc->dbname);
+    segdbDesc->dbname = strdup(dbname);
 
     /*
      * Build the connection string

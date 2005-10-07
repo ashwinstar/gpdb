@@ -76,6 +76,7 @@ cdbconn_termSegmentDescriptor(SegmentDatabaseDescriptor *segdbDesc);
 /* Connect to a QE as a client via libpq. */
 bool                            /* returns true if connected */
 cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
+                  const char                   *dbname,
                   const char                   *options);
 
 

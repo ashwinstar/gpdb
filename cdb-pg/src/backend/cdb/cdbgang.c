@@ -697,7 +697,7 @@ thread_DoConnect(void *arg)
 						  "options='-c mpp_session_role=EXECUTE -c mpp_segment=%d -c mpp_max_packet_size=%d' ",
 						  q->segindex, Mpp_max_packet_size);
 
-		if (cdbconn_doConnect(segdbDesc, buffer.data))
+		if (cdbconn_doConnect(segdbDesc, myDatabaseName, buffer.data))
 		{
             if (segdbDesc->motionListener == -1)
             {
@@ -754,7 +754,11 @@ allocateGang(GangType type, int size, int content)
 
 	oldContext = MemoryContextSwitchTo(TopMemoryContext);
 
-	switch (type)
+    /* Make sure CreateGang will use the current database name. */
+    free(myDatabaseName);
+    myDatabaseName = NULL;
+    
+    switch (type)
 	{
 		case GANGTYPE_PRIMARY_WRITER:
 			if (primaryWriterGang == NULL)
