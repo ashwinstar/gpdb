@@ -302,7 +302,7 @@ else
   cc_string=$CC
 fi
 AC_DEFINE_UNQUOTED(PG_VERSION_STR,
-                   ["Bizgres MPP 2.0 (PostgreSQL $PACKAGE_VERSION) on $host, compiled by $cc_string"],
+                   ["PostgreSQL $PACKAGE_VERSION (Bizgres MPP 2.0) on $host, compiled by $cc_string"],
                    [A string containing the version number, platform, and C compiler])
 
 
