@@ -362,7 +362,7 @@ RenameSchema(const char *oldname, const char *newname)
 		
 		initStringInfo( &buffer );
 
-		appendStringInfo(&buffer, "ALTER SCHEMA %s RENAME TO %s ", oldname, newname);
+		appendStringInfo(&buffer, "ALTER SCHEMA \"%s\" RENAME TO \"%s\" ", oldname, newname);
 
 		CdbDoCommand( buffer.data, false );
 
@@ -446,7 +446,7 @@ AlterSchemaOwner(const char *name, AclId newOwnerSysId, const char * newownernam
 			
 			initStringInfo( &buffer );
 	
-			appendStringInfo(&buffer, "ALTER SCHEMA %s OWNER TO %s ", name, newownername);
+			appendStringInfo(&buffer, "ALTER SCHEMA \"%s\" OWNER TO \"%s\" ", name, newownername);
 	
 			CdbDoCommand( buffer.data, false );
 	
