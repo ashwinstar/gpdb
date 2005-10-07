@@ -656,7 +656,7 @@ dropdb(const char *dbname)
 		
 		initStringInfo( &buffer );
 
-		appendStringInfo(&buffer, "DROP DATABASE %s", dbname);
+		appendStringInfo(&buffer, "DROP DATABASE \"%s\"", dbname);
 
 
 
@@ -1047,7 +1047,7 @@ AlterDatabaseOwner(const char *dbname, AclId newOwnerSysId, const char * newowne
 		
 		initStringInfo( &buffer );
 
-		appendStringInfo(&buffer, "ALTER DATABASE %s OWNER TO %s", dbname, newownername);
+		appendStringInfo(&buffer, "ALTER DATABASE \"%s\" OWNER TO \"%s\"", dbname, newownername);
 
 		CdbDoCommand( buffer.data, false );
 
