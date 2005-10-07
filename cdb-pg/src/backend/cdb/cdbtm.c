@@ -690,7 +690,7 @@ updateDtxState(DtxState state)
     /* write tm log */
     if ( state != DTX_STATE_ABORT )
     {
-        TmLogRecord record={{0,0,"",TM_LOG_XACT,0,0},0};
+        TmLogRecord record={{0,0,"",TM_LOG_XACT,0,0}};
         strcpy(record.header.gid, gxact->gid);
         record.header.state = state;
 
