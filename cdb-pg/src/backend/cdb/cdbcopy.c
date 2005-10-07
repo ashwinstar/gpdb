@@ -143,9 +143,10 @@ int cdbCopyStart(CdbCopy *c, char *copyCmd)
 			
 			if(PQresultStatus(res) != PGRES_COPY_IN)
 			{
+				
 			 	appendStringInfo(&(c->err_msg), 
-								 "MPPCOPY - %s -> failed to start on %s segment %d.\n", 
-								 copyCmd, (db == 0 ? "primary" : "mirror"), seg);
+								 "MPPCOPY - COPY command failed to start on %s segment %d with error: %s\n", 
+								 (db == 0 ? "primary" : "mirror") , seg, PQresultErrorMessage(res));
 				
 				return -1;
 			}

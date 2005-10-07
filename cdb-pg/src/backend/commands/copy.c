@@ -1802,7 +1802,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 		
 		ereport(ERROR,
 				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
-				 errmsg("%s Closing all other existing COPY sessions.",
+				 errmsg("%sClosing all other existing COPY sessions.",
 						cdbcopy_err.data)));		
     }
 		
