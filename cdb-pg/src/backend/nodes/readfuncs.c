@@ -1985,6 +1985,15 @@ _readSliceTable(void)
 	READ_DONE();
 }
 
+static VariableResetStmt *
+_readVariableResetStmt(void)
+{
+	READ_LOCALS(VariableResetStmt);
+	READ_STRING_FIELD(name);
+	
+	READ_DONE();
+} 
+
 
 void readScanInfo(Scan *local_node)
 {
@@ -2192,6 +2201,7 @@ static ParseNodeInfo infoAr[] =
 	{"UNIQUE", (ReadFn)_readUnique},
 	{"VACUUMSTMT", (ReadFn)_readVacuumStmt},
 	{"VAR", (ReadFn)_readVar},
+	{"VARIABLERESETSTMT", (ReadFn)_readVariableResetStmt},
 	{"VIEWSTMT", (ReadFn)_readViewStmt},
 	{"WHEN", (ReadFn)_readCaseWhen}
 };

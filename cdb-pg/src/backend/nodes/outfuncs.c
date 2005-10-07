@@ -1690,6 +1690,13 @@ _outIndexElem(StringInfo str, IndexElem *node)
 }
 
 static void
+_outVariableResetStmt(StringInfo str, VariableResetStmt *node)
+{
+	WRITE_NODE_TYPE("VARIABLERESETSTMT");
+	WRITE_STRING_FIELD(name);
+} 
+
+static void
 _outQuery(StringInfo str, Query *node)
 {
 	WRITE_NODE_TYPE("QUERY");
@@ -1748,6 +1755,7 @@ _outQuery(StringInfo str, Query *node)
 			case T_LockStmt:
 			case T_CopyStmt:
 			case T_ReindexStmt:
+			case T_VariableResetStmt:
 				WRITE_NODE_FIELD(utilityStmt);
 				break;
 
@@ -2575,6 +2583,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_SliceTable:
 				_outSliceTable(str, obj);
+				break;
+			case T_VariableResetStmt:
+				_outVariableResetStmt(str, obj);
 				break;
 			default:
 
