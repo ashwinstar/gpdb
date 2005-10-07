@@ -640,15 +640,13 @@ cdbdisp_dispatchCommand(const char         *szCommand,
     if (pMirrorGang)
         *pMirrorGang = NULL;
 
-    /* Warn if someone dispatched a command but didn't wait for it to finish.
-     * The new command will run concurrently with the one already in progress.
-     * Should be ok unless they conflict somehow (e.g. if both need to use
-     * the writer gang).  Note that when CdbCheckDispatchResult is later 
-     * called, it waits for completion of all dispatched work.
-     */
+    /* Wait for previous command to finish before starting this one. */
     if (threadCount)
+    {
         elog(DEBUG3, "%d threads running at entry to cdbdisp_dispatchCommand.  %s",
              threadCount, szCommand);
+        CdbCheckDispatchResult();
+    }
 
 	/*
      * Allocate a primary and mirror QE for every available segDB in the system.
@@ -1462,15 +1460,13 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc)
 	 */
 	condStartDtxTransaction();
 	
-    /* Warn if someone dispatched a command but didn't wait for it to finish.
-     * The new command will run concurrently with the one already in progress.
-     * Should be ok unless they conflict somehow (e.g. if both need to use
-     * the writer gang).  Note that when CdbCheckDispatchResult is later 
-     * called, it waits for completion of all dispatched work.
-     */
+    /* Wait for previous command to finish before starting this one. */
     if (threadCount)
+    {
         elog(DEBUG3, "%d threads running at entry to cdbdisp_dispatchPlan",
              threadCount);
+        CdbCheckDispatchResult();
+    }
 
 	/*
 	 * Later we'll need to operate with the slice table provided via the
