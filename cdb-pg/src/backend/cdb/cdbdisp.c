@@ -190,7 +190,7 @@ cdbdisp_dispatchToGang(const char          *szCommand,
 	Assert(gp != NULL);
 	Assert(gp->size > 0);
 
-    elog(DEBUG2, "dispatchToGang: sliceIndex=%d gangsize=%d  %.50s",
+    elog(DEBUG3, "dispatchToGang: sliceIndex=%d gangsize=%d  %.50s",
          sliceIndex, gp->size, szCommand);
 
     if (pgresultsets)
@@ -330,7 +330,7 @@ cdbdisp_dispatchToGang(const char          *szCommand,
 		}
 	}
 
-	elog(DEBUG3,
+	elog(DEBUG4,
 		 "dispatchToGang: threadCount %d, segdbs_in_thread_pool %d, conns_per_thread %d",
 		 threadCount, segdbs_in_thread_pool, mpp_connections_per_thread);
 
@@ -427,10 +427,12 @@ CdbCheckDispatchResultInt(struct SegmentDatabaseDescriptor   ***failedSegDB,
     CdbDispatchResult          *dispatchResult;
     SegmentDatabaseDescriptor  *segdbDesc;
 
-	elog(DEBUG5, "CheckDispatchResult threadCount %d", threadCount);
-
+    /* No-op if no work was dispatched since the last time we were called.  */
 	if (threadCount == 0)
-		return true;
+    {
+        elog(DEBUG5, "CheckDispatchResult: no threads active");
+        return true;
+    }
 
 	/*
 	 * Wait for threads to finish.
@@ -638,8 +640,15 @@ cdbdisp_dispatchCommand(const char         *szCommand,
     if (pMirrorGang)
         *pMirrorGang = NULL;
 
-    /* There should be no outstanding threads when we are here. */
-	Assert(threadCount == 0);
+    /* Warn if someone dispatched a command but didn't wait for it to finish.
+     * The new command will run concurrently with the one already in progress.
+     * Should be ok unless they conflict somehow (e.g. if both need to use
+     * the writer gang).  Note that when CdbCheckDispatchResult is later 
+     * called, it waits for completion of all dispatched work.
+     */
+    if (threadCount)
+        elog(DEBUG3, "%d threads running at entry to cdbdisp_dispatchCommand.  %s",
+             threadCount, szCommand);
 
 	/*
      * Allocate a primary and mirror QE for every available segDB in the system.
@@ -1038,7 +1047,7 @@ dispatchCommand( CdbDispatchResult *dispatchResult, const char *szCommand,
 	PGconn 					   *conn = segdbDesc->conn;	
 
 	/* Don't use elog, it's not thread-safe */
-	if (DEBUG2 >= log_min_messages)
+	if (DEBUG3 >= log_min_messages)
         fprintf(stderr, "Sending command to %s\n"
                 "    %.120s\n",
                 segdbDesc->whoami,
@@ -1060,7 +1069,7 @@ dispatchCommand( CdbDispatchResult *dispatchResult, const char *szCommand,
                           PQerrorMessage(conn));
 
         /* Don't use elog, it's not thread-safe */
-        if (DEBUG2 >= log_min_messages)
+        if (DEBUG1 >= log_min_messages)
             fputs(dispatchResult->error_message.data + msgoff, stderr);
 
         /* Stop other QEs (if caller wants us to). */
@@ -1214,7 +1223,8 @@ handleSelectTimeout(RunningInfo    *stillRunning,
 		*stillRunningCount = x;
 	}
 
-    if (DEBUG2 >= log_min_messages)
+    if (DEBUG2 >= log_min_messages &&
+        (*timeoutCounter & 0x07) == 1)
         fflush(stderr);
 
 }                                      /* handleSelectTimeout */
@@ -1452,12 +1462,15 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc)
 	 */
 	condStartDtxTransaction();
 	
-	/*
-	 * There should be no outstanding threads when we are here
-	 *
-	 */
-	Assert(threadCount == 0);
-	
+    /* Warn if someone dispatched a command but didn't wait for it to finish.
+     * The new command will run concurrently with the one already in progress.
+     * Should be ok unless they conflict somehow (e.g. if both need to use
+     * the writer gang).  Note that when CdbCheckDispatchResult is later 
+     * called, it waits for completion of all dispatched work.
+     */
+    if (threadCount)
+        elog(DEBUG3, "%d threads running at entry to cdbdisp_dispatchPlan",
+             threadCount);
 
 	/*
 	 * Later we'll need to operate with the slice table provided via the
