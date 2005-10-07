@@ -1,7 +1,8 @@
 log_min_duration_statement = 3000
+log_min_error_statement = fatal
 log_connections = true
 log_disconnections = true
 log_duration = true
-log_line_prefix = '%t|%d|%p|:-'
+log_line_prefix = '%t|%d|%p|%I|:-'
 log_hostname = true
 stats_command_string=true
