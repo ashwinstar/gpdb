@@ -755,7 +755,7 @@ allocateGang(GangType type, int size, int content)
 	oldContext = MemoryContextSwitchTo(TopMemoryContext);
 
     /* Make sure CreateGang will use the current database name. */
-    free(myDatabaseName);
+    pfree(myDatabaseName);
     myDatabaseName = NULL;
     
     switch (type)
