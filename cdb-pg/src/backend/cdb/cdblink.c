@@ -174,8 +174,6 @@ buildMirrorQDDefinition(void)
 
          if (!mirrorDb->isprimary)
          {
-             char  *dbname = get_database_name(MyDatabaseId);
-
              /* if it is set to invalid, do not connect */
              if ( !mirrorDb->valid )
              {
@@ -192,7 +190,7 @@ buildMirrorQDDefinition(void)
              cdbconn_initSegmentDescriptor(cdb_mirrored_entry_db, mirrorDb);
 
              /* connect to mirrored QD */
-             if ( !cdbconn_doConnect( cdb_mirrored_entry_db, dbname, NULL ) )
+             if ( !cdbconn_doConnect( cdb_mirrored_entry_db, NULL, NULL ) )
              {
                  disableQDMirroring();
 

@@ -76,9 +76,11 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
      */
     initPQExpBuffer(&buffer);
 
-    /* Save the database name. */
+    /* Save the database name, if given.  Can be NULL during cdb_setup(). */
     free(segdbDesc->dbname);
-    segdbDesc->dbname = strdup(dbname);
+    segdbDesc->dbname = NULL;
+    if (dbname)
+        segdbDesc->dbname = strdup(dbname);
 
     /*
      * Build the connection string
