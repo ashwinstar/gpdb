@@ -121,6 +121,11 @@ createGang(GangType type, int size, int content)
 
 	oldContext = MemoryContextSwitchTo(TopMemoryContext);
 
+
+	/*
+	 * get_database_name allocated memory with palloc, so remember we must pfree it later
+	 * (not free)
+	 */
 	if (myDatabaseName == NULL)
 		myDatabaseName = get_database_name(MyDatabaseId);
 
@@ -755,6 +760,8 @@ allocateGang(GangType type, int size, int content)
 	oldContext = MemoryContextSwitchTo(TopMemoryContext);
 
     /* Make sure CreateGang will use the current database name. */
+    
+    /* get_database_name returns memory from a pstrdup(), so we need to use pfree, not free */
     pfree(myDatabaseName);
     myDatabaseName = NULL;
     
