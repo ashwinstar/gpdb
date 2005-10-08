@@ -762,7 +762,8 @@ allocateGang(GangType type, int size, int content)
     /* Make sure CreateGang will use the current database name. */
     
     /* get_database_name returns memory from a pstrdup(), so we need to use pfree, not free */
-    pfree(myDatabaseName);
+    if (myDatabaseName != NULL)
+    	pfree(myDatabaseName);
     myDatabaseName = NULL;
     
     switch (type)
