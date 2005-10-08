@@ -377,6 +377,9 @@ transformStmt(ParseState *pstate, Node *parseTree,
 			else
 				result = transformSetOperationStmt(pstate,
 											   (SelectStmt *) parseTree);
+											   
+		   	if (((SelectStmt *) parseTree)->into != NULL)
+		   		elog(ERROR, "SELECT INTO and CREATE TABLE AS SELECT are not yet implemented");
 			break;
 
 		case T_DeclareCursorStmt:
