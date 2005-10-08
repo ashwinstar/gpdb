@@ -402,7 +402,7 @@ vacuum(VacuumStmt *vacstmt)
      * them to finish, before we query their statistics.
 	 */
 	if ( Mpp_role == MPP_ROLE_DISPATCH )
-		CdbDispatchUtilityStatement(vacstmt);
+		CdbDispatchUtilityStatement((Node*)vacstmt);
 		
 	/* Turn vacuum cost accounting on or off */
 	PG_TRY();
