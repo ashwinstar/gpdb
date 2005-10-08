@@ -99,7 +99,10 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
         appendPQExpBuffer(&buffer, "host=%s ", q->hostname );
 
     appendPQExpBuffer(&buffer, "port=%u ", q->port);
-    appendPQExpBuffer(&buffer, "dbname=%s ", segdbDesc->dbname);
+
+    if (dbname)
+        appendPQExpBuffer(&buffer, "dbname=%s ", dbname);
+    
     appendPQExpBuffer(&buffer, "user=%s ", q->mppsuperuser);
 
     /* Password is last so it can be snipped for error message. */
