@@ -59,6 +59,8 @@ static void show_upper_qual(List *qual, const char *qlabel,
 				const char *outer_name, int outer_varno, Plan *outer_plan,
 				const char *inner_name, int inner_varno, Plan *inner_plan,
 				StringInfo str, int indent, ExplainState *es);
+static void show_merge_keys(List *tlist, int nkeys, AttrNumber *keycols,
+			   StringInfo str, int indent, ExplainState *es);
 static void show_sort_keys(List *tlist, int nkeys, AttrNumber *keycols,
 			   const char *qlabel,
 			   StringInfo str, int indent, ExplainState *es);
@@ -759,10 +761,9 @@ explain_outNode(StringInfo str,
             {
                 Motion *pMotion = (Motion *) plan;
                 if (pMotion->sendSorted)
-			        show_sort_keys(plan->targetlist,
+			        show_merge_keys(plan->targetlist,
 						           pMotion->numSortCols,
 						           pMotion->sortColIdx,
-						           "Merge Key",
 						           str, indent, es);
                 if (pMotion->motionType == MOTIONTYPE_HASH)
                     show_upper_qual(pMotion->hashExpr,
@@ -1013,6 +1014,56 @@ show_upper_qual(List *qual, const char *qlabel,
 		appendStringInfo(str, "  ");
 	appendStringInfo(str, "  %s: %s\n", qlabel, exprstr);
 }
+
+
+/*
+ * Show the merge keys for a Motion node.  A call to this function replaces
+ * the previous call to show_sort_keys() from the T_Motion case for printing
+ * merge and hash keys in ExplainOnePlan().  The previous call gave an error
+ * when Group node support was added to the MPP parallelizer.
+ *
+ * TODO Characterize and fix the failure.  For now, use the existence of
+ * a varno of 0 to select the "safe" route (display attribute numbers)
+ * instead of the "cool" route (display key expressions).
+ */
+static void
+show_merge_keys(List *tlist, int nkeys, AttrNumber *keycols,
+			   StringInfo str, int indent, ExplainState *es)
+{
+	int			keyno;
+	Relids		varnos;
+	int			i;
+	bool        use_show_sort_keys;
+
+	if (nkeys <= 0)
+		return;
+		
+	varnos = pull_varnos((Node *) tlist);
+	use_show_sort_keys = !bms_is_member(0, varnos);
+	bms_free(varnos);
+	
+	 if ( use_show_sort_keys )
+	{
+		show_sort_keys(tlist,nkeys,keycols,"Merge Key",str,indent,es);
+		return;
+	}
+
+	for (i = 0; i < indent; i++)
+		appendStringInfo(str, "  ");
+	appendStringInfo(str, "  %s: ", "Merge Attributes");
+
+
+	for (keyno = 0; keyno < nkeys; keyno++)
+	{
+		AttrNumber	keyresno = keycols[keyno];
+		if (keyno > 0)
+			appendStringInfo(str, ", ");
+		appendStringInfo(str, "%d", keyresno);
+	}
+
+	appendStringInfo(str, "\n");
+}
+
 
 /*
  * Show the sort keys for a Sort node.

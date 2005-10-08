@@ -121,6 +121,7 @@ static bool prescan_walker(Node *node, PlanProfile *context);
 static bool prescan_agg(Plan *plan, PlanProfile *context);
 static bool prescan_unique(Plan *plan, PlanProfile *context);
 static bool prescan_append(Plan *plan, PlanProfile *context);
+static bool prescan_group(Plan *plan, PlanProfile *context);
 
 static void psError(PlanProfile *context, unsigned code, const char* message, const char* detail);
 static void psErrorNonce(PlanProfile *context,  const char* detail);
@@ -811,28 +812,11 @@ prescan_walker(Node *node, PlanProfile *context)
 			if ( finished )
 				goto return_false;
 				
+			if ( prescan_group((Plan*)node, context) )
 			{
-				Plan *plan = (Plan*)node;
-				Plan *child = outerPlan(node);
-				Assert( child != NULL && child->flow != NULL );
-				
-				if ( child->flow->flotype == FLOW_REPLICATED
-					|| child ->flow->flotype == FLOW_SINGLETON )
-				{
-					/* No motion required so inherit flow characteristics. */
-					plan->flow = pull_up_Flow(plan, child, true);
-						
-					if ( plan->flow == NULL || plan->flow->flotype == FLOW_UNDEFINED )
-					{
-						detail = "Can't characterize flow from Group node.";
-						break;
-					}
-					goto return_false;
-				}
+				goto return_true; /* prescan_group sets its own detail in context. */
 			}
-			/* TODO Deal with partitioned aggregration. */
-			detail = "Query involves partitioned grouping.";
-			break; /* Fall through to report error. */
+			goto return_false;
 		
 		case T_Limit:
 			/* First prescan children */
@@ -1375,6 +1359,97 @@ bool prescan_append(Plan *plan, PlanProfile *context)
 }
 
 
+/* Helper for prescan_walker() does processing for a Group node.
+ *
+ * Note that prescan_walker has already finished scaning the child nodes
+ * of the node.
+ *
+ * Return false to indicate successful prescan.  Else set error info
+ * in the context and return true.
+ */
+bool prescan_group(Plan *plan, PlanProfile *context)
+{
+	Group *group = (Group*)plan;
+	Plan *child = outerPlan((Node*)plan); /* already scanned */
+	bool prefix_condition = true;
+	bool match_condition = true;
+	int i;
+	
+	/* Argument is a prescaned Group plan. */
+	Assert( is_plan_node((Node*)child) && child->flow != NULL  );
+	
+	
+	if ( child->flow->flotype == FLOW_PARTITIONED )
+	{
+		/* The argument flow is partitioned and ordered.  We need to make sure
+		 * that tuples are collocated on the attributes to be grouped.  Note
+		 * that, unlike the Unique node, the Group node is projecting. The 
+		 * resulting partial order is preserved.
+		 */
+		 
+		/* The parser/planner guarantees that the grouping attributes are a prefix
+		 * of the input sort attributes.  We should check, however.
+		 */
+		 prefix_condition = ( group->numCols <= child->flow->numSortCols );
+		 for ( i = 0; prefix_condition && i < group->numCols; i++ )
+		 {
+			prefix_condition = (group->grpColIdx[i] == child->flow->sortColIdx[i] );
+		 }
+		 if ( !prefix_condition )
+		 {
+			psErrorInternal(context, "Plan violates GROUP/ORDER BY prefix condition");
+			return true;
+		 }
+		 
+		/* If the input partition does not match the grouping attributes, we
+		 * must repartition on the grouping attributes and preserve the sort order.
+		 */
+		match_condition = ( group->numCols == list_length(child->flow->hashExpr) );
+		if ( match_condition )
+		{
+			AttrNumber *hattrs = palloc0(sizeof(AttrNumber)*group->numCols);
+			match_condition = findHashAttrsInTargetList(child->targetlist, child->flow->hashExpr, hattrs);
+			for ( i = 0; match_condition && i < group->numCols; i++ )
+			{
+				match_condition = (group->grpColIdx[i] == hattrs[i]);
+				if ( !match_condition )
+					break; /* for */
+			}
+			pfree(hattrs);
+		}
+		if ( !match_condition )
+		{
+			List *hashExpr = getExprListFromTargetList(child->targetlist, group->numCols, group->grpColIdx);
+			 
+			if ( !repartitionPlan(child, false, true, false, hashExpr) )
+			{
+				psErrorNonce(context, "Can't implement that partitioned grouping");
+				return true;
+			 }
+			repartitionPlan(child, true, true, false, hashExpr);
+		}
+	}
+	else if ( child->flow->flotype != FLOW_REPLICATED && child->flow->flotype != FLOW_SINGLETON )
+	{
+		psErrorInternal(context, "Uncharacterized flow into Group node.");
+		return true;
+	}
+	/* Else, Flow is replicated or singleton, so no motion required.
+	 * Just inherit flow characteristics. 
+	 */
+
+	plan->flow = pull_up_Flow(plan,child,true);
+			
+	if ( plan->flow == NULL || plan->flow->flotype == FLOW_UNDEFINED )
+	{
+		psErrorNonce(context, "Can't characterize flow from Group node.");
+		return true;
+	}	
+	return false;
+}
+
+
+
 /* 
  * Helper for prescan() -- Write error info into a PlanProfile.
  */
@@ -1481,15 +1556,26 @@ Flow * pull_up_Flow(Plan *plan, Plan *subplan, bool withSort)
 		
 	new_flow = makeFlow(model_flow->flotype);
 	
-	if ( model_flow->flotype == FLOW_PARTITIONED && !is_projection_capable_plan(plan) )
+	if ( model_flow->flotype == FLOW_PARTITIONED  )
 	{
-		/* Propagate hash attribute definitions. */
-		new_flow->hashExpr = model_flow->hashExpr;
+		/* Propagate hash attribute definitions, if they are available 
+		 * and the plan is non-projecting. Else, leave them NIL. */
+		if ( model_flow->hashExpr != NULL && !is_projection_capable_plan(plan) )
+		{
+			new_flow->hashExpr = copyObject(model_flow->hashExpr);
+		}
 	}
 	else if ( model_flow->flotype == FLOW_SINGLETON )
 	{
 		/* Propagate segment definitions. */
 		new_flow->segindex = model_flow->segindex;
+	}
+	else if ( model_flow->flotype != FLOW_REPLICATED )
+	{
+		if ( new_flow->hashExpr )
+			pfree(new_flow->hashExpr);
+		pfree(new_flow);
+		return NULL;
 	}
 	
 	if ( withSort && model_flow->numSortCols >  0 )
@@ -1503,7 +1589,12 @@ Flow * pull_up_Flow(Plan *plan, Plan *subplan, bool withSort)
 					model_flow->sortColIdx,
 					&(new_flow->sortColIdx) )
 				)
+			{
+				if ( new_flow->hashExpr )
+					pfree(new_flow->hashExpr);
+				pfree(new_flow);
 				return NULL;
+			}
 		}
 		else
 		{

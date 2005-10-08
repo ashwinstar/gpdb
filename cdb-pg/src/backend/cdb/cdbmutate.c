@@ -574,11 +574,11 @@ void assignMotionID(Node* newnode, ApplyMotionState* context, Node* oldnode)
 
 /*
  * Given the targetlist of a [potentially] projecting Plan operator and
- * a vector of attribute numbers of the single argument relation of the
+ * a vector of attribute numbers in the single argument relation of the
  * plan, try to create a palloc'd vector of attribute numbers of the given
  * targetlist.
  *
- * A result of true indicates sucess, in which casea pointer to the new
+ * A result of true indicates sucess, in which case a pointer to the new
  * vector is stored at location pinverse.  Note that  a NULL pointer may
  * occur with as a sucess, iff the number of attributes if zero.
  *
@@ -615,9 +615,12 @@ bool invertColIdx(List *targetlist, int numCols, AttrNumber *colIdx, AttrNumber 
 				if (tleidx != tle->resdom->resno)
 				{
 					aok = FALSE;
-					break;
 				}
-				invGrpColIdx[i] = tleidx;
+				else
+				{
+					invGrpColIdx[i] = tleidx;
+				}
+				break;
 			}
 		}
 		if ( !aok ) break;
