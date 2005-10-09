@@ -1,6 +1,9 @@
 <<<NEW vi: set expandtab ts=4: >>>
 
 
+Release-2_0_5:  08/Oct/2005  llonergan
+    Test for tagging system.
+
 Release-2_0_4:  08/Oct/2005  llonergan
     Saturday build. Includes Kurt's revised dispatcher
     Known bugs:
