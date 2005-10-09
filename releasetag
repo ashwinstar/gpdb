@@ -1,9 +1,14 @@
 #!/bin/sh
 
-TMP=`echo '$Name: $' | awk 'BEGIN {FS = ":"} {print $2}' | awk '{print $1}'`
+#For Solaris, set the SYSV3 flag to get a '-n' option
+SYSV3=1
+export SYSV3
+
+TMP=`echo '$Name:  $' | awk 'BEGIN {FS = ":"} {print $2}' | awk '{print $1}'`
 echo -n '-'
 if [ x"$TMP" != x"$" ]; then
   echo -n $TMP
 else
   echo -n devel
 fi
+
