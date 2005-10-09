@@ -2,7 +2,8 @@ MPPPGDIR=cdb-pg
 MPPMGMT=mppMgmt
 ISCONFIG=$(MPPPGDIR)/GNUmakefile
 
-MPPDIR=mpp-pgsql-2.0
+RELEASE=`cat releasetag | grep -v Name`
+MPPDIR=mpp-pgsql$(RELEASE)
 
 TARBALL=/tmp/$(MPPDIR).tar.gz
 
