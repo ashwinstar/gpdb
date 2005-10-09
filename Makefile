@@ -2,8 +2,8 @@ MPPPGDIR=cdb-pg
 MPPMGMT=mppMgmt
 ISCONFIG=$(MPPPGDIR)/GNUmakefile
 
-RELEASE=`cat releasetag | grep -v Name`
-MPPDIR=mpp-pgsql$(RELEASE)
+RELEASE=`TMP=\`cat releasetag | awk 'BEGIN {FS = ":"} {print $$2}'\`;TMP2=$${TMP%% \\$$}; echo $$TMP2`
+MPPDIR=mpp-pgsql-$(RELEASE)
 
 TARBALL=/tmp/$(MPPDIR).tar.gz
 
@@ -37,8 +37,8 @@ dist : BIZDEP RECONFIG $(ISCONFIG)
 	@make mgmtcopy INSTLOC=$(INSTLOC)
 	@rm -f $(TARBALL); make $(TARBALL) INSTLOC=$(INSTLOC)
 
-$(TARBALL) :
-	@gtar czf $(TARBALL) $(INSTLOC)
+#$(TARBALL) :
+#	@gtar czf $(TARBALL) $(INSTLOC)
 
 mgmtcopy :
 	@#Copy the management utilities
