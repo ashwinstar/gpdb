@@ -1,8 +1,9 @@
-TMP=`echo '$Name: $' | awk 'BEGIN {FS = ":"} {print $2}'`
-TMP2=${TMP%% \$}
+#!/bin/sh
+
+TMP=`echo '$Name: $' | awk 'BEGIN {FS = ":"} {print $2}' | awk '{print $1}'`
 echo -n '-'
-if [ x"$TMP2" != x"" ]; then
-  echo -n $TMP2
+if [ x"$TMP" != x"$" ]; then
+  echo -n $TMP
 else
   echo -n devel
 fi
