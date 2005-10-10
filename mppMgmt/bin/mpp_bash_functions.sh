@@ -275,7 +275,8 @@ _EOF_
 			$ECHO ".,.+1j" >> $ED_TMP_FILE
 			$ECHO . >>  $ED_TMP_FILE
 			$ECHO wq >>  $ED_TMP_FILE
-			$SCP $ED_TMP_FILE ${ED_HOST}:/tmp > /dev/null 2>&1
+			#$SCP $ED_TMP_FILE ${ED_HOST}:/tmp > /dev/null 2>&1
+			$CAT $ED_TMP_FILE | $TRUSTED_SHELL ${ED_HOST} $DD of=/tmp/$ED_TMP_FILE > /dev/null 2>&1
 			$TRUSTED_SHELL $ED_HOST "ed $FILENAME < $ED_TMP_FILE" > /dev/null 2>&1
 			RETVAL=$?
 			if [ $RETVAL -ne 0 ]; then
