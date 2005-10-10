@@ -109,12 +109,11 @@ cdbdisp_sumGangCmdTuples(struct Gang *gang);
  */
 void
 cdbdisp_dispatchCommand(const char         *szCommand,
+                        bool                startDtxTransaction,
                         bool                cancelFromBelow,
                         struct pg_result ***resultSets,         /* OUT */
                         struct Gang       **pPrimaryGang,       /* OUT */
                         struct Gang       **pMirrorGang);       /* OUT */
-
-extern void CdbDispatchCommand(const char *szCommand, bool cancelFromBelow);
 
 /* Wait for all QEs to finish, then report any errors from the given gangs.
  * If not all QEs in the given gang(s) executed the command successfully,

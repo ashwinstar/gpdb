@@ -625,6 +625,7 @@ cdbdisp_sumGangCmdTuples(struct Gang *gang)
  */
 void
 cdbdisp_dispatchCommand(const char         *szCommand,
+                        bool                startDtxTransaction,
                         bool                cancelFromBelow,
                         struct pg_result ***resultSets,         /* OUT */
                         struct Gang       **pPrimaryGang,       /* OUT */
@@ -648,7 +649,27 @@ cdbdisp_dispatchCommand(const char         *szCommand,
         CdbCheckDispatchResult();
     }
 
-	/*
+    if (startDtxTransaction)
+    {
+        /*
+        * need to start distributed transaction
+        */
+        condStartDtxTransaction();
+
+        /*
+        * check fts sync count
+        */
+        if (!verifyFtsSyncCount())
+        {
+            /*
+            * recofig mpp connections
+            */
+            if (!FtsReConfigureMPP())
+                elog(PANIC, "FTS: reconfigMPP failed");
+        }
+    }
+
+    /*
      * Allocate a primary and mirror QE for every available segDB in the system.
 	 */
 	primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, getMPPSegmentCount(), -1);
@@ -672,41 +693,6 @@ cdbdisp_dispatchCommand(const char         *szCommand,
 		cdbdisp_dispatchToGang(szCommand, mirrorGang, -1, cancelFromBelow, resultSets);
 
 }                               /* cdbdisp_dispatchCommand */
-
-
-/*
- * CdbDispatchCommand:
- * Send ths szCommand SQL statement to all segdbs in the cluster
- * cancelFromBelow indicates whether an error
- * occurring on one of the qExec segdbs should cause all still-executing commands to cancel
- * on other qExecs. Normally this would be true.  The commands are sent over the libpq
- * connections that were established during gang creation.	They are run inside of threads.
- * The number of segdbs handled by any one thread is determined by the
- * guc variable mpp_connections_per_thread.
- * Called by general users, this method includes global transaction control.
- */
-void
-CdbDispatchCommand(const char *szCommand, bool cancelFromBelow)
-{
-	/*
-	 * need to start distributed transaction
-	 */
-	condStartDtxTransaction();
-
-	/*
-	 * check fts sync count
-	 */
-	if (!verifyFtsSyncCount())
-	{
-		/*
-		 * recofig mpp connections
-		 */
-		if (!FtsReConfigureMPP())
-			elog(PANIC, "FTS: reconfigMPP failed");
-	}
-
-	cdbdisp_dispatchCommand(szCommand, cancelFromBelow, NULL, NULL, NULL);
-}
 
 
 /* Wait for all QEs to finish, then report any errors from the given gangs.
@@ -1354,7 +1340,7 @@ CdbDoCommandInt(const char         *szCommand,
     Gang   *primaryGang;
     Gang   *mirrorGang;
 
-    cdbdisp_dispatchCommand(szCommand, cancelFromBelow, resultSets,
+    cdbdisp_dispatchCommand(szCommand, false, cancelFromBelow, resultSets,
                             &primaryGang, &mirrorGang);
 
     /* Wait for all QEs to finish.
@@ -1374,25 +1360,16 @@ CdbDoCommandInt(const char         *szCommand,
 void
 CdbDoCommand(const char *szCommand, bool cancelFromBelow)
 {
-	/*
-	 * need to start distributed transaction
-	 */
-	condStartDtxTransaction();
+    Gang   *primaryGang;
+    Gang   *mirrorGang;
 
-	/*
-	 * check fts sync count
-	 */
-	if (!verifyFtsSyncCount())
-	{
-		/*
-		 * recofig mpp connections
-		 */
-		if (!FtsReConfigureMPP())
-			elog(PANIC, "FTS: reconfigMPP failed");
-	}
+    cdbdisp_dispatchCommand(szCommand, true, cancelFromBelow, NULL,
+                            &primaryGang, &mirrorGang);
 
-	elog(DEBUG3, "DoCommand calling DoCommandInt");
-	CdbDoCommandInt(szCommand, cancelFromBelow, NULL);
+    /* Wait for all QEs to finish.
+     * If not all of our QEs were successful, report the error and throw up.
+     */
+    cdbdisp_finishCommand(primaryGang, mirrorGang);
 }
 
 
@@ -1826,7 +1803,7 @@ cdbdisp_dispatchUtilityStatement(struct Node   *stmt,
 
 	pfree(szCommand);
 
-	cdbdisp_dispatchCommand(buffer.data, cancelFromBelow, NULL,
+	cdbdisp_dispatchCommand(buffer.data, true, cancelFromBelow, NULL,
                             pPrimaryGang, pMirrorGang);
 
     pfree(buffer.data);
