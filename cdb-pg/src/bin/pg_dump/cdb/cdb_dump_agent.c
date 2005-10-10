@@ -207,6 +207,7 @@ static void getDatabaseConnections(PGconn ***conn_dbs, int *numberOfDbs, Segment
 static void createCDBDatabaseFunction(void);
 static Archive *openOutputFile(const char *format, const char *filename,  int compressLevel);
 extern void reset(void);
+static char *nextToken(register char **stringp, register const char *delim);
 
 /* static variables */
 static PGconn*            g_conn_status = NULL;
@@ -7081,10 +7082,10 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
         policydef = PQgetvalue(res, 0, 0);
         policydef[strlen(policydef)-1] = '\0';
         policydef++;
-        policycol = strsep(&policydef, ",");
+        policycol = nextToken(&policydef, ",");
         appendPQExpBuffer(q, " distributed by (%s",
               fmtId(tbinfo->attnames[atoi(policycol)-1]));
-        for (; (policycol = strsep(&policydef, ",")) != NULL;)
+        for (; (policycol = nextToken(&policydef, ",")) != NULL;)
         {
             appendPQExpBuffer(q, " ,%s",
                   fmtId(tbinfo->attnames[atoi(policycol)-1]));
@@ -9419,6 +9420,47 @@ openOutputFile(const char *format, const char *filename,  int compressLevel)
     }
     
     return fout;
+}
+
+/*
+ * Get next token from string *stringp, where tokens are possibly-empty
+ * strings separated by characters from delim.
+ *
+ * Writes NULs into the string at *stringp to end tokens.
+ * delim need not remain constant from call to call.
+ * On return, *stringp points past the last NUL written (if there might
+ * be further tokens), or is NULL (if there are definitely no more tokens).
+ *
+ * If *stringp is NULL, strsep returns NULL.
+ */
+static char *
+nextToken(register char **stringp, register const char *delim)
+{
+    register char *s;
+    register const char *spanp;
+    register int c, sc;
+    char *tok;
+
+    if ((s = *stringp) == NULL)
+        return (NULL);
+    for (tok = s;;)
+    {
+        c = *s++;
+        spanp = delim;
+        do
+        {
+            if ((sc = *spanp++) == c)
+            {
+                if (c == 0)
+                    s = NULL;
+                else
+                    s[-1] = 0;
+                *stringp = s;
+                return (tok);
+            }
+        } while (sc != 0);
+    }
+    /* NOTREACHED */
 }
 
 /*
