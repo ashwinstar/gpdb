@@ -1,3 +1,12 @@
+<<<NEW vi: set expandtab ts=4: >>>
+
+Release-2_0_7:  09/Oct/2005  llonergan
+    Known bugs:
+        Blocker bugs: mpp-68,78,93,120,122,130,134,137,150,151
+        Critical bugs: mpp-70,128,129,145
+        Major bugs: mpp-2,21,27,45,53,59,66,69,72,82,83,85-88,94,95,99,100,107
+        Minor bugs: mpp-25,36,42,51,56,84,98,101,104,110,115,117
+
 Release-2_0_6:  08/Oct/2005  llonergan
 Release-2_0_5:  08/Oct/2005  llonergan
     Test for tagging system.
