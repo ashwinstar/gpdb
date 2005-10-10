@@ -6,7 +6,7 @@
  * IDENTIFICATION
  *
  * $PostgreSQL: pgsql/src/backend/utils/adt/version.c,v 1.13 2003/11/29 19:52:00 pgsql Exp $
- * $Name: $
+ * $Name:  $
  *-------------------------------------------------------------------------
  */
 
@@ -18,7 +18,7 @@
 Datum
 pgsql_version(PG_FUNCTION_ARGS)
 {
-	char tag[] = " $name: $";
+	char tag[] = " $Name: $";
 	char version[512];
 	int			n;
 	text	   *ret;
