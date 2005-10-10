@@ -107,6 +107,7 @@ UNKNOWN_OPTION () {
 
 CREATE_TEMP_DB () {
 	LOG_MSG "[INFO]:-Creating temporary parsing database"
+	MASTER_IP_ADDRESS=(`$IFCONFIG |$GREP "inet addr"|$GREP -v addr:127|$AWK '{print $2}'|$CUT -d: -f2`)	
 	RUN_COMMAND "$INITDB -E $ENCODING -D ${TEMP_DATA_DIRECTORY}/parsetemp"
 	LOG_MSG "[INFO]:-Successfully initialized temporary parsing database"
 	LOG_MSG "[INFO]:-Setting temporary port number to $TEMP_PORT"
