@@ -243,6 +243,7 @@ condRollbackDtxTransaction(void)
 {
     int ret;
     bool ignoreError;
+    int previous_state;
 
     if (currentGxact == NULL)
     {
@@ -251,14 +252,19 @@ condRollbackDtxTransaction(void)
     ereport(DEBUG1,
         (errmsg("condRollbackDtxTransaction:  %s", currentGxact->gid)));
 
-    /* keep previous state */
-    ignoreError = (currentGxact->state == DTX_STATE_ABORT);
+    /* keep previous state, the transaction has been aborted or
+     * rollback has been called.
+     */
+    ignoreError = (currentGxact->state == DTX_STATE_ABORT ||
+                   currentGxact->state == DTX_STATE_ROLLBACK);
+    previous_state = currentGxact->state;
 
     /* update tm state first */
     updateDtxState(DTX_STATE_ROLLBACK);
 
     /* send rollback to all RM */
-    if ((ret=execCommand()) != DTX_OK)
+    if (previous_state == DTX_STATE_ROLLBACK ||
+        (ret=execCommand()) != DTX_OK)
     {
         char *gid = currentGxact->gid;
         /* clean up gxact even if rollback failed, txn on QE will be
