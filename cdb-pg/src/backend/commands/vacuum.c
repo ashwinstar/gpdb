@@ -398,7 +398,7 @@ vacuum(VacuumStmt *vacstmt)
 
 	/*
 	 * If we are in Cdb Dispatch Mode, send off
-	 * vacuum calls to all the qExecs and wait for 
+	 * vacuum calls to all the qExecs and wait for
      * them to finish, before we query their statistics.
 	 */
 	if ( Mpp_role == MPP_ROLE_DISPATCH )
@@ -441,7 +441,7 @@ vacuum(VacuumStmt *vacstmt)
 				 * will be cleaned up on return (else we leak memory while
 				 * processing multiple tables).
 				 */
-                if (use_own_xacts)
+				if (use_own_xacts)
 				{
 					StartTransactionCommand();
 					/* functions in indexes may want a snapshot set */
@@ -698,7 +698,7 @@ vac_update_relstats(Oid relid, BlockNumber num_pages, double num_tuples,
 	pgcform->reltuples = (float4) num_tuples;
 	pgcform->relhasindex = hasindex;
 
-	elog(DEBUG2, "ANALYZE oid=%u pages=%d tuples=%f", 
+	elog(DEBUG2, "ANALYZE oid=%u pages=%d tuples=%f",
          relid, pgcform->relpages, pgcform->reltuples);
 	/*
 	* If we have discovered that there are no indexes, then there's no
