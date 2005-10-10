@@ -1021,7 +1021,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			/*
 			 * Set up the interconnect for execution of the initplan root slice.
 			 */
-			SetupInterconnect(queryDesc->estate->es_sliceTable, queryDesc->estate->es_sliceTable->localSlice);
+			SetupInterconnect(queryDesc->estate->es_sliceTable, queryDesc->estate->es_sliceTable->localSlice, false);
 		}
 		
 

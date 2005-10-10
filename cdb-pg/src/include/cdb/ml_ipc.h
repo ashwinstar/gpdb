@@ -61,7 +61,7 @@ extern void CleanUpMotionLayerIPC(void);
  *   mySliceId - the index of the slice in the slicetable that we are a member of.
  *
  */
-extern void SetupInterconnect(SliceTable *mySliceTable, int mySliceId);
+extern void SetupInterconnect(SliceTable *mySliceTable, int mySliceId, bool selfOnly);
 
 /* The TeardownInterconnect() function should be called at the end of executing
  * a DML statement to close down all TCP socket resources that were setup during
