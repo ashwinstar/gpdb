@@ -116,6 +116,13 @@ CREATE_TEMP_DB () {
 	else
 		LOG_MSG "[INFO]:-Successfully set temporary database port to $TEMP_PORT"
 	fi
+	LOG_MSG "[INFO]:-Configuring Master $PG_HBA"
+	for MASTER_IP in "${MASTER_IP_ADDRESS[@]}"
+	do
+		IP_ALLOW="`$ECHO $MASTER_IP|$CUT -d. -f1-3`.0/24"
+		LOG_MSG "[INFO]:-Adding $IP_ALLOW to $PG_HBA file"
+		$ECHO "host    all         all         $IP_ALLOW        trust" >> ${TEMP_DATA_DIRECTORY}/parsetemp/$PG_HBA
+	done
 	LOG_MSG "[INFO]:-Starting temporary database"
 	export PGPORT=$TEMP_PORT;$PG_CTL -w -D ${TEMP_DATA_DIRECTORY}/parsetemp -l ${TEMP_DATA_DIRECTORY}/parsetemp.log -o "-i -p $TEMP_PORT" start >> $LOG_FILE 2>&1
 	if [ $? -ne 0 ]; then
