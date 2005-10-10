@@ -1381,11 +1381,16 @@ reconnectSegDB(void *p_failedDB)
 	/*
 	 * elog(DEBUG2, "reconnectSegDB reconnect segDB: %d", failedDB->segment_database_info->dbid);
 	 */
+    if (myDatabaseName == NULL)
+        myDatabaseName = get_database_name(MyDatabaseId);
+    
 	thread_DoConnect((void *) doConnectParmsAr);
 
 	/*
 	 * release connectParms
 	 */
+    pfree(myDatabaseName);
+    myDatabaseName = NULL;
 	pfree(doConnectParmsAr->segdbDescPtrArray);
 	pfree(doConnectParmsAr);
 
