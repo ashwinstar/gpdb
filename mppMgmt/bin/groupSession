@@ -18,7 +18,7 @@ or just:
 	hostN
 
 Options:
--h        Print usage summary and exit
+-h,-?     Print usage summary and exit
 -v        Report all commands sent to host and output received.
 -p <port> Connect on a particular port in place of 22
 -s        Disable the setup of trusted hosts key access
@@ -334,7 +334,7 @@ class groupSession(cmd.Cmd):
 
 if __name__ == '__main__': 
 	# Process options
-	(options, arguments) = getopt.getopt(sys.argv[1:], "hvp:s")
+	(options, arguments) = getopt.getopt(sys.argv[1:], "?hvp:s")
 	verbose = 0
 	defaultport = 22
 	setupKeys = 1
