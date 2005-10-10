@@ -302,7 +302,7 @@ BUILD_SEGMENT_INSTANCES () {
 		BACKOUT_COMMAND "$ECHO \"Stopping segment instance\""
 		LOG_MSG "[INFO]:-Successfully started segment instance on $SEG_HOSTNAME"
 		LOG_MSG "[INFO]:-Updating segment mpp.mpp system table"
-		RUN_COMMAND_REMOTE $SEG_HOSTNAME "env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT template1 -c \"insert into $MPP_TBL values ('${MASTER_MPP_NAME}',${MASTER_TOTAL_SEG},${SEG_DBID},${SEG_CONTENT});\" >> $LOG_FILE 2>&1"
+		RUN_COMMAND_REMOTE $SEG_HOSTNAME "env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT template1 -c \"insert into $MPP_TBL values ('${MASTER_MPP_NAME}',${MASTER_TOTAL_SEG},${SEG_DBID},${SEG_CONTENT});\"" >> $LOG_FILE 2>&1
 		LOG_MSG "[INFO]:-Successfully updated $SEG_HOSTNAME mpp.mpp system table"
 		LOG_MSG "[INFO]:-Commencing shutdown of segment instance on $SEG_HOSTNAME"
 		$TRUSTED_SHELL ${SEG_HOSTNAME} "export PGPORT=${SEG_PORT}; $PG_CTL -w -D $SEG_DATADIR -l ${SEG_DATADIR}.log -o \"-i -p ${SEG_PORT}\" stop" >> $LOG_FILE 2>&1
