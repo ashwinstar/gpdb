@@ -402,7 +402,13 @@ vacuum(VacuumStmt *vacstmt)
      * them to finish, before we query their statistics.
 	 */
 	if ( Mpp_role == MPP_ROLE_DISPATCH )
-		CdbDispatchUtilityStatement((Node*)vacstmt);
+    {
+        if (use_own_xacts)
+            StartTransactionCommand();
+        CdbDispatchUtilityStatement((Node*)vacstmt);
+        if (use_own_xacts)
+            CommitTransactionCommand();
+    }
 		
 	/* Turn vacuum cost accounting on or off */
 	PG_TRY();
@@ -435,7 +441,7 @@ vacuum(VacuumStmt *vacstmt)
 				 * will be cleaned up on return (else we leak memory while
 				 * processing multiple tables).
 				 */
-				if (use_own_xacts)
+                if (use_own_xacts)
 				{
 					StartTransactionCommand();
 					/* functions in indexes may want a snapshot set */
