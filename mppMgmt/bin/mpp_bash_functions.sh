@@ -707,7 +707,7 @@ PROCESS_QE () {
 # Setup logging directory
 #******************************************************************************
 CUR_DATE=`$DATE +%Y%m%d`
-DEFLOGDIR=`pwd`/logs
+DEFLOGDIR=$HOME/mppAdminLogs
 if [ ! -d $DEFLOGDIR ]; then
 		mkdir $DEFLOGDIR
 fi
