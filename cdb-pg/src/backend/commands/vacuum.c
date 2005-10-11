@@ -36,6 +36,7 @@
 #include "cdb/cdbanalyze.h"
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbvars.h"
+#include "cdb/cdbsrlz.h"
 #include "commands/vacuum.h"
 #include "executor/executor.h"
 #include "lib/stringinfo.h"
@@ -53,6 +54,7 @@
 #include "utils/relcache.h"
 #include "utils/syscache.h"
 #include "pgstat.h"
+
 
 
 typedef struct VacPageData
@@ -382,6 +384,60 @@ vacuum(VacuumStmt *vacstmt)
 											ALLOCSET_DEFAULT_INITSIZE,
 											ALLOCSET_DEFAULT_MAXSIZE);
 
+
+
+	/*
+	 * If we are in Cdb Dispatch Mode, send off
+	 * vacuum calls to all the qExecs and wait for
+     * them to finish, before we query their statistics.
+	 */
+	if ( Mpp_role == MPP_ROLE_DISPATCH )
+    {
+		char *pszVacuum;
+	
+		Query *q;
+		StringInfoData buffer;
+	
+		Assert( Mpp_role == MPP_ROLE_DISPATCH );
+	
+		/*
+		 * Serialize the stmt tree, and create the sql statement: mppexec ....
+		 */
+		q = makeNode(Query);
+	
+		initStringInfo( &buffer );
+	
+		q->commandType = CMD_UTILITY;
+		q->utilityStmt = (Node *)vacstmt;
+		q->querySource = QSRC_ORIGINAL;
+		q->canSetTag = true; /*?*/
+	
+		pszVacuum = serializeNode((Node *)q);
+	
+		pfree(q);
+	
+		Assert(pszVacuum != NULL);
+	
+		elog( DEBUG5, "Command %s", pszVacuum);
+	
+		appendStringInfo(&buffer, "mppexec '%s' ''", pszVacuum);
+	
+		pfree(pszVacuum);
+	
+		
+		
+		/* Combination of CdbDispatchCommand and then CdbCheckDispatchResult.
+		 * If it fails on any of the targets, ereport(ERROR, ...) is called.
+	     * call CdbDoCommandInt since it can not start in a transaction
+		 */	
+		CdbDoCommandInt( buffer.data, true, NULL );
+	
+		pfree(buffer.data);
+	
+		elog(DEBUG2,"Sent vacuum command to QEs");
+	}
+	
+	
 	/*
 	 * vacuum_rel expects to be entered with no transaction active; it
 	 * will start and commit its own transaction.  But we are called by an
@@ -395,20 +451,6 @@ vacuum(VacuumStmt *vacstmt)
 		/* matches the StartTransaction in PostgresMain() */
 		CommitTransactionCommand();
 	}
-
-	/*
-	 * If we are in Cdb Dispatch Mode, send off
-	 * vacuum calls to all the qExecs and wait for
-     * them to finish, before we query their statistics.
-	 */
-	if ( Mpp_role == MPP_ROLE_DISPATCH )
-    {
-        if (use_own_xacts)
-            StartTransactionCommand();
-        CdbDispatchUtilityStatement((Node*)vacstmt);
-        if (use_own_xacts)
-            CommitTransactionCommand();
-    }
 		
 	/* Turn vacuum cost accounting on or off */
 	PG_TRY();
