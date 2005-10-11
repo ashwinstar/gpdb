@@ -800,7 +800,7 @@ CREATE_QES_PRIMARY () {
 					RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host	all	all	${MASTER_IP}/32	trust >> ${MPP_DIR}/$PG_HBA"
 				done
 				LOG_MSG "[INFO]:-Starting Functioning instance on segment ${MPP_HOSTNAME}"
-				$TRUSTED_SHELL ${MPP_HOSTNAME} "export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start" >> $LOG_FILE 2>&1
+				$TRUSTED_SHELL ${MPP_HOSTNAME} "export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start" 
 				if [ $? -ne 0 ]; then
 						BACKOUT_COMMAND "$ECHO \"Removing segment log file ${MPP_DIR}.log on segment $MPP_HOSTNAME\""
 						BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
@@ -881,9 +881,12 @@ CREATE_QES_MIRROR () {
 						done
 				fi
 				LOG_MSG "[INFO]:-Configuring segment $PG_HBA"
-				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host	all	all	${MASTER_IP_ADDRESS}/32	trust >> ${MPP_DIR}/$PG_HBA"
+				for MASTER_IP in "${MASTER_IP_ADDRESS[@]}"
+				do
+					RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host	all	all	${MASTER_IP}/32	trust >> ${MPP_DIR}/$PG_HBA"
+				done
 				LOG_MSG "[INFO]:-Starting Functioning instance on segment ${MPP_HOSTNAME}"
-				$TRUSTED_SHELL ${MPP_HOSTNAME} "export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start" >> $LOG_FILE 2>&1
+				$TRUSTED_SHELL ${MPP_HOSTNAME} "export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start"
 				if [ $? -ne 0 ]; then
 						BACKOUT_COMMAND "$ECHO \"Removing segment log file ${MPP_DIR}.log on segment $MPP_HOSTNAME\""
 						BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
