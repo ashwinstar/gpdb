@@ -32,6 +32,7 @@ devel : HOMEDEP $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(MPPPGDIR); make install
 	@make mgmtcopy INSTLOC=$(INSTLOC)
+	@make copylibs INSTLOC=$(INSTLOC)
 
 dist : INSTCFLAGS=$(OPTFLAGS)
 dist : INSTLOC=$(DISTPATH)
@@ -39,6 +40,7 @@ dist : BIZDEP RECONFIG $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(MPPPGDIR); make install
 	@make mgmtcopy INSTLOC=$(INSTLOC)
+	@make copylibs INSTLOC=$(INSTLOC)
 	@rm -f $(TARBALL); make tarball TARBALL=$(TARBALL) INSTLOC=$(INSTLOC)
 
 tarball :
@@ -52,6 +54,10 @@ mgmtcopy :
 	@if [ -d $(MPPMGMT)/demo/mppdemo ]; then mkdir $(INSTLOC)/$(MPPMGMT)/demo; gtar --exclude \*CVS\* -C $(MPPMGMT)/demo -czf $(INSTLOC)/$(MPPMGMT)/demo/mppdemo.tar.gz mppdemo; fi
 	@rm -rf $(INSTLOC)/$(MPPMGMT)/bin/CVS
 	@rm -rf $(INSTLOC)/$(MPPMGMT)/doc/CVS
+
+copylibs :
+	if [ `uname -s` = 'SunOS' ]; then cp `ldd $(INSTLOC)/bin/psql | grep readline | head -1 | awk '{print $$3}'` $(INSTLOC)/lib; fi
+	if [ `uname -s` = 'SunOS' ]; then cp `ldd $(INSTLOC)/bin/psql | grep gcc | head -1 | awk '{print $$3}'` $(INSTLOC)/lib; fi
 
 RECONFIG :
 	rm -f $(ISCONFIG)
