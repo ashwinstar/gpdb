@@ -1587,7 +1587,7 @@ static struct config_string ConfigureNamesString[] =
 			gettext_noop("if blank no prefix is used")
 		},
 		&Log_line_prefix,
-		"", NULL, NULL
+		"%t|%d|%p|%I|:-", NULL, NULL
 	},
 
 

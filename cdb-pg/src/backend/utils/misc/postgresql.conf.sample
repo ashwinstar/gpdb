@@ -237,7 +237,7 @@
 #log_connections = false
 #log_disconnections = false
 #log_duration = false
-#log_line_prefix = ''		# e.g. '<%u%%%d> ' 
+#log_line_prefix = '%t|%d|%p|%I|:-'		# e.g. '<%u%%%d> ' 
 				# %u=user name %d=database name
 				# %r=remote host and port
 				# %p=PID %t=timestamp %i=command tag
