@@ -33,6 +33,8 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #define SHUT_RDWR SD_BOTH
+#define SHUT_RD SD_RECEIVE
+#define SHUT_WR SD_SEND
 #endif
 
 /*=========================================================================
@@ -529,7 +531,8 @@ static inline TupleChunkListItem RecvTupleChunk(MotionConn *conn)
 	return firstTcItem;
 }
 
-/* See ml_ipc.h */
+/* DeregisterReadInterest is called on receiving nodes when they
+ * believe that they're done with the receiver */
 void DeregisterReadInterest(int16 motNodeID, int16 srcRoute)
 {
 	MotionLayerState 	*pEntry;
@@ -543,6 +546,17 @@ void DeregisterReadInterest(int16 motNodeID, int16 srcRoute)
 
 	pEntry = getMotionState(motNodeID);
 	conn = pEntry->conns + srcRoute;
+
+	/* we also mark the connection as "done." The way synchronization
+	 * works is strange. On QDs the "teardown" doesn't get called
+	 * until all segments are finished, which means that we need some
+	 * way for the QEs to know that Teardown should complete,
+	 * otherwise we deadlock the entire query (QEs wait in their
+	 * Teardown calls, while the QD waits for them to finish)
+	 *
+	 * 
+	 */
+	shutdown(conn->sockfd, SHUT_WR);
 	
 	FD_CLR(conn->sockfd, &(pEntry->readSet));
 }
@@ -820,17 +834,17 @@ void TeardownInterconnect(void)
 			
 			if (conn->sockfd != -1)
 			{
-				shutdown(conn->sockfd, SHUT_RDWR);
+				shutdown(conn->sockfd, SHUT_WR);
 			}
 			
 			if (conn->hasMirrorConn && conn->mirrorConn->sockfd != -1)
 			{
-				shutdown(conn->mirrorConn->sockfd, SHUT_RDWR);
+				shutdown(conn->mirrorConn->sockfd, SHUT_WR);
 			}
 		}
 	}
 
-	/* cleanup all of our Receiving Motion nodes. */
+	/* cleanup all of our Receiving Motion nodes, these get closed immediately */
 	foreach(cell, mySlice->children)
 	{
 		Slice *aSlice;
@@ -838,7 +852,7 @@ void TeardownInterconnect(void)
 
 		aSlice = (Slice *)list_nth(sliceTable->slices, childId);
 
-		pEntry = getMotionState(aSlice->sliceIndex);
+		pEntry = removeMotionState(aSlice->sliceIndex);
 		elog(DEBUG3, "close down connections for motion Id: %d", pEntry->motNodeId);
 
 		/* receivers know that they no longer care about data from
@@ -853,14 +867,16 @@ void TeardownInterconnect(void)
 				
 			if (conn->sockfd != -1)
 			{
-				shutdown(conn->sockfd, SHUT_RDWR);
+				shutdown(conn->sockfd, SHUT_WR);
 				close(conn->sockfd);
 				conn->sockfd = -1;
 			}
 		}
+		pfree(pEntry->conns);
 	}
 
-	/* phase 2: wait on all sockets for completion, when complete call close and free (if required */
+	/* phase 2: wait on all sockets for completion, when complete call
+	 * close and free (if required) */
 	if (mySlice->parentIndex != -1)
 	{
 		/* cleanup a Sending motion node. */
@@ -889,37 +905,6 @@ void TeardownInterconnect(void)
 				conn->mirrorConn->sockfd = -1;
 			}
 		}
-	}
-
-	/* cleanup all of our Receiving Motion nodes. */
-	foreach(cell, mySlice->children)
-	{
-		Slice *aSlice;
-		int childId = lfirst_int(cell);
-
-		aSlice = (Slice *)list_nth(sliceTable->slices, childId);
-
-		pEntry = removeMotionState(aSlice->sliceIndex);
-		elog(DEBUG3, "close down connections for motion Id: %d", pEntry->motNodeId);
-
-		/* receivers know that they no longer care about data from
-		 * below ... so we can safely discard data queued in both
-		 * directions */
-		for (i=0; i < pEntry->numConns; i++)
-		{
-			conn = pEntry->conns + i;
-			
-			if (conn == NULL)
-				continue;
-				
-			if (conn->sockfd != -1)
-			{
-				waitOnSocketDone(conn->sockfd);
-				close(conn->sockfd);
-				conn->sockfd = -1;
-			}
-		}
-		pfree(pEntry->conns);
 	}
 
 	/* If there are clients waiting on our listener; we *must*
@@ -2123,10 +2108,9 @@ void doSendStopMessage(int16 motNodeID)
 				 * empty in the send direction */
 				elog(LOG, "SendStopMessage: failed on write %d", errno);
 			}
-
-			/* this connection will be shutdown() and close()d in
-			 * CleanUpMotionLayerIPC() */
 		}
+		/* CRITICAL TO AVOID DEADLOCK */
+		DeregisterReadInterest(motNodeID, i);
 	}
 }
 
@@ -2195,16 +2179,43 @@ static void flushListenerBacklog(void)
 	while (pendingConn != 0);
 }
 
+/*
+ * Wait for our peer to close the socket (at which point our select(2)
+ * will tell us that the socket is ready to read, and the socket-read
+ * will only return 0.
+ *
+ * This works without the select, but burns tons of CPU doing nothing
+ * useful.
+ */
 static void waitOnSocketDone(int fd)
 {
-	int			count;
-	char		buf;
+	int					count, n;
+	char				buf;
+	struct timeval		timeout;
+	fd_set				rset;
 
 	for (;;)
 	{
 		CHECK_FOR_INTERRUPTS();
+
+		FD_ZERO(&rset);
+		FD_SET(fd, &rset);
+		timeout = tval;
+		n = select(fd+1, &rset, NULL, NULL, &timeout);
+		if (n == 0 || (n < 0 && errno == EINTR))
+		{
+			continue;
+		}
+		else if (n < 0)
+		{
+			/* Something unexpected, but probably not horrible warn and return */
+			elog(WARNING, "TeardownInterconnect: waitOnSocketDone select (%d)", errno);
+			break;
+		}
+
+		/* ready to read. */
 		count = recv(fd, &buf, sizeof(buf), 0);
-		if (count == 0)
+		if (count == 0) /* done ! */
 			break;
 		if (count > 0 || (count < 0 && errno == EAGAIN))
 			continue;
@@ -2212,7 +2223,7 @@ static void waitOnSocketDone(int fd)
 		if (errno == EINTR)
 			continue;
 
-		/* Something unexpected, warn and return */
+		/* Something unexpected, but probably not horrible warn and return */
 		elog(WARNING, "TeardownInterconnect: waitOnSocketDone (%d)", errno);
 		break;
 	}
