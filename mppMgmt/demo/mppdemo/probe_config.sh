@@ -16,7 +16,7 @@ else
   MPPSEARCH=$MPPHOME
 fi
 
-MPPPATH=`find $MPPSEARCH -name mpp_dump | tail -1`
+MPPPATH=`find $MPPSEARCH -name mpp_dumpall | tail -1`
 RETVAL=$?
 
 if [ "$RETVAL" -ne 0 ]; then
