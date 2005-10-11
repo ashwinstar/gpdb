@@ -498,11 +498,8 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 			/* activate the connections, if needed */
 			if (((PlanState *)motionState)->plan->nMotionNodes > 0)
 			{
-				Motion *top = (Motion *)motionState->ps.plan;
-
 				shouldSetupInterconnect = true;
-				SetupInterconnect(estate->es_sliceTable, estate->es_cur_slice_idx,
-								  top->hashToSelfOnly || top->fixedToSelfOnly);
+				SetupInterconnect(estate->es_sliceTable, estate->es_cur_slice_idx);
 			}
 
 			result = ExecutePlan(estate,
@@ -519,7 +516,7 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 			if (queryDesc->planstate->plan->nMotionNodes > 0)
 			{
 				shouldSetupInterconnect = true;
-				SetupInterconnect(estate->es_sliceTable, estate->es_cur_slice_idx, false);
+				SetupInterconnect(estate->es_sliceTable, estate->es_cur_slice_idx);
 			}
 
 			result = ExecutePlan(estate,

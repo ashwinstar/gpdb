@@ -170,7 +170,7 @@ static MotionLayerState *createMotionState(int16 motNodeID, int numConns);
 static inline MotionLayerState *getMotionState(int16 motNodeID);
 static MotionLayerState *removeMotionState(int16 motNodeID);
 
-static MotionLayerState  *startConnections(Slice *mySlice, bool selfOnly, int *highsock, fd_set *wset, int *connsStarted);
+static MotionLayerState  *startConnections(Slice *mySlice, int *highsock, fd_set *wset, int *connsStarted);
 static void setupOutgoingConnection(MotionConn *conn, CdbProcess *cdbProc,int *highsock, fd_set *wset);
 static void sendRegisterMessage(MotionLayerState *pEntry, MotionConn *conn);
 static void readRegisterMessage(MotionConn *in_conn, int *incoming_count);
@@ -552,7 +552,7 @@ void DeregisterReadInterest(int16 motNodeID, int16 srcRoute)
 }
 
 /* See ml_ipc.h */
-void SetupInterconnect(SliceTable *mySliceTable, int mySliceId, bool selfOnly)
+void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 {
 	int					i, n, highsock = 0;
 	fd_set 				rset,rrset;
@@ -619,7 +619,7 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId, bool selfOnly)
 		Assert(sendingMotionState == NULL);
 		
 		/* MotionEntry created inside of startConnections. */
-		pEntry = startConnections(mySlice, selfOnly, &highsock, &wset, &expectedTotalOutgoing);
+		pEntry = startConnections(mySlice, &highsock, &wset, &expectedTotalOutgoing);
 
 		pEntry->myRouteId = findMyRouteId(list_nth(sliceTable->slices, mySlice->sliceIndex));
 			
@@ -1143,8 +1143,6 @@ static MotionLayerState *removeMotionState(int16 motNodeID)
  *	
  *   mySlice  - Slice that this process is a member of.
  *
- *   selfOnly - caller tells us if we should only set up self-connections (MotionType "Cull").
- *
  *   highsock - Current highest valued socket filedescriptor (used for select())
  *
  *   wset     - fd_set for writes (used for select())
@@ -1154,7 +1152,7 @@ static MotionLayerState *removeMotionState(int16 motNodeID)
  * RETURNS
  *   Initialized MotionLayerState for the Sending Motion Node Id.	
  */
-static MotionLayerState  *startConnections(Slice *mySlice, bool selfOnly, int *highsock, fd_set *wset, int *connsStarted)
+static MotionLayerState  *startConnections(Slice *mySlice, int *highsock, fd_set *wset, int *connsStarted)
 {
 	MotionLayerState	*pEntry;
 	MotionConn			*conn;
