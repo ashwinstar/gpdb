@@ -1971,7 +1971,7 @@ static struct config_string ConfigureNamesString[] =
            gettext_noop("Valid values are CONTINUE, READONLY, and SHUTDOWN.")
        },
        &mpp_fault_action_string,
-       "continue", NULL, NULL
+       "readonly", NULL, NULL
     },
 
 	/* End-of-list marker */

@@ -341,5 +341,5 @@
 
 #transform_null_equals = false
 
-#mpp_fault_action = continue         # none for disabling Fault Tolerance feature,
+#mpp_fault_action = readonly         # none for disabling Fault Tolerance feature,
                                      # other valid parameters are readonly, continue and shutdown.
