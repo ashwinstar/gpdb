@@ -34,11 +34,13 @@ CMDPATH=(/usr/kerberos/bin /usr/sfw/bin /opt/sfw/bin /usr/local/bin /bin /usr/bi
 declare -a MPPPATH
 MPPPATH=( $MPPHOME $BIZHOME )
 if [ ${#MPPPATH[@]} -eq 0 ];then
-	echo "[FATAL]:-MPPHOME and BIZHOME are not set, need to set at least one of these within environment"  
+	echo "[FATAL]:-MPPHOME and BIZHOME are not set, need to set at least one of these within environment"
 	exit 2
 fi
+
 #MPP_UNIQUE_COMMAND is used to identify the binary directory
-MPP_UNIQUE_COMMAND=mpp_dump
+MPP_UNIQUE_COMMAND=mpp_dumpall
+
 
 findCmdInPath() {
 		cmdtofind=$1
@@ -46,13 +48,13 @@ findCmdInPath() {
 		for pathel in ${CMDPATH[@]}
 				do
 				CMD=$pathel/$cmdtofind
-				if [ -x $CMD ]; then
+				if [ x"$CMD" != x"" ] && [ -f $CMD ]; then
 						echo $CMD
 						return
 				fi
 		done
-
-		return "Problem in mppbash_functions, command $cmdtofind not found in COMMAND path. You will need to edit the script named mppbash_functions.sh to properly locate the needed commands for your platform."
+		echo $cmdtofind
+		return "Problem in mppbash_functions, command '$cmdtofind' not found in COMMAND path. You will need to edit the script named mppbash_functions.sh to properly locate the needed commands for your platform."
 }
 
 findMppPath() {
@@ -61,13 +63,11 @@ findMppPath() {
 		for pathel in ${MPPPATH[@]}
 				do
 				CMD=`find $pathel -name $cmdtofind | tail -1`
-				if [ -x $CMD ]; then
+				if [ x"$CMD" != x"" ] && [ -f $CMD ]; then
 						echo $CMD
 						return
 				fi
 		done
-		return "Problem in mppbash_functions, command $cmdtofind not found in MPP path. Try setting BIZHOME to the location of your MPP distribution"
-
 }
 
 #******************************************************************************
@@ -136,6 +136,12 @@ CALL_HOST=`$HOSTNAME|$CUT -d. -f1`
 # Locate the postgres routines from the MPP release
 #******************************************************************************
 PSQLBIN=`findMppPath`
+
+if [ x"$PSQLBIN" = x"" ];then
+		echo "Problem in mppbash_functions, command '$MPP_UNIQUE_COMMAND' not found in MPP path. Try setting BIZHOME to the location of your MPP distribution"
+		exit 99
+fi
+
 PSQLBIN=`$DIRNAME $PSQLBIN`
 
 
@@ -199,7 +205,7 @@ ERROR_EXIT () {
 		TIME=`$DATE +%H":"%M":"%S`
 		CUR_DATE=`$DATE +%Y%m%d`
 		$ECHO "${CUR_DATE}:${TIME}:${PROG_NAME}:${CALL_HOST}:${USER_NAME}-$1 Script Exiting!" >> $LOG_FILE
-		$ECHO "${CUR_DATE}:${TIME}:${PROG_NAME}:${CALL_HOST}:${USER_NAME}-$1 Script Exiting!" 
+		$ECHO "${CUR_DATE}:${TIME}:${PROG_NAME}:${CALL_HOST}:${USER_NAME}-$1 Script Exiting!"
 		if [ $BACKOUT_FILE ]; then
 				if [ -s $BACKOUT_FILE ]; then
 						LOG_MSG "[WARN]:-Script has left MPP configuration in an incomplete state"
@@ -267,7 +273,7 @@ _EOF_
 				LOG_MSG "[INFO]:-Appended line $SUB_TXT to $FILENAME on $ED_HOST"
 			fi
 		else
-			$ECHO 1 > $ED_TMP_FILE 
+			$ECHO 1 > $ED_TMP_FILE
 			$ECHO "/${SEARCH_TXT}" >>  $ED_TMP_FILE
 			$ECHO i >>  $ED_TMP_FILE
 			$ECHO "$SUB_TXT #" >>  $ED_TMP_FILE
@@ -490,7 +496,7 @@ RUN_COMMAND () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		COMMAND="$1"
 		LOG_MSG "[INFO]:-Commencing local $COMMAND"
-		$COMMAND 
+		$COMMAND
 		RETVAL=$?
 		echo "Return code = $RETVAL"
 		if [ $RETVAL -ne 0 ]; then

@@ -124,10 +124,8 @@ CHK_PARAMS () {
 				ERROR_EXIT "[FATAL]:-Unable to continue" 2
 		fi
 		#Check that we can see initdb
-		INITDB_CHK=`$WHICH initdb`
-		RETVAL=$?
-		if [ $RETVAL -ne 0 ]; then
-			ERROR_EXIT "[FATAL]:-Unable to locate initdb" $RETVAL
+		if [ x"$INITDB" = x"" ] || [ ! -x $INITDB ];then
+			ERROR_EXIT "[FATAL]:-Unable to locate initdb" 99
 		fi
 		#Make sure that script has been supplied a config file
 		if [ x"" = x"$CLUSTER_CONFIG" ]; then
@@ -493,7 +491,7 @@ DISPLAY_CONFIG () {
 		LOG_MSG "[INFO]:-Checkpoint segments  = $CHECK_POINT_SEGMENTS"
 		LOG_MSG "[INFO]:-Encoding             = $ENCODING"
 		LOG_MSG "[INFO]:-Pg Conf add file     = $PG_ADD"
-		LOG_MSG "[INFO]:-Initdb to be used    = $INITDB_CHK"
+		LOG_MSG "[INFO]:-Initdb to be used    = $INITDB"
 		((NUM_QES=${#MACHINE_LIST[*]}))
 		LOG_MSG "[INFO]:-Number segment hosts = $NUM_QES"
 		if [ $MIRROR_PORT_BASE ]; then
@@ -586,7 +584,7 @@ CREATE_QD_DB () {
 						do
 						LOG_MSG "[INFO]:-Adding config $NEW_PARAM to Master"
 						SEARCH_TXT=`$ECHO $NEW_PARAM |$CUT -d"=" -f1`
-						ED_FILE ${MPP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM 
+						ED_FILE ${MPP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM
 				done
 		fi
 		LOG_MSG "[INFO]:-Setting IP Allow in $PG_HBA to value $IP_ALLOW"
@@ -864,7 +862,7 @@ CREATE_QES_MIRROR () {
 		do
 				SET_VAR $I
 				LOG_MSG "[INFO]:-Processing Mirror segment $MPP_HOSTNAME"
-				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$INITDB -E $ENCODING -D $MPP_DIR" 
+				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$INITDB -E $ENCODING -D $MPP_DIR"
 				BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -rf $MPP_DIR\""
 				BACKOUT_COMMAND "$ECHO \"removing directory $MPP_DIR on $MPP_HOSTNAME\""
 				LOG_MSG "[INFO]:-Configuring segment $PG_CONF"
