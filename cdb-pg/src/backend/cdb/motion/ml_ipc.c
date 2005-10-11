@@ -185,9 +185,6 @@ static CdbProcess *findCdbProcess(RegisterMessage *msg);
 static bool flushBuffer(MotionConn *conn);
 void dumpEntryConnections(MotionLayerState *pEntry);
 
-static void getEosAck(MotionConn *conn, int16 route);
-void waitOnEosAck(MotionLayerState *pEntry);
-
 void print_connection(int fd, const char *msg);
 
 static void flushListenerBacklog(void);
@@ -337,8 +334,6 @@ void SendEosToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcItem)
 		if (conn->hasMirrorConn)
 			flushBuffer(conn->mirrorConn);
 	}
-
-	waitOnEosAck(pEntry);
 
 #ifdef AMS_VERBOSE_LOGGING	
 	elog(DEBUG3, "SendEosToAMS() Leaving");
@@ -2072,186 +2067,6 @@ void doSendStopMessage(int16 motNodeID)
 			 * CleanUpMotionLayerIPC() */
 		}
 	}
-}
-
-/* Function SendStopMessage() sends a short "ack" message, to one node
- * tell it that we've received its EOS notifier. This is pretty much
- * exactly the same code as SendStopMessage(), but without the
- * broadcast loop.
- *
- * PARAMETERS
- *
- *   motNodeID - motion node identifier
- *   route - route identifier
- */
-void SendEosAck(int16 motNodeID, int16 route)
-{
-	MotionLayerState	*pEntry;
-	MotionConn			*conn;
-	ssize_t				written;
-	char				m = 'A';
-
-#ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG3, "Sending EOS ack to route %d", route);
-#endif
-
-	pEntry = getMotionState(motNodeID);
-	Assert(pEntry != NULL);
-
-	conn = pEntry->conns + route;
-	Assert(conn != NULL);
-
-    /* TODO: Return with no action if already sent Stop message. */
-
-	while ((written = write(conn->sockfd, &m, sizeof(m))) < 0)
-		if (errno != EINTR)
-			break;
-
-	if (written != sizeof(m))
-	{
-		/* how can this happen ? the kernel buffer should be
-		 * empty in the send direction */
-		elog(ERROR, "SendEosAck: failed on write %d", errno);
-	}
-
-#ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG3, "Sent EOS ack (fd %d)", conn->sockfd);
-#endif
-}
-
-static void getEosAck(MotionConn *conn, int16 route)
-{
-	int			readCount;
-	char		response;
-
-	readCount = read(conn->sockfd, &response, sizeof(response));
-	if (readCount < 0)
-	{
-		if (errno == EINTR || errno == EWOULDBLOCK)
-			return;
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-						errmsg("Interconnect error reading EOS Ack"),
-						errdetail("read() errno=%d "
-								  "contentId=%d at '%s':%d",
-								  errno, conn->remoteContentId,
-								  conn->remoteHost,conn->remotePort)));
-	}
-	else if (readCount == 0)
-	{
-		/* peer has closed its socket */
-		conn->stillActive = false;
-#ifdef AMS_VERBOSE_LOGGING
-		elog(DEBUG3, "Peer closed route %d without EOS ack", route);
-#endif
-	}
-	else if (readCount != sizeof(response))
-	{
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-						errmsg("Interconnect error reading EOS Ack"),
-						errdetail("count=%d "
-								  "contentId=%d at '%s':%d",
-								  readCount, conn->remoteContentId,
-								  conn->remoteHost,conn->remotePort)));
-	}
-	else if (response == 'A' || response == 'S')
-	{
-		/* successfully acknowledged */
-		conn->stillActive = false;
-#ifdef AMS_VERBOSE_LOGGING
-		print_connection(conn->sockfd, "EOS from");
-		elog(DEBUG3, "Received EOS ack from route %d", route);
-#endif
-	}
-	else
-	{
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-						errmsg("Interconnect error reading EOS Ack"),
-						errdetail("invalid Ack message (%c).\n"
-								  "contentId=%d at '%s':%d",
-								  response, conn->remoteContentId,
-								  conn->remoteHost,conn->remotePort)));
-	}
-
-}
-
-void waitOnEosAck(MotionLayerState *pEntry)
-{
-	MotionConn			*conn=NULL;
-	int					i, n, waitCount;
-	fd_set				waitset;
-	struct timeval		timeout;
-	int					limit;
-
-	do {
-		timeout = tval;
-		limit = 0;
-        waitCount = 0;
-
-		FD_ZERO(&waitset);
-		for (i= 0; i < pEntry->numConns; i++)
-		{
-			conn = pEntry->conns + i;	
-		
-			if (conn->stillActive)
-			{
-				FD_SET(conn->sockfd, &waitset);
-				limit = MAX(limit, conn->sockfd);
-				waitCount++;
-			}
-		
-			if (conn->hasMirrorConn && conn->mirrorConn->stillActive)
-			{
-				FD_SET(conn->mirrorConn->sockfd, &waitset);
-				limit = MAX(limit, conn->mirrorConn->sockfd);
-				waitCount++;
-			}
-		}
-		if (!waitCount)
-			break;
-
-        /* see if user canceled and stuff like that */
-        CHECK_FOR_INTERRUPTS();
-
-		n = select(limit+1, &waitset, NULL, NULL, &timeout);
-		if (n < 0)
-		{
-			if (errno == EINTR)
-				continue;
-			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-							errmsg("Interconnect error waiting for EOS Ack"),
-							errdetail("Select errno %d).\n"
-									  "contentId=%d at '%s':%d",
-									  errno, conn->remoteContentId,
-									  conn->remoteHost,conn->remotePort)));
-		}
-		else if (n > 0)
-		{
-			for (i= 0; i < pEntry->numConns; i++)
-			{
-				conn = pEntry->conns + i;
-
-				if (conn->stillActive &&
-					FD_ISSET(conn->sockfd, &waitset))
-				{
-					getEosAck(conn, i);
-				}
-				if (conn->hasMirrorConn && conn->mirrorConn->stillActive &&
-					FD_ISSET(conn->mirrorConn->sockfd, &waitset))
-				{
-					getEosAck(conn->mirrorConn, i);
-				}
-			}
-		}
-
-#ifdef AMS_VERBOSE_LOGGING
-		if (n == 0)
-		{
-			elog(DEBUG3, "waitOnEosAck(): timeout");
-		}
-#endif
-
-	} while (waitCount != 0);
-
 }
 
 void print_connection(int fd, const char *msg)

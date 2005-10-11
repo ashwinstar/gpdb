@@ -1194,7 +1194,6 @@ static bool addChunkToSorter(MotionNodeEntry *pMNEntry, TupleChunkListItem tcIte
 		 * interest in the interconnect.
 		 */
 		DeregisterReadInterest(motNodeID, srcRoute);
-		SendEosAck(motNodeID, srcRoute);
 
         break;
 
@@ -1222,7 +1221,6 @@ static bool addChunkToSorter(MotionNodeEntry *pMNEntry, TupleChunkListItem tcIte
         pMNEntry->num_stream_ends_recvd++;
 
 		DeregisterReadInterest(motNodeID, srcRoute);
-		SendEosAck(motNodeID, srcRoute);
 
         break;
 
