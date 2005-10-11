@@ -1186,8 +1186,7 @@ static MotionLayerState  *startConnections(Slice *mySlice, bool selfOnly, int *h
 		conn->sockfd = -1;
 	
 		cdbProc = (CdbProcess *)list_nth(recvSlice->primaryProcesses, i);
-		if (selfOnly && cdbProc->contentid != cdbProc->routeid)
-			continue;
+
 		setupOutgoingConnection(conn, cdbProc, highsock, wset);
 		(*connsStarted)++;
 		
