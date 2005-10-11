@@ -187,6 +187,7 @@ void dumpEntryConnections(MotionLayerState *pEntry);
 
 void print_connection(int fd, const char *msg);
 
+static void waitOnSocketDone(int);
 static void flushListenerBacklog(void);
 
 static inline TupleChunkListItem RecvTupleChunk(MotionConn *conn);
@@ -800,6 +801,66 @@ void TeardownInterconnect(void)
 
 	mySlice = (Slice*)list_nth(sliceTable->slices, sliceId);
 
+	/* multi-phase shutdown, mark all as shutdown */
+
+	/* phase 1 mark all sockets (senders and receivers) with shutdown(2) */
+	if (mySlice->parentIndex != -1)
+	{
+		/* cleanup a Sending motion node. */
+		elog(DEBUG3, "close down outgoing connections for motion id: %d",
+				mySlice->sliceIndex);
+		pEntry = getMotionState(mySlice->sliceIndex);
+
+		for (i=0; i < pEntry->numConns; i++)
+		{
+			conn = pEntry->conns + i;
+			
+			if (conn == NULL)
+				continue;
+			
+			if (conn->sockfd != -1)
+			{
+				shutdown(conn->sockfd, SHUT_RDWR);
+			}
+			
+			if (conn->hasMirrorConn && conn->mirrorConn->sockfd != -1)
+			{
+				shutdown(conn->mirrorConn->sockfd, SHUT_RDWR);
+			}
+		}
+	}
+
+	/* cleanup all of our Receiving Motion nodes. */
+	foreach(cell, mySlice->children)
+	{
+		Slice *aSlice;
+		int childId = lfirst_int(cell);
+
+		aSlice = (Slice *)list_nth(sliceTable->slices, childId);
+
+		pEntry = getMotionState(aSlice->sliceIndex);
+		elog(DEBUG3, "close down connections for motion Id: %d", pEntry->motNodeId);
+
+		/* receivers know that they no longer care about data from
+		 * below ... so we can safely discard data queued in both
+		 * directions */
+		for (i=0; i < pEntry->numConns; i++)
+		{
+			conn = pEntry->conns + i;
+			
+			if (conn == NULL)
+				continue;
+				
+			if (conn->sockfd != -1)
+			{
+				shutdown(conn->sockfd, SHUT_RDWR);
+				close(conn->sockfd);
+				conn->sockfd = -1;
+			}
+		}
+	}
+
+	/* phase 2: wait on all sockets for completion, when complete call close and free (if required */
 	if (mySlice->parentIndex != -1)
 	{
 		/* cleanup a Sending motion node. */
@@ -816,14 +877,14 @@ void TeardownInterconnect(void)
 			
 			if (conn->sockfd != -1)
 			{
-				shutdown(conn->sockfd, SHUT_RDWR);
+				waitOnSocketDone(conn->sockfd);
 				close(conn->sockfd);
 				conn->sockfd = -1;
 			}
 			
 			if (conn->hasMirrorConn && conn->mirrorConn->sockfd != -1)
 			{
-				shutdown(conn->mirrorConn->sockfd, SHUT_RDWR);
+				waitOnSocketDone(conn->mirrorConn->sockfd);
 				close(conn->mirrorConn->sockfd);
 				conn->mirrorConn->sockfd = -1;
 			}
@@ -853,7 +914,7 @@ void TeardownInterconnect(void)
 				
 			if (conn->sockfd != -1)
 			{
-				shutdown(conn->sockfd, SHUT_RDWR);
+				waitOnSocketDone(conn->sockfd);
 				close(conn->sockfd);
 				conn->sockfd = -1;
 			}
@@ -2132,4 +2193,28 @@ static void flushListenerBacklog(void)
 		 * or if we cleaned one client) or we're done */
 	}
 	while (pendingConn != 0);
+}
+
+static void waitOnSocketDone(int fd)
+{
+	int			count;
+	char		buf;
+
+	for (;;)
+	{
+		CHECK_FOR_INTERRUPTS();
+		count = recv(fd, &buf, sizeof(buf), 0);
+		if (count == 0)
+			break;
+		if (count > 0 || (count < 0 && errno == EAGAIN))
+			continue;
+		/* Some other kind of error happened */
+		if (errno == EINTR)
+			continue;
+
+		/* Something unexpected, warn and return */
+		elog(WARNING, "TeardownInterconnect: waitOnSocketDone (%d)", errno);
+		break;
+	}
+	return;
 }
