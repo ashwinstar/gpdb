@@ -181,7 +181,7 @@ PROMPT_CONTINUE () {
 						QE_DIR=`$ECHO $QNODE|$CUT -d"|" -f2`
 						QE_PORT=`$ECHO $QNODE|$CUT -d"|" -f3`
 						QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
-						$TABECHO "QE [$COUNT] $QE_NAME data directory = $QE_DIR port = $QE_PORT" |$TEE -a $LOG_FILE
+						$TABECHO "Segment instance [$COUNT] $QE_NAME data directory = $QE_DIR port = $QE_PORT" |$TEE -a $LOG_FILE
 						((COUNT=$COUNT+1))
 				done
 		fi
