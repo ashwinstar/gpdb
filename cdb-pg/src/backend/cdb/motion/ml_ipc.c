@@ -684,6 +684,8 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 		memcpy(&wwset, &wset, sizeof(fd_set));
 
 		n = select(highsock + 1, &rrset, &wwset, NULL, &timeout);
+		if (n == 0) /* timeout */
+			continue;
         if (n < 0)
 		{
 			if (errno == EINTR)
