@@ -9,9 +9,9 @@
 /*
  * External declarations
  */
-extern Datum cdb_backup_launch__(PG_FUNCTION_ARGS);
-extern Datum cdb_restore_launch__(PG_FUNCTION_ARGS);
-extern Datum cdb_read_backup_file__(PG_FUNCTION_ARGS);
-extern Datum cdb_write_backup_file__(PG_FUNCTION_ARGS);
+extern Datum mpp_backup_launch__(PG_FUNCTION_ARGS);
+extern Datum mpp_restore_launch__(PG_FUNCTION_ARGS);
+extern Datum mpp_read_backup_file__(PG_FUNCTION_ARGS);
+extern Datum mpp_write_backup_file__(PG_FUNCTION_ARGS);
 
 #endif   /* CDBBACKUP_H */
