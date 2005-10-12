@@ -98,7 +98,7 @@ int main( int argc, char** argv)
 	/* This struct holds an array of the thread parameters */
 	ThreadParmArray			parmAr;
 	PGconn **conn_dbs;
-    int    numOfConns, i;
+    int    numOfConns=0, i;
     
 	memset( &inputOpts, 0, sizeof(inputOpts) );
 	memset( &segInstAr, 0, sizeof(segInstAr) );
