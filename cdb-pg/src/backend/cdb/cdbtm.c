@@ -359,6 +359,7 @@ execCommand(void)
     /* wait for completion; if unsuccessful, handle error */
     if ( !CdbCheckDispatchResultInt(&failedSegDB,&numOfFailed) )
     {
+        initStringInfo(&errMessage);
         cdbdisp_dumpGangResults(primaryGang, &errMessage, false);
         cdbdisp_dumpGangResults(mirrorGang, &errMessage, false);
 
@@ -449,7 +450,9 @@ endTMXactScan(void)
 void
 initTM(void)
 {
+    /* do not init errMessage here, this is in a different context.
     initStringInfo(&errMessage);
+    */
     if (!*shmTmRecoverred)
     {
         getTmLock();
