@@ -1379,6 +1379,42 @@ log_line_prefix(StringInfo buf)
 			case 'l':
 				appendStringInfo(buf, "%ld", log_line_number);
 				break;
+			case 'm':
+				{
+					/*
+					 * Note: for %m, %t, and %s we deliberately use the
+					 * C library's strftime/localtime, and not the
+					 * equivalent functions from src/timezone.	This
+					 * ensures that all backends will report log entries
+					 * in the same timezone, namely whatever C-library
+					 * setting they inherit from the postmaster.  If we
+					 * used src/timezone then local settings of the
+					 * TimeZone GUC variable would confuse the log.
+					 */
+					time_t stamp_time;
+					char strfbuf[128], msbuf[8];
+					struct timeval tv;
+
+					gettimeofday(&tv, NULL);
+ 					stamp_time = tv.tv_sec;
+
+					strftime(strfbuf, sizeof(strfbuf),
+					/* leave room for milliseconds... */
+					/* Win32 timezone names are too long so don't print them. */
+#ifndef WIN32
+							 "%Y-%m-%d %H:%M:%S     %Z",
+#else
+							 "%Y-%m-%d %H:%M:%S     ",
+#endif
+							 localtime(&stamp_time));
+
+					/* 'paste' milliseconds into place... */
+ 					sprintf(msbuf, ".%03d", (int) (tv.tv_usec/1000));
+					strncpy(strfbuf+19, msbuf, 4);
+
+					appendStringInfoString(buf, strfbuf);
+				}
+				break;	
 			case 't':
 				{
 					/*
@@ -1508,7 +1544,7 @@ log_line_prefix(StringInfo buf)
                     else if (Mpp_role == MPP_ROLE_DISPATCH)
                         appendStringInfo(buf, "qd");
                 }
-				break;
+				break;	
 			case '%':
 				appendStringInfoChar(buf, '%');
 				break;
