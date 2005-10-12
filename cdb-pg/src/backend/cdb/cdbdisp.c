@@ -1442,7 +1442,19 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc)
 	 * need to start distributed transaction
 	 */
 	condStartDtxTransaction();
-	
+    
+    /*
+     * check fts sync count
+     */
+    if (!verifyFtsSyncCount())
+    {
+        /*
+        * recofig mpp connections
+        */
+        if (!FtsReConfigureMPP())
+            elog(PANIC, "FTS: reconfigMPP failed");
+    }
+
     /* Wait for previous command to finish before starting this one. */
     if (threadCount)
     {
