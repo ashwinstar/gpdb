@@ -1467,11 +1467,20 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 	int numUniqueIndexes = 0;
 	Constraint * uniqueindex = NULL;
 	
+	/*
+	 * utility mode creates can't have a policy.  Only the QD can have policies
+	 * 
+	 */
 	if ( Mpp_role != MPP_ROLE_DISPATCH )
 	{
 		*policyp = NULL;
 		return;
 	}
+	
+	/*
+	 * Usually, when we get here, no policy has been assigned yet.  But in some cases,
+	 * such as CREATE TABLE x (LIKE y), we might already have the policy set
+	 */
 	
 	if (*policyp != NULL)
 		return;
@@ -1481,9 +1490,17 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 	policy->ptype = POLICYTYPE_PARTITIONED;
 	policy->nattrs = 0;
 	policy->attrs[0] = 1;
+	
+	/*
+	 * If distributedBy is NIL, the user did not explicitly say what he wanted for 
+	 * a distribution policy.  So, we need to assign one.
+	 */
 	 
-	if (distributedBy==0 && cxt && cxt->pkey != NULL)
+	if (distributedBy==NIL && cxt && cxt->pkey != NULL)
 	{
+		/*
+		 * We have a PRIMARY KEY, so let's assign the default distribution to be the key
+		 */
 
 		IndexStmt * index = cxt->pkey;
 		List * indexParams;
@@ -1542,8 +1559,13 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 		}
 	}
 	
-	if (distributedBy==0 && cxt && cxt->ixconstraints != NULL && numUniqueIndexes > 0)
+	if (distributedBy==NIL && cxt && cxt->ixconstraints != NULL && numUniqueIndexes > 0)
 	{
+		/*
+		 * No explicit distributed by clause, and no primary key.
+		 * If there is a UNIQUE clause, let's use that
+		 */
+		 
 		ListCell * lc = NULL;
 		
 		foreach(lc,cxt->ixconstraints)
@@ -1578,8 +1600,11 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 	}
 	 
 
-	if (distributedBy==0)
+	if (distributedBy==NIL)
 	{
+		/*
+		 * if we get here, we haven't a clue what to use for the distribution columns.
+		 */
 		policy->nattrs = 1;
 		/* Hack! BUG BUG!  right now we always partition on column 1 */
 		policy->attrs[0] = 1;
@@ -1812,6 +1837,14 @@ transformFKConstraints(ParseState *pstate, CreateStmtContext *cxt,
 
 			fkconstraint->skip_validation = true;
 		}
+	}
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+			  errmsg("Referential integrity (FOREIGN KEY) constraints are not supported in Bizgres MPP")));
+	    return;
 	}
 
 	/*
