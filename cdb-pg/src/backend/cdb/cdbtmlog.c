@@ -46,7 +46,6 @@ static int  logFileFD=-1, logFileNo;
 static bool mirrorQDInited = false;
 
 
-static TmLogRecord * readTmLogRecordNext(int offset);
 static void writeTmControlBlock(int offset);
 static void initTmLogFile(int seqno);
 static void closeTmLogFile(void);
@@ -61,7 +60,7 @@ static void removeTmLogFileUntil(int seqno);
 /*
  * read next log record. if offset is given, read from that offset.
  */
-static TmLogRecord *
+TmLogRecord *
 readTmLogRecordNext(int offset)
 {
     int loffset, participant_len=0;
@@ -599,4 +598,15 @@ resync_tmlog_to_mirror(int startoff, int stopoff)
     /* successful */
     return true;
 }
+
+
+TmLogFileControlBlock *
+getTmLogFileHeader()
+{
+    if (!read_with_ereport(logFileFD, &tmLogFileHeader, sizeof(TmLogFileControlBlock)))
+        return NULL;
+    else
+        return &tmLogFileHeader;
+}
+
 

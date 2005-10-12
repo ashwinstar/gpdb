@@ -56,5 +56,6 @@ extern int initTmLog( char *);
 extern void redoTmLog(TmLogRecord *);
 extern bool openTmLogFile(int);
 extern bool resync_tmlog_to_mirror(int, int);
+extern TmLogRecord * readTmLogRecordNext(int offset);
 
 #endif /* CDBTMLOG_H */

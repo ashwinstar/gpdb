@@ -23,7 +23,6 @@ main(int argc, char  **argv)
     strcpy(dtm_dir,"/Users/jchang/cdb-data/cdb0/pg_dtm");
     if (initTmLogx( "/Users/jchang/cdb-data/cdb0/pg_dtm"))
     {
-        printf( " log is recreated" );
         return 1;
     }
     tmLogFileHeader = getTmLogFileHeader();
@@ -108,26 +107,15 @@ initTmLogx( char *dir)
     
     if (file1 == -1)
     {
-        /* no file found, create the first log file */
-        initTmLogFile(0);
-        checkPointTm();
-        return true;
+       printf( "error finding file"); 
+       return true;
     }
     else
     {
         if ( !openTmLogFile(file1) )
         {
-            if ( file2 == -1 || !openTmLogFile(file2) )
-            {
-                /* cleanup */
-                removeTmLogFile(file2);
-                /* no valid tm log file found, recreate */
-                initTmLogFile(0);
-                checkPointTm();
-                return true;
-            }
-            removeTmLogFile(file1);
-            *shmLatestLogFileNo = file2;
+            printf( "error opening file %08d", file1);
+            return true;
         }
     }
     
