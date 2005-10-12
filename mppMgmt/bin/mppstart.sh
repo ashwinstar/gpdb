@@ -203,9 +203,9 @@ PROMPT_CONTINUE () {
 				QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
 				QE_PRIMARY=`$ECHO $QNODE|$CUT -d"|" -f5`
 				if [ "$QE_VALID" == "t" ]; then
-					$TABECHO "QE [$COUNT] $QE_NAME data directory = $QE_DIR port = $QE_PORT"
+					$TABECHO "Segment instance [$COUNT] $QE_NAME data directory = $QE_DIR port = $QE_PORT"
 				else
-					$TABECHO "QE [$COUNT] $QE_NAME data directory = $QE_DIR port = $QE_PORT invalid will not start"
+					$TABECHO "Segment instance [$COUNT] $QE_NAME data directory = $QE_DIR port = $QE_PORT invalid will not start"
 				fi
 				((COUNT=$COUNT+1))
 		done
@@ -233,7 +233,7 @@ PROCESS_STARTUP () {
 				QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
 				QE_PRIMARY=`$ECHO $QNODE|$CUT -d"|" -f5`
 				if [ "$QE_VALID" == "t" ] || [ $START_INVALID -eq 1 ];then
-					LOG_MSG "[INFO]:-Starting QE $QE_NAME directory $QE_DIR"
+					LOG_MSG "[INFO]:-Starting Segment instance $QE_NAME directory $QE_DIR"
 					$TRUSTED_SHELL $QE_NAME "export PGPATH=${MPPHOME}/bin;export PGPORT=${QE_PORT};$PG_CTL $WAIT -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start" >> $LOG_FILE 2>&1
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
