@@ -41,8 +41,10 @@
  * STRUCTS
  */
 
- /* backlog for listen() call */
-#define LISTEN_BACK_LOG 5
+ /* backlog for listen() call: it is important that this be something
+  * like a good match for the maximum number of QEs. Slow insert
+  * performance will result if it is too low. */
+#define LISTEN_BACK_LOG 64
 
 #define getInt16(pNetData)    ntohs(*((int16 *)(pNetData)))
 #define getInt32(pNetData)    ntohl(*((int32 *)(pNetData)))
