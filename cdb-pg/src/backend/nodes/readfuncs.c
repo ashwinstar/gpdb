@@ -1454,6 +1454,33 @@ _readCreatedbStmt(void)
 	READ_DONE();
 }
 
+static CreateDomainStmt *
+_readCreateDomainStmt(void)
+{
+	READ_LOCALS(CreateDomainStmt);
+
+	READ_NODE_FIELD(domainname);
+	READ_NODE_FIELD(typename);
+	READ_NODE_FIELD(constraints);
+		
+	READ_DONE();
+}
+
+static AlterDomainStmt *
+_readAlterDomainStmt(void)
+{
+	READ_LOCALS(AlterDomainStmt);
+
+	READ_CHAR_FIELD(subtype);
+	READ_NODE_FIELD(typename);
+	READ_STRING_FIELD(name);
+	READ_NODE_FIELD(def);
+	READ_ENUM_FIELD(behavior, DropBehavior);
+		
+	READ_DONE();
+}
+
+
 
 static GrantStmt * 
 _readGrantStmt(void)
@@ -2105,6 +2132,7 @@ static ParseNodeInfo infoAr[] =
 	{"AGG", (ReadFn)_readAgg},
 	{"AGGREF", (ReadFn)_readAggref},
 	{"ALIAS", (ReadFn)_readAlias},
+	{"ALTERDOMAINSTMT", (ReadFn)_readAlterDomainStmt},
 	{"ALTERGROUPSTMT", (ReadFn)_readAlterGroupStmt},
 	{"ALTERTABLECMD", (ReadFn)_readAlterTableCmd},
 	{"ALTERTABLESTMT", (ReadFn)_readAlterTableStmt},
@@ -2128,6 +2156,7 @@ static ParseNodeInfo infoAr[] =
 	{"CONSTRAINT", (ReadFn)_readConstraint},
 	{"CONVERTROWTYPEEXPR", (ReadFn)_readConvertRowtypeExpr},
 	{"CREATEDBSTMT", (ReadFn)_readCreatedbStmt},
+	{"CREATEDOMAINSTMT", (ReadFn)_readCreateDomainStmt},
 	{"CREATEGROUPSTMT", (ReadFn)_readCreateGroupStmt},
 	{"CREATESCHEMASTMT", (ReadFn)_readCreateSchemaStmt},
 	{"CREATESEQSTMT", (ReadFn)_readCreateSeqStmt},

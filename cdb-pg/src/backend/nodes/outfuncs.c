@@ -1508,6 +1508,28 @@ _outCreatedbStmt(StringInfo str, CreatedbStmt *node)
 }
 
 static void
+_outCreateDomainStmt(StringInfo str, CreateDomainStmt *node)
+{
+	WRITE_NODE_TYPE("CREATEDOMAINSTMT");
+	WRITE_NODE_FIELD(domainname);
+	WRITE_NODE_FIELD(typename);
+	WRITE_NODE_FIELD(constraints);
+}
+
+static void
+_outAlterDomainStmt(StringInfo str, AlterDomainStmt *node)
+{
+	WRITE_NODE_TYPE("ALTERDOMAINSTMT");
+	WRITE_CHAR_FIELD(subtype);
+	WRITE_NODE_FIELD(typename);
+	WRITE_STRING_FIELD(name);
+	WRITE_NODE_FIELD(def);
+	WRITE_ENUM_FIELD(behavior, DropBehavior);
+}
+
+
+
+static void
 _outTransactionStmt(StringInfo str, TransactionStmt *node)
 {
 	WRITE_NODE_TYPE("TRANSACTIONSTMT");
@@ -1747,6 +1769,8 @@ _outQuery(StringInfo str, Query *node)
 			case T_CreatedbStmt:
 			case T_AlterDatabaseSetStmt:
 			case T_DropdbStmt:
+			case T_CreateDomainStmt:
+			case T_AlterDomainStmt:
 			case T_ClusterStmt:
 			
 			case T_TransactionStmt:
@@ -2488,6 +2512,12 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_CreatedbStmt:
 				_outCreatedbStmt(str, obj);
+				break;
+			case T_CreateDomainStmt:
+				_outCreateDomainStmt(str, obj);
+				break;
+			case T_AlterDomainStmt:
+				_outAlterDomainStmt(str, obj);
 				break;
 
 			case T_TransactionStmt:
