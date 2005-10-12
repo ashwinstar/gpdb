@@ -511,9 +511,15 @@ CdbCheckDispatchResultInt(struct SegmentDatabaseDescriptor   ***failedSegDB,
 		{
 			pParms = &dispatchCommandParmsAr[i];
             if (pParms->dispatchResultPtrArray)
+			{
                 pfree(pParms->dispatchResultPtrArray);
+				pParms->dispatchResultPtrArray = NULL;
+			}
             if (pParms->szCommand)
+			{
                 pfree(pParms->szCommand);
+				pParms->szCommand = NULL;
+			}
 		}
 		pfree(dispatchCommandParmsAr);
         dispatchCommandParmsAr = NULL;

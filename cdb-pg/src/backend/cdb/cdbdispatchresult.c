@@ -250,7 +250,6 @@ cdbdisp_dumpDispatchResult(CdbDispatchResult       *dispatchResult,
 
 /*--------------------------------------------------------------------*/
 
-
 /*
  * cdbdisp_makeDispatchResults:
  * Allocates a CdbDispatchResults object in the current memory context.
@@ -288,10 +287,14 @@ cdbdisp_destroyDispatchResults(CdbDispatchResults * results)
             cdbdisp_termResult(&results->resultArray[i]);
         }
         pfree(results->resultArray);
+		results->resultArray = NULL;
     }
 
     if (results->szCommand)
+	{
         pfree(results->szCommand);
+		results->szCommand = NULL;
+	}
 
     pfree(results);
 }                               /* cdbdisp_destroyDispatchResults */
