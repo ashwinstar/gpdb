@@ -58,7 +58,8 @@ static bool motion_expr_walker(Node *node, char *not_used);
 static List * makeMotionTargetList(Plan *arg);
 #endif /*UNUSED*/
 static bool doesUpdateAffectPartitionCols( MppPolicy *policy, List *rte );
-
+static bool hasCtid(Plan *plan);
+static bool hasCtid_outside_tlist(Plan *plan);
 
 /* ------------------------------------------------------------------------- *
  * Function apply_motion() and apply_motion_mutator() add motion nodes to
@@ -80,6 +81,7 @@ Plan* apply_motion(Plan*  plan, Query* query)
 	Plan *result;
 	ApplyMotionState state;
 	state.nextMotionID = 1; /* Start at 1 so zero will mean "unassigned". */
+	bool is_Update_Delete = FALSE;
 	
 	Assert( is_plan_node((Node*)plan) && IsA(query,Query) );
 	
@@ -255,6 +257,8 @@ Plan* apply_motion(Plan*  plan, Query* query)
 			{
 				RangeTblEntry *rte;
 				MppPolicy *policy;
+				
+				is_Update_Delete = TRUE;
 
 				rte = rt_fetch(query->resultRelation, query->rtable);
 				Assert( rte->rtekind == RTE_RELATION);
@@ -335,6 +339,29 @@ Plan* apply_motion(Plan*  plan, Query* query)
 	result = (Plan*)apply_motion_mutator((Node*)plan, &state);
 	
 	result->nMotionNodes = state.nextMotionID - 1;
+	
+	/* Last minute check for MPP badness. */
+	if ( is_Update_Delete )
+	{
+		if ( hasCtid_outside_tlist(result) )
+		{
+			ereport(ERROR, (
+				errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+					errmsg("Cannot parallelize that %s yet",
+						query->commandType==CMD_UPDATE ? "UPDATE" : "DELETE"),
+					errdetail("Result depends on values of CTID system column.  Support for CTID system column may change in the future.")
+			));
+		}
+	}
+	else if ( hasCtid(result) )
+	{
+		ereport(WARNING, (
+			errcode(ERRCODE_WARNING_MPP_INTERIM_FEATURE),
+			errmsg("Query uses CTID system column"),
+			errdetail("Support for CTID system column may change in the future.")
+		));
+	}
+	
 	return result;
 }
 
@@ -1374,4 +1401,115 @@ List* getExprListForSubqueryScan(List* targetlist, List* hashExprs)
 	pfree(map);
 	
 	return resultExprs;
+}
+
+/* ----------------------------------------------------------------------- *
+ * Functions hasCtid(), hasCtid_outside_tlist() and helper function
+ * ctid_inventory_walker() search a plan tree for a use of the CTID 
+ * pseudo-attribute.
+ *
+ * hasCtid() detects a CTID reference anywhere in the plan
+ *
+ * hasCtid_outside_tlist() detects a CTID reference outside of simple
+ * Var in the targetlist of the top-level plan node.  The use of this
+ * function is pretty much restricted to the case of a UPDATE or DELETE
+ * in MPP first release.
+ * ----------------------------------------------------------------------- *
+ */
+#define CTID_ATTRNO -1
+
+typedef struct ctid_inv_data 
+{
+	int nctid;
+	bool exit_early;
+} ctid_inv_data;
+
+static bool ctid_inventory_walker(Node *node, ctid_inv_data *inv);
+
+bool
+hasCtid(Plan *plan)
+{
+	bool r;
+	ctid_inv_data invdata;
+	
+	invdata.nctid = 0;
+	invdata.exit_early = TRUE; /* Find one and you're done. */
+	
+	r = ctid_inventory_walker((Node*)plan, &invdata);
+	
+	if ( invdata.nctid > 0 )
+	{
+		return TRUE;
+	}
+	else if ( r == TRUE )
+	{
+		ereport(ERROR, (
+			errcode(ERRCODE_CDB_INTERNAL_ERROR),
+			errmsg("unexpected error in plan")
+		));	
+	}
+	
+	return FALSE;	
+}
+
+bool
+hasCtid_outside_tlist(Plan *plan)
+{
+	ListCell *cell;
+	TargetEntry *tle;
+	ctid_inv_data invdata;
+	int n_in_tlist = 0;
+	
+	invdata.nctid = 0;
+	invdata.exit_early = FALSE; /* Count them all. */
+	
+	if ( ctid_inventory_walker((Node*)plan, &invdata) )
+	{
+		ereport(ERROR, (
+			errcode(ERRCODE_CDB_INTERNAL_ERROR),
+			errmsg("unexpected error in plan")
+		));	
+	}
+	
+	foreach( cell, plan->targetlist )
+	{
+		tle = (TargetEntry*)lfirst(cell);
+		if ( IsA(tle->expr, Var) && ((Var*)(tle->expr))->varattno == CTID_ATTRNO )
+		{
+			n_in_tlist++;
+		}
+	}
+	
+	return (invdata.nctid > n_in_tlist);	
+}
+
+bool
+ctid_inventory_walker(Node *node, ctid_inv_data *inv)
+{	
+	if ( node == NULL )
+		return false;
+	
+	switch (nodeTag(node))
+	{
+		case T_Var:
+
+			/* Process the Var node. */
+			if ( ((Var*)node)->varattno == CTID_ATTRNO )
+			{
+				(inv->nctid)++;
+				if ( inv->exit_early )
+				{
+					return true; /* This is all we care about so early exit is ok. */
+				}
+			}
+			
+			/* Var is primitive, no need to recur, but keep walking. */
+			return false;
+			
+		default:
+			/* Let plan_tree_walker() deal with other node types. */
+			break;
+	}
+	return plan_tree_walker(node, ctid_inventory_walker, inv);
+
 }
