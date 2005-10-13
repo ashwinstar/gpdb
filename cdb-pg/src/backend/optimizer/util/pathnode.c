@@ -416,6 +416,7 @@ create_seqscan_path(Query *root, RelOptInfo *rel)
 
     pathnode->locus = cdbpathlocus_from_baserel(root, rel);
     pathnode->motionHazard = false;
+	pathnode->rescannable = true;
 
     cost_seqscan(pathnode, root, rel);
 
@@ -480,6 +481,7 @@ create_index_path(Query *root,
     /* Distribution is same as the base table. */
     pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
     pathnode->path.motionHazard = false;
+    pathnode->path.rescannable = true;
 
 	cost_index(&pathnode->path, root, rel, index, indexquals, false);
 
@@ -505,6 +507,7 @@ create_tidscan_path(Query *root, RelOptInfo *rel, List *tideval)
     /* Distribution is same as the base table. */
     pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
     pathnode->path.motionHazard = false;
+    pathnode->path.rescannable = true;
 
 	cost_tidscan(&pathnode->path, root, rel, tideval);
 
@@ -534,6 +537,7 @@ create_append_path(RelOptInfo *rel, List *subpaths)
 	pathnode->subpaths = subpaths;
 
     pathnode->path.motionHazard = false;
+    pathnode->path.rescannable = true;
 
 	pathnode->path.startup_cost = 0;
 	pathnode->path.total_cost = 0;
@@ -557,6 +561,9 @@ create_append_path(RelOptInfo *rel, List *subpaths)
 
         if (subpath->motionHazard)
             pathnode->path.motionHazard = true;
+		
+		if ( !subpath->rescannable )
+			pathnode->path.rescannable = false;
 	}
 
 	return pathnode;
@@ -591,6 +598,7 @@ create_result_path(RelOptInfo *rel, Path *subpath, List *constantqual)
 
         pathnode->path.locus = subpath->locus;
         pathnode->path.motionHazard = subpath->motionHazard;
+		pathnode->path.rescannable = subpath->rescannable;
 	}
 	else
 	{
@@ -599,6 +607,7 @@ create_result_path(RelOptInfo *rel, Path *subpath, List *constantqual)
 
         CdbPathLocus_MakeGeneral(&pathnode->path.locus);
         pathnode->path.motionHazard = false;
+        pathnode->path.rescannable = true;
 	}
 
     return pathnode;
@@ -622,6 +631,7 @@ create_material_path(RelOptInfo *rel, Path *subpath)
     pathnode->path.locus = subpath->locus;
     pathnode->path.motionHazard = subpath->motionHazard;
     pathnode->cdb_strict = false;
+    pathnode->path.rescannable = true; /* Independent of sub-path */
 
 	pathnode->subpath = subpath;
 
@@ -678,6 +688,7 @@ create_unique_path(Query *root, RelOptInfo *rel, Path *subpath)
 
     pathnode->path.locus = subpath->locus;
     pathnode->path.motionHazard = subpath->motionHazard;
+    pathnode->path.rescannable = subpath->rescannable;
 
 	/*
 	 * Treat the output as always unsorted, since we don't necessarily
@@ -801,6 +812,13 @@ create_unique_path(Query *root, RelOptInfo *rel, Path *subpath)
      *  existing ordering; but Unique sort is never optimized away at present.)
      */
     pathnode->path.motionHazard = false;
+	
+	/* Same reasoning applies to rescanablilty.  If no actual sort is placed
+	 * in the plan, then rescannable is set correctly to the subpath value.
+	 * If hash or sort intervenes, it should be set to true.  We depend
+	 * on the above claim that sort will always intervene.
+	 */
+    pathnode->path.rescannable = true;
 
     if (subpath == rel->cheapest_total_path)
     	rel->cheapest_unique_path = (Path *) pathnode;
@@ -907,6 +925,7 @@ create_subqueryscan_path(Query *root, RelOptInfo *rel, List *pathkeys)
 
     pathnode->locus = cdbpathlocus_from_subquery(root, rel);
     pathnode->motionHazard = true;          /* better safe than sorry */
+    pathnode->rescannable = false; 
 
 	cost_subqueryscan(pathnode, rel);
 
@@ -931,6 +950,9 @@ create_functionscan_path(Query *root, RelOptInfo *rel)
     /* Assign all function evaluations to the query dispatcher, for now. */
     CdbPathLocus_MakeRoot(&pathnode->locus);
     pathnode->motionHazard = false;
+	
+	/* For now, be conservative. */
+	pathnode->rescannable = false;
 
 	cost_functionscan(pathnode, root, rel);
 
@@ -995,8 +1017,8 @@ create_nestloop_path(Query *root,
      * Skip if an intervening Unique operator will materialize.
      * CDB TODO: Can skip if outer has at most one row.
      */
-    if (inner_path != unmoved_inner_path &&
-        inner_path->motionHazard)
+    if ( (inner_path != unmoved_inner_path && inner_path->motionHazard)
+       || !inner_path->rescannable )
         inner_path = (Path *)create_material_path(inner_path->parent, inner_path);
 
     pathnode = makeNode(NestPath);
@@ -1010,6 +1032,7 @@ create_nestloop_path(Query *root,
 
     pathnode->path.locus = join_locus;
     pathnode->path.motionHazard = outer_path->motionHazard || inner_path->motionHazard;
+    pathnode->path.rescannable = outer_path->rescannable;
 
 	cost_nestloop(pathnode, root);
 
@@ -1121,6 +1144,7 @@ create_mergejoin_path(Query *root,
 	pathnode->jpath.path.pathkeys = pathkeys;
     pathnode->jpath.path.locus = join_locus;
     pathnode->jpath.path.motionHazard = outer_path->motionHazard || inner_path->motionHazard;
+    pathnode->jpath.path.rescannable = outer_path->rescannable && inner_path->rescannable;
 	pathnode->path_mergeclauses = mergeclauses;
 	pathnode->outersortkeys = outersortkeys;
 	pathnode->innersortkeys = innersortkeys;
@@ -1180,6 +1204,7 @@ create_hashjoin_path(Query *root,
 	pathnode->jpath.path.pathkeys = NIL;
     pathnode->jpath.path.locus = join_locus;
     pathnode->jpath.path.motionHazard = false;  /* outer + inner are materialized */
+    pathnode->jpath.path.rescannable = outer_path->rescannable; /* inner materialized by Hash */
 	pathnode->path_hashclauses = hashclauses;
 
 	cost_hashjoin(pathnode, root);

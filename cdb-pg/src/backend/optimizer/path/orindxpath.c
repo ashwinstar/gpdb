@@ -295,6 +295,7 @@ best_or_subclause_indexes(Query *root,
     /* Distribution is same as the base table. */
     pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
     pathnode->path.motionHazard = false;
+    pathnode->path.rescannable = true;
 
 	/*
 	 * This is an IndexScan, but the overall result will consist of tuples

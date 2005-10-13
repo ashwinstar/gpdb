@@ -138,13 +138,13 @@ static bool scanForManagedTables_walker(Node *node, PlanProfile *context);
 static bool scanForManagedTables(Plan *plan, Query *query);
 
 static void initTargetFlow(Plan *plan, Flow *target, bool stable);
-static bool focusPlan(Plan* plan, bool live, bool stable, bool rescanable, int segidx);
-static bool broadcastPlan(Plan* plan, bool live, bool stable, bool rescanable);
-static bool repartitionPlan(Plan* plan, bool live, bool stable, bool rescanable, List *hashExpr);
-static bool adjustPlanFlow(Plan *plan, Flow *target, bool stable, bool rescanable, bool live);
-static bool focusBasePlan(Plan *plan, Flow *target, bool stable, bool rescanable, bool live);
-static bool broadcastBasePlan(Plan *plan, Flow *target, bool stable, bool rescanable, bool live);
-static bool repartitionBasePlan(Plan *plan, Flow *target, bool stable, bool rescanable, bool live);
+static bool focusPlan(Plan* plan, bool live, bool stable, bool rescannable, int segidx);
+static bool broadcastPlan(Plan* plan, bool live, bool stable, bool rescannable);
+static bool repartitionPlan(Plan* plan, bool live, bool stable, bool rescannable, List *hashExpr);
+static bool adjustPlanFlow(Plan *plan, Flow *target, bool stable, bool rescannable, bool live);
+static bool focusBasePlan(Plan *plan, Flow *target, bool stable, bool rescannable, bool live);
+static bool broadcastBasePlan(Plan *plan, Flow *target, bool stable, bool rescannable, bool live);
+static bool repartitionBasePlan(Plan *plan, Flow *target, bool stable, bool rescannable, bool live);
 
 /* ------------------------------------------------------------------------- *
  * Function cdbparallelize() is the main entry point.  
@@ -1935,9 +1935,9 @@ bool isPlanFinished(Node *node,  PlanProfile *profile)
  *             order specified in the flow (which, presumably, matches
  *             the input order.
  *
- * rescanable  if true, the resulting plan must be rescanable, i.e., 
+ * rescannable  if true, the resulting plan must be rescannable, i.e., 
  *             it must be possible to use it like a scan. (Note that
- *             currently, no Motion nodes are rescanable.
+ *             currently, no Motion nodes are rescannable.
  *	
  * Remaining arguments, if any, determined by the requirements of the specific
  * function.
@@ -1949,7 +1949,7 @@ bool isPlanFinished(Node *node,  PlanProfile *profile)
 /*
  * Function: focusPlan
  */
-bool focusPlan(Plan* plan, bool live, bool stable, bool rescanable, int segidx)
+bool focusPlan(Plan* plan, bool live, bool stable, bool rescannable, int segidx)
 {
 	Flow target;
 	
@@ -1960,28 +1960,28 @@ bool focusPlan(Plan* plan, bool live, bool stable, bool rescanable, int segidx)
 	target.flotype = FLOW_SINGLETON;
 	target.segindex = segidx;
 	
-	return adjustPlanFlow(plan, &target, stable, rescanable, live);  
+	return adjustPlanFlow(plan, &target, stable, rescannable, live);  
 }
 
 
 /*
  * Function: broadcastPlan
  */
-bool broadcastPlan(Plan* plan, bool live, bool stable, bool rescanable)
+bool broadcastPlan(Plan* plan, bool live, bool stable, bool rescannable)
 {
 	Flow target;
 	
 	initTargetFlow(plan, &target, stable);
 	target.flotype = FLOW_REPLICATED;
 	
-	return adjustPlanFlow(plan, &target, stable, rescanable, live);  
+	return adjustPlanFlow(plan, &target, stable, rescannable, live);  
 }
 
 
 /*
  * Function: repartitionPlan
  */
-bool repartitionPlan(Plan* plan, bool live, bool stable, bool rescanable, List *hashExpr)
+bool repartitionPlan(Plan* plan, bool live, bool stable, bool rescannable, List *hashExpr)
 {
 	Flow target;
 	
@@ -1992,7 +1992,7 @@ bool repartitionPlan(Plan* plan, bool live, bool stable, bool rescanable, List *
 	target.flotype = FLOW_PARTITIONED;
 	target.hashExpr = hashExpr;
 	
-	return adjustPlanFlow(plan, &target, stable, rescanable, live);  
+	return adjustPlanFlow(plan, &target, stable, rescannable, live);  
 }
 
 
@@ -2034,7 +2034,7 @@ void initTargetFlow(Plan *plan, Flow *target, bool stable)
  * to remove contraints in some cases.  For example, pushing a motion below
  * a Sort removes the stability constraint.
  */
-bool adjustPlanFlow(Plan *plan, Flow *target, bool stable, bool rescanable, bool live)
+bool adjustPlanFlow(Plan *plan, Flow *target, bool stable, bool rescannable, bool live)
 {
 	bool recur, r_stable, r_rescan;
 	
@@ -2048,7 +2048,7 @@ bool adjustPlanFlow(Plan *plan, Flow *target, bool stable, bool rescanable, bool
 	 * possibly remove restrictions. */
 	recur = false;
 	r_stable = stable;
-	r_rescan = rescanable;
+	r_rescan = rescannable;
 	
 	switch ( plan->type )
 	{
@@ -2061,7 +2061,7 @@ bool adjustPlanFlow(Plan *plan, Flow *target, bool stable, bool rescanable, bool
 			break;
 			
 		case T_Sort:
-			if ( target->flotype == FLOW_SINGLETON && !rescanable )
+			if ( target->flotype == FLOW_SINGLETON && !rescannable )
 			{
 				/* We'd rather do a merge of a parallel sort, than do a
 				 * sequential sort. A fixed motion can do that as long as
@@ -2146,25 +2146,25 @@ bool adjustPlanFlow(Plan *plan, Flow *target, bool stable, bool rescanable, bool
 		return false; /* No order so can't preserve one. */
 	}
 	
-	if ( rescanable )
+	if ( rescannable )
 	{
-		return false; /* Motion nodes aren't rescanable. */
+		return false; /* Motion nodes aren't rescannable. */
 	}
 	
 	switch ( target->flotype )
 	{
 		case FLOW_SINGLETON:
-			return focusBasePlan(plan, target, stable, rescanable, live);	
+			return focusBasePlan(plan, target, stable, rescannable, live);	
 				
 		case FLOW_REPLICATED:
 			if ( stable )
 				return false; 
-			return broadcastBasePlan(plan, target, stable, rescanable, live);
+			return broadcastBasePlan(plan, target, stable, rescannable, live);
 			
 		case FLOW_PARTITIONED:
 			if ( stable )
 				return false; 
-			return repartitionBasePlan(plan, target, stable, rescanable, live);
+			return repartitionBasePlan(plan, target, stable, rescannable, live);
 			
 		case FLOW_UNDEFINED:
 			break;
@@ -2180,7 +2180,7 @@ bool adjustPlanFlow(Plan *plan, Flow *target, bool stable, bool rescanable, bool
  *
  * Apply a motion request to focus the argument plan.
  */
-bool focusBasePlan(Plan *plan, Flow *target, bool stable, bool rescanable, bool live)
+bool focusBasePlan(Plan *plan, Flow *target, bool stable, bool rescannable, bool live)
 {
 	switch ( plan->flow->flotype )
 	{
@@ -2210,13 +2210,13 @@ bool focusBasePlan(Plan *plan, Flow *target, bool stable, bool rescanable, bool 
 			break;
 			
 		case FLOW_REPLICATED:
-			if ( stable || rescanable )
+			if ( stable || rescannable )
 				return false; 
 			return false; /* TODO How specify deep-six? */
 			break;
 			
 		case FLOW_PARTITIONED:
-			if ( rescanable )
+			if ( rescannable )
 				return false;
 			if ( live )
 			{
@@ -2240,12 +2240,12 @@ bool focusBasePlan(Plan *plan, Flow *target, bool stable, bool rescanable, bool 
  *
  * Apply a motion request to broadcast the argument plan.
  */
-bool broadcastBasePlan(Plan *plan, Flow *target, bool stable, bool rescanable, bool live)
+bool broadcastBasePlan(Plan *plan, Flow *target, bool stable, bool rescannable, bool live)
 {
 	switch ( plan->flow->flotype )
 	{
 		case FLOW_SINGLETON:
-			if ( rescanable )
+			if ( rescannable )
 				return false;
 			if ( plan->flow->segindex <  0 )
 				return false; /* No motions from QD. */
@@ -2262,7 +2262,7 @@ bool broadcastBasePlan(Plan *plan, Flow *target, bool stable, bool rescanable, b
 			break;
 			
 		case FLOW_PARTITIONED:
-			if ( stable || rescanable )
+			if ( stable || rescannable )
 				return false; /* Can't preserve order in N-to-N motion.  */
 			if ( live )
 			{
@@ -2283,12 +2283,12 @@ bool broadcastBasePlan(Plan *plan, Flow *target, bool stable, bool rescanable, b
  *
  * Apply a motion request to repartition the argument plan.
  */
-bool repartitionBasePlan(Plan *plan, Flow *target, bool stable, bool rescanable, bool live)
+bool repartitionBasePlan(Plan *plan, Flow *target, bool stable, bool rescannable, bool live)
 {
 	switch ( plan->flow->flotype )
 	{
 		case FLOW_SINGLETON:
-			if ( rescanable )
+			if ( rescannable )
 				return  false;
 			/* Send of singleton preserves order so stable is ok. */
 			if ( plan->flow->segindex <  0 )
@@ -2302,7 +2302,7 @@ bool repartitionBasePlan(Plan *plan, Flow *target, bool stable, bool rescanable,
 			return true;
 			
 		case FLOW_REPLICATED:
-			if ( rescanable )
+			if ( rescannable )
 				return false; 
 			/* Restriction on replicated preserves order so stable is ok. */
 			return false; /* TODO How specify deep-six? MOVEMENT_REP2PARTITIONED */
@@ -2315,7 +2315,7 @@ bool repartitionBasePlan(Plan *plan, Flow *target, bool stable, bool rescanable,
 			return true;
 			
 		case FLOW_PARTITIONED:
-			if ( stable || rescanable )
+			if ( stable || rescannable )
 				return false; /* Can't preserve order in N-to-N motion.  */
 			if ( live )
 			{

@@ -368,6 +368,8 @@ typedef struct Path
 
     bool        motionHazard;   /* true => path contains a CdbMotion operator
                                  *    without a slackening operator above it */
+	
+	bool		rescannable;		/* true => path can accept ExecRescan call */
 
     List	   *pathkeys;		/* sort ordering of path's output */
 	/* pathkeys is a List of Lists of PathKeyItem nodes; see above */

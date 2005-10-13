@@ -187,6 +187,7 @@ cdbpath_create_motion_path(Query           *root,
 
     /* Tell operators above us that slack may be needed for deadlock safety. */
     pathnode->path.motionHazard = true;
+    pathnode->path.rescannable = false;
 
     return (Path *)pathnode;
 }                               /* cdbpath_create_motion_path */

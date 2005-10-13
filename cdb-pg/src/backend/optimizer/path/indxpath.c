@@ -1678,6 +1678,7 @@ make_innerjoin_index_path(Query *root,
     /* Distribution is same as the base table. */
     pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
     pathnode->path.motionHazard = false;
+    pathnode->path.rescannable = true;
 
     cost_index(&pathnode->path, root, rel, index, indexquals, true);
 
