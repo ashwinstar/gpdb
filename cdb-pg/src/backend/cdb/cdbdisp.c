@@ -468,6 +468,7 @@ CdbCheckDispatchResultInt(struct SegmentDatabaseDescriptor   ***failedSegDB,
                 {
                     if (!dispatchResult->errcode)
                         dispatchResult->errcode = ERRCODE_MPP_QD_QE_CONNECTION_ERROR;
+                    
                     appendPQExpBuffer(&dispatchResult->error_message,
                                       "(%s) CheckDispatchResult: CONNECTION_BAD\n",
                                       segdbDesc->whoami);
@@ -793,7 +794,7 @@ thread_DispatchCommand(void *arg)
     int		                timeoutCounter = 0;
 	int 		            resultCount = 0;	
     int			            i;	
-    fd_set                  input_mask, input_mask_copy;
+    fd_set                  input_mask;
 	int                     max_sock;
     int			            sock;
 
@@ -835,6 +836,7 @@ thread_DispatchCommand(void *arg)
 	{
         dispatchResult = stillRunning[i].dispatchResult;
 		sock = PQsocket(dispatchResult->segdbDesc->conn);
+			
 		FD_SET(sock, &input_mask);
 		max_sock = max_sock < sock ? sock : max_sock;
 	}
@@ -878,14 +880,23 @@ thread_DispatchCommand(void *arg)
 		}
 
         /* select() IN/OUT parameters need to be reinitialized each time */
-        memcpy(&input_mask_copy, &input_mask, sizeof(fd_set));
-        tv.tv_sec = 2;
+	    tv.tv_sec = 2;
         tv.tv_usec = 0;
+        
+      	FD_ZERO(&input_mask);
+        for (i = 0; i < stillRunningCount; i++)
+		{
+			dispatchResult = stillRunning[i].dispatchResult;
+			sock = PQsocket(dispatchResult->segdbDesc->conn);
+			FD_SET(sock, &input_mask);
+			max_sock = max_sock < sock ? sock : max_sock;
+		}
+		
 
         /*
          * Wait for results from QEs.
          */
-        n = select(max_sock + 1, &input_mask_copy, NULL, NULL, &tv);
+        n = select(max_sock + 1, &input_mask, NULL, NULL, &tv);
 
 		if (n < 0)
         {
@@ -921,7 +932,7 @@ thread_DispatchCommand(void *arg)
                 dispatchResult = stillRunning[i].dispatchResult;
 				sock = PQsocket(dispatchResult->segdbDesc->conn);
 
-				if (FD_ISSET(sock, &input_mask_copy))
+				if (FD_ISSET(sock, &input_mask))
 				{
 					processResults(&stillRunning[i],
                                    cancelFromBelow,
@@ -995,7 +1006,7 @@ shouldStillDispatchCommand( CdbDispatchResult  *dispatchResult,
 	 * conn should never be NULL, but if it is, or if the status is BAD,
 	 * then don't submit.
 	 */
-	if (conn == NULL || PQstatus(conn) != CONNECTION_OK)
+	if (conn == NULL || PQstatus(conn) != CONNECTION_OK )
 	{
         msgoff = dispatchResult->error_message.len;
         if (!dispatchResult->errcode)
@@ -1126,6 +1137,11 @@ void checkForBadConnections( RunningInfo *stillRunning ,int *stillRunningCount, 
 
 		if (PQstatus(dispatchResult->segdbDesc->conn) == CONNECTION_BAD)
 		{
+			
+			fprintf(stderr, "<<<checkForBadConnections>>>: badness 10000 occurs for:  %s \n",
+                        dispatchResult->segdbDesc->whoami );
+                        
+			
             if (!dispatchResult->errcode)
                 dispatchResult->errcode = ERRCODE_MPP_QD_QE_CONNECTION_ERROR;
 
