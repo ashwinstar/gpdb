@@ -650,7 +650,7 @@ cdbdisp_dispatchCommand(const char         *szCommand,
     /* Wait for previous command to finish before starting this one. */
     if (threadCount)
     {
-        elog(DEBUG3, "%d threads running at entry to cdbdisp_dispatchCommand.  %s",
+        elog(LOG, "%d threads running at entry to cdbdisp_dispatchCommand.  %s",
              threadCount, szCommand);
         CdbCheckDispatchResult();
     }
@@ -1007,7 +1007,7 @@ shouldStillDispatchCommand( CdbDispatchResult  *dispatchResult,
                           conn ? PQstatus(conn) : 0);
 						
         /*Don't use elog, it's not thread-safe*/			
-        if (DEBUG3 >= log_min_messages)
+        if (LOG >= log_min_messages)
             fputs(dispatchResult->error_message.data + msgoff, stderr);
 
         /* Stop other QEs (if caller wants us to). */
@@ -1090,7 +1090,7 @@ handleSelectError(RunningInfo  *stillRunning,
 	int i;
 	
     /* Don't use elog, it's not thread-safe */
-	if (DEBUG1 >= log_min_messages)
+	if (LOG >= log_min_messages)
 		fprintf(stderr, "thread_DispatchCommand encountered an error during select() with errno: %d\n",
 				sock_errno);
 				
@@ -1458,7 +1458,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc)
     /* Wait for previous command to finish before starting this one. */
     if (threadCount)
     {
-        elog(DEBUG3, "%d threads running at entry to cdbdisp_dispatchPlan",
+        elog(LOG, "%d threads running at entry to cdbdisp_dispatchPlan",
              threadCount);
         CdbCheckDispatchResult();
     }

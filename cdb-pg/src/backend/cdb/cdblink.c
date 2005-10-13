@@ -140,7 +140,7 @@ getMPPSegmentCount(void)
 
 	if (MppIdentity.numsegments <= 0)
 	{
-		elog(DEBUG1, "getMPPSegmentCount called BEFORE mpp.mpp record has been read in.");
+		elog(LOG, "getMPPSegmentCount called BEFORE mpp.mpp record has been read in.");
 		//log_backtrace();
 	}
 
