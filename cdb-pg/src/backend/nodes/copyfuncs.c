@@ -2142,6 +2142,7 @@ _copyCreateDomainStmt(CreateDomainStmt *from)
 	COPY_NODE_FIELD(domainname);
 	COPY_NODE_FIELD(typename);
 	COPY_NODE_FIELD(constraints);
+	COPY_SCALAR_FIELD(domainOid);
 
 	return newnode;
 }

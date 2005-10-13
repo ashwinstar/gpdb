@@ -1462,6 +1462,7 @@ _readCreateDomainStmt(void)
 	READ_NODE_FIELD(domainname);
 	READ_NODE_FIELD(typename);
 	READ_NODE_FIELD(constraints);
+	READ_OID_FIELD(domainOid);
 		
 	READ_DONE();
 }

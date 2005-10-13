@@ -1220,6 +1220,7 @@ typedef struct CreateDomainStmt
 	List	   *domainname;		/* qualified name (list of Value strings) */
 	TypeName   *typename;		/* the base type */
 	List	   *constraints;	/* constraints (list of Constraint nodes) */
+	Oid		    domainOid; 
 } CreateDomainStmt;
 
 /* ----------------------

@@ -4310,6 +4310,7 @@ CreateDomainStmt:
 					n->domainname = $3;
 					n->typename = $5;
 					n->constraints = $6;
+					n->domainOid = 0;
 					$$ = (Node *)n;
 				}
 		;

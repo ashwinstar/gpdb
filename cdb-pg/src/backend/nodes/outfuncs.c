@@ -1514,6 +1514,7 @@ _outCreateDomainStmt(StringInfo str, CreateDomainStmt *node)
 	WRITE_NODE_FIELD(domainname);
 	WRITE_NODE_FIELD(typename);
 	WRITE_NODE_FIELD(constraints);
+	WRITE_OID_FIELD(domainOid);
 }
 
 static void
