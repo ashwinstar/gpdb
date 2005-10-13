@@ -373,20 +373,21 @@ if __name__ == '__main__':
 		#Strip out the hostname and user, if there is a user present in the record
 		#(e.g. user@host)
 		host = h.strip()
-		if verbose:
-			print 'Working on host: ' + host
+		if host != '':
+			if verbose:
+				print 'Working on host: ' + host
 
-		if '@' in host:
-			(user, host) = string.split(host, '@')
-		else:
-			user = os.environ.get('LOGNAME') or os.environ.get('USER')
+			if '@' in host:
+				(user, host) = string.split(host, '@')
+			else:
+				user = os.environ.get('LOGNAME') or os.environ.get('USER')
 
-		if ':' in host:
-			(host,port) = string.split(host, ':')
-		else:
-			port = defaultport
+			if ':' in host:
+				(host,port) = string.split(host, ':')
+			else:
+				port = defaultport
 
-		hostuserport.append((host,user,port))
+			hostuserport.append((host,user,port))
 
 	#Create a groupSession object
 	gsession = groupSession(hostuserport)
