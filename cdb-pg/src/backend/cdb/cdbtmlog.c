@@ -601,7 +601,7 @@ resync_tmlog_to_mirror(int startoff, int stopoff)
 
 
 TmLogFileControlBlock *
-getTmLogFileHeader()
+getTmLogFileHeader(void)
 {
     if (!read_with_ereport(logFileFD, &tmLogFileHeader, sizeof(TmLogFileControlBlock)))
         return NULL;
