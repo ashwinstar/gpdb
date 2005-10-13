@@ -701,9 +701,9 @@ cdbdisp_dispatchCommand(const char         *szCommand,
     		strncmp(szCommand,"ROLLBACK ",9)!=0)
     		{
     			if (strncmp(szCommand,"MPPEXEC ",8)==0 || strncmp(szCommand,"mppexec ",8)==0)
-    			elog(NOTICE, "Some segments are down.  Dispatching command to remaining segments only");
+    			elog(INFO, "Some segments are down.  Dispatching command to remaining segments only");
     			else
-    			elog(NOTICE, "Some segments are down.  Dispatching command %.50s to remaining segments only",szCommand);
+    			elog(INFO, "Some segments are down.  Dispatching command %.50s to remaining segments only",szCommand);
     		}
     }
 
