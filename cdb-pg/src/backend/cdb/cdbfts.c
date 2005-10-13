@@ -132,7 +132,7 @@ bool FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo, char *dbName)
 
     if ( PQstatus(conn) == CONNECTION_BAD )
     {
-        elog(DEBUG1, "FTS: test connection failed, dbid %d dbname %s error message %s",
+        elog(LOG, "FTS: test connection failed, dbid %d dbname %s error message %s",
                     failedDBInfo->dbid, dbName, PQerrorMessage(conn));
         ret = false;
     }
