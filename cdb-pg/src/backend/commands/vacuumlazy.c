@@ -176,7 +176,7 @@ lazy_vacuum_rel(Relation onerel, VacuumStmt *vacstmt)
 	lazy_update_fsm(onerel, vacrelstats);
 
 	/* Update statistics in pg_class */
-	vac_update_relstats(RelationGetRelid(onerel),
+	vac_update_relstats(onerel,
 						vacrelstats->rel_pages,
 						vacrelstats->rel_tuples,
 						hasindex);
@@ -640,7 +640,7 @@ lazy_scan_index(Relation indrel, LVRelStats *vacrelstats)
 		return;
 
 	/* now update statistics in pg_class */
-	vac_update_relstats(RelationGetRelid(indrel),
+	vac_update_relstats(indrel,
 						stats->num_pages,
 						stats->num_index_tuples,
 						false);
@@ -716,7 +716,7 @@ lazy_vacuum_index(Relation indrel,
 	*index_pages_removed += stats->pages_removed;
 
 	/* now update statistics in pg_class */
-	vac_update_relstats(RelationGetRelid(indrel),
+	vac_update_relstats(indrel,
 						stats->num_pages,
 						stats->num_index_tuples,
 						false);

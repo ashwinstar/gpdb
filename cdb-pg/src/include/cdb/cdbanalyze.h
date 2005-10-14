@@ -19,7 +19,7 @@
  * aggregate numbers for the number of pages and number of tuples in out parameters.
  * This must only be called from the dispatcher.
  */
-extern void cdbanalyze_get_relstats(Oid relid, BlockNumber *pages, double *tuples);
+extern void cdbanalyze_get_relstats(Relation rel, BlockNumber *pages, double *tuples);
 
 
 #endif	/* CDBANALYZE_H */

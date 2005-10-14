@@ -409,7 +409,7 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 	 */
 	if (!vacstmt->vacuum)
 	{
-		vac_update_relstats(RelationGetRelid(onerel),
+		vac_update_relstats(onerel,
 							RelationGetNumberOfBlocks(onerel),
 							totalrows,
 							hasindex);
@@ -419,7 +419,7 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 			double		totalindexrows;
 
 			totalindexrows = ceil(thisdata->tupleFract * totalrows);
-			vac_update_relstats(RelationGetRelid(Irel[ind]),
+			vac_update_relstats(Irel[ind],
 								RelationGetNumberOfBlocks(Irel[ind]),
 								totalindexrows,
 								false);

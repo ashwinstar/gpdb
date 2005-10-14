@@ -55,6 +55,8 @@ cdbanalyze_query_local_catalogs(StringInfo  sqlstmt,
         }
         connected = true;
 
+		elog(DEBUG2,"Special execute: %s",sqlstmt->data);
+		
         /* Make the query access QE local catalogs instead of global catalog,
          * by treating catalog tables as if they are partitioned user tables.
          */
@@ -150,7 +152,7 @@ cdbanalyze_callback(StringInfo  sqlstmt,
     return;
 
 fail:
-    ereport(ERROR, (errcode(ERRCODE_MPP_COMMAND_ERROR),
+    ereport(WARNING, (errcode(ERRCODE_MPP_COMMAND_ERROR),
             errmsg("Unable to obtain statistics from segment databases."),
             errdetail("Segment db catalog query failed: %s",
                       sqlstmt->data) ));
@@ -169,13 +171,18 @@ fail:
  * and number of tuples over the qExecs.
  * This must only be called from the dispatcher.
  */
-void cdbanalyze_get_relstats(Oid relid, BlockNumber *pages, double *tuples)
+void cdbanalyze_get_relstats(Relation rel, BlockNumber *pages, double *tuples)
 {
     StringInfoData		buffer;
     Cdbanalyze_Ctx      ctx;
+    char * relname;
+    Oid namespace;
 
     *pages = 0;
     *tuples = 0;
+    
+    relname = RelationGetRelationName(rel);
+    namespace = RelationGetNamespace(rel);
 
     /*
 	 * First, create a select statement
@@ -183,13 +190,13 @@ void cdbanalyze_get_relstats(Oid relid, BlockNumber *pages, double *tuples)
 	initStringInfo(&buffer);
 	appendStringInfo(&buffer, "select max(reltuples), max(relpages)" );
 	appendStringInfo(&buffer, " from pg_class");
-	appendStringInfo(&buffer, " where oid=%u", relid);
+	appendStringInfo(&buffer, " where relname='%s' and relnamespace=%u", relname, namespace);
 
 	/*
 	 * Next, use SPI to execute it.
      * (If unsuccessful, throws an error and does not return here.)
 	 */
-    ctx.relid = relid;
+    ctx.relid = RelationGetRelid(rel);
     cdbanalyze_query_local_catalogs(&buffer, cdbanalyze_callback, &ctx);
 
 	/*

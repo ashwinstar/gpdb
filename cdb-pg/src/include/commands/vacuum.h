@@ -129,7 +129,7 @@ extern void vacuum(VacuumStmt *vacstmt);
 extern void vac_open_indexes(Relation relation, LOCKMODE lockmode,
 							 int *nindexes, Relation **Irel);
 extern void vac_close_indexes(int nindexes, Relation *Irel, LOCKMODE lockmode);
-extern void vac_update_relstats(Oid relid,
+extern void vac_update_relstats(Relation rel,
 					BlockNumber num_pages,
 					double num_tuples,
 					bool hasindex);

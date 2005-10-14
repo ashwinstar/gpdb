@@ -697,7 +697,7 @@ vacuum_set_xid_limits(VacuumStmt *vacstmt, bool sharedRel,
  *		ANALYZE.
  */
 void
-vac_update_relstats(Oid relid, BlockNumber num_pages, double num_tuples,
+vac_update_relstats(Relation rel, BlockNumber num_pages, double num_tuples,
 					bool hasindex)
 {
 	Relation	rd;
@@ -705,12 +705,15 @@ vac_update_relstats(Oid relid, BlockNumber num_pages, double num_tuples,
 	HeapTuple	ctup;
 	Form_pg_class pgcform;
 	Buffer		buffer;
+	Oid		    relid = RelationGetRelid(rel);
+	
+	Assert(relid != InvalidOid);
 
     /*
      * CDB: Query the segment db local catalogs to get summary statistics.
      */
     if ( Mpp_role == MPP_ROLE_DISPATCH )
-        cdbanalyze_get_relstats(relid, &num_pages, &num_tuples);
+        cdbanalyze_get_relstats(rel, &num_pages, &num_tuples);
 
 	/*
 	* update number of tuples and number of pages in pg_class
@@ -1207,7 +1210,7 @@ full_vacuum_rel(Relation onerel, VacuumStmt *vacstmt)
 	vac_update_fsm(onerel, &fraged_pages, vacrelstats->rel_pages);
 
 	/* update statistics in pg_class */
-	vac_update_relstats(RelationGetRelid(onerel), vacrelstats->rel_pages,
+	vac_update_relstats(onerel, vacrelstats->rel_pages,
 						vacrelstats->rel_tuples, vacrelstats->hasindex);
 }
 
@@ -2966,7 +2969,7 @@ scan_index(Relation indrel, double num_tuples)
 		return;
 
 	/* now update statistics in pg_class */
-	vac_update_relstats(RelationGetRelid(indrel),
+	vac_update_relstats(indrel,
 						stats->num_pages, stats->num_index_tuples,
 						false);
 
@@ -3033,7 +3036,7 @@ vacuum_index(VacPageList vacpagelist, Relation indrel,
 		return;
 
 	/* now update statistics in pg_class */
-	vac_update_relstats(RelationGetRelid(indrel),
+	vac_update_relstats(indrel,
 						stats->num_pages, stats->num_index_tuples,
 						false);
 
