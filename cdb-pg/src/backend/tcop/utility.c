@@ -1248,7 +1248,25 @@ ProcessUtility(Node *parsetree,
 				
 				if (Mpp_role == MPP_ROLE_DISPATCH)
 				{
+					if (stmt->kind != OBJECT_DATABASE)
 						CdbDispatchUtilityStatement((Node *)stmt);
+					else
+					{
+						/*
+						 * REINDEX DATABASE must be dispatched different, because it can't 
+						 * be in a user transaction
+						 */
+						StringInfoData buffer;
+		
+						initStringInfo( &buffer );
+
+						appendStringInfo(&buffer, "REINDEX DATABASE \"%s\"", stmt->name);
+						if (stmt->force)
+							appendStringInfo(&buffer, " FORCE");
+						
+
+						CdbDoCommandInt( buffer.data, false, NULL );
+					}
 				}
 			}
 			break;
