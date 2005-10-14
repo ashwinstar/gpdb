@@ -70,46 +70,45 @@ EXIT_STATUS=0
 # Functions
 #******************************************************************************
 USAGE () {
-		$TABECHO "*******************************************************************"
-		$TABECHO "usage: `basename $0` -c mpp_config_file [OPTIONS]"
-		$TABECHO ""
-		$TABECHO "  Creates a new MPP database on a Master host and a number of"
-		$TABECHO "  segment instance hosts."
-		$TABECHO "*******************************************************************"
-		$TABECHO "General options:"
-		$TABECHO "	-?, display this help message & exit"
-		$TABECHO "	-v, display version information & exit"
-		$TABECHO
-	        $TABECHO "      Configuration options:"
-		$TABECHO "	-c,  mpp_config_file [mandatory]"
-		$TABECHO "		Supplies all MPP configuration information required by this utility."
-		$TABECHO "		Full description of all parameters contained within the example file"
-		$TABECHO "		supplied with this distribution."
-		$TABECHO "		Also see mppcreatecluster_INSTRUCTIONS file for greater detail on"
-		$TABECHO "		the operation and configuration of this script"
-		$TABECHO "	-h, mpp_hostlist_file [optional]"
-		$TABECHO "		Contains a list of all segment instance hostnames required to participate in"
-		$TABECHO "		the new MPP database. Normally set in mpp_config_file."
-		$TABECHO "	-p, postgresql_conf_mpp_additions [optional]"
-		$TABECHO "		List of additional PostgreSQL parameters to be applied to each Master/Segment"
-		$TABECHO "		postgresql.conf file during MPP database initialization."
-		$TABECHO "	-s, standby_hostname [optional]"
-		$TABECHO "		Setup standby Master host named \"standby_hostname\". (if configured in MPP configuration file)"
-		$TABECHO "	-o, create Master only, do not configure Segment instance hosts"
-		$TABECHO
-		$TABECHO "Logging options:"
-		$TABECHO "	-q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
-		$TABECHO "	-a, don't ask to confirm database creation [default:- ask]"
-		$TABECHO "	-l, logfile_directory [optional]"
-		$TABECHO "		Alternative logfile directory"
-		$TABECHO
-		$TABECHO "Return codes:"
-		$TABECHO "	0 - No problems encountered with requested operation"
-		$TABECHO "	1 - Warning generated, but database operational"
-		$TABECHO "	2 - Fatal error, database not created/started, or in an inconsistent state,"
-	    $TABECHO "	    see log file for failure reason."
-		$TABECHO "*******************************************************************"
-		$TABECHO
+		$ECHO
+		$ECHO "      `basename $0` -c mpp_config_file [OPTIONS]"
+		$ECHO 
+		$ECHO "      Creates a new MPP database on a Master host and a number of"
+		$ECHO "      segment instance hosts."
+		$ECHO 
+		$ECHO "      General options:"
+		$ECHO "      -?, display this help message & exit"
+		$ECHO "      -v, display version information & exit"
+		$ECHO
+	        $ECHO "      Configuration options:"
+		$ECHO "      -c, mpp_config_file [mandatory]"
+		$ECHO "          Supplies all MPP configuration information required by this utility."
+		$ECHO "          Full description of all parameters contained within the example file"
+		$ECHO "          supplied with this distribution."
+		$ECHO "          Also see mppcreatecluster_INSTRUCTIONS file for greater detail on"
+		$ECHO "          the operation and configuration of this script"
+		$ECHO "      -h, mpp_hostlist_file [optional]"
+		$ECHO "          Contains a list of all segment instance hostnames required to participate in"
+		$ECHO "          the new MPP database. Normally set in mpp_config_file."
+		$ECHO "      -p, postgresql_conf_mpp_additions [optional]"
+		$ECHO "          List of additional PostgreSQL parameters to be applied to each Master/Segment"
+		$ECHO "          postgresql.conf file during MPP database initialization."
+		$ECHO "      -s, standby_hostname [optional]"
+		$ECHO "	         Setup standby Master host named \"standby_hostname\". (if configured in MPP configuration file)"
+		$ECHO "      -o, create Master only, do not configure Segment instance hosts"
+		$ECHO
+		$ECHO "      Logging options:"
+		$ECHO "      -q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
+		$ECHO "      -a, don't ask to confirm database creation [default:- ask]"
+		$ECHO "      -l, logfile_directory [optional]"
+		$ECHO "	         Alternative logfile directory"
+		$ECHO
+		$ECHO "      Return codes:"
+		$ECHO "      0 - No problems encountered with requested operation"
+		$ECHO "      1 - Warning generated, but database operational"
+		$ECHO "      2 - Fatal error, database not created/started, or in an inconsistent state,"
+	    	$ECHO "            see log file for failure reason."
+		$ECHO
 		exit $EXIT_STATUS
 }
 
@@ -933,7 +932,15 @@ if [ x"" != x"$PG_CONF_ADD_FILE" ]; then
 		ERROR_EXIT "[FATAL]:-Issue with postgres additions file $PG_CONF_ADD_FILE" 2
 	fi
 fi
-
+if [ x"" != x"$LOG_DIR" ];then
+	CHK_DIR $LOG_DIR
+	if [ $EXISTS -eq 1 ]; then
+		LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory"
+		EXIT_STATUS=1
+else
+	LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
+	fi
+fi
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 

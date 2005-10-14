@@ -55,40 +55,41 @@ EXIT_STATUS=0
 #******************************************************************************
 #
 USAGE () {
-		$TABECHO
-		$TABECHO $0
-		$TABECHO "Reports on the state of the MPP database"
-		$TABECHO
-		$TABECHO "Usage:"
-		$TABECHO $0 "[OPTIONS]"
-		$TABECHO
-		$TABECHO "General options:"
-		$TABECHO "-?, display this help message & exit"
-		$TABECHO "-v, display version information & exit"
-		$TABECHO "-t, display default parameter settings & exit"
-		$TABECHO
-		$TABECHO "Logging options:"
-		$TABECHO "-q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
-		$TABECHO "-l, <logfile directory> alternative logfile directory [optional]"
-		$TABECHO
-		$TABECHO "Connection options:"
-		$TABECHO "-d, <Master database directory> name of alternative Master database to report status of [optional]"
-		$TABECHO
-		$TABECHO "Status options:"
-		$TABECHO "-s, Display MPP database status [default]"
-		$TABECHO "-m, List mirror segments of MPP database"
-		$TABECHO "-c, List primary/mirror segment instance mapping of MPP database"
-		$TABECHO "-p, List MPP database ports"
-		$TABECHO "-n, List instance log file names"
-		$TABECHO "-e, Display end of each segment instance log file"
-		$TABECHO "-b, Display a brief MPP cluster status summary"
-		$TABECHO "-i, Display system version information"
-		$TABECHO
-		$TABECHO "Return codes:"
-		$TABECHO "0 No problems encountered with requested operation"
-		$TABECHO "1 Warning generated"
-		$TABECHO "2 Fatal error, unable to complete requested operation"
-		$TABECHO
+		$ECHO
+		$ECHO "      `basename $0`"
+		$ECHO
+		$ECHO "      Reports on the state of the MPP database"
+		$ECHO
+		$ECHO "      Usage:"
+		$ECHO "      $0 [OPTIONS]"
+		$ECHO
+		$ECHO "      General options:"
+		$ECHO "      -?, display this help message & exit"
+		$ECHO "      -v, display version information & exit"
+		$ECHO "      -t, display default parameter settings & exit"
+		$ECHO
+		$ECHO "      Logging options:"
+		$ECHO "      -q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
+		$ECHO "      -l, <logfile directory> alternative logfile directory [optional]"
+		$ECHO
+		$ECHO "      Connection options:"
+		$ECHO "      -d, <Master database directory> name of alternative Master database to report status of [optional]"
+		$ECHO
+		$ECHO "      Status options:"
+		$ECHO "      -s, Display MPP database status [default]"
+		$ECHO "      -m, List mirror segments of MPP database"
+		$ECHO "      -c, List primary/mirror segment instance mapping of MPP database"
+		$ECHO "      -p, List MPP database ports"
+		$ECHO "      -n, List instance log file names"
+		$ECHO "      -e, Display end of each segment instance log file"
+		$ECHO "      -b, Display a brief MPP cluster status summary"
+		$ECHO "      -i, Display system version information"
+		$ECHO
+		$ECHO "      Return codes:"
+		$ECHO "      0 No problems encountered with requested operation"
+		$ECHO "      1 Warning generated"
+		$ECHO "      2 Fatal error, unable to complete requested operation"
+		$ECHO
 		exit $EXIT_STATUS
 }
 
@@ -473,12 +474,20 @@ if [ $# -ne 0 ]; then
 						n ) SELECT=5 ;;
 						b ) SELECT=6 ;;
 						i ) SELECT=7 ;;
-						e ) TAIL_LOGS=1 
-						SELECT=5;;
+						e ) TAIL_LOGS=1 ;;
 						l ) LOG_DIR=$OPTARG ;;
 						* ) UNKNOWN_OPTION ;;
 				esac
 		done	
+fi
+if [ x"" != x"$LOG_DIR" ];then
+	CHK_DIR $LOG_DIR
+	if [ $EXISTS -eq 1 ]; then
+		LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory"
+		EXIT_STATUS=1
+else
+	LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
+	fi
 fi
 CHK_DB_QD_SET
 if [ $LOG_DIR ]

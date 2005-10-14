@@ -63,34 +63,36 @@ FORCESTOP=1
 # Functions
 #******************************************************************************
 USAGE () {
-        $ECHO
-		$ECHO $0
-		$ECHO "Recovers mpp segment instances that are marked as invalid, if"
-		$ECHO "mirroring is configured and operational"
+        	$ECHO
+		$ECHO "      `basename $0`"
 		$ECHO
-        $ECHO "Usage: "
-		$ECHO $0 "[OPTIONS]"
+		$ECHO "      Recovers mpp segment instances that are marked as invalid, if"
+		$ECHO "      mirroring is configured and operational"
 		$ECHO
-		$ECHO "General options:"
-		$ECHO "-?,display this help message & exit"
-		$ECHO "-v, display version information & exit"
+        	$ECHO "      Usage: "
+		$ECHO "      $0 [OPTIONS]"
 		$ECHO
-		$ECHO "Logging options:"
-		$ECHO "-q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
-		$ECHO "-l, <logfile directory> alternative logfile directory [optional]"
-		$ECHO "-a, don't ask to confirm recovery [default:- ask]"
+		$ECHO "      General options:"
+		$ECHO "      -?,display this help message & exit"
+		$ECHO "      -v, display version information & exit"
+		$ECHO
+		$ECHO "      Logging options:"
+		$ECHO "      -q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
+		$ECHO "      -l, <logfile directory> alternative logfile directory [optional]"
+		$ECHO "      -a, don't ask to confirm recovery [default:- ask]"
 		$ECHO 
-		$ECHO "Recovery options:"
-		$ECHO "-f, force MPP cluster shutdown and restart"
-        $ECHO
-		$ECHO "Connection options:"
-		$ECHO "-d, <Master database directory> name of alternative Master database to start up [optional]"
+		$ECHO "      Recovery options:"
+		$ECHO "      -f, force MPP cluster shutdown and restart"
+        	$ECHO
+		$ECHO "      Connection options:"
+		$ECHO "      -d, <Master database directory> name of alternative Master database to start up [optional]"
 		$ECHO
-		$ECHO "Return codes:"
-		$ECHO "0 No problems encountered with requested operation"
-		$ECHO "1 Warning generated, but recovery completed"
-		$ECHO "2 Fatal error, recovery failed"
-        exit 1
+		$ECHO "      Return codes:"
+		$ECHO "      0 No problems encountered with requested operation"
+		$ECHO "      1 Warning generated, but recovery completed"
+		$ECHO "      2 Fatal error, recovery failed"
+		$ECHO
+        	exit 0
 }
 
 GET_SETTING () {
@@ -390,9 +392,9 @@ START_DATABASE () {
         ${WORKDIR}/$START_PROG -a
         RETVAL=$?
         if [ $RETVAL -ne 0 ];then
-				LOG_MSG "[WARN]:-The $START_PROG script returned a non zero return code"
-				LOG_MSG "[INFO]:-Check the $START_PROG log file for more information on cause"
-				LOG_MSG "[INFO]:-Run mppstate.sh to check current status of cluster database"
+		LOG_MSG "[WARN]:-The $START_PROG script returned a non zero return code"
+		LOG_MSG "[INFO]:-Check the $START_PROG log file for more information on cause"
+		LOG_MSG "[INFO]:-Run mppstate.sh to check current status of cluster database"
                 ERROR_EXIT "[FATAL]:-Issue with master database startup."
 		fi
         LOG_MSG "[INFO]:-Successfully started the master array"
@@ -405,14 +407,23 @@ while getopts ":v'?'qfal:d:" opt;do
     case $opt in
         v ) VERSION_INFO ;;
       '?' ) USAGE ;;
-		a ) unset INTERACTIVE ;;
-        d ) HEAD_DIRECTORY=$OPTARG ;;
+	a ) unset INTERACTIVE ;;
+        d ) MASTER_DATA_DIRECTORY=$OPTARG ;;
         q ) unset VERBOSE ;;
-		f ) FORCESTOP=1 ;;
+	f ) FORCESTOP=1 ;;
     	l ) LOG_DIR=$OPTARG ;;
         * ) USAGE ;;
     esac
 done
+if [ x"" != x"$LOG_DIR" ];then
+	CHK_DIR $LOG_DIR
+	if [ $EXISTS -eq 1 ]; then
+		LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory"
+		EXIT_STATUS=1
+else
+	LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
+	fi
+fi
 LOG_MSG "[INFO]:-Start Main"
 if [ ! $MASTER_DATA_DIRECTORY ]; then
 	ERROR_EXIT "[FATAL]:-MASTER_DATA_DIRECTORY environment variable not set" 2

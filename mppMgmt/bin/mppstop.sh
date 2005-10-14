@@ -57,41 +57,41 @@ STOP_INVALID=0
 #******************************************************************************
 #
 USAGE () {
-		$TABECHO	
-		$TABECHO "$0 "
-		$TABECHO "Stops the MPP database, or stops the Master database from maintenance mode"
-		$TABECHO
-		$TABECHO $0 "[OPTIONS]"
-		$TABECHO
-		$TABECHO "General options:"
-		$TABECHO "-?, display this help message & exit"
-		$TABECHO "-v, display version information & exit"
-		$TABECHO "-t, display default parameter settings & exit"
-		$TABECHO
-		$TABECHO "Logging options:"
-		$TABECHO "-q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
-		$TABECHO "-l, <logfile directory> alternative logfile directory [optional]"
-		$TABECHO "-a, don't ask to confirm shutdown [default:- ask]"
-		$TABECHO
-		$TABECHO "Connection options:"
-		$TABECHO "-d, <Master database directory> name of alternative Master database to shutdown [optional]"
-		$TABECHO
-		$TABECHO "Database shutdown options:"
-		$TABECHO "-f, Fast shutdown, active transactions interrupted and rolled back"
-		$TABECHO "-i, Immediate shutdown, active transaction aborted [Use this option with care]"
-		$TABECHO "-s, Smart shutdown, wait for active transaction to complete [default]"
-		$TABECHO "-n, Do not wait for shutdown return code of each segment instance [default:- wait]"
-		$TABECHO "-z, Force shutdown of segment instances marked as invalid. Kill postmaster PID,"
-		$TABECHO "    delete /tmp lock files and remove segment instance postmaster.pid file."
-		$TABECHO "-r, Restart MPP database after successful mppstop.sh."
-		##MPP	$TABECHO "-k, Attempt to kill any orphaned postmaster processes on nodes" 
-		$TABECHO "-m, Stop master database started in maintenance mode"
-		$TABECHO
-		$TABECHO "Return codes:"
-		$TABECHO "0 No problems encountered with requested operation"
-		$TABECHO "1 Warning generated, but database shutdown"
-		$TABECHO "2 Fatal error, database not shutdown, or in an inconsistent state"
-		$TABECHO
+		$ECHO	
+		$ECHO "      `basename $0` "
+		$ECHO
+		$ECHO "      Stops the MPP database, or stops the Master database from maintenance mode"
+		$ECHO
+		$ECHO "      $0 [OPTIONS]"
+		$ECHO
+		$ECHO "      General options:"
+		$ECHO "      -?, display this help message & exit"
+		$ECHO "      -v, display version information & exit"
+		$ECHO "      -t, display default parameter settings & exit"
+		$ECHO
+		$ECHO "      Logging options:"
+		$ECHO "      -q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
+		$ECHO "      -l, <logfile directory> alternative logfile directory [optional]"
+		$ECHO "      -a, don't ask to confirm shutdown [default:- ask]"
+		$ECHO
+		$ECHO "      Connection options:"
+		$ECHO "      -d, <Master database directory> name of alternative Master database to shutdown [optional]"
+		$ECHO
+		$ECHO "      Database shutdown options:"
+		$ECHO "      -f, Fast shutdown, active transactions interrupted and rolled back"
+		$ECHO "      -i, Immediate shutdown, active transaction aborted [Use this option with care]"
+		$ECHO "      -s, Smart shutdown, wait for active transaction to complete [default]"
+		$ECHO "      -n, Do not wait for shutdown return code of each segment instance [default:- wait]"
+		$ECHO "      -z, Force shutdown of segment instances marked as invalid. Kill postmaster PID,"
+		$ECHO "          delete /tmp lock files and remove segment instance postmaster.pid file."
+		$ECHO "      -r, Restart MPP database after successful mppstop.sh."
+		$ECHO "      -m, Stop master database started in maintenance mode"
+		$ECHO
+		$ECHO "      Return codes:"
+		$ECHO "      0 No problems encountered with requested operation"
+		$ECHO "      1 Warning generated, but database shutdown"
+		$ECHO "      2 Fatal error, database not shutdown, or in an inconsistent state"
+		$ECHO
 		exit $EXIT_STATUS
 }
 
@@ -139,7 +139,7 @@ STOP_ADMIN () {
 		##MPP Disabled call to this function 22/07/2005
 		LOG_MSG "[INFO]:-Stopping the head in admin mode"
 		if [ ! -s $MASTER_DATA_DIRECTORY/$PG_PID ]; then
-				ERROR_EXIT "[WARN]:- No $PG_PID file, is database already stopped?" 1
+				ERROR_EXIT "[FATAL]:- No $PG_PID file, is database already stopped?" 1
 		fi
 		env PGOPTIONS="-c mpp_session_role=utility" $PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m smart      >/dev/null 2>&1
 		RETVAL=$?
@@ -289,7 +289,15 @@ if [ $# -ne 0 ]; then
 				esac
 		done	
 fi
-
+if [ x"" != x"$LOG_DIR" ];then
+	CHK_DIR $LOG_DIR
+	if [ $EXISTS -eq 1 ]; then
+		LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory"
+		EXIT_STATUS=1
+else
+	LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
+	fi
+fi
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 CHK_DB_QD_SET

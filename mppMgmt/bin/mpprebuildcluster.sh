@@ -62,37 +62,38 @@ START_PROG=${WORKDIR}/mppstart.sh
 #******************************************************************************
 #
 USAGE () {
-		$TABECHO	
-		$TABECHO $0 
-		$TABECHO "Re-constructs an MPP array from a secured catalogue SQL file."
-		$TABECHO "Will build a Master database and all segment instances detailed"
-		$TABECHO "in the SQL file. Upon completion, the array will be operational"
-		$TABECHO "and ready for a user data restore."
-		$TABECHO
-		$TABECHO "Usage:"
-		$TABECHO $0 "[OPTIONS]"
-		$TABECHO
-		$TABECHO "General options:"
-		$TABECHO "-?, display this help message & exit" 
-		$TABECHO "-v, display version information & exit"
-		$TABECHO
-		$TABECHO "Logging options:"
-		$TABECHO "-q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
-		$TABECHO "-l, <logfile directory> alternative logfile directory [optional]"
-		$TABECHO "-a, don't ask to confirm re-build [default:- ask]"
-		$TABECHO "-p, set temporary database port number [default $TEMP_PORT]"
-		$TABECHO
-		$TABECHO "Rebuild options:"
-		$TABECHO "-s, <sql source file name> [mandatory]"
-		$TABECHO "-d, <temporary data directory name> directory where a temporary database can be created"
-		$TABECHO "    to allow parsing of <sql source file name> [mandatory]"
-		$TABECHO "-c, value of checkpoint segments [default $CHECK_POINT_SEGMENTS]"
-		$TABECHO
-		$TABECHO "Return codes:"
-		$TABECHO "0 No problems encountered with requested operation"
-		$TABECHO "1 Warning generated, but master database operational"
-		$TABECHO "2 Fatal error, database not rebuilt, or in an inconsistent state"
-		$TABECHO
+		$ECHO	
+		$ECHO "      `basename $0 `"
+		$ECHO
+		$ECHO "      Re-constructs an MPP array from a secured catalogue SQL file."
+		$ECHO "      Will build a Master database and all segment instances detailed"
+		$ECHO "      in the SQL file. Upon completion, the array will be operational"
+		$ECHO "      and ready for a user data restore."
+		$ECHO
+		$ECHO "      Usage:"
+		$ECHO "      $0 [OPTIONS]"
+		$ECHO
+		$ECHO "      General options:"
+		$ECHO "      -?, display this help message & exit" 
+		$ECHO "      -v, display version information & exit"
+		$ECHO
+		$ECHO "      Logging options:"
+		$ECHO "      -q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
+		$ECHO "      -l, <logfile directory> alternative logfile directory [optional]"
+		$ECHO "      -a, don't ask to confirm re-build [default:- ask]"
+		$ECHO "      -p, set temporary database port number [default $TEMP_PORT]"
+		$ECHO
+		$ECHO "      Rebuild options:"
+		$ECHO "      -s, <sql source file name> [mandatory]"
+		$ECHO "      -d, <temporary data directory name> directory where a temporary database can be created"
+		$ECHO "          to allow parsing of <sql source file name> [mandatory]"
+		$ECHO "      -c, value of checkpoint segments [default $CHECK_POINT_SEGMENTS]"
+		$ECHO
+		$ECHO "      Return codes:"
+		$ECHO "      0 No problems encountered with requested operation"
+		$ECHO "      1 Warning generated, but master database operational"
+		$ECHO "      2 Fatal error, database not rebuilt, or in an inconsistent state"
+		$ECHO
 		exit $EXIT_STATUS
 }
 
@@ -165,6 +166,7 @@ CHK_PARAM () {
 	fi
 	if [ "$USER_NAME" != "$MASTER_USER" ] ;then
 		LOG_MSG "[WARN]:-Current user account name $USER_NAME does not match mppsuperuser"
+		STOP_BUILD=1
 	fi
 	if [ $STOP_BUILD -ne 0 ];then
 		DELETE_TEMP_DB
@@ -367,7 +369,15 @@ if [ $# -ne 0 ]; then
 		esac
 	done	
 fi
-
+if [ x"" != x"$LOG_DIR" ];then
+	CHK_DIR $LOG_DIR
+	if [ $EXISTS -eq 1 ]; then
+		LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory"
+		EXIT_STATUS=1
+else
+	LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
+	fi
+fi
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 if [ x"" = x"$SQL_FILE" ] || [ x"" = x"$TEMP_DATA_DIRECTORY" ]; then

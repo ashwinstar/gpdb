@@ -62,38 +62,37 @@ START_INVALID=0
 #******************************************************************************
 #
 USAGE () {
-		$TABECHO	
-		$TABECHO $0 
-		$TABECHO "Starts the full MPP database, or Master database only in utility mode"
-		$TABECHO "Cannot use -x and -n options together as mutually exclusive"
-		$TABECHO
-		$TABECHO "Usage:"
-		$TABECHO $0 "[OPTIONS]"
-		$TABECHO
-		$TABECHO "General options:"
-		$TABECHO "-?, display this help message & exit" 
-		$TABECHO "-v, display version information & exit"
-		$TABECHO "-t, display default parameter settings & exit"
-		$TABECHO
-		$TABECHO "Logging options:"
-		$TABECHO "-q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
-		$TABECHO "-l, <logfile directory> alternative logfile directory [optional]"
-		$TABECHO "-a, don't ask to confirm startup [default:- ask]"
-		$TABECHO
-		$TABECHO "Connection options:"
-		$TABECHO "-d, <Master database directory> name of alternative Master database to start up [optional]"
-		$TABECHO
-		$TABECHO "Database startup options:"
-		$TABECHO "-n, do not wait for startup return code of each segment instance [default:- wait]"
-		$TABECHO "-m, start master database only in maintenance mode [default:- full MPP startup]"
-		$TABECHO "-x, mark failed segment as down [default:- do not mark segment as down on startup failure]"
-		$TABECHO "-z, force startup of segment instance marked as invalid"
-		$TABECHO
-		$TABECHO "Return codes:"
-		$TABECHO "0 No problems encountered with requested operation"
-		$TABECHO "1 Warning generated, but database operational"
-		$TABECHO "2 Fatal error, database not started, or in an inconsistent state"
-		$TABECHO
+		$ECHO	
+		$ECHO "      `basename $0`"
+		$ECHO
+		$ECHO "      Starts the full MPP database, or Master database only in utility mode"
+		$ECHO
+		$ECHO "      Usage:"
+		$ECHO "      $0 [OPTIONS]"
+		$ECHO
+		$ECHO "      General options:"
+		$ECHO "      -?, display this help message & exit" 
+		$ECHO "      -v, display version information & exit"
+		$ECHO "      -t, display default parameter settings & exit"
+		$ECHO
+		$ECHO "      Logging options:"
+		$ECHO "      -q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
+		$ECHO "      -l, <logfile directory> alternative logfile directory [optional]"
+		$ECHO "      -a, don't ask to confirm startup [default:- ask]"
+		$ECHO
+		$ECHO "      Connection options:"
+		$ECHO "      -d, <Master database directory> name of alternative Master database to start up [optional]"
+		$ECHO
+		$ECHO "      Database startup options:"
+		$ECHO "      -n, do not wait for startup return code of each segment instance [default:- wait]"
+		$ECHO "      -m, start master database only in maintenance mode [default:- full MPP startup]"
+		$ECHO "      -z, force startup of segment instance marked as invalid"
+		$ECHO
+		$ECHO "      Return codes:"
+		$ECHO "      0 No problems encountered with requested operation"
+		$ECHO "      1 Warning generated, but database operational"
+		$ECHO "      2 Fatal error, database not started, or in an inconsistent state"
+		$ECHO
 		exit $EXIT_STATUS
 }
 
@@ -127,11 +126,6 @@ DISPLAY_PARAM () {
 		else
 				$ECHO "Wait for startup            = False"
 		fi 
-		#MPP	if [ $FAILED ]; then
-		#MPP	$ECHO "Mark segment as failed      = True"
-		#MPP	else
-		#MPP	$ECHO "Mark segment as failed      = False           [Override with -x]"
-		#MPP	fi
 		$ECHO
 		exit $EXIT_STATUS
 }
@@ -241,6 +235,7 @@ PROCESS_STARTUP () {
 						$TRUSTED_SHELL $QE_NAME "$LS $QE_DIR" > /dev/null 2>&1
 						if [ $? -ne 0 ]; then
 								LOG_MSG "[WARN]:-Segment directory $QE_DIR on $QE_NAME does not exist"
+								EXIT_STATUS=1
 						else
 								$TRUSTED_SHELL $QE_NAME "$TAIL ${QE_DIR}.log"|$TEE -a $LOG_FILE
 								LOG_MSG "[WARN]:-Issue with $TRUSTED_SHELL to $QE_NAME for $QE_DIR database"
@@ -300,69 +295,47 @@ PROCESS_STARTUP () {
 		fi
 }
 
-MARK_INVALID () {
-		LOG_MSG "[INFO]:-Processing list of failed segments"
-		for TARGET in "${FAILED_LIST_ARRAY[@]}"
-				do
-				QE_NAME=`$ECHO $TARGET|$CUT -d: -f1`
-				QE_DIR=`$ECHO $TARGET|$CUT -d: -f2`
-				QE_PORT=`$ECHO $TARGET|$CUT -d: -f3`
-				QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
-				QE_PRIMARY=`$ECHO $QNODE|$CUT -d"|" -f5`
-				QE_LISTENID=`$PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select listenerid from mpp.listener where datadir='{$QE_DIR}' and port=${QE_PORT};"`
-				$PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"update mpp.pgdatabase set valid='f' where listenerid=${QE_LISTENID};" >> $LOG_FILE 2>&1
-				RETVAL=$?
-				if [ $RETVAL -ne 0 ]; then
-						LOG_MSG "[WARN]:-Issue with marking $QE_NAME as invalid, check log file"
-						EXIT_STATUS=1
-				else
-						LOG_MSG "[INFO]:-Marked $QE_NAME as invalid, for data directory $QE_DIR, port $QE_PORT"
-				fi
-		done
-}
-
 #******************************************************************************
 # Main Section
 #******************************************************************************
 if [ $# -ne 0 ]; then
-		while getopts ":vt'?'axqznml:d:" opt;do
+		while getopts ":vt'?'aqznml:d:" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						t ) DISPLAY_PARAM ;;
 						'?' ) USAGE ;;
 						d ) MASTER_DATA_DIRECTORY=$OPTARG ;;
 						a ) unset INTERACTIVE ;;
-						x ) FAILED=1 ;;
 						q ) unset VERBOSE ;;
 						n ) WAIT="-W" ;; 
 						m ) ADMIN=1 ;;
-						z )	START_INVALID=1 ;;
+						z ) START_INVALID=1 ;;
 						l ) LOG_DIR=$OPTARG ;;
 						* ) USAGE ;;
 				esac
 		done	
 fi
-if [ $FAILED ] && [ $WAIT == "-W" ]
-		then
-		ERROR_EXIT "[FATAL]:-Cannot use -x and -n options together" 2
+if [ x"" != x"$LOG_DIR" ];then
+	CHK_DIR $LOG_DIR
+	if [ $EXISTS -eq 1 ]; then
+		LOG_MSG "[WARN]:-Log directory $LOG_DIR does not exist, using default log directory"
+	else
+		LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
+	fi
 fi
-
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 CHK_QD_DB_RUNNING
 CHK_DB_QD_SET
 GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 if [ $ADMIN ]; then
-		START_ADMIN
-		exit
+	START_ADMIN
+	exit $EXIT_STATUS
 fi
 GET_DETAILS
 if [ $INTERACTIVE ]; then
-		PROMPT_CONTINUE
+	PROMPT_CONTINUE
 fi
 PROCESS_STARTUP
-if [ ${#FAILED_LIST_ARRAY[@]} -ne 0 ]; then
-		MARK_INVALID
-fi
 LOG_MSG "[INFO]:-End Main"
 exit $EXIT_STATUS

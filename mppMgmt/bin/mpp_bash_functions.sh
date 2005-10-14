@@ -154,7 +154,9 @@ PG_CTL=$PSQLBIN/pg_ctl
 PG_DUMP=$PSQLBIN/pg_dump
 PG_RESTORE=$PSQLBIN/pg_restore
 PSQL=$PSQLBIN/psql
-
+MPP_DUMPALL=$PSQLBIN/mpp_dumpall
+MPP_RESTORE=$PSQLBIN/mpp_restore
+MPPSYNCMASTER=$PSQLBIN/mppsyncmaster
 
 #******************************************************************************
 # General Variables
@@ -179,7 +181,6 @@ CHK_DB_QD_SET () {
 
 VERSION_INFO () {
 		VERSION=`$HEAD -10 $0|$GREP -i Version: | $CUT -d# -f2|$CUT -d- -f2|$TR -d '\t'`
-##		STATUS=`$HEAD -10 $0|$GREP -i Status: | $AWK '{print $3" "$4" "$5 " " $6}'`
 		STATUS=`$HEAD -10 $0|$GREP -i Status: | $CUT -d# -f2|$CUT -d- -f2|$TR -d '\t'`
 		UPDATE=`$HEAD -10 $0|$GREP -i Updated:| $CUT -d# -f2|$CUT -d- -f2|$TR -d '\t'`
 		CHK_SUM=`$CKSUM $0|$AWK '{print $1" "$2}'`
@@ -730,15 +731,7 @@ DEFLOGDIR=$HOME/mppAdminLogs
 if [ ! -d $DEFLOGDIR ]; then
 		mkdir $DEFLOGDIR
 fi
-if [ $LOG_DIR ]; then
-		CHK_DIR $LOG_DIR
-		if [ $EXISTS -eq 1 ]; then
-				ERROR_EXIT "[FATAL]:-Log directory $LOG_DIR does not exist" 2
-		fi
-		LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
-else
-		LOG_FILE=$DEFLOGDIR/${PROG_NAME}_${CUR_DATE}.log
-fi
+LOG_FILE=$DEFLOGDIR/${PROG_NAME}_${CUR_DATE}.log
 
 if [ $# -ne 0 ]; then
 		if [ $1 == "-v" ]; then
