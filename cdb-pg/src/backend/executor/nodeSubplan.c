@@ -3,6 +3,7 @@
  * nodeSubplan.c
  *	  routines to support subselects
  *
+ * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -24,7 +25,6 @@
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbdisp.h"
 #include "cdb/ml_ipc.h"
-#include "miscadmin.h"
 #include "executor/executor.h"
 #include "executor/nodeSubplan.h"
 #include "lib/stringinfo.h"
@@ -1152,17 +1152,12 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 	{
 		if ( hasDispatched )
 		{
-			/*
-			 * Set this to force any remaining commands executing on qExecs to stop.
-             * CDB TODO: This is a bad way to stop them.  Provide a better way.
-			 */
-			QueryCancelPending = true;
-
-			/*
-			 * We need to wait for the threads to finish.  This allows for proper cleanup
-			 * of the results from the async command executions.
-			 */
-			CdbCheckDispatchResult();
+            /*
+             * Request any remaining commands executing on qExecs to stop.
+             * We need to wait for the threads to finish.  This allows for proper cleanup
+             * of the results from the async command executions.
+             */
+            CdbCheckDispatchResult(true);
 
             /* Discard any remaining results from QEs; don't confuse matters
              * by throwing a new error.  Any results of interest presumably
@@ -1183,7 +1178,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 		 * We successfully completed on the Dispatcher.  Now check the results
 		 * from the qExecs.  This internally waits for them to all finish.
 		 */
-        CdbCheckDispatchResult();
+        CdbCheckDispatchResult(false);      /* wait calmly, don't cancel them */
 
         TeardownInterconnect(); /* following success on QD */
 

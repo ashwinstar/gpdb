@@ -1,7 +1,7 @@
 /*--------------------------------------------------------------------------
 *
 * cdbcopy.h
-*    Definitions and API functions for cdbcopy.c 
+*    Definitions and API functions for cdbcopy.c
 *    These are functions that are used by the backend
 *    COPY command in MPP.
 *
@@ -20,10 +20,14 @@
 
 typedef enum SegDbState
 {
-	OUT,					/* Not participating in COPY (invalid etc...) */
-	IDLE,					/* Participating but COPY not yet started */
-	COPY,				    /* COPY in progress */
-	DONE					/* COPY completed (with or without errors) */
+                            /* (it is best to avoid names like OUT that are
+                             * likely to be #define'd or typedef'd in some
+                             * platform-dependent runtime library header file)
+                             */
+	SEGDB_OUT,				/* Not participating in COPY (invalid etc...) */
+	SEGDB_IDLE,				/* Participating but COPY not yet started */
+	SEGDB_COPY,				/* COPY in progress */
+	SEGDB_DONE				/* COPY completed (with or without errors) */
 } SegDbState;
 
 typedef struct CdbCopy
@@ -45,7 +49,7 @@ typedef struct CdbCopy
 CdbCopy *makeCdbCopy(void);
 int cdbCopyGetDbCount(int total_segs, int seg);
 int cdbCopyStart(CdbCopy *cdbCopy, char *copyCmd);
-void cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer, 
+void cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer,
 					int nbytes);
 void cdbCopyEnd(CdbCopy *c);
 void cdbCopyStartTransaction(void);

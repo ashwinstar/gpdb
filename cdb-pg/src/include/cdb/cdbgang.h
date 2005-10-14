@@ -53,4 +53,7 @@ extern bool reconnectSegDB(void *);
 struct SegmentDatabaseDescriptor *
 getSegmentDescriptorFromGang(const Gang * gp, int seg);
 
+bool
+reconnectSegDB(struct SegmentDatabaseDescriptor *failedDB);
+
 #endif   /* _CDBGANG_H_ */

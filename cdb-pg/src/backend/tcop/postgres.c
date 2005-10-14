@@ -3,6 +3,7 @@
  * postgres.c
  *	  POSTGRES C Backend Interface
  *
+ * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -2049,16 +2050,18 @@ ProcessInterrupts(void)
 	}
 	if (QueryCancelPending)
 	{
-        char   *msg = (Mpp_role == MPP_ROLE_EXECUTE)
-                        ? "canceled by QD"
-                        : "canceling query due to user request";
         QueryCancelPending = false;
 		ImmediateInterruptOK = false;	/* not idle anymore */
 		DisableNotifyInterrupt();
 		DisableCatchupInterrupt();
-		ereport(ERROR,
-				(errcode(ERRCODE_QUERY_CANCELED),
-				 errmsg(msg)));
+        if (Mpp_role == MPP_ROLE_EXECUTE)
+		    ereport(ERROR,
+			    	(errcode(ERRCODE_MPP_OPERATION_CANCELED),
+				     errmsg("canceling MPP operation")));
+        else
+		    ereport(ERROR,
+			    	(errcode(ERRCODE_QUERY_CANCELED),
+				     errmsg("canceling query due to user request")));
 	}
 	/* If we get here, do nothing (probably, QueryCancelPending was reset) */
 }
@@ -4178,7 +4181,7 @@ SyncAgentMain(int argc, char *argv[], const char *username)
                     pq_getmsgend(&input_message);
 
                     cdb_sync_command(query_string);
-                    
+
                     send_rfq = true;
                     pq_getmsgend(&input_message);
                 }

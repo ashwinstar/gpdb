@@ -412,6 +412,10 @@ execCommand(void)
         }
     }
 
+    /* Free the broken connection list. */
+    if (failedSegDB)
+        pfree(failedSegDB);
+
     return ret;
 }
 

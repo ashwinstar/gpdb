@@ -9,6 +9,7 @@
  * string is determined by the MAKE_SQLSTATE() macro, which is not defined
  * in this file; it can be defined by the caller for special purposes.
  *
+ * Portions Copyright (c) 2005, Greenplum Inc.
  * Copyright (c) 2003-2005, PostgreSQL Global Development Group
  *
  * $PostgreSQL: pgsql/src/include/utils/errcodes.h,v 1.17 2005/01/01 20:44:30 tgl Exp $
@@ -68,6 +69,7 @@
 #define ERRCODE_WARNING_STRING_DATA_RIGHT_TRUNCATION	MAKE_SQLSTATE('0','1', '0','0','4')
 #define ERRCODE_WARNING_DEPRECATED_FEATURE	MAKE_SQLSTATE('0','1', 'P','0','1')
 #define ERRCODE_WARNING_MPP_INTERIM_FEATURE	MAKE_SQLSTATE('0','1', 'M','0','1')
+#define ERRCODE_WARNING_MPP_INTERCONNECTION MAKE_SQLSTATE('0','1', 'M','0','2')
 
 /* Class 02 - No Data --- this is also a warning class per SQL99 */
 /* (do not use this class for failure conditions!) */
@@ -334,7 +336,7 @@
 #define ERRCODE_IO_ERROR					MAKE_SQLSTATE('5','8', '0','3','0')
 #define ERRCODE_UNDEFINED_FILE				MAKE_SQLSTATE('5','8', 'P','0','1')
 #define ERRCODE_DUPLICATE_FILE				MAKE_SQLSTATE('5','8', 'P','0','2')
-#define ERRCODE_MPP_QD_QE_CONNECTION_ERROR  MAKE_SQLSTATE('5','8', 'M','0','1')
+#define ERRCODE_MPP_INTERCONNECTION_ERROR   MAKE_SQLSTATE('5','8', 'M','0','1')
 
 /* Class F0 - Configuration File Error (PostgreSQL-specific error class) */
 #define ERRCODE_CONFIG_FILE_ERROR			MAKE_SQLSTATE('F','0', '0','0','0')

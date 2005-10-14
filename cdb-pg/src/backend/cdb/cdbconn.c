@@ -19,20 +19,33 @@
 #include "cdb/cdbvars.h"
 
 
+/* Initialize a QE connection descriptor in storage provided by the caller. */
 void
 cdbconn_initSegmentDescriptor(SegmentDatabaseDescriptor        *segdbDesc,
-                              struct CdbComponentDatabaseInfo  *cdbinfo)
+                              struct CdbComponentDatabaseInfo  *cdbinfo,
+                              const char                       *dbname,
+                              struct Gang                      *gang,
+                              int                               gangindex)
 {
     memset(segdbDesc, 0, sizeof(*segdbDesc));
 
+    /* Segment db info */
     segdbDesc->segment_database_info = cdbinfo;
-    segdbDesc->conn = NULL;
-    initPQExpBuffer(&segdbDesc->error_message);
     segdbDesc->segindex = cdbinfo->segindex;
+    segdbDesc->dbname = dbname ? strdup(dbname) : NULL;
 
-    segdbDesc->dbname = NULL;
+    /* The gang I belong to, and 0-based position within the gang. */
+    segdbDesc->gang = gang;
+    segdbDesc->gangindex = gangindex;
+
+    /* Connection info */
+    segdbDesc->conn = NULL;
     segdbDesc->motionListener = 0;
     segdbDesc->whoami = NULL;
+
+    /* Connection error info */
+    segdbDesc->errcode = 0;
+    initPQExpBuffer(&segdbDesc->error_message);
 }                               /* cdbconn_initSegmentDescriptor */
 
 
@@ -41,14 +54,17 @@ void
 cdbconn_termSegmentDescriptor(SegmentDatabaseDescriptor *segdbDesc)
 {
     /* Free the error message buffer. */
+    segdbDesc->errcode = 0;
     termPQExpBuffer(&segdbDesc->error_message);
 
-    /* Free connection info. */
+    /* Free database name. */
     if (segdbDesc->dbname)
     {
         free(segdbDesc->dbname);
         segdbDesc->dbname = NULL;
     }
+
+    /* Free connection info. */
     if (segdbDesc->whoami)
     {
         free(segdbDesc->whoami);
@@ -60,12 +76,12 @@ cdbconn_termSegmentDescriptor(SegmentDatabaseDescriptor *segdbDesc)
 /* Connect to a QE as a client via libpq. */
 bool                            /* returns true if connected */
 cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
-                  const char                   *dbname,
                   const char                   *options)
 {
     CdbComponentDatabaseInfo   *q = segdbDesc->segment_database_info;
     PQExpBufferData             buffer;
-    int                         snipoff;
+    int                         passoff = 0;
+    int                         passend = 0;
 
     /*
      * We use PQExpBufferData instead of StringInfoData
@@ -75,12 +91,6 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
      * same reason.
      */
     initPQExpBuffer(&buffer);
-
-    /* Save the database name, if given.  Can be NULL during cdb_setup(). */
-    free(segdbDesc->dbname);
-    segdbDesc->dbname = NULL;
-    if (dbname)
-        segdbDesc->dbname = strdup(dbname);
 
     /*
      * Build the connection string
@@ -100,15 +110,19 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
 
     appendPQExpBuffer(&buffer, "port=%u ", q->port);
 
-    if (dbname)
-        appendPQExpBuffer(&buffer, "dbname=%s ", dbname);
-    
+    if (segdbDesc->dbname)
+        appendPQExpBuffer(&buffer, "dbname=%s ", segdbDesc->dbname);
+
     appendPQExpBuffer(&buffer, "user=%s ", q->mppsuperuser);
 
-    /* Password is last so it can be snipped for error message. */
-    snipoff = buffer.len;
     if ( q->mppsuperpswd != NULL )
-        appendPQExpBuffer(&buffer, "password='%s' ", q->mppsuperpswd);
+    {
+        appendPQExpBufferStr(&buffer, "password='");
+        passoff = buffer.len;
+        appendPQExpBufferStr(&buffer, q->mppsuperpswd);
+        passoff = buffer.len;
+        appendPQExpBufferStr(&buffer, "' ");
+    }
 
     /*
      * Call libpq to connect
@@ -116,8 +130,8 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
     segdbDesc->conn = PQconnectdb(buffer.data);
 
     /* Wipe password. */
-    memset(buffer.data+snipoff, 0, buffer.len-snipoff);
-    buffer.len = snipoff;
+    while (passoff < passend)
+        buffer.data[passoff++] = '*';
 
     /* Build whoami string to identify the QE for use in messages. */
     cdbconn_setSliceIndex(segdbDesc, -1);
@@ -127,8 +141,10 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
      */
     if ( PQstatus(segdbDesc->conn) == CONNECTION_BAD )
     {
+        if (!segdbDesc->errcode)
+            segdbDesc->errcode = ERRCODE_MPP_INTERCONNECTION_ERROR;
         appendPQExpBuffer(&segdbDesc->error_message,
-                          "Unable to connect to %s with options: %s; %s",
+                          "QD unable to connect to %s with options %s: %s\n",
                           segdbDesc->whoami,
                           buffer.data,
                           PQerrorMessage(segdbDesc->conn));
@@ -151,6 +167,13 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
          * where it listens for connections from the gang below.
          */
         segdbDesc->motionListener = PQmotionListener(segdbDesc->conn);
+
+        /* Don't use elog, it's not thread-safe */
+        if (DEBUG3 >= log_min_messages)
+            fprintf(stderr, "Connected to %s motionListener=%d with options %s\n",
+                    segdbDesc->whoami,
+                    segdbDesc->motionListener,
+                    buffer.data);
     }
 
     free(buffer.data);
@@ -173,8 +196,9 @@ cdbconn_setSliceIndex(SegmentDatabaseDescriptor    *segdbDesc,
 
     /* Format the identity of the segment db. */
     if (q->segindex >= 0)
-        appendPQExpBuffer(scratchbuf, "qe#%d%s",
-        q->segindex, (q->isprimary ? "" : "S"));
+        appendPQExpBuffer(scratchbuf, "%s#%d",
+                          q->isprimary ? "seg" : "mirror",
+                          q->segindex);
     else
         appendPQExpBuffer(scratchbuf, "secondary entry db");
 

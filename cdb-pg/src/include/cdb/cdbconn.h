@@ -30,19 +30,6 @@ typedef struct SegmentDatabaseDescriptor
 	 */
 	struct CdbComponentDatabaseInfo *segment_database_info;
 	
-	/* conn
-	 *
-	 * A non-NULL value points to the PGconn block of a successfully
-	 * established connection to the segment database.
-	 */
-	PGconn				   *conn;		
-	
-	/* error_message
-	 *
-	 * A buffer containing messages received from the segment database.
-	 */
-	PQExpBufferData         error_message;
-
 	/* segindex
 	 *
 	 * Identifies the segment this group of databases is serving.  This is the
@@ -50,6 +37,27 @@ typedef struct SegmentDatabaseDescriptor
 	 */
 	int4         			segindex;
 	
+    /*
+     * Which gang does this QE belong to?
+     */
+    struct Gang            *gang;           /* QE is a member of this gang */
+    int                     gangindex;      /* QE's position within the gang */
+
+    /* conn
+	 *
+	 * A non-NULL value points to the PGconn block of a successfully
+	 * established connection to the segment database.
+	 */
+	PGconn				   *conn;		
+	
+	/*
+	 * Error info saved when connection cannot be established.
+	 */
+    int                     errcode;        /* ERRCODE_xxx (sqlstate encoded as
+                                             * an int) of first error, or 0.
+                                             */
+	PQExpBufferData         error_message;  /* message text; '\n' at end */
+
     /*
      * Connection info saved at most recent PQconnectdb.
      *
@@ -62,10 +70,13 @@ typedef struct SegmentDatabaseDescriptor
 } SegmentDatabaseDescriptor;
 
 
-
+/* Initialize a segment descriptor in storage provided by the caller. */
 void
 cdbconn_initSegmentDescriptor(SegmentDatabaseDescriptor        *segdbDesc,
-                              struct CdbComponentDatabaseInfo  *cdbinfo);
+                              struct CdbComponentDatabaseInfo  *cdbinfo,
+                              const char                       *dbname,
+                              struct Gang                      *gang,
+                              int                               gangindex);
 
 
 /* Free all memory owned by a segment descriptor. */
@@ -76,7 +87,6 @@ cdbconn_termSegmentDescriptor(SegmentDatabaseDescriptor *segdbDesc);
 /* Connect to a QE as a client via libpq. */
 bool                            /* returns true if connected */
 cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
-                  const char                   *dbname,
                   const char                   *options);
 
 

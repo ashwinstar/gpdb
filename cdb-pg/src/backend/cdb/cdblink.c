@@ -174,32 +174,38 @@ buildMirrorQDDefinition(void)
 
          if (!mirrorDb->isprimary)
          {
-             char  *dbname = get_database_name(MyDatabaseId);
+             char  *dbname;
 
              /* if it is set to invalid, do not connect */
              if ( !mirrorDb->valid )
              {
-                 ereport(WARNING,
-                     (errcode(ERRCODE_WARNING),
-                         errmsg("CDBLINK_SETUP--- mirrored entry database is set to invalid, skip connection"
-                     )));
+                 ereport(LOG, (errcode(ERRCODE_WARNING_MPP_INTERCONNECTION),
+                               errmsg("Mirroring disabled for entry db "
+                                      "because it is not marked 'valid'.") ));
                  return;
              }
 
-             /* create process descriptor */
+             /* create connection descriptor */
+             dbname = get_database_name(MyDatabaseId);
+
              cdb_mirrored_entry_db = malloc(sizeof(SegmentDatabaseDescriptor));
              memset( cdb_mirrored_entry_db, 0, sizeof(SegmentDatabaseDescriptor));
-             cdbconn_initSegmentDescriptor(cdb_mirrored_entry_db, mirrorDb);
+             cdbconn_initSegmentDescriptor(cdb_mirrored_entry_db, mirrorDb,
+                                           dbname, NULL, -1);
+
+             pfree(dbname);
+             dbname = NULL;
 
              /* connect to mirrored QD */
-             if ( !cdbconn_doConnect( cdb_mirrored_entry_db, dbname, NULL ) )
+             if ( !cdbconn_doConnect( cdb_mirrored_entry_db, NULL ) )
              {
                  disableQDMirroring();
 
-                 ereport(LOG,
-                         (errcode(ERRCODE_WARNING),     /* CDB TODO: better errcode */
-                          errmsg("Unable to connect: %s",
-                                 cdb_mirrored_entry_db->error_message.data)));
+                 ereport(LOG, (errcode(ERRCODE_WARNING_MPP_INTERCONNECTION),
+                               errmsg("Mirroring disabled for entry db.  %s",
+                                    cdb_mirrored_entry_db->error_message.data)
+                        ));
+                 cdb_mirrored_entry_db->errcode = 0;
                  resetPQExpBuffer(&cdb_mirrored_entry_db->error_message);
 
                  /* mark the db as down */

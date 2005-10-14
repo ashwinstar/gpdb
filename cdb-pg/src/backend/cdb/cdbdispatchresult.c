@@ -74,12 +74,46 @@ cdbdisp_resetResult(CdbDispatchResult  *dispatchResult)
     dispatchResult->okindex = -1;
 
     /* Reset progress indicators. */
+    dispatchResult->hasDispatched = false;
+    dispatchResult->stillRunning = false;
     dispatchResult->requestedCancel = false;
+    dispatchResult->wasCanceled = false;
 
     /* Empty (but don't free) the error message buffer and result buffer. */
     resetPQExpBuffer(&dispatchResult->resultbuf);
     resetPQExpBuffer(&dispatchResult->error_message);
 }                               /* cdbdisp_resetResult */
+
+
+/* Transfer connection error messages to dispatchResult from segdbDesc. */
+bool                            /* returns true if segdbDesc had err info */
+cdbdisp_mergeConnectionErrors(CdbDispatchResult            *dispatchResult,
+                              SegmentDatabaseDescriptor    *segdbDesc)
+{
+    if (!segdbDesc)
+        return false;
+    if (segdbDesc->errcode == 0 &&
+        segdbDesc->error_message.len == 0)
+        return false;
+
+    /* Error code should always be accompanied by text and vice-versa. */
+    Assert(segdbDesc->errcode != 0 && segdbDesc->error_message.len > 0);
+
+    /* Save ERRCODE_xxx if first error. */
+    if (dispatchResult->errcode == 0)
+        dispatchResult->errcode = segdbDesc->errcode;
+
+    /* Append error message text. */
+    appendPQExpBufferStr(&dispatchResult->error_message,
+                         segdbDesc->error_message.data);
+
+    /* Reset connection object's error info. */
+    segdbDesc->errcode = 0;
+    segdbDesc->error_message.len = 0;
+    segdbDesc->error_message.data[0] = '\0';
+
+    return true;
+}                               /* cdbdisp_mergeConnectionErrors */
 
 
 /* Store a PGresult object ptr in the result buffer.
@@ -136,6 +170,7 @@ cdbdisp_debugDispatchResult(CdbDispatchResult  *dispatchResult,
                             int                 elevel_success)
 {
     SegmentDatabaseDescriptor  *segdbDesc;
+    const char *whoami;
     PGresult   *pgresult;
     char        sqlstate[8];
 
@@ -145,13 +180,25 @@ cdbdisp_debugDispatchResult(CdbDispatchResult  *dispatchResult,
         return;
 
     segdbDesc = dispatchResult->segdbDesc;
+    whoami = segdbDesc ? segdbDesc->whoami : "not connected";
+
+    /* Connection error? */
+    if (segdbDesc &&
+        segdbDesc->error_message.len > 0)
+	{
+        cdbdisp_errcode_to_sqlstate(segdbDesc->errcode, sqlstate);
+        elog(elevel_error, "DispatchResult: %s -> (%s) %s",
+             whoami,
+             sqlstate,
+             segdbDesc->error_message.data);
+	}
 
     /* Error found on our side of the libpq interface? */
     if (dispatchResult->error_message.len > 0)
     {
         cdbdisp_errcode_to_sqlstate(dispatchResult->errcode, sqlstate);
         elog(elevel_error, "DispatchResult: %s -> (%s) %s",
-             segdbDesc->whoami,
+             whoami,
              sqlstate,
              dispatchResult->error_message.data);
     }
@@ -163,7 +210,7 @@ cdbdisp_debugDispatchResult(CdbDispatchResult  *dispatchResult,
         cdbdisp_errcode_to_sqlstate(dispatchResult->errcode, sqlstate);
         ereport(elevel_error,
                 (errmsg("DispatchResult: %s -> (%s) %s %s",
-                        segdbDesc->whoami,
+                        whoami,
                         sqlstate,
                         PQresStatus(PQresultStatus(pgresult)),
                         PQresultErrorField(pgresult, PG_DIAG_MESSAGE_PRIMARY)),
@@ -177,9 +224,9 @@ cdbdisp_debugDispatchResult(CdbDispatchResult  *dispatchResult,
     else if (dispatchResult->okindex >= 0)
     {
         pgresult = cdbdisp_getPGresult(dispatchResult, dispatchResult->okindex);
-        elog(elevel_success, "DispatchResult: %s -> ok %s",
-             segdbDesc->whoami,
-             pgresult ? PQcmdStatus(pgresult) : "");
+        elog(elevel_success, "DispatchResult: %s ok ->  %s",
+             whoami,
+             pgresult ? PQcmdStatus(pgresult) : "(no cmdStatus)");
     }
 
     /* Should have either an error code or an ok result. */
@@ -187,7 +234,7 @@ cdbdisp_debugDispatchResult(CdbDispatchResult  *dispatchResult,
         dispatchResult->okindex < 0)
     {
         elog(elevel_error, "DispatchResult: %s -> No ending status",
-             segdbDesc->whoami);
+             whoami);
     }
 }                               /* cdbdisp_debugDispatchResult */
 
@@ -201,15 +248,35 @@ cdbdisp_dumpDispatchResult(CdbDispatchResult       *dispatchResult,
                            struct StringInfoData   *buf)
 {
     SegmentDatabaseDescriptor  *segdbDesc = dispatchResult->segdbDesc;
-    int                         ires, nres;
+    const char     *whoami = segdbDesc ? segdbDesc->whoami : "not connected";
+    int             ires, nres;
 
     Assert(dispatchResult && buf);
+
+    /* Connection error? */
+    if (segdbDesc &&
+        segdbDesc->error_message.len > 0)
+	{
+        if (buf->len > 0 &&
+            buf->data[buf->len-1] != '\n')
+            appendStringInfoChar(buf, '\n');
+
+        appendStringInfo(buf, "(%s) %s",
+                         whoami,
+                         segdbDesc->error_message.data);
+        if (!verbose)
+            return;
+	}
 
     /* Error found on our side of the libpq interface? */
     if (dispatchResult->error_message.len > 0)
     {
+        if (buf->len > 0 &&
+            buf->data[buf->len-1] != '\n')
+            appendStringInfoChar(buf, '\n');
+
         appendStringInfo(buf, "(%s) %s",
-                         segdbDesc->whoami,
+                         whoami,
                          dispatchResult->error_message.data);
         if (!verbose)
             return;
@@ -223,13 +290,23 @@ cdbdisp_dumpDispatchResult(CdbDispatchResult       *dispatchResult,
         bool            success = (resultStatus == PGRES_COMMAND_OK ||
                                    resultStatus == PGRES_TUPLES_OK);
 
+        /* Keep quiet if QE was canceled because of a condition for
+         * which another message should appear elsewhere.  For example,
+         * if one QE reports an error, the QD may cancel other active QEs.
+         * Only the original error should be shown, if 'verbose' is false.
+         */
+
         /* QE error or libpq error */
         if (!success)
         {
             char   *pri = PQresultErrorField(pgresult, PG_DIAG_MESSAGE_PRIMARY);
             char   *dtl = PQresultErrorField(pgresult, PG_DIAG_MESSAGE_DETAIL);
 
-            appendStringInfo(buf, "(%s) %s", segdbDesc->whoami, pri);
+            if (buf->len > 0 &&
+                buf->data[buf->len-1] != '\n')
+                appendStringInfoChar(buf, '\n');
+
+            appendStringInfo(buf, "(%s) %s", whoami, pri);
             if (dtl)
                 appendStringInfo(buf, "\t %s", dtl);
 
@@ -240,8 +317,12 @@ cdbdisp_dumpDispatchResult(CdbDispatchResult       *dispatchResult,
         /* QE success */
         else if (verbose)
         {
+            if (buf->len > 0 &&
+                buf->data[buf->len-1] != '\n')
+                appendStringInfoChar(buf, '\n');
+
             appendStringInfo(buf, "(%s) %s\n",
-                             segdbDesc->whoami,
+                             whoami,
                              pgresult ? PQcmdStatus(pgresult) : "");
         }
     }
@@ -250,6 +331,7 @@ cdbdisp_dumpDispatchResult(CdbDispatchResult       *dispatchResult,
 
 /*--------------------------------------------------------------------*/
 
+
 /*
  * cdbdisp_makeDispatchResults:
  * Allocates a CdbDispatchResults object in the current memory context.
@@ -257,13 +339,15 @@ cdbdisp_dumpDispatchResult(CdbDispatchResult       *dispatchResult,
  * pointer when done using it.
  */
 CdbDispatchResults *
-cdbdisp_makeDispatchResults(int resultCount, const char* szCommand)
+cdbdisp_makeDispatchResults(int resultCount, bool cancelOnError)
 {
     CdbDispatchResults *results = palloc0(sizeof(*results));
 
-    results->szCommand = szCommand ? pstrdup(szCommand) : NULL;
     results->resultArray = palloc0(resultCount * sizeof(results->resultArray[0]));
     results->resultCount = resultCount;
+    results->iFirstError = -1;
+    results->errcode = 0;
+    results->cancelOnError = cancelOnError;
 
     return results;
 }                               /* cdbdisp_makeDispatchResults */
@@ -290,33 +374,8 @@ cdbdisp_destroyDispatchResults(CdbDispatchResults * results)
 		results->resultArray = NULL;
     }
 
-    if (results->szCommand)
-	{
-        pfree(results->szCommand);
-		results->szCommand = NULL;
-	}
-
     pfree(results);
 }                               /* cdbdisp_destroyDispatchResults */
-
-
-/* Return ptr to first resultArray entry having nonzero errcode; or NULL. */
-CdbDispatchResult *
-cdbdisp_firstErrorResult(CdbDispatchResults *results)
-{
-    if (results &&
-        results->resultCount >= 0)
-    {
-        int i;
-        for (i = 0; i < results->resultCount; ++i)
-        {
-            CdbDispatchResult  *dispatchResult = &results->resultArray[i];
-            if (dispatchResult->errcode)
-                return dispatchResult;
-        }
-    }
-    return NULL;
-}                               /* cdbdisp_firstErrorResult */
 
 
 /* Return sum of the cmdTuples values from CdbDispatchResult

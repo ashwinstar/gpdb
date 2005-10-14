@@ -179,12 +179,7 @@ createGang(GangType type, int size, int content)
 		 * Create the connection requests.	If we find a segment without a valid segdb
 		 * we error out.  Also, if this segdb is invalid, we msut fail the connection.
 		 */
-
-
 		segdbDesc = &newGangDefinition->db_descriptors[i];
-		/*
-		 * q = segdbDesc->segment_database_info;
-		 */
 
 		/*
 		 * This function handles putting the segdbDesc into the proper thread's Parms
@@ -265,34 +260,39 @@ createGang(GangType type, int size, int content)
 		 * check connection established or not,
 		 * * if not, we may have to re-build this gang.
 		 */
-		if (segdbDesc->conn == NULL)
+		if (!segdbDesc->conn)
 		{
 			/*
-			 * Set a warning for failed connections.  Complete failures
+			 * Log failed connections.  Complete failures
 			 * are taken care of later.
 			 */
-			ereport(WARNING,
-					(errcode(ERRCODE_WARNING),
-                    errmsg("Unable to connect to segment database: "
-                            "dbname=%s  %s",
-                            myDatabaseName,
-					        segdbDesc->error_message.data)));
-
+            ereport(LOG, (errcode(segdbDesc->errcode),
+                          errmsg("Warning: %s", segdbDesc->error_message.data) ));
+			ereport(WARNING, (errcode(ERRCODE_WARNING_MPP_INTERCONNECTION),
+                              errmsg("%s", segdbDesc->error_message.data) ));
+            Assert(segdbDesc->errcode != 0 &&
+                   segdbDesc->error_message.len > 0);
+            segdbDesc->errcode = 0;
             resetPQExpBuffer(&segdbDesc->error_message);
 			
             newGangDefinition->all_valid_segdbs_connected = false;
 		}
 		else
 		{
+            Assert(PQstatus(segdbDesc->conn) != CONNECTION_BAD &&
+                   segdbDesc->errcode == 0 &&
+                   segdbDesc->error_message.len == 0);
+
+            elog(DEBUG3, "Connected to %s motionListener=%d with options %s\n",
+                 segdbDesc->whoami,
+                 segdbDesc->motionListener,
+                 PQoptions(segdbDesc->conn));
+
 			/*
 			 * We have a live connection!
 			 */
 			successful_connections++;
-			/*
-			 * segDesc->connected_count++;
-			 */
 		}
-
 
 	}
 
@@ -321,10 +321,8 @@ createGang(GangType type, int size, int content)
 			/* clean the gang before error out */
 			disconnectAndDestroyGang(newGangDefinition);
 
-			ereport(FATAL,
-					(errcode(ERRCODE_SQLSERVER_REJECTED_ESTABLISHMENT_OF_SQLCONNECTION),
-                     errmsg("createGang could not establish connection with any"
-                            " database for segindex %d", i)));
+			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                            errmsg("All segment databases are unavailable") ));
 		}
 	}
 
@@ -492,14 +490,6 @@ buildGangDefinition(GangType type, int size, int content)
 			/*
 			 * We have a new segindex.	Advance segDesc, and set count to 1.
 			 */
-			/*
-			 * segDesc++;
-			 * segDesc->segindex = p->segindex;
-			 * segDesc->db_count = 1;
-			 * segDesc->error_message = NULL;
-			 * segDesc->query_db = NULL;
-			 * segDesc->sql = NULL;
-			 */
 
 			if (p->definedprimary && type == GANGTYPE_MIRROR_WRITER)
 			{
@@ -555,9 +545,13 @@ buildGangDefinition(GangType type, int size, int content)
 				}
 				else
 				{
-					segdbDesc = &newGangDefinition->db_descriptors[seg_count];
+                    segdbDesc = &newGangDefinition->db_descriptors[seg_count];
 
-                    cdbconn_initSegmentDescriptor(segdbDesc, p);
+                    cdbconn_initSegmentDescriptor(segdbDesc,
+                                                  p,
+                                                  myDatabaseName,
+                                                  newGangDefinition,
+                                                  seg_count);
 
 					seg_count++;
 					if (type == GANGTYPE_READER && size == 1)
@@ -702,12 +696,13 @@ thread_DoConnect(void *arg)
 						  "options='-c mpp_session_role=EXECUTE -c mpp_segment=%d -c mpp_max_packet_size=%d' ",
 						  q->segindex, Mpp_max_packet_size);
 
-		if (cdbconn_doConnect(segdbDesc, myDatabaseName, buffer.data))
+		if (cdbconn_doConnect(segdbDesc, buffer.data))
 		{
             if (segdbDesc->motionListener == -1)
             {
+                segdbDesc->errcode = ERRCODE_MPP_INTERNAL_ERROR;
                 appendPQExpBuffer(&segdbDesc->error_message,
-                    "(%s) Connection does not contain a valid motion listener port.\n",
+                    "Internal error: No motion listener port for %s\n",
                     segdbDesc->whoami);
                 PQfinish(segdbDesc->conn);
                 segdbDesc->conn = NULL;
@@ -760,12 +755,12 @@ allocateGang(GangType type, int size, int content)
 	oldContext = MemoryContextSwitchTo(TopMemoryContext);
 
     /* Make sure CreateGang will use the current database name. */
-    
+
     /* get_database_name returns memory from a pstrdup(), so we need to use pfree, not free */
     if (myDatabaseName != NULL)
     	pfree(myDatabaseName);
     myDatabaseName = NULL;
-    
+
     switch (type)
 	{
 		case GANGTYPE_PRIMARY_WRITER:
@@ -1362,66 +1357,69 @@ disconnectAndDestroyAllGangs(void)
 
 
 bool
-reconnectSegDB(void *p_failedDB)
+reconnectSegDB(struct SegmentDatabaseDescriptor *failedDB)
 {
 	int			segdbs_in_thread_pool = 0;
-	bool		ret = true;
 	DoConnectParms *doConnectParmsAr;
-	SegmentDatabaseDescriptor *failedDB =
-	(SegmentDatabaseDescriptor *) p_failedDB;
-	PGconn	   *orig_conn = failedDB->conn;
 
-	failedDB->conn = NULL;
+    /* Someone has probably already taken care of any error info
+     * from the original connection attempt, but let's make sure.
+     */
+    if (failedDB->error_message.len > 0)
+    {
+		ereport(LOG, (errcode(failedDB->errcode),
+                      errmsg("(%s) Segment db connection error",
+                             failedDB->whoami),
+                      errdetail("%s", failedDB->error_message.data) ));
+        failedDB->errcode = 0;
+        resetPQExpBuffer(&failedDB->error_message);
+    }
 
-	doConnectParmsAr = (DoConnectParms *) palloc0(sizeof(DoConnectParms));
+    /* The old PGconn object should have been freed already.  Just make sure. */
+    if (failedDB->conn)
+    {
+        elog(DEBUG3, "reconnectSegDB calling PQfinish for %s", failedDB->whoami);
+        PQfinish(failedDB->conn);
+        failedDB->conn = NULL;
+    }
+
+    /**
+     ** Reconnect.
+     **/
+    elog(LOG, "Attempting to reconnect to %s", failedDB->whoami);
+
+    doConnectParmsAr = (DoConnectParms *) palloc0(sizeof(*doConnectParmsAr));
 
 	addSegDBToConnThreadPool(doConnectParmsAr, &segdbs_in_thread_pool,
 							 failedDB);
 
-	/*
-	 * elog(DEBUG2, "reconnectSegDB reconnect segDB: %d", failedDB->segment_database_info->dbid);
-	 */
-    if (myDatabaseName == NULL)
-        myDatabaseName = get_database_name(MyDatabaseId);
-    
 	thread_DoConnect((void *) doConnectParmsAr);
 
-	/*
-	 * release connectParms
-	 */
-    pfree(myDatabaseName);
-    myDatabaseName = NULL;
 	pfree(doConnectParmsAr->segdbDescPtrArray);
 	pfree(doConnectParmsAr);
 
 	/*
-	 * check new connection
+	 * Check new connection.
+     * If unsuccessful, thread_DoConnect() has already stored an
+     * error message and freed the PGconn object.
 	 */
-	if (PQstatus(failedDB->conn) == CONNECTION_BAD)
+	if (!failedDB->conn)
 	{
-        elog(LOG, "FTS: dbname %s reconnect failed. %s",
-             orig_conn->dbName,
-             failedDB->error_message.data);
-
-		PQfinish(failedDB->conn);
-		ret = false;
-
-		/*
-		 * set the orginal db back, otherwise it is set to NULL which may cause
-		 * * dispatch code to fail.
-		 */
-		if (!isFTSEnabled())
-			failedDB->conn = orig_conn;
-		else
-			PQfinish(orig_conn);
-	}
-	else
-	{
-		elog(LOG, "FTS: segdb %d reconnect ok", failedDB->segment_database_info->dbid);
+		ereport(LOG, (errcode(failedDB->errcode),
+                      errmsg("Could not reconnect to segment db.  %s",
+                             failedDB->error_message.data) ));
+        failedDB->errcode = 0;
+        resetPQExpBuffer(&failedDB->error_message);
+        return false;
 	}
 
-	return ret;
+    elog(LOG, "Reconnected to segment db: %s", failedDB->whoami);
+
+    Assert(PQstatus(failedDB->conn) != CONNECTION_BAD);
+
+	return true;
 }
+
 
 /* set segdb states, called by FtsReConfigureMPP and lock should be held there */
 void

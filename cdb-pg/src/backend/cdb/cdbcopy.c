@@ -2,7 +2,7 @@
 *
 * cdbcopy.c
 *    Rrovides routines that executed a COPY command on an MPP cluster. These
-*    routines are called from the backend COPY command whenever MPP is in the 
+*    routines are called from the backend COPY command whenever MPP is in the
 *    default dispatch mode.
 *
 * Copyright (c) 2005, Greenplum
@@ -12,8 +12,6 @@
 *
 *--------------------------------------------------------------------------
 */
-
-#include <assert.h>
 
 #include "postgres.h"
 #include "libpq-fe.h"
@@ -61,7 +59,7 @@ CdbCopy *makeCdbCopy(void)
     /*
 	 * Initialize mirror (secondary) database count for each segment.
 	 * mirror_map is indexed by segment number and will contain the
-	 * number of databases for this segment (1 if there is only a 
+	 * number of databases for this segment (1 if there is only a
      * primary or 2 if a mirror exists).
 	 */
     c->mirror_map = (int *) palloc(c->total_segs * sizeof(int));
@@ -77,8 +75,8 @@ CdbCopy *makeCdbCopy(void)
     for(seg = 0 ; seg < c->total_segs ; seg++)
     {
 		c->segdb_state[seg] = (SegDbState *) palloc(2 * sizeof(SegDbState));
-		c->segdb_state[seg][0] = IDLE; /* Primary can't be OUT */
-		c->segdb_state[seg][1] = (c->mirror_map[seg] == 1 ? OUT : IDLE); 
+		c->segdb_state[seg][0] = SEGDB_IDLE; /* Primary can't be OUT */
+		c->segdb_state[seg][1] = (c->mirror_map[seg] == 1 ? SEGDB_OUT : SEGDB_IDLE);
 	}
 		
 	/* init gangs */
@@ -111,7 +109,7 @@ int cdbCopyGetDbCount(int total_segs, int seg)
 
 
 /*
- * starts a copy command on a specific segment database. 
+ * starts a copy command on a specific segment database.
  * Returns 0 for success, -1 for error and an error message.
  */
 int cdbCopyStart(CdbCopy *c, char *copyCmd)
@@ -144,14 +142,14 @@ int cdbCopyStart(CdbCopy *c, char *copyCmd)
 			if(PQresultStatus(res) != PGRES_COPY_IN)
 			{
 				
-			 	appendStringInfo(&(c->err_msg), 
-								 "MPPCOPY - COPY command failed to start on %s segment %d with error: %s\n", 
+			 	appendStringInfo(&(c->err_msg),
+								 "MPPCOPY - COPY command failed to start on %s segment %d with error: %s\n",
 								 (db == 0 ? "primary" : "mirror") , seg, PQresultErrorMessage(res));
 				
 				return -1;
 			}
 			else
-				c->segdb_state[seg][db] = COPY; /* This segdb is now in COPY state */
+				c->segdb_state[seg][db] = SEGDB_COPY;   /* we be jammin! */
 			
 			PQclear(res);
 		}
@@ -165,7 +163,7 @@ int cdbCopyStart(CdbCopy *c, char *copyCmd)
  * sends data to a copy command on a specific segment (usually
  * the hash result of the data value).
  */
-void cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer, 
+void cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer,
 					int nbytes)
 {
 	SegmentDatabaseDescriptor *q;
@@ -194,13 +192,13 @@ void cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer,
 		if(result != 1)
 		{
 			if(result == 0)
-				appendStringInfo(&(c->err_msg), 
-								 "MPPCOPY - Failed to send data to %s segment %d, attempt blocked\n", 
+				appendStringInfo(&(c->err_msg),
+								 "MPPCOPY - Failed to send data to %s segment %d, attempt blocked\n",
 								 (db == 0 ? "primary" : "mirror"), target_seg);
 				
 			if(result == -1)
-				appendStringInfo(&(c->err_msg), 
-								 "MPPCOPY - Failed to send data to %s segment %d: %s\n", 
+				appendStringInfo(&(c->err_msg),
+								 "MPPCOPY - Failed to send data to %s segment %d: %s\n",
 								 (db == 0 ? "primary" : "mirror"), target_seg, PQerrorMessage(q->conn));
 			
 			c->io_errors = true;
@@ -209,7 +207,7 @@ void cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer,
 }
 
 /*
- * ends the copy command on all segment databases. 
+ * ends the copy command on all segment databases.
  * c->err_msg will include the error msg(s) if any.
  */
 void cdbCopyEnd(CdbCopy *c)
@@ -237,7 +235,7 @@ void cdbCopyEnd(CdbCopy *c)
 		for(db = 0 ; db < c->mirror_map[seg] ; db++)
 		{
 			/* don't close COPY session if not in progress */
-			if(c->segdb_state[seg][db] != COPY)
+			if(c->segdb_state[seg][db] != SEGDB_COPY)
 				continue;
 			
 			if (db == 0)
@@ -251,63 +249,76 @@ void cdbCopyEnd(CdbCopy *c)
 			result = PQputCopyEnd(q->conn, NULL);
 			
 			/* get command end status */
-			if(result == 0) 
+			if(result == 0)
 			{
 				/* attempt blocked */
+
+                /* CDB TODO: Can this occur?  The libpq documentation says,
+                 * "this case is only possible if the connection is in
+                 * nonblocking mode... wait for write-ready and try again",
+                 * i.e., the proper response would be to retry, not error out.
+                 */
+
 				if(!err_header)
-					appendStringInfo(&(c->err_msg), 
-									 "MPPCOPY - Failed to complete COPY (attempt blocked) on the following:\n");
-				err_header = true;	
-				
-				appendStringInfo(&(c->err_msg), "%s segment %d, dbid %d\n", (db == 0 ? "primary" : "mirror"), 
-								 seg, q->segment_database_info->dbid);
-				c->io_errors = true;
-				failedSegDBs[failed_count] = q;
-				failed_count++;
-			}
-			else if(result == -1)  
-			{
-				/* command error */
-				if(!err_header)
-					appendStringInfo(&(c->err_msg), 
+					appendStringInfo(&(c->err_msg),
 									 "MPPCOPY - Failed to complete COPY on the following:\n");
 				err_header = true;	
 				
-				appendStringInfo(&(c->err_msg), "%s segment %d, dbid %d, with error: %s\n", (db == 0 ? "primary" : "mirror"), 
-								 seg, q->segment_database_info->dbid, PQerrorMessage(q->conn));
+				appendStringInfo(&(c->err_msg), "%s segment %d, dbid %d, attempt blocked\n", (db == 0 ? "primary" : "mirror"),
+								 seg, q->segment_database_info->dbid);
 				c->io_errors = true;
-				failedSegDBs[failed_count] = q;
-				failed_count++;
-			}	 
-			else if(result == 1) 
-			{
-				/* termination data successfully sent */
-				
-			   /*
-				* Fetch any error status existing on completion of the COPY command.
-				* It is critical that for any connection that had an asynchronous
-				* command sent thru it, we call PQgetResult until it returns NULL.
-				* Otherwise, the next time a command is sent to that connection,
-				* it will return an error that there's a command pending.
-				*/		
-				while ( NULL != (res = PQgetResult(q->conn) ) )
-				{
-					/* if the COPY command had a data error */
-					if ( PQresultStatus(res) == PGRES_FATAL_ERROR )
-					{
-						appendStringInfo(&(c->err_msg), "MPPCOPY - Data error from %s segment %d: %s\n", 
-										 (db == 0 ? "primary" : "mirror"), seg, PQresultErrorMessage(res));
-						c->data_errors = true;
-					}
-				}
-				
-				c->segdb_state[seg][db] = DONE;
-				PQclear(res);				
 			}
+
+            /*
+             * Fetch any error status existing on completion of the COPY command.
+			 * It is critical that for any connection that had an asynchronous
+			 * command sent thru it, we call PQgetResult until it returns NULL.
+			 * Otherwise, the next time a command is sent to that connection,
+			 * it will return an error that there's a command pending.
+			 */		
+			while ( NULL != (res = PQgetResult(q->conn) ) )
+			{
+				/* if the COPY command had a data error */
+				if ( PQresultStatus(res) == PGRES_FATAL_ERROR )
+				{
+					appendStringInfo(&(c->err_msg), "MPPCOPY - Data error from %s segment %d: %s\n",
+									 (db == 0 ? "primary" : "mirror"), seg, PQresultErrorMessage(res));
+					c->data_errors = true;
+				}
+
+                /* free the PGresult object */
+                PQclear(res);
+            }
+
+            /* Finished with this segment db. */
+            c->segdb_state[seg][db] = SEGDB_DONE;
+
+            /* Lost the connection? */
+            if (PQstatus(q->conn) == CONNECTION_BAD)
+            {
+			    if(!err_header)
+				    appendStringInfo(&(c->err_msg),
+									    "MPPCOPY - Failed to complete COPY on the following:\n");
+			    err_header = true;	
+            			
+                /* command error */
+                c->io_errors = true;
+			    appendStringInfo(&(c->err_msg), "%s segment %d, dbid %d, with error: %s\n", (db == 0 ? "primary" : "mirror"),
+								    seg, q->segment_database_info->dbid, PQerrorMessage(q->conn));
+
+                /* Free the PGconn object. */
+                PQfinish(q->conn);
+                q->conn = NULL;
+
+                /* Let FTS deal with it! */
+                failedSegDBs[failed_count] = q;
+                failed_count++;
+            }
+			
 		}
 	}
 	
-	/* Let FTS deal with it! */
+	/* If lost contact with segment db, try to reconnect. */
 	if(failed_count > 0)
 	{
 	    elog(LOG,"%s",c->err_msg.data);

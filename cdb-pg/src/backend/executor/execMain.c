@@ -21,6 +21,7 @@
  *	ExecutorRun accepts direction and count arguments that specify whether
  *	the plan is to be executed forwards, backwards, and for how many tuples.
  *
+ * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -532,15 +533,11 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 		if (hasDispatched)
 		{
 			/*
-			 * Set this to force any remaining commands executing on qExecs to stop.
-			 */
-			QueryCancelPending = true;
-
-			/*
+             * Request any remaining commands executing on qExecs to stop.
 			 * We need to wait for the threads to finish.  This allows for proper cleanup
 			 * of the results from the async command executions.
 			 */
-			CdbCheckDispatchResult();
+			CdbCheckDispatchResult(true);
 
             /* Discard any remaining results from QEs; don't confuse matters
              * by throwing a new error.  Any results of interest presumably
@@ -579,7 +576,7 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 		 * We successfully completed on the Dispatcher.  Now check the results
 		 * from the qExecs.  This internally waits for them to all finish.
 		 */
-        CdbCheckDispatchResult();
+        CdbCheckDispatchResult(false);      /* wait politely, don't cancel */
 
 		/* clean up the interconnect if necessary (do this before we
 		 * issue an error) */

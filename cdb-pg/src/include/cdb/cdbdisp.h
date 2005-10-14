@@ -23,11 +23,18 @@ struct Node;                        /* #include "nodes/nodes.h" */
 struct QueryDesc;                   /* #include "executor/execdesc.h" */
 struct SegmentDatabaseDescriptor;   /* #include "cdb/cdbconn.h" */
 
+/*--------------------------------------------------------------------*/
+
+/* Start a global transaction and invoke FTS reconfiguration if needed. */
+void
+cdbdisp_startDtxTransaction(void);
+
+/*--------------------------------------------------------------------*/
 
 /*
  * cdbdisp_dispatchToGang:
  * Send the szCommand SQL statement to the subset of all segdbs in the cluster
- * specified by the gang parameter.  cancelFromBelow indicates whether an error
+ * specified by the gang parameter.  cancelOnError indicates whether an error
  * occurring on one of the qExec segdbs should cause all still-executing commands to cancel
  * on other qExecs. Normally this would be true.  The commands are sent over the libpq
  * connections that were established during cdblink_setup.  They are run inside of threads.
@@ -50,20 +57,24 @@ void
 cdbdisp_dispatchToGang(const char          *szCommand,
                        struct Gang         *gp,
                        int                  sliceIndex,
-                       bool                 cancelFromBelow,
+                       bool                 cancelOnError,
                        struct pg_result  ***pgresultsets);
 
 /*
  * CdbCheckDispatchResult:
+ *
  * Waits for threads that were launched in CdbDispatchCommand
- * to finish.  Returns true if they all succeeded.
+ * to finish.  Returns true if all QEs succeeded.
+ * If 'cancelUnfinishedWork' is true, this function will attempt to
+ * cancel work in progress that was dispatched with 'cancelOnError' true.
  */
 bool                            /* returns true if success on all QEs */
-CdbCheckDispatchResult(void);
+CdbCheckDispatchResult(bool cancelUnfinishedWork);
 
 bool                            /* returns true if success on all QEs */
 CdbCheckDispatchResultInt(struct SegmentDatabaseDescriptor   ***failedSegDB,
-                          int                                  *numOfFailed);
+                          int          *numOfFailed,
+                          bool          cancelUnfinishedWork);
 
 /* Format and free a Gang's CdbDispatchResults object.
  * Appends error messages to caller's StringInfo buffer.
@@ -92,7 +103,7 @@ cdbdisp_sumGangCmdTuples(struct Gang *gang);
 /*
  * cdbdisp_dispatchCommand:
  * Send ths szCommand SQL statement to all segdbs in the cluster
- * cancelFromBelow indicates whether an error
+ * cancelOnError indicates whether an error
  * occurring on one of the qExec segdbs should cause all still-executing commands to cancel
  * on other qExecs. Normally this would be true.  The commands are sent over the libpq
  * connections that were established during gang creation.  They are run inside of threads.
@@ -110,7 +121,7 @@ cdbdisp_sumGangCmdTuples(struct Gang *gang);
 void
 cdbdisp_dispatchCommand(const char         *szCommand,
                         bool                startDtxTransaction,
-                        bool                cancelFromBelow,
+                        bool                cancelOnError,
                         struct pg_result ***resultSets,         /* OUT */
                         struct Gang       **pPrimaryGang,       /* OUT */
                         struct Gang       **pMirrorGang);       /* OUT */
@@ -133,7 +144,7 @@ cdbdisp_finishCommand(struct Gang  *primaryGang,
  * does not return.
  */
 void
-CdbDoCommand(const char *szCommand, bool cancelFromBelow);
+CdbDoCommand(const char *szCommand, bool cancelOnError);
 
 /*
  * CdbDoCommandInt:
@@ -143,7 +154,7 @@ CdbDoCommand(const char *szCommand, bool cancelFromBelow);
  */
 void
 CdbDoCommandInt(const char         *szCommand,
-                bool                cancelFromBelow,
+                bool                cancelOnError,
                 struct pg_result ***resultSets);
 
 
@@ -176,7 +187,7 @@ cdbdisp_dumpPlanResults(struct QueryDesc *queryDesc);
  */
 void
 cdbdisp_dispatchUtilityStatement(struct Node   *stmt,
-                                 bool           cancelFromBelow,
+                                 bool           cancelOnError,
                                  struct Gang  **pPrimaryGang,  /* OUT */
                                  struct Gang  **pMirrorGang);  /* OUT */
 

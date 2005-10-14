@@ -1,4 +1,3 @@
-
 /*-------------------------------------------------------------------------
  *
  * cdbdispatchresult.h
@@ -46,8 +45,13 @@ typedef struct CdbDispatchResult
     PQExpBufferData     resultbuf;      /* array of *PGresult */
     PQExpBufferData     error_message;  /* string of messages */
 
-    bool                requestedCancel;    /* true => called PQrequestCancel */
-
+    bool                hasDispatched;  /* true => PQsendCommand done */
+    bool                stillRunning;   /* true => busy in dispatch thread */
+    bool                requestedCancel; /*true => called PQrequestCancel */
+    bool                wasCanceled;    /* true => got any of these errors:
+                                         *  ERRCODE_MPP_OPERATION_CANCELED
+                                         *  ERRCODE_QUERY_CANCELED
+                                         */
 }   CdbDispatchResult;
 
 
@@ -63,6 +67,11 @@ cdbdisp_termResult(CdbDispatchResult  *dispatchResult);
 /* Reset a CdbDispatchResult object for possible reuse. */
 void
 cdbdisp_resetResult(CdbDispatchResult  *dispatchResult);
+
+/* Transfer connection error messages to dispatchResult from segdbDesc. */
+bool                            /* returns true if segdbDesc had err info */
+cdbdisp_mergeConnectionErrors(CdbDispatchResult            *dispatchResult,
+                              SegmentDatabaseDescriptor    *segdbDesc);
 
 /* Store a PGresult object ptr in the result buffer.
  * NB: Caller must not PQclear() the PGresult object.
@@ -107,25 +116,30 @@ cdbdisp_dumpDispatchResult(CdbDispatchResult       *dispatchResult,
  */
 typedef struct CdbDispatchResults
 {
-    char               *szCommand;      /* the command sent to the QEs */
     int                 resultCount;    /* num of QEs */
     CdbDispatchResult  *resultArray;    /* -> array [0..resultCount-1] of
                                          *      struct CdbDispatchResult
                                          */
+    volatile int        iFirstError;    /* index of the resultArray entry for
+                                         * the QE that first reported an error;
+                                         * or -1.  Note that this index equals
+                                         * the QE's segdbDesc->gangindex; it
+                                         * isn't the segindex.
+                                         */
+    volatile int        errcode;        /* ERRCODE_xxx (sqlstate encoded as
+                                         * an int) of the first error, or 0.
+                                         */
+    bool                cancelOnError;  /* true => stop remaining QEs on err */
 } CdbDispatchResults;
 
 
 /* Allocate a CdbDispatchResults object in the current memory context. */
 CdbDispatchResults *
-cdbdisp_makeDispatchResults(int resultCount, const char* szCommand);
+cdbdisp_makeDispatchResults(int resultCount, bool cancelOnError);
 
 /* Clean up and free a CdbDispatchResults object. */
 void
 cdbdisp_destroyDispatchResults(CdbDispatchResults  *results);
-
-/* Return ptr to first resultArray entry having nonzero errcode; or NULL. */
-CdbDispatchResult *
-cdbdisp_firstErrorResult(CdbDispatchResults *results);
 
 /* Return sum of the cmdTuples values from CdbDispatchResult
  * entries that have a successful PGresult.
