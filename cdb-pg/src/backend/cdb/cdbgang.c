@@ -11,22 +11,22 @@
  */
 #include "postgres.h"
 
-#include <unistd.h>                 /* getpid() */
-#include <arpa/inet.h>              /* inet_ntoa() */
+#include <unistd.h>				/* getpid() */
+#include <arpa/inet.h>			/* inet_ntoa() */
 #include <pthread.h>
 
 #include "libpq-fe.h"
-#include "miscadmin.h"              /* MyDatabaseId */
-#include "commands/dbcommands.h"    /* get_database_name() */
+#include "miscadmin.h"			/* MyDatabaseId */
+#include "commands/dbcommands.h"	/* get_database_name() */
 
-#include "cdb/cdbconn.h"            /* SegmentDatabaseDescriptor */
-#include "cdb/cdbdisp.h"            /* cdbdisp_destroyDispatchResults() */
+#include "cdb/cdbconn.h"		/* SegmentDatabaseDescriptor */
+#include "cdb/cdbdisp.h"		/* cdbdisp_destroyDispatchResults() */
 #include "cdb/cdbfts.h"
-#include "cdb/cdbgang.h"            /* me */
-#include "cdb/cdbmotion.h"          /* CdbProcess */
-#include "cdb/cdbtm.h"              /* discardDtxTransaction() */
-#include "cdb/cdbutil.h"            /* CdbComponentDatabaseInfo */
-#include "cdb/cdbvars.h"            /* Mpp_role, etc. */
+#include "cdb/cdbgang.h"		/* me */
+#include "cdb/cdbmotion.h"		/* CdbProcess */
+#include "cdb/cdbtm.h"			/* discardDtxTransaction() */
+#include "cdb/cdbutil.h"		/* CdbComponentDatabaseInfo */
+#include "cdb/cdbvars.h"		/* Mpp_role, etc. */
 
 
 /*
@@ -263,30 +263,30 @@ createGang(GangType type, int size, int content)
 		if (!segdbDesc->conn)
 		{
 			/*
-			 * Log failed connections.  Complete failures
+			 * Log failed connections.	Complete failures
 			 * are taken care of later.
 			 */
-            ereport(LOG, (errcode(segdbDesc->errcode),
-                          errmsg("Warning: %s", segdbDesc->error_message.data) ));
+			ereport(LOG, (errcode(segdbDesc->errcode),
+					  errmsg("Warning: %s", segdbDesc->error_message.data)));
 			ereport(WARNING, (errcode(ERRCODE_WARNING_MPP_INTERCONNECTION),
-                              errmsg("%s", segdbDesc->error_message.data) ));
-            Assert(segdbDesc->errcode != 0 &&
-                   segdbDesc->error_message.len > 0);
-            segdbDesc->errcode = 0;
-            resetPQExpBuffer(&segdbDesc->error_message);
-			
-            newGangDefinition->all_valid_segdbs_connected = false;
+							  errmsg("%s", segdbDesc->error_message.data)));
+			Assert(segdbDesc->errcode != 0 &&
+				   segdbDesc->error_message.len > 0);
+			segdbDesc->errcode = 0;
+			resetPQExpBuffer(&segdbDesc->error_message);
+
+			newGangDefinition->all_valid_segdbs_connected = false;
 		}
 		else
 		{
-            Assert(PQstatus(segdbDesc->conn) != CONNECTION_BAD &&
-                   segdbDesc->errcode == 0 &&
-                   segdbDesc->error_message.len == 0);
+			Assert(PQstatus(segdbDesc->conn) != CONNECTION_BAD &&
+				   segdbDesc->errcode == 0 &&
+				   segdbDesc->error_message.len == 0);
 
-            elog(DEBUG3, "Connected to %s motionListener=%d with options %s\n",
-                 segdbDesc->whoami,
-                 segdbDesc->motionListener,
-                 PQoptions(segdbDesc->conn));
+			elog(DEBUG3, "Connected to %s motionListener=%d with options %s\n",
+				 segdbDesc->whoami,
+				 segdbDesc->motionListener,
+				 PQoptions(segdbDesc->conn));
 
 			/*
 			 * We have a live connection!
@@ -322,7 +322,7 @@ createGang(GangType type, int size, int content)
 			disconnectAndDestroyGang(newGangDefinition);
 
 			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-                            errmsg("All segment databases are unavailable") ));
+							errmsg("All segment databases are unavailable")));
 		}
 	}
 
@@ -388,7 +388,7 @@ buildGangDefinition(GangType type, int size, int content)
 	newGangDefinition = (Gang *) palloc0(sizeof(Gang));
 
 	newGangDefinition->type = type;
-    newGangDefinition->dispatchResults = NULL;
+	newGangDefinition->dispatchResults = NULL;
 
 	switch (type)
 	{
@@ -433,12 +433,12 @@ buildGangDefinition(GangType type, int size, int content)
 		return NULL;
 	}
 
-    /* if mirroring is not configured */
-    if (cdb_component_dbs->total_segment_dbs == cdb_component_dbs->total_segments)
-    {
-        disableFTS();
-        mirroringNotConfigured = true;
-    }
+	/* if mirroring is not configured */
+	if (cdb_component_dbs->total_segment_dbs == cdb_component_dbs->total_segments)
+	{
+		disableFTS();
+		mirroringNotConfigured = true;
+	}
 
 	newGangDefinition->segdb_count = cdb_component_dbs->total_segments;
 	/*
@@ -545,13 +545,13 @@ buildGangDefinition(GangType type, int size, int content)
 				}
 				else
 				{
-                    segdbDesc = &newGangDefinition->db_descriptors[seg_count];
+					segdbDesc = &newGangDefinition->db_descriptors[seg_count];
 
-                    cdbconn_initSegmentDescriptor(segdbDesc,
-                                                  p,
-                                                  myDatabaseName,
-                                                  newGangDefinition,
-                                                  seg_count);
+					cdbconn_initSegmentDescriptor(segdbDesc,
+												  p,
+												  myDatabaseName,
+												  newGangDefinition,
+												  seg_count);
 
 					seg_count++;
 					if (type == GANGTYPE_READER && size == 1)
@@ -698,22 +698,22 @@ thread_DoConnect(void *arg)
 
 		if (cdbconn_doConnect(segdbDesc, buffer.data))
 		{
-            if (segdbDesc->motionListener == -1)
-            {
-                segdbDesc->errcode = ERRCODE_MPP_INTERNAL_ERROR;
-                appendPQExpBuffer(&segdbDesc->error_message,
-                    "Internal error: No motion listener port for %s\n",
-                    segdbDesc->whoami);
-                PQfinish(segdbDesc->conn);
-                segdbDesc->conn = NULL;
-            }
+			if (segdbDesc->motionListener == -1)
+			{
+				segdbDesc->errcode = ERRCODE_MPP_INTERNAL_ERROR;
+				appendPQExpBuffer(&segdbDesc->error_message,
+						  "Internal error: No motion listener port for %s\n",
+								  segdbDesc->whoami);
+				PQfinish(segdbDesc->conn);
+				segdbDesc->conn = NULL;
+			}
 		}
 
 		free(buffer.data);
 	}
 
 	return (NULL);
-}                               /* thread_DoConnect */
+}	/* thread_DoConnect */
 
 
 /*
@@ -754,14 +754,17 @@ allocateGang(GangType type, int size, int content)
 
 	oldContext = MemoryContextSwitchTo(TopMemoryContext);
 
-    /* Make sure CreateGang will use the current database name. */
+	/* Make sure CreateGang will use the current database name. */
 
-    /* get_database_name returns memory from a pstrdup(), so we need to use pfree, not free */
-    if (myDatabaseName != NULL)
-    	pfree(myDatabaseName);
-    myDatabaseName = NULL;
+	/*
+	 * get_database_name returns memory from a pstrdup(), so we need to use
+	 * pfree, not free
+	 */
+	if (myDatabaseName != NULL)
+		pfree(myDatabaseName);
+	myDatabaseName = NULL;
 
-    switch (type)
+	switch (type)
 	{
 		case GANGTYPE_PRIMARY_WRITER:
 			if (primaryWriterGang == NULL)
@@ -889,7 +892,7 @@ allocateGang(GangType type, int size, int content)
 			break;
 	}
 
-    elog(DEBUG4,
+	elog(DEBUG4,
 		 "allocateGang on return: allocatedReaderGangsN %d, availableReaderGangsN %d",
 		 list_length(allocatedReaderGangsN),
 		 list_length(availableReaderGangsN));
@@ -912,7 +915,7 @@ getSegmentDescriptorFromGang(const Gang * gp, int seg)
 
 	if (gp == NULL)
 		return NULL;
-		
+
 	for (i = 0; i < gp->size; i++)
 	{
 		if (gp->db_descriptors[i].segindex == seg)
@@ -966,7 +969,7 @@ getCdbProcessList(Gang * gang)
 			{
 				elog(FATAL, "getCdbProcessList: gethostbyname() failed for host '%s'", qeinfo->hostname);
 			}
-			
+
 			/*
 			 * We want the n-th element of the list to be the segDB that handled content n.
 			 * And if no segDb is available (down mirror), we want it to be null.
@@ -1100,14 +1103,15 @@ cleanupGang(Gang * gp)
 
 			PGresult   *pRes;
 			int			retry = 0;
+
 			while (NULL != (pRes = PQgetResult(segdbDesc->conn)))
 			{
-                ExecStatusType  stat = PQresultStatus(pRes);
+				ExecStatusType stat = PQresultStatus(pRes);
 
-                elog(LOG, "(%s) Leftover result at freeGang time: %s %s",
-                     segdbDesc->whoami,
-                     PQresStatus(stat),
-                     PQerrorMessage(segdbDesc->conn));
+				elog(LOG, "(%s) Leftover result at freeGang time: %s %s",
+					 segdbDesc->whoami,
+					 PQresStatus(stat),
+					 PQerrorMessage(segdbDesc->conn));
 
 				PQclear(pRes);
 				if (stat == PGRES_FATAL_ERROR)
@@ -1120,34 +1124,34 @@ cleanupGang(Gang * gp)
 					elog(LOG, "freeGang called when a gang member is still busy, and waiting didn't help, trying to destroy the gang");
 					disconnectAndDestroyGang(gp);
 					elog(FATAL, "freeGang called when a gang member is still busy.  Fatal error.");
-                    return;
+					return;
 				}
-				
+
 			};
 
 		}
 
-        /* QE is no longer associated with a slice. */
-        cdbconn_setSliceIndex(segdbDesc, -1);
+		/* QE is no longer associated with a slice. */
+		cdbconn_setSliceIndex(segdbDesc, -1);
 
 	}
 
-    /*
-     * Free CdbDispatchResults.
-     */
-    if (gp->dispatchResults)
-    {
-        StringInfoData msg;
+	/*
+	 * Free CdbDispatchResults.
+	 */
+	if (gp->dispatchResults)
+	{
+		StringInfoData msg;
 
-        initStringInfo(&msg);
-        if (!cdbdisp_dumpGangResults(gp, &msg, false))
-        {
-            elog(LOG, "Leftover result at freeGang time: %s", msg.data);
-        }
-        pfree(msg.data);
+		initStringInfo(&msg);
+		if (!cdbdisp_dumpGangResults(gp, &msg, false))
+		{
+			elog(LOG, "Leftover result at freeGang time: %s", msg.data);
+		}
+		pfree(msg.data);
 
-        cdbdisp_destroyGangResults(gp);
-    }
+		cdbdisp_destroyGangResults(gp);
+	}
 
 	elog(DEBUG5, "cleanupGang done");
 
@@ -1193,15 +1197,15 @@ disconnectAndDestroyGang(Gang * gp)
 			segdbDesc->conn = NULL;
 		}
 
-        /* Free memory owned by the segdbDesc. */
-        cdbconn_termSegmentDescriptor(segdbDesc);
+		/* Free memory owned by the segdbDesc. */
+		cdbconn_termSegmentDescriptor(segdbDesc);
 	}
 
 
-    /*
-     * Free CdbDispatchResults.
-     */
-    cdbdisp_destroyGangResults(gp);
+	/*
+	 * Free CdbDispatchResults.
+	 */
+	cdbdisp_destroyGangResults(gp);
 
 	/*
 	 * Discard the segment array and the cluster descriptor
@@ -1290,7 +1294,7 @@ disconnectAndDestroyAllGangs(void)
 
 	elog(DEBUG5, "disconnectAndDestroyAllGangs");
 
-    if (allocatedReaderGangsN != NIL)
+	if (allocatedReaderGangsN != NIL)
 	{
 		gp = linitial(allocatedReaderGangsN);
 		while (gp != NULL)
@@ -1352,43 +1356,44 @@ disconnectAndDestroyAllGangs(void)
 	disconnectAndDestroyGang(mirrorWriterGang);
 	mirrorWriterGang = NULL;
 
-    elog(DEBUG5, "disconnectAndDestroyAllGangs done");
+	elog(DEBUG5, "disconnectAndDestroyAllGangs done");
 }
 
 
 bool
-reconnectSegDB(struct SegmentDatabaseDescriptor *failedDB)
+reconnectSegDB(struct SegmentDatabaseDescriptor * failedDB)
 {
 	int			segdbs_in_thread_pool = 0;
 	DoConnectParms *doConnectParmsAr;
 
-    /* Someone has probably already taken care of any error info
-     * from the original connection attempt, but let's make sure.
-     */
-    if (failedDB->error_message.len > 0)
-    {
+	/*
+	 * Someone has probably already taken care of any error info from the
+	 * original connection attempt, but let's make sure.
+	 */
+	if (failedDB->error_message.len > 0)
+	{
 		ereport(LOG, (errcode(failedDB->errcode),
-                      errmsg("(%s) Segment db connection error",
-                             failedDB->whoami),
-                      errdetail("%s", failedDB->error_message.data) ));
-        failedDB->errcode = 0;
-        resetPQExpBuffer(&failedDB->error_message);
-    }
+					  errmsg("(%s) Segment db connection error",
+							 failedDB->whoami),
+					  errdetail("%s", failedDB->error_message.data)));
+		failedDB->errcode = 0;
+		resetPQExpBuffer(&failedDB->error_message);
+	}
 
-    /* The old PGconn object should have been freed already.  Just make sure. */
-    if (failedDB->conn)
-    {
-        elog(DEBUG3, "reconnectSegDB calling PQfinish for %s", failedDB->whoami);
-        PQfinish(failedDB->conn);
-        failedDB->conn = NULL;
-    }
+	/* The old PGconn object should have been freed already.  Just make sure. */
+	if (failedDB->conn)
+	{
+		elog(DEBUG3, "reconnectSegDB calling PQfinish for %s", failedDB->whoami);
+		PQfinish(failedDB->conn);
+		failedDB->conn = NULL;
+	}
 
-    /**
-     ** Reconnect.
-     **/
-    elog(LOG, "Attempting to reconnect to %s", failedDB->whoami);
+	/**
+	 ** Reconnect.
+	 **/
+	elog(LOG, "Attempting to reconnect to %s", failedDB->whoami);
 
-    doConnectParmsAr = (DoConnectParms *) palloc0(sizeof(*doConnectParmsAr));
+	doConnectParmsAr = (DoConnectParms *) palloc0(sizeof(*doConnectParmsAr));
 
 	addSegDBToConnThreadPool(doConnectParmsAr, &segdbs_in_thread_pool,
 							 failedDB);
@@ -1400,22 +1405,22 @@ reconnectSegDB(struct SegmentDatabaseDescriptor *failedDB)
 
 	/*
 	 * Check new connection.
-     * If unsuccessful, thread_DoConnect() has already stored an
-     * error message and freed the PGconn object.
+	 * If unsuccessful, thread_DoConnect() has already stored an
+	 * error message and freed the PGconn object.
 	 */
 	if (!failedDB->conn)
 	{
 		ereport(LOG, (errcode(failedDB->errcode),
-                      errmsg("Could not reconnect to segment db.  %s",
-                             failedDB->error_message.data) ));
-        failedDB->errcode = 0;
-        resetPQExpBuffer(&failedDB->error_message);
-        return false;
+					  errmsg("Could not reconnect to segment db.  %s",
+							 failedDB->error_message.data)));
+		failedDB->errcode = 0;
+		resetPQExpBuffer(&failedDB->error_message);
+		return false;
 	}
 
-    elog(LOG, "Reconnected to segment db: %s", failedDB->whoami);
+	elog(LOG, "Reconnected to segment db: %s", failedDB->whoami);
 
-    Assert(PQstatus(failedDB->conn) != CONNECTION_BAD);
+	Assert(PQstatus(failedDB->conn) != CONNECTION_BAD);
 
 	return true;
 }
@@ -1475,5 +1480,3 @@ isGangExisted(void)
 			allocatedReaderGangs1 != NIL ||
 			availableReaderGangs1 != NIL);
 }
-
-

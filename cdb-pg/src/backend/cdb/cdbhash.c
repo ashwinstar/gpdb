@@ -1,12 +1,12 @@
 /*--------------------------------------------------------------------------
  *
  * cdbhash.c
- *    Rrovides hashing routines to support consistant data distribution/location within MPP.
+ *	  Rrovides hashing routines to support consistant data distribution/location within MPP.
  *
  * Copyright (c) 2005, Greenplum
  *
  * IDENTIFICATION
- *    $Id$
+ *	  $Id$
  *
  *--------------------------------------------------------------------------
  */
@@ -43,10 +43,10 @@
 #define FASTMOD(x,y)		((x) & ((y)-1))
 
 /* local function declarations */
-uint32 fnv1_32_buf(void *buf, size_t len, uint32 hashval);
-uint32 fnv1a_32_buf(void *buf, size_t len, uint32 hashval);
-int ignoreblanks(char *data, int len);
-int ispowof2(int numsegs);
+uint32		fnv1_32_buf(void *buf, size_t len, uint32 hashval);
+uint32		fnv1a_32_buf(void *buf, size_t len, uint32 hashval);
+int			ignoreblanks(char *data, int len);
+int			ispowof2(int numsegs);
 
 
 /*================================================================
@@ -69,31 +69,34 @@ int ispowof2(int numsegs);
  *
  * The hash value itself will be initialized for every tuple in cdbhashinit()
  */
-CdbHash *makeCdbHash(int numsegs, CdbHashAlg algorithm)
-{	
-	CdbHash *h;
-	assert(numsegs > 0); /* verify number of segments is legal. */	
-	assert( algorithm == HASH_FNV_1 || algorithm == HASH_FNV_1A );
-	
-	/* Create a pointer to a CdbHash that includes the hash properties */ 
+CdbHash *
+makeCdbHash(int numsegs, CdbHashAlg algorithm)
+{
+	CdbHash    *h;
+
+	assert(numsegs > 0);		/* verify number of segments is legal. */
+	assert(algorithm == HASH_FNV_1 || algorithm == HASH_FNV_1A);
+
+	/* Create a pointer to a CdbHash that includes the hash properties */
 	h = palloc(sizeof(CdbHash));
-	
+
 	/*
 	 * set this hash session characteristics.
 	 */
-    h->hash = 0;
+	h->hash = 0;
 	h->numsegs = numsegs;
 	h->hashalg = algorithm;
-	 
+
 	if (h->hashalg == HASH_FNV_1)
 		h->hashfn = &fnv1_32_buf;
-	else if(h->hashalg == HASH_FNV_1A)
+	else if (h->hashalg == HASH_FNV_1A)
 		h->hashfn = &fnv1a_32_buf;
-	
-	/* set the reduction algorithm: If num_segs is power of 2 use bit mask, 
+
+	/*
+	 * set the reduction algorithm: If num_segs is power of 2 use bit mask,
 	 * else use lazy mod (h mod n)
 	 */
-	if(ispowof2(numsegs))
+	if (ispowof2(numsegs))
 	{
 		h->reducealg = REDUCE_BITMASK;
 	}
@@ -101,20 +104,21 @@ CdbHash *makeCdbHash(int numsegs, CdbHashAlg algorithm)
 	{
 		h->reducealg = REDUCE_LAZYMOD;
 	}
-	
+
 	ereport(DEBUG4,
-			(errmsg("CDBHASH started using algorithm %d into %d segment databases",
-					h->hashalg,
-					h->numsegs)));
-	
-	return h;	
+	  (errmsg("CDBHASH started using algorithm %d into %d segment databases",
+			  h->hashalg,
+			  h->numsegs)));
+
+	return h;
 }
 
 
 /*
  * Initialize CdbHash for hashing the next tuple values.
  */
-void cdbhashinit(CdbHash *h)
+void
+cdbhashinit(CdbHash * h)
 {
 	/* reset the hash value to the initial offset basis */
 	h->hash = FNV1_32_INIT;
@@ -124,59 +128,68 @@ void cdbhashinit(CdbHash *h)
 /*
  * Add an attribute to the hash calculation.
  */
-void cdbhash(CdbHash *h, Datum datum, Oid type)
+void
+cdbhash(CdbHash * h, Datum datum, Oid type)
 {
-	
-	void *buf = NULL;     /* pointer to the data */
-	size_t len = 0;    /* length for the data buffer */
-	int64 intbuf;  /* an 8 byte buffer for all integer sizes */
-	BpChar  *bp;   /* a variable length struct (varlena) for blank padded strings */
-	text *txt;     /* a variable length struct (varlena) for text */
-	VarChar *vc;   /* a variable length struct (varlena) for varchar */
-	float4 buf_f4;    
-	float8 buf_f8;
-	Timestamp tsbuf; /* timestamp data dype is either a double or int8 (determined in compile time) */
-	TimestampTz tstzbuf; 	
-	DateADT datebuf;
-	TimeADT timebuf;
-	TimeTzADT *timetzptr;
-	Interval *intervalptr;
-	Numeric num;
-	bool bool_buf;
-	Name namebuf;
-	uint32 nanbuf; 
-	
+
+	void	   *buf = NULL;		/* pointer to the data */
+	size_t		len = 0;		/* length for the data buffer */
+	int64		intbuf;			/* an 8 byte buffer for all integer sizes */
+	BpChar	   *bp;				/* a variable length struct (varlena) for
+								 * blank padded strings */
+	text	   *txt;			/* a variable length struct (varlena) for text */
+	VarChar    *vc;				/* a variable length struct (varlena) for
+								 * varchar */
+	float4		buf_f4;
+	float8		buf_f8;
+	Timestamp	tsbuf;			/* timestamp data dype is either a double or
+								 * int8 (determined in compile time) */
+	TimestampTz tstzbuf;
+	DateADT		datebuf;
+	TimeADT		timebuf;
+	TimeTzADT  *timetzptr;
+	Interval   *intervalptr;
+	Numeric		num;
+	bool		bool_buf;
+	Name		namebuf;
+	uint32		nanbuf;
+
 	/*
-	 * Select the hash to be performed according to the field type we are adding to the 
-	 * hash. 
-     */	
-    switch( type )
+	 * Select the hash to be performed according to the field type we are adding to the
+	 * hash.
+	 */
+	switch (type)
 	{
-	   /*=====================================================
-		* NUMERIC TYPES
-		*=====================================================
-		*/
-		case INT2OID: /* -32 thousand to 32 thousand, 2-byte storage */
-			intbuf = (int64)DatumGetInt16(datum); /* cast to 8 byte before hashing */
-			buf = &intbuf;
-			len = sizeof(intbuf);
-			break;
-			
-		case INT4OID: /* -2 billion to 2 billion integer, 4-byte storage */
-			intbuf = (int64)DatumGetInt32(datum); /* cast to 8 byte before hashing */
-			buf = &intbuf;
-			len = sizeof(intbuf);
-			break;
-					
-		case INT8OID: /* ~18 digit integer, 8-byte storage */ 
-			intbuf = DatumGetInt64(datum); /* cast to 8 byte before hashing */
+			/*
+			 * ===================================================== NUMERIC
+			 * TYPES =====================================================
+			 */
+		case INT2OID:			/* -32 thousand to 32 thousand, 2-byte storage */
+			intbuf = (int64) DatumGetInt16(datum);		/* cast to 8 byte before
+														 * hashing */
 			buf = &intbuf;
 			len = sizeof(intbuf);
 			break;
 
-	    case FLOAT4OID: /* single-precision floating point number, 4-byte storage */
+		case INT4OID:			/* -2 billion to 2 billion integer, 4-byte
+								 * storage */
+			intbuf = (int64) DatumGetInt32(datum);		/* cast to 8 byte before
+														 * hashing */
+			buf = &intbuf;
+			len = sizeof(intbuf);
+			break;
+
+		case INT8OID:			/* ~18 digit integer, 8-byte storage */
+			intbuf = DatumGetInt64(datum);		/* cast to 8 byte before
+												 * hashing */
+			buf = &intbuf;
+			len = sizeof(intbuf);
+			break;
+
+		case FLOAT4OID: /* single-precision floating point number,
+								 * 4-byte storage */
 			buf_f4 = DatumGetFloat4(datum);
-			
+
 			/*
 			 * On IEEE-float machines, minus zero and zero have different bit
 			 * patterns but should compare as equal.  We must ensure that they
@@ -184,14 +197,15 @@ void cdbhash(CdbHash *h, Datum datum, Oid type)
 			 */
 			if (buf_f4 == (float4) 0)
 				buf_f4 = 0.0;
-				
+
 			buf = &buf_f4;
 			len = sizeof(buf_f4);
 			break;
-			
-		case FLOAT8OID: /* double-precision floating point number, 8-byte storage */
+
+		case FLOAT8OID: /* double-precision floating point number,
+								 * 8-byte storage */
 			buf_f8 = DatumGetFloat8(datum);
-				
+
 			/*
 			 * On IEEE-float machines, minus zero and zero have different bit
 			 * patterns but should compare as equal.  We must ensure that they
@@ -199,207 +213,217 @@ void cdbhash(CdbHash *h, Datum datum, Oid type)
 			 */
 			if (buf_f8 == (float8) 0)
 				buf_f8 = 0.0;
-				
+
 			buf = &buf_f8;
 			len = sizeof(buf_f8);
 			break;
 
-		case NUMERICOID: 
-			
+		case NUMERICOID:
+
 			num = DatumGetNumeric(datum);
-			
+
 			if (NUMERIC_IS_NAN(num))
 			{
-				nanbuf = NAN_VAL;    
-				buf = &nanbuf;         
+				nanbuf = NAN_VAL;
+				buf = &nanbuf;
 				len = sizeof(nanbuf);
 			}
-		    else /* not a nan */
+			else
+				/* not a nan */
 			{
 				buf = num->n_data;
 				len = (num->varlen - NUMERIC_HDRSZ);
 			}
-				
-			break;
-						
-	   /*=====================================================
-		* CHARACTER TYPES
-		*=====================================================
-		*/
-		case CHAROID:   /* char(1), single character */ 
-		case BPCHAROID: /* char(n), blank-padded string, fixed storage length */
-			bp = DatumGetBpCharP(datum);      
-			len = VARSIZE(bp) - VARHDRSZ; /* get the string length */
-			buf = VARDATA(bp);  /* get the string data buf */
-			
-			/* adjust length to not include trailing blanks */
-			if(len > 1)
-				len = ignoreblanks((char *)buf, len); 
+
 			break;
 
-		case TEXTOID: /* variable-length string, no limit specified */
-	        txt = DatumGetTextP(datum);   /* a varlena struct (includes data and len)  */
-			
+			/*
+			 * ===================================================== CHARACTER
+			 * TYPES =====================================================
+			 */
+		case CHAROID:			/* char(1), single character */
+		case BPCHAROID: /* char(n), blank-padded string, fixed storage
+								 * length */
+			bp = DatumGetBpCharP(datum);
+			len = VARSIZE(bp) - VARHDRSZ;		/* get the string length */
+			buf = VARDATA(bp);	/* get the string data buf */
+
+			/* adjust length to not include trailing blanks */
+			if (len > 1)
+				len = ignoreblanks((char *) buf, len);
+			break;
+
+		case TEXTOID:			/* variable-length string, no limit specified */
+			txt = DatumGetTextP(datum); /* a varlena struct (includes data and
+										 * len)  */
+
 			/* get the string length */
 			len = VARSIZE(txt) - VARHDRSZ;
-			
-			/* get the string data   */
-			buf = VARDATA(txt);		   
-			
+
+			/* get the string data	 */
+			buf = VARDATA(txt);
+
 			/* adjust length to not include trailing blanks */
-			if(len > 1)
-				len = ignoreblanks((char *)buf, len); 
+			if (len > 1)
+				len = ignoreblanks((char *) buf, len);
 			break;
-			
-		case VARCHAROID: /* varchar(length), non-blank-padded string, variable storage length */
-			vc = DatumGetVarCharP(datum);/* a varlena struct (includes data and len)  */
-				
+
+		case VARCHAROID:		/* varchar(length), non-blank-padded string,
+								 * variable storage length */
+			vc = DatumGetVarCharP(datum);		/* a varlena struct (includes
+												 * data and len)  */
+
 			/* get the string length */
 			len = VARSIZE(vc) - VARHDRSZ;
-				
-			/* get the string data   */
-			buf = VARDATA(vc);		   
-				
+
+			/* get the string data	 */
+			buf = VARDATA(vc);
+
 			/* adjust length to not include trailing blanks */
-			if(len > 1)
-				len = ignoreblanks((char *)buf, len); 
+			if (len > 1)
+				len = ignoreblanks((char *) buf, len);
 			break;
-		
+
 		case NAMEOID:
 			namebuf = DatumGetName(datum);
 			len = NAMEDATALEN;
 			buf = NameStr(*namebuf);
-			
+
 			/* adjust length to not include trailing blanks */
-			if(len > 1)
-				len = ignoreblanks((char *)buf, len); 
+			if (len > 1)
+				len = ignoreblanks((char *) buf, len);
 			break;
-			
-				
-	   /*=====================================================
-		* DATE/TIME TYPES
-		*=====================================================
-		*/
-		case TIMESTAMPOID: /* date and time */
+
+
+			/*
+			 * ===================================================== DATE/TIME
+			 * TYPES =====================================================
+			 */
+		case TIMESTAMPOID:		/* date and time */
 			tsbuf = DatumGetTimestamp(datum);
 			buf = &tsbuf;
 			len = sizeof(tsbuf);
 			break;
-			
-		case TIMESTAMPTZOID: /* date and time with time zone */
+
+		case TIMESTAMPTZOID:	/* date and time with time zone */
 			tstzbuf = DatumGetTimestampTz(datum);
 			buf = &tstzbuf;
 			len = sizeof(tstzbuf);
 			break;
-			
-		case DATEOID: /* ANSI SQL date */
+
+		case DATEOID:			/* ANSI SQL date */
 			datebuf = DatumGetDateADT(datum);
 			buf = &datebuf;
 			len = sizeof(datebuf);
 			break;
-			
-		case TIMEOID: /* hh:mm:ss, ANSI SQL time */
-			timebuf = DatumGetTimeADT(datum);\
-			buf = &timebuf;
+
+		case TIMEOID:			/* hh:mm:ss, ANSI SQL time */
+			timebuf = DatumGetTimeADT(datum);
+			\
+				buf = &timebuf;
 			len = sizeof(timebuf);
 			break;
-		
+
 		case TIMETZOID: /* time with time zone */
 			/*
-			 * will not compare to TIMEOID on equal values. 
+			 * will not compare to TIMEOID on equal values.
 			 * Postgres never attempts to compare the two as well.
 			 */
 			timetzptr = DatumGetTimeTzADTP(datum);
-			buf = (unsigned char *)timetzptr; 
+			buf = (unsigned char *) timetzptr;
 			/*
 			 * Specify hash length as sizeof(double) + sizeof(int4), not as
 			 * sizeof(TimeTzADT), so that any garbage pad bytes in the structure
 			 * won't be included in the hash!
 			 */
 			len = sizeof(timetzptr->time) + sizeof(timetzptr->zone);
-            break;
-			
-	    case INTERVALOID: /* @ <number> <units>, time interval */
+			break;
+
+		case INTERVALOID:		/* @ <number> <units>, time interval */
 			intervalptr = DatumGetIntervalP(datum);
-			buf = (unsigned char *)intervalptr;
-		    /*
-		 	 * Specify hash length as sizeof(double) + sizeof(int4), not as
-	 		 * sizeof(Interval), so that any garbage pad bytes in the structure
- 			 * won't be included in the hash!
+			buf = (unsigned char *) intervalptr;
+			/*
+			 * Specify hash length as sizeof(double) + sizeof(int4), not as
+			 * sizeof(Interval), so that any garbage pad bytes in the structure
+			 * won't be included in the hash!
 			 */
 			len = sizeof(intervalptr->time) + sizeof(intervalptr->month);
 			break;
 
-	   /*=====================================================
-		* other types
-		*=====================================================
-		*/
-			
-		case BOOLOID: /* boolean, 'true'/'false' */
+			/*
+			 * ===================================================== other
+			 * types =====================================================
+			 */
+
+		case BOOLOID:			/* boolean, 'true'/'false' */
 			bool_buf = DatumGetBool(datum);
 			buf = &bool_buf;
 			len = sizeof(bool_buf);
 			break;
-		
-		case OIDOID:  /* object identifier(oid), maximum 4 billion */
+
+		case OIDOID:			/* object identifier(oid), maximum 4 billion */
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-						errmsg("Type %u can't be hashed yet.", type)));
-					
-	}/* switch(type) */
-	
-    /* do the hash using the selected algorithm */
-    h->hash = (h->hashfn)(buf, len, h->hash); 	
+					 errmsg("Type %u can't be hashed yet.", type)));
+
+	}							/* switch(type) */
+
+	/* do the hash using the selected algorithm */
+	h->hash = (h->hashfn) (buf, len, h->hash);
 }
 
 /*
  * Add a NULL attribute to the hash calculation.
  */
-void cdbhashnull(CdbHash *h)
+void
+cdbhashnull(CdbHash * h)
 {
-	uint32 nullbuf = NULL_VAL;     /* stores the constant value that represents a NULL */
-	void *buf = &nullbuf;          /* stores the address of the buffer                 */
-	size_t len = sizeof(nullbuf);  /* length of the value							   */
-	
+	uint32		nullbuf = NULL_VAL;		/* stores the constant value that
+										 * represents a NULL */
+	void	   *buf = &nullbuf; /* stores the address of the buffer					*/
+	size_t		len = sizeof(nullbuf);	/* length of the value								*/
+
 	/* do the hash using the selected algorithm */
-	h->hash = (h->hashfn)(buf, len, h->hash); 
+	h->hash = (h->hashfn) (buf, len, h->hash);
 }
 
 /*
  * Reduce the hash to a segment number.
  */
-unsigned int cdbhashreduce(CdbHash *h)
+unsigned int
+cdbhashreduce(CdbHash * h)
 {
-	
-	int result = 0; /* TODO: what is a good initialization value? could we 
-					   guarantee at this point that there will not be a negative 
-					   segid in MPP and therefore initialize to this value for error
-					   checking? */
-					   
-	assert( h->reducealg == REDUCE_BITMASK ||  h->reducealg == REDUCE_LAZYMOD);
-	
+
+	int			result = 0;		/* TODO: what is a good initialization value?
+								 * could we guarantee at this point that there
+								 * will not be a negative segid in MPP and
+								 * therefore initialize to this value for
+								 * error checking? */
+
+	assert(h->reducealg == REDUCE_BITMASK || h->reducealg == REDUCE_LAZYMOD);
+
 	/*
 	 * Reduce our 32-bit hash value to a segment number
 	 */
-	switch(h->reducealg)
+	switch (h->reducealg)
 	{
 		case REDUCE_BITMASK:
-			result = FASTMOD(h->hash, (uint32)h->numsegs); /* fast mod (bitmask) */
+			result = FASTMOD(h->hash, (uint32) h->numsegs);		/* fast mod (bitmask) */
 			break;
-			
+
 		case REDUCE_LAZYMOD:
-			result = (h->hash) % (h->numsegs); /* simple mod */
+			result = (h->hash) % (h->numsegs);	/* simple mod */
 			break;
 	}
-	
+
 	return result;
 }
 
 
 /*================================================================
  *
- * HASH EXECUTION FOR ALL TYPES 
+ * HASH EXECUTION FOR ALL TYPES
  *
  *================================================================
  */
@@ -409,8 +433,8 @@ unsigned int cdbhashreduce(CdbHash *h)
  * fnv1_32_buf - perform a 32 bit FNV 1 hash on a buffer
  *
  * input:
- *	buf	- start of buffer to hash
- *	len	- length of buffer in octets (bytes)
+ *	buf - start of buffer to hash
+ *	len - length of buffer in octets (bytes)
  *	hval	- previous hash value or FNV1_32_INIT if first call.
  *
  * returns:
@@ -419,35 +443,36 @@ unsigned int cdbhashreduce(CdbHash *h)
 uint32
 fnv1_32_buf(void *buf, size_t len, uint32 hval)
 {
-    unsigned char *bp = (unsigned char *)buf;	/* start of buffer */
-    unsigned char *be = bp + len;		/* beyond end of buffer */
-	
-    /*
-     * FNV-1 hash each octet in the buffer
-     */
-    while (bp < be) {
-		
+	unsigned char *bp = (unsigned char *) buf;	/* start of buffer */
+	unsigned char *be = bp + len;		/* beyond end of buffer */
+
+	/*
+	 * FNV-1 hash each octet in the buffer
+	 */
+	while (bp < be)
+	{
+
 		/* multiply by the 32 bit FNV magic prime mod 2^32 */
 #if defined(NO_FNV_GCC_OPTIMIZATION)
 		hval *= FNV_32_PRIME;
 #else
-		hval += (hval<<1) + (hval<<4) + (hval<<7) + (hval<<8) + (hval<<24);
+		hval += (hval << 1) + (hval << 4) + (hval << 7) + (hval << 8) + (hval << 24);
 #endif
-		
+
 		/* xor the bottom with the current octet */
-		hval ^= (uint32)*bp++;
-    }
-	
-    /* return our new hash value */
-    return hval;
+		hval ^= (uint32) *bp++;
+	}
+
+	/* return our new hash value */
+	return hval;
 }
 
 /*
  * fnv1a_32_buf - perform a 32 bit FNV 1A hash on a buffer
  *
  * input:
- *	buf	- start of buffer to hash
- *	len	- length of buffer in octets (bytes)
+ *	buf - start of buffer to hash
+ *	len - length of buffer in octets (bytes)
  *	hval	- previous hash value or FNV1_32_INIT if first call.
  *
  * returns:
@@ -456,69 +481,72 @@ fnv1_32_buf(void *buf, size_t len, uint32 hval)
 uint32
 fnv1a_32_buf(void *buf, size_t len, uint32 hval)
 {
-    unsigned char *bp = (unsigned char *)buf;	/* start of buffer */
-    unsigned char *be = bp + len;		/* beyond end of buffer */
-	
-    /*
-     * FNV-1 hash each octet in the buffer
-     */
-	while (bp < be) {
-		
+	unsigned char *bp = (unsigned char *) buf;	/* start of buffer */
+	unsigned char *be = bp + len;		/* beyond end of buffer */
+
+	/*
+	 * FNV-1 hash each octet in the buffer
+	 */
+	while (bp < be)
+	{
+
 		/* xor the bottom with the current octet */
-		hval ^= (uint32)*bp++;
-		
+		hval ^= (uint32) *bp++;
+
 		/* multiply by the 32 bit FNV magic prime mod 2^32 */
 #if defined(NO_FNV_GCC_OPTIMIZATION)
 		hval *= FNV_32_PRIME;
 #else
-		hval += (hval<<1) + (hval<<4) + (hval<<7) + (hval<<8) + (hval<<24);
+		hval += (hval << 1) + (hval << 4) + (hval << 7) + (hval << 8) + (hval << 24);
 #endif
 	}
-	
-    /* return our new hash value */
-    return hval;
+
+	/* return our new hash value */
+	return hval;
 }
 
 /*================================================================
  *
- * GENERAL PURPOSE UTILS 
+ * GENERAL PURPOSE UTILS
  *
  *================================================================
  */
 
 /*
- * Given the original length of the data array this function is 
+ * Given the original length of the data array this function is
  * recalculating the length after ignoring any trailing blanks. The
  * actual data is remained unmodified.
  */
-int ignoreblanks(char *data, int len)
+int
+ignoreblanks(char *data, int len)
 {
-	
-    /* look for trailing blanks and skip them in the hash calculation */
-    while ( data[len - 1] == ' ')
-    {
-	    len--;
-	    if(len == 1) /* if only 1 char is left, leave it alone! (the string is either empty or has 1 char) */
-		    break;
+
+	/* look for trailing blanks and skip them in the hash calculation */
+	while (data[len - 1] == ' ')
+	{
+		len--;
+		if (len == 1)			/* if only 1 char is left, leave it alone!
+								 * (the string is either empty or has 1 char) */
+			break;
 	}
 
-    return len;
+	return len;
 
 }
 
 /*
  * returns 1 is the input int is a power of 2 and 0 otherwize.
  */
-int ispowof2(int numsegs)
+int
+ispowof2(int numsegs)
 {
-	if ( numsegs == 0 ) 
+	if (numsegs == 0)
 		return 0;
-	
-    while( numsegs % 2 == 0 ) 
-    {
-        numsegs >>= 1; /* effectively divide by 2 */
-    }
-    
+
+	while (numsegs % 2 == 0)
+	{
+		numsegs >>= 1;			/* effectively divide by 2 */
+	}
+
 	return (numsegs == 1) ? 1 : 0;
 }
-

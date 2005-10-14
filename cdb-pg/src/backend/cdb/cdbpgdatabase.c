@@ -16,14 +16,14 @@
 #include "cdb/cdbutil.h"
 #include "cdb/cdbfts.h"
 
-Datum mpp_pgdatabase__(PG_FUNCTION_ARGS);
+Datum		mpp_pgdatabase__(PG_FUNCTION_ARGS);
 
 /* Working status for pg_prepared_xact */
 typedef struct
 {
-    CdbComponentDatabases *cdb_component_dbs;
-    int currIdx;
-} Working_State;
+	CdbComponentDatabases *cdb_component_dbs;
+	int			currIdx;
+}	Working_State;
 
 
 /*
@@ -34,7 +34,7 @@ mpp_pgdatabase__(PG_FUNCTION_ARGS)
 {
 	FuncCallContext *funcctx;
 	Working_State *mystatus;
-    CdbComponentDatabases *cdb_dbs;
+	CdbComponentDatabases *cdb_dbs;
 
 	if (SRF_IS_FIRSTCALL())
 	{
@@ -51,7 +51,7 @@ mpp_pgdatabase__(PG_FUNCTION_ARGS)
 		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
 		/* build tupdesc for result tuples */
-		/* this had better match pg_prepared_xacts view in  system_views.sql */
+		/* this had better match pg_prepared_xacts view in	system_views.sql */
 		tupdesc = CreateTemplateTupleDesc(6, false);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "dbid",
 						   INT4OID, -1, 0);
@@ -75,8 +75,8 @@ mpp_pgdatabase__(PG_FUNCTION_ARGS)
 		mystatus = (Working_State *) palloc(sizeof(Working_State));
 		funcctx->user_fctx = (void *) mystatus;
 
-        FtsEvaluateTransientState();
-        
+		FtsEvaluateTransientState();
+
 		mystatus->cdb_component_dbs = getCdbComponentDatabases();
 		mystatus->currIdx = 0;
 
@@ -93,13 +93,13 @@ mpp_pgdatabase__(PG_FUNCTION_ARGS)
 		char		nulls[6];
 		HeapTuple	tuple;
 		Datum		result;
-	    CdbComponentDatabaseInfo *db;
+		CdbComponentDatabaseInfo *db;
 
 		if (mystatus->currIdx < cdb_dbs->total_entry_dbs)
 			db = &cdb_dbs->entry_db_info[mystatus->currIdx];
-        else
+		else
 			db = &cdb_dbs->segment_db_info[mystatus->currIdx - cdb_dbs->total_entry_dbs];
-        mystatus->currIdx++;
+		mystatus->currIdx++;
 
 		/*
 		 * Form tuple with appropriate data.

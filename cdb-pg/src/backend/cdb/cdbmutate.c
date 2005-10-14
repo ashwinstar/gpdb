@@ -22,14 +22,14 @@
 #include "nodes/plannodes.h"
 #include "nodes/pg_list.h"
 #include "nodes/print.h"
-#include "parser/parsetree.h" /* for rt_fetch() */
-#include "utils/lsyscache.h" /* for getatttypetypmod() */
-#include "nodes/makefuncs.h" /* for makeVar() */
-#include "parser/parse_expr.h" /* for expr_type() */
-#include "parser/parse_oper.h" /* for compatible_oper_opid() */
-#include "nodes/makefuncs.h" /* for makeVar() */
-#include "nodes/value.h" /* for makeString() */
-#include "utils/syscache.h" /* for ReleaseSysCache */
+#include "parser/parsetree.h"	/* for rt_fetch() */
+#include "utils/lsyscache.h"	/* for getatttypetypmod() */
+#include "nodes/makefuncs.h"	/* for makeVar() */
+#include "parser/parse_expr.h"	/* for expr_type() */
+#include "parser/parse_oper.h"	/* for compatible_oper_opid() */
+#include "nodes/makefuncs.h"	/* for makeVar() */
+#include "nodes/value.h"		/* for makeString() */
+#include "utils/syscache.h"		/* for ReleaseSysCache */
 
 #include "cdb/cdbvars.h"
 #include "cdb/cdbplan.h"
@@ -42,22 +42,23 @@
 /*
  * Forward Declarations
  */
-static Node* apply_motion_mutator(Node*  node, ApplyMotionState *context);
+static Node *apply_motion_mutator(Node *node, ApplyMotionState * context);
 
 /* TODO Check suitability of the approach taken in these functions. */
-//static void set_hash_in_flow(Plan *plan, int nattrs, int *attrs);
-//static bool force_vars_walker(Node *node, void *varno);
+/* static void set_hash_in_flow(Plan *plan, int nattrs, int *attrs); */
+/* static bool force_vars_walker(Node *node, void *varno); */
 
 static void validateMotionNodeParms(MotionType motionType,
-			bool sendToSecondary, bool sendSorted,
-			List *hashExpr,
-			int numOutputSegs, int *outputSegIdx,
-			int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators );
+						bool sendToSecondary, bool sendSorted,
+						List *hashExpr,
+						int numOutputSegs, int *outputSegIdx,
+				int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators);
 static bool motion_expr_walker(Node *node, char *not_used);
+
 #ifdef UNUSED
-static List * makeMotionTargetList(Plan *arg);
-#endif /*UNUSED*/
-static bool doesUpdateAffectPartitionCols( MppPolicy *policy, List *rte );
+static List *makeMotionTargetList(Plan *arg);
+#endif   /* UNUSED */
+static bool doesUpdateAffectPartitionCols(MppPolicy * policy, List *rte);
 static bool hasCtid(Plan *plan);
 static bool hasCtid_outside_tlist(Plan *plan);
 
@@ -76,16 +77,18 @@ static bool hasCtid_outside_tlist(Plan *plan);
  * TODO Maybe add more context to argument list!
  * ------------------------------------------------------------------------- *
  */
-Plan* apply_motion(Plan*  plan, Query* query)
+Plan *
+apply_motion(Plan *plan, Query *query)
 {
-	Plan *result;
+	Plan	   *result;
 	ApplyMotionState state;
-	state.nextMotionID = 1; /* Start at 1 so zero will mean "unassigned". */
-	bool is_Update_Delete = FALSE;
-	
-	Assert( is_plan_node((Node*)plan) && IsA(query,Query) );
-	
-	switch ( query->commandType )
+
+	state.nextMotionID = 1;		/* Start at 1 so zero will mean "unassigned". */
+	bool		is_Update_Delete = FALSE;
+
+	Assert(is_plan_node((Node *) plan) && IsA(query, Query));
+
+	switch (query->commandType)
 	{
 		case CMD_SELECT:
 			/*
@@ -94,42 +97,41 @@ Plan* apply_motion(Plan*  plan, Query* query)
 			 * becomes a request for ordered motion.
 			 *
 			 * TODO Fix top-level sort handling.
-			 *      Currently there is a good  chance that we'll encounter
-			 *      a flow that the optimizer knew was ordered but that
-			 *      we have failed to flag as such.  As an ugly stop-gap,
-			 *      we might check the query for an ORDER BY and slap on a
-			 *      Sort node.  This would only be a band-aid, though, since
-			 *      it doesn't address deeper problems involving interior
-			 *      nodes that depend on order, e.g.,  LIMIT and OFFSET in
-			 *      ordered subqueries.
+			 *		Currently there is a good  chance that we'll encounter
+			 *		a flow that the optimizer knew was ordered but that
+			 *		we have failed to flag as such.  As an ugly stop-gap,
+			 *		we might check the query for an ORDER BY and slap on a
+			 *		Sort node.	This would only be a band-aid, though, since
+			 *		it doesn't address deeper problems involving interior
+			 *		nodes that depend on order, e.g.,  LIMIT and OFFSET in
+			 *		ordered subqueries.
 			 *
 			 * TODO If the top node is a Material, we should reach below
-			 *      it for our focusing.  Doing so would conserve
-			 *      ExecSupportsBackwardScan-ness.
+			 *		it for our focusing.  Doing so would conserve
+			 *		ExecSupportsBackwardScan-ness.
 			 */
-			if ( plan->flow->flotype == FLOW_PARTITIONED
-				|| ( plan->flow->flotype == FLOW_SINGLETON && plan->flow->segindex  != -1 )
+			if (plan->flow->flotype == FLOW_PARTITIONED
+				|| (plan->flow->flotype == FLOW_SINGLETON && plan->flow->segindex != -1)
 				)
 			{
 				/* Flow is partitioned or singleton on a segment.  Refocus. */
 				plan->flow->req_move = MOVEMENT_FOCUS;
 				plan->flow->segindex = -1;
 			}
-			else if ( plan->flow->flotype == FLOW_SINGLETON && plan->flow->segindex == -1 )
+			else if (plan->flow->flotype == FLOW_SINGLETON && plan->flow->segindex == -1)
 			{
 				/* Flow is singleton on dispatcher.  Already focused. */
 			}
-			else if ( plan->flow->flotype == FLOW_REPLICATED )
+			else if (plan->flow->flotype == FLOW_REPLICATED)
 			{
 				/* Flow is replicated (e.g., a Result node). Focus. */
-				
-				/* TODO Something like ...
-				 *    plan->flow->req_move = MOVEMENT_REP2FOCUS;
-				 *    plan->flow->segindex = -1; 
-				 * ...perhaps.  Until then, this seems to work for cases
-				 * discovered so far, e.g., 
-				 *    select sqrt((select count(*) from sale));
-				 * however those extra tuples are going somewhere!  Where?
+
+				/*
+				 * TODO Something like ... plan->flow->req_move =
+				 * MOVEMENT_REP2FOCUS; plan->flow->segindex = -1; ...perhaps.
+				 * Until then, this seems to work for cases discovered so far,
+				 * e.g., select sqrt((select count(*) from sale)); however
+				 * those extra tuples are going somewhere!	Where?
 				 */
 			}
 			else
@@ -138,40 +140,41 @@ Plan* apply_motion(Plan*  plan, Query* query)
 				 * TODO  Are the other flows we might legitimately see at the
 				 * top level?
 				 */
-				 ereport(ERROR, (
-					errcode(ERRCODE_CDB_INTERNAL_ERROR),
-					errmsg("unexpected flow type at top of plan")
-				 ));
+				ereport(ERROR, (
+								errcode(ERRCODE_CDB_INTERNAL_ERROR),
+								errmsg("unexpected flow type at top of plan")
+								));
 			}
 			break;
-		
+
 		case CMD_INSERT:
 			/*
 			 * Make sure the top level flow is partitioned on the partitioning
-			 * key of the target relation.  Since this is an INSERT command,
+			 * key of the target relation.	Since this is an INSERT command,
 			 * the target list will correspond to the attributes of the target
 			 * relation in order.
 			 */
 			{
 				RangeTblEntry *rte;
-				MppPolicy *policy;
+				MppPolicy  *policy;
 
-				/* TODO Are we sure the INSERT target isn't an inheritance set?
-				 *      Should we check, or would it work fine anyway?
+				/*
+				 * TODO Are we sure the INSERT target isn't an inheritance
+				 * set? Should we check, or would it work fine anyway?
 				 */
 				rte = rt_fetch(query->resultRelation, query->rtable);
-				Assert( rte->rtekind == RTE_RELATION);
+				Assert(rte->rtekind == RTE_RELATION);
 				policy = get_table_policy(rte->relid);
-				
-				switch ( policy->ptype )
+
+				switch (policy->ptype)
 				{
 					case POLICYTYPE_PARTITIONED:
 						/*
 						* Deal with the source of the INSERT based on its flow
 						* characteristics.
 						*/
-						if ( plan->flow->flotype == FLOW_PARTITIONED
-							|| ( plan->flow->flotype == FLOW_SINGLETON && plan->flow->segindex != -1 )
+						if (plan->flow->flotype == FLOW_PARTITIONED
+							|| (plan->flow->flotype == FLOW_SINGLETON && plan->flow->segindex != -1)
 							)
 						{
 							/*
@@ -180,7 +183,7 @@ Plan* apply_motion(Plan*  plan, Query* query)
 							*/
 							plan->flow->req_move = MOVEMENT_REPARTITION;
 						}
-						else if ( plan->flow->flotype == FLOW_REPLICATED )
+						else if (plan->flow->flotype == FLOW_REPLICATED)
 						{
 							/*
 							* Source is replicated over segments. Apply "deep-six".
@@ -193,9 +196,9 @@ Plan* apply_motion(Plan*  plan, Query* query)
 							* Source is, presumably, a dispatcher singleton.
 							*/
 							ereport(ERROR, (
-								errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-								errmsg("Cannot parallelize that INSERT yet")
-							));
+										errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+								 errmsg("Cannot parallelize that INSERT yet")
+											));
 						}
 
 						plan->flow->hashExpr = getExprListFromTargetList(plan->targetlist, policy->nattrs, policy->attrs);
@@ -206,8 +209,8 @@ Plan* apply_motion(Plan*  plan, Query* query)
 						* Deal with the source of the INSERT based on its flow
 						* characteristics.
 						*/
-						if ( plan->flow->flotype == FLOW_PARTITIONED
-							|| ( plan->flow->flotype == FLOW_SINGLETON && plan->flow->segindex != -1 )
+						if (plan->flow->flotype == FLOW_PARTITIONED
+							|| (plan->flow->flotype == FLOW_SINGLETON && plan->flow->segindex != -1)
 							)
 						{
 							/*
@@ -217,7 +220,7 @@ Plan* apply_motion(Plan*  plan, Query* query)
 							plan->flow->req_move = MOVEMENT_FOCUS;
 							plan->flow->segindex = -1;
 						}
-						else if ( plan->flow->flotype == FLOW_REPLICATED )
+						else if (plan->flow->flotype == FLOW_REPLICATED)
 						{
 							/*
 							* Source is replicated over segments.
@@ -225,9 +228,9 @@ Plan* apply_motion(Plan*  plan, Query* query)
 							* from a replicated flow.
 							*/
 							ereport(ERROR, (
-								errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-								errmsg("Cannot parallelize that INSERT yet")
-							));
+										errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+								 errmsg("Cannot parallelize that INSERT yet")
+											));
 						}
 						else
 						{
@@ -238,86 +241,86 @@ Plan* apply_motion(Plan*  plan, Query* query)
 						}
 						break;
 					default:
-						Assert( false );
+						Assert(false);
 						break;
 				}
 			}
 			break;
-			
+
 		case CMD_UPDATE:
 		case CMD_DELETE:
 			/*
 			 * For updates and deletes on partitioned tables, we restrict the query
 			 * to only those with a partioned flow, and involving no other tables.
-			 * In this manner , we avoid any motion nodes.  If there are subqueries,
+			 * In this manner , we avoid any motion nodes.	If there are subqueries,
 			 * the query will get rejected by the parallelizer unless they are initPlan subqueries.
 			 * If the table is an entry database table, we reject the query unless the
 			 * flow is a singleton on the entry database.
 			 */
 			{
 				RangeTblEntry *rte;
-				MppPolicy *policy;
-				
+				MppPolicy  *policy;
+
 				is_Update_Delete = TRUE;
 
 				rte = rt_fetch(query->resultRelation, query->rtable);
-				Assert( rte->rtekind == RTE_RELATION);
+				Assert(rte->rtekind == RTE_RELATION);
 				policy = get_table_policy(rte->relid);
-				
-				switch ( policy->ptype )
+
+				switch (policy->ptype)
 				{
 					case POLICYTYPE_PARTITIONED:
 						/*
 						 * Currently, we only support update or delete involving 1 table
 						 */
-						if ( list_length(query->rtable) > 1 )
+						if (list_length(query->rtable) > 1)
 						{
 							ereport(ERROR, (
-								errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-									errmsg("Cannot parallelize that %s yet",
-										query->commandType==CMD_UPDATE ? "UPDATE" : "DELETE")
-							));
+										errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+									 errmsg("Cannot parallelize that %s yet",
+											query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE")
+											));
 						}
 
 						/*
 						 * Make sure we are not updating any of the partitioning columns
 						 */
-						if ( query->commandType == CMD_UPDATE &&
-							doesUpdateAffectPartitionCols( policy, plan->targetlist ) )
+						if (query->commandType == CMD_UPDATE &&
+							doesUpdateAffectPartitionCols(policy, plan->targetlist))
 						{
 							ereport(ERROR, (
-								errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-									errmsg("Cannot parallelize an update that involves the partitioning columns")
-							));
+										errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+											errmsg("Cannot parallelize an update that involves the partitioning columns")
+											));
 						}
 
-						if ( plan->flow->flotype == FLOW_PARTITIONED )
+						if (plan->flow->flotype == FLOW_PARTITIONED)
 						{
 							plan->flow->req_move = MOVEMENT_NONE;
 						}
-						else if ( plan->flow->flotype == FLOW_REPLICATED
-							|| plan->flow->flotype == FLOW_SINGLETON )
+						else if (plan->flow->flotype == FLOW_REPLICATED
+								 || plan->flow->flotype == FLOW_SINGLETON)
 						{
 							ereport(ERROR, (
-								errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-									errmsg("Cannot parallelize that %s yet",
-										query->commandType==CMD_UPDATE ? "UPDATE" : "DELETE")
-							));
+										errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+									 errmsg("Cannot parallelize that %s yet",
+											query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE")
+											));
 						}
 
 						break;
 
 					case POLICYTYPE_ENTRY:
-						if ( plan->flow->flotype == FLOW_PARTITIONED
+						if (plan->flow->flotype == FLOW_PARTITIONED
 							|| plan->flow->flotype == FLOW_REPLICATED
-							|| ( plan->flow->flotype == FLOW_SINGLETON && plan->flow->segindex != -1 )
+							|| (plan->flow->flotype == FLOW_SINGLETON && plan->flow->segindex != -1)
 							)
 						{
 							ereport(ERROR, (
-								errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-									errmsg("Cannot parallelize that %s yet",
-										query->commandType==CMD_UPDATE ? "UPDATE" : "DELETE")
-							));
+										errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+									 errmsg("Cannot parallelize that %s yet",
+											query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE")
+											));
 						}
 						/*
 						* Source is, presumably, a dispatcher singleton.
@@ -325,43 +328,43 @@ Plan* apply_motion(Plan*  plan, Query* query)
 						plan->flow->req_move = MOVEMENT_NONE;
 						break;
 					default:
-						Assert( false );
+						Assert(false);
 						break;
 				}
 			}
 			break;
-			
+
 		default:
-			Assert(false); /* Never see non-DML in here! */
+			Assert(false);		/* Never see non-DML in here! */
 			return NULL;
 	}
-	
-	result = (Plan*)apply_motion_mutator((Node*)plan, &state);
-	
+
+	result = (Plan *) apply_motion_mutator((Node *) plan, &state);
+
 	result->nMotionNodes = state.nextMotionID - 1;
-	
+
 	/* Last minute check for MPP badness. */
-	if ( is_Update_Delete )
+	if (is_Update_Delete)
 	{
-		if ( hasCtid_outside_tlist(result) )
+		if (hasCtid_outside_tlist(result))
 		{
 			ereport(ERROR, (
-				errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-					errmsg("Cannot parallelize that %s yet",
-						query->commandType==CMD_UPDATE ? "UPDATE" : "DELETE"),
-					errdetail("Result depends on values of CTID system column.  Support for CTID system column may change in the future.")
-			));
+							errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+							errmsg("Cannot parallelize that %s yet",
+					 query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE"),
+							errdetail("Result depends on values of CTID system column.  Support for CTID system column may change in the future.")
+							));
 		}
 	}
-	else if ( hasCtid(result) )
+	else if (hasCtid(result))
 	{
 		ereport(WARNING, (
-			errcode(ERRCODE_WARNING_MPP_INTERIM_FEATURE),
-			errmsg("Query uses CTID system column"),
-			errdetail("Support for CTID system column may change in the future.")
-		));
+						  errcode(ERRCODE_WARNING_MPP_INTERIM_FEATURE),
+						  errmsg("Query uses CTID system column"),
+		errdetail("Support for CTID system column may change in the future.")
+						  ));
 	}
-	
+
 	return result;
 }
 
@@ -369,74 +372,76 @@ Plan* apply_motion(Plan*  plan, Query* query)
 /*
  * Function apply_motion_mutator() is the workhorse for apply_motion().
  */
-Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
+Node *
+apply_motion_mutator(Node *node, ApplyMotionState * context)
 {
-	Node   *newnode;
+	Node	   *newnode;
 
-    if ( node == NULL )
+	if (node == NULL)
 		return NULL;
-	
-	/* Copy this node and mutate its children. Afterward, this node should
-	 * be an exact image of the input node, except that contained nodes
-	 * requiring parallelization will have had it applied.
+
+	/*
+	 * Copy this node and mutate its children. Afterward, this node should be
+	 * an exact image of the input node, except that contained nodes requiring
+	 * parallelization will have had it applied.
 	 */
 	newnode = plan_tree_mutator(node, apply_motion_mutator, context);
-	
+
 	/* Perform special transformation, if specified. */
-	if ( is_plan_node(node) &&
-         ((Plan*)node)->flow != NULL &&
-         ((Plan*)node)->flow->req_xform != MOVEMENT_NONE )
+	if (is_plan_node(node) &&
+		((Plan *) node)->flow != NULL &&
+		((Plan *) node)->flow->req_xform != MOVEMENT_NONE)
 	{
-		Plan *plan = (Plan*)node;
-		
+		Plan	   *plan = (Plan *) node;
+
 		/* Special aggregrate transformation? */
-		if ( IsA(node,Agg) && plan->flow->req_xform == MOVEMENT_AGG_RESTRUCT )
+		if (IsA(node, Agg) &&plan->flow->req_xform == MOVEMENT_AGG_RESTRUCT)
 		{
-			newnode = (Node*)apply_agg_motion((Plan*)newnode, context);
+			newnode = (Node *) apply_agg_motion((Plan *) newnode, context);
 		}
 		/* Special limit transformation? */
-		else if ( IsA(node,Limit) && plan->flow->req_xform == MOVEMENT_LIM_RESTRUCT )
+		else if (IsA(node, Limit) &&plan->flow->req_xform == MOVEMENT_LIM_RESTRUCT)
 		{
-			newnode = (Node*)apply_limit_motion((Plan*)newnode, context);
+			newnode = (Node *) apply_limit_motion((Plan *) newnode, context);
 		}
 		else
 		{
-			 ereport(ERROR, (
-				errcode(ERRCODE_CDB_INTERNAL_ERROR),
-				errmsg("Unknown restructuring transformation %d for node type %d",
-					plan->flow->req_xform,
-					node->type)
-			 ));
+			ereport(ERROR, (
+							errcode(ERRCODE_CDB_INTERNAL_ERROR),
+			errmsg("Unknown restructuring transformation %d for node type %d",
+				   plan->flow->req_xform,
+				   node->type)
+							));
 		}
 	}
-	
+
 	/* Add motion atop the copied node, if necessary. */
 	switch (nodeTag(newnode))
 	{
-		/* Abstract: really should see only subclasses. */
+			/* Abstract: really should see only subclasses. */
 		case T_Plan:
 		case T_Scan:
 		case T_Join:
 			Assert(false);
 			break;
-			
-		/* Pre-existing Motion nodes must be renumbered. */
+
+			/* Pre-existing Motion nodes must be renumbered. */
 		case T_Motion:
 			/* Motion nodes can't specify motion. */
-			Assert( ((Plan*)newnode)->flow == NULL ||
-                    ((Plan*)newnode)->flow->req_move == MOVEMENT_NONE );
+			Assert(((Plan *) newnode)->flow == NULL ||
+				   ((Plan *) newnode)->flow->req_move == MOVEMENT_NONE);
 			/* Assign unique node number to the new node. */
 			assignMotionID(newnode, context, node);
 			break;
-		
-		/* Add any specified motion to the top of the plan subtree. */
+
+			/* Add any specified motion to the top of the plan subtree. */
 		case T_Hash:
 		case T_Material:
 		case T_Sort:
 		case T_Unique:
 		case T_SetOp:
 		case T_Limit:
-		case T_Append:		
+		case T_Append:
 		case T_Result:
 		case T_SeqScan:
 		case T_FunctionScan:
@@ -445,156 +450,163 @@ Node* apply_motion_mutator(Node*  node, ApplyMotionState *context)
 		case T_SubqueryScan:
 		case T_Group:
 		case T_Agg:
-		/* case T_SubPlan: Important, but handled in expression_tree_mutator. */
+
+			/*
+			 * case T_SubPlan: Important, but handled in
+			 * expression_tree_mutator.
+			 */
 		case T_NestLoop:
 		case T_MergeJoin:
 		case T_HashJoin:
 			{
-				Plan *plan = (Plan*)newnode;
-				Flow *flow = plan->flow;
-				
-				bool sendToSecondary = false; /* always for now */
-				
-                /* If no Flow node, we're in a portion of the tree
-                 * that was finished by the planner.
-                 */
-                if (!flow)
-                    break;
+				Plan	   *plan = (Plan *) newnode;
+				Flow	   *flow = plan->flow;
 
-                switch ( flow->req_move )
+				bool		sendToSecondary = false;	/* always for now */
+
+				/*
+				 * If no Flow node, we're in a portion of the tree that was
+				 * finished by the planner.
+				 */
+				if (!flow)
+					break;
+
+				switch (flow->req_move)
 				{
 					case MOVEMENT_FOCUS:
-						/* TODO Fix this branch (which requires, in turn,
-						 *      extending our Flow support) to specify
-						 *      sort order, whether to send to secondary,
-						 *      and which segment is this one.  (Or should
-						 *      we specify "dispatcher" and let plan state
-						 *      specify the actual segment number?).
+
+						/*
+						 * TODO Fix this branch (which requires, in turn,
+						 * extending our Flow support) to specify sort order,
+						 * whether to send to secondary, and which segment is
+						 * this one.  (Or should we specify "dispatcher" and
+						 * let plan state specify the actual segment number?).
 						 *
-						 *      So make_union_motion( newnode,
-						 *                            flow->sendToSecondary,
-						 *                            ThisSegmentNumber );
-						 *      or something.
+						 * So make_union_motion( newnode, flow->sendToSecondary,
+						 * ThisSegmentNumber ); or something.
 						 */
-						if ( flow->req_move!=MOVEMENT_NONE && flow->numSortCols>0 )
+						if (flow->req_move != MOVEMENT_NONE && flow->numSortCols > 0)
 						{
-							newnode = (Node*)make_sorted_union_motion(
-								plan,
-								sendToSecondary,
-								flow->segindex, /* TODO if 0, adjust to "chosen" segment. */
-								flow->numSortCols,
-								flow->sortColIdx,
-								flow->sortOperators
+							newnode = (Node *) make_sorted_union_motion(
+																		plan,
+															 sendToSecondary,
+															  flow->segindex,	/* TODO if 0, adjust to
+																				 * "chosen" segment. */
+														   flow->numSortCols,
+															flow->sortColIdx,
+														  flow->sortOperators
 								);
 							/* Assign unique node number to the new node. */
 							assignMotionID(newnode, context, NULL);
 						}
 						else
 						{
-							newnode = (Node*)make_union_motion(
-								plan,
-								sendToSecondary,
-								flow->segindex /* TODO if 0, adjust to "chosen" segment. */
+							newnode = (Node *) make_union_motion(
+																 plan,
+															 sendToSecondary,
+															   flow->segindex	/* TODO if 0, adjust to
+																				 * "chosen" segment. */
 								);
 							/* Assign unique node number to the new node. */
 							assignMotionID(newnode, context, NULL);
 						}
 						break;
-						
+
 					case MOVEMENT_BROADCAST:
-						if ( flow->req_move!=MOVEMENT_NONE && flow->numSortCols>0 )
+						if (flow->req_move != MOVEMENT_NONE && flow->numSortCols > 0)
 						{
-							Assert(false); /* This case disallowed. */
-							newnode = (Node*)make_sorted_broadcast_motion(
-								plan,
-								sendToSecondary,
-								flow->numSortCols,
-								flow->sortColIdx,
-								flow->sortOperators
+							Assert(false);		/* This case disallowed. */
+							newnode = (Node *) make_sorted_broadcast_motion(
+																		plan,
+															 sendToSecondary,
+														   flow->numSortCols,
+															flow->sortColIdx,
+														  flow->sortOperators
 								);
 							/* Assign unique node number to the new node. */
 							assignMotionID(newnode, context, NULL);
 						}
 						else
 						{
-							newnode = (Node*)make_broadcast_motion(
-								plan,
-								sendToSecondary
+							newnode = (Node *) make_broadcast_motion(
+																	 plan,
+															  sendToSecondary
 								);
 							/* Assign unique node number to the new node. */
 							assignMotionID(newnode, context, NULL);
 						}
 						break;
-						
+
 					case MOVEMENT_REPARTITION:
 					case MOVEMENT_REP2PARTITIONED:
-						Assert( flow->hashExpr != NULL );
-						if ( flow->req_move!=MOVEMENT_NONE && flow->numSortCols>0 )
+						Assert(flow->hashExpr != NULL);
+						if (flow->req_move != MOVEMENT_NONE && flow->numSortCols > 0)
 						{
-							Assert(false); /* This case disallowed. */
-							newnode = (Node*)make_sorted_hashed_motion(
-								plan,
-								sendToSecondary,
-								flow->hashExpr,
-								flow->numSortCols,
-								flow->sortColIdx,
-								flow->sortOperators
+							Assert(false);		/* This case disallowed. */
+							newnode = (Node *) make_sorted_hashed_motion(
+																		 plan,
+															 sendToSecondary,
+															  flow->hashExpr,
+														   flow->numSortCols,
+															flow->sortColIdx,
+														  flow->sortOperators
 								);
 							/* Assign unique node number to the new node. */
 							assignMotionID(newnode, context, NULL);
 						}
 						else
 						{
-							newnode = (Node*)make_hashed_motion(
-								plan,
-								sendToSecondary,
-								flow->hashExpr
+							newnode = (Node *) make_hashed_motion(
+																  plan,
+															 sendToSecondary,
+															   flow->hashExpr
 								);
 							/* Assign unique node number to the new node. */
 							assignMotionID(newnode, context, NULL);
 						}
 
-						if ( flow->req_move == MOVEMENT_REP2PARTITIONED )
-							setHashToSelfOnly( (Motion *)newnode );
+						if (flow->req_move == MOVEMENT_REP2PARTITIONED)
+							setHashToSelfOnly((Motion *) newnode);
 
 						break;
-						
-					
+
+
 					case MOVEMENT_NONE:
 						break;
-						
+
 					default:
 						Assert(false);
 						break;
 				}
 			}
-		
+
 		default:
 			break;
 	}
-	
+
 	return newnode;
 }
 
 /*
  * Helper code for ApplyMotionState -- Assign motion id to new Motion node.
  */
-void assignMotionID(Node* newnode, ApplyMotionState* context, Node* oldnode)
+void
+assignMotionID(Node *newnode, ApplyMotionState * context, Node *oldnode)
 {
-	Assert( IsA(newnode,Motion) && context != NULL);
-	Assert( oldnode == NULL || (IsA(oldnode,Motion) && oldnode != newnode) );
-	
+	Assert(IsA(newnode, Motion) && context != NULL);
+	Assert(oldnode == NULL || (IsA(oldnode, Motion) && oldnode != newnode));
+
 	/* Assign unique node number to the new node. */
-	((Motion*)newnode)->motionID = context->nextMotionID++;
-	
+	((Motion *) newnode)->motionID = context->nextMotionID++;
+
 	/* Debugging hint that we have reassigned a previously assigned ID. */
-	if ( oldnode != NULL && ((Motion*)oldnode)->motionID != 0 )
+	if (oldnode != NULL && ((Motion *) oldnode)->motionID != 0)
 	{
 		ereport(DEBUG2, (
-			errmsg("Motion node renumbered: old=%d new=%d.",
-				((Motion*)oldnode)->motionID,
-				((Motion*)newnode)->motionID )
-		));
+						 errmsg("Motion node renumbered: old=%d new=%d.",
+								((Motion *) oldnode)->motionID,
+								((Motion *) newnode)->motionID)
+						 ));
 	}
 }
 
@@ -615,29 +627,32 @@ void assignMotionID(Node* newnode, ApplyMotionState* context, Node* oldnode)
  * as a mismatch between a targetlist index and the resno declared in the
  * targetlist entry itself.
  */
-bool invertColIdx(List *targetlist, int numCols, AttrNumber *colIdx, AttrNumber **pinverse)
+bool
+invertColIdx(List *targetlist, int numCols, AttrNumber *colIdx, AttrNumber **pinverse)
 {
-	ListCell *cell;
-	int i;
-	AttrNumber tleidx, *invGrpColIdx;
+	ListCell   *cell;
+	int			i;
+	AttrNumber	tleidx,
+			   *invGrpColIdx;
 	TargetEntry *tle;
-	bool aok = TRUE;
-	
+	bool		aok = TRUE;
+
 	*pinverse = NULL;
-	if ( numCols == 0 )
+	if (numCols == 0)
 		return aok;
-		
+
 	invGrpColIdx = palloc(numCols * sizeof(AttrNumber));
-	
-	for ( i = 0; i < numCols; i++ )
+
+	for (i = 0; i < numCols; i++)
 	{
-		AttrNumber child_tleidx = colIdx[i];
+		AttrNumber	child_tleidx = colIdx[i];
+
 		tleidx = 0;
-		foreach ( cell, targetlist )
+		foreach(cell, targetlist)
 		{
-			tle = (TargetEntry*)lfirst(cell);
+			tle = (TargetEntry *) lfirst(cell);
 			tleidx++;
-			if ( IsA(tle->expr, Var) && ((Var*)tle->expr)->varattno == child_tleidx )
+			if (IsA(tle->expr, Var) &&((Var *) tle->expr)->varattno == child_tleidx)
 			{
 				if (tleidx != tle->resdom->resno)
 				{
@@ -650,15 +665,16 @@ bool invertColIdx(List *targetlist, int numCols, AttrNumber *colIdx, AttrNumber 
 				break;
 			}
 		}
-		if ( !aok ) break;
+		if (!aok)
+			break;
 	}
-	
-	if ( aok )
+
+	if (aok)
 	{
 		*pinverse = invGrpColIdx;
 	}
-	
-	return  aok;
+
+	return aok;
 }
 
 /*
@@ -675,9 +691,10 @@ bool invertColIdx(List *targetlist, int numCols, AttrNumber *colIdx, AttrNumber 
  * Failure results from a mismatch between the targetlist index and the
  * resno declared in the targetlist entries themselves.
  */
-bool invertGrpColIdx(Agg *agg, AttrNumber **pinverse)
+bool
+invertGrpColIdx(Agg *agg, AttrNumber **pinverse)
 {
-	return invertColIdx(agg->plan.targetlist, agg->numCols, agg->grpColIdx,  pinverse);
+	return invertColIdx(agg->plan.targetlist, agg->numCols, agg->grpColIdx, pinverse);
 }
 
 
@@ -686,56 +703,57 @@ bool invertGrpColIdx(Agg *agg, AttrNumber **pinverse)
  * from nodes, where the logic varies by node type
  * -----------------------------------------------------------------------
  */
-List *getHashMotionInfoList( Plan *node, HashMotionInfoType type )
+List *
+getHashMotionInfoList(Plan *node, HashMotionInfoType type)
 {
-	List *hashinfo = NIL;
-	
-	switch ( nodeTag(node) )
+	List	   *hashinfo = NIL;
+
+	switch (nodeTag(node))
 	{
 		case T_Sort:
 			{
-				Sort		*snode = (Sort *)node;
+				Sort	   *snode = (Sort *) node;
 				int			numCols = snode->numCols;
 				AttrNumber *sortColIdx = snode->sortColIdx;
-				
-				if ( numCols == 0 || sortColIdx == NULL )
-					elog( ERROR,
-							"Empty sortColIdx array encountered in getHashExprList for Sort node" );
-							
+
+				if (numCols == 0 || sortColIdx == NULL)
+					elog(ERROR,
+						 "Empty sortColIdx array encountered in getHashExprList for Sort node");
+
 				hashinfo = getExprListFromTargetList(snode->plan.targetlist, numCols, sortColIdx);
 			}
-				
+
 			break;
-			
+
 		case T_Agg:
 			{
-				Agg			*aggnode = (Agg *)node;
+				Agg		   *aggnode = (Agg *) node;
 				int			numCols = aggnode->numCols;
 				AttrNumber *grpColIdx = NULL;
-				
-                if ( aggnode->aggstrategy == AGG_PLAIN )
-                    elog( ERROR, "there is no hash expression list for Plain Aggregate nodes");	
 
-				if ( !invertGrpColIdx(aggnode, &grpColIdx) )
+				if (aggnode->aggstrategy == AGG_PLAIN)
+					elog(ERROR, "there is no hash expression list for Plain Aggregate nodes");
+
+				if (!invertGrpColIdx(aggnode, &grpColIdx))
 				{
-					elog( ERROR,
-						"Unexpected grpColIdx array contents in getHashExprList for Agg node" );
+					elog(ERROR,
+						 "Unexpected grpColIdx array contents in getHashExprList for Agg node");
 				}
 
-				if ( numCols == 0 || grpColIdx == NULL )				
-					elog( ERROR,
-						"Empty grpColIdx array encountered in getHashExprList for Agg node" );
-						
+				if (numCols == 0 || grpColIdx == NULL)
+					elog(ERROR,
+						 "Empty grpColIdx array encountered in getHashExprList for Agg node");
+
 				hashinfo = getExprListFromTargetList(aggnode->plan.targetlist, numCols, grpColIdx);
 			}
-				
+
 			break;
-			
+
 		default:
-			elog( WARNING, "getHashMotionInfoList called with an unsupported node type %d", nodeTag(node) );
+			elog(WARNING, "getHashMotionInfoList called with an unsupported node type %d", nodeTag(node));
 			break;
-	}	
-	
+	}
+
 	return hashinfo;
 }
 
@@ -745,48 +763,50 @@ List *getHashMotionInfoList( Plan *node, HashMotionInfoType type )
  * and pSortDefn structs already.
  * --------------------------------------------------------------------
  */
-Motion *make_motion(Plan *lefttree, MotionType motionType,
+Motion *
+make_motion(Plan *lefttree, MotionType motionType,
 			bool sendToSecondary, bool sendSorted,
 			List *hashExpr,
 			int numOutputSegs, int *outputSegIdx,
-			int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators )
+			int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators)
 {
-    Motion *node = makeNode(Motion);
-    Plan   *plan = &node->plan;
-    List   *hashDataTypes = NIL;
+	Motion	   *node = makeNode(Motion);
+	Plan	   *plan = &node->plan;
+	List	   *hashDataTypes = NIL;
 
-    validateMotionNodeParms(motionType,	sendToSecondary, sendSorted,
-			hashExpr,
-			numOutputSegs, outputSegIdx,
-			numSortCols, sortColIdx, sortOperators);
+	validateMotionNodeParms(motionType, sendToSecondary, sendSorted,
+							hashExpr,
+							numOutputSegs, outputSegIdx,
+							numSortCols, sortColIdx, sortOperators);
 
-    /* Build list of hash key expression data types. */
-    if (hashExpr)
-    {
-        List       *eq = list_make1(makeString("="));
-        ListCell   *cell;
-        foreach(cell, hashExpr)
-        {
-            Node   *expr = (Node *)lfirst(cell);
-            Oid     typeoid = exprType(expr);
-            Oid	    eqopoid;
-            Oid     lefttype;
-            Oid     righttype;
+	/* Build list of hash key expression data types. */
+	if (hashExpr)
+	{
+		List	   *eq = list_make1(makeString("="));
+		ListCell   *cell;
 
-            /* Get oid of the equality operator for this data type. */
-            eqopoid = compatible_oper_opid(eq, typeoid, typeoid, true);
-            if ( eqopoid == InvalidOid )
-                ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-                                errmsg("no equality operator for typid %d",
-                                       typeoid)));
+		foreach(cell, hashExpr)
+		{
+			Node	   *expr = (Node *) lfirst(cell);
+			Oid			typeoid = exprType(expr);
+			Oid			eqopoid;
+			Oid			lefttype;
+			Oid			righttype;
 
-            /* Get the equality operator's operand type. */
-            op_input_types( eqopoid, &lefttype, &righttype );
-            Assert( lefttype == righttype );
-            hashDataTypes = lappend_oid(hashDataTypes, lefttype);
-        }
-        list_free_deep(eq);
-    }
+			/* Get oid of the equality operator for this data type. */
+			eqopoid = compatible_oper_opid(eq, typeoid, typeoid, true);
+			if (eqopoid == InvalidOid)
+				ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+								errmsg("no equality operator for typid %d",
+									   typeoid)));
+
+			/* Get the equality operator's operand type. */
+			op_input_types(eqopoid, &lefttype, &righttype);
+			Assert(lefttype == righttype);
+			hashDataTypes = lappend_oid(hashDataTypes, lefttype);
+		}
+		list_free_deep(eq);
+	}
 
 	plan->startup_cost = lefttree->startup_cost;
 	plan->total_cost = lefttree->total_cost;
@@ -815,98 +835,106 @@ Motion *make_motion(Plan *lefttree, MotionType motionType,
 
 	plan->extParam = bms_copy(lefttree->extParam);
 	plan->allParam = bms_copy(lefttree->allParam);
-	
-    /* If hashed redistribution, fill in the receiving segment info. */
+
+	/* If hashed redistribution, fill in the receiving segment info. */
 	node->numHashSegs = 0;
 	node->hashSegIdx = NULL;
-	if ( motionType == MOTIONTYPE_HASH )
-    {
-        node->numHashSegs = getMPPSegmentCount();
-        node->hashSegIdx = makeDefaultSegIdxArray(getMPPSegmentCount());
-    }
+	if (motionType == MOTIONTYPE_HASH)
+	{
+		node->numHashSegs = getMPPSegmentCount();
+		node->hashSegIdx = makeDefaultSegIdxArray(getMPPSegmentCount());
+	}
 
-    /* If merging, fill in the sending segment info. */
-    node->numInputSegs = 0;
-    node->inputSegIdx = NULL;
-	if ( sendSorted )
-    {
-        node->numInputSegs = getMPPSegmentCount();
-        node->inputSegIdx = makeDefaultSegIdxArray(getMPPSegmentCount());
-    }
+	/* If merging, fill in the sending segment info. */
+	node->numInputSegs = 0;
+	node->inputSegIdx = NULL;
+	if (sendSorted)
+	{
+		node->numInputSegs = getMPPSegmentCount();
+		node->inputSegIdx = makeDefaultSegIdxArray(getMPPSegmentCount());
+	}
 
-    /* TODO Should we attach a descriptive Flow here?
-	 *      What about setXxxToSelfOnly() calls?
+	/*
+	 * TODO Should we attach a descriptive Flow here? What about
+	 * setXxxToSelfOnly() calls?
 	 */
 
 	return node;
 }
 
-Motion *make_union_motion(Plan *lefttree, bool sendToSecondary, int destSegIndex )
+Motion *
+make_union_motion(Plan *lefttree, bool sendToSecondary, int destSegIndex)
 {
-	int *outputSegIdx = palloc( sizeof(int) );
+	int		   *outputSegIdx = palloc(sizeof(int));
+
 	outputSegIdx[0] = destSegIndex;
 
-	return 	make_motion(lefttree, MOTIONTYPE_FIXED,
-						sendToSecondary, false,
-						NIL,
-						1, outputSegIdx,
-						0, NULL, NULL );
+	return make_motion(lefttree, MOTIONTYPE_FIXED,
+					   sendToSecondary, false,
+					   NIL,
+					   1, outputSegIdx,
+					   0, NULL, NULL);
 }
 
-Motion *make_sorted_union_motion(Plan *lefttree, bool sendToSecondary, int destSegIndex,
-								int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators )
+Motion *
+make_sorted_union_motion(Plan *lefttree, bool sendToSecondary, int destSegIndex,
+				 int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators)
 {
-	int *outputSegIdx = palloc( sizeof(int) );
-    int mySegIdx;
+	int		   *outputSegIdx = palloc(sizeof(int));
+	int			mySegIdx;
 
-    /* TODO:  Pete needs to work with Brian on this part.  Donnie is clueless. */
-    mySegIdx = Mpp_segment;
+	/* TODO:  Pete needs to work with Brian on this part.  Donnie is clueless. */
+	mySegIdx = Mpp_segment;
 	outputSegIdx[0] = mySegIdx;
 
-	return 	make_motion(lefttree, MOTIONTYPE_FIXED,
-						sendToSecondary, true,
-						NIL,
-						1, outputSegIdx,
-						numSortCols, sortColIdx, sortOperators);
+	return make_motion(lefttree, MOTIONTYPE_FIXED,
+					   sendToSecondary, true,
+					   NIL,
+					   1, outputSegIdx,
+					   numSortCols, sortColIdx, sortOperators);
 }
 
-Motion *make_hashed_motion(Plan *lefttree, bool sendToSecondary,
-						   List *hashExpr)
+Motion *
+make_hashed_motion(Plan *lefttree, bool sendToSecondary,
+				   List *hashExpr)
 {
 	return make_motion(lefttree, MOTIONTYPE_HASH,
-						sendToSecondary, false,
-						hashExpr,
-						0, NULL, 0, NULL, NULL);
+					   sendToSecondary, false,
+					   hashExpr,
+					   0, NULL, 0, NULL, NULL);
 }
 
-Motion *make_sorted_hashed_motion(Plan *lefttree, bool sendToSecondary,
-								List *hashExpr,
-								int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators )
+Motion *
+make_sorted_hashed_motion(Plan *lefttree, bool sendToSecondary,
+						  List *hashExpr,
+				 int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators)
 {
 	return make_motion(lefttree, MOTIONTYPE_HASH,
-						sendToSecondary, true,
-						hashExpr,
-						0, NULL,
-						numSortCols, sortColIdx, sortOperators );
+					   sendToSecondary, true,
+					   hashExpr,
+					   0, NULL,
+					   numSortCols, sortColIdx, sortOperators);
 }
 
-Motion *make_broadcast_motion(Plan *lefttree, bool sendToSecondary)
+Motion *
+make_broadcast_motion(Plan *lefttree, bool sendToSecondary)
 {
 	return make_motion(lefttree, MOTIONTYPE_FIXED,
-						sendToSecondary, false,
-						NIL,
-						0, NULL,
-						0, NULL, NULL );
+					   sendToSecondary, false,
+					   NIL,
+					   0, NULL,
+					   0, NULL, NULL);
 }
 
-Motion *make_sorted_broadcast_motion(Plan *lefttree, bool sendToSecondary,
-								int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators )
+Motion *
+make_sorted_broadcast_motion(Plan *lefttree, bool sendToSecondary,
+				 int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators)
 {
 	return make_motion(lefttree, MOTIONTYPE_FIXED,
-						sendToSecondary, true,
-						NIL,
-						0, NULL,
-						numSortCols, sortColIdx, sortOperators );
+					   sendToSecondary, true,
+					   NIL,
+					   0, NULL,
+					   numSortCols, sortColIdx, sortOperators);
 }
 
 /*
@@ -919,13 +947,14 @@ Motion *make_sorted_broadcast_motion(Plan *lefttree, bool sendToSecondary,
  * it must of course be a hash motion node,
  * and it must not be sorted (Currently sorted hash motion ins not permitted anyway).
  */
-void setHashToSelfOnly( Motion *motion )
+void
+setHashToSelfOnly(Motion * motion)
 {
-	Assert( motion != NULL );
-	Assert( motion->motionType == MOTIONTYPE_HASH );
-	Assert( motion->numHashSegs > 0 );
-	Assert( motion->hashSegIdx != NULL );
-	Assert( !motion->sendSorted );
+	Assert(motion != NULL);
+	Assert(motion->motionType == MOTIONTYPE_HASH);
+	Assert(motion->numHashSegs > 0);
+	Assert(motion->hashSegIdx != NULL);
+	Assert(!motion->sendSorted);
 
 	motion->hashToSelfOnly = true;
 }
@@ -941,13 +970,14 @@ void setHashToSelfOnly( Motion *motion )
  * and it must not be sorted,
  * and it must not be a broadcast fixed motion node.
  */
-void setFixedToSelfOnly( Motion *motion )
+void
+setFixedToSelfOnly(Motion * motion)
 {
-	Assert( motion != NULL );
-	Assert( motion->motionType == MOTIONTYPE_FIXED );
-	Assert( motion->numOutputSegs > 0 );
-	Assert( motion->outputSegIdx != NULL );
-	Assert( !motion->sendSorted );
+	Assert(motion != NULL);
+	Assert(motion->motionType == MOTIONTYPE_FIXED);
+	Assert(motion->numOutputSegs > 0);
+	Assert(motion->outputSegIdx != NULL);
+	Assert(!motion->sendSorted);
 
 	motion->fixedToSelfOnly = true;
 }
@@ -957,24 +987,26 @@ void setFixedToSelfOnly( Motion *motion )
  * with values between 0 and numSegs-1
  * --------------------------------------------------------------------
  */
-int *makeDefaultSegIdxArray(int numSegs)
+int *
+makeDefaultSegIdxArray(int numSegs)
 {
-	int *segIdx = palloc(numSegs * sizeof(int));
+	int		   *segIdx = palloc(numSegs * sizeof(int));
 
 	/*
 	 * The following assumes that the default is to have segindexes
 	 * numbered sequentially starting at 0.
 	 */
-	int i;
-	for ( i=0; i<numSegs; i++ )
+	int			i;
+
+	for (i = 0; i < numSegs; i++)
 		segIdx[i] = i;
-		
-	return segIdx;	
+
+	return segIdx;
 }
 
 /* --------------------------------------------------------------------
  *
- *  Static Helper routines
+ *	Static Helper routines
  * --------------------------------------------------------------------
  */
 
@@ -983,64 +1015,65 @@ int *makeDefaultSegIdxArray(int numSegs)
  * make_motion
  * --------------------------------------------------------------------
  */
-void validateMotionNodeParms(MotionType motionType,
-			bool sendToSecondary, bool sendSorted,
-			List *hashExpr,
-			int numOutputSegs, int *outputSegIdx,
-			int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators )
+void
+validateMotionNodeParms(MotionType motionType,
+						bool sendToSecondary, bool sendSorted,
+						List *hashExpr,
+						int numOutputSegs, int *outputSegIdx,
+				 int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators)
 {
 	/*
-	 *  Perform validation based on motionType.
+	 *	Perform validation based on motionType.
 	 */
-	switch( motionType )
+	switch (motionType)
 	{
 		case MOTIONTYPE_HASH:
-	
-		/*
-		 *  A Hash motion node must have hash expr info specified.
-		 */
-			if ( hashExpr == NIL )
+
+			/*
+			 *	A Hash motion node must have hash expr info specified.
+			 */
+			if (hashExpr == NIL)
 				elog(ERROR, "motion type 'hash' node must have non-NULL hashExpr");
-				
-		/*
-		 *  A Hash motion node shouldn't have FixedMotionDefn specified.
-		 */
+
+			/*
+			 *	A Hash motion node shouldn't have FixedMotionDefn specified.
+			 */
 			Assert(numOutputSegs == 0 && outputSegIdx == NULL);
-			break;	
-	
+			break;
+
 		case MOTIONTYPE_FIXED:
 
-		/*
-		 *  An Fixed motion node must have output Segs info specified.
-		 */
-			if ( numOutputSegs < 0 ||
-				(numOutputSegs == 0 && outputSegIdx != NULL ) ||
-				(numOutputSegs > 0 && outputSegIdx == NULL ) )
+			/*
+			 *	An Fixed motion node must have output Segs info specified.
+			 */
+			if (numOutputSegs < 0 ||
+				(numOutputSegs == 0 && outputSegIdx != NULL) ||
+				(numOutputSegs > 0 && outputSegIdx == NULL))
 				elog(ERROR, "motion type 'fixed' node must have numOutputSegs > 0 and non-NULL outputSegIdx"
-							" or numOutputSegs == 0 and NULL outputSegIdx");
+					 " or numOutputSegs == 0 and NULL outputSegIdx");
 
-		/*
-		 *  A Fixed motion node shouldn't have HashMotionDefn specified.
-		 */
-			Assert( hashExpr == NIL);
-				
-			break;	
-			
+			/*
+			 *	A Fixed motion node shouldn't have HashMotionDefn specified.
+			 */
+			Assert(hashExpr == NIL);
+
+			break;
+
 		default:
-		/*
-		 *  Invalid motion node type.
-		 */
-			Assert( true );
+			/*
+			 *	Invalid motion node type.
+			 */
+			Assert(true);
 			break;
 	}
-	
+
 	/*
-	 *  Perform validation based on sendSorted flag
+	 *	Perform validation based on sendSorted flag
 	 */
-	if ( sendSorted )
+	if (sendSorted)
 	{
 		/*
-		 *  A sorted motion node must have sort Cols specified
+		 *	A sorted motion node must have sort Cols specified
 		 */
 		if (numSortCols == 0 || sortColIdx == NULL || sortOperators == NULL)
 			elog(ERROR, "sorted motion node must have numSortCols > 0 and non-NULL sortColIdx and sortOperators");
@@ -1048,30 +1081,32 @@ void validateMotionNodeParms(MotionType motionType,
 	else
 	{
 		/*
-		 *  A non-sorted motion node should not have SortMotionDefn specified
+		 *	A non-sorted motion node should not have SortMotionDefn specified
 		 */
 		Assert(numSortCols == 0 && sortColIdx == NULL && sortOperators == NULL);
 	}
-}			
+}
 
 /* --------------------------------------------------------------------
  * motion_expr_walker -- replaces occurrences of INNER with OUTER
  * for Var's varno in hashexpr for motion nodes.
  * This came about because the join nodes args for the right subtree were
- * changed by setrefs to be INNER.  We grabbed them after that change.
+ * changed by setrefs to be INNER.	We grabbed them after that change.
  * But the motion node has no inner subtree, just an outer.
  * --------------------------------------------------------------------
  */
-bool motion_expr_walker(Node *node, char *not_used)
+bool
+motion_expr_walker(Node *node, char *not_used)
 {
 	if (node == NULL)
 		return false;
-	
-	// check for nodes that special work is required for, eg:
+
+	/* check for nodes that special work is required for, eg: */
 	if (IsA(node, Var))
 	{
-		Var* var = (Var *)node;
-		switch( var->varno )
+		Var		   *var = (Var *) node;
+
+		switch (var->varno)
 		{
 			case INNER:
 				var->varno = OUTER;
@@ -1081,14 +1116,14 @@ bool motion_expr_walker(Node *node, char *not_used)
 				var->varno = OUTER;
 				break;
 		}
-		
+
 		return false;
 	}
 	else
 	{
 		return expression_tree_walker(node, motion_expr_walker, (void *) not_used);
 	}
-	
+
 }
 
 /* ----------------------------------------------------------------
@@ -1104,29 +1139,34 @@ bool motion_expr_walker(Node *node, char *not_used)
  * The entries have the varno field replaced by references in OUTER.
  * ----------------------------------------------------------------
  */
-List *getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
+List *
+getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
 {
-	int		i;
-	List	*elist = NIL;
-	Index varno = OUTER; /* Generated Var nodes must refer to OUTER */
-	
-	for (i=0; i<numCols; i++ )
+	int			i;
+	List	   *elist = NIL;
+	Index		varno = OUTER;	/* Generated Var nodes must refer to OUTER */
+
+	for (i = 0; i < numCols; i++)
 	{
-		Var *new_var;
+		Var		   *new_var;
 
 		/* Find expr in TargetList */
-		AttrNumber n = colIdx[i];
+		AttrNumber	n = colIdx[i];
 
-		TargetEntry* target = get_tle_by_resno( tlist, n );
-		if ( target == NULL )
-			elog( ERROR, "no tlist entry for key %d", n );
+		TargetEntry *target = get_tle_by_resno(tlist, n);
 
-		/* Make a Var that references the target list entry at this offset, using OUTER as the varno */
+		if (target == NULL)
+			elog(ERROR, "no tlist entry for key %d", n);
+
+		/*
+		 * Make a Var that references the target list entry at this offset,
+		 * using OUTER as the varno
+		 */
 		new_var = makeVar(varno, n, target->resdom->restype, target->resdom->restypmod, 0);
-			
+
 		elist = lappend(elist, new_var);
 	}
-	
+
 	return elist;
 }
 
@@ -1144,31 +1184,33 @@ List *getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
  *
  * ----------------------------------------------------------------
  */
-List *getOpListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
+List *
+getOpListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
 {
 	int			i;
-	List		*oplist = NIL;
+	List	   *oplist = NIL;
 	Operator	eq_operator;
 	Oid			typeoid;
-	
-	for (i=0; i<numCols; i++ )
-	{
-		// Find expr in TargetList
-		AttrNumber n = colIdx[i];
 
-		TargetEntry* target = get_tle_by_resno( tlist, n );
-		if ( target == NULL )
-			elog( ERROR, "no tlist entry for key %d", n );
-			
+	for (i = 0; i < numCols; i++)
+	{
+		/* Find expr in TargetList */
+		AttrNumber	n = colIdx[i];
+
+		TargetEntry *target = get_tle_by_resno(tlist, n);
+
+		if (target == NULL)
+			elog(ERROR, "no tlist entry for key %d", n);
+
 		typeoid = target->resdom->restype;
 		eq_operator = compatible_oper(list_make1(makeString("=")), typeoid, typeoid, true);
 		oplist = lappend_oid(oplist, oprid(eq_operator));
 		ReleaseSysCache(eq_operator);
 	}
-	
+
 	return oplist;
 }
-#endif /*UNUSED*/
+#endif   /* UNUSED */
 
 #ifdef UNUSED
 /* ----------------------------------------------------------------
@@ -1179,49 +1221,52 @@ List *getOpListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
  *
  * ----------------------------------------------------------------
  */
- List * makeMotionTargetList(Plan *arg)
- {
+List *
+makeMotionTargetList(Plan *arg)
+{
 	TargetEntry *tle;
-	Resdom *new_resdom, *resdom;
-	Var *new_var;
-	ListCell *cell;
-	
-	int attno = 0;
-	List *new_tlist = NIL;
-	
-	foreach ( cell, arg->targetlist )
+	Resdom	   *new_resdom,
+			   *resdom;
+	Var		   *new_var;
+	ListCell   *cell;
+
+	int			attno = 0;
+	List	   *new_tlist = NIL;
+
+	foreach(cell, arg->targetlist)
 	{
-		tle = (TargetEntry*)lfirst(cell);
+		tle = (TargetEntry *) lfirst(cell);
 		resdom = tle->resdom;
 		attno++;
-		
-		Assert( attno == tle->resdom->resno );
-		
+
+		Assert(attno == tle->resdom->resno);
+
 		new_resdom = makeResdom(
-			tle->resdom->resno,
-			tle->resdom->restype,
-			tle->resdom->restypmod,
-			tle->resdom->resname? pstrdup(tle->resdom->resname): (char *) NULL,
-			tle->resdom->resjunk
-		);
-			
+								tle->resdom->resno,
+								tle->resdom->restype,
+								tle->resdom->restypmod,
+		tle->resdom->resname ? pstrdup(tle->resdom->resname) : (char *) NULL,
+								tle->resdom->resjunk
+			);
+
 		new_var = makeVar(
-			0, attno,
-			new_resdom->restype, new_resdom->restypmod, 0
-		);		
-		
-		new_tlist = lappend(new_tlist, makeTargetEntry(resdom, (Expr*)new_var));
+						  0, attno,
+						  new_resdom->restype, new_resdom->restypmod, 0
+			);
+
+		new_tlist = lappend(new_tlist, makeTargetEntry(resdom, (Expr *) new_var));
 	}
 	return new_tlist;
 }
-#endif /*UNUSED*/
+#endif   /* UNUSED */
 
 /*
  * doesUpdateAffectPartitionCols:
  * This checks to see whether an update query's target list
  * shows that
  */
-bool doesUpdateAffectPartitionCols( MppPolicy *policy, List *targetlist )
+bool
+doesUpdateAffectPartitionCols(MppPolicy * policy, List *targetlist)
 {
 	/*
 	 * Want to test whether an update statement possibly changes the
@@ -1232,25 +1277,25 @@ bool doesUpdateAffectPartitionCols( MppPolicy *policy, List *targetlist )
 	 * For each partitioning column, the TargetListEntry for that varattno
 	 * should be just a Var node with the same varattno.
 	 */
-	int i;
+	int			i;
 
-	Assert( policy != NULL );
-	Assert( targetlist != NIL );
-	Assert( policy->ptype == POLICYTYPE_PARTITIONED );
-	Assert( policy->nattrs > 0 );
+	Assert(policy != NULL);
+	Assert(targetlist != NIL);
+	Assert(policy->ptype == POLICYTYPE_PARTITIONED);
+	Assert(policy->nattrs > 0);
 
-	for ( i=0; i<policy->nattrs; i++ )
+	for (i = 0; i < policy->nattrs; i++)
 	{
-		AttrNumber colno = policy->attrs[i];
-		TargetEntry *entry = get_tle_by_resno( targetlist, colno );
-        Var         *var;
+		AttrNumber	colno = policy->attrs[i];
+		TargetEntry *entry = get_tle_by_resno(targetlist, colno);
+		Var		   *var;
 
-		Assert( entry != NULL );
-		if ( nodeTag(entry->expr) != T_Var )
+		Assert(entry != NULL);
+		if (nodeTag(entry->expr) != T_Var)
 			return true;
 
-		var = (Var *)entry->expr;
-		if ( var->varattno != colno )
+		var = (Var *) entry->expr;
+		if (var->varattno != colno)
 			return true;
 	}
 
@@ -1261,56 +1306,62 @@ bool doesUpdateAffectPartitionCols( MppPolicy *policy, List *targetlist )
 /* ----------------------------------------------------------------
  * findHashAttrsInTargetList
  *
- * For each hash expression, find the first matching target list 
- * entry and store its attribute number (or 0, for no match) in the 
- * corresponding element of the given integer vector.   Note that 
+ * For each hash expression, find the first matching target list
+ * entry and store its attribute number (or 0, for no match) in the
+ * corresponding element of the given integer vector.	Note that
  * an element with value V corresponds to attribute number V+1.
  *
- * The length of the given vector must be equal to length of the 
+ * The length of the given vector must be equal to length of the
  * given list of hash expressions.
  *
- * Return true, if all hash expressions appear as attributes in 
+ * Return true, if all hash expressions appear as attributes in
  * the target list; else return false.
  * ----------------------------------------------------------------
  */
-bool findHashAttrsInTargetList(List* targetlist, List* hashExprs, AttrNumber* attrs)
+bool
+findHashAttrsInTargetList(List *targetlist, List *hashExprs, AttrNumber *attrs)
 {
-	int ntles;
-	int nattrs;
-	Node** map;
-	ListCell *cell;
-	int i,j;
-	bool miss;
-	
+	int			ntles;
+	int			nattrs;
+	Node	  **map;
+	ListCell   *cell;
+	int			i,
+				j;
+	bool		miss;
+
 	nattrs = list_length(hashExprs);
-	if ( nattrs == 0 )
+	if (nattrs == 0)
 		return TRUE;
-	
-	/* Make a map of pointers to the expressions in the input target list
-	 * in attribute number order (usually but not necessarily target entry
-	 * order).  Note that map index 0 corresponds to attribute number 1. */	
+
+	/*
+	 * Make a map of pointers to the expressions in the input target list in
+	 * attribute number order (usually but not necessarily target entry
+	 * order).	Note that map index 0 corresponds to attribute number 1.
+	 */
 	ntles = list_length(targetlist);
-	map = (Node**)palloc0(ntles * sizeof(Node*));
-	foreach ( cell, targetlist )
+	map = (Node **) palloc0(ntles * sizeof(Node *));
+	foreach(cell, targetlist)
 	{
-		TargetEntry* tle = (TargetEntry*)lfirst(cell);
+		TargetEntry *tle = (TargetEntry *) lfirst(cell);
+
 		j = tle->resdom->resno - 1;
-		Assert( 0 <= j && j < ntles && map[j] == NULL );
-		map[j] = (Node*)tle->expr;
+		Assert(0 <= j && j < ntles && map[j] == NULL);
+		map[j] = (Node *) tle->expr;
 	}
-	
+
 	/* Record 1st occurance of each hash expr in the target list. */
 	miss = FALSE;
 	i = 0;
-	foreach ( cell, hashExprs )
+	foreach(cell, hashExprs)
 	{
-		Node* hexpr = (Node*)lfirst(cell);
-		for ( j = 0; j < ntles; j++ )
+		Node	   *hexpr = (Node *) lfirst(cell);
+
+		for (j = 0; j < ntles; j++)
 		{
-			if ( equal(map[j], hexpr) )
+			if (equal(map[j], hexpr))
 				break;
 		}
-		if ( j < ntles )
+		if (j < ntles)
 		{
 			attrs[i] = 1 + j;
 		}
@@ -1322,7 +1373,7 @@ bool findHashAttrsInTargetList(List* targetlist, List* hashExprs, AttrNumber* at
 		i++;
 	}
 	pfree(map);
-	
+
 	return !miss;
 }
 
@@ -1335,7 +1386,7 @@ bool findHashAttrsInTargetList(List* targetlist, List* hashExprs, AttrNumber* at
  * characterize the partitioning of the SubqueryScan in terms of the
  * attributes of the argument relation.
  *
- * This could be NIL, if the argument partitioning is "anonymous" 
+ * This could be NIL, if the argument partitioning is "anonymous"
  * or the argument relation does not contain attributes corresonding
  * to all of its partitioning criteria.  In this case, the SubqueryScan
  * will have anonymous partitioning.
@@ -1345,50 +1396,56 @@ bool findHashAttrsInTargetList(List* targetlist, List* hashExprs, AttrNumber* at
  * hash expressions (the given hashExprs).
  * ------------------------------------------------------------------------
  */
-List* getExprListForSubqueryScan(List* targetlist, List* hashExprs)
+List *
+getExprListForSubqueryScan(List *targetlist, List *hashExprs)
 {
-	int ntles;
-	int nattrs;
-	TargetEntry** map, *tle;
-	ListCell *cell;
-	int i;
-	List *resultExprs = NIL;
-	Index varno = 0; /* used to be OUTER */
-	
+	int			ntles;
+	int			nattrs;
+	TargetEntry **map,
+			   *tle;
+	ListCell   *cell;
+	int			i;
+	List	   *resultExprs = NIL;
+	Index		varno = 0;		/* used to be OUTER */
+
 	nattrs = list_length(hashExprs);
-	if ( nattrs == 0 )
+	if (nattrs == 0)
 		return NIL;
-	
-	/* Make a map taking attribute numbers (minus 1) to pointers to the 
-	 * target entries in the input target list.  Note that attribute 
-	 * number order is usually, but not necessarily, target entry
-	 * order.  Note that map index 0 corresponds to attribute number 1. 
-	 */	
+
+	/*
+	 * Make a map taking attribute numbers (minus 1) to pointers to the target
+	 * entries in the input target list.  Note that attribute number order is
+	 * usually, but not necessarily, target entry order.  Note that map index
+	 * 0 corresponds to attribute number 1.
+	 */
 	ntles = list_length(targetlist);
-	map = (TargetEntry**)palloc0(ntles * sizeof(TargetEntry*));
-	foreach ( cell, targetlist )
+	map = (TargetEntry **) palloc0(ntles * sizeof(TargetEntry *));
+	foreach(cell, targetlist)
 	{
-		tle = (TargetEntry*)lfirst(cell);
+		tle = (TargetEntry *) lfirst(cell);
 		i = tle->resdom->resno - 1;
-		Assert( 0 <= i && i < ntles && map[i] == NULL );
+		Assert(0 <= i && i < ntles && map[i] == NULL);
 		map[i] = tle;
 	}
-	
-	/* Generate a Var referencing the target entry corresponding to the 1st 
-	 * occurance of each hash expr in the target list. 
+
+	/*
+	 * Generate a Var referencing the target entry corresponding to the 1st
+	 * occurance of each hash expr in the target list.
 	 */
-	foreach ( cell, hashExprs )
+	foreach(cell, hashExprs)
 	{
-		Node* hexpr = (Node*)lfirst(cell);
-		for ( i = 0; i < ntles; i++ )
+		Node	   *hexpr = (Node *) lfirst(cell);
+
+		for (i = 0; i < ntles; i++)
 		{
-			if ( equal(map[i]->expr, hexpr) )
+			if (equal(map[i]->expr, hexpr))
 				break;
 		}
-		if ( i < ntles )
+		if (i < ntles)
 		{
 			tle = map[i];
-			Var *var = makeVar(varno, 1+i, tle->resdom->restype, tle->resdom->restypmod, 0);
+			Var		   *var = makeVar(varno, 1 + i, tle->resdom->restype, tle->resdom->restypmod, 0);
+
 			resultExprs = lappend(resultExprs, var);
 		}
 		else
@@ -1399,13 +1456,13 @@ List* getExprListForSubqueryScan(List* targetlist, List* hashExprs)
 		}
 	}
 	pfree(map);
-	
+
 	return resultExprs;
 }
 
 /* ----------------------------------------------------------------------- *
  * Functions hasCtid(), hasCtid_outside_tlist() and helper function
- * ctid_inventory_walker() search a plan tree for a use of the CTID 
+ * ctid_inventory_walker() search a plan tree for a use of the CTID
  * pseudo-attribute.
  *
  * hasCtid() detects a CTID reference anywhere in the plan
@@ -1418,94 +1475,95 @@ List* getExprListForSubqueryScan(List* targetlist, List* hashExprs)
  */
 #define CTID_ATTRNO -1
 
-typedef struct ctid_inv_data 
+typedef struct ctid_inv_data
 {
-	int nctid;
-	bool exit_early;
-} ctid_inv_data;
+	int			nctid;
+	bool		exit_early;
+}	ctid_inv_data;
 
-static bool ctid_inventory_walker(Node *node, ctid_inv_data *inv);
+static bool ctid_inventory_walker(Node *node, ctid_inv_data * inv);
 
 bool
 hasCtid(Plan *plan)
 {
-	bool r;
+	bool		r;
 	ctid_inv_data invdata;
-	
+
 	invdata.nctid = 0;
-	invdata.exit_early = TRUE; /* Find one and you're done. */
-	
-	r = ctid_inventory_walker((Node*)plan, &invdata);
-	
-	if ( invdata.nctid > 0 )
+	invdata.exit_early = TRUE;	/* Find one and you're done. */
+
+	r = ctid_inventory_walker((Node *) plan, &invdata);
+
+	if (invdata.nctid > 0)
 	{
 		return TRUE;
 	}
-	else if ( r == TRUE )
+	else if (r == TRUE)
 	{
 		ereport(ERROR, (
-			errcode(ERRCODE_CDB_INTERNAL_ERROR),
-			errmsg("unexpected error in plan")
-		));	
+						errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						errmsg("unexpected error in plan")
+						));
 	}
-	
-	return FALSE;	
+
+	return FALSE;
 }
 
 bool
 hasCtid_outside_tlist(Plan *plan)
 {
-	ListCell *cell;
+	ListCell   *cell;
 	TargetEntry *tle;
 	ctid_inv_data invdata;
-	int n_in_tlist = 0;
-	
+	int			n_in_tlist = 0;
+
 	invdata.nctid = 0;
 	invdata.exit_early = FALSE; /* Count them all. */
-	
-	if ( ctid_inventory_walker((Node*)plan, &invdata) )
+
+	if (ctid_inventory_walker((Node *) plan, &invdata))
 	{
 		ereport(ERROR, (
-			errcode(ERRCODE_CDB_INTERNAL_ERROR),
-			errmsg("unexpected error in plan")
-		));	
+						errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						errmsg("unexpected error in plan")
+						));
 	}
-	
-	foreach( cell, plan->targetlist )
+
+	foreach(cell, plan->targetlist)
 	{
-		tle = (TargetEntry*)lfirst(cell);
-		if ( IsA(tle->expr, Var) && ((Var*)(tle->expr))->varattno == CTID_ATTRNO )
+		tle = (TargetEntry *) lfirst(cell);
+		if (IsA(tle->expr, Var) &&((Var *) (tle->expr))->varattno == CTID_ATTRNO)
 		{
 			n_in_tlist++;
 		}
 	}
-	
-	return (invdata.nctid > n_in_tlist);	
+
+	return (invdata.nctid > n_in_tlist);
 }
 
 bool
-ctid_inventory_walker(Node *node, ctid_inv_data *inv)
-{	
-	if ( node == NULL )
+ctid_inventory_walker(Node *node, ctid_inv_data * inv)
+{
+	if (node == NULL)
 		return false;
-	
+
 	switch (nodeTag(node))
 	{
 		case T_Var:
 
 			/* Process the Var node. */
-			if ( ((Var*)node)->varattno == CTID_ATTRNO )
+			if (((Var *) node)->varattno == CTID_ATTRNO)
 			{
 				(inv->nctid)++;
-				if ( inv->exit_early )
+				if (inv->exit_early)
 				{
-					return true; /* This is all we care about so early exit is ok. */
+					return true;/* This is all we care about so early exit is
+								 * ok. */
 				}
 			}
-			
+
 			/* Var is primitive, no need to recur, but keep walking. */
 			return false;
-			
+
 		default:
 			/* Let plan_tree_walker() deal with other node types. */
 			break;

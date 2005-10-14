@@ -1,12 +1,12 @@
 /*-------------------------------------------------------------------------
  *
  * htupfifo.c
- *     A FIFO queue for HeapTuples.
+ *	   A FIFO queue for HeapTuples.
  *
  * Copyright (c) 2005, Greenplum
  *
  * IDENTIFICATION
- *     $Id$
+ *	   $Id$
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
@@ -15,7 +15,7 @@
 #include "cdb/htupfifo.h"
 
 
-/* Create and initialize a HeapTuple FIFO.  The FIFO state is allocated by
+/* Create and initialize a HeapTuple FIFO.	The FIFO state is allocated by
  * this function, then initialized and returned.
  *
  * The HeapTuple FIFO must be given at least MIN_HTUPFIFO_KB bytes of space
@@ -23,16 +23,17 @@
  *
  * Parameters:
  *
- *     max_mem_kb - The maximum memory size the FIFO can grow to, in
- *         kilobytes.  If the FIFO grows larger than this, an error is logged.
+ *	   max_mem_kb - The maximum memory size the FIFO can grow to, in
+ *		   kilobytes.  If the FIFO grows larger than this, an error is logged.
  */
-htup_fifo htfifo_create(int max_mem_kb)
+htup_fifo
+htfifo_create(int max_mem_kb)
 {
-	htup_fifo htf;
-	
+	htup_fifo	htf;
+
 	htf = (htup_fifo) palloc(sizeof(htup_fifo_state));
 	htfifo_init(htf, max_mem_kb);
-	
+
 	return htf;
 }
 
@@ -46,12 +47,13 @@ htup_fifo htfifo_create(int max_mem_kb)
  *
  * Parameters:
  *
- *     htf - An uninitialized pointer to a htup_fifo_state structure.
+ *	   htf - An uninitialized pointer to a htup_fifo_state structure.
  *
- *     max_mem_kb - The maximum memory size the FIFO can grow to, in
- *         kilobytes.  If the FIFO grows larger than this, an error is logged.
+ *	   max_mem_kb - The maximum memory size the FIFO can grow to, in
+ *		   kilobytes.  If the FIFO grows larger than this, an error is logged.
  */
-void htfifo_init(htup_fifo htf, int max_mem_kb)
+void
+htfifo_init(htup_fifo htf, int max_mem_kb)
 {
 	AssertArg(htf != NULL);
 	AssertArg(max_mem_kb > MIN_HTUPFIFO_KB);
@@ -67,16 +69,17 @@ void htfifo_init(htup_fifo htf, int max_mem_kb)
 /* Clean up a HeapTuple FIFO.  This frees all dynamically-allocated contents
  * of the FIFO, but not the FIFO state itself.
  */
-void htfifo_cleanup(htup_fifo htf)
+void
+htfifo_cleanup(htup_fifo htf)
 {
-	HeapTuple htup;
-	
+	HeapTuple	htup;
+
 	AssertArg(htf != NULL);
 
 	/* TODO:  This can be faster if we didn't reuse code, but this will work. */
 	while ((htup = htfifo_gettuple(htf)) != NULL)
 		heap_freetuple(htup);
-	
+
 	htf->p_first = NULL;
 	htf->p_last = NULL;
 	htf->tup_count = 0;
@@ -85,10 +88,11 @@ void htfifo_cleanup(htup_fifo htf)
 }
 
 
-/* Clean up and free a HeapTuple FIFO.  This frees both the dynamically-
+/* Clean up and free a HeapTuple FIFO.	This frees both the dynamically-
  * allocated contents of the FIFO, and the FIFO's state.
  */
-void htfifo_destroy(htup_fifo htf)
+void
+htfifo_destroy(htup_fifo htf)
 {
 	AssertArg(htf != NULL);
 
@@ -104,10 +108,11 @@ void htfifo_destroy(htup_fifo htf)
  * If the current memory usage of the FIFO exceeds the maximum specified at
  * init-time, then an error is flagged.
  */
-void htfifo_addtuple(htup_fifo htf, HeapTuple htup)
+void
+htfifo_addtuple(htup_fifo htf, HeapTuple htup)
 {
-	htf_entry p_ent;
-	
+	htf_entry	p_ent;
+
 	AssertArg(htf != NULL);
 	AssertArg(htup != NULL);
 
@@ -115,25 +120,26 @@ void htfifo_addtuple(htup_fifo htf, HeapTuple htup)
 	p_ent = (htf_entry) palloc(sizeof(htf_entry_data));
 	p_ent->htup = htup;
 	p_ent->p_next = NULL;
-	
+
 	/* Put the new entry at the end of the FIFO. */
 	if (htf->p_last != NULL)
 	{
 		AssertState(htf->p_first != NULL);
 		htf->p_last->p_next = p_ent;
 	}
-	else /* htf->p_last == NULL */
+	else
+		/* htf->p_last == NULL */
 	{
 		AssertState(htf->p_first == NULL);
 		htf->p_first = p_ent;
 	}
 	htf->p_last = p_ent;
-	
+
 	/* Update the FIFO state. */
-	
+
 	htf->tup_count++;
 	htf->curr_mem_size += GetMemoryChunkSpace(p_ent) + GetMemoryChunkSpace(htup);
-	
+
 /* TODO:  This code is commented out because WE HAVE NO FLOW-CONTROL.
 		  Once we have flow-control, a FIFO shouldn't ever pop.  But now,
 		  FIFOs can easily pop if we enforce this limit.  So, without the
@@ -150,56 +156,58 @@ void htfifo_addtuple(htup_fifo htf, HeapTuple htup)
 }
 
 
-/* Retrieve the next HeapTuple from the start of the FIFO.  If the FIFO is
+/* Retrieve the next HeapTuple from the start of the FIFO.	If the FIFO is
  * empty then NULL is returned.
  */
-HeapTuple htfifo_gettuple(htup_fifo htf)
+HeapTuple
+htfifo_gettuple(htup_fifo htf)
 {
-	htf_entry p_ent;
-	HeapTuple htup;
-	
+	htf_entry	p_ent;
+	HeapTuple	htup;
+
 	AssertArg(htf != NULL);
 
 	/* Pull the first entry from the FIFO. */
-	
+
 	p_ent = htf->p_first;
 	if (p_ent != NULL)
 	{
 		/* Got something.  Unhook the first entry from the list. */
-		
+
 		htf->p_first = p_ent->p_next;
 		if (htf->p_first == NULL)
 			htf->p_last = NULL;
-		
+
 		p_ent->p_next = NULL;	/* Just for the sake of completeness... */
-		
+
 		htup = p_ent->htup;
 		AssertState(htup != NULL);
-		
+
 		/* Update the FIFO state. */
-		
+
 		AssertState(htf->tup_count > 0);
 		AssertState(htf->curr_mem_size > 0);
-		
+
 		htf->tup_count--;
-		htf->curr_mem_size -= 
+		htf->curr_mem_size -=
 			(GetMemoryChunkSpace(p_ent) + GetMemoryChunkSpace(htup));
-		
+
 		AssertState(htf->tup_count >= 0);
 		AssertState(htf->curr_mem_size >= 0);
-		
+
 		/* Free the FIFO entry. */
 		pfree(p_ent);
 	}
 	else
 	{
-		/* No entries in FIFO.  Just do some sanity checks, but NULL is the
+		/*
+		 * No entries in FIFO.	Just do some sanity checks, but NULL is the
 		 * result.
 		 */
 		AssertState(htf->tup_count == 0);
 		AssertState(htf->curr_mem_size == 0);
 		htup = NULL;
 	}
-	
+
 	return htup;
 }

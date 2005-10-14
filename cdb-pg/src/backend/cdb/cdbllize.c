@@ -787,8 +787,8 @@ prescan_walker(Node *node, PlanProfile *context)
 			}
 			goto return_false;
 			
-			//detail = "Query involves multiset union.";
-			//break; /* Fall through to report error. */
+			/*detail = "Query involves multiset union.";*/
+			/*break; */ /* Fall through to report error. */
 		
 		case T_Agg:
 			{

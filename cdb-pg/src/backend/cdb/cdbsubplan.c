@@ -10,7 +10,7 @@
  */
 
 #include "postgres.h"
-#include "executor/nodeSubplan.h"  /* For ExecSetParamPlan */
+#include "executor/nodeSubplan.h"		/* For ExecSetParamPlan */
 #include "cdb/cdbplan.h"
 #include "cdb/cdbllize.h"
 #include "cdb/cdbsubplan.h"
@@ -18,11 +18,11 @@
 
 typedef struct ParamWalkerContext
 {
-	List *params;
-} ParamWalkerContext;
+	List	   *params;
+}	ParamWalkerContext;
 
-static bool param_walker(Node *node, ParamWalkerContext *context);
-static Oid findParamType( List *params, int paramid );
+static bool param_walker(Node *node, ParamWalkerContext * context);
+static Oid	findParamType(List *params, int paramid);
 
 /*
  * Function preprocess_initplans() is called from ExecutorRun running a
@@ -31,9 +31,9 @@ static Oid findParamType( List *params, int paramid );
  *
  * Argument queryDesc is the one passed in to ExecutorRun.
  *
- * The function loops through the estate->es_param_exec_vals array, which 
+ * The function loops through the estate->es_param_exec_vals array, which
  * has plan->nParamExec elements.  Each element is a ParamExecData struct,
- * and the index of the element in the array is the paramid of the Param 
+ * and the index of the element in the array is the paramid of the Param
  * node in the Plan that corresponds to the result of the subquery.
  *
  * The execPlan member points to a SubPlanState struct for the
@@ -48,83 +48,87 @@ static Oid findParamType( List *params, int paramid );
  * This is a postgres function, but has been modified from its original form
  * to parallelize subplans. Inside ExecSetParamPlan, the
  * datum result(s) of the subplan are stuffed into the value field
- * of the ParamExecData struct(s).  It finds the proper one based on the 
+ * of the ParamExecData struct(s).	It finds the proper one based on the
  * setParam list in the SubPlan node.
  * In order to handle SubPlans of SubPlans, we pass in the values of the
  * estate->es_param_exec_vals as ParamListInfo structs to the ExecSetParamPlan call.
  * These are then serialized into the mppexec all as parameters.  In this manner, the
  * result of a SubPlan of a SubPlan is available.
  */
-void preprocess_initplans( QueryDesc *queryDesc )
+void
+preprocess_initplans(QueryDesc *queryDesc)
 {
-	ParamListInfo originalPli, augmentedPli;
-	int i;
-	Plan *plan = queryDesc->plantree;
-	EState *estate = queryDesc->estate;
-	int originalRoot, rootIndex;
+	ParamListInfo originalPli,
+				augmentedPli;
+	int			i;
+	Plan	   *plan = queryDesc->plantree;
+	EState	   *estate = queryDesc->estate;
+	int			originalRoot,
+				rootIndex;
 
-	if ( plan->nParamExec == 0 )
+	if (plan->nParamExec == 0)
 		return;
 
 	originalPli = queryDesc->params;
 	Assert(queryDesc->estate->es_sliceTable->localSlice == 0);
 	originalRoot = queryDesc->estate->es_cur_root_idx;
 
-	/* Loop through the estate->es_param_exec_vals.
-	 * This array has an element for each PARAM_EXEC (internal) param,
-	 * and a pointer to the SubPlanState to execute to evaluate it.
-	 * It seems that they are created in the proper order,
-	 * i.e. if a subplan x has a sublan y, then y will come before x in 
+	/*
+	 * Loop through the estate->es_param_exec_vals. This array has an element
+	 * for each PARAM_EXEC (internal) param, and a pointer to the SubPlanState
+	 * to execute to evaluate it. It seems that they are created in the proper
+	 * order, i.e. if a subplan x has a sublan y, then y will come before x in
 	 * the es_param_exec_vals array.
 	 */
-	for ( i=0; i<plan->nParamExec; i++ )
+	for (i = 0; i < plan->nParamExec; i++)
 	{
 		ParamExecData *prm;
 		SubPlanState *sps;
+
 		prm = &estate->es_param_exec_vals[i];
-		sps = (SubPlanState *)prm->execPlan;
+		sps = (SubPlanState *) prm->execPlan;
 
 		/*
-		 * Append all the es_param_exec_vals datum values on to the external 
-		 * parameter list so they can be serialized in the mppexec call to the 
+		 * Append all the es_param_exec_vals datum values on to the external
+		 * parameter list so they can be serialized in the mppexec call to the
 		 * QEs.  Do this inside the loop since later initplans may depend on
 		 * the results of earlier ones.
 		 *
 		 * TODO Some of the work of addRemoteExecParamsToParmList could be
-		 *      factored out of the loop.
+		 *		factored out of the loop.
 		 */
-		augmentedPli = addRemoteExecParamsToParamList( 
-			queryDesc->plantree, 
-			originalPli, 
-			estate->es_param_exec_vals, 
-			plan->nParamExec 
-		);
+		augmentedPli = addRemoteExecParamsToParamList(
+													  queryDesc->plantree,
+													  originalPli,
+												  estate->es_param_exec_vals,
+													  plan->nParamExec
+			);
 
-		if ( sps != NULL )
+		if (sps != NULL)
 		{
 			sps->planstate->plan->nParamExec = plan->nParamExec;
 			sps->planstate->plan->nMotionNodes = plan->nMotionNodes;
 			sps->planstate->plan->dispatch = DISPATCH_PARALLEL;
-			
-			/* 
+
+			/*
 			 * Adjust for the slice to execute on the QD.
 			 */
-			rootIndex =  1 + queryDesc->estate->es_sliceTable->nMotions + i;
+			rootIndex = 1 + queryDesc->estate->es_sliceTable->nMotions + i;
 			queryDesc->estate->es_sliceTable->localSlice = rootIndex;
-			queryDesc->estate->es_cur_root_idx = rootIndex; /* ! */
+			queryDesc->estate->es_cur_root_idx = rootIndex;		/* ! */
 
 			/*
 			 * This runs the SubPlan and puts the answer back into prm->value.
 			 */
 			queryDesc->params = augmentedPli;
-			
+
 			ExecSetParamPlan(sps, sps->planstate->ps_ExprContext, queryDesc);
 		}
 
 		queryDesc->params = originalPli;
-		queryDesc->estate->es_sliceTable->localSlice = 0; /* Original value. */
+		queryDesc->estate->es_sliceTable->localSlice = 0;		/* Original value. */
 		queryDesc->estate->es_cur_root_idx = originalRoot;
-		
+
 		pfree(augmentedPli);
 	}
 }
@@ -133,70 +137,74 @@ void preprocess_initplans( QueryDesc *queryDesc )
  * Function: addRemoteExecParamsToParamList()
  *
  * Creates a new ParamListInfo array from the existing one by appending
- * the array of ParamExecData (internal parameter) values as a new Param 
+ * the array of ParamExecData (internal parameter) values as a new Param
  * type: PARAM_EXEC_REMOTE.
  *
- * When the query eventually runs (on the QD or a QE), it will have access 
+ * When the query eventually runs (on the QD or a QE), it will have access
  * to the augmented ParamListInfo (locally or through MPPEXEC serialization).
  *
- * Then, rather than lazily-evaluating the SubPlan to get its value (as for 
- * an internal parameter), the plan will just look up the param value in the 
+ * Then, rather than lazily-evaluating the SubPlan to get its value (as for
+ * an internal parameter), the plan will just look up the param value in the
  * ParamListInfo (as for an external parameter).
  */
-ParamListInfo addRemoteExecParamsToParamList( Plan *plan, ParamListInfo extPrm, ParamExecData *intPrm, int nIntPrm )
+ParamListInfo
+addRemoteExecParamsToParamList(Plan *plan, ParamListInfo extPrm, ParamExecData *intPrm, int nIntPrm)
 {
-	ParamListInfo augPrm, q;
+	ParamListInfo augPrm,
+				q;
 	ParamWalkerContext context;
-	int i, j;
-	int nParams;
+	int			i,
+				j;
+	int			nParams;
 
-	if ( nIntPrm == 0 )
+	if (nIntPrm == 0)
 		return extPrm;
-	Assert( intPrm != NULL );  /* So there must be some internal parameters. */
+	Assert(intPrm != NULL);		/* So there must be some internal parameters. */
 
 	/* Count existing external parameters. */
 	nParams = 0;
-	if ( extPrm != NULL )
+	if (extPrm != NULL)
 	{
-		for ( q = extPrm; q->kind != PARAM_INVALID; q++ )
+		for (q = extPrm; q->kind != PARAM_INVALID; q++)
 		{
 			nParams++;
 		}
 	}
 
 	/* Allocate space for augmented array and set final sentinel. */
-	augPrm = palloc0( (nIntPrm + nParams + 1) * sizeof(ParamListInfoData) );
+	augPrm = palloc0((nIntPrm + nParams + 1) * sizeof(ParamListInfoData));
 	augPrm[nIntPrm + nParams].kind = PARAM_INVALID;
 
 	/* Copy in the existing external parameter entries. */
-	for ( i = 0; i < nParams; i++ )
+	for (i = 0; i < nParams; i++)
 	{
-		memcpy( &augPrm[i], &extPrm[i], sizeof(ParamListInfoData) );
+		memcpy(&augPrm[i], &extPrm[i], sizeof(ParamListInfoData));
 	}
 
-	/* Walk the plan, looking for Param nodes of kind PARAM_EXEC, i.e.,
+	/*
+	 * Walk the plan, looking for Param nodes of kind PARAM_EXEC, i.e.,
 	 * executor internal parameters.
-	 * 
-	 * We need these for their paramtype field, which isn't available in 
-	 * either the ParamExecData struct or the SubPlan struct. 
-	 */
-	
-	memset( &context, 0, sizeof(context) );
-	param_walker((Node*)plan, &context);
-
-	/* TODO Revisit this error condition!  The error replaces an
-	 * assertion that was tripping on, e.g., 
-	 *   select * from generate_series(0,(select count(*) from sale));
 	 *
-	 * This appears to be a case of an initplan with no corresponding
-	 * parameter, but needs more analysis.  In the meantime, plug
-	 * with an internal error.
+	 * We need these for their paramtype field, which isn't available in either
+	 * the ParamExecData struct or the SubPlan struct.
 	 */
-	if( context.params == NIL )
+
+	memset(&context, 0, sizeof(context));
+	param_walker((Node *) plan, &context);
+
+	/*
+	 * TODO Revisit this error condition!  The error replaces an assertion
+	 * that was tripping on, e.g., select * from generate_series(0,(select
+	 * count(*) from sale));
+	 *
+	 * This appears to be a case of an initplan with no corresponding parameter,
+	 * but needs more analysis.  In the meantime, plug with an internal error.
+	 */
+	if (context.params == NIL)
 	{
-		ereport( ERROR,
-			(errcode( ERRCODE_CDB_INTERNAL_ERROR ),
-			errmsg("Subquery datatype information unavailable.")));
+		ereport(ERROR,
+				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
+				 errmsg("Subquery datatype information unavailable.")));
 	}
 
 	/*
@@ -204,19 +212,19 @@ ParamListInfo addRemoteExecParamsToParamList( Plan *plan, ParamListInfo extPrm, 
 	 * initplans we're "parameterizing".  Use the datatype info harvested
 	 * above.
 	 */
-	for ( i=0; i<nIntPrm; i++ )
+	for (i = 0; i < nIntPrm; i++)
 	{
 		j = nParams + i;
-		
-		augPrm[j].kind	= PARAM_EXEC_REMOTE;
-		augPrm[j].name	= NULL;
+
+		augPrm[j].kind = PARAM_EXEC_REMOTE;
+		augPrm[j].name = NULL;
 		augPrm[j].id = i;
 		augPrm[j].ptype = findParamType(context.params, i);
 		augPrm[j].isnull = intPrm[i].isnull;
 		augPrm[j].value = intPrm[i].value;
 	}
 
-	list_free( context.params );
+	list_free(context.params);
 
 	return augPrm;
 }
@@ -225,20 +233,22 @@ ParamListInfo addRemoteExecParamsToParamList( Plan *plan, ParamListInfo extPrm, 
  * Helper function param_walker() walks a plan and adds any Param nodes
  * to a list in the ParamWalkerContext.
  *
- * This list is input to the function findParamType(), which loops over the 
+ * This list is input to the function findParamType(), which loops over the
  * list looking for a specific paramid, and returns its type.
  */
-bool param_walker(Node *node, ParamWalkerContext *context)
-{	
-	if ( node == NULL )
+bool
+param_walker(Node *node, ParamWalkerContext * context)
+{
+	if (node == NULL)
 		return false;
 
-	if ( nodeTag(node) == T_Param )
+	if (nodeTag(node) == T_Param)
 	{
-		Param *param = (Param *)node;
-		if ( param->paramkind == PARAM_EXEC )
+		Param	   *param = (Param *) node;
+
+		if (param->paramkind == PARAM_EXEC)
 		{
-			context->params = lappend( context->params, param );
+			context->params = lappend(context->params, param);
 			return false;
 		}
 	}
@@ -247,27 +257,28 @@ bool param_walker(Node *node, ParamWalkerContext *context)
 }
 
 /*
- * Helper function findParamType() iterates over a list of Param nodes, 
- * trying to match on the passed-in paramid. Returns the paramtype of a 
+ * Helper function findParamType() iterates over a list of Param nodes,
+ * trying to match on the passed-in paramid. Returns the paramtype of a
  * match, else error.
  */
-Oid findParamType( List *params, int paramid )
+Oid
+findParamType(List *params, int paramid)
 {
-	ListCell *l;
+	ListCell   *l;
 
 	foreach(l, params)
 	{
-		Param *p = lfirst(l);
+		Param	   *p = lfirst(l);
 
-		if ( p->paramid == paramid )
+		if (p->paramid == paramid)
 			return p->paramtype;
 	}
 
-	ereport( ERROR,
-				(errcode( ERRCODE_CDB_INTERNAL_ERROR ),
-				errmsg("Failed to locate datatype for paramid %d",
-				paramid
-			)));
+	ereport(ERROR,
+			(errcode(ERRCODE_CDB_INTERNAL_ERROR),
+			 errmsg("Failed to locate datatype for paramid %d",
+					paramid
+					)));
 
 	return InvalidOid;
 }

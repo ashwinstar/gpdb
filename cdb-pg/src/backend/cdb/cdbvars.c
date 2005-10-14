@@ -24,113 +24,120 @@
 #include "lib/stringinfo.h"
 #include "libpq/libpq-be.h"
 #include "utils/memutils.h"
- 
+
 /*
  * ----------------
- * 		GUC/global variables
+ *		GUC/global variables
  *
- * 	Initial values are set by guc.c function "InitializeGUCOptions" called
- * 	*very* early during postmaster, postgres, or bootstrap initialization.
+ *	Initial values are set by guc.c function "InitializeGUCOptions" called
+ *	*very* early during postmaster, postgres, or bootstrap initialization.
  * ----------------
  */
- 
- 
- 
-MppRoleValue		Mpp_role;			/* Role paid by this MPP backend */
-char			   *mpp_role_string;	/* Staging area for guc.c */
-char            *mpp_fault_action_string; /* Staging area for guc.c */
-bool             mpp_set_read_only; /* Staging area for guc.c */
-
-MppRoleValue		Mpp_session_role;	/* Role paid by this MPP backend */
-char			   *mpp_session_role_string; /* Staging area for guc.c */
-
-bool				Mpp_is_primary;		/* Is this session primary (or mirror) */
-
-bool				Debug_print_prelim_plan; /* Shall we log argument of cdbparallelize? */
-
-bool				Debug_print_slice_table; /* Shall we log the slice table? */
-
-int					mpp_connections_per_thread;	/* How many libpq connections are handled in each thread */
 
 
-int					Mpp_segment = UNDEF_SEGMENT;		/* What content this QE is handling. */
 
-bool				enable_agg_restruct;
+MppRoleValue Mpp_role;			/* Role paid by this MPP backend */
+char	   *mpp_role_string;	/* Staging area for guc.c */
+char	   *mpp_fault_action_string;	/* Staging area for guc.c */
+bool		mpp_set_read_only;	/* Staging area for guc.c */
 
-int					Mpp_listener_port;
+MppRoleValue Mpp_session_role;	/* Role paid by this MPP backend */
+char	   *mpp_session_role_string;	/* Staging area for guc.c */
 
-int					Mpp_max_packet_size;  /* max Interconnect packet size */
+bool		Mpp_is_primary;		/* Is this session primary (or mirror) */
 
-int interconnect_setup_timeout;
+bool		Debug_print_prelim_plan;	/* Shall we log argument of
+										 * cdbparallelize? */
 
-int currentSliceId = UNSET_SLICE_ID;  /*used by elog to show the current slice the process is executing. */
+bool		Debug_print_slice_table;	/* Shall we log the slice table? */
 
-/* 
+int			mpp_connections_per_thread; /* How many libpq connections are
+										 * handled in each thread */
+
+
+int			Mpp_segment = UNDEF_SEGMENT;		/* What content this QE is
+												 * handling. */
+
+bool		enable_agg_restruct;
+
+int			Mpp_listener_port;
+
+int			Mpp_max_packet_size;	/* max Interconnect packet size */
+
+int			interconnect_setup_timeout;
+
+int			currentSliceId = UNSET_SLICE_ID;	/* used by elog to show the
+												 * current slice the process
+												 * is executing. */
+
+/*
  * The single row from mpp.mpp for this database is held in this variable,
  * which is initialized in cdbutil.c in the function
- * getMppMpp(), which is called from cdblink_setup() 
+ * getMppMpp(), which is called from cdblink_setup()
  * for both dispatch and execute modes.
  *
  * Any code needing the  "numsegments"
  * can simply #include cdbvars.h, and use MppIdentity.numsegments
  */
-MppMpp				MppIdentity = {NULL, 0, -1, -999};  
+MppMpp		MppIdentity = {NULL, 0, -1, -999};
 
 /*
  * Local macro to provide string values of numeric defines.
  */
 #define CppNumericAsString(s) CppAsString(s)
 
-/* 
+/*
  *	Forward declarations of local function.
  */
-MppRoleValue string_to_role( const char *string );
-const char * role_to_string( MppRoleValue role );
+MppRoleValue string_to_role(const char *string);
+const char *role_to_string(MppRoleValue role);
 
 
 /*
- * Convert a MPP role string (as for mpp_session_role or mpp_role) to an 
- * enum value of type MppRoleValue. Return MPP_ROLE_UNDEFINED in case the 
+ * Convert a MPP role string (as for mpp_session_role or mpp_role) to an
+ * enum value of type MppRoleValue. Return MPP_ROLE_UNDEFINED in case the
  * string is unrecognized.
  */
-MppRoleValue string_to_role( const char *string )
+MppRoleValue
+string_to_role(const char *string)
 {
 	MppRoleValue role = MPP_ROLE_UNDEFINED;
-	
-	if ( strcasecmp( string, "dispatch" ) == 0 || strcasecmp( string, "" ) == 0 )
-    {
-        role = MPP_ROLE_DISPATCH;
-    }
-	else if ( strcasecmp( string, "execute" ) == 0 )
-    {
-        role = MPP_ROLE_EXECUTE;
-    }
-    else if ( strcasecmp( string, "utility" ) == 0 )
-    {
-        role = MPP_ROLE_UTILITY;
-    }
-	
+
+	if (strcasecmp(string, "dispatch") == 0 || strcasecmp(string, "") == 0)
+	{
+		role = MPP_ROLE_DISPATCH;
+	}
+	else if (strcasecmp(string, "execute") == 0)
+	{
+		role = MPP_ROLE_EXECUTE;
+	}
+	else if (strcasecmp(string, "utility") == 0)
+	{
+		role = MPP_ROLE_UTILITY;
+	}
+
 	return role;
 }
 
-/* 
- * Convert a MppRoleValue to a role string (as for mpp_session_role or 
+/*
+ * Convert a MppRoleValue to a role string (as for mpp_session_role or
  * mpp_role).  Return eyecatcher in the unexpected event that the value
  * is unknown or undefined.
  */
-const char * role_to_string( MppRoleValue role )
+const char *
+role_to_string(MppRoleValue role)
 {
-	switch ( role )
+	switch (role)
 	{
-	case MPP_ROLE_DISPATCH:
-		return "dispatch";
-	case MPP_ROLE_EXECUTE:
-		return "execute";
-	case MPP_ROLE_UTILITY:
-		return "utility";
-	case MPP_ROLE_UNDEFINED:
-	default:
-		return "*undefined*";
+		case MPP_ROLE_DISPATCH:
+			return "dispatch";
+		case MPP_ROLE_EXECUTE:
+			return "execute";
+		case MPP_ROLE_UTILITY:
+			return "utility";
+		case MPP_ROLE_UNDEFINED:
+		default:
+			return "*undefined*";
 	}
 }
 
@@ -144,30 +151,30 @@ const char * role_to_string( MppRoleValue role )
  * See src/backend/util/misc/guc.c for option definition.
  */
 const char *
-assign_mpp_session_role( const char *newval, bool doit, GucSource source )
+assign_mpp_session_role(const char *newval, bool doit, GucSource source)
 {
-    
+
 #if FALSE
-    elog(DEBUG1, "assign_mpp_session_role: mpp_session_role=%s, newval=%s, doit=%s",
-            show_mpp_session_role(), newval, ( doit ? "true" : "false" ) );
+	elog(DEBUG1, "assign_mpp_session_role: mpp_session_role=%s, newval=%s, doit=%s",
+		 show_mpp_session_role(), newval, (doit ? "true" : "false"));
 #endif
 
 	MppRoleValue newrole = string_to_role(newval);
-	
-	if ( newrole  == MPP_ROLE_UNDEFINED )
+
+	if (newrole == MPP_ROLE_UNDEFINED)
 	{
 		return NULL;
 	}
-	
-    if ( doit )
-    {
-        Mpp_session_role = newrole;
-   		Mpp_role = Mpp_session_role;
-   		
-   		if (Mpp_role == MPP_ROLE_DISPATCH)
-   			Mpp_segment = -1;
-   	}
-    return newval;
+
+	if (doit)
+	{
+		Mpp_session_role = newrole;
+		Mpp_role = Mpp_session_role;
+
+		if (Mpp_role == MPP_ROLE_DISPATCH)
+			Mpp_segment = -1;
+	}
+	return newval;
 }
 
 
@@ -176,78 +183,78 @@ assign_mpp_session_role( const char *newval, bool doit, GucSource source )
  * Assign hook routine for "mpp_role" option.  This variablle has context
  * PGC_SUSET so that is can only be set by a superuser via the SET command.
  * (It can also be set using an option on postmaster start, but this isn't
- * interesting beccause the derived global CdbRole is always set (along with 
+ * interesting beccause the derived global CdbRole is always set (along with
  * CdbSessionRole) on backend startup for a new connection.
  *
  * See src/backend/util/misc/guc.c for option definition.
  */
 const char *
-assign_mpp_role( const char *newval, bool doit, GucSource source )
+assign_mpp_role(const char *newval, bool doit, GucSource source)
 {
 
 #if FALSE
-    elog(DEBUG1, "assign_mpp_role: mpp_role=%s, newval=%s, doit=%s",
-            show_mpp_role(), newval, ( doit ? "true" : "false" ));
+	elog(DEBUG1, "assign_mpp_role: mpp_role=%s, newval=%s, doit=%s",
+		 show_mpp_role(), newval, (doit ? "true" : "false"));
 #endif
 
 
 	MppRoleValue newrole = string_to_role(newval);
 	MppRoleValue oldrole = Mpp_role;
-	
-	if ( newrole  == MPP_ROLE_UNDEFINED )
+
+	if (newrole == MPP_ROLE_UNDEFINED)
 	{
 		return NULL;
 	}
-	
-    if ( doit )
-    {
-    	/*
-    	 * When changing between roles, we must
-    	 * call cdb_cleanup and then cdb_setup to get 
-		 * setup and connections appropriate to the new role.
-    	 */
-    	bool do_disconnect = false;
-    	bool do_connect = false;
-    	
-    	if ( Mpp_role != newrole && IsUnderPostmaster )
-    	{
-    		if ( Mpp_role != MPP_ROLE_UTILITY )
-    			do_disconnect = true;
 
-    		if ( newrole != MPP_ROLE_UTILITY )
-    			do_connect = true;
-    	}
-    	
-    	if ( do_disconnect )
-    		cdb_cleanup(0, (Datum)NULL);
-	    	
-        Mpp_role = newrole;
-        
-    	if ( do_connect )
-    	{
-    		/*
-    		 * In case there are problems with the MPP tables or data,
-    		 * we catch any error coming out of cdblink_setup so we can set the
-    		 * mpp_role back to what it was.  Otherwise we may be left with
-    		 * inappropriate connections for the new role.
-    		 */
+	if (doit)
+	{
+		/*
+		 * When changing between roles, we must
+		 * call cdb_cleanup and then cdb_setup to get
+		 * setup and connections appropriate to the new role.
+		 */
+		bool		do_disconnect = false;
+		bool		do_connect = false;
+
+		if (Mpp_role != newrole && IsUnderPostmaster)
+		{
+			if (Mpp_role != MPP_ROLE_UTILITY)
+				do_disconnect = true;
+
+			if (newrole != MPP_ROLE_UTILITY)
+				do_connect = true;
+		}
+
+		if (do_disconnect)
+			cdb_cleanup(0, (Datum) NULL);
+
+		Mpp_role = newrole;
+
+		if (do_connect)
+		{
+			/*
+			 * In case there are problems with the MPP tables or data,
+			 * we catch any error coming out of cdblink_setup so we can set the
+			 * mpp_role back to what it was.  Otherwise we may be left with
+			 * inappropriate connections for the new role.
+			 */
 			PG_TRY();
 			{
-		  		cdb_setup();
+				cdb_setup();
 			}
 			PG_CATCH();
 			{
-	    		cdb_cleanup(0, (Datum)NULL);
+				cdb_cleanup(0, (Datum) NULL);
 				Mpp_role = oldrole;
-				if ( Mpp_role != MPP_ROLE_UTILITY )
-		  			cdb_setup();
+				if (Mpp_role != MPP_ROLE_UTILITY)
+					cdb_setup();
 				PG_RE_THROW();
 			}
 			PG_END_TRY();
-    	}
-   	}
-   	
-    return newval;
+		}
+	}
+
+	return newval;
 }
 
 
@@ -259,23 +266,23 @@ assign_mpp_role( const char *newval, bool doit, GucSource source )
  * See src/backend/util/misc/guc.c for option definition.
  */
 bool
-assign_mpp_connections_per_thread( int newval, bool doit, GucSource source )
+assign_mpp_connections_per_thread(int newval, bool doit, GucSource source)
 {
 
 #if FALSE
-    elog(DEBUG1, "assign_mpp_connections_per_thread: mpp_connections_per_thread=%s, newval=%d, doit=%s",
-            show_mpp_connections_per_thread(), newval, ( doit ? "true" : "false" ));
+	elog(DEBUG1, "assign_mpp_connections_per_thread: mpp_connections_per_thread=%s, newval=%d, doit=%s",
+	   show_mpp_connections_per_thread(), newval, (doit ? "true" : "false"));
 #endif
-            
-    if ( doit )
-    {
-    	if ( newval < 1 )
-    		return false;
-    		
-        mpp_connections_per_thread = newval;
-    }
-   	
-    return true;
+
+	if (doit)
+	{
+		if (newval < 1)
+			return false;
+
+		mpp_connections_per_thread = newval;
+	}
+
+	return true;
 }
 
 /*
@@ -283,16 +290,16 @@ assign_mpp_connections_per_thread( int newval, bool doit, GucSource source )
  *
  */
 bool
-assign_interconnect_setup_timeout( int newval, bool doit, GucSource source )
+assign_interconnect_setup_timeout(int newval, bool doit, GucSource source)
 {
 
-	if( doit )
+	if (doit)
 	{
-		if( newval < 0 )
+		if (newval < 0)
 			return false;
-			
+
 		interconnect_setup_timeout = newval;
-	
+
 	}
 	return true;
 }
@@ -303,9 +310,9 @@ assign_interconnect_setup_timeout( int newval, bool doit, GucSource source )
  * See src/backend/util/misc/guc.c for option definition.
  */
 const char *
-show_mpp_session_role( void )
+show_mpp_session_role(void)
 {
-    return role_to_string(Mpp_session_role);
+	return role_to_string(Mpp_session_role);
 }
 
 
@@ -315,9 +322,9 @@ show_mpp_session_role( void )
  * See src/backend/util/misc/guc.c for option definition.
  */
 const char *
-show_mpp_role( void )
+show_mpp_role(void)
 {
-    return role_to_string(Mpp_role);
+	return role_to_string(Mpp_role);
 }
 
 /*
@@ -326,38 +333,39 @@ show_mpp_role( void )
  * See src/backend/util/misc/guc.c for option definition.
  */
 const char *
-show_mpp_connections_per_thread( void )
+show_mpp_connections_per_thread(void)
 {
 	/*
 	 * We rely on the fact that the memory context will clean up the memory
 	 * for the buffer.data.
 	 */
 	StringInfoData buffer;
-	initStringInfo(&buffer);
-	
-	appendStringInfo( &buffer, "%d", mpp_connections_per_thread );
 
-    return buffer.data;
+	initStringInfo(&buffer);
+
+	appendStringInfo(&buffer, "%d", mpp_connections_per_thread);
+
+	return buffer.data;
 }
 
-/* 
+/*
  * Show hook routine for "mpp_interconnect_setup_timeout" option.
  *
  * See guc.c for option definition.
  *
  */
 const char *
-show_interconnect_setup_timeout( void )
+show_interconnect_setup_timeout(void)
 {
 	/*
 	 * We rely on the fact that the memory context will clean up the memory
 	 * for the buffer.data.
 	 */
 	StringInfoData buffer;
+
 	initStringInfo(&buffer);
-	
-	appendStringInfo( &buffer, "%d", interconnect_setup_timeout );
 
-    return buffer.data;
+	appendStringInfo(&buffer, "%d", interconnect_setup_timeout);
+
+	return buffer.data;
 }
-

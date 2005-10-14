@@ -122,7 +122,7 @@ getMPPSegmentCount(void)
 		}
 
 		elog(DEBUG1, "getMPPSegmentCount called when Mpp_role == utility, but is relying on mpp.mpp info");
-		//log_backtrace();
+		/* log_backtrace(); */
 
 	}
 
@@ -134,14 +134,14 @@ getMPPSegmentCount(void)
 			return 0;
 		}
 		elog(DEBUG1, "getMPPSegmentCount called when Mpp_role == execute, but is relying on mpp.mpp info");
-		//log_backtrace();
+		/* log_backtrace(); */
 	}
 	/* Assert( Mpp_role != MPP_ROLE_EXECUTE ); */
 
 	if (MppIdentity.numsegments <= 0)
 	{
 		elog(LOG, "getMPPSegmentCount called BEFORE mpp.mpp record has been read in.");
-		//log_backtrace();
+		/* log_backtrace(); */
 	}
 
 	/* Assert( Mpp_role != MPP_ROLE_UTILITY ); */
@@ -155,164 +155,169 @@ getMPPSegmentCount(void)
 void
 buildMirrorQDDefinition(void)
 {
-     CdbComponentDatabases *cdb_component_dbs;
-     if ( !isQDMirroringEnabled() )
-        return;
-     cdb_component_dbs = getComponentDatabases();
-     if ( cdb_component_dbs != NULL && cdb_component_dbs->total_entry_dbs > 1)
-     {
-         /* it should have maximum 2 dbs now */
-         CdbComponentDatabaseInfo *entryDb = cdb_component_dbs->entry_db_info;
-         CdbComponentDatabaseInfo *mirrorDb;
-         if (entryDb->dbid == MppIdentity.dbid)
-            mirrorDb = entryDb + 1;
-         else
-         {
-            mirrorDb = entryDb;
-            entryDb = entryDb + 1;
-         }
+	CdbComponentDatabases *cdb_component_dbs;
 
-         if (!mirrorDb->isprimary)
-         {
-             char  *dbname;
+	if (!isQDMirroringEnabled())
+		return;
+	cdb_component_dbs = getComponentDatabases();
+	if (cdb_component_dbs != NULL && cdb_component_dbs->total_entry_dbs > 1)
+	{
+		/* it should have maximum 2 dbs now */
+		CdbComponentDatabaseInfo *entryDb = cdb_component_dbs->entry_db_info;
+		CdbComponentDatabaseInfo *mirrorDb;
 
-             /* if it is set to invalid, do not connect */
-             if ( !mirrorDb->valid )
-             {
-                 ereport(LOG, (errcode(ERRCODE_WARNING_MPP_INTERCONNECTION),
-                               errmsg("Mirroring disabled for entry db "
-                                      "because it is not marked 'valid'.") ));
-                 return;
-             }
+		if (entryDb->dbid == MppIdentity.dbid)
+			mirrorDb = entryDb + 1;
+		else
+		{
+			mirrorDb = entryDb;
+			entryDb = entryDb + 1;
+		}
 
-             /* create connection descriptor */
-             dbname = get_database_name(MyDatabaseId);
+		if (!mirrorDb->isprimary)
+		{
+			char	   *dbname;
 
-             cdb_mirrored_entry_db = malloc(sizeof(SegmentDatabaseDescriptor));
-             memset( cdb_mirrored_entry_db, 0, sizeof(SegmentDatabaseDescriptor));
-             cdbconn_initSegmentDescriptor(cdb_mirrored_entry_db, mirrorDb,
-                                           dbname, NULL, -1);
+			/* if it is set to invalid, do not connect */
+			if (!mirrorDb->valid)
+			{
+				ereport(LOG, (errcode(ERRCODE_WARNING_MPP_INTERCONNECTION),
+							  errmsg("Mirroring disabled for entry db "
+									 "because it is not marked 'valid'.")));
+				return;
+			}
 
-             pfree(dbname);
-             dbname = NULL;
+			/* create connection descriptor */
+			dbname = get_database_name(MyDatabaseId);
 
-             /* connect to mirrored QD */
-             if ( !cdbconn_doConnect( cdb_mirrored_entry_db, NULL ) )
-             {
-                 disableQDMirroring();
+			cdb_mirrored_entry_db = malloc(sizeof(SegmentDatabaseDescriptor));
+			memset(cdb_mirrored_entry_db, 0, sizeof(SegmentDatabaseDescriptor));
+			cdbconn_initSegmentDescriptor(cdb_mirrored_entry_db, mirrorDb,
+										  dbname, NULL, -1);
 
-                 ereport(LOG, (errcode(ERRCODE_WARNING_MPP_INTERCONNECTION),
-                               errmsg("Mirroring disabled for entry db.  %s",
-                                    cdb_mirrored_entry_db->error_message.data)
-                        ));
-                 cdb_mirrored_entry_db->errcode = 0;
-                 resetPQExpBuffer(&cdb_mirrored_entry_db->error_message);
+			pfree(dbname);
+			dbname = NULL;
 
-                 /* mark the db as down */
-                 /*
-                 markSegDBStatus(cdb_mirrored_entry_db->segment_database_info->dbid, false);
-                 */
-             }
-             else
-             {
-                /* verify connection */
-                write_qd_sync("issyncmaster", NULL, 0);
-             }
-         }
-     }
+			/* connect to mirrored QD */
+			if (!cdbconn_doConnect(cdb_mirrored_entry_db, NULL))
+			{
+				disableQDMirroring();
+
+				ereport(LOG, (errcode(ERRCODE_WARNING_MPP_INTERCONNECTION),
+							  errmsg("Mirroring disabled for entry db.  %s",
+								   cdb_mirrored_entry_db->error_message.data)
+							  ));
+				cdb_mirrored_entry_db->errcode = 0;
+				resetPQExpBuffer(&cdb_mirrored_entry_db->error_message);
+
+				/* mark the db as down */
+				/*
+				markSegDBStatus(cdb_mirrored_entry_db->segment_database_info->dbid, false);
+				*/
+			}
+			else
+			{
+				/* verify connection */
+				write_qd_sync("issyncmaster", NULL, 0);
+			}
+		}
+	}
 }
 
 void
 write_qd_sync(char *cmd, void *buf, int len)
 {
-	PGconn *conn;
-	bool failed = false;
-	
-    if ( cdb_mirrored_entry_db == NULL || cdb_mirrored_entry_db->conn == NULL )
-        return;
+	PGconn	   *conn;
+	bool		failed = false;
 
-    elog(DEBUG3, "%s", cmd);
-    conn = cdb_mirrored_entry_db->conn;
+	if (cdb_mirrored_entry_db == NULL || cdb_mirrored_entry_db->conn == NULL)
+		return;
+
+	elog(DEBUG3, "%s", cmd);
+	conn = cdb_mirrored_entry_db->conn;
 
 
-    if (0 == PQsendQuery(conn, cmd))
-    {
-        failed = true;
-    }
-    else if ( len > 0 )
-    {
-        if (pqPutMsgStart(0, false, conn) < 0 ||
-            pqPutnchar(buf, len, conn) < 0 ||
-            pqPutMsgEnd(conn) < 0)
-            failed = true;
-        else
-            pqFlush(conn);
-    }
+	if (0 == PQsendQuery(conn, cmd))
+	{
+		failed = true;
+	}
+	else if (len > 0)
+	{
+		if (pqPutMsgStart(0, false, conn) < 0 ||
+			pqPutnchar(buf, len, conn) < 0 ||
+			pqPutMsgEnd(conn) < 0)
+			failed = true;
+		else
+			pqFlush(conn);
+	}
 
-    if (!failed)
-    {
-        // get response
-        PGresult *pRes = PQgetResult(conn);
-        if ( pRes != NULL )
-        {
-            ExecStatusType resultStatus = PQresultStatus( pRes );
-            if ( PGRES_COMMAND_OK != resultStatus &&
-                 PGRES_TUPLES_OK != resultStatus )
-            {
-                failed = true;
-                if (!resync && strstr(PQresultErrorMessage(pRes), "resync") != NULL)
-                {
-                    char dummy[100];
-                    int pfileoff, mfileoff;
+	if (!failed)
+	{
+		/* get response */
+		PGresult   *pRes = PQgetResult(conn);
 
-                    /* be careful going into an infinite loop */
-                    resync = true;
+		if (pRes != NULL)
+		{
+			ExecStatusType resultStatus = PQresultStatus(pRes);
 
-                    /* resync tmlog and xlog */
+			if (PGRES_COMMAND_OK != resultStatus &&
+				PGRES_TUPLES_OK != resultStatus)
+			{
+				failed = true;
+				if (!resync && strstr(PQresultErrorMessage(pRes), "resync") != NULL)
+				{
+					char		dummy[100];
+					int			pfileoff,
+								mfileoff;
 
-                    sscanf(PQresultErrorMessage(pRes), "%s%s pdboff: %d, mdboff: %d",
-                            dummy,dummy,&pfileoff,&mfileoff);
+					/* be careful going into an infinite loop */
+					resync = true;
 
-                    /* cleanup connection */
-                    do
-                    {
-                        PQclear(pRes);
-                    }
-                    while ((pRes = PQgetResult(conn)) != NULL);
+					/* resync tmlog and xlog */
 
-                    if (resync_xlog_to_mirror() &&
-                        resync_tmlog_to_mirror(mfileoff, pfileoff))
-                    {
-                        /* resync is successful */
-                        failed = false;
-                    }
+					sscanf(PQresultErrorMessage(pRes), "%s%s pdboff: %d, mdboff: %d",
+						   dummy, dummy, &pfileoff, &mfileoff);
 
-                    /* reset resync flag */
-                    resync = false;
-                }
-            }
-            /* cleanup connection */
-            do
-            {
-                PQclear(pRes);
-            }
-            while ((pRes = PQgetResult(conn)) != NULL);
-        }
+					/* cleanup connection */
+					do
+					{
+						PQclear(pRes);
+					}
+					while ((pRes = PQgetResult(conn)) != NULL);
 
-        if ( PQstatus( conn ) == CONNECTION_BAD )
-            failed = true;
-    }
+					if (resync_xlog_to_mirror() &&
+						resync_tmlog_to_mirror(mfileoff, pfileoff))
+					{
+						/* resync is successful */
+						failed = false;
+					}
 
-    if (failed)
-    {
-        ereport(LOG,
-                (errcode(ERRCODE_WARNING),      /* CDB TODO: better errcode */
-                 errmsg("mirrored entry database write error: %s",
-                        PQerrorMessage(conn))));
-        PQfinish(conn);
-        cdb_mirrored_entry_db->conn = NULL;
-        disableQDMirroring();
-    }
+					/* reset resync flag */
+					resync = false;
+				}
+			}
+			/* cleanup connection */
+			do
+			{
+				PQclear(pRes);
+			}
+			while ((pRes = PQgetResult(conn)) != NULL);
+		}
+
+		if (PQstatus(conn) == CONNECTION_BAD)
+			failed = true;
+	}
+
+	if (failed)
+	{
+		ereport(LOG,
+				(errcode(ERRCODE_WARNING),		/* CDB TODO: better errcode */
+				 errmsg("mirrored entry database write error: %s",
+						PQerrorMessage(conn))));
+		PQfinish(conn);
+		cdb_mirrored_entry_db->conn = NULL;
+		disableQDMirroring();
+	}
 }
 
 void *
@@ -329,9 +334,9 @@ getEntrySegDB(int *count)
 void
 disconnectMirrorQD(void)
 {
-    if ( cdb_mirrored_entry_db == NULL || cdb_mirrored_entry_db->conn == NULL )
-        return;
+	if (cdb_mirrored_entry_db == NULL || cdb_mirrored_entry_db->conn == NULL)
+		return;
 
-    write_qd_sync("close", NULL, 0);
-    PQfinish(cdb_mirrored_entry_db->conn);
+	write_qd_sync("close", NULL, 0);
+	PQfinish(cdb_mirrored_entry_db->conn);
 }

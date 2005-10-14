@@ -26,16 +26,17 @@
 #define GET_STR(textp) DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(textp)))
 
 /* static helper functions */
-static bool createBackupDirectory( char* pszPathName );
-static char* findAcceptableBackupFilePathName( char* pszBackupDirectory, char* pszBackupKey, int segid );
-static char* formBackupFilePathName( char* pszBackupDirectory, char* pszBackupKey );
-static char* formStatusFilePathName( char* pszBackupDirectory, char* pszBackupKey, bool bIsBackup );
-static char* relativeToAbsolute( char* pszRelativeDirectory );
-static void testCmdsExist( char* pszCompressionProgram, char* pszBackupProgram );
-static char* testProgramExists(char* pszProgramName);
-static void validateBackupDirectory( char* pszBackupDirectory );
+static bool createBackupDirectory(char *pszPathName);
+static char *findAcceptableBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, int segid);
+static char *formBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey);
+static char *formStatusFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool bIsBackup);
+static char *relativeToAbsolute(char *pszRelativeDirectory);
+static void testCmdsExist(char *pszCompressionProgram, char *pszBackupProgram);
+static char *testProgramExists(char *pszProgramName);
+static void validateBackupDirectory(char *pszBackupDirectory);
 
-static char *compPg = NULL, *bkPg = NULL;
+static char *compPg = NULL,
+		   *bkPg = NULL;
 
 typedef enum backup_file_type
 {
@@ -53,194 +54,204 @@ PG_FUNCTION_INFO_V1(mpp_backup_launch__);
 Datum
 mpp_backup_launch__(PG_FUNCTION_ARGS)
 {
-	/* Fetch the parameters from the argument list.	*/
-	char* pszBackupDirectory = "./";
-	char* pszBackupKey = "";
-	char* pszCompressionProgram  = "";
-	char* pszPassThroughParameters = "";
-	char* pszPassThroughCredentials = "";
-    char* pszDataOption = "";
-	char *pszBackupFileName,*pszStatusFileName;
-	FILE* ftest;
-	char *pszDBName,*pszUserName;
-	pid_t newpid;
-	char* pszCmdLine;
-	int port;
-	char* pszKeyParm; /*dispatch node*/	
-	int segid;
-	int len,len_name;
-	text* result;
-	char* ptr;
-    int instid; /*dispatch node*/	
+	/* Fetch the parameters from the argument list. */
+	char	   *pszBackupDirectory = "./";
+	char	   *pszBackupKey = "";
+	char	   *pszCompressionProgram = "";
+	char	   *pszPassThroughParameters = "";
+	char	   *pszPassThroughCredentials = "";
+	char	   *pszDataOption = "";
+	char	   *pszBackupFileName,
+			   *pszStatusFileName;
+	FILE	   *ftest;
+	char	   *pszDBName,
+			   *pszUserName;
+	pid_t		newpid;
+	char	   *pszCmdLine;
+	int			port;
+	char	   *pszKeyParm;		/* dispatch node */
+	int			segid;
+	int			len,
+				len_name;
+	text	   *result;
+	char	   *ptr;
+	int			instid;			/* dispatch node */
 
 
-	if ( !PG_ARGISNULL(0) )
+	if (!PG_ARGISNULL(0))
 	{
 		pszBackupDirectory = GET_STR(PG_GETARG_TEXT_P(0));
-		if ( *pszBackupDirectory == '\0' )
+		if (*pszBackupDirectory == '\0')
 			pszBackupDirectory = "./";
 	}
-	
-	if ( !PG_ARGISNULL(1) )
+
+	if (!PG_ARGISNULL(1))
 		pszBackupKey = GET_STR(PG_GETARG_TEXT_P(1));
-	
-	if ( !PG_ARGISNULL(2) )
+
+	if (!PG_ARGISNULL(2))
 		pszCompressionProgram = GET_STR(PG_GETARG_TEXT_P(2));
 
-	if ( !PG_ARGISNULL(3) )
+	if (!PG_ARGISNULL(3))
 		pszPassThroughParameters = GET_STR(PG_GETARG_TEXT_P(3));
-	
-	if ( !PG_ARGISNULL(4) )
+
+	if (!PG_ARGISNULL(4))
 		pszPassThroughCredentials = GET_STR(PG_GETARG_TEXT_P(4));
-	
+
 	/*
 	 * if BackupDirectory is relative, make it absolute based on the directory
 	 * where the database resides
 	 */
-	pszBackupDirectory = relativeToAbsolute( pszBackupDirectory );
-	
+	pszBackupDirectory = relativeToAbsolute(pszBackupDirectory);
+
 	/*
-	 * See whether the directory exists.  
-	 * If not, try to create it.  
+	 * See whether the directory exists.
+	 * If not, try to create it.
 	 * If so, make sure it's a directory
 	 */
-	 validateBackupDirectory( pszBackupDirectory ); 
-	
+	validateBackupDirectory(pszBackupDirectory);
+
 	/* Form backup file path name */
-	pszBackupFileName = formBackupFilePathName( pszBackupDirectory, pszBackupKey );
-    pszStatusFileName = formStatusFilePathName( pszBackupDirectory, pszBackupKey, true );
-	/* Make sure we can create this file before we spin off sh
-	 * cause we don't get a good error message from sh if we can't write to the file
+	pszBackupFileName = formBackupFilePathName(pszBackupDirectory, pszBackupKey);
+	pszStatusFileName = formStatusFilePathName(pszBackupDirectory, pszBackupKey, true);
+
+	/*
+	 * Make sure we can create this file before we spin off sh cause we don't
+	 * get a good error message from sh if we can't write to the file
 	 */
-	ftest = fopen( pszBackupFileName, "w" );
-	if ( ftest == NULL )
+	ftest = fopen(pszBackupFileName, "w");
+	if (ftest == NULL)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				 errmsg("Error creating file %s in mpp_backup_launch", 
-				 pszBackupFileName)));
+				 errmsg("Error creating file %s in mpp_backup_launch",
+						pszBackupFileName)));
 	}
-	fclose( ftest );
-	
-	/* Validate existence of mpp_dump_agent and compression program, if possible */
-	testCmdsExist( pszCompressionProgram, "mpp_dump_agent" );
-	
+	fclose(ftest);
+
+	/*
+	 * Validate existence of mpp_dump_agent and compression program, if
+	 * possible
+	 */
+	testCmdsExist(pszCompressionProgram, "mpp_dump_agent");
+
 	pszDBName = NULL;
-	pszUserName = (char *)NULL;
-	if ( MyProcPort != NULL )
+	pszUserName = (char *) NULL;
+	if (MyProcPort != NULL)
 	{
 		pszDBName = MyProcPort->database_name;
 		pszUserName = MyProcPort->user_name;
 	}
-	
-	if ( pszDBName == NULL )
+
+	if (pszDBName == NULL)
 		pszDBName = "";
-	if ( pszUserName == NULL )
+	if (pszUserName == NULL)
 		pszUserName = "";
-	
-	// Fork off mpp_dump_agent 
+
+	/* Fork off mpp_dump_agent	*/
 	newpid = fork();
-	if ( newpid < 0 )
+	if (newpid < 0)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
 				 errmsg("Could not fork a process for backup of database %s", pszDBName)));
 	}
-	else if ( newpid == 0 )
+	else if (newpid == 0)
 	{
 		/* Child Process */
 		port = PostPortNumber;
-	
+
 		/* Create the --mpp-k parameter string */
-		pszKeyParm = (char *)palloc( strlen(pszBackupKey) + 
-											strlen(pszPassThroughCredentials) + 
-											3 + 10 + 10 + 1  );
-		if ( pszKeyParm == NULL )
+		pszKeyParm = (char *) palloc(strlen(pszBackupKey) +
+									 strlen(pszPassThroughCredentials) +
+									 3 + 10 + 10 + 1);
+		if (pszKeyParm == NULL)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 					 errmsg("out of memory")));
 		}
- 						
-        getMppMpp();			
-		instid	= (MppIdentity.segindex==-1)?1:0; /*dispatch node*/	
-		segid	= MppIdentity.dbid;
-        /* dump schema only for entry db, and data only for segment db */
-         pszDataOption = (instid==1)?"-s":"-a";									
-		sprintf( pszKeyParm, "%s_%d_%d_%s", pszBackupKey, instid, segid, pszPassThroughCredentials );
 
-		/* In the following calc for the number of characters in the pszCmdLine,  
-		 * I show each piece as the count of the string for that piece  + 1 for the space
-		 * after that piece, e.g. -p comes out 2 for the -p and 1 for the space
-		 * after the -p  The last 1 is for the binary zero at the end.
+		getMppMpp();
+		instid = (MppIdentity.segindex == -1) ? 1 : 0;	/* dispatch node */
+		segid = MppIdentity.dbid;
+		/* dump schema only for entry db, and data only for segment db */
+		pszDataOption = (instid == 1) ? "-s" : "-a";
+		sprintf(pszKeyParm, "%s_%d_%d_%s", pszBackupKey, instid, segid, pszPassThroughCredentials);
+
+		/*
+		 * In the following calc for the number of characters in the
+		 * pszCmdLine, I show each piece as the count of the string for that
+		 * piece  + 1 for the space after that piece, e.g. -p comes out 2 for
+		 * the -p and 1 for the space after the -p	The last 1 is for the
+		 * binary zero at the end.
 		 */
-		len = strlen(bkPg) + 1  /* mpp_dump_agent */
-				+ 7 + 1  /* --mpp-k */
-				+ strlen(pszKeyParm) + 1
-				+ 7 + 1  /* --mpp-d */
-				+ strlen(pszBackupDirectory) + 1
-				+ 2 + 1  /* -p */
-				+ 5 + 1  /* port */
-				+ 2 + 1  /* -U */
-				+ strlen(pszUserName) + 1   /* pszUserName */
-				+ strlen(pszPassThroughParameters) + 1
-                 + 2 + 1 /* -s or -a */
-				+ strlen(pszDBName) + 1
-				+ 1 + 1		/* > */
-				+ strlen(pszBackupFileName)
-                 + 2 + 1     /* 2> */
-                 + strlen(pszStatusFileName)
-				+ 1;
-		
-		if ( pszCompressionProgram[0] != '\0' )
+		len = strlen(bkPg) + 1	/* mpp_dump_agent */
+			+ 7 + 1				/* --mpp-k */
+			+ strlen(pszKeyParm) + 1
+			+ 7 + 1				/* --mpp-d */
+			+ strlen(pszBackupDirectory) + 1
+			+ 2 + 1				/* -p */
+			+ 5 + 1				/* port */
+			+ 2 + 1				/* -U */
+			+ strlen(pszUserName) + 1	/* pszUserName */
+			+ strlen(pszPassThroughParameters) + 1
+			+ 2 + 1				/* -s or -a */
+			+ strlen(pszDBName) + 1
+			+ 1 + 1				/* > */
+			+ strlen(pszBackupFileName)
+			+ 2 + 1				/* 2> */
+			+ strlen(pszStatusFileName)
+			+ 1;
+
+		if (pszCompressionProgram[0] != '\0')
 		{
 			len += 1 + 1		/* | */
-					+ strlen(compPg) + 1;
-						
-			pszCmdLine = (char *) palloc( len );
-			if ( pszCmdLine == NULL )
+				+ strlen(compPg) + 1;
+
+			pszCmdLine = (char *) palloc(len);
+			if (pszCmdLine == NULL)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_OUT_OF_MEMORY),
 						 errmsg("out of memory")));
 			}
-			
-			sprintf( pszCmdLine, "%s --mpp-k %s --mpp-d %s -p %d -U %s %s %s %s | %s > %s 2> %s", 
-					bkPg, pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName, 
-					compPg, pszBackupFileName, pszStatusFileName );
+
+			sprintf(pszCmdLine, "%s --mpp-k %s --mpp-d %s -p %d -U %s %s %s %s | %s > %s 2> %s",
+					bkPg, pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName,
+					compPg, pszBackupFileName, pszStatusFileName);
 		}
 		else
 		{
-			pszCmdLine = (char *) palloc( len );
-			if ( pszCmdLine == NULL )
+			pszCmdLine = (char *) palloc(len);
+			if (pszCmdLine == NULL)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_OUT_OF_MEMORY),
 						 errmsg("out of memory")));
 			}
-			
-			sprintf( pszCmdLine, "%s --mpp-k %s --mpp-d %s -p %d -U %s %s %s %s > %s 2> %s", 
-					bkPg, pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName, 
-					pszBackupFileName, pszStatusFileName );
+
+			sprintf(pszCmdLine, "%s --mpp-k %s --mpp-d %s -p %d -U %s %s %s %s > %s 2> %s",
+					bkPg, pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName,
+					pszBackupFileName, pszStatusFileName);
 		}
 
-        elog(DEBUG1, "mpp_dump_agent command line: %s", pszCmdLine),
-			
-		/* This execs a shell that runs the mpp_dump_agent program  */	
-		execl("/bin/sh", "sh", "-c", pszCmdLine, NULL );
+		elog(DEBUG1, "mpp_dump_agent command line: %s", pszCmdLine),
+
+		/* This execs a shell that runs the mpp_dump_agent program	*/
+			execl("/bin/sh", "sh", "-c", pszCmdLine, NULL);
 
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				 errmsg("Error in mpp_backup_launch - execl of %s with Command Line %s failed", 
-				 "/bin/sh", pszCmdLine)));
-		_exit(127);		
+				 errmsg("Error in mpp_backup_launch - execl of %s with Command Line %s failed",
+						"/bin/sh", pszCmdLine)));
+		_exit(127);
 	}
-	
-	assert( pszBackupFileName != NULL && pszBackupFileName[0] != '\0' );
+
+	assert(pszBackupFileName != NULL && pszBackupFileName[0] != '\0');
 	len_name = strlen(pszBackupFileName);
 	len = len_name + VARHDRSZ;
 	result = (text *) palloc(len);
-	if ( result == NULL )
+	if (result == NULL)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
@@ -266,195 +277,198 @@ PG_FUNCTION_INFO_V1(mpp_restore_launch__);
 Datum
 mpp_restore_launch__(PG_FUNCTION_ARGS)
 {
-	/* Fetch the parameters from the argument list.	*/
-	char*	pszBackupDirectory = "./";
-	char*	pszBackupKey = "";
-	char*	pszCompressionProgram  = "";
-	char*	pszPassThroughParameters = "";
-	char*	pszPassThroughCredentials = "";
-	bool	bOnErrorStop = false;
-    int instid; /*dispatch node*/ 
-    int segid;                                     
-	char* pszOnErrorStop; 
-	char* pszBackupFileName;
-    char* pszStatusFileName;
+	/* Fetch the parameters from the argument list. */
+	char	   *pszBackupDirectory = "./";
+	char	   *pszBackupKey = "";
+	char	   *pszCompressionProgram = "";
+	char	   *pszPassThroughParameters = "";
+	char	   *pszPassThroughCredentials = "";
+	bool		bOnErrorStop = false;
+	int			instid;			/* dispatch node */
+	int			segid;
+	char	   *pszOnErrorStop;
+	char	   *pszBackupFileName;
+	char	   *pszStatusFileName;
 	struct stat info;
-	char* pszDBName;
-	char* pszUserName;
-	pid_t newpid;
-	char* pszCmdLine;
-	int port;
-	char* pszKeyParm;
-	int len,len_name;
-	text* result;
-	char* ptr;
-	
-    getMppMpp();
-    instid  = (MppIdentity.segindex==-1)?1:0; /*dispatch node*/ 
-    segid   = MppIdentity.dbid;                                     
-											
-	if ( !PG_ARGISNULL(0) )
+	char	   *pszDBName;
+	char	   *pszUserName;
+	pid_t		newpid;
+	char	   *pszCmdLine;
+	int			port;
+	char	   *pszKeyParm;
+	int			len,
+				len_name;
+	text	   *result;
+	char	   *ptr;
+
+	getMppMpp();
+	instid = (MppIdentity.segindex == -1) ? 1 : 0;		/* dispatch node */
+	segid = MppIdentity.dbid;
+
+	if (!PG_ARGISNULL(0))
 	{
 		pszBackupDirectory = GET_STR(PG_GETARG_TEXT_P(0));
-		if ( *pszBackupDirectory == '\0' )
+		if (*pszBackupDirectory == '\0')
 			pszBackupDirectory = "./";
 	}
-	
-	if ( !PG_ARGISNULL(1) )
+
+	if (!PG_ARGISNULL(1))
 		pszBackupKey = GET_STR(PG_GETARG_TEXT_P(1));
-	
-	if ( !PG_ARGISNULL(2) )
+
+	if (!PG_ARGISNULL(2))
 		pszCompressionProgram = GET_STR(PG_GETARG_TEXT_P(2));
 
-	if ( !PG_ARGISNULL(3) )
+	if (!PG_ARGISNULL(3))
 		pszPassThroughParameters = GET_STR(PG_GETARG_TEXT_P(3));
-	
-	if ( !PG_ARGISNULL(4) )
+
+	if (!PG_ARGISNULL(4))
 		pszPassThroughCredentials = GET_STR(PG_GETARG_TEXT_P(4));
-	
-	if ( !PG_ARGISNULL(5) )
+
+	if (!PG_ARGISNULL(5))
 		bOnErrorStop = PG_GETARG_BOOL(5);
-	
-	pszOnErrorStop = bOnErrorStop ? "--mpp-e" : ""; 
-		
+
+	pszOnErrorStop = bOnErrorStop ? "--mpp-e" : "";
+
 	/*
 	 * if BackupDirectory is relative, make it absolute based on the directory
 	 * where the database resides
 	 */
-	pszBackupDirectory = relativeToAbsolute( pszBackupDirectory );
-	
+	pszBackupDirectory = relativeToAbsolute(pszBackupDirectory);
+
 	/* Form backup file path name */
-	pszBackupFileName = formBackupFilePathName( pszBackupDirectory, pszBackupKey );
-    pszStatusFileName = formStatusFilePathName( pszBackupDirectory, pszBackupKey, false );
-    
+	pszBackupFileName = formBackupFilePathName(pszBackupDirectory, pszBackupKey);
+	pszStatusFileName = formStatusFilePathName(pszBackupDirectory, pszBackupKey, false);
+
 	/* Make sure pszBackupFileName exists */
-	if ( 0 != stat( pszBackupFileName, &info ) )
+	if (0 != stat(pszBackupFileName, &info))
 	{
-		pszBackupFileName = findAcceptableBackupFilePathName( pszBackupDirectory, pszBackupKey, segid );
-		if ( pszBackupFileName == NULL )
+		pszBackupFileName = findAcceptableBackupFilePathName(pszBackupDirectory, pszBackupKey, segid);
+		if (pszBackupFileName == NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					errmsg("No Backup FileName could be found to restore segment %d from directory %s with backup key %s", segid, pszBackupDirectory, pszBackupKey )));
+					 errmsg("No Backup FileName could be found to restore segment %d from directory %s with backup key %s", segid, pszBackupDirectory, pszBackupKey)));
 	}
-	
+
 	/* Validate existence of compression program and mpp_restore_agent program */
-	testCmdsExist( pszCompressionProgram, "mpp_restore_agent" );
-	
+	testCmdsExist(pszCompressionProgram, "mpp_restore_agent");
+
 	pszDBName = NULL;
 	pszUserName = NULL;
-	if ( MyProcPort != NULL )
+	if (MyProcPort != NULL)
 	{
 		pszDBName = MyProcPort->database_name;
 		pszUserName = MyProcPort->user_name;
 	}
-	
-	if ( pszDBName == NULL )
+
+	if (pszDBName == NULL)
 		pszDBName = "";
-	if ( pszUserName == NULL )
+	if (pszUserName == NULL)
 		pszUserName = "";
-	
-	// Fork off mpp_restore_agent 
+
+	/* Fork off mpp_restore_agent  */
 	newpid = fork();
-	if ( newpid < 0 )
+	if (newpid < 0)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
 				 errmsg("Could not fork a process for backup of database %s", pszDBName)));
 	}
-	else if ( newpid == 0 )
+	else if (newpid == 0)
 	{
 		/* Child Process */
 		port = PostPortNumber;
-	
+
 		/* Create the --mpp-k parameter string */
-		pszKeyParm = (char *)palloc( strlen(pszBackupKey) + 
-											strlen(pszPassThroughCredentials) + 
-											3 + 10 + 10 + 1 );
-		if ( pszKeyParm == NULL )
+		pszKeyParm = (char *) palloc(strlen(pszBackupKey) +
+									 strlen(pszPassThroughCredentials) +
+									 3 + 10 + 10 + 1);
+		if (pszKeyParm == NULL)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 					 errmsg("out of memory")));
 		}
- 									
-		sprintf( pszKeyParm, "%s_%d_%d_%s", pszBackupKey, instid, segid, pszPassThroughCredentials );
-		
-		/* In the following calc for the number of characters in the pszCmdLine,  
-		* I show each piece as the count of the string for that piece  + 1 for the space
-		* after that piece, e.g. -p comes out 2 for the -p and 1 for the space
-		* after the -p  The last 1 is for the binary zero at the end.
-		*/
-		len = strlen(bkPg) + 1  /* mpp_restore_agent */
-				+ 7 + 1  /* --mpp-k */
-				+ strlen(pszKeyParm) + 1
-				+ 7 + 1  /* --mpp-d */
-				+ strlen(pszBackupDirectory) + 1
-				+ 7 + 1  /* --mpp-e */
-				+ 2 + 1  /* -p */
-				+ 5 + 1  /* port */
-				+ 2 + 1  /* -U */
-				+ strlen(pszUserName) + 1   /* pszUserName */
-				+ strlen(pszPassThroughParameters) + 1
-				+ 2 + 1  /* -d */
-				+ strlen(pszDBName) + 1
-                 + 1 + 1  /* > */
-                 + strlen(pszStatusFileName)
-                 + 4 + 1  /* 2>&1 */
-                 + 1;
-		
-		if ( pszCompressionProgram[0] != '\0' )
+
+		sprintf(pszKeyParm, "%s_%d_%d_%s", pszBackupKey, instid, segid, pszPassThroughCredentials);
+
+		/*
+		 * In the following calc for the number of characters in the
+		 * pszCmdLine, I show each piece as the count of the string for that
+		 * piece  + 1 for the space after that piece, e.g. -p comes out 2 for
+		 * the -p and 1 for the space after the -p	The last 1 is for the
+		 * binary zero at the end.
+		 */
+		len = strlen(bkPg) + 1	/* mpp_restore_agent */
+			+ 7 + 1				/* --mpp-k */
+			+ strlen(pszKeyParm) + 1
+			+ 7 + 1				/* --mpp-d */
+			+ strlen(pszBackupDirectory) + 1
+			+ 7 + 1				/* --mpp-e */
+			+ 2 + 1				/* -p */
+			+ 5 + 1				/* port */
+			+ 2 + 1				/* -U */
+			+ strlen(pszUserName) + 1	/* pszUserName */
+			+ strlen(pszPassThroughParameters) + 1
+			+ 2 + 1				/* -d */
+			+ strlen(pszDBName) + 1
+			+ 1 + 1				/* > */
+			+ strlen(pszStatusFileName)
+			+ 4 + 1				/* 2>&1 */
+			+ 1;
+
+		if (pszCompressionProgram[0] != '\0')
 		{
-			len += 4 + strlen(compPg) + 
-					+ strlen(pszBackupFileName); 
-						
-			pszCmdLine = (char *) palloc( len );
-			if ( pszCmdLine == NULL )
+			len += 4 + strlen(compPg) +
+				+strlen(pszBackupFileName);
+
+			pszCmdLine = (char *) palloc(len);
+			if (pszCmdLine == NULL)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_OUT_OF_MEMORY),
-						errmsg("out of memory")));
+						 errmsg("out of memory")));
 			}
-			
-			sprintf( pszCmdLine, "%s %s | %s --mpp-k %s --mpp-d %s %s -p %d -U %s %s -d %s > %s 2>&1", 
-					compPg, pszBackupFileName, bkPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName, 
-					pszPassThroughParameters, pszDBName, pszStatusFileName );
+
+			sprintf(pszCmdLine, "%s %s | %s --mpp-k %s --mpp-d %s %s -p %d -U %s %s -d %s > %s 2>&1",
+					compPg, pszBackupFileName, bkPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName,
+					pszPassThroughParameters, pszDBName, pszStatusFileName);
 		}
 		else
 		{
 			len += strlen(pszBackupFileName) + 1;
 
-			pszCmdLine = (char *) palloc( len );
-			if ( pszCmdLine == NULL )
+			pszCmdLine = (char *) palloc(len);
+			if (pszCmdLine == NULL)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_OUT_OF_MEMORY),
-						errmsg("out of memory")));
+						 errmsg("out of memory")));
 			}
-			
-			sprintf( pszCmdLine, "%s --mpp-k %s --mpp-d %s %s -p %d -U %s %s -d %s %s > %s 2>&1", 
-					bkPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName, pszPassThroughParameters, pszDBName, 
-					pszBackupFileName, pszStatusFileName );
+
+			sprintf(pszCmdLine, "%s --mpp-k %s --mpp-d %s %s -p %d -U %s %s -d %s %s > %s 2>&1",
+					bkPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName, pszPassThroughParameters, pszDBName,
+					pszBackupFileName, pszStatusFileName);
 		}
 
-			
+
 		elog(DEBUG1, "mpp_restore_agent command line: %s", pszCmdLine),
-		
-		/* This execs a shell that runs the mpp_restore_agent program  */	
-		execl("/bin/sh", "sh", "-c", pszCmdLine, NULL );
+
+		/* This execs a shell that runs the mpp_restore_agent program  */
+			execl("/bin/sh", "sh", "-c", pszCmdLine, NULL);
 
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				 errmsg("Error in mpp_restore_launch - execl of %s with Command Line %s failed", 
-				 "/bin/sh", pszCmdLine)));
-		_exit(127);		
+				 errmsg("Error in mpp_restore_launch - execl of %s with Command Line %s failed",
+						"/bin/sh", pszCmdLine)));
+		_exit(127);
 	}
-	
-	assert( pszBackupFileName != NULL && pszBackupFileName[0] != '\0' );
-	
+
+	assert(pszBackupFileName != NULL && pszBackupFileName[0] != '\0');
+
 	len_name = strlen(pszBackupFileName);
 	len = len_name + VARHDRSZ;
 	result = (text *) palloc(len);
-	if ( result == NULL )
+	if (result == NULL)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
@@ -479,104 +493,105 @@ PG_FUNCTION_INFO_V1(mpp_read_backup_file__);
 Datum
 mpp_read_backup_file__(PG_FUNCTION_ARGS)
 {
-	/* Fetch the parameters from the argument list.	*/
-	char*	pszBackupDirectory = "./";
-	char*	pszBackupKey = "";
-	int		fileType = 0;
-	char* pszFileName;
+	/* Fetch the parameters from the argument list. */
+	char	   *pszBackupDirectory = "./";
+	char	   *pszBackupKey = "";
+	int			fileType = 0;
+	char	   *pszFileName;
 	struct stat info;
-	char* pszBackup;
-	FILE* f;
-	int len,len_status;
-	text* result;
-	char* ptr;
-	
-	if ( !PG_ARGISNULL(0) )
+	char	   *pszBackup;
+	FILE	   *f;
+	int			len,
+				len_status;
+	text	   *result;
+	char	   *ptr;
+
+	if (!PG_ARGISNULL(0))
 	{
 		pszBackupDirectory = GET_STR(PG_GETARG_TEXT_P(0));
-		if ( *pszBackupDirectory == '\0' )
+		if (*pszBackupDirectory == '\0')
 			pszBackupDirectory = "./";
 	}
-	
-	if ( !PG_ARGISNULL(1) )
+
+	if (!PG_ARGISNULL(1))
 		pszBackupKey = GET_STR(PG_GETARG_TEXT_P(1));
-	
-	if ( !PG_ARGISNULL(2) )
+
+	if (!PG_ARGISNULL(2))
 		fileType = PG_GETARG_INT32(2);
-	
+
 	/*
 	 * if BackupDirectory is relative, make it absolute based on the directory
 	 * where the database resides
 	 */
-	pszBackupDirectory = relativeToAbsolute( pszBackupDirectory );
-	
+	pszBackupDirectory = relativeToAbsolute(pszBackupDirectory);
+
 	/* Form backup file path name */
 	pszFileName = NULL;
-	switch ( fileType )
+	switch (fileType)
 	{
 		case BFT_BACKUP:
-			pszFileName = formBackupFilePathName( pszBackupDirectory, pszBackupKey );
+			pszFileName = formBackupFilePathName(pszBackupDirectory, pszBackupKey);
 			break;
 		case BFT_BACKUP_STATUS:
 		case BFT_RESTORE_STATUS:
-			pszFileName = formStatusFilePathName( pszBackupDirectory, pszBackupKey, (fileType == BFT_BACKUP_STATUS) );
+			pszFileName = formStatusFilePathName(pszBackupDirectory, pszBackupKey, (fileType == BFT_BACKUP_STATUS));
 			break;
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-					errmsg("Invalid filetype %d passed to mpp_read_backup_file", fileType )));
+					 errmsg("Invalid filetype %d passed to mpp_read_backup_file", fileType)));
 			break;
 	}
-	
+
 	/* Make sure pszFileName exists */
-	if ( 0 != stat( pszFileName, &info ) )
+	if (0 != stat(pszFileName, &info))
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				errmsg("Backup File %s Type %d could not be be found", pszFileName, fileType )));
+				 errmsg("Backup File %s Type %d could not be be found", pszFileName, fileType)));
 	}
-	
+
 	/* Read file */
-	if ( info.st_size > INT_MAX )
+	if (info.st_size > INT_MAX)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				errmsg("Backup File %s Type %d too large to read", pszFileName, fileType )));
+				 errmsg("Backup File %s Type %d too large to read", pszFileName, fileType)));
 	}
-	
+
 	/* Allocate enough memory for entire file, and read it in. */
-	pszBackup = (char *)palloc( info.st_size + 1 );
-	if ( pszBackup == NULL )
+	pszBackup = (char *) palloc(info.st_size + 1);
+	if (pszBackup == NULL)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of memory")));
 	}
-	
-	f = fopen( pszFileName, "r" );
-	if ( f == NULL )
+
+	f = fopen(pszFileName, "r");
+	if (f == NULL)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				errmsg("Backup File %s Type %d cannot be opened", pszFileName, fileType )));
+				 errmsg("Backup File %s Type %d cannot be opened", pszFileName, fileType)));
 	}
-	
-	if ( info.st_size != fread( pszBackup, 1, info.st_size, f ) )
+
+	if (info.st_size != fread(pszBackup, 1, info.st_size, f))
 	{
-		fclose( f );
+		fclose(f);
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				errmsg("Error reading Backup File %s Type %d", pszFileName, fileType )));
+				 errmsg("Error reading Backup File %s Type %d", pszFileName, fileType)));
 	}
-	
-	fclose( f );
+
+	fclose(f);
 	f = NULL;
-	pszBackup[info.st_size ] = '\0';
-	
+	pszBackup[info.st_size] = '\0';
+
 	len_status = strlen(pszBackup);
 	len = len_status + VARHDRSZ;
 	result = (text *) palloc(len);
-	if ( result == NULL )
+	if (result == NULL)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
@@ -601,72 +616,73 @@ PG_FUNCTION_INFO_V1(mpp_write_backup_file__);
 Datum
 mpp_write_backup_file__(PG_FUNCTION_ARGS)
 {
-	/* Fetch the parameters from the argument list.	*/
-	char*	pszBackupDirectory = "./";
-	char*	pszBackupKey = "";
-	char*	pszBackup = "";
-	char* pszFileName;
-	FILE* f;
-	int nBytes; 
-	int len,len_name;
-	text* result;
-	char* ptr;
-	
-	if ( !PG_ARGISNULL(0) )
+	/* Fetch the parameters from the argument list. */
+	char	   *pszBackupDirectory = "./";
+	char	   *pszBackupKey = "";
+	char	   *pszBackup = "";
+	char	   *pszFileName;
+	FILE	   *f;
+	int			nBytes;
+	int			len,
+				len_name;
+	text	   *result;
+	char	   *ptr;
+
+	if (!PG_ARGISNULL(0))
 	{
 		pszBackupDirectory = GET_STR(PG_GETARG_TEXT_P(0));
-		if ( *pszBackupDirectory == '\0' )
+		if (*pszBackupDirectory == '\0')
 			pszBackupDirectory = "./";
 	}
-	
-	if ( !PG_ARGISNULL(1) )
+
+	if (!PG_ARGISNULL(1))
 		pszBackupKey = GET_STR(PG_GETARG_TEXT_P(1));
-	
-	if ( !PG_ARGISNULL(2) )
+
+	if (!PG_ARGISNULL(2))
 		pszBackup = GET_STR(PG_GETARG_TEXT_P(2));
-	
+
 	/*
 	 * if BackupDirectory is relative, make it absolute based on the directory
 	 * where the database resides
 	 */
-	pszBackupDirectory = relativeToAbsolute( pszBackupDirectory );
-	
+	pszBackupDirectory = relativeToAbsolute(pszBackupDirectory);
+
 	/*
-	 * See whether the directory exists.  
-	 * If not, try to create it.  
+	 * See whether the directory exists.
+	 * If not, try to create it.
 	 * If so, make sure it's a directory
 	 */
-	 validateBackupDirectory( pszBackupDirectory ); 
-	
+	validateBackupDirectory(pszBackupDirectory);
+
 	/* Form backup file path name */
-	pszFileName = formBackupFilePathName( pszBackupDirectory, pszBackupKey );
-	
+	pszFileName = formBackupFilePathName(pszBackupDirectory, pszBackupKey);
+
 	/* Write file */
-	f = fopen( pszFileName, "w" );
-	if ( f == NULL )
+	f = fopen(pszFileName, "w");
+	if (f == NULL)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				errmsg("Backup File %s cannot be opened", pszFileName )));
+				 errmsg("Backup File %s cannot be opened", pszFileName)));
 	}
-	
-	nBytes = strlen(pszBackup); 
-	if ( nBytes != fwrite( pszBackup, 1, nBytes, f ) )
+
+	nBytes = strlen(pszBackup);
+	if (nBytes != fwrite(pszBackup, 1, nBytes, f))
 	{
-		fclose( f );
+		fclose(f);
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				errmsg("Error writing Backup File %s", pszFileName)));
+				 errmsg("Error writing Backup File %s", pszFileName)));
 	}
-	
-	fclose( f );
+
+	fclose(f);
 	f = NULL;
-	
-	assert( pszFileName != NULL && pszFileName[0] != '\0' );
+
+	assert(pszFileName != NULL && pszFileName[0] != '\0');
 	len_name = strlen(pszFileName);
 	len = len_name + VARHDRSZ;
 	result = (text *) palloc(len);
-	if ( result == NULL )
+	if (result == NULL)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
@@ -692,32 +708,33 @@ mpp_write_backup_file__(PG_FUNCTION_ARGS)
  * slash.  If the subdirectory doesn't exist, it creates it if it can, then moves on to the
  * next slash.
  */
-bool createBackupDirectory( char* pszPathName )
-{ 
+bool
+createBackupDirectory(char *pszPathName)
+{
 	struct stat info;
-	char* pSlash;
+	char	   *pSlash;
 
-	/* Does pszPathName already exist?  If so, return */
-	if ( 0 == stat( pszPathName, &info ) )
+	/* Does pszPathName already exist?	If so, return */
+	if (0 == stat(pszPathName, &info))
 		return true;
-	
-	/* Can we make it in its entirety?  If so, return */
-	if ( 0 == mkdir( pszPathName, S_IRWXU ) )
+
+	/* Can we make it in its entirety?	If so, return */
+	if (0 == mkdir(pszPathName, S_IRWXU))
 		return true;
-	
+
 	/* Try to create each level of the hierarchy that doesn't already exist */
-	pSlash = pszPathName+1;
-	
-	while ( pSlash != NULL && *pSlash != '\0' )
+	pSlash = pszPathName + 1;
+
+	while (pSlash != NULL && *pSlash != '\0')
 	{
 		/* Find next subdirectory delimiter */
-		pSlash = strchr( pSlash, '/' );
-		if ( pSlash == NULL )
+		pSlash = strchr(pSlash, '/');
+		if (pSlash == NULL)
 		{
 			/* If no more, we try to create the whole thing. */
-			if ( 0 > stat( pszPathName, &info ) )
+			if (0 > stat(pszPathName, &info))
 			{
-				if ( 0 != mkdir( pszPathName, S_IRWXU ) )
+				if (0 != mkdir(pszPathName, S_IRWXU))
 					return false;
 			}
 		}
@@ -727,16 +744,16 @@ bool createBackupDirectory( char* pszPathName )
 			*pSlash = '\0';
 
 			/* See whether this partial path exists. */
-			if ( 0 > stat( pszPathName, &info ) )
+			if (0 > stat(pszPathName, &info))
 			{
 				/* If not, create it. */
-				if ( 0 != mkdir( pszPathName, S_IRWXU ) )
+				if (0 != mkdir(pszPathName, S_IRWXU))
 				{
 					*pSlash = '/';
 					return false;
 				}
 			}
-		
+
 			/* Put back the slash we overwrote above. */
 			*pSlash = '/';
 
@@ -744,7 +761,7 @@ bool createBackupDirectory( char* pszPathName )
 			pSlash++;
 		}
 	}
-	
+
 	return true;
 }
 
@@ -754,86 +771,87 @@ bool createBackupDirectory( char* pszPathName )
  * the naming convention for a backup file with the proper key and segid, but any instid.
  * In case it was backed up from a redundant instance of the same segment.
  */
-char* findAcceptableBackupFilePathName( char* pszBackupDirectory, char* pszBackupKey, int segid )
+char *
+findAcceptableBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, int segid)
 {
 	/* Make sure that pszBackupDirectory exists and is in fact a directory. */
-	struct stat		buf;
-	struct dirent*	dirp = NULL;
-	DIR*			dp = NULL;
-	char*			pszBackupFilePathName = NULL;
-	
+	struct stat buf;
+	struct dirent *dirp = NULL;
+	DIR		   *dp = NULL;
+	char	   *pszBackupFilePathName = NULL;
+
 	static regex_t rFindFileName;
 	static bool bFirstTime = true;
-	char* pszRegex;
-	char* pszFileName;
-	char* pszSep;
+	char	   *pszRegex;
+	char	   *pszFileName;
+	char	   *pszSep;
 	struct stat info;
-	
-	if ( bFirstTime )
+
+	if (bFirstTime)
 	{
-		pszRegex = (char *)palloc( 19 + 10 + strlen(pszBackupKey) + 1);
-		if ( pszRegex == NULL )
+		pszRegex = (char *) palloc(19 + 10 + strlen(pszBackupKey) + 1);
+		if (pszRegex == NULL)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 					 errmsg("out of memory")));
 		}
-			
-		sprintf( pszRegex, "^mpp_dump_[0-9]+_%d_%s$", segid, pszBackupKey );   
-		if ( 0 != regcomp( &rFindFileName, pszRegex, REG_EXTENDED ) )
+
+		sprintf(pszRegex, "^mpp_dump_[0-9]+_%d_%s$", segid, pszBackupKey);
+		if (0 != regcomp(&rFindFileName, pszRegex, REG_EXTENDED))
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
 					 errmsg("Could not compile regular expression for backup filename matching")));
 		}
-		
+
 		bFirstTime = false;
 	}
-	
-	if ( lstat(pszBackupDirectory, &buf) < 0 )
+
+	if (lstat(pszBackupDirectory, &buf) < 0)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("Backup Directory %s does not exist.", pszBackupDirectory)));
+		 errmsg("Backup Directory %s does not exist.", pszBackupDirectory)));
 	}
 
-	if ( S_ISDIR( buf.st_mode ) == 0 )
+	if (S_ISDIR(buf.st_mode) == 0)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("Backup Location %s is not a directory.", pszBackupDirectory)));
 	}
-	
+
 	dp = opendir(pszBackupDirectory);
-	if ( dp == NULL )
+	if (dp == NULL)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("Backup Directory %s cannot be opened for enumerating files.", pszBackupDirectory)));
 	}
-	
-	while ( NULL != (dirp = readdir( dp )))
+
+	while (NULL != (dirp = readdir(dp)))
 	{
 		pszFileName = dirp->d_name;
-			
-		if ( 0 == regexec( &rFindFileName, pszFileName, 0, NULL, 0 ) )
+
+		if (0 == regexec(&rFindFileName, pszFileName, 0, NULL, 0))
 		{
 			pszSep = "/";
-			if ( strlen(pszBackupDirectory) >= 1 && pszBackupDirectory[strlen(pszBackupDirectory) - 1] == '/' )
+			if (strlen(pszBackupDirectory) >= 1 && pszBackupDirectory[strlen(pszBackupDirectory) - 1] == '/')
 				pszSep = "";
-			
-			pszBackupFilePathName = (char *)palloc( strlen(pszBackupDirectory) + strlen(pszFileName) + strlen(pszSep) + 1 );
-			sprintf( pszBackupFilePathName, "%s%s%s", pszBackupDirectory, pszSep, pszFileName );
+
+			pszBackupFilePathName = (char *) palloc(strlen(pszBackupDirectory) + strlen(pszFileName) + strlen(pszSep) + 1);
+			sprintf(pszBackupFilePathName, "%s%s%s", pszBackupDirectory, pszSep, pszFileName);
 
 			/* Make sure that this is a regular file */
-			if ( 0 == stat( pszBackupFilePathName, &info ) && S_ISREG(info.st_mode))
+			if (0 == stat(pszBackupFilePathName, &info) && S_ISREG(info.st_mode))
 			{
 				break;
 			}
 		}
 	}
-	
-	closedir( dp );
+
+	closedir(dp);
 	return pszBackupFilePathName;
 }
 
@@ -843,52 +861,53 @@ char* findAcceptableBackupFilePathName( char* pszBackupDirectory, char* pszBacku
  * the path and filename of the backup output file
  * based on the naming convention for this.
  */
-char* formBackupFilePathName( char* pszBackupDirectory, char* pszBackupKey )
+char *
+formBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey)
 {
 	/* First form the prefix */
-	char szFileNamePrefix[1+PATH_MAX];
-    int instid; /*dispatch node*/ 
-    int segid;                                     
-	int len;
-	char* pszBackupFileName;
+	char		szFileNamePrefix[1 + PATH_MAX];
+	int			instid;			/* dispatch node */
+	int			segid;
+	int			len;
+	char	   *pszBackupFileName;
 
-    getMppMpp();
-    instid  = (MppIdentity.segindex==-1)?1:0; /*dispatch node*/ 
-    segid   = MppIdentity.dbid;                                     
-											
-	sprintf( szFileNamePrefix, "mpp_dump_%d_%d_", instid, segid );
-	
+	getMppMpp();
+	instid = (MppIdentity.segindex == -1) ? 1 : 0;		/* dispatch node */
+	segid = MppIdentity.dbid;
+
+	sprintf(szFileNamePrefix, "mpp_dump_%d_%d_", instid, segid);
+
 	/* Now add up the length of the pieces */
 	len = strlen(pszBackupDirectory);
-	assert( len >= 1 );
-	if ( pszBackupDirectory[ strlen(pszBackupDirectory)-1 ] != '/' )
+	assert(len >= 1);
+	if (pszBackupDirectory[strlen(pszBackupDirectory) - 1] != '/')
 		len++;
-	 
-	len += strlen(szFileNamePrefix); 
+
+	len += strlen(szFileNamePrefix);
 	len += strlen(pszBackupKey);
-	
-	if ( len > PATH_MAX )
+
+	if (len > PATH_MAX)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("Backup FileName based on path %s and key %s too long", pszBackupDirectory, pszBackupKey)));
 	}
-	 
-	pszBackupFileName = (char *) palloc( sizeof(char) * (1+len) );
-	if ( pszBackupFileName == NULL )
+
+	pszBackupFileName = (char *) palloc(sizeof(char) * (1 + len));
+	if (pszBackupFileName == NULL)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of memory")));
 	}
-	
-	strcpy( pszBackupFileName, pszBackupDirectory);
-	if ( pszBackupDirectory[ strlen(pszBackupDirectory)-1 ] != '/' )
-		strcat( pszBackupFileName, "/" );
-	
-	strcat( pszBackupFileName, szFileNamePrefix );
-	strcat( pszBackupFileName, pszBackupKey );
-	
+
+	strcpy(pszBackupFileName, pszBackupDirectory);
+	if (pszBackupDirectory[strlen(pszBackupDirectory) - 1] != '/')
+		strcat(pszBackupFileName, "/");
+
+	strcat(pszBackupFileName, szFileNamePrefix);
+	strcat(pszBackupFileName, pszBackupKey);
+
 	return pszBackupFileName;
 }
 
@@ -898,105 +917,108 @@ char* formBackupFilePathName( char* pszBackupDirectory, char* pszBackupKey )
  * the path and filename of the backup or restore status file
  * based on the naming convention for this.
  */
-char* formStatusFilePathName( char* pszBackupDirectory, char* pszBackupKey, bool bIsBackup )
+char *
+formStatusFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool bIsBackup)
 {
 	/* First form the prefix */
-	char szFileNamePrefix[1+PATH_MAX];
-    int instid; /*dispatch node*/ 
-    int segid;                                     
-	int len;
-	char* pszFileName;
+	char		szFileNamePrefix[1 + PATH_MAX];
+	int			instid;			/* dispatch node */
+	int			segid;
+	int			len;
+	char	   *pszFileName;
 
-    getMppMpp();
-    instid  = (MppIdentity.segindex==-1)?1:0; /*dispatch node*/ 
-    segid   = MppIdentity.dbid;                                     
-											
-	sprintf( szFileNamePrefix, "mpp_%s_status_%d_%d_", (bIsBackup ? "dump" : "restore"), 
-						instid, segid );
-	
+	getMppMpp();
+	instid = (MppIdentity.segindex == -1) ? 1 : 0;		/* dispatch node */
+	segid = MppIdentity.dbid;
+
+	sprintf(szFileNamePrefix, "mpp_%s_status_%d_%d_", (bIsBackup ? "dump" : "restore"),
+			instid, segid);
+
 	/* Now add up the length of the pieces */
 	len = strlen(pszBackupDirectory);
-	assert( len >= 1 );
-	if ( pszBackupDirectory[ strlen(pszBackupDirectory)-1 ] != '/' )
+	assert(len >= 1);
+	if (pszBackupDirectory[strlen(pszBackupDirectory) - 1] != '/')
 		len++;
-	 
-	len += strlen(szFileNamePrefix); 
+
+	len += strlen(szFileNamePrefix);
 	len += strlen(pszBackupKey);
-	
-	if ( len > PATH_MAX )
+
+	if (len > PATH_MAX)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("Status FileName based on path %s and key %s too long", pszBackupDirectory, pszBackupKey)));
 	}
-	 
-	pszFileName = (char *) palloc( sizeof(char) * (1+len) );
-	if ( pszFileName == NULL )
+
+	pszFileName = (char *) palloc(sizeof(char) * (1 + len));
+	if (pszFileName == NULL)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of memory")));
 	}
-	
-	strcpy( pszFileName, pszBackupDirectory);
-	if ( pszBackupDirectory[ strlen(pszBackupDirectory)-1 ] != '/' )
-		strcat( pszFileName, "/" );
-	
-	strcat( pszFileName, szFileNamePrefix );
-	strcat( pszFileName, pszBackupKey );
-	
+
+	strcpy(pszFileName, pszBackupDirectory);
+	if (pszBackupDirectory[strlen(pszBackupDirectory) - 1] != '/')
+		strcat(pszFileName, "/");
+
+	strcat(pszFileName, szFileNamePrefix);
+	strcat(pszFileName, pszBackupKey);
+
 	return pszFileName;
 }
 
 /*
  * relativeToAbsolute( char* pszRelativeDirectory ) returns char*
  *
- * This will turn a relative path into an absolute one, based off of the Data Directory 
+ * This will turn a relative path into an absolute one, based off of the Data Directory
  * for this database.
  *
- * If the path isn't absolute, it is prefixed with DataDir/. 
+ * If the path isn't absolute, it is prefixed with DataDir/.
  */
-char* relativeToAbsolute( char* pszRelativeDirectory )
+char *
+relativeToAbsolute(char *pszRelativeDirectory)
 {
-	char* pszAbsolutePath;
+	char	   *pszAbsolutePath;
 
-	if ( pszRelativeDirectory[0] == '/' )
+	if (pszRelativeDirectory[0] == '/')
 		return pszRelativeDirectory;
-	
-	pszAbsolutePath = (char *) palloc( strlen(DataDir) + 1 + strlen(pszRelativeDirectory) + 1);
-	if ( pszAbsolutePath == NULL )
+
+	pszAbsolutePath = (char *) palloc(strlen(DataDir) + 1 + strlen(pszRelativeDirectory) + 1);
+	if (pszAbsolutePath == NULL)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of memory")));
 	}
-	
+
 	sprintf(pszAbsolutePath, "%s/%s", DataDir, pszRelativeDirectory);
-	
+
 	return pszAbsolutePath;
 }
 
 /* testCmdsExist( char* pszCompressionProgram ) returns void
  *
  * This function tests whether pszBackupProgram and the pszCompressionProgram
- * (if non-empty) are in the path.  If not, it calls ereport.
+ * (if non-empty) are in the path.	If not, it calls ereport.
  */
-void testCmdsExist( char* pszCompressionProgram, char* pszBackupProgram )
+void
+testCmdsExist(char *pszCompressionProgram, char *pszBackupProgram)
 {
-	// Does pszBackupProgram exist?
-	if ( pszBackupProgram != NULL && 
-		*pszBackupProgram != '\0' && 
-		(bkPg = testProgramExists( pszBackupProgram )) == NULL )
+	/* Does pszBackupProgram exist? */
+	if (pszBackupProgram != NULL &&
+		*pszBackupProgram != '\0' &&
+		(bkPg = testProgramExists(pszBackupProgram)) == NULL)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
 				 errmsg("%s not found in path", pszBackupProgram)));
 	}
-	
-	// Does compression utility exist?
-	if ( pszCompressionProgram != NULL && 
-		*pszCompressionProgram != '\0' && 
-		(compPg = testProgramExists(pszCompressionProgram)) == NULL )
+
+	/* Does compression utility exist? */
+	if (pszCompressionProgram != NULL &&
+		*pszCompressionProgram != '\0' &&
+		(compPg = testProgramExists(pszCompressionProgram)) == NULL)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
@@ -1007,104 +1029,107 @@ void testCmdsExist( char* pszCompressionProgram, char* pszBackupProgram )
 /* testProgramExists(char* pszProgramName) returns bool
  * This runs a shell with which pszProgramName > tempfile
  * piping the output to a temp file.
- * If the file is empty, then pszProgramName didn't exist 
- * on the path. 
+ * If the file is empty, then pszProgramName didn't exist
+ * on the path.
  */
-char* testProgramExists(char* pszProgramName)
+char *
+testProgramExists(char *pszProgramName)
 {
-	char* pszProgramNameLocal;
-	char* p;
+	char	   *pszProgramNameLocal;
+	char	   *p;
+
 	/* Now see what the length of the file is  - 0 means not there */
 	struct stat buf;
-	char* pszEnvPath;
-	char* pszPath;
-	char* pColon;
-	char* pColonNext;
-	char* pszTestPath;
+	char	   *pszEnvPath;
+	char	   *pszPath;
+	char	   *pColon;
+	char	   *pColonNext;
+	char	   *pszTestPath;
 
-	if ( pszProgramName == NULL || *pszProgramName == '\0' )
+	if (pszProgramName == NULL || *pszProgramName == '\0')
 		return NULL;
-	
-	/* The pszProgramName might have command line arguments, so we need to
-	 * stop at the first whitespace 
+
+	/*
+	 * The pszProgramName might have command line arguments, so we need to
+	 * stop at the first whitespace
 	 */
-	pszProgramNameLocal = palloc( strlen(pszProgramName) + 1 );
-	if ( pszProgramNameLocal == NULL )
+	pszProgramNameLocal = palloc(strlen(pszProgramName) + 1);
+	if (pszProgramNameLocal == NULL)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of memory")));
 	}
-	
-	strcpy( pszProgramNameLocal, pszProgramName );
-	
+
+	strcpy(pszProgramNameLocal, pszProgramName);
+
 	p = pszProgramNameLocal;
-	while ( *p != '\0' )
+	while (*p != '\0')
 	{
-		if ( *p == ' ' || *p == '\t' || *p == '\n' )
+		if (*p == ' ' || *p == '\t' || *p == '\n')
 			break;
-		
+
 		p++;
 	}
-	
+
 	*p = '\0';
-    
-    pszEnvPath = getenv( "PGPATH" );
-    if ( pszEnvPath != NULL )
-    {
-        pszTestPath = (char *)palloc( strlen(pszEnvPath) + 1 + strlen(pszProgramNameLocal) + 1 );
-        if ( pszTestPath == NULL )
-        {
-            ereport(ERROR,
-                    (errcode(ERRCODE_OUT_OF_MEMORY),
-                     errmsg("out of memory")));
-        }
-        
-        sprintf( pszTestPath, "%s/%s", pszEnvPath, pszProgramNameLocal );
-        if ( stat( pszTestPath, &buf ) >= 0 )
-            return pszTestPath;
-    }
-	pszEnvPath = getenv( "PATH" );
-	if ( pszEnvPath == NULL )
+
+	pszEnvPath = getenv("PGPATH");
+	if (pszEnvPath != NULL)
+	{
+		pszTestPath = (char *) palloc(strlen(pszEnvPath) + 1 + strlen(pszProgramNameLocal) + 1);
+		if (pszTestPath == NULL)
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_OUT_OF_MEMORY),
+					 errmsg("out of memory")));
+		}
+
+		sprintf(pszTestPath, "%s/%s", pszEnvPath, pszProgramNameLocal);
+		if (stat(pszTestPath, &buf) >= 0)
+			return pszTestPath;
+	}
+	pszEnvPath = getenv("PATH");
+	if (pszEnvPath == NULL)
 		return NULL;
-	
-	pszPath = (char *) palloc( strlen(pszEnvPath) + 1 );
-	if ( pszPath == NULL )
+
+	pszPath = (char *) palloc(strlen(pszEnvPath) + 1);
+	if (pszPath == NULL)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of memory")));
 	}
-	
-	strcpy( pszPath, pszEnvPath );
-	
+
+	strcpy(pszPath, pszEnvPath);
+
 	/* Try to create each level of the hierarchy that doesn't already exist */
 	pColon = pszPath;
-	
-	while ( pColon != NULL && *pColon != '\0' )
+
+	while (pColon != NULL && *pColon != '\0')
 	{
 		/* Find next delimiter */
-		pColonNext = strchr( pColon, ':' );
+		pColonNext = strchr(pColon, ':');
 
-		if ( pColonNext == pColon )
+		if (pColonNext == pColon)
 		{
 			pColon++;
 			continue;
 		}
-		
-		if ( pColonNext == NULL )
+
+		if (pColonNext == NULL)
 		{
-			// See whether pszProgramName exists in subdirectory pColon
-			pszTestPath = (char *)palloc( strlen(pColon) + 1 + strlen(pszProgramNameLocal) + 1 );
-			if ( pszTestPath == NULL )
+			/* See whether pszProgramName exists in subdirectory pColon */
+			pszTestPath = (char *) palloc(strlen(pColon) + 1 + strlen(pszProgramNameLocal) + 1);
+			if (pszTestPath == NULL)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_OUT_OF_MEMORY),
 						 errmsg("out of memory")));
 			}
-			
-			sprintf( pszTestPath, "%s/%s", pColon, pszProgramNameLocal );
-			if ( stat( pszTestPath, &buf ) >= 0 )
+
+			sprintf(pszTestPath, "%s/%s", pColon, pszProgramNameLocal);
+			if (stat(pszTestPath, &buf) >= 0)
 				return pszTestPath;
 			else
 				return NULL;
@@ -1113,49 +1138,51 @@ char* testProgramExists(char* pszProgramName)
 		/* Temporarily end the string at the : we just found. */
 		*pColonNext = '\0';
 
-		// See whether pszProgramName exists in subdirectory pColon
-		pszTestPath = (char *)palloc( strlen(pColon) + 1 + strlen(pszProgramNameLocal) + 1 );
-		if ( pszTestPath == NULL )
+		/* See whether pszProgramName exists in subdirectory pColon */
+		pszTestPath = (char *) palloc(strlen(pColon) + 1 + strlen(pszProgramNameLocal) + 1);
+		if (pszTestPath == NULL)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 					 errmsg("out of memory")));
 		}
-		
-		sprintf( pszTestPath, "%s/%s", pColon, pszProgramNameLocal );
-		if ( stat( pszTestPath, &buf ) >= 0 )
+
+		sprintf(pszTestPath, "%s/%s", pColon, pszProgramNameLocal);
+		if (stat(pszTestPath, &buf) >= 0)
 		{
 			*pColonNext = ':';
 			return pszTestPath;
 		}
-		
+
 		/* Put back the colon we overwrote above. */
 		*pColonNext = ':';
 
 		/* Advance past the colon. */
 		pColon = pColonNext + 1;
-        
-        /* free */
-        pfree(pszTestPath);
+
+		/* free */
+		pfree(pszTestPath);
 	}
-	
+
 	return NULL;
 }
 
 /* validateBackupDirectory( char* pszBackupDirectory ) returns void
  * This sees whether the backupDirectory exists
  * If so, it makes sure its a directory and not a file.
- * If not, it tries to create it.  If it cannot it calls ereport 
+ * If not, it tries to create it.  If it cannot it calls ereport
  */
-void validateBackupDirectory( char* pszBackupDirectory )
+void
+validateBackupDirectory(char *pszBackupDirectory)
 {
 	struct stat info;
-	if ( stat( pszBackupDirectory, &info ) < 0 )
+
+	if (stat(pszBackupDirectory, &info) < 0)
 	{
-        elog(DEBUG1, "Backup Directory %s does not exist", pszBackupDirectory );
-		
+		elog(DEBUG1, "Backup Directory %s does not exist", pszBackupDirectory);
+
 		/* Attempt to create it. */
-		if ( !createBackupDirectory( pszBackupDirectory ) )
+		if (!createBackupDirectory(pszBackupDirectory))
 		{
 			ereport(ERROR,
 					(errcode_for_file_access(),
@@ -1164,16 +1191,16 @@ void validateBackupDirectory( char* pszBackupDirectory )
 		}
 		else
 		{
-			elog(DEBUG1, "Successfully created Backup Directory %s", pszBackupDirectory );
+			elog(DEBUG1, "Successfully created Backup Directory %s", pszBackupDirectory);
 		}
 	}
 	else
 	{
-		if ( !S_ISDIR( info.st_mode ) )
+		if (!S_ISDIR(info.st_mode))
 		{
 			ereport(ERROR,
 					(errcode_for_file_access(),
-					errmsg("BackupDirectory %s exists but is not a directory.", pszBackupDirectory)));
+					 errmsg("BackupDirectory %s exists but is not a directory.", pszBackupDirectory)));
 		}
 	}
 }
