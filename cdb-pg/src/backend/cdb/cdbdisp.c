@@ -717,7 +717,7 @@ cdbdisp_dispatchCommand(const char         *szCommand,
     if (pMirrorGang)
         *pMirrorGang = mirrorGang;
         
-    if (mirrorGang->segdb_count < getMPPSegmentCount() || mirrorGang->size < getMPPSegmentCount())
+    if (mirrorGang && (mirrorGang->segdb_count < getMPPSegmentCount() || mirrorGang->size < getMPPSegmentCount()))
     {
     	elog(LOG, "Some segments are down.  Dispatching command %.50s to remaining segments only",szCommand);
     	
