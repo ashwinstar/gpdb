@@ -48,8 +48,6 @@ extern CdbComponentDatabases *getComponentDatabases(void);
 
 extern bool isGangExisted(void);
 
-extern bool reconnectSegDB(void *);
-
 struct SegmentDatabaseDescriptor *
 getSegmentDescriptorFromGang(const Gang * gp, int seg);
 

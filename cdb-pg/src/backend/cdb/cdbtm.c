@@ -356,8 +356,8 @@ execCommand(void)
     /* dispatch command */
     cdbdisp_dispatchCommand(cmdbuf, false, false, NULL, &primaryGang, &mirrorGang);
 
-    /* wait for completion; if unsuccessful, handle error */
-    if ( !CdbCheckDispatchResultInt(&failedSegDB,&numOfFailed) )
+    /* wait for completion; if unsuccessful, handle error.  Don't cancel. */
+    if ( !CdbCheckDispatchResultInt(&failedSegDB,&numOfFailed, false) )
     {
         initStringInfo(&errMessage);
         cdbdisp_dumpGangResults(primaryGang, &errMessage, false);
