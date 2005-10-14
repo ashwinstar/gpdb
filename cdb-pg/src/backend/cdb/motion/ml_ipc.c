@@ -531,7 +531,7 @@ RecvTupleChunk(MotionConn * conn)
 					errmsg("Could not allocate space on interconnect rx.")));
 		}
 		tcItem->chunk_length = tcSize;
-		tcItem->inplace = conn->msgPos + bytesProcessed;
+		tcItem->inplace = (char *)(conn->msgPos + bytesProcessed);
 
 		bytesProcessed += tcSize;
 

@@ -82,9 +82,10 @@ apply_motion(Plan *plan, Query *query)
 {
 	Plan	   *result;
 	ApplyMotionState state;
+	bool		is_Update_Delete = FALSE;
 
 	state.nextMotionID = 1;		/* Start at 1 so zero will mean "unassigned". */
-	bool		is_Update_Delete = FALSE;
+	
 
 	Assert(is_plan_node((Node *) plan) && IsA(query, Query));
 
@@ -1443,8 +1444,9 @@ getExprListForSubqueryScan(List *targetlist, List *hashExprs)
 		}
 		if (i < ntles)
 		{
+			Var		   *var;
 			tle = map[i];
-			Var		   *var = makeVar(varno, 1 + i, tle->resdom->restype, tle->resdom->restypmod, 0);
+			var = makeVar(varno, 1 + i, tle->resdom->restype, tle->resdom->restypmod, 0);
 
 			resultExprs = lappend(resultExprs, var);
 		}
