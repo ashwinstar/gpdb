@@ -127,7 +127,7 @@ WHOAMI=`findCmdInPath whoami`
 #******************************************************************************
 # By default set error logging level to verbose
 VERBOSE=1
-USER_NAME=`$WHOAMI`
+USER_NAME=`id|$AWK '{print $1}'|$CUT -d"(" -f2|$TR -d ')'`
 PROG_NAME=`echo $0 | $TR -d '-'`
 PROG_NAME=`$BASENAME $PROG_NAME`
 CALL_HOST=`$HOSTNAME|$CUT -d. -f1`
@@ -456,14 +456,25 @@ PING_HOSTS () {
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
-CHK_REMOTE_PID_ACTIVE () {
+GET_PG_PID_ACTIVE () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		# Expects hostname and port number
+		PORT=$1;shift
 		HOST=$1
-		PID=$2
-		REMOTE_PID=`$TRUSTED_SHELL $HOST "$CAT /tmp/.s.PGSQL.${PID}.lock|$HEAD -1 2>/dev/null"`
-		if [ -z $REMOTE_PID ]; then
-				REMOTE_PID=0
+		if [ x"" == x"$HOST" ];then
+			PG_LOCK_FILE=`$NETSTAT -a|$GREP ".s.PGSQL.${PORT}"|$AWK '{print $NF}'`
+			if [ x"" == x"$PG_LOCK_FILE" ];then
+				PID=0
+			else
+				PID=`$CAT ${PG_LOCK_FILE}.lock|$HEAD -1|$AWK '{print $1}'`
+			fi
+		else
+			PG_LOCK_FILE=`$TRUSTED_SHELL $HOST "$NETSTAT -a|$GREP ".s.PGSQL.${PORT}" 2>/dev/null"|$AWK '{print $NF}'`
+			if [ x"" == x"$PG_LOCK_FILE" ];then
+				PID=0
+			else
+				PID=`$TRUSTED_SHELL $HOST "$CAT ${PG_LOCK_FILE}.lock|$HEAD -1 2>/dev/null"|$AWK '{print $1}'`
+			fi
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -734,3 +745,14 @@ if [ $# -ne 0 ]; then
 				VERSION_INFO
 		fi
 fi
+#Set up OS type for scripts to change command lines
+OS_TYPE=`uname -s|tr '[A-Z]' '[a-z]'`
+case $OS_TYPE in
+	sunos ) IFCONFIG_TXT="-a inet"
+		PS_TXT="-ef" ;;
+	linux ) IFCONFIG_TXT="" 
+		PS_TXT="ax" ;;
+	* ) echo unknown ;;
+esac
+#Set up LD_LIBRARY_PATH
+LD_LIBRARY_PATH=`$DIRNAME \`$DIRNAME $INITDB\``/lib

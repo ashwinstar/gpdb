@@ -148,7 +148,6 @@ GET_DETAILS () {
 		#Start the head datase in admin mode
 		export PGPORT=$MASTER_PORT
 		LOG_MSG "[INFO]:-Starting Master database in admin mode"
-		##MPP	$PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -p $MASTER_PORT -c "mpp_mode=off start"" >/dev/null 2>&1
 		$PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -p $MASTER_PORT"  start >/dev/null 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
@@ -158,7 +157,6 @@ GET_DETAILS () {
 		fi
 		LOG_MSG "[INFO]:-Obtaining MPP Master catalog information"
 		#Now get tail details
-		##MPP	TAIL_ARRAY=(`$PSQL -p $HEAD_PORT $HEAD_DBNAME -A -t -c"select host,datadir,port,valid from mpp_instance;"`)	
 		GET_QE_DETAILS
 		QE_COUNT=${#QE_ARRAY[@]}
 		#Shutdown the head database
@@ -175,7 +173,7 @@ GET_DETAILS () {
 START_ADMIN () {
 		LOG_MSG "[INFO]:-Starting master database in admin mode"
 		export PGPORT=$MASTER_PORT
-		env PGOPTIONS="-c mpp_session_role=utility" $PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -p $MASTER_PORT " start >/dev/null 2>&1
+		env PGOPTIONS="-c mpp_session_role=utility" $PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -p $MASTER_PORT " start
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 				$TAIL ${MASTER_DATA_DIRECTORY}.log|$TEE -a $LOG_FILE
@@ -210,7 +208,7 @@ PROMPT_CONTINUE () {
 				((COUNT=$COUNT+1))
 		done
 		$ECHO
-		$ECHO -n "         Continue with MPP database startup yY|nN >"
+		$ECHO "         Continue with MPP database startup yY|nN >"
 		read REPLY
 		if [ -z $REPLY ]; then
 				LOG_MSG "[WARN]:-User abort requested, Script Exits!"
@@ -234,7 +232,7 @@ PROCESS_STARTUP () {
 				QE_PRIMARY=`$ECHO $QNODE|$CUT -d"|" -f5`
 				if [ "$QE_VALID" == "t" ] || [ $START_INVALID -eq 1 ];then
 					LOG_MSG "[INFO]:-Starting Segment instance $QE_NAME directory $QE_DIR"
-					$TRUSTED_SHELL $QE_NAME "export PGPATH=${MPPHOME}/bin;export PGPORT=${QE_PORT};$PG_CTL $WAIT -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start" >> $LOG_FILE 2>&1
+					$TRUSTED_SHELL $QE_NAME "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};export PGPATH=${MPPHOME}/bin;export PGPORT=${QE_PORT};$PG_CTL $WAIT -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start" 
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
 						((FAILED_COUNT=$FAILED_COUNT+1))
@@ -253,7 +251,7 @@ PROCESS_STARTUP () {
 				fi
 				#Now check status of postmaster on the tail
 				LOG_MSG "[INFO]:-Checking status via pg_ctl"
-				RET_TEXT=`$TRUSTED_SHELL $QE_NAME "$PG_CTL status -D $QE_DIR"`
+				RET_TEXT=`$TRUSTED_SHELL $QE_NAME "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};$PG_CTL status -D $QE_DIR"`
 				RUNNING=`$ECHO $RET_TEXT|$EGREP -c "not running|neither"`
 				if [ $RUNNING -ne 0 ]; then
 						LOG_MSG "[WARN]:-Command pg_ctl reports $QE_NAME for directory $QE_DIR port $QE_PORT not running"
@@ -267,7 +265,6 @@ PROCESS_STARTUP () {
 						LOG_MSG "[INFO]:-Command pg_ctl indicates started Segment instance $QE_NAME database"
 				fi
 				((QE_START_COUNT=$QE_START_COUNT+1))
-				##MPP		fi
 				((INDEX=$INDEX+1))
 				else
 						LOG_MSG "[WARN]:-Segment instance $QE_NAME directory $QE_DIR invalid will not start"

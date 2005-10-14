@@ -186,7 +186,7 @@ PROMPT_CONTINUE () {
 				done
 		fi
 		$ECHO
-		$ECHO -n "         Continue with MPP database shutdown yY|nN >"
+		$ECHO "         Continue with MPP database shutdown yY|nN >"
 		read REPLY
 		if [ ! -z $REPLY ]; then
 				if [ $REPLY != Y ] && [ $REPLY != y ]; then
@@ -219,7 +219,7 @@ PROCESS_SHUTDOWN () {
 				QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
 				if [ "$QE_VALID" == "t" ] || [ $STOP_INVALID -eq 1 ];then
 					LOG_MSG "[INFO]:-Stopping Segment Instance $QE_NAME directory $QE_DIR"
-					$TRUSTED_SHELL $QE_NAME "$PG_CTL $WAIT stop -D $QE_DIR -m $MODE -l ${QE_DIR}.log " >/dev/null 2>&1
+					$TRUSTED_SHELL $QE_NAME "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};$PG_CTL $WAIT stop -D $QE_DIR -m $MODE -l ${QE_DIR}.log " 
 					RETVAL=$?
 					if [ $RETVAL -ne 0 ]; then
 						LOG_MSG "[WARN]:-Issue with shutdown of $QE_NAME Segment Instance database"
@@ -254,7 +254,12 @@ FORCE_CLEAR () {
 	    EXIT_STATUS=1
 	fi
 	LOG_MSG "[INFO]:-Killing postmaster process on $QE_NAME for port=$QE_PORT"
-	$TRUSTED_SHELL $QE_NAME "$KILL -9 \`$PS ax|$GREP postmaster|$GREP -v grep|$GREP \"${QE_DIR}\"|$GREP \"${QE_PORT}\"|$AWK '{print \$1}'\`" > $LOG_FILE 2>&1
+	GET_PG_PID_ACTIVE $QE_PORT $QE_NAME
+	if [ $PID -ne 0 ]; then
+		$TRUSTED_SHELL $QE_NAME "$KILL -9 $PID" > $LOG_FILE 2>&1
+	else
+		LOG_MSG "[INFO]:-No active pid found for $QE_NAME for port=$QE_PORT"
+	fi
 }
 #******************************************************************************
 # Main Section

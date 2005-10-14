@@ -115,7 +115,7 @@ DISPLAY_PARAM () {
 }
 
 CHK_PG_PID () {
-		OS_PID_COUNT=`$PS ax|$GREP $1|$GREP -v grep|$WC -l`
+		OS_PID_COUNT=`$PS ${PS_TXT}|$GREP $1|$GREP -v grep|$WC -l`
 		if [ $OS_PID_COUNT = 0 ]; then
 			ERROR_EXIT "[FATAL]:-Have postmaster.pid, but no process with PID = $1, check postmaster log file" 2
 		fi
@@ -185,9 +185,11 @@ DATABASE_STATUS () {
 								LOG_MSG "[WARN]:-Request for PID for $QE_NAME returned error code $RETVAL"
 								QE_PID=0
 						fi
-						QE_PID_ACTUAL=`$TRUSTED_SHELL $QE_NAME "$PS ax|$GREP postmaster|$GREP -v grep|$GREP ${QE_PORT}"|$AWK '{print $1}'`
+					##	QE_PID_ACTUAL=`$TRUSTED_SHELL $QE_NAME "$PS ax|$GREP postmaster|$GREP -v grep|$GREP ${QE_PORT}"|$AWK '{print $1}'`
+						GET_PG_PID_ACTIVE $QE_PORT $QE_NAME
+						QE_PID_ACTUAL=$PID
 						LOG_MSG "[INFO]:-Segment Instance Physical PID for $QE_NAME port $QE_PORT       = $QE_PID_ACTUAL"
-						STATUS=`$TRUSTED_SHELL $QE_NAME "export PGPORT=${QE_PORT};$PG_CTL status -D $QE_DIR"|$HEAD -1|$GREP -c PID` 2>> $LOG_FILE
+						STATUS=`$TRUSTED_SHELL $QE_NAME "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};export PGPORT=${QE_PORT};$PG_CTL status -D $QE_DIR"|$HEAD -1|$GREP -c PID` 2>> $LOG_FILE
 						RETVAL=$?
 						if [ $RETVAL -ne 0 ]; then
 								LOG_MSG "[WARN]:-pg_ctl status from $QE_NAME port = $QE_PORT returned error code $RETVAL"
@@ -295,7 +297,7 @@ SUMMARY_STATUS () {
 		QE_MIRROR_FAILED=0
 		QE_COUNT=0
 		if [ ! -s $MASTER_DATA_DIRECTORY/$PG_PID ]; then
-				ERROR_EXIT "[WARN]:-Query Dispatch database down" 1
+				ERROR_EXIT "[WARN]:-Master database down" 1
 		else
 				GET_QE_PRIMARY_DETAILS
 				GET_QE_MIRROR_DETAILS
@@ -317,7 +319,6 @@ SUMMARY_STATUS () {
 		else
 				((QE_PRIMARY_STATE_COUNT=$QE_PRIMARY_STATE_COUNT+1))
 		fi
-		$ECHO -n .
 		((QE_COUNT=$QE_COUNT+1))
 done
 for TNODE in "${QE_MIRROR_ARRAY[@]}"
@@ -340,10 +341,8 @@ if [ $RETVAL -ne 0 ]; then
 else
 		((QE_MIRROR_STATE_COUNT=$QE_MIRROR_STATE_COUNT+1))
 fi
-$ECHO -n .
 ((QE_COUNT=$QE_COUNT+1))
 		done
-		$ECHO
 		LOG_MSG "[INFO]:-MPP cluster status summary"
 		LOG_MSG "[INFO]:---------------------------"
 		LOG_MSG "[INFO]:-Master db $QD_DBNAME active" 
@@ -488,8 +487,6 @@ if [ $LOG_DIR ]
 		if [ $EXISTS -eq 1 ]; then ERROR_EXIT "[FATAL]:-Log directory $LOG_DIR does not exist" 2
 		fi
 		LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
-else
-		LOG_FILE=$WORKDIR/logs/${PROG_NAME}_${CUR_DATE}.log
 fi
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"

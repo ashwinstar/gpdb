@@ -115,7 +115,7 @@ USAGE () {
 CHK_PARAMS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 
-		if [ $USER == "root" ]; then
+		if [ $USER_NAME == "root" ]; then
 				ERROR_EXIT "[FATAL]:-Unable to run this script as $USER" 2
 		fi
 		if [ x"" = x"$MPPHOME" ] && [ x"" = x"$BIZHOME" ]; then
@@ -189,10 +189,6 @@ CHK_PARAMS () {
 				ERROR_EXIT "[FATAL]:-This script must be executed on the Master host $MASTER_HOSTNAME" 2
 		fi
 
-		#SEG_PREFIX
-		if [ x"" =  X"$SEG_PREFIX" ]; then
-				ERROR_EXIT "[FATAL]:-SEG_PREFIX variable not set" 2
-		fi
 
 		# Deal with issue of mixed case segment names being created in all lower case on tails but mixed
 		# case in head system tables.
@@ -259,7 +255,7 @@ CHK_PARAMS () {
 
 		#Get IP address of the master host
 
-		MASTER_IP_ADDRESS=(`$IFCONFIG |$GREP "inet addr"|$GREP -v addr:127|$AWK '{print $2}'|$CUT -d: -f2`)
+		MASTER_IP_ADDRESS=(`$IFCONFIG $IFCONFIG_TXT |$GREP "inet "|$GREP -v "127.0.0"|$AWK '{print $2}'|$CUT -d: -f2`)
 		#Below commented out until standby QD tests completed (25/07/2005)
 		##	if [ $STANDBY_IP_ALLOW ]&& [ $STANDBY_QD_MASK ]; then
 		##		LOG_MSG "[INFO]:-Standby Master IP = $STANDBY_QD_IP"
@@ -492,6 +488,7 @@ DISPLAY_CONFIG () {
 		LOG_MSG "[INFO]:-Encoding             = $ENCODING"
 		LOG_MSG "[INFO]:-Pg Conf add file     = $PG_ADD"
 		LOG_MSG "[INFO]:-Initdb to be used    = $INITDB"
+		LOG_MSG "[INFO]:-LD_LIBRARY_PATH is   = $LD_LIBRARY_PATH"
 		((NUM_QES=${#MACHINE_LIST[*]}))
 		LOG_MSG "[INFO]:-Number segment hosts = $NUM_QES"
 		if [ $MIRROR_PORT_BASE ]; then
@@ -524,7 +521,7 @@ DISPLAY_CONFIG () {
 				done
 		fi
 		if [ $INTERACTIVE ]; then
-				$ECHO -n "Continue with MPP creation Yy/Nn>"
+				$ECHO "Continue with MPP creation Yy/Nn>"
 				read REPLY
 				if [ -z $REPLY ]; then
 						LOG_MSG "[WARN]:-User abort requested, Script Exits!"
@@ -593,20 +590,18 @@ CREATE_QD_DB () {
 				ERROR_EXIT "[FATAL]:-Failed to set IP Allow in $PG_HBA" 2
 		fi
 		LOG_MSG "[INFO]:-Completed setting IP Allow to $IP_ALLOW"
-		PID_CHK=`$PS ax|$GREP postmaster|$GREP -v grep|$GREP $MPP_PORT|$WC -l|$AWK '{print $1}'`
-		if [ $PID_CHK -ne 0 ]; then
+		PG_LOCK_COUNT=`$LS /tmp/.s.PGSQL.${MPP_PORT}.lock|$WC -l|$AWK '{print $1}'`
+		if [ $PG_LOCK_COUNT -ne 0 ]; then
 			ERROR_EXIT "[FATAL]-Located another postmaster process on Master host on port $MPP_PORT" 2
 		fi
 		LOG_MSG "[INFO]:-Starting the Master in admin mode"
 		export PGPORT=$MPP_PORT;$PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o "-i -p $MPP_PORT" start
-		RET_TEXT=`"$PG_CTL status -D $MPP_DIR"`
+		RET_TEXT="`$PG_CTL status -D $MPP_DIR`"
 		RUNNING=`$ECHO $RET_TEXT|$EGREP -c "not running|neither"`
 		if [ $RUNNING -ne 0 ]; then
 				$CAT ${MPP_DIR}.log|$TEE -a $LOG_FILE
 				ERROR_EXIT "[FATAL]:-Failed to start the Master database in admin mode" 2
 		fi
-		BACKOUT_COMMAND "$KILL -9 \`$PS ax|$GREP postmaster|$GREP ${MPP_PORT}|$AWK '{print \$1}'\`"
-		BACKOUT_COMMAND "$ECHO Removing Master process"
 		BACKOUT_COMMAND "$RM -f /tmp/.s.PGSQL.${MPP_PORT}*"
 		BACKOUT_COMMAND "$ECHO \"Removing Master lock files\""
 		BACKOUT_COMMAND "$RM -f ${MPP_DIR}.log"
@@ -776,7 +771,7 @@ CREATE_QES_PRIMARY () {
 				do
 				SET_VAR $I
 				LOG_MSG "[INFO]:-Processing segment $MPP_HOSTNAME"
-				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$INITDB -E $ENCODING -D $MPP_DIR"
+				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};$INITDB -E $ENCODING -D $MPP_DIR"
 				BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -rf $MPP_DIR\""
 				BACKOUT_COMMAND "$ECHO \"removing directory $MPP_DIR on $MPP_HOSTNAME\""
 				LOG_MSG "[INFO]:-Configuring segment $PG_CONF"
@@ -800,16 +795,16 @@ CREATE_QES_PRIMARY () {
 					RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host	all	all	${MASTER_IP}/32	trust >> ${MPP_DIR}/$PG_HBA"
 				done
 				LOG_MSG "[INFO]:-Starting Functioning instance on segment ${MPP_HOSTNAME}"
-				$TRUSTED_SHELL ${MPP_HOSTNAME} "export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start" 
+				$TRUSTED_SHELL ${MPP_HOSTNAME} "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start" 
 				if [ $? -ne 0 ]; then
 						BACKOUT_COMMAND "$ECHO \"Removing segment log file ${MPP_DIR}.log on segment $MPP_HOSTNAME\""
-						BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
+						BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
 						$TRUSTED_SHELL ${MPP_HOSTNAME} "$CAT ${MPP_DIR}.log "|$TEE -a $LOG_FILE
 						ERROR_EXIT "[FATAL]:-Failed to start segment instance database" 2
 				fi	
 				BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -f ${MPP_DIR}.log\""
 				BACKOUT_COMMAND "$ECHO \"Removing segment log file ${MPP_DIR}.log on segment $MPP_HOSTNAME\""
-				BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
+				BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
 				BACKOUT_COMMAND "$ECHO \"Stopping segment instance on $MPP_HOSTNAME\""
 				LOG_MSG "[INFO]:-Successfully started segment instance on $MPP_HOSTNAME"
 				UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
@@ -862,7 +857,7 @@ CREATE_QES_MIRROR () {
 		do
 				SET_VAR $I
 				LOG_MSG "[INFO]:-Processing Mirror segment $MPP_HOSTNAME"
-				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$INITDB -E $ENCODING -D $MPP_DIR"
+				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};$INITDB -E $ENCODING -D $MPP_DIR"
 				BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -rf $MPP_DIR\""
 				BACKOUT_COMMAND "$ECHO \"removing directory $MPP_DIR on $MPP_HOSTNAME\""
 				LOG_MSG "[INFO]:-Configuring segment $PG_CONF"
@@ -886,16 +881,16 @@ CREATE_QES_MIRROR () {
 					RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host	all	all	${MASTER_IP}/32	trust >> ${MPP_DIR}/$PG_HBA"
 				done
 				LOG_MSG "[INFO]:-Starting Functioning instance on segment ${MPP_HOSTNAME}"
-				$TRUSTED_SHELL ${MPP_HOSTNAME} "export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start"
+				$TRUSTED_SHELL ${MPP_HOSTNAME} "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start"
 				if [ $? -ne 0 ]; then
 						BACKOUT_COMMAND "$ECHO \"Removing segment log file ${MPP_DIR}.log on segment $MPP_HOSTNAME\""
-						BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
+						BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
 						$TRUSTED_SHELL ${MPP_HOSTNAME} "$CAT ${MPP_DIR}.log "|$TEE -a $LOG_FILE
 						ERROR_EXIT "[FATAL]:-Failed to start segment Mirror instance database" 2
 				fi	
 				BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -f ${MPP_DIR}.log\""
 				BACKOUT_COMMAND "$ECHO \"Removing segment log file ${MPP_DIR}.log on segment $MPP_HOSTNAME\""
-				BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
+				BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
 				BACKOUT_COMMAND "$ECHO \"Stopping segment instance on $MPP_HOSTNAME\""
 				LOG_MSG "[INFO]:-Successfully started segment mirror instance on $MPP_HOSTNAME"
 				UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
@@ -910,7 +905,7 @@ RESTART_QD_PRODUCTION () {
 				$WORKDIR/mppstop.sh -a -d $QD_DIR
 				RETVAL=$?
 				case $RETVAL in
-				0 )	LOG_MSG "[INFO]:-Successfully shutdown the new MPP array" ;;
+				0 ) LOG_MSG "[INFO]:-Successfully shutdown the new MPP array" ;;
 				1 ) LOG_MSG "[WARN]:-Non fatal error from MPP array shutdown, check log files, will continue" ;;
 				2 ) ERROR_EXIT "[FATAL]:-Failed to stop new MPP cluster, check log file" 2
 				esac
