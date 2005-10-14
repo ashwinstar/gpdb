@@ -65,6 +65,7 @@ MPP_HOST_TBL=mpp.host
 MPP_PGDATABASE_TBL=mpp.pgdatabase
 MPP_LISTENER_TBL=mpp.listener
 unset PG_CONF_ADD_FILE
+EXIT_STATUS=0
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -176,6 +177,7 @@ CHK_PARAMS () {
 		#Now process contents for the configuration file
 		if [ ! "$ARRAY_NAME" ]; then
 				LOG_MSG "[WARN]:-ARRAY_NAME variable not set, will provide default value"
+				EXIT_STATUS=1
 				ARRAY_NAME="MPP Cluster"
 		fi
 		export ARRAY_NAME
@@ -239,6 +241,7 @@ CHK_PARAMS () {
 		#ENCODING
 		if [ ! $ENCODING ]; then
 				LOG_MSG "[WARN]:-ENCODING variable not set, will set to default SQL_ASCII"
+				EXIT_STATUS=1
 				ENCODING="SQL_ASCII"
 		fi
 		#Number of QE hosts in this configuration
@@ -814,45 +817,6 @@ CREATE_QES_PRIMARY () {
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
-PROCESS_QE () {
-		SET_VAR $I
-		LOG_MSG "[INFO]:-Processing segment $MPP_HOSTNAME"
-		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$INITDB -E $ENCODING -D $MPP_DIR"
-		BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -rf $MPP_DIR\""
-		BACKOUT_COMMAND "$ECHO \"removing directory $MPP_DIR on $MPP_HOSTNAME\""
-		LOG_MSG "[INFO]:-Configuring segment $PG_CONF"
-		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO \"#MPP Specifc parameters\" >> ${MPP_DIR}/$PG_CONF"
-		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO \"#----------------------\" >> ${MPP_DIR}/$PG_CONF"
-		ED_FILE ${MPP_DIR}/$PG_CONF port port=$MPP_PORT $MPP_HOSTNAME
-		ED_FILE ${MPP_DIR}/$PG_CONF listen_addresses listen_addresses=\'*\' $MPP_HOSTNAME
-		ED_FILE ${MPP_DIR}/$PG_CONF checkpoint_segments checkpoint_segments=$CHECK_POINT_SEGMENTS $MPP_HOSTNAME
-		if [ x"" != "$PG_CONF_ADD_FILE" ]; then
-				LOG_MSG "[INFO]:-Processing additional configuration parameters"
-				for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
-				do
-					LOG_MSG "[INFO]:-Adding config $NEW_PARAM to QE"
-					SEARCH_TXT=`$ECHO $NEW_PARAM |$CUT -d"=" -f1`
-					ED_FILE ${MPP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM $MPP_HOSTNAME
-				done
-		fi
-		LOG_MSG "[INFO]:-Configuring segment $PG_HBA"
-		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host	all	all	${MASTER_IP_ADDRESS}/32	trust >> ${MPP_DIR}/$PG_HBA"
-		LOG_MSG "[INFO]:-Starting Functioning instance on segment ${MPP_HOSTNAME}"
-		$TRUSTED_SHELL ${MPP_HOSTNAME} "export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start" >> $LOG_FILE 2>&1
-		if [ $? -ne 0 ]; then
-				BACKOUT_COMMAND "$ECHO \"Removing segment log file ${MPP_DIR}.log on segment $MPP_HOSTNAME\""
-				BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
-				$TRUSTED_SHELL ${MPP_HOSTNAME} "$CAT ${MPP_DIR}.log "|$TEE -a $LOG_FILE
-				ERROR_EXIT "[FATAL]:-Failed to start segment Mirror instance database" 2
-		fi	
-		BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -f ${MPP_DIR}.log\""
-		BACKOUT_COMMAND "$ECHO \"Removing segment log file ${MPP_DIR}.log on segment $MPP_HOSTNAME\""
-		BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
-		BACKOUT_COMMAND "$ECHO \"Stopping segment instance on $MPP_HOSTNAME\""
-		LOG_MSG "[INFO]:-Successfully started segment mirror instance on $MPP_HOSTNAME"
-		UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
-}
-
 CREATE_QES_MIRROR () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		for I in  "${QE_MIRROR_ARRAY[@]}"
@@ -908,7 +872,8 @@ RESTART_QD_PRODUCTION () {
 				RETVAL=$?
 				case $RETVAL in
 				0 ) LOG_MSG "[INFO]:-Successfully shutdown the new MPP array" ;;
-				1 ) LOG_MSG "[WARN]:-Non fatal error from MPP array shutdown, check log files, will continue" ;;
+				1 ) LOG_MSG "[WARN]:-Non fatal error from MPP array shutdown, check log files, will continue"
+				    EXIT_STATUS=1 ;;
 				2 ) ERROR_EXIT "[FATAL]:-Failed to stop new MPP cluster, check log file" 2
 				esac
 		else
