@@ -587,6 +587,16 @@ void SetupInterconnect(SliceTable *mySliceTable, int mySliceId)
 	MotionLayerState *sendingMotionState = NULL;
 
 	Assert(!activated);
+	
+	/*
+	 * The assert only happens when we are compiled with --enable-cassert.
+	 * So, let's report the error even if we are a production build.
+	 */
+	if (activated)
+	{
+		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						errmsg("SetupInterconnect: Called when already activated.")));
+	}
 
 	if (mlsStates != NULL)
 	{
