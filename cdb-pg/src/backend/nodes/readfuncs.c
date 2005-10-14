@@ -459,6 +459,21 @@ _readIndexElem(void)
 	READ_DONE();
 }
 
+static ReindexStmt *
+_readReindexStmt(void)
+{
+	READ_LOCALS(ReindexStmt);
+	 
+	READ_ENUM_FIELD(kind,ObjectType);
+	READ_NODE_FIELD(relation);
+	READ_STRING_FIELD(name);
+	READ_BOOL_FIELD(force);
+	READ_BOOL_FIELD(all);
+	
+	READ_DONE();
+	
+}
+
 static ViewStmt *
 _readViewStmt(void)
 {
@@ -2203,6 +2218,7 @@ static ParseNodeInfo infoAr[] =
 	{"QUERY", (ReadFn)_readQuery},
 	{"RANGETBLREF", (ReadFn)_readRangeTblRef},
 	{"RANGEVAR", (ReadFn)_readRangeVar},
+	{"REINDEXSTMT", (ReadFn)_readReindexStmt},
 	{"RELABELTYPE", (ReadFn)_readRelabelType},
 	{"REMOTEPARAMDATA", (ReadFn)_readRemoteParamData},
 	{"RENAMESTMT", (ReadFn)_readRenameStmt},

@@ -81,7 +81,7 @@
 /* Write a character-string (possibly NULL) field */
 #define WRITE_STRING_FIELD(fldname) \
 	(appendStringInfo(str, " :" CppAsString(fldname) " "), \
-	 _outToken(str, node->fldname))
+	 _outToken(str, (char *)node->fldname))
 
 /* Write a Node field */
 #define WRITE_NODE_FIELD(fldname) \
@@ -1336,6 +1336,20 @@ _outIndexStmt(StringInfo str, IndexStmt *node)
 }
 
 static void
+_outReindexStmt(StringInfo str, ReindexStmt *node)
+{
+	WRITE_NODE_TYPE("REINDEXSTMT");
+	 
+	WRITE_ENUM_FIELD(kind,ObjectType);
+	WRITE_NODE_FIELD(relation);
+	WRITE_STRING_FIELD(name);
+	WRITE_BOOL_FIELD(force);
+	WRITE_BOOL_FIELD(all);
+	
+}
+
+
+static void
 _outViewStmt(StringInfo str, ViewStmt *node)
 {
 	WRITE_NODE_TYPE("VIEWSTMT");
@@ -2462,6 +2476,10 @@ _outNode(StringInfo str, void *obj)
 			case T_IndexStmt:
 				_outIndexStmt(str, obj);
 				break;
+			case T_ReindexStmt:
+				_outReindexStmt(str, obj);
+				break;
+				
 			case T_ViewStmt:
 				_outViewStmt(str, obj);
 				break;
