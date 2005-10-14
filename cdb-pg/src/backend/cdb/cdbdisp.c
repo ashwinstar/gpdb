@@ -733,21 +733,7 @@ cdbdisp_dispatchCommand(const char         *szCommand,
     		}
     }
 
-    if (mirrorGang->segdb_count < getMPPSegmentCount() || mirrorGang->size < getMPPSegmentCount())
-    {
-    	elog(LOG, "Some segments are down.  Dispatching command %.50s to remaining segments only",szCommand);
-    	
-    	if (strncmp(szCommand,"BEGIN ",6)!=0 &&
-    		strncmp(szCommand,"PREPARE ",8)!=0 &&
-    		strncmp(szCommand,"COMMIT ",6)!=0 &&
-    		strncmp(szCommand,"ROLLBACK ",9)!=0)
-    		{
-    			if (strncmp(szCommand,"MPPEXEC ",8)==0 || strncmp(szCommand,"mppexec ",8)==0)
-    			elog(INFO, "Some segments are down.  Dispatching command to remaining segments only");
-    			else
-    			elog(INFO, "Some segments are down.  Dispatching command %.50s to remaining segments only",szCommand);
-    		}
-    }
+   
 
 	/*
      * Dispatch the command.
