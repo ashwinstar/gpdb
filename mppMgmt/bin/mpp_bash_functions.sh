@@ -467,14 +467,22 @@ GET_PG_PID_ACTIVE () {
 			if [ x"" == x"$PG_LOCK_FILE" ];then
 				PID=0
 			else
-				PID=`$CAT ${PG_LOCK_FILE}.lock|$HEAD -1|$AWK '{print $1}'`
+				if [ -f ${PG_LOCK_FILE}.lock ];then
+					PID=`$CAT ${PG_LOCK_FILE}.lock|$HEAD -1|$AWK '{print $1}'`
+				else
+					PID=0
+				fi
 			fi
 		else
 			PG_LOCK_FILE=`$TRUSTED_SHELL $HOST "$NETSTAT -a|$GREP ".s.PGSQL.${PORT}" 2>/dev/null"|$AWK '{print $NF}'`
 			if [ x"" == x"$PG_LOCK_FILE" ];then
 				PID=0
 			else
-				PID=`$TRUSTED_SHELL $HOST "$CAT ${PG_LOCK_FILE}.lock|$HEAD -1 2>/dev/null"|$AWK '{print $1}'`
+				if [ `$TRUSTED_SHELL $HOST "$LS ${PG_LOCK_FILE}.lock 2>/dev/null"|$WC -l` -ne 0 ];then
+					PID=`$TRUSTED_SHELL $HOST "$CAT ${PG_LOCK_FILE}.lock|$HEAD -1 2>/dev/null"|$AWK '{print $1}'`
+				else
+					PID=0
+				fi
 			fi
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"

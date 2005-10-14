@@ -490,13 +490,6 @@ else
 	fi
 fi
 CHK_DB_QD_SET
-if [ $LOG_DIR ]
-		then
-		CHK_DIR $LOG_DIR
-		if [ $EXISTS -eq 1 ]; then ERROR_EXIT "[FATAL]:-Log directory $LOG_DIR does not exist" 2
-		fi
-		LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
-fi
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 CHK_DB_RUNNING

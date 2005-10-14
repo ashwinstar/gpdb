@@ -53,10 +53,12 @@ TIME=`$DATE +%H":"%M":"%S`
 CUR_DATE=`$DATE +%Y%m%d`
 MASTER_HOSTNAME=`hostname`
 EXIT_STATUS=0
+FULL_DISPLAY=0
 #******************************************************************************
 # Functions
 #******************************************************************************
 USAGE () {
+	GET_QD_DB_NAME >/dev/null 2>&1
 	$ECHO
         $ECHO "      `basename $0`"
 	$ECHO
@@ -76,6 +78,8 @@ USAGE () {
 	$ECHO
 	$ECHO "      Skew options:"
 	$ECHO "      -t, <table name> [mandatory]"
+	$ECHO "      -a, <database name> alternative database name [default ${QD_DBNAME}]"
+	$ECHO "      -f, display full results output [default summary]"
 	$ECHO
 	$ECHO "      Connection options:"
         $ECHO "      -d, <head database directory> name of alternative head database to connect [optional]"
@@ -97,29 +101,25 @@ GET_NODE_COUNT () {
 	if [ $NUM_SEGMENTS = 1 ];then
 		ERROR_EXIT "[FATAL]:-Only one node in cluster, skew not applicable" 2;fi 
 		$PSQL -p $MASTER_PORT $QD_DBNAME -t -A -F"," -c"select a.hostname, b.port, b.datadir from mpp.host a, mpp.listener b, mpp.pgdatabase c where a.hostid=b.hostid and c.content <> -1 and c.isprimary='t' and b.listenerid=c.listenerid;" > $NODELIST
-	$ECHO -n "Sending request to nodes"
+	$ECHO  "Sending request to nodes.."
 
 	SEGCOUNT=0
 	for NodeInfo in `$CAT $NODELIST`
 	do
-	$ECHO -n .
 	SEG_HOST=`$ECHO $NodeInfo|$CUT -d, -f1`
 	SEG_PORT=`$ECHO $NodeInfo|$CUT -d, -f2`
 	SEG_DIR=`$ECHO $NodeInfo|$CUT -d, -f3`
 	SEG_NAME=`$BASENAME $SEG_DIR`
-	$TRUSTED_SHELL $SEG_HOST "time env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT $QD_DBNAME -A -t -c'select count(*),'\''$SEG_NAME'\'','\''$SEG_HOST'\'' from $TARGETTBL;'" 2>&1|$HEAD -3|$TR -s '\n'|$TR ' ' '\n'|$TR -d '.'|$TR -cs '[:alnum:]' '[\n*]'|$GREP -v real|$TR  '\n' '|'|$AWK '{print $1}' >> $TMPFILE &
+	$TRUSTED_SHELL $SEG_HOST "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}; time env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT $QD_DBNAME -A -t -c'select count(*),'\''$SEG_NAME'\'','\''$SEG_HOST'\'' from $TARGETTBL;'" 2>&1|$HEAD -3|$TR -s '\n'|$TR ' ' '\n'|$TR -d '.'|$TR -cs '[:alnum:]' '[\n*]'|$GREP -v real|$TR  '\n' '|'|$AWK '{print $1}' >> $TMPFILE &
 	let SEGCOUNT=$SEGCOUNT+1
 	done
-	$ECHO
+	$ECHO "Requests sent.."
 #Now wait until the temporary file contains $SegCount lines
-	$ECHO -n "Waiting for results"
+	$ECHO  "Waiting for results..."
 	while [ $SEGCOUNT -ne `$WC -l $TMPFILE|$AWK '{print $1}'` ]
 	do
-		$ECHO -n .
 		$SLEEP 1
 	done
-	$ECHO
-	LOG_MSG "[INFO]:-Processing results"
 	REC_COUNT=0
 	for RECS in `cat $TMPFILE|$CUT -d'|' -f1`
 	do
@@ -139,21 +139,24 @@ GET_NODE_COUNT () {
 	MaxTimeSeg=`$TAIL -1 $TMPFILE|$CUT -d'|' -f2`
 	let RecDiff=$MaxSkew-$MinSkew
 	LOG_MSG "-------------------------------------------------------------------"
-	LOG_MSG "[INFO]:-Table of results for Table $TARGETTBL which is $TYPE"
+	LOG_MSG "[INFO]:-Table of results for Table $TARGETTBL in database $QD_DBNAME"
 	LOG_MSG "-------------------------------------------------------------------"
 	LOG_MSG "[INFO]:-Total records = $REC_COUNT"
 	LOG_MSG "-------------------------------------------------------------------"
-	$CAT $TMPFILE|$SORT | $TEE -a $LOG_FILE
-	$ECHO
-	LOG_MSG "[INFO]:-Skew calculation"
-	$ECHO
+	if [ $FULL_DISPLAY -eq 1 ];then
+		$CAT $TMPFILE|$SORT | $TEE -a $LOG_FILE
+	else
+		$CAT $TMPFILE|$SORT >> $LOG_FILE
+	fi
+	LOG_MSG "[INFO]:-Skew result"
 	LOG_MSG "[INFO]:-Host $MaxHost segment $MaxSeg has maximum row count of $MaxSkew records"
 	LOG_MSG "[INFO]:-Host $MinHost segment $MinSeg has minimum row count of $MinSkew records"
-	$ECHO
 	LOG_MSG "[INFO]:-Record count variance is $RecDiff records"
-	LOG_MSG "[INFO]:-Fastest host $MinTimeHost segment $MinTimeSeg responded $MinTime"
-	LOG_MSG "[INFO]:-Slowest host $MaxTimeHost segment $MaxTimeSeg responded $MaxTime" 
-	$ECHO
+	LOG_MSG "-------------------------------------------------------------------"
+	LOG_MSG "[INFO]:-Response result"
+	LOG_MSG "[INFO]:-Fastest host $MinTimeHost segment $MinTimeSeg responded in $MinTime"
+	LOG_MSG "[INFO]:-Slowest host $MaxTimeHost segment $MaxTimeSeg responded in $MaxTime" 
+	LOG_MSG "-------------------------------------------------------------------"
 	rm -f $TMPFILE
 	rm -f $NODELIST
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -163,13 +166,15 @@ GET_NODE_COUNT () {
 #******************************************************************************
 trap '$RM -f $TMPFILE $NODELIST' INT TERM
 if [ $# -ne 0 ];then
-        while getopts ":vt:'?'d:l:" opt;do
+        while getopts ":a:vft:'?'d:l:" opt;do
         case $opt in
                 v ) VERSION_INFO ;;
                 t ) TARGETTBL=$OPTARG ;;
                 '?' ) USAGE ;;
                 d ) MASTER_DATA_DIRECTORY=$OPTARG ;;
 		l ) LOG_DIR=$OPTARG ;;
+		a ) ALT_DBNAME=$OPTARG ;;
+		f ) FULL_DISPLAY=1 ;;
                 * ) UNKNOWN_OPTION ;;
         esac
         done
@@ -190,6 +195,9 @@ LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 if [ $TARGETTBL ];then
 GET_QD_DB_NAME
+if [ x"" != x"$ALT_DBNAME" ];then
+        QD_DBNAME=$ALT_DBNAME
+fi
 CHK_EXISTS_TABLE $TARGETTBL $MASTER_PORT $QD_DBNAME
 if [ $EXISTS -ne 0 ];then
 	ERROR_EXIT "ERROR:-Table $TARGETTBL does not exist" 2;fi

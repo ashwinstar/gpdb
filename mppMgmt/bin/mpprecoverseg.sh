@@ -120,11 +120,10 @@ GET_MIRROR () {
 	#Get a list of dbid's that are marked as invalid
 	for DBNAME in ${DB_LIST[@]}
 	do
-##		FAILED_INST_LIST=(`$PSQL -p $MASTER_PORT $QD_DBNAME -R" " -A -t -c"select dbid from mpp.mpp_pgdatabase where valid='f';"`)
 		FAILED_INST_LIST=(`$PSQL -p $MASTER_PORT $DBNAME -R" " -A -t -c"select dbid from mpp.mpp_pgdatabase where valid='f';"`)
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
-			ERROR_EXIT "[FATAL]:-Unable to access master database"
+			ERROR_EXIT "[FATAL]:-Unable to access master database" 2
 		fi
 		FAILED_INST_COUNT=${#FAILED_INST_LIST[@]}
 		if [ $FAILED_INST_COUNT -eq 0 ]; then
@@ -184,7 +183,7 @@ DISPLAY_PARAM () {
 		LOG_MSG "[INFO]:-Procedure can continue without database interruption as mpp_fault_action=$FAIL_TYPE"
 	fi
 	$ECHO
-        $ECHO -n "Continue with recovery procedure yY|nN >"
+        $ECHO "Continue with recovery procedure yY|nN >"
         read REPLY
         if [ $REPLY != Y ] && [ $REPLY != y ] || [ -z $REPLY ];then
                 LOG_MSG "[WARN]:-User abort requested, Script Exits!"
@@ -222,15 +221,15 @@ TEST_ACCESS () {
 		LOG_MSG "[INFO]:-Test Cycle $REC_COUNT of $ARRAY_INDEX"
 		LOG_MSG "[INFO]:----------------------------------"
 		LOG_MSG "[INFO]:-Test 1, create temporary file on $FAIL_QE_HOST"
-		RUN_COMMAND_REMOTE $FAIL_QE_HOST "$ECHO test >/tmp/remote_test1" 
+		RUN_COMMAND_REMOTE $FAIL_QE_HOST "$ECHO test >/tmp/remote_test1.$$" 
 		LOG_MSG "[INFO]:-Test 2, create temporary file on ${MIR_QE_HOST}"
-		RUN_COMMAND_REMOTE ${MIR_QE_HOST} "$ECHO test >/tmp/remote_test2" 
+		RUN_COMMAND_REMOTE ${MIR_QE_HOST} "$ECHO test >/tmp/remote_test2.$$" 
 		LOG_MSG "[INFO]:-Test 3, copy file from ${MIR_QE_HOST} to ${FAIL_QE_HOST}"
-		RUN_COMMAND_REMOTE ${MIR_QE_HOST} "$SCP -pr /tmp/remote_test2 ${FAIL_QE_HOST}:/tmp"
+		RUN_COMMAND_REMOTE ${MIR_QE_HOST} "$SCP -pr /tmp/remote_test2.$$ ${FAIL_QE_HOST}:/tmp"
 		LOG_MSG "[INFO]:-Clearing temporary files"
-		RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$RM -f /tmp/remote_test1" 
-		RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$RM -f /tmp/remote_test2" 
-		RUN_COMMAND_REMOTE ${MIR_QE_HOST} "$RM -f /tmp/remote_test2" 
+		RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$RM -f /tmp/remote_test1.$$" 
+		RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$RM -f /tmp/remote_test2.$$" 
+		RUN_COMMAND_REMOTE ${MIR_QE_HOST} "$RM -f /tmp/remote_test2.$$" 
 		((COUNT=$COUNT+1))	
 	done
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -246,7 +245,7 @@ STOP_DATABASE () {
         ${WORKDIR}/$STOP_PROG -zfa
         RETVAL=$?
         if [ $RETVAL -gt 1 ];then
-                ERROR_EXIT "[FATAL]:-Could not shutdown the MPP array"
+                ERROR_EXIT "[FATAL]:-Could not shutdown the MPP array" 2
 		fi
         LOG_MSG "[INFO]:-Successfully shutdown the MPP array"
 	else
@@ -254,7 +253,7 @@ STOP_DATABASE () {
 		do
 			FAIL_SET_VAR ${FAILED_INSTANCE_ARRAY[$COUNT]}
 			LOG_MSG "[INFO]:-Forcing shutdown of $FAIL_QE_HOST for port=$FAIL_QE_PORT "
-			$TRUSTED_SHELL $FAIL_QE_HOST "env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -W stop -D $FAIL_QE_DIR -m immediate -l ${FAIL_QE_DIR}.log"
+			$TRUSTED_SHELL $FAIL_QE_HOST "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -W stop -D $FAIL_QE_DIR -m immediate -l ${FAIL_QE_DIR}.log"
 			LOG_MSG "[INFO]:-Clearing /tmp/lock files for $FAIL_QE_HOST for port=$FAIL_QE_PORT "
 			$TRUSTED_SHELL $FAIL_QE_NAME "$RM -f /tmp/.s.PGSQL.${FAIL_QE_PORT}.lock /tmp/.s.PGSQL.${FAIL_QE_PORT}"
 			((COUNT=$COUNT+1))		
@@ -271,15 +270,18 @@ RECOVER_DATA () {
 		FAIL_SET_VAR ${FAILED_INSTANCE_ARRAY[$COUNT]}
 		MIR_SET_VAR ${ACTIVE_INSTANCE_ARRAY[$COUNT]}
 		LOG_MSG "[INFO]:-Checking for invalid postmaster process on port ${FAIL_QE_HOST}"
-		RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$PS ax|$GREP postmaster|$GREP '\-p ${FAIL_QE_PORT}'|$GREP -v grep|$AWK '{print \$1}' >${FAIL_QE_TOP_DIR}/kill.pid" 
-		$TRUSTED_SHELL ${FAIL_QE_HOST} "kill -9 \`cat ${FAIL_QE_TOP_DIR}/kill.pid\`" 2>> $LOG_FILE
-		$TRUSTED_SHELL ${FAIL_QE_HOST} "$RM -f ${FAIL_QE_TOP_DIR}/kill.pid"
+		GET_PG_PID_ACTIVE $FAIL_QE_PORT $FAIL_QE_HOST
+		if [ $PID -ne 0 ]; then
+			$TRUSTED_SHELL $FAIL_QE_HOST "$KILL -9 $PID" > $LOG_FILE 2>&1
+		else
+			LOG_MSG "[INFO]:-No active pid found for $FAIL_QE_HOST for port=$FAIL_QE_PORT"
+		fi
 		LOG_MSG "[INFO]:-Deleting failed database directory on ${FAIL_QE_HOST}"
 		RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$RM -Rf ${FAIL_QE_DIR}" 
 		#Run a checkpoint if STOPDB=0
 		if [ $STOPDB -eq 0 ]; then
 			LOG_MSG "[INFO]:-Issuing checkpoint on $MIR_QE_HOST port=$MIR_QE_PORT"
-			$TRUSTED_SHELL $MIR_QE_HOST "env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $MIR_QE_PORT template1 -c \"checkpoint;\""
+			$TRUSTED_SHELL $MIR_QE_HOST "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $MIR_QE_PORT template1 -c \"checkpoint;\""
 			RETVAL=$?
 			if [ $RETVAL -ne 0 ]; then
 				LOG_MSG "[WARN]:-Checkpoint failed on $MIR_QE_HOST port=$MIR_QE_PORT"
@@ -290,14 +292,15 @@ RECOVER_DATA () {
 		fi
 		LOG_MSG "[INFO]:-Recovering data directory from ${MIR_QE_HOST} to ${FAIL_QE_HOST}"
 		LOG_MSG "[INFO]:-This could take some time depending on data volume ... Please Wait ..."
-		KB_COPY=`$TRUSTED_SHELL ${MIR_QE_HOST} "$DU ${MIR_QE_DIR} -k -s -c|$TAIL -1"|$AWK '{print $1}'`
+		KB_COPY=`$TRUSTED_SHELL ${MIR_QE_HOST} "$DU -k -s -c ${MIR_QE_DIR}|$TAIL -1"|$AWK '{print $1}'`
 		((COPY_TIME=$KB_COPY/28672))
 		LOG_MSG "[INFO]:-Estimated duration of copy $COPY_TIME seconds"
 		RUN_COMMAND_REMOTE ${MIR_QE_HOST} "$TRUSTED_COPY -pr ${MIR_QE_DIR} ${FAIL_QE_HOST}:${FAIL_QE_DIR}" 
 		LOG_MSG "[INFO]:-Setting recovered port to ${FAIL_QE_PORT} on ${FAIL_QE_HOST}" 
-		RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$GREP -v '^port=' ${FAIL_QE_DIR}/postgresql.conf > ${FAIL_QE_DIR}/postgresql.conf_copy"
-		RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$ECHO 'port=${FAIL_QE_PORT}' >>${FAIL_QE_DIR}/postgresql.conf_copy"
-		RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$MV ${FAIL_QE_DIR}/postgresql.conf_copy ${FAIL_QE_DIR}/postgresql.conf"
+		ED_FILE ${FAIL_QE_DIR}/$PG_CONF "port=" "port=${FAIL_QE_PORT}" ${FAIL_QE_HOST}
+##		RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$GREP -v '^port=' ${FAIL_QE_DIR}/postgresql.conf > ${FAIL_QE_DIR}/postgresql.conf_copy"
+##		RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$ECHO 'port=${FAIL_QE_PORT}' >>${FAIL_QE_DIR}/postgresql.conf_copy"
+##		RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$MV ${FAIL_QE_DIR}/postgresql.conf_copy ${FAIL_QE_DIR}/postgresql.conf"
 		LOG_MSG "[INFO]:-Clearing old postmaster.opts file"
 		RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$RM -f ${FAIL_QE_DIR}/postmaster.opts"
 		if [ $STOPDB -eq 0 ]; then
@@ -318,7 +321,7 @@ UPDATE_MPP_MPP () {
 		((COUNT=$COUNT+1))
 		LOG_MSG "[INFO]:-Updating instance catalog on $FAIL_QE_HOST port=$FAIL_QE_PORT"
 		LOG_MSG "[INFO]:-Starting instance on $FAIL_QE_HOST port=$FAIL_QE_PORT"
-		$TRUSTED_SHELL $FAIL_QE_HOST "env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -w -D $FAIL_QE_DIR -l ${FAIL_QE_DIR}.log -o \"-i -p $FAIL_QE_PORT \" start" 
+		$TRUSTED_SHELL $FAIL_QE_HOST "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -w -D $FAIL_QE_DIR -l ${FAIL_QE_DIR}.log -o \"-i -p $FAIL_QE_PORT \" start" 
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 			ERROR_EXIT "[FATAL]:-Failed to start $FAIL_QE_HOST instance $FAIL_QE_DIR port=$FAIL_QE_PORT " 2
@@ -328,7 +331,7 @@ UPDATE_MPP_MPP () {
 		for MPP_DB in ${DB_LIST[@]}
 		do
 			LOG_MSG "[INFO]:-Updating mpp.mpp on $FAIL_QE_HOST database $MPP_DB"
-			$TRUSTED_SHELL $FAIL_QE_HOST "env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $FAIL_QE_PORT $QD_DBNAME -c \"update mpp.mpp set dbid=${FAIL_QE_DBID} where dbid<>${FAIL_QE_DBID};\""
+			$TRUSTED_SHELL $FAIL_QE_HOST "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $FAIL_QE_PORT $QD_DBNAME -c \"update mpp.mpp set dbid=${FAIL_QE_DBID} where dbid<>${FAIL_QE_DBID};\""
 			RETVAL=$?
 			if [ $RETVAL -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Failed to update mpp.mpp on $FAIL_QE_HOST DBID=$FAIL_QE_DBID port=$FAIL_QE_PORT" 2
@@ -338,7 +341,7 @@ UPDATE_MPP_MPP () {
 		done
 		if [ $STOPDB -eq 1 ]; then
 				LOG_MSG "[INFO]:-Commencing shutdown of $FAIL_QE_HOST port=$FAIL_QE_PORT"
-				$TRUSTED_SHELL $FAIL_QE_HOST "env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -W stop -D $FAIL_QE_DIR -m smart -l ${FAIL_QE_DIR}.log"
+				$TRUSTED_SHELL $FAIL_QE_HOST "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -W stop -D $FAIL_QE_DIR -m smart -l ${FAIL_QE_DIR}.log"
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
 					ERROR_EXIT "[FATAL]:-Failed to stop $FAIL_QE_HOST port=$FAIL_QE_PORT" 2
@@ -395,8 +398,8 @@ START_DATABASE () {
 		LOG_MSG "[WARN]:-The $START_PROG script returned a non zero return code"
 		LOG_MSG "[INFO]:-Check the $START_PROG log file for more information on cause"
 		LOG_MSG "[INFO]:-Run mppstate.sh to check current status of cluster database"
-                ERROR_EXIT "[FATAL]:-Issue with master database startup."
-		fi
+                ERROR_EXIT "[FATAL]:-Issue with master database startup." 2
+	fi
         LOG_MSG "[INFO]:-Successfully started the master array"
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
