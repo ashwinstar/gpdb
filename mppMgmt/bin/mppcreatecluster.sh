@@ -186,6 +186,8 @@ CHK_PARAMS () {
 
 		#Make sure that this script is running on the QD host
 		if [ $MASTER_HOSTNAME != `$HOSTNAME` ]; then
+				LOG_MSG "[FATAL]:-Cluster master hostname in configuration file is ${MASTER_HOSTNAME}"
+				LOG_MSG "[FATAL]:-Operating system command returns $HOSTNAME"
 				ERROR_EXIT "[FATAL]:-This script must be executed on the Master host $MASTER_HOSTNAME" 2
 		fi
 
@@ -777,7 +779,7 @@ CREATE_QES_PRIMARY () {
 				LOG_MSG "[INFO]:-Configuring segment $PG_CONF"
 				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO \"#MPP Specifc parameters\" >> ${MPP_DIR}/$PG_CONF"
 				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO \"#----------------------\" >> ${MPP_DIR}/$PG_CONF"
-				ED_FILE ${MPP_DIR}/$PG_CONF port port=$MPP_PORT $MPP_HOSTNAME
+				ED_FILE ${MPP_DIR}/$PG_CONF "port#"  port=$MPP_PORT $MPP_HOSTNAME
 				ED_FILE ${MPP_DIR}/$PG_CONF listen_addresses listen_addresses=\'*\' $MPP_HOSTNAME
 				ED_FILE ${MPP_DIR}/$PG_CONF checkpoint_segments checkpoint_segments=$CHECK_POINT_SEGMENTS $MPP_HOSTNAME
 				if [  x"" != x"$PG_CONF_ADD_FILE" ]; then
