@@ -284,7 +284,7 @@ _EOF_
 			$ECHO w >>  $ED_TMP_FILE
 			$ECHO q >>  $ED_TMP_FILE
 			#$SCP $ED_TMP_FILE ${ED_HOST}:/tmp > /dev/null 2>&1
-			$CAT $ED_TMP_FILE | $TRUSTED_SHELL ${ED_HOST} $DD of=/tmp/$ED_TMP_FILE > /dev/null 2>&1
+			$CAT $ED_TMP_FILE | $TRUSTED_SHELL ${ED_HOST} $DD of=$ED_TMP_FILE > /dev/null 2>&1
 			$TRUSTED_SHELL $ED_HOST "ed $FILENAME < $ED_TMP_FILE" > /dev/null 2>&1
 			RETVAL=$?
 			if [ $RETVAL -ne 0 ]; then
