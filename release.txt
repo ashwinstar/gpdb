@@ -1,5 +1,12 @@
 <<<NEW vi: set expandtab ts=4: >>>
 
+Release-2_0_12:  14/Oct/2005  llonergan
+    Known bugs:
+        Blocker bugs: mpp-111,150,170
+        Critical bugs: mpp-70,86,95,128,149,174,180
+        Major bugs: mpp-2,21,53,59,66,68,72,87,99,100,131
+                        177,179,183,185,187,189,191
+        Minor bugs: mpp-25,36,42,51,56,84,98,101,115,117,188
 
 Release-2_0_11:  14/Oct/2005  llonergan
     Major update of dispatcher
