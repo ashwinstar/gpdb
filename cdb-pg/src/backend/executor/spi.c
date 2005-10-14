@@ -37,11 +37,11 @@ static int	_SPI_curid = -1;
 static void _SPI_prepare_plan(const char *src, _SPI_plan *plan);
 
 static int _SPI_execute_plan(_SPI_plan *plan,
-							 Datum *Values, const char *Nulls,
-							 Snapshot snapshot, Snapshot crosscheck_snapshot,
-							 bool read_only, int tcount);
+				  Datum *Values, const char *Nulls,
+				  Snapshot snapshot, Snapshot crosscheck_snapshot,
+				  bool read_only, int tcount);
 
-static int _SPI_pquery(QueryDesc *queryDesc, int tcount);
+static int	_SPI_pquery(QueryDesc *queryDesc, int tcount);
 
 static void _SPI_error_callback(void *arg);
 
@@ -57,8 +57,8 @@ static MemoryContext _SPI_procmem(void);
 static bool _SPI_checktuples(void);
 
 /* used only in testing in test/libcdbtest ?? */
-extern int  
-SPI_execute_cdb( const char *src, Plan* pPlan, Query* pQuery, bool read_only, int tcount);
+extern int
+			SPI_execute_cdb(const char *src, Plan *pPlan, Query *pQuery, bool read_only, int tcount);
 
 
 /* =================== interface functions =================== */
@@ -108,7 +108,7 @@ SPI_connect(void)
 	_SPI_current = &(_SPI_stack[_SPI_connected]);
 	_SPI_current->processed = 0;
 	_SPI_current->tuptable = NULL;
-	_SPI_current->procCxt = NULL; /* in case we fail to create 'em */
+	_SPI_current->procCxt = NULL;		/* in case we fail to create 'em */
 	_SPI_current->execCxt = NULL;
 	_SPI_current->connectSubid = GetCurrentSubTransactionId();
 
@@ -122,14 +122,14 @@ SPI_connect(void)
 	 */
 	_SPI_current->procCxt = AllocSetContextCreate(TopTransactionContext,
 												  "SPI Proc",
-												ALLOCSET_DEFAULT_MINSIZE,
-											   ALLOCSET_DEFAULT_INITSIZE,
-											   ALLOCSET_DEFAULT_MAXSIZE);
+												  ALLOCSET_DEFAULT_MINSIZE,
+												  ALLOCSET_DEFAULT_INITSIZE,
+												  ALLOCSET_DEFAULT_MAXSIZE);
 	_SPI_current->execCxt = AllocSetContextCreate(TopTransactionContext,
 												  "SPI Exec",
-												ALLOCSET_DEFAULT_MINSIZE,
-											   ALLOCSET_DEFAULT_INITSIZE,
-											   ALLOCSET_DEFAULT_MAXSIZE);
+												  ALLOCSET_DEFAULT_MINSIZE,
+												  ALLOCSET_DEFAULT_INITSIZE,
+												  ALLOCSET_DEFAULT_MAXSIZE);
 	/* ... and switch to procedure's context */
 	_SPI_current->savedcxt = MemoryContextSwitchTo(_SPI_current->procCxt);
 
@@ -945,7 +945,7 @@ SPI_cursor_open(const char *name, void *plan,
 		portal->cursorOptions |= CURSOR_OPT_NO_SCROLL;
 
 	/*
-	 * Set up the snapshot to use.  (PortalStart will do CopySnapshot,
+	 * Set up the snapshot to use.	(PortalStart will do CopySnapshot,
 	 * so we skip that here.)
 	 */
 	if (read_only)
@@ -1220,7 +1220,7 @@ spi_printtup(HeapTuple tuple, TupleDesc tupdesc, DestReceiver *self)
 		tuptable->free = 256;
 		tuptable->alloced += tuptable->free;
 		tuptable->vals = (HeapTuple *) repalloc(tuptable->vals,
-								  tuptable->alloced * sizeof(HeapTuple));
+									  tuptable->alloced * sizeof(HeapTuple));
 	}
 
 	tuptable->vals[tuptable->alloced - tuptable->free] = heap_copytuple(tuple);
@@ -1418,9 +1418,9 @@ _SPI_execute_plan(_SPI_plan *plan, Datum *Values, const char *Nulls,
 				if (read_only && !QueryIsReadOnly(queryTree))
 					ereport(ERROR,
 							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 /* translator: %s is a SQL statement name */
-							 errmsg("%s is not allowed in a non-volatile function",
-									CreateQueryTag(queryTree))));
+					/* translator: %s is a SQL statement name */
+					   errmsg("%s is not allowed in a non-volatile function",
+							  CreateQueryTag(queryTree))));
 				/*
 				 * If not read-only mode, advance the command counter before
 				 * each command.
@@ -1735,7 +1735,8 @@ _SPI_copy_plan(_SPI_plan *plan, int location)
 		parentcxt = _SPI_current->procCxt;
 	else if (location == _SPI_CPLAN_TOPCXT)
 		parentcxt = TopMemoryContext;
-	else	/* (this case not currently used) */
+	else
+		/* (this case not currently used) */
 		parentcxt = CurrentMemoryContext;
 
 	/*
@@ -1769,12 +1770,12 @@ _SPI_copy_plan(_SPI_plan *plan, int location)
 	return newplan;
 }
 
-int  
-SPI_execute_cdb( const char *src, Plan* pPlan, Query* pQuery, bool read_only, int tcount)
+int
+SPI_execute_cdb(const char *src, Plan *pPlan, Query *pQuery, bool read_only, int tcount)
 {
 	_SPI_plan	plan;
 	int			res;
-	List* query_list = NIL;
+	List	   *query_list = NIL;
 
 	if (src == NULL || pPlan == NULL || pQuery == NULL || tcount < 0)
 		return SPI_ERROR_ARGUMENT;
@@ -1789,9 +1790,9 @@ SPI_execute_cdb( const char *src, Plan* pPlan, Query* pQuery, bool read_only, in
 	plan.argtypes = NULL;
 	plan.ptlist = NIL;
 	plan.qtlist = NIL;
-	
-	plan.ptlist = lappend(plan.ptlist, pPlan );
-	
+
+	plan.ptlist = lappend(plan.ptlist, pPlan);
+
 	query_list = lappend(query_list, pQuery);
 	plan.qtlist = lappend(plan.qtlist, query_list);
 

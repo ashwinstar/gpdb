@@ -246,7 +246,7 @@ static void ATPostAlterTypeCleanup(List **wqueue, AlteredTableInfo *tab);
 static void ATPostAlterTypeParse(char *cmd, List **wqueue);
 static void ATExecChangeOwner(Oid relationOid, int32 newOwnerSysId);
 static void change_owner_recurse_to_sequences(Oid relationOid,
-											  int32 newOwnerSysId);
+								  int32 newOwnerSysId);
 static void ATExecClusterOn(Relation rel, const char *indexName);
 static void ATExecDropCluster(Relation rel);
 static void ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel,
@@ -287,10 +287,10 @@ DefineRelation(CreateStmt *stmt, char relkind)
 	int			i;
 	AttrNumber	attnum;
 
-    struct Gang    *primaryGang = NULL;
-    struct Gang    *mirrorGang = NULL;
+	struct Gang *primaryGang = NULL;
+	struct Gang *mirrorGang = NULL;
 
-	bool shouldDispatch =  Mpp_role == MPP_ROLE_DISPATCH && !IsBootstrapProcessingMode() && relkind != RELKIND_SEQUENCE && relkind != RELKIND_VIEW;
+	bool		shouldDispatch = Mpp_role == MPP_ROLE_DISPATCH && !IsBootstrapProcessingMode() && relkind != RELKIND_SEQUENCE && relkind != RELKIND_VIEW;
 
 	/*
 	 * Truncate relname to appropriate length (probably a waste of time,
@@ -304,7 +304,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 	if (stmt->oncommit != ONCOMMIT_NOOP && !stmt->relation->istemp)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-			  errmsg("ON COMMIT can only be used on temporary tables")));
+				 errmsg("ON COMMIT can only be used on temporary tables")));
 
 	/*
 	 * Look up the namespace in which we are supposed to create the
@@ -361,7 +361,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 	 */
 	schema = MergeAttributes(schema, stmt->inhRelations,
 							 stmt->relation->istemp,
-						&inheritOids, &old_constraints, &parentOidCount);
+							 &inheritOids, &old_constraints, &parentOidCount);
 
 
 	/*
@@ -436,8 +436,11 @@ DefineRelation(CreateStmt *stmt, char relkind)
 
 
 
-	
-	/* If we are the dispatcher, we need to create the table to get the new relid */
+
+	/*
+	 * If we are the dispatcher, we need to create the table to get the new
+	 * relid
+	 */
 	if (Mpp_role == MPP_ROLE_DISPATCH || Mpp_role == MPP_ROLE_UTILITY)
 	{
 		relationId = heap_create_with_catalog(relname,
@@ -461,108 +464,109 @@ DefineRelation(CreateStmt *stmt, char relkind)
 		 */
 		if (stmt->inhRelations != NIL)
 			ereport(ERROR, (errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
-                            errmsg("Distributed tables cannot use inheritance")));
+					   errmsg("Distributed tables cannot use inheritance")));
 		/*
 		 * Check to see if we support the datatypes
 		 */
 		foreach(listptr, schema)
 		{
 			ListCell   *listp2;
-			
+
 			ColumnDef  *colDef = lfirst(listptr);
-			
+
 			foreach(listp2, colDef->typename->names)
 			{
-				Value * v = lfirst(listp2);
-				char * n = NULL;
+				Value	   *v = lfirst(listp2);
+				char	   *n = NULL;
+
 				if (v)
 					n = v->val.str;
-				
-	
-			
-			 	if (n)
-				if (strcmp(n,"oid")==0 ||
-					strcmp(n,"path") == 0 ||
-					strcmp(n,"bit") == 0 ||
-					strcmp(n,"box") == 0 ||
-					strcmp(n,"circle") == 0 ||
-					strcmp(n,"inet") == 0 ||
-					strcmp(n,"abstime") == 0 ||
-					strcmp(n,"reltime") == 0 ||
-					strcmp(n,"tinterval") == 0 ||
-					strcmp(n,"bytea") == 0 ||
-					strcmp(n,"int2vector") == 0 ||
-					strcmp(n,"regproc") == 0 ||
-					strcmp(n,"vector") == 0 ||
-					strcmp(n,"lseg") == 0 ||
-					strcmp(n,"polygon") == 0 ||
-					strcmp(n,"line") == 0 ||
-					strcmp(n,"unknown") == 0 ||
-					strcmp(n,"cash") == 0 ||
-					strcmp(n,"macaddr") == 0 ||
-					strcmp(n,"cidr") == 0 ||
-					strcmp(n,"int4array") == 0 ||
-					strcmp(n,"aclitem") == 0 ||
-					strcmp(n,"varbit") == 0 ||
-					strcmp(n,"record") == 0 ||
-					strcmp(n,"any") == 0 ||
-					strcmp(n,"anyarray") == 0 ||
-					strcmp(n,"void") == 0 ||
-					strcmp(n,"opaque") == 0 ||
-					strcmp(n,"money") == 0 ||
-					strcmp(n,"anyelement") == 0 ||
-					strcmp(n,"cstring") == 0 ||
-					strcmp(n,"smgr") == 0 ||
-					strcmp(n,"serial") == 0 ||
-					strcmp(n,"bigserial") == 0 ||
-					strcmp(n,"point") == 0)
-					ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					  errmsg("Datatype is not yet supported by Bizgres MPP")));
-					
+
+
+
+				if (n)
+					if (strcmp(n, "oid") == 0 ||
+						strcmp(n, "path") == 0 ||
+						strcmp(n, "bit") == 0 ||
+						strcmp(n, "box") == 0 ||
+						strcmp(n, "circle") == 0 ||
+						strcmp(n, "inet") == 0 ||
+						strcmp(n, "abstime") == 0 ||
+						strcmp(n, "reltime") == 0 ||
+						strcmp(n, "tinterval") == 0 ||
+						strcmp(n, "bytea") == 0 ||
+						strcmp(n, "int2vector") == 0 ||
+						strcmp(n, "regproc") == 0 ||
+						strcmp(n, "vector") == 0 ||
+						strcmp(n, "lseg") == 0 ||
+						strcmp(n, "polygon") == 0 ||
+						strcmp(n, "line") == 0 ||
+						strcmp(n, "unknown") == 0 ||
+						strcmp(n, "cash") == 0 ||
+						strcmp(n, "macaddr") == 0 ||
+						strcmp(n, "cidr") == 0 ||
+						strcmp(n, "int4array") == 0 ||
+						strcmp(n, "aclitem") == 0 ||
+						strcmp(n, "varbit") == 0 ||
+						strcmp(n, "record") == 0 ||
+						strcmp(n, "any") == 0 ||
+						strcmp(n, "anyarray") == 0 ||
+						strcmp(n, "void") == 0 ||
+						strcmp(n, "opaque") == 0 ||
+						strcmp(n, "money") == 0 ||
+						strcmp(n, "anyelement") == 0 ||
+						strcmp(n, "cstring") == 0 ||
+						strcmp(n, "smgr") == 0 ||
+						strcmp(n, "serial") == 0 ||
+						strcmp(n, "bigserial") == 0 ||
+						strcmp(n, "point") == 0)
+						ereport(ERROR,
+								(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								 errmsg("Datatype is not yet supported by Bizgres MPP")));
+
 				if (colDef->typename->arrayBounds != NIL)
 					ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					  errmsg("Array Datatypes are not yet supported by Bizgres MPP")));
-			 	
-				
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("Array Datatypes are not yet supported by Bizgres MPP")));
+
+
 			}
-			
+
 		}
 		Assert(stmt->relOid == 0);
 		stmt->relOid = relationId;
 		stmt->relKind = relkind;
 		stmt->relation->schemaname = get_namespace_name(namespaceId);
 
-		elog( DEBUG4,"shouldDispatch = true, relOid = %d, schemaname %s ",relationId,stmt->relation->schemaname);
-		
-		if ( shouldDispatch )
+		elog(DEBUG4, "shouldDispatch = true, relOid = %d, schemaname %s ", relationId, stmt->relation->schemaname);
+
+		if (shouldDispatch)
 		{
 
-			char *pszCreateTable;
+			char	   *pszCreateTable;
 
 			/*
 			 * Serialize the stmt tree, and create the sql statement: mppexec ....
 			 */
-			Query * q = makeNode(Query);
+			Query	   *q = makeNode(Query);
 
 			StringInfoData buffer;
-			
-			initStringInfo( &buffer );
+
+			initStringInfo(&buffer);
 
 			q->commandType = CMD_UTILITY;
-			q->utilityStmt = (Node *)stmt;
+			q->utilityStmt = (Node *) stmt;
 
 			q->querySource = QSRC_ORIGINAL;
-			q->canSetTag = true; /*?*/
-		
+			q->canSetTag = true;	/* ? */
 
-			pszCreateTable = serializeNode((Node *)q);
-			
 
-			Assert(pszCreateTable != NULL );
+			pszCreateTable = serializeNode((Node *) q);
 
-			elog( DEBUG5,"Comand %s", pszCreateTable);
+
+			Assert(pszCreateTable != NULL);
+
+			elog(DEBUG5, "Comand %s", pszCreateTable);
 
 			appendStringInfo(&buffer, "mppexec '%s' ''", pszCreateTable);
 
@@ -570,32 +574,32 @@ DefineRelation(CreateStmt *stmt, char relkind)
 
 			/*
 			 * This call returns after launching the threads that send the command to the appropriate
-			 * segdbs.  It does not wait for them to finish.
+			 * segdbs.	It does not wait for them to finish.
 			 */
 			cdbdisp_dispatchCommand(buffer.data, true, true, NULL,
-                                    &primaryGang, &mirrorGang);
+									&primaryGang, &mirrorGang);
 			pfree(buffer.data);
 		}
 	}
 
 	if (Mpp_role == MPP_ROLE_EXECUTE)
 	{
-		elog( DEBUG1,"CdbRole Execute of CREATE TABLE, relationid %d",stmt->relOid);
+		elog(DEBUG1, "CdbRole Execute of CREATE TABLE, relationid %d", stmt->relOid);
 		Assert(stmt->relOid != 0);
 		relationId = stmt->relOid;
 
 		if (relationId != 0)
 			heap_create_with_catalog_with_relid(relname,
-												  namespaceId,
-												  tablespaceId,
-												  descriptor,
-												  relkind,
-												  false,
-												  localHasOids,
-												  parentOidCount,
-												  stmt->oncommit,
-												  allowSystemTableMods,
-												  relationId);
+												namespaceId,
+												tablespaceId,
+												descriptor,
+												relkind,
+												false,
+												localHasOids,
+												parentOidCount,
+												stmt->oncommit,
+												allowSystemTableMods,
+												relationId);
 		else
 			relationId = heap_create_with_catalog(relname,
 												  namespaceId,
@@ -681,28 +685,28 @@ DefineRelation(CreateStmt *stmt, char relkind)
 	 */
 	relation_close(rel, NoLock);
 
-	if ( primaryGang )
+	if (primaryGang)
 	{
 
-        if ( Mpp_role == MPP_ROLE_DISPATCH && stmt != 0 && relkind == RELKIND_RELATION)
-				{
-					/* dispatch node needs to update policy */
-							
-					MppPolicy * policy = stmt->policy;
-					
-					if (policy)
-						set_table_policy(relationId, policy);
-					else
-						elog( NOTICE,"Table created in dispatch mode has no policy");
-				}
-		
-		
-        /*
-         * We successfully completed on the Dispatcher.  Now check the results
-         * from the qExecs.  This waits for them to all finish, and exits
-         * via ereport(ERROR,...) if unsuccessful.
-         */
-        cdbdisp_finishCommand(primaryGang, mirrorGang);
+		if (Mpp_role == MPP_ROLE_DISPATCH && stmt != 0 && relkind == RELKIND_RELATION)
+		{
+			/* dispatch node needs to update policy */
+
+			MppPolicy  *policy = stmt->policy;
+
+			if (policy)
+				set_table_policy(relationId, policy);
+			else
+				elog(NOTICE, "Table created in dispatch mode has no policy");
+		}
+
+
+		/*
+		 * We successfully completed on the Dispatcher.  Now check the results
+		 * from the qExecs.  This waits for them to all finish, and exits
+		 * via ereport(ERROR,...) if unsuccessful.
+		 */
+		cdbdisp_finishCommand(primaryGang, mirrorGang);
 	}
 
 
@@ -738,7 +742,7 @@ TruncateRelation(TruncateStmt *stmt)
 	Relation	rel;
 	Oid			heap_relid;
 	Oid			toast_relid;
-	RangeVar * relation = stmt->relation;
+	RangeVar   *relation = stmt->relation;
 
 	/* Grab exclusive lock in preparation for truncate */
 	rel = heap_openrv(relation, AccessExclusiveLock);
@@ -779,7 +783,7 @@ TruncateRelation(TruncateStmt *stmt)
 	if (isOtherTempNamespace(RelationGetNamespace(rel)))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-		  errmsg("cannot truncate temporary tables of other sessions")));
+			  errmsg("cannot truncate temporary tables of other sessions")));
 
 	/*
 	 * Don't allow truncate on tables which are referenced by foreign keys
@@ -788,11 +792,11 @@ TruncateRelation(TruncateStmt *stmt)
 
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-			CdbDispatchUtilityStatement((Node *)stmt);		
+		CdbDispatchUtilityStatement((Node *) stmt);
 
 	}
 
-	
+
 
 	/*
 	 * Okay, here we go: create a new empty storage file for the relation,
@@ -890,8 +894,7 @@ MergeAttributes(List *schema, List *supers, bool istemp,
 	List	   *constraints = NIL;
 	int			parentsWithOids = 0;
 	bool		have_bogus_defaults = false;
-	char	   *bogus_marker = "Bogus!";		/* marks conflicting
-												 * defaults */
+	char	   *bogus_marker = "Bogus!";		/* marks conflicting defaults */
 	int			child_attno;
 
 	/*
@@ -961,8 +964,8 @@ MergeAttributes(List *schema, List *supers, bool istemp,
 		if (!istemp && isTempNamespace(RelationGetNamespace(relation)))
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-				  errmsg("cannot inherit from temporary relation \"%s\"",
-						 parent->relname)));
+					 errmsg("cannot inherit from temporary relation \"%s\"",
+							parent->relname)));
 
 		/*
 		 * We should have an UNDER permission flag for this, but for now,
@@ -1039,11 +1042,11 @@ MergeAttributes(List *schema, List *supers, bool istemp,
 					def->typename->typmod != attribute->atttypmod)
 					ereport(ERROR,
 							(errcode(ERRCODE_DATATYPE_MISMATCH),
-					errmsg("inherited column \"%s\" has a type conflict",
-						   attributeName),
+						errmsg("inherited column \"%s\" has a type conflict",
+							   attributeName),
 							 errdetail("%s versus %s",
 									   TypeNameToString(def->typename),
-								  format_type_be(attribute->atttypid))));
+									   format_type_be(attribute->atttypid))));
 				def->inhcount++;
 				/* Merge of NOT NULL constraints = OR 'em together */
 				def->is_not_null |= attribute->attnotnull;
@@ -1177,8 +1180,8 @@ MergeAttributes(List *schema, List *supers, bool istemp,
 				 * have the same type and typmod.
 				 */
 				ereport(NOTICE,
-				(errmsg("merging column \"%s\" with inherited definition",
-						attributeName)));
+				   (errmsg("merging column \"%s\" with inherited definition",
+						   attributeName)));
 				def = (ColumnDef *) list_nth(inhSchema, exist_attno - 1);
 				if (typenameTypeId(def->typename) != typenameTypeId(newdef->typename) ||
 					def->typename->typmod != newdef->typename->typmod)
@@ -1188,7 +1191,7 @@ MergeAttributes(List *schema, List *supers, bool istemp,
 									attributeName),
 							 errdetail("%s versus %s",
 									   TypeNameToString(def->typename),
-								   TypeNameToString(newdef->typename))));
+									   TypeNameToString(newdef->typename))));
 				/* Mark the column as locally defined */
 				def->is_local = true;
 				/* Merge of NOT NULL constraints = OR 'em together */
@@ -1235,8 +1238,8 @@ MergeAttributes(List *schema, List *supers, bool istemp,
 			if (def->cooked_default == bogus_marker)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_COLUMN_DEFINITION),
-						 errmsg("column \"%s\" inherits conflicting default values",
-								def->colname),
+				  errmsg("column \"%s\" inherits conflicting default values",
+						 def->colname),
 						 errhint("To resolve the conflict, specify a default explicitly.")));
 		}
 	}
@@ -1570,7 +1573,7 @@ renameatt(Oid myrelid,
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_COLUMN),
 				 errmsg("column \"%s\" of relation \"%s\" already exists",
-				  newattname, RelationGetRelationName(targetrelation))));
+					  newattname, RelationGetRelationName(targetrelation))));
 
 	namestrcpy(&(attform->attname), newattname);
 
@@ -1728,7 +1731,7 @@ renamerel(Oid myrelid, const char *newrelname, RenameStmt *stmt)
 
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-			CdbDispatchUtilityStatement((Node *)stmt);
+		CdbDispatchUtilityStatement((Node *) stmt);
 	}
 
 	heap_freetuple(reltup);
@@ -2032,9 +2035,9 @@ AlterTable(AlterTableStmt *stmt)
 	ATController(relation_openrv(stmt->relation, AccessExclusiveLock),
 				 stmt->cmds,
 				 interpretInhOption(stmt->relation->inhOpt));
-				
+
 	if (Mpp_role == MPP_ROLE_DISPATCH)
-		CdbDispatchUtilityStatement((Node *)stmt);
+		CdbDispatchUtilityStatement((Node *) stmt);
 }
 
 /*
@@ -2089,7 +2092,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 {
 	AlteredTableInfo *tab;
 	int			pass;
-	
+
 
 	/* Find or create work queue entry for this table */
 	tab = ATGetQueueEntry(wqueue, rel);
@@ -2449,7 +2452,7 @@ ATRewriteTables(List **wqueue)
 			if (isOtherTempNamespace(RelationGetNamespace(OldHeap)))
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("cannot rewrite temporary tables of other sessions")));
+				errmsg("cannot rewrite temporary tables of other sessions")));
 
 			/*
 			 * Select destination tablespace (same as original unless user
@@ -2658,8 +2661,8 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 		HeapScanDesc scan;
 		HeapTuple	tuple;
 		MemoryContext oldCxt;
-		List *dropped_attrs = NIL;
-		ListCell *lc;
+		List	   *dropped_attrs = NIL;
+		ListCell   *lc;
 
 		econtext = GetPerTupleExprContext(estate);
 
@@ -2712,7 +2715,7 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 				heap_deformtuple(tuple, oldTupDesc, values, nulls);
 
 				/* Set dropped attributes to null in new tuple */
-				foreach (lc, dropped_attrs)
+				foreach(lc, dropped_attrs)
 					nulls[lfirst_int(lc)] = 'n';
 
 				/*
@@ -2771,10 +2774,10 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 											 &isnull);
 							if (isnull)
 								ereport(ERROR,
-									(errcode(ERRCODE_NOT_NULL_VIOLATION),
-									 errmsg("column \"%s\" contains null values",
-											get_attname(tab->relid,
-														con->attnum))));
+										(errcode(ERRCODE_NOT_NULL_VIOLATION),
+								 errmsg("column \"%s\" contains null values",
+										get_attname(tab->relid,
+													con->attnum))));
 						}
 						break;
 					case CONSTR_FOREIGN:
@@ -3118,7 +3121,7 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 				ereport(ERROR,
 						(errcode(ERRCODE_DATATYPE_MISMATCH),
 						 errmsg("child table \"%s\" has different type for column \"%s\"",
-						RelationGetRelationName(rel), colDef->colname)));
+							RelationGetRelationName(rel), colDef->colname)));
 
 			/* Bump the existing child att's inhcount */
 			childatt->attinhcount++;
@@ -3129,8 +3132,8 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 
 			/* Inform the user about the merge */
 			ereport(NOTICE,
-					(errmsg("merging definition of column \"%s\" for child \"%s\"",
-						colDef->colname, RelationGetRelationName(rel))));
+			  (errmsg("merging definition of column \"%s\" for child \"%s\"",
+					  colDef->colname, RelationGetRelationName(rel))));
 
 			heap_close(attrdesc, RowExclusiveLock);
 			return;
@@ -3139,64 +3142,65 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-			ListCell *listp2;
-			
-			foreach(listp2, colDef->typename->names)
-			{
-				Value * v = lfirst(listp2);
-				char * n = NULL;
-				if (v)
-					n = v->val.str;
-				
-	
-			
-			 	if (n)
-				if (strcmp(n,"oid")==0 ||
-					strcmp(n,"path") == 0 ||
-					strcmp(n,"bit") == 0 ||
-					strcmp(n,"box") == 0 ||
-					strcmp(n,"circle") == 0 ||
-					strcmp(n,"inet") == 0 ||
-					strcmp(n,"abstime") == 0 ||
-					strcmp(n,"reltime") == 0 ||
-					strcmp(n,"tinterval") == 0 ||
-					strcmp(n,"bytea") == 0 ||
-					strcmp(n,"int2vector") == 0 ||
-					strcmp(n,"regproc") == 0 ||
-					strcmp(n,"vector") == 0 ||
-					strcmp(n,"lseg") == 0 ||
-					strcmp(n,"polygon") == 0 ||
-					strcmp(n,"line") == 0 ||
-					strcmp(n,"unknown") == 0 ||
-					strcmp(n,"cash") == 0 ||
-					strcmp(n,"macaddr") == 0 ||
-					strcmp(n,"cidr") == 0 ||
-					strcmp(n,"int4array") == 0 ||
-					strcmp(n,"aclitem") == 0 ||
-					strcmp(n,"varbit") == 0 ||
-					strcmp(n,"record") == 0 ||
-					strcmp(n,"any") == 0 ||
-					strcmp(n,"anyarray") == 0 ||
-					strcmp(n,"void") == 0 ||
-					strcmp(n,"opaque") == 0 ||
-					strcmp(n,"money") == 0 ||
-					strcmp(n,"anyelement") == 0 ||
-					strcmp(n,"cstring") == 0 ||
-					strcmp(n,"smgr") == 0 ||
-					strcmp(n,"serial") == 0 ||
-					strcmp(n,"bigserial") == 0 ||
-					strcmp(n,"point") == 0)
+		ListCell   *listp2;
+
+		foreach(listp2, colDef->typename->names)
+		{
+			Value	   *v = lfirst(listp2);
+			char	   *n = NULL;
+
+			if (v)
+				n = v->val.str;
+
+
+
+			if (n)
+				if (strcmp(n, "oid") == 0 ||
+					strcmp(n, "path") == 0 ||
+					strcmp(n, "bit") == 0 ||
+					strcmp(n, "box") == 0 ||
+					strcmp(n, "circle") == 0 ||
+					strcmp(n, "inet") == 0 ||
+					strcmp(n, "abstime") == 0 ||
+					strcmp(n, "reltime") == 0 ||
+					strcmp(n, "tinterval") == 0 ||
+					strcmp(n, "bytea") == 0 ||
+					strcmp(n, "int2vector") == 0 ||
+					strcmp(n, "regproc") == 0 ||
+					strcmp(n, "vector") == 0 ||
+					strcmp(n, "lseg") == 0 ||
+					strcmp(n, "polygon") == 0 ||
+					strcmp(n, "line") == 0 ||
+					strcmp(n, "unknown") == 0 ||
+					strcmp(n, "cash") == 0 ||
+					strcmp(n, "macaddr") == 0 ||
+					strcmp(n, "cidr") == 0 ||
+					strcmp(n, "int4array") == 0 ||
+					strcmp(n, "aclitem") == 0 ||
+					strcmp(n, "varbit") == 0 ||
+					strcmp(n, "record") == 0 ||
+					strcmp(n, "any") == 0 ||
+					strcmp(n, "anyarray") == 0 ||
+					strcmp(n, "void") == 0 ||
+					strcmp(n, "opaque") == 0 ||
+					strcmp(n, "money") == 0 ||
+					strcmp(n, "anyelement") == 0 ||
+					strcmp(n, "cstring") == 0 ||
+					strcmp(n, "smgr") == 0 ||
+					strcmp(n, "serial") == 0 ||
+					strcmp(n, "bigserial") == 0 ||
+					strcmp(n, "point") == 0)
 					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					errmsg("Datatype is not yet supported by Bizgres MPP")));
+
+			if (colDef->typename->arrayBounds != NIL)
+				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					  errmsg("Datatype is not yet supported by Bizgres MPP")));
-					
-				if (colDef->typename->arrayBounds != NIL)
-					ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					  errmsg("Array Datatypes are not yet supported by Bizgres MPP")));
-			 	
-			}
-		
+						 errmsg("Array Datatypes are not yet supported by Bizgres MPP")));
+
+		}
+
 	}
 	pgclass = heap_openr(RelationRelationName, RowExclusiveLock);
 
@@ -3334,7 +3338,7 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 
 	if (!defval && GetDomainConstraints(typeOid) != NIL)
 	{
-		Oid		basetype = getBaseType(typeOid);
+		Oid			basetype = getBaseType(typeOid);
 
 		defval = (Expr *) makeNullConst(basetype);
 		defval = (Expr *) coerce_to_target_type(NULL,
@@ -3918,7 +3922,7 @@ ATExecDropColumn(Relation rel, const char *colName,
 		class_rel = heap_openr(RelationRelationName, RowExclusiveLock);
 
 		tuple = SearchSysCacheCopy(RELOID,
-								 ObjectIdGetDatum(RelationGetRelid(rel)),
+								   ObjectIdGetDatum(RelationGetRelid(rel)),
 								   0, 0, 0);
 		if (!HeapTupleIsValid(tuple))
 			elog(ERROR, "cache lookup failed for relation %u",
@@ -3951,7 +3955,7 @@ ATExecAddIndex(AlteredTableInfo *tab, Relation rel,
 	bool		quiet;
 
 	Assert(IsA(stmt, IndexStmt));
-	
+
 	/* The index should already be built if we are a QE */
 	if (Mpp_role == MPP_ROLE_EXECUTE)
 		return;
@@ -4011,7 +4015,7 @@ ATExecAddConstraint(AlteredTableInfo *tab, Relation rel, Node *newConstraint)
 							 * constraints.
 							 */
 							newcons = AddRelationRawConstraints(rel, NIL,
-													 list_make1(constr));
+														 list_make1(constr));
 							/* Add each constraint to Phase 3's queue */
 							foreach(lcon, newcons)
 							{
@@ -4059,7 +4063,7 @@ ATExecAddConstraint(AlteredTableInfo *tab, Relation rel, Node *newConstraint)
 				else
 					fkconstraint->constr_name =
 						ChooseConstraintName(RelationGetRelationName(rel),
-								strVal(linitial(fkconstraint->fk_attrs)),
+									strVal(linitial(fkconstraint->fk_attrs)),
 											 "fkey",
 											 RelationGetNamespace(rel),
 											 NIL);
@@ -4101,7 +4105,7 @@ ATAddForeignKeyConstraint(AlteredTableInfo *tab, Relation rel,
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-			  errmsg("Referential integrity (FOREIGN KEY) constraints are not supported in Bizgres MPP")));
+				 errmsg("Referential integrity (FOREIGN KEY) constraints are not supported in Bizgres MPP")));
 	/*
 	 * Grab an exclusive lock on the pk table, so that someone doesn't
 	 * delete rows out from under us. (Although a lesser lock would do for
@@ -4232,8 +4236,8 @@ ATAddForeignKeyConstraint(AlteredTableInfo *tab, Relation rel,
 							fkconstraint->constr_name),
 					 errdetail("Key columns \"%s\" and \"%s\" "
 							   "are of incompatible types: %s and %s.",
-							 strVal(list_nth(fkconstraint->fk_attrs, i)),
-							 strVal(list_nth(fkconstraint->pk_attrs, i)),
+							   strVal(list_nth(fkconstraint->fk_attrs, i)),
+							   strVal(list_nth(fkconstraint->pk_attrs, i)),
 							   format_type_be(fktypoid[i]),
 							   format_type_be(pktypoid[i]))));
 
@@ -4249,8 +4253,8 @@ ATAddForeignKeyConstraint(AlteredTableInfo *tab, Relation rel,
 							fkconstraint->constr_name),
 					 errdetail("Key columns \"%s\" and \"%s\" "
 							   "are of different types: %s and %s.",
-							 strVal(list_nth(fkconstraint->fk_attrs, i)),
-							 strVal(list_nth(fkconstraint->pk_attrs, i)),
+							   strVal(list_nth(fkconstraint->fk_attrs, i)),
+							   strVal(list_nth(fkconstraint->pk_attrs, i)),
 							   format_type_be(fktypoid[i]),
 							   format_type_be(pktypoid[i]))));
 
@@ -4337,8 +4341,8 @@ transformColumnNameList(Oid relId, List *colList,
 		if (attnum >= INDEX_MAX_KEYS)
 			ereport(ERROR,
 					(errcode(ERRCODE_TOO_MANY_COLUMNS),
-				 errmsg("cannot have more than %d keys in a foreign key",
-						INDEX_MAX_KEYS)));
+					 errmsg("cannot have more than %d keys in a foreign key",
+							INDEX_MAX_KEYS)));
 		attnums[attnum] = ((Form_pg_attribute) GETSTRUCT(atttuple))->attnum;
 		atttypids[attnum] = ((Form_pg_attribute) GETSTRUCT(atttuple))->atttypid;
 		ReleaseSysCache(atttuple);
@@ -4406,8 +4410,8 @@ transformFkeyGetPrimaryKey(Relation pkrel, Oid *indexOid,
 	if (indexStruct == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
-			errmsg("there is no primary key for referenced table \"%s\"",
-				   RelationGetRelationName(pkrel))));
+				 errmsg("there is no primary key for referenced table \"%s\"",
+						RelationGetRelationName(pkrel))));
 
 	/*
 	 * Now build the list of PK attributes from the indkey definition (we
@@ -4422,7 +4426,7 @@ transformFkeyGetPrimaryKey(Relation pkrel, Oid *indexOid,
 		atttypids[i] = attnumTypeId(pkrel, pkattno);
 		opclasses[i] = indexStruct->indclass[i];
 		*attnamelist = lappend(*attnamelist,
-		   makeString(pstrdup(NameStr(*attnumAttName(pkrel, pkattno)))));
+			   makeString(pstrdup(NameStr(*attnumAttName(pkrel, pkattno)))));
 	}
 
 	ReleaseSysCache(indexTuple);
@@ -4571,8 +4575,8 @@ validateForeignKeyConstraint(FkConstraint *fkconstraint,
 	trig.tginitdeferred = FALSE;
 
 	trig.tgargs = (char **) palloc(sizeof(char *) *
-								 (4 + list_length(fkconstraint->fk_attrs)
-								  + list_length(fkconstraint->pk_attrs)));
+								   (4 + list_length(fkconstraint->fk_attrs)
+									+ list_length(fkconstraint->pk_attrs)));
 
 	trig.tgargs[0] = trig.tgname;
 	trig.tgargs[1] = RelationGetRelationName(rel);
@@ -4690,9 +4694,9 @@ createForeignKeyTriggers(Relation rel, FkConstraint *fkconstraint,
 	fk_trigger->args = lappend(fk_trigger->args,
 							   makeString(myRel->relname));
 	fk_trigger->args = lappend(fk_trigger->args,
-							 makeString(fkconstraint->pktable->relname));
+							   makeString(fkconstraint->pktable->relname));
 	fk_trigger->args = lappend(fk_trigger->args,
-			makeString(fkMatchTypeToString(fkconstraint->fk_matchtype)));
+				makeString(fkMatchTypeToString(fkconstraint->fk_matchtype)));
 	if (list_length(fkconstraint->fk_attrs) != list_length(fkconstraint->pk_attrs))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_FOREIGN_KEY),
@@ -4766,9 +4770,9 @@ createForeignKeyTriggers(Relation rel, FkConstraint *fkconstraint,
 	fk_trigger->args = lappend(fk_trigger->args,
 							   makeString(myRel->relname));
 	fk_trigger->args = lappend(fk_trigger->args,
-							 makeString(fkconstraint->pktable->relname));
+							   makeString(fkconstraint->pktable->relname));
 	fk_trigger->args = lappend(fk_trigger->args,
-			makeString(fkMatchTypeToString(fkconstraint->fk_matchtype)));
+				makeString(fkMatchTypeToString(fkconstraint->fk_matchtype)));
 	forboth(fk_attr, fkconstraint->fk_attrs,
 			pk_attr, fkconstraint->pk_attrs)
 	{
@@ -4836,9 +4840,9 @@ createForeignKeyTriggers(Relation rel, FkConstraint *fkconstraint,
 	fk_trigger->args = lappend(fk_trigger->args,
 							   makeString(myRel->relname));
 	fk_trigger->args = lappend(fk_trigger->args,
-							 makeString(fkconstraint->pktable->relname));
+							   makeString(fkconstraint->pktable->relname));
 	fk_trigger->args = lappend(fk_trigger->args,
-			makeString(fkMatchTypeToString(fkconstraint->fk_matchtype)));
+				makeString(fkMatchTypeToString(fkconstraint->fk_matchtype)));
 	forboth(fk_attr, fkconstraint->fk_attrs,
 			pk_attr, fkconstraint->pk_attrs)
 	{
@@ -4913,8 +4917,8 @@ ATExecDropConstraint(Relation rel, const char *constrName,
 		/* Otherwise if more than one constraint deleted, notify */
 		else if (deleted > 1)
 			ereport(NOTICE,
-				(errmsg("multiple constraints named \"%s\" were dropped",
-						constrName)));
+					(errmsg("multiple constraints named \"%s\" were dropped",
+							constrName)));
 	}
 }
 
@@ -4987,7 +4991,7 @@ ATPrepAlterColumnType(List **wqueue,
 		/* Expression must be able to access vars of old table */
 		rte = addRangeTableEntryForRelation(pstate,
 											RelationGetRelid(rel),
-							makeAlias(RelationGetRelationName(rel), NIL),
+								makeAlias(RelationGetRelationName(rel), NIL),
 											false,
 											true);
 		addRTEtoQuery(pstate, rte, false, true);
@@ -4998,17 +5002,17 @@ ATPrepAlterColumnType(List **wqueue,
 		if (expression_returns_set(transform))
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
-				  errmsg("transform expression must not return a set")));
+					 errmsg("transform expression must not return a set")));
 
 		/* No subplans or aggregates, either... */
 		if (pstate->p_hasSubLinks)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("cannot use subquery in transform expression")));
+					 errmsg("cannot use subquery in transform expression")));
 		if (pstate->p_hasAggs)
 			ereport(ERROR,
 					(errcode(ERRCODE_GROUPING_ERROR),
-					 errmsg("cannot use aggregate function in transform expression")));
+			errmsg("cannot use aggregate function in transform expression")));
 	}
 	else
 	{
@@ -5116,15 +5120,15 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 		Assert(defaultexpr);
 		defaultexpr = strip_implicit_coercions(defaultexpr);
 		defaultexpr = coerce_to_target_type(NULL,		/* no UNKNOWN params */
-											defaultexpr, exprType(defaultexpr),
+										  defaultexpr, exprType(defaultexpr),
 											targettype, typename->typmod,
 											COERCION_ASSIGNMENT,
 											COERCE_IMPLICIT_CAST);
 		if (defaultexpr == NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_DATATYPE_MISMATCH),
-					 errmsg("default for column \"%s\" cannot be cast to type \"%s\"",
-							colName, TypeNameToString(typename))));
+			errmsg("default for column \"%s\" cannot be cast to type \"%s\"",
+				   colName, TypeNameToString(typename))));
 	}
 	else
 		defaultexpr = NULL;
@@ -5186,9 +5190,9 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 						if (!list_member_oid(tab->changedIndexOids, foundObject.objectId))
 						{
 							tab->changedIndexOids = lappend_oid(tab->changedIndexOids,
-												   foundObject.objectId);
+													   foundObject.objectId);
 							tab->changedIndexDefs = lappend(tab->changedIndexDefs,
-							pg_get_indexdef_string(foundObject.objectId));
+							   pg_get_indexdef_string(foundObject.objectId));
 						}
 					}
 					else if (relKind == RELKIND_SEQUENCE)
@@ -5213,9 +5217,9 @@ ATExecAlterColumnType(AlteredTableInfo *tab, Relation rel,
 				if (!list_member_oid(tab->changedConstraintOids, foundObject.objectId))
 				{
 					tab->changedConstraintOids = lappend_oid(tab->changedConstraintOids,
-												   foundObject.objectId);
+													   foundObject.objectId);
 					tab->changedConstraintDefs = lappend(tab->changedConstraintDefs,
-					  pg_get_constraintdef_string(foundObject.objectId));
+						  pg_get_constraintdef_string(foundObject.objectId));
 				}
 				break;
 
@@ -5641,7 +5645,7 @@ change_owner_recurse_to_sequences(Oid relationOid, int32 newOwnerSysId)
 {
 	Relation	depRel;
 	SysScanDesc scan;
-	ScanKeyData	key[2];
+	ScanKeyData key[2];
 	HeapTuple	tup;
 
 	/*
@@ -5651,13 +5655,13 @@ change_owner_recurse_to_sequences(Oid relationOid, int32 newOwnerSysId)
 	depRel = heap_openr(DependRelationName, AccessShareLock);
 
 	ScanKeyInit(&key[0],
-			Anum_pg_depend_refclassid,
-			BTEqualStrategyNumber, F_OIDEQ,
-			ObjectIdGetDatum(RelOid_pg_class));
+				Anum_pg_depend_refclassid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(RelOid_pg_class));
 	ScanKeyInit(&key[1],
-			Anum_pg_depend_refobjid,
-			BTEqualStrategyNumber, F_OIDEQ,
-			ObjectIdGetDatum(relationOid));
+				Anum_pg_depend_refobjid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relationOid));
 	/* we leave refobjsubid unspecified */
 
 	scan = systable_beginscan(depRel, DependReferenceIndex, true,
@@ -5771,7 +5775,7 @@ ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel, char *tablespacename)
 	if (!OidIsValid(tablespaceId))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
-			errmsg("tablespace \"%s\" does not exist", tablespacename)));
+				 errmsg("tablespace \"%s\" does not exist", tablespacename)));
 
 	/* Check its permissions */
 	aclresult = pg_tablespace_aclcheck(tablespaceId, GetUserId(), ACL_CREATE);
@@ -5782,7 +5786,7 @@ ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel, char *tablespacename)
 	if (OidIsValid(tab->newTableSpace))
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-		   errmsg("cannot have multiple SET TABLESPACE subcommands")));
+				 errmsg("cannot have multiple SET TABLESPACE subcommands")));
 	tab->newTableSpace = tablespaceId;
 }
 
@@ -5822,7 +5826,7 @@ ATExecSetTableSpace(Oid tableOid, Oid newTableSpace)
 	if (isOtherTempNamespace(RelationGetNamespace(rel)))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			  errmsg("cannot move temporary tables of other sessions")));
+				 errmsg("cannot move temporary tables of other sessions")));
 
 	/*
 	 * No work if no change in tablespace.

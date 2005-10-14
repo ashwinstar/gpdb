@@ -104,7 +104,7 @@ DefineIndex(RangeVar *heapRelation,
 			bool check_rights,
 			bool skip_build,
 			bool quiet,
-			IndexStmt * stmt)
+			IndexStmt *stmt)
 {
 	Oid		   *classObjectId;
 	Oid			accessMethodId;
@@ -116,12 +116,12 @@ DefineIndex(RangeVar *heapRelation,
 	Form_pg_am	accessMethodForm;
 	IndexInfo  *indexInfo;
 	int			numberOfAttributes;
-	Oid indexoid;
+	Oid			indexoid;
 
-    struct Gang    *primaryGang = NULL;
-    struct Gang    *mirrorGang = NULL;
+	struct Gang *primaryGang = NULL;
+	struct Gang *mirrorGang = NULL;
 
-	bool shouldDispatch =  Mpp_role == MPP_ROLE_DISPATCH && !IsBootstrapProcessingMode();
+	bool		shouldDispatch = Mpp_role == MPP_ROLE_DISPATCH && !IsBootstrapProcessingMode();
 
 
 	/*
@@ -204,7 +204,7 @@ DefineIndex(RangeVar *heapRelation,
 	}
 
 	/*
-	 * Force shared indexes into the pg_global tablespace.  This is a bit of
+	 * Force shared indexes into the pg_global tablespace.	This is a bit of
 	 * a hack but seems simpler than marking them in the BKI commands.
 	 */
 	if (rel->rd_rel->relisshared)
@@ -249,13 +249,13 @@ DefineIndex(RangeVar *heapRelation,
 	if (unique && !accessMethodForm->amcanunique)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-		   errmsg("access method \"%s\" does not support unique indexes",
-				  accessMethodName)));
+			   errmsg("access method \"%s\" does not support unique indexes",
+					  accessMethodName)));
 	if (numberOfAttributes > 1 && !accessMethodForm->amcanmulticol)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("access method \"%s\" does not support multicolumn indexes",
-						accessMethodName)));
+		  errmsg("access method \"%s\" does not support multicolumn indexes",
+				 accessMethodName)));
 
 	ReleaseSysCache(tuple);
 
@@ -296,8 +296,8 @@ DefineIndex(RangeVar *heapRelation,
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					 errmsg("multiple primary keys for table \"%s\" are not allowed",
-							RelationGetRelationName(rel))));
+			 errmsg("multiple primary keys for table \"%s\" are not allowed",
+					RelationGetRelationName(rel))));
 		}
 
 		/*
@@ -343,8 +343,8 @@ DefineIndex(RangeVar *heapRelation,
 				 */
 				ereport(ERROR,
 						(errcode(ERRCODE_UNDEFINED_COLUMN),
-					  errmsg("column \"%s\" named in key does not exist",
-							 key->name)));
+						 errmsg("column \"%s\" named in key does not exist",
+								key->name)));
 			}
 		}
 
@@ -385,49 +385,49 @@ DefineIndex(RangeVar *heapRelation,
 	indexoid = InvalidOid;
 	if (shouldDispatch)
 	{
-		
+
 		indexoid = newoid();
 		if (stmt)
 		{
 			Assert(stmt->idxOid == 0);
 			stmt->idxOid = indexoid;
 		}
-		
+
 		/*
 		 * if unique index on distributed table, index must contain distribution columns
-		 * 
+		 *
 		 */
 		if (unique || primary)
 		{
-		
-			MppPolicy *policy = get_table_policy(relationId);
-			
+
+			MppPolicy  *policy = get_table_policy(relationId);
+
 			if (policy != NULL && policy->ptype == POLICYTYPE_PARTITIONED)
 			{
-				int ia = 0;
-			
+				int			ia = 0;
+
 				for (ia = 0; ia < policy->nattrs && ia < numberOfAttributes; ia++)
 				{
 					if (indexInfo->ii_KeyAttrNumbers[ia] != policy->attrs[ia])
 					{
 						if (primary)
-						
+
 							ereport(ERROR,
-								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								 errmsg("You can only add a primary key on the distribution column(s)")));
+									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+									 errmsg("You can only add a primary key on the distribution column(s)")));
 						else
 							ereport(ERROR,
-								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								 errmsg("you can only create a unique index on the distribution column(s)")));
-						
+									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+									 errmsg("you can only create a unique index on the distribution column(s)")));
+
 					}
-					
-					
+
+
 				}
 			}
 		}
-		
-		
+
+
 	}
 	else if (Mpp_role == MPP_ROLE_EXECUTE)
 	{
@@ -445,12 +445,12 @@ DefineIndex(RangeVar *heapRelation,
 	 */
 	if (isconstraint && !quiet)
 		ereport(NOTICE,
-				(errmsg("%s %s will create implicit index \"%s\" for table \"%s\"",
-				 is_alter_table ? "ALTER TABLE / ADD" : "CREATE TABLE /",
-						primary ? "PRIMARY KEY" : "UNIQUE",
-					  indexRelationName, RelationGetRelationName(rel))));
+		  (errmsg("%s %s will create implicit index \"%s\" for table \"%s\"",
+				  is_alter_table ? "ALTER TABLE / ADD" : "CREATE TABLE /",
+				  primary ? "PRIMARY KEY" : "UNIQUE",
+				  indexRelationName, RelationGetRelationName(rel))));
 
-	
+
 
 	index_create(relationId, indexRelationName,
 				 indexInfo, accessMethodId, tablespaceId, classObjectId,
@@ -469,35 +469,35 @@ DefineIndex(RangeVar *heapRelation,
 
 	if (shouldDispatch)
 	{
-		
-		elog( DEBUG5,"shouldDispatch = true, idxOid = %d",indexoid);
-		if ( shouldDispatch )
+
+		elog(DEBUG5, "shouldDispatch = true, idxOid = %d", indexoid);
+		if (shouldDispatch)
 		{
 
-			char *pszCreateIndex;
+			char	   *pszCreateIndex;
 
 			/*
 			 * Serialize the stmt tree, and create the sql statement: mppexec ....
 			 */
-			Query * q = makeNode(Query);
+			Query	   *q = makeNode(Query);
 
 			StringInfoData buffer;
-			
-			initStringInfo( &buffer );
+
+			initStringInfo(&buffer);
 
 			q->commandType = CMD_UTILITY;
-			q->utilityStmt = (Node *)stmt;
+			q->utilityStmt = (Node *) stmt;
 
 			q->querySource = QSRC_ORIGINAL;
-			q->canSetTag = true; /*?*/
-		
+			q->canSetTag = true;	/* ? */
 
-			pszCreateIndex = serializeNode((Node *)q);
-			
 
-			Assert(pszCreateIndex != NULL );
+			pszCreateIndex = serializeNode((Node *) q);
 
-			elog( DEBUG5,"Comand %s", pszCreateIndex);
+
+			Assert(pszCreateIndex != NULL);
+
+			elog(DEBUG5, "Comand %s", pszCreateIndex);
 
 			appendStringInfo(&buffer, "mppexec '%s' ''", pszCreateIndex);
 
@@ -506,20 +506,20 @@ DefineIndex(RangeVar *heapRelation,
 
 			/*
 			 * This call returns after launching the threads that send the command to the appropriate
-			 * segdbs.  It does not wait for them to finish.
+			 * segdbs.	It does not wait for them to finish.
 			 */
 			cdbdisp_dispatchCommand(buffer.data, true, true, NULL,
-                                    &primaryGang, &mirrorGang);
+									&primaryGang, &mirrorGang);
 			pfree(buffer.data);
 		}
 	}
 
-    /*
-     * We successfully completed our work.  Now check the results from the
-     * qExecs, if dispatched.  This waits for them to all finish, and exits
-     * via ereport(ERROR,...) if unsuccessful.
-     */
-    cdbdisp_finishCommand(primaryGang, mirrorGang);
+	/*
+	 * We successfully completed our work.	Now check the results from the
+	 * qExecs, if dispatched.  This waits for them to all finish, and exits
+	 * via ereport(ERROR,...) if unsuccessful.
+	 */
+	cdbdisp_finishCommand(primaryGang, mirrorGang);
 }
 
 
@@ -558,7 +558,7 @@ CheckPredicate(Expr *predicate)
 	if (contain_mutable_functions((Node *) predicate))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-		errmsg("functions in index predicate must be marked IMMUTABLE")));
+		   errmsg("functions in index predicate must be marked IMMUTABLE")));
 }
 
 static void
@@ -595,8 +595,8 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 				if (isconstraint)
 					ereport(ERROR,
 							(errcode(ERRCODE_UNDEFINED_COLUMN),
-					  errmsg("column \"%s\" named in key does not exist",
-							 attribute->name)));
+						  errmsg("column \"%s\" named in key does not exist",
+								 attribute->name)));
 				else
 					ereport(ERROR,
 							(errcode(ERRCODE_UNDEFINED_COLUMN),
@@ -633,11 +633,11 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 			if (contain_subplans(attribute->expr))
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cannot use subquery in index expression")));
+						 errmsg("cannot use subquery in index expression")));
 			if (contain_agg_clause(attribute->expr))
 				ereport(ERROR,
 						(errcode(ERRCODE_GROUPING_ERROR),
-						 errmsg("cannot use aggregate function in index expression")));
+				errmsg("cannot use aggregate function in index expression")));
 
 			/*
 			 * A expression using mutable functions is probably wrong,
@@ -762,8 +762,8 @@ GetIndexOpClass(List *opclass, Oid attrType,
 	if (!IsBinaryCoercible(attrType, opInputType))
 		ereport(ERROR,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
-			 errmsg("operator class \"%s\" does not accept data type %s",
-				  NameListToString(opclass), format_type_be(attrType))));
+				 errmsg("operator class \"%s\" does not accept data type %s",
+					  NameListToString(opclass), format_type_be(attrType))));
 
 	ReleaseSysCache(tuple);
 
@@ -819,8 +819,8 @@ GetDefaultOpClass(Oid attrType, Oid accessMethodId)
 	if (nexact != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
-				 errmsg("there are multiple default operator classes for data type %s",
-						format_type_be(attrType))));
+		errmsg("there are multiple default operator classes for data type %s",
+			   format_type_be(attrType))));
 	if (ncompatible == 1)
 		return compatibleOid;
 
@@ -886,9 +886,9 @@ makeObjectName(const char *name1, const char *name2, const char *label)
 	}
 
 	if (name1)
-		name1chars = pg_mbcliplen((const unsigned char *)name1, name1chars, name1chars);
+		name1chars = pg_mbcliplen((const unsigned char *) name1, name1chars, name1chars);
 	if (name2)
-		name2chars = pg_mbcliplen((const unsigned char *)name2, name2chars, name2chars);
+		name2chars = pg_mbcliplen((const unsigned char *) name2, name2chars, name2chars);
 
 	/* Now construct the string using the chosen lengths */
 	name = palloc(name1chars + name2chars + overhead + 1);

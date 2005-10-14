@@ -178,7 +178,7 @@ write_group_file(Relation grel)
 	if (fp == NULL)
 		ereport(ERROR,
 				(errcode_for_file_access(),
-				 errmsg("could not write to temporary file \"%s\": %m", tempname)));
+		  errmsg("could not write to temporary file \"%s\": %m", tempname)));
 
 	/*
 	 * Read pg_group and write the file.  Note we use SnapshotSelf to
@@ -244,7 +244,7 @@ write_group_file(Relation grel)
 				if (usename[j] != '\0')
 				{
 					ereport(LOG,
-						  (errmsg("invalid user name \"%s\"", usename)));
+							(errmsg("invalid user name \"%s\"", usename)));
 					continue;
 				}
 
@@ -325,7 +325,7 @@ write_user_file(Relation urel)
 	if (fp == NULL)
 		ereport(ERROR,
 				(errcode_for_file_access(),
-				 errmsg("could not write to temporary file \"%s\": %m", tempname)));
+		  errmsg("could not write to temporary file \"%s\": %m", tempname)));
 
 	/*
 	 * Read pg_shadow and write the file.  Note we use SnapshotSelf to
@@ -559,8 +559,7 @@ CreateUser(CreateUserStmt *stmt)
 	bool		createdb = false;		/* Can the user create databases? */
 	bool		createuser = false;		/* Can this user create users? */
 	List	   *groupElts = NIL;	/* The groups the user is a member of */
-	char	   *validUntil = NULL;		/* The time the login is valid
-										 * until */
+	char	   *validUntil = NULL;		/* The time the login is valid until */
 	DefElem    *dpassword = NULL;
 	DefElem    *dsysid = NULL;
 	DefElem    *dcreatedb = NULL;
@@ -772,9 +771,9 @@ CreateUser(CreateUserStmt *stmt)
 		AlterGroupStmt ags;
 
 		ags.type = T_AlterGroupStmt;
-		
-		ags.name = strVal(lfirst(item));		/* the group name to add
-												 * this in */
+
+		ags.name = strVal(lfirst(item));		/* the group name to add this
+												 * in */
 		ags.action = +1;
 		ags.listUsers = list_make1(makeInteger(sysid));
 		AlterGroup(&ags, "CREATE USER");
@@ -793,9 +792,9 @@ CreateUser(CreateUserStmt *stmt)
 
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-			Assert(stmt->type==T_CreateUserStmt);
-			Assert(stmt->type < 1000);
-			CdbDispatchUtilityStatement((Node *)stmt);
+		Assert(stmt->type == T_CreateUserStmt);
+		Assert(stmt->type < 1000);
+		CdbDispatchUtilityStatement((Node *) stmt);
 	}
 }
 
@@ -820,8 +819,7 @@ AlterUser(AlterUserStmt *stmt)
 	char		encrypted_password[MD5_PASSWD_LEN + 1];
 	int			createdb = -1;	/* Can the user create databases? */
 	int			createuser = -1;	/* Can this user create users? */
-	char	   *validUntil = NULL;		/* The time the login is valid
-										 * until */
+	char	   *validUntil = NULL;		/* The time the login is valid until */
 	DefElem    *dpassword = NULL;
 	DefElem    *dcreatedb = NULL;
 	DefElem    *dcreateuser = NULL;
@@ -922,7 +920,7 @@ AlterUser(AlterUserStmt *stmt)
 	MemSet(new_record_repl, ' ', sizeof(new_record_repl));
 
 	new_record[Anum_pg_shadow_usename - 1] = DirectFunctionCall1(namein,
-											CStringGetDatum(stmt->user));
+												CStringGetDatum(stmt->user));
 	new_record_repl[Anum_pg_shadow_usename - 1] = 'r';
 
 	/* createdb */
@@ -994,10 +992,10 @@ AlterUser(AlterUserStmt *stmt)
 	 * Set flag to update flat password file at commit.
 	 */
 	user_file_update_needed();
-	
+
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-			CdbDispatchUtilityStatement((Node *)stmt);
+		CdbDispatchUtilityStatement((Node *) stmt);
 	}
 }
 
@@ -1033,7 +1031,7 @@ AlterUserSet(AlterUserSetStmt *stmt)
 				 errmsg("user \"%s\" does not exist", stmt->user)));
 
 	if (!(superuser() ||
-		((Form_pg_shadow) GETSTRUCT(oldtuple))->usesysid == GetUserId()))
+		  ((Form_pg_shadow) GETSTRUCT(oldtuple))->usesysid == GetUserId()))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("permission denied")));
@@ -1078,10 +1076,10 @@ AlterUserSet(AlterUserSetStmt *stmt)
 
 	ReleaseSysCache(oldtuple);
 	heap_close(rel, RowExclusiveLock);
-	
+
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-			CdbDispatchUtilityStatement((Node *)stmt);
+		CdbDispatchUtilityStatement((Node *) stmt);
 	}
 }
 
@@ -1166,7 +1164,7 @@ DropUser(DropUserStmt *stmt)
 			ereport(ERROR,
 					(errcode(ERRCODE_OBJECT_IN_USE),
 					 errmsg("user \"%s\" cannot be dropped", user),
-				   errdetail("The user owns database \"%s\".", dbname)));
+					 errdetail("The user owns database \"%s\".", dbname)));
 		}
 
 		heap_endscan(scan);
@@ -1196,7 +1194,7 @@ DropUser(DropUserStmt *stmt)
 		while ((tmp_tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 		{
 			AlterGroupStmt ags;
-			
+
 			ags.type = T_AlterGroupStmt;
 
 			/* the group name from which to try to drop the user: */
@@ -1231,7 +1229,7 @@ DropUser(DropUserStmt *stmt)
 
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-			CdbDispatchUtilityStatement((Node *)stmt);
+		CdbDispatchUtilityStatement((Node *) stmt);
 
 	}
 }
@@ -1296,7 +1294,7 @@ RenameUser(const char *oldname, const char *newname)
 
 	repl_repl[Anum_pg_shadow_usename - 1] = 'r';
 	repl_val[Anum_pg_shadow_usename - 1] = DirectFunctionCall1(namein,
-											   CStringGetDatum(newname));
+												   CStringGetDatum(newname));
 	repl_null[Anum_pg_shadow_usename - 1] = ' ';
 
 	datum = heap_getattr(oldtuple, Anum_pg_shadow_passwd, dsc, &isnull);
@@ -1320,17 +1318,17 @@ RenameUser(const char *oldname, const char *newname)
 	heap_close(rel, NoLock);
 
 	user_file_update_needed();
-	
+
 	if (Mpp_role == MPP_ROLE_DISPATCH)
-	{	
+	{
 
 		StringInfoData buffer;
-		
-		initStringInfo( &buffer );
+
+		initStringInfo(&buffer);
 
 		appendStringInfo(&buffer, "ALTER USER %s RENAME TO %s", oldname, newname);
 
-		CdbDoCommand( buffer.data, false );
+		CdbDoCommand(buffer.data, false);
 
 	}
 }
@@ -1355,8 +1353,8 @@ CheckPgUserAclNotNull(void)
 	if (heap_attisnull(htup, Anum_pg_class_relacl))
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-		errmsg("before using passwords you must revoke privileges on %s",
-			   ShadowRelationName),
+			errmsg("before using passwords you must revoke privileges on %s",
+				   ShadowRelationName),
 				 errdetail("This restriction is to prevent unprivileged users from reading the passwords."),
 				 errhint("Try REVOKE ALL ON \"%s\" FROM PUBLIC.",
 						 ShadowRelationName)));
@@ -1538,10 +1536,10 @@ CreateGroup(CreateGroupStmt *stmt)
 	 * Set flag to update flat group file at commit.
 	 */
 	group_file_update_needed();
-	
+
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-			CdbDispatchUtilityStatement((Node *)stmt);
+		CdbDispatchUtilityStatement((Node *) stmt);
 	}
 }
 
@@ -1599,8 +1597,8 @@ AlterGroup(AlterGroupStmt *stmt, const char *tag)
 	 */
 	AssertState(stmt->action == +1 || stmt->action == -1);
 
-	if (stmt->action == +1)		/* add users, might also be invoked by
-								 * create user */
+	if (stmt->action == +1)		/* add users, might also be invoked by create
+								 * user */
 	{
 		/*
 		 * convert the to be added usernames to sysids and add them to the
@@ -1695,12 +1693,12 @@ AlterGroup(AlterGroupStmt *stmt, const char *tag)
 	 * Set flag to update flat group file at commit.
 	 */
 	group_file_update_needed();
-	
+
 	if (Mpp_role == MPP_ROLE_DISPATCH)
-	if (strcmp(tag, "ALTER GROUP") == 0)
-	{
-			CdbDispatchUtilityStatement((Node *)stmt);
-	}
+		if (strcmp(tag, "ALTER GROUP") == 0)
+		{
+			CdbDispatchUtilityStatement((Node *) stmt);
+		}
 }
 
 /*
@@ -1731,7 +1729,7 @@ UpdateGroupMembership(Relation group_rel, HeapTuple group_tuple,
 	new_record_repl[Anum_pg_group_grolist - 1] = 'r';
 
 	tuple = heap_modifytuple(group_tuple, group_rel,
-						  new_record, new_record_nulls, new_record_repl);
+							 new_record, new_record_nulls, new_record_repl);
 
 	simple_heap_update(group_rel, &group_tuple->t_self, tuple);
 
@@ -1841,10 +1839,10 @@ DropGroup(DropGroupStmt *stmt)
 	 * Set flag to update flat group file at commit.
 	 */
 	group_file_update_needed();
-	
+
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-			CdbDispatchUtilityStatement((Node *)stmt);
+		CdbDispatchUtilityStatement((Node *) stmt);
 	}
 }
 
@@ -1892,17 +1890,17 @@ RenameGroup(const char *oldname, const char *newname)
 	heap_freetuple(tup);
 
 	group_file_update_needed();
-	
+
 	if (Mpp_role == MPP_ROLE_DISPATCH)
-	{	
+	{
 
 		StringInfoData buffer;
-		
-		initStringInfo( &buffer );
+
+		initStringInfo(&buffer);
 
 		appendStringInfo(&buffer, "ALTER GROUP %s RENAME TO %s", oldname, newname);
 
-		CdbDoCommand( buffer.data, false );
+		CdbDoCommand(buffer.data, false);
 
 	}
 }

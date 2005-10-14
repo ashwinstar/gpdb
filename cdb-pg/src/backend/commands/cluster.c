@@ -146,8 +146,8 @@ cluster(ClusterStmt *stmt)
 			if (!OidIsValid(indexOid))
 				ereport(ERROR,
 						(errcode(ERRCODE_UNDEFINED_OBJECT),
-				   errmsg("index \"%s\" for table \"%s\" does not exist",
-						  stmt->indexname, stmt->relation->relname)));
+					   errmsg("index \"%s\" for table \"%s\" does not exist",
+							  stmt->indexname, stmt->relation->relname)));
 		}
 
 		/* All other checks are done in cluster_rel() */
@@ -216,10 +216,10 @@ cluster(ClusterStmt *stmt)
 		/* Clean up working storage */
 		MemoryContextDelete(cluster_context);
 	}
-	
+
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-			CdbDispatchUtilityStatement((Node *)stmt);
+		CdbDispatchUtilityStatement((Node *) stmt);
 	}
 }
 
@@ -363,7 +363,7 @@ check_index_is_clusterable(Relation OldHeap, Oid indexOid)
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("cannot cluster when index access method does not handle null values"),
 						 errhint("You may be able to work around this by marking column \"%s\" NOT NULL.",
-				  NameStr(OldHeap->rd_att->attrs[colno - 1]->attname))));
+					  NameStr(OldHeap->rd_att->attrs[colno - 1]->attname))));
 		}
 		else if (colno < 0)
 		{
@@ -398,7 +398,7 @@ check_index_is_clusterable(Relation OldHeap, Oid indexOid)
 	if (isOtherTempNamespace(RelationGetNamespace(OldHeap)))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-		   errmsg("cannot cluster temporary tables of other sessions")));
+			   errmsg("cannot cluster temporary tables of other sessions")));
 
 	/* Drop relcache refcnt on OldIndex, but keep lock */
 	index_close(OldIndex);

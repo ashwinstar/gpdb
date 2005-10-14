@@ -198,8 +198,8 @@ checkViewTupleDesc(TupleDesc newdesc, TupleDesc olddesc)
 			newattr->atttypmod != oldattr->atttypmod)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-				  errmsg("cannot change data type of view column \"%s\"",
-						 NameStr(oldattr->attname))));
+					 errmsg("cannot change data type of view column \"%s\"",
+							NameStr(oldattr->attname))));
 		/* We can ignore the remaining attributes of an attribute... */
 	}
 
@@ -334,12 +334,12 @@ UpdateRangeTableOfViewParse(Oid viewOid, Query *viewParse)
  *-------------------------------------------------------------------
  */
 void
-DefineView(ViewStmt* stmt)
+DefineView(ViewStmt *stmt)
 {
 	Oid			viewOid = stmt->relOid;
 	const RangeVar *view = stmt->view;
-	Query *viewParse = stmt->query;
-	bool replace = stmt->replace;
+	Query	   *viewParse = stmt->query;
+	bool		replace = stmt->replace;
 
 	if (Mpp_role != MPP_ROLE_EXECUTE)
 		viewOid = 0;
@@ -351,7 +351,7 @@ DefineView(ViewStmt* stmt)
 	 */
 
 	viewOid = DefineVirtualRelation(view, viewParse->targetList, replace, viewOid);
-	
+
 	stmt->relOid = viewOid;
 
 	/*
@@ -374,8 +374,8 @@ DefineView(ViewStmt* stmt)
 
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-		CdbDispatchUtilityStatement((Node *)stmt);
-			
+		CdbDispatchUtilityStatement((Node *) stmt);
+
 	}
 }
 

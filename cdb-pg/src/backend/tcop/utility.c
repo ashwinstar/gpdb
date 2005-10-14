@@ -221,8 +221,8 @@ CheckRelationOwnership(RangeVar *rel, bool noCatalogs)
 			IsSystemClass((Form_pg_class) GETSTRUCT(tuple)))
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				  errmsg("permission denied: \"%s\" is a system catalog",
-						 rel->relname)));
+					 errmsg("permission denied: \"%s\" is a system catalog",
+							rel->relname)));
 	}
 
 	ReleaseSysCache(tuple);
@@ -243,9 +243,9 @@ QueryIsReadOnly(Query *parsetree)
 	{
 		case CMD_SELECT:
 			if (parsetree->into != NULL)
-				return false;					/* SELECT INTO */
+				return false;	/* SELECT INTO */
 			else if (parsetree->rowMarks != NIL)
-				return false;					/* SELECT FOR UPDATE */
+				return false;	/* SELECT FOR UPDATE */
 			else
 				return true;
 		case CMD_UPDATE:
@@ -340,33 +340,34 @@ check_xact_readonly(Node *parsetree)
 /* MPP utility command handling. */
 
 /*
- * The possible actions for a utility command.  These values are of
- * interest only as arguments to the local function CdbSentry.  They
+ * The possible actions for a utility command.	These values are of
+ * interest only as arguments to the local function CdbSentry.	They
  * indicate the level of support provided by following code for a
  * dispatcher process.
  */
 typedef enum
 {
-	CDB_ACCEPT,	/* This action issues no message and thus allows the code
-				 * that follows it to execute.  It is suitable when the
-				 * command is currently fully supported by MPP.
-				 */
-	CDB_WARN,	/* This action issues a warning and then allows the code
-				 * that follows it to execute.  It is intended for cases
-				 * where MPP support is not implemented yet and PostgreSQL
-				 * support is enabled as a convenience.  The user is told
-				 * that support may change or be rescinded.
-				 */
-	CDB_NONCE,	/* This action issues an error and thus prevents the code
-				 * that follows from executing.  The message indicates to
-				 * the user that this a temporary restriction that will be
-				 * removed in a future release.
-				 */
-	CDB_REJECT	/* This action issues an error and thus prevents the code
-				 * that follows from executing.  The message indicates to
-				 * the user that no MPP support is anticipated.
-				 */
-} CdbAction;
+	CDB_ACCEPT,					/* This action issues no message and thus
+								 * allows the code that follows it to execute.
+								 * It is suitable when the command is
+								 * currently fully supported by MPP. */
+	CDB_WARN,					/* This action issues a warning and then
+								 * allows the code that follows it to execute.
+								 * It is intended for cases where MPP support
+								 * is not implemented yet and PostgreSQL
+								 * support is enabled as a convenience.  The
+								 * user is told that support may change or be
+								 * rescinded. */
+	CDB_NONCE,					/* This action issues an error and thus
+								 * prevents the code that follows from
+								 * executing.  The message indicates to the
+								 * user that this a temporary restriction that
+								 * will be removed in a future release. */
+	CDB_REJECT					/* This action issues an error and thus
+								 * prevents the code that follows from
+								 * executing.  The message indicates to the
+								 * user that no MPP support is anticipated. */
+}	CdbAction;
 
 /*
  * Guard for the cases in ProcessUtilty.
@@ -375,55 +376,55 @@ typedef enum
 static void
 CdbSentry(CdbAction dispatch, Node *parsetree, const char *altname)
 {
-	CdbAction action = (CdbAction) NULL;
+	CdbAction	action = (CdbAction) NULL;
 	const char *cmdname;
-	
-	switch ( Mpp_role )
+
+	switch (Mpp_role)
 	{
-	case MPP_ROLE_UTILITY:
-	case MPP_ROLE_EXECUTE:
-		action = CDB_ACCEPT;
-		break;
-	case MPP_ROLE_DISPATCH:
-		action = dispatch;
-		break;
-	default:
-		Assert(false);		/* Should be impossible */
+		case MPP_ROLE_UTILITY:
+		case MPP_ROLE_EXECUTE:
+			action = CDB_ACCEPT;
+			break;
+		case MPP_ROLE_DISPATCH:
+			action = dispatch;
+			break;
+		default:
+			Assert(false);		/* Should be impossible */
 	}
-	
-	if ( action == CDB_ACCEPT )
+
+	if (action == CDB_ACCEPT)
 	{
 		return;
 	}
-	
-	if ( altname == NULL )
+
+	if (altname == NULL)
 		cmdname = CreateCommandTag(parsetree);
 	else
 		cmdname = altname;
-	
-	switch ( action )
+
+	switch (action)
 	{
-	case CDB_WARN:
-		ereport(WARNING, (
-			errcode(ERRCODE_WARNING_MPP_INTERIM_FEATURE),
-			errmsg("Bizgres MPP support for %s may change or be revoked in the future.", cmdname)
-			));
-		return;
-		
-	case CDB_NONCE:
-		ereport(ERROR, (
-			errcode(ERRCODE_MPP_FEATURE_NOT_YET),
-			errmsg("Bizgres MPP support for %s is not available yet.", cmdname)
-			));
-		
-	case CDB_REJECT:
-		ereport(ERROR, (
-			errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
-			errmsg("Bizgres MPP does not support %s.", cmdname)
-			));
-	
-	default:
-		Assert(false);		/* Should be impossible */
+		case CDB_WARN:
+			ereport(WARNING, (
+							  errcode(ERRCODE_WARNING_MPP_INTERIM_FEATURE),
+							  errmsg("Bizgres MPP support for %s may change or be revoked in the future.", cmdname)
+							  ));
+			return;
+
+		case CDB_NONCE:
+			ereport(ERROR, (
+							errcode(ERRCODE_MPP_FEATURE_NOT_YET),
+							errmsg("Bizgres MPP support for %s is not available yet.", cmdname)
+							));
+
+		case CDB_REJECT:
+			ereport(ERROR, (
+							errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
+						  errmsg("Bizgres MPP does not support %s.", cmdname)
+							));
+
+		default:
+			Assert(false);		/* Should be impossible */
 	}
 }
 
@@ -490,8 +491,8 @@ ProcessUtility(Node *parsetree,
 							}
 						}
 
-                        /* start transaction on all QE */
-                        startDtxTransaction();
+						/* start transaction on all QE */
+						startDtxTransaction();
 
 						break;
 
@@ -503,38 +504,38 @@ ProcessUtility(Node *parsetree,
 							if (completionTag)
 								strcpy(completionTag, "ROLLBACK");
 						}
-                        else
-                        {
-                            /* commit all QE */
-                            commitDtxTransaction();
-                        }
+						else
+						{
+							/* commit all QE */
+							commitDtxTransaction();
+						}
 						break;
 
 					case TRANS_STMT_COMMIT_PREPARED:
-                         PreventTransactionChain(stmt, "COMMIT PREPARED");
-                         CommitPreparedTransaction(stmt->gid);
-					    break;
-					
+						PreventTransactionChain(stmt, "COMMIT PREPARED");
+						CommitPreparedTransaction(stmt->gid);
+						break;
+
 					case TRANS_STMT_ROLLBACK_PREPARED:
-				        PreventTransactionChain(stmt, "ROLLBACK PREPARED");
-				        AbortPreparedTransaction(stmt->gid);
-					    break;
-					
+						PreventTransactionChain(stmt, "ROLLBACK PREPARED");
+						AbortPreparedTransaction(stmt->gid);
+						break;
+
 					case TRANS_STMT_PREPARE:
-					    PrepareTransactionBlock(stmt->gid);
-					    break;
+						PrepareTransactionBlock(stmt->gid);
+						break;
 
 					case TRANS_STMT_ROLLBACK:
-                         if (stmt->gid == NULL || IsGlobalTransaction())
-                         {
-						  CdbSentry(CDB_ACCEPT, parsetree, NULL);
-						  UserAbortTransactionBlock(stmt->gid);
-                         }
-                         else
-                         {
-                           PreventTransactionChain(stmt, "ROLLBACK PREPARED");
-                           AbortPreparedTransaction(stmt->gid);
-                         }
+						if (stmt->gid == NULL || IsGlobalTransaction())
+						{
+							CdbSentry(CDB_ACCEPT, parsetree, NULL);
+							UserAbortTransactionBlock(stmt->gid);
+						}
+						else
+						{
+							PreventTransactionChain(stmt, "ROLLBACK PREPARED");
+							AbortPreparedTransaction(stmt->gid);
+						}
 						break;
 
 					case TRANS_STMT_SAVEPOINT:
@@ -614,11 +615,11 @@ ProcessUtility(Node *parsetree,
 			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			{
 				Oid			relOid;
-				char relKind = RELKIND_RELATION;
+				char		relKind = RELKIND_RELATION;
 
-				if ( Mpp_role == MPP_ROLE_EXECUTE )
-				  if ( ((CreateStmt *)parsetree)->relKind != 0 )
-					relKind = ((CreateStmt *)parsetree)->relKind;
+				if (Mpp_role == MPP_ROLE_EXECUTE)
+					if (((CreateStmt *) parsetree)->relKind != 0)
+						relKind = ((CreateStmt *) parsetree)->relKind;
 
 				relOid = DefineRelation((CreateStmt *) parsetree,
 										relKind);
@@ -646,7 +647,7 @@ ProcessUtility(Node *parsetree,
 			{
 				DropStmt   *stmt = (DropStmt *) parsetree;
 				ListCell   *arg;
-				
+
 				CdbSentry(CDB_ACCEPT, parsetree, NULL);
 
 				foreach(arg, stmt->objects)
@@ -715,16 +716,16 @@ ProcessUtility(Node *parsetree,
 					 * We used to need to do CommandCounterIncrement()
 					 * here, but now it's done inside performDeletion().
 					 */
-					 
-					
+
+
 				}
-				
+
 				/*
 				 * If we are the QD, dispatch this DROP command to all the QEs
 				 */
 				if (Mpp_role == MPP_ROLE_DISPATCH)
 				{
-					CdbDispatchUtilityStatement((Node *)stmt);
+					CdbDispatchUtilityStatement((Node *) stmt);
 				}
 			}
 			break;
@@ -764,17 +765,20 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_CdbExecStmt:
-			/* CdbSentry isn't appropriate here since this command should run
+
+			/*
+			 * CdbSentry isn't appropriate here since this command should run
 			 * only in the EXECUTE role, i.e., it is supplied by a dispatch
 			 * process to a qexec process. The cryptic message avoids mention
-			 * of roles to discourage experimentation by users. */
-			if ( Mpp_role != MPP_ROLE_EXECUTE )
+			 * of roles to discourage experimentation by users.
+			 */
+			if (Mpp_role != MPP_ROLE_EXECUTE)
 			{
 				ereport(ERROR, (
-					errcode(ERRCODE_MPP_COMMAND_ERROR),
-					errmsg("MPPEXEC is not available for external use.")
-			));
-				
+								errcode(ERRCODE_MPP_COMMAND_ERROR),
+						 errmsg("MPPEXEC is not available for external use.")
+								));
+
 			}
 
 			CdbExecQuery((CdbExecStmt *) parsetree, dest, completionTag);
@@ -789,7 +793,8 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_AlterOwnerStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL); /* NB covers some ALTER OWNER */
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);		/* NB covers some ALTER
+														 * OWNER */
 			ExecAlterOwnerStmt((AlterOwnerStmt *) parsetree);
 			break;
 
@@ -840,10 +845,10 @@ ProcessUtility(Node *parsetree,
 							 (int) stmt->subtype);
 						break;
 				}
-				
+
 				if (Mpp_role == MPP_ROLE_DISPATCH)
 				{
-						CdbDispatchUtilityStatement((Node *)stmt);
+					CdbDispatchUtilityStatement((Node *) stmt);
 				}
 			}
 			break;
@@ -889,7 +894,7 @@ ProcessUtility(Node *parsetree,
 				CompositeTypeStmt *stmt = (CompositeTypeStmt *) parsetree;
 
 				DefineCompositeType(stmt->typevar, stmt->coldeflist);
-				
+
 			}
 			break;
 
@@ -928,7 +933,7 @@ ProcessUtility(Node *parsetree,
 							true,		/* check_rights */
 							false,		/* skip_build */
 							false,		/* quiet */
-							stmt);		
+							stmt);
 			}
 			break;
 
@@ -937,7 +942,7 @@ ProcessUtility(Node *parsetree,
 			DefineQueryRewrite((RuleStmt *) parsetree);
 			if (Mpp_role == MPP_ROLE_DISPATCH)
 			{
-					CdbDispatchUtilityStatement((Node *)parsetree);
+				CdbDispatchUtilityStatement((Node *) parsetree);
 			}
 			break;
 
@@ -1053,6 +1058,7 @@ ProcessUtility(Node *parsetree,
 				if (strcmp(n->name, "TRANSACTION") == 0)
 				{
 					ListCell   *head;
+
 					CdbSentry(CDB_WARN, parsetree, "SET TRANSACTION");
 
 					foreach(head, n->args)
@@ -1061,15 +1067,16 @@ ProcessUtility(Node *parsetree,
 
 						if (strcmp(item->defname, "transaction_isolation") == 0)
 							SetPGVariable("transaction_isolation",
-									 list_make1(item->arg), n->is_local);
+										  list_make1(item->arg), n->is_local);
 						else if (strcmp(item->defname, "transaction_read_only") == 0)
 							SetPGVariable("transaction_read_only",
-									 list_make1(item->arg), n->is_local);
+										  list_make1(item->arg), n->is_local);
 					}
 				}
 				else if (strcmp(n->name, "SESSION CHARACTERISTICS") == 0)
 				{
 					ListCell   *head;
+
 					CdbSentry(CDB_WARN, parsetree, "SET SESSION CHARACTERISTICS");
 
 					foreach(head, n->args)
@@ -1078,10 +1085,10 @@ ProcessUtility(Node *parsetree,
 
 						if (strcmp(item->defname, "transaction_isolation") == 0)
 							SetPGVariable("default_transaction_isolation",
-									 list_make1(item->arg), n->is_local);
+										  list_make1(item->arg), n->is_local);
 						else if (strcmp(item->defname, "transaction_read_only") == 0)
 							SetPGVariable("default_transaction_read_only",
-									 list_make1(item->arg), n->is_local);
+										  list_make1(item->arg), n->is_local);
 					}
 				}
 				else
@@ -1095,6 +1102,7 @@ ProcessUtility(Node *parsetree,
 		case T_VariableShowStmt:
 			{
 				VariableShowStmt *n = (VariableShowStmt *) parsetree;
+
 				CdbSentry(CDB_ACCEPT, parsetree, NULL);
 
 				GetPGVariable(n->name, dest);
@@ -1104,13 +1112,14 @@ ProcessUtility(Node *parsetree,
 		case T_VariableResetStmt:
 			{
 				VariableResetStmt *n = (VariableResetStmt *) parsetree;
+
 				CdbSentry(CDB_ACCEPT, parsetree, NULL);
 
 				ResetPGVariable(n->name);
-				
+
 				if (Mpp_role == MPP_ROLE_DISPATCH)
 				{
-						CdbDispatchUtilityStatement((Node *)n);
+					CdbDispatchUtilityStatement((Node *) n);
 				}
 			}
 			break;
@@ -1245,27 +1254,27 @@ ProcessUtility(Node *parsetree,
 							 (int) stmt->kind);
 						break;
 				}
-				
+
 				if (Mpp_role == MPP_ROLE_DISPATCH)
 				{
 					if (stmt->kind != OBJECT_DATABASE)
-						CdbDispatchUtilityStatement((Node *)stmt);
+						CdbDispatchUtilityStatement((Node *) stmt);
 					else
 					{
 						/*
-						 * REINDEX DATABASE must be dispatched different, because it can't 
+						 * REINDEX DATABASE must be dispatched different, because it can't
 						 * be in a user transaction
 						 */
 						StringInfoData buffer;
-		
-						initStringInfo( &buffer );
+
+						initStringInfo(&buffer);
 
 						appendStringInfo(&buffer, "REINDEX DATABASE \"%s\"", stmt->name);
 						if (stmt->force)
 							appendStringInfo(&buffer, " FORCE");
-						
 
-						CdbDoCommandInt( buffer.data, false, NULL );
+
+						CdbDoCommandInt(buffer.data, false, NULL);
 					}
 				}
 			}
@@ -1297,8 +1306,8 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		default:
-            Assert(false);
-            elog(ERROR, "unrecognized node type: %d",
+			Assert(false);
+			elog(ERROR, "unrecognized node type: %d",
 				 (int) nodeTag(parsetree));
 			break;
 	}
@@ -1466,22 +1475,22 @@ CreateCommandTag(Node *parsetree)
 					case TRANS_STMT_START:
 						tag = "START TRANSACTION";
 						break;
-						
+
 					case TRANS_STMT_PREPARE:
-					    tag = "PREPARE TRANSACTION";
-					break;
+						tag = "PREPARE TRANSACTION";
+						break;
 
 					case TRANS_STMT_COMMIT:
 						tag = "COMMIT";
 						break;
 
 					case TRANS_STMT_COMMIT_PREPARED:
-				        tag = "COMMIT PREPARED";
-				        break;
-					
+						tag = "COMMIT PREPARED";
+						break;
+
 					case TRANS_STMT_ROLLBACK_PREPARED:
-				        tag = "ROLLBACK PREPARED";
-					    break;
+						tag = "ROLLBACK PREPARED";
+						break;
 
 					case TRANS_STMT_ROLLBACK:
 					case TRANS_STMT_ROLLBACK_TO:
@@ -1912,7 +1921,7 @@ CreateCommandTag(Node *parsetree)
 			break;
 
 		default:
-            Assert(false);
+			Assert(false);
 			elog(WARNING, "unrecognized node type: %d",
 				 (int) nodeTag(parsetree));
 			tag = "???";

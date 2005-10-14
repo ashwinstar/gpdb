@@ -53,10 +53,10 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 	AclId		saved_userid;
 	AclResult	aclresult;
 
-    struct Gang    *primaryGang = NULL;
-    struct Gang    *mirrorGang = NULL;
+	struct Gang *primaryGang = NULL;
+	struct Gang *mirrorGang = NULL;
 
-	bool shouldDispatch =  Mpp_role == MPP_ROLE_DISPATCH && !IsBootstrapProcessingMode();
+	bool		shouldDispatch = Mpp_role == MPP_ROLE_DISPATCH && !IsBootstrapProcessingMode();
 
 	saved_userid = GetUserId();
 
@@ -108,51 +108,51 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 		ereport(ERROR,
 				(errcode(ERRCODE_RESERVED_NAME),
 				 errmsg("unacceptable schema name \"%s\"", schemaName),
-		errdetail("The prefix \"pg_\" is reserved for system schemas.")));
+		   errdetail("The prefix \"pg_\" is reserved for system schemas.")));
 
 
-	
+
 
 	/* Create the schema's namespace */
 	if (shouldDispatch || Mpp_role != MPP_ROLE_EXECUTE)
 	{
-	    namespaceId = NamespaceCreate(schemaName, owner_userid, 0);
+		namespaceId = NamespaceCreate(schemaName, owner_userid, 0);
 
-	    if (shouldDispatch)
-	    {
-		
-			char *pscCreateSchema;
+		if (shouldDispatch)
+		{
+
+			char	   *pscCreateSchema;
 
 			/*
 			 * Serialize the stmt tree, and create the sql statement: mppexec ....
 			 */
-			Query * q = makeNode(Query);
+			Query	   *q = makeNode(Query);
 
 			StringInfoData buffer;
 
 			Assert(stmt->schemaOid == 0);
 			stmt->schemaOid = namespaceId;
 
-			
 
-			elog( DEBUG5,"shouldDispatch = true, namespaceOid = %d",namespaceId);
 
-			
-			initStringInfo( &buffer );
+			elog(DEBUG5, "shouldDispatch = true, namespaceOid = %d", namespaceId);
+
+
+			initStringInfo(&buffer);
 
 			q->commandType = CMD_UTILITY;
-			q->utilityStmt = (Node *)stmt;
+			q->utilityStmt = (Node *) stmt;
 
 			q->querySource = QSRC_ORIGINAL;
-			q->canSetTag = true; /*?*/
-		
+			q->canSetTag = true;	/* ? */
 
-			pscCreateSchema = serializeNode((Node *)q);
-			
 
-			Assert(pscCreateSchema != NULL );
+			pscCreateSchema = serializeNode((Node *) q);
 
-			elog( DEBUG5 ,"Dispatch Comand %s", pscCreateSchema);
+
+			Assert(pscCreateSchema != NULL);
+
+			elog(DEBUG5, "Dispatch Comand %s", pscCreateSchema);
 
 			appendStringInfo(&buffer, "mppexec '%s' ''", pscCreateSchema);
 
@@ -161,13 +161,13 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 
 			/*
 			 * This call returns after launching the threads that send the command to the appropriate
-			 * segdbs.  It does not wait for them to finish.
+			 * segdbs.	It does not wait for them to finish.
 			 */
 			cdbdisp_dispatchCommand(buffer.data, true, true, NULL,
-                                    &primaryGang, &mirrorGang);
+									&primaryGang, &mirrorGang);
 			pfree(buffer.data);
 		}
-	
+
 	}
 	else if (Mpp_role == MPP_ROLE_EXECUTE)
 	{
@@ -177,14 +177,14 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 	/* Advance cmd counter to make the namespace visible */
 	CommandCounterIncrement();
 
-    /*
-     * We successfully completed our work.  Now check the results from the
-     * qExecs, if dispatched.  This waits for them to all finish, and exits
-     * via ereport(ERROR,...) if unsuccessful.
-     */
-    cdbdisp_finishCommand(primaryGang, mirrorGang);
+	/*
+	 * We successfully completed our work.	Now check the results from the
+	 * qExecs, if dispatched.  This waits for them to all finish, and exits
+	 * via ereport(ERROR,...) if unsuccessful.
+	 */
+	cdbdisp_finishCommand(primaryGang, mirrorGang);
 
-    /*
+	/*
 	 * Temporarily make the new namespace be the front of the search path,
 	 * as well as the default creation target namespace.  This will be
 	 * undone at the end of this routine, or upon error.
@@ -272,7 +272,7 @@ RemoveSchema(List *names, DropBehavior behavior)
 	object.objectSubId = 0;
 
 	performDeletion(&object, behavior);
-	
+
 }
 
 
@@ -345,7 +345,7 @@ RenameSchema(const char *oldname, const char *newname)
 		ereport(ERROR,
 				(errcode(ERRCODE_RESERVED_NAME),
 				 errmsg("unacceptable schema name \"%s\"", newname),
-		errdetail("The prefix \"pg_\" is reserved for system schemas.")));
+		   errdetail("The prefix \"pg_\" is reserved for system schemas.")));
 
 	/* rename */
 	namestrcpy(&(((Form_pg_namespace) GETSTRUCT(tup))->nspname), newname);
@@ -354,27 +354,27 @@ RenameSchema(const char *oldname, const char *newname)
 
 	heap_close(rel, NoLock);
 	heap_freetuple(tup);
-	
+
 	if (Mpp_role == MPP_ROLE_DISPATCH)
-	{	
+	{
 
 		StringInfoData buffer;
-		
-		initStringInfo( &buffer );
+
+		initStringInfo(&buffer);
 
 		appendStringInfo(&buffer, "ALTER SCHEMA \"%s\" RENAME TO \"%s\" ", oldname, newname);
 
-		CdbDoCommand( buffer.data, false );
+		CdbDoCommand(buffer.data, false);
 
 	}
-	
+
 }
 
 /*
  * Change schema owner
  */
 void
-AlterSchemaOwner(const char *name, AclId newOwnerSysId, const char * newownername)
+AlterSchemaOwner(const char *name, AclId newOwnerSysId, const char *newownername)
 {
 	HeapTuple	tup;
 	Relation	rel;
@@ -438,18 +438,18 @@ AlterSchemaOwner(const char *name, AclId newOwnerSysId, const char * newownernam
 		CatalogUpdateIndexes(rel, newtuple);
 
 		heap_freetuple(newtuple);
-		
+
 		if (Mpp_role == MPP_ROLE_DISPATCH)
-		{	
-	
+		{
+
 			StringInfoData buffer;
-			
-			initStringInfo( &buffer );
-	
+
+			initStringInfo(&buffer);
+
 			appendStringInfo(&buffer, "ALTER SCHEMA \"%s\" OWNER TO \"%s\" ", name, newownername);
-	
-			CdbDoCommand( buffer.data, false );
-	
+
+			CdbDoCommand(buffer.data, false);
+
 		}
 	}
 

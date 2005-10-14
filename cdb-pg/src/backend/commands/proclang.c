@@ -63,7 +63,7 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 	if (!superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-			 errmsg("must be superuser to create procedural language")));
+				 errmsg("must be superuser to create procedural language")));
 
 	/*
 	 * Translate the language name and check that this language doesn't
@@ -103,8 +103,8 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-			  errmsg("function %s must return type \"language_handler\"",
-					 NameListToString(stmt->plhandler))));
+				  errmsg("function %s must return type \"language_handler\"",
+						 NameListToString(stmt->plhandler))));
 	}
 
 	/* validate the validator function */
@@ -167,11 +167,11 @@ CreateProceduralLanguage(CreatePLangStmt *stmt)
 	}
 
 	heap_close(rel, RowExclusiveLock);
-	
-	
+
+
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-			CdbDispatchUtilityStatement((Node *)stmt);
+		CdbDispatchUtilityStatement((Node *) stmt);
 	}
 }
 
@@ -193,7 +193,7 @@ DropProceduralLanguage(DropPLangStmt *stmt)
 	if (!superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-			   errmsg("must be superuser to drop procedural language")));
+				 errmsg("must be superuser to drop procedural language")));
 
 	/*
 	 * Translate the language name, check that this language exist and is
@@ -219,10 +219,10 @@ DropProceduralLanguage(DropPLangStmt *stmt)
 	 * Do the deletion
 	 */
 	performDeletion(&object, stmt->behavior);
-	
+
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-			CdbDispatchUtilityStatement((Node *)stmt);
+		CdbDispatchUtilityStatement((Node *) stmt);
 	}
 }
 
@@ -281,7 +281,7 @@ RenameLanguage(const char *oldname, const char *newname)
 	if (!superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-			 errmsg("must be superuser to rename procedural language")));
+				 errmsg("must be superuser to rename procedural language")));
 
 	/* rename */
 	namestrcpy(&(((Form_pg_language) GETSTRUCT(tup))->lanname), newname);

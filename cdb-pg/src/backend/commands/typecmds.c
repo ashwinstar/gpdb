@@ -304,8 +304,8 @@ DefineType(List *names, List *parameters)
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-			errmsg("type output function %s must return type \"cstring\"",
-				   NameListToString(outputName))));
+			   errmsg("type output function %s must return type \"cstring\"",
+					  NameListToString(outputName))));
 	}
 	if (receiveOid)
 	{
@@ -313,8 +313,8 @@ DefineType(List *names, List *parameters)
 		if (resulttype != typoid)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-				   errmsg("type receive function %s must return type %s",
-						  NameListToString(receiveName), typeName)));
+					 errmsg("type receive function %s must return type %s",
+							NameListToString(receiveName), typeName)));
 	}
 	if (sendOid)
 	{
@@ -322,8 +322,8 @@ DefineType(List *names, List *parameters)
 		if (resulttype != BYTEAOID)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-			   errmsg("type send function %s must return type \"bytea\"",
-					  NameListToString(sendName))));
+				   errmsg("type send function %s must return type \"bytea\"",
+						  NameListToString(sendName))));
 	}
 
 	/*
@@ -433,8 +433,8 @@ RemoveType(List *names, DropBehavior behavior)
 
 	/* Permission check: must own type or its namespace */
 	if (!pg_type_ownercheck(typeoid, GetUserId()) &&
-		!pg_namespace_ownercheck(((Form_pg_type) GETSTRUCT(tup))->typnamespace,
-								 GetUserId()))
+	  !pg_namespace_ownercheck(((Form_pg_type) GETSTRUCT(tup))->typnamespace,
+							   GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_TYPE,
 					   TypeNameToString(typename));
 
@@ -558,71 +558,72 @@ DefineDomain(CreateDomainStmt *stmt)
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
 				 errmsg("\"%s\" is not a valid base type for a domain",
 						TypeNameToString(stmt->typename))));
-	
+
 	if (Mpp_role == MPP_ROLE_DISPATCH)
-	{			
-		ListCell *listp2;
-	
-			foreach(listp2, stmt->typename->names)
-			{		
-			 
-			 Value * v = lfirst(listp2);
-				char * n = NULL;
-				if (v)
-					n = v->val.str;
-				 
-				
-	
-			
-			 	if (n)
-				if (strcmp(n,"oid")==0 ||
-					strcmp(n,"path") == 0 ||
-					strcmp(n,"bit") == 0 ||
-					strcmp(n,"box") == 0 ||
-					strcmp(n,"circle") == 0 ||
-					strcmp(n,"inet") == 0 ||
-					strcmp(n,"abstime") == 0 ||
-					strcmp(n,"reltime") == 0 ||
-					strcmp(n,"tinterval") == 0 ||
-					strcmp(n,"bytea") == 0 ||
-					strcmp(n,"int2vector") == 0 ||
-					strcmp(n,"regproc") == 0 ||
-					strcmp(n,"vector") == 0 ||
-					strcmp(n,"lseg") == 0 ||
-					strcmp(n,"polygon") == 0 ||
-					strcmp(n,"line") == 0 ||
-					strcmp(n,"unknown") == 0 ||
-					strcmp(n,"cash") == 0 ||
-					strcmp(n,"macaddr") == 0 ||
-					strcmp(n,"cidr") == 0 ||
-					strcmp(n,"int4array") == 0 ||
-					strcmp(n,"aclitem") == 0 ||
-					strcmp(n,"varbit") == 0 ||
-					strcmp(n,"record") == 0 ||
-					strcmp(n,"any") == 0 ||
-					strcmp(n,"anyarray") == 0 ||
-					strcmp(n,"void") == 0 ||
-					strcmp(n,"opaque") == 0 ||
-					strcmp(n,"money") == 0 ||
-					strcmp(n,"anyelement") == 0 ||
-					strcmp(n,"cstring") == 0 ||
-					strcmp(n,"smgr") == 0 ||
-					strcmp(n,"serial") == 0 ||
-					strcmp(n,"bigserial") == 0 ||
-					strcmp(n,"point") == 0)
+	{
+		ListCell   *listp2;
+
+		foreach(listp2, stmt->typename->names)
+		{
+
+			Value	   *v = lfirst(listp2);
+			char	   *n = NULL;
+
+			if (v)
+				n = v->val.str;
+
+
+
+
+			if (n)
+				if (strcmp(n, "oid") == 0 ||
+					strcmp(n, "path") == 0 ||
+					strcmp(n, "bit") == 0 ||
+					strcmp(n, "box") == 0 ||
+					strcmp(n, "circle") == 0 ||
+					strcmp(n, "inet") == 0 ||
+					strcmp(n, "abstime") == 0 ||
+					strcmp(n, "reltime") == 0 ||
+					strcmp(n, "tinterval") == 0 ||
+					strcmp(n, "bytea") == 0 ||
+					strcmp(n, "int2vector") == 0 ||
+					strcmp(n, "regproc") == 0 ||
+					strcmp(n, "vector") == 0 ||
+					strcmp(n, "lseg") == 0 ||
+					strcmp(n, "polygon") == 0 ||
+					strcmp(n, "line") == 0 ||
+					strcmp(n, "unknown") == 0 ||
+					strcmp(n, "cash") == 0 ||
+					strcmp(n, "macaddr") == 0 ||
+					strcmp(n, "cidr") == 0 ||
+					strcmp(n, "int4array") == 0 ||
+					strcmp(n, "aclitem") == 0 ||
+					strcmp(n, "varbit") == 0 ||
+					strcmp(n, "record") == 0 ||
+					strcmp(n, "any") == 0 ||
+					strcmp(n, "anyarray") == 0 ||
+					strcmp(n, "void") == 0 ||
+					strcmp(n, "opaque") == 0 ||
+					strcmp(n, "money") == 0 ||
+					strcmp(n, "anyelement") == 0 ||
+					strcmp(n, "cstring") == 0 ||
+					strcmp(n, "smgr") == 0 ||
+					strcmp(n, "serial") == 0 ||
+					strcmp(n, "bigserial") == 0 ||
+					strcmp(n, "point") == 0)
 					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					errmsg("Datatype is not yet supported by Bizgres MPP")));
+
+
+			if (stmt->typename->arrayBounds != NIL)
+				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					  errmsg("Datatype is not yet supported by Bizgres MPP")));
-			 
-					
-				if (stmt->typename->arrayBounds != NIL)
-					ereport(ERROR,
-						(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					  errmsg("Array Datatypes are not yet supported by Bizgres MPP")));
-			 	
-			
-			}
+						 errmsg("Array Datatypes are not yet supported by Bizgres MPP")));
+
+
 		}
+	}
 
 	/* passed by value */
 	byValue = baseType->typbyval;
@@ -681,7 +682,7 @@ DefineDomain(CreateDomainStmt *stmt)
 		if (IsA(newConstraint, FkConstraint))
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-			errmsg("foreign key constraints not possible for domains")));
+				errmsg("foreign key constraints not possible for domains")));
 
 		/* otherwise it should be a plain Constraint */
 		if (!IsA(newConstraint, Constraint))
@@ -721,8 +722,8 @@ DefineDomain(CreateDomainStmt *stmt)
 				 * to make life easier for pg_dump).
 				 */
 				defaultValue = deparse_expression(defaultExpr,
-										  deparse_context_for(domainName,
-															  InvalidOid),
+											  deparse_context_for(domainName,
+																  InvalidOid),
 												  false, false);
 				defaultValueBin = nodeToString(defaultExpr);
 				break;
@@ -731,7 +732,7 @@ DefineDomain(CreateDomainStmt *stmt)
 				if (nullDefined && !typNotNull)
 					ereport(ERROR,
 							(errcode(ERRCODE_SYNTAX_ERROR),
-					   errmsg("conflicting NULL/NOT NULL constraints")));
+						   errmsg("conflicting NULL/NOT NULL constraints")));
 				typNotNull = true;
 				nullDefined = true;
 				break;
@@ -740,7 +741,7 @@ DefineDomain(CreateDomainStmt *stmt)
 				if (nullDefined && typNotNull)
 					ereport(ERROR,
 							(errcode(ERRCODE_SYNTAX_ERROR),
-					   errmsg("conflicting NULL/NOT NULL constraints")));
+						   errmsg("conflicting NULL/NOT NULL constraints")));
 				typNotNull = false;
 				nullDefined = true;
 				break;
@@ -759,13 +760,13 @@ DefineDomain(CreateDomainStmt *stmt)
 			case CONSTR_UNIQUE:
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("unique constraints not possible for domains")));
+					 errmsg("unique constraints not possible for domains")));
 				break;
 
 			case CONSTR_PRIMARY:
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("primary key constraints not possible for domains")));
+				errmsg("primary key constraints not possible for domains")));
 				break;
 
 			case CONSTR_ATTR_DEFERRABLE:
@@ -790,7 +791,7 @@ DefineDomain(CreateDomainStmt *stmt)
 	domainoid =
 		TypeCreate(domainName,	/* type name */
 				   domainNamespace,		/* namespace */
-				   stmt->domainOid,	/* preassigned type oid (none here) */
+				   stmt->domainOid,		/* preassigned type oid (none here) */
 				   InvalidOid,	/* relation oid (n/a here) */
 				   0,			/* relation kind (ditto) */
 				   internalLength,		/* internal size */
@@ -845,10 +846,10 @@ DefineDomain(CreateDomainStmt *stmt)
 	 * Now we can clean up.
 	 */
 	ReleaseSysCache(typeTup);
-	
+
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-			CdbDispatchUtilityStatement((Node *)stmt);
+		CdbDispatchUtilityStatement((Node *) stmt);
 	}
 }
 
@@ -890,8 +891,8 @@ RemoveDomain(List *names, DropBehavior behavior)
 
 	/* Permission check: must own type or its namespace */
 	if (!pg_type_ownercheck(typeoid, GetUserId()) &&
-		!pg_namespace_ownercheck(((Form_pg_type) GETSTRUCT(tup))->typnamespace,
-								 GetUserId()))
+	  !pg_namespace_ownercheck(((Form_pg_type) GETSTRUCT(tup))->typnamespace,
+							   GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_TYPE,
 					   TypeNameToString(typename));
 
@@ -1041,8 +1042,8 @@ findTypeOutputFunction(List *procname, Oid typeOid)
 	{
 		/* Found, but must complain and fix the pg_proc entry */
 		ereport(WARNING,
-				(errmsg("changing argument type of function %s from \"opaque\" to %s",
-				  NameListToString(procname), format_type_be(typeOid))));
+		(errmsg("changing argument type of function %s from \"opaque\" to %s",
+				NameListToString(procname), format_type_be(typeOid))));
 		SetFunctionArgType(procOid, 0, typeOid);
 
 		/*
@@ -1153,8 +1154,8 @@ findTypeAnalyzeFunction(List *procname, Oid typeOid)
 	if (get_func_rettype(procOid) != BOOLOID)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-		  errmsg("type analyze function %s must return type \"boolean\"",
-				 NameListToString(procname))));
+			  errmsg("type analyze function %s must return type \"boolean\"",
+					 NameListToString(procname))));
 
 	return procOid;
 }
@@ -1178,12 +1179,13 @@ Oid
 DefineCompositeType(const RangeVar *typevar, List *coldeflist)
 {
 	CreateStmt *createStmt = makeNode(CreateStmt);
+
 	createStmt->relOid = 0;
 
 	if (coldeflist == NIL)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-			 errmsg("composite type must have at least one attribute")));
+				 errmsg("composite type must have at least one attribute")));
 
 	/*
 	 * now set the parameters for keys/inheritance etc. All of these are
@@ -1279,24 +1281,24 @@ AlterDomainDefault(List *names, Node *defaultRaw)
 		 * easier for pg_dump).
 		 */
 		defaultValue = deparse_expression(defaultExpr,
-							deparse_context_for(NameStr(typTup->typname),
-												InvalidOid),
+								deparse_context_for(NameStr(typTup->typname),
+													InvalidOid),
 										  false, false);
 
 		/*
 		 * Form an updated tuple with the new default and write it back.
 		 */
 		new_record[Anum_pg_type_typdefaultbin - 1] = DirectFunctionCall1(textin,
-														 CStringGetDatum(
-											 nodeToString(defaultExpr)));
+															 CStringGetDatum(
+												 nodeToString(defaultExpr)));
 
 		new_record_repl[Anum_pg_type_typdefaultbin - 1] = 'r';
 		new_record[Anum_pg_type_typdefault - 1] = DirectFunctionCall1(textin,
-										  CStringGetDatum(defaultValue));
+											  CStringGetDatum(defaultValue));
 		new_record_repl[Anum_pg_type_typdefault - 1] = 'r';
 	}
 	else
-	/* Default is NULL, drop it */
+		/* Default is NULL, drop it */
 	{
 		new_record_nulls[Anum_pg_type_typdefaultbin - 1] = 'n';
 		new_record_repl[Anum_pg_type_typdefaultbin - 1] = 'r';
@@ -1305,7 +1307,7 @@ AlterDomainDefault(List *names, Node *defaultRaw)
 	}
 
 	newtuple = heap_modifytuple(tup, rel,
-						  new_record, new_record_nulls, new_record_repl);
+							  new_record, new_record_nulls, new_record_repl);
 
 	simple_heap_update(rel, &tup->t_self, newtuple);
 
@@ -1413,8 +1415,8 @@ AlterDomainNotNull(List *names, bool notNull)
 						ereport(ERROR,
 								(errcode(ERRCODE_NOT_NULL_VIOLATION),
 								 errmsg("column \"%s\" of table \"%s\" contains null values",
-							NameStr(tupdesc->attrs[attnum - 1]->attname),
-									 RelationGetRelationName(testrel))));
+								NameStr(tupdesc->attrs[attnum - 1]->attname),
+										RelationGetRelationName(testrel))));
 				}
 			}
 			heap_endscan(scan);
@@ -1575,7 +1577,7 @@ AlterDomainAddConstraint(List *names, Node *newConstraint)
 	if (IsA(newConstraint, FkConstraint))
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-			errmsg("foreign key constraints not possible for domains")));
+				 errmsg("foreign key constraints not possible for domains")));
 
 	/* otherwise it should be a plain Constraint */
 	if (!IsA(newConstraint, Constraint))
@@ -1593,13 +1595,13 @@ AlterDomainAddConstraint(List *names, Node *newConstraint)
 		case CONSTR_UNIQUE:
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("unique constraints not possible for domains")));
+					 errmsg("unique constraints not possible for domains")));
 			break;
 
 		case CONSTR_PRIMARY:
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-			errmsg("primary key constraints not possible for domains")));
+				errmsg("primary key constraints not possible for domains")));
 			break;
 
 		case CONSTR_ATTR_DEFERRABLE:
@@ -1680,7 +1682,7 @@ AlterDomainAddConstraint(List *names, Node *newConstraint)
 					ereport(ERROR,
 							(errcode(ERRCODE_CHECK_VIOLATION),
 							 errmsg("column \"%s\" of table \"%s\" contains values that violate the new constraint",
-							NameStr(tupdesc->attrs[attnum - 1]->attname),
+								NameStr(tupdesc->attrs[attnum - 1]->attname),
 									RelationGetRelationName(testrel))));
 			}
 
@@ -1885,8 +1887,8 @@ domainAddConstraint(Oid domainOid, Oid domainNamespace, Oid baseTypeOid,
 								 constr->name))
 			ereport(ERROR,
 					(errcode(ERRCODE_DUPLICATE_OBJECT),
-			 errmsg("constraint \"%s\" for domain \"%s\" already exists",
-					constr->name, domainName)));
+				 errmsg("constraint \"%s\" for domain \"%s\" already exists",
+						constr->name, domainName)));
 	}
 	else
 		constr->name = ChooseConstraintName(domainName,
@@ -1926,7 +1928,7 @@ domainAddConstraint(Oid domainOid, Oid domainNamespace, Oid baseTypeOid,
 	if (list_length(pstate->p_rtable) != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
-				 errmsg("cannot use table references in domain check constraint")));
+		  errmsg("cannot use table references in domain check constraint")));
 
 	/*
 	 * Domains don't allow var clauses (this should be redundant with the
@@ -1935,7 +1937,7 @@ domainAddConstraint(Oid domainOid, Oid domainNamespace, Oid baseTypeOid,
 	if (contain_var_clause(expr))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
-				 errmsg("cannot use table references in domain check constraint")));
+		  errmsg("cannot use table references in domain check constraint")));
 
 	/*
 	 * No subplans or aggregates, either...

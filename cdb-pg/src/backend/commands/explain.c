@@ -60,7 +60,7 @@ static void show_upper_qual(List *qual, const char *qlabel,
 				const char *inner_name, int inner_varno, Plan *inner_plan,
 				StringInfo str, int indent, ExplainState *es);
 static void show_merge_keys(List *tlist, int nkeys, AttrNumber *keycols,
-			   StringInfo str, int indent, ExplainState *es);
+				StringInfo str, int indent, ExplainState *es);
 static void show_sort_keys(List *tlist, int nkeys, AttrNumber *keycols,
 			   const char *qlabel,
 			   StringInfo str, int indent, ExplainState *es);
@@ -80,7 +80,7 @@ ExplainQuery(ExplainStmt *stmt, DestReceiver *dest)
 
 	/*
 	 * Because the planner is not cool about not scribbling on its input,
-	 * we make a preliminary copy of the source querytree.  This prevents
+	 * we make a preliminary copy of the source querytree.	This prevents
 	 * problems in the case that the EXPLAIN is in a portal or plpgsql
 	 * function and is executed repeatedly.  (See also the same hack in
 	 * DECLARE CURSOR and PREPARE.)  XXX the planner really shouldn't
@@ -191,7 +191,7 @@ ExplainOneQuery(Query *query, ExplainStmt *stmt, TupOutputState *tstate)
 
 	/* plan the query */
 	plan = planner(query, isCursor, cursorOptions, NULL);
-	
+
 	/* Create a QueryDesc requesting no output */
 	queryDesc = CreateQueryDesc(query, plan,
 								ActiveSnapshot, InvalidSnapshot,
@@ -219,7 +219,7 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 	double		totaltime = 0;
 	ExplainState *es;
 	StringInfo	str;
-	Node *saved_es_sliceTable;
+	Node	   *saved_es_sliceTable;
 
 	gettimeofday(&starttime, NULL);
 
@@ -229,7 +229,7 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 
 	/* call ExecutorStart to prepare the plan for execution */
 	ExecutorStart(queryDesc, !stmt->analyze);
-	
+
 	/* Execute the plan for statistics if asked for */
 	if (stmt->analyze)
 	{
@@ -252,11 +252,11 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 		char	   *s;
 		char	   *f;
 
-		if ( queryDesc->plantree && queryDesc->estate && queryDesc->estate->es_sliceTable )
+		if (queryDesc->plantree && queryDesc->estate && queryDesc->estate->es_sliceTable)
 		{
 			/* Little two-step to get EXPLAIN VERBOSE to show slice table. */
-			saved_es_sliceTable = queryDesc->plantree->sliceTable; /* probably NULL */
-			queryDesc->plantree->sliceTable = (Node*)queryDesc->estate->es_sliceTable;
+			saved_es_sliceTable = queryDesc->plantree->sliceTable;		/* probably NULL */
+			queryDesc->plantree->sliceTable = (Node *) queryDesc->estate->es_sliceTable;
 			s = nodeToString(queryDesc->plantree);
 			queryDesc->plantree->sliceTable = saved_es_sliceTable;
 		}
@@ -264,7 +264,7 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 		{
 			s = nodeToString(queryDesc->plantree);
 		}
-		
+
 		if (s)
 		{
 			if (Explain_pretty_print)
@@ -289,7 +289,7 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 
 	/*
 	 * Close down the query and free resources; also run any queued
-	 * AFTER triggers.  Include time for this in the total runtime.
+	 * AFTER triggers.	Include time for this in the total runtime.
 	 */
 	gettimeofday(&starttime, NULL);
 
@@ -515,27 +515,28 @@ explain_outNode(StringInfo str,
 			break;
 		case T_Motion:
 			{
-				Motion *pMotion = (Motion *) plan;
-				switch(pMotion->motionType)
+				Motion	   *pMotion = (Motion *) plan;
+
+				switch (pMotion->motionType)
 				{
 					case MOTIONTYPE_HASH:
-                        if (pMotion->hashToSelfOnly)
-                            pname = "Cull Motion";
-                        else
-                            pname = "Redistribute Motion";
+						if (pMotion->hashToSelfOnly)
+							pname = "Cull Motion";
+						else
+							pname = "Redistribute Motion";
 						break;
 					case MOTIONTYPE_FIXED:
-                        if ( pMotion->numOutputSegs == 0 )
-                            pname = "Broadcast Motion";
+						if (pMotion->numOutputSegs == 0)
+							pname = "Broadcast Motion";
 						else
-                            pname = "Gather Motion";
+							pname = "Gather Motion";
 						break;
-                    default:
-                        pname = "Motion ???";
-                        break;
+					default:
+						pname = "Motion ???";
+						break;
 				}
 			}
-			
+
 			break;
 		default:
 			pname = "???";
@@ -578,7 +579,7 @@ explain_outNode(StringInfo str,
 								 quote_identifier(relname));
 				if (strcmp(rte->eref->aliasname, relname) != 0)
 					appendStringInfo(str, " %s",
-								 quote_identifier(rte->eref->aliasname));
+									 quote_identifier(rte->eref->aliasname));
 			}
 			break;
 		case T_SubqueryScan:
@@ -622,14 +623,14 @@ explain_outNode(StringInfo str,
 								 quote_identifier(proname));
 				if (strcmp(rte->eref->aliasname, proname) != 0)
 					appendStringInfo(str, " %s",
-								 quote_identifier(rte->eref->aliasname));
+									 quote_identifier(rte->eref->aliasname));
 			}
 			break;
-        case T_Material:
-            if (((Material *) plan)->cdb_strict)
-                appendStringInfo(str, " for deadlock safety");
-            break;
-        default:
+		case T_Material:
+			if (((Material *) plan)->cdb_strict)
+				appendStringInfo(str, " for deadlock safety");
+			break;
+		default:
 			break;
 	}
 	if (es->printCost)
@@ -649,8 +650,8 @@ explain_outNode(StringInfo str,
 			double		nloops = planstate->instrument->nloops;
 
 			appendStringInfo(str, " (actual time=%.3f..%.3f rows=%.0f loops=%.0f)",
-						1000.0 * planstate->instrument->startup / nloops,
-						  1000.0 * planstate->instrument->total / nloops,
+							 1000.0 * planstate->instrument->startup / nloops,
+							 1000.0 * planstate->instrument->total / nloops,
 							 planstate->instrument->ntuples / nloops,
 							 planstate->instrument->nloops);
 		}
@@ -758,21 +759,22 @@ explain_outNode(StringInfo str,
 							str, indent, es);
 			break;
 		case T_Motion:
-            {
-                Motion *pMotion = (Motion *) plan;
-                if (pMotion->sendSorted)
-			        show_merge_keys(plan->targetlist,
-						           pMotion->numSortCols,
-						           pMotion->sortColIdx,
-						           str, indent, es);
-                if (pMotion->motionType == MOTIONTYPE_HASH)
-                    show_upper_qual(pMotion->hashExpr,
-                                    "Hash Key",
-                                    "subplan", OUTER, outerPlan(plan),
-                                    "", 0, NULL,
-                                    str, indent, es);
-            }
-            break;
+			{
+				Motion	   *pMotion = (Motion *) plan;
+
+				if (pMotion->sendSorted)
+					show_merge_keys(plan->targetlist,
+									pMotion->numSortCols,
+									pMotion->sortColIdx,
+									str, indent, es);
+				if (pMotion->motionType == MOTIONTYPE_HASH)
+					show_upper_qual(pMotion->hashExpr,
+									"Hash Key",
+									"subplan", OUTER, outerPlan(plan),
+									"", 0, NULL,
+									str, indent, es);
+			}
+			break;
 		default:
 			break;
 	}
@@ -946,7 +948,7 @@ show_scan_qual(List *qual, bool is_or_qual, const char *qlabel,
 
 		if (bms_is_member(OUTER, varnos))
 			outercontext = deparse_context_for_subplan("outer",
-												  outer_plan->targetlist,
+													   outer_plan->targetlist,
 													   es->rtable);
 		else
 			outercontext = NULL;
@@ -1028,23 +1030,23 @@ show_upper_qual(List *qual, const char *qlabel,
  */
 static void
 show_merge_keys(List *tlist, int nkeys, AttrNumber *keycols,
-			   StringInfo str, int indent, ExplainState *es)
+				StringInfo str, int indent, ExplainState *es)
 {
 	int			keyno;
 	Relids		varnos;
 	int			i;
-	bool        use_show_sort_keys;
+	bool		use_show_sort_keys;
 
 	if (nkeys <= 0)
 		return;
-		
+
 	varnos = pull_varnos((Node *) tlist);
 	use_show_sort_keys = !bms_is_member(0, varnos);
 	bms_free(varnos);
-	
-	 if ( use_show_sort_keys )
+
+	if (use_show_sort_keys)
 	{
-		show_sort_keys(tlist,nkeys,keycols,"Merge Key",str,indent,es);
+		show_sort_keys(tlist, nkeys, keycols, "Merge Key", str, indent, es);
 		return;
 	}
 
@@ -1056,6 +1058,7 @@ show_merge_keys(List *tlist, int nkeys, AttrNumber *keycols,
 	for (keyno = 0; keyno < nkeys; keyno++)
 	{
 		AttrNumber	keyresno = keycols[keyno];
+
 		if (keyno > 0)
 			appendStringInfo(str, ", ");
 		appendStringInfo(str, "%d", keyresno);

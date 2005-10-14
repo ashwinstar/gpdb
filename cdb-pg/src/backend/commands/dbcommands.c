@@ -97,11 +97,11 @@ createdb(CreatedbStmt *stmt)
 	char		buf[2 * MAXPGPATH + 100];
 #endif
 
-	struct Gang    *primaryGang = NULL;
-    struct Gang    *mirrorGang = NULL;
+	struct Gang *primaryGang = NULL;
+	struct Gang *mirrorGang = NULL;
 
-	bool shouldDispatch =  (Mpp_role == MPP_ROLE_DISPATCH);
-	
+	bool		shouldDispatch = (Mpp_role == MPP_ROLE_DISPATCH);
+
 	if (shouldDispatch)
 		if (IsBootstrapProcessingMode())
 			elog(NOTICE, " Create database dispatch in bootstrap mode!");
@@ -214,7 +214,7 @@ createdb(CreatedbStmt *stmt)
 		if (!superuser())
 			ereport(ERROR,
 					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 errmsg("must be superuser to create database for another user")));
+			errmsg("must be superuser to create database for another user")));
 	}
 
 	/*
@@ -241,7 +241,7 @@ createdb(CreatedbStmt *stmt)
 					 &src_vacuumxid, &src_frozenxid, &src_deftablespace))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_DATABASE),
-		 errmsg("template database \"%s\" does not exist", dbtemplate)));
+			 errmsg("template database \"%s\" does not exist", dbtemplate)));
 
 	/*
 	 * Permission check: to copy a DB that's not marked datistemplate, you
@@ -265,8 +265,8 @@ createdb(CreatedbStmt *stmt)
 	if (DatabaseHasActiveBackends(src_dboid, true))
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_IN_USE),
-		errmsg("source database \"%s\" is being accessed by other users",
-			   dbtemplate)));
+			errmsg("source database \"%s\" is being accessed by other users",
+				   dbtemplate)));
 
 	/* If encoding is defaulted, use source's encoding */
 	if (encoding < 0)
@@ -301,7 +301,7 @@ createdb(CreatedbStmt *stmt)
 		/*
 		 * If we are trying to change the default tablespace of the template,
 		 * we require that the template not have any files in the new default
-		 * tablespace.  This is necessary because otherwise the copied
+		 * tablespace.	This is necessary because otherwise the copied
 		 * database would contain pg_class rows that refer to its default
 		 * tablespace both explicitly (by OID) and implicitly (as zero), which
 		 * would cause problems.  For example another CREATE DATABASE using
@@ -350,36 +350,36 @@ createdb(CreatedbStmt *stmt)
 
 	if (shouldDispatch)
 	{
-		
-		elog( DEBUG5,"shouldDispatch = true, dbOid = %d",dboid);
-		if ( shouldDispatch )
+
+		elog(DEBUG5, "shouldDispatch = true, dbOid = %d", dboid);
+		if (shouldDispatch)
 		{
 
-			char *pszCreateDb;
+			char	   *pszCreateDb;
 
 
 			/*
 			 * Serialize the stmt tree, and create the sql statement: mppexec ....
 			 */
-			Query * q = makeNode(Query);
+			Query	   *q = makeNode(Query);
 
 			StringInfoData buffer;
-			
-			initStringInfo( &buffer );
+
+			initStringInfo(&buffer);
 
 			q->commandType = CMD_UTILITY;
-			q->utilityStmt = (Node *)stmt;
+			q->utilityStmt = (Node *) stmt;
 
 			q->querySource = QSRC_ORIGINAL;
-			q->canSetTag = true; /*?*/
-		
+			q->canSetTag = true;	/* ? */
 
-			pszCreateDb = serializeNode((Node *)q);
-			
 
-			Assert(pszCreateDb != NULL );
+			pszCreateDb = serializeNode((Node *) q);
 
-			elog( DEBUG5,"Comand %s", pszCreateDb);
+
+			Assert(pszCreateDb != NULL);
+
+			elog(DEBUG5, "Comand %s", pszCreateDb);
 
 			appendStringInfo(&buffer, "mppexec '%s' ''", pszCreateDb);
 
@@ -388,10 +388,10 @@ createdb(CreatedbStmt *stmt)
 
 			/*
 			 * This call returns after launching the threads that send the command to the appropriate
-			 * segdbs.  It does not wait for them to finish.
+			 * segdbs.	It does not wait for them to finish.
 			 */
 			cdbdisp_dispatchCommand(buffer.data, false, true, NULL,
-                                    &primaryGang, &mirrorGang);
+									&primaryGang, &mirrorGang);
 			pfree(buffer.data);
 		}
 	}
@@ -570,12 +570,12 @@ createdb(CreatedbStmt *stmt)
 	/* Close pg_database, but keep exclusive lock till commit */
 	heap_close(pg_database_rel, NoLock);
 
-    /*
-     * We successfully completed our work.  Now check the results from the
-     * qExecs, if dispatched.  This waits for them to all finish, and exits
-     * via ereport(ERROR,...) if unsuccessful.
-     */
-    cdbdisp_finishCommand(primaryGang, mirrorGang);
+	/*
+	 * We successfully completed our work.	Now check the results from the
+	 * qExecs, if dispatched.  This waits for them to all finish, and exits
+	 * via ereport(ERROR,...) if unsuccessful.
+	 */
+	cdbdisp_finishCommand(primaryGang, mirrorGang);
 }
 
 
@@ -639,28 +639,28 @@ dropdb(const char *dbname)
 	if (DatabaseHasActiveBackends(db_id, false))
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_IN_USE),
-			   errmsg("database \"%s\" is being accessed by other users",
-					  dbname)));
-					
-					
+				 errmsg("database \"%s\" is being accessed by other users",
+						dbname)));
+
+
 	/*
 	 * Free the database on the segDBs
 	 *
 	 */
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-		
-			
+
+
 
 		StringInfoData buffer;
-		
-		initStringInfo( &buffer );
+
+		initStringInfo(&buffer);
 
 		appendStringInfo(&buffer, "DROP DATABASE \"%s\"", dbname);
 
 
 
-		CdbDoCommandInt( buffer.data, false, NULL );
+		CdbDoCommandInt(buffer.data, false, NULL);
 
 	}
 
@@ -734,7 +734,7 @@ dropdb(const char *dbname)
 
 	/* Close pg_database, but keep exclusive lock till commit */
 	heap_close(pgdbrel, NoLock);
-	
+
 
 }
 
@@ -790,8 +790,8 @@ RenameDatabase(const char *oldname, const char *newname)
 	if (DatabaseHasActiveBackends(HeapTupleGetOid(tup), false))
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_IN_USE),
-			   errmsg("database \"%s\" is being accessed by other users",
-					  oldname)));
+				 errmsg("database \"%s\" is being accessed by other users",
+						oldname)));
 
 	/* make sure the new name doesn't exist */
 	ScanKeyInit(&key2,
@@ -835,17 +835,17 @@ RenameDatabase(const char *oldname, const char *newname)
 
 	/* Close pg_database, but keep exclusive lock till commit */
 	heap_close(rel, NoLock);
-	
+
 	if (Mpp_role == MPP_ROLE_DISPATCH)
-	{	
+	{
 
 		StringInfoData buffer;
-		
-		initStringInfo( &buffer );
+
+		initStringInfo(&buffer);
 
 		appendStringInfo(&buffer, "ALTER DATABASE %s RENAME TO %s", oldname, newname);
 
-		CdbDoCommand( buffer.data, false );
+		CdbDoCommand(buffer.data, false);
 
 	}
 }
@@ -886,7 +886,7 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 				 errmsg("database \"%s\" does not exist", stmt->dbname)));
 
 	if (!(superuser()
-		|| ((Form_pg_database) GETSTRUCT(tuple))->datdba == GetUserId()))
+		  || ((Form_pg_database) GETSTRUCT(tuple))->datdba == GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_DATABASE,
 					   stmt->dbname);
 
@@ -933,7 +933,7 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 
 	/*
 	 * Force dirty buffers out to disk, so that newly-connecting backends
-	 * will see the altered row in pg_database right away.  (They'll
+	 * will see the altered row in pg_database right away.	(They'll
 	 * see an uncommitted tuple, but they don't care; see
 	 * GetRawDatabaseInfo.)
 	 */
@@ -948,7 +948,7 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
  * ALTER DATABASE name OWNER TO newowner
  */
 void
-AlterDatabaseOwner(const char *dbname, AclId newOwnerSysId, const char * newownername)
+AlterDatabaseOwner(const char *dbname, AclId newOwnerSysId, const char *newownername)
 {
 	HeapTuple	tuple;
 	Relation	rel;
@@ -1028,7 +1028,7 @@ AlterDatabaseOwner(const char *dbname, AclId newOwnerSysId, const char * newowne
 
 		/*
 		 * Force dirty buffers out to disk, so that newly-connecting backends
-		 * will see the altered row in pg_database right away.  (They'll
+		 * will see the altered row in pg_database right away.	(They'll
 		 * see an uncommitted tuple, but they don't care; see
 		 * GetRawDatabaseInfo.)
 		 */
@@ -1039,17 +1039,17 @@ AlterDatabaseOwner(const char *dbname, AclId newOwnerSysId, const char * newowne
 
 	/* Close pg_database, but keep exclusive lock till commit */
 	heap_close(rel, NoLock);
-	
+
 	if (Mpp_role == MPP_ROLE_DISPATCH)
-	{	
+	{
 
 		StringInfoData buffer;
-		
-		initStringInfo( &buffer );
+
+		initStringInfo(&buffer);
 
 		appendStringInfo(&buffer, "ALTER DATABASE \"%s\" OWNER TO \"%s\"", dbname, newownername);
 
-		CdbDoCommand( buffer.data, false );
+		CdbDoCommand(buffer.data, false);
 
 	}
 }
@@ -1315,8 +1315,8 @@ dbase_redo(XLogRecPtr lsn, XLogRecord *record)
 		{
 			if (!rmtree(dst_path, true))
 				ereport(WARNING,
-					(errmsg("could not remove database directory \"%s\"",
-							dst_path)));
+						(errmsg("could not remove database directory \"%s\"",
+								dst_path)));
 		}
 
 		/*
@@ -1391,8 +1391,8 @@ dbase_redo(XLogRecPtr lsn, XLogRecord *record)
 		{
 			if (!rmtree(dst_path, true))
 				ereport(WARNING,
-					(errmsg("could not remove database directory \"%s\"",
-							dst_path)));
+						(errmsg("could not remove database directory \"%s\"",
+								dst_path)));
 		}
 
 		/*

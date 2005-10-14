@@ -94,9 +94,9 @@ static EolType eol_type;		/* EOL type of input */
 static int	client_encoding;	/* remote side's character encoding */
 static int	server_encoding;	/* local encoding */
 static bool embedded_line_warning;
-static char	eol_ch[2];			/* The byte values of the 1 or 2 eol bytes */
-static bool client_encoding_only; /* true if client encoding is a non
-* supported server encoding */
+static char eol_ch[2];			/* The byte values of the 1 or 2 eol bytes */
+static bool client_encoding_only;		/* true if client encoding is a non
+										 * supported server encoding */
 
 /* these are just for error messages, see copy_in_error_callback */
 static bool copy_binary;		/* is it a binary copy? */
@@ -105,25 +105,27 @@ static int	copy_lineno;		/* line number for error messages */
 static const char *copy_attname;	/* current att for error messages */
 
 /*
- * Static variables for buffered input parsing 
+ * Static variables for buffered input parsing
  */
-static char input_buf[COPY_BUF_SIZE + 1]; /* extra byte for '\0' */
+static char input_buf[COPY_BUF_SIZE + 1];		/* extra byte for '\0' */
 static int	buffer_index;		/* input buffer index */
 static bool end_marker;
 static char *begloc;
 static char *endloc;
 static bool buf_done;			/* finished processing the current buffer */
 static bool line_done;			/* finished processing the whole line or
-* stopped in the middle */
-static int last_hash_field;
+								 * stopped in the middle */
+static int	last_hash_field;
+
 /* these are for CSV format */
-static bool	in_quote;
+static bool in_quote;
 static bool last_was_esc;
+
 /* these are for TEXT format */
-static bool esc_in_prevbuf;		/* escape was last character of the data
-* input buffer */
+static bool esc_in_prevbuf;		/* escape was last character of the data input
+								 * buffer */
 static bool cr_in_prevbuf;		/* CR was last character of the data input
-* buffer */
+								 * buffer */
 
 /*
  * These static variables are used to avoid incurring overhead for each
@@ -149,33 +151,33 @@ static bool line_buf_converted;
 
 /* non-export function prototypes */
 static void DoCopyTo(Relation rel, List *attnumlist, bool binary, bool oids,
-		             char *delim, char *null_print, bool csv_mode, char *quote,
-		             char *escape, List *force_quote_atts, bool fe_copy);
+		 char *delim, char *null_print, bool csv_mode, char *quote,
+		 char *escape, List *force_quote_atts, bool fe_copy);
 static void CopyTo(Relation rel, List *attnumlist, bool binary, bool oids,
-				   char *delim, char *null_print, bool csv_mode, char *quote, char *escape,
-				   List *force_quote_atts);
+	 char *delim, char *null_print, bool csv_mode, char *quote, char *escape,
+	   List *force_quote_atts);
 static void CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
-			             char *delim, char *null_print, bool csv_mode, char *quote,
-						 char *escape, List *force_notnull_atts, bool escape_off);
+				 char *delim, char *null_print, bool csv_mode, char *quote,
+				 char *escape, List *force_notnull_atts, bool escape_off);
 static void CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
-			             char *delim, char *null_print, bool csv_mode, char *quote,
-						 char *escape, List *force_notnull_atts, bool escape_off);
+			 char *delim, char *null_print, bool csv_mode, char *quote,
+			 char *escape, List *force_notnull_atts, bool escape_off);
 static bool CopyReadLineText(size_t bytesread, char *escape, bool escape_off);
 static bool CopyReadLineCSV(size_t bytesread, char *quote, char *escape);
 static void CopyReadAttributesText(const char *delim, const char *escape, const char *null_print,
-								   int null_print_len, char *nulls, List *attnumlist, 
-								   int *attr_offsets, int num_phys_attrs, Form_pg_attribute *attr,
-								   bool escape_off);
+					   int null_print_len, char *nulls, List *attnumlist,
+			  int *attr_offsets, int num_phys_attrs, Form_pg_attribute *attr,
+					   bool escape_off);
 static void CopyReadAttributesCSV(const char *delim, const char *null_print, char *quote,
-								  char *escape, int null_print_len, char *nulls, List *attnumlist, 
-								  int *attr_offsets, int num_phys_attrs, Form_pg_attribute *attr);
+			 char *escape, int null_print_len, char *nulls, List *attnumlist,
+			 int *attr_offsets, int num_phys_attrs, Form_pg_attribute *attr);
 static Datum CopyReadBinaryAttribute(int column_no, FmgrInfo *flinfo,
-									 Oid typioparam, bool *isnull);
+						Oid typioparam, bool *isnull);
 static char *CopyReadOidAttr(const char *delim, const char *null_print, int null_print_len,
-				             bool *isnull);
+				bool *isnull);
 static void CopyAttributeOut(char *string, char *delim);
 static void CopyAttributeOutCSV(char *string, char *delim, char *quote,
-					            char *escape, bool force_quote);
+					char *escape, bool force_quote);
 static List *CopyGetAttnums(Relation rel, List *attnamelist);
 static void limit_printout_length(StringInfo buf);
 static bool DetectLineEnd(size_t bytesread, char *quote, char *escape);
@@ -189,7 +191,7 @@ static void CopySendData(void *databuf, int datasize);
 static void CopySendString(const char *str);
 static void CopySendChar(char c);
 static void CopySendEndOfRow(bool binary);
-static int  CopyGetData(void *databuf, int datasize);
+static int	CopyGetData(void *databuf, int datasize);
 
 #define CopyGetEof()  (fe_eof)
 static void CopySendInt32(int32 val);
@@ -231,7 +233,7 @@ SendCopyBegin(bool binary, int natts)
 		if (binary)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("COPY BINARY is not supported to stdout or from stdin")));
+			errmsg("COPY BINARY is not supported to stdout or from stdin")));
 		pq_putemptymessage('H');
 		/* grottiness needed for old COPY OUT protocol */
 		pq_startcopyout();
@@ -243,7 +245,7 @@ SendCopyBegin(bool binary, int natts)
 		if (binary)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("COPY BINARY is not supported to stdout or from stdin")));
+			errmsg("COPY BINARY is not supported to stdout or from stdin")));
 		pq_putemptymessage('B');
 		/* grottiness needed for old COPY OUT protocol */
 		pq_startcopyout();
@@ -276,7 +278,7 @@ ReceiveCopyBegin(bool binary, int natts)
 		if (binary)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("COPY BINARY is not supported to stdout or from stdin")));
+			errmsg("COPY BINARY is not supported to stdout or from stdin")));
 		pq_putemptymessage('G');
 		copy_dest = COPY_OLD_FE;
 	}
@@ -286,7 +288,7 @@ ReceiveCopyBegin(bool binary, int natts)
 		if (binary)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("COPY BINARY is not supported to stdout or from stdin")));
+			errmsg("COPY BINARY is not supported to stdout or from stdin")));
 		pq_putemptymessage('D');
 		copy_dest = COPY_OLD_FE;
 	}
@@ -347,7 +349,7 @@ CopySendData(void *databuf, int datasize)
 				/* no hope of recovering connection sync, so FATAL */
 				ereport(FATAL,
 						(errcode(ERRCODE_CONNECTION_FAILURE),
-					   errmsg("connection lost during COPY to stdout")));
+						 errmsg("connection lost during COPY to stdout")));
 			}
 			break;
 		case COPY_NEW_FE:
@@ -421,14 +423,14 @@ static int
 CopyGetData(void *databuf, int datasize)
 {
 	size_t		bytesread = 0;
-	
+
 	switch (copy_dest)
 	{
 		case COPY_FILE:
 			bytesread = fread(databuf, 1, datasize, copy_file);
 			if (feof(copy_file))
 				fe_eof = true;
-				break;
+			break;
 		case COPY_OLD_FE:
 			if (pq_getbytes((char *) databuf, datasize))
 			{
@@ -438,28 +440,28 @@ CopyGetData(void *databuf, int datasize)
 						 errmsg("unexpected EOF on client connection")));
 			}
 			bytesread += datasize;		/* update the count of bytes that were
-			* read so far */
+										 * read so far */
 			break;
 		case COPY_NEW_FE:
 			while (datasize > 0 && !fe_eof)
 			{
 				int			avail;
-				
+
 				while (copy_msgbuf->cursor >= copy_msgbuf->len)
 				{
 					/* Try to receive another message */
 					int			mtype;
-					
-readmessage:
+
+			readmessage:
 					mtype = pq_getbyte();
 					if (mtype == EOF)
 						ereport(ERROR,
 								(errcode(ERRCODE_CONNECTION_FAILURE),
-								 errmsg("unexpected EOF on client connection")));
+							 errmsg("unexpected EOF on client connection")));
 					if (pq_getmessage(copy_msgbuf, 0))
 						ereport(ERROR,
 								(errcode(ERRCODE_CONNECTION_FAILURE),
-								 errmsg("unexpected EOF on client connection")));
+							 errmsg("unexpected EOF on client connection")));
 					switch (mtype)
 					{
 						case 'd':		/* CopyData */
@@ -476,7 +478,7 @@ readmessage:
 							break;
 						case 'H':		/* Flush */
 						case 'S':		/* Sync */
-							
+
 							/*
 							 * Ignore Flush/Sync for the convenience of
 							 * client libraries (such as libpq) that may
@@ -498,12 +500,12 @@ readmessage:
 				pq_copymsgbytes(copy_msgbuf, databuf, avail);
 				databuf = (void *) ((char *) databuf + avail);
 				bytesread += avail;		/* update the count of bytes that were
-					* read so far */
+										 * read so far */
 				datasize -= avail;
 			}
 			break;
 	}
-	
+
 	return bytesread;
 }
 
@@ -533,11 +535,11 @@ CopyGetInt32(void)
 	uint32		buf;
 
 	CopyGetData(&buf, sizeof(buf));
-	
+
 	/* load raw data into line buf for dispatching later */
-	if(Mpp_role == MPP_ROLE_DISPATCH)
-	   appendBinaryStringInfo(&line_buf, (char *)&buf, sizeof(buf));
-	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+		appendBinaryStringInfo(&line_buf, (char *) &buf, sizeof(buf));
+
 	return (int32) ntohl(buf);
 }
 
@@ -561,12 +563,12 @@ CopyGetInt16(void)
 {
 	uint16		buf;
 
-    CopyGetData(&buf, sizeof(buf));
-	
+	CopyGetData(&buf, sizeof(buf));
+
 	/* load raw data into line buf for dispatching later */
-	if(Mpp_role == MPP_ROLE_DISPATCH)
-		appendBinaryStringInfo(&line_buf, (char *)&buf, sizeof(buf));
-	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+		appendBinaryStringInfo(&line_buf, (char *) &buf, sizeof(buf));
+
 	return (int16) ntohs(buf);
 }
 
@@ -743,9 +745,9 @@ DoCopy(const CopyStmt *stmt)
 		if (!escape)
 			escape = quote;
 	}
-	
-    if(!binary && !csv_mode && !escape)
-		escape = "\\"; /* default escape for text mode */
+
+	if (!binary && !csv_mode && !escape)
+		escape = "\\";			/* default escape for text mode */
 
 	/*
 	 * Only single-character delimiter strings are supported.
@@ -754,7 +756,7 @@ DoCopy(const CopyStmt *stmt)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("COPY delimiter must be a single character")));
-	
+
 	/*
 	 * Check quote
 	 */
@@ -775,22 +777,22 @@ DoCopy(const CopyStmt *stmt)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("COPY escape is not available in binary mode")));
-    
+
 	if (csv_mode && strlen(escape) != 1)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("COPY escape in CSV format must be a single character")));
-	
+			errmsg("COPY escape in CSV format must be a single character")));
+
 	if (!csv_mode && !binary && strlen(escape) != 1)
 	{
-		if(!strcmp(escape, "OFF") || !strcmp(escape, "off"))
+		if (!strcmp(escape, "OFF") || !strcmp(escape, "off"))
 			escape_off = true;
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("COPY escape must be a single character, or [OFF/off] to disable escapes")));
 	}
-			
+
 	/*
 	 * Check force_quote
 	 */
@@ -801,7 +803,7 @@ DoCopy(const CopyStmt *stmt)
 	if (force_quote != NIL && is_from)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			   errmsg("COPY force quote only available using COPY TO")));
+				 errmsg("COPY force quote only available using COPY TO")));
 
 	/*
 	 * Check force_notnull
@@ -809,11 +811,11 @@ DoCopy(const CopyStmt *stmt)
 	if (!csv_mode && force_notnull != NIL)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			  errmsg("COPY force not null available only in CSV mode")));
+				 errmsg("COPY force not null available only in CSV mode")));
 	if (force_notnull != NIL && !is_from)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-		  errmsg("COPY force not null only available using COPY FROM")));
+			  errmsg("COPY force not null only available using COPY FROM")));
 
 	/*
 	 * Don't allow the delimiter to appear in the null string.
@@ -821,7 +823,7 @@ DoCopy(const CopyStmt *stmt)
 	if (strchr(null_print, delim[0]) != NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("COPY delimiter must not appear in the NULL specification")));
+		errmsg("COPY delimiter must not appear in the NULL specification")));
 
 	/*
 	 * Don't allow the csv quote char to appear in the null string.
@@ -853,7 +855,7 @@ DoCopy(const CopyStmt *stmt)
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 				 errmsg("must be superuser to COPY to or from a file"),
 				 errhint("Anyone can COPY to stdout or from stdin. "
-					   "psql's \\copy command also works for anyone.")));
+						 "psql's \\copy command also works for anyone.")));
 
 	/*
 	 * Don't allow COPY w/ OIDs to or from a table without them
@@ -887,8 +889,8 @@ DoCopy(const CopyStmt *stmt)
 			if (!list_member_int(attnumlist, attnum))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
-				errmsg("FORCE QUOTE column \"%s\" not referenced by COPY",
-					   NameStr(attr[attnum - 1]->attname))));
+				   errmsg("FORCE QUOTE column \"%s\" not referenced by COPY",
+						  NameStr(attr[attnum - 1]->attname))));
 		}
 	}
 
@@ -910,8 +912,8 @@ DoCopy(const CopyStmt *stmt)
 			if (!list_member_int(attnumlist, attnum))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_COLUMN_REFERENCE),
-						 errmsg("FORCE NOT NULL column \"%s\" not referenced by COPY",
-								NameStr(attr[attnum - 1]->attname))));
+				errmsg("FORCE NOT NULL column \"%s\" not referenced by COPY",
+					   NameStr(attr[attnum - 1]->attname))));
 		}
 	}
 
@@ -941,7 +943,7 @@ DoCopy(const CopyStmt *stmt)
 		default:
 			client_encoding_only = false;
 	}
-	
+
 	copy_dest = COPY_FILE;		/* default */
 	copy_file = NULL;
 	copy_msgbuf = NULL;
@@ -964,8 +966,8 @@ DoCopy(const CopyStmt *stmt)
 			else
 				ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					   errmsg("cannot copy to non-table relation \"%s\"",
-							  RelationGetRelationName(rel))));
+						 errmsg("cannot copy to non-table relation \"%s\"",
+								RelationGetRelationName(rel))));
 		}
 		if (pipe)
 		{
@@ -983,8 +985,8 @@ DoCopy(const CopyStmt *stmt)
 			if (copy_file == NULL)
 				ereport(ERROR,
 						(errcode_for_file_access(),
-					 errmsg("could not open file \"%s\" for reading: %m",
-							filename)));
+						 errmsg("could not open file \"%s\" for reading: %m",
+								filename)));
 
 			fstat(fileno(copy_file), &st);
 			if (S_ISDIR(st.st_mode))
@@ -996,29 +998,30 @@ DoCopy(const CopyStmt *stmt)
 			}
 		}
 
-		if(Mpp_role == MPP_ROLE_DISPATCH)
+		if (Mpp_role == MPP_ROLE_DISPATCH)
 		{
 			CopyFromDispatch(rel, attnumlist, binary, oids, delim, null_print, csv_mode,
-									   quote, escape, force_notnull_atts, escape_off);
-		}		
-		else /* execute or utility mode */
+							 quote, escape, force_notnull_atts, escape_off);
+		}
+		else
+			/* execute or utility mode */
 		{
 			CopyFromExec(rel, attnumlist, binary, oids, delim, null_print, csv_mode,
-									 quote, escape, force_notnull_atts, escape_off);
+						 quote, escape, force_notnull_atts, escape_off);
 		}
-	
-		
+
+
 	}
 	else
 	{							/* copy from database to file */
-		
-        if(Mpp_role == MPP_ROLE_DISPATCH)
-            ereport(ERROR,
-		           (errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-		            errmsg("COPY TO file from database is not yet supported in bizgres MPP dispatch mode")
-				    ));
 
-        if (rel->rd_rel->relkind != RELKIND_RELATION)
+		if (Mpp_role == MPP_ROLE_DISPATCH)
+			ereport(ERROR,
+					(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
+					 errmsg("COPY TO file from database is not yet supported in bizgres MPP dispatch mode")
+					 ));
+
+		if (rel->rd_rel->relkind != RELKIND_RELATION)
 		{
 			if (rel->rd_rel->relkind == RELKIND_VIEW)
 				ereport(ERROR,
@@ -1033,8 +1036,8 @@ DoCopy(const CopyStmt *stmt)
 			else
 				ereport(ERROR,
 						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-					 errmsg("cannot copy from non-table relation \"%s\"",
-							RelationGetRelationName(rel))));
+						 errmsg("cannot copy from non-table relation \"%s\"",
+								RelationGetRelationName(rel))));
 		}
 		if (pipe)
 		{
@@ -1055,7 +1058,7 @@ DoCopy(const CopyStmt *stmt)
 			if (!is_absolute_path(filename))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_NAME),
-				  errmsg("relative path not allowed for COPY to file")));
+					  errmsg("relative path not allowed for COPY to file")));
 
 			oumask = umask((mode_t) 022);
 			copy_file = AllocateFile(filename, PG_BINARY_W);
@@ -1064,8 +1067,8 @@ DoCopy(const CopyStmt *stmt)
 			if (copy_file == NULL)
 				ereport(ERROR,
 						(errcode_for_file_access(),
-					 errmsg("could not open file \"%s\" for writing: %m",
-							filename)));
+						 errmsg("could not open file \"%s\" for writing: %m",
+								filename)));
 
 			fstat(fileno(copy_file), &st);
 			if (S_ISDIR(st.st_mode))
@@ -1179,7 +1182,7 @@ CopyTo(Relation rel, List *attnumlist, bool binary, bool oids,
 
 		if (binary)
 			getTypeBinaryOutputInfo(attr[attnum - 1]->atttypid,
-								 &out_func_oid, &typioparams[attnum - 1],
+									&out_func_oid, &typioparams[attnum - 1],
 									&isvarlena[attnum - 1]);
 		else
 			getTypeOutputInfo(attr[attnum - 1]->atttypid,
@@ -1264,7 +1267,7 @@ CopyTo(Relation rel, List *attnumlist, bool binary, bool oids,
 			if (oids)
 			{
 				string = DatumGetCString(DirectFunctionCall1(oidout,
-							  ObjectIdGetDatum(HeapTupleGetOid(tuple))));
+								  ObjectIdGetDatum(HeapTupleGetOid(tuple))));
 				CopySendString(string);
 				need_delim = true;
 			}
@@ -1298,13 +1301,13 @@ CopyTo(Relation rel, List *attnumlist, bool binary, bool oids,
 				{
 					string = DatumGetCString(FunctionCall3(&out_functions[attnum - 1],
 														   value,
-							   ObjectIdGetDatum(typioparams[attnum - 1]),
-							Int32GetDatum(attr[attnum - 1]->atttypmod)));
+								   ObjectIdGetDatum(typioparams[attnum - 1]),
+								Int32GetDatum(attr[attnum - 1]->atttypmod)));
 					if (csv_mode)
 					{
 						CopyAttributeOutCSV(string, delim, quote, escape,
-									  (strcmp(string, null_print) == 0 ||
-									   force_quote[attnum - 1]));
+										  (strcmp(string, null_print) == 0 ||
+										   force_quote[attnum - 1]));
 					}
 					else
 						CopyAttributeOut(string, delim);
@@ -1316,7 +1319,7 @@ CopyTo(Relation rel, List *attnumlist, bool binary, bool oids,
 
 					outputbytes = DatumGetByteaP(FunctionCall2(&out_functions[attnum - 1],
 															   value,
-							 ObjectIdGetDatum(typioparams[attnum - 1])));
+								 ObjectIdGetDatum(typioparams[attnum - 1])));
 					/* We assume the result will not have been toasted */
 					CopySendInt32(VARSIZE(outputbytes) - VARHDRSZ);
 					CopySendData(VARDATA(outputbytes),
@@ -1353,7 +1356,7 @@ CopyTo(Relation rel, List *attnumlist, bool binary, bool oids,
 static void
 copy_in_error_callback(void *arg)
 {
-	
+
 	if (copy_binary)
 	{
 		/* can't usefully display the data */
@@ -1369,37 +1372,37 @@ copy_in_error_callback(void *arg)
 		{
 			/* error is relevant to a particular column */
 			limit_printout_length(&attr_buf);
-			
-			if(Mpp_role == MPP_ROLE_EXECUTE)
+
+			if (Mpp_role == MPP_ROLE_EXECUTE)
 				errcontext("COPY %s, line %d of this segment db input data, column %s",
-						   copy_relname, copy_lineno, copy_attname);				
+						   copy_relname, copy_lineno, copy_attname);
 			else
 				errcontext("COPY %s, line %d, column %s",
-						   copy_relname, copy_lineno, copy_attname);				
+						   copy_relname, copy_lineno, copy_attname);
 		}
 		else
 		{
-			int eol_len = 1;
-			int eol_loc = 0;
-			
-			if(eol_type == EOL_CRNL)
+			int			eol_len = 1;
+			int			eol_loc = 0;
+
+			if (eol_type == EOL_CRNL)
 				eol_len = 2;
-			
-            eol_loc = line_buf.len - eol_len;
-			
-			if(eol_loc < 0) /* just to be sure */
+
+			eol_loc = line_buf.len - eol_len;
+
+			if (eol_loc < 0)	/* just to be sure */
 				eol_loc = 0;
-			
+
 			/* remove LF from line before displaying it */
 			line_buf.data[line_buf.len - eol_len] = '\0';
-			
+
 			/* error is relevant to a particular line */
 			if (line_buf_converted ||
 				client_encoding == server_encoding)
 			{
 				limit_printout_length(&line_buf);
-				
-				if(Mpp_role == MPP_ROLE_EXECUTE) 
+
+				if (Mpp_role == MPP_ROLE_EXECUTE)
 					errcontext("COPY %s, line %d of this segment db input data: \"%s\"", copy_relname, copy_lineno, line_buf.data);
 				else
 					errcontext("COPY %s, line %d: \"%s\"", copy_relname, copy_lineno, line_buf.data);
@@ -1409,15 +1412,15 @@ copy_in_error_callback(void *arg)
 				/*
 				 * Here, the line buffer is still in a foreign encoding,
 				 * and indeed it's quite likely that the error is precisely
-				 * a failure to do encoding conversion (ie, bad data).  We
+				 * a failure to do encoding conversion (ie, bad data).	We
 				 * dare not try to convert it, and at present there's no way
 				 * to regurgitate it without conversion.  So we have to punt
 				 * and just report the line number.
 				 */
-				if(Mpp_role == MPP_ROLE_EXECUTE)				
-				    errcontext("COPY %s, line %d of this segment db input data", copy_relname, copy_lineno);
+				if (Mpp_role == MPP_ROLE_EXECUTE)
+					errcontext("COPY %s, line %d of this segment db input data", copy_relname, copy_lineno);
 				else
-				    errcontext("COPY %s, line %d", copy_relname, copy_lineno);
+					errcontext("COPY %s, line %d", copy_relname, copy_lineno);
 			}
 		}
 	}
@@ -1462,13 +1465,13 @@ limit_printout_length(StringInfo buf)
  */
 static void
 CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
-			 char *delim, char *null_print, bool csv_mode, char *quote,
-			 char *escape, List *force_notnull_atts, bool escape_off)
+				 char *delim, char *null_print, bool csv_mode, char *quote,
+				 char *escape, List *force_notnull_atts, bool escape_off)
 {
 	TupleDesc	tupDesc;
 	Form_pg_attribute *attr;
 	AttrNumber	num_phys_attrs,
-                attr_count,
+				attr_count,
 				num_defaults;
 	FmgrInfo   *in_functions;
 	FmgrInfo	oid_in_function;
@@ -1479,7 +1482,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	bool		hasConstraints = false;
 	int			attnum;
 	int			i;
-	int         p_index;
+	int			p_index;
 	Oid			in_func_oid;
 	Datum	   *values;
 	char	   *nulls;
@@ -1497,56 +1500,56 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	MemoryContext oldcontext = CurrentMemoryContext;
 	ErrorContextCallback errcontext;
 	bool		no_more_data = false;
-	bool        is_first_col;
+	bool		is_first_col;
 	ListCell   *cur;
-	
-	CdbCopy *cdbCopy;
-	
+
+	CdbCopy    *cdbCopy;
+
 	/*
-	 * This stringInfo will contain 2 types of error messages: 
+	 * This stringInfo will contain 2 types of error messages:
 	 *
-	 * 1) Data errors refer to errors that are a result of inappropriate 
-	 *    input data or constraint violations. All data error messages 
-	 *    from the segment databases will be added to this variable and 
-	 *    reported back to the client at the end of the copy command 
-	 *    execution on the dispatcher.
-	 * 2) Any command execution error that occurs during this COPY session. 
-	 *    Such errors will usually be failure to send data over the network, 
-	 *    a COPY command that was rejected by the segment databases or any I/O
-	 *    error. 
+	 * 1) Data errors refer to errors that are a result of inappropriate
+	 *	  input data or constraint violations. All data error messages
+	 *	  from the segment databases will be added to this variable and
+	 *	  reported back to the client at the end of the copy command
+	 *	  execution on the dispatcher.
+	 * 2) Any command execution error that occurs during this COPY session.
+	 *	  Such errors will usually be failure to send data over the network,
+	 *	  a COPY command that was rejected by the segment databases or any I/O
+	 *	  error.
 	 */
 	StringInfoData cdbcopy_err;
-	
-	/* 
-	 * contains a copy of the original COPY command string that was issued by the 
+
+	/*
+	 * contains a copy of the original COPY command string that was issued by the
 	 * client. This copy of the COPY command string is sent to all the segment
 	 * databases to execute there in mpp_role execute
 	 */
-	StringInfoData cdbcopy_cmd; 
-	
-    MemoryContext beforeError;  
-	
+	StringInfoData cdbcopy_cmd;
+
+	MemoryContext beforeError;
+
 	/*
 	 * Variables for cdbpolicy
 	 */
-	MppPolicy *policy;   /* the partitioning policy for this table            */
-	int p_nattrs;		 /* num of partitioning keys in the policy            */
-	
+	MppPolicy  *policy;			/* the partitioning policy for this table			 */
+	int			p_nattrs;		/* num of partitioning keys in the policy			 */
+
 	/*
 	 * Variables for cdbhash
 	 */
-	CdbHash *cdbHash;        /* a CdbHash API object      */
-	AttrNumber h_attnum;     /* hash key attribute number */ 
-	Datum h_key;             /* hash key value			  */
-	Oid h_oid;               /* hash key data type        */
-	unsigned int target_seg; /* result segment of cdbhash */			
-	
+	CdbHash    *cdbHash;		/* a CdbHash API object		 */
+	AttrNumber	h_attnum;		/* hash key attribute number */
+	Datum		h_key;			/* hash key value			 */
+	Oid			h_oid;			/* hash key data type		 */
+	unsigned int target_seg;	/* result segment of cdbhash */
+
 	tupDesc = RelationGetDescr(rel);
 	attr = tupDesc->attrs;
 	num_phys_attrs = tupDesc->natts;
 	attr_count = list_length(attnumlist);
 	num_defaults = 0;
-	
+
 	/*
 	 * We need a ResultRelInfo so we can use the regular executor's
 	 * index-entry-making machinery.  (There used to be a huge amount of
@@ -1556,20 +1559,20 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	resultRelInfo->ri_RangeTableIndex = 1;		/* dummy */
 	resultRelInfo->ri_RelationDesc = rel;
 	resultRelInfo->ri_TrigDesc = CopyTriggerDesc(rel->trigdesc);
-	
+
 	ExecOpenIndices(resultRelInfo);
-	
+
 	estate->es_result_relations = resultRelInfo;
 	estate->es_num_result_relations = 1;
 	estate->es_result_relation_info = resultRelInfo;
-	
+
 	/* Set up a dummy tuple table too */
 	tupleTable = ExecCreateTupleTable(1);
 	slot = ExecAllocTableSlot(tupleTable);
 	ExecSetSlotDescriptor(slot, tupDesc, false);
-	
+
 	econtext = GetPerTupleExprContext(estate);
-	
+
 	/*
 	 * Pick up the required catalog information for each attribute in the
 	 * relation, including the input function, the element type (to pass
@@ -1582,13 +1585,13 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	defexprs = (ExprState **) palloc(num_phys_attrs * sizeof(ExprState *));
 	constraintexprs = (ExprState **) palloc0(num_phys_attrs * sizeof(ExprState *));
 	force_notnull = (bool *) palloc(num_phys_attrs * sizeof(bool));
-	
+
 	for (attnum = 1; attnum <= num_phys_attrs; attnum++)
 	{
 		/* We don't need info for dropped attributes */
 		if (attr[attnum - 1]->attisdropped)
 			continue;
-		
+
 		/* Fetch the input function and typioparam info */
 		if (binary)
 			getTypeBinaryInputInfo(attr[attnum - 1]->atttypid,
@@ -1597,19 +1600,19 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 			getTypeInputInfo(attr[attnum - 1]->atttypid,
 							 &in_func_oid, &typioparams[attnum - 1]);
 		fmgr_info(in_func_oid, &in_functions[attnum - 1]);
-		
+
 		if (list_member_int(force_notnull_atts, attnum))
 			force_notnull[attnum - 1] = true;
 		else
 			force_notnull[attnum - 1] = false;
-		
+
 		/* Get default info if needed */
 		if (!list_member_int(attnumlist, attnum))
 		{
 			/* attribute is NOT to be copied from input */
 			/* use default value if one exists */
 			Node	   *defexpr = build_column_default(rel, attnum);
-			
+
 			if (defexpr != NULL)
 			{
 				defexprs[num_defaults] = ExecPrepareExpr((Expr *) defexpr,
@@ -1618,13 +1621,13 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 				num_defaults++;
 			}
 		}
-		
+
 		/* If it's a domain type, set up to check domain constraints */
 		if (get_typtype(attr[attnum - 1]->atttypid) == 'd')
 		{
 			Param	   *prm;
 			Node	   *node;
-			
+
 			/*
 			 * Easiest way to do this is to use parse_coerce.c to set up
 			 * an expression that checks the constraints.  (At present,
@@ -1637,18 +1640,18 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 			prm->paramkind = PARAM_EXEC;
 			prm->paramid = 0;
 			prm->paramtype = getBaseType(attr[attnum - 1]->atttypid);
-			
+
 			node = coerce_to_domain((Node *) prm,
 									prm->paramtype,
 									attr[attnum - 1]->atttypid,
 									COERCE_IMPLICIT_CAST, false, false);
-			
+
 			constraintexprs[attnum - 1] = ExecPrepareExpr((Expr *) node,
 														  estate);
 			hasConstraints = true;
 		}
 	}
-	
+
 	cdbCopy = makeCdbCopy();
 
 	/*
@@ -1659,160 +1662,165 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	 * 3 - get the partitioning policy for this table.
 	 * 4 - prepare cdbhash for hashing on row values.
 	 */
-	
+
 	/* allocate memory for error and copy strings */
-	initStringInfo(&cdbcopy_err); 
+	initStringInfo(&cdbcopy_err);
 	initStringInfo(&cdbcopy_cmd);
-		
+
 	/* append schema and tablename */
-	appendStringInfo(&cdbcopy_cmd, "COPY %s.%s", 
+	appendStringInfo(&cdbcopy_cmd, "COPY %s.%s",
 					 get_namespace_name(RelationGetNamespace(rel)),
-					 RelationGetRelationName(rel)); 
-    /* 
-	 * append column list. NOTE: if not specified originally, attnumlist will 
-	 * include all columns of the table by default 
+					 RelationGetRelationName(rel));
+	/*
+	 * append column list. NOTE: if not specified originally, attnumlist will
+	 * include all columns of the table by default
 	 */
-	appendStringInfo(&cdbcopy_cmd, "(");	
+	appendStringInfo(&cdbcopy_cmd, "(");
 	is_first_col = true;
 	foreach(cur, attnumlist)
 	{
-		int		attnum = lfirst_int(cur);
-		int		m = attnum - 1;
-		if(is_first_col)
+		int			attnum = lfirst_int(cur);
+		int			m = attnum - 1;
+
+		if (is_first_col)
 			appendStringInfo(&cdbcopy_cmd, "%s", NameStr(attr[m]->attname));
 		else
 			appendStringInfo(&cdbcopy_cmd, ",%s", NameStr(attr[m]->attname));
-		
+
 		is_first_col = false;
 	}
-	appendStringInfo(&cdbcopy_cmd, ")");	
+	appendStringInfo(&cdbcopy_cmd, ")");
 	appendStringInfo(&cdbcopy_cmd, " FROM STDIN WITH");
-	
-	if(binary)
-	{	
-		appendStringInfo(&cdbcopy_cmd, " BINARY");   	
+
+	if (binary)
+	{
+		appendStringInfo(&cdbcopy_cmd, " BINARY");
 	}
 	else
 	{
-	    appendStringInfo(&cdbcopy_cmd, " DELIMITER AS '%s'", delim);
-		
-		if(null_print[0] == '\\') /* escape value is de-escaped. re-escape for segdbs*/
-		   appendStringInfo(&cdbcopy_cmd," NULL AS '\\%s'", null_print); 
-		else
-		   appendStringInfo(&cdbcopy_cmd," NULL AS '%s'", null_print);
+		appendStringInfo(&cdbcopy_cmd, " DELIMITER AS '%s'", delim);
 
-		if(!csv_mode) 
+		if (null_print[0] == '\\')		/* escape value is de-escaped.
+										 * re-escape for segdbs */
+			appendStringInfo(&cdbcopy_cmd, " NULL AS '\\%s'", null_print);
+		else
+			appendStringInfo(&cdbcopy_cmd, " NULL AS '%s'", null_print);
+
+		if (!csv_mode)
 		{
-		   if(strcmp(escape,"\\") != 0 && !csv_mode) /* if default ("\") leave expression out */
-					 appendStringInfo(&cdbcopy_cmd, " ESCAPE AS '%s'", escape);
+			if (strcmp(escape, "\\") != 0 && !csv_mode) /* if default ("\")
+														 * leave expression out */
+				appendStringInfo(&cdbcopy_cmd, " ESCAPE AS '%s'", escape);
 		}
 
 	}
 
-	if(csv_mode)
+	if (csv_mode)
 	{
 		appendStringInfo(&cdbcopy_cmd, " CSV");
 		appendStringInfo(&cdbcopy_cmd, " QUOTE AS '%s'", quote);
 
-		if(escape[0] == '\\') /* null value is de-escaped. re-escape for segdbs*/
-		   appendStringInfo(&cdbcopy_cmd," ESCAPE AS '\\%s'", escape); 
+		if (escape[0] == '\\')	/* null value is de-escaped. re-escape for
+								 * segdbs */
+			appendStringInfo(&cdbcopy_cmd, " ESCAPE AS '\\%s'", escape);
 		else
-		   appendStringInfo(&cdbcopy_cmd," ESCAPE AS '%s'", escape);
-		   
+			appendStringInfo(&cdbcopy_cmd, " ESCAPE AS '%s'", escape);
+
 		/* do NOT include HEADER. Header row is swallowed by dispatcher COPY */
 	}
-	
 
-   /* 
-    * get the CDB policy for this table and prepare for hashing.
-    */
-    policy = get_table_policy(rel->rd_id);
 
-	if(policy->ptype != POLICYTYPE_PARTITIONED)
-		ereport(ERROR, 	
+	/*
+	 * get the CDB policy for this table and prepare for hashing.
+	 */
+	policy = get_table_policy(rel->rd_id);
+
+	if (policy->ptype != POLICYTYPE_PARTITIONED)
+		ereport(ERROR,
 				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
 				 errmsg("Unexpected MppPolicyType: %d.", policy->ptype)));
 
 
-	p_nattrs = policy->nattrs; /* number of partitioning keys */
-	cdbHash = makeCdbHash(cdbCopy->total_segs, HASH_FNV_1); /* Create hash API reference */
+	p_nattrs = policy->nattrs;	/* number of partitioning keys */
+	cdbHash = makeCdbHash(cdbCopy->total_segs, HASH_FNV_1);		/* Create hash API
+																 * reference */
 
-   	/*
+	/*
 	 * for optimized parsing - get the last field number in the
 	 * file that we need to parse to have all values for the hash keys.
 	 */
-     last_hash_field = 0;
+	last_hash_field = 0;
 
-     for(p_index = 0 ; p_index < p_nattrs ; p_index++)
-     {
-		 i = 1;
-		 
-	     /*
-	      * for this partitioning key, search for its location in the attr list.
-	      * (note that fields may be out of order).
-	      */
-	      foreach(cur, attnumlist)
-          {
-		      int			attnum = lfirst_int(cur);
-		      
-		      if(attnum == policy->attrs[p_index] )
-		      {
-				  if(i > last_hash_field)
-					  last_hash_field = i;
-			  }
-			  
-			  i++;
-		  }
-	 }
-			
+	for (p_index = 0; p_index < p_nattrs; p_index++)
+	{
+		i = 1;
 
-   /* 
-    * start a transaction
-    */
-    cdbCopyStartTransaction();
+		/*
+		 * for this partitioning key, search for its location in the attr list.
+		 * (note that fields may be out of order).
+		 */
+		foreach(cur, attnumlist)
+		{
+			int			attnum = lfirst_int(cur);
 
-    /*
+			if (attnum == policy->attrs[p_index])
+			{
+				if (i > last_hash_field)
+					last_hash_field = i;
+			}
+
+			i++;
+		}
+	}
+
+
+	/*
+	 * start a transaction
+	 */
+	cdbCopyStartTransaction();
+
+	/*
 	 * Start a COPY command in every db of every segment in MPP.
-	 * 
-	 * From this point in the code we need to be extra careful 
+	 *
+	 * From this point in the code we need to be extra careful
 	 * about error handling. ereport() must not be called until
-	 * the COPY command sessions are closed on the executors. 
-	 * Calling ereport() will leave the executors hanging in 
+	 * the COPY command sessions are closed on the executors.
+	 * Calling ereport() will leave the executors hanging in
 	 * COPY state.
 	 *
-	 * For errors detected by the dispatcher, we save the 
-	 * error message in cdbcopy_err StringInfo, move on 
-	 * to closing all COPY sessions on the executors and 
+	 * For errors detected by the dispatcher, we save the
+	 * error message in cdbcopy_err StringInfo, move on
+	 * to closing all COPY sessions on the executors and
 	 * only then raise an error. We need to make sure to
 	 * TRY/CATCH all other errors that may be raised from
-	 * elsewhere in the backend. All error during COPY on the 
+	 * elsewhere in the backend. All error during COPY on the
 	 * executors will be detected only when we end the COPY
-	 * session there, so we are fine there. 
+	 * session there, so we are fine there.
 	 */
-	if(cdbCopyStart(cdbCopy, cdbcopy_cmd.data) == -1)
-    {
+	if (cdbCopyStart(cdbCopy, cdbcopy_cmd.data) == -1)
+	{
 		/* get error message from CopyStart */
-		appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);					
+		appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
 
 		/* end COPY in all the segdbs in progress */
-		cdbCopyEnd(cdbCopy); 
+		cdbCopyEnd(cdbCopy);
 
-		/* get error message from CopyEnd*/
-		appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);					
-		
+		/* get error message from CopyEnd */
+		appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
+
 		ereport(ERROR,
 				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
 				 errmsg("%sClosing all other existing COPY sessions.",
-						cdbcopy_err.data)));		
-    }
-		
-	
-	
+						cdbcopy_err.data)));
+	}
+
+
+
 	/*
 	 * Prepare to catch AFTER triggers.
 	 */
 	AfterTriggerBeginQuery();
-	
+
 	/*
 	 * Check BEFORE STATEMENT insertion triggers. It's debateable whether
 	 * we should do this for COPY, since it's not really an "INSERT"
@@ -1821,7 +1829,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	 * COPY.
 	 */
 	ExecBSInsertTriggers(estate, resultRelInfo);
-	
+
 	if (!binary)
 		file_has_oids = oids;	/* must rely on user to tell us this... */
 	else
@@ -1830,26 +1838,26 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 		char		readSig[11];
 		int32		tmp;
 		StringInfoData header_buf;
-		
+
 		initStringInfo(&header_buf);
-		
+
 		/* Signature */
 		CopyGetData(readSig, 11);
 
 		appendBinaryStringInfo(&header_buf, readSig, 11);
-		
+
 		if (CopyGetEof() || memcmp(readSig, BinarySignature, 11) != 0)
-        {
+		{
 			appendStringInfo(&cdbcopy_err, "COPY file signature not recognized");
-		    cdbCopy->data_errors = true;
+			cdbCopy->data_errors = true;
 		}
-		
-		if(!cdbCopy->data_errors)
+
+		if (!cdbCopy->data_errors)
 		{
 			/* Flags field */
 			tmp = CopyGetInt32();
 
-			appendBinaryStringInfo(&header_buf, (char *)&tmp, sizeof(int32));
+			appendBinaryStringInfo(&header_buf, (char *) &tmp, sizeof(int32));
 
 			if (CopyGetEof())
 				appendStringInfo(&cdbcopy_err, "invalid COPY file header (missing flags)");
@@ -1862,13 +1870,13 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 				cdbCopy->data_errors = true;
 			}
 		}
-		
-		if(!cdbCopy->data_errors)
+
+		if (!cdbCopy->data_errors)
 		{
 			/* Header extension length */
 			tmp = CopyGetInt32();
 
-			appendBinaryStringInfo(&header_buf, (char *)&tmp, sizeof(int32));
+			appendBinaryStringInfo(&header_buf, (char *) &tmp, sizeof(int32));
 
 			if (CopyGetEof() || tmp < 0)
 			{
@@ -1876,15 +1884,15 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 				cdbCopy->data_errors = true;
 			}
 		}
-		
-		if(!cdbCopy->data_errors)
+
+		if (!cdbCopy->data_errors)
 		{
 			/* Skip extension header, if present */
 			while (tmp-- > 0)
 			{
 				CopyGetData(readSig, 1);
 
-				if(Mpp_role == MPP_ROLE_DISPATCH)
+				if (Mpp_role == MPP_ROLE_DISPATCH)
 					appendBinaryStringInfo(&header_buf, readSig, 1);
 
 				if (CopyGetEof())
@@ -1894,55 +1902,55 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 				}
 			}
 		}
-		
+
 		/*
 		 * Send binary header to all databases if the header is valid.
 		 */
-		if(!cdbCopy->data_errors)
+		if (!cdbCopy->data_errors)
 		{
-			for(i = 0 ; i < cdbCopy->total_segs ; i++)
+			for (i = 0; i < cdbCopy->total_segs; i++)
 			{
-					cdbCopySendData(cdbCopy, i, header_buf.data, header_buf.len);
-					
-					if(cdbCopy->io_errors)
-						appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
+				cdbCopySendData(cdbCopy, i, header_buf.data, header_buf.len);
+
+				if (cdbCopy->io_errors)
+					appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
 			}
-	
-		    pfree(header_buf.data);
+
+			pfree(header_buf.data);
 		}
-		else 
+		else
 		{
 			/* Binary header not valid, end COPY and throw an error */
 			cdbCopyEnd(cdbCopy);
-				
+
 			ereport(ERROR,
 					(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 					 errmsg("%s", cdbcopy_err.data)));
-			
+
 		}
-		
+
 		/* we can reset line buffer now, after copyGetIntX() are done */
-		line_buf.len = 0;		
+		line_buf.len = 0;
 		line_buf.data[0] = '\0';
-		line_buf.cursor = 0;		
+		line_buf.cursor = 0;
 	}
-	
+
 	if (file_has_oids && binary)
 	{
 		getTypeBinaryInputInfo(OIDOID,
 							   &in_func_oid, &oid_typioparam);
 		fmgr_info(in_func_oid, &oid_in_function);
 	}
-	
+
 	values = (Datum *) palloc(num_phys_attrs * sizeof(Datum));
 	nulls = (char *) palloc(num_phys_attrs * sizeof(char));
 	attr_offsets = (int *) palloc(num_phys_attrs * sizeof(int));
-	
+
 	/* Make room for a PARAM_EXEC value for domain constraint checks */
 	if (hasConstraints)
 		econtext->ecxt_param_exec_vals = (ParamExecData *)
 			palloc0(sizeof(ParamExecData));
-	
+
 	/* Initialize static variables */
 	fe_eof = false;
 	eol_type = EOL_UNKNOWN;
@@ -1950,47 +1958,47 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	copy_relname = RelationGetRelationName(rel);
 	copy_lineno = 0;
 	copy_attname = NULL;
-	
+
 	/* Set up callback to identify error line number */
 	errcontext.callback = copy_in_error_callback;
 	errcontext.arg = NULL;
 	errcontext.previous = error_context_stack;
 	error_context_stack = &errcontext;
-	
+
 	/*
 	 * initialize buffered scan variables.
 	 */
-	if(csv_mode)
+	if (csv_mode)
 	{
-	    in_quote = false;
+		in_quote = false;
 		last_was_esc = false;
 	}
-	
+
 	null_print_len = strlen(null_print);
-	
+
 	/* Set up data buffer to hold a chunk of data */
 	MemSet(input_buf, ' ', COPY_BUF_SIZE * sizeof(char));
 	input_buf[COPY_BUF_SIZE] = '\0';
-	
+
 	no_more_data = false;		/* no more input data to read from file or FE */
 	line_done = true;
 	buf_done = false;
-	
+
 	do
 	{
-		size_t	   bytesread = 0;
-		
+		size_t		bytesread = 0;
+
 		/* read a chunk of data into the buffer */
 		if (!binary)
 		{
 			bytesread = CopyGetData(input_buf, COPY_BUF_SIZE);
 			buf_done = false;
-			
+
 			/* set buffer pointers to beginning of the buffer */
 			begloc = input_buf;
 			buffer_index = 0;
-	    }
-		
+		}
+
 		/*
 		 * continue if some bytes were read or if we didn't reach EOF. if we
 		 * both reached EOF _and_ no bytes were read, quit the loop we are
@@ -1998,57 +2006,57 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 		 */
 		if (bytesread > 0 || !fe_eof || binary)
 		{
-			
+
 			while (!buf_done)
 			{
 				Oid			loaded_oid = InvalidOid;
-				
-				if(QueryCancelPending)
+
+				if (QueryCancelPending)
 				{
 					/* quit processing loop */
 					no_more_data = true;
 					break;
 				}
-				
+
 				/* Reset the per-tuple exprcontext */
 				ResetPerTupleExprContext(estate);
-				
+
 				/* Switch into its memory context */
 				MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
-				
+
 				/* Initialize all values for row to NULL */
 				MemSet(values, 0, num_phys_attrs * sizeof(Datum));
 				MemSet(nulls, 'n', num_phys_attrs * sizeof(char));
 				MemSet(attr_offsets, 0, num_phys_attrs * sizeof(int));
-				
+
 				if (!binary)
 				{
-					
+
 					/* Actually read the line into memory here */
 					line_done = csv_mode ?
-					CopyReadLineCSV(bytesread, quote, escape) : 
-					CopyReadLineText(bytesread, escape, escape_off);
-					
+						CopyReadLineCSV(bytesread, quote, escape) :
+						CopyReadLineText(bytesread, escape, escape_off);
+
 					/*
 					 * if finished processing data line - increment line count.
-					 * Otherwise, if eof is not yet reached, we skip att parsing 
-					 * and read more data. But if eof _was_ reached it means 
-					 * that the original last data line is defective and 
+					 * Otherwise, if eof is not yet reached, we skip att parsing
+					 * and read more data. But if eof _was_ reached it means
+					 * that the original last data line is defective and
 					 * we want to catch that error later on.
 					 */
 					if (line_done)
 						copy_lineno++;
-					else if (!fe_eof || end_marker )
+					else if (!fe_eof || end_marker)
 						break;
-					
+
 					if (file_has_oids)
 					{
 						char	   *oid_string;
-						
+
 						/* can't be in CSV mode here */
 						oid_string = CopyReadOidAttr(delim, null_print, null_print_len,
 													 &isnull);
-						
+
 						if (isnull)
 						{
 							appendStringInfo(&cdbcopy_err, "\nMPPCOPY: null OID in COPY data.");
@@ -2057,29 +2065,31 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 						else
 						{
 							beforeError = CurrentMemoryContext;
-							
-							PG_TRY(); 
+
+							PG_TRY();
 							{
 								copy_attname = "oid";
 								loaded_oid = DatumGetObjectId(DirectFunctionCall1(oidin,
-																				  CStringGetDatum(oid_string)));
+											   CStringGetDatum(oid_string)));
 							}
 							PG_CATCH();
 							{
 								ErrorData  *edata;
+
 								MemoryContextSwitchTo(beforeError);
-								edata = CopyErrorData(); /* get the original error message */
+								edata = CopyErrorData();		/* get the original
+																 * error message */
 								FlushErrorState();
 								appendStringInfo(&cdbcopy_err, "\nMPPCOPY: Error processing OID column."
-												 "\nDescription: %s", edata->message);
+										"\nDescription: %s", edata->message);
 								FreeErrorData(edata);
 								cdbCopy->data_errors = true;
 							}
 							PG_END_TRY();
-							
+
 							MemoryContextSwitchTo(beforeError);
-							
-							
+
+
 							if (loaded_oid == InvalidOid)
 							{
 								appendStringInfo(&cdbcopy_err, "\nMPPCOPY: invalid OID in COPY data.");
@@ -2087,33 +2097,40 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 							}
 
 							copy_attname = NULL;
-							
-							if(cdbCopy->data_errors) /* if data error occured, break out of all loops */
+
+							if (cdbCopy->data_errors)	/* if data error
+														 * occured, break out of
+														 * all loops */
 							{
 								no_more_data = true;
 								break;
-							}				
+							}
 						}
 					}
-					
+
 					beforeError = CurrentMemoryContext;
-					
-					/* try to read a data line, if failed catch the error, flag it and break */
-					PG_TRY(); 
+
+					/*
+					 * try to read a data line, if failed catch the error,
+					 * flag it and break
+					 */
+					PG_TRY();
 					{
 						/* parse all the attributes in the data line */
-						if(csv_mode)
-							CopyReadAttributesCSV(delim, null_print, quote, escape, null_print_len, 
+						if (csv_mode)
+							CopyReadAttributesCSV(delim, null_print, quote, escape, null_print_len,
 												  nulls, attnumlist, attr_offsets, num_phys_attrs, attr);
 						else
-							CopyReadAttributesText(delim, escape, null_print, null_print_len, nulls, 
+							CopyReadAttributesText(delim, escape, null_print, null_print_len, nulls,
 												   attnumlist, attr_offsets, num_phys_attrs, attr, escape_off);
 					}
 					PG_CATCH();
 					{
 						ErrorData  *edata;
+
 						MemoryContextSwitchTo(beforeError);
-						edata = CopyErrorData(); /* get the original error message */
+						edata = CopyErrorData();		/* get the original
+														 * error message */
 						FlushErrorState();
 						appendStringInfo(&cdbcopy_err, "\nMPPCOPY: Error while parsing attributes."
 										 "\nDescription: %s", edata->message);
@@ -2121,91 +2138,94 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 						cdbCopy->data_errors = true;
 					}
 					PG_END_TRY();
-					
+
 					MemoryContextSwitchTo(beforeError);
-					
-					if(cdbCopy->data_errors) /* if data error occured, break out of all loops */
+
+					if (cdbCopy->data_errors)	/* if data error occured,
+												 * break out of all loops */
 					{
 						no_more_data = true;
 						break;
-					}				
-					
+					}
+
 					/*
 					 * Since we only need the internal format of values that
 					 * we want to hash on (partitioning keys only), we want to
 					 * skip converting the other values so we can run faster.
 					 */
-					for(p_index = 0 ; p_index < p_nattrs ; p_index++)
+					for (p_index = 0; p_index < p_nattrs; p_index++)
 					{
 						/*
 						 * for this partitioning key, search for its location in the attr list.
 						 * (note that fields may be out of order, so this is necessary).
 						 */
 						foreach(cur, attnumlist)
-					    {
+						{
 							int			attnum = lfirst_int(cur);
 							int			m = attnum - 1;
-							char       *string;
-							
-							if(attnum == policy->attrs[p_index] )
+							char	   *string;
+
+							if (attnum == policy->attrs[p_index])
 							{
 								string = attr_buf.data + attr_offsets[m];
-								
+
 								if (nulls[m] == ' ')
 									isnull = false;
-								else 
+								else
 									isnull = true;
-								
+
 								if (csv_mode && isnull && force_notnull[m])
 								{
 									string = null_print;		/* set to NULL string */
 									isnull = false;
 								}
-								
+
 								/* we read an SQL NULL, no need to do anything */
 								if (!isnull)
 								{
 									copy_attname = NameStr(attr[m]->attname);
-									
+
 									PG_TRY();
 									{
 										values[m] = FunctionCall3(&in_functions[m],
-																  CStringGetDatum(string),
-																  ObjectIdGetDatum(typioparams[m]),
-																  Int32GetDatum(attr[m]->atttypmod));
+													 CStringGetDatum(string),
+											ObjectIdGetDatum(typioparams[m]),
+										  Int32GetDatum(attr[m]->atttypmod));
 									}
 									PG_CATCH();
 									{
 										limit_printout_length(&line_buf);
-										appendStringInfo(&cdbcopy_err, 
+										appendStringInfo(&cdbcopy_err,
 														 "\n\nMPPCOPY: Incompatiable value for partitioning "
-														 "column '%s' type.\nData Value: '%s'",
-														 copy_attname,string);
+										"column '%s' type.\nData Value: '%s'",
+													   copy_attname, string);
 										cdbCopy->data_errors = true;
 									}
-									PG_END_TRY();									
-									
+									PG_END_TRY();
+
 									copy_attname = NULL;
-								}/* end if (!isnull) */
-								
-								break; /* go to next partitioning key attribute */
+								}		/* end if (!isnull) */
+
+								break;	/* go to next partitioning key
+										 * attribute */
 							}
-					    }/* end foreach */
-					}/* end for partitioning indexes */
-					
-					if(cdbCopy->data_errors) /* if data error occured, break out of all loops */
+						}		/* end foreach */
+					}			/* end for partitioning indexes */
+
+					if (cdbCopy->data_errors)	/* if data error occured,
+												 * break out of all loops */
 					{
 						no_more_data = true;
 						break;
 					}
-					
+
 				}
 				else
 				{
 					/* binary */
 					int16		fld_count;
 					ListCell   *cur;
-					
+
 					fld_count = CopyGetInt16();
 					if (CopyGetEof() || fld_count == -1)
 					{
@@ -2213,7 +2233,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 						no_more_data = true;
 						break;
 					}
-					
+
 					if (fld_count != attr_count)
 					{
 						appendStringInfo(&cdbcopy_err, "\n\nMPPCOPY: row field count is %d, expected %d",
@@ -2222,15 +2242,15 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 						no_more_data = true;
 						break;
 					}
-						
+
 					if (file_has_oids)
 					{
 						copy_attname = "oid";
 						loaded_oid =
 							DatumGetObjectId(CopyReadBinaryAttribute(0,
-																	 &oid_in_function,
-																	 oid_typioparam,
-																	 &isnull));
+															&oid_in_function,
+															  oid_typioparam,
+																   &isnull));
 						if (isnull || loaded_oid == InvalidOid)
 						{
 							appendStringInfo(&cdbcopy_err, "\n\nMPPCOPY: invalid OID in COPY data");
@@ -2238,16 +2258,16 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 							no_more_data = true;
 							break;
 						}
-				
+
 						copy_attname = NULL;
 					}
-					
+
 					i = 0;
 					foreach(cur, attnumlist)
 					{
 						int			attnum = lfirst_int(cur);
 						int			m = attnum - 1;
-						
+
 						copy_attname = NameStr(attr[m]->attname);
 						i++;
 						values[m] = CopyReadBinaryAttribute(i,
@@ -2258,7 +2278,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 						copy_attname = NULL;
 					}
 				}
-				
+
 				/*
 				 * Now compute and insert any defaults available for the columns
 				 * not provided by the input data.	Anything not processed here or
@@ -2271,25 +2291,25 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 					if (!isnull)
 						nulls[defmap[i]] = ' ';
 				}
-				
+
 				/*
 				 * Next apply any domain constraints
 				 */
 				if (hasConstraints)
 				{
 					ParamExecData *prmdata = &econtext->ecxt_param_exec_vals[0];
-					
+
 					for (i = 0; i < num_phys_attrs; i++)
 					{
 						ExprState  *exprstate = constraintexprs[i];
-						
+
 						if (exprstate == NULL)
 							continue;	/* no constraint for this attr */
-						
+
 						/* Insert current row's value into the Param value */
 						prmdata->value = values[i];
 						prmdata->isnull = (nulls[i] == 'n');
-						
+
 						/*
 						 * Execute the constraint expression.  Allow the
 						 * expression to replace the value (consider e.g. a
@@ -2300,82 +2320,85 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 						nulls[i] = isnull ? 'n' : ' ';
 					}
 				}
-				
-				/* 
-				 * At this point in the code, values[x] is final for this 
-				 * data row -- either the input data, a null or a default 
-				 * value is in there, and constraints applied. 
+
+				/*
+				 * At this point in the code, values[x] is final for this
+				 * data row -- either the input data, a null or a default
+				 * value is in there, and constraints applied.
 				 *
-				 * Perform a cdbhash on this data row. Perform a hash operation 
-				 * on each attribute that is included in CDB policy (partitioning 
-				 * key columns). Send COPY data line to the target segment 
+				 * Perform a cdbhash on this data row. Perform a hash operation
+				 * on each attribute that is included in CDB policy (partitioning
+				 * key columns). Send COPY data line to the target segment
 				 * database executors. Data row will not be inserted locally.
 				 */
 				cdbhashinit(cdbHash);
-				
-				for(i = 0 ; i < p_nattrs ; i++)
+
+				for (i = 0; i < p_nattrs; i++)
 				{
-					h_attnum = policy->attrs[i];          /* current att num from cdb policy */
-					h_key = values[h_attnum - 1];         /* value of this attr              */
-					h_oid = attr[h_attnum - 1]->atttypid; /* data type of this attr          */
-					
-					if(nulls[h_attnum - 1] != 'n')
-						cdbhash(cdbHash, h_key, h_oid); 
+					h_attnum = policy->attrs[i];		/* current att num from
+														 * cdb policy */
+					h_key = values[h_attnum - 1];		/* value of this attr			   */
+					h_oid = attr[h_attnum - 1]->atttypid;		/* data type of this
+																 * attr			 */
+
+					if (nulls[h_attnum - 1] != 'n')
+						cdbhash(cdbHash, h_key, h_oid);
 					else
-						cdbhashnull(cdbHash); 
+						cdbhashnull(cdbHash);
 				}
-				
-				target_seg = cdbhashreduce(cdbHash); /* hash result segment */
-				
+
+				target_seg = cdbhashreduce(cdbHash);	/* hash result segment */
+
 				/*
 				 * Send data row to all databases for this segment.
-				 */		
-		        cdbCopySendData(cdbCopy, target_seg, line_buf.data, line_buf.len); 
-				
-                if(cdbCopy->io_errors)
+				 */
+				cdbCopySendData(cdbCopy, target_seg, line_buf.data, line_buf.len);
+
+				if (cdbCopy->io_errors)
 				{
-					appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);					
+					appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
 					no_more_data = true;
 					break;
 				}
-				
+
 				line_buf.len = 0;		/* we can reset line buffer now. */
 				line_buf.data[0] = '\0';
 				line_buf.cursor = 0;
-			}	/* end while(!buf_done) */
-		}	/* end if (bytesread > 0 || !fe_eof) */
-		else /* no bytes read, end of data */
+			}					/* end while(!buf_done) */
+		}						/* end if (bytesread > 0 || !fe_eof) */
+		else
+			/* no bytes read, end of data */
 		{
 			no_more_data = true;
 		}
 	} while (!no_more_data);
 
 	/*
-	 * Done reading input data and sending it off to the segment 
-	 * databases Now we would like to end the copy command on 
-	 * all segment databases across the cluster. 
+	 * Done reading input data and sending it off to the segment
+	 * databases Now we would like to end the copy command on
+	 * all segment databases across the cluster.
 	 */
 	cdbCopyEnd(cdbCopy);
-	
-    /* 
-	 * If we quit the processing loop earlier due to a 
-     * cancel query signal, we now throw an error. 
+
+	/*
+	 * If we quit the processing loop earlier due to a
+	 * cancel query signal, we now throw an error.
 	 * (Safe to do only after cdbCopyEnd).
 	 */
-    CHECK_FOR_INTERRUPTS();
+	CHECK_FOR_INTERRUPTS();
 
 
-	if(cdbCopy->data_errors || cdbCopy->io_errors) 
+	if (cdbCopy->data_errors || cdbCopy->io_errors)
 		appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
-	
+
 	/*
 	 * report all accumulated errors back to the client.
 	 */
-	if(cdbCopy->data_errors)
+	if (cdbCopy->data_errors)
 		ereport(ERROR,
 				(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 				 errmsg("%s", cdbcopy_err.data)));
-	if(cdbCopy->io_errors)
+	if (cdbCopy->io_errors)
 		ereport(ERROR,
 				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
 				 errmsg("%s", cdbcopy_err.data)));
@@ -2386,8 +2409,8 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 
 	MemoryContextSwitchTo(oldcontext);
 
-	/* 	 
-     * Execute AFTER STATEMENT insertion triggers
+	/*
+	 * Execute AFTER STATEMENT insertion triggers
 	 */
 	ExecASInsertTriggers(estate, resultRelInfo);
 
@@ -2396,8 +2419,8 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	 */
 	AfterTriggerEndQuery();
 
-	/* 
-	 * free all resources besides ones that are needed for error reporting 
+	/*
+	 * free all resources besides ones that are needed for error reporting
 	 */
 	pfree(cdbHash);
 	pfree(values);
@@ -2411,7 +2434,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	pfree(force_notnull);
 	pfree(cdbcopy_cmd.data);
 	pfree(cdbcopy_err.data);
-    pfree(cdbCopy);
+	pfree(cdbCopy);
 
 	ExecDropTupleTable(tupleTable, true);
 
@@ -2425,15 +2448,15 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
  */
 static void
 CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
-		 char *delim, char *null_print, bool csv_mode, char *quote,
-		 char *escape, List *force_notnull_atts, bool escape_off)
+			 char *delim, char *null_print, bool csv_mode, char *quote,
+			 char *escape, List *force_notnull_atts, bool escape_off)
 {
 	HeapTuple	tuple;
 	TupleDesc	tupDesc;
 	Form_pg_attribute *attr;
 	AttrNumber	num_phys_attrs,
-		attr_count,
-		num_defaults;
+				attr_count,
+				num_defaults;
 	FmgrInfo   *in_functions;
 	FmgrInfo	oid_in_function;
 	Oid		   *typioparams;
@@ -2457,18 +2480,18 @@ CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 	ExprContext *econtext;		/* used for ExecEvalExpr for default atts */
 	MemoryContext oldcontext = CurrentMemoryContext;
 	ErrorContextCallback errcontext;
-    int		   *attr_offsets;
+	int		   *attr_offsets;
 	int			null_print_len; /* length of null print */
 	bool		no_more_data;
 	ListCell   *cur;
-	
-	
+
+
 	tupDesc = RelationGetDescr(rel);
 	attr = tupDesc->attrs;
 	num_phys_attrs = tupDesc->natts;
 	attr_count = list_length(attnumlist);
 	num_defaults = 0;
-	
+
 	/*
 	 * We need a ResultRelInfo so we can use the regular executor's
 	 * index-entry-making machinery.  (There used to be a huge amount of
@@ -2478,20 +2501,20 @@ CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 	resultRelInfo->ri_RangeTableIndex = 1;		/* dummy */
 	resultRelInfo->ri_RelationDesc = rel;
 	resultRelInfo->ri_TrigDesc = CopyTriggerDesc(rel->trigdesc);
-	
+
 	ExecOpenIndices(resultRelInfo);
-	
+
 	estate->es_result_relations = resultRelInfo;
 	estate->es_num_result_relations = 1;
 	estate->es_result_relation_info = resultRelInfo;
-	
+
 	/* Set up a dummy tuple table too */
 	tupleTable = ExecCreateTupleTable(1);
 	slot = ExecAllocTableSlot(tupleTable);
 	ExecSetSlotDescriptor(slot, tupDesc, false);
-	
+
 	econtext = GetPerTupleExprContext(estate);
-	
+
 	/*
 	 * Pick up the required catalog information for each attribute in the
 	 * relation, including the input function, the element type (to pass
@@ -2504,13 +2527,13 @@ CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 	defexprs = (ExprState **) palloc(num_phys_attrs * sizeof(ExprState *));
 	constraintexprs = (ExprState **) palloc0(num_phys_attrs * sizeof(ExprState *));
 	force_notnull = (bool *) palloc(num_phys_attrs * sizeof(bool));
-	
+
 	for (attnum = 1; attnum <= num_phys_attrs; attnum++)
 	{
 		/* We don't need info for dropped attributes */
 		if (attr[attnum - 1]->attisdropped)
 			continue;
-		
+
 		/* Fetch the input function and typioparam info */
 		if (binary)
 			getTypeBinaryInputInfo(attr[attnum - 1]->atttypid,
@@ -2519,19 +2542,19 @@ CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 			getTypeInputInfo(attr[attnum - 1]->atttypid,
 							 &in_func_oid, &typioparams[attnum - 1]);
 		fmgr_info(in_func_oid, &in_functions[attnum - 1]);
-		
+
 		if (list_member_int(force_notnull_atts, attnum))
 			force_notnull[attnum - 1] = true;
 		else
 			force_notnull[attnum - 1] = false;
-		
+
 		/* Get default info if needed */
 		if (!list_member_int(attnumlist, attnum))
 		{
 			/* attribute is NOT to be copied from input */
 			/* use default value if one exists */
 			Node	   *defexpr = build_column_default(rel, attnum);
-			
+
 			if (defexpr != NULL)
 			{
 				defexprs[num_defaults] = ExecPrepareExpr((Expr *) defexpr,
@@ -2540,13 +2563,13 @@ CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 				num_defaults++;
 			}
 		}
-		
+
 		/* If it's a domain type, set up to check domain constraints */
 		if (get_typtype(attr[attnum - 1]->atttypid) == 'd')
 		{
 			Param	   *prm;
 			Node	   *node;
-			
+
 			/*
 			 * Easiest way to do this is to use parse_coerce.c to set up
 			 * an expression that checks the constraints.  (At present,
@@ -2559,23 +2582,23 @@ CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 			prm->paramkind = PARAM_EXEC;
 			prm->paramid = 0;
 			prm->paramtype = getBaseType(attr[attnum - 1]->atttypid);
-			
+
 			node = coerce_to_domain((Node *) prm,
 									prm->paramtype,
 									attr[attnum - 1]->atttypid,
 									COERCE_IMPLICIT_CAST, false, false);
-			
+
 			constraintexprs[attnum - 1] = ExecPrepareExpr((Expr *) node,
 														  estate);
 			hasConstraints = true;
 		}
 	}
-	
+
 	/*
 	 * Prepare to catch AFTER triggers.
 	 */
 	AfterTriggerBeginQuery();
-	
+
 	/*
 	 * Check BEFORE STATEMENT insertion triggers. It's debateable whether
 	 * we should do this for COPY, since it's not really an "INSERT"
@@ -2584,7 +2607,7 @@ CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 	 * COPY.
 	 */
 	ExecBSInsertTriggers(estate, resultRelInfo);
-	
+
 	if (!binary)
 		file_has_oids = oids;	/* must rely on user to tell us this... */
 	else
@@ -2592,7 +2615,7 @@ CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 		/* Read and verify binary header */
 		char		readSig[11];
 		int32		tmp;
-		
+
 		/* Signature */
 		CopyGetData(readSig, 11);
 		if (CopyGetEof() || memcmp(readSig, BinarySignature, 11) != 0)
@@ -2610,7 +2633,7 @@ CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 		if ((tmp >> 16) != 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-					 errmsg("unrecognized critical flags in COPY file header")));
+				 errmsg("unrecognized critical flags in COPY file header")));
 		/* Header extension length */
 		tmp = CopyGetInt32();
 		if (CopyGetEof() || tmp < 0)
@@ -2627,23 +2650,23 @@ CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 						 errmsg("invalid COPY file header (wrong length)")));
 		}
 	}
-	
+
 	if (file_has_oids && binary)
 	{
 		getTypeBinaryInputInfo(OIDOID,
 							   &in_func_oid, &oid_typioparam);
 		fmgr_info(in_func_oid, &oid_in_function);
 	}
-	
+
 	values = (Datum *) palloc(num_phys_attrs * sizeof(Datum));
 	nulls = (char *) palloc(num_phys_attrs * sizeof(char));
 	attr_offsets = (int *) palloc(num_phys_attrs * sizeof(int));
-	
+
 	/* Make room for a PARAM_EXEC value for domain constraint checks */
 	if (hasConstraints)
 		econtext->ecxt_param_exec_vals = (ParamExecData *)
 			palloc0(sizeof(ParamExecData));
-	
+
 	/* Initialize static variables */
 	fe_eof = false;
 	eol_type = EOL_UNKNOWN;
@@ -2651,47 +2674,47 @@ CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 	copy_relname = RelationGetRelationName(rel);
 	copy_lineno = 0;
 	copy_attname = NULL;
-	
+
 	/* Set up callback to identify error line number */
 	errcontext.callback = copy_in_error_callback;
 	errcontext.arg = NULL;
 	errcontext.previous = error_context_stack;
 	error_context_stack = &errcontext;
-	
+
 	/*
 	 * initialize buffered scan variables.
 	 */
-	if(csv_mode)
+	if (csv_mode)
 	{
-	    in_quote = false;
+		in_quote = false;
 		last_was_esc = false;
 	}
-	
+
 	null_print_len = strlen(null_print);
-	
+
 	/* Set up data buffer to hold a chunk of data */
 	MemSet(input_buf, ' ', COPY_BUF_SIZE * sizeof(char));
 	input_buf[COPY_BUF_SIZE] = '\0';
-	
+
 	no_more_data = false;		/* no more input data to read from file or FE */
 	line_done = true;
 	buf_done = false;
-	
+
 	do
 	{
-		size_t	   bytesread = 0;
-		
+		size_t		bytesread = 0;
+
 		/* read a chunk of data into the buffer */
 		if (!binary)
 		{
 			bytesread = CopyGetData(input_buf, COPY_BUF_SIZE);
 			buf_done = false;
-			
+
 			/* set buffer pointers to beginning of the buffer */
 			begloc = input_buf;
 			buffer_index = 0;
-	    }
-		
+		}
+
 		/*
 		 * continue if some bytes were read or if we didn't reach EOF. if we
 		 * both reached EOF _and_ no bytes were read, quit the loop we are
@@ -2699,54 +2722,54 @@ CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 		 */
 		if (bytesread > 0 || !fe_eof || binary)
 		{
-			
+
 			while (!buf_done)
 			{
 				bool		skip_tuple;
 				Oid			loaded_oid = InvalidOid;
-				
+
 				CHECK_FOR_INTERRUPTS();
-				
+
 				/* Reset the per-tuple exprcontext */
 				ResetPerTupleExprContext(estate);
-				
+
 				/* Switch into its memory context */
 				MemoryContextSwitchTo(GetPerTupleMemoryContext(estate));
-				
+
 				/* Initialize all values for row to NULL */
 				MemSet(values, 0, num_phys_attrs * sizeof(Datum));
 				MemSet(nulls, 'n', num_phys_attrs * sizeof(char));
 				/* reset attribute pointers */
-				MemSet(attr_offsets, 0, num_phys_attrs * sizeof(int)); 
-				
+				MemSet(attr_offsets, 0, num_phys_attrs * sizeof(int));
+
 				if (!binary)
 				{
-					
+
 					/* Actually read the line into memory here */
 					line_done = csv_mode ?
-					CopyReadLineCSV(bytesread, quote, escape) : 
-					CopyReadLineText(bytesread, escape, escape_off);
-					
+						CopyReadLineCSV(bytesread, quote, escape) :
+						CopyReadLineText(bytesread, escape, escape_off);
+
 					/*
 					 * if finished processing data line - increment line count.
-					 * Otherwise, if eof is not yet reached, we skip att parsing 
-					 * and read more data. But if eof _was_ reached it means 
-					 * that the original last data line is defective and 
+					 * Otherwise, if eof is not yet reached, we skip att parsing
+					 * and read more data. But if eof _was_ reached it means
+					 * that the original last data line is defective and
 					 * we want to catch that error later on.
 					 */
 					if (line_done)
 						copy_lineno++;
-					else if (!fe_eof || end_marker )
+					else if (!fe_eof || end_marker)
 						break;
-					
+
 					if (file_has_oids)
 					{
 						char	   *oid_string;
-						
+
 						/* can't be in CSV mode here */
 						oid_string = CopyReadOidAttr(delim, null_print, null_print_len,
 													 &isnull);
-						
+
 						if (isnull)
 							ereport(ERROR,
 									(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
@@ -2755,23 +2778,23 @@ CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 						{
 							copy_attname = "oid";
 							loaded_oid = DatumGetObjectId(DirectFunctionCall1(oidin,
-																			  CStringGetDatum(oid_string)));
+											   CStringGetDatum(oid_string)));
 							if (loaded_oid == InvalidOid)
 								ereport(ERROR,
-										(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-										 errmsg("invalid OID in COPY data")));
+									  (errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+									   errmsg("invalid OID in COPY data")));
 							copy_attname = NULL;
 						}
 					}
-					
+
 					/* parse all the attribute in the data line */
-					if(csv_mode)
-						CopyReadAttributesCSV(delim, null_print, quote, escape, null_print_len, 
+					if (csv_mode)
+						CopyReadAttributesCSV(delim, null_print, quote, escape, null_print_len,
 											  nulls, attnumlist, attr_offsets, num_phys_attrs, attr);
 					else
-						CopyReadAttributesText(delim, escape, null_print, null_print_len, nulls, 
+						CopyReadAttributesText(delim, escape, null_print, null_print_len, nulls,
 											   attnumlist, attr_offsets, num_phys_attrs, attr, escape_off);
-					
+
 					/*
 					 * Loop to read the user attributes on the line.
 					 */
@@ -2779,29 +2802,29 @@ CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 					{
 						int			attnum = lfirst_int(cur);
 						int			m = attnum - 1;
-						char       *string;
-						
+						char	   *string;
+
 						string = attr_buf.data + attr_offsets[m];
-						
+
 						if (nulls[m] == ' ')
 							isnull = false;
 						else
 							isnull = true;
-						
+
 						if (csv_mode && isnull && force_notnull[m])
 						{
 							string = null_print;		/* set to NULL string */
 							isnull = false;
 						}
-						
+
 						/* we read an SQL NULL, no need to do anything */
 						if (!isnull)
 						{
 							copy_attname = NameStr(attr[m]->attname);
 							values[m] = FunctionCall3(&in_functions[m],
 													  CStringGetDatum(string),
-													  ObjectIdGetDatum(typioparams[m]),
-													  Int32GetDatum(attr[m]->atttypmod));
+											ObjectIdGetDatum(typioparams[m]),
+										  Int32GetDatum(attr[m]->atttypmod));
 							nulls[m] = ' ';
 							copy_attname = NULL;
 						}
@@ -2812,7 +2835,7 @@ CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 					/* binary */
 					int16		fld_count;
 					ListCell   *cur;
-					
+
 					fld_count = CopyGetInt16();
 					if (CopyGetEof() || fld_count == -1)
 					{
@@ -2820,34 +2843,34 @@ CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 						no_more_data = true;
 						break;
 					}
-					
+
 					if (fld_count != attr_count)
 						ereport(ERROR,
 								(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 								 errmsg("row field count is %d, expected %d",
 										(int) fld_count, attr_count)));
-					
+
 					if (file_has_oids)
 					{
 						copy_attname = "oid";
 						loaded_oid =
 							DatumGetObjectId(CopyReadBinaryAttribute(0,
-																	 &oid_in_function,
-																	 oid_typioparam,
-																	 &isnull));
+															&oid_in_function,
+															  oid_typioparam,
+																   &isnull));
 						if (isnull || loaded_oid == InvalidOid)
 							ereport(ERROR,
 									(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 									 errmsg("invalid OID in COPY data")));
 						copy_attname = NULL;
 					}
-					
+
 					i = 0;
 					foreach(cur, attnumlist)
 					{
 						int			attnum = lfirst_int(cur);
 						int			m = attnum - 1;
-						
+
 						copy_attname = NameStr(attr[m]->attname);
 						i++;
 						values[m] = CopyReadBinaryAttribute(i,
@@ -2858,7 +2881,7 @@ CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 						copy_attname = NULL;
 					}
 				}
-				
+
 				/*
 				 * Now compute and insert any defaults available for the columns
 				 * not provided by the input data.	Anything not processed here or
@@ -2871,25 +2894,25 @@ CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 					if (!isnull)
 						nulls[defmap[i]] = ' ';
 				}
-				
+
 				/*
 				 * Next apply any domain constraints
 				 */
 				if (hasConstraints)
 				{
 					ParamExecData *prmdata = &econtext->ecxt_param_exec_vals[0];
-					
+
 					for (i = 0; i < num_phys_attrs; i++)
 					{
 						ExprState  *exprstate = constraintexprs[i];
-						
+
 						if (exprstate == NULL)
 							continue;	/* no constraint for this attr */
-						
+
 						/* Insert current row's value into the Param value */
 						prmdata->value = values[i];
 						prmdata->isnull = (nulls[i] == 'n');
-						
+
 						/*
 						 * Execute the constraint expression.  Allow the
 						 * expression to replace the value (consider e.g. a
@@ -2900,30 +2923,30 @@ CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 						nulls[i] = isnull ? 'n' : ' ';
 					}
 				}
-				
+
 				/*
 				 * And now we can form the input tuple.
 				 */
 				tuple = heap_formtuple(tupDesc, values, nulls);
-				
+
 				if (oids && file_has_oids)
 					HeapTupleSetOid(tuple, loaded_oid);
-				
+
 				/*
 				 * Triggers and stuff need to be invoked in query context.
 				 */
 				MemoryContextSwitchTo(oldcontext);
-				
+
 				skip_tuple = false;
-				
+
 				/* BEFORE ROW INSERT Triggers */
 				if (resultRelInfo->ri_TrigDesc &&
 					resultRelInfo->ri_TrigDesc->n_before_row[TRIGGER_EVENT_INSERT] > 0)
 				{
 					HeapTuple	newtuple;
-					
+
 					newtuple = ExecBRInsertTriggers(estate, resultRelInfo, tuple);
-					
+
 					if (newtuple == NULL)		/* "do nothing" */
 						skip_tuple = true;
 					else if (newtuple != tuple) /* modified by Trigger(s) */
@@ -2932,30 +2955,30 @@ CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 						tuple = newtuple;
 					}
 				}
-				
+
 				if (!skip_tuple)
 				{
 					/* Place tuple in tuple slot */
 					ExecStoreTuple(tuple, slot, InvalidBuffer, false);
-					
+
 					/*
 					 * Check the constraints of the tuple
 					 */
 					if (rel->rd_att->constr)
 						ExecConstraints(resultRelInfo, slot, estate);
-					
+
 					/*
 					 * OK, store the tuple and create index entries for it
 					 */
 					simple_heap_insert(rel, tuple);
-					
+
 					if (resultRelInfo->ri_NumIndices > 0)
 						ExecInsertIndexTuples(slot, &(tuple->t_self), estate, false);
-					
+
 					/* AFTER ROW INSERT Triggers */
 					ExecARInsertTriggers(estate, resultRelInfo, tuple);
 				}
-				
+
 				line_buf.len = 0;		/* we can reset line buffer now. */
 				line_buf.data[0] = '\0';
 				line_buf.cursor = 0;
@@ -2975,8 +2998,8 @@ CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 
 	MemoryContextSwitchTo(oldcontext);
 
-	/* 	 
-     * Execute AFTER STATEMENT insertion triggers
+	/*
+	 * Execute AFTER STATEMENT insertion triggers
 	 */
 	ExecASInsertTriggers(estate, resultRelInfo);
 
@@ -3005,9 +3028,9 @@ CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 }
 
 /*
- * Finds the next TEXT line that is in the input buffer and loads 
- * it into line_buf. Returns an indication if the line that was read 
- * is complete (if an unescaped line-end was encountered). If we 
+ * Finds the next TEXT line that is in the input buffer and loads
+ * it into line_buf. Returns an indication if the line that was read
+ * is complete (if an unescaped line-end was encountered). If we
  * reached the end of buffer before the whole line was written into the
  * line buffer then returns false.
  */
@@ -3017,23 +3040,23 @@ CopyReadLineText(size_t bytesread, char *escape, bool escape_off)
 	int			linesize;
 	bool		transcode = (client_encoding != server_encoding);
 	char	   *cvt;
-	char        escapec = '\0';
-	
+	char		escapec = '\0';
+
 	/* mark that encoding conversion hasn't occurred yet */
 	line_buf_converted = false;
-	
+
 	/*
 	 * set the escape char for text format ('\\' by default).
 	 */
 	escapec = escape[0];
-	
+
 	/*
 	 * Detect end of line type if not already detected.
 	 */
 	if (eol_type == EOL_UNKNOWN)
 	{
 		bool		eol_detected = DetectLineEnd(bytesread, NULL, escape);
-		
+
 		if (!eol_detected)
 		{
 			/* load entire input buffer into line buf, and quit */
@@ -3042,7 +3065,7 @@ CopyReadLineText(size_t bytesread, char *escape, bool escape_off)
 			return false;
 		}
 	}
-	
+
 	/*
 	 * Special case: eol is CRNL, last byte of previous buffer was an
 	 * unescaped CR and 1st byte of current buffer is NL. We check for
@@ -3062,10 +3085,10 @@ CopyReadLineText(size_t bytesread, char *escape, bool escape_off)
 				 */
 				if (*begloc == eol_ch[1])
 				{
-					/*  
+					/*
 					* load that one linefeed byte and indicate we are done
 					* with the data line
-					*/ 
+					*/
 					appendBinaryStringInfo(&line_buf, begloc, 1);
 					buffer_index++;
 					begloc++;
@@ -3074,15 +3097,15 @@ CopyReadLineText(size_t bytesread, char *escape, bool escape_off)
 					return true;
 				}
 			}
-			
+
 			cr_in_prevbuf = false;
 		}
 	}
-	
+
 	/*
 	 * (we need a loop so that if eol_ch is found, but prev ch is backslash,
 		* we can search for the next eol_ch)
-	 */ 
+	 */
 	while (true)
 	{
 		/* reached end of buffer */
@@ -3090,15 +3113,15 @@ CopyReadLineText(size_t bytesread, char *escape, bool escape_off)
 		{
 			linesize = COPY_BUF_SIZE - (begloc - input_buf);
 			appendBinaryStringInfo(&line_buf, begloc, linesize);
-			
+
 			if (line_buf.len > 1)
 			{
 				char	   *last_ch = line_buf.data + line_buf.len - 1; /* before terminating \0 */
-				
+
 				if (*last_ch == escapec && !escape_off)
 				{
 					esc_in_prevbuf = true;
-					
+
 					if (line_buf.len > 2)
 					{
 						last_ch--;
@@ -3112,7 +3135,7 @@ CopyReadLineText(size_t bytesread, char *escape, bool escape_off)
 						cr_in_prevbuf = true;
 				}
 			}
-			
+
 			line_done = false;
 			buf_done = true;
 			break;
@@ -3122,7 +3145,7 @@ CopyReadLineText(size_t bytesread, char *escape, bool escape_off)
 		{
 			bool		eol_found = true;
 			bool		eol_escaped = (escape_off ? false : true);
-			
+
 			/*
 			 * Load that piece of data (potentially a data line) into the line buffer,
 			 * and update the pointers for the next scan.
@@ -3131,7 +3154,7 @@ CopyReadLineText(size_t bytesread, char *escape, bool escape_off)
 			appendBinaryStringInfo(&line_buf, begloc, linesize);
 			buffer_index += linesize;
 			begloc = endloc + 1;
-			
+
 			if (eol_type == EOL_CRNL)
 			{
 				/* check if there is a '\n' after the '\r' */
@@ -3146,14 +3169,14 @@ CopyReadLineText(size_t bytesread, char *escape, bool escape_off)
 					/* just a CR, not a line end */
 					eol_found = false;
 			}
-			
+
 			/*
 			 * in some cases, this end of line char happens to be the
 			 * last character in the buffer. we need to catch that.
 			 */
 			if (buffer_index >= bytesread)
 				buf_done = true;
-			
+
 			/*
 			 * Check if the 1st end of line ch is escaped.
 			 */
@@ -3165,7 +3188,7 @@ CopyReadLineText(size_t bytesread, char *escape, bool escape_off)
 					/* prev char is an escape */
 				{
 					if (endloc != (input_buf + 1))		/* can we look another
-						* char back? */
+														 * char back? */
 					{
 						/* it's a double escape char, so it's not an escape */
 						if (*(endloc - 2) == escapec)
@@ -3175,7 +3198,7 @@ CopyReadLineText(size_t bytesread, char *escape, bool escape_off)
 					else
 					{
 						/* we need to check in the last buffer */
-						if (esc_in_prevbuf)		
+						if (esc_in_prevbuf)
 							eol_escaped = false;
 					}
 				}
@@ -3188,9 +3211,9 @@ CopyReadLineText(size_t bytesread, char *escape, bool escape_off)
 				if (!esc_in_prevbuf)
 					eol_escaped = false;
 			}
-			
+
 			esc_in_prevbuf = false;		/* reset variable */
-			
+
 			/*
 			 * if eol was found, and it isn't escaped, line is done
 			 */
@@ -3203,11 +3226,12 @@ CopyReadLineText(size_t bytesread, char *escape, bool escape_off)
 			{
 				/* stay in the loop and process some more data. */
 				line_done = false;
-				
-				if(eol_found)
-					copy_lineno++; /* increase line index for error reporting */
+
+				if (eol_found)
+					copy_lineno++;		/* increase line index for error
+										 * reporting */
 			}
-						
+
 		}						/* end of found eol_ch */
 	}
 
@@ -3227,7 +3251,7 @@ CopyReadLineText(size_t bytesread, char *escape, bool escape_off)
 			appendBinaryStringInfo(&line_buf, cvt, strlen(cvt));
 		}
 	}
-			
+
 	/* indicate that conversion had occured */
 	line_buf_converted = true;
 
@@ -3261,14 +3285,14 @@ CopyReadLineText(size_t bytesread, char *escape, bool escape_off)
 		 * should ignore anything after \. up to protocol
 		 * end of copy data.
 		 */
-		if(copy_dest == COPY_NEW_FE)
+		if (copy_dest == COPY_NEW_FE)
 		{
-			while(!fe_eof) 
+			while (!fe_eof)
 			{
-				CopyGetData(input_buf, COPY_BUF_SIZE); /* eat data */
+				CopyGetData(input_buf, COPY_BUF_SIZE);	/* eat data */
 			}
 		}
-		
+
 		fe_eof = true;
 		/* we don't want to process a \. as data line, want to quit. */
 		line_done = false;
@@ -3279,9 +3303,9 @@ CopyReadLineText(size_t bytesread, char *escape, bool escape_off)
 }
 
 /*
- * Finds the next CSV line that is in the input buffer and loads 
- * it into line_buf. Returns an indication if the line that was read 
- * is complete (if an unescaped line-end was encountered). If we 
+ * Finds the next CSV line that is in the input buffer and loads
+ * it into line_buf. Returns an indication if the line that was read
+ * is complete (if an unescaped line-end was encountered). If we
  * reached the end of buffer before the whole line was written into the
  * line buffer then returns false.
  */
@@ -3290,38 +3314,38 @@ CopyReadLineCSV(size_t bytesread, char *quote, char *escape)
 {
 	int			linesize;
 	char	   *cvt;
-	char        quotec = '\0',
-		        escapec = '\0';
+	char		quotec = '\0',
+				escapec = '\0';
 	bool		transcode = (client_encoding != server_encoding);
-	
+
 	/* mark that encoding conversion hasn't occurred yet */
 	line_buf_converted = false;
-	
+
 	escapec = escape[0];
 	quotec = quote[0];
-	
-    /* ignore special escape processing if it's the same as quotec */
+
+	/* ignore special escape processing if it's the same as quotec */
 	if (quotec == escapec)
 		escapec = '\0';
-	
+
 	/*
 	 * Detect end of line type if not already detected.
 	 */
 	if (eol_type == EOL_UNKNOWN)
 	{
 		bool		eol_detected = DetectLineEnd(bytesread, quote, escape);
-		
+
 		if (!eol_detected)
 		{
 			/* load entire input buffer into line buf, and quit */
 			appendBinaryStringInfo(&line_buf, input_buf, COPY_BUF_SIZE);
 			line_done = false;
 			buf_done = true;
-			
+
 			return line_done;
 		}
 	}
-	
+
 	/*
 	 * Special case: eol is CRNL, last byte of previous buffer was an
 	 * unescaped CR and 1st byte of current buffer is NL. We check for
@@ -3348,15 +3372,15 @@ CopyReadLineCSV(size_t bytesread, char *quote, char *escape)
 					appendBinaryStringInfo(&line_buf, begloc, 1);
 					buffer_index++;
 					begloc++;
-					
+
 					line_done = true;
 					esc_in_prevbuf = false;
 					cr_in_prevbuf = false;
-					
+
 					return line_done;
 				}
 			}
-			
+
 			cr_in_prevbuf = false;
 		}
 	}
@@ -3372,21 +3396,21 @@ CopyReadLineCSV(size_t bytesread, char *quote, char *escape)
 		{
 			linesize = COPY_BUF_SIZE - (begloc - input_buf);
 			appendBinaryStringInfo(&line_buf, begloc, linesize);
-			
+
 			if (last_was_esc)
 				esc_in_prevbuf = true;
-			
+
 			if (line_buf.len > 1)
 			{
 				char	   *last_ch = line_buf.data + line_buf.len - 1; /* before terminating \0 */
-				
+
 				if (*last_ch == '\r')
 				{
 					if (eol_type == EOL_CRNL)
 						cr_in_prevbuf = true;
 				}
 			}
-			
+
 			line_done = false;
 			buf_done = true;
 			break;
@@ -3395,7 +3419,7 @@ CopyReadLineCSV(size_t bytesread, char *quote, char *escape)
 			/* found 1st eol char in input_buf. */
 		{
 			bool		eol_found = true;
-			
+
 			/*
 			 * Load that piece of data (potentially a data line) into the line buffer,
 			 * and update the pointers for the next scan.
@@ -3404,16 +3428,20 @@ CopyReadLineCSV(size_t bytesread, char *quote, char *escape)
 			appendBinaryStringInfo(&line_buf, begloc, linesize);
 			buffer_index += linesize;
 			begloc = endloc + 1;
-			
+
 			/* end of line only if not in quotes */
-			if(in_quote)
+			if (in_quote)
 			{
 				line_done = false;
-				
+
 				/* update file line for error message */
-				/* TODO: for dos line end we need to do check before incrementing! */
+
+				/*
+				 * TODO: for dos line end we need to do check before
+				 * incrementing!
+				 */
 				copy_lineno++;
-				
+
 				/* buf done, but still in quote */
 				if (buffer_index >= bytesread)
 				{
@@ -3429,7 +3457,7 @@ CopyReadLineCSV(size_t bytesread, char *quote, char *escape)
 					if (*(endloc + 1) == '\n')
 					{
 						/* this is a line end */
-						appendBinaryStringInfo(&line_buf, begloc, 1);		/* load that '\n' */
+						appendBinaryStringInfo(&line_buf, begloc, 1);	/* load that '\n' */
 						buffer_index++;
 						begloc++;
 					}
@@ -3437,14 +3465,14 @@ CopyReadLineCSV(size_t bytesread, char *quote, char *escape)
 						/* just a CR, not a line end */
 						eol_found = false;
 				}
-				
+
 				/*
 				 * in some cases, this end of line char happens to be the
 				 * last character in the buffer. we need to catch that.
 				 */
 				if (buffer_index >= bytesread)
 					buf_done = true;
-				
+
 				/*
 				 * if eol was found line is done
 				 */
@@ -3507,14 +3535,14 @@ CopyReadLineCSV(size_t bytesread, char *quote, char *escape)
 		 * should ignore anything after \. up to protocol
 		 * end of copy data.
 		 */
-		if(copy_dest == COPY_NEW_FE)
+		if (copy_dest == COPY_NEW_FE)
 		{
-			while(!fe_eof) 
+			while (!fe_eof)
 			{
-				CopyGetData(input_buf, COPY_BUF_SIZE); /* eat data */
+				CopyGetData(input_buf, COPY_BUF_SIZE);	/* eat data */
 			}
 		}
-		
+
 		fe_eof = true;
 		/* we don't want to process a \. as data line, want to quit. */
 		line_done = false;
@@ -3535,13 +3563,13 @@ CopyReadLineCSV(size_t bytesread, char *quote, char *escape)
 static bool
 DetectLineEnd(size_t bytesread, char *quote, char *escape)
 {
-	int         index = 0;
+	int			index = 0;
 	char		c;
 	char		quotec = '\0',
-		        escapec = '\0';
-	bool        csv = false;
-	
-	if (quote) /* CSV format */
+				escapec = '\0';
+	bool		csv = false;
+
+	if (quote)					/* CSV format */
 	{
 		csv = true;
 		quotec = quote[0];
@@ -3550,12 +3578,12 @@ DetectLineEnd(size_t bytesread, char *quote, char *escape)
 		if (quotec == escapec)
 			escapec = '\0';
 	}
-	
+
 	while (index < COPY_BUF_SIZE)
 	{
 		c = input_buf[index];
-		
-		if(csv)
+
+		if (csv)
 		{
 			if (in_quote && c == escapec)
 				last_was_esc = !last_was_esc;
@@ -3564,15 +3592,15 @@ DetectLineEnd(size_t bytesread, char *quote, char *escape)
 			if (c != escapec)
 				last_was_esc = false;
 		}
-		
+
 		if (c == '\n')
 		{
-			if(!csv || (csv && !in_quote))
+			if (!csv || (csv && !in_quote))
 			{
 				eol_type = EOL_NL;
 				eol_ch[0] = '\n';
 				eol_ch[1] = '\0';
-				
+
 				in_quote = false;
 				last_was_esc = false;
 				return true;
@@ -3580,31 +3608,31 @@ DetectLineEnd(size_t bytesread, char *quote, char *escape)
 		}
 		if (c == '\r')
 		{
-			if(!csv || (csv && !in_quote))
-            {
-				if (input_buf[index + 1] == '\n') /* always safe */
-					{
+			if (!csv || (csv && !in_quote))
+			{
+				if (input_buf[index + 1] == '\n')		/* always safe */
+				{
 					eol_type = EOL_CRNL;
 					eol_ch[0] = '\r';
 					eol_ch[1] = '\n';
-					}
-					else
-					{
-						eol_type = EOL_CR;
-						eol_ch[0] = '\r';
-						eol_ch[1] = '\0';
-					}
-					
-					in_quote = false;
-					last_was_esc = false;
-					return true;
+				}
+				else
+				{
+					eol_type = EOL_CR;
+					eol_ch[0] = '\r';
+					eol_ch[1] = '\0';
+				}
+
+				in_quote = false;
+				last_was_esc = false;
+				return true;
 			}
 		}
 
-	index++;
+		index++;
 	}
 
-return false;
+	return false;
 }
 
 /*
@@ -3645,261 +3673,266 @@ return false;
  * attr_buf.cursor -- an offset from the beginning of the
  * attribute buffer that indicates where the current attribute begins.
  */
-static void 
+static void
 CopyReadAttributesText(const char *delim, const char *escape, const char *null_print,
-					   int null_print_len, char *nulls, List *attnumlist, 
-					   int *attr_offsets, int num_phys_attrs, Form_pg_attribute *attr,
+					   int null_print_len, char *nulls, List *attnumlist,
+			  int *attr_offsets, int num_phys_attrs, Form_pg_attribute *attr,
 					   bool escape_off)
 {
 	char		delimc = delim[0];		/* delimiter character */
-	char        escapec = escape[0];    /* escape character    */
+	char		escapec = escape[0];	/* escape character    */
 	char	   *scan_start;		/* pointer to line buffer for scan start. */
 	char	   *scan_end;		/* pointer to line buffer where char was found */
-    char	   *stop;
-	char	   *scanner;			
+	char	   *stop;
+	char	   *scanner;
 	int			attr_pre_len;	/* attr raw len, before processing escapes */
 	int			attr_post_len;	/* current attr len after escaping */
 	int			m;				/* attribute index being parsed */
-	int			bytes_remaining;/* num bytes remaining to be scanned in line buf */
+	int			bytes_remaining;/* num bytes remaining to be scanned in line
+								 * buf */
 	int			chunk_start;	/* offset to beginning of line chunk to load */
 	int			chunk_len;		/* length of chunk of data to load to attr buf */
 	int			oct_val;		/* byte value for octal escapes */
 	int			attnum;			/* attribute number being parsed */
 	ListCell   *cur;			/* cursor to attribute list used for this COPY */
 	int			attribute;
-		
-		/*
-		 * init variables for attribute scan
-		 */
-		attr_buf.len = 0;
-		attr_buf.data[0] = '\0';
-		attr_buf.cursor = 0;
-		/* cursor is now > 0 if we copy WITH OIDS */
-		scan_start = line_buf.data + line_buf.cursor;
-		cur = list_head(attnumlist);
-		attnum = lfirst_int(cur);
-		m = attnum - 1;
-		chunk_start = line_buf.cursor;
-		chunk_len = 0;
-		attr_pre_len = 0;
-		attr_post_len = 0;
-		attribute = 1;
-		
-		if(escape_off)
-			escapec = delimc; /* look only for delimiters, escapes are disabled */
-		
-		/*
-		 * Scan through the line buffer to read all attributes data
-		 */
-		while (line_buf.cursor < line_buf.len)
+
+	/*
+	 * init variables for attribute scan
+	 */
+	attr_buf.len = 0;
+	attr_buf.data[0] = '\0';
+	attr_buf.cursor = 0;
+	/* cursor is now > 0 if we copy WITH OIDS */
+	scan_start = line_buf.data + line_buf.cursor;
+	cur = list_head(attnumlist);
+	attnum = lfirst_int(cur);
+	m = attnum - 1;
+	chunk_start = line_buf.cursor;
+	chunk_len = 0;
+	attr_pre_len = 0;
+	attr_post_len = 0;
+	attribute = 1;
+
+	if (escape_off)
+		escapec = delimc;		/* look only for delimiters, escapes are
+								 * disabled */
+
+	/*
+	 * Scan through the line buffer to read all attributes data
+	 */
+	while (line_buf.cursor < line_buf.len)
+	{
+		bytes_remaining = line_buf.len - line_buf.cursor;
+		stop = scan_start + bytes_remaining;
+
+		for (scanner = scan_start; *scanner != delimc && *scanner != escapec && scanner < stop; scanner++)
+			;
+
+		scan_end = (*scanner != '\0' ? (char *) scanner : NULL);
+
+		if (scan_end == NULL)
 		{
-			bytes_remaining = line_buf.len - line_buf.cursor;
-            stop = scan_start + bytes_remaining;
-			
-			for (scanner = scan_start; *scanner != delimc && *scanner != escapec && scanner < stop; scanner++)
-				;
-					
-			scan_end = (*scanner != '\0' ? (char *) scanner : NULL);
-			
-			if (scan_end == NULL)
+			/* GOT TO END OF LINE BUFFER */
+
+			if (cur == NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+						 errmsg("extra data after last expected column")));
+
+			attnum = lfirst_int(cur);
+			m = attnum - 1;
+
+			/* don't count eol char(s) in attr and chunk len calculation */
+			if (eol_type == EOL_CRNL)
 			{
-				/* GOT TO END OF LINE BUFFER */
-				
-				if (cur == NULL)
-					ereport(ERROR,
-							(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-							 errmsg("extra data after last expected column")));
-				
+				attr_pre_len += bytes_remaining - 2;
+				chunk_len = line_buf.len - chunk_start - 2;
+			}
+			else
+			{
+				attr_pre_len += bytes_remaining - 1;
+				chunk_len = line_buf.len - chunk_start - 1;
+			}
+
+			/* check if this is a NULL value or data value (assumed NULL) */
+			if (attr_pre_len == null_print_len
+				&&
+				strncmp(line_buf.data + line_buf.len - attr_pre_len - 1, null_print, attr_pre_len)
+				== 0)
+				nulls[m] = 'n';
+			else
+				nulls[m] = ' ';
+
+			attr_offsets[m] = attr_buf.cursor;
+
+
+			/* load the last chunk, the whole buffer in most cases */
+			appendBinaryStringInfo(&attr_buf, line_buf.data + chunk_start, chunk_len);
+
+			line_buf.cursor += attr_pre_len + 2;		/* skip eol char and
+														 * '\0' to exit loop */
+
+			if (lnext(cur) != NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+						 errmsg("missing data for column \"%s\"",
+					   NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname))));
+		}
+		else
+			/* FOUND A DELIMITER OR ESCAPE */
+		{
+			if (cur == NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+						 errmsg("extra data after last expected column")));
+
+			if (*scan_end == delimc)	/* found a delimiter */
+			{
 				attnum = lfirst_int(cur);
 				m = attnum - 1;
-				
-				/* don't count eol char(s) in attr and chunk len calculation */
-				if (eol_type == EOL_CRNL)
-				{
-					attr_pre_len += bytes_remaining - 2;
-					chunk_len = line_buf.len - chunk_start - 2;
-				}
-				else
-				{
-					attr_pre_len += bytes_remaining - 1;
-					chunk_len = line_buf.len - chunk_start - 1;
-				}
-				
-				/* check if this is a NULL value or data value (assumed NULL) */
-				if (attr_pre_len == null_print_len
-					&&
-					strncmp(line_buf.data + line_buf.len - attr_pre_len - 1, null_print, attr_pre_len)
-					== 0)
+
+				/* (we don't include the delimiter ch in length) */
+				attr_pre_len += scan_end - scan_start;
+				/* (we don't include the delimiter ch in length) */
+				attr_post_len += scan_end - scan_start;
+
+				/* check if this is a null print or data (assumed NULL) */
+				if (attr_pre_len == null_print_len &&
+					strncmp(scan_end - attr_pre_len, null_print, attr_pre_len) == 0)
 					nulls[m] = 'n';
 				else
 					nulls[m] = ' ';
-				
+
+				/* set the pointer to next attribute position */
 				attr_offsets[m] = attr_buf.cursor;
-				
-				
-				/* load the last chunk, the whole buffer in most cases */
-				appendBinaryStringInfo(&attr_buf, line_buf.data + chunk_start, chunk_len);
-				
-				line_buf.cursor += attr_pre_len + 2;		/* skip eol char and
-					* '\0' to exit loop */
-				
-				if (lnext(cur) != NULL)
-						ereport(ERROR,
-								(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-								 errmsg("missing data for column \"%s\"",
-										NameStr(attr[lfirst_int(lnext(cur)) - 1]->attname))));
+
+				/*
+				 * update buffer cursors to our current location, +1 to skip
+				 * the delimc
+				 */
+				line_buf.cursor = scan_end - line_buf.data + 1;
+				attr_buf.cursor += attr_post_len + 1;
+
+				/* prepare scan for next attr */
+				scan_start = line_buf.data + line_buf.cursor;
+				cur = lnext(cur);
+				attr_pre_len = 0;
+				attr_post_len = 0;
+
+				/*
+				 * for the dispatcher - stop parsing once we have
+				 * all the hash field values. We don't need the rest.
+				 */
+				if (Mpp_role == MPP_ROLE_DISPATCH)
+				{
+					if (attribute == last_hash_field)
+					{
+						/*
+						 * load the chunk from chunk_start to end of current
+						 * attribute, not including delimiter
+						 */
+						chunk_len = line_buf.cursor - chunk_start - 1;
+						appendBinaryStringInfo(&attr_buf, line_buf.data + chunk_start, chunk_len);
+						break;
+					}
+				}
+
+				attribute++;
 			}
 			else
-				/* FOUND A DELIMITER OR ESCAPE */
+				/* found an escape character */
 			{
-				if (cur == NULL)
-					ereport(ERROR,
-							(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
-							 errmsg("extra data after last expected column")));
-				
-				if (*scan_end == delimc)		/* found a delimiter */
-				{
-					attnum = lfirst_int(cur);
-					m = attnum - 1;
-					
-					/* (we don't include the delimiter ch in length) */
-					attr_pre_len += scan_end - scan_start;
-					/* (we don't include the delimiter ch in length) */
-					attr_post_len += scan_end - scan_start;
-					
-					/* check if this is a null print or data (assumed NULL) */
-					if (attr_pre_len == null_print_len &&
-						strncmp(scan_end - attr_pre_len, null_print, attr_pre_len) == 0)
-						nulls[m] = 'n';
-					else
-						nulls[m] = ' ';
-					
-					/* set the pointer to next attribute position */
-					attr_offsets[m] = attr_buf.cursor;
-					
-					/*
-					 * update buffer cursors to our current location, +1 to skip
-					 * the delimc
-					 */
-					line_buf.cursor = scan_end - line_buf.data + 1;
-					attr_buf.cursor += attr_post_len + 1;
-					
-					/* prepare scan for next attr */
-					scan_start = line_buf.data + line_buf.cursor;
-					cur = lnext(cur);
-					attr_pre_len = 0;
-					attr_post_len = 0;
+				char		nextc = *(scan_end + 1);
+				char		newc;
+				int			skip = 2;
 
-					/*
-					 * for the dispatcher - stop parsing once we have
-					 * all the hash field values. We don't need the rest.
-					 */
-					if(Mpp_role == MPP_ROLE_DISPATCH)
-					{
-						if(attribute == last_hash_field)
-						{
-							/* load the chunk from chunk_start to end of current attribute, not including delimiter */
-							chunk_len = line_buf.cursor - chunk_start - 1;
-							appendBinaryStringInfo(&attr_buf, line_buf.data + chunk_start, chunk_len);
-							break;
-					    }
-					}
-					
-					attribute++; 
-				}
-				else
-					/* found an escape character */
+				chunk_len = (scan_end - line_buf.data) - chunk_start + 1;
+
+				/* load a chunk of data */
+				appendBinaryStringInfo(&attr_buf, line_buf.data + chunk_start, chunk_len);
+
+				switch (nextc)
 				{
-					char		nextc = *(scan_end + 1);
-					char		newc;
-					int			skip = 2;
-					
-					chunk_len = (scan_end - line_buf.data) - chunk_start + 1;
-					
-					/* load a chunk of data */
-					appendBinaryStringInfo(&attr_buf, line_buf.data + chunk_start, chunk_len);
-					
-					switch (nextc)
-					{
-						case '0':
-						case '1':
-						case '2':
-						case '3':
-						case '4':
-						case '5':
-						case '6':
-						case '7':
-							oct_val = OCTVALUE(nextc);
-							nextc = *(scan_end + 2);
-							
-							/*
-							 * (no need for out bad access check since line if
-								* buffered)
-							 */
+					case '0':
+					case '1':
+					case '2':
+					case '3':
+					case '4':
+					case '5':
+					case '6':
+					case '7':
+						oct_val = OCTVALUE(nextc);
+						nextc = *(scan_end + 2);
+
+						/*
+						 * (no need for out bad access check since line if
+							* buffered)
+						 */
+						if (ISOCTAL(nextc))
+						{
+							skip++;
+							oct_val = (oct_val << 3) + OCTVALUE(nextc);
+							nextc = *(scan_end + 3);
 							if (ISOCTAL(nextc))
 							{
 								skip++;
 								oct_val = (oct_val << 3) + OCTVALUE(nextc);
-								nextc = *(scan_end + 3);
-								if (ISOCTAL(nextc))
-								{
-									skip++;
-									oct_val = (oct_val << 3) + OCTVALUE(nextc);
-								}
 							}
-								newc = oct_val & 0377;	/* the escaped byte value */
-							break;
-						case 'b':
-							newc = '\b';
-							break;
-						case 'f':
-							newc = '\f';
-							break;
-						case 'n':
-							newc = '\n';
-							break;
-						case 'r':
-							newc = '\r';
-							break;
-						case 't':
-							newc = '\t';
-							break;
-						case 'v':
-							newc = '\v';
-							break;
-						default:
-							if (nextc == delimc)
-								newc = delimc;
-							else if (nextc == escapec)
-								newc = escapec;
-							else
-								/* no escape sequence, take next char literaly */
-								newc = nextc;
-							break;
-					}
-					
-					/* update to current length, add escape and escaped chars  */
-					attr_pre_len += scan_end - scan_start + 2;
-					/* update to current length, escaped char */
-					attr_post_len += scan_end - scan_start + 1;
-					
-					/*
-					 * Need to get rid of the escape character. This is done by
-					 * loading the chunk up to including the escape character
-					 * into the attribute buffer. Then overwritting the backslash
-					 * with the escaped sequence or char, and continuing to scan
-					 * from *after* the char than is after the escape in line buf.
-					 */
-					*(attr_buf.data + attr_buf.len - 1) = newc;
-					line_buf.cursor = scan_end - line_buf.data + skip;
-					scan_start = scan_end + skip;
-					chunk_start = line_buf.cursor;
-					chunk_len = 0;
+						}
+						newc = oct_val & 0377;	/* the escaped byte value */
+						break;
+					case 'b':
+						newc = '\b';
+						break;
+					case 'f':
+						newc = '\f';
+						break;
+					case 'n':
+						newc = '\n';
+						break;
+					case 'r':
+						newc = '\r';
+						break;
+					case 't':
+						newc = '\t';
+						break;
+					case 'v':
+						newc = '\v';
+						break;
+					default:
+						if (nextc == delimc)
+							newc = delimc;
+						else if (nextc == escapec)
+							newc = escapec;
+						else
+							/* no escape sequence, take next char literaly */
+							newc = nextc;
+						break;
 				}
-				
-			}						/* end delimiter/backslash */
 
-		}							/* end line buffer scan. */
+				/* update to current length, add escape and escaped chars  */
+				attr_pre_len += scan_end - scan_start + 2;
+				/* update to current length, escaped char */
+				attr_post_len += scan_end - scan_start + 1;
+
+				/*
+				 * Need to get rid of the escape character. This is done by
+				 * loading the chunk up to including the escape character
+				 * into the attribute buffer. Then overwritting the backslash
+				 * with the escaped sequence or char, and continuing to scan
+				 * from *after* the char than is after the escape in line buf.
+				 */
+				*(attr_buf.data + attr_buf.len - 1) = newc;
+				line_buf.cursor = scan_end - line_buf.data + skip;
+				scan_start = scan_end + skip;
+				chunk_start = line_buf.cursor;
+				chunk_len = 0;
+			}
+
+		}						/* end delimiter/backslash */
+
+	}							/* end line buffer scan. */
 
 	/*
 	 * Replace all delimiters with NULL for string termination.
@@ -3925,9 +3958,9 @@ CopyReadBinaryAttribute(int column_no, FmgrInfo *flinfo, Oid typioparam,
 {
 	int32		fld_size;
 	Datum		result;
-	
+
 	fld_size = CopyGetInt32();
-	
+
 	if (CopyGetEof())
 		ereport(ERROR,
 				(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
@@ -3942,38 +3975,38 @@ CopyReadBinaryAttribute(int column_no, FmgrInfo *flinfo, Oid typioparam,
 				(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 				 errmsg("invalid field size")));
 
-	
+
 	/* reset attr_buf to empty, and load raw data in it */
 	attr_buf.len = 0;
 	attr_buf.data[0] = '\0';
 	attr_buf.cursor = 0;
-	
+
 	enlargeStringInfo(&attr_buf, fld_size);
-	
+
 	CopyGetData(attr_buf.data, fld_size);
 	if (CopyGetEof())
 		ereport(ERROR,
 				(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 				 errmsg("unexpected EOF in COPY data")));
-	
+
 	/* load raw data into line buf for dispatching later */
-	if(Mpp_role == MPP_ROLE_DISPATCH)
+	if (Mpp_role == MPP_ROLE_DISPATCH)
 		appendBinaryStringInfo(&line_buf, attr_buf.data, fld_size);
-	
+
 	attr_buf.len = fld_size;
 	attr_buf.data[fld_size] = '\0';
-	
+
 	/* Call the column type's binary input converter */
 	result = FunctionCall2(flinfo,
 						   PointerGetDatum(&attr_buf),
 						   ObjectIdGetDatum(typioparam));
-	
+
 	/* Trouble if it didn't eat the whole buffer */
 	if (attr_buf.cursor != attr_buf.len)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
 				 errmsg("incorrect binary data format")));
-	
+
 	*isnull = false;
 	return result;
 }
@@ -3992,8 +4025,8 @@ CopyReadBinaryAttribute(int column_no, FmgrInfo *flinfo, Oid typioparam,
  */
 static void
 CopyReadAttributesCSV(const char *delim, const char *null_print, char *quote,
-					  char *escape, int null_print_len, char *nulls, List *attnumlist, 
-					  int *attr_offsets, int num_phys_attrs, Form_pg_attribute *attr)
+			 char *escape, int null_print_len, char *nulls, List *attnumlist,
+			  int *attr_offsets, int num_phys_attrs, Form_pg_attribute *attr)
 {
 	char		delimc = delim[0];
 	char		quotec = quote[0];
@@ -4007,42 +4040,42 @@ CopyReadAttributesCSV(const char *delim, const char *null_print, char *quote,
 	int			attnum;			/* attribute number being parsed */
 	int			m;				/* attribute index being parsed */
 	ListCell   *cur;			/* cursor to attribute list used for this COPY */
-	int         attribute;
-	
+	int			attribute;
+
 	/*
 	 * init variables for attribute scan
 	 */
 	attr_buf.len = 0;
 	attr_buf.data[0] = '\0';
 	attr_buf.cursor = 0;
-	
+
 	cur = list_head(attnumlist);
 	attnum = lfirst_int(cur);
 	m = attnum - 1;
 	input_len = 0;
 	attribute = 1;
-	
-	
+
+
 	for (;;)
 	{
 		end_cursor = line_buf.cursor;
-		
+
 		/* finished processing attributes in line */
 		if (line_buf.cursor >= line_buf.len - 1)
 		{
 			/* check whether raw input matched null marker */
 			input_len = end_cursor - start_cursor;
 			if (!saw_quote && input_len == null_print_len &&
-				strncmp(&line_buf.data[start_cursor], null_print, input_len) == 0)
+			strncmp(&line_buf.data[start_cursor], null_print, input_len) == 0)
 				nulls[m] = 'n';
 			else
 				nulls[m] = ' ';
-			
+
 			if (in_quote)
 				ereport(ERROR,
 						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 						 errmsg("unterminated CSV quoted field")));
-			
+
 			if (lnext(cur) != NULL)
 				ereport(ERROR,
 						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
@@ -4050,52 +4083,52 @@ CopyReadAttributesCSV(const char *delim, const char *null_print, char *quote,
 								NameStr(attr[m + 1]->attname))));
 			break;
 		}
-		
+
 		c = line_buf.data[line_buf.cursor++];
-		
+
 		/* unquoted field delimiter  */
 		if (!in_quote && c == delimc)
 		{
 			/* check whether raw input matched null marker */
 			input_len = end_cursor - start_cursor;
 			if (!saw_quote && input_len == null_print_len &&
-				strncmp(&line_buf.data[start_cursor], null_print, input_len) == 0)
+			strncmp(&line_buf.data[start_cursor], null_print, input_len) == 0)
 				nulls[m] = 'n';
 			else
 				nulls[m] = ' ';
-            
+
 			/* terminate attr string with '\0' */
 			appendStringInfoCharMacro(&attr_buf, '\0');
 			attr_buf.cursor++;
-			
+
 			/* setup next attribute scan */
 			cur = lnext(cur);
-			
+
 			if (cur == NULL)
 				ereport(ERROR,
 						(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
 						 errmsg("extra data after last expected column")));
-			
+
 			saw_quote = false;
 			attnum = lfirst_int(cur);
 			m = attnum - 1;
 			attr_offsets[m] = attr_buf.cursor;
 			start_cursor = line_buf.cursor;
-			
+
 			/*
 			 * for the dispatcher - stop parsing once we have
 			 * all the hash field values. We don't need the rest.
 			 */
-			if(Mpp_role == MPP_ROLE_DISPATCH)
+			if (Mpp_role == MPP_ROLE_DISPATCH)
 			{
-				if(attribute == last_hash_field)
+				if (attribute == last_hash_field)
 					break;
 			}
-			
-			attribute++; 
+
+			attribute++;
 			continue;
 		}
-		
+
 		/* start of quoted field (or part of field) */
 		if (!in_quote && c == quotec)
 		{
@@ -4103,7 +4136,7 @@ CopyReadAttributesCSV(const char *delim, const char *null_print, char *quote,
 			in_quote = true;
 			continue;
 		}
-		
+
 		/* escape within a quoted field */
 		if (in_quote && c == escapec)
 		{
@@ -4114,7 +4147,7 @@ CopyReadAttributesCSV(const char *delim, const char *null_print, char *quote,
 			if (line_buf.cursor <= line_buf.len)
 			{
 				char		nextc = line_buf.data[line_buf.cursor];
-				
+
 				if (nextc == escapec || nextc == quotec)
 				{
 					appendStringInfoCharMacro(&attr_buf, nextc);
@@ -4124,11 +4157,11 @@ CopyReadAttributesCSV(const char *delim, const char *null_print, char *quote,
 				}
 			}
 		}
-		
+
 		/*
 		 * end of quoted field. Must do this test after testing for escape
 		 * in case quote char and escape char are the same (which is the
-	     * common case).
+		 * common case).
 		 */
 		if (in_quote && c == quotec)
 		{
@@ -4138,7 +4171,7 @@ CopyReadAttributesCSV(const char *delim, const char *null_print, char *quote,
 		appendStringInfoCharMacro(&attr_buf, c);
 		attr_buf.cursor++;
 	}
-	
+
 }
 
 /*
@@ -4155,15 +4188,15 @@ CopyReadOidAttr(const char *delim, const char *null_print, int null_print_len,
 	char	   *end_loc;
 	int			attr_len = 0;
 	int			bytes_remaining;
-	
+
 	/* reset attribute buf to empty */
 	attr_buf.len = 0;
 	attr_buf.data[0] = '\0';
 	attr_buf.cursor = 0;
-	
+
 	/* # of bytes that were not yet processed in this line */
 	bytes_remaining = line_buf.len - line_buf.cursor;
-	
+
 	/* got to end of line */
 	if ((end_loc = scanTextLine(start_loc, delimc, bytes_remaining)) == NULL)
 	{
@@ -4178,20 +4211,20 @@ CopyReadOidAttr(const char *delim, const char *null_print, int null_print_len,
 		 * (we don't care if delim was preceded with a backslash, because it's
 		 * an invalid OID anyway)
 		 */
-		
+
 		attr_len = end_loc - start_loc; /* we don't include the delimiter ch */
-		
+
 		appendBinaryStringInfo(&attr_buf, start_loc, attr_len);
 		line_buf.cursor += attr_len + 1;
 	}
-	
-	
+
+
 	/* check whether raw input matched null marker */
 	if (attr_len == null_print_len && strncmp(start_loc, null_print, attr_len) == 0)
 		*isnull = true;
 	else
 		*isnull = false;
-	
+
 	return attr_buf.data;
 }
 
@@ -4310,7 +4343,7 @@ CopyAttributeOutCSV(char *server_string, char *delim, char *quote,
 		 *
 		 */
 
-		if (!embedded_line_warning  && (c == '\n' || c == '\r') )
+		if (!embedded_line_warning && (c == '\n' || c == '\r'))
 		{
 			embedded_line_warning = true;
 			elog(WARNING,
@@ -4427,18 +4460,18 @@ char *
 scanTextLine(const char *s, char eol, size_t len)
 {
 	const char *start;
-	
+
 	if (client_encoding_only && !line_buf_converted)
 	{
-		int			mblen = pg_encoding_mblen(client_encoding, (unsigned char*)s);
-		
+		int			mblen = pg_encoding_mblen(client_encoding, (unsigned char *) s);
+
 		for (start = s; *s != eol && s < start + len; s += mblen)
-			mblen = pg_encoding_mblen(client_encoding, (unsigned char*)s);
-		
+			mblen = pg_encoding_mblen(client_encoding, (unsigned char *) s);
+
 		return ((*s == eol) ? (char *) s : NULL);
 	}
 	else
-		return memchr(s,eol,len);
+		return memchr(s, eol, len);
 }
 
 
@@ -4446,12 +4479,12 @@ char *
 scanCSVLine(const char *s, char eol, char escapec, char quotec, size_t len)
 {
 	const char *start;
-	
+
 	if (client_encoding_only && !line_buf_converted)
 	{
-		int			mblen = pg_encoding_mblen(client_encoding, (unsigned char*)s);
-		
-		for (start = s; *s != eol &&  s < start + len; s += mblen)
+		int			mblen = pg_encoding_mblen(client_encoding, (unsigned char *) s);
+
+		for (start = s; *s != eol && s < start + len; s += mblen)
 		{
 			if (in_quote && *s == escapec)
 				last_was_esc = !last_was_esc;
@@ -4459,14 +4492,14 @@ scanCSVLine(const char *s, char eol, char escapec, char quotec, size_t len)
 				in_quote = !in_quote;
 			if (*s != escapec)
 				last_was_esc = false;
-			
-			mblen = pg_encoding_mblen(client_encoding, (unsigned char*)s);
-        }
+
+			mblen = pg_encoding_mblen(client_encoding, (unsigned char *) s);
+		}
 	}
 	else
 		/* safe to scroll byte by byte */
 	{
-		for (start = s; *s != eol  && s < start + len; s++)
+		for (start = s; *s != eol && s < start + len; s++)
 		{
 			if (in_quote && *s == escapec)
 				last_was_esc = !last_was_esc;
@@ -4475,14 +4508,11 @@ scanCSVLine(const char *s, char eol, char escapec, char quotec, size_t len)
 			if (*s != escapec)
 				last_was_esc = false;
 		}
-		
+
 	}
 
-	if(*s == eol)
+	if (*s == eol)
 		last_was_esc = false;
-	
+
 	return ((*s == eol) ? (char *) s : NULL);
 }
-
-
-

@@ -62,14 +62,13 @@ typedef struct
 	List	   *indexes;		/* CREATE INDEX items */
 	List	   *triggers;		/* CREATE TRIGGER items */
 	List	   *grants;			/* GRANT items */
-	List	   *fwconstraints;	/* Forward referencing FOREIGN KEY
-								 * constraints */
+	List	   *fwconstraints;	/* Forward referencing FOREIGN KEY constraints */
 	List	   *alters;			/* Generated ALTER items (from the above) */
 	List	   *ixconstraints;	/* index-creating constraints */
 	List	   *blist;			/* "before list" of things to do before
 								 * creating the schema */
-	List	   *alist;			/* "after list" of things to do after
-								 * creating the schema */
+	List	   *alist;			/* "after list" of things to do after creating
+								 * the schema */
 } CreateSchemaStmtContext;
 
 /* State shared by transformCreateStmt and its subroutines */
@@ -86,8 +85,8 @@ typedef struct
 	List	   *ixconstraints;	/* index-creating constraints */
 	List	   *blist;			/* "before list" of things to do before
 								 * creating the table */
-	List	   *alist;			/* "after list" of things to do after
-								 * creating the table */
+	List	   *alist;			/* "after list" of things to do after creating
+								 * the table */
 	IndexStmt  *pkey;			/* PRIMARY KEY index, if any */
 } CreateStmtContext;
 
@@ -132,7 +131,7 @@ static void transformInhRelation(ParseState *pstate, CreateStmtContext *cxt,
 static void transformIndexConstraints(ParseState *pstate,
 						  CreateStmtContext *cxt);
 static void transformDistributedBy(ParseState *pstate,
-								   CreateStmtContext *cxt, List * distributedBy, MppPolicy ** policy);
+		   CreateStmtContext *cxt, List *distributedBy, MppPolicy ** policy);
 static void transformFKConstraints(ParseState *pstate,
 					   CreateStmtContext *cxt,
 					   bool skipValidation,
@@ -145,7 +144,7 @@ static void transformColumnType(ParseState *pstate, ColumnDef *column);
 static void release_pstate_resources(ParseState *pstate);
 static FromExpr *makeFromExpr(List *fromlist, Node *quals);
 static bool check_parameter_resolution_walker(Node *node,
-							check_parameter_resolution_context *context);
+								check_parameter_resolution_context *context);
 
 
 /*
@@ -376,15 +375,15 @@ transformStmt(ParseState *pstate, Node *parseTree,
 											 (SelectStmt *) parseTree);
 			else
 				result = transformSetOperationStmt(pstate,
-											   (SelectStmt *) parseTree);
-											   
-		   	if (((SelectStmt *) parseTree)->into != NULL)
-		   		elog(ERROR, "SELECT INTO and CREATE TABLE AS SELECT are not yet implemented");
+												   (SelectStmt *) parseTree);
+
+			if (((SelectStmt *) parseTree)->into != NULL)
+				elog(ERROR, "SELECT INTO and CREATE TABLE AS SELECT are not yet implemented");
 			break;
 
 		case T_DeclareCursorStmt:
 			result = transformDeclareCursorStmt(pstate,
-										(DeclareCursorStmt *) parseTree);
+											(DeclareCursorStmt *) parseTree);
 			break;
 
 		default:
@@ -483,7 +482,7 @@ transformDeleteStmt(ParseState *pstate, DeleteStmt *stmt)
 
 	/* set up range table with just the result rel */
 	qry->resultRelation = setTargetTable(pstate, stmt->relation,
-							  interpretInhOption(stmt->relation->inhOpt),
+								  interpretInhOption(stmt->relation->inhOpt),
 										 true,
 										 ACL_DELETE);
 
@@ -640,7 +639,7 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt,
 			if (resnode->resjunk)
 				continue;
 			if (tle->expr &&
-				(IsA(tle->expr, Const) || IsA(tle->expr, Param)) &&
+				(IsA(tle->expr, Const) ||IsA(tle->expr, Param)) &&
 				exprType((Node *) tle->expr) == UNKNOWNOID)
 			{
 				expr = tle->expr;
@@ -692,7 +691,7 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt,
 		if (icols == NULL || attnos == NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-			 errmsg("INSERT has more expressions than target columns")));
+				 errmsg("INSERT has more expressions than target columns")));
 
 		col = (ResTarget *) lfirst(icols);
 		Assert(IsA(col, ResTarget));
@@ -713,7 +712,7 @@ transformInsertStmt(ParseState *pstate, InsertStmt *stmt,
 	if (stmt->cols != NIL && (icols != NULL || attnos != NULL))
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-			 errmsg("INSERT has more target columns than expressions")));
+				 errmsg("INSERT has more target columns than expressions")));
 
 	/*
 	 * If we copied up any unknown Params (see HACK above) then their
@@ -778,7 +777,7 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 	cxt.alist = NIL;
 	cxt.pkey = NULL;
 	cxt.hasoids = interpretOidsOption(stmt->hasoids);
-	
+
 	stmt->policy = NULL;
 
 	/*
@@ -807,26 +806,27 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 				break;
 
 			case T_InhRelation:
-			{
-				bool isBeginning = (cxt.columns == NIL);
-				transformInhRelation(pstate, &cxt,
-									 (InhRelation *) element);
-									 
-				if (Mpp_role == MPP_ROLE_DISPATCH && stmt->distributedBy == NIL && isBeginning)
 				{
-					InhRelation * e = (InhRelation *) element;
-					Oid			relId = RangeVarGetRelid( e->relation, false);
-					
-					MppPolicy *oldTablePolicy = get_table_policy( relId );
-					
-					if(oldTablePolicy != NULL && oldTablePolicy->ptype == POLICYTYPE_PARTITIONED)
+					bool		isBeginning = (cxt.columns == NIL);
+
+					transformInhRelation(pstate, &cxt,
+										 (InhRelation *) element);
+
+					if (Mpp_role == MPP_ROLE_DISPATCH && stmt->distributedBy == NIL && isBeginning)
 					{
-						stmt->policy = oldTablePolicy;
-					
-						elog( NOTICE,"Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table");
+						InhRelation *e = (InhRelation *) element;
+						Oid			relId = RangeVarGetRelid(e->relation, false);
+
+						MppPolicy  *oldTablePolicy = get_table_policy(relId);
+
+						if (oldTablePolicy != NULL && oldTablePolicy->ptype == POLICYTYPE_PARTITIONED)
+						{
+							stmt->policy = oldTablePolicy;
+
+							elog(NOTICE, "Table doesn't have 'distributed by' clause, defaulting to distribution columns from LIKE table");
+						}
 					}
 				}
-			}
 				break;
 
 			default:
@@ -1018,7 +1018,7 @@ transformColumnDefinition(ParseState *pstate, CreateStmtContext *cxt,
 					ereport(ERROR,
 							(errcode(ERRCODE_SYNTAX_ERROR),
 							 errmsg("conflicting NULL/NOT NULL declarations for column \"%s\" of table \"%s\"",
-							  column->colname, cxt->relation->relname)));
+								  column->colname, cxt->relation->relname)));
 				column->is_not_null = FALSE;
 				saw_nullable = true;
 				break;
@@ -1028,7 +1028,7 @@ transformColumnDefinition(ParseState *pstate, CreateStmtContext *cxt,
 					ereport(ERROR,
 							(errcode(ERRCODE_SYNTAX_ERROR),
 							 errmsg("conflicting NULL/NOT NULL declarations for column \"%s\" of table \"%s\"",
-							  column->colname, cxt->relation->relname)));
+								  column->colname, cxt->relation->relname)));
 				column->is_not_null = TRUE;
 				saw_nullable = true;
 				break;
@@ -1038,7 +1038,7 @@ transformColumnDefinition(ParseState *pstate, CreateStmtContext *cxt,
 					ereport(ERROR,
 							(errcode(ERRCODE_SYNTAX_ERROR),
 							 errmsg("multiple default values specified for column \"%s\" of table \"%s\"",
-							  column->colname, cxt->relation->relname)));
+								  column->colname, cxt->relation->relname)));
 				column->raw_default = constraint->raw_expr;
 				Assert(constraint->cooked_expr == NULL);
 				break;
@@ -1331,8 +1331,8 @@ transformIndexConstraints(ParseState *pstate, CreateStmtContext *cxt)
 					if (rel->rd_rel->relkind != RELKIND_RELATION)
 						ereport(ERROR,
 								(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-						errmsg("inherited relation \"%s\" is not a table",
-							   inh->relname)));
+						   errmsg("inherited relation \"%s\" is not a table",
+								  inh->relname)));
 					for (count = 0; count < rel->rd_att->natts; count++)
 					{
 						Form_pg_attribute inhattr = rel->rd_att->attrs[count];
@@ -1369,8 +1369,8 @@ transformIndexConstraints(ParseState *pstate, CreateStmtContext *cxt)
 			if (!found && !cxt->isalter)
 				ereport(ERROR,
 						(errcode(ERRCODE_UNDEFINED_COLUMN),
-					  errmsg("column \"%s\" named in key does not exist",
-							 key)));
+						 errmsg("column \"%s\" named in key does not exist",
+								key)));
 
 			/* Check for PRIMARY KEY(foo, foo) */
 			foreach(columns, index->indexParams)
@@ -1453,154 +1453,159 @@ transformIndexConstraints(ParseState *pstate, CreateStmtContext *cxt)
 			cxt->alist = lappend(cxt->alist, index);
 	}
 }
+
 /*************************************/
 static void
-transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distributedBy, MppPolicy ** policyp)
+transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distributedBy, MppPolicy ** policyp)
 {
-	 
-	 
+
+
 	ListCell   *keys = NULL;
-	 
-	MppPolicy * policy = NULL;
-	int colindex = 0;
-	int maxattrs = 200;
-	int numUniqueIndexes = 0;
-	Constraint * uniqueindex = NULL;
-	
+
+	MppPolicy  *policy = NULL;
+	int			colindex = 0;
+	int			maxattrs = 200;
+	int			numUniqueIndexes = 0;
+	Constraint *uniqueindex = NULL;
+
 	/*
 	 * utility mode creates can't have a policy.  Only the QD can have policies
-	 * 
+	 *
 	 */
-	if ( Mpp_role != MPP_ROLE_DISPATCH )
+	if (Mpp_role != MPP_ROLE_DISPATCH)
 	{
 		*policyp = NULL;
 		return;
 	}
-	
+
 	/*
-	 * Usually, when we get here, no policy has been assigned yet.  But in some cases,
+	 * Usually, when we get here, no policy has been assigned yet.	But in some cases,
 	 * such as CREATE TABLE x (LIKE y), we might already have the policy set
 	 */
-	
+
 	if (*policyp != NULL)
 		return;
-	
-	
-	policy = (MppPolicy*) palloc(sizeof(MppPolicy) + maxattrs*sizeof(policy->attrs[0]));
+
+
+	policy = (MppPolicy *) palloc(sizeof(MppPolicy) + maxattrs * sizeof(policy->attrs[0]));
 	policy->ptype = POLICYTYPE_PARTITIONED;
 	policy->nattrs = 0;
 	policy->attrs[0] = 1;
-	
+
 	/*
-	 * If distributedBy is NIL, the user did not explicitly say what he wanted for 
+	 * If distributedBy is NIL, the user did not explicitly say what he wanted for
 	 * a distribution policy.  So, we need to assign one.
 	 */
-	 
-	if (distributedBy==NIL && cxt && cxt->pkey != NULL)
+
+	if (distributedBy == NIL && cxt && cxt->pkey != NULL)
 	{
 		/*
 		 * We have a PRIMARY KEY, so let's assign the default distribution to be the key
 		 */
 
-		IndexStmt * index = cxt->pkey;
-		List * indexParams;
-		ListCell * ip = NULL;
+		IndexStmt  *index = cxt->pkey;
+		List	   *indexParams;
+		ListCell   *ip = NULL;
+
 		Assert(index->indexParams != NULL);
 		indexParams = index->indexParams;
 
 		foreach(ip, indexParams)
 		{
 			IndexElem  *iparam = lfirst(ip);
+
 			if (iparam && iparam->name != 0)
 			{
-				 
+
 				if (distributedBy)
 					distributedBy = lappend(distributedBy, (Node *) makeString(iparam->name));
 				else
 					distributedBy = list_make1((Node *) makeString(iparam->name));
-				 
+
 			}
 		}
 		if (distributedBy)
-			elog( NOTICE,"Table doesn't have 'distributed by' clause, defaulting to primary key columns");
+			elog(NOTICE, "Table doesn't have 'distributed by' clause, defaulting to primary key columns");
 
 
 	}
-	
-	
+
+
 	if (cxt && cxt->ixconstraints != NULL)
 	{
-		
-		ListCell * lc = NULL;
-		 
-		foreach(lc,cxt->ixconstraints)
+
+		ListCell   *lc = NULL;
+
+		foreach(lc, cxt->ixconstraints)
 		{
-			Constraint * cons = lfirst(lc);
-			 
-			if ( cons->contype == CONSTR_UNIQUE )
+			Constraint *cons = lfirst(lc);
+
+			if (cons->contype == CONSTR_UNIQUE)
 			{
-						 
-				if (uniqueindex==NULL)
+
+				if (uniqueindex == NULL)
 					uniqueindex = cons;
 				numUniqueIndexes++;
 				if (cxt->pkey)
 				{
 					ereport(ERROR,
-					(errcode(ERRCODE_SYNTAX_ERROR),
-					errmsg("Bizgres MPP does not allow having both PRIMARY KEY and UNIQUE contraints")));
+							(errcode(ERRCODE_SYNTAX_ERROR),
+							 errmsg("Bizgres MPP does not allow having both PRIMARY KEY and UNIQUE contraints")));
 				}
 			}
 		}
-		if (numUniqueIndexes>1)
+		if (numUniqueIndexes > 1)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-					errmsg("Bizgres MPP does not allow having multiple UNIQUE contraints")));
+					 errmsg("Bizgres MPP does not allow having multiple UNIQUE contraints")));
 		}
 	}
-	
-	if (distributedBy==NIL && cxt && cxt->ixconstraints != NULL && numUniqueIndexes > 0)
+
+	if (distributedBy == NIL && cxt && cxt->ixconstraints != NULL && numUniqueIndexes > 0)
 	{
 		/*
 		 * No explicit distributed by clause, and no primary key.
 		 * If there is a UNIQUE clause, let's use that
 		 */
-		 
-		ListCell * lc = NULL;
-		
-		foreach(lc,cxt->ixconstraints)
+
+		ListCell   *lc = NULL;
+
+		foreach(lc, cxt->ixconstraints)
 		{
 
-			Constraint * constraint = lfirst(lc);
-			if ( constraint->contype == CONSTR_UNIQUE )
+			Constraint *constraint = lfirst(lc);
+
+			if (constraint->contype == CONSTR_UNIQUE)
 			{
-			 
-			ListCell * ip = NULL;
-			 
-	
-			foreach(ip, constraint->keys)
-			{
-				Value  *v = lfirst(ip);
-				if (v && v->val.str != 0)
+
+				ListCell   *ip = NULL;
+
+
+				foreach(ip, constraint->keys)
 				{
-					 
-					if (distributedBy)
-						distributedBy = lappend(distributedBy, (Node *) makeString(v->val.str));
-					else
-						distributedBy = list_make1((Node *) makeString(v->val.str));
-					 
+					Value	   *v = lfirst(ip);
+
+					if (v && v->val.str != 0)
+					{
+
+						if (distributedBy)
+							distributedBy = lappend(distributedBy, (Node *) makeString(v->val.str));
+						else
+							distributedBy = list_make1((Node *) makeString(v->val.str));
+
+					}
 				}
-			}
 			}
 		}
 		if (distributedBy)
-			elog( NOTICE,"Table doesn't have 'distributed by' clause, defaulting to unique column(s)");
+			elog(NOTICE, "Table doesn't have 'distributed by' clause, defaulting to unique column(s)");
 
 
 	}
-	 
 
-	if (distributedBy==NIL)
+
+	if (distributedBy == NIL)
 	{
 		/*
 		 * if we get here, we haven't a clue what to use for the distribution columns.
@@ -1608,9 +1613,9 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 		policy->nattrs = 1;
 		/* Hack! BUG BUG!  right now we always partition on column 1 */
 		policy->attrs[0] = 1;
-		elog( NOTICE,"Table doesn't have 'distributed by' clause, defaulting to column 1");
+		elog(NOTICE, "Table doesn't have 'distributed by' clause, defaulting to column 1");
 
-	}	
+	}
 	else
 	{
 		policy->nattrs = 0;
@@ -1643,7 +1648,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 			{
 				/*
 				* column will be a system column in the new table, so
-				* accept it.  
+				* accept it.
 				*/
 				found = true;
 			}
@@ -1663,9 +1668,9 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 					rel = heap_openrv(inh, AccessShareLock);
 					if (rel->rd_rel->relkind != RELKIND_RELATION)
 						ereport(ERROR,
-						(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-						errmsg("inherited relation \"%s\" is not a table",
-						inh->relname)));
+								(errcode(ERRCODE_WRONG_OBJECT_TYPE),
+						   errmsg("inherited relation \"%s\" is not a table",
+								  inh->relname)));
 					for (count = 0; count < rel->rd_att->natts; count++)
 					{
 						Form_pg_attribute inhattr = rel->rd_att->attrs[count];
@@ -1682,11 +1687,11 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 					}
 					heap_close(rel, NoLock);
 					if (found)
-						elog( WARNING ,"'distributed by' clause refers to columns of inherited table");
+						elog(WARNING, "'distributed by' clause refers to columns of inherited table");
 
 					if (found)
 						break;
-					 
+
 
 				}
 			}
@@ -1699,9 +1704,9 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 			*/
 			if (!found && !cxt->isalter)
 				ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_COLUMN),
-				errmsg("column \"%s\" named in 'DISTRIBUTED BY' clause does not exist",
-				key)));
+						(errcode(ERRCODE_UNDEFINED_COLUMN),
+						 errmsg("column \"%s\" named in 'DISTRIBUTED BY' clause does not exist",
+								key)));
 
 			policy->attrs[policy->nattrs++] = colindex;
 
@@ -1714,12 +1719,13 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 
 	*policyp = policy;
 
-	if (cxt && cxt->pkey) /* Primary key  specified.  Make sure distribution columns match */
+	if (cxt && cxt->pkey)		/* Primary key	specified.	Make sure
+								 * distribution columns match */
 	{
-		int i = 0;
-		IndexStmt * index = cxt->pkey;
-		List * indexParams = index->indexParams;
-		ListCell * ip;
+		int			i = 0;
+		IndexStmt  *index = cxt->pkey;
+		List	   *indexParams = index->indexParams;
+		ListCell   *ip;
 
 		foreach(ip, indexParams)
 		{
@@ -1742,35 +1748,36 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 					colindex++;
 					if (strcmp(column->colname, iparam->name) == 0)
 					{
-						/*found = true;*/
+						/* found = true; */
 						break;
 					}
 				}
-				 
+
 				if (colindex != policy->attrs[i])
 				{
-					 
+
 					ereport(ERROR,
-					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					errmsg("When there is both a PRIMARY KEY, and a DISTRIBUTED BY clause, the DISTRIBUTED BY clause must be equal to or a left-subset of the PRIMARY KEY"
-					)));
-			 
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("When there is both a PRIMARY KEY, and a DISTRIBUTED BY clause, the DISTRIBUTED BY clause must be equal to or a left-subset of the PRIMARY KEY"
+									)));
+
 				}
 
 				i++;
-				 
+
 			}
 		}
 	}
-	
-	
-	
-	if (uniqueindex) /* UNIQUE specified.  Make sure distribution columns match */
+
+
+
+	if (uniqueindex)			/* UNIQUE specified.  Make sure distribution
+								 * columns match */
 	{
-		int i = 0;
-		 
-		List * keys = uniqueindex->keys;
-		ListCell * ip;
+		int			i = 0;
+
+		List	   *keys = uniqueindex->keys;
+		ListCell   *ip;
 
 		foreach(ip, keys)
 		{
@@ -1793,26 +1800,26 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List * distri
 					colindex++;
 					if (strcmp(column->colname, iparam->name) == 0)
 					{
-						/*found = true;*/
+						/* found = true; */
 						break;
 					}
 				}
-				 
+
 				if (colindex != policy->attrs[i])
 				{
-					
+
 					ereport(ERROR,
-					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					errmsg("When there is both a UNIQUE contraint, and a DISTRIBUTED BY clause, the DISTRIBUTED BY clause must be equal to or a left-subset of the UNIQUE columns"
-					)));
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("When there is both a UNIQUE contraint, and a DISTRIBUTED BY clause, the DISTRIBUTED BY clause must be equal to or a left-subset of the UNIQUE columns"
+									)));
 				}
 
 				i++;
-				 
+
 			}
 		}
 	}
-		 
+
 
 }
 
@@ -1838,13 +1845,13 @@ transformFKConstraints(ParseState *pstate, CreateStmtContext *cxt,
 			fkconstraint->skip_validation = true;
 		}
 	}
-	
+
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-			  errmsg("Referential integrity (FOREIGN KEY) constraints are not supported in Bizgres MPP")));
-	    return;
+				 errmsg("Referential integrity (FOREIGN KEY) constraints are not supported in Bizgres MPP")));
+		return;
 	}
 
 	/*
@@ -1939,7 +1946,7 @@ transformIndexStmt(ParseState *pstate, IndexStmt *stmt)
 			if (expression_returns_set(ielem->expr))
 				ereport(ERROR,
 						(errcode(ERRCODE_DATATYPE_MISMATCH),
-					   errmsg("index expression may not return a set")));
+						 errmsg("index expression may not return a set")));
 		}
 	}
 
@@ -2037,7 +2044,7 @@ transformRuleStmt(ParseState *pstate, RuleStmt *stmt,
 	if (pstate->p_hasAggs)
 		ereport(ERROR,
 				(errcode(ERRCODE_GROUPING_ERROR),
-				 errmsg("rule WHERE condition may not contain aggregate functions")));
+		errmsg("rule WHERE condition may not contain aggregate functions")));
 
 	/* save info about sublinks in where clause */
 	qry->hasSubLinks = pstate->p_hasSubLinks;
@@ -2144,12 +2151,12 @@ transformRuleStmt(ParseState *pstate, RuleStmt *stmt,
 				case CMD_SELECT:
 					if (has_old)
 						ereport(ERROR,
-							 (errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-							  errmsg("ON SELECT rule may not use OLD")));
+								(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+								 errmsg("ON SELECT rule may not use OLD")));
 					if (has_new)
 						ereport(ERROR,
-							 (errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-							  errmsg("ON SELECT rule may not use NEW")));
+								(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+								 errmsg("ON SELECT rule may not use NEW")));
 					break;
 				case CMD_UPDATE:
 					/* both are OK */
@@ -2157,14 +2164,14 @@ transformRuleStmt(ParseState *pstate, RuleStmt *stmt,
 				case CMD_INSERT:
 					if (has_old)
 						ereport(ERROR,
-							 (errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-							  errmsg("ON INSERT rule may not use OLD")));
+								(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+								 errmsg("ON INSERT rule may not use OLD")));
 					break;
 				case CMD_DELETE:
 					if (has_new)
 						ereport(ERROR,
-							 (errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-							  errmsg("ON DELETE rule may not use NEW")));
+								(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+								 errmsg("ON DELETE rule may not use NEW")));
 					break;
 				default:
 					elog(ERROR, "unrecognized event type: %d",
@@ -2488,7 +2495,7 @@ transformSetOperationStmt(ParseState *pstate, SelectStmt *stmt)
 	qry->sortClause = transformSortClause(pstate,
 										  sortClause,
 										  &qry->targetList,
-									  false /* no unknowns expected */ );
+										  false /* no unknowns expected */ );
 
 	pstate->p_namespace = sv_namespace;
 	pstate->p_rtable = sv_rtable;
@@ -2650,8 +2657,8 @@ transformSetOperationTree(ParseState *pstate, SelectStmt *stmt)
 		if (list_length(lcoltypes) != list_length(rcoltypes))
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-			 errmsg("each %s query must have the same number of columns",
-					context)));
+				 errmsg("each %s query must have the same number of columns",
+						context)));
 
 		op->colTypes = NIL;
 		forboth(l, lcoltypes, r, rcoltypes)
@@ -2722,7 +2729,7 @@ applyColumnNames(List *dst, List *src)
 	if (list_length(src) > list_length(dst))
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
-			 errmsg("CREATE TABLE AS specifies too many column names")));
+				 errmsg("CREATE TABLE AS specifies too many column names")));
 
 	forboth(dst_item, dst, src_item, src)
 	{
@@ -2751,7 +2758,7 @@ transformUpdateStmt(ParseState *pstate, UpdateStmt *stmt)
 	pstate->p_is_update = true;
 
 	qry->resultRelation = setTargetTable(pstate, stmt->relation,
-							  interpretInhOption(stmt->relation->inhOpt),
+								  interpretInhOption(stmt->relation->inhOpt),
 										 true,
 										 ACL_UPDATE);
 
@@ -3092,8 +3099,8 @@ transformExecuteStmt(ParseState *pstate, ExecuteStmt *stmt)
 		if (nparams != nexpected)
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-					 errmsg("wrong number of parameters for prepared statement \"%s\"",
-							stmt->name),
+			errmsg("wrong number of parameters for prepared statement \"%s\"",
+				   stmt->name),
 					 errdetail("Expected %d parameters but got %d.",
 							   nexpected, nparams)));
 
@@ -3109,7 +3116,7 @@ transformExecuteStmt(ParseState *pstate, ExecuteStmt *stmt)
 			if (pstate->p_hasSubLinks)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					errmsg("cannot use subquery in EXECUTE parameter")));
+						 errmsg("cannot use subquery in EXECUTE parameter")));
 			if (pstate->p_hasAggs)
 				ereport(ERROR,
 						(errcode(ERRCODE_GROUPING_ERROR),
@@ -3129,7 +3136,7 @@ transformExecuteStmt(ParseState *pstate, ExecuteStmt *stmt)
 								i,
 								format_type_be(given_type_id),
 								format_type_be(expected_type_id)),
-						 errhint("You will need to rewrite or cast the expression.")));
+				errhint("You will need to rewrite or cast the expression.")));
 
 			lfirst(l) = expr;
 			i++;
@@ -3150,15 +3157,15 @@ CheckSelectForUpdate(Query *qry)
 	if (qry->distinctClause != NIL)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-		errmsg("SELECT FOR UPDATE is not allowed with DISTINCT clause")));
+		   errmsg("SELECT FOR UPDATE is not allowed with DISTINCT clause")));
 	if (qry->groupClause != NIL)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-		errmsg("SELECT FOR UPDATE is not allowed with GROUP BY clause")));
+		   errmsg("SELECT FOR UPDATE is not allowed with GROUP BY clause")));
 	if (qry->hasAggs)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("SELECT FOR UPDATE is not allowed with aggregate functions")));
+		errmsg("SELECT FOR UPDATE is not allowed with aggregate functions")));
 }
 
 /*
@@ -3239,18 +3246,18 @@ transformForUpdate(Query *qry, List *forUpdate)
 							break;
 						case RTE_JOIN:
 							ereport(ERROR,
-								 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								  errmsg("SELECT FOR UPDATE cannot be applied to a join")));
+									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+									 errmsg("SELECT FOR UPDATE cannot be applied to a join")));
 							break;
 						case RTE_SPECIAL:
 							ereport(ERROR,
-								 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								  errmsg("SELECT FOR UPDATE cannot be applied to NEW or OLD")));
+									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+									 errmsg("SELECT FOR UPDATE cannot be applied to NEW or OLD")));
 							break;
 						case RTE_FUNCTION:
 							ereport(ERROR,
-								 (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-								  errmsg("SELECT FOR UPDATE cannot be applied to a function")));
+									(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+									 errmsg("SELECT FOR UPDATE cannot be applied to a function")));
 							break;
 						default:
 							elog(ERROR, "unrecognized RTE type: %d",
@@ -3323,7 +3330,7 @@ transformConstraintAttrs(List *constraintList)
 						!IsA(lastprimarynode, FkConstraint))
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
-							 errmsg("misplaced NOT DEFERRABLE clause")));
+								 errmsg("misplaced NOT DEFERRABLE clause")));
 					if (saw_deferrability)
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
@@ -3341,7 +3348,7 @@ transformConstraintAttrs(List *constraintList)
 						!IsA(lastprimarynode, FkConstraint))
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("misplaced INITIALLY DEFERRED clause")));
+							 errmsg("misplaced INITIALLY DEFERRED clause")));
 					if (saw_initially)
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
@@ -3365,7 +3372,7 @@ transformConstraintAttrs(List *constraintList)
 						!IsA(lastprimarynode, FkConstraint))
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
-						errmsg("misplaced INITIALLY IMMEDIATE clause")));
+							errmsg("misplaced INITIALLY IMMEDIATE clause")));
 					if (saw_initially)
 						ereport(ERROR,
 								(errcode(ERRCODE_SYNTAX_ERROR),
@@ -3556,7 +3563,7 @@ analyzeCreateSchemaStmt(CreateSchemaStmt *stmt)
  */
 static bool
 check_parameter_resolution_walker(Node *node,
-							 check_parameter_resolution_context *context)
+								  check_parameter_resolution_context *context)
 {
 	if (node == NULL)
 		return false;
@@ -3577,8 +3584,8 @@ check_parameter_resolution_walker(Node *node,
 			if (param->paramtype != context->paramTypes[paramno - 1])
 				ereport(ERROR,
 						(errcode(ERRCODE_AMBIGUOUS_PARAMETER),
-				 errmsg("could not determine data type of parameter $%d",
-						paramno)));
+					 errmsg("could not determine data type of parameter $%d",
+							paramno)));
 		}
 		return false;
 	}

@@ -244,7 +244,7 @@ vacuum(VacuumStmt *vacstmt)
 				use_own_xacts;
 	List	   *relations;
 
-	
+
 
 	if (vacstmt->verbose)
 		elevel = INFO;
@@ -277,7 +277,7 @@ vacuum(VacuumStmt *vacstmt)
 	/*
 	 * Disallow the combination VACUUM FULL FREEZE; although it would mostly
 	 * work, VACUUM FULL's ability to move tuples around means that it is
-	 * injecting its own XID into tuple visibility checks.  We'd have to
+	 * injecting its own XID into tuple visibility checks.	We'd have to
 	 * guarantee that every moved tuple is properly marked XMIN_COMMITTED or
 	 * XMIN_INVALID before the end of the operation.  There are corner cases
 	 * where this does not happen, and getting rid of them all seems hard
@@ -389,55 +389,56 @@ vacuum(VacuumStmt *vacstmt)
 	/*
 	 * If we are in Cdb Dispatch Mode, send off
 	 * vacuum calls to all the qExecs and wait for
-     * them to finish, before we query their statistics.
+	 * them to finish, before we query their statistics.
 	 */
-	if ( Mpp_role == MPP_ROLE_DISPATCH )
-    {
-		char *pszVacuum;
-	
-		Query *q;
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		char	   *pszVacuum;
+
+		Query	   *q;
 		StringInfoData buffer;
-	
-		Assert( Mpp_role == MPP_ROLE_DISPATCH );
-	
+
+		Assert(Mpp_role == MPP_ROLE_DISPATCH);
+
 		/*
 		 * Serialize the stmt tree, and create the sql statement: mppexec ....
 		 */
 		q = makeNode(Query);
-	
-		initStringInfo( &buffer );
-	
+
+		initStringInfo(&buffer);
+
 		q->commandType = CMD_UTILITY;
-		q->utilityStmt = (Node *)vacstmt;
+		q->utilityStmt = (Node *) vacstmt;
 		q->querySource = QSRC_ORIGINAL;
-		q->canSetTag = true; /*?*/
-	
-		pszVacuum = serializeNode((Node *)q);
-	
+		q->canSetTag = true;	/* ? */
+
+		pszVacuum = serializeNode((Node *) q);
+
 		pfree(q);
-	
+
 		Assert(pszVacuum != NULL);
-	
-		elog( DEBUG5, "Command %s", pszVacuum);
-	
+
+		elog(DEBUG5, "Command %s", pszVacuum);
+
 		appendStringInfo(&buffer, "mppexec '%s' ''", pszVacuum);
-	
+
 		pfree(pszVacuum);
-	
-		
-		
-		/* Combination of CdbDispatchCommand and then CdbCheckDispatchResult.
+
+
+
+		/*
+		 * Combination of CdbDispatchCommand and then CdbCheckDispatchResult.
 		 * If it fails on any of the targets, ereport(ERROR, ...) is called.
-	     * call CdbDoCommandInt since it can not start in a transaction
-		 */	
-		CdbDoCommandInt( buffer.data, true, NULL );
-	
+		 * call CdbDoCommandInt since it can not start in a transaction
+		 */
+		CdbDoCommandInt(buffer.data, true, NULL);
+
 		pfree(buffer.data);
-	
-		elog(DEBUG2,"Sent vacuum command to QEs");
+
+		elog(DEBUG2, "Sent vacuum command to QEs");
 	}
-	
-	
+
+
 	/*
 	 * vacuum_rel expects to be entered with no transaction active; it
 	 * will start and commit its own transaction.  But we are called by an
@@ -451,7 +452,7 @@ vacuum(VacuumStmt *vacstmt)
 		/* matches the StartTransaction in PostgresMain() */
 		CommitTransactionCommand();
 	}
-		
+
 	/* Turn vacuum cost accounting on or off */
 	PG_TRY();
 	{
@@ -705,15 +706,15 @@ vac_update_relstats(Relation rel, BlockNumber num_pages, double num_tuples,
 	HeapTuple	ctup;
 	Form_pg_class pgcform;
 	Buffer		buffer;
-	Oid		    relid = RelationGetRelid(rel);
-	
+	Oid			relid = RelationGetRelid(rel);
+
 	Assert(relid != InvalidOid);
 
-    /*
-     * CDB: Query the segment db local catalogs to get summary statistics.
-     */
-    if ( Mpp_role == MPP_ROLE_DISPATCH )
-        cdbanalyze_get_relstats(rel, &num_pages, &num_tuples);
+	/*
+	 * CDB: Query the segment db local catalogs to get summary statistics.
+	 */
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+		cdbanalyze_get_relstats(rel, &num_pages, &num_tuples);
 
 	/*
 	* update number of tuples and number of pages in pg_class
@@ -721,18 +722,18 @@ vac_update_relstats(Relation rel, BlockNumber num_pages, double num_tuples,
 	rd = heap_openr(RelationRelationName, RowExclusiveLock);
 
 	ctup = SearchSysCache(RELOID,
-						ObjectIdGetDatum(relid),
-						0, 0, 0);
+						  ObjectIdGetDatum(relid),
+						  0, 0, 0);
 	if (!HeapTupleIsValid(ctup))
 		elog(ERROR, "pg_class entry for relid %u vanished during vacuuming",
-			relid);
+			 relid);
 
 	/* get the buffer cache tuple */
 	rtup.t_self = ctup->t_self;
 	ReleaseSysCache(ctup);
 	if (!heap_fetch(rd, SnapshotNow, &rtup, &buffer, false, NULL))
 		elog(ERROR, "pg_class entry for relid %u vanished during vacuuming",
-			relid);
+			 relid);
 
 	/* ensure no one else does this at the same time */
 	LockBuffer(buffer, BUFFER_LOCK_EXCLUSIVE);
@@ -744,7 +745,7 @@ vac_update_relstats(Relation rel, BlockNumber num_pages, double num_tuples,
 	pgcform->relhasindex = hasindex;
 
 	elog(DEBUG2, "ANALYZE oid=%u pages=%d tuples=%f",
-         relid, pgcform->relpages, pgcform->reltuples);
+		 relid, pgcform->relpages, pgcform->reltuples);
 	/*
 	* If we have discovered that there are no indexes, then there's no
 	* primary key either.	This could be done more thoroughly...
@@ -1050,8 +1051,7 @@ vacuum_rel(Oid relid, VacuumStmt *vacstmt, char expected_relkind)
 		relation_close(onerel, lmode);
 		StrategyHintVacuum(false);
 		CommitTransactionCommand();
-		return true;			/* assume no long-lived data in temp
-								 * tables */
+		return true;			/* assume no long-lived data in temp tables */
 	}
 
 	/*
@@ -1135,8 +1135,8 @@ full_vacuum_rel(Relation onerel, VacuumStmt *vacstmt)
 {
 	VacPageListData vacuum_pages;		/* List of pages to vacuum and/or
 										 * clean indexes */
-	VacPageListData fraged_pages;		/* List of pages with space enough
-										 * for re-using */
+	VacPageListData fraged_pages;		/* List of pages with space enough for
+										 * re-using */
 	Relation   *Irel;
 	int			nindexes,
 				i;
@@ -1301,8 +1301,8 @@ scan_heap(VRelStats *vacrelstats, Relation onerel,
 			VacPage		vacpagecopy;
 
 			ereport(WARNING,
-			(errmsg("relation \"%s\" page %u is uninitialized --- fixing",
-					relname, blkno)));
+			   (errmsg("relation \"%s\" page %u is uninitialized --- fixing",
+					   relname, blkno)));
 			PageInit(page, BufferGetPageSize(buf), 0);
 			vacpage->free = ((PageHeader) page)->pd_upper - ((PageHeader) page)->pd_lower;
 			free_space += vacpage->free;
@@ -1406,8 +1406,8 @@ scan_heap(VRelStats *vacrelstats, Relation onerel,
 						{
 							free_vtlinks = 1000;
 							vtlinks = (VTupleLink) repalloc(vtlinks,
-										   (free_vtlinks + num_vtlinks) *
-												 sizeof(VTupleLinkData));
+											   (free_vtlinks + num_vtlinks) *
+													 sizeof(VTupleLinkData));
 						}
 						vtlinks[num_vtlinks].new_tid = tuple.t_data->t_ctid;
 						vtlinks[num_vtlinks].this_tid = tuple.t_self;
@@ -1594,11 +1594,11 @@ scan_heap(VRelStats *vacrelstats, Relation onerel,
 					RelationGetRelationName(onerel),
 					tups_vacuumed, num_tuples, nblocks),
 			 errdetail("%.0f dead row versions cannot be removed yet.\n"
-		  "Nonremovable row versions range from %lu to %lu bytes long.\n"
+			  "Nonremovable row versions range from %lu to %lu bytes long.\n"
 					   "There were %.0f unused item pointers.\n"
-	"Total free space (including removable row versions) is %.0f bytes.\n"
+	   "Total free space (including removable row versions) is %.0f bytes.\n"
 					   "%u pages are or will become empty, including %u at the end of the table.\n"
-					   "%u pages containing %.0f free bytes are potential move destinations.\n"
+	 "%u pages containing %.0f free bytes are potential move destinations.\n"
 					   "%s",
 					   nkeep,
 					   (unsigned long) min_tlen, (unsigned long) max_tlen,
@@ -1705,7 +1705,7 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 		 * still available to be loaded into the free space map later.
 		 */
 		while (num_fraged_pages > 0 &&
-			fraged_pages->pagedesc[num_fraged_pages - 1]->blkno >= blkno)
+			   fraged_pages->pagedesc[num_fraged_pages - 1]->blkno >= blkno)
 		{
 			Assert(fraged_pages->pagedesc[num_fraged_pages - 1]->offsets_used == 0);
 			--num_fraged_pages;
@@ -1758,8 +1758,8 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 		else
 			Assert(!isempty);
 
-		chain_tuple_moved = false;		/* no one chain-tuple was moved
-										 * off this page, yet */
+		chain_tuple_moved = false;		/* no one chain-tuple was moved off
+										 * this page, yet */
 		vacpage->blkno = blkno;
 		maxoff = PageGetMaxOffsetNumber(page);
 		for (offnum = FirstOffsetNumber;
@@ -1859,8 +1859,8 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 			 * chain.
 			 */
 			if (((tuple.t_data->t_infomask & HEAP_UPDATED) &&
-			 !TransactionIdPrecedes(HeapTupleHeaderGetXmin(tuple.t_data),
-									OldestXmin)) ||
+				 !TransactionIdPrecedes(HeapTupleHeaderGetXmin(tuple.t_data),
+										OldestXmin)) ||
 				(!(tuple.t_data->t_infomask & (HEAP_XMAX_INVALID |
 											   HEAP_MARKED_FOR_UPDATE)) &&
 				 !(ItemPointerEquals(&(tuple.t_self),
@@ -1901,7 +1901,7 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 				 * we have to move to the end of chain.
 				 */
 				while (!(tp.t_data->t_infomask & (HEAP_XMAX_INVALID |
-											  HEAP_MARKED_FOR_UPDATE)) &&
+												  HEAP_MARKED_FOR_UPDATE)) &&
 					   !(ItemPointerEquals(&(tp.t_self),
 										   &(tp.t_data->t_ctid))))
 				{
@@ -1917,7 +1917,7 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 									  ItemPointerGetBlockNumber(&Ctid));
 					Cpage = BufferGetPage(Cbuf);
 					Citemid = PageGetItemId(Cpage,
-									  ItemPointerGetOffsetNumber(&Ctid));
+										  ItemPointerGetOffsetNumber(&Ctid));
 					if (!ItemIdIsUsed(Citemid))
 					{
 						/*
@@ -1999,8 +1999,8 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 
 					/* At beginning of chain? */
 					if (!(tp.t_data->t_infomask & HEAP_UPDATED) ||
-						TransactionIdPrecedes(HeapTupleHeaderGetXmin(tp.t_data),
-											  OldestXmin))
+					 TransactionIdPrecedes(HeapTupleHeaderGetXmin(tp.t_data),
+										   OldestXmin))
 						break;
 
 					/* No, move to tuple with prior row version */
@@ -2020,10 +2020,10 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 					}
 					tp.t_self = vtlp->this_tid;
 					Pbuf = ReadBuffer(onerel,
-								ItemPointerGetBlockNumber(&(tp.t_self)));
+									ItemPointerGetBlockNumber(&(tp.t_self)));
 					Ppage = BufferGetPage(Pbuf);
 					Pitemid = PageGetItemId(Ppage,
-							   ItemPointerGetOffsetNumber(&(tp.t_self)));
+								   ItemPointerGetOffsetNumber(&(tp.t_self)));
 					/* this can't happen since we saw tuple earlier: */
 					if (!ItemIdIsUsed(Pitemid))
 						elog(ERROR, "parent itemid marked as unused");
@@ -2047,7 +2047,7 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 					 * 06/11/99
 					 */
 					if (!(TransactionIdEquals(HeapTupleHeaderGetXmax(Ptp.t_data),
-									 HeapTupleHeaderGetXmin(tp.t_data))))
+										 HeapTupleHeaderGetXmin(tp.t_data))))
 					{
 						ReleaseBuffer(Pbuf);
 						elog(DEBUG2, "too old parent tuple found --- can't continue repair_frag");
@@ -2096,7 +2096,7 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 					/* Get page to move from */
 					tuple.t_self = vtmove[ti].tid;
 					Cbuf = ReadBuffer(onerel,
-							 ItemPointerGetBlockNumber(&(tuple.t_self)));
+								 ItemPointerGetBlockNumber(&(tuple.t_self)));
 
 					/* Get page to move to */
 					dst_buffer = ReadBuffer(onerel, destvacpage->blkno);
@@ -2109,7 +2109,7 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 					Cpage = BufferGetPage(Cbuf);
 
 					Citemid = PageGetItemId(Cpage,
-							ItemPointerGetOffsetNumber(&(tuple.t_self)));
+								ItemPointerGetOffsetNumber(&(tuple.t_self)));
 					tuple.t_datamcxt = NULL;
 					tuple.t_data = (HeapTupleHeader) PageGetItem(Cpage, Citemid);
 					tuple_len = tuple.t_len = ItemIdGetLength(Citemid);
@@ -2342,11 +2342,11 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 	 * processing that occurs below.
 	 */
 	ereport(elevel,
-	   (errmsg("\"%s\": moved %u row versions, truncated %u to %u pages",
-			   RelationGetRelationName(onerel),
-			   num_moved, nblocks, blkno),
-		errdetail("%s",
-				  vac_show_rusage(&ru0))));
+			(errmsg("\"%s\": moved %u row versions, truncated %u to %u pages",
+					RelationGetRelationName(onerel),
+					num_moved, nblocks, blkno),
+			 errdetail("%s",
+					   vac_show_rusage(&ru0))));
 
 	/*
 	 * Reflect the motion of system tuples to catalog cache here.
@@ -2364,7 +2364,7 @@ repair_frag(VRelStats *vacrelstats, Relation onerel,
 
 			/* re-sort Nvacpagelist.pagedesc */
 			for (vpleft = Nvacpagelist.pagedesc,
-			vpright = Nvacpagelist.pagedesc + Nvacpagelist.num_pages - 1;
+				 vpright = Nvacpagelist.pagedesc + Nvacpagelist.num_pages - 1;
 				 vpleft < vpright; vpleft++, vpright--)
 			{
 				vpsave = *vpleft;
@@ -2888,8 +2888,7 @@ vacuum_heap(VRelStats *vacrelstats, Relation onerel, VacPageList vacuum_pages)
 						RelationGetRelationName(onerel),
 						vacrelstats->rel_pages, relblocks)));
 		RelationTruncate(onerel, relblocks);
-		vacrelstats->rel_pages = relblocks;		/* set new number of
-												 * blocks */
+		vacrelstats->rel_pages = relblocks;		/* set new number of blocks */
 	}
 }
 
@@ -2974,14 +2973,14 @@ scan_index(Relation indrel, double num_tuples)
 						false);
 
 	ereport(elevel,
-	   (errmsg("index \"%s\" now contains %.0f row versions in %u pages",
-			   RelationGetRelationName(indrel),
-			   stats->num_index_tuples,
-			   stats->num_pages),
-		errdetail("%u index pages have been deleted, %u are currently reusable.\n"
-				  "%s",
-				  stats->pages_deleted, stats->pages_free,
-				  vac_show_rusage(&ru0))));
+			(errmsg("index \"%s\" now contains %.0f row versions in %u pages",
+					RelationGetRelationName(indrel),
+					stats->num_index_tuples,
+					stats->num_pages),
+	errdetail("%u index pages have been deleted, %u are currently reusable.\n"
+			  "%s",
+			  stats->pages_deleted, stats->pages_free,
+			  vac_show_rusage(&ru0))));
 
 	/*
 	 * Check for tuple count mismatch.	If the index is partial, then it's
@@ -3041,16 +3040,16 @@ vacuum_index(VacPageList vacpagelist, Relation indrel,
 						false);
 
 	ereport(elevel,
-	   (errmsg("index \"%s\" now contains %.0f row versions in %u pages",
-			   RelationGetRelationName(indrel),
-			   stats->num_index_tuples,
-			   stats->num_pages),
-		errdetail("%.0f index row versions were removed.\n"
-		 "%u index pages have been deleted, %u are currently reusable.\n"
-				  "%s",
-				  stats->tuples_removed,
-				  stats->pages_deleted, stats->pages_free,
-				  vac_show_rusage(&ru0))));
+			(errmsg("index \"%s\" now contains %.0f row versions in %u pages",
+					RelationGetRelationName(indrel),
+					stats->num_index_tuples,
+					stats->num_pages),
+			 errdetail("%.0f index row versions were removed.\n"
+			 "%u index pages have been deleted, %u are currently reusable.\n"
+					   "%s",
+					   stats->tuples_removed,
+					   stats->pages_deleted, stats->pages_free,
+					   vac_show_rusage(&ru0))));
 
 	/*
 	 * Check for tuple count mismatch.	If the index is partial, then it's
@@ -3063,7 +3062,7 @@ vacuum_index(VacPageList vacpagelist, Relation indrel,
 			ereport(WARNING,
 					(errmsg("index \"%s\" contains %.0f row versions, but table contains %.0f row versions",
 							RelationGetRelationName(indrel),
-					  stats->num_index_tuples, num_tuples + keep_tuples),
+						  stats->num_index_tuples, num_tuples + keep_tuples),
 					 errhint("Rebuild the index with REINDEX.")));
 	}
 
@@ -3194,7 +3193,7 @@ copy_vac_page(VacPage vacpage)
 
 	/* allocate a VacPageData entry */
 	newvacpage = (VacPage) palloc(sizeof(VacPageData) +
-						   vacpage->offsets_free * sizeof(OffsetNumber));
+							   vacpage->offsets_free * sizeof(OffsetNumber));
 
 	/* fill it in */
 	if (vacpage->offsets_free > 0)
@@ -3364,7 +3363,7 @@ vac_open_indexes(Relation relation, LOCKMODE lockmode,
 }
 
 /*
- * Release the resources acquired by vac_open_indexes.  Optionally release
+ * Release the resources acquired by vac_open_indexes.	Optionally release
  * the locks (say NoLock to keep 'em).
  */
 void
@@ -3471,9 +3470,9 @@ vac_show_rusage(VacRUsage *ru0)
 	snprintf(result, sizeof(result),
 			 "CPU %d.%02ds/%d.%02du sec elapsed %d.%02d sec.",
 			 (int) (ru1.ru.ru_stime.tv_sec - ru0->ru.ru_stime.tv_sec),
-	  (int) (ru1.ru.ru_stime.tv_usec - ru0->ru.ru_stime.tv_usec) / 10000,
+		  (int) (ru1.ru.ru_stime.tv_usec - ru0->ru.ru_stime.tv_usec) / 10000,
 			 (int) (ru1.ru.ru_utime.tv_sec - ru0->ru.ru_utime.tv_sec),
-	  (int) (ru1.ru.ru_utime.tv_usec - ru0->ru.ru_utime.tv_usec) / 10000,
+		  (int) (ru1.ru.ru_utime.tv_usec - ru0->ru.ru_utime.tv_usec) / 10000,
 			 (int) (ru1.tv.tv_sec - ru0->tv.tv_sec),
 			 (int) (ru1.tv.tv_usec - ru0->tv.tv_usec) / 10000);
 
@@ -3510,4 +3509,3 @@ vacuum_delay_point(void)
 		CHECK_FOR_INTERRUPTS();
 	}
 }
-

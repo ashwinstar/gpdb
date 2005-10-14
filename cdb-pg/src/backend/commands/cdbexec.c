@@ -36,49 +36,52 @@
  * Implements the 'MPPEXEC' utility statement.
  */
 void
-CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
+CdbExecQuery(CdbExecStmt * stmt, DestReceiver *dest, char *completionTag)
 {
-	Query *query = NULL;
-	Plan *plan = NULL;
+	Query	   *query = NULL;
+	Plan	   *plan = NULL;
 	SliceTable *sliceTable = NULL;
 	ParamListInfo paramLI = NULL;
-	MemoryContext oldctx = NULL, qctx;
-	int i, n;
-	ListCell *pc;
-	char *cstr = NULL;
-	EState *estate = NULL;
-	
+	MemoryContext oldctx = NULL,
+				qctx;
+	int			i,
+				n;
+	ListCell   *pc;
+	char	   *cstr = NULL;
+	EState	   *estate = NULL;
+
 	/* tcop shouldn't call unless the role is right! */
-	Assert(Mpp_role == MPP_ROLE_EXECUTE );
-	
-	/* TODO - SLICE PLAN INTEGRATION 
-	 * Do something smart with the memory context. 
+	Assert(Mpp_role == MPP_ROLE_EXECUTE);
+
+	/*
+	 * TODO - SLICE PLAN INTEGRATION Do something smart with the memory
+	 * context.
 	 */
-	qctx = CurrentMemoryContext; /* Should probably be some portal context? */
+	qctx = CurrentMemoryContext;	/* Should probably be some portal context? */
 	oldctx = MemoryContextSwitchTo(qctx);
-	
+
 	/* Deserialize the strings from the MPPEXEC statement. */
-	Assert(stmt->ser_query != NULL && IsA(stmt->ser_query, String) );
+	Assert(stmt->ser_query != NULL && IsA(stmt->ser_query, String));
 	cstr = strVal(stmt->ser_query);
-	Assert(cstr != NULL );
-	query = (Query *)deserializeNode(cstr);
+	Assert(cstr != NULL);
+	query = (Query *) deserializeNode(cstr);
 	pfree(cstr);
-	
-	if ( stmt->ser_sliceinfo != NULL )
+
+	if (stmt->ser_sliceinfo != NULL)
 	{
-		Assert( IsA(stmt->ser_sliceinfo, String) );
+		Assert(IsA(stmt->ser_sliceinfo, String));
 		cstr = strVal(stmt->ser_sliceinfo);
 		Assert(cstr != NULL);
-		sliceTable = (SliceTable*)deserializeNode(cstr);
+		sliceTable = (SliceTable *) deserializeNode(cstr);
 		pfree(cstr);
 	}
 
 	if (query->commandType != CMD_UTILITY)
 	{
-		Assert(stmt->ser_plan != NULL && IsA(stmt->ser_plan, String) );
+		Assert(stmt->ser_plan != NULL && IsA(stmt->ser_plan, String));
 		cstr = strVal(stmt->ser_plan);
-		Assert(cstr != NULL );
-		plan = (Plan *)deserializeNode(cstr);
+		Assert(cstr != NULL);
+		plan = (Plan *) deserializeNode(cstr);
 		pfree(cstr);
 
 		/*
@@ -86,42 +89,42 @@ CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
 		 * This is just a node wrapper around ParmListInfo.
 		 */
 		n = list_length(stmt->ser_params);
-		if ( n > 0)
+		if (n > 0)
 		{
-			paramLI = palloc((n+1) * sizeof(ParamListInfoData));
-			paramLI[n].kind = PARAM_INVALID; /* Mark end of array */
+			paramLI = palloc((n + 1) * sizeof(ParamListInfoData));
+			paramLI[n].kind = PARAM_INVALID;	/* Mark end of array */
 			i = 0;
-			foreach (pc, stmt->ser_params)
+			foreach(pc, stmt->ser_params)
 			{
-				char *pszRemoteParmData;
+				char	   *pszRemoteParmData;
 				RemoteParamData *rpd;
-				Node *ser_param;
+				Node	   *ser_param;
 
 				ser_param = lfirst(pc);
 				Assert(IsA(ser_param, String));
 
 				pszRemoteParmData = strVal(ser_param);
 
-				rpd = (RemoteParamData *)deserializeNode(pszRemoteParmData);
-				pfree( pszRemoteParmData );
+				rpd = (RemoteParamData *) deserializeNode(pszRemoteParmData);
+				pfree(pszRemoteParmData);
 
-				
-				memcpy( &paramLI[i], &rpd->paramData, sizeof(ParamListInfoData) );
+
+				memcpy(&paramLI[i], &rpd->paramData, sizeof(ParamListInfoData));
 				i++;
 			}
 		}
-		
-		/* 
-		 * Since we're running as a QE, we need to put need to the slice 
-		 * table and associated values determined by the QD that called 
-		 * MPPEXEC into the EState before we run the executor.  We can't 
+
+		/*
+		 * Since we're running as a QE, we need to put need to the slice
+		 * table and associated values determined by the QD that called
+		 * MPPEXEC into the EState before we run the executor.	We can't
 		 * do it now because our EState isn't ready.  Instead, stick it
 		 * into the top plan node (along with nParamExec and nMotionNodes)
 		 * and let the code that eventually sets up the QueryDesc sort it
 		 * out.
 		 */
-		Assert ( plan->sliceTable == NULL );  /* Accept no imposters. */
-		plan->sliceTable = (Node*)sliceTable; /* Cache for CreateQueryDesc */
+		Assert(plan->sliceTable == NULL);		/* Accept no imposters. */
+		plan->sliceTable = (Node *) sliceTable; /* Cache for CreateQueryDesc */
 	}
 	else
 	{
@@ -130,48 +133,47 @@ CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag)
 		elog(DEBUG2, "mppexec received a utility command\n");
 	}
 
- 	{
-	/*
-	 * Create a new portal to run the query in
-	 */
-	List *query_list = list_make1(query);
-	List *plan_list = list_make1(plan);
-	const char *commandTag = CreateQueryTag(query);
+	{
+		/*
+		 * Create a new portal to run the query in
+		 */
+		List	   *query_list = list_make1(query);
+		List	   *plan_list = list_make1(plan);
+		const char *commandTag = CreateQueryTag(query);
 
-	Portal		portal = CreateNewPortal();
+		Portal		portal = CreateNewPortal();
 
-	PortalDefineQuery(portal,
-					  "",
-					  commandTag,
-					  query_list,
-					  plan_list,
-					  qctx);
+		PortalDefineQuery(portal,
+						  "",
+						  commandTag,
+						  query_list,
+						  plan_list,
+						  qctx);
 
 
-	/*
-	 * Start the portal.  Note that ExecutorStart is called in here for
-	 * SELECT, but deferred until PortalRun for other DML.
-	 */
-	PortalStart(portal, paramLI, ActiveSnapshot);
+		/*
+		 * Start the portal.  Note that ExecutorStart is called in here for
+		 * SELECT, but deferred until PortalRun for other DML.
+		 */
+		PortalStart(portal, paramLI, ActiveSnapshot);
 
-	/*
-	 * Run the portal to completion. */
-	(void) PortalRun(portal, FETCH_ALL, dest, dest, completionTag);
-	
-	
-	PortalDrop(portal, false);
-	
-	if (estate)
-		FreeExecutorState(estate);
+		/*
+		 * Run the portal to completion. */
+		(void) PortalRun(portal, FETCH_ALL, dest, dest, completionTag);
 
-	 /* Restore state prior to return. */
-	if ( paramLI != NULL )
-		pfree(paramLI); /* Maybe should let context free it. */
- 	}
 
-	 if ( oldctx )
+		PortalDrop(portal, false);
+
+		if (estate)
+			FreeExecutorState(estate);
+
+		/* Restore state prior to return. */
+		if (paramLI != NULL)
+			pfree(paramLI);		/* Maybe should let context free it. */
+	}
+
+	if (oldctx)
 		MemoryContextSwitchTo(oldctx);
-	 
-	 return;
-}
 
+	return;
+}
