@@ -1,79 +1,80 @@
 /*--------------------------------------------------------------------------
 *
 * cdbhash.h
-*    Definitions and API functions for cdbhash.c
+*	 Definitions and API functions for cdbhash.c
 *
 * Copyright (c) 2005, Greenplum
 *
 * IDENTIFICATION
-*    $Id$
+*	 $Id$
 *
 *--------------------------------------------------------------------------
 */
 #ifndef CDBHASH_H
 #define CDBHASH_H
 
-/* 
+/*
  * hashing algorithms.
  */
 typedef enum
 {
-    HASH_FNV_1 = 1,
-    HASH_FNV_1A
-} CdbHashAlg;
+	HASH_FNV_1 = 1,
+	HASH_FNV_1A
+}	CdbHashAlg;
 
 /*
  * reduction methods.
  */
 typedef enum
 {
-	REDUCE_LAZYMOD =1,
+	REDUCE_LAZYMOD = 1,
 	REDUCE_BITMASK
-} CdbHashReduce;
+}	CdbHashReduce;
 
 typedef uint32 CdbHashFn(void *, size_t, uint32);
 
-/* 
+/*
  * Structure that holds MPP hashing information.
- */ 
+ */
 typedef struct CdbHash
 {
-	uint32 hash;				/* The result hash value                            */
-    int numsegs;				/* number of segments in MPP used for partitioning  */
-	CdbHashAlg hashalg;			/* the hashing algorithm                            */
-    CdbHashFn *hashfn;			/* hashing function for the selected hash algorithm */
-	CdbHashReduce reducealg;	/* the algorithm used for reducing to buckets       */
-	
-} CdbHash;
+	uint32		hash;			/* The result hash value							*/
+	int			numsegs;		/* number of segments in MPP used for
+								 * partitioning  */
+	CdbHashAlg	hashalg;		/* the hashing algorithm							*/
+	CdbHashFn  *hashfn;			/* hashing function for the selected hash
+								 * algorithm */
+	CdbHashReduce reducealg;	/* the algorithm used for reducing to buckets		*/
+
+}	CdbHash;
 
 
 
 /*
  * Create and initialize a CdbHash in the current memory context.
- * Parameter numsegs - number of segments in MPP. 
- * Parameter algorithm - the hash algorithm, either HASH_FNV_1 or HASH_FNV_1A 
+ * Parameter numsegs - number of segments in MPP.
+ * Parameter algorithm - the hash algorithm, either HASH_FNV_1 or HASH_FNV_1A
  */
-extern CdbHash *makeCdbHash(int numsegs, CdbHashAlg algorithm); 
+extern CdbHash *makeCdbHash(int numsegs, CdbHashAlg algorithm);
 
 /*
  * Initialize CdbHash for hashing the next tuple values.
  */
-extern void cdbhashinit(CdbHash *h);
+extern void cdbhashinit(CdbHash * h);
 
 /*
  * Add an attribute to the hash calculation.
  */
-extern void cdbhash(CdbHash *h, Datum val, Oid typid); 
+extern void cdbhash(CdbHash * h, Datum val, Oid typid);
 
 /*
  * Add a NULL attribute to the hash calculation.
  */
-extern void cdbhashnull(CdbHash *h);
+extern void cdbhashnull(CdbHash * h);
 
 /*
  * Reduce the hash to a segment number.
  */
-extern unsigned int cdbhashreduce(CdbHash *h); 
+extern unsigned int cdbhashreduce(CdbHash * h);
 
 #endif   /* CDBHASH_H */
-

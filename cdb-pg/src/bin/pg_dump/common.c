@@ -68,7 +68,7 @@ static void findParentsByOid(TableInfo *self,
 				 InhInfo *inhinfo, int numInherits);
 static int	strInArray(const char *pattern, char **arr, int arr_size);
 
-void reset(void);
+void		reset(void);
 
 /*
  * getSchemaData
@@ -293,8 +293,8 @@ flagInhAttrs(TableInfo *tblinfo, int numTables,
 				{
 					foundAttr = true;
 					foundNotNull |= parent->notnull[inhAttrInd];
-					if (attrDef != NULL)		/* If we have a default,
-												 * check parent */
+					if (attrDef != NULL)		/* If we have a default, check
+												 * parent */
 					{
 						AttrDefInfo *inhDef;
 
@@ -303,7 +303,7 @@ flagInhAttrs(TableInfo *tblinfo, int numTables,
 						{
 							defaultsFound = true;
 							defaultsMatch &= (strcmp(attrDef->adef_expr,
-												inhDef->adef_expr) == 0);
+													 inhDef->adef_expr) == 0);
 						}
 					}
 				}
@@ -820,22 +820,23 @@ strInArray(const char *pattern, char **arr, int arr_size)
 void
 reset(void)
 {
-    free(dumpIdMap);
-    dumpIdMap = NULL;
-    allocedDumpIds = 0;
-    lastDumpId = 0;
+	free(dumpIdMap);
+	dumpIdMap = NULL;
+	allocedDumpIds = 0;
+	lastDumpId = 0;
 
 /*
  * Variables for mapping CatalogId to DumpableObject
  */
-    catalogIdMapValid = false;
-    free(catalogIdMap);
-    catalogIdMap = NULL;
-    numCatalogIds = 0;
+	catalogIdMapValid = false;
+	free(catalogIdMap);
+	catalogIdMap = NULL;
+	numCatalogIds = 0;
 
-    numTables = 0;
-    numTypes = 0;
-    numFuncs = 0;
-    numOperators = 0;
+	numTables = 0;
+	numTypes = 0;
+	numFuncs = 0;
+	numOperators = 0;
 }
+
 /* end cdb_addition */

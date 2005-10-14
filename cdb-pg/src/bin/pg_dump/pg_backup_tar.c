@@ -180,7 +180,7 @@ InitArchiveFmt_Tar(ArchiveHandle *AH)
 
 		if (ctx->tarFH == NULL)
 			die_horribly(NULL, modulename,
-			"could not open TOC file for output: %s\n", strerror(errno));
+				"could not open TOC file for output: %s\n", strerror(errno));
 
 		ctx->tarFHpos = 0;
 
@@ -336,8 +336,8 @@ tarOpen(ArchiveHandle *AH, const char *filename, char mode)
 		tm = _tarPositionTo(AH, filename);
 		if (!tm)				/* Not found */
 		{
-			if (filename)		/* Couldn't find the requested file.
-								 * Future: DO SEEK(0) and retry. */
+			if (filename)		/* Couldn't find the requested file. Future:
+								 * DO SEEK(0) and retry. */
 				die_horribly(AH, modulename, "could not find file %s in archive\n", filename);
 			else
 				/* Any file OK, non left, so return NULL */
@@ -546,7 +546,7 @@ tarWrite(const void *buf, size_t len, TAR_MEMBER *th)
 
 	if (res != len)
 		die_horribly(th->AH, modulename,
-			"could not write to tar member (wrote %lu, attempted %lu)\n",
+				"could not write to tar member (wrote %lu, attempted %lu)\n",
 					 (unsigned long) res, (unsigned long) len);
 
 	th->pos += res;
@@ -792,8 +792,8 @@ _CloseArchive(ArchiveHandle *AH)
 		tarPrintf(AH, th, "--\n"
 				  "-- NOTE:\n"
 				  "--\n"
-			 "-- File paths need to be edited. Search for $$PATH$$ and\n"
-			  "-- replace it with the path to the directory containing\n"
+				  "-- File paths need to be edited. Search for $$PATH$$ and\n"
+				  "-- replace it with the path to the directory containing\n"
 				  "-- the extracted data files.\n"
 				  "--\n"
 				  "-- Edit the following to match the path where the\n"
@@ -826,7 +826,7 @@ _CloseArchive(ArchiveHandle *AH)
 		{
 			if (fputc(0, ctx->tarFH) == EOF)
 				die_horribly(AH, modulename,
-				   "could not write null block at end of tar archive\n");
+					   "could not write null block at end of tar archive\n");
 		}
 	}
 
@@ -1108,7 +1108,11 @@ _tarPositionTo(ArchiveHandle *AH, const char *filename)
 		if (filename)
 			die_horribly(AH, modulename, "could not find header for file %s in tar archive\n", filename);
 		else
-		/* We're just scanning the archibe for the next file, so return null */
+
+			/*
+			 * We're just scanning the archibe for the next file, so return
+			 * null
+			 */
 		{
 			free(th);
 			return NULL;
@@ -1122,7 +1126,7 @@ _tarPositionTo(ArchiveHandle *AH, const char *filename)
 		id = atoi(th->targetFile);
 		if ((TocIDRequired(AH, id, AH->ropt) & REQ_DATA) != 0)
 			die_horribly(AH, modulename, "dumping data out of order is not supported in this archive format: "
-			"%s is required, but comes before %s in the archive file.\n",
+				"%s is required, but comes before %s in the archive file.\n",
 						 th->targetFile, filename);
 
 		/* Header doesn't match, so read to next header */
@@ -1169,7 +1173,7 @@ _tarGetHeader(ArchiveHandle *AH, TAR_MEMBER *th)
 			snprintf(buf1, sizeof(buf1), INT64_FORMAT, (int64) ftello(ctx->tarFH));
 			snprintf(buf2, sizeof(buf2), INT64_FORMAT, (int64) ftello(ctx->tarFHpos));
 			die_horribly(AH, modulename,
-						 "mismatch in actual vs. predicted file position (%s vs. %s)\n",
+			  "mismatch in actual vs. predicted file position (%s vs. %s)\n",
 						 buf1, buf2);
 		}
 #endif
@@ -1301,12 +1305,12 @@ _tarWriteHeader(TAR_MEMBER *th)
 
 #if 0
 	/* User 32 */
-	sprintf(&h[265], "%.31s", "");		/* How do I get username reliably?
-										 * Do I need to? */
+	sprintf(&h[265], "%.31s", "");		/* How do I get username reliably? Do
+										 * I need to? */
 
 	/* Group 32 */
-	sprintf(&h[297], "%.31s", "");		/* How do I get group reliably? Do
-										 * I need to? */
+	sprintf(&h[297], "%.31s", "");		/* How do I get group reliably? Do I
+										 * need to? */
 
 	/* Maj Dev 8 */
 	sprintf(&h[329], "%6o ", 0);

@@ -161,7 +161,7 @@ _connectDB(ArchiveHandle *AH, const char *reqdb, const char *requser)
 	{
 		need_pass = false;
 		newConn = PQsetdbLogin(PQhost(AH->connection), PQport(AH->connection),
-							   "-c mpp_session_role=utility", 
+							   "-c mpp_session_role=utility",
 							   NULL, newdb,
 							   newuser, password);
 		if (!newConn)
@@ -172,7 +172,7 @@ _connectDB(ArchiveHandle *AH, const char *reqdb, const char *requser)
 			noPwd = (strcmp(PQerrorMessage(newConn),
 							PQnoPasswordSupplied) == 0);
 			badPwd = (strncmp(PQerrorMessage(newConn),
-					"Password authentication failed for user", 39) == 0);
+						"Password authentication failed for user", 39) == 0);
 
 			if (noPwd || badPwd)
 			{
@@ -244,8 +244,8 @@ ConnectDatabase(Archive *AHX,
 	do
 	{
 		need_pass = false;
-		AH->connection = PQsetdbLogin(pghost, pgport, 
-		                              "-c mpp_session_role=utility", /* options */
+		AH->connection = PQsetdbLogin(pghost, pgport,
+									  "-c mpp_session_role=utility",	/* options */
 									  NULL,
 									  dbname, username, password);
 
@@ -253,7 +253,7 @@ ConnectDatabase(Archive *AHX,
 			die_horribly(AH, modulename, "failed to connect to database\n");
 
 		if (PQstatus(AH->connection) == CONNECTION_BAD &&
-			strcmp(PQerrorMessage(AH->connection), PQnoPasswordSupplied) == 0 &&
+		 strcmp(PQerrorMessage(AH->connection), PQnoPasswordSupplied) == 0 &&
 			!feof(stdin))
 		{
 			PQfinish(AH->connection);
@@ -695,8 +695,8 @@ FixupBlobRefs(ArchiveHandle *AH, TocEntry *te)
 	appendPQExpBuffer(tblQry,
 					  "SELECT a.attname, t.typname FROM "
 					  "pg_catalog.pg_attribute a, pg_catalog.pg_type t "
-		 "WHERE a.attnum > 0 AND a.attrelid = '%s'::pg_catalog.regclass "
-				 "AND a.atttypid = t.oid AND t.typname in ('oid', 'lo')",
+			 "WHERE a.attnum > 0 AND a.attrelid = '%s'::pg_catalog.regclass "
+					  "AND a.atttypid = t.oid AND t.typname in ('oid', 'lo')",
 					  tblName->data);
 
 	res = PQexec(AH->blobConnection, tblQry->data);
@@ -765,13 +765,13 @@ FixupBlobRefs(ArchiveHandle *AH, TocEntry *te)
 		uRes = PQexec(AH->blobConnection, tblQry->data);
 		if (!uRes)
 			die_horribly(AH, modulename,
-					"could not update column \"%s\" of table \"%s\": %s",
-					  attr, te->tag, PQerrorMessage(AH->blobConnection));
+						 "could not update column \"%s\" of table \"%s\": %s",
+						 attr, te->tag, PQerrorMessage(AH->blobConnection));
 
 		if (PQresultStatus(uRes) != PGRES_COMMAND_OK)
 			die_horribly(AH, modulename,
-				"error while updating column \"%s\" of table \"%s\": %s",
-					  attr, te->tag, PQerrorMessage(AH->blobConnection));
+					"error while updating column \"%s\" of table \"%s\": %s",
+						 attr, te->tag, PQerrorMessage(AH->blobConnection));
 
 		PQclear(uRes);
 	}
@@ -821,7 +821,7 @@ InsertBlobXref(ArchiveHandle *AH, Oid old, Oid new)
 	PQExpBuffer qry = createPQExpBuffer();
 
 	appendPQExpBuffer(qry,
-					"INSERT INTO %s(oldOid, newOid) VALUES ('%u', '%u')",
+					  "INSERT INTO %s(oldOid, newOid) VALUES ('%u', '%u')",
 					  BLOB_XREF_TABLE, old, new);
 	ExecuteSqlCommand(AH, qry, "could not create large object cross-reference entry", true);
 
@@ -849,7 +849,7 @@ StartTransactionXref(ArchiveHandle *AH)
 	appendPQExpBuffer(qry, "BEGIN");
 
 	ExecuteSqlCommand(AH, qry,
-					  "could not start transaction for large object cross-references", true);
+	  "could not start transaction for large object cross-references", true);
 	AH->blobTxActive = true;
 
 	destroyPQExpBuffer(qry);
@@ -889,8 +889,7 @@ _isIdentChar(unsigned char c)
 		|| (c >= '0' && c <= '9')
 		|| (c == '_')
 		|| (c == '$')
-		|| (c >= (unsigned char) '\200')		/* no need to check <=
-												 * \377 */
+		|| (c >= (unsigned char) '\200')		/* no need to check <= \377 */
 		)
 		return 1;
 	else
@@ -904,8 +903,7 @@ _isDQChar(unsigned char c, int atStart)
 		|| (c >= 'A' && c <= 'Z')
 		|| (c == '_')
 		|| (atStart == 0 && c >= '0' && c <= '9')
-		|| (c >= (unsigned char) '\200')		/* no need to check <=
-												 * \377 */
+		|| (c >= (unsigned char) '\200')		/* no need to check <= \377 */
 		)
 		return 1;
 	else

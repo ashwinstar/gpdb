@@ -95,8 +95,8 @@ typedef struct TriggerData
 #define RI_FK_RELNAME_ARGNO				1
 #define RI_PK_RELNAME_ARGNO				2
 #define RI_MATCH_TYPE_ARGNO				3
-#define RI_FIRST_ATTNAME_ARGNO			4		/* first attname pair
-												 * starts here */
+#define RI_FIRST_ATTNAME_ARGNO			4		/* first attname pair starts
+												 * here */
 
 #define RI_KEYPAIR_FK_IDX				0
 #define RI_KEYPAIR_PK_IDX				1

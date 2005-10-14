@@ -434,7 +434,7 @@ buildACLCommands(const char *name, const char *type,
 					else if (strncmp(grantee->data, "group ",
 									 strlen("group ")) == 0)
 						appendPQExpBuffer(secondsql, "GROUP %s;\n",
-								fmtId(grantee->data + strlen("group ")));
+									fmtId(grantee->data + strlen("group ")));
 					else
 						appendPQExpBuffer(secondsql, "%s;\n", fmtId(grantee->data));
 				}
@@ -447,7 +447,7 @@ buildACLCommands(const char *name, const char *type,
 					else if (strncmp(grantee->data, "group ",
 									 strlen("group ")) == 0)
 						appendPQExpBuffer(secondsql, "GROUP %s",
-								fmtId(grantee->data + strlen("group ")));
+									fmtId(grantee->data + strlen("group ")));
 					else
 						appendPQExpBuffer(secondsql, "%s", fmtId(grantee->data));
 					appendPQExpBuffer(secondsql, " WITH GRANT OPTION;\n");

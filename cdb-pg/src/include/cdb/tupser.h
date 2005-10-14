@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------
  * tupser.h
- *     Functions for serializing and deserializing heap tuples.
+ *	   Functions for serializing and deserializing heap tuples.
  *
  * Copyright (c) 2005, Greenplum
  *-------------------------------------------------------------------------
@@ -45,22 +45,23 @@
  */
 typedef struct SerAttrInfo
 {
-    Oid     atttypid;           /* Oid of the attribute's data-type. */
-    bool    typisvarlena;       /* is type varlena (ie possibly toastable)? */
-    
-    Oid      typsend;           /* Oid for the type's binary output fn */
-    Oid      send_typio_param;  /* param to pass to the output fn */
-    FmgrInfo send_finfo;        /* Precomputed call info for output fn */
+	Oid			atttypid;		/* Oid of the attribute's data-type. */
+	bool		typisvarlena;	/* is type varlena (ie possibly toastable)? */
 
-    Oid      typrecv;           /* Oid for the type's binary input fn */
-    Oid      recv_typio_param;  /* param to pass to the input fn */
-    FmgrInfo recv_finfo;        /* Precomputed call info for output fn */
+	Oid			typsend;		/* Oid for the type's binary output fn */
+	Oid			send_typio_param;		/* param to pass to the output fn */
+	FmgrInfo	send_finfo;		/* Precomputed call info for output fn */
+
+	Oid			typrecv;		/* Oid for the type's binary input fn */
+	Oid			recv_typio_param;		/* param to pass to the input fn */
+	FmgrInfo	recv_finfo;		/* Precomputed call info for output fn */
 
 #ifdef TUPSER_SCRATCH_SPACE
-    void *pv_varlen_scratch;    /* For deserializing varlena attributes. */
-    int varlen_scratch_size;    /* Size of varlena scratch space. */
+	void	   *pv_varlen_scratch;		/* For deserializing varlena
+										 * attributes. */
+	int			varlen_scratch_size;	/* Size of varlena scratch space. */
 #endif
-} SerAttrInfo;
+}	SerAttrInfo;
 
 
 /* The information for sending and receiving tuples that match a particular
@@ -68,33 +69,32 @@ typedef struct SerAttrInfo
  */
 typedef struct SerTupInfo
 {
-    TupleDesc   tupdesc;    /* The attr info we are set up for */
-    
-    SerAttrInfo *myinfo;    /* Cached info about each attr */
+	TupleDesc	tupdesc;		/* The attr info we are set up for */
 
-    /* Preallocated space for deformtuple and formtuple. */
-    Datum       *values;
-    char        *nulls;
-} SerTupInfo;
+	SerAttrInfo *myinfo;		/* Cached info about each attr */
+
+	/* Preallocated space for deformtuple and formtuple. */
+	Datum	   *values;
+	char	   *nulls;
+}	SerTupInfo;
 
 /* Populate a SerTupInfo struct with information looked up from the specified
  * tuple-descriptor.
  */
-extern void InitSerTupInfo(TupleDesc tupdesc, SerTupInfo *pSerInfo);
+extern void InitSerTupInfo(TupleDesc tupdesc, SerTupInfo * pSerInfo);
 
 /* Free up storage in a previously initialized SerTupInfo struct. */
-extern void CleanupSerTupInfo(SerTupInfo *pSerInfo);
+extern void CleanupSerTupInfo(SerTupInfo * pSerInfo);
 
 /* Convert a HeapTuple into chunks ready to send out, in one pass */
-extern TupleChunkList SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo *pSerInfo, int MaxChunkDataSize);
+extern TupleChunkList SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, int MaxChunkDataSize);
 
 /* Deserialize a HeapTuple's data from a byte-array. */
-extern HeapTuple DeserializeTuple(SerTupInfo *pSerInfo, StringInfo serialTup);
+extern HeapTuple DeserializeTuple(SerTupInfo * pSerInfo, StringInfo serialTup);
 
 /* Convert a sequence of chunks containing serialized tuple data into a
  * HeapTuple.
  */
-extern HeapTuple CvtChunksToHeapTup(TupleChunkList tclist, SerTupInfo *pSerInfo);
+extern HeapTuple CvtChunksToHeapTup(TupleChunkList tclist, SerTupInfo * pSerInfo);
 
-#endif /* TUPSER_H */
-
+#endif   /* TUPSER_H */

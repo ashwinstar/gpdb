@@ -33,7 +33,7 @@ extern Datum update_pg_pwd_and_pg_group(PG_FUNCTION_ARGS);
 
 extern void AtEOXact_UpdatePasswordFile(bool isCommit);
 extern void AtEOSubXact_UpdatePasswordFile(bool isCommit,
-										   SubTransactionId mySubid,
-										   SubTransactionId parentSubid);
+							   SubTransactionId mySubid,
+							   SubTransactionId parentSubid);
 
 #endif   /* USER_H */

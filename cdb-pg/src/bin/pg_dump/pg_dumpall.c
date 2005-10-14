@@ -140,7 +140,7 @@ main(int argc, char *argv[])
 	if ((ret = find_other_exec(argv[0], "pg_dump", PG_VERSIONSTR,
 							   pg_dump_bin)) < 0)
 	{
-		char full_path[MAXPGPATH];
+		char		full_path[MAXPGPATH];
 
 		if (find_my_exec(argv[0], full_path) < 0)
 			StrNCpy(full_path, progname, MAXPGPATH);
@@ -190,7 +190,7 @@ main(int argc, char *argv[])
 #ifndef WIN32
 				appendPQExpBuffer(pgdumpopts, " -h '%s'", pghost);
 #else
-                                appendPQExpBuffer(pgdumpopts, " -h \"%s\"", pghost);
+				appendPQExpBuffer(pgdumpopts, " -h \"%s\"", pghost);
 #endif
 
 				break;
@@ -213,7 +213,7 @@ main(int argc, char *argv[])
 #ifndef WIN32
 				appendPQExpBuffer(pgdumpopts, " -p '%s'", pgport);
 #else
-                                appendPQExpBuffer(pgdumpopts, " -p \"%s\"", pgport);
+				appendPQExpBuffer(pgdumpopts, " -p \"%s\"", pgport);
 #endif
 				break;
 
@@ -226,7 +226,7 @@ main(int argc, char *argv[])
 #ifndef WIN32
 				appendPQExpBuffer(pgdumpopts, " -S '%s'", optarg);
 #else
-                                appendPQExpBuffer(pgdumpopts, " -S \"%s\"", optarg);
+				appendPQExpBuffer(pgdumpopts, " -S \"%s\"", optarg);
 #endif
 				break;
 
@@ -235,7 +235,7 @@ main(int argc, char *argv[])
 #ifndef WIN32
 				appendPQExpBuffer(pgdumpopts, " -U '%s'", pguser);
 #else
-                                appendPQExpBuffer(pgdumpopts, " -U \"%s\"", pguser);
+				appendPQExpBuffer(pgdumpopts, " -U \"%s\"", pguser);
 #endif
 				break;
 
@@ -388,13 +388,13 @@ dumpUsers(PGconn *conn, bool initdbonly)
 
 	if (server_version >= 70100)
 		res = executeQuery(conn,
-						"SELECT usename, usesysid, passwd, usecreatedb, "
+						   "SELECT usename, usesysid, passwd, usecreatedb, "
 						   "usesuper, valuntil, "
 						   "(usesysid = (SELECT datdba FROM pg_database WHERE datname = 'template0')) AS clusterowner "
 						   "FROM pg_shadow");
 	else
 		res = executeQuery(conn,
-						"SELECT usename, usesysid, passwd, usecreatedb, "
+						   "SELECT usename, usesysid, passwd, usecreatedb, "
 						   "usesuper, valuntil, "
 						   "(usesysid = (SELECT datdba FROM pg_database WHERE datname = 'template1')) AS clusterowner "
 						   "FROM pg_shadow");
@@ -536,7 +536,7 @@ dumpTablespaces(PGconn *conn)
 	 * pg_xxx)
 	 */
 	res = executeQuery(conn, "SELECT spcname, "
-					 "pg_catalog.pg_get_userbyid(spcowner) AS spcowner, "
+					   "pg_catalog.pg_get_userbyid(spcowner) AS spcowner, "
 					   "spclocation, spcacl "
 					   "FROM pg_catalog.pg_tablespace "
 					   "WHERE spcname NOT LIKE 'pg\\_%'");
@@ -612,7 +612,7 @@ dumpCreateDB(PGconn *conn)
 						   "pg_encoding_to_char(d.encoding), "
 						   "datistemplate, datacl, "
 						   "(SELECT spcname FROM pg_tablespace t WHERE t.oid = d.dattablespace) AS dattablespace "
-		"FROM pg_database d LEFT JOIN pg_shadow u ON (datdba = usesysid) "
+		   "FROM pg_database d LEFT JOIN pg_shadow u ON (datdba = usesysid) "
 						   "WHERE datallowconn ORDER BY 1");
 	else if (server_version >= 70300)
 		res = executeQuery(conn,
@@ -621,13 +621,13 @@ dumpCreateDB(PGconn *conn)
 						   "pg_encoding_to_char(d.encoding), "
 						   "datistemplate, datacl, "
 						   "'pg_default' AS dattablespace "
-		"FROM pg_database d LEFT JOIN pg_shadow u ON (datdba = usesysid) "
+		   "FROM pg_database d LEFT JOIN pg_shadow u ON (datdba = usesysid) "
 						   "WHERE datallowconn ORDER BY 1");
 	else if (server_version >= 70100)
 		res = executeQuery(conn,
 						   "SELECT datname, "
 						   "coalesce("
-				"(select usename from pg_shadow where usesysid=datdba), "
+					"(select usename from pg_shadow where usesysid=datdba), "
 						   "(select usename from pg_shadow where usesysid=(select datdba from pg_database where datname='template0'))), "
 						   "pg_encoding_to_char(d.encoding), "
 						   "datistemplate, '' as datacl, "
@@ -642,7 +642,7 @@ dumpCreateDB(PGconn *conn)
 		 */
 		res = executeQuery(conn,
 						   "SELECT datname, "
-				"(select usename from pg_shadow where usesysid=datdba), "
+					"(select usename from pg_shadow where usesysid=datdba), "
 						   "pg_encoding_to_char(d.encoding), "
 						   "'f' as datistemplate, "
 						   "'' as datacl, "
@@ -951,8 +951,8 @@ connectDatabase(const char *dbname, const char *pghost, const char *pgport,
 	do
 	{
 		need_pass = false;
-		conn = PQsetdbLogin(pghost, pgport, 
-		                    "-c mpp_session_role=utility", 
+		conn = PQsetdbLogin(pghost, pgport,
+							"-c mpp_session_role=utility",
 							NULL, dbname, pguser, password);
 
 		if (!conn)
@@ -1008,7 +1008,7 @@ connectDatabase(const char *dbname, const char *pghost, const char *pgport,
 	}
 
 	if (my_version != server_version
-		&& (server_version < 70000	/* we can handle back to 7.0 */
+		&& (server_version < 70000		/* we can handle back to 7.0 */
 			|| server_version > my_version))
 	{
 		fprintf(stderr, _("server version: %s; %s version: %s\n"),

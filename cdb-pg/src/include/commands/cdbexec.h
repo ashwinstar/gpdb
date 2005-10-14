@@ -20,6 +20,6 @@
 
 
 /* Utility statement MPPEXEC */
-extern void CdbExecQuery(CdbExecStmt *stmt, DestReceiver *dest, char *completionTag);
+extern void CdbExecQuery(CdbExecStmt * stmt, DestReceiver *dest, char *completionTag);
 
 #endif   /* CDBEXEC_H */

@@ -445,7 +445,7 @@ _PrintTocData(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt)
 			if ((TocIDRequired(AH, id, ropt) & REQ_DATA) != 0)
 				die_horribly(AH, modulename,
 							 "Dumping a specific TOC data block out of order is not supported"
-				  " without ID on this input stream (fseek required)\n");
+					  " without ID on this input stream (fseek required)\n");
 
 			switch (blkType)
 			{
@@ -550,7 +550,7 @@ _PrintData(ArchiveHandle *AH)
 		cnt = fread(in, 1, blkLen, AH->FH);
 		if (cnt != blkLen)
 			die_horribly(AH, modulename,
-				  "could not read data block -- expected %lu, got %lu\n",
+					  "could not read data block -- expected %lu, got %lu\n",
 						 (unsigned long) blkLen, (unsigned long) cnt);
 
 		ctx->filePos += blkLen;
@@ -673,7 +673,7 @@ _skipData(ArchiveHandle *AH)
 		cnt = fread(in, 1, blkLen, AH->FH);
 		if (cnt != blkLen)
 			die_horribly(AH, modulename,
-				  "could not read data block -- expected %lu, got %lu\n",
+					  "could not read data block -- expected %lu, got %lu\n",
 						 (unsigned long) blkLen, (unsigned long) cnt);
 
 		ctx->filePos += blkLen;

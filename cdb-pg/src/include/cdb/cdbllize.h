@@ -10,7 +10,7 @@
  *	  $Id$
  *
  * NOTES
- *	 
+ *
  *-------------------------------------------------------------------------
  */
 
@@ -24,18 +24,18 @@
 #include "cdb/cdbplan.h"
 
 extern Plan *
-cdbparallelize(Plan* plan, Query *query, bool isCursor, int cursorOptions, ParamListInfo boundParams);
+			cdbparallelize(Plan *plan, Query *query, bool isCursor, int cursorOptions, ParamListInfo boundParams);
 
 extern Plan *
-cdbparallelize_subquery( Plan* plan, Query *query );
+			cdbparallelize_subquery(Plan *plan, Query *query);
 
-extern bool 
-is_plan_node(Node* node);
+extern bool
+			is_plan_node(Node *node);
 
 extern Flow *
-makeFlow(FlowType flotype);
+			makeFlow(FlowType flotype);
 
-extern Flow * 
-pull_up_Flow(Plan *plan, Plan *subplan, bool withSort);
+extern Flow *
+			pull_up_Flow(Plan *plan, Plan *subplan, bool withSort);
 
-#endif /* CDBLLIZE_H */
+#endif   /* CDBLLIZE_H */

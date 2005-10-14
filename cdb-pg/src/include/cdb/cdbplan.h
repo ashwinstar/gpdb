@@ -18,15 +18,15 @@
 #ifndef CDBPLAN_H
 #define CDBPLAN_H
 
-#include "nodes/nodes.h" /* need to see definition of Node */
-#include "nodes/plannodes.h" /* need to see definition of Plan */
+#include "nodes/nodes.h"		/* need to see definition of Node */
+#include "nodes/plannodes.h"	/* need to see definition of Plan */
 
 /* Generally useful tools, frameworks */
 extern bool
-plan_tree_walker(Node *node, bool (*walker) (), void *context);
+			plan_tree_walker(Node *node, bool (*walker) (), void *context);
 
 extern Node *
-plan_tree_mutator(Node *node, Node *(*mutator) (), void *context);
+			plan_tree_mutator(Node *node, Node *(*mutator) (), void *context);
 
 
 /* Example exerise of plan_tree_walker framework. */
@@ -34,17 +34,17 @@ plan_tree_mutator(Node *node, Node *(*mutator) (), void *context);
 /* Caller needs to allocate this, so define it in header. */
 typedef struct PlanInventory
 {
-	int scans;
-	int vars;
-} PlanInventory;
+	int			scans;
+	int			vars;
+}	PlanInventory;
 
 /* This is the example. */
-extern bool plan_inventory(Plan *plan, PlanInventory *pinventory);
+extern bool plan_inventory(Plan *plan, PlanInventory * pinventory);
 
 
 /* Example exercise of plan_tree_mutator framework. */
 
 extern Plan *plan_copy(Plan *plan);
- 
 
-#endif	/* CDBPLAN_H */
+
+#endif   /* CDBPLAN_H */

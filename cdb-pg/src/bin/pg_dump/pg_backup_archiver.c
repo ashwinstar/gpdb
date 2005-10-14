@@ -45,7 +45,7 @@ static char *modulename = gettext_noop("archiver");
 static ArchiveHandle *_allocAH(const char *FileSpec, const ArchiveFormat fmt,
 		 const int compression, ArchiveMode mode);
 static void _getObjectDescription(PQExpBuffer buf, TocEntry *te,
-								  ArchiveHandle *AH);
+					  ArchiveHandle *AH);
 static void _printTocEntry(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt, bool isData, bool acl_pass);
 
 
@@ -186,7 +186,7 @@ RestoreArchive(Archive *AHX, RestoreOptions *ropt)
 	 */
 	if (!ropt->dataOnly)
 	{
-		int		impliedDataOnly = 1;
+		int			impliedDataOnly = 1;
 
 		for (te = AH->toc->next; te != AH->toc; te = te->next)
 		{
@@ -231,7 +231,7 @@ RestoreArchive(Archive *AHX, RestoreOptions *ropt)
 		{
 			AH->currentTE = te;
 
-			reqs = _tocEntryRequired(te, ropt, false /* needn't drop ACLs */);
+			reqs = _tocEntryRequired(te, ropt, false /* needn't drop ACLs */ );
 			if (((reqs & REQ_SCHEMA) != 0) && te->dropStmt)
 			{
 				/* We want the schema */
@@ -529,7 +529,7 @@ _disableTriggersIfNecessary(ArchiveHandle *AH, TocEntry *te, RestoreOptions *rop
 				 fmtId(te->tag));
 	else
 		ahprintf(AH, "UPDATE pg_catalog.pg_class SET reltriggers = 0 FROM pg_catalog.pg_namespace "
-				 "WHERE relnamespace = pg_namespace.oid AND nspname !~ '^pg_';\n\n");
+		 "WHERE relnamespace = pg_namespace.oid AND nspname !~ '^pg_';\n\n");
 }
 
 static void
@@ -571,7 +571,7 @@ _enableTriggersIfNecessary(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt
 		ahprintf(AH, "UPDATE pg_catalog.pg_class SET reltriggers = "
 				 "(SELECT pg_catalog.count(*) FROM pg_catalog.pg_trigger where pg_class.oid = tgrelid) "
 				 "FROM pg_catalog.pg_namespace "
-				 "WHERE relnamespace = pg_namespace.oid AND nspname !~ '^pg_';\n\n");
+		 "WHERE relnamespace = pg_namespace.oid AND nspname !~ '^pg_';\n\n");
 }
 
 /*
@@ -601,7 +601,7 @@ ArchiveEntry(Archive *AHX,
 			 CatalogId catalogId, DumpId dumpId,
 			 const char *tag,
 			 const char *namespace,
-			 const char *tablespace, 
+			 const char *tablespace,
 			 const char *owner, bool withOids,
 			 const char *desc, const char *defn,
 			 const char *dropStmt, const char *copyStmt,
@@ -844,7 +844,7 @@ EndRestoreBlob(ArchiveHandle *AH, Oid oid)
 			  (unsigned long) AH->lo_buf_used, (unsigned long) res);
 		if (res != AH->lo_buf_used)
 			die_horribly(AH, modulename, "could not write to large object (result: %lu, expected: %lu)\n",
-				   (unsigned long) res, (unsigned long) AH->lo_buf_used);
+					   (unsigned long) res, (unsigned long) AH->lo_buf_used);
 		AH->lo_buf_used = 0;
 	}
 
@@ -1136,7 +1136,7 @@ ahwrite(const void *ptr, size_t size, size_t nmemb, ArchiveHandle *AH)
 			if (res != AH->lo_buf_size)
 				die_horribly(AH, modulename,
 							 "could not write to large object (result: %lu, expected: %lu)\n",
-				   (unsigned long) res, (unsigned long) AH->lo_buf_size);
+					   (unsigned long) res, (unsigned long) AH->lo_buf_size);
 			memcpy(AH->lo_buf, (char *) ptr + remaining, slack);
 			AH->lo_buf_used = slack;
 		}
@@ -1278,8 +1278,8 @@ warn_or_die_horribly(ArchiveHandle *AH,
 	{
 		write_msg(modulename, "Error from TOC entry %d; %u %u %s %s %s\n",
 				  AH->currentTE->dumpId,
-		 AH->currentTE->catalogId.tableoid, AH->currentTE->catalogId.oid,
-		  AH->currentTE->desc, AH->currentTE->tag, AH->currentTE->owner);
+			 AH->currentTE->catalogId.tableoid, AH->currentTE->catalogId.oid,
+			  AH->currentTE->desc, AH->currentTE->tag, AH->currentTE->owner);
 	}
 	AH->lastErrorStage = AH->stage;
 	AH->lastErrorTE = AH->currentTE;
@@ -1693,8 +1693,8 @@ _allocAH(const char *FileSpec, const ArchiveFormat fmt,
 	else
 		AH->fSpec = NULL;
 
-	AH->currUser = strdup("");	/* So it's valid, but we can free() it
-								 * later if necessary */
+	AH->currUser = strdup("");	/* So it's valid, but we can free() it later
+								 * if necessary */
 	AH->currSchema = strdup("");	/* ditto */
 	AH->currWithOids = -1;		/* force SET */
 
@@ -1886,7 +1886,7 @@ ReadToc(ArchiveHandle *AH)
 		/* Sanity check */
 		if (te->dumpId <= 0)
 			die_horribly(AH, modulename,
-				   "entry ID %d out of range -- perhaps a corrupt TOC\n",
+					   "entry ID %d out of range -- perhaps a corrupt TOC\n",
 						 te->dumpId);
 
 		te->hadDumper = ReadInt(AH);
@@ -2302,8 +2302,8 @@ _selectOutputSchema(ArchiveHandle *AH, const char *schemaName)
 
 		if (!res || PQresultStatus(res) != PGRES_COMMAND_OK)
 			warn_or_die_horribly(AH, modulename,
-							   "could not set search_path to \"%s\": %s",
-							 schemaName, PQerrorMessage(AH->connection));
+								 "could not set search_path to \"%s\": %s",
+								 schemaName, PQerrorMessage(AH->connection));
 
 		PQclear(res);
 	}
@@ -2325,7 +2325,8 @@ static void
 _selectTablespace(ArchiveHandle *AH, const char *tablespace)
 {
 	PQExpBuffer qry;
-	const char	*want, *have;
+	const char *want,
+			   *have;
 
 	have = AH->currTablespace;
 	want = tablespace;
@@ -2357,7 +2358,7 @@ _selectTablespace(ArchiveHandle *AH, const char *tablespace)
 		res = PQexec(AH->connection, qry->data);
 
 		if (!res || PQresultStatus(res) != PGRES_COMMAND_OK)
-			warn_or_die_horribly(AH, modulename, 
+			warn_or_die_horribly(AH, modulename,
 								 "could not set default_tablespace to %s: %s",
 								 fmtId(want), PQerrorMessage(AH->connection));
 
@@ -2404,7 +2405,7 @@ _getObjectDescription(PQExpBuffer buf, TocEntry *te, ArchiveHandle *AH)
 		strcmp(type, "TYPE") == 0)
 	{
 		appendPQExpBuffer(buf, "%s ", type);
-		if (te->namespace && te->namespace[0])			/* is null pre-7.3 */
+		if (te->namespace && te->namespace[0])	/* is null pre-7.3 */
 			appendPQExpBuffer(buf, "%s.", fmtId(te->namespace));
 		/*
 		 * Pre-7.3 pg_dump would sometimes (not always) put
@@ -2414,7 +2415,7 @@ _getObjectDescription(PQExpBuffer buf, TocEntry *te, ArchiveHandle *AH)
 		 */
 		if (AH->version < K_VERS_1_7 &&
 			te->tag[0] == '"' &&
-			te->tag[strlen(te->tag)-1] == '"' &&
+			te->tag[strlen(te->tag) - 1] == '"' &&
 			strcmp(type, "INDEX") == 0)
 			appendPQExpBuffer(buf, "%s", te->tag);
 		else
@@ -2523,11 +2524,11 @@ _printTocEntry(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt, bool isDat
 				 pfx, te->tag, te->desc,
 				 te->namespace ? te->namespace : "-",
 				 te->owner);
-		if (te->tablespace) 
+		if (te->tablespace)
 			ahprintf(AH, "; Tablespace: %s", te->tablespace);
 		ahprintf(AH, "\n");
 
-		if (AH->PrintExtraTocPtr != NULL)
+		if (AH->PrintExtraTocPtr !=NULL)
 			(*AH->PrintExtraTocPtr) (AH, te);
 		ahprintf(AH, "--\n\n");
 	}

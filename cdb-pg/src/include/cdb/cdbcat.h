@@ -27,9 +27,9 @@
 #define Anum_mpp_pgdatabase_dbid		1
 #define Anum_mpp_pgdatabase_isprimary	2
 #define Anum_mpp_pgdatabase_content		3
-#define Anum_mpp_pgdatabase_listenerid 	4
-#define Anum_mpp_pgdatabase_valid         5
-#define Anum_mpp_pgdatabase_definedprimary  6
+#define Anum_mpp_pgdatabase_listenerid	4
+#define Anum_mpp_pgdatabase_valid		  5
+#define Anum_mpp_pgdatabase_definedprimary	6
 
 
 /*
@@ -79,10 +79,10 @@
  */
 typedef enum MppPolicyType
 {
-	POLICYTYPE_UNDEFINED,	
-	POLICYTYPE_PARTITIONED,	/* Tuples partitioned onto segment database. */
-	POLICYTYPE_ENTRY		/* Tuples stored on enty database. */
-} MppPolicyType;
+	POLICYTYPE_UNDEFINED,
+	POLICYTYPE_PARTITIONED,		/* Tuples partitioned onto segment database. */
+	POLICYTYPE_ENTRY			/* Tuples stored on enty database. */
+}	MppPolicyType;
 
 /*
  * MppPolicy represents a MPP data distribution policy. The ptype field
@@ -96,11 +96,11 @@ typedef
 struct MppPolicy
 {
 	MppPolicyType ptype;
-	
+
 	/* These fields apply to POLICYTYPE_PARTITIONED. */
-	int nattrs;
-	AttrNumber attrs[0]; /* the first of nattrs attribute numbers.  */
-} MppPolicy;
+	int			nattrs;
+	AttrNumber	attrs[0];		/* the first of nattrs attribute numbers.  */
+}	MppPolicy;
 
 /*
  * MppPolicyCopy -- Return a copy of a MppPolicy object.
@@ -108,7 +108,7 @@ struct MppPolicy
  * The copy is palloc'ed in the caller's context.
  */
 MppPolicy *
-MppPolicyCopy(const MppPolicy *src);
+			MppPolicyCopy(const MppPolicy * src);
 
 /*
  * get_table_policy: returns a palloc'd MppPolicy for a table oid.
@@ -123,13 +123,13 @@ extern void set_table_policy(Oid tbloid, MppPolicy * policy);
 /*
  * getMPPNamespaceOid: gets the oid of the MPP namespace.
  */
-extern Oid getMPPNamespaceOid(void);
+extern Oid	getMPPNamespaceOid(void);
 
 /*
  * HeapOpenMPPObject: opens a relation (either a table or an index) by name
  * that is part of the MPP namespace.
  */
-extern Relation HeapOpenMPPObject( const char *pszName, Oid mpp_namespace_oid, bool bTable );
+extern Relation HeapOpenMPPObject(const char *pszName, Oid mpp_namespace_oid, bool bTable);
 
 /*
  * mpptable_beginscan --- set up for heap-or-index scan
@@ -137,9 +137,9 @@ extern Relation HeapOpenMPPObject( const char *pszName, Oid mpp_namespace_oid, b
  * similar to systable_beginscan, but using an Oid for index, instead of name
  */
 extern SysScanDesc mpptable_beginscan(Relation heapRelation,
-				   			   			   Oid indexOid,
-										   bool indexOK,
-										   Snapshot snapshot,
-										   int nkeys, ScanKey key);
+				   Oid indexOid,
+				   bool indexOK,
+				   Snapshot snapshot,
+				   int nkeys, ScanKey key);
 
-#endif	/* CDBCAT_H */
+#endif   /* CDBCAT_H */

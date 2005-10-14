@@ -79,7 +79,7 @@ typedef struct VacAttrStats
 	 * returns FALSE.
 	 */
 	void		(*compute_stats) (VacAttrStatsP stats,
-										  AnalyzeAttrFetchFunc fetchfunc,
+											  AnalyzeAttrFetchFunc fetchfunc,
 											  int samplerows,
 											  double totalrows);
 	int			minrows;		/* Minimum # of rows wanted for stats */
@@ -127,7 +127,7 @@ extern DLLIMPORT int default_statistics_target; /* DLLIMPORT for PostGIS */
 /* in commands/vacuum.c */
 extern void vacuum(VacuumStmt *vacstmt);
 extern void vac_open_indexes(Relation relation, LOCKMODE lockmode,
-							 int *nindexes, Relation **Irel);
+				 int *nindexes, Relation **Irel);
 extern void vac_close_indexes(int nindexes, Relation *Irel, LOCKMODE lockmode);
 extern void vac_update_relstats(Relation rel,
 					BlockNumber num_pages,

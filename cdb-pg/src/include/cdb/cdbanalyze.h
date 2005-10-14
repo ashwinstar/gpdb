@@ -22,5 +22,4 @@
 extern void cdbanalyze_get_relstats(Relation rel, BlockNumber *pages, double *tuples);
 
 
-#endif	/* CDBANALYZE_H */
-
+#endif   /* CDBANALYZE_H */

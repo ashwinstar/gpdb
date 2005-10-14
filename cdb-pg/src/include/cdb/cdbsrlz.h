@@ -6,7 +6,7 @@
  * Copyright (c) 2004, Greenplum
  *
  * NOTES
- *	 
+ *
  *-------------------------------------------------------------------------
  */
 
@@ -30,36 +30,35 @@ typedef struct TagStack
 {
 	int			capacity;
 	int			size;
-	char 		**tags;
-} TagStack;
+	char	  **tags;
+}	TagStack;
 
 typedef struct SerializeContext
 {
-	bool			fromNode;
+	bool		fromNode;
 
-	TagStack		*tagStack;
-	
-	/* 
+	TagStack   *tagStack;
+
+	/*
 	 * Used when fromNode == true, i.e. during serialization
 	 */
-	StringInfoData	result;
+	StringInfoData result;
 
-	/* 
+	/*
 	 * Used when fromNode == false, i.e. during deserialization
 	 */
-	char			*input;
-	int				offset;
-	bool			eof;
-} SerializeContext;
+	char	   *input;
+	int			offset;
+	bool		eof;
+}	SerializeContext;
 
 
-extern void serializePlan(Plan *plan, SerializeContext *context);
-extern bool deSerializePlan(Plan **pplan, SerializeContext *context, char *szInput);
-extern void destroySerializeContext( SerializeContext *context );
-
+extern void serializePlan(Plan *plan, SerializeContext * context);
+extern bool deSerializePlan(Plan **pplan, SerializeContext * context, char *szInput);
+extern void destroySerializeContext(SerializeContext * context);
 #endif
 
 extern char *serializeNode(Node *node);
 extern Node *deserializeNode(char *strNode);
 
-#endif /* CDBSRLZ_H */
+#endif   /* CDBSRLZ_H */

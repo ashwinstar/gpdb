@@ -34,7 +34,7 @@
 #define CDBLINK_H
 
 
-/* 
+/*
  * Called by backend/utils/init/postinit.c to setup the connections to the
  * tails and store them for the duration of the session.  Currently, since each
  * user session has their own process, all of the information is stored in
@@ -43,14 +43,14 @@
 extern void cdblink_setup(void);
 
 
-/* 
+/*
  * Returns the number of segments
- * 
+ *
  * N.B.  Mpp_role must be either dispatch or execute, since
- * when utiliy  no mpp catalog tables are read.  An Assert is
+ * when utiliy	no mpp catalog tables are read.  An Assert is
  * thrown if Mpp_role = utility.
  */
-extern int getMPPSegmentCount(void);
+extern int	getMPPSegmentCount(void);
 
 extern void buildMirrorQDDefinition(void);
 

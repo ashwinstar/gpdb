@@ -150,8 +150,7 @@ main(int argc, char **argv)
 			case 'a':			/* Dump data only */
 				opts->dataOnly = 1;
 				break;
-			case 'c':			/* clean (i.e., drop) schema prior to
-								 * create */
+			case 'c':			/* clean (i.e., drop) schema prior to create */
 				opts->dropSchema = 1;
 				break;
 			case 'C':

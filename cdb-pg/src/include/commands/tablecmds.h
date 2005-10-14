@@ -45,7 +45,7 @@ extern void remove_on_commit_action(Oid relid);
 extern void PreCommit_on_commit_actions(void);
 extern void AtEOXact_on_commit_actions(bool isCommit);
 extern void AtEOSubXact_on_commit_actions(bool isCommit,
-										  SubTransactionId mySubid,
-										  SubTransactionId parentSubid);
+							  SubTransactionId mySubid,
+							  SubTransactionId parentSubid);
 
 #endif   /* TABLECMDS_H */
