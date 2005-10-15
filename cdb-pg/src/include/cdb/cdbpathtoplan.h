@@ -13,13 +13,15 @@
 #define CDBPATHTOPLAN_H
 
 
-Flow *cdbpathtoplan_create_flow(Query *root,
-						  Path *path,
-						  List *pathkeys,
-						  Plan *plan);
+Flow *
+cdbpathtoplan_create_flow(Query    *root,
+                          Path     *path,
+                          List     *pathkeys,
+                          Plan     *plan);
 
-Motion *cdbpathtoplan_create_motion_plan(Query *root,
-								 CdbMotionPath * path,
-								 Plan *subplan);
+Motion *
+cdbpathtoplan_create_motion_plan(Query         *root,
+                                 CdbMotionPath *path,
+                                 Plan          *subplan);
 
 #endif   /* CDBPATHTOPLAN_H */
