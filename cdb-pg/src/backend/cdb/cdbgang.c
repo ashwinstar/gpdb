@@ -543,6 +543,14 @@ buildGangDefinition(GangType type, int size, int content)
 					last_segindex = p->segindex;
 					continue;
 				}
+                 else if (type == GANGTYPE_PRIMARY_WRITER && !p->isprimary)
+                 {
+                    /*
+                     * this should not happen, or the pgdatabase info is wrong.
+                     */
+                    elog(LOG, "Warning, potential wrong mpp configuration.");
+                    CondSetMPPReadonly();
+                 }
 				else
 				{
 					segdbDesc = &newGangDefinition->db_descriptors[seg_count];
@@ -828,7 +836,6 @@ allocateGang(GangType type, int size, int content)
 					if (gp == NULL)
 						gp = createGang(type, size, content);
 				}
-				Assert(gp != NULL);
 				if (gp == NULL)
 					elog(ERROR, "No reader gang allocated");
 
@@ -903,6 +910,9 @@ allocateGang(GangType type, int size, int content)
 	 */
 
 	MemoryContextSwitchTo(oldContext);
+    if (gp == NULL)
+        elog(ERROR, "No %s gang allocated", 
+            (type ==GANGTYPE_PRIMARY_WRITER)?"primary":"mirror");
 
 	return gp;
 }

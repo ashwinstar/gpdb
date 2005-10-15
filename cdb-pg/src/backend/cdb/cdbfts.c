@@ -44,10 +44,11 @@ static void CdbShutdown(void);
 static void initPQConnectionBuffer(CdbComponentDatabaseInfo *, char *, PQExpBuffer, bool);
 static void markSegDBTransientState(int, bool);
 static void markSegDBPersistentState(int, bool);
+static bool isNetError(char *errorMsg);
 
 #define GET_TRANSIENT_VALID_STATE(id)  (id >> 15)		/* first bit indicates
 														 * valid column */
-#define GET_TRANSIENT_ISPRIMARY_STATE(id) (id & 0x4000 >> 14)	/* second bit indicates
+#define GET_TRANSIENT_ISPRIMARY_STATE(id) ((id & 0x4000) >> 14)	/* second bit indicates
 																 * isPrimary column */
 #define GET_TRANSIENT_SEGDB_ID(id) (id & 0x3FFF)		/* get segdb dbid */
 #define SET_TRANSIENT_SEGDB_STATE_INVALID(id) (id)		/* set segdb valid and
@@ -140,7 +141,8 @@ FtsTestConnection(CdbComponentDatabaseInfo * failedDBInfo, char *dbName)
 
 	conn = PQconnectdb(buffer->data);
 
-	if (PQstatus(conn) == CONNECTION_BAD)
+    if ( PQstatus(conn) == CONNECTION_BAD &&
+         isNetError(PQerrorMessage(conn)) )
 	{
 		elog(LOG, "FTS: test connection failed, dbid %d dbname %s error message %s",
 			 failedDBInfo->dbid, dbName, PQerrorMessage(conn));
@@ -255,7 +257,17 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 
 	if (!isFTSEnabled())
 		return false;
-
+    if (FtsTestConnection(segdbDesc->segment_database_info, segdbDesc->dbname))
+        return false;
+        
+    /* shutdown if action is set to shutdown */
+    if (*ftsAction == FTS_SHUTDOWN)
+    {
+        elog(LOG, "MPP detects segment failures, system is shut down" );
+        CdbShutdown();
+        return true;
+    }
+                
 	/* set MPP to be read only if necessary */
 	CondSetMPPReadonly();
 
@@ -674,7 +686,21 @@ FtsEvaluateTransientState(void)
 	*ftsSegDBTransientCount = 0;
 	incFtsSyncCount();
 	assign_mpp_set_read_only(false, true, PGC_S_DEFAULT);
-
-	LWLockRelease(ftsControlLock);
-
+    setRecoverTMOn();
+    LWLockRelease(ftsControlLock);
 }
+
+static bool isNetError(char *errorMsg)
+{
+    /* "FATAL:" is a keywork when postmaster throws fatal error,
+     * this includes system shuting down, starting up or tool many clients...
+     * in this case, we assume it is not a net error.
+     */
+    return (strstr(errorMsg,"FATAL:")==NULL);
+}
+
+bool isFtsReadOnlySet(void)
+{
+    return *ftsReadOnlyFlag;
+}
+

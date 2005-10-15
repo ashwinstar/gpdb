@@ -23,6 +23,7 @@
 #include "access/xact.h"
 #include "cdb/cdbfts.h"
 #include "lib/stringinfo.h"
+#include "access/twophase.h"
 
 
 static LWLockId shmControlLock;
@@ -47,7 +48,8 @@ static int	checkpoint_interval = 5000;
 
 /* for semantic checking - debugging purpose */
 static int	lastGxactState;
-static bool isDirty = false;
+static bool  isDirty = false;
+static bool  resolveDtx = false;
 
 static const int transitionState[8][8] =
 {
@@ -90,6 +92,8 @@ void		recoverCommittedDtx(void);
 void		recoverRollbackedDtx(void);
 void		getTmLock(void);
 void		releaseTmLock(void);
+void    dumpAllDtx(void);
+void    resolveInDoubtDtx(void);
 
 
 /*
@@ -156,6 +160,8 @@ condStartDtxTransaction(void)
 {
 	if (currentGxact == NULL)
 	{
+        if (resolveDtx)
+            resolveInDoubtDtx();
 		currentGxact = allocGxact();
 	}
 	else
@@ -281,8 +287,11 @@ condRollbackDtxTransaction(void)
 		if ((currentGxact->infomask & GXACT_STATUS_PERSISTENT) == 0)
 			updateDtxState(DTX_STATE_ROLLBACK_DONE);
 		else
+        {
 			/* leave it in the list for recovery */
+            currentGxact->infomask &= GXACT_STATUS_UNRESOLVED;
 			currentGxact = NULL;
+        }
 
 		/* destroy all gangs to clean up connections */
 		disconnectAndDestroyAllGangs();
@@ -477,6 +486,7 @@ initTM(void)
 			recoverTM();
 			*shmTmRecoverred = true;
 		}
+        max_tm_gxacts = max_prepared_xacts;
 		releaseTmLock();
 	}
 	else
@@ -583,6 +593,7 @@ allocGxact(void)
 
 	if (*shmNumGxacts >= max_tm_gxacts)
 	{
+        dumpAllDtx();
 		releaseTmLock();
 		ereport(ERROR,
 				(errmsg("can not allocate global transaction")));
@@ -859,6 +870,20 @@ phase2Recovery(void)
 		return false;
 	}
 
+    /*
+     * do not do recvoery if read only mode is set.
+     * in this case, there may be in-doubt transaction in down segdb
+     * , which will not be resolved at this time.
+     */
+    if (isFtsReadOnlySet())
+    {
+        checkPointTm();
+        duringRecovery = false;
+        cleanRMResultSets(pgresultSets);
+        currentGxact = NULL;
+        return false;
+    }
+
 	/* recover in-doubt transaction in TM */
 	for (i = 0; i < *shmNumGxacts; i++)
 	{
@@ -1110,4 +1135,55 @@ void
 setDtxDirty(void)
 {
 	isDirty = true;
+}
+
+void
+resolveInDoubtDtx(void)
+{
+    int         i;
+    TMGXACT     *gxact_saved;
+    
+    if (isFtsReadOnlySet())
+    {
+        /* can not resolve now, wait for next time */
+        resolveDtx = false;
+        return;
+    }
+    
+    getTmLock();
+    gxact_saved = currentGxact;
+    for (i = 0; i < *shmNumGxacts; i++)
+    {
+        if (shmGxactArray[i]->infomask & GXACT_STATUS_UNRESOLVED)
+        {
+            /*resolve this */
+            currentGxact = shmGxactArray[i];
+            execCommand();
+            /* remove gxact either rollback is successful or xact is not prepared. */
+            updateDtxState(DTX_STATE_ROLLBACK_DONE);
+        }
+    }
+    
+    currentGxact = gxact_saved;
+    resolveDtx = false;
+    releaseTmLock();
+}
+
+void
+setRecoverTMOn(void)
+{
+    resolveDtx = true;
+}
+
+void
+dumpAllDtx(void)
+{
+    int i;
+    elog(LOG, "dumping all global transactions: ");
+    for (i=0; i < *shmNumGxacts; i++)
+    {
+        elog(LOG, "%d - GID: %s  STATE: %d  INFO: %d  LNO: %d  LOS: %d",
+            i, shmGxactArray[i]->gid, shmGxactArray[i]->state, shmGxactArray[i]->infomask,
+            shmGxactArray[i]->fileno, shmGxactArray[i]->offset); 
+    }
 }

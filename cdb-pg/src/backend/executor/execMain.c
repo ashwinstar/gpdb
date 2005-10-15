@@ -55,6 +55,8 @@
 #include "cdb/ml_ipc.h"
 #include "cdb/cdbmotion.h"
 
+extern bool isFtsReadOnlySet(void);
+
 typedef struct execRowMark
 {
 	Relation	relation;
@@ -815,7 +817,12 @@ ExecCheckXactReadOnly(Query *parsetree)
 	return;
 
 fail:
-	ereport(ERROR,
+    if ( isFtsReadOnlySet() )
+        ereport(ERROR,
+            (errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
+             errmsg("Fault tolerance sets transaction read-only")));
+    else
+	   ereport(ERROR,
 			(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
 			 errmsg("transaction is read-only")));
 }

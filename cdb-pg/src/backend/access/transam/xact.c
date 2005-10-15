@@ -1859,6 +1859,16 @@ CommitTransaction(void)
 	/* This should be the last step before commit */
 	AtEOXact_UpdatePasswordFile(true);
 
+    /* commit all QE
+     * commit should have been called from ProcessUtility,
+     * need to be done before s->state is set to commit.
+     * 
+     * we did not put QD transaction as part of global transaction
+     * this may need to be fixed in the future, otherwise a small 
+     * window may exist causing QD got rollback.
+     */
+    commitDtxTransaction();
+    
 	/* Prevent cancel/die interrupt while cleaning up */
 	HOLD_INTERRUPTS();
 
@@ -1871,10 +1881,6 @@ CommitTransaction(void)
 	/*
 	 * Here is where we really truly commit.
 	 */
-    /* commit all QE
-     * commit should have been called from ProcessUtility
-     */
-    commitDtxTransaction();
 	RecordTransactionCommit();
 
 	/*

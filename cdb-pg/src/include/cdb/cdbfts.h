@@ -59,5 +59,6 @@ extern void FtsCondSetTxnReadOnly(bool *);
 extern void disableQDMirroring(void);
 extern CdbComponentDatabases *applyTransientState(CdbComponentDatabases *);
 extern void FtsEvaluateTransientState(void);
+extern bool isFtsReadOnlySet(void);
 
 #endif   /* CDBFTS_H */

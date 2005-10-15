@@ -28,6 +28,7 @@ typedef enum
 
 
 #define GXACT_STATUS_PERSISTENT   0x01
+#define GXACT_STATUS_UNRESOLVED   0x02
 
 typedef struct TMGXACT
 {
@@ -83,5 +84,6 @@ extern int	tmShmemSize(void);
 extern bool isInGlobalTransaction(void);
 extern bool isTMInRecovery(void);
 extern void setDtxDirty(void);
+extern void setRecoverTMOn(void);
 
 #endif   /* CDBTM_H */
