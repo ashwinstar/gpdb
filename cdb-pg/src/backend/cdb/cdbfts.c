@@ -285,10 +285,10 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 		disconnectAndDestroyAllGangs();
 	}
 
-	/* rollback current DTM transaction */
-	discardDtxTransaction();
-
 	LWLockRelease(ftsControlLock);
+
+    /* rollback current DTM transaction */
+    discardDtxTransaction();
 
 	/*
 	 * error out if this sets read only flag, at this stage the read only
