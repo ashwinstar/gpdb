@@ -562,7 +562,7 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 
 			/* clean up the interconnect */
 			if (shouldSetupInterconnect)
-				TeardownInterconnect();
+				TeardownInterconnect(true);
 
 			/* clean up our own motion layer. */
 			ResetMotionLayer(true);
@@ -571,7 +571,7 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 		{
 			/* clean up the interconnect */
 			if (shouldSetupInterconnect)
-				TeardownInterconnect();
+				TeardownInterconnect(true);
 
 			/* clean up our own motion layer. */
 			ResetMotionLayer(true);
@@ -598,7 +598,7 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 		 * error)
 		 */
 		if (shouldSetupInterconnect)
-			TeardownInterconnect();
+			TeardownInterconnect(false);
 
 		/* If top slice was delegated to QEs, get number of rows processed. */
 		if (sliceRunsOnQE(topslice))
@@ -613,7 +613,7 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 	else if (shouldSetupInterconnect)
 	{
 		/* clean up the interconnect if necessary */
-		TeardownInterconnect();
+		TeardownInterconnect(false);
 
 		currentSliceId = UNSET_SLICE_ID;
 	}

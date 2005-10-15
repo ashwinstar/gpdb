@@ -1167,7 +1167,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			cdbdisp_destroyPlanResults(queryDesc);
 
 			/* clean up the interconnect */
-			TeardownInterconnect();		/* Is this needed following failure on
+			TeardownInterconnect(true);		/* Is this needed following failure on
 										 * QD? */
 		}
 		PG_RE_THROW();
@@ -1182,7 +1182,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 		 */
 		CdbCheckDispatchResult(false);	/* wait calmly, don't cancel them */
 
-		TeardownInterconnect(); /* following success on QD */
+		TeardownInterconnect(false); /* following success on QD */
 
 		/*
 		 * Check and free the results of all gangs. If any QE had an error,

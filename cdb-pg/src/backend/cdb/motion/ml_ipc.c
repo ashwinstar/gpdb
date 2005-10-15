@@ -572,7 +572,7 @@ DeregisterReadInterest(int16 motNodeID, int16 srcRoute)
 	Assert(activated);
 
 #ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG3, "DeregisterReadInterest()");
+	elog(DEBUG3, "DeregisterReadInterest(%d, %d)", motNodeID, srcRoute);
 #endif
 
 	pEntry = getMotionState(motNodeID);
@@ -855,9 +855,13 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
  * allocated under it is free'd.  We don't have have to worry about pfree() but
  * we definitely have to worry about socket resources.
  *
+ * If forceEOS is set, we force end-of-stream notifications out any send-nodes,
+ * and we wrap that send in a PG_TRY/CATCH block because the goal is to reduce
+ * confusion (and if we're being shutdown abnormally anyhow, let's not start
+ * adding errors!).
  */
 void
-TeardownInterconnect(void)
+TeardownInterconnect(bool forceEOS)
 {
 	ListCell   *cell;
 	MotionLayerState *pEntry;
@@ -871,7 +875,7 @@ TeardownInterconnect(void)
 	mySlice = (Slice *) list_nth(sliceTable->slices, sliceId);
 
 	/* multi-phase shutdown, mark all as shutdown */
-
+	elog(DEBUG3, "Interconnect cleanup state: %s", forceEOS ? "force" : "normal");
 	/*
 	 * phase 1 mark all sockets (senders and receivers) with
 	 * shutdown(2)
@@ -879,8 +883,9 @@ TeardownInterconnect(void)
 	if (mySlice->parentIndex != -1)
 	{
 		/* cleanup a Sending motion node. */
-		elog(DEBUG3, "close down outgoing connections for motion id: %d",
+		elog(DEBUG3, "shutdown outgoing connections for motion id: %d",
 			 mySlice->sliceIndex);
+
 		pEntry = getMotionState(mySlice->sliceIndex);
 
 		for (i = 0; i < pEntry->numConns; i++)
@@ -889,6 +894,19 @@ TeardownInterconnect(void)
 
 			if (conn == NULL)
 				continue;
+
+			if (forceEOS)
+			{
+				PG_TRY();
+				{
+					SendEndOfStream(mySlice->sliceIndex, i);
+				}
+				PG_CATCH();
+				{
+					elog(DEBUG1, "Caught problem during forced-EOS");
+				}
+				PG_END_TRY();
+			}
 
 			if (conn->sockfd != -1)
 			{
@@ -945,7 +963,7 @@ TeardownInterconnect(void)
 	if (mySlice->parentIndex != -1)
 	{
 		/* cleanup a Sending motion node. */
-		elog(DEBUG3, "close down outgoing connections for motion id: %d",
+		elog(DEBUG3, "close outgoing connections for motion id: %d",
 			 mySlice->sliceIndex);
 		pEntry = removeMotionState(mySlice->sliceIndex);
 

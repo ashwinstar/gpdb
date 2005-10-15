@@ -67,12 +67,13 @@ extern void SetupInterconnect(SliceTable * mySliceTable, int mySliceId);
  * a DML statement to close down all TCP socket resources that were setup during
  * SetupInterconnect().
  *
- * NOTE: it is important that TeardownInterconnect() happens regardless of the
- *		 outcome of the statement.	i.e. gets called even if an ERROR occurs
- *		 during the statement.
+ * NOTE: it is important that TeardownInterconnect() happens
+ *		 regardless of the outcome of the statement. i.e. gets called
+ *		 even if an ERROR occurs during the statement. For abnormal
+ *		 statement termination we can force an end-of-stream notification.
  *
  */
-extern void TeardownInterconnect(void);
+extern void TeardownInterconnect(bool forceEOS);
 
 /* Sends a tuple chunk from the Postgres process to the local AMS process via
  * IPC.  This function does not block; if the IPC channel cannot accept the
