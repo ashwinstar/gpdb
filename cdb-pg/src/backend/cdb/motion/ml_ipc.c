@@ -1027,6 +1027,8 @@ TeardownInterconnect(void)
 
 	activated = false;
 	sliceTable = NULL;
+
+	elog(DEBUG3, "TeardownInterconnect successful");
 }
 
 
@@ -2319,58 +2321,73 @@ flushListenerBacklog(void)
  *
  * This works without the select, but burns tons of CPU doing nothing
  * useful.
+ *
+ * We *must* return locally; otherwise TeardownInterconnect() can't exit
+ * cleanly. So we wrap our cancel-detection checks for interrupts with
+ * a PG_TRY block.
  */
 static void
 waitOnSocketDone(int fd)
 {
 	int			count,
-				n;
+				n,
+				saved_err;
 	char		buf;
 	struct timeval timeout;
 	fd_set		rset;
 
-	for (;;)
+	PG_TRY();
 	{
-		CHECK_FOR_INTERRUPTS();
-
-		FD_ZERO(&rset);
-		FD_SET(fd, &rset);
-		timeout = tval;
-
-		n = select(fd + 1, &rset, NULL, NULL, &timeout);
-		if (n == 0 || (n < 0 && errno == EINTR))
+		for (;;)
 		{
-			continue;
-		}
-		else if (n < 0)
-		{
-			/* before complaining check for cancel */
 			CHECK_FOR_INTERRUPTS();
 
+			FD_ZERO(&rset);
+			FD_SET(fd, &rset);
+			timeout = tval;
+
+			n = select(fd + 1, &rset, NULL, NULL, &timeout);
+			if (n == 0 || (n < 0 && errno == EINTR))
+			{
+				continue;
+			}
+			else if (n < 0)
+			{
+				saved_err = errno;
+				/* before complaining check for cancel */
+				CHECK_FOR_INTERRUPTS();
+
+				/*
+				 * Something unexpected, but probably not horrible warn
+				 * and return
+				 */
+				elog(WARNING, "TeardownInterconnect: waitOnSocketDone select (%d)", saved_err);
+				break;
+			}
+
+			/* ready to read. */
+			count = recv(fd, &buf, sizeof(buf), 0);
+			if (count == 0)		/* done ! */
+				break;
+			if (count > 0 || (count < 0 && errno == EAGAIN))
+				continue;
+			/* Some other kind of error happened */
+			if (errno == EINTR)
+				continue;
+
 			/*
-			 * Something unexpected, but probably not horrible warn
-			 * and return
+			 * Something unexpected, but probably not horrible warn and
+			 * return
 			 */
-			elog(WARNING, "TeardownInterconnect: waitOnSocketDone select (%d)", errno);
+			elog(WARNING, "TeardownInterconnect: waitOnSocketDone (%d)", errno);
 			break;
 		}
-
-		/* ready to read. */
-		count = recv(fd, &buf, sizeof(buf), 0);
-		if (count == 0)			/* done ! */
-			break;
-		if (count > 0 || (count < 0 && errno == EAGAIN))
-			continue;
-		/* Some other kind of error happened */
-		if (errno == EINTR)
-			continue;
-
-		/*
-		 * Something unexpected, but probably not horrible warn and
-		 * return
-		 */
-		elog(WARNING, "TeardownInterconnect: waitOnSocketDone (%d)", errno);
-		break;
 	}
+	PG_CATCH();
+	{
+		elog(NOTICE, "TeardownInterconnect: waitOnSocketDone caught cancel");
+	}
+	PG_END_TRY();
+
 	return;
 }
