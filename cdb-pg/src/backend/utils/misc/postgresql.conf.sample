@@ -48,7 +48,7 @@
 #listen_addresses = 'localhost'	# what IP interface(s) to listen on; 
 				# defaults to localhost, '*' = any
 #port = 5432
-#max_connections = 100
+#max_connections = 200
 	# note: increasing max_connections costs about 500 bytes of shared
 	# memory per connection slot, in addition to costs from shared_buffers
 	# and max_locks_per_transaction.

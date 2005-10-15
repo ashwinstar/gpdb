@@ -994,7 +994,7 @@ static struct config_int ConfigureNamesInt[] =
 			NULL
 		},
 		&MaxBackends,
-		100, 1, INT_MAX / BLCKSZ, NULL, NULL
+		200, 1, INT_MAX / BLCKSZ, NULL, NULL
 	},
 
 	{
