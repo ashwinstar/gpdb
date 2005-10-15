@@ -1,6 +1,16 @@
 <<<NEW vi: set expandtab ts=4: >>>
 
 
+Release-2_0_14:  15/Oct/2005  llonergan
+    Backout of a bad commit
+    Known bugs:
+        Blocker bugs: mpp-150,155,193,197
+        Critical bugs: mpp-70,86,95,128,149,174,180,189,196,198
+        Major bugs: mpp-2,21,53,59,66,68,72,87,99,100,131
+                        177,179,183,187,195,199
+        Minor bugs: mpp-25,36,42,51,56,84,98,101,115,117,158,188
+
+
 Release-2_0_13:  15/Oct/2005  llonergan
     Known bugs:
         Blocker bugs: mpp-150,155,193,197
