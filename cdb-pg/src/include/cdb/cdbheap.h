@@ -43,7 +43,7 @@ typedef struct CdbHeapTupleCompareInfo
 	int			numSortCols;
 	AttrNumber *sortColIdx;
 	TupleDesc	tupDesc;
-}	CdbHeapTupleCompareInfo;
+} CdbHeapTupleCompareInfo;
 
 /*
  * CdbTupleHeapInfo:
@@ -62,7 +62,7 @@ typedef struct CdbTupleHeapInfo
 	HeapTuple	tuple;
 	int			sourceRouteId;
 	CdbHeapTupleCompareInfo *cmpinfo;
-}	CdbTupleHeapInfo;
+} CdbTupleHeapInfo;
 
 
 /*
@@ -122,39 +122,39 @@ typedef struct CdbHeap
 	CdbHeapCopyFn copyfn;
 	CdbHeapSwitchFn switchfn;
 	void	   *createdata;
-}	CdbHeap;
+} CdbHeap;
 
 /*
  * Generic heap functions, that can be used with any
  * data structure and cmpfunc
  */
-extern void SetCdbHeapInitialValue(CdbHeap * cdbheap, void *value);
-extern void *GetLowestValueFromCdbHeap(CdbHeap * cdbheap);
-extern void MergeNewValueIntoCdbHeap(CdbHeap * cdbheap, void *value);
+extern void SetCdbHeapInitialValue(CdbHeap *cdbheap, void *value);
+extern void *GetLowestValueFromCdbHeap(CdbHeap *cdbheap);
+extern void MergeNewValueIntoCdbHeap(CdbHeap *cdbheap, void *value);
 extern CdbHeap *CreateCdbHeap(int nSlots,
 			  CdbHeapCmpFn cmpfn,
 			  CdbHeapCreateFn createfn,
 			  CdbHeapCopyFn copyfn,
 			  CdbHeapSwitchFn switchfn,
 			  void *createData);
-extern void DestroyCdbHeap(CdbHeap * cdbheap);
+extern void DestroyCdbHeap(CdbHeap *cdbheap);
 
 /*
  * Specific heap functions, specific to
  * heaps of CdbTupleHeapInfo data.
  */
-extern void SetCdbTupleHeapInitialValue(CdbHeap * cdbheap, HeapTuple tuple, int sourceRouteId);
-extern CdbTupleHeapInfo *GetLowestValueFromCdbTupleHeap(CdbHeap * cdbheap);
-extern void MergeNewValueIntoCdbTupleHeap(CdbHeap * cdbheap, HeapTuple h, int sourceRouteId);
-extern int	GetCountCdbHeap(CdbHeap * cdbheap);
+extern void SetCdbTupleHeapInitialValue(CdbHeap *cdbheap, HeapTuple tuple, int sourceRouteId);
+extern CdbTupleHeapInfo *GetLowestValueFromCdbTupleHeap(CdbHeap *cdbheap);
+extern void MergeNewValueIntoCdbTupleHeap(CdbHeap *cdbheap, HeapTuple h, int sourceRouteId);
+extern int	GetCountCdbHeap(CdbHeap *cdbheap);
 
 /*
  * Create heap functions, specific to
  * heaps of CdbTupleHeapInfo data.
  */
 extern CdbHeap *CreateCdbTupleHeap(int numRoutes,
-				   MotionState * node,
-				   Motion * motion);
+				   MotionState *node,
+				   Motion *motion);
 
 
 

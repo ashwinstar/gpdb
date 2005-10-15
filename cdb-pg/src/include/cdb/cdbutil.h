@@ -41,7 +41,7 @@ typedef struct CdbComponentDatabaseInfo
 	int4		listenerid;		/* id of listener for this database. */
 	char	   *mppsuperuser;	/* user name for mpp connection */
 	char	   *mppsuperpswd;	/* password for mpp connection */
-}	CdbComponentDatabaseInfo;
+} CdbComponentDatabaseInfo;
 
 /* --------------------------------------------------------------------------------------------------
  * Structure for return value from getCdbSegmentDatabases()
@@ -63,7 +63,7 @@ typedef struct CdbComponentDatabases
 	int			my_dbid;		/* the dbid of this database */
 	int			my_segindex;	/* the content of this database */
 	bool		my_isprimary;	/* the isprimary flag of this database */
-}	CdbComponentDatabases;
+} CdbComponentDatabases;
 
 /*
  * performs all necessary setup required for initializing MPP components.
@@ -102,7 +102,7 @@ extern CdbComponentDatabases *getCdbComponentDatabases(void);
  * freeCdbComponentDatabases() releases the palloc'd storage returned by
  * getCdbComponentDatabases().
  */
-extern void freeCdbComponentDatabases(CdbComponentDatabases * pDBs);
+extern void freeCdbComponentDatabases(CdbComponentDatabases *pDBs);
 
 /*
  * getMppMpp() causes the mpp.mpp table's singleton row to be read into a global structure

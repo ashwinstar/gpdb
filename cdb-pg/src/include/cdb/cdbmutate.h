@@ -78,8 +78,8 @@ extern Motion *make_sorted_hashed_motion(Plan *lefttree, bool sendToSecondary,
 extern Motion *make_broadcast_motion(Plan *lefttree, bool sendToSecondary);
 extern Motion *make_sorted_broadcast_motion(Plan *lefttree, bool sendToSecondary,
 				int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators);
-extern void setHashToSelfOnly(Motion * motion);
-extern void setFixedToSelfOnly(Motion * motion);
+extern void setHashToSelfOnly(Motion *motion);
+extern void setFixedToSelfOnly(Motion *motion);
 
 extern int *makeDefaultSegIdxArray(int numSegs);
 

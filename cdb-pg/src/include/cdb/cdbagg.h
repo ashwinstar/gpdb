@@ -36,7 +36,7 @@ typedef struct CdbAggStrategy
 
 	List	   *hashexprs;
 
-}	CdbAggStrategy;
+} CdbAggStrategy;
 
 /*
  * Structures: CdbAggTactic, CdbAggPartial, CdbAggFinal
@@ -98,7 +98,7 @@ CdbAggPartial
 								 * Var that by which the outer query may refer
 								 * to this partial aggregation. */
 
-}	CdbAggPartial;
+} CdbAggPartial;
 
 typedef struct
 CdbAggFinal
@@ -132,7 +132,7 @@ CdbAggFinal
 								 * implements the stategy.	This will hold the
 								 * Expr that provides the corresponding
 								 * argument to the tactic's consolidator. */
-}	CdbAggFinal;
+} CdbAggFinal;
 
 typedef struct
 CdbAggTactic
@@ -152,21 +152,21 @@ CdbAggTactic
 								 * values of argindex in an element of finals. */
 	CdbAggPartial *partials;	/* A palloc'd array of partial aggregration
 								 * instructions. */
-}	CdbAggTactic;
+} CdbAggTactic;
 
 
 /*
  * Declarations of functions defined in cdbagg.c
  */
 extern List *getAggStrategyList(Agg *agg);
-extern CdbAggStrategy *copyAggStrategy(CdbAggStrategy * old);
+extern CdbAggStrategy *copyAggStrategy(CdbAggStrategy *old);
 extern void freeAggStrategyList(List *aslist);
 
 /*
  * Declarations of functions defined in cdbaggtactic.c
  */
 extern CdbAggTactic *getAggTactic(Aggref *aggref, char **msg);
-extern void freeAggTactic(CdbAggTactic * tactic);
+extern void freeAggTactic(CdbAggTactic *tactic);
 
 
 #endif   /* CDBAGG_H */

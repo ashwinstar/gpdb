@@ -30,11 +30,11 @@ typedef struct Gang
 														 * that make up this
 														 * gang */
 	struct CdbDispatchResults *dispatchResults; /* outcome of execution */
-}	Gang;
+} Gang;
 
 extern Gang *allocateGang(GangType type, int size, int content);
 
-extern List *getCdbProcessList(Gang * gang);
+extern List *getCdbProcessList(Gang *gang);
 
 extern List *getCdbProcessesForQD(int isPrimary);
 
@@ -49,7 +49,7 @@ extern CdbComponentDatabases *getComponentDatabases(void);
 extern bool isGangExisted(void);
 
 struct SegmentDatabaseDescriptor *
-			getSegmentDescriptorFromGang(const Gang * gp, int seg);
+			getSegmentDescriptorFromGang(const Gang *gp, int seg);
 
 bool
 			reconnectSegDB(struct SegmentDatabaseDescriptor * failedDB);

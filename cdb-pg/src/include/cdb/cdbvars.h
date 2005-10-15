@@ -106,7 +106,7 @@ typedef enum
 	MPP_ROLE_DISPATCH,			/* Operating as the parallel query dispatcher */
 	MPP_ROLE_EXECUTE,			/* Operating as a parallel query executor */
 	MPP_ROLE_UNDEFINED			/* Should never see this role in use */
-}	MppRoleValue;
+} MppRoleValue;
 
 
 extern MppRoleValue Mpp_session_role;	/* GUC var - server startup mode.  */
@@ -255,7 +255,7 @@ typedef struct MppMpp
 	int4		dbid;			/* the dbid of this database */
 	int4		segindex;		/* content indicator: -1 for entry database,
 								 * 0, ..., n-1 for segment database */
-}	MppMpp;
+} MppMpp;
 
 /* --------------------------------------------------------------------------------------------------
  * Global variable declaration for the data for the single row of mpp.mpp table

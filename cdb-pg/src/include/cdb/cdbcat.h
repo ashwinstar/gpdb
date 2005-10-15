@@ -82,7 +82,7 @@ typedef enum MppPolicyType
 	POLICYTYPE_UNDEFINED,
 	POLICYTYPE_PARTITIONED,		/* Tuples partitioned onto segment database. */
 	POLICYTYPE_ENTRY			/* Tuples stored on enty database. */
-}	MppPolicyType;
+} MppPolicyType;
 
 /*
  * MppPolicy represents a MPP data distribution policy. The ptype field
@@ -100,7 +100,7 @@ struct MppPolicy
 	/* These fields apply to POLICYTYPE_PARTITIONED. */
 	int			nattrs;
 	AttrNumber	attrs[0];		/* the first of nattrs attribute numbers.  */
-}	MppPolicy;
+} MppPolicy;
 
 /*
  * MppPolicyCopy -- Return a copy of a MppPolicy object.
@@ -108,7 +108,7 @@ struct MppPolicy
  * The copy is palloc'ed in the caller's context.
  */
 MppPolicy *
-			MppPolicyCopy(const MppPolicy * src);
+			MppPolicyCopy(const MppPolicy *src);
 
 /*
  * get_table_policy: returns a palloc'd MppPolicy for a table oid.
@@ -118,7 +118,7 @@ extern MppPolicy *get_table_policy(Oid tbloid);
 /*
  * set_table_policy: sets the MppPolicy for a table.
  */
-extern void set_table_policy(Oid tbloid, MppPolicy * policy);
+extern void set_table_policy(Oid tbloid, MppPolicy *policy);
 
 /*
  * getMPPNamespaceOid: gets the oid of the MPP namespace.

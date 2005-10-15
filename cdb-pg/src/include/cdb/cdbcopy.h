@@ -44,17 +44,17 @@ typedef struct CdbCopy
 	SegDbState **segdb_state;
 	StringInfoData err_msg;		/* error message for cdbcopy operations */
 
-}	CdbCopy;
+} CdbCopy;
 
 
 
 /* global function declarations */
 CdbCopy    *makeCdbCopy(void);
 int			cdbCopyGetDbCount(int total_segs, int seg);
-int			cdbCopyStart(CdbCopy * cdbCopy, char *copyCmd);
-void cdbCopySendData(CdbCopy * c, int target_seg, const char *buffer,
+int			cdbCopyStart(CdbCopy *cdbCopy, char *copyCmd);
+void cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer,
 				int nbytes);
-void		cdbCopyEnd(CdbCopy * c);
+void		cdbCopyEnd(CdbCopy *c);
 void		cdbCopyStartTransaction(void);
 
 #endif   /* CDBCOPY_H */

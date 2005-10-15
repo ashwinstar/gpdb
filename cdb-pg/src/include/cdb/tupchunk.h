@@ -26,7 +26,7 @@ typedef enum TupleChunkType
 								 * Should only be sent from pg to ams-svc. */
 	TC_EMPTY,					/* Empty tuple */
 	TC_MAXVAL					/* For range checks on type values. */
-}	TupleChunkType;
+} TupleChunkType;
 
 
 

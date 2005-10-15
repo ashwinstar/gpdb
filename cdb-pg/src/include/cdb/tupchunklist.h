@@ -45,7 +45,8 @@ typedef struct TupleChunkListItemData
 
 	/* Variable-length data portion of the struct. */
 	uint8		chunk_data[];
-}	TupleChunkListItemData, *TupleChunkListItem;
+} TupleChunkListItemData,
+		   *TupleChunkListItem;
 
 
 /* A list of tuple-chunks, in order, for a single HeapTuple.
@@ -76,7 +77,8 @@ typedef struct TupleChunkListData
 	int			serialized_data_length;
 	int			max_chunk_length;
 
-}	TupleChunkListData, *TupleChunkList;
+} TupleChunkListData,
+		   *TupleChunkList;
 
 extern TupleChunkListItem makeTupleChunkListItem(TupleChunkType chunkType,
 					   void *pChunkData, uint16 chunkDataSize);
@@ -88,7 +90,7 @@ extern void appendChunkToTCList(TupleChunkList tcList, TupleChunkListItem tcItem
 extern void clearTCList(TupleChunkList tcList);
 
 /* Free a TupleChunkList and its contents, and set the list pointer to NULL. */
-extern void deleteTCList(TupleChunkList * pTCList);
+extern void deleteTCList(TupleChunkList *pTCList);
 
 
 #endif   /* TUPCHUNKLIST_H */

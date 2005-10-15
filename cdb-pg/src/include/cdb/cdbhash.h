@@ -20,7 +20,7 @@ typedef enum
 {
 	HASH_FNV_1 = 1,
 	HASH_FNV_1A
-}	CdbHashAlg;
+} CdbHashAlg;
 
 /*
  * reduction methods.
@@ -29,9 +29,9 @@ typedef enum
 {
 	REDUCE_LAZYMOD = 1,
 	REDUCE_BITMASK
-}	CdbHashReduce;
+} CdbHashReduce;
 
-typedef uint32 CdbHashFn(void *, size_t, uint32);
+typedef uint32 CdbHashFn (void *, size_t, uint32);
 
 /*
  * Structure that holds MPP hashing information.
@@ -46,7 +46,7 @@ typedef struct CdbHash
 								 * algorithm */
 	CdbHashReduce reducealg;	/* the algorithm used for reducing to buckets		*/
 
-}	CdbHash;
+} CdbHash;
 
 
 
@@ -60,21 +60,21 @@ extern CdbHash *makeCdbHash(int numsegs, CdbHashAlg algorithm);
 /*
  * Initialize CdbHash for hashing the next tuple values.
  */
-extern void cdbhashinit(CdbHash * h);
+extern void cdbhashinit(CdbHash *h);
 
 /*
  * Add an attribute to the hash calculation.
  */
-extern void cdbhash(CdbHash * h, Datum val, Oid typid);
+extern void cdbhash(CdbHash *h, Datum val, Oid typid);
 
 /*
  * Add a NULL attribute to the hash calculation.
  */
-extern void cdbhashnull(CdbHash * h);
+extern void cdbhashnull(CdbHash *h);
 
 /*
  * Reduce the hash to a segment number.
  */
-extern unsigned int cdbhashreduce(CdbHash * h);
+extern unsigned int cdbhashreduce(CdbHash *h);
 
 #endif   /* CDBHASH_H */
