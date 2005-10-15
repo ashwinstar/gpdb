@@ -88,7 +88,7 @@ static void handleSelectTimeout(DispatchCommandParms * pParms,
 					int db_count,
 					int *timeoutCounter);
 
-static bool						/* returns true if command complete */ processResults(CdbDispatchResult * dispatchResult,
+static bool /* returns true if command complete */ processResults(CdbDispatchResult * dispatchResult,
 			   struct pg_result ** pqresults,
 			   int db_count,
 			   int *resultCount);
@@ -1354,39 +1354,14 @@ processResults(CdbDispatchResult * dispatchResult,
 	int			msgoff;
 	int			rc;
 
-	/* Receive input from QE. */
-	rc = PQconsumeInput(segdbDesc->conn);
-
-	/* If PQconsumeInput fails, we're hosed. */
-	if (rc == 0)
-	{							/* handle PQconsumeInput error */
-		errorMessage = PQerrorMessage(segdbDesc->conn);
-
-		seterrcode(ERRCODE_MPP_INTERCONNECTION_ERROR, -1, dispatchResult);
-
-		msgoff = dispatchResult->error_message.len;
-		appendPQExpBuffer(&dispatchResult->error_message,
-						  "System error on PQconsumeInput from %s;  %s",
-						  segdbDesc->whoami,
-						  errorMessage ? errorMessage : "\n");
-
-		if (LOG >= log_min_messages)
-		{
-			/* Don't use elog, it's not thread-safe */
-			fputs(dispatchResult->error_message.data + msgoff, stderr);
-			fflush(stderr);
-		}
-
-		/* Can't recover, so drop the connection. */
-		PQfinish(segdbDesc->conn);
-		segdbDesc->conn = NULL;
-
-		return true;			/* done; stick a fork in it */
-	}							/* handle PQconsumeInput error */
-
-	/* If we have received one or more complete messages, process them. */
-	while (!PQisBusy(segdbDesc->conn))
-	{							/* loop to call PQgetResult; won't block */
+	/*
+	 * If we have received one or more complete messages, process them.
+	 * PQisBusy() doesn't return a valid result unless we pair it up with
+	 * PQconsumeInput()
+	 */
+	while ((rc = PQconsumeInput(segdbDesc->conn)) != 0 &&
+		   !PQisBusy(segdbDesc->conn))
+	{
 		PGresult   *pRes;
 		ExecStatusType resultStatus;
 		int			resultIndex = cdbdisp_numPGresult(dispatchResult);
@@ -1489,6 +1464,33 @@ processResults(CdbDispatchResult * dispatchResult,
 			seterrcode(errcode, resultIndex, dispatchResult);
 		}						/* QE reported an error */
 	}							/* loop to call PQgetResult; won't block */
+
+	/* If PQconsumeInput failed, we're hosed. */
+	if (rc == 0)
+	{							/* handle PQconsumeInput error */
+		errorMessage = PQerrorMessage(segdbDesc->conn);
+
+		seterrcode(ERRCODE_MPP_INTERCONNECTION_ERROR, -1, dispatchResult);
+
+		msgoff = dispatchResult->error_message.len;
+		appendPQExpBuffer(&dispatchResult->error_message,
+						  "System error on PQconsumeInput from %s;  %s",
+						  segdbDesc->whoami,
+						  errorMessage ? errorMessage : "\n");
+
+		if (LOG >= log_min_messages)
+		{
+			/* Don't use elog, it's not thread-safe */
+			fputs(dispatchResult->error_message.data + msgoff, stderr);
+			fflush(stderr);
+		}
+
+		/* Can't recover, so drop the connection. */
+		PQfinish(segdbDesc->conn);
+		segdbDesc->conn = NULL;
+
+		return true;			/* done; stick a fork in it */
+	}							/* handle PQconsumeInput error */
 
 	return false;				/* we must keep on monitoring this socket */
 }	/* processResults */

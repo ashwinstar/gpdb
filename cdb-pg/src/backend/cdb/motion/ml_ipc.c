@@ -585,8 +585,6 @@ DeregisterReadInterest(int16 motNodeID, int16 srcRoute)
 	 * that Teardown should complete, otherwise we deadlock the entire query
 	 * (QEs wait in their Teardown calls, while the QD waits for them to
 	 * finish)
-	 *
-	 *
 	 */
 	shutdown(conn->sockfd, SHUT_WR);
 
@@ -1558,6 +1556,10 @@ readRegisterMessage(MotionConn * conn, int *incoming_count)
 
 		if (n < 0)
 		{
+			if (errno == EWOULDBLOCK)	/* register msg is small, just spin,
+										 * don't poll */
+				continue;
+
 			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 			  errmsg("Interconnect Error: Could not read() Register message "
 					 "from remote destination"),
@@ -1936,11 +1938,14 @@ readPacket(MotionConn * conn)
 		if ((n = read(conn->sockfd, conn->pBuff + bytesRead,
 					  Mpp_max_packet_size - bytesRead)) < 0)
 		{
+			int			saved_err = errno;
+
+			/* see if user canceled and stuff like that */
 			CHECK_FOR_INTERRUPTS();
 
-			if (errno == EINTR)
+			if (saved_err == EINTR)
 				continue;
-			if (errno == EWOULDBLOCK)
+			if (saved_err == EWOULDBLOCK)
 			{
 				do
 				{
@@ -1952,18 +1957,18 @@ readPacket(MotionConn * conn)
 					FD_ZERO(&rset);
 					FD_SET(conn->sockfd, &rset);
 					n = select(conn->sockfd + 1, &rset, NULL, NULL, &timeout);
-					if (n < 0)
+					if (n == 0 || (n < 0 && errno == EINTR))
+						continue;
+					else if (n < 0)
 					{
+						saved_err = errno;
 						CHECK_FOR_INTERRUPTS();
-
-						if (errno == EINTR)
-							continue;
 
 						ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 										errmsg("Interconnect error reading an incoming packet"),
 						 errdetail("error during select() call (error:%d).\n"
 						   "From Remote Connection: contentId=%d at '%s':%d",
-							  errno, conn->remoteContentId, conn->remoteHost,
+						  saved_err, conn->remoteContentId, conn->remoteHost,
 								   conn->remotePort)));
 					}
 				}
@@ -1971,12 +1976,11 @@ readPacket(MotionConn * conn)
 			}
 			else
 			{
-				CHECK_FOR_INTERRUPTS();
 				ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 					 errmsg("Interconnect error reading an incoming packet"),
 						   errdetail("error during read() call (error:%d).\n"
 						   "From Remote Connection: contentId=%d at '%s':%d",
-							  errno, conn->remoteContentId, conn->remoteHost,
+						  saved_err, conn->remoteContentId, conn->remoteHost,
 									 conn->remotePort)));
 			}
 		}
@@ -1989,10 +1993,9 @@ readPacket(MotionConn * conn)
 			CHECK_FOR_INTERRUPTS();
 			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 				errmsg("Interconnect error: connection closed prematurely."),
-							errdetail("error during read() call (error:%d).\n"
-						   "From Remote Connection: contentId=%d at '%s':%d",
-							  errno, conn->remoteContentId, conn->remoteHost,
-									  conn->remotePort)));
+				 errdetail("from Remote Connection: contentId=%d at '%s':%d",
+						   conn->remoteContentId, conn->remoteHost,
+						   conn->remotePort)));
 			break;
 		}
 		else
@@ -2333,6 +2336,7 @@ waitOnSocketDone(int fd)
 		FD_ZERO(&rset);
 		FD_SET(fd, &rset);
 		timeout = tval;
+
 		n = select(fd + 1, &rset, NULL, NULL, &timeout);
 		if (n == 0 || (n < 0 && errno == EINTR))
 		{
@@ -2340,6 +2344,9 @@ waitOnSocketDone(int fd)
 		}
 		else if (n < 0)
 		{
+			/* before complaining check for cancel */
+			CHECK_FOR_INTERRUPTS();
+
 			/*
 			 * Something unexpected, but probably not horrible warn
 			 * and return
