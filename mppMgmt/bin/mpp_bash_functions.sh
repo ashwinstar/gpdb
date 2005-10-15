@@ -468,22 +468,30 @@ GET_PG_PID_ACTIVE () {
 			PG_LOCK_FILE=`$NETSTAT -a|$GREP ".s.PGSQL.${PORT}"|$AWK '{print $NF}'`
 			if [ x"" == x"$PG_LOCK_FILE" ];then
 				PID=0
+				LOG_MSG "[INFO]:-No socket connection found for ${PORT}"
 			else
 				if [ -f ${PG_LOCK_FILE}.lock ];then
 					PID=`$CAT ${PG_LOCK_FILE}.lock|$HEAD -1|$AWK '{print $1}'`
+					LOG_MSG "[INFO]:-PID found for $PORT PID=$PID"
 				else
 					PID=0
+					LOG_MSG "[WARN]:-Socket connection found, but no ${PG_LOCK_FILE}.lock"
+					EXIT_STATUS=1
 				fi
 			fi
 		else
 			PG_LOCK_FILE=`$TRUSTED_SHELL $HOST "$NETSTAT -a|$GREP ".s.PGSQL.${PORT}" 2>/dev/null"|$AWK '{print $NF}'`
 			if [ x"" == x"$PG_LOCK_FILE" ];then
 				PID=0
+				LOG_MSG "[INFO]:-No socket connection found for ${PORT} on $HOST"
 			else
 				if [ `$TRUSTED_SHELL $HOST "$LS ${PG_LOCK_FILE}.lock 2>/dev/null"|$WC -l` -ne 0 ];then
 					PID=`$TRUSTED_SHELL $HOST "$CAT ${PG_LOCK_FILE}.lock|$HEAD -1 2>/dev/null"|$AWK '{print $1}'`
+					LOG_MSG "[INFO]:-PID found for $PORT PID=$PID on $HOST"
 				else
 					PID=0
+					LOG_MSG "[WARN]:-Socket connection found, but no ${PG_LOCK_FILE}.lock on $HOST"
+					EXIT_STATUS=1
 				fi
 			fi
 		fi
