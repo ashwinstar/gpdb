@@ -911,8 +911,11 @@ allocateGang(GangType type, int size, int content)
 
 	MemoryContextSwitchTo(oldContext);
 	if (gp == NULL)
-		elog(ERROR, "No %s gang allocated",
-			 (type == GANGTYPE_PRIMARY_WRITER) ? "primary" : "mirror");
+    {
+        if (type != GANGTYPE_MIRROR_WRITER || !mirroringNotConfigured)
+        		elog(ERROR, "No %s gang allocated",
+        			 (type == GANGTYPE_PRIMARY_WRITER) ? "primary" : "mirror");
+    }
 
 	return gp;
 }
