@@ -67,6 +67,12 @@ MPP_LISTENER_TBL=mpp.listener
 MAX_QD_CONNECTIONS=25
 unset PG_CONF_ADD_FILE
 EXIT_STATUS=0
+# ED_FILE search text values
+PORT_TXT="#port"
+LOG_STATEMENT_TXT="#log_statement ="
+MAX_CONNECT_TXT="max_connections ="
+LISTEN_ADR_TXT="listen_addresses"
+CHKPOINT_SEG_TXT="checkpoint_segments"
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -571,21 +577,27 @@ CREATE_QD_DB () {
 		$ECHO "#MPP specific configuration parameters for Master instance database" >> ${MPP_DIR}/$PG_CONF
 		$ECHO "#--------------------------------------------------------------" >> ${MPP_DIR}/$PG_CONF
 		LOG_MSG "[INFO]:-Setting the Master port to $MPP_PORT"
-		ED_FILE ${MPP_DIR}/$PG_CONF "#port" port=$MPP_PORT
+		ED_FILE ${MPP_DIR}/$PG_CONF "$PORT_TXT" port=$MPP_PORT
 		if [ $? -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Failed to set Master port in $PG_CONF" 2
 		fi
 		LOG_MSG "[INFO]:-Completed setting the Master port to $MASTER_PORT"
 		LOG_MSG "[INFO]:-Setting Master logging option"
-		ED_FILE ${MPP_DIR}/$PG_CONF "#log_statement =" log_statement=all
+		ED_FILE ${MPP_DIR}/$PG_CONF "$LOG_STATEMENT_TXT" log_statement=all
 		if [ $? -ne 0 ]; then
 			LOG_MSG "[WARN:-Failed to set log_statement=all in ${MPP_DIR}/$PG_CONF"
 			EXIT_STATUS=1
 		fi
 		LOG_MSG "[INFO]:-Setting Master instance maximum connections to ${MAX_QD_CONNECTIONS}"
-		ED_FILE ${MPP_DIR}/$PG_CONF "max_connections =" "max_connections=${MAX_QD_CONNECTIONS}"
+		ED_FILE ${MPP_DIR}/$PG_CONF "$MAX_CONNECT_TXT" "max_connections=${MAX_QD_CONNECTIONS}"
 		if [ $? -ne 0 ]; then
 			LOG_MSG "[WARN:-Failed to set max_connections=${MAX_QD_CONNECTIONS} in ${MPP_DIR}/$PG_CONF"
+			EXIT_STATUS=1
+		fi
+		LOG_MSG "[INFO]:-Setting Master instance check point segments"
+		ED_FILE ${MPP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" "checkpoint_segments=$CHECK_POINT_SEGMENTS"
+		if [ $? -ne 0 ]; then
+			LOG_MSG "[WARN:-Failed to set checkpoint_segments=$CHECK_POINT_SEGMENTS in ${MPP_DIR}/$PG_CONF"
 			EXIT_STATUS=1
 		fi
 		if [  x"" != x"$PG_CONF_ADD_FILE" ]; then
@@ -781,46 +793,12 @@ UPDATE_MPP () {
 CREATE_QES_PRIMARY () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		for I in "${QE_PRIMARY_ARRAY[@]}"
-				do
-				SET_VAR $I
-				LOG_MSG "[INFO]:-Processing segment $MPP_HOSTNAME"
-				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};$INITDB -E $ENCODING -D $MPP_DIR"
-				BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -rf $MPP_DIR\""
-				BACKOUT_COMMAND "$ECHO \"removing directory $MPP_DIR on $MPP_HOSTNAME\""
-				LOG_MSG "[INFO]:-Configuring segment $PG_CONF"
-				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO \"#MPP Specifc parameters\" >> ${MPP_DIR}/$PG_CONF"
-				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO \"#----------------------\" >> ${MPP_DIR}/$PG_CONF"
-				ED_FILE ${MPP_DIR}/$PG_CONF "port#"  port=$MPP_PORT $MPP_HOSTNAME
-				ED_FILE ${MPP_DIR}/$PG_CONF listen_addresses listen_addresses=\'*\' $MPP_HOSTNAME
-				ED_FILE ${MPP_DIR}/$PG_CONF checkpoint_segments checkpoint_segments=$CHECK_POINT_SEGMENTS $MPP_HOSTNAME
-				if [  x"" != x"$PG_CONF_ADD_FILE" ]; then
-						LOG_MSG "[INFO]:-Processing additional configuration parameters"
-						for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
-								do
-								LOG_MSG "[INFO]:-Adding config $NEW_PARAM to segment"
-								SEARCH_TXT=`$ECHO $NEW_PARAM |$CUT -d"=" -f1`
-								ED_FILE ${MPP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM $MPP_HOSTNAME
-						done
-				fi
-				LOG_MSG "[INFO]:-Configuring segment $PG_HBA"
-				for MASTER_IP in "${MASTER_IP_ADDRESS[@]}"
-				do
-					RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host	all	all	${MASTER_IP}/32	trust >> ${MPP_DIR}/$PG_HBA"
-				done
-				LOG_MSG "[INFO]:-Starting Functioning instance on segment ${MPP_HOSTNAME}"
-				$TRUSTED_SHELL ${MPP_HOSTNAME} "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start" 
-				if [ $? -ne 0 ]; then
-						BACKOUT_COMMAND "$ECHO \"Removing segment log file ${MPP_DIR}.log on segment $MPP_HOSTNAME\""
-						BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
-						$TRUSTED_SHELL ${MPP_HOSTNAME} "$CAT ${MPP_DIR}.log "|$TEE -a $LOG_FILE
-						ERROR_EXIT "[FATAL]:-Failed to start segment instance database" 2
-				fi	
-				BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -f ${MPP_DIR}.log\""
-				BACKOUT_COMMAND "$ECHO \"Removing segment log file ${MPP_DIR}.log on segment $MPP_HOSTNAME\""
-				BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
-				BACKOUT_COMMAND "$ECHO \"Stopping segment instance on $MPP_HOSTNAME\""
-				LOG_MSG "[INFO]:-Successfully started segment instance on $MPP_HOSTNAME"
-				UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
+		do
+			SET_VAR $I
+			PROCESS_QE
+			LOG_MSG "[INFO]:-Processing segment $MPP_HOSTNAME"
+			LOG_MSG "[INFO]:-Successfully started segment instance on $MPP_HOSTNAME"
+			UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
 		done
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -829,47 +807,54 @@ CREATE_QES_MIRROR () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		for I in  "${QE_MIRROR_ARRAY[@]}"
 		do
-				SET_VAR $I
-				LOG_MSG "[INFO]:-Processing Mirror segment $MPP_HOSTNAME"
-				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};$INITDB -E $ENCODING -D $MPP_DIR"
-				BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -rf $MPP_DIR\""
-				BACKOUT_COMMAND "$ECHO \"removing directory $MPP_DIR on $MPP_HOSTNAME\""
-				LOG_MSG "[INFO]:-Configuring segment $PG_CONF"
-				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO \"#MPP Specifc parameters\" >> ${MPP_DIR}/$PG_CONF"
-				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO \"#----------------------\" >> ${MPP_DIR}/$PG_CONF"
-				ED_FILE ${MPP_DIR}/$PG_CONF "#port" port=$MPP_PORT $MPP_HOSTNAME
-				ED_FILE ${MPP_DIR}/$PG_CONF listen_addresses listen_addresses=\'*\' $MPP_HOSTNAME
-				ED_FILE ${MPP_DIR}/$PG_CONF checkpoint_segments checkpoint_segments=$CHECK_POINT_SEGMENTS $MPP_HOSTNAME
-				if [ x"" != x"$PG_CONF_ADD_FILE" ]; then
-						LOG_MSG "[INFO]:-Processing additional configuration parameters"
-						for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
-								do
-								LOG_MSG "[INFO]:-Adding config $NEW_PARAM to segment"
-								SEARCH_TXT=`$ECHO $NEW_PARAM |$CUT -d"=" -f1`
-								ED_FILE ${MPP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM $MPP_HOSTNAME
-						done
-				fi
-				LOG_MSG "[INFO]:-Configuring segment $PG_HBA"
-				for MASTER_IP in "${MASTER_IP_ADDRESS[@]}"
-				do
-					RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host	all	all	${MASTER_IP}/32	trust >> ${MPP_DIR}/$PG_HBA"
-				done
-				LOG_MSG "[INFO]:-Starting Functioning instance on segment ${MPP_HOSTNAME}"
-				$TRUSTED_SHELL ${MPP_HOSTNAME} "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start"
-				if [ $? -ne 0 ]; then
-						BACKOUT_COMMAND "$ECHO \"Removing segment log file ${MPP_DIR}.log on segment $MPP_HOSTNAME\""
-						BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
-						$TRUSTED_SHELL ${MPP_HOSTNAME} "$CAT ${MPP_DIR}.log "|$TEE -a $LOG_FILE
-						ERROR_EXIT "[FATAL]:-Failed to start segment Mirror instance database" 2
-				fi	
-				BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -f ${MPP_DIR}.log\""
-				BACKOUT_COMMAND "$ECHO \"Removing segment log file ${MPP_DIR}.log on segment $MPP_HOSTNAME\""
-				BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
-				BACKOUT_COMMAND "$ECHO \"Stopping segment instance on $MPP_HOSTNAME\""
-				LOG_MSG "[INFO]:-Successfully started segment mirror instance on $MPP_HOSTNAME"
-				UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
+			SET_VAR $I
+			PROCESS_QE
+			LOG_MSG "[INFO]:-Processing Mirror segment $MPP_HOSTNAME"
+			LOG_MSG "[INFO]:-Successfully started segment mirror instance on $MPP_HOSTNAME"
+			UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 1 $MPP_HOSTNAME
 		done
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+PROCESS_QE () {
+		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};$INITDB -E $ENCODING -D $MPP_DIR"
+		BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -rf $MPP_DIR\""
+		BACKOUT_COMMAND "$ECHO \"removing directory $MPP_DIR on $MPP_HOSTNAME\""
+		LOG_MSG "[INFO]:-Configuring segment $PG_CONF"
+		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO \"#MPP Specifc parameters\" >> ${MPP_DIR}/$PG_CONF"
+		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO \"#----------------------\" >> ${MPP_DIR}/$PG_CONF"
+		ED_FILE ${MPP_DIR}/$PG_CONF "$PORT_TXT" port=$MPP_PORT $MPP_HOSTNAME
+		ED_FILE ${MPP_DIR}/$PG_CONF "$LISTEN_ADR_TXT" listen_addresses=\'*\' $MPP_HOSTNAME
+		ED_FILE ${MPP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" checkpoint_segments=$CHECK_POINT_SEGMENTS $MPP_HOSTNAME
+		if [ x"" != x"$PG_CONF_ADD_FILE" ]; then
+			LOG_MSG "[INFO]:-Processing additional configuration parameters"
+			for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
+			do
+				LOG_MSG "[INFO]:-Adding config $NEW_PARAM to segment"
+				SEARCH_TXT=`$ECHO $NEW_PARAM |$CUT -d"=" -f1`
+				ED_FILE ${MPP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM $MPP_HOSTNAME
+			done
+		fi
+
+		LOG_MSG "[INFO]:-End Function $FUNCNAME"
+		LOG_MSG "[INFO]:-Configuring segment $PG_HBA"
+		for MASTER_IP in "${MASTER_IP_ADDRESS[@]}"
+		do
+			RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host	all	all	${MASTER_IP}/32	trust >> ${MPP_DIR}/$PG_HBA"
+		done
+		LOG_MSG "[INFO]:-Starting Functioning instance on segment ${MPP_HOSTNAME}"
+		$TRUSTED_SHELL ${MPP_HOSTNAME} "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start"
+		if [ $? -ne 0 ]; then
+			BACKOUT_COMMAND "$ECHO \"Removing segment log file ${MPP_DIR}.log on segment $MPP_HOSTNAME\""
+			BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
+			$TRUSTED_SHELL ${MPP_HOSTNAME} "$CAT ${MPP_DIR}.log "|$TEE -a $LOG_FILE
+			ERROR_EXIT "[FATAL]:-Failed to start segment Mirror instance database" 2
+		fi	
+		BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -f ${MPP_DIR}.log\""
+		BACKOUT_COMMAND "$ECHO \"Removing segment log file ${MPP_DIR}.log on segment $MPP_HOSTNAME\""
+		BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
+		BACKOUT_COMMAND "$ECHO \"Stopping segment instance on $MPP_HOSTNAME\""
 }
 
 RESTART_QD_PRODUCTION () {
