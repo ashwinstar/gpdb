@@ -89,8 +89,8 @@ static Datum ExecEvalOr(BoolExprState *orExpr, ExprContext *econtext,
 static Datum ExecEvalAnd(BoolExprState *andExpr, ExprContext *econtext,
 			bool *isNull, ExprDoneCond *isDone);
 static Datum ExecEvalConvertRowtype(ConvertRowtypeExprState *cstate,
-									ExprContext *econtext,
-									bool *isNull, ExprDoneCond *isDone);
+					   ExprContext *econtext,
+					   bool *isNull, ExprDoneCond *isDone);
 static Datum ExecEvalCase(CaseExprState *caseExpr, ExprContext *econtext,
 			 bool *isNull, ExprDoneCond *isDone);
 static Datum ExecEvalCaseTestExpr(ExprState *exprstate,
@@ -376,7 +376,7 @@ ExecEvalArrayRef(ArrayRefExprState *astate,
 		else
 			resultArray = array_set_slice(array_source, i,
 										  upper.indx, lower.indx,
-							   (ArrayType *) DatumGetPointer(sourceData),
+								   (ArrayType *) DatumGetPointer(sourceData),
 										  astate->refattrlength,
 										  astate->refelemlength,
 										  astate->refelembyval,
@@ -569,9 +569,9 @@ ExecEvalConst(ExprState *exprstate, ExprContext *econtext,
 /*
  * MPP Changes:
  * In executor mode, a PARAM_EXEC parameter can not be evaluated by executing
- * the subplan.  The subplan was executed on the dispatcher prior to 
+ * the subplan.  The subplan was executed on the dispatcher prior to
  * launching the main query.  The value of the result is passed to the qExec
- * in the ParamInfo, with a kind of PARAM_EXEC_REMOTE.  
+ * in the ParamInfo, with a kind of PARAM_EXEC_REMOTE.
  * So, this function was changed to just do a lookup in that case.
  */
 static Datum
@@ -598,14 +598,14 @@ ExecEvalParam(ExprState *exprstate, ExprContext *econtext,
 		prm = &(econtext->ecxt_param_exec_vals[thisParamId]);
 		if (prm->execPlan != NULL)
 		{
-			if ( Mpp_role == MPP_ROLE_EXECUTE )
+			if (Mpp_role == MPP_ROLE_EXECUTE)
 			{
 				paramInfo = lookupParam(econtext->ecxt_param_list_info,
 										PARAM_EXEC_REMOTE,
 										NULL,
 										thisParamId,
 										false);
-						
+
 				prm->value = paramInfo->value;
 				prm->isnull = paramInfo->isnull;
 				prm->execPlan = NULL;
@@ -998,7 +998,7 @@ ExecMakeFunctionResult(FuncExprState *fcache,
 					{
 						RegisterExprContextCallback(econtext,
 													ShutdownFuncExpr,
-												PointerGetDatum(fcache));
+													PointerGetDatum(fcache));
 						fcache->shutdown_reg = true;
 					}
 				}
@@ -1144,7 +1144,7 @@ ExecMakeFunctionResultNoSets(FuncExprState *fcache,
  *		ExecMakeTableFunctionResult
  *
  * Evaluate a table function, producing a materialized result in a Tuplestore
- * object.  *returnDesc is set to the tupledesc actually returned by the
+ * object.	*returnDesc is set to the tupledesc actually returned by the
  * function, or NULL if it didn't provide one.
  */
 Tuplestorestate *
@@ -1340,7 +1340,7 @@ ExecMakeTableFunctionResult(ExprState *funcexpr,
 
 					td = DatumGetHeapTupleHeader(result);
 					tupdesc = lookup_rowtype_tupdesc(HeapTupleHeaderGetTypeId(td),
-										   HeapTupleHeaderGetTypMod(td));
+											   HeapTupleHeaderGetTypMod(td));
 					tupdesc = CreateTupleDescCopy(tupdesc);
 				}
 				else
@@ -1556,7 +1556,7 @@ ExecEvalDistinct(FuncExprState *fcache,
 	if (argDone != ExprSingleResult)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
-			 errmsg("IS DISTINCT FROM does not support set arguments")));
+				 errmsg("IS DISTINCT FROM does not support set arguments")));
 	Assert(fcinfo.nargs == 2);
 
 	if (fcinfo.argnull[0] && fcinfo.argnull[1])
@@ -1630,7 +1630,7 @@ ExecEvalScalarArrayOp(ScalarArrayOpExprState *sstate,
 	if (argDone != ExprSingleResult)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
-		   errmsg("op ANY/ALL (array) does not support set arguments")));
+			   errmsg("op ANY/ALL (array) does not support set arguments")));
 	Assert(fcinfo.nargs == 2);
 
 	/*
@@ -1876,7 +1876,7 @@ ExecEvalAnd(BoolExprState *andExpr, ExprContext *econtext,
 /* ----------------------------------------------------------------
  *		ExecEvalConvertRowtype
  *
- *		Evaluate a rowtype coercion operation.  This may require
+ *		Evaluate a rowtype coercion operation.	This may require
  *		rearranging field positions.
  * ----------------------------------------------------------------
  */
@@ -1977,7 +1977,7 @@ ExecEvalCase(CaseExprState *caseExpr, ExprContext *econtext,
 	{
 		econtext->caseValue_datum = ExecEvalExpr(caseExpr->arg,
 												 econtext,
-											 &econtext->caseValue_isNull,
+												 &econtext->caseValue_isNull,
 												 NULL);
 	}
 
@@ -2148,7 +2148,7 @@ ExecEvalArray(ArrayExprState *astate, ExprContext *econtext,
 						(errcode(ERRCODE_DATATYPE_MISMATCH),
 						 errmsg("cannot merge incompatible arrays"),
 						 errdetail("Array with element type %s cannot be "
-					 "included in ARRAY construct with element type %s.",
+						 "included in ARRAY construct with element type %s.",
 								   format_type_be(ARR_ELEMTYPE(array)),
 								   format_type_be(element_type))));
 
@@ -2160,8 +2160,8 @@ ExecEvalArray(ArrayExprState *astate, ExprContext *econtext,
 				if (ndims <= 0 || ndims > MAXDIM)
 					ereport(ERROR,
 							(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-					  errmsg("number of array dimensions (%d) exceeds " \
-							 "the maximum allowed (%d)", ndims, MAXDIM)));
+						  errmsg("number of array dimensions (%d) exceeds " \
+								 "the maximum allowed (%d)", ndims, MAXDIM)));
 
 				elem_dims = (int *) palloc(elem_ndims * sizeof(int));
 				memcpy(elem_dims, ARR_DIMS(array), elem_ndims * sizeof(int));
@@ -2180,8 +2180,8 @@ ExecEvalArray(ArrayExprState *astate, ExprContext *econtext,
 						   elem_ndims * sizeof(int)) != 0)
 					ereport(ERROR,
 							(errcode(ERRCODE_ARRAY_SUBSCRIPT_ERROR),
-						errmsg("multidimensional arrays must have array "
-							   "expressions with matching dimensions")));
+							 errmsg("multidimensional arrays must have array "
+									"expressions with matching dimensions")));
 			}
 
 			elem_ndatabytes = ARR_SIZE(array) - ARR_OVERHEAD(elem_ndims);
@@ -2527,8 +2527,8 @@ ExecEvalCoerceToDomain(CoerceToDomainState *cstate, ExprContext *econtext,
 				if (*isNull)
 					ereport(ERROR,
 							(errcode(ERRCODE_NOT_NULL_VIOLATION),
-						   errmsg("domain %s does not allow null values",
-								  format_type_be(ctest->resulttype))));
+							 errmsg("domain %s does not allow null values",
+									format_type_be(ctest->resulttype))));
 				break;
 			case DOM_CONSTRAINT_CHECK:
 				{
@@ -3071,8 +3071,8 @@ ExecInitExpr(Expr *node, PlanState *parent)
 			{
 				ConvertRowtypeExpr *convert = (ConvertRowtypeExpr *) node;
 				ConvertRowtypeExprState *cstate = makeNode(ConvertRowtypeExprState);
-				int		i;
-				int		n;
+				int			i;
+				int			n;
 
 				cstate->xprstate.evalfunc = (ExprStateEvalFunc) ExecEvalConvertRowtype;
 				cstate->arg = ExecInitExpr(convert->arg, parent);
@@ -3093,7 +3093,7 @@ ExecInitExpr(Expr *node, PlanState *parent)
 					int			j;
 
 					if (att->attisdropped)
-						continue;	/* attrMap[i] is already 0 */
+						continue;		/* attrMap[i] is already 0 */
 					attname = NameStr(att->attname);
 					atttypid = att->atttypid;
 					atttypmod = att->atttypmod;
@@ -3109,7 +3109,7 @@ ExecInitExpr(Expr *node, PlanState *parent)
 								elog(ERROR, "attribute \"%s\" of type %s does not match corresponding attribute of type %s",
 									 attname,
 									 format_type_be(cstate->indesc->tdtypeid),
-									 format_type_be(cstate->outdesc->tdtypeid));
+								  format_type_be(cstate->outdesc->tdtypeid));
 							cstate->attrMap[i] = (AttrNumber) (j + 1);
 							break;
 						}
@@ -3224,8 +3224,8 @@ ExecInitExpr(Expr *node, PlanState *parent)
 							ereport(ERROR,
 									(errcode(ERRCODE_DATATYPE_MISMATCH),
 									 errmsg("ROW() column has type %s instead of type %s",
-									format_type_be(exprType((Node *) e)),
-								   format_type_be(attrs[i]->atttypid))));
+										format_type_be(exprType((Node *) e)),
+									   format_type_be(attrs[i]->atttypid))));
 					}
 					else
 					{

@@ -136,8 +136,7 @@ static TupleDesc ExecTypeFromTLInternal(List *targetList,
  * --------------------------------
  */
 TupleTable						/* return: address of table */
-ExecCreateTupleTable(int initialSize)	/* initial number of slots in
-										 * table */
+ExecCreateTupleTable(int initialSize)	/* initial number of slots in table */
 {
 	TupleTable	newtable;		/* newly allocated table */
 	TupleTableSlot *array;		/* newly allocated slot array */

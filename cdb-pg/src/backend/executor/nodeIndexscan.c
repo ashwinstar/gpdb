@@ -63,7 +63,7 @@ typedef struct
 	/* tid is the hash key and so must be first! */
 	ItemPointerData tid;		/* TID of a tuple we've returned */
 	int			scannum;		/* number of scan we returned it in */
-} DupHashTabEntry;
+}	DupHashTabEntry;
 
 
 static TupleTableSlot *IndexNext(IndexScanState *node);
@@ -253,7 +253,7 @@ IndexNext(IndexScanState *node)
 									HASH_ENTER,
 									&found);
 					if (entry == NULL ||
-					node->iss_DupHash->hctl->nentries > node->iss_MaxHash)
+						node->iss_DupHash->hctl->nentries > node->iss_MaxHash)
 					{
 						/* out of memory (either hard or soft limit) */
 						/* release hash table and fall thru to old code */
@@ -396,8 +396,7 @@ ExecIndexReScan(IndexScanState *node, ExprContext *exprCtxt)
 	int			j;
 
 	estate = node->ss.ps.state;
-	econtext = node->iss_RuntimeContext;		/* context for runtime
-												 * keys */
+	econtext = node->iss_RuntimeContext;		/* context for runtime keys */
 	numIndices = node->iss_NumIndices;
 	scanDescs = node->iss_ScanDescs;
 	scanKeys = node->iss_ScanKeys;
@@ -891,8 +890,7 @@ ExecInitIndexScan(IndexScan *node, EState *estate)
 			 */
 			ScanKeyEntryInitialize(&scan_keys[j],
 								   flags,
-								   varattno,	/* attribute number to
-												 * scan */
+								   varattno,	/* attribute number to scan */
 								   strategy,	/* op's strategy */
 								   subtype,		/* strategy subtype */
 								   opfuncid,	/* reg proc to use */
@@ -910,7 +908,7 @@ ExecInitIndexScan(IndexScan *node, EState *estate)
 				List	   *qualOrig = indexstate->indxqualorig;
 
 				lossyQuals[i] = lappend(lossyQuals[i],
-							list_nth((List *) list_nth(qualOrig, i), j));
+								list_nth((List *) list_nth(qualOrig, i), j));
 			}
 		}
 
@@ -1044,7 +1042,7 @@ create_duphash(IndexScanState *node)
 	node->iss_DupHash = hash_create("DupHashTable",
 									nbuckets,
 									&hash_ctl,
-							   HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
+									HASH_ELEM | HASH_FUNCTION | HASH_CONTEXT);
 }
 
 int

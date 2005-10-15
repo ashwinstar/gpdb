@@ -179,15 +179,15 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate)
 	sp_estate->es_snapshot = estate->es_snapshot;
 	sp_estate->es_crosscheck_snapshot = estate->es_crosscheck_snapshot;
 	sp_estate->es_instrument = estate->es_instrument;
-		
+
 	/*
-	 * "Loan" the global slice table and map to the subplan EState.  The 
+	 * "Loan" the global slice table and map to the subplan EState.  The
 	 * global state is already set up by the code that called us.
 	 */
-	 sp_estate->es_cur_root_idx = estate->es_cur_root_idx;
-	 sp_estate->es_cur_slice_idx = estate->es_cur_slice_idx;
-	 sp_estate->es_sliceTable = estate->es_sliceTable;
-	 sp_estate->es_slice_map = estate->es_slice_map;
+	sp_estate->es_cur_root_idx = estate->es_cur_root_idx;
+	sp_estate->es_cur_slice_idx = estate->es_cur_slice_idx;
+	sp_estate->es_sliceTable = estate->es_sliceTable;
+	sp_estate->es_slice_map = estate->es_slice_map;
 
 
 	/*

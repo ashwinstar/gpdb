@@ -137,12 +137,12 @@ ExecHashJoin(HashJoinState *node)
 			ExecHashTableDestroy(hashtable);
 			node->hj_HashTable = NULL;
 
-			/* CDB: We'll read no more from outer subtree.
-             * To keep our sibling QEs from being starved,
-             * tell source QEs not to clog up the pipeline
-             * with our never-to-be-consumed data.
-             */
-            ExecSquelchNode(outerNode);
+			/*
+			 * CDB: We'll read no more from outer subtree. To keep our sibling
+			 * QEs from being starved, tell source QEs not to clog up the
+			 * pipeline with our never-to-be-consumed data.
+			 */
+			ExecSquelchNode(outerNode);
 
 			return NULL;
 		}
@@ -206,7 +206,7 @@ ExecHashJoin(HashJoinState *node)
 					 */
 					hashtable->outerBatchSize[batchno]++;
 					ExecHashJoinSaveTuple(outerTupleSlot->val,
-									 hashtable->outerBatchFile[batchno]);
+										  hashtable->outerBatchFile[batchno]);
 					node->hj_NeedNewOuter = true;
 					continue;	/* loop around for a new outer tuple */
 				}
@@ -387,7 +387,7 @@ ExecInitHashJoin(HashJoin *node, EState *estate)
 		case JOIN_LEFT:
 			hjstate->hj_NullInnerTupleSlot =
 				ExecInitNullTupleSlot(estate,
-							 ExecGetResultType(innerPlanState(hjstate)));
+								 ExecGetResultType(innerPlanState(hjstate)));
 			break;
 		default:
 			elog(ERROR, "unrecognized join type: %d",
@@ -544,7 +544,7 @@ ExecHashJoinOuterGetTuple(PlanState *node, HashJoinState *hjstate)
 	while (curbatch <= hashtable->nbatch)
 	{
 		slot = ExecHashJoinGetSavedTuple(hjstate,
-								 hashtable->outerBatchFile[curbatch - 1],
+									 hashtable->outerBatchFile[curbatch - 1],
 										 hjstate->hj_OuterTupleSlot);
 		if (!TupIsNull(slot))
 			return slot;
@@ -577,7 +577,7 @@ ExecHashJoinGetSavedTuple(HashJoinState *hjstate,
 	if (nread != sizeof(HeapTupleData))
 		ereport(ERROR,
 				(errcode_for_file_access(),
-			errmsg("could not read from hash-join temporary file: %m")));
+				 errmsg("could not read from hash-join temporary file: %m")));
 	heapTuple = palloc(HEAPTUPLESIZE + htup.t_len);
 	memcpy((char *) heapTuple, (char *) &htup, sizeof(HeapTupleData));
 	heapTuple->t_datamcxt = CurrentMemoryContext;
@@ -587,7 +587,7 @@ ExecHashJoinGetSavedTuple(HashJoinState *hjstate,
 	if (nread != (size_t) htup.t_len)
 		ereport(ERROR,
 				(errcode_for_file_access(),
-			errmsg("could not read from hash-join temporary file: %m")));
+				 errmsg("could not read from hash-join temporary file: %m")));
 	return ExecStoreTuple(heapTuple, tupleSlot, InvalidBuffer, true);
 }
 
@@ -647,14 +647,14 @@ ExecHashJoinNewBatch(HashJoinState *hjstate)
 	if (BufFileSeek(hashtable->outerBatchFile[newbatch - 1], 0, 0L, SEEK_SET))
 		ereport(ERROR,
 				(errcode_for_file_access(),
-			   errmsg("could not rewind hash-join temporary file: %m")));
+				 errmsg("could not rewind hash-join temporary file: %m")));
 
 	innerFile = hashtable->innerBatchFile[newbatch - 1];
 
 	if (BufFileSeek(innerFile, 0, 0L, SEEK_SET))
 		ereport(ERROR,
 				(errcode_for_file_access(),
-			   errmsg("could not rewind hash-join temporary file: %m")));
+				 errmsg("could not rewind hash-join temporary file: %m")));
 
 	/*
 	 * Reload the hash table with the new inner batch
@@ -705,12 +705,12 @@ ExecHashJoinSaveTuple(HeapTuple heapTuple,
 	if (written != sizeof(HeapTupleData))
 		ereport(ERROR,
 				(errcode_for_file_access(),
-			 errmsg("could not write to hash-join temporary file: %m")));
+				 errmsg("could not write to hash-join temporary file: %m")));
 	written = BufFileWrite(file, (void *) heapTuple->t_data, heapTuple->t_len);
 	if (written != (size_t) heapTuple->t_len)
 		ereport(ERROR,
 				(errcode_for_file_access(),
-			 errmsg("could not write to hash-join temporary file: %m")));
+				 errmsg("could not write to hash-join temporary file: %m")));
 }
 
 void

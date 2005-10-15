@@ -720,22 +720,22 @@ ExecInitSubPlan(SubPlanState *node, EState *estate)
 	sp_estate->es_snapshot = estate->es_snapshot;
 	sp_estate->es_crosscheck_snapshot = estate->es_crosscheck_snapshot;
 	sp_estate->es_instrument = estate->es_instrument;
-	
+
 	/*
 	 * "Loan" the global slice table and map to the subplan EState.  The
 	 * global state is already set up by the code that called up, e.g., if
 	 * this is an initPlan subplan, then the current slice will be a root.
 	 */
-	 sp_estate->es_cur_root_idx = estate->es_cur_root_idx;
-	 sp_estate->es_cur_slice_idx = estate->es_cur_slice_idx;
-	 sp_estate->es_sliceTable = estate->es_sliceTable;
-	 sp_estate->es_slice_map = estate->es_slice_map;
+	sp_estate->es_cur_root_idx = estate->es_cur_root_idx;
+	sp_estate->es_cur_slice_idx = estate->es_cur_slice_idx;
+	sp_estate->es_sliceTable = estate->es_sliceTable;
+	sp_estate->es_slice_map = estate->es_slice_map;
 
 	/*
 	 * Start up the subplan (this is a very cut-down form of InitPlan())
 	 */
 	node->planstate = ExecInitNode(subplan->plan, sp_estate);
-	
+
 	/*
 	 * Should we "Reclaim" the global slice table to keep control of it?
 	 * Shouldn't be necessary since deallocation is context based.
@@ -947,36 +947,36 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 	bool		found = false;
 	ArrayBuildState *astate = NULL;
 
-	Query *query;
-	QueryDesc *queryDesc;
-	EState *local; /* The EState to use. */
+	Query	   *query;
+	QueryDesc  *queryDesc;
+	EState	   *local;			/* The EState to use. */
 	volatile bool hasDispatched = false;
-	bool shouldDispatch = false;
+	bool		shouldDispatch = false;
 
-    if ( Mpp_role == MPP_ROLE_DISPATCH &&
+	if (Mpp_role == MPP_ROLE_DISPATCH &&
 		planstate != NULL &&
 		planstate->plan != NULL &&
-		planstate->plan->dispatch == DISPATCH_PARALLEL )
+		planstate->plan->dispatch == DISPATCH_PARALLEL)
 		shouldDispatch = true;
 
-	/* Let's initialize 'queryDesc' before our PG_TRY, to ensure the
-     * correct value will be seen inside the PG_CATCH block without
-     * having to declare it 'volatile'.  (setjmp/longjmp foolishness)
-     */
-    if ( shouldDispatch )
-	{					
-
-		/* There are two EState structures available:
-		 *   node->planstate->state
-		 *   node->sub_estate
+	/*
+	 * Let's initialize 'queryDesc' before our PG_TRY, to ensure the correct
+	 * value will be seen inside the PG_CATCH block without having to declare
+	 * it 'volatile'.  (setjmp/longjmp foolishness)
+	 */
+	if (shouldDispatch)
+	{
+		/*
+		 * There are two EState structures available: node->planstate->state
+		 * node->sub_estate
 		 */
 		local = node->sub_estate;
-		
+
 		/* Fake a Query node to hold the range table. */
 		query = makeNode(Query);
 		query->rtable = subplan->rtable;
 		query->commandType = CMD_SELECT;
-		
+
 		/*
 		 * Fake a QueryDesc stucture for CdbDispatchPlan call. It should
 		 * look like the one passed in as the argument which carries the
@@ -984,21 +984,21 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 		 * the initplan root of interest.
 		 */
 		queryDesc = CreateQueryDesc(
-			gbl_queryDesc->parsetree,
-			gbl_queryDesc->plantree,
-			gbl_queryDesc->snapshot,
-			gbl_queryDesc->crosscheck_snapshot,
-			NULL, /* Null destination for the QE */
-			gbl_queryDesc->params,
-			gbl_queryDesc->doInstrument
+									gbl_queryDesc->parsetree,
+									gbl_queryDesc->plantree,
+									gbl_queryDesc->snapshot,
+									gbl_queryDesc->crosscheck_snapshot,
+									NULL,		/* Null destination for the QE */
+									gbl_queryDesc->params,
+									gbl_queryDesc->doInstrument
 			);
-		
+
 		queryDesc->estate = CreateExecutorState();
 		queryDesc->estate->es_sliceTable = gbl_queryDesc->estate->es_sliceTable;
 		queryDesc->estate->es_cur_root_idx = gbl_queryDesc->estate->es_cur_root_idx;
 		queryDesc->estate->es_param_exec_vals = gbl_queryDesc->estate->es_param_exec_vals;
 
-    }
+	}
 
 	/*
 	 * Need a try/catch block here so that if an ereport is called from
@@ -1009,21 +1009,21 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 	PG_TRY();
 	{
 
-        if ( shouldDispatch )
-        {					
-		    /*
-		     * This call returns after launching the threads that send the command to the appropriate
-		     * segdbs.  It does not wait for them to finish.
-		     */
-            hasDispatched = true;
-		    cdbdisp_dispatchPlan(queryDesc);
+		if (shouldDispatch)
+		{
+			/*
+			 * This call returns after launching the threads that send the command to the appropriate
+			 * segdbs.	It does not wait for them to finish.
+			 */
+			hasDispatched = true;
+			cdbdisp_dispatchPlan(queryDesc);
 
 			/*
 			 * Set up the interconnect for execution of the initplan root slice.
 			 */
 			SetupInterconnect(queryDesc->estate->es_sliceTable, queryDesc->estate->es_sliceTable->localSlice);
 		}
-		
+
 
 		/*
 		 * Must switch to child query's per-query memory context.
@@ -1038,8 +1038,8 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			ExecReScan(planstate, NULL);
 
 		for (slot = ExecProcNode(planstate);
-			!TupIsNull(slot);
-			slot = ExecProcNode(planstate))
+			 !TupIsNull(slot);
+			 slot = ExecProcNode(planstate))
 		{
 			HeapTuple	tup = slot->val;
 			TupleDesc	tdesc = slot->ttc_tupleDescriptor;
@@ -1067,18 +1067,18 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 				/* stash away current value */
 				dvalue = heap_getattr(tup, 1, tdesc, &disnull);
 				astate = accumArrayResult(astate, dvalue, disnull,
-										tdesc->attrs[0]->atttypid,
-										oldcontext);
+										  tdesc->attrs[0]->atttypid,
+										  oldcontext);
 				/* keep scanning subplan to collect all values */
 				continue;
 			}
 
 			if (found &&
 				(subLinkType == EXPR_SUBLINK ||
-				subLinkType == MULTIEXPR_SUBLINK))
+				 subLinkType == MULTIEXPR_SUBLINK))
 				ereport(ERROR,
 						(errcode(ERRCODE_CARDINALITY_VIOLATION),
-						errmsg("more than one row returned by a subquery used as an expression")));
+						 errmsg("more than one row returned by a subquery used as an expression")));
 
 			found = true;
 
@@ -1150,42 +1150,45 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 	}
 	PG_CATCH();
 	{
-		if ( hasDispatched )
+		if (hasDispatched)
 		{
-            /*
-             * Request any remaining commands executing on qExecs to stop.
-             * We need to wait for the threads to finish.  This allows for proper cleanup
-             * of the results from the async command executions.
-             */
-            CdbCheckDispatchResult(true);
+			/*
+			 * Request any remaining commands executing on qExecs to stop.
+			 * We need to wait for the threads to finish.  This allows for proper cleanup
+			 * of the results from the async command executions.
+			 */
+			CdbCheckDispatchResult(true);
 
-            /* Discard any remaining results from QEs; don't confuse matters
-             * by throwing a new error.  Any results of interest presumably
-             * should have been examined before the exception was thrown.
-             */
-            cdbdisp_destroyPlanResults(queryDesc);
+			/*
+			 * Discard any remaining results from QEs; don't confuse matters
+			 * by throwing a new error.  Any results of interest presumably
+			 * should have been examined before the exception was thrown.
+			 */
+			cdbdisp_destroyPlanResults(queryDesc);
 
-            /* clean up the interconnect */
-            TeardownInterconnect(); /* Is this needed following failure on QD? */
+			/* clean up the interconnect */
+			TeardownInterconnect();		/* Is this needed following failure on
+										 * QD? */
 		}
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
 
-	if ( hasDispatched )
+	if (hasDispatched)
 	{
 		/*
 		 * We successfully completed on the Dispatcher.  Now check the results
 		 * from the qExecs.  This internally waits for them to all finish.
 		 */
-        CdbCheckDispatchResult(false);      /* wait calmly, don't cancel them */
+		CdbCheckDispatchResult(false);	/* wait calmly, don't cancel them */
 
-        TeardownInterconnect(); /* following success on QD */
+		TeardownInterconnect(); /* following success on QD */
 
-        /* Check and free the results of all gangs.
-		 * If any QE had an error, report it and exit via PG_THROW.
-         */
-        cdbdisp_dumpPlanResults(queryDesc);
+		/*
+		 * Check and free the results of all gangs. If any QE had an error,
+		 * report it and exit via PG_THROW.
+		 */
+		cdbdisp_dumpPlanResults(queryDesc);
 	}
 
 

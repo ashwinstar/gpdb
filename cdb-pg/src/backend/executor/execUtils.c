@@ -72,8 +72,8 @@ int			NTupleReplaced;
 int			NTupleAppended;
 int			NTupleDeleted;
 int			NIndexTupleInserted;
-extern int	NIndexTupleProcessed;		/* have to be defined in the
-										 * access method level so that the
+extern int	NIndexTupleProcessed;		/* have to be defined in the access
+										 * method level so that the
 										 * cinterface.a will link ok. */
 
 
@@ -221,7 +221,7 @@ CreateExecutorState(void)
 	estate->es_evTupleNull = NULL;
 	estate->es_evTuple = NULL;
 	estate->es_useEvalPlan = false;
-	
+
 	estate->es_cur_slice_idx = 0;
 	estate->es_cur_root_idx = 0;
 	estate->es_sliceTable = NULL;
@@ -877,7 +877,7 @@ ExecInsertIndexTuples(TupleTableSlot *slot,
 							  nullv,	/* info on nulls */
 							  &(heapTuple->t_self),		/* tid of heap tuple */
 							  heapRelation,
-				  relationDescs[i]->rd_index->indisunique && !is_vacuum);
+					  relationDescs[i]->rd_index->indisunique && !is_vacuum);
 
 		/*
 		 * keep track of index inserts for debugging
@@ -1013,31 +1013,33 @@ ShutdownExprContext(ExprContext *econtext)
  * ----------------------------------------------------------------
  */
 
-/* Attach a slice table to the given Estate structure.  It should
+/* Attach a slice table to the given Estate structure.	It should
  * consist of blank slices, one for the root plan, one for each
  * Motion node (which roots a slice with a send node), and one for
  * each subplan (which acts as an initplan root node).
  */
-void InitSliceTable(EState *estate, int nMotions, int nSubplans)
+void
+InitSliceTable(EState *estate, int nMotions, int nSubplans)
 {
 	SliceTable *table;
-	Slice *slice;
-	int i, n;
+	Slice	   *slice;
+	int			i,
+				n;
 	MemoryContext oldcontext;
-	
+
 	oldcontext = MemoryContextSwitchTo(estate->es_query_cxt);
-	
+
 	table = makeNode(SliceTable);
 	table->nMotions = nMotions;
 	table->nSubplans = nSubplans;
 	table->nextInitPlan = 1 + nMotions;
 	table->slices = NIL;
-	
+
 	n = 1 + nMotions + nSubplans;
-	for ( i = 0; i < n; i++ )
+	for (i = 0; i < n; i++)
 	{
 		slice = makeNode(Slice);
-		
+
 		slice->sliceIndex = -1;
 		slice->rootIndex = -1;
 		slice->gangType = GANGTYPE_UNALLOCATED;
@@ -1051,15 +1053,15 @@ void InitSliceTable(EState *estate, int nMotions, int nSubplans)
 
 		table->slices = lappend(table->slices, slice);
 	}
-	
-	slice = (Slice*)linitial(table->slices);
+
+	slice = (Slice *) linitial(table->slices);
 	slice->sliceIndex = 0;
 	slice->rootIndex = 0;
-	
+
 	estate->es_sliceTable = table;
 	estate->es_cur_root_idx = 0;
 	estate->es_cur_slice_idx = 0;
-	
+
 	MemoryContextSwitchTo(oldcontext);
 }
 
@@ -1069,54 +1071,55 @@ void InitSliceTable(EState *estate, int nMotions, int nSubplans)
  * The root slices of initPlan slice trees will always run on the QD,
  * which, for the time being, we represent as
  *
- *    (gangType, gangSize) = <GANGTYPE_UNALLOCATED, 0>.
+ *	  (gangType, gangSize) = <GANGTYPE_UNALLOCATED, 0>.
  *
  * The root slice of the main plan wil run on the QD in case it's a
- * SELECT,  but will run on QE(s) in case it's an INSERT, UPDATE, or
+ * SELECT,	but will run on QE(s) in case it's an INSERT, UPDATE, or
  * DELETE. Because we restrict UPDATE and DELETE to have no motions
  * (i.e., one slice) and because INSERT must always route tuples,
  * the assigment for these will be primary and mirror writer gangs,
  * which we represent as
  *
- *    (gangType, gangSize) =  <GANGTYPE_PRIMARY_WRITER, N>
+ *	  (gangType, gangSize) =  <GANGTYPE_PRIMARY_WRITER, N>
  */
-void InitRootSlices(QueryDesc *queryDesc)
+void
+InitRootSlices(QueryDesc *queryDesc)
 {
-	EState *estate = queryDesc->estate;
+	EState	   *estate = queryDesc->estate;
 	SliceTable *sliceTable = estate->es_sliceTable;
-	ListCell *cell;
-	Slice *slice;
-	int i;
-	
-	foreach (cell, sliceTable->slices)
+	ListCell   *cell;
+	Slice	   *slice;
+	int			i;
+
+	foreach(cell, sliceTable->slices)
 	{
-		slice = (Slice *)lfirst(cell);
+		slice = (Slice *) lfirst(cell);
 		i = slice->sliceIndex;
-		if ( i == 0 )
+		if (i == 0)
 		{
 			/* Main plan root slice */
-			switch( queryDesc->operation )
+			switch (queryDesc->operation)
 			{
 				case CMD_SELECT:
-					Assert( slice->gangType == GANGTYPE_UNALLOCATED && slice->gangSize == 0 );
+					Assert(slice->gangType == GANGTYPE_UNALLOCATED && slice->gangSize == 0);
 
-                    /* Set our global sliceid variable for elog. */
-                    currentSliceId = 0;
+					/* Set our global sliceid variable for elog. */
+					currentSliceId = 0;
 					break;
-					
+
 				case CMD_INSERT:
 				case CMD_UPDATE:
 				case CMD_DELETE:
 					slice->gangType = GANGTYPE_PRIMARY_WRITER;
 					slice->gangSize = getMPPSegmentCount();
-                    currentSliceId = UNSET_SLICE_ID;
+					currentSliceId = UNSET_SLICE_ID;
 					break;
-				
+
 				default:
-					Assert( FALSE );
+					Assert(FALSE);
 			}
 		}
-		if ( i <= sliceTable->nMotions )
+		if (i <= sliceTable->nMotions)
 		{
 			/* Non-root slice */
 			continue;
@@ -1124,7 +1127,7 @@ void InitRootSlices(QueryDesc *queryDesc)
 		else
 		{
 			/* InitPlan root slice */
-			Assert( slice->gangType == GANGTYPE_UNALLOCATED && slice->gangSize == 0 );
+			Assert(slice->gangType == GANGTYPE_UNALLOCATED && slice->gangSize == 0);
 		}
 	}
 }
@@ -1135,23 +1138,24 @@ void InitRootSlices(QueryDesc *queryDesc)
 /*
  * Context for AssignGangs() and helper functions.
  */
-typedef struct SliceReq {
-	int numNgangs;
-	int num1gangs;
-	int nxtNgang;
-	int nxt1gang;
-	Gang **vecNgangs;
-	Gang **vec1gangs;
-	Gang *mirrorWriterGang;
-	bool writer;
-	
-} SliceReq;
+typedef struct SliceReq
+{
+	int			numNgangs;
+	int			num1gangs;
+	int			nxtNgang;
+	int			nxt1gang;
+	Gang	  **vecNgangs;
+	Gang	  **vec1gangs;
+	Gang	   *mirrorWriterGang;
+	bool		writer;
+
+}	SliceReq;
 
 /* Forward declarations */
-static void InitSliceReq(SliceReq* req);
-static void AccumSliceReq(SliceReq *inv, SliceReq *req);
-static void InventorySliceTree(Slice **sliceMap, int sliceIndex, SliceReq *req);
-static void AssociateSlicesToProcesses(Slice **sliceMap, int sliceIndex, SliceReq *req);
+static void InitSliceReq(SliceReq * req);
+static void AccumSliceReq(SliceReq * inv, SliceReq * req);
+static void InventorySliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req);
+static void AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req);
 
 
 /* Function AssignGangs runs on the QD and finishes construction of the
@@ -1171,35 +1175,38 @@ static void AssociateSlicesToProcesses(Slice **sliceMap, int sliceIndex, SliceRe
  * 1-gangs that run on QEs.
  *
  * TODO Currently (July 2005) this argument is always supplied as 0, but
- *      there are no cases of the planner specifying a fixed Motion to a
- *      QE, so we don't know the case works.
+ *		there are no cases of the planner specifying a fixed Motion to a
+ *		QE, so we don't know the case works.
  *
  * On successful exit, the CDBProcess lists (primaryProcesses, mirrorProcesses)
  * and the Gang pointers (primaryGang, mirrorGang) are set correctly in each
  * slice in the slice table.
  */
-void AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
+void
+AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 {
-	EState *estate = queryDesc->estate;
+	EState	   *estate = queryDesc->estate;
 	SliceTable *sliceTable = estate->es_sliceTable;
-	ListCell *cell;
-	Slice *slice;
-	int i,  nslices;
-	Slice **sliceMap;	
-	SliceReq req, inv;
-	
+	ListCell   *cell;
+	Slice	   *slice;
+	int			i,
+				nslices;
+	Slice	  **sliceMap;
+	SliceReq	req,
+				inv;
+
 	/* Make a map so we can access slices quickly by index.  */
 	nslices = list_length(sliceTable->slices);
-	sliceMap = (Slice **)palloc(nslices * sizeof(Slice *));
+	sliceMap = (Slice **) palloc(nslices * sizeof(Slice *));
 	i = 0;
-	foreach (cell, sliceTable->slices)
+	foreach(cell, sliceTable->slices)
 	{
-		slice = (Slice *)lfirst(cell);
-		Assert( i == slice->sliceIndex );
+		slice = (Slice *) lfirst(cell);
+		Assert(i == slice->sliceIndex);
 		sliceMap[i] = slice;
 		i++;
 	}
-	
+
 	/* Initialize gang requirement inventory */
 	InitSliceReq(&inv);
 
@@ -1207,24 +1214,24 @@ void AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 	InventorySliceTree(sliceMap, 0, &inv);
 
 	/* Capture initPlan slice tree requirements. */
-	for ( i = sliceTable->nMotions + 1; i < nslices; i++ )
+	for (i = sliceTable->nMotions + 1; i < nslices; i++)
 	{
 		InitSliceReq(&req);
 		InventorySliceTree(sliceMap, i, &req);
 		AccumSliceReq(&inv, &req);
 	}
-	
+
 	/* Get the gangs we'll use. */
-	if ( inv.numNgangs > 0 )
+	if (inv.numNgangs > 0)
 	{
-		inv.vecNgangs =  (Gang**)palloc(sizeof(Gang *) * inv.numNgangs);
-		for ( i = 0; i < inv.numNgangs; i++ )
+		inv.vecNgangs = (Gang **) palloc(sizeof(Gang *) * inv.numNgangs);
+		for (i = 0; i < inv.numNgangs; i++)
 		{
-			if ( i == 0 )
+			if (i == 0)
 			{
 				inv.vecNgangs[i] = allocateGang(GANGTYPE_PRIMARY_WRITER, getMPPSegmentCount(), 0);
 				Assert(inv.vecNgangs[i] != NULL);
-				if ( inv.writer )
+				if (inv.writer)
 				{
 					inv.mirrorWriterGang = allocateGang(GANGTYPE_MIRROR_WRITER, getMPPSegmentCount(), 0);
 				}
@@ -1235,45 +1242,49 @@ void AssignGangs(QueryDesc *queryDesc, int utility_segment_index)
 			}
 		}
 	}
-	if ( inv.num1gangs > 0 )
+	if (inv.num1gangs > 0)
 	{
-		inv.vec1gangs =  (Gang**)palloc(sizeof(Gang *) * inv.num1gangs);
-		for ( i = 0; i < inv.num1gangs; i++ )
+		inv.vec1gangs = (Gang **) palloc(sizeof(Gang *) * inv.num1gangs);
+		for (i = 0; i < inv.num1gangs; i++)
 		{
 			inv.vec1gangs[i] = allocateGang(GANGTYPE_READER, 1, utility_segment_index);
 		}
 	}
-	
+
 	/* Use the gangs to construct the CdbProcess lists in slices. */
-	
+
 	inv.nxtNgang = inv.nxt1gang = 0;
-	AssociateSlicesToProcesses(sliceMap, 0, &inv); /* Main tree. */
-	
-	for ( i = sliceTable->nMotions + 1; i < nslices; i++ )
+	AssociateSlicesToProcesses(sliceMap, 0, &inv);		/* Main tree. */
+
+	for (i = sliceTable->nMotions + 1; i < nslices; i++)
 	{
 		inv.nxtNgang = inv.nxt1gang = 0;
-		AssociateSlicesToProcesses(sliceMap, i, &inv); /* An initPlan */
+		AssociateSlicesToProcesses(sliceMap, i, &inv);	/* An initPlan */
 	}
-	
+
 	/* Clean up */
 	pfree(sliceMap);
-	if ( inv.vecNgangs != NULL ) pfree(inv.vecNgangs);
-	if ( inv.vec1gangs != NULL ) pfree(inv.vec1gangs);
+	if (inv.vecNgangs != NULL)
+		pfree(inv.vecNgangs);
+	if (inv.vec1gangs != NULL)
+		pfree(inv.vec1gangs);
 
 }
 
-void ReleaseGangs(QueryDesc *queryDesc)
+void
+ReleaseGangs(QueryDesc *queryDesc)
 {
 	/*
 	 * TODO Depending on how we eventually support named Portals for
-	 *      cursors, we may have to dig through the queryDesc in order
-	 *      to do a more precise job. Here we just free all the gangs.
+	 *		cursors, we may have to dig through the queryDesc in order
+	 *		to do a more precise job. Here we just free all the gangs.
 	 */
 	freeGangs();
 }
 
 
-void InitSliceReq(SliceReq* req)
+void
+InitSliceReq(SliceReq * req)
 {
 	req->numNgangs = req->num1gangs = 0;
 	req->writer = FALSE;
@@ -1282,96 +1293,101 @@ void InitSliceReq(SliceReq* req)
 	req->mirrorWriterGang = NULL;
 }
 
-void AccumSliceReq(SliceReq *inv, SliceReq *req)
+void
+AccumSliceReq(SliceReq * inv, SliceReq * req)
 {
-	inv->numNgangs = (inv->numNgangs >= req->numNgangs)? inv->numNgangs: req->numNgangs;
-	inv->num1gangs = (inv->num1gangs >= req->num1gangs)? inv->num1gangs: req->num1gangs;
+	inv->numNgangs = (inv->numNgangs >= req->numNgangs) ? inv->numNgangs : req->numNgangs;
+	inv->num1gangs = (inv->num1gangs >= req->num1gangs) ? inv->num1gangs : req->num1gangs;
 	inv->writer = (inv->writer || req->writer);
 }
 
 /*
  * Helper for AssignGangs takes a simple inventory of the gangs required
- * by a slice tree.  Recursive.  Closely coupled with AssignGangs.  Not
+ * by a slice tree.  Recursive.  Closely coupled with AssignGangs.	Not
  * generally useful.
  */
-void InventorySliceTree (Slice **sliceMap, int sliceIndex, SliceReq *req)
+void
+InventorySliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 {
-	ListCell *cell;
-	int childIndex;
-	Slice *slice = sliceMap[sliceIndex];
-	switch ( slice->gangType )
+	ListCell   *cell;
+	int			childIndex;
+	Slice	   *slice = sliceMap[sliceIndex];
+
+	switch (slice->gangType)
 	{
 		case GANGTYPE_UNALLOCATED:
 			/* Roots that run on the  QD don't need a gang. */
 			break;
-			
+
 		case GANGTYPE_PRIMARY_WRITER:
 			req->writer = TRUE;
 			/* fall through */
 		case GANGTYPE_READER:
-			if ( slice->gangSize == 1 )
+			if (slice->gangSize == 1)
 			{
 				req->num1gangs++;
 			}
 			else
 			{
-				Assert( slice->gangSize == getMPPSegmentCount() );
+				Assert(slice->gangSize == getMPPSegmentCount());
 				req->numNgangs++;
 			}
 			break;
-			
+
 		case GANGTYPE_MIRROR_WRITER:
 			/* Shouldn't see this in a slice->gangType. */
-			Assert( FALSE );
+			Assert(FALSE);
 			break;
 	}
-	
-	foreach( cell, slice->children )
+
+	foreach(cell, slice->children)
 	{
 		childIndex = lfirst_int(cell);
-		InventorySliceTree(sliceMap, childIndex,  req);
+		InventorySliceTree(sliceMap, childIndex, req);
 	}
 }
 
 
 /*
  * Helper for AssignGangs uses the gangs in the inventory to fill in the
- * CdbProcess lists in the slice tree.  Recursive.  Closely coupled with
+ * CdbProcess lists in the slice tree.	Recursive.	Closely coupled with
  * AssignGangs.  Not generally useful.
  */
-void AssociateSlicesToProcesses(Slice **sliceMap, int sliceIndex, SliceReq *req)
+void
+AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 {
-	ListCell *cell;
-	int childIndex;
-	Slice *slice = sliceMap[sliceIndex];
-	switch ( slice->gangType )
+	ListCell   *cell;
+	int			childIndex;
+	Slice	   *slice = sliceMap[sliceIndex];
+
+	switch (slice->gangType)
 	{
 		case GANGTYPE_UNALLOCATED:
 			/* Roots that run on the  QD don't need a gang. */
-			
+
 			slice->primaryGang = NULL;
 			slice->primaryProcesses = getCdbProcessesForQD(true);
 			break;
-			
+
 		case GANGTYPE_PRIMARY_WRITER:
-			Assert( slice->gangSize == getMPPSegmentCount() );
-			Assert( req->numNgangs > 0 &&  req->nxtNgang == 0 && req->writer );
-			Assert( req->vecNgangs[0] != NULL );
-			
+			Assert(slice->gangSize == getMPPSegmentCount());
+			Assert(req->numNgangs > 0 && req->nxtNgang == 0 && req->writer);
+			Assert(req->vecNgangs[0] != NULL);
+
 			slice->primaryGang = req->vecNgangs[req->nxtNgang];
 			Assert(slice->primaryGang != NULL);
 			slice->primaryProcesses = getCdbProcessList(slice->primaryGang);
 			slice->mirrorGang = req->mirrorWriterGang;
-			if ( slice->mirrorGang != NULL )
+			if (slice->mirrorGang != NULL)
 				slice->mirrorProcesses = getCdbProcessList(slice->mirrorGang);
 			else
 				slice->mirrorProcesses = NIL;
-			
+
 			req->nxtNgang++;
 			break;
-			
+
 		case GANGTYPE_READER:
-			if ( slice->gangSize == 1 )
+			if (slice->gangSize == 1)
 			{
 				slice->primaryGang = req->vec1gangs[req->nxt1gang];
 				slice->primaryProcesses = getCdbProcessList(slice->primaryGang);
@@ -1379,58 +1395,60 @@ void AssociateSlicesToProcesses(Slice **sliceMap, int sliceIndex, SliceReq *req)
 			}
 			else
 			{
-				Assert( slice->gangSize == getMPPSegmentCount() );
+				Assert(slice->gangSize == getMPPSegmentCount());
 				slice->primaryGang = req->vecNgangs[req->nxtNgang];
 				slice->primaryProcesses = getCdbProcessList(slice->primaryGang);
 				req->nxtNgang++;
 			}
 			Assert(slice->primaryGang != NULL);
 			break;
-			
+
 		case GANGTYPE_MIRROR_WRITER:
 			/* Shouldn't see this in a slice->gangType. */
-			Assert( FALSE );
+			Assert(FALSE);
 			break;
 	}
-	
-	foreach( cell, slice->children )
+
+	foreach(cell, slice->children)
 	{
 		childIndex = lfirst_int(cell);
-		AssociateSlicesToProcesses(sliceMap, childIndex,  req);
+		AssociateSlicesToProcesses(sliceMap, childIndex, req);
 	}
-	
+
 }
 
 /*
  * A forgiving slice table indexer that returns the indexed Slice* or NULL
  */
-Slice *getCurrentSlice(EState *estate)
+Slice *
+getCurrentSlice(EState *estate)
 {
 	SliceTable *sliceTable;
-	int sliceIdx;
-	
-	if ( estate == NULL )
+	int			sliceIdx;
+
+	if (estate == NULL)
 		return NULL;
-	
+
 	sliceTable = estate->es_sliceTable;
-	sliceIdx  = estate->es_cur_slice_idx;
-	
-	if ( sliceTable == NULL )
+	sliceIdx = estate->es_cur_slice_idx;
+
+	if (sliceTable == NULL)
 		return NULL;
-	
-	if ( sliceIdx < 0 || sliceIdx >= list_length(sliceTable->slices ) )
+
+	if (sliceIdx < 0 || sliceIdx >= list_length(sliceTable->slices))
 		return NULL;
-	
-	return (Slice*)list_nth(sliceTable->slices, sliceIdx);
+
+	return (Slice *) list_nth(sliceTable->slices, sliceIdx);
 }
 
 /* Should the slice run on the QD?
  *
  * N.B. Not the same as !sliceRunsOnQE(slice), when slice is NULL.
  */
-bool sliceRunsOnQD(Slice *slice)
+bool
+sliceRunsOnQD(Slice * slice)
 {
-	return ( slice != NULL && slice->gangType == GANGTYPE_UNALLOCATED );
+	return (slice != NULL && slice->gangType == GANGTYPE_UNALLOCATED);
 }
 
 
@@ -1438,7 +1456,8 @@ bool sliceRunsOnQD(Slice *slice)
  *
  * N.B. Not the same as !sliceRunsOnQD(slice), when slice is NULL.
  */
-bool sliceRunsOnQE(Slice *slice)
+bool
+sliceRunsOnQE(Slice * slice)
 {
-	return ( slice != NULL && slice->gangType != GANGTYPE_UNALLOCATED);
+	return (slice != NULL && slice->gangType != GANGTYPE_UNALLOCATED);
 }

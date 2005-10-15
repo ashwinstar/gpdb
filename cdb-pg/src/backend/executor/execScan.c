@@ -183,7 +183,7 @@ ExecAssignScanProjectionInfo(ScanState *node)
 	if (tlist_matches_tupdesc(&node->ps,
 							  scan->plan.targetlist,
 							  scan->scanrelid,
-							node->ss_ScanTupleSlot->ttc_tupleDescriptor))
+							  node->ss_ScanTupleSlot->ttc_tupleDescriptor))
 		node->ps.ps_ProjInfo = NULL;
 	else
 		ExecAssignProjectionInfo(&node->ps);

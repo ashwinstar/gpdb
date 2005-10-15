@@ -278,8 +278,8 @@ initialize_aggregates(AggState *aggstate,
 
 			oldContext = MemoryContextSwitchTo(aggstate->aggcontext);
 			pergroupstate->transValue = datumCopy(peraggstate->initValue,
-											 peraggstate->transtypeByVal,
-											  peraggstate->transtypeLen);
+												  peraggstate->transtypeByVal,
+												  peraggstate->transtypeLen);
 			MemoryContextSwitchTo(oldContext);
 		}
 		pergroupstate->transValueIsNull = peraggstate->initValueIsNull;
@@ -332,8 +332,8 @@ advance_transition_function(AggState *aggstate,
 			 */
 			oldContext = MemoryContextSwitchTo(aggstate->aggcontext);
 			pergroupstate->transValue = datumCopy(newVal,
-											 peraggstate->transtypeByVal,
-											  peraggstate->transtypeLen);
+												  peraggstate->transtypeByVal,
+												  peraggstate->transtypeLen);
 			pergroupstate->transValueIsNull = false;
 			pergroupstate->noTransValue = false;
 			MemoryContextSwitchTo(oldContext);
@@ -382,7 +382,7 @@ advance_transition_function(AggState *aggstate,
 	 * to its first input, we don't need to do anything.
 	 */
 	if (!peraggstate->transtypeByVal &&
-	DatumGetPointer(newVal) != DatumGetPointer(pergroupstate->transValue))
+		DatumGetPointer(newVal) != DatumGetPointer(pergroupstate->transValue))
 	{
 		if (!fcinfo.isnull)
 		{
@@ -801,7 +801,7 @@ agg_retrieve_direct(AggState *aggstate)
 										 firstSlot->ttc_tupleDescriptor,
 										 node->numCols, node->grpColIdx,
 										 aggstate->eqfunctions,
-									  tmpcontext->ecxt_per_tuple_memory))
+										 tmpcontext->ecxt_per_tuple_memory))
 					{
 						/*
 						 * Save the first input tuple of the next group.

@@ -78,12 +78,12 @@ ExecLimit(LimitState *node)
 			{
 				node->lstate = LIMIT_EMPTY;
 
-			    /* CDB: We'll read no more from outer subtree.
-                 * To keep our sibling QEs from being starved,
-                 * tell source QEs not to clog up the pipeline
-                 * with our never-to-be-consumed data.
-                 */
-                ExecSquelchNode(outerPlan);
+				/*
+				 * CDB: We'll read no more from outer subtree. To keep our
+				 * sibling QEs from being starved, tell source QEs not to clog
+				 * up the pipeline with our never-to-be-consumed data.
+				 */
+				ExecSquelchNode(outerPlan);
 
 				return NULL;
 			}
@@ -120,7 +120,7 @@ ExecLimit(LimitState *node)
 			 * The subplan is known to return no tuples (or not more than
 			 * OFFSET tuples, in general).	So we return no tuples.
 			 */
-            ExecSquelchNode(outerPlan);             /*CDB*/
+			ExecSquelchNode(outerPlan); /* CDB */
 			return NULL;
 
 		case LIMIT_INWINDOW:
@@ -137,7 +137,7 @@ ExecLimit(LimitState *node)
 					node->position >= node->offset + node->count)
 				{
 					node->lstate = LIMIT_WINDOWEND;
-                    ExecSquelchNode(outerPlan);     /*CDB*/
+					ExecSquelchNode(outerPlan); /* CDB */
 					return NULL;
 				}
 
@@ -163,7 +163,7 @@ ExecLimit(LimitState *node)
 				if (node->position <= node->offset + 1)
 				{
 					node->lstate = LIMIT_WINDOWSTART;
-                    ExecSquelchNode(outerPlan);     /*CDB*/
+					ExecSquelchNode(outerPlan); /* CDB */
 					return NULL;
 				}
 

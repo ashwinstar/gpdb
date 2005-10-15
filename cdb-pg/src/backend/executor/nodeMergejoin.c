@@ -478,12 +478,13 @@ ExecMergeJoin(MergeJoinState *node)
 						break;
 					}
 
-                    /* CDB: We'll read no more from inner subtree.
-                     * To keep our sibling QEs from being starved,
-                     * tell source QEs not to clog up the pipeline
-                     * with our never-to-be-consumed data.
-                     */
-                    ExecSquelchNode(innerPlan);
+					/*
+					 * CDB: We'll read no more from inner subtree. To keep our
+					 * sibling QEs from being starved, tell source QEs not to
+					 * clog up the pipeline with our never-to-be-consumed
+					 * data.
+					 */
+					ExecSquelchNode(innerPlan);
 
 					/* Otherwise we're done. */
 					return NULL;
@@ -508,12 +509,13 @@ ExecMergeJoin(MergeJoinState *node)
 						break;
 					}
 
-                    /* CDB: We'll read no more from outer subtree.
-                     * To keep our sibling QEs from being starved,
-                     * tell source QEs not to clog up the pipeline
-                     * with our never-to-be-consumed data.
-                     */
-                    ExecSquelchNode(outerPlan);
+					/*
+					 * CDB: We'll read no more from outer subtree. To keep our
+					 * sibling QEs from being starved, tell source QEs not to
+					 * clog up the pipeline with our never-to-be-consumed
+					 * data.
+					 */
+					ExecSquelchNode(outerPlan);
 
 					/* Otherwise we're done. */
 					return NULL;
@@ -791,13 +793,14 @@ ExecMergeJoin(MergeJoinState *node)
 						break;
 					}
 
-                    /* CDB: We'll read no more from inner subtree.
-                     * To keep our sibling QEs from being starved,
-                     * tell source QEs not to clog up the pipeline
-                     * with our never-to-be-consumed data.
-                     */
-                    if (!TupIsNull(innerTupleSlot))
-                        ExecSquelchNode(innerPlan);
+					/*
+					 * CDB: We'll read no more from inner subtree. To keep our
+					 * sibling QEs from being starved, tell source QEs not to
+					 * clog up the pipeline with our never-to-be-consumed
+					 * data.
+					 */
+					if (!TupIsNull(innerTupleSlot))
+						ExecSquelchNode(innerPlan);
 
 					/* Otherwise we're done. */
 					return NULL;
@@ -908,12 +911,13 @@ ExecMergeJoin(MergeJoinState *node)
 							break;
 						}
 
-                        /* CDB: We'll read no more from outer subtree.
-                         * To keep our sibling QEs from being starved,
-                         * tell source QEs not to clog up the pipeline
-                         * with our never-to-be-consumed data.
-                         */
-                        ExecSquelchNode(outerPlan);
+						/*
+						 * CDB: We'll read no more from outer subtree. To keep
+						 * our sibling QEs from being starved, tell source QEs
+						 * not to clog up the pipeline with our
+						 * never-to-be-consumed data.
+						 */
+						ExecSquelchNode(outerPlan);
 
 						/* Otherwise we're done. */
 						return NULL;
@@ -1092,13 +1096,14 @@ ExecMergeJoin(MergeJoinState *node)
 						break;
 					}
 
-                    /* CDB: We'll read no more from inner subtree.
-                     * To keep our sibling QEs from being starved,
-                     * tell source QEs not to clog up the pipeline
-                     * with our never-to-be-consumed data.
-                     */
-                    if (!TupIsNull(innerTupleSlot))
-                        ExecSquelchNode(innerPlan);
+					/*
+					 * CDB: We'll read no more from inner subtree. To keep our
+					 * sibling QEs from being starved, tell source QEs not to
+					 * clog up the pipeline with our never-to-be-consumed
+					 * data.
+					 */
+					if (!TupIsNull(innerTupleSlot))
+						ExecSquelchNode(innerPlan);
 
 					/* Otherwise we're done. */
 					return NULL;
@@ -1278,13 +1283,14 @@ ExecMergeJoin(MergeJoinState *node)
 						break;
 					}
 
-                    /* CDB: We'll read no more from outer subtree.
-                     * To keep our sibling QEs from being starved,
-                     * tell source QEs not to clog up the pipeline
-                     * with our never-to-be-consumed data.
-                     */
-                    if (!TupIsNull(outerTupleSlot))
-                        ExecSquelchNode(outerPlan);
+					/*
+					 * CDB: We'll read no more from outer subtree. To keep our
+					 * sibling QEs from being starved, tell source QEs not to
+					 * clog up the pipeline with our never-to-be-consumed
+					 * data.
+					 */
+					if (!TupIsNull(outerTupleSlot))
+						ExecSquelchNode(outerPlan);
 
 					/* Otherwise we're done. */
 					return NULL;
@@ -1509,12 +1515,12 @@ ExecInitMergeJoin(MergeJoin *node, EState *estate)
 		case JOIN_LEFT:
 			mergestate->mj_NullInnerTupleSlot =
 				ExecInitNullTupleSlot(estate,
-						  ExecGetResultType(innerPlanState(mergestate)));
+							  ExecGetResultType(innerPlanState(mergestate)));
 			break;
 		case JOIN_RIGHT:
 			mergestate->mj_NullOuterTupleSlot =
 				ExecInitNullTupleSlot(estate,
-						  ExecGetResultType(outerPlanState(mergestate)));
+							  ExecGetResultType(outerPlanState(mergestate)));
 
 			/*
 			 * Can't handle right or full join with non-nil extra
@@ -1528,10 +1534,10 @@ ExecInitMergeJoin(MergeJoin *node, EState *estate)
 		case JOIN_FULL:
 			mergestate->mj_NullOuterTupleSlot =
 				ExecInitNullTupleSlot(estate,
-						  ExecGetResultType(outerPlanState(mergestate)));
+							  ExecGetResultType(outerPlanState(mergestate)));
 			mergestate->mj_NullInnerTupleSlot =
 				ExecInitNullTupleSlot(estate,
-						  ExecGetResultType(innerPlanState(mergestate)));
+							  ExecGetResultType(innerPlanState(mergestate)));
 
 			/*
 			 * Can't handle right or full join with non-nil extra

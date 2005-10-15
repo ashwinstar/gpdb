@@ -23,8 +23,8 @@
  *		ExecInitNode	-		initialize a plan node and its subplans
  *		ExecProcNode	-		get a tuple by executing the plan node
  *		ExecEndNode		-		shut down a plan node and its subplans
- *      ExecSquelchNode     -   notify subtree that no more tuples are needed
- *      ExecStateTreeWalker -   call given function for each node of plan state
+ *		ExecSquelchNode		-	notify subtree that no more tuples are needed
+ *		ExecStateTreeWalker -	call given function for each node of plan state
  *
  *	 NOTES
  *		This used to be three files.  It is now all combined into
@@ -108,7 +108,7 @@
 
 #ifdef CDB_TRACE_EXECUTOR
 static void ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result);
-#endif /* CDB_TRACE_EXECUTOR */
+#endif   /* CDB_TRACE_EXECUTOR */
 
 /* ------------------------------------------------------------------------
  *		ExecInitNode
@@ -225,7 +225,7 @@ ExecInitNode(Plan *node, EState *estate)
 		case T_Motion:
 			result = (PlanState *) ExecInitMotion((Motion *) node, estate);
 			break;
-			
+
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
 			result = NULL;		/* keep compiler quiet */
@@ -241,46 +241,46 @@ ExecInitNode(Plan *node, EState *estate)
 	{
 		SubPlan    *subplan = (SubPlan *) lfirst(l);
 		SubPlanState *sstate;
-		int prior_es_cur_slice_idx;
-		int prior_es_cur_root_idx;
+		int			prior_es_cur_slice_idx;
+		int			prior_es_cur_root_idx;
 
 		Assert(IsA(subplan, SubPlan));
 		sstate = ExecInitExprInitPlan(subplan, result);
-		
+
 		/*
-		 * MPP Slice Plan:  QD must initialize the global slice table.
+		 * MPP Slice Plan:	QD must initialize the global slice table.
 		 */
-		prior_es_cur_slice_idx = estate->es_cur_slice_idx; /* save */
-		prior_es_cur_root_idx = estate->es_cur_root_idx; /* save */
-		
-		if ( Mpp_role == MPP_ROLE_DISPATCH && estate->es_sliceTable != NULL )
+		prior_es_cur_slice_idx = estate->es_cur_slice_idx;		/* save */
+		prior_es_cur_root_idx = estate->es_cur_root_idx;		/* save */
+
+		if (Mpp_role == MPP_ROLE_DISPATCH && estate->es_sliceTable != NULL)
 		{
 			MemoryContext oldcxt;
-			int idx;
-			Slice *thisSlice;
-			
+			int			idx;
+			Slice	   *thisSlice;
+
 			oldcxt = MemoryContextSwitchTo(estate->es_query_cxt);
 			idx = estate->es_sliceTable->nextInitPlan++;
-			
+
 			Assert(idx < list_length(estate->es_sliceTable->slices));
-			
+
 			estate->es_cur_slice_idx = idx;
 			estate->es_cur_root_idx = idx;
-			thisSlice =  (Slice*)list_nth(estate->es_sliceTable->slices, idx);
-			
+			thisSlice = (Slice *) list_nth(estate->es_sliceTable->slices, idx);
+
 			Assert(thisSlice->sliceIndex == -1);
-			
+
 			thisSlice->sliceIndex = idx;
 			thisSlice->rootIndex = idx;
-			
+
 			MemoryContextSwitchTo(oldcxt);
 		}
-		
+
 		ExecInitSubPlan(sstate, estate);
-		
-		estate->es_cur_slice_idx = prior_es_cur_slice_idx; /* restore */
-		estate->es_cur_root_idx = prior_es_cur_root_idx; /* restore */
-		
+
+		estate->es_cur_slice_idx = prior_es_cur_slice_idx;		/* restore */
+		estate->es_cur_root_idx = prior_es_cur_root_idx;		/* restore */
+
 		subps = lappend(subps, sstate);
 	}
 	result->initPlan = subps;
@@ -319,10 +319,10 @@ ExecProcNode(PlanState *node)
 	TupleTableSlot *result;
 
 	CHECK_FOR_INTERRUPTS();
-	
+
 #ifdef CDB_TRACE_EXECUTOR
 	ExecCdbTraceNode(node, true, NULL);
-#endif /* CDB_TRACE_EXECUTOR */
+#endif   /* CDB_TRACE_EXECUTOR */
 
 	/*
 	 * deal with NULL nodes..
@@ -425,7 +425,7 @@ ExecProcNode(PlanState *node)
 		case T_MotionState:
 			result = ExecMotion((MotionState *) node);
 			break;
-			
+
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
 			result = NULL;
@@ -437,7 +437,7 @@ ExecProcNode(PlanState *node)
 
 #ifdef CDB_TRACE_EXECUTOR
 	ExecCdbTraceNode(node, false, result);
-#endif /* CDB_TRACE_EXECUTOR */
+#endif   /* CDB_TRACE_EXECUTOR */
 
 	return result;
 }
@@ -524,7 +524,7 @@ ExecCountSlotsNode(Plan *node)
 
 		case T_Motion:
 			return ExecCountSlotsMotion((Motion *) node);
-			
+
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
 			break;
@@ -537,30 +537,30 @@ ExecCountSlotsNode(Plan *node)
 /* ----------------------------------------------------------------
  *		ExecSquelchNode
  *
- *      When a node decides that it will not consume any more
- *      input tuples from a subtree that has not yet returned
- *      end-of-data, it must call ExecSquelchNode() on the subtree.
+ *		When a node decides that it will not consume any more
+ *		input tuples from a subtree that has not yet returned
+ *		end-of-data, it must call ExecSquelchNode() on the subtree.
  * ----------------------------------------------------------------
  */
 
 static CdbVisitOpt
-squelchNodeWalker(PlanState    *node,
-                  void         *context)
+squelchNodeWalker(PlanState *node,
+				  void *context)
 {
-    if (IsA(node, MotionState))
-    {
-        ExecStopMotion((MotionState *)node);
-        return CdbVisit_Skip;   /* don't visit subtree */
-    }
-    return CdbVisit_Walk;
-}                               /* squelchNodeWalker */
+	if (IsA(node, MotionState))
+	{
+		ExecStopMotion((MotionState *) node);
+		return CdbVisit_Skip;	/* don't visit subtree */
+	}
+	return CdbVisit_Walk;
+}	/* squelchNodeWalker */
 
 
 void
 ExecSquelchNode(PlanState *node)
 {
-    ExecStateTreeWalker(node, squelchNodeWalker, NULL, NULL);
-}                               /* ExecSquelchNode */
+	ExecStateTreeWalker(node, squelchNodeWalker, NULL, NULL);
+}	/* ExecSquelchNode */
 
 
 /* ----------------------------------------------------------------
@@ -686,7 +686,7 @@ ExecEndNode(PlanState *node)
 		case T_MotionState:
 			ExecEndMotion((MotionState *) node);
 			break;
-			
+
 		default:
 			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
 			break;
@@ -704,13 +704,13 @@ ExecEndNode(PlanState *node)
 void
 ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result)
 {
-	bool willReScan = FALSE;
-	bool willReturnTuple = FALSE;
-	Plan *plan = NULL;
+	bool		willReScan = FALSE;
+	bool		willReturnTuple = FALSE;
+	Plan	   *plan = NULL;
 	const char *nameTag = NULL;
 	const char *extraTag = "";
-	char extraTagBuffer[20];
-	
+	char		extraTagBuffer[20];
+
 	/*
 	 * Don't trace NULL nodes..
 	 */
@@ -718,10 +718,10 @@ ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result)
 		return;
 
 	plan = node->plan;
-	Assert( plan != NULL );
-	Assert( result == NULL || !entry );
+	Assert(plan != NULL);
+	Assert(result == NULL || !entry);
 	willReScan = (entry && node->chgParam != NULL);
-	willReturnTuple = ( !entry && !TupIsNull(result) );
+	willReturnTuple = (!entry && !TupIsNull(result));
 
 	switch (nodeTag(node))
 	{
@@ -812,162 +812,161 @@ ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result)
 		case T_MotionState:
 			nameTag = "Motion";
 			{
-				snprintf(extraTagBuffer, sizeof extraTagBuffer, " %d", ((Motion*)plan)->motionID);
+				snprintf(extraTagBuffer, sizeof extraTagBuffer, " %d", ((Motion *) plan)->motionID);
 				extraTag = &extraTagBuffer[0];
 			}
 			break;
-			
+
 		default:
 			nameTag = "*unknown*";
 			break;
 	}
-	
-	if ( entry )
+
+	if (entry)
 	{
-		elog(DEBUG4,"CDB_TRACE_EXECUTOR: Exec %s%s%s", nameTag, extraTag, willReScan ? " (will ReScan)."  : ".");
+		elog(DEBUG4, "CDB_TRACE_EXECUTOR: Exec %s%s%s", nameTag, extraTag, willReScan ? " (will ReScan)." : ".");
 	}
 	else
 	{
-		elog(DEBUG4,"CDB_TRACE_EXECUTOR: Return from %s%s with %s tuple.", nameTag, extraTag, willReturnTuple? "a" : "no");
+		elog(DEBUG4, "CDB_TRACE_EXECUTOR: Return from %s%s with %s tuple.", nameTag, extraTag, willReturnTuple ? "a" : "no");
 	}
 
 	return;
 }
-#endif /* CDB_TRACE_EXECUTOR */
+#endif   /* CDB_TRACE_EXECUTOR */
 
 
 /* ----------------------------------------------------------------
  *		ExecStateTreeWalker
  *
  *		Visits the nodes of a plan state tree in depth-first
- *      order, passing each node (including the starting node)
- *      to the given callback function(s).  
+ *		order, passing each node (including the starting node)
+ *		to the given callback function(s).
  *
- *      Returns the result from the last callback.  (If 'node' 
- *      is NULL, CdbVisit_Walk is returned.)
+ *		Returns the result from the last callback.	(If 'node'
+ *		is NULL, CdbVisit_Walk is returned.)
  *
- *      The 'visit_preorder' function is called when the walker
- *      reaches a node.  
- *        - If it returns CdbVisit_Walk, or if 'visit_preorder' is
- *          NULL, then the node's subtrees are visited and the 
- *          visit_postorder function is called.
- *        - If it returns CdbVisit_Skip, the walk continues without
- *          visiting the node's subtrees and without calling the
- *          visit_postorder function.
- *        - If it returns CdbVisit_Stop or another value, the 
- *          walk ends immediately with no further callbacks.
+ *		The 'visit_preorder' function is called when the walker
+ *		reaches a node.
+ *		  - If it returns CdbVisit_Walk, or if 'visit_preorder' is
+ *			NULL, then the node's subtrees are visited and the
+ *			visit_postorder function is called.
+ *		  - If it returns CdbVisit_Skip, the walk continues without
+ *			visiting the node's subtrees and without calling the
+ *			visit_postorder function.
+ *		  - If it returns CdbVisit_Stop or another value, the
+ *			walk ends immediately with no further callbacks.
  *
- *      The 'visit_postorder' function is called after visiting a
- *      node's subtrees (if any).  If it returns CdbVisit_Walk
- *      or CdbVisit_Skip, or if 'visit_postorder' is NULL, the 
- *      walk continues.  If it returns CdbVisit_Stop or another 
- *      value, the walk ends immediately with no further callbacks.
+ *		The 'visit_postorder' function is called after visiting a
+ *		node's subtrees (if any).  If it returns CdbVisit_Walk
+ *		or CdbVisit_Skip, or if 'visit_postorder' is NULL, the
+ *		walk continues.  If it returns CdbVisit_Stop or another
+ *		value, the walk ends immediately with no further callbacks.
  * ----------------------------------------------------------------
  */
 
 typedef struct ExecStateTreeWalkerContext
 {
-    CdbVisitOpt   (*visit_preorder)(PlanState *node, void *context);
-    CdbVisitOpt   (*visit_postorder)(PlanState *node, void *context);
-    void           *context;
-    CdbVisitOpt     result;
-} ExecStateTreeWalkerContext;
+	CdbVisitOpt (*visit_preorder) (PlanState *node, void *context);
+	CdbVisitOpt (*visit_postorder) (PlanState *node, void *context);
+	void	   *context;
+	CdbVisitOpt result;
+}	ExecStateTreeWalkerContext;
 
 
-static bool                     /* returns true to continue, false to stop */
-stateTreeWalker(PlanState                  *node,
-                ExecStateTreeWalkerContext *ctx)
+static bool						/* returns true to continue, false to stop */
+stateTreeWalker(PlanState *node,
+				ExecStateTreeWalkerContext * ctx)
 {
-    PlanState  *next;
-    PlanState  *subtree;
-    int         i;
+	PlanState  *next;
+	PlanState  *subtree;
+	int			i;
 
-    for (; node; node = next)
-    {
-        next = NULL;
+	for (; node; node = next)
+	{
+		next = NULL;
 
-        /* Visit this node ... preorder */
-        if (ctx->visit_preorder)
-        {
-            ctx->result = ctx->visit_preorder(node, ctx->context);
-            if (ctx->result != CdbVisit_Walk)
-                return (ctx->result == CdbVisit_Skip);
-        }
+		/* Visit this node ... preorder */
+		if (ctx->visit_preorder)
+		{
+			ctx->result = ctx->visit_preorder(node, ctx->context);
+			if (ctx->result != CdbVisit_Walk)
+				return (ctx->result == CdbVisit_Skip);
+		}
 
-        /* Some node types have their own subtree ptr fields */
-        switch (nodeTag(node))
-        {
-            case T_AppendState:
-            {
-                AppendState    *as = (AppendState *)node;
-                for (i = 0; i < as->as_nplans; i++)
-                {
-                    subtree = as->appendplans[i];
-                    if (subtree)
-                    {
-                        if (next && !stateTreeWalker(next, ctx))
-                            return false;
-                        next = subtree;
-                    }
-                }
-                break;
-            }
-            case T_SubqueryScanState:
-                next = ((SubqueryScanState *)node)->subplan;
-                break;
-            default:
-                break;
-        }
+		/* Some node types have their own subtree ptr fields */
+		switch (nodeTag(node))
+		{
+			case T_AppendState:
+				{
+					AppendState *as = (AppendState *) node;
 
-        /* Left subtree */
-        subtree = node->lefttree;
-        if (subtree)
-        {
-            if (next && !stateTreeWalker(next, ctx))
-                return false;
-            next = subtree;
-        }
+					for (i = 0; i < as->as_nplans; i++)
+					{
+						subtree = as->appendplans[i];
+						if (subtree)
+						{
+							if (next && !stateTreeWalker(next, ctx))
+								return false;
+							next = subtree;
+						}
+					}
+					break;
+				}
+			case T_SubqueryScanState:
+				next = ((SubqueryScanState *) node)->subplan;
+				break;
+			default:
+				break;
+		}
 
-        /* Right subtree */
-        subtree = node->righttree;
-        if (subtree)
-        {
-            if (next && !stateTreeWalker(next, ctx))
-                return false;
-            next = subtree;
-        }
+		/* Left subtree */
+		subtree = node->lefttree;
+		if (subtree)
+		{
+			if (next && !stateTreeWalker(next, ctx))
+				return false;
+			next = subtree;
+		}
 
-        /* Visit this node ... postorder */
-        if (ctx->visit_postorder)
-        {
-            if (next && !stateTreeWalker(next, ctx))
-                return false;
-            ctx->result = ctx->visit_postorder(node, ctx->context);
-            if (ctx->result != CdbVisit_Walk)
-                return (ctx->result == CdbVisit_Skip);
-            break;
-        }
-    }
-    return true;
-}                               /* stateTreeWalker */
+		/* Right subtree */
+		subtree = node->righttree;
+		if (subtree)
+		{
+			if (next && !stateTreeWalker(next, ctx))
+				return false;
+			next = subtree;
+		}
+
+		/* Visit this node ... postorder */
+		if (ctx->visit_postorder)
+		{
+			if (next && !stateTreeWalker(next, ctx))
+				return false;
+			ctx->result = ctx->visit_postorder(node, ctx->context);
+			if (ctx->result != CdbVisit_Walk)
+				return (ctx->result == CdbVisit_Skip);
+			break;
+		}
+	}
+	return true;
+}	/* stateTreeWalker */
 
 
 CdbVisitOpt
-ExecStateTreeWalker(PlanState      *node,
-                    CdbVisitOpt   (*visit_preorder)(PlanState *node, void *context),
-                    CdbVisitOpt   (*visit_postorder)(PlanState *node, void *context),
-                    void           *context)
+ExecStateTreeWalker(PlanState *node,
+			  CdbVisitOpt (*visit_preorder) (PlanState *node, void *context),
+			 CdbVisitOpt (*visit_postorder) (PlanState *node, void *context),
+					void *context)
 {
 	ExecStateTreeWalkerContext ctx;
 
-    ctx.result = CdbVisit_Walk;
-    ctx.visit_preorder = visit_preorder;
-    ctx.visit_postorder = visit_postorder;
-    ctx.context = context;
+	ctx.result = CdbVisit_Walk;
+	ctx.visit_preorder = visit_preorder;
+	ctx.visit_postorder = visit_postorder;
+	ctx.context = context;
 
-    stateTreeWalker(node, &ctx);
-    
-    return ctx.result;
-}                               /* ExecStateTreeWalker */
+	stateTreeWalker(node, &ctx);
 
-
+	return ctx.result;
+}	/* ExecStateTreeWalker */

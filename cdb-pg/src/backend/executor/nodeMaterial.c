@@ -67,23 +67,24 @@ ExecMaterial(MaterialState *node)
 
 		node->tuplestorestate = (void *) tuplestorestate;
 
-        /*
-         * MPP: If requested, fetch all rows from subplan and put them
-         * in the tuplestore.  This decouples a middle slice's receiving
-         * and sending Motion operators to neutralize a deadlock hazard.
-         * MPP TODO: Remove when a better solution is implemented.
-         */
-        while (((Material *)node->ss.ps.plan)->cdb_strict)
-        {
-            TupleTableSlot *outerslot = ExecProcNode(outerPlanState(node));
-            if (TupIsNull(outerslot))
-            {
-                node->eof_underlying = true;
-                tuplestore_rescan(tuplestorestate);
-                break;
-            }
-            tuplestore_puttuple(tuplestorestate, outerslot->val);
-        }
+		/*
+		 * MPP: If requested, fetch all rows from subplan and put them
+		 * in the tuplestore.  This decouples a middle slice's receiving
+		 * and sending Motion operators to neutralize a deadlock hazard.
+		 * MPP TODO: Remove when a better solution is implemented.
+		 */
+		while (((Material *) node->ss.ps.plan)->cdb_strict)
+		{
+			TupleTableSlot *outerslot = ExecProcNode(outerPlanState(node));
+
+			if (TupIsNull(outerslot))
+			{
+				node->eof_underlying = true;
+				tuplestore_rescan(tuplestorestate);
+				break;
+			}
+			tuplestore_puttuple(tuplestorestate, outerslot->val);
+		}
 
 	}
 

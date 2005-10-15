@@ -75,17 +75,18 @@ typedef struct evalPlanQual
 
 /* decls for local routines only used within this module */
 static void InitPlan(QueryDesc *queryDesc, bool explainOnly);
-static void initResultRelInfo(ResultRelInfo *resultRelInfo,
+static void
+initResultRelInfo(ResultRelInfo *resultRelInfo,
 				  Index resultRelationIndex,
 				  List *rangeTable,
 				  CmdType operation,
-				  /*
-				   * Added the following parameter for CDB,
-				   * so that when the relation is opened for insert, update or delete,
-				   * and the Mpp_role is MPP_ROLE_DISPATCH,
-				   * and the plan dispatch type is DISPATCH_PARALLEL,
-				   * the lock type passed to heap_open is set to ExclusiveLock instead of RowExclusiveLock.
-				   */
+ /*
+  * Added the following parameter for CDB,
+  * so that when the relation is opened for insert, update or delete,
+  * and the Mpp_role is MPP_ROLE_DISPATCH,
+  * and the plan dispatch type is DISPATCH_PARALLEL,
+  * the lock type passed to heap_open is set to ExclusiveLock instead of RowExclusiveLock.
+  */
 				  bool shouldDispatch);
 static TupleTableSlot *ExecutePlan(EState *estate, PlanState *planstate,
 			CmdType operation,
@@ -170,15 +171,15 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 	estate->es_snapshot = queryDesc->snapshot;
 	estate->es_crosscheck_snapshot = queryDesc->crosscheck_snapshot;
 	estate->es_instrument = queryDesc->doInstrument;
-	
+
 	/*
 	 * Handling of the Slice table depends on context.
 	 */
-    currentSliceId = UNSET_SLICE_ID;
-	 if ( Mpp_role == MPP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL )
-	 {
+	currentSliceId = UNSET_SLICE_ID;
+	if (Mpp_role == MPP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL)
+	{
 		/* Set up blank slice table to be filled in during InitPlan. */
-		
+
 		/*
 		 * We know that, if this query is to dispatched in parallel, then
 		 * it can't contain any correlated sub-queries.  Therefore, any
@@ -188,63 +189,67 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 		 * put extra roots in it, even if there are some subplans.
 		 *
 		 * TODO -- EITHER decide to live with this baroque justification
-		 *         OR clean up the determination of the number of extra roots
-		 *        needed, e.g., by actually counting initplans during
-		 *        cdb_apply_motion() and noting it in the top plan node.
+		 *		   OR clean up the determination of the number of extra roots
+		 *		  needed, e.g., by actually counting initplans during
+		 *		  cdb_apply_motion() and noting it in the top plan node.
 		 */
 		InitSliceTable(estate, queryDesc->plantree->nMotionNodes, queryDesc->plantree->nParamExec);
-	 }
-	 else if ( Mpp_role == MPP_ROLE_EXECUTE )
-	 {
-		/* Set up blank map (motionID -> MotionState*) to be filled in during InitPlan */
-		estate->es_slice_map = (MotionState**)palloc0((1+queryDesc->plantree->nMotionNodes) * sizeof(MotionState*));
-		
+	}
+	else if (Mpp_role == MPP_ROLE_EXECUTE)
+	{
+		/*
+		 * Set up blank map (motionID -> MotionState*) to be filled in during
+		 * InitPlan
+		 */
+		estate->es_slice_map = (MotionState **) palloc0((1 + queryDesc->plantree->nMotionNodes) * sizeof(MotionState *));
+
 		/* Set up slice table, if one is available at this point. */
-		if ( queryDesc->plantree != NULL && queryDesc->plantree->sliceTable != NULL )
+		if (queryDesc->plantree != NULL && queryDesc->plantree->sliceTable != NULL)
 		{
 			SliceTable *sliceTable;
-			Slice *slice;
-			
+			Slice	   *slice;
+
 			/* From the QD via MPPEXEC! */
-			sliceTable = (SliceTable*)queryDesc->plantree->sliceTable;
+			sliceTable = (SliceTable *) queryDesc->plantree->sliceTable;
 			estate->es_sliceTable = sliceTable;
 			estate->es_cur_slice_idx = sliceTable->localSlice;
 			slice = list_nth(sliceTable->slices, sliceTable->localSlice);
-			Assert( IsA(slice,Slice) );
-			estate->es_cur_root_idx = ((Slice*)slice)->rootIndex;
-			
+			Assert(IsA(slice, Slice));
+			estate->es_cur_root_idx = ((Slice *) slice)->rootIndex;
+
 			/* JGE set our global sliceid variable for elog. */
 			currentSliceId = estate->es_cur_slice_idx;
 		}
-	 }
+	}
 
 	/*
 	 * Initialize the plan state tree
 	 */
 	InitPlan(queryDesc, explainOnly);
-	
-	if ( Mpp_role == MPP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL )
+
+	if (Mpp_role == MPP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL)
 	{
 		/* Assign gang descriptions to the root slices of the slice forest. */
-		InitRootSlices(queryDesc);		
-		
-		 if ( !explainOnly )
-		 {
-			/* Since we intend to execute the plan, inventory the slice tree,
+		InitRootSlices(queryDesc);
+
+		if (!explainOnly)
+		{
+			/*
+			 * Since we intend to execute the plan, inventory the slice tree,
 			 * allocate gangs, and associate them with slices.
 			 *
 			 * For now, always use segment 0 for singleton gangs.
 			 *
-			 * On return, gangs have been allocated and CDBProcess lists
-			 * have been filled in in the slice table.)
+			 * On return, gangs have been allocated and CDBProcess lists have
+			 * been filled in in the slice table.)
 			 */
 			AssignGangs(queryDesc, 0);
-		 }
+		}
 	}
 
 	MemoryContextSwitchTo(oldcontext);
-	
-	if ( Debug_print_slice_table && Mpp_role == MPP_ROLE_DISPATCH )
+
+	if (Debug_print_slice_table && Mpp_role == MPP_ROLE_DISPATCH)
 	{
 		elog_node_display(DEBUG1,
 						  "global (QD) slice table",
@@ -281,12 +286,13 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 	MemoryContext oldcontext;
 	RangeTblEntry *rte = NULL;
 
-    /* Any local vars that are set in the PG_TRY block and examined in the
-     * PG_CATCH block should be declared 'volatile'. (setjmp shenanigans)
-     */
-    bool            shouldDispatch;
-	volatile bool   shouldSetupInterconnect = false;
-    volatile bool   hasDispatched = false;
+	/*
+	 * Any local vars that are set in the PG_TRY block and examined in the
+	 * PG_CATCH block should be declared 'volatile'. (setjmp shenanigans)
+	 */
+	bool		shouldDispatch;
+	volatile bool shouldSetupInterconnect = false;
+	volatile bool hasDispatched = false;
 
 	/* sanity checks */
 	Assert(queryDesc != NULL);
@@ -315,52 +321,55 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 
 	(*dest->rStartup) (dest, operation, queryDesc->tupDesc);
 
-	/* Are we going to dispatch this plan parallel?  Only if we're running
-	 * as a QD and the plan is a parallel plan.
+	/*
+	 * Are we going to dispatch this plan parallel?  Only if we're running as
+	 * a QD and the plan is a parallel plan.
 	 */
-	shouldDispatch =  Mpp_role == MPP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL;
-	
-	/* If we're running as a QE and there's a slice table in our queryDesc,
+	shouldDispatch = Mpp_role == MPP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL;
+
+	/*
+	 * If we're running as a QE and there's a slice table in our queryDesc,
 	 * then we need to finish the EState setup we prepared for back in
 	 * CdbExecQuery.
 	 */
-	if ( Mpp_role == MPP_ROLE_EXECUTE && estate->es_sliceTable != NULL )
+	if (Mpp_role == MPP_ROLE_EXECUTE && estate->es_sliceTable != NULL)
 	{
 		MotionState *motionstate = NULL;
-		
-		/* Note that, at this point on a QE, the estate is setup (based on
-		 * the slice table transmitted from the QD via MPPEXEC) so that fields
+
+		/*
+		 * Note that, at this point on a QE, the estate is setup (based on the
+		 * slice table transmitted from the QD via MPPEXEC) so that fields
 		 * es_sliceTable, cur_root_idx and es_cur_slice_idx are correct for
 		 * the QE.
 		 *
-		 * If responsible for a non-root slice, arrange to enter the plan
-		 * at the slice's sending Motion node rather than at the top.
+		 * If responsible for a non-root slice, arrange to enter the plan at the
+		 * slice's sending Motion node rather than at the top.
 		 */
-		if ( estate->es_cur_slice_idx != estate->es_cur_root_idx )
+		if (estate->es_cur_slice_idx != estate->es_cur_root_idx)
 		{
 			motionstate = estate->es_slice_map[estate->es_cur_slice_idx];
-			Assert( motionstate != NULL && IsA(motionstate, MotionState) );
-			
+			Assert(motionstate != NULL && IsA(motionstate, MotionState));
+
 			/* Patch Motion node so it looks like a top node. */
 			motionstate->ps.plan->nMotionNodes = estate->es_sliceTable->nMotions;
-			motionstate->ps.plan->nParamExec = estate->es_sliceTable->nextInitPlan-estate->es_sliceTable->nMotions-1;
+			motionstate->ps.plan->nParamExec = estate->es_sliceTable->nextInitPlan - estate->es_sliceTable->nMotions - 1;
 		}
-		
-		if ( Debug_print_slice_table )
+
+		if (Debug_print_slice_table)
 		{
 			elog_node_display(DEBUG1,
-				"local slice table",
-				estate->es_sliceTable,
-				Debug_pretty_print
+							  "local slice table",
+							  estate->es_sliceTable,
+							  Debug_pretty_print
 				);
 		}
-		
+
 		elog(DEBUG1,
-			"Segment %d (%s) executing slice %d under root %d.",
-			Mpp_segment,
-			(Mpp_is_primary ? "primary" : "mirror"),
-			estate->es_cur_slice_idx,
-			estate->es_cur_root_idx
+			 "Segment %d (%s) executing slice %d under root %d.",
+			 Mpp_segment,
+			 (Mpp_is_primary ? "primary" : "mirror"),
+			 estate->es_cur_slice_idx,
+			 estate->es_cur_root_idx
 			);
 	}
 
@@ -377,46 +386,47 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 		 * trees, and fire off cdb_exec command to each of the qexecs
 		 */
 
-		if ( shouldDispatch )
+		if (shouldDispatch)
 		{
-			bool bChangedQueryTree = false;
-			CmdType origCmdType = (CmdType) NULL;
-			RTEKind origRTEKind = (RTEKind) NULL;
+			bool		bChangedQueryTree = false;
+			CmdType		origCmdType = (CmdType) NULL;
+			RTEKind		origRTEKind = (RTEKind) NULL;
 
 			/*
 			 * First, see whether we need to pre-execute any initPlan subplans.
 			 */
-			if ( queryDesc->plantree->nParamExec > 0 )
+			if (queryDesc->plantree->nParamExec > 0)
 			{
-				preprocess_initplans( queryDesc );
-				
-				/* Copy the values of the preprocessed subplans to the
+				preprocess_initplans(queryDesc);
+
+				/*
+				 * Copy the values of the preprocessed subplans to the
 				 * external parameters.
 				 */
 				queryDesc->params = addRemoteExecParamsToParamList(
-						queryDesc->plantree,
-						queryDesc->params,
-						queryDesc->estate->es_param_exec_vals,
-						queryDesc->plantree->nParamExec );
+														 queryDesc->plantree,
+														   queryDesc->params,
+									   queryDesc->estate->es_param_exec_vals,
+											queryDesc->plantree->nParamExec);
 
 			}
 
 			/*
 			 * Hack for insert selects into local tables
 			 */
-			if ( queryDesc->parsetree->commandType == CMD_INSERT )
+			if (queryDesc->parsetree->commandType == CMD_INSERT)
 			{
-				MppPolicy *policy;
+				MppPolicy  *policy;
 
 				rte = rt_fetch(queryDesc->parsetree->resultRelation, queryDesc->parsetree->rtable);
-				Assert( rte->rtekind == RTE_RELATION);
+				Assert(rte->rtekind == RTE_RELATION);
 				policy = get_table_policy(rte->relid);
-				Assert(policy != NULL );
+				Assert(policy != NULL);
 
-				if ( policy->ptype == POLICYTYPE_ENTRY )
+				if (policy->ptype == POLICYTYPE_ENTRY)
 				{
 					/*
-					 * The query tree references the target table.  Since it is a local table,
+					 * The query tree references the target table.	Since it is a local table,
 					 * it may not exist on the qExecs. Even though no rows will ever be inserted
 					 * on the qExecs into the target table, the Executor there would insist on the table existing.
 					 * To get around this, we reset the command type to select, and the retkind to function.
@@ -431,15 +441,15 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 
 				pfree(policy);
 			}
-			
+
 			/*
 			 * This call returns after launching the threads that send the command to the appropriate
-			 * segdbs.  It does not wait for them to finish.
+			 * segdbs.	It does not wait for them to finish.
 			 */
-            hasDispatched = true;
+			hasDispatched = true;
 			cdbdisp_dispatchPlan(queryDesc);
 
-			if ( bChangedQueryTree )
+			if (bChangedQueryTree)
 			{
 				/*
 				 * If we hacked the query tree before serialization, we set
@@ -456,61 +466,63 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 		* Run the plan locally.  There are three ways;
 		*
 		* 1. Do nothing -- this occurs when the specified direction is
-		*    NoMovementScanDirection or when Mpp_role is MPP_ROLE_DISPATCH
-		*    and the current slice belongs to a QE.
+		*	 NoMovementScanDirection or when Mpp_role is MPP_ROLE_DISPATCH
+		*	 and the current slice belongs to a QE.
 		*
 		* 2. Run a root slice -- this occurs when Mpp_role is MPP_ROLE_UTILITY
-		*    or the current slice is a root.  It corresponds to the "normal"
-		*    path through the executor in that we enter the plan at the top
-		*    and count on the motion nodes at the fringe of the top slice to
-		*    return without ever calling nodes below them.
+		*	 or the current slice is a root.  It corresponds to the "normal"
+		*	 path through the executor in that we enter the plan at the top
+		*	 and count on the motion nodes at the fringe of the top slice to
+		*	 return without ever calling nodes below them.
 		*
 		* 3. Run a non-root slice -- this occurs when Mpp_role is
-		*    MPP_ROLE_EXECUTE and the current slice is not a root slice.
-		*    It corresponds to a QE running a slice with a motion node on
-		*    top.  The call, thus, returns no tuples (since they all go out
-		*    on the interconnect to the receiver version of the motion node),
-		*    but it does execute the indicated slice down to any fringe
-		*    motion nodes (as in case 2).
+		*	 MPP_ROLE_EXECUTE and the current slice is not a root slice.
+		*	 It corresponds to a QE running a slice with a motion node on
+		*	 top.  The call, thus, returns no tuples (since they all go out
+		*	 on the interconnect to the receiver version of the motion node),
+		*	 but it does execute the indicated slice down to any fringe
+		*	 motion nodes (as in case 2).
 		*/
 		if (direction == NoMovementScanDirection)
 		{
 			result = NULL;
 		}
-		else if ( Mpp_role == MPP_ROLE_DISPATCH && sliceRunsOnQE(getCurrentSlice(estate)) )
+		else if (Mpp_role == MPP_ROLE_DISPATCH && sliceRunsOnQE(getCurrentSlice(estate)))
 		{
 			result = NULL;
 		}
-		else if ( Mpp_role == MPP_ROLE_EXECUTE && estate->es_cur_slice_idx != estate->es_cur_root_idx )
+		else if (Mpp_role == MPP_ROLE_EXECUTE && estate->es_cur_slice_idx != estate->es_cur_root_idx)
 		{
-			/* Run a non-root slice on a QE.
+			/*
+			 * Run a non-root slice on a QE.
 			 *
 			 * Since the top Plan node is a (Sending) Motion, run the plan
 			 * forward to completion. The plan won't return tuples locally
 			 * (tuples go out over the interconnect), so the destination is
-			 * uninteresting.  The command type should be SELECT, however,
-			 * to avoid other sorts of DML processing..
+			 * uninteresting.  The command type should be SELECT, however, to
+			 * avoid other sorts of DML processing..
 			 *
-			 * This is the center of slice plan activity -- here we arrange
-			 * to blunder into the middle of the plan rather than entering
-			 * at the root.
+			 * This is the center of slice plan activity -- here we arrange to
+			 * blunder into the middle of the plan rather than entering at the
+			 * root.
 			 */
 			MotionState *motionState = (estate->es_slice_map[estate->es_cur_slice_idx]);
-			Assert( IsA(motionState->ps.plan, Motion) );
+
+			Assert(IsA(motionState->ps.plan, Motion));
 
 			/* activate the connections, if needed */
-			if (((PlanState *)motionState)->plan->nMotionNodes > 0)
+			if (((PlanState *) motionState)->plan->nMotionNodes > 0)
 			{
 				shouldSetupInterconnect = true;
 				SetupInterconnect(estate->es_sliceTable, estate->es_cur_slice_idx);
 			}
 
 			result = ExecutePlan(estate,
-								(PlanState*) motionState,
-								CMD_SELECT,
-								0,
-								ForwardScanDirection,
-								dest);
+								 (PlanState *) motionState,
+								 CMD_SELECT,
+								 0,
+								 ForwardScanDirection,
+								 dest);
 		}
 		else
 		{
@@ -523,11 +535,11 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 			}
 
 			result = ExecutePlan(estate,
-								queryDesc->planstate,
-								operation,
-								count,
-								direction,
-								dest);
+								 queryDesc->planstate,
+								 operation,
+								 count,
+								 direction,
+								 dest);
 		}
 	}
 	PG_CATCH();
@@ -535,23 +547,24 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 		if (hasDispatched)
 		{
 			/*
-             * Request any remaining commands executing on qExecs to stop.
+			 * Request any remaining commands executing on qExecs to stop.
 			 * We need to wait for the threads to finish.  This allows for proper cleanup
 			 * of the results from the async command executions.
 			 */
 			CdbCheckDispatchResult(true);
 
-            /* Discard any remaining results from QEs; don't confuse matters
-             * by throwing a new error.  Any results of interest presumably
-             * should have been examined before the exception was thrown.
-             */
-            cdbdisp_destroyPlanResults(queryDesc);
+			/*
+			 * Discard any remaining results from QEs; don't confuse matters
+			 * by throwing a new error.  Any results of interest presumably
+			 * should have been examined before the exception was thrown.
+			 */
+			cdbdisp_destroyPlanResults(queryDesc);
 
-            /* clean up the interconnect */
+			/* clean up the interconnect */
 			if (shouldSetupInterconnect)
 				TeardownInterconnect();
 
-			/* clean up our own motion layer. */	
+			/* clean up our own motion layer. */
 			ResetMotionLayer(true);
 		}
 		else if (Mpp_role != MPP_ROLE_UTILITY)
@@ -563,42 +576,45 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 			/* clean up our own motion layer. */
 			ResetMotionLayer(true);
 		}
-		
+
 		currentSliceId = UNSET_SLICE_ID;
-				
+
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
 
-	if ( hasDispatched )
+	if (hasDispatched)
 	{
-        Slice  *topslice = getCurrentSlice(estate);
+		Slice	   *topslice = getCurrentSlice(estate);
 
 		/*
 		 * We successfully completed on the Dispatcher.  Now check the results
 		 * from the qExecs.  This internally waits for them to all finish.
 		 */
-        CdbCheckDispatchResult(false);      /* wait politely, don't cancel */
+		CdbCheckDispatchResult(false);	/* wait politely, don't cancel */
 
-		/* clean up the interconnect if necessary (do this before we
-		 * issue an error) */
+		/*
+		 * clean up the interconnect if necessary (do this before we issue an
+		 * error)
+		 */
 		if (shouldSetupInterconnect)
 			TeardownInterconnect();
 
 		/* If top slice was delegated to QEs, get number of rows processed. */
-        if (sliceRunsOnQE(topslice))
-            estate->es_processed += cdbdisp_sumGangCmdTuples(topslice->primaryGang);
+		if (sliceRunsOnQE(topslice))
+			estate->es_processed += cdbdisp_sumGangCmdTuples(topslice->primaryGang);
 
-        /* Check and free the results of all gangs.
-		 * If any QE had an error, report it and exit via PG_THROW.
-         */
-        cdbdisp_dumpPlanResults(queryDesc);
+		/*
+		 * Check and free the results of all gangs. If any QE had an error,
+		 * report it and exit via PG_THROW.
+		 */
+		cdbdisp_dumpPlanResults(queryDesc);
 	}
 	else if (shouldSetupInterconnect)
 	{
 		/* clean up the interconnect if necessary */
 		TeardownInterconnect();
-		
+
 		currentSliceId = UNSET_SLICE_ID;
 	}
 
@@ -655,7 +671,7 @@ ExecutorEnd(QueryDesc *queryDesc)
 	 */
 	FreeExecutorState(estate);
 
-    currentSliceId = UNSET_SLICE_ID;    /*CDB*/
+	currentSliceId = UNSET_SLICE_ID;	/* CDB */
 
 	/* Reset queryDesc fields that no longer point to anything */
 	queryDesc->tupDesc = NULL;
@@ -817,14 +833,14 @@ ExecCheckXactReadOnly(Query *parsetree)
 	return;
 
 fail:
-    if ( isFtsReadOnlySet() )
-        ereport(ERROR,
-            (errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
-             errmsg("Fault tolerance sets transaction read-only")));
-    else
-	   ereport(ERROR,
-			(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
-			 errmsg("transaction is read-only")));
+	if (isFtsReadOnlySet())
+		ereport(ERROR,
+				(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
+				 errmsg("Fault tolerance sets transaction read-only")));
+	else
+		ereport(ERROR,
+				(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
+				 errmsg("transaction is read-only")));
 }
 
 
@@ -847,7 +863,7 @@ InitPlan(QueryDesc *queryDesc, bool explainOnly)
 	Relation	intoRelationDesc;
 	bool		do_select_into;
 	TupleDesc	tupType;
-	bool shouldDispatch =  Mpp_role == MPP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL;
+	bool		shouldDispatch = Mpp_role == MPP_ROLE_DISPATCH && queryDesc->plantree->dispatch == DISPATCH_PARALLEL;
 
 	/*
 	 * Do permissions checks.  It's sufficient to examine the query's top
@@ -1071,8 +1087,8 @@ InitPlan(QueryDesc *queryDesc, bool explainOnly)
 					JunkFilter *j;
 
 					j = ExecInitJunkFilter(subplan->plan->targetlist,
-										   resultRelInfo->ri_RelationDesc->rd_att->tdhasoid,
-										   ExecAllocTableSlot(estate->es_tupleTable));
+							resultRelInfo->ri_RelationDesc->rd_att->tdhasoid,
+								  ExecAllocTableSlot(estate->es_tupleTable));
 					resultRelInfo->ri_junkFilter = j;
 					resultRelInfo++;
 				}
@@ -1091,7 +1107,7 @@ InitPlan(QueryDesc *queryDesc, bool explainOnly)
 
 				j = ExecInitJunkFilter(planstate->plan->targetlist,
 									   tupType->tdhasoid,
-							  ExecAllocTableSlot(estate->es_tupleTable));
+								  ExecAllocTableSlot(estate->es_tupleTable));
 				estate->es_junkFilter = j;
 				if (estate->es_result_relation_info)
 					estate->es_result_relation_info->ri_junkFilter = j;
@@ -1208,19 +1224,19 @@ initResultRelInfo(ResultRelInfo *resultRelInfo,
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 					 errmsg("cannot change sequence \"%s\"",
-						  RelationGetRelationName(resultRelationDesc))));
+							RelationGetRelationName(resultRelationDesc))));
 			break;
 		case RELKIND_TOASTVALUE:
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 					 errmsg("cannot change TOAST relation \"%s\"",
-						  RelationGetRelationName(resultRelationDesc))));
+							RelationGetRelationName(resultRelationDesc))));
 			break;
 		case RELKIND_VIEW:
 			ereport(ERROR,
 					(errcode(ERRCODE_WRONG_OBJECT_TYPE),
 					 errmsg("cannot change view \"%s\"",
-						  RelationGetRelationName(resultRelationDesc))));
+							RelationGetRelationName(resultRelationDesc))));
 			break;
 	}
 
@@ -1498,8 +1514,7 @@ lnext:	;
 					elog(ERROR, "ctid is NULL");
 
 				tupleid = (ItemPointer) DatumGetPointer(datum);
-				tuple_ctid = *tupleid;	/* make sure we don't free the
-										 * ctid!! */
+				tuple_ctid = *tupleid;	/* make sure we don't free the ctid!! */
 				tupleid = &tuple_ctid;
 			}
 			else if (estate->es_rowMark != NIL)
@@ -1543,10 +1558,10 @@ lnext:	;
 						case HeapTupleUpdated:
 							if (IsXactIsoLevelSerializable)
 								ereport(ERROR,
-										(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
-										 errmsg("could not serialize access due to concurrent update")));
+								 (errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
+								  errmsg("could not serialize access due to concurrent update")));
 							if (!(ItemPointerEquals(&(tuple.t_self),
-								  (ItemPointer) DatumGetPointer(datum))))
+									  (ItemPointer) DatumGetPointer(datum))))
 							{
 								newSlot = EvalPlanQual(estate, erm->rti, &(tuple.t_self));
 								if (!(TupIsNull(newSlot)))
@@ -1630,7 +1645,7 @@ lnext:	;
 		if (numberTuples && numberTuples == current_tuple_count)
 			break;
 	}
-	
+
 	/*
 	 * Process AFTER EACH STATEMENT triggers
 	 */
@@ -1733,7 +1748,7 @@ ExecInsert(TupleTableSlot *slot,
 
 	/* BEFORE ROW INSERT Triggers */
 	if (resultRelInfo->ri_TrigDesc &&
-	  resultRelInfo->ri_TrigDesc->n_before_row[TRIGGER_EVENT_INSERT] > 0)
+		resultRelInfo->ri_TrigDesc->n_before_row[TRIGGER_EVENT_INSERT] > 0)
 	{
 		HeapTuple	newtuple;
 
@@ -1812,7 +1827,7 @@ ExecDelete(TupleTableSlot *slot,
 
 	/* BEFORE ROW DELETE Triggers */
 	if (resultRelInfo->ri_TrigDesc &&
-	  resultRelInfo->ri_TrigDesc->n_before_row[TRIGGER_EVENT_DELETE] > 0)
+		resultRelInfo->ri_TrigDesc->n_before_row[TRIGGER_EVENT_DELETE] > 0)
 	{
 		bool		dodelete;
 
@@ -1828,7 +1843,7 @@ ExecDelete(TupleTableSlot *slot,
 	 *
 	 * Note: if es_crosscheck_snapshot isn't InvalidSnapshot, we check that
 	 * the row to be deleted is visible to that snapshot, and throw a can't-
-	 * serialize error if not.  This is a special-case behavior needed for
+	 * serialize error if not.	This is a special-case behavior needed for
 	 * referential integrity updates in serializable transactions.
 	 */
 ldelete:;
@@ -1854,7 +1869,7 @@ ldelete:;
 			else if (!(ItemPointerEquals(tupleid, &ctid)))
 			{
 				TupleTableSlot *epqslot = EvalPlanQual(estate,
-							   resultRelInfo->ri_RangeTableIndex, &ctid);
+								   resultRelInfo->ri_RangeTableIndex, &ctid);
 
 				if (!TupIsNull(epqslot))
 				{
@@ -1928,7 +1943,7 @@ ExecUpdate(TupleTableSlot *slot,
 
 	/* BEFORE ROW UPDATE Triggers */
 	if (resultRelInfo->ri_TrigDesc &&
-	  resultRelInfo->ri_TrigDesc->n_before_row[TRIGGER_EVENT_UPDATE] > 0)
+		resultRelInfo->ri_TrigDesc->n_before_row[TRIGGER_EVENT_UPDATE] > 0)
 	{
 		HeapTuple	newtuple;
 
@@ -1970,7 +1985,7 @@ lreplace:;
 	 *
 	 * Note: if es_crosscheck_snapshot isn't InvalidSnapshot, we check that
 	 * the row to be updated is visible to that snapshot, and throw a can't-
-	 * serialize error if not.  This is a special-case behavior needed for
+	 * serialize error if not.	This is a special-case behavior needed for
 	 * referential integrity updates in serializable transactions.
 	 */
 	result = heap_update(resultRelationDesc, tupleid, tuple,
@@ -1995,14 +2010,14 @@ lreplace:;
 			else if (!(ItemPointerEquals(tupleid, &ctid)))
 			{
 				TupleTableSlot *epqslot = EvalPlanQual(estate,
-							   resultRelInfo->ri_RangeTableIndex, &ctid);
+								   resultRelInfo->ri_RangeTableIndex, &ctid);
 
 				if (!TupIsNull(epqslot))
 				{
 					*tupleid = ctid;
 					tuple = ExecRemoveJunk(estate->es_junkFilter, epqslot);
 					slot = ExecStoreTuple(tuple,
-									estate->es_junkFilter->jf_resultSlot,
+										estate->es_junkFilter->jf_resultSlot,
 										  InvalidBuffer, true);
 					goto lreplace;
 				}
@@ -2125,7 +2140,7 @@ ExecConstraints(ResultRelInfo *resultRelInfo,
 				ereport(ERROR,
 						(errcode(ERRCODE_NOT_NULL_VIOLATION),
 						 errmsg("null value in column \"%s\" violates not-null constraint",
-					NameStr(rel->rd_att->attrs[attrChk - 1]->attname))));
+						NameStr(rel->rd_att->attrs[attrChk - 1]->attname))));
 		}
 	}
 
@@ -2535,4 +2550,3 @@ EvalPlanQualStop(evalPlanQual *epq)
 	epq->estate = NULL;
 	epq->planstate = NULL;
 }
-

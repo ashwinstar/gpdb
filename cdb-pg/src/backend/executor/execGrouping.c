@@ -303,7 +303,7 @@ BuildTupleHashTable(int numCols, AttrNumber *keyColIdx,
 	Assert(entrysize >= sizeof(TupleHashEntryData));
 
 	hashtable = (TupleHashTable) MemoryContextAlloc(tablecxt,
-											 sizeof(TupleHashTableData));
+												 sizeof(TupleHashTableData));
 
 	hashtable->numCols = numCols;
 	hashtable->keyColIdx = keyColIdx;
@@ -321,7 +321,7 @@ BuildTupleHashTable(int numCols, AttrNumber *keyColIdx,
 	hash_ctl.hcxt = tablecxt;
 	hashtable->hashtab = hash_create("TupleHashTable", (long) nbuckets,
 									 &hash_ctl,
-				HASH_ELEM | HASH_FUNCTION | HASH_COMPARE | HASH_CONTEXT);
+					HASH_ELEM | HASH_FUNCTION | HASH_COMPARE | HASH_CONTEXT);
 
 	return hashtable;
 }

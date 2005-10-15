@@ -108,8 +108,7 @@ ExecSetOp(SetOpState *node)
 			ExecStoreTuple(heap_copytuple(inputTupleSlot->val),
 						   resultTupleSlot,
 						   InvalidBuffer,
-						   true);		/* free copied tuple at
-										 * ExecClearTuple */
+						   true);		/* free copied tuple at ExecClearTuple */
 			node->numLeft = 0;
 			node->numRight = 0;
 			endOfGroup = false;
