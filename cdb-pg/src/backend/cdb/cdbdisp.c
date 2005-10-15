@@ -137,11 +137,6 @@ void
 cdbdisp_startDtxTransaction(void)
 {
 	/*
-	 * need to start distributed transaction
-	 */
-	condStartDtxTransaction();
-
-	/*
 	 * check fts sync count
 	 */
 	if (!verifyFtsSyncCount())
@@ -152,6 +147,12 @@ cdbdisp_startDtxTransaction(void)
 		if (!FtsReConfigureMPP())
 			elog(PANIC, "FTS: reconfigMPP failed");
 	}
+
+    /*
+     * need to start distributed transaction
+     */
+    condStartDtxTransaction();
+
 }	/* cdbdisp_startDtxTransaction */
 
 
