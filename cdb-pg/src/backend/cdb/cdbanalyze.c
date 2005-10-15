@@ -113,7 +113,7 @@ typedef struct Cdbanalyze_Ctx
 	Oid			relid;
 	BlockNumber pages;
 	double		tuples;
-}	Cdbanalyze_Ctx;
+} Cdbanalyze_Ctx;
 
 static void
 cdbanalyze_callback(StringInfo sqlstmt,
