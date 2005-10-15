@@ -64,6 +64,7 @@ MPP_TBL=mpp.mpp
 MPP_HOST_TBL=mpp.host
 MPP_PGDATABASE_TBL=mpp.pgdatabase
 MPP_LISTENER_TBL=mpp.listener
+MAX_QD_CONNECTIONS=25
 unset PG_CONF_ADD_FILE
 EXIT_STATUS=0
 #******************************************************************************
@@ -96,6 +97,7 @@ USAGE () {
 		$ECHO "      -s, standby_hostname [optional]"
 		$ECHO "	         Setup standby Master host named \"standby_hostname\". (if configured in MPP configuration file)"
 		$ECHO "      -o, create Master only, do not configure Segment instance hosts"
+		$ECHO "      -m, maximum number of connections for master instance [default ${MAX_QD_CONNECTIONS}]"
 		$ECHO
 		$ECHO "      Logging options:"
 		$ECHO "      -q, quiet mode, do not log progress to screen [default:- verbose output to screen]"
@@ -481,6 +483,7 @@ DISPLAY_CONFIG () {
 		LOG_MSG "[INFO]:-MPP segment prefix   = $SEG_PREFIX"
 		LOG_MSG "[INFO]:-Primary segment #    = $QE_PRIMARY_COUNT"
 		LOG_MSG "[INFO]:-Master Database      = $DATABASE_NAME"
+		LOG_MSG "[INFO]:-Master connections   = $MAX_QD_CONNECTIONS"
 		LOG_MSG "[INFO]:-Master IP allow      = $IP_ALLOW"
 		for MASTER_IP in "${MASTER_IP_ADDRESS[@]}"
 		do
@@ -577,7 +580,13 @@ CREATE_QD_DB () {
 		ED_FILE ${MPP_DIR}/$PG_CONF "#log_statement =" log_statement=all
 		if [ $? -ne 0 ]; then
 			LOG_MSG "[WARN:-Failed to set log_statement=all in ${MPP_DIR}/$PG_CONF"
-			ERROR_EXIT=1
+			EXIT_STATUS=1
+		fi
+		LOG_MSG "[INFO]:-Setting Master instance maximum connections to ${MAX_QD_CONNECTIONS}"
+		ED_FILE ${MPP_DIR}/$PG_CONF "max_connections =" "max_connections=${MAX_QD_CONNECTIONS}"
+		if [ $? -ne 0 ]; then
+			LOG_MSG "[WARN:-Failed to set max_connections=${MAX_QD_CONNECTIONS} in ${MPP_DIR}/$PG_CONF"
+			EXIT_STATUS=1
 		fi
 		if [  x"" != x"$PG_CONF_ADD_FILE" ]; then
 				LOG_MSG "[INFO]:-Processing additional configuration parameters"
@@ -906,7 +915,7 @@ CREATE_DATABASE () {
 #******************************************************************************
 # Main Section
 #******************************************************************************
-while getopts ":v'?'aqc:l:p:h:o:s:" opt
+while getopts ":v'?'aqc:l:p:m:h:o:s:" opt
 		do
 		case $opt in
 				v ) VERSION_INFO ;;
@@ -917,6 +926,7 @@ while getopts ":v'?'aqc:l:p:h:o:s:" opt
 				l ) LOG_DIR=$OPTARG ;;
 				p ) PG_CONF_ADD_FILE=$OPTARG ;;
 				h ) MACHINE_LIST_FILE=$OPTARG ;;
+				m ) MAX_QD_CONNECTIONS=$OPTARG ;;
 				o ) QD_ONLY=1 ;;
 				s ) STANDBY_HOST_NAME=$OPTARG ;;
 				* ) USAGE ;;
