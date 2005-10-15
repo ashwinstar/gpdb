@@ -115,7 +115,7 @@ cdbCopyGetDbCount(int total_segs, int seg)
  * Returns 0 for success, -1 for error and an error message.
  */
 int
-cdbCopyStart(CdbCopy * c, char *copyCmd)
+cdbCopyStart(CdbCopy *c, char *copyCmd)
 {
 	PGresult   *res;
 	SegmentDatabaseDescriptor *q;
@@ -167,7 +167,7 @@ cdbCopyStart(CdbCopy * c, char *copyCmd)
  * the hash result of the data value).
  */
 void
-cdbCopySendData(CdbCopy * c, int target_seg, const char *buffer,
+cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer,
 				int nbytes)
 {
 	SegmentDatabaseDescriptor *q;
@@ -215,7 +215,7 @@ cdbCopySendData(CdbCopy * c, int target_seg, const char *buffer,
  * c->err_msg will include the error msg(s) if any.
  */
 void
-cdbCopyEnd(CdbCopy * c)
+cdbCopyEnd(CdbCopy *c)
 {
 	SegmentDatabaseDescriptor *q;
 	SegmentDatabaseDescriptor **failedSegDBs;

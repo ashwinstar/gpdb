@@ -36,11 +36,11 @@ static void *thread_DoConnect(void *arg);
 
 static Gang *createGang(GangType type, int size, int content);
 
-static void disconnectAndDestroyGang(Gang * gp);
+static void disconnectAndDestroyGang(Gang *gp);
 
 static Gang *buildGangDefinition(GangType type, int size, int content);
 
-static void cleanupGang(Gang * gp);
+static void cleanupGang(Gang *gp);
 
 /*
  * Points to the result of getCdbComponentDatabases()
@@ -543,14 +543,14 @@ buildGangDefinition(GangType type, int size, int content)
 					last_segindex = p->segindex;
 					continue;
 				}
-                 else if (type == GANGTYPE_PRIMARY_WRITER && !p->isprimary)
-                 {
-                    /*
-                     * this should not happen, or the pgdatabase info is wrong.
-                     */
-                    elog(LOG, "Warning, potential wrong mpp configuration.");
-                    CondSetMPPReadonly();
-                 }
+				else if (type == GANGTYPE_PRIMARY_WRITER && !p->isprimary)
+				{
+					/*
+					 * this should not happen, or the pgdatabase info is wrong.
+					 */
+					elog(LOG, "Warning, potential wrong mpp configuration.");
+					CondSetMPPReadonly();
+				}
 				else
 				{
 					segdbDesc = &newGangDefinition->db_descriptors[seg_count];
@@ -910,15 +910,15 @@ allocateGang(GangType type, int size, int content)
 	 */
 
 	MemoryContextSwitchTo(oldContext);
-    if (gp == NULL)
-        elog(ERROR, "No %s gang allocated", 
-            (type ==GANGTYPE_PRIMARY_WRITER)?"primary":"mirror");
+	if (gp == NULL)
+		elog(ERROR, "No %s gang allocated",
+			 (type == GANGTYPE_PRIMARY_WRITER) ? "primary" : "mirror");
 
 	return gp;
 }
 
 struct SegmentDatabaseDescriptor *
-getSegmentDescriptorFromGang(const Gang * gp, int seg)
+getSegmentDescriptorFromGang(const Gang *gp, int seg)
 {
 
 	int			i;
@@ -936,7 +936,7 @@ getSegmentDescriptorFromGang(const Gang * gp, int seg)
 }
 
 List *
-getCdbProcessList(Gang * gang)
+getCdbProcessList(Gang *gang)
 {
 	int			i;
 	List	   *list = NIL;
@@ -1085,7 +1085,7 @@ getCdbProcessesForQD(int isPrimary)
 
 
 void
-cleanupGang(Gang * gp)
+cleanupGang(Gang *gp)
 {
 	int			i;
 
@@ -1169,7 +1169,7 @@ cleanupGang(Gang * gp)
 
 
 void
-disconnectAndDestroyGang(Gang * gp)
+disconnectAndDestroyGang(Gang *gp)
 {
 	int			i;
 

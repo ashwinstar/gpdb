@@ -12,7 +12,7 @@
 #include "executor/executor.h"
 #include "cdb/cdbheap.h"
 
-static void SiftDown(CdbHeap * cdbheap, int From, int End);
+static void SiftDown(CdbHeap *cdbheap, int From, int End);
 
 /*
  * Function specific to
@@ -30,8 +30,8 @@ static void SwitchCdbTupleHeapInfo(void *left, void *right);
 
 CdbHeap *
 CreateCdbTupleHeap(int numRoutes,
-				   MotionState * node,
-				   Motion * motion)
+				   MotionState *node,
+				   Motion *motion)
 {
 	CdbHeapTupleCompareInfo *cmpinfo;
 
@@ -56,7 +56,7 @@ CreateCdbTupleHeap(int numRoutes,
 }
 
 void
-SetCdbTupleHeapInitialValue(CdbHeap * cdbheap, HeapTuple tuple, int sourceRouteId)
+SetCdbTupleHeapInitialValue(CdbHeap *cdbheap, HeapTuple tuple, int sourceRouteId)
 {
 	CdbTupleHeapInfo info;
 
@@ -68,13 +68,13 @@ SetCdbTupleHeapInitialValue(CdbHeap * cdbheap, HeapTuple tuple, int sourceRouteI
 
 
 CdbTupleHeapInfo *
-GetLowestValueFromCdbTupleHeap(CdbHeap * cdbheap)
+GetLowestValueFromCdbTupleHeap(CdbHeap *cdbheap)
 {
 	return (CdbTupleHeapInfo *) GetLowestValueFromCdbHeap(cdbheap);
 }
 
 void
-MergeNewValueIntoCdbTupleHeap(CdbHeap * cdbheap, HeapTuple h, int sourceRouteId)
+MergeNewValueIntoCdbTupleHeap(CdbHeap *cdbheap, HeapTuple h, int sourceRouteId)
 {
 	CdbTupleHeapInfo info;
 
@@ -218,7 +218,7 @@ SwitchCdbTupleHeapInfo(void *left, void *right)
 }
 
 int
-GetCountCdbHeap(CdbHeap * cdbheap)
+GetCountCdbHeap(CdbHeap *cdbheap)
 {
 	int			count = 0;
 	int			i;
@@ -283,7 +283,7 @@ CreateCdbHeap(int nSlots,
 }
 
 void
-DestroyCdbHeap(CdbHeap * cdbheap)
+DestroyCdbHeap(CdbHeap *cdbheap)
 {
 	int			i;
 
@@ -314,7 +314,7 @@ DestroyCdbHeap(CdbHeap * cdbheap)
 }
 
 void
-SetCdbHeapInitialValue(CdbHeap * cdbheap, void *value)
+SetCdbHeapInitialValue(CdbHeap *cdbheap, void *value)
 {
 	int			i;
 	void	  **heap;
@@ -348,7 +348,7 @@ SetCdbHeapInitialValue(CdbHeap * cdbheap, void *value)
 
 
 void *
-GetLowestValueFromCdbHeap(CdbHeap * cdbheap)
+GetLowestValueFromCdbHeap(CdbHeap *cdbheap)
 {
 	void	  **heap;
 	int			i;
@@ -385,7 +385,7 @@ GetLowestValueFromCdbHeap(CdbHeap * cdbheap)
 }
 
 void
-MergeNewValueIntoCdbHeap(CdbHeap * cdbheap, void *value)
+MergeNewValueIntoCdbHeap(CdbHeap *cdbheap, void *value)
 {
 	void	  **heap;
 	CdbHeapCopyFn copyfn;
@@ -405,7 +405,7 @@ MergeNewValueIntoCdbHeap(CdbHeap * cdbheap, void *value)
 }
 
 void
-SiftDown(CdbHeap * cdbheap, int From, int End)
+SiftDown(CdbHeap *cdbheap, int From, int End)
 {
 	int			i;
 	void	  **heap;

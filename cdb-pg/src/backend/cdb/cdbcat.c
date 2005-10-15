@@ -29,7 +29,7 @@ static void extract_INT2OID_array(Datum array_datum, int *lenp, int16 **vecp);
  * The copy is palloc'ed in the caller's context.
  */
 MppPolicy *
-MppPolicyCopy(const MppPolicy * src)
+MppPolicyCopy(const MppPolicy *src)
 {
 	MppPolicy  *tgt;
 	size_t		nb;
@@ -336,7 +336,7 @@ extract_INT2OID_array(Datum array_datum, int *lenp, int16 **vecp)
  *
  */
 void
-set_table_policy(Oid tbloid, MppPolicy * policy)
+set_table_policy(Oid tbloid, MppPolicy *policy)
 {
 
 	Relation	mpp_policy_rel;

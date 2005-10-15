@@ -44,7 +44,7 @@
  * Helper Functions
  */
 static int	CdbComponentDatabaseInfoCompare(const void *p1, const void *p2);
-static void freeCdbComponentDatabaseInfo(CdbComponentDatabaseInfo * cdi);
+static void freeCdbComponentDatabaseInfo(CdbComponentDatabaseInfo *cdi);
 static CdbComponentDatabases *getCdbComponentInfo(void);
 
 /*
@@ -768,7 +768,7 @@ getCdbComponentDatabases(void)
  * struct pointed to by the argument.
  */
 void
-freeCdbComponentDatabases(CdbComponentDatabases * pDBs)
+freeCdbComponentDatabases(CdbComponentDatabases *pDBs)
 {
 	int			i;
 
@@ -807,7 +807,7 @@ freeCdbComponentDatabases(CdbComponentDatabases * pDBs)
  * Releases any storage allocated for members variables of a CdbComponentDatabaseInfo struct.
  */
 void
-freeCdbComponentDatabaseInfo(CdbComponentDatabaseInfo * cdi)
+freeCdbComponentDatabaseInfo(CdbComponentDatabaseInfo *cdi)
 {
 	if (cdi == NULL)
 		return;

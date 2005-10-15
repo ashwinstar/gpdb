@@ -118,7 +118,7 @@ makeCdbHash(int numsegs, CdbHashAlg algorithm)
  * Initialize CdbHash for hashing the next tuple values.
  */
 void
-cdbhashinit(CdbHash * h)
+cdbhashinit(CdbHash *h)
 {
 	/* reset the hash value to the initial offset basis */
 	h->hash = FNV1_32_INIT;
@@ -129,7 +129,7 @@ cdbhashinit(CdbHash * h)
  * Add an attribute to the hash calculation.
  */
 void
-cdbhash(CdbHash * h, Datum datum, Oid type)
+cdbhash(CdbHash *h, Datum datum, Oid type)
 {
 
 	void	   *buf = NULL;		/* pointer to the data */
@@ -377,7 +377,7 @@ cdbhash(CdbHash * h, Datum datum, Oid type)
  * Add a NULL attribute to the hash calculation.
  */
 void
-cdbhashnull(CdbHash * h)
+cdbhashnull(CdbHash *h)
 {
 	uint32		nullbuf = NULL_VAL;		/* stores the constant value that
 										 * represents a NULL */
@@ -392,7 +392,7 @@ cdbhashnull(CdbHash * h)
  * Reduce the hash to a segment number.
  */
 unsigned int
-cdbhashreduce(CdbHash * h)
+cdbhashreduce(CdbHash *h)
 {
 
 	int			result = 0;		/* TODO: what is a good initialization value?
