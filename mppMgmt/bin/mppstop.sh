@@ -239,6 +239,13 @@ PROCESS_SHUTDOWN () {
 }
 
 FORCE_CLEAR () {
+	LOG_MSG "[INFO]:-Killing postmaster process on $QE_NAME for port=$QE_PORT"
+	GET_PG_PID_ACTIVE $QE_PORT $QE_NAME
+	if [ $PID -ne 0 ]; then
+		$TRUSTED_SHELL $QE_NAME "$KILL -9 $PID" > $LOG_FILE 2>&1
+	else
+		LOG_MSG "[INFO]:-No active pid found for $QE_NAME for port=$QE_PORT"
+	fi
 	LOG_MSG "[INFO]:-Clearing lock files on $QE_NAME for directory $QE_DIR"
 	$TRUSTED_SHELL $QE_NAME "$RM -f /tmp/.s.PGSQL.${QE_PORT}.lock /tmp/.s.PGSQL.${QE_PORT}"
 	RETVAL=$?
@@ -252,13 +259,6 @@ FORCE_CLEAR () {
     if [ $RETVAL -ne 0 ]; then
 		LOG_MSG "[WARN]:-Issue with clearing postmaster.pid file on $QE_NAME for directory $QE_DIR"
 	    EXIT_STATUS=1
-	fi
-	LOG_MSG "[INFO]:-Killing postmaster process on $QE_NAME for port=$QE_PORT"
-	GET_PG_PID_ACTIVE $QE_PORT $QE_NAME
-	if [ $PID -ne 0 ]; then
-		$TRUSTED_SHELL $QE_NAME "$KILL -9 $PID" > $LOG_FILE 2>&1
-	else
-		LOG_MSG "[INFO]:-No active pid found for $QE_NAME for port=$QE_PORT"
 	fi
 }
 #******************************************************************************
