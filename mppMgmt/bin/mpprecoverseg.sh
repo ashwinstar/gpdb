@@ -303,7 +303,7 @@ RECOVER_DATA () {
 		LOG_MSG "[INFO]:-Estimated duration of copy $COPY_TIME seconds"
 		RUN_COMMAND_REMOTE ${MIR_QE_HOST} "$TRUSTED_COPY -pr ${MIR_QE_DIR} ${FAIL_QE_HOST}:${FAIL_QE_DIR}" 
 		LOG_MSG "[INFO]:-Setting recovered port to ${FAIL_QE_PORT} on ${FAIL_QE_HOST}" 
-		ED_FILE ${FAIL_QE_DIR}/$PG_CONF "port=" "port=${FAIL_QE_PORT}" ${FAIL_QE_HOST}
+		ED_FILE ${FAIL_QE_DIR}/$PG_CONF "port=" "port=${FAIL_QE_PORT}" 0 ${FAIL_QE_HOST}
 ##		RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$GREP -v '^port=' ${FAIL_QE_DIR}/postgresql.conf > ${FAIL_QE_DIR}/postgresql.conf_copy"
 ##		RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$ECHO 'port=${FAIL_QE_PORT}' >>${FAIL_QE_DIR}/postgresql.conf_copy"
 ##		RUN_COMMAND_REMOTE ${FAIL_QE_HOST} "$MV ${FAIL_QE_DIR}/postgresql.conf_copy ${FAIL_QE_DIR}/postgresql.conf"

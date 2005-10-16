@@ -171,7 +171,7 @@ if [ x"$TRUSTED_SHELL" = x"" ]; then TRUSTED_SHELL="$SSH"; fi
 if [ x"$TRUSTED_COPY" = x"" ]; then TRUSTED_COPY="$SCP"; fi
 PG_CONF_ADD_FILE=$WORKDIR/postgresql_conf_mpp_additions
 RECOVER_FLAG=/tmp/active_recovery_in_progress
-
+SCHEMA_FILE=cdb_schema.sql
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -226,7 +226,8 @@ ED_FILE () {
 	APPEND=0
 	FILENAME=$1;shift
 	SEARCH_TXT=$1;shift
-	SUB_TXT=$1;shift
+	SUB_TXT="$1";shift
+	KEEP_PREV=$1;shift
 	ED_HOST=$1
 	if [ x"" == x"$ED_HOST" ]; then
 			if [ `$GREP -c "${SEARCH_TXT}" $FILENAME` -gt 1 ]; then
@@ -242,6 +243,7 @@ ED_FILE () {
 					LOG_MSG "[INFO]:-Appended line $SUB_TXT to $FILENAME"
 				fi
 			else
+if [ $KEEP_PREV -eq 0 ];then
 ed $FILENAME << _EOF_ > /dev/null 2>&1
 1
 /${SEARCH_TXT}
@@ -254,6 +256,20 @@ $SUB_TXT #
 w
 q
 _EOF_
+else
+ed $FILENAME << _EOF_ > /dev/null 2>&1
+1
+/${SEARCH_TXT}
+.
+d
+.
+a
+$SUB_TXT
+.
+w
+q
+_EOF_
+fi
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
 					LOG_MSG "[WARN]:-Failed to replace $SEARCH_TXT in $FILENAME"
@@ -279,11 +295,20 @@ _EOF_
 		else
 			$ECHO 1 > $ED_TMP_FILE
 			$ECHO "/${SEARCH_TXT}" >>  $ED_TMP_FILE
-			$ECHO i >>  $ED_TMP_FILE
+			$ECHO . >>  $ED_TMP_FILE
+			if [ $KEEP_PREV -eq 0 ];then
+			$ECHO i >> $ED_TMP_FILE
 			$ECHO "$SUB_TXT #" >>  $ED_TMP_FILE
 			$ECHO . >>  $ED_TMP_FILE
 			$ECHO ".,.+1j" >> $ED_TMP_FILE
 			$ECHO . >>  $ED_TMP_FILE
+			else
+			$ECHO d >> $ED_TMP_FILE
+			$ECHO . >>  $ED_TMP_FILE
+			$ECHO a >> $ED_TMP_FILE
+			$ECHO "$SUB_TXT" >>  $ED_TMP_FILE
+			$ECHO . >>  $ED_TMP_FILE
+			fi
 			$ECHO w >>  $ED_TMP_FILE
 			$ECHO q >>  $ED_TMP_FILE
 			#$SCP $ED_TMP_FILE ${ED_HOST}:/tmp > /dev/null 2>&1
@@ -771,3 +796,4 @@ case $OS_TYPE in
 esac
 #Set up LD_LIBRARY_PATH
 LD_LIBRARY_PATH=`$DIRNAME \`$DIRNAME $INITDB\``/lib
+SHARE_PATH=`$DIRNAME \`$DIRNAME $INITDB\``/share

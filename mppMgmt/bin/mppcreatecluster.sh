@@ -101,7 +101,6 @@ USAGE () {
 		$ECHO "          List of additional PostgreSQL parameters to be applied to each Master/Segment"
 		$ECHO "          postgresql.conf file during MPP database initialization."
 		$ECHO "      -s, standby_hostname [optional]"
-		$ECHO "	         Setup standby Master host named \"standby_hostname\". (if configured in MPP configuration file)"
 		$ECHO "      -o, create Master only, do not configure Segment instance hosts"
 		$ECHO "      -m, maximum number of connections for master instance [default ${MAX_QD_CONNECTIONS}]"
 		$ECHO
@@ -268,6 +267,9 @@ CHK_PARAMS () {
 		#Get IP address of the master host
 
 		MASTER_IP_ADDRESS=(`$IFCONFIG $IFCONFIG_TXT |$GREP "inet "|$GREP -v "127.0.0"|$AWK '{print $2}'|$CUT -d: -f2`)
+		if [ x"" != x"$STANDBY_HOSTNAME" ];then
+			STANDBY_IP_ADDRESS=(`$TRUSTED_SHELL $STANDBY_HOSTNAME "$IFCONFIG $IFCONFIG_TXT |$GREP "inet "|$GREP -v \"127.0.0\"|$AWK '{print $2}'|$CUT -d: -f2"`)
+		fi
 		#Below commented out until standby QD tests completed (25/07/2005)
 		##	if [ $STANDBY_IP_ALLOW ]&& [ $STANDBY_QD_MASK ]; then
 		##		LOG_MSG "[INFO]:-Standby Master IP = $STANDBY_QD_IP"
@@ -491,6 +493,11 @@ DISPLAY_CONFIG () {
 		LOG_MSG "[INFO]:-Master Database      = $DATABASE_NAME"
 		LOG_MSG "[INFO]:-Master connections   = $MAX_QD_CONNECTIONS"
 		LOG_MSG "[INFO]:-Master IP allow      = $IP_ALLOW"
+		if [ x"" != x"$STANDBY_HOSTNAME" ];then
+		LOG_MSG "[INFO]:-Standby Master       = $STANDBY_HOSTNAME"
+		else
+		LOG_MSG "[INFO]:-Standby Master       = Not Configured"
+		fi
 		for MASTER_IP in "${MASTER_IP_ADDRESS[@]}"
 		do
 			LOG_MSG "[INFO]:-Master IP address    = $MASTER_IP"
@@ -569,6 +576,8 @@ CREATE_QD_DB () {
 		if [ $EXISTS -eq 0 ]; then
 				ERROR_EXIT "[FATAL]:-Master directory $MPP_DIR already exists" 2
 		fi
+		LOG_MSG "[INFO]:-Setting path for plpgsql.so"
+		ED_FILE ${SHARE_PATH}/$SCHEMA_FILE plpgsql.so "AS '${SHARE_PATH}/plpgsql.so'" 1
 		LOG_MSG "[INFO]:-Initializing Master Postgres instance $MPP_DIR"
 		RUN_COMMAND "$INITDB -E $ENCODING -D $MPP_DIR"
 		BACKOUT_COMMAND "$RM -Rf $MPP_DIR"
@@ -577,25 +586,25 @@ CREATE_QD_DB () {
 		$ECHO "#MPP specific configuration parameters for Master instance database" >> ${MPP_DIR}/$PG_CONF
 		$ECHO "#--------------------------------------------------------------" >> ${MPP_DIR}/$PG_CONF
 		LOG_MSG "[INFO]:-Setting the Master port to $MPP_PORT"
-		ED_FILE ${MPP_DIR}/$PG_CONF "$PORT_TXT" port=$MPP_PORT
+		ED_FILE ${MPP_DIR}/$PG_CONF "$PORT_TXT" port=$MPP_PORT 0
 		if [ $? -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Failed to set Master port in $PG_CONF" 2
 		fi
 		LOG_MSG "[INFO]:-Completed setting the Master port to $MASTER_PORT"
 		LOG_MSG "[INFO]:-Setting Master logging option"
-		ED_FILE ${MPP_DIR}/$PG_CONF "$LOG_STATEMENT_TXT" log_statement=all
+		ED_FILE ${MPP_DIR}/$PG_CONF "$LOG_STATEMENT_TXT" log_statement=all 0
 		if [ $? -ne 0 ]; then
 			LOG_MSG "[WARN:-Failed to set log_statement=all in ${MPP_DIR}/$PG_CONF"
 			EXIT_STATUS=1
 		fi
 		LOG_MSG "[INFO]:-Setting Master instance maximum connections to ${MAX_QD_CONNECTIONS}"
-		ED_FILE ${MPP_DIR}/$PG_CONF "$MAX_CONNECT_TXT" "max_connections=${MAX_QD_CONNECTIONS}"
+		ED_FILE ${MPP_DIR}/$PG_CONF "$MAX_CONNECT_TXT" "max_connections=${MAX_QD_CONNECTIONS}" 0
 		if [ $? -ne 0 ]; then
 			LOG_MSG "[WARN:-Failed to set max_connections=${MAX_QD_CONNECTIONS} in ${MPP_DIR}/$PG_CONF"
 			EXIT_STATUS=1
 		fi
 		LOG_MSG "[INFO]:-Setting Master instance check point segments"
-		ED_FILE ${MPP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" "checkpoint_segments=$CHECK_POINT_SEGMENTS"
+		ED_FILE ${MPP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" "checkpoint_segments=$CHECK_POINT_SEGMENTS" 0
 		if [ $? -ne 0 ]; then
 			LOG_MSG "[WARN:-Failed to set checkpoint_segments=$CHECK_POINT_SEGMENTS in ${MPP_DIR}/$PG_CONF"
 			EXIT_STATUS=1
@@ -606,7 +615,7 @@ CREATE_QD_DB () {
 						do
 						LOG_MSG "[INFO]:-Adding config $NEW_PARAM to Master"
 						SEARCH_TXT=`$ECHO $NEW_PARAM |$CUT -d"=" -f1`
-						ED_FILE ${MPP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM
+						ED_FILE ${MPP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM 0
 				done
 		fi
 		LOG_MSG "[INFO]:-Setting IP Allow in $PG_HBA to value $IP_ALLOW"
@@ -723,13 +732,13 @@ LOAD_QE_SYSTEM_DATA () {
 		done
 		if [ $MIRRORING -eq 1 ]; then
 				for I in "${QE_MIRROR_ARRAY[@]}"
-						do
-						SET_VAR $I
-						LOG_MSG "[INFO]:-Adding segment $MPP_HOSTNAME to Master system tables as mirror"
-						UPDATE_HOST $QD_DBNAME $MASTER_PORT $MPP_HOSTID $MPP_HOSTNAME
-						UPDATE_LISTENER $QD_DBNAME $MASTER_PORT $MPP_LISTENID $MPP_HOSTID $MPP_PORT $MPP_DIR $MPP_USER $MPP_PASSWD
-						UPDATE_PGDATABASE $QD_DBNAME $MASTER_PORT $MPP_DBID template1 $MPP_CONTENT $MPP_LISTENID f
-						LOG_MSG "[INFO]:-Successfully added segment $MPP_HOSTNAME to Master system tables as mirror"
+				do
+					SET_VAR $I
+					LOG_MSG "[INFO]:-Adding segment $MPP_HOSTNAME to Master system tables as mirror"
+					UPDATE_HOST $QD_DBNAME $MASTER_PORT $MPP_HOSTID $MPP_HOSTNAME
+					UPDATE_LISTENER $QD_DBNAME $MASTER_PORT $MPP_LISTENID $MPP_HOSTID $MPP_PORT $MPP_DIR $MPP_USER $MPP_PASSWD
+					UPDATE_PGDATABASE $QD_DBNAME $MASTER_PORT $MPP_DBID template1 $MPP_CONTENT $MPP_LISTENID f
+					LOG_MSG "[INFO]:-Successfully added segment $MPP_HOSTNAME to Master system tables as mirror"
 				done
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -824,16 +833,16 @@ PROCESS_QE () {
 		LOG_MSG "[INFO]:-Configuring segment $PG_CONF"
 		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO \"#MPP Specifc parameters\" >> ${MPP_DIR}/$PG_CONF"
 		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO \"#----------------------\" >> ${MPP_DIR}/$PG_CONF"
-		ED_FILE ${MPP_DIR}/$PG_CONF "$PORT_TXT" port=$MPP_PORT $MPP_HOSTNAME
-		ED_FILE ${MPP_DIR}/$PG_CONF "$LISTEN_ADR_TXT" listen_addresses=\'*\' $MPP_HOSTNAME
-		ED_FILE ${MPP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" checkpoint_segments=$CHECK_POINT_SEGMENTS $MPP_HOSTNAME
+		ED_FILE ${MPP_DIR}/$PG_CONF "$PORT_TXT" port=$MPP_PORT 0 $MPP_HOSTNAME
+		ED_FILE ${MPP_DIR}/$PG_CONF "$LISTEN_ADR_TXT" listen_addresses=\'*\' 0 $MPP_HOSTNAME
+		ED_FILE ${MPP_DIR}/$PG_CONF "$CHKPOINT_SEG_TXT" checkpoint_segments=$CHECK_POINT_SEGMENTS 0 $MPP_HOSTNAME
 		if [ x"" != x"$PG_CONF_ADD_FILE" ]; then
 			LOG_MSG "[INFO]:-Processing additional configuration parameters"
 			for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
 			do
 				LOG_MSG "[INFO]:-Adding config $NEW_PARAM to segment"
 				SEARCH_TXT=`$ECHO $NEW_PARAM |$CUT -d"=" -f1`
-				ED_FILE ${MPP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM $MPP_HOSTNAME
+				ED_FILE ${MPP_DIR}/$PG_CONF $SEARCH_TXT $NEW_PARAM 0 $MPP_HOSTNAME
 			done
 		fi
 
@@ -857,7 +866,7 @@ PROCESS_QE () {
 		BACKOUT_COMMAND "$ECHO \"Stopping segment instance on $MPP_HOSTNAME\""
 }
 
-RESTART_QD_PRODUCTION () {
+STOP_QD_PRODUCTION () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		LOG_MSG "[INFO]:-Restarting the MPP cluster in production mode"
 		if [ -f $WORKDIR/mppstop.sh ]; then
@@ -872,6 +881,11 @@ RESTART_QD_PRODUCTION () {
 		else
 				ERROR_EXIT "[FATAL]:-WORKDIR/mppstop.sh not located" 2
 		fi
+		LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+START_QD_PRODUCTION () {
+		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		if [ -f $WORKDIR/mppstart.sh ]; then
 				$WORKDIR/mppstart.sh -a -d $QD_DIR
 				if [ $? -ne 0 ]; then
@@ -913,7 +927,7 @@ while getopts ":v'?'aqc:l:p:m:h:o:s:" opt
 				h ) MACHINE_LIST_FILE=$OPTARG ;;
 				m ) MAX_QD_CONNECTIONS=$OPTARG ;;
 				o ) QD_ONLY=1 ;;
-				s ) STANDBY_HOST_NAME=$OPTARG ;;
+				s ) STANDBY_HOSTNAME=$OPTARG ;;
 				* ) USAGE ;;
 		esac
 done
@@ -964,8 +978,11 @@ if [ x"" != x"$DATABASE_NAME" ]; then
 	CREATE_DATABASE
 fi
 
-RESTART_QD_PRODUCTION
-
+STOP_QD_PRODUCTION
+if [ x"" != x"$STANDBY_HOSTNAME" ];then
+	CREATE_STANDBY_QD
+fi
+START_QD_PRODUCTION
 $ECHO "$RM $BACKOUT_FILE" >> $BACKOUT_FILE
 BACKOUT_COMMAND "if [ $MASTER_HOSTNAME != \`$HOSTNAME\` ];then $ECHO \"[FATAL]:-Not on original master host $MASTER_HOSTNAME, backout script exiting!\";exit 2;fi"
 LOG_MSG "[INFO]:-MPP cluster successfully created"

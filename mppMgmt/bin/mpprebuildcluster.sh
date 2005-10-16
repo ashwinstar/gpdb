@@ -112,7 +112,7 @@ CREATE_TEMP_DB () {
 	RUN_COMMAND "$INITDB -E $ENCODING -D ${TEMP_DATA_DIRECTORY}/parsetemp"
 	LOG_MSG "[INFO]:-Successfully initialized temporary parsing database"
 	LOG_MSG "[INFO]:-Setting temporary port number to $TEMP_PORT"
-	ED_FILE ${TEMP_DATA_DIRECTORY}/parsetemp/$PG_CONF "#port" port=$TEMP_PORT
+	ED_FILE ${TEMP_DATA_DIRECTORY}/parsetemp/$PG_CONF "#port" port=$TEMP_PORT 0
 	if [ $? -ne 0 ]; then
 		LOG_MSG "[FATAL]:-Failed to set temporary database port in ${TEMP_DATA_DIRECTORY}/parsetemp/$PG_CONF" 2
 	else
@@ -225,7 +225,7 @@ BUILD_MPP_MASTER () {
 	BACKOUT_COMMAND "$RM -Rf $MASTER_DATA_DIRECTORY"
 	BACKOUT_COMMAND "$ECHO \"Removing Master instance directory\""
 	LOG_MSG "[INFO]:-Setting the Master port to $MASTER_PORT"
-	ED_FILE ${MASTER_DATA_DIRECTORY}/$PG_CONF "#port" port=$MASTER_PORT
+	ED_FILE ${MASTER_DATA_DIRECTORY}/$PG_CONF "#port" port=$MASTER_PORT 0
 	if [ $? -ne 0 ]; then
 		ERROR_EXIT "[FATAL]:-Failed to set Master port in $PG_CONF" 2
 	fi
@@ -278,9 +278,9 @@ BUILD_SEGMENT_INSTANCES () {
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${SEG_HOSTNAME} \"$RM -rf $SEG_DATADIR\""
 		BACKOUT_COMMAND "$ECHO \"removing directory $SEG_DATADIR on $SEG_HOSTNAME\""
 		LOG_MSG "[INFO]:-Configuring segment $PG_CONF"
-		ED_FILE ${SEG_DATADIR}/$PG_CONF "#port" port=$SEG_PORT $SEG_HOSTNAME
-		ED_FILE ${SEG_DATADIR}/$PG_CONF listen_addresses listen_addresses=\'*\' $SEG_HOSTNAME
-		ED_FILE ${SEG_DATADIR}/$PG_CONF checkpoint_segments checkpoint_segments=$CHECK_POINT_SEGMENTS $SEG_HOSTNAME
+		ED_FILE ${SEG_DATADIR}/$PG_CONF "#port" port=$SEG_PORT 0 $SEG_HOSTNAME
+		ED_FILE ${SEG_DATADIR}/$PG_CONF listen_addresses listen_addresses=\'*\' 0  $SEG_HOSTNAME
+		ED_FILE ${SEG_DATADIR}/$PG_CONF checkpoint_segments checkpoint_segments=$CHECK_POINT_SEGMENTS 0 $SEG_HOSTNAME
 		LOG_MSG "[INFO]:-Configuring segment $PG_HBA"
 		for MASTER_IP in "${MASTER_IP_ADDRESS[@]}"		
 		do
