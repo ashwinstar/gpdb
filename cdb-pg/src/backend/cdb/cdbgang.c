@@ -1193,18 +1193,18 @@ disconnectAndDestroyGang(Gang *gp)
 
 		SegmentDatabaseDescriptor *segdbDesc = &(gp->db_descriptors[i]);
 
-		/*
-		 * TODO: Perform cancellation of "still running" queries
-		 */
-
-		if (segdbDesc->conn)
+		if (segdbDesc->conn && PQstatus(segdbDesc->conn) != CONNECTION_BAD)
 		{
 			PGTransactionStatusType status =
-			PQtransactionStatus(segdbDesc->conn);
-
+				PQtransactionStatus(segdbDesc->conn);
+				
 			elog(DEBUG2,
 				 "Finishing connection with %s; transaction status %d",
 				 segdbDesc->whoami, status);
+				
+			if (status == PQTRANS_ACTIVE)
+				PQrequestCancel(segdbDesc->conn);
+
 			PQfinish(segdbDesc->conn);
 
 			segdbDesc->conn = NULL;
