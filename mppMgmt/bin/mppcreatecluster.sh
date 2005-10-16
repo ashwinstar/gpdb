@@ -79,10 +79,10 @@ CHKPOINT_SEG_TXT="checkpoint_segments"
 USAGE () {
 		$ECHO
 		$ECHO "      `basename $0` -c mpp_config_file [OPTIONS]"
-		$ECHO 
+		$ECHO
 		$ECHO "      Creates a new MPP database on a Master host and a number of"
 		$ECHO "      segment instance hosts."
-		$ECHO 
+		$ECHO
 		$ECHO "      General options:"
 		$ECHO "      -?, display this help message & exit"
 		$ECHO "      -v, display version information & exit"
@@ -576,8 +576,8 @@ CREATE_QD_DB () {
 		if [ $EXISTS -eq 0 ]; then
 				ERROR_EXIT "[FATAL]:-Master directory $MPP_DIR already exists" 2
 		fi
-		LOG_MSG "[INFO]:-Setting path for plpgsql.so"
-		ED_FILE ${SHARE_PATH}/$SCHEMA_FILE plpgsql.so "AS '${SHARE_PATH}/plpgsql.so'" 1
+##LOG_MSG "[INFO]:-Setting path for plpgsql.so"
+##ED_FILE ${SHARE_PATH}/$SCHEMA_FILE plpgsql.so "AS '${SHARE_PATH}/plpgsql.so'" 1
 		LOG_MSG "[INFO]:-Initializing Master Postgres instance $MPP_DIR"
 		RUN_COMMAND "$INITDB -E $ENCODING -D $MPP_DIR"
 		BACKOUT_COMMAND "$RM -Rf $MPP_DIR"
