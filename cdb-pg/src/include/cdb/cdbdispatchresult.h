@@ -157,18 +157,6 @@ cdbdisp_destroyDispatchResults(CdbDispatchResults  *results);
 int
 cdbdisp_sumCmdTuples(CdbDispatchResults *results);
 
-/*
- * cdbdisp_snatchPGresults:
- * Removes all of the PGresult ptrs from a CdbDispatchResults object
- * and places them into an array provided by the caller.  The caller
- * becomes responsible for PQclear()ing them.  Returns the number of
- * PGresult ptrs placed in the array.
- */
-int
-cdbdisp_snatchPGresults(CdbDispatchResult  *dispatchResult,
-                        PGresult          **pgresultptrs,
-                        int                 maxresults);
-
 /*--------------------------------------------------------------------*/
 
 /* Convert compact error code (ERRCODE_xxx) to 5-char SQLSTATE string,
