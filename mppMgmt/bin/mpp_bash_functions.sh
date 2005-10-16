@@ -342,6 +342,8 @@ CHK_DIR () {
 GET_MASTER_PORT () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		MASTER_DATA_DIRECTORY=$1
+		if [ x"" == x"$MASTER_DATA_DIRECTORY" ];then
+			ERROR_EXIT "[FATAL]:-MASTER_DATA_DIRECTORY variable not set" 2;fi
 		if [ ! -d $MASTER_DATA_DIRECTORY ]; then
 				ERROR_EXIT "[FATAL]:-No $MASTER_DATA_DIRECTORY directory" 2
 		fi
@@ -365,8 +367,10 @@ GET_QD_DB_NAME () {
 		GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 
 		QD_DBNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c"\l" 2>/dev/null|$GREP -v template|$HEAD -1|$CUT -d"|" -f1` > /dev/null 2>&1
-
-		if [ ! $QD_DBNAME ]; then
+		MASTER_DIR_CHK=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c"select count(*) from mpp.host;"`
+		if [ $MASTER_DIR_CHK -eq 0 ];then
+			ERROR_EXIT "[FATAL]:-MASTER_DATA_DIRECTORY value of $MASTER_DATA_DIRECTORY is incorrect" 2;fi
+		if [ x"" == x"$QD_DBNAME" ]; then
 				LOG_MSG "[INFO]:-Unable to obtain Master database name, setting value to template1"
 				QD_DBNAME=template1
 		fi
