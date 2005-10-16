@@ -124,7 +124,7 @@ CHK_PG_PID () {
 }
 
 GET_FAIL_SETTING () {
-	FAIL_TYPE=`$PSQL -p $MASTER_PORT $QD_DBNAME -R" " -A -t -c"show mpp_fault_action;"`
+	FAIL_TYPE=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -R" " -A -t -c"show mpp_fault_action;"`
 }
 
 DATABASE_STATUS () {
@@ -141,12 +141,16 @@ DATABASE_STATUS () {
 				GET_QE_DETAILS
 				GET_MPP_VERSION
 				GET_FAIL_SETTING
-				QD_PG_VERSION=`$PSQL -p $MASTER_PORT template1 -A -t -c"show server_version;"`
-				MIRROR_COUNT=`$PSQL -p $MASTER_PORT template1 -A -t -c"select count(dbid)/count(distinct(content)) from mpp.pgdatabase where content<>-1;"`
-				if [ $MIRROR_COUNT -ne 2 ]; then
-					MIRROR_CONFIG=Off
+				QD_PG_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c"show server_version;"`
+				MIRROR_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c"select count(dbid)/count(distinct(content)) from mpp.pgdatabase where content<>-1;" 2> /dev/null `
+				if [ x"" == x"$MIRROR_COUNT" ];then
+					MIRROR_CONFIG=ERROR
 				else
-					MIRROR_CONFIG=on
+					if [ $MIRROR_COUNT -ne 2 ]; then
+						MIRROR_CONFIG=Off
+					else
+						MIRROR_CONFIG=on
+					fi
 				fi
 				LOG_MSG "[INFO]:-Master Configuration & Status"
 				LOG_MSG "[INFO]:--------------------------"
