@@ -576,8 +576,12 @@ CREATE_QD_DB () {
 		if [ $EXISTS -eq 0 ]; then
 				ERROR_EXIT "[FATAL]:-Master directory $MPP_DIR already exists" 2
 		fi
-		LOG_MSG "[INFO]:-Setting path for plpgsql.so"
-		ED_FILE ${SHARE_PATH}/$SCHEMA_FILE plpgsql.so "AS '${LD_LIBRARY_PATH}/plpgsql.so'" 1
+		if [ `$GREP -c "${LD_LIBRARY_PATH}/plpgsql.so" ${SHARE_PATH}/$SCHEMA_FILE` -eq 0 ];then
+			LOG_MSG "[INFO]:-Setting path for plpgsql.so"
+			ED_FILE ${SHARE_PATH}/$SCHEMA_FILE plpgsql.so "AS '${LD_LIBRARY_PATH}/plpgsql.so'" 1
+		else
+			LOG_MSG "[INFO]:-Path correct for plpgsql.so, skipping edit"
+		fi
 		LOG_MSG "[INFO]:-Initializing Master Postgres instance $MPP_DIR"
 		RUN_COMMAND "$INITDB -E $ENCODING -D $MPP_DIR"
 		BACKOUT_COMMAND "$RM -Rf $MPP_DIR"
