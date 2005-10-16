@@ -557,7 +557,7 @@ assign_mpp_set_read_only(bool newval, bool doit, GucSource source)
 			strcpy( cmdbuf, "set mpp_set_read_only=" );
 			strcat( cmdbuf, newval?"true":"false");
 
-			if ( !CdbDoCommandInt(cmdbuf, false, NULL) )
+			if ( !CdbDoCommandNoTxn(cmdbuf, false, NULL) )
 				elog(PANIC, "mpp_set_read_only failed on QE");
 		}
 		*/

@@ -660,7 +660,7 @@ dropdb(const char *dbname)
 
 
 
-		CdbDoCommandInt(buffer.data, false, NULL);
+		CdbDoCommandNoTxn(buffer.data, false);
 
 	}
 

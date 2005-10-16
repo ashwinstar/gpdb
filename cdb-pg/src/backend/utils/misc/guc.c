@@ -4222,7 +4222,7 @@ SetPGVariable(const char *name, List *args, bool is_local)
 		}
 		
 		
-        CdbDoCommandInt( buffer.data, false, NULL );
+        CdbDoCommandNoTxn( buffer.data, false );
 		
 	}
 }

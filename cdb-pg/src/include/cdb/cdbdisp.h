@@ -165,15 +165,14 @@ void
 CdbDoCommand(const char *szCommand, bool cancelOnError);
 
 /*
- * CdbDoCommandInt:
+ * CdbDoCommandNoTxn:
  * Combination of cdbdisp_dispatchCommand and cdbdisp_finishCommand.
  * If not all QEs execute the command successfully, throws an error and
  * does not return.
  */
 void
-CdbDoCommandInt(const char         *szCommand,
-                bool                cancelOnError,
-                struct pg_result ***resultSets);
+CdbDoCommandNoTxn(const char         *szCommand,
+                bool                cancelOnError);
 
 
 /*--------------------------------------------------------------------*/

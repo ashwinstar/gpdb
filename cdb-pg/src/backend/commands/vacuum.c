@@ -429,9 +429,9 @@ vacuum(VacuumStmt *vacstmt)
 		/*
 		 * Combination of CdbDispatchCommand and then CdbCheckDispatchResult.
 		 * If it fails on any of the targets, ereport(ERROR, ...) is called.
-		 * call CdbDoCommandInt since it can not start in a transaction
+		 * call CdbDoCommandNoTxn since it can not start in a transaction
 		 */
-		CdbDoCommandInt(buffer.data, true, NULL);
+		CdbDoCommandNoTxn(buffer.data, true);
 
 		pfree(buffer.data);
 

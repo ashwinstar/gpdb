@@ -1274,7 +1274,7 @@ ProcessUtility(Node *parsetree,
 							appendStringInfo(&buffer, " FORCE");
 
 
-						CdbDoCommandInt(buffer.data, false, NULL);
+						CdbDoCommandNoTxn(buffer.data, false);
 					}
 				}
 			}
