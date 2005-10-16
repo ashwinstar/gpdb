@@ -83,6 +83,9 @@ USAGE () {
 		$ECHO 
 		$ECHO "      Recovery options:"
 		$ECHO "      -f, force MPP cluster shutdown and restart"
+        	$ECHO "      -z, <segment_instance_directory_name:hostname> force a recovery, even though no instance"
+		$ECHO "          segments are marked as invalid on the Master CAUTION:-USE THIS OPTION WITH CARE!"
+        	$ECHO "          example $0 -z /dbfast1/segment1:localhost"
         	$ECHO
 		$ECHO "      Connection options:"
 		$ECHO "      -d, <Master database directory> name of alternative Master database to start up [optional]"
@@ -185,7 +188,10 @@ DISPLAY_PARAM () {
 	$ECHO
         $ECHO "Continue with recovery procedure yY|nN >"
         read REPLY
-        if [ $REPLY != Y ] && [ $REPLY != y ] || [ -z $REPLY ];then
+	if [ x"" == x"$REPLY" ];then
+		LOG_MSG "[WARN]:-User abort requested, Script Exits!"
+		exit 1;fi
+        if [ $REPLY != Y ] && [ $REPLY != y ];then
                 LOG_MSG "[WARN]:-User abort requested, Script Exits!"
                 exit 1;fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -403,10 +409,45 @@ START_DATABASE () {
         LOG_MSG "[INFO]:-Successfully started the master array"
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
+
+
+FORCE_RECOVER () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	FAIL_QE_DIR=`$ECHO $FORCE_RECOVER_STRING|$CUT -d: -f1`
+	FAIL_QE_HOST=`$ECHO $FORCE_RECOVER_STRING|$CUT -d: -f2`
+	if [ x"" == x"$FAIL_QE_DIR" ] || [ x"" == x"$FAIL_QE_HOST" ] || [ "$FAIL_QE_DIR" == "$FAIL_QE_HOST" ];then
+		ERROR_EXIT "[FATAL]:Option -z string $FORCE_RECOVER_STRING incorrect" 2;fi
+	GET_QD_DB_NAME
+	#Obtain hostname for segment instance directory that is to be recovered
+	FAILED_INSTANCE_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from mpp.host a, mpp.listener b, mpp.mpp_pgdatabase c where a.hostid=b.hostid and b.listenerid=c.listenerid and b.datadir='${FAIL_QE_DIR}' and a.hostname='${FAIL_QE_HOST}';"`
+	if [ $FAILED_INSTANCE_COUNT -eq 0 ];then
+		ERROR_EXIT "[FATAL]:-Could not locate $FAIL_QE_DIR for host $FAIL_QE_HOST" 2;fi
+	if [ $FAILED_INSTANCE_COUNT -gt 1 ];then
+		ERROR_EXIT "[FATAL]:-Found multiple records for $FAIL_QE_DIR for host $FAIL_QE_HOST" 2;fi
+	FAILED_INSTANCE_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select a.hostname, b.port, b.datadir, c.dbid from mpp.host a, mpp.listener b, mpp.mpp_pgdatabase c where a.hostid=b.hostid and b.listenerid=c.listenerid and b.datadir='${FAIL_QE_DIR}' and a.hostname='${FAIL_QE_HOST}';"`)
+	if [ $? -ne 0 ];then
+		ERROR_EXIT "[FATAL]:-Failed to query Master instance for $FORCE_RECOVER_STRING " 2;fi
+	FAIL_SET_VAR "${FAILED_INSTANCE_ARRAY[@]}" 
+	#Get active mirror details
+	ACTIVE_INSTANCE_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select a.hostname, b.port, b.datadir, c.dbid from mpp.host a, mpp.listener b, mpp.mpp_pgdatabase c where a.hostid=b.hostid and b.listenerid=c.listenerid and c.valid='t' and c.content in (select content from mpp.pgdatabase where dbid=${FAIL_QE_DBID});"`)
+	MIR_SET_VAR "${ACTIVE_INSTANCE_ARRAY[@]}"	
+	ARRAY_INDEX=1
+	STOPDB=1
+	if [ $INTERACTIVE ]; then
+		DISPLAY_PARAM
+	fi
+	TEST_ACCESS
+	STOP_DATABASE
+	RECOVER_DATA
+	UPDATE_MPP_MPP
+	START_DATABASE
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 #******************************************************************************
 # Main Section
 #******************************************************************************
-while getopts ":v'?'qfal:d:" opt;do
+while getopts ":v'?'qfal:d:z:" opt;do
     case $opt in
         v ) VERSION_INFO ;;
       '?' ) USAGE ;;
@@ -415,6 +456,9 @@ while getopts ":v'?'qfal:d:" opt;do
         q ) unset VERBOSE ;;
 	f ) FORCESTOP=1 ;;
     	l ) LOG_DIR=$OPTARG ;;
+	z ) FORCE_RECOVER_STRING=$OPTARG 
+	    FORCE_RECOVER 
+	    exit $EXIT_STATUS ;;
         * ) USAGE ;;
     esac
 done
