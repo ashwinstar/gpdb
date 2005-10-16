@@ -254,11 +254,21 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 {
 	int			i;
 	bool		reportError = false;
+    bool     realFaultFound = false;
 
 	if (!isFTSEnabled())
 		return false;
-	if (FtsTestConnection(segdbDesc->segment_database_info, segdbDesc->dbname))
-		return false;
+    for (i = 0; i < size; i++)
+    {
+        if ((segdbDesc + i)->conn == NULL)
+        {
+            if (!FtsTestConnection((segdbDesc + i)->segment_database_info, (segdbDesc + i)->dbname))
+               realFaultFound = true; 
+        }
+    }
+    
+    if (!realFaultFound)
+        return false;
 
 	/* shutdown if action is set to shutdown */
 	if (*ftsAction == FTS_SHUTDOWN)
@@ -276,7 +286,8 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 	incFtsSyncCount();
 	for (i = 0; i < size; i++)
 	{
-		if ((segdbDesc + i)->conn == NULL)
+		if ((segdbDesc + i)->conn == NULL &&
+             !FtsTestConnection((segdbDesc + i)->segment_database_info, (segdbDesc + i)->dbname))
 			markSegDBStatus((segdbDesc + i)->segment_database_info->dbid, false);
 	}
 	if (isGangExisted())
@@ -698,7 +709,9 @@ isNetError(char *errorMsg)
 	 * system shuting down, starting up or tool many clients... in this case,
 	 * we assume it is not a net error.
 	 */
-	return (strstr(errorMsg, "FATAL:") == NULL);
+	return (strstr(errorMsg, "FATAL:") == NULL ||
+            strstr(errorMsg, "No such file or directory") != NULL
+            );
 }
 
 bool
