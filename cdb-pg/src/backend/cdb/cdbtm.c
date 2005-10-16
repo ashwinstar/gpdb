@@ -66,11 +66,11 @@ static const int transitionState[8][8] =
 
 #define CHECK_DTX_STATE(curState, newState)  (transitionState[curState][newState])
 #define SET_DTX_STATE(gxact, newState)		 (gxact->state=newState)
- 
+
 
 /*
    #define GET_SEQ_NO(shmGIDSeq)					(shmGIDSeq & 0x00FFFFFF)
-   #define GET_SEQ_NODE_NO(shmGIDSeq)				((segno & 0xFF000000) >> 24)  
+   #define GET_SEQ_NODE_NO(shmGIDSeq)				((segno & 0xFF000000) >> 24)
 */
 
 
@@ -1006,31 +1006,37 @@ checkRM(PGresult **pgresultSets)
 bool
 recoverRMs(PGresult ***pgresultSets)
 {
-	char		cmdbuf[] = "select gid from pg_prepared_xacts";
-	int			i;
-	PGresult   *rs;
+    StringInfoData  errmsgbuf;
+	const char	   *cmdbuf = "select gid from pg_prepared_xacts";
+	PGresult      **rs;
+
+    *pgresultSets = NULL;
+    initStringInfo(&errmsgbuf);
 
 	/* call to all QE to get in-doubt transactions */
-	PG_TRY();
-	{
-		CdbDoCommandInt(cmdbuf, false, pgresultSets);
-	}
-	PG_CATCH();
-	{
-		/* need recovery */
-		return true;
-	}
-	PG_END_TRY();
+    *pgresultSets = cdbdisp_dispatchRMCommand(cmdbuf, &errmsgbuf);
 
-	i = 0;
-	rs = (*pgresultSets)[0];
-	do
-	{
-		if (PQntuples(rs) != 0)
-			/* need recovery */
-			return true;
+    /* display error messages */
+    if (errmsgbuf.len > 0)
+    {
+        ereport(LOG, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                      errmsg("Unable to collect list of prepared transactions "
+                             "from all segment databases."),
+                      errdetail("%s", errmsgbuf.data) ));
 
-	} while ((rs = (*pgresultSets)[++i]) != NULL);
+        pfree(errmsgbuf.data);
+
+        /* need recovery */
+        return true;
+    }
+    pfree(errmsgbuf.data);
+
+    /* If any result set is nonempty, there are in-doubt transactions. */
+    for (rs = *pgresultSets; *rs; ++rs)
+    {
+		if (PQntuples(*rs) != 0)			
+			return true;        /* need recovery */
+    }
 
 	/* do not need recovery */
 	return false;
@@ -1142,14 +1148,14 @@ resolveInDoubtDtx(void)
 {
     int         i;
     TMGXACT     *gxact_saved;
-    
+
     if (isFtsReadOnlySet())
     {
         /* can not resolve now, wait for next time */
         resolveDtx = false;
         return;
     }
-    
+
     getTmLock();
     gxact_saved = currentGxact;
     for (i = 0; i < *shmNumGxacts; i++)
@@ -1163,7 +1169,7 @@ resolveInDoubtDtx(void)
             updateDtxState(DTX_STATE_ROLLBACK_DONE);
         }
     }
-    
+
     currentGxact = gxact_saved;
     resolveDtx = false;
     releaseTmLock();
@@ -1184,6 +1190,6 @@ dumpAllDtx(void)
     {
         elog(LOG, "%d - GID: %s  STATE: %d  INFO: %d  LNO: %d  LOS: %d",
             i, shmGxactArray[i]->gid, shmGxactArray[i]->state, shmGxactArray[i]->infomask,
-            shmGxactArray[i]->fileno, shmGxactArray[i]->offset); 
+            shmGxactArray[i]->fileno, shmGxactArray[i]->offset);
     }
 }

@@ -101,6 +101,24 @@ cdbdisp_sumGangCmdTuples(struct Gang *gang);
 /*--------------------------------------------------------------------*/
 
 /*
+ * cdbdisp_dispatchRMCommand:
+ * Sends a non-cancelable command to all segment dbs, primary and mirror.
+ *
+ * Returns a malloc'ed array containing the PGresult objects thus
+ * produced; the caller must PQclear() them and free() the array.
+ * A NULL entry follows the last used entry in the array.
+ *
+ * Any error messages - whether or not they are associated with
+ * PGresult objects - are appended to a StringInfo buffer provided
+ * by the caller.
+ */
+struct pg_result **             /* returns ptr to array of PGresult ptrs */
+cdbdisp_dispatchRMCommand(const char   *szCommand,
+                          StringInfo    errmsgbuf);
+
+/*--------------------------------------------------------------------*/
+
+/*
  * cdbdisp_dispatchCommand:
  * Send ths szCommand SQL statement to all segdbs in the cluster
  * cancelOnError indicates whether an error

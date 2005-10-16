@@ -161,6 +161,40 @@ cdbdisp_numPGresult(CdbDispatchResult  *dispatchResult)
 }                               /* cdbdisp_numPGresult */
 
 
+/* Remove all of the PGresult ptrs from a CdbDispatchResult object
+ * and place them into an array provided by the caller.  The caller
+ * becomes responsible for PQclear()ing them.  Returns the number of
+ * PGresult ptrs placed in the array.
+ */
+int
+cdbdisp_snatchPGresults(CdbDispatchResult  *dispatchResult,
+                        PGresult          **pgresultptrs,
+                        int                 maxresults)
+{
+    PQExpBuffer     buf = &dispatchResult->resultbuf;
+    PGresult      **begp = (PGresult **)buf->data;
+    PGresult      **endp = (PGresult **)(buf->data + buf->len);
+    PGresult      **p;
+    int             nresults = 0;
+
+    /* Snatch the PGresult objects. */
+    for (p = begp; p < endp; ++p)
+    {
+        Assert(*p != NULL);
+        Assert(nresults < maxresults);
+        pgresultptrs[nresults++] = *p;
+        *p = NULL;
+    }
+
+    /* Empty our PGresult array. */
+    resetPQExpBuffer(buf);
+    dispatchResult->errindex = -1;
+    dispatchResult->okindex = -1;
+
+    return nresults;
+}                               /* cdbdisp_snatchPGresults */
+
+
 /* Display a CdbDispatchResult in the log for debugging.
  * Call only from main thread, during or after cdbdisp_checkDispatchResults.
  */
@@ -251,7 +285,9 @@ cdbdisp_dumpDispatchResult(CdbDispatchResult       *dispatchResult,
     const char     *whoami = segdbDesc ? segdbDesc->whoami : "not connected";
     int             ires, nres;
 
-    Assert(dispatchResult && buf);
+    if (!dispatchResult ||
+        !buf)
+        return;
 
     /* Connection error? */
     if (segdbDesc &&

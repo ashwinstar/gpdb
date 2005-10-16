@@ -91,6 +91,16 @@ cdbdisp_getPGresult(CdbDispatchResult *dispatchResult, int i);
 int
 cdbdisp_numPGresult(CdbDispatchResult  *dispatchResult);
 
+/* Remove all of the PGresult ptrs from a CdbDispatchResult object
+ * and place them into an array provided by the caller.  The caller
+ * becomes responsible for PQclear()ing them.  Returns the number of
+ * PGresult ptrs placed in the array.
+ */
+int
+cdbdisp_snatchPGresults(CdbDispatchResult  *dispatchResult,
+                        PGresult          **pgresultptrs,
+                        int                 maxresults);
+
 /* Display a CdbDispatchResult in the log for debugging.
  * Call only from main thread, during or after cdbdisp_checkDispatchResults.
  */
@@ -146,6 +156,18 @@ cdbdisp_destroyDispatchResults(CdbDispatchResults  *results);
  */
 int
 cdbdisp_sumCmdTuples(CdbDispatchResults *results);
+
+/*
+ * cdbdisp_snatchPGresults:
+ * Removes all of the PGresult ptrs from a CdbDispatchResults object
+ * and places them into an array provided by the caller.  The caller
+ * becomes responsible for PQclear()ing them.  Returns the number of
+ * PGresult ptrs placed in the array.
+ */
+int
+cdbdisp_snatchPGresults(CdbDispatchResult  *dispatchResult,
+                        PGresult          **pgresultptrs,
+                        int                 maxresults);
 
 /*--------------------------------------------------------------------*/
 
