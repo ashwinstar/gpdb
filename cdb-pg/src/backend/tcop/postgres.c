@@ -1923,7 +1923,14 @@ die(SIGNAL_ARGS)
 	{
 		InterruptPending = true;
 		ProcDiePending = true;
-
+		
+		/* although we don't strictly need to set this to true since the
+		 * ProcDiePending will occur first.  We set this anyway since the
+		 * MPP dispatch code is triggered only off of QueryCancelPending
+		 * and not any of the others. 
+		 */
+		QueryCancelPending = true;
+		
 		/*
 		 * If it's safe to interrupt, and we're waiting for input or a
 		 * lock, service the interrupt immediately
