@@ -263,6 +263,8 @@ ed $FILENAME << _EOF_ > /dev/null 2>&1
 .
 d
 .
+-1
+.
 a
 $SUB_TXT
 .
@@ -305,6 +307,8 @@ fi
 			else
 			$ECHO d >> $ED_TMP_FILE
 			$ECHO . >>  $ED_TMP_FILE
+			$ECHO "-1" >> $ED_TMP_FILE
+			$ECHO . >> $ED_TMP_FILE
 			$ECHO a >> $ED_TMP_FILE
 			$ECHO "$SUB_TXT" >>  $ED_TMP_FILE
 			$ECHO . >>  $ED_TMP_FILE
