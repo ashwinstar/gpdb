@@ -268,15 +268,12 @@ CHK_PARAMS () {
 
 		MASTER_IP_ADDRESS=(`$IFCONFIG $IFCONFIG_TXT |$GREP "inet "|$GREP -v "127.0.0"|$AWK '{print $2}'|$CUT -d: -f2`)
 		if [ x"" != x"$STANDBY_HOSTNAME" ];then
-			STANDBY_IP_ADDRESS=(`$TRUSTED_SHELL $STANDBY_HOSTNAME "$IFCONFIG $IFCONFIG_TXT |$GREP "inet "|$GREP -v \"127.0.0\"|$AWK '{print $2}'|$CUT -d: -f2"`)
+		STANDBY_IP_ADDRESS=(`$TRUSTED_SHELL $STANDBY_HOSTNAME "$IFCONFIG $IFCONFIG_TXT |$GREP \"inet \"|$GREP -v \"127.0.0\"|$AWK '{print \\$2}'|$CUT -d: -f2" 2>>$LOG_FILE`) 
+		RETVAL=$?
+		if [ $RETVAL -ne 0 ];then
+			ERROR_EXIT "[FATAL]:-Could not obtain IP address of standby master $STANDBY_HOSTNAME" 2
 		fi
-		#Below commented out until standby QD tests completed (25/07/2005)
-		##	if [ $STANDBY_IP_ALLOW ]&& [ $STANDBY_QD_MASK ]; then
-		##		LOG_MSG "[INFO]:-Standby Master IP = $STANDBY_QD_IP"
-		##		LOG_MSG "[INFO]:-Standby Master Netmask = $STANDBY_QD_MASK"
-		##	else
-		##		LOG_MSG "[INFO]:-Standby Master = off"
-
+		fi
 }
 
 CHK_DUPLICATES () {
@@ -350,6 +347,14 @@ CHK_QES () {
 				done
 		else
 				LOG_MSG "[INFO]:-Mirror segment instance directory check skipped, mirroring=Off"
+		fi
+		if [ x"" != x"$STANDBY_HOSTNAME" ];then
+		#Check standby host directory
+			$TRUSTED_SHELL $STANDBY_HOSTNAME "$LS $MASTER_DIRECTORY" >> $LOG_FILE 2>&1
+			RETVAL=$?
+			if [ $RETVAL -ne 0 ];then
+				ERROR_EXIT "[FATAL]:-Standby host directory $MASTER_DIRECTORY, does not exist" 2
+			fi
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -488,20 +493,28 @@ DISPLAY_CONFIG () {
 		LOG_MSG "[INFO]:------------------------"
 		LOG_MSG "[INFO]:-Master cluster name  = $ARRAY_NAME"
 		LOG_MSG "[INFO]:-Master hostname      = $MPP_HOSTNAME"
-		LOG_MSG "[INFO]:-MPP segment prefix   = $SEG_PREFIX"
-		LOG_MSG "[INFO]:-Primary segment #    = $QE_PRIMARY_COUNT"
-		LOG_MSG "[INFO]:-Master Database      = $DATABASE_NAME"
-		LOG_MSG "[INFO]:-Master connections   = $MAX_QD_CONNECTIONS"
-		LOG_MSG "[INFO]:-Master IP allow      = $IP_ALLOW"
 		if [ x"" != x"$STANDBY_HOSTNAME" ];then
 		LOG_MSG "[INFO]:-Standby Master       = $STANDBY_HOSTNAME"
 		else
 		LOG_MSG "[INFO]:-Standby Master       = Not Configured"
 		fi
+		LOG_MSG "[INFO]:-MPP segment prefix   = $SEG_PREFIX"
+		LOG_MSG "[INFO]:-Primary segment #    = $QE_PRIMARY_COUNT"
+		LOG_MSG "[INFO]:-Master Database      = $DATABASE_NAME"
+		LOG_MSG "[INFO]:-Master connections   = $MAX_QD_CONNECTIONS"
+		LOG_MSG "[INFO]:-Master IP allow      = $IP_ALLOW"
 		for MASTER_IP in "${MASTER_IP_ADDRESS[@]}"
 		do
 			LOG_MSG "[INFO]:-Master IP address    = $MASTER_IP"
 		done
+		if [ x"" != x"$STANDBY_HOSTNAME" ];then
+			for STANDBY_IP in "${STANDBY_IP_ADDRESS[@]}"
+			do
+			LOG_MSG "[INFO]:-Standby IP address   = $STANDBY_IP"
+			done
+		else
+			LOG_MSG "[INFO]:-Standby Master       = Not Configured"
+		fi
 		LOG_MSG "[INFO]:-Total MPP segments   = $TOTAL_SEG"
 		LOG_MSG "[INFO]:-Trusted shell        = $TRUSTED_SHELL"
 		LOG_MSG "[INFO]:-Checkpoint segments  = $CHECK_POINT_SEGMENTS"
@@ -624,6 +637,18 @@ CREATE_QD_DB () {
 		fi
 		LOG_MSG "[INFO]:-Setting IP Allow in $PG_HBA to value $IP_ALLOW"
 		$ECHO "host    all         all         $IP_ALLOW        $QD_MASK      trust" >> ${MPP_DIR}/$PG_HBA
+		LOG_MSG "[INFO]:-Adding mpp_dumpall access to $PG_HBA for master host"
+		for MASTER_IP in "${MASTER_IP_ADDRESS[@]}"
+		do
+			$ECHO "host    all         all         ${MASTER_IP}/32 trust" >> ${MPP_DIR}/$PG_HBA
+		done
+		if [ x"" != x"${STANDBY_IP_ADDRESS[@]}" ];then
+			LOG_MSG "[INFO]:-Adding mpp_dumpall access to $PG_HBA for standby host"
+			for STANDBY_IP in "${STANDBY_IP_ADDRESS[@]}"
+			do
+				$ECHO "host    all         all         ${STANDBY_IP}/32 trust" >> ${MPP_DIR}/$PG_HBA
+			done
+		fi
 		if [ $? -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Failed to set IP Allow in $PG_HBA" 2
 		fi
@@ -654,6 +679,23 @@ CREATE_QD_DB () {
 		UPDATE_PGDATABASE $MPP_DBNAME $MPP_PORT $MPP_DBID template1 $MPP_CONTENT $MPP_LISTENID t
 		LOAD_QE_SYSTEM_DATA template1
 		SET_VAR $QD_PRIMARY_ARRAY
+		if [ x"" != x"$STANDBY_HOSTNAME" ]; then
+		#Check to ensure that we have an entry in mpp.host for this system
+			CHK_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MPP_PORT template1 -A -t -c "select count(*) from $MPP_HOST_TBL where hostname='${STANDBY_HOSTNAME}';" 2>/dev/null` >> $LOG_FILE 2>&1
+			if [ $CHK_COUNT -eq 0 ];then
+				LOG_MSG "[INFO]:-Adding $STANDBY_HOSTNAME to mpp.host"
+				NEW_ID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MPP_PORT template1 -A -t -c "select max(hostid)+1 from mpp.host;"`
+				env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MPP_PORT template1 -A -t -c "insert into mpp.host values (${NEW_ID},'${STANDBY_HOSTNAME}');"	
+				RETVAL=$?
+				if [ $RETVAL -ne 0 ];then
+					ERROR_EXIT "[FATAL]:-Failed to add $STANDBY_HOSTNAME to mpp.host" 2
+				else
+					LOG_MSG "[INFO]:-Added $STANDBY_HOSTNAME to mpp.host"
+				fi
+			fi
+		else
+			LOG_MSG "[INFO]:-Already have an entry for standby host in mpp.host, skipping update"
+		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -788,13 +830,13 @@ UPDATE_MPP () {
 		TYPE=$7
 		U_HOST=$8
 		if [ $TYPE -eq 0 ]; then
-				env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $MPP_TBL values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});" >> $LOG_FILE 2>&1
+				env PGOPTIONS="export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $MPP_TBL values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});" >> $LOG_FILE 2>&1
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
 						ERROR_EXIT "[FATAL]:-Unable to update mpp system table" 2
 				fi
 		else
-				RUN_COMMAND_REMOTE $U_HOST "env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $U_PT $U_DB -c \"insert into $MPP_TBL (mppname, numsegments, dbid, content) values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" 2>&1" >> $LOG_FILE 2>&1
+				RUN_COMMAND_REMOTE $U_HOST "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $U_PT $U_DB -c \"insert into $MPP_TBL (mppname, numsegments, dbid, content) values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" 2>&1" >> $LOG_FILE 2>&1
 		fi	
 		if [ $RETVAL -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Failed to update mpp system table" 2
@@ -856,6 +898,13 @@ PROCESS_QE () {
 		do
 			RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host	all	all	${MASTER_IP}/32	trust >> ${MPP_DIR}/$PG_HBA"
 		done
+		if [ x"" != x"$STANDBY_HOSTNAME" ];then
+			LOG_MSG "[INFO]:-Processing Standby master IP address for segment instances"
+			for STANDBY_IP in "${STANDBY_IP_ADDRESS[@]}"
+			do
+				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host	all	all	${STANDBY_IP}/32	trust >> ${MPP_DIR}/$PG_HBA"
+			done
+		fi
 		LOG_MSG "[INFO]:-Starting Functioning instance on segment ${MPP_HOSTNAME}"
 		$TRUSTED_SHELL ${MPP_HOSTNAME} "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start"
 		if [ $? -ne 0 ]; then
@@ -886,6 +935,20 @@ STOP_QD_PRODUCTION () {
 				ERROR_EXIT "[FATAL]:-WORKDIR/mppstop.sh not located" 2
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+CREATE_STANDBY_QD () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	LOG_MSG "[INFO]:-Commencing remote copy of Master instance directory $QD_DIR to $STANDBY_HOSTNAME"
+	LOG_MSG "[INFO]:-Please wait.."
+	$TRUSTED_COPY -pr $QD_DIR ${STANDBY_HOSTNAME}:${QD_DIR} 2>>$LOG_FILE
+	RETVAL=$?
+	if [ $RETVAL -ne 0 ];then
+		ERROR_EXIT "[FATAL]:-Failed to $TRUSTED_COPY $QD_DIR to $STANDBY_HOSTNAME" 2;fi
+	LOG_MSG "[INFO]:-Successfully copied $QD_DIR to $STANDBY_HOSTNAME"
+	BACKOUT_COMMAND "$TRUSTED_SHELL ${STANDBY_HOSTNAME} \"$RM -Rf ${QD_DIR}\""
+	BACKOUT_COMMAND "$ECHO \"Removing standby directory ${QD_DIR} on $STANDBY_HOSTNAME\""
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 START_QD_PRODUCTION () {
@@ -956,7 +1019,6 @@ else
 fi
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
-
 CHK_PARAMS
 
 #Now source the config file for the rest of the functions within this script
@@ -1002,11 +1064,6 @@ LOG_MSG "[INFO]:-Script backout file = $BACKOUT_FILE"
 LOG_MSG "[INFO]:-To remove cluster, run"
 LOG_MSG "[INFO]:-/bin/bash $BACKOUT_FILE"
 LOG_MSG "[INFO]:-------------------------------------------------------"
-if [ $STANDBY_QD_NAME ]; then
-		$WORKDIR/mppinitstandby.bsh -h $STANDBY_QD_NAME
-else
-		LOG_MSG "[INFO]:-To initialize standby segment run mppinitstandby.bsh -h <standby Master hostname>"
-fi
 
 LOG_MSG "[INFO]:-End Main"
 
