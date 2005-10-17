@@ -1,6 +1,15 @@
 <<<NEW vi: set expandtab ts=4: >>>
 
 
+Release-2_0_17:  16/Oct/2005  llonergan
+    Release Candidate
+    Known bugs:
+        Blocker bugs: None
+        Critical bugs: mpp-149,155,174,196,198,213
+        Major bugs: mpp-2,21,53,66,68,72,87,99,100,128,131,
+                        177,179,180,183,187,195,203,205,208
+        Minor bugs: mpp-25,36,42,51,56,84,98,101,115,117,188,204,211,214,215
+
 Release-2_0_16:  16/Oct/2005  llonergan
     Release Candidate
     Known bugs:
