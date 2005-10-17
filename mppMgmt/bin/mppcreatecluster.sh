@@ -830,7 +830,7 @@ UPDATE_MPP () {
 		TYPE=$7
 		U_HOST=$8
 		if [ $TYPE -eq 0 ]; then
-				env PGOPTIONS="export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $MPP_TBL values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});" >> $LOG_FILE 2>&1
+				export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $MPP_TBL values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});" >> $LOG_FILE 2>&1
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
 						ERROR_EXIT "[FATAL]:-Unable to update mpp system table" 2
