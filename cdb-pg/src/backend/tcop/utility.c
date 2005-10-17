@@ -1119,7 +1119,17 @@ ProcessUtility(Node *parsetree,
 
 				if (Mpp_role == MPP_ROLE_DISPATCH)
 				{
-					CdbDispatchUtilityStatement((Node *) n);
+					/*
+					 * RESET must be dispatched different, because it can't
+					 * be in a user transaction
+					 */
+					StringInfoData buffer;
+
+					initStringInfo(&buffer);
+
+					appendStringInfo(&buffer, "RESET %s", n->name);
+
+					CdbDoCommandNoTxn(buffer.data, false);
 				}
 			}
 			break;
