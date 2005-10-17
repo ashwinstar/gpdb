@@ -2298,26 +2298,33 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 				if (hasConstraints)
 				{
 					ParamExecData *prmdata = &econtext->ecxt_param_exec_vals[0];
-
-					for (i = 0; i < num_phys_attrs; i++)
+					ExprState  *exprstate;
+					
+					/* we must only care about constraints for distribution keys
+					   right now, the rest of the attributes with constraints
+					   will be dealt with in CopyFromDispatch */
+					for (i = 0; i < p_nattrs; i++)
 					{
-						ExprState  *exprstate = constraintexprs[i];
+						h_attnum = policy->attrs[i];		/* current att num from
+						* cdb policy */
 
+						exprstate = constraintexprs[h_attnum - 1];
+							
 						if (exprstate == NULL)
 							continue;	/* no constraint for this attr */
 
-						/* Insert current row's value into the Param value */
-						prmdata->value = values[i];
-						prmdata->isnull = (nulls[i] == 'n');
+						/* Insert current hash key value into the Param value */
+						prmdata->value = values[h_attnum - 1];
+						prmdata->isnull = (nulls[h_attnum - 1] == 'n');
 
 						/*
 						 * Execute the constraint expression.  Allow the
 						 * expression to replace the value (consider e.g. a
 						 * timestamp precision restriction).
 						 */
-						values[i] = ExecEvalExpr(exprstate, econtext,
+						values[h_attnum - 1] = ExecEvalExpr(exprstate, econtext,
 												 &isnull, NULL);
-						nulls[i] = isnull ? 'n' : ' ';
+						nulls[h_attnum - 1] = isnull ? 'n' : ' ';
 					}
 				}
 
