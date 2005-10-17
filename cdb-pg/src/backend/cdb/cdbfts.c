@@ -198,7 +198,7 @@ FtsReConfigureMPP(void)
 static void
 CdbShutdown(void)
 {
-	elog(PANIC, "FTS: MPP system is shuted down");
+	elog(PANIC, "FTS: MPP system is shut down");
 }
 
 void
