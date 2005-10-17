@@ -843,6 +843,23 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 		 __LINE__, (long int) snapTime.tv_sec, (long int) snapTime.tv_usec);
 }
 
+/*
+ * Move this out to separate stack frame, so that we don't have to mark
+ * tons of stuff volatile in TeardownInterconnect().
+ */
+static void
+forceEosToPeer(int16 motNodeID, int16 targetRoute)
+{
+	PG_TRY();
+	{
+		SendEndOfStream(motNodeID, targetRoute);
+	}
+	PG_CATCH();
+	{
+		elog(DEBUG1, "Caught problem during forced-EOS");
+	}
+	PG_END_TRY();
+}
 
 /* TeardownInterconnect() function is used to cleanup interconnect resources that
  * were allocated during SetupInterconnect().  This function should ALWAYS be
@@ -897,15 +914,7 @@ TeardownInterconnect(bool forceEOS)
 
 			if (forceEOS)
 			{
-				PG_TRY();
-				{
-					SendEndOfStream(mySlice->sliceIndex, i);
-				}
-				PG_CATCH();
-				{
-					elog(DEBUG1, "Caught problem during forced-EOS");
-				}
-				PG_END_TRY();
+				forceEosToPeer(mySlice->sliceIndex, i);
 			}
 
 			if (conn->sockfd != -1)
