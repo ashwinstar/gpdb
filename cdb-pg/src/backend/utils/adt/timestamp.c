@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/timestamp.c,v 1.117.4.1 2005/04/01 14:25:39 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/timestamp.c,v 1.117.4.3 2005/07/04 14:12:45 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -77,12 +77,10 @@ timestamp_in(PG_FUNCTION_ARGS)
 	int			dterr;
 	char	   *field[MAXDATEFIELDS];
 	int			ftype[MAXDATEFIELDS];
-	char		lowstr[MAXDATELEN + MAXDATEFIELDS];
+	char		workbuf[MAXDATELEN + MAXDATEFIELDS];
 
-	if (strlen(str) >= sizeof(lowstr))
-		dterr = DTERR_BAD_FORMAT;
-	else
-		dterr = ParseDateTime(str, lowstr, field, ftype, MAXDATEFIELDS, &nf);
+	dterr = ParseDateTime(str, workbuf, sizeof(workbuf),
+						  field, ftype, MAXDATEFIELDS, &nf);
 	if (dterr == 0)
 		dterr = DecodeDateTime(field, ftype, nf, &dtype, tm, &fsec, &tz);
 	if (dterr != 0)
@@ -318,12 +316,10 @@ timestamptz_in(PG_FUNCTION_ARGS)
 	int			dterr;
 	char	   *field[MAXDATEFIELDS];
 	int			ftype[MAXDATEFIELDS];
-	char		lowstr[MAXDATELEN + MAXDATEFIELDS];
+	char		workbuf[MAXDATELEN + MAXDATEFIELDS];
 
-	if (strlen(str) >= sizeof(lowstr))
-		dterr = DTERR_BAD_FORMAT;
-	else
-		dterr = ParseDateTime(str, lowstr, field, ftype, MAXDATEFIELDS, &nf);
+	dterr = ParseDateTime(str, workbuf, sizeof(workbuf),
+						  field, ftype, MAXDATEFIELDS, &nf);
 	if (dterr == 0)
 		dterr = DecodeDateTime(field, ftype, nf, &dtype, tm, &fsec, &tz);
 	if (dterr != 0)
@@ -494,7 +490,7 @@ interval_in(PG_FUNCTION_ARGS)
 	int			dterr;
 	char	   *field[MAXDATEFIELDS];
 	int			ftype[MAXDATEFIELDS];
-	char		lowstr[MAXDATELEN + MAXDATEFIELDS];
+	char		workbuf[256];
 
 	tm->tm_year = 0;
 	tm->tm_mon = 0;
@@ -504,10 +500,8 @@ interval_in(PG_FUNCTION_ARGS)
 	tm->tm_sec = 0;
 	fsec = 0;
 
-	if (strlen(str) >= sizeof(lowstr))
-		dterr = DTERR_BAD_FORMAT;
-	else
-		dterr = ParseDateTime(str, lowstr, field, ftype, MAXDATEFIELDS, &nf);
+	dterr = ParseDateTime(str, workbuf, sizeof(workbuf), field,
+						  ftype, MAXDATEFIELDS, &nf);
 	if (dterr == 0)
 		dterr = DecodeInterval(field, ftype, nf, &dtype, tm, &fsec);
 	if (dterr != 0)
@@ -2761,9 +2755,12 @@ timestamp_trunc(PG_FUNCTION_ARGS)
 				/*
 				 *	If it is week 52/53 and the month is January,
 				 *	then the week must belong to the previous year.
+				 *	Also, some December dates belong to the next year.
 				 */
 				if (woy >= 52 && tm->tm_mon == 1)
 					--tm->tm_year;
+				if (woy <= 1 && tm->tm_mon == 12)
+					++tm->tm_year;
 				isoweek2date(woy, &(tm->tm_year), &(tm->tm_mon), &(tm->tm_mday));
 				tm->tm_hour = 0;
 				tm->tm_min = 0;
@@ -2892,9 +2889,12 @@ timestamptz_trunc(PG_FUNCTION_ARGS)
 				/*
 				 *	If it is week 52/53 and the month is January,
 				 *	then the week must belong to the previous year.
+				 *	Also, some December dates belong to the next year.
 				 */
 				if (woy >= 52 && tm->tm_mon == 1)
 					--tm->tm_year;
+				if (woy <= 1 && tm->tm_mon == 12)
+					++tm->tm_year;
 				isoweek2date(woy, &(tm->tm_year), &(tm->tm_mon), &(tm->tm_mday));
 				tm->tm_hour = 0;
 				tm->tm_min = 0;

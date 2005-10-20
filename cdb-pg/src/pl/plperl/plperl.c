@@ -33,7 +33,7 @@
  *	  ENHANCEMENTS, OR MODIFICATIONS.
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/pl/plperl/plperl.c,v 1.67 2005/01/14 16:25:42 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/pl/plperl/plperl.c,v 1.67.4.3 2005/08/20 19:19:31 tgl Exp $
  *
  **********************************************************************/
 
@@ -224,7 +224,7 @@ plperl_safe_init(void)
 	"$PLContainer->permit_only(':default');"
 	"$PLContainer->permit(qw[:base_math !:base_io sort time]);"
 	"$PLContainer->share(qw[&elog &spi_exec_query &DEBUG &LOG "
-    "&INFO &NOTICE &WARNING &ERROR %SHARED ]);"
+    "&INFO &NOTICE &WARNING &ERROR %_SHARED ]);"
 	"sub ::mksafefunc { return $PLContainer->reval(qq[sub { $_[0] $_[1]}]); }"
 			   ;
 
@@ -591,7 +591,7 @@ plperl_create_sub(char *s, bool trusted)
 	 * errors properly.  Perhaps it's because there's another level of
 	 * eval inside mksafefunc?
 	 */
-	count = perl_call_pv((trusted ? "mksafefunc" : "mkunsafefunc"),
+	count = perl_call_pv((trusted ? "::mksafefunc" : "::mkunsafefunc"),
 						 G_SCALAR | G_EVAL | G_KEEPERR);
 	SPAGAIN;
 
@@ -1419,6 +1419,8 @@ plperl_hash_from_tuple(HeapTuple tuple, TupleDesc tupdesc)
 						   Int32GetDatum(tupdesc->attrs[i]->atttypmod)));
 
 		hv_store(hv, attname, namelen, newSVpv(outputstr, 0), 0);
+
+		pfree(outputstr);
 	}
 
 	return newRV_noinc((SV *) hv);

@@ -15,7 +15,7 @@
  *
  *
  * IDENTIFICATION
- *		$PostgreSQL: pgsql/src/bin/pg_dump/pg_backup_archiver.c,v 1.101.4.6 2005/04/30 08:19:44 neilc Exp $
+ *		$PostgreSQL: pgsql/src/bin/pg_dump/pg_backup_archiver.c,v 1.101.4.8 2005/09/11 00:36:35 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -891,24 +891,21 @@ SortTocFromFile(Archive *AHX, RestoreOptions *ropt)
 	if (!fh)
 		die_horribly(AH, modulename, "could not open TOC file\n");
 
-	while (fgets(buf, 1024, fh) != NULL)
+	while (fgets(buf, sizeof(buf), fh) != NULL)
 	{
-		/* Find a comment */
+		/* Truncate line at comment, if any */
 		cmnt = strchr(buf, ';');
-		if (cmnt == buf)
-			continue;
-
-		/* End string at comment */
 		if (cmnt != NULL)
 			cmnt[0] = '\0';
 
-		/* Skip if all spaces */
-		if (strspn(buf, " \t") == strlen(buf))
+		/* Ignore if all blank */
+		if (strspn(buf, " \t\r") == strlen(buf))
 			continue;
 
-		/* Get an ID */
+		/* Get an ID, check it's valid and not already seen */
 		id = strtol(buf, &endptr, 10);
-		if (endptr == buf || id <= 0 || id > AH->maxDumpId)
+		if (endptr == buf || id <= 0 || id > AH->maxDumpId ||
+			ropt->idWanted[id - 1])
 		{
 			write_msg(modulename, "WARNING: line ignored: %s\n", buf);
 			continue;
@@ -1717,11 +1714,12 @@ _allocAH(const char *FileSpec, const ArchiveFormat fmt,
 
 	/*
 	 * On Windows, we need to use binary mode to read/write non-text archive
-	 * formats.  Force stdin/stdout into binary mode in case that is what
+	 * formats.  Force stdin/stdout into binary mode if that is what
 	 * we are using.
 	 */
 #ifdef WIN32
-	if (fmt != archNull)
+	if (fmt != archNull &&
+		(AH->fSpec == NULL || strcmp(AH->fSpec, "") == 0))
 	{
 		if (mode == archModeWrite)
 			setmode(fileno(stdout), O_BINARY);

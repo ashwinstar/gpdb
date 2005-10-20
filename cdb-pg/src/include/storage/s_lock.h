@@ -66,7 +66,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- *	  $PostgreSQL: pgsql/src/include/storage/s_lock.h,v 1.133 2004/12/31 22:03:42 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/include/storage/s_lock.h,v 1.133.4.5 2005/08/29 00:41:44 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -313,7 +313,7 @@ do \
 #endif /* powerpc */
 
 
-#if defined(__mc68000__) && defined(__linux__)
+#if (defined(__mc68000__) || defined(__m68k__)) && defined(__linux__)
 #define HAS_TEST_AND_SET
 
 typedef unsigned char slock_t;
@@ -335,7 +335,7 @@ tas(volatile slock_t *lock)
 	return rv;
 }
 
-#endif	 /* defined(__mc68000__) && defined(__linux__) */
+#endif	 /* (__mc68000__ || __m68k__) && __linux__ */
 
 
 #if defined(__vax__)
@@ -438,20 +438,64 @@ do \
 #endif /* __alpha || __alpha__ */
 
 
-/* These live in s_lock.c, but only for gcc */
-
-
-#if defined(__m68k__)
-#define HAS_TEST_AND_SET
-
-typedef unsigned char slock_t;
-#endif
-
-
 #if defined(__mips__) && !defined(__sgi)
+/* Note: on SGI we use the OS' mutex ABI, see below */
+/* Note: R10000 processors require a separate SYNC */
 #define HAS_TEST_AND_SET
 
 typedef unsigned int slock_t;
+
+#define TAS(lock) tas(lock)
+
+static __inline__ int
+tas(volatile slock_t *lock)
+{
+	register volatile slock_t *_l = lock;
+	register int _res;
+	register int _tmp;
+
+	__asm__ __volatile__(
+		"       .set push           \n"
+		"       .set mips2          \n"
+		"       .set noreorder      \n"
+		"       .set nomacro        \n"
+		"       ll      %0, %2      \n"
+		"       or      %1, %0, 1   \n"
+		"       sc      %1, %2      \n"
+		"       xori    %1, 1       \n"
+		"       or      %0, %0, %1  \n"
+		"       sync                \n"
+		"       .set pop              "
+:		"=&r" (_res), "=&r" (_tmp), "+R" (*_l)
+:
+:		"memory");
+	return _res;
+}
+
+/* MIPS S_UNLOCK is almost standard but requires a "sync" instruction */
+#define S_UNLOCK(lock)	\
+do \
+{ \
+	__asm__ __volatile__( \
+		"       .set push           \n" \
+		"       .set mips2          \n" \
+		"       .set noreorder      \n" \
+		"       .set nomacro        \n" \
+		"       sync                \n" \
+		"       .set pop              "); \
+	*((volatile slock_t *) (lock)) = 0; \
+} while (0)
+
+#endif /* __mips__ && !__sgi */
+
+
+/* These live in s_lock.c, but only for gcc */
+
+
+#if defined(__m68k__) && !defined(__linux__)
+#define HAS_TEST_AND_SET
+
+typedef unsigned char slock_t;
 #endif
 
 

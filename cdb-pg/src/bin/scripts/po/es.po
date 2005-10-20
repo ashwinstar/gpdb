@@ -5,7 +5,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: pgscripts 8.0\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2004-12-06 18:46-0300\n"
+"POT-Creation-Date: 2005-09-27 23:01-0400\n"
 "PO-Revision-Date: 2003-10-05 20:10-0400\n"
 "Last-Translator: Alvaro Herrera <alvherre@dcc.uchile.cl>\n"
 "Language-Team: Castellano <pgsql-es-ayuda@postgresql.org>\n"
@@ -19,31 +19,31 @@ msgstr ""
 #: dropuser.c:99 clusterdb.c:95 clusterdb.c:110 vacuumdb.c:112 vacuumdb.c:127
 #, c-format
 msgid "Try \"%s --help\" for more information.\n"
-msgstr "Use «%s --help» para mayor información.\n"
+msgstr "Use ï¿½%s --helpï¿½ para mayor informaciï¿½n.\n"
 
 #: createdb.c:119 createlang.c:116 createuser.c:130 dropdb.c:99 droplang.c:113
 #: dropuser.c:97 clusterdb.c:108 vacuumdb.c:125
 #, c-format
 msgid "%s: too many command-line arguments (first is \"%s\")\n"
-msgstr "%s: demasiados argumentos (el primero es «%s»)\n"
+msgstr "%s: demasiados argumentos (el primero es ï¿½%sï¿½)\n"
 
 #: createdb.c:129
 #, c-format
 msgid "%s: \"%s\" is not a valid encoding name\n"
-msgstr "%s: «%s» no es un nombre de codificación válido\n"
+msgstr "%s: ï¿½%sï¿½ no es un nombre de codificaciï¿½n vï¿½lido\n"
 
 #: createdb.c:168
 #, c-format
 msgid "%s: database creation failed: %s"
 msgstr ""
-"%s: falló la creación de la base de datos:\n"
+"%s: fallï¿½ la creaciï¿½n de la base de datos:\n"
 "%s"
 
 #: createdb.c:196
 #, c-format
 msgid "%s: comment creation failed (database was created): %s"
 msgstr ""
-"%s: falló la creación del comentario (la base de datos fue creada):\n"
+"%s: fallï¿½ la creaciï¿½n del comentario (la base de datos fue creada):\n"
 "%s"
 
 #: createdb.c:217
@@ -64,7 +64,7 @@ msgstr "Empleo:\n"
 #: createdb.c:219
 #, c-format
 msgid "  %s [OPTION]... [DBNAME] [DESCRIPTION]\n"
-msgstr "  %s [OPCIÓN]... [NOMBRE] [DESCRIPCIÓN]\n"
+msgstr "  %s [OPCIï¿½N]... [NOMBRE] [DESCRIPCIï¿½N]\n"
 
 #: createdb.c:220 createlang.c:301 createuser.c:242 dropdb.c:149
 #: droplang.c:282 dropuser.c:149 clusterdb.c:236 vacuumdb.c:262
@@ -80,25 +80,25 @@ msgstr ""
 #, c-format
 msgid "  -D, --tablespace=TABLESPACE  default tablespace for the database\n"
 msgstr ""
-"  -D, --tablespace=TBLSPC   tablespace por omisión de la base de datos\n"
+"  -D, --tablespace=TBLSPC   tablespace por omisiï¿½n de la base de datos\n"
 
 #: createdb.c:222
 #, c-format
 msgid "  -E, --encoding=ENCODING      encoding for the database\n"
 msgstr ""
-"  -E, --encoding=CODIFICACIÓN\n"
-"                            codificación para la base de datos\n"
+"  -E, --encoding=CODIFICACIï¿½N\n"
+"                            codificaciï¿½n para la base de datos\n"
 
 #: createdb.c:223
 #, c-format
 msgid "  -O, --owner=OWNER            database user to own the new database\n"
 msgstr ""
-"  -O, --owner=DUEÑO         usuario que será dueño de la base de datos\n"
+"  -O, --owner=DUEï¿½O         usuario que serï¿½ dueï¿½o de la base de datos\n"
 
 #: createdb.c:224
 #, c-format
 msgid "  -T, --template=TEMPLATE      template database to copy\n"
-msgstr "  -T, --template=PATRÓN     base de datos patrón a copiar\n"
+msgstr "  -T, --template=PATRï¿½N     base de datos patrï¿½n a copiar\n"
 
 #: createdb.c:225
 #, c-format
@@ -120,7 +120,7 @@ msgstr "  --help                    mostrar esta ayuda y salir\n"
 #: createdb.c:228
 #, c-format
 msgid "  --version                    output version information, then exit\n"
-msgstr "  --version                 mostrar el número de versión y salir\n"
+msgstr "  --version                 mostrar el nï¿½mero de versiï¿½n y salir\n"
 
 #: createdb.c:229 createuser.c:255 clusterdb.c:244 vacuumdb.c:273
 #, c-format
@@ -129,14 +129,14 @@ msgid ""
 "Connection options:\n"
 msgstr ""
 "\n"
-"Opciones de conexión:\n"
+"Opciones de conexiï¿½n:\n"
 
 #: createdb.c:230
 #, c-format
 msgid ""
 "  -h, --host=HOSTNAME          database server host or socket directory\n"
 msgstr ""
-"  -h, --host=ANFITRIÓN      nombre del servidor o directorio del socket\n"
+"  -h, --host=ANFITRIï¿½N      nombre del servidor o directorio del socket\n"
 
 #: createdb.c:231
 #, c-format
@@ -146,12 +146,12 @@ msgstr "  -p, --port=PUERTO         puerto del servidor\n"
 #: createdb.c:232
 #, c-format
 msgid "  -U, --username=USERNAME      user name to connect as\n"
-msgstr "  -U, --username=USUARIO    nombre de usuario para la conexión\n"
+msgstr "  -U, --username=USUARIO    nombre de usuario para la conexiï¿½n\n"
 
 #: createdb.c:233
 #, c-format
 msgid "  -W, --password               prompt for password\n"
-msgstr "  -W, --password            preguntar la contraseña\n"
+msgstr "  -W, --password            preguntar la contraseï¿½a\n"
 
 #: createdb.c:234
 #, c-format
@@ -160,7 +160,7 @@ msgid ""
 "By default, a database with the same name as the current user is created.\n"
 msgstr ""
 "\n"
-"Si no se especifica, se creará una base de datos con el mismo nombre que\n"
+"Si no se especifica, se crearï¿½ una base de datos con el mismo nombre que\n"
 "el usuario actual.\n"
 
 #: createdb.c:235 createlang.c:312 createuser.c:262 dropdb.c:159
@@ -179,7 +179,7 @@ msgstr "Nombre"
 
 #: createlang.c:143 droplang.c:140
 msgid "yes"
-msgstr "sí"
+msgstr "sï¿½"
 
 #: createlang.c:143 droplang.c:140
 msgid "no"
@@ -201,7 +201,7 @@ msgstr "%s: falta el nombre de lenguaje requerido\n"
 #: createlang.c:210
 #, c-format
 msgid "%s: unsupported language \"%s\"\n"
-msgstr "%s: lenguaje no soportado «%s»\n"
+msgstr "%s: lenguaje no soportado ï¿½%sï¿½\n"
 
 #: createlang.c:211
 #, c-format
@@ -215,13 +215,13 @@ msgstr ""
 #: createlang.c:226
 #, c-format
 msgid "%s: language \"%s\" is already installed in database \"%s\"\n"
-msgstr "%s: el lenguaje «%s» ya está instalado en la base de datos «%s»\n"
+msgstr "%s: el lenguaje ï¿½%sï¿½ ya estï¿½ instalado en la base de datos ï¿½%sï¿½\n"
 
 #: createlang.c:283
 #, c-format
 msgid "%s: language installation failed: %s"
 msgstr ""
-"%s: falló la instalación del lenguaje:\n"
+"%s: fallï¿½ la instalaciï¿½n del lenguaje:\n"
 "%s"
 
 #: createlang.c:298
@@ -236,7 +236,7 @@ msgstr ""
 #: createlang.c:300 droplang.c:281
 #, c-format
 msgid "  %s [OPTION]... LANGNAME [DBNAME]\n"
-msgstr "  %s [OPCIÓN]... LENGUAJE [BASE-DE-DATOS]\n"
+msgstr "  %s [OPCIï¿½N]... LENGUAJE [BASE-DE-DATOS]\n"
 
 #: createlang.c:302
 #, c-format
@@ -264,14 +264,14 @@ msgstr ""
 msgid ""
 "  -L, --pglib=DIRECTORY     find language interpreter file in DIRECTORY\n"
 msgstr ""
-"  -L, --pglib=DIRECTORIO    buscar el archivo del intérprete en DIRECTORIO\n"
+"  -L, --pglib=DIRECTORIO    buscar el archivo del intï¿½rprete en DIRECTORIO\n"
 
 #: createlang.c:306 createuser.c:256 dropdb.c:153 droplang.c:286
 #: dropuser.c:153 clusterdb.c:245 vacuumdb.c:274
 #, c-format
 msgid "  -h, --host=HOSTNAME       database server host or socket directory\n"
 msgstr ""
-"  -h, --host=ANFITRIÓN      nombre del servidor o directorio del socket\n"
+"  -h, --host=ANFITRIï¿½N      nombre del servidor o directorio del socket\n"
 
 #: createlang.c:307 createuser.c:257 dropdb.c:154 droplang.c:287
 #: dropuser.c:154 clusterdb.c:246 vacuumdb.c:275
@@ -282,12 +282,12 @@ msgstr "  -p, --port=PUERTO         puerto del servidor\n"
 #: createlang.c:308 dropdb.c:155 droplang.c:288 clusterdb.c:247 vacuumdb.c:276
 #, c-format
 msgid "  -U, --username=USERNAME   user name to connect as\n"
-msgstr "  -U, --username=USUARIO    nombre de usuario para la conexión\n"
+msgstr "  -U, --username=USUARIO    nombre de usuario para la conexiï¿½n\n"
 
 #: createlang.c:309 dropdb.c:156 droplang.c:289 clusterdb.c:248 vacuumdb.c:277
 #, c-format
 msgid "  -W, --password            prompt for password\n"
-msgstr "  -W, --password            preguntar la contraseña\n"
+msgstr "  -W, --password            preguntar la contraseï¿½a\n"
 
 #: createlang.c:310 createuser.c:253 dropdb.c:157 droplang.c:290
 #: dropuser.c:157 clusterdb.c:242
@@ -299,12 +299,12 @@ msgstr "  --help                    desplegar esta ayuda y salir\n"
 #: dropuser.c:158 clusterdb.c:243
 #, c-format
 msgid "  --version                 output version information, then exit\n"
-msgstr "  --version                 desplegar información de versión y salir\n"
+msgstr "  --version                 desplegar informaciï¿½n de versiï¿½n y salir\n"
 
 #: createuser.c:142
 #, c-format
 msgid "%s: user ID must be a positive number\n"
-msgstr "%s: el ID de usuario debe ser un número positivo\n"
+msgstr "%s: el ID de usuario debe ser un nï¿½mero positivo\n"
 
 #: createuser.c:148
 msgid "Enter name of user to add: "
@@ -312,30 +312,30 @@ msgstr "Ingrese el nombre del usuario a agregar: "
 
 #: createuser.c:155
 msgid "Enter password for new user: "
-msgstr "Ingrese la contraseña para el nuevo usuario: "
+msgstr "Ingrese la contraseï¿½a para el nuevo usuario: "
 
 #: createuser.c:156
 msgid "Enter it again: "
-msgstr "Ingrésela nuevamente: "
+msgstr "Ingrï¿½sela nuevamente: "
 
 #: createuser.c:159
 #, c-format
 msgid "Passwords didn't match.\n"
-msgstr "Las contraseñas ingresadas no coinciden.\n"
+msgstr "Las contraseï¿½as ingresadas no coinciden.\n"
 
 #: createuser.c:170
 msgid "Shall the new user be allowed to create databases? (y/n) "
-msgstr "¿Debe permitírsele al usuario la creación de bases de datos? (s/n) "
+msgstr "ï¿½Debe permitï¿½rsele al usuario la creaciï¿½n de bases de datos? (s/n) "
 
 #: createuser.c:181
 msgid "Shall the new user be allowed to create more new users? (y/n) "
-msgstr "¿Debe permitírsele al usuario la creación de otros usuario? (s/n) "
+msgstr "ï¿½Debe permitï¿½rsele al usuario la creaciï¿½n de otros usuario? (s/n) "
 
 #: createuser.c:220
 #, c-format
 msgid "%s: creation of new user failed: %s"
 msgstr ""
-"%s: falló la creación del nuevo usuario:\n"
+"%s: fallï¿½ la creaciï¿½n del nuevo usuario:\n"
 "%s"
 
 #: createuser.c:239
@@ -350,42 +350,42 @@ msgstr ""
 #: createuser.c:241 dropuser.c:148
 #, c-format
 msgid "  %s [OPTION]... [USERNAME]\n"
-msgstr "  %s [OPCIÓN]... [USUARIO]\n"
+msgstr "  %s [OPCIï¿½N]... [USUARIO]\n"
 
 #: createuser.c:243
 #, c-format
 msgid "  -a, --adduser             user can add new users\n"
-msgstr "  -a, --adduser             el usuario podrá crear otros usuarios\n"
+msgstr "  -a, --adduser             el usuario podrï¿½ crear otros usuarios\n"
 
 #: createuser.c:244
 #, c-format
 msgid "  -A, --no-adduser          user cannot add new users\n"
-msgstr "  -A, --no-adduser          el usuario no podrá crear otros usuarios\n"
+msgstr "  -A, --no-adduser          el usuario no podrï¿½ crear otros usuarios\n"
 
 #: createuser.c:245
 #, c-format
 msgid "  -d, --createdb            user can create new databases\n"
-msgstr "  -d, --createdb            el usuario podrá crear bases de datos\n"
+msgstr "  -d, --createdb            el usuario podrï¿½ crear bases de datos\n"
 
 #: createuser.c:246
 #, c-format
 msgid "  -D, --no-createdb         user cannot create databases\n"
-msgstr "  -D, --no-createdb         el usuario no podrá crear bases de datos\n"
+msgstr "  -D, --no-createdb         el usuario no podrï¿½ crear bases de datos\n"
 
 #: createuser.c:247
 #, c-format
 msgid "  -P, --pwprompt            assign a password to new user\n"
-msgstr "  -P, --pwprompt            asignar una contraseña al nuevo usuario\n"
+msgstr "  -P, --pwprompt            asignar una contraseï¿½a al nuevo usuario\n"
 
 #: createuser.c:248
 #, c-format
 msgid "  -E, --encrypted           encrypt stored password\n"
-msgstr "  -E, --encrypted           almacenar la constraseña cifrada\n"
+msgstr "  -E, --encrypted           almacenar la constraseï¿½a cifrada\n"
 
 #: createuser.c:249
 #, c-format
 msgid "  -N, --unencrypted         do not encrypt stored password\n"
-msgstr "  -N, --unencrypted         almacenar la contraseña sin cifrar\n"
+msgstr "  -N, --unencrypted         almacenar la contraseï¿½a sin cifrar\n"
 
 #: createuser.c:250
 #, c-format
@@ -395,7 +395,7 @@ msgstr "  -i, --sysid=SYSID         escoger un ID para el nuevo usuario\n"
 #: createuser.c:252 dropdb.c:152 dropuser.c:152 clusterdb.c:241
 #, c-format
 msgid "  -q, --quiet               don't write any messages\n"
-msgstr "  -q, --quiet               no escribir ningún mensaje\n"
+msgstr "  -q, --quiet               no escribir ningï¿½n mensaje\n"
 
 #: createuser.c:258
 #, c-format
@@ -408,7 +408,7 @@ msgstr ""
 #: createuser.c:259 dropuser.c:156
 #, c-format
 msgid "  -W, --password            prompt for password to connect\n"
-msgstr "  -W, --password            pedir contraseña para conectarse\n"
+msgstr "  -W, --password            pedir contraseï¿½a para conectarse\n"
 
 #: createuser.c:260
 #, c-format
@@ -418,7 +418,7 @@ msgid ""
 "be prompted interactively.\n"
 msgstr ""
 "\n"
-"Si no se especifican -a, -A, -d, -D y USUARIO, se preguntará\n"
+"Si no se especifican -a, -A, -d, -D y USUARIO, se preguntarï¿½\n"
 "interactivamente.\n"
 
 #: dropdb.c:92
@@ -429,16 +429,16 @@ msgstr "%s: falta el nombre de base de datos requerido\n"
 #: dropdb.c:109
 #, c-format
 msgid "Database \"%s\" will be permanently removed.\n"
-msgstr "La base de datos «%s» será eliminada permanentemente.\n"
+msgstr "La base de datos ï¿½%sï¿½ serï¿½ eliminada permanentemente.\n"
 
 #: dropdb.c:110 dropuser.c:111
 msgid "Are you sure? (y/n) "
-msgstr "¿Está seguro? (s/n) "
+msgstr "ï¿½Estï¿½ seguro? (s/n) "
 
 #: dropdb.c:127
 #, c-format
 msgid "%s: database removal failed: %s"
-msgstr "%s: falló la eliminación de la base de datos: %s"
+msgstr "%s: fallï¿½ la eliminaciï¿½n de la base de datos: %s"
 
 #: dropdb.c:146
 #, c-format
@@ -452,7 +452,7 @@ msgstr ""
 #: dropdb.c:148
 #, c-format
 msgid "  %s [OPTION]... DBNAME\n"
-msgstr "  %s [OPCIÓN]... BASE-DE-DATOS\n"
+msgstr "  %s [OPCIï¿½N]... BASE-DE-DATOS\n"
 
 #: dropdb.c:151 dropuser.c:151
 #, c-format
@@ -462,20 +462,20 @@ msgstr "  -i, --interactive         preguntar antes de eliminar\n"
 #: droplang.c:176
 #, c-format
 msgid "%s: language \"%s\" is not installed in database \"%s\"\n"
-msgstr "%s: el lenguaje «%s» no está instalado en la base de datos «%s»\n"
+msgstr "%s: el lenguaje ï¿½%sï¿½ no estï¿½ instalado en la base de datos ï¿½%sï¿½\n"
 
 #: droplang.c:193
 #, c-format
 msgid ""
 "%s: still %s functions declared in language \"%s\"; language not removed\n"
 msgstr ""
-"%s: aún hay %s funciones declaradas en el lenguaje «%s»;\n"
+"%s: aï¿½n hay %s funciones declaradas en el lenguaje ï¿½%sï¿½;\n"
 "el lenguaje no ha sido eliminado\n"
 
 #: droplang.c:265
 #, c-format
 msgid "%s: language removal failed: %s"
-msgstr "%s: falló la eliminación del lenguaje: %s"
+msgstr "%s: fallï¿½ la eliminaciï¿½n del lenguaje: %s"
 
 #: droplang.c:279
 #, c-format
@@ -501,13 +501,13 @@ msgstr "Ingrese el nombre del usuario a eliminar: "
 #: dropuser.c:110
 #, c-format
 msgid "User \"%s\" will be permanently removed.\n"
-msgstr "El usuario «%s» será eliminado permanentemente.\n"
+msgstr "El usuario ï¿½%sï¿½ serï¿½ eliminado permanentemente.\n"
 
 #: dropuser.c:127
 #, c-format
 msgid "%s: removal of user \"%s\" failed: %s"
 msgstr ""
-"%s: falló la eliminación del usuario «%s»:\n"
+"%s: fallï¿½ la eliminaciï¿½n del usuario ï¿½%sï¿½:\n"
 "%s"
 
 #: dropuser.c:146
@@ -532,34 +532,34 @@ msgstr ""
 msgid "%s: cannot cluster all databases and a specific one at the same time\n"
 msgstr ""
 "%s: no se pueden reordenar todas las bases de datos y una de ellas\n"
-"en particular simultáneamente\n"
+"en particular simultï¿½neamente\n"
 
 #: clusterdb.c:124
 #, c-format
 msgid "%s: cannot cluster a specific table in all databases\n"
 msgstr ""
-"%s: no se puede reordenar una tabla específica en todas\n"
+"%s: no se puede reordenar una tabla especï¿½fica en todas\n"
 "las bases de datos\n"
 
 #: clusterdb.c:180
 #, c-format
 msgid "%s: clustering of table \"%s\" in database \"%s\" failed: %s"
 msgstr ""
-"%s: falló el reordenamiento de la tabla «%s» en\n"
-"la base de datos «%s»:\n"
+"%s: fallï¿½ el reordenamiento de la tabla ï¿½%sï¿½ en\n"
+"la base de datos ï¿½%sï¿½:\n"
 "%s"
 
 #: clusterdb.c:183
 #, c-format
 msgid "%s: clustering of database \"%s\" failed: %s"
 msgstr ""
-"%s: falló el reordenamiento de la base de datos «%s»:\n"
+"%s: fallï¿½ el reordenamiento de la base de datos ï¿½%sï¿½:\n"
 "%s"
 
 #: clusterdb.c:219
 #, c-format
 msgid "%s: clustering database \"%s\"\n"
-msgstr "%s: reordenando la base de datos «%s»\n"
+msgstr "%s: reordenando la base de datos ï¿½%sï¿½\n"
 
 #: clusterdb.c:233
 #, c-format
@@ -574,7 +574,7 @@ msgstr ""
 #: clusterdb.c:235 vacuumdb.c:261
 #, c-format
 msgid "  %s [OPTION]... [DBNAME]\n"
-msgstr "  %s [OPCIÓN]... [BASE-DE-DATOS]\n"
+msgstr "  %s [OPCIï¿½N]... [BASE-DE-DATOS]\n"
 
 #: clusterdb.c:237
 #, c-format
@@ -589,7 +589,7 @@ msgstr "  -d, --dbname=BASE         base de datos a reordenar\n"
 #: clusterdb.c:239
 #, c-format
 msgid "  -t, --table=TABLE         cluster specific table only\n"
-msgstr "  -t, --table=TABLA         reordenar sólo esta tabla\n"
+msgstr "  -t, --table=TABLA         reordenar sï¿½lo esta tabla\n"
 
 #: clusterdb.c:249
 #, c-format
@@ -598,7 +598,7 @@ msgid ""
 "Read the description of the SQL command CLUSTER for details.\n"
 msgstr ""
 "\n"
-"Lea la descripción del comando CLUSTER de SQL para obtener mayores "
+"Lea la descripciï¿½n del comando CLUSTER de SQL para obtener mayores "
 "detalles.\n"
 
 #: vacuumdb.c:135
@@ -606,33 +606,33 @@ msgstr ""
 msgid "%s: cannot vacuum all databases and a specific one at the same time\n"
 msgstr ""
 "%s: no se pueden limpiar todas las bases de datos y una de ellas\n"
-"en particular simultáneamente\n"
+"en particular simultï¿½neamente\n"
 
 #: vacuumdb.c:141
 #, c-format
 msgid "%s: cannot vacuum a specific table in all databases\n"
 msgstr ""
-"%s: no se puede limpiar a una tabla específica en todas\n"
+"%s: no se puede limpiar a una tabla especï¿½fica en todas\n"
 "las bases de datos\n"
 
 #: vacuumdb.c:205
 #, c-format
 msgid "%s: vacuuming of table \"%s\" in database \"%s\" failed: %s"
 msgstr ""
-"%s: falló la limpieza de la tabla «%s» en la base de datos «%s»:\n"
+"%s: fallï¿½ la limpieza de la tabla ï¿½%sï¿½ en la base de datos ï¿½%sï¿½:\n"
 "%s"
 
 #: vacuumdb.c:208
 #, c-format
 msgid "%s: vacuuming of database \"%s\" failed: %s"
 msgstr ""
-"%s: falló la limpieza de la base de datos «%s»:\n"
+"%s: fallï¿½ la limpieza de la base de datos ï¿½%sï¿½:\n"
 "%s"
 
 #: vacuumdb.c:245
 #, c-format
 msgid "%s: vacuuming database \"%s\"\n"
-msgstr "%s: limpiando la base de datos «%s»\n"
+msgstr "%s: limpiando la base de datos ï¿½%sï¿½\n"
 
 #: vacuumdb.c:259
 #, c-format
@@ -656,17 +656,17 @@ msgstr "  -d, --dbname=BASE         base de datos a limpiar\n"
 msgid "  -t, --table='TABLE[(COLUMNS)]'  vacuum specific table only\n"
 msgstr ""
 "  -t, --table='TABLE[(COLUMNS)]'\n"
-"                            limpiar sólo esta tabla\n"
+"                            limpiar sï¿½lo esta tabla\n"
 
 #: vacuumdb.c:266
 #, c-format
 msgid "  -f, --full                      do full vacuuming\n"
-msgstr "  -f, --full                usar «vacuum full»\n"
+msgstr "  -f, --full                usar ï¿½vacuum fullï¿½\n"
 
 #: vacuumdb.c:267
 #, c-format
 msgid "  -z, --analyze                   update optimizer hints\n"
-msgstr "  -z, --analyze             actualizar las estadísticas\n"
+msgstr "  -z, --analyze             actualizar las estadï¿½sticas\n"
 
 #: vacuumdb.c:268
 #, c-format
@@ -695,7 +695,7 @@ msgstr "  --help                    mostrar esta ayuda y salir\n"
 #, c-format
 msgid ""
 "  --version                       output version information, then exit\n"
-msgstr "  --version                 mostrar el número de versión y salir\n"
+msgstr "  --version                 mostrar el nï¿½mero de versiï¿½n y salir\n"
 
 #: vacuumdb.c:278
 #, c-format
@@ -704,12 +704,12 @@ msgid ""
 "Read the description of the SQL command VACUUM for details.\n"
 msgstr ""
 "\n"
-"Lea la descripción del comando VACUUM de SQL para obtener mayores detalles.\n"
+"Lea la descripciï¿½n del comando VACUUM de SQL para obtener mayores detalles.\n"
 
 #: common.c:33
 #, c-format
 msgid "%s: could not obtain information about current user: %s\n"
-msgstr "%s: no se pudo obtener información sobre el usuario actual: %s\n"
+msgstr "%s: no se pudo obtener informaciï¿½n sobre el usuario actual: %s\n"
 
 #: common.c:44
 #, c-format
@@ -718,7 +718,7 @@ msgstr "%s: no se pudo obtener el nombre de usuario actual: %s\n"
 
 #: common.c:89 common.c:115
 msgid "Password: "
-msgstr "Contraseña: "
+msgstr "Contraseï¿½a: "
 
 #: common.c:102
 #, c-format
@@ -733,7 +733,7 @@ msgstr "%s: no se pudo conectar a la base de datos %s: %s"
 #: common.c:149
 #, c-format
 msgid "%s: query failed: %s"
-msgstr "%s: la consulta falló: %s"
+msgstr "%s: la consulta fallï¿½: %s"
 
 #: common.c:150
 #, c-format
