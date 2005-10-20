@@ -3,6 +3,7 @@
  * schemacmds.c
  *	  schema creation/manipulation commands
  *
+ * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -52,9 +53,6 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 	AclId		owner_userid;
 	AclId		saved_userid;
 	AclResult	aclresult;
-
-	struct Gang *primaryGang = NULL;
-	struct Gang *mirrorGang = NULL;
 
 	bool		shouldDispatch = Mpp_role == MPP_ROLE_DISPATCH && !IsBootstrapProcessingMode();
 
@@ -120,52 +118,17 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 
 		if (shouldDispatch)
 		{
+            elog(DEBUG5, "shouldDispatch = true, namespaceOid = %d", namespaceId);
 
-			char	   *pscCreateSchema;
+            Assert(stmt->schemaOid == 0);
+            stmt->schemaOid = namespaceId;
 
-			/*
-			 * Serialize the stmt tree, and create the sql statement: mppexec ....
-			 */
-			Query	   *q = makeNode(Query);
-
-			StringInfoData buffer;
-
-			Assert(stmt->schemaOid == 0);
-			stmt->schemaOid = namespaceId;
-
-
-
-			elog(DEBUG5, "shouldDispatch = true, namespaceOid = %d", namespaceId);
-
-
-			initStringInfo(&buffer);
-
-			q->commandType = CMD_UTILITY;
-			q->utilityStmt = (Node *) stmt;
-
-			q->querySource = QSRC_ORIGINAL;
-			q->canSetTag = true;	/* ? */
-
-
-			pscCreateSchema = serializeNode((Node *) q);
-
-
-			Assert(pscCreateSchema != NULL);
-
-			elog(DEBUG5, "Dispatch Comand %s", pscCreateSchema);
-
-			appendStringInfo(&buffer, "mppexec '%s' ''", pscCreateSchema);
-
-			pfree(pscCreateSchema);
-
-
-			/*
-			 * This call returns after launching the threads that send the command to the appropriate
-			 * segdbs.	It does not wait for them to finish.
-			 */
-			cdbdisp_dispatchCommand(buffer.data, true, true, NULL,
-									&primaryGang, &mirrorGang);
-			pfree(buffer.data);
+            /*
+             * Dispatch the command to all primary and mirror segment dbs.
+             * Starts a global transaction and reconfigures cluster if needed.
+             * Waits for QEs to finish.  Exits via ereport(ERROR,...) if error.
+             */
+            CdbDispatchUtilityStatement((Node *)stmt);
 		}
 
 	}
@@ -176,13 +139,6 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 
 	/* Advance cmd counter to make the namespace visible */
 	CommandCounterIncrement();
-
-	/*
-	 * We successfully completed our work.	Now check the results from the
-	 * qExecs, if dispatched.  This waits for them to all finish, and exits
-	 * via ereport(ERROR,...) if unsuccessful.
-	 */
-	cdbdisp_finishCommand(primaryGang, mirrorGang);
 
 	/*
 	 * Temporarily make the new namespace be the front of the search path,

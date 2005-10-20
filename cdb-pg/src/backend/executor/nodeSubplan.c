@@ -1011,6 +1011,11 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 
 		if (shouldDispatch)
 		{
+            /*
+             * Start a global transaction and reconfigure the cluster if needed.
+             */
+            cdbdisp_startDtxTransaction();
+
 			/*
 			 * This call returns after launching the threads that send the command to the appropriate
 			 * segdbs.	It does not wait for them to finish.

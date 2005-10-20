@@ -3,6 +3,7 @@
  * indexcmds.c
  *	  POSTGRES define and remove index code.
  *
+ * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -117,9 +118,6 @@ DefineIndex(RangeVar *heapRelation,
 	IndexInfo  *indexInfo;
 	int			numberOfAttributes;
 	Oid			indexoid;
-
-	struct Gang *primaryGang = NULL;
-	struct Gang *mirrorGang = NULL;
 
 	bool		shouldDispatch = Mpp_role == MPP_ROLE_DISPATCH && !IsBootstrapProcessingMode();
 
@@ -469,57 +467,14 @@ DefineIndex(RangeVar *heapRelation,
 
 	if (shouldDispatch)
 	{
-
-		elog(DEBUG5, "shouldDispatch = true, idxOid = %d", indexoid);
-		if (shouldDispatch)
-		{
-
-			char	   *pszCreateIndex;
-
-			/*
-			 * Serialize the stmt tree, and create the sql statement: mppexec ....
-			 */
-			Query	   *q = makeNode(Query);
-
-			StringInfoData buffer;
-
-			initStringInfo(&buffer);
-
-			q->commandType = CMD_UTILITY;
-			q->utilityStmt = (Node *) stmt;
-
-			q->querySource = QSRC_ORIGINAL;
-			q->canSetTag = true;	/* ? */
-
-
-			pszCreateIndex = serializeNode((Node *) q);
-
-
-			Assert(pszCreateIndex != NULL);
-
-			elog(DEBUG5, "Comand %s", pszCreateIndex);
-
-			appendStringInfo(&buffer, "mppexec '%s' ''", pszCreateIndex);
-
-			pfree(pszCreateIndex);
-
-
-			/*
-			 * This call returns after launching the threads that send the command to the appropriate
-			 * segdbs.	It does not wait for them to finish.
-			 */
-			cdbdisp_dispatchCommand(buffer.data, true, true, NULL,
-									&primaryGang, &mirrorGang);
-			pfree(buffer.data);
-		}
+        /*
+         * Dispatch the command to all primary and mirror segment dbs.
+         * Start a global transaction and reconfigure cluster if needed.
+         * Wait for QEs to finish.  Exit via ereport(ERROR,...) if error.
+         */
+        CdbDispatchUtilityStatement((Node *)stmt);
 	}
 
-	/*
-	 * We successfully completed our work.	Now check the results from the
-	 * qExecs, if dispatched.  This waits for them to all finish, and exits
-	 * via ereport(ERROR,...) if unsuccessful.
-	 */
-	cdbdisp_finishCommand(primaryGang, mirrorGang);
 }
 
 

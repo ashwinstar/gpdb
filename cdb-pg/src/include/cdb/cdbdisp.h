@@ -37,66 +37,51 @@ cdbdisp_startDtxTransaction(void);
  * specified by the gang parameter.  cancelOnError indicates whether an error
  * occurring on one of the qExec segdbs should cause all still-executing commands to cancel
  * on other qExecs. Normally this would be true.  The commands are sent over the libpq
- * connections that were established during cdblink_setup.  They are run inside of threads.
+ * connections that were established during cdblink_setup.	They are run inside of threads.
  * The number of segdbs handled by any one thread is determined by the
  * guc variable mpp_connections_per_thread.
  *
- * Unless an error prevents delegating the command to the threads, on return
- * there is a CdbDispatchResults object attached to the caller's Gang
- * object.  It contains an array of CdbDispatchResult objects, one per QE,
- * paralleling the Gang's db_descriptors array.  Success or failure of each
- * QE will be noted in the corresponding CdbDispatchResult entry, but before
- * examining it, the caller must wait for execution to end by calling
- * cdbdisp_checkDispatchResults().
+ * Unless an error prevents delegating the command to the threads,
+ * a CdbDispatchResults object is returned.  It contains an array of
+ * CdbDispatchResult objects, one per QE, paralleling the Gang's
+ * db_descriptors array.  Success or failure of each QE will be
+ * noted in the corresponding CdbDispatchResult entry, but before
+ * examining those, the caller must wait for execution to end by
+ * calling CdbCheckDispatchResult().
  *
- * On return, the caller's Gang object owns the CdbDispatchResults object.
- * After examining the CdbDispatchResults object, the caller should detach
- * it from the Gang and call cdbdisp_destroyDispatchResults() to free it.
+ * The CdbDispatchResults object is palloc'ed in the caller's context.
+ * It owns some malloc'ed storage, so the caller must make certain to
+ * free it by calling cdbdisp_destroyDispatchResults().
+ *
+ * When cancelOnError is false, szCommand is to be dispatched to
+ * every connected gang member without regard for cancellation
+ * requests nor for any other QE's errors, connection failures, etc.
+ *
+ * NB: This function should return, even if there is an error.
+ * It should not longjmp out via elog(ERROR, ...), ereport(ERROR, ...),
+ * PG_THROW, CHECK_FOR_INTERRUPTS, etc.
  */
-void
-cdbdisp_dispatchToGang(const char          *szCommand,
-                       struct Gang         *gp,
-                       int                  sliceIndex,
-                       bool                 cancelOnError,
-                       struct pg_result  ***pgresultsets);
+struct CdbDispatchResults *
+cdbdisp_dispatchToGang(const char  *szCommand,
+                       struct Gang *gp,
+                       int          sliceIndex,
+                       bool         cancelOnError);
 
 /*
  * CdbCheckDispatchResult:
  *
- * Waits for threads that were launched in CdbDispatchCommand
- * to finish.  Returns true if all QEs succeeded.
- * If 'cancelUnfinishedWork' is true, this function will attempt to
- * cancel work in progress that was dispatched with 'cancelOnError' true.
+ * Waits for completion of threads launched by cdbdisp_dispatchToGang().
+ *
+ * If 'cancelUnfinishedWork' is true, QEs that were dispatched with
+ * 'cancelOnError' true and are not yet idle will be canceled.
  */
-bool                            /* returns true if success on all QEs */
+void
 CdbCheckDispatchResult(bool cancelUnfinishedWork);
 
-bool                            /* returns true if success on all QEs */
+void
 CdbCheckDispatchResultInt(struct SegmentDatabaseDescriptor   ***failedSegDB,
                           int          *numOfFailed,
                           bool          cancelUnfinishedWork);
-
-/* Format and free a Gang's CdbDispatchResults object.
- * Appends error messages to caller's StringInfo buffer.
- * If verbose = true, formats all errors; else formats at most one error.
- * Returns false if some error was found, or true if no errors.
- * Before calling this function, you must call CdbCheckDispatchResult.
- */
-bool                            /* returns true if ok */
-cdbdisp_dumpGangResults(struct Gang    *gang,
-                        StringInfo      buffer,      /* OUT */
-                        bool            verbose);
-
-/* Free a Gang's CdbDispatchResults object. */
-void
-cdbdisp_destroyGangResults(struct Gang *gang);
-
-/* Get sum of cmdTuples returned by the successful QEs of a Gang.
- * Used to determine the row counts for insert, update, and delete.
- */
-int
-cdbdisp_sumGangCmdTuples(struct Gang *gang);
-
 
 /*--------------------------------------------------------------------*/
 
@@ -124,35 +109,38 @@ cdbdisp_dispatchRMCommand(const char   *szCommand,
  * cancelOnError indicates whether an error
  * occurring on one of the qExec segdbs should cause all still-executing commands to cancel
  * on other qExecs. Normally this would be true.  The commands are sent over the libpq
- * connections that were established during gang creation.  They are run inside of threads.
+ * connections that were established during gang creation.	They are run inside of threads.
  * The number of segdbs handled by any one thread is determined by the
  * guc variable mpp_connections_per_thread.
  *
- * The Gang objects allocated for the command can optionally be returned
- * in *pPrimaryGang and *pMirrorGang.  The caller, after calling
- * CdbCheckDispatchResult, can examine the CdbDispatchResults object
- * attached to each Gang.  The Gang objects are owned by the QE Factory.
- * However, the caller may optionally detach the CdbDispatchResults objects,
- * keep them as long as needed (perhaps longer than the gangs exist),
- * and ultimately free them with cdbdisp_destroyDispatchResults().
+ * The CdbDispatchResults objects allocated for the command
+ * are returned in *pPrimaryResults and *pMirrorResults.
+ * The caller, after calling CdbCheckDispatchResult(), can
+ * examine the CdbDispatchResults objects, can keep them as
+ * long as needed, and ultimately must free them with
+ * cdbdisp_destroyDispatchResults() prior to deallocation
+ * of the memory context from which they were allocated.
+ *
+ * NB: Callers should use PG_TRY()/PG_CATCH() if needed to make
+ * certain that the CdbDispatchResults objects are destroyed by
+ * cdbdisp_destroyDispatchResults() in case of error.
  */
 void
-cdbdisp_dispatchCommand(const char         *szCommand,
-                        bool                startDtxTransaction,
-                        bool                cancelOnError,
-                        struct pg_result ***resultSets,         /* OUT */
-                        struct Gang       **pPrimaryGang,       /* OUT */
-                        struct Gang       **pMirrorGang);       /* OUT */
+cdbdisp_dispatchCommand(const char                 *szCommand,
+                        bool                        cancelOnError,
+                        struct CdbDispatchResults **pPrimaryResults,    /* OUT */
+                        struct CdbDispatchResults **pMirrorResults);    /* OUT */
 
-/* Wait for all QEs to finish, then report any errors from the given gangs.
- * If not all QEs in the given gang(s) executed the command successfully,
- * throws an error and does not return.  No-op if both gang ptrs are NULL.
+/* Wait for all QEs to finish, then report any errors from the given
+ * CdbDispatchResults objects and free them.  If not all QEs in the
+ * associated gang(s) executed the command successfully, throws an
+ * error and does not return.  No-op if both CdbDispatchResults ptrs are NULL.
  * This is a convenience function; callers with unusual requirements may
  * instead call CdbCheckDispatchResult(), etc., directly.
  */
 void
-cdbdisp_finishCommand(struct Gang  *primaryGang,
-                      struct Gang  *mirrorGang);
+cdbdisp_finishCommand(struct CdbDispatchResults    *primaryResults,
+                      struct CdbDispatchResults    *mirrorResults);
 
 /*
  * CdbDoCommand:
@@ -171,8 +159,8 @@ CdbDoCommand(const char *szCommand, bool cancelOnError);
  * does not return.
  */
 void
-CdbDoCommandNoTxn(const char         *szCommand,
-                bool                cancelOnError);
+CdbDoCommandNoTxn(const char   *szCommand,
+                  bool          cancelOnError);
 
 
 /*--------------------------------------------------------------------*/
@@ -198,16 +186,27 @@ void
 cdbdisp_dumpPlanResults(struct QueryDesc *queryDesc);
 
 /* Dispatch a command - already parsed and in the form of a Node
- * tree - to all primary and mirror segdbs.  To wait for completion
- * and check for errors, it is suggested that the caller use
- * cdbdisp_finishCommand().
+ * tree - to all primary and mirror segdbs.  Does not wait for
+ * completion.  Does not start a global transaction.
+ * To wait for completion and check for errors, it is suggested
+ * that the caller use cdbdisp_finishCommand().
+ *
+ * NB: Callers should use PG_TRY()/PG_CATCH() if needed to make
+ * certain that the CdbDispatchResults objects are destroyed by
+ * cdbdisp_destroyDispatchResults() in case of error.
  */
 void
 cdbdisp_dispatchUtilityStatement(struct Node   *stmt,
                                  bool           cancelOnError,
-                                 struct Gang  **pPrimaryGang,  /* OUT */
-                                 struct Gang  **pMirrorGang);  /* OUT */
+                                 struct CdbDispatchResults    **pPrimaryResults,
+                                 struct CdbDispatchResults    **pMirrorResults);
 
+/* Dispatch a command - already parsed and in the form of a Node
+ * tree - to all primary and mirror segdbs, and wait for completion.
+ * Starts a global transaction first, if not already started.
+ * If not all QEs in the given gang(s) executed the command successfully,
+ * throws an error and does not return.
+ */
 void
 CdbDispatchUtilityStatement(struct Node *stmt);
 

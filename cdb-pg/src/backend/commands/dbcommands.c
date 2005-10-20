@@ -4,6 +4,7 @@
  *		Database management commands (create/drop database).
  *
  *
+ * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -45,6 +46,7 @@
 #include "utils/syscache.h"
 
 #include "cdb/cdbdisp.h"
+#include "cdb/cdbdispatchresult.h"      /* cdbdisp_destroyDispatchResults() */
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbcat.h"
@@ -58,12 +60,61 @@ static bool get_db_info(const char *name, Oid *dbIdP, int4 *ownerIdP,
 static bool have_createdb_privilege(void);
 static void remove_dbtablespaces(Oid db_id);
 
+static void
+createdb_int(CreatedbStmt *stmt,
+             struct CdbDispatchResults    **pPrimaryResults,
+             struct CdbDispatchResults    **pMirrorResults);
+
+
 
 /*
  * CREATE DATABASE
  */
+
 void
 createdb(CreatedbStmt *stmt)
+{
+    struct CdbDispatchResults *primaryResults = NULL;
+    struct CdbDispatchResults *mirrorResults = NULL;
+
+    PG_TRY();
+    {
+        createdb_int(stmt, &primaryResults, &mirrorResults);
+    }
+	PG_CATCH();
+	{
+        /* If dispatched, stop QEs and clean up after them. */
+        if (primaryResults)
+        {
+            /* Wait until all QEs are idle.  Cancel them if necessary. */
+            CdbCheckDispatchResult(true);
+
+            /* Make sure the CdbDispatchResults are cleaned up.
+             * Since we are already exiting due to an error, don't
+             * bother reporting any errors from the QEs.
+             */
+            cdbdisp_destroyDispatchResults(primaryResults);
+            cdbdisp_destroyDispatchResults(mirrorResults);
+        }
+
+		/* Carry on with the original error. */
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	/*
+	 * We successfully completed our work.	Now check the results from the
+	 * qExecs, if dispatched.  This waits for them to all finish, and exits
+	 * via ereport(ERROR,...) if unsuccessful.
+	 */
+	cdbdisp_finishCommand(primaryResults, mirrorResults);
+}
+
+
+void
+createdb_int(CreatedbStmt *stmt,
+             struct CdbDispatchResults    **pPrimaryResults,
+             struct CdbDispatchResults    **pMirrorResults)
 {
 	HeapScanDesc scan;
 	Relation	rel;
@@ -96,9 +147,6 @@ createdb(CreatedbStmt *stmt)
 #ifndef WIN32
 	char		buf[2 * MAXPGPATH + 100];
 #endif
-
-	struct Gang *primaryGang = NULL;
-	struct Gang *mirrorGang = NULL;
 
 	bool		shouldDispatch = (Mpp_role == MPP_ROLE_DISPATCH);
 
@@ -350,50 +398,16 @@ createdb(CreatedbStmt *stmt)
 
 	if (shouldDispatch)
 	{
-
 		elog(DEBUG5, "shouldDispatch = true, dbOid = %d", dboid);
-		if (shouldDispatch)
-		{
 
-			char	   *pszCreateDb;
-
-
-			/*
-			 * Serialize the stmt tree, and create the sql statement: mppexec ....
-			 */
-			Query	   *q = makeNode(Query);
-
-			StringInfoData buffer;
-
-			initStringInfo(&buffer);
-
-			q->commandType = CMD_UTILITY;
-			q->utilityStmt = (Node *) stmt;
-
-			q->querySource = QSRC_ORIGINAL;
-			q->canSetTag = true;	/* ? */
-
-
-			pszCreateDb = serializeNode((Node *) q);
-
-
-			Assert(pszCreateDb != NULL);
-
-			elog(DEBUG5, "Comand %s", pszCreateDb);
-
-			appendStringInfo(&buffer, "mppexec '%s' ''", pszCreateDb);
-
-			pfree(pszCreateDb);
-
-
-			/*
-			 * This call returns after launching the threads that send the command to the appropriate
-			 * segdbs.	It does not wait for them to finish.
-			 */
-			cdbdisp_dispatchCommand(buffer.data, false, true, NULL,
-									&primaryGang, &mirrorGang);
-			pfree(buffer.data);
-		}
+        /* Dispatch the command to all primary and mirror segdbs.
+         * Doesn't start a global transaction.
+         * Doesn't wait for the QEs to finish execution.
+         */
+        cdbdisp_dispatchUtilityStatement((Node *)stmt,
+                                         true,      /* cancelOnError */
+                                         pPrimaryResults,
+                                         pMirrorResults);
 	}
 
 	/*
@@ -570,12 +584,6 @@ createdb(CreatedbStmt *stmt)
 	/* Close pg_database, but keep exclusive lock till commit */
 	heap_close(pg_database_rel, NoLock);
 
-	/*
-	 * We successfully completed our work.	Now check the results from the
-	 * qExecs, if dispatched.  This waits for them to all finish, and exits
-	 * via ereport(ERROR,...) if unsuccessful.
-	 */
-	cdbdisp_finishCommand(primaryGang, mirrorGang);
 }
 
 

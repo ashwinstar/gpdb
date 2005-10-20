@@ -193,7 +193,7 @@ buildMirrorQDDefinition(void)
 			cdb_mirrored_entry_db = malloc(sizeof(SegmentDatabaseDescriptor));
 			memset(cdb_mirrored_entry_db, 0, sizeof(SegmentDatabaseDescriptor));
 			cdbconn_initSegmentDescriptor(cdb_mirrored_entry_db, mirrorDb,
-										  dbname, NULL, -1);
+										  dbname);
 
 			pfree(dbname);
 			dbname = NULL;

@@ -280,7 +280,7 @@ typedef struct ResultRelInfo
  * MPP Worker Process information
  *
  * This structure represents the global information about a worker process.
- * It is contructed on the entry process (QD) and transmitted as part of
+ * It is constructed on the entry process (QD) and transmitted as part of
  * the global slice table to the involved QEs.  Note that this is an
  * immutable, fixed-size structure so it can be held in a contiguous
  * array. In the Slice node, however, it is held in a List.
@@ -290,7 +290,7 @@ typedef struct ResultRelInfo
  {
 	NodeTag type;
 	
-	/* These fields are estabished at connection (libpq) time and are
+	/* These fields are established at connection (libpq) time and are
 	 * available to the QD in PGconn structure associated with connected
 	 * QE.  It needs to be explicitly transmitted to QE's,  however,
 	 */
@@ -346,7 +346,10 @@ typedef struct Slice
 							 */
 							
 	struct Gang *primaryGang;
-	struct Gang *mirrorGang;   /* These are significant ONLY in the master
+	struct Gang *mirrorGang;
+    struct CdbDispatchResults  *primaryResults;
+    struct CdbDispatchResults  *mirrorResults;
+                            /* These are significant ONLY in the master
 							 * slice table on the QD where they are used to
 							 * note the gangs assigned by the the executor
 							 * factory during gang allocation.

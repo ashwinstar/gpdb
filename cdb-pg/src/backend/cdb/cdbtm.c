@@ -18,6 +18,7 @@
 #include "miscadmin.h"
 #include "storage/shmem.h"
 #include "cdb/cdbdisp.h"
+#include "cdb/cdbdispatchresult.h"      /* cdbdisp_dumpDispatchResults() */
 #include "cdb/cdbvars.h"
 #include "libpq-fe.h"
 #include "access/xact.h"
@@ -74,7 +75,7 @@ static const int transitionState[8][8] =
 */
 
 
-int			execCommand(void);
+int			execCommand(StringInfo errbuf);
 void		initGxact(TMGXACT * gxact);
 TMGXACT    *allocGxact(void);
 void		restoreGxact(TMGXACT * gxact);
@@ -158,6 +159,8 @@ rollbackDtxTransaction(void)
 int
 condStartDtxTransaction(void)
 {
+    StringInfoData errMessage;
+
 	if (currentGxact == NULL)
 	{
         if (resolveDtx)
@@ -173,9 +176,8 @@ condStartDtxTransaction(void)
 	ereport(DEBUG1,
 			(errmsg("condStartDtxTransaction:  %s", currentGxact->gid)));
 	/* send additional begin transaction */
-	if (execCommand() != DTX_OK)
+	if (execCommand(&errMessage) != DTX_OK)
 	{
-		errMessage.len = 0;
 		ereport(ERROR,
 				(errmsg("Global transaction failed on command \"BEGIN %s\" due to error: %s",
 						currentGxact->gid, errMessage.data)));
@@ -191,7 +193,9 @@ condStartDtxTransaction(void)
 int
 condCommitDtxTransaction(bool onephase)
 {
-	if (currentGxact == NULL)
+    StringInfoData errMessage;
+
+    if (currentGxact == NULL)
 	{
 		return DTX_ERR_PROTO;
 	}
@@ -199,13 +203,13 @@ condCommitDtxTransaction(bool onephase)
 			(errmsg("condCommitDtxTransaction:  %s", currentGxact->gid)));
 	if (!onephase)
 	{
-		/* update the tm state first, so we know the latest state of the txn */
+
+        /* update the tm state first, so we know the latest state of the txn */
 		updateDtxState(DTX_STATE_PREPARED);
 
 		/* send prepare to all RM */
-		if (execCommand() != DTX_OK)
+		if (execCommand(&errMessage) != DTX_OK)
 		{
-			errMessage.len = 0;
 			ereport(ERROR,
 					(errmsg("Global transaction failed on command \"PREPARE %s\" due to error: %s",
 							currentGxact->gid, errMessage.data)));
@@ -219,9 +223,8 @@ condCommitDtxTransaction(bool onephase)
 
 		/* send phase 2 commit to all RM */
 		updateDtxState(DTX_STATE_2P_COMMIT);
-		if (execCommand() != DTX_OK)
+		if (execCommand(&errMessage) != DTX_OK)
 		{
-			errMessage.len = 0;
 			ereport(ERROR,
 					(errmsg("Global transaction failed on command \"COMMIT PREPARED %s\" due to error: %s",
 							currentGxact->gid, errMessage.data)));
@@ -232,9 +235,8 @@ condCommitDtxTransaction(bool onephase)
 		/* one phase commit case */
 		updateDtxState(DTX_STATE_1P_COMMIT);
 
-		if (execCommand() != DTX_OK)
+		if (execCommand(&errMessage) != DTX_OK)
 		{
-			errMessage.len = 0;
 			ereport(ERROR,
 					(errmsg("Global transaction failed on command \"COMMIT %s\" due to error: %s",
 							currentGxact->gid, errMessage.data)));
@@ -255,6 +257,7 @@ condRollbackDtxTransaction(void)
 	int			ret;
 	bool		ignoreError;
 	int			previous_state;
+    StringInfoData errMessage;
 
 	if (currentGxact == NULL)
 	{
@@ -263,7 +266,9 @@ condRollbackDtxTransaction(void)
 	ereport(DEBUG1,
 			(errmsg("condRollbackDtxTransaction:  %s", currentGxact->gid)));
 
-	/*
+	memset(&errMessage, 0, sizeof(errMessage));
+
+    /*
 	 * keep previous state, the transaction has been aborted or rollback has
 	 * been called.
 	 */
@@ -276,7 +281,7 @@ condRollbackDtxTransaction(void)
 
 	/* send rollback to all RM */
 	if (previous_state == DTX_STATE_ROLLBACK ||
-		(ret = execCommand()) != DTX_OK)
+		(ret = execCommand(&errMessage)) != DTX_OK)
 	{
 		char	   *gid = currentGxact->gid;
 
@@ -297,11 +302,11 @@ condRollbackDtxTransaction(void)
 		disconnectAndDestroyAllGangs();
 
 		/* if the first time failure, throw exception, otherwise keep silent */
-		errMessage.len = 0;
 		if (!ignoreError)
 			ereport(ERROR,
 					(errmsg("Global transaction failed on command \"ROLLBACK %s\"", gid),
 					 errdetail("%s", errMessage.data)));
+        pfree(errMessage.data);
 	}
 	else
 		/* remove gxact either rollback is successful or xact is not prepared. */
@@ -314,11 +319,11 @@ condRollbackDtxTransaction(void)
  * execute a transaction command on all QE
  */
 int
-execCommand(void)
+execCommand(StringInfo errbuf)
 {
-	char		cmdbuf[60];
-	struct Gang *primaryGang = NULL;
-	struct Gang *mirrorGang = NULL;
+	char		cmdbuf[100];
+	struct CdbDispatchResults  *primaryResults = NULL;
+	struct CdbDispatchResults  *mirrorResults = NULL;
 	SegmentDatabaseDescriptor **failedSegDB = NULL;
 	int			numOfFailed = 0;
 	int			ret = DTX_OK;
@@ -371,15 +376,37 @@ execCommand(void)
 			break;
 	}
 
-	/* dispatch command */
-	cdbdisp_dispatchCommand(cmdbuf, false, false, NULL, &primaryGang, &mirrorGang);
+	/* Dispatch command to all primary and mirror segdbs. */
+	cdbdisp_dispatchCommand(cmdbuf, false, &primaryResults, &mirrorResults);
 
-	/* wait for completion; if unsuccessful, handle error.	Don't cancel. */
-	if (!CdbCheckDispatchResultInt(&failedSegDB, &numOfFailed, false))
-	{
-		initStringInfo(&errMessage);
-		cdbdisp_dumpGangResults(primaryGang, &errMessage, false);
-		cdbdisp_dumpGangResults(mirrorGang, &errMessage, false);
+	/* Wait for completion.  Don't cancel. */
+    CdbCheckDispatchResultInt(&failedSegDB, &numOfFailed, false);
+
+    /* Success */
+    if (primaryResults &&
+        !primaryResults->errcode &&
+        !(mirrorResults && mirrorResults->errcode) &&
+        numOfFailed == 0)
+    {
+        cdbdisp_destroyDispatchResults(primaryResults);
+        cdbdisp_destroyDispatchResults(mirrorResults);
+    }
+
+    /* Trouble */
+    else
+    {
+		/*
+         * Format & free the CdbDispatchResults.
+         * If no errors from primary gang, display errors from mirror gang.
+         */
+        if (errbuf)
+        {
+            initStringInfo(errbuf);	
+            if (!cdbdisp_dumpDispatchResults(primaryResults, errbuf, false))
+                cdbdisp_dumpDispatchResults(mirrorResults, errbuf, false);
+        }
+        cdbdisp_destroyDispatchResults(primaryResults);
+        cdbdisp_destroyDispatchResults(mirrorResults);
 
 		switch (currentGxact->state)
 		{
@@ -1046,12 +1073,12 @@ recoverRMs(PGresult ***pgresultSets)
 void
 recoverRollbackedDtx(void)
 {
-	/* send second phase commit to QE */
+    /* send second phase commit to QE */
 	ereport(DEBUG1,
 	  (errmsg("recovery: rollback DtxTransaction:  %s", currentGxact->gid)));
 	updateDtxState(DTX_STATE_ROLLBACK);
 	/* ignore the error during recovery */
-	execCommand();
+	execCommand(NULL);
 	updateDtxState(DTX_STATE_ROLLBACK_DONE);
 }
 
@@ -1063,7 +1090,7 @@ recoverCommittedDtx(void)
 	ereport(DEBUG1,
 			(errmsg("recovery: commit phase 2 DtxTransaction:  %s", currentGxact->gid)));
 	/* ignore the error during recovery */
-	execCommand();
+	execCommand(NULL);
 	updateDtxState(DTX_STATE_COMMIT_DONE);
 }
 
@@ -1164,7 +1191,7 @@ resolveInDoubtDtx(void)
         {
             /*resolve this */
             currentGxact = shmGxactArray[i];
-            execCommand();
+            execCommand(NULL);
             /* remove gxact either rollback is successful or xact is not prepared. */
             updateDtxState(DTX_STATE_ROLLBACK_DONE);
         }

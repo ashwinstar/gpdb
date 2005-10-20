@@ -3,6 +3,7 @@
  * tablecmds.c
  *	  Commands for creating and altering table structures and settings
  *
+ * Portions Copyright (c) 2005, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -64,6 +65,7 @@
 
 
 #include "cdb/cdbdisp.h"
+#include "cdb/cdbdispatchresult.h"      /* cdbdisp_destroyDispatchResults() */
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbcat.h"
@@ -259,6 +261,11 @@ static void update_ri_trigger_args(Oid relid,
 					   const char *newname,
 					   bool fk_scan,
 					   bool update_relname);
+static Oid
+DefineRelation_int(CreateStmt *stmt,
+                   char        relkind,
+                   struct CdbDispatchResults  **pPrimaryResults,
+                   struct CdbDispatchResults  **pMirrorResults);
 
 
 /* ----------------------------------------------------------------
@@ -268,8 +275,55 @@ static void update_ri_trigger_args(Oid relid,
  * If successful, returns the OID of the new relation.
  * ----------------------------------------------------------------
  */
+
 Oid
 DefineRelation(CreateStmt *stmt, char relkind)
+{
+    struct CdbDispatchResults *primaryResults = NULL;
+    struct CdbDispatchResults *mirrorResults = NULL;
+    Oid reloid = 0;
+
+    PG_TRY();
+    {
+        reloid = DefineRelation_int(stmt, relkind, &primaryResults, &mirrorResults);
+    }
+	PG_CATCH();
+	{
+        /* If dispatched, stop QEs and clean up after them. */
+        if (primaryResults)
+        {
+            /* Wait until all QEs are idle.  Cancel them if necessary. */
+            CdbCheckDispatchResult(true);
+
+            /* Make sure the CdbDispatchResults are cleaned up.
+             * Since we are already exiting due to an error, don't
+             * bother reporting any errors from the QEs.
+             */
+            cdbdisp_destroyDispatchResults(primaryResults);
+            cdbdisp_destroyDispatchResults(mirrorResults);
+        }
+
+		/* Carry on with the original error. */
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	/*
+	 * We successfully completed our work.	Now check the results from the
+	 * qExecs, if dispatched.  This waits for them to all finish, and exits
+	 * via ereport(ERROR,...) if unsuccessful.
+	 */
+	cdbdisp_finishCommand(primaryResults, mirrorResults);
+
+    return reloid;
+}
+
+
+Oid
+DefineRelation_int(CreateStmt *stmt,
+                   char        relkind,
+                   struct CdbDispatchResults  **pPrimaryResults,
+                   struct CdbDispatchResults  **pMirrorResults)
 {
 	char		relname[NAMEDATALEN];
 	Oid			namespaceId;
@@ -286,9 +340,6 @@ DefineRelation(CreateStmt *stmt, char relkind)
 	ListCell   *listptr;
 	int			i;
 	AttrNumber	attnum;
-
-	struct Gang *primaryGang = NULL;
-	struct Gang *mirrorGang = NULL;
 
 	bool		shouldDispatch = Mpp_role == MPP_ROLE_DISPATCH && !IsBootstrapProcessingMode() && relkind != RELKIND_SEQUENCE && relkind != RELKIND_VIEW;
 
@@ -542,43 +593,16 @@ DefineRelation(CreateStmt *stmt, char relkind)
 
 		if (shouldDispatch)
 		{
+            /* Start a global transaction and reconfigure the cluster if needed. */
+            cdbdisp_startDtxTransaction();
 
-			char	   *pszCreateTable;
-
-			/*
-			 * Serialize the stmt tree, and create the sql statement: mppexec ....
-			 */
-			Query	   *q = makeNode(Query);
-
-			StringInfoData buffer;
-
-			initStringInfo(&buffer);
-
-			q->commandType = CMD_UTILITY;
-			q->utilityStmt = (Node *) stmt;
-
-			q->querySource = QSRC_ORIGINAL;
-			q->canSetTag = true;	/* ? */
-
-
-			pszCreateTable = serializeNode((Node *) q);
-
-
-			Assert(pszCreateTable != NULL);
-
-			elog(DEBUG5, "Comand %s", pszCreateTable);
-
-			appendStringInfo(&buffer, "mppexec '%s' ''", pszCreateTable);
-
-			pfree(pszCreateTable);
-
-			/*
-			 * This call returns after launching the threads that send the command to the appropriate
-			 * segdbs.	It does not wait for them to finish.
-			 */
-			cdbdisp_dispatchCommand(buffer.data, true, true, NULL,
-									&primaryGang, &mirrorGang);
-			pfree(buffer.data);
+            /* Dispatch the statement tree to all primary and mirror segdbs.
+             * Doesn't wait for the QEs to finish execution.
+             */
+            cdbdisp_dispatchUtilityStatement((Node *)stmt,
+                                             true,      /* cancelOnError */
+                                             pPrimaryResults,
+                                             pMirrorResults);
 		}
 	}
 
@@ -685,7 +709,7 @@ DefineRelation(CreateStmt *stmt, char relkind)
 	 */
 	relation_close(rel, NoLock);
 
-	if (primaryGang)
+	if (*pPrimaryResults)
 	{
 
 		if (Mpp_role == MPP_ROLE_DISPATCH && stmt != 0 && relkind == RELKIND_RELATION)
@@ -699,14 +723,6 @@ DefineRelation(CreateStmt *stmt, char relkind)
 			else
 				elog(NOTICE, "Table created in dispatch mode has no policy");
 		}
-
-
-		/*
-		 * We successfully completed on the Dispatcher.  Now check the results
-		 * from the qExecs.  This waits for them to all finish, and exits
-		 * via ereport(ERROR,...) if unsuccessful.
-		 */
-		cdbdisp_finishCommand(primaryGang, mirrorGang);
 	}
 
 

@@ -20,7 +20,6 @@
 #include "commands/dbcommands.h"	/* get_database_name() */
 
 #include "cdb/cdbconn.h"		/* SegmentDatabaseDescriptor */
-#include "cdb/cdbdisp.h"		/* cdbdisp_destroyDispatchResults() */
 #include "cdb/cdbfts.h"
 #include "cdb/cdbgang.h"		/* me */
 #include "cdb/cdbmotion.h"		/* CdbProcess */
@@ -388,7 +387,6 @@ buildGangDefinition(GangType type, int size, int content)
 	newGangDefinition = (Gang *) palloc0(sizeof(Gang));
 
 	newGangDefinition->type = type;
-	newGangDefinition->dispatchResults = NULL;
 
 	switch (type)
 	{
@@ -557,9 +555,7 @@ buildGangDefinition(GangType type, int size, int content)
 
 					cdbconn_initSegmentDescriptor(segdbDesc,
 												  p,
-												  myDatabaseName,
-												  newGangDefinition,
-												  seg_count);
+												  myDatabaseName);
 
 					seg_count++;
 					if (type == GANGTYPE_READER && size == 1)
@@ -1149,25 +1145,7 @@ cleanupGang(Gang *gp)
 
 	}
 
-	/*
-	 * Free CdbDispatchResults.
-	 */
-	if (gp->dispatchResults)
-	{
-		StringInfoData msg;
-
-		initStringInfo(&msg);
-		if (!cdbdisp_dumpGangResults(gp, &msg, false))
-		{
-			elog(LOG, "Leftover result at freeGang time: %s", msg.data);
-		}
-		pfree(msg.data);
-
-		cdbdisp_destroyGangResults(gp);
-	}
-
 	elog(DEBUG5, "cleanupGang done");
-
 }
 
 
@@ -1214,11 +1192,6 @@ disconnectAndDestroyGang(Gang *gp)
 		cdbconn_termSegmentDescriptor(segdbDesc);
 	}
 
-
-	/*
-	 * Free CdbDispatchResults.
-	 */
-	cdbdisp_destroyGangResults(gp);
 
 	/*
 	 * Discard the segment array and the cluster descriptor
@@ -1386,9 +1359,8 @@ reconnectSegDB(struct SegmentDatabaseDescriptor * failedDB)
 	if (failedDB->error_message.len > 0)
 	{
 		ereport(LOG, (errcode(failedDB->errcode),
-					  errmsg("(%s) Segment db connection error",
-							 failedDB->whoami),
-					  errdetail("%s", failedDB->error_message.data)));
+					  errmsg("Segment db connection error: %s",
+						     failedDB->error_message.data) ));
 		failedDB->errcode = 0;
 		resetPQExpBuffer(&failedDB->error_message);
 	}

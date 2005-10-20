@@ -49,6 +49,7 @@
 
 #include "cdb/cdbcat.h"
 #include "cdb/cdbdisp.h"
+#include "cdb/cdbdispatchresult.h"      /* cdbdisp_sumCmdTuples() */
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbsubplan.h"
 #include "cdb/cdbvars.h"
@@ -442,6 +443,11 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 				pfree(policy);
 			}
 
+            /*
+             * Start a global transaction and reconfigure the cluster if needed.
+             */
+            cdbdisp_startDtxTransaction();
+
 			/*
 			 * This call returns after launching the threads that send the command to the appropriate
 			 * segdbs.	It does not wait for them to finish.
@@ -551,7 +557,7 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 			 * We need to wait for the threads to finish.  This allows for proper cleanup
 			 * of the results from the async command executions.
 			 */
-			CdbCheckDispatchResult(true);
+			CdbCheckDispatchResult(true);   /* cancel any QEs still running */
 
 			/*
 			 * Discard any remaining results from QEs; don't confuse matters
@@ -601,8 +607,7 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 			TeardownInterconnect(false);
 
 		/* If top slice was delegated to QEs, get number of rows processed. */
-		if (sliceRunsOnQE(topslice))
-			estate->es_processed += cdbdisp_sumGangCmdTuples(topslice->primaryGang);
+        estate->es_processed += cdbdisp_sumCmdTuples(topslice->primaryResults);
 
 		/*
 		 * Check and free the results of all gangs. If any QE had an error,

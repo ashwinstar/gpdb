@@ -13,11 +13,10 @@
 #ifndef CDBDISPATCHRESULT_H
 #define CDBDISPATCHRESULT_H
 
-#include "libpq-fe.h"               /* prerequisite for libpq-int.h */
-#include "libpq-int.h"              /* PQExpBufferData */
-#include "cdb/cdbconn.h"            /* SegmentDatabaseDescriptor */
-
+struct pg_result;                   /* PGresult ... #include "libpq-fe.h" */
+struct SegmentDatabaseDescriptor;   /* #include "cdb/cdbconn.h" */
 struct StringInfoData;              /* #include "lib/stringinfo.h" */
+struct PQExpBufferData;             /* #include "libpq-int.h" */
 
 
 /*
@@ -28,7 +27,16 @@ struct StringInfoData;              /* #include "lib/stringinfo.h" */
  */
 typedef struct CdbDispatchResult
 {
-    SegmentDatabaseDescriptor  *segdbDesc;  /* libpq connection to QE process */
+    struct SegmentDatabaseDescriptor *segdbDesc;
+                                        /* libpq connection to QE process;
+                                         * reset to NULL after end of thread
+                                         */
+
+    struct CdbDispatchResults *gangResults; /* owner of this CdbDispatchResult */
+    int                 gangIndex;      /* QE's position within the gang; index
+                                         * to self in gangResults->resultArray
+                                         */
+
     int                 errcode;        /* ERRCODE_xxx (sqlstate encoded as
                                          * an int) of first error, or 0.
                                          */
@@ -42,8 +50,8 @@ typedef struct CdbDispatchResult
                                          * successfully); or -1.
                                          * Pass to cdbconn_getResult().
                                          */
-    PQExpBufferData     resultbuf;      /* array of *PGresult */
-    PQExpBufferData     error_message;  /* string of messages */
+    struct PQExpBufferData *resultbuf;      /* -> array of ptr to PGresult */
+    struct PQExpBufferData *error_message;  /* -> string of messages; or NULL */
 
     bool                hasDispatched;  /* true => PQsendCommand done */
     bool                stillRunning;   /* true => busy in dispatch thread */
@@ -57,8 +65,10 @@ typedef struct CdbDispatchResult
 
 /* Construct a CdbDispatchResult object. */
 void
-cdbdisp_initResult(CdbDispatchResult           *dispatchResult,
-                   SegmentDatabaseDescriptor   *segdbDesc);
+cdbdisp_initResult(CdbDispatchResult                   *dispatchResult,
+                   int                                  gangIndex,
+                   struct CdbDispatchResults           *gangResults,
+                   struct SegmentDatabaseDescriptor    *segdbDesc);
 
 /* Destroy a CdbDispatchResult object. */
 void
@@ -68,23 +78,49 @@ cdbdisp_termResult(CdbDispatchResult  *dispatchResult);
 void
 cdbdisp_resetResult(CdbDispatchResult  *dispatchResult);
 
+/* Take note of an error.
+ * 'errcode' is the ERRCODE_xxx value for setting the client's SQLSTATE.
+ * NB: This can be called from a dispatcher thread, so it must not use
+ * palloc/pfree or elog/ereport because they are not thread safe.
+ */
+void
+cdbdisp_seterrcode(int                  errcode,        /* ERRCODE_xxx or 0 */
+                   int                  resultIndex,    /* -1 if no PGresult */
+                   CdbDispatchResult   *dispatchResult);
+
 /* Transfer connection error messages to dispatchResult from segdbDesc. */
 bool                            /* returns true if segdbDesc had err info */
-cdbdisp_mergeConnectionErrors(CdbDispatchResult            *dispatchResult,
-                              SegmentDatabaseDescriptor    *segdbDesc);
+cdbdisp_mergeConnectionErrors(CdbDispatchResult                *dispatchResult,
+                              struct SegmentDatabaseDescriptor *segdbDesc);
+
+/* Format a message, printf-style, and append to the error_message buffer.
+ * Also write it to stderr if logging is enabled for messages of the
+ * given severity level 'elevel' (for example, DEBUG1; or 0 to suppress).
+ * 'errcode' is the ERRCODE_xxx value for setting the client's SQLSTATE.
+ * NB: This can be called from a dispatcher thread, so it must not use
+ * palloc/pfree or elog/ereport because they are not thread safe.
+ */
+void
+cdbdisp_appendMessage(CdbDispatchResult    *dispatchResult,
+                      int                   elevel,
+                      int                   errcode,
+                      const char           *fmt,
+                      ...)
+/* This extension allows gcc to check the format string */
+__attribute__((format(printf, 4, 5)));
 
 /* Store a PGresult object ptr in the result buffer.
  * NB: Caller must not PQclear() the PGresult object.
  */
 void
 cdbdisp_appendResult(CdbDispatchResult *dispatchResult,
-                     PGresult          *res);
+                     struct pg_result  *res);
 
 /* Return the i'th PGresult object ptr (if i >= 0), or
  * the n+i'th one (if i < 0), or NULL (if i out of bounds).
  * NB: Caller must not PQclear() the PGresult object.
  */
-PGresult *
+struct pg_result *
 cdbdisp_getPGresult(CdbDispatchResult *dispatchResult, int i);
 
 /* Return the number of PGresult objects in the result buffer. */
@@ -98,7 +134,7 @@ cdbdisp_numPGresult(CdbDispatchResult  *dispatchResult);
  */
 int
 cdbdisp_snatchPGresults(CdbDispatchResult  *dispatchResult,
-                        PGresult          **pgresultptrs,
+                        struct pg_result  **pgresultptrs,
                         int                 maxresults);
 
 /* Display a CdbDispatchResult in the log for debugging.
@@ -150,6 +186,16 @@ cdbdisp_makeDispatchResults(int resultCount, bool cancelOnError);
 /* Clean up and free a CdbDispatchResults object. */
 void
 cdbdisp_destroyDispatchResults(CdbDispatchResults  *results);
+
+/* Format a CdbDispatchResults object.
+ * Appends error messages to caller's StringInfo buffer.
+ * Returns ERRCODE_xxx if some error was found, or 0 if no errors.
+ * Before calling this function, you must call CdbCheckDispatchResult().
+ */
+int
+cdbdisp_dumpDispatchResults(struct CdbDispatchResults  *gangResults,
+                            StringInfo                  buffer,
+                            bool                        verbose);
 
 /* Return sum of the cmdTuples values from CdbDispatchResult
  * entries that have a successful PGresult.

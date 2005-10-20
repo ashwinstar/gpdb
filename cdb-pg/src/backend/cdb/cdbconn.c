@@ -23,9 +23,7 @@
 void
 cdbconn_initSegmentDescriptor(SegmentDatabaseDescriptor        *segdbDesc,
                               struct CdbComponentDatabaseInfo  *cdbinfo,
-                              const char                       *dbname,
-                              struct Gang                      *gang,
-                              int                               gangindex)
+                              const char                       *dbname)
 {
     memset(segdbDesc, 0, sizeof(*segdbDesc));
 
@@ -33,10 +31,6 @@ cdbconn_initSegmentDescriptor(SegmentDatabaseDescriptor        *segdbDesc,
     segdbDesc->segment_database_info = cdbinfo;
     segdbDesc->segindex = cdbinfo->segindex;
     segdbDesc->dbname = dbname ? strdup(dbname) : NULL;
-
-    /* The gang I belong to, and 0-based position within the gang. */
-    segdbDesc->gang = gang;
-    segdbDesc->gangindex = gangindex;
 
     /* Connection info */
     segdbDesc->conn = NULL;

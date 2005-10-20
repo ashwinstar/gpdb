@@ -37,12 +37,6 @@ typedef struct SegmentDatabaseDescriptor
 	 */
 	int4         			segindex;
 	
-    /*
-     * Which gang does this QE belong to?
-     */
-    struct Gang            *gang;           /* QE is a member of this gang */
-    int                     gangindex;      /* QE's position within the gang */
-
     /* conn
 	 *
 	 * A non-NULL value points to the PGconn block of a successfully
@@ -74,9 +68,7 @@ typedef struct SegmentDatabaseDescriptor
 void
 cdbconn_initSegmentDescriptor(SegmentDatabaseDescriptor        *segdbDesc,
                               struct CdbComponentDatabaseInfo  *cdbinfo,
-                              const char                       *dbname,
-                              struct Gang                      *gang,
-                              int                               gangindex);
+                              const char                       *dbname);
 
 
 /* Free all memory owned by a segment descriptor. */
