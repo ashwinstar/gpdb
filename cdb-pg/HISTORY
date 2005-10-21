@@ -1,6 +1,72 @@
 
                                 Release Notes
 
+                                Release 8.0.4
+
+     Release date: 2005-10-04
+
+   This release contains a variety of fixes from 8.0.3.
+     __________________________________________________________________
+
+Migration to version 8.0.4
+
+   A dump/restore is not required for those running 8.0.X. However, if you
+   are upgrading from a version earlier than 8.0.3, see the release notes
+   for 8.0.3.
+     __________________________________________________________________
+
+Changes
+
+     * Fix error that allowed "VACUUM" to remove ctid chains too soon, and
+       add more checking in code that follows ctid links
+       This fixes a long-standing problem that could cause crashes in very
+       rare circumstances.
+     * Fix CHAR() to properly pad spaces to the specified length when
+       using a multiple-byte character set (Yoshiyuki Asaba)
+       In prior releases, the padding of CHAR() was incorrect because it
+       only padded to the specified number of bytes without considering
+       how many characters were stored.
+     * Force a checkpoint before committing "CREATE DATABASE"
+       This should fix recent reports of "index is not a btree" failures
+       when a crash occurs shortly after "CREATE DATABASE".
+     * Fix the sense of the test for read-only transaction in "COPY"
+       The code formerly prohibited "COPY TO", where it should prohibit
+       "COPY FROM".
+     * Handle consecutive embedded newlines in "COPY" CSV-mode input
+     * Fix date_trunc(week) for dates near year end
+     * Fix planning problem with outer-join ON clauses that reference only
+       the inner-side relation
+     * Further fixes for x FULL JOIN y ON true corner cases
+     * Fix overenthusiastic optimization of x IN (SELECT DISTINCT ...) and
+       related cases
+     * Fix mis-planning of queries with small LIMIT values due to poorly
+       thought out "fuzzy" cost comparison
+     * Make array_in and array_recv more paranoid about validating their
+       OID parameter
+     * Fix missing rows in queries like UPDATE a=... WHERE a... with GiST
+       index on column a
+     * Improve robustness of datetime parsing
+     * Improve checking for partially-written WAL pages
+     * Improve robustness of signal handling when SSL is enabled
+     * Improve MIPS and M68K spinlock code
+     * Don't try to open more than max_files_per_process files during
+       postmaster startup
+     * Various memory leakage fixes
+     * Various portability improvements
+     * Update timezone data files
+     * Improve handling of DLL load failures on Windows
+     * Improve random-number generation on Windows
+     * Make psql -f filename return a nonzero exit code when opening the
+       file fails
+     * Change pg_dump to handle inherited check constraints more reliably
+     * Fix password prompting in pg_restore on Windows
+     * Fix PL/PgSQL to handle var := var correctly when the variable is of
+       pass-by-reference type
+     * Fix PL/Perl %_SHARED so it's actually shared
+     * Fix "contrib/pg_autovacuum" to allow sleep intervals over 2000 sec
+     * Update "contrib/tsearch2" to use current Snowball code
+     __________________________________________________________________
+
                                 Release 8.0.3
 
      Release date: 2005-05-09
@@ -26,8 +92,8 @@ Migration to version 8.0.3
    normal use by the encoding conversion machinery.)
 
    The lesser problem is that the "contrib/tsearch2" module creates
-   several functions that are misdeclared to return internal when they do
-   not accept internal arguments. This breaks type safety for all
+   several functions that are improperly declared to return internal when
+   they do not accept internal arguments. This breaks type safety for all
    functions using internal arguments.
 
    It is strongly recommended that all installations repair these errors,
@@ -1038,6 +1104,53 @@ Contrib Changes
      * Removed "contrib/pg_logger": obsoleted by integrated logging
        subprocess
      * Removed "contrib/rserv": obsoleted by various separate projects
+     __________________________________________________________________
+
+                                Release 7.4.9
+
+     Release date: 2005-10-04
+
+   This release contains a variety of fixes from 7.4.8.
+     __________________________________________________________________
+
+Migration to version 7.4.9
+
+   A dump/restore is not required for those running 7.4.X. However, if you
+   are upgrading from a version earlier than 7.4.8, see the release notes
+   for 7.4.8.
+     __________________________________________________________________
+
+Changes
+
+     * Fix error that allowed "VACUUM" to remove ctid chains too soon, and
+       add more checking in code that follows ctid links
+       This fixes a long-standing problem that could cause crashes in very
+       rare circumstances.
+     * Fix CHAR() to properly pad spaces to the specified length when
+       using a multiple-byte character set (Yoshiyuki Asaba)
+       In prior releases, the padding of CHAR() was incorrect because it
+       only padded to the specified number of bytes without considering
+       how many characters were stored.
+     * Fix the sense of the test for read-only transaction in "COPY"
+       The code formerly prohibited "COPY TO", where it should prohibit
+       "COPY FROM".
+     * Fix planning problem with outer-join ON clauses that reference only
+       the inner-side relation
+     * Further fixes for x FULL JOIN y ON true corner cases
+     * Make array_in and array_recv more paranoid about validating their
+       OID parameter
+     * Fix missing rows in queries like UPDATE a=... WHERE a... with GiST
+       index on column a
+     * Improve robustness of datetime parsing
+     * Improve checking for partially-written WAL pages
+     * Improve robustness of signal handling when SSL is enabled
+     * Don't try to open more than max_files_per_process files during
+       postmaster startup
+     * Various memory leakage fixes
+     * Various portability improvements
+     * Fix PL/PgSQL to handle var := var correctly when the variable is of
+       pass-by-reference type
+     * Update "contrib/tsearch2" to use current Snowball code
      __________________________________________________________________
 
                                 Release 7.4.8
@@ -2297,6 +2410,41 @@ Contrib Changes
      * Fix dbase "-s" option and improve non-ASCII handling (Thomas Behr,
        Márcio Smiderle)
      * Remove array module because features now included by default (Joe)
+     __________________________________________________________________
+
+                               Release 7.3.11
+
+     Release date: 2005-10-04
+
+   This release contains a variety of fixes from 7.3.10.
+     __________________________________________________________________
+
+Migration to version 7.3.11
+
+   A dump/restore is not required for those running 7.3.X. However, if you
+   are upgrading from a version earlier than 7.3.10, see the release notes
+   for 7.3.10.
+     __________________________________________________________________
+
+Changes
+
+     * Fix error that allowed "VACUUM" to remove ctid chains too soon, and
+       add more checking in code that follows ctid links
+       This fixes a long-standing problem that could cause crashes in very
+       rare circumstances.
+     * Fix CHAR() to properly pad spaces to the specified length when
+       using a multiple-byte character set (Yoshiyuki Asaba)
+       In prior releases, the padding of CHAR() was incorrect because it
+       only padded to the specified number of bytes without considering
+       how many characters were stored.
+     * Fix missing rows in queries like UPDATE a=... WHERE a... with GiST
+       index on column a
+     * Improve checking for partially-written WAL pages
+     * Improve robustness of signal handling when SSL is enabled
+     * Various memory leakage fixes
+     * Various portability improvements
+     * Fix PL/PgSQL to handle var := var correctly when the variable is of
+       pass-by-reference type
      __________________________________________________________________
 
                                Release 7.3.10
