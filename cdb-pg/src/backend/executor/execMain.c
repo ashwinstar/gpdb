@@ -39,6 +39,7 @@
 #include "commands/tablecmds.h"
 #include "commands/trigger.h"
 #include "executor/execdebug.h"
+#include "executor/execdefs.h"
 #include "miscadmin.h"
 #include "optimizer/clauses.h"
 #include "optimizer/var.h"
