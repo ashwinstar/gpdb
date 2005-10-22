@@ -26,6 +26,8 @@ typedef struct Gang
 	int			size;			/* segment_count or segdb_count ? */
 	int			segdb_count;
 	bool		all_valid_segdbs_connected;
+	bool		allocated;
+	bool		active;
 	struct SegmentDatabaseDescriptor *db_descriptors;	/* Array of QEs/segDBs
 														 * that make up this
 														 * gang */

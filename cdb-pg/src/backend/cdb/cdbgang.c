@@ -163,6 +163,8 @@ createGang(GangType type, int size, int content)
 	doConnectParmsAr = (DoConnectParms *)
 		palloc0(max_threads * sizeof(DoConnectParms));
 	segdbs_in_thread_pool = 0;
+	
+	newGangDefinition->active = true;
 
 	/*
 	 * In this loop, we check each segdb.  If it's marked as valid, and is not
@@ -237,6 +239,8 @@ createGang(GangType type, int size, int content)
 		pfree(doConnectParmsAr);
 		doConnectParmsAr = NULL;
 	}
+	
+	newGangDefinition->active = false;
 
 	/*
 	 * For now, set all_valid_segdbs_connected to true.
@@ -387,6 +391,8 @@ buildGangDefinition(GangType type, int size, int content)
 	newGangDefinition = (Gang *) palloc0(sizeof(Gang));
 
 	newGangDefinition->type = type;
+	newGangDefinition->allocated = false;
+	newGangDefinition->active = false;
 
 	switch (type)
 	{
@@ -912,6 +918,9 @@ allocateGang(GangType type, int size, int content)
         		elog(ERROR, "No %s gang allocated",
         			 (type == GANGTYPE_PRIMARY_WRITER) ? "primary" : "mirror");
     }
+    
+    if (gp != NULL)
+    	gp->allocated = true;
 
 	return gp;
 }
@@ -1092,6 +1101,10 @@ cleanupGang(Gang *gp)
 		return;
 
 	elog(DEBUG5, "cleanupGang");
+	
+	if (gp->active)
+		elog(NOTICE,"cleanupGang called on Gang that is currently active");
+		
 	/*
 	 * Loop through the segment_database_descriptors array and, for each
 	 * SegmentDatabaseDescriptor:
@@ -1144,6 +1157,8 @@ cleanupGang(Gang *gp)
 		cdbconn_setSliceIndex(segdbDesc, -1);
 
 	}
+	
+	gp->allocated = false;
 
 	elog(DEBUG5, "cleanupGang done");
 }
@@ -1158,6 +1173,14 @@ disconnectAndDestroyGang(Gang *gp)
 		return;
 
 	elog(DEBUG5, "disconnectAndDestroyGang");
+	
+	if (gp->active)
+		elog(NOTICE, "disconnectAndDestroyGang called on a gang that is active");
+		
+	
+	if (gp->allocated)
+		elog(NOTICE, "disconnectAndDestroyGang called on a gang that is allocated");
+		
 	/*
 	 * Loop through the segment_database_descriptors array and, for each
 	 * SegmentDatabaseDescriptor:
