@@ -827,10 +827,7 @@ prescan_walker(Node *node, PlanProfile * context)
 				goto return_true;
 			}
 			goto return_false;
-
-			/* detail = "Query involves multiset union."; */
-			/* break; */	/* Fall through to report error. */
-
+					
 		case T_Agg:
 			{
 				/* First prescan children */
@@ -1052,8 +1049,16 @@ prescan_agg(Plan *plan, PlanProfile * context)
 				break;
 
 			case MOVEMENT_REPARTITION:
-				hashExpr = getExprListFromTargetList(child->targetlist, agg->numCols, agg->grpColIdx);
-				canUse = repartitionPlan(child, false, sortattrs != NULL, false, hashExpr);
+				Assert( s->hashexprs == NIL );
+				s->hashexprs = getExprListFromTargetList(child->targetlist, agg->numCols, agg->grpColIdx);
+				hashExpr = s->hashexprs;
+				canUse = repartitionPlan(child, false, sortattrs!=NULL, false, hashExpr);
+				break;
+				
+			case MOVEMENT_DISTINCT_RESTRUCT:
+				hashExpr = s->hashexprs;
+				Assert(hashExpr != NIL);
+				canUse = repartitionPlan(child, false, sortattrs!=NULL, false, hashExpr);
 				break;
 
 			default:
@@ -1109,10 +1114,19 @@ prescan_agg(Plan *plan, PlanProfile * context)
 
 		case MOVEMENT_REPARTITION:
 			/* Repartition motion required */
-			repartitionPlan(child, true, sortattrs != NULL, false, hashExpr);
+			repartitionPlan(child, true, sortattrs!=NULL, false, strategy->hashexprs);
 			newflow = pull_up_Flow(plan, plan->lefttree, true);
 			break;
-
+			
+		case MOVEMENT_DISTINCT_RESTRUCT:
+			/* Repartition motion required in child, restructure required in this node. */
+			repartitionPlan(child, true, sortattrs!=NULL, false, strategy->hashexprs);
+			newflow = pull_up_Flow(plan, plan->lefttree, true);
+			newflow->req_xform = MOVEMENT_AGG_RESTRUCT;
+			newflow->flotype = FLOW_SINGLETON;
+			newflow->segindex = -1;
+			break;
+		
 		case MOVEMENT_AGG_RESTRUCT:
 			newflow = makeFlow(strategy->resultflowtype);
 
@@ -1133,7 +1147,8 @@ prescan_agg(Plan *plan, PlanProfile * context)
 	 * ultimately adopted and the flow characteristics of the child.
 	 */
 	plan->flow = newflow;
-	return false;
+	
+	return false;	 
 }
 
 /* Helper for prescan_walker() does processing for a Unique node.

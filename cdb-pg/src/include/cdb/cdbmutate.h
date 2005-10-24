@@ -60,6 +60,7 @@ extern List *getHashMotionInfoList(Plan *node, HashMotionInfoType type);
 
 extern List *getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx);
 
+extern Node *getHashExprForExpression(Plan *varsource, Expr *expr);
 
 extern Motion *make_motion(Plan *lefttree, MotionType motionType,
 			bool sendToSecondary, bool sendSorted,

@@ -950,7 +950,8 @@ typedef enum Movement
 	MOVEMENT_REPARTITION,	/* Hash motion */
 	MOVEMENT_REP2PARTITIONED, /* inflow is replicated outflow is partitioned */
 	MOVEMENT_AGG_RESTRUCT,	/* Restructure an Agg node into three stages */
-	MOVEMENT_LIM_RESTRUCT	/* Restructure a Limit node into three stages */
+	MOVEMENT_LIM_RESTRUCT,	/* Restructure a Limit node into three stages */
+	MOVEMENT_DISTINCT_RESTRUCT	/* Restructure an Agg (distinct) node into four stages */
 } Movement;
 
 /*----------

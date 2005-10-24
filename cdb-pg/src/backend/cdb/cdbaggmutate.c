@@ -225,11 +225,11 @@ apply_agg_motion(Plan *plan, ApplyMotionState * state)
 								 * initPlan? */
 	plan->extParam = bms_copy(inner_plan->extParam);
 	plan->allParam = bms_copy(inner_plan->allParam);
-	inner_plan->flow = pull_up_Flow(inner_plan, inner_plan->lefttree, FALSE);
-	Assert(inner_plan->flow != NULL);	/* inner Agg inherits child flow. */
-	inner_plan->dispatch = DISPATCH_UNDETERMINED;		/* Default */
-	agg->grpColIdx = NULL;		/* Eventually, put a new one in. */
-
+	inner_plan->flow = pull_up_Flow(inner_plan, inner_plan->lefttree, FALSE); 
+	Assert (inner_plan->flow != NULL ); /* inner Agg inherits child flow. */
+	inner_plan->dispatch = DISPATCH_UNDETERMINED; /* Default */
+	agg->grpColIdx = NULL; /* Eventually, put a new one in. */
+	
 	/* Create our local context. */
 	initSplitAggsContext(&context);
 
@@ -425,12 +425,11 @@ splitAggs_mutator(Node *node, SplitAggsContext * context)
 
 	if (IsA(node, Aggref))
 	{
-		int			i;
-		Aggref	   *aggref = (Aggref *) node;
-		CdbAggTactic *tactic;
-
-		Assert(!context->mutatingAggref);		/* Aggrefs don't nest */
-		Assert(!aggref->aggdistinct);	/* We're not smart enough to do this. */
+		int i;
+		Aggref* aggref = (Aggref*)node;
+        CdbAggTactic *tactic;
+		
+		Assert( !context->mutatingAggref ); /* Aggrefs don't nest */
 		context->mutatingAggref = TRUE;
 
 		/*
@@ -445,7 +444,6 @@ splitAggs_mutator(Node *node, SplitAggsContext * context)
 				context->errmsg = "No tactic for implementing this aggregation";
 			context->mutatingAggref = FALSE;
 
-			/******/
 			ereport(ERROR, (
 							errcode(ERRCODE_CDB_FEATURE_NOT_YET),
 							errmsg("Cannot parallelize that command yet"),

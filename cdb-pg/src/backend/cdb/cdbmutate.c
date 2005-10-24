@@ -574,7 +574,8 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
 
 					case MOVEMENT_NONE:
 						break;
-
+						
+					case MOVEMENT_DISTINCT_RESTRUCT:
 					default:
 						Assert(false);
 						break;
@@ -771,43 +772,43 @@ make_motion(Plan *lefttree, MotionType motionType,
 			int numOutputSegs, int *outputSegIdx,
 			int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators)
 {
-	Motion	   *node = makeNode(Motion);
-	Plan	   *plan = &node->plan;
-	List	   *hashDataTypes = NIL;
+	Flow *flow;
+    Motion *node = makeNode(Motion);
+    Plan   *plan = &node->plan;
+    List   *hashDataTypes = NIL;
 
-	validateMotionNodeParms(motionType, sendToSecondary, sendSorted,
-							hashExpr,
-							numOutputSegs, outputSegIdx,
-							numSortCols, sortColIdx, sortOperators);
+    validateMotionNodeParms(motionType,	sendToSecondary, sendSorted,
+			hashExpr,
+			numOutputSegs, outputSegIdx,
+			numSortCols, sortColIdx, sortOperators);
 
-	/* Build list of hash key expression data types. */
-	if (hashExpr)
-	{
-		List	   *eq = list_make1(makeString("="));
-		ListCell   *cell;
+    /* Build list of hash key expression data types. */
+    if (hashExpr)
+    {
+        List       *eq = list_make1(makeString("="));
+        ListCell   *cell;
+        foreach(cell, hashExpr)
+        {
+            Node   *expr = (Node *)lfirst(cell);
+            Oid     typeoid = exprType(expr);
+            Oid	    eqopoid;
+            Oid     lefttype;
+            Oid     righttype;
 
-		foreach(cell, hashExpr)
-		{
-			Node	   *expr = (Node *) lfirst(cell);
-			Oid			typeoid = exprType(expr);
-			Oid			eqopoid;
-			Oid			lefttype;
-			Oid			righttype;
+            /* Get oid of the equality operator for this data type. */
+            eqopoid = compatible_oper_opid(eq, typeoid, typeoid, true);
+            if ( eqopoid == InvalidOid )
+                ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+                                errmsg("no equality operator for typid %d",
+                                       typeoid)));
 
-			/* Get oid of the equality operator for this data type. */
-			eqopoid = compatible_oper_opid(eq, typeoid, typeoid, true);
-			if (eqopoid == InvalidOid)
-				ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-								errmsg("no equality operator for typid %d",
-									   typeoid)));
-
-			/* Get the equality operator's operand type. */
-			op_input_types(eqopoid, &lefttype, &righttype);
-			Assert(lefttype == righttype);
-			hashDataTypes = lappend_oid(hashDataTypes, lefttype);
-		}
-		list_free_deep(eq);
-	}
+            /* Get the equality operator's operand type. */
+            op_input_types( eqopoid, &lefttype, &righttype );
+            Assert( lefttype == righttype );
+            hashDataTypes = lappend_oid(hashDataTypes, lefttype);
+        }
+        list_free_deep(eq);
+    }
 
 	plan->startup_cost = lefttree->startup_cost;
 	plan->total_cost = lefttree->total_cost;
@@ -846,19 +847,55 @@ make_motion(Plan *lefttree, MotionType motionType,
 		node->hashSegIdx = makeDefaultSegIdxArray(getMPPSegmentCount());
 	}
 
-	/* If merging, fill in the sending segment info. */
-	node->numInputSegs = 0;
-	node->inputSegIdx = NULL;
-	if (sendSorted)
-	{
-		node->numInputSegs = getMPPSegmentCount();
-		node->inputSegIdx = makeDefaultSegIdxArray(getMPPSegmentCount());
-	}
+    /* If merging, fill in the sending segment info. */
+    node->numInputSegs = 0;
+    node->inputSegIdx = NULL;
+	if ( sendSorted )
+    {
+        node->numInputSegs = getMPPSegmentCount();
+        node->inputSegIdx = makeDefaultSegIdxArray(getMPPSegmentCount());
+    }
 
-	/*
-	 * TODO Should we attach a descriptive Flow here? What about
-	 * setXxxToSelfOnly() calls?
-	 */
+    /* Attach a descriptive Flow. */
+	switch ( node->motionType )
+	{
+	case MOTIONTYPE_HASH:
+		flow = makeFlow(FLOW_PARTITIONED);
+		flow->hashExpr = copyObject(node->hashExpr);
+		break;
+	case MOTIONTYPE_FIXED:
+		if ( node->numOutputSegs == 0 )
+		{
+			flow = makeFlow(FLOW_REPLICATED);
+		}
+		else if ( node->numOutputSegs == 1 )
+		{
+			flow = makeFlow(FLOW_SINGLETON);
+			flow->segindex = node->outputSegIdx[0];
+		}
+		else
+			flow = NULL;
+		break;
+	default:
+		flow = NULL;
+		break;
+	}
+	
+	if ( flow != NULL && node->sendSorted && node->numSortCols > 0 )
+	{
+		int i, n;
+		n = node->numSortCols;
+		flow->numSortCols = n;
+		flow->sortColIdx = palloc(n * sizeof(AttrNumber));
+		flow->sortOperators = palloc (n * sizeof(Oid));
+		for ( i = 0; i < n; i++ )
+		{
+			flow->sortColIdx[i] = node->sortColIdx[i]; 
+			flow->sortOperators[i] = node->sortOperators[i]; 
+		}
+	}
+	
+	plan->flow = flow;
 
 	return node;
 }
@@ -1102,7 +1139,6 @@ motion_expr_walker(Node *node, char *not_used)
 	if (node == NULL)
 		return false;
 
-	/* check for nodes that special work is required for, eg: */
 	if (IsA(node, Var))
 	{
 		Var		   *var = (Var *) node;
@@ -1169,6 +1205,65 @@ getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
 	}
 
 	return elist;
+}
+
+
+/* ----------------------------------------------------------------
+ * getHashExprForExpression
+ *
+ * Returns an expression over the range of the given plan
+ * correponding the given expression over the target list of
+ * the  plan.  This function is fragile!  It expects an expression
+ * from a projecting node.
+ *
+ * This amounts to substituting the target list expressions
+ * for the Var nodes in the given expression and forcing the
+ * varno to OUTER.
+ * ----------------------------------------------------------------
+ */
+static Node* ovmutator(Node *node, void *context);
+static Node* hvmutator(Node *node, void *context);
+
+Node *getHashExprForExpression(Plan *varsource, Expr *expr)
+{
+	return hvmutator((Node*)expr, varsource);
+}
+
+/* Copy given expression forcing varno in Var nodes to OUTER. */
+static Node* ovmutator(Node *node, void *context)
+{
+	if ( node == NULL )
+		return NULL;
+	if ( IsA(node, Var) )
+	{
+		Var *var = (Var*)node;
+		return (Node*)makeVar(OUTER, var->varattno, var->vartype, var->vartypmod, 0);
+	}
+	return expression_tree_mutator(node, ovmutator, NULL);
+}
+
+/* Copy given expression with Var nodes replaced by the referenced expression
+ * in the target list of the context Plan node, but ovmutated. */
+static Node* hvmutator(Node *node, void *context)
+{
+	if ( node == NULL )
+		return NULL;
+	if ( IsA(node, Var) )
+	{
+		Var * var;
+		Plan *varsource;
+		TargetEntry* tle;
+		
+		var = (Var*)node;
+		varsource = (Plan*)context;
+		tle = get_tle_by_resno( varsource->targetlist, var->varattno);
+		if ( tle == NULL )
+		{
+			elog( ERROR, "no tlist entry for key %d", var->varattno );
+		}
+		return ovmutator((Node*)tle->expr, NULL);
+	}
+	return expression_tree_mutator(node, hvmutator, context);
 }
 
 #ifdef UNUSED

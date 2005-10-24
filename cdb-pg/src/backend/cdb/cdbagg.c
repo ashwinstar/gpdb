@@ -40,9 +40,9 @@ AggExprAnalysis
 	bool		is_grp_attr;
 
 	/* The cumulative results of the analysis. */
-	int			ndistinct;		/* Number of Aggref specifying DISTINCT. */
-	Aggref	   *aggref_distinct;	/* If ndistinct == 1, the target expression.  */
-
+	int ndistinct; /* Number of Aggref specifying DISTINCT. */
+	Expr *aggref_distinct; /* If ndistinct == 1, the target expression.  */
+	
 	/* These are working storage for analyzeAggExpr_walker. */
 	int			aggdepth;		/* Number of Aggref nodes in stack. */
 
@@ -310,35 +310,21 @@ getAggStrategyList(Agg *agg)
 			if (!isgrouped && state->ndistinct == 1)
 			{
 				/* Can partition on the solitary distinct expr. */
-				Assert(state->aggref_distinct != NULL);
-
-				/*
-				 * TODO Externalize stuff in nodeMotion.c to extract the hash
-				 * expression from an arbitrary Expr node.	The code below is
-				 * not correct, but suggests what should be done.
-				 */
-
-				/*
-					as = makeAggStrategy(MOVEMENT_REPARTITION, FLOW_PARTITIONED);
-					as->hashexprs = list_make1(state->aggref_distinct);
-					result = lappend(result,as);
-					as = NULL;
-				*/
+				Assert( state->aggref_distinct != NULL );
+				
+				as = makeAggStrategy(MOVEMENT_DISTINCT_RESTRUCT, FLOW_SINGLETON);
+				as->hashexprs = list_make1(getHashExprForExpression(child, state->aggref_distinct));
+				result = lappend(result,as);
+				as = NULL;
 			}
 			else if (isgrouped)
 			{
 				/* Can partition on grouping exprs. */
 				as = makeAggStrategy(MOVEMENT_REPARTITION, FLOW_PARTITIONED);
-
-				/*
-				 * TODO These expressions will apply to the child, not the
-				 * parent
-				 */
-				/* E.g. select count(*),vn from sale group by vn */
-				/* will break! */
-				as->hashexprs = getHashMotionInfoList(plan, INFOTYPE_LEFTEXPR);
-
-				result = lappend(result, as);
+				
+				as->hashexprs = NIL; /* Let prescan code default to grouping attributes! */
+				
+				result = lappend(result,as);
 				as = NULL;
 			}
 		}
