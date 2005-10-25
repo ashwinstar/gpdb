@@ -1654,6 +1654,13 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 		policy->attrs[0] = 1;
 		elog(NOTICE, "Table doesn't have 'distributed by' clause, defaulting to column 1");
 
+		/* If we have no attributes, make sure that we don't create a bogus policy! */
+		if (cxt && list_length(cxt->columns) == 0)
+		{
+			elog(NOTICE, "Table has no attributes to distribute on.");
+			pfree(policy);
+			return NULL;
+		}
 	}
 	else
 	{

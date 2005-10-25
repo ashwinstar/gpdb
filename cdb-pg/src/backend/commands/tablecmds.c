@@ -721,7 +721,7 @@ DefineRelation_int(CreateStmt *stmt,
 			if (policy)
 				set_table_policy(relationId, policy);
 			else
-				elog(NOTICE, "Table created in dispatch mode has no policy");
+				elog(NOTICE, "Table created in dispatch mode has no distribution policy");
 		}
 	}
 
