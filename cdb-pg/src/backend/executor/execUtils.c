@@ -1325,7 +1325,7 @@ InventorySliceTree(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 			req->writer = TRUE;
 			/* fall through */
 		case GANGTYPE_READER:
-			if (slice->gangSize == 1)
+			if (slice->gangSize == 1 && getMPPSegmentCount() != 1)
 			{
 				req->num1gangs++;
 			}
@@ -1389,7 +1389,7 @@ AssociateSlicesToProcesses(Slice ** sliceMap, int sliceIndex, SliceReq * req)
 			break;
 
 		case GANGTYPE_READER:
-			if (slice->gangSize == 1)
+			if (slice->gangSize == 1 && getMPPSegmentCount() != 1)
 			{
 				slice->primaryGang = req->vec1gangs[req->nxt1gang];
 				slice->primaryProcesses = getCdbProcessList(slice->primaryGang);
