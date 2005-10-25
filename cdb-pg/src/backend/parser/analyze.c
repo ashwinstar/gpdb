@@ -779,6 +779,41 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 	cxt.hasoids = interpretOidsOption(stmt->hasoids);
 
 	stmt->policy = NULL;
+	
+	
+	/*
+	 * Child tables should distribute the same as their parent tables.
+	 * So, pick up the INHERITS clause.
+	 */
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH && stmt->inhRelations != NIL)
+	{
+		ListCell   *entry;
+		entry = list_head(cxt.inhRelations);
+	
+		RangeVar   *parent = (RangeVar *) lfirst(entry);
+		
+		Oid			relId = RangeVarGetRelid(parent, false);
+
+		MppPolicy  *oldTablePolicy = get_table_policy(relId);
+
+		if (oldTablePolicy != NULL && oldTablePolicy->ptype == POLICYTYPE_PARTITIONED)
+		{
+			stmt->policy = oldTablePolicy;
+
+			elog(NOTICE, "Table has parent, setting distribution columns to match parent table");
+			
+			if (stmt->distributedBy != NIL)
+			{
+				elog(WARNING,"Ignoring DISTRIBUTED BY clause");
+				stmt->distributedBy = NIL;
+			}
+		}
+		
+		entry = lnext(entry);
+		if (entry != NULL)
+			elog(ERROR,"Distributed tables can only inherit from one parent table");
+	}
 
 	/*
 	 * Run through each primary element in the table creation clause.
@@ -812,7 +847,11 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 					transformInhRelation(pstate, &cxt,
 										 (InhRelation *) element);
 
-					if (Mpp_role == MPP_ROLE_DISPATCH && stmt->distributedBy == NIL && isBeginning)
+					/*
+					 * For MPP distributed tables, default to the same distribution as the first LIKE table,
+					 * unless we also have INHERITS
+					 */
+					if (Mpp_role == MPP_ROLE_DISPATCH && stmt->distributedBy == NIL && isBeginning && stmt->policy == NULL)
 					{
 						InhRelation *e = (InhRelation *) element;
 						Oid			relId = RangeVarGetRelid(e->relation, false);
