@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- This script was automatically generated using Macrovision's InstallAnywhere 7.1 Enterprise, Build 2781
      STATUS: Fully Functional LICENSED Edition
-     DATE:   Tue Oct 18 22:24:39 PDT 2005 -->
-<InstallAnywhere_Deployment_Project increments="5779">
+     DATE:   Mon Oct 24 17:33:10 PDT 2005 -->
+<InstallAnywhere_Deployment_Project increments="5851">
 	<!-- ** DO NOT EDIT ** Essential authorization and configuration data ** DO NOT EDIT ** -->
 	<essentialScriptInfo>
 		<versionID major="7" minor="1" revision="-1"/>
 		<editionID>55,46,49,32,69,110,116,101,114,112,114,105,115,101,32,66,117,105,108,100,32,50,55,56,49</editionID>
 		<scriptID>12,42,11,77,81,49,57,51,55,75,55,90,77,89,71,70</scriptID>
-		<buildID>3,13,71,76,105,110,117,120,44,32,50,46,52,46,50,49,45,50,55,46,69,76,44,32,105,51,56,54,59,32,74,97,118,97,32,49,46,53,46,48,44,32,83,117,110,32,77,105,99,114,111,115,121,115,116,101,109,115,32,73,110,99,46,44,32,104,116,116,112,58,47,47,106,97,118,97,46,115,117,110,46,99,111,109,47,59,32,101,110,44,32,85,110,107,110,111,119,110,59,32,85,84,70,45,56</buildID>
+		<buildID>3,13,71,76,105,110,117,120,44,32,50,46,52,46,50,49,45,50,55,46,69,76,44,32,97,109,100,54,52,59,32,74,97,118,97,32,49,46,53,46,48,95,48,53,44,32,83,117,110,32,77,105,99,114,111,115,121,115,116,101,109,115,32,73,110,99,46,44,32,104,116,116,112,58,47,47,106,97,118,97,46,115,117,110,46,99,111,109,47,59,32,101,110,44,32,85,110,107,110,111,119,110,59,32,85,84,70,45,56</buildID>
 		<!-- The authorizationID may change between project saves and builds.  This does not effect the integrity of the project, nor do changes in this value represent changes in the actual InstallAnywhere project. -->
-		<authorizationID>1,0,0,0,3,94,16,-32,80,112,117,98,89,98,113,97,113,65,81,86,58,65,67,66,70,65,64,69,66,69,48,63,71,5,2,8,0,54,103,7,1,0,0</authorizationID>
+		<authorizationID>1,0,0,0,35,62,80,-112,80,112,117,98,89,98,113,97,113,65,81,86,58,65,67,66,70,65,64,69,66,69,48,63,71,5,2,8,12,49,101,7,1,0,0</authorizationID>
 	</essentialScriptInfo>
-	<installationObjects uniqueObjects="269">
+	<installationObjects uniqueObjects="272">
 		<object class="com.zerog.ia.installer.Installer" objectID="089e8853af36">
 			<property name="classpath">
 				<object class="java.util.Vector"/>
@@ -21,7 +21,7 @@
 				<string><![CDATA[The installer cannot run on your configuration. It will now quit.]]></string>
 			</property>
 			<property name="userSplashPath">
-				<string><![CDATA[$IA_PROJECT_DIR$/resources/bbf48ee587b13dd5216f5ac4d5a31556/]]></string>
+				<string><![CDATA[com/zerog/ia/installer/images/]]></string>
 			</property>
 			<property name="userSplashName">
 				<string><![CDATA[Splash.png]]></string>
@@ -132,6 +132,16 @@ Respond to each prompt to proceed to the next step in the installation.  If you 
 You may cancel this installation at any time by typing 'quit'.
 
 ]]></string>
+							</property>
+						</object>
+					</method>
+					<method name="addElement">
+						<object class="com.zerog.ia.installer.actions.EditVariableTable" objectID="3858153db8c1">
+							<property name="name">
+								<string><![CDATA[$MPP_REL_NAME$]]></string>
+							</property>
+							<property name="value">
+								<string><![CDATA[mpp-pgsql-Release-2_0_18-1]]></string>
 							</property>
 						</object>
 					</method>
@@ -1399,6 +1409,44 @@ For your convenience, a file called bizgres_path.sh has been placed in the top l
 						</object>
 					</method>
 					<method name="addElement">
+						<object class="com.zerog.ia.installer.actions.ActionGroup" objectID="38590887b8c5">
+							<property name="groupName">
+								<string><![CDATA[Post Installation Activities]]></string>
+							</property>
+							<visualChildren>
+								<object class="com.zerog.ia.installer.actions.Exec" objectID="38594538b8c5">
+									<property name="commandLineArgs">
+										<string><![CDATA[chmod 777 $USER_INSTALL_DIR$/$MPP_REL_NAME$/share/cdb_schema.sql]]></string>
+									</property>
+									<property name="waitForProcess">
+										<boolean>true</boolean>
+									</property>
+									<property name="suppressConsoleWindow">
+										<boolean>false</boolean>
+									</property>
+									<property name="showIndeterminateDialog">
+										<boolean>false</boolean>
+									</property>
+									<property name="dialogLabel">
+										<string><![CDATA[Executing...]]></string>
+									</property>
+									<property name="showPleaseWaitPanel">
+										<boolean>true</boolean>
+									</property>
+									<property name="stdoutVar">
+										<string><![CDATA[$EXECUTE_CHMOD_CDB_SCHEMA_STDOUT$]]></string>
+									</property>
+									<property name="stderrVar">
+										<string><![CDATA[$EXECUTE_CHMOD_CDB_SCHEMA_STDERR$]]></string>
+									</property>
+									<property name="exitCodeVar">
+										<string><![CDATA[$EXECUTE_CHMOD_CDB_SCHEMA_EXITCODE$]]></string>
+									</property>
+								</object>
+							</visualChildren>
+						</object>
+					</method>
+					<method name="addElement">
 						<object class="com.zerog.ia.installer.actions.ActionGroup" objectID="48ea13f39941">
 							<property name="groupName">
 								<string><![CDATA[Activate shared memory settings]]></string>
@@ -2144,7 +2192,7 @@ For your convenience, a file called bizgres_path.sh has been placed in the top l
 					</method>
 					<method name="put">
 						<string><![CDATA[com.zerog.ia.project.build.last.date]]></string>
-						<string><![CDATA[October 18, 2005 10:24:38 PM PDT]]></string>
+						<string><![CDATA[October 24, 2005 5:33:09 PM PDT]]></string>
 					</method>
 					<method name="put">
 						<string><![CDATA[com.zerog.ia.build.platform.windows.vm]]></string>
@@ -2216,7 +2264,7 @@ For your convenience, a file called bizgres_path.sh has been placed in the top l
 					</method>
 					<method name="put">
 						<string><![CDATA[com.zerog.ia.project.save.last.date]]></string>
-						<string><![CDATA[October 18, 2005 10:24:38 PM PDT]]></string>
+						<string><![CDATA[October 24, 2005 5:33:09 PM PDT]]></string>
 					</method>
 					<method name="put">
 						<string><![CDATA[com.zerog.ia.build.options.optimization.platform.cdrom]]></string>
@@ -2283,19 +2331,19 @@ For your convenience, a file called bizgres_path.sh has been placed in the top l
 						<string><![CDATA[install-bg.jpg]]></string>
 					</property>
 					<property name="currentLabelIconPath">
-						<string><![CDATA[$IA_PROJECT_DIR$/resources/bbf48ee587b13dd5216f5ac4d5a31556/]]></string>
+						<string><![CDATA[com/zerog/ia/installer/images/]]></string>
 					</property>
 					<property name="currentLabelIconName">
 						<string><![CDATA[activeLabelIcon.png]]></string>
 					</property>
 					<property name="previousLabelIconPath">
-						<string><![CDATA[$IA_PROJECT_DIR$/resources/bbf48ee587b13dd5216f5ac4d5a31556/]]></string>
+						<string><![CDATA[com/zerog/ia/installer/images/]]></string>
 					</property>
 					<property name="previousLabelIconName">
 						<string><![CDATA[completedLabelIcon.png]]></string>
 					</property>
 					<property name="futureLabelIconPath">
-						<string><![CDATA[$IA_PROJECT_DIR$/resources/bbf48ee587b13dd5216f5ac4d5a31556/]]></string>
+						<string><![CDATA[com/zerog/ia/installer/images/]]></string>
 					</property>
 					<property name="futureLabelIconName">
 						<string><![CDATA[upcomingLabeIcon.png]]></string>
@@ -2329,7 +2377,7 @@ For your convenience, a file called bizgres_path.sh has been placed in the top l
 			<property name="customInstallSet">
 				<object class="com.zerog.ia.installer.InstallSet" objectID="089eb207af5f">
 					<property name="imagePath">
-						<string><![CDATA[$IA_PROJECT_DIR$/resources/bbf48ee587b13dd5216f5ac4d5a31556/]]></string>
+						<string><![CDATA[com/zerog/ia/installer/images/]]></string>
 					</property>
 					<property name="description">
 						<string><![CDATA[Choose this option to customize the features to be installed.]]></string>
@@ -2668,14 +2716,6 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 								<string><![CDATA[MPPServ]]></string>
 							</property>
 							<installChildren>
-								<object class="com.zerog.ia.installer.Billboard" objectID="089e88cbaf4b">
-									<property name="imagePath">
-										<string><![CDATA[$IA_PROJECT_DIR$/resources/bbf48ee587b13dd5216f5ac4d5a31556/]]></string>
-									</property>
-									<property name="imageName">
-										<string><![CDATA[billboard_default.png]]></string>
-									</property>
-								</object>
 								<object class="com.zerog.ia.installer.InstallComponent" objectID="19ffd2c68dad">
 									<property name="componentName">
 										<string><![CDATA[MPP Server]]></string>
@@ -2774,7 +2814,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>29937018</long>
+												<long>29941990</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -2789,7 +2829,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-i386/usr/local/bizgres-mpp-2_0_18-0_8_1]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-i386/usr/local/bizgres-mpp-2_0_18-1-0_8_1]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -2978,7 +3018,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>32603454</long>
+												<long>32609701</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -2993,7 +3033,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-x86_64/usr/local/bizgres-mpp-2_0_18-0_8_1]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-x86_64/usr/local/bizgres-mpp-2_0_18-1-0_8_1]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -3192,7 +3232,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>35245808</long>
+												<long>35251119</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -3207,7 +3247,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/SOL-x86_64/usr/local/bizgres-mpp-2_0_18-0_8_1]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/SOL-x86_64/usr/local/bizgres-mpp-2_0_18-1-0_8_1]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -3586,7 +3626,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>4476</long>
+												<long>4452</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -3721,7 +3761,7 @@ This will remove features installed by InstallAnywhere.  It will not remove file
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>4499</long>
+												<long>4475</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -4238,7 +4278,7 @@ kernel.shmall = 4000000000]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>4337</long>
+												<long>4311</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -5691,6 +5731,14 @@ and any path to a file to read from that file]]></string>
 										</object>
 									</installChildren>
 								</object>
+								<object class="com.zerog.ia.installer.Billboard" objectID="37e3fc3ebe6c">
+									<property name="imagePath">
+										<string><![CDATA[com/zerog/ia/installer/images/]]></string>
+									</property>
+									<property name="imageName">
+										<string><![CDATA[billboard_default.png]]></string>
+									</property>
+								</object>
 							</installChildren>
 						</object>
 					</installChildren>
@@ -5723,7 +5771,6 @@ and any path to a file to read from that file]]></string>
 								<string><![CDATA[BizServ]]></string>
 							</property>
 							<installChildren>
-								<object refID="089e88cbaf4b"/>
 								<object class="com.zerog.ia.installer.InstallComponent" objectID="1a02ec828dae">
 									<property name="componentName">
 										<string><![CDATA[Bizgres Server]]></string>
@@ -5827,7 +5874,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>39622130</long>
+												<long>39626486</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -5842,7 +5889,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-i386/usr/local/bizgres-mpp-2_0_18-0_8_1]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-i386/usr/local/bizgres-mpp-2_0_18-1-0_8_1]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -6031,7 +6078,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>39782710</long>
+												<long>39786850</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -6046,7 +6093,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-x86_64/usr/local/bizgres-mpp-2_0_18-0_8_1]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-x86_64/usr/local/bizgres-mpp-2_0_18-1-0_8_1]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -6240,7 +6287,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>44813826</long>
+												<long>44818062</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -6255,7 +6302,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/SOL-x86_64/usr/local/bizgres-mpp-2_0_18-0_8_1]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/SOL-x86_64/usr/local/bizgres-mpp-2_0_18-1-0_8_1]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -6542,7 +6589,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>4410</long>
+												<long>4384</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -6677,7 +6724,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>4433</long>
+												<long>4407</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -6810,6 +6857,7 @@ and any path to a file to read from that file]]></string>
 									</installChildren>
 								</object>
 								<object refID="089e88d5af4e"/>
+								<object refID="37e3fc3ebe6c"/>
 							</installChildren>
 						</object>
 					</installChildren>
@@ -6842,7 +6890,6 @@ and any path to a file to read from that file]]></string>
 								<string><![CDATA[MPP SDK]]></string>
 							</property>
 							<installChildren>
-								<object refID="089e88cbaf4b"/>
 								<object class="com.zerog.ia.installer.InstallComponent" objectID="1a04a1878db0">
 									<property name="componentName">
 										<string><![CDATA[MPP SDK]]></string>
@@ -6946,7 +6993,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>37732078</long>
+												<long>37737050</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -6961,7 +7008,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-i386/usr/local/bizgres-mpp-2_0_18-0_8_1]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-i386/usr/local/bizgres-mpp-2_0_18-1-0_8_1]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -7112,7 +7159,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>40398514</long>
+												<long>40404761</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -7127,7 +7174,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-x86_64/usr/local/bizgres-mpp-2_0_18-0_8_1]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-x86_64/usr/local/bizgres-mpp-2_0_18-1-0_8_1]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -7283,7 +7330,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>43040868</long>
+												<long>43046179</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -7298,7 +7345,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/SOL-x86_64/usr/local/bizgres-mpp-2_0_18-0_8_1]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/SOL-x86_64/usr/local/bizgres-mpp-2_0_18-1-0_8_1]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -7449,6 +7496,7 @@ and any path to a file to read from that file]]></string>
 								<object refID="b2f5bd8ebd75"/>
 								<object refID="1a1e55b98db4"/>
 								<object refID="089e88d5af4e"/>
+								<object refID="37e3fc3ebe6c"/>
 							</installChildren>
 						</object>
 					</installChildren>
@@ -7481,7 +7529,6 @@ and any path to a file to read from that file]]></string>
 								<string><![CDATA[BizSDK]]></string>
 							</property>
 							<installChildren>
-								<object refID="089e88cbaf4b"/>
 								<object refID="b2f5bd8ebd75"/>
 								<object class="com.zerog.ia.installer.InstallComponent" objectID="1a184d788db2">
 									<property name="componentName">
@@ -7586,7 +7633,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>47417190</long>
+												<long>47421546</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -7601,7 +7648,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-i386/usr/local/bizgres-mpp-2_0_18-0_8_1]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-i386/usr/local/bizgres-mpp-2_0_18-1-0_8_1]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -7752,7 +7799,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>47577770</long>
+												<long>47581910</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -7767,7 +7814,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-x86_64/usr/local/bizgres-mpp-2_0_18-0_8_1]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/RHEL3-x86_64/usr/local/bizgres-mpp-2_0_18-1-0_8_1]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -7923,7 +7970,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>false</boolean>
 											</property>
 											<property name="totalSize">
-												<long>52608886</long>
+												<long>52613122</long>
 											</property>
 											<property name="unixPermissions">
 												<string><![CDATA[775]]></string>
@@ -7938,7 +7985,7 @@ and any path to a file to read from that file]]></string>
 												<boolean>true</boolean>
 											</property>
 											<property name="sourcePath">
-												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/SOL-x86_64/usr/local/bizgres-mpp-2_0_18-0_8_1]]></string>
+												<string><![CDATA[$USER_HOME$/InstallAnywhere/installStaging/SOL-x86_64/usr/local/bizgres-mpp-2_0_18-1-0_8_1]]></string>
 											</property>
 											<property name="shouldUninstall">
 												<boolean>true</boolean>
@@ -8088,6 +8135,7 @@ and any path to a file to read from that file]]></string>
 								</object>
 								<object refID="1a1e6b918db6"/>
 								<object refID="089e88d5af4e"/>
+								<object refID="37e3fc3ebe6c"/>
 							</installChildren>
 						</object>
 					</installChildren>
@@ -8263,7 +8311,7 @@ and any path to a file to read from that file]]></string>
 						<object refID="9131b988ab64"/>
 					</visualChildren>
 				</object>
-				<object refID="089e88cbaf4b"/>
+				<object refID="37e3fc3ebe6c"/>
 			</visualChildren>
 			<installChildren>
 				<object refID="1a6899b590af"/>
