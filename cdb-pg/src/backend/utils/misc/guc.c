@@ -1213,7 +1213,7 @@ static struct config_int ConfigureNamesInt[] =
 			NULL
 		},
 		&CheckPointSegments,
-		3, 1, INT_MAX, NULL, NULL
+		8, 1, INT_MAX, NULL, NULL
 	},
 
 	{

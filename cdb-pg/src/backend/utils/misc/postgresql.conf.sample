@@ -120,7 +120,7 @@
 
 # - Checkpoints -
 
-#checkpoint_segments = 3	# in logfile segments, min 1, 16MB each
+#checkpoint_segments = 8	# in logfile segments, min 1, 16MB each
 #checkpoint_timeout = 300	# range 30-3600, in seconds
 #checkpoint_warning = 30	# 0 is off, in seconds
 
