@@ -39,8 +39,6 @@ typedef struct CdbComponentDatabaseInfo
 	char	   *datadir;		/* directory where instance was initialized
 								 * into */
 	int4		listenerid;		/* id of listener for this database. */
-	char	   *mppsuperuser;	/* user name for mpp connection */
-	char	   *mppsuperpswd;	/* password for mpp connection */
 } CdbComponentDatabaseInfo;
 
 /* --------------------------------------------------------------------------------------------------

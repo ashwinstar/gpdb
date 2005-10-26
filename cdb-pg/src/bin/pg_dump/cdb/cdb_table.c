@@ -429,7 +429,6 @@ bool GetCDBSegmentInstanceArray(PGconn* pConn, const char* pszDBName, CDBSegment
     int i_hostname;
     int i_port;
     int i_datadir;
-	int i_superuser;
 	int i;
 
 	bool		bRtn = false;
@@ -445,8 +444,7 @@ bool GetCDBSegmentInstanceArray(PGconn* pConn, const char* pszDBName, CDBSegment
                               "   d.valid,"
                               "   h.hostname,"
                               "   l.port," 
-                              "   l.datadir,"
-                              "   l.mppsuperuser"
+                              "   l.datadir"
 							"	FROM"
 							" mpp.pgdatabase d,"
                               "   mpp.listener l,"
@@ -482,7 +480,6 @@ bool GetCDBSegmentInstanceArray(PGconn* pConn, const char* pszDBName, CDBSegment
     i_hostname  = PQfnumber(pRes, "hostname");
     i_port      = PQfnumber(pRes, "port");
     i_datadir   = PQfnumber(pRes, "datadir");
-	i_superuser = PQfnumber(pRes, "mppsuperuser");
 
 	for ( i=0; i<ntups; i++ )
 	{
@@ -493,7 +490,6 @@ bool GetCDBSegmentInstanceArray(PGconn* pConn, const char* pszDBName, CDBSegment
         pSegmentInstance->dbhostname  = PQgetvalue(pRes, i, i_hostname);
         pSegmentInstance->dbport      = atoi(PQgetvalue(pRes, i, i_port));
         pSegmentInstance->dbdatadir   = PQgetvalue(pRes, i, i_datadir);
-        pSegmentInstance->dbsuperuser = PQgetvalue(pRes, i, i_superuser);
 	}
 	
 	bRtn = true;

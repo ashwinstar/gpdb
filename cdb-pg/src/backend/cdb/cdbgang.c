@@ -436,7 +436,7 @@ buildGangDefinition(GangType type, int size, int content)
 		elog(ERROR, "building Gang:  MPP schema not populated");
 		return NULL;
 	}
-
+	
 	/* if mirroring is not configured */
 	if (cdb_component_dbs->total_segment_dbs == cdb_component_dbs->total_segments)
 	{

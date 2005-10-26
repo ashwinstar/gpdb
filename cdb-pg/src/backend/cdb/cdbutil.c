@@ -256,9 +256,7 @@ freeMppMpp(void)
  *			 h.hostname,
  *			 l.port,
  *			 l.datadir,
- *			 l.listenerid,
- *			 l.mppsuperuser,
- *			 l.mppsuperpswd
+ *			 l.listenerid
  *		 FROM
  *			 mpp.host h,
  *			 mpp.listener l,
@@ -547,19 +545,6 @@ getCdbComponentInfo(void)
 		Assert(!isNull);
 		hostid = DatumGetInt32(attr);
 
-		/*
-		* mppsuperuser
-		*/
-		attr = heap_getattr(mpp_listener_tuple, Anum_mpp_listener_mppsuperuser, mpp_listener_rel->rd_att, &isNull);
-		Assert(!isNull);
-		pRow->mppsuperuser = DatumGetCString(DirectFunctionCall1(textout, attr));
-
-		/*
-		* mppsuperpswd
-		*/
-		attr = heap_getattr(mpp_listener_tuple, Anum_mpp_listener_mppsuperpswd, mpp_listener_rel->rd_att, &isNull);
-		if (!isNull)
-			pRow->mppsuperpswd = DatumGetCString(DirectFunctionCall1(textout, attr));
 
 		systable_endscan(mpp_listener_scan);
 
@@ -738,9 +723,7 @@ getCdbComponentInfo(void)
  *			 h.hostname,
  *			 l.port,
  *			 l.datadir,
- *			 l.listenerid,
- *			 l.mppsuperuser,
- *			 l.mppsuperpswd
+ *			 l.listenerid
  *		 FROM
  *			 mpp.host h,
  *			 mpp.listener l,
@@ -816,10 +799,7 @@ freeCdbComponentDatabaseInfo(CdbComponentDatabaseInfo *cdi)
 		pfree(cdi->hostname);
 	if (cdi->datadir != NULL)
 		pfree(cdi->datadir);
-	if (cdi->mppsuperuser != NULL)
-		pfree(cdi->mppsuperuser);
-	if (cdi->mppsuperpswd != NULL)
-		pfree(cdi->mppsuperpswd);
+
 }
 
 /*

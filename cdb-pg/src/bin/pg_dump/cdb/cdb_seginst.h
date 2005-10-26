@@ -22,8 +22,6 @@ typedef struct segment_instance
     bool	isValid;          // true iff cdb_seg.primary_inst == instid
     char*	pszHost;            // copy of cdb_instance.host
     char*	pszDBName;          // copy of cdb_seg.dbname
-    char*	pszDBUser;          // copy of cdb_seg.dbuser
-    char*	pszDBPswd;          // copy of cdb_seg.dbpswd
 } SegmentInstance;
 
 /* --------------------------------------------------------------------------------------------------

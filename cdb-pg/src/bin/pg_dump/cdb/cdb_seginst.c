@@ -402,10 +402,6 @@ void FreeSegmentInstanceArray( SegmentInstanceArray* pSegInstAr )
 		if ( pSegInst->pszDBName != NULL )
 			free( pSegInst->pszDBName );
          */
-		if ( pSegInst->pszDBUser != NULL )
-			free( pSegInst->pszDBUser );
-		if ( pSegInst->pszDBPswd != NULL )
-			free( pSegInst->pszDBPswd );
 	}
 
 	if ( pSegInstAr->pData != NULL )
@@ -435,8 +431,6 @@ bool GetSegmentInstanceArray(PGconn* pConn, char* pszDBName, CDBSet* pSet, Segme
     int i_isprimary;
 	int i_host;
 	int i_port;
-	int i_dbuser;
-	int i_dbpswd;
 	int i;
 	int x;
 	SegmentInstance* pSegInst;
@@ -449,9 +443,7 @@ bool GetSegmentInstanceArray(PGconn* pConn, char* pszDBName, CDBSet* pSet, Segme
 							 " d.valid,"
                                " d.isPrimary,"
 							 " h.hostname,"
-							 " l.port,"
-							 " l.mppsuperuser,"
-							 " l.mppsuperpswd"
+							 " l.port"
 							 " FROM"
 							 " mpp.pgdatabase d,"
                                " mpp.listener l,"
@@ -496,8 +488,6 @@ bool GetSegmentInstanceArray(PGconn* pConn, char* pszDBName, CDBSet* pSet, Segme
 	i_isvalid	= PQfnumber(pRes, "valid");
 	i_host		= PQfnumber(pRes, "hostname");
 	i_port		= PQfnumber(pRes, "port");
-	i_dbuser	= PQfnumber(pRes, "mppsuperuser");
-	i_dbpswd	= PQfnumber(pRes, "mppsuperpswd");
     i_isprimary = PQfnumber(pRes, "isPrimary");
 
 	/* Read through the results set.  */
@@ -523,12 +513,7 @@ bool GetSegmentInstanceArray(PGconn* pConn, char* pszDBName, CDBSet* pSet, Segme
 		pSegInst->isValid	= ( strcmp(PQgetvalue(pRes, i, i_isvalid), "t") == 0 );
 		pSegInst->pszHost	= strdup(PQgetvalue(pRes, i, i_host));
         pSegInst->pszDBName = pszDBName;
-		pSegInst->pszDBUser	= strdup(PQgetvalue(pRes, i, i_dbuser));
-	
-		if ( PQgetisnull(pRes, i, i_dbpswd))
-			pSegInst->pszDBPswd = NULL;
-		else
-			pSegInst->pszDBPswd = strdup(PQgetvalue(pRes, i, i_dbpswd));
+		
 	}
 	
 	/* set the count to be the number that passed the set inclusion test */

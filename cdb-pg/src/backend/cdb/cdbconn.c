@@ -13,6 +13,7 @@
 #include "postgres.h"
 
 #include "libpq-fe.h"
+#include "miscadmin.h"
 
 #include "cdb/cdbconn.h"            /* me */
 #include "cdb/cdbutil.h"            /* CdbComponentDatabaseInfo */
@@ -74,8 +75,7 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
 {
     CdbComponentDatabaseInfo   *q = segdbDesc->segment_database_info;
     PQExpBufferData             buffer;
-    int                         passoff = 0;
-    int                         passend = 0;
+    char * 						username = GetUserNameFromId(GetUserId());
 
     /*
      * We use PQExpBufferData instead of StringInfoData
@@ -107,25 +107,14 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
     if (segdbDesc->dbname)
         appendPQExpBuffer(&buffer, "dbname=%s ", segdbDesc->dbname);
 
-    appendPQExpBuffer(&buffer, "user=%s ", q->mppsuperuser);
+    appendPQExpBuffer(&buffer, "user=%s ", username);
 
-    if ( q->mppsuperpswd != NULL )
-    {
-        appendPQExpBufferStr(&buffer, "password='");
-        passoff = buffer.len;
-        appendPQExpBufferStr(&buffer, q->mppsuperpswd);
-        passoff = buffer.len;
-        appendPQExpBufferStr(&buffer, "' ");
-    }
-
+    
     /*
      * Call libpq to connect
      */
     segdbDesc->conn = PQconnectdb(buffer.data);
 
-    /* Wipe password. */
-    while (passoff < passend)
-        buffer.data[passoff++] = '*';
 
     /* Build whoami string to identify the QE for use in messages. */
     cdbconn_setSliceIndex(segdbDesc, -1);

@@ -37,13 +37,12 @@
  */
 #define MppListenerRelationName			"listener"
 #define MppListenerPrimaryKeyIndexName	"listener_pkey"
-#define Natts_mpp_listener				6
+#define Natts_mpp_listener				4
 #define Anum_mpp_listener_listenerid	1
 #define Anum_mpp_listener_hostid		2
 #define Anum_mpp_listener_port			3
 #define Anum_mpp_listener_datadir		4
-#define Anum_mpp_listener_mppsuperuser	5
-#define Anum_mpp_listener_mppsuperpswd	6
+
 
 /*
  * Defines for mpp.host table
