@@ -87,7 +87,7 @@ static void myChildHandler(int signo);
 static void myHandler(int signo);
 static void* monitorThreadProc(void *arg);
 static void _check_database_version(ArchiveHandle *AH, bool ignoreVersion);
-static bool execCDBCatalogFunction(PGconn* pConn);
+//static bool execCDBCatalogFunction(PGconn* pConn);
 static char* testProgramExists(char* pszProgramName);
 
 bool bUsePSQL = false;
@@ -1022,6 +1022,7 @@ void _check_database_version(ArchiveHandle *AH, bool ignoreVersion)
 /*
  * execCDBCatalogFunction:
  */
+/*
 bool execCDBCatalogFunction(PGconn* pConn)
 {
 	const char* pszFunctionName		= "restore_mpp_catalog"; 
@@ -1087,6 +1088,7 @@ cleanup:
 	
 	return bRtn;
 }
+*/
 
 /* testProgramExists(char* pszProgramName) returns bool
  * This runs a shell with which pszProgramName > tempfile
