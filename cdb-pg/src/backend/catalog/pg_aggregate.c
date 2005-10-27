@@ -176,6 +176,8 @@ AggregateCreate(const char *aggName,
 	 */
 	MemSet(fnArgs, 0, FUNC_MAX_ARGS * sizeof(Oid));
 	fnArgs[0] = aggBaseType;
+	
+	procOid = 0;
 
 	procOid = ProcedureCreate(aggName,
 							  aggNamespace,
@@ -194,7 +196,8 @@ AggregateCreate(const char *aggName,
 														 * needed for agg) */
 							  1,	/* parameterCount */
 							  fnArgs,	/* parameterTypes */
-							  NULL);	/* parameterNames */
+							  NULL,
+							  procOid);	/* parameterNames */
 
 	/*
 	 * Okay to create the pg_aggregate entry.
