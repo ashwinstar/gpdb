@@ -52,6 +52,8 @@
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
+#include "cdb/cdbvars.h"
+#include "cdb/cdbdisp.h"
 
 
 /*
@@ -517,6 +519,9 @@ CreateFunction(CreateFunctionStmt *stmt)
 		if (strcmp(prosrc_str, "-") == 0)
 			prosrc_str = funcname;
 	}
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH && volatility != PROVOLATILE_IMMUTABLE)
+		elog(ERROR,"This release of Bizgres MPP only supports IMMUTABLE functions");
 
 	/*
 	 * And now that we have all the parameters, and know we're permitted
@@ -538,6 +543,11 @@ CreateFunction(CreateFunctionStmt *stmt)
 					parameterCount,
 					parameterTypes,
 					parameterNames);
+					
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt);
+	}
 }
 
 
@@ -598,6 +608,11 @@ RemoveFunction(RemoveFuncStmt *stmt)
 	object.objectSubId = 0;
 
 	performDeletion(&object, stmt->behavior);
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+		CdbDispatchUtilityStatement((Node *) stmt);
+	}
 }
 
 /*

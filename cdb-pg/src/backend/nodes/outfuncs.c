@@ -1542,6 +1542,35 @@ _outAlterDomainStmt(StringInfo str, AlterDomainStmt *node)
 	WRITE_ENUM_FIELD(behavior, DropBehavior);
 }
 
+static void
+_outCreateFunctionStmt(StringInfo str, CreateFunctionStmt *node)
+{
+	WRITE_NODE_TYPE("CREATEFUNCSTMT");
+	WRITE_BOOL_FIELD(replace);
+	WRITE_NODE_FIELD(funcname);
+	WRITE_NODE_FIELD(parameters);
+	WRITE_NODE_FIELD(returnType);
+	WRITE_NODE_FIELD(options);
+	WRITE_NODE_FIELD(withClause);
+}
+
+static void
+_outFunctionParameter(StringInfo str, FunctionParameter *node)
+{
+	WRITE_NODE_TYPE("FUNCTIONPARAMETER");
+	WRITE_STRING_FIELD(name);
+	WRITE_NODE_FIELD(argType);
+	/* someday add IN/OUT/INOUT indicator here */
+}
+
+static void
+_outRemoveFuncStmt(StringInfo str, RemoveFuncStmt *node)
+{
+	WRITE_NODE_TYPE("REMOVEFUNCSTMT");
+	WRITE_NODE_FIELD(funcname);
+	WRITE_NODE_FIELD(args);
+	WRITE_ENUM_FIELD(behavior, DropBehavior);
+}
 
 
 static void
@@ -1787,6 +1816,9 @@ _outQuery(StringInfo str, Query *node)
 			case T_CreateDomainStmt:
 			case T_AlterDomainStmt:
 			case T_ClusterStmt:
+			
+			case T_CreateFunctionStmt:
+			case T_RemoveFuncStmt:
 			
 			case T_TransactionStmt:
 			case T_CdbExecStmt:
@@ -2479,6 +2511,17 @@ _outNode(StringInfo str, void *obj)
 			case T_ReindexStmt:
 				_outReindexStmt(str, obj);
 				break;
+				
+			case T_CreateFunctionStmt:
+				_outCreateFunctionStmt(str, obj);
+				break;
+			case T_FunctionParameter:
+				_outFunctionParameter(str, obj);
+				break;
+			case T_RemoveFuncStmt:
+				_outRemoveFuncStmt(str, obj);
+				break;
+			
 				
 			case T_ViewStmt:
 				_outViewStmt(str, obj);

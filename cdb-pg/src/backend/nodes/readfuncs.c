@@ -1496,7 +1496,41 @@ _readAlterDomainStmt(void)
 	READ_DONE();
 }
 
+static CreateFunctionStmt *
+_readCreateFunctionStmt(void)
+{
+	READ_LOCALS(CreateFunctionStmt);
+	READ_BOOL_FIELD(replace);
+	READ_NODE_FIELD(funcname);
+	READ_NODE_FIELD(parameters);
+	READ_NODE_FIELD(returnType);
+	READ_NODE_FIELD(options);
+	READ_NODE_FIELD(withClause);
+			
+	READ_DONE();
+}
 
+static FunctionParameter *
+_readFunctionParameter(void)
+{
+	READ_LOCALS(FunctionParameter);
+	READ_STRING_FIELD(name);
+	READ_NODE_FIELD(argType);
+	/* someday add IN/OUT/INOUT indicator here */
+			
+	READ_DONE();
+}
+
+static RemoveFuncStmt *
+_readRemoveFuncStmt(void)
+{
+	READ_LOCALS(RemoveFuncStmt);
+	READ_NODE_FIELD(funcname);
+	READ_NODE_FIELD(args);
+	READ_ENUM_FIELD(behavior, DropBehavior);
+			
+	READ_DONE();
+}
 
 static GrantStmt * 
 _readGrantStmt(void)
@@ -2173,6 +2207,7 @@ static ParseNodeInfo infoAr[] =
 	{"CONVERTROWTYPEEXPR", (ReadFn)_readConvertRowtypeExpr},
 	{"CREATEDBSTMT", (ReadFn)_readCreatedbStmt},
 	{"CREATEDOMAINSTMT", (ReadFn)_readCreateDomainStmt},
+	{"CREATEFUNCSTMT", (ReadFn)_readCreateFunctionStmt},
 	{"CREATEGROUPSTMT", (ReadFn)_readCreateGroupStmt},
 	{"CREATESCHEMASTMT", (ReadFn)_readCreateSchemaStmt},
 	{"CREATESEQSTMT", (ReadFn)_readCreateSeqStmt},
@@ -2190,6 +2225,7 @@ static ParseNodeInfo infoAr[] =
 	{"FROMEXPR", (ReadFn)_readFromExpr},
 	{"FUNCCALL", (ReadFn)_readFuncCall},
 	{"FUNCEXPR", (ReadFn)_readFuncExpr},
+	{"FUNCTIONPARAMETER", (ReadFn)_readFunctionParameter},
 	{"FUNCTIONSCAN", (ReadFn)_readFunctionScan},
 	{"FUNCWITHARGS", (ReadFn)_readFuncWithArgs},
 	{"GRANTSTMT", (ReadFn)_readGrantStmt},
@@ -2221,6 +2257,7 @@ static ParseNodeInfo infoAr[] =
 	{"REINDEXSTMT", (ReadFn)_readReindexStmt},
 	{"RELABELTYPE", (ReadFn)_readRelabelType},
 	{"REMOTEPARAMDATA", (ReadFn)_readRemoteParamData},
+	{"REMOVEFUNCSTMT", (ReadFn)_readRemoveFuncStmt},
 	{"RENAMESTMT", (ReadFn)_readRenameStmt},
 	{"RESDOM", (ReadFn)_readResdom},
 	{"RESULT", (ReadFn)_readResult},
