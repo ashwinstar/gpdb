@@ -1659,7 +1659,7 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 		{
 			elog(NOTICE, "Table has no attributes to distribute on.");
 			pfree(policy);
-			return NULL;
+			return;
 		}
 	}
 	else
