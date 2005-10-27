@@ -788,8 +788,7 @@ transformCreateStmt(ParseState *pstate, CreateStmt *stmt,
 	
 	if (Mpp_role == MPP_ROLE_DISPATCH && stmt->inhRelations != NIL)
 	{
-		ListCell   *entry;
-		entry = list_head(cxt.inhRelations);
+		ListCell   *entry = list_head(cxt.inhRelations);
 	
 		RangeVar   *parent = (RangeVar *) lfirst(entry);
 		
