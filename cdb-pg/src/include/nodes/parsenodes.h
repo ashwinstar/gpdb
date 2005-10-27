@@ -1395,6 +1395,7 @@ typedef struct CreateFunctionStmt
 	TypeName   *returnType;		/* the return type */
 	List	   *options;		/* a list of DefElem */
 	List	   *withClause;		/* a list of DefElem */
+	Oid			funcOid;
 } CreateFunctionStmt;
 
 typedef struct FunctionParameter

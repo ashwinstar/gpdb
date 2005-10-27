@@ -3298,6 +3298,7 @@ CreateFunctionStmt:
 					n->returnType = $7;
 					n->options = $8;
 					n->withClause = $9;
+					n->funcOid = 0;
 					$$ = (Node *)n;
 				}
 		;

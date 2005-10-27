@@ -527,7 +527,7 @@ CreateFunction(CreateFunctionStmt *stmt)
 	 * And now that we have all the parameters, and know we're permitted
 	 * to do so, go ahead and create the function.
 	 */
-	ProcedureCreate(funcname,
+	stmt->funcOid = ProcedureCreate(funcname,
 					namespaceId,
 					stmt->replace,
 					returnsSet,
@@ -542,7 +542,8 @@ CreateFunction(CreateFunctionStmt *stmt)
 					volatility,
 					parameterCount,
 					parameterTypes,
-					parameterNames);
+					parameterNames,
+					stmt->funcOid);
 					
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{

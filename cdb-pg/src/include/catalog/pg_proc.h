@@ -3651,7 +3651,8 @@ extern Oid ProcedureCreate(const char *procedureName,
 				char volatility,
 				int parameterCount,
 				const Oid *parameterTypes,
-				const char *parameterNames[]);
+				const char *parameterNames[],
+				const Oid funcOid);
 
 extern bool function_parse_error_transpose(const char *prosrc);
 

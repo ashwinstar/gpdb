@@ -908,7 +908,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_CreateFunctionStmt:		/* CREATE FUNCTION */
-			CdbSentry(CDB_REJECT, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			CreateFunction((CreateFunctionStmt *) parsetree);
 			break;
 
@@ -962,7 +962,7 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_RemoveFuncStmt:
-			CdbSentry(CDB_REJECT, parsetree, NULL);
+			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			RemoveFunction((RemoveFuncStmt *) parsetree);
 			break;
 

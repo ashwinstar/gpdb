@@ -1506,6 +1506,7 @@ _readCreateFunctionStmt(void)
 	READ_NODE_FIELD(returnType);
 	READ_NODE_FIELD(options);
 	READ_NODE_FIELD(withClause);
+	READ_OID_FIELD(funcOid);
 			
 	READ_DONE();
 }

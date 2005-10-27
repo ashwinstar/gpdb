@@ -1552,6 +1552,7 @@ _outCreateFunctionStmt(StringInfo str, CreateFunctionStmt *node)
 	WRITE_NODE_FIELD(returnType);
 	WRITE_NODE_FIELD(options);
 	WRITE_NODE_FIELD(withClause);
+	WRITE_OID_FIELD(funcOid);
 }
 
 static void

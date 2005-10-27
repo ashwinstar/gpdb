@@ -30,6 +30,7 @@
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
+#include "cdb/cdbvars.h"
 
 
 /* GUC parameter */
@@ -69,7 +70,8 @@ ProcedureCreate(const char *procedureName,
 				char volatility,
 				int parameterCount,
 				const Oid *parameterTypes,
-				const char *parameterNames[])
+				const char *parameterNames[],
+				const Oid funcOid)
 {
 	int			i;
 	bool		genericParam = false;
@@ -257,6 +259,10 @@ ProcedureCreate(const char *procedureName,
 		nulls[Anum_pg_proc_proacl - 1] = 'n';
 
 		tup = heap_formtuple(tupDesc, values, nulls);
+		
+		if (Mpp_role == MPP_ROLE_EXECUTE && funcOid != 0)
+			HeapTupleSetOid(tup, funcOid);
+			
 		simple_heap_insert(rel, tup);
 		is_update = false;
 	}
