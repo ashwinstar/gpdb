@@ -28,10 +28,9 @@
 
 #include "cdbtest.h"
 
-
 #define GET_STR(textp) DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(textp)))
 
-extern int Cdb_max_tuple_chunk_size;
+extern int Mpp_max_tuple_chunk_size;
 
 typedef struct ChunkedRowState
 {
@@ -57,20 +56,6 @@ typedef struct ChunkedRowState
 /* Static state for GetRowsAsChunks function. */
 static ChunkedRowState *s_rac_state;
 
-
-typedef struct SerializedRowState
-{
-	/* The SerTupInfo with cached info in it for serialization. */
-	SerTupInfo serInfo;
-	
-    /* Index of row we are on. */
-    int rowIdx;
-} SerializedRowState;
-
-/* Static state for GetSerializedRows function. */
-static SerializedRowState *s_sr_state;
-
-
 typedef struct DechunkedRowState
 {
 	/* The SerTupInfo with cached info in it for serialization. */
@@ -95,124 +80,6 @@ typedef struct DeserializedRowState
 
 /* Static state for GetDeserializedRows function. */
 static DeserializedRowState *s_dr_state;
-
-
-
-/* This function executes a SQL "SELECT" statement and returns the results as
- * serialized data.  The returned rows have the following format:
- *
- * +------------------------+--------------------+
- * | reportedsize (INTEGER) | serialized (BYTEA) |
- * +------------------------+--------------------+
- *
- * This is defined as the "__getserializedrows" data-type.
- */
-PG_FUNCTION_INFO_V1(GetSerializedRows__text1);
-Datum GetSerializedRows__text1(PG_FUNCTION_ARGS)
-{
-    FuncCallContext *funcctx;
-    MemoryContext oldcontext;
-
-    char *pszSQL;
-    int rc;
-
-    TupleDesc tupdesc;
-    HeapTuple htup;
-
-    Datum resultValues[2];          /* Parts of the result set. */
-    char *resultNulls = "  ";       /* No NULLs in result set. */
-    Datum resultTuple;              /* The full result. */
-
-    /* stuff done only on the first call of the function */
-    if (SRF_IS_FIRSTCALL())
-    {
-        /* create a function context for cross-call persistence */
-        funcctx = SRF_FIRSTCALL_INIT();
-
-        /* switch to memory context appropriate for multiple function calls */
-        oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
-
-        /*---------------------*
-         * One-time operations
-         */
-
-        /* Get the SQL to execute, and run it. */
-        pszSQL = GET_STR(PG_GETARG_TEXT_P(0));
-        rc = SPI_connect();
-        if (rc != SPI_OK_CONNECT)
-            elog(ERROR, "SPI_connect() reported error.");
-
-        /* Execute read-only SQL.  The 0 means "no limit on results." */
-        rc = SPI_execute(pszSQL, true, 0);
-        if (rc != SPI_OK_SELECT)
-            elog(ERROR, "This function requires a SELECT statement.");
-
-        /* Allocate cross-call state, so that we can keep track of where we're
-         * at in the processing.
-         */
-
-        s_sr_state = (SerializedRowState *) palloc0(sizeof(SerializedRowState));
-        s_sr_state->rowIdx = 0;
-		InitSerTupInfo(SPI_tuptable->tupdesc, &s_sr_state->serInfo);
-
-        /* Generate return-type information.  This is derived from the user
-         * datatype "__getserializedrows".
-         */
-        
-        tupdesc = RelationNameGetTupleDesc("__getserializedrows");
-        funcctx->tuple_desc = BlessTupleDesc(tupdesc);
-    }
-    
-    
-    /*---------------------*
-     * Per-call operations
-     */
-    
-    funcctx = SRF_PERCALL_SETUP();
-    
-    /* The chunk list is empty, or we have traversed all chunks in the
-     * current row.  Go to the next row, and generate a new list of chunks
-     * for that row.
-     */
-
-    if (s_sr_state->rowIdx < SPI_processed)
-    {
-        /* There are more rows.  Return the next row as serialized data. */
-
-        StringInfoData serTupData;
-        int reportedSize;
-        bytea *rowData;
-
-        pq_begintypsend(&serTupData);   /* Does initStringInfo() call. */
-        reportedSize = SerializeTuple(SPI_tuptable->vals[s_sr_state->rowIdx],
-            &s_sr_state->serInfo, &serTupData);
-        rowData = pq_endtypsend(&serTupData);
-
-        resultValues[0] = Int32GetDatum(reportedSize);
-        resultValues[1] = PointerGetDatum(rowData);
-
-        /* Form the tuple. */
-        htup = heap_formtuple(funcctx->tuple_desc, resultValues, resultNulls);
-        resultTuple = HeapTupleGetDatum(htup);
-
-        /* Move on to the next row in the list, for next iteration. */
-        s_sr_state->rowIdx++;
-
-        /* Return our result! */
-        SRF_RETURN_NEXT(funcctx, resultTuple);
-    }
-    else
-    {
-        /* There are no more tuples.  We are done. */
-
-        /* Do final cleanup. */
-        SPI_finish();
-        s_sr_state = NULL;      /* Freed when mem-ctx is cleaned up. */
-
-        SRF_RETURN_DONE(funcctx);
-    }
-}
-
 
 
 /* This function executes a SQL "SELECT" statement and returns the results as
@@ -276,7 +143,7 @@ Datum GetChunkedRows__text1(PG_FUNCTION_ARGS)
         s_rac_state->rowChunks = NULL;
         s_rac_state->chunkNum = 0;
         
-        s_rac_state->maxChunkDataSize = Cdb_max_tuple_chunk_size;
+        s_rac_state->maxChunkDataSize = Mpp_max_tuple_chunk_size;
         
 		InitSerTupInfo(SPI_tuptable->tupdesc, &s_rac_state->serInfo);
 		
@@ -305,9 +172,9 @@ Datum GetChunkedRows__text1(PG_FUNCTION_ARGS)
         if (s_rac_state->rowIdx < SPI_processed)
         {
             s_rac_state->rowChunks =
-				CvtHeapTupToChunks(SPI_tuptable->vals[s_rac_state->rowIdx],
+				SerializeTupleIntoChunks(SPI_tuptable->vals[s_rac_state->rowIdx],
 								   &s_rac_state->serInfo,
-								   Cdb_max_tuple_chunk_size);
+								   Mpp_max_tuple_chunk_size);
 
             s_rac_state->nextChunk = s_rac_state->rowChunks->p_first;
             s_rac_state->chunkNum = 0;
@@ -625,7 +492,7 @@ Datum GetDechunkedRows__text1_regtype1(PG_FUNCTION_ARGS)
 
             appendChunkToTCList(&tcListData, tcItem);
 
-            lastChunkType = GetChunkType(tcItem->chunk_data);
+            lastChunkType = GetChunkType(tcItem);
 
             s_dcr_state->rowIdx++;
         }

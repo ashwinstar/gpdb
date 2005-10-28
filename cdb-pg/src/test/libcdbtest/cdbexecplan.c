@@ -48,7 +48,7 @@
 #include "nodes/print.h"
 #include "cdb/cdbsrlz.h"
 
-#include "mppexecplan.h"
+#include "cdbexecplan.h"
 
 // Added to spi.c
 extern int  SPI_execute_cdb( const char *src, Plan* pPlan, Query* pQuery, bool read_only, int tcount);
