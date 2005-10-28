@@ -108,7 +108,7 @@ public class TestSchema extends TestCase
          */
 
         Statement stmt = conn.createStatement();
-        ResultSet rs = stmt.executeQuery("SELECT * FROM cdb.version");
+        ResultSet rs = stmt.executeQuery("SELECT * FROM mpp.version");
         rs.next();
         int vers = rs.getInt("schemaversion");
 
@@ -151,32 +151,32 @@ public class TestSchema extends TestCase
 
 
         /*
-            select * from cdb.add_host( 'localhost', 2211 );
-            select * from cdb.add_host( 'bubs', 6666 );
-            select * from cdb.add_segment( 'seg1' );
-            select * from cdb.add_segment( 'seg2');
-            select * from cdb.add_listener( 'localhost', 5000, '/foo');
-            select * from cdb.add_listener( 'bubs', 5001, '/foo');
+            select * from mpp.add_host( 'localhost', 2211 );
+            select * from mpp.add_host( 'bubs', 6666 );
+            select * from mpp.add_segment( 'seg1' );
+            select * from mpp.add_segment( 'seg2');
+            select * from mpp.add_listener( 'localhost', 5000, '/foo');
+            select * from mpp.add_listener( 'bubs', 5001, '/foo');
 
-            select * from cdb.add_segment_database( 'seg1', 'localhost', 5000, 't' );
-            select * from cdb.add_segment_database( 'seg1', 'bubs', 5001, 'f' );
-            select * from cdb.add_segment_database( 'seg2', 'localhost', 5000, 't' );
+            select * from mpp.add_segment_database( 'seg1', 'localhost', 5000, 't' );
+            select * from mpp.add_segment_database( 'seg1', 'bubs', 5001, 'f' );
+            select * from mpp.add_segment_database( 'seg2', 'localhost', 5000, 't' );
 
-            select * from cdb.cdb_set_identity( 'mycdb', 'jeshleman', 'secret', 2 , 'localhost', 5000, 'seg1', 't' );
+            select * from mpp.cdb_set_identity( 'mycdb', 'jeshleman', 'secret', 2 , 'localhost', 5000, 'seg1', 't' );
 
          */
 
         Statement stmt = conn.createStatement();
-        ResultSet rs = stmt.executeQuery("SELECT * from cdb.add_host( 'localhost' ,2200 ) ");
-        rs = stmt.executeQuery("SELECT * FROM cdb.add_segment( 'seg1' )");
-        rs = stmt.executeQuery("SELECT * FROM cdb.add_segment( 'seg2' )");
-        rs = stmt.executeQuery("SELECT * FROM cdb.add_listener( 'localhost', 5000, '/foo' )");
-        rs = stmt.executeQuery("SELECT * FROM cdb.add_segment_database( 'seg1', 'localhost', 5000, 't' )");
-        rs = stmt.executeQuery("SELECT * FROM cdb.add_segment_database( 'seg2', 'localhost', 5000, 't' )");
+        ResultSet rs = stmt.executeQuery("SELECT * from mpp.add_host( 'localhost' ,2200 ) ");
+        rs = stmt.executeQuery("SELECT * FROM mpp.add_segment( 'seg1' )");
+        rs = stmt.executeQuery("SELECT * FROM mpp.add_segment( 'seg2' )");
+        rs = stmt.executeQuery("SELECT * FROM mpp.add_listener( 'localhost', 5000, '/foo' )");
+        rs = stmt.executeQuery("SELECT * FROM mpp.add_segment_database( 'seg1', 'localhost', 5000, 't' )");
+        rs = stmt.executeQuery("SELECT * FROM mpp.add_segment_database( 'seg2', 'localhost', 5000, 't' )");
         String username = System.getProperty("user.name");
-        rs = stmt.executeQuery("SELECT * FROM cdb.cdb_set_identity( 'mycdb', '" + username + "', 'secret', 2, 'localhost', 5000, 'seg1', 't' )");
+        rs = stmt.executeQuery("SELECT * FROM mpp.cdb_set_identity( 'mycdb', '" + username + "', 'secret', 2, 'localhost', 5000, 'seg1', 't' )");
 
-        rs = stmt.executeQuery("select * from cdb.cdb_get_segdbs");
+        rs = stmt.executeQuery("select * from mpp.cdb_get_segdbs");
         rs.next();
 
         //1st row should be:
@@ -213,10 +213,10 @@ public class TestSchema extends TestCase
         stmt.execute("CREATE TABLE FOO1 ( col1 int )");
         stmt.execute("CREATE TABLE FOO2 ( col1 int )");
 
-        ResultSet rs = stmt.executeQuery("SELECT * from cdb.replicate_table('foo1') ");
-        rs = stmt.executeQuery("SELECT * from cdb.partition_table('foo2', '{1}' ) ");
+        ResultSet rs = stmt.executeQuery("SELECT * from mpp.replicate_table('foo1') ");
+        rs = stmt.executeQuery("SELECT * from mpp.partition_table('foo2', '{1}' ) ");
 
-        rs = stmt.executeQuery("SELECT * From cdb.policy");
+        rs = stmt.executeQuery("SELECT * From mpp.policy");
 
         rs.next();
 
@@ -247,6 +247,9 @@ public class TestSchema extends TestCase
 // ====================================================================
 //
 // $Log: TestSchema.java,v $
+// Revision 1.1  2005/01/19 20:04:19  jeshleman
+// Moved admin schema tests under tests/junit.
+//
 // Revision 1.2  2004/12/21 23:09:34  mohit
 // Updated to use pgutils from cdb-commons project.
 //
