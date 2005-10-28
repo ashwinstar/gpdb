@@ -1465,18 +1465,10 @@ PQputCopyData(PGconn *conn, const char *buffer, int nbytes)
 		return -1;
 	}
 
-	/*
-	 * Check for NOTICE messages coming back from the server.  Since the
-	 * server might generate multiple notices during the COPY, we have to
-	 * consume those in a reasonably prompt fashion to prevent the comm
-	 * buffers from filling up and possibly blocking the server.
-	 */
-	if (!PQconsumeInput(conn))
-		return -1;				/* I/O failure */
-	parseInput(conn);
-
 	if (nbytes > 0)
 	{
+		int oc = conn->outCount + nbytes;
+				
 		/*
 		 * Try to flush any previously sent data in preference to growing
 		 * the output buffer.  If we can't enlarge the buffer enough to
@@ -1485,9 +1477,10 @@ PQputCopyData(PGconn *conn, const char *buffer, int nbytes)
 		 * protocol 2.0 case.)
 		 */
 		if ((conn->outBufSize - conn->outCount - 5) < nbytes)
-		{
+		{			
 			if (pqFlush(conn) < 0)
 				return -1;
+						
 			if (pqCheckOutBufferSpace(conn->outCount + 5 + nbytes, conn))
 				return pqIsnonblocking(conn) ? 0 : -1;
 		}
@@ -1506,6 +1499,21 @@ PQputCopyData(PGconn *conn, const char *buffer, int nbytes)
 				pqPutMsgEnd(conn) < 0)
 				return -1;
 		}
+		
+		/* if some data was sent to the server */
+		if (oc > conn->outCount)
+		{
+			/*
+			 * Check for NOTICE messages coming back from the server.  Since the
+			 * server might generate multiple notices during the COPY, we have to
+			 * consume those in a reasonably prompt fashion to prevent the comm
+			 * buffers from filling up and possibly blocking the server.
+			 */			
+			if (!PQconsumeInput(conn))
+				return -1;
+			parseInput(conn);
+		}
+		
 	}
 	return 1;
 }
