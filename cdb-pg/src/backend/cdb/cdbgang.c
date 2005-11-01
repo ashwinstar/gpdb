@@ -1348,7 +1348,7 @@ disconnectAndDestroyAllGangs(void)
 		while (gp != NULL)
 		{
 			disconnectAndDestroyGang(gp);
-			availableReaderGangsN = list_delete_first(availableReaderGangs1);
+			availableReaderGangs1 = list_delete_first(availableReaderGangs1);
 			if (availableReaderGangs1 != NIL)
 				gp = linitial(availableReaderGangs1);
 			else
