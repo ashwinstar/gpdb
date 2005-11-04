@@ -1864,6 +1864,83 @@ transformDistributedBy(ParseState *pstate, CreateStmtContext *cxt, List *distrib
 			}
 		}
 	}
+	
+	/*
+	 * Need to check to make sure we aren't distributing on a SERIAL or BIGSERIAL column
+	 * or have a DEFAULT of nextval(), now(), etc.
+	 */
+	 if (policy != NULL)
+	 {
+	 	int i;
+		for (i = 0; i < policy->nattrs; i++)
+		{
+			 
+			ColumnDef  *column = NULL;
+			ListCell   *columns;
+			 
+			colindex = 0;
+			foreach(columns, cxt->columns)
+			{
+				column = (ColumnDef *) lfirst(columns);
+				Assert(IsA(column, ColumnDef));
+				 
+				colindex++;
+				if (policy->attrs[i] == colindex)
+				{
+					 
+					if (column->constraints != NIL)
+					{
+						ListCell *clist;
+						Constraint *constraint;
+						
+						foreach(clist, column->constraints)
+						{
+							constraint = lfirst(clist);
+	
+							Assert(IsA(constraint, Constraint));
+	
+							if (constraint->contype == CONSTR_DEFAULT)
+							{							
+								if (IsA(constraint->raw_expr, FuncCall))
+								{
+									bool is_nextval = false;
+									FuncCall *funcallnode = (FuncCall*)constraint->raw_expr;
+									Value * p1 = linitial(funcallnode->funcname);
+									if (strcmp(p1->val.str,"pg_catalog")==0)
+									{
+										Value * p2 = lsecond(funcallnode->funcname);
+										if (strcmp(p2->val.str,"nextval")==0)
+											is_nextval = true;
+									}
+									
+									if (is_nextval)
+										elog(ERROR, "Distribution columns cannot be SERIAL, BIGSERIAL, or have a DEFAULT of nextval()");
+									else
+										elog(ERROR,"Distribution columns cannot have DEFAULT values of function results");
+								}
+								else if (IsA(constraint->raw_expr, TypeCast))
+								{
+									TypeCast * tc = (TypeCast *)constraint->raw_expr;
+									if (IsA(tc->arg, A_Const))
+									{
+										A_Const * s = (A_Const *)tc->arg;
+										if (strcmp(s->val.val.str,"now")==0)
+										{
+											elog(ERROR,"Distribution columns cannot have a DEFAULT of a time constant (current_date, current_timestamp, etc)");
+										}
+										
+									}
+								}
+							}
+							
+						}
+					}
+				
+				}
+			}
+		}
+	 }
+
 
 
 }
