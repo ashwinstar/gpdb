@@ -540,7 +540,6 @@ DefineRelation_int(CreateStmt *stmt,
 						strcmp(n, "abstime") == 0 ||
 						strcmp(n, "reltime") == 0 ||
 						strcmp(n, "tinterval") == 0 ||
-						strcmp(n, "bytea") == 0 ||
 						strcmp(n, "int2vector") == 0 ||
 						strcmp(n, "regproc") == 0 ||
 						strcmp(n, "vector") == 0 ||
@@ -3182,7 +3181,6 @@ ATExecAddColumn(AlteredTableInfo *tab, Relation rel,
 					strcmp(n, "abstime") == 0 ||
 					strcmp(n, "reltime") == 0 ||
 					strcmp(n, "tinterval") == 0 ||
-					strcmp(n, "bytea") == 0 ||
 					strcmp(n, "int2vector") == 0 ||
 					strcmp(n, "regproc") == 0 ||
 					strcmp(n, "vector") == 0 ||
