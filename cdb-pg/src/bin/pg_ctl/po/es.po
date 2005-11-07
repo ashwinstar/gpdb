@@ -20,30 +20,30 @@ msgstr "%s: memoria agotada\n"
 #: pg_ctl.c:251
 #, c-format
 msgid "%s: could not open PID file \"%s\": %s\n"
-msgstr "%s: no se pudo abrir el archivo de PID ï¿½%sï¿½: %s\n"
+msgstr "%s: no se pudo abrir el archivo de PID «%s»: %s\n"
 
 #: pg_ctl.c:258
 #, c-format
 msgid "%s: invalid data in PID file \"%s\"\n"
-msgstr "%s: datos no vï¿½lidos en archivo de PID ï¿½%sï¿½\n"
+msgstr "%s: datos no válidos en archivo de PID «%s»\n"
 
 #: pg_ctl.c:475
 #, c-format
 msgid ""
 "%s: another postmaster may be running; trying to start postmaster anyway\n"
 msgstr ""
-"%s: otro postmaster puede estar en ejecuciï¿½n;\n"
+"%s: otro postmaster puede estar en ejecución;\n"
 "tratando de ejecutarlo de todas formas.\n"
 
 #: pg_ctl.c:493
 #, c-format
 msgid "%s: could not read file \"%s\"\n"
-msgstr "%s: no se pudo leer el archivo ï¿½%sï¿½\n"
+msgstr "%s: no se pudo leer el archivo «%s»\n"
 
 #: pg_ctl.c:499
 #, c-format
 msgid "%s: option file \"%s\" must have exactly one line\n"
-msgstr "%s: archivo de opciones ï¿½%sï¿½ debe tener exactamente una lï¿½nea\n"
+msgstr "%s: archivo de opciones «%s» debe tener exactamente una línea\n"
 
 #: pg_ctl.c:550
 #, c-format
@@ -52,9 +52,9 @@ msgid ""
 "same directory as \"%s\".\n"
 "Check your installation.\n"
 msgstr ""
-"%s necesita el programa ï¿½postmasterï¿½, pero no se encontrï¿½\n"
+"%s necesita el programa «postmaster», pero no se encontró\n"
 "en el mismo directorio que %s.\n"
-"Verifique su instalaciï¿½n.\n"
+"Verifique su instalación.\n"
 
 #: pg_ctl.c:556
 #, c-format
@@ -63,14 +63,14 @@ msgid ""
 "but was not the same version as %s.\n"
 "Check your installation.\n"
 msgstr ""
-"%s encontrï¿½ el programa ï¿½postmasterï¿½ pero no corresponde\n"
-"a la misma versiï¿½n que %s.\n"
-"Verifique su instalaciï¿½n.\n"
+"%s encontró el programa «postmaster» pero no corresponde\n"
+"a la misma versión que %s.\n"
+"Verifique su instalación.\n"
 
 #: pg_ctl.c:568
 #, c-format
 msgid "%s: could not start postmaster: exit code was %d\n"
-msgstr "%s: no se pudo iniciar postmaster: el cï¿½digo de retorno fue %d\n"
+msgstr "%s: no se pudo iniciar postmaster: el código de retorno fue %d\n"
 
 #: pg_ctl.c:579
 #, c-format
@@ -100,31 +100,31 @@ msgstr "postmaster iniciado\n"
 
 #: pg_ctl.c:602
 msgid "postmaster starting\n"
-msgstr "postmaster iniciï¿½ndose\n"
+msgstr "postmaster iniciándose\n"
 
 #: pg_ctl.c:616 pg_ctl.c:684 pg_ctl.c:758
 #, c-format
 msgid "%s: PID file \"%s\" does not exist\n"
-msgstr "%s: el archivo de PID ï¿½%sï¿½ no existe\n"
+msgstr "%s: el archivo de PID «%s» no existe\n"
 
 #: pg_ctl.c:617 pg_ctl.c:686 pg_ctl.c:759
 msgid "Is postmaster running?\n"
-msgstr "ï¿½Estï¿½ postmaster en ejecuciï¿½n?\n"
+msgstr "¿Está postmaster en ejecución?\n"
 
 #: pg_ctl.c:623
 #, c-format
 msgid "%s: cannot stop postmaster; postgres is running (PID: %ld)\n"
 msgstr ""
-"%s: no se puede detener postmaster, postgres estï¿½ en ejecuciï¿½n (PID: %ld)\n"
+"%s: no se puede detener postmaster, postgres está en ejecución (PID: %ld)\n"
 
 #: pg_ctl.c:631 pg_ctl.c:708
 #, c-format
 msgid "%s: could not send stop signal (PID: %ld): %s\n"
-msgstr "%s: fallï¿½ la seï¿½al de detenciï¿½n (PID: %ld): %s\n"
+msgstr "%s: falló la señal de detención (PID: %ld): %s\n"
 
 #: pg_ctl.c:638
 msgid "postmaster shutting down\n"
-msgstr "postmaster deteniï¿½ndose\n"
+msgstr "postmaster deteniéndose\n"
 
 #: pg_ctl.c:643 pg_ctl.c:713
 msgid "waiting for postmaster to shut down..."
@@ -132,7 +132,7 @@ msgstr "esperando que postmaster se detenga..."
 
 #: pg_ctl.c:658 pg_ctl.c:730
 msgid " failed\n"
-msgstr " fallï¿½\n"
+msgstr " falló\n"
 
 #: pg_ctl.c:660 pg_ctl.c:732
 #, c-format
@@ -152,7 +152,7 @@ msgstr "iniciando postmaster de todas maneras\n"
 #, c-format
 msgid "%s: cannot restart postmaster; postgres is running (PID: %ld)\n"
 msgstr ""
-"%s: no se puede reiniciar postmaster, postgres estï¿½ en ejecuciï¿½n (PID: %ld)\n"
+"%s: no se puede reiniciar postmaster, postgres está en ejecución (PID: %ld)\n"
 
 #: pg_ctl.c:699 pg_ctl.c:768
 msgid "Please terminate postgres and try again.\n"
@@ -168,37 +168,37 @@ msgstr ""
 #, c-format
 msgid "%s: cannot reload postmaster; postgres is running (PID: %ld)\n"
 msgstr ""
-"%s: no se puede recargar postmaster; postgres estï¿½ en ejecuciï¿½n (PID: %ld)\n"
+"%s: no se puede recargar postmaster; postgres está en ejecución (PID: %ld)\n"
 
 #: pg_ctl.c:774
 #, c-format
 msgid "%s: could not send reload signal (PID: %ld): %s\n"
-msgstr "%s: la seï¿½al de recarga fallï¿½ (PID: %ld): %s\n"
+msgstr "%s: la señal de recarga falló (PID: %ld): %s\n"
 
 #: pg_ctl.c:779
 msgid "postmaster signaled\n"
-msgstr "se ha enviado una seï¿½al a postmaster\n"
+msgstr "se ha enviado una señal a postmaster\n"
 
 #: pg_ctl.c:823
 #, c-format
 msgid "%s: a standalone backend \"postgres\" is running (PID: %ld)\n"
 msgstr ""
-"%s: un proceso servidor autï¿½nomo ï¿½postgresï¿½ estï¿½ en ejecuciï¿½n (PID: %ld)\n"
+"%s: un proceso servidor autónomo «postgres» está en ejecución (PID: %ld)\n"
 
 #: pg_ctl.c:834
 #, c-format
 msgid "%s: postmaster is running (PID: %ld)\n"
-msgstr "%s: postmaster estï¿½ en ejecuciï¿½n (PID: %ld)\n"
+msgstr "%s: postmaster está en ejecución (PID: %ld)\n"
 
 #: pg_ctl.c:845
 #, c-format
 msgid "%s: neither postmaster nor postgres running\n"
-msgstr "%s: postmaster o postgres no estï¿½ en ejecuciï¿½n\n"
+msgstr "%s: postmaster o postgres no está en ejecución\n"
 
 #: pg_ctl.c:856
 #, c-format
 msgid "%s: could not send signal %d (PID: %ld): %s\n"
-msgstr "%s: no se pudo enviar la seï¿½al %d (PID: %ld): %s\n"
+msgstr "%s: no se pudo enviar la señal %d (PID: %ld): %s\n"
 
 #: pg_ctl.c:889
 #, c-format
@@ -218,37 +218,37 @@ msgstr "%s: no se pudo abrir el gestor de servicios\n"
 #: pg_ctl.c:958
 #, c-format
 msgid "%s: service \"%s\" already registered\n"
-msgstr "%s: el servicio ï¿½%sï¿½ ya estï¿½ registrado\n"
+msgstr "%s: el servicio «%s» ya está registrado\n"
 
 #: pg_ctl.c:969
 #, c-format
 msgid "%s: could not register service \"%s\": error code %d\n"
-msgstr "%s: no se pudo registrar el servicio ï¿½%sï¿½: cï¿½digo de error %d\n"
+msgstr "%s: no se pudo registrar el servicio «%s»: código de error %d\n"
 
 #: pg_ctl.c:990
 #, c-format
 msgid "%s: service \"%s\" not registered\n"
-msgstr "%s: el servicio ï¿½%sï¿½ no ha sido registrado\n"
+msgstr "%s: el servicio «%s» no ha sido registrado\n"
 
 #: pg_ctl.c:997
 #, c-format
 msgid "%s: could not open service \"%s\": error code %d\n"
-msgstr "%s: no se pudo abrir el servicio ï¿½%sï¿½: cï¿½digo de error %d\n"
+msgstr "%s: no se pudo abrir el servicio «%s»: código de error %d\n"
 
 #: pg_ctl.c:1004
 #, c-format
 msgid "%s: could not unregister service \"%s\": error code %d\n"
-msgstr "%s: no se pudo dar de baja el servicio ï¿½%sï¿½: cï¿½digo de error %d\n"
+msgstr "%s: no se pudo dar de baja el servicio «%s»: código de error %d\n"
 
 #: pg_ctl.c:1136
 #, c-format
 msgid "%s: could not start service \"%s\": error code %d\n"
-msgstr "%s: no se pudo iniciar el servicio ï¿½%sï¿½: cï¿½digo de error %d\n"
+msgstr "%s: no se pudo iniciar el servicio «%s»: código de error %d\n"
 
 #: pg_ctl.c:1145
 #, c-format
 msgid "Try \"%s --help\" for more information.\n"
-msgstr "Use ï¿½%s --helpï¿½ para obtener mï¿½s informaciï¿½n.\n"
+msgstr "Use «%s --help» para obtener más información.\n"
 
 #: pg_ctl.c:1153
 #, c-format
@@ -258,8 +258,8 @@ msgid ""
 "\n"
 msgstr ""
 "%s es un programa para iniciar, detener, reiniciar, recargar archivos de\n"
-"configuraciï¿½n, reportar el estado de un servidor PostgreSQL o enviar una\n"
-"seï¿½al a un proceso PostgreSQL.\n"
+"configuración, reportar el estado de un servidor PostgreSQL o enviar una\n"
+"señal a un proceso PostgreSQL.\n"
 "\n"
 
 #: pg_ctl.c:1155
@@ -270,19 +270,19 @@ msgstr "Empleo:\n"
 #: pg_ctl.c:1156
 #, c-format
 msgid "  %s start   [-w] [-D DATADIR] [-s] [-l FILENAME] [-o \"OPTIONS\"]\n"
-msgstr "  %s start   [-w] [-D DATADIR] [-s] [-l ARCHIVO] [-o ï¿½OPCIONESï¿½]\n"
+msgstr "  %s start   [-w] [-D DATADIR] [-s] [-l ARCHIVO] [-o «OPCIONES»]\n"
 
 #: pg_ctl.c:1157
 #, c-format
 msgid "  %s stop    [-W] [-D DATADIR] [-s] [-m SHUTDOWN-MODE]\n"
-msgstr "  %s stop    [-W] [-D DATADIR] [-s] [-m MODO-DETENCIï¿½N]\n"
+msgstr "  %s stop    [-W] [-D DATADIR] [-s] [-m MODO-DETENCIÓN]\n"
 
 #: pg_ctl.c:1158
 #, c-format
 msgid ""
 "  %s restart [-w] [-D DATADIR] [-s] [-m SHUTDOWN-MODE] [-o \"OPTIONS\"]\n"
 msgstr ""
-"  %s restart [-w] [-D DATADIR] [-s] [-m MODO-DETENCIï¿½N] [-o ï¿½OPCIONESï¿½]\n"
+"  %s restart [-w] [-D DATADIR] [-s] [-m MODO-DETENCIÓN] [-o «OPCIONES»]\n"
 
 #: pg_ctl.c:1159
 #, c-format
@@ -297,7 +297,7 @@ msgstr "  %s status  [-D DATADIR]\n"
 #: pg_ctl.c:1161
 #, c-format
 msgid "  %s kill    SIGNALNAME PID\n"
-msgstr "  %s kill    NOMBRE-SEï¿½AL ID-DE-PROCESO\n"
+msgstr "  %s kill    NOMBRE-SEÑAL ID-DE-PROCESO\n"
 
 #: pg_ctl.c:1163
 #, c-format
@@ -306,7 +306,7 @@ msgid ""
 "                    [-w] [-o \"OPTIONS\"]\n"
 msgstr ""
 "  %s register   [-N SERVICIO] [-U USUARIO] [-P PASSWORD] [-D DATADIR]\n"
-"                    [-w] [-o ï¿½OPCIONESï¿½]\n"
+"                    [-w] [-o «OPCIONES»]\n"
 
 #: pg_ctl.c:1165
 #, c-format
@@ -326,25 +326,25 @@ msgstr ""
 #, c-format
 msgid "  -D, --pgdata DATADIR   location of the database storage area\n"
 msgstr ""
-"  -D, --pgdata DATADIR   ubicaciï¿½n del ï¿½rea de almacenamiento de datos\n"
+"  -D, --pgdata DATADIR   ubicación del área de almacenamiento de datos\n"
 
 #: pg_ctl.c:1170
 #, c-format
 msgid "  -s, --silent           only print errors, no informational messages\n"
 msgstr ""
-"  -s, --silent           mostrar sï¿½lo errores, no mensajes de informaciï¿½n\n"
+"  -s, --silent           mostrar sólo errores, no mensajes de información\n"
 
 #: pg_ctl.c:1171
 #, c-format
 msgid "  -w                     wait until operation completes\n"
 msgstr ""
-"  -w                     esperar hasta que la operaciï¿½n se haya completado\n"
+"  -w                     esperar hasta que la operación se haya completado\n"
 
 #: pg_ctl.c:1172
 #, c-format
 msgid "  -W                     do not wait until operation completes\n"
 msgstr ""
-"  -W                     no esperar hasta que la operaciï¿½n se haya "
+"  -W                     no esperar hasta que la operación se haya "
 "completado\n"
 
 #: pg_ctl.c:1173
@@ -355,7 +355,7 @@ msgstr "  --help                 mostrar este texto y salir\n"
 #: pg_ctl.c:1174
 #, c-format
 msgid "  --version              output version information, then exit\n"
-msgstr "  --version              mostrar informaciï¿½n sobre versiï¿½n y salir\n"
+msgstr "  --version              mostrar información sobre versión y salir\n"
 
 #: pg_ctl.c:1175
 #, c-format
@@ -363,14 +363,14 @@ msgid ""
 "(The default is to wait for shutdown, but not for start or restart.)\n"
 "\n"
 msgstr ""
-"(Por omisiï¿½n se espera para las detenciones, pero no los inicios o "
+"(Por omisión se espera para las detenciones, pero no los inicios o "
 "reinicios)\n"
 "\n"
 
 #: pg_ctl.c:1176
 #, c-format
 msgid "If the -D option is omitted, the environment variable PGDATA is used.\n"
-msgstr "Si la opciï¿½n -D es omitida, se usa la variable de ambiente PGDATA.\n"
+msgstr "Si la opción -D es omitida, se usa la variable de ambiente PGDATA.\n"
 
 #: pg_ctl.c:1178
 #, c-format
@@ -393,7 +393,7 @@ msgid ""
 "  -o OPTIONS             command line options to pass to the postmaster\n"
 "                         (PostgreSQL server executable)\n"
 msgstr ""
-"  -o OPCIONES            parï¿½metros de lï¿½nea de ï¿½rdenes a pasar a "
+"  -o OPCIONES            parámetros de línea de órdenes a pasar a "
 "postmaster\n"
 "                         (ejecutable del servidor de PostgreSQL)\n"
 
@@ -409,12 +409,12 @@ msgid ""
 "Options for stop or restart:\n"
 msgstr ""
 "\n"
-"Opciones para detenciï¿½n y reinicio:\n"
+"Opciones para detención y reinicio:\n"
 
 #: pg_ctl.c:1185
 #, c-format
 msgid "  -m SHUTDOWN-MODE   may be \"smart\", \"fast\", or \"immediate\"\n"
-msgstr "  -m MODO-DE-DETENCIï¿½N   puede ser ï¿½smartï¿½, ï¿½fastï¿½ o ï¿½immediateï¿½\n"
+msgstr "  -m MODO-DE-DETENCIÓN   puede ser «smart», «fast» o «immediate»\n"
 
 #: pg_ctl.c:1187
 #, c-format
@@ -423,13 +423,13 @@ msgid ""
 "Shutdown modes are:\n"
 msgstr ""
 "\n"
-"Modos de detenciï¿½n son:\n"
+"Modos de detención son:\n"
 
 #: pg_ctl.c:1188
 #, c-format
 msgid "  smart       quit after all clients have disconnected\n"
 msgstr ""
-"  smart       salir despuï¿½s que todos los clientes se hayan desconectado\n"
+"  smart       salir después que todos los clientes se hayan desconectado\n"
 
 #: pg_ctl.c:1189
 #, c-format
@@ -442,8 +442,8 @@ msgid ""
 "  immediate   quit without complete shutdown; will lead to recovery on "
 "restart\n"
 msgstr ""
-"  immediate   salir sin apagado completo; se ejecutarï¿½ recuperaciï¿½n\n"
-"              en el prï¿½ximo inicio\n"
+"  immediate   salir sin apagado completo; se ejecutará recuperación\n"
+"              en el próximo inicio\n"
 "\n"
 
 #: pg_ctl.c:1192
@@ -453,7 +453,7 @@ msgid ""
 "Allowed signal names for kill:\n"
 msgstr ""
 "\n"
-"Nombres de seï¿½ales permitidos para kill:\n"
+"Nombres de señales permitidos para kill:\n"
 
 #: pg_ctl.c:1196
 #, c-format
@@ -476,7 +476,7 @@ msgstr ""
 #, c-format
 msgid "  -P PASSWORD     password of account to register PostgreSQL server\n"
 msgstr ""
-"  -P CONTRASEï¿½A          contraseï¿½a de la cuenta con la cual registrar\n"
+"  -P CONTRASEÑA          contraseña de la cuenta con la cual registrar\n"
 "                         el servidor PostgreSQL\n"
 
 #: pg_ctl.c:1199
@@ -498,12 +498,12 @@ msgstr ""
 #: pg_ctl.c:1227
 #, c-format
 msgid "%s: unrecognized shutdown mode \"%s\"\n"
-msgstr "%s: modo de apagado ï¿½%sï¿½ no reconocido\n"
+msgstr "%s: modo de apagado «%s» no reconocido\n"
 
 #: pg_ctl.c:1260
 #, c-format
 msgid "%s: unrecognized signal name \"%s\"\n"
-msgstr "%s: nombre de seï¿½al ï¿½%sï¿½ no reconocido\n"
+msgstr "%s: nombre de señal «%s» no reconocido\n"
 
 #: pg_ctl.c:1325
 #, c-format
@@ -513,40 +513,40 @@ msgid ""
 "own the server process.\n"
 msgstr ""
 "%s: no puede ser ejecutado como root\n"
-"Por favor conï¿½ctese (por ej. usando ï¿½suï¿½) con un usuario no privilegiado,\n"
-"quien ejecutarï¿½ el proceso servidor.\n"
+"Por favor conéctese (por ej. usando «su») con un usuario no privilegiado,\n"
+"quien ejecutará el proceso servidor.\n"
 
 #: pg_ctl.c:1418
 #, c-format
 msgid "%s: invalid option %s\n"
-msgstr "%s: la opciï¿½n %s no es vï¿½lida\n"
+msgstr "%s: la opción %s no es válida\n"
 
 #: pg_ctl.c:1429
 #, c-format
 msgid "%s: too many command-line arguments (first is \"%s\")\n"
-msgstr "%s: demasiados argumentos de lï¿½nea de comandos (el primero es ï¿½%sï¿½)\n"
+msgstr "%s: demasiados argumentos de línea de comandos (el primero es «%s»)\n"
 
 #: pg_ctl.c:1448
 #, c-format
 msgid "%s: missing arguments for kill mode\n"
-msgstr "%s: argumentos faltantes para envï¿½o de seï¿½al\n"
+msgstr "%s: argumentos faltantes para envío de señal\n"
 
 #: pg_ctl.c:1466
 #, c-format
 msgid "%s: unrecognized operation mode \"%s\"\n"
-msgstr "%s: modo de operaciï¿½n ï¿½%sï¿½ no reconocido\n"
+msgstr "%s: modo de operación «%s» no reconocido\n"
 
 #: pg_ctl.c:1476
 #, c-format
 msgid "%s: no operation specified\n"
-msgstr "%s: no se especificï¿½ operaciï¿½n\n"
+msgstr "%s: no se especificó operación\n"
 
 #: pg_ctl.c:1492
 #, c-format
 msgid ""
 "%s: no database directory specified and environment variable PGDATA unset\n"
 msgstr ""
-"%s: no se especificï¿½ directorio de datos y la variable PGDATA no estï¿½ "
+"%s: no se especificó directorio de datos y la variable PGDATA no está "
 "definida\n"
 
 #: ../../port/exec.c:194 ../../port/exec.c:308 ../../port/exec.c:351
@@ -557,39 +557,39 @@ msgstr "no se pudo identificar el directorio actual: %s"
 #: ../../port/exec.c:213
 #, c-format
 msgid "invalid binary \"%s\""
-msgstr "el binario %s no es vï¿½lida"
+msgstr "el binario %s no es válida"
 
 #: ../../port/exec.c:262
 #, c-format
 msgid "could not read binary \"%s\""
-msgstr "no se pudo leer el binario ï¿½%sï¿½"
+msgstr "no se pudo leer el binario «%s»"
 
 #: ../../port/exec.c:269
 #, c-format
 msgid "could not find a \"%s\" to execute"
-msgstr "no se pudo encontrar un ï¿½%sï¿½ para ejecutar"
+msgstr "no se pudo encontrar un «%s» para ejecutar"
 
 #: ../../port/exec.c:324 ../../port/exec.c:360
 #, c-format
 msgid "could not change directory to \"%s\""
-msgstr "no se pudo cambiar el directorio a ï¿½%sï¿½"
+msgstr "no se pudo cambiar el directorio a «%s»"
 
 #: ../../port/exec.c:339
 #, c-format
 msgid "could not read symbolic link \"%s\""
-msgstr "no se pudo leer el enlace simbï¿½lico ï¿½%sï¿½"
+msgstr "no se pudo leer el enlace simbólico «%s»"
 
 #: ../../port/exec.c:587
 #, c-format
 msgid "child process exited with exit code %d"
-msgstr "el proceso hijo terminï¿½ con cï¿½digo de salida %d"
+msgstr "el proceso hijo terminó con código de salida %d"
 
 #: ../../port/exec.c:590
 #, c-format
 msgid "child process was terminated by signal %d"
-msgstr "el proceso hijo fue terminado por una seï¿½al %d"
+msgstr "el proceso hijo fue terminado por una señal %d"
 
 #: ../../port/exec.c:593
 #, c-format
 msgid "child process exited with unrecognized status %d"
-msgstr "el proceso hijo terminï¿½ con cï¿½digo no reconocido %d"
+msgstr "el proceso hijo terminó con código no reconocido %d"
