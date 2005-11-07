@@ -428,6 +428,12 @@ nextval(PG_FUNCTION_ARGS)
 
 	sequence = makeRangeVarFromNameList(textToQualifiedNameList(seqin,
 															 "nextval"));
+															 
+	if (Mpp_role == MPP_ROLE_EXECUTE  && !Mpp_is_primary)
+	{
+		elog(ERROR,"nextval() cannot be used in this statement when mirroring is active");
+	}
+		
 
 	/* open and AccessShareLock sequence */
 	init_sequence(sequence, &elm, &seqrel);
@@ -620,6 +626,11 @@ currval(PG_FUNCTION_ARGS)
 
 	sequence = makeRangeVarFromNameList(textToQualifiedNameList(seqin,
 															 "currval"));
+															 
+	if (Mpp_role == MPP_ROLE_EXECUTE  && !Mpp_is_primary)
+	{
+		elog(ERROR,"currval() cannot be used in this statement when mirroring is active");
+	}
 
 	/* open and AccessShareLock sequence */
 	init_sequence(sequence, &elm, &seqrel);
