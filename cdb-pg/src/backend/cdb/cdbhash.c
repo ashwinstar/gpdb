@@ -140,6 +140,8 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 	text	   *txt;			/* a variable length struct (varlena) for text */
 	VarChar    *vc;				/* a variable length struct (varlena) for
 								 * varchar */
+	bytea      *ba;	
+		
 	float4		buf_f4;
 	float8		buf_f8;
 	Timestamp	tsbuf;			/* timestamp data dype is either a double or
@@ -161,8 +163,7 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 	switch (type)
 	{
 			/*
-			 * ===================================================== NUMERIC
-			 * TYPES =====================================================
+			 * ======= NUMERIC TYPES ========
 			 */
 		case INT2OID:			/* -32 thousand to 32 thousand, 2-byte storage */
 			intbuf = (int64) DatumGetInt16(datum);		/* cast to 8 byte before
@@ -238,15 +239,14 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 			break;
 
 			/*
-			 * ===================================================== CHARACTER
-			 * TYPES =====================================================
+			 * ====== CHARACTER TYPES =======
 			 */
 		case CHAROID:			/* char(1), single character */
 		case BPCHAROID: /* char(n), blank-padded string, fixed storage
 								 * length */
 			bp = DatumGetBpCharP(datum);
-			len = VARSIZE(bp) - VARHDRSZ;		/* get the string length */
-			buf = VARDATA(bp);	/* get the string data buf */
+			len = VARSIZE(bp) - VARHDRSZ;		
+			buf = VARDATA(bp);
 
 			/* adjust length to not include trailing blanks */
 			if (len > 1)
@@ -256,11 +256,7 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 		case TEXTOID:			/* variable-length string, no limit specified */
 			txt = DatumGetTextP(datum); /* a varlena struct (includes data and
 										 * len)  */
-
-			/* get the string length */
 			len = VARSIZE(txt) - VARHDRSZ;
-
-			/* get the string data	 */
 			buf = VARDATA(txt);
 
 			/* adjust length to not include trailing blanks */
@@ -272,17 +268,18 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 								 * variable storage length */
 			vc = DatumGetVarCharP(datum);		/* a varlena struct (includes
 												 * data and len)  */
-
-			/* get the string length */
 			len = VARSIZE(vc) - VARHDRSZ;
-
-			/* get the string data	 */
 			buf = VARDATA(vc);
 
 			/* adjust length to not include trailing blanks */
 			if (len > 1)
 				len = ignoreblanks((char *) buf, len);
 			break;
+
+		case BYTEAOID:
+			ba = DatumGetByteaP(datum);
+			len = VARSIZE(ba) - VARHDRSZ;
+			buf = VARDATA(ba);
 
 		case NAMEOID:
 			namebuf = DatumGetName(datum);
@@ -294,10 +291,8 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 				len = ignoreblanks((char *) buf, len);
 			break;
 
-
 			/*
-			 * ===================================================== DATE/TIME
-			 * TYPES =====================================================
+			 * ====== DATE/TIME TYPES ======
 			 */
 		case TIMESTAMPOID:		/* date and time */
 			tsbuf = DatumGetTimestamp(datum);
@@ -351,8 +346,7 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 			break;
 
 			/*
-			 * ===================================================== other
-			 * types =====================================================
+			 * ======= other types =======
 			 */
 
 		case BOOLOID:			/* boolean, 'true'/'false' */

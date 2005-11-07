@@ -154,6 +154,10 @@ CREATE OR REPLACE FUNCTION cdbhash_1_varchar(integer, integer, VarChar) RETURNS 
     AS 'libcdbtest.so', 'HASHAPI_Hash_1_Varchar'
     LANGUAGE C IMMUTABLE STRICT;
 
+CREATE OR REPLACE FUNCTION cdbhash_1_bytea(integer, integer, bytea) RETURNS integer
+    AS 'libcdbtest.so', 'HASHAPI_Hash_1_Bytea'
+    LANGUAGE C IMMUTABLE STRICT;
+
 CREATE OR REPLACE FUNCTION cdbhash_2_text_text(integer, integer, text, text) RETURNS integer
     AS 'libcdbtest.so', 'HASHAPI_Hash_2_Text_Text'
     LANGUAGE C IMMUTABLE STRICT;
