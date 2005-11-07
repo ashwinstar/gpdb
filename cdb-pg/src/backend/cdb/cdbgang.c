@@ -703,8 +703,13 @@ thread_DoConnect(void *arg)
 		 * Build the connection string
 		 */
 		appendPQExpBuffer(&buffer,
-						  "options='-c mpp_session_role=EXECUTE -c mpp_segment=%d -c mpp_max_packet_size=%d' ",
+						  "options='-c mpp_session_role=EXECUTE -c mpp_segment=%d -c mpp_max_packet_size=%d" ,
 						  q->segindex, Mpp_max_packet_size);
+						  
+		if (!q->isprimary)
+			appendPQExpBuffer(&buffer," -c mpp_is_primary=false");
+			  
+		appendPQExpBuffer(&buffer, "' ");
 
 		if (cdbconn_doConnect(segdbDesc, buffer.data))
 		{
