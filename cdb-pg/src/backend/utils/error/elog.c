@@ -1350,7 +1350,7 @@ log_line_prefix(StringInfo buf)
 	if (Log_line_prefix == NULL)
 		return;					/* in case guc hasn't run yet */
 
-    format_len = strlen(Log_line_prefix);
+	format_len = strlen(Log_line_prefix);
 
 	for (i = 0; i < format_len; i++)
 	{
@@ -1377,7 +1377,7 @@ log_line_prefix(StringInfo buf)
 					const char *username = MyProcPort->user_name;
 
 					if (username == NULL || *username == '\0')
-						username = "";
+						username = gettext("[unknown]");
 					appendStringInfo(buf, "%s", username);
 				}
 				break;
@@ -1387,7 +1387,7 @@ log_line_prefix(StringInfo buf)
 					const char *dbname = MyProcPort->database_name;
 
 					if (dbname == NULL || *dbname == '\0')
-						dbname = "";
+						dbname = gettext("[unknown]");
 					appendStringInfo(buf, "%s", dbname);
 				}
 				break;
@@ -1588,27 +1588,14 @@ log_line_prefix(StringInfo buf)
 static void
 send_message_to_server_log(ErrorData *edata)
 {
-	StringInfoData  buf;
-    StringInfoData  prefix;
-    int             nc;
+	StringInfoData buf;
 
-    /* Format message prefix. */
-    initStringInfo(&buf);
-    log_line_prefix(&buf);
-    nc = buf.len;
-    appendStringInfo(&buf, "%s:  ", error_severity(edata->elevel));
+	initStringInfo(&buf);
 
-    /* Save copy of prefix for subsequent lines of multi-line message. */
-    initStringInfo(&prefix);
-    appendBinaryStringInfo(&prefix, buf.data, nc);
-    nc = 2 + buf.len - prefix.len;
-    enlargeStringInfo(&prefix, nc);
-    memset(prefix.data+prefix.len, ' ', nc);
-    prefix.len += nc;
-    prefix.data[prefix.len] = '\0';
+	log_line_prefix(&buf);
+	appendStringInfo(&buf, "%s:  ", error_severity(edata->elevel));
 
-	if (Log_error_verbosity >= PGERROR_VERBOSE &&
-        edata->sqlerrcode)
+	if (Log_error_verbosity >= PGERROR_VERBOSE)
 	{
 		/* unpack MAKE_SQLSTATE code */
 		char		tbuf[12];
@@ -1622,7 +1609,7 @@ send_message_to_server_log(ErrorData *edata)
 			ssval >>= 6;
 		}
 		tbuf[i] = '\0';
-		appendStringInfo(&buf, "(%s) ", tbuf);
+		appendStringInfo(&buf, "%s: ", tbuf);
 	}
 
 	if (edata->message)
@@ -1643,48 +1630,46 @@ send_message_to_server_log(ErrorData *edata)
 	{
 		if (edata->detail)
 		{
-            appendBinaryStringInfo(&buf, prefix.data, prefix.len);
-			appendStringInfoString(&buf, gettext("Detail:  "));
+			log_line_prefix(&buf);
+			appendStringInfoString(&buf, gettext("DETAIL:  "));
 			append_with_tabs(&buf, edata->detail);
 			appendStringInfoChar(&buf, '\n');
 		}
 		if (edata->hint)
 		{
-            appendBinaryStringInfo(&buf, prefix.data, prefix.len);
-			appendStringInfoString(&buf, gettext("Hint:  "));
+			log_line_prefix(&buf);
+			appendStringInfoString(&buf, gettext("HINT:  "));
 			append_with_tabs(&buf, edata->hint);
 			appendStringInfoChar(&buf, '\n');
 		}
 		if (edata->internalquery)
 		{
-            appendBinaryStringInfo(&buf, prefix.data, prefix.len);
-			appendStringInfoString(&buf, gettext("Query:  "));
+			log_line_prefix(&buf);
+			appendStringInfoString(&buf, gettext("QUERY:  "));
 			append_with_tabs(&buf, edata->internalquery);
 			appendStringInfoChar(&buf, '\n');
 		}
 		if (edata->context)
 		{
-            appendBinaryStringInfo(&buf, prefix.data, prefix.len);
-			appendStringInfoString(&buf, gettext("Context:  "));
+			log_line_prefix(&buf);
+			appendStringInfoString(&buf, gettext("CONTEXT:  "));
 			append_with_tabs(&buf, edata->context);
 			appendStringInfoChar(&buf, '\n');
 		}
 		if (Log_error_verbosity >= PGERROR_VERBOSE)
 		{
-            if (edata->elevel == INFO)
-            {}
-            /* assume no newlines in funcname or filename... */
-			else if (edata->funcname && edata->filename)
+			/* assume no newlines in funcname or filename... */
+			if (edata->funcname && edata->filename)
 			{
-                appendBinaryStringInfo(&buf, prefix.data, prefix.len);
-				appendStringInfo(&buf, gettext("Location:  %s, %s:%d\n"),
+				log_line_prefix(&buf);
+				appendStringInfo(&buf, gettext("LOCATION:  %s, %s:%d\n"),
 								 edata->funcname, edata->filename,
 								 edata->lineno);
 			}
 			else if (edata->filename)
 			{
-                appendBinaryStringInfo(&buf, prefix.data, prefix.len);
-				appendStringInfo(&buf, gettext("Location:  %s:%d\n"),
+				log_line_prefix(&buf);
+				appendStringInfo(&buf, gettext("LOCATION:  %s:%d\n"),
 								 edata->filename, edata->lineno);
 			}
 		}
@@ -1696,8 +1681,8 @@ send_message_to_server_log(ErrorData *edata)
 	 */
 	if (edata->elevel >= log_min_error_statement && debug_query_string != NULL)
 	{
-        appendBinaryStringInfo(&buf, prefix.data, prefix.len);
-		appendStringInfoString(&buf, gettext("Statement:  "));
+		log_line_prefix(&buf);
+		appendStringInfoString(&buf, gettext("STATEMENT:  "));
 		append_with_tabs(&buf, debug_query_string);
 		appendStringInfoChar(&buf, '\n');
 	}
@@ -1772,7 +1757,6 @@ send_message_to_server_log(ErrorData *edata)
 	if (am_syslogger)
 		write_syslogger_file(buf.data, buf.len);
 
-    pfree(prefix.data);
 	pfree(buf.data);
 }
 
@@ -1791,7 +1775,6 @@ send_message_to_frontend(ErrorData *edata)
 	if (PG_PROTOCOL_MAJOR(FrontendProtocol) >= 3)
 	{
 		/* New style with separate fields */
-        StringInfoData sbuf;
 		char		tbuf[12];
 		int			ssval;
 		int			i;
@@ -1813,15 +1796,12 @@ send_message_to_frontend(ErrorData *edata)
 
 		/* M field is required per protocol, so always send something */
 		pq_sendbyte(&msgbuf, PG_DIAG_MESSAGE_PRIMARY);
+		if (edata->message)
+			pq_sendstring(&msgbuf, edata->message);
+		else
+			pq_sendstring(&msgbuf, gettext("missing error text"));
 
-        initStringInfo(&sbuf);
-        appendStringInfoString(&sbuf,
-                               edata->message ? edata->message
-                                              : gettext("missing error text"));
-        pq_sendstring(&msgbuf, sbuf.data);
-        pfree(sbuf.data);
-
-        if (edata->detail)
+		if (edata->detail)
 		{
 			pq_sendbyte(&msgbuf, PG_DIAG_MESSAGE_DETAIL);
 			pq_sendstring(&msgbuf, edata->detail);
@@ -2030,19 +2010,11 @@ error_severity(int elevel)
 	switch (elevel)
 	{
 		case DEBUG1:
-            prefix = gettext("DEBUG1");
-            break;
 		case DEBUG2:
-            prefix = gettext("DEBUG2");
-            break;
 		case DEBUG3:
-            prefix = gettext("DEBUG3");
-            break;
 		case DEBUG4:
-            prefix = gettext("DEBUG4");
-            break;
 		case DEBUG5:
-			prefix = gettext("DEBUG5");
+			prefix = gettext("DEBUG");
 			break;
 		case LOG:
 		case COMMERROR:
