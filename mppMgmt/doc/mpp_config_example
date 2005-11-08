@@ -168,7 +168,7 @@ ENCODING=UNICODE
 
 # The host name of the backup MPP master host.
 
-# STANDBY_HOST=backup_hostname
+# STANDBY_HOSTNAME=backup_hostname
 
 
 # The additional IP address(es) of hosts allowed to connect to the 
