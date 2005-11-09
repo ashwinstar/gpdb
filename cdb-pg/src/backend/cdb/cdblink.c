@@ -46,6 +46,7 @@
 static SegmentDatabaseDescriptor *cdb_mirrored_entry_db = NULL;
 static bool resync = false;
 
+static bool cdblink_connectQD(SegmentDatabaseDescriptor * segdbDesc);
 
 /*
  * Called by backend/utils/init/postinit.c to setup stuffe
@@ -159,7 +160,9 @@ buildMirrorQDDefinition(void)
 
 	if (!isQDMirroringEnabled())
 		return;
+
 	cdb_component_dbs = getComponentDatabases();
+
 	if (cdb_component_dbs != NULL && cdb_component_dbs->total_entry_dbs > 1)
 	{
 		/* it should have maximum 2 dbs now */
@@ -192,21 +195,20 @@ buildMirrorQDDefinition(void)
 
 			cdb_mirrored_entry_db = malloc(sizeof(SegmentDatabaseDescriptor));
 			memset(cdb_mirrored_entry_db, 0, sizeof(SegmentDatabaseDescriptor));
-			cdbconn_initSegmentDescriptor(cdb_mirrored_entry_db, mirrorDb,
-										  dbname);
+			cdbconn_initSegmentDescriptor(cdb_mirrored_entry_db, mirrorDb, dbname);
 
 			pfree(dbname);
 			dbname = NULL;
 
 			/* connect to mirrored QD */
-			if (!cdbconn_doConnect(cdb_mirrored_entry_db, NULL))
+			if (!cdblink_connectQD(cdb_mirrored_entry_db))
 			{
 				disableQDMirroring();
 
-				ereport(LOG, (errcode(ERRCODE_WARNING_MPP_INTERCONNECTION),
-							  errmsg("Mirroring disabled for entry db.  %s",
+				ereport(WARNING, (errcode(ERRCODE_WARNING_MPP_INTERCONNECTION),
+							   errmsg("Mirroring disabled for entry db.  %s",
 								   cdb_mirrored_entry_db->error_message.data)
-							  ));
+								  ));
 				cdb_mirrored_entry_db->errcode = 0;
 				resetPQExpBuffer(&cdb_mirrored_entry_db->error_message);
 
@@ -319,6 +321,79 @@ write_qd_sync(char *cmd, void *buf, int len)
 		disableQDMirroring();
 	}
 }
+
+/* Connect to a QD-mirror as a client via libpq. */
+static bool						/* returns true if connected */
+cdblink_connectQD(SegmentDatabaseDescriptor * segdbDesc)
+{
+	CdbComponentDatabaseInfo *q = segdbDesc->segment_database_info;
+	PQExpBufferData buffer;
+	char	   *username = GetUserNameFromId(GetUserId());
+
+	/*
+	 * We use PQExpBufferData instead of StringInfoData
+	 * because the former uses malloc, the latter palloc.
+	 * We are in a thread, and we CANNOT use palloc since it's not
+	 * thread safe.  We cannot call elog or ereport either for the
+	 * same reason.
+	 */
+	initPQExpBuffer(&buffer);
+
+	/*
+	 * Build the connection string
+	 */
+	if (q->hostname == NULL)
+		appendPQExpBufferStr(&buffer, "host='' ");
+	else if (isdigit(q->hostname[0]))
+		appendPQExpBuffer(&buffer, "hostaddr=%s ", q->hostname);
+	else
+		appendPQExpBuffer(&buffer, "host=%s ", q->hostname);
+
+	appendPQExpBuffer(&buffer, "port=%u ", q->port);
+
+	if (segdbDesc->dbname)
+		appendPQExpBuffer(&buffer, "dbname=%s ", segdbDesc->dbname);
+
+	appendPQExpBuffer(&buffer, "user=%s ", username);
+
+
+	/*
+	 * Call libpq to connect
+	 */
+	segdbDesc->conn = PQconnectdb(buffer.data);
+
+
+	/*
+	 * Check for connection failure.
+	 */
+	if (PQstatus(segdbDesc->conn) == CONNECTION_BAD)
+	{
+		if (!segdbDesc->errcode)
+			segdbDesc->errcode = ERRCODE_MPP_INTERCONNECTION_ERROR;
+		appendPQExpBuffer(&segdbDesc->error_message,
+						  "QD unable to connect to %s with options %s: %s\n",
+						  q->hostname,
+						  buffer.data,
+						  PQerrorMessage(segdbDesc->conn));
+
+		elog(DEBUG2, segdbDesc->error_message.data);
+
+		PQfinish(segdbDesc->conn);
+		segdbDesc->conn = NULL;
+	}
+	/*
+	 * Successfully connected.
+	 */
+	else
+	{
+		elog(DEBUG3, "Connected to mirror-QD %s with options %s\n",
+			 q->hostname,
+			 buffer.data);
+	}
+
+	free(buffer.data);
+	return segdbDesc->conn != NULL;
+}	/* cdblink_doConnect */
 
 void *
 getEntrySegDB(int *count)
