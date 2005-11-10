@@ -255,7 +255,11 @@ SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcIte
 	MotionConn *conn;
 	TupleChunkListItem currItem;
 
-	Assert(activated);
+	if (!activated)
+	{
+		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+			   errmsg("SendTupleChunkToAMS: Called when not activated.")));
+	}
 
 	/* check em' */
 	CHECK_FOR_INTERRUPTS();
@@ -329,7 +333,11 @@ SendEosToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcItem)
 	MotionConn *conn;
 	int			i;
 
-	Assert(activated);
+	if (!activated)
+	{
+		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+			   errmsg("SendEosToAMS: Called when not activated.")));
+	}
 
 	/* check em' */
 	CHECK_FOR_INTERRUPTS();
@@ -372,7 +380,11 @@ RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 				index;
 	bool		skipSelect = false;
 
-	Assert(activated);
+	if (!activated)
+	{
+		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+			   errmsg("RecvTupleChunkFromAny: Called when not activated.")));
+	}
 
 #ifdef AMS_VERBOSE_LOGGING
 	elog(DEBUG3, "RecvTupleChunkFromAny(motNodeId=%d)", motNodeID);
@@ -476,7 +488,11 @@ RecvTupleChunkFrom(int16 motNodeID, int16 srcRoute)
 	MotionLayerState *pEntry;
 	MotionConn *conn;
 
-	Assert(activated);
+	if (!activated)
+	{
+		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+			   errmsg("RecvTupleChunkFrom: Called when not activated.")));
+	}
 
 	/* check em' */
 	CHECK_FOR_INTERRUPTS();
@@ -569,7 +585,11 @@ DeregisterReadInterest(int16 motNodeID, int16 srcRoute)
 	MotionLayerState *pEntry;
 	MotionConn *conn;
 
-	Assert(activated);
+	if (!activated)
+	{
+		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+			   errmsg("DeregisterReadInterest: Called when not activated.")));
+	}
 
 #ifdef AMS_VERBOSE_LOGGING
 	elog(DEBUG3, "DeregisterReadInterest(%d, %d)", motNodeID, srcRoute);
@@ -618,8 +638,6 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 
 	/* we can have at most one of these. */
 	MotionLayerState *sendingMotionState = NULL;
-
-	Assert(!activated);
 
 	/*
 	 * The assert only happens when we are compiled with --enable-cassert.
