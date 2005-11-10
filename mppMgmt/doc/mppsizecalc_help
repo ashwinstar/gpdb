@@ -1,0 +1,117 @@
+COMMAND NAME: mppsizecalc.sh
+
+Shows the disk space usage for a given database, table, or index.
+
+
+*****************************************************
+SYNOPSIS
+*****************************************************
+
+mppsizecalc.sh {-x <database_name> | {-t <table_name> [-i] 
+[-a <other_database_name>]}} [-d <data_directory>] [-s b|k|m] 
+[-f] [-l <logfile_directory>]
+
+mppsizecalc.sh [-? | -v]
+
+
+*****************************************************
+DESCRIPTION
+*****************************************************
+
+The mppsizecalc.sh script can be used to determine the disk space usage 
+for a Bizgres MPP database, table, or index. mppsizecalc.sh displays the 
+following information:
+
+* The total disk space usage for the specified database.
+* The total disk space usage for the specified table.
+* The total disk space usage for the specified tables index.
+* The disk usage per active segment (if -f option is supplied).
+
+
+*****************************************************
+OPTIONS
+*****************************************************
+
+-x <database_name>
+
+Either a database name or a table name is required. The database 
+for which you want to see the disk space usage.
+
+-t <table_name>
+
+Either a database name or a table name is required. The table for which 
+you want to see the disk space usage.
+
+-i
+
+Optional. Shows the index size for the named table.
+
+-a <other_database_name>
+
+Optional. The name of an alternate database if the specified table does 
+not reside in the default database (which is the most recently created 
+database).
+
+-d <data_directory>
+
+Optional. The master host data directory. If not specified, the value 
+set for $MASTER_DATA_DIRECTORY will be used.
+
+-s b | k | m
+
+Optional. Display disk usage size information in bytes (b), kilobytes (k), 
+or megabytes (m). The default is kilobytes (k).
+
+-f
+
+Optional. Displays the disk space usage per segment.
+
+-l <logfile_directory>
+
+The directory to write the log file. Defaults to ~/mppAdminLogs.
+
+-?
+
+Displays the online help.
+
+-v
+
+Displays the version, status, last updated date, and check sum of this script.
+
+
+*****************************************************
+EXAMPLES
+*****************************************************
+
+Show the total disk space usage for a table:
+
+mppsizecalc.sh -t products
+
+
+Show the total disk space usage for a database. Show size in megabytes 
+rather than kilobytes:
+
+mppsizecalc.sh -x mppdb -s m
+
+
+Show the disk space usage per segment for a table:
+
+mppsizecalc.sh -t products -f
+
+
+Show the disk space usage per segment for a database:
+
+mppsizecalc.sh -x mppdb -f
+
+
+Show the index sizes for a table that is in another database besides 
+the default:
+
+mppsizecalc.sh -t products -a mppdb2 -i
+
+
+*****************************************************
+SEE ALSO
+*****************************************************
+
+mppstate.sh, mppskew.sh

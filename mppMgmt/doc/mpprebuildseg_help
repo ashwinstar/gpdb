@@ -1,0 +1,73 @@
+COMMAND NAME: mpprebuildseg.sh
+
+Rebuilds segment instances from the MPP system catalog tables of 
+a Bizgres MPP master instance.
+
+*****************************************************
+SYNOPSIS
+*****************************************************
+
+mpprebuildseg.sh -d <master_data_directory> [-a] [-q] 
+[-l <logfile_directory>]
+
+mpprebuildseg.sh [-? | -v]
+
+
+*****************************************************
+DESCRIPTION
+*****************************************************
+
+The mpprebuildseg.sh script builds segment instances using configuration 
+information contained in the MPP system catalog tables of a Bizgres MPP 
+master instance. The use of this script assumes that you have:
+
+* Built a master instance from a backup file using mpprebuildcluster.sh -m.
+
+* Have edited the MPP system catalog tables on the MPP master instance to 
+  reflect your desired system configuration. See the Bizgres MPP 
+  Administrator Guide for the MPP schema reference. 
+
+
+*****************************************************
+OPTIONS
+*****************************************************
+
+-d <master_data_directory>
+
+Required. The data directory of the MPP master instance.
+
+-a
+
+Do not prompt the user for confirmation.
+
+-q
+
+Run in quiet mode. Command output is not displayed on the screen, 
+but is still written to the log file.
+
+-l <logfile_directory>
+
+The directory to write the log file. Defaults to ~/mppAdminLogs.
+
+-?
+
+Displays the online help.
+
+-v
+
+Displays the version, status, last updated date, and check sum of this script.
+
+
+*****************************************************
+EXAMPLES
+*****************************************************
+
+Rebuild the segment instances using the data found in the given MPP master:
+
+mpprebuildseg.sh -d /mpp_master_data
+
+
+*****************************************************
+SEE ALSO
+*****************************************************
+mpprebuildcluster.sh, mppcreatecluster.sh, mpp_dumpall, mpp_restore

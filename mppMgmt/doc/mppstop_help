@@ -6,8 +6,8 @@ Stops a Bizgres MPP database management server instance.
 SYNOPSIS
 *****************************************************
 
-mppstop.sh [-d data_directory] [-n | -z] [-f | -i | -s] [-m] [-a] 
-[-q] [-l logfile_directory]
+mppstop.sh [-d <data_directory>] [-n | -z] [-f | -i | -s] [-r] 
+[-m] [-a] [-q] [-l <logfile_directory>]
 
 mppstop.sh [-t | -? | -v]
 
@@ -19,10 +19,10 @@ DESCRIPTION
 The mppstop.sh script is analogous to functionality offered by the 
 PostgreSQL pg_ctl and postmaster commands, which are used to stop the 
 database server. When you stop a Bizgres MPP database management server 
-instance, you are actually stopping several postmaster processes at once 
-(the MPP master and all of the segment instances). The mppstop.sh script 
-handles the shutdown of the individual instances. Each instance is 
-shutdown sequentially by default.
+instance, you are actually stopping several postmaster processes at 
+once (the MPP master and all of the segment instances). The mppstop.sh 
+script handles the shutdown of the individual instances. Each instance 
+is shutdown sequentially by default.
 
 Before you can stop a Bizgres MPP database server, you must have started 
 it using mppstart.sh first.
@@ -32,7 +32,7 @@ it using mppstart.sh first.
 OPTIONS
 *****************************************************
 
--d data_directory
+-d <data_directory>
 
 Optional. The master host data directory. If not specified, the value 
 set for $MASTER_DATA_DIRECTORY will be used.
@@ -46,11 +46,11 @@ sequentially and wait for their return codes.
 
 -z
 
-Optional. Forces the shutdown of a segment instance with an invalid 
-status. This may be desirable if the segment instance or host had a 
-minor error during startup, and you want to shut down the system to fix 
-the error, then retry startup again. The default behavior is to not 
-shutdown segment instances with an invalid status.
+Optional. Forces the shutdown of a segment instance with an invalid status. 
+This may be desirable if the segment instance or host had a minor error 
+during startup, and you want to shut down the system to fix the error, 
+then retry startup again. The default behavior is to not shutdown segment 
+instances with an invalid status.
 
 -f
 
@@ -59,17 +59,17 @@ Fast shut down. Any transactions in progress are interrupted and rolled back.
 -i
 
 Immediate shut down. Any transactions in progress are aborted. Use this 
-option with care if you are running in continue (read-write) mode, as this 
-could cause data corruption.
+option with care if you are running in continue fault tolerance mode 
+(read-write), as this could cause data corruption.
 
 -s
 
 Smart shut down. Waits for active transactions to complete before shutting 
 down. This is the default shutdown mode.
 
--r
+-r 
 
-Restarts the system after shutdown is complete.
+Restart after shutdown is complete.
 
 -m
 
@@ -82,18 +82,18 @@ Do not prompt the user for confirmation.
 
 -q
 
-Run in quiet mode. Command output is not displayed on the screen, but is 
-still written to the log file.
+Run in quiet mode. Command output is not displayed on the screen, 
+but is still written to the log file.
 
--l logfile_directory
+-l <logfile_directory>
 
-The directory to write the log file. Defaults to current_directory/logs.
+The directory to write the log file. Defaults to ~/mppAdminLogs.
 
 -t
 
-Displays the settings that will be used to shut down the system, such as 
-the master data directory and port, and the name, data directory, port, 
-valid status, and primary or mirror status of all the segment instances.
+Displays the settings that will be used to shut down the system, 
+such as the master data directory and port, and the name, data directory, 
+port, valid status, and primary or mirror status of all the segment instances.
 
 -?
 
@@ -101,7 +101,8 @@ Displays the online help.
 
 -v
 
-Displays the version, status, last updated date, and checksum of this script.
+Displays the version, status, last updated date, and check sum of this script.
+
 
 *****************************************************
 EXAMPLES
@@ -109,32 +110,42 @@ EXAMPLES
 
 Stop a Bizgres MPP database management server instance in smart mode:
 
-./mppstop.sh
+mppstop.sh
+
 
 Stop a Bizgres MPP database management server instance in fast mode:
 
-./mppstop.sh -f
+mppstop.sh -f
 
-Force shutdown of the system if it has failed segment instances from 
-a previous startup attempt:
 
-./mppstop.sh -z
+Force shutdown of the system if it has failed segment instances from a 
+previous startup attempt:
+
+mppstop.sh -z
+
+
+Stop all segment instances and then restart the system:
+
+mppstop.sh -r
+
 
 Stop all segment instances in parallel (no return code status):
 
-./mppstop.sh -n
+mppstop.sh -n
+
 
 Stop a MPP master instance that was started in maintenance mode:
 
-./mppstop.sh -m
+mppstop.sh -m
+
 
 Display the online help for the mppstop.sh script:
 
-./mppstop.sh -?
+mppstop.sh -?
+
 
 *****************************************************
 SEE ALSO
 *****************************************************
 
 mppstart.sh
-

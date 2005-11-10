@@ -1,0 +1,158 @@
+COMMAND NAME: mpprebuildcluster.sh
+
+Rebuilds a Bizgres MPP master using a SQL script file containing the 
+Bizgres MPP schema and MPP system catalog information, and then 
+recreates all of the segment instances using the information found 
+in the MPP system catalog tables.
+
+*****************************************************
+SYNOPSIS
+*****************************************************
+
+mpprebuildcluster.sh -s <sql_file> -d <temp_db_data_directory> 
+[-p <temp_db_port>] [-m] [-o] [-i] [-c <checkpoint_segments>] 
+[-a] [-q] [-l <logfile_directory>]
+
+mpprebuildcluster.sh [-? | -v]
+
+
+*****************************************************
+DESCRIPTION
+*****************************************************
+
+The mpprebuildcluster.sh script will rebuild a Bizgres MPP system using 
+a SQL script file. This SQL script file must contain commands for creating 
+the Bizgres MPP schema and loading system catalog data from another 
+Bizgres MPP installation. There are two ways to get the SQL script file 
+that mpprebuildcluster.sh needs:
+
+* mpp_dumpall  The mpp_dumpall operation creates a file on the master 
+  host called mpp_catalog_<master_id>_<timestamp>.
+
+* pg_dump  PostgreSQL provides a utility called pg_dump, which backs 
+  up a single PostgreSQL database. You can use this utility to backup the 
+  template1 database of the master host, which contains the Bizgres MPP 
+  schema and system catalog. For example, run the following command on 
+  the MPP master host:
+  pg_dump -f mpp_catalog -Fp -n mpp -a -p 5432 template1
+
+The use of the mpprebuildcluster.sh script assumes that you have an 
+existing or previous Bizgres MPP system that you want to recreate. 
+By default this script uses the same hosts, ports, and data directories 
+as the reference Bizgres MPP system. You can use the -o option to 
+reconfigure the system to a new master host. If you want to alter any 
+other information in the system configuration (such as segment hosts, data 
+directory locations, or ports) use the -m option. This option will create 
+the MPP master instance only. After the MPP master is created, you can 
+manually edit the MPP system catalog tables to change the system 
+configuration (see the Bizgres MPP Administrator Guide for the schema 
+reference). After editing the system catalog tables, use the mpprebuildseg.sh 
+script, which rebuilds the segment instances using the information found in 
+the MPP masters system catalog tables.The use of this script also assumes 
+that you have the same number of segment instances as the reference system 
+you are rebuilding. If you are expanding your system or are dramatically 
+changing your system configuration, you should use mppcreatecluster.sh to 
+create a new Bizgres MPP system from scratch.
+
+
+*****************************************************
+OPTIONS
+*****************************************************
+
+-s <sql_file>
+Required. A SQL file containing the Bizgres MPP schema and system catalog 
+information. This is the mpp_catalog_<master_id>_<timestamp> file created 
+on the MPP master host by the mpp_dumpall operation. You can also do a 
+pg_dump operation on a MPP master host to get a SQL file that can be used 
+by mpprebuildcluster.sh. For example:
+pg_dump -f mpp_catalog -Fp -n mpp -a -p 5432 template1
+
+-d <temp_db_data_directory>
+
+Required. The rebuild script creates a temporary database in this location. 
+The temporary database is used to parse the contents of the SQL script file, 
+and is then deleted after the rebuild operation is complete. Choose a 
+different data storage location than the one used by your production MPP 
+master instance.
+
+-p <temp_db_port>
+
+Optional. If not specified, the default port of 55555 is used. The rebuild 
+script starts the temporary database using this port. The temporary database 
+is used to parse the contents of the SQL script file, and is then deleted 
+after the rebuild operation is complete. Choose a different port than the 
+one used by your production MPP master instance.
+
+-m
+
+Optional. This option creates the MPP master instance only (the Bizgres MPP 
+schema and system catalog), but does not create the segment instances as 
+specified in the system catalog. The default behavior is to rebuild all 
+segment instances as they existed when the backup file was created. Use 
+this option if you want to change any information in your system 
+configuration (such as segment hosts, data storage locations, or ports) 
+before rebuilding the segments. After the MPP master is created, you can 
+manually edit the system catalog tables to change the configuration 
+(see the Bizgres MPP Administrator Guide for the MPP schema reference). 
+After editing the system catalog tables, use the mpprebuildseg.sh script, 
+which rebuilds the segment instances using the information found in the 
+MPP masters system catalog tables.
+
+-o
+
+Optional. Use this option if you are rebuilding the Bizgres MPP system using 
+a different master host than the one from which the backup SQL file was 
+created. This option will override the master hostname found in the system 
+catalog and set it to the current host name.
+
+-i
+
+If a backup master host is found in the system catalog configuration, 
+initialize the backup master synchronization process after rebuilding 
+the backup master host.
+
+-a
+
+Do not prompt the user for confirmation.
+
+-q
+Run in quiet mode. Command output is not displayed on the screen, 
+but is still written to the log file.
+
+-l logfile_directory
+
+The directory to write the log file. Defaults to ~/mppAdminLogs.
+
+-?
+
+Displays the online help.
+
+-v
+
+Displays the version, status, last updated date, and check sum of this script.
+
+*****************************************************
+EXAMPLES
+*****************************************************
+
+Rebuild an entire Bizgres MPP system (master and segment instances) using the 
+exact same array configuration as in the SQL backup file:
+
+mpprebuildcluster.sh -s mpp_catalog_0_1_2005103112453 -d /home/bgadmin/tmp
+
+Rebuild an entire Bizgres MPP system (master and segment instances) using the 
+same array configuration as in the SQL backup file, but change the master host 
+instance configuration to the current host:
+
+mpprebuildcluster.sh -s mpp_catalog_0_1_2005103112453 -d /home/bgadmin/tmp -o
+
+Rebuild the MPP master host only (the Bizgres MPP schema and system catalog):
+
+mpprebuildcluster.sh -s mpp_catalog_0_1_2005103112453 -d /home/bgadmin/tmp -o -m
+
+
+*****************************************************
+SEE ALSO
+*****************************************************
+
+mpprebuildseg.sh, mppcreatecluster.sh, mpp_dumpall, mpp_restore

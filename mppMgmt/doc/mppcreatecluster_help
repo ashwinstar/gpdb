@@ -1,39 +1,53 @@
 COMMAND NAME: mppcreatecluster.sh
 
-Initializes a Bizgres MPP array by using configuration
-parameters specified in a mpp_config_file.
+Initializes a Bizgres MPP system by using configuration 
+parameters specified in a MPP configuration file.
 
 *****************************************************
 SYNOPSIS
 *****************************************************
 
-mppcreatecluster -c <mpp_config_file> [-h <host_file>] [-p 
-<postgresql_conf_mpp_additions>] [-s <standby_master_host>] [-o] 
-[-a] [-q] [-l <logfile_directory>]
+mppcreatecluster.sh -c <mpp_config_file> [-h <host_file>] 
+[-p <postgresql_conf_mpp_additions>] [-s <standby_master_host>] 
+[-o] [-a] [-q] [-l <logfile_directory>]
 
-mppcreatecluster [-? | -v]
+mppcreatecluster.sh [-? | -v]
 
 
 *****************************************************
 DESCRIPTION
 *****************************************************
 
-The mppcreatecluster script will create a Bizgres MPP DBMS 
-instance using the values defined in a Bizgres MPP configuration 
-file (see mpp_config_example).
+The mppcreatecluster.sh script will create a Bizgres MPP DBMS instance 
+using the values defined in a Bizgres MPP configuration file. 
+See the 'mpp_config_example' file for instructions on creating this file.
+The functionality of mppcreatecluster.sh is analogous to PostgreSQLs 
+initdb script, which creates the data storage directories, generates the 
+shared catalog tables and configuration files, and creates a template 
+database, which is a template used to create other databases. 
 
-The functionality of mppcreatecluster is analogous to 
-PostgreSQLs initdb script, which creates the data storage 
-directories, generates the shared catalog tables and configuration files, 
-and creates a template database, which is a template used to create 
-other databases. 
+In a Bizgres MPP DBMS, each database instance (the master and all segments) 
+must be initialized across all of the hosts in the system in such a way that 
+they can all work together as a unified DBMS. The mppcreatecluster.sh script 
+takes care of initializing the database on the MPP master and on each segment 
+instance, and configuring the system as a whole.
 
-In a Bizgres MPP DBMS, each database instance (the master and all 
-segments) must be initialized across all of the hosts in the system
-in such a way that they can all work together as a unified DBMS.
-The mppcreatecluster script takes care of initializing 
-the database on the MPP master and on each segment instance, and 
-configuring the system as a whole.
+Before running mppcreatecluster.sh, you must set the $MPPHOME or $BIZHOME 
+environment variable to point to the location of your Bizgres MPP 
+installation on the master host.
+
+This script performs the following tasks:
+
+* Verifies that the parameters in the MPP configuration file are correct.
+* Ensures that a connection can be established to each host. 
+  If a host cannot be reached, the script will exit.
+* Displays the configuration that will be used and prompts the user for 
+  confirmation.
+* Initializes the master instance.
+* Initializes the primary segment instances.
+* Initializes the mirror segment instances (if mirroring is configured).
+* Configures the Bizgres MPP system and checks for errors.
+* Starts the Bizgres MPP system.
 
 
 *****************************************************
@@ -42,30 +56,28 @@ OPTIONS
 
 -c <mpp_config_file>
 
-Required. The full path and filename of the MPP configuration 
-file, which contains all of the defined parameters to configure 
-the array. See mpp_config_example for a description of this file.
+Required. The full path and filename of the MPP configuration file, which 
+contains all of the defined parameters to configure the array. See 
+'mpp_config_example' for instructions on creating this file.
 
 -h <host_file>
 
-Optional. The full path and filename of a file that contains 
-the host names of all the hosts in the array (master host and all 
-segment hosts). If not specified on the command line, you can specify
-the host file using the MACHINE_LIST_FILE parameter in the 
-mpp_config_file.
+Optional. The full path and filename of a file that contains the host names 
+of all the segment hosts in the array. If not specified on the command line, 
+you can specify the host file using the MACHINE_LIST_FILE parameter in the 
+mpp_config file.
 
 -p <postgresql_conf_mpp_additions>
 
-Optional. The name of a file that contains global postgresql.conf 
-parameter settings needed for Bizgres MPP. These settings will be 
-used when the individual master and segment instances are started. 
-If not specified, then the default values defined in 
-./postgresql_conf_mpp_additions will be used.
+Optional. The name of a file that contains global postgresql.conf parameter 
+settings that you want to set for Bizgres MPP. These settings will be used 
+when the individual master and segment instances are initialized.
 
 -s <standby_master_host>
 
-Optional. If you wish to configure a backup master host, specify 
-the host name using this option.
+Optional. If you wish to configure a backup master host, specify the host 
+name using this option. If not specified on the command line, you can 
+specify it using the STANDBY_HOSTNAME parameter in the mpp_config file.
 
 -o
 
@@ -80,10 +92,9 @@ Do not prompt the user for confirmation.
 Run in quiet mode. Command output is not displayed on the screen, 
 but is still written to the log file.
 
--l <logfile_directory>
+-l logfile_directory
 
-The directory to write the log file. Defaults to 
-<current_directory>/logs.
+The directory to write the log file. Defaults to ~/mppAdminLogs.
 
 -?
 
@@ -91,8 +102,8 @@ Displays the online help.
 
 -v
 
-Displays the version, status, last updated date, and checksum 
-of this script.
+Displays the version, status, last updated date, and check sum of 
+this script.
 
 *****************************************************
 EXAMPLES
@@ -102,14 +113,14 @@ Initialize a Bizgres MPP array:
 
 ./mppcreatecluster.sh -c mpp_config
 
-Display the online help for the mppcreatecluster script:
+
+
+Display the online help for the mppcreatecluster.sh script:
 
 ./mppcreatecluster.sh -?
-
 
 *****************************************************
 SEE ALSO
 *****************************************************
 
-mpp_config_example
-
+mpp_config, groupSession, mpprebuildcluster.sh

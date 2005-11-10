@@ -1,0 +1,182 @@
+COMMAND NAME: mpp_restore
+
+Restores Bizgres MPP databases that were backed up using mpp_dumpall.
+
+This script is located in $MPPHOME/bin
+
+*****************************************************
+SYNOPSIS
+*****************************************************
+
+mpp_restore -mpp-k=<timestamp_key> -d <database_name> [-h <hostname>] 
+[-p port] [-U <username>] [-W] [-a] [-i] [-o] [-O] [-s] [-t <table_name>] 
+[-x] [--mpp-e] [--mpp-d=<directoryname>] [--mpp-r=<filename>]
+
+*****************************************************
+DESCRIPTION
+*****************************************************
+
+The mpp_restore utility recreates the data definitions (schema) and user 
+data in a Bizgres MPP database using the script files created by an 
+mpp_dumpall operation. The use of this script assumes:
+
+1. You have backup files created by an mpp_dumpall operation.
+2. Your Bizgres MPP system up and running.
+3. Your Bizgres MPP system has the exact same number of segment instances 
+   (primary and mirror) as the system that was backed up using mpp_dumpall. 
+4. (optional) The mpp_restore script uses the information in the MPP system 
+   catalog tables to determine the hosts, ports, and data directories for the 
+   segment instances it is restoring. If you want to change any of this 
+   information (for example, move the system to a different array of hosts) 
+   you must use the mpprebuildcluster.sh and mpprebuildseg.sh scripts to 
+   reconfigure your array before restoring.
+5. The databases you are restoring have been created in the system.
+
+The functionality of mpp_restore is analogous to PostgreSQLs pg_restore 
+utility, which restores a database from files created by the database backup 
+process. It issues the commands necessary to reconstruct the database to the 
+state it was in at the time it was saved.
+
+The functionality of mpp_restore is modified to accommodate the distributed 
+nature of a Bizgres MPP database, and to use files created by an mpp_dumpall 
+operation. Keep in mind that a database in Bizgres MPP is actually comprised 
+of several PostgreSQL instances (the master and all segments), each of which 
+must be restored individually. The mpp_restore utility takes care of 
+populating each segment in the system with its own distinct portion of data.
+
+The mpp_restore utility performs the following actions:
+
+ON THE MASTER HOST
+
+* Creates the user database schema(s) using the 
+  mpp_dump_<master_id>_<timestamp> SQL file created by mpp_dumpall.
+* Creates a log file in the master data directory named 
+  mpp_restore_status_<master_id>_<timestamp>.
+* mpp_restore launches a mpp_restore_agent for each segment instance to be 
+  restored. mpp_restore_agent processes run on the segment hosts and report 
+  status back to the mpp_restore process running on the master host. 
+
+ON THE SEGMENT HOSTS
+
+* Restores the user data for each segment instance using the 
+  mpp_dump_<seg_id>_<timestamp> files created by mpp_dumpall. Each segment 
+  instance on a host (primary and mirror instances) are restored.
+* Creates a log file for each segment instance named 
+  mpp_restore_status_<seg_id>_<timestamp>.
+
+Note that the 14 digit timestamp is the number that uniquely identifies the 
+backup job to be restored, and is part of the filename for each dump file 
+created by a mpp_dumpall operation. This timestamp must be passed to the 
+mpp_restore utility when restoring a Bizgres MPP database. 
+
+
+*****************************************************
+OPTIONS
+*****************************************************
+
+-mpp-k=<timestamp_key>
+
+Required. The 14 digit timestamp key that uniquely identifies the backup 
+set of data to restore. This timestamp can be found in the mpp_dumpall 
+log file output, as well as at the end of the dump files created by a 
+mpp_dumpall operation. It is of the form YYYYMMDDHHMMSS.
+
+-d <database_name>
+
+Required. The name of the database to connect to in order to restore 
+the user data. The database(s) you are restoring must exist, mpp_restore 
+does not create the database. If restoring multiple databases, connect 
+to template1.
+
+-h <hostname>
+The host name of the MPP master host. If not provided, the value of $PGHOST 
+or the local host is used. This option can also be specified as --host=hostname.
+
+-p <port>
+
+The MPP master port. If not provided, the value of $PGPORT or the port 
+number provided at compile time is used. This option can also be specified 
+as --port=port.
+
+-U <username>
+The database super user account name, for example bgadmin. If not provided, 
+the value of $PGUSER or the current OS user name is used. This option can 
+also be specified as --username.
+
+-W
+Forces a password prompt. This will happen automatically if the server 
+requires password authentication.
+
+-a
+
+Restore only the data, not the schema (data definitions). This option can 
+also be specified as --data-only.
+
+-i
+Ignores a version mismatch between mpp_restore and the database server. 
+This option can also be specified as --ignore-version.
+
+-o
+
+Restore items in order by OID. This option is of limited usefulness, 
+since OID is only an approximate indication of original creation order. 
+This option can also be specified as --oid-order.
+
+-O
+
+Do not run commands to set ownership of objects to match the original 
+database. By default, mpp_restore issues SET SESSION AUTHORIZATION 
+statements to set ownership of created schema elements. This option 
+can also be specified as --no-owner.
+
+-s
+
+Restores only the schema (data definitions), no user data is restored. 
+This option can also be specified as --schema-only.
+
+-t <table_name>
+
+Restores the table definition and/or table data for the specified 
+table only. This option can also be specified as --table=table. 
+
+-x
+Prevents the restoration of access privileges (GRANT/REVOKE commands).
+This option can also be specified as --no-privileges or no-acl.
+
+--mpp-e
+Specifies that processing should ignore any errors that occur. Use this 
+option to continue restore processing on errors.
+
+--mpp-d=<directoryname>
+
+Specifies the relative or absolute path to backup files on the hosts. 
+If this is a relative path, it is considered to be relative to the data 
+directory. If not specified, defaults to the data directory of each i
+nstance being restored. Use this option if you created your backup files 
+in an alternate location when running mpp_dumpall.
+
+--mpp-r=<filename>
+
+Specifies the full path name where the restore job log files will be placed 
+on each host. If not specified, defaults to the data directory of each 
+instance being restored. Using this option may be desirable if each segment 
+host has multiple segment instances  it will create the log files in a 
+centralized location.
+
+
+*****************************************************
+EXAMPLES
+*****************************************************
+
+Restore all schema and user data for an MPP system using backup files 
+created by mpp_dumpall:
+
+mpp_restore -mpp-k=2005103112453 -d template1
+
+
+*****************************************************
+SEE ALSO
+*****************************************************
+
+mpp_dumpall, mpprebuildcluster.sh, mpprebuildseg.sh
+

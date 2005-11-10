@@ -7,7 +7,7 @@ SYNOPSIS
 *****************************************************
 
 mppstart.sh [-d <data_directory>] [-n | -z] [-m] [-a] [-q] 
-[-l logfile_directory]
+[-l <logfile_directory>]
 
 mppstart.sh [-t | -? | -v]
 
@@ -67,9 +67,9 @@ Do not prompt the user for confirmation.
 Run in quiet mode. Command output is not displayed on the screen, but is still 
 written to the log file.
 
--l logfile_directory
+-l <logfile_directory>
 
-The directory to write the log file. Defaults to <current_directory>/logs.
+The directory to write the log file. Defaults to ~/mppAdminLogs.
 
 -t
 
@@ -93,13 +93,29 @@ EXAMPLES
 
 Start a Bizgres MPP database management server instance:
 
-./mppstart.sh
+mppstart.sh
 
 Force start of the system if it has failed segment instances from a 
 previous startup attempt:
 
-./mppstart.sh -z
+mppstart.sh -z
 
 Start all segment instances in parallel (no return code status):
 
-./mppstart.sh -n
+mppstart.sh -n
+
+Start the MPP master instance only:
+
+mppstart.sh -m
+
+Display the online help for the mppstart.sh script:
+
+mppstart.sh -?
+
+
+*****************************************************
+SEE ALSO
+*****************************************************
+
+mppcreatecluster.sh, mppstop.sh
+
