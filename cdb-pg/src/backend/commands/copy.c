@@ -86,6 +86,7 @@ static const char BinarySignature[11] = "PGCOPY\n\377\r\n\0";
  * Static communication variables ... pretty grotty, but COPY has
  * never been reentrant...
  */
+static bool is_copy_in;			/* copy in or out? */
 static CopyDest copy_dest;
 static FILE *copy_file;			/* used if copy_dest == COPY_FILE */
 static StringInfo copy_msgbuf;	/* used if copy_dest == COPY_NEW_FE */
@@ -202,6 +203,9 @@ static int16 CopyGetInt16(void);
 /* byte scaning utils */
 static char *scanTextLine(const char *s, char c, size_t len);
 static char *scanCSVLine(const char *s, char c1, char c2, char c3, size_t len);
+
+static void truncateEol(void);
+static void concatenateEol(void);
 
 
 /*
@@ -334,27 +338,39 @@ SendCopyEnd(bool binary)
 static void
 CopySendData(void *databuf, int datasize)
 {
-	switch (copy_dest)
+	if(!is_copy_in) /* copy out */
 	{
-		case COPY_FILE:
-			fwrite(databuf, datasize, 1, copy_file);
-			if (ferror(copy_file))
-				ereport(ERROR,
-						(errcode_for_file_access(),
-						 errmsg("could not write to COPY file: %m")));
-			break;
-		case COPY_OLD_FE:
-			if (pq_putbytes((char *) databuf, datasize))
-			{
-				/* no hope of recovering connection sync, so FATAL */
-				ereport(FATAL,
-						(errcode(ERRCODE_CONNECTION_FAILURE),
-						 errmsg("connection lost during COPY to stdout")));
-			}
-			break;
-		case COPY_NEW_FE:
-			appendBinaryStringInfo(copy_msgbuf, (char *) databuf, datasize);
-			break;
+		switch (copy_dest)
+		{
+			case COPY_FILE:
+				fwrite(databuf, datasize, 1, copy_file);
+				if (ferror(copy_file))
+					ereport(ERROR,
+							(errcode_for_file_access(),
+							 errmsg("could not write to COPY file: %m")));
+				break;
+			case COPY_OLD_FE:
+				if (pq_putbytes((char *) databuf, datasize))
+				{
+					/* no hope of recovering connection sync, so FATAL */
+					ereport(FATAL,
+							(errcode(ERRCODE_CONNECTION_FAILURE),
+							 errmsg("connection lost during COPY to stdout")));
+				}
+				break;
+			case COPY_NEW_FE:
+				appendBinaryStringInfo(copy_msgbuf, (char *) databuf, datasize);
+				break;
+		}
+	}
+	else /* copy in */
+	{
+		/* we call copySendData in copy-in to handle results
+		 * of default functions that we wish to send from the
+		 * dispatcher to the executor primary and mirror segments.
+		 * we do so by concatenating the results to line buffer.
+		 */
+		appendBinaryStringInfo(&line_buf, (char *) databuf, datasize);
 	}
 }
 
@@ -535,11 +551,6 @@ CopyGetInt32(void)
 	uint32		buf;
 
 	CopyGetData(&buf, sizeof(buf));
-
-	/* load raw data into line buf for dispatching later */
-	if (Mpp_role == MPP_ROLE_DISPATCH)
-		appendBinaryStringInfo(&line_buf, (char *) &buf, sizeof(buf));
-
 	return (int32) ntohl(buf);
 }
 
@@ -564,11 +575,6 @@ CopyGetInt16(void)
 	uint16		buf;
 
 	CopyGetData(&buf, sizeof(buf));
-
-	/* load raw data into line buf for dispatching later */
-	if (Mpp_role == MPP_ROLE_DISPATCH)
-		appendBinaryStringInfo(&line_buf, (char *) &buf, sizeof(buf));
-
 	return (int16) ntohs(buf);
 }
 
@@ -951,6 +957,8 @@ DoCopy(const CopyStmt *stmt)
 
 	if (is_from)
 	{							/* copy from file to database */
+		is_copy_in = true;
+		
 		if (rel->rd_rel->relkind != RELKIND_RELATION)
 		{
 			if (rel->rd_rel->relkind == RELKIND_VIEW)
@@ -1014,6 +1022,7 @@ DoCopy(const CopyStmt *stmt)
 	}
 	else
 	{							/* copy from database to file */
+		is_copy_in = false;
 
 		if (Mpp_role == MPP_ROLE_DISPATCH)
 			ereport(ERROR,
@@ -1471,9 +1480,12 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	TupleDesc	tupDesc;
 	Form_pg_attribute *attr;
 	AttrNumber	num_phys_attrs,
-				attr_count,
+				attr_count, 
+				extra_attr_count, /* count extra attributes we add in the dispatcher COPY 
+							         usually non constant defaults we pre-evaluate in here */
 				num_defaults;
 	FmgrInfo   *in_functions;
+	FmgrInfo   *out_functions; /* for handling defaults in mpp */
 	FmgrInfo	oid_in_function;
 	Oid		   *typioparams;
 	Oid			oid_typioparam;
@@ -1484,10 +1496,12 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	int			i;
 	int			p_index;
 	Oid			in_func_oid;
+	Oid			out_func_oid;
 	Datum	   *values;
 	char	   *nulls;
 	int		   *attr_offsets;
 	bool		isnull;
+	bool	   *isvarlena;
 	int			null_print_len; /* length of null print */
 	ResultRelInfo *resultRelInfo;
 	EState	   *estate = CreateExecutorState(); /* for ExecConstraints() */
@@ -1543,7 +1557,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	Datum		h_key;			/* hash key value			 */
 	Oid			h_oid;			/* hash key data type		 */
 	unsigned int target_seg;	/* result segment of cdbhash */
-
+	
 	tupDesc = RelationGetDescr(rel);
 	attr = tupDesc->attrs;
 	num_phys_attrs = tupDesc->natts;
@@ -1580,11 +1594,14 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	 * (Which input function we use depends on text/binary format choice.)
 	 */
 	in_functions = (FmgrInfo *) palloc(num_phys_attrs * sizeof(FmgrInfo));
+	out_functions = (FmgrInfo *) palloc(num_phys_attrs * sizeof(FmgrInfo));
 	typioparams = (Oid *) palloc(num_phys_attrs * sizeof(Oid));
 	defmap = (int *) palloc(num_phys_attrs * sizeof(int));
 	defexprs = (ExprState **) palloc(num_phys_attrs * sizeof(ExprState *));
 	constraintexprs = (ExprState **) palloc0(num_phys_attrs * sizeof(ExprState *));
 	force_notnull = (bool *) palloc(num_phys_attrs * sizeof(bool));
+	isvarlena = (bool *) palloc(num_phys_attrs * sizeof(bool));
+
 
 	for (attnum = 1; attnum <= num_phys_attrs; attnum++)
 	{
@@ -1606,6 +1623,23 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 		else
 			force_notnull[attnum - 1] = false;
 
+		/* 
+		 * Fetch the output function and typioparam info. We need it
+		 * for handling default functions on the dispatcher COPY, if 
+		 * there are any.
+		 */
+		if (binary)
+			getTypeBinaryOutputInfo(attr[attnum - 1]->atttypid,
+									&out_func_oid, &typioparams[attnum - 1],
+									&isvarlena[attnum - 1]);
+		else
+			getTypeOutputInfo(attr[attnum - 1]->atttypid,
+							  &out_func_oid, &typioparams[attnum - 1],
+							  &isvarlena[attnum - 1]);
+		fmgr_info(out_func_oid, &out_functions[attnum - 1]);
+		
+		/* TODO: is force quote array necessary for default conversion */
+		
 		/* Get default info if needed */
 		if (!list_member_int(attnumlist, attnum))
 		{
@@ -1652,17 +1686,32 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 		}
 	}
 
-	cdbCopy = makeCdbCopy();
-
 	/*
 	 * prepare to COPY data into segDBs:
-	 * 1 - re-construct the orignial COPY command sent from the client.
-	 * 2 - execute a BEGIN DTM transaction.
-	 * 2 - send the COPY command to all segment databases.
-	 * 3 - get the partitioning policy for this table.
-	 * 4 - prepare cdbhash for hashing on row values.
+	 * 1 - get the partitioning policy for this table.
+	 * 2 - re-construct the orignial COPY command sent from the client.
+	 * 3 - execute a BEGIN DTM transaction.
+	 * 4 - send the COPY command to all segment databases.
+	 * 5 - prepare cdbhash for hashing on row values.
 	 */
-
+	
+	cdbCopy = makeCdbCopy();
+	
+	/*
+	 * get the CDB policy for this table and prepare for hashing.
+	 */
+	policy = get_table_policy(rel->rd_id);
+	
+	if (policy->ptype != POLICYTYPE_PARTITIONED)
+		ereport(ERROR,
+				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
+				 errmsg("Unexpected MppPolicyType: %d.", policy->ptype)));
+	
+	
+	p_nattrs = policy->nattrs;	/* number of partitioning keys */
+	cdbHash = makeCdbHash(cdbCopy->total_segs, HASH_FNV_1);		/* Create hash API
+		* reference */
+	
 	/* allocate memory for error and copy strings */
 	initStringInfo(&cdbcopy_err);
 	initStringInfo(&cdbcopy_cmd);
@@ -1673,7 +1722,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 					 RelationGetRelationName(rel));
 	/*
 	 * append column list. NOTE: if not specified originally, attnumlist will
-	 * include all columns of the table by default
+	 * include all non-dropped columns of the table by default
 	 */
 	appendStringInfo(&cdbcopy_cmd, "(");
 	is_first_col = true;
@@ -1682,6 +1731,10 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 		int			attnum = lfirst_int(cur);
 		int			m = attnum - 1;
 
+		/* We don't add dropped attributes */
+		if (attr[m]->attisdropped)
+			continue;
+		
 		if (is_first_col)
 			appendStringInfo(&cdbcopy_cmd, "%s", NameStr(attr[m]->attname));
 		else
@@ -1689,6 +1742,55 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 
 		is_first_col = false;
 	}
+	
+	/* 
+	 * In order to maintain consistency between the primary and mirror segment data, we
+	 * want to evaluate all table columns that are not participating in this COPY command
+	 * and have a non-constant default values on the dispatcher. If we let them evaluate
+	 * on the primary and mirror executors separately - they will get different values.
+	 * Also, if the distribution column is not participating and it has any default value,
+	 * we have to evaluate it on the dispatcher only too, so that it wouldn't hash as a null
+	 * and inserted as a default value on the segment databases.
+	 *
+	 * Therefore, we include these columns in the column list for the executor COPY. 
+	 * The default values will be evaluated on the dispatcher COPY and the results for 
+	 * the added columns will be appended to each data row that is shipped to the segments.	 
+	 */
+	extra_attr_count = 0;
+	
+	for (i = 0; i < num_defaults; i++)
+	{
+		bool add_to_list = false;
+		
+		/* check 1: is this default for a distribution column? */
+		for (p_index = 0; p_index < p_nattrs; p_index++)
+		{
+			h_attnum = policy->attrs[p_index];	
+			
+			if(h_attnum - 1 == defmap[i])
+				add_to_list = true;
+		}
+		
+		/* check 2: is this a non constant default? */
+		if(defexprs[i]->expr->type != T_Const)
+			add_to_list = true;
+		
+		if(add_to_list)
+		{
+			/* We don't add dropped attributes */
+			if (attr[defmap[i]]->attisdropped)
+				continue;
+			
+			if (is_first_col)
+				appendStringInfo(&cdbcopy_cmd, "%s", NameStr(attr[defmap[i]]->attname));
+			else
+				appendStringInfo(&cdbcopy_cmd, ",%s", NameStr(attr[defmap[i]]->attname));
+			
+			extra_attr_count++; 
+			is_first_col = false;			
+		}
+	}
+
 	appendStringInfo(&cdbcopy_cmd, ")");
 	appendStringInfo(&cdbcopy_cmd, " FROM STDIN WITH");
 
@@ -1700,7 +1802,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	{
 		appendStringInfo(&cdbcopy_cmd, " DELIMITER AS '%s'", delim);
 
-		if (null_print[0] == '\\')		/* escape value is de-escaped.
+		if (null_print[0] == '\\')		/* null value is de-escaped.
 										 * re-escape for segdbs */
 			appendStringInfo(&cdbcopy_cmd, " NULL AS '\\%s'", null_print);
 		else
@@ -1720,7 +1822,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 		appendStringInfo(&cdbcopy_cmd, " CSV");
 		appendStringInfo(&cdbcopy_cmd, " QUOTE AS '%s'", quote);
 
-		if (escape[0] == '\\')	/* null value is de-escaped. re-escape for
+		if (escape[0] == '\\')	/* escape value is de-escaped. re-escape for
 								 * segdbs */
 			appendStringInfo(&cdbcopy_cmd, " ESCAPE AS '\\%s'", escape);
 		else
@@ -1729,21 +1831,6 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 		/* do NOT include HEADER. Header row is swallowed by dispatcher COPY */
 	}
 
-
-	/*
-	 * get the CDB policy for this table and prepare for hashing.
-	 */
-	policy = get_table_policy(rel->rd_id);
-
-	if (policy->ptype != POLICYTYPE_PARTITIONED)
-		ereport(ERROR,
-				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
-				 errmsg("Unexpected MppPolicyType: %d.", policy->ptype)));
-
-
-	p_nattrs = policy->nattrs;	/* number of partitioning keys */
-	cdbHash = makeCdbHash(cdbCopy->total_segs, HASH_FNV_1);		/* Create hash API
-																 * reference */
 
 	/*
 	 * for optimized parsing - get the last field number in the
@@ -2227,6 +2314,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 					ListCell   *cur;
 
 					fld_count = CopyGetInt16();
+					
 					if (CopyGetEof() || fld_count == -1)
 					{
 						buf_done = true;
@@ -2234,10 +2322,13 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 						break;
 					}
 
-					if (fld_count != attr_count)
+					fld_count += (int16)extra_attr_count; /* add pre-evaluated defaults to count */
+					appendBinaryStringInfo(&line_buf, (char *) &fld_count, sizeof(int16));
+					
+					if (fld_count != attr_count + extra_attr_count)
 					{
 						appendStringInfo(&cdbcopy_err, "\n\nMPPCOPY: row field count is %d, expected %d",
-										 (int) fld_count, attr_count);
+										 (int) fld_count, attr_count + extra_attr_count);
 						cdbCopy->data_errors = true;
 						no_more_data = true;
 						break;
@@ -2280,16 +2371,125 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 				}
 
 				/*
-				 * Now compute and insert any defaults available for the columns
-				 * not provided by the input data.	Anything not processed here or
-				 * above will remain NULL.
+				 * Now compute defaults for only:
+				 * 1 - the distribution column,
+				 * 2 - any other column with a non-constant default expression (such as a function)
+				 * that is, of course, if these columns not provided by the input data.	
+				 * Anything not processed here or above will remain NULL.
 				 */
 				for (i = 0; i < num_defaults; i++)
 				{
-					values[defmap[i]] = ExecEvalExpr(defexprs[i], econtext,
-													 &isnull, NULL);
-					if (!isnull)
-						nulls[defmap[i]] = ' ';
+					bool compute_default = false;
+
+					/* check 1: is this default for a distribution column? */
+					for (p_index = 0; p_index < p_nattrs; p_index++)
+					{
+						h_attnum = policy->attrs[p_index];	
+						
+						if(h_attnum - 1 == defmap[i])
+							compute_default = true;
+					}
+					
+					/* check 2: is this a default function? (non-constant default) */
+					if(defexprs[i]->expr->type != T_Const)
+						compute_default = true;
+					
+					if(compute_default)
+					{
+						char *string;
+						beforeError = CurrentMemoryContext;
+						
+						PG_TRY();
+						{
+							values[defmap[i]] = ExecEvalExpr(defexprs[i], econtext,
+															 &isnull, NULL);
+						}
+						PG_CATCH();
+						{
+							ErrorData  *edata;
+							MemoryContextSwitchTo(beforeError);
+							
+							edata = CopyErrorData(); /* get the original error message */
+							FlushErrorState();
+							appendStringInfo(&cdbcopy_err, "\nMPPCOPY: Error evaluating default value"
+											 "\nDescription: %s", edata->message);
+							FreeErrorData(edata);
+							cdbCopy->data_errors = true;
+							
+						    limit_printout_length(&line_buf);
+							break;
+						}
+						PG_END_TRY();
+						
+						MemoryContextSwitchTo(beforeError);
+						
+						/* 
+						 * prepare to concatinate next value: 
+						 * remove eol characters from end of line buf
+						 */
+						if(!binary)
+							truncateEol();
+						
+						if (isnull)
+						{
+							if (!binary)
+							{
+								appendStringInfo(&line_buf, "%c%s", delim[0], null_print);
+							}
+							else
+							{
+								uint32		null_marker = -1; /* null marker */
+								appendBinaryStringInfo(&line_buf, (char *) &null_marker, sizeof(null_marker));
+							}
+						}
+						else
+						{
+							nulls[defmap[i]] = ' ';	
+							
+							if (!binary)
+							{
+								appendStringInfo(&line_buf, "%c", delim[0]); /* write the delimiter */
+												 
+								string = DatumGetCString(FunctionCall3(&out_functions[defmap[i]],
+																	   values[defmap[i]],
+																	   ObjectIdGetDatum(typioparams[defmap[i]]),
+																	   Int32GetDatum(attr[defmap[i]]->atttypmod)));
+								if (csv_mode)
+								{
+									CopyAttributeOutCSV(string, delim, quote, escape,
+														(strcmp(string, null_print) == 0));
+								}
+								else
+									CopyAttributeOut(string, delim);
+								
+							}
+							else
+							{
+								bytea	   *outputbytes;
+							
+								outputbytes = DatumGetByteaP(FunctionCall2(&out_functions[defmap[i]],
+																		   values[defmap[i]],
+																		   ObjectIdGetDatum(typioparams[defmap[i]])));
+								
+								/* We assume the result will not have been toasted */
+								CopySendInt32(VARSIZE(outputbytes) - VARHDRSZ);
+								CopySendData(VARDATA(outputbytes),
+											 VARSIZE(outputbytes) - VARHDRSZ);
+							}
+						}
+												
+						/* re-add the eol characters */
+						if(!binary)
+							concatenateEol();
+					}
+					
+				}
+
+				if (cdbCopy->data_errors)	/* if data error occured,
+											* break out of all loops */
+				{
+					no_more_data = true;
+					break;
 				}
 
 				/*
@@ -2302,7 +2502,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 					
 					/* we must only care about constraints for distribution keys
 					   right now, the rest of the attributes with constraints
-					   will be dealt with in CopyFromDispatch */
+					   will be dealt with in CopyFromExec */
 					for (i = 0; i < p_nattrs; i++)
 					{
 						h_attnum = policy->attrs[i];		/* current att num from
@@ -2434,6 +2634,8 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	pfree(nulls);
 	pfree(attr_offsets);
 	pfree(in_functions);
+	pfree(out_functions);
+	pfree(isvarlena);
 	pfree(typioparams);
 	pfree(defmap);
 	pfree(defexprs);
@@ -3967,6 +4169,9 @@ CopyReadBinaryAttribute(int column_no, FmgrInfo *flinfo, Oid typioparam,
 	Datum		result;
 
 	fld_size = CopyGetInt32();
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+		appendBinaryStringInfo(&line_buf, (char *) &fld_size, sizeof(int32));
 
 	if (CopyGetEof())
 		ereport(ERROR,
@@ -4523,3 +4728,41 @@ scanCSVLine(const char *s, char eol, char escapec, char quotec, size_t len)
 
 	return ((*s == eol) ? (char *) s : NULL);
 }
+
+/* remove end of line chars from end of line buf */
+static void truncateEol(void)
+{
+	if(eol_type == EOL_CRNL)
+	{
+		line_buf.data[line_buf.len - 2] = '\0';
+		line_buf.data[line_buf.len - 1] = '\0';
+		line_buf.len -= 2;
+	}
+	else
+	{
+		line_buf.data[line_buf.len - 1] = '\0';
+		line_buf.len--;
+	}
+}
+
+/* add end of line chars to end line buf */
+static void concatenateEol(void)
+{
+	switch (eol_type)
+	{
+		case EOL_NL:
+			appendStringInfo(&line_buf, "\n");
+			break;
+		case EOL_CR:
+			appendStringInfo(&line_buf, "\r");
+			break;
+		case EOL_CRNL:
+			appendStringInfo(&line_buf, "\r\n");
+			break;
+		case EOL_UNKNOWN:
+			/* TODO: find a way to throw an error safely */
+			break;
+			
+	}
+}
+
