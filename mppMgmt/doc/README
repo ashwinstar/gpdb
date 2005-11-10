@@ -14,20 +14,43 @@ The following Bizgres MPP management scripts are available:
 			  scripts and contains global parameters
 			  and functions.
 
-* mppcreatecluster.sh - Initializes a Bizgres MPP array using 
+* mppcreatecluster.sh - Initializes a Bizgres MPP system using 
 		        values in a configuration file.
+
+* mpp_dumpall - Located in $MPPHOME/bin. Writes out all databases and 
+                the Bizgres MPP system catalog to SQL script files, which 
+                can then be used to restore a Bizgres MPP system configuration, 
+                databases, and user data.
+
+* mpprebuildcluster.sh - Rebuilds a Bizgres MPP master using a SQL 
+                         script file containing the Bizgres MPP schema 
+                         and MPP system catalog information, and then 
+                         recreates all of the segment instances using the 
+                         information found in the MPP system catalog tables.
+
+* mpprebuildseg.sh - Rebuilds segment instances from the MPP system catalog 
+                     tables of a Bizgres MPP master instance.
 
 * mpprecoverseg.sh - Recovers a failed primary or mirror segment
                      instance.
 
-* mpp_start.sh - Starts the master instance and all segment 
-		 instances in a Bizgres MPP array.
+* mpp_restore - Located in $MPPHOME/bin. Restores Bizgres MPP databases 
+                that were backed up using mpp_dumpall.
 
-* mpp_state - Displays status and system information for a
-	      Bizgres MPP database system.
+* mppsizecalc.sh - Shows the disk space usage for a given database, table, 
+                   or index.
 
-* mpp_stop - Stops the master instance and all segment instances
-	     in a Bizgres MPP array.
+* mppskew.sh - Shows the distribution of table data and response times for 
+               segment instances.
+
+* mppstart.sh - Starts the master instance and all segment 
+		instances in a Bizgres MPP system.
+
+* mppstate.sh - Displays status and system information for a
+	        Bizgres MPP database system.
+
+* mppstop.sh - Stops and/or restarts the master instance and all 
+               segment instances in a Bizgres MPP system.
 
 **************************************************
 ENVIRONMENT SETUP
@@ -39,6 +62,12 @@ MASTER_DATA_DIRECTORY must be set on the MPP master host.
 
 Use groupSession on the master host to exchange ssh keys 
 between the master and segment hosts.
+
+Some scripts also require ssh key exchanges between the
+segment hosts (such as mpprecoverseg.sh). You can use
+grpSession to copy the MPP user's .ssh directory on the
+master host to the MPP user's home directory on the 
+segment hosts.
 
 
 **************************************************
@@ -56,14 +85,14 @@ COMMON OPTIONS
 LOGGING
 *************************************************
 
-Log files are written to <current_directory>/logs by default.
+Log files are written to ~/mppAdminLogs by default.
 Use the -l option to change the log file location.
 
 Log files are named <script_name>_<date>.log
 
 The log entry format is:
  
-<timestamp>:<script>:<host>:<user>:[INFO|WARN|FATAL]:<error_message>
+<timestamp>:<script>:<host>:<user>:[INFO|WARN|FATAL]:<message>
 
 *************************************************
 RETURN CODES
@@ -74,6 +103,7 @@ All scripts have the following return codes:
 0 Completed without error 
 1 Completed, but a non fatal warning was encountered 
 2 Failed with fatal error
+
 
 
 

@@ -15,12 +15,13 @@
 ARRAY_NAME="MPP Test"
 
 
-# Path and file name that contains the list of host names that
-# comprise the Bizgres MPP system (master and all segment hosts). 
-# The host list file must reside in the same directory where the 
-# mppcreatecluster.sh script is executed. See host_list_example.
+# This specifies the file that contains the list of segment host names 
+# that comprise the Bizgres MPP system  the master host is assumed to 
+# be the host from which you are running the script. If the host list 
+# file does not reside in the same directory where the mppcreatecluster.sh 
+# script is executed, specify the absolute path to the file.
 
-MACHINE_LIST_FILE=host_list
+MACHINE_LIST_FILE=/home/bgadmin/host_file
 
 
 # Prefix used to name the data directories on the master and segment
@@ -44,20 +45,24 @@ SEG_PREFIX=mpp
 PORT_BASE=50000
 
 
-# The location where the data directory will be created on a host 
-# for a primary segment instance. If hosts will have multiple primary 
-# segment instances, you must declare a data directory for each 
-# primary segment instance on that host. The number of data directory 
-# locations specified will determine the number of primary segment instances 
-# per host. 
-
-# You must make sure that the user who runs mppcreatecluster.sh
-# has permissions to write to these directories. You may want to 
-# create these directories on the segment hosts before running 
+# This specifies the data storage location(s) where the script will 
+# create the primary segment data directories. The script creates a 
+# unique data directory for each segment instance. If you want multiple 
+# segment instances per host, list a data storage area for each primary 
+# segment you want created. The recommended number is one primary segment
+# per CPU. It is OK to list the same data storage area multiple times 
+# if you want your data directories created in the same location. The 
+# number of data directory locations specified will determine the number 
+# of primary segment instances per host.
+ 
+# You must make sure that the user who runs mppcreatecluster.sh (for example, 
+# the bgadmin user) has permissions to write to these directories. You 
+# may want to create these directories on the segment hosts before running 
 # mppcreatecluster.sh and chown them to the appropriate user.
 
 
-declare -a DATA_DIRECTORY=(/mppdata/dbfast1 /mppdata/dbfast2 /mppdata/dbfast3)
+declare -a DATA_DIRECTORY=(/mppdata/dbfast1 /mppdata/dbfast2)
+# declare -a DATA_DIRECTORY=(/mpp_primary /mpp_primary)
 
 
 # The host name of the MPP master instance.
@@ -79,7 +84,7 @@ MASTER_DIRECTORY=/mppdata/dbfast1
 # that users and client connections will use when accessing the 
 # Bizgres MPP system.
 
-MASTER_PORT=10000
+MASTER_PORT=5432
 
 # The IP address(es) of the hosts allowed to connect to a MPP 
 # master or segment instance. This adds an entry in the PostgreSQL 
@@ -141,10 +146,10 @@ ENCODING=UNICODE
 
 #MIRROR_PORT_BASE=60000
 
-# The data directory will Where mirror segment instances will be
+# The data directory where mirror segment instances will be
 # created on a host. There must be the same number of data directories 
 # declared for mirror segment instances as for primary segment instances 
-# (see the DATA_DIRECTORY parameter).
+# (see the DATA_DIRECTORY parameter for more information).
 
 # You must make sure that the user who runs mppcreatecluster.sh
 # has permissions to write to these directories. You may want to 
@@ -152,7 +157,8 @@ ENCODING=UNICODE
 # mppcreatecluster.sh and chown them to the appropriate user.
 
 
-#declare -a MIRROR_DATA_DIRECTORY=(/mppdata/m1 /mppdata/m2 /mppdata/m3)
+#declare -a MIRROR_DATA_DIRECTORY=(/mppdata/dbfast3 /mppdata/dbfast4)
+#declare -a MIRROR_DATA_DIRECTORY=(/mpp_mirror /mpp_mirror)
 
 ################################################
 # OPTIONAL PARAMETERS FOR A BACKUP MASTER HOST
@@ -179,4 +185,5 @@ ENCODING=UNICODE
 
 
 # STANDBY_IP_ALLOW=0.0.0.0/0
+
 
