@@ -163,12 +163,21 @@ buildMirrorQDDefinition(void)
 
 	cdb_component_dbs = getComponentDatabases();
 
+	/*
+	 * We now have a list of our components. We if we have QDmirroring
+	 * enabled, we should have more than one entry database
+	 */
 	if (cdb_component_dbs != NULL && cdb_component_dbs->total_entry_dbs > 1)
 	{
 		/* it should have maximum 2 dbs now */
 		CdbComponentDatabaseInfo *entryDb = cdb_component_dbs->entry_db_info;
 		CdbComponentDatabaseInfo *mirrorDb;
 
+		/*
+		 * We *require* that the dbids be set up in a particular way:
+		 *
+		 * XXX: The entry-mirror must have a dbid of the mirror+1. (??)
+		 */
 		if (entryDb->dbid == MppIdentity.dbid)
 			mirrorDb = entryDb + 1;
 		else
@@ -224,6 +233,9 @@ buildMirrorQDDefinition(void)
 			}
 		}
 	}
+	else
+		ereport(WARNING, (errcode(ERRCODE_WARNING_MPP_INTERCONNECTION),
+			 errmsg("Mirroring configured, but no entrydb mirrors found!")));
 }
 
 void
