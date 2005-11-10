@@ -163,6 +163,12 @@ buildMirrorQDDefinition(void)
 
 	cdb_component_dbs = getComponentDatabases();
 
+	if (cdb_component_dbs == NULL || cdb_component_dbs->total_entry_dbs <= 1)
+	{
+		elog(DEBUG1, "QD Mirroring: no mirror components found");
+		disableQDMirroring();
+	}
+
 	/*
 	 * We now have a list of our components. We if we have QDmirroring
 	 * enabled, we should have more than one entry database
@@ -194,7 +200,7 @@ buildMirrorQDDefinition(void)
 			if (!mirrorDb->valid)
 			{
 				ereport(LOG, (errcode(ERRCODE_WARNING_MPP_INTERCONNECTION),
-							  errmsg("Mirroring disabled for entry db "
+							  errmsg("QD Mirroring disabled for entry db "
 									 "because it is not marked 'valid'.")));
 				return;
 			}
@@ -215,7 +221,7 @@ buildMirrorQDDefinition(void)
 				disableQDMirroring();
 
 				ereport(WARNING, (errcode(ERRCODE_WARNING_MPP_INTERCONNECTION),
-							   errmsg("Mirroring disabled for entry db.  %s",
+							errmsg("QD Mirroring disabled for entry db.  %s",
 								   cdb_mirrored_entry_db->error_message.data)
 								  ));
 				cdb_mirrored_entry_db->errcode = 0;
@@ -233,9 +239,6 @@ buildMirrorQDDefinition(void)
 			}
 		}
 	}
-	else
-		ereport(WARNING, (errcode(ERRCODE_WARNING_MPP_INTERCONNECTION),
-			 errmsg("Mirroring configured, but no entrydb mirrors found!")));
 }
 
 void
@@ -245,13 +248,15 @@ write_qd_sync(char *cmd, void *buf, int len)
 	bool		failed = false;
 
 	if (cdb_mirrored_entry_db == NULL || cdb_mirrored_entry_db->conn == NULL)
+	{
+		elog(WARNING, "QD Mirror Sync: no QD mirror");
 		return;
+	}
 
 	elog(DEBUG3, "%s", cmd);
 	conn = cdb_mirrored_entry_db->conn;
 
-
-	if (0 == PQsendQuery(conn, cmd))
+	if (PQsendQuery(conn, cmd) == 0)
 	{
 		failed = true;
 	}
@@ -324,13 +329,21 @@ write_qd_sync(char *cmd, void *buf, int len)
 
 	if (failed)
 	{
-		ereport(LOG,
+		ereport(WARNING,
 				(errcode(ERRCODE_WARNING),		/* CDB TODO: better errcode */
-				 errmsg("mirrored entry database write error: %s",
+				 errmsg("QD mirrored entry database write error: %s",
 						PQerrorMessage(conn))));
 		PQfinish(conn);
 		cdb_mirrored_entry_db->conn = NULL;
+
+		/*
+		 * XXX: Uh, this disables mirroring for all subsequent sessions with
+		 * this database! That can't possibly be the right behavior.
+		 */
 		disableQDMirroring();
+		ereport(WARNING,
+				(errcode(ERRCODE_WARNING),		/* CDB TODO: better errcode */
+				 errmsg("QD mirror: disabling QD mirror")));
 	}
 }
 
