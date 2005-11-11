@@ -249,7 +249,7 @@ write_qd_sync(char *cmd, void *buf, int len)
 
 	if (cdb_mirrored_entry_db == NULL || cdb_mirrored_entry_db->conn == NULL)
 	{
-		elog(WARNING, "QD Mirror Sync: no QD mirror");
+		elog(DEBUG1, "QD Mirror Sync: no QD mirror");
 		return;
 	}
 
