@@ -19,6 +19,14 @@
 #include "cdb/cdbtmlog.h"
 #include "cdb/cdbtm.h"
 
+/*
+ * There is a protocol consisting of four messages from primary->mirror:
+ *
+ * Q xlog filename woffset wlen [resync]
+ * Q tmlog filename woffset wlen [resync]
+ * Q issyncmaster [resync]
+ * Q close [resync]
+ */
 
 /* for tmlog */
 static char tmlogfilename[10];
