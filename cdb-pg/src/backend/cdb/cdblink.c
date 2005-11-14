@@ -241,6 +241,47 @@ buildMirrorQDDefinition(void)
 	}
 }
 
+static void
+parseOffsetsFromMessage(char *buf, int *pfileoff, int *mfileoff)
+{
+	char		*start,
+				*stop;
+	int			p,
+				m;
+
+	Assert(buf != NULL);
+	Assert(pfileoff != NULL);
+	Assert(mfileoff != NULL);
+
+	/* 
+	sscanf(PQresultErrorMessage(pRes), "%s%s pdboff: %d, mdboff: %d",
+						   dummy, dummy, &pfileoff, &mfileoff);
+	*/
+
+	do {
+		start = strstr(buf, "pdboff: ");
+		if (start == NULL)
+			break;
+		stop = strstr(start, ",");
+		p = atoi(start+strlen("pdboff: "));
+
+		start = strstr(buf, "mdboff: ");
+		if (start == NULL)
+			break;
+		stop = strstr(start, ",");
+		m = atoi(start+strlen("mdboff: "));
+
+		*pfileoff = p;
+		*mfileoff = m;
+
+		return;
+	} while (0);
+
+	/* error ! */
+	ereport(ERROR, (errcode(ERRCODE_WARNING_MPP_INTERCONNECTION),
+					errmsg("QD Mirroring: parse error on message returned from standby-QD (%s)", buf)));
+}
+
 void
 write_qd_sync(char *cmd, void *buf, int len)
 {
@@ -286,16 +327,17 @@ write_qd_sync(char *cmd, void *buf, int len)
 				if (!resync && strstr(PQresultErrorMessage(pRes), "resync") != NULL)
 				{
 					char		dummy[100];
-					int			pfileoff,
-								mfileoff;
+					int			pfileoff=0,
+								mfileoff=0;
 
 					/* be careful going into an infinite loop */
 					resync = true;
 
 					/* resync tmlog and xlog */
 
-					sscanf(PQresultErrorMessage(pRes), "%s%s pdboff: %d, mdboff: %d",
-						   dummy, dummy, &pfileoff, &mfileoff);
+					elog(DEBUG4, "write_qd_sync: result msg %s", PQresultErrorMessage(pRes));
+
+					parseOffsetsFromMessage(PQresultErrorMessage(pRes), &pfileoff, &mfileoff);
 
 					/* cleanup connection */
 					do
@@ -303,6 +345,8 @@ write_qd_sync(char *cmd, void *buf, int len)
 						PQclear(pRes);
 					}
 					while ((pRes = PQgetResult(conn)) != NULL);
+
+					elog(DEBUG3, "write_qd_sync: mfileoff %d pfileoff %d", mfileoff, pfileoff);
 
 					if (resync_xlog_to_mirror() &&
 						resync_tmlog_to_mirror(mfileoff, pfileoff))

@@ -586,7 +586,10 @@ resync_tmlog_to_mirror(int startoff, int stopoff)
 	len = stopoff - startoff;
 	loffset = lseek(logFileFD, startoff, SEEK_SET);
 	Assert(loffset == startoff);
-	elog(LOG, "resyncing start offset: %d, stop offset: %d", startoff, stopoff);
+
+	elog(DEBUG3, "resync_tmlog_to_mirror: resyncing start offset: %d, stop offset: %d len %d", startoff, stopoff, len);
+
+	Assert(len >= 0);
 	while (len != 0)
 	{
 		int			read_len = sizeof(buf);
@@ -595,7 +598,7 @@ resync_tmlog_to_mirror(int startoff, int stopoff)
 			read_len = len;
 		if (!read_with_ereport(logFileFD, buf, read_len))
 		{
-			elog(LOG, "failed to resync tmlog at offset: %d", loffset);
+			elog(LOG, "failed to resync tmlog at offset: %d (len %d)", loffset, len);
 			return false;
 		}
 
@@ -615,6 +618,8 @@ resync_tmlog_to_mirror(int startoff, int stopoff)
 TmLogFileControlBlock *
 getTmLogFileHeader(void)
 {
+	elog(DEBU3, "getTmLogFileHeader()");
+
 	if (!read_with_ereport(logFileFD, &tmLogFileHeader, sizeof(TmLogFileControlBlock)))
 		return NULL;
 	else
