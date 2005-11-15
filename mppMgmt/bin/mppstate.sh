@@ -14,7 +14,6 @@
 # Update History
 #******************************************************************************
 # Ver	Date		Who		Update
-# 1.1	29/07/2005	G Coombe	Added a brief status output option.
 #******************************************************************************
 # Detailed Description
 #******************************************************************************
@@ -84,6 +83,7 @@ USAGE () {
 		$ECHO "      -e, Display end of each segment instance log file"
 		$ECHO "      -b, Display a brief MPP cluster status summary"
 		$ECHO "      -i, Display system version information"
+		$ECHO "      -f, Display details of fail-over master host if configured"
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 No problems encountered with requested operation"
@@ -125,6 +125,21 @@ CHK_PG_PID () {
 
 GET_FAIL_SETTING () {
 	FAIL_TYPE=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -R" " -A -t -c"show mpp_fault_action;"`
+	ERROR_CHK $? "obtain fault action setting" 2
+}
+
+GET_STANDBY_SETTING () {
+	MASTER_STANDBY_HOSTNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -R" " -A -t -c"select a.hostname from mpp.host a, mpp.listener b, mpp.pgdatabase c where a.hostid=b.hostid and b.listenerid=c.listenerid and c.content=-1 and c.dbid<>1;"`
+	ERROR_CHK $? "Obtain standby hostname" 1
+	if [ x"" == x"$MASTER_STANDBY_HOSTNAME" ];then
+		STANDBY_CONFIGURED="No master standby configured"
+	else
+		STANDBY_CONFIGURED="$MASTER_STANDBY_HOSTNAME"
+		if [ `$HOSTNAME` == $MASTER_STANDBY_HOSTNAME ];then
+			STANDBY_STATE="STANDBY HOST ACTIVE QD MASTER"
+		else
+			STANDBY_STATE="Standby host passive";fi
+	fi
 }
 
 DATABASE_STATUS () {
@@ -141,8 +156,11 @@ DATABASE_STATUS () {
 				GET_QE_DETAILS
 				GET_MPP_VERSION
 				GET_FAIL_SETTING
+				GET_STANDBY_SETTING
 				QD_PG_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c"show server_version;"`
+				ERROR_CHK $? "obtain postgres version" 1
 				MIRROR_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c"select count(dbid)/count(distinct(content)) from mpp.pgdatabase where content<>-1;" 2> /dev/null `
+				ERROR_CHK $? "obtain mirror count" 1
 				if [ x"" == x"$MIRROR_COUNT" ];then
 					MIRROR_CONFIG=ERROR
 				else
@@ -162,6 +180,8 @@ DATABASE_STATUS () {
 				LOG_MSG "[INFO]:-Postgres version              = $QD_PG_VERSION"
 				LOG_MSG "[INFO]:-MPP failure action            = $FAIL_TYPE"
 				LOG_MSG "[INFO]:-MPP mirroring status          = $MIRROR_CONFIG"
+				LOG_MSG "[INFO]:-MPP master standby            = $STANDBY_CONFIGURED"
+				LOG_MSG "[INFO}:-MPP master standby state      = $STANDBY_STATE"
 				if [ -f $RECOVER_FLAG ]; then
 						LOG_MSG "[WARN]:-Active mpprecovernode.bsh     = True"
 				else
@@ -190,7 +210,6 @@ DATABASE_STATUS () {
 								LOG_MSG "[WARN]:-Request for PID for $QE_NAME returned error code $RETVAL"
 								QE_PID=0
 						fi
-					##	QE_PID_ACTUAL=`$TRUSTED_SHELL $QE_NAME "$PS ax|$GREP postmaster|$GREP -v grep|$GREP ${QE_PORT}"|$AWK '{print $1}'`
 						GET_PG_PID_ACTIVE $QE_PORT $QE_NAME
 						QE_PID_ACTUAL=$PID
 						LOG_MSG "[INFO]:-Segment Instance Physical PID for $QE_NAME port $QE_PORT       = $QE_PID_ACTUAL"
@@ -237,6 +256,7 @@ fi
 VERSION_INFO () {
 	GET_QE_DETAILS
 	MASTER_POSTGRES_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT template1 -c"show server_version;"`
+	ERROR_CHK $? "obtain postgres server version" 1
 	LOG_MSG "[INFO]:-Master database postgres version = $MASTER_POSTGRES_VERSION"
 	for TNODE in "${QE_ARRAY[@]}"
 	do
@@ -421,6 +441,7 @@ CLUSTER_CONFIG () {
 
 LIST_MPP_PORTS () {
 		PORT_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.port, a.datadir from mpp.listener a, mpp.host b where listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid;" 2>|/dev/null`)
+		ERROR_CHK $? "obtain port assignments" 2
 		LOG_MSG "[INFO]:-Port assignments"
 		for PMODE in "${PORT_ARRAY[@]}"
 				do
@@ -432,26 +453,51 @@ LIST_MPP_PORTS () {
 }
 
 LIST_MPP_LOGS () {
-		LOG_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select b.hostname,  a.datadir from mpp.listener a, mpp.host b where listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid;" 2>|/dev/null`)
+		LOG_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select b.hostname,  a.datadir from mpp.listener a, mpp.host b where listenerid not in (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid;" 2>|/dev/null`)
+		ERROR_CHK $? "obtain log assignments" 2
 		LOG_MSG "[INFO]:-Segment instance MPP database instance log file names"
 		for LOGCHK in "${LOG_ARRAY[@]}"
 				do
 				HOST=`$ECHO $LOGCHK|$CUT -d"|" -f1`
 				DIR=`$ECHO $LOGCHK|$CUT -d"|" -f2`
 				if [ $TAIL_LOGS ]; then
-						LOG_MSG "[INFO]:-Segment instance host $HOST log file tail START---------------"
+						LOG_MSG "[INFO]:-$HOST $DIR log file tail START---------------"
 						$ECHO
 						$TRUSTED_SHELL $HOST "$TAIL ${DIR}.log"|$TEE -a $LOG_FILE
 						$ECHO
-						LOG_MSG "[INFO]:-Segment instance host $HOST log file tail END-----------------"
+						LOG_MSG "[INFO]:-$HOST $DIR log file tail END-----------------"
 				else
-						LOG_MSG "[INFO]:-Segment instance Host assigned logfile ${DIR}.log database logfile"
+						LOG_MSG "[INFO]:-$HOST $DIR has logfile ${DIR}.log database logfile"
 				fi
 		done	
 }
 
+STANDBY_HOST_DETAILS () {
+	GET_STANDBY_DETAILS
+	if [ ${#STANDBY_ARRAY[@]} -eq 0 ];then
+		LOG_MSG "[INFO]:-Standby master instance not configured"
+	else
+		MASTER_STANDBY_HOSTNAME=`$ECHO $STANDBY_ARRAY|$CUT -d"|" -f1`
+		MASTER_STANDBY_DIR=`$ECHO $STANDBY_ARRAY|$CUT -d"|" -f2`
+		MASTER_STANDBY_PORT=`$ECHO $STANDBY_ARRAY|$CUT -d"|" -f3`
+		if [ `$HOSTNAME` == $MASTER_STANDBY_HOSTNAME ];then
+			STANDBY_STATE="STANDBY HOST ACTIVE QD MASTER"
+		else
+			STANDBY_STATE="Standby host passive";fi
+		GET_PG_PID_ACTIVE $MASTER_STANDBY_PORT $MASTER_STANDBY_HOSTNAME
+		LOG_MSG "[INFO]:-Standby master details"
+		LOG_MSG "[INFO]:-----------------------"
+		LOG_MSG "[INFO]:-Standby hostname        = $MASTER_STANDBY_HOSTNAME"
+		LOG_MSG "[INFO]:-Standby data directory  = $MASTER_STANDBY_DIR"
+		LOG_MSG "[INFO]:-Standby port            = $MASTER_STANDBY_PORT"
+		LOG_MSG "[INFO]:-Standby PID             = $PID"
+		LOG_MSG "[INFO]:-Standby status          = $STANDBY_STATE"
+	fi
+}
+
 GET_MPP_VERSION () {
-		MPP_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select * from mpp.version" 2>/dev/null`
+		MPP_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select * from mpp.version limit 1;" 2>/dev/null`
+		ERROR_CHK $? "obtain MPP version information" 2
 }
 
 NOT_ACTIVE () {
@@ -462,9 +508,10 @@ NOT_ACTIVE () {
 # Main Section
 #******************************************************************************
 #Check to see if we have a parameter supplied to script
+trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 SELECT=1
 if [ $# -ne 0 ]; then
-		while getopts ":vtbl:d:nieqsmcp'?'" opt;do
+		while getopts ":vtbl:d:nieqsmcpf'?'" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						t ) DISPLAY_PARAM ;;
@@ -478,7 +525,9 @@ if [ $# -ne 0 ]; then
 						n ) SELECT=5 ;;
 						b ) SELECT=6 ;;
 						i ) SELECT=7 ;;
-						e ) TAIL_LOGS=1 ;;
+						f ) SELECT=8 ;;
+						e ) TAIL_LOGS=1 
+						    SELECT=5 ;;
 						l ) LOG_DIR=$OPTARG ;;
 						* ) UNKNOWN_OPTION ;;
 				esac
@@ -493,7 +542,7 @@ else
 	LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
 	fi
 fi
-CHK_DB_QD_SET
+CHK_ON_PASSIVE_STANDBY
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 CHK_DB_RUNNING
@@ -506,7 +555,8 @@ case $SELECT in
 		4 ) LIST_MPP_PORTS ;;
 		5 ) LIST_MPP_LOGS ;;
 		6 ) SUMMARY_STATUS ;;
-		7 ) VERSION_INFO
+		7 ) VERSION_INFO ;;
+		8 ) STANDBY_HOST_DETAILS ;;
 esac
 LOG_MSG "[INFO]:-End Main"
 exit $EXIT_STATUS

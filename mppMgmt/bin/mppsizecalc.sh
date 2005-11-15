@@ -93,20 +93,14 @@ USAGE () {
 GET_DB_OID_DATA () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	DB_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select oid from pg_database where datname='${QD_DBNAME}';"`
-	RETVAL=$?
-	if [ $RETVAL -ne 0 ];then
-		ERROR_EXIT "[FATAL]:-Unable to obtain database OID from $QD_DBNAME database" 2
-	fi
+	ERROR_CHK $? "obtain database OID from $QD_DBNAME database" 2
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 GET_TABLE_OID_DATA () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	TABLE_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select relfilenode from pg_class where relname='${TABLE_NAME}'"`
-	RETVAL=$?
-	if [ $RETVAL -ne 0 ];then
-		ERROR_EXIT "[FATAL]:-Unable to obtain table OID for $TABLE_NAME table" 2
-	fi
+	ERROR_CHK $? "obtain table OID for $TABLE_NAME table" 2	
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -219,18 +213,18 @@ DISPLAY_SIZE () {
 	esac
 	if [ $VERBOSE ];then
 		case $SIZE_TYPE in 
-			0) $ECHO "[INFO]:- Total space used for $TABLE_NAME table in database $QD_DBNAME " ;;
-			1) $ECHO "[INFO]:- Total space used for indexes on $TABLE_NAME table in database $QD_DBNAME " ;;
-			2) $ECHO "[INFO]:- Total space used for database $QD_DBNAME " ;;
+			0) LOG_MSG "[INFO]:-Total space used for $TABLE_NAME table in database $QD_DBNAME " ;;
+			1) LOG_MSG "[INFO]:-Total space used for indexes on $TABLE_NAME table in database $QD_DBNAME " ;;
+			2) LOG_MSG "[INFO]:-Total space used for database $QD_DBNAME " ;;
 		esac
-		$ECHO "[INFO]:- $TOTAL_SIZE ${SCALE}"	
+		LOG_MSG "[INFO]:- $TOTAL_SIZE ${SCALE}"	
 	else
 		$ECHO $TOTAL_SIZE
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 #***********************************************************************************
-trap '$RM -f $TMPFILE' INT TERM
+trap '$RM -f $TMPFILE;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 CHK_DB_QD_SET
 if [ $# -ne 0 ]; then
 	while getopts ":fvt:'?'ql:d:s:a:ix:" opt;do
@@ -259,6 +253,7 @@ if [ $SCALE != "k" ];then
 		* ) ERROR_EXIT "[FATAL]:-Parameter -s must be either b, k or m" 2 ;;
 	esac
 fi
+CHK_ON_PASSIVE_STANDBY
 if [ x"" == x"$TABLE_NAME" ] && [ x"" == x"$SIZE_DB" ];then
 	ERROR_EXIT "[FATAL]:-Must supply a table name via -t option, or -x option" 2
 fi

@@ -57,6 +57,7 @@ unset ADMIN
 FAILED_COUNT=0
 TAIL_COUNT=0
 START_INVALID=0
+STANDBY_COUNT=0
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -87,6 +88,7 @@ USAGE () {
 		$ECHO "      -n, do not wait for startup return code of each segment instance [default:- wait]"
 		$ECHO "      -m, start master database only in maintenance mode [default:- full MPP startup]"
 		$ECHO "      -z, force startup of segment instance marked as invalid"
+		$ECHO "      -y, start master standby server [default:- do not start]"
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 No problems encountered with requested operation"
@@ -109,8 +111,8 @@ DISPLAY_PARAM () {
 		$ECHO
 		$ECHO "Current Default Startup Parameters"
 		$ECHO "----------------------------------"
-		$ECHO "MPP head database port      = $MASTER_PORT      [Override with -p <port number>]"
-		$ECHO "MPP head database directory = $MASTER_DATA_DIRECTORY [Override with -d <Master directory>]"
+		$ECHO "MPP QD database port        = $MASTER_PORT      [Override with -p <port number>]"
+		$ECHO "MPP QD database directory   = $MASTER_DATA_DIRECTORY [Override with -d <Master directory>]"
 		if [ $INTERACTIVE ]; then
 				$ECHO "Interactive                 = True            [Override with -a]"
 		else
@@ -139,29 +141,25 @@ CHK_QD_DB_RUNNING () {
 
 GET_DETAILS () {
 		#Get the database name
-		#Start the head datase in admin mode
+		#Start the QD datase in admin mode
 		export PGPORT=$MASTER_PORT
 		LOG_MSG "[INFO]:-Starting Master database in admin mode"
 		$PG_CTL -w -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -p $MASTER_PORT"  start >/dev/null 2>&1
-		RETVAL=$?
-		if [ $RETVAL -ne 0 ]; then
-				ERROR_EXIT "[FATAL]:-Could not start Master database" 2
-		else
-				LOG_MSG "[INFO]:-Successfully started Master database"
-		fi
+		ERROR_CHK $? "startup Master instance" 2
 		LOG_MSG "[INFO]:-Obtaining MPP Master catalog information"
 		#Now get tail details
 		GET_QE_DETAILS
 		QE_COUNT=${#QE_ARRAY[@]}
-		#Shutdown the head database
+		if [ x"" != x"$START_SYNC" ];then
+			GET_STANDBY_COUNT
+			if [ $STANDBY_COUNT -ne 0 ];then
+				GET_STANDBY_DETAILS
+			fi
+		fi
+		#Shutdown the QD database
 		LOG_MSG "[INFO]:-Shutting down Master database"
 		$PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m $MODE	 >/dev/null 2>&1
-		RETVAL=$?
-		if [ $RETVAL -ne 0 ]; then
-				ERROR_EXIT "[FATAL]:-Could not shutdown Master database" 2
-		else
-				LOG_MSG "[INFO]:-Successfully shutdown the Master database"
-		fi
+		ERROR_CHK $? "shutdown Master instance" 2
 }
 
 START_ADMIN () {
@@ -178,14 +176,18 @@ START_ADMIN () {
 
 
 PROMPT_CONTINUE () {
-		$ECHO
-		$TABECHO "Master parameters:"
-		$TABECHO "------------------"
-		$TABECHO "Database           = $QD_DBNAME"
-		$TABECHO "Master Port        = $MASTER_PORT"
-		$TABECHO "Master directory   = $MASTER_DATA_DIRECTORY"
-		$TABECHO "Segment instances that will be started:"
-		$TABECHO "--------------------------------------"
+		LOG_MSG "[INFO]:-Master parameters:"
+		LOG_MSG "--------------------------"
+		LOG_MSG "[INFO]:-Database                   = $QD_DBNAME"
+		LOG_MSG "[INFO]:-Master Port                = $MASTER_PORT"
+		LOG_MSG "[INFO]:-Master directory           = $MASTER_DATA_DIRECTORY"
+		if [ x"" != x"$START_SYNC" ] && [ $STANDBY_COUNT -ne 0 ];then
+		LOG_MSG "[INFO]:-Master standby start       = On"
+		else
+		LOG_MSG "[INFO]:-Master standby start       = Off"
+		fi
+		LOG_MSG "[INFO]:-Segment instances that will be started:"
+		LOG_MSG "--------------------------------------------------"
 		COUNT=1
 		for QNODE in "${QE_ARRAY[@]}"
 				do
@@ -195,14 +197,14 @@ PROMPT_CONTINUE () {
 				QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
 				QE_PRIMARY=`$ECHO $QNODE|$CUT -d"|" -f5`
 				if [ "$QE_VALID" == "t" ]; then
-					$TABECHO "Segment instance [$COUNT] $QE_NAME data directory = $QE_DIR port = $QE_PORT"
+					LOG_MSG "[INFO]:-Host [$COUNT] $QE_NAME data directory = $QE_DIR port = $QE_PORT"
 				else
-					$TABECHO "Segment instance [$COUNT] $QE_NAME data directory = $QE_DIR port = $QE_PORT invalid will not start"
+					LOG_MSG "[INFO]:-Host [$COUNT] $QE_NAME data directory = $QE_DIR port = $QE_PORT invalid will not start"
 				fi
 				((COUNT=$COUNT+1))
 		done
 		$ECHO
-		$ECHO "         Continue with MPP database startup yY|nN >"
+		$ECHO "Continue with MPP database startup yY|nN >"
 		read REPLY
 		if [ -z $REPLY ]; then
 				LOG_MSG "[WARN]:-User abort requested, Script Exits!"
@@ -215,6 +217,12 @@ PROMPT_CONTINUE () {
 }	
 
 PROCESS_STARTUP () {
+		if [ x"" != x"$START_SYNC" ] && [ $STANDBY_COUNT -ne 0 ];then
+			STANDBY_HOSTNAME=`$ECHO ${STANDBY_ARRAY[@]}|$CUT -d"|" -f1`
+			STANDBY_DATADIR=`$ECHO ${STANDBY_ARRAY[@]}|$CUT -d"|" -f2`
+			STANDBY_PORT=`$ECHO ${STANDBY_ARRAY[@]}|$CUT -d"|" -f3`	
+			START_SYNC_PROCESS $STANDBY_HOSTNAME $STANDBY_DATADIR $STANDBY_PORT
+		fi
 		INDEX=0
 		QE_START_COUNT=0
 		for QNODE in "${QE_ARRAY[@]}"
@@ -273,12 +281,7 @@ PROCESS_STARTUP () {
 		export PGPORT=${MASTER_PORT}
 		export PGPATH=${MPPHOME}/bin
 		$PG_CTL $WAIT  -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -p $MASTER_PORT " start -m $MODE  
-		RETVAL=$?
-		if [ $RETVAL -ne 0 ]; then
-				ERROR_EXIT "[FATAL]:-Issue with startup of Master database" 2
-		else
-				LOG_MSG "[INFO]:-Successfully started Master $QD_NAME database"
-		fi
+		ERROR_CHK $? "startup Master instance" 2
 		RET_TEXT=`$PG_CTL status -D $MASTER_DATA_DIRECTORY`
 		RUNNING=`$ECHO $RET_TEXT|$EGREP -c "not running|neither"`
 		if [ $RUNNING -ne 0 ]; then
@@ -298,8 +301,9 @@ PROCESS_STARTUP () {
 #******************************************************************************
 # Main Section
 #******************************************************************************
+trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ]; then
-		while getopts ":vt'?'aqznml:d:" opt;do
+		while getopts ":vt'?'aqyznml:d:" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						t ) DISPLAY_PARAM ;;
@@ -311,6 +315,7 @@ if [ $# -ne 0 ]; then
 						m ) ADMIN=1 ;;
 						z ) START_INVALID=1 ;;
 						l ) LOG_DIR=$OPTARG ;;
+						y ) START_SYNC=1 ;;
 						* ) USAGE ;;
 				esac
 		done	
@@ -325,8 +330,8 @@ if [ x"" != x"$LOG_DIR" ];then
 fi
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
+CHK_ON_PASSIVE_STANDBY
 CHK_QD_DB_RUNNING
-CHK_DB_QD_SET
 GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 if [ $ADMIN ]; then
 	START_ADMIN

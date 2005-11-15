@@ -193,6 +193,7 @@ VERSION_INFO () {
 		exit 0
 }
 
+
 LOG_MSG () {
 		TIME=`$DATE +%H":"%M":"%S`
 		CUR_DATE=`$DATE +%Y%m%d`
@@ -218,6 +219,25 @@ ERROR_EXIT () {
 				fi
 		fi
 		exit $2
+}
+
+ERROR_CHK () {
+	if [ $# -ne 3 ];then 
+		LOG_MSG "[WARN]:-Incorrect # parameters supplied to $FUNCTNAME"
+		return;fi
+	RETVAL=$1;shift
+	MSG_TXT=$1;shift
+	ACTION=$1 #1=issue warn, 2=fatal
+	if [ $RETVAL -eq 0 ];then
+		LOG_MSG "[INFO]:-Successfully completed $MSG_TXT"
+	else
+		if [ $ACTION -eq 1 ];then
+			LOG_MSG "[WARN]:-Issue with $MSG_TXT"
+			EXIT_STATUS=1
+		else
+			ERROR_EXIT "[FATAL]:-Failed to complete $MSG_TXT " 2
+		fi
+	fi	
 }
 
 ED_FILE () {
@@ -263,8 +283,6 @@ ed $FILENAME << _EOF_ > /dev/null 2>&1
 .
 d
 .
--1
-.
 a
 $SUB_TXT
 .
@@ -307,8 +325,6 @@ fi
 			else
 			$ECHO d >> $ED_TMP_FILE
 			$ECHO . >>  $ED_TMP_FILE
-			$ECHO "-1" >> $ED_TMP_FILE
-			$ECHO . >> $ED_TMP_FILE
 			$ECHO a >> $ED_TMP_FILE
 			$ECHO "$SUB_TXT" >>  $ED_TMP_FILE
 			$ECHO . >>  $ED_TMP_FILE
@@ -357,13 +373,13 @@ CHK_FILE () {
 }
 CHK_DIR () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		DIR_NAME=$1
-		LOG_MSG "[INFO]:-Checking directory $DIR_NAME"
-		if [ ! -d $DIR_NAME ]
-				then
-				EXISTS=1
+		DIR_NAME=$1;shift
+		DIR_HOST=$1
+		if [ x"" == x"$DIR_HOST" ];then
+			EXISTS=`if [ -d $DIR_NAME ];then $ECHO 0;else $ECHO 1;fi`
 		else
-				EXISTS=0
+			EXISTS=`$TRUSTED_SHELL $DIR_HOST "if [ -d $DIR_NAME ];then $ECHO 0;else $ECHO 1;fi"`
+			ERROR_CHK $? "obtain directory details $DIR_NAME on $DIR_HOST" 1
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -380,6 +396,22 @@ GET_MASTER_PORT () {
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+CHK_ON_PASSIVE_STANDBY () {
+	MPPSYNC_COUNT=0
+	CHK_DB_QD_SET
+	GET_MASTER_PORT $MASTER_DATA_DIRECTORY
+	GET_PG_PID_ACTIVE $MASTER_PORT
+	if [ -f $MASTER_DATA_DIRECTORY/postmaster.opts ];then
+		MPPSYNC_COUNT=`$GREP -c mppsync $MASTER_DATA_DIRECTORY/postmaster.opts`
+	fi
+	if [ $PID -ne 0 ] && [ $MPPSYNC_COUNT -ne 0 ];then
+		LOG_MSG "[FATAL]:-Cannot run this script on a passive standby QD where there" 
+		LOG_MSG "[FATAL]:-is a conflict with the current value of the MASTER_DATA_DIRECTORY"
+		LOG_MSG "[FATAL]:-environment variable setting."
+		ERROR_EXIT "[FATAL]:-Unable to process requested command" 2
+	fi
+}
+
 CHK_DB_RUNNING () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		if [ ! -d $MASTER_DATA_DIRECTORY ]; then
@@ -388,14 +420,20 @@ CHK_DB_RUNNING () {
 		if [ ! -f $MASTER_DATA_DIRECTORY/$PG_PID ]; then
 				ERROR_EXIT "[FATAL]:-No $MASTER_DATA_DIRECTORY/$PG_PID file" 2
 		fi		
+		env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c"\l" > /dev/null 2>&1
+		if [ $? -ne 0 ];then
+			LOG_MSG "[FATAL]:-Have a postmaster.pid file for QD instance on post $MASTER_PORT"
+			ERROR_EXIT "[FATAL]:-However, error reported on test access to QD instance."
+		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 GET_QD_DB_NAME () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_MASTER_PORT $MASTER_DATA_DIRECTORY
-
-		QD_DBNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c"\l" 2>/dev/null|$GREP -v template|$HEAD -1|$CUT -d"|" -f1` > /dev/null 2>&1
+		CHK_DB_RUNNING	
+		QD_DBNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c"\l" 2>/dev/null|$GREP -v template|$HEAD -1|$CUT -d"|" -f1`
+		ERROR_CHK $? "obtain database name" 2
 		MASTER_DIR_CHK=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c"select count(*) from mpp.host;"`
 		if [ $MASTER_DIR_CHK -eq 0 ];then
 			ERROR_EXIT "[FATAL]:-MASTER_DATA_DIRECTORY value of $MASTER_DATA_DIRECTORY is incorrect" 2;fi
@@ -405,10 +443,31 @@ GET_QD_DB_NAME () {
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
+
+GET_STANDBY_COUNT () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	GET_QD_DB_NAME
+	STANDBY_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from mpp.listener a, mpp.host b, mpp.mpp_pgdatabase c where a.listenerid in (select listenerid from mpp.mpp_pgdatabase where content=-1 and dbid<>1) and a.hostid=b.hostid and a.listenerid=c.listenerid;"`
+	ERROR_CHK $? "obtain standby master host count" 1
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+GET_STANDBY_DETAILS () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	GET_QD_DB_NAME
+	STANDBY_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port, c.valid, c.definedprimary from mpp.listener a, mpp.host b, mpp.mpp_pgdatabase c where a.listenerid in (select listenerid from mpp.mpp_pgdatabase where content=-1 and dbid<>1) and a.hostid=b.hostid and a.listenerid=c.listenerid;"`) > /dev/null 2>&1
+	RETVAL=$?
+	if [ $RETVAL -ne 0 ]; then
+		LOG_MSG "[INFO]:-Unable to obtain standby master details, error code $RETVAL returned"
+		EXIT_STATUS=1
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 GET_QE_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_QD_DB_NAME
-		QE_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port, c.valid, c.definedprimary from mpp.listener a, mpp.host b, mpp.mpp_pgdatabase c where a.listenerid<> (select listenerid from mpp.mpp_pgdatabase where content=-1) and a.hostid=b.hostid and a.listenerid=c.listenerid;" 2>/dev/null`) > /dev/null 2>&1
+		QE_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port, c.valid, c.definedprimary from mpp.listener a, mpp.host b, mpp.mpp_pgdatabase c where a.listenerid not in (select listenerid from mpp.mpp_pgdatabase where content=-1) and a.hostid=b.hostid and a.listenerid=c.listenerid;"`) > /dev/null 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 				LOG_MSG "[WARN]:-Unable to obtain segment instance host details from Master db, error code $RETVAL returned"
@@ -417,10 +476,17 @@ GET_QE_DETAILS () {
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+CHK_MIRRORS_CONFIGURED () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	MIRROR_COUNT=`$PSQL -p $MASTER_PORT template1 -A -t -c"select count(dbid)/count(distinct(content)) from mpp.pgdatabase where content<>-1;"`
+	ERROR_CHK $? "obtain mirror count from master instance" 2
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 GET_QE_PRIMARY_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_QD_DB_NAME
-		QE_PRIMARY_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port, c.valid, c.definedprimary from mpp.listener a, mpp.host b, mpp.mpp_pgdatabase c where a.listenerid<> (select listenerid from mpp.mpp_pgdatabase where content=-1) and a.hostid=b.hostid and a.listenerid in (select listenerid from mpp.mpp_pgdatabase where definedprimary='t') and a.listenerid=c.listenerid order by a.datadir;" 2>/dev/null`) > /dev/null 2>&1
+		QE_PRIMARY_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port, c.valid, c.definedprimary from mpp.listener a, mpp.host b, mpp.mpp_pgdatabase c where a.listenerid not in (select listenerid from mpp.mpp_pgdatabase where content=-1) and a.hostid=b.hostid and a.listenerid in (select listenerid from mpp.mpp_pgdatabase where definedprimary='t') and a.listenerid=c.listenerid order by a.datadir;" 2>/dev/null`) > /dev/null 2>&1
 
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
@@ -434,7 +500,7 @@ GET_QE_MIRROR_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_QD_DB_NAME
 
-		QE_MIRROR_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port, c.valid, c.isprimary from mpp.listener a, mpp.host b, mpp.mpp_pgdatabase c where a.listenerid<> (select listenerid from mpp.mpp_pgdatabase where content=-1) and a.hostid=b.hostid  and a.listenerid=c.listenerid and c.definedprimary='f' order by a.datadir;" 2>/dev/null`) > /dev/null 2>&1
+		QE_MIRROR_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port, c.valid, c.isprimary from mpp.listener a, mpp.host b, mpp.mpp_pgdatabase c where a.listenerid not in (select listenerid from mpp.mpp_pgdatabase where content=-1) and a.hostid=b.hostid  and a.listenerid=c.listenerid and c.definedprimary='f' order by a.datadir;" 2>/dev/null`) > /dev/null 2>&1
 
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
@@ -444,64 +510,16 @@ GET_QE_MIRROR_DETAILS () {
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
-GET_HOSTNAMES () {
-		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		MASTER_DATA_DIRECTORY=$1
-		GET_MASTER_PORT $MASTER_DATA_DIRECTORY
-		CHK_DB_RUNNING
-		GET_QD_DB_NAME
-		unset HOSTNAME_LIST
-		HOSTNAME_LIST=`$PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select distinct(hostname) from mpp.host;"` > /dev/null 2>&1
-		LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
-
-INVALID_SEG_CHECK () {
-		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		echo "This facility not supported by MPP as at 20/07/2005"
-		exit
-		GET_QD_DB_NAME
-		INVALID_COUNT=`$PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from mpp.pgdatabase where valid <> 't';"`
-		return $INVALID_COUNT
-		LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
-
-PING_HOSTS () {
-		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		GET_HOSTNAMES
-		unset PING_OK
-		unset PING_FAIL
-		unset PING_UNKNOWN
-		O=0;F=0;U=0
-		for PING_NAME in $HOSTNAME_LIST
-				do
-				$PING -c 1 $PING_NAME > /dev/null 2>&1
-				case $? in
-						0) PING_OK[$O]=$PING_NAME
-						let O=$O+1;;
-						1) PING_FAIL[$F]=$PING_NAME
-						let F=$F+1;;
-						2) PING_UNKNOWN[$U]=$PING_NAME
-						let U=$U+1;;
-				esac
-		done
-		if [ ${#PING_FAIL[@]} -gt 0 ] || [ ${#PING_UNKNOWN[@]} -gt 0 ]; then
-				ERROR=1
-		else ERROR=0
-		fi
-		return $ERROR
-		LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
-
 GET_PG_PID_ACTIVE () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		# Expects hostname and port number
 		PORT=$1;shift
 		HOST=$1
 		if [ x"" == x"$HOST" ];then
-			PG_LOCK_FILE=`$NETSTAT -a|$GREP ".s.PGSQL.${PORT}"|$AWK '{print $NF}'`
+			PG_LOCK_FILE=`$NETSTAT -a|$GREP ".s.PGSQL.${PORT}"|$GREP LISTENING|$AWK '{print $NF}'`
 			if [ x"" == x"$PG_LOCK_FILE" ];then
 				PID=0
-				LOG_MSG "[INFO]:-No socket connection found for ${PORT}"
+				LOG_MSG "[INFO]:-No socket connection found for port=${PORT}"
 			else
 				if [ -f ${PG_LOCK_FILE}.lock ];then
 					PID=`$CAT ${PG_LOCK_FILE}.lock|$HEAD -1|$AWK '{print $1}'`
@@ -516,7 +534,7 @@ GET_PG_PID_ACTIVE () {
 			PG_LOCK_FILE=`$TRUSTED_SHELL $HOST "$NETSTAT -a|$GREP ".s.PGSQL.${PORT}" 2>/dev/null"|$AWK '{print $NF}'`
 			if [ x"" == x"$PG_LOCK_FILE" ];then
 				PID=0
-				LOG_MSG "[INFO]:-No socket connection found for ${PORT} on $HOST"
+				LOG_MSG "[INFO]:-No socket connection found for port=${PORT} on $HOST"
 			else
 				if [ `$TRUSTED_SHELL $HOST "$LS ${PG_LOCK_FILE}.lock 2>/dev/null"|$WC -l` -ne 0 ];then
 					PID=`$TRUSTED_SHELL $HOST "$CAT ${PG_LOCK_FILE}.lock|$HEAD -1 2>/dev/null"|$AWK '{print $1}'`
@@ -528,32 +546,6 @@ GET_PG_PID_ACTIVE () {
 				fi
 			fi
 		fi
-		LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
-
-CHK_POST_PIDS () {
-		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		GET_HOSTNAMES
-		unset POST_OK
-		unset POST_FAIL
-		O=0;F=0
-		for POST_NAME in $HOSTNAME_LIST
-				do
-				POST_COUNT=`$TRUSTED_SHELL -n $POST_NAME "$PS ax|$GREP postmaster|$GREP -v grep|$WC -l"|$AWK '{print $1}'`
-				case $POST_COUNT in
-						0) POST_FAIL[$O]=$POST_NAME
-						let O=$O+1;;
-						*) POST_OK[$F]=$POST_NAME
-						let F=$F+1;;
-				esac
-		done
-		if [ ${#POST_FAIL[@]} -gt 0 ]; then
-				ERROR=1
-		else
-				ERROR=0
-		fi
-
-		return $ERROR
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -577,8 +569,10 @@ RUN_COMMAND_REMOTE () {
 		LOG_MSG "[INFO]:-Commencing remote $TRUSTED_SHELL $HOST $COMMAND"
 		$TRUSTED_SHELL $HOST $COMMAND
 		RETVAL=$?
-		if [ $RETVAL -ne 0 ]; then ERROR_EXIT "[FATAL]:- Command $COMMAND on $HOST failed with error status $RETVAL" 2
-		else LOG_MSG "[INFO]:-Completed $TRUSTED_SHELL $HOST $COMMAND"
+		if [ $RETVAL -ne 0 ]; then 
+			ERROR_EXIT "[FATAL]:- Command $COMMAND on $HOST failed with error status $RETVAL" 2
+		else 
+			LOG_MSG "[INFO]:-Completed $TRUSTED_SHELL $HOST $COMMAND"
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -597,180 +591,85 @@ BACKOUT_COMMAND () {
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
-CREATE_PRIMARY_ARRAY () {
-		#MPP Checked 25/07/2005
-		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		QE_LIST=($1)
-		PORT_BASE=$2
-		INSTANCES_PER_QE=$3
-		DATA_DIRECTORY=($4)
-		INST_PREFIX=$5
-		SEG_PREFIX=$6
-		ARRAY_INDEX=0
-		INST_COUNT=1
-		DIRECTORY_VECTOR=0
-		((PRI_MASTER_PORT=$PORT_BASE))
-		PORT_COUNT=1
-		#Set up the port array
-		while [ $PORT_COUNT -le $INSTANCES_PER_QE ]
-				do
-				((PORT=$PRI_MASTER_PORT+$PORT_COUNT))
-				PORT_ARRAY[$DIRECTORY_VECTOR]=$PORT
-				((PORT_COUNT=$PORT_COUNT+1))
-				((DIRECTORY_VECTOR=$DIRECTORY_VECTOR+1))
-		done
-		DIRECTORY_VECTOR=0
-		LOOPC=1
-		for HOST in "${QE_LIST[@]}"
-				do
-				while [ $INST_COUNT -le $INSTANCES_PER_QE ]
-						do
-						D=${DATA_DIRECTORY[$DIRECTORY_VECTOR]}
-						PORT=${PORT_ARRAY[$DIRECTORY_VECTOR]}
-						QE_PRIMARY_ARRAY[$ARRAY_INDEX]="${HOST} ${D} ${PORT} ${INST_PREFIX}${LOOPC} ${SEG_PREFIX}${LOOPC} ${LOOPC} ${LOOPC}"
-						((DIRECTORY_VECTOR=$DIRECTORY_VECTOR+1))
-						((INST_COUNT=$INST_COUNT+1))
-						((ARRAY_INDEX=$ARRAY_INDEX+1))
-						((LOOPC=$LOOPC+1))
-				done
-				INST_COUNT=1
-				DIRECTORY_VECTOR=0
-		done
-		LOG_MSG "[INFO]:-End Function $FUNCNAME"
+PING_HOST () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	TARGET_HOST=$1
+	$PING -c 1 $TARGET_HOST > /dev/null 2>&1
+	RETVAL=$?
+	case $RETVAL in
+		0) LOG_MSG "[INFO]:-$TARGET_HOST contact established" ;;
+		1) ERROR_EXIT "[FATAL]:-Unable to contact $TARGET_HOST" 2 ;;
+		2) ERROR_EXIT "[FATAL]:-Unknown host $TARGET_HOST" 2 ;;
+	esac
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+	return $RETVAL
 }
 
-MIRROR_CALCULATOR () {
-		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		#Function assumptions
-		#1. Mirroring is configured on
-		#2. All primary instances will be mirrored
-		#3. No tail will mirror more than one segment from another host
-		if [ $# -ne 4 ]; then
-				ERROR_EXIT "[FATAL]:-Incorrect number of parameters supplied, got $# expected 4"
-		fi
-		HOST_LIST=($1) #List of tail hostnames in the cluster
-		NUM_QE=${#QE_LIST[@]}
-		MIRROR_DIR_ARRAY=($2) #The directory mount points for the mirror data i.e. /dbfast3 /dbfast4 etc
-		PRI_INST_TAIL=${#MIRROR_DIR_ARRAY[@]}
-		((TOTAL_PRI_INST=$NUM_QE*$PRI_INST_TAIL))
-		HOST_TO_MIRROR=$3 #The hostname of the primary that needs a mirror
-		HOST_OFFSET=$4 #i.e. for 2 instances per tail valid values are 1 or 2
-		((MIRROR_DIR_INDEX=$HOST_OFFSET-1))
-		HOST_DIR=${MIRROR_DIR_ARRAY[$MIRROR_DIR_INDEX]}
-		if [ $HOST_OFFSET -gt $PRI_INST_TAIL ] || [ $HOST_OFFSET -lt 1 ]; then
-				ERROR_EXIT "[FATAL]:-Problem with HOST_OFFSET value"
-		fi
-		INST_COUNT=1
-		VECTOR=0
-		M_VECTOR=0
-		HOST_COUNT=1
-		while [ $HOST_COUNT -le $NUM_QE ] #Loop for the number of QEs
-				do
-				while [ $INST_COUNT -le $PRI_INST_TAIL ] #Loop for the number of instances per tail
-						do
-						MASTER_HOST_LIST[$M_VECTOR]=${HOST_LIST[$VECTOR]} #Add this host to master array
-						((INST_COUNT=$INST_COUNT+1))  #Increment the host counter
-						((M_VECTOR=$M_VECTOR+1)) #Increment the master array vector
-				done
-				((VECTOR=$VECTOR+1)) #Increment the vector into the array	
-				((HOST_COUNT=$HOST_COUNT+1)) #Increment the host counter
-				INST_COUNT=1 #Reset the inner loop instance counter
-		done
-		#Get the postional vector of the hostname supplied to be mirrored
-		VECTOR=0
-		FOUND=0
-		for HOST in "${HOST_LIST[@]}"
-				do
-				if [ $HOST_TO_MIRROR == $HOST ]
-						then
-						POSITION=$VECTOR
-						FOUND=1
-				fi
-				((VECTOR=$VECTOR+1))
-		done
-		if [ $FOUND -ne 1 ]
-				then
-				ERROR_EXIT "[FATAL]:-Could not locate host $HOST_TO_MIRROR" 2
-		fi
-		((MIRROR_VECTOR=$POSITION+$HOST_OFFSET))
-		if [ $MIRROR_VECTOR -ge $NUM_QE ]; then
-				((MIRROR_VECTOR=$MIRROR_VECTOR-$NUM_QE))
-		fi
-		CALC_MIR_DATA=(${QE_LIST[$MIRROR_VECTOR]} $HOST_DIR)
-		LOG_MSG "[INFO]:-End Function $FUNCNAME"
+STANDBY_CATALOG_UPDATE () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	MASTER_STANDBY_HOSTNAME=$1;shift
+	MASTER_STANDBY_DATABASE=$1;shift
+	MASTER_STANDBY_DATA_DIRECTORY=$1;shift
+	MASTER_STANDBY_PORT=$1
+	STANDBY_HOST_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"select count(*) from mpp.host where hostname='${MASTER_STANDBY_HOSTNAME}';"`
+	ERROR_CHK $? "obtain standby host count" 2
+        if [ $STANDBY_HOST_COUNT -eq 0 ];then
+                LOG_MSG "[INFO]:-Creating new mpp.host record for ${MASTER_STANDBY_HOSTNAME}"
+                MAX_ID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"select max(hostid)+1 from mpp.host;"`
+		ERROR_CHK $? "obtain mas hostid from mpp.host" 2
+                env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"insert into mpp.host values (${MAX_ID},'${MASTER_STANDBY_HOSTNAME}');"
+                ERROR_CHK $? "insert into mpp.host for standby host" 2
+        else
+                MAX_ID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"select hostid from mpp.host where hostname='${MASTER_STANDBY_HOSTNAME}';"`
+		ERROR_CHK $? "obtain hostid where hostname=${MASTER_STANDBY_HOSTNAME}" 2
+        fi
+        LOG_MSG "[INFO]:-Creating new mpp.listener record for ${MASTER_STANDBY_HOSTNAME}"
+        MAX_LISTEN_ID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"select max(listenerid)+1 from mpp.listener;"`
+	ERROR_CHK $? "obtain max listenerid" 2
+        env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"insert into mpp.listener values (${MAX_LISTEN_ID},${MAX_ID},${MASTER_STANDBY_PORT},'${MASTER_STANDBY_DATA_DIRECTORY}','${USER_NAME}');"
+        ERROR_CHK $? "insert into mpp.lister for standby host" 2
+        LOG_MSG "[INFO]:-Creating new mpp.pgdatabase record for ${MASTER_STANDBY_HOSTNAME}"
+        MAX_DB_ID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"select max(dbid)+1 from mpp.pgdatabase;"`
+	ERROR_CHK $? "obtain max dbid from mpp.pgdatabase" 2
+        env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"insert into mpp.pgdatabase values (${MAX_DB_ID},'f',-1,${MAX_LISTEN_ID},'t','f');"
+        ERROR_CHK $? "add standby host mpp.pgdatabase record" 2
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
-
-PROCESS_QE () {
-		##Got here 22/07/2005 17:55
-		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		HOSTNAME_ARRAY=$1;shift
-		DIRECTORY_ARRAY=$1;shift
-		PORT_ARRAY=$1;shift
-		INST_ARRAY=$1;shift
-		SEG_ARRAY=$1;shift
-		SEG_NUM_ARRAY=$1;shift
-		INST_NUM_ARRAY=$1;shift
-		PRIMARY=$1;shift
-		IP_ALLOW=$1;shift
-		QE_MASK=$1;shift
-		CHECK_POINT_SEGMENTS=$1;shift
-		ENCODING=$1;shift
-		NUMSEGMENTS=$1;shift
-		DBID=$1;shift
-		CONTENT=$1
-		QE_DIR=$DIRECTORY_ARRAY/$INST_ARRAY
-		GET_QD_DB_NAME
-		LOG_MSG "[INFO]:-Creating segment instance data directory $QE_DIR"
-		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "$INITDB -E $ENCODING -D $QE_DIR"
-		BACKOUT_COMMAND "$TRUSTED_SHELL ${HOSTNAME_ARRAY} \"$RM -rf $QE_DIR\""
-		BACKOUT_COMMAND "$ECHO \"removing directory $QE_DIR on $HOSTNAME_ARRAY\""
-		BACKOUT_COMMAND "$TRUSTED_SHELL ${HOSTNAME_ARRAY} \"$PG_CTL stop -m immediate -D $QE_DIR\""
-		BACKOUT_COMMAND "$ECHO \"Shutting down Postgres on $HOSTNAME_ARRAY\""
-		LOG_MSG "[INFO]:-Setting segment instance access permission"
-		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "$ECHO MPP Specific configuration >> $QE_DIR/pg_hba.conf"
-		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "$ECHO host all all ${IP_ALLOW} trust >> $QE_DIR/pg_hba.conf"
-		LOG_MSG "[INFO]:-Setting default segment instance port to $PORT_ARRAY"
-		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "$ECHO port=${PORT_ARRAY} >> $QE_DIR/postgresql.conf"
-		LOG_MSG "[INFO]:-Setting number of redo segments"
-		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "$ECHO checkpoint_segments=$CHECK_POINT_SEGMENTS >> $QE_DIR/postgresql.conf"
-		LOG_MSG "[INFO]:-Setting query status reporting"
-		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "$ECHO stats_command_string=true >> $QE_DIR/postgresql.conf"
-		LOG_MSG "[INFO]:-Setting listener configuration"
-		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "$ECHO listen_addresses = '*' >> $QE_DIR/postgresql.conf"
-
-		#Check to see if there is a PG_CONF_ADD_FILE, if so need to add additional lines to postgresql.conf file
-		if [ -f $PG_CONF_ADD_FILE ]
-				then
-				for NEW_PARAM in `$CAT $PG_CONF_ADD_FILE|$TR -s ' '|$TR -d ' '|$GREP -v "^#"`
-						do
-						LOG_MSG "[INFO]:-Adding $NEW_PARAM to segment instance postgresql.conf file"
-						RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "$ECHO $NEW_PARAM >> $QE_DIR/postgresql.conf"
-				done
-		fi
-		LOG_MSG "[INFO]:-Starting Functioning instance on segment $HOSTNAME_ARRAY"
-		$TRUSTED_SHELL ${HOSTNAME_ARRAY} "export PGPORT=${PORT_ARRAY}; $PG_CTL -w -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${PORT_ARRAY}\" start"
-		if [ $? -ne 0 ]; then
-				$TRUSTED_SHELL ${HOSTNAME_ARRAY} "$CAT ${QE_DIR}.log "|$TEE -a $LOG_FILE
-				ERROR_EXIT "[FATAL]:-Failed to start segment instance database" 2
-		fi
-		BACKOUT_COMMAND "$TRUSTED_SHELL ${HOSTNAME_ARRAY} \"$RM -f ${QE_DIR}.log\""
-		BACKOUT_COMMAND "$ECHO \"Removing tail log file ${QE_DIR}.log on segment $HOSTNAME_ARRAY\""
-		LOG_MSG "[INFO]:-Creating database $SEG_ARRAY on $HOSTNAME_ARRAY"
-		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p ${PORT_ARRAY} template1 -c \"create database $SEG_ARRAY\""
-		LOG_MSG "[INFO]:-Updating the segment mpp catalog"
-		RUN_COMMAND_REMOTE ${HOSTNAME_ARRAY} "env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p ${PORT_ARRAY} $SEG_ARRAY -c \"insert into mpp.mpp values ('$ARRAY_NAME',$NUMSEGMENTS,$DBID,$CONTENT)\""
-		LOG_MSG "[INFO]:-Adding this segment instance to the Master host"
-		if [ $PRIMARY -eq 1 ]; then
-				LOG_MSG "[INFO]:-Adding the primary segment to the head admin schema"
-				RUN_COMMAND "$PSQL -p $HEAD_PORT $HEAD_DBNAME -c \"SET search_path TO public;select mpp.add_segment('$SEG_ARRAY','$USER','',$SEG_NUM_ARRAY)\""
-		else
-				LOG_MSG "[INFO]:-Adding secondary service for $SEG_ARRAY to this instance."
-				RUN_COMMAND "$PSQL -p $HEAD_PORT $HEAD_DBNAME -c \"insert into mpp_segment_instance values($SEG_NUM_ARRAY,$INST_NUM_ARRAY,true)\""
-		fi	
-		LOG_MSG "[INFO]:-End Function $FUNCNAME"
+START_SYNC_PROCESS () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	if [ $# -ne 3 ];then ERROR_EXIT "[FATAL:-Expected 3 parameters got $# " 2;fi
+	MASTER_STANDBY_HOSTNAME=$1;shift
+	MASTER_STANDBY_DATA_DIRECTORY=$1;shift
+	MASTER_STANDBY_PORT=$1
+	#Check to see if already have a process running on this port
+	GET_PG_PID_ACTIVE $MASTER_STANDBY_PORT ${MASTER_STANDBY_HOSTNAME}
+	if [ $PID -ne 0 ];then
+		ERROR_EXIT "[FATAL]:-Process PID=$PID on port=$MASTER_STANDBY_PORT running on $MASTER_STANDBY_HOSTNAME" 2
+	fi
+	LOG_MSG "[INFO]:-Starting mppsyncmaster on standby host ${MASTER_STANDBY_HOSTNAME}"
+	$TRUSTED_SHELL ${MASTER_STANDBY_HOSTNAME} "exec $MPPSYNCMASTER -D $MASTER_STANDBY_DATA_DIRECTORY -p $MASTER_STANDBY_PORT -h $MASTER_STANDBY_HOSTNAME  >> ${MASTER_STANDBY_DATA_DIRECTORY}.log 2>&1 &"
+	ERROR_CHK $? "initialize mppsyncmaster on ${MASTER_STANDBY_HOSTNAME}" 1
+	$SLEEP 3 #Wait to ensure process has time to start
+	GET_PG_PID_ACTIVE $MASTER_STANDBY_PORT ${MASTER_STANDBY_HOSTNAME}
+	if [ $PID -eq 0 ];then
+		LOG_MSG "[WARN]:-Failed to start sync process on ${MASTER_STANDBY_HOSTNAME}"
+		EXIT_STATUS=1
+	else
+		LOG_MSG "[INFO]:-Successfully started sync process on ${MASTER_STANDBY_HOSTNAME} PID=$PID"
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+STOP_SYNC_PROCESS () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	if [ $# -ne 2 ];then ERROR_EXIT "[FATAL:-Expected 2 parameters got $# " 2;fi
+	MASTER_STANDBY_HOSTNAME=$1;shift
+	MASTER_STANDBY_DATA_DIRECTORY=$1
+	$TRUSTED_SHELL ${MASTER_STANDBY_HOSTNAME} "$PG_CTL stop -D $MASTER_STANDBY_DATA_DIRECTORY -m immediate" >/dev/null 2>&1
+	ERROR_CHK $? "immediate shutdown of sync process on ${MASTER_STANDBY_HOSTNAME}" 1
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
 #******************************************************************************
 # Main Section
 #******************************************************************************
@@ -800,5 +699,5 @@ case $OS_TYPE in
 esac
 #Set up LD_LIBRARY_PATH
 LD_LIBRARY_PATH=`$DIRNAME \`$DIRNAME $INITDB\``/lib
-MPP_LIBRARY_PATH=`$DIRNAME \`$DIRNAME $INITDB\``/lib
 SHARE_PATH=`$DIRNAME \`$DIRNAME $INITDB\``/share
+SCRIPTS_DIR=`$DIRNAME \` $DIRNAME $INITDB\``/mppMgmt/bin

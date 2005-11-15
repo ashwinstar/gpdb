@@ -52,6 +52,7 @@ EXIT_STATUS=0
 KILL_INVALID=false
 ADMIN=0
 STOP_INVALID=0
+STANDBY_COUNT=0
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -86,6 +87,7 @@ USAGE () {
 		$ECHO "          delete /tmp lock files and remove segment instance postmaster.pid file."
 		$ECHO "      -r, Restart MPP database after successful mppstop.sh."
 		$ECHO "      -m, Stop master database started in maintenance mode"
+		$ECHO "      -y, Stop master standby process"
 		$ECHO
 		$ECHO "      Return codes:"
 		$ECHO "      0 No problems encountered with requested operation"
@@ -137,16 +139,12 @@ DISPLAY_PARAM () {
 
 STOP_ADMIN () {
 		##MPP Disabled call to this function 22/07/2005
-		LOG_MSG "[INFO]:-Stopping the head in admin mode"
+		LOG_MSG "[INFO]:-Stopping the master QD in admin mode"
 		if [ ! -s $MASTER_DATA_DIRECTORY/$PG_PID ]; then
 				ERROR_EXIT "[FATAL]:- No $PG_PID file, is database already stopped?" 1
 		fi
 		env PGOPTIONS="-c mpp_session_role=utility" $PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m smart      >/dev/null 2>&1
-		RETVAL=$?
-		if [ $RETVAL -ne 0 ]; then
-				ERROR_EXIT "[FATAL]:-Could not shutdown Master database in admin mode" 2
-		fi
-		LOG_MSG "[INFO]:-Successfully shutdown the Master in admin mode"
+		ERROR_CHK $? "shutdown Master database from admin mode" 2
 }
 
 CHK_QD_DB_RUNNING () {
@@ -159,16 +157,20 @@ CHK_QD_DB_RUNNING () {
 
 PROMPT_CONTINUE () {
 		$ECHO
-		$TABECHO "Master parameters" |$TEE -a $LOG_FILE
-		$TABECHO "-----------------" |$TEE -a $LOG_FILE
-		$TABECHO "Master MPP database process active PID = $QD_PID" |$TEE -a $LOG_FILE
-		$TABECHO "Database                               = $QD_DBNAME" |$TEE -a $LOG_FILE
-		$TABECHO "Master port                            = $MASTER_PORT" |$TEE -a $LOG_FILE
-		$TABECHO "Master directory                       = $MASTER_DATA_DIRECTORY" |$TEE -a $LOG_FILE
-		$TABECHO "Shutdown mode                          = $MODE" |$TEE -a $LOG_FILE
-		$TABECHO |$TEE -a $LOG_FILE
-		$TABECHO "Segment instances that will be shutdown:" |$TEE -a $LOG_FILE
-		$TABECHO "-----------------------------------" |$TEE -a $LOG_FILE
+		LOG_MSG "[INFO]:-Master parameters"
+		LOG_MSG "-------------------------"
+		LOG_MSG "[INFO]:-Master MPP database process active PID = $QD_PID"
+		LOG_MSG "[INFO]:-Database                               = $QD_DBNAME"
+		LOG_MSG "[INFO]:-Master port                            = $MASTER_PORT"
+		LOG_MSG "[INFO]:-Master directory                       = $MASTER_DATA_DIRECTORY"
+		LOG_MSG "[INFO]:-Shutdown mode                          = $MODE"
+		if [ x"" == x"$STOP_SYNC" ];then
+		LOG_MSG "[INFO]:-Shutdown Master standby host           = Off"
+		else
+		LOG_MSG "[INFO]:-Shutdown Master standby host           = On"
+		fi
+		LOG_MSG "[INFO]:-Segment instances that will be shutdown:"
+		LOG_MSG "----------------------------------------------"
 		if [ ${#QE_ARRAY[@]} -eq 0 ]; then
 				LOG_MSG "[WARN]:-Failed to obtain any Segment instance details, will only be able to shutdown Master host"
 				LOG_MSG "[WARN]:-This may indicate an inconsistent MPP database state"
@@ -181,12 +183,12 @@ PROMPT_CONTINUE () {
 						QE_DIR=`$ECHO $QNODE|$CUT -d"|" -f2`
 						QE_PORT=`$ECHO $QNODE|$CUT -d"|" -f3`
 						QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
-						$TABECHO "Segment instance [$COUNT] $QE_NAME data directory = $QE_DIR port = $QE_PORT" |$TEE -a $LOG_FILE
+						LOG_MSG "[INFO]:-Host [$COUNT] $QE_NAME data directory = $QE_DIR port = $QE_PORT"
 						((COUNT=$COUNT+1))
 				done
 		fi
 		$ECHO
-		$ECHO "         Continue with MPP database shutdown yY|nN >"
+		$ECHO "Continue with MPP database shutdown yY|nN >"
 		read REPLY
 		if [ ! -z $REPLY ]; then
 				if [ $REPLY != Y ] && [ $REPLY != y ]; then
@@ -201,15 +203,12 @@ PROMPT_CONTINUE () {
 
 PROCESS_SHUTDOWN () {
 		#Shutdown QD hosts first
+		if [ x"" != x"$STOP_SYNC" ];then
+			STOP_STANDBY_SERVER
+		fi
 		LOG_MSG "[INFO]:-Stopping Master $QD_NAME directory $MASTER_DATA_DIRECTORY"
 		$PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m $MODE -l ${MASTER_DATA_DIRECTORY}.log >/dev/null 2>&1
-		RETVAL=$?
-		if [ $RETVAL -ne 0 ]; then
-				ERROR_EXIT "[FATAL]:-Issue with shutdown of Master database" 2
-		else
-				LOG_MSG "[INFO]:-------------------------------------------------------"
-				LOG_MSG "[INFO]:-Successfully shutdown $QD_STOP_COUNT Segment instances and Master instance"
-		fi
+		ERROR_CHK $? "shutdown Master instance on $QD_NAME" 2
 		QD_STOP_COUNT=0
 		for QNODE in "${QE_ARRAY[@]}"
 				do
@@ -220,13 +219,7 @@ PROCESS_SHUTDOWN () {
 				if [ "$QE_VALID" == "t" ] || [ $STOP_INVALID -eq 1 ];then
 					LOG_MSG "[INFO]:-Stopping Segment Instance $QE_NAME directory $QE_DIR"
 					$TRUSTED_SHELL $QE_NAME "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};$PG_CTL $WAIT stop -D $QE_DIR -m $MODE -l ${QE_DIR}.log " 
-					RETVAL=$?
-					if [ $RETVAL -ne 0 ]; then
-						LOG_MSG "[WARN]:-Issue with shutdown of $QE_NAME Segment Instance database"
-						EXIT_STATUS=1
-					else
-						LOG_MSG "[INFO]:-Successfully shutdown Segment Instance Host $QE_NAME database"
-					fi
+					ERROR_CHK $? "shutdown of $QE_NAME on port=$QE_PORT" 1
 					if [ $STOP_INVALID -eq 1 ]; then       
 						FORCE_CLEAR
 					fi
@@ -248,26 +241,34 @@ FORCE_CLEAR () {
 	fi
 	LOG_MSG "[INFO]:-Clearing lock files on $QE_NAME for directory $QE_DIR"
 	$TRUSTED_SHELL $QE_NAME "$RM -f /tmp/.s.PGSQL.${QE_PORT}.lock /tmp/.s.PGSQL.${QE_PORT}"
-	RETVAL=$?
-    if [ $RETVAL -ne 0 ]; then
-		LOG_MSG "[WARN]:-Issue with clearing lock file on $QE_NAME for directory $QE_DIR"
-	    EXIT_STATUS=1
-	fi
+	ERROR_CHK $? "removal of lock files on $QE_NAME for directory $QE_DIR" 1
 	LOG_MSG "[INFO]:-Clearing postmaster.pid file"
 	$TRUSTED_SHELL $QE_NAME "$RM -f ${QE_DIR}/postmaster.pid"
-	RETVAL=$?
-    if [ $RETVAL -ne 0 ]; then
-		LOG_MSG "[WARN]:-Issue with clearing postmaster.pid file on $QE_NAME for directory $QE_DIR"
-	    EXIT_STATUS=1
+	ERROR_CHK $? "clearing postmaster.pid file on $QE_NAME for directory $QE_DIR" 1
+}
+
+STOP_STANDBY_SERVER () {
+	LOG_MSG "[INFO]:-Processing standby server shutdown"
+	GET_STANDBY_COUNT
+	if [ $STANDBY_COUNT -ne 0 ];then
+		GET_STANDBY_DETAILS
+		STANDBY_HOSTNAME=`$ECHO ${STANDBY_ARRAY[@]}|$CUT -d"|" -f1`
+		STANDBY_DATADIR=`$ECHO ${STANDBY_ARRAY[@]}|$CUT -d"|" -f2`
+		STOP_SYNC_PROCESS $STANDBY_HOSTNAME $STANDBY_DATADIR
+	else
+		LOG_MSG "[WARN]:-No standby master host configured"
+		EXIT_STATUS=1
 	fi
 }
+
 #******************************************************************************
 # Main Section
 #******************************************************************************
+trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 #Check to see if we have a parameter supplied to script
 if [ $# -ne 0 ]; then
 		##MPP	while getopts ":viskft'?'aqnml:d:" opt;do
-		while getopts ":vrmiskzft'?'aqnl:d:" opt;do
+		while getopts ":vyrmiskzft'?'aqnl:d:" opt;do
 				case $opt in
 						v ) VERSION_INFO ;;
 						i ) MODE=immediate ;;
@@ -281,10 +282,11 @@ if [ $# -ne 0 ]; then
 						q ) unset VERBOSE ;;
 						##MPP		k ) KILL_INVALID=true ;;
 						m ) ADMIN=1 ;;
-						z)	STOP_INVALID=1 ;;
+						z ) STOP_INVALID=1 ;;
 						n ) WAIT="-W" ;; 
 						l ) LOG_DIR=$OPTARG ;;
 						r ) RESTART=1 ;;
+						y ) STOP_SYNC=1 ;;
 						* ) UNKNOWN_OPTION ;;
 				esac
 		done	
@@ -300,6 +302,7 @@ else
 fi
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
+CHK_ON_PASSIVE_STANDBY
 CHK_DB_QD_SET
 GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 
@@ -315,7 +318,11 @@ fi
 PROCESS_SHUTDOWN
 if [ $RESTART ]; then
 	if [ -f ${WORKDIR}/mppstart.sh ]; then
-		${WORKDIR}/mppstart.sh -a
+		if [ x"" == x"$VERBOSE" ];then
+			${WORKDIR}/mppstart.sh -aq
+		else
+			${WORKDIR}/mppstart.sh -a
+		fi
 	else
 		LOG_MSG "[FATAL]:-No ${WORKDIR}/mppstart.sh" 2
 	fi

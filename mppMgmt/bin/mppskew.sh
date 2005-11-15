@@ -98,10 +98,12 @@ GET_NODE_COUNT () {
 	T_NAME=`$ECHO $TARGETTBL|$CUT -d. -f2`
 	SEGCOUNT=0
 	NUM_SEGMENTS=`$PSQL -p $MASTER_PORT  $QD_DBNAME -A -t -c "select count(*) from mpp.pgdatabase where content<>-1 and isprimary='t';"`
+	ERROR_CHK $? "obtain number of segment instances" 2
 	if [ $NUM_SEGMENTS = 1 ];then
 		ERROR_EXIT "[FATAL]:-Only one node in cluster, skew not applicable" 2;fi 
 		$PSQL -p $MASTER_PORT $QD_DBNAME -t -A -F"," -c"select a.hostname, b.port, b.datadir from mpp.host a, mpp.listener b, mpp.pgdatabase c where a.hostid=b.hostid and c.content <> -1 and c.isprimary='t' and b.listenerid=c.listenerid;" > $NODELIST
-	$ECHO  "Sending request to nodes.."
+		ERROR_CHK $? "obtaib list of active segments" 2
+	LOG_MSG  "[INFO]:-Sending request to nodes.."
 
 	SEGCOUNT=0
 	for NodeInfo in `$CAT $NODELIST`
@@ -111,11 +113,12 @@ GET_NODE_COUNT () {
 	SEG_DIR=`$ECHO $NodeInfo|$CUT -d, -f3`
 	SEG_NAME=`$BASENAME $SEG_DIR`
 	$TRUSTED_SHELL $SEG_HOST "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}; time env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT $QD_DBNAME -A -t -c'select count(*),'\''$SEG_NAME'\'','\''$SEG_HOST'\'' from $TARGETTBL;'" 2>&1|$HEAD -3|$TR -s '\n'|$TR ' ' '\n'|$TR -d '.'|$TR -cs '[:alnum:]' '[\n*]'|$GREP -v real|$TR  '\n' '|'|$AWK '{print $1}' >> $TMPFILE &
+	ERROR_CHK $? "send request to $SEG_HOST port $SEG_PORT" 2
 	let SEGCOUNT=$SEGCOUNT+1
 	done
-	$ECHO "Requests sent.."
+	LOG_MSG "[INFO]:-Requests sent.."
 #Now wait until the temporary file contains $SegCount lines
-	$ECHO  "Waiting for results..."
+	LOG_MSG  "[INFO]:-Waiting for results..."
 	while [ $SEGCOUNT -ne `$WC -l $TMPFILE|$AWK '{print $1}'` ]
 	do
 		$SLEEP 1
@@ -131,12 +134,12 @@ GET_NODE_COUNT () {
 	MinSkew=`$SORT $TMPFILE|$HEAD -1|$CUT -d'|' -f1`
 	MinSeg=`$SORT $TMPFILE|$HEAD -1|$CUT -d'|' -f2`
 	MinHost=`$SORT $TMPFILE|$HEAD -1|$CUT -d'|' -f3`
-	MinTime=`$HEAD -1 $TMPFILE|$CUT -d'|' -f4`
-	MinTimeHost=`$HEAD -1 $TMPFILE|$CUT -d'|' -f3`
-	MinTimeSeg=`$HEAD -1 $TMPFILE|$CUT -d'|' -f2`
-	MaxTime=`$TAIL -1 $TMPFILE|$CUT -d'|' -f4`
-	MaxTimeHost=`$TAIL -1 $TMPFILE|$CUT -d'|' -f3`
-	MaxTimeSeg=`$TAIL -1 $TMPFILE|$CUT -d'|' -f2`
+	MinTime=`$CAT $TMPFILE|$AWK -F"|" '{print $4"|"$3"|"$2}'|$SORT|$HEAD -1|$CUT -d"|" -f1`
+	MinTimeHost=`$CAT $TMPFILE|$AWK -F"|" '{print $4"|"$3"|"$2}'|$SORT|$HEAD -1|$CUT -d"|" -f2`
+	MinTimeSeg=`$CAT $TMPFILE|$AWK -F"|" '{print $4"|"$3"|"$2}'|$SORT|$HEAD -1|$CUT -d"|" -f3`
+	MaxTime=`$CAT $TMPFILE|$AWK -F"|" '{print $4"|"$3"|"$2}'|$SORT|$TAIL -1|$CUT -d"|" -f1`
+	MaxTimeHost=`$CAT $TMPFILE|$AWK -F"|" '{print $4"|"$3"|"$2}'|$SORT|$TAIL -1|$CUT -d"|" -f2`
+	MaxTimeSeg=`$CAT $TMPFILE|$AWK -F"|" '{print $4"|"$3"|"$2}'|$SORT|$TAIL -1|$CUT -d"|" -f3`
 	let RecDiff=$MaxSkew-$MinSkew
 	LOG_MSG "-------------------------------------------------------------------"
 	LOG_MSG "[INFO]:-Table of results for Table $TARGETTBL in database $QD_DBNAME"
@@ -164,7 +167,8 @@ GET_NODE_COUNT () {
 #******************************************************************************
 # Main Section
 #******************************************************************************
-trap '$RM -f $TMPFILE $NODELIST' INT TERM
+trap '$RM -f $TMPFILE $NODELIST;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
+CHK_DB_QD_SET
 if [ $# -ne 0 ];then
         while getopts ":a:vft:'?'d:l:" opt;do
         case $opt in
@@ -190,6 +194,7 @@ else
 	LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
 	fi
 fi
+CHK_ON_PASSIVE_STANDBY
 CHK_DB_RUNNING
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
