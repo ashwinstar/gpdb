@@ -294,7 +294,8 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 	 */
 	bool		shouldDispatch;
 	volatile bool shouldSetupInterconnect = false;
-	volatile bool hasDispatched = false;
+    CdbDispatchResults *primaryResults = NULL;
+    CdbDispatchResults *mirrorResults = NULL;
 
 	/* sanity checks */
 	Assert(queryDesc != NULL);
@@ -450,11 +451,12 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
             cdbdisp_startDtxTransaction();
 
 			/*
-			 * This call returns after launching the threads that send the command to the appropriate
-			 * segdbs.	It does not wait for them to finish.
+			 * This call returns after launching the threads that send the
+             * plan to the appropriate segdbs.  It does not wait for them to
+             * finish unless an error is detected before all slices have been
+             * dispatched.
 			 */
-			hasDispatched = true;
-			cdbdisp_dispatchPlan(queryDesc);
+			cdbdisp_dispatchPlan(queryDesc, true, &primaryResults, &mirrorResults);
 
 			if (bChangedQueryTree)
 			{
@@ -548,10 +550,44 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 								 direction,
 								 dest);
 		}
-	}
+
+        /*
+         * If QD, wait for QEs to finish and check their results.
+         */
+        if (primaryResults)
+        {
+            CdbDispatchResults *pr = primaryResults;
+            CdbDispatchResults *mr = mirrorResults;
+
+            /* Wait for completion of all QEs. */
+            CdbCheckDispatchResult(false);	
+
+            /* If top slice was delegated to QEs, get num of rows processed. */
+            if (sliceRunsOnQE(getCurrentSlice(estate)))
+                estate->es_processed +=
+                    cdbdisp_sumCmdTuples(primaryResults, estate->es_cur_slice_idx);
+
+            /*
+             * Check and free the results of all gangs. If any QE had an
+             * error, report it and exit to our error handler via PG_THROW.
+             * NB: This call doesn't wait, because we already waited above.
+             */
+            primaryResults = NULL;
+            mirrorResults = NULL;
+            cdbdisp_finishCommand(pr, mr);
+        }
+
+        /* Clean up the interconnect. */
+        if (shouldSetupInterconnect)
+        {
+            shouldSetupInterconnect = false;
+            TeardownInterconnect(false);
+        }
+
+    }
 	PG_CATCH();
 	{
-		if (hasDispatched)
+		if (primaryResults)
 		{
 			/*
 			 * Request any remaining commands executing on qExecs to stop.
@@ -565,64 +601,23 @@ ExecutorRun(QueryDesc *queryDesc, ScanDirection direction, long count)
 			 * by throwing a new error.  Any results of interest presumably
 			 * should have been examined before the exception was thrown.
 			 */
-			cdbdisp_destroyPlanResults(queryDesc);
-
-			/* clean up the interconnect */
-			if (shouldSetupInterconnect)
-				TeardownInterconnect(true);
-
-			/* clean up our own motion layer. */
-			ResetMotionLayer(true);
+			cdbdisp_destroyDispatchResults(primaryResults);
+            cdbdisp_destroyDispatchResults(mirrorResults);
 		}
-		else if (Mpp_role != MPP_ROLE_UTILITY)
-		{
-			/* clean up the interconnect */
-			if (shouldSetupInterconnect)
-				TeardownInterconnect(true);
 
-			/* clean up our own motion layer. */
+		/* Clean up the interconnect. */
+		if (shouldSetupInterconnect)
+			TeardownInterconnect(true);
+
+        /* Clean up our own motion layer. */
+		if (Mpp_role != MPP_ROLE_UTILITY)
 			ResetMotionLayer(true);
-		}
 
 		currentSliceId = UNSET_SLICE_ID;
 
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
-
-	if (hasDispatched)
-	{
-		Slice	   *topslice = getCurrentSlice(estate);
-
-		/*
-		 * We successfully completed on the Dispatcher.  Now check the results
-		 * from the qExecs.  This internally waits for them to all finish.
-		 */
-		CdbCheckDispatchResult(false);	/* wait politely, don't cancel */
-
-		/*
-		 * clean up the interconnect if necessary (do this before we issue an
-		 * error)
-		 */
-		if (shouldSetupInterconnect)
-			TeardownInterconnect(false);
-
-		/* If top slice was delegated to QEs, get number of rows processed. */
-        estate->es_processed += cdbdisp_sumCmdTuples(topslice->primaryResults);
-
-		/*
-		 * Check and free the results of all gangs. If any QE had an error,
-		 * report it and exit via PG_THROW.
-		 */
-		cdbdisp_dumpPlanResults(queryDesc);
-	}
-	else if (shouldSetupInterconnect)
-	{
-		/* clean up the interconnect if necessary */
-		TeardownInterconnect(false);
-
-		currentSliceId = UNSET_SLICE_ID;
-	}
 
 	/*
 	 * shutdown receiver

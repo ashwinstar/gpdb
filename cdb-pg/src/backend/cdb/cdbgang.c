@@ -286,7 +286,7 @@ createGang(GangType type, int size, int content)
 				   segdbDesc->errcode == 0 &&
 				   segdbDesc->error_message.len == 0);
 
-			elog(DEBUG3, "Connected to %s motionListener=%d with options %s\n",
+			elog(DEBUG3, "Connected to %s motionListener=%d with options %s",
 				 segdbDesc->whoami,
 				 segdbDesc->motionListener,
 				 PQoptions(segdbDesc->conn));
@@ -705,10 +705,10 @@ thread_DoConnect(void *arg)
 		appendPQExpBuffer(&buffer,
 						  "options='-c mpp_session_role=EXECUTE -c mpp_segment=%d -c mpp_max_packet_size=%d" ,
 						  q->segindex, Mpp_max_packet_size);
-						  
+						
 		if (!q->isprimary)
 			appendPQExpBuffer(&buffer," -c mpp_is_primary=false");
-			  
+			
 		appendPQExpBuffer(&buffer, "' ");
 
 		if (cdbconn_doConnect(segdbDesc, buffer.data))
@@ -821,13 +821,12 @@ allocateGang(GangType type, int size, int content)
 				if (availableReaderGangsN != NIL)		/* There are gangs
 														 * already created */
 				{
-					elog(DEBUG4, "reusing an old gang");
+					elog(DEBUG5, "reusing an old gang");
 
 					gp = linitial(availableReaderGangsN);
 					Assert(gp != NULL);
 					Assert(gp->type == type && gp->size > 1);
 
-					elog(DEBUG4, "deleting it from the old list ");
 					availableReaderGangsN =
 						list_delete_first(availableReaderGangsN);
 
@@ -837,7 +836,7 @@ allocateGang(GangType type, int size, int content)
 					 * no pre-created gang exists
 					 */
 				{
-					elog(DEBUG4, "creating a new gang");
+					elog(DEBUG5, "creating a new gang");
 					gp = createGang(type, size, content);
 					/* try again */
 					if (gp == NULL)
@@ -846,12 +845,6 @@ allocateGang(GangType type, int size, int content)
 				if (gp == NULL)
 					elog(ERROR, "No reader gang allocated");
 
-				if (allocatedReaderGangsN != NIL)
-					elog(DEBUG4, "allocatedReaderGangsN Exists");
-				else
-					elog(DEBUG4, "allocatedReaderGangsN is NIL");
-
-				elog(DEBUG4, "adding it to the allocated gang list");
 				allocatedReaderGangsN = lappend(allocatedReaderGangsN, gp);
 
 			}
@@ -864,8 +857,6 @@ allocateGang(GangType type, int size, int content)
 				if (availableReaderGangs1 != NIL)		/* There are gangs
 														 * already created */
 				{
-					elog(DEBUG4, "reusing an old gang?");
-
 					gp = linitial(availableReaderGangs1);
 
 					Assert(gp->type == type && gp->size == 1);
@@ -874,20 +865,16 @@ allocateGang(GangType type, int size, int content)
 					 */
 					if (gp->db_descriptors[0].segindex == content)
 					{
-						elog(DEBUG4, "yes, reusing an old gang");
+						elog(DEBUG5, "reusing an old 1 gang for content %d", content);
 						availableReaderGangs1 =
 							list_delete_first(availableReaderGangs1);
 					}
 					else
-					{
-						elog(DEBUG4, "no available gang with right content");
 						gp = NULL;
-					}
-
 				}
 				if (gp == NULL) /* no pre-created gang exists */
 				{
-					elog(DEBUG4, "creating a new 1 gang for content %d", content);
+					elog(DEBUG5, "creating a new 1 gang for content %d", content);
 					gp = createGang(type, size, content);
 					/* try again */
 					if (gp->size == 0)
@@ -902,7 +889,8 @@ allocateGang(GangType type, int size, int content)
 			break;
 
 		default:
-			elog(NOTICE, "problem in allocateGang");
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+                            errmsg_internal("problem in allocateGang") ));
 			break;
 	}
 
@@ -923,7 +911,7 @@ allocateGang(GangType type, int size, int content)
         		elog(ERROR, "No %s gang allocated",
         			 (type == GANGTYPE_PRIMARY_WRITER) ? "primary" : "mirror");
     }
-    
+
     if (gp != NULL)
     	gp->allocated = true;
 
@@ -1019,7 +1007,7 @@ getCdbProcessList(Gang *gang)
 			process->contentid = segdbDesc->segindex;
 			process->routeid = k++;
 
-			elog(DEBUG1, "getCdbProcessesList --- %s, port %d, content %d, routeid %d",
+			elog(DEBUG3, "getCdbProcessesList --- %s, port %d, content %d, routeid %d",
 				 process->listenerAddr, process->listenerPort,
 				 process->contentid, process->routeid);
 
@@ -1083,7 +1071,7 @@ getCdbProcessesForQD(int isPrimary)
 	proc->listenerAddr =
 		pstrdup(inet_ntoa(*(struct in_addr *) (theHost->h_addr_list[0])));
 	proc->listenerPort = Mpp_listener_port;
-	proc->pid = getpid();
+	proc->pid = MyProcPid;
 	proc->contentid = -1;
 	proc->routeid = 0;
 
@@ -1108,7 +1096,7 @@ cleanupGang(Gang *gp)
 	elog(DEBUG5, "cleanupGang");
 	
 	if (gp->active)
-		elog(NOTICE,"cleanupGang called on Gang that is currently active");
+		elog(DEBUG2, "cleanupGang called on a gang that is active");
 		
 	/*
 	 * Loop through the segment_database_descriptors array and, for each
@@ -1179,13 +1167,11 @@ disconnectAndDestroyGang(Gang *gp)
 
 	elog(DEBUG5, "disconnectAndDestroyGang");
 	
-	if (gp->active)
-		elog(NOTICE, "disconnectAndDestroyGang called on a gang that is active");
-		
+	if (gp->active ||
+        gp->allocated)
+        elog(DEBUG2, "Warning: disconnectAndDestroyGang called on an %s gang",
+             gp->active ? "active" : "allocated");		
 	
-	if (gp->allocated)
-		elog(NOTICE, "disconnectAndDestroyGang called on a gang that is allocated");
-		
 	/*
 	 * Loop through the segment_database_descriptors array and, for each
 	 * SegmentDatabaseDescriptor:
@@ -1248,7 +1234,7 @@ freeGangs(void)
 
 	oldContext = MemoryContextSwitchTo(TopMemoryContext);
 
-	elog(DEBUG2, "freeGangs: allocatedReaderGangsN %d, availableReaderGangsN %d",
+	elog(DEBUG4, "freeGangs: allocatedReaderGangsN %d, availableReaderGangsN %d",
 	 list_length(allocatedReaderGangsN), list_length(availableReaderGangsN));
 
 	cleanupGang(primaryWriterGang);
@@ -1262,7 +1248,7 @@ freeGangs(void)
 
 		while (gp != NULL)
 		{
-			elog(DEBUG4, "Returning an N gang to the available list");
+			elog(DEBUG5, "Returning an N gang to the available list");
 			cleanupGang(gp);
 			availableReaderGangsN = lappend(availableReaderGangsN, gp);
 			allocatedReaderGangsN = list_delete_first(allocatedReaderGangsN);
@@ -1273,7 +1259,7 @@ freeGangs(void)
 		}
 	}
 	if (allocatedReaderGangsN != NIL)
-		elog(NOTICE, "allocatedReaderGangN didn't get freed!");
+		elog(DEBUG1, "allocatedReaderGangN didn't get freed!");
 
 	if (allocatedReaderGangs1 != NIL)
 	{
@@ -1281,7 +1267,7 @@ freeGangs(void)
 
 		while (gp != NULL)
 		{
-			elog(DEBUG4, "Returning a 1 gang to the available list");
+			elog(DEBUG5, "Returning a 1 gang to the available list");
 			cleanupGang(gp);
 			availableReaderGangs1 = lappend(availableReaderGangs1, gp);
 			allocatedReaderGangs1 = list_delete_first(allocatedReaderGangs1);
@@ -1294,7 +1280,7 @@ freeGangs(void)
 
 	MemoryContextSwitchTo(oldContext);
 
-	elog(DEBUG2, "freeGangs done: allocatedReaderGangsN %d, availableReaderGangsN %d",
+	elog(DEBUG4, "freeGangs done: allocatedReaderGangsN %d, availableReaderGangsN %d",
 		 list_length(allocatedReaderGangsN),
 		 list_length(availableReaderGangsN));
 
@@ -1306,7 +1292,7 @@ disconnectAndDestroyAllGangs(void)
 {
 	Gang	   *gp;
 
-	elog(DEBUG5, "disconnectAndDestroyAllGangs");
+	elog(DEBUG3, "disconnectAndDestroyAllGangs");
 
 	if (allocatedReaderGangsN != NIL)
 	{
@@ -1370,7 +1356,7 @@ disconnectAndDestroyAllGangs(void)
 	disconnectAndDestroyGang(mirrorWriterGang);
 	mirrorWriterGang = NULL;
 
-	elog(DEBUG5, "disconnectAndDestroyAllGangs done");
+	elog(DEBUG3, "disconnectAndDestroyAllGangs done");
 }
 
 

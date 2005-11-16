@@ -34,6 +34,8 @@
 #include "utils/datum.h"
 #include "utils/lsyscache.h"
 
+#include "cdb/cdbdispatchresult.h"      /* cdbdisp_destroyDispatchResults() */
+
 
 static Datum ExecHashSubPlan(SubPlanState *node,
 				ExprContext *econtext,
@@ -950,8 +952,10 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 	Query	   *query;
 	QueryDesc  *queryDesc;
 	EState	   *local;			/* The EState to use. */
-	volatile bool hasDispatched = false;
-	bool		shouldDispatch = false;
+
+    CdbDispatchResults *primaryResults = NULL;
+	bool		        shouldDispatch = false;
+    volatile bool       shouldTeardownInterconnect = false;
 
 	if (Mpp_role == MPP_ROLE_DISPATCH &&
 		planstate != NULL &&
@@ -1017,15 +1021,16 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
             cdbdisp_startDtxTransaction();
 
 			/*
-			 * This call returns after launching the threads that send the command to the appropriate
-			 * segdbs.	It does not wait for them to finish.
+			 * This call returns after launching the threads that send the
+             * command to the appropriate segdbs.  It does not wait for them
+             * to finish unless an error is detected before all are dispatched.
 			 */
-			hasDispatched = true;
-			cdbdisp_dispatchPlan(queryDesc);
+			cdbdisp_dispatchPlan(queryDesc, true, &primaryResults, NULL);
 
 			/*
 			 * Set up the interconnect for execution of the initplan root slice.
 			 */
+            shouldTeardownInterconnect = true;
 			SetupInterconnect(queryDesc->estate->es_sliceTable, queryDesc->estate->es_sliceTable->localSlice);
 		}
 
@@ -1152,10 +1157,34 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			prm->value = makeArrayResult(astate, econtext->ecxt_per_query_memory);
 			prm->isnull = false;
 		}
-	}
+
+        /*
+         * If dispatched to QEs, wait for completion and check for errors.
+         */
+        if (primaryResults)
+        {
+            CdbDispatchResults *pr = primaryResults;
+
+            /*
+             * Wait for all gangs to finish.  Check and free the results.
+             * If the dispatcher or any QE had an error, report it and
+             * exit to our error handler (below) via PG_THROW.
+             */
+            primaryResults = NULL;
+            cdbdisp_finishCommand(pr, NULL);
+        }
+
+        /* Clean up the interconnect. */
+        if (shouldTeardownInterconnect)
+        {
+            shouldTeardownInterconnect = false;
+            TeardownInterconnect(false);    /* following success on QD */
+        }
+
+    }
 	PG_CATCH();
 	{
-		if (hasDispatched)
+		if (primaryResults)
 		{
 			/*
 			 * Request any remaining commands executing on qExecs to stop.
@@ -1169,33 +1198,19 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 			 * by throwing a new error.  Any results of interest presumably
 			 * should have been examined before the exception was thrown.
 			 */
-			cdbdisp_destroyPlanResults(queryDesc);
-
-			/* clean up the interconnect */
-			TeardownInterconnect(true);		/* Is this needed following failure on
-										 * QD? */
+			cdbdisp_destroyDispatchResults(primaryResults);
 		}
-		PG_RE_THROW();
+
+        /*
+         * Clean up the interconnect.
+         * CDB TODO: Is this needed following failure on QD?
+         */
+        if (shouldTeardownInterconnect)
+			TeardownInterconnect(true);		
+
+        PG_RE_THROW();
 	}
 	PG_END_TRY();
-
-	if (hasDispatched)
-	{
-		/*
-		 * We successfully completed on the Dispatcher.  Now check the results
-		 * from the qExecs.  This internally waits for them to all finish.
-		 */
-		CdbCheckDispatchResult(false);	/* wait calmly, don't cancel them */
-
-		TeardownInterconnect(false); /* following success on QD */
-
-		/*
-		 * Check and free the results of all gangs. If any QE had an error,
-		 * report it and exit via PG_THROW.
-		 */
-		cdbdisp_dumpPlanResults(queryDesc);
-	}
-
 
 	MemoryContextSwitchTo(oldcontext);
 }

@@ -109,7 +109,7 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
 
     appendPQExpBuffer(&buffer, "user=%s ", username);
 
-    
+
     /*
      * Call libpq to connect
      */
@@ -173,15 +173,17 @@ cdbconn_setSliceIndex(SegmentDatabaseDescriptor    *segdbDesc,
     PQExpBuffer scratchbuf = &segdbDesc->error_message;
     int         scratchoff = scratchbuf->len;
 
-    /* Format the slice index (if any). */
-    if (sliceIndex >= 0)
-        appendPQExpBuffer(scratchbuf, "slice#%d ", sliceIndex);
-
     /* Format the identity of the segment db. */
     if (q->segindex >= 0)
-        appendPQExpBuffer(scratchbuf, "%s#%d",
-                          q->isprimary ? "seg" : "mirror",
+    {
+        appendPQExpBuffer(scratchbuf, "%s%d",
+                          q->isprimary ? "seg" : "mir",
                           q->segindex);
+
+        /* Format the slice index. */
+        if (sliceIndex > 0)
+            appendPQExpBuffer(scratchbuf, " slice%d", sliceIndex);
+    }
     else
         appendPQExpBuffer(scratchbuf, "secondary entry db");
 

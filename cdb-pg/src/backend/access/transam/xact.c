@@ -1,6 +1,6 @@
 /*-------------------------------------------------------------------------
  *
- * 
+ *
  * xact.c
  *	  top level transaction system support routines
  *
@@ -132,7 +132,7 @@ typedef struct TransactionStateData
 	AclId		currentUser;	/* subxact start current_user */
 	bool		prevXactReadOnly;		/* entry-time xact r/o state */
 	struct TransactionStateData *parent;		/* back link to parent */
-	char    *gid;					/* stash for the gid between calls to 
+	char    *gid;					/* stash for the gid between calls to
                                   PrepareTransaction and PrepareTransactionBlock */
 } TransactionStateData;
 
@@ -1073,19 +1073,19 @@ RecordSubTransactionCommit(void)
 	}
 }
 
-/*    
+/*
  *    AbortPreparedTransaction
  */
-void  
+void
 AbortPreparedTransaction(char *gid)
-{     
+{
       TransactionId xid;
       TransactionId *children;
       TwoPhaseFileHeader hdr;
       int fd;
 
       xid = MarkAsNoLongerPrepared(gid, GetUserId());
- 
+
       if(xid == InvalidTransactionId)
               elog(ERROR, "No prepared transaction with gid %s", gid);
 
@@ -1095,12 +1095,12 @@ AbortPreparedTransaction(char *gid)
       close(fd);
       RemoveTwoPhaseFile(xid);
       lock_postabort(xid, (void *)NULL, (uint32) NULL);
-}     
+}
 
-/*    
+/*
  *    CommitPreparedTransaction
- */    
-void  
+ */
+void
 CommitPreparedTransaction(char *gid)
 {
       TransactionId xid;
@@ -1140,7 +1140,7 @@ PrepareTransaction(void)
       Assert(s->state == TRANS_INPROGRESS);
       Assert(s->parent == NULL);
 
- 
+
       /*
        * Do pre-commit processing (most of this stuff requires database
        * access, and in fact could still cause an error...)
@@ -1148,8 +1148,8 @@ PrepareTransaction(void)
        * It is possible for CommitHoldablePortals to invoke functions that
        * queue deferred triggers, and it's also possible that triggers create
        * holdable cursors.  So we have to loop until there's nothing left to
-       * do. 
-       */     
+       * do.
+       */
       //  TODO TWOPHASE --
       //for (;;)
       {
@@ -1157,7 +1157,7 @@ PrepareTransaction(void)
                * Fire all currently pending deferred triggers.
                */
               //AfterTriggerFireDeferred();
-       
+
               /*
                * Convert any open holdable cursors into static portals.  If there
                * weren't any, we are done ... otherwise loop back to check if they
@@ -1166,16 +1166,16 @@ PrepareTransaction(void)
               //if (!CommitHoldablePortals())
               //    break;
       }
-       
+
       /* Now we can shut down the deferred-trigger manager */
       AfterTriggerEndXact(false);
-       
+
       /*
        * Similarly, let ON COMMIT management do its thing before we start to
        * commit.
        */
       PreCommit_on_commit_actions();
-        
+
       /* Prevent cancel/die interrupt while cleaning up */
       HOLD_INTERRUPTS();
 
@@ -1713,7 +1713,7 @@ StartTransaction(void)
 	if (s->state != TRANS_DEFAULT)
 		elog(WARNING, "StartTransaction while in %s state",
 			 TransStateAsString(s->state));
-             
+
 	/*
 	 * set the current transaction state information appropriately during
 	 * start processing
@@ -1727,8 +1727,8 @@ StartTransaction(void)
 	FreeXactSnapshot();
 	XactIsoLevel = DefaultXactIsoLevel;
 	XactReadOnly = DefaultXactReadOnly;
-   
-    /* set read only by fts, if any fts action is read only */ 
+
+    /* set read only by fts, if any fts action is read only */
     FtsCondSetTxnReadOnly(&XactReadOnly);
 
 	/*
@@ -1785,11 +1785,11 @@ StartTransaction(void)
 	s->state = TRANS_INPROGRESS;
 
 	ShowTransactionState("StartTransaction");
-    
+
     /* check DTM transaction */
     if (isInGlobalTransaction())
         elog(ERROR, "DTM transaction leftover");
-    
+
 }
 
 /*
@@ -1862,13 +1862,13 @@ CommitTransaction(void)
     /* commit all QE
      * commit should have been called from ProcessUtility,
      * need to be done before s->state is set to commit.
-     * 
+     *
      * we did not put QD transaction as part of global transaction
-     * this may need to be fixed in the future, otherwise a small 
+     * this may need to be fixed in the future, otherwise a small
      * window may exist causing QD got rollback.
      */
     commitDtxTransaction();
-    
+
 	/* Prevent cancel/die interrupt while cleaning up */
 	HOLD_INTERRUPTS();
 
@@ -2025,7 +2025,7 @@ AbortTransaction(void)
 	 */
 
     if (s->state != TRANS_INPROGRESS && s->state != TRANS_PREPARE)
-		elog(WARNING, "AbortTransaction while in %s state",
+        elog(DEBUG1, "Warning: AbortTransaction while in %s state",
 			 TransStateAsString(s->state));
 	Assert(s->parent == NULL);
 
@@ -2115,10 +2115,10 @@ AbortTransaction(void)
 	 * State remains TRANS_ABORT until CleanupTransaction().
 	 */
 	RESUME_INTERRUPTS();
-    
+
     /* abort all QE as cleanup process, ignore all errors */
     rollbackDtxTransaction();
-    
+
     freeGangs();
 }
 
@@ -2141,11 +2141,11 @@ CleanupTransaction(void)
 	 * do abort cleanup processing
 	 */
 	AtCleanup_Portals();		/* now safe to release portal memory */
-    
+
     /* cleanup global transaction */
     if (s->gid != NULL)
         MarkAsNoLongerBegun(s->gid, GetUserId());
-    
+
 	CurrentResourceOwner = NULL;	/* and resource owner */
 	if (TopTransactionResourceOwner)
 		ResourceOwnerDelete(TopTransactionResourceOwner);
@@ -2905,10 +2905,10 @@ void
 PrepareTransactionBlock(char *gid)
 {
       TransactionState s = CurrentTransactionState;
-      
+
 	  if(s->gid == NULL || strcmp(s->gid, gid) != 0)
 	  {
-		ereport(ERROR, 
+		ereport(ERROR,
 			(errcode(ERRCODE_INVALID_TRANSACTION_STATE),
 			 errmsg("global transaction identifier \"%s\" is not found", gid)));
 	  }
@@ -2973,19 +2973,19 @@ EndTransactionBlock(char *gid)
 {
 	TransactionState s = CurrentTransactionState;
 	bool		result = false;
-    
+
     /* check global transactrion */
     if(s->gid != NULL)
     {
         if (gid == NULL || strncmp(s->gid, gid, GIDSIZE) != 0)
-             ereport(ERROR, 
+             ereport(ERROR,
                 (errcode(ERRCODE_INVALID_TRANSACTION_STATE),
                 errmsg("Can not commit global transaction identifier \"%s\"", gid)));
     }
     else
-    { 
+    {
         if (gid != NULL)
-             ereport(ERROR, 
+             ereport(ERROR,
                 (errcode(ERRCODE_INVALID_TRANSACTION_STATE),
                 errmsg("Can not commit local transaction")));
     }
@@ -3091,7 +3091,7 @@ EndTransactionBlock(char *gid)
     /* onephase commit, remove gid from active transaction array */
     if (gid != NULL)
         MarkAsNoLongerBegun(gid, GetUserId());
-        
+
 	return result;
 }
 
@@ -3110,14 +3110,14 @@ UserAbortTransactionBlock(char *gid)
     if(s->gid != NULL)
     {
         if (gid == NULL || strncmp(s->gid, gid, GIDSIZE) != 0)
-             ereport(ERROR, 
+             ereport(ERROR,
                 (errcode(ERRCODE_INVALID_TRANSACTION_STATE),
                 errmsg("Can not rollback global transaction identifier \"%s\"", gid)));
     }
     else
-    { 
+    {
         if (gid != NULL)
-             ereport(ERROR, 
+             ereport(ERROR,
                 (errcode(ERRCODE_INVALID_TRANSACTION_STATE),
                 errmsg("Can not rollback local0 transaction")));
     }
@@ -3199,7 +3199,7 @@ UserAbortTransactionBlock(char *gid)
 				 BlockStateAsString(s->blockState));
 			break;
 	}
-    
+
     /* remove gid from active transaction array */
     if (gid != NULL)
         MarkAsNoLongerBegun(gid, GetUserId());

@@ -35,7 +35,6 @@ int		   *shmLatestLogFileNo;
 int		   *shmEarliestLogFileNo;
 
 static int	ControlLockCount = 0;
-static StringInfoData errMessage;
 
 char		dtm_dir[MAXPGPATH];
 
@@ -95,6 +94,28 @@ void		getTmLock(void);
 void		releaseTmLock(void);
 void    dumpAllDtx(void);
 void    resolveInDoubtDtx(void);
+
+
+/* Map transaction state to a string. */
+static const char *
+formatDtxState(DtxState state)
+{
+    const char *s;
+    switch (state)
+    {
+        case DTX_STATE_IN_PROGRESS:     s = "IN_PROGRESS";      break;
+        case DTX_STATE_PREPARED:        s = "PREPARED";         break;
+        case DTX_STATE_1P_COMMIT:       s = "1P_COMMIT";        break;
+        case DTX_STATE_2P_COMMIT:       s = "2P_COMMIT";        break;
+        case DTX_STATE_ROLLBACK:        s = "ROLLBACK";         break;
+        case DTX_STATE_ABORT:           s = "ABORT";            break;
+        case DTX_STATE_COMMIT_DONE:     s = "COMMIT_DONE";      break;
+        case DTX_STATE_ROLLBACK_DONE:   s = "ROLLBACK_DONE";    break;
+        default:
+            s = "?DtxState?";
+    }
+    return s;
+}                               /* formatDtxState */
 
 
 /*
@@ -173,7 +194,7 @@ condStartDtxTransaction(void)
 		return DTX_OK;
 	}
 
-	ereport(DEBUG1,
+	ereport(DEBUG2,
 			(errmsg("condStartDtxTransaction:  %s", currentGxact->gid)));
 	/* send additional begin transaction */
 	if (execCommand(&errMessage) != DTX_OK)
@@ -199,7 +220,7 @@ condCommitDtxTransaction(bool onephase)
 	{
 		return DTX_ERR_PROTO;
 	}
-	ereport(DEBUG1,
+	ereport(DEBUG2,
 			(errmsg("condCommitDtxTransaction:  %s", currentGxact->gid)));
 	if (!onephase)
 	{
@@ -263,7 +284,7 @@ condRollbackDtxTransaction(void)
 	{
 		return DTX_ERR_PROTO;
 	}
-	ereport(DEBUG1,
+	ereport(DEBUG2,
 			(errmsg("condRollbackDtxTransaction:  %s", currentGxact->gid)));
 
 	memset(&errMessage, 0, sizeof(errMessage));
@@ -368,18 +389,21 @@ execCommand(StringInfo errbuf)
 		case DTX_STATE_ROLLBACK:
 			sprintf(cmdbuf, "%s'%s'", "ROLLBACK ", currentGxact->gid);
 			break;
-		case DTX_STATE_ABORT:
-		case DTX_STATE_COMMIT_DONE:
-		case DTX_STATE_ROLLBACK_DONE:
-			/* error */
-			Assert(currentGxact->state == 0);
-			break;
+        default:
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+                            errmsg_internal("Transaction %s invalid state %s",
+                                            currentGxact->gid,
+                                            formatDtxState(currentGxact->state)) ));
 	}
 
 	/* Dispatch command to all primary and mirror segdbs. */
-	cdbdisp_dispatchCommand(cmdbuf, false, &primaryResults, &mirrorResults);
+    cdbdisp_dispatchCommand(cmdbuf, false, &primaryResults, &mirrorResults);
 
-	/* Wait for completion.  Don't cancel. */
+	/*
+     * Wait for completion.  Don't cancel.
+     * CDB TODO: Eliminate the CdbCheckDispatchResultInt() interface and
+     * instead build the failedSegDB list from the CdbDispatchResults.
+     */
     CdbCheckDispatchResultInt(&failedSegDB, &numOfFailed, false);
 
     /* Success */
@@ -402,8 +426,9 @@ execCommand(StringInfo errbuf)
         if (errbuf)
         {
             initStringInfo(errbuf);	
-            if (!cdbdisp_dumpDispatchResults(primaryResults, errbuf, false))
-                cdbdisp_dumpDispatchResults(mirrorResults, errbuf, false);
+            if (!cdbdisp_dumpDispatchResults(primaryResults, errbuf, false) &&
+                !cdbdisp_dumpDispatchResults(mirrorResults, errbuf, false))
+                appendStringInfoString(errbuf, "Segment db connection(s) lost");
         }
         cdbdisp_destroyDispatchResults(primaryResults);
         cdbdisp_destroyDispatchResults(mirrorResults);
@@ -438,7 +463,16 @@ execCommand(StringInfo errbuf)
 				break;
 #endif
 			case DTX_STATE_IN_PROGRESS:
-				updateDtxState(DTX_STATE_ABORT);
+                updateDtxState(DTX_STATE_ABORT);
+                if (numOfFailed > 0)
+                {
+                    /*
+                     * Attempt to re-establish broken connections.
+                     *   NB: Gang and SegmentDatabaseDescriptor objects could be
+                     *   destroyed by this; treat pointers to them as invalid afterwards.
+                     */
+                    FtsHandleNetFailure(failedSegDB, numOfFailed);
+                }
 				ret = DTX_ERR_COMM;
 				break;
 			case DTX_STATE_PREPARED:
@@ -452,10 +486,10 @@ execCommand(StringInfo errbuf)
 				ret = DTX_ERR_COMM;
 				break;
 			default:
-				/* error */
-				Assert(currentGxact->state == 0);
-				ret = DTX_ERR_COMM;
-				break;
+			    ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+                                errmsg_internal("Transaction %s invalid state %s",
+                                                currentGxact->gid,
+                                                formatDtxState(currentGxact->state)) ));
 		}
 	}
 
@@ -729,7 +763,8 @@ updateDtxState(DtxState state)
 
 	Assert(gxact != NULL);
 
-	ereport(DEBUG1, (errmsg("updateDtxState: %s to state: %d", gxact->gid, state)));
+	elog(DEBUG2, "updateDtxState %s new=%s old=%s", gxact->gid,
+         formatDtxState(state), formatDtxState(gxact->state));
 
 	switch (state)
 	{
@@ -740,9 +775,11 @@ updateDtxState(DtxState state)
 			/* if checking ok, set the state */
 			if (!CHECK_DTX_STATE(gxact->state, state))
 			{
-				/* internal error, shouldn't happen */
-				ereport(ERROR, (errmsg("updateDtxState: error state not compatiable, CST: %d, NST: %d",
-									   gxact->state, state)));
+				ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+                                errmsg_internal("Transaction %s invalid state transition: new=%s old=%s",
+						            gxact->gid,
+                                    formatDtxState(state),
+                                    formatDtxState(gxact->state)) ));
 			}
 			break;
 		case DTX_STATE_ABORT:
@@ -796,8 +833,7 @@ generateGID(char *gid)
 
 	if (t == (time_t) -1)
 	{
-		ereport(LOG,
-				(errmsg("can not generate global id properly")));
+		elog(PANIC, "can not generate global transaction id");
 	}
 
 	/* tm lock acquired by caller */
@@ -942,7 +978,8 @@ phase2Recovery(void)
 			case DTX_STATE_ROLLBACK_DONE:
 			default:
 				ereport(LOG,
-						(errmsg("invalid state during recovery gid: %s, state: %d", currentGxact->gid, currentGxact->state)));
+						(errmsg("invalid state during recovery gid: %s, state: %s",
+                         currentGxact->gid, formatDtxState(currentGxact->state))));
 				releaseGxact();
 				break;
 		}
@@ -1074,7 +1111,7 @@ void
 recoverRollbackedDtx(void)
 {
     /* send second phase commit to QE */
-	ereport(DEBUG1,
+	ereport(DEBUG2,
 	  (errmsg("recovery: rollback DtxTransaction:  %s", currentGxact->gid)));
 	updateDtxState(DTX_STATE_ROLLBACK);
 	/* ignore the error during recovery */
@@ -1087,7 +1124,7 @@ void
 recoverCommittedDtx(void)
 {
 	/* send second phase commit to QE */
-	ereport(DEBUG1,
+	ereport(DEBUG2,
 			(errmsg("recovery: commit phase 2 DtxTransaction:  %s", currentGxact->gid)));
 	/* ignore the error during recovery */
 	execCommand(NULL);

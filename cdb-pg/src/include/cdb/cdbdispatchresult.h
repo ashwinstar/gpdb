@@ -32,9 +32,9 @@ typedef struct CdbDispatchResult
                                          * reset to NULL after end of thread
                                          */
 
-    struct CdbDispatchResults *gangResults; /* owner of this CdbDispatchResult */
-    int                 gangIndex;      /* QE's position within the gang; index
-                                         * to self in gangResults->resultArray
+    struct CdbDispatchResults *meleeResults; /* owner of this CdbDispatchResult */
+    int                 meleeIndex;     /* index of this entry within
+                                         * results->resultArray
                                          */
 
     int                 errcode;        /* ERRCODE_xxx (sqlstate encoded as
@@ -63,12 +63,13 @@ typedef struct CdbDispatchResult
 }   CdbDispatchResult;
 
 
-/* Construct a CdbDispatchResult object. */
-void
-cdbdisp_initResult(CdbDispatchResult                   *dispatchResult,
-                   int                                  gangIndex,
-                   struct CdbDispatchResults           *gangResults,
-                   struct SegmentDatabaseDescriptor    *segdbDesc);
+/* Create a CdbDispatchResult object, appending it to the
+ * resultArray of a given CdbDispatchResults object.
+ */
+CdbDispatchResult *
+cdbdisp_makeResult(struct CdbDispatchResults           *meleeResults,
+                   struct SegmentDatabaseDescriptor    *segdbDesc,
+                   int                                  sliceIndex);
 
 /* Destroy a CdbDispatchResult object. */
 void
@@ -156,32 +157,69 @@ cdbdisp_dumpDispatchResult(CdbDispatchResult       *dispatchResult,
 /*--------------------------------------------------------------------*/
 
 /*
+ * CdbDispatchResults_SliceInfo:
+ * An entry in a CdbDispatchResults object's slice map.
+ * Used to find the CdbDispatchResult objects for a gang
+ * of QEs given their slice index.
+ */
+typedef struct CdbDispatchResults_SliceInfo
+{
+    int                 resultBegin;
+    int                 resultEnd;
+} CdbDispatchResults_SliceInfo;
+
+/*--------------------------------------------------------------------*/
+
+/*
  * CdbDispatchResults:
- * Struct for holding the results information for all segdb's
- * of a Gang, for a command dispatched by CdbDispatchToGang.
+ * A collection of CdbDispatchResult objects to hold and summarize
+ * the results of dispatching a command or plan to one or more Gangs.
  */
 typedef struct CdbDispatchResults
 {
-    int                 resultCount;    /* num of QEs */
-    CdbDispatchResult  *resultArray;    /* -> array [0..resultCount-1] of
+    /*
+     * Array of CdbDispatchResult objects, one per QE
+     */
+    CdbDispatchResult  *resultArray;    /* -> array [0..resultCapacity-1] of
                                          *      struct CdbDispatchResult
                                          */
+    int                 resultCount;    /* num of assigned slots (num of QEs)
+                                         * 0 <= resultCount <= resultCapacity
+                                         */
+    int                 resultCapacity; /* size of resultArray (total #slots) */
+
+    /*
+     * Summary of results
+     */
     volatile int        iFirstError;    /* index of the resultArray entry for
-                                         * the QE that first reported an error;
-                                         * or -1.  Note that this index equals
-                                         * the QE's segdbDesc->gangindex; it
-                                         * isn't the segindex.
+                                         * the QE that was first to report an
+                                         * error; or -1 if no error.
                                          */
     volatile int        errcode;        /* ERRCODE_xxx (sqlstate encoded as
                                          * an int) of the first error, or 0.
                                          */
+    /*
+     * Dispatch options
+     */
     bool                cancelOnError;  /* true => stop remaining QEs on err */
+
+    /*
+     * Map: sliceIndex => resultArray index
+     */
+    CdbDispatchResults_SliceInfo   *sliceMap;
+                                        /* -> array [0..sliceCapacity-1] of
+                                         *      CdbDispatchResults_SliceInfo;
+                                         *    or NULL
+                                         */
+    int                 sliceCapacity;  /* num of slots in sliceMap */
 } CdbDispatchResults;
 
 
 /* Allocate a CdbDispatchResults object in the current memory context. */
 CdbDispatchResults *
-cdbdisp_makeDispatchResults(int resultCount, bool cancelOnError);
+cdbdisp_makeDispatchResults(int     resultCapacity,
+                            int     sliceCapacity,
+                            bool    cancelOnError);
 
 /* Clean up and free a CdbDispatchResults object. */
 void
@@ -198,10 +236,19 @@ cdbdisp_dumpDispatchResults(struct CdbDispatchResults  *gangResults,
                             bool                        verbose);
 
 /* Return sum of the cmdTuples values from CdbDispatchResult
- * entries that have a successful PGresult.
+ * entries that have a successful PGresult.  If sliceIndex >= 0,
+ * uses only the entries belonging to the specified slice.
  */
 int
-cdbdisp_sumCmdTuples(CdbDispatchResults *results);
+cdbdisp_sumCmdTuples(CdbDispatchResults *results, int sliceIndex);
+
+/* Return ptr to first resultArray entry for a given sliceIndex. */
+CdbDispatchResult *
+cdbdisp_resultBegin(CdbDispatchResults *results, int sliceIndex);
+
+/* Return ptr to last+1 resultArray entry for a given sliceIndex. */
+CdbDispatchResult *
+cdbdisp_resultEnd(CdbDispatchResults *results, int sliceIndex);
 
 /*--------------------------------------------------------------------*/
 

@@ -347,8 +347,6 @@ typedef struct Slice
 							
 	struct Gang *primaryGang;
 	struct Gang *mirrorGang;
-    struct CdbDispatchResults  *primaryResults;
-    struct CdbDispatchResults  *mirrorResults;
                             /* These are significant ONLY in the master
 							 * slice table on the QD where they are used to
 							 * note the gangs assigned by the the executor

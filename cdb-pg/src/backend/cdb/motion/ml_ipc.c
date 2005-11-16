@@ -639,6 +639,10 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 	/* we can have at most one of these. */
 	MotionLayerState *sendingMotionState = NULL;
 
+	gettimeofday(&snapTime, NULL);
+    elog(DEBUG3, "SetupInterconnect: time is %ld.%ld",
+		 (long int) snapTime.tv_sec, (long int) snapTime.tv_usec);
+
 	/*
 	 * The assert only happens when we are compiled with --enable-cassert.
 	 * So, let's report the error even if we are a production build.
@@ -661,10 +665,6 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 		ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
 				errmsg("Could not allocate space for motion layer state.")));
 	}
-
-	gettimeofday(&snapTime, NULL);
-	elog(DEBUG3, "in SetupInterconnect @%d time is %ld.%ld",
-		 __LINE__, (long int) snapTime.tv_sec, (long int) snapTime.tv_usec);
 
 	sliceTable = mySliceTable;
 	sliceId = mySliceId;
@@ -2406,7 +2406,7 @@ waitOnSocketDone(int fd)
 				 * Something unexpected, but probably not horrible warn
 				 * and return
 				 */
-				elog(WARNING, "TeardownInterconnect: waitOnSocketDone select (%d)", saved_err);
+				elog(LOG, "TeardownInterconnect: waitOnSocketDone select errno=%d", saved_err);
 				break;
 			}
 
@@ -2424,13 +2424,20 @@ waitOnSocketDone(int fd)
 			 * Something unexpected, but probably not horrible warn and
 			 * return
 			 */
-			elog(WARNING, "TeardownInterconnect: waitOnSocketDone (%d)", errno);
+			elog(LOG, "TeardownInterconnect: waitOnSocketDone recv errno=%d)", errno);
 			break;
 		}
 	}
 	PG_CATCH();
 	{
-		elog(NOTICE, "TeardownInterconnect: waitOnSocketDone caught cancel");
+        /*
+         * CDB TODO: It is not correct to discard and ignore signals like this.
+         * It makes the process unresponsive to cancellation.  Also when
+         * TeardownInterconnect is part of the cleanup of an earlier
+         * error, this derails that error and its cleanup.
+         * PG_RE_THROW is required after PG_CATCH.
+         */
+		elog(LOG, "TeardownInterconnect: waitOnSocketDone caught cancel");
 	}
 	PG_END_TRY();
 

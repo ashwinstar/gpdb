@@ -31,6 +31,8 @@
 #include "miscadmin.h"
 #include "utils/ps_status.h"
 
+#include "cdb/cdbvars.h"        /* Mpp_role, Mpp_segment, currentSliceId */
+
 extern char **environ;
 
 
@@ -328,9 +330,21 @@ set_ps_display(const char *activity)
 		return;
 #endif
 
-	/* Update ps_buffer to contain both fixed part and activity */
-	StrNCpy(ps_buffer + ps_buffer_fixed_size, activity,
-			ps_buffer_size - ps_buffer_fixed_size);
+    /* Update ps_buffer to contain both fixed part and activity */
+    if (Mpp_role == MPP_ROLE_EXECUTE &&
+        Mpp_segment >= 0)
+    {
+        char   *cp = ps_buffer + ps_buffer_fixed_size;
+        char   *ep = ps_buffer + ps_buffer_size - ps_buffer_fixed_size;
+
+        cp += snprintf(cp, ep-cp, "%s%d %s",
+                       Mpp_is_primary ? "seg" : "mir",
+                       Mpp_segment,
+                       activity);
+    }
+    else
+        StrNCpy(ps_buffer + ps_buffer_fixed_size, activity,
+                ps_buffer_size - ps_buffer_fixed_size);
 
 	/* Transmit new setting to kernel, if necessary */
 

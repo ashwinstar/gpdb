@@ -72,23 +72,59 @@ oneTrailingNewlinePQ(PQExpBuffer buf)
 
 /*--------------------------------------------------------------------*/
 
-/* Construct a CdbDispatchResult object. */
-void
-cdbdisp_initResult(CdbDispatchResult                   *dispatchResult,
-                   int                                  gangIndex,
-                   struct CdbDispatchResults           *gangResults,
-                   struct SegmentDatabaseDescriptor    *segdbDesc)
+/* Create a CdbDispatchResult object, appending it to the
+ * resultArray of a given CdbDispatchResults object.
+ */
+CdbDispatchResult *
+cdbdisp_makeResult(struct CdbDispatchResults           *meleeResults,
+                   struct SegmentDatabaseDescriptor    *segdbDesc,
+                   int                                  sliceIndex)
 {
-    dispatchResult->gangIndex = gangIndex;
-    dispatchResult->gangResults = gangResults;
-    dispatchResult->segdbDesc = segdbDesc;
+    CdbDispatchResult  *dispatchResult;
+    int                 meleeIndex;
 
-    /* Allocate error message buffer and result buffer. */
+    Assert(meleeResults &&
+           meleeResults->resultArray &&
+           meleeResults->resultCount < meleeResults->resultCapacity);
+
+    /* Allocate a slot for the new CdbDispatchResult object. */
+    meleeIndex = meleeResults->resultCount++;
+    dispatchResult = &meleeResults->resultArray[meleeIndex];
+
+    /* Initialize CdbDispatchResult. */
+    dispatchResult->meleeResults = meleeResults;
+    dispatchResult->meleeIndex = meleeIndex;
+    dispatchResult->segdbDesc = segdbDesc;
     dispatchResult->resultbuf = createPQExpBuffer();
     dispatchResult->error_message = NULL;
 
     /* Reset summary indicators. */
     cdbdisp_resetResult(dispatchResult);
+
+    /* Update slice map entry. */
+    if (sliceIndex >= 0 &&
+        sliceIndex < meleeResults->sliceCapacity)
+    {
+        CdbDispatchResults_SliceInfo *si = &meleeResults->sliceMap[sliceIndex];
+        if (si->resultBegin == si->resultEnd)
+        {
+            si->resultBegin = meleeIndex;
+            si->resultEnd = meleeIndex + 1;
+        }
+        else
+        {
+            if (si->resultBegin > meleeIndex)
+                si->resultBegin = meleeIndex;
+            if (si->resultEnd <= meleeIndex)
+                si->resultEnd = meleeIndex + 1;
+        }
+    }
+
+    /* Insert the slice index in error messages related to this QE. */
+    if (segdbDesc)
+        cdbconn_setSliceIndex(segdbDesc, sliceIndex);
+
+    return dispatchResult;
 }                               /* cdbdisp_initResult */
 
 
@@ -150,7 +186,7 @@ cdbdisp_seterrcode(int                  errcode,        /* ERRCODE_xxx or 0 */
                    int                  resultIndex,    /* -1 if no PGresult */
                    CdbDispatchResult   *dispatchResult)
 {
-    CdbDispatchResults *gangResults = dispatchResult->gangResults;
+    CdbDispatchResults *meleeResults = dispatchResult->meleeResults;
 
     /* We must ensure a nonzero errcode. */
     if (!errcode)
@@ -172,21 +208,21 @@ cdbdisp_seterrcode(int                  errcode,        /* ERRCODE_xxx or 0 */
             dispatchResult->errindex = resultIndex;
     }
 
-    /* Remember which QE reported an error first among the gang,
+    /* Remember which QE reported an error first among the gangs,
      * but keep quiet about cancellation done at our request.
      */
     if (errcode == ERRCODE_MPP_OPERATION_CANCELED &&
         dispatchResult->requestedCancel)
     {}                          /* nop */
 
-    else if (gangResults &&
-             !gangResults->errcode)
+    else if (meleeResults &&
+             !meleeResults->errcode)
     {
         pthread_mutex_lock(&setErrcodeMutex);
-        if (!gangResults->errcode)
+        if (!meleeResults->errcode)
         {
-            gangResults->errcode = errcode;
-            gangResults->iFirstError = dispatchResult->gangIndex;
+            meleeResults->errcode = errcode;
+            meleeResults->iFirstError = dispatchResult->meleeIndex;
         }
         pthread_mutex_unlock(&setErrcodeMutex);
     }
@@ -556,15 +592,27 @@ done:
  * pointer when done using it.
  */
 CdbDispatchResults *
-cdbdisp_makeDispatchResults(int resultCount, bool cancelOnError)
+cdbdisp_makeDispatchResults(int     resultCapacity,
+                            int     sliceCapacity,
+                            bool    cancelOnError)
 {
     CdbDispatchResults *results = palloc0(sizeof(*results));
+    int     nbytes = resultCapacity * sizeof(results->resultArray[0]);
 
-    results->resultArray = palloc0(resultCount * sizeof(results->resultArray[0]));
-    results->resultCount = resultCount;
+    results->resultArray = palloc0(nbytes);
+    results->resultCapacity = resultCapacity;
+    results->resultCount = 0;
     results->iFirstError = -1;
     results->errcode = 0;
     results->cancelOnError = cancelOnError;
+
+    results->sliceMap = NULL;
+    results->sliceCapacity = sliceCapacity;
+    if (sliceCapacity > 0)
+    {
+        nbytes = sliceCapacity * sizeof(results->sliceMap[0]);
+        results->sliceMap = palloc0(nbytes);
+    }
 
     return results;
 }                               /* cdbdisp_makeDispatchResults */
@@ -591,6 +639,12 @@ cdbdisp_destroyDispatchResults(CdbDispatchResults * results)
 		results->resultArray = NULL;
     }
 
+    if (results->sliceMap)
+    {
+        pfree(results->sliceMap);
+        results->sliceMap = NULL;
+    }
+
     pfree(results);
 }                               /* cdbdisp_destroyDispatchResults */
 
@@ -601,24 +655,24 @@ cdbdisp_destroyDispatchResults(CdbDispatchResults * results)
  * Before calling this function, you must call CdbCheckDispatchResult().
  */
 int
-cdbdisp_dumpDispatchResults(struct CdbDispatchResults  *gangResults,
+cdbdisp_dumpDispatchResults(struct CdbDispatchResults  *meleeResults,
                             StringInfo                  buffer,
                             bool                        verbose)
 {
     CdbDispatchResult  *dispatchResult;
 
     /* Quick exit if no error (not counting ERRCODE_MPP_OPERATION_CANCELED). */
-    if (!gangResults ||
-        !gangResults->errcode)
+    if (!meleeResults ||
+        !meleeResults->errcode)
         return 0;
 
     /* Find the CdbDispatchResult of the first QE that got an error. */
-    Assert(gangResults->iFirstError >= 0 &&
-           gangResults->iFirstError < gangResults->resultCount);
+    Assert(meleeResults->iFirstError >= 0 &&
+           meleeResults->iFirstError < meleeResults->resultCount);
 
-    dispatchResult = &gangResults->resultArray[gangResults->iFirstError];
+    dispatchResult = &meleeResults->resultArray[meleeResults->iFirstError];
 
-    Assert(dispatchResult->gangResults == gangResults &&
+    Assert(dispatchResult->meleeResults == meleeResults &&
            dispatchResult->errcode != 0);
 
     /* Format one QE's result. */
@@ -628,40 +682,39 @@ cdbdisp_dumpDispatchResults(struct CdbDispatchResults  *gangResults,
     if (verbose)
     {
         int i;
-        for (i = 0; i < gangResults->resultCount; ++i)
+        for (i = 0; i < meleeResults->resultCount; ++i)
         {
-            dispatchResult = &gangResults->resultArray[i];
-            if (i == gangResults->iFirstError)
+            dispatchResult = &meleeResults->resultArray[i];
+            if (i == meleeResults->iFirstError)
                 continue;
             if (dispatchResult->errcode)
                 cdbdisp_dumpDispatchResult(dispatchResult, verbose, buffer);
         }
     }
 
-    return gangResults->errcode;
+    return meleeResults->errcode;
 }                               /* cdbdisp_dumpDispatchResults */
 
 
 /* Return sum of the cmdTuples values from CdbDispatchResult
- * entries that have a successful PGresult.
- * Used to determine the row counts for insert, update, and delete commands.
+ * entries that have a successful PGresult.  If sliceIndex >= 0,
+ * uses only the results belonging to the specified slice.
  */
 int
-cdbdisp_sumCmdTuples(CdbDispatchResults *results)
+cdbdisp_sumCmdTuples(CdbDispatchResults *results, int sliceIndex)
 {
     CdbDispatchResult  *dispatchResult;
+    CdbDispatchResult  *resultEnd = cdbdisp_resultEnd(results, sliceIndex);
     PGresult           *pgresult;
     int                 sum = 0;
-    int                 i;
 
-    if (!results)
-        return 0;
-
-    for (i = 0; i < results->resultCount; i++)
+    for (dispatchResult = cdbdisp_resultBegin(results, sliceIndex);
+         dispatchResult < resultEnd;
+         ++dispatchResult)
     {
-        dispatchResult = &results->resultArray[i];
         pgresult = cdbdisp_getPGresult(dispatchResult, dispatchResult->okindex);
-        if (pgresult)
+        if (pgresult &&
+            !dispatchResult->errcode)
         {
             char   *cmdTuples = PQcmdTuples(pgresult);
             if (cmdTuples)
@@ -671,6 +724,47 @@ cdbdisp_sumCmdTuples(CdbDispatchResults *results)
 
     return sum;
 }                               /* cdbdisp_sumCmdTuples */
+
+
+/* Return ptr to first resultArray entry for a given sliceIndex. */
+CdbDispatchResult *
+cdbdisp_resultBegin(CdbDispatchResults *results, int sliceIndex)
+{
+    CdbDispatchResults_SliceInfo   *si;
+
+    if (!results)
+        return NULL;
+
+    if (sliceIndex < 0)
+        return &results->resultArray[0];
+
+    si = &results->sliceMap[sliceIndex];
+
+    Assert(sliceIndex < results->sliceCapacity &&
+           si->resultBegin >= 0 &&
+           si->resultBegin <= si->resultEnd &&
+           si->resultEnd <= results->resultCount);
+
+    return &results->resultArray[si->resultBegin];
+}                               /* cdbdisp_resultBegin */
+
+
+/* Return ptr to last+1 resultArray entry for a given sliceIndex. */
+CdbDispatchResult *
+cdbdisp_resultEnd(CdbDispatchResults *results, int sliceIndex)
+{
+    CdbDispatchResults_SliceInfo   *si;
+
+    if (!results)
+        return NULL;
+
+    if (sliceIndex < 0)
+        return &results->resultArray[results->resultCount];
+
+    si = &results->sliceMap[sliceIndex];
+
+    return &results->resultArray[si->resultEnd];
+}                               /* cdbdisp_resultEnd */
 
 
 /*--------------------------------------------------------------------*/

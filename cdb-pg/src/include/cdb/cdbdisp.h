@@ -41,31 +41,30 @@ cdbdisp_startDtxTransaction(void);
  * The number of segdbs handled by any one thread is determined by the
  * guc variable mpp_connections_per_thread.
  *
- * Unless an error prevents delegating the command to the threads,
- * a CdbDispatchResults object is returned.  It contains an array of
- * CdbDispatchResult objects, one per QE, paralleling the Gang's
- * db_descriptors array.  Success or failure of each QE will be
- * noted in the corresponding CdbDispatchResult entry, but before
- * examining those, the caller must wait for execution to end by
- * calling CdbCheckDispatchResult().
+ * The caller must provide a CdbDispatchResults object having available
+ * resultArray slots sufficient for the number of QEs to be dispatched:
+ * i.e., resultCapacity - resultCount >= gp->size.  This function will
+ * assign one resultArray slot per QE of the Gang, paralleling the Gang's
+ * db_descriptors array.  Success or failure of each QE will be noted in
+ * the QE's CdbDispatchResult entry; but before examining the results, the
+ * caller must wait for execution to end by calling CdbCheckDispatchResult().
  *
- * The CdbDispatchResults object is palloc'ed in the caller's context.
- * It owns some malloc'ed storage, so the caller must make certain to
- * free it by calling cdbdisp_destroyDispatchResults().
+ * The CdbDispatchResults object owns some malloc'ed storage, so the caller
+ * must make certain to free it by calling cdbdisp_destroyDispatchResults().
  *
- * When cancelOnError is false, szCommand is to be dispatched to
- * every connected gang member without regard for cancellation
- * requests nor for any other QE's errors, connection failures, etc.
+ * When dispatchResults->cancelOnError is false, szCommand is to be
+ * dispatched to every connected gang member if possible, despite any
+ * cancellation requests, QE errors, connection failures, etc.
  *
- * NB: This function should return, even if there is an error.
+ * NB: This function should return normally even if there is an error.
  * It should not longjmp out via elog(ERROR, ...), ereport(ERROR, ...),
  * PG_THROW, CHECK_FOR_INTERRUPTS, etc.
  */
-struct CdbDispatchResults *
-cdbdisp_dispatchToGang(const char  *szCommand,
-                       struct Gang *gp,
-                       int          sliceIndex,
-                       bool         cancelOnError);
+void
+cdbdisp_dispatchToGang(const char                  *szCommand,
+                       struct Gang                 *gp,
+                       struct CdbDispatchResults   *dispatchResults,
+                       int                          sliceIndex);
 
 /*
  * CdbCheckDispatchResult:
@@ -124,6 +123,8 @@ cdbdisp_dispatchRMCommand(const char   *szCommand,
  * NB: Callers should use PG_TRY()/PG_CATCH() if needed to make
  * certain that the CdbDispatchResults objects are destroyed by
  * cdbdisp_destroyDispatchResults() in case of error.
+ * To wait for completion, check for errors, and clean up, it is
+ * suggested that the caller use cdbdisp_finishCommand().
  */
 void
 cdbdisp_dispatchCommand(const char                 *szCommand,
@@ -167,33 +168,36 @@ CdbDoCommandNoTxn(const char   *szCommand,
 
 /* Compose and dispatch the MPPEXEC commands corresponding to a plan tree
  * within a complete parallel plan.
- */
-void
-cdbdisp_dispatchPlan(struct QueryDesc *queryDesc);
-
-/* Free the results of all gangs in a query plan's slice table.
- * Before calling this function, you must call CdbCheckDispatchResult.
- */
-void
-cdbdisp_destroyPlanResults(struct QueryDesc *queryDesc);
-
-/* Check and free the results of all gangs in a query plan's slice table.
- * If not all QEs in the given gang(s) executed the command successfully,
- * throws an error and does not return.
- * Before calling this function, you must call CdbCheckDispatchResult.
- */
-void
-cdbdisp_dumpPlanResults(struct QueryDesc *queryDesc);
-
-/* Dispatch a command - already parsed and in the form of a Node
- * tree - to all primary and mirror segdbs.  Does not wait for
- * completion.  Does not start a global transaction.
- * To wait for completion and check for errors, it is suggested
- * that the caller use cdbdisp_finishCommand().
+ *
+ * The CdbDispatchResults objects allocated for the plan are
+ * returned in *pPrimaryResults and (if needed) *pMirrorResults.
+ * The caller, after calling CdbCheckDispatchResult(), can
+ * examine the CdbDispatchResults objects, can keep them as
+ * long as needed, and ultimately must free them with
+ * cdbdisp_destroyDispatchResults() prior to deallocation
+ * of the caller's memory context.
  *
  * NB: Callers should use PG_TRY()/PG_CATCH() if needed to make
  * certain that the CdbDispatchResults objects are destroyed by
  * cdbdisp_destroyDispatchResults() in case of error.
+ * To wait for completion, check for errors, and clean up, it is
+ * suggested that the caller use cdbdisp_finishCommand().
+ */
+void
+cdbdisp_dispatchPlan(struct QueryDesc              *queryDesc,
+                     bool                           cancelOnError,
+                     struct CdbDispatchResults    **pPrimaryResults,  /* OUT */
+                     struct CdbDispatchResults    **pMirrorResults);  /* OUT */
+
+/* Dispatch a command - already parsed and in the form of a Node
+ * tree - to all primary and mirror segdbs.  Does not wait for
+ * completion.  Does not start a global transaction.
+ *
+ * NB: Callers should use PG_TRY()/PG_CATCH() if needed to make
+ * certain that the CdbDispatchResults objects are destroyed by
+ * cdbdisp_destroyDispatchResults() in case of error.
+ * To wait for completion, check for errors, and clean up, it is
+ * suggested that the caller use cdbdisp_finishCommand().
  */
 void
 cdbdisp_dispatchUtilityStatement(struct Node   *stmt,

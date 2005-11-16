@@ -94,8 +94,9 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 							 const char            *szCommand,
 							 CdbDispatchResult     *dispatchResult);
 
-static int fillSliceVector(SliceTable * sliceTable, int sliceIndex,
-				int *indexVector, int len, int next);
+static int
+fillSliceVector(SliceTable * sliceTable, int sliceIndex, Slice **sliceVector,
+                int len, int next);
 
 
 /*
@@ -155,52 +156,52 @@ cdbdisp_startDtxTransaction(void)
  * The number of segdbs handled by any one thread is determined by the
  * guc variable mpp_connections_per_thread.
  *
- * Unless an error prevents delegating the command to the threads,
- * a CdbDispatchResults object is returned.  It contains an array of
- * CdbDispatchResult objects, one per QE, paralleling the Gang's
- * db_descriptors array.  Success or failure of each QE will be
- * noted in the corresponding CdbDispatchResult entry, but before
- * examining those, the caller must wait for execution to end by
- * calling CdbCheckDispatchResult().
+ * The caller must provide a CdbDispatchResults object having available
+ * resultArray slots sufficient for the number of QEs to be dispatched:
+ * i.e., resultCapacity - resultCount >= gp->size.  This function will
+ * assign one resultArray slot per QE of the Gang, paralleling the Gang's
+ * db_descriptors array.  Success or failure of each QE will be noted in
+ * the QE's CdbDispatchResult entry; but before examining the results, the
+ * caller must wait for execution to end by calling CdbCheckDispatchResult().
  *
- * The CdbDispatchResults object is palloc'ed in the caller's context.
- * It owns some malloc'ed storage, so the caller must make certain to
- * free it by calling cdbdisp_destroyDispatchResults().
+ * The CdbDispatchResults object owns some malloc'ed storage, so the caller
+ * must make certain to free it by calling cdbdisp_destroyDispatchResults().
  *
- * When cancelOnError is false, szCommand is to be dispatched to
- * every connected gang member without regard for cancellation
- * requests nor for any other QE's errors, connection failures, etc.
+ * When dispatchResults->cancelOnError is false, szCommand is to be
+ * dispatched to every connected gang member if possible, despite any
+ * cancellation requests, QE errors, connection failures, etc.
  *
- * NB: This function should return, even if there is an error.
+ * NB: This function should return normally even if there is an error.
  * It should not longjmp out via elog(ERROR, ...), ereport(ERROR, ...),
  * PG_THROW, CHECK_FOR_INTERRUPTS, etc.
  */
-struct CdbDispatchResults *
-cdbdisp_dispatchToGang(const char  *szCommand,
-                       struct Gang *gp,
-                       int          sliceIndex,
-                       bool         cancelOnError)
+void
+cdbdisp_dispatchToGang(const char                  *szCommand,
+                       struct Gang                 *gp,
+                       struct CdbDispatchResults   *dispatchResults,
+                       int                          sliceIndex)
 {
     SegmentDatabaseDescriptor  *segdbDesc;
-    CdbDispatchResults         *gangResults = NULL;
 	int			i;
 	int			max_threads;
 	int			segdbs_in_thread_pool = 0;
 	int			x;
 	int			newThreads = 0;
 
-	Assert(Mpp_role == MPP_ROLE_DISPATCH);
-	Assert(gp != NULL);
-	Assert(gp->size > 0);
+	Assert(Mpp_role == MPP_ROLE_DISPATCH &&
+           gp &&
+	       gp->size > 0 &&
+           dispatchResults &&
+           dispatchResults->resultArray);
 
     if (DEBUG2 >= log_min_messages)
     {
         if (sliceIndex >= 0)
             elog(DEBUG2, "dispatchToGang: sliceIndex=%d gangsize=%d  %.100s",
-            sliceIndex, gp->size, szCommand);
+                         sliceIndex, gp->size, szCommand);
         else
             elog(DEBUG2, "dispatchToGang: gangsize=%d  %.100s",
-            gp->size, szCommand);
+                         gp->size, szCommand);
     }
 
 	/*
@@ -238,9 +239,6 @@ cdbdisp_dispatchToGang(const char  *szCommand,
 		MemoryContextSwitchTo(oldContext);
 	}
 
-    /* Create a CdbDispatchResults object. */
-    gangResults = cdbdisp_makeDispatchResults(gp->size, cancelOnError);
-
 	/*
 	 * Create the thread parms structures based targetSet parameter.
 	 * This will add the segdbDesc pointers appropriate to the
@@ -249,26 +247,23 @@ cdbdisp_dispatchToGang(const char  *szCommand,
 	 */
 	for (x = 0; x < gp->size; x++)
 	{
-        CdbDispatchResult  *dispatchResult = &gangResults->resultArray[x];
+        CdbDispatchResult  *qeResult;
 
         segdbDesc = &gp->db_descriptors[x];
 
-        /* Provide the slice index for error messages related to this QE. */
-        cdbconn_setSliceIndex(segdbDesc, sliceIndex);
-
         /* Initialize the QE's CdbDispatchResult object. */
-        cdbdisp_initResult(dispatchResult, x, gangResults, segdbDesc);
+        qeResult = cdbdisp_makeResult(dispatchResults, segdbDesc, sliceIndex);
 
         /* Transfer any connection errors from segdbDesc. */
         if (segdbDesc->errcode ||
             segdbDesc->error_message.len)
-            cdbdisp_mergeConnectionErrors(dispatchResult, segdbDesc);
+            cdbdisp_mergeConnectionErrors(qeResult, segdbDesc);
 
         segdbs_in_thread_pool = x;
         addSegDBToDispatchThreadPool(dispatchCommandParmsAr + threadCount,
 									 segdbs_in_thread_pool,
                                      szCommand,
-                                     dispatchResult);
+                                     qeResult);
 
         /* This CdbDispatchResult/SegmentDatabaseDescriptor pair will
          * be dispatched and monitored by a thread to be started below.
@@ -276,7 +271,7 @@ cdbdisp_dispatchToGang(const char  *szCommand,
          * finished with them and resets the stillRunning flag.
          * Caller must CdbCheckDispatchResult() to wait for completion.
          */
-        dispatchResult->stillRunning = true;
+        qeResult->stillRunning = true;
 	}
 
 	/*
@@ -285,10 +280,6 @@ cdbdisp_dispatchToGang(const char  *szCommand,
 	 * segdbs.
 	 */
     newThreads += 1 + (segdbs_in_thread_pool - 1) / mpp_connections_per_thread;
-
-	elog(DEBUG4,
-		 "dispatchToGang: threadCount %d, segdbs_in_thread_pool %d, conns_per_thread %d",
-		 threadCount, segdbs_in_thread_pool, mpp_connections_per_thread);
 
 	/*
 	 * Create the threads. (which also starts the dispatching).
@@ -311,7 +302,6 @@ cdbdisp_dispatchToGang(const char  *szCommand,
 	}
 	
 	threadCount += newThreads;
-    return gangResults;
 }                               /* cdbdisp_dispatchToGang */
 
 
@@ -444,7 +434,7 @@ CdbCheckDispatchResultInt(struct SegmentDatabaseDescriptor   ***failedSegDB,
                 /* Allocate storage.  Caller should pfree() it. */
                 if (!*failedSegDB)
                     *failedSegDB = palloc(sizeof(**failedSegDB) *
-                                            (pParms->db_count + 1));
+                                            (2 * getMPPSegmentCount() + 1));
 
                 /* Append to broken connection list. */
                 (*failedSegDB)[nFailed++] = segdbDesc;
@@ -468,7 +458,6 @@ CdbCheckDispatchResultInt(struct SegmentDatabaseDescriptor   ***failedSegDB,
 	 */
 	if (dispatchCommandParmsAr != NULL)
 	{
-        elog(DEBUG5, "CheckDispatchResult freeing");
 		for (i = 0; i < threadCount; i++)
 		{
 			pParms = &dispatchCommandParmsAr[i];
@@ -490,16 +479,6 @@ CdbCheckDispatchResultInt(struct SegmentDatabaseDescriptor   ***failedSegDB,
     /* Reset dispatcher state. */
     pleaseCancel = false;
     threadCount = 0;
-
-	/*
-	 * Attempt to re-establish broken connections.
-     *   NB: Gang and SegmentDatabaseDescriptor objects could be
-     *   destroyed by this; treat pointers to them as invalid afterwards.
-	 */
-	if (numOfFailed != NULL && *numOfFailed > 0)
-		FtsHandleNetFailure(*failedSegDB, *numOfFailed);
-
-    elog(DEBUG5, "CheckDispatchResult done");
 }                               /* cdbdisp_checkDispatchResults */
 
 
@@ -615,6 +594,8 @@ cdbdisp_dispatchRMCommand(const char   *szCommand,
  * NB: Callers should use PG_TRY()/PG_CATCH() if needed to make
  * certain that the CdbDispatchResults objects are destroyed by
  * cdbdisp_destroyDispatchResults() in case of error.
+ * To wait for completion, check for errors, and clean up, it is
+ * suggested that the caller use cdbdisp_finishCommand().
  */
 void
 cdbdisp_dispatchCommand(const char                 *szCommand,
@@ -622,8 +603,9 @@ cdbdisp_dispatchCommand(const char                 *szCommand,
                         struct CdbDispatchResults **pPrimaryResults,    /* OUT */
                         struct CdbDispatchResults **pMirrorResults)     /* OUT */
 {
-	Gang               *primaryGang;
-    Gang               *mirrorGang;
+	Gang   *primaryGang;
+    Gang   *mirrorGang;
+    int     nsegdb = getMPPSegmentCount();
 
     elog(DEBUG3, "cdbdisp_dispatchCommand: %.50s", szCommand);
 
@@ -634,13 +616,14 @@ cdbdisp_dispatchCommand(const char                 *szCommand,
     /*
      * Allocate a primary and mirror QE for every available segDB in the system.
 	 */
-	primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, getMPPSegmentCount(), -1);
+	primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, nsegdb, -1);
 
     Assert(primaryGang);
 
-    mirrorGang = allocateGang(GANGTYPE_MIRROR_WRITER, getMPPSegmentCount(), -1);
+    mirrorGang = allocateGang(GANGTYPE_MIRROR_WRITER, nsegdb, -1);
 
-	if (mirrorGang && (mirrorGang->segdb_count < getMPPSegmentCount() || mirrorGang->size < getMPPSegmentCount()))
+	if (mirrorGang &&
+        (mirrorGang->segdb_count < nsegdb || mirrorGang->size < nsegdb))
     {
     	elog(LOG, "Some segments are down.  Dispatching command %.50s to remaining segments only",szCommand);
     	
@@ -659,12 +642,14 @@ cdbdisp_dispatchCommand(const char                 *szCommand,
 	/*
      * Dispatch the command.
      */
-    *pPrimaryResults = cdbdisp_dispatchToGang(szCommand, primaryGang, -1,
-                                              cancelOnError);
+    *pPrimaryResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
+    cdbdisp_dispatchToGang(szCommand, primaryGang, *pPrimaryResults, -1);
 
 	if (mirrorGang)
-		*pMirrorResults = cdbdisp_dispatchToGang(szCommand, mirrorGang, -1,
-                                                 cancelOnError);
+    {
+        *pMirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
+        cdbdisp_dispatchToGang(szCommand, mirrorGang, *pMirrorResults, -1);
+    }
 
 }                               /* cdbdisp_dispatchCommand */
 
@@ -927,7 +912,7 @@ bool
 shouldStillDispatchCommand(CdbDispatchResult   *dispatchResult)
 {
 	SegmentDatabaseDescriptor  *segdbDesc = dispatchResult->segdbDesc;
-    CdbDispatchResults         *gangResults = dispatchResult->gangResults;
+    CdbDispatchResults         *gangResults = dispatchResult->meleeResults;
 		
 	/* Don't dispatch to a QE that is not connected. */
     if (!segdbDesc->conn)
@@ -983,7 +968,7 @@ shouldStillDispatchCommand(CdbDispatchResult   *dispatchResult)
     /* Don't submit if client told us to cancel.
      * The cancellation request has already been noted, so hush.
      */
-    if (QueryCancelPending &&
+    if (InterruptPending &&
         gangResults->cancelOnError)
     {
         dispatchResult->wasCanceled = true;
@@ -1103,7 +1088,7 @@ handleSelectTimeout(DispatchCommandParms   *pParms,
                     int                    *timeoutCounter)
 {
     CdbDispatchResult          *dispatchResult;
-    CdbDispatchResults         *gangResults;
+    CdbDispatchResults         *meleeResults;
     SegmentDatabaseDescriptor  *segdbDesc;
     int     i;
 	
@@ -1118,7 +1103,7 @@ handleSelectTimeout(DispatchCommandParms   *pParms,
     {                           /* loop to check connection status */
         dispatchResult = pParms->dispatchResultPtrArray[i];
         segdbDesc = dispatchResult->segdbDesc;
-        gangResults = dispatchResult->gangResults;
+        meleeResults = dispatchResult->meleeResults;
 
         /* Already finished with this QE? */
         if (!dispatchResult->stillRunning)
@@ -1131,10 +1116,10 @@ handleSelectTimeout(DispatchCommandParms   *pParms,
          * connected, or if we have already sent a cancellation request.
          */
         if (pleaseCancel ||
-            QueryCancelPending ||
-            gangResults->errcode)
+            InterruptPending ||
+            meleeResults->errcode)
         {
-            if (gangResults->cancelOnError &&
+            if (meleeResults->cancelOnError &&
                 !dispatchResult->requestedCancel &&
                 !dispatchResult->wasCanceled &&
                 segdbDesc->conn &&
@@ -1231,9 +1216,9 @@ processResults(CdbDispatchResult   *dispatchResult)
         /* Save error info for later. */
         cdbdisp_appendMessage(dispatchResult, LOG,
                               ERRCODE_MPP_INTERCONNECTION_ERROR,
-                              "System error on PQconsumeInput from %s;  %s",
+                              "Error on receive from %s: %s",
                               segdbDesc->whoami,
-                              errorMessage ? errorMessage : "");
+                              errorMessage ? errorMessage : "unknown error");
 
         /* Can't recover, so drop the connection. */
         PQfinish(segdbDesc->conn);
@@ -1383,8 +1368,28 @@ CdbDoCommand(const char *szCommand, bool cancelOnError)
  * within a complete parallel plan.  (A plan tree will correspond either
  * to an initPlan or to the main plan.)
  *
- * The actual dispatch is performed by CdbDispatchCommand(), which is called
- * once for each slice of the tree.
+ * If cancelOnError is true, then any dispatching error, a cancellation
+ * request from the client, or an error from any QE in the plan, may cause
+ * the unfinished portion of the plan to be abandoned or canceled; and
+ * in the event this occurs before all gangs have been dispatched, this
+ * function does not return, but waits for all QEs to stop and exits to
+ * the caller's error catcher via ereport(ERROR,...).  Otherwise this
+ * function returns normally and errors are not reported until later.
+ *
+ * If cancelOnError is false, the plan is to be dispatched as fully as
+ * possible and the QEs allowed to proceed regardless of cancellation
+ * requests, errors or connection failures from other QEs, etc.
+ *
+ * The CdbDispatchResults objects allocated for the plan are returned in
+ * *pPrimaryResults and (if needed) *pMirrorResults.  The caller, after
+ * calling CdbCheckDispatchResult(), can examine the CdbDispatchResults
+ * objects, can keep them as long as needed, and ultimately must free them
+ * with cdbdisp_destroyDispatchResults() prior to deallocation of the
+ * caller's memory context.  Callers should use PG_TRY/PG_CATCH to
+ * ensure proper cleanup.
+ *
+ * To wait for completion, check for errors, and clean up, it is
+ * suggested that the caller use cdbdisp_finishCommand().
  *
  * Note that the slice tree dispatched is the one specified in the EState
  * of the argument QueryDesc as es_cur_root_slice.
@@ -1395,7 +1400,10 @@ CdbDoCommand(const char *szCommand, bool cancelOnError)
  * functions preprocess_initplans() and ExecutorRun().)
  */
 void
-cdbdisp_dispatchPlan(struct QueryDesc *queryDesc)
+cdbdisp_dispatchPlan(struct QueryDesc              *queryDesc,
+                     bool                           cancelOnError,
+                     struct CdbDispatchResults    **pPrimaryResults,  /* OUT */
+                     struct CdbDispatchResults    **pMirrorResults)   /* OUT */
 {
 	StringInfoData strinfo;
 	char	   *squery,
@@ -1405,17 +1413,18 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc)
 	SliceTable *sliceTbl;
 	int			rootIdx;
 	int			oldLocalSlice;
-	int		   *sliceVector,
-				nSlices,
+	Slice     **sliceVector = NULL;
+	int			nSlices,
 				sliceLim;
-	int			i;
+	int			iSlice;
 
+    *pPrimaryResults = NULL;
+    if (pMirrorResults)
+        *pMirrorResults = NULL;
 
 	Assert(Mpp_role == MPP_ROLE_DISPATCH);
 	Assert(queryDesc != NULL && queryDesc->estate != NULL);
 	
-	elog(DEBUG5, "CdbDispatchPlan");
-
 	/*
 	 * Later we'll need to operate with the slice table provided via the
 	 * EState structure in the argument QueryDesc.	Cache this information
@@ -1502,9 +1511,25 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc)
 	 * vector of slice indexes specifying the order of [potential] dispatch.
 	 */
 	sliceLim = list_length(sliceTbl->slices);
-	sliceVector = palloc(sliceLim * sizeof(int));
+	sliceVector = palloc(sliceLim * sizeof(sliceVector[0]));
 	nSlices = fillSliceVector(sliceTbl, rootIdx, sliceVector, sliceLim, 0);
 
+    /* Allocate result array with enough slots for QEs of primary gangs. */
+    *pPrimaryResults = cdbdisp_makeDispatchResults(nSlices * getMPPSegmentCount(),
+                                                   sliceLim,
+                                                   cancelOnError);
+
+    /* Allocate result array for mirror gang. */
+    if (queryDesc->operation != CMD_SELECT)
+    {
+        Slice	   *slice = (Slice *) list_nth(sliceTbl->slices, rootIdx);
+        if (slice->mirrorGang)
+        {
+            *pMirrorResults = cdbdisp_makeDispatchResults(getMPPSegmentCount(),
+                                                          sliceLim,
+                                                          cancelOnError);
+        }
+    }
 
 	/*
 	 * Now we need to call CDBDispatchCommand once per slice.  Each such
@@ -1517,9 +1542,9 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc)
 	 *
 	 * So, for each slice in the tree...
 	 */
-	for (i = 0; i < nSlices; i++)
+	for (iSlice = 0; iSlice < nSlices; iSlice++)
 	{
-		Slice	   *slice = (Slice *)list_nth(sliceTbl->slices, sliceVector[i]);
+		Slice	   *slice = sliceVector[iSlice];
 		Gang	   *primaryGang = slice->primaryGang;
 		Gang	   *mirrorGang = slice->mirrorGang;
 
@@ -1537,6 +1562,17 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc)
 
 		Assert(primaryGang != NULL);	/* Must have a gang to dispatch to */
 
+        /* Bail out if already got an error or cancellation request. */
+        if (cancelOnError)
+        {
+            if ((*pPrimaryResults)->errcode)
+                break;
+            if (pMirrorResults && *pMirrorResults && (*pMirrorResults)->errcode)
+                break;
+            if (InterruptPending)
+                break;
+        }
+
 		/*
 		 * Set up the slice info parameter for this slice and use it to
 		 * construct a finished MPPEXEC command.
@@ -1546,43 +1582,24 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc)
 		appendStringInfo(&strinfo, "%s '%s'", mppexecPrefix, ssliceinfo);
 		pfree(ssliceinfo);
 
-        /*
-         * Free any lingering CdbDispatchResults.
-         */
-        if (slice->primaryResults ||
-            slice->mirrorResults)
-        {
-            int toff = strinfo.len;
-            cdbdisp_dumpDispatchResults(slice->primaryResults, &strinfo, false);
-            cdbdisp_dumpDispatchResults(slice->mirrorResults, &strinfo, false);
-            ereport(DEBUG2, (errcode(ERRCODE_INTERNAL_ERROR),
-                             errmsg("Old dispatch results were not cleaned up"),
-                             errdetail("%s", strinfo.data+toff) ));
-            truncateStringInfo(&strinfo, toff);
-            cdbdisp_destroyDispatchResults(slice->primaryResults);
-            cdbdisp_destroyDispatchResults(slice->mirrorResults);
-            slice->primaryResults = NULL;
-            slice->mirrorResults = NULL;
-        }
-
 		/*
 		 * Dispatch the plan to our primaryGang.
          * Doesn't wait for it to finish.
 		 */
-		slice->primaryResults = cdbdisp_dispatchToGang(strinfo.data,
-                                                       primaryGang,
-                                                       slice->sliceIndex,
-                                                       true);
+		cdbdisp_dispatchToGang(strinfo.data,
+                               primaryGang,
+                               *pPrimaryResults,
+                               slice->sliceIndex);
 
 		/*
 		 * dispatch the plan to our mirrorGang if we have one.
 		 */
 		if (mirrorGang != NULL && queryDesc->operation != CMD_SELECT)
 		{
-		    slice->mirrorResults = cdbdisp_dispatchToGang(strinfo.data,
-                                                          mirrorGang,
-                                                          slice->sliceIndex,
-                                                          true);
+            cdbdisp_dispatchToGang(strinfo.data,
+                                   mirrorGang,
+                                   *pMirrorResults,
+                                   slice->sliceIndex);
 		}
 
         /* Empty the buffer for reuse. */
@@ -1591,9 +1608,40 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc)
 
     pfree(strinfo.data);
     pfree(mppexecPrefix);
+    pfree(sliceVector);
 
 	sliceTbl->localSlice = oldLocalSlice;
-	elog(DEBUG5, "CdbDispatchPlan done");
+
+    /*
+     * If bailed before completely dispatched, stop QEs and throw error.
+     */
+    if (iSlice < nSlices)
+    {
+        CdbDispatchResults *pr = *pPrimaryResults;
+        CdbDispatchResults *mr = pMirrorResults ? *pMirrorResults : NULL;
+
+        elog(DEBUG2, "Plan dispatch canceled; dispatched %d of %d slices",
+                     iSlice, nSlices);
+
+        /* Cancel any QEs still running, and wait for them to terminate. */
+        CdbCheckDispatchResult(true);
+
+        /*
+         * Check and free the results of all gangs. If any QE had an
+         * error, report it and exit via PG_THROW.
+         */
+        *pPrimaryResults = NULL;
+        if (mr)
+            *pMirrorResults = NULL;
+        cdbdisp_finishCommand(pr, mr);
+
+        /* Wasn't an error, must have been an interrupt. */
+        CHECK_FOR_INTERRUPTS();
+
+        /* Strange!  Not an interrupt either. */
+        ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+                        errmsg_internal("Unable to dispatch plan.") ));
+    }
 }                               /* cdbdisp_dispatchPlan */
 
 
@@ -1608,14 +1656,14 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc)
  *
  *	sliceTable	- slice table
  *	sliceIndex	- index of the subtree root in slice table
- *	IndexVector - index vector under contruction
- *	len			- number of positions allocated in the index vector
- *	next		- position at which to write the next index
+ *	sliceVector - slice vector under contruction
+ *	len			- number of positions allocated in the slice vector
+ *	next		- position at which to write the next Slice ptr
  *
  * Returns new value of count.
  */
 int
-fillSliceVector(SliceTable * sliceTable, int sliceIndex, int *indexVector,
+fillSliceVector(SliceTable * sliceTable, int sliceIndex, Slice **sliceVector,
 				int len, int next)
 {
 	int			childIndex;
@@ -1625,7 +1673,7 @@ fillSliceVector(SliceTable * sliceTable, int sliceIndex, int *indexVector,
 	foreach(sublist, slice->children)
 	{
 		childIndex = lfirst_int(sublist);
-		next = fillSliceVector(sliceTable, childIndex, indexVector, len, next);
+		next = fillSliceVector(sliceTable, childIndex, sliceVector, len, next);
 	}
 
 	if (next >= len)
@@ -1635,132 +1683,20 @@ fillSliceVector(SliceTable * sliceTable, int sliceIndex, int *indexVector,
 				 errmsg("bad slice vector allocation")));
 	}
 
-	indexVector[next++] = sliceIndex;
+	sliceVector[next++] = slice;
 	return next;
 }
-
-
-/* Free the results of all gangs in a query plan's slice table.
- * Before calling this function, you must call CdbCheckDispatchResult.
- */
-void
-cdbdisp_destroyPlanResults(struct QueryDesc *queryDesc)
-{
-    ListCell       *sliceCell;
-
-    if (!queryDesc ||
-        !queryDesc->estate ||
-        !queryDesc->estate->es_sliceTable)
-        return;
-
-    foreach(sliceCell, queryDesc->estate->es_sliceTable->slices)
-    {
-        Slice  *slice = (Slice *)lfirst(sliceCell);
-
-        /* Free results of primary gang. */
-        if (slice->primaryResults)
-        {
-            cdbdisp_destroyDispatchResults(slice->primaryResults);
-            slice->primaryResults = NULL;
-        }
-
-        /* Free results of mirror gang. */
-        if (slice->mirrorResults)
-        {
-            cdbdisp_destroyDispatchResults(slice->mirrorResults);
-            slice->mirrorResults = NULL;
-        }
-    }
-}                               /* cdbdisp_destroyPlanResults */
-
-
-/* Check and free the results of all gangs in a query plan's slice table.
- * If not all QEs in the given gang(s) executed the command successfully,
- * throws an error and does not return.
- * Before calling this function, you must call CdbCheckDispatchResult.
- */
-void
-cdbdisp_dumpPlanResults(struct QueryDesc *queryDesc)
-{
-    SliceTable     *sliceTable = queryDesc->estate->es_sliceTable;
-    ListCell       *sliceCell;
-    StringInfoData  buf;
-    int             planerrcode = 0;
-
-    memset(&buf, 0, sizeof(buf));
-
-    /* For each slice, see if all of the QEs were successful. */
-    foreach(sliceCell, sliceTable->slices)
-    {
-        Slice  *slice = (Slice *)lfirst(sliceCell);
-        int     gangerrcode = 0;
-
-        /* Check (and free) results of primary gang. */
-        if (slice->primaryResults)
-        {
-            gangerrcode = slice->primaryResults->errcode;
-            if (gangerrcode)
-            {
-                if (!planerrcode)
-                {
-                    planerrcode = gangerrcode;
-                    initStringInfo(&buf);
-                }
-                cdbdisp_dumpDispatchResults(slice->primaryResults, &buf, false);
-            }
-            cdbdisp_destroyDispatchResults(slice->primaryResults);
-            slice->primaryResults = NULL;
-        }
-
-        /* Check (and free) results of mirror gang. */
-        if (slice->mirrorResults)
-        {
-            /* Show mirror gang errors if there were no primary errors. */
-            if (!gangerrcode &&
-                slice->mirrorResults->errcode)
-            {
-                if (!planerrcode)
-                {
-                    planerrcode = slice->mirrorResults->errcode;
-                    initStringInfo(&buf);
-                }
-                cdbdisp_dumpDispatchResults(slice->mirrorResults, &buf, false);
-            }
-            cdbdisp_destroyDispatchResults(slice->mirrorResults);
-            slice->mirrorResults = NULL;
-        }
-    }
-
-    /* Success? */
-    if (!planerrcode)
-        return;
-
-    /* Report the errors and exit to the exception handler. */
-    PG_TRY();
-    {
-        ereport(ERROR, (errcode(planerrcode),
-                        errmsg("%s", buf.data) ));
-    }
-    PG_CATCH();
-    {
-        pfree(buf.data);
-        PG_RE_THROW();
-    }
-    PG_END_TRY();
-
-    /* not reached */
-}                               /* cdbdisp_dumpPlanResults */
 
 
 /* Dispatch a command - already parsed and in the form of a Node
  * tree - to all primary and mirror segdbs.  Does not wait for
  * completion.  Does not start a global transaction.
- * To wait for completion and check for errors, it is suggested
- * that the caller use cdbdisp_finishCommand().
  *
  * NB: Callers should use PG_TRY()/PG_CATCH() if needed to make
  * certain that the CdbDispatchResults objects are destroyed by
  * cdbdisp_destroyDispatchResults() in case of error.
+ * To wait for completion, check for errors, and clean up, it is
+ * suggested that the caller use cdbdisp_finishCommand().
  */
 void
 cdbdisp_dispatchUtilityStatement(struct Node   *stmt,
