@@ -432,7 +432,7 @@ GET_QD_DB_NAME () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 		CHK_DB_RUNNING	
-		QD_DBNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c"\l" 2>/dev/null|$GREP -v template|$HEAD -1|$CUT -d"|" -f1`
+		QD_DBNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c"\l" 2>/dev/null|$GREP -v template|$GREP -v postgres|$HEAD -1|$CUT -d"|" -f1`
 		ERROR_CHK $? "obtain database name" 2
 		MASTER_DIR_CHK=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c"select count(*) from mpp.host;"`
 		if [ $MASTER_DIR_CHK -eq 0 ];then
