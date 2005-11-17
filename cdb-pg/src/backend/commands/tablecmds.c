@@ -512,6 +512,13 @@ DefineRelation_int(CreateStmt *stmt,
 	{
 
 		/*
+		 * disallow inheritance for now, as the optimizer doesn't support them.
+		 */
+		if (stmt->inhRelations != NIL)
+			   ereport(ERROR, (errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
+								  errmsg("Distributed tables cannot use inheritance in this release")));
+
+		/*
 		 * Check to see if we support the datatypes
 		 */
 		foreach(listptr, schema)
