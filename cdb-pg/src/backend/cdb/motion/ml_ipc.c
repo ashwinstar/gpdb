@@ -46,7 +46,7 @@
   * good match for the maximum number of QEs. Slow insert performance will
   * result if it is too low.
   */
-#define LISTEN_BACK_LOG 64
+#define LISTEN_BACKLOG 64
 
 #define getInt16(pNetData)	  ntohs(*((int16 *)(pNetData)))
 #define getInt32(pNetData)	  ntohl(*((int32 *)(pNetData)))
@@ -171,6 +171,11 @@ bool		activated;
 SliceTable *sliceTable = NULL;
 int			sliceId;
 
+bool		teardownActive = false;
+
+#define ML_CHECK_FOR_INTERRUPTS() \
+		do {if (!teardownActive && InterruptPending) CHECK_FOR_INTERRUPTS(); } while (0)
+
 /*=========================================================================
  * FUNCTIONS PROTOTYPES
  */
@@ -258,11 +263,11 @@ SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcIte
 	if (!activated)
 	{
 		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-			   errmsg("SendTupleChunkToAMS: Called when not activated.")));
+				 errmsg("SendTupleChunkToAMS: Called when not activated.")));
 	}
 
 	/* check em' */
-	CHECK_FOR_INTERRUPTS();
+	ML_CHECK_FOR_INTERRUPTS();
 
 #ifdef AMS_VERBOSE_LOGGING
 	elog(DEBUG3, "SendTupleChunkToAMS(motNodeID: %d, targetRoute: %d)", motNodeID, targetRoute);
@@ -333,14 +338,14 @@ SendEosToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcItem)
 	MotionConn *conn;
 	int			i;
 
-	if (!activated)
+	if (!activated && !teardownActive)
 	{
 		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-			   errmsg("SendEosToAMS: Called when not activated.")));
+						errmsg("SendEosToAMS: Called when not activated.")));
 	}
 
 	/* check em' */
-	CHECK_FOR_INTERRUPTS();
+	ML_CHECK_FOR_INTERRUPTS();
 
 #ifdef AMS_VERBOSE_LOGGING
 	elog(DEBUG3, "SendEosToAMS() Entering");
@@ -396,7 +401,7 @@ RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 		struct timeval timeout = tval;
 
 		/* make sure we check for these. */
-		CHECK_FOR_INTERRUPTS();
+		ML_CHECK_FOR_INTERRUPTS();
 
 		memcpy(&rset, &(pEntry->readSet), sizeof(fd_set));
 
@@ -491,11 +496,11 @@ RecvTupleChunkFrom(int16 motNodeID, int16 srcRoute)
 	if (!activated)
 	{
 		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-			   errmsg("RecvTupleChunkFrom: Called when not activated.")));
+				  errmsg("RecvTupleChunkFrom: Called when not activated.")));
 	}
 
 	/* check em' */
-	CHECK_FOR_INTERRUPTS();
+	ML_CHECK_FOR_INTERRUPTS();
 
 #ifdef AMS_VERBOSE_LOGGING
 	elog(DEBUG3, "RecvTupleChunkFrom(motNodID=%d, srcRoute=%d)", motNodeID, srcRoute);
@@ -588,7 +593,7 @@ DeregisterReadInterest(int16 motNodeID, int16 srcRoute)
 	if (!activated)
 	{
 		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-			   errmsg("DeregisterReadInterest: Called when not activated.")));
+			  errmsg("DeregisterReadInterest: Called when not activated.")));
 	}
 
 #ifdef AMS_VERBOSE_LOGGING
@@ -640,7 +645,7 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 	MotionLayerState *sendingMotionState = NULL;
 
 	gettimeofday(&snapTime, NULL);
-    elog(DEBUG3, "SetupInterconnect: time is %ld.%ld",
+	elog(DEBUG3, "SetupInterconnect: time is %ld.%ld",
 		 (long int) snapTime.tv_sec, (long int) snapTime.tv_usec);
 
 	/*
@@ -720,6 +725,7 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 		expectedTotalIncoming += pEntry->numConns;
 	}
 
+	elog(DEBUG1, "SetupInterconnect: expecting %d incoming", expectedTotalIncoming);
 	gettimeofday(&startTime, NULL);
 
 	/*
@@ -732,10 +738,10 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 		struct timeval timeout = tval;
 
 		/*
-		 * since we might be here for a bit, we should prolly check for
+		 * since we might be here for a bit, we should probably check for
 		 * any interrupts that come in.
 		 */
-		CHECK_FOR_INTERRUPTS();
+		ML_CHECK_FOR_INTERRUPTS();
 
 		/* Have we been here too long ? */
 		gettimeofday(&stopTime, NULL);
@@ -851,7 +857,11 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 	 * if everything really got setup properly then we shouldn't have any
 	 * incomplete connections.
 	 */
-	Assert(list_length(incompleteConns) == 0);
+	if (list_length(incompleteConns) != 0)
+	{
+		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						errmsg("Interconnect Setup Error: incomplete connections after known connections done")));
+	}
 
 	activated = true;
 	elog(DEBUG3, "FINISHED ACTIVATING ROUTES. (out: %d , in: %d)", outgoing_count, incoming_count);
@@ -868,15 +878,11 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 static void
 forceEosToPeer(int16 motNodeID, int16 targetRoute)
 {
-	PG_TRY();
-	{
-		SendEndOfStream(motNodeID, targetRoute);
-	}
-	PG_CATCH();
-	{
-		elog(DEBUG1, "Caught problem during forced-EOS");
-	}
-	PG_END_TRY();
+	teardownActive = true;
+
+	SendEndOfStream(motNodeID, targetRoute);
+
+	teardownActive = false;
 }
 
 /* TeardownInterconnect() function is used to cleanup interconnect resources that
@@ -910,10 +916,55 @@ TeardownInterconnect(bool forceEOS)
 	mySlice = (Slice *) list_nth(sliceTable->slices, sliceId);
 
 	/* multi-phase shutdown, mark all as shutdown */
-	elog(DEBUG3, "Interconnect cleanup state: %s", forceEOS ? "force" : "normal");
+	elog(DEBUG3, "Interconnect cleanup state: %s (setup %s)",
+		 forceEOS ? "force" : "normal", activated ? "completed" : "exited");
+
 	/*
 	 * phase 1 mark all sockets (senders and receivers) with
-	 * shutdown(2)
+	 * shutdown(2), start with incomplete connections (if any).
+	 */
+
+	/*
+	 * The incompleteConns list is only used as a staging area for
+	 * MotionConns during by SetupInterconnect().  So we only expect
+	 * to have entries here if SetupInterconnect() did not finish
+	 * correctly.
+	 *
+	 * NOTE: we don't use foreach() here because we want to trim from the
+	 * list as we go.
+	 */
+	while ((cell = list_head(incompleteConns)) != NULL)
+	{
+		MotionConn *conn = (MotionConn *) lfirst(cell);
+
+		elog(LOG, "Found incomplete conn. length %d", list_length(incompleteConns));
+
+		/* they're incomplete, so just slam them shut. */
+		if (conn->sockfd != -1)
+		{
+			shutdown(conn->sockfd, SHUT_RDWR);
+			close(conn->sockfd);
+			conn->sockfd = -1;
+		}
+
+		/*
+		 * The list operations are kind of confusing (see list.c), we
+		 * could alternatively write the following line as:
+		 *
+		 * incompleteConns = list_delete_cell(incompleteConns, cell,
+		 * NULL); or incompleteConns =
+		 * list_delete_first(incompleteConns); or incompleteConns =
+		 * list_delete_ptr(incompleteConns, conn)
+		 */
+		incompleteConns = list_delete(incompleteConns, conn);
+	}
+
+	incompleteConns = NIL;
+
+	/*
+	 * Now "normal" connections which made it through our
+	 * peer-registration step. With these we have to worry about
+	 * "in-flight" data.
 	 */
 	if (mySlice->parentIndex != -1)
 	{
@@ -975,7 +1026,7 @@ TeardownInterconnect(bool forceEOS)
 
 			if (conn->sockfd != -1)
 			{
-				shutdown(conn->sockfd, SHUT_WR);
+				shutdown(conn->sockfd, SHUT_RDWR);
 				close(conn->sockfd);
 				conn->sockfd = -1;
 			}
@@ -1024,44 +1075,6 @@ TeardownInterconnect(bool forceEOS)
 	 */
 	if (listenerFd != -1)
 		flushListenerBacklog();
-
-	/*
-	 * The incompleteConns list is only used as a staging area for
-	 * MotionConns during by SetupInterconnect().  So we only expect
-	 * to have entries here if SetupInterconnect() did not finish
-	 * correctly.
-	 *
-	 * NOTE: we don't use foreach() here because we want to trim from the
-	 * list as we go.
-	 */
-	while ((cell = list_head(incompleteConns)) != NULL)
-	{
-		MotionConn *conn = (MotionConn *) lfirst(cell);
-
-#ifdef AMS_VERBOSE_LOGGING
-		elog(LOG, "Found incomplete conn. length %d", list_length(incompleteConns));
-#endif
-
-		if (conn->sockfd != -1)
-		{
-			shutdown(conn->sockfd, SHUT_RDWR);
-			close(conn->sockfd);
-			conn->sockfd = -1;
-		}
-
-		/*
-		 * The list operations are kind of confusing (see list.c), we
-		 * could alternatively write the following line as:
-		 *
-		 * incompleteConns = list_delete_cell(incompleteConns, cell,
-		 * NULL); or incompleteConns =
-		 * list_delete_first(incompleteConns); or incompleteConns =
-		 * list_delete_ptr(incompleteConns, conn)
-		 */
-		incompleteConns = list_delete(incompleteConns, conn);
-	}
-
-	incompleteConns = NIL;
 
 	if (mlsStates != NULL)
 	{
@@ -1130,7 +1143,7 @@ listenerSetup(void)
 
 	}
 
-	if (listen(listenerFd, LISTEN_BACK_LOG) < 0)
+	if (listen(listenerFd, LISTEN_BACKLOG) < 0)
 	{
 		/*
 		 * TODO: would be nice to read the errno and try and provide
@@ -1595,7 +1608,7 @@ readRegisterMessage(MotionConn * conn, int *incoming_count)
 	while (bytesRead < msgSize)
 	{
 		/* see if user canceled and stuff like that */
-		CHECK_FOR_INTERRUPTS();
+		ML_CHECK_FOR_INTERRUPTS();
 
 		while ((n = read(conn->sockfd, buff + bytesRead, msgSize - bytesRead)) < 0)
 			if (errno != EINTR)
@@ -1862,7 +1875,7 @@ flushBuffer(MotionConn * conn)
 
 		if ((n = write(conn->sockfd, sendptr + sent, conn->msgSize - sent)) < 0)
 		{
-			CHECK_FOR_INTERRUPTS();
+			ML_CHECK_FOR_INTERRUPTS();
 			if (errno == EINTR)
 				continue;
 			if (errno == EWOULDBLOCK)
@@ -1871,7 +1884,7 @@ flushBuffer(MotionConn * conn)
 				{
 					timeout = tval;
 
-					CHECK_FOR_INTERRUPTS();
+					ML_CHECK_FOR_INTERRUPTS();
 
 					FD_ZERO(&rset);
 					FD_ZERO(&wset);
@@ -1988,7 +2001,7 @@ readPacket(MotionConn * conn)
 			int			saved_err = errno;
 
 			/* see if user canceled and stuff like that */
-			CHECK_FOR_INTERRUPTS();
+			ML_CHECK_FOR_INTERRUPTS();
 
 			if (saved_err == EINTR)
 				continue;
@@ -1999,7 +2012,7 @@ readPacket(MotionConn * conn)
 					struct timeval timeout = tval;
 
 					/* see if user canceled and stuff like that */
-					CHECK_FOR_INTERRUPTS();
+					ML_CHECK_FOR_INTERRUPTS();
 
 					FD_ZERO(&rset);
 					FD_SET(conn->sockfd, &rset);
@@ -2009,7 +2022,7 @@ readPacket(MotionConn * conn)
 					else if (n < 0)
 					{
 						saved_err = errno;
-						CHECK_FOR_INTERRUPTS();
+						ML_CHECK_FOR_INTERRUPTS();
 
 						ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 										errmsg("Interconnect error reading an incoming packet"),
@@ -2037,7 +2050,7 @@ readPacket(MotionConn * conn)
 			elog(DEBUG3, "readpacket(); breaking in while (fd %d) recvBytes %d msgSize %d", conn->sockfd, conn->recvBytes, conn->msgSize);
 			print_connection(conn->sockfd, "interconnect error on");
 #endif
-			CHECK_FOR_INTERRUPTS();
+			ML_CHECK_FOR_INTERRUPTS();
 			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 				errmsg("Interconnect error: connection closed prematurely."),
 				 errdetail("from Remote Connection: contentId=%d at '%s':%d",
@@ -2316,7 +2329,8 @@ static void
 flushListenerBacklog(void)
 {
 	int			pendingConn,
-				newfd;
+				newfd,
+				i;
 	fd_set		rset;
 	struct timeval timeout;
 	struct sockaddr_in peer;
@@ -2332,19 +2346,22 @@ flushListenerBacklog(void)
 		pendingConn = select(listenerFd + 1, &rset, NULL, NULL, &timeout);
 		if (pendingConn > 0)
 		{
-#ifdef AMS_VERBOSE_LOGGING
-			elog(DEBUG3, "flushListenerBacklog(): accepting and closing client conn");
-#endif
-			peerlen = sizeof(peer);
-			newfd = accept(listenerFd, (struct sockaddr *) & peer, &peerlen);
-			if (newfd < 0)
+			for (i = 0; i < pendingConn; i++)
 			{
-				elog(DEBUG1, "flushListenerBacklog: %s during accept", strerror(errno));
-				continue;
+#ifdef AMS_VERBOSE_LOGGING
+				elog(DEBUG3, "flushListenerBacklog(): accepting and closing client conn");
+#endif
+				peerlen = sizeof(peer);
+				newfd = accept(listenerFd, (struct sockaddr *) & peer, &peerlen);
+				if (newfd < 0)
+				{
+					elog(DEBUG1, "flushListenerBacklog: %s during accept", strerror(errno));
+					continue;
+				}
+				/* shutdown this socket */
+				shutdown(newfd, SHUT_RDWR);
+				close(newfd);
 			}
-			/* shutdown this socket */
-			shutdown(newfd, SHUT_RDWR);
-			close(newfd);
 		}
 		else if (pendingConn < 0 && errno != EINTR)
 		{
@@ -2367,9 +2384,23 @@ flushListenerBacklog(void)
  * This works without the select, but burns tons of CPU doing nothing
  * useful.
  *
- * We *must* return locally; otherwise TeardownInterconnect() can't exit
- * cleanly. So we wrap our cancel-detection checks for interrupts with
- * a PG_TRY block.
+ * ----
+ * The way it used to work, is we used CHECK_FOR_INTERRUPTS(), and
+ * wrapped it in PG_TRY: We *must* return locally; otherwise
+ * TeardownInterconnect() can't exit cleanly. So we wrap our
+ * cancel-detection checks for interrupts with a PG_TRY block.
+ *
+ * By swallowing the non-local return on cancel, we lose the "cancel"
+ * state (CHECK_FOR_INTERRUPTS() clears QueryCancelPending()). So we
+ * should just check QueryCancelPending here ... and avoid calling
+ * CHECK_FOR_INTERRUPTS().
+ *
+ * ----
+ *
+ * Now we just check explicitly for interrupts (which is, as far as I
+ * can tell, the only interrupt-driven state change we care
+ * about). This should give us notification of ProcDiePending and
+ * QueryCancelPending
  */
 static void
 waitOnSocketDone(int fd)
@@ -2381,65 +2412,53 @@ waitOnSocketDone(int fd)
 	struct timeval timeout;
 	fd_set		rset;
 
-	PG_TRY();
+	for (;;)
 	{
-		for (;;)
+		if (InterruptPending)
 		{
-			CHECK_FOR_INTERRUPTS();
+			return;
+		}
 
-			FD_ZERO(&rset);
-			FD_SET(fd, &rset);
-			timeout = tval;
+		FD_ZERO(&rset);
+		FD_SET(fd, &rset);
 
-			n = select(fd + 1, &rset, NULL, NULL, &timeout);
-			if (n == 0 || (n < 0 && errno == EINTR))
-			{
-				continue;
-			}
-			else if (n < 0)
-			{
-				saved_err = errno;
-				/* before complaining check for cancel */
-				CHECK_FOR_INTERRUPTS();
+		n = select(fd + 1, &rset, NULL, NULL, &timeout);
+		if (n == 0 || (n < 0 && errno == EINTR))
+		{
+			continue;
+		}
+		else if (n < 0)
+		{
+			saved_err = errno;
 
-				/*
-				 * Something unexpected, but probably not horrible warn
-				 * and return
-				 */
-				elog(LOG, "TeardownInterconnect: waitOnSocketDone select errno=%d", saved_err);
-				break;
-			}
-
-			/* ready to read. */
-			count = recv(fd, &buf, sizeof(buf), 0);
-			if (count == 0)		/* done ! */
-				break;
-			if (count > 0 || (count < 0 && errno == EAGAIN))
-				continue;
-			/* Some other kind of error happened */
-			if (errno == EINTR)
-				continue;
+			if (InterruptPending)
+				return;
 
 			/*
-			 * Something unexpected, but probably not horrible warn and
-			 * return
+			 * Something unexpected, but probably not horrible warn
+			 * and return
 			 */
-			elog(LOG, "TeardownInterconnect: waitOnSocketDone recv errno=%d)", errno);
+			elog(LOG, "TeardownInterconnect: waitOnSocketDone select errno=%d", saved_err);
 			break;
 		}
+
+		/* ready to read. */
+		count = recv(fd, &buf, sizeof(buf), 0);
+		if (count == 0)			/* done ! */
+			break;
+		if (count > 0 || (count < 0 && errno == EAGAIN))
+			continue;
+		/* Some other kind of error happened */
+		if (errno == EINTR)
+			continue;
+
+		/*
+		 * Something unexpected, but probably not horrible warn and
+		 * return
+		 */
+		elog(LOG, "TeardownInterconnect: waitOnSocketDone recv errno=%d)", errno);
+		break;
 	}
-	PG_CATCH();
-	{
-        /*
-         * CDB TODO: It is not correct to discard and ignore signals like this.
-         * It makes the process unresponsive to cancellation.  Also when
-         * TeardownInterconnect is part of the cleanup of an earlier
-         * error, this derails that error and its cleanup.
-         * PG_RE_THROW is required after PG_CATCH.
-         */
-		elog(LOG, "TeardownInterconnect: waitOnSocketDone caught cancel");
-	}
-	PG_END_TRY();
 
 	return;
 }
