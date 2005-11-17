@@ -100,7 +100,7 @@ GET_DB_OID_DATA () {
 GET_TABLE_OID_DATA () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	TABLE_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select relfilenode from pg_class where relname='${TABLE_NAME}'"`
-	ERROR_CHK $? "obtain table OID for $TABLE_NAME table" 2	
+	ERROR_CHK $? "obtain table OID for $TABLE_NAME table in database $QD_DBNAME" 2	
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -255,7 +255,7 @@ if [ $SCALE != "k" ];then
 fi
 CHK_ON_PASSIVE_STANDBY
 if [ x"" == x"$TABLE_NAME" ] && [ x"" == x"$SIZE_DB" ];then
-	ERROR_EXIT "[FATAL]:-Must supply a table name via -t option, or -x option" 2
+	ERROR_EXIT "[FATAL]:-Must supply a table name via -t option, or use -x <database name> option" 2
 fi
 if [ x"" != x"$LOG_DIR" ];then
 	CHK_DIR $LOG_DIR
@@ -269,6 +269,7 @@ fi
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 GET_QD_DB_NAME
+GET_QE_DETAILS
 if [ x"" != x"$ALT_DBNAME" ];then
 	QD_DBNAME=$ALT_DBNAME
 fi
@@ -282,7 +283,6 @@ if [ $SIZE_TYPE -le 1 ];then
 		ERROR_EXIT "[FATAL]:-Table $TABLE_NAME does not exist in $QD_DBNAME database" 2
 	fi
 	GET_OID_DATA
-	GET_QE_DETAILS
 	if [ $SIZE_TYPE -eq 0 ];then
 		SEND_TABLE_SIZE_REQUEST
 	else
@@ -290,7 +290,6 @@ if [ $SIZE_TYPE -le 1 ];then
 	fi
 else
 	GET_DB_OID_DATA
-	GET_QE_DETAILS
 	SEND_DB_SIZE_REQUEST
 fi
 CALC_TOTAL_SIZE
