@@ -748,7 +748,7 @@ stringInfoGetInt32(StringInfo str)
 	if (str->len - str->cursor < 4)
 	{
 		ereport(ERROR, (errcode(ERRCODE_PROTOCOL_VIOLATION),
-						errmsg("insufficient data left in message")));
+						errmsg("deserialize data underflow")));
 	}
 
 	/*
