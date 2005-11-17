@@ -1054,14 +1054,16 @@ TeardownInterconnect(bool forceEOS)
 
 			if (conn->sockfd != -1)
 			{
-				waitOnSocketDone(conn->sockfd);
+				if (!forceEOS)
+					waitOnSocketDone(conn->sockfd);
 				close(conn->sockfd);
 				conn->sockfd = -1;
 			}
 
 			if (conn->hasMirrorConn && conn->mirrorConn->sockfd != -1)
 			{
-				waitOnSocketDone(conn->mirrorConn->sockfd);
+				if (!forceEOS)
+					waitOnSocketDone(conn->mirrorConn->sockfd);
 				close(conn->mirrorConn->sockfd);
 				conn->mirrorConn->sockfd = -1;
 			}
