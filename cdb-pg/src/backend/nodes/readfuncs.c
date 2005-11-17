@@ -891,7 +891,7 @@ _readDistinctExpr(void)
 	 * operators' functions. (We don't currently support an ALTER OPERATOR
 	 * command, but might someday.)
 	 */
-	local_node->opfuncid = InvalidOid;
+	/*local_node->opfuncid = InvalidOid;*/
 
 	READ_OID_FIELD(opresulttype);
 	READ_BOOL_FIELD(opretset);
@@ -919,7 +919,7 @@ _readScalarArrayOpExpr(void)
 	 * operators' functions. (We don't currently support an ALTER OPERATOR
 	 * command, but might someday.)
 	 */
-	local_node->opfuncid = InvalidOid;
+	/*local_node->opfuncid = InvalidOid;*/
 
 	READ_BOOL_FIELD(useOr);
 	READ_NODE_FIELD(args);
@@ -1165,7 +1165,7 @@ _readNullIfExpr(void)
 	 * operators' functions. (We don't currently support an ALTER OPERATOR
 	 * command, but might someday.)
 	 */
-	local_node->opfuncid = InvalidOid;
+	/*local_node->opfuncid = InvalidOid;*/
 
 	READ_OID_FIELD(opresulttype);
 	READ_BOOL_FIELD(opretset);
