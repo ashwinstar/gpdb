@@ -2423,6 +2423,7 @@ waitOnSocketDone(int fd)
 
 		FD_ZERO(&rset);
 		FD_SET(fd, &rset);
+		timeout = tval;
 
 		n = select(fd + 1, &rset, NULL, NULL, &timeout);
 		if (n == 0 || (n < 0 && errno == EINTR))
