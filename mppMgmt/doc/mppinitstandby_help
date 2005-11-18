@@ -1,0 +1,120 @@
+COMMAND NAME: mppinitstandby.sh
+
+Adds and/or initializes a standby MPP master host for a Bizgres MPP system.
+
+
+*****************************************************
+SYNOPSIS
+*****************************************************
+
+mppinitstandby.sh -s <standby_hostname> [-i] [-n] [-a] [-q] 
+[-l <logfile_directory>]
+
+mppinitstandby.sh [-? | -v]
+
+
+*****************************************************
+DESCRIPTION
+*****************************************************
+
+The mppinitstandby.sh script will create a backup MPP master host 
+if one has not already been created for your Bizgres MPP system. Before 
+running this script, make sure that the Bizgres MPP software is installed 
+on the backup master host and that you have exchanged SSH keys between 
+hosts. See the "Bizgres MPP Administrator Guide" for instructions.
+
+The script will perform the following steps:
+
+* Shutdown your Bizgres MPP system
+
+* Update the MPP system catalog to add the new backup master host 
+  information (use the -n option to skip this step)
+
+* Setup the backup master instance on the alternate master host
+
+* Start the synchronization process (if the -i option is supplied)
+
+* Restart your Bizgres MPP system
+
+A backup MPP master host serves as a `warm standby' in the event of 
+the primary MPP master host becoming unoperational. The backup master 
+is kept up to date by a transaction log replication process (mppsyncmaster), 
+which runs on the backup master host and keeps the data between the 
+primary and backup master hosts synchronized. If the primary master fails, 
+the log replication process is shutdown, and the backup master can be 
+activated in its place by using the mppactivatestandby.sh script. Upon 
+activation of the backup master, the replicated logs are used to reconstruct 
+the state of the MPP master host at the time of the last successfully 
+committed transaction.
+
+
+*****************************************************
+OPTIONS
+*****************************************************
+
+-s <standby_hostname>
+
+Required. The host name of the standby MPP master host.
+
+-i
+
+This will start the synchronization process (mppsyncmaster) between 
+the backup and primary MPP master hosts. The default is to not start 
+the synchronization process.
+
+-n
+
+Use this option if you already have a standby MPP master configured, 
+and just want to resynchronize the data between the primary and backup 
+master host. The MPP system catalog tables will not be updated.
+
+-a
+
+Do not prompt the user for confirmation.
+
+-q
+
+Run in quiet mode. Command output is not displayed on the screen, but 
+is still written to the log file.
+
+-l <logfile_directory>
+
+The directory to write the log file. Defaults to ~/mppAdminLogs.
+
+-?
+
+Displays the online help.
+
+-v
+
+Displays the version, status, last updated date, and check sum of this script.
+
+*****************************************************
+EXAMPLES
+*****************************************************
+
+Add a backup MPP master host to your Bizgres MPP system:
+
+mppinitstandby.sh -s host09
+
+
+Add a backup MPP master host to your Bizgres MPP system and start the data 
+synchronization process with the primary MPP master host:
+
+mppinitstandby.sh -s host09 -i
+
+
+Start an existing backup MPP master host and synchronize the data with 
+the primary master host - do not add a new MPP backup master host to 
+the system catalog:
+
+mppinitstandby.sh -s host09 -i -n
+
+
+*****************************************************
+SEE ALSO
+*****************************************************
+
+mppcreatecluster.sh, mppaddmirrors.sh, mppactivatestandby.sh, 
+mppactivatemaster.sh
+

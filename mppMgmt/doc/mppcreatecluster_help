@@ -8,8 +8,8 @@ SYNOPSIS
 *****************************************************
 
 mppcreatecluster.sh -c <mpp_config_file> [-h <host_file>] 
-[-p <postgresql_conf_mpp_additions>] [-s <standby_master_host>] 
-[-o] [-a] [-q] [-l <logfile_directory>]
+[-p <postgresql_conf_mpp_additions>] [-s standby_master_host] [-i] 
+[-o] [-m <max_connections>] [-a] [-q] [-l <logfile_directory>]
 
 mppcreatecluster.sh [-? | -v]
 
@@ -44,6 +44,7 @@ This script performs the following tasks:
 * Displays the configuration that will be used and prompts the user for 
   confirmation.
 * Initializes the master instance.
+* Initializes a standby master instance (if configured).
 * Initializes the primary segment instances.
 * Initializes the mirror segment instances (if mirroring is configured).
 * Configures the Bizgres MPP system and checks for errors.
@@ -79,9 +80,20 @@ Optional. If you wish to configure a backup master host, specify the host
 name using this option. If not specified on the command line, you can 
 specify it using the STANDBY_HOSTNAME parameter in the mpp_config file.
 
+-i
+
+If a standby master host is configured, this will start the synchronization 
+process between the primary and backup MPP master hosts. The default is to 
+not start the synchronization process.
+
 -o
 
 Creates a master instance only. Does not configure any segment hosts.
+
+-m <max_connections>
+
+Sets the maximum number of client connections allowed to the MPP master. 
+The default is 25.
 
 -a
 
@@ -112,6 +124,11 @@ EXAMPLES
 Initialize a Bizgres MPP array:
 
 ./mppcreatecluster.sh -c mpp_config
+
+
+Initialize a Bizgres MPP array with a standby MPP master host:
+
+./mppcreatecluster.sh -c mpp_config -s host09 -i
 
 
 

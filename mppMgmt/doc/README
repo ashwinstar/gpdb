@@ -10,6 +10,16 @@ The following Bizgres MPP management scripts are available:
 		 a hosts file to determine the hosts for 
 		 a session.
 
+* mppactivatemaster.sh - Reactivates the original primary master host and 
+                         puts the currently active backup master host in 
+                         standby mode again.
+
+* mppactivatestandby.sh - Activates the backup master as the active MPP master 
+                          instance for a Bizgres MPP system.
+
+* mppaddmirrors.sh - Adds mirror segments to a Bizgres MPP system that was 
+                     initially configured without mirroring.
+
 * mpp_bash_functions.sh - This is sourced by the other management
 			  scripts and contains global parameters
 			  and functions.
@@ -19,8 +29,11 @@ The following Bizgres MPP management scripts are available:
 
 * mpp_dumpall - Located in $MPPHOME/bin. Writes out all databases and 
                 the Bizgres MPP system catalog to SQL script files, which 
-                can then be used to restore a Bizgres MPP system configuration, 
-                databases, and user data.
+                can then be used to restore a Bizgres MPP system 
+                configuration, databases, and user data.
+
+* mppinitstandby.sh - Adds and/or initializes a standby MPP master host for 
+                      a Bizgres MPP system
 
 * mpprebuildcluster.sh - Rebuilds a Bizgres MPP master using a SQL 
                          script file containing the Bizgres MPP schema 
