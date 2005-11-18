@@ -213,7 +213,7 @@ DATABASE_STATUS () {
 						GET_PG_PID_ACTIVE $QE_PORT $QE_NAME
 						QE_PID_ACTUAL=$PID
 						LOG_MSG "[INFO]:-Segment Instance Physical PID for $QE_NAME port $QE_PORT       = $QE_PID_ACTUAL"
-						STATUS=`$TRUSTED_SHELL $QE_NAME "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};export PGPORT=${QE_PORT};$PG_CTL status -D $QE_DIR"|$HEAD -1|$GREP -c PID` 2>> $LOG_FILE
+						STATUS=`$TRUSTED_SHELL $QE_NAME "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;export PGPORT=${QE_PORT};$PG_CTL status -D $QE_DIR"|$HEAD -1|$GREP -c PID` 2>> $LOG_FILE
 						RETVAL=$?
 						if [ $RETVAL -ne 0 ]; then
 								LOG_MSG "[WARN]:-pg_ctl status from $QE_NAME port = $QE_PORT returned error code $RETVAL"
@@ -261,7 +261,7 @@ VERSION_INFO () {
 	for TNODE in "${QE_ARRAY[@]}"
 	do
 		SET_VAR
-		POSTGRES_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $QE_PORT template1 -c"show server_version;"`
+		POSTGRES_VERSION=`$TRUSTED_SHELL $QE_NAME "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -A -t -p $QE_PORT template1 -c\"show server_version;\""`
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 			LOG_MSG "[WARN]:-Unable to connect to $QE_NAME on port $QE_PORT"
@@ -440,7 +440,7 @@ CLUSTER_CONFIG () {
 }
 
 LIST_MPP_PORTS () {
-		PORT_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.port, a.datadir from mpp.listener a, mpp.host b where listenerid<> (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid;" 2>|/dev/null`)
+		PORT_ARRAY=(`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.port, a.datadir from mpp.listener a, mpp.host b where listenerid<> (select listenerid from mpp.pgdatabase where content=-1 and dbid=1) and a.hostid=b.hostid;" `)
 		ERROR_CHK $? "obtain port assignments" 2
 		LOG_MSG "[INFO]:-Port assignments"
 		for PMODE in "${PORT_ARRAY[@]}"

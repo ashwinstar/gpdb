@@ -249,7 +249,7 @@ BUILD_SEGMENT_INSTANCES () {
 			LOG_MSG "[INFO]:-Path correct for plpgsql.so, skipping edit"
 		fi	
 		LOG_MSG "[INFO]:-Processing segment host $SEG_HOSTNAME port $SEG_PORT data directory $SEG_DATADIR dbid $SEG_DBID"
-		RUN_COMMAND_REMOTE ${SEG_HOSTNAME} "$INITDB -E $ENCODING -D $SEG_DATADIR"
+		RUN_COMMAND_REMOTE ${SEG_HOSTNAME} "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;$INITDB -E $ENCODING -D $SEG_DATADIR"
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${SEG_HOSTNAME} \"$RM -rf $SEG_DATADIR\""
 		BACKOUT_COMMAND "$ECHO \"removing directory $SEG_DATADIR on $SEG_HOSTNAME\""
 		LOG_MSG "[INFO]:-Configuring segment $PG_CONF"
@@ -262,7 +262,7 @@ BUILD_SEGMENT_INSTANCES () {
 			RUN_COMMAND_REMOTE ${SEG_HOSTNAME} "$ECHO host  all     all     ${MASTER_IP}/32 trust >> ${SEG_DATADIR}/$PG_HBA"
 		done
 		LOG_MSG "[INFO]:-Starting Functioning instance on segment ${SEG_HOSTNAME}"
-		$TRUSTED_SHELL ${SEG_HOSTNAME} "export PGPORT=${SEG_PORT}; $PG_CTL -w -D $SEG_DATADIR -l ${SEG_DATADIR}.log -o \"-i -p ${SEG_PORT}\" start" >> $LOG_FILE 2>&1
+		$TRUSTED_SHELL ${SEG_HOSTNAME} "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;export PGPORT=${SEG_PORT}; $PG_CTL -w -D $SEG_DATADIR -l ${SEG_DATADIR}.log -o \"-i -p ${SEG_PORT}\" start" >> $LOG_FILE 2>&1
 		if [ $? -ne 0 ]; then
 			BACKOUT_COMMAND "$TRUSTED_SHELL $SEG_HOSTNAME \"$RM -f ${SEG_DATADIR}.log\""
 			BACKOUT_COMMAND "$ECHO \"Removing segment log file ${SEG_DATADIR}.log on segment $SEG_HOSTNAME\""
@@ -275,15 +275,15 @@ BUILD_SEGMENT_INSTANCES () {
 		BACKOUT_COMMAND "$ECHO \"Removing segment log file ${SEG_DATADIR}.log on segment $SEG_HOSTNAME\""
 		BACKOUT_COMMAND "$TRUSTED_SHELL $SEG_HOSTNAME \"$RM -Rf ${SEG_DATADIR}\""
 		BACKOUT_COMMAND "$ECHO \"Removing segment data directory $SEG_DATADIR\""
-		BACKOUT_COMMAND "$TRUSTED_SHELL $SEG_HOSTNAME \"export PGPORT=${SEG_PORT}; $PG_CTL -w -D $SEG_DATADIR -l ${SEG_DATADIR}.log -o \"-i -p ${SEG_PORT}\" -m immediate  stop\""
+		BACKOUT_COMMAND "$TRUSTED_SHELL $SEG_HOSTNAME \"export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;export PGPORT=${SEG_PORT}; $PG_CTL -w -D $SEG_DATADIR -l ${SEG_DATADIR}.log -o \"-i -p ${SEG_PORT}\" -m immediate  stop\""
 		BACKOUT_COMMAND "$ECHO \"Stopping segment instance\""
 		LOG_MSG "[INFO]:-Successfully started segment instance on $SEG_HOSTNAME"
 		LOG_MSG "[INFO]:-Updating segment mpp.mpp system table"
-		RUN_COMMAND_REMOTE $SEG_HOSTNAME "env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT template1 -c \"insert into $MPP_TBL values ('${MASTER_MPP_NAME}',${MASTER_TOTAL_SEG},${SEG_DBID},${SEG_CONTENT});\"" >> $LOG_FILE 2>&1
+		RUN_COMMAND_REMOTE $SEG_HOSTNAME "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT template1 -c \"insert into $MPP_TBL values ('${MASTER_MPP_NAME}',${MASTER_TOTAL_SEG},${SEG_DBID},${SEG_CONTENT});\"" >> $LOG_FILE 2>&1
 		ERROR_CHK $? "update $SEG_HOSTNAME mpp.mpp record entry with DBID value ${SEG_DBID}" 2
 		LOG_MSG "[INFO]:-Successfully updated $SEG_HOSTNAME mpp.mpp system table"
 		LOG_MSG "[INFO]:-Commencing shutdown of segment instance on $SEG_HOSTNAME"
-		$TRUSTED_SHELL ${SEG_HOSTNAME} "export PGPORT=${SEG_PORT}; $PG_CTL -w -D $SEG_DATADIR -l ${SEG_DATADIR}.log -o \"-i -p ${SEG_PORT}\" stop" >> $LOG_FILE 2>&1
+		$TRUSTED_SHELL ${SEG_HOSTNAME} "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;export PGPORT=${SEG_PORT}; $PG_CTL -w -D $SEG_DATADIR -l ${SEG_DATADIR}.log -o \"-i -p ${SEG_PORT}\" stop" >> $LOG_FILE 2>&1
 		ERROR_CHK $? "shutdown of instance on port $SEG_PORT data directory $SEG_DATADIR host $SEG_HOSTNAME" 2
 	done	
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"

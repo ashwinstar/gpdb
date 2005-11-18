@@ -218,7 +218,7 @@ PROCESS_SHUTDOWN () {
 				QE_VALID=`$ECHO $QNODE|$CUT -d"|" -f4`
 				if [ "$QE_VALID" == "t" ] || [ $STOP_INVALID -eq 1 ];then
 					LOG_MSG "[INFO]:-Stopping Segment Instance $QE_NAME directory $QE_DIR"
-					$TRUSTED_SHELL $QE_NAME "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};$PG_CTL $WAIT stop -D $QE_DIR -m $MODE -l ${QE_DIR}.log " 
+					$TRUSTED_SHELL $QE_NAME "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;$PG_CTL $WAIT stop -D $QE_DIR -m $MODE -l ${QE_DIR}.log " 
 					ERROR_CHK $? "shutdown of $QE_NAME on port=$QE_PORT" 1
 					if [ $STOP_INVALID -eq 1 ]; then       
 						FORCE_CLEAR
@@ -319,9 +319,17 @@ PROCESS_SHUTDOWN
 if [ $RESTART ]; then
 	if [ -f ${WORKDIR}/mppstart.sh ]; then
 		if [ x"" == x"$VERBOSE" ];then
+			if [ x"" == x"$STOP_SYNC" ];then
 			${WORKDIR}/mppstart.sh -aq
+			else
+			${WORKDIR}/mppstart.sh -aqy
+			fi
 		else
+			if [ x"" == x"$STOP_SYNC" ];then
 			${WORKDIR}/mppstart.sh -a
+			else
+			${WORKDIR}/mppstart.sh -ay
+			fi
 		fi
 	else
 		LOG_MSG "[FATAL]:-No ${WORKDIR}/mppstart.sh" 2

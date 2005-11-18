@@ -321,16 +321,16 @@ CREATE_MIRRORS () {
 		ERROR_CHK $? "copy data directory on $PRIMARY_HOSTNAME to $MIRROR_HOSTNAME" 2
 		ED_FILE ${MIRROR_DATADIR}/$PG_CONF "port=" "port=${MIRROR_PORT}" 0 $MIRROR_HOSTNAME
 		LOG_MSG "[INFO]:-Starting mirror segment in admin mode"
-		$TRUSTED_SHELL $MIRROR_HOSTNAME "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -w -D $MIRROR_DATADIR -l ${MIRROR_DATADIR}.log -o \"-i -p $MIRROR_PORT \" start"
+		$TRUSTED_SHELL $MIRROR_HOSTNAME "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -w -D $MIRROR_DATADIR -l ${MIRROR_DATADIR}.log -o \"-i -p $MIRROR_PORT \" start"
 		ERROR_CHK $? "update segment mpp.mpp on $MIRROR_HOSTNAME DBID=$MIRROR_DBID port=$MIRROR_PORT" 2
 		for DB in "${DB_ARRAY[@]}"
 		do
 			LOG_MSG "[INFO]:-Updating mpp.mpp table for database $DB"
-			$TRUSTED_SHELL $MIRROR_HOSTNAME "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $MIRROR_PORT $DB -c \"update mpp.mpp set dbid=${MIRROR_DBID} where dbid<>${MIRROR_DBID};\""
+			$TRUSTED_SHELL $MIRROR_HOSTNAME "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $MIRROR_PORT $DB -c \"update mpp.mpp set dbid=${MIRROR_DBID} where dbid<>${MIRROR_DBID};\""
 			ERROR_CHK $? "update mpp.mpp table on $MIRROR_HOSTNAME $MIRROR_DATADIR database $DB" 2
 		done
 		LOG_MSG "[INFO]:-Closing down mirror segment from admin mode"
-		$TRUSTED_SHELL $MIRROR_HOSTNAME "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -w stop -D $MIRROR_DATADIR -m smart -l ${MIRROR_DATADIR}.log"
+		$TRUSTED_SHELL $MIRROR_HOSTNAME "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -w stop -D $MIRROR_DATADIR -m smart -l ${MIRROR_DATADIR}.log"
 		ERROR_CHK $? "close mirror segment $MIRROR_HOSTNAME $MIRROR_DATADIR" 2	
 	done
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"

@@ -125,7 +125,7 @@ CHECK_PARAM () {
 	#Get the standby master port number
 	GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 	#Check that we are in a active standby situation
-	STANDBY_ACTIVE=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c"select count(*) from mpp.host a, mpp.pgdatabase b, mpp.listener c where b.definedprimary='f' and b.content=-1 and b.listenerid=c.listenerid and c.hostid=a.hostid and a.hostname='${MASTER_HOSTNAME}';"`
+	ACTIVE_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c"select count(*) from mpp.host a, mpp.pgdatabase b, mpp.listener c where b.definedprimary='f' and b.content=-1 and b.listenerid=c.listenerid and c.hostid=a.hostid and a.hostname='${MASTER_HOSTNAME}';"`
 	ERROR_CHK $? "obtain active standby count" 2
 	if [ $ACTIVE_COUNT -ne 1 ];then
 		ERROR_EXIT "[FATAL]:-Not in master fail-back situation" 2
@@ -229,6 +229,8 @@ PROCESS_REACTIVATION () {
 ##	LOG_MSG "[INFO]:-Commencing re-sync of standby"
 ##	$TRUSTED_SHELL $FAILBACK_MASTER_HOSTNAME "export MASTER_DATA_DIRECTORY=$FAILBACK_MASTER_DATA_DIRECTORY;$REMOTE_INIT_STANDBY -s $MASTER_HOSTNAME -i -na"
 ##	ERROR_CHK $? "re-sync of standby QD" 1
+	LOG_MSG "[INFO]:-Removing standby postmaster.opts file"
+	$RM -f $MASTER_DATA_DIRECTORY/$PG_OPT
 	LOG_MSG "[INFO]:-Restarting sync process on $MASTER_HOSTNAME"
 	RUN_COMMAND_REMOTE $FAILBACK_MASTER_HOSTNAME ". $CWORKDIR/mpp_bash_functions.sh; START_SYNC_PROCESS $MASTER_HOSTNAME $MASTER_DATA_DIRECTORY $MASTER_PORT"
 	LOG_MSG "[INFO]:-Starting MPP cluster on $FAILBACK_MASTER_HOSTNAME"

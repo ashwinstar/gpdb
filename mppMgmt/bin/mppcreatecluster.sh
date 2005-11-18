@@ -305,12 +305,12 @@ CHK_QES () {
 							LOG_MSG "[INFO]:-$QE_ID $DIR checked"
 						fi
 				done
-				#Check that we have a LD_LIBRARY_PATH directory on the QE
-				CHK_DIR $LD_LIBRARY_PATH $QE_ID
+				#Check that we have a MPP_LIBRARY_PATH directory on the QE
+				CHK_DIR $MPP_LIBRARY_PATH $QE_ID
 				if [ $EXISTS -ne 0 ]; then
-						ERROR_EXIT "[FATAL]:-No $LD_LIBRARY_PATH on segment instance $QE_ID" 2
+						ERROR_EXIT "[FATAL]:-No $MPP_LIBRARY_PATH on segment instance $QE_ID" 2
 				else
-						LOG_MSG "[INFO]:-QE $QE_ID $LD_LIBRARY_PATH checked"
+						LOG_MSG "[INFO]:-QE $QE_ID $MPP_LIBRARY_PATH checked"
 				fi
 		done
 		#Check to ensure that instance directories do not exist on hosts
@@ -527,7 +527,7 @@ DISPLAY_CONFIG () {
 		LOG_MSG "[INFO]:-Encoding             = $ENCODING"
 		LOG_MSG "[INFO]:-Pg Conf add file     = $PG_ADD"
 		LOG_MSG "[INFO]:-Initdb to be used    = $INITDB"
-		LOG_MSG "[INFO]:-LD_LIBRARY_PATH is   = $LD_LIBRARY_PATH"
+		LOG_MSG "[INFO]:-MPP_LIBRARY_PATH is   = $MPP_LIBRARY_PATH"
 		((NUM_QES=${#MACHINE_LIST[*]}))
 		LOG_MSG "[INFO]:-Number segment hosts = $NUM_QES"
 		if [ $MIRROR_PORT_BASE ]; then
@@ -602,6 +602,7 @@ CREATE_QD_DB () {
 			LOG_MSG "[INFO]:-Path correct for plpgsql.so, skipping edit"
 		fi
 		LOG_MSG "[INFO]:-Initializing Master Postgres instance $MPP_DIR"
+		export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH
 		RUN_COMMAND "$INITDB -E $ENCODING -D $MPP_DIR"
 		BACKOUT_COMMAND "$RM -Rf $MPP_DIR"
 		BACKOUT_COMMAND "$ECHO Removing Master data directory files"
@@ -662,7 +663,7 @@ CREATE_QD_DB () {
 		BACKOUT_COMMAND "$ECHO \"Removing Master lock files\""
 		BACKOUT_COMMAND "$RM -f ${MPP_DIR}.log"
 		BACKOUT_COMMAND "$ECHO Removing Master log file"
-		BACKOUT_COMMAND "export PGPORT=$MPP_PORT;$PG_CTL -D $MPP_DIR stop"
+		BACKOUT_COMMAND "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;export PGPORT=$MPP_PORT;$PG_CTL -D $MPP_DIR stop"
 		BACKOUT_COMMAND "$ECHO \"Stopping Master instance\""
 		LOG_MSG "[INFO]:-Compleleted starting the Master in admin mode"
 		$SLEEP 2
@@ -781,10 +782,10 @@ UPDATE_MPP () {
 		TYPE=$7
 		U_HOST=$8
 		if [ $TYPE -eq 0 ]; then
-				export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $MPP_TBL values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});" >> $LOG_FILE 2>&1
+				export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $MPP_TBL values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});" >> $LOG_FILE 2>&1
 				ERROR_CHK $? "add $U_DBID to Master mpp.mpp" 2
 		else
-				RUN_COMMAND_REMOTE $U_HOST "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $U_PT $U_DB -c \"insert into $MPP_TBL (mppname, numsegments, dbid, content) values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" 2>&1" >> $LOG_FILE 2>&1
+				RUN_COMMAND_REMOTE $U_HOST "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $U_PT $U_DB -c \"insert into $MPP_TBL (mppname, numsegments, dbid, content) values ('${U_MPPNAME}',${U_NUMSEG},${U_DBID},${U_CONTENT});\" 2>&1" >> $LOG_FILE 2>&1
 		fi	
 		if [ $RETVAL -ne 0 ]; then
 				ERROR_EXIT "[FATAL]:-Failed to update mpp system table" 2
@@ -828,7 +829,7 @@ PROCESS_QE () {
 			LOG_MSG "[INFO]:-Path correct for plpgsql.so, skipping edit"
 		fi
 
-		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};$INITDB -E $ENCODING -D $MPP_DIR"
+		RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;$INITDB -E $ENCODING -D $MPP_DIR"
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -rf $MPP_DIR\""
 		BACKOUT_COMMAND "$ECHO \"removing directory $MPP_DIR on $MPP_HOSTNAME\""
 		LOG_MSG "[INFO]:-Configuring segment $PG_CONF"
@@ -861,16 +862,16 @@ PROCESS_QE () {
 			done
 		fi
 		LOG_MSG "[INFO]:-Starting Functioning instance on segment ${MPP_HOSTNAME}"
-		$TRUSTED_SHELL ${MPP_HOSTNAME} "export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start"
+		$TRUSTED_SHELL ${MPP_HOSTNAME} "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start"
 		if [ $? -ne 0 ]; then
 			BACKOUT_COMMAND "$ECHO \"Removing segment log file ${MPP_DIR}.log on segment $MPP_HOSTNAME\""
-			BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
+			BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
 			$TRUSTED_SHELL ${MPP_HOSTNAME} "$CAT ${MPP_DIR}.log "|$TEE -a $LOG_FILE
 			ERROR_EXIT "[FATAL]:-Failed to start segment Mirror instance database" 2
 		fi	
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${MPP_HOSTNAME} \"$RM -f ${MPP_DIR}.log\""
 		BACKOUT_COMMAND "$ECHO \"Removing segment log file ${MPP_DIR}.log on segment $MPP_HOSTNAME\""
-		BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
+		BACKOUT_COMMAND "$TRUSTED_SHELL $MPP_HOSTNAME \"export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" -m immediate  stop\""
 		BACKOUT_COMMAND "$ECHO \"Stopping segment instance on $MPP_HOSTNAME\""
 }
 
@@ -905,7 +906,7 @@ CREATE_STANDBY_QD () {
 		ERROR_CHK $? "initialize syandby QD $STANDBY_HOSTNAME" 2
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${STANDBY_HOSTNAME} \"$RM -Rf ${QD_DIR}\""
 		BACKOUT_COMMAND "$ECHO \"Removing standby directory ${QD_DIR} on $STANDBY_HOSTNAME\""
-		BACKOUT_COMMAND "$TRUSTED_SHELL $STANDBY_HOSTNAME \"export LD_LIBRARY_PATH=${LD_LIBRARY_PATH};export PGPORT=${MASTER_PORT}; $PG_CTL -w -D ${MASTER_DIRECTORY}/${SEG_PREFIX}0 -l ${MASTER_DIRECTORY}/${SEG_PREFIX}0.log -o \"-i -p ${MASTER_PORT}\" -m immediate  stop\""
+		BACKOUT_COMMAND "$TRUSTED_SHELL $STANDBY_HOSTNAME \"export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;export PGPORT=${MASTER_PORT}; $PG_CTL -w -D ${MASTER_DIRECTORY}/${SEG_PREFIX}0 -l ${MASTER_DIRECTORY}/${SEG_PREFIX}0.log -o \"-i -p ${MASTER_PORT}\" -m immediate  stop\""
 		BACKOUT_COMMAND "$ECHO \"Stopping standby instance on $STANDBY_HOSTNAME\""
 	fi 
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -979,10 +980,6 @@ fi
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 CHK_PARAMS
-
-#Now source the config file for the rest of the functions within this script
-. $CLUSTER_CONFIG
-
 CREATE_QE_ARRAY
 CHK_QES
 DISPLAY_CONFIG
@@ -1010,13 +1007,21 @@ else
 fi
 $ECHO "$RM $BACKOUT_FILE" >> $BACKOUT_FILE
 BACKOUT_COMMAND "if [ $MASTER_HOSTNAME != \`$HOSTNAME\` ];then $ECHO \"[FATAL]:-Not on original master host $MASTER_HOSTNAME, backout script exiting!\";exit 2;fi"
+#Check the library info in initdb
 LOG_MSG "[INFO]:-MPP cluster successfully created"
 LOG_MSG "[INFO]:-------------------------------------------------------"
+if [ `strings $INITDB|$GREP -c "$MPP_LIBRARY_PATH"` -eq 0 ];then
+LOG_MSG "[INFO]:-To access database via psql you will need to add the below"
+LOG_MSG "[INFO]:-library path $MPP_LIBRARY_PATH"
+LOG_MSG "[INFO]:-to the LD_LIBRARY_PATH environment variable"
+LOG_MSG "[INFO]:-For example the below command can be used"
+LOG_MSG "[INFO]:-export LD_LIBRARY_PATH=$MPP_LIBRARY_PATH:\$LD_LIBRARY_PATH"
+LOG_MSG "[INFO]:-This should be set in users startup environment file i.e. .bashrc"
+fi
 LOG_MSG "[INFO]:-To access the mpp scripts for this cluster:"
-LOG_MSG "[INFO]:-In user $USER_NAME environment file add following line"
+LOG_MSG "[INFO]:-In user $USER_NAME startup environment file add following line"
 LOG_MSG "[INFO]:-export MASTER_DATA_DIRECTORY=${MASTER_DIRECTORY}/${SEG_PREFIX}0"
-LOG_MSG "[INFO]:-or, use -d ${MASTER_DIRECTORY}/${SEG_PREFIX}0"
-LOG_MSG "[INFO]:-option for the mpp scripts"
+LOG_MSG "[INFO]:-or, use -d ${MASTER_DIRECTORY}/${SEG_PREFIX}0 option for the mpp scripts"
 LOG_MSG "[INFO]:-Example ./mppstate.sh -d ${MASTER_DIRECTORY}/${SEG_PREFIX}0"
 LOG_MSG "[INFO]:-Script log file = $LOG_FILE"
 LOG_MSG "[INFO]:-Script backout file = $BACKOUT_FILE"
