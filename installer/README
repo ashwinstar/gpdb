@@ -4,6 +4,18 @@ General Notes:
    -- We build installers for both MPP and Bizgres Softwares
    -- Both the softwares are bundled into one tar ball and are obtained from the Release Engineering.
 
+   -- No of Images/Sw Binaries Received fro Release Engg: 4
+      The latest binaries are available at:
+      http://intranet.greenplum.com/release-mpp/RHEL3U4-i686/bizgres-mpp-2_0_20-0_8_1.tar.gz
+      http://intranet.greenplum.com/release-mpp/RHEL3U4-x86_64/bizgres-mpp-2_0_20-0_8_1.tar.gz
+      http://intranet.greenplum.com/release-mpp/SOL-x86_64/bizgres-mpp-2_0_20-0_8_1.tar.gz
+      http://intranet.greenplum.com/release-mpp/MacOSX/bizgres-mpp-2_0_20-0_8_1.tar.gz
+
+   -- NO of Installers to be build : 3
+           1: Combined for Both 32 and 64 Bit Linux
+	   2: 64 BIT SUN Systems
+           3: MAC Operating Systems
+
 Installer Config Files:
 =======================
     -- There are two installers config files. bizgres.iap_xml  bizgres-mpp.iap_xml
@@ -30,8 +42,14 @@ InstallStaging Directory:
 
 How to DO a New Installation:
 
+Fixing InstallStaging Directory:
+-------------------------------
+
 Obtain Sources: 
 wget http://mpp:yahyouknowme@intranet.greenplum.com/release-mpp/RHEL3U4-i686/bizgres-mpp-2_0_19-0_8_1.tar.gz .
+
+Get the Four Tar Balls.
+
 
 Untar into the correct locations:
   After untar, The binaries are available in usr/local in the directory in which is it untarred.
@@ -54,6 +72,13 @@ Organization:
 
 Steps Building the Path release installer.
 
+STAGE : PROJECT
+----------------
+-- For Project Change the Default installation directory to
+    usr/local/bizgres-mpp-2_0_20
+   Note no need of '/' in the begining.
+
+
 STAGE PREINSTALL:
 -----------------
 -- Change the Variable Name :
@@ -67,10 +92,12 @@ STAGE INSTALL
   -- Change Install Speed Folder
       $USER_HOME$/InstallAnywhere/installStaging/RHEL3-i386/usr/local/bizgres-mpp-2_0_18-1-0_8_1
       $USER_HOME$/InstallAnywhere/installStaging/RHEL3-i386/usr/local/bizgres-mpp-2_0_19-0_8_1
+  -- Repeat Same for MPPServ,  BizServ, MPPSDK,  BizSDK
     -- Easy way to do this is open the file and Edit.
        Note : The directory need to exist before, otherwise installer will complain
-              when loading the file
-  -- Repeat Same for MPPServ,  BizServ, MPPSDK,  BizSDK
+              when loading the file.
+            : At least create a fake directory to proceed with, if you don't the 
+              tarballs
 
 POST INSTALL:
 -------------
@@ -80,9 +107,11 @@ Build the Installer:
    For both with VM and without VM.
 
 Transfering to the web.
--- CD cdb <INST_DIR>/Web_Installers/InstData/Linux/VM/
+-- cd <INST_DIR>/Web_Installers/InstData/Linux/VM/
    gzip install.bin
    cp install.bin bizgres-mpp-2_0_19-0_8_1-RHEL3-1.bin.gz
+   Upload to the location:
+   scp user@intranet.greenplum.com:/var/www/html/release-mpp/INSTALLER/BIZGRES-MPP/
 
 
 
@@ -94,7 +123,3 @@ Testing After Install.
      Check all the necessary directories are installed.
 -- Run a Demo.
      Refer to documentation for running a demo.
-
-
-
-
