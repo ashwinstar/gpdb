@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/storage/large_object/inv_api.c,v 1.108 2004/12/31 22:00:59 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/storage/large_object/inv_api.c,v 1.113 2005/10/15 02:49:26 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -19,7 +19,6 @@
 #include "access/heapam.h"
 #include "access/tuptoaster.h"
 #include "catalog/catalog.h"
-#include "catalog/catname.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_largeobject.h"
 #include "commands/comment.h"
@@ -60,9 +59,9 @@ open_lo_relation(void)
 
 		/* Use RowExclusiveLock since we might either read or write */
 		if (lo_heap_r == NULL)
-			lo_heap_r = heap_openr(LargeObjectRelationName, RowExclusiveLock);
+			lo_heap_r = heap_open(LargeObjectRelationId, RowExclusiveLock);
 		if (lo_index_r == NULL)
-			lo_index_r = index_openr(LargeObjectLOidPNIndex);
+			lo_index_r = index_open(LargeObjectLOidPNIndexId);
 	}
 	PG_CATCH();
 	{
@@ -83,8 +82,8 @@ close_lo_relation(bool isCommit)
 	if (lo_heap_r || lo_index_r)
 	{
 		/*
-		 * Only bother to close if committing; else abort cleanup will
-		 * handle it
+		 * Only bother to close if committing; else abort cleanup will handle
+		 * it
 		 */
 		if (isCommit)
 		{
@@ -115,6 +114,42 @@ close_lo_relation(bool isCommit)
 }
 
 
+/*
+ * Same as pg_largeobject.c's LargeObjectExists(), except snapshot to
+ * read with can be specified.
+ */
+static bool
+myLargeObjectExists(Oid loid, Snapshot snapshot)
+{
+	bool		retval = false;
+	Relation	pg_largeobject;
+	ScanKeyData skey[1];
+	SysScanDesc sd;
+
+	/*
+	 * See if we can find any tuples belonging to the specified LO
+	 */
+	ScanKeyInit(&skey[0],
+				Anum_pg_largeobject_loid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(loid));
+
+	pg_largeobject = heap_open(LargeObjectRelationId, AccessShareLock);
+
+	sd = systable_beginscan(pg_largeobject, LargeObjectLOidPNIndexId, true,
+							snapshot, 1, skey);
+
+	if (systable_getnext(sd) != NULL)
+		retval = true;
+
+	systable_endscan(sd);
+
+	heap_close(pg_largeobject, AccessShareLock);
+
+	return retval;
+}
+
+
 static int32
 getbytealen(bytea *data)
 {
@@ -126,58 +161,44 @@ getbytealen(bytea *data)
 
 
 /*
- *	inv_create -- create a new large object.
+ *	inv_create -- create a new large object
  *
- *		Arguments:
- *		  flags
+ *	Arguments:
+ *	  lobjId - OID to use for new large object, or InvalidOid to pick one
  *
- *		Returns:
- *		  large object descriptor, appropriately filled in.
+ *	Returns:
+ *	  OID of new object
+ *
+ * If lobjId is not InvalidOid, then an error occurs if the OID is already
+ * in use.
  */
-LargeObjectDesc *
-inv_create(int flags)
+Oid
+inv_create(Oid lobjId)
 {
-	Oid			file_oid;
-	LargeObjectDesc *retval;
-
 	/*
-	 * Allocate an OID to be the LO's identifier.
+	 * Allocate an OID to be the LO's identifier, unless we were told what to
+	 * use.  We can use the index on pg_largeobject for checking OID
+	 * uniqueness, even though it has additional columns besides OID.
 	 */
-	file_oid = newoid();
+	if (!OidIsValid(lobjId))
+	{
+		open_lo_relation();
 
-	/* Check for duplicate (shouldn't happen) */
-	if (LargeObjectExists(file_oid))
-		elog(ERROR, "large object %u already exists", file_oid);
+		lobjId = GetNewOidWithIndex(lo_heap_r, lo_index_r);
+	}
 
 	/*
-	 * Create the LO by writing an empty first page for it in
-	 * pg_largeobject
+	 * Create the LO by writing an empty first page for it in pg_largeobject
+	 * (will fail if duplicate)
 	 */
-	LargeObjectCreate(file_oid);
+	LargeObjectCreate(lobjId);
 
 	/*
-	 * Advance command counter so that new tuple will be seen by later
-	 * large-object operations in this transaction.
+	 * Advance command counter to make new tuple visible to later operations.
 	 */
 	CommandCounterIncrement();
 
-	/*
-	 * Prepare LargeObjectDesc data structure for accessing LO
-	 */
-	retval = (LargeObjectDesc *) palloc(sizeof(LargeObjectDesc));
-
-	retval->id = file_oid;
-	retval->subid = GetCurrentSubTransactionId();
-	retval->offset = 0;
-
-	if (flags & INV_WRITE)
-		retval->flags = IFS_WRLOCK | IFS_RDLOCK;
-	else if (flags & INV_READ)
-		retval->flags = IFS_RDLOCK;
-	else
-		elog(ERROR, "invalid flags: %d", flags);
-
-	return retval;
+	return lobjId;
 }
 
 /*
@@ -191,11 +212,6 @@ inv_open(Oid lobjId, int flags)
 {
 	LargeObjectDesc *retval;
 
-	if (!LargeObjectExists(lobjId))
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("large object %u does not exist", lobjId)));
-
 	retval = (LargeObjectDesc *) palloc(sizeof(LargeObjectDesc));
 
 	retval->id = lobjId;
@@ -203,11 +219,24 @@ inv_open(Oid lobjId, int flags)
 	retval->offset = 0;
 
 	if (flags & INV_WRITE)
+	{
+		retval->snapshot = SnapshotNow;
 		retval->flags = IFS_WRLOCK | IFS_RDLOCK;
+	}
 	else if (flags & INV_READ)
+	{
+		/* be sure to copy snap into fscxt */
+		retval->snapshot = CopySnapshot(ActiveSnapshot);
 		retval->flags = IFS_RDLOCK;
+	}
 	else
 		elog(ERROR, "invalid flags: %d", flags);
+
+	/* Can't use LargeObjectExists here because it always uses SnapshotNow */
+	if (!myLargeObjectExists(lobjId, retval->snapshot))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("large object %u does not exist", lobjId)));
 
 	return retval;
 }
@@ -219,6 +248,8 @@ void
 inv_close(LargeObjectDesc *obj_desc)
 {
 	Assert(PointerIsValid(obj_desc));
+	if (obj_desc->snapshot != SnapshotNow)
+		FreeSnapshot(obj_desc->snapshot);
 	pfree(obj_desc);
 }
 
@@ -230,15 +261,10 @@ inv_close(LargeObjectDesc *obj_desc)
 int
 inv_drop(Oid lobjId)
 {
-	Oid			classoid;
-
 	LargeObjectDrop(lobjId);
 
-	/* pg_largeobject doesn't have a hard-coded OID, so must look it up */
-	classoid = get_system_catalog_relid(LargeObjectRelationName);
-
 	/* Delete any comments on the large object */
-	DeleteComments(lobjId, classoid, 0);
+	DeleteComments(lobjId, LargeObjectRelationId, 0);
 
 	/*
 	 * Advance command counter so that tuple removal will be seen by later
@@ -274,13 +300,13 @@ inv_getsize(LargeObjectDesc *obj_desc)
 				ObjectIdGetDatum(obj_desc->id));
 
 	sd = index_beginscan(lo_heap_r, lo_index_r,
-						 SnapshotNow, 1, skey);
+						 obj_desc->snapshot, 1, skey);
 
 	/*
 	 * Because the pg_largeobject index is on both loid and pageno, but we
 	 * constrain only loid, a backwards scan should visit all pages of the
-	 * large object in reverse pageno order.  So, it's sufficient to
-	 * examine the first valid tuple (== last valid page).
+	 * large object in reverse pageno order.  So, it's sufficient to examine
+	 * the first valid tuple (== last valid page).
 	 */
 	while ((tuple = index_getnext(sd, BackwardScanDirection)) != NULL)
 	{
@@ -385,7 +411,7 @@ inv_read(LargeObjectDesc *obj_desc, char *buf, int nbytes)
 				Int32GetDatum(pageno));
 
 	sd = index_beginscan(lo_heap_r, lo_index_r,
-						 SnapshotNow, 2, skey);
+						 obj_desc->snapshot, 2, skey);
 
 	while ((tuple = index_getnext(sd, ForwardScanDirection)) != NULL)
 	{
@@ -397,8 +423,8 @@ inv_read(LargeObjectDesc *obj_desc, char *buf, int nbytes)
 
 		/*
 		 * We assume the indexscan will deliver pages in order.  However,
-		 * there may be missing pages if the LO contains unwritten
-		 * "holes". We want missing sections to read out as zeroes.
+		 * there may be missing pages if the LO contains unwritten "holes". We
+		 * want missing sections to read out as zeroes.
 		 */
 		pageoff = ((uint32) data->pageno) * LOBLKSIZE;
 		if (pageoff > obj_desc->offset)
@@ -476,6 +502,13 @@ inv_write(LargeObjectDesc *obj_desc, char *buf, int nbytes)
 	Assert(PointerIsValid(obj_desc));
 	Assert(buf != NULL);
 
+	/* enforce writability because snapshot is probably wrong otherwise */
+	if ((obj_desc->flags & IFS_WRLOCK) == 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("large object %u was not opened for writing",
+						obj_desc->id)));
+
 	if (nbytes <= 0)
 		return 0;
 
@@ -494,7 +527,7 @@ inv_write(LargeObjectDesc *obj_desc, char *buf, int nbytes)
 				Int32GetDatum(pageno));
 
 	sd = index_beginscan(lo_heap_r, lo_index_r,
-						 SnapshotNow, 2, skey);
+						 obj_desc->snapshot, 2, skey);
 
 	oldtuple = NULL;
 	olddata = NULL;
@@ -503,9 +536,8 @@ inv_write(LargeObjectDesc *obj_desc, char *buf, int nbytes)
 	while (nwritten < nbytes)
 	{
 		/*
-		 * If possible, get next pre-existing page of the LO.  We assume
-		 * the indexscan will deliver these in order --- but there may be
-		 * holes.
+		 * If possible, get next pre-existing page of the LO.  We assume the
+		 * indexscan will deliver these in order --- but there may be holes.
 		 */
 		if (neednextpage)
 		{
@@ -518,8 +550,8 @@ inv_write(LargeObjectDesc *obj_desc, char *buf, int nbytes)
 		}
 
 		/*
-		 * If we have a pre-existing page, see if it is the page we want
-		 * to write, or a later one.
+		 * If we have a pre-existing page, see if it is the page we want to
+		 * write, or a later one.
 		 */
 		if (olddata != NULL && olddata->pageno == pageno)
 		{
@@ -570,7 +602,7 @@ inv_write(LargeObjectDesc *obj_desc, char *buf, int nbytes)
 			memset(replace, ' ', sizeof(replace));
 			values[Anum_pg_largeobject_data - 1] = PointerGetDatum(&workbuf);
 			replace[Anum_pg_largeobject_data - 1] = 'r';
-			newtup = heap_modifytuple(oldtuple, lo_heap_r,
+			newtup = heap_modifytuple(oldtuple, RelationGetDescr(lo_heap_r),
 									  values, nulls, replace);
 			simple_heap_update(lo_heap_r, &newtup->t_self, newtup);
 			CatalogIndexInsert(indstate, newtup);
@@ -627,8 +659,8 @@ inv_write(LargeObjectDesc *obj_desc, char *buf, int nbytes)
 	CatalogCloseIndexes(indstate);
 
 	/*
-	 * Advance command counter so that my tuple updates will be seen by
-	 * later large-object operations in this transaction.
+	 * Advance command counter so that my tuple updates will be seen by later
+	 * large-object operations in this transaction.
 	 */
 	CommandCounterIncrement();
 

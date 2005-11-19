@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/schemacmds.c,v 1.27 2004/12/31 21:59:41 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/schemacmds.c,v 1.35 2005/10/15 02:49:15 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -17,7 +17,6 @@
 
 #include "access/heapam.h"
 #include "catalog/catalog.h"
-#include "catalog/catname.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
@@ -49,72 +48,58 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 	Oid			namespaceId = 0;
 	List	   *parsetree_list;
 	ListCell   *parsetree_item;
-	const char *owner_name;
-	AclId		owner_userid;
-	AclId		saved_userid;
+	Oid			owner_uid;
+	Oid			saved_uid;
 	AclResult	aclresult;
 
 	bool		shouldDispatch = Mpp_role == MPP_ROLE_DISPATCH && !IsBootstrapProcessingMode();
 
-	saved_userid = GetUserId();
+	saved_uid = GetUserId();
 
 	/*
-	 * Figure out user identities.
+	 * Who is supposed to own the new schema?
 	 */
-
-	if (!authId)
-	{
-		owner_userid = saved_userid;
-		owner_name = GetUserNameFromId(owner_userid);
-	}
-	else if (superuser())
-	{
-		owner_name = authId;
-		/* The following will error out if user does not exist */
-		owner_userid = get_usesysid(owner_name);
-
-		/*
-		 * Set the current user to the requested authorization so that
-		 * objects created in the statement have the requested owner.
-		 * (This will revert to session user on error or at the end of
-		 * this routine.)
-		 */
-		SetUserId(owner_userid);
-	}
+	if (authId)
+		owner_uid = get_roleid_checked(authId);
 	else
-	{
-		/* not superuser */
-		owner_userid = saved_userid;
-		owner_name = GetUserNameFromId(owner_userid);
-		if (strcmp(authId, owner_name) != 0)
-			ereport(ERROR,
-					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 errmsg("permission denied"),
-					 errdetail("\"%s\" is not a superuser, so cannot create a schema for \"%s\"",
-							   owner_name, authId)));
-	}
+		owner_uid = saved_uid;
 
 	/*
-	 * Permissions checks.
+	 * To create a schema, must have schema-create privilege on the current
+	 * database and must be able to become the target role (this does not
+	 * imply that the target role itself must have create-schema privilege).
+	 * The latter provision guards against "giveaway" attacks.	Note that a
+	 * superuser will always have both of these privileges a fortiori.
 	 */
-	aclresult = pg_database_aclcheck(MyDatabaseId, saved_userid, ACL_CREATE);
+	aclresult = pg_database_aclcheck(MyDatabaseId, saved_uid, ACL_CREATE);
 	if (aclresult != ACLCHECK_OK)
 		aclcheck_error(aclresult, ACL_KIND_DATABASE,
 					   get_database_name(MyDatabaseId));
 
+	check_is_member_of_role(saved_uid, owner_uid);
+
+	/* Additional check to protect reserved schema names */
 	if (!allowSystemTableMods && IsReservedName(schemaName))
 		ereport(ERROR,
 				(errcode(ERRCODE_RESERVED_NAME),
 				 errmsg("unacceptable schema name \"%s\"", schemaName),
 		   errdetail("The prefix \"pg_\" is reserved for system schemas.")));
 
-
-
+	/*
+	 * If the requested authorization is different from the current user,
+	 * temporarily set the current user so that the object(s) will be created
+	 * with the correct ownership.
+	 *
+	 * (The setting will revert to session user on error or at the end of this
+	 * routine.)
+	 */
+	if (saved_uid != owner_uid)
+		SetUserId(owner_uid);
 
 	/* Create the schema's namespace */
 	if (shouldDispatch || Mpp_role != MPP_ROLE_EXECUTE)
 	{
-		namespaceId = NamespaceCreate(schemaName, owner_userid, 0);
+		namespaceId = NamespaceCreate(schemaName, owner_uid, 0);
 
 		if (shouldDispatch)
 		{
@@ -134,26 +119,25 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 	}
 	else if (Mpp_role == MPP_ROLE_EXECUTE)
 	{
-		namespaceId = NamespaceCreate(schemaName, owner_userid, stmt->schemaOid);
+		namespaceId = NamespaceCreate(schemaName, owner_uid, stmt->schemaOid);
 	}
 
 	/* Advance cmd counter to make the namespace visible */
 	CommandCounterIncrement();
 
 	/*
-	 * Temporarily make the new namespace be the front of the search path,
-	 * as well as the default creation target namespace.  This will be
-	 * undone at the end of this routine, or upon error.
+	 * Temporarily make the new namespace be the front of the search path, as
+	 * well as the default creation target namespace.  This will be undone at
+	 * the end of this routine, or upon error.
 	 */
 	PushSpecialNamespace(namespaceId);
 
 	/*
-	 * Examine the list of commands embedded in the CREATE SCHEMA command,
-	 * and reorganize them into a sequentially executable order with no
-	 * forward references.	Note that the result is still a list of raw
-	 * parsetrees in need of parse analysis --- we cannot, in general, run
-	 * analyze.c on one statement until we have actually executed the
-	 * prior ones.
+	 * Examine the list of commands embedded in the CREATE SCHEMA command, and
+	 * reorganize them into a sequentially executable order with no forward
+	 * references.	Note that the result is still a list of raw parsetrees in
+	 * need of parse analysis --- we cannot, in general, run analyze.c on one
+	 * statement until we have actually executed the prior ones.
 	 */
 	parsetree_list = analyzeCreateSchemaStmt(stmt);
 
@@ -185,7 +169,7 @@ CreateSchemaCommand(CreateSchemaStmt *stmt)
 	PopSpecialNamespace(namespaceId);
 
 	/* Reset current user */
-	SetUserId(saved_userid);
+	SetUserId(saved_uid);
 }
 
 
@@ -220,10 +204,10 @@ RemoveSchema(List *names, DropBehavior behavior)
 					   namespaceName);
 
 	/*
-	 * Do the deletion.  Objects contained in the schema are removed by
-	 * means of their dependency links to the schema.
+	 * Do the deletion.  Objects contained in the schema are removed by means
+	 * of their dependency links to the schema.
 	 */
-	object.classId = get_system_catalog_relid(NamespaceRelationName);
+	object.classId = NamespaceRelationId;
 	object.objectId = namespaceId;
 	object.objectSubId = 0;
 
@@ -241,7 +225,7 @@ RemoveSchemaById(Oid schemaOid)
 	Relation	relation;
 	HeapTuple	tup;
 
-	relation = heap_openr(NamespaceRelationName, RowExclusiveLock);
+	relation = heap_open(NamespaceRelationId, RowExclusiveLock);
 
 	tup = SearchSysCache(NAMESPACEOID,
 						 ObjectIdGetDatum(schemaOid),
@@ -267,7 +251,7 @@ RenameSchema(const char *oldname, const char *newname)
 	Relation	rel;
 	AclResult	aclresult;
 
-	rel = heap_openr(NamespaceRelationName, RowExclusiveLock);
+	rel = heap_open(NamespaceRelationId, RowExclusiveLock);
 
 	tup = SearchSysCacheCopy(NAMESPACENAME,
 							 CStringGetDatum(oldname),
@@ -330,13 +314,13 @@ RenameSchema(const char *oldname, const char *newname)
  * Change schema owner
  */
 void
-AlterSchemaOwner(const char *name, AclId newOwnerSysId, const char *newownername)
+AlterSchemaOwner(const char *name, Oid newOwnerId, const char *newownername)
 {
 	HeapTuple	tup;
 	Relation	rel;
 	Form_pg_namespace nspForm;
 
-	rel = heap_openr(NamespaceRelationName, RowExclusiveLock);
+	rel = heap_open(NamespaceRelationId, RowExclusiveLock);
 
 	tup = SearchSysCache(NAMESPACENAME,
 						 CStringGetDatum(name),
@@ -351,7 +335,7 @@ AlterSchemaOwner(const char *name, AclId newOwnerSysId, const char *newownername
 	 * If the new owner is the same as the existing owner, consider the
 	 * command to have succeeded.  This is for dump restoration purposes.
 	 */
-	if (nspForm->nspowner != newOwnerSysId)
+	if (nspForm->nspowner != newOwnerId)
 	{
 		Datum		repl_val[Natts_pg_namespace];
 		char		repl_null[Natts_pg_namespace];
@@ -360,18 +344,36 @@ AlterSchemaOwner(const char *name, AclId newOwnerSysId, const char *newownername
 		Datum		aclDatum;
 		bool		isNull;
 		HeapTuple	newtuple;
+		AclResult	aclresult;
 
-		/* Otherwise, must be superuser to change object ownership */
-		if (!superuser())
-			ereport(ERROR,
-					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 errmsg("must be superuser to change owner")));
+		/* Otherwise, must be owner of the existing object */
+		if (!pg_namespace_ownercheck(HeapTupleGetOid(tup), GetUserId()))
+			aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_NAMESPACE,
+						   name);
+
+		/* Must be able to become new owner */
+		check_is_member_of_role(GetUserId(), newOwnerId);
+
+		/*
+		 * must have create-schema rights
+		 *
+		 * NOTE: This is different from other alter-owner checks in that the
+		 * current user is checked for create privileges instead of the
+		 * destination owner.  This is consistent with the CREATE case for
+		 * schemas.  Because superusers will always have this right, we need
+		 * no special case for them.
+		 */
+		aclresult = pg_database_aclcheck(MyDatabaseId, GetUserId(),
+										 ACL_CREATE);
+		if (aclresult != ACLCHECK_OK)
+			aclcheck_error(aclresult, ACL_KIND_DATABASE,
+						   get_database_name(MyDatabaseId));
 
 		memset(repl_null, ' ', sizeof(repl_null));
 		memset(repl_repl, ' ', sizeof(repl_repl));
 
 		repl_repl[Anum_pg_namespace_nspowner - 1] = 'r';
-		repl_val[Anum_pg_namespace_nspowner - 1] = Int32GetDatum(newOwnerSysId);
+		repl_val[Anum_pg_namespace_nspowner - 1] = ObjectIdGetDatum(newOwnerId);
 
 		/*
 		 * Determine the modified ACL for the new owner.  This is only
@@ -383,17 +385,22 @@ AlterSchemaOwner(const char *name, AclId newOwnerSysId, const char *newownername
 		if (!isNull)
 		{
 			newAcl = aclnewowner(DatumGetAclP(aclDatum),
-								 nspForm->nspowner, newOwnerSysId);
+								 nspForm->nspowner, newOwnerId);
 			repl_repl[Anum_pg_namespace_nspacl - 1] = 'r';
 			repl_val[Anum_pg_namespace_nspacl - 1] = PointerGetDatum(newAcl);
 		}
 
-		newtuple = heap_modifytuple(tup, rel, repl_val, repl_null, repl_repl);
+		newtuple = heap_modifytuple(tup, RelationGetDescr(rel), repl_val, repl_null, repl_repl);
 
 		simple_heap_update(rel, &newtuple->t_self, newtuple);
 		CatalogUpdateIndexes(rel, newtuple);
 
 		heap_freetuple(newtuple);
+
+		/* Update owner dependency reference */
+		changeDependencyOnOwner(NamespaceRelationId, HeapTupleGetOid(tup),
+								newOwnerId);
+		
 
 		if (Mpp_role == MPP_ROLE_DISPATCH)
 		{

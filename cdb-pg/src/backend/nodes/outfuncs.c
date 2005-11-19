@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/nodes/outfuncs.c,v 1.245 2004/12/31 21:59:55 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/nodes/outfuncs.c,v 1.261 2005/10/15 02:49:18 momjian Exp $
  *
  * NOTES
  *	  Every node type that can appear in stored rules' parsetrees *must*
@@ -32,6 +32,7 @@
 #include "utils/datum.h"
 #include "utils/lsyscache.h"  /* For get_typlenbyval */
 #include "cdb/cdbvars.h"
+
 
 /*
  * Macros to simplify output of different kinds of fields.	Use these
@@ -98,7 +99,6 @@
 	(appendStringInfo(str, " :" CppAsString(fldname) " "), \
 	 _outToken(str, NULL))
 
-
 #define booltostr(x)  ((x) ? "true" : "false")
 
 static void _outNode(StringInfo str, void *obj);
@@ -121,9 +121,9 @@ _outToken(StringInfo str, char *s)
 	}
 
 	/*
-	 * Look for characters or patterns that are treated specially by
-	 * read.c (either in pg_strtok() or in nodeRead()), and therefore need
-	 * a protective backslash.
+	 * Look for characters or patterns that are treated specially by read.c
+	 * (either in pg_strtok() or in nodeRead()), and therefore need a
+	 * protective backslash.
 	 */
 	/* These characters only need to be quoted at the start of the string */
 	if (*s == '<' ||
@@ -159,8 +159,8 @@ _outList(StringInfo str, List *node)
 	{
 		/*
 		 * For the sake of backward compatibility, we emit a slightly
-		 * different whitespace format for lists of nodes vs. other types
-		 * of lists. XXX: is this necessary?
+		 * different whitespace format for lists of nodes vs. other types of
+		 * lists. XXX: is this necessary?
 		 */
 		if (IsA(node, List))
 		{
@@ -321,6 +321,26 @@ _outAppend(StringInfo str, Append *node)
 }
 
 static void
+_outBitmapAnd(StringInfo str, BitmapAnd *node)
+{
+	WRITE_NODE_TYPE("BITMAPAND");
+
+	_outPlanInfo(str, (Plan *) node);
+
+	WRITE_NODE_FIELD(bitmapplans);
+}
+
+static void
+_outBitmapOr(StringInfo str, BitmapOr *node)
+{
+	WRITE_NODE_TYPE("BITMAPOR");
+
+	_outPlanInfo(str, (Plan *) node);
+
+	WRITE_NODE_FIELD(bitmapplans);
+}
+
+static void
 _outScan(StringInfo str, Scan *node)
 {
 	WRITE_NODE_TYPE("SCAN");
@@ -343,13 +363,36 @@ _outIndexScan(StringInfo str, IndexScan *node)
 
 	_outScanInfo(str, (Scan *) node);
 
-	WRITE_NODE_FIELD(indxid);
-	WRITE_NODE_FIELD(indxqual);
-	WRITE_NODE_FIELD(indxqualorig);
-	WRITE_NODE_FIELD(indxstrategy);
-	WRITE_NODE_FIELD(indxsubtype);
-	WRITE_NODE_FIELD(indxlossy);
-	WRITE_ENUM_FIELD(indxorderdir, ScanDirection);
+	WRITE_OID_FIELD(indexid);
+	WRITE_NODE_FIELD(indexqual);
+	WRITE_NODE_FIELD(indexqualorig);
+	WRITE_NODE_FIELD(indexstrategy);
+	WRITE_NODE_FIELD(indexsubtype);
+	WRITE_ENUM_FIELD(indexorderdir, ScanDirection);
+}
+
+static void
+_outBitmapIndexScan(StringInfo str, BitmapIndexScan *node)
+{
+	WRITE_NODE_TYPE("BITMAPINDEXSCAN");
+
+	_outScanInfo(str, (Scan *) node);
+
+	WRITE_OID_FIELD(indexid);
+	WRITE_NODE_FIELD(indexqual);
+	WRITE_NODE_FIELD(indexqualorig);
+	WRITE_NODE_FIELD(indexstrategy);
+	WRITE_NODE_FIELD(indexsubtype);
+}
+
+static void
+_outBitmapHeapScan(StringInfo str, BitmapHeapScan *node)
+{
+	WRITE_NODE_TYPE("BITMAPHEAPSCAN");
+
+	_outScanInfo(str, (Scan *) node);
+
+	WRITE_NODE_FIELD(bitmapqualorig);
 }
 
 static void
@@ -526,7 +569,6 @@ _outLimit(StringInfo str, Limit *node)
 	WRITE_NODE_FIELD(limitOffset);
 	WRITE_NODE_FIELD(limitCount);
 }
-	
 
 static void
 _outHash(StringInfo str, Hash *node)
@@ -585,21 +627,6 @@ _outMotion(StringInfo str, Motion *node)
  *	Stuff from primnodes.h.
  *
  *****************************************************************************/
-
-static void
-_outResdom(StringInfo str, Resdom *node)
-{
-	WRITE_NODE_TYPE("RESDOM");
-
-	WRITE_INT_FIELD(resno);
-	WRITE_OID_FIELD(restype);
-	WRITE_INT_FIELD(restypmod);
-	WRITE_STRING_FIELD(resname);
-	WRITE_UINT_FIELD(ressortgroupref);
-	WRITE_OID_FIELD(resorigtbl);
-	WRITE_INT_FIELD(resorigcol);
-	WRITE_BOOL_FIELD(resjunk);
-}
 
 static void
 _outAlias(StringInfo str, Alias *node)
@@ -903,6 +930,16 @@ _outCoalesceExpr(StringInfo str, CoalesceExpr *node)
 }
 
 static void
+_outMinMaxExpr(StringInfo str, MinMaxExpr *node)
+{
+	WRITE_NODE_TYPE("MINMAX");
+
+	WRITE_OID_FIELD(minmaxtype);
+	WRITE_ENUM_FIELD(op, MinMaxOp);
+	WRITE_NODE_FIELD(args);
+}
+
+static void
 _outNullIfExpr(StringInfo str, NullIfExpr *node)
 {
 	WRITE_NODE_TYPE("NULLIFEXPR");
@@ -966,8 +1003,13 @@ _outTargetEntry(StringInfo str, TargetEntry *node)
 {
 	WRITE_NODE_TYPE("TARGETENTRY");
 
-	WRITE_NODE_FIELD(resdom);
 	WRITE_NODE_FIELD(expr);
+	WRITE_INT_FIELD(resno);
+	WRITE_STRING_FIELD(resname);
+	WRITE_UINT_FIELD(ressortgroupref);
+	WRITE_OID_FIELD(resorigtbl);
+	WRITE_INT_FIELD(resorigcol);
+	WRITE_BOOL_FIELD(resjunk);
 }
 
 static void
@@ -1052,46 +1094,6 @@ _outCdbPathLocus(StringInfo str, CdbPathLocus *node)
  *
  *****************************************************************************/
 
-static void
-_outRelOptInfo(StringInfo str, RelOptInfo *node)
-{
-    WRITE_NODE_TYPE("RELOPTINFO");
-
-    /* NB: this isn't a complete set of fields */
-    WRITE_ENUM_FIELD(type, NodeTag);
-    WRITE_ENUM_FIELD(reloptkind, RelOptKind);
-    WRITE_BITMAPSET_FIELD(relids);
-    WRITE_FLOAT_FIELD(rows, "%.0f");
-    WRITE_INT_FIELD(width);
-    WRITE_INT_FIELD(relid);
-    WRITE_ENUM_FIELD(rtekind, RTEKind);
-    WRITE_INT_FIELD(min_attr);
-    WRITE_INT_FIELD(max_attr);
-    WRITE_INT_FIELD(pages);
-    WRITE_FLOAT_FIELD(tuples, "%.0f");
-    WRITE_BITMAPSET_FIELD(outerjoinset);
-    WRITE_BITMAPSET_FIELD(index_outer_relids);
-}
-
-static void
-_outIndexOptInfo(StringInfo str, IndexOptInfo *node)
-{
-    WRITE_NODE_TYPE("INDEXOPTINFO");
-
-    /* NB: this isn't a complete set of fields */
-    WRITE_ENUM_FIELD(type, NodeTag);
-    WRITE_OID_FIELD(indexoid);
-    WRITE_INT_FIELD(pages);
-    WRITE_FLOAT_FIELD(tuples, "%.0f");
-    WRITE_INT_FIELD(ncolumns);
-    WRITE_OID_FIELD(relam);
-    WRITE_NODE_FIELD(indexprs);
-    WRITE_NODE_FIELD(indpred);
-    WRITE_BOOL_FIELD(predOK);
-    WRITE_BOOL_FIELD(unique);
-    WRITE_BITMAPSET_FIELD(outer_relids);
-}
-
 /*
  * print the basic stuff of all nodes that inherit from Path
  *
@@ -1130,9 +1132,6 @@ _outPath(StringInfo str, Path *node)
 	_outPathInfo(str, (Path *) node);
 }
 
-/*
- *	IndexPath is a subclass of Path.
- */
 static void
 _outIndexPath(StringInfo str, IndexPath *node)
 {
@@ -1145,7 +1144,43 @@ _outIndexPath(StringInfo str, IndexPath *node)
 	WRITE_NODE_FIELD(indexquals);
 	WRITE_BOOL_FIELD(isjoininner);
 	WRITE_ENUM_FIELD(indexscandir, ScanDirection);
+	WRITE_FLOAT_FIELD(indextotalcost, "%.2f");
+	WRITE_FLOAT_FIELD(indexselectivity, "%.4f");
 	WRITE_FLOAT_FIELD(rows, "%.0f");
+}
+
+static void
+_outBitmapHeapPath(StringInfo str, BitmapHeapPath *node)
+{
+	WRITE_NODE_TYPE("BITMAPHEAPPATH");
+
+	_outPathInfo(str, (Path *) node);
+
+	WRITE_NODE_FIELD(bitmapqual);
+	WRITE_BOOL_FIELD(isjoininner);
+	WRITE_FLOAT_FIELD(rows, "%.0f");
+}
+
+static void
+_outBitmapAndPath(StringInfo str, BitmapAndPath *node)
+{
+	WRITE_NODE_TYPE("BITMAPANDPATH");
+
+	_outPathInfo(str, (Path *) node);
+
+	WRITE_NODE_FIELD(bitmapquals);
+	WRITE_FLOAT_FIELD(bitmapselectivity, "%.4f");
+}
+
+static void
+_outBitmapOrPath(StringInfo str, BitmapOrPath *node)
+{
+	WRITE_NODE_TYPE("BITMAPORPATH");
+
+	_outPathInfo(str, (Path *) node);
+
+	WRITE_NODE_FIELD(bitmapquals);
+	WRITE_FLOAT_FIELD(bitmapselectivity, "%.4f");
 }
 
 static void
@@ -1187,7 +1222,7 @@ _outMaterialPath(StringInfo str, MaterialPath *node)
 	_outPathInfo(str, (Path *) node);
     WRITE_BOOL_FIELD(cdb_strict);
 
-    WRITE_NODE_FIELD(subpath);
+	WRITE_NODE_FIELD(subpath);
 }
 
 static void
@@ -1244,6 +1279,75 @@ _outCdbMotionPath(StringInfo str, CdbMotionPath *node)
 }
 
 static void
+_outPlannerInfo(StringInfo str, PlannerInfo *node)
+{
+	WRITE_NODE_TYPE("PLANNERINFO");
+
+	/* NB: this isn't a complete set of fields */
+	WRITE_NODE_FIELD(parse);
+	WRITE_NODE_FIELD(join_rel_list);
+	WRITE_NODE_FIELD(equi_key_list);
+	WRITE_NODE_FIELD(left_join_clauses);
+	WRITE_NODE_FIELD(right_join_clauses);
+	WRITE_NODE_FIELD(full_join_clauses);
+	WRITE_NODE_FIELD(in_info_list);
+	WRITE_NODE_FIELD(query_pathkeys);
+	WRITE_NODE_FIELD(group_pathkeys);
+	WRITE_NODE_FIELD(sort_pathkeys);
+	WRITE_FLOAT_FIELD(tuple_fraction, "%.4f");
+	WRITE_BOOL_FIELD(hasJoinRTEs);
+	WRITE_BOOL_FIELD(hasOuterJoins);
+	WRITE_BOOL_FIELD(hasHavingQual);
+}
+
+static void
+_outRelOptInfo(StringInfo str, RelOptInfo *node)
+{
+	WRITE_NODE_TYPE("RELOPTINFO");
+
+	/* NB: this isn't a complete set of fields */
+	WRITE_ENUM_FIELD(reloptkind, RelOptKind);
+	WRITE_BITMAPSET_FIELD(relids);
+	WRITE_FLOAT_FIELD(rows, "%.0f");
+	WRITE_INT_FIELD(width);
+	WRITE_NODE_FIELD(reltargetlist);
+	WRITE_NODE_FIELD(pathlist);
+	WRITE_NODE_FIELD(cheapest_startup_path);
+	WRITE_NODE_FIELD(cheapest_total_path);
+	WRITE_NODE_FIELD(cheapest_unique_path);
+	WRITE_UINT_FIELD(relid);
+	WRITE_ENUM_FIELD(rtekind, RTEKind);
+	WRITE_UINT_FIELD(min_attr);
+	WRITE_UINT_FIELD(max_attr);
+	WRITE_NODE_FIELD(indexlist);
+	WRITE_UINT_FIELD(pages);
+	WRITE_FLOAT_FIELD(tuples, "%.0f");
+	WRITE_NODE_FIELD(subplan);
+	WRITE_NODE_FIELD(baserestrictinfo);
+	WRITE_BITMAPSET_FIELD(outerjoinset);
+	WRITE_NODE_FIELD(joininfo);
+	WRITE_BITMAPSET_FIELD(index_outer_relids);
+	WRITE_NODE_FIELD(index_inner_paths);
+}
+
+static void
+_outIndexOptInfo(StringInfo str, IndexOptInfo *node)
+{
+	WRITE_NODE_TYPE("INDEXOPTINFO");
+
+	/* NB: this isn't a complete set of fields */
+	WRITE_OID_FIELD(indexoid);
+	/* Do NOT print rel field, else infinite recursion */
+	WRITE_UINT_FIELD(pages);
+	WRITE_FLOAT_FIELD(tuples, "%.0f");
+	WRITE_INT_FIELD(ncolumns);
+	WRITE_NODE_FIELD(indexprs);
+	WRITE_NODE_FIELD(indpred);
+	WRITE_BOOL_FIELD(predOK);
+	WRITE_BOOL_FIELD(unique);
+}
+
+static void
 _outPathKeyItem(StringInfo str, PathKeyItem *node)
 {
 	WRITE_NODE_TYPE("PATHKEYITEM");
@@ -1260,9 +1364,9 @@ _outRestrictInfo(StringInfo str, RestrictInfo *node)
 	/* NB: this isn't a complete set of fields */
 	WRITE_NODE_FIELD(clause);
 	WRITE_BOOL_FIELD(is_pushed_down);
-	WRITE_BOOL_FIELD(valid_everywhere);
 	WRITE_BOOL_FIELD(can_join);
 	WRITE_BITMAPSET_FIELD(clause_relids);
+	WRITE_BITMAPSET_FIELD(required_relids);
 	WRITE_BITMAPSET_FIELD(left_relids);
 	WRITE_BITMAPSET_FIELD(right_relids);
 	WRITE_NODE_FIELD(orclause);
@@ -1275,12 +1379,12 @@ _outRestrictInfo(StringInfo str, RestrictInfo *node)
 }
 
 static void
-_outJoinInfo(StringInfo str, JoinInfo *node)
+_outInnerIndexscanInfo(StringInfo str, InnerIndexscanInfo *node)
 {
-	WRITE_NODE_TYPE("JOININFO");
-
-	WRITE_BITMAPSET_FIELD(unjoined_relids);
-	WRITE_NODE_FIELD(jinfo_restrictinfo);
+	WRITE_NODE_TYPE("INNERINDEXSCANINFO");
+	WRITE_BITMAPSET_FIELD(other_relids);
+	WRITE_BOOL_FIELD(isouterjoin);
+	WRITE_NODE_FIELD(best_innerpath);
 }
 
 static void
@@ -1310,7 +1414,6 @@ _outCreateStmt(StringInfo str, CreateStmt *node)
 	WRITE_NODE_FIELD(constraints);
 	WRITE_ENUM_FIELD(hasoids, ContainsOids);
 	WRITE_ENUM_FIELD(oncommit, OnCommitAction);
-	
 	WRITE_STRING_FIELD(tablespacename);
 	WRITE_NODE_FIELD(distributedBy);
 	WRITE_OID_FIELD(relOid);
@@ -1343,8 +1446,8 @@ _outReindexStmt(StringInfo str, ReindexStmt *node)
 	WRITE_ENUM_FIELD(kind,ObjectType);
 	WRITE_NODE_FIELD(relation);
 	WRITE_STRING_FIELD(name);
-	WRITE_BOOL_FIELD(force);
-	WRITE_BOOL_FIELD(all);
+	WRITE_BOOL_FIELD(do_system);
+	WRITE_BOOL_FIELD(do_user);
 	
 }
 
@@ -1392,7 +1495,7 @@ _outTruncateStmt(StringInfo str, TruncateStmt *node)
 {
 	WRITE_NODE_TYPE("TRUNCATESTMT");
 
-	WRITE_NODE_FIELD(relation);
+	WRITE_NODE_FIELD(relations);
 	
 }
 
@@ -1420,71 +1523,45 @@ _outAlterTableCmd(StringInfo str, AlterTableCmd *node)
 
 
 static void
-_outCreateUserStmt(StringInfo str, CreateUserStmt *node)
+_outCreateRoleStmt(StringInfo str, CreateRoleStmt *node)
 {
-	WRITE_NODE_TYPE("CREATEUSERSTMT");
+	WRITE_NODE_TYPE("CREATEROLESTMT");
 
-	WRITE_STRING_FIELD(user);
+	WRITE_ENUM_FIELD(stmt_type, RoleStmtType);
+	WRITE_STRING_FIELD(role);
 	WRITE_NODE_FIELD(options);
 
 }
 
 static  void
-_outDropUserStmt(StringInfo str, DropUserStmt *node)
+_outDropRoleStmt(StringInfo str, DropRoleStmt *node)
 {
-	WRITE_NODE_TYPE("DROPUSERSTMT");
+	WRITE_NODE_TYPE("DROPROLESTMT");
 
-	WRITE_NODE_FIELD(users);
+	WRITE_NODE_FIELD(roles);
 }
 
 static  void
-_outAlterUserStmt(StringInfo str, AlterUserStmt *node)
+_outAlterRoleStmt(StringInfo str, AlterRoleStmt *node)
 {
-	WRITE_NODE_TYPE("ALTERUSERSTMT");
+	WRITE_NODE_TYPE("ALTERROLESTMT");
 
-	WRITE_STRING_FIELD(user);
+	WRITE_STRING_FIELD(role);
 	WRITE_NODE_FIELD(options);
+	WRITE_INT_FIELD(action);
 }
 
 static  void
-_outAlterUserSetStmt(StringInfo str, AlterUserSetStmt *node)
+_outAlterRoleSetStmt(StringInfo str, AlterRoleSetStmt *node)
 {
-	WRITE_NODE_TYPE("ALTERUSERSETSTMT");
+	WRITE_NODE_TYPE("ALTERROLESETSTMT");
 
-	WRITE_STRING_FIELD(user);
+	WRITE_STRING_FIELD(role);
 	WRITE_STRING_FIELD(variable);
 	WRITE_NODE_FIELD(value);
 }
 
 
-
-static void
-_outCreateGroupStmt(StringInfo str, CreateGroupStmt *node)
-{
-	WRITE_NODE_TYPE("CREATEGROUPSTMT");
-
-	WRITE_STRING_FIELD(name);
-	WRITE_NODE_FIELD(options);
-
-}
-
-static  void
-_outDropGroupStmt(StringInfo str, DropGroupStmt *node)
-{
-	WRITE_NODE_TYPE("DROPGROUPSTMT");
-
-	WRITE_STRING_FIELD(name);
-}
-
-static  void
-_outAlterGroupStmt(StringInfo str, AlterGroupStmt *node)
-{
-	WRITE_NODE_TYPE("ALTERGROUPSTMT");
-
-	WRITE_STRING_FIELD(name);
-	WRITE_INT_FIELD(action);
-	WRITE_NODE_FIELD(listUsers);
-}
 
 
 
@@ -1640,8 +1717,7 @@ static void
 _outPrivGrantee(StringInfo str, PrivGrantee *node)
 {
 	WRITE_NODE_TYPE("PRIVGRANTEE");
-	WRITE_STRING_FIELD(username);
-	WRITE_STRING_FIELD(groupname);	 
+	WRITE_STRING_FIELD(rolname);	 
 }
 
 static void 
@@ -1667,7 +1743,6 @@ _outSelectStmt(StringInfo str, SelectStmt *node)
 {
 	WRITE_NODE_TYPE("SELECT");
 
-	WRITE_NODE_FIELD(whereClause);
 	WRITE_NODE_FIELD(distinctClause);
 	WRITE_NODE_FIELD(into);
 	WRITE_NODE_FIELD(intoColNames);
@@ -1680,7 +1755,7 @@ _outSelectStmt(StringInfo str, SelectStmt *node)
 	WRITE_NODE_FIELD(sortClause);
 	WRITE_NODE_FIELD(limitOffset);
 	WRITE_NODE_FIELD(limitCount);
-	WRITE_NODE_FIELD(forUpdate);
+	WRITE_NODE_FIELD(lockingClause);
 	WRITE_ENUM_FIELD(op, SetOperation);
 	WRITE_BOOL_FIELD(all);
 	WRITE_NODE_FIELD(larg);
@@ -1705,6 +1780,16 @@ _outDefElem(StringInfo str, DefElem *node)
 
 	WRITE_STRING_FIELD(defname);
 	WRITE_NODE_FIELD(arg);
+}
+
+static void
+_outLockingClause(StringInfo str, LockingClause *node)
+{
+	WRITE_NODE_TYPE("LOCKINGCLAUSE");
+
+	WRITE_NODE_FIELD(lockedRels);
+	WRITE_BOOL_FIELD(forUpdate);
+	WRITE_BOOL_FIELD(nowait);
 }
 
 static void
@@ -1775,9 +1860,9 @@ _outQuery(StringInfo str, Query *node)
 	/*
 	 * Hack to work around missing outfuncs routines for a lot of the
 	 * utility-statement node types.  (The only one we actually *need* for
-	 * rules support is NotifyStmt.)  Someday we ought to support 'em all,
-	 * but for the meantime do this to avoid getting lots of warnings when
-	 * running with debug_print_parse on.
+	 * rules support is NotifyStmt.)  Someday we ought to support 'em all, but
+	 * for the meantime do this to avoid getting lots of warnings when running
+	 * with debug_print_parse on.
 	 */
 	if (node->utilityStmt)
 	{
@@ -1791,14 +1876,10 @@ _outQuery(StringInfo str, Query *node)
 			case T_ViewStmt:
 			case T_RuleStmt:
 			
-			case T_CreateUserStmt:
-			case T_AlterUserStmt:
-			case T_AlterUserSetStmt:
-			case T_DropUserStmt:
-			
-			case T_CreateGroupStmt:
-			case T_DropGroupStmt:
-			case T_AlterGroupStmt:
+			case T_CreateRoleStmt:
+			case T_AlterRoleStmt:
+			case T_AlterRoleSetStmt:
+			case T_DropRoleStmt:
 			
 			case T_CreateSchemaStmt:
 			case T_CreatePLangStmt:
@@ -1830,7 +1911,6 @@ _outQuery(StringInfo str, Query *node)
 			case T_VariableResetStmt:
 				WRITE_NODE_FIELD(utilityStmt);
 				break;
-
 			default:
 				appendStringInfo(str, " :utilityStmt ?");
 				appendStringInfo(str, "%u", nodeTag(node->utilityStmt));
@@ -1857,6 +1937,8 @@ _outQuery(StringInfo str, Query *node)
 	WRITE_NODE_FIELD(rtable);
 	WRITE_NODE_FIELD(jointree);
 	WRITE_NODE_FIELD(rowMarks);
+	WRITE_BOOL_FIELD(forUpdate);
+	WRITE_BOOL_FIELD(rowNoWait);
 	WRITE_NODE_FIELD(targetList);
 	WRITE_NODE_FIELD(groupClause);
 	WRITE_NODE_FIELD(havingQual);
@@ -1866,8 +1948,6 @@ _outQuery(StringInfo str, Query *node)
 	WRITE_NODE_FIELD(limitCount);
 	WRITE_NODE_FIELD(setOperations);
 	WRITE_NODE_FIELD(resultRelations);
-
-	/* planner-internal fields are not written out */
 }
 
 static void
@@ -1935,7 +2015,7 @@ _outRangeTblEntry(StringInfo str, RangeTblEntry *node)
 	WRITE_BOOL_FIELD(inh);
 	WRITE_BOOL_FIELD(inFromCl);
 	WRITE_UINT_FIELD(requiredPerms);
-	WRITE_UINT_FIELD(checkAsUser);
+	WRITE_OID_FIELD(checkAsUser);
 }
 
 static void
@@ -2000,8 +2080,8 @@ _outValue(StringInfo str, Value *value)
 		case T_Float:
 
 			/*
-			 * We assume the value is a valid numeric literal and so does
-			 * not need quoting.
+			 * We assume the value is a valid numeric literal and so does not
+			 * need quoting.
 			 */
 			appendStringInfoString(str, value->val.str);
 			break;
@@ -2269,6 +2349,12 @@ _outNode(StringInfo str, void *obj)
 			case T_Append:
 				_outAppend(str, obj);
 				break;
+			case T_BitmapAnd:
+				_outBitmapAnd(str, obj);
+				break;
+			case T_BitmapOr:
+				_outBitmapOr(str, obj);
+				break;
 			case T_Scan:
 				_outScan(str, obj);
 				break;
@@ -2277,6 +2363,12 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_IndexScan:
 				_outIndexScan(str, obj);
+				break;
+			case T_BitmapIndexScan:
+				_outBitmapIndexScan(str, obj);
+				break;
+			case T_BitmapHeapScan:
+				_outBitmapHeapScan(str, obj);
 				break;
 			case T_TidScan:
 				_outTidScan(str, obj);
@@ -2325,9 +2417,6 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_Motion:
 				_outMotion(str, obj);
-				break;
-			case T_Resdom:
-				_outResdom(str, obj);
 				break;
 			case T_Alias:
 				_outAlias(str, obj);
@@ -2401,6 +2490,9 @@ _outNode(StringInfo str, void *obj)
 			case T_CoalesceExpr:
 				_outCoalesceExpr(str, obj);
 				break;
+			case T_MinMaxExpr:
+				_outMinMaxExpr(str, obj);
+				break;
 			case T_NullIfExpr:
 				_outNullIfExpr(str, obj);
 				break;
@@ -2438,17 +2530,20 @@ _outNode(StringInfo str, void *obj)
 				_outRemoteParamData(str, obj);
 				break;
 
-            case T_RelOptInfo:
-                _outRelOptInfo(str, obj);
-                break;
-            case T_IndexOptInfo:
-                _outIndexOptInfo(str, obj);
-                break;
-            case T_Path:
+			case T_Path:
 				_outPath(str, obj);
 				break;
 			case T_IndexPath:
 				_outIndexPath(str, obj);
+				break;
+			case T_BitmapHeapPath:
+				_outBitmapHeapPath(str, obj);
+				break;
+			case T_BitmapAndPath:
+				_outBitmapAndPath(str, obj);
+				break;
+			case T_BitmapOrPath:
+				_outBitmapOrPath(str, obj);
 				break;
 			case T_TidPath:
 				_outTidPath(str, obj);
@@ -2477,14 +2572,23 @@ _outNode(StringInfo str, void *obj)
             case T_CdbMotionPath:
                 _outCdbMotionPath(str, obj);
                 break;
+			case T_PlannerInfo:
+				_outPlannerInfo(str, obj);
+				break;
+			case T_RelOptInfo:
+				_outRelOptInfo(str, obj);
+				break;
+			case T_IndexOptInfo:
+				_outIndexOptInfo(str, obj);
+				break;
 			case T_PathKeyItem:
 				_outPathKeyItem(str, obj);
 				break;
 			case T_RestrictInfo:
 				_outRestrictInfo(str, obj);
 				break;
-			case T_JoinInfo:
-				_outJoinInfo(str, obj);
+			case T_InnerIndexscanInfo:
+				_outInnerIndexscanInfo(str, obj);
 				break;
 			case T_InClauseInfo:
 				_outInClauseInfo(str, obj);
@@ -2544,26 +2648,17 @@ _outNode(StringInfo str, void *obj)
 				_outAlterTableCmd(str, obj);
 				break;
 
-			case T_CreateUserStmt:
-				_outCreateUserStmt(str, obj);
+			case T_CreateRoleStmt:
+				_outCreateRoleStmt(str, obj);
 				break;
-			case T_DropUserStmt:
-				_outDropUserStmt(str, obj);
+			case T_DropRoleStmt:
+				_outDropRoleStmt(str, obj);
 				break;
-			case T_AlterUserStmt:
-				_outAlterUserStmt(str, obj);
+			case T_AlterRoleStmt:
+				_outAlterRoleStmt(str, obj);
 				break;
-			case T_AlterUserSetStmt:
-				_outAlterUserSetStmt(str, obj);
-				break;
-			case T_CreateGroupStmt:
-				_outCreateGroupStmt(str, obj);
-				break;
-			case T_DropGroupStmt:
-				_outDropGroupStmt(str, obj);
-				break;
-			case T_AlterGroupStmt:
-				_outAlterGroupStmt(str, obj);
+			case T_AlterRoleSetStmt:
+				_outAlterRoleSetStmt(str, obj);
 				break;
 
 			case T_RenameStmt:
@@ -2680,12 +2775,16 @@ _outNode(StringInfo str, void *obj)
 			case T_VariableResetStmt:
 				_outVariableResetStmt(str, obj);
 				break;
+				
+			case T_LockingClause:
+				_outLockingClause(str, obj);
+				break;
+
 			default:
 
 				/*
-				 * This should be an ERROR, but it's too useful to be able
-				 * to dump structures that _outNode only understands part
-				 * of.
+				 * This should be an ERROR, but it's too useful to be able to
+				 * dump structures that _outNode only understands part of.
 				 */
 				if (Mpp_role == MPP_ROLE_DISPATCH)
 					elog(ERROR, "could not serialize unrecognized node type: %d",
@@ -2714,5 +2813,3 @@ nodeToString(void *obj)
 	_outNode(&str, obj);
 	return str.data;
 }
-
-

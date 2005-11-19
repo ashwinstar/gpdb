@@ -18,6 +18,7 @@
 #include "libpq-fe.h"
 #include "miscadmin.h"			/* MyDatabaseId */
 #include "commands/dbcommands.h"	/* get_database_name() */
+#include "utils/memutils.h"
 
 #include "cdb/cdbconn.h"		/* SegmentDatabaseDescriptor */
 #include "cdb/cdbfts.h"

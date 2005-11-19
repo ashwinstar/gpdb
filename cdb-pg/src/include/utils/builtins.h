@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/builtins.h,v 1.252 2004/12/31 22:03:45 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/utils/builtins.h,v 1.267 2005/10/18 20:38:58 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -58,6 +58,12 @@ extern Datum has_tablespace_privilege_id_name(PG_FUNCTION_ARGS);
 extern Datum has_tablespace_privilege_id_id(PG_FUNCTION_ARGS);
 extern Datum has_tablespace_privilege_name(PG_FUNCTION_ARGS);
 extern Datum has_tablespace_privilege_id(PG_FUNCTION_ARGS);
+extern Datum pg_has_role_name_name(PG_FUNCTION_ARGS);
+extern Datum pg_has_role_name_id(PG_FUNCTION_ARGS);
+extern Datum pg_has_role_id_name(PG_FUNCTION_ARGS);
+extern Datum pg_has_role_id_id(PG_FUNCTION_ARGS);
+extern Datum pg_has_role_name(PG_FUNCTION_ARGS);
+extern Datum pg_has_role_id(PG_FUNCTION_ARGS);
 
 /* bool.c */
 extern Datum boolin(PG_FUNCTION_ARGS);
@@ -111,6 +117,8 @@ extern Datum i2toi4(PG_FUNCTION_ARGS);
 extern Datum i4toi2(PG_FUNCTION_ARGS);
 extern Datum int2_text(PG_FUNCTION_ARGS);
 extern Datum text_int2(PG_FUNCTION_ARGS);
+extern Datum int4_bool(PG_FUNCTION_ARGS);
+extern Datum bool_int4(PG_FUNCTION_ARGS);
 extern Datum int4_text(PG_FUNCTION_ARGS);
 extern Datum text_int4(PG_FUNCTION_ARGS);
 extern Datum int4eq(PG_FUNCTION_ARGS);
@@ -183,6 +191,7 @@ extern Datum int2shl(PG_FUNCTION_ARGS);
 extern Datum int2shr(PG_FUNCTION_ARGS);
 extern Datum generate_series_int4(PG_FUNCTION_ARGS);
 extern Datum generate_series_step_int4(PG_FUNCTION_ARGS);
+extern int2vector *buildint2vector(const int2 *int2s, int n);
 
 /* name.c */
 extern Datum namein(PG_FUNCTION_ARGS);
@@ -354,12 +363,30 @@ extern Datum float84le(PG_FUNCTION_ARGS);
 extern Datum float84gt(PG_FUNCTION_ARGS);
 extern Datum float84ge(PG_FUNCTION_ARGS);
 
+/* dbsize.c */
+extern Datum pg_tablespace_size_oid(PG_FUNCTION_ARGS);
+extern Datum pg_tablespace_size_name(PG_FUNCTION_ARGS);
+extern Datum pg_database_size_oid(PG_FUNCTION_ARGS);
+extern Datum pg_database_size_name(PG_FUNCTION_ARGS);
+extern Datum pg_relation_size_oid(PG_FUNCTION_ARGS);
+extern Datum pg_relation_size_name(PG_FUNCTION_ARGS);
+extern Datum pg_total_relation_size_oid(PG_FUNCTION_ARGS);
+extern Datum pg_total_relation_size_name(PG_FUNCTION_ARGS);
+extern Datum pg_size_pretty(PG_FUNCTION_ARGS);
+
+/* genfile.c */
+extern Datum pg_stat_file(PG_FUNCTION_ARGS);
+extern Datum pg_read_file(PG_FUNCTION_ARGS);
+extern Datum pg_ls_dir(PG_FUNCTION_ARGS);
+
 /* misc.c */
 extern Datum nullvalue(PG_FUNCTION_ARGS);
 extern Datum nonnullvalue(PG_FUNCTION_ARGS);
 extern Datum current_database(PG_FUNCTION_ARGS);
 extern Datum pg_cancel_backend(PG_FUNCTION_ARGS);
+extern Datum pg_reload_conf(PG_FUNCTION_ARGS);
 extern Datum pg_tablespace_databases(PG_FUNCTION_ARGS);
+extern Datum pg_rotate_logfile(PG_FUNCTION_ARGS);
 
 /* not_in.c */
 extern Datum int4notin(PG_FUNCTION_ARGS);
@@ -390,6 +417,7 @@ extern Datum oidvectorlt(PG_FUNCTION_ARGS);
 extern Datum oidvectorle(PG_FUNCTION_ARGS);
 extern Datum oidvectorge(PG_FUNCTION_ARGS);
 extern Datum oidvectorgt(PG_FUNCTION_ARGS);
+extern oidvector *buildoidvector(const Oid *oids, int n);
 
 /* pseudotypes.c */
 extern Datum cstring_in(PG_FUNCTION_ARGS);
@@ -425,6 +453,8 @@ extern Datum nameicregexne(PG_FUNCTION_ARGS);
 extern Datum texticregexeq(PG_FUNCTION_ARGS);
 extern Datum texticregexne(PG_FUNCTION_ARGS);
 extern Datum textregexsubstr(PG_FUNCTION_ARGS);
+extern Datum textregexreplace_noopt(PG_FUNCTION_ARGS);
+extern Datum textregexreplace(PG_FUNCTION_ARGS);
 extern Datum similar_escape(PG_FUNCTION_ARGS);
 
 /* regproc.c */
@@ -452,6 +482,7 @@ extern Datum regtypein(PG_FUNCTION_ARGS);
 extern Datum regtypeout(PG_FUNCTION_ARGS);
 extern Datum regtyperecv(PG_FUNCTION_ARGS);
 extern Datum regtypesend(PG_FUNCTION_ARGS);
+extern Datum text_regclass(PG_FUNCTION_ARGS);
 extern List *stringToQualifiedNameList(const char *string, const char *caller);
 extern char *format_procedure(Oid procedure_oid);
 extern char *format_operator(Oid operator_oid);
@@ -518,6 +549,8 @@ extern Datum bpcharle(PG_FUNCTION_ARGS);
 extern Datum bpchargt(PG_FUNCTION_ARGS);
 extern Datum bpcharge(PG_FUNCTION_ARGS);
 extern Datum bpcharcmp(PG_FUNCTION_ARGS);
+extern Datum bpchar_larger(PG_FUNCTION_ARGS);
+extern Datum bpchar_smaller(PG_FUNCTION_ARGS);
 extern Datum bpcharlen(PG_FUNCTION_ARGS);
 extern Datum bpcharoctetlen(PG_FUNCTION_ARGS);
 extern Datum hashbpchar(PG_FUNCTION_ARGS);
@@ -556,16 +589,19 @@ extern Datum text_substr_no_len(PG_FUNCTION_ARGS);
 extern Datum name_text(PG_FUNCTION_ARGS);
 extern Datum text_name(PG_FUNCTION_ARGS);
 extern int	varstr_cmp(char *arg1, int len1, char *arg2, int len2);
-extern List *textToQualifiedNameList(text *textval, const char *caller);
+extern List *textToQualifiedNameList(text *textval);
 extern bool SplitIdentifierString(char *rawstring, char separator,
 					  List **namelist);
 extern Datum replace_text(PG_FUNCTION_ARGS);
+extern text *replace_text_regexp(text *src_text, void *regexp,
+								 text *replace_text, bool glob);
 extern Datum split_text(PG_FUNCTION_ARGS);
 extern Datum text_to_array(PG_FUNCTION_ARGS);
 extern Datum array_to_text(PG_FUNCTION_ARGS);
 extern Datum to_hex32(PG_FUNCTION_ARGS);
 extern Datum to_hex64(PG_FUNCTION_ARGS);
 extern Datum md5_text(PG_FUNCTION_ARGS);
+extern Datum md5_bytea(PG_FUNCTION_ARGS);
 
 extern Datum unknownin(PG_FUNCTION_ARGS);
 extern Datum unknownout(PG_FUNCTION_ARGS);
@@ -594,6 +630,7 @@ extern Datum byteacat(PG_FUNCTION_ARGS);
 extern Datum byteapos(PG_FUNCTION_ARGS);
 extern Datum bytea_substr(PG_FUNCTION_ARGS);
 extern Datum bytea_substr_no_len(PG_FUNCTION_ARGS);
+extern Datum pg_column_size(PG_FUNCTION_ARGS);
 
 /* version.c */
 extern Datum pgsql_version(PG_FUNCTION_ARGS);
@@ -716,7 +753,7 @@ extern Datum numeric_in(PG_FUNCTION_ARGS);
 extern Datum numeric_out(PG_FUNCTION_ARGS);
 extern Datum numeric_recv(PG_FUNCTION_ARGS);
 extern Datum numeric_send(PG_FUNCTION_ARGS);
-extern Datum numeric (PG_FUNCTION_ARGS);
+extern Datum numeric(PG_FUNCTION_ARGS);
 extern Datum numeric_abs(PG_FUNCTION_ARGS);
 extern Datum numeric_uminus(PG_FUNCTION_ARGS);
 extern Datum numeric_uplus(PG_FUNCTION_ARGS);
@@ -818,7 +855,7 @@ extern Datum show_all_settings(PG_FUNCTION_ARGS);
 /* lockfuncs.c */
 extern Datum pg_lock_status(PG_FUNCTION_ARGS);
 
-/* pg_prepared_xact.c */
+/* access/transam/twophase.c */
 extern Datum pg_prepared_xact(PG_FUNCTION_ARGS);
 
 /* catalog/pg_conversion.c */

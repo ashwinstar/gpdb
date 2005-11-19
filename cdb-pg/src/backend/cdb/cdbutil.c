@@ -27,6 +27,7 @@
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
+#include "utils/memutils.h"
 #include "cdb/cdbcat.h"
 #include "cdb/cdbutil.h"
 #include "cdb/cdblink.h"
@@ -129,6 +130,8 @@ getMppMpp(void)
 				(errcode(ERRCODE_CARDINALITY_VIOLATION),
 				 errmsg("No rows found in %s.%s.",
 						MppNamespaceName, MppMppRelationName)));
+		heap_endscan(mpp_mpp_scan);
+		heap_close(mpp_mpp_rel, AccessShareLock);
 		return;
 	}
 

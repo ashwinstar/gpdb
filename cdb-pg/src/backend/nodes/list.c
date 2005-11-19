@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/nodes/list.c,v 1.63 2004/12/31 21:59:55 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/nodes/list.c,v 1.66 2005/10/15 02:49:18 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -50,7 +50,6 @@ check_list_invariants(List *list)
 		Assert(list->head->next == list->tail);
 	Assert(list->tail->next == NULL);
 }
-
 #else
 #define check_list_invariants(l)
 #endif   /* USE_ASSERT_CHECKING */
@@ -381,7 +380,7 @@ list_truncate(List *list, int new_size)
 
 /*
  * Locate the n'th cell (counting from 0) of the list.  It is an assertion
- * error if there isn't one.
+ * failure if there is no such cell.
  */
 static ListCell *
 list_nth_cell(List *list, int n)
@@ -532,9 +531,9 @@ list_delete_cell(List *list, ListCell *cell, ListCell *prev)
 	Assert(prev != NULL ? lnext(prev) == cell : list_head(list) == cell);
 
 	/*
-	 * If we're about to delete the last node from the list, free the
-	 * whole list instead and return NIL, which is the only valid
-	 * representation of a zero-length list.
+	 * If we're about to delete the last node from the list, free the whole
+	 * list instead and return NIL, which is the only valid representation of
+	 * a zero-length list.
 	 */
 	if (list->length == 1)
 	{
@@ -543,9 +542,8 @@ list_delete_cell(List *list, ListCell *cell, ListCell *prev)
 	}
 
 	/*
-	 * Otherwise, adjust the necessary list links, deallocate the
-	 * particular node we have just removed, and return the list we were
-	 * given.
+	 * Otherwise, adjust the necessary list links, deallocate the particular
+	 * node we have just removed, and return the list we were given.
 	 */
 	list->length--;
 
@@ -686,9 +684,13 @@ list_delete_first(List *list)
  * The returned list is newly-allocated, although the content of the
  * cells is the same (i.e. any pointed-to objects are not copied).
  *
- * NB: Bizarrely, this function will NOT remove any duplicates that
- * are present in list1 (so it is not really a union at all!). Also,
- * this function could probably be implemented a lot faster if it is a
+ * NB: this function will NOT remove any duplicates that are present
+ * in list1 (so it only performs a "union" if list1 is known unique to
+ * start with).  Also, if you are about to write "x = list_union(x, y)"
+ * you probably want to use list_concat_unique() instead to avoid wasting
+ * the list cells of the old x list.
+ *
+ * This function could probably be implemented a lot faster if it is a
  * performance bottleneck.
  */
 List *
@@ -888,7 +890,153 @@ list_difference_oid(List *list1, List *list2)
 	return result;
 }
 
-/* Free all storage in a list, and optionally the pointed-to elements */
+/*
+ * Append datum to list, but only if it isn't already in the list.
+ *
+ * Whether an element is already a member of the list is determined
+ * via equal().
+ */
+List *
+list_append_unique(List *list, void *datum)
+{
+	if (list_member(list, datum))
+		return list;
+	else
+		return lappend(list, datum);
+}
+
+/*
+ * This variant of list_append_unique() determines list membership via
+ * simple pointer equality.
+ */
+List *
+list_append_unique_ptr(List *list, void *datum)
+{
+	if (list_member_ptr(list, datum))
+		return list;
+	else
+		return lappend(list, datum);
+}
+
+/*
+ * This variant of list_append_unique() operates upon lists of integers.
+ */
+List *
+list_append_unique_int(List *list, int datum)
+{
+	if (list_member_int(list, datum))
+		return list;
+	else
+		return lappend_int(list, datum);
+}
+
+/*
+ * This variant of list_append_unique() operates upon lists of OIDs.
+ */
+List *
+list_append_unique_oid(List *list, Oid datum)
+{
+	if (list_member_oid(list, datum))
+		return list;
+	else
+		return lappend_oid(list, datum);
+}
+
+/*
+ * Append to list1 each member of list2 that isn't already in list1.
+ *
+ * Whether an element is already a member of the list is determined
+ * via equal().
+ *
+ * This is almost the same functionality as list_union(), but list1 is
+ * modified in-place rather than being copied.	Note also that list2's cells
+ * are not inserted in list1, so the analogy to list_concat() isn't perfect.
+ */
+List *
+list_concat_unique(List *list1, List *list2)
+{
+	ListCell   *cell;
+
+	Assert(IsPointerList(list1));
+	Assert(IsPointerList(list2));
+
+	foreach(cell, list2)
+	{
+		if (!list_member(list1, lfirst(cell)))
+			list1 = lappend(list1, lfirst(cell));
+	}
+
+	check_list_invariants(list1);
+	return list1;
+}
+
+/*
+ * This variant of list_concat_unique() determines list membership via
+ * simple pointer equality.
+ */
+List *
+list_concat_unique_ptr(List *list1, List *list2)
+{
+	ListCell   *cell;
+
+	Assert(IsPointerList(list1));
+	Assert(IsPointerList(list2));
+
+	foreach(cell, list2)
+	{
+		if (!list_member_ptr(list1, lfirst(cell)))
+			list1 = lappend(list1, lfirst(cell));
+	}
+
+	check_list_invariants(list1);
+	return list1;
+}
+
+/*
+ * This variant of list_concat_unique() operates upon lists of integers.
+ */
+List *
+list_concat_unique_int(List *list1, List *list2)
+{
+	ListCell   *cell;
+
+	Assert(IsIntegerList(list1));
+	Assert(IsIntegerList(list2));
+
+	foreach(cell, list2)
+	{
+		if (!list_member_int(list1, lfirst_int(cell)))
+			list1 = lappend_int(list1, lfirst_int(cell));
+	}
+
+	check_list_invariants(list1);
+	return list1;
+}
+
+/*
+ * This variant of list_concat_unique() operates upon lists of OIDs.
+ */
+List *
+list_concat_unique_oid(List *list1, List *list2)
+{
+	ListCell   *cell;
+
+	Assert(IsOidList(list1));
+	Assert(IsOidList(list2));
+
+	foreach(cell, list2)
+	{
+		if (!list_member_oid(list1, lfirst_oid(cell)))
+			list1 = lappend_oid(list1, lfirst_oid(cell));
+	}
+
+	check_list_invariants(list1);
+	return list1;
+}
+
+/*
+ * Free all storage in a list, and optionally the pointed-to elements
+ */
 static void
 list_free_private(List *list, bool deep)
 {
@@ -960,8 +1108,8 @@ list_copy(List *oldlist)
 	newlist->length = oldlist->length;
 
 	/*
-	 * Copy over the data in the first cell; new_list() has already
-	 * allocated the head cell itself
+	 * Copy over the data in the first cell; new_list() has already allocated
+	 * the head cell itself
 	 */
 	newlist->head->data = oldlist->head->data;
 
@@ -1013,8 +1161,8 @@ list_copy_tail(List *oldlist, int nskip)
 		oldlist_cur = oldlist_cur->next;
 
 	/*
-	 * Copy over the data in the first remaining cell; new_list() has
-	 * already allocated the head cell itself
+	 * Copy over the data in the first remaining cell; new_list() has already
+	 * allocated the head cell itself
 	 */
 	newlist->head->data = oldlist_cur->data;
 

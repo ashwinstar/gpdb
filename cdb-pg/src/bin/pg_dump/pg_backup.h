@@ -15,7 +15,7 @@
  *
  *
  * IDENTIFICATION
- *		$PostgreSQL: pgsql/src/bin/pg_dump/pg_backup.h,v 1.34 2004/11/06 19:36:01 tgl Exp $
+ *		$PostgreSQL: pgsql/src/bin/pg_dump/pg_backup.h,v 1.37 2005/10/15 02:49:38 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -97,6 +97,7 @@ typedef struct _restoreOptions
 	char	   *indexNames;
 	char	   *functionNames;
 	char	   *tableNames;
+	char	   *schemaNames;
 	char	   *triggerNames;
 
 	int			useDB;
@@ -153,10 +154,6 @@ extern void ArchiveEntry(Archive *AHX,
 /* Called to write *data* to the archive */
 extern size_t WriteData(Archive *AH, const void *data, size_t dLen);
 
-/*
-extern int	StartBlobs(Archive* AH);
-extern int	EndBlobs(Archive* AH);
-*/
 extern int	StartBlob(Archive *AH, Oid oid);
 extern int	EndBlob(Archive *AH, Oid oid);
 

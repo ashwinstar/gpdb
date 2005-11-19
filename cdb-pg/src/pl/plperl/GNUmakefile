@@ -1,5 +1,5 @@
 # Makefile for PL/Perl
-# $PostgreSQL: pgsql/src/pl/plperl/GNUmakefile,v 1.18.4.1 2005/07/17 04:05:49 tgl Exp $
+# $PostgreSQL: pgsql/src/pl/plperl/GNUmakefile,v 1.25 2005/07/13 17:12:56 tgl Exp $
 
 subdir = src/pl/plperl
 top_builddir = ../../..
@@ -36,6 +36,9 @@ OBJS = plperl.o spi_internal.o SPI.o
 
 SHLIB_LINK = $(perl_embed_ldflags) $(BE_DLLLIBS)
 
+REGRESS_OPTS = --dbname=$(PL_TESTDB) --load-language=plperl
+REGRESS = plperl plperl_trigger plperl_shared plperl_elog
+
 include $(top_srcdir)/src/Makefile.shlib
 
 
@@ -43,6 +46,27 @@ all: all-lib
 
 SPI.c: SPI.xs
 	$(PERL) $(perl_privlibexp)/ExtUtils/xsubpp -typemap $(perl_privlibexp)/ExtUtils/typemap $< >$@
+
+# When doing a VPATH build, copy over the .sql and .out files so that the
+# test script can find them.  See comments in src/test/regress/GNUmakefile.
+ifdef VPATH
+
+ifneq ($(PORTNAME),win32)
+abs_srcdir := $(shell cd $(srcdir) && pwd)
+abs_builddir := $(shell pwd)
+else
+abs_srcdir := $(shell cd $(srcdir) && pwd -W)
+abs_builddir := $(shell pwd -W)
+endif
+
+test_files_src := $(wildcard $(srcdir)/sql/*.sql) $(wildcard $(srcdir)/expected/*.out)
+test_files_build := $(patsubst $(srcdir)/%, $(abs_builddir)/%, $(test_files_src))
+
+all: $(test_files_build)
+$(test_files_build): $(abs_builddir)/%: $(srcdir)/%
+	ln -s $< $@
+
+endif
 
 install: all installdirs
 ifeq ($(enable_shared), yes)
@@ -59,8 +83,17 @@ installdirs:
 uninstall:
 	rm -f $(DESTDIR)$(pkglibdir)/plperl$(DLSUFFIX)
 
+installcheck: submake
+	$(SHELL) $(top_builddir)/src/test/regress/pg_regress $(REGRESS_OPTS) $(REGRESS)
+
+.PHONY: submake
+submake:
+	$(MAKE) -C $(top_builddir)/src/test/regress pg_regress
+
 clean distclean maintainer-clean: clean-lib
 	rm -f SPI.c $(OBJS)
+	rm -rf results
+	rm -f regression.diffs regression.out
 
 else # can't build
 

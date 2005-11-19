@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/variable.c,v 1.105.4.2 2005/08/08 23:39:14 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/variable.c,v 1.114 2005/10/15 02:49:16 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -19,11 +19,12 @@
 #include <ctype.h>
 
 #include "access/xact.h"
-#include "catalog/pg_shadow.h"
+#include "catalog/pg_authid.h"
 #include "commands/variable.h"
 #include "miscadmin.h"
 #include "parser/scansup.h"
 #include "pgtime.h"
+#include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/syscache.h"
@@ -42,9 +43,9 @@ assign_datestyle(const char *value, bool doit, GucSource source)
 {
 	int			newDateStyle = DateStyle;
 	int			newDateOrder = DateOrder;
+	bool		have_style = false;
+	bool		have_order = false;
 	bool		ok = true;
-	int			scnt = 0,
-				ocnt = 0;
 	char	   *rawstring;
 	char	   *result;
 	List	   *elemlist;
@@ -62,7 +63,7 @@ assign_datestyle(const char *value, bool doit, GucSource source)
 		if (source >= PGC_S_INTERACTIVE)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-			 errmsg("invalid list syntax for parameter \"datestyle\"")));
+				 errmsg("invalid list syntax for parameter \"datestyle\"")));
 		return NULL;
 	}
 
@@ -74,53 +75,67 @@ assign_datestyle(const char *value, bool doit, GucSource source)
 
 		if (pg_strcasecmp(tok, "ISO") == 0)
 		{
+			if (have_style && newDateStyle != USE_ISO_DATES)
+				ok = false;		/* conflicting styles */
 			newDateStyle = USE_ISO_DATES;
-			scnt++;
+			have_style = true;
 		}
 		else if (pg_strcasecmp(tok, "SQL") == 0)
 		{
+			if (have_style && newDateStyle != USE_SQL_DATES)
+				ok = false;		/* conflicting styles */
 			newDateStyle = USE_SQL_DATES;
-			scnt++;
+			have_style = true;
 		}
 		else if (pg_strncasecmp(tok, "POSTGRES", 8) == 0)
 		{
+			if (have_style && newDateStyle != USE_POSTGRES_DATES)
+				ok = false;		/* conflicting styles */
 			newDateStyle = USE_POSTGRES_DATES;
-			scnt++;
+			have_style = true;
 		}
 		else if (pg_strcasecmp(tok, "GERMAN") == 0)
 		{
+			if (have_style && newDateStyle != USE_GERMAN_DATES)
+				ok = false;		/* conflicting styles */
 			newDateStyle = USE_GERMAN_DATES;
-			scnt++;
+			have_style = true;
 			/* GERMAN also sets DMY, unless explicitly overridden */
-			if (ocnt == 0)
+			if (!have_order)
 				newDateOrder = DATEORDER_DMY;
 		}
 		else if (pg_strcasecmp(tok, "YMD") == 0)
 		{
+			if (have_order && newDateOrder != DATEORDER_YMD)
+				ok = false;		/* conflicting orders */
 			newDateOrder = DATEORDER_YMD;
-			ocnt++;
+			have_order = true;
 		}
 		else if (pg_strcasecmp(tok, "DMY") == 0 ||
 				 pg_strncasecmp(tok, "EURO", 4) == 0)
 		{
+			if (have_order && newDateOrder != DATEORDER_DMY)
+				ok = false;		/* conflicting orders */
 			newDateOrder = DATEORDER_DMY;
-			ocnt++;
+			have_order = true;
 		}
 		else if (pg_strcasecmp(tok, "MDY") == 0 ||
 				 pg_strcasecmp(tok, "US") == 0 ||
 				 pg_strncasecmp(tok, "NONEURO", 7) == 0)
 		{
+			if (have_order && newDateOrder != DATEORDER_MDY)
+				ok = false;		/* conflicting orders */
 			newDateOrder = DATEORDER_MDY;
-			ocnt++;
+			have_order = true;
 		}
 		else if (pg_strcasecmp(tok, "DEFAULT") == 0)
 		{
 			/*
-			 * Easiest way to get the current DEFAULT state is to fetch
-			 * the DEFAULT string from guc.c and recursively parse it.
+			 * Easiest way to get the current DEFAULT state is to fetch the
+			 * DEFAULT string from guc.c and recursively parse it.
 			 *
-			 * We can't simply "return assign_datestyle(...)" because we need
-			 * to handle constructs like "DEFAULT, ISO".
+			 * We can't simply "return assign_datestyle(...)" because we need to
+			 * handle constructs like "DEFAULT, ISO".
 			 */
 			int			saveDateStyle = DateStyle;
 			int			saveDateOrder = DateOrder;
@@ -128,9 +143,9 @@ assign_datestyle(const char *value, bool doit, GucSource source)
 
 			subval = assign_datestyle(GetConfigOptionResetString("datestyle"),
 									  true, source);
-			if (scnt == 0)
+			if (!have_style)
 				newDateStyle = DateStyle;
-			if (ocnt == 0)
+			if (!have_order)
 				newDateOrder = DateOrder;
 			DateStyle = saveDateStyle;
 			DateOrder = saveDateOrder;
@@ -148,15 +163,12 @@ assign_datestyle(const char *value, bool doit, GucSource source)
 			if (source >= PGC_S_INTERACTIVE)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					errmsg("unrecognized \"datestyle\" key word: \"%s\"",
-						   tok)));
+						 errmsg("unrecognized \"datestyle\" key word: \"%s\"",
+								tok)));
 			ok = false;
 			break;
 		}
 	}
-
-	if (scnt > 1 || ocnt > 1)
-		ok = false;
 
 	pfree(rawstring);
 	list_free(elemlist);
@@ -212,8 +224,8 @@ assign_datestyle(const char *value, bool doit, GucSource source)
 	}
 
 	/*
-	 * Finally, it's safe to assign to the global variables; the
-	 * assignment cannot fail now.
+	 * Finally, it's safe to assign to the global variables; the assignment
+	 * cannot fail now.
 	 */
 	DateStyle = newDateStyle;
 	DateOrder = newDateOrder;
@@ -262,14 +274,14 @@ assign_timezone(const char *value, bool doit, GucSource source)
 
 		/*
 		 * Try to parse it.  XXX an invalid interval format will result in
-		 * ereport, which is not desirable for GUC.  We did what we could
-		 * to guard against this in flatten_set_variable_args, but a
-		 * string coming in from postgresql.conf might contain anything.
+		 * ereport, which is not desirable for GUC.  We did what we could to
+		 * guard against this in flatten_set_variable_args, but a string
+		 * coming in from postgresql.conf might contain anything.
 		 */
 		interval = DatumGetIntervalP(DirectFunctionCall3(interval_in,
-													CStringGetDatum(val),
-											ObjectIdGetDatum(InvalidOid),
-													 Int32GetDatum(-1)));
+														 CStringGetDatum(val),
+												ObjectIdGetDatum(InvalidOid),
+														 Int32GetDatum(-1)));
 
 		pfree(val);
 		if (interval->month != 0)
@@ -281,11 +293,20 @@ assign_timezone(const char *value, bool doit, GucSource source)
 			pfree(interval);
 			return NULL;
 		}
+		if (interval->day != 0)
+		{
+			if (source >= PGC_S_INTERACTIVE)
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("invalid interval value for time zone: day not allowed")));
+			pfree(interval);
+			return NULL;
+		}
 		if (doit)
 		{
 			/* Here we change from SQL to Unix sign convention */
 #ifdef HAVE_INT64_TIMESTAMP
-			CTimeZone = -(interval->time / INT64CONST(1000000));
+			CTimeZone = -(interval->time / USECS_PER_SEC);
 #else
 			CTimeZone = -interval->time;
 #endif
@@ -305,7 +326,7 @@ assign_timezone(const char *value, bool doit, GucSource source)
 			if (doit)
 			{
 				/* Here we change from SQL to Unix sign convention */
-				CTimeZone = -hours * 3600;
+				CTimeZone = -hours * SECS_PER_HOUR;
 				HasCTZSet = true;
 			}
 		}
@@ -315,19 +336,18 @@ assign_timezone(const char *value, bool doit, GucSource source)
 			 * UNKNOWN is the value shown as the "default" for TimeZone in
 			 * guc.c.  We interpret it as being a complete no-op; we don't
 			 * change the timezone setting.  Note that if there is a known
-			 * timezone setting, we will return that name rather than
-			 * UNKNOWN as the canonical spelling.
+			 * timezone setting, we will return that name rather than UNKNOWN
+			 * as the canonical spelling.
 			 *
-			 * During GUC initialization, since the timezone library isn't
-			 * set up yet, pg_get_current_timezone will return NULL and we
-			 * will leave the setting as UNKNOWN.  If this isn't
-			 * overridden from the config file then
-			 * pg_timezone_initialize() will eventually select a default
-			 * value from the environment.
+			 * During GUC initialization, since the timezone library isn't set up
+			 * yet, pg_get_timezone_name will return NULL and we will leave
+			 * the setting as UNKNOWN.	If this isn't overridden from the
+			 * config file then pg_timezone_initialize() will eventually
+			 * select a default value from the environment.
 			 */
 			if (doit)
 			{
-				const char *curzone = pg_get_current_timezone();
+				const char *curzone = pg_get_timezone_name(global_timezone);
 
 				if (curzone)
 					value = curzone;
@@ -336,90 +356,36 @@ assign_timezone(const char *value, bool doit, GucSource source)
 		else
 		{
 			/*
-			 * Otherwise assume it is a timezone name.
-			 *
-			 * We have to actually apply the change before we can have any
-			 * hope of checking it.  So, save the old value in case we
-			 * have to back out.  We have to copy since
-			 * pg_get_current_timezone returns a pointer to its static
-			 * state.
-			 *
-			 * This would all get a lot simpler if the TZ library had a
-			 * better API that would let us look up and test a timezone
-			 * name without making it the default.
+			 * Otherwise assume it is a timezone name, and try to load it.
 			 */
-			const char *cur_tz;
-			char	   *save_tz;
-			bool		known,
-						acceptable;
+			pg_tz	   *new_tz;
 
-			cur_tz = pg_get_current_timezone();
-			if (cur_tz)
-				save_tz = pstrdup(cur_tz);
-			else
-				save_tz = NULL;
+			new_tz = pg_tzset(value);
 
-			known = pg_tzset(value);
-			acceptable = known ? tz_acceptable() : false;
-
-			if (doit && known && acceptable)
+			if (!new_tz)
 			{
-				/* Keep the changed TZ */
-				HasCTZSet = false;
+				ereport((source >= PGC_S_INTERACTIVE) ? ERROR : LOG,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("unrecognized time zone name: \"%s\"",
+								value)));
+				return NULL;
 			}
-			else
+
+			if (!tz_acceptable(new_tz))
 			{
-				/*
-				 * Revert to prior TZ setting; note we haven't changed
-				 * HasCTZSet in this path, so if we were previously using
-				 * a fixed offset, we still are.
-				 */
-				if (save_tz)
-					pg_tzset(save_tz);
-				else
-				{
-					/*
-					 * TZ library wasn't initialized yet.  Annoyingly, we
-					 * will come here during startup because guc-file.l
-					 * checks the value with doit = false before actually
-					 * applying. The best approach seems to be as follows:
-					 *
-					 * 1. known && acceptable: leave the setting in place,
-					 * since we'll apply it soon anyway.  This is mainly
-					 * so that any log messages printed during this
-					 * interval are timestamped with the user's requested
-					 * timezone.
-					 *
-					 * 2. known && !acceptable: revert to GMT for lack of any
-					 * better idea.  (select_default_timezone() may get
-					 * called later to undo this.)
-					 *
-					 * 3. !known: no need to do anything since TZ library did
-					 * not change its state.
-					 *
-					 * Again, this should all go away sometime soon.
-					 */
-					if (known && !acceptable)
-						pg_tzset("GMT");
-				}
-				/* Complain if it was bad */
-				if (!known)
-				{
-					ereport((source >= PGC_S_INTERACTIVE) ? ERROR : LOG,
-							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-							 errmsg("unrecognized time zone name: \"%s\"",
-									value)));
-					return NULL;
-				}
-				if (!acceptable)
-				{
-					ereport((source >= PGC_S_INTERACTIVE) ? ERROR : LOG,
-							(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					errmsg("time zone \"%s\" appears to use leap seconds",
-						   value),
-							 errdetail("PostgreSQL does not support leap seconds.")));
-					return NULL;
-				}
+				ereport((source >= PGC_S_INTERACTIVE) ? ERROR : LOG,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					   errmsg("time zone \"%s\" appears to use leap seconds",
+							  value),
+					errdetail("PostgreSQL does not support leap seconds.")));
+				return NULL;
+			}
+
+			if (doit)
+			{
+				/* Save the changed TZ */
+				global_timezone = new_tz;
+				HasCTZSet = false;
 			}
 		}
 	}
@@ -439,7 +405,7 @@ assign_timezone(const char *value, bool doit, GucSource source)
 		if (!result)
 			return NULL;
 		snprintf(result, 64, "%.5f",
-				 (double) (-CTimeZone) / 3600.0);
+				 (double) (-CTimeZone) / (double) SECS_PER_HOUR);
 	}
 	else
 		result = strdup(value);
@@ -457,20 +423,21 @@ show_timezone(void)
 
 	if (HasCTZSet)
 	{
-		Interval interval;
+		Interval	interval;
 
 		interval.month = 0;
+		interval.day = 0;
 #ifdef HAVE_INT64_TIMESTAMP
-		interval.time = -(CTimeZone * INT64CONST(1000000));
+		interval.time = -(CTimeZone * USECS_PER_SEC);
 #else
 		interval.time = -CTimeZone;
 #endif
 
 		tzn = DatumGetCString(DirectFunctionCall1(interval_out,
-										  IntervalPGetDatum(&interval)));
+											  IntervalPGetDatum(&interval)));
 	}
 	else
-		tzn = pg_get_current_timezone();
+		tzn = pg_get_timezone_name(global_timezone);
 
 	if (tzn != NULL)
 		return tzn;
@@ -591,18 +558,18 @@ assign_client_encoding(const char *value, bool doit, GucSource source)
 		return NULL;
 
 	/*
-	 * Note: if we are in startup phase then SetClientEncoding may not be
-	 * able to really set the encoding.  In this case we will assume that
-	 * the encoding is okay, and InitializeClientEncoding() will fix
-	 * things once initialization is complete.
+	 * Note: if we are in startup phase then SetClientEncoding may not be able
+	 * to really set the encoding.	In this case we will assume that the
+	 * encoding is okay, and InitializeClientEncoding() will fix things once
+	 * initialization is complete.
 	 */
 	if (SetClientEncoding(encoding, doit) < 0)
 	{
 		if (source >= PGC_S_INTERACTIVE)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				  errmsg("conversion between %s and %s is not supported",
-						 value, GetDatabaseEncodingName())));
+					 errmsg("conversion between %s and %s is not supported",
+							value, GetDatabaseEncodingName())));
 		return NULL;
 	}
 	return value;
@@ -613,89 +580,89 @@ assign_client_encoding(const char *value, bool doit, GucSource source)
  * SET SESSION AUTHORIZATION
  *
  * When resetting session auth after an error, we can't expect to do catalog
- * lookups.  Hence, the stored form of the value must provide a numeric userid
+ * lookups.  Hence, the stored form of the value must provide a numeric oid
  * that can be re-used directly.  We store the string in the form of
  * NAMEDATALEN 'x's, followed by T or F to indicate superuserness, followed
- * by the numeric userid, followed by a comma, followed by the user name.
- * This cannot be confused with a plain user name because of the NAMEDATALEN
+ * by the numeric oid, followed by a comma, followed by the role name.
+ * This cannot be confused with a plain role name because of the NAMEDATALEN
  * limit on names, so we can tell whether we're being passed an initial
- * username or a saved/restored value.
+ * role name or a saved/restored value.
  */
 extern char *session_authorization_string;		/* in guc.c */
 
 const char *
 assign_session_authorization(const char *value, bool doit, GucSource source)
 {
-	AclId		usesysid = 0;
+	Oid			roleid = InvalidOid;
 	bool		is_superuser = false;
-	const char *actual_username = NULL;
+	const char *actual_rolename = NULL;
 	char	   *result;
 
 	if (strspn(value, "x") == NAMEDATALEN &&
 		(value[NAMEDATALEN] == 'T' || value[NAMEDATALEN] == 'F'))
 	{
 		/* might be a saved userid string */
-		AclId		savedsysid;
+		Oid			savedoid;
 		char	   *endptr;
 
-		savedsysid = (AclId) strtoul(value + NAMEDATALEN + 1, &endptr, 10);
+		savedoid = (Oid) strtoul(value + NAMEDATALEN + 1, &endptr, 10);
 
 		if (endptr != value + NAMEDATALEN + 1 && *endptr == ',')
 		{
 			/* syntactically valid, so break out the data */
-			usesysid = savedsysid;
+			roleid = savedoid;
 			is_superuser = (value[NAMEDATALEN] == 'T');
-			actual_username = endptr + 1;
+			actual_rolename = endptr + 1;
 		}
 	}
 
-	if (usesysid == 0)
+	if (roleid == InvalidOid)
 	{
 		/* not a saved ID, so look it up */
-		HeapTuple	userTup;
+		HeapTuple	roleTup;
 
 		if (!IsTransactionState())
 		{
 			/*
-			 * Can't do catalog lookups, so fail.  The upshot of this is
-			 * that session_authorization cannot be set in
-			 * postgresql.conf, which seems like a good thing anyway.
+			 * Can't do catalog lookups, so fail.  The upshot of this is that
+			 * session_authorization cannot be set in postgresql.conf, which
+			 * seems like a good thing anyway.
 			 */
 			return NULL;
 		}
 
-		userTup = SearchSysCache(SHADOWNAME,
+		roleTup = SearchSysCache(AUTHNAME,
 								 PointerGetDatum(value),
 								 0, 0, 0);
-		if (!HeapTupleIsValid(userTup))
+		if (!HeapTupleIsValid(roleTup))
 		{
 			if (source >= PGC_S_INTERACTIVE)
 				ereport(ERROR,
 						(errcode(ERRCODE_UNDEFINED_OBJECT),
-						 errmsg("user \"%s\" does not exist", value)));
+						 errmsg("role \"%s\" does not exist", value)));
 			return NULL;
 		}
 
-		usesysid = ((Form_pg_shadow) GETSTRUCT(userTup))->usesysid;
-		is_superuser = ((Form_pg_shadow) GETSTRUCT(userTup))->usesuper;
-		actual_username = value;
+		roleid = HeapTupleGetOid(roleTup);
+		is_superuser = ((Form_pg_authid) GETSTRUCT(roleTup))->rolsuper;
+		actual_rolename = value;
 
-		ReleaseSysCache(userTup);
+		ReleaseSysCache(roleTup);
 	}
 
 	if (doit)
-		SetSessionAuthorization(usesysid, is_superuser);
+		SetSessionAuthorization(roleid, is_superuser);
 
-	result = (char *) malloc(NAMEDATALEN + 32 + strlen(actual_username));
+	result = (char *) malloc(NAMEDATALEN + 32 + strlen(actual_rolename));
 	if (!result)
 		return NULL;
 
 	memset(result, 'x', NAMEDATALEN);
 
-	sprintf(result + NAMEDATALEN, "%c%lu,%s",
+	sprintf(result + NAMEDATALEN, "%c%u,%s",
 			is_superuser ? 'T' : 'F',
-			(unsigned long) usesysid,
-			actual_username);
+			roleid,
+			actual_rolename);
 
 	return result;
 }
@@ -708,15 +675,153 @@ show_session_authorization(void)
 	 * assign_session_authorization
 	 */
 	const char *value = session_authorization_string;
-	AclId		savedsysid;
+	Oid			savedoid;
 	char	   *endptr;
 
 	Assert(strspn(value, "x") == NAMEDATALEN &&
 		   (value[NAMEDATALEN] == 'T' || value[NAMEDATALEN] == 'F'));
 
-	savedsysid = (AclId) strtoul(value + NAMEDATALEN + 1, &endptr, 10);
+	savedoid = (Oid) strtoul(value + NAMEDATALEN + 1, &endptr, 10);
 
 	Assert(endptr != value + NAMEDATALEN + 1 && *endptr == ',');
+
+	return endptr + 1;
+}
+
+
+/*
+ * SET ROLE
+ *
+ * When resetting session auth after an error, we can't expect to do catalog
+ * lookups.  Hence, the stored form of the value must provide a numeric oid
+ * that can be re-used directly.  We implement this exactly like SET
+ * SESSION AUTHORIZATION.
+ *
+ * The SQL spec requires "SET ROLE NONE" to unset the role, so we hardwire
+ * a translation of "none" to InvalidOid.
+ */
+extern char *role_string;		/* in guc.c */
+
+const char *
+assign_role(const char *value, bool doit, GucSource source)
+{
+	Oid			roleid = InvalidOid;
+	bool		is_superuser = false;
+	const char *actual_rolename = value;
+	char	   *result;
+
+	if (strspn(value, "x") == NAMEDATALEN &&
+		(value[NAMEDATALEN] == 'T' || value[NAMEDATALEN] == 'F'))
+	{
+		/* might be a saved userid string */
+		Oid			savedoid;
+		char	   *endptr;
+
+		savedoid = (Oid) strtoul(value + NAMEDATALEN + 1, &endptr, 10);
+
+		if (endptr != value + NAMEDATALEN + 1 && *endptr == ',')
+		{
+			/* syntactically valid, so break out the data */
+			roleid = savedoid;
+			is_superuser = (value[NAMEDATALEN] == 'T');
+			actual_rolename = endptr + 1;
+		}
+	}
+
+	if (roleid == InvalidOid &&
+		strcmp(actual_rolename, "none") != 0)
+	{
+		/* not a saved ID, so look it up */
+		HeapTuple	roleTup;
+
+		if (!IsTransactionState())
+		{
+			/*
+			 * Can't do catalog lookups, so fail.  The upshot of this is that
+			 * role cannot be set in postgresql.conf, which seems like a good
+			 * thing anyway.
+			 */
+			return NULL;
+		}
+
+		roleTup = SearchSysCache(AUTHNAME,
+								 PointerGetDatum(value),
+								 0, 0, 0);
+		if (!HeapTupleIsValid(roleTup))
+		{
+			if (source >= PGC_S_INTERACTIVE)
+				ereport(ERROR,
+						(errcode(ERRCODE_UNDEFINED_OBJECT),
+						 errmsg("role \"%s\" does not exist", value)));
+			return NULL;
+		}
+
+		roleid = HeapTupleGetOid(roleTup);
+		is_superuser = ((Form_pg_authid) GETSTRUCT(roleTup))->rolsuper;
+
+		ReleaseSysCache(roleTup);
+
+		/*
+		 * Verify that session user is allowed to become this role
+		 */
+		if (!is_member_of_role(GetSessionUserId(), roleid))
+		{
+			if (source >= PGC_S_INTERACTIVE)
+				ereport(ERROR,
+						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+						 errmsg("permission denied to set role \"%s\"",
+								value)));
+			return NULL;
+		}
+	}
+
+	if (doit)
+		SetCurrentRoleId(roleid, is_superuser);
+
+	result = (char *) malloc(NAMEDATALEN + 32 + strlen(actual_rolename));
+	if (!result)
+		return NULL;
+
+	memset(result, 'x', NAMEDATALEN);
+
+	sprintf(result + NAMEDATALEN, "%c%u,%s",
+			is_superuser ? 'T' : 'F',
+			roleid,
+			actual_rolename);
+
+	return result;
+}
+
+const char *
+show_role(void)
+{
+	/*
+	 * Extract the role name from the stored string; see assign_role
+	 */
+	const char *value = role_string;
+	Oid			savedoid;
+	char	   *endptr;
+
+	/* This special case only applies if no SET ROLE has been done */
+	if (value == NULL || strcmp(value, "none") == 0)
+		return "none";
+
+	Assert(strspn(value, "x") == NAMEDATALEN &&
+		   (value[NAMEDATALEN] == 'T' || value[NAMEDATALEN] == 'F'));
+
+	savedoid = (Oid) strtoul(value + NAMEDATALEN + 1, &endptr, 10);
+
+	Assert(endptr != value + NAMEDATALEN + 1 && *endptr == ',');
+
+	/*
+	 * Check that the stored string still matches the effective setting, else
+	 * return "none".  This is a kluge to deal with the fact that SET SESSION
+	 * AUTHORIZATION logically resets SET ROLE to NONE, but we cannot set the
+	 * GUC role variable from assign_session_authorization (because we haven't
+	 * got enough info to call set_config_option).
+	 */
+	if (savedoid != GetCurrentRoleId())
+		return "none";
 
 	return endptr + 1;
 }

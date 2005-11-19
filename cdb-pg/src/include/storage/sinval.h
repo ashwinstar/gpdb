@@ -7,14 +7,13 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/storage/sinval.h,v 1.40 2005/01/10 21:57:19 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/storage/sinval.h,v 1.43 2005/10/15 02:49:46 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #ifndef SINVAL_H
 #define SINVAL_H
 
-#include "storage/backendid.h"
 #include "storage/itemptr.h"
 #include "storage/relfilenode.h"
 
@@ -24,9 +23,9 @@
  * invalidates an entry in a catcache, one that invalidates a relcache entry,
  * and one that invalidates an smgr cache entry.  More types could be added
  * if needed.  The message type is identified by the first "int16" field of
- * the message struct.  Zero or positive means a catcache inval message (and
+ * the message struct.	Zero or positive means a catcache inval message (and
  * also serves as the catcache ID field).  -1 means a relcache inval message.
- * -2 means an smgr inval message.  Other negative values are available to
+ * -2 means an smgr inval message.	Other negative values are available to
  * identify other inval message types.
  *
  * Catcache inval events are initially driven by detecting tuple inserts,
@@ -84,27 +83,14 @@ typedef union
 } SharedInvalidationMessage;
 
 
-extern int	SInvalShmemSize(int maxBackends);
-extern void CreateSharedInvalidationState(int maxBackends);
+extern Size SInvalShmemSize(void);
+extern void CreateSharedInvalidationState(void);
 extern void InitBackendSharedInvalidationState(void);
+
 extern void SendSharedInvalidMessage(SharedInvalidationMessage *msg);
 extern void ReceiveSharedInvalidMessages(
-				  void (*invalFunction) (SharedInvalidationMessage *msg),
+					  void (*invalFunction) (SharedInvalidationMessage *msg),
 							 void (*resetFunction) (void));
-
-extern bool DatabaseHasActiveBackends(Oid databaseId, bool ignoreMyself);
-extern bool TransactionIdIsInProgress(TransactionId xid);
-extern bool TransactionIdIsPrepared(TransactionId transactionId);
-extern bool IsBackendPid(int pid);
-extern TransactionId GetOldestXmin(bool allDbs);
-extern int	CountActiveBackends(void);
-extern int	CountEmptyBackendSlots(void);
-
-/* Use "struct PGPROC", not PGPROC, to avoid including proc.h here */
-extern struct PGPROC *BackendIdGetProc(BackendId procId);
-
-extern void XidCacheRemoveRunningXids(TransactionId xid,
-						  int nxids, TransactionId *xids);
 
 /* signal handler for catchup events (SIGUSR1) */
 extern void CatchupInterruptHandler(SIGNAL_ARGS);

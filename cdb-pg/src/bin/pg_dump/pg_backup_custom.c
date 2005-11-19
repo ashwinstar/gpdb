@@ -19,15 +19,13 @@
  *
  *
  * IDENTIFICATION
- *		$PostgreSQL: pgsql/src/bin/pg_dump/pg_backup_custom.c,v 1.29.4.1 2005/01/25 22:44:47 tgl Exp $
+ *		$PostgreSQL: pgsql/src/bin/pg_dump/pg_backup_custom.c,v 1.33 2005/10/15 02:49:38 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 
 #include "pg_backup.h"
 #include "pg_backup_archiver.h"
-
-#include <errno.h>
 
 /*--------
  * Routines in the format interface
@@ -153,10 +151,10 @@ InitArchiveFmt_Custom(ArchiveHandle *AH)
 
 	/*
 	 * zlibOutSize is the buffer size we tell zlib it can output to.  We
-	 * actually allocate one extra byte because some routines want to
-	 * append a trailing zero byte to the zlib output.	The input buffer
-	 * is expansible and is always of size ctx->inSize; zlibInSize is just
-	 * the initial default size for it.
+	 * actually allocate one extra byte because some routines want to append a
+	 * trailing zero byte to the zlib output.  The input buffer is expansible
+	 * and is always of size ctx->inSize; zlibInSize is just the initial
+	 * default size for it.
 	 */
 	ctx->zlibOut = (char *) malloc(zlibOutSize + 1);
 	ctx->zlibIn = (char *) malloc(zlibInSize);
@@ -260,8 +258,8 @@ _ReadExtraToc(ArchiveHandle *AH, TocEntry *te)
 	ctx->dataState = ReadOffset(AH, &(ctx->dataPos));
 
 	/*
-	 * Prior to V1.7 (pg7.3), we dumped the data size as an int now we
-	 * don't dump it at all.
+	 * Prior to V1.7 (pg7.3), we dumped the data size as an int now we don't
+	 * dump it at all.
 	 */
 	if (AH->version < K_VERS_1_7)
 		junk = ReadInt(AH);
@@ -314,10 +312,9 @@ _StartData(ArchiveHandle *AH, TocEntry *te)
  * called for both BLOB and TABLE data; it is the responsibility of
  * the format to manage each kind of data using StartBlob/StartData.
  *
- * It should only be called from withing a DataDumper routine.
+ * It should only be called from within a DataDumper routine.
  *
  * Mandatory.
- *
  */
 static size_t
 _WriteData(ArchiveHandle *AH, const void *data, size_t dLen)
@@ -360,7 +357,6 @@ _EndData(ArchiveHandle *AH, TocEntry *te)
  * It is called just prior to the dumper's DataDumper routine.
  *
  * Optional, but strongly recommended.
- *
  */
 static void
 _StartBlobs(ArchiveHandle *AH, TocEntry *te)
@@ -396,7 +392,6 @@ _StartBlob(ArchiveHandle *AH, TocEntry *te, Oid oid)
  * Called by the archiver when the dumper calls EndBlob.
  *
  * Optional.
- *
  */
 static void
 _EndBlob(ArchiveHandle *AH, TocEntry *te, Oid oid)
@@ -408,7 +403,6 @@ _EndBlob(ArchiveHandle *AH, TocEntry *te, Oid oid)
  * Called by the archiver when finishing saving all BLOB DATA.
  *
  * Optional.
- *
  */
 static void
 _EndBlobs(ArchiveHandle *AH, TocEntry *te)
@@ -487,9 +481,6 @@ _PrintTocData(ArchiveHandle *AH, TocEntry *te, RestoreOptions *ropt)
 			break;
 
 		case BLK_BLOBS:
-			if (!AH->connection)
-				die_horribly(AH, modulename, "large objects cannot be loaded without a database connection\n");
-
 			_LoadBlobs(AH);
 			break;
 
@@ -555,7 +546,7 @@ _PrintData(ArchiveHandle *AH)
 
 		ctx->filePos += blkLen;
 
-		zp->next_in = in;
+		zp->next_in = (void *) in;
 		zp->avail_in = blkLen;
 
 #ifdef HAVE_LIBZ
@@ -564,7 +555,7 @@ _PrintData(ArchiveHandle *AH)
 		{
 			while (zp->avail_in != 0)
 			{
-				zp->next_out = out;
+				zp->next_out = (void *) out;
 				zp->avail_out = zlibOutSize;
 				res = inflate(zp, 0);
 				if (res != Z_OK && res != Z_STREAM_END)
@@ -594,7 +585,7 @@ _PrintData(ArchiveHandle *AH)
 		zp->avail_in = 0;
 		while (res != Z_STREAM_END)
 		{
-			zp->next_out = out;
+			zp->next_out = (void *) out;
 			zp->avail_out = zlibOutSize;
 			res = inflate(zp, 0);
 			if (res != Z_OK && res != Z_STREAM_END)
@@ -803,10 +794,9 @@ _CloseArchive(ArchiveHandle *AH)
 		WriteDataChunks(AH);
 
 		/*
-		 * This is not an essential operation - it is really only needed
-		 * if we expect to be doing seeks to read the data back - it may
-		 * be ok to just use the existing self-consistent block
-		 * formatting.
+		 * This is not an essential operation - it is really only needed if we
+		 * expect to be doing seeks to read the data back - it may be ok to
+		 * just use the existing self-consistent block formatting.
 		 */
 		if (ctx->hasSeek)
 		{
@@ -870,7 +860,6 @@ _readBlockHeader(ArchiveHandle *AH, int *type, int *id)
 /*
  * If zlib is available, then startit up. This is called from
  * StartData & StartBlob. The buffers are setup in the Init routine.
- *
  */
 static void
 _StartDataCompressor(ArchiveHandle *AH, TocEntry *te)
@@ -892,14 +881,13 @@ _StartDataCompressor(ArchiveHandle *AH, TocEntry *te)
 		if (deflateInit(zp, AH->compression) != Z_OK)
 			die_horribly(AH, modulename, "could not initialize compression library: %s\n", zp->msg);
 	}
-
 #else
 
 	AH->compression = 0;
 #endif
 
 	/* Just be paranoid - maybe End is called after Start, with no Write */
-	zp->next_out = ctx->zlibOut;
+	zp->next_out = (void *) ctx->zlibOut;
 	zp->avail_out = zlibOutSize;
 }
 
@@ -930,22 +918,21 @@ _DoDeflate(ArchiveHandle *AH, lclContext *ctx, int flush)
 			)
 		{
 			/*
-			 * Extra paranoia: avoid zero-length chunks since a zero
-			 * length chunk is the EOF marker. This should never happen
-			 * but...
+			 * Extra paranoia: avoid zero-length chunks since a zero length
+			 * chunk is the EOF marker. This should never happen but...
 			 */
 			if (zp->avail_out < zlibOutSize)
 			{
 				/*
-				 * printf("Wrote %lu byte deflated chunk\n", (unsigned
-				 * long) (zlibOutSize - zp->avail_out));
+				 * printf("Wrote %lu byte deflated chunk\n", (unsigned long)
+				 * (zlibOutSize - zp->avail_out));
 				 */
 				WriteInt(AH, zlibOutSize - zp->avail_out);
 				if (fwrite(out, 1, zlibOutSize - zp->avail_out, AH->FH) != (zlibOutSize - zp->avail_out))
 					die_horribly(AH, modulename, "could not write compressed chunk\n");
 				ctx->filePos += zlibOutSize - zp->avail_out;
 			}
-			zp->next_out = out;
+			zp->next_out = (void *) out;
 			zp->avail_out = zlibOutSize;
 		}
 	}

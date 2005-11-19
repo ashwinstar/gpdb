@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/access/relscan.h,v 1.37 2004/12/31 22:03:21 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/access/relscan.h,v 1.41 2005/10/15 02:49:42 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -38,7 +38,11 @@ typedef struct HeapScanDescData
 
 typedef HeapScanDescData *HeapScanDesc;
 
-
+/*
+ * We use the same IndexScanDescData structure for both amgettuple-based
+ * and amgetmulti-based index scans.  Some fields are only relevant in
+ * amgettuple-based scans.
+ */
 typedef struct IndexScanDescData
 {
 	/* scan parameters */
@@ -47,6 +51,7 @@ typedef struct IndexScanDescData
 	Snapshot	xs_snapshot;	/* snapshot to see */
 	int			numberOfKeys;	/* number of scan keys */
 	ScanKey		keyData;		/* array of scan key descriptors */
+	bool		is_multiscan;	/* TRUE = using amgetmulti */
 
 	/* signaling to index AM about killing index tuples */
 	bool		kill_prior_tuple;		/* last-returned tuple is dead */
@@ -70,13 +75,11 @@ typedef struct IndexScanDescData
 	Buffer		xs_cbuf;		/* current heap buffer in scan, if any */
 	/* NB: if xs_cbuf is not InvalidBuffer, we hold a pin on that buffer */
 
-	FmgrInfo	fn_getnext;		/* cached lookup info for AM's getnext fn */
-
 	/*
 	 * If keys_are_unique and got_tuple are both true, we stop calling the
-	 * index AM; it is then necessary for index_getnext to keep track of
-	 * the logical scan position for itself.  It does that using
-	 * unique_tuple_pos: -1 = before row, 0 = on row, +1 = after row.
+	 * index AM; it is then necessary for index_getnext to keep track of the
+	 * logical scan position for itself.  It does that using unique_tuple_pos:
+	 * -1 = before row, 0 = on row, +1 = after row.
 	 */
 	int			unique_tuple_pos;		/* logical position */
 	int			unique_tuple_mark;		/* logical marked position */
@@ -86,14 +89,6 @@ typedef struct IndexScanDescData
 
 typedef IndexScanDescData *IndexScanDesc;
 
-
-/* ----------------
- *		IndexScanDescPtr is used in the executor where we have to
- *		keep track of several index scans when using several indices
- *		- cim 9/10/89
- * ----------------
- */
-typedef IndexScanDesc *IndexScanDescPtr;
 
 /*
  * HeapScanIsValid

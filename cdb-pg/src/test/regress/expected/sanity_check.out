@@ -14,17 +14,14 @@ SELECT relname, relhasindex
  bt_i4_heap          | t
  bt_name_heap        | t
  bt_txt_heap         | t
- cdb                 | t
- extent              | t
+ circle_tbl          | t
  fast_emp4000        | t
  func_index_heap     | t
  hash_f8_heap        | t
  hash_i4_heap        | t
  hash_name_heap      | t
  hash_txt_heap       | t
- host                | t
  ihighway            | t
- listener            | t
  num_exp_add         | t
  num_exp_div         | t
  num_exp_ln          | t
@@ -41,6 +38,9 @@ SELECT relname, relhasindex
  pg_amproc           | t
  pg_attrdef          | t
  pg_attribute        | t
+ pg_auth_members     | t
+ pg_authid           | t
+ pg_autovacuum       | t
  pg_cast             | t
  pg_class            | t
  pg_constraint       | t
@@ -48,7 +48,6 @@ SELECT relname, relhasindex
  pg_database         | t
  pg_depend           | t
  pg_description      | t
- pg_group            | t
  pg_index            | t
  pg_inherits         | t
  pg_language         | t
@@ -56,23 +55,20 @@ SELECT relname, relhasindex
  pg_namespace        | t
  pg_opclass          | t
  pg_operator         | t
+ pg_pltemplate       | t
  pg_proc             | t
  pg_rewrite          | t
- pg_shadow           | t
+ pg_shdepend         | t
  pg_statistic        | t
  pg_tablespace       | t
  pg_trigger          | t
  pg_type             | t
- policy              | t
+ polygon_tbl         | t
  road                | t
- segdb               | t
- segment             | t
  shighway            | t
- spacecategory       | t
- tablespace          | t
  tenk1               | t
  tenk2               | t
-(62 rows)
+(58 rows)
 
 --
 -- another sanity check: every system catalog that has OIDs should have

@@ -14,13 +14,13 @@
 
 
 Flow *
-cdbpathtoplan_create_flow(Query    *root,
+cdbpathtoplan_create_flow(PlannerInfo   *root,
                           Path     *path,
                           List     *pathkeys,
                           Plan     *plan);
 
 Motion *
-cdbpathtoplan_create_motion_plan(Query         *root,
+cdbpathtoplan_create_motion_plan(PlannerInfo   *root,
                                  CdbMotionPath *path,
                                  Plan          *subplan);
 

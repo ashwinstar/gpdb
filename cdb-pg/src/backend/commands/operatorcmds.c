@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/operatorcmds.c,v 1.20 2004/12/31 21:59:41 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/operatorcmds.c,v 1.26 2005/10/15 02:49:15 momjian Exp $
  *
  * DESCRIPTION
  *	  The "DefineFoo" routines take the parse tree and pick out the
@@ -35,7 +35,6 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
-#include "catalog/catname.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
@@ -70,11 +69,9 @@ DefineOperator(List *names, List *parameters)
 	TypeName   *typeName2 = NULL;		/* second type name */
 	Oid			typeId1 = InvalidOid;	/* types converted to OID */
 	Oid			typeId2 = InvalidOid;
-	List	   *commutatorName = NIL;	/* optional commutator operator
-										 * name */
+	List	   *commutatorName = NIL;	/* optional commutator operator name */
 	List	   *negatorName = NIL;		/* optional negator operator name */
-	List	   *restrictionName = NIL;	/* optional restrict. sel.
-										 * procedure */
+	List	   *restrictionName = NIL;	/* optional restrict. sel. procedure */
 	List	   *joinName = NIL; /* optional join sel. procedure */
 	List	   *leftSortName = NIL;		/* optional left sort operator */
 	List	   *rightSortName = NIL;	/* optional right sort operator */
@@ -104,7 +101,7 @@ DefineOperator(List *names, List *parameters)
 			if (typeName1->setof)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-				errmsg("setof type not allowed for operator argument")));
+					errmsg("setof type not allowed for operator argument")));
 		}
 		else if (pg_strcasecmp(defel->defname, "rightarg") == 0)
 		{
@@ -112,7 +109,7 @@ DefineOperator(List *names, List *parameters)
 			if (typeName2->setof)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
-				errmsg("setof type not allowed for operator argument")));
+					errmsg("setof type not allowed for operator argument")));
 		}
 		else if (pg_strcasecmp(defel->defname, "procedure") == 0)
 			functionName = defGetQualifiedName(defel);
@@ -158,8 +155,8 @@ DefineOperator(List *names, List *parameters)
 		typeId2 = typenameTypeId(typeName2);
 
 	/*
-	 * If any of the mergejoin support operators were given, then canMerge
-	 * is implicit.  If canMerge is specified or implicit, fill in default
+	 * If any of the mergejoin support operators were given, then canMerge is
+	 * implicit.  If canMerge is specified or implicit, fill in default
 	 * operator names for any missing mergejoin support operators.
 	 */
 	if (leftSortName || rightSortName || ltCompareName || gtCompareName)
@@ -185,11 +182,9 @@ DefineOperator(List *names, List *parameters)
 				   typeId1,		/* left type id */
 				   typeId2,		/* right type id */
 				   functionName,	/* function for operator */
-				   commutatorName,		/* optional commutator operator
-										 * name */
+				   commutatorName,		/* optional commutator operator name */
 				   negatorName, /* optional negator operator name */
-				   restrictionName,		/* optional restrict. sel.
-										 * procedure */
+				   restrictionName,		/* optional restrict. sel. procedure */
 				   joinName,	/* optional join sel. procedure name */
 				   canHash,		/* operator hashes */
 				   leftSortName,	/* optional left sort operator */
@@ -234,7 +229,7 @@ RemoveOperator(RemoveOperStmt *stmt)
 	/*
 	 * Do the deletion
 	 */
-	object.classId = get_system_catalog_relid(OperatorRelationName);
+	object.classId = OperatorRelationId;
 	object.objectId = operOid;
 	object.objectSubId = 0;
 
@@ -250,7 +245,7 @@ RemoveOperatorById(Oid operOid)
 	Relation	relation;
 	HeapTuple	tup;
 
-	relation = heap_openr(OperatorRelationName, RowExclusiveLock);
+	relation = heap_open(OperatorRelationId, RowExclusiveLock);
 
 	tup = SearchSysCache(OPEROID,
 						 ObjectIdGetDatum(operOid),
@@ -270,14 +265,15 @@ RemoveOperatorById(Oid operOid)
  */
 void
 AlterOperatorOwner(List *name, TypeName *typeName1, TypeName *typeName2,
-				   AclId newOwnerSysId)
+				   Oid newOwnerId)
 {
 	Oid			operOid;
 	HeapTuple	tup;
 	Relation	rel;
+	AclResult	aclresult;
 	Form_pg_operator oprForm;
 
-	rel = heap_openr(OperatorRelationName, RowExclusiveLock);
+	rel = heap_open(OperatorRelationId, RowExclusiveLock);
 
 	operOid = LookupOperNameTypeNames(name, typeName1, typeName2,
 									  false);
@@ -294,23 +290,39 @@ AlterOperatorOwner(List *name, TypeName *typeName1, TypeName *typeName2,
 	 * If the new owner is the same as the existing owner, consider the
 	 * command to have succeeded.  This is for dump restoration purposes.
 	 */
-	if (oprForm->oprowner != newOwnerSysId)
+	if (oprForm->oprowner != newOwnerId)
 	{
-		/* Otherwise, must be superuser to change object ownership */
+		/* Superusers can always do it */
 		if (!superuser())
-			ereport(ERROR,
-					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 errmsg("must be superuser to change owner")));
+		{
+			/* Otherwise, must be owner of the existing object */
+			if (!pg_oper_ownercheck(operOid, GetUserId()))
+				aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_OPER,
+							   NameListToString(name));
+
+			/* Must be able to become new owner */
+			check_is_member_of_role(GetUserId(), newOwnerId);
+
+			/* New owner must have CREATE privilege on namespace */
+			aclresult = pg_namespace_aclcheck(oprForm->oprnamespace,
+											  newOwnerId,
+											  ACL_CREATE);
+			if (aclresult != ACLCHECK_OK)
+				aclcheck_error(aclresult, ACL_KIND_NAMESPACE,
+							   get_namespace_name(oprForm->oprnamespace));
+		}
 
 		/*
-		 * Modify the owner --- okay to scribble on tup because it's a
-		 * copy
+		 * Modify the owner --- okay to scribble on tup because it's a copy
 		 */
-		oprForm->oprowner = newOwnerSysId;
+		oprForm->oprowner = newOwnerId;
 
 		simple_heap_update(rel, &tup->t_self, tup);
 
 		CatalogUpdateIndexes(rel, tup);
+
+		/* Update owner dependency reference */
+		changeDependencyOnOwner(OperatorRelationId, operOid, newOwnerId);
 	}
 
 	heap_close(rel, NoLock);

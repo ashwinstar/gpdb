@@ -24,7 +24,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- *	$PostgreSQL: pgsql/src/backend/libpq/pqformat.c,v 1.37 2004/12/31 21:59:50 pgsql Exp $
+ *	$PostgreSQL: pgsql/src/backend/libpq/pqformat.c,v 1.40 2005/10/15 02:49:18 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -93,9 +93,8 @@ pq_beginmessage(StringInfo buf, char msgtype)
 
 	/*
 	 * We stash the message type into the buffer's cursor field, expecting
-	 * that the pq_sendXXX routines won't touch it.  We could
-	 * alternatively make it the first byte of the buffer contents, but
-	 * this seems easier.
+	 * that the pq_sendXXX routines won't touch it.  We could alternatively
+	 * make it the first byte of the buffer contents, but this seems easier.
 	 */
 	buf->cursor = msgtype;
 }
@@ -137,7 +136,7 @@ pq_sendcountedtext(StringInfo buf, const char *str, int slen,
 	int			extra = countincludesself ? 4 : 0;
 	char	   *p;
 
-	p = (char *) pg_server_to_client((unsigned char *) str, slen);
+	p = pg_server_to_client(str, slen);
 	if (p != str)				/* actual conversion has been done? */
 	{
 		slen = strlen(p);
@@ -167,7 +166,7 @@ pq_sendtext(StringInfo buf, const char *str, int slen)
 {
 	char	   *p;
 
-	p = (char *) pg_server_to_client((unsigned char *) str, slen);
+	p = pg_server_to_client(str, slen);
 	if (p != str)				/* actual conversion has been done? */
 	{
 		slen = strlen(p);
@@ -192,7 +191,7 @@ pq_sendstring(StringInfo buf, const char *str)
 
 	char	   *p;
 
-	p = (char *) pg_server_to_client((unsigned char *) str, slen);
+	p = pg_server_to_client(str, slen);
 	if (p != str)				/* actual conversion has been done? */
 	{
 		slen = strlen(p);
@@ -408,7 +407,7 @@ pq_puttextmessage(char msgtype, const char *str)
 	int			slen = strlen(str);
 	char	   *p;
 
-	p = (char *) pg_server_to_client((unsigned char *) str, slen);
+	p = pg_server_to_client(str, slen);
 	if (p != str)				/* actual conversion has been done? */
 	{
 		(void) pq_putmessage(msgtype, p, strlen(p) + 1);
@@ -501,8 +500,12 @@ pq_getmsgint64(StringInfo msg)
 	l32 = ntohl(l32);
 
 #ifdef INT64_IS_BUSTED
-	/* just lose the high half */
+	/* error out if incoming value is wider than 32 bits */
 	result = l32;
+	if ((result < 0) ? (h32 != -1) : (h32 != 0))
+		ereport(ERROR,
+				(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+				 errmsg("binary value is out of range for type bigint")));
 #else
 	result = h32;
 	result <<= 32;
@@ -631,7 +634,7 @@ pq_getmsgtext(StringInfo msg, int rawbytes, int *nbytes)
 	str = &msg->data[msg->cursor];
 	msg->cursor += rawbytes;
 
-	p = (char *) pg_client_to_server((unsigned char *) str, rawbytes);
+	p = pg_client_to_server(str, rawbytes);
 	if (p != str)				/* actual conversion has been done? */
 		*nbytes = strlen(p);
 	else
@@ -660,8 +663,8 @@ pq_getmsgstring(StringInfo msg)
 	str = &msg->data[msg->cursor];
 
 	/*
-	 * It's safe to use strlen() here because a StringInfo is guaranteed
-	 * to have a trailing null byte.  But check we found a null inside the
+	 * It's safe to use strlen() here because a StringInfo is guaranteed to
+	 * have a trailing null byte.  But check we found a null inside the
 	 * message.
 	 */
 	slen = strlen(str);
@@ -671,7 +674,7 @@ pq_getmsgstring(StringInfo msg)
 				 errmsg("invalid string in message")));
 	msg->cursor += slen + 1;
 
-	return (const char *) pg_client_to_server((unsigned char *) str, slen);
+	return pg_client_to_server(str, slen);
 }
 
 /* --------------------------------

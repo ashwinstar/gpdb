@@ -278,7 +278,7 @@ plan_tree_walker(Node *node,
 		case T_IndexScan:
 			if (walk_scan_node_fields((Scan *) node, walker, context))
 				return true;
-			if (walker((Node *) ((IndexScan *) node)->indxqual, context))
+			if (walker((Node *) ((IndexScan *) node)->indexqual, context))
 				return true;
 			/* Other fields are lists of basic items, nothing to walk. */
 			break;
@@ -658,12 +658,12 @@ plan_tree_mutator(Node *node,
 
 				FLATCOPY(newidxscan, idxscan, IndexScan);
 				SCANMUTATE(newidxscan, idxscan);
-				MUTATE(newidxscan->indxid, idxscan->indxid, List *);
-				MUTATE(newidxscan->indxqual, idxscan->indxqual, List *);
-				MUTATE(newidxscan->indxqualorig, idxscan->indxqualorig, List *);
-				MUTATE(newidxscan->indxstrategy, idxscan->indxstrategy, List *);
-				MUTATE(newidxscan->indxsubtype, idxscan->indxsubtype, List *);
-				MUTATE(newidxscan->indxlossy, idxscan->indxlossy, List *);
+				newidxscan->indexid = idxscan->indexid;
+				//MUTATE(newidxscan->indexid, idxscan->indexid, List *);
+				MUTATE(newidxscan->indexqual, idxscan->indexqual, List *);
+				MUTATE(newidxscan->indexqualorig, idxscan->indexqualorig, List *);
+				MUTATE(newidxscan->indexstrategy, idxscan->indexstrategy, List *);
+				MUTATE(newidxscan->indexsubtype, idxscan->indexsubtype, List *);
 				/* indxorderdir  is  scalar */
 				return (Node *) newidxscan;
 			}

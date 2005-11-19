@@ -9,7 +9,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/backend/libpq/crypt.c,v 1.61 2004/12/31 21:59:50 pgsql Exp $
+ * $PostgreSQL: pgsql/src/backend/libpq/crypt.c,v 1.67 2005/10/17 16:24:19 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -25,11 +25,11 @@
 #include "miscadmin.h"
 #include "storage/fd.h"
 #include "nodes/pg_list.h"
-#include "utils/nabstime.h"
+#include "utils/timestamp.h"
 
 
 int
-md5_crypt_verify(const Port *port, const char *user, char *client_pass)
+md5_crypt_verify(const Port *port, const char *role, char *client_pass)
 {
 	char	   *shadow_pass = NULL,
 			   *valuntil = NULL,
@@ -39,23 +39,25 @@ md5_crypt_verify(const Port *port, const char *user, char *client_pass)
 	ListCell   *token;
 	char	   *crypt_client_pass = client_pass;
 
-	if ((line = get_user_line(user)) == NULL)
+	if ((line = get_role_line(role)) == NULL)
 		return STATUS_ERROR;
 
-	/* Skip over username */
-	token = lnext(list_head(*line));
+	/* Skip over rolename */
+	token = list_head(*line);
+	if (token)
+		token = lnext(token);
 	if (token)
 	{
-		shadow_pass = lfirst(token);
+		shadow_pass = (char *) lfirst(token);
 		token = lnext(token);
 		if (token)
-			valuntil = lfirst(token);
+			valuntil = (char *) lfirst(token);
 	}
 
 	if (shadow_pass == NULL || *shadow_pass == '\0')
 		return STATUS_ERROR;
 
-	/* We can't do crypt with pg_shadow MD5 passwords */
+	/* We can't do crypt with MD5 passwords */
 	if (isMD5(shadow_pass) && port->auth_method == uaCrypt)
 	{
 		ereport(LOG,
@@ -73,10 +75,10 @@ md5_crypt_verify(const Port *port, const char *user, char *client_pass)
 			crypt_pwd = palloc(MD5_PASSWD_LEN + 1);
 			if (isMD5(shadow_pass))
 			{
-				/* pg_shadow already encrypted, only do salt */
-				if (!EncryptMD5(shadow_pass + strlen("md5"),
-								(char *) port->md5Salt,
-								sizeof(port->md5Salt), crypt_pwd))
+				/* stored password already encrypted, only do salt */
+				if (!pg_md5_encrypt(shadow_pass + strlen("md5"),
+									(char *) port->md5Salt,
+									sizeof(port->md5Salt), crypt_pwd))
 				{
 					pfree(crypt_pwd);
 					return STATUS_ERROR;
@@ -84,22 +86,22 @@ md5_crypt_verify(const Port *port, const char *user, char *client_pass)
 			}
 			else
 			{
-				/* pg_shadow plain, double-encrypt */
+				/* stored password is plain, double-encrypt */
 				char	   *crypt_pwd2 = palloc(MD5_PASSWD_LEN + 1);
 
-				if (!EncryptMD5(shadow_pass,
-								port->user_name,
-								strlen(port->user_name),
-								crypt_pwd2))
+				if (!pg_md5_encrypt(shadow_pass,
+									port->user_name,
+									strlen(port->user_name),
+									crypt_pwd2))
 				{
 					pfree(crypt_pwd);
 					pfree(crypt_pwd2);
 					return STATUS_ERROR;
 				}
-				if (!EncryptMD5(crypt_pwd2 + strlen("md5"),
-								port->md5Salt,
-								sizeof(port->md5Salt),
-								crypt_pwd))
+				if (!pg_md5_encrypt(crypt_pwd2 + strlen("md5"),
+									port->md5Salt,
+									sizeof(port->md5Salt),
+									crypt_pwd))
 				{
 					pfree(crypt_pwd);
 					pfree(crypt_pwd2);
@@ -119,15 +121,12 @@ md5_crypt_verify(const Port *port, const char *user, char *client_pass)
 		default:
 			if (isMD5(shadow_pass))
 			{
-				/*
-				 * Encrypt user-supplied password to match MD5 in
-				 * pg_shadow
-				 */
+				/* Encrypt user-supplied password to match stored MD5 */
 				crypt_client_pass = palloc(MD5_PASSWD_LEN + 1);
-				if (!EncryptMD5(client_pass,
-								port->user_name,
-								strlen(port->user_name),
-								crypt_client_pass))
+				if (!pg_md5_encrypt(client_pass,
+									port->user_name,
+									strlen(port->user_name),
+									crypt_client_pass))
 				{
 					pfree(crypt_client_pass);
 					return STATUS_ERROR;
@@ -142,19 +141,22 @@ md5_crypt_verify(const Port *port, const char *user, char *client_pass)
 		/*
 		 * Password OK, now check to be sure we are not past valuntil
 		 */
-		AbsoluteTime vuntil,
-					current;
-
-		if (!valuntil)
-			vuntil = INVALID_ABSTIME;
-		else
-			vuntil = DatumGetAbsoluteTime(DirectFunctionCall1(abstimein,
-											 CStringGetDatum(valuntil)));
-		current = GetCurrentAbsoluteTime();
-		if (vuntil != INVALID_ABSTIME && vuntil < current)
-			retval = STATUS_ERROR;
-		else
+		if (valuntil == NULL || *valuntil == '\0')
 			retval = STATUS_OK;
+		else
+		{
+			TimestampTz vuntil;
+
+			vuntil = DatumGetTimestampTz(DirectFunctionCall3(timestamptz_in,
+												   CStringGetDatum(valuntil),
+												ObjectIdGetDatum(InvalidOid),
+														 Int32GetDatum(-1)));
+
+			if (vuntil < GetCurrentTimestamp())
+				retval = STATUS_ERROR;
+			else
+				retval = STATUS_OK;
+		}
 	}
 
 	if (port->auth_method == uaMD5)

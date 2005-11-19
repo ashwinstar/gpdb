@@ -545,6 +545,8 @@ SendTuple(int16 motNodeID, HeapTuple tuple, int16 targetRoute)
 	MemoryContext oldCtxt;
 	SendReturnCode rc;
 
+	AssertArg(tuple != NULL);
+		
 	/*
 	 * Pull up the motion node entry with the node's details.  This includes
 	 * details that affect sending, such as whether the motion node needs to

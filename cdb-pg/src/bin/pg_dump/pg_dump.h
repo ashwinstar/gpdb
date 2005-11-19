@@ -6,7 +6,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/bin/pg_dump/pg_dump.h,v 1.115 2004/12/31 22:03:08 pgsql Exp $
+ * $PostgreSQL: pgsql/src/bin/pg_dump/pg_dump.h,v 1.122 2005/10/15 02:49:39 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -78,7 +78,8 @@ typedef enum
 	DO_CAST,
 	DO_TABLE_DATA,
 	DO_TABLE_TYPE,
-	DO_BLOBS
+	DO_BLOBS,
+	DO_BLOB_COMMENTS
 } DumpableObjectType;
 
 typedef struct _dumpableObject
@@ -96,7 +97,7 @@ typedef struct _dumpableObject
 typedef struct _namespaceInfo
 {
 	DumpableObject dobj;
-	char	   *usename;		/* name of owner, or empty string */
+	char	   *rolname;		/* name of owner, or empty string */
 	char	   *nspacl;
 	bool		dump;			/* true if need to dump definition */
 } NamespaceInfo;
@@ -109,7 +110,7 @@ typedef struct _typeInfo
 	 * Note: dobj.name is the pg_type.typname entry.  format_type() might
 	 * produce something different than typname
 	 */
-	char	   *usename;		/* name of owner, or empty string */
+	char	   *rolname;		/* name of owner, or empty string */
 	Oid			typinput;
 	Oid			typelem;
 	Oid			typrelid;
@@ -125,7 +126,7 @@ typedef struct _typeInfo
 typedef struct _funcInfo
 {
 	DumpableObject dobj;
-	char	   *usename;		/* name of owner, or empty string */
+	char	   *rolname;		/* name of owner, or empty string */
 	Oid			lang;
 	int			nargs;
 	Oid		   *argtypes;
@@ -144,20 +145,20 @@ typedef struct _aggInfo
 typedef struct _oprInfo
 {
 	DumpableObject dobj;
-	char	   *usename;
+	char	   *rolname;
 	Oid			oprcode;
 } OprInfo;
 
 typedef struct _opclassInfo
 {
 	DumpableObject dobj;
-	char	   *usename;
+	char	   *rolname;
 } OpclassInfo;
 
 typedef struct _convInfo
 {
 	DumpableObject dobj;
-	char	   *usename;
+	char	   *rolname;
 } ConvInfo;
 
 typedef struct _tableInfo
@@ -166,7 +167,7 @@ typedef struct _tableInfo
 	 * These fields are collected for every table in the database.
 	 */
 	DumpableObject dobj;
-	char	   *usename;		/* name of owner, or empty string */
+	char	   *rolname;		/* name of owner, or empty string */
 	char	   *relacl;
 	char		relkind;
 	char	   *reltablespace;	/* relation tablespace */
@@ -183,9 +184,8 @@ typedef struct _tableInfo
 	bool		dump;			/* true if we want to dump it */
 
 	/*
-	 * These fields are computed only if we decide the table is
-	 * interesting (it's either a table to dump, or a direct parent of a
-	 * dumpable table).
+	 * These fields are computed only if we decide the table is interesting
+	 * (it's either a table to dump, or a direct parent of a dumpable table).
 	 */
 	int			numatts;		/* number of attributes */
 	char	  **attnames;		/* the attribute names */
@@ -199,9 +199,9 @@ typedef struct _tableInfo
 	bool	   *attisserial;	/* true if attr is serial or bigserial */
 
 	/*
-	 * Note: we need to store per-attribute notnull, default, and
-	 * constraint stuff for all interesting tables so that we can tell
-	 * which constraints were inherited.
+	 * Note: we need to store per-attribute notnull, default, and constraint
+	 * stuff for all interesting tables so that we can tell which constraints
+	 * were inherited.
 	 */
 	bool	   *notnull;		/* Not null constraints on attributes */
 	struct _attrDefInfo **attrdefs;		/* DEFAULT expressions */
@@ -268,6 +268,7 @@ typedef struct _triggerInfo
 	char	   *tgconstrname;
 	Oid			tgconstrrelid;
 	char	   *tgconstrrelname;
+	bool		tgenabled;
 	bool		tgdeferrable;
 	bool		tginitdeferred;
 } TriggerInfo;

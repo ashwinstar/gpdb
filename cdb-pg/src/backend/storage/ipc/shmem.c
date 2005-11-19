@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/storage/ipc/shmem.c,v 1.82 2004/12/31 22:00:56 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/storage/ipc/shmem.c,v 1.87 2005/10/15 02:49:25 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -53,9 +53,6 @@
  *	cannot be redistributed to other tables.  We could build a simple
  *	hash bucket garbage collector if need be.  Right now, it seems
  *	unnecessary.
- *
- *		See InitSem() in sem.c for an example of how to use the
- *	shmem index.
  */
 
 #include "postgres.h"
@@ -74,18 +71,15 @@ SHMEM_OFFSET ShmemBase;			/* start address of shared memory */
 
 static SHMEM_OFFSET ShmemEnd;	/* end+1 address of shared memory */
 
-NON_EXEC_STATIC slock_t *ShmemLock;		/* spinlock for shared memory
-										 * allocation */
+slock_t    *ShmemLock;			/* spinlock for shared memory and LWLock
+								 * allocation */
 
 NON_EXEC_STATIC slock_t *ShmemIndexLock;		/* spinlock for ShmemIndex */
 
-NON_EXEC_STATIC void *ShmemIndexAlloc = NULL;	/* Memory actually
-												 * allocated for
-												 * ShmemIndex */
+NON_EXEC_STATIC void *ShmemIndexAlloc = NULL;	/* Memory actually allocated
+												 * for ShmemIndex */
 
 static HTAB *ShmemIndex = NULL; /* primary index hashtable for shmem */
-
-static bool ShmemBootstrap = false;		/* bootstrapping shmem index? */
 
 
 /*
@@ -146,8 +140,8 @@ InitShmemAllocation(void *seghdr, bool init)
 void *
 ShmemAlloc(Size size)
 {
-	uint32		newStart;
-	uint32		newFree;
+	Size		newStart;
+	Size		newFree;
 	void	   *newSpace;
 
 	/* use volatile pointer to prevent code rearrangement */
@@ -211,12 +205,11 @@ InitShmemIndex(void)
 	bool		found;
 
 	/*
-	 * Since ShmemInitHash calls ShmemInitStruct, which expects the
-	 * ShmemIndex hashtable to exist already, we have a bit of a
-	 * circularity problem in initializing the ShmemIndex itself.  We set
-	 * ShmemBootstrap to tell ShmemInitStruct to fake it.
+	 * Since ShmemInitHash calls ShmemInitStruct, which expects the ShmemIndex
+	 * hashtable to exist already, we have a bit of a circularity problem in
+	 * initializing the ShmemIndex itself.	The special "ShmemIndex" hash
+	 * table name will tell ShmemInitStruct to fake it.
 	 */
-	ShmemBootstrap = true;
 
 	/* create the shared memory shmem index */
 	info.keysize = SHMEM_INDEX_KEYSIZE;
@@ -240,17 +233,12 @@ InitShmemIndex(void)
 
 		result = (ShmemIndexEnt *)
 			hash_search(ShmemIndex, (void *) &item, HASH_ENTER, &found);
-		if (!result)
-			ereport(FATAL,
-					(errcode(ERRCODE_OUT_OF_MEMORY),
-					 errmsg("out of shared memory")));
 
-		Assert(ShmemBootstrap && !found);
+		Assert(!found);
 
 		result->location = MAKE_OFFSET(ShmemIndex->hctl);
 		result->size = SHMEM_INDEX_SIZE;
 
-		ShmemBootstrap = false;
 	}
 
 	/* now release the lock acquired in ShmemInitStruct */
@@ -285,9 +273,9 @@ ShmemInitHash(const char *name, /* table string name for shmem index */
 	void	   *location;
 
 	/*
-	 * Hash tables allocated in shared memory have a fixed directory; it
-	 * can't grow or other backends wouldn't be able to find it. So, make
-	 * sure we make it big enough to start with.
+	 * Hash tables allocated in shared memory have a fixed directory; it can't
+	 * grow or other backends wouldn't be able to find it. So, make sure we
+	 * make it big enough to start with.
 	 *
 	 * The shared memory allocator must be specified too.
 	 */
@@ -297,19 +285,19 @@ ShmemInitHash(const char *name, /* table string name for shmem index */
 
 	/* look it up in the shmem index */
 	location = ShmemInitStruct(name,
-					sizeof(HASHHDR) + infoP->dsize * sizeof(HASHSEGMENT),
+						sizeof(HASHHDR) + infoP->dsize * sizeof(HASHSEGMENT),
 							   &found);
 
 	/*
-	 * shmem index is corrupted.	Let someone else give the error
-	 * message since they have more information
+	 * shmem index is corrupted.	Let someone else give the error message
+	 * since they have more information
 	 */
 	if (location == NULL)
 		return NULL;
 
 	/*
-	 * if it already exists, attach to it rather than allocate and
-	 * initialize new space
+	 * if it already exists, attach to it rather than allocate and initialize
+	 * new space
 	 */
 	if (found)
 		hash_flags |= HASH_ATTACH;
@@ -349,25 +337,22 @@ ShmemInitStruct(const char *name, Size size, bool *foundPtr)
 
 	if (!ShmemIndex)
 	{
+		Assert(strcmp(name, "ShmemIndex") == 0);
 		if (IsUnderPostmaster)
 		{
 			/* Must be initializing a (non-standalone) backend */
-			Assert(strcmp(name, "ShmemIndex") == 0);
-			Assert(ShmemBootstrap);
 			Assert(ShmemIndexAlloc);
 			*foundPtr = TRUE;
 		}
 		else
 		{
 			/*
-			 * If the shmem index doesn't exist, we are bootstrapping: we
-			 * must be trying to init the shmem index itself.
+			 * If the shmem index doesn't exist, we are bootstrapping: we must
+			 * be trying to init the shmem index itself.
 			 *
-			 * Notice that the ShmemIndexLock is held until the shmem index
-			 * has been completely initialized.
+			 * Notice that the ShmemIndexLock is held until the shmem index has
+			 * been completely initialized.
 			 */
-			Assert(strcmp(name, "ShmemIndex") == 0);
-			Assert(ShmemBootstrap);
 			*foundPtr = FALSE;
 			ShmemIndexAlloc = ShmemAlloc(size);
 		}
@@ -376,7 +361,7 @@ ShmemInitStruct(const char *name, Size size, bool *foundPtr)
 
 	/* look it up in the shmem index */
 	result = (ShmemIndexEnt *)
-		hash_search(ShmemIndex, (void *) &item, HASH_ENTER, foundPtr);
+		hash_search(ShmemIndex, (void *) &item, HASH_ENTER_NULL, foundPtr);
 
 	if (!result)
 	{
@@ -384,15 +369,14 @@ ShmemInitStruct(const char *name, Size size, bool *foundPtr)
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of shared memory")));
-		return NULL;
 	}
 
 	if (*foundPtr)
 	{
 		/*
-		 * Structure is in the shmem index so someone else has allocated
-		 * it already.	The size better be the same as the size we are
-		 * trying to initialize to or there is a name conflict (or worse).
+		 * Structure is in the shmem index so someone else has allocated it
+		 * already.  The size better be the same as the size we are trying to
+		 * initialize to or there is a name conflict (or worse).
 		 */
 		if (result->size != size)
 		{
@@ -417,7 +401,7 @@ ShmemInitStruct(const char *name, Size size, bool *foundPtr)
 
 			ereport(WARNING,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
-					 errmsg("could not allocate shared memory segment \"%s\"", name)));
+			errmsg("could not allocate shared memory segment \"%s\"", name)));
 			*foundPtr = FALSE;
 			return NULL;
 		}
@@ -428,4 +412,41 @@ ShmemInitStruct(const char *name, Size size, bool *foundPtr)
 
 	SpinLockRelease(ShmemIndexLock);
 	return structPtr;
+}
+
+
+/*
+ * Add two Size values, checking for overflow
+ */
+Size
+add_size(Size s1, Size s2)
+{
+	Size		result;
+
+	result = s1 + s2;
+	/* We are assuming Size is an unsigned type here... */
+	if (result < s1 || result < s2)
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("requested shared memory size overflows size_t")));
+	return result;
+}
+
+/*
+ * Multiply two Size values, checking for overflow
+ */
+Size
+mul_size(Size s1, Size s2)
+{
+	Size		result;
+
+	if (s1 == 0 || s2 == 0)
+		return 0;
+	result = s1 * s2;
+	/* We are assuming Size is an unsigned type here... */
+	if (result / s2 != s1)
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("requested shared memory size overflows size_t")));
+	return result;
 }

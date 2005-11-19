@@ -18,6 +18,7 @@
 #include "optimizer/pathnode.h" /* Path */
 #include "optimizer/paths.h"    /* cdb_build_distribution_pathkeys() */
 #include "optimizer/tlist.h"    /* tlist_member() */
+#include "parser/parse_expr.h"
 
 #include "cdb/cdbpathlocus.h"   /* me */
 
@@ -154,7 +155,7 @@ cdbpathlocus_compare(CdbPathLocus_Comparison    op,
  * Returns a locus describing the distribution of a base relation.
  */
 CdbPathLocus
-cdbpathlocus_from_baserel(struct Query         *root,
+cdbpathlocus_from_baserel(struct PlannerInfo   *root,
                           struct RelOptInfo    *rel)
 {
     CdbPathLocus result;
@@ -189,7 +190,7 @@ cdbpathlocus_from_baserel(struct Query         *root,
  * The subquery plan should have been generated already.
  */
 CdbPathLocus
-cdbpathlocus_from_subquery(struct Query         *root,
+cdbpathlocus_from_subquery(struct PlannerInfo   *root,
                            struct RelOptInfo    *rel)
 {
     CdbPathLocus    locus;
@@ -239,15 +240,21 @@ cdbpathlocus_from_subquery(struct Query         *root,
             foreach(hashexprcell, flow->hashExpr)
             {
                 Node           *expr = (Node *)lfirst(hashexprcell);
-                TargetEntry    *tle = tlistentry_member(expr, plan->targetlist);
+                TargetEntry    *tle = tlist_member(expr, plan->targetlist);
                 Var            *var;
                 List           *pathkey;
                 if (!tle)
                     break;
+                // ????
+                //   should this be:
+				//relid = rel->relid;
+				//reloid = getrelid(relid, root->parse->rtable);
+				//get_atttypetypmod(reloid, varattno, &vartypeid, &type_mod);
+				// ????
                 var = makeVar(rel->relid,
-                              tle->resdom->resno,
-                              tle->resdom->restype,
-                              tle->resdom->restypmod,
+                              tle->resno,
+                              exprType((Node *) tle->expr),
+                              exprTypmod((Node *) tle->expr),
                               0);
                 pathkey = cdb_make_pathkey_for_expr(root, (Node *)var, eq);
                 partkey = lappend(partkey, pathkey);

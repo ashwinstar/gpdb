@@ -1,5 +1,5 @@
 <!--
-$PostgreSQL: pgsql/doc/src/sgml/ref/alter_domain.sgml,v 1.13 2004/11/27 21:27:07 petere Exp $
+$PostgreSQL: pgsql/doc/src/sgml/ref/alter_domain.sgml,v 1.19 2005/11/01 21:09:50 tgl Exp $
 PostgreSQL documentation
 -->
 
@@ -34,6 +34,8 @@ ALTER DOMAIN <replaceable class="PARAMETER">name</replaceable>
     DROP CONSTRAINT <replaceable class="PARAMETER">constraint_name</replaceable> [ RESTRICT | CASCADE ]
 ALTER DOMAIN <replaceable class="PARAMETER">name</replaceable>
     OWNER TO <replaceable class="PARAMETER">new_owner</replaceable> 
+ALTER DOMAIN <replaceable class="PARAMETER">name</replaceable>
+    SET SCHEMA <replaceable class="PARAMETER">new_schema</replaceable> 
   </synopsis>
  </refsynopsisdiv>
 
@@ -97,11 +99,27 @@ ALTER DOMAIN <replaceable class="PARAMETER">name</replaceable>
      </para>
     </listitem>
    </varlistentry>
+
+   <varlistentry>
+    <term>SET SCHEMA</term>
+    <listitem>
+     <para>
+      This form changes the schema of the domain.  Any constraints
+      associated with the domain are moved into the new schema as well.
+     </para>
+    </listitem>
+   </varlistentry>
   </variablelist>
 
   <para>
-   You must own the domain to use <command>ALTER DOMAIN</>; except for
-   <command>ALTER DOMAIN OWNER</>, which may only be executed by a superuser.
+   You must own the domain to use <command>ALTER DOMAIN</>.
+   To change the schema of a domain, you must also have
+   <literal>CREATE</literal> privilege on the new schema.
+   To alter the owner, you must also be a direct or indirect member of the new
+   owning role, and that role must have <literal>CREATE</literal> privilege on
+   the domain's schema.  (These restrictions enforce that altering the owner
+   doesn't do anything you couldn't do by dropping and recreating the domain.
+   However, a superuser can alter ownership of any domain anyway.)
   </para>
  </refsect1>
 
@@ -114,8 +132,8 @@ ALTER DOMAIN <replaceable class="PARAMETER">name</replaceable>
       <term><replaceable class="PARAMETER">name</replaceable></term>
       <listitem>
        <para>
-	The name (possibly schema-qualified) of an existing domain to
-	alter.
+        The name (possibly schema-qualified) of an existing domain to
+        alter.
        </para>
       </listitem>
      </varlistentry>
@@ -124,7 +142,7 @@ ALTER DOMAIN <replaceable class="PARAMETER">name</replaceable>
       <term><replaceable class="PARAMETER">domain_constraint</replaceable></term>
       <listitem>
        <para>
-	New domain constraint for the domain.
+        New domain constraint for the domain.
        </para>
       </listitem>
      </varlistentry>
@@ -133,7 +151,7 @@ ALTER DOMAIN <replaceable class="PARAMETER">name</replaceable>
       <term><replaceable class="PARAMETER">constraint_name</replaceable></term>
       <listitem>
        <para>
-	Name of an existing constraint to drop.
+        Name of an existing constraint to drop.
        </para>
       </listitem>
      </varlistentry>
@@ -152,7 +170,7 @@ ALTER DOMAIN <replaceable class="PARAMETER">name</replaceable>
       <listitem>
        <para>
         Refuse to drop the constraint if there are any dependent
-	objects. This is the default behavior.
+        objects. This is the default behavior.
        </para>
       </listitem>
      </varlistentry>
@@ -161,7 +179,16 @@ ALTER DOMAIN <replaceable class="PARAMETER">name</replaceable>
       <term><replaceable class="PARAMETER">new_owner</replaceable></term>
       <listitem>
        <para>
-	The user name of the new owner of the domain.
+        The user name of the new owner of the domain.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
+      <term><replaceable class="PARAMETER">new_schema</replaceable></term>
+      <listitem>
+       <para>
+        The new schema for the domain.
        </para>
       </listitem>
      </varlistentry>
@@ -197,17 +224,35 @@ ALTER DOMAIN zipcode ADD CONSTRAINT zipchk CHECK (char_length(VALUE) = 5);
 ALTER DOMAIN zipcode DROP CONSTRAINT zipchk;
    </programlisting>
   </para>
+
+  <para>
+   To move the domain into a different schema:
+   <programlisting>
+ALTER DOMAIN zipcode SET SCHEMA customers;
+   </programlisting>
+  </para>
  </refsect1>
 
- <refsect1>
+ <refsect1 id="SQL-ALTERDOMAIN-compatibility">
   <title>Compatibility</title>
     
   <para>
-   The <command>ALTER DOMAIN</command> statement is compatible with SQL:1999,
-   except for the <literal>OWNER</> variant, which is a
-   <productname>PostgreSQL</productname> extension.
+   <command>ALTER DOMAIN</command> conforms to the <acronym>SQL</acronym>
+   standard,
+   except for the <literal>OWNER</> and <literal>SET SCHEMA</> variants,
+   which are <productname>PostgreSQL</productname> extensions.
   </para>
  </refsect1>
+
+ <refsect1 id="SQL-ALTERDOMAIN-see-also">
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member><xref linkend="sql-createdomain" endterm="sql-createdomain-title"></member>
+   <member><xref linkend="sql-dropdomain" endterm="sql-dropdomain-title"></member>
+  </simplelist>
+ </refsect1>
+
 </refentry>
 
 <!-- Keep this comment at the end of the file

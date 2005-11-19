@@ -13,7 +13,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/miscadmin.h,v 1.174 2004/12/31 22:03:19 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/miscadmin.h,v 1.183 2005/10/25 15:15:16 tgl Exp $
  *
  * NOTES
  *	  some of the information in this file should be moved to other files.
@@ -88,11 +88,12 @@ do { \
 
 #define CHECK_FOR_INTERRUPTS() \
 do { \
-	if (WaitForSingleObjectEx(pgwin32_signal_event,0,TRUE) == WAIT_OBJECT_0) \
+	if (UNBLOCKED_SIGNAL_QUEUE()) \
 		pgwin32_dispatch_queued_signals(); \
 	if (InterruptPending) \
 		ProcessInterrupts(); \
 } while(0)
+
 #endif   /* WIN32 */
 
 
@@ -225,27 +226,28 @@ extern void check_stack_depth(void);
 
 extern char *DatabasePath;
 
-/* in utils/misc/database.c */
-extern void GetRawDatabaseInfo(const char *name, Oid *db_id, Oid *db_tablespace);
-
 /* now in utils/init/miscinit.c */
 extern void SetDatabasePath(const char *path);
 
-extern char *GetUserNameFromId(AclId userid);
-extern AclId GetUserId(void);
-extern void SetUserId(AclId userid);
-extern AclId GetSessionUserId(void);
-extern void SetSessionUserId(AclId userid);
-extern void InitializeSessionUserId(const char *username);
+extern char *GetUserNameFromId(Oid roleid);
+extern Oid	GetUserId(void);
+extern void SetUserId(Oid userid);
+extern Oid	GetOuterUserId(void);
+extern Oid	GetSessionUserId(void);
+extern void InitializeSessionUserId(const char *rolename);
 extern void InitializeSessionUserIdStandalone(void);
-extern void SetSessionAuthorization(AclId userid, bool is_superuser);
+extern void AtAbort_UserId(void);
+extern void SetSessionAuthorization(Oid userid, bool is_superuser);
+extern Oid	GetCurrentRoleId(void);
+extern void SetCurrentRoleId(Oid roleid, bool is_superuser);
 
 extern void SetDataDir(const char *dir);
+extern void ChangeToDataDir(void);
 extern char *make_absolute_path(const char *path);
 
 /* in utils/misc/superuser.c */
 extern bool superuser(void);	/* current user is superuser */
-extern bool superuser_arg(AclId userid);		/* given user is superuser */
+extern bool superuser_arg(Oid roleid);	/* given user is superuser */
 
 
 /*****************************************************************************
@@ -312,7 +314,7 @@ extern void SetReindexProcessing(Oid heapOid, Oid indexOid);
 extern void ResetReindexProcessing(void);
 extern bool ReindexIsProcessingHeap(Oid heapOid);
 extern bool ReindexIsProcessingIndex(Oid indexOid);
-extern void CreateDataDirLockFile(const char *datadir, bool amPostmaster);
+extern void CreateDataDirLockFile(bool amPostmaster);
 extern void CreateSocketLockFile(const char *socketfile, bool amPostmaster);
 extern void TouchSocketLockFile(void);
 extern void RecordSharedMemoryInLockFile(unsigned long id1,

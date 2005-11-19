@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/index/genam.c,v 1.44 2004/12/31 21:59:19 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/index/genam.c,v 1.49 2005/10/15 02:49:09 momjian Exp $
  *
  * NOTES
  *	  many of the old access method routines have been turned into
@@ -78,14 +78,15 @@ RelationGetIndexScan(Relation indexRelation,
 	scan->numberOfKeys = nkeys;
 
 	/*
-	 * We allocate the key space here, but the AM is responsible for
-	 * actually filling it from the passed key array.
+	 * We allocate the key space here, but the AM is responsible for actually
+	 * filling it from the passed key array.
 	 */
 	if (nkeys > 0)
 		scan->keyData = (ScanKey) palloc(sizeof(ScanKeyData) * nkeys);
 	else
 		scan->keyData = NULL;
 
+	scan->is_multiscan = false; /* caller may change this */
 	scan->kill_prior_tuple = false;
 	scan->ignore_killed_tuples = true;	/* default setting */
 	scan->keys_are_unique = false;		/* may be set by index AM */
@@ -100,9 +101,6 @@ RelationGetIndexScan(Relation indexRelation,
 	scan->xs_ctup.t_datamcxt = NULL;
 	scan->xs_ctup.t_data = NULL;
 	scan->xs_cbuf = InvalidBuffer;
-
-	/* mark cached function lookup data invalid; it will be set later */
-	scan->fn_getnext.fn_oid = InvalidOid;
 
 	scan->unique_tuple_pos = 0;
 	scan->unique_tuple_mark = 0;
@@ -161,7 +159,7 @@ IndexScanEnd(IndexScanDesc scan)
  * systable_beginscan --- set up for heap-or-index scan
  *
  *	rel: catalog to scan, already opened and suitably locked
- *	indexRelname: name of index to conditionally use
+ *	indexId: OID of index to conditionally use
  *	indexOK: if false, forces a heap scan (see notes below)
  *	snapshot: time qual to use (usually should be SnapshotNow)
  *	nkeys, key: scan keys
@@ -178,7 +176,7 @@ IndexScanEnd(IndexScanDesc scan)
  */
 SysScanDesc
 systable_beginscan(Relation heapRelation,
-				   const char *indexRelname,
+				   Oid indexId,
 				   bool indexOK,
 				   Snapshot snapshot,
 				   int nkeys, ScanKey key)
@@ -186,18 +184,10 @@ systable_beginscan(Relation heapRelation,
 	SysScanDesc sysscan;
 	Relation	irel;
 
-	if (indexOK && !IsIgnoringSystemIndexes())
-	{
-		/* We assume it's a system index, so index_openr is OK */
-		irel = index_openr(indexRelname);
-
-		if (ReindexIsProcessingIndex(RelationGetRelid(irel)))
-		{
-			/* oops, can't use index that's being rebuilt */
-			index_close(irel);
-			irel = NULL;
-		}
-	}
+	if (indexOK &&
+		!IsIgnoringSystemIndexes() &&
+		!ReindexIsProcessingIndex(indexId))
+		irel = index_open(indexId);
 	else
 		irel = NULL;
 
@@ -213,12 +203,12 @@ systable_beginscan(Relation heapRelation,
 		/*
 		 * Change attribute numbers to be index column numbers.
 		 *
-		 * This code could be generalized to search for the index key numbers
-		 * to substitute, but for now there's no need.
+		 * This code could be generalized to search for the index key numbers to
+		 * substitute, but for now there's no need.
 		 */
 		for (i = 0; i < nkeys; i++)
 		{
-			Assert(key[i].sk_attno == irel->rd_index->indkey[i]);
+			Assert(key[i].sk_attno == irel->rd_index->indkey.values[i]);
 			key[i].sk_attno = i + 1;
 		}
 

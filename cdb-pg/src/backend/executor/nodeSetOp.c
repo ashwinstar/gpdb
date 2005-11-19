@@ -21,7 +21,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeSetOp.c,v 1.15 2004/12/31 21:59:45 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeSetOp.c,v 1.18 2005/10/15 02:49:17 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -37,6 +37,7 @@
 #include "access/heapam.h"
 #include "executor/executor.h"
 #include "executor/nodeSetOp.h"
+#include "utils/memutils.h"
 
 
 /* ----------------------------------------------------------------
@@ -49,18 +50,16 @@ ExecSetOp(SetOpState *node)
 	SetOp	   *plannode = (SetOp *) node->ps.plan;
 	TupleTableSlot *resultTupleSlot;
 	PlanState  *outerPlan;
-	TupleDesc	tupDesc;
 
 	/*
 	 * get information from the node
 	 */
 	outerPlan = outerPlanState(node);
 	resultTupleSlot = node->ps.ps_ResultTupleSlot;
-	tupDesc = ExecGetResultType(&node->ps);
 
 	/*
-	 * If the previously-returned tuple needs to be returned more than
-	 * once, keep returning it.
+	 * If the previously-returned tuple needs to be returned more than once,
+	 * keep returning it.
 	 */
 	if (node->numOutput > 0)
 	{
@@ -72,9 +71,9 @@ ExecSetOp(SetOpState *node)
 	ExecClearTuple(resultTupleSlot);
 
 	/*
-	 * Absorb groups of duplicate tuples, counting them, and saving the
-	 * first of each group as a possible return value. At the end of each
-	 * group, decide whether to return anything.
+	 * Absorb groups of duplicate tuples, counting them, and saving the first
+	 * of each group as a possible return value. At the end of each group,
+	 * decide whether to return anything.
 	 *
 	 * We assume that the tuples arrive in sorted order so we can detect
 	 * duplicates easily.
@@ -105,10 +104,7 @@ ExecSetOp(SetOpState *node)
 			 */
 			if (node->subplan_done)
 				return NULL;	/* no more tuples */
-			ExecStoreTuple(heap_copytuple(inputTupleSlot->val),
-						   resultTupleSlot,
-						   InvalidBuffer,
-						   true);		/* free copied tuple at ExecClearTuple */
+			ExecCopySlot(resultTupleSlot, inputTupleSlot);
 			node->numLeft = 0;
 			node->numRight = 0;
 			endOfGroup = false;
@@ -126,9 +122,8 @@ ExecSetOp(SetOpState *node)
 			 * Else test if the new tuple and the previously saved tuple
 			 * match.
 			 */
-			if (execTuplesMatch(inputTupleSlot->val,
-								resultTupleSlot->val,
-								tupDesc,
+			if (execTuplesMatch(inputTupleSlot,
+								resultTupleSlot,
 								plannode->numCols, plannode->dupColIdx,
 								node->eqfunctions,
 								node->tempContext))
@@ -182,15 +177,14 @@ ExecSetOp(SetOpState *node)
 		else
 		{
 			/*
-			 * Current tuple is member of same group as resultTuple. Count
-			 * it in the appropriate counter.
+			 * Current tuple is member of same group as resultTuple. Count it
+			 * in the appropriate counter.
 			 */
 			int			flag;
 			bool		isNull;
 
-			flag = DatumGetInt32(heap_getattr(inputTupleSlot->val,
+			flag = DatumGetInt32(slot_getattr(inputTupleSlot,
 											  plannode->flagColIdx,
-											  tupDesc,
 											  &isNull));
 			Assert(!isNull);
 			if (flag)
@@ -238,8 +232,8 @@ ExecInitSetOp(SetOp *node, EState *estate)
 	 * Miscellaneous initialization
 	 *
 	 * SetOp nodes have no ExprContext initialization because they never call
-	 * ExecQual or ExecProject.  But they do need a per-tuple memory
-	 * context anyway for calling execTuplesMatch.
+	 * ExecQual or ExecProject.  But they do need a per-tuple memory context
+	 * anyway for calling execTuplesMatch.
 	 */
 	setopstate->tempContext =
 		AllocSetContextCreate(CurrentMemoryContext,
@@ -261,8 +255,8 @@ ExecInitSetOp(SetOp *node, EState *estate)
 	outerPlanState(setopstate) = ExecInitNode(outerPlan(node), estate);
 
 	/*
-	 * setop nodes do no projections, so initialize projection info for
-	 * this node appropriately
+	 * setop nodes do no projections, so initialize projection info for this
+	 * node appropriately
 	 */
 	ExecAssignResultTypeFromOuterPlan(&setopstate->ps);
 	setopstate->ps.ps_ProjInfo = NULL;

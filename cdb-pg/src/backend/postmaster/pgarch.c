@@ -19,7 +19,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/postmaster/pgarch.c,v 1.14 2004/12/31 22:00:40 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/postmaster/pgarch.c,v 1.18 2005/10/15 02:49:23 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -34,6 +34,7 @@
 #include "access/xlog_internal.h"
 #include "libpq/pqsignal.h"
 #include "miscadmin.h"
+#include "postmaster/fork_process.h"
 #include "postmaster/pgarch.h"
 #include "postmaster/postmaster.h"
 #include "storage/fd.h"
@@ -48,11 +49,11 @@
  * Timer definitions.
  * ----------
  */
-#define PGARCH_AUTOWAKE_INTERVAL 60		/* How often to force a poll of
-										 * the archive status directory;
-										 * in seconds. */
-#define PGARCH_RESTART_INTERVAL 10		/* How often to attempt to restart
-										 * a failed archiver; in seconds. */
+#define PGARCH_AUTOWAKE_INTERVAL 60		/* How often to force a poll of the
+										 * archive status directory; in
+										 * seconds. */
+#define PGARCH_RESTART_INTERVAL 10		/* How often to attempt to restart a
+										 * failed archiver; in seconds. */
 
 /* ----------
  * Archiver control info.
@@ -130,10 +131,9 @@ pgarch_start(void)
 
 	/*
 	 * Do nothing if too soon since last archiver start.  This is a safety
-	 * valve to protect against continuous respawn attempts if the
-	 * archiver is dying immediately at launch. Note that since we will be
-	 * re-called from the postmaster main loop, we will get another chance
-	 * later.
+	 * valve to protect against continuous respawn attempts if the archiver is
+	 * dying immediately at launch. Note that since we will be re-called from
+	 * the postmaster main loop, we will get another chance later.
 	 */
 	curtime = time(NULL);
 	if ((unsigned int) (curtime - last_pgarch_start_time) <
@@ -141,25 +141,13 @@ pgarch_start(void)
 		return 0;
 	last_pgarch_start_time = curtime;
 
-	fflush(stdout);
-	fflush(stderr);
-
-#ifdef __BEOS__
-	/* Specific beos actions before backend startup */
-	beos_before_backend_startup();
-#endif
-
 #ifdef EXEC_BACKEND
 	switch ((pgArchPid = pgarch_forkexec()))
 #else
-	switch ((pgArchPid = fork()))
+	switch ((pgArchPid = fork_process()))
 #endif
 	{
 		case -1:
-#ifdef __BEOS__
-			/* Specific beos actions */
-			beos_backend_startup_failed();
-#endif
 			ereport(LOG,
 					(errmsg("could not fork archiver: %m")));
 			return 0;
@@ -167,10 +155,6 @@ pgarch_start(void)
 #ifndef EXEC_BACKEND
 		case 0:
 			/* in postmaster child ... */
-#ifdef __BEOS__
-			/* Specific beos actions after backend startup */
-			beos_backend_startup();
-#endif
 			/* Close the postmaster's sockets */
 			ClosePostmasterPorts(false);
 
@@ -263,9 +247,6 @@ PgArchiverMain(int argc, char *argv[])
 	init_ps_display("archiver process", "", "");
 	set_ps_display("");
 
-	/* Init XLOG file paths --- needed in EXEC_BACKEND case */
-	XLOGPathInit();
-
 	pgarch_MainLoop();
 
 	exit(0);
@@ -310,9 +291,9 @@ pgarch_MainLoop(void)
 
 	/*
 	 * We run the copy loop immediately upon entry, in case there are
-	 * unarchived files left over from a previous database run (or maybe
-	 * the archiver died unexpectedly).  After that we wait for a signal
-	 * or timeout before doing more.
+	 * unarchived files left over from a previous database run (or maybe the
+	 * archiver died unexpectedly).  After that we wait for a signal or
+	 * timeout before doing more.
 	 */
 	wakened = true;
 
@@ -337,11 +318,11 @@ pgarch_MainLoop(void)
 		}
 
 		/*
-		 * There shouldn't be anything for the archiver to do except to
-		 * wait for a signal, ... however, the archiver exists to 
-		 * protect our data, so she wakes up occasionally to allow 
-		 * herself to be proactive. In particular this avoids getting 
-		 * stuck if a signal arrives just before we sleep.
+		 * There shouldn't be anything for the archiver to do except to wait
+		 * for a signal, ... however, the archiver exists to protect our data,
+		 * so she wakes up occasionally to allow herself to be proactive. In
+		 * particular this avoids getting stuck if a signal arrives just
+		 * before we sleep.
 		 */
 		if (!wakened)
 		{
@@ -367,9 +348,9 @@ pgarch_ArchiverCopyLoop(void)
 
 	/*
 	 * loop through all xlogs with archive_status of .ready and archive
-	 * them...mostly we expect this to be a single file, though it is
-	 * possible some backend will add files onto the list of those that
-	 * need archiving while we are still copying earlier archives
+	 * them...mostly we expect this to be a single file, though it is possible
+	 * some backend will add files onto the list of those that need archiving
+	 * while we are still copying earlier archives
 	 */
 	while (pgarch_readyXlog(xlog))
 	{
@@ -415,7 +396,7 @@ pgarch_archiveXlog(char *xlog)
 	const char *sp;
 	int			rc;
 
-	snprintf(pathname, MAXPGPATH, "%s/%s", XLogDir, xlog);
+	snprintf(pathname, MAXPGPATH, XLOGDIR "/%s", xlog);
 
 	/*
 	 * construct the command to be executed
@@ -506,10 +487,10 @@ static bool
 pgarch_readyXlog(char *xlog)
 {
 	/*
-	 * open xlog status directory and read through list of xlogs that have
-	 * the .ready suffix, looking for earliest file. It is possible to
-	 * optimise this code, though only a single file is expected on the
-	 * vast majority of calls, so....
+	 * open xlog status directory and read through list of xlogs that have the
+	 * .ready suffix, looking for earliest file. It is possible to optimise
+	 * this code, though only a single file is expected on the vast majority
+	 * of calls, so....
 	 */
 	char		XLogArchiveStatusDir[MAXPGPATH];
 	char		newxlog[MAX_XFN_CHARS + 6 + 1];
@@ -517,16 +498,15 @@ pgarch_readyXlog(char *xlog)
 	struct dirent *rlde;
 	bool		found = false;
 
-	snprintf(XLogArchiveStatusDir, MAXPGPATH, "%s/archive_status", XLogDir);
+	snprintf(XLogArchiveStatusDir, MAXPGPATH, XLOGDIR "/archive_status");
 	rldir = AllocateDir(XLogArchiveStatusDir);
 	if (rldir == NULL)
 		ereport(ERROR,
 				(errcode_for_file_access(),
-			 errmsg("could not open archive status directory \"%s\": %m",
-					XLogArchiveStatusDir)));
+				 errmsg("could not open archive status directory \"%s\": %m",
+						XLogArchiveStatusDir)));
 
-	errno = 0;
-	while ((rlde = readdir(rldir)) != NULL)
+	while ((rlde = ReadDir(rldir, XLogArchiveStatusDir)) != NULL)
 	{
 		int			basenamelen = (int) strlen(rlde->d_name) - 6;
 
@@ -546,23 +526,7 @@ pgarch_readyXlog(char *xlog)
 					strcpy(newxlog, rlde->d_name);
 			}
 		}
-
-		errno = 0;
 	}
-#ifdef WIN32
-
-	/*
-	 * This fix is in mingw cvs (runtime/mingwex/dirent.c rev 1.4), but
-	 * not in released version
-	 */
-	if (GetLastError() == ERROR_NO_MORE_FILES)
-		errno = 0;
-#endif
-	if (errno)
-		ereport(ERROR,
-				(errcode_for_file_access(),
-			 errmsg("could not read archive status directory \"%s\": %m",
-					XLogArchiveStatusDir)));
 	FreeDir(rldir);
 
 	if (found)

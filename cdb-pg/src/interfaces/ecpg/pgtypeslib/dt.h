@@ -8,13 +8,14 @@
 #ifdef HAVE_INT64_TIMESTAMP
 
 typedef int32 fsec_t;
-
 #else
 
 typedef double fsec_t;
 
-#define TIME_PREC_INV 1000000.0
-#define JROUND(j) (rint(((double) (j))*TIME_PREC_INV)/TIME_PREC_INV)
+/* round off to MAX_TIMESTAMP_PRECISION decimal places */
+/* note: this is also used for rounding off intervals */
+#define TS_PREC_INV 1000000.0
+#define TSROUND(j) (rint(((double) (j)) * TS_PREC_INV) / TS_PREC_INV)
 #endif
 
 #define USE_POSTGRES_DATES				0
@@ -165,10 +166,10 @@ typedef double fsec_t;
 #define DTK_DATE_M		(DTK_M(YEAR) | DTK_M(MONTH) | DTK_M(DAY))
 #define DTK_TIME_M		(DTK_M(HOUR) | DTK_M(MINUTE) | DTK_M(SECOND))
 
-#define MAXDATELEN		51		/* maximum possible length of an input
-								 * date string (not counting tr. null) */
-#define MAXDATEFIELDS	25		/* maximum possible number of fields in a
-								 * date string */
+#define MAXDATELEN		51		/* maximum possible length of an input date
+								 * string (not counting tr. null) */
+#define MAXDATEFIELDS	25		/* maximum possible number of fields in a date
+								 * string */
 #define TOKMAXLEN		10		/* only this many chars are stored in
 								 * datetktbl */
 
@@ -193,8 +194,8 @@ typedef struct
  */
 #define FMODULO(t,q,u) \
 do { \
-	q = ((t < 0) ? ceil(t / u): floor(t / u)); \
-	if (q != 0) t -= rint(q * u); \
+	(q) = (((t) < 0) ? ceil((t) / (u)): floor((t) / (u))); \
+	if ((q) != 0) (t) -= rint((q) * (u)); \
 } while(0)
 
 /* TMODULO()
@@ -205,15 +206,46 @@ do { \
 #ifdef HAVE_INT64_TIMESTAMP
 #define TMODULO(t,q,u) \
 do { \
-	q = (t / u); \
-	if (q != 0) t -= (q * u); \
+	(q) = ((t) / (u)); \
+	if ((q) != 0) (t) -= ((q) * (u)); \
 } while(0)
 #else
 #define TMODULO(t,q,u) \
 do { \
-	q = ((t < 0) ? ceil(t / u): floor(t / u)); \
-	if (q != 0) t -= rint(q * u); \
+	(q) = (((t) < 0) ? ceil((t) / (u)): floor((t) / (u))); \
+	if ((q) != 0) (t) -= rint((q) * (u)); \
 } while(0)
+#endif
+
+/* in both timestamp.h and ecpg/dt.h */
+#define DAYS_PER_YEAR	365.25	/* assumes leap year every four years */
+#define MONTHS_PER_YEAR 12
+/*
+ *	DAYS_PER_MONTH is very imprecise.  The more accurate value is
+ *	365.2425/12 = 30.436875, or '30 days 10:29:06'.  Right now we only
+ *	return an integral number of days, but someday perhaps we should
+ *	also return a 'time' value to be used as well.	ISO 8601 suggests
+ *	30 days.
+ */
+#define DAYS_PER_MONTH	30		/* assumes exactly 30 days per month */
+#define HOURS_PER_DAY	24		/* assume no daylight savings time changes */
+
+/*
+ *	This doesn't adjust for uneven daylight savings time intervals or leap
+ *	seconds, and it crudely estimates leap years.  A more accurate value
+ *	for days per years is 365.2422.
+ */
+#define SECS_PER_YEAR	(36525 * 864)	/* avoid floating-point computation */
+#define SECS_PER_DAY	86400
+#define SECS_PER_HOUR	3600
+#define SECS_PER_MINUTE 60
+#define MINS_PER_HOUR	60
+
+#ifdef HAVE_INT64_TIMESTAMP
+#define USECS_PER_DAY	INT64CONST(86400000000)
+#define USECS_PER_HOUR	INT64CONST(3600000000)
+#define USECS_PER_MINUTE INT64CONST(60000000)
+#define USECS_PER_SEC	INT64CONST(1000000)
 #endif
 
 /*
@@ -257,7 +289,6 @@ do { \
 
 #define DT_NOBEGIN		(-INT64CONST(0x7fffffffffffffff) - 1)
 #define DT_NOEND		(INT64CONST(0x7fffffffffffffff))
-
 #else
 
 #ifdef HUGE_VAL
@@ -269,8 +300,8 @@ do { \
 #endif
 #endif   /* HAVE_INT64_TIMESTAMP */
 
-#define TIMESTAMP_NOBEGIN(j)	do {j = DT_NOBEGIN;} while (0)
-#define TIMESTAMP_NOEND(j)			do {j = DT_NOEND;} while (0)
+#define TIMESTAMP_NOBEGIN(j)	do {(j) = DT_NOBEGIN;} while (0)
+#define TIMESTAMP_NOEND(j)			do {(j) = DT_NOEND;} while (0)
 #define TIMESTAMP_IS_NOBEGIN(j) ((j) == DT_NOBEGIN)
 #define TIMESTAMP_IS_NOEND(j)	((j) == DT_NOEND)
 #define TIMESTAMP_NOT_FINITE(j) (TIMESTAMP_IS_NOBEGIN(j) || TIMESTAMP_IS_NOEND(j))
@@ -305,6 +336,6 @@ extern char *pgtypes_date_weekdays_short[];
 extern char *pgtypes_date_months[];
 extern char *months[];
 extern char *days[];
-extern int  day_tab[2][13];
+extern int	day_tab[2][13];
 
 #endif   /* DT_H */

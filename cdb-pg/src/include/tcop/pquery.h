@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/tcop/pquery.h,v 1.34 2004/12/31 22:03:44 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/tcop/pquery.h,v 1.36 2005/10/15 02:49:46 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -22,8 +22,10 @@ extern DLLIMPORT Portal ActivePortal;
 
 extern PortalStrategy ChoosePortalStrategy(List *parseTrees);
 
+extern List *FetchPortalTargetList(Portal portal);
+
 extern void PortalStart(Portal portal, ParamListInfo params,
-						Snapshot snapshot);
+			Snapshot snapshot);
 
 extern void PortalSetResultFormat(Portal portal, int nFormats,
 					  int16 *formats);

@@ -7,7 +7,7 @@
  * Copyright (c) 2000-2005, PostgreSQL Global Development Group
  * Written by Peter Eisentraut <peter_e@gmx.net>.
  *
- * $PostgreSQL: pgsql/src/include/utils/guc.h,v 1.58.4.1 2005/03/25 16:17:39 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/utils/guc.h,v 1.63 2005/10/15 02:49:46 momjian Exp $
  *--------------------------------------------------------------------
  */
 #ifndef GUC_H
@@ -120,17 +120,23 @@ extern bool SQL_inheritance;
 extern bool Australian_timezones;
 
 extern bool default_with_oids;
+extern bool escape_string_warning;
 
 extern int	log_min_error_statement;
 extern int	log_min_messages;
 extern int	client_min_messages;
 extern int	log_min_duration_statement;
 
+extern int	num_temp_buffers;
+
 extern char *ConfigFileName;
 extern char *HbaFileName;
 extern char *IdentFileName;
 extern char *external_pid_file;
 
+extern int	tcp_keepalives_idle;
+extern int	tcp_keepalives_interval;
+extern int	tcp_keepalives_count;
 
 extern void SetConfigOption(const char *name, const char *value,
 				GucContext context, GucSource source);
@@ -185,7 +191,6 @@ extern void InitializeGUCOptions(void);
 extern bool SelectConfigFiles(const char *userDoption, const char *progname);
 extern void ResetAllOptions(void);
 extern void AtEOXact_GUC(bool isCommit, bool isSubXact);
-extern void AtPrepare_GUC(void);
 extern void BeginReportingGUCOptions(void);
 extern void ParseLongOption(const char *string, char **name, char **value);
 extern bool set_config_option(const char *name, const char *value,
@@ -222,7 +227,7 @@ extern bool ClearDateCache(bool newval, bool doit, GucSource source);
 
 /* in commands/tablespace.c */
 extern const char *assign_default_tablespace(const char *newval,
-				   bool doit, GucSource source);
+						  bool doit, GucSource source);
 
 /* in utils/adt/regexp.c */
 extern const char *assign_regex_flavor(const char *value,

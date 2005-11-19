@@ -9,7 +9,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/common/printtup.c,v 1.86 2004/12/31 21:59:07 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/common/printtup.c,v 1.93 2005/11/03 17:11:30 alvherre Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -19,18 +19,16 @@
 #include "access/printtup.h"
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
+#include "tcop/pquery.h"
 #include "utils/lsyscache.h"
 #include "utils/portal.h"
 
 
 static void printtup_startup(DestReceiver *self, int operation,
 				 TupleDesc typeinfo);
-static void printtup(HeapTuple tuple, TupleDesc typeinfo,
-		 DestReceiver *self);
-static void printtup_20(HeapTuple tuple, TupleDesc typeinfo,
-			DestReceiver *self);
-static void printtup_internal_20(HeapTuple tuple, TupleDesc typeinfo,
-					 DestReceiver *self);
+static void printtup(TupleTableSlot *slot, DestReceiver *self);
+static void printtup_20(TupleTableSlot *slot, DestReceiver *self);
+static void printtup_internal_20(TupleTableSlot *slot, DestReceiver *self);
 static void printtup_shutdown(DestReceiver *self);
 static void printtup_destroy(DestReceiver *self);
 
@@ -51,7 +49,6 @@ typedef struct
 {								/* Per-attribute information */
 	Oid			typoutput;		/* Oid for the type's text output fn */
 	Oid			typsend;		/* Oid for the type's binary output fn */
-	Oid			typioparam;		/* param to pass to the output fn */
 	bool		typisvarlena;	/* is it varlena (ie possibly toastable)? */
 	int16		format;			/* format code for this column */
 	FmgrInfo	finfo;			/* Precomputed call info for output fn */
@@ -65,8 +62,6 @@ typedef struct
 	TupleDesc	attrinfo;		/* The attr info we are set up for */
 	int			nattrs;
 	PrinttupAttrInfo *myinfo;	/* Cached info about each attr */
-	Datum	   *values;			/* preallocated space for deformtuple */
-	char	   *nulls;
 } DR_printtup;
 
 /* ----------------
@@ -79,18 +74,18 @@ printtup_create_DR(CommandDest dest, Portal portal)
 	DR_printtup *self = (DR_printtup *) palloc(sizeof(DR_printtup));
 
 	if (PG_PROTOCOL_MAJOR(FrontendProtocol) >= 3)
-		self->pub.receiveTuple = printtup;
+		self->pub.receiveSlot = printtup;
 	else
 	{
 		/*
-		 * In protocol 2.0 the Bind message does not exist, so there is no
-		 * way for the columns to have different print formats; it's
-		 * sufficient to look at the first one.
+		 * In protocol 2.0 the Bind message does not exist, so there is no way
+		 * for the columns to have different print formats; it's sufficient to
+		 * look at the first one.
 		 */
 		if (portal->formats && portal->formats[0] != 0)
-			self->pub.receiveTuple = printtup_internal_20;
+			self->pub.receiveSlot = printtup_internal_20;
 		else
-			self->pub.receiveTuple = printtup_20;
+			self->pub.receiveSlot = printtup_20;
 	}
 	self->pub.rStartup = printtup_startup;
 	self->pub.rShutdown = printtup_shutdown;
@@ -99,14 +94,15 @@ printtup_create_DR(CommandDest dest, Portal portal)
 
 	self->portal = portal;
 
-	/* Send T message automatically if Remote, but not if RemoteExecute */
-	self->sendDescrip = (dest == Remote);
+	/*
+	 * Send T message automatically if DestRemote, but not if
+	 * DestRemoteExecute
+	 */
+	self->sendDescrip = (dest == DestRemote);
 
 	self->attrinfo = NULL;
 	self->nattrs = 0;
 	self->myinfo = NULL;
-	self->values = NULL;
-	self->nulls = NULL;
 
 	return (DestReceiver *) self;
 }
@@ -120,8 +116,7 @@ printtup_startup(DestReceiver *self, int operation, TupleDesc typeinfo)
 	if (PG_PROTOCOL_MAJOR(FrontendProtocol) < 3)
 	{
 		/*
-		 * Send portal name to frontend (obsolete cruft, gone in proto
-		 * 3.0)
+		 * Send portal name to frontend (obsolete cruft, gone in proto 3.0)
 		 *
 		 * If portal name not specified, use "blank" portal.
 		 */
@@ -134,20 +129,13 @@ printtup_startup(DestReceiver *self, int operation, TupleDesc typeinfo)
 	}
 
 	/*
-	 * If this is a retrieve, and we are supposed to emit row
-	 * descriptions, then we send back the tuple descriptor of the tuples.
+	 * If this is a retrieve, and we are supposed to emit row descriptions,
+	 * then we send back the tuple descriptor of the tuples.
 	 */
 	if (operation == CMD_SELECT && myState->sendDescrip)
-	{
-		List	   *targetlist;
-
-		if (portal->strategy == PORTAL_ONE_SELECT)
-			targetlist = ((Query *) linitial(portal->parseTrees))->targetList;
-		else
-			targetlist = NIL;
-
-		SendRowDescriptionMessage(typeinfo, targetlist, portal->formats);
-	}
+		SendRowDescriptionMessage(typeinfo,
+								  FetchPortalTargetList(portal),
+								  portal->formats);
 
 	/* ----------------
 	 * We could set up the derived attr info at this time, but we postpone it
@@ -197,14 +185,14 @@ SendRowDescriptionMessage(TupleDesc typeinfo, List *targetlist, int16 *formats)
 		{
 			/* Do we have a non-resjunk tlist item? */
 			while (tlist_item &&
-				   ((TargetEntry *) lfirst(tlist_item))->resdom->resjunk)
+				   ((TargetEntry *) lfirst(tlist_item))->resjunk)
 				tlist_item = lnext(tlist_item);
 			if (tlist_item)
 			{
-				Resdom	   *res = ((TargetEntry *) lfirst(tlist_item))->resdom;
+				TargetEntry *tle = (TargetEntry *) lfirst(tlist_item);
 
-				pq_sendint(&buf, res->resorigtbl, 4);
-				pq_sendint(&buf, res->resorigcol, 2);
+				pq_sendint(&buf, tle->resorigtbl, 4);
+				pq_sendint(&buf, tle->resorigcol, 2);
 				tlist_item = lnext(tlist_item);
 			}
 			else
@@ -251,12 +239,6 @@ printtup_prepare_info(DR_printtup *myState, TupleDesc typeinfo, int numAttrs)
 	if (myState->myinfo)
 		pfree(myState->myinfo);
 	myState->myinfo = NULL;
-	if (myState->values)
-		pfree(myState->values);
-	myState->values = NULL;
-	if (myState->nulls)
-		pfree(myState->nulls);
-	myState->nulls = NULL;
 
 	myState->attrinfo = typeinfo;
 	myState->nattrs = numAttrs;
@@ -265,8 +247,6 @@ printtup_prepare_info(DR_printtup *myState, TupleDesc typeinfo, int numAttrs)
 
 	myState->myinfo = (PrinttupAttrInfo *)
 		palloc0(numAttrs * sizeof(PrinttupAttrInfo));
-	myState->values = (Datum *) palloc(numAttrs * sizeof(Datum));
-	myState->nulls = (char *) palloc(numAttrs * sizeof(char));
 
 	for (i = 0; i < numAttrs; i++)
 	{
@@ -278,7 +258,6 @@ printtup_prepare_info(DR_printtup *myState, TupleDesc typeinfo, int numAttrs)
 		{
 			getTypeOutputInfo(typeinfo->attrs[i]->atttypid,
 							  &thisState->typoutput,
-							  &thisState->typioparam,
 							  &thisState->typisvarlena);
 			fmgr_info(thisState->typoutput, &thisState->finfo);
 		}
@@ -286,7 +265,6 @@ printtup_prepare_info(DR_printtup *myState, TupleDesc typeinfo, int numAttrs)
 		{
 			getTypeBinaryOutputInfo(typeinfo->attrs[i]->atttypid,
 									&thisState->typsend,
-									&thisState->typioparam,
 									&thisState->typisvarlena);
 			fmgr_info(thisState->typsend, &thisState->finfo);
 		}
@@ -302,8 +280,9 @@ printtup_prepare_info(DR_printtup *myState, TupleDesc typeinfo, int numAttrs)
  * ----------------
  */
 static void
-printtup(HeapTuple tuple, TupleDesc typeinfo, DestReceiver *self)
+printtup(TupleTableSlot *slot, DestReceiver *self)
 {
+	TupleDesc	typeinfo = slot->tts_tupleDescriptor;
 	DR_printtup *myState = (DR_printtup *) self;
 	StringInfoData buf;
 	int			natts = typeinfo->natts;
@@ -313,10 +292,8 @@ printtup(HeapTuple tuple, TupleDesc typeinfo, DestReceiver *self)
 	if (myState->attrinfo != typeinfo || myState->nattrs != natts)
 		printtup_prepare_info(myState, typeinfo, natts);
 
-	/*
-	 * deconstruct the tuple (faster than a heap_getattr loop)
-	 */
-	heap_deformtuple(tuple, typeinfo, myState->values, myState->nulls);
+	/* Make sure the tuple is fully deconstructed */
+	slot_getallattrs(slot);
 
 	/*
 	 * Prepare a DataRow message
@@ -331,10 +308,10 @@ printtup(HeapTuple tuple, TupleDesc typeinfo, DestReceiver *self)
 	for (i = 0; i < natts; ++i)
 	{
 		PrinttupAttrInfo *thisState = myState->myinfo + i;
-		Datum		origattr = myState->values[i],
+		Datum		origattr = slot->tts_values[i],
 					attr;
 
-		if (myState->nulls[i] == 'n')
+		if (slot->tts_isnull[i])
 		{
 			pq_sendint(&buf, -1, 4);
 			continue;
@@ -354,10 +331,8 @@ printtup(HeapTuple tuple, TupleDesc typeinfo, DestReceiver *self)
 			/* Text output */
 			char	   *outputstr;
 
-			outputstr = DatumGetCString(FunctionCall3(&thisState->finfo,
-													  attr,
-								 ObjectIdGetDatum(thisState->typioparam),
-						  Int32GetDatum(typeinfo->attrs[i]->atttypmod)));
+			outputstr = DatumGetCString(FunctionCall1(&thisState->finfo,
+													  attr));
 			pq_sendcountedtext(&buf, outputstr, strlen(outputstr), false);
 			pfree(outputstr);
 		}
@@ -366,9 +341,8 @@ printtup(HeapTuple tuple, TupleDesc typeinfo, DestReceiver *self)
 			/* Binary output */
 			bytea	   *outputbytes;
 
-			outputbytes = DatumGetByteaP(FunctionCall2(&thisState->finfo,
-													   attr,
-							   ObjectIdGetDatum(thisState->typioparam)));
+			outputbytes = DatumGetByteaP(FunctionCall1(&thisState->finfo,
+													   attr));
 			/* We assume the result will not have been toasted */
 			pq_sendint(&buf, VARSIZE(outputbytes) - VARHDRSZ, 4);
 			pq_sendbytes(&buf, VARDATA(outputbytes),
@@ -389,8 +363,9 @@ printtup(HeapTuple tuple, TupleDesc typeinfo, DestReceiver *self)
  * ----------------
  */
 static void
-printtup_20(HeapTuple tuple, TupleDesc typeinfo, DestReceiver *self)
+printtup_20(TupleTableSlot *slot, DestReceiver *self)
 {
+	TupleDesc	typeinfo = slot->tts_tupleDescriptor;
 	DR_printtup *myState = (DR_printtup *) self;
 	StringInfoData buf;
 	int			natts = typeinfo->natts;
@@ -402,10 +377,8 @@ printtup_20(HeapTuple tuple, TupleDesc typeinfo, DestReceiver *self)
 	if (myState->attrinfo != typeinfo || myState->nattrs != natts)
 		printtup_prepare_info(myState, typeinfo, natts);
 
-	/*
-	 * deconstruct the tuple (faster than a heap_getattr loop)
-	 */
-	heap_deformtuple(tuple, typeinfo, myState->values, myState->nulls);
+	/* Make sure the tuple is fully deconstructed */
+	slot_getallattrs(slot);
 
 	/*
 	 * tell the frontend to expect new tuple data (in ASCII style)
@@ -419,7 +392,7 @@ printtup_20(HeapTuple tuple, TupleDesc typeinfo, DestReceiver *self)
 	k = 1 << 7;
 	for (i = 0; i < natts; ++i)
 	{
-		if (myState->nulls[i] != 'n')
+		if (!slot->tts_isnull[i])
 			j |= k;				/* set bit if not null */
 		k >>= 1;
 		if (k == 0)				/* end of byte? */
@@ -438,11 +411,11 @@ printtup_20(HeapTuple tuple, TupleDesc typeinfo, DestReceiver *self)
 	for (i = 0; i < natts; ++i)
 	{
 		PrinttupAttrInfo *thisState = myState->myinfo + i;
-		Datum		origattr = myState->values[i],
+		Datum		origattr = slot->tts_values[i],
 					attr;
 		char	   *outputstr;
 
-		if (myState->nulls[i] == 'n')
+		if (slot->tts_isnull[i])
 			continue;
 
 		Assert(thisState->format == 0);
@@ -456,10 +429,8 @@ printtup_20(HeapTuple tuple, TupleDesc typeinfo, DestReceiver *self)
 		else
 			attr = origattr;
 
-		outputstr = DatumGetCString(FunctionCall3(&thisState->finfo,
-												  attr,
-								 ObjectIdGetDatum(thisState->typioparam),
-						  Int32GetDatum(typeinfo->attrs[i]->atttypmod)));
+		outputstr = DatumGetCString(FunctionCall1(&thisState->finfo,
+												  attr));
 		pq_sendcountedtext(&buf, outputstr, strlen(outputstr), true);
 		pfree(outputstr);
 
@@ -483,12 +454,6 @@ printtup_shutdown(DestReceiver *self)
 	if (myState->myinfo)
 		pfree(myState->myinfo);
 	myState->myinfo = NULL;
-	if (myState->values)
-		pfree(myState->values);
-	myState->values = NULL;
-	if (myState->nulls)
-		pfree(myState->nulls);
-	myState->nulls = NULL;
 
 	myState->attrinfo = NULL;
 }
@@ -548,25 +513,25 @@ debugStartup(DestReceiver *self, int operation, TupleDesc typeinfo)
  * ----------------
  */
 void
-debugtup(HeapTuple tuple, TupleDesc typeinfo, DestReceiver *self)
+debugtup(TupleTableSlot *slot, DestReceiver *self)
 {
+	TupleDesc	typeinfo = slot->tts_tupleDescriptor;
 	int			natts = typeinfo->natts;
 	int			i;
 	Datum		origattr,
 				attr;
 	char	   *value;
 	bool		isnull;
-	Oid			typoutput,
-				typioparam;
+	Oid			typoutput;
 	bool		typisvarlena;
 
 	for (i = 0; i < natts; ++i)
 	{
-		origattr = heap_getattr(tuple, i + 1, typeinfo, &isnull);
+		origattr = slot_getattr(slot, i + 1, &isnull);
 		if (isnull)
 			continue;
 		getTypeOutputInfo(typeinfo->attrs[i]->atttypid,
-						  &typoutput, &typioparam, &typisvarlena);
+						  &typoutput, &typisvarlena);
 
 		/*
 		 * If we have a toasted datum, forcibly detoast it here to avoid
@@ -577,10 +542,8 @@ debugtup(HeapTuple tuple, TupleDesc typeinfo, DestReceiver *self)
 		else
 			attr = origattr;
 
-		value = DatumGetCString(OidFunctionCall3(typoutput,
-												 attr,
-											ObjectIdGetDatum(typioparam),
-						  Int32GetDatum(typeinfo->attrs[i]->atttypmod)));
+		value = DatumGetCString(OidFunctionCall1(typoutput,
+												 attr));
 
 		printatt((unsigned) i + 1, typeinfo->attrs[i], value);
 
@@ -603,8 +566,9 @@ debugtup(HeapTuple tuple, TupleDesc typeinfo, DestReceiver *self)
  * ----------------
  */
 static void
-printtup_internal_20(HeapTuple tuple, TupleDesc typeinfo, DestReceiver *self)
+printtup_internal_20(TupleTableSlot *slot, DestReceiver *self)
 {
+	TupleDesc	typeinfo = slot->tts_tupleDescriptor;
 	DR_printtup *myState = (DR_printtup *) self;
 	StringInfoData buf;
 	int			natts = typeinfo->natts;
@@ -616,10 +580,8 @@ printtup_internal_20(HeapTuple tuple, TupleDesc typeinfo, DestReceiver *self)
 	if (myState->attrinfo != typeinfo || myState->nattrs != natts)
 		printtup_prepare_info(myState, typeinfo, natts);
 
-	/*
-	 * deconstruct the tuple (faster than a heap_getattr loop)
-	 */
-	heap_deformtuple(tuple, typeinfo, myState->values, myState->nulls);
+	/* Make sure the tuple is fully deconstructed */
+	slot_getallattrs(slot);
 
 	/*
 	 * tell the frontend to expect new tuple data (in binary style)
@@ -633,7 +595,7 @@ printtup_internal_20(HeapTuple tuple, TupleDesc typeinfo, DestReceiver *self)
 	k = 1 << 7;
 	for (i = 0; i < natts; ++i)
 	{
-		if (myState->nulls[i] != 'n')
+		if (!slot->tts_isnull[i])
 			j |= k;				/* set bit if not null */
 		k >>= 1;
 		if (k == 0)				/* end of byte? */
@@ -652,11 +614,11 @@ printtup_internal_20(HeapTuple tuple, TupleDesc typeinfo, DestReceiver *self)
 	for (i = 0; i < natts; ++i)
 	{
 		PrinttupAttrInfo *thisState = myState->myinfo + i;
-		Datum		origattr = myState->values[i],
+		Datum		origattr = slot->tts_values[i],
 					attr;
 		bytea	   *outputbytes;
 
-		if (myState->nulls[i] == 'n')
+		if (slot->tts_isnull[i])
 			continue;
 
 		Assert(thisState->format == 1);
@@ -670,9 +632,8 @@ printtup_internal_20(HeapTuple tuple, TupleDesc typeinfo, DestReceiver *self)
 		else
 			attr = origattr;
 
-		outputbytes = DatumGetByteaP(FunctionCall2(&thisState->finfo,
-												   attr,
-							   ObjectIdGetDatum(thisState->typioparam)));
+		outputbytes = DatumGetByteaP(FunctionCall1(&thisState->finfo,
+												   attr));
 		/* We assume the result will not have been toasted */
 		pq_sendint(&buf, VARSIZE(outputbytes) - VARHDRSZ, 4);
 		pq_sendbytes(&buf, VARDATA(outputbytes),

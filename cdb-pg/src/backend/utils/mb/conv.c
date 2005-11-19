@@ -6,7 +6,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/mb/conv.c,v 1.51 2004/12/31 22:01:42 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/mb/conv.c,v 1.56 2005/10/29 00:31:52 petere Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -223,8 +223,8 @@ pg_mic2ascii(unsigned char *mic, unsigned char *p, int len)
 void
 latin2mic_with_table(
 					 unsigned char *l,	/* local charset string (source) */
-					 unsigned char *p,	/* pointer to store mule internal
-										 * code (destination) */
+					 unsigned char *p,	/* pointer to store mule internal code
+										 * (destination) */
 					 int len,	/* length of l */
 					 int lc,	/* leading character of p */
 					 unsigned char *tab /* code conversion table */
@@ -265,8 +265,7 @@ latin2mic_with_table(
  */
 void
 mic2latin_with_table(
-					 unsigned char *mic,		/* mule internal code
-												 * (source) */
+					 unsigned char *mic,		/* mule internal code (source) */
 					 unsigned char *p,	/* local code (destination) */
 					 int len,	/* length of p */
 					 int lc,	/* leading character */
@@ -303,7 +302,7 @@ mic2latin_with_table(
 
 /*
  * comparison routine for bsearch()
- * this routine is intended for UTF-8 -> local code
+ * this routine is intended for UTF8 -> local code
  */
 static int
 compare1(const void *p1, const void *p2)
@@ -318,7 +317,7 @@ compare1(const void *p1, const void *p2)
 
 /*
  * comparison routine for bsearch()
- * this routine is intended for local code -> UTF-8
+ * this routine is intended for local code -> UTF8
  */
 static int
 compare2(const void *p1, const void *p2)
@@ -332,9 +331,9 @@ compare2(const void *p1, const void *p2)
 }
 
 /*
- * UTF-8 ---> local code
+ * UTF8 ---> local code
  *
- * utf: input UTF-8 string. Its length is limited by "len" parameter
+ * utf: input UTF8 string. Its length is limited by "len" parameter
  *		or a null terminator.
  * iso: pointer to the output.
  * map: the conversion map.
@@ -361,9 +360,16 @@ UtfToLocal(unsigned char *utf, unsigned char *iso,
 			iutf = *utf++ << 8;
 			iutf |= *utf++;
 		}
-		else
+		else if (l == 3)
 		{
 			iutf = *utf++ << 16;
+			iutf |= *utf++ << 8;
+			iutf |= *utf++;
+		}
+		else if (l == 4)
+		{
+			iutf = *utf++ << 24;
+			iutf |= *utf++ << 16;
 			iutf |= *utf++ << 8;
 			iutf |= *utf++;
 		}
@@ -373,8 +379,8 @@ UtfToLocal(unsigned char *utf, unsigned char *iso,
 		{
 			ereport(WARNING,
 					(errcode(ERRCODE_UNTRANSLATABLE_CHARACTER),
-				  errmsg("ignoring unconvertible UTF-8 character 0x%04x",
-						 iutf)));
+					 errmsg("ignoring unconvertible UTF-8 character 0x%04x",
+							iutf)));
 			continue;
 		}
 		if (p->code & 0xff000000)
@@ -390,7 +396,7 @@ UtfToLocal(unsigned char *utf, unsigned char *iso,
 }
 
 /*
- * local code ---> UTF-8
+ * local code ---> UTF8
  */
 void
 LocalToUtf(unsigned char *iso, unsigned char *utf,
@@ -414,7 +420,7 @@ LocalToUtf(unsigned char *iso, unsigned char *utf,
 			continue;
 		}
 
-		l = pg_encoding_mblen(encoding, iso);
+		l = pg_encoding_mblen(encoding, (char *) iso);
 
 		if (l == 1)
 			iiso = *iso++;

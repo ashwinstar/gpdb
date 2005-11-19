@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/selfuncs.h,v 1.21 2004/12/31 22:03:46 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/utils/selfuncs.h,v 1.24 2005/10/15 02:49:46 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -16,7 +16,7 @@
 #define SELFUNCS_H
 
 #include "fmgr.h"
-#include "nodes/parsenodes.h"
+#include "nodes/relation.h"
 
 
 /*
@@ -36,7 +36,7 @@
 #define DEFAULT_INEQ_SEL  0.3333333333333333
 
 /* default selectivity estimate for range inequalities "A > b AND A < c" */
-#define DEFAULT_RANGE_INEQ_SEL  0.005
+#define DEFAULT_RANGE_INEQ_SEL	0.005
 
 /* default selectivity estimate for pattern-match operators such as LIKE */
 #define DEFAULT_MATCH_SEL	0.005
@@ -108,20 +108,20 @@ extern Datum icregexnejoinsel(PG_FUNCTION_ARGS);
 extern Datum nlikejoinsel(PG_FUNCTION_ARGS);
 extern Datum icnlikejoinsel(PG_FUNCTION_ARGS);
 
-extern Selectivity booltestsel(Query *root, BoolTestType booltesttype,
+extern Selectivity booltestsel(PlannerInfo *root, BoolTestType booltesttype,
 			Node *arg, int varRelid, JoinType jointype);
-extern Selectivity nulltestsel(Query *root, NullTestType nulltesttype,
+extern Selectivity nulltestsel(PlannerInfo *root, NullTestType nulltesttype,
 			Node *arg, int varRelid);
 
-extern void mergejoinscansel(Query *root, Node *clause,
+extern void mergejoinscansel(PlannerInfo *root, Node *clause,
 				 Selectivity *leftscan,
 				 Selectivity *rightscan);
 
-extern double estimate_num_groups(Query *root, List *groupExprs,
+extern double estimate_num_groups(PlannerInfo *root, List *groupExprs,
 					double input_rows);
 
-extern Selectivity estimate_hash_bucketsize(Query *root, Node *hashkey,
-						 int nbuckets);
+extern Selectivity estimate_hash_bucketsize(PlannerInfo *root, Node *hashkey,
+						 double nbuckets);
 
 extern Datum btcostestimate(PG_FUNCTION_ARGS);
 extern Datum rtcostestimate(PG_FUNCTION_ARGS);

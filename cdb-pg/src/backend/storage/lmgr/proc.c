@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/storage/lmgr/proc.c,v 1.156 2004/12/31 22:01:05 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/storage/lmgr/proc.c,v 1.167 2005/10/15 02:49:26 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -29,14 +29,6 @@
  *
  * ProcKill -- destroys the shared memory state (and locks)
  *		associated with the process.
- *
- * 5/15/91 -- removed the buffer pool based lock chain in favor
- *		of a shared memory lock chain.	The write-protection is
- *		more expensive if the lock chain is in the buffer pool.
- *		The only reason I kept the lock chain in the buffer pool
- *		in the first place was to allow the lock table to grow larger
- *		than available shared memory and that isn't going to work
- *		without a lot of unimplemented support anyway.
  */
 #include "postgres.h"
 
@@ -49,7 +41,7 @@
 #include "storage/bufmgr.h"
 #include "storage/ipc.h"
 #include "storage/proc.h"
-#include "storage/sinval.h"
+#include "storage/procarray.h"
 #include "storage/spin.h"
 
 
@@ -74,11 +66,11 @@ static PROC_HDR *ProcGlobal = NULL;
 static PGPROC *DummyProcs = NULL;
 
 static bool waitingForLock = false;
-static bool waitingForSignal = false;
 
 /* Mark these volatile because they can be changed by signal handler */
 static volatile bool statement_timeout_active = false;
 static volatile bool deadlock_timeout_active = false;
+volatile bool cancel_from_timeout = false;
 
 /* statement_fin_time is valid only if statement_timeout_active is true */
 static struct timeval statement_fin_time;
@@ -92,15 +84,19 @@ static bool CheckStatementTimeout(void);
 /*
  * Report shared-memory space needed by InitProcGlobal.
  */
-int
-ProcGlobalShmemSize(int maxBackends)
+Size
+ProcGlobalShmemSize(void)
 {
-	int			size = 0;
+	Size		size = 0;
 
-	size += MAXALIGN(sizeof(PROC_HDR)); /* ProcGlobal */
-	size += MAXALIGN(NUM_DUMMY_PROCS * sizeof(PGPROC));	/* DummyProcs */
-	size += MAXALIGN(maxBackends * sizeof(PGPROC));		/* MyProcs */
-	size += MAXALIGN(sizeof(slock_t)); /* ProcStructLock */
+	/* ProcGlobal */
+	size = add_size(size, sizeof(PROC_HDR));
+	/* DummyProcs */
+	size = add_size(size, mul_size(NUM_DUMMY_PROCS, sizeof(PGPROC)));
+	/* MyProcs */
+	size = add_size(size, mul_size(MaxBackends, sizeof(PGPROC)));
+	/* ProcStructLock */
+	size = add_size(size, sizeof(slock_t));
 
 	return size;
 }
@@ -109,16 +105,15 @@ ProcGlobalShmemSize(int maxBackends)
  * Report number of semaphores needed by InitProcGlobal.
  */
 int
-ProcGlobalSemas(int maxBackends)
+ProcGlobalSemas(void)
 {
 	/* We need a sema per backend, plus one for each dummy process. */
-	return maxBackends + NUM_DUMMY_PROCS;
+	return MaxBackends + NUM_DUMMY_PROCS;
 }
 
 /*
  * InitProcGlobal -
- *	  initializes the global process table. We put it here so that
- *	  the postmaster can do this initialization.
+ *	  Initialize the global process table during postmaster startup.
  *
  *	  We also create all the per-process semaphores we will need to support
  *	  the requested number of backends.  We used to allocate semaphores
@@ -136,7 +131,7 @@ ProcGlobalSemas(int maxBackends)
  *	  postmaster, not in backends.
  */
 void
-InitProcGlobal(int maxBackends)
+InitProcGlobal(void)
 {
 	bool		foundProcGlobal,
 				foundDummy;
@@ -146,7 +141,7 @@ InitProcGlobal(int maxBackends)
 		ShmemInitStruct("Proc Header", sizeof(PROC_HDR), &foundProcGlobal);
 
 	/*
-	 * Create or attach to the PGPROC structures for dummy (checkpoint)
+	 * Create or attach to the PGPROC structures for dummy (bgwriter)
 	 * processes, too.	These do not get linked into the freeProcs list.
 	 */
 	DummyProcs = (PGPROC *)
@@ -168,17 +163,18 @@ InitProcGlobal(int maxBackends)
 
 		ProcGlobal->freeProcs = INVALID_OFFSET;
 
+		ProcGlobal->spins_per_delay = DEFAULT_SPINS_PER_DELAY;
+
 		/*
-		 * Pre-create the PGPROC structures and create a semaphore for
-		 * each.
+		 * Pre-create the PGPROC structures and create a semaphore for each.
 		 */
-		procs = (PGPROC *) ShmemAlloc(maxBackends * sizeof(PGPROC));
+		procs = (PGPROC *) ShmemAlloc(MaxBackends * sizeof(PGPROC));
 		if (!procs)
 			ereport(FATAL,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 					 errmsg("out of shared memory")));
-		MemSet(procs, 0, maxBackends * sizeof(PGPROC));
-		for (i = 0; i < maxBackends; i++)
+		MemSet(procs, 0, MaxBackends * sizeof(PGPROC));
+		for (i = 0; i < MaxBackends; i++)
 		{
 			PGSemaphoreCreate(&(procs[i].sem));
 			procs[i].links.next = ProcGlobal->freeProcs;
@@ -210,8 +206,8 @@ InitProcess(void)
 	volatile PROC_HDR *procglobal = ProcGlobal;
 
 	/*
-	 * ProcGlobal should be set by a previous call to InitProcGlobal (if
-	 * we are a backend, we inherit this by fork() from the postmaster).
+	 * ProcGlobal should be set by a previous call to InitProcGlobal (if we
+	 * are a backend, we inherit this by fork() from the postmaster).
 	 */
 	if (procglobal == NULL)
 		elog(PANIC, "proc header uninitialized");
@@ -220,10 +216,15 @@ InitProcess(void)
 		elog(ERROR, "you already exist");
 
 	/*
-	 * Try to get a proc struct from the free list.  If this fails, we
-	 * must be out of PGPROC structures (not to mention semaphores).
+	 * Try to get a proc struct from the free list.  If this fails, we must be
+	 * out of PGPROC structures (not to mention semaphores).
+	 *
+	 * While we are holding the ProcStructLock, also copy the current shared
+	 * estimate of spins_per_delay to local storage.
 	 */
 	SpinLockAcquire(ProcStructLock);
+
+	set_spins_per_delay(procglobal->spins_per_delay);
 
 	myOffset = procglobal->freeProcs;
 
@@ -236,9 +237,9 @@ InitProcess(void)
 	else
 	{
 		/*
-		 * If we reach here, all the PGPROCs are in use.  This is one of
-		 * the possible places to detect "too many backends", so give the
-		 * standard error message.
+		 * If we reach here, all the PGPROCs are in use.  This is one of the
+		 * possible places to detect "too many backends", so give the standard
+		 * error message.
 		 */
 		SpinLockRelease(ProcStructLock);
 		ereport(FATAL,
@@ -256,7 +257,8 @@ InitProcess(void)
 	MyProc->xmin = InvalidTransactionId;
 	MyProc->pid = MyProcPid;
 	MyProc->databaseId = MyDatabaseId;
-	MyProc->logRec.xrecoff = 0;
+	/* Will be set properly after the session role id is determined */
+	MyProc->roleId = InvalidOid;
 	MyProc->lwWaiting = false;
 	MyProc->lwExclusive = false;
 	MyProc->lwWaitLink = NULL;
@@ -265,19 +267,24 @@ InitProcess(void)
 	SHMQueueInit(&(MyProc->procLocks));
 
 	/*
+	 * Add our PGPROC to the PGPROC array in shared memory.
+	 */
+	ProcArrayAdd(MyProc);
+
+	/*
 	 * Arrange to clean up at backend exit.
 	 */
 	on_shmem_exit(ProcKill, 0);
 
 	/*
-	 * We might be reusing a semaphore that belonged to a failed process.
-	 * So be careful and reinitialize its value here.
+	 * We might be reusing a semaphore that belonged to a failed process. So
+	 * be careful and reinitialize its value here.
 	 */
 	PGSemaphoreReset(&MyProc->sem);
 
 	/*
-	 * Now that we have a PGPROC, we could try to acquire locks, so
-	 * initialize the deadlock checker.
+	 * Now that we have a PGPROC, we could try to acquire locks, so initialize
+	 * the deadlock checker.
 	 */
 	InitDeadLockChecking();
 }
@@ -285,9 +292,10 @@ InitProcess(void)
 /*
  * InitDummyProcess -- create a dummy per-process data structure
  *
- * This is called by checkpoint processes so that they will have a MyProc
- * value that's real enough to let them wait for LWLocks.  The PGPROC and
- * sema that are assigned are the extra ones created during InitProcGlobal.
+ * This is called by bgwriter and similar processes so that they will have a
+ * MyProc value that's real enough to let them wait for LWLocks.  The PGPROC
+ * and sema that are assigned are the extra ones created during
+ * InitProcGlobal.
  *
  * Dummy processes are presently not expected to wait for real (lockmgr)
  * locks, nor to participate in sinval messaging.
@@ -309,27 +317,44 @@ InitDummyProcess(int proctype)
 
 	Assert(proctype >= 0 && proctype < NUM_DUMMY_PROCS);
 
+	/*
+	 * Just for paranoia's sake, we use the ProcStructLock to protect
+	 * assignment and releasing of DummyProcs entries.
+	 *
+	 * While we are holding the ProcStructLock, also copy the current shared
+	 * estimate of spins_per_delay to local storage.
+	 */
+	SpinLockAcquire(ProcStructLock);
+
+	set_spins_per_delay(ProcGlobal->spins_per_delay);
+
 	dummyproc = &DummyProcs[proctype];
 
 	/*
 	 * dummyproc should not presently be in use by anyone else
 	 */
 	if (dummyproc->pid != 0)
+	{
+		SpinLockRelease(ProcStructLock);
 		elog(FATAL, "DummyProc[%d] is in use by PID %d",
 			 proctype, dummyproc->pid);
+	}
 	MyProc = dummyproc;
 
-	/*
-	 * Initialize all fields of MyProc, except MyProc->sem which was set
-	 * up by InitProcGlobal.
-	 */
 	MyProc->pid = MyProcPid;	/* marks dummy proc as in use by me */
+
+	SpinLockRelease(ProcStructLock);
+
+	/*
+	 * Initialize all fields of MyProc, except MyProc->sem which was set up by
+	 * InitProcGlobal.
+	 */
 	SHMQueueElemInit(&(MyProc->links));
 	MyProc->waitStatus = STATUS_OK;
 	MyProc->xid = InvalidTransactionId;
 	MyProc->xmin = InvalidTransactionId;
 	MyProc->databaseId = MyDatabaseId;
-	MyProc->logRec.xrecoff = 0;
+	MyProc->roleId = InvalidOid;
 	MyProc->lwWaiting = false;
 	MyProc->lwExclusive = false;
 	MyProc->lwWaitLink = NULL;
@@ -343,10 +368,40 @@ InitDummyProcess(int proctype)
 	on_shmem_exit(DummyProcKill, Int32GetDatum(proctype));
 
 	/*
-	 * We might be reusing a semaphore that belonged to a failed process.
-	 * So be careful and reinitialize its value here.
+	 * We might be reusing a semaphore that belonged to a failed process. So
+	 * be careful and reinitialize its value here.
 	 */
 	PGSemaphoreReset(&MyProc->sem);
+}
+
+/*
+ * Check whether there are at least N free PGPROC objects.
+ *
+ * Note: this is designed on the assumption that N will generally be small.
+ */
+bool
+HaveNFreeProcs(int n)
+{
+	SHMEM_OFFSET offset;
+	PGPROC	   *proc;
+
+	/* use volatile pointer to prevent code rearrangement */
+	volatile PROC_HDR *procglobal = ProcGlobal;
+
+	SpinLockAcquire(ProcStructLock);
+
+	offset = procglobal->freeProcs;
+
+	while (n > 0 && offset != INVALID_OFFSET)
+	{
+		proc = (PGPROC *) MAKE_PTR(offset);
+		offset = proc->links.next;
+		n--;
+	}
+
+	SpinLockRelease(ProcStructLock);
+
+	return (n <= 0);
 }
 
 /*
@@ -381,9 +436,9 @@ LockWaitCancel(void)
 	{
 		/*
 		 * Somebody kicked us off the lock queue already.  Perhaps they
-		 * granted us the lock, or perhaps they detected a deadlock. If
-		 * they did grant us the lock, we'd better remember it in our
-		 * local lock table.
+		 * granted us the lock, or perhaps they detected a deadlock. If they
+		 * did grant us the lock, we'd better remember it in our local lock
+		 * table.
 		 */
 		if (MyProc->waitStatus == STATUS_OK)
 			GrantAwaitedLock();
@@ -396,17 +451,17 @@ LockWaitCancel(void)
 	/*
 	 * Reset the proc wait semaphore to zero.  This is necessary in the
 	 * scenario where someone else granted us the lock we wanted before we
-	 * were able to remove ourselves from the wait-list.  The semaphore
-	 * will have been bumped to 1 by the would-be grantor, and since we
-	 * are no longer going to wait on the sema, we have to force it back
-	 * to zero. Otherwise, our next attempt to wait for a lock will fall
-	 * through prematurely.
+	 * were able to remove ourselves from the wait-list.  The semaphore will
+	 * have been bumped to 1 by the would-be grantor, and since we are no
+	 * longer going to wait on the sema, we have to force it back to zero.
+	 * Otherwise, our next attempt to wait for a lock will fall through
+	 * prematurely.
 	 */
 	PGSemaphoreReset(&MyProc->sem);
 
 	/*
-	 * Return true even if we were kicked off the lock before we were able
-	 * to remove ourselves.
+	 * Return true even if we were kicked off the lock before we were able to
+	 * remove ourselves.
 	 */
 	return true;
 }
@@ -452,27 +507,15 @@ ProcKill(int code, Datum arg)
 
 	Assert(MyProc != NULL);
 
-	/* Release any LW locks I am holding */
+	/*
+	 * Release any LW locks I am holding.  There really shouldn't be any, but
+	 * it's cheap to check again before we cut the knees off the LWLock
+	 * facility by releasing our PGPROC ...
+	 */
 	LWLockReleaseAll();
 
-	/*
-	 * Make real sure we release any buffer locks and pins we might be
-	 * holding, too.  It is pretty ugly to do this here and not in a
-	 * shutdown callback registered by the bufmgr ... but we must do this
-	 * *after* LWLockReleaseAll and *before* zapping MyProc.
-	 */
-	AtProcExit_Buffers();
-
-	/* Get off any wait queue I might be on */
-	LockWaitCancel();
-
-	/* Remove from the standard lock table */
-	LockReleaseAll(DEFAULT_LOCKMETHOD, true);
-
-#ifdef USER_LOCKS
-	/* Remove from the user lock table */
-	LockReleaseAll(USER_LOCKMETHOD, true);
-#endif
+	/* Remove our PGPROC from the PGPROC array in shared memory */
+	ProcArrayRemove(MyProc);
 
 	SpinLockAcquire(ProcStructLock);
 
@@ -483,11 +526,14 @@ ProcKill(int code, Datum arg)
 	/* PGPROC struct isn't mine anymore */
 	MyProc = NULL;
 
+	/* Update shared estimate of spins_per_delay */
+	procglobal->spins_per_delay = update_spins_per_delay(procglobal->spins_per_delay);
+
 	SpinLockRelease(ProcStructLock);
 }
 
 /*
- * DummyProcKill() -- Cut-down version of ProcKill for dummy (checkpoint)
+ * DummyProcKill() -- Cut-down version of ProcKill for dummy (bgwriter)
  *		processes.	The PGPROC and sema are not released, only marked
  *		as not-in-use.
  */
@@ -503,19 +549,21 @@ DummyProcKill(int code, Datum arg)
 
 	Assert(MyProc == dummyproc);
 
-	/* Release any LW locks I am holding */
+	/* Release any LW locks I am holding (see notes above) */
 	LWLockReleaseAll();
 
-	/* Release buffer locks and pins, too */
-	AtProcExit_Buffers();
-
-	/* I can't be on regular lock queues, so needn't check */
+	SpinLockAcquire(ProcStructLock);
 
 	/* Mark dummy proc no longer in use */
 	MyProc->pid = 0;
 
 	/* PGPROC struct isn't mine anymore */
 	MyProc = NULL;
+
+	/* Update shared estimate of spins_per_delay */
+	ProcGlobal->spins_per_delay = update_spins_per_delay(ProcGlobal->spins_per_delay);
+
+	SpinLockRelease(ProcStructLock);
 }
 
 
@@ -592,20 +640,19 @@ ProcSleep(LockMethod lockMethodTable,
 	/*
 	 * Determine where to add myself in the wait queue.
 	 *
-	 * Normally I should go at the end of the queue.  However, if I already
-	 * hold locks that conflict with the request of any previous waiter,
-	 * put myself in the queue just in front of the first such waiter.
-	 * This is not a necessary step, since deadlock detection would move
-	 * me to before that waiter anyway; but it's relatively cheap to
-	 * detect such a conflict immediately, and avoid delaying till
-	 * deadlock timeout.
+	 * Normally I should go at the end of the queue.  However, if I already hold
+	 * locks that conflict with the request of any previous waiter, put myself
+	 * in the queue just in front of the first such waiter. This is not a
+	 * necessary step, since deadlock detection would move me to before that
+	 * waiter anyway; but it's relatively cheap to detect such a conflict
+	 * immediately, and avoid delaying till deadlock timeout.
 	 *
-	 * Special case: if I find I should go in front of some waiter, check to
-	 * see if I conflict with already-held locks or the requests before
-	 * that waiter.  If not, then just grant myself the requested lock
-	 * immediately.  This is the same as the test for immediate grant in
-	 * LockAcquire, except we are only considering the part of the wait
-	 * queue before my insertion point.
+	 * Special case: if I find I should go in front of some waiter, check to see
+	 * if I conflict with already-held locks or the requests before that
+	 * waiter.	If not, then just grant myself the requested lock immediately.
+	 * This is the same as the test for immediate grant in LockAcquire, except
+	 * we are only considering the part of the wait queue before my insertion
+	 * point.
 	 */
 	if (myHeldLocks != 0)
 	{
@@ -621,12 +668,11 @@ ProcSleep(LockMethod lockMethodTable,
 				if (lockMethodTable->conflictTab[lockmode] & proc->heldLocks)
 				{
 					/*
-					 * Yes, so we have a deadlock.	Easiest way to clean
-					 * up correctly is to call RemoveFromWaitQueue(), but
-					 * we can't do that until we are *on* the wait queue.
-					 * So, set a flag to check below, and break out of
-					 * loop.  Also, record deadlock info for later
-					 * message.
+					 * Yes, so we have a deadlock.	Easiest way to clean up
+					 * correctly is to call RemoveFromWaitQueue(), but we
+					 * can't do that until we are *on* the wait queue. So, set
+					 * a flag to check below, and break out of loop.  Also,
+					 * record deadlock info for later message.
 					 */
 					RememberSimpleDeadLock(MyProc, lockmode, lock, proc);
 					early_deadlock = true;
@@ -638,8 +684,7 @@ ProcSleep(LockMethod lockMethodTable,
 									   lockmode,
 									   lock,
 									   proclock,
-									   MyProc,
-									   NULL) == STATUS_OK)
+									   MyProc) == STATUS_OK)
 				{
 					/* Skip the wait and just grant myself the lock. */
 					GrantLock(lock, proclock, lockmode);
@@ -655,8 +700,8 @@ ProcSleep(LockMethod lockMethodTable,
 		}
 
 		/*
-		 * If we fall out of loop normally, proc points to waitQueue head,
-		 * so we will insert at tail of queue as desired.
+		 * If we fall out of loop normally, proc points to waitQueue head, so
+		 * we will insert at tail of queue as desired.
 		 */
 	}
 	else
@@ -666,8 +711,7 @@ ProcSleep(LockMethod lockMethodTable,
 	}
 
 	/*
-	 * Insert self into queue, ahead of the given proc (or at tail of
-	 * queue).
+	 * Insert self into queue, ahead of the given proc (or at tail of queue).
 	 */
 	SHMQueueInsertBefore(&(proc->links), &(MyProc->links));
 	waitQueue->size++;
@@ -682,9 +726,9 @@ ProcSleep(LockMethod lockMethodTable,
 	MyProc->waitStatus = STATUS_ERROR;	/* initialize result for error */
 
 	/*
-	 * If we detected deadlock, give up without waiting.  This must agree
-	 * with CheckDeadLock's recovery code, except that we shouldn't
-	 * release the semaphore since we haven't tried to lock it yet.
+	 * If we detected deadlock, give up without waiting.  This must agree with
+	 * CheckDeadLock's recovery code, except that we shouldn't release the
+	 * semaphore since we haven't tried to lock it yet.
 	 */
 	if (early_deadlock)
 	{
@@ -699,39 +743,38 @@ ProcSleep(LockMethod lockMethodTable,
 	 * Release the locktable's masterLock.
 	 *
 	 * NOTE: this may also cause us to exit critical-section state, possibly
-	 * allowing a cancel/die interrupt to be accepted. This is OK because
-	 * we have recorded the fact that we are waiting for a lock, and so
+	 * allowing a cancel/die interrupt to be accepted. This is OK because we
+	 * have recorded the fact that we are waiting for a lock, and so
 	 * LockWaitCancel will clean up if cancel/die happens.
 	 */
 	LWLockRelease(masterLock);
 
 	/*
-	 * Set timer so we can wake up after awhile and check for a deadlock.
-	 * If a deadlock is detected, the handler releases the process's
-	 * semaphore and sets MyProc->waitStatus = STATUS_ERROR, allowing us
-	 * to know that we must report failure rather than success.
+	 * Set timer so we can wake up after awhile and check for a deadlock. If a
+	 * deadlock is detected, the handler releases the process's semaphore and
+	 * sets MyProc->waitStatus = STATUS_ERROR, allowing us to know that we
+	 * must report failure rather than success.
 	 *
-	 * By delaying the check until we've waited for a bit, we can avoid
-	 * running the rather expensive deadlock-check code in most cases.
+	 * By delaying the check until we've waited for a bit, we can avoid running
+	 * the rather expensive deadlock-check code in most cases.
 	 */
 	if (!enable_sig_alarm(DeadlockTimeout, false))
 		elog(FATAL, "could not set timer for process wakeup");
 
 	/*
 	 * If someone wakes us between LWLockRelease and PGSemaphoreLock,
-	 * PGSemaphoreLock will not block.	The wakeup is "saved" by the
-	 * semaphore implementation.  Note also that if CheckDeadLock is
-	 * invoked but does not detect a deadlock, PGSemaphoreLock() will
-	 * continue to wait.  There used to be a loop here, but it was useless
-	 * code...
+	 * PGSemaphoreLock will not block.	The wakeup is "saved" by the semaphore
+	 * implementation.	Note also that if CheckDeadLock is invoked but does
+	 * not detect a deadlock, PGSemaphoreLock() will continue to wait.	There
+	 * used to be a loop here, but it was useless code...
 	 *
-	 * We pass interruptOK = true, which eliminates a window in which
-	 * cancel/die interrupts would be held off undesirably.  This is a
-	 * promise that we don't mind losing control to a cancel/die interrupt
-	 * here.  We don't, because we have no shared-state-change work to do
-	 * after being granted the lock (the grantor did it all).  We do have
-	 * to worry about updating the locallock table, but if we lose control
-	 * to an error, LockWaitCancel will fix that up.
+	 * We pass interruptOK = true, which eliminates a window in which cancel/die
+	 * interrupts would be held off undesirably.  This is a promise that we
+	 * don't mind losing control to a cancel/die interrupt here.  We don't,
+	 * because we have no shared-state-change work to do after being granted
+	 * the lock (the grantor did it all).  We do have to worry about updating
+	 * the locallock table, but if we lose control to an error, LockWaitCancel
+	 * will fix that up.
 	 */
 	PGSemaphoreLock(&MyProc->sem, true);
 
@@ -742,9 +785,9 @@ ProcSleep(LockMethod lockMethodTable,
 		elog(FATAL, "could not disable timer for process wakeup");
 
 	/*
-	 * Re-acquire the locktable's masterLock.  We have to do this to hold
-	 * off cancel/die interrupts before we can mess with waitingForLock
-	 * (else we might have a missed or duplicated locallock update).
+	 * Re-acquire the locktable's masterLock.  We have to do this to hold off
+	 * cancel/die interrupts before we can mess with waitingForLock (else we
+	 * might have a missed or duplicated locallock update).
 	 */
 	LWLockAcquire(masterLock, LW_EXCLUSIVE);
 
@@ -832,32 +875,30 @@ ProcLockWakeup(LockMethod lockMethodTable, LOCK *lock)
 		LOCKMODE	lockmode = proc->waitLockMode;
 
 		/*
-		 * Waken if (a) doesn't conflict with requests of earlier waiters,
-		 * and (b) doesn't conflict with already-held locks.
+		 * Waken if (a) doesn't conflict with requests of earlier waiters, and
+		 * (b) doesn't conflict with already-held locks.
 		 */
 		if ((lockMethodTable->conflictTab[lockmode] & aheadRequests) == 0 &&
 			LockCheckConflicts(lockMethodTable,
 							   lockmode,
 							   lock,
 							   proc->waitProcLock,
-							   proc,
-							   NULL) == STATUS_OK)
+							   proc) == STATUS_OK)
 		{
 			/* OK to waken */
 			GrantLock(lock, proc->waitProcLock, lockmode);
 			proc = ProcWakeup(proc, STATUS_OK);
 
 			/*
-			 * ProcWakeup removes proc from the lock's waiting process
-			 * queue and returns the next proc in chain; don't use proc's
-			 * next-link, because it's been cleared.
+			 * ProcWakeup removes proc from the lock's waiting process queue
+			 * and returns the next proc in chain; don't use proc's next-link,
+			 * because it's been cleared.
 			 */
 		}
 		else
 		{
 			/*
-			 * Cannot wake this guy. Remember his request for later
-			 * checks.
+			 * Cannot wake this guy. Remember his request for later checks.
 			 */
 			aheadRequests |= LOCKBIT_ON(lockmode);
 			proc = (PGPROC *) MAKE_PTR(proc->links.next);
@@ -882,22 +923,21 @@ CheckDeadLock(void)
 	 * Acquire locktable lock.	Note that the deadlock check interrupt had
 	 * better not be enabled anywhere that this process itself holds the
 	 * locktable lock, else this will wait forever.  Also note that
-	 * LWLockAcquire creates a critical section, so that this routine
-	 * cannot be interrupted by cancel/die interrupts.
+	 * LWLockAcquire creates a critical section, so that this routine cannot
+	 * be interrupted by cancel/die interrupts.
 	 */
 	LWLockAcquire(LockMgrLock, LW_EXCLUSIVE);
 
 	/*
 	 * Check to see if we've been awoken by anyone in the interim.
 	 *
-	 * If we have we can return and resume our transaction -- happy day.
-	 * Before we are awoken the process releasing the lock grants it to us
-	 * so we know that we don't have to wait anymore.
+	 * If we have we can return and resume our transaction -- happy day. Before
+	 * we are awoken the process releasing the lock grants it to us so we know
+	 * that we don't have to wait anymore.
 	 *
 	 * We check by looking to see if we've been unlinked from the wait queue.
-	 * This is quicker than checking our semaphore's state, since no
-	 * kernel call is needed, and it is safe because we hold the locktable
-	 * lock.
+	 * This is quicker than checking our semaphore's state, since no kernel
+	 * call is needed, and it is safe because we hold the locktable lock.
 	 */
 	if (MyProc->links.prev == INVALID_OFFSET ||
 		MyProc->links.next == INVALID_OFFSET)
@@ -926,8 +966,8 @@ CheckDeadLock(void)
 	RemoveFromWaitQueue(MyProc);
 
 	/*
-	 * Set MyProc->waitStatus to STATUS_ERROR so that ProcSleep will
-	 * report an error after we return from the signal handler.
+	 * Set MyProc->waitStatus to STATUS_ERROR so that ProcSleep will report an
+	 * error after we return from the signal handler.
 	 */
 	MyProc->waitStatus = STATUS_ERROR;
 
@@ -938,14 +978,14 @@ CheckDeadLock(void)
 	PGSemaphoreUnlock(&MyProc->sem);
 
 	/*
-	 * We're done here.  Transaction abort caused by the error that
-	 * ProcSleep will raise will cause any other locks we hold to be
-	 * released, thus allowing other processes to wake up; we don't need
-	 * to do that here. NOTE: an exception is that releasing locks we hold
-	 * doesn't consider the possibility of waiters that were blocked
-	 * behind us on the lock we just failed to get, and might now be
-	 * wakable because we're not in front of them anymore.  However,
-	 * RemoveFromWaitQueue took care of waking up any such processes.
+	 * We're done here.  Transaction abort caused by the error that ProcSleep
+	 * will raise will cause any other locks we hold to be released, thus
+	 * allowing other processes to wake up; we don't need to do that here.
+	 * NOTE: an exception is that releasing locks we hold doesn't consider the
+	 * possibility of waiters that were blocked behind us on the lock we just
+	 * failed to get, and might now be wakable because we're not in front of
+	 * them anymore.  However, RemoveFromWaitQueue took care of waking up any
+	 * such processes.
 	 */
 	LWLockRelease(LockMgrLock);
 }
@@ -962,9 +1002,7 @@ CheckDeadLock(void)
 void
 ProcWaitForSignal(void)
 {
-	waitingForSignal = true;
 	PGSemaphoreLock(&MyProc->sem, true);
-	waitingForSignal = false;
 }
 
 /*
@@ -978,16 +1016,15 @@ void
 ProcCancelWaitForSignal(void)
 {
 	PGSemaphoreReset(&MyProc->sem);
-	waitingForSignal = false;
 }
 
 /*
- * ProcSendSignal - send a signal to a backend identified by BackendId
+ * ProcSendSignal - send a signal to a backend identified by PID
  */
 void
-ProcSendSignal(BackendId procId)
+ProcSendSignal(int pid)
 {
-	PGPROC	   *proc = BackendIdGetProc(procId);
+	PGPROC	   *proc = BackendPidGetProc(pid);
 
 	if (proc != NULL)
 		PGSemaphoreUnlock(&proc->sem);
@@ -1018,7 +1055,6 @@ enable_sig_alarm(int delayms, bool is_statement_timeout)
 
 #ifndef __BEOS__
 	struct itimerval timeval;
-
 #else
 	bigtime_t	time_interval;
 #endif
@@ -1042,22 +1078,23 @@ enable_sig_alarm(int delayms, bool is_statement_timeout)
 		Assert(!deadlock_timeout_active);
 		statement_fin_time = fin_time;
 		statement_timeout_active = true;
+		cancel_from_timeout = false;
 	}
 	else if (statement_timeout_active)
 	{
 		/*
 		 * Begin deadlock timeout with statement-level timeout active
 		 *
-		 * Here, we want to interrupt at the closer of the two timeout times.
-		 * If fin_time >= statement_fin_time then we need not touch the
-		 * existing timer setting; else set up to interrupt at the
-		 * deadlock timeout time.
+		 * Here, we want to interrupt at the closer of the two timeout times. If
+		 * fin_time >= statement_fin_time then we need not touch the existing
+		 * timer setting; else set up to interrupt at the deadlock timeout
+		 * time.
 		 *
 		 * NOTE: in this case it is possible that this routine will be
 		 * interrupted by the previously-set timer alarm.  This is okay
-		 * because the signal handler will do only what it should do
-		 * according to the state variables.  The deadlock checker may get
-		 * run earlier than normal, but that does no harm.
+		 * because the signal handler will do only what it should do according
+		 * to the state variables.	The deadlock checker may get run earlier
+		 * than normal, but that does no harm.
 		 */
 		deadlock_timeout_active = true;
 		if (fin_time.tv_sec > statement_fin_time.tv_sec ||
@@ -1112,14 +1149,18 @@ disable_sig_alarm(bool is_statement_timeout)
 		MemSet(&timeval, 0, sizeof(struct itimerval));
 		if (setitimer(ITIMER_REAL, &timeval, NULL))
 		{
-			statement_timeout_active = deadlock_timeout_active = false;
+			statement_timeout_active = false;
+			cancel_from_timeout = false;
+			deadlock_timeout_active = false;
 			return false;
 		}
 #else
 		/* BeOS doesn't have setitimer, but has set_alarm */
 		if (set_alarm(B_INFINITE_TIMEOUT, B_PERIODIC_ALARM) < 0)
 		{
-			statement_timeout_active = deadlock_timeout_active = false;
+			statement_timeout_active = false;
+			cancel_from_timeout = false;
+			deadlock_timeout_active = false;
 			return false;
 		}
 #endif
@@ -1130,7 +1171,10 @@ disable_sig_alarm(bool is_statement_timeout)
 
 	/* Cancel or reschedule statement timeout */
 	if (is_statement_timeout)
+	{
 		statement_timeout_active = false;
+		cancel_from_timeout = false;
+	}
 	else if (statement_timeout_active)
 	{
 		if (!CheckStatementTimeout())
@@ -1163,7 +1207,7 @@ CheckStatementTimeout(void)
 	{
 		/* Time to die */
 		statement_timeout_active = false;
-		
+		cancel_from_timeout = true;
 		kill(MyProcPid, SIGINT);
 	}
 	else

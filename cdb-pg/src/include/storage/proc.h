@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/storage/proc.h,v 1.77 2004/12/31 22:03:42 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/storage/proc.h,v 1.84 2005/10/15 02:49:46 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -15,7 +15,6 @@
 #define _PROC_H_
 
 #include "access/xlog.h"
-#include "storage/backendid.h"
 #include "storage/lock.h"
 #include "storage/pg_sema.h"
 
@@ -47,6 +46,13 @@ struct XidCache
  * links: list link for any list the PGPROC is in.	When waiting for a lock,
  * the PGPROC is linked into that lock's waitProcs queue.  A recycled PGPROC
  * is linked into ProcGlobal's freeProcs list.
+ *
+ * Note: twophase.c also sets up a dummy PGPROC struct for each currently
+ * prepared transaction.  These PGPROCs appear in the ProcArray data structure
+ * so that the prepared transactions appear to be still running and are
+ * correctly shown as holding locks.  A prepared transaction PGPROC can be
+ * distinguished from a real one at need by the fact that it has pid == 0.
+ * The semaphore and lock-related fields in a prepared-xact PGPROC are unused.
  */
 struct PGPROC
 {
@@ -59,19 +65,13 @@ struct PGPROC
 	TransactionId xid;			/* transaction currently being executed by
 								 * this proc */
 
-	TransactionId xmin;			/* minimal running XID as it was when we
-								 * were starting our xact: vacuum must not
-								 * remove tuples deleted by xid >= xmin ! */
+	TransactionId xmin;			/* minimal running XID as it was when we were
+								 * starting our xact: vacuum must not remove
+								 * tuples deleted by xid >= xmin ! */
 
-	int			pid;			/* This backend's process id */
+	int			pid;			/* This backend's process id, or 0 */
 	Oid			databaseId;		/* OID of database this backend is using */
-
-	/*
-	 * XLOG location of first XLOG record written by this backend's
-	 * current transaction.  If backend is not in a transaction or hasn't
-	 * yet modified anything, logRec.xrecoff is zero.
-	 */
-	XLogRecPtr	logRec;
+	Oid			roleId;			/* OID of role using this backend */
 
 	/* Info about LWLock the process is currently waiting for, if any. */
 	bool		lwWaiting;		/* true if waiting for an LW lock */
@@ -83,11 +83,11 @@ struct PGPROC
 	LOCK	   *waitLock;		/* Lock object we're sleeping on ... */
 	PROCLOCK   *waitProcLock;	/* Per-holder info for awaited lock */
 	LOCKMODE	waitLockMode;	/* type of lock we're waiting for */
-	LOCKMASK	heldLocks;		/* bitmask for lock types already held on
-								 * this lock object by this backend */
+	LOCKMASK	heldLocks;		/* bitmask for lock types already held on this
+								 * lock object by this backend */
 
-	SHM_QUEUE	procLocks;		/* list of PROCLOCK objects for locks held
-								 * or awaited by this backend */
+	SHM_QUEUE	procLocks;		/* list of PROCLOCK objects for locks held or
+								 * awaited by this backend */
 
 	struct XidCache subxids;	/* cache for subtransaction XIDs */
 };
@@ -105,6 +105,8 @@ typedef struct PROC_HDR
 {
 	/* Head of list of free PGPROC structures */
 	SHMEM_OFFSET freeProcs;
+	/* Current shared estimate of appropriate spins_per_delay value */
+	int			spins_per_delay;
 } PROC_HDR;
 
 
@@ -117,15 +119,18 @@ typedef struct PROC_HDR
 extern int	DeadlockTimeout;
 extern int	StatementTimeout;
 
+extern volatile bool cancel_from_timeout;
+
 
 /*
  * Function Prototypes
  */
-extern int	ProcGlobalSemas(int maxBackends);
-extern int	ProcGlobalShmemSize(int maxBackends);
-extern void InitProcGlobal(int maxBackends);
+extern int	ProcGlobalSemas(void);
+extern Size ProcGlobalShmemSize(void);
+extern void InitProcGlobal(void);
 extern void InitProcess(void);
 extern void InitDummyProcess(int proctype);
+extern bool HaveNFreeProcs(int n);
 extern void ProcReleaseLocks(bool isCommit);
 
 extern void ProcQueueInit(PROC_QUEUE *queue);
@@ -137,7 +142,7 @@ extern bool LockWaitCancel(void);
 
 extern void ProcWaitForSignal(void);
 extern void ProcCancelWaitForSignal(void);
-extern void ProcSendSignal(BackendId procId);
+extern void ProcSendSignal(int pid);
 
 extern bool enable_sig_alarm(int delayms, bool is_statement_timeout);
 extern bool disable_sig_alarm(bool is_statement_timeout);

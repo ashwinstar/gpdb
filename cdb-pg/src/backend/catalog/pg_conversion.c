@@ -8,18 +8,17 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/catalog/pg_conversion.c,v 1.20 2004/12/31 21:59:38 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/catalog/pg_conversion.c,v 1.28 2005/10/18 01:06:23 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
 #include "access/heapam.h"
-#include "catalog/catname.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
-#include "catalog/pg_class.h"
 #include "catalog/pg_conversion.h"
+#include "catalog/pg_proc.h"
 #include "catalog/namespace.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
@@ -37,7 +36,7 @@
  */
 Oid
 ConversionCreate(const char *conname, Oid connamespace,
-				 AclId conowner,
+				 Oid conowner,
 				 int32 conforencoding, int32 contoencoding,
 				 Oid conproc, bool def)
 {
@@ -68,21 +67,21 @@ ConversionCreate(const char *conname, Oid connamespace,
 	if (def)
 	{
 		/*
-		 * make sure there is no existing default <for encoding><to
-		 * encoding> pair in this name space
+		 * make sure there is no existing default <for encoding><to encoding>
+		 * pair in this name space
 		 */
 		if (FindDefaultConversion(connamespace,
 								  conforencoding,
 								  contoencoding))
 			ereport(ERROR,
 					(errcode(ERRCODE_DUPLICATE_OBJECT),
-				 errmsg("default conversion for %s to %s already exists",
-						pg_encoding_to_char(conforencoding),
-						pg_encoding_to_char(contoencoding))));
+					 errmsg("default conversion for %s to %s already exists",
+							pg_encoding_to_char(conforencoding),
+							pg_encoding_to_char(contoencoding))));
 	}
 
 	/* open pg_conversion */
-	rel = heap_openr(ConversionRelationName, RowExclusiveLock);
+	rel = heap_open(ConversionRelationId, RowExclusiveLock);
 	tupDesc = rel->rd_att;
 
 	/* initialize nulls and values */
@@ -96,7 +95,7 @@ ConversionCreate(const char *conname, Oid connamespace,
 	namestrcpy(&cname, conname);
 	values[Anum_pg_conversion_conname - 1] = NameGetDatum(&cname);
 	values[Anum_pg_conversion_connamespace - 1] = ObjectIdGetDatum(connamespace);
-	values[Anum_pg_conversion_conowner - 1] = Int32GetDatum(conowner);
+	values[Anum_pg_conversion_conowner - 1] = ObjectIdGetDatum(conowner);
 	values[Anum_pg_conversion_conforencoding - 1] = Int32GetDatum(conforencoding);
 	values[Anum_pg_conversion_contoencoding - 1] = Int32GetDatum(contoencoding);
 	values[Anum_pg_conversion_conproc - 1] = ObjectIdGetDatum(conproc);
@@ -111,15 +110,19 @@ ConversionCreate(const char *conname, Oid connamespace,
 	/* update the index if any */
 	CatalogUpdateIndexes(rel, tup);
 
-	myself.classId = RelationGetRelid(rel);
+	myself.classId = ConversionRelationId;
 	myself.objectId = HeapTupleGetOid(tup);
 	myself.objectSubId = 0;
 
 	/* create dependency on conversion procedure */
-	referenced.classId = RelOid_pg_proc;
+	referenced.classId = ProcedureRelationId;
 	referenced.objectId = conproc;
 	referenced.objectSubId = 0;
 	recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+
+	/* create dependency on owner */
+	recordDependencyOnOwner(ConversionRelationId, HeapTupleGetOid(tup),
+							conowner);
 
 	heap_freetuple(tup);
 	heap_close(rel, RowExclusiveLock);
@@ -147,14 +150,14 @@ ConversionDrop(Oid conversionOid, DropBehavior behavior)
 	if (!superuser() &&
 		((Form_pg_conversion) GETSTRUCT(tuple))->conowner != GetUserId())
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CONVERSION,
-			  NameStr(((Form_pg_conversion) GETSTRUCT(tuple))->conname));
+				  NameStr(((Form_pg_conversion) GETSTRUCT(tuple))->conname));
 
 	ReleaseSysCache(tuple);
 
 	/*
 	 * Do the deletion
 	 */
-	object.classId = get_system_catalog_relid(ConversionRelationName);
+	object.classId = ConversionRelationId;
 	object.objectId = conversionOid;
 	object.objectSubId = 0;
 
@@ -171,7 +174,6 @@ void
 RemoveConversionById(Oid conversionOid)
 {
 	Relation	rel;
-	TupleDesc	tupDesc;
 	HeapTuple	tuple;
 	HeapScanDesc scan;
 	ScanKeyData scanKeyData;
@@ -182,8 +184,7 @@ RemoveConversionById(Oid conversionOid)
 				ObjectIdGetDatum(conversionOid));
 
 	/* open pg_conversion */
-	rel = heap_openr(ConversionRelationName, RowExclusiveLock);
-	tupDesc = rel->rd_att;
+	rel = heap_open(ConversionRelationId, RowExclusiveLock);
 
 	scan = heap_beginscan(rel, SnapshotNow,
 						  1, &scanKeyData);
@@ -288,8 +289,8 @@ pg_convert_using(PG_FUNCTION_ARGS)
 	Oid			convoid;
 	HeapTuple	tuple;
 	Form_pg_conversion body;
-	unsigned char *str;
-	unsigned char *result;
+	char	   *str;
+	char	   *result;
 	int			len;
 
 	/* Convert input string to null-terminated form */
@@ -299,7 +300,7 @@ pg_convert_using(PG_FUNCTION_ARGS)
 	*(str + len) = '\0';
 
 	/* Look up the conversion name */
-	parsed_name = textToQualifiedNameList(conv_name, "convert_using");
+	parsed_name = textToQualifiedNameList(conv_name);
 	convoid = FindConversionByName(parsed_name);
 	if (!OidIsValid(convoid))
 		ereport(ERROR,
@@ -327,11 +328,10 @@ pg_convert_using(PG_FUNCTION_ARGS)
 	ReleaseSysCache(tuple);
 
 	/*
-	 * build text result structure. we cannot use textin() here, since
-	 * textin assumes that input string encoding is same as database
-	 * encoding.
+	 * build text result structure. we cannot use textin() here, since textin
+	 * assumes that input string encoding is same as database encoding.
 	 */
-	len = strlen((char *)result) + VARHDRSZ;
+	len = strlen(result) + VARHDRSZ;
 	retval = palloc(len);
 	VARATT_SIZEP(retval) = len;
 	memcpy(VARDATA(retval), result, len - VARHDRSZ);

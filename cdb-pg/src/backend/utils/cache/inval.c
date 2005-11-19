@@ -53,10 +53,10 @@
  *
  *	Also, whenever we see an operation on a pg_class or pg_attribute tuple,
  *	we register a relcache flush operation for the relation described by that
- *	tuple.  pg_class updates trigger an smgr flush operation as well.
+ *	tuple.	pg_class updates trigger an smgr flush operation as well.
  *
  *	We keep the relcache and smgr flush requests in lists separate from the
- *	catcache tuple flush requests.  This allows us to issue all the pending
+ *	catcache tuple flush requests.	This allows us to issue all the pending
  *	catcache flushes before we issue relcache flushes, which saves us from
  *	loading a catcache tuple during relcache load only to flush it again
  *	right away.  Also, we avoid queuing multiple relcache flush requests for
@@ -80,12 +80,13 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/cache/inval.c,v 1.70 2005/01/10 21:57:17 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/cache/inval.c,v 1.73 2005/10/15 02:49:31 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
+#include "access/twophase_rmgr.h"
 #include "access/xact.h"
 #include "catalog/catalog.h"
 #include "miscadmin.h"
@@ -97,7 +98,6 @@
 #include "utils/relcache.h"
 #include "utils/syscache.h"
 
-#include "access/twophase_rmgr.h"
 
 /*
  * To minimize palloc traffic, we keep pending requests in successively-
@@ -142,7 +142,7 @@ typedef struct TransInvalidationInfo
 	struct TransInvalidationInfo *parent;
 
 	/* Subtransaction nesting depth */
-	int		my_level;
+	int			my_level;
 
 	/* head of current-command event list */
 	InvalidationListHeader CurrentCmdInvalidMsgs;
@@ -172,7 +172,13 @@ static struct CACHECALLBACK
 
 static int	cache_callback_count = 0;
 
-static void PersistSharedInvalidMessage(SharedInvalidationMessage *msg);
+/* info values for 2PC callback */
+#define TWOPHASE_INFO_MSG			0	/* SharedInvalidationMessage */
+#define TWOPHASE_INFO_FILE_BEFORE	1	/* relcache file inval */
+#define TWOPHASE_INFO_FILE_AFTER	2	/* relcache file inval */
+
+static void PersistInvalidationMessage(SharedInvalidationMessage *msg);
+
 
 /* ----------------------------------------------------------------
  *				Invalidation list support functions
@@ -202,7 +208,7 @@ AddInvalidationMessage(InvalidationChunk **listHdr,
 		chunk = (InvalidationChunk *)
 			MemoryContextAlloc(CurTransactionContext,
 							   sizeof(InvalidationChunk) +
-				(FIRSTCHUNKSIZE - 1) *sizeof(SharedInvalidationMessage));
+					(FIRSTCHUNKSIZE - 1) *sizeof(SharedInvalidationMessage));
 		chunk->nitems = 0;
 		chunk->maxitems = FIRSTCHUNKSIZE;
 		chunk->next = *listHdr;
@@ -216,7 +222,7 @@ AddInvalidationMessage(InvalidationChunk **listHdr,
 		chunk = (InvalidationChunk *)
 			MemoryContextAlloc(CurTransactionContext,
 							   sizeof(InvalidationChunk) +
-					 (chunksize - 1) *sizeof(SharedInvalidationMessage));
+						 (chunksize - 1) *sizeof(SharedInvalidationMessage));
 		chunk->nitems = 0;
 		chunk->maxitems = chunksize;
 		chunk->next = *listHdr;
@@ -310,7 +316,7 @@ AddRelcacheInvalidationMessage(InvalidationListHeader *hdr,
 	ProcessMessageList(hdr->rclist,
 					   if (msg->rc.id == SHAREDINVALRELCACHE_ID &&
 						   msg->rc.relId == relId)
-						   return);
+					   return);
 
 	/* OK, add the item */
 	msg.rc.id = SHAREDINVALRELCACHE_ID;
@@ -332,7 +338,7 @@ AddSmgrInvalidationMessage(InvalidationListHeader *hdr,
 	ProcessMessageList(hdr->rclist,
 					   if (msg->sm.id == SHAREDINVALSMGR_ID &&
 						   RelFileNodeEquals(msg->sm.rnode, rnode))
-						   return);
+					   return);
 
 	/* OK, add the item */
 	msg.sm.id = SHAREDINVALSMGR_ID;
@@ -464,8 +470,8 @@ LocalExecuteInvalidationMessage(SharedInvalidationMessage *msg)
 	else if (msg->id == SHAREDINVALSMGR_ID)
 	{
 		/*
-		 * We could have smgr entries for relations of other databases,
-		 * so no short-circuit test is possible here.
+		 * We could have smgr entries for relations of other databases, so no
+		 * short-circuit test is possible here.
 		 */
 		smgrclosenode(msg->sm.rnode);
 	}
@@ -517,17 +523,16 @@ PrepareForTupleInvalidation(Relation relation, HeapTuple tuple)
 		return;
 
 	/*
-	 * We only need to worry about invalidation for tuples that are in
-	 * system relations; user-relation tuples are never in catcaches and
-	 * can't affect the relcache either.
+	 * We only need to worry about invalidation for tuples that are in system
+	 * relations; user-relation tuples are never in catcaches and can't affect
+	 * the relcache either.
 	 */
 	if (!IsSystemRelation(relation))
 		return;
 
 	/*
-	 * TOAST tuples can likewise be ignored here. Note that TOAST tables
-	 * are considered system relations so they are not filtered by the
-	 * above test.
+	 * TOAST tuples can likewise be ignored here. Note that TOAST tables are
+	 * considered system relations so they are not filtered by the above test.
 	 */
 	if (IsToastRelation(relation))
 		return;
@@ -543,7 +548,7 @@ PrepareForTupleInvalidation(Relation relation, HeapTuple tuple)
 	 */
 	tupleRelId = RelationGetRelid(relation);
 
-	if (tupleRelId == RelOid_pg_class)
+	if (tupleRelId == RelationRelationId)
 	{
 		Form_pg_class classtup = (Form_pg_class) GETSTRUCT(tuple);
 		RelFileNode rnode;
@@ -555,16 +560,15 @@ PrepareForTupleInvalidation(Relation relation, HeapTuple tuple)
 			databaseId = MyDatabaseId;
 
 		/*
-		 * We need to send out an smgr inval as well as a relcache inval.
-		 * This is needed because other backends might possibly possess
-		 * smgr cache but not relcache entries for the target relation.
+		 * We need to send out an smgr inval as well as a relcache inval. This
+		 * is needed because other backends might possibly possess smgr cache
+		 * but not relcache entries for the target relation.
 		 *
-		 * Note: during a pg_class row update that assigns a new
-		 * relfilenode or reltablespace value, we will be called on both
-		 * the old and new tuples, and thus will broadcast invalidation
-		 * messages showing both the old and new RelFileNode values.  This
-		 * ensures that other backends will close smgr references to the
-		 * old file.
+		 * Note: during a pg_class row update that assigns a new relfilenode or
+		 * reltablespace value, we will be called on both the old and new
+		 * tuples, and thus will broadcast invalidation messages showing both
+		 * the old and new RelFileNode values.	This ensures that other
+		 * backends will close smgr references to the old file.
 		 *
 		 * XXX possible future cleanup: it might be better to trigger smgr
 		 * flushes explicitly, rather than indirectly from pg_class updates.
@@ -577,20 +581,19 @@ PrepareForTupleInvalidation(Relation relation, HeapTuple tuple)
 		rnode.relNode = classtup->relfilenode;
 		RegisterSmgrInvalidation(rnode);
 	}
-	else if (tupleRelId == RelOid_pg_attribute)
+	else if (tupleRelId == AttributeRelationId)
 	{
 		Form_pg_attribute atttup = (Form_pg_attribute) GETSTRUCT(tuple);
 
 		relationId = atttup->attrelid;
 
 		/*
-		 * KLUGE ALERT: we always send the relcache event with
-		 * MyDatabaseId, even if the rel in question is shared (which we
-		 * can't easily tell). This essentially means that only backends
-		 * in this same database will react to the relcache flush request.
-		 * This is in fact appropriate, since only those backends could
-		 * see our pg_attribute change anyway.	It looks a bit ugly
-		 * though.
+		 * KLUGE ALERT: we always send the relcache event with MyDatabaseId,
+		 * even if the rel in question is shared (which we can't easily tell).
+		 * This essentially means that only backends in this same database
+		 * will react to the relcache flush request. This is in fact
+		 * appropriate, since only those backends could see our pg_attribute
+		 * change anyway.  It looks a bit ugly though.
 		 */
 		databaseId = MyDatabaseId;
 	}
@@ -638,25 +641,54 @@ AtStart_Inval(void)
 	transInvalInfo->my_level = GetCurrentTransactionNestLevel();
 }
 
-void  
+/*
+ * AtPrepare_Inval
+ *		Save the inval lists state at 2PC transaction prepare.
+ *
+ * In this phase we just generate 2PC records for all the pending invalidation
+ * work.
+ */
+void
 AtPrepare_Inval(void)
 {
-      /*
-       * Relcache init file invalidation requires processing both before
-       * and after we send the SI messages.  However, we need not do
-       * anything unless we committed.
-       */
-      if (transInvalInfo->RelcacheInitFileInval)
-              RelationCacheInitFileInvalidate(true);
+	/* Must be at top of stack */
+	Assert(transInvalInfo != NULL && transInvalInfo->parent == NULL);
 
-      AppendInvalidationMessages(&transInvalInfo->PriorCmdInvalidMsgs,
-                                                         &transInvalInfo->CurrentCmdInvalidMsgs);
+	/*
+	 * Relcache init file invalidation requires processing both before and
+	 * after we send the SI messages.
+	 */
+	if (transInvalInfo->RelcacheInitFileInval)
+		RegisterTwoPhaseRecord(TWOPHASE_RM_INVAL_ID, TWOPHASE_INFO_FILE_BEFORE,
+							   NULL, 0);
 
-       ProcessInvalidationMessages(&transInvalInfo->PriorCmdInvalidMsgs,
-                                                              PersistSharedInvalidMessage);
+	AppendInvalidationMessages(&transInvalInfo->PriorCmdInvalidMsgs,
+							   &transInvalInfo->CurrentCmdInvalidMsgs);
 
-      /* Need not free anything explicitly */
-      transInvalInfo = NULL;
+	ProcessInvalidationMessages(&transInvalInfo->PriorCmdInvalidMsgs,
+								PersistInvalidationMessage);
+
+	if (transInvalInfo->RelcacheInitFileInval)
+		RegisterTwoPhaseRecord(TWOPHASE_RM_INVAL_ID, TWOPHASE_INFO_FILE_AFTER,
+							   NULL, 0);
+}
+
+/*
+ * PostPrepare_Inval
+ *		Clean up after successful PREPARE.
+ *
+ * Here, we want to act as though the transaction aborted, so that we will
+ * undo any syscache changes it made, thereby bringing us into sync with the
+ * outside world, which doesn't believe the transaction committed yet.
+ *
+ * If the prepared transaction is later aborted, there is nothing more to
+ * do; if it commits, we will receive the consequent inval messages just
+ * like everyone else.
+ */
+void
+PostPrepare_Inval(void)
+{
+	AtEOXact_Inval(false);
 }
 
 /*
@@ -678,25 +710,43 @@ AtSubStart_Inval(void)
 }
 
 /*
- * PersistSharedInvalidMessage
- *  Writes the message to two-phase file
+ * PersistInvalidationMessage
+ *		Write an invalidation message to the 2PC state file.
  */
 static void
-PersistSharedInvalidMessage(SharedInvalidationMessage *msg)
+PersistInvalidationMessage(SharedInvalidationMessage *msg)
 {
-      RegisterTwoPhaseRecord(TWOPHASE_RM_INVAL_ID, msg, sizeof(SharedInvalidationMessage));
+	RegisterTwoPhaseRecord(TWOPHASE_RM_INVAL_ID, TWOPHASE_INFO_MSG,
+						   msg, sizeof(SharedInvalidationMessage));
 }
 
+/*
+ * inval_twophase_postcommit
+ *		Process an invalidation message from the 2PC state file.
+ */
 void
-inval_postcommit_record(TransactionId xid, void *recdata, uint32 len)
+inval_twophase_postcommit(TransactionId xid, uint16 info,
+						  void *recdata, uint32 len)
 {
-      SharedInvalidationMessage *msg = (SharedInvalidationMessage *) recdata;
+	SharedInvalidationMessage *msg;
 
-      /* XXX - init file invalidation should be done only once before
-         and once after sending messages */
-      RelationCacheInitFileInvalidate(false);
-      SendSharedInvalidMessage(msg);
-      RelationCacheInitFileInvalidate(true);
+	switch (info)
+	{
+		case TWOPHASE_INFO_MSG:
+			msg = (SharedInvalidationMessage *) recdata;
+			Assert(len == sizeof(SharedInvalidationMessage));
+			SendSharedInvalidMessage(msg);
+			break;
+		case TWOPHASE_INFO_FILE_BEFORE:
+			RelationCacheInitFileInvalidate(true);
+			break;
+		case TWOPHASE_INFO_FILE_AFTER:
+			RelationCacheInitFileInvalidate(false);
+			break;
+		default:
+			Assert(false);
+			break;
+	}
 }
 
 
@@ -733,15 +783,15 @@ AtEOXact_Inval(bool isCommit)
 		Assert(transInvalInfo != NULL && transInvalInfo->parent == NULL);
 
 		/*
-		 * Relcache init file invalidation requires processing both before
-		 * and after we send the SI messages.  However, we need not do
-		 * anything unless we committed.
+		 * Relcache init file invalidation requires processing both before and
+		 * after we send the SI messages.  However, we need not do anything
+		 * unless we committed.
 		 */
 		if (transInvalInfo->RelcacheInitFileInval)
 			RelationCacheInitFileInvalidate(true);
 
 		AppendInvalidationMessages(&transInvalInfo->PriorCmdInvalidMsgs,
-								 &transInvalInfo->CurrentCmdInvalidMsgs);
+								   &transInvalInfo->CurrentCmdInvalidMsgs);
 
 		ProcessInvalidationMessages(&transInvalInfo->PriorCmdInvalidMsgs,
 									SendSharedInvalidMessage);
@@ -844,9 +894,9 @@ void
 CommandEndInvalidationMessages(void)
 {
 	/*
-	 * You might think this shouldn't be called outside any transaction,
-	 * but bootstrap does it, and also ABORT issued when not in a
-	 * transaction. So just quietly return if no state to work on.
+	 * You might think this shouldn't be called outside any transaction, but
+	 * bootstrap does it, and also ABORT issued when not in a transaction. So
+	 * just quietly return if no state to work on.
 	 */
 	if (transInvalInfo == NULL)
 		return;

@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/conversioncmds.c,v 1.16.4.1 2005/05/03 19:18:15 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/conversioncmds.c,v 1.23 2005/10/15 02:49:15 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -17,7 +17,7 @@
 #include "catalog/pg_conversion.h"
 #include "access/heapam.h"
 #include "catalog/catalog.h"
-#include "catalog/catname.h"
+#include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
@@ -74,8 +74,8 @@ CreateConversionCommand(CreateConversionStmt *stmt)
 						to_encoding_name)));
 
 	/*
-	 * Check the existence of the conversion function. Function name could
-	 * be a qualified name.
+	 * Check the existence of the conversion function. Function name could be
+	 * a qualified name.
 	 */
 	funcoid = LookupFuncName(func_name, sizeof(funcargs) / sizeof(Oid),
 							 funcargs, false);
@@ -87,8 +87,8 @@ CreateConversionCommand(CreateConversionStmt *stmt)
 					   NameListToString(func_name));
 
 	/*
-	 * All seem ok, go ahead (possible failure would be a duplicate
-	 * conversion name)
+	 * All seem ok, go ahead (possible failure would be a duplicate conversion
+	 * name)
 	 */
 	ConversionCreate(conversion_name, namespaceId, GetUserId(),
 					 from_encoding, to_encoding, funcoid, stmt->def);
@@ -124,7 +124,7 @@ RenameConversion(List *name, const char *newname)
 	Relation	rel;
 	AclResult	aclresult;
 
-	rel = heap_openr(ConversionRelationName, RowExclusiveLock);
+	rel = heap_open(ConversionRelationId, RowExclusiveLock);
 
 	conversionOid = FindConversionByName(name);
 	if (!OidIsValid(conversionOid))
@@ -148,12 +148,11 @@ RenameConversion(List *name, const char *newname)
 							 0, 0))
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
-			  errmsg("conversion \"%s\" already exists in schema \"%s\"",
-					 newname, get_namespace_name(namespaceOid))));
+				 errmsg("conversion \"%s\" already exists in schema \"%s\"",
+						newname, get_namespace_name(namespaceOid))));
 
 	/* must be owner */
-	if (!superuser() &&
-		((Form_pg_conversion) GETSTRUCT(tup))->conowner != GetUserId())
+	if (!pg_conversion_ownercheck(conversionOid, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CONVERSION,
 					   NameListToString(name));
 
@@ -176,14 +175,15 @@ RenameConversion(List *name, const char *newname)
  * Change conversion owner
  */
 void
-AlterConversionOwner(List *name, AclId newOwnerSysId)
+AlterConversionOwner(List *name, Oid newOwnerId)
 {
 	Oid			conversionOid;
 	HeapTuple	tup;
 	Relation	rel;
 	Form_pg_conversion convForm;
+	AclResult	aclresult;
 
-	rel = heap_openr(ConversionRelationName, RowExclusiveLock);
+	rel = heap_open(ConversionRelationId, RowExclusiveLock);
 
 	conversionOid = FindConversionByName(name);
 	if (!OidIsValid(conversionOid))
@@ -204,23 +204,40 @@ AlterConversionOwner(List *name, AclId newOwnerSysId)
 	 * If the new owner is the same as the existing owner, consider the
 	 * command to have succeeded.  This is for dump restoration purposes.
 	 */
-	if (convForm->conowner != newOwnerSysId)
+	if (convForm->conowner != newOwnerId)
 	{
-		/* Otherwise, must be superuser to change object ownership */
+		/* Superusers can always do it */
 		if (!superuser())
-			ereport(ERROR,
-					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 errmsg("must be superuser to change owner")));
+		{
+			/* Otherwise, must be owner of the existing object */
+			if (!pg_conversion_ownercheck(HeapTupleGetOid(tup), GetUserId()))
+				aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_CONVERSION,
+							   NameListToString(name));
+
+			/* Must be able to become new owner */
+			check_is_member_of_role(GetUserId(), newOwnerId);
+
+			/* New owner must have CREATE privilege on namespace */
+			aclresult = pg_namespace_aclcheck(convForm->connamespace,
+											  newOwnerId,
+											  ACL_CREATE);
+			if (aclresult != ACLCHECK_OK)
+				aclcheck_error(aclresult, ACL_KIND_NAMESPACE,
+							   get_namespace_name(convForm->connamespace));
+		}
 
 		/*
-		 * Modify the owner --- okay to scribble on tup because it's a
-		 * copy
+		 * Modify the owner --- okay to scribble on tup because it's a copy
 		 */
-		convForm->conowner = newOwnerSysId;
+		convForm->conowner = newOwnerId;
 
 		simple_heap_update(rel, &tup->t_self, tup);
 
 		CatalogUpdateIndexes(rel, tup);
+
+		/* Update owner dependency reference */
+		changeDependencyOnOwner(ConversionRelationId, conversionOid,
+								newOwnerId);
 	}
 
 	heap_close(rel, NoLock);

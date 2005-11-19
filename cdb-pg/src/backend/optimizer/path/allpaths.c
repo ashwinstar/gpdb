@@ -8,13 +8,14 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/path/allpaths.c,v 1.123 2004/12/31 22:00:00 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/path/allpaths.c,v 1.137 2005/10/15 02:49:19 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 
 #include "postgres.h"
 
+#include "nodes/makefuncs.h"
 #ifdef OPTIMIZER_DEBUG
 #include "nodes/print.h"
 #endif
@@ -25,29 +26,33 @@
 #include "optimizer/paths.h"
 #include "optimizer/plancat.h"
 #include "optimizer/planner.h"
+#include "optimizer/predtest.h"
 #include "optimizer/prep.h"
 #include "optimizer/var.h"
 #include "parser/parsetree.h"
 #include "parser/parse_clause.h"
+#include "parser/parse_expr.h"
 #include "rewrite/rewriteManip.h"
 #include "cdb/cdbllize.h"
 
+
 /* These parameters are set by GUC */
+bool		constraint_exclusion = false;
 bool		enable_geqo = false;	/* just in case GUC doesn't set it */
 int			geqo_threshold;
 
 
-static void set_base_rel_pathlists(Query *root);
-static void set_plain_rel_pathlist(Query *root, RelOptInfo *rel,
+static void set_base_rel_pathlists(PlannerInfo *root);
+static void set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 					   RangeTblEntry *rte);
-static void set_inherited_rel_pathlist(Query *root, RelOptInfo *rel,
+static void set_inherited_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 						   Index rti, RangeTblEntry *rte,
 						   List *inheritlist);
-static void set_subquery_pathlist(Query *root, RelOptInfo *rel,
+static void set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 					  Index rti, RangeTblEntry *rte);
-static void set_function_pathlist(Query *root, RelOptInfo *rel,
+static void set_function_pathlist(PlannerInfo *root, RelOptInfo *rel,
 					  RangeTblEntry *rte);
-static RelOptInfo *make_one_rel_by_joins(Query *root, int levels_needed,
+static RelOptInfo *make_one_rel_by_joins(PlannerInfo *root, int levels_needed,
 					  List *initial_rels);
 static bool subquery_is_pushdown_safe(Query *subquery, Query *topquery,
 						  bool *differentTypes);
@@ -57,10 +62,10 @@ static void compare_tlist_datatypes(List *tlist, List *colTypes,
 						bool *differentTypes);
 static bool qual_is_pushdown_safe(Query *subquery, Index rti, Node *qual,
 					  bool *differentTypes);
-static void subquery_push_qual(Query *subquery, List *rtable,
-				   Index rti, Node *qual);
+static void subquery_push_qual(Query *subquery,
+				   RangeTblEntry *rte, Index rti, Node *qual);
 static void recurse_push_qual(Node *setOp, Query *topquery,
-				  List *rtable, Index rti, Node *qual);
+				  RangeTblEntry *rte, Index rti, Node *qual);
 
 
 /*
@@ -69,7 +74,7 @@ static void recurse_push_qual(Node *setOp, Query *topquery,
  *	  single rel that represents the join of all base rels in the query.
  */
 RelOptInfo *
-make_one_rel(Query *root)
+make_one_rel(PlannerInfo *root)
 {
 	RelOptInfo *rel;
 
@@ -81,14 +86,39 @@ make_one_rel(Query *root)
 	/*
 	 * Generate access paths for the entire join tree.
 	 */
-	Assert(root->jointree != NULL && IsA(root->jointree, FromExpr));
+	Assert(root->parse->jointree != NULL &&
+		   IsA(root->parse->jointree, FromExpr));
 
-	rel = make_fromexpr_rel(root, root->jointree);
+	rel = make_fromexpr_rel(root, root->parse->jointree);
 
 	/*
-	 * The result should join all the query's base rels.
+	 * The result should join all and only the query's base rels.
 	 */
-	Assert(bms_num_members(rel->relids) == list_length(root->base_rel_list));
+#ifdef USE_ASSERT_CHECKING
+	{
+		int			num_base_rels = 0;
+		Index		rti;
+
+		for (rti = 1; rti < root->base_rel_array_size; rti++)
+		{
+			RelOptInfo *brel = root->base_rel_array[rti];
+
+			if (brel == NULL)
+				continue;
+
+			Assert(brel->relid == rti); /* sanity check on array */
+
+			/* ignore RTEs that are "other rels" */
+			if (brel->reloptkind != RELOPT_BASEREL)
+				continue;
+
+			Assert(bms_is_member(rti, rel->relids));
+			num_base_rels++;
+		}
+
+		Assert(bms_num_members(rel->relids) == num_base_rels);
+	}
+#endif
 
 	return rel;
 }
@@ -100,19 +130,32 @@ make_one_rel(Query *root)
  *	  Each useful path is attached to its relation's 'pathlist' field.
  */
 static void
-set_base_rel_pathlists(Query *root)
+set_base_rel_pathlists(PlannerInfo *root)
 {
-	ListCell   *l;
+	Index		rti;
 
-	foreach(l, root->base_rel_list)
+	/*
+	 * Note: because we call expand_inherited_rtentry inside the loop, it's
+	 * quite possible for the base_rel_array to be enlarged while the loop
+	 * runs.  Hence don't try to optimize the loop.
+	 */
+	for (rti = 1; rti < root->base_rel_array_size; rti++)
 	{
-		RelOptInfo *rel = (RelOptInfo *) lfirst(l);
-		Index		rti = rel->relid;
+		RelOptInfo *rel = root->base_rel_array[rti];
 		RangeTblEntry *rte;
 		List	   *inheritlist;
 
-		Assert(rti > 0);		/* better be base rel */
-		rte = rt_fetch(rti, root->rtable);
+		/* there may be empty slots corresponding to non-baserel RTEs */
+		if (rel == NULL)
+			continue;
+
+		Assert(rel->relid == rti);		/* sanity check on array */
+
+		/* ignore RTEs that are "other rels" */
+		if (rel->reloptkind != RELOPT_BASEREL)
+			continue;
+
+		rte = rt_fetch(rti, root->parse->rtable);
 
 		if (rel->rtekind == RTE_SUBQUERY)
 		{
@@ -146,7 +189,7 @@ set_base_rel_pathlists(Query *root)
  *	  Build access paths for a plain relation (no subquery, no inheritance)
  */
 static void
-set_plain_rel_pathlist(Query *root, RelOptInfo *rel, RangeTblEntry *rte)
+set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 {
 	/* Mark rel with estimated output rows, width, etc */
 	set_baserel_size_estimates(root, rel);
@@ -173,12 +216,11 @@ set_plain_rel_pathlist(Query *root, RelOptInfo *rel, RangeTblEntry *rte)
 	/* Consider sequential scan */
 	add_path(rel, create_seqscan_path(root, rel));
 
+	/* Consider index scans */
+	create_index_paths(root, rel);
+
 	/* Consider TID scans */
 	create_tidscan_paths(root, rel);
-
-	/* Consider index paths for both simple and OR index clauses */
-	create_index_paths(root, rel);
-	create_or_index_paths(root, rel);
 
 	/* Now find the cheapest of the paths for this rel */
 	set_cheapest(rel);
@@ -204,7 +246,7 @@ set_plain_rel_pathlist(Query *root, RelOptInfo *rel, RangeTblEntry *rte)
  * not the same size.
  */
 static void
-set_inherited_rel_pathlist(Query *root, RelOptInfo *rel,
+set_inherited_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 						   Index rti, RangeTblEntry *rte,
 						   List *inheritlist)
 {
@@ -214,13 +256,13 @@ set_inherited_rel_pathlist(Query *root, RelOptInfo *rel,
 	ListCell   *il;
 
 	/*
-	 * XXX for now, can't handle inherited expansion of FOR UPDATE; can we
-	 * do better?
+	 * XXX for now, can't handle inherited expansion of FOR UPDATE/SHARE; can
+	 * we do better?
 	 */
-	if (list_member_int(root->rowMarks, parentRTindex))
+	if (list_member_int(root->parse->rowMarks, parentRTindex))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("SELECT FOR UPDATE is not supported for inheritance queries")));
+				 errmsg("SELECT FOR UPDATE/SHARE is not supported for inheritance queries")));
 
 	/*
 	 * Initialize to compute size estimates for whole inheritance tree
@@ -229,8 +271,8 @@ set_inherited_rel_pathlist(Query *root, RelOptInfo *rel,
 	rel->width = 0;
 
 	/*
-	 * Generate access paths for each table in the tree (parent AND
-	 * children), and pick the cheapest path for each table.
+	 * Generate access paths for each table in the tree (parent AND children),
+	 * and pick the cheapest path for each table.
 	 */
 	foreach(il, inheritlist)
 	{
@@ -241,23 +283,21 @@ set_inherited_rel_pathlist(Query *root, RelOptInfo *rel,
 		ListCell   *parentvars;
 		ListCell   *childvars;
 
-		childrte = rt_fetch(childRTindex, root->rtable);
+		childrte = rt_fetch(childRTindex, root->parse->rtable);
 		childOID = childrte->relid;
 
 		/*
-		 * Make a RelOptInfo for the child so we can do planning.  Do NOT
-		 * attach the RelOptInfo to the query's base_rel_list, however,
-		 * since the child is not part of the main join tree.  Instead,
-		 * the child RelOptInfo is added to other_rel_list.
+		 * Make a RelOptInfo for the child so we can do planning. Mark it as
+		 * an "other rel" since it will not be part of the main join tree.
 		 */
 		childrel = build_other_rel(root, childRTindex);
 
 		/*
-		 * Copy the parent's targetlist and restriction quals to the
-		 * child, with attribute-number adjustment as needed.  We don't
-		 * bother to copy the join quals, since we can't do any joining of
-		 * the individual tables.  Also, we just zap attr_needed rather
-		 * than trying to adjust it; it won't be looked at in the child.
+		 * Copy the parent's targetlist and restriction quals to the child,
+		 * with attribute-number adjustment as needed.	We don't bother to
+		 * copy the join quals, since we can't do any joining of the
+		 * individual tables.  Also, we just zap attr_needed rather than
+		 * trying to adjust it; it won't be looked at in the child.
 		 */
 		childrel->reltargetlist = (List *)
 			adjust_inherited_attrs((Node *) rel->reltargetlist,
@@ -274,16 +314,47 @@ set_inherited_rel_pathlist(Query *root, RelOptInfo *rel,
 								   childOID);
 
 		/*
-		 * Now compute child access paths, and save the cheapest.
+		 * If we can prove we don't need to scan this child via constraint
+		 * exclusion, just ignore it.  (We have to have converted the
+		 * baserestrictinfo Vars before we can make the test.)
+		 */
+		if (constraint_exclusion)
+		{
+			List	   *constraint_pred;
+
+			constraint_pred = get_relation_constraints(childOID, childrel);
+
+			/*
+			 * We do not currently enforce that CHECK constraints contain only
+			 * immutable functions, so it's necessary to check here. We
+			 * daren't draw conclusions from plan-time evaluation of
+			 * non-immutable functions.
+			 */
+			if (!contain_mutable_functions((Node *) constraint_pred))
+			{
+				/*
+				 * The constraints are effectively ANDed together, so we can
+				 * just try to refute the entire collection at once.  This may
+				 * allow us to make proofs that would fail if we took them
+				 * individually.
+				 */
+				if (predicate_refuted_by(constraint_pred,
+										 childrel->baserestrictinfo))
+					continue;
+			}
+		}
+
+		/*
+		 * Compute the child's access paths, and save the cheapest.
 		 */
 		set_plain_rel_pathlist(root, childrel, childrte);
 
 		subpaths = lappend(subpaths, childrel->cheapest_total_path);
 
 		/*
-		 * Propagate size information from the child back to the parent.
-		 * For simplicity, we use the largest widths from any child as the
-		 * parent estimates.
+		 * Propagate size information from the child back to the parent. For
+		 * simplicity, we use the largest widths from any child as the parent
+		 * estimates.
 		 */
 		rel->rows += childrel->rows;
 		if (childrel->width > rel->width)
@@ -307,8 +378,9 @@ set_inherited_rel_pathlist(Query *root, RelOptInfo *rel,
 	}
 
 	/*
-	 * Finally, build Append path and install it as the only access path
-	 * for the parent rel.
+	 * Finally, build Append path and install it as the only access path for
+	 * the parent rel.	(Note: this is correct even if we have zero or one
+	 * live subpath due to constraint exclusion.)
 	 */
 	add_path(rel, (Path *) create_append_path(rel, subpaths));
 
@@ -316,17 +388,42 @@ set_inherited_rel_pathlist(Query *root, RelOptInfo *rel,
 	set_cheapest(rel);
 }
 
+/* quick-and-dirty test to see if any joining is needed */
+static bool
+has_multiple_baserels(PlannerInfo *root)
+{
+	int			num_base_rels = 0;
+	Index		rti;
+
+	for (rti = 1; rti < root->base_rel_array_size; rti++)
+	{
+		RelOptInfo *brel = root->base_rel_array[rti];
+
+		if (brel == NULL)
+			continue;
+
+		/* ignore RTEs that are "other rels" */
+		if (brel->reloptkind == RELOPT_BASEREL)
+			if (++num_base_rels > 1)
+				return true;
+	}
+	return false;
+}
+
 /*
  * set_subquery_pathlist
  *		Build the (single) access path for a subquery RTE
  */
 static void
-set_subquery_pathlist(Query *root, RelOptInfo *rel,
+set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 					  Index rti, RangeTblEntry *rte)
 {
+	Query	   *parse = root->parse;
 	Query	   *subquery = rte->subquery;
 	bool	   *differentTypes;
+	double		tuple_fraction;
 	List	   *pathkeys;
+	List	   *subquery_pathkeys;
 
 	/* We need a workspace for keeping track of set-op type coercions */
 	differentTypes = (bool *)
@@ -334,21 +431,18 @@ set_subquery_pathlist(Query *root, RelOptInfo *rel,
 
 	/*
 	 * If there are any restriction clauses that have been attached to the
-	 * subquery relation, consider pushing them down to become HAVING
-	 * quals of the subquery itself.  (Not WHERE clauses, since they may
-	 * refer to subquery outputs that are aggregate results.  But
-	 * planner.c will transfer them into the subquery's WHERE if they do
-	 * not.)  This transformation is useful because it may allow us to
-	 * generate a better plan for the subquery than evaluating all the
-	 * subquery output rows and then filtering them.
+	 * subquery relation, consider pushing them down to become WHERE or HAVING
+	 * quals of the subquery itself.  This transformation is useful because it
+	 * may allow us to generate a better plan for the subquery than evaluating
+	 * all the subquery output rows and then filtering them.
 	 *
-	 * There are several cases where we cannot push down clauses.
-	 * Restrictions involving the subquery are checked by
-	 * subquery_is_pushdown_safe().  Restrictions on individual clauses
-	 * are checked by qual_is_pushdown_safe().
+	 * There are several cases where we cannot push down clauses. Restrictions
+	 * involving the subquery are checked by subquery_is_pushdown_safe().
+	 * Restrictions on individual clauses are checked by
+	 * qual_is_pushdown_safe().
 	 *
-	 * Non-pushed-down clauses will get evaluated as qpquals of the
-	 * SubqueryScan node.
+	 * Non-pushed-down clauses will get evaluated as qpquals of the SubqueryScan
+	 * node.
 	 *
 	 * XXX Are there any cases where we want to make a policy decision not to
 	 * push down a pushable qual, because it'd result in a worse plan?
@@ -368,7 +462,7 @@ set_subquery_pathlist(Query *root, RelOptInfo *rel,
 			if (qual_is_pushdown_safe(subquery, rti, clause, differentTypes))
 			{
 				/* Push it down */
-				subquery_push_qual(subquery, root->rtable, rti, clause);
+				subquery_push_qual(subquery, rte, rti, clause);
 			}
 			else
 			{
@@ -381,8 +475,25 @@ set_subquery_pathlist(Query *root, RelOptInfo *rel,
 
 	pfree(differentTypes);
 
+	/*
+	 * We can safely pass the outer tuple_fraction down to the subquery if the
+	 * outer level has no joining, aggregation, or sorting to do. Otherwise
+	 * we'd better tell the subquery to plan for full retrieval. (XXX This
+	 * could probably be made more intelligent ...)
+	 */
+	if (parse->hasAggs ||
+		parse->groupClause ||
+		parse->havingQual ||
+		parse->distinctClause ||
+		parse->sortClause ||
+		has_multiple_baserels(root))
+		tuple_fraction = 0.0;	/* default case */
+	else
+		tuple_fraction = root->tuple_fraction;
+
 	/* Generate the plan for the subquery */
-	rel->subplan = subquery_planner(subquery, 0.0 /* default case */ );
+	rel->subplan = subquery_planner(subquery, tuple_fraction,
+									&subquery_pathkeys);
 	
 	/* Be sure it's fully parallelized */
 	rel->subplan = cdbparallelize_subquery(rel->subplan, subquery);
@@ -394,7 +505,7 @@ set_subquery_pathlist(Query *root, RelOptInfo *rel,
 	set_baserel_size_estimates(root, rel);
 
 	/* Convert subquery pathkeys to outer representation */
-	pathkeys = build_subquery_pathkeys(root, rel, subquery);
+	pathkeys = convert_subquery_pathkeys(root, rel, subquery_pathkeys);
 
 	/* Generate appropriate path */
 	add_path(rel, create_subqueryscan_path(root, rel, pathkeys));
@@ -408,7 +519,7 @@ set_subquery_pathlist(Query *root, RelOptInfo *rel,
  *		Build the (single) access path for a function RTE
  */
 static void
-set_function_pathlist(Query *root, RelOptInfo *rel, RangeTblEntry *rte)
+set_function_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 {
 	/* Mark rel with estimated output rows, width, etc */
 	set_function_size_estimates(root, rel);
@@ -425,7 +536,7 @@ set_function_pathlist(Query *root, RelOptInfo *rel, RangeTblEntry *rte)
  *	  Build access paths for a FromExpr jointree node.
  */
 RelOptInfo *
-make_fromexpr_rel(Query *root, FromExpr *from)
+make_fromexpr_rel(PlannerInfo *root, FromExpr *from)
 {
 	int			levels_needed;
 	List	   *initial_rels = NIL;
@@ -433,8 +544,8 @@ make_fromexpr_rel(Query *root, FromExpr *from)
 
 	/*
 	 * Count the number of child jointree nodes.  This is the depth of the
-	 * dynamic-programming algorithm we must employ to consider all ways
-	 * of joining the child nodes.
+	 * dynamic-programming algorithm we must employ to consider all ways of
+	 * joining the child nodes.
 	 */
 	levels_needed = list_length(from->fromlist);
 
@@ -489,18 +600,18 @@ make_fromexpr_rel(Query *root, FromExpr *from)
  * the result of joining all the original relations together.
  */
 static RelOptInfo *
-make_one_rel_by_joins(Query *root, int levels_needed, List *initial_rels)
+make_one_rel_by_joins(PlannerInfo *root, int levels_needed, List *initial_rels)
 {
 	List	  **joinitems;
 	int			lev;
 	RelOptInfo *rel;
 
 	/*
-	 * We employ a simple "dynamic programming" algorithm: we first find
-	 * all ways to build joins of two jointree items, then all ways to
-	 * build joins of three items (from two-item joins and single items),
-	 * then four-item joins, and so on until we have considered all ways
-	 * to join all the items into one rel.
+	 * We employ a simple "dynamic programming" algorithm: we first find all
+	 * ways to build joins of two jointree items, then all ways to build joins
+	 * of three items (from two-item joins and single items), then four-item
+	 * joins, and so on until we have considered all ways to join all the
+	 * items into one rel.
 	 *
 	 * joinitems[j] is a list of all the j-item rels.  Initially we set
 	 * joinitems[1] to represent all the single-jointree-item relations.
@@ -662,12 +773,12 @@ compare_tlist_datatypes(List *tlist, List *colTypes,
 	{
 		TargetEntry *tle = (TargetEntry *) lfirst(l);
 
-		if (tle->resdom->resjunk)
+		if (tle->resjunk)
 			continue;			/* ignore resjunk columns */
 		if (colType == NULL)
 			elog(ERROR, "wrong number of tlist entries");
-		if (tle->resdom->restype != lfirst_oid(colType))
-			differentTypes[tle->resdom->resno] = true;
+		if (exprType((Node *) tle->expr) != lfirst_oid(colType))
+			differentTypes[tle->resno] = true;
 		colType = lnext(colType);
 	}
 	if (colType != NULL)
@@ -716,8 +827,8 @@ qual_is_pushdown_safe(Query *subquery, Index rti, Node *qual,
 		return false;
 
 	/*
-	 * Examine all Vars used in clause; since it's a restriction clause,
-	 * all such Vars must refer to subselect output columns.
+	 * Examine all Vars used in clause; since it's a restriction clause, all
+	 * such Vars must refer to subselect output columns.
 	 */
 	vars = pull_var_clause(qual, false);
 	foreach(vl, vars)
@@ -728,9 +839,9 @@ qual_is_pushdown_safe(Query *subquery, Index rti, Node *qual,
 		Assert(var->varno == rti);
 
 		/*
-		 * We use a bitmapset to avoid testing the same attno more than
-		 * once.  (NB: this only works because subquery outputs can't have
-		 * negative attnos.)
+		 * We use a bitmapset to avoid testing the same attno more than once.
+		 * (NB: this only works because subquery outputs can't have negative
+		 * attnos.)
 		 */
 		if (bms_is_member(var->varattno, tested))
 			continue;
@@ -746,7 +857,7 @@ qual_is_pushdown_safe(Query *subquery, Index rti, Node *qual,
 		/* Must find the tlist element referenced by the Var */
 		tle = get_tle_by_resno(subquery->targetList, var->varattno);
 		Assert(tle != NULL);
-		Assert(!tle->resdom->resjunk);
+		Assert(!tle->resjunk);
 
 		/* If subquery uses DISTINCT or DISTINCT ON, check point 3 */
 		if (subquery->distinctClause != NIL &&
@@ -775,36 +886,44 @@ qual_is_pushdown_safe(Query *subquery, Index rti, Node *qual,
  * subquery_push_qual - push down a qual that we have determined is safe
  */
 static void
-subquery_push_qual(Query *subquery, List *rtable, Index rti, Node *qual)
+subquery_push_qual(Query *subquery, RangeTblEntry *rte, Index rti, Node *qual)
 {
 	if (subquery->setOperations != NULL)
 	{
 		/* Recurse to push it separately to each component query */
 		recurse_push_qual(subquery->setOperations, subquery,
-						  rtable, rti, qual);
+						  rte, rti, qual);
 	}
 	else
 	{
 		/*
-		 * We need to replace Vars in the qual (which must refer to
-		 * outputs of the subquery) with copies of the subquery's
-		 * targetlist expressions.	Note that at this point, any uplevel
-		 * Vars in the qual should have been replaced with Params, so they
-		 * need no work.
+		 * We need to replace Vars in the qual (which must refer to outputs of
+		 * the subquery) with copies of the subquery's targetlist expressions.
+		 * Note that at this point, any uplevel Vars in the qual should have
+		 * been replaced with Params, so they need no work.
 		 *
 		 * This step also ensures that when we are pushing into a setop tree,
 		 * each component query gets its own copy of the qual.
 		 */
-		qual = ResolveNew(qual, rti, 0, rtable,
+		qual = ResolveNew(qual, rti, 0, rte,
 						  subquery->targetList,
 						  CMD_SELECT, 0);
-		subquery->havingQual = make_and_qual(subquery->havingQual,
-											 qual);
+
+		/*
+		 * Now attach the qual to the proper place: normally WHERE, but if the
+		 * subquery uses grouping or aggregation, put it in HAVING (since the
+		 * qual really refers to the group-result rows).
+		 */
+		if (subquery->hasAggs || subquery->groupClause || subquery->havingQual)
+			subquery->havingQual = make_and_qual(subquery->havingQual, qual);
+		else
+			subquery->jointree->quals =
+				make_and_qual(subquery->jointree->quals, qual);
 
 		/*
 		 * We need not change the subquery's hasAggs or hasSublinks flags,
-		 * since we can't be pushing down any aggregates that weren't
-		 * there before, and we don't push down subselects at all.
+		 * since we can't be pushing down any aggregates that weren't there
+		 * before, and we don't push down subselects at all.
 		 */
 	}
 }
@@ -814,7 +933,7 @@ subquery_push_qual(Query *subquery, List *rtable, Index rti, Node *qual)
  */
 static void
 recurse_push_qual(Node *setOp, Query *topquery,
-				  List *rtable, Index rti, Node *qual)
+				  RangeTblEntry *rte, Index rti, Node *qual)
 {
 	if (IsA(setOp, RangeTblRef))
 	{
@@ -823,14 +942,14 @@ recurse_push_qual(Node *setOp, Query *topquery,
 		Query	   *subquery = subrte->subquery;
 
 		Assert(subquery != NULL);
-		subquery_push_qual(subquery, rtable, rti, qual);
+		subquery_push_qual(subquery, rte, rti, qual);
 	}
 	else if (IsA(setOp, SetOperationStmt))
 	{
 		SetOperationStmt *op = (SetOperationStmt *) setOp;
 
-		recurse_push_qual(op->larg, topquery, rtable, rti, qual);
-		recurse_push_qual(op->rarg, topquery, rtable, rti, qual);
+		recurse_push_qual(op->larg, topquery, rte, rti, qual);
+		recurse_push_qual(op->rarg, topquery, rte, rti, qual);
 	}
 	else
 	{
@@ -864,7 +983,7 @@ print_relids(Relids relids)
 }
 
 static void
-print_restrictclauses(Query *root, List *clauses)
+print_restrictclauses(PlannerInfo *root, List *clauses)
 {
 	ListCell   *l;
 
@@ -872,14 +991,14 @@ print_restrictclauses(Query *root, List *clauses)
 	{
 		RestrictInfo *c = lfirst(l);
 
-		print_expr((Node *) c->clause, root->rtable);
+		print_expr((Node *) c->clause, root->parse->rtable);
 		if (lnext(l))
 			printf(", ");
 	}
 }
 
 static void
-print_path(Query *root, Path *path, int indent)
+print_path(PlannerInfo *root, Path *path, int indent)
 {
 	const char *ptype;
 	bool		join = false;
@@ -893,6 +1012,15 @@ print_path(Query *root, Path *path, int indent)
 			break;
 		case T_IndexPath:
 			ptype = "IdxScan";
+			break;
+		case T_BitmapHeapPath:
+			ptype = "BitmapHeapScan";
+			break;
+		case T_BitmapAndPath:
+			ptype = "BitmapAndPath";
+			break;
+		case T_BitmapOrPath:
+			ptype = "BitmapOrPath";
 			break;
 		case T_TidPath:
 			ptype = "TidScan";
@@ -946,7 +1074,7 @@ print_path(Query *root, Path *path, int indent)
 		for (i = 0; i < indent; i++)
 			printf("\t");
 		printf("  pathkeys: ");
-		print_pathkeys(path->pathkeys, root->rtable);
+		print_pathkeys(path->pathkeys, root->parse->rtable);
 	}
 
 	if (join)
@@ -982,7 +1110,7 @@ print_path(Query *root, Path *path, int indent)
 }
 
 void
-debug_print_rel(Query *root, RelOptInfo *rel)
+debug_print_rel(PlannerInfo *root, RelOptInfo *rel)
 {
 	ListCell   *l;
 
@@ -997,14 +1125,10 @@ debug_print_rel(Query *root, RelOptInfo *rel)
 		printf("\n");
 	}
 
-	foreach(l, rel->joininfo)
+	if (rel->joininfo)
 	{
-		JoinInfo   *j = (JoinInfo *) lfirst(l);
-
-		printf("\tjoininfo (");
-		print_relids(j->unjoined_relids);
-		printf("): ");
-		print_restrictclauses(root, j->jinfo_restrictinfo);
+		printf("\tjoininfo: ");
+		print_restrictclauses(root, rel->joininfo);
 		printf("\n");
 	}
 

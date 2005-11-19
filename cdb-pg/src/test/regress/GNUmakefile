@@ -1,13 +1,12 @@
 #-------------------------------------------------------------------------
 #
 # GNUmakefile--
-#    Makefile for regress (the regression tests)
+#    Makefile for src/test/regress (the regression tests)
 #
-# Copyright (c) 1994, Regents of the University of California
+# Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+# Portions Copyright (c) 1994, Regents of the University of California
 #
-#
-# IDENTIFICATION
-#    $PostgreSQL: pgsql/src/test/regress/GNUmakefile,v 1.48.4.1 2005/07/17 18:29:13 tgl Exp $
+# $PostgreSQL: pgsql/src/test/regress/GNUmakefile,v 1.53 2005/11/01 15:09:11 adunstan Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -16,11 +15,6 @@ top_builddir = ../../..
 include $(top_builddir)/src/Makefile.global
 
 contribdir := $(top_builddir)/contrib
-
-override CPPFLAGS := -I$(libpq_srcdir) $(CPPFLAGS)
-override CFLAGS += $(CFLAGS_SL)
-
-SHLIB_LINK = $(BE_DLLLIBS)
 
 # port number for temp-installation test postmaster
 TEMP_PORT = 5$(DEF_PGPORT)
@@ -34,6 +28,11 @@ ifdef MAX_CONNECTIONS
 MAXCONNOPT += --max-connections=$(MAX_CONNECTIONS)
 endif
 
+# locale
+NOLOCALE :=
+ifdef NO_LOCALE
+NOLOCALE += --no-locale
+endif
 
 ##
 ## Prepare for tests
@@ -59,14 +58,19 @@ pg_regress: pg_regress.sh GNUmakefile $(top_builddir)/src/Makefile.global
 
 # Build dynamically-loaded object file for CREATE FUNCTION ... LANGUAGE 'C'.
 
-DLOBJS := regress$(DLSUFFIX)
-# This is for some platforms
-ifdef EXPSUFF
-DLOBJS += regress$(EXPSUFF)
-endif
+NAME = regress
+SO_MAJOR_VERSION= 0
+SO_MINOR_VERSION= 0
+OBJS = regress.o
+SHLIB_LINK = $(BE_DLLLIBS)
 
-all: $(DLOBJS)
+include $(top_srcdir)/src/Makefile.shlib
 
+all: $(NAME)$(DLSUFFIX)
+
+$(NAME)$(DLSUFFIX): $(shlib)
+	rm -f $(NAME)$(DLSUFFIX)
+	$(LN_S) $(shlib) $(NAME)$(DLSUFFIX)
 
 # Build test input and expected files
 
@@ -134,17 +138,17 @@ all:
 check: all
 	-rm -rf ./testtablespace
 	mkdir ./testtablespace
-	$(SHELL) ./pg_regress --temp-install --top-builddir=$(top_builddir) --temp-port=$(TEMP_PORT) --schedule=$(srcdir)/parallel_schedule --multibyte=$(MULTIBYTE) $(MAXCONNOPT)
+	$(SHELL) ./pg_regress --temp-install --top-builddir=$(top_builddir) --temp-port=$(TEMP_PORT) --schedule=$(srcdir)/parallel_schedule --multibyte=$(MULTIBYTE) $(MAXCONNOPT) $(NOLOCALE)
 
 installcheck: all
 	-rm -rf ./testtablespace
 	mkdir ./testtablespace
-	$(SHELL) ./pg_regress --schedule=$(srcdir)/serial_schedule --multibyte=$(MULTIBYTE)
+	$(SHELL) ./pg_regress --schedule=$(srcdir)/serial_schedule --multibyte=$(MULTIBYTE) --load-language=plpgsql $(NOLOCALE)
 
 installcheck-parallel: all
 	-rm -rf ./testtablespace
 	mkdir ./testtablespace
-	$(SHELL) ./pg_regress --schedule=$(srcdir)/parallel_schedule --multibyte=$(MULTIBYTE) $(MAXCONNOPT)
+	$(SHELL) ./pg_regress --schedule=$(srcdir)/parallel_schedule --multibyte=$(MULTIBYTE) --load-language=plpgsql $(MAXCONNOPT) $(NOLOCALE)
 
 
 # old interfaces follow...
@@ -154,20 +158,21 @@ runtest: installcheck
 runtest-parallel: installcheck-parallel
 
 bigtest:
-	$(SHELL) ./pg_regress --schedule=$(srcdir)/serial_schedule --multibyte=$(MULTIBYTE) numeric_big
+	$(SHELL) ./pg_regress --schedule=$(srcdir)/serial_schedule --multibyte=$(MULTIBYTE) --load-language=plpgsql $(NOLOCALE) numeric_big 
 
 bigcheck:
-	$(SHELL) ./pg_regress --temp-install --top-builddir=$(top_builddir) --temp-port=$(TEMP_PORT) --schedule=$(srcdir)/parallel_schedule --multibyte=$(MULTIBYTE) $(MAXCONNOPT) numeric_big
+	$(SHELL) ./pg_regress --temp-install --top-builddir=$(top_builddir) --temp-port=$(TEMP_PORT) --schedule=$(srcdir)/parallel_schedule --multibyte=$(MULTIBYTE) $(MAXCONNOPT) $(NOLOCALE) numeric_big
 
 
 ##
 ## Clean up
 ##
 
-clean distclean maintainer-clean:
+clean distclean maintainer-clean: clean-lib
 # things built by `all' target
+	rm -f $(NAME)$(DLSUFFIX) $(OBJS)
 #	$(MAKE) -C $(contribdir)/spi clean
-	rm -f $(output_files) $(input_files) $(DLOBJS) regress.o pg_regress
+	rm -f $(output_files) $(input_files) pg_regress# things created by various check targets
 # things created by various check targets
 	rm -rf testtablespace
 	rm -rf results tmp_check log

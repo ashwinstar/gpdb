@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/storage/bufpage.h,v 1.63 2004/12/31 22:03:42 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/storage/bufpage.h,v 1.66 2005/09/22 16:46:00 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -135,8 +135,9 @@ typedef PageHeaderData *PageHeader;
  * Page layout version number 0 is for pre-7.3 Postgres releases.
  * Releases 7.3 and 7.4 use 1, denoting a new HeapTupleHeader layout.
  * Release 8.0 changed the HeapTupleHeader layout again.
+ * Release 8.1 redefined HeapTupleHeader infomask bits.
  */
-#define PG_PAGE_LAYOUT_VERSION		2
+#define PG_PAGE_LAYOUT_VERSION		3
 
 
 /* ----------------------------------------------------------------
@@ -257,8 +258,8 @@ typedef PageHeaderData *PageHeader;
 #define PageGetItem(page, itemId) \
 ( \
 	AssertMacro(PageIsValid(page)), \
-	AssertMacro((itemId)->lp_flags & LP_USED), \
-	(Item)(((char *)(page)) + (itemId)->lp_off) \
+	AssertMacro(ItemIdIsUsed(itemId)), \
+	(Item)(((char *)(page)) + ItemIdGetOffset(itemId)) \
 )
 
 /*
@@ -323,5 +324,6 @@ extern void PageRestoreTempPage(Page tempPage, Page oldPage);
 extern int	PageRepairFragmentation(Page page, OffsetNumber *unused);
 extern Size PageGetFreeSpace(Page page);
 extern void PageIndexTupleDelete(Page page, OffsetNumber offset);
+extern void PageIndexMultiDelete(Page page, OffsetNumber *itemnos, int nitems);
 
 #endif   /* BUFPAGE_H */

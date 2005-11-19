@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/catalog/pg_depend.c,v 1.12 2004/12/31 21:59:38 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/catalog/pg_depend.c,v 1.15 2005/10/15 02:49:14 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -16,7 +16,6 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
-#include "catalog/catname.h"
 #include "catalog/indexing.h"
 #include "catalog/dependency.h"
 #include "catalog/pg_depend.h"
@@ -63,13 +62,13 @@ recordMultipleDependencies(const ObjectAddress *depender,
 		return;					/* nothing to do */
 
 	/*
-	 * During bootstrap, do nothing since pg_depend may not exist yet.
-	 * initdb will fill in appropriate pg_depend entries after bootstrap.
+	 * During bootstrap, do nothing since pg_depend may not exist yet. initdb
+	 * will fill in appropriate pg_depend entries after bootstrap.
 	 */
 	if (IsBootstrapProcessingMode())
 		return;
 
-	dependDesc = heap_openr(DependRelationName, RowExclusiveLock);
+	dependDesc = heap_open(DependRelationId, RowExclusiveLock);
 
 	/* Don't open indexes unless we need to make an update */
 	indstate = NULL;
@@ -79,9 +78,9 @@ recordMultipleDependencies(const ObjectAddress *depender,
 	for (i = 0; i < nreferenced; i++, referenced++)
 	{
 		/*
-		 * If the referenced object is pinned by the system, there's no
-		 * real need to record dependencies on it.	This saves lots of
-		 * space in pg_depend, so it's worth the time taken to check.
+		 * If the referenced object is pinned by the system, there's no real
+		 * need to record dependencies on it.  This saves lots of space in
+		 * pg_depend, so it's worth the time taken to check.
 		 */
 		if (!isObjectPinned(referenced, dependDesc))
 		{
@@ -136,7 +135,7 @@ deleteDependencyRecordsFor(Oid classId, Oid objectId)
 	SysScanDesc scan;
 	HeapTuple	tup;
 
-	depRel = heap_openr(DependRelationName, RowExclusiveLock);
+	depRel = heap_open(DependRelationId, RowExclusiveLock);
 
 	ScanKeyInit(&key[0],
 				Anum_pg_depend_classid,
@@ -147,13 +146,111 @@ deleteDependencyRecordsFor(Oid classId, Oid objectId)
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(objectId));
 
-	scan = systable_beginscan(depRel, DependDependerIndex, true,
+	scan = systable_beginscan(depRel, DependDependerIndexId, true,
 							  SnapshotNow, 2, key);
 
 	while (HeapTupleIsValid(tup = systable_getnext(scan)))
 	{
 		simple_heap_delete(depRel, &tup->t_self);
 		count++;
+	}
+
+	systable_endscan(scan);
+
+	heap_close(depRel, RowExclusiveLock);
+
+	return count;
+}
+
+/*
+ * Adjust dependency record(s) to point to a different object of the same type
+ *
+ * classId/objectId specify the referencing object.
+ * refClassId/oldRefObjectId specify the old referenced object.
+ * newRefObjectId is the new referenced object (must be of class refClassId).
+ *
+ * Note the lack of objsubid parameters.  If there are subobject references
+ * they will all be readjusted.
+ *
+ * Returns the number of records updated.
+ */
+long
+changeDependencyFor(Oid classId, Oid objectId,
+					Oid refClassId, Oid oldRefObjectId,
+					Oid newRefObjectId)
+{
+	long		count = 0;
+	Relation	depRel;
+	ScanKeyData key[2];
+	SysScanDesc scan;
+	HeapTuple	tup;
+	ObjectAddress objAddr;
+	bool		newIsPinned;
+
+	depRel = heap_open(DependRelationId, RowExclusiveLock);
+
+	/*
+	 * If oldRefObjectId is pinned, there won't be any dependency entries on
+	 * it --- we can't cope in that case.  (This isn't really worth expending
+	 * code to fix, in current usage; it just means you can't rename stuff out
+	 * of pg_catalog, which would likely be a bad move anyway.)
+	 */
+	objAddr.classId = refClassId;
+	objAddr.objectId = oldRefObjectId;
+	objAddr.objectSubId = 0;
+
+	if (isObjectPinned(&objAddr, depRel))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		errmsg("cannot remove dependency on %s because it is a system object",
+			   getObjectDescription(&objAddr))));
+
+	/*
+	 * We can handle adding a dependency on something pinned, though, since
+	 * that just means deleting the dependency entry.
+	 */
+	objAddr.objectId = newRefObjectId;
+
+	newIsPinned = isObjectPinned(&objAddr, depRel);
+
+	/* Now search for dependency records */
+	ScanKeyInit(&key[0],
+				Anum_pg_depend_classid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(classId));
+	ScanKeyInit(&key[1],
+				Anum_pg_depend_objid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(objectId));
+
+	scan = systable_beginscan(depRel, DependDependerIndexId, true,
+							  SnapshotNow, 2, key);
+
+	while (HeapTupleIsValid((tup = systable_getnext(scan))))
+	{
+		Form_pg_depend depform = (Form_pg_depend) GETSTRUCT(tup);
+
+		if (depform->refclassid == refClassId &&
+			depform->refobjid == oldRefObjectId)
+		{
+			if (newIsPinned)
+				simple_heap_delete(depRel, &tup->t_self);
+			else
+			{
+				/* make a modifiable copy */
+				tup = heap_copytuple(tup);
+				depform = (Form_pg_depend) GETSTRUCT(tup);
+
+				depform->refobjid = newRefObjectId;
+
+				simple_heap_update(depRel, &tup->t_self, tup);
+				CatalogUpdateIndexes(depRel, tup);
+
+				heap_freetuple(tup);
+			}
+
+			count++;
+		}
 	}
 
 	systable_endscan(scan);
@@ -190,14 +287,14 @@ isObjectPinned(const ObjectAddress *object, Relation rel)
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(object->objectId));
 
-	scan = systable_beginscan(rel, DependReferenceIndex, true,
+	scan = systable_beginscan(rel, DependReferenceIndexId, true,
 							  SnapshotNow, 2, key);
 
 	/*
 	 * Since we won't generate additional pg_depend entries for pinned
-	 * objects, there can be at most one entry referencing a pinned
-	 * object.	Hence, it's sufficient to look at the first returned
-	 * tuple; we don't need to loop.
+	 * objects, there can be at most one entry referencing a pinned object.
+	 * Hence, it's sufficient to look at the first returned tuple; we don't
+	 * need to loop.
 	 */
 	tup = systable_getnext(scan);
 	if (HeapTupleIsValid(tup))

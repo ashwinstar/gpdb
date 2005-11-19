@@ -178,10 +178,14 @@ insert into arr_tbl values ('{1,2,3}');
 insert into arr_tbl values ('{2,3,4}');
 insert into arr_tbl values ('{1,5,3}');
 insert into arr_tbl values ('{1,2,10}');
+
 set enable_seqscan to off;
+set enable_bitmapscan to off;
 select * from arr_tbl where f1 > '{1,2,3}' and f1 <= '{1,5,3}';
 -- note: if above select doesn't produce the expected tuple order,
 -- then you didn't get an indexscan plan, and something is busted.
+reset enable_seqscan;
+reset enable_bitmapscan;
 
 -- test [not] (like|ilike) (any|all) (...)
 select 'foo' like any (array['%a', '%o']); -- t
@@ -200,7 +204,7 @@ select 'foo' ilike all (array['F%', '%O']); -- t
 -- none of the following should be accepted
 select '{{1,{2}},{2,3}}'::text[];
 select '{{},{}}'::text[];
-select '{{1,2},\\{2,3}}'::text[];
+select E'{{1,2},\\{2,3}}'::text[];
 select '{{"1 2" x},{3}}'::text[];
 select '{}}'::text[];
 select '{ }}'::text[];
@@ -217,3 +221,28 @@ select '{
            @ 1 hour @ 42 minutes @ 20 seconds
          }'::interval[];
 -- all of the above should be accepted
+
+-- tests for array aggregates
+CREATE TEMP TABLE arraggtest ( f1 INT[], f2 TEXT[][], f3 FLOAT[]);
+
+INSERT INTO arraggtest (f1, f2, f3) VALUES
+('{1,2,3,4}','{{grey,red},{blue,blue}}','{1.6, 0.0}');
+INSERT INTO arraggtest (f1, f2, f3) VALUES
+('{1,2,3}','{{grey,red},{grey,blue}}','{1.6}');
+SELECT max(f1), min(f1), max(f2), min(f2), max(f3), min(f3) FROM arraggtest;
+
+INSERT INTO arraggtest (f1, f2, f3) VALUES
+('{3,3,2,4,5,6}','{{white,yellow},{pink,orange}}','{2.1,3.3,1.8,1.7,1.6}');
+SELECT max(f1), min(f1), max(f2), min(f2), max(f3), min(f3) FROM arraggtest;
+
+INSERT INTO arraggtest (f1, f2, f3) VALUES
+('{2}','{{black,red},{green,orange}}','{1.6,2.2,2.6,0.4}');
+SELECT max(f1), min(f1), max(f2), min(f2), max(f3), min(f3) FROM arraggtest;
+
+INSERT INTO arraggtest (f1, f2, f3) VALUES
+('{4,2,6,7,8,1}','{{red},{black},{purple},{blue},{blue}}',NULL);
+SELECT max(f1), min(f1), max(f2), min(f2), max(f3), min(f3) FROM arraggtest;
+
+INSERT INTO arraggtest (f1, f2, f3) VALUES
+('{}','{{pink,white,blue,red,grey,orange}}','{2.1,1.87,1.4,2.2}');
+SELECT max(f1), min(f1), max(f2), min(f2), max(f3), min(f3) FROM arraggtest;

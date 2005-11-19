@@ -10,7 +10,7 @@
  * Copyright (c) 2002-2005, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/prepare.c,v 1.36 2005/01/01 05:43:06 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/prepare.c,v 1.42 2005/10/21 16:43:33 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -84,29 +84,33 @@ PrepareQuery(PrepareStmt *stmt)
 	}
 
 	/*
-	 * Parse analysis is already done, but we must still rewrite and plan
-	 * the query.
+	 * Parse analysis is already done, but we must still rewrite and plan the
+	 * query.
 	 */
 
 	/*
-	 * Because the planner is not cool about not scribbling on its input,
-	 * we make a preliminary copy of the source querytree.  This prevents
+	 * Because the planner is not cool about not scribbling on its input, we
+	 * make a preliminary copy of the source querytree.  This prevents
 	 * problems in the case that the PREPARE is in a portal or plpgsql
 	 * function and is executed repeatedly.  (See also the same hack in
-	 * DECLARE CURSOR and EXPLAIN.)  XXX the planner really shouldn't
-	 * modify its input ... FIXME someday.
+	 * DECLARE CURSOR and EXPLAIN.)  XXX the planner really shouldn't modify
+	 * its input ... FIXME someday.
 	 */
 	query = copyObject(stmt->query);
 
 	/* Rewrite the query. The result could be 0, 1, or many queries. */
+	AcquireRewriteLocks(query);
 	query_list = QueryRewrite(query);
 
 	/* Generate plans for queries.	Snapshot is already set. */
 	plan_list = pg_plan_queries(query_list, NULL, false);
 
-	/* Save the results. */
+	/*
+	 * Save the results.  We don't have the query string for this PREPARE, but
+	 * we do have the string we got from the client, so use that.
+	 */
 	StorePreparedStatement(stmt->name,
-						   NULL,	/* text form not available */
+						   debug_query_string,
 						   commandTag,
 						   query_list,
 						   plan_list,
@@ -142,8 +146,8 @@ ExecuteQuery(ExecuteStmt *stmt, DestReceiver *dest, char *completionTag)
 	if (entry->argtype_list != NIL)
 	{
 		/*
-		 * Need an EState to evaluate parameters; must not delete it till
-		 * end of query, in case parameters are pass-by-reference.
+		 * Need an EState to evaluate parameters; must not delete it till end
+		 * of query, in case parameters are pass-by-reference.
 		 */
 		estate = CreateExecutorState();
 		paramLI = EvaluateParams(estate, stmt->params, entry->argtype_list);
@@ -155,10 +159,10 @@ ExecuteQuery(ExecuteStmt *stmt, DestReceiver *dest, char *completionTag)
 	portal = CreateNewPortal();
 
 	/*
-	 * For CREATE TABLE / AS EXECUTE, make a copy of the stored query so
-	 * that we can modify its destination (yech, but this has always been
-	 * ugly).  For regular EXECUTE we can just use the stored query where
-	 * it sits, since the executor is read-only.
+	 * For CREATE TABLE / AS EXECUTE, make a copy of the stored query so that
+	 * we can modify its destination (yech, but this has always been ugly).
+	 * For regular EXECUTE we can just use the stored query where it sits,
+	 * since the executor is read-only.
 	 */
 	if (stmt->into)
 	{
@@ -241,7 +245,7 @@ EvaluateParams(EState *estate, List *params, List *argtypes)
 		bool		isNull;
 
 		paramLI[i].value = ExecEvalExprSwitchContext(n,
-										  GetPerTupleExprContext(estate),
+											  GetPerTupleExprContext(estate),
 													 &isNull,
 													 NULL);
 		paramLI[i].kind = PARAM_NUM;
@@ -329,8 +333,8 @@ StorePreparedStatement(const char *stmt_name,
 	/*
 	 * We need to copy the data so that it is stored in the correct memory
 	 * context.  Do this before making hashtable entry, so that an
-	 * out-of-memory failure only wastes memory and doesn't leave us with
-	 * an incomplete (ie corrupt) hashtable entry.
+	 * out-of-memory failure only wastes memory and doesn't leave us with an
+	 * incomplete (ie corrupt) hashtable entry.
 	 */
 	qstring = query_string ? pstrdup(query_string) : NULL;
 	query_list = (List *) copyObject(query_list);
@@ -343,9 +347,9 @@ StorePreparedStatement(const char *stmt_name,
 											  HASH_ENTER,
 											  &found);
 
-	/* Shouldn't get a failure, nor a duplicate entry */
-	if (!entry || found)
-		elog(ERROR, "could not store prepared statement \"%s\"",
+	/* Shouldn't get a duplicate entry */
+	if (found)
+		elog(ERROR, "duplicate prepared statement \"%s\"",
 			 stmt_name);
 
 	/* Fill in the hash table entry with copied data */
@@ -376,9 +380,9 @@ FetchPreparedStatement(const char *stmt_name, bool throwError)
 	if (prepared_queries)
 	{
 		/*
-		 * We can't just use the statement name as supplied by the user:
-		 * the hash package is picky enough that it needs to be
-		 * NULL-padded out to the appropriate length to work correctly.
+		 * We can't just use the statement name as supplied by the user: the
+		 * hash package is picky enough that it needs to be NULL-padded out to
+		 * the appropriate length to work correctly.
 		 */
 		StrNCpy(key, stmt_name, sizeof(key));
 
@@ -439,6 +443,58 @@ FetchPreparedStatementResultDesc(PreparedStatement *stmt)
 			break;
 	}
 	return NULL;
+}
+
+/*
+ * Given a prepared statement that returns tuples, extract the query
+ * targetlist.	Returns NIL if the statement doesn't have a determinable
+ * targetlist.
+ *
+ * Note: do not modify the result.
+ *
+ * XXX be careful to keep this in sync with FetchPortalTargetList,
+ * and with UtilityReturnsTuples.
+ */
+List *
+FetchPreparedStatementTargetList(PreparedStatement *stmt)
+{
+	PortalStrategy strategy = ChoosePortalStrategy(stmt->query_list);
+
+	if (strategy == PORTAL_ONE_SELECT)
+		return ((Query *) linitial(stmt->query_list))->targetList;
+	if (strategy == PORTAL_UTIL_SELECT)
+	{
+		Node	   *utilityStmt;
+
+		utilityStmt = ((Query *) linitial(stmt->query_list))->utilityStmt;
+		switch (nodeTag(utilityStmt))
+		{
+			case T_FetchStmt:
+				{
+					FetchStmt  *substmt = (FetchStmt *) utilityStmt;
+					Portal		subportal;
+
+					Assert(!substmt->ismove);
+					subportal = GetPortalByName(substmt->portalname);
+					Assert(PortalIsValid(subportal));
+					return FetchPortalTargetList(subportal);
+				}
+
+			case T_ExecuteStmt:
+				{
+					ExecuteStmt *substmt = (ExecuteStmt *) utilityStmt;
+					PreparedStatement *entry;
+
+					Assert(!substmt->into);
+					entry = FetchPreparedStatement(substmt->name, true);
+					return FetchPreparedStatementTargetList(entry);
+				}
+
+			default:
+				break;
+		}
+	}
+	return NIL;
 }
 
 /*
@@ -508,8 +564,8 @@ ExplainExecuteQuery(ExplainStmt *stmt, TupOutputState *tstate)
 	if (entry->argtype_list != NIL)
 	{
 		/*
-		 * Need an EState to evaluate parameters; must not delete it till
-		 * end of query, in case parameters are pass-by-reference.
+		 * Need an EState to evaluate parameters; must not delete it till end
+		 * of query, in case parameters are pass-by-reference.
 		 */
 		estate = CreateExecutorState();
 		paramLI = EvaluateParams(estate, execstmt->params,
@@ -541,13 +597,22 @@ ExplainExecuteQuery(ExplainStmt *stmt, TupOutputState *tstate)
 				if (query->commandType != CMD_SELECT)
 					ereport(ERROR,
 							(errcode(ERRCODE_WRONG_OBJECT_TYPE),
-						  errmsg("prepared statement is not a SELECT")));
+							 errmsg("prepared statement is not a SELECT")));
 
 				/* Copy the query so we can modify it */
 				query = copyObject(query);
 
 				query->into = execstmt->into;
 			}
+
+			/*
+			 * Update snapshot command ID to ensure this query sees results of
+			 * any previously executed queries.  (It's a bit cheesy to modify
+			 * ActiveSnapshot without making a copy, but for the limited ways
+			 * in which EXPLAIN can be invoked, I think it's OK, because the
+			 * active snapshot shouldn't be shared with anything else anyway.)
+			 */
+			ActiveSnapshot->curcid = GetCurrentCommandId();
 
 			/* Create a QueryDesc requesting no output */
 			qdesc = CreateQueryDesc(query, plan,

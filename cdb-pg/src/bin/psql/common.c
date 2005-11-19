@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2000-2005, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/common.c,v 1.95 2005/01/01 05:43:08 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/common.c,v 1.110 2005/11/04 18:35:40 tgl Exp $
  */
 #include "postgres_fe.h"
 #include "common.h"
@@ -48,7 +48,6 @@ typedef struct timeval TimevalStruct;
 #define DIFF_MSEC(T, U) \
 	((((int) ((T)->tv_sec - (U)->tv_sec)) * 1000000.0 + \
 	  ((int) ((T)->tv_usec - (U)->tv_usec))) / 1000.0)
-
 #else
 
 typedef struct _timeb TimevalStruct;
@@ -64,7 +63,6 @@ extern bool prompt_state;
 
 static bool command_no_begin(const char *query);
 
-
 /*
  * "Safe" wrapper around strdup()
  */
@@ -75,7 +73,7 @@ pg_strdup(const char *string)
 
 	if (!string)
 	{
-		fprintf(stderr, gettext("%s: xstrdup: cannot duplicate null pointer (internal error)\n"),
+		fprintf(stderr, _("%s: pg_strdup: cannot duplicate null pointer (internal error)\n"),
 				pset.progname);
 		exit(EXIT_FAILURE);
 	}
@@ -200,7 +198,7 @@ psql_error(const char *fmt,...)
 	if (pset.inputfile)
 		fprintf(stderr, "%s:%s:%u: ", pset.progname, pset.inputfile, pset.lineno);
 	va_start(ap, fmt);
-	vfprintf(stderr, gettext(fmt), ap);
+	vfprintf(stderr, _(fmt), ap);
 	va_end(ap);
 }
 
@@ -234,6 +232,7 @@ NoticeProcessor(void *arg, const char *message)
  * thread is using it.
  */
 static PGcancel *cancelConn = NULL;
+
 #ifdef WIN32
 static CRITICAL_SECTION cancelConnLock;
 #endif
@@ -249,7 +248,7 @@ void
 handle_sigint(SIGNAL_ARGS)
 {
 	int			save_errno = errno;
-	char        errbuf[256];
+	char		errbuf[256];
 
 	/* Don't muck around if prompting for a password. */
 	if (prompt_state)
@@ -270,12 +269,12 @@ handle_sigint(SIGNAL_ARGS)
 	errno = save_errno;			/* just in case the write changed it */
 }
 
-#else /* WIN32 */
+#else							/* WIN32 */
 
 static BOOL WINAPI
 consoleHandler(DWORD dwCtrlType)
 {
-	char        errbuf[256];
+	char		errbuf[256];
 
 	if (dwCtrlType == CTRL_C_EVENT ||
 		dwCtrlType == CTRL_BREAK_EVENT)
@@ -315,10 +314,17 @@ setup_win32_locks(void)
 void
 setup_cancel_handler(void)
 {
-	SetConsoleCtrlHandler(consoleHandler, TRUE);
+	static bool done = false;
+
+	/* only need one handler per process */
+	if (!done)
+	{
+		SetConsoleCtrlHandler(consoleHandler, TRUE);
+		done = true;
+	}
 }
 
-#endif /* WIN32 */
+#endif   /* WIN32 */
 
 
 /* ConnectionUp
@@ -357,19 +363,19 @@ CheckConnection(void)
 			exit(EXIT_BADCONN);
 		}
 
-		fputs(gettext("The connection to the server was lost. Attempting reset: "), stderr);
+		fputs(_("The connection to the server was lost. Attempting reset: "), stderr);
 		PQreset(pset.db);
 		OK = ConnectionUp();
 		if (!OK)
 		{
-			fputs(gettext("Failed.\n"), stderr);
+			fputs(_("Failed.\n"), stderr);
 			PQfinish(pset.db);
 			pset.db = NULL;
 			ResetCancelConn();
 			UnsyncVariables();
 		}
 		else
-			fputs(gettext("Succeeded.\n"), stderr);
+			fputs(_("Succeeded.\n"), stderr);
 	}
 
 	return OK;
@@ -479,12 +485,12 @@ ReportSyntaxErrorPosition(const PGresult *result, const char *query)
 	initPQExpBuffer(&msg);
 
 	/*
-	 * The returned cursor position is measured in logical characters.
-	 * Each character might occupy multiple physical bytes in the string,
-	 * and in some Far Eastern character sets it might take more than one
-	 * screen column as well.  We compute the starting byte offset and
-	 * starting screen column of each logical character, and store these
-	 * in qidx[] and scridx[] respectively.
+	 * The returned cursor position is measured in logical characters. Each
+	 * character might occupy multiple physical bytes in the string, and in
+	 * some Far Eastern character sets it might take more than one screen
+	 * column as well.	We compute the starting byte offset and starting
+	 * screen column of each logical character, and store these in qidx[] and
+	 * scridx[] respectively.
 	 */
 
 	/* we need a safe allocation size... */
@@ -522,12 +528,12 @@ ReportSyntaxErrorPosition(const PGresult *result, const char *query)
 
 		/*
 		 * Replace tabs with spaces in the writable copy.  (Later we might
-		 * want to think about coping with their variable screen width,
-		 * but not today.)
+		 * want to think about coping with their variable screen width, but
+		 * not today.)
 		 *
-		 * Extract line number and begin and end indexes of line containing
-		 * error location.	There will not be any newlines or carriage
-		 * returns in the selected extract.
+		 * Extract line number and begin and end indexes of line containing error
+		 * location.  There will not be any newlines or carriage returns in
+		 * the selected extract.
 		 */
 		for (i = 0; i < clen; i++)
 		{
@@ -541,8 +547,8 @@ ReportSyntaxErrorPosition(const PGresult *result, const char *query)
 					if (i < loc)
 					{
 						/*
-						 * count lines before loc.	Each \r or \n counts
-						 * as a line except when \r \n appear together.
+						 * count lines before loc.	Each \r or \n counts as a
+						 * line except when \r \n appear together.
 						 */
 						if (wquery[qidx[i]] == '\r' ||
 							i == 0 ||
@@ -569,9 +575,9 @@ ReportSyntaxErrorPosition(const PGresult *result, const char *query)
 		if (scridx[iend] - scridx[ibeg] > DISPLAY_SIZE)
 		{
 			/*
-			 * We first truncate right if it is enough.  This code might
-			 * be off a space or so on enforcing MIN_RIGHT_CUT if there's
-			 * a wide character right there, but that should be okay.
+			 * We first truncate right if it is enough.  This code might be
+			 * off a space or so on enforcing MIN_RIGHT_CUT if there's a wide
+			 * character right there, but that should be okay.
 			 */
 			if (scridx[ibeg] + DISPLAY_SIZE >= scridx[loc] + MIN_RIGHT_CUT)
 			{
@@ -604,7 +610,7 @@ ReportSyntaxErrorPosition(const PGresult *result, const char *query)
 		wquery[qidx[iend]] = '\0';
 
 		/* Begin building the finished message. */
-		printfPQExpBuffer(&msg, gettext("LINE %d: "), loc_line);
+		printfPQExpBuffer(&msg, _("LINE %d: "), loc_line);
 		if (beg_trunc)
 			appendPQExpBufferStr(&msg, "...");
 
@@ -682,7 +688,11 @@ AcceptResult(const PGresult *result, const char *query)
 
 	if (!OK)
 	{
-		psql_error("%s", PQerrorMessage(pset.db));
+		const char *error = PQerrorMessage(pset.db);
+
+		if (strlen(error))
+			psql_error("%s", error);
+
 		ReportSyntaxErrorPosition(result, query);
 		CheckConnection();
 	}
@@ -720,10 +730,18 @@ PSQLexec(const char *query, bool start_xact)
 	echo_hidden = SwitchVariable(pset.vars, "ECHO_HIDDEN", "noexec", NULL);
 	if (echo_hidden != VAR_NOTSET)
 	{
-		printf("********* QUERY **********\n"
-			   "%s\n"
-			   "**************************\n\n", query);
+		printf(_("********* QUERY **********\n"
+				 "%s\n"
+				 "**************************\n\n"), query);
 		fflush(stdout);
+		if (pset.logfile)
+		{
+			fprintf(pset.logfile,
+					_("********* QUERY **********\n"
+					  "%s\n"
+					  "**************************\n\n"), query);
+			fflush(pset.logfile);
+		}
 
 		if (echo_hidden == 1)	/* noexec? */
 			return NULL;
@@ -768,7 +786,7 @@ PrintNotifications(void)
 
 	while ((notify = PQnotifies(pset.db)))
 	{
-		fprintf(pset.queryFout, gettext("Asynchronous notification \"%s\" received from server process with PID %d.\n"),
+		fprintf(pset.queryFout, _("Asynchronous notification \"%s\" received from server process with PID %d.\n"),
 				notify->relname, notify->be_pid);
 		fflush(pset.queryFout);
 		PQfreemem(notify);
@@ -784,6 +802,8 @@ PrintNotifications(void)
 static bool
 PrintQueryTuples(const PGresult *results)
 {
+	printQueryOpt my_popt = pset.popt;
+
 	/* write output to \g argument, if any */
 	if (pset.gfname)
 	{
@@ -800,7 +820,7 @@ PrintQueryTuples(const PGresult *results)
 			return false;
 		}
 
-		printQuery(results, &pset.popt, pset.queryFout);
+		printQuery(results, &my_popt, pset.queryFout, pset.logfile);
 
 		/* close file/pipe, restore old setting */
 		setQFout(NULL);
@@ -812,7 +832,7 @@ PrintQueryTuples(const PGresult *results)
 		pset.gfname = NULL;
 	}
 	else
-		printQuery(results, &pset.popt, pset.queryFout);
+		printQuery(results, &my_popt, pset.queryFout, pset.logfile);
 
 	return true;
 }
@@ -902,6 +922,8 @@ PrintQueryResults(PGresult *results)
 					else
 						fprintf(pset.queryFout, "%s\n", PQcmdStatus(results));
 				}
+				if (pset.logfile)
+					fprintf(pset.logfile, "%s\n", PQcmdStatus(results));
 				SetVariable(pset.vars, "LASTOID", buf);
 				break;
 			}
@@ -944,7 +966,11 @@ SendQuery(const char *query)
 	PGresult   *results;
 	TimevalStruct before,
 				after;
-	bool		OK;
+	bool		OK,
+				on_error_rollback_savepoint = false;
+	PGTransactionStatusType transaction_status;
+	static bool on_error_rollback_warning = false;
+	const char *rollback_str;
 
 	if (!pset.db)
 	{
@@ -956,9 +982,9 @@ SendQuery(const char *query)
 	{
 		char		buf[3];
 
-		printf(gettext("***(Single step mode: verify command)*******************************************\n"
-					   "%s\n"
-					   "***(press return to proceed or enter x and return to cancel)********************\n"),
+		printf(_("***(Single step mode: verify command)*******************************************\n"
+				 "%s\n"
+				 "***(press return to proceed or enter x and return to cancel)********************\n"),
 			   query);
 		fflush(stdout);
 		if (fgets(buf, sizeof(buf), stdin) != NULL)
@@ -971,9 +997,20 @@ SendQuery(const char *query)
 		fflush(stdout);
 	}
 
+	if (pset.logfile)
+	{
+		fprintf(pset.logfile,
+				_("********* QUERY **********\n"
+				  "%s\n"
+				  "**************************\n\n"), query);
+		fflush(pset.logfile);
+	}
+
 	SetCancelConn();
 
-	if (PQtransactionStatus(pset.db) == PQTRANS_IDLE &&
+	transaction_status = PQtransactionStatus(pset.db);
+
+	if (transaction_status == PQTRANS_IDLE &&
 		!GetVariableBool(pset.vars, "AUTOCOMMIT") &&
 		!command_no_begin(query))
 	{
@@ -986,6 +1023,35 @@ SendQuery(const char *query)
 			return false;
 		}
 		PQclear(results);
+		transaction_status = PQtransactionStatus(pset.db);
+	}
+
+	if (transaction_status == PQTRANS_INTRANS &&
+	  (rollback_str = GetVariable(pset.vars, "ON_ERROR_ROLLBACK")) != NULL &&
+	/* !off and !interactive is 'on' */
+		pg_strcasecmp(rollback_str, "off") != 0 &&
+		(pset.cur_cmd_interactive ||
+		 pg_strcasecmp(rollback_str, "interactive") != 0))
+	{
+		if (on_error_rollback_warning == false && pset.sversion < 80000)
+		{
+			fprintf(stderr, _("The server version (%d) does not support savepoints for ON_ERROR_ROLLBACK.\n"),
+					pset.sversion);
+			on_error_rollback_warning = true;
+		}
+		else
+		{
+			results = PQexec(pset.db, "SAVEPOINT pg_psql_temporary_savepoint");
+			if (PQresultStatus(results) != PGRES_COMMAND_OK)
+			{
+				psql_error("%s", PQerrorMessage(pset.db));
+				PQclear(results);
+				ResetCancelConn();
+				return false;
+			}
+			PQclear(results);
+			on_error_rollback_savepoint = true;
+		}
 	}
 
 	if (pset.timing)
@@ -1005,9 +1071,44 @@ SendQuery(const char *query)
 
 	PQclear(results);
 
+	/* If we made a temporary savepoint, possibly release/rollback */
+	if (on_error_rollback_savepoint)
+	{
+		transaction_status = PQtransactionStatus(pset.db);
+
+		/* We always rollback on an error */
+		if (transaction_status == PQTRANS_INERROR)
+			results = PQexec(pset.db, "ROLLBACK TO pg_psql_temporary_savepoint");
+		/* If they are no longer in a transaction, then do nothing */
+		else if (transaction_status != PQTRANS_INTRANS)
+			results = NULL;
+		else
+		{
+			/*
+			 * Do nothing if they are messing with savepoints themselves: If
+			 * the user did RELEASE or ROLLBACK, our savepoint is gone. If
+			 * they issued a SAVEPOINT, releasing ours would remove theirs.
+			 */
+			if (strcmp(PQcmdStatus(results), "SAVEPOINT") == 0 ||
+				strcmp(PQcmdStatus(results), "RELEASE") == 0 ||
+				strcmp(PQcmdStatus(results), "ROLLBACK") == 0)
+				results = NULL;
+			else
+				results = PQexec(pset.db, "RELEASE pg_psql_temporary_savepoint");
+		}
+		if (PQresultStatus(results) != PGRES_COMMAND_OK)
+		{
+			psql_error("%s", PQerrorMessage(pset.db));
+			PQclear(results);
+			ResetCancelConn();
+			return false;
+		}
+		PQclear(results);
+	}
+
 	/* Possible microtiming output */
 	if (OK && pset.timing)
-		printf(gettext("Time: %.3f ms\n"), DIFF_MSEC(&after, &before));
+		printf(_("Time: %.3f ms\n"), DIFF_MSEC(&after, &before));
 
 	/* check for events that may occur during query execution */
 
@@ -1033,19 +1134,19 @@ SendQuery(const char *query)
 static const char *
 skip_white_space(const char *query)
 {
-	int			cnestlevel = 0;		/* slash-star comment nest level */
+	int			cnestlevel = 0; /* slash-star comment nest level */
 
 	while (*query)
 	{
-		int		mblen = PQmblen(query, pset.encoding);
+		int			mblen = PQmblen(query, pset.encoding);
 
 		/*
-		 * Note: we assume the encoding is a superset of ASCII, so that
-		 * for example "query[0] == '/'" is meaningful.  However, we do NOT
-		 * assume that the second and subsequent bytes of a multibyte
-		 * character couldn't look like ASCII characters; so it is critical
-		 * to advance by mblen, not 1, whenever we haven't exactly identified
-		 * the character we are skipping over.
+		 * Note: we assume the encoding is a superset of ASCII, so that for
+		 * example "query[0] == '/'" is meaningful.  However, we do NOT assume
+		 * that the second and subsequent bytes of a multibyte character
+		 * couldn't look like ASCII characters; so it is critical to advance
+		 * by mblen, not 1, whenever we haven't exactly identified the
+		 * character we are skipping over.
 		 */
 		if (isspace((unsigned char) *query))
 			query += mblen;
@@ -1062,9 +1163,10 @@ skip_white_space(const char *query)
 		else if (cnestlevel == 0 && query[0] == '-' && query[1] == '-')
 		{
 			query += 2;
+
 			/*
-			 * We have to skip to end of line since any slash-star inside
-			 * the -- comment does NOT start a slash-star comment.
+			 * We have to skip to end of line since any slash-star inside the
+			 * -- comment does NOT start a slash-star comment.
 			 */
 			while (*query)
 			{
@@ -1111,12 +1213,12 @@ command_no_begin(const char *query)
 		wordlen += PQmblen(&query[wordlen], pset.encoding);
 
 	/*
-	 * Transaction control commands.  These should include every keyword
-	 * that gives rise to a TransactionStmt in the backend grammar, except
-	 * for the savepoint-related commands.
+	 * Transaction control commands.  These should include every keyword that
+	 * gives rise to a TransactionStmt in the backend grammar, except for the
+	 * savepoint-related commands.
 	 *
-	 * (We assume that START must be START TRANSACTION, since there is 
-	 * presently no other "START foo" command.)
+	 * (We assume that START must be START TRANSACTION, since there is presently
+	 * no other "START foo" command.)
 	 */
 	if (wordlen == 5 && pg_strncasecmp(query, "abort", 5) == 0)
 		return true;
@@ -1130,14 +1232,29 @@ command_no_begin(const char *query)
 		return true;
 	if (wordlen == 8 && pg_strncasecmp(query, "rollback", 8) == 0)
 		return true;
+	if (wordlen == 7 && pg_strncasecmp(query, "prepare", 7) == 0)
+	{
+		/* PREPARE TRANSACTION is a TC command, PREPARE foo is not */
+		query += wordlen;
+
+		query = skip_white_space(query);
+
+		wordlen = 0;
+		while (isalpha((unsigned char) query[wordlen]))
+			wordlen += PQmblen(&query[wordlen], pset.encoding);
+
+		if (wordlen == 11 && pg_strncasecmp(query, "transaction", 11) == 0)
+			return true;
+		return false;
+	}
 
 	/*
-	 * Commands not allowed within transactions.  The statements checked
-	 * for here should be exactly those that call PreventTransactionChain()
-	 * in the backend.
+	 * Commands not allowed within transactions.  The statements checked for
+	 * here should be exactly those that call PreventTransactionChain() in the
+	 * backend.
 	 *
-	 * Note: we are a bit sloppy about CLUSTER, which is transactional in
-	 * some variants but not others.
+	 * Note: we are a bit sloppy about CLUSTER, which is transactional in some
+	 * variants but not others.
 	 */
 	if (wordlen == 6 && pg_strncasecmp(query, "vacuum", 6) == 0)
 		return true;
@@ -1145,9 +1262,9 @@ command_no_begin(const char *query)
 		return true;
 
 	/*
-	 * Note: these tests will match REINDEX TABLESPACE, which isn't really
-	 * a valid command so we don't care much.  The other five possible
-	 * matches are correct.
+	 * Note: these tests will match CREATE SYSTEM, DROP SYSTEM, and REINDEX
+	 * TABLESPACE, which aren't really valid commands so we don't care much.
+	 * The other six possible matches are correct.
 	 */
 	if ((wordlen == 6 && pg_strncasecmp(query, "create", 6) == 0) ||
 		(wordlen == 4 && pg_strncasecmp(query, "drop", 4) == 0) ||
@@ -1163,22 +1280,13 @@ command_no_begin(const char *query)
 
 		if (wordlen == 8 && pg_strncasecmp(query, "database", 8) == 0)
 			return true;
+		if (wordlen == 6 && pg_strncasecmp(query, "system", 6) == 0)
+			return true;
 		if (wordlen == 10 && pg_strncasecmp(query, "tablespace", 10) == 0)
 			return true;
 	}
 
 	return false;
-}
-
-
-char
-parse_char(char **buf)
-{
-	long		l;
-
-	l = strtol(*buf, buf, 0);
-	--*buf;
-	return (char) l;
 }
 
 
@@ -1239,7 +1347,11 @@ expand_tilde(char **filename)
 	if (!filename || !(*filename))
 		return NULL;
 
-	/* MSDOS uses tilde for short versions of long file names, so skip it. */
+	/*
+	 * WIN32 doesn't use tilde expansion for file names. Also, it uses tilde
+	 * for short versions of long file names, though the tilde is usually
+	 * toward the end, not at the beginning.
+	 */
 #ifndef WIN32
 
 	/* try tilde expansion */
@@ -1262,9 +1374,9 @@ expand_tilde(char **filename)
 		*p = '\0';
 
 		if (*(fn + 1) == '\0')
-			get_home_path(home);
+			get_home_path(home);	/* ~ or ~/ only */
 		else if ((pw = getpwnam(fn + 1)) != NULL)
-			StrNCpy(home, pw->pw_dir, MAXPGPATH);
+			StrNCpy(home, pw->pw_dir, MAXPGPATH);		/* ~user */
 
 		*p = oldp;
 		if (strlen(home) != 0)

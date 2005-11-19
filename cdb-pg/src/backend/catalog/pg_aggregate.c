@@ -8,24 +8,25 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/catalog/pg_aggregate.c,v 1.69.4.1 2005/01/27 23:42:41 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/catalog/pg_aggregate.c,v 1.76 2005/10/15 02:49:14 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
 #include "access/heapam.h"
-#include "catalog/catname.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_aggregate.h"
 #include "catalog/pg_language.h"
+#include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
 #include "miscadmin.h"
 #include "optimizer/cost.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_func.h"
+#include "parser/parse_oper.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
@@ -42,9 +43,10 @@ static Oid lookup_agg_function(List *fnName, int nargs, Oid *input_types,
 void
 AggregateCreate(const char *aggName,
 				Oid aggNamespace,
+				Oid aggBaseType,
 				List *aggtransfnName,
 				List *aggfinalfnName,
-				Oid aggBaseType,
+				List *aggsortopName,
 				Oid aggTransType,
 				const char *agginitval)
 {
@@ -55,9 +57,10 @@ AggregateCreate(const char *aggName,
 	Form_pg_proc proc;
 	Oid			transfn;
 	Oid			finalfn = InvalidOid;	/* can be omitted */
+	Oid			sortop = InvalidOid;	/* can be omitted */
 	Oid			rettype;
 	Oid			finaltype;
-	Oid			fnArgs[FUNC_MAX_ARGS];
+	Oid			fnArgs[2];		/* we only deal with 1- and 2-arg fns */
 	int			nargs_transfn;
 	Oid			procOid;
 	TupleDesc	tupDesc;
@@ -73,19 +76,18 @@ AggregateCreate(const char *aggName,
 		elog(ERROR, "aggregate must have a transition function");
 
 	/*
-	 * If transtype is polymorphic, basetype must be polymorphic also;
-	 * else we will have no way to deduce the actual transtype.
+	 * If transtype is polymorphic, basetype must be polymorphic also; else we
+	 * will have no way to deduce the actual transtype.
 	 */
 	if ((aggTransType == ANYARRAYOID || aggTransType == ANYELEMENTOID) &&
 		!(aggBaseType == ANYARRAYOID || aggBaseType == ANYELEMENTOID))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_FUNCTION_DEFINITION),
 				 errmsg("cannot determine transition data type"),
-		errdetail("An aggregate using \"anyarray\" or \"anyelement\" as "
-			"transition type must have one of them as its base type.")));
+			errdetail("An aggregate using \"anyarray\" or \"anyelement\" as "
+				"transition type must have one of them as its base type.")));
 
 	/* handle transfn */
-	MemSet(fnArgs, 0, FUNC_MAX_ARGS * sizeof(Oid));
 	fnArgs[0] = aggTransType;
 	if (aggBaseType == ANYOID)
 		nargs_transfn = 1;
@@ -99,13 +101,13 @@ AggregateCreate(const char *aggName,
 
 	/*
 	 * Return type of transfn (possibly after refinement by
-	 * enforce_generic_type_consistency, if transtype isn't polymorphic)
-	 * must exactly match declared transtype.
+	 * enforce_generic_type_consistency, if transtype isn't polymorphic) must
+	 * exactly match declared transtype.
 	 *
-	 * In the non-polymorphic-transtype case, it might be okay to allow a
-	 * rettype that's binary-coercible to transtype, but I'm not quite
-	 * convinced that it's either safe or useful.  When transtype is
-	 * polymorphic we *must* demand exact equality.
+	 * In the non-polymorphic-transtype case, it might be okay to allow a rettype
+	 * that's binary-coercible to transtype, but I'm not quite convinced that
+	 * it's either safe or useful.  When transtype is polymorphic we *must*
+	 * demand exact equality.
 	 */
 	if (rettype != aggTransType)
 		ereport(ERROR,
@@ -122,10 +124,9 @@ AggregateCreate(const char *aggName,
 	proc = (Form_pg_proc) GETSTRUCT(tup);
 
 	/*
-	 * If the transfn is strict and the initval is NULL, make sure input
-	 * type and transtype are the same (or at least binary-compatible), so
-	 * that it's OK to use the first input value as the initial
-	 * transValue.
+	 * If the transfn is strict and the initval is NULL, make sure input type
+	 * and transtype are the same (or at least binary-compatible), so that
+	 * it's OK to use the first input value as the initial transValue.
 	 */
 	if (proc->proisstrict && agginitval == NULL)
 	{
@@ -139,7 +140,6 @@ AggregateCreate(const char *aggName,
 	/* handle finalfn, if supplied */
 	if (aggfinalfnName)
 	{
-		MemSet(fnArgs, 0, FUNC_MAX_ARGS * sizeof(Oid));
 		fnArgs[0] = aggTransType;
 		finalfn = lookup_agg_function(aggfinalfnName, 1, fnArgs,
 									  &finaltype);
@@ -154,27 +154,31 @@ AggregateCreate(const char *aggName,
 	Assert(OidIsValid(finaltype));
 
 	/*
-	 * If finaltype (i.e. aggregate return type) is polymorphic, basetype
-	 * must be polymorphic also, else parser will fail to deduce result
-	 * type.  (Note: given the previous test on transtype and basetype,
-	 * this cannot happen, unless someone has snuck a finalfn definition
-	 * into the catalogs that itself violates the rule against polymorphic
-	 * result with no polymorphic input.)
+	 * If finaltype (i.e. aggregate return type) is polymorphic, basetype must
+	 * be polymorphic also, else parser will fail to deduce result type.
+	 * (Note: given the previous test on transtype and basetype, this cannot
+	 * happen, unless someone has snuck a finalfn definition into the catalogs
+	 * that itself violates the rule against polymorphic result with no
+	 * polymorphic input.)
 	 */
 	if ((finaltype == ANYARRAYOID || finaltype == ANYELEMENTOID) &&
 		!(aggBaseType == ANYARRAYOID || aggBaseType == ANYELEMENTOID))
 		ereport(ERROR,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
 				 errmsg("cannot determine result data type"),
-		errdetail("An aggregate returning \"anyarray\" or \"anyelement\" "
-				  "must have one of them as its base type.")));
+		   errdetail("An aggregate returning \"anyarray\" or \"anyelement\" "
+					 "must have one of them as its base type.")));
+
+	/* handle sortop, if supplied */
+	if (aggsortopName)
+		sortop = LookupOperName(aggsortopName,
+								aggBaseType, aggBaseType,
+								false);
 
 	/*
 	 * Everything looks okay.  Try to create the pg_proc entry for the
-	 * aggregate.  (This could fail if there's already a conflicting
-	 * entry.)
+	 * aggregate.  (This could fail if there's already a conflicting entry.)
 	 */
-	MemSet(fnArgs, 0, FUNC_MAX_ARGS * sizeof(Oid));
 	fnArgs[0] = aggBaseType;
 	
 	procOid = 0;
@@ -185,7 +189,7 @@ AggregateCreate(const char *aggName,
 							  false,	/* doesn't return a set */
 							  finaltype,		/* returnType */
 							  INTERNALlanguageId,		/* languageObjectId */
-							  0,
+							  InvalidOid,		/* no validator */
 							  "aggregate_dummy",		/* placeholder proc */
 							  "-",		/* probin */
 							  true,		/* isAgg */
@@ -194,11 +198,11 @@ AggregateCreate(const char *aggName,
 							  false,	/* isStrict (not needed for agg) */
 							  PROVOLATILE_IMMUTABLE,	/* volatility (not
 														 * needed for agg) */
-							  1,	/* parameterCount */
-							  fnArgs,	/* parameterTypes */
-							  NULL,
-							  procOid);	/* parameterNames */
-
+							  buildoidvector(fnArgs, 1),		/* paramTypes */
+							  PointerGetDatum(NULL),	/* allParamTypes */
+							  PointerGetDatum(NULL),	/* parameterModes */
+							  PointerGetDatum(NULL),	/* parameterNames */
+							  procOid);
 	/*
 	 * Okay to create the pg_aggregate entry.
 	 */
@@ -212,6 +216,7 @@ AggregateCreate(const char *aggName,
 	values[Anum_pg_aggregate_aggfnoid - 1] = ObjectIdGetDatum(procOid);
 	values[Anum_pg_aggregate_aggtransfn - 1] = ObjectIdGetDatum(transfn);
 	values[Anum_pg_aggregate_aggfinalfn - 1] = ObjectIdGetDatum(finalfn);
+	values[Anum_pg_aggregate_aggsortop - 1] = ObjectIdGetDatum(sortop);
 	values[Anum_pg_aggregate_aggtranstype - 1] = ObjectIdGetDatum(aggTransType);
 	if (agginitval)
 		values[Anum_pg_aggregate_agginitval - 1] =
@@ -219,7 +224,7 @@ AggregateCreate(const char *aggName,
 	else
 		nulls[Anum_pg_aggregate_agginitval - 1] = 'n';
 
-	aggdesc = heap_openr(AggregateRelationName, RowExclusiveLock);
+	aggdesc = heap_open(AggregateRelationId, RowExclusiveLock);
 	tupDesc = aggdesc->rd_att;
 
 	tup = heap_formtuple(tupDesc, values, nulls);
@@ -230,17 +235,16 @@ AggregateCreate(const char *aggName,
 	heap_close(aggdesc, RowExclusiveLock);
 
 	/*
-	 * Create dependencies for the aggregate (above and beyond those
-	 * already made by ProcedureCreate).  Note: we don't need an explicit
-	 * dependency on aggTransType since we depend on it indirectly through
-	 * transfn.
+	 * Create dependencies for the aggregate (above and beyond those already
+	 * made by ProcedureCreate).  Note: we don't need an explicit dependency
+	 * on aggTransType since we depend on it indirectly through transfn.
 	 */
-	myself.classId = RelOid_pg_proc;
+	myself.classId = ProcedureRelationId;
 	myself.objectId = procOid;
 	myself.objectSubId = 0;
 
 	/* Depends on transition function */
-	referenced.classId = RelOid_pg_proc;
+	referenced.classId = ProcedureRelationId;
 	referenced.objectId = transfn;
 	referenced.objectSubId = 0;
 	recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
@@ -248,8 +252,17 @@ AggregateCreate(const char *aggName,
 	/* Depends on final function, if any */
 	if (OidIsValid(finalfn))
 	{
-		referenced.classId = RelOid_pg_proc;
+		referenced.classId = ProcedureRelationId;
 		referenced.objectId = finalfn;
+		referenced.objectSubId = 0;
+		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
+	}
+
+	/* Depends on sort operator, if any */
+	if (OidIsValid(sortop))
+	{
+		referenced.classId = OperatorRelationId;
+		referenced.objectId = sortop;
 		referenced.objectSubId = 0;
 		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
 	}
@@ -274,8 +287,8 @@ lookup_agg_function(List *fnName,
 	 * func_get_detail looks up the function in the catalogs, does
 	 * disambiguation for polymorphic functions, handles inheritance, and
 	 * returns the funcid and type and set or singleton status of the
-	 * function's return value.  it also returns the true argument types
-	 * to the function.
+	 * function's return value.  it also returns the true argument types to
+	 * the function.
 	 */
 	fdresult = func_get_detail(fnName, NIL, nargs, input_types,
 							   &fnOid, rettype, &retset,
@@ -286,21 +299,20 @@ lookup_agg_function(List *fnName,
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_FUNCTION),
 				 errmsg("function %s does not exist",
-					func_signature_string(fnName, nargs, input_types))));
+						func_signature_string(fnName, nargs, input_types))));
 	if (retset)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
 				 errmsg("function %s returns a set",
-					func_signature_string(fnName, nargs, input_types))));
+						func_signature_string(fnName, nargs, input_types))));
 
 	/*
-	 * If the given type(s) are all polymorphic, there's nothing we can
-	 * check.  Otherwise, enforce consistency, and possibly refine the
-	 * result type.
+	 * If the given type(s) are all polymorphic, there's nothing we can check.
+	 * Otherwise, enforce consistency, and possibly refine the result type.
 	 */
 	if ((input_types[0] == ANYARRAYOID || input_types[0] == ANYELEMENTOID) &&
 		(nargs == 1 ||
-	 (input_types[1] == ANYARRAYOID || input_types[1] == ANYELEMENTOID)))
+		 (input_types[1] == ANYARRAYOID || input_types[1] == ANYELEMENTOID)))
 	{
 		/* nothing to check here */
 	}
@@ -313,8 +325,8 @@ lookup_agg_function(List *fnName,
 	}
 
 	/*
-	 * func_get_detail will find functions requiring run-time argument
-	 * type coercion, but nodeAgg.c isn't prepared to deal with that
+	 * func_get_detail will find functions requiring run-time argument type
+	 * coercion, but nodeAgg.c isn't prepared to deal with that
 	 */
 	if (true_oid_array[0] != ANYARRAYOID &&
 		true_oid_array[0] != ANYELEMENTOID &&
@@ -322,7 +334,7 @@ lookup_agg_function(List *fnName,
 		ereport(ERROR,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
 				 errmsg("function %s requires run-time type coercion",
-				 func_signature_string(fnName, nargs, true_oid_array))));
+					 func_signature_string(fnName, nargs, true_oid_array))));
 
 	if (nargs == 2 &&
 		true_oid_array[1] != ANYARRAYOID &&
@@ -331,7 +343,7 @@ lookup_agg_function(List *fnName,
 		ereport(ERROR,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
 				 errmsg("function %s requires run-time type coercion",
-				 func_signature_string(fnName, nargs, true_oid_array))));
+					 func_signature_string(fnName, nargs, true_oid_array))));
 
 	/* Check aggregate creator has permission to call the function */
 	aclresult = pg_proc_aclcheck(fnOid, GetUserId(), ACL_EXECUTE);

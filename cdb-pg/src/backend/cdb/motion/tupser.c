@@ -15,6 +15,7 @@
 #include "libpq/pqformat.h"
 #include "utils/date.h"
 #include "utils/numeric.h"
+#include "utils/memutils.h"
 
 #ifndef MAX
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
@@ -113,7 +114,7 @@ InitSerTupInfo(TupleDesc tupdesc, SerTupInfo * pSerInfo)
 		/* Info for sending the type. */
 
 		getTypeBinaryOutputInfo(attrInfo->atttypid, &attrInfo->typsend,
-					   &attrInfo->send_typio_param, &attrInfo->typisvarlena);
+					   &attrInfo->typisvarlena);
 
 		fmgr_info(attrInfo->typsend, &attrInfo->send_finfo);
 

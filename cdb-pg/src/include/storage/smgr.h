@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/storage/smgr.h,v 1.50 2005/01/10 20:02:23 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/storage/smgr.h,v 1.53 2005/10/15 02:49:46 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -30,7 +30,7 @@
  *
  * An SMgrRelation may have an "owner", which is just a pointer to it from
  * somewhere else; smgr.c will clear this pointer if the SMgrRelation is
- * closed.  We use this to avoid dangling pointers from relcache to smgr
+ * closed.	We use this to avoid dangling pointers from relcache to smgr
  * without having to make the smgr explicitly aware of relcache.  There
  * can't be more than one "owner" pointer per SMgrRelation, but that's
  * all we need.
@@ -79,18 +79,14 @@ extern void smgrDoPendingDeletes(bool isCommit);
 extern int	smgrGetPendingDeletes(bool forCommit, RelFileNode **ptr);
 extern void AtSubCommit_smgr(void);
 extern void AtSubAbort_smgr(void);
+extern void PostPrepare_smgr(void);
 extern void smgrcommit(void);
 extern void smgrabort(void);
 extern void smgrsync(void);
 
-extern void AtPrepare_smgr(void);
-
 extern void smgr_redo(XLogRecPtr lsn, XLogRecord *record);
-extern void smgr_undo(XLogRecPtr lsn, XLogRecord *record);
 extern void smgr_desc(char *buf, uint8 xl_info, char *rec);
 
-extern void smgr_postcommit_record(TransactionId xid, void *recdata, uint32 len);
-extern void smgr_postabort_record(TransactionId xid, void *recdata, uint32 len);
 
 /* internals: move me elsewhere -- ay 7/94 */
 

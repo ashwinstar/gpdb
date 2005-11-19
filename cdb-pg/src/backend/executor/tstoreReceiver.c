@@ -9,7 +9,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/tstoreReceiver.c,v 1.13 2004/12/31 21:59:45 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/tstoreReceiver.c,v 1.15 2005/11/03 17:11:36 alvherre Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -40,12 +40,12 @@ tstoreStartupReceiver(DestReceiver *self, int operation, TupleDesc typeinfo)
  * Receive a tuple from the executor and store it in the tuplestore.
  */
 static void
-tstoreReceiveTuple(HeapTuple tuple, TupleDesc typeinfo, DestReceiver *self)
+tstoreReceiveSlot(TupleTableSlot *slot, DestReceiver *self)
 {
 	TStoreState *myState = (TStoreState *) self;
 	MemoryContext oldcxt = MemoryContextSwitchTo(myState->cxt);
 
-	tuplestore_puttuple(myState->tstore, tuple);
+	tuplestore_puttuple(myState->tstore, ExecFetchSlotTuple(slot));
 
 	MemoryContextSwitchTo(oldcxt);
 }
@@ -77,11 +77,11 @@ CreateTuplestoreDestReceiver(Tuplestorestate *tStore,
 {
 	TStoreState *self = (TStoreState *) palloc(sizeof(TStoreState));
 
-	self->pub.receiveTuple = tstoreReceiveTuple;
+	self->pub.receiveSlot = tstoreReceiveSlot;
 	self->pub.rStartup = tstoreStartupReceiver;
 	self->pub.rShutdown = tstoreShutdownReceiver;
 	self->pub.rDestroy = tstoreDestroyReceiver;
-	self->pub.mydest = Tuplestore;
+	self->pub.mydest = DestTuplestore;
 
 	self->tstore = tStore;
 	self->cxt = tContext;

@@ -6,7 +6,7 @@
 # Copyright (c) 1998, Regents of the University of California
 #
 # IDENTIFICATION
-#    $PostgreSQL: pgsql/src/Makefile.shlib,v 1.90.4.1 2005/07/17 04:05:47 tgl Exp $
+#    $PostgreSQL: pgsql/src/Makefile.shlib,v 1.98 2005/10/28 17:32:22 tgl Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -153,9 +153,6 @@ endif
 
 ifeq ($(PORTNAME), hpux)
   shlib			= lib$(NAME)$(DLSUFFIX).$(SO_MAJOR_VERSION)
-  ifeq ($(GCC), yes)
-    SHLIB_LINK		+= `$(CC) $(LDFLAGS) -print-libgcc-file-name`
-  endif
   ifeq ($(with_gnu_ld), yes)
     LINK.shared		= $(CC) $(LDFLAGS) -shared -Wl,-h -Wl,$(soname)
   else
@@ -166,6 +163,17 @@ ifeq ($(PORTNAME), hpux)
     else
       LINK.shared	= $(LD) +h $(soname) -b
     endif
+    # On HPUX platforms, gcc is usually configured to search for libraries
+    # in /usr/local/lib, but ld won't do so.  Add an explicit -L switch so
+    # ld can find the same libraries gcc does.  Make sure it goes after any
+    # -L switches provided explicitly.
+    ifeq ($(GCC), yes)
+      SHLIB_LINK := $(filter -L%, $(SHLIB_LINK)) -L/usr/local/lib $(filter-out -L%, $(SHLIB_LINK))
+    endif
+  endif
+  # do this last so above filtering doesn't pull out -L switches in LDFLAGS
+  ifeq ($(GCC), yes)
+    SHLIB_LINK		+= `$(CC) $(LDFLAGS) -print-libgcc-file-name`
   endif
 endif
 
@@ -226,9 +234,7 @@ ifeq ($(PORTNAME), unixware)
 endif
 
 ifeq ($(PORTNAME), cygwin)
-  shlib			= $(NAME)$(DLSUFFIX)
-  # needed for /contrib modules, not sure why
-  SHLIB_LINK		+= $(LIBS)
+  shlib			= cyg$(NAME)$(DLSUFFIX)
   haslibarule   = yes
 endif
 
@@ -303,7 +309,7 @@ else # PORTNAME == aix
 # AIX case
 $(shlib): lib$(NAME).a
 	$(MKLDEXPORT) lib$(NAME).a > lib$(NAME)$(EXPSUFF)
-	$(COMPILER) $(LDFLAGS_SL) -o $@ $< $(LDFLAGS) $(SHLIB_LINK) -Wl,-bI:$(top_builddir)/src/backend/$(POSTGRES_IMP) -Wl,-bE:lib$(NAME)$(EXPSUFF)
+	$(COMPILER) $(LDFLAGS) $(LDFLAGS_SL) -o $@ $< -Wl,-bE:lib$(NAME)$(EXPSUFF) $(SHLIB_LINK)
 	
 endif # PORTNAME == aix
 

@@ -12,6 +12,7 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
+#include "utils/memutils.h"
 #include "cdb/htupfifo.h"
 
 

@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/catalog/pg_constraint.h,v 1.14 2004/12/31 22:03:24 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/catalog/pg_constraint.h,v 1.18 2005/10/15 02:49:42 momjian Exp $
  *
  * NOTES
  *	  the genbki.sh script reads this file and generates .bki
@@ -21,7 +21,7 @@
 
 /* ----------------
  *		postgres.h contains the system type definitions and the
- *		CATALOG(), BOOTSTRAP and DATA() sugar words so this file
+ *		CATALOG(), BKI_BOOTSTRAP and DATA() sugar words so this file
  *		can be read by both genbki.sh and the C compiler.
  * ----------------
  */
@@ -31,16 +31,18 @@
  *		typedef struct FormData_pg_constraint
  * ----------------
  */
-CATALOG(pg_constraint)
+#define ConstraintRelationId  2606
+
+CATALOG(pg_constraint,2606)
 {
 	/*
 	 * conname + connamespace is deliberately not unique; we allow, for
 	 * example, the same name to be used for constraints of different
 	 * relations.  This is partly for backwards compatibility with past
-	 * Postgres practice, and partly because we don't want to have to
-	 * obtain a global lock to generate a globally unique name for a
-	 * nameless constraint.  We associate a namespace with constraint
-	 * names only for SQL92 compatibility.
+	 * Postgres practice, and partly because we don't want to have to obtain a
+	 * global lock to generate a globally unique name for a nameless
+	 * constraint.	We associate a namespace with constraint names only for
+	 * SQL92 compatibility.
 	 */
 	NameData	conname;		/* name of this constraint */
 	Oid			connamespace;	/* OID of namespace containing constraint */
@@ -49,9 +51,9 @@ CATALOG(pg_constraint)
 	bool		condeferred;	/* deferred by default? */
 
 	/*
-	 * conrelid and conkey are only meaningful if the constraint applies
-	 * to a specific relation (this excludes domain constraints and
-	 * assertions).  Otherwise conrelid is 0 and conkey is NULL.
+	 * conrelid and conkey are only meaningful if the constraint applies to a
+	 * specific relation (this excludes domain constraints and assertions).
+	 * Otherwise conrelid is 0 and conkey is NULL.
 	 */
 	Oid			conrelid;		/* relation this constraint constrains */
 
@@ -59,15 +61,14 @@ CATALOG(pg_constraint)
 	 * contypid links to the pg_type row for a domain if this is a domain
 	 * constraint.	Otherwise it's 0.
 	 *
-	 * For SQL-style global ASSERTIONs, both conrelid and contypid would be
-	 * zero.  This is not presently supported, however.
+	 * For SQL-style global ASSERTIONs, both conrelid and contypid would be zero.
+	 * This is not presently supported, however.
 	 */
 	Oid			contypid;		/* domain this constraint constrains */
 
 	/*
 	 * These fields, plus confkey, are only meaningful for a foreign-key
-	 * constraint.	Otherwise confrelid is 0 and the char fields are
-	 * spaces.
+	 * constraint.	Otherwise confrelid is 0 and the char fields are spaces.
 	 */
 	Oid			confrelid;		/* relation referenced by foreign key */
 	char		confupdtype;	/* foreign key's ON UPDATE action */
@@ -180,5 +181,10 @@ extern bool ConstraintNameIsUsed(ConstraintCategory conCat, Oid objId,
 extern char *ChooseConstraintName(const char *name1, const char *name2,
 					 const char *label, Oid namespace,
 					 List *others);
+
+extern char *GetConstraintNameForTrigger(Oid triggerId);
+
+extern void AlterConstraintNamespaces(Oid ownerId, Oid oldNspId,
+						  Oid newNspId, bool isType);
 
 #endif   /* PG_CONSTRAINT_H */

@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/nodes/nodes.h,v 1.163 2004/12/31 22:03:34 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/nodes/nodes.h,v 1.176 2005/10/15 02:49:45 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -48,9 +48,13 @@ typedef enum NodeTag
 	T_Plan = 100,
 	T_Result,
 	T_Append,
+	T_BitmapAnd,
+	T_BitmapOr,
 	T_Scan,
 	T_SeqScan,
 	T_IndexScan,
+	T_BitmapIndexScan,
+	T_BitmapHeapScan,
 	T_TidScan,
 	T_SubqueryScan,
 	T_FunctionScan,
@@ -76,9 +80,13 @@ typedef enum NodeTag
 	T_PlanState = 200,
 	T_ResultState,
 	T_AppendState,
+	T_BitmapAndState,
+	T_BitmapOrState,
 	T_ScanState,
 	T_SeqScanState,
 	T_IndexScanState,
+	T_BitmapIndexScanState,
+	T_BitmapHeapScanState,
 	T_TidScanState,
 	T_SubqueryScanState,
 	T_FunctionScanState,
@@ -99,8 +107,7 @@ typedef enum NodeTag
 	/*
 	 * TAGS FOR PRIMITIVE NODES (primnodes.h)
 	 */
-	T_Resdom = 300,
-	T_Alias,
+	T_Alias = 300,
 	T_RangeVar,
 	T_Expr,
 	T_Var,
@@ -125,6 +132,7 @@ typedef enum NodeTag
 	T_ArrayExpr,
 	T_RowExpr,
 	T_CoalesceExpr,
+	T_MinMaxExpr,
 	T_NullIfExpr,
 	T_NullTest,
 	T_BooleanTest,
@@ -141,8 +149,8 @@ typedef enum NodeTag
 	/*
 	 * TAGS FOR EXPRESSION STATE NODES (execnodes.h)
 	 *
-	 * These correspond (not always one-for-one) to primitive nodes derived
-	 * from Expr.
+	 * These correspond (not always one-for-one) to primitive nodes derived from
+	 * Expr.
 	 */
 	T_ExprState = 400,
 	T_GenericExprState,
@@ -160,16 +168,21 @@ typedef enum NodeTag
 	T_ArrayExprState,
 	T_RowExprState,
 	T_CoalesceExprState,
+	T_MinMaxExprState,
 	T_CoerceToDomainState,
 	T_DomainConstraintState,
 
 	/*
 	 * TAGS FOR PLANNER NODES (relation.h)
 	 */
-	T_RelOptInfo = 500,
+	T_PlannerInfo = 500,
+	T_RelOptInfo,
 	T_IndexOptInfo,
 	T_Path,
 	T_IndexPath,
+	T_BitmapHeapPath,
+	T_BitmapAndPath,
+	T_BitmapOrPath,
 	T_NestPath,
 	T_MergePath,
 	T_HashPath,
@@ -180,7 +193,6 @@ typedef enum NodeTag
 	T_UniquePath,
 	T_PathKeyItem,
 	T_RestrictInfo,
-	T_JoinInfo,
 	T_InnerIndexscanInfo,
 	T_InClauseInfo,
 
@@ -223,6 +235,7 @@ typedef enum NodeTag
 	T_AlterDomainStmt,
 	T_SetOperationStmt,
 	T_GrantStmt,
+	T_GrantRoleStmt,
 	T_ClosePortalStmt,
 	T_ClusterStmt,
 	T_CopyStmt,
@@ -234,6 +247,7 @@ typedef enum NodeTag
 	T_FetchStmt,
 	T_IndexStmt,
 	T_CreateFunctionStmt,
+	T_AlterFunctionStmt,
 	T_RemoveAggrStmt,
 	T_RemoveFuncStmt,
 	T_RemoveOperStmt,
@@ -259,19 +273,17 @@ typedef enum NodeTag
 	T_DropPropertyStmt,
 	T_CreatePLangStmt,
 	T_DropPLangStmt,
-	T_CreateUserStmt,
-	T_AlterUserStmt,
-	T_DropUserStmt,
+	T_CreateRoleStmt,
+	T_AlterRoleStmt,
+	T_DropRoleStmt,
 	T_LockStmt,
 	T_ConstraintsSetStmt,
-	T_CreateGroupStmt,
-	T_AlterGroupStmt,
-	T_DropGroupStmt,
 	T_ReindexStmt,
 	T_CheckPointStmt,
 	T_CreateSchemaStmt,
+	T_AlterDatabaseStmt,
 	T_AlterDatabaseSetStmt,
-	T_AlterUserSetStmt,
+	T_AlterRoleSetStmt,
 	T_CreateConversionStmt,
 	T_CreateCastStmt,
 	T_DropCastStmt,
@@ -283,6 +295,7 @@ typedef enum NodeTag
 	T_DeclareCursorStmt,
 	T_CreateTableSpaceStmt,
 	T_DropTableSpaceStmt,
+	T_AlterObjectSchemaStmt,
 	T_AlterOwnerStmt,
 	T_CdbExecStmt,
 
@@ -314,13 +327,19 @@ typedef enum NodeTag
 	T_CompositeTypeStmt,
 	T_InhRelation,
 	T_FunctionParameter,
+	T_LockingClause,
 
 	/*
-	 * TAGS FOR FUNCTION-CALL CONTEXT AND RESULTINFO NODES (see fmgr.h)
+	 * TAGS FOR RANDOM OTHER STUFF
+	 *
+	 * These are objects that aren't part of parse/plan/execute node tree
+	 * structures, but we give them NodeTags anyway for identification
+	 * purposes (usually because they are involved in APIs where we want to
+	 * pass multiple object types through the same pointer).
 	 */
 	T_TriggerData = 900,		/* in commands/trigger.h */
-	T_ReturnSetInfo				/* in nodes/execnodes.h */
-
+	T_ReturnSetInfo,			/* in nodes/execnodes.h */
+	T_TIDBitmap					/* in nodes/tidbitmap.h */
 } NodeTag;
 
 /*
@@ -399,8 +418,7 @@ extern bool equal(void *a, void *b);
  * These could have gone into plannodes.h or some such, but many files
  * depend on them...
  */
-typedef double Selectivity;		/* fraction of tuples a qualifier will
-								 * pass */
+typedef double Selectivity;		/* fraction of tuples a qualifier will pass */
 typedef double Cost;			/* execution cost (in page-access units) */
 
 
@@ -418,8 +436,8 @@ typedef enum CmdType
 	CMD_UPDATE,					/* update stmt (formerly replace) */
 	CMD_INSERT,					/* insert stmt (formerly append) */
 	CMD_DELETE,
-	CMD_UTILITY,				/* cmds like create, destroy, copy,
-								 * vacuum, etc. */
+	CMD_UTILITY,				/* cmds like create, destroy, copy, vacuum,
+								 * etc. */
 	CMD_NOTHING					/* dummy command for instead nothing rules
 								 * with qual */
 } CmdType;
@@ -442,22 +460,20 @@ typedef enum JoinType
 	 */
 	JOIN_INNER,					/* matching tuple pairs only */
 	JOIN_LEFT,					/* pairs + unmatched outer tuples */
-	JOIN_FULL,					/* pairs + unmatched outer + unmatched
-								 * inner */
+	JOIN_FULL,					/* pairs + unmatched outer + unmatched inner */
 	JOIN_RIGHT,					/* pairs + unmatched inner tuples */
 
 	/*
-	 * SQL92 considers UNION JOIN to be a kind of join, so list it here
-	 * for parser convenience, even though it's not implemented like a
-	 * join in the executor.  (The planner must convert it to an Append
-	 * plan.)
+	 * SQL92 considers UNION JOIN to be a kind of join, so list it here for
+	 * parser convenience, even though it's not implemented like a join in the
+	 * executor.  (The planner must convert it to an Append plan.)
 	 */
 	JOIN_UNION,
 
 	/*
 	 * These are used for queries like WHERE foo IN (SELECT bar FROM ...).
-	 * Only JOIN_IN is actually implemented in the executor; the others
-	 * are defined for internal use in the planner.
+	 * Only JOIN_IN is actually implemented in the executor; the others are
+	 * defined for internal use in the planner.
 	 */
 	JOIN_IN,					/* at most one result per outer row */
 	JOIN_REVERSE_IN,			/* at most one result per inner row */

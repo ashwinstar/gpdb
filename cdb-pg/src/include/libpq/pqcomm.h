@@ -9,7 +9,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/libpq/pqcomm.h,v 1.96 2004/12/31 22:03:32 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/libpq/pqcomm.h,v 1.98 2005/10/15 02:49:44 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -46,7 +46,6 @@
 #define ss_len __ss_len
 #define HAVE_STRUCT_SOCKADDR_STORAGE_SS_LEN 1
 #endif
-
 #else							/* !HAVE_STRUCT_SOCKADDR_STORAGE */
 
 /* Define a struct sockaddr_storage if we don't have one. */
@@ -160,7 +159,7 @@ extern bool Db_user_namespace;
 /* These are the authentication request codes sent by the backend. */
 
 #define AUTH_REQ_OK			0	/* User is authenticated  */
-#define AUTH_REQ_KRB4		1	/* Kerberos V4 */
+#define AUTH_REQ_KRB4		1	/* Kerberos V4. Not supported any more. */
 #define AUTH_REQ_KRB5		2	/* Kerberos V5 */
 #define AUTH_REQ_PASSWORD	3	/* Password */
 #define AUTH_REQ_CRYPT		4	/* crypt password */
@@ -183,8 +182,7 @@ typedef uint32 AuthRequest;
 typedef struct CancelRequestPacket
 {
 	/* Note that each field is stored in network byte order! */
-	MsgType		cancelRequestCode;		/* code to identify a cancel
-										 * request */
+	MsgType		cancelRequestCode;		/* code to identify a cancel request */
 	uint32		backendPID;		/* PID of client's backend */
 	uint32		cancelAuthCode; /* secret key to authorize cancel */
 } CancelRequestPacket;

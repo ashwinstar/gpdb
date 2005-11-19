@@ -20,8 +20,7 @@ TrimTrailingZeros(char *str)
 	int			len = strlen(str);
 
 	/* chop off trailing zeros... but leave at least 2 fractional digits */
-	while ((*(str + len - 1) == '0')
-		   && (*(str + len - 3) != '.'))
+	while (*(str + len - 1) == '0' && *(str + len - 3) != '.')
 	{
 		len--;
 		*(str + len) = '\0';
@@ -64,12 +63,11 @@ DecodeTime(char *str, int fmask, int *tmask, struct tm * tm, fsec_t *fsec)
 			char		fstr[MAXDATELEN + 1];
 
 			/*
-			 * OK, we have at most six digits to work with. Let's
-			 * construct a string and then do the conversion to an
-			 * integer.
+			 * OK, we have at most six digits to work with. Let's construct a
+			 * string and then do the conversion to an integer.
 			 */
 			strncpy(fstr, (cp + 1), 7);
-			strcpy((fstr + strlen(fstr)), "000000");
+			strcpy(fstr + strlen(fstr), "000000");
 			*(fstr + 6) = '\0';
 			*fsec = strtol(fstr, &cp, 10);
 #else
@@ -85,16 +83,12 @@ DecodeTime(char *str, int fmask, int *tmask, struct tm * tm, fsec_t *fsec)
 
 	/* do a sanity check */
 #ifdef HAVE_INT64_TIMESTAMP
-	if ((tm->tm_hour < 0)
-		|| (tm->tm_min < 0) || (tm->tm_min > 59)
-		|| (tm->tm_sec < 0) || (tm->tm_sec > 59)
-		|| (*fsec >= INT64CONST(1000000)))
+	if (tm->tm_hour < 0 || tm->tm_min < 0 || tm->tm_min > 59 ||
+		tm->tm_sec < 0 || tm->tm_sec > 59 || *fsec >= USECS_PER_SEC)
 		return -1;
 #else
-	if ((tm->tm_hour < 0)
-		|| (tm->tm_min < 0) || (tm->tm_min > 59)
-		|| (tm->tm_sec < 0) || (tm->tm_sec > 59)
-		|| (*fsec >= 1))
+	if (tm->tm_hour < 0 || tm->tm_min < 0 || tm->tm_min > 59 ||
+		tm->tm_sec < 0 || tm->tm_sec > 59 || *fsec >= 1)
 		return -1;
 #endif
 
@@ -154,15 +148,14 @@ DecodeInterval(char **field, int *ftype, int nf, int *dtype, struct tm * tm, fse
 				 */
 
 				/*
-				 * A single signed number ends up here, but will be
-				 * rejected by DecodeTime(). So, work this out to drop
-				 * through to DTK_NUMBER, which *can* tolerate this.
+				 * A single signed number ends up here, but will be rejected
+				 * by DecodeTime(). So, work this out to drop through to
+				 * DTK_NUMBER, which *can* tolerate this.
 				 */
 				cp = field[i] + 1;
-				while ((*cp != '\0') && (*cp != ':') && (*cp != '.'))
+				while (*cp != '\0' && *cp != ':' && *cp != '.')
 					cp++;
-				if ((*cp == ':')
-					&& (DecodeTime((field[i] + 1), fmask, &tmask, tm, fsec) == 0))
+				if (*cp == ':' && DecodeTime((field[i] + 1), fmask, &tmask, tm, fsec) == 0)
 				{
 					if (*field[i] == '-')
 					{
@@ -175,8 +168,8 @@ DecodeInterval(char **field, int *ftype, int nf, int *dtype, struct tm * tm, fse
 
 					/*
 					 * Set the next type to be a day, if units are not
-					 * specified. This handles the case of '1 +02:03'
-					 * since we are reading right to left.
+					 * specified. This handles the case of '1 +02:03' since we
+					 * are reading right to left.
 					 */
 					type = DTK_DAY;
 					tmask = DTK_M(TZ);
@@ -217,7 +210,7 @@ DecodeInterval(char **field, int *ftype, int nf, int *dtype, struct tm * tm, fse
 						return -1;
 
 					if (val < 0)
-						fval = -(fval);
+						fval = -fval;
 				}
 				else if (*cp == '\0')
 					fval = 0;
@@ -230,24 +223,24 @@ DecodeInterval(char **field, int *ftype, int nf, int *dtype, struct tm * tm, fse
 				{
 					case DTK_MICROSEC:
 #ifdef HAVE_INT64_TIMESTAMP
-						*fsec += (val + fval);
+						*fsec += val + fval;
 #else
-						*fsec += ((val + fval) * 1e-6);
+						*fsec += (val + fval) * 1e-6;
 #endif
 						break;
 
 					case DTK_MILLISEC:
 #ifdef HAVE_INT64_TIMESTAMP
-						*fsec += ((val + fval) * 1000);
+						*fsec += (val + fval) * 1000;
 #else
-						*fsec += ((val + fval) * 1e-3);
+						*fsec += (val + fval) * 1e-3;
 #endif
 						break;
 
 					case DTK_SECOND:
 						tm->tm_sec += val;
 #ifdef HAVE_INT64_TIMESTAMP
-						*fsec += (fval * 1000000);
+						*fsec += fval * 1000000;
 #else
 						*fsec += fval;
 #endif
@@ -260,13 +253,13 @@ DecodeInterval(char **field, int *ftype, int nf, int *dtype, struct tm * tm, fse
 						{
 							int			sec;
 
-							fval *= 60;
+							fval *= SECS_PER_MINUTE;
 							sec = fval;
 							tm->tm_sec += sec;
 #ifdef HAVE_INT64_TIMESTAMP
 							*fsec += ((fval - sec) * 1000000);
 #else
-							*fsec += (fval - sec);
+							*fsec += fval - sec;
 #endif
 						}
 						tmask = DTK_M(MINUTE);
@@ -278,13 +271,13 @@ DecodeInterval(char **field, int *ftype, int nf, int *dtype, struct tm * tm, fse
 						{
 							int			sec;
 
-							fval *= 3600;
+							fval *= SECS_PER_HOUR;
 							sec = fval;
 							tm->tm_sec += sec;
 #ifdef HAVE_INT64_TIMESTAMP
-							*fsec += ((fval - sec) * 1000000);
+							*fsec += (fval - sec) * 1000000;
 #else
-							*fsec += (fval - sec);
+							*fsec += fval - sec;
 #endif
 						}
 						tmask = DTK_M(HOUR);
@@ -296,16 +289,16 @@ DecodeInterval(char **field, int *ftype, int nf, int *dtype, struct tm * tm, fse
 						{
 							int			sec;
 
-							fval *= 86400;
+							fval *= SECS_PER_DAY;
 							sec = fval;
 							tm->tm_sec += sec;
 #ifdef HAVE_INT64_TIMESTAMP
-							*fsec += ((fval - sec) * 1000000);
+							*fsec += (fval - sec) * 1000000;
 #else
-							*fsec += (fval - sec);
+							*fsec += fval - sec;
 #endif
 						}
-						tmask = ((fmask & DTK_M(DAY)) ? 0 : DTK_M(DAY));
+						tmask = (fmask & DTK_M(DAY)) ? 0 : DTK_M(DAY);
 						break;
 
 					case DTK_WEEK:
@@ -314,16 +307,16 @@ DecodeInterval(char **field, int *ftype, int nf, int *dtype, struct tm * tm, fse
 						{
 							int			sec;
 
-							fval *= (7 * 86400);
+							fval *= 7 * SECS_PER_DAY;
 							sec = fval;
 							tm->tm_sec += sec;
 #ifdef HAVE_INT64_TIMESTAMP
-							*fsec += ((fval - sec) * 1000000);
+							*fsec += (fval - sec) * 1000000;
 #else
-							*fsec += (fval - sec);
+							*fsec += fval - sec;
 #endif
 						}
-						tmask = ((fmask & DTK_M(DAY)) ? 0 : DTK_M(DAY));
+						tmask = (fmask & DTK_M(DAY)) ? 0 : DTK_M(DAY);
 						break;
 
 					case DTK_MONTH:
@@ -332,13 +325,13 @@ DecodeInterval(char **field, int *ftype, int nf, int *dtype, struct tm * tm, fse
 						{
 							int			sec;
 
-							fval *= (30 * 86400);
+							fval *= DAYS_PER_MONTH * SECS_PER_DAY;
 							sec = fval;
 							tm->tm_sec += sec;
 #ifdef HAVE_INT64_TIMESTAMP
-							*fsec += ((fval - sec) * 1000000);
+							*fsec += (fval - sec) * 1000000;
 #else
-							*fsec += (fval - sec);
+							*fsec += fval - sec;
 #endif
 						}
 						tmask = DTK_M(MONTH);
@@ -347,29 +340,29 @@ DecodeInterval(char **field, int *ftype, int nf, int *dtype, struct tm * tm, fse
 					case DTK_YEAR:
 						tm->tm_year += val;
 						if (fval != 0)
-							tm->tm_mon += (fval * 12);
-						tmask = ((fmask & DTK_M(YEAR)) ? 0 : DTK_M(YEAR));
+							tm->tm_mon += fval * MONTHS_PER_YEAR;
+						tmask = (fmask & DTK_M(YEAR)) ? 0 : DTK_M(YEAR);
 						break;
 
 					case DTK_DECADE:
 						tm->tm_year += val * 10;
 						if (fval != 0)
-							tm->tm_mon += (fval * 120);
-						tmask = ((fmask & DTK_M(YEAR)) ? 0 : DTK_M(YEAR));
+							tm->tm_mon += fval * MONTHS_PER_YEAR * 10;
+						tmask = (fmask & DTK_M(YEAR)) ? 0 : DTK_M(YEAR);
 						break;
 
 					case DTK_CENTURY:
 						tm->tm_year += val * 100;
 						if (fval != 0)
-							tm->tm_mon += (fval * 1200);
-						tmask = ((fmask & DTK_M(YEAR)) ? 0 : DTK_M(YEAR));
+							tm->tm_mon += fval * MONTHS_PER_YEAR * 100;
+						tmask = (fmask & DTK_M(YEAR)) ? 0 : DTK_M(YEAR);
 						break;
 
 					case DTK_MILLENNIUM:
 						tm->tm_year += val * 1000;
 						if (fval != 0)
-							tm->tm_mon += (fval * 12000);
-						tmask = ((fmask & DTK_M(YEAR)) ? 0 : DTK_M(YEAR));
+							tm->tm_mon += fval * MONTHS_PER_YEAR * 1000;
+						tmask = (fmask & DTK_M(YEAR)) ? 0 : DTK_M(YEAR);
 						break;
 
 					default:
@@ -419,10 +412,10 @@ DecodeInterval(char **field, int *ftype, int nf, int *dtype, struct tm * tm, fse
 		int			sec;
 
 #ifdef HAVE_INT64_TIMESTAMP
-		sec = (*fsec / INT64CONST(1000000));
-		*fsec -= (sec * INT64CONST(1000000));
+		sec = *fsec / USECS_PER_SEC;
+		*fsec -= sec * USECS_PER_SEC;
 #else
-		TMODULO(*fsec, sec, 1e0);
+		TMODULO(*fsec, sec, 1.0);
 #endif
 		tm->tm_sec += sec;
 	}
@@ -459,9 +452,8 @@ EncodeInterval(struct tm * tm, fsec_t fsec, int style, char *str)
 
 	/*
 	 * The sign of year and month are guaranteed to match, since they are
-	 * stored internally as "month". But we'll need to check for is_before
-	 * and is_nonzero when determining the signs of hour/minute/seconds
-	 * fields.
+	 * stored internally as "month". But we'll need to check for is_before and
+	 * is_nonzero when determining the signs of hour/minute/seconds fields.
 	 */
 	switch (style)
 	{
@@ -470,7 +462,7 @@ EncodeInterval(struct tm * tm, fsec_t fsec, int style, char *str)
 			if (tm->tm_year != 0)
 			{
 				sprintf(cp, "%d year%s",
-						tm->tm_year, ((tm->tm_year != 1) ? "s" : ""));
+						tm->tm_year, (tm->tm_year != 1) ? "s" : "");
 				cp += strlen(cp);
 				is_before = (tm->tm_year < 0);
 				is_nonzero = TRUE;
@@ -478,9 +470,9 @@ EncodeInterval(struct tm * tm, fsec_t fsec, int style, char *str)
 
 			if (tm->tm_mon != 0)
 			{
-				sprintf(cp, "%s%s%d mon%s", (is_nonzero ? " " : ""),
-						((is_before && (tm->tm_mon > 0)) ? "+" : ""),
-						tm->tm_mon, ((tm->tm_mon != 1) ? "s" : ""));
+				sprintf(cp, "%s%s%d mon%s", is_nonzero ? " " : "",
+						(is_before && tm->tm_mon > 0) ? "+" : "",
+						tm->tm_mon, (tm->tm_mon != 1) ? "s" : "");
 				cp += strlen(cp);
 				is_before = (tm->tm_mon < 0);
 				is_nonzero = TRUE;
@@ -488,18 +480,18 @@ EncodeInterval(struct tm * tm, fsec_t fsec, int style, char *str)
 
 			if (tm->tm_mday != 0)
 			{
-				sprintf(cp, "%s%s%d day%s", (is_nonzero ? " " : ""),
-						((is_before && (tm->tm_mday > 0)) ? "+" : ""),
-						tm->tm_mday, ((tm->tm_mday != 1) ? "s" : ""));
+				sprintf(cp, "%s%s%d day%s", is_nonzero ? " " : "",
+						(is_before && tm->tm_mday > 0) ? "+" : "",
+						tm->tm_mday, (tm->tm_mday != 1) ? "s" : "");
 				cp += strlen(cp);
 				is_before = (tm->tm_mday < 0);
 				is_nonzero = TRUE;
 			}
-			if ((!is_nonzero) || (tm->tm_hour != 0) || (tm->tm_min != 0)
-				|| (tm->tm_sec != 0) || (fsec != 0))
+			if (!is_nonzero || tm->tm_hour != 0 || tm->tm_min != 0 ||
+				tm->tm_sec != 0 || fsec != 0)
 			{
-				int			minus = ((tm->tm_hour < 0) || (tm->tm_min < 0)
-									 || (tm->tm_sec < 0) || (fsec < 0));
+				int			minus = tm->tm_hour < 0 || tm->tm_min < 0 ||
+				tm->tm_sec < 0 || fsec < 0;
 
 				sprintf(cp, "%s%s%02d:%02d", (is_nonzero ? " " : ""),
 						(minus ? "-" : (is_before ? "+" : "")),
@@ -514,10 +506,10 @@ EncodeInterval(struct tm * tm, fsec_t fsec, int style, char *str)
 #ifdef HAVE_INT64_TIMESTAMP
 					sprintf(cp, ":%02d", abs(tm->tm_sec));
 					cp += strlen(cp);
-					sprintf(cp, ".%06d", ((fsec >= 0) ? fsec : -(fsec)));
+					sprintf(cp, ".%06d", Abs(fsec));
 #else
 					fsec += tm->tm_sec;
-					sprintf(cp, ":%013.10f", fabs(fsec));
+					sprintf(cp, ":%012.9f", fabs(fsec));
 #endif
 					TrimTrailingZeros(cp);
 					cp += strlen(cp);
@@ -546,7 +538,7 @@ EncodeInterval(struct tm * tm, fsec_t fsec, int style, char *str)
 					year = -year;
 
 				sprintf(cp, "%d year%s", year,
-						((year != 1) ? "s" : ""));
+						(year != 1) ? "s" : "");
 				cp += strlen(cp);
 				is_before = (tm->tm_year < 0);
 				is_nonzero = TRUE;
@@ -556,11 +548,11 @@ EncodeInterval(struct tm * tm, fsec_t fsec, int style, char *str)
 			{
 				int			mon = tm->tm_mon;
 
-				if (is_before || ((!is_nonzero) && (tm->tm_mon < 0)))
+				if (is_before || (!is_nonzero && tm->tm_mon < 0))
 					mon = -mon;
 
-				sprintf(cp, "%s%d mon%s", (is_nonzero ? " " : ""), mon,
-						((mon != 1) ? "s" : ""));
+				sprintf(cp, "%s%d mon%s", is_nonzero ? " " : "", mon,
+						(mon != 1) ? "s" : "");
 				cp += strlen(cp);
 				if (!is_nonzero)
 					is_before = (tm->tm_mon < 0);
@@ -571,11 +563,11 @@ EncodeInterval(struct tm * tm, fsec_t fsec, int style, char *str)
 			{
 				int			day = tm->tm_mday;
 
-				if (is_before || ((!is_nonzero) && (tm->tm_mday < 0)))
+				if (is_before || (!is_nonzero && tm->tm_mday < 0))
 					day = -day;
 
-				sprintf(cp, "%s%d day%s", (is_nonzero ? " " : ""), day,
-						((day != 1) ? "s" : ""));
+				sprintf(cp, "%s%d day%s", is_nonzero ? " " : "", day,
+						(day != 1) ? "s" : "");
 				cp += strlen(cp);
 				if (!is_nonzero)
 					is_before = (tm->tm_mday < 0);
@@ -585,11 +577,11 @@ EncodeInterval(struct tm * tm, fsec_t fsec, int style, char *str)
 			{
 				int			hour = tm->tm_hour;
 
-				if (is_before || ((!is_nonzero) && (tm->tm_hour < 0)))
+				if (is_before || (!is_nonzero && tm->tm_hour < 0))
 					hour = -hour;
 
-				sprintf(cp, "%s%d hour%s", (is_nonzero ? " " : ""), hour,
-						((hour != 1) ? "s" : ""));
+				sprintf(cp, "%s%d hour%s", is_nonzero ? " " : "", hour,
+						(hour != 1) ? "s" : "");
 				cp += strlen(cp);
 				if (!is_nonzero)
 					is_before = (tm->tm_hour < 0);
@@ -600,11 +592,11 @@ EncodeInterval(struct tm * tm, fsec_t fsec, int style, char *str)
 			{
 				int			min = tm->tm_min;
 
-				if (is_before || ((!is_nonzero) && (tm->tm_min < 0)))
+				if (is_before || (!is_nonzero && tm->tm_min < 0))
 					min = -min;
 
-				sprintf(cp, "%s%d min%s", (is_nonzero ? " " : ""), min,
-						((min != 1) ? "s" : ""));
+				sprintf(cp, "%s%d min%s", is_nonzero ? " " : "", min,
+						(min != 1) ? "s" : "");
 				cp += strlen(cp);
 				if (!is_nonzero)
 					is_before = (tm->tm_min < 0);
@@ -615,10 +607,10 @@ EncodeInterval(struct tm * tm, fsec_t fsec, int style, char *str)
 			if (fsec != 0)
 			{
 #ifdef HAVE_INT64_TIMESTAMP
-				if (is_before || ((!is_nonzero) && (tm->tm_sec < 0)))
+				if (is_before || (!is_nonzero && tm->tm_sec < 0))
 					tm->tm_sec = -tm->tm_sec;
-				sprintf(cp, "%s%d.%02d secs", (is_nonzero ? " " : ""),
-						tm->tm_sec, (((int) fsec) / 10000));
+				sprintf(cp, "%s%d.%02d secs", is_nonzero ? " " : "",
+						tm->tm_sec, ((int) fsec) / 10000);
 				cp += strlen(cp);
 				if (!is_nonzero)
 					is_before = (fsec < 0);
@@ -627,10 +619,10 @@ EncodeInterval(struct tm * tm, fsec_t fsec, int style, char *str)
 
 				fsec += tm->tm_sec;
 				sec = fsec;
-				if (is_before || ((!is_nonzero) && (fsec < 0)))
+				if (is_before || (!is_nonzero && fsec < 0))
 					sec = -sec;
 
-				sprintf(cp, "%s%.2f secs", (is_nonzero ? " " : ""), sec);
+				sprintf(cp, "%s%.2f secs", is_nonzero ? " " : "", sec);
 				cp += strlen(cp);
 				if (!is_nonzero)
 					is_before = (fsec < 0);
@@ -643,11 +635,11 @@ EncodeInterval(struct tm * tm, fsec_t fsec, int style, char *str)
 			{
 				int			sec = tm->tm_sec;
 
-				if (is_before || ((!is_nonzero) && (tm->tm_sec < 0)))
+				if (is_before || (!is_nonzero && tm->tm_sec < 0))
 					sec = -sec;
 
-				sprintf(cp, "%s%d sec%s", (is_nonzero ? " " : ""), sec,
-						((sec != 1) ? "s" : ""));
+				sprintf(cp, "%s%d sec%s", is_nonzero ? " " : "", sec,
+						(sec != 1) ? "s" : "");
 				cp += strlen(cp);
 				if (!is_nonzero)
 					is_before = (tm->tm_sec < 0);
@@ -680,15 +672,14 @@ interval2tm(interval span, struct tm * tm, fsec_t *fsec)
 {
 #ifdef HAVE_INT64_TIMESTAMP
 	int64		time;
-
 #else
 	double		time;
 #endif
 
 	if (span.month != 0)
 	{
-		tm->tm_year = span.month / 12;
-		tm->tm_mon = span.month % 12;
+		tm->tm_year = span.month / MONTHS_PER_YEAR;
+		tm->tm_mon = span.month % MONTHS_PER_YEAR;
 
 	}
 	else
@@ -700,19 +691,27 @@ interval2tm(interval span, struct tm * tm, fsec_t *fsec)
 	time = span.time;
 
 #ifdef HAVE_INT64_TIMESTAMP
-	tm->tm_mday = (time / INT64CONST(86400000000));
-	time -= (tm->tm_mday * INT64CONST(86400000000));
-	tm->tm_hour = (time / INT64CONST(3600000000));
-	time -= (tm->tm_hour * INT64CONST(3600000000));
-	tm->tm_min = (time / INT64CONST(60000000));
-	time -= (tm->tm_min * INT64CONST(60000000));
-	tm->tm_sec = (time / INT64CONST(1000000));
-	*fsec = (time - (tm->tm_sec * INT64CONST(1000000)));
+	tm->tm_mday = time / USECS_PER_DAY;
+	time -= tm->tm_mday * USECS_PER_DAY;
+	tm->tm_hour = time / USECS_PER_HOUR;
+	time -= tm->tm_hour * USECS_PER_HOUR;
+	tm->tm_min = time / USECS_PER_MINUTE;
+	time -= tm->tm_min * USECS_PER_MINUTE;
+	tm->tm_sec = time / USECS_PER_SEC;
+	*fsec = time - (tm->tm_sec * USECS_PER_SEC);
 #else
-	TMODULO(time, tm->tm_mday, 86400e0);
-	TMODULO(time, tm->tm_hour, 3600e0);
-	TMODULO(time, tm->tm_min, 60e0);
-	TMODULO(time, tm->tm_sec, 1e0);
+recalc:
+	TMODULO(time, tm->tm_mday, (double) SECS_PER_DAY);
+	TMODULO(time, tm->tm_hour, (double) SECS_PER_HOUR);
+	TMODULO(time, tm->tm_min, (double) SECS_PER_MINUTE);
+	TMODULO(time, tm->tm_sec, 1.0);
+	time = TSROUND(time);
+	/* roundoff may need to propagate to higher-order fields */
+	if (time >= 1.0)
+	{
+		time = ceil(span.time);
+		goto recalc;
+	}
 	*fsec = time;
 #endif
 
@@ -720,20 +719,19 @@ interval2tm(interval span, struct tm * tm, fsec_t *fsec)
 }	/* interval2tm() */
 
 static int
-tm2interval(struct tm * tm, fsec_t fsec, interval *span)
+tm2interval(struct tm * tm, fsec_t fsec, interval * span)
 {
-	span->month = ((tm->tm_year * 12) + tm->tm_mon);
+	span->month = tm->tm_year * MONTHS_PER_YEAR + tm->tm_mon;
 #ifdef HAVE_INT64_TIMESTAMP
-	span->time = ((((((((tm->tm_mday * INT64CONST(24))
-						+ tm->tm_hour) * INT64CONST(60))
-					  + tm->tm_min) * INT64CONST(60))
-					+ tm->tm_sec) * INT64CONST(1000000)) + fsec);
+	span->time = (((((((tm->tm_mday * INT64CONST(24)) +
+					   tm->tm_hour) * INT64CONST(60)) +
+					 tm->tm_min) * INT64CONST(60)) +
+				   tm->tm_sec) * USECS_PER_SEC) + fsec;
 #else
-	span->time = ((((((tm->tm_mday * 24.0)
-					  + tm->tm_hour) * 60.0)
-					+ tm->tm_min) * 60.0)
-				  + tm->tm_sec);
-	span->time = JROUND(span->time + fsec);
+	span->time = (((((tm->tm_mday * (double) HOURS_PER_DAY) +
+					 tm->tm_hour) * (double) MINS_PER_HOUR) +
+				   tm->tm_min) * (double) SECS_PER_MINUTE) +
+		tm->tm_sec + fsec;
 #endif
 
 	return 0;
@@ -768,8 +766,8 @@ PGTYPESinterval_from_asc(char *str, char **endptr)
 		return NULL;
 	}
 
-	if ((ParseDateTime(str, lowstr, field, ftype, MAXDATEFIELDS, &nf, ptr) != 0)
-		|| (DecodeInterval(field, ftype, nf, &dtype, tm, &fsec) != 0))
+	if (ParseDateTime(str, lowstr, field, ftype, MAXDATEFIELDS, &nf, ptr) != 0 ||
+		DecodeInterval(field, ftype, nf, &dtype, tm, &fsec) != 0)
 	{
 		errno = PGTYPES_INTVL_BAD_INTERVAL;
 		return NULL;
@@ -797,7 +795,7 @@ PGTYPESinterval_from_asc(char *str, char **endptr)
 }
 
 char *
-PGTYPESinterval_to_asc(interval *span)
+PGTYPESinterval_to_asc(interval * span)
 {
 	struct tm	tt,
 			   *tm = &tt;
@@ -821,7 +819,7 @@ PGTYPESinterval_to_asc(interval *span)
 }
 
 int
-PGTYPESinterval_copy(interval *intvlsrc, interval *intrcldest)
+PGTYPESinterval_copy(interval * intvlsrc, interval * intrcldest)
 {
 	intrcldest->time = intvlsrc->time;
 	intrcldest->month = intvlsrc->month;

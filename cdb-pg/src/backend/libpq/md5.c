@@ -14,24 +14,13 @@
  *	Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/libpq/md5.c,v 1.27 2004/12/31 21:59:50 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/libpq/md5.c,v 1.31 2005/10/20 13:54:08 tgl Exp $
  */
 
+/* This is intended to be used in both frontend and backend, so use c.h */
+#include "c.h"
 
-#if ! defined(FRONTEND)
-#include "postgres.h"
 #include "libpq/crypt.h"
-#endif
-
-#ifdef FRONTEND
-#include "postgres_fe.h"
-#include "libpq/crypt.h"
-
-#undef palloc
-#define palloc malloc
-#undef pfree
-#define pfree free
-#endif   /* FRONTEND */
 
 
 /*
@@ -272,12 +261,12 @@ bytesToHex(uint8 b[16], char *s)
  */
 
 /*
- *	md5_hash
+ *	pg_md5_hash
  *
  *	Calculates the MD5 sum of the bytes in a buffer.
  *
  *	SYNOPSIS	  #include "crypt.h"
- *				  int md5_hash(const void *buff, size_t len, char *hexsum)
+ *				  int pg_md5_hash(const void *buff, size_t len, char *hexsum)
  *
  *	INPUT		  buff	  the buffer containing the bytes that you want
  *						  the MD5 sum of.
@@ -289,8 +278,8 @@ bytesToHex(uint8 b[16], char *s)
  *						  characters.  you thus need to provide an array
  *						  of 33 characters, including the trailing '\0'.
  *
- *	RETURNS		  0 on failure (out of memory for internal buffers) or
- *				  non-zero on success.
+ *	RETURNS		  false on failure (out of memory for internal buffers) or
+ *				  true on success.
  *
  *	STANDARDS	  MD5 is described in RFC 1321.
  *
@@ -298,7 +287,7 @@ bytesToHex(uint8 b[16], char *s)
  *
  */
 bool
-md5_hash(const void *buff, size_t len, char *hexsum)
+pg_md5_hash(const void *buff, size_t len, char *hexsum)
 {
 	uint8		sum[16];
 
@@ -321,24 +310,27 @@ md5_hash(const void *buff, size_t len, char *hexsum)
  * Returns TRUE if okay, FALSE on error (out of memory).
  */
 bool
-EncryptMD5(const char *passwd, const char *salt, size_t salt_len,
-		   char *buf)
+pg_md5_encrypt(const char *passwd, const char *salt, size_t salt_len,
+			   char *buf)
 {
 	size_t		passwd_len = strlen(passwd);
-	char	   *crypt_buf = palloc(passwd_len + salt_len);
+	char	   *crypt_buf = malloc(passwd_len + salt_len);
 	bool		ret;
 
+	if (!crypt_buf)
+		return false;
+
 	/*
-	 * Place salt at the end because it may be known by users trying to
-	 * crack the MD5 output.
+	 * Place salt at the end because it may be known by users trying to crack
+	 * the MD5 output.
 	 */
 	strcpy(crypt_buf, passwd);
 	memcpy(crypt_buf + passwd_len, salt, salt_len);
 
 	strcpy(buf, "md5");
-	ret = md5_hash(crypt_buf, passwd_len + salt_len, buf + 3);
+	ret = pg_md5_hash(crypt_buf, passwd_len + salt_len, buf + 3);
 
-	pfree(crypt_buf);
+	free(crypt_buf);
 
 	return ret;
 }

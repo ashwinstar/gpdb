@@ -1,37 +1,29 @@
 /*-------------------------------------------------------------------------
  *
  * user.c
- *	  Commands for manipulating users and groups.
+ *	  Commands for manipulating roles (formerly called users).
  *
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/backend/commands/user.c,v 1.147 2004/12/31 21:59:42 pgsql Exp $
+ * $PostgreSQL: pgsql/src/backend/commands/user.c,v 1.164 2005/11/04 17:25:15 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <unistd.h>
-
+#include "access/genam.h"
 #include "access/heapam.h"
-#include "catalog/catname.h"
+#include "catalog/dependency.h"
 #include "catalog/indexing.h"
-#include "catalog/pg_database.h"
-#include "catalog/pg_group.h"
-#include "catalog/pg_shadow.h"
-#include "catalog/pg_type.h"
+#include "catalog/pg_auth_members.h"
+#include "catalog/pg_authid.h"
 #include "commands/user.h"
 #include "libpq/crypt.h"
 #include "miscadmin.h"
-#include "storage/fd.h"
-#include "storage/pmsignal.h"
 #include "utils/acl.h"
-#include "utils/array.h"
 #include "utils/builtins.h"
+#include "utils/flatfiles.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
@@ -43,529 +35,91 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdbcat.h"
 
-
-
-#define PWD_FILE		"pg_pwd"
-#define USER_GROUP_FILE "pg_group"
-
-
 extern bool Password_encryption;
 
-/*
- * The need-to-update-files flags are a pair of SubTransactionIds that show
- * what level of the subtransaction tree requested the update. To register
- * an update, the subtransaction saves its own SubTransactionId in the flag,
- * unless the value was already set to a valid SubTransactionId (which implies
- * that it or a parent level has already requested the same).  If it aborts
- * and the value is its SubTransactionId, it resets the flag to
- * InvalidSubTransactionId. If it commits, it changes the value to its
- * parent's SubTransactionId.  This way the value is propagated up to the
- * top-level transaction, which will update the files if a valid
- * SubTransactionId is detected.
- */
-static SubTransactionId user_file_update_subid = InvalidSubTransactionId;
-static SubTransactionId group_file_update_subid = InvalidSubTransactionId;
-
-#define user_file_update_needed() \
-	do { \
-		if (user_file_update_subid == InvalidSubTransactionId) \
-			user_file_update_subid = GetCurrentSubTransactionId(); \
-	} while (0)
-
-#define group_file_update_needed() \
-	do { \
-		if (group_file_update_subid == InvalidSubTransactionId) \
-			group_file_update_subid = GetCurrentSubTransactionId(); \
-	} while (0)
+static List *roleNamesToIds(List *memberNames);
+static void AddRoleMems(const char *rolename, Oid roleid,
+			List *memberNames, List *memberIds,
+			Oid grantorId, bool admin_opt);
+static void DelRoleMems(const char *rolename, Oid roleid,
+			List *memberNames, List *memberIds,
+			bool admin_opt);
 
 
-static void CheckPgUserAclNotNull(void);
-static void UpdateGroupMembership(Relation group_rel, HeapTuple group_tuple,
-					  List *members);
-static IdList *IdListToArray(List *members);
-static List *IdArrayToList(IdList *oldarray);
-
-
-/*
- *	fputs_quote
- *
- *	Outputs string in quotes, with double-quotes duplicated.
- *	We could use quote_ident(), but that expects a TEXT argument.
- */
-static void
-fputs_quote(char *str, FILE *fp)
+/* Check if current user has createrole privileges */
+static bool
+have_createrole_privilege(void)
 {
-	fputc('"', fp);
-	while (*str)
+	bool		result = false;
+	HeapTuple	utup;
+
+	/* Superusers can always do everything */
+	if (superuser())
+		return true;
+
+	utup = SearchSysCache(AUTHOID,
+						  ObjectIdGetDatum(GetUserId()),
+						  0, 0, 0);
+	if (HeapTupleIsValid(utup))
 	{
-		fputc(*str, fp);
-		if (*str == '"')
-			fputc('"', fp);
-		str++;
+		result = ((Form_pg_authid) GETSTRUCT(utup))->rolcreaterole;
+		ReleaseSysCache(utup);
 	}
-	fputc('"', fp);
+	return result;
 }
 
 
 /*
- * group_getfilename --- get full pathname of group file
- *
- * Note that result string is palloc'd, and should be freed by the caller.
- */
-char *
-group_getfilename(void)
-{
-	int			bufsize;
-	char	   *pfnam;
-
-	bufsize = strlen(DataDir) + strlen("/global/") +
-		strlen(USER_GROUP_FILE) + 1;
-	pfnam = (char *) palloc(bufsize);
-	snprintf(pfnam, bufsize, "%s/global/%s", DataDir, USER_GROUP_FILE);
-
-	return pfnam;
-}
-
-
-/*
- * Get full pathname of password file.
- *
- * Note that result string is palloc'd, and should be freed by the caller.
- */
-char *
-user_getfilename(void)
-{
-	int			bufsize;
-	char	   *pfnam;
-
-	bufsize = strlen(DataDir) + strlen("/global/") +
-		strlen(PWD_FILE) + 1;
-	pfnam = (char *) palloc(bufsize);
-	snprintf(pfnam, bufsize, "%s/global/%s", DataDir, PWD_FILE);
-
-	return pfnam;
-}
-
-
-/*
- * write_group_file: update the flat group file
- */
-static void
-write_group_file(Relation grel)
-{
-	char	   *filename,
-			   *tempname;
-	int			bufsize;
-	FILE	   *fp;
-	mode_t		oumask;
-	HeapScanDesc scan;
-	HeapTuple	tuple;
-	TupleDesc	dsc = RelationGetDescr(grel);
-
-	/*
-	 * Create a temporary filename to be renamed later.  This prevents the
-	 * backend from clobbering the pg_group file while the postmaster
-	 * might be reading from it.
-	 */
-	filename = group_getfilename();
-	bufsize = strlen(filename) + 12;
-	tempname = (char *) palloc(bufsize);
-	snprintf(tempname, bufsize, "%s.%d", filename, MyProcPid);
-
-	oumask = umask((mode_t) 077);
-	fp = AllocateFile(tempname, "w");
-	umask(oumask);
-	if (fp == NULL)
-		ereport(ERROR,
-				(errcode_for_file_access(),
-		  errmsg("could not write to temporary file \"%s\": %m", tempname)));
-
-	/*
-	 * Read pg_group and write the file.  Note we use SnapshotSelf to
-	 * ensure we see all effects of current transaction.  (Perhaps could
-	 * do a CommandCounterIncrement beforehand, instead?)
-	 */
-	scan = heap_beginscan(grel, SnapshotSelf, 0, NULL);
-	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
-	{
-		Datum		datum,
-					grolist_datum;
-		bool		isnull;
-		char	   *groname;
-		IdList	   *grolist_p;
-		AclId	   *aidp;
-		int			i,
-					j,
-					num;
-		char	   *usename;
-		bool		first_user = true;
-
-		datum = heap_getattr(tuple, Anum_pg_group_groname, dsc, &isnull);
-		/* ignore NULL groupnames --- shouldn't happen */
-		if (isnull)
-			continue;
-		groname = NameStr(*DatumGetName(datum));
-
-		/*
-		 * Check for invalid characters in the group name.
-		 */
-		i = strcspn(groname, "\n");
-		if (groname[i] != '\0')
-		{
-			ereport(LOG,
-					(errmsg("invalid group name \"%s\"", groname)));
-			continue;
-		}
-
-		grolist_datum = heap_getattr(tuple, Anum_pg_group_grolist, dsc, &isnull);
-		/* Ignore NULL group lists */
-		if (isnull)
-			continue;
-
-		/* be sure the IdList is not toasted */
-		grolist_p = DatumGetIdListP(grolist_datum);
-
-		/* scan grolist */
-		num = IDLIST_NUM(grolist_p);
-		aidp = IDLIST_DAT(grolist_p);
-		for (i = 0; i < num; ++i)
-		{
-			tuple = SearchSysCache(SHADOWSYSID,
-								   PointerGetDatum(aidp[i]),
-								   0, 0, 0);
-			if (HeapTupleIsValid(tuple))
-			{
-				usename = NameStr(((Form_pg_shadow) GETSTRUCT(tuple))->usename);
-
-				/*
-				 * Check for illegal characters in the user name.
-				 */
-				j = strcspn(usename, "\n");
-				if (usename[j] != '\0')
-				{
-					ereport(LOG,
-							(errmsg("invalid user name \"%s\"", usename)));
-					continue;
-				}
-
-				/*
-				 * File format is: "dbname"    "user1" "user2" "user3"
-				 */
-				if (first_user)
-				{
-					fputs_quote(groname, fp);
-					fputs("\t", fp);
-				}
-				else
-					fputs(" ", fp);
-
-				first_user = false;
-				fputs_quote(usename, fp);
-
-				ReleaseSysCache(tuple);
-			}
-		}
-		if (!first_user)
-			fputs("\n", fp);
-		/* if IdList was toasted, free detoasted copy */
-		if ((Pointer) grolist_p != DatumGetPointer(grolist_datum))
-			pfree(grolist_p);
-	}
-	heap_endscan(scan);
-
-	if (FreeFile(fp))
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not write to temporary file \"%s\": %m",
-						tempname)));
-
-	/*
-	 * Rename the temp file to its final name, deleting the old pg_pwd. We
-	 * expect that rename(2) is an atomic action.
-	 */
-	if (rename(tempname, filename))
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not rename file \"%s\" to \"%s\": %m",
-						tempname, filename)));
-
-	pfree(tempname);
-	pfree(filename);
-}
-
-
-/*
- * write_user_file: update the flat password file
- */
-static void
-write_user_file(Relation urel)
-{
-	char	   *filename,
-			   *tempname;
-	int			bufsize;
-	FILE	   *fp;
-	mode_t		oumask;
-	HeapScanDesc scan;
-	HeapTuple	tuple;
-	TupleDesc	dsc = RelationGetDescr(urel);
-
-	/*
-	 * Create a temporary filename to be renamed later.  This prevents the
-	 * backend from clobbering the pg_pwd file while the postmaster might
-	 * be reading from it.
-	 */
-	filename = user_getfilename();
-	bufsize = strlen(filename) + 12;
-	tempname = (char *) palloc(bufsize);
-	snprintf(tempname, bufsize, "%s.%d", filename, MyProcPid);
-
-	oumask = umask((mode_t) 077);
-	fp = AllocateFile(tempname, "w");
-	umask(oumask);
-	if (fp == NULL)
-		ereport(ERROR,
-				(errcode_for_file_access(),
-		  errmsg("could not write to temporary file \"%s\": %m", tempname)));
-
-	/*
-	 * Read pg_shadow and write the file.  Note we use SnapshotSelf to
-	 * ensure we see all effects of current transaction.  (Perhaps could
-	 * do a CommandCounterIncrement beforehand, instead?)
-	 */
-	scan = heap_beginscan(urel, SnapshotSelf, 0, NULL);
-	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
-	{
-		Datum		datum;
-		bool		isnull;
-		char	   *usename,
-				   *passwd,
-				   *valuntil;
-		int			i;
-
-		datum = heap_getattr(tuple, Anum_pg_shadow_usename, dsc, &isnull);
-		/* ignore NULL usernames (shouldn't happen) */
-		if (isnull)
-			continue;
-		usename = NameStr(*DatumGetName(datum));
-
-		datum = heap_getattr(tuple, Anum_pg_shadow_passwd, dsc, &isnull);
-
-		/*
-		 * It can be argued that people having a null password shouldn't
-		 * be allowed to connect under password authentication, because
-		 * they need to have a password set up first. If you think
-		 * assuming an empty password in that case is better, change this
-		 * logic to look something like the code for valuntil.
-		 */
-		if (isnull)
-			continue;
-
-		passwd = DatumGetCString(DirectFunctionCall1(textout, datum));
-
-		datum = heap_getattr(tuple, Anum_pg_shadow_valuntil, dsc, &isnull);
-		if (isnull)
-			valuntil = pstrdup("");
-		else
-			valuntil = DatumGetCString(DirectFunctionCall1(abstimeout, datum));
-
-		/*
-		 * Check for illegal characters in the username and password.
-		 */
-		i = strcspn(usename, "\n");
-		if (usename[i] != '\0')
-		{
-			ereport(LOG,
-					(errmsg("invalid user name \"%s\"", usename)));
-			continue;
-		}
-		i = strcspn(passwd, "\n");
-		if (passwd[i] != '\0')
-		{
-			ereport(LOG,
-					(errmsg("invalid user password \"%s\"", passwd)));
-			continue;
-		}
-
-		/*
-		 * The extra columns we emit here are not really necessary. To
-		 * remove them, the parser in backend/libpq/crypt.c would need to
-		 * be adjusted.
-		 */
-		fputs_quote(usename, fp);
-		fputs(" ", fp);
-		fputs_quote(passwd, fp);
-		fputs(" ", fp);
-		fputs_quote(valuntil, fp);
-		fputs("\n", fp);
-
-		pfree(passwd);
-		pfree(valuntil);
-	}
-	heap_endscan(scan);
-
-	if (FreeFile(fp))
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not write to temporary file \"%s\": %m",
-						tempname)));
-
-	/*
-	 * Rename the temp file to its final name, deleting the old pg_pwd. We
-	 * expect that rename(2) is an atomic action.
-	 */
-	if (rename(tempname, filename))
-		ereport(ERROR,
-				(errcode_for_file_access(),
-				 errmsg("could not rename file \"%s\" to \"%s\": %m",
-						tempname, filename)));
-
-	pfree(tempname);
-	pfree(filename);
-}
-
-
-/*
- * This trigger is fired whenever someone modifies pg_shadow or pg_group
- * via general-purpose INSERT/UPDATE/DELETE commands.
- *
- * XXX should probably have two separate triggers.
- */
-Datum
-update_pg_pwd_and_pg_group(PG_FUNCTION_ARGS)
-{
-	user_file_update_needed();
-	group_file_update_needed();
-
-	return PointerGetDatum(NULL);
-}
-
-
-/*
- * This routine is called during transaction commit or abort.
- *
- * On commit, if we've written pg_shadow or pg_group during the current
- * transaction, update the flat files and signal the postmaster.
- *
- * On abort, just reset the static flags so we don't try to do it on the
- * next successful commit.
- *
- * NB: this should be the last step before actual transaction commit.
- * If any error aborts the transaction after we run this code, the postmaster
- * will still have received and cached the changed data; so minimize the
- * window for such problems.
+ * CREATE ROLE
  */
 void
-AtEOXact_UpdatePasswordFile(bool isCommit)
+CreateRole(CreateRoleStmt *stmt)
 {
-	Relation	urel = NULL;
-	Relation	grel = NULL;
-
-	if (user_file_update_subid == InvalidSubTransactionId &&
-		group_file_update_subid == InvalidSubTransactionId)
-		return;
-
-	if (!isCommit)
-	{
-		user_file_update_subid = InvalidSubTransactionId;
-		group_file_update_subid = InvalidSubTransactionId;
-		return;
-	}
-
-	/*
-	 * We use ExclusiveLock to ensure that only one backend writes the
-	 * flat file(s) at a time.	That's sufficient because it's okay to
-	 * allow plain reads of the tables in parallel.  There is some chance
-	 * of a deadlock here (if we were triggered by a user update of
-	 * pg_shadow or pg_group, which likely won't have gotten a strong
-	 * enough lock), so get the locks we need before writing anything.
-	 */
-	if (user_file_update_subid != InvalidSubTransactionId)
-		urel = heap_openr(ShadowRelationName, ExclusiveLock);
-	if (group_file_update_subid != InvalidSubTransactionId)
-		grel = heap_openr(GroupRelationName, ExclusiveLock);
-
-	/* Okay to write the files */
-	if (user_file_update_subid != InvalidSubTransactionId)
-	{
-		user_file_update_subid = InvalidSubTransactionId;
-		write_user_file(urel);
-		heap_close(urel, NoLock);
-	}
-
-	if (group_file_update_subid != InvalidSubTransactionId)
-	{
-		group_file_update_subid = InvalidSubTransactionId;
-		write_group_file(grel);
-		heap_close(grel, NoLock);
-	}
-
-	/*
-	 * Signal the postmaster to reload its password & group-file cache.
-	 */
-	SendPostmasterSignal(PMSIGNAL_PASSWORD_CHANGE);
-}
-
-/*
- * AtEOSubXact_UpdatePasswordFile
- *
- * Called at subtransaction end, this routine resets or updates the
- * need-to-update-files flags.
- */
-void
-AtEOSubXact_UpdatePasswordFile(bool isCommit,
-							   SubTransactionId mySubid,
-							   SubTransactionId parentSubid)
-{
-	if (isCommit)
-	{
-		if (user_file_update_subid == mySubid)
-			user_file_update_subid = parentSubid;
-
-		if (group_file_update_subid == mySubid)
-			group_file_update_subid = parentSubid;
-	}
-	else
-	{
-		if (user_file_update_subid == mySubid)
-			user_file_update_subid = InvalidSubTransactionId;
-
-		if (group_file_update_subid == mySubid)
-			group_file_update_subid = InvalidSubTransactionId;
-	}
-}
-
-/*
- * CREATE USER
- */
-void
-CreateUser(CreateUserStmt *stmt)
-{
-	Relation	pg_shadow_rel;
-	TupleDesc	pg_shadow_dsc;
-	HeapScanDesc scan;
+	Relation	pg_authid_rel;
+	TupleDesc	pg_authid_dsc;
 	HeapTuple	tuple;
-	Datum		new_record[Natts_pg_shadow];
-	char		new_record_nulls[Natts_pg_shadow];
-	bool		user_exists = false,
-				sysid_exists = false,
-				havesysid = false;
-	int			max_id;
+	Datum		new_record[Natts_pg_authid];
+	char		new_record_nulls[Natts_pg_authid];
+	Oid			roleid;
 	ListCell   *item;
 	ListCell   *option;
-	char	   *password = NULL;	/* PostgreSQL user password */
+	char	   *password = NULL;	/* user password */
 	bool		encrypt_password = Password_encryption; /* encrypt password? */
 	char		encrypted_password[MD5_PASSWD_LEN + 1];
-	int			sysid = 0;		/* PgSQL system id (valid if havesysid) */
+	bool		issuper = false;	/* Make the user a superuser? */
+	bool		inherit = true; /* Auto inherit privileges? */
+	bool		createrole = false;		/* Can this user create roles? */
 	bool		createdb = false;		/* Can the user create databases? */
-	bool		createuser = false;		/* Can this user create users? */
-	List	   *groupElts = NIL;	/* The groups the user is a member of */
-	char	   *validUntil = NULL;		/* The time the login is valid until */
+	bool		canlogin = false;		/* Can this user login? */
+	int			connlimit = -1; /* maximum connections allowed */
+	List	   *addroleto = NIL;	/* roles to make this a member of */
+	List	   *rolemembers = NIL;		/* roles to be members of this role */
+	List	   *adminmembers = NIL;		/* roles to be admins of this role */
+	char	   *validUntil = NULL;		/* time the login is valid until */
 	DefElem    *dpassword = NULL;
-	DefElem    *dsysid = NULL;
+	DefElem    *dissuper = NULL;
+	DefElem    *dinherit = NULL;
+	DefElem    *dcreaterole = NULL;
 	DefElem    *dcreatedb = NULL;
-	DefElem    *dcreateuser = NULL;
-	DefElem    *dgroupElts = NULL;
+	DefElem    *dcanlogin = NULL;
+	DefElem    *dconnlimit = NULL;
+	DefElem    *daddroleto = NULL;
+	DefElem    *drolemembers = NULL;
+	DefElem    *dadminmembers = NULL;
 	DefElem    *dvalidUntil = NULL;
+
+	/* The defaults can vary depending on the original statement type */
+	switch (stmt->stmt_type)
+	{
+		case ROLESTMT_ROLE:
+			break;
+		case ROLESTMT_USER:
+			canlogin = true;
+			/* may eventually want inherit to default to false here */
+			break;
+		case ROLESTMT_GROUP:
+			break;
+	}
 
 	/* Extract options from the statement node tree */
 	foreach(option, stmt->options)
@@ -588,11 +142,32 @@ CreateUser(CreateUserStmt *stmt)
 		}
 		else if (strcmp(defel->defname, "sysid") == 0)
 		{
-			if (dsysid)
+			ereport(NOTICE,
+					(errmsg("SYSID can no longer be specified")));
+		}
+		else if (strcmp(defel->defname, "superuser") == 0)
+		{
+			if (dissuper)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("conflicting or redundant options")));
-			dsysid = defel;
+			dissuper = defel;
+		}
+		else if (strcmp(defel->defname, "inherit") == 0)
+		{
+			if (dinherit)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			dinherit = defel;
+		}
+		else if (strcmp(defel->defname, "createrole") == 0)
+		{
+			if (dcreaterole)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			dcreaterole = defel;
 		}
 		else if (strcmp(defel->defname, "createdb") == 0)
 		{
@@ -602,21 +177,45 @@ CreateUser(CreateUserStmt *stmt)
 						 errmsg("conflicting or redundant options")));
 			dcreatedb = defel;
 		}
-		else if (strcmp(defel->defname, "createuser") == 0)
+		else if (strcmp(defel->defname, "canlogin") == 0)
 		{
-			if (dcreateuser)
+			if (dcanlogin)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("conflicting or redundant options")));
-			dcreateuser = defel;
+			dcanlogin = defel;
 		}
-		else if (strcmp(defel->defname, "groupElts") == 0)
+		else if (strcmp(defel->defname, "connectionlimit") == 0)
 		{
-			if (dgroupElts)
+			if (dconnlimit)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("conflicting or redundant options")));
-			dgroupElts = defel;
+			dconnlimit = defel;
+		}
+		else if (strcmp(defel->defname, "addroleto") == 0)
+		{
+			if (daddroleto)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			daddroleto = defel;
+		}
+		else if (strcmp(defel->defname, "rolemembers") == 0)
+		{
+			if (drolemembers)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			drolemembers = defel;
+		}
+		else if (strcmp(defel->defname, "adminmembers") == 0)
+		{
+			if (dadminmembers)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			dadminmembers = defel;
 		}
 		else if (strcmp(defel->defname, "validUntil") == 0)
 		{
@@ -631,85 +230,68 @@ CreateUser(CreateUserStmt *stmt)
 				 defel->defname);
 	}
 
-	if (dcreatedb)
-		createdb = intVal(dcreatedb->arg) != 0;
-	if (dcreateuser)
-		createuser = intVal(dcreateuser->arg) != 0;
-	if (dsysid)
-	{
-		sysid = intVal(dsysid->arg);
-		if (sysid <= 0)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("user ID must be positive")));
-		havesysid = true;
-	}
-	if (dvalidUntil)
-		validUntil = strVal(dvalidUntil->arg);
 	if (dpassword)
 		password = strVal(dpassword->arg);
-	if (dgroupElts)
-		groupElts = (List *) dgroupElts->arg;
+	if (dissuper)
+		issuper = intVal(dissuper->arg) != 0;
+	if (dinherit)
+		inherit = intVal(dinherit->arg) != 0;
+	if (dcreaterole)
+		createrole = intVal(dcreaterole->arg) != 0;
+	if (dcreatedb)
+		createdb = intVal(dcreatedb->arg) != 0;
+	if (dcanlogin)
+		canlogin = intVal(dcanlogin->arg) != 0;
+	if (dconnlimit)
+		connlimit = intVal(dconnlimit->arg);
+	if (daddroleto)
+		addroleto = (List *) daddroleto->arg;
+	if (drolemembers)
+		rolemembers = (List *) drolemembers->arg;
+	if (dadminmembers)
+		adminmembers = (List *) dadminmembers->arg;
+	if (dvalidUntil)
+		validUntil = strVal(dvalidUntil->arg);
 
 	/* Check some permissions first */
-	if (password)
-		CheckPgUserAclNotNull();
+	if (issuper)
+	{
+		if (!superuser())
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("must be superuser to create superusers")));
+	}
+	else
+	{
+		if (!have_createrole_privilege())
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("permission denied to create role")));
+	}
 
-	if (!superuser())
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser to create users")));
-
-	if (strcmp(stmt->user, "public") == 0)
+	if (strcmp(stmt->role, "public") == 0 ||
+		strcmp(stmt->role, "none") == 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_RESERVED_NAME),
-				 errmsg("user name \"%s\" is reserved",
-						stmt->user)));
+				 errmsg("role name \"%s\" is reserved",
+						stmt->role)));
 
 	/*
-	 * Scan the pg_shadow relation to be certain the user or id doesn't
-	 * already exist.  Note we secure exclusive lock, because we also need
-	 * to be sure of what the next usesysid should be, and we need to
-	 * protect our eventual update of the flat password file.
+	 * Check the pg_authid relation to be certain the role doesn't already
+	 * exist.  Note we secure exclusive lock because we need to protect our
+	 * eventual update of the flat auth file.
 	 */
-	pg_shadow_rel = heap_openr(ShadowRelationName, ExclusiveLock);
-	pg_shadow_dsc = RelationGetDescr(pg_shadow_rel);
+	pg_authid_rel = heap_open(AuthIdRelationId, ExclusiveLock);
+	pg_authid_dsc = RelationGetDescr(pg_authid_rel);
 
-	scan = heap_beginscan(pg_shadow_rel, SnapshotNow, 0, NULL);
-	max_id = 99;				/* start auto-assigned ids at 100 */
-	while (!user_exists && !sysid_exists &&
-		   (tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
-	{
-		Form_pg_shadow shadow_form = (Form_pg_shadow) GETSTRUCT(tuple);
-		int32		this_sysid;
-
-		user_exists = (strcmp(NameStr(shadow_form->usename), stmt->user) == 0);
-
-		this_sysid = shadow_form->usesysid;
-		if (havesysid)			/* customized id wanted */
-			sysid_exists = (this_sysid == sysid);
-		else
-		{
-			/* pick 1 + max */
-			if (this_sysid > max_id)
-				max_id = this_sysid;
-		}
-	}
-	heap_endscan(scan);
-
-	if (user_exists)
+	tuple = SearchSysCache(AUTHNAME,
+						   PointerGetDatum(stmt->role),
+						   0, 0, 0);
+	if (HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
-				 errmsg("user \"%s\" already exists",
-						stmt->user)));
-	if (sysid_exists)
-		ereport(ERROR,
-				(errcode(ERRCODE_DUPLICATE_OBJECT),
-				 errmsg("user ID %d is already assigned", sysid)));
-
-	/* If no sysid given, use max existing id + 1 */
-	if (!havesysid)
-		sysid = max_id + 1;
+				 errmsg("role \"%s\" already exists",
+						stmt->role)));
 
 	/*
 	 * Build a tuple to insert
@@ -717,113 +299,146 @@ CreateUser(CreateUserStmt *stmt)
 	MemSet(new_record, 0, sizeof(new_record));
 	MemSet(new_record_nulls, ' ', sizeof(new_record_nulls));
 
-	new_record[Anum_pg_shadow_usename - 1] =
-		DirectFunctionCall1(namein, CStringGetDatum(stmt->user));
-	new_record[Anum_pg_shadow_usesysid - 1] = Int32GetDatum(sysid);
-	AssertState(BoolIsValid(createdb));
-	new_record[Anum_pg_shadow_usecreatedb - 1] = BoolGetDatum(createdb);
-	AssertState(BoolIsValid(createuser));
-	new_record[Anum_pg_shadow_usesuper - 1] = BoolGetDatum(createuser);
-	/* superuser gets catupd right by default */
-	new_record[Anum_pg_shadow_usecatupd - 1] = BoolGetDatum(createuser);
+	new_record[Anum_pg_authid_rolname - 1] =
+		DirectFunctionCall1(namein, CStringGetDatum(stmt->role));
+
+	new_record[Anum_pg_authid_rolsuper - 1] = BoolGetDatum(issuper);
+	new_record[Anum_pg_authid_rolinherit - 1] = BoolGetDatum(inherit);
+	new_record[Anum_pg_authid_rolcreaterole - 1] = BoolGetDatum(createrole);
+	new_record[Anum_pg_authid_rolcreatedb - 1] = BoolGetDatum(createdb);
+	/* superuser gets catupdate right by default */
+	new_record[Anum_pg_authid_rolcatupdate - 1] = BoolGetDatum(issuper);
+	new_record[Anum_pg_authid_rolcanlogin - 1] = BoolGetDatum(canlogin);
+	new_record[Anum_pg_authid_rolconnlimit - 1] = Int32GetDatum(connlimit);
 
 	if (password)
 	{
 		if (!encrypt_password || isMD5(password))
-			new_record[Anum_pg_shadow_passwd - 1] =
+			new_record[Anum_pg_authid_rolpassword - 1] =
 				DirectFunctionCall1(textin, CStringGetDatum(password));
 		else
 		{
-			if (!EncryptMD5(password, stmt->user, strlen(stmt->user),
-							encrypted_password))
+			if (!pg_md5_encrypt(password, stmt->role, strlen(stmt->role),
+								encrypted_password))
 				elog(ERROR, "password encryption failed");
-			new_record[Anum_pg_shadow_passwd - 1] =
+			new_record[Anum_pg_authid_rolpassword - 1] =
 				DirectFunctionCall1(textin, CStringGetDatum(encrypted_password));
 		}
 	}
 	else
-		new_record_nulls[Anum_pg_shadow_passwd - 1] = 'n';
+		new_record_nulls[Anum_pg_authid_rolpassword - 1] = 'n';
 
 	if (validUntil)
-		new_record[Anum_pg_shadow_valuntil - 1] =
-			DirectFunctionCall1(abstimein, CStringGetDatum(validUntil));
+		new_record[Anum_pg_authid_rolvaliduntil - 1] =
+			DirectFunctionCall3(timestamptz_in,
+								CStringGetDatum(validUntil),
+								ObjectIdGetDatum(InvalidOid),
+								Int32GetDatum(-1));
+
 	else
-		new_record_nulls[Anum_pg_shadow_valuntil - 1] = 'n';
+		new_record_nulls[Anum_pg_authid_rolvaliduntil - 1] = 'n';
 
-	new_record_nulls[Anum_pg_shadow_useconfig - 1] = 'n';
+	new_record_nulls[Anum_pg_authid_rolconfig - 1] = 'n';
 
-	tuple = heap_formtuple(pg_shadow_dsc, new_record, new_record_nulls);
-
-	/*
-	 * Insert new record in the pg_shadow table
-	 */
-	simple_heap_insert(pg_shadow_rel, tuple);
-
-	/* Update indexes */
-	CatalogUpdateIndexes(pg_shadow_rel, tuple);
+	tuple = heap_formtuple(pg_authid_dsc, new_record, new_record_nulls);
 
 	/*
-	 * Add the user to the groups specified. We'll just call the below
-	 * AlterGroup for this.
+	 * Insert new record in the pg_authid table
 	 */
-	foreach(item, groupElts)
+	roleid = simple_heap_insert(pg_authid_rel, tuple);
+	CatalogUpdateIndexes(pg_authid_rel, tuple);
+
+	/*
+	 * Advance command counter so we can see new record; else tests in
+	 * AddRoleMems may fail.
+	 */
+	if (addroleto || adminmembers || rolemembers)
+		CommandCounterIncrement();
+
+	/*
+	 * Add the new role to the specified existing roles.
+	 */
+	foreach(item, addroleto)
 	{
-		AlterGroupStmt ags;
+		char	   *oldrolename = strVal(lfirst(item));
+		Oid			oldroleid = get_roleid_checked(oldrolename);
 
-		ags.type = T_AlterGroupStmt;
-
-		ags.name = strVal(lfirst(item));		/* the group name to add this
-												 * in */
-		ags.action = +1;
-		ags.listUsers = list_make1(makeInteger(sysid));
-		AlterGroup(&ags, "CREATE USER");
+		AddRoleMems(oldrolename, oldroleid,
+					list_make1(makeString(stmt->role)),
+					list_make1_oid(roleid),
+					GetUserId(), false);
 	}
+
+	/*
+	 * Add the specified members to this new role. adminmembers get the admin
+	 * option, rolemembers don't.
+	 */
+	AddRoleMems(stmt->role, roleid,
+				adminmembers, roleNamesToIds(adminmembers),
+				GetUserId(), true);
+	AddRoleMems(stmt->role, roleid,
+				rolemembers, roleNamesToIds(rolemembers),
+				GetUserId(), false);
 
 	/*
 	 * Now we can clean up; but keep lock until commit (to avoid possible
 	 * deadlock when commit code tries to acquire lock).
 	 */
-	heap_close(pg_shadow_rel, NoLock);
+	heap_close(pg_authid_rel, NoLock);
 
 	/*
-	 * Set flag to update flat password file at commit.
+	 * Set flag to update flat auth file at commit.
 	 */
-	user_file_update_needed();
+	auth_file_update_needed();
 
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-		Assert(stmt->type == T_CreateUserStmt);
+		Assert(stmt->type == T_CreateRoleStmt);
 		Assert(stmt->type < 1000);
 		CdbDispatchUtilityStatement((Node *) stmt);
 	}
 }
 
 
-
 /*
- * ALTER USER
+ * ALTER ROLE
+ *
+ * Note: the rolemembers option accepted here is intended to support the
+ * backwards-compatible ALTER GROUP syntax.  Although it will work to say
+ * "ALTER ROLE role ROLE rolenames", we don't document it.
  */
 void
-AlterUser(AlterUserStmt *stmt)
+AlterRole(AlterRoleStmt *stmt)
 {
-	Datum		new_record[Natts_pg_shadow];
-	char		new_record_nulls[Natts_pg_shadow];
-	char		new_record_repl[Natts_pg_shadow];
-	Relation	pg_shadow_rel;
-	TupleDesc	pg_shadow_dsc;
+	Datum		new_record[Natts_pg_authid];
+	char		new_record_nulls[Natts_pg_authid];
+	char		new_record_repl[Natts_pg_authid];
+	Relation	pg_authid_rel;
+	TupleDesc	pg_authid_dsc;
 	HeapTuple	tuple,
 				new_tuple;
 	ListCell   *option;
-	char	   *password = NULL;	/* PostgreSQL user password */
+	char	   *password = NULL;	/* user password */
 	bool		encrypt_password = Password_encryption; /* encrypt password? */
 	char		encrypted_password[MD5_PASSWD_LEN + 1];
+	int			issuper = -1;	/* Make the user a superuser? */
+	int			inherit = -1;	/* Auto inherit privileges? */
+	int			createrole = -1;	/* Can this user create roles? */
 	int			createdb = -1;	/* Can the user create databases? */
-	int			createuser = -1;	/* Can this user create users? */
-	char	   *validUntil = NULL;		/* The time the login is valid until */
+	int			canlogin = -1;	/* Can this user login? */
+	int			connlimit = -1; /* maximum connections allowed */
+	List	   *rolemembers = NIL;		/* roles to be added/removed */
+	char	   *validUntil = NULL;		/* time the login is valid until */
 	DefElem    *dpassword = NULL;
+	DefElem    *dissuper = NULL;
+	DefElem    *dinherit = NULL;
+	DefElem    *dcreaterole = NULL;
 	DefElem    *dcreatedb = NULL;
-	DefElem    *dcreateuser = NULL;
+	DefElem    *dcanlogin = NULL;
+	DefElem    *dconnlimit = NULL;
+	DefElem    *drolemembers = NULL;
 	DefElem    *dvalidUntil = NULL;
+	Oid			roleid;
 
 	/* Extract options from the statement node tree */
 	foreach(option, stmt->options)
@@ -844,6 +459,30 @@ AlterUser(AlterUserStmt *stmt)
 			else if (strcmp(defel->defname, "unencryptedPassword") == 0)
 				encrypt_password = false;
 		}
+		else if (strcmp(defel->defname, "superuser") == 0)
+		{
+			if (dissuper)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			dissuper = defel;
+		}
+		else if (strcmp(defel->defname, "inherit") == 0)
+		{
+			if (dinherit)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			dinherit = defel;
+		}
+		else if (strcmp(defel->defname, "createrole") == 0)
+		{
+			if (dcreaterole)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			dcreaterole = defel;
+		}
 		else if (strcmp(defel->defname, "createdb") == 0)
 		{
 			if (dcreatedb)
@@ -852,13 +491,30 @@ AlterUser(AlterUserStmt *stmt)
 						 errmsg("conflicting or redundant options")));
 			dcreatedb = defel;
 		}
-		else if (strcmp(defel->defname, "createuser") == 0)
+		else if (strcmp(defel->defname, "canlogin") == 0)
 		{
-			if (dcreateuser)
+			if (dcanlogin)
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("conflicting or redundant options")));
-			dcreateuser = defel;
+			dcanlogin = defel;
+		}
+		else if (strcmp(defel->defname, "connectionlimit") == 0)
+		{
+			if (dconnlimit)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			dconnlimit = defel;
+		}
+		else if (strcmp(defel->defname, "rolemembers") == 0 &&
+				 stmt->action != 0)
+		{
+			if (drolemembers)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			drolemembers = defel;
 		}
 		else if (strcmp(defel->defname, "validUntil") == 0)
 		{
@@ -873,44 +529,68 @@ AlterUser(AlterUserStmt *stmt)
 				 defel->defname);
 	}
 
-	if (dcreatedb)
-		createdb = intVal(dcreatedb->arg);
-	if (dcreateuser)
-		createuser = intVal(dcreateuser->arg);
-	if (dvalidUntil)
-		validUntil = strVal(dvalidUntil->arg);
 	if (dpassword)
 		password = strVal(dpassword->arg);
-
-	if (password)
-		CheckPgUserAclNotNull();
-
-	/* must be superuser or just want to change your own password */
-	if (!superuser() &&
-		!(createdb < 0 &&
-		  createuser < 0 &&
-		  !validUntil &&
-		  password &&
-		  strcmp(GetUserNameFromId(GetUserId()), stmt->user) == 0))
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("permission denied")));
+	if (dissuper)
+		issuper = intVal(dissuper->arg);
+	if (dinherit)
+		inherit = intVal(dinherit->arg);
+	if (dcreaterole)
+		createrole = intVal(dcreaterole->arg);
+	if (dcreatedb)
+		createdb = intVal(dcreatedb->arg);
+	if (dcanlogin)
+		canlogin = intVal(dcanlogin->arg);
+	if (dconnlimit)
+		connlimit = intVal(dconnlimit->arg);
+	if (drolemembers)
+		rolemembers = (List *) drolemembers->arg;
+	if (dvalidUntil)
+		validUntil = strVal(dvalidUntil->arg);
 
 	/*
-	 * Scan the pg_shadow relation to be certain the user exists. Note we
-	 * secure exclusive lock to protect our update of the flat password
-	 * file.
+	 * Scan the pg_authid relation to be certain the user exists. Note we
+	 * secure exclusive lock to protect our update of the flat auth file.
 	 */
-	pg_shadow_rel = heap_openr(ShadowRelationName, ExclusiveLock);
-	pg_shadow_dsc = RelationGetDescr(pg_shadow_rel);
+	pg_authid_rel = heap_open(AuthIdRelationId, ExclusiveLock);
+	pg_authid_dsc = RelationGetDescr(pg_authid_rel);
 
-	tuple = SearchSysCache(SHADOWNAME,
-						   PointerGetDatum(stmt->user),
+	tuple = SearchSysCache(AUTHNAME,
+						   PointerGetDatum(stmt->role),
 						   0, 0, 0);
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("user \"%s\" does not exist", stmt->user)));
+				 errmsg("role \"%s\" does not exist", stmt->role)));
+
+	roleid = HeapTupleGetOid(tuple);
+
+	/*
+	 * To mess with a superuser you gotta be superuser; else you need
+	 * createrole, or just want to change your own password
+	 */
+	if (((Form_pg_authid) GETSTRUCT(tuple))->rolsuper || issuper >= 0)
+	{
+		if (!superuser())
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("must be superuser to alter superusers")));
+	}
+	else if (!have_createrole_privilege())
+	{
+		if (!(inherit < 0 &&
+			  createrole < 0 &&
+			  createdb < 0 &&
+			  canlogin < 0 &&
+			  !dconnlimit &&
+			  !rolemembers &&
+			  !validUntil &&
+			  password &&
+			  roleid == GetUserId()))
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("permission denied")));
+	}
 
 	/*
 	 * Build an updated tuple, perusing the information just obtained
@@ -919,79 +599,117 @@ AlterUser(AlterUserStmt *stmt)
 	MemSet(new_record_nulls, ' ', sizeof(new_record_nulls));
 	MemSet(new_record_repl, ' ', sizeof(new_record_repl));
 
-	new_record[Anum_pg_shadow_usename - 1] = DirectFunctionCall1(namein,
-												CStringGetDatum(stmt->user));
-	new_record_repl[Anum_pg_shadow_usename - 1] = 'r';
-
-	/* createdb */
-	if (createdb >= 0)
+	/*
+	 * issuper/createrole/catupdate/etc
+	 *
+	 * XXX It's rather unclear how to handle catupdate.  It's probably best to
+	 * keep it equal to the superuser status, otherwise you could end up with
+	 * a situation where no existing superuser can alter the catalogs,
+	 * including pg_authid!
+	 */
+	if (issuper >= 0)
 	{
-		new_record[Anum_pg_shadow_usecreatedb - 1] = BoolGetDatum(createdb > 0);
-		new_record_repl[Anum_pg_shadow_usecreatedb - 1] = 'r';
+		new_record[Anum_pg_authid_rolsuper - 1] = BoolGetDatum(issuper > 0);
+		new_record_repl[Anum_pg_authid_rolsuper - 1] = 'r';
+
+		new_record[Anum_pg_authid_rolcatupdate - 1] = BoolGetDatum(issuper > 0);
+		new_record_repl[Anum_pg_authid_rolcatupdate - 1] = 'r';
 	}
 
-	/*
-	 * createuser (superuser) and catupd
-	 *
-	 * XXX It's rather unclear how to handle catupd.  It's probably best to
-	 * keep it equal to the superuser status, otherwise you could end up
-	 * with a situation where no existing superuser can alter the
-	 * catalogs, including pg_shadow!
-	 */
-	if (createuser >= 0)
+	if (inherit >= 0)
 	{
-		new_record[Anum_pg_shadow_usesuper - 1] = BoolGetDatum(createuser > 0);
-		new_record_repl[Anum_pg_shadow_usesuper - 1] = 'r';
+		new_record[Anum_pg_authid_rolinherit - 1] = BoolGetDatum(inherit > 0);
+		new_record_repl[Anum_pg_authid_rolinherit - 1] = 'r';
+	}
 
-		new_record[Anum_pg_shadow_usecatupd - 1] = BoolGetDatum(createuser > 0);
-		new_record_repl[Anum_pg_shadow_usecatupd - 1] = 'r';
+	if (createrole >= 0)
+	{
+		new_record[Anum_pg_authid_rolcreaterole - 1] = BoolGetDatum(createrole > 0);
+		new_record_repl[Anum_pg_authid_rolcreaterole - 1] = 'r';
+	}
+
+	if (createdb >= 0)
+	{
+		new_record[Anum_pg_authid_rolcreatedb - 1] = BoolGetDatum(createdb > 0);
+		new_record_repl[Anum_pg_authid_rolcreatedb - 1] = 'r';
+	}
+
+	if (canlogin >= 0)
+	{
+		new_record[Anum_pg_authid_rolcanlogin - 1] = BoolGetDatum(canlogin > 0);
+		new_record_repl[Anum_pg_authid_rolcanlogin - 1] = 'r';
+	}
+
+	if (dconnlimit)
+	{
+		new_record[Anum_pg_authid_rolconnlimit - 1] = Int32GetDatum(connlimit);
+		new_record_repl[Anum_pg_authid_rolconnlimit - 1] = 'r';
 	}
 
 	/* password */
 	if (password)
 	{
 		if (!encrypt_password || isMD5(password))
-			new_record[Anum_pg_shadow_passwd - 1] =
+			new_record[Anum_pg_authid_rolpassword - 1] =
 				DirectFunctionCall1(textin, CStringGetDatum(password));
 		else
 		{
-			if (!EncryptMD5(password, stmt->user, strlen(stmt->user),
-							encrypted_password))
+			if (!pg_md5_encrypt(password, stmt->role, strlen(stmt->role),
+								encrypted_password))
 				elog(ERROR, "password encryption failed");
-			new_record[Anum_pg_shadow_passwd - 1] =
+			new_record[Anum_pg_authid_rolpassword - 1] =
 				DirectFunctionCall1(textin, CStringGetDatum(encrypted_password));
 		}
-		new_record_repl[Anum_pg_shadow_passwd - 1] = 'r';
+		new_record_repl[Anum_pg_authid_rolpassword - 1] = 'r';
 	}
 
 	/* valid until */
 	if (validUntil)
 	{
-		new_record[Anum_pg_shadow_valuntil - 1] =
-			DirectFunctionCall1(abstimein, CStringGetDatum(validUntil));
-		new_record_repl[Anum_pg_shadow_valuntil - 1] = 'r';
+		new_record[Anum_pg_authid_rolvaliduntil - 1] =
+			DirectFunctionCall3(timestamptz_in,
+								CStringGetDatum(validUntil),
+								ObjectIdGetDatum(InvalidOid),
+								Int32GetDatum(-1));
+		new_record_repl[Anum_pg_authid_rolvaliduntil - 1] = 'r';
 	}
 
-	new_tuple = heap_modifytuple(tuple, pg_shadow_rel, new_record,
+	new_tuple = heap_modifytuple(tuple, pg_authid_dsc, new_record,
 								 new_record_nulls, new_record_repl);
-	simple_heap_update(pg_shadow_rel, &tuple->t_self, new_tuple);
+	simple_heap_update(pg_authid_rel, &tuple->t_self, new_tuple);
 
 	/* Update indexes */
-	CatalogUpdateIndexes(pg_shadow_rel, new_tuple);
+	CatalogUpdateIndexes(pg_authid_rel, new_tuple);
 
 	ReleaseSysCache(tuple);
 	heap_freetuple(new_tuple);
 
 	/*
+	 * Advance command counter so we can see new record; else tests in
+	 * AddRoleMems may fail.
+	 */
+	if (rolemembers)
+		CommandCounterIncrement();
+
+	if (stmt->action == +1)		/* add members to role */
+		AddRoleMems(stmt->role, roleid,
+					rolemembers, roleNamesToIds(rolemembers),
+					GetUserId(), false);
+	else if (stmt->action == -1)	/* drop members from role */
+		DelRoleMems(stmt->role, roleid,
+					rolemembers, roleNamesToIds(rolemembers),
+					false);
+
+	/*
 	 * Now we can clean up; but keep lock until commit (to avoid possible
 	 * deadlock when commit code tries to acquire lock).
 	 */
-	heap_close(pg_shadow_rel, NoLock);
+	heap_close(pg_authid_rel, NoLock);
 
 	/*
-	 * Set flag to update flat password file at commit.
+	 * Set flag to update flat auth file at commit.
 	 */
-	user_file_update_needed();
+	auth_file_update_needed();
 
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
@@ -1001,49 +719,63 @@ AlterUser(AlterUserStmt *stmt)
 
 
 /*
- * ALTER USER ... SET
+ * ALTER ROLE ... SET
  */
 void
-AlterUserSet(AlterUserSetStmt *stmt)
+AlterRoleSet(AlterRoleSetStmt *stmt)
 {
 	char	   *valuestr;
 	HeapTuple	oldtuple,
 				newtuple;
 	Relation	rel;
-	Datum		repl_val[Natts_pg_shadow];
-	char		repl_null[Natts_pg_shadow];
-	char		repl_repl[Natts_pg_shadow];
+	Datum		repl_val[Natts_pg_authid];
+	char		repl_null[Natts_pg_authid];
+	char		repl_repl[Natts_pg_authid];
 	int			i;
 
 	valuestr = flatten_set_variable_args(stmt->variable, stmt->value);
 
 	/*
 	 * RowExclusiveLock is sufficient, because we don't need to update the
-	 * flat password file.
+	 * flat auth file.
 	 */
-	rel = heap_openr(ShadowRelationName, RowExclusiveLock);
-	oldtuple = SearchSysCache(SHADOWNAME,
-							  PointerGetDatum(stmt->user),
+	rel = heap_open(AuthIdRelationId, RowExclusiveLock);
+	oldtuple = SearchSysCache(AUTHNAME,
+							  PointerGetDatum(stmt->role),
 							  0, 0, 0);
 	if (!HeapTupleIsValid(oldtuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("user \"%s\" does not exist", stmt->user)));
+				 errmsg("role \"%s\" does not exist", stmt->role)));
 
-	if (!(superuser() ||
-		  ((Form_pg_shadow) GETSTRUCT(oldtuple))->usesysid == GetUserId()))
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("permission denied")));
+	/*
+	 * To mess with a superuser you gotta be superuser; else you need
+	 * createrole, or just want to change your own settings
+	 */
+	if (((Form_pg_authid) GETSTRUCT(oldtuple))->rolsuper)
+	{
+		if (!superuser())
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("must be superuser to alter superusers")));
+	}
+	else
+	{
+		if (!have_createrole_privilege() &&
+			HeapTupleGetOid(oldtuple) != GetUserId())
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("permission denied")));
+	}
 
-	for (i = 0; i < Natts_pg_shadow; i++)
+	for (i = 0; i < Natts_pg_authid; i++)
 		repl_repl[i] = ' ';
 
-	repl_repl[Anum_pg_shadow_useconfig - 1] = 'r';
+	repl_repl[Anum_pg_authid_rolconfig - 1] = 'r';
 	if (strcmp(stmt->variable, "all") == 0 && valuestr == NULL)
 	{
 		/* RESET ALL */
-		repl_null[Anum_pg_shadow_useconfig - 1] = 'n';
+		repl_null[Anum_pg_authid_rolconfig - 1] = 'n';
 	}
 	else
 	{
@@ -1051,10 +783,10 @@ AlterUserSet(AlterUserSetStmt *stmt)
 		bool		isnull;
 		ArrayType  *array;
 
-		repl_null[Anum_pg_shadow_useconfig - 1] = ' ';
+		repl_null[Anum_pg_authid_rolconfig - 1] = ' ';
 
-		datum = SysCacheGetAttr(SHADOWNAME, oldtuple,
-								Anum_pg_shadow_useconfig, &isnull);
+		datum = SysCacheGetAttr(AUTHNAME, oldtuple,
+								Anum_pg_authid_rolconfig, &isnull);
 
 		array = isnull ? NULL : DatumGetArrayTypeP(datum);
 
@@ -1064,14 +796,15 @@ AlterUserSet(AlterUserSetStmt *stmt)
 			array = GUCArrayDelete(array, stmt->variable);
 
 		if (array)
-			repl_val[Anum_pg_shadow_useconfig - 1] = PointerGetDatum(array);
+			repl_val[Anum_pg_authid_rolconfig - 1] = PointerGetDatum(array);
 		else
-			repl_null[Anum_pg_shadow_useconfig - 1] = 'n';
+			repl_null[Anum_pg_authid_rolconfig - 1] = 'n';
 	}
 
-	newtuple = heap_modifytuple(oldtuple, rel, repl_val, repl_null, repl_repl);
-	simple_heap_update(rel, &oldtuple->t_self, newtuple);
+	newtuple = heap_modifytuple(oldtuple, RelationGetDescr(rel),
+								repl_val, repl_null, repl_repl);
 
+	simple_heap_update(rel, &oldtuple->t_self, newtuple);
 	CatalogUpdateIndexes(rel, newtuple);
 
 	ReleaseSysCache(oldtuple);
@@ -1084,148 +817,154 @@ AlterUserSet(AlterUserSetStmt *stmt)
 }
 
 
-
 /*
- * DROP USER
+ * DROP ROLE
  */
 void
-DropUser(DropUserStmt *stmt)
+DropRole(DropRoleStmt *stmt)
 {
-	Relation	pg_shadow_rel;
-	TupleDesc	pg_shadow_dsc;
+	Relation	pg_authid_rel,
+				pg_auth_members_rel;
 	ListCell   *item;
 
-	if (!superuser())
+	if (!have_createrole_privilege())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser to drop users")));
+				 errmsg("permission denied to drop role")));
 
 	/*
-	 * Scan the pg_shadow relation to find the usesysid of the user to be
-	 * deleted.  Note we secure exclusive lock, because we need to protect
-	 * our update of the flat password file.
+	 * Scan the pg_authid relation to find the Oid of the role(s) to be
+	 * deleted.  Note we secure exclusive lock on pg_authid, because we need
+	 * to protect our update of the flat auth file.  A regular writer's lock
+	 * on pg_auth_members is sufficient though.
 	 */
-	pg_shadow_rel = heap_openr(ShadowRelationName, ExclusiveLock);
-	pg_shadow_dsc = RelationGetDescr(pg_shadow_rel);
+	pg_authid_rel = heap_open(AuthIdRelationId, ExclusiveLock);
+	pg_auth_members_rel = heap_open(AuthMemRelationId, RowExclusiveLock);
 
-	foreach(item, stmt->users)
+	foreach(item, stmt->roles)
 	{
-		const char *user = strVal(lfirst(item));
+		const char *role = strVal(lfirst(item));
 		HeapTuple	tuple,
 					tmp_tuple;
-		Relation	pg_rel;
-		TupleDesc	pg_dsc;
 		ScanKeyData scankey;
-		HeapScanDesc scan;
-		AclId		usesysid;
+		char	   *detail;
+		SysScanDesc sscan;
+		Oid			roleid;
 
-		tuple = SearchSysCache(SHADOWNAME,
-							   PointerGetDatum(user),
+		tuple = SearchSysCache(AUTHNAME,
+							   PointerGetDatum(role),
 							   0, 0, 0);
 		if (!HeapTupleIsValid(tuple))
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("user \"%s\" does not exist", user)));
+					 errmsg("role \"%s\" does not exist", role)));
 
-		usesysid = ((Form_pg_shadow) GETSTRUCT(tuple))->usesysid;
+		roleid = HeapTupleGetOid(tuple);
 
-		if (usesysid == GetUserId())
+		if (roleid == GetUserId())
 			ereport(ERROR,
 					(errcode(ERRCODE_OBJECT_IN_USE),
 					 errmsg("current user cannot be dropped")));
-		if (usesysid == GetSessionUserId())
+		if (roleid == GetOuterUserId())
+			ereport(ERROR,
+					(errcode(ERRCODE_OBJECT_IN_USE),
+					 errmsg("current user cannot be dropped")));
+		if (roleid == GetSessionUserId())
 			ereport(ERROR,
 					(errcode(ERRCODE_OBJECT_IN_USE),
 					 errmsg("session user cannot be dropped")));
 
 		/*
-		 * Check if user still owns a database. If so, error out.
-		 *
-		 * (It used to be that this function would drop the database
-		 * automatically. This is not only very dangerous for people that
-		 * don't read the manual, it doesn't seem to be the behaviour one
-		 * would expect either.) -- petere 2000/01/14)
+		 * For safety's sake, we allow createrole holders to drop ordinary
+		 * roles but not superuser roles.  This is mainly to avoid the
+		 * scenario where you accidentally drop the last superuser.
 		 */
-		pg_rel = heap_openr(DatabaseRelationName, AccessShareLock);
-		pg_dsc = RelationGetDescr(pg_rel);
-
-		ScanKeyInit(&scankey,
-					Anum_pg_database_datdba,
-					BTEqualStrategyNumber, F_INT4EQ,
-					Int32GetDatum(usesysid));
-
-		scan = heap_beginscan(pg_rel, SnapshotNow, 1, &scankey);
-
-		if ((tmp_tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
-		{
-			char	   *dbname;
-
-			dbname = NameStr(((Form_pg_database) GETSTRUCT(tmp_tuple))->datname);
+		if (((Form_pg_authid) GETSTRUCT(tuple))->rolsuper &&
+			!superuser())
 			ereport(ERROR,
-					(errcode(ERRCODE_OBJECT_IN_USE),
-					 errmsg("user \"%s\" cannot be dropped", user),
-					 errdetail("The user owns database \"%s\".", dbname)));
-		}
-
-		heap_endscan(scan);
-		heap_close(pg_rel, AccessShareLock);
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("must be superuser to drop superusers")));
 
 		/*
-		 * Somehow we'd have to check for tables, views, etc. owned by the
-		 * user as well, but those could be spread out over all sorts of
-		 * databases which we don't have access to (easily).
+		 * Lock the role, so nobody can add dependencies to her while we drop
+		 * her.  We keep the lock until the end of transaction.
 		 */
+		LockSharedObject(AuthIdRelationId, roleid, 0, AccessExclusiveLock);
+
+		/* Check for pg_shdepend entries depending on this role */
+		if ((detail = checkSharedDependencies(AuthIdRelationId, roleid)) != NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_DEPENDENT_OBJECTS_STILL_EXIST),
+					 errmsg("role \"%s\" cannot be dropped because some objects depend on it",
+							role),
+					 errdetail("%s", detail)));
 
 		/*
-		 * Remove the user from the pg_shadow table
+		 * Remove the role from the pg_authid table
 		 */
-		simple_heap_delete(pg_shadow_rel, &tuple->t_self);
+		simple_heap_delete(pg_authid_rel, &tuple->t_self);
 
 		ReleaseSysCache(tuple);
 
 		/*
-		 * Remove user from groups
+		 * Remove role from the pg_auth_members table.	We have to remove all
+		 * tuples that show it as either a role or a member.
 		 *
-		 * try calling alter group drop user for every group
+		 * XXX what about grantor entries?	Maybe we should do one heap scan.
 		 */
-		pg_rel = heap_openr(GroupRelationName, ExclusiveLock);
-		pg_dsc = RelationGetDescr(pg_rel);
-		scan = heap_beginscan(pg_rel, SnapshotNow, 0, NULL);
-		while ((tmp_tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
+		ScanKeyInit(&scankey,
+					Anum_pg_auth_members_roleid,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(roleid));
+
+		sscan = systable_beginscan(pg_auth_members_rel, AuthMemRoleMemIndexId,
+								   true, SnapshotNow, 1, &scankey);
+
+		while (HeapTupleIsValid(tmp_tuple = systable_getnext(sscan)))
 		{
-			AlterGroupStmt ags;
-
-			ags.type = T_AlterGroupStmt;
-
-			/* the group name from which to try to drop the user: */
-			ags.name = pstrdup(NameStr(((Form_pg_group) GETSTRUCT(tmp_tuple))->groname));
-			ags.action = -1;
-			ags.listUsers = list_make1(makeInteger(usesysid));
-			AlterGroup(&ags, "DROP USER");
+			simple_heap_delete(pg_auth_members_rel, &tmp_tuple->t_self);
 		}
-		heap_endscan(scan);
-		heap_close(pg_rel, ExclusiveLock);
+
+		systable_endscan(sscan);
+
+		ScanKeyInit(&scankey,
+					Anum_pg_auth_members_member,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(roleid));
+
+		sscan = systable_beginscan(pg_auth_members_rel, AuthMemMemRoleIndexId,
+								   true, SnapshotNow, 1, &scankey);
+
+		while (HeapTupleIsValid(tmp_tuple = systable_getnext(sscan)))
+		{
+			simple_heap_delete(pg_auth_members_rel, &tmp_tuple->t_self);
+		}
+
+		systable_endscan(sscan);
 
 		/*
-		 * Advance command counter so that later iterations of this loop
-		 * will see the changes already made.  This is essential if, for
-		 * example, we are trying to drop two users who are members of the
-		 * same group --- the AlterGroup for the second user had better
-		 * see the tuple updated from the first one.
+		 * Advance command counter so that later iterations of this loop will
+		 * see the changes already made.  This is essential if, for example,
+		 * we are trying to drop both a role and one of its direct members ---
+		 * we'll get an error if we try to delete the linking pg_auth_members
+		 * tuple twice.  (We do not need a CCI between the two delete loops
+		 * above, because it's not allowed for a role to directly contain
+		 * itself.)
 		 */
 		CommandCounterIncrement();
 	}
 
 	/*
-	 * Now we can clean up; but keep lock until commit (to avoid possible
+	 * Now we can clean up; but keep locks until commit (to avoid possible
 	 * deadlock when commit code tries to acquire lock).
 	 */
-	heap_close(pg_shadow_rel, NoLock);
+	heap_close(pg_auth_members_rel, NoLock);
+	heap_close(pg_authid_rel, NoLock);
 
 	/*
-	 * Set flag to update flat password file at commit.
+	 * Set flag to update flat auth file at commit.
 	 */
-	user_file_update_needed();
+	auth_file_update_needed();
 
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
@@ -1234,12 +973,11 @@ DropUser(DropUserStmt *stmt)
 	}
 }
 
-
 /*
- * Rename user
+ * Rename role
  */
 void
-RenameUser(const char *oldname, const char *newname)
+RenameRole(const char *oldname, const char *newname)
 {
 	HeapTuple	oldtuple,
 				newtuple;
@@ -1247,69 +985,98 @@ RenameUser(const char *oldname, const char *newname)
 	Relation	rel;
 	Datum		datum;
 	bool		isnull;
-	Datum		repl_val[Natts_pg_shadow];
-	char		repl_null[Natts_pg_shadow];
-	char		repl_repl[Natts_pg_shadow];
+	Datum		repl_val[Natts_pg_authid];
+	char		repl_null[Natts_pg_authid];
+	char		repl_repl[Natts_pg_authid];
 	int			i;
+	Oid			roleid;
 
-	/* ExclusiveLock because we need to update the password file */
-	rel = heap_openr(ShadowRelationName, ExclusiveLock);
+	/* ExclusiveLock because we need to update the flat auth file */
+	rel = heap_open(AuthIdRelationId, ExclusiveLock);
 	dsc = RelationGetDescr(rel);
 
-	oldtuple = SearchSysCache(SHADOWNAME,
+	oldtuple = SearchSysCache(AUTHNAME,
 							  CStringGetDatum(oldname),
 							  0, 0, 0);
 	if (!HeapTupleIsValid(oldtuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("user \"%s\" does not exist", oldname)));
+				 errmsg("role \"%s\" does not exist", oldname)));
 
 	/*
-	 * XXX Client applications probably store the session user somewhere,
-	 * so renaming it could cause confusion.  On the other hand, there may
-	 * not be an actual problem besides a little confusion, so think about
-	 * this and decide.
+	 * XXX Client applications probably store the session user somewhere, so
+	 * renaming it could cause confusion.  On the other hand, there may not be
+	 * an actual problem besides a little confusion, so think about this and
+	 * decide.	Same for SET ROLE ... we don't restrict renaming the current
+	 * effective userid, though.
 	 */
-	if (((Form_pg_shadow) GETSTRUCT(oldtuple))->usesysid == GetSessionUserId())
+
+	roleid = HeapTupleGetOid(oldtuple);
+
+	if (roleid == GetSessionUserId())
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("session user may not be renamed")));
+	if (roleid == GetOuterUserId())
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("current user may not be renamed")));
 
 	/* make sure the new name doesn't exist */
-	if (SearchSysCacheExists(SHADOWNAME,
+	if (SearchSysCacheExists(AUTHNAME,
 							 CStringGetDatum(newname),
 							 0, 0, 0))
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
-				 errmsg("user \"%s\" already exists", newname)));
+				 errmsg("role \"%s\" already exists", newname)));
 
-	/* must be superuser */
-	if (!superuser())
+	if (strcmp(newname, "public") == 0 ||
+		strcmp(newname, "none") == 0)
 		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser to rename users")));
+				(errcode(ERRCODE_RESERVED_NAME),
+				 errmsg("role name \"%s\" is reserved",
+						newname)));
 
-	for (i = 0; i < Natts_pg_shadow; i++)
+	/*
+	 * createrole is enough privilege unless you want to mess with a superuser
+	 */
+	if (((Form_pg_authid) GETSTRUCT(oldtuple))->rolsuper)
+	{
+		if (!superuser())
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("must be superuser to rename superusers")));
+	}
+	else
+	{
+		if (!have_createrole_privilege())
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("permission denied to rename role")));
+	}
+
+	/* OK, construct the modified tuple */
+	for (i = 0; i < Natts_pg_authid; i++)
 		repl_repl[i] = ' ';
 
-	repl_repl[Anum_pg_shadow_usename - 1] = 'r';
-	repl_val[Anum_pg_shadow_usename - 1] = DirectFunctionCall1(namein,
+	repl_repl[Anum_pg_authid_rolname - 1] = 'r';
+	repl_val[Anum_pg_authid_rolname - 1] = DirectFunctionCall1(namein,
 												   CStringGetDatum(newname));
-	repl_null[Anum_pg_shadow_usename - 1] = ' ';
+	repl_null[Anum_pg_authid_rolname - 1] = ' ';
 
-	datum = heap_getattr(oldtuple, Anum_pg_shadow_passwd, dsc, &isnull);
+	datum = heap_getattr(oldtuple, Anum_pg_authid_rolpassword, dsc, &isnull);
 
 	if (!isnull && isMD5(DatumGetCString(DirectFunctionCall1(textout, datum))))
 	{
 		/* MD5 uses the username as salt, so just clear it on a rename */
-		repl_repl[Anum_pg_shadow_passwd - 1] = 'r';
-		repl_null[Anum_pg_shadow_passwd - 1] = 'n';
+		repl_repl[Anum_pg_authid_rolpassword - 1] = 'r';
+		repl_null[Anum_pg_authid_rolpassword - 1] = 'n';
 
 		ereport(NOTICE,
-				(errmsg("MD5 password cleared because of user rename")));
+				(errmsg("MD5 password cleared because of role rename")));
 	}
 
-	newtuple = heap_modifytuple(oldtuple, rel, repl_val, repl_null, repl_repl);
+	newtuple = heap_modifytuple(oldtuple, dsc, repl_val, repl_null, repl_repl);
 	simple_heap_update(rel, &oldtuple->t_self, newtuple);
 
 	CatalogUpdateIndexes(rel, newtuple);
@@ -1317,7 +1084,10 @@ RenameUser(const char *oldname, const char *newname)
 	ReleaseSysCache(oldtuple);
 	heap_close(rel, NoLock);
 
-	user_file_update_needed();
+	/*
+	 * Set flag to update flat auth file at commit.
+	 */
+	auth_file_update_needed();
 
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
@@ -1326,581 +1096,357 @@ RenameUser(const char *oldname, const char *newname)
 
 		initStringInfo(&buffer);
 
-		appendStringInfo(&buffer, "ALTER USER %s RENAME TO %s", oldname, newname);
+		appendStringInfo(&buffer, "ALTER ROLE %s RENAME TO %s", oldname, newname);
 
 		CdbDoCommand(buffer.data, false);
 
 	}
 }
 
-
 /*
- * CheckPgUserAclNotNull
+ * GrantRoleStmt
  *
- * check to see if there is an ACL on pg_shadow
- */
-static void
-CheckPgUserAclNotNull(void)
-{
-	HeapTuple	htup;
-
-	htup = SearchSysCache(RELOID,
-						  ObjectIdGetDatum(RelOid_pg_shadow),
-						  0, 0, 0);
-	if (!HeapTupleIsValid(htup))	/* should not happen, we hope */
-		elog(ERROR, "cache lookup failed for relation %u", RelOid_pg_shadow);
-
-	if (heap_attisnull(htup, Anum_pg_class_relacl))
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-			errmsg("before using passwords you must revoke privileges on %s",
-				   ShadowRelationName),
-				 errdetail("This restriction is to prevent unprivileged users from reading the passwords."),
-				 errhint("Try REVOKE ALL ON \"%s\" FROM PUBLIC.",
-						 ShadowRelationName)));
-
-	ReleaseSysCache(htup);
-}
-
-
-
-/*
- * CREATE GROUP
+ * Grant/Revoke roles to/from roles
  */
 void
-CreateGroup(CreateGroupStmt *stmt)
+GrantRole(GrantRoleStmt *stmt)
 {
-	Relation	pg_group_rel;
-	HeapScanDesc scan;
-	HeapTuple	tuple;
-	TupleDesc	pg_group_dsc;
-	bool		group_exists = false,
-				sysid_exists = false,
-				havesysid = false;
-	int			max_id;
-	Datum		new_record[Natts_pg_group];
-	char		new_record_nulls[Natts_pg_group];
+	Relation	pg_authid_rel;
+	Oid			grantor;
+	List	   *grantee_ids;
 	ListCell   *item;
-	ListCell   *option;
-	List	   *newlist = NIL;
-	IdList	   *grolist;
-	int			sysid = 0;
-	List	   *userElts = NIL;
-	DefElem    *dsysid = NULL;
-	DefElem    *duserElts = NULL;
 
-	foreach(option, stmt->options)
-	{
-		DefElem    *defel = (DefElem *) lfirst(option);
-
-		if (strcmp(defel->defname, "sysid") == 0)
-		{
-			if (dsysid)
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("conflicting or redundant options")));
-			dsysid = defel;
-		}
-		else if (strcmp(defel->defname, "userElts") == 0)
-		{
-			if (duserElts)
-				ereport(ERROR,
-						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("conflicting or redundant options")));
-			duserElts = defel;
-		}
-		else
-			elog(ERROR, "option \"%s\" not recognized",
-				 defel->defname);
-	}
-
-	if (dsysid)
-	{
-		sysid = intVal(dsysid->arg);
-		if (sysid <= 0)
-			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("group ID must be positive")));
-		havesysid = true;
-	}
-
-	if (duserElts)
-		userElts = (List *) duserElts->arg;
-
-	/*
-	 * Make sure the user can do this.
-	 */
-	if (!superuser())
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser to create groups")));
-
-	if (strcmp(stmt->name, "public") == 0)
-		ereport(ERROR,
-				(errcode(ERRCODE_RESERVED_NAME),
-				 errmsg("group name \"%s\" is reserved",
-						stmt->name)));
-
-	/*
-	 * Scan the pg_group relation to be certain the group or id doesn't
-	 * already exist.  Note we secure exclusive lock, because we also need
-	 * to be sure of what the next grosysid should be, and we need to
-	 * protect our eventual update of the flat group file.
-	 */
-	pg_group_rel = heap_openr(GroupRelationName, ExclusiveLock);
-	pg_group_dsc = RelationGetDescr(pg_group_rel);
-
-	scan = heap_beginscan(pg_group_rel, SnapshotNow, 0, NULL);
-	max_id = 99;				/* start auto-assigned ids at 100 */
-	while (!group_exists && !sysid_exists &&
-		   (tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
-	{
-		Form_pg_group group_form = (Form_pg_group) GETSTRUCT(tuple);
-		int32		this_sysid;
-
-		group_exists = (strcmp(NameStr(group_form->groname), stmt->name) == 0);
-
-		this_sysid = group_form->grosysid;
-		if (havesysid)			/* customized id wanted */
-			sysid_exists = (this_sysid == sysid);
-		else
-		{
-			/* pick 1 + max */
-			if (this_sysid > max_id)
-				max_id = this_sysid;
-		}
-	}
-	heap_endscan(scan);
-
-	if (group_exists)
-		ereport(ERROR,
-				(errcode(ERRCODE_DUPLICATE_OBJECT),
-				 errmsg("group \"%s\" already exists",
-						stmt->name)));
-	if (sysid_exists)
-		ereport(ERROR,
-				(errcode(ERRCODE_DUPLICATE_OBJECT),
-				 errmsg("group ID %d is already assigned", sysid)));
-
-	/* If no sysid given, use max existing id + 1 */
-	if (!havesysid)
-		sysid = max_id + 1;
-
-	/*
-	 * Translate the given user names to ids
-	 */
-	foreach(item, userElts)
-	{
-		const char *groupuser = strVal(lfirst(item));
-		int32		userid = get_usesysid(groupuser);
-
-		if (!list_member_int(newlist, userid))
-			newlist = lappend_int(newlist, userid);
-	}
-
-	/* build an array to insert */
-	if (newlist)
-		grolist = IdListToArray(newlist);
+	if (stmt->grantor)
+		grantor = get_roleid_checked(stmt->grantor);
 	else
-		grolist = NULL;
+		grantor = GetUserId();
+
+	grantee_ids = roleNamesToIds(stmt->grantee_roles);
 
 	/*
-	 * Form a tuple to insert
+	 * Even though this operation doesn't change pg_authid, we must secure
+	 * exclusive lock on it to protect our update of the flat auth file.
 	 */
-	new_record[Anum_pg_group_groname - 1] =
-		DirectFunctionCall1(namein, CStringGetDatum(stmt->name));
-	new_record[Anum_pg_group_grosysid - 1] = Int32GetDatum(sysid);
-	new_record[Anum_pg_group_grolist - 1] = PointerGetDatum(grolist);
-
-	new_record_nulls[Anum_pg_group_groname - 1] = ' ';
-	new_record_nulls[Anum_pg_group_grosysid - 1] = ' ';
-	new_record_nulls[Anum_pg_group_grolist - 1] = grolist ? ' ' : 'n';
-
-	tuple = heap_formtuple(pg_group_dsc, new_record, new_record_nulls);
+	pg_authid_rel = heap_open(AuthIdRelationId, ExclusiveLock);
 
 	/*
-	 * Insert a new record in the pg_group table
+	 * Step through all of the granted roles and add/remove entries for the
+	 * grantees, or, if admin_opt is set, then just add/remove the admin
+	 * option.
+	 *
+	 * Note: Permissions checking is done by AddRoleMems/DelRoleMems
 	 */
-	simple_heap_insert(pg_group_rel, tuple);
-
-	/* Update indexes */
-	CatalogUpdateIndexes(pg_group_rel, tuple);
-
-	/*
-	 * Now we can clean up; but keep lock until commit (to avoid possible
-	 * deadlock when commit code tries to acquire lock).
-	 */
-	heap_close(pg_group_rel, NoLock);
-
-	/*
-	 * Set flag to update flat group file at commit.
-	 */
-	group_file_update_needed();
-
-	if (Mpp_role == MPP_ROLE_DISPATCH)
+	foreach(item, stmt->granted_roles)
 	{
-		CdbDispatchUtilityStatement((Node *) stmt);
-	}
-}
+		char	   *rolename = strVal(lfirst(item));
+		Oid			roleid = get_roleid_checked(rolename);
 
-
-/*
- * ALTER GROUP
- */
-void
-AlterGroup(AlterGroupStmt *stmt, const char *tag)
-{
-	Relation	pg_group_rel;
-	TupleDesc	pg_group_dsc;
-	HeapTuple	group_tuple;
-	IdList	   *oldarray;
-	Datum		datum;
-	bool		null;
-	List	   *newlist;
-	ListCell   *item;
-
-	/*
-	 * Make sure the user can do this.
-	 */
-	if (!superuser())
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser to alter groups")));
-
-	/*
-	 * Secure exclusive lock to protect our update of the flat group file.
-	 */
-	pg_group_rel = heap_openr(GroupRelationName, ExclusiveLock);
-	pg_group_dsc = RelationGetDescr(pg_group_rel);
-
-	/*
-	 * Fetch existing tuple for group.
-	 */
-	group_tuple = SearchSysCache(GRONAME,
-								 PointerGetDatum(stmt->name),
-								 0, 0, 0);
-	if (!HeapTupleIsValid(group_tuple))
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("group \"%s\" does not exist", stmt->name)));
-
-	/* Fetch old group membership. */
-	datum = heap_getattr(group_tuple, Anum_pg_group_grolist,
-						 pg_group_dsc, &null);
-	oldarray = null ? NULL : DatumGetIdListP(datum);
-
-	/* initialize list with old array contents */
-	newlist = IdArrayToList(oldarray);
-
-	/*
-	 * Now decide what to do.
-	 */
-	AssertState(stmt->action == +1 || stmt->action == -1);
-
-	if (stmt->action == +1)		/* add users, might also be invoked by create
-								 * user */
-	{
-		/*
-		 * convert the to be added usernames to sysids and add them to the
-		 * list
-		 */
-		foreach(item, stmt->listUsers)
-		{
-			int32		sysid;
-
-			if (strcmp(tag, "ALTER GROUP") == 0)
-			{
-				/* Get the uid of the proposed user to add. */
-				sysid = get_usesysid(strVal(lfirst(item)));
-			}
-			else if (strcmp(tag, "CREATE USER") == 0)
-			{
-				/*
-				 * in this case we already know the uid and it wouldn't be
-				 * in the cache anyway yet
-				 */
-				sysid = intVal(lfirst(item));
-			}
-			else
-			{
-				elog(ERROR, "unexpected tag: \"%s\"", tag);
-				sysid = 0;		/* keep compiler quiet */
-			}
-
-			if (!list_member_int(newlist, sysid))
-				newlist = lappend_int(newlist, sysid);
-		}
-
-		/* Do the update */
-		UpdateGroupMembership(pg_group_rel, group_tuple, newlist);
-	}							/* endif alter group add user */
-
-	else if (stmt->action == -1)	/* drop users from group */
-	{
-		bool		is_dropuser = strcmp(tag, "DROP USER") == 0;
-
-		if (newlist == NIL)
-		{
-			if (!is_dropuser)
-				ereport(WARNING,
-						(errcode(ERRCODE_WARNING),
-						 errmsg("group \"%s\" does not have any members",
-								stmt->name)));
-		}
+		if (stmt->is_grant)
+			AddRoleMems(rolename, roleid,
+						stmt->grantee_roles, grantee_ids,
+						grantor, stmt->admin_opt);
 		else
-		{
-			/*
-			 * convert the to be dropped usernames to sysids and remove
-			 * them from the list
-			 */
-			foreach(item, stmt->listUsers)
-			{
-				int32		sysid;
+			DelRoleMems(rolename, roleid,
+						stmt->grantee_roles, grantee_ids,
+						stmt->admin_opt);
+	}
 
-				if (!is_dropuser)
-				{
-					/* Get the uid of the proposed user to drop. */
-					sysid = get_usesysid(strVal(lfirst(item)));
-				}
-				else
-				{
-					/* for dropuser we already know the uid */
-					sysid = intVal(lfirst(item));
-				}
-				if (list_member_int(newlist, sysid))
-					newlist = list_delete_int(newlist, sysid);
-				else if (!is_dropuser)
-					ereport(WARNING,
-							(errcode(ERRCODE_WARNING),
-							 errmsg("user \"%s\" is not in group \"%s\"",
-									strVal(lfirst(item)), stmt->name)));
-			}
-
-			/* Do the update */
-			UpdateGroupMembership(pg_group_rel, group_tuple, newlist);
-		}						/* endif group not null */
-	}							/* endif alter group drop user */
-
-	ReleaseSysCache(group_tuple);
+	heap_close(pg_authid_rel, NoLock);
 
 	/*
-	 * Now we can clean up; but keep lock until commit (to avoid possible
-	 * deadlock when commit code tries to acquire lock).
+	 * Set flag to update flat auth file at commit.
 	 */
-	heap_close(pg_group_rel, NoLock);
-
-	/*
-	 * Set flag to update flat group file at commit.
-	 */
-	group_file_update_needed();
-
-	if (Mpp_role == MPP_ROLE_DISPATCH)
-		if (strcmp(tag, "ALTER GROUP") == 0)
-		{
-			CdbDispatchUtilityStatement((Node *) stmt);
-		}
+	auth_file_update_needed();
 }
 
 /*
- * Subroutine for AlterGroup: given a pg_group tuple and a desired new
- * membership (expressed as an integer list), form and write an updated tuple.
- * The pg_group relation must be open and locked already.
- */
-static void
-UpdateGroupMembership(Relation group_rel, HeapTuple group_tuple,
-					  List *members)
-{
-	IdList	   *newarray;
-	Datum		new_record[Natts_pg_group];
-	char		new_record_nulls[Natts_pg_group];
-	char		new_record_repl[Natts_pg_group];
-	HeapTuple	tuple;
-
-	newarray = IdListToArray(members);
-
-	/*
-	 * Form an updated tuple with the new array and write it back.
-	 */
-	MemSet(new_record, 0, sizeof(new_record));
-	MemSet(new_record_nulls, ' ', sizeof(new_record_nulls));
-	MemSet(new_record_repl, ' ', sizeof(new_record_repl));
-
-	new_record[Anum_pg_group_grolist - 1] = PointerGetDatum(newarray);
-	new_record_repl[Anum_pg_group_grolist - 1] = 'r';
-
-	tuple = heap_modifytuple(group_tuple, group_rel,
-							 new_record, new_record_nulls, new_record_repl);
-
-	simple_heap_update(group_rel, &group_tuple->t_self, tuple);
-
-	/* Update indexes */
-	CatalogUpdateIndexes(group_rel, tuple);
-}
-
-
-/*
- * Convert an integer list of sysids to an array.
- */
-static IdList *
-IdListToArray(List *members)
-{
-	int			nmembers = list_length(members);
-	IdList	   *newarray;
-	ListCell   *item;
-	int			i;
-
-	newarray = palloc(ARR_OVERHEAD(1) + nmembers * sizeof(int32));
-	newarray->size = ARR_OVERHEAD(1) + nmembers * sizeof(int32);
-	newarray->flags = 0;
-	newarray->elemtype = INT4OID;
-	ARR_NDIM(newarray) = 1;		/* one dimensional array */
-	ARR_LBOUND(newarray)[0] = 1;	/* axis starts at one */
-	ARR_DIMS(newarray)[0] = nmembers;	/* axis is this long */
-	i = 0;
-	foreach(item, members)
-		((int *) ARR_DATA_PTR(newarray))[i++] = lfirst_int(item);
-
-	return newarray;
-}
-
-/*
- * Convert an array of sysids to an integer list.
+ * roleNamesToIds
+ *
+ * Given a list of role names (as String nodes), generate a list of role OIDs
+ * in the same order.
  */
 static List *
-IdArrayToList(IdList *oldarray)
+roleNamesToIds(List *memberNames)
 {
-	List	   *newlist = NIL;
-	int			hibound,
-				i;
+	List	   *result = NIL;
+	ListCell   *l;
 
-	if (oldarray == NULL)
-		return NIL;
-
-	Assert(ARR_NDIM(oldarray) == 1);
-	Assert(ARR_ELEMTYPE(oldarray) == INT4OID);
-
-	hibound = ARR_DIMS(oldarray)[0];
-
-	for (i = 0; i < hibound; i++)
+	foreach(l, memberNames)
 	{
-		int32		sysid;
+		char	   *rolename = strVal(lfirst(l));
+		Oid			roleid = get_roleid_checked(rolename);
 
-		sysid = ((int32 *) ARR_DATA_PTR(oldarray))[i];
-		/* filter out any duplicates --- probably a waste of time */
-		if (!list_member_int(newlist, sysid))
-			newlist = lappend_int(newlist, sysid);
+		result = lappend_oid(result, roleid);
 	}
-
-	return newlist;
+	return result;
 }
 
-
 /*
- * DROP GROUP
+ * AddRoleMems -- Add given members to the specified role
+ *
+ * rolename: name of role to add to (used only for error messages)
+ * roleid: OID of role to add to
+ * memberNames: list of names of roles to add (used only for error messages)
+ * memberIds: OIDs of roles to add
+ * grantorId: who is granting the membership
+ * admin_opt: granting admin option?
+ *
+ * Note: caller is responsible for holding ExclusiveLock on pg_authid,
+ * and for calling auth_file_update_needed().
  */
-void
-DropGroup(DropGroupStmt *stmt)
+static void
+AddRoleMems(const char *rolename, Oid roleid,
+			List *memberNames, List *memberIds,
+			Oid grantorId, bool admin_opt)
 {
-	Relation	pg_group_rel;
-	HeapTuple	tuple;
+	Relation	pg_authmem_rel;
+	TupleDesc	pg_authmem_dsc;
+	ListCell   *nameitem;
+	ListCell   *iditem;
+
+	Assert(list_length(memberNames) == list_length(memberIds));
+
+	/* Skip permission check if nothing to do */
+	if (!memberIds)
+		return;
 
 	/*
-	 * Make sure the user can do this.
+	 * Check permissions: must have createrole or admin option on the role to
+	 * be changed.	To mess with a superuser role, you gotta be superuser.
 	 */
-	if (!superuser())
+	if (superuser_arg(roleid))
+	{
+		if (!superuser())
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("must be superuser to alter superusers")));
+	}
+	else
+	{
+		if (!have_createrole_privilege() &&
+			!is_admin_of_role(grantorId, roleid))
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("must have admin option on role \"%s\"",
+							rolename)));
+	}
+
+	/* XXX not sure about this check */
+	if (grantorId != GetUserId() && !superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser to drop groups")));
+				 errmsg("must be superuser to set grantor")));
 
-	/*
-	 * Secure exclusive lock to protect our update of the flat group file.
-	 */
-	pg_group_rel = heap_openr(GroupRelationName, ExclusiveLock);
+	/* We need only regular writer's lock on pg_auth_members */
+	pg_authmem_rel = heap_open(AuthMemRelationId, RowExclusiveLock);
+	pg_authmem_dsc = RelationGetDescr(pg_authmem_rel);
 
-	/* Find and delete the group. */
+	forboth(nameitem, memberNames, iditem, memberIds)
+	{
+		const char *membername = strVal(lfirst(nameitem));
+		Oid			memberid = lfirst_oid(iditem);
+		HeapTuple	authmem_tuple;
+		HeapTuple	tuple;
+		Datum		new_record[Natts_pg_auth_members];
+		char		new_record_nulls[Natts_pg_auth_members];
+		char		new_record_repl[Natts_pg_auth_members];
 
-	tuple = SearchSysCacheCopy(GRONAME,
-							   PointerGetDatum(stmt->name),
-							   0, 0, 0);
-	if (!HeapTupleIsValid(tuple))
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("group \"%s\" does not exist", stmt->name)));
+		/*
+		 * Refuse creation of membership loops, including the trivial case
+		 * where a role is made a member of itself.  We do this by checking to
+		 * see if the target role is already a member of the proposed member
+		 * role.  We have to ignore possible superuserness, however, else we
+		 * could never grant membership in a superuser-privileged role.
+		 */
+		if (is_member_of_role_nosuper(roleid, memberid))
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_GRANT_OPERATION),
+					 (errmsg("role \"%s\" is a member of role \"%s\"",
+							 rolename, membername))));
 
-	simple_heap_delete(pg_group_rel, &tuple->t_self);
+		/*
+		 * Check if entry for this role/member already exists; if so, give
+		 * warning unless we are adding admin option.
+		 */
+		authmem_tuple = SearchSysCache(AUTHMEMROLEMEM,
+									   ObjectIdGetDatum(roleid),
+									   ObjectIdGetDatum(memberid),
+									   0, 0);
+		if (HeapTupleIsValid(authmem_tuple) &&
+			(!admin_opt ||
+			 ((Form_pg_auth_members) GETSTRUCT(authmem_tuple))->admin_option))
+		{
+			ereport(NOTICE,
+					(errmsg("role \"%s\" is already a member of role \"%s\"",
+							membername, rolename)));
+			ReleaseSysCache(authmem_tuple);
+			continue;
+		}
+
+		/* Build a tuple to insert or update */
+		MemSet(new_record, 0, sizeof(new_record));
+		MemSet(new_record_nulls, ' ', sizeof(new_record_nulls));
+		MemSet(new_record_repl, ' ', sizeof(new_record_repl));
+
+		new_record[Anum_pg_auth_members_roleid - 1] = ObjectIdGetDatum(roleid);
+		new_record[Anum_pg_auth_members_member - 1] = ObjectIdGetDatum(memberid);
+		new_record[Anum_pg_auth_members_grantor - 1] = ObjectIdGetDatum(grantorId);
+		new_record[Anum_pg_auth_members_admin_option - 1] = BoolGetDatum(admin_opt);
+
+		if (HeapTupleIsValid(authmem_tuple))
+		{
+			new_record_repl[Anum_pg_auth_members_grantor - 1] = 'r';
+			new_record_repl[Anum_pg_auth_members_admin_option - 1] = 'r';
+			tuple = heap_modifytuple(authmem_tuple, pg_authmem_dsc,
+									 new_record,
+									 new_record_nulls, new_record_repl);
+			simple_heap_update(pg_authmem_rel, &tuple->t_self, tuple);
+			CatalogUpdateIndexes(pg_authmem_rel, tuple);
+			ReleaseSysCache(authmem_tuple);
+		}
+		else
+		{
+			tuple = heap_formtuple(pg_authmem_dsc,
+								   new_record, new_record_nulls);
+			simple_heap_insert(pg_authmem_rel, tuple);
+			CatalogUpdateIndexes(pg_authmem_rel, tuple);
+		}
+
+		/* CCI after each change, in case there are duplicates in list */
+		CommandCounterIncrement();
+	}
 
 	/*
 	 * Now we can clean up; but keep lock until commit (to avoid possible
 	 * deadlock when commit code tries to acquire lock).
 	 */
-	heap_close(pg_group_rel, NoLock);
-
-	/*
-	 * Set flag to update flat group file at commit.
-	 */
-	group_file_update_needed();
+	heap_close(pg_authmem_rel, NoLock);
 
 	if (Mpp_role == MPP_ROLE_DISPATCH)
-	{
-		CdbDispatchUtilityStatement((Node *) stmt);
-	}
+	elog(ERROR,"Not yet working after 8.1. merge");
+		//if (strcmp(tag, "ALTER ROLE") == 0)
+		//{
+		//	CdbDispatchUtilityStatement((Node *) stmt);
+		//}
 }
 
-
 /*
- * Rename group
+ * DelRoleMems -- Remove given members from the specified role
+ *
+ * rolename: name of role to del from (used only for error messages)
+ * roleid: OID of role to del from
+ * memberNames: list of names of roles to del (used only for error messages)
+ * memberIds: OIDs of roles to del
+ * admin_opt: remove admin option only?
+ *
+ * Note: caller is responsible for holding ExclusiveLock on pg_authid,
+ * and for calling auth_file_update_needed().
  */
-void
-RenameGroup(const char *oldname, const char *newname)
+static void
+DelRoleMems(const char *rolename, Oid roleid,
+			List *memberNames, List *memberIds,
+			bool admin_opt)
 {
-	HeapTuple	tup;
-	Relation	rel;
+	Relation	pg_authmem_rel;
+	TupleDesc	pg_authmem_dsc;
+	ListCell   *nameitem;
+	ListCell   *iditem;
 
-	/* ExclusiveLock because we need to update the flat group file */
-	rel = heap_openr(GroupRelationName, ExclusiveLock);
+	Assert(list_length(memberNames) == list_length(memberIds));
 
-	tup = SearchSysCacheCopy(GRONAME,
-							 CStringGetDatum(oldname),
-							 0, 0, 0);
-	if (!HeapTupleIsValid(tup))
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("group \"%s\" does not exist", oldname)));
+	/* Skip permission check if nothing to do */
+	if (!memberIds)
+		return;
 
-	/* make sure the new name doesn't exist */
-	if (SearchSysCacheExists(GRONAME,
-							 CStringGetDatum(newname),
-							 0, 0, 0))
-		ereport(ERROR,
-				(errcode(ERRCODE_DUPLICATE_OBJECT),
-				 errmsg("group \"%s\" already exists", newname)));
+	/*
+	 * Check permissions: must have createrole or admin option on the role to
+	 * be changed.	To mess with a superuser role, you gotta be superuser.
+	 */
+	if (superuser_arg(roleid))
+	{
+		if (!superuser())
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("must be superuser to alter superusers")));
+	}
+	else
+	{
+		if (!have_createrole_privilege() &&
+			!is_admin_of_role(GetUserId(), roleid))
+			ereport(ERROR,
+					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+					 errmsg("must have admin option on role \"%s\"",
+							rolename)));
+	}
 
-	/* must be superuser */
-	if (!superuser())
-		ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-				 errmsg("must be superuser to rename groups")));
+	/* We need only regular writer's lock on pg_auth_members */
+	pg_authmem_rel = heap_open(AuthMemRelationId, RowExclusiveLock);
+	pg_authmem_dsc = RelationGetDescr(pg_authmem_rel);
 
-	/* rename */
-	namestrcpy(&(((Form_pg_group) GETSTRUCT(tup))->groname), newname);
-	simple_heap_update(rel, &tup->t_self, tup);
-	CatalogUpdateIndexes(rel, tup);
+	forboth(nameitem, memberNames, iditem, memberIds)
+	{
+		const char *membername = strVal(lfirst(nameitem));
+		Oid			memberid = lfirst_oid(iditem);
+		HeapTuple	authmem_tuple;
 
-	heap_close(rel, NoLock);
-	heap_freetuple(tup);
+		/*
+		 * Find entry for this role/member
+		 */
+		authmem_tuple = SearchSysCache(AUTHMEMROLEMEM,
+									   ObjectIdGetDatum(roleid),
+									   ObjectIdGetDatum(memberid),
+									   0, 0);
+		if (!HeapTupleIsValid(authmem_tuple))
+		{
+			ereport(WARNING,
+					(errmsg("role \"%s\" is not a member of role \"%s\"",
+							membername, rolename)));
+			continue;
+		}
 
-	group_file_update_needed();
+		if (!admin_opt)
+		{
+			/* Remove the entry altogether */
+			simple_heap_delete(pg_authmem_rel, &authmem_tuple->t_self);
+		}
+		else
+		{
+			/* Just turn off the admin option */
+			HeapTuple	tuple;
+			Datum		new_record[Natts_pg_auth_members];
+			char		new_record_nulls[Natts_pg_auth_members];
+			char		new_record_repl[Natts_pg_auth_members];
+
+			/* Build a tuple to update with */
+			MemSet(new_record, 0, sizeof(new_record));
+			MemSet(new_record_nulls, ' ', sizeof(new_record_nulls));
+			MemSet(new_record_repl, ' ', sizeof(new_record_repl));
+
+			new_record[Anum_pg_auth_members_admin_option - 1] = BoolGetDatum(false);
+			new_record_repl[Anum_pg_auth_members_admin_option - 1] = 'r';
+
+			tuple = heap_modifytuple(authmem_tuple, pg_authmem_dsc,
+									 new_record,
+									 new_record_nulls, new_record_repl);
+			simple_heap_update(pg_authmem_rel, &tuple->t_self, tuple);
+			CatalogUpdateIndexes(pg_authmem_rel, tuple);
+		}
+
+		ReleaseSysCache(authmem_tuple);
+
+		/* CCI after each change, in case there are duplicates in list */
+		CommandCounterIncrement();
+	}
+
+	/*
+	 * Now we can clean up; but keep lock until commit (to avoid possible
+	 * deadlock when commit code tries to acquire lock).
+	 */
+	heap_close(pg_authmem_rel, NoLock);
 
 	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-
-		StringInfoData buffer;
-
-		initStringInfo(&buffer);
-
-		appendStringInfo(&buffer, "ALTER GROUP %s RENAME TO %s", oldname, newname);
-
-		CdbDoCommand(buffer.data, false);
-
+		elog(ERROR,"Not yet working after 8.1 merge");
+		//CdbDispatchUtilityStatement((Node *) stmt);
 	}
 }

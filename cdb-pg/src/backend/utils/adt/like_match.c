@@ -19,7 +19,7 @@
  * Copyright (c) 1996-2005, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *	$PostgreSQL: pgsql/src/backend/utils/adt/like_match.c,v 1.10 2004/12/31 22:01:22 pgsql Exp $
+ *	$PostgreSQL: pgsql/src/backend/utils/adt/like_match.c,v 1.12 2005/10/15 02:49:28 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -71,7 +71,7 @@
  */
 
 static int
-MatchText(unsigned char *t, int tlen, unsigned char *p, int plen)
+MatchText(char *t, int tlen, char *p, int plen)
 {
 	/* Fast path for match-everything pattern */
 	if ((plen == 1) && (*p == '%'))
@@ -97,8 +97,8 @@ MatchText(unsigned char *t, int tlen, unsigned char *p, int plen)
 				return LIKE_TRUE;
 
 			/*
-			 * Otherwise, scan for a text position at which we can match
-			 * the rest of the pattern.
+			 * Otherwise, scan for a text position at which we can match the
+			 * rest of the pattern.
 			 */
 			while (tlen > 0)
 			{
@@ -118,16 +118,16 @@ MatchText(unsigned char *t, int tlen, unsigned char *p, int plen)
 			}
 
 			/*
-			 * End of text with no match, so no point in trying later
-			 * places to start matching this pattern.
+			 * End of text with no match, so no point in trying later places
+			 * to start matching this pattern.
 			 */
 			return LIKE_ABORT;
 		}
 		else if ((*p != '_') && !CHAREQ(t, p))
 		{
 			/*
-			 * Not the single-character wildcard and no explicit match?
-			 * Then time to quit...
+			 * Not the single-character wildcard and no explicit match? Then
+			 * time to quit...
 			 */
 			return LIKE_FALSE;
 		}
@@ -147,8 +147,8 @@ MatchText(unsigned char *t, int tlen, unsigned char *p, int plen)
 		return LIKE_TRUE;
 
 	/*
-	 * End of text with no match, so no point in trying later places to
-	 * start matching this pattern.
+	 * End of text with no match, so no point in trying later places to start
+	 * matching this pattern.
 	 */
 	return LIKE_ABORT;
 }	/* MatchText() */
@@ -157,7 +157,7 @@ MatchText(unsigned char *t, int tlen, unsigned char *p, int plen)
  * Same as above, but ignore case
  */
 static int
-MatchTextIC(unsigned char *t, int tlen, unsigned char *p, int plen)
+MatchTextIC(char *t, int tlen, char *p, int plen)
 {
 	/* Fast path for match-everything pattern */
 	if ((plen == 1) && (*p == '%'))
@@ -183,8 +183,8 @@ MatchTextIC(unsigned char *t, int tlen, unsigned char *p, int plen)
 				return LIKE_TRUE;
 
 			/*
-			 * Otherwise, scan for a text position at which we can match
-			 * the rest of the pattern.
+			 * Otherwise, scan for a text position at which we can match the
+			 * rest of the pattern.
 			 */
 			while (tlen > 0)
 			{
@@ -204,16 +204,16 @@ MatchTextIC(unsigned char *t, int tlen, unsigned char *p, int plen)
 			}
 
 			/*
-			 * End of text with no match, so no point in trying later
-			 * places to start matching this pattern.
+			 * End of text with no match, so no point in trying later places
+			 * to start matching this pattern.
 			 */
 			return LIKE_ABORT;
 		}
 		else if ((*p != '_') && !ICHAREQ(t, p))
 		{
 			/*
-			 * Not the single-character wildcard and no explicit match?
-			 * Then time to quit...
+			 * Not the single-character wildcard and no explicit match? Then
+			 * time to quit...
 			 */
 			return LIKE_FALSE;
 		}
@@ -233,8 +233,8 @@ MatchTextIC(unsigned char *t, int tlen, unsigned char *p, int plen)
 		return LIKE_TRUE;
 
 	/*
-	 * End of text with no match, so no point in trying later places to
-	 * start matching this pattern.
+	 * End of text with no match, so no point in trying later places to start
+	 * matching this pattern.
 	 */
 	return LIKE_ABORT;
 }	/* MatchTextIC() */
@@ -247,16 +247,16 @@ static text *
 do_like_escape(text *pat, text *esc)
 {
 	text	   *result;
-	unsigned char *p,
+	char	   *p,
 			   *e,
 			   *r;
 	int			plen,
 				elen;
 	bool		afterescape;
 
-	p = (unsigned char *)VARDATA(pat);
+	p = VARDATA(pat);
 	plen = (VARSIZE(pat) - VARHDRSZ);
-	e = (unsigned char *)VARDATA(esc);
+	e = VARDATA(esc);
 	elen = (VARSIZE(esc) - VARHDRSZ);
 
 	/*
@@ -264,7 +264,7 @@ do_like_escape(text *pat, text *esc)
 	 * trying to calculate the size more accurately than that.
 	 */
 	result = (text *) palloc(plen * 2 + VARHDRSZ);
-	r = (unsigned char *)VARDATA(result);
+	r = VARDATA(result);
 
 	if (elen == 0)
 	{
@@ -289,9 +289,9 @@ do_like_escape(text *pat, text *esc)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_ESCAPE_SEQUENCE),
 					 errmsg("invalid escape string"),
-			  errhint("Escape string must be empty or one character.")));
+				  errhint("Escape string must be empty or one character.")));
 
-		e = (unsigned char *)VARDATA(esc);
+		e = VARDATA(esc);
 
 		/*
 		 * If specified escape is '\', just copy the pattern as-is.
@@ -303,9 +303,9 @@ do_like_escape(text *pat, text *esc)
 		}
 
 		/*
-		 * Otherwise, convert occurrences of the specified escape
-		 * character to '\', and double occurrences of '\' --- unless they
-		 * immediately follow an escape character!
+		 * Otherwise, convert occurrences of the specified escape character to
+		 * '\', and double occurrences of '\' --- unless they immediately
+		 * follow an escape character!
 		 */
 		afterescape = false;
 		while (plen > 0)
@@ -332,7 +332,7 @@ do_like_escape(text *pat, text *esc)
 		}
 	}
 
-	VARATT_SIZEP(result) = r - ((unsigned char *) result);
+	VARATT_SIZEP(result) = r - ((char *) result);
 
 	return result;
 }

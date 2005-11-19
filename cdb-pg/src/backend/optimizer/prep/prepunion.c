@@ -14,7 +14,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/prep/prepunion.c,v 1.119 2004/12/31 22:00:20 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/prep/prepunion.c,v 1.127 2005/10/15 02:49:21 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -22,6 +22,7 @@
 
 
 #include "access/heapam.h"
+#include "catalog/namespace.h"
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
 #include "optimizer/clauses.h"
@@ -32,6 +33,7 @@
 #include "optimizer/tlist.h"
 #include "parser/parse_clause.h"
 #include "parser/parse_coerce.h"
+#include "parser/parse_expr.h"
 #include "parser/parsetree.h"
 #include "utils/lsyscache.h"
 
@@ -48,18 +50,22 @@ typedef struct
 	char	   *new_rel_name;
 } adjust_inherited_attrs_context;
 
-static Plan *recurse_set_operations(Node *setOp, Query *parse,
+static Plan *recurse_set_operations(Node *setOp, PlannerInfo *root,
+					   double tuple_fraction,
 					   List *colTypes, bool junkOK,
 					   int flag, List *refnames_tlist,
 					   List **sortClauses);
-static Plan *generate_union_plan(SetOperationStmt *op, Query *parse,
+static Plan *generate_union_plan(SetOperationStmt *op, PlannerInfo *root,
+					double tuple_fraction,
 					List *refnames_tlist, List **sortClauses);
-static Plan *generate_nonunion_plan(SetOperationStmt *op, Query *parse,
+static Plan *generate_nonunion_plan(SetOperationStmt *op, PlannerInfo *root,
 					   List *refnames_tlist, List **sortClauses);
-static List *recurse_union_children(Node *setOp, Query *parse,
+static List *recurse_union_children(Node *setOp, PlannerInfo *root,
+					   double tuple_fraction,
 					   SetOperationStmt *top_union,
 					   List *refnames_tlist);
 static List *generate_setop_tlist(List *colTypes, int flag,
+					 Index varno,
 					 bool hack_constants,
 					 List *input_tlist,
 					 List *refnames_tlist);
@@ -80,15 +86,22 @@ static List *adjust_inherited_tlist(List *tlist,
  *	  Plans the queries for a tree of set operations (UNION/INTERSECT/EXCEPT)
  *
  * This routine only deals with the setOperations tree of the given query.
- * Any top-level ORDER BY requested in parse->sortClause will be added
+ * Any top-level ORDER BY requested in root->parse->sortClause will be added
  * when we return to grouping_planner.
+ *
+ * tuple_fraction is the fraction of tuples we expect will be retrieved.
+ * tuple_fraction is interpreted as for grouping_planner(); in particular,
+ * zero means "all the tuples will be fetched".  Any LIMIT present at the
+ * top level has already been factored into tuple_fraction.
  *
  * *sortClauses is an output argument: it is set to a list of SortClauses
  * representing the result ordering of the topmost set operation.
  */
 Plan *
-plan_set_operations(Query *parse, List **sortClauses)
+plan_set_operations(PlannerInfo *root, double tuple_fraction,
+					List **sortClauses)
 {
+	Query	   *parse = root->parse;
 	SetOperationStmt *topop = (SetOperationStmt *) parse->setOperations;
 	Node	   *node;
 	Query	   *leftmostQuery;
@@ -104,8 +117,8 @@ plan_set_operations(Query *parse, List **sortClauses)
 	Assert(parse->distinctClause == NIL);
 
 	/*
-	 * Find the leftmost component Query.  We need to use its column names
-	 * for all generated tlists (else SELECT INTO won't work right).
+	 * Find the leftmost component Query.  We need to use its column names for
+	 * all generated tlists (else SELECT INTO won't work right).
 	 */
 	node = topop->larg;
 	while (node && IsA(node, SetOperationStmt))
@@ -116,12 +129,12 @@ plan_set_operations(Query *parse, List **sortClauses)
 	Assert(leftmostQuery != NULL);
 
 	/*
-	 * Recurse on setOperations tree to generate plans for set ops. The
-	 * final output plan should have just the column types shown as the
-	 * output from the top-level node, plus possibly a resjunk working
-	 * column (we can rely on upper-level nodes to deal with that).
+	 * Recurse on setOperations tree to generate plans for set ops. The final
+	 * output plan should have just the column types shown as the output from
+	 * the top-level node, plus possibly resjunk working columns (we can rely
+	 * on upper-level nodes to deal with that).
 	 */
-	return recurse_set_operations((Node *) topop, parse,
+	return recurse_set_operations((Node *) topop, root, tuple_fraction,
 								  topop->colTypes, true, -1,
 								  leftmostQuery->targetList,
 								  sortClauses);
@@ -131,6 +144,7 @@ plan_set_operations(Query *parse, List **sortClauses)
  * recurse_set_operations
  *	  Recursively handle one step in a tree of set operations
  *
+ * tuple_fraction: fraction of tuples we expect to retrieve from node
  * colTypes: list of type OIDs of expected output columns
  * junkOK: if true, child resjunk columns may be left in the result
  * flag: if >= 0, add a resjunk output column indicating value of flag
@@ -138,7 +152,8 @@ plan_set_operations(Query *parse, List **sortClauses)
  * *sortClauses: receives list of SortClauses for result plan, if any
  */
 static Plan *
-recurse_set_operations(Node *setOp, Query *parse,
+recurse_set_operations(Node *setOp, PlannerInfo *root,
+					   double tuple_fraction,
 					   List *colTypes, bool junkOK,
 					   int flag, List *refnames_tlist,
 					   List **sortClauses)
@@ -146,7 +161,7 @@ recurse_set_operations(Node *setOp, Query *parse,
 	if (IsA(setOp, RangeTblRef))
 	{
 		RangeTblRef *rtr = (RangeTblRef *) setOp;
-		RangeTblEntry *rte = rt_fetch(rtr->rtindex, parse->rtable);
+		RangeTblEntry *rte = rt_fetch(rtr->rtindex, root->parse->rtable);
 		Query	   *subquery = rte->subquery;
 		Plan	   *subplan,
 				   *plan;
@@ -156,13 +171,15 @@ recurse_set_operations(Node *setOp, Query *parse,
 		/*
 		 * Generate plan for primitive subquery
 		 */
-		subplan = subquery_planner(subquery, 0.0 /* default case */ );
+		subplan = subquery_planner(subquery, tuple_fraction, NULL);
 
 		/*
 		 * Add a SubqueryScan with the caller-requested targetlist
 		 */
 		plan = (Plan *)
-			make_subqueryscan(generate_setop_tlist(colTypes, flag, true,
+			make_subqueryscan(generate_setop_tlist(colTypes, flag,
+												   rtr->rtindex,
+												   true,
 												   subplan->targetlist,
 												   refnames_tlist),
 							  NIL,
@@ -170,8 +187,8 @@ recurse_set_operations(Node *setOp, Query *parse,
 							  subplan);
 
 		/*
-		 * We don't bother to determine the subquery's output ordering
-		 * since it won't be reflected in the set-op result anyhow.
+		 * We don't bother to determine the subquery's output ordering since
+		 * it won't be reflected in the set-op result anyhow.
 		 */
 		*sortClauses = NIL;
 
@@ -184,10 +201,12 @@ recurse_set_operations(Node *setOp, Query *parse,
 
 		/* UNIONs are much different from INTERSECT/EXCEPT */
 		if (op->op == SETOP_UNION)
-			plan = generate_union_plan(op, parse, refnames_tlist,
+			plan = generate_union_plan(op, root, tuple_fraction,
+									   refnames_tlist,
 									   sortClauses);
 		else
-			plan = generate_nonunion_plan(op, parse, refnames_tlist,
+			plan = generate_nonunion_plan(op, root,
+										  refnames_tlist,
 										  sortClauses);
 
 		/*
@@ -195,19 +214,21 @@ recurse_set_operations(Node *setOp, Query *parse,
 		 * output columns.
 		 *
 		 * XXX you don't really want to know about this: setrefs.c will apply
-		 * replace_vars_with_subplan_refs() to the Result node's tlist.
-		 * This would fail if the Vars generated by generate_setop_tlist()
-		 * were not exactly equal() to the corresponding tlist entries of
-		 * the subplan.  However, since the subplan was generated by
-		 * generate_union_plan() or generate_nonunion_plan(), and hence
-		 * its tlist was generated by generate_append_tlist(), this will
-		 * work.
+		 * replace_vars_with_subplan_refs() to the Result node's tlist. This
+		 * would fail if the Vars generated by generate_setop_tlist() were not
+		 * exactly equal() to the corresponding tlist entries of the subplan.
+		 * However, since the subplan was generated by generate_union_plan()
+		 * or generate_nonunion_plan(), and hence its tlist was generated by
+		 * generate_append_tlist(), this will work.  We just tell
+		 * generate_setop_tlist() to use varno 0.
 		 */
 		if (flag >= 0 ||
 			!tlist_same_datatypes(plan->targetlist, colTypes, junkOK))
 		{
 			plan = (Plan *)
-				make_result(generate_setop_tlist(colTypes, flag, false,
+				make_result(generate_setop_tlist(colTypes, flag,
+												 0,
+												 false,
 												 plan->targetlist,
 												 refnames_tlist),
 							NULL,
@@ -227,7 +248,8 @@ recurse_set_operations(Node *setOp, Query *parse,
  * Generate plan for a UNION or UNION ALL node
  */
 static Plan *
-generate_union_plan(SetOperationStmt *op, Query *parse,
+generate_union_plan(SetOperationStmt *op, PlannerInfo *root,
+					double tuple_fraction,
 					List *refnames_tlist,
 					List **sortClauses)
 {
@@ -236,22 +258,38 @@ generate_union_plan(SetOperationStmt *op, Query *parse,
 	Plan	   *plan;
 
 	/*
-	 * If any of my children are identical UNION nodes (same op, all-flag,
-	 * and colTypes) then they can be merged into this node so that we
-	 * generate only one Append and Sort for the lot.  Recurse to find
-	 * such nodes and compute their children's plans.
+	 * If plain UNION, tell children to fetch all tuples.
+	 *
+	 * Note: in UNION ALL, we pass the top-level tuple_fraction unmodified to
+	 * each arm of the UNION ALL.  One could make a case for reducing the
+	 * tuple fraction for later arms (discounting by the expected size of the
+	 * earlier arms' results) but it seems not worth the trouble. The normal
+	 * case where tuple_fraction isn't already zero is a LIMIT at top level,
+	 * and passing it down as-is is usually enough to get the desired result
+	 * of preferring fast-start plans.
 	 */
-	planlist = list_concat(recurse_union_children(op->larg, parse,
+	if (!op->all)
+		tuple_fraction = 0.0;
+
+	/*
+	 * If any of my children are identical UNION nodes (same op, all-flag, and
+	 * colTypes) then they can be merged into this node so that we generate
+	 * only one Append and Sort for the lot.  Recurse to find such nodes and
+	 * compute their children's plans.
+	 */
+	planlist = list_concat(recurse_union_children(op->larg, root,
+												  tuple_fraction,
 												  op, refnames_tlist),
-						   recurse_union_children(op->rarg, parse,
+						   recurse_union_children(op->rarg, root,
+												  tuple_fraction,
 												  op, refnames_tlist));
 
 	/*
 	 * Generate tlist for Append plan node.
 	 *
 	 * The tlist for an Append plan isn't important as far as the Append is
-	 * concerned, but we must make it look real anyway for the benefit of
-	 * the next plan level up.
+	 * concerned, but we must make it look real anyway for the benefit of the
+	 * next plan level up.
 	 */
 	tlist = generate_append_tlist(op->colTypes, false,
 								  planlist, refnames_tlist);
@@ -262,8 +300,8 @@ generate_union_plan(SetOperationStmt *op, Query *parse,
 	plan = (Plan *) make_append(planlist, false, tlist);
 
 	/*
-	 * For UNION ALL, we just need the Append plan.  For UNION, need to
-	 * add Sort and Unique nodes to produce unique output.
+	 * For UNION ALL, we just need the Append plan.  For UNION, need to add
+	 * Sort and Unique nodes to produce unique output.
 	 */
 	if (!op->all)
 	{
@@ -272,7 +310,7 @@ generate_union_plan(SetOperationStmt *op, Query *parse,
 		sortList = addAllTargetsToSortList(NULL, NIL, tlist, false);
 		if (sortList)
 		{
-			plan = (Plan *) make_sort_from_sortclauses(parse, sortList, plan);
+			plan = (Plan *) make_sort_from_sortclauses(root, sortList, plan);
 			plan = (Plan *) make_unique(plan, sortList);
 		}
 		*sortClauses = sortList;
@@ -287,7 +325,7 @@ generate_union_plan(SetOperationStmt *op, Query *parse,
  * Generate plan for an INTERSECT, INTERSECT ALL, EXCEPT, or EXCEPT ALL node
  */
 static Plan *
-generate_nonunion_plan(SetOperationStmt *op, Query *parse,
+generate_nonunion_plan(SetOperationStmt *op, PlannerInfo *root,
 					   List *refnames_tlist,
 					   List **sortClauses)
 {
@@ -301,11 +339,13 @@ generate_nonunion_plan(SetOperationStmt *op, Query *parse,
 	SetOpCmd	cmd;
 
 	/* Recurse on children, ensuring their outputs are marked */
-	lplan = recurse_set_operations(op->larg, parse,
+	lplan = recurse_set_operations(op->larg, root,
+								   0.0 /* all tuples needed */ ,
 								   op->colTypes, false, 0,
 								   refnames_tlist,
 								   &child_sortclauses);
-	rplan = recurse_set_operations(op->rarg, parse,
+	rplan = recurse_set_operations(op->rarg, root,
+								   0.0 /* all tuples needed */ ,
 								   op->colTypes, false, 1,
 								   refnames_tlist,
 								   &child_sortclauses);
@@ -315,10 +355,10 @@ generate_nonunion_plan(SetOperationStmt *op, Query *parse,
 	 * Generate tlist for Append plan node.
 	 *
 	 * The tlist for an Append plan isn't important as far as the Append is
-	 * concerned, but we must make it look real anyway for the benefit of
-	 * the next plan level up.	In fact, it has to be real enough that the
-	 * flag column is shown as a variable not a constant, else setrefs.c
-	 * will get confused.
+	 * concerned, but we must make it look real anyway for the benefit of the
+	 * next plan level up.	In fact, it has to be real enough that the flag
+	 * column is shown as a variable not a constant, else setrefs.c will get
+	 * confused.
 	 */
 	tlist = generate_append_tlist(op->colTypes, true,
 								  planlist, refnames_tlist);
@@ -340,7 +380,7 @@ generate_nonunion_plan(SetOperationStmt *op, Query *parse,
 		return plan;
 	}
 
-	plan = (Plan *) make_sort_from_sortclauses(parse, sortList, plan);
+	plan = (Plan *) make_sort_from_sortclauses(root, sortList, plan);
 	switch (op->op)
 	{
 		case SETOP_INTERSECT:
@@ -369,7 +409,8 @@ generate_nonunion_plan(SetOperationStmt *op, Query *parse,
  * output rows will be lost anyway.
  */
 static List *
-recurse_union_children(Node *setOp, Query *parse,
+recurse_union_children(Node *setOp, PlannerInfo *root,
+					   double tuple_fraction,
 					   SetOperationStmt *top_union,
 					   List *refnames_tlist)
 {
@@ -384,10 +425,12 @@ recurse_union_children(Node *setOp, Query *parse,
 			equal(op->colTypes, top_union->colTypes))
 		{
 			/* Same UNION, so fold children into parent's subplan list */
-			return list_concat(recurse_union_children(op->larg, parse,
+			return list_concat(recurse_union_children(op->larg, root,
+													  tuple_fraction,
 													  top_union,
 													  refnames_tlist),
-							   recurse_union_children(op->rarg, parse,
+							   recurse_union_children(op->rarg, root,
+													  tuple_fraction,
 													  top_union,
 													  refnames_tlist));
 		}
@@ -396,14 +439,14 @@ recurse_union_children(Node *setOp, Query *parse,
 	/*
 	 * Not same, so plan this child separately.
 	 *
-	 * Note we disallow any resjunk columns in child results.  This is
-	 * necessary since the Append node that implements the union won't do
-	 * any projection, and upper levels will get confused if some of our
-	 * output tuples have junk and some don't.  This case only arises when
-	 * we have an EXCEPT or INTERSECT as child, else there won't be
-	 * resjunk anyway.
+	 * Note we disallow any resjunk columns in child results.  This is necessary
+	 * since the Append node that implements the union won't do any
+	 * projection, and upper levels will get confused if some of our output
+	 * tuples have junk and some don't.  This case only arises when we have an
+	 * EXCEPT or INTERSECT as child, else there won't be resjunk anyway.
 	 */
-	return list_make1(recurse_set_operations(setOp, parse,
+	return list_make1(recurse_set_operations(setOp, root,
+											 tuple_fraction,
 											 top_union->colTypes, false,
 											 -1, refnames_tlist,
 											 &child_sortclauses));
@@ -414,12 +457,14 @@ recurse_union_children(Node *setOp, Query *parse,
  *
  * colTypes: column datatypes for non-junk columns
  * flag: -1 if no flag column needed, 0 or 1 to create a const flag column
+ * varno: varno to use in generated Vars
  * hack_constants: true to copy up constants (see comments in code)
  * input_tlist: targetlist of this node's input node
  * refnames_tlist: targetlist to take column names from
  */
 static List *
 generate_setop_tlist(List *colTypes, int flag,
+					 Index varno,
 					 bool hack_constants,
 					 List *input_tlist,
 					 List *refnames_tlist)
@@ -429,7 +474,7 @@ generate_setop_tlist(List *colTypes, int flag,
 	ListCell   *i,
 			   *j,
 			   *k;
-	Resdom	   *resdom;
+	TargetEntry *tle;
 	Node	   *expr;
 
 	j = list_head(input_tlist);
@@ -439,53 +484,46 @@ generate_setop_tlist(List *colTypes, int flag,
 		Oid			colType = lfirst_oid(i);
 		TargetEntry *inputtle = (TargetEntry *) lfirst(j);
 		TargetEntry *reftle = (TargetEntry *) lfirst(k);
-		int32		colTypmod;
 
-		Assert(inputtle->resdom->resno == resno);
-		Assert(reftle->resdom->resno == resno);
-		Assert(!inputtle->resdom->resjunk);
-		Assert(!reftle->resdom->resjunk);
+		Assert(inputtle->resno == resno);
+		Assert(reftle->resno == resno);
+		Assert(!inputtle->resjunk);
+		Assert(!reftle->resjunk);
 
 		/*
-		 * Generate columns referencing input columns and having
-		 * appropriate data types and column names.  Insert datatype
-		 * coercions where necessary.
+		 * Generate columns referencing input columns and having appropriate
+		 * data types and column names.  Insert datatype coercions where
+		 * necessary.
 		 *
-		 * HACK: constants in the input's targetlist are copied up as-is
-		 * rather than being referenced as subquery outputs.  This is
-		 * mainly to ensure that when we try to coerce them to the output
-		 * column's datatype, the right things happen for UNKNOWN
-		 * constants.  But do this only at the first level of
-		 * subquery-scan plans; we don't want phony constants appearing in
-		 * the output tlists of upper-level nodes!
+		 * HACK: constants in the input's targetlist are copied up as-is rather
+		 * than being referenced as subquery outputs.  This is mainly to
+		 * ensure that when we try to coerce them to the output column's
+		 * datatype, the right things happen for UNKNOWN constants.  But do
+		 * this only at the first level of subquery-scan plans; we don't want
+		 * phony constants appearing in the output tlists of upper-level
+		 * nodes!
 		 */
 		if (hack_constants && inputtle->expr && IsA(inputtle->expr, Const))
 			expr = (Node *) inputtle->expr;
 		else
-			expr = (Node *) makeVar(0,
-									inputtle->resdom->resno,
-									inputtle->resdom->restype,
-									inputtle->resdom->restypmod,
+			expr = (Node *) makeVar(varno,
+									inputtle->resno,
+									exprType((Node *) inputtle->expr),
+									exprTypmod((Node *) inputtle->expr),
 									0);
-		if (inputtle->resdom->restype == colType)
-		{
-			/* no coercion needed, and believe the input typmod */
-			colTypmod = inputtle->resdom->restypmod;
-		}
-		else
+		if (exprType(expr) != colType)
 		{
 			expr = coerce_to_common_type(NULL,	/* no UNKNOWNs here */
 										 expr,
 										 colType,
 										 "UNION/INTERSECT/EXCEPT");
-			colTypmod = -1;
 		}
-		resdom = makeResdom((AttrNumber) resno++,
-							colType,
-							colTypmod,
-							pstrdup(reftle->resdom->resname),
-							false);
-		tlist = lappend(tlist, makeTargetEntry(resdom, (Expr *) expr));
+		tle = makeTargetEntry((Expr *) expr,
+							  (AttrNumber) resno++,
+							  pstrdup(reftle->resname),
+							  false);
+		tlist = lappend(tlist, tle);
+
 		j = lnext(j);
 		k = lnext(k);
 	}
@@ -493,18 +531,17 @@ generate_setop_tlist(List *colTypes, int flag,
 	if (flag >= 0)
 	{
 		/* Add a resjunk flag column */
-		resdom = makeResdom((AttrNumber) resno++,
-							INT4OID,
-							-1,
-							pstrdup("flag"),
-							true);
 		/* flag value is the given constant */
 		expr = (Node *) makeConst(INT4OID,
 								  sizeof(int4),
 								  Int32GetDatum(flag),
 								  false,
 								  true);
-		tlist = lappend(tlist, makeTargetEntry(resdom, (Expr *) expr));
+		tle = makeTargetEntry((Expr *) expr,
+							  (AttrNumber) resno++,
+							  pstrdup("flag"),
+							  true);
+		tlist = lappend(tlist, tle);
 	}
 
 	return tlist;
@@ -520,6 +557,7 @@ generate_setop_tlist(List *colTypes, int flag,
  *
  * The entries in the Append's targetlist should always be simple Vars;
  * we just have to make sure they have the right datatypes and typmods.
+ * The Vars are always generated with varno 0.
  */
 static List *
 generate_append_tlist(List *colTypes, bool flag,
@@ -531,7 +569,7 @@ generate_append_tlist(List *colTypes, bool flag,
 	ListCell   *curColType;
 	ListCell   *ref_tl_item;
 	int			colindex;
-	Resdom	   *resdom;
+	TargetEntry *tle;
 	Node	   *expr;
 	ListCell   *planl;
 	int32	   *colTypmods;
@@ -555,15 +593,17 @@ generate_append_tlist(List *colTypes, bool flag,
 		{
 			TargetEntry *subtle = (TargetEntry *) lfirst(subtlist);
 
-			if (subtle->resdom->resjunk)
+			if (subtle->resjunk)
 				continue;
 			Assert(curColType != NULL);
-			if (subtle->resdom->restype == lfirst_oid(curColType))
+			if (exprType((Node *) subtle->expr) == lfirst_oid(curColType))
 			{
 				/* If first subplan, copy the typmod; else compare */
+				int32		subtypmod = exprTypmod((Node *) subtle->expr);
+
 				if (planl == list_head(input_plans))
-					colTypmods[colindex] = subtle->resdom->restypmod;
-				else if (subtle->resdom->restypmod != colTypmods[colindex])
+					colTypmods[colindex] = subtypmod;
+				else if (subtypmod != colTypmods[colindex])
 					colTypmods[colindex] = -1;
 			}
 			else
@@ -587,36 +627,34 @@ generate_append_tlist(List *colTypes, bool flag,
 		int32		colTypmod = colTypmods[colindex++];
 		TargetEntry *reftle = (TargetEntry *) lfirst(ref_tl_item);
 
-		Assert(reftle->resdom->resno == resno);
-		Assert(!reftle->resdom->resjunk);
+		Assert(reftle->resno == resno);
+		Assert(!reftle->resjunk);
 		expr = (Node *) makeVar(0,
 								resno,
 								colType,
 								colTypmod,
 								0);
-		resdom = makeResdom((AttrNumber) resno++,
-							colType,
-							colTypmod,
-							pstrdup(reftle->resdom->resname),
-							false);
-		tlist = lappend(tlist, makeTargetEntry(resdom, (Expr *) expr));
+		tle = makeTargetEntry((Expr *) expr,
+							  (AttrNumber) resno++,
+							  pstrdup(reftle->resname),
+							  false);
+		tlist = lappend(tlist, tle);
 	}
 
 	if (flag)
 	{
 		/* Add a resjunk flag column */
-		resdom = makeResdom((AttrNumber) resno++,
-							INT4OID,
-							-1,
-							pstrdup("flag"),
-							true);
 		/* flag value is shown as copied up from subplan */
 		expr = (Node *) makeVar(0,
-								resdom->resno,
+								resno,
 								INT4OID,
 								-1,
 								0);
-		tlist = lappend(tlist, makeTargetEntry(resdom, (Expr *) expr));
+		tle = makeTargetEntry((Expr *) expr,
+							  (AttrNumber) resno++,
+							  pstrdup("flag"),
+							  true);
+		tlist = lappend(tlist, tle);
 	}
 
 	pfree(colTypmods);
@@ -640,7 +678,7 @@ tlist_same_datatypes(List *tlist, List *colTypes, bool junkOK)
 	{
 		TargetEntry *tle = (TargetEntry *) lfirst(l);
 
-		if (tle->resdom->resjunk)
+		if (tle->resjunk)
 		{
 			if (!junkOK)
 				return false;
@@ -649,7 +687,7 @@ tlist_same_datatypes(List *tlist, List *colTypes, bool junkOK)
 		{
 			if (curColType == NULL)
 				return false;
-			if (tle->resdom->restype != lfirst_oid(curColType))
+			if (exprType((Node *) tle->expr) != lfirst_oid(curColType))
 				return false;
 			curColType = lnext(curColType);
 		}
@@ -668,35 +706,37 @@ tlist_same_datatypes(List *tlist, List *colTypes, bool junkOK)
 List *
 find_all_inheritors(Oid parentrel)
 {
-	List	   *examined_relids = NIL;
-	List	   *unexamined_relids = list_make1_oid(parentrel);
+	List	   *rels_list;
+	ListCell   *l;
 
 	/*
-	 * While the queue of unexamined relids is nonempty, remove the first
-	 * element, mark it examined, and find its direct descendants. NB:
-	 * cannot use foreach(), since we modify the queue inside loop.
+	 * We build a list starting with the given rel and adding all direct and
+	 * indirect children.  We can use a single list as both the record of
+	 * already-found rels and the agenda of rels yet to be scanned for more
+	 * children.  This is a bit tricky but works because the foreach() macro
+	 * doesn't fetch the next list element until the bottom of the loop.
 	 */
-	while (unexamined_relids != NIL)
+	rels_list = list_make1_oid(parentrel);
+
+	foreach(l, rels_list)
 	{
-		Oid			currentrel = linitial_oid(unexamined_relids);
+		Oid			currentrel = lfirst_oid(l);
 		List	   *currentchildren;
 
-		unexamined_relids = list_delete_first(unexamined_relids);
-		examined_relids = lappend_oid(examined_relids, currentrel);
+		/* Get the direct children of this rel */
 		currentchildren = find_inheritance_children(currentrel);
 
 		/*
-		 * Add to the queue only those children not already seen. This
-		 * avoids making duplicate entries in case of multiple inheritance
-		 * paths from the same parent.	(It'll also keep us from getting
-		 * into an infinite loop, though theoretically there can't be any
-		 * cycles in the inheritance graph anyway.)
+		 * Add to the queue only those children not already seen. This avoids
+		 * making duplicate entries in case of multiple inheritance paths from
+		 * the same parent.  (It'll also keep us from getting into an infinite
+		 * loop, though theoretically there can't be any cycles in the
+		 * inheritance graph anyway.)
 		 */
-		currentchildren = list_difference_oid(currentchildren, examined_relids);
-		unexamined_relids = list_union_oid(unexamined_relids, currentchildren);
+		rels_list = list_concat_unique_oid(rels_list, currentchildren);
 	}
 
-	return examined_relids;
+	return rels_list;
 }
 
 /*
@@ -723,8 +763,9 @@ find_all_inheritors(Oid parentrel)
  * trying to avoid.
  */
 List *
-expand_inherited_rtentry(Query *parse, Index rti)
+expand_inherited_rtentry(PlannerInfo *root, Index rti)
 {
+	Query	   *parse = root->parse;
 	RangeTblEntry *rte = rt_fetch(rti, parse->rtable);
 	Oid			parentOID;
 	List	   *inhOIDs;
@@ -748,8 +789,8 @@ expand_inherited_rtentry(Query *parse, Index rti)
 
 	/*
 	 * Check that there's at least one descendant, else treat as no-child
-	 * case.  This could happen despite above has_subclass() check, if
-	 * table once had a child but no longer does.
+	 * case.  This could happen despite above has_subclass() check, if table
+	 * once had a child but no longer does.
 	 */
 	if (list_length(inhOIDs) < 2)
 	{
@@ -767,9 +808,19 @@ expand_inherited_rtentry(Query *parse, Index rti)
 		Index		childRTindex;
 
 		/*
-		 * Build an RTE for the child, and attach to query's rangetable
-		 * list. We copy most fields of the parent's RTE, but replace
-		 * relation OID, and set inh = false.
+		 * It is possible that the parent table has children that are temp
+		 * tables of other backends.  We cannot safely access such tables
+		 * (because of buffering issues), and the best thing to do seems to be
+		 * to silently ignore them.
+		 */
+		if (childOID != parentOID &&
+			isOtherTempNamespace(get_rel_namespace(childOID)))
+			continue;
+
+		/*
+		 * Build an RTE for the child, and attach to query's rangetable list.
+		 * We copy most fields of the parent's RTE, but replace relation OID,
+		 * and set inh = false.
 		 */
 		childrte = copyObject(rte);
 		childrte->relid = childOID;
@@ -780,11 +831,23 @@ expand_inherited_rtentry(Query *parse, Index rti)
 	}
 
 	/*
-	 * The executor will check the parent table's access permissions when
-	 * it examines the parent's inheritlist entry.  There's no need to
-	 * check twice, so turn off access check bits in the original RTE.
-	 * (If we are invoked more than once, extra copies of the child RTEs
-	 * will also not cause duplicate permission checks.)
+	 * If all the children were temp tables, pretend it's a non-inheritance
+	 * situation.  The duplicate RTE we added for the parent table is
+	 * harmless.
+	 */
+	if (list_length(inhRTIs) < 2)
+	{
+		/* Clear flag to save repeated tests if called again */
+		rte->inh = false;
+		return NIL;
+	}
+
+	/*
+	 * The executor will check the parent table's access permissions when it
+	 * examines the parent's inheritlist entry.  There's no need to check
+	 * twice, so turn off access check bits in the original RTE. (If we are
+	 * invoked more than once, extra copies of the child RTEs will also not
+	 * cause duplicate permission checks.)
 	 */
 	rte->requiredPerms = 0;
 
@@ -819,9 +882,8 @@ adjust_inherited_attrs(Node *node,
 	}
 
 	/*
-	 * We assume that by now the planner has acquired at least
-	 * AccessShareLock on both rels, and so we need no additional lock
-	 * now.
+	 * We assume that by now the planner has acquired at least AccessShareLock
+	 * on both rels, and so we need no additional lock now.
 	 */
 	oldrelation = heap_open(old_relid, NoLock);
 	newrelation = heap_open(new_relid, NoLock);
@@ -972,7 +1034,7 @@ adjust_inherited_attrs_mutator(Node *node,
 		JoinExpr   *j;
 
 		j = (JoinExpr *) expression_tree_mutator(node,
-										  adjust_inherited_attrs_mutator,
+											  adjust_inherited_attrs_mutator,
 												 (void *) context);
 		/* now fix JoinExpr's rtindex */
 		if (j->rtindex == context->old_rt_index)
@@ -985,8 +1047,8 @@ adjust_inherited_attrs_mutator(Node *node,
 		InClauseInfo *ininfo;
 
 		ininfo = (InClauseInfo *) expression_tree_mutator(node,
-										  adjust_inherited_attrs_mutator,
-													   (void *) context);
+											  adjust_inherited_attrs_mutator,
+														  (void *) context);
 		/* now fix InClauseInfo's relid sets */
 		ininfo->lefthand = adjust_relid_set(ininfo->lefthand,
 											context->old_rt_index,
@@ -1020,6 +1082,9 @@ adjust_inherited_attrs_mutator(Node *node,
 		newinfo->clause_relids = adjust_relid_set(oldinfo->clause_relids,
 												  context->old_rt_index,
 												  context->new_rt_index);
+		newinfo->required_relids = adjust_relid_set(oldinfo->required_relids,
+													context->old_rt_index,
+													context->new_rt_index);
 		newinfo->left_relids = adjust_relid_set(oldinfo->left_relids,
 												context->old_rt_index,
 												context->new_rt_index);
@@ -1053,10 +1118,10 @@ adjust_inherited_attrs_mutator(Node *node,
 	/*
 	 * BUT: although we don't need to recurse into subplans, we do need to
 	 * make sure that they are copied, not just referenced as
-	 * expression_tree_mutator will do by default.	Otherwise we'll have
-	 * the same subplan node referenced from each arm of the inheritance
-	 * APPEND plan, which will cause trouble in the executor.  This is a
-	 * kluge that should go away when we redesign querytrees.
+	 * expression_tree_mutator will do by default.	Otherwise we'll have the
+	 * same subplan node referenced from each arm of the inheritance APPEND
+	 * plan, which will cause trouble in the executor.	This is a kluge that
+	 * should go away when we redesign querytrees.
 	 */
 	if (is_subplan(node))
 	{
@@ -1105,8 +1170,7 @@ adjust_relid_set(Relids relids, Index oldrelid, Index newrelid)
  *
  * The given tlist has already been through expression_tree_mutator;
  * therefore the TargetEntry nodes are fresh copies that it's okay to
- * scribble on.  But the Resdom nodes have not been copied; make new ones
- * if we need to change them!
+ * scribble on.
  *
  * Note that this is not needed for INSERT because INSERT isn't inheritable.
  */
@@ -1124,18 +1188,15 @@ adjust_inherited_tlist(List *tlist,
 	foreach(tl, tlist)
 	{
 		TargetEntry *tle = (TargetEntry *) lfirst(tl);
-		Resdom	   *resdom = tle->resdom;
 
-		if (resdom->resjunk)
+		if (tle->resjunk)
 			continue;			/* ignore junk items */
 
-		attrno = translate_inherited_attnum(resdom->resno, context);
+		attrno = translate_inherited_attnum(tle->resno, context);
 
-		if (resdom->resno != attrno)
+		if (tle->resno != attrno)
 		{
-			resdom = (Resdom *) copyObject((Node *) resdom);
-			resdom->resno = attrno;
-			tle->resdom = resdom;
+			tle->resno = attrno;
 			changed_it = true;
 		}
 	}
@@ -1143,8 +1204,8 @@ adjust_inherited_tlist(List *tlist,
 	/*
 	 * If we changed anything, re-sort the tlist by resno, and make sure
 	 * resjunk entries have resnos above the last real resno.  The sort
-	 * algorithm is a bit stupid, but for such a seldom-taken path, small
-	 * is probably better than fast.
+	 * algorithm is a bit stupid, but for such a seldom-taken path, small is
+	 * probably better than fast.
 	 */
 	if (!changed_it)
 		return tlist;
@@ -1157,14 +1218,13 @@ adjust_inherited_tlist(List *tlist,
 		foreach(tl, tlist)
 		{
 			TargetEntry *tle = (TargetEntry *) lfirst(tl);
-			Resdom	   *resdom = tle->resdom;
 
-			if (resdom->resjunk)
+			if (tle->resjunk)
 				continue;		/* ignore junk items */
 
-			if (resdom->resno == attrno)
+			if (tle->resno == attrno)
 				new_tlist = lappend(new_tlist, tle);
-			else if (resdom->resno > attrno)
+			else if (tle->resno > attrno)
 				more = true;
 		}
 	}
@@ -1172,17 +1232,11 @@ adjust_inherited_tlist(List *tlist,
 	foreach(tl, tlist)
 	{
 		TargetEntry *tle = (TargetEntry *) lfirst(tl);
-		Resdom	   *resdom = tle->resdom;
 
-		if (!resdom->resjunk)
+		if (!tle->resjunk)
 			continue;			/* here, ignore non-junk items */
 
-		if (resdom->resno != attrno)
-		{
-			resdom = (Resdom *) copyObject((Node *) resdom);
-			resdom->resno = attrno;
-			tle->resdom = resdom;
-		}
+		tle->resno = attrno;
 		new_tlist = lappend(new_tlist, tle);
 		attrno++;
 	}

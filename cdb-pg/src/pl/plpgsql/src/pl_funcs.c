@@ -1,9 +1,9 @@
 /**********************************************************************
- * pl_funcs.c		- Misc functins for the PL/pgSQL
+ * pl_funcs.c		- Misc functions for the PL/pgSQL
  *			  procedural language
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/pl/plpgsql/src/pl_funcs.c,v 1.38 2004/10/10 23:37:45 neilc Exp $
+ *	  $PostgreSQL: pgsql/src/pl/plpgsql/src/pl_funcs.c,v 1.46 2005/10/15 02:49:50 momjian Exp $
  *
  *	  This software is copyrighted by Jan Wieck - Hamburg.
  *
@@ -56,10 +56,10 @@ static bool ns_localmode = false;
  * ----------
  */
 void
-plpgsql_dstring_init(PLpgSQL_dstring *ds)
+plpgsql_dstring_init(PLpgSQL_dstring * ds)
 {
 	ds->value = palloc(ds->alloc = 512);
-	ds->used = 0;
+	ds->used = 1;
 	ds->value[0] = '\0';
 }
 
@@ -69,34 +69,58 @@ plpgsql_dstring_init(PLpgSQL_dstring *ds)
  * ----------
  */
 void
-plpgsql_dstring_free(PLpgSQL_dstring *ds)
+plpgsql_dstring_free(PLpgSQL_dstring * ds)
 {
 	pfree(ds->value);
 }
 
+static void
+plpgsql_dstring_expand(PLpgSQL_dstring * ds, int needed)
+{
+	/* Don't allow truncating the string */
+	Assert(needed > ds->alloc);
+	Assert(ds->used <= ds->alloc);
+
+	/* Might have to double more than once, if needed is large */
+	do
+	{
+		ds->alloc *= 2;
+	} while (needed > ds->alloc);
+	ds->value = repalloc(ds->value, ds->alloc);
+}
 
 /* ----------
  * plpgsql_dstring_append		Dynamic string extending
  * ----------
  */
 void
-plpgsql_dstring_append(PLpgSQL_dstring *ds, const char *str)
+plpgsql_dstring_append(PLpgSQL_dstring * ds, const char *str)
 {
 	int			len = strlen(str);
-	int			needed = ds->used + len + 1;
+	int			needed = ds->used + len;
 
 	if (needed > ds->alloc)
-	{
-		/* might have to double more than once, if len is large */
-		do
-		{
-			ds->alloc *= 2;
-		} while (needed > ds->alloc);
-		ds->value = repalloc(ds->value, ds->alloc);
-	}
+		plpgsql_dstring_expand(ds, needed);
 
-	strcpy(&(ds->value[ds->used]), str);
+	memcpy(&(ds->value[ds->used - 1]), str, len);
 	ds->used += len;
+	ds->value[ds->used - 1] = '\0';
+}
+
+/* ----------
+ * plpgsql_dstring_append_char	Append a single character
+ *								to a dynamic string
+ * ----------
+ */
+void
+plpgsql_dstring_append_char(PLpgSQL_dstring * ds, char c)
+{
+	if (ds->used == ds->alloc)
+		plpgsql_dstring_expand(ds, ds->used + 1);
+
+	ds->value[ds->used - 1] = c;
+	ds->value[ds->used] = '\0';
+	ds->used++;
 }
 
 
@@ -105,7 +129,7 @@ plpgsql_dstring_append(PLpgSQL_dstring *ds, const char *str)
  * ----------
  */
 char *
-plpgsql_dstring_get(PLpgSQL_dstring *ds)
+plpgsql_dstring_get(PLpgSQL_dstring * ds)
 {
 	return ds->value;
 }
@@ -187,7 +211,7 @@ plpgsql_ns_pop(void)
  * ----------
  */
 void
-plpgsql_ns_additem(int itemtype, int itemno, char *name)
+plpgsql_ns_additem(int itemtype, int itemno, const char *name)
 {
 	PLpgSQL_ns *ns = ns_current;
 	PLpgSQL_nsitem *nse;
@@ -205,7 +229,7 @@ plpgsql_ns_additem(int itemtype, int itemno, char *name)
 		{
 			ns->items_alloc *= 2;
 			ns->items = repalloc(ns->items,
-							 sizeof(PLpgSQL_nsitem *) * ns->items_alloc);
+								 sizeof(PLpgSQL_nsitem *) * ns->items_alloc);
 		}
 	}
 
@@ -286,11 +310,8 @@ plpgsql_ns_rename(char *oldname, char *newname)
 	int			i;
 
 	/*
-	 * Lookup in the current namespace only
-	 */
-
-	/*
-	 * Lookup name in the namestack
+	 * Lookup name in the namestack; do the lookup in the current namespace
+	 * only.
 	 */
 	for (ns = ns_current; ns != NULL; ns = ns->upper)
 	{
@@ -395,8 +416,8 @@ plpgsql_convert_ident(const char *s, char **output, int numidents)
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-				   errmsg("qualified identifier cannot be used here: %s",
-						  sstart)));
+					 errmsg("qualified identifier cannot be used here: %s",
+							sstart)));
 
 		/* If not done, skip whitespace, dot, whitespace */
 		if (*s)
@@ -422,7 +443,7 @@ plpgsql_convert_ident(const char *s, char **output, int numidents)
  * Statement type as a string, for use in error messages etc.
  */
 const char *
-plpgsql_stmt_typename(PLpgSQL_stmt *stmt)
+plpgsql_stmt_typename(PLpgSQL_stmt * stmt)
 {
 	switch (stmt->cmd_type)
 	{
@@ -478,28 +499,28 @@ plpgsql_stmt_typename(PLpgSQL_stmt *stmt)
 static int	dump_indent;
 
 static void dump_ind();
-static void dump_stmt(PLpgSQL_stmt *stmt);
-static void dump_block(PLpgSQL_stmt_block *block);
-static void dump_assign(PLpgSQL_stmt_assign *stmt);
-static void dump_if(PLpgSQL_stmt_if *stmt);
-static void dump_loop(PLpgSQL_stmt_loop *stmt);
-static void dump_while(PLpgSQL_stmt_while *stmt);
-static void dump_fori(PLpgSQL_stmt_fori *stmt);
-static void dump_fors(PLpgSQL_stmt_fors *stmt);
-static void dump_select(PLpgSQL_stmt_select *stmt);
-static void dump_exit(PLpgSQL_stmt_exit *stmt);
-static void dump_return(PLpgSQL_stmt_return *stmt);
-static void dump_return_next(PLpgSQL_stmt_return_next *stmt);
-static void dump_raise(PLpgSQL_stmt_raise *stmt);
-static void dump_execsql(PLpgSQL_stmt_execsql *stmt);
-static void dump_dynexecute(PLpgSQL_stmt_dynexecute *stmt);
-static void dump_dynfors(PLpgSQL_stmt_dynfors *stmt);
-static void dump_getdiag(PLpgSQL_stmt_getdiag *stmt);
-static void dump_open(PLpgSQL_stmt_open *stmt);
-static void dump_fetch(PLpgSQL_stmt_fetch *stmt);
-static void dump_close(PLpgSQL_stmt_close *stmt);
-static void dump_perform(PLpgSQL_stmt_perform *stmt);
-static void dump_expr(PLpgSQL_expr *expr);
+static void dump_stmt(PLpgSQL_stmt * stmt);
+static void dump_block(PLpgSQL_stmt_block * block);
+static void dump_assign(PLpgSQL_stmt_assign * stmt);
+static void dump_if(PLpgSQL_stmt_if * stmt);
+static void dump_loop(PLpgSQL_stmt_loop * stmt);
+static void dump_while(PLpgSQL_stmt_while * stmt);
+static void dump_fori(PLpgSQL_stmt_fori * stmt);
+static void dump_fors(PLpgSQL_stmt_fors * stmt);
+static void dump_select(PLpgSQL_stmt_select * stmt);
+static void dump_exit(PLpgSQL_stmt_exit * stmt);
+static void dump_return(PLpgSQL_stmt_return * stmt);
+static void dump_return_next(PLpgSQL_stmt_return_next * stmt);
+static void dump_raise(PLpgSQL_stmt_raise * stmt);
+static void dump_execsql(PLpgSQL_stmt_execsql * stmt);
+static void dump_dynexecute(PLpgSQL_stmt_dynexecute * stmt);
+static void dump_dynfors(PLpgSQL_stmt_dynfors * stmt);
+static void dump_getdiag(PLpgSQL_stmt_getdiag * stmt);
+static void dump_open(PLpgSQL_stmt_open * stmt);
+static void dump_fetch(PLpgSQL_stmt_fetch * stmt);
+static void dump_close(PLpgSQL_stmt_close * stmt);
+static void dump_perform(PLpgSQL_stmt_perform * stmt);
+static void dump_expr(PLpgSQL_expr * expr);
 
 
 static void
@@ -512,7 +533,7 @@ dump_ind(void)
 }
 
 static void
-dump_stmt(PLpgSQL_stmt *stmt)
+dump_stmt(PLpgSQL_stmt * stmt)
 {
 	printf("%3d:", stmt->lineno);
 	switch (stmt->cmd_type)
@@ -584,20 +605,19 @@ dump_stmt(PLpgSQL_stmt *stmt)
 }
 
 static void
-dump_stmts(PLpgSQL_stmts *stmts)
+dump_stmts(List *stmts)
 {
-	int			i;
+	ListCell   *s;
 
 	dump_indent += 2;
-	for (i = 0; i < stmts->stmts_used; i++)
-		dump_stmt(stmts->stmts[i]);
+	foreach(s, stmts)
+		dump_stmt((PLpgSQL_stmt *) lfirst(s));
 	dump_indent -= 2;
 }
 
 static void
-dump_block(PLpgSQL_stmt_block *block)
+dump_block(PLpgSQL_stmt_block * block)
 {
-	int			i;
 	char	   *name;
 
 	if (block->label == NULL)
@@ -612,9 +632,11 @@ dump_block(PLpgSQL_stmt_block *block)
 
 	if (block->exceptions)
 	{
-		for (i = 0; i < block->exceptions->exceptions_used; i++)
+		ListCell   *e;
+
+		foreach(e, block->exceptions->exc_list)
 		{
-			PLpgSQL_exception *exc = block->exceptions->exceptions[i];
+			PLpgSQL_exception *exc = (PLpgSQL_exception *) lfirst(e);
 			PLpgSQL_condition *cond;
 
 			dump_ind();
@@ -635,7 +657,7 @@ dump_block(PLpgSQL_stmt_block *block)
 }
 
 static void
-dump_assign(PLpgSQL_stmt_assign *stmt)
+dump_assign(PLpgSQL_stmt_assign * stmt)
 {
 	dump_ind();
 	printf("ASSIGN var %d := ", stmt->varno);
@@ -644,7 +666,7 @@ dump_assign(PLpgSQL_stmt_assign *stmt)
 }
 
 static void
-dump_if(PLpgSQL_stmt_if *stmt)
+dump_if(PLpgSQL_stmt_if * stmt)
 {
 	dump_ind();
 	printf("IF ");
@@ -653,17 +675,19 @@ dump_if(PLpgSQL_stmt_if *stmt)
 
 	dump_stmts(stmt->true_body);
 
-	dump_ind();
-	printf("    ELSE\n");
-
-	dump_stmts(stmt->false_body);
+	if (stmt->false_body != NIL)
+	{
+		dump_ind();
+		printf("    ELSE\n");
+		dump_stmts(stmt->false_body);
+	}
 
 	dump_ind();
 	printf("    ENDIF\n");
 }
 
 static void
-dump_loop(PLpgSQL_stmt_loop *stmt)
+dump_loop(PLpgSQL_stmt_loop * stmt)
 {
 	dump_ind();
 	printf("LOOP\n");
@@ -675,7 +699,7 @@ dump_loop(PLpgSQL_stmt_loop *stmt)
 }
 
 static void
-dump_while(PLpgSQL_stmt_while *stmt)
+dump_while(PLpgSQL_stmt_while * stmt)
 {
 	dump_ind();
 	printf("WHILE ");
@@ -689,7 +713,7 @@ dump_while(PLpgSQL_stmt_while *stmt)
 }
 
 static void
-dump_fori(PLpgSQL_stmt_fori *stmt)
+dump_fori(PLpgSQL_stmt_fori * stmt)
 {
 	dump_ind();
 	printf("FORI %s %s\n", stmt->var->refname, (stmt->reverse) ? "REVERSE" : "NORMAL");
@@ -712,7 +736,7 @@ dump_fori(PLpgSQL_stmt_fori *stmt)
 }
 
 static void
-dump_fors(PLpgSQL_stmt_fors *stmt)
+dump_fors(PLpgSQL_stmt_fors * stmt)
 {
 	dump_ind();
 	printf("FORS %s ", (stmt->rec != NULL) ? stmt->rec->refname : stmt->row->refname);
@@ -726,7 +750,7 @@ dump_fors(PLpgSQL_stmt_fors *stmt)
 }
 
 static void
-dump_select(PLpgSQL_stmt_select *stmt)
+dump_select(PLpgSQL_stmt_select * stmt)
 {
 	dump_ind();
 	printf("SELECT ");
@@ -749,7 +773,7 @@ dump_select(PLpgSQL_stmt_select *stmt)
 }
 
 static void
-dump_open(PLpgSQL_stmt_open *stmt)
+dump_open(PLpgSQL_stmt_open * stmt)
 {
 	dump_ind();
 	printf("OPEN curvar=%d\n", stmt->curvar);
@@ -781,7 +805,7 @@ dump_open(PLpgSQL_stmt_open *stmt)
 }
 
 static void
-dump_fetch(PLpgSQL_stmt_fetch *stmt)
+dump_fetch(PLpgSQL_stmt_fetch * stmt)
 {
 	dump_ind();
 	printf("FETCH curvar=%d\n", stmt->curvar);
@@ -802,14 +826,14 @@ dump_fetch(PLpgSQL_stmt_fetch *stmt)
 }
 
 static void
-dump_close(PLpgSQL_stmt_close *stmt)
+dump_close(PLpgSQL_stmt_close * stmt)
 {
 	dump_ind();
 	printf("CLOSE curvar=%d\n", stmt->curvar);
 }
 
 static void
-dump_perform(PLpgSQL_stmt_perform *stmt)
+dump_perform(PLpgSQL_stmt_perform * stmt)
 {
 	dump_ind();
 	printf("PERFORM expr = ");
@@ -818,10 +842,11 @@ dump_perform(PLpgSQL_stmt_perform *stmt)
 }
 
 static void
-dump_exit(PLpgSQL_stmt_exit *stmt)
+dump_exit(PLpgSQL_stmt_exit * stmt)
 {
 	dump_ind();
-	printf("EXIT lbl='%s'", stmt->label);
+	printf("%s label='%s'",
+		   stmt->is_exit ? "EXIT" : "CONTINUE", stmt->label);
 	if (stmt->cond != NULL)
 	{
 		printf(" WHEN ");
@@ -831,49 +856,54 @@ dump_exit(PLpgSQL_stmt_exit *stmt)
 }
 
 static void
-dump_return(PLpgSQL_stmt_return *stmt)
+dump_return(PLpgSQL_stmt_return * stmt)
 {
 	dump_ind();
 	printf("RETURN ");
-	if (stmt->retrecno >= 0)
-		printf("record %d", stmt->retrecno);
-	else if (stmt->retrowno >= 0)
-		printf("row %d", stmt->retrowno);
-	else if (stmt->expr == NULL)
-		printf("NULL");
-	else
+	if (stmt->retvarno >= 0)
+		printf("variable %d", stmt->retvarno);
+	else if (stmt->expr != NULL)
 		dump_expr(stmt->expr);
+	else
+		printf("NULL");
 	printf("\n");
 }
 
 static void
-dump_return_next(PLpgSQL_stmt_return_next *stmt)
+dump_return_next(PLpgSQL_stmt_return_next * stmt)
 {
 	dump_ind();
 	printf("RETURN NEXT ");
-	if (stmt->rec != NULL)
-		printf("target = %d %s\n", stmt->rec->recno, stmt->rec->refname);
-	else if (stmt->row != NULL)
-		printf("target = %d %s\n", stmt->row->rowno, stmt->row->refname);
+	if (stmt->retvarno >= 0)
+		printf("variable %d", stmt->retvarno);
 	else if (stmt->expr != NULL)
 		dump_expr(stmt->expr);
+	else
+		printf("NULL");
 	printf("\n");
 }
 
 static void
-dump_raise(PLpgSQL_stmt_raise *stmt)
+dump_raise(PLpgSQL_stmt_raise * stmt)
 {
-	int			i;
+	ListCell   *lc;
+	int			i = 0;
 
 	dump_ind();
-	printf("RAISE '%s'", stmt->message);
-	for (i = 0; i < stmt->nparams; i++)
-		printf(" %d", stmt->params[i]);
-	printf("\n");
+	printf("RAISE '%s'\n", stmt->message);
+	dump_indent += 2;
+	foreach(lc, stmt->params)
+	{
+		dump_ind();
+		printf("    parameter %d: ", i++);
+		dump_expr((PLpgSQL_expr *) lfirst(lc));
+		printf("\n");
+	}
+	dump_indent -= 2;
 }
 
 static void
-dump_execsql(PLpgSQL_stmt_execsql *stmt)
+dump_execsql(PLpgSQL_stmt_execsql * stmt)
 {
 	dump_ind();
 	printf("EXECSQL ");
@@ -882,16 +912,29 @@ dump_execsql(PLpgSQL_stmt_execsql *stmt)
 }
 
 static void
-dump_dynexecute(PLpgSQL_stmt_dynexecute *stmt)
+dump_dynexecute(PLpgSQL_stmt_dynexecute * stmt)
 {
 	dump_ind();
 	printf("EXECUTE ");
 	dump_expr(stmt->query);
 	printf("\n");
+
+	dump_indent += 2;
+	if (stmt->rec != NULL)
+	{
+		dump_ind();
+		printf("    target = %d %s\n", stmt->rec->recno, stmt->rec->refname);
+	}
+	else if (stmt->row != NULL)
+	{
+		dump_ind();
+		printf("    target = %d %s\n", stmt->row->rowno, stmt->row->refname);
+	}
+	dump_indent -= 2;
 }
 
 static void
-dump_dynfors(PLpgSQL_stmt_dynfors *stmt)
+dump_dynfors(PLpgSQL_stmt_dynfors * stmt)
 {
 	dump_ind();
 	printf("FORS %s EXECUTE ", (stmt->rec != NULL) ? stmt->rec->refname : stmt->row->refname);
@@ -905,22 +948,22 @@ dump_dynfors(PLpgSQL_stmt_dynfors *stmt)
 }
 
 static void
-dump_getdiag(PLpgSQL_stmt_getdiag *stmt)
+dump_getdiag(PLpgSQL_stmt_getdiag * stmt)
 {
-	int			i;
+	ListCell   *lc;
 
 	dump_ind();
 	printf("GET DIAGNOSTICS ");
-	for (i = 0; i < stmt->ndtitems; i++)
+	foreach(lc, stmt->diag_items)
 	{
-		PLpgSQL_diag_item *dtitem = &stmt->dtitems[i];
+		PLpgSQL_diag_item *diag_item = (PLpgSQL_diag_item *) lfirst(lc);
 
-		if (i != 0)
+		if (lc != list_head(stmt->diag_items))
 			printf(", ");
 
-		printf("{var %d} = ", dtitem->target);
+		printf("{var %d} = ", diag_item->target);
 
-		switch (dtitem->item)
+		switch (diag_item->kind)
 		{
 			case PLPGSQL_GETDIAG_ROW_COUNT:
 				printf("ROW_COUNT");
@@ -939,7 +982,7 @@ dump_getdiag(PLpgSQL_stmt_getdiag *stmt)
 }
 
 static void
-dump_expr(PLpgSQL_expr *expr)
+dump_expr(PLpgSQL_expr * expr)
 {
 	int			i;
 
@@ -959,7 +1002,7 @@ dump_expr(PLpgSQL_expr *expr)
 }
 
 void
-plpgsql_dumptree(PLpgSQL_function *func)
+plpgsql_dumptree(PLpgSQL_function * func)
 {
 	int			i;
 	PLpgSQL_datum *d;
@@ -967,7 +1010,7 @@ plpgsql_dumptree(PLpgSQL_function *func)
 	printf("\nExecution tree of successfully compiled PL/pgSQL function %s:\n",
 		   func->fn_name);
 
-	printf("\nFunctions data area:\n");
+	printf("\nFunction's data area:\n");
 	for (i = 0; i < func->ndatums; i++)
 	{
 		d = func->datums[i];
@@ -1042,7 +1085,7 @@ plpgsql_dumptree(PLpgSQL_function *func)
 				printf("??? unknown data type %d\n", d->dtype);
 		}
 	}
-	printf("\nFunctions statements:\n");
+	printf("\nFunction's statements:\n");
 
 	dump_indent = 0;
 	printf("%3d:", func->action->lineno);

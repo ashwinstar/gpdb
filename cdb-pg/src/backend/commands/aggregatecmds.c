@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/aggregatecmds.c,v 1.22 2004/12/31 21:59:41 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/aggregatecmds.c,v 1.30 2005/10/15 02:49:14 momjian Exp $
  *
  * DESCRIPTION
  *	  The "DefineFoo" routines take the parse tree and pick out the
@@ -23,7 +23,6 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
-#include "catalog/catname.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
@@ -51,6 +50,7 @@ DefineAggregate(List *names, List *parameters)
 	AclResult	aclresult;
 	List	   *transfuncName = NIL;
 	List	   *finalfuncName = NIL;
+	List	   *sortoperatorName = NIL;
 	TypeName   *baseType = NULL;
 	TypeName   *transType = NULL;
 	char	   *initval = NULL;
@@ -72,8 +72,8 @@ DefineAggregate(List *names, List *parameters)
 		DefElem    *defel = (DefElem *) lfirst(pl);
 
 		/*
-		 * sfunc1, stype1, and initcond1 are accepted as obsolete
-		 * spellings for sfunc, stype, initcond.
+		 * sfunc1, stype1, and initcond1 are accepted as obsolete spellings
+		 * for sfunc, stype, initcond.
 		 */
 		if (pg_strcasecmp(defel->defname, "sfunc") == 0)
 			transfuncName = defGetQualifiedName(defel);
@@ -81,6 +81,8 @@ DefineAggregate(List *names, List *parameters)
 			transfuncName = defGetQualifiedName(defel);
 		else if (pg_strcasecmp(defel->defname, "finalfunc") == 0)
 			finalfuncName = defGetQualifiedName(defel);
+		else if (pg_strcasecmp(defel->defname, "sortop") == 0)
+			sortoperatorName = defGetQualifiedName(defel);
 		else if (pg_strcasecmp(defel->defname, "basetype") == 0)
 			baseType = defGetTypeName(defel);
 		else if (pg_strcasecmp(defel->defname, "stype") == 0)
@@ -117,11 +119,11 @@ DefineAggregate(List *names, List *parameters)
 	/*
 	 * look up the aggregate's base type (input datatype) and transtype.
 	 *
-	 * We have historically allowed the command to look like basetype = 'ANY'
-	 * so we must do a case-insensitive comparison for the name ANY.  Ugh.
+	 * We have historically allowed the command to look like basetype = 'ANY' so
+	 * we must do a case-insensitive comparison for the name ANY.  Ugh.
 	 *
-	 * basetype can be a pseudo-type, but transtype can't, since we need to
-	 * be able to store values of the transtype.  However, we can allow
+	 * basetype can be a pseudo-type, but transtype can't, since we need to be
+	 * able to store values of the transtype.  However, we can allow
 	 * polymorphic transtype in some cases (AggregateCreate will check).
 	 */
 	if (pg_strcasecmp(TypeNameToString(baseType), "ANY") == 0)
@@ -143,9 +145,10 @@ DefineAggregate(List *names, List *parameters)
 	 */
 	AggregateCreate(aggName,	/* aggregate name */
 					aggNamespace,		/* namespace */
+					baseTypeId, /* type of data being aggregated */
 					transfuncName,		/* step function name */
 					finalfuncName,		/* final function name */
-					baseTypeId, /* type of data being aggregated */
+					sortoperatorName,	/* sort operator name */
 					transTypeId,	/* transition data type */
 					initval);	/* initial condition */
 }
@@ -166,11 +169,11 @@ RemoveAggregate(RemoveAggrStmt *stmt)
 	ObjectAddress object;
 
 	/*
-	 * if a basetype is passed in, then attempt to find an aggregate for
-	 * that specific type.
+	 * if a basetype is passed in, then attempt to find an aggregate for that
+	 * specific type.
 	 *
-	 * else attempt to find an aggregate with a basetype of ANYOID. This
-	 * means that the aggregate is to apply to all basetypes (eg, COUNT).
+	 * else attempt to find an aggregate with a basetype of ANYOID. This means
+	 * that the aggregate is to apply to all basetypes (eg, COUNT).
 	 */
 	if (aggType)
 		basetypeID = typenameTypeId(aggType);
@@ -190,8 +193,8 @@ RemoveAggregate(RemoveAggrStmt *stmt)
 
 	/* Permission check: must own agg or its namespace */
 	if (!pg_proc_ownercheck(procOid, GetUserId()) &&
-		!pg_namespace_ownercheck(((Form_pg_proc) GETSTRUCT(tup))->pronamespace,
-								 GetUserId()))
+	  !pg_namespace_ownercheck(((Form_pg_proc) GETSTRUCT(tup))->pronamespace,
+							   GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_PROC,
 					   NameListToString(aggName));
 
@@ -202,7 +205,7 @@ RemoveAggregate(RemoveAggrStmt *stmt)
 	/*
 	 * Do the deletion
 	 */
-	object.classId = RelOid_pg_proc;
+	object.classId = ProcedureRelationId;
 	object.objectId = procOid;
 	object.objectSubId = 0;
 
@@ -222,17 +225,17 @@ RenameAggregate(List *name, TypeName *basetype, const char *newname)
 	AclResult	aclresult;
 
 	/*
-	 * if a basetype is passed in, then attempt to find an aggregate for
-	 * that specific type; else attempt to find an aggregate with a
-	 * basetype of ANYOID. This means that the aggregate applies to all
-	 * basetypes (eg, COUNT).
+	 * if a basetype is passed in, then attempt to find an aggregate for that
+	 * specific type; else attempt to find an aggregate with a basetype of
+	 * ANYOID. This means that the aggregate applies to all basetypes (eg,
+	 * COUNT).
 	 */
 	if (basetype)
 		basetypeOid = typenameTypeId(basetype);
 	else
 		basetypeOid = ANYOID;
 
-	rel = heap_openr(ProcedureRelationName, RowExclusiveLock);
+	rel = heap_open(ProcedureRelationId, RowExclusiveLock);
 
 	procOid = find_aggregate_func(name, basetypeOid, false);
 
@@ -246,25 +249,25 @@ RenameAggregate(List *name, TypeName *basetype, const char *newname)
 	namespaceOid = procForm->pronamespace;
 
 	/* make sure the new name doesn't exist */
-	if (SearchSysCacheExists(PROCNAMENSP,
+	if (SearchSysCacheExists(PROCNAMEARGSNSP,
 							 CStringGetDatum(newname),
-							 Int16GetDatum(procForm->pronargs),
-							 PointerGetDatum(procForm->proargtypes),
-							 ObjectIdGetDatum(namespaceOid)))
+							 PointerGetDatum(&procForm->proargtypes),
+							 ObjectIdGetDatum(namespaceOid),
+							 0))
 	{
 		if (basetypeOid == ANYOID)
 			ereport(ERROR,
 					(errcode(ERRCODE_DUPLICATE_FUNCTION),
-				 errmsg("function %s(*) already exists in schema \"%s\"",
-						newname,
-						get_namespace_name(namespaceOid))));
+					 errmsg("function %s(*) already exists in schema \"%s\"",
+							newname,
+							get_namespace_name(namespaceOid))));
 		else
 			ereport(ERROR,
 					(errcode(ERRCODE_DUPLICATE_FUNCTION),
 					 errmsg("function %s already exists in schema \"%s\"",
 							funcname_signature_string(newname,
 													  procForm->pronargs,
-												  procForm->proargtypes),
+											   procForm->proargtypes.values),
 							get_namespace_name(namespaceOid))));
 	}
 
@@ -292,26 +295,27 @@ RenameAggregate(List *name, TypeName *basetype, const char *newname)
  * Change aggregate owner
  */
 void
-AlterAggregateOwner(List *name, TypeName *basetype, AclId newOwnerSysId)
+AlterAggregateOwner(List *name, TypeName *basetype, Oid newOwnerId)
 {
 	Oid			basetypeOid;
 	Oid			procOid;
 	HeapTuple	tup;
 	Form_pg_proc procForm;
 	Relation	rel;
+	AclResult	aclresult;
 
 	/*
-	 * if a basetype is passed in, then attempt to find an aggregate for
-	 * that specific type; else attempt to find an aggregate with a
-	 * basetype of ANYOID. This means that the aggregate applies to all
-	 * basetypes (eg, COUNT).
+	 * if a basetype is passed in, then attempt to find an aggregate for that
+	 * specific type; else attempt to find an aggregate with a basetype of
+	 * ANYOID. This means that the aggregate applies to all basetypes (eg,
+	 * COUNT).
 	 */
 	if (basetype)
 		basetypeOid = typenameTypeId(basetype);
 	else
 		basetypeOid = ANYOID;
 
-	rel = heap_openr(ProcedureRelationName, RowExclusiveLock);
+	rel = heap_open(ProcedureRelationId, RowExclusiveLock);
 
 	procOid = find_aggregate_func(name, basetypeOid, false);
 
@@ -326,19 +330,32 @@ AlterAggregateOwner(List *name, TypeName *basetype, AclId newOwnerSysId)
 	 * If the new owner is the same as the existing owner, consider the
 	 * command to have succeeded.  This is for dump restoration purposes.
 	 */
-	if (procForm->proowner != newOwnerSysId)
+	if (procForm->proowner != newOwnerId)
 	{
-		/* Otherwise, must be superuser to change object ownership */
+		/* Superusers can always do it */
 		if (!superuser())
-			ereport(ERROR,
-					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 errmsg("must be superuser to change owner")));
+		{
+			/* Otherwise, must be owner of the existing object */
+			if (!pg_proc_ownercheck(procOid, GetUserId()))
+				aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_PROC,
+							   NameListToString(name));
+
+			/* Must be able to become new owner */
+			check_is_member_of_role(GetUserId(), newOwnerId);
+
+			/* New owner must have CREATE privilege on namespace */
+			aclresult = pg_namespace_aclcheck(procForm->pronamespace,
+											  newOwnerId,
+											  ACL_CREATE);
+			if (aclresult != ACLCHECK_OK)
+				aclcheck_error(aclresult, ACL_KIND_NAMESPACE,
+							   get_namespace_name(procForm->pronamespace));
+		}
 
 		/*
-		 * Modify the owner --- okay to scribble on tup because it's a
-		 * copy
+		 * Modify the owner --- okay to scribble on tup because it's a copy
 		 */
-		procForm->proowner = newOwnerSysId;
+		procForm->proowner = newOwnerId;
 
 		simple_heap_update(rel, &tup->t_self, tup);
 		CatalogUpdateIndexes(rel, tup);

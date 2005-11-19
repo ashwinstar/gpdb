@@ -10,7 +10,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1995, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/postgres.h,v 1.70 2004/12/31 22:03:19 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/postgres.h,v 1.71 2005/04/14 01:38:21 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -277,20 +277,6 @@ typedef Datum *DatumPtr;
 #define TransactionIdGetDatum(X) ((Datum) SET_4_BYTES((X)))
 
 /*
- * DatumGetAclId
- *            Returns user or group identifier value of a datum.
- */
-
-#define DatumGetAclId(X) ((AclId) GET_4_BYTES(X))
-
-/*
- * AclIdGetDatum
- *            Returns datum representation for a user or group identifier.
- */
-
-#define AclIdGetDatum(X) ((AclId) SET_4_BYTES((X)))
-
-/*
  * DatumGetCommandId
  *		Returns command identifier value of a datum.
  */
@@ -547,9 +533,9 @@ extern int SyncAgentMain(int, char **, const char *);
  *				Section 4: genbki macros used by catalog/pg_xxx.h files
  * ----------------------------------------------------------------
  */
-#define CATALOG(x)	typedef struct CppConcat(FormData_,x)
+#define CATALOG(name,oid)	typedef struct CppConcat(FormData_,name)
 
-#define BOOTSTRAP
+#define BKI_BOOTSTRAP
 #define BKI_SHARED_RELATION
 #define BKI_WITHOUT_OIDS
 

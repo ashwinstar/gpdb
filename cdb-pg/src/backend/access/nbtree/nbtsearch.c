@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/nbtree/nbtsearch.c,v 1.90 2004/12/31 21:59:22 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/nbtree/nbtsearch.c,v 1.96 2005/10/18 01:06:23 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -17,6 +17,7 @@
 
 #include "access/genam.h"
 #include "access/nbtree.h"
+#include "pgstat.h"
 #include "utils/lsyscache.h"
 
 
@@ -68,9 +69,9 @@ _bt_search(Relation rel, int keysz, ScanKey scankey, bool nextkey,
 		BTStack		new_stack;
 
 		/*
-		 * Race -- the page we just grabbed may have split since we read
-		 * its pointer in the parent (or metapage).  If it has, we may
-		 * need to move right to its new sibling.  Do that.
+		 * Race -- the page we just grabbed may have split since we read its
+		 * pointer in the parent (or metapage).  If it has, we may need to
+		 * move right to its new sibling.  Do that.
 		 */
 		*bufP = _bt_moveright(rel, *bufP, keysz, scankey, nextkey, BT_READ);
 
@@ -81,8 +82,8 @@ _bt_search(Relation rel, int keysz, ScanKey scankey, bool nextkey,
 			break;
 
 		/*
-		 * Find the appropriate item on the internal page, and get the
-		 * child page that it points to.
+		 * Find the appropriate item on the internal page, and get the child
+		 * page that it points to.
 		 */
 		offnum = _bt_binsrch(rel, *bufP, keysz, scankey, nextkey);
 		itemid = PageGetItemId(page, offnum);
@@ -93,13 +94,13 @@ _bt_search(Relation rel, int keysz, ScanKey scankey, bool nextkey,
 
 		/*
 		 * We need to save the location of the index entry we chose in the
-		 * parent page on a stack. In case we split the tree, we'll use
-		 * the stack to work back up to the parent page.  We also save the
-		 * actual downlink (TID) to uniquely identify the index entry, in
-		 * case it moves right while we're working lower in the tree.  See
-		 * the paper by Lehman and Yao for how this is detected and
-		 * handled. (We use the child link to disambiguate duplicate keys
-		 * in the index -- Lehman and Yao disallow duplicate keys.)
+		 * parent page on a stack. In case we split the tree, we'll use the
+		 * stack to work back up to the parent page.  We also save the actual
+		 * downlink (TID) to uniquely identify the index entry, in case it
+		 * moves right while we're working lower in the tree.  See the paper
+		 * by Lehman and Yao for how this is detected and handled. (We use the
+		 * child link to disambiguate duplicate keys in the index -- Lehman
+		 * and Yao disallow duplicate keys.)
 		 */
 		new_stack = (BTStack) palloc(sizeof(BTStackData));
 		new_stack->bts_blkno = par_blkno;
@@ -155,19 +156,18 @@ _bt_moveright(Relation rel,
 	opaque = (BTPageOpaque) PageGetSpecialPointer(page);
 
 	/*
-	 * When nextkey = false (normal case): if the scan key that brought us
-	 * to this page is > the high key stored on the page, then the page
-	 * has split and we need to move right.  (If the scan key is equal to
-	 * the high key, we might or might not need to move right; have to
-	 * scan the page first anyway.)
+	 * When nextkey = false (normal case): if the scan key that brought us to
+	 * this page is > the high key stored on the page, then the page has split
+	 * and we need to move right.  (If the scan key is equal to the high key,
+	 * we might or might not need to move right; have to scan the page first
+	 * anyway.)
 	 *
 	 * When nextkey = true: move right if the scan key is >= page's high key.
 	 *
-	 * The page could even have split more than once, so scan as far as
-	 * needed.
+	 * The page could even have split more than once, so scan as far as needed.
 	 *
-	 * We also have to move right if we followed a link that brought us to a
-	 * dead page.
+	 * We also have to move right if we followed a link that brought us to a dead
+	 * page.
 	 */
 	cmpval = nextkey ? 0 : 1;
 
@@ -225,7 +225,6 @@ _bt_binsrch(Relation rel,
 			ScanKey scankey,
 			bool nextkey)
 {
-	TupleDesc	itupdesc;
 	Page		page;
 	BTPageOpaque opaque;
 	OffsetNumber low,
@@ -233,7 +232,6 @@ _bt_binsrch(Relation rel,
 	int32		result,
 				cmpval;
 
-	itupdesc = RelationGetDescr(rel);
 	page = BufferGetPage(buf);
 	opaque = (BTPageOpaque) PageGetSpecialPointer(page);
 
@@ -241,24 +239,24 @@ _bt_binsrch(Relation rel,
 	high = PageGetMaxOffsetNumber(page);
 
 	/*
-	 * If there are no keys on the page, return the first available slot.
-	 * Note this covers two cases: the page is really empty (no keys), or
-	 * it contains only a high key.  The latter case is possible after
-	 * vacuuming.  This can never happen on an internal page, however,
-	 * since they are never empty (an internal page must have children).
+	 * If there are no keys on the page, return the first available slot. Note
+	 * this covers two cases: the page is really empty (no keys), or it
+	 * contains only a high key.  The latter case is possible after vacuuming.
+	 * This can never happen on an internal page, however, since they are
+	 * never empty (an internal page must have children).
 	 */
 	if (high < low)
 		return low;
 
 	/*
-	 * Binary search to find the first key on the page >= scan key, or
-	 * first key > scankey when nextkey is true.
+	 * Binary search to find the first key on the page >= scan key, or first
+	 * key > scankey when nextkey is true.
 	 *
 	 * For nextkey=false (cmpval=1), the loop invariant is: all slots before
 	 * 'low' are < scan key, all slots at or after 'high' are >= scan key.
 	 *
-	 * For nextkey=true (cmpval=0), the loop invariant is: all slots before
-	 * 'low' are <= scan key, all slots at or after 'high' are > scan key.
+	 * For nextkey=true (cmpval=0), the loop invariant is: all slots before 'low'
+	 * are <= scan key, all slots at or after 'high' are > scan key.
 	 *
 	 * We can fall out when high == low.
 	 */
@@ -284,15 +282,15 @@ _bt_binsrch(Relation rel,
 	 * At this point we have high == low, but be careful: they could point
 	 * past the last slot on the page.
 	 *
-	 * On a leaf page, we always return the first key >= scan key (resp. >
-	 * scan key), which could be the last slot + 1.
+	 * On a leaf page, we always return the first key >= scan key (resp. > scan
+	 * key), which could be the last slot + 1.
 	 */
 	if (P_ISLEAF(opaque))
 		return low;
 
 	/*
-	 * On a non-leaf page, return the last key < scan key (resp. <= scan
-	 * key). There must be one if _bt_compare() is playing by the rules.
+	 * On a non-leaf page, return the last key < scan key (resp. <= scan key).
+	 * There must be one if _bt_compare() is playing by the rules.
 	 */
 	Assert(low > P_FIRSTDATAKEY(opaque));
 
@@ -336,8 +334,8 @@ _bt_compare(Relation rel,
 	int			i;
 
 	/*
-	 * Force result ">" if target item is first data item on an internal
-	 * page --- see NOTE above.
+	 * Force result ">" if target item is first data item on an internal page
+	 * --- see NOTE above.
 	 */
 	if (!P_ISLEAF(opaque) && offnum == P_FIRSTDATAKEY(opaque))
 		return 1;
@@ -346,15 +344,15 @@ _bt_compare(Relation rel,
 	itup = &(btitem->bti_itup);
 
 	/*
-	 * The scan key is set up with the attribute number associated with
-	 * each term in the key.  It is important that, if the index is
-	 * multi-key, the scan contain the first k key attributes, and that
-	 * they be in order.  If you think about how multi-key ordering works,
-	 * you'll understand why this is.
+	 * The scan key is set up with the attribute number associated with each
+	 * term in the key.  It is important that, if the index is multi-key, the
+	 * scan contain the first k key attributes, and that they be in order.	If
+	 * you think about how multi-key ordering works, you'll understand why
+	 * this is.
 	 *
-	 * We don't test for violation of this condition here, however.  The
-	 * initial setup for the index scan had better have gotten it right
-	 * (see _bt_first).
+	 * We don't test for violation of this condition here, however.  The initial
+	 * setup for the index scan had better have gotten it right (see
+	 * _bt_first).
 	 */
 
 	for (i = 1; i <= keysz; i++)
@@ -380,15 +378,15 @@ _bt_compare(Relation rel,
 		else
 		{
 			/*
-			 * The sk_func needs to be passed the index value as left arg
-			 * and the sk_argument as right arg (they might be of
-			 * different types).  Since it is convenient for callers to
-			 * think of _bt_compare as comparing the scankey to the index
-			 * item, we have to flip the sign of the comparison result.
+			 * The sk_func needs to be passed the index value as left arg and
+			 * the sk_argument as right arg (they might be of different
+			 * types).	Since it is convenient for callers to think of
+			 * _bt_compare as comparing the scankey to the index item, we have
+			 * to flip the sign of the comparison result.
 			 *
-			 * Note: curious-looking coding is to avoid overflow if
-			 * comparison function returns INT_MIN.  There is no risk of
-			 * overflow for positive results.
+			 * Note: curious-looking coding is to avoid overflow if comparison
+			 * function returns INT_MIN.  There is no risk of overflow for
+			 * positive results.
 			 */
 			result = DatumGetInt32(FunctionCall2(&scankey->sk_func,
 												 datum,
@@ -495,15 +493,17 @@ _bt_first(IndexScanDesc scan, ScanDirection dir)
 	bool		nextkey;
 	bool		goback;
 	bool		continuescan;
-	ScanKey		scankeys;
-	ScanKey    *startKeys = NULL;
+	ScanKey		startKeys[INDEX_MAX_KEYS];
+	ScanKeyData scankeys[INDEX_MAX_KEYS];
 	int			keysCount = 0;
 	int			i;
 	StrategyNumber strat_total;
 
+	pgstat_count_index_scan(&scan->xs_pgstat_info);
+
 	/*
-	 * Examine the scan keys and eliminate any redundant keys; also
-	 * discover how many keys must be matched to continue the scan.
+	 * Examine the scan keys and eliminate any redundant keys; also discover
+	 * how many keys must be matched to continue the scan.
 	 */
 	_bt_preprocess_keys(scan);
 
@@ -552,12 +552,10 @@ _bt_first(IndexScanDesc scan, ScanDirection dir)
 		ScanKey		chosen;
 		ScanKey		cur;
 
-		startKeys = (ScanKey *) palloc(so->numberOfKeys * sizeof(ScanKey));
-
 		/*
-		 * chosen is the so-far-chosen key for the current attribute, if
-		 * any. We don't cast the decision in stone until we reach keys
-		 * for the next attribute.
+		 * chosen is the so-far-chosen key for the current attribute, if any.
+		 * We don't cast the decision in stone until we reach keys for the
+		 * next attribute.
 		 */
 		curattr = 1;
 		chosen = NULL;
@@ -594,15 +592,17 @@ _bt_first(IndexScanDesc scan, ScanDirection dir)
 				}
 
 				/*
-				 * Done if that was the last attribute.
+				 * Done if that was the last attribute, or if next key is not
+				 * in sequence (implying no boundary key is available for the
+				 * next attribute).
 				 */
-				if (i >= so->numberOfKeys)
+				if (i >= so->numberOfKeys ||
+					cur->sk_attno != curattr + 1)
 					break;
 
 				/*
-				 * Reset for next attr, which should be in sequence.
+				 * Reset for next attr.
 				 */
-				Assert(cur->sk_attno == curattr + 1);
 				curattr = cur->sk_attno;
 				chosen = NULL;
 			}
@@ -629,43 +629,33 @@ _bt_first(IndexScanDesc scan, ScanDirection dir)
 	}
 
 	/*
-	 * If we found no usable boundary keys, we have to start from one end
-	 * of the tree.  Walk down that edge to the first or last key, and
-	 * scan from there.
+	 * If we found no usable boundary keys, we have to start from one end of
+	 * the tree.  Walk down that edge to the first or last key, and scan from
+	 * there.
 	 */
 	if (keysCount == 0)
-	{
-		if (startKeys)
-			pfree(startKeys);
 		return _bt_endpoint(scan, dir);
-	}
 
 	/*
 	 * We want to start the scan somewhere within the index.  Set up a
-	 * 3-way-comparison scankey we can use to search for the boundary
-	 * point we identified above.
+	 * 3-way-comparison scankey we can use to search for the boundary point we
+	 * identified above.
 	 */
-	scankeys = (ScanKey) palloc(keysCount * sizeof(ScanKeyData));
+	Assert(keysCount <= INDEX_MAX_KEYS);
 	for (i = 0; i < keysCount; i++)
 	{
 		ScanKey		cur = startKeys[i];
 
 		/*
-		 * _bt_preprocess_keys disallows it, but it's place to add some
-		 * code later
+		 * _bt_preprocess_keys disallows it, but it's place to add some code
+		 * later
 		 */
 		if (cur->sk_flags & SK_ISNULL)
-		{
-			pfree(startKeys);
-			pfree(scankeys);
 			elog(ERROR, "btree doesn't support is(not)null, yet");
-			return false;
-		}
 
 		/*
-		 * If scankey operator is of default subtype, we can use the
-		 * cached comparison procedure; otherwise gotta look it up in the
-		 * catalogs.
+		 * If scankey operator is of default subtype, we can use the cached
+		 * comparison procedure; otherwise gotta look it up in the catalogs.
 		 */
 		if (cur->sk_subtype == InvalidOid)
 		{
@@ -684,7 +674,7 @@ _bt_first(IndexScanDesc scan, ScanDirection dir)
 		{
 			RegProcedure cmp_proc;
 
-			cmp_proc = get_opclass_proc(rel->rd_index->indclass[i],
+			cmp_proc = get_opclass_proc(rel->rd_indclass->values[i],
 										cur->sk_subtype,
 										BTORDER_PROC);
 			ScanKeyEntryInitialize(scankeys + i,
@@ -697,16 +687,14 @@ _bt_first(IndexScanDesc scan, ScanDirection dir)
 		}
 	}
 
-	pfree(startKeys);
-
 	/*
-	 * Examine the selected initial-positioning strategy to determine
-	 * exactly where we need to start the scan, and set flag variables to
-	 * control the code below.
+	 * Examine the selected initial-positioning strategy to determine exactly
+	 * where we need to start the scan, and set flag variables to control the
+	 * code below.
 	 *
-	 * If nextkey = false, _bt_search and _bt_binsrch will locate the first
-	 * item >= scan key.  If nextkey = true, they will locate the first
-	 * item > scan key.
+	 * If nextkey = false, _bt_search and _bt_binsrch will locate the first item
+	 * >= scan key.  If nextkey = true, they will locate the first item > scan
+	 * key.
 	 *
 	 * If goback = true, we will then step back one item, while if goback =
 	 * false, we will start the scan on the located item.
@@ -718,10 +706,10 @@ _bt_first(IndexScanDesc scan, ScanDirection dir)
 		case BTLessStrategyNumber:
 
 			/*
-			 * Find first item >= scankey, then back up one to arrive at
-			 * last item < scankey.  (Note: this positioning strategy is
-			 * only used for a backward scan, so that is always the
-			 * correct starting position.)
+			 * Find first item >= scankey, then back up one to arrive at last
+			 * item < scankey.	(Note: this positioning strategy is only used
+			 * for a backward scan, so that is always the correct starting
+			 * position.)
 			 */
 			nextkey = false;
 			goback = true;
@@ -730,10 +718,10 @@ _bt_first(IndexScanDesc scan, ScanDirection dir)
 		case BTLessEqualStrategyNumber:
 
 			/*
-			 * Find first item > scankey, then back up one to arrive at
-			 * last item <= scankey.  (Note: this positioning strategy is
-			 * only used for a backward scan, so that is always the
-			 * correct starting position.)
+			 * Find first item > scankey, then back up one to arrive at last
+			 * item <= scankey.  (Note: this positioning strategy is only used
+			 * for a backward scan, so that is always the correct starting
+			 * position.)
 			 */
 			nextkey = true;
 			goback = true;
@@ -742,14 +730,14 @@ _bt_first(IndexScanDesc scan, ScanDirection dir)
 		case BTEqualStrategyNumber:
 
 			/*
-			 * If a backward scan was specified, need to start with last
-			 * equal item not first one.
+			 * If a backward scan was specified, need to start with last equal
+			 * item not first one.
 			 */
 			if (ScanDirectionIsBackward(dir))
 			{
 				/*
-				 * This is the same as the <= strategy.  We will check at
-				 * the end whether the found item is actually =.
+				 * This is the same as the <= strategy.  We will check at the
+				 * end whether the found item is actually =.
 				 */
 				nextkey = true;
 				goback = true;
@@ -757,8 +745,8 @@ _bt_first(IndexScanDesc scan, ScanDirection dir)
 			else
 			{
 				/*
-				 * This is the same as the >= strategy.  We will check at
-				 * the end whether the found item is actually =.
+				 * This is the same as the >= strategy.  We will check at the
+				 * end whether the found item is actually =.
 				 */
 				nextkey = false;
 				goback = false;
@@ -807,7 +795,6 @@ _bt_first(IndexScanDesc scan, ScanDirection dir)
 		/* Only get here if index is completely empty */
 		ItemPointerSetInvalid(current);
 		so->btso_curbuf = InvalidBuffer;
-		pfree(scankeys);
 		return false;
 	}
 
@@ -821,28 +808,25 @@ _bt_first(IndexScanDesc scan, ScanDirection dir)
 	blkno = BufferGetBlockNumber(buf);
 	ItemPointerSet(current, blkno, offnum);
 
-	/* done with manufactured scankey, now */
-	pfree(scankeys);
-
 	/*
-	 * If nextkey = false, we are positioned at the first item >= scan
-	 * key, or possibly at the end of a page on which all the existing
-	 * items are less than the scan key and we know that everything on
-	 * later pages is greater than or equal to scan key.
+	 * If nextkey = false, we are positioned at the first item >= scan key, or
+	 * possibly at the end of a page on which all the existing items are less
+	 * than the scan key and we know that everything on later pages is greater
+	 * than or equal to scan key.
 	 *
 	 * If nextkey = true, we are positioned at the first item > scan key, or
-	 * possibly at the end of a page on which all the existing items are
-	 * less than or equal to the scan key and we know that everything on
-	 * later pages is greater than scan key.
+	 * possibly at the end of a page on which all the existing items are less
+	 * than or equal to the scan key and we know that everything on later
+	 * pages is greater than scan key.
 	 *
-	 * The actually desired starting point is either this item or the prior
-	 * one, or in the end-of-page case it's the first item on the next
-	 * page or the last item on this page.	We apply _bt_step if needed to
-	 * get to the right place.
+	 * The actually desired starting point is either this item or the prior one,
+	 * or in the end-of-page case it's the first item on the next page or the
+	 * last item on this page.	We apply _bt_step if needed to get to the
+	 * right place.
 	 *
 	 * If _bt_step fails (meaning we fell off the end of the index in one
-	 * direction or the other), then there are no matches so we just
-	 * return false.
+	 * direction or the other), then there are no matches so we just return
+	 * false.
 	 */
 	if (goback)
 	{
@@ -914,8 +898,8 @@ _bt_step(IndexScanDesc scan, Buffer *bufP, ScanDirection dir)
 	BlockNumber blkno;
 
 	/*
-	 * Don't use ItemPointerGetOffsetNumber or you risk to get assertion
-	 * due to ability of ip_posid to be equal 0.
+	 * Don't use ItemPointerGetOffsetNumber or you risk to get assertion due
+	 * to ability of ip_posid to be equal 0.
 	 */
 	offnum = current->ip_posid;
 
@@ -966,9 +950,9 @@ _bt_step(IndexScanDesc scan, Buffer *bufP, ScanDirection dir)
 			/*
 			 * Walk left to the next page with data.  This is much more
 			 * complex than the walk-right case because of the possibility
-			 * that the page to our left splits while we are in flight to
-			 * it, plus the possibility that the page we were on gets
-			 * deleted after we leave it.  See nbtree/README for details.
+			 * that the page to our left splits while we are in flight to it,
+			 * plus the possibility that the page we were on gets deleted
+			 * after we leave it.  See nbtree/README for details.
 			 */
 			for (;;)
 			{
@@ -985,9 +969,9 @@ _bt_step(IndexScanDesc scan, Buffer *bufP, ScanDirection dir)
 				opaque = (BTPageOpaque) PageGetSpecialPointer(page);
 
 				/*
-				 * Okay, we managed to move left to a non-deleted page.
-				 * Done if it's not half-dead and not empty.  Else loop
-				 * back and do it all again.
+				 * Okay, we managed to move left to a non-deleted page. Done
+				 * if it's not half-dead and not empty.  Else loop back and do
+				 * it all again.
 				 */
 				if (!P_IGNORE(opaque))
 				{
@@ -1055,15 +1039,14 @@ _bt_walk_left(Relation rel, Buffer buf)
 
 		/*
 		 * If this isn't the page we want, walk right till we find what we
-		 * want --- but go no more than four hops (an arbitrary limit). If
-		 * we don't find the correct page by then, the most likely bet is
-		 * that the original page got deleted and isn't in the sibling
-		 * chain at all anymore, not that its left sibling got split more
-		 * than four times.
+		 * want --- but go no more than four hops (an arbitrary limit). If we
+		 * don't find the correct page by then, the most likely bet is that
+		 * the original page got deleted and isn't in the sibling chain at all
+		 * anymore, not that its left sibling got split more than four times.
 		 *
-		 * Note that it is correct to test P_ISDELETED not P_IGNORE here,
-		 * because half-dead pages are still in the sibling chain.	Caller
-		 * must reject half-dead pages if wanted.
+		 * Note that it is correct to test P_ISDELETED not P_IGNORE here, because
+		 * half-dead pages are still in the sibling chain.	Caller must reject
+		 * half-dead pages if wanted.
 		 */
 		tries = 0;
 		for (;;)
@@ -1089,9 +1072,9 @@ _bt_walk_left(Relation rel, Buffer buf)
 		{
 			/*
 			 * It was deleted.	Move right to first nondeleted page (there
-			 * must be one); that is the page that has acquired the
-			 * deleted one's keyspace, so stepping left from it will take
-			 * us where we want to be.
+			 * must be one); that is the page that has acquired the deleted
+			 * one's keyspace, so stepping left from it will take us where we
+			 * want to be.
 			 */
 			for (;;)
 			{
@@ -1107,16 +1090,16 @@ _bt_walk_left(Relation rel, Buffer buf)
 			}
 
 			/*
-			 * Now return to top of loop, resetting obknum to point to
-			 * this nondeleted page, and try again.
+			 * Now return to top of loop, resetting obknum to point to this
+			 * nondeleted page, and try again.
 			 */
 		}
 		else
 		{
 			/*
-			 * It wasn't deleted; the explanation had better be that the
-			 * page to the left got split or deleted. Without this check,
-			 * we'd go into an infinite loop if there's anything wrong.
+			 * It wasn't deleted; the explanation had better be that the page
+			 * to the left got split or deleted. Without this check, we'd go
+			 * into an infinite loop if there's anything wrong.
 			 */
 			if (opaque->btpo_prev == lblkno)
 				elog(ERROR, "could not find left sibling in \"%s\"",
@@ -1149,8 +1132,8 @@ _bt_get_endpoint(Relation rel, uint32 level, bool rightmost)
 
 	/*
 	 * If we are looking for a leaf page, okay to descend from fast root;
-	 * otherwise better descend from true root.  (There is no point in
-	 * being smarter about intermediate levels.)
+	 * otherwise better descend from true root.  (There is no point in being
+	 * smarter about intermediate levels.)
 	 */
 	if (level == 0)
 		buf = _bt_getroot(rel, BT_READ);
@@ -1171,8 +1154,8 @@ _bt_get_endpoint(Relation rel, uint32 level, bool rightmost)
 		/*
 		 * If we landed on a deleted page, step right to find a live page
 		 * (there must be one).  Also, if we want the rightmost page, step
-		 * right if needed to get to it (this could happen if the page
-		 * split since we obtained a pointer to it).
+		 * right if needed to get to it (this could happen if the page split
+		 * since we obtained a pointer to it).
 		 */
 		while (P_IGNORE(opaque) ||
 			   (rightmost && !P_RIGHTMOST(opaque)))
@@ -1240,9 +1223,9 @@ _bt_endpoint(IndexScanDesc scan, ScanDirection dir)
 	so = (BTScanOpaque) scan->opaque;
 
 	/*
-	 * Scan down to the leftmost or rightmost leaf page.  This is a
-	 * simplified version of _bt_search().	We don't maintain a stack
-	 * since we know we won't need it.
+	 * Scan down to the leftmost or rightmost leaf page.  This is a simplified
+	 * version of _bt_search().  We don't maintain a stack since we know we
+	 * won't need it.
 	 */
 	buf = _bt_get_endpoint(rel, 0, ScanDirectionIsBackward(dir));
 
@@ -1273,8 +1256,7 @@ _bt_endpoint(IndexScanDesc scan, ScanDirection dir)
 		Assert(P_RIGHTMOST(opaque));
 
 		start = PageGetMaxOffsetNumber(page);
-		if (start < P_FIRSTDATAKEY(opaque))		/* watch out for empty
-												 * page */
+		if (start < P_FIRSTDATAKEY(opaque))		/* watch out for empty page */
 			start = P_FIRSTDATAKEY(opaque);
 	}
 	else
@@ -1288,8 +1270,8 @@ _bt_endpoint(IndexScanDesc scan, ScanDirection dir)
 	so->btso_curbuf = buf;
 
 	/*
-	 * Left/rightmost page could be empty due to deletions, if so step
-	 * till we find a nonempty page.
+	 * Left/rightmost page could be empty due to deletions, if so step till we
+	 * find a nonempty page.
 	 */
 	if (start > maxoff)
 	{
@@ -1303,8 +1285,7 @@ _bt_endpoint(IndexScanDesc scan, ScanDirection dir)
 	itup = &(btitem->bti_itup);
 
 	/*
-	 * Okay, we are on the first or last tuple.  Does it pass all the
-	 * quals?
+	 * Okay, we are on the first or last tuple.  Does it pass all the quals?
 	 */
 	if (_bt_checkkeys(scan, itup, dir, &continuescan))
 	{

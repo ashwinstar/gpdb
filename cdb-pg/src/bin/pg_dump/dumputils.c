@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/bin/pg_dump/dumputils.c,v 1.16.4.1 2005/04/30 08:19:44 neilc Exp $
+ * $PostgreSQL: pgsql/src/bin/pg_dump/dumputils.c,v 1.20 2005/10/15 02:49:38 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -49,8 +49,8 @@ fmtId(const char *rawid)
 		id_return = createPQExpBuffer();
 
 	/*
-	 * These checks need to match the identifier production in scan.l.
-	 * Don't use islower() etc.
+	 * These checks need to match the identifier production in scan.l. Don't
+	 * use islower() etc.
 	 */
 
 	if (ScanKeywordLookup(rawid))
@@ -111,24 +111,39 @@ fmtId(const char *rawid)
 void
 appendStringLiteral(PQExpBuffer buf, const char *str, bool escapeAll)
 {
-	appendPQExpBufferChar(buf, '\'');
-	while (*str)
-	{
-		char		ch = *str++;
+	char		ch;
+	const char *p;
 
-		if (ch == '\\' || ch == '\'')
+	for (p = str; *p; p++)
+	{
+		ch = *p;
+		if (ch == '\\' ||
+			((unsigned char) ch < (unsigned char) ' ' &&
+			 (escapeAll ||
+			  (ch != '\t' && ch != '\n' && ch != '\v' &&
+			   ch != '\f' && ch != '\r'))))
 		{
-			appendPQExpBufferChar(buf, ch);		/* double these */
+			appendPQExpBufferChar(buf, ESCAPE_STRING_SYNTAX);
+			break;
+		}
+	}
+
+	appendPQExpBufferChar(buf, '\'');
+	for (p = str; *p; p++)
+	{
+		ch = *p;
+		if (SQL_STR_DOUBLE(ch))
+		{
+			appendPQExpBufferChar(buf, ch);
 			appendPQExpBufferChar(buf, ch);
 		}
 		else if ((unsigned char) ch < (unsigned char) ' ' &&
-				 (escapeAll
-				  || (ch != '\t' && ch != '\n' && ch != '\v' && ch != '\f' && ch != '\r')
-				  ))
+				 (escapeAll ||
+				  (ch != '\t' && ch != '\n' && ch != '\v' &&
+				   ch != '\f' && ch != '\r')))
 		{
 			/*
-			 * generate octal escape for control chars other than
-			 * whitespace
+			 * generate octal escape for control chars other than whitespace
 			 */
 			appendPQExpBufferChar(buf, '\\');
 			appendPQExpBufferChar(buf, ((ch >> 6) & 3) + '0');
@@ -163,10 +178,9 @@ appendStringLiteralDQ(PQExpBuffer buf, const char *str, const char *dqprefix)
 		appendPQExpBufferStr(delimBuf, dqprefix);
 
 	/*
-	 * Make sure we choose a delimiter which (without the trailing $) is
-	 * not present in the string being quoted. We don't check with the
-	 * trailing $ because a string ending in $foo must not be quoted with
-	 * $foo$.
+	 * Make sure we choose a delimiter which (without the trailing $) is not
+	 * present in the string being quoted. We don't check with the trailing $
+	 * because a string ending in $foo must not be quoted with $foo$.
 	 */
 	while (strstr(str, delimBuf->data) != NULL)
 	{
@@ -244,15 +258,13 @@ parsePGArray(const char *atext, char ***itemarray, int *nitems)
 
 	/*
 	 * We expect input in the form of "{item,item,item}" where any item is
-	 * either raw data, or surrounded by double quotes (in which case
-	 * embedded characters including backslashes and quotes are
-	 * backslashed).
+	 * either raw data, or surrounded by double quotes (in which case embedded
+	 * characters including backslashes and quotes are backslashed).
 	 *
-	 * We build the result as an array of pointers followed by the actual
-	 * string data, all in one malloc block for convenience of
-	 * deallocation. The worst-case storage need is not more than one
-	 * pointer and one character for each input character (consider
-	 * "{,,,,,,,,,,}").
+	 * We build the result as an array of pointers followed by the actual string
+	 * data, all in one malloc block for convenience of deallocation. The
+	 * worst-case storage need is not more than one pointer and one character
+	 * for each input character (consider "{,,,,,,,,,,}").
 	 */
 	*itemarray = NULL;
 	*nitems = 0;
@@ -358,12 +370,11 @@ buildACLCommands(const char *name, const char *type,
 	privswgo = createPQExpBuffer();
 
 	/*
-	 * At the end, these two will be pasted together to form the result.
-	 * But the owner privileges need to go before the other ones to keep
-	 * the dependencies valid.	In recent versions this is normally the
-	 * case, but in old versions they come after the PUBLIC privileges and
-	 * that results in problems if we need to run REVOKE on the owner
-	 * privileges.
+	 * At the end, these two will be pasted together to form the result. But
+	 * the owner privileges need to go before the other ones to keep the
+	 * dependencies valid.	In recent versions this is normally the case, but
+	 * in old versions they come after the PUBLIC privileges and that results
+	 * in problems if we need to run REVOKE on the owner privileges.
 	 */
 	firstsql = createPQExpBuffer();
 	secondsql = createPQExpBuffer();
@@ -461,8 +472,7 @@ buildACLCommands(const char *name, const char *type,
 	}
 
 	/*
-	 * If we didn't find any owner privs, the owner must have revoked 'em
-	 * all
+	 * If we didn't find any owner privs, the owner must have revoked 'em all
 	 */
 	if (!found_owner_privs && owner)
 	{
@@ -622,8 +632,7 @@ copyAclUserName(PQExpBuffer output, char *input)
 	while (*input && *input != '=')
 	{
 		/*
-		 * If user name isn't quoted, then just add it to the output
-		 * buffer
+		 * If user name isn't quoted, then just add it to the output buffer
 		 */
 		if (*input != '"')
 			appendPQExpBufferChar(output, *input++);
@@ -638,8 +647,8 @@ copyAclUserName(PQExpBuffer output, char *input)
 					return input;		/* really a syntax error... */
 
 				/*
-				 * Quoting convention is to escape " as "".  Keep this
-				 * code in sync with putid() in backend's acl.c.
+				 * Quoting convention is to escape " as "".  Keep this code in
+				 * sync with putid() in backend's acl.c.
 				 */
 				if (*input == '"' && *(input + 1) == '"')
 					input++;

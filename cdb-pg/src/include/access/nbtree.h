@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/access/nbtree.h,v 1.83 2004/12/31 22:03:21 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/access/nbtree.h,v 1.87 2005/10/15 02:49:42 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -193,8 +193,7 @@ typedef BTItemData *BTItem;
 #define XLOG_BTREE_SPLIT_R_ROOT 0x60	/* as above, new item on right */
 #define XLOG_BTREE_DELETE		0x70	/* delete leaf btitem */
 #define XLOG_BTREE_DELETE_PAGE	0x80	/* delete an entire page */
-#define XLOG_BTREE_DELETE_PAGE_META 0x90		/* same, plus update
-												 * metapage */
+#define XLOG_BTREE_DELETE_PAGE_META 0x90		/* same, plus update metapage */
 #define XLOG_BTREE_NEWROOT		0xA0	/* new root page */
 #define XLOG_BTREE_NEWMETA		0xB0	/* update metadata page */
 
@@ -392,8 +391,8 @@ typedef struct BTScanOpaqueData
 	/* these fields are set by _bt_preprocess_keys(): */
 	bool		qual_ok;		/* false if qual can never be satisfied */
 	int			numberOfKeys;	/* number of preprocessed scan keys */
-	int			numberOfRequiredKeys;	/* number of keys that must be
-										 * matched to continue the scan */
+	int			numberOfRequiredKeys;	/* number of keys that must be matched
+										 * to continue the scan */
 	ScanKey		keyData;		/* array of preprocessed scan keys */
 } BTScanOpaqueData;
 
@@ -404,8 +403,9 @@ typedef BTScanOpaqueData *BTScanOpaque;
  */
 extern Datum btbuild(PG_FUNCTION_ARGS);
 extern Datum btinsert(PG_FUNCTION_ARGS);
-extern Datum btgettuple(PG_FUNCTION_ARGS);
 extern Datum btbeginscan(PG_FUNCTION_ARGS);
+extern Datum btgettuple(PG_FUNCTION_ARGS);
+extern Datum btgetmulti(PG_FUNCTION_ARGS);
 extern Datum btrescan(PG_FUNCTION_ARGS);
 extern Datum btendscan(PG_FUNCTION_ARGS);
 extern Datum btmarkpos(PG_FUNCTION_ARGS);
@@ -416,7 +416,7 @@ extern Datum btvacuumcleanup(PG_FUNCTION_ARGS);
 /*
  * prototypes for functions in nbtinsert.c
  */
-extern InsertIndexResult _bt_doinsert(Relation rel, BTItem btitem,
+extern void _bt_doinsert(Relation rel, BTItem btitem,
 			 bool index_is_unique, Relation heapRel);
 extern Buffer _bt_getstackbuf(Relation rel, BTStack stack, int access);
 extern void _bt_insert_parent(Relation rel, Buffer buf, Buffer rbuf,
@@ -484,7 +484,6 @@ extern void _bt_leafbuild(BTSpool *btspool, BTSpool *spool2);
  * prototypes for functions in nbtxlog.c
  */
 extern void btree_redo(XLogRecPtr lsn, XLogRecord *record);
-extern void btree_undo(XLogRecPtr lsn, XLogRecord *record);
 extern void btree_desc(char *buf, uint8 xl_info, char *rec);
 extern void btree_xlog_startup(void);
 extern void btree_xlog_cleanup(void);

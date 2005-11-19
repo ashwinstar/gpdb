@@ -1,5 +1,5 @@
 <!--
-$PostgreSQL: pgsql/doc/src/sgml/ref/psql-ref.sgml,v 1.130.4.3 2005/02/11 04:19:18 momjian Exp $
+$PostgreSQL: pgsql/doc/src/sgml/ref/psql-ref.sgml,v 1.154 2005/11/04 23:14:02 petere Exp $
 PostgreSQL documentation
 -->
 
@@ -179,8 +179,8 @@ PostgreSQL documentation
       <listitem>
       <para>
       Use <replaceable class="parameter">separator</replaceable> as the
-      field separator. This is equivalent to <command>\pset
-      fieldsep</command> or <command>\f</command>.
+      field separator for unaligned output. This is equivalent to
+      <command>\pset fieldsep</command> or <command>\f</command>.
       </para>
       </listitem>
     </varlistentry>
@@ -218,6 +218,18 @@ PostgreSQL documentation
       List all available databases, then exit. Other non-connection
       options are ignored. This is similar to the internal command
       <command>\list</command>.
+      </para>
+      </listitem>
+    </varlistentry>
+
+    <varlistentry>
+      <term><option>-L <replaceable class="parameter">filename</replaceable></></term>
+      <term><option>--log-file <replaceable class="parameter">filename</replaceable></></term>
+      <listitem>
+      <para>
+       Write all query output into file <replaceable
+       class="parameter">filename</replaceable>, in addition to the
+       normal output destination.
       </para>
       </listitem>
     </varlistentry>
@@ -283,8 +295,8 @@ PostgreSQL documentation
       <listitem>
       <para>
       Use <replaceable class="parameter">separator</replaceable> as the
-      record separator. This is equivalent to the <command>\pset
-      recordsep</command> command.
+      record separator for unaligned output. This is equivalent to the
+      <command>\pset recordsep</command> command.
       </para>
       </listitem>
     </varlistentry>
@@ -433,8 +445,8 @@ PostgreSQL documentation
       <term><option>--expanded</></term>
       <listitem>
       <para>
-      Turn on the extended table formatting mode. This is equivalent to the
-      command <command>\x</command>.
+      Turn on the expanded table formatting mode. This is equivalent to the
+      <command>\x</command> command.
       </para>
       </listitem>
     </varlistentry>
@@ -590,10 +602,8 @@ testdb=&gt;
     precede it by a backslash. Anything contained in single quotes is
     furthermore subject to C-like substitutions for
     <literal>\n</literal> (new line), <literal>\t</literal> (tab),
-    <literal>\</literal><replaceable>digits</replaceable>,
-    <literal>\0</literal><replaceable>digits</replaceable>, and
-    <literal>\0x</literal><replaceable>digits</replaceable> (the
-    character with the given decimal, octal, or hexadecimal code).
+    <literal>\</literal><replaceable>digits</replaceable> (octal), and
+    <literal>\x</literal><replaceable>digits</replaceable> (hexadecimal).
     </para>
 
     <para>
@@ -954,9 +964,10 @@ testdb=&gt;
         <term><literal>\dg [ <replaceable class="parameter">pattern</replaceable> ]</literal></term>
         <listitem>
         <para>
-        Lists all database groups. If <replaceable
+        Lists all database roles. If <replaceable
         class="parameter">pattern</replaceable> is specified, only
-        those groups whose names match the pattern are listed.
+        those roles whose names match the pattern are listed.
+        (This command is now effectively the same as <literal>\du</>.)
         </para>
         </listitem>
       </varlistentry>
@@ -1038,9 +1049,9 @@ testdb=&gt;
         </para>
 
         <para>
-        The commands <xref linkend="SQL-GRANT"> and
-        <xref linkend="SQL-REVOKE">
-        are used to set access privileges.  See <xref linkend="SQL-GRANT">
+        The commands <command>GRANT</command> and
+        <command>REVOKE</command> are used to set access privileges.
+        See <xref linkend="sql-grant" endterm="sql-grant-title">
         for more information.
         </para>
         </listitem>
@@ -1064,7 +1075,7 @@ testdb=&gt;
         <term><literal>\du [ <replaceable class="parameter">pattern</replaceable> ]</literal></term>
         <listitem>
         <para>
-        Lists all database users or only those that match <replaceable
+        Lists all database roles, or only those that match <replaceable
         class="parameter">pattern</replaceable>.
         </para>
         </listitem>
@@ -1388,9 +1399,10 @@ lo_import 152801
           <listitem>
           <para>
           Sets the output format to one of <literal>unaligned</literal>,
-          <literal>aligned</literal>, <literal>html</literal>, or
-          <literal>latex</literal>. Unique abbreviations are allowed.
-          (That would mean one letter is enough.)
+          <literal>aligned</literal>, <literal>html</literal>,
+          <literal>latex</literal>, or <literal>troff-ms</literal>.
+          Unique abbreviations are allowed.  (That would mean one letter
+          is enough.)
           </para>
 
           <para>
@@ -1430,10 +1442,10 @@ lo_import 152801
           <listitem>
           <para>
           Toggles between regular and expanded format. When expanded
-          format is enabled, all output has two columns with the column
-          name on the left and the data on the right. This mode is
-          useful if the data wouldn't fit on the screen in the normal
-          <quote>horizontal</quote> mode.
+          format is enabled, query results are displayed in two
+          columns, with the column name on the left and the data on
+          the right. This mode is useful if the data wouldn't fit on the
+          screen in the normal <quote>horizontal</quote> mode.
           </para>
 
           <para>
@@ -1475,6 +1487,17 @@ lo_import 152801
           <para>
           Toggles the display of the default footer <literal>(x
           rows)</literal>.
+          </para>
+          </listitem>
+          </varlistentry>
+
+          <varlistentry>
+          <term><literal>numericlocale</literal></term>
+          <listitem>
+          <para>
+          Toggles the display of a locale-aware character to separate groups
+          of digits to the left of the decimal marker.  It also enables
+          a locale-aware decimal marker.
           </para>
           </listitem>
           </varlistentry>
@@ -1723,7 +1746,7 @@ lo_import 152801
         <term><literal>\x</literal></term>
         <listitem>
         <para>
-        Toggles extended table formatting mode. As such it is equivalent to
+        Toggles expanded table formatting mode. As such it is equivalent to
         <literal>\pset expanded</literal>.
        </para>
        </listitem>
@@ -1741,10 +1764,10 @@ lo_import 152801
         </para>
 
         <para>
-        The commands <xref linkend="SQL-GRANT"> and
-        <xref linkend="SQL-REVOKE">
-        are used to set access privileges.  See <xref linkend="SQL-GRANT">
-        for more information.
+        The commands <command>GRANT</command> and
+        <command>REVOKE</command> are used to set access privileges.
+        See <xref linkend="sql-grant" endterm="sql-grant-title"> for
+        more information.
         </para>
 
         <para>
@@ -1989,6 +2012,28 @@ bar
       </varlistentry>
 
       <varlistentry>
+        <term><varname>HISTFILE</varname></term>
+        <listitem>
+        <para>
+        The file name that will be used to store the history list. The default
+        value is <filename>~/.psql_history</filename>.  For example, putting
+<programlisting>
+\set HISTFILE ~/.psql_history- :DBNAME
+</programlisting>
+        in <filename>~/.psqlrc</filename> will cause
+        <application>psql</application> to maintain a separate history for
+        each database.
+        </para>
+        <note>
+        <para>
+        This feature was shamelessly plagiarized from
+        <application>Bash</application>.
+        </para>
+        </note>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
         <term><varname>HISTSIZE</varname></term>
         <listitem>
         <para>
@@ -2045,6 +2090,28 @@ bar
         command. This variable is only guaranteed to be valid until
         after the result of the next <acronym>SQL</acronym> command has
         been displayed.
+        </para>
+        </listitem>
+      </varlistentry>
+
+      <varlistentry>
+      <indexterm>
+       <primary>rollback</primary>
+       <secondary>psql</secondary>
+      </indexterm>
+        <term><varname>ON_ERROR_ROLLBACK</varname></term>
+        <listitem>
+        <para>
+        When <literal>on</>, if a statement in a transaction block
+        generates an error, the error is ignored and the transaction
+        continues. When <literal>interactive</>, such errors are only
+        ignored in interactive sessions, and not when reading script
+        files. When <literal>off</> (the default), a statement in a
+        transaction block that generates an error aborts the entire
+        transaction. The on_error_rollback-on mode works by issuing an
+        implicit <command>SAVEPOINT</> for you, just before each command
+        that is in a transaction block, and rolls back to the savepoint
+        on error.
         </para>
         </listitem>
       </varlistentry>
@@ -2345,12 +2412,7 @@ testdb=&gt; <userinput>\set content '\'' `sed -e "s/'/\\\\\\'/g" &lt; my_file.tx
         <term><literal>%</literal><replaceable class="parameter">digits</replaceable></term>
         <listitem>
         <para>
-        The character with the indicated numeric code is substituted.
-        If <replaceable class="parameter">digits</replaceable> starts
-        with <literal>0x</literal> the rest of the characters are
-        interpreted as hexadecimal; otherwise if the first digit is
-        <literal>0</literal> the digits are interpreted as octal;
-        otherwise the digits are read as a decimal number.
+        The character with the indicated octal code is substituted.
         </para>
         </listitem>
       </varlistentry>
@@ -2735,6 +2797,14 @@ second | four
 </programlisting>
   </para>
 
+ </refsect1>
+
+ <refsect1>
+  <title>See Also</title>
+
+  <simplelist type="inline">
+   <member>Environment Variables (<xref linkend="libpq-envars">)</member>
+  </simplelist>
  </refsect1>
 
 </refentry>

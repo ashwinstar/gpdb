@@ -3,7 +3,7 @@
  *			  procedural language
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/pl/plpgsql/src/pl_handler.c,v 1.23 2004/08/01 17:32:22 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/pl/plpgsql/src/pl_handler.c,v 1.26 2005/10/15 02:49:50 momjian Exp $
  *
  *	  This software is copyrighted by Jan Wieck - Hamburg.
  *
@@ -47,7 +47,7 @@
 
 extern DLLIMPORT bool check_function_bodies;
 
-static int	plpgsql_firstcall = 1;
+static bool plpgsql_firstcall = true;
 
 static void plpgsql_init_all(void);
 
@@ -65,10 +65,8 @@ plpgsql_init(void)
 		return;
 
 	plpgsql_HashTableInit();
-
 	RegisterXactCallback(plpgsql_xact_cb, NULL);
-
-	plpgsql_firstcall = 0;
+	plpgsql_firstcall = false;
 }
 
 /*
@@ -78,14 +76,12 @@ static void
 plpgsql_init_all(void)
 {
 	/* Execute any postmaster-startup safe initialization */
-	if (plpgsql_firstcall)
-		plpgsql_init();
+	plpgsql_init();
 
 	/*
 	 * Any other initialization that must be done each time a new backend
 	 * starts -- currently none
 	 */
-
 }
 
 /* ----------
@@ -122,7 +118,7 @@ plpgsql_call_handler(PG_FUNCTION_ARGS)
 	 */
 	if (CALLED_AS_TRIGGER(fcinfo))
 		retval = PointerGetDatum(plpgsql_exec_trigger(func,
-									   (TriggerData *) fcinfo->context));
+										   (TriggerData *) fcinfo->context));
 	else
 		retval = plpgsql_exec_function(func, fcinfo);
 
@@ -193,16 +189,16 @@ plpgsql_validator(PG_FUNCTION_ARGS)
 	haspolyarg = false;
 	for (i = 0; i < proc->pronargs; i++)
 	{
-		if (get_typtype(proc->proargtypes[i]) == 'p')
+		if (get_typtype(proc->proargtypes.values[i]) == 'p')
 		{
-			if (proc->proargtypes[i] == ANYARRAYOID ||
-				proc->proargtypes[i] == ANYELEMENTOID)
+			if (proc->proargtypes.values[i] == ANYARRAYOID ||
+				proc->proargtypes.values[i] == ANYELEMENTOID)
 				haspolyarg = true;
 			else
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("plpgsql functions cannot take type %s",
-								format_type_be(proc->proargtypes[i]))));
+							  format_type_be(proc->proargtypes.values[i]))));
 		}
 	}
 

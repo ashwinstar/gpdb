@@ -14,7 +14,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/mmgr/mcxt.c,v 1.53 2004/12/31 22:02:48 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/mmgr/mcxt.c,v 1.56 2005/10/15 02:49:36 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -78,8 +78,8 @@ MemoryContextInit(void)
 	AssertState(TopMemoryContext == NULL);
 
 	/*
-	 * Initialize TopMemoryContext as an AllocSetContext with slow growth
-	 * rate --- we don't really expect much to be allocated in it.
+	 * Initialize TopMemoryContext as an AllocSetContext with slow growth rate
+	 * --- we don't really expect much to be allocated in it.
 	 *
 	 * (There is special-case code in MemoryContextCreate() for this call.)
 	 */
@@ -90,18 +90,18 @@ MemoryContextInit(void)
 											 8 * 1024);
 
 	/*
-	 * Not having any other place to point CurrentMemoryContext, make it
-	 * point to TopMemoryContext.  Caller should change this soon!
+	 * Not having any other place to point CurrentMemoryContext, make it point
+	 * to TopMemoryContext.  Caller should change this soon!
 	 */
 	CurrentMemoryContext = TopMemoryContext;
 
 	/*
-	 * Initialize ErrorContext as an AllocSetContext with slow growth rate
-	 * --- we don't really expect much to be allocated in it. More to the
-	 * point, require it to contain at least 8K at all times. This is the
-	 * only case where retained memory in a context is *essential* --- we
-	 * want to be sure ErrorContext still has some memory even if we've
-	 * run out elsewhere!
+	 * Initialize ErrorContext as an AllocSetContext with slow growth rate ---
+	 * we don't really expect much to be allocated in it. More to the point,
+	 * require it to contain at least 8K at all times. This is the only case
+	 * where retained memory in a context is *essential* --- we want to be
+	 * sure ErrorContext still has some memory even if we've run out
+	 * elsewhere!
 	 */
 	ErrorContext = AllocSetContextCreate(TopMemoryContext,
 										 "ErrorContext",
@@ -123,7 +123,10 @@ MemoryContextReset(MemoryContext context)
 {
 	AssertArg(MemoryContextIsValid(context));
 
-	MemoryContextResetChildren(context);
+	/* save a function call in common case where there are no children */
+	if (context->firstchild != NULL)
+		MemoryContextResetChildren(context);
+
 	(*context->methods->reset) (context);
 }
 
@@ -166,9 +169,9 @@ MemoryContextDelete(MemoryContext context)
 	MemoryContextDeleteChildren(context);
 
 	/*
-	 * We delink the context from its parent before deleting it, so that
-	 * if there's an error we won't have deleted/busted contexts still
-	 * attached to the context tree.  Better a leak than a crash.
+	 * We delink the context from its parent before deleting it, so that if
+	 * there's an error we won't have deleted/busted contexts still attached
+	 * to the context tree.  Better a leak than a crash.
 	 */
 	if (context->parent)
 	{
@@ -205,8 +208,8 @@ MemoryContextDeleteChildren(MemoryContext context)
 	AssertArg(MemoryContextIsValid(context));
 
 	/*
-	 * MemoryContextDelete will delink the child from me, so just iterate
-	 * as long as there is a child.
+	 * MemoryContextDelete will delink the child from me, so just iterate as
+	 * long as there is a child.
 	 */
 	while (context->firstchild != NULL)
 		MemoryContextDelete(context->firstchild);
@@ -381,9 +384,9 @@ MemoryContextContains(MemoryContext context, void *pointer)
 		((char *) pointer - STANDARDCHUNKHEADERSIZE);
 
 	/*
-	 * If the context link doesn't match then we certainly have a
-	 * non-member chunk.  Also check for a reasonable-looking size as
-	 * extra guard against being fooled by bogus pointers.
+	 * If the context link doesn't match then we certainly have a non-member
+	 * chunk.  Also check for a reasonable-looking size as extra guard against
+	 * being fooled by bogus pointers.
 	 */
 	if (header->context == context && AllocSizeIsValid(header->size))
 		return true;
@@ -619,7 +622,13 @@ repalloc(void *pointer, Size size)
 /*
  * MemoryContextSwitchTo
  *		Returns the current context; installs the given context.
+ *
+ * This is inlined when using GCC.
+ *
+ * TODO: investigate supporting inlining for some non-GCC compilers.
  */
+#ifndef __GNUC__
+
 MemoryContext
 MemoryContextSwitchTo(MemoryContext context)
 {
@@ -631,6 +640,7 @@ MemoryContextSwitchTo(MemoryContext context)
 	CurrentMemoryContext = context;
 	return old;
 }
+#endif   /* ! __GNUC__ */
 
 /*
  * MemoryContextStrdup

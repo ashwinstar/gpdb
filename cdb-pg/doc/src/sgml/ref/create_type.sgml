@@ -1,5 +1,5 @@
 <!--
-$PostgreSQL: pgsql/doc/src/sgml/ref/create_type.sgml,v 1.54 2005/01/04 00:39:53 tgl Exp $
+$PostgreSQL: pgsql/doc/src/sgml/ref/create_type.sgml,v 1.59 2005/11/01 21:09:50 tgl Exp $
 PostgreSQL documentation
 -->
 
@@ -103,17 +103,14 @@ CREATE TYPE <replaceable class="parameter">name</replaceable> (
    or as taking three arguments of types
    <type>cstring</type>, <type>oid</type>, <type>integer</type>.
    The first argument is the input text as a C string, the second
-   argument is the element type's OID in case this is an array type
-   (or the type's own OID for a composite type),
+   argument is the type's own OID (except for array types, which instead
+   receive their element type's OID),
    and the third is the <literal>typmod</> of the destination column, if known
    (-1 will be passed if not).
-   The input function should return a value of the data type itself.
-   The output function may be
-   declared as taking one argument of the new data type,  or as taking
-   two arguments of which the second is type <type>oid</type>.
-   The second argument is again the array element type OID for array types
-   or the type OID for composite types.
-   The output function should return type <type>cstring</type>.
+   The input function must return a value of the data type itself.
+   The output function must be
+   declared as taking one argument of the new data type.
+   The output function must return type <type>cstring</type>.
   </para>
 
   <para>
@@ -128,20 +125,18 @@ CREATE TYPE <replaceable class="parameter">name</replaceable> (
    function should perform adequate checking to ensure that the value is
    valid.
    The receive function may be declared as taking one argument of type
-   <type>internal</type>, or two arguments of types <type>internal</type>
-   and <type>oid</type>.  It must return a value of the data type itself.
-   (The first argument is a pointer to a <type>StringInfo</type> buffer
-   holding the received byte string; the optional second argument is the
-   element type OID in case this is an array type, or the type's own OID for a
-   composite type.)  Similarly, the optional
+   <type>internal</type>, or as taking three arguments of types
+   <type>internal</type>, <type>oid</type>, <type>integer</type>.
+   The first argument is a pointer to a <type>StringInfo</type> buffer
+   holding the received byte string; the optional arguments are the
+   same as for the text input function.
+   The receive function must return a value of the data type itself.
+   Similarly, the optional
    <replaceable class="parameter">send_function</replaceable> converts
    from the internal representation to the external binary representation.
    If this function is not supplied, the type cannot participate in binary
-   output.  The send function may be
-   declared as taking one argument of the new data type,  or as taking
-   two arguments of which the second is type <type>oid</type>.
-   The second argument is again the array element type OID for array types
-   or the type OID for composite types.
+   output.  The send function must be
+   declared as taking one argument of the new data type.
    The send function must return type <type>bytea</type>.
   </para>
 
@@ -538,8 +533,8 @@ CREATE TABLE big_objs (
   <para>
    This <command>CREATE TYPE</command> command is a
    <productname>PostgreSQL</productname> extension.  There is a
-   <command>CREATE TYPE</command> statement in SQL:1999 and later that is rather
-   different in detail.
+   <command>CREATE TYPE</command> statement in the <acronym>SQL</> standard
+   that is rather different in detail.
   </para>
  </refsect1>
 

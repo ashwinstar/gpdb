@@ -60,7 +60,7 @@ ignore: random
 # ----------
 # The fourth group of parallel test
 # ----------
-test: select_into select_distinct select_distinct_on select_implicit select_having subselect union case join aggregates transactions random portals arrays btree_index hash_index update namespace
+test: select_into select_distinct select_distinct_on select_implicit select_having subselect union case join aggregates transactions random portals arrays btree_index hash_index update namespace prepared_xacts
 
 test: privileges
 test: misc
@@ -68,7 +68,7 @@ test: misc
 # ----------
 # The fifth group of parallel test
 # ----------
-test: select_views portals_p2 rules foreign_key cluster
+test: select_views portals_p2 rules foreign_key cluster dependency
 
 # ----------
 # The sixth group of parallel test

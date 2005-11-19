@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/access/transam.h,v 1.51 2004/12/31 22:03:21 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/access/transam.h,v 1.56 2005/10/15 02:49:42 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -55,33 +55,42 @@
  *		OIDs 1-9999 are reserved for manual assignment (see the files
  *		in src/include/catalog/).
  *
- *		OIDS 10000-16383 are reserved for assignment by genbki.sh.
+ *		OIDS 10000-16383 are reserved for assignment during initdb
+ *		using the OID generator.  (We start the generator at 10000.)
  *
- *		OIDs beginning at 16384 are assigned at runtime from the OID
- *		generator.	(The first few of these will be assigned during initdb,
- *		to objects created after the initial BKI script processing.)
+ *		OIDs beginning at 16384 are assigned from the OID generator
+ *		during normal multiuser operation.	(We force the generator up to
+ *		16384 as soon as we are in normal operation.)
  *
  * The choices of 10000 and 16384 are completely arbitrary, and can be moved
  * if we run low on OIDs in either category.  Changing the macros below
  * should be sufficient to do this.
  *
- * NOTE: if the OID generator wraps around, we should skip over OIDs 0-16383
+ * NOTE: if the OID generator wraps around, we skip over OIDs 0-16383
  * and resume with 16384.  This minimizes the odds of OID conflict, by not
  * reassigning OIDs that might have been assigned during initdb.
  * ----------
  */
-#define FirstGenBKIObjectId   10000
-#define BootstrapObjectIdData 16384
+#define FirstBootstrapObjectId	10000
+#define FirstNormalObjectId		16384
 
 /*
  * VariableCache is placed in shmem and used by
- * backends to get next available XID & OID.
+ * backends to get next available OID & XID.
+ *
+ * Note: xidWrapLimit and limit_datname are not "active" values, but are
+ * used just to generate useful messages when xidWarnLimit or xidStopLimit
+ * are exceeded.
  */
 typedef struct VariableCacheData
 {
-	TransactionId nextXid;		/* next XID to assign */
 	Oid			nextOid;		/* next OID to assign */
 	uint32		oidCount;		/* OIDs available before must do XLOG work */
+	TransactionId nextXid;		/* next XID to assign */
+	TransactionId xidWarnLimit; /* start complaining here */
+	TransactionId xidStopLimit; /* refuse to advance nextXid beyond here */
+	TransactionId xidWrapLimit; /* where the world ends */
+	NameData	limit_datname;	/* database that needs vacuumed first */
 } VariableCacheData;
 
 typedef VariableCacheData *VariableCache;
@@ -92,9 +101,6 @@ typedef VariableCacheData *VariableCache;
  * ----------------
  */
 
-/* in transam/transam.c */
-extern bool AMI_OVERRIDE;
-
 /* in transam/varsup.c */
 extern VariableCache ShmemVariableCache;
 
@@ -102,7 +108,6 @@ extern VariableCache ShmemVariableCache;
 /*
  * prototypes for functions in transam/transam.c
  */
-extern void AmiTransactionOverride(bool flag);
 extern bool TransactionIdDidCommit(TransactionId transactionId);
 extern bool TransactionIdDidAbort(TransactionId transactionId);
 extern void TransactionIdCommit(TransactionId transactionId);
@@ -118,7 +123,8 @@ extern bool TransactionIdFollowsOrEquals(TransactionId id1, TransactionId id2);
 /* in transam/varsup.c */
 extern TransactionId GetNewTransactionId(bool isSubXact);
 extern TransactionId ReadNewTransactionId(void);
+extern void SetTransactionIdLimit(TransactionId oldest_datfrozenxid,
+					  Name oldest_datname);
 extern Oid	GetNewObjectId(void);
-extern void CheckMaxObjectId(Oid assigned_oid);
 
 #endif   /* TRAMSAM_H */

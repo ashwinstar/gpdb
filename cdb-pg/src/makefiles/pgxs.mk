@@ -1,6 +1,6 @@
 # PGXS: PostgreSQL extensions makefile
 
-# $PostgreSQL: pgsql/src/makefiles/pgxs.mk,v 1.3 2004/10/10 16:13:03 tgl Exp $ 
+# $PostgreSQL: pgsql/src/makefiles/pgxs.mk,v 1.6 2005/09/27 17:43:31 tgl Exp $ 
 
 # This file contains generic rules to build many kinds of simple
 # extension modules.  You only need to set a few variables and include
@@ -100,10 +100,12 @@ ifdef MODULES
 	done
 endif # MODULES
 ifdef DOCS
+ifdef docdir
 	@for file in $(addprefix $(srcdir)/, $(DOCS)); do \
 	  echo "$(INSTALL_DATA) $$file $(DESTDIR)$(docdir)/contrib"; \
 	  $(INSTALL_DATA) $$file $(DESTDIR)$(docdir)/contrib; \
 	done
+endif # docdir
 endif # DOCS
 ifdef PROGRAM
 	$(INSTALL_PROGRAM) $(PROGRAM)$(X) $(DESTDIR)$(bindir)
@@ -133,8 +135,10 @@ ifneq (,$(MODULES)$(MODULE_big))
 	$(mkinstalldirs) $(DESTDIR)$(pkglibdir)
 endif
 ifdef DOCS
+ifdef docdir
 	$(mkinstalldirs) $(DESTDIR)$(docdir)/contrib
-endif
+endif # docdir
+endif # DOCS
 ifneq (,$(PROGRAM)$(SCRIPTS)$(SCRIPTS_built))
 	$(mkinstalldirs) $(DESTDIR)$(bindir)
 endif
@@ -201,6 +205,11 @@ distclean maintainer-clean: clean
 
 ifdef REGRESS
 
+# Calling makefile can set REGRESS_OPTS, but this is the default:
+ifndef REGRESS_OPTS
+REGRESS_OPTS = --dbname=$(CONTRIB_TESTDB)
+endif
+
 # When doing a VPATH build, must copy over the test .sql and .out
 # files so that the driver script can find them.  We have to use an
 # absolute path for the targets, because otherwise make will try to
@@ -220,16 +229,18 @@ endif # VPATH
 
 .PHONY: submake
 submake:
+ifndef PGXS
 	$(MAKE) -C $(top_builddir)/src/test/regress pg_regress
+endif
 
 # against installed postmaster
 installcheck: submake
-	$(top_builddir)/src/test/regress/pg_regress $(REGRESS)
+	$(SHELL) $(top_builddir)/src/test/regress/pg_regress $(REGRESS_OPTS) $(REGRESS)
 
 # in-tree test doesn't work yet (no way to install my shared library)
 #check: all submake
-#	$(top_builddir)/src/test/regress/pg_regress --temp-install \
-#	  --top-builddir=$(top_builddir) $(REGRESS)
+#	$(SHELL) $(top_builddir)/src/test/regress/pg_regress --temp-install \
+#	  --top-builddir=$(top_builddir) $(REGRESS_OPTS) $(REGRESS)
 check:
 	@echo "'make check' is not supported."
 	@echo "Do 'make install', then 'make installcheck' instead."

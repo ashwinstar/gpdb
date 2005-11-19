@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/alter.c,v 1.12 2004/12/31 21:59:41 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/alter.c,v 1.15 2005/10/15 02:49:14 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -64,10 +64,6 @@ ExecRenameStmt(RenameStmt *stmt)
 			RenameFunction(stmt->object, stmt->objarg, stmt->newname);
 			break;
 
-		case OBJECT_GROUP:
-			RenameGroup(stmt->subname, stmt->newname);
-			break;
-
 		case OBJECT_LANGUAGE:
 			RenameLanguage(stmt->subname, stmt->newname);
 			break;
@@ -76,16 +72,16 @@ ExecRenameStmt(RenameStmt *stmt)
 			RenameOpClass(stmt->object, stmt->subname, stmt->newname);
 			break;
 
+		case OBJECT_ROLE:
+			RenameRole(stmt->subname, stmt->newname);
+			break;
+
 		case OBJECT_SCHEMA:
 			RenameSchema(stmt->subname, stmt->newname);
 			break;
 
 		case OBJECT_TABLESPACE:
 			RenameTableSpace(stmt->subname, stmt->newname);
-			break;
-
-		case OBJECT_USER:
-			RenameUser(stmt->subname, stmt->newname);
 			break;
 
 		case OBJECT_TABLE:
@@ -106,8 +102,8 @@ ExecRenameStmt(RenameStmt *stmt)
 						{
 							/*
 							 * RENAME TABLE requires that we (still) hold
-							 * CREATE rights on the containing namespace,
-							 * as well as ownership of the table.
+							 * CREATE rights on the containing namespace, as
+							 * well as ownership of the table.
 							 */
 							Oid			namespaceId = get_rel_namespace(relid);
 							AclResult	aclresult;
@@ -117,7 +113,7 @@ ExecRenameStmt(RenameStmt *stmt)
 															  ACL_CREATE);
 							if (aclresult != ACLCHECK_OK)
 								aclcheck_error(aclresult, ACL_KIND_NAMESPACE,
-										get_namespace_name(namespaceId));
+											get_namespace_name(namespaceId));
 
 							renamerel(relid, stmt->newname, stmt);
 							break;
@@ -126,7 +122,7 @@ ExecRenameStmt(RenameStmt *stmt)
 						renameatt(relid,
 								  stmt->subname,		/* old att name */
 								  stmt->newname,		/* new att name */
-							  interpretInhOption(stmt->relation->inhOpt),		/* recursive? */
+								  interpretInhOption(stmt->relation->inhOpt),	/* recursive? */
 								  false);		/* recursing already? */
 						break;
 					case OBJECT_TRIGGER:
@@ -147,13 +143,45 @@ ExecRenameStmt(RenameStmt *stmt)
 }
 
 /*
+ * Executes an ALTER OBJECT / SET SCHEMA statement.  Based on the object
+ * type, the function appropriate to that type is executed.
+ */
+void
+ExecAlterObjectSchemaStmt(AlterObjectSchemaStmt *stmt)
+{
+	switch (stmt->objectType)
+	{
+		case OBJECT_AGGREGATE:
+		case OBJECT_FUNCTION:
+			AlterFunctionNamespace(stmt->object, stmt->objarg,
+								   stmt->newschema);
+			break;
+
+		case OBJECT_SEQUENCE:
+		case OBJECT_TABLE:
+			CheckRelationOwnership(stmt->relation, true);
+			AlterTableNamespace(stmt->relation, stmt->newschema);
+			break;
+
+		case OBJECT_TYPE:
+		case OBJECT_DOMAIN:
+			AlterTypeNamespace(stmt->object, stmt->newschema);
+			break;
+
+		default:
+			elog(ERROR, "unrecognized AlterObjectSchemaStmt type: %d",
+				 (int) stmt->objectType);
+	}
+}
+
+/*
  * Executes an ALTER OBJECT / OWNER TO statement.  Based on the object
  * type, the function appropriate to that type is executed.
  */
 void
 ExecAlterOwnerStmt(AlterOwnerStmt *stmt)
 {
-	AclId		newowner = get_usesysid(stmt->newowner);
+	Oid			newowner = get_roleid_checked(stmt->newowner);
 
 	switch (stmt->objectType)
 	{

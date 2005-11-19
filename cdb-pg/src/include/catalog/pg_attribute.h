@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/catalog/pg_attribute.h,v 1.113 2004/12/31 22:03:24 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/catalog/pg_attribute.h,v 1.119 2005/10/15 02:49:42 momjian Exp $
  *
  * NOTES
  *	  the genbki.sh script reads this file and generates .bki
@@ -26,7 +26,7 @@
 
 /* ----------------
  *		postgres.h contains the system type definitions and the
- *		CATALOG(), BOOTSTRAP and DATA() sugar words so this file
+ *		CATALOG(), BKI_BOOTSTRAP and DATA() sugar words so this file
  *		can be read by both genbki.sh and the C compiler.
  * ----------------
  */
@@ -39,43 +39,44 @@
  *		system attributes in catalog/heap.c also.
  * ----------------
  */
-CATALOG(pg_attribute) BOOTSTRAP BKI_WITHOUT_OIDS
+#define AttributeRelationId  1249
+
+CATALOG(pg_attribute,1249) BKI_BOOTSTRAP BKI_WITHOUT_OIDS
 {
-	Oid			attrelid;		/* OID of relation containing this
-								 * attribute */
+	Oid			attrelid;		/* OID of relation containing this attribute */
 	NameData	attname;		/* name of attribute */
 
 	/*
 	 * atttypid is the OID of the instance in Catalog Class pg_type that
-	 * defines the data type of this attribute (e.g. int4).  Information
-	 * in that instance is redundant with the attlen, attbyval, and
-	 * attalign attributes of this instance, so they had better match or
-	 * Postgres will fail.
+	 * defines the data type of this attribute (e.g. int4).  Information in
+	 * that instance is redundant with the attlen, attbyval, and attalign
+	 * attributes of this instance, so they had better match or Postgres will
+	 * fail.
 	 */
 	Oid			atttypid;
 
 	/*
-	 * attstattarget is the target number of statistics datapoints to
-	 * collect during VACUUM ANALYZE of this column.  A zero here
-	 * indicates that we do not wish to collect any stats about this
-	 * column. A "-1" here indicates that no value has been explicitly set
-	 * for this column, so ANALYZE should use the default setting.
+	 * attstattarget is the target number of statistics datapoints to collect
+	 * during VACUUM ANALYZE of this column.  A zero here indicates that we do
+	 * not wish to collect any stats about this column. A "-1" here indicates
+	 * that no value has been explicitly set for this column, so ANALYZE
+	 * should use the default setting.
 	 */
 	int4		attstattarget;
 
 	/*
-	 * attlen is a copy of the typlen field from pg_type for this
-	 * attribute.  See atttypid comments above.
+	 * attlen is a copy of the typlen field from pg_type for this attribute.
+	 * See atttypid comments above.
 	 */
 	int2		attlen;
 
 	/*
 	 * attnum is the "attribute number" for the attribute:	A value that
 	 * uniquely identifies this attribute within its class. For user
-	 * attributes, Attribute numbers are greater than 0 and not greater
-	 * than the number of attributes in the class. I.e. if the Class
-	 * pg_class says that Class XYZ has 10 attributes, then the user
-	 * attribute numbers in Class pg_attribute must be 1-10.
+	 * attributes, Attribute numbers are greater than 0 and not greater than
+	 * the number of attributes in the class. I.e. if the Class pg_class says
+	 * that Class XYZ has 10 attributes, then the user attribute numbers in
+	 * Class pg_attribute must be 1-10.
 	 *
 	 * System attributes have attribute numbers less than 0 that are unique
 	 * within the class, but not constrained to any particular range.
@@ -91,20 +92,19 @@ CATALOG(pg_attribute) BOOTSTRAP BKI_WITHOUT_OIDS
 	int4		attndims;
 
 	/*
-	 * fastgetattr() uses attcacheoff to cache byte offsets of attributes
-	 * in heap tuples.	The value actually stored in pg_attribute (-1)
-	 * indicates no cached value.  But when we copy these tuples into a
-	 * tuple descriptor, we may then update attcacheoff in the copies.
-	 * This speeds up the attribute walking process.
+	 * fastgetattr() uses attcacheoff to cache byte offsets of attributes in
+	 * heap tuples.  The value actually stored in pg_attribute (-1) indicates
+	 * no cached value.  But when we copy these tuples into a tuple
+	 * descriptor, we may then update attcacheoff in the copies. This speeds
+	 * up the attribute walking process.
 	 */
 	int4		attcacheoff;
 
 	/*
-	 * atttypmod records type-specific data supplied at table creation
-	 * time (for example, the max length of a varchar field).  It is
-	 * passed to type-specific input and output functions as the third
-	 * argument. The value will generally be -1 for types that do not need
-	 * typmod.
+	 * atttypmod records type-specific data supplied at table creation time
+	 * (for example, the max length of a varchar field).  It is passed to
+	 * type-specific input and output functions as the third argument. The
+	 * value will generally be -1 for types that do not need typmod.
 	 */
 	int4		atttypmod;
 
@@ -224,7 +224,7 @@ typedef FormData_pg_attribute *Form_pg_attribute;
 #define Schema_pg_type \
 { 1247, {"typname"},	   19, -1, NAMEDATALEN, 1, 0, -1, -1, false, 'p', 'i', true, false, false, true, 0 }, \
 { 1247, {"typnamespace"},  26, -1,	4,	2, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
-{ 1247, {"typowner"},	   23, -1,	4,	3, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ 1247, {"typowner"},	   26, -1,	4,	3, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
 { 1247, {"typlen"},		   21, -1,	2,	4, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
 { 1247, {"typbyval"},	   16, -1,	1,	5, 0, -1, -1, true, 'p', 'c', true, false, false, true, 0 }, \
 { 1247, {"typtype"},	   18, -1,	1,	6, 0, -1, -1, true, 'p', 'c', true, false, false, true, 0 }, \
@@ -246,10 +246,9 @@ typedef FormData_pg_attribute *Form_pg_attribute;
 { 1247, {"typdefaultbin"}, 25, -1, -1, 22, 0, -1, -1, false, 'x', 'i', false, false, false, true, 0 }, \
 { 1247, {"typdefault"},    25, -1, -1, 23, 0, -1, -1, false, 'x', 'i', false, false, false, true, 0 }
 
-
 DATA(insert ( 1247 typname			19 -1 NAMEDATALEN	1 0 -1 -1 f p i t f f t 0));
 DATA(insert ( 1247 typnamespace		26 -1 4   2 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1247 typowner			23 -1 4   3 0 -1 -1 t p i t f f t 0));
+DATA(insert ( 1247 typowner			26 -1 4   3 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1247 typlen			21 -1 2   4 0 -1 -1 t p s t f f t 0));
 DATA(insert ( 1247 typbyval			16 -1 1   5 0 -1 -1 t p c t f f t 0));
 DATA(insert ( 1247 typtype			18 -1 1   6 0 -1 -1 t p c t f f t 0));
@@ -279,36 +278,13 @@ DATA(insert ( 1247 cmax				29 0  4  -6 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1247 tableoid			26 0  4  -7 0 -1 -1 t p i t f f t 0));
 
 /* ----------------
- *		pg_database
- * ----------------
- */
-DATA(insert ( 1262 datname			19 -1 NAMEDATALEN	1 0 -1 -1 f p i t f f t 0));
-DATA(insert ( 1262 datdba			23 -1 4   2 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1262 encoding			23 -1 4   3 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1262 datistemplate	16 -1 1   4 0 -1 -1 t p c t f f t 0));
-DATA(insert ( 1262 datallowconn		16 -1 1   5 0 -1 -1 t p c t f f t 0));
-DATA(insert ( 1262 datlastsysoid	26 -1 4   6 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1262 datvacuumxid		28 -1 4   7 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1262 datfrozenxid		28 -1 4   8 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1262 dattablespace	26 -1 4   9 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1262 datconfig	  1009 -1 -1 10 1 -1 -1 f x i f f f t 0));
-DATA(insert ( 1262 datacl		  1034 -1 -1 11 1 -1 -1 f x i f f f t 0));
-DATA(insert ( 1262 ctid				27 0  6  -1 0 -1 -1 f p s t f f t 0));
-DATA(insert ( 1262 oid				26 0  4  -2 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1262 xmin				28 0  4  -3 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1262 cmin				29 0  4  -4 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1262 xmax				28 0  4  -5 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1262 cmax				29 0  4  -6 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1262 tableoid			26 0  4  -7 0 -1 -1 t p i t f f t 0));
-
-/* ----------------
  *		pg_proc
  * ----------------
  */
 #define Schema_pg_proc \
 { 1255, {"proname"},			19, -1, NAMEDATALEN,  1, 0, -1, -1, false, 'p', 'i', true, false, false, true, 0 }, \
 { 1255, {"pronamespace"},		26, -1, 4,	2, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
-{ 1255, {"proowner"},			23, -1, 4,	3, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ 1255, {"proowner"},			26, -1, 4,	3, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
 { 1255, {"prolang"},			26, -1, 4,	4, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
 { 1255, {"proisagg"},			16, -1, 1,	5, 0, -1, -1, true, 'p', 'c', true, false, false, true, 0 }, \
 { 1255, {"prosecdef"},			16, -1, 1,	6, 0, -1, -1, true, 'p', 'c', true, false, false, true, 0 }, \
@@ -317,15 +293,17 @@ DATA(insert ( 1262 tableoid			26 0  4  -7 0 -1 -1 t p i t f f t 0));
 { 1255, {"provolatile"},		18, -1, 1,	9, 0, -1, -1, true, 'p', 'c', true, false, false, true, 0 }, \
 { 1255, {"pronargs"},			21, -1, 2, 10, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
 { 1255, {"prorettype"},			26, -1, 4, 11, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
-{ 1255, {"proargtypes"},		30, -1, INDEX_MAX_KEYS*4, 12, 0, -1, -1, false, 'p', 'i', true, false, false, true, 0 }, \
-{ 1255, {"proargnames"},	  1009, -1, -1, 13, 1, -1, -1, false, 'x', 'i', false, false, false, true, 0 }, \
-{ 1255, {"prosrc"},				25, -1, -1, 14, 0, -1, -1, false, 'x', 'i', false, false, false, true, 0 }, \
-{ 1255, {"probin"},				17, -1, -1, 15, 0, -1, -1, false, 'x', 'i', false, false, false, true, 0 }, \
-{ 1255, {"proacl"},			  1034, -1, -1, 16, 1, -1, -1, false, 'x', 'i', false, false, false, true, 0 }
+{ 1255, {"proargtypes"},		30, -1, -1, 12, 1, -1, -1, false, 'p', 'i', true, false, false, true, 0 }, \
+{ 1255, {"proallargtypes"},   1028, -1, -1, 13, 1, -1, -1, false, 'x', 'i', false, false, false, true, 0 }, \
+{ 1255, {"proargmodes"},	  1002, -1, -1, 14, 1, -1, -1, false, 'x', 'i', false, false, false, true, 0 }, \
+{ 1255, {"proargnames"},	  1009, -1, -1, 15, 1, -1, -1, false, 'x', 'i', false, false, false, true, 0 }, \
+{ 1255, {"prosrc"},				25, -1, -1, 16, 0, -1, -1, false, 'x', 'i', false, false, false, true, 0 }, \
+{ 1255, {"probin"},				17, -1, -1, 17, 0, -1, -1, false, 'x', 'i', false, false, false, true, 0 }, \
+{ 1255, {"proacl"},			  1034, -1, -1, 18, 1, -1, -1, false, 'x', 'i', false, false, false, true, 0 }
 
 DATA(insert ( 1255 proname			19 -1 NAMEDATALEN	1 0 -1 -1 f p i t f f t 0));
 DATA(insert ( 1255 pronamespace		26 -1 4   2 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1255 proowner			23 -1 4   3 0 -1 -1 t p i t f f t 0));
+DATA(insert ( 1255 proowner			26 -1 4   3 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1255 prolang			26 -1 4   4 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1255 proisagg			16 -1 1   5 0 -1 -1 t p c t f f t 0));
 DATA(insert ( 1255 prosecdef		16 -1 1   6 0 -1 -1 t p c t f f t 0));
@@ -334,11 +312,13 @@ DATA(insert ( 1255 proretset		16 -1 1   8 0 -1 -1 t p c t f f t 0));
 DATA(insert ( 1255 provolatile		18 -1 1   9 0 -1 -1 t p c t f f t 0));
 DATA(insert ( 1255 pronargs			21 -1 2  10 0 -1 -1 t p s t f f t 0));
 DATA(insert ( 1255 prorettype		26 -1 4  11 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1255 proargtypes		30 -1 INDEX_MAX_KEYS*4 12 0 -1 -1 f p i t f f t 0));
-DATA(insert ( 1255 proargnames	  1009 -1 -1 13 1 -1 -1 f x i f f f t 0));
-DATA(insert ( 1255 prosrc			25 -1 -1 14 0 -1 -1 f x i f f f t 0));
-DATA(insert ( 1255 probin			17 -1 -1 15 0 -1 -1 f x i f f f t 0));
-DATA(insert ( 1255 proacl		  1034 -1 -1 16 1 -1 -1 f x i f f f t 0));
+DATA(insert ( 1255 proargtypes		30 -1 -1 12 1 -1 -1 f p i t f f t 0));
+DATA(insert ( 1255 proallargtypes 1028 -1 -1 13 1 -1 -1 f x i f f f t 0));
+DATA(insert ( 1255 proargmodes	  1002 -1 -1 14 1 -1 -1 f x i f f f t 0));
+DATA(insert ( 1255 proargnames	  1009 -1 -1 15 1 -1 -1 f x i f f f t 0));
+DATA(insert ( 1255 prosrc			25 -1 -1 16 0 -1 -1 f x i f f f t 0));
+DATA(insert ( 1255 probin			17 -1 -1 17 0 -1 -1 f x i f f f t 0));
+DATA(insert ( 1255 proacl		  1034 -1 -1 18 1 -1 -1 f x i f f f t 0));
 DATA(insert ( 1255 ctid				27 0  6  -1 0 -1 -1 f p s t f f t 0));
 DATA(insert ( 1255 oid				26 0  4  -2 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1255 xmin				28 0  4  -3 0 -1 -1 t p i t f f t 0));
@@ -346,41 +326,6 @@ DATA(insert ( 1255 cmin				29 0  4  -4 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1255 xmax				28 0  4  -5 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1255 cmax				29 0  4  -6 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1255 tableoid			26 0  4  -7 0 -1 -1 t p i t f f t 0));
-
-/* ----------------
- *		pg_shadow
- * ----------------
- */
-DATA(insert ( 1260 usename			19	-1 NAMEDATALEN	1 0 -1 -1 f p i t f f t 0));
-DATA(insert ( 1260 usesysid			23	-1	4	2 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1260 usecreatedb		16	-1	1	3 0 -1 -1 t p c t f f t 0));
-DATA(insert ( 1260 usesuper			16	-1	1	4 0 -1 -1 t p c t f f t 0));
-DATA(insert ( 1260 usecatupd		16	-1	1	5 0 -1 -1 t p c t f f t 0));
-DATA(insert ( 1260 passwd			25	-1 -1	6 0 -1 -1 f x i f f f t 0));
-DATA(insert ( 1260 valuntil		   702	-1	4	7 0 -1 -1 t p i f f f t 0));
-DATA(insert ( 1260 useconfig	  1009	-1 -1	8 1 -1 -1 f x i f f f t 0));
-DATA(insert ( 1260 ctid				27 0  6  -1 0 -1 -1 f p s t f f t 0));
-/* no OIDs in pg_shadow */
-DATA(insert ( 1260 xmin				28 0  4  -3 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1260 cmin				29 0  4  -4 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1260 xmax				28 0  4  -5 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1260 cmax				29 0  4  -6 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1260 tableoid			26 0  4  -7 0 -1 -1 t p i t f f t 0));
-
-/* ----------------
- *		pg_group
- * ----------------
- */
-DATA(insert ( 1261 groname			19 -1 NAMEDATALEN  1 0 -1 -1 f p i t f f t 0));
-DATA(insert ( 1261 grosysid			23 -1  4   2 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1261 grolist		  1007 -1 -1   3 1 -1 -1 f x i f f f t 0));
-DATA(insert ( 1261 ctid				27 0  6  -1 0 -1 -1 f p s t f f t 0));
-/* no OIDs in pg_group */
-DATA(insert ( 1261 xmin				28 0  4  -3 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1261 cmin				29 0  4  -4 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1261 xmax				28 0  4  -5 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1261 cmax				29 0  4  -6 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1261 tableoid			26 0  4  -7 0 -1 -1 t p i t f f t 0));
 
 /* ----------------
  *		pg_attribute
@@ -438,7 +383,7 @@ DATA(insert ( 1249 tableoid			26 0  4  -7 0 -1 -1 t p i t f f t 0));
 { 1259, {"relname"},	   19, -1, NAMEDATALEN, 1, 0, -1, -1, false, 'p', 'i', true, false, false, true, 0 }, \
 { 1259, {"relnamespace"},  26, -1,	4,	2, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
 { 1259, {"reltype"},	   26, -1,	4,	3, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
-{ 1259, {"relowner"},	   23, -1,	4,	4, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ 1259, {"relowner"},	   26, -1,	4,	4, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
 { 1259, {"relam"},		   26, -1,	4,	5, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
 { 1259, {"relfilenode"},   26, -1,	4,	6, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
 { 1259, {"reltablespace"}, 26, -1,	4,	7, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
@@ -464,7 +409,7 @@ DATA(insert ( 1249 tableoid			26 0  4  -7 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1259 relname			19 -1 NAMEDATALEN	1 0 -1 -1 f p i t f f t 0));
 DATA(insert ( 1259 relnamespace		26 -1 4   2 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1259 reltype			26 -1 4   3 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1259 relowner			23 -1 4   4 0 -1 -1 t p i t f f t 0));
+DATA(insert ( 1259 relowner			26 -1 4   4 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1259 relam			26 -1 4   5 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1259 relfilenode		26 -1 4   6 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1259 reltablespace	26 -1 4   7 0 -1 -1 t p i t f f t 0));
@@ -495,30 +440,23 @@ DATA(insert ( 1259 cmax				29 0  4  -6 0 -1 -1 t p i t f f t 0));
 DATA(insert ( 1259 tableoid			26 0  4  -7 0 -1 -1 t p i t f f t 0));
 
 /* ----------------
- *		pg_tablespace
+ *		pg_index
+ *
+ * pg_index is not bootstrapped in the same way as the other relations that
+ * have hardwired pg_attribute entries in this file.  However, we do need
+ * a "Schema_xxx" macro for it --- see relcache.c.
  * ----------------
  */
-
-DATA(insert ( 1213 spcname			19 -1 NAMEDATALEN 1 0 -1 -1 f p i t f f t 0));
-DATA(insert ( 1213 spcowner			23 -1 4  2 0  -1 -1 t p i t f f t 0));
-DATA(insert ( 1213 spclocation		25 -1 -1 3 0  -1 -1 f x i t f f t 0));
-DATA(insert ( 1213 spcacl		  1034 -1 -1 4 1  -1 -1 f x i f f f t 0));
-DATA(insert ( 1213 ctid				27 0  6  -1 0 -1 -1 f p s t f f t 0));
-DATA(insert ( 1213 oid				26 0  4  -2 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1213 xmin				28 0  4  -3 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1213 cmin				29 0  4  -4 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1213 xmax				28 0  4  -5 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1213 cmax				29 0  4  -6 0 -1 -1 t p i t f f t 0));
-DATA(insert ( 1213 tableoid			26 0  4  -7 0 -1 -1 t p i t f f t 0));
-
-/* ----------------
- *		pg_xactlock - this is not a real relation, but is a placeholder
- *				  to allow a relation OID to be used for transaction
- *				  waits.  We need a pg_xactlock entry in pg_class only to
- *				  ensure that that OID can never be allocated to a real
- *				  table; and this entry is just to link to that one.
- * ----------------
- */
-DATA(insert ( 376 xactlockfoo		26 0  4   1 0 -1 -1 t p i t f f t 0));
+#define Schema_pg_index \
+{ 0, {"indexrelid"},		26, -1, 4, 1, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ 0, {"indrelid"},			26, -1, 4, 2, 0, -1, -1, true, 'p', 'i', true, false, false, true, 0 }, \
+{ 0, {"indnatts"},			21, -1, 2, 3, 0, -1, -1, true, 'p', 's', true, false, false, true, 0 }, \
+{ 0, {"indisunique"},		16, -1, 1, 4, 0, -1, -1, true, 'p', 'c', true, false, false, true, 0 }, \
+{ 0, {"indisprimary"},		16, -1, 1, 5, 0, -1, -1, true, 'p', 'c', true, false, false, true, 0 }, \
+{ 0, {"indisclustered"},	16, -1, 1, 6, 0, -1, -1, true, 'p', 'c', true, false, false, true, 0 }, \
+{ 0, {"indkey"},			22, -1, -1, 7, 1, -1, -1, false, 'p', 'i', true, false, false, true, 0 }, \
+{ 0, {"indclass"},			30, -1, -1, 8, 1, -1, -1, false, 'p', 'i', true, false, false, true, 0 }, \
+{ 0, {"indexprs"},			25, -1, -1, 9, 0, -1, -1, false, 'x', 'i', false, false, false, true, 0 }, \
+{ 0, {"indpred"},			25, -1, -1, 10, 0, -1, -1, false, 'x', 'i', false, false, false, true, 0 }
 
 #endif   /* PG_ATTRIBUTE_H */

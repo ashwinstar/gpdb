@@ -8,11 +8,15 @@
  * platform, we'll need to split this file and provide a separate configure
  * test for getnameinfo().
  *
+ * Windows may or may not have these routines, so we handle Windows special
+ * by dynamically checking for their existence.  If they already exist, we
+ * use the Windows native routines, but if not, we use our own.
+ *
  *
  * Copyright (c) 2003-2005, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/port/getaddrinfo.c,v 1.16 2005/01/01 20:44:33 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/port/getaddrinfo.c,v 1.21 2005/10/15 02:49:51 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -21,7 +25,6 @@
 #include "c.h"
 
 #ifndef WIN32_CLIENT_ONLY
-#include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -29,6 +32,104 @@
 #endif
 
 #include "getaddrinfo.h"
+
+
+#ifdef WIN32
+
+#define WIN32_LEAN_AND_MEAN
+
+#include <windows.h>
+
+/*
+ * The native routines may or may not exist on the Windows platform we are on,
+ * so we dynamically look up the routines, and call them via function pointers.
+ * Here we need to declare what the function pointers look like
+ */
+typedef int (__stdcall * getaddrinfo_ptr_t) (const char *nodename,
+														 const char *servname,
+											   const struct addrinfo * hints,
+													 struct addrinfo ** res);
+
+typedef void (__stdcall * freeaddrinfo_ptr_t) (struct addrinfo * ai);
+
+typedef int (__stdcall * getnameinfo_ptr_t) (const struct sockaddr * sa,
+														 int salen,
+													 char *host, int hostlen,
+													 char *serv, int servlen,
+														 int flags);
+
+/* static pointers to the native routines, so we only do the lookup once. */
+static getaddrinfo_ptr_t getaddrinfo_ptr = NULL;
+static freeaddrinfo_ptr_t freeaddrinfo_ptr = NULL;
+static getnameinfo_ptr_t getnameinfo_ptr = NULL;
+
+
+static bool
+haveNativeWindowsIPv6routines(void)
+{
+	void	   *hLibrary = NULL;
+	static bool alreadyLookedForIpv6routines = false;
+
+	if (alreadyLookedForIpv6routines)
+		return (getaddrinfo_ptr != NULL);
+
+	/*
+	 * For Windows XP and Windows 2003 (and longhorn/vista), the IPv6 routines
+	 * are present in the WinSock 2 library (ws2_32.dll). Try that first
+	 */
+
+	hLibrary = LoadLibraryA("ws2_32");
+
+	if (hLibrary == NULL || GetProcAddress(hLibrary, "getaddrinfo") == NULL)
+	{
+		/*
+		 * Well, ws2_32 doesn't exist, or more likely doesn't have
+		 * getaddrinfo.
+		 */
+		if (hLibrary != NULL)
+			FreeLibrary(hLibrary);
+
+		/*
+		 * In Windows 2000, there was only the IPv6 Technology Preview look in
+		 * the IPv6 WinSock library (wship6.dll).
+		 */
+
+		hLibrary = LoadLibraryA("wship6");
+	}
+
+	/* If hLibrary is null, we couldn't find a dll with functions */
+	if (hLibrary != NULL)
+	{
+		/* We found a dll, so now get the addresses of the routines */
+
+		getaddrinfo_ptr = (getaddrinfo_ptr_t) GetProcAddress(hLibrary,
+															 "getaddrinfo");
+		freeaddrinfo_ptr = (freeaddrinfo_ptr_t) GetProcAddress(hLibrary,
+															 "freeaddrinfo");
+		getnameinfo_ptr = (getnameinfo_ptr_t) GetProcAddress(hLibrary,
+															 "getnameinfo");
+
+		/*
+		 * If any one of the routines is missing, let's play it safe and
+		 * ignore them all
+		 */
+		if (getaddrinfo_ptr == NULL ||
+			freeaddrinfo_ptr == NULL ||
+			getnameinfo_ptr == NULL)
+		{
+			FreeLibrary(hLibrary);
+			hLibrary = NULL;
+			getaddrinfo_ptr = NULL;
+			freeaddrinfo_ptr = NULL;
+			getnameinfo_ptr = NULL;
+		}
+	}
+
+	alreadyLookedForIpv6routines = true;
+	return (getaddrinfo_ptr != NULL);
+}
+#endif
+
 
 /*
  * get address info for ipv4 sockets.
@@ -47,6 +148,16 @@ getaddrinfo(const char *node, const char *service,
 	struct sockaddr_in sin,
 			   *psin;
 	struct addrinfo hints;
+
+#ifdef WIN32
+
+	/*
+	 * If Windows has native IPv6 support, use the native Windows routine.
+	 * Otherwise, fall through and use our own code.
+	 */
+	if (haveNativeWindowsIPv6routines())
+		return (*getaddrinfo_ptr) (node, service, hintp, res);
+#endif
 
 	if (hintp == NULL)
 	{
@@ -161,6 +272,19 @@ freeaddrinfo(struct addrinfo * res)
 {
 	if (res)
 	{
+#ifdef WIN32
+
+		/*
+		 * If Windows has native IPv6 support, use the native Windows routine.
+		 * Otherwise, fall through and use our own code.
+		 */
+		if (haveNativeWindowsIPv6routines())
+		{
+			(*freeaddrinfo_ptr) (res);
+			return;
+		}
+#endif
+
 		if (res->ai_addr)
 			free(res->ai_addr);
 		free(res);
@@ -189,7 +313,6 @@ gai_strerror(int errcode)
 	}
 
 	return hstrerror(hcode);
-
 #else							/* !HAVE_HSTRERROR */
 
 	switch (errcode)
@@ -198,7 +321,31 @@ gai_strerror(int errcode)
 			return "Unknown host";
 		case EAI_AGAIN:
 			return "Host name lookup failure";
-		case EAI_FAIL:
+			/* Errors below are probably WIN32 only */
+#ifdef EAI_BADFLAGS
+		case EAI_BADFLAGS:
+			return "Invalid argument";
+#endif
+#ifdef EAI_FAMILY
+		case EAI_FAMILY:
+			return "Address family not supported";
+#endif
+#ifdef EAI_MEMORY
+		case EAI_MEMORY:
+			return "Not enough memory";
+#endif
+#ifdef EAI_NODATA
+		case EAI_NODATA:
+			return "No host data of that type was found";
+#endif
+#ifdef EAI_SERVICE
+		case EAI_SERVICE:
+			return "Class type not found";
+#endif
+#ifdef EAI_SOCKTYPE
+		case EAI_SOCKTYPE:
+			return "Socket type not supported";
+#endif
 		default:
 			return "Unknown server error";
 	}
@@ -217,6 +364,17 @@ getnameinfo(const struct sockaddr * sa, int salen,
 			char *node, int nodelen,
 			char *service, int servicelen, int flags)
 {
+#ifdef WIN32
+
+	/*
+	 * If Windows has native IPv6 support, use the native Windows routine.
+	 * Otherwise, fall through and use our own code.
+	 */
+	if (haveNativeWindowsIPv6routines())
+		return (*getnameinfo_ptr) (sa, salen, node, nodelen,
+								   service, servicelen, flags);
+#endif
+
 	/* Invalid arguments. */
 	if (sa == NULL || (node == NULL && service == NULL))
 		return EAI_FAIL;

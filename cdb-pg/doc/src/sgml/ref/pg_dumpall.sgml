@@ -1,5 +1,5 @@
 <!--
-$PostgreSQL: pgsql/doc/src/sgml/ref/pg_dumpall.sgml,v 1.48 2005/01/06 18:29:08 tgl Exp $
+$PostgreSQL: pgsql/doc/src/sgml/ref/pg_dumpall.sgml,v 1.55 2005/11/01 21:09:50 tgl Exp $
 PostgreSQL documentation
 -->
 
@@ -41,16 +41,6 @@ PostgreSQL documentation
    (<application>pg_dump</application> does not save these objects.)
    This currently includes information about database users and
    groups, and access permissions that apply to databases as a whole.
-  </para>
-
-  <para>
-   Thus, <application>pg_dumpall</application> is an integrated
-   solution for backing up your databases.  But note a limitation:
-   it cannot dump <quote>large objects</quote>, since
-   <application>pg_dump</application> cannot dump such objects into
-   text files.  If you have databases containing large objects,
-   they should be dumped using one of <application>pg_dump</application>'s
-   non-text output modes.
   </para>
 
   <para>
@@ -100,8 +90,9 @@ PostgreSQL documentation
       <term><option>--clean</option></term>
       <listitem>
        <para>
-        Include SQL commands to clean (drop) the databases before
-        recreating them.
+        Include SQL commands to clean (drop) databases before
+        recreating them.  <command>DROP</> commands for roles and
+        tablespaces are added as well.
        </para>
       </listitem>
      </varlistentry>
@@ -287,10 +278,11 @@ PostgreSQL documentation
       <term><option>--use-set-session-authorization</></term>
       <listitem>
        <para>
-        Output SQL standard SET SESSION AUTHORIZATION commands instead
-        of OWNER TO commands.  This makes the dump more standards compatible,
-        but depending on the history of the objects in the dump, may not
-        restore properly.
+        Output SQL-standard <command>SET SESSION AUTHORIZATION</> commands
+        instead of <command>ALTER OWNER</> commands to determine object
+        ownership.  This makes the dump more standards compatible, but
+        depending on the history of the objects in the dump, may not restore
+        properly.
        </para>
       </listitem>
      </varlistentry>
@@ -401,7 +393,7 @@ PostgreSQL documentation
   <para>
    To reload this database use, for example:
 <screen>
-<prompt>$</prompt> <userinput>psql -f db.out template1</userinput>
+<prompt>$</prompt> <userinput>psql -f db.out postgres</userinput>
 </screen>
    (It is not important to which database you connect here since the
    script file created by <application>pg_dumpall</application> will
@@ -415,7 +407,8 @@ PostgreSQL documentation
 
   <para>
     <xref linkend="app-pgdump">.  Check there for details on possible
-    error conditions.
+    error conditions.  Also see supported environment variables
+    (<xref linkend="libpq-envars">).
   </para>
  </refsect1>   
 

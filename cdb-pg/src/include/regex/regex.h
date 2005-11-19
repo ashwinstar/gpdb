@@ -29,7 +29,7 @@
  * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $PostgreSQL: pgsql/src/include/regex/regex.h,v 1.26 2003/11/29 22:41:10 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/regex/regex.h,v 1.28 2005/10/15 02:49:46 momjian Exp $
  */
 
 /*
@@ -109,8 +109,7 @@ typedef struct
 #define REG_NLANCH	000200		/* ^ matches after \n, $ before */
 #define REG_NEWLINE 000300		/* newlines are line terminators */
 #define REG_PEND	000400		/* ugh -- backward-compatibility hack */
-#define REG_EXPECT	001000		/* report details on partial/limited
-								 * matches */
+#define REG_EXPECT	001000		/* report details on partial/limited matches */
 #define REG_BOSONLY 002000		/* temporary kludge for BOS-only matches */
 #define REG_DUMP	004000		/* none of your business :-) */
 #define REG_FAKE	010000		/* none of your business :-) */
@@ -150,8 +149,7 @@ typedef struct
 #define REG_BADRPT	13			/* quantifier operand invalid */
 #define REG_ASSERT	15			/* "can't happen" -- you found a bug */
 #define REG_INVARG	16			/* invalid argument to regex function */
-#define REG_MIXED	17			/* character widths of regex and string
-								 * differ */
+#define REG_MIXED	17			/* character widths of regex and string differ */
 #define REG_BADOPT	18			/* invalid embedded option */
 /* two specials for debugging and testing */
 #define REG_ATOI	101			/* convert error-code name to number */
@@ -163,7 +161,7 @@ typedef struct
  * the prototypes for exported functions
  */
 extern int	pg_regcomp(regex_t *, const pg_wchar *, size_t, int);
-extern int	pg_regexec(regex_t *, const pg_wchar *, size_t, rm_detail_t *, size_t, regmatch_t[], int);
+extern int	pg_regexec(regex_t *, const pg_wchar *, size_t, size_t, rm_detail_t *, size_t, regmatch_t[], int);
 extern void pg_regfree(regex_t *);
 extern size_t pg_regerror(int, const regex_t *, char *, size_t);
 

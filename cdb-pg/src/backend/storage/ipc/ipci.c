@@ -8,13 +8,14 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/storage/ipc/ipci.c,v 1.74 2004/12/31 22:00:56 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/storage/ipc/ipci.c,v 1.79 2005/10/15 02:49:25 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
 #include "access/clog.h"
+#include "access/multixact.h"
 #include "access/subtrans.h"
 #include "access/twophase.h"
 #include "access/xlog.h"
@@ -30,11 +31,12 @@
 #include "storage/pg_shmem.h"
 #include "storage/pmsignal.h"
 #include "storage/proc.h"
+#include "storage/procarray.h"
 #include "storage/sinval.h"
 #include "storage/spin.h"
-#include "cdb/cdbtm.h"
-#include "cdb/cdbfts.h"
 
+#include "cdb/cdbfts.h"
+#include "cdb/cdbtm.h"
 
 /*
  * CreateSharedMemoryAndSemaphores
@@ -55,44 +57,49 @@
  * memory.	This is true for a standalone backend, false for a postmaster.
  */
 void
-CreateSharedMemoryAndSemaphores(bool makePrivate,
-								int maxBackends,
-								int port)
+CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 {
 	PGShmemHeader *seghdr = NULL;
 
 	if (!IsUnderPostmaster)
 	{
-		int			size;
+		Size		size;
 		int			numSemas;
 
 		/*
 		 * Size of the Postgres shared-memory block is estimated via
-		 * moderately-accurate estimates for the big hogs, plus 100K for
-		 * the stuff that's too small to bother with estimating.
+		 * moderately-accurate estimates for the big hogs, plus 100K for the
+		 * stuff that's too small to bother with estimating.
+		 *
+		 * We take some care during this phase to ensure that the total size
+		 * request doesn't overflow size_t.  If this gets through, we don't
+		 * need to be so careful during the actual allocation phase.
 		 */
-		size = hash_estimate_size(SHMEM_INDEX_SIZE, sizeof(ShmemIndexEnt));
-		size += BufferShmemSize();
-		size += LockShmemSize(maxBackends);
-		size += ProcGlobalShmemSize(maxBackends);
-		size += XLOGShmemSize();
-		size += CLOGShmemSize();
-		size += SUBTRANSShmemSize();
-		size += TwoPhaseShmemSize();
-        size += FtsShmemSize();
-         size += tmShmemSize();
-		size += LWLockShmemSize();
-		size += SInvalShmemSize(maxBackends);
-		size += FreeSpaceShmemSize();
-		size += BgWriterShmemSize();
+		size = 100000;
+		size = add_size(size, hash_estimate_size(SHMEM_INDEX_SIZE,
+												 sizeof(ShmemIndexEnt)));
+		size = add_size(size, BufferShmemSize());
+		size = add_size(size, LockShmemSize());
+		size = add_size(size, ProcGlobalShmemSize());
+		size = add_size(size, XLOGShmemSize());
+		size = add_size(size, CLOGShmemSize());
+		size = add_size(size, SUBTRANSShmemSize());
+		size = add_size(size, TwoPhaseShmemSize());
+		size = add_size(size, MultiXactShmemSize());
+		size = add_size(size, LWLockShmemSize());
+		size = add_size(size, ProcArrayShmemSize());
+		size = add_size(size, SInvalShmemSize());
+		size = add_size(size, FreeSpaceShmemSize());
+		size = add_size(size, BgWriterShmemSize());
 #ifdef EXEC_BACKEND
-		size += ShmemBackendArraySize();
+		size = add_size(size, ShmemBackendArraySize());
 #endif
-		size += 100000;
-		/* might as well round it off to a multiple of a typical page size */
-		size += 8192 - (size % 8192);
 
-		elog(DEBUG3, "invoking IpcMemoryCreate(size=%d)", size);
+		/* might as well round it off to a multiple of a typical page size */
+		size = add_size(size, 8192 - (size % 8192));
+
+		elog(DEBUG3, "invoking IpcMemoryCreate(size=%lu)",
+			 (unsigned long) size);
 
 		/*
 		 * Create the shmem segment
@@ -102,16 +109,16 @@ CreateSharedMemoryAndSemaphores(bool makePrivate,
 		/*
 		 * Create semaphores
 		 */
-		numSemas = ProcGlobalSemas(maxBackends);
+		numSemas = ProcGlobalSemas();
 		numSemas += SpinlockSemas();
 		PGReserveSemaphores(numSemas, port);
 	}
 	else
 	{
 		/*
-		 * We are reattaching to an existing shared memory segment.
-		 * This should only be reached in the EXEC_BACKEND case, and
-		 * even then only with makePrivate == false.
+		 * We are reattaching to an existing shared memory segment. This
+		 * should only be reached in the EXEC_BACKEND case, and even then only
+		 * with makePrivate == false.
 		 */
 #ifdef EXEC_BACKEND
 		Assert(!makePrivate);
@@ -147,6 +154,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate,
 	CLOGShmemInit();
 	SUBTRANSShmemInit();
 	TwoPhaseShmemInit();
+	MultiXactShmemInit();
     FtsShmemInit();
     tmShmemInit();
 	InitBufferPool();
@@ -155,17 +163,18 @@ CreateSharedMemoryAndSemaphores(bool makePrivate,
 	 * Set up lock manager
 	 */
 	InitLocks();
-	InitLockTable(maxBackends);
+	InitLockTable();
 
 	/*
 	 * Set up process table
 	 */
-	InitProcGlobal(maxBackends);
+	InitProcGlobal();
+	CreateSharedProcArray();
 
 	/*
 	 * Set up shared-inval messaging
 	 */
-	CreateSharedInvalidationState(maxBackends);
+	CreateSharedInvalidationState();
 
 	/*
 	 * Set up free-space map

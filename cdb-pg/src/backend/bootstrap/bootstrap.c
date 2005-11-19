@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/bootstrap/bootstrap.c,v 1.198 2005/01/14 21:08:44 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/bootstrap/bootstrap.c,v 1.208 2005/10/20 20:05:44 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -26,12 +26,12 @@
 #include "access/heapam.h"
 #include "access/xlog.h"
 #include "bootstrap/bootstrap.h"
-#include "catalog/catname.h"
 #include "catalog/index.h"
 #include "catalog/pg_type.h"
 #include "executor/executor.h"
 #include "libpq/pqsignal.h"
 #include "miscadmin.h"
+#include "nodes/makefuncs.h"
 #include "postmaster/bgwriter.h"
 #include "storage/freespace.h"
 #include "storage/ipc.h"
@@ -39,16 +39,22 @@
 #include "storage/proc.h"
 #include "tcop/tcopprot.h"
 #include "utils/builtins.h"
+#include "utils/flatfiles.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
 #include "utils/lsyscache.h"
+#include "utils/memutils.h"
 #include "utils/ps_status.h"
 #include "utils/relcache.h"
+
+extern int	optind;
+extern char *optarg;
 
 
 #define ALLOC(t, c)		((t *) calloc((unsigned)(c), sizeof(t)))
 
 extern int	Int_yyparse(void);
+
 static void usage(void);
 static void bootstrap_signals(void);
 static hashnode *AddStr(char *str, int strlength, int mderef);
@@ -138,13 +144,17 @@ static const struct typinfo TypInfo[] = {
 	F_XIDIN, F_XIDOUT},
 	{"cid", CIDOID, 0, 4, true, 'i', 'p',
 	F_CIDIN, F_CIDOUT},
-	{"int2vector", INT2VECTOROID, INT2OID, INDEX_MAX_KEYS * 2, false, 's', 'p',
+	{"int2vector", INT2VECTOROID, INT2OID, -1, false, 'i', 'p',
 	F_INT2VECTORIN, F_INT2VECTOROUT},
-	{"oidvector", OIDVECTOROID, OIDOID, INDEX_MAX_KEYS * 4, false, 'i', 'p',
+	{"oidvector", OIDVECTOROID, OIDOID, -1, false, 'i', 'p',
 	F_OIDVECTORIN, F_OIDVECTOROUT},
 	{"_int4", INT4ARRAYOID, INT4OID, -1, false, 'i', 'x',
 	F_ARRAY_IN, F_ARRAY_OUT},
 	{"_text", 1009, TEXTOID, -1, false, 'i', 'x',
+	F_ARRAY_IN, F_ARRAY_OUT},
+	{"_oid", 1028, OIDOID, -1, false, 'i', 'x',
+	F_ARRAY_IN, F_ARRAY_OUT},
+	{"_char", 1002, CHAROID, -1, false, 'i', 'x',
 	F_ARRAY_IN, F_ARRAY_OUT},
 	{"_aclitem", 1034, ACLITEMOID, -1, false, 'i', 'x',
 	F_ARRAY_IN, F_ARRAY_OUT}
@@ -164,16 +174,11 @@ static struct typmap *Ap = NULL;
 static int	Warnings = 0;
 static char Blanks[MAXATTR];
 
-static char *relname;			/* current relation name */
-
 Form_pg_attribute attrtypes[MAXATTR];	/* points to attribute info */
 static Datum values[MAXATTR];	/* corresponding attribute values */
 int			numattr;			/* number of attributes for cur. rel */
 
 static MemoryContext nogc = NULL;		/* special no-gc mem context */
-
-extern int	optind;
-extern char *optarg;
 
 /*
  *	At bootstrap time, we first declare all the indices to be built, and
@@ -354,26 +359,34 @@ BootstrapMain(int argc, char *argv[])
 	{
 		if (!SelectConfigFiles(userDoption, progname))
 			proc_exit(1);
+		/* If timezone is not set, determine what the OS uses */
+		pg_timezone_initialize();
 	}
 
 	/* Validate we have been given a reasonable-looking DataDir */
 	Assert(DataDir);
 	ValidatePgVersion(DataDir);
 
+	/* Change into DataDir (if under postmaster, should be done already) */
+	if (!IsUnderPostmaster)
+		ChangeToDataDir();
+
 	/* If standalone, create lockfile for data directory */
 	if (!IsUnderPostmaster)
-		CreateDataDirLockFile(DataDir, false);
+		CreateDataDirLockFile(false);
 
 	SetProcessingMode(BootstrapProcessing);
 	IgnoreSystemIndexes(true);
 
-	XLOGPathInit();
-
 	BaseInit();
 
-	/* needed to get LWLocks */
+	/*
+	 * We aren't going to do the full InitPostgres pushups, but there are a
+	 * couple of things that need to get lit up even in a dummy process.
+	 */
 	if (IsUnderPostmaster)
 	{
+		/* set up proc.c to get use of LWLocks */
 		switch (xlogop)
 		{
 			case BS_XLOG_BGWRITER:
@@ -384,6 +397,9 @@ BootstrapMain(int argc, char *argv[])
 				InitDummyProcess(DUMMY_PROC_DEFAULT);
 				break;
 		}
+
+		/* finish setting up bufmgr.c */
+		InitBufferPoolBackend();
 	}
 
 	/*
@@ -407,6 +423,7 @@ BootstrapMain(int argc, char *argv[])
 			bootstrap_signals();
 			StartupXLOG();
 			LoadFreeSpaceMap();
+			BuildFlatFiles(false);
 			proc_exit(0);		/* startup done */
 
 		case BS_XLOG_BGWRITER:
@@ -429,8 +446,8 @@ BootstrapMain(int argc, char *argv[])
 
 	/*
 	 * In NOP mode, all we really want to do is create shared memory and
-	 * semaphores (just to prove we can do it with the current GUC
-	 * settings). So, quit now.
+	 * semaphores (just to prove we can do it with the current GUC settings).
+	 * So, quit now.
 	 */
 	if (xlogop == BS_XLOG_NOP)
 		proc_exit(0);
@@ -449,8 +466,8 @@ BootstrapMain(int argc, char *argv[])
 	/*
 	 * Process bootstrap input.
 	 *
-	 * the sed script boot.sed renamed yyparse to Int_yyparse for the
-	 * bootstrap parser to avoid conflicts with the normal SQL parser
+	 * the sed script boot.sed renamed yyparse to Int_yyparse for the bootstrap
+	 * parser to avoid conflicts with the normal SQL parser
 	 */
 	Int_yyparse();
 
@@ -521,8 +538,7 @@ bootstrap_signals(void)
 		pqsignal(SIGWINCH, SIG_DFL);
 
 		/*
-		 * Unblock signals (they were blocked when the postmaster forked
-		 * us)
+		 * Unblock signals (they were blocked when the postmaster forked us)
 		 */
 		PG_SETMASK(&UnBlockSig);
 	}
@@ -566,12 +582,12 @@ boot_openrel(char *relname)
 	HeapScanDesc scan;
 	HeapTuple	tup;
 
-	if (strlen(relname) >= NAMEDATALEN - 1)
+	if (strlen(relname) >= NAMEDATALEN)
 		relname[NAMEDATALEN - 1] = '\0';
 
 	if (Typ == NULL)
 	{
-		rel = heap_openr(TypeRelationName, NoLock);
+		rel = heap_open(TypeRelationId, NoLock);
 		scan = heap_beginscan(rel, SnapshotNow, 0, NULL);
 		i = 0;
 		while ((tup = heap_getnext(scan, ForwardScanDirection)) != NULL)
@@ -599,10 +615,9 @@ boot_openrel(char *relname)
 		closerel(NULL);
 
 	elog(DEBUG4, "open relation %s, attrsize %d",
-		 relname ? relname : "(null)",
-		 (int) ATTRIBUTE_TUPLE_SIZE);
+		 relname, (int) ATTRIBUTE_TUPLE_SIZE);
 
-	boot_reldesc = heap_openr(relname, NoLock);
+	boot_reldesc = heap_openrv(makeRangeVar(NULL, relname), NoLock);
 	numattr = boot_reldesc->rd_rel->relnatts;
 	for (i = 0; i < numattr; i++)
 	{
@@ -635,7 +650,7 @@ closerel(char *name)
 		{
 			if (strcmp(RelationGetRelationName(boot_reldesc), name) != 0)
 				elog(ERROR, "close of %s when %s was expected",
-					 name, relname ? relname : "(null)");
+					 name, RelationGetRelationName(boot_reldesc));
 		}
 		else
 			elog(ERROR, "close of %s before any relation was opened",
@@ -646,7 +661,8 @@ closerel(char *name)
 		elog(ERROR, "no open relation to close");
 	else
 	{
-		elog(DEBUG4, "close relation %s", relname ? relname : "(null)");
+		elog(DEBUG4, "close relation %s",
+			 RelationGetRelationName(boot_reldesc));
 		heap_close(boot_reldesc, NoLock);
 		boot_reldesc = NULL;
 	}
@@ -665,13 +681,12 @@ closerel(char *name)
 void
 DefineAttr(char *name, char *type, int attnum)
 {
-	int			attlen;
 	Oid			typeoid;
 
 	if (boot_reldesc != NULL)
 	{
 		elog(WARNING, "no open relations allowed with CREATE command");
-		closerel(relname);
+		closerel(NULL);
 	}
 
 	if (attrtypes[attnum] == NULL)
@@ -687,7 +702,7 @@ DefineAttr(char *name, char *type, int attnum)
 	if (Typ != NULL)
 	{
 		attrtypes[attnum]->atttypid = Ap->am_oid;
-		attlen = attrtypes[attnum]->attlen = Ap->am_typ.typlen;
+		attrtypes[attnum]->attlen = Ap->am_typ.typlen;
 		attrtypes[attnum]->attbyval = Ap->am_typ.typbyval;
 		attrtypes[attnum]->attstorage = Ap->am_typ.typstorage;
 		attrtypes[attnum]->attalign = Ap->am_typ.typalign;
@@ -700,12 +715,13 @@ DefineAttr(char *name, char *type, int attnum)
 	else
 	{
 		attrtypes[attnum]->atttypid = TypInfo[typeoid].oid;
-		attlen = attrtypes[attnum]->attlen = TypInfo[typeoid].len;
+		attrtypes[attnum]->attlen = TypInfo[typeoid].len;
 		attrtypes[attnum]->attbyval = TypInfo[typeoid].byval;
 		attrtypes[attnum]->attstorage = TypInfo[typeoid].storage;
 		attrtypes[attnum]->attalign = TypInfo[typeoid].align;
 		/* if an array type, assume 1-dimensional attribute */
-		if (TypInfo[typeoid].elem != InvalidOid && attlen < 0)
+		if (TypInfo[typeoid].elem != InvalidOid &&
+			attrtypes[attnum]->attlen < 0)
 			attrtypes[attnum]->attndims = 1;
 		else
 			attrtypes[attnum]->attndims = 0;
@@ -717,17 +733,25 @@ DefineAttr(char *name, char *type, int attnum)
 	attrtypes[attnum]->attislocal = true;
 
 	/*
-	 * Mark as "not null" if type is fixed-width and prior columns are
-	 * too. This corresponds to case where column can be accessed directly
-	 * via C struct declaration.
+	 * Mark as "not null" if type is fixed-width and prior columns are too.
+	 * This corresponds to case where column can be accessed directly via C
+	 * struct declaration.
+	 *
+	 * oidvector and int2vector are also treated as not-nullable, even though
+	 * they are no longer fixed-width.
 	 */
-	if (attlen > 0)
+#define MARKNOTNULL(att) \
+	((att)->attlen > 0 || \
+	 (att)->atttypid == OIDVECTOROID || \
+	 (att)->atttypid == INT2VECTOROID)
+
+	if (MARKNOTNULL(attrtypes[attnum]))
 	{
 		int			i;
 
 		for (i = 0; i < attnum; i++)
 		{
-			if (attrtypes[i]->attlen <= 0)
+			if (!MARKNOTNULL(attrtypes[i]))
 				break;
 		}
 		if (i == attnum)
@@ -837,10 +861,8 @@ InsertOneValue(char *value, int i)
 								 CStringGetDatum(value),
 								 ObjectIdGetDatum(typioparam),
 								 Int32GetDatum(-1));
-	prt = DatumGetCString(OidFunctionCall3(typoutput,
-										   values[i],
-										   ObjectIdGetDatum(typioparam),
-										   Int32GetDatum(-1)));
+	prt = DatumGetCString(OidFunctionCall1(typoutput,
+										   values[i]));
 	elog(DEBUG4, "inserted -> %s", prt);
 	pfree(prt);
 }
@@ -919,7 +941,7 @@ gettype(char *type)
 				return i;
 		}
 		elog(DEBUG4, "external type: %s", type);
-		rel = heap_openr(TypeRelationName, NoLock);
+		rel = heap_open(TypeRelationId, NoLock);
 		scan = heap_beginscan(rel, SnapshotNow, 0, NULL);
 		i = 0;
 		while ((tup = heap_getnext(scan, ForwardScanDirection)) != NULL)
@@ -983,8 +1005,7 @@ MapArrayTypeName(char *s)
 {
 	int			i,
 				j;
-	static char newStr[NAMEDATALEN];	/* array type names < NAMEDATALEN
-										 * long */
+	static char newStr[NAMEDATALEN];	/* array type names < NAMEDATALEN long */
 
 	if (s == NULL || s[0] == '\0')
 		return s;
@@ -1073,8 +1094,8 @@ FindStr(char *str, int length, hashnode *mderef)
 	while (node != NULL)
 	{
 		/*
-		 * We must differentiate between string constants that might have
-		 * the same value as a identifier and the identifier itself.
+		 * We must differentiate between string constants that might have the
+		 * same value as a identifier and the identifier itself.
 		 */
 		if (!strcmp(str, strtable[node->strnum]))
 		{
@@ -1109,11 +1130,11 @@ AddStr(char *str, int strlength, int mderef)
 		elog(FATAL, "bootstrap string table overflow");
 
 	/*
-	 * Some of the utilites (eg, define type, create relation) assume that
-	 * the string they're passed is a NAMEDATALEN.  We get array bound
-	 * read violations from purify if we don't allocate at least
-	 * NAMEDATALEN bytes for strings of this sort.	Because we're lazy, we
-	 * allocate at least NAMEDATALEN bytes all the time.
+	 * Some of the utilites (eg, define type, create relation) assume that the
+	 * string they're passed is a NAMEDATALEN.  We get array bound read
+	 * violations from purify if we don't allocate at least NAMEDATALEN bytes
+	 * for strings of this sort.  Because we're lazy, we allocate at least
+	 * NAMEDATALEN bytes all the time.
 	 */
 
 	if ((len = strlength + 1) < NAMEDATALEN)
@@ -1169,8 +1190,8 @@ index_register(Oid heap,
 
 	/*
 	 * XXX mao 10/31/92 -- don't gc index reldescs, associated info at
-	 * bootstrap time.	we'll declare the indices now, but want to create
-	 * them later.
+	 * bootstrap time.	we'll declare the indices now, but want to create them
+	 * later.
 	 */
 
 	if (nogc == NULL)

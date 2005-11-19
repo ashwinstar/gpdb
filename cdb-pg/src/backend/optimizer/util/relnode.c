@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/util/relnode.c,v 1.64 2004/12/31 22:00:23 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/util/relnode.c,v 1.72 2005/10/15 02:49:21 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -21,11 +21,20 @@
 #include "optimizer/restrictinfo.h"
 #include "optimizer/tlist.h"
 #include "parser/parsetree.h"
+#include "utils/hsearch.h"
 
 
-static RelOptInfo *make_base_rel(Query *root, int relid);
-static void build_joinrel_tlist(Query *root, RelOptInfo *joinrel);
-static List *build_joinrel_restrictlist(Query *root,
+typedef struct JoinHashEntry
+{
+	Relids		join_relids;	/* hash key --- MUST BE FIRST */
+	RelOptInfo *join_rel;
+} JoinHashEntry;
+
+static RelOptInfo *make_reloptinfo(PlannerInfo *root, int relid,
+				RelOptKind reloptkind);
+static void build_joinrel_tlist(PlannerInfo *root, RelOptInfo *joinrel,
+					RelOptInfo *input_rel);
+static List *build_joinrel_restrictlist(PlannerInfo *root,
 						   RelOptInfo *joinrel,
 						   RelOptInfo *outer_rel,
 						   RelOptInfo *inner_rel,
@@ -42,91 +51,70 @@ static void subbuild_joinrel_joinlist(RelOptInfo *joinrel,
 /*
  * build_base_rel
  *	  Construct a new base relation RelOptInfo, and put it in the query's
- *	  base_rel_list.
+ *	  base_rel_array.
  */
 void
-build_base_rel(Query *root, int relid)
+build_base_rel(PlannerInfo *root, int relid)
 {
-	ListCell   *l;
-	RelOptInfo *rel;
+	Assert(relid > 0);
 
 	/* Rel should not exist already */
-	foreach(l, root->base_rel_list)
-	{
-		rel = (RelOptInfo *) lfirst(l);
-		if (relid == rel->relid)
-			elog(ERROR, "rel already exists");
-	}
-
-	/* It should not exist as an "other" rel, either */
-	foreach(l, root->other_rel_list)
-	{
-		rel = (RelOptInfo *) lfirst(l);
-		if (relid == rel->relid)
-			elog(ERROR, "rel already exists as \"other\" rel");
-	}
+	if (relid < root->base_rel_array_size &&
+		root->base_rel_array[relid] != NULL)
+		elog(ERROR, "rel already exists");
 
 	/* No existing RelOptInfo for this base rel, so make a new one */
-	rel = make_base_rel(root, relid);
-
-	/* and add it to the list */
-	root->base_rel_list = lcons(rel, root->base_rel_list);
+	(void) make_reloptinfo(root, relid, RELOPT_BASEREL);
 }
 
 /*
  * build_other_rel
  *	  Returns relation entry corresponding to 'relid', creating a new one
  *	  if necessary.  This is for 'other' relations, which are much like
- *	  base relations except that they live in a different list.
+ *	  base relations except that they have a different RelOptKind.
  */
 RelOptInfo *
-build_other_rel(Query *root, int relid)
+build_other_rel(PlannerInfo *root, int relid)
 {
-	ListCell   *l;
 	RelOptInfo *rel;
 
-	/* Already made? */
-	foreach(l, root->other_rel_list)
-	{
-		rel = (RelOptInfo *) lfirst(l);
-		if (relid == rel->relid)
-			return rel;
-	}
+	Assert(relid > 0);
 
-	/* It should not exist as a base rel */
-	foreach(l, root->base_rel_list)
+	/* Already made? */
+	if (relid < root->base_rel_array_size)
 	{
-		rel = (RelOptInfo *) lfirst(l);
-		if (relid == rel->relid)
-			elog(ERROR, "rel already exists as base rel");
+		rel = root->base_rel_array[relid];
+		if (rel)
+		{
+			/* it should not exist as a base rel */
+			if (rel->reloptkind == RELOPT_BASEREL)
+				elog(ERROR, "rel already exists as base rel");
+			/* otherwise, A-OK */
+			return rel;
+		}
 	}
 
 	/* No existing RelOptInfo for this other rel, so make a new one */
-	rel = make_base_rel(root, relid);
-
 	/* presently, must be an inheritance child rel */
-	Assert(rel->reloptkind == RELOPT_BASEREL);
-	rel->reloptkind = RELOPT_OTHER_CHILD_REL;
-
-	/* and add it to the list */
-	root->other_rel_list = lcons(rel, root->other_rel_list);
+	rel = make_reloptinfo(root, relid, RELOPT_OTHER_CHILD_REL);
 
 	return rel;
 }
 
 /*
- * make_base_rel
- *	  Construct a base-relation RelOptInfo for the specified rangetable index.
+ * make_reloptinfo
+ *	  Construct a RelOptInfo for the specified rangetable index,
+ *	  and enter it into base_rel_array.
  *
  * Common code for build_base_rel and build_other_rel.
  */
 static RelOptInfo *
-make_base_rel(Query *root, int relid)
+make_reloptinfo(PlannerInfo *root, int relid, RelOptKind reloptkind)
 {
 	RelOptInfo *rel = makeNode(RelOptInfo);
-	RangeTblEntry *rte = rt_fetch(relid, root->rtable);
+	RangeTblEntry *rte = rt_fetch(relid, root->parse->rtable);
 
-	rel->reloptkind = RELOPT_BASEREL;
+	rel->reloptkind = reloptkind;
 	rel->relids = bms_make_singleton(relid);
 	rel->rows = 0;
 	rel->width = 0;
@@ -174,31 +162,40 @@ make_base_rel(Query *root, int relid)
 			break;
 	}
 
+	/* Add the finished struct to the base_rel_array */
+	if (relid >= root->base_rel_array_size)
+	{
+		int			oldsize = root->base_rel_array_size;
+		int			newsize;
+
+		newsize = Max(oldsize * 2, relid + 1);
+		root->base_rel_array = (RelOptInfo **)
+			repalloc(root->base_rel_array, newsize * sizeof(RelOptInfo *));
+		MemSet(root->base_rel_array + oldsize, 0,
+			   (newsize - oldsize) * sizeof(RelOptInfo *));
+		root->base_rel_array_size = newsize;
+	}
+
+	root->base_rel_array[relid] = rel;
+
 	return rel;
 }
 
 /*
  * find_base_rel
- *	  Find a base or other relation entry, which must already exist
- *	  (since we'd have no idea which list to add it to).
+ *	  Find a base or other relation entry, which must already exist.
  */
 RelOptInfo *
-find_base_rel(Query *root, int relid)
+find_base_rel(PlannerInfo *root, int relid)
 {
-	ListCell   *l;
 	RelOptInfo *rel;
 
-	foreach(l, root->base_rel_list)
-	{
-		rel = (RelOptInfo *) lfirst(l);
-		if (relid == rel->relid)
-			return rel;
-	}
+	Assert(relid > 0);
 
-	foreach(l, root->other_rel_list)
+	if (relid < root->base_rel_array_size)
 	{
-		rel = (RelOptInfo *) lfirst(l);
-		if (relid == rel->relid)
+		rel = root->base_rel_array[relid];
+		if (rel)
 			return rel;
 	}
 
@@ -208,21 +205,92 @@ find_base_rel(Query *root, int relid)
 }
 
 /*
+ * build_join_rel_hash
+ *	  Construct the auxiliary hash table for join relations.
+ */
+static void
+build_join_rel_hash(PlannerInfo *root)
+{
+	HTAB	   *hashtab;
+	HASHCTL		hash_ctl;
+	ListCell   *l;
+
+	/* Create the hash table */
+	MemSet(&hash_ctl, 0, sizeof(hash_ctl));
+	hash_ctl.keysize = sizeof(Relids);
+	hash_ctl.entrysize = sizeof(JoinHashEntry);
+	hash_ctl.hash = bitmap_hash;
+	hash_ctl.match = bitmap_match;
+	hash_ctl.hcxt = CurrentMemoryContext;
+	hashtab = hash_create("JoinRelHashTable",
+						  256L,
+						  &hash_ctl,
+					HASH_ELEM | HASH_FUNCTION | HASH_COMPARE | HASH_CONTEXT);
+
+	/* Insert all the already-existing joinrels */
+	foreach(l, root->join_rel_list)
+	{
+		RelOptInfo *rel = (RelOptInfo *) lfirst(l);
+		JoinHashEntry *hentry;
+		bool		found;
+
+		hentry = (JoinHashEntry *) hash_search(hashtab,
+											   &(rel->relids),
+											   HASH_ENTER,
+											   &found);
+		Assert(!found);
+		hentry->join_rel = rel;
+	}
+
+	root->join_rel_hash = hashtab;
+}
+
+/*
  * find_join_rel
  *	  Returns relation entry corresponding to 'relids' (a set of RT indexes),
  *	  or NULL if none exists.  This is for join relations.
  */
 RelOptInfo *
-find_join_rel(Query *root, Relids relids)
+find_join_rel(PlannerInfo *root, Relids relids)
 {
-	ListCell   *l;
+	/*
+	 * Switch to using hash lookup when list grows "too long".	The threshold
+	 * is arbitrary and is known only here.
+	 */
+	if (!root->join_rel_hash && list_length(root->join_rel_list) > 32)
+		build_join_rel_hash(root);
 
-	foreach(l, root->join_rel_list)
+	/*
+	 * Use either hashtable lookup or linear search, as appropriate.
+	 *
+	 * Note: the seemingly redundant hashkey variable is used to avoid taking the
+	 * address of relids; unless the compiler is exceedingly smart, doing so
+	 * would force relids out of a register and thus probably slow down the
+	 * list-search case.
+	 */
+	if (root->join_rel_hash)
 	{
-		RelOptInfo *rel = (RelOptInfo *) lfirst(l);
+		Relids		hashkey = relids;
+		JoinHashEntry *hentry;
 
-		if (bms_equal(rel->relids, relids))
-			return rel;
+		hentry = (JoinHashEntry *) hash_search(root->join_rel_hash,
+											   &hashkey,
+											   HASH_FIND,
+											   NULL);
+		if (hentry)
+			return hentry->join_rel;
+	}
+	else
+	{
+		ListCell   *l;
+
+		foreach(l, root->join_rel_list)
+		{
+			RelOptInfo *rel = (RelOptInfo *) lfirst(l);
+
+			if (bms_equal(rel->relids, relids))
+				return rel;
+		}
 	}
 
 	return NULL;
@@ -245,7 +313,7 @@ find_join_rel(Query *root, Relids relids)
  * duplicated calculation of the restrictlist...
  */
 RelOptInfo *
-build_join_rel(Query *root,
+build_join_rel(PlannerInfo *root,
 			   Relids joinrelids,
 			   RelOptInfo *outer_rel,
 			   RelOptInfo *inner_rel,
@@ -263,8 +331,8 @@ build_join_rel(Query *root,
 	if (joinrel)
 	{
 		/*
-		 * Yes, so we only need to figure the restrictlist for this
-		 * particular pair of component relations.
+		 * Yes, so we only need to figure the restrictlist for this particular
+		 * pair of component relations.
 		 */
 		if (restrictlist_ptr)
 			*restrictlist_ptr = build_joinrel_restrictlist(root,
@@ -307,16 +375,20 @@ build_join_rel(Query *root,
 	joinrel->index_inner_paths = NIL;
 
 	/*
-	 * Create a new tlist containing just the vars that need to be output
-	 * from this join (ie, are needed for higher joinclauses or final
-	 * output).
+	 * Create a new tlist containing just the vars that need to be output from
+	 * this join (ie, are needed for higher joinclauses or final output).
+	 *
+	 * NOTE: the tlist order for a join rel will depend on which pair of outer
+	 * and inner rels we first try to build it from.  But the contents should
+	 * be the same regardless.
 	 */
-	build_joinrel_tlist(root, joinrel);
+	build_joinrel_tlist(root, joinrel, outer_rel);
+	build_joinrel_tlist(root, joinrel, inner_rel);
 
 	/*
 	 * Construct restrict and join clause lists for the new joinrel. (The
-	 * caller might or might not need the restrictlist, but I need it
-	 * anyway for set_joinrel_size_estimates().)
+	 * caller might or might not need the restrictlist, but I need it anyway
+	 * for set_joinrel_size_estimates().)
 	 */
 	restrictlist = build_joinrel_restrictlist(root,
 											  joinrel,
@@ -334,9 +406,24 @@ build_join_rel(Query *root,
 							   jointype, restrictlist);
 
 	/*
-	 * Add the joinrel to the query's joinrel list.
+	 * Add the joinrel to the query's joinrel list, and store it into the
+	 * auxiliary hashtable if there is one.  NB: GEQO requires us to append
+	 * the new joinrel to the end of the list!
 	 */
-	root->join_rel_list = lcons(joinrel, root->join_rel_list);
+	root->join_rel_list = lappend(root->join_rel_list, joinrel);
+
+	if (root->join_rel_hash)
+	{
+		JoinHashEntry *hentry;
+		bool		found;
+
+		hentry = (JoinHashEntry *) hash_search(root->join_rel_hash,
+											   &(joinrel->relids),
+											   HASH_ENTER,
+											   &found);
+		Assert(!found);
+		hentry->join_rel = joinrel;
+	}
 
 	return joinrel;
 }
@@ -346,48 +433,39 @@ build_join_rel(Query *root,
  *	  Builds a join relation's target list.
  *
  * The join's targetlist includes all Vars of its member relations that
- * will still be needed above the join.
- *
- * In a former lifetime, this just merged the tlists of the two member
- * relations first presented.  While we could still do that, working from
- * lists of Vars would mean doing a find_base_rel lookup for each Var.
- * It seems more efficient to scan the list of base rels and collect the
- * needed vars directly from there.
+ * will still be needed above the join.  This subroutine adds all such
+ * Vars from the specified input rel's tlist to the join rel's tlist.
  *
  * We also compute the expected width of the join's output, making use
  * of data that was cached at the baserel level by set_rel_width().
  */
 static void
-build_joinrel_tlist(Query *root, RelOptInfo *joinrel)
+build_joinrel_tlist(PlannerInfo *root, RelOptInfo *joinrel,
+					RelOptInfo *input_rel)
 {
 	Relids		relids = joinrel->relids;
-	ListCell   *rels;
+	ListCell   *vars;
 
-	joinrel->reltargetlist = NIL;
-	joinrel->width = 0;
-
-	foreach(rels, root->base_rel_list)
+	foreach(vars, input_rel->reltargetlist)
 	{
-		RelOptInfo *baserel = (RelOptInfo *) lfirst(rels);
-		ListCell   *vars;
+		Var		   *var = (Var *) lfirst(vars);
+		RelOptInfo *baserel;
+		int			ndx;
 
-		if (!bms_is_member(baserel->relid, relids))
-			continue;
+		/* We can't run into any child RowExprs here */
+		Assert(IsA(var, Var));
 
-		foreach(vars, baserel->reltargetlist)
+		/* Get the Var's original base rel */
+		baserel = find_base_rel(root, var->varno);
+
+		/* Is it still needed above this joinrel? */
+		ndx = var->varattno - baserel->min_attr;
+		if (bms_nonempty_difference(baserel->attr_needed[ndx], relids))
 		{
-			Var		   *var = (Var *) lfirst(vars);
-			int			ndx = var->varattno - baserel->min_attr;
-
-			/* We can't run into any child RowExprs here */
-			Assert(IsA(var, Var));
-
-			if (bms_nonempty_difference(baserel->attr_needed[ndx], relids))
-			{
-				joinrel->reltargetlist = lappend(joinrel->reltargetlist, var);
-				Assert(baserel->attr_widths[ndx] > 0);
-				joinrel->width += baserel->attr_widths[ndx];
-			}
+			/* Yup, add it to the output */
+			joinrel->reltargetlist = lappend(joinrel->reltargetlist, var);
+			Assert(baserel->attr_widths[ndx] > 0);
+			joinrel->width += baserel->attr_widths[ndx];
 		}
 	}
 }
@@ -400,8 +478,8 @@ build_joinrel_tlist(Query *root, RelOptInfo *joinrel)
  *
  *	  These routines are separate because the restriction list must be
  *	  built afresh for each pair of input sub-relations we consider, whereas
- *	  the join lists need only be computed once for any join RelOptInfo.
- *	  The join lists are fully determined by the set of rels making up the
+ *	  the join list need only be computed once for any join RelOptInfo.
+ *	  The join list is fully determined by the set of rels making up the
  *	  joinrel, so we should get the same results (up to ordering) from any
  *	  candidate pair of sub-relations.	But the restriction list is whatever
  *	  is not handled in the sub-relations, so it depends on which
@@ -409,7 +487,7 @@ build_joinrel_tlist(Query *root, RelOptInfo *joinrel)
  *
  *	  If a join clause from an input relation refers to base rels still not
  *	  present in the joinrel, then it is still a join clause for the joinrel;
- *	  we put it into an appropriate JoinInfo list for the joinrel.	Otherwise,
+ *	  we put it into the joininfo list for the joinrel.  Otherwise,
  *	  the clause is now a restrict clause for the joined relation, and we
  *	  return it to the caller of build_joinrel_restrictlist() to be stored in
  *	  join paths made from this pair of sub-relations.	(It will not need to
@@ -427,7 +505,7 @@ build_joinrel_tlist(Query *root, RelOptInfo *joinrel)
  *
  * build_joinrel_restrictlist() returns a list of relevant restrictinfos,
  * whereas build_joinrel_joinlist() stores its results in the joinrel's
- * joininfo lists.	One or the other must accept each given clause!
+ * joininfo list.  One or the other must accept each given clause!
  *
  * NB: Formerly, we made deep(!) copies of each input RestrictInfo to pass
  * up to the join relation.  I believe this is no longer necessary, because
@@ -435,7 +513,7 @@ build_joinrel_tlist(Query *root, RelOptInfo *joinrel)
  * the original nodes in the lists made for the join relation.
  */
 static List *
-build_joinrel_restrictlist(Query *root,
+build_joinrel_restrictlist(PlannerInfo *root,
 						   RelOptInfo *joinrel,
 						   RelOptInfo *outer_rel,
 						   RelOptInfo *inner_rel,
@@ -448,20 +526,21 @@ build_joinrel_restrictlist(Query *root,
 	 * Collect all the clauses that syntactically belong at this level.
 	 */
 	rlist = list_concat(subbuild_joinrel_restrictlist(joinrel,
-													outer_rel->joininfo),
+													  outer_rel->joininfo),
 						subbuild_joinrel_restrictlist(joinrel,
-												   inner_rel->joininfo));
+													  inner_rel->joininfo));
 
 	/*
 	 * Eliminate duplicate and redundant clauses.
 	 *
-	 * We must eliminate duplicates, since we will see many of the same
-	 * clauses arriving from both input relations.	Also, if a clause is a
-	 * mergejoinable clause, it's possible that it is redundant with
-	 * previous clauses (see optimizer/README for discussion).	We detect
-	 * that case and omit the redundant clause from the result list.
+	 * We must eliminate duplicates, since we will see many of the same clauses
+	 * arriving from both input relations.	Also, if a clause is a
+	 * mergejoinable clause, it's possible that it is redundant with previous
+	 * clauses (see optimizer/README for discussion).  We detect that case and
+	 * omit the redundant clause from the result list.
 	 */
-	result = remove_redundant_join_clauses(root, rlist, jointype);
+	result = remove_redundant_join_clauses(root, rlist,
+										   IS_OUTER_JOIN(jointype));
 
 	list_free(rlist);
 
@@ -482,29 +561,26 @@ subbuild_joinrel_restrictlist(RelOptInfo *joinrel,
 							  List *joininfo_list)
 {
 	List	   *restrictlist = NIL;
-	ListCell   *xjoininfo;
+	ListCell   *l;
 
-	foreach(xjoininfo, joininfo_list)
+	foreach(l, joininfo_list)
 	{
-		JoinInfo   *joininfo = (JoinInfo *) lfirst(xjoininfo);
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
 
-		if (bms_is_subset(joininfo->unjoined_relids, joinrel->relids))
+		if (bms_is_subset(rinfo->required_relids, joinrel->relids))
 		{
 			/*
-			 * Clauses in this JoinInfo list become restriction clauses
-			 * for the joinrel, since they refer to no outside rels.
-			 *
-			 * We must copy the list to avoid disturbing the input relation,
-			 * but we can use a shallow copy.
+			 * This clause becomes a restriction clause for the joinrel, since
+			 * it refers to no outside rels.  We don't bother to check for
+			 * duplicates here --- build_joinrel_restrictlist will do that.
 			 */
-			restrictlist = list_concat(restrictlist,
-								list_copy(joininfo->jinfo_restrictinfo));
+			restrictlist = lappend(restrictlist, rinfo);
 		}
 		else
 		{
 			/*
-			 * These clauses are still join clauses at this level, so we
-			 * ignore them in this routine.
+			 * This clause is still a join clause at this level, so we ignore
+			 * it in this routine.
 			 */
 		}
 	}
@@ -516,42 +592,33 @@ static void
 subbuild_joinrel_joinlist(RelOptInfo *joinrel,
 						  List *joininfo_list)
 {
-	ListCell   *xjoininfo;
+	ListCell   *l;
 
-	foreach(xjoininfo, joininfo_list)
+	foreach(l, joininfo_list)
 	{
-		JoinInfo   *joininfo = (JoinInfo *) lfirst(xjoininfo);
-		Relids		new_unjoined_relids;
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
 
-		new_unjoined_relids = bms_difference(joininfo->unjoined_relids,
-											 joinrel->relids);
-		if (bms_is_empty(new_unjoined_relids))
+		if (bms_is_subset(rinfo->required_relids, joinrel->relids))
 		{
 			/*
-			 * Clauses in this JoinInfo list become restriction clauses
-			 * for the joinrel, since they refer to no outside rels. So we
-			 * can ignore them in this routine.
+			 * This clause becomes a restriction clause for the joinrel, since
+			 * it refers to no outside rels.  So we can ignore it in this
+			 * routine.
 			 */
-			bms_free(new_unjoined_relids);
 		}
 		else
 		{
 			/*
-			 * These clauses are still join clauses at this level, so find
-			 * or make the appropriate JoinInfo item for the joinrel, and
-			 * add the clauses to it, eliminating duplicates.  (Since
-			 * RestrictInfo nodes are normally multiply-linked rather than
-			 * copied, pointer equality should be a sufficient test.  If
-			 * two equal() nodes should happen to sneak in, no great harm
-			 * is done --- they'll be detected by redundant-clause testing
-			 * when they reach a restriction list.)
+			 * This clause is still a join clause at this level, so add it to
+			 * the joininfo list for the joinrel, being careful to eliminate
+			 * duplicates.	(Since RestrictInfo nodes are normally
+			 * multiply-linked rather than copied, pointer equality should be
+			 * a sufficient test.  If two equal() nodes should happen to sneak
+			 * in, no great harm is done --- they'll be detected by
+			 * redundant-clause testing when they reach a restriction list.)
 			 */
-			JoinInfo   *new_joininfo;
-
-			new_joininfo = make_joininfo_node(joinrel, new_unjoined_relids);
-			new_joininfo->jinfo_restrictinfo =
-				list_union_ptr(new_joininfo->jinfo_restrictinfo,
-							   joininfo->jinfo_restrictinfo);
+			joinrel->joininfo = list_append_unique_ptr(joinrel->joininfo,
+													   rinfo);
 		}
 	}
 }

@@ -17,6 +17,7 @@
 #include "executor/execdesc.h"      /* QueryDesc */
 #include "storage/ipc.h"		/* For proc_exit_inprogress  */
 #include "miscadmin.h"
+#include "utils/memutils.h"
 
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbdispatchresult.h"

@@ -1,5 +1,5 @@
 <!--
-$PostgreSQL: pgsql/doc/src/sgml/ref/create_table.sgml,v 1.90.4.1 2005/01/22 23:23:53 momjian Exp $
+$PostgreSQL: pgsql/doc/src/sgml/ref/create_table.sgml,v 1.96 2005/11/01 21:09:50 tgl Exp $
 PostgreSQL documentation
 -->
 
@@ -20,11 +20,12 @@ PostgreSQL documentation
 
  <refsynopsisdiv>
 <synopsis>
-CREATE [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } ] TABLE <replaceable class="PARAMETER">table_name</replaceable> (
+CREATE [ [ GLOBAL | LOCAL ] { TEMPORARY | TEMP } ] TABLE <replaceable class="PARAMETER">table_name</replaceable> ( [
   { <replaceable class="PARAMETER">column_name</replaceable> <replaceable class="PARAMETER">data_type</replaceable> [ DEFAULT <replaceable>default_expr</> ] [ <replaceable class="PARAMETER">column_constraint</replaceable> [ ... ] ]
     | <replaceable>table_constraint</replaceable>
-    | LIKE <replaceable>parent_table</replaceable> [ { INCLUDING | EXCLUDING } DEFAULTS ] }  [, ... ]
-)
+    | LIKE <replaceable>parent_table</replaceable> [ { INCLUDING | EXCLUDING } DEFAULTS ] }
+    [, ... ]
+] )
 [ INHERITS ( <replaceable>parent_table</replaceable> [, ... ] ) ]
 [ WITH OIDS | WITHOUT OIDS ]
 [ ON COMMIT { PRESERVE ROWS | DELETE ROWS | DROP } ]
@@ -66,12 +67,12 @@ and <replaceable class="PARAMETER">table_constraint</replaceable> is:
 
   <para>
    If a schema name is given (for example, <literal>CREATE TABLE
-   myschema.mytable ...</>) then the table is created in the
-   specified schema.  Otherwise it is created in the current schema.
-   Temporary tables exist in a special schema, so a schema name may not be
-   given when creating a temporary table.
-   The table name must be distinct from the name of any other table,
-   sequence, index, or view in the same schema.
+   myschema.mytable ...</>) then the table is created in the specified
+   schema.  Otherwise it is created in the current schema.  Temporary
+   tables exist in a special schema, so a schema name may not be given
+   when creating a temporary table.  The name of the table must be
+   distinct from the name of any other table, sequence, index, or view
+   in the same schema.
   </para>
 
   <para>
@@ -421,7 +422,9 @@ and <replaceable class="PARAMETER">table_constraint</replaceable> is:
       primary key of the <replaceable
       class="parameter">reftable</replaceable> is used.  The
       referenced columns must be the columns of a unique or primary
-      key constraint in the referenced table.
+      key constraint in the referenced table.  Note that foreign key
+      constraints may not be defined between temporary tables and
+      permanent tables.
      </para>
 
      <para>
@@ -859,8 +862,8 @@ CREATE TABLE cinemas (
   <title id="SQL-CREATETABLE-compatibility-title">Compatibility</title>
 
   <para>
-   The <command>CREATE TABLE</command> command conforms to SQL-92 and
-   to a subset of SQL:1999, with exceptions listed below.
+   The <command>CREATE TABLE</command> command conforms to the
+   <acronym>SQL</acronym> standard, with exceptions listed below.
   </para>
 
   <refsect2>
@@ -938,7 +941,7 @@ CREATE TABLE cinemas (
    <para>
     Multiple inheritance via the <literal>INHERITS</literal> clause is
     a <productname>PostgreSQL</productname> language extension.
-    SQL:1999 (but not SQL-92) defines single inheritance using a
+    SQL:1999 and later define single inheritance using a
     different syntax and different semantics.  SQL:1999-style
     inheritance is not yet supported by
     <productname>PostgreSQL</productname>.

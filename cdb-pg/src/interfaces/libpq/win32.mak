@@ -78,35 +78,6 @@ CLEAN :
 	-@erase "$(INTDIR)\pg_config_paths.h"
 
 
-config: ..\..\include\pg_config.h pthread.h pg_config_paths.h
-
-..\..\include\pg_config.h: ..\..\include\pg_config.h.win32
-	copy ..\..\include\pg_config.h.win32 ..\..\include\pg_config.h
-
-pthread.h: pthread.h.win32
-	copy pthread.h.win32 pthread.h
-
-pg_config_paths.h: win32.mak
-	echo #define SYSCONFDIR "" >pg_config_paths.h
-
-"$(OUTDIR)" :
-    if not exist "$(OUTDIR)/$(NULL)" mkdir "$(OUTDIR)"
-
-CPP_PROJ=/nologo /W3 /GX $(OPT) /I "..\..\include" /I. /D "FRONTEND" $(DEBUGDEF) /D\
- "WIN32" /D "_WINDOWS" /Fp"$(INTDIR)\libpq.pch" /YX\
- /Fo"$(INTDIR)\\" /Fd"$(INTDIR)\\" /FD /c  /D "HAVE_VSNPRINTF" /D "HAVE_STRDUP"
-
-!IFDEF USE_SSL
-CPP_PROJ=$(CPP_PROJ) /D USE_SSL
-SSL_LIBS=ssleay32.lib libeay32.lib gdi32.lib
-!ENDIF
-
-!IFDEF ENABLE_THREAD_SAFETY
-CPP_PROJ=$(CPP_PROJ) /D ENABLE_THREAD_SAFETY
-!ENDIF
-
-CPP_SBRS=.
-
 LIB32=link.exe -lib
 LIB32_FLAGS=$(LOPT) /nologo /out:"$(OUTDIR)\$(OUTFILENAME).lib" 
 LIB32_OBJS= \
@@ -115,7 +86,7 @@ LIB32_OBJS= \
 	"$(INTDIR)\pgstrcasecmp.obj" \
 	"$(INTDIR)\thread.obj" \
 	"$(INTDIR)\inet_aton.obj" \
-        "$(INTDIR)\crypt.obj" \
+	"$(INTDIR)\crypt.obj" \
 	"$(INTDIR)\noblock.obj" \
 	"$(INTDIR)\md5.obj" \
 	"$(INTDIR)\ip.obj" \
@@ -135,6 +106,32 @@ LIB32_OBJS= \
 	"$(INTDIR)\pthread-win32.obj"
 
 
+config: ..\..\include\pg_config.h pg_config_paths.h
+
+..\..\include\pg_config.h: ..\..\include\pg_config.h.win32
+	copy ..\..\include\pg_config.h.win32 ..\..\include\pg_config.h
+
+pg_config_paths.h: win32.mak
+	echo #define SYSCONFDIR "" > pg_config_paths.h
+
+"$(OUTDIR)" :
+    if not exist "$(OUTDIR)/$(NULL)" mkdir "$(OUTDIR)"
+
+CPP_PROJ=/nologo /W3 /GX $(OPT) /I "..\..\include" /I. /D "FRONTEND" $(DEBUGDEF) /D\
+ "WIN32" /D "_WINDOWS" /Fp"$(INTDIR)\libpq.pch" /YX\
+ /Fo"$(INTDIR)\\" /Fd"$(INTDIR)\\" /FD /c  /D "HAVE_VSNPRINTF" /D "HAVE_STRDUP"
+
+!IFDEF USE_SSL
+CPP_PROJ=$(CPP_PROJ) /D USE_SSL
+SSL_LIBS=ssleay32.lib libeay32.lib gdi32.lib
+!ENDIF
+
+!IFDEF ENABLE_THREAD_SAFETY
+CPP_PROJ=$(CPP_PROJ) /D ENABLE_THREAD_SAFETY
+!ENDIF
+
+CPP_SBRS=.
+
 RSC_PROJ=/l 0x409 /fo"$(INTDIR)\libpq.res"
 
 LINK32=link.exe
@@ -148,98 +145,75 @@ LINK32_OBJS= \
 	"$(OUTDIR)\libpq.res"
 
 
+# @<< is a Response file, http://www.opussoftware.com/tutorial/TutMakefile.htm
+
 "$(OUTDIR)\$(OUTFILENAME).lib" : "$(OUTDIR)" $(DEF_FILE) $(LIB32_OBJS)
-    $(LIB32) @<<
-  $(LIB32_FLAGS) $(DEF_FLAGS) $(LIB32_OBJS)
+	$(LIB32) @<<
+	$(LIB32_FLAGS) $(DEF_FLAGS) $(LIB32_OBJS)
 <<
 
 "$(INTDIR)\libpq.res" : "$(INTDIR)" libpq.rc
-    $(RSC) $(RSC_PROJ) libpq.rc
+	$(RSC) $(RSC_PROJ) libpq.rc
 
 
 "$(OUTDIR)\$(OUTFILENAME).dll" : "$(OUTDIR)" "$(OUTDIR)\libpqdll.obj" "$(INTDIR)\libpqdll.obj" "$(INTDIR)\libpq.res"
-    $(LINK32) @<<
-  $(LINK32_FLAGS) $(LINK32_OBJS)
+	$(LINK32) @<<
+	$(LINK32_FLAGS) $(LINK32_OBJS)
 <<
 
 "$(INTDIR)\getaddrinfo.obj" : ..\..\port\getaddrinfo.c
-    $(CPP) @<<
-    $(CPP_PROJ) ..\..\port\getaddrinfo.c
+	$(CPP) @<<
+	$(CPP_PROJ) ..\..\port\getaddrinfo.c
 <<
 
 "$(INTDIR)\pgstrcasecmp.obj" : ..\..\port\pgstrcasecmp.c
-    $(CPP) @<<
-    $(CPP_PROJ) ..\..\port\pgstrcasecmp.c
+	$(CPP) @<<
+	$(CPP_PROJ) ..\..\port\pgstrcasecmp.c
 <<
 
 "$(INTDIR)\thread.obj" : ..\..\port\thread.c
-    $(CPP) @<<
-    $(CPP_PROJ) ..\..\port\thread.c
+	$(CPP) @<<
+	$(CPP_PROJ) ..\..\port\thread.c
 <<
 
 "$(INTDIR)\inet_aton.obj" : ..\..\port\inet_aton.c
-    $(CPP) @<<
-    $(CPP_PROJ) ..\..\port\inet_aton.c
+	$(CPP) @<<
+	$(CPP_PROJ) ..\..\port\inet_aton.c
 <<
 
 "$(INTDIR)\crypt.obj" : ..\..\port\crypt.c
-    $(CPP) @<<
-    $(CPP_PROJ) ..\..\port\crypt.c
+	$(CPP) @<<
+	$(CPP_PROJ) ..\..\port\crypt.c
 <<
 
 "$(INTDIR)\noblock.obj" : ..\..\port\noblock.c
-    $(CPP) @<<
-    $(CPP_PROJ) ..\..\port\noblock.c
+	$(CPP) @<<
+	$(CPP_PROJ) ..\..\port\noblock.c
 <<
 
 "$(INTDIR)\md5.obj" : ..\..\backend\libpq\md5.c
-    $(CPP) @<<
-    $(CPP_PROJ) ..\..\backend\libpq\md5.c
+	$(CPP) @<<
+	$(CPP_PROJ) ..\..\backend\libpq\md5.c
 <<
 
 "$(INTDIR)\ip.obj" : ..\..\backend\libpq\ip.c
-    $(CPP) @<<
-    $(CPP_PROJ) ..\..\backend\libpq\ip.c
+	$(CPP) @<<
+	$(CPP_PROJ) ..\..\backend\libpq\ip.c
 <<
 
 "$(INTDIR)\wchar.obj" : ..\..\backend\utils\mb\wchar.c
-    $(CPP) @<<
-    $(CPP_PROJ) /I "." ..\..\backend\utils\mb\wchar.c
+	$(CPP) @<<
+	$(CPP_PROJ) /I"." ..\..\backend\utils\mb\wchar.c
 <<
 
 
 "$(INTDIR)\encnames.obj" : ..\..\backend\utils\mb\encnames.c
-    $(CPP) @<<
-    $(CPP_PROJ) /I "." ..\..\backend\utils\mb\encnames.c
+	$(CPP) @<<
+	$(CPP_PROJ) /I"." ..\..\backend\utils\mb\encnames.c
 <<
 
+.c{$(CPP_OBJS)}.obj:
+	$(CPP) $(CPP_PROJ) $<
 
-.c{$(CPP_OBJS)}.obj::
-   $(CPP) @<<
-   $(CPP_PROJ) $<
-<<
-
-.cpp{$(CPP_OBJS)}.obj::
-   $(CPP) @<<
-   $(CPP_PROJ) $< 
-<<
-
-.cxx{$(CPP_OBJS)}.obj::
-   $(CPP) @<<
-   $(CPP_PROJ) $< 
-<<
-
-.c{$(CPP_SBRS)}.sbr::
-   $(CPP) @<<
-   $(CPP_PROJ) $< 
-<<
-
-.cpp{$(CPP_SBRS)}.sbr::
-   $(CPP) @<<
-   $(CPP_PROJ) $< 
-<<
-
-.cxx{$(CPP_SBRS)}.sbr::
-   $(CPP) @<<
-   $(CPP_PROJ) $< 
-<<
+.c.obj:
+	$(CPP) $(CPP_PROJ) $<

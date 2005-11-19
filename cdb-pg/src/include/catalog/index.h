@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/catalog/index.h,v 1.59 2004/12/31 22:03:24 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/catalog/index.h,v 1.64 2005/10/15 02:49:42 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -24,14 +24,15 @@
 /* Typedef for callback function for IndexBuildHeapScan */
 typedef void (*IndexBuildCallback) (Relation index,
 												HeapTuple htup,
-												Datum *attdata,
-												char *nulls,
+												Datum *values,
+												bool *isnull,
 												bool tupleIsAlive,
 												void *state);
 
 
 extern Oid index_create(Oid heapRelationId,
 			 const char *indexRelationName,
+			 Oid indexRelationId,
 			 IndexInfo *indexInfo,
 			 Oid accessMethodObjectId,
 			 Oid tableSpaceId,
@@ -39,21 +40,20 @@ extern Oid index_create(Oid heapRelationId,
 			 bool primary,
 			 bool isconstraint,
 			 bool allow_system_table_mods,
-			 bool skip_build,
-			 Oid indexoid);
+			 bool skip_build);
 
 extern void index_drop(Oid indexId);
 
 extern IndexInfo *BuildIndexInfo(Relation index);
 
 extern void FormIndexDatum(IndexInfo *indexInfo,
-			   HeapTuple heapTuple,
-			   TupleDesc heapDescriptor,
+			   TupleTableSlot *slot,
 			   EState *estate,
-			   Datum *datum,
-			   char *nullv);
+			   Datum *values,
+			   bool *isnull);
 
-extern void UpdateStats(Oid relid, double reltuples);
+extern void IndexCloseAndUpdateStats(Relation heap, double heapTuples,
+						 Relation index, double indexTuples);
 
 extern void setRelhasindex(Oid relid, bool hasindex,
 			   bool isprimary, Oid reltoastidxid);

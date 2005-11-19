@@ -13,7 +13,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/execProcnode.c,v 1.46 2004/12/31 21:59:45 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/execProcnode.c,v 1.51 2005/10/15 02:49:16 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -84,6 +84,10 @@
 #include "executor/instrument.h"
 #include "executor/nodeAgg.h"
 #include "executor/nodeAppend.h"
+#include "executor/nodeBitmapAnd.h"
+#include "executor/nodeBitmapHeapscan.h"
+#include "executor/nodeBitmapIndexscan.h"
+#include "executor/nodeBitmapOr.h"
 #include "executor/nodeFunctionscan.h"
 #include "executor/nodeGroup.h"
 #include "executor/nodeHash.h"
@@ -149,6 +153,14 @@ ExecInitNode(Plan *node, EState *estate)
 			result = (PlanState *) ExecInitAppend((Append *) node, estate);
 			break;
 
+		case T_BitmapAnd:
+			result = (PlanState *) ExecInitBitmapAnd((BitmapAnd *) node, estate);
+			break;
+
+		case T_BitmapOr:
+			result = (PlanState *) ExecInitBitmapOr((BitmapOr *) node, estate);
+			break;
+
 			/*
 			 * scan nodes
 			 */
@@ -158,6 +170,14 @@ ExecInitNode(Plan *node, EState *estate)
 
 		case T_IndexScan:
 			result = (PlanState *) ExecInitIndexScan((IndexScan *) node, estate);
+			break;
+
+		case T_BitmapIndexScan:
+			result = (PlanState *) ExecInitBitmapIndexScan((BitmapIndexScan *) node, estate);
+			break;
+
+		case T_BitmapHeapScan:
+			result = (PlanState *) ExecInitBitmapHeapScan((BitmapHeapScan *) node, estate);
 			break;
 
 		case T_TidScan:
@@ -233,8 +253,8 @@ ExecInitNode(Plan *node, EState *estate)
 	}
 
 	/*
-	 * Initialize any initPlans present in this node.  The planner put
-	 * them in a separate list for us.
+	 * Initialize any initPlans present in this node.  The planner put them in
+	 * a separate list for us.
 	 */
 	subps = NIL;
 	foreach(l, node->initPlan)
@@ -287,9 +307,9 @@ ExecInitNode(Plan *node, EState *estate)
 
 	/*
 	 * Initialize any subPlans present in this node.  These were found by
-	 * ExecInitExpr during initialization of the PlanState.  Note we must
-	 * do this after initializing initPlans, in case their arguments
-	 * contain subPlans (is that actually possible? perhaps not).
+	 * ExecInitExpr during initialization of the PlanState.  Note we must do
+	 * this after initializing initPlans, in case their arguments contain
+	 * subPlans (is that actually possible? perhaps not).
 	 */
 	foreach(l, result->subPlan)
 	{
@@ -301,7 +321,7 @@ ExecInitNode(Plan *node, EState *estate)
 
 	/* Set up instrumentation for this node if requested */
 	if (estate->es_instrument)
-		result->instrument = InstrAlloc();
+		result->instrument = InstrAlloc(1);
 
 	return result;
 }
@@ -324,12 +344,6 @@ ExecProcNode(PlanState *node)
 	ExecCdbTraceNode(node, true, NULL);
 #endif   /* CDB_TRACE_EXECUTOR */
 
-	/*
-	 * deal with NULL nodes..
-	 */
-	if (node == NULL)
-		return NULL;
-
 	if (node->chgParam != NULL) /* something changed */
 		ExecReScan(node, NULL); /* let ReScan handle this */
 
@@ -349,6 +363,10 @@ ExecProcNode(PlanState *node)
 			result = ExecAppend((AppendState *) node);
 			break;
 
+			/* BitmapAndState does not yield tuples */
+
+			/* BitmapOrState does not yield tuples */
+
 			/*
 			 * scan nodes
 			 */
@@ -358,6 +376,12 @@ ExecProcNode(PlanState *node)
 
 		case T_IndexScanState:
 			result = ExecIndexScan((IndexScanState *) node);
+			break;
+
+			/* BitmapIndexScanState does not yield tuples */
+
+		case T_BitmapHeapScanState:
+			result = ExecBitmapHeapScan((BitmapHeapScanState *) node);
 			break;
 
 		case T_TidScanState:
@@ -431,7 +455,7 @@ ExecProcNode(PlanState *node)
 			result = NULL;
 			break;
 	}
-
+	
 	if (node->instrument)
 		InstrStopNode(node->instrument, !TupIsNull(result));
 
@@ -441,6 +465,62 @@ ExecProcNode(PlanState *node)
 
 	return result;
 }
+
+
+/* ----------------------------------------------------------------
+ *		MultiExecProcNode
+ *
+ *		Execute a node that doesn't return individual tuples
+ *		(it might return a hashtable, bitmap, etc).  Caller should
+ *		check it got back the expected kind of Node.
+ *
+ * This has essentially the same responsibilities as ExecProcNode,
+ * but it does not do InstrStartNode/InstrStopNode (mainly because
+ * it can't tell how many returned tuples to count).  Each per-node
+ * function must provide its own instrumentation support.
+ * ----------------------------------------------------------------
+ */
+Node *
+MultiExecProcNode(PlanState *node)
+{
+	Node	   *result;
+
+	CHECK_FOR_INTERRUPTS();
+
+	if (node->chgParam != NULL) /* something changed */
+		ExecReScan(node, NULL); /* let ReScan handle this */
+
+	switch (nodeTag(node))
+	{
+			/*
+			 * Only node types that actually support multiexec will be listed
+			 */
+
+		case T_HashState:
+			result = MultiExecHash((HashState *) node);
+			break;
+
+		case T_BitmapIndexScanState:
+			result = MultiExecBitmapIndexScan((BitmapIndexScanState *) node);
+			break;
+
+		case T_BitmapAndState:
+			result = MultiExecBitmapAnd((BitmapAndState *) node);
+			break;
+
+		case T_BitmapOrState:
+			result = MultiExecBitmapOr((BitmapOrState *) node);
+			break;
+
+		default:
+			elog(ERROR, "unrecognized node type: %d", (int) nodeTag(node));
+			result = NULL;
+			break;
+	}
+
+	return result;
+}
+
 
 /*
  * ExecCountSlotsNode - count up the number of tuple table slots needed
@@ -465,6 +545,12 @@ ExecCountSlotsNode(Plan *node)
 		case T_Append:
 			return ExecCountSlotsAppend((Append *) node);
 
+		case T_BitmapAnd:
+			return ExecCountSlotsBitmapAnd((BitmapAnd *) node);
+
+		case T_BitmapOr:
+			return ExecCountSlotsBitmapOr((BitmapOr *) node);
+
 			/*
 			 * scan nodes
 			 */
@@ -473,6 +559,12 @@ ExecCountSlotsNode(Plan *node)
 
 		case T_IndexScan:
 			return ExecCountSlotsIndexScan((IndexScan *) node);
+
+		case T_BitmapIndexScan:
+			return ExecCountSlotsBitmapIndexScan((BitmapIndexScan *) node);
+
+		case T_BitmapHeapScan:
+			return ExecCountSlotsBitmapHeapScan((BitmapHeapScan *) node);
 
 		case T_TidScan:
 			return ExecCountSlotsTidScan((TidScan *) node);
@@ -610,6 +702,14 @@ ExecEndNode(PlanState *node)
 			ExecEndAppend((AppendState *) node);
 			break;
 
+		case T_BitmapAndState:
+			ExecEndBitmapAnd((BitmapAndState *) node);
+			break;
+
+		case T_BitmapOrState:
+			ExecEndBitmapOr((BitmapOrState *) node);
+			break;
+
 			/*
 			 * scan nodes
 			 */
@@ -619,6 +719,14 @@ ExecEndNode(PlanState *node)
 
 		case T_IndexScanState:
 			ExecEndIndexScan((IndexScanState *) node);
+			break;
+
+		case T_BitmapIndexScanState:
+			ExecEndBitmapIndexScan((BitmapIndexScanState *) node);
+			break;
+
+		case T_BitmapHeapScanState:
+			ExecEndBitmapHeapScan((BitmapHeapScanState *) node);
 			break;
 
 		case T_TidScanState:

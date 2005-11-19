@@ -1,4 +1,4 @@
-/* $PostgreSQL: pgsql/src/include/port/win32.h,v 1.42.4.2 2005/03/24 04:37:01 momjian Exp $ */
+/* $PostgreSQL: pgsql/src/include/port/win32.h,v 1.49 2005/10/25 15:15:16 tgl Exp $ */
 
 /* undefine and redefine after #include */
 #undef mkdir
@@ -16,9 +16,14 @@
 #define mkdir(a,b)	mkdir(a)
 
 
-#define fsync(a)	_commit(a)
-#define FSYNC_IS_WRITE_THROUGH
+#define HAVE_FSYNC_WRITETHROUGH
+#define HAVE_FSYNC_WRITETHROUGH_ONLY
 #define ftruncate(a,b)	chsize(a,b)
+/*
+ *	Even though we don't support 'fsync' as a wal_sync_method,
+ *	we do fsync() a few other places where _commit() is just fine.
+ */
+#define fsync(fd) _commit(fd)
 
 #define USES_WINSOCK
 
@@ -34,7 +39,6 @@
 #else							/* not BUILDING_DLL */
 #define DLLIMPORT __declspec (dllimport)
 #endif
-
 #elif defined(WIN32_CLIENT_ONLY)
 
 #if defined(_DLL)
@@ -42,7 +46,6 @@
 #else							/* not _DLL */
 #define DLLIMPORT __declspec (dllimport)
 #endif
-
 #else							/* not CYGWIN, not MSVC, not MingW */
 
 #define DLLIMPORT
@@ -129,8 +132,7 @@ int			semop(int semId, struct sembuf * sops, int flag);
 #define SIGHUP				1
 #define SIGQUIT				3
 #define SIGTRAP				5
-#define SIGABRT				22	/* Set to match W32 value -- not UNIX
-								 * value */
+#define SIGABRT				22	/* Set to match W32 value -- not UNIX value */
 #define SIGKILL				9
 #define SIGPIPE				13
 #define SIGALRM				14
@@ -182,7 +184,7 @@ typedef int pid_t;
 /*
  * Supplement to <sys/stat.h>.
  */
-#define lstat(path, sb)	stat((path), (sb))
+#define lstat(path, sb) stat((path), (sb))
 
 /*
  * Supplement to <fcntl.h>.
@@ -212,8 +214,13 @@ typedef int pid_t;
 
 
 /* In backend/port/win32/signal.c */
-extern DLLIMPORT HANDLE pgwin32_signal_event;
+extern DLLIMPORT volatile int pg_signal_queue;
+extern DLLIMPORT int pg_signal_mask;
+extern HANDLE pgwin32_signal_event;
 extern HANDLE pgwin32_initial_signal_pipe;
+
+#define UNBLOCKED_SIGNAL_QUEUE()	(pg_signal_queue & ~pg_signal_mask)
+
 
 void		pgwin32_signal_initialize(void);
 HANDLE		pgwin32_create_signal_listener(pid_t pid);
@@ -242,7 +249,7 @@ int			pgwin32_recv(SOCKET s, char *buf, int len, int flags);
 int			pgwin32_send(SOCKET s, char *buf, int len, int flags);
 
 const char *pgwin32_socket_strerror(int err);
-int pgwin32_waitforsinglesocket(SOCKET s, int what);
+int			pgwin32_waitforsinglesocket(SOCKET s, int what);
 
 /* in backend/port/win32/security.c */
 extern int	pgwin32_is_admin(void);

@@ -12,7 +12,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/c.h,v 1.178.4.1 2005/07/18 15:53:46 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/c.h,v 1.190 2005/10/15 02:49:41 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -55,8 +55,8 @@
 #if !defined(WIN32) && !defined(__CYGWIN__)
 #include "pg_config_os.h"		/* must be before any system header files */
 #else
-#if	defined(_MSC_VER) || defined(__BORLANDC__)
-#define	WIN32_CLIENT_ONLY
+#if defined(_MSC_VER) || defined(__BORLANDC__)
+#define WIN32_CLIENT_ONLY
 #endif
 #endif
 #include "postgres_ext.h"
@@ -84,18 +84,27 @@
 /* We have to redefine some system functions after they are included above */
 #include "pg_config_os.h"
 #else
-#include "port/win32.h"	/* We didn't run configure, but this is our port file */
+#include "port/win32.h"			/* We didn't run configure, but this is our
+								 * port file */
 #endif
 #endif
 
 /* Must be before gettext() games below */
 #include <locale.h>
 
+#define _(x) gettext((x))
+
 #ifdef ENABLE_NLS
 #include <libintl.h>
 #else
 #define gettext(x) (x)
 #endif
+
+/*
+ *	These strings are to be translation via xgettext.  We can't
+ *	call gettext() because it is located in variable initialization and
+ *	a function call can not be used.
+ */
 #define gettext_noop(x) (x)
 
 
@@ -119,7 +128,6 @@
 
 #define CppAsString(identifier) #identifier
 #define CppConcat(x, y)			x##y
-
 #else							/* !HAVE_STRINGIZE */
 
 #define CppAsString(identifier) "identifier"
@@ -277,7 +285,6 @@ typedef long int int64;
 #ifndef HAVE_UINT64
 typedef unsigned long int uint64;
 #endif
-
 #elif defined(HAVE_LONG_LONG_INT_64)
 /* We have working support for "long long int", use that */
 
@@ -287,7 +294,6 @@ typedef long long int int64;
 #ifndef HAVE_UINT64
 typedef unsigned long long int uint64;
 #endif
-
 #else							/* not HAVE_LONG_INT_64 and not
 								 * HAVE_LONG_LONG_INT_64 */
 
@@ -357,7 +363,8 @@ typedef float float4;
 typedef double float8;
 
 /*
- * Oid, RegProcedure, TransactionId, SubTransactionId, CommandId, AclId
+ * Oid, RegProcedure, TransactionId, SubTransactionId, MultiXactId,
+ * CommandId
  */
 
 /* typedef Oid is in postgres_ext.h */
@@ -376,11 +383,14 @@ typedef uint32 SubTransactionId;
 #define InvalidSubTransactionId		((SubTransactionId) 0)
 #define TopSubTransactionId			((SubTransactionId) 1)
 
+/* MultiXactId must be equivalent to TransactionId, to fit in t_xmax */
+typedef TransactionId MultiXactId;
+
+typedef uint32 MultiXactOffset;
+
 typedef uint32 CommandId;
 
 #define FirstCommandId	((CommandId) 0)
-
-typedef int32 AclId;			/* user and group identifiers */
 
 /*
  * Array indexing support
@@ -420,11 +430,36 @@ typedef struct varlena BpChar;	/* blank-padded char, ie SQL char(n) */
 typedef struct varlena VarChar; /* var-length char, ie SQL varchar(n) */
 
 /*
- * Fixed-length array types (these are not varlena's!)
+ * Specialized array types.  These are physically laid out just the same
+ * as regular arrays (so that the regular array subscripting code works
+ * with them).	They exist as distinct types mostly for historical reasons:
+ * they have nonstandard I/O behavior which we don't want to change for fear
+ * of breaking applications that look at the system catalogs.  There is also
+ * an implementation issue for oidvector: it's part of the primary key for
+ * pg_proc, and we can't use the normal btree array support routines for that
+ * without circularity.
  */
+typedef struct
+{
+	int32		size;			/* these fields must match ArrayType! */
+	int			ndim;
+	int			flags;
+	Oid			elemtype;
+	int			dim1;
+	int			lbound1;
+	int2		values[1];		/* VARIABLE LENGTH ARRAY */
+} int2vector;					/* VARIABLE LENGTH STRUCT */
 
-typedef int2 int2vector[INDEX_MAX_KEYS];
-typedef Oid oidvector[INDEX_MAX_KEYS];
+typedef struct
+{
+	int32		size;			/* these fields must match ArrayType! */
+	int			ndim;
+	int			flags;
+	Oid			elemtype;
+	int			dim1;
+	int			lbound1;
+	Oid			values[1];		/* VARIABLE LENGTH ARRAY */
+} oidvector;					/* VARIABLE LENGTH STRUCT */
 
 /*
  * We want NameData to have length NAMEDATALEN and int alignment,
@@ -442,6 +477,8 @@ typedef NameData *Name;
 
 #define NameStr(name)	((name).data)
 
+#define SQL_STR_DOUBLE(ch)	((ch) == '\'' || (ch) == '\\')
+#define ESCAPE_STRING_SYNTAX	'E'
 
 /* ----------------------------------------------------------------
  *				Section 4:	IsValid macros for system types
@@ -467,8 +504,6 @@ typedef NameData *Name;
 		(((long)(pointer) % (sizeof (type))) == 0)
 
 #define OidIsValid(objectId)  ((bool) ((objectId) != InvalidOid))
-
-#define AclIdIsValid(aclId)  ((bool) ((aclId) != 0))
 
 #define RegProcedureIsValid(p)	OidIsValid(p)
 
@@ -498,7 +533,7 @@ typedef NameData *Name;
  * endof
  *		Address of the element one past the last in an array.
  */
-#define endof(array)	(&array[lengthof(array)])
+#define endof(array)	(&(array)[lengthof(array)])
 
 /* ----------------
  * Alignment macros: align a length or address appropriately for a given type.
@@ -512,7 +547,7 @@ typedef NameData *Name;
  */
 
 #define TYPEALIGN(ALIGNVAL,LEN)  \
-	(((long) (LEN) + (ALIGNVAL-1)) & ~((long) (ALIGNVAL-1)))
+	(((long) (LEN) + ((ALIGNVAL) - 1)) & ~((long) ((ALIGNVAL) - 1)))
 
 #define SHORTALIGN(LEN)			TYPEALIGN(ALIGNOF_SHORT, (LEN))
 #define INTALIGN(LEN)			TYPEALIGN(ALIGNOF_INT, (LEN))
@@ -593,6 +628,7 @@ typedef NameData *Name;
 #define MemSet(start, val, len) \
 	do \
 	{ \
+		/* must be void* because we don't know if it is integer aligned yet */ \
 		void   *_vstart = (void *) (start); \
 		int		_val = (val); \
 		Size	_len = (len); \
@@ -622,7 +658,7 @@ typedef NameData *Name;
 #define MemSetAligned(start, val, len) \
 	do \
 	{ \
-		int32 * _start = (int32 *) (start); \
+		int32  *_start = (int32 *) (start); \
 		int		_val = (val); \
 		Size	_len = (len); \
 \
@@ -630,12 +666,12 @@ typedef NameData *Name;
 			_val == 0 && \
 			_len <= MEMSET_LOOP_LIMIT) \
 		{ \
-			int32 * _stop = (int32 *) ((char *) _start + _len); \
+			int32 *_stop = (int32 *) ((char *) _start + _len); \
 			while (_start < _stop) \
 				*_start++ = 0; \
 		} \
 		else \
-			memset((char *) _start, _val, _len); \
+			memset(_start, _val, _len); \
 	} while (0)
 
 

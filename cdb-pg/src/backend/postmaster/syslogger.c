@@ -18,7 +18,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/postmaster/syslogger.c,v 1.12.4.1 2005/03/12 01:55:14 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/postmaster/syslogger.c,v 1.20 2005/10/15 02:49:24 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -33,6 +33,7 @@
 
 #include "libpq/pqsignal.h"
 #include "miscadmin.h"
+#include "postmaster/fork_process.h"
 #include "postmaster/postmaster.h"
 #include "postmaster/syslogger.h"
 #include "pgtime.h"
@@ -40,7 +41,7 @@
 #include "storage/pg_shmem.h"
 #include "utils/guc.h"
 #include "utils/ps_status.h"
-
+#include "utils/timestamp.h"
 
 /*
  * We really want line-buffered mode for logfile output, but Windows does
@@ -59,7 +60,7 @@
  * start, but the rest can change at SIGHUP.
  */
 bool		Redirect_stderr = false;
-int			Log_RotationAge = 24 * 60;
+int			Log_RotationAge = HOURS_PER_DAY * MINS_PER_HOUR;
 int			Log_RotationSize = 10 * 1024;
 char	   *Log_directory = NULL;
 char	   *Log_filename = NULL;
@@ -86,7 +87,6 @@ static char *last_file_name = NULL;
 /* These must be exported for EXEC_BACKEND case ... annoying */
 #ifndef WIN32
 int			syslogPipe[2] = {-1, -1};
-
 #else
 HANDLE		syslogPipe[2] = {0, 0};
 #endif
@@ -100,6 +100,7 @@ static CRITICAL_SECTION sysfileSection;
  * Flags set by interrupt handlers for later service in the main loop.
  */
 static volatile sig_atomic_t got_SIGHUP = false;
+static volatile sig_atomic_t rotation_requested = false;
 
 
 /* Local subroutines */
@@ -116,6 +117,7 @@ static void logfile_rotate(bool time_based_rotation);
 static char *logfile_getname(pg_time_t timestamp);
 static void set_next_rotation_time(void);
 static void sigHupHandler(SIGNAL_ARGS);
+static void sigUsr1Handler(SIGNAL_ARGS);
 
 
 /*
@@ -146,22 +148,21 @@ SysLoggerMain(int argc, char *argv[])
 	set_ps_display("");
 
 	/*
-	 * If we restarted, our stderr is already redirected into our own
-	 * input pipe.	This is of course pretty useless, not to mention that
-	 * it interferes with detecting pipe EOF.  Point stderr to /dev/null.
-	 * This assumes that all interesting messages generated in the
-	 * syslogger will come through elog.c and will be sent to
-	 * write_syslogger_file.
+	 * If we restarted, our stderr is already redirected into our own input
+	 * pipe.  This is of course pretty useless, not to mention that it
+	 * interferes with detecting pipe EOF.	Point stderr to /dev/null. This
+	 * assumes that all interesting messages generated in the syslogger will
+	 * come through elog.c and will be sent to write_syslogger_file.
 	 */
 	if (redirection_done)
 	{
 		int			fd = open(NULL_DEV, O_WRONLY);
 
 		/*
-		 * The closes might look redundant, but they are not: we want to
-		 * be darn sure the pipe gets closed even if the open failed.  We
-		 * can survive running with stderr pointing nowhere, but we can't
-		 * afford to have extra pipe input descriptors hanging around.
+		 * The closes might look redundant, but they are not: we want to be
+		 * darn sure the pipe gets closed even if the open failed.	We can
+		 * survive running with stderr pointing nowhere, but we can't afford
+		 * to have extra pipe input descriptors hanging around.
 		 */
 		close(fileno(stdout));
 		close(fileno(stderr));
@@ -171,9 +172,9 @@ SysLoggerMain(int argc, char *argv[])
 	}
 
 	/*
-	 * Also close our copy of the write end of the pipe.  This is needed
-	 * to ensure we can detect pipe EOF correctly.	(But note that in the
-	 * restart case, the postmaster already did this.)
+	 * Also close our copy of the write end of the pipe.  This is needed to
+	 * ensure we can detect pipe EOF correctly.  (But note that in the restart
+	 * case, the postmaster already did this.)
 	 */
 #ifndef WIN32
 	if (syslogPipe[1] >= 0)
@@ -188,9 +189,9 @@ SysLoggerMain(int argc, char *argv[])
 	/*
 	 * Properly accept or ignore signals the postmaster might send us
 	 *
-	 * Note: we ignore all termination signals, and instead exit only when
-	 * all upstream processes are gone, to ensure we don't miss any dying
-	 * gasps of broken backends...
+	 * Note: we ignore all termination signals, and instead exit only when all
+	 * upstream processes are gone, to ensure we don't miss any dying gasps of
+	 * broken backends...
 	 */
 
 	pqsignal(SIGHUP, sigHupHandler);	/* set flag to read config file */
@@ -199,7 +200,7 @@ SysLoggerMain(int argc, char *argv[])
 	pqsignal(SIGQUIT, SIG_IGN);
 	pqsignal(SIGALRM, SIG_IGN);
 	pqsignal(SIGPIPE, SIG_IGN);
-	pqsignal(SIGUSR1, SIG_IGN);
+	pqsignal(SIGUSR1, sigUsr1Handler);	/* request log rotation */
 	pqsignal(SIGUSR2, SIG_IGN);
 
 	/*
@@ -234,7 +235,6 @@ SysLoggerMain(int argc, char *argv[])
 	/* main worker loop */
 	for (;;)
 	{
-		bool		rotation_requested = false;
 		bool		time_based_rotation = false;
 
 #ifndef WIN32
@@ -251,8 +251,8 @@ SysLoggerMain(int argc, char *argv[])
 			ProcessConfigFile(PGC_SIGHUP);
 
 			/*
-			 * Check if the log directory or filename pattern changed in 
-			 * postgresql.conf. If so, force rotation to make sure we're 
+			 * Check if the log directory or filename pattern changed in
+			 * postgresql.conf. If so, force rotation to make sure we're
 			 * writing the logfiles in the right place.
 			 */
 			if (strcmp(Log_directory, currentLogDir) != 0)
@@ -267,6 +267,7 @@ SysLoggerMain(int argc, char *argv[])
 				currentLogFilename = pstrdup(Log_filename);
 				rotation_requested = true;
 			}
+
 			/*
 			 * If rotation time parameter changed, reset next rotation time,
 			 * but don't immediately force a rotation.
@@ -314,7 +315,7 @@ SysLoggerMain(int argc, char *argv[])
 			if (errno != EINTR)
 				ereport(LOG,
 						(errcode_for_socket_access(),
-					   errmsg("select() failed in logger process: %m")));
+						 errmsg("select() failed in logger process: %m")));
 		}
 		else if (rc > 0 && FD_ISSET(syslogPipe[0], &rfds))
 		{
@@ -326,7 +327,7 @@ SysLoggerMain(int argc, char *argv[])
 				if (errno != EINTR)
 					ereport(LOG,
 							(errcode_for_socket_access(),
-						 errmsg("could not read from logger pipe: %m")));
+							 errmsg("could not read from logger pipe: %m")));
 			}
 			else if (bytesRead > 0)
 			{
@@ -336,11 +337,10 @@ SysLoggerMain(int argc, char *argv[])
 			else
 			{
 				/*
-				 * Zero bytes read when select() is saying read-ready
-				 * means EOF on the pipe: that is, there are no longer any
-				 * processes with the pipe write end open.	Therefore, the
-				 * postmaster and all backends are shut down, and we are
-				 * done.
+				 * Zero bytes read when select() is saying read-ready means
+				 * EOF on the pipe: that is, there are no longer any processes
+				 * with the pipe write end open.  Therefore, the postmaster
+				 * and all backends are shut down, and we are done.
 				 */
 				pipe_eof_seen = true;
 			}
@@ -348,9 +348,9 @@ SysLoggerMain(int argc, char *argv[])
 #else							/* WIN32 */
 
 		/*
-		 * On Windows we leave it to a separate thread to transfer data
-		 * and detect pipe EOF.  The main thread just wakes up once a
-		 * second to check for SIGHUP and rotation conditions.
+		 * On Windows we leave it to a separate thread to transfer data and
+		 * detect pipe EOF.  The main thread just wakes up once a second to
+		 * check for SIGHUP and rotation conditions.
 		 */
 		pgwin32_backend_usleep(1000000);
 #endif   /* WIN32 */
@@ -362,10 +362,10 @@ SysLoggerMain(int argc, char *argv[])
 
 			/*
 			 * Normal exit from the syslogger is here.	Note that we
-			 * deliberately do not close syslogFile before exiting; this
-			 * is to allow for the possibility of elog messages being
-			 * generated inside proc_exit.	Regular exit() will take care
-			 * of flushing and closing stdio channels.
+			 * deliberately do not close syslogFile before exiting; this is to
+			 * allow for the possibility of elog messages being generated
+			 * inside proc_exit.  Regular exit() will take care of flushing
+			 * and closing stdio channels.
 			 */
 			proc_exit(0);
 		}
@@ -388,13 +388,13 @@ SysLogger_Start(void)
 	 * If first time through, create the pipe which will receive stderr
 	 * output.
 	 *
-	 * If the syslogger crashes and needs to be restarted, we continue to use
-	 * the same pipe (indeed must do so, since extant backends will be
-	 * writing into that pipe).
+	 * If the syslogger crashes and needs to be restarted, we continue to use the
+	 * same pipe (indeed must do so, since extant backends will be writing
+	 * into that pipe).
 	 *
-	 * This means the postmaster must continue to hold the read end of the
-	 * pipe open, so we can pass it down to the reincarnated syslogger.
-	 * This is a bit klugy but we have little choice.
+	 * This means the postmaster must continue to hold the read end of the pipe
+	 * open, so we can pass it down to the reincarnated syslogger. This is a
+	 * bit klugy but we have little choice.
 	 */
 #ifndef WIN32
 	if (syslogPipe[0] < 0)
@@ -402,7 +402,7 @@ SysLogger_Start(void)
 		if (pgpipe(syslogPipe) < 0)
 			ereport(FATAL,
 					(errcode_for_socket_access(),
-				  (errmsg("could not create pipe for syslog: %m"))));
+					 (errmsg("could not create pipe for syslog: %m"))));
 	}
 #else
 	if (!syslogPipe[0])
@@ -416,26 +416,18 @@ SysLogger_Start(void)
 		if (!CreatePipe(&syslogPipe[0], &syslogPipe[1], &sa, 32768))
 			ereport(FATAL,
 					(errcode_for_file_access(),
-				  (errmsg("could not create pipe for syslog: %m"))));
+					 (errmsg("could not create pipe for syslog: %m"))));
 	}
 #endif
 
 	/*
-	 * create log directory if not present; ignore errors
+	 * Create log directory if not present; ignore errors
 	 */
-	if (is_absolute_path(Log_directory))
-		mkdir(Log_directory, 0700);
-	else
-	{
-		filename = palloc(MAXPGPATH);
-		snprintf(filename, MAXPGPATH, "%s/%s", DataDir, Log_directory);
-		mkdir(filename, 0700);
-		pfree(filename);
-	}
+	mkdir(Log_directory, 0700);
 
 	/*
-	 * The initial logfile is created right in the postmaster, to verify
-	 * that the Log_directory is writable.
+	 * The initial logfile is created right in the postmaster, to verify that
+	 * the Log_directory is writable.
 	 */
 	filename = logfile_getname(time(NULL));
 
@@ -451,28 +443,13 @@ SysLogger_Start(void)
 
 	pfree(filename);
 
-	/*
-	 * Now we can fork off the syslogger subprocess.
-	 */
-	fflush(stdout);
-	fflush(stderr);
-
-#ifdef __BEOS__
-	/* Specific beos actions before backend startup */
-	beos_before_backend_startup();
-#endif
-
 #ifdef EXEC_BACKEND
 	switch ((sysloggerPid = syslogger_forkexec()))
 #else
-	switch ((sysloggerPid = fork()))
+	switch ((sysloggerPid = fork_process()))
 #endif
 	{
 		case -1:
-#ifdef __BEOS__
-			/* Specific beos actions */
-			beos_backend_startup_failed();
-#endif
 			ereport(LOG,
 					(errmsg("could not fork system logger: %m")));
 			return 0;
@@ -480,10 +457,6 @@ SysLogger_Start(void)
 #ifndef EXEC_BACKEND
 		case 0:
 			/* in postmaster child ... */
-#ifdef __BEOS__
-			/* Specific beos actions after backend startup */
-			beos_backend_startup();
-#endif
 			/* Close the postmaster's sockets */
 			ClosePostmasterPorts(true);
 
@@ -752,10 +725,12 @@ logfile_rotate(bool time_based_rotation)
 	char	   *filename;
 	FILE	   *fh;
 
+	rotation_requested = false;
+
 	/*
-	 * When doing a time-based rotation, invent the new logfile name based
-	 * on the planned rotation time, not current time, to avoid "slippage"
-	 * in the file name when we don't do the rotation immediately.
+	 * When doing a time-based rotation, invent the new logfile name based on
+	 * the planned rotation time, not current time, to avoid "slippage" in the
+	 * file name when we don't do the rotation immediately.
 	 */
 	if (time_based_rotation)
 		filename = logfile_getname(next_rotation_time);
@@ -765,14 +740,14 @@ logfile_rotate(bool time_based_rotation)
 	/*
 	 * Decide whether to overwrite or append.  We can overwrite if (a)
 	 * Log_truncate_on_rotation is set, (b) the rotation was triggered by
-	 * elapsed time and not something else, and (c) the computed file name
-	 * is different from what we were previously logging into.
+	 * elapsed time and not something else, and (c) the computed file name is
+	 * different from what we were previously logging into.
 	 *
 	 * Note: during the first rotation after forking off from the postmaster,
 	 * last_file_name will be NULL.  (We don't bother to set it in the
-	 * postmaster because it ain't gonna work in the EXEC_BACKEND case.)
-	 * So we will always append in that situation, even though truncating
-	 * would usually be safe.
+	 * postmaster because it ain't gonna work in the EXEC_BACKEND case.) So we
+	 * will always append in that situation, even though truncating would
+	 * usually be safe.
 	 */
 	if (Log_truncate_on_rotation && time_based_rotation &&
 		last_file_name != NULL && strcmp(filename, last_file_name) != 0)
@@ -790,15 +765,15 @@ logfile_rotate(bool time_based_rotation)
 						filename)));
 
 		/*
-		 * ENFILE/EMFILE are not too surprising on a busy system; just
-		 * keep using the old file till we manage to get a new one.
-		 * Otherwise, assume something's wrong with Log_directory and stop
-		 * trying to create files.
+		 * ENFILE/EMFILE are not too surprising on a busy system; just keep
+		 * using the old file till we manage to get a new one. Otherwise,
+		 * assume something's wrong with Log_directory and stop trying to
+		 * create files.
 		 */
 		if (saveerrno != ENFILE && saveerrno != EMFILE)
 		{
 			ereport(LOG,
-			(errmsg("disabling automatic rotation (use SIGHUP to reenable)")));
+					(errmsg("disabling automatic rotation (use SIGHUP to reenable)")));
 			Log_RotationAge = 0;
 			Log_RotationSize = 0;
 		}
@@ -841,20 +816,17 @@ logfile_getname(pg_time_t timestamp)
 
 	filename = palloc(MAXPGPATH);
 
-	if (is_absolute_path(Log_directory))
-		snprintf(filename, MAXPGPATH, "%s/", Log_directory);
-	else
-		snprintf(filename, MAXPGPATH, "%s/%s/", DataDir, Log_directory);
+	snprintf(filename, MAXPGPATH, "%s/", Log_directory);
 
 	len = strlen(filename);
 
 	if (strchr(Log_filename, '%'))
 	{
 		/* treat it as a strftime pattern */
-		tm = pg_localtime(&timestamp);
+		tm = pg_localtime(&timestamp, global_timezone);
 		pg_strftime(filename + len, MAXPGPATH - len, Log_filename, tm);
 	}
-	else 
+	else
 	{
 		/* no strftime escapes, so append timestamp to new filename */
 		snprintf(filename + len, MAXPGPATH - len, "%s.%lu",
@@ -881,12 +853,12 @@ set_next_rotation_time(void)
 	/*
 	 * The requirements here are to choose the next time > now that is a
 	 * "multiple" of the log rotation interval.  "Multiple" can be interpreted
-	 * fairly loosely.  In this version we align to local time rather than
+	 * fairly loosely.	In this version we align to local time rather than
 	 * GMT.
 	 */
-	rotinterval = Log_RotationAge * 60; /* convert to seconds */
+	rotinterval = Log_RotationAge * SECS_PER_MINUTE;	/* convert to seconds */
 	now = time(NULL);
-	tm = pg_localtime(&now);
+	tm = pg_localtime(&now, global_timezone);
 	now += tm->tm_gmtoff;
 	now -= now % rotinterval;
 	now += rotinterval;
@@ -904,4 +876,11 @@ static void
 sigHupHandler(SIGNAL_ARGS)
 {
 	got_SIGHUP = true;
+}
+
+/* SIGUSR1: set flag to rotate logfile */
+static void
+sigUsr1Handler(SIGNAL_ARGS)
+{
+	rotation_requested = true;
 }

@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/tcop/fastpath.c,v 1.77 2004/12/31 22:01:16 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/tcop/fastpath.c,v 1.83 2005/10/15 02:49:26 momjian Exp $
  *
  * NOTES
  *	  This cruft is the server side of PQfn.
@@ -103,8 +103,8 @@ GetOldFunctionMessage(StringInfo buf)
 			/* FATAL here since no hope of regaining message sync */
 			ereport(FATAL,
 					(errcode(ERRCODE_PROTOCOL_VIOLATION),
-			  errmsg("invalid argument size %d in function call message",
-					 argsize)));
+				  errmsg("invalid argument size %d in function call message",
+						 argsize)));
 		}
 		/* and arg contents */
 		if (argsize > 0)
@@ -149,31 +149,25 @@ SendFunctionResult(Datum retval, bool isnull, Oid rettype, int16 format)
 
 		if (format == 0)
 		{
-			Oid			typoutput,
-						typioparam;
+			Oid			typoutput;
 			bool		typisvarlena;
 			char	   *outputstr;
 
-			getTypeOutputInfo(rettype, &typoutput, &typioparam, &typisvarlena);
-			outputstr = DatumGetCString(OidFunctionCall3(typoutput,
-														 retval,
-											ObjectIdGetDatum(typioparam),
-													 Int32GetDatum(-1)));
+			getTypeOutputInfo(rettype, &typoutput, &typisvarlena);
+			outputstr = DatumGetCString(OidFunctionCall1(typoutput,
+														 retval));
 			pq_sendcountedtext(&buf, outputstr, strlen(outputstr), false);
 			pfree(outputstr);
 		}
 		else if (format == 1)
 		{
-			Oid			typsend,
-						typioparam;
+			Oid			typsend;
 			bool		typisvarlena;
 			bytea	   *outputbytes;
 
-			getTypeBinaryOutputInfo(rettype,
-									&typsend, &typioparam, &typisvarlena);
-			outputbytes = DatumGetByteaP(OidFunctionCall2(typsend,
-														  retval,
-										  ObjectIdGetDatum(typioparam)));
+			getTypeBinaryOutputInfo(rettype, &typsend, &typisvarlena);
+			outputbytes = DatumGetByteaP(OidFunctionCall1(typsend,
+														  retval));
 			/* We assume the result will not have been toasted */
 			pq_sendint(&buf, VARSIZE(outputbytes) - VARHDRSZ, 4);
 			pq_sendbytes(&buf, VARDATA(outputbytes),
@@ -210,13 +204,12 @@ fetch_fp_info(Oid func_id, struct fp_info * fip)
 	/*
 	 * Since the validity of this structure is determined by whether the
 	 * funcid is OK, we clear the funcid here.	It must not be set to the
-	 * correct value until we are about to return with a good struct
-	 * fp_info, since we can be interrupted (i.e., with an ereport(ERROR,
-	 * ...)) at any time.  [No longer really an issue since we don't save
-	 * the struct fp_info across transactions anymore, but keep it
-	 * anyway.]
+	 * correct value until we are about to return with a good struct fp_info,
+	 * since we can be interrupted (i.e., with an ereport(ERROR, ...)) at any
+	 * time.  [No longer really an issue since we don't save the struct
+	 * fp_info across transactions anymore, but keep it anyway.]
 	 */
-	MemSet((char *) fip, 0, sizeof(struct fp_info));
+	MemSet(fip, 0, sizeof(struct fp_info));
 	fip->funcid = InvalidOid;
 
 	fmgr_info(func_id, &fip->flinfo);
@@ -230,9 +223,14 @@ fetch_fp_info(Oid func_id, struct fp_info * fip)
 				 errmsg("function with OID %u does not exist", func_id)));
 	pp = (Form_pg_proc) GETSTRUCT(func_htp);
 
+	/* watch out for catalog entries with more than FUNC_MAX_ARGS args */
+	if (pp->pronargs > FUNC_MAX_ARGS)
+		elog(ERROR, "function %s has more than %d arguments",
+			 NameStr(pp->proname), FUNC_MAX_ARGS);
+
 	fip->namespace = pp->pronamespace;
 	fip->rettype = pp->prorettype;
-	memcpy(fip->argtypes, pp->proargtypes, FUNC_MAX_ARGS * sizeof(Oid));
+	memcpy(fip->argtypes, pp->proargtypes.values, pp->pronargs * sizeof(Oid));
 
 	ReleaseSysCache(func_htp);
 
@@ -295,14 +293,14 @@ HandleFunctionRequest(StringInfo msgBuf)
 
 	/*
 	 * Now that we've eaten the input message, check to see if we actually
-	 * want to do the function call or not.  It's now safe to ereport();
-	 * we won't lose sync with the frontend.
+	 * want to do the function call or not.  It's now safe to ereport(); we
+	 * won't lose sync with the frontend.
 	 */
 	if (IsAbortedTransactionBlockState())
 		ereport(ERROR,
 				(errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION),
 				 errmsg("current transaction is aborted, "
-					"commands ignored until end of transaction block")));
+						"commands ignored until end of transaction block")));
 
 	/*
 	 * Begin parsing the buffer contents.
@@ -336,8 +334,7 @@ HandleFunctionRequest(StringInfo msgBuf)
 	/*
 	 * Prepare function call info block and insert arguments.
 	 */
-	MemSet(&fcinfo, 0, sizeof(fcinfo));
-	fcinfo.flinfo = &fip->flinfo;
+	InitFunctionCallInfoData(fcinfo, &fip->flinfo, 0, NULL, NULL);
 
 	if (PG_PROTOCOL_MAJOR(FrontendProtocol) >= 3)
 		rformat = parse_fcall_arguments(msgBuf, fip, &fcinfo);
@@ -438,11 +435,12 @@ parse_fcall_arguments(StringInfo msgBuf, struct fp_info * fip,
 			fcinfo->argnull[i] = true;
 			continue;
 		}
+		fcinfo->argnull[i] = false;
 		if (argsize < 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_PROTOCOL_VIOLATION),
-			  errmsg("invalid argument size %d in function call message",
-					 argsize)));
+				  errmsg("invalid argument size %d in function call message",
+						 argsize)));
 
 		/* Reset abuf to empty, and insert raw data into it */
 		abuf.len = 0;
@@ -474,9 +472,7 @@ parse_fcall_arguments(StringInfo msgBuf, struct fp_info * fip,
 			 * have to do encoding conversion before calling the typinput
 			 * routine, though.
 			 */
-			pstring = (char *)
-				pg_client_to_server((unsigned char *) abuf.data,
-									argsize);
+			pstring = pg_client_to_server(abuf.data, argsize);
 			fcinfo->arg[i] =
 				OidFunctionCall3(typinput,
 								 CStringGetDatum(pstring),
@@ -494,16 +490,17 @@ parse_fcall_arguments(StringInfo msgBuf, struct fp_info * fip,
 			/* Call the argument type's binary input converter */
 			getTypeBinaryInputInfo(fip->argtypes[i], &typreceive, &typioparam);
 
-			fcinfo->arg[i] = OidFunctionCall2(typreceive,
+			fcinfo->arg[i] = OidFunctionCall3(typreceive,
 											  PointerGetDatum(&abuf),
-										   ObjectIdGetDatum(typioparam));
+											  ObjectIdGetDatum(typioparam),
+											  Int32GetDatum(-1));
 
 			/* Trouble if it didn't eat the whole buffer */
 			if (abuf.cursor != abuf.len)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
-						 errmsg("incorrect binary data format in function argument %d",
-								i + 1)));
+				errmsg("incorrect binary data format in function argument %d",
+					   i + 1)));
 		}
 		else
 			ereport(ERROR,
@@ -545,9 +542,9 @@ parse_fcall_arguments_20(StringInfo msgBuf, struct fp_info * fip,
 	 * Copy supplied arguments into arg vector.  In protocol 2.0 these are
 	 * always assumed to be supplied in binary format.
 	 *
-	 * Note: although the original protocol 2.0 code did not have any way for
-	 * the frontend to specify a NULL argument, we now choose to interpret
-	 * length == -1 as meaning a NULL.
+	 * Note: although the original protocol 2.0 code did not have any way for the
+	 * frontend to specify a NULL argument, we now choose to interpret length
+	 * == -1 as meaning a NULL.
 	 */
 	for (i = 0; i < nargs; ++i)
 	{
@@ -561,11 +558,12 @@ parse_fcall_arguments_20(StringInfo msgBuf, struct fp_info * fip,
 			fcinfo->argnull[i] = true;
 			continue;
 		}
+		fcinfo->argnull[i] = false;
 		if (argsize < 0)
 			ereport(ERROR,
 					(errcode(ERRCODE_PROTOCOL_VIOLATION),
-			  errmsg("invalid argument size %d in function call message",
-					 argsize)));
+				  errmsg("invalid argument size %d in function call message",
+						 argsize)));
 
 		/* Reset abuf to empty, and insert raw data into it */
 		abuf.len = 0;
@@ -579,16 +577,17 @@ parse_fcall_arguments_20(StringInfo msgBuf, struct fp_info * fip,
 		/* Call the argument type's binary input converter */
 		getTypeBinaryInputInfo(fip->argtypes[i], &typreceive, &typioparam);
 
-		fcinfo->arg[i] = OidFunctionCall2(typreceive,
+		fcinfo->arg[i] = OidFunctionCall3(typreceive,
 										  PointerGetDatum(&abuf),
-										  ObjectIdGetDatum(typioparam));
+										  ObjectIdGetDatum(typioparam),
+										  Int32GetDatum(-1));
 
 		/* Trouble if it didn't eat the whole buffer */
 		if (abuf.cursor != abuf.len)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
-			errmsg("incorrect binary data format in function argument %d",
-				   i + 1)));
+			   errmsg("incorrect binary data format in function argument %d",
+					  i + 1)));
 	}
 
 	/* Desired result format is always binary in protocol 2.0 */

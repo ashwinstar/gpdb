@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/execJunk.c,v 1.46 2004/12/31 21:59:45 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/execJunk.c,v 1.50 2005/10/15 02:49:16 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -31,8 +31,8 @@
  * of some system attributes like "ctid" or rule locks.
  *
  * The general idea is the following: A target list consists of a list of
- * Resdom nodes & expression pairs. Each Resdom node has an attribute
- * called 'resjunk'. If the value of this attribute is true then the
+ * TargetEntry nodes containing expressions. Each TargetEntry has a field
+ * called 'resjunk'. If the value of this field is true then the
  * corresponding attribute is a "junk" attribute.
  *
  * When we initialize a plan we call 'ExecInitJunkFilter' to create
@@ -42,10 +42,10 @@
  * We then execute the plan ignoring the "resjunk" attributes.
  *
  * Finally, when at the top level we get back a tuple, we can call
- * 'ExecGetJunkAttribute' to retrieve the value of the junk attributes we
- * are interested in, and 'ExecRemoveJunk' to remove all the junk attributes
- * from a tuple. This new "clean" tuple is then printed, replaced, deleted
- * or inserted.
+ * ExecGetJunkAttribute to retrieve the value of the junk attributes we
+ * are interested in, and ExecFilterJunk or ExecRemoveJunk to remove all
+ * the junk attributes from a tuple. This new "clean" tuple is then printed,
+ * replaced, deleted or inserted.
  *
  *-------------------------------------------------------------------------
  */
@@ -55,7 +55,7 @@
  *
  * Initialize the Junk filter.
  *
- * The source targetlist is passed in.  The output tuple descriptor is
+ * The source targetlist is passed in.	The output tuple descriptor is
  * built from the non-junk tlist entries, plus the passed specification
  * of whether to include room for an OID or not.
  * An optional resultSlot can be passed as well.
@@ -76,14 +76,22 @@ ExecInitJunkFilter(List *targetList, bool hasoid, TupleTableSlot *slot)
 	cleanTupType = ExecCleanTypeFromTL(targetList, hasoid);
 
 	/*
+	 * Use the given slot, or make a new slot if we weren't given one.
+	 */
+	if (slot)
+		ExecSetSlotDescriptor(slot, cleanTupType, false);
+	else
+		slot = MakeSingleTupleTableSlot(cleanTupType);
+
+	/*
 	 * Now calculate the mapping between the original tuple's attributes and
 	 * the "clean" tuple's attributes.
 	 *
-	 * The "map" is an array of "cleanLength" attribute numbers, i.e. one
-	 * entry for every attribute of the "clean" tuple. The value of this
-	 * entry is the attribute number of the corresponding attribute of the
-	 * "original" tuple.  (Zero indicates a NULL output attribute, but we
-	 * do not use that feature in this routine.)
+	 * The "map" is an array of "cleanLength" attribute numbers, i.e. one entry
+	 * for every attribute of the "clean" tuple. The value of this entry is
+	 * the attribute number of the corresponding attribute of the "original"
+	 * tuple.  (Zero indicates a NULL output attribute, but we do not use that
+	 * feature in this routine.)
 	 */
 	cleanLength = cleanTupType->natts;
 	if (cleanLength > 0)
@@ -93,11 +101,10 @@ ExecInitJunkFilter(List *targetList, bool hasoid, TupleTableSlot *slot)
 		foreach(t, targetList)
 		{
 			TargetEntry *tle = lfirst(t);
-			Resdom	   *resdom = tle->resdom;
 
-			if (!resdom->resjunk)
+			if (!tle->resjunk)
 			{
-				cleanMap[cleanResno - 1] = resdom->resno;
+				cleanMap[cleanResno - 1] = tle->resno;
 				cleanResno++;
 			}
 		}
@@ -114,9 +121,6 @@ ExecInitJunkFilter(List *targetList, bool hasoid, TupleTableSlot *slot)
 	junkfilter->jf_cleanTupType = cleanTupType;
 	junkfilter->jf_cleanMap = cleanMap;
 	junkfilter->jf_resultSlot = slot;
-
-	if (slot)
-		ExecSetSlotDescriptor(slot, cleanTupType, false);
 
 	return junkfilter;
 }
@@ -143,14 +147,22 @@ ExecInitJunkFilterConversion(List *targetList,
 	int			i;
 
 	/*
-	 * Calculate the mapping between the original tuple's attributes and
-	 * the "clean" tuple's attributes.
+	 * Use the given slot, or make a new slot if we weren't given one.
+	 */
+	if (slot)
+		ExecSetSlotDescriptor(slot, cleanTupType, false);
+	else
+		slot = MakeSingleTupleTableSlot(cleanTupType);
+
+	/*
+	 * Calculate the mapping between the original tuple's attributes and the
+	 * "clean" tuple's attributes.
 	 *
-	 * The "map" is an array of "cleanLength" attribute numbers, i.e. one
-	 * entry for every attribute of the "clean" tuple. The value of this
-	 * entry is the attribute number of the corresponding attribute of the
-	 * "original" tuple.  We store zero for any deleted attributes, marking
-	 * that a NULL is needed in the output tuple.
+	 * The "map" is an array of "cleanLength" attribute numbers, i.e. one entry
+	 * for every attribute of the "clean" tuple. The value of this entry is
+	 * the attribute number of the corresponding attribute of the "original"
+	 * tuple.  We store zero for any deleted attributes, marking that a NULL
+	 * is needed in the output tuple.
 	 */
 	cleanLength = cleanTupType->natts;
 	if (cleanLength > 0)
@@ -164,12 +176,11 @@ ExecInitJunkFilterConversion(List *targetList,
 			for (;;)
 			{
 				TargetEntry *tle = lfirst(t);
-				Resdom	   *resdom = tle->resdom;
 
 				t = lnext(t);
-				if (!resdom->resjunk)
+				if (!tle->resjunk)
 				{
-					cleanMap[i] = resdom->resno;
+					cleanMap[i] = tle->resno;
 					break;
 				}
 			}
@@ -187,9 +198,6 @@ ExecInitJunkFilterConversion(List *targetList,
 	junkfilter->jf_cleanTupType = cleanTupType;
 	junkfilter->jf_cleanMap = cleanMap;
 	junkfilter->jf_resultSlot = slot;
-
-	if (slot)
-		ExecSetSlotDescriptor(slot, cleanTupType, false);
 
 	return junkfilter;
 }
@@ -209,160 +217,102 @@ ExecGetJunkAttribute(JunkFilter *junkfilter,
 					 Datum *value,
 					 bool *isNull)
 {
-	List	   *targetList;
 	ListCell   *t;
-	AttrNumber	resno;
-	TupleDesc	tupType;
-	HeapTuple	tuple;
 
 	/*
-	 * first look in the junkfilter's target list for an attribute with
-	 * the given name
+	 * Look in the junkfilter's target list for an attribute with the given
+	 * name
 	 */
-	resno = InvalidAttrNumber;
-	targetList = junkfilter->jf_targetList;
-
-	foreach(t, targetList)
+	foreach(t, junkfilter->jf_targetList)
 	{
 		TargetEntry *tle = lfirst(t);
-		Resdom	   *resdom = tle->resdom;
 
-		if (resdom->resjunk && resdom->resname &&
-			(strcmp(resdom->resname, attrName) == 0))
+		if (tle->resjunk && tle->resname &&
+			(strcmp(tle->resname, attrName) == 0))
 		{
 			/* We found it ! */
-			resno = resdom->resno;
-			break;
+			*value = slot_getattr(slot, tle->resno, isNull);
+			return true;
 		}
 	}
 
-	if (resno == InvalidAttrNumber)
-	{
-		/* Ooops! We couldn't find this attribute... */
-		return false;
-	}
-
-	/*
-	 * Now extract the attribute value from the tuple.
-	 */
-	tuple = slot->val;
-	tupType = slot->ttc_tupleDescriptor;
-
-	*value = heap_getattr(tuple, resno, tupType, isNull);
-
-	return true;
+	/* Ooops! We couldn't find this attribute... */
+	return false;
 }
 
 /*
- * ExecRemoveJunk
+ * ExecFilterJunk
  *
- * Construct and return a tuple with all the junk attributes removed.
- *
- * Note: for historical reasons, this does not store the constructed
- * tuple into the junkfilter's resultSlot.  The caller should do that
- * if it wants to.
+ * Construct and return a slot with all the junk attributes removed.
  */
-HeapTuple
-ExecRemoveJunk(JunkFilter *junkfilter, TupleTableSlot *slot)
+TupleTableSlot *
+ExecFilterJunk(JunkFilter *junkfilter, TupleTableSlot *slot)
 {
-#define PREALLOC_SIZE	64
-	HeapTuple	tuple;
-	HeapTuple	cleanTuple;
+	TupleTableSlot *resultSlot;
 	AttrNumber *cleanMap;
 	TupleDesc	cleanTupType;
-	TupleDesc	tupType;
 	int			cleanLength;
-	int			oldLength;
 	int			i;
 	Datum	   *values;
-	char	   *nulls;
+	bool	   *isnull;
 	Datum	   *old_values;
-	char	   *old_nulls;
-	Datum		values_array[PREALLOC_SIZE];
-	Datum		old_values_array[PREALLOC_SIZE];
-	char		nulls_array[PREALLOC_SIZE];
-	char		old_nulls_array[PREALLOC_SIZE];
+	bool	   *old_isnull;
 
 	/*
-	 * get info from the slot and the junk filter
+	 * Extract all the values of the old tuple.
 	 */
-	tuple = slot->val;
-	tupType = slot->ttc_tupleDescriptor;
-	oldLength = tupType->natts + 1;			/* +1 for NULL */
+	slot_getallattrs(slot);
+	old_values = slot->tts_values;
+	old_isnull = slot->tts_isnull;
 
+	/*
+	 * get info from the junk filter
+	 */
 	cleanTupType = junkfilter->jf_cleanTupType;
 	cleanLength = cleanTupType->natts;
 	cleanMap = junkfilter->jf_cleanMap;
+	resultSlot = junkfilter->jf_resultSlot;
 
 	/*
-	 * Create the arrays that will hold the attribute values and the null
-	 * information for the old tuple and new "clean" tuple.
-	 *
-	 * Note: we use memory on the stack to optimize things when we are
-	 * dealing with a small number of attributes. for large tuples we just
-	 * use palloc.
+	 * Prepare to build a virtual result tuple.
 	 */
-	if (cleanLength > PREALLOC_SIZE)
-	{
-		values = (Datum *) palloc(cleanLength * sizeof(Datum));
-		nulls = (char *) palloc(cleanLength * sizeof(char));
-	}
-	else
-	{
-		values = values_array;
-		nulls = nulls_array;
-	}
-	if (oldLength > PREALLOC_SIZE)
-	{
-		old_values = (Datum *) palloc(oldLength * sizeof(Datum));
-		old_nulls = (char *) palloc(oldLength * sizeof(char));
-	}
-	else
-	{
-		old_values = old_values_array;
-		old_nulls = old_nulls_array;
-	}
+	ExecClearTuple(resultSlot);
+	values = resultSlot->tts_values;
+	isnull = resultSlot->tts_isnull;
 
 	/*
-	 * Extract all the values of the old tuple, offsetting the arrays
-	 * so that old_values[0] is NULL and old_values[1] is the first
-	 * source attribute; this exactly matches the numbering convention
-	 * in cleanMap.
-	 */
-	heap_deformtuple(tuple, tupType, old_values + 1, old_nulls + 1);
-	old_values[0] = (Datum) 0;
-	old_nulls[0] = 'n';
-
-	/*
-	 * Transpose into proper fields of the new tuple.
+	 * Transpose data into proper fields of the new tuple.
 	 */
 	for (i = 0; i < cleanLength; i++)
 	{
 		int			j = cleanMap[i];
 
-		values[i] = old_values[j];
-		nulls[i] = old_nulls[j];
+		if (j == 0)
+		{
+			values[i] = (Datum) 0;
+			isnull[i] = true;
+		}
+		else
+		{
+			values[i] = old_values[j - 1];
+			isnull[i] = old_isnull[j - 1];
+		}
 	}
 
 	/*
-	 * Now form the new tuple.
+	 * And return the virtual tuple.
 	 */
-	cleanTuple = heap_formtuple(cleanTupType, values, nulls);
+	return ExecStoreVirtualTuple(resultSlot);
+}
 
-	/*
-	 * We are done.  Free any space allocated for 'values' and 'nulls' and
-	 * return the new tuple.
-	 */
-	if (values != values_array)
-	{
-		pfree(values);
-		pfree(nulls);
-	}
-	if (old_values != old_values_array)
-	{
-		pfree(old_values);
-		pfree(old_nulls);
-	}
-
-	return cleanTuple;
+/*
+ * ExecRemoveJunk
+ *
+ * Convenience routine to generate a physical clean tuple,
+ * rather than just a virtual slot.
+ */
+HeapTuple
+ExecRemoveJunk(JunkFilter *junkfilter, TupleTableSlot *slot)
+{
+	return ExecCopySlotTuple(ExecFilterJunk(junkfilter, slot));
 }

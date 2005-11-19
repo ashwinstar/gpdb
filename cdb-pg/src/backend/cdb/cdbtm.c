@@ -9,6 +9,7 @@
  *
  *-------------------------------------------------------------------------
  */
+#define PROVIDE_64BIT_CRC
 #include "postgres.h"
 
 #include <time.h>
@@ -232,7 +233,7 @@ condCommitDtxTransaction(bool onephase)
 		if (execCommand(&errMessage) != DTX_OK)
 		{
 			ereport(ERROR,
-					(errmsg("Global transaction failed on command \"PREPARE %s\" due to error: %s",
+					(errmsg("Global transaction failed on command \"PREPARE TRANSACTION %s\" due to error: %s",
 							currentGxact->gid, errMessage.data)));
 		}
 
@@ -325,7 +326,7 @@ condRollbackDtxTransaction(void)
 		/* if the first time failure, throw exception, otherwise keep silent */
 		if (!ignoreError)
 			ereport(ERROR,
-					(errmsg("Global transaction failed on command \"ROLLBACK %s\"", gid),
+					(errmsg("Global transaction failed on command \"ROLLBACK PREPARED %s\"", gid),
 					 errdetail("%s", errMessage.data)));
         pfree(errMessage.data);
 	}
@@ -372,22 +373,30 @@ execCommand(StringInfo errbuf)
 						isoLevel = "ISOLATION LEVEL SERIALIZABLE";
 						break;
 				}
-				sprintf(cmdbuf, "%s'%s' %s", "BEGIN ", currentGxact->gid, isoLevel);
+				sprintf(cmdbuf, "%s %s", "BEGIN ", isoLevel);
 			}
 			else
-				sprintf(cmdbuf, "%s'%s'", "BEGIN ", currentGxact->gid);
+				sprintf(cmdbuf, "%s", "BEGIN ");
 			break;
 		case DTX_STATE_PREPARED:
-			sprintf(cmdbuf, "%s'%s'", "PREPARE ", currentGxact->gid);
+			sprintf(cmdbuf, "%s'%s'", "PREPARE TRANSACTION ", currentGxact->gid);
 			break;
 		case DTX_STATE_1P_COMMIT:
-			sprintf(cmdbuf, "%s'%s'", "COMMIT ", currentGxact->gid);
+			sprintf(cmdbuf, "%s", "COMMIT ");
 			break;
 		case DTX_STATE_2P_COMMIT:
 			sprintf(cmdbuf, "%s'%s'", "COMMIT PREPARED ", currentGxact->gid);
 			break;
 		case DTX_STATE_ROLLBACK:
-			sprintf(cmdbuf, "%s'%s'", "ROLLBACK ", currentGxact->gid);
+		/*
+		 * BUG? shouldn't there be a 1P rollback and a 2P rollback?
+		 * Anyway, the new 8.1 postgres code needs a "ROLLBACK PREPARED" if and only if we've done the prepare,
+		 * else it needs a normal ROLLBACK.
+		 */
+		 if ((currentGxact->infomask & GXACT_STATUS_PERSISTENT) == 0) //?????? Bad way to check if we've prepared?
+		 	sprintf(cmdbuf,"%s","ROLLBACK ");
+		 else
+			sprintf(cmdbuf, "%s'%s'", "ROLLBACK PREPARED ", currentGxact->gid);
 			break;
         default:
 			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),

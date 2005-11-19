@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/storage/ipc/sinvaladt.c,v 1.58 2004/12/31 22:00:56 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/storage/ipc/sinvaladt.c,v 1.61 2005/10/15 02:49:25 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -17,9 +17,11 @@
 #include "miscadmin.h"
 #include "storage/backendid.h"
 #include "storage/ipc.h"
+#include "storage/lwlock.h"
 #include "storage/pmsignal.h"
-#include "storage/proc.h"
+#include "storage/shmem.h"
 #include "storage/sinvaladt.h"
+
 
 SISeg	   *shmInvalBuffer;
 
@@ -30,14 +32,15 @@ static void SISetProcStateInvalid(SISeg *segP);
 /*
  * SInvalShmemSize --- return shared-memory space needed
  */
-int
-SInvalShmemSize(int maxBackends)
+Size
+SInvalShmemSize(void)
 {
-	/*
-	 * Figure space needed. Note sizeof(SISeg) includes the first
-	 * ProcState entry.
-	 */
-	return sizeof(SISeg) + sizeof(ProcState) * (maxBackends - 1);
+	Size		size;
+
+	size = offsetof(SISeg, procState);
+	size = add_size(size, mul_size(sizeof(ProcState), MaxBackends));
+
+	return size;
 }
 
 /*
@@ -45,16 +48,15 @@ SInvalShmemSize(int maxBackends)
  *		Create and initialize a new SI message buffer
  */
 void
-SIBufferInit(int maxBackends)
+SIBufferInit(void)
 {
-	int			segSize;
 	SISeg	   *segP;
 	int			i;
 	bool		found;
 
 	/* Allocate space in shared memory */
-	segSize = SInvalShmemSize(maxBackends);
-	shmInvalBuffer = segP = (SISeg *) ShmemInitStruct("shmInvalBuffer", segSize, &found);
+	shmInvalBuffer = segP = (SISeg *)
+		ShmemInitStruct("shmInvalBuffer", SInvalShmemSize(), &found);
 	if (found)
 		return;
 
@@ -62,17 +64,16 @@ SIBufferInit(int maxBackends)
 	segP->minMsgNum = 0;
 	segP->maxMsgNum = 0;
 	segP->lastBackend = 0;
-	segP->maxBackends = maxBackends;
-	segP->freeBackends = maxBackends;
+	segP->maxBackends = MaxBackends;
+	segP->freeBackends = MaxBackends;
 
 	/* The buffer[] array is initially all unused, so we need not fill it */
 
 	/* Mark all backends inactive */
-	for (i = 0; i < maxBackends; i++)
+	for (i = 0; i < segP->maxBackends; i++)
 	{
 		segP->procState[i].nextMsgNum = -1;		/* inactive */
 		segP->procState[i].resetState = false;
-		segP->procState[i].procStruct = INVALID_OFFSET;
 	}
 }
 
@@ -133,7 +134,6 @@ SIBackendInit(SISeg *segP)
 	/* mark myself active, with all extant messages already read */
 	stateP->nextMsgNum = segP->maxMsgNum;
 	stateP->resetState = false;
-	stateP->procStruct = MAKE_OFFSET(MyProc);
 
 	/* register exit routine to mark my entry inactive at exit */
 	on_shmem_exit(CleanupInvalidationState, PointerGetDatum(segP));
@@ -163,7 +163,6 @@ CleanupInvalidationState(int status, Datum arg)
 	/* Mark myself inactive */
 	segP->procState[MyBackendId - 1].nextMsgNum = -1;
 	segP->procState[MyBackendId - 1].resetState = false;
-	segP->procState[MyBackendId - 1].procStruct = INVALID_OFFSET;
 
 	/* Recompute index of last active backend */
 	for (i = segP->lastBackend; i > 0; i--)
@@ -199,8 +198,8 @@ SIInsertDataEntry(SISeg *segP, SharedInvalidationMessage *data)
 	{
 		/*
 		 * Don't panic just yet: slowest backend might have consumed some
-		 * messages but not yet have done SIDelExpiredDataEntries() to
-		 * advance minMsgNum.  So, make sure minMsgNum is up-to-date.
+		 * messages but not yet have done SIDelExpiredDataEntries() to advance
+		 * minMsgNum.  So, make sure minMsgNum is up-to-date.
 		 */
 		SIDelExpiredDataEntries(segP);
 		numMsgs = segP->maxMsgNum - segP->minMsgNum;
@@ -214,9 +213,9 @@ SIInsertDataEntry(SISeg *segP, SharedInvalidationMessage *data)
 
 	/*
 	 * Try to prevent table overflow.  When the table is 70% full send a
-	 * WAKEN_CHILDREN request to the postmaster.  The postmaster will send
-	 * a SIGUSR1 signal to all the backends, which will cause sinval.c to
-	 * read any pending SI entries.
+	 * WAKEN_CHILDREN request to the postmaster.  The postmaster will send a
+	 * SIGUSR1 signal to all the backends, which will cause sinval.c to read
+	 * any pending SI entries.
 	 *
 	 * This should never happen if all the backends are actively executing
 	 * queries, but if a backend is sitting idle then it won't be starting
@@ -303,9 +302,9 @@ SIGetDataEntry(SISeg *segP, int backendId,
 	stateP->nextMsgNum++;
 
 	/*
-	 * There may be other backends that haven't read the message, so we
-	 * cannot delete it here. SIDelExpiredDataEntries() should be called
-	 * to remove dead messages.
+	 * There may be other backends that haven't read the message, so we cannot
+	 * delete it here. SIDelExpiredDataEntries() should be called to remove
+	 * dead messages.
 	 */
 	return 1;					/* got a message */
 }
@@ -339,8 +338,8 @@ SIDelExpiredDataEntries(SISeg *segP)
 	segP->minMsgNum = min;
 
 	/*
-	 * When minMsgNum gets really large, decrement all message counters so
-	 * as to forestall overflow of the counters.
+	 * When minMsgNum gets really large, decrement all message counters so as
+	 * to forestall overflow of the counters.
 	 */
 	if (min >= MSGNUMWRAPAROUND)
 	{

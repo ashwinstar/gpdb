@@ -1,17 +1,21 @@
-
+ 
 * Beta and Release Candidate (RC) changes
-	o configure.in and configure
+	o configure.in, and run autoconf or update configure
+	o doc/bug.template
 	o src/include/pg_config.h.win32
 
 * Version numbers
 	o configure.in, and run autoconf or update configure
 	o doc/bug.template
-	o bump interface version numbers
+	o src/include/pg_config.h.win32
+	o bump library versions
 		- src/interfaces/*/Makefile (major releases only)
 		- src/interfaces/*/*/Makefile (major releases only)
+	o bump interface version numbers
 		- src/interfaces/libpq/libpq.rc.in (major and minor releases)
 		- src/include/pg_config.h.win32 (major and minor releases)
 		- src/port/win32ver.rc (major and minor releases)
+	o update doc/FAQ and doc/src/FAQ/FAQ.html
 
 * Release notes
 	o scan cvs logs, use pgcvslog and flags in comments
@@ -22,7 +26,7 @@
 	o group items into categories
 	o select major features
 	o select incompatibilities
-	o add comments for items
+	o add documenation for items
 	o add SGML markup
 
 * Documentation
@@ -38,7 +42,16 @@
 
 * Update timezone data to match latest zic database (see src/timezone/README)
 
+* Update inet/cidr data types with newest Bind patches
+
 * Update pg_upgrade to handle new version, or disable
+
+* Translation updates
+	Translations are kept in the project "pgtranslation" on PgFoundry.
+	1. Check out the messages module (of the right branch).
+	2. Check out the admin module.
+	3. Run "sh .../admin/cp-po .../messages .../pgsql
+	4. Commit.
 
 
 ---------------------------------------------------------------------------

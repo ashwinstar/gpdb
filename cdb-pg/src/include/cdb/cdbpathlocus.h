@@ -14,7 +14,9 @@
 
 #include "nodes/pg_list.h"      /* List */
 
+
 struct RelOptInfo;              /* defined in relation.h */
+struct PlannerInfo;				/* defined in relation.h */
 
 
 /*
@@ -166,10 +168,10 @@ cdbpathlocus_compare(CdbPathLocus_Comparison    op,
 /************************************************************************/
 
 CdbPathLocus
-cdbpathlocus_from_baserel(struct Query         *root,
+cdbpathlocus_from_baserel(struct PlannerInfo   *root,
                           struct RelOptInfo    *rel);
 CdbPathLocus
-cdbpathlocus_from_subquery(struct Query         *root,
+cdbpathlocus_from_subquery(struct PlannerInfo   *root,
                            struct RelOptInfo    *rel);
 
 CdbPathLocus

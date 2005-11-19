@@ -10,16 +10,16 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/tcop/utility.c,v 1.231.4.1 2005/01/24 17:46:29 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/tcop/utility.c,v 1.245 2005/10/15 02:49:27 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
 #include "access/heapam.h"
+#include "access/twophase.h"
 #include "catalog/catalog.h"
 #include "catalog/namespace.h"
-#include "catalog/pg_shadow.h"
 #include "commands/alter.h"
 #include "commands/async.h"
 #include "commands/cluster.h"
@@ -245,7 +245,7 @@ QueryIsReadOnly(Query *parsetree)
 			if (parsetree->into != NULL)
 				return false;	/* SELECT INTO */
 			else if (parsetree->rowMarks != NIL)
-				return false;	/* SELECT FOR UPDATE */
+				return false;	/* SELECT FOR UPDATE/SHARE */
 			else
 				return true;
 		case CMD_UPDATE:
@@ -276,20 +276,22 @@ check_xact_readonly(Node *parsetree)
 		return;
 
 	/*
-	 * Note: Commands that need to do more complicated checking are
-	 * handled elsewhere.
+	 * Note: Commands that need to do more complicated checking are handled
+	 * elsewhere.
 	 */
 
 	switch (nodeTag(parsetree))
 	{
+		case T_AlterDatabaseStmt:
 		case T_AlterDatabaseSetStmt:
 		case T_AlterDomainStmt:
-		case T_AlterGroupStmt:
+		case T_AlterFunctionStmt:
+		case T_AlterRoleStmt:
+		case T_AlterRoleSetStmt:
+		case T_AlterObjectSchemaStmt:
 		case T_AlterOwnerStmt:
 		case T_AlterSeqStmt:
 		case T_AlterTableStmt:
-		case T_AlterUserStmt:
-		case T_AlterUserSetStmt:
 		case T_RenameStmt:
 		case T_CommentStmt:
 		case T_DefineStmt:
@@ -298,7 +300,7 @@ check_xact_readonly(Node *parsetree)
 		case T_CreatedbStmt:
 		case T_CreateDomainStmt:
 		case T_CreateFunctionStmt:
-		case T_CreateGroupStmt:
+		case T_CreateRoleStmt:
 		case T_IndexStmt:
 		case T_CreatePLangStmt:
 		case T_CreateOpClassStmt:
@@ -309,7 +311,6 @@ check_xact_readonly(Node *parsetree)
 		case T_CreateTableSpaceStmt:
 		case T_CreateTrigStmt:
 		case T_CompositeTypeStmt:
-		case T_CreateUserStmt:
 		case T_ViewStmt:
 		case T_RemoveAggrStmt:
 		case T_DropCastStmt:
@@ -317,13 +318,13 @@ check_xact_readonly(Node *parsetree)
 		case T_DropdbStmt:
 		case T_DropTableSpaceStmt:
 		case T_RemoveFuncStmt:
-		case T_DropGroupStmt:
+		case T_DropRoleStmt:
 		case T_DropPLangStmt:
 		case T_RemoveOperStmt:
 		case T_RemoveOpClassStmt:
 		case T_DropPropertyStmt:
-		case T_DropUserStmt:
 		case T_GrantStmt:
+		case T_GrantRoleStmt:
 		case T_TruncateStmt:
 			ereport(ERROR,
 					(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
@@ -466,16 +467,15 @@ ProcessUtility(Node *parsetree,
 				switch (stmt->kind)
 				{
 						/*
-						 * START TRANSACTION, as defined by SQL99:
-						 * Identical to BEGIN.	Same code for both.
+						 * START TRANSACTION, as defined by SQL99: Identical
+						 * to BEGIN.  Same code for both.
 						 */
 					case TRANS_STMT_BEGIN:
 					case TRANS_STMT_START:
-						CdbSentry(CDB_ACCEPT, parsetree, NULL);
 						{
 							ListCell   *lc;
 
-							BeginTransactionBlock(stmt->gid);
+							BeginTransactionBlock();
 							foreach(lc, stmt->options)
 							{
 								DefElem    *item = (DefElem *) lfirst(lc);
@@ -497,8 +497,7 @@ ProcessUtility(Node *parsetree,
 						break;
 
 					case TRANS_STMT_COMMIT:
-						CdbSentry(CDB_ACCEPT, parsetree, NULL);
-						if (!EndTransactionBlock(stmt->gid))
+						if (!EndTransactionBlock())
 						{
 							/* report unsuccessful commit in completionTag */
 							if (completionTag)
@@ -511,31 +510,27 @@ ProcessUtility(Node *parsetree,
 						}
 						break;
 
+					case TRANS_STMT_PREPARE:
+						if (!PrepareTransactionBlock(stmt->gid))
+						{
+							/* report unsuccessful commit in completionTag */
+							if (completionTag)
+								strcpy(completionTag, "ROLLBACK");
+						}
+						break;
+
 					case TRANS_STMT_COMMIT_PREPARED:
 						PreventTransactionChain(stmt, "COMMIT PREPARED");
-						CommitPreparedTransaction(stmt->gid);
+						FinishPreparedTransaction(stmt->gid, true);
 						break;
 
 					case TRANS_STMT_ROLLBACK_PREPARED:
 						PreventTransactionChain(stmt, "ROLLBACK PREPARED");
-						AbortPreparedTransaction(stmt->gid);
-						break;
-
-					case TRANS_STMT_PREPARE:
-						PrepareTransactionBlock(stmt->gid);
+						FinishPreparedTransaction(stmt->gid, false);
 						break;
 
 					case TRANS_STMT_ROLLBACK:
-						if (stmt->gid == NULL || IsGlobalTransaction())
-						{
-							CdbSentry(CDB_ACCEPT, parsetree, NULL);
-							UserAbortTransactionBlock(stmt->gid);
-						}
-						else
-						{
-							PreventTransactionChain(stmt, "ROLLBACK PREPARED");
-							AbortPreparedTransaction(stmt->gid);
-						}
+						UserAbortTransactionBlock();
 						break;
 
 					case TRANS_STMT_SAVEPOINT:
@@ -607,12 +602,10 @@ ProcessUtility(Node *parsetree,
 			 * relation and attribute manipulation
 			 */
 		case T_CreateSchemaStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			CreateSchemaCommand((CreateSchemaStmt *) parsetree);
 			break;
 
 		case T_CreateStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			{
 				Oid			relOid;
 				char		relKind = RELKIND_RELATION;
@@ -625,8 +618,8 @@ ProcessUtility(Node *parsetree,
 										relKind);
 
 				/*
-				 * Let AlterTableCreateToastTable decide if this one needs
-				 * a secondary relation too.
+				 * Let AlterTableCreateToastTable decide if this one needs a
+				 * secondary relation too.
 				 */
 				CommandCounterIncrement();
 				AlterTableCreateToastTable(relOid, true);
@@ -647,8 +640,6 @@ ProcessUtility(Node *parsetree,
 			{
 				DropStmt   *stmt = (DropStmt *) parsetree;
 				ListCell   *arg;
-
-				CdbSentry(CDB_ACCEPT, parsetree, NULL);
 
 				foreach(arg, stmt->objects)
 				{
@@ -687,9 +678,9 @@ ProcessUtility(Node *parsetree,
 							break;
 
 						case OBJECT_DOMAIN:
+
 							/*
-							 * RemoveDomain does its own permissions
-							 * checks
+							 * RemoveDomain does its own permissions checks
 							 */
 							RemoveDomain(names, stmt->behavior);
 							break;
@@ -699,9 +690,9 @@ ProcessUtility(Node *parsetree,
 							break;
 
 						case OBJECT_SCHEMA:
+
 							/*
-							 * RemoveSchema does its own permissions
-							 * checks
+							 * RemoveSchema does its own permissions checks
 							 */
 							RemoveSchema(names, stmt->behavior);
 							break;
@@ -713,11 +704,9 @@ ProcessUtility(Node *parsetree,
 					}
 
 					/*
-					 * We used to need to do CommandCounterIncrement()
-					 * here, but now it's done inside performDeletion().
+					 * We used to need to do CommandCounterIncrement() here,
+					 * but now it's done inside performDeletion().
 					 */
-
-
 				}
 
 				/*
@@ -731,36 +720,30 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_TruncateStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			{
 				TruncateStmt *stmt = (TruncateStmt *) parsetree;
 
-				TruncateRelation(stmt);
+				ExecuteTruncate(stmt);
 			}
 			break;
 
 		case T_CommentStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			CommentObject((CommentStmt *) parsetree);
 			break;
 
 		case T_CopyStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			DoCopy((CopyStmt *) parsetree);
 			break;
 
 		case T_PrepareStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			PrepareQuery((PrepareStmt *) parsetree);
 			break;
 
 		case T_ExecuteStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			ExecuteQuery((ExecuteStmt *) parsetree, dest, completionTag);
 			break;
 
 		case T_DeallocateStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			DeallocateQuery((DeallocateStmt *) parsetree);
 			break;
 
@@ -788,23 +771,22 @@ ProcessUtility(Node *parsetree,
 			 * schema
 			 */
 		case T_RenameStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			ExecRenameStmt((RenameStmt *) parsetree);
 			break;
 
+		case T_AlterObjectSchemaStmt:
+			ExecAlterObjectSchemaStmt((AlterObjectSchemaStmt *) parsetree);
+			break;
+
 		case T_AlterOwnerStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);		/* NB covers some ALTER
-														 * OWNER */
 			ExecAlterOwnerStmt((AlterOwnerStmt *) parsetree);
 			break;
 
 		case T_AlterTableStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			AlterTable((AlterTableStmt *) parsetree);
 			break;
 
 		case T_AlterDomainStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			{
 				AlterDomainStmt *stmt = (AlterDomainStmt *) parsetree;
 
@@ -817,8 +799,8 @@ ProcessUtility(Node *parsetree,
 					case 'T':	/* ALTER DOMAIN DEFAULT */
 
 						/*
-						 * Recursively alter column default for table and,
-						 * if requested, for descendants
+						 * Recursively alter column default for table and, if
+						 * requested, for descendants
 						 */
 						AlterDomainDefault(stmt->typename,
 										   stmt->def);
@@ -853,15 +835,16 @@ ProcessUtility(Node *parsetree,
 			}
 			break;
 
-
 		case T_GrantStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			ExecuteGrantStmt((GrantStmt *) parsetree);
 			break;
 
+		case T_GrantRoleStmt:
+			GrantRole((GrantRoleStmt *) parsetree);
+			break;
+
 			/*
-			 * ******************************** object creation /
-			 * destruction ********************************
+			 * ******************************** object creation / destruction ********************************
 			 *
 			 */
 		case T_DefineStmt:
@@ -894,12 +877,10 @@ ProcessUtility(Node *parsetree,
 				CompositeTypeStmt *stmt = (CompositeTypeStmt *) parsetree;
 
 				DefineCompositeType(stmt->typevar, stmt->coldeflist);
-
 			}
 			break;
 
 		case T_ViewStmt:		/* CREATE VIEW */
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			{
 				ViewStmt   *stmt = (ViewStmt *) parsetree;
 
@@ -908,12 +889,14 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_CreateFunctionStmt:		/* CREATE FUNCTION */
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			CreateFunction((CreateFunctionStmt *) parsetree);
 			break;
 
+		case T_AlterFunctionStmt:		/* ALTER FUNCTION */
+			AlterFunction((AlterFunctionStmt *) parsetree);
+			break;
+
 		case T_IndexStmt:		/* CREATE INDEX */
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			{
 				IndexStmt  *stmt = (IndexStmt *) parsetree;
 
@@ -921,6 +904,7 @@ ProcessUtility(Node *parsetree,
 
 				DefineIndex(stmt->relation,		/* relation */
 							stmt->idxname,		/* index name */
+							InvalidOid, /* no predefined OID */
 							stmt->accessMethod, /* am name */
 							stmt->tableSpace,
 							stmt->indexParams,	/* parameters */
@@ -938,7 +922,6 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_RuleStmt:		/* CREATE RULE */
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			DefineQueryRewrite((RuleStmt *) parsetree);
 			if (Mpp_role == MPP_ROLE_DISPATCH)
 			{
@@ -947,7 +930,6 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_CreateSeqStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			DefineSequence((CreateSeqStmt *) parsetree);
 			break;
 
@@ -962,7 +944,6 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_RemoveFuncStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			RemoveFunction((RemoveFuncStmt *) parsetree);
 			break;
 
@@ -972,8 +953,11 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_CreatedbStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			createdb((CreatedbStmt *) parsetree);
+			break;
+
+		case T_AlterDatabaseStmt:
+			AlterDatabase((AlterDatabaseStmt *) parsetree);
 			break;
 
 		case T_AlterDatabaseSetStmt:
@@ -982,7 +966,6 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_DropdbStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			{
 				DropdbStmt *stmt = (DropdbStmt *) parsetree;
 
@@ -1005,7 +988,7 @@ ProcessUtility(Node *parsetree,
 			{
 				ListenStmt *stmt = (ListenStmt *) parsetree;
 
-				Async_Listen(stmt->relation->relname, MyProcPid);
+				Async_Listen(stmt->relation->relname);
 			}
 			break;
 
@@ -1014,7 +997,7 @@ ProcessUtility(Node *parsetree,
 			{
 				UnlistenStmt *stmt = (UnlistenStmt *) parsetree;
 
-				Async_Unlisten(stmt->relation->relname, MyProcPid);
+				Async_Unlisten(stmt->relation->relname);
 			}
 			break;
 
@@ -1033,17 +1016,14 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_ClusterStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			cluster((ClusterStmt *) parsetree);
 			break;
 
 		case T_VacuumStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
-			vacuum((VacuumStmt *) parsetree);
+			vacuum((VacuumStmt *) parsetree, NIL);
 			break;
 
 		case T_ExplainStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			ExplainQuery((ExplainStmt *) parsetree, dest);
 			break;
 
@@ -1052,8 +1032,8 @@ ProcessUtility(Node *parsetree,
 				VariableSetStmt *n = (VariableSetStmt *) parsetree;
 
 				/*
-				 * Special cases for special SQL syntax that effectively
-				 * sets more than one variable per statement.
+				 * Special cases for special SQL syntax that effectively sets
+				 * more than one variable per statement.
 				 */
 				if (strcmp(n->name, "TRANSACTION") == 0)
 				{
@@ -1092,18 +1072,13 @@ ProcessUtility(Node *parsetree,
 					}
 				}
 				else
-				{
-					CdbSentry(CDB_ACCEPT, parsetree, NULL);
 					SetPGVariable(n->name, n->args, n->is_local);
-				}
 			}
 			break;
 
 		case T_VariableShowStmt:
 			{
 				VariableShowStmt *n = (VariableShowStmt *) parsetree;
-
-				CdbSentry(CDB_ACCEPT, parsetree, NULL);
 
 				GetPGVariable(n->name, dest);
 			}
@@ -1112,8 +1087,6 @@ ProcessUtility(Node *parsetree,
 		case T_VariableResetStmt:
 			{
 				VariableResetStmt *n = (VariableResetStmt *) parsetree;
-
-				CdbSentry(CDB_ACCEPT, parsetree, NULL);
 
 				ResetPGVariable(n->name);
 
@@ -1169,12 +1142,10 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_CreatePLangStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			CreateProceduralLanguage((CreatePLangStmt *) parsetree);
 			break;
 
 		case T_DropPLangStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			DropProceduralLanguage((DropPLangStmt *) parsetree);
 			break;
 
@@ -1182,56 +1153,34 @@ ProcessUtility(Node *parsetree,
 			 * ******************************** DOMAIN statements ****
 			 */
 		case T_CreateDomainStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			DefineDomain((CreateDomainStmt *) parsetree);
 			break;
 
 			/*
-			 * ******************************** USER statements ****
+			 * ******************************** ROLE statements ****
 			 */
-		case T_CreateUserStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
-			CreateUser((CreateUserStmt *) parsetree);
+		case T_CreateRoleStmt:
+			CreateRole((CreateRoleStmt *) parsetree);
 			break;
 
-		case T_AlterUserStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
-			AlterUser((AlterUserStmt *) parsetree);
+		case T_AlterRoleStmt:
+			AlterRole((AlterRoleStmt *) parsetree);
 			break;
 
-		case T_AlterUserSetStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
-			AlterUserSet((AlterUserSetStmt *) parsetree);
+		case T_AlterRoleSetStmt:
+			AlterRoleSet((AlterRoleSetStmt *) parsetree);
 			break;
 
-		case T_DropUserStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
-			DropUser((DropUserStmt *) parsetree);
+		case T_DropRoleStmt:
+			DropRole((DropRoleStmt *) parsetree);
 			break;
 
 		case T_LockStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			LockTableCommand((LockStmt *) parsetree);
 			break;
 
 		case T_ConstraintsSetStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			AfterTriggerSetState((ConstraintsSetStmt *) parsetree);
-			break;
-
-		case T_CreateGroupStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
-			CreateGroup((CreateGroupStmt *) parsetree);
-			break;
-
-		case T_AlterGroupStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
-			AlterGroup((AlterGroupStmt *) parsetree, "ALTER GROUP");
-			break;
-
-		case T_DropGroupStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
-			DropGroup((DropGroupStmt *) parsetree);
 			break;
 
 		case T_CheckPointStmt:
@@ -1240,24 +1189,24 @@ ProcessUtility(Node *parsetree,
 						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
 						 errmsg("must be superuser to do CHECKPOINT")));
 			CdbSentry(CDB_WARN, parsetree, NULL);
-			RequestCheckpoint(true);
+			RequestCheckpoint(true, false);
 			break;
 
 		case T_ReindexStmt:
-			CdbSentry(CDB_ACCEPT, parsetree, NULL);
 			{
 				ReindexStmt *stmt = (ReindexStmt *) parsetree;
 
 				switch (stmt->kind)
 				{
 					case OBJECT_INDEX:
-						ReindexIndex(stmt->relation, stmt->force);
+						ReindexIndex(stmt->relation);
 						break;
 					case OBJECT_TABLE:
-						ReindexTable(stmt->relation, stmt->force);
+						ReindexTable(stmt->relation);
 						break;
 					case OBJECT_DATABASE:
-						ReindexDatabase(stmt->name, stmt->force, false);
+						ReindexDatabase(stmt->name,
+										stmt->do_system, stmt->do_user);
 						break;
 					default:
 						elog(ERROR, "unrecognized object type: %d",
@@ -1280,8 +1229,6 @@ ProcessUtility(Node *parsetree,
 						initStringInfo(&buffer);
 
 						appendStringInfo(&buffer, "REINDEX DATABASE \"%s\"", stmt->name);
-						if (stmt->force)
-							appendStringInfo(&buffer, " FORCE");
 
 
 						CdbDoCommandNoTxn(buffer.data, false);
@@ -1486,20 +1433,8 @@ CreateCommandTag(Node *parsetree)
 						tag = "START TRANSACTION";
 						break;
 
-					case TRANS_STMT_PREPARE:
-						tag = "PREPARE TRANSACTION";
-						break;
-
 					case TRANS_STMT_COMMIT:
 						tag = "COMMIT";
-						break;
-
-					case TRANS_STMT_COMMIT_PREPARED:
-						tag = "COMMIT PREPARED";
-						break;
-
-					case TRANS_STMT_ROLLBACK_PREPARED:
-						tag = "ROLLBACK PREPARED";
 						break;
 
 					case TRANS_STMT_ROLLBACK:
@@ -1513,6 +1448,18 @@ CreateCommandTag(Node *parsetree)
 
 					case TRANS_STMT_RELEASE:
 						tag = "RELEASE";
+						break;
+
+					case TRANS_STMT_PREPARE:
+						tag = "PREPARE TRANSACTION";
+						break;
+
+					case TRANS_STMT_COMMIT_PREPARED:
+						tag = "COMMIT PREPARED";
+						break;
+
+					case TRANS_STMT_ROLLBACK_PREPARED:
+						tag = "ROLLBACK PREPARED";
 						break;
 
 					default:
@@ -1617,9 +1564,6 @@ CreateCommandTag(Node *parsetree)
 				case OBJECT_FUNCTION:
 					tag = "ALTER FUNCTION";
 					break;
-				case OBJECT_GROUP:
-					tag = "ALTER GROUP";
-					break;
 				case OBJECT_INDEX:
 					tag = "ALTER INDEX";
 					break;
@@ -1629,8 +1573,15 @@ CreateCommandTag(Node *parsetree)
 				case OBJECT_OPCLASS:
 					tag = "ALTER OPERATOR CLASS";
 					break;
+				case OBJECT_ROLE:
+					tag = "ALTER ROLE";
+					break;
 				case OBJECT_SCHEMA:
 					tag = "ALTER SCHEMA";
+					break;
+				case OBJECT_COLUMN:
+				case OBJECT_TABLE:
+					tag = "ALTER TABLE";
 					break;
 				case OBJECT_TABLESPACE:
 					tag = "ALTER TABLESPACE";
@@ -1638,11 +1589,36 @@ CreateCommandTag(Node *parsetree)
 				case OBJECT_TRIGGER:
 					tag = "ALTER TRIGGER";
 					break;
-				case OBJECT_USER:
-					tag = "ALTER USER";
+				default:
+					tag = "???";
+					break;
+			}
+			break;
+
+		case T_AlterObjectSchemaStmt:
+			switch (((AlterObjectSchemaStmt *) parsetree)->objectType)
+			{
+				case OBJECT_AGGREGATE:
+					tag = "ALTER AGGREGATE";
+					break;
+				case OBJECT_DOMAIN:
+					tag = "ALTER DOMAIN";
+					break;
+				case OBJECT_FUNCTION:
+					tag = "ALTER FUNCTION";
+					break;
+				case OBJECT_SEQUENCE:
+					tag = "ALTER SEQUENCE";
+					break;
+				case OBJECT_TABLE:
+					tag = "ALTER TABLE";
+					break;
+				case OBJECT_TYPE:
+					tag = "ALTER TYPE";
 					break;
 				default:
-					tag = "ALTER TABLE";
+					tag = "???";
+					break;
 			}
 			break;
 
@@ -1680,7 +1656,8 @@ CreateCommandTag(Node *parsetree)
 					tag = "ALTER TYPE";
 					break;
 				default:
-					tag = "ALTER TABLE";
+					tag = "???";
+					break;
 			}
 			break;
 
@@ -1700,8 +1677,13 @@ CreateCommandTag(Node *parsetree)
 					tag = "ALTER TABLE";
 			}
 			break;
+
 		case T_AlterDomainStmt:
 			tag = "ALTER DOMAIN";
+			break;
+
+		case T_AlterFunctionStmt:
+			tag = "ALTER FUNCTION";
 			break;
 
 		case T_GrantStmt:
@@ -1709,6 +1691,14 @@ CreateCommandTag(Node *parsetree)
 				GrantStmt  *stmt = (GrantStmt *) parsetree;
 
 				tag = (stmt->is_grant) ? "GRANT" : "REVOKE";
+			}
+			break;
+
+		case T_GrantRoleStmt:
+			{
+				GrantRoleStmt *stmt = (GrantRoleStmt *) parsetree;
+
+				tag = (stmt->is_grant) ? "GRANT ROLE" : "REVOKE ROLE";
 			}
 			break;
 
@@ -1771,6 +1761,10 @@ CreateCommandTag(Node *parsetree)
 
 		case T_CreatedbStmt:
 			tag = "CREATE DATABASE";
+			break;
+
+		case T_AlterDatabaseStmt:
+			tag = "ALTER DATABASE";
 			break;
 
 		case T_AlterDatabaseSetStmt:
@@ -1850,20 +1844,20 @@ CreateCommandTag(Node *parsetree)
 			tag = "DROP LANGUAGE";
 			break;
 
-		case T_CreateUserStmt:
-			tag = "CREATE USER";
+		case T_CreateRoleStmt:
+			tag = "CREATE ROLE";
 			break;
 
-		case T_AlterUserStmt:
-			tag = "ALTER USER";
+		case T_AlterRoleStmt:
+			tag = "ALTER ROLE";
 			break;
 
-		case T_AlterUserSetStmt:
-			tag = "ALTER USER";
+		case T_AlterRoleSetStmt:
+			tag = "ALTER ROLE";
 			break;
 
-		case T_DropUserStmt:
-			tag = "DROP USER";
+		case T_DropRoleStmt:
+			tag = "DROP ROLE";
 			break;
 
 		case T_LockStmt:
@@ -1872,18 +1866,6 @@ CreateCommandTag(Node *parsetree)
 
 		case T_ConstraintsSetStmt:
 			tag = "SET CONSTRAINTS";
-			break;
-
-		case T_CreateGroupStmt:
-			tag = "CREATE GROUP";
-			break;
-
-		case T_AlterGroupStmt:
-			tag = "ALTER GROUP";
-			break;
-
-		case T_DropGroupStmt:
-			tag = "DROP GROUP";
 			break;
 
 		case T_CheckPointStmt:
@@ -1956,14 +1938,20 @@ CreateQueryTag(Query *parsetree)
 	switch (parsetree->commandType)
 	{
 		case CMD_SELECT:
+
 			/*
-			 * We take a little extra care here so that the result will
-			 * be useful for complaints about read-only statements
+			 * We take a little extra care here so that the result will be
+			 * useful for complaints about read-only statements
 			 */
 			if (parsetree->into != NULL)
 				tag = "SELECT INTO";
 			else if (parsetree->rowMarks != NIL)
-				tag = "SELECT FOR UPDATE";
+			{
+				if (parsetree->forUpdate)
+					tag = "SELECT FOR UPDATE";
+				else
+					tag = "SELECT FOR SHARE";
+			}
 			else
 				tag = "SELECT";
 			break;

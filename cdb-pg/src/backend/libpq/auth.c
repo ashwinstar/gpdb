@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/libpq/auth.c,v 1.122 2005/01/12 21:37:53 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/libpq/auth.c,v 1.132 2005/10/17 16:24:19 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -41,6 +41,9 @@ static char *recv_password_packet(Port *port);
 static int	recv_and_check_password_packet(Port *port);
 
 char	   *pg_krb_server_keyfile;
+char	   *pg_krb_srvnam;
+bool		pg_krb_caseins_users;
+char	   *pg_krb_server_hostname = NULL;
 
 #ifdef USE_PAM
 #ifdef HAVE_PAM_PAM_APPL_H
@@ -62,86 +65,9 @@ static struct pam_conv pam_passw_conv = {
 };
 
 static char *pam_passwd = NULL; /* Workaround for Solaris 2.6 brokenness */
-static Port *pam_port_cludge;	/* Workaround for passing "Port *port"
-								 * into pam_passwd_conv_proc */
+static Port *pam_port_cludge;	/* Workaround for passing "Port *port" into
+								 * pam_passwd_conv_proc */
 #endif   /* USE_PAM */
-
-#ifdef KRB4
-/*----------------------------------------------------------------
- * MIT Kerberos authentication system - protocol version 4
- *----------------------------------------------------------------
- */
-
-#include "krb.h"
-
-/*
- * pg_krb4_recvauth -- server routine to receive authentication information
- *					   from the client
- *
- * Nothing unusual here, except that we compare the username obtained from
- * the client's setup packet to the authenticated name.  (We have to retain
- * the name in the setup packet since we have to retain the ability to handle
- * unauthenticated connections.)
- */
-static int
-pg_krb4_recvauth(Port *port)
-{
-	long		krbopts = 0;	/* one-way authentication */
-	KTEXT_ST	clttkt;
-	char		instance[INST_SZ + 1],
-				version[KRB_SENDAUTH_VLEN + 1];
-	AUTH_DAT	auth_data;
-	Key_schedule key_sched;
-	int			status;
-
-	strcpy(instance, "*");		/* don't care, but arg gets expanded
-								 * anyway */
-	status = krb_recvauth(krbopts,
-						  port->sock,
-						  &clttkt,
-						  PG_KRB_SRVNAM,
-						  instance,
-						  &port->raddr.in,
-						  &port->laddr.in,
-						  &auth_data,
-						  pg_krb_server_keyfile,
-						  key_sched,
-						  version);
-	if (status != KSUCCESS)
-	{
-		ereport(LOG,
-				(errmsg("Kerberos error: %s", krb_err_txt[status])));
-		return STATUS_ERROR;
-	}
-	if (strncmp(version, PG_KRB4_VERSION, KRB_SENDAUTH_VLEN) != 0)
-	{
-		ereport(LOG,
-				(errmsg("unexpected Kerberos protocol version received from client (received \"%s\", expected \"%s\")",
-						version, PG_KRB4_VERSION)));
-		return STATUS_ERROR;
-	}
-	if (strncmp(port->user_name, auth_data.pname, SM_DATABASE_USER) != 0)
-	{
-		ereport(LOG,
-				(errmsg("unexpected Kerberos user name received from client (received \"%s\", expected \"%s\")",
-						port->user_name, auth_data.pname)));
-		return STATUS_ERROR;
-	}
-	return STATUS_OK;
-}
-
-#else
-
-static int
-pg_krb4_recvauth(Port *port)
-{
-	ereport(LOG,
-			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			 errmsg("Kerberos 4 not implemented on this server")));
-	return STATUS_ERROR;
-}
-#endif   /* KRB4 */
-
 
 #ifdef KRB5
 /*----------------------------------------------------------------
@@ -193,6 +119,7 @@ static int
 pg_krb5_init(void)
 {
 	krb5_error_code retval;
+	char	   *khostname;
 
 	if (pg_krb5_initialised)
 		return STATUS_OK;
@@ -219,16 +146,27 @@ pg_krb5_init(void)
 		return STATUS_ERROR;
 	}
 
-	retval = krb5_sname_to_principal(pg_krb5_context, NULL, PG_KRB_SRVNAM,
-									 KRB5_NT_SRV_HST, &pg_krb5_server);
+	/*
+	 * If no hostname was specified, pg_krb_server_hostname is already NULL.
+	 * If it's set to blank, force it to NULL.
+	 */
+	khostname = pg_krb_server_hostname;
+	if (khostname && khostname[0] == '\0')
+		khostname = NULL;
+
+	retval = krb5_sname_to_principal(pg_krb5_context,
+									 khostname,
+									 pg_krb_srvnam,
+									 KRB5_NT_SRV_HST,
+									 &pg_krb5_server);
 	if (retval)
 	{
 		ereport(LOG,
-		 (errmsg("Kerberos sname_to_principal(\"%s\") returned error %d",
-				 PG_KRB_SRVNAM, retval)));
+				(errmsg("Kerberos sname_to_principal(\"%s\", \"%s\") returned error %d",
+			   khostname ? khostname : "server hostname", pg_krb_srvnam, retval)));
 		com_err("postgres", retval,
-				"while getting server principal for service \"%s\"",
-				PG_KRB_SRVNAM);
+		"while getting server principal for server \"%s\" for service \"%s\"",
+				khostname ? khostname : "server hostname", pg_krb_srvnam);
 		krb5_kt_close(pg_krb5_context, pg_krb5_keytab);
 		krb5_free_context(pg_krb5_context);
 		return STATUS_ERROR;
@@ -244,8 +182,7 @@ pg_krb5_init(void)
  *					   from the client
  *
  * We still need to compare the username obtained from the client's setup
- * packet to the authenticated name, as described in pg_krb4_recvauth.	This
- * is a bit more problematic in v5, as described above in pg_an_to_ln.
+ * packet to the authenticated name.
  *
  * We have our own keytab file because postgres is unlikely to run as root,
  * and so cannot read the default keytab.
@@ -264,7 +201,7 @@ pg_krb5_recvauth(Port *port)
 		return ret;
 
 	retval = krb5_recvauth(pg_krb5_context, &auth_context,
-						   (krb5_pointer) & port->sock, PG_KRB_SRVNAM,
+						   (krb5_pointer) & port->sock, pg_krb_srvnam,
 						   pg_krb5_server, 0, pg_krb5_keytab, &ticket);
 	if (retval)
 	{
@@ -303,7 +240,11 @@ pg_krb5_recvauth(Port *port)
 	}
 
 	kusername = pg_an_to_ln(kusername);
-	if (strncmp(port->user_name, kusername, SM_DATABASE_USER))
+	if (pg_krb_caseins_users)
+		ret = pg_strncasecmp(port->user_name, kusername, SM_DATABASE_USER);
+	else
+		ret = strncmp(port->user_name, kusername, SM_DATABASE_USER);
+	if (ret)
 	{
 		ereport(LOG,
 				(errmsg("unexpected Kerberos user name received from client (received \"%s\", expected \"%s\")",
@@ -319,7 +260,6 @@ pg_krb5_recvauth(Port *port)
 
 	return ret;
 }
-
 #else
 
 static int
@@ -352,13 +292,13 @@ auth_failed(Port *port, int status)
 
 	/*
 	 * If we failed due to EOF from client, just quit; there's no point in
-	 * trying to send a message to the client, and not much point in
-	 * logging the failure in the postmaster log.  (Logging the failure
-	 * might be desirable, were it not for the fact that libpq closes the
-	 * connection unceremoniously if challenged for a password when it
-	 * hasn't got one to send.  We'll get a useless log entry for every
-	 * psql connection under password auth, even if it's perfectly
-	 * successful, if we log STATUS_EOF events.)
+	 * trying to send a message to the client, and not much point in logging
+	 * the failure in the postmaster log.  (Logging the failure might be
+	 * desirable, were it not for the fact that libpq closes the connection
+	 * unceremoniously if challenged for a password when it hasn't got one to
+	 * send.  We'll get a useless log entry for every psql connection under
+	 * password auth, even if it's perfectly successful, if we log STATUS_EOF
+	 * events.)
 	 */
 	if (status == STATUS_EOF)
 		proc_exit(0);
@@ -367,9 +307,6 @@ auth_failed(Port *port, int status)
 	{
 		case uaReject:
 			errstr = gettext_noop("authentication failed for user \"%s\": host rejected");
-			break;
-		case uaKrb4:
-			errstr = gettext_noop("Kerberos 4 authentication failed for user \"%s\"");
 			break;
 		case uaKrb5:
 			errstr = gettext_noop("Kerberos 5 authentication failed for user \"%s\"");
@@ -413,9 +350,9 @@ ClientAuthentication(Port *port)
 
 	/*
 	 * Get the authentication method to use for this frontend/database
-	 * combination.  Note: a failure return indicates a problem with the
-	 * hba config file, not with the request.  hba.c should have dropped
-	 * an error message into the postmaster logfile if it failed.
+	 * combination.  Note: a failure return indicates a problem with the hba
+	 * config file, not with the request.  hba.c should have dropped an error
+	 * message into the postmaster logfile if it failed.
 	 */
 	if (hba_getauthmethod(port) != STATUS_OK)
 		ereport(FATAL,
@@ -430,45 +367,34 @@ ClientAuthentication(Port *port)
 			/*
 			 * This could have come from an explicit "reject" entry in
 			 * pg_hba.conf, but more likely it means there was no matching
-			 * entry.  Take pity on the poor user and issue a helpful
-			 * error message.  NOTE: this is not a security breach,
-			 * because all the info reported here is known at the frontend
-			 * and must be assumed known to bad guys. We're merely helping
-			 * out the less clueful good guys.
+			 * entry.  Take pity on the poor user and issue a helpful error
+			 * message.  NOTE: this is not a security breach, because all the
+			 * info reported here is known at the frontend and must be assumed
+			 * known to bad guys. We're merely helping out the less clueful
+			 * good guys.
 			 */
 			{
 				char		hostinfo[NI_MAXHOST];
 
-				getnameinfo_all(&port->raddr.addr, port->raddr.salen,
-								hostinfo, sizeof(hostinfo),
-								NULL, 0,
-								NI_NUMERICHOST);
+				pg_getnameinfo_all(&port->raddr.addr, port->raddr.salen,
+								   hostinfo, sizeof(hostinfo),
+								   NULL, 0,
+								   NI_NUMERICHOST);
 
 #ifdef USE_SSL
 				ereport(FATAL,
-				   (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
-					errmsg("no pg_hba.conf entry for host \"%s\", user \"%s\", database \"%s\", %s",
-						   hostinfo, port->user_name, port->database_name,
-				   port->ssl ? gettext("SSL on") : gettext("SSL off"))));
+						(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
+						 errmsg("no pg_hba.conf entry for host \"%s\", user \"%s\", database \"%s\", %s",
+							  hostinfo, port->user_name, port->database_name,
+								port->ssl ? _("SSL on") : _("SSL off"))));
 #else
 				ereport(FATAL,
-				   (errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
-					errmsg("no pg_hba.conf entry for host \"%s\", user \"%s\", database \"%s\"",
-					   hostinfo, port->user_name, port->database_name)));
+						(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
+						 errmsg("no pg_hba.conf entry for host \"%s\", user \"%s\", database \"%s\"",
+						   hostinfo, port->user_name, port->database_name)));
 #endif
 				break;
 			}
-
-		case uaKrb4:
-			/* Kerberos 4 only seems to work with AF_INET. */
-			if (port->raddr.addr.ss_family != AF_INET
-				|| port->laddr.addr.ss_family != AF_INET)
-				ereport(FATAL,
-						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				   errmsg("Kerberos 4 only supports IPv4 connections")));
-			sendAuthRequest(port, AUTH_REQ_KRB4);
-			status = pg_krb4_recvauth(port);
-			break;
 
 		case uaKrb5:
 			sendAuthRequest(port, AUTH_REQ_KRB5);
@@ -498,7 +424,7 @@ ClientAuthentication(Port *port)
 				if (setsockopt(port->sock, 0, LOCAL_CREDS, &on, sizeof(on)) < 0)
 					ereport(FATAL,
 							(errcode_for_socket_access(),
-					errmsg("could not enable credential reception: %m")));
+					   errmsg("could not enable credential reception: %m")));
 #endif
 
 				sendAuthRequest(port, AUTH_REQ_SCM_CREDS);
@@ -561,8 +487,8 @@ sendAuthRequest(Port *port, AuthRequest areq)
 	pq_endmessage(&buf);
 
 	/*
-	 * Flush message so client will see it, except for AUTH_REQ_OK, which
-	 * need not be sent until we are ready for queries.
+	 * Flush message so client will see it, except for AUTH_REQ_OK, which need
+	 * not be sent until we are ready for queries.
 	 */
 	if (areq != AUTH_REQ_OK)
 		pq_flush();
@@ -599,15 +525,15 @@ pam_passwd_conv_proc(int num_msg, const struct pam_message ** msg,
 	if (!appdata_ptr)
 	{
 		/*
-		 * Workaround for Solaris 2.6 where the PAM library is broken and
-		 * does not pass appdata_ptr to the conversation routine
+		 * Workaround for Solaris 2.6 where the PAM library is broken and does
+		 * not pass appdata_ptr to the conversation routine
 		 */
 		appdata_ptr = pam_passwd;
 	}
 
 	/*
-	 * Password wasn't passed to PAM the first time around - let's go ask
-	 * the client to send a password, which we then stuff into PAM.
+	 * Password wasn't passed to PAM the first time around - let's go ask the
+	 * client to send a password, which we then stuff into PAM.
 	 */
 	if (strlen(appdata_ptr) == 0)
 	{
@@ -768,15 +694,15 @@ recv_password_packet(Port *port)
 		{
 			/*
 			 * If the client just disconnects without offering a password,
-			 * don't make a log entry.  This is legal per protocol spec
-			 * and in fact commonly done by psql, so complaining just
-			 * clutters the log.
+			 * don't make a log entry.  This is legal per protocol spec and in
+			 * fact commonly done by psql, so complaining just clutters the
+			 * log.
 			 */
 			if (mtype != EOF)
 				ereport(COMMERROR,
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
-				errmsg("expected password response, got message type %d",
-					   mtype)));
+					errmsg("expected password response, got message type %d",
+						   mtype)));
 			return NULL;		/* EOF or bad message type */
 		}
 	}
@@ -796,8 +722,8 @@ recv_password_packet(Port *port)
 	}
 
 	/*
-	 * Apply sanity check: password packet length should agree with length
-	 * of contained string.  Note it is safe to use strlen here because
+	 * Apply sanity check: password packet length should agree with length of
+	 * contained string.  Note it is safe to use strlen here because
 	 * StringInfo is guaranteed to have an appended '\0'.
 	 */
 	if (strlen(buf.data) + 1 != buf.len)
@@ -811,8 +737,8 @@ recv_password_packet(Port *port)
 
 	/*
 	 * Return the received string.	Note we do not attempt to do any
-	 * character-set conversion on it; since we don't yet know the
-	 * client's encoding, there wouldn't be much point.
+	 * character-set conversion on it; since we don't yet know the client's
+	 * encoding, there wouldn't be much point.
 	 */
 	return buf.data;
 }

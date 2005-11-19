@@ -1,5 +1,5 @@
 <!--
-$PostgreSQL: pgsql/doc/src/sgml/ref/create_domain.sgml,v 1.20.4.1 2005/05/02 01:56:16 neilc Exp $
+$PostgreSQL: pgsql/doc/src/sgml/ref/create_domain.sgml,v 1.26 2005/11/04 23:14:02 petere Exp $
 PostgreSQL documentation
 -->
 
@@ -48,11 +48,24 @@ where <replaceable class="PARAMETER">constraint</replaceable> is:
   </para>
 
   <para>
-   Domains are useful for abstracting common fields between tables into
-   a single location for maintenance.  For example, an email address column may be used
-   in several tables, all with the same properties.  Define a domain and
-   use that rather than setting up each table's constraints individually.
+   Domains are useful for abstracting common fields between tables
+   into a single location for maintenance.  For example, an email address
+   column may be used in several tables, all with the same properties.
+   Define a domain and use that rather than setting up each table's
+   constraints individually. 
   </para>
+
+  <caution>
+  <para>
+   At present, declaring a function result value as a domain 
+   is pretty dangerous, because none of the procedural languages enforce domain constraints 
+   on their results.  You'll need to make sure that the function code itself
+   respects the constraints.  In <application>PL/pgSQL</>, one possible
+   workaround is to explicitly cast the result value to the domain type
+   when you return it.  <application>PL/pgSQL</> does not enforce domain
+   constraints for local variables within functions, either.
+  </para>
+  </caution>
  </refsect1>
 
  <refsect1>
@@ -202,7 +215,6 @@ CREATE TABLE us_snail_addy (
  </refsect1>
 
 </refentry>
-
 
 <!-- Keep this comment at the end of the file
 Local variables:

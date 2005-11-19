@@ -1,5 +1,5 @@
 <!--
-$PostgreSQL: pgsql/doc/src/sgml/ref/createlang.sgml,v 1.33 2003/11/29 19:51:38 pgsql Exp $
+$PostgreSQL: pgsql/doc/src/sgml/ref/createlang.sgml,v 1.37 2005/09/08 20:07:41 tgl Exp $
 PostgreSQL documentation
 -->
 
@@ -40,17 +40,9 @@ PostgreSQL documentation
   <para>
    <application>createlang</application> is a utility for adding a new 
    programming language to a <productname>PostgreSQL</productname> database.
-   <application>createlang</application> can handle all the languages
-   supplied in the default <productname>PostgreSQL</> distribution, but
-   not languages provided by other parties.
-  </para>
-  <para>
-   Although backend programming languages can be added directly using
-   several <acronym>SQL</acronym> commands, it is recommended to use
-   <application>createlang</application> because it performs a number
-   of checks and is much easier to use. See
+   <application>createlang</application> is just a wrapper around the
    <xref linkend="sql-createlanguage" endterm="sql-createlanguage-title">
-   for additional information.
+   command, which see for additional information.
   </para>
  </refsect1>
 
@@ -66,8 +58,8 @@ PostgreSQL documentation
       <term><replaceable class="parameter">langname</replaceable></term>
       <listitem>
        <para>
-	Specifies the name of the procedural programming language to be
-	defined.
+        Specifies the name of the procedural programming language to be
+        defined.
        </para>
       </listitem>
      </varlistentry>
@@ -77,7 +69,7 @@ PostgreSQL documentation
       <term><option><optional>--dbname</> <replaceable class="parameter">dbname</replaceable></></term>
       <listitem>
        <para>
-	Specifies to which database the language should be added.
+        Specifies to which database the language should be added.
         The default is to use the database with the same name as the
         current system user.
        </para>
@@ -104,17 +96,6 @@ PostgreSQL documentation
       </listitem>
      </varlistentry>
 
-     <varlistentry>
-      <term><option>-L <replaceable class="parameter">directory</replaceable></></term>
-      <listitem>
-       <para>
-	Specifies the directory in which the language interpreter is
-        to be found.  The directory is normally found automatically; this
-        option is primarily for debugging purposes.
-       </para>
-      </listitem>
-     </varlistentry>
-
     </variablelist>
    </para>
 
@@ -128,10 +109,10 @@ PostgreSQL documentation
       <term><option>--host <replaceable class="parameter">host</replaceable></></term>
       <listitem>
        <para>
-	Specifies the host name of the machine on which the 
-	server
-	is running.  If the value begins with a slash, it is used 
-	as the directory for the Unix domain socket.
+        Specifies the host name of the machine on which the 
+        server
+        is running.  If the value begins with a slash, it is used 
+        as the directory for the Unix domain socket.
        </para>
       </listitem>
      </varlistentry>
@@ -141,9 +122,9 @@ PostgreSQL documentation
       <term><option>--port <replaceable class="parameter">port</replaceable></></term>
       <listitem>
        <para>
-	Specifies the TCP port or local Unix domain socket file 
-	extension on which the server
-	is listening for connections.
+        Specifies the TCP port or local Unix domain socket file 
+        extension on which the server
+        is listening for connections.
        </para>
       </listitem>
      </varlistentry>
@@ -223,6 +204,9 @@ PostgreSQL documentation
 <screen>
 <prompt>$ </prompt><userinput>createlang pltcl template1</userinput>
 </screen>
+    Note that installing the language into <literal>template1</literal>
+    will cause it to be automatically installed into subsequently-created
+    databases as well.
    </para>
  </refsect1>
 
@@ -232,6 +216,7 @@ PostgreSQL documentation
   <simplelist type="inline">
    <member><xref linkend="app-droplang"></member>
    <member><xref linkend="sql-createlanguage" endterm="sql-createlanguage-title"></member>
+   <member>Environment Variables (<xref linkend="libpq-envars">)</member>
   </simplelist>
  </refsect1>
 

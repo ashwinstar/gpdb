@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/nbtree/nbtutils.c,v 1.62 2004/12/31 21:59:22 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/nbtree/nbtutils.c,v 1.65 2005/10/18 01:06:23 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -48,8 +48,8 @@ _bt_mkscankey(Relation rel, IndexTuple itup)
 		bool		null;
 
 		/*
-		 * We can use the cached (default) support procs since no
-		 * cross-type comparison can be needed.
+		 * We can use the cached (default) support procs since no cross-type
+		 * comparison can be needed.
 		 */
 		procinfo = index_getprocinfo(rel, i + 1, BTORDER_PROC);
 		arg = index_getattr(itup, i + 1, itupdesc, &null);
@@ -79,11 +79,9 @@ ScanKey
 _bt_mkscankey_nodata(Relation rel)
 {
 	ScanKey		skey;
-	TupleDesc	itupdesc;
 	int			natts;
 	int			i;
 
-	itupdesc = RelationGetDescr(rel);
 	natts = RelationGetNumberOfAttributes(rel);
 
 	skey = (ScanKey) palloc(natts * sizeof(ScanKeyData));
@@ -93,8 +91,8 @@ _bt_mkscankey_nodata(Relation rel)
 		FmgrInfo   *procinfo;
 
 		/*
-		 * We can use the cached (default) support procs since no
-		 * cross-type comparison can be needed.
+		 * We can use the cached (default) support procs since no cross-type
+		 * comparison can be needed.
 		 */
 		procinfo = index_getprocinfo(rel, i + 1, BTORDER_PROC);
 		ScanKeyEntryInitializeWithInfo(&skey[i],
@@ -190,7 +188,9 @@ _bt_formitem(IndexTuple itup)
  * matched to continue the scan.  In general, numberOfRequiredKeys is equal
  * to the number of keys for leading attributes with "=" keys, plus the
  * key(s) for the first non "=" attribute, which can be seen to be correct
- * by considering the above example.
+ * by considering the above example.  Note in particular that if there are no
+ * keys for a given attribute, the keys for subsequent attributes can never
+ * be required; for instance "WHERE y = 4" requires a full-index scan.
  *
  * If possible, redundant keys are eliminated: we keep only the tightest
  * >/>= bound and the tightest </<= bound, and if there's an = key then
@@ -248,16 +248,16 @@ _bt_preprocess_keys(IndexScanDesc scan)
 	outkeys = so->keyData;
 	cur = &inkeys[0];
 	/* we check that input keys are correctly ordered */
-	if (cur->sk_attno != 1)
-		elog(ERROR, "key(s) for attribute 1 missed");
+	if (cur->sk_attno < 1)
+		elog(ERROR, "btree index keys must be ordered by attribute");
 
 	/* We can short-circuit most of the work if there's just one key */
 	if (numberOfKeys == 1)
 	{
 		/*
-		 * We don't use indices for 'A is null' and 'A is not null'
-		 * currently and 'A < = > <> NULL' will always fail - so qual is
-		 * not OK if comparison value is NULL.		- vadim 03/21/97
+		 * We don't use indices for 'A is null' and 'A is not null' currently
+		 * and 'A < = > <> NULL' will always fail - so qual is not OK if
+		 * comparison value is NULL.	  - vadim 03/21/97
 		 */
 		if (cur->sk_flags & SK_ISNULL)
 			so->qual_ok = false;
@@ -270,7 +270,8 @@ _bt_preprocess_keys(IndexScanDesc scan)
 		}
 		memcpy(outkeys, inkeys, sizeof(ScanKeyData));
 		so->numberOfKeys = 1;
-		so->numberOfRequiredKeys = 1;
+		if (cur->sk_attno == 1)
+			so->numberOfRequiredKeys = 1;
 		return;
 	}
 
@@ -283,20 +284,20 @@ _bt_preprocess_keys(IndexScanDesc scan)
 	/*
 	 * Initialize for processing of keys for attr 1.
 	 *
-	 * xform[i] points to the currently best scan key of strategy type i+1,
-	 * if any is found with a default operator subtype; it is NULL if we
-	 * haven't yet found such a key for this attr.  Scan keys of
-	 * nondefault subtypes are transferred to the output with no
-	 * processing except for noting if they are of "=" type.
+	 * xform[i] points to the currently best scan key of strategy type i+1, if
+	 * any is found with a default operator subtype; it is NULL if we haven't
+	 * yet found such a key for this attr.	Scan keys of nondefault subtypes
+	 * are transferred to the output with no processing except for noting if
+	 * they are of "=" type.
 	 */
 	attno = 1;
 	memset(xform, 0, sizeof(xform));
 	hasOtherTypeEqual = false;
 
 	/*
-	 * Loop iterates from 0 to numberOfKeys inclusive; we use the last
-	 * pass to handle after-last-key processing.  Actual exit from the
-	 * loop is at the "break" statement below.
+	 * Loop iterates from 0 to numberOfKeys inclusive; we use the last pass to
+	 * handle after-last-key processing.  Actual exit from the loop is at the
+	 * "break" statement below.
 	 */
 	for (i = 0;; cur++, i++)
 	{
@@ -316,21 +317,21 @@ _bt_preprocess_keys(IndexScanDesc scan)
 		}
 
 		/*
-		 * If we are at the end of the keys for a particular attr, finish
-		 * up processing and emit the cleaned-up keys.
+		 * If we are at the end of the keys for a particular attr, finish up
+		 * processing and emit the cleaned-up keys.
 		 */
 		if (i == numberOfKeys || cur->sk_attno != attno)
 		{
 			int			priorNumberOfEqualCols = numberOfEqualCols;
 
 			/* check input keys are correctly ordered */
-			if (i < numberOfKeys && cur->sk_attno != attno + 1)
-				elog(ERROR, "key(s) for attribute %d missed", attno + 1);
+			if (i < numberOfKeys && cur->sk_attno < attno)
+				elog(ERROR, "btree index keys must be ordered by attribute");
 
 			/*
-			 * If = has been specified, no other key will be used. In case
-			 * of key > 2 && key == 1 and so on we have to set qual_ok to
-			 * false before discarding the other keys.
+			 * If = has been specified, no other key will be used. In case of
+			 * key > 2 && key == 1 and so on we have to set qual_ok to false
+			 * before discarding the other keys.
 			 */
 			if (xform[BTEqualStrategyNumber - 1])
 			{
@@ -408,8 +409,8 @@ _bt_preprocess_keys(IndexScanDesc scan)
 			}
 
 			/*
-			 * If all attrs before this one had "=", include these keys
-			 * into the required-keys count.
+			 * If all attrs before this one had "=", include these keys into
+			 * the required-keys count.
 			 */
 			if (priorNumberOfEqualCols == attno - 1)
 				so->numberOfRequiredKeys = new_numberOfKeys;
@@ -523,11 +524,11 @@ _bt_checkkeys(IndexScanDesc scan, IndexTuple tuple,
 		if (isNull)
 		{
 			/*
-			 * Since NULLs are sorted after non-NULLs, we know we have
-			 * reached the upper limit of the range of values for this
-			 * index attr.	On a forward scan, we can stop if this qual is
-			 * one of the "must match" subset.	On a backward scan,
-			 * however, we should keep going.
+			 * Since NULLs are sorted after non-NULLs, we know we have reached
+			 * the upper limit of the range of values for this index attr.	On
+			 * a forward scan, we can stop if this qual is one of the "must
+			 * match" subset.  On a backward scan, however, we should keep
+			 * going.
 			 */
 			if (ikey < so->numberOfRequiredKeys &&
 				ScanDirectionIsForward(dir))
@@ -544,24 +545,22 @@ _bt_checkkeys(IndexScanDesc scan, IndexTuple tuple,
 		if (!DatumGetBool(test))
 		{
 			/*
-			 * Tuple fails this qual.  If it's a required qual, then we
-			 * may be able to conclude no further tuples will pass,
-			 * either. We have to look at the scan direction and the qual
-			 * type.
+			 * Tuple fails this qual.  If it's a required qual, then we may be
+			 * able to conclude no further tuples will pass, either. We have
+			 * to look at the scan direction and the qual type.
 			 *
-			 * Note: the only case in which we would keep going after failing
-			 * a required qual is if there are partially-redundant quals
-			 * that _bt_preprocess_keys() was unable to eliminate.	For
-			 * example, given "x > 4 AND x > 10" where both are cross-type
-			 * comparisons and so not removable, we might start the scan
-			 * at the x = 4 boundary point.  The "x > 10" condition will
-			 * fail until we pass x = 10, but we must not stop the scan on
-			 * its account.
+			 * Note: the only case in which we would keep going after failing a
+			 * required qual is if there are partially-redundant quals that
+			 * _bt_preprocess_keys() was unable to eliminate.  For example,
+			 * given "x > 4 AND x > 10" where both are cross-type comparisons
+			 * and so not removable, we might start the scan at the x = 4
+			 * boundary point.	The "x > 10" condition will fail until we pass
+			 * x = 10, but we must not stop the scan on its account.
 			 *
-			 * Note: because we stop the scan as soon as any required
-			 * equality qual fails, it is critical that equality quals be
-			 * used for the initial positioning in _bt_first() when they
-			 * are available. See comments in _bt_first().
+			 * Note: because we stop the scan as soon as any required equality
+			 * qual fails, it is critical that equality quals be used for the
+			 * initial positioning in _bt_first() when they are available. See
+			 * comments in _bt_first().
 			 */
 			if (ikey < so->numberOfRequiredKeys)
 			{

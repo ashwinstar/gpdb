@@ -1,12 +1,12 @@
 /*-------------------------------------------------------------------------
  *
- *	  EUC_JP <--> UTF-8
+ *	  EUC_JP <--> UTF8
  *
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/mb/conversion_procs/utf8_and_euc_jp/utf8_and_euc_jp.c,v 1.9 2004/12/31 22:02:17 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/mb/conversion_procs/utf8_and_euc_jp/utf8_and_euc_jp.c,v 1.12 2005/10/15 02:49:34 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -36,8 +36,8 @@ extern Datum utf8_to_euc_jp(PG_FUNCTION_ARGS);
 Datum
 euc_jp_to_utf8(PG_FUNCTION_ARGS)
 {
-	unsigned char *src = PG_GETARG_CSTRING(2);
-	unsigned char *dest = PG_GETARG_CSTRING(3);
+	unsigned char *src = (unsigned char *) PG_GETARG_CSTRING(2);
+	unsigned char *dest = (unsigned char *) PG_GETARG_CSTRING(3);
 	int			len = PG_GETARG_INT32(4);
 
 	Assert(PG_GETARG_INT32(0) == PG_EUC_JP);
@@ -45,7 +45,7 @@ euc_jp_to_utf8(PG_FUNCTION_ARGS)
 	Assert(len >= 0);
 
 	LocalToUtf(src, dest, LUmapEUC_JP,
-		  sizeof(LUmapEUC_JP) / sizeof(pg_local_to_utf), PG_EUC_JP, len);
+			   sizeof(LUmapEUC_JP) / sizeof(pg_local_to_utf), PG_EUC_JP, len);
 
 	PG_RETURN_VOID();
 }
@@ -53,8 +53,8 @@ euc_jp_to_utf8(PG_FUNCTION_ARGS)
 Datum
 utf8_to_euc_jp(PG_FUNCTION_ARGS)
 {
-	unsigned char *src = PG_GETARG_CSTRING(2);
-	unsigned char *dest = PG_GETARG_CSTRING(3);
+	unsigned char *src = (unsigned char *) PG_GETARG_CSTRING(2);
+	unsigned char *dest = (unsigned char *) PG_GETARG_CSTRING(3);
 	int			len = PG_GETARG_INT32(4);
 
 	Assert(PG_GETARG_INT32(0) == PG_UTF8);

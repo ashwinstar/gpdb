@@ -1,21 +1,27 @@
 /*-------------------------------------------------------------------------
  *
- * Miscellaneous shared code
+ *	common.c
+ *		Common support routines for bin/scripts/
+ *
  *
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/bin/scripts/common.c,v 1.16 2005/01/08 22:51:14 tgl Exp $
+ * $PostgreSQL: pgsql/src/bin/scripts/common.c,v 1.19 2005/10/15 02:49:41 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 
 #include "postgres_fe.h"
-#include "common.h"
-#include "libpq-fe.h"
 
 #include <pwd.h>
 #include <unistd.h>
+
+#include "common.h"
+
+#ifndef HAVE_INT_OPTRESET
+int			optreset;
+#endif
 
 
 /*
@@ -55,7 +61,8 @@ get_user_name(const char *progname)
  * options.
  */
 void
-handle_help_version_opts(int argc, char *argv[], const char *fixed_progname, help_handler hlp)
+handle_help_version_opts(int argc, char *argv[],
+						 const char *fixed_progname, help_handler hlp)
 {
 	if (argc > 1)
 	{
@@ -79,7 +86,8 @@ handle_help_version_opts(int argc, char *argv[], const char *fixed_progname, hel
  */
 PGconn *
 connectDatabase(const char *dbname, const char *pghost, const char *pgport,
-		 const char *pguser, bool require_password, const char *progname)
+				const char *pguser, bool require_password,
+				const char *progname)
 {
 	PGconn	   *conn;
 	char	   *password = NULL;
@@ -89,8 +97,8 @@ connectDatabase(const char *dbname, const char *pghost, const char *pgport,
 		password = simple_prompt("Password: ", 100, false);
 
 	/*
-	 * Start the connection.  Loop until we have a password if requested
-	 * by backend.
+	 * Start the connection.  Loop until we have a password if requested by
+	 * backend.
 	 */
 	do
 	{
@@ -146,13 +154,43 @@ executeQuery(PGconn *conn, const char *query, const char *progname, bool echo)
 	if (!res ||
 		PQresultStatus(res) != PGRES_TUPLES_OK)
 	{
-		fprintf(stderr, _("%s: query failed: %s"), progname, PQerrorMessage(conn));
-		fprintf(stderr, _("%s: query was: %s\n"), progname, query);
+		fprintf(stderr, _("%s: query failed: %s"),
+				progname, PQerrorMessage(conn));
+		fprintf(stderr, _("%s: query was: %s\n"),
+				progname, query);
 		PQfinish(conn);
 		exit(1);
 	}
 
 	return res;
+}
+
+
+/*
+ * As above for a SQL command (which returns nothing).
+ */
+void
+executeCommand(PGconn *conn, const char *query,
+			   const char *progname, bool echo)
+{
+	PGresult   *res;
+
+	if (echo)
+		printf("%s\n", query);
+
+	res = PQexec(conn, query);
+	if (!res ||
+		PQresultStatus(res) != PGRES_COMMAND_OK)
+	{
+		fprintf(stderr, _("%s: query failed: %s"),
+				progname, PQerrorMessage(conn));
+		fprintf(stderr, _("%s: query was: %s\n"),
+				progname, query);
+		PQfinish(conn);
+		exit(1);
+	}
+
+	PQclear(res);
 }
 
 
@@ -168,9 +206,9 @@ executeQuery(PGconn *conn, const char *query, const char *progname, bool echo)
 int
 check_yesno_response(const char *string)
 {
-	if (strcmp(string, gettext(PG_YESLETTER)) == 0)
+	if (strcmp(string, _(PG_YESLETTER)) == 0)
 		return 1;
-	else if (strcmp(string, gettext(PG_NOLETTER)) == 0)
+	else if (strcmp(string, _(PG_NOLETTER)) == 0)
 		return 0;
 	else
 		return -1;

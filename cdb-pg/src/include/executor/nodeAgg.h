@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/executor/nodeAgg.h,v 1.23.4.1 2005/01/28 19:36:17 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/executor/nodeAgg.h,v 1.24 2005/01/28 19:34:18 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */

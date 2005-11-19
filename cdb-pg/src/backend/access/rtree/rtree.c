@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/rtree/rtree.c,v 1.85.4.1 2005/01/24 02:47:52 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/rtree/rtree.c,v 1.92 2005/10/15 02:49:09 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -81,15 +81,14 @@ typedef struct
 /* non-export function prototypes */
 static void rtbuildCallback(Relation index,
 				HeapTuple htup,
-				Datum *attdata,
-				char *nulls,
+				Datum *values,
+				bool *isnull,
 				bool tupleIsAlive,
 				void *state);
-static InsertIndexResult rtdoinsert(Relation r, IndexTuple itup,
-		   RTSTATE *rtstate);
+static void rtdoinsert(Relation r, IndexTuple itup, RTSTATE *rtstate);
 static void rttighten(Relation r, RTSTACK *stk, Datum datum, int att_size,
 		  RTSTATE *rtstate);
-static InsertIndexResult rtdosplit(Relation r, Buffer buffer, RTSTACK *stack,
+static void rtdosplit(Relation r, Buffer buffer, RTSTACK *stack,
 		  IndexTuple itup, RTSTATE *rtstate);
 static void rtintinsert(Relation r, RTSTACK *stk, IndexTuple ltup,
 			IndexTuple rtup, RTSTATE *rtstate);
@@ -122,8 +121,8 @@ rtbuild(PG_FUNCTION_ARGS)
 	initRtstate(&buildstate.rtState, index);
 
 	/*
-	 * We expect to be called exactly once for any index relation. If
-	 * that's not the case, big trouble's what we have.
+	 * We expect to be called exactly once for any index relation. If that's
+	 * not the case, big trouble's what we have.
 	 */
 	if (RelationGetNumberOfBlocks(index) != 0)
 		elog(ERROR, "index \"%s\" already contains data",
@@ -143,27 +142,8 @@ rtbuild(PG_FUNCTION_ARGS)
 
 	/* okay, all heap tuples are indexed */
 
-	/*
-	 * Since we just counted the tuples in the heap, we update its stats
-	 * in pg_class to guarantee that the planner takes advantage of the
-	 * index we just created.  But, only update statistics during normal
-	 * index definitions, not for indices on system catalogs created
-	 * during bootstrap processing.  We must close the relations before
-	 * updating statistics to guarantee that the relcache entries are
-	 * flushed when we increment the command counter in UpdateStats(). But
-	 * we do not release any locks on the relations; those will be held
-	 * until end of transaction.
-	 */
-	if (IsNormalProcessingMode())
-	{
-		Oid			hrelid = RelationGetRelid(heap);
-		Oid			irelid = RelationGetRelid(index);
-
-		heap_close(heap, NoLock);
-		index_close(index);
-		UpdateStats(hrelid, reltuples);
-		UpdateStats(irelid, buildstate.indtuples);
-	}
+	/* since we just counted the # of tuples, may as well update stats */
+	IndexCloseAndUpdateStats(heap, reltuples, index, buildstate.indtuples);
 
 	PG_RETURN_VOID();
 }
@@ -174,17 +154,16 @@ rtbuild(PG_FUNCTION_ARGS)
 static void
 rtbuildCallback(Relation index,
 				HeapTuple htup,
-				Datum *attdata,
-				char *nulls,
+				Datum *values,
+				bool *isnull,
 				bool tupleIsAlive,
 				void *state)
 {
 	RTBuildState *buildstate = (RTBuildState *) state;
 	IndexTuple	itup;
-	InsertIndexResult res;
 
 	/* form an index tuple and point it at the heap tuple */
-	itup = index_formtuple(RelationGetDescr(index), attdata, nulls);
+	itup = index_form_tuple(RelationGetDescr(index), values, isnull);
 	itup->t_tid = htup->t_self;
 
 	/* rtree indexes don't index nulls, see notes in rtinsert */
@@ -196,15 +175,12 @@ rtbuildCallback(Relation index,
 
 	/*
 	 * Since we already have the index relation locked, we call rtdoinsert
-	 * directly.  Normal access method calls dispatch through rtinsert,
-	 * which locks the relation for write.	This is the right thing to do
-	 * if you're inserting single tups, but not when you're initializing
-	 * the whole index at once.
+	 * directly.  Normal access method calls dispatch through rtinsert, which
+	 * locks the relation for write.  This is the right thing to do if you're
+	 * inserting single tups, but not when you're initializing the whole index
+	 * at once.
 	 */
-	res = rtdoinsert(index, itup, &buildstate->rtState);
-
-	if (res)
-		pfree(res);
+	rtdoinsert(index, itup, &buildstate->rtState);
 
 	buildstate->indtuples += 1;
 
@@ -221,20 +197,19 @@ Datum
 rtinsert(PG_FUNCTION_ARGS)
 {
 	Relation	r = (Relation) PG_GETARG_POINTER(0);
-	Datum	   *datum = (Datum *) PG_GETARG_POINTER(1);
-	char	   *nulls = (char *) PG_GETARG_POINTER(2);
+	Datum	   *values = (Datum *) PG_GETARG_POINTER(1);
+	bool	   *isnull = (bool *) PG_GETARG_POINTER(2);
 	ItemPointer ht_ctid = (ItemPointer) PG_GETARG_POINTER(3);
 
 #ifdef NOT_USED
 	Relation	heapRel = (Relation) PG_GETARG_POINTER(4);
 	bool		checkUnique = PG_GETARG_BOOL(5);
 #endif
-	InsertIndexResult res;
 	IndexTuple	itup;
 	RTSTATE		rtState;
 
 	/* generate an index tuple */
-	itup = index_formtuple(RelationGetDescr(r), datum, nulls);
+	itup = index_form_tuple(RelationGetDescr(r), values, isnull);
 	itup->t_tid = *ht_ctid;
 
 	/*
@@ -245,23 +220,21 @@ rtinsert(PG_FUNCTION_ARGS)
 	if (IndexTupleHasNulls(itup))
 	{
 		pfree(itup);
-		PG_RETURN_POINTER(NULL);
+		PG_RETURN_BOOL(false);
 	}
 
 	initRtstate(&rtState, r);
 
 	/*
-	 * Since rtree is not marked "amconcurrent" in pg_am, caller should
-	 * have acquired exclusive lock on index relation.	We need no locking
-	 * here.
+	 * Since rtree is not marked "amconcurrent" in pg_am, caller should have
+	 * acquired exclusive lock on index relation.  We need no locking here.
 	 */
+	rtdoinsert(r, itup, &rtState);
 
-	res = rtdoinsert(r, itup, &rtState);
-
-	PG_RETURN_POINTER(res);
+	PG_RETURN_BOOL(true);
 }
 
-static InsertIndexResult
+static void
 rtdoinsert(Relation r, IndexTuple itup, RTSTATE *rtstate)
 {
 	Page		page;
@@ -270,7 +243,6 @@ rtdoinsert(Relation r, IndexTuple itup, RTSTATE *rtstate)
 	IndexTuple	which;
 	OffsetNumber l;
 	RTSTACK    *stack;
-	InsertIndexResult res;
 	RTreePageOpaque opaque;
 	Datum		datum;
 
@@ -280,12 +252,8 @@ rtdoinsert(Relation r, IndexTuple itup, RTSTATE *rtstate)
 
 	do
 	{
-		/* let go of current buffer before getting next */
-		if (buffer != InvalidBuffer)
-			ReleaseBuffer(buffer);
-
-		/* get next buffer */
-		buffer = ReadBuffer(r, blk);
+		/* release the current buffer, read in the next one */
+		buffer = ReleaseAndReadBuffer(buffer, r, blk);
 		page = (Page) BufferGetPage(buffer);
 
 		opaque = (RTreePageOpaque) PageGetSpecialPointer(page);
@@ -309,10 +277,10 @@ rtdoinsert(Relation r, IndexTuple itup, RTSTATE *rtstate)
 	if (nospace(page, itup))
 	{
 		/* need to do a split */
-		res = rtdosplit(r, buffer, stack, itup, rtstate);
+		rtdosplit(r, buffer, stack, itup, rtstate);
 		freestack(stack);
 		WriteBuffer(buffer);	/* don't forget to release buffer! */
-		return res;
+		return;
 	}
 
 	/* add the item and write the buffer */
@@ -339,12 +307,6 @@ rtdoinsert(Relation r, IndexTuple itup, RTSTATE *rtstate)
 	/* now expand the page boundary in the parent to include the new child */
 	rttighten(r, stack, datum, IndexTupleAttSize(itup), rtstate);
 	freestack(stack);
-
-	/* build and return an InsertIndexResult for this insertion */
-	res = (InsertIndexResult) palloc(sizeof(InsertIndexResultData));
-	ItemPointerSet(&(res->pointerData), blk, l);
-
-	return res;
 }
 
 static void
@@ -368,7 +330,7 @@ rttighten(Relation r,
 	p = BufferGetPage(b);
 
 	oldud = IndexTupleGetDatum(PageGetItem(p,
-									  PageGetItemId(p, stk->rts_child)));
+										   PageGetItemId(p, stk->rts_child)));
 
 	FunctionCall2(&rtstate->sizeFn, oldud,
 				  PointerGetDatum(&old_size));
@@ -379,8 +341,8 @@ rttighten(Relation r,
 				  PointerGetDatum(&newd_size));
 
 	/*
-	 * If newd_size == 0 we have degenerate rectangles, so we don't know
-	 * if there was any change, so we have to assume there was.
+	 * If newd_size == 0 we have degenerate rectangles, so we don't know if
+	 * there was any change, so we have to assume there was.
 	 */
 	if ((newd_size == 0) || (newd_size != old_size))
 	{
@@ -407,8 +369,8 @@ rttighten(Relation r,
 		/*
 		 * The user may be defining an index on variable-sized data (like
 		 * polygons).  If so, we need to get a constant-sized datum for
-		 * insertion on the internal page.	We do this by calling the
-		 * union proc, which is required to return a rectangle.
+		 * insertion on the internal page.	We do this by calling the union
+		 * proc, which is required to return a rectangle.
 		 */
 		tdatum = FunctionCall2(&rtstate->unionFn, datum, datum);
 
@@ -426,7 +388,7 @@ rttighten(Relation r,
  *	  rtpicksplit does the interesting work of choosing the split.
  *	  This routine just does the bit-pushing.
  */
-static InsertIndexResult
+static void
 rtdosplit(Relation r,
 		  Buffer buffer,
 		  RTSTACK *stack,
@@ -450,9 +412,7 @@ rtdosplit(Relation r,
 				rbknum;
 	BlockNumber bufblock;
 	RTreePageOpaque opaque;
-	int			blank;
-	InsertIndexResult res;
-	char	   *isnull;
+	bool	   *isnull;
 	SPLITVEC	v;
 	OffsetNumber *spl_left,
 			   *spl_right;
@@ -467,8 +427,8 @@ rtdosplit(Relation r,
 
 	/*
 	 * The root of the tree is the first block in the relation.  If we're
-	 * about to split the root, we need to do some hocus-pocus to enforce
-	 * this guarantee.
+	 * about to split the root, we need to do some hocus-pocus to enforce this
+	 * guarantee.
 	 */
 
 	if (BufferGetBlockNumber(buffer) == P_ROOT)
@@ -497,14 +457,10 @@ rtdosplit(Relation r,
 	maxoff = PageGetMaxOffsetNumber(p);
 	newitemoff = OffsetNumberNext(maxoff);
 
-	/* build an InsertIndexResult for this insertion */
-	res = (InsertIndexResult) palloc(sizeof(InsertIndexResultData));
-
 	/*
-	 * spl_left contains a list of the offset numbers of the tuples that
-	 * will go to the left page.  For each offset number, get the tuple
-	 * item, then add the item to the left page.  Similarly for the right
-	 * side.
+	 * spl_left contains a list of the offset numbers of the tuples that will
+	 * go to the left page.  For each offset number, get the tuple item, then
+	 * add the item to the left page.  Similarly for the right side.
 	 */
 
 	/* fill left node */
@@ -524,9 +480,6 @@ rtdosplit(Relation r,
 			elog(ERROR, "failed to add index item to \"%s\"",
 				 RelationGetRelationName(r));
 		leftoff = OffsetNumberNext(leftoff);
-
-		if (i == newitemoff)
-			ItemPointerSet(&(res->pointerData), lbknum, leftoff);
 
 		spl_left++;				/* advance in left split vector */
 	}
@@ -549,9 +502,6 @@ rtdosplit(Relation r,
 				 RelationGetRelationName(r));
 		rightoff = OffsetNumberNext(rightoff);
 
-		if (i == newitemoff)
-			ItemPointerSet(&(res->pointerData), rbknum, rightoff);
-
 		spl_right++;			/* advance in right split vector */
 	}
 
@@ -573,27 +523,25 @@ rtdosplit(Relation r,
 	 * introduced in its structure by splitting this page.
 	 *
 	 * 2)  "Tighten" the bounding box of the pointer to the left page in the
-	 * parent node in the tree, if any.  Since we moved a bunch of stuff
-	 * off the left page, we expect it to get smaller.	This happens in
-	 * the internal insertion routine.
+	 * parent node in the tree, if any.  Since we moved a bunch of stuff off
+	 * the left page, we expect it to get smaller.	This happens in the
+	 * internal insertion routine.
 	 *
-	 * 3)  Insert a pointer to the right page in the parent.  This may cause
-	 * the parent to split.  If it does, we need to repeat steps one and
-	 * two for each split node in the tree.
+	 * 3)  Insert a pointer to the right page in the parent.  This may cause the
+	 * parent to split.  If it does, we need to repeat steps one and two for
+	 * each split node in the tree.
 	 */
 
 	/* adjust active scans */
 	rtadjscans(r, RTOP_SPLIT, bufblock, FirstOffsetNumber);
 
 	tupDesc = r->rd_att;
-	isnull = (char *) palloc(r->rd_rel->relnatts);
-	for (blank = 0; blank < r->rd_rel->relnatts; blank++)
-		isnull[blank] = ' ';
+	isnull = (bool *) palloc(r->rd_rel->relnatts * sizeof(bool));
+	memset(isnull, false, r->rd_rel->relnatts * sizeof(bool));
 
-	ltup = (IndexTuple) index_formtuple(tupDesc,
-										&(v.spl_ldatum), isnull);
-	rtup = (IndexTuple) index_formtuple(tupDesc,
-										&(v.spl_rdatum), isnull);
+	ltup = index_form_tuple(tupDesc, &(v.spl_ldatum), isnull);
+	rtup = index_form_tuple(tupDesc, &(v.spl_rdatum), isnull);
+
 	pfree(isnull);
 	pfree(DatumGetPointer(v.spl_ldatum));
 	pfree(DatumGetPointer(v.spl_rdatum));
@@ -606,8 +554,6 @@ rtdosplit(Relation r,
 
 	pfree(ltup);
 	pfree(rtup);
-
-	return res;
 }
 
 static void
@@ -623,7 +569,6 @@ rtintinsert(Relation r,
 	Datum		ldatum,
 				rdatum,
 				newdatum;
-	InsertIndexResult res;
 
 	if (stk == NULL)
 	{
@@ -636,10 +581,10 @@ rtintinsert(Relation r,
 	old = (IndexTuple) PageGetItem(p, PageGetItemId(p, stk->rts_child));
 
 	/*
-	 * This is a hack.	Right now, we force rtree internal keys to be
-	 * constant size. To fix this, need delete the old key and add both
-	 * left and right for the two new pages.  The insertion of left may
-	 * force a split if the new left key is bigger than the old key.
+	 * This is a hack.	Right now, we force rtree internal keys to be constant
+	 * size. To fix this, need delete the old key and add both left and right
+	 * for the two new pages.  The insertion of left may force a split if the
+	 * new left key is bigger than the old key.
 	 */
 
 	if (IndexTupleSize(old) != IndexTupleSize(ltup))
@@ -655,10 +600,8 @@ rtintinsert(Relation r,
 		newdatum = IndexTupleGetDatum(ltup);
 		rttighten(r, stk->rts_parent, newdatum,
 				  IndexTupleAttSize(ltup), rtstate);
-		res = rtdosplit(r, b, stk->rts_parent, rtup, rtstate);
-		WriteBuffer(b);			/* don't forget to release buffer!  -
-								 * 01/31/94 */
-		pfree(res);
+		rtdosplit(r, b, stk->rts_parent, rtup, rtstate);
+		WriteBuffer(b);			/* don't forget to release buffer!  - 01/31/94 */
 	}
 	else
 	{
@@ -770,16 +713,15 @@ rtpicksplit(Relation r,
 	int			total_num_tuples,
 				num_tuples_without_seeds,
 				max_after_split;	/* in Guttman's lingo, (M - m) */
-	float		diff;			/* diff between cost of putting tuple left
-								 * or right */
+	float		diff;			/* diff between cost of putting tuple left or
+								 * right */
 	SPLITCOST  *cost_vector;
 	int			n;
 
 	/*
-	 * First, make sure the new item is not so large that we can't
-	 * possibly fit it on a page, even by itself.  (It's sufficient to
-	 * make this test here, since any oversize tuple must lead to a page
-	 * split attempt.)
+	 * First, make sure the new item is not so large that we can't possibly
+	 * fit it on a page, even by itself.  (It's sufficient to make this test
+	 * here, since any oversize tuple must lead to a page split attempt.)
 	 */
 	newitemsz = IndexTupleTotalSize(itup);
 	if (newitemsz > RTPageAvailSpace)
@@ -787,11 +729,11 @@ rtpicksplit(Relation r,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("index row size %lu exceeds rtree maximum, %lu",
 						(unsigned long) newitemsz,
-						(unsigned long) RTPageAvailSpace)));
+						(unsigned long) RTPageAvailSpace),
+			errhint("Values larger than a buffer page cannot be indexed.")));
 
 	maxoff = PageGetMaxOffsetNumber(page);
-	newitemoff = OffsetNumberNext(maxoff);		/* phony index for new
-												 * item */
+	newitemoff = OffsetNumberNext(maxoff);		/* phony index for new item */
 	total_num_tuples = newitemoff;
 	num_tuples_without_seeds = total_num_tuples - 2;
 	max_after_split = total_num_tuples / 2;		/* works for m = M/2 */
@@ -846,8 +788,7 @@ rtpicksplit(Relation r,
 				pfree(DatumGetPointer(inter_d));
 
 			/*
-			 * are these a more promising split that what we've already
-			 * seen?
+			 * are these a more promising split that what we've already seen?
 			 */
 			if (size_waste > waste || firsttime)
 			{
@@ -862,10 +803,10 @@ rtpicksplit(Relation r,
 	if (firsttime)
 	{
 		/*
-		 * There is no possible split except to put the new item on its
-		 * own page.  Since we still have to compute the union rectangles,
-		 * we play dumb and run through the split algorithm anyway,
-		 * setting seed_1 = first item on page and seed_2 = new item.
+		 * There is no possible split except to put the new item on its own
+		 * page.  Since we still have to compute the union rectangles, we play
+		 * dumb and run through the split algorithm anyway, setting seed_1 =
+		 * first item on page and seed_2 = new item.
 		 */
 		seed_1 = FirstOffsetNumber;
 		seed_2 = newitemoff;
@@ -893,25 +834,23 @@ rtpicksplit(Relation r,
 	/*
 	 * Now split up the regions between the two seeds.
 	 *
-	 * The cost_vector array will contain hints for determining where each
-	 * tuple should go.  Each record in the array will contain a boolean,
-	 * choose_left, that indicates which node the tuple prefers to be on,
-	 * and the absolute difference in cost between putting the tuple in
-	 * its favored node and in the other node.
+	 * The cost_vector array will contain hints for determining where each tuple
+	 * should go.  Each record in the array will contain a boolean,
+	 * choose_left, that indicates which node the tuple prefers to be on, and
+	 * the absolute difference in cost between putting the tuple in its
+	 * favored node and in the other node.
 	 *
 	 * Later, we will sort the cost_vector in descending order by cost
-	 * difference, and consider the tuples in that order for placement.
-	 * That way, the tuples that *really* want to be in one node or the
-	 * other get to choose first, and the tuples that don't really care
-	 * choose last.
+	 * difference, and consider the tuples in that order for placement. That
+	 * way, the tuples that *really* want to be in one node or the other get
+	 * to choose first, and the tuples that don't really care choose last.
 	 *
 	 * First, build the cost_vector array.	The new index tuple will also be
-	 * handled in this loop, and represented in the array, with
-	 * i==newitemoff.
+	 * handled in this loop, and represented in the array, with i==newitemoff.
 	 *
-	 * In the case of variable size tuples it is possible that we only have
-	 * the two seeds and no other tuples, in which case we don't do any of
-	 * this cost_vector stuff.
+	 * In the case of variable size tuples it is possible that we only have the
+	 * two seeds and no other tuples, in which case we don't do any of this
+	 * cost_vector stuff.
 	 */
 
 	/* to keep compiler quiet */
@@ -961,13 +900,13 @@ rtpicksplit(Relation r,
 	}
 
 	/*
-	 * Now make the final decisions about where each tuple will go, and
-	 * build the vectors to return in the SPLITVEC record.
+	 * Now make the final decisions about where each tuple will go, and build
+	 * the vectors to return in the SPLITVEC record.
 	 *
-	 * The cost_vector array contains (descriptions of) all the tuples, in
-	 * the order that we want to consider them, so we we just iterate
-	 * through it and place each tuple in left or right nodes, according
-	 * to the criteria described below.
+	 * The cost_vector array contains (descriptions of) all the tuples, in the
+	 * order that we want to consider them, so we we just iterate through it
+	 * and place each tuple in left or right nodes, according to the criteria
+	 * described below.
 	 */
 
 	left = v->spl_left;
@@ -976,8 +915,8 @@ rtpicksplit(Relation r,
 	v->spl_nright = 0;
 
 	/*
-	 * Place the seeds first. left avail space, left union, right avail
-	 * space, and right union have already been adjusted for the seeds.
+	 * Place the seeds first. left avail space, left union, right avail space,
+	 * and right union have already been adjusted for the seeds.
 	 */
 
 	*left++ = seed_1;
@@ -1019,32 +958,30 @@ rtpicksplit(Relation r,
 					  PointerGetDatum(&size_beta));
 
 		/*
-		 * We prefer the page that shows smaller enlargement of its union
-		 * area (Guttman's algorithm), but we must take care that at least
-		 * one page will still have room for the new item after this one
-		 * is added.
+		 * We prefer the page that shows smaller enlargement of its union area
+		 * (Guttman's algorithm), but we must take care that at least one page
+		 * will still have room for the new item after this one is added.
 		 *
-		 * (We know that all the old items together can fit on one page, so
-		 * we need not worry about any other problem than failing to fit
-		 * the new item.)
+		 * (We know that all the old items together can fit on one page, so we
+		 * need not worry about any other problem than failing to fit the new
+		 * item.)
 		 *
-		 * Guttman's algorithm actually has two factors to consider (in
-		 * order):	1. if one node has so many tuples already assigned to
-		 * it that the other needs all the rest in order to satisfy the
-		 * condition that neither node has fewer than m tuples, then that
-		 * is decisive; 2. otherwise, choose the page that shows the
-		 * smaller enlargement of its union area.
+		 * Guttman's algorithm actually has two factors to consider (in order):
+		 * 1. if one node has so many tuples already assigned to it that the
+		 * other needs all the rest in order to satisfy the condition that
+		 * neither node has fewer than m tuples, then that is decisive; 2.
+		 * otherwise, choose the page that shows the smaller enlargement of
+		 * its union area.
 		 *
-		 * I have chosen m = M/2, where M is the maximum number of tuples on
-		 * a page.	(Actually, this is only strictly true for fixed size
-		 * tuples.	For variable size tuples, there still might have to be
-		 * only one tuple on a page, if it is really big.  But even with
-		 * variable size tuples we still try to get m as close as possible
-		 * to M/2.)
+		 * I have chosen m = M/2, where M is the maximum number of tuples on a
+		 * page.  (Actually, this is only strictly true for fixed size tuples.
+		 * For variable size tuples, there still might have to be only one
+		 * tuple on a page, if it is really big.  But even with variable size
+		 * tuples we still try to get m as close as possible to M/2.)
 		 *
-		 * The question of which page shows the smaller enlargement of its
-		 * union area has already been answered, and the answer stored in
-		 * the choose_left field of the SPLITCOST record.
+		 * The question of which page shows the smaller enlargement of its union
+		 * area has already been answered, and the answer stored in the
+		 * choose_left field of the SPLITCOST record.
 		 */
 		left_feasible = (left_avail_space >= item_1_sz &&
 						 ((left_avail_space - item_1_sz) >= newitemsz ||
@@ -1056,9 +993,8 @@ rtpicksplit(Relation r,
 		{
 			/*
 			 * Both feasible, use Guttman's algorithm. First check the m
-			 * condition described above, and if that doesn't apply,
-			 * choose the page with the smaller enlargement of its union
-			 * area.
+			 * condition described above, and if that doesn't apply, choose
+			 * the page with the smaller enlargement of its union area.
 			 */
 			if (v->spl_nleft > max_after_split)
 				choose_left = false;
@@ -1206,9 +1142,8 @@ rtbulkdelete(PG_FUNCTION_ARGS)
 	num_index_tuples = 0;
 
 	/*
-	 * Since rtree is not marked "amconcurrent" in pg_am, caller should
-	 * have acquired exclusive lock on index relation.	We need no locking
-	 * here.
+	 * Since rtree is not marked "amconcurrent" in pg_am, caller should have
+	 * acquired exclusive lock on index relation.  We need no locking here.
 	 */
 
 	/*
@@ -1355,12 +1290,6 @@ void
 rtree_redo(XLogRecPtr lsn, XLogRecord *record)
 {
 	elog(PANIC, "rtree_redo: unimplemented");
-}
-
-void
-rtree_undo(XLogRecPtr lsn, XLogRecord *record)
-{
-	elog(PANIC, "rtree_undo: unimplemented");
 }
 
 void

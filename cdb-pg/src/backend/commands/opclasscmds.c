@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/opclasscmds.c,v 1.29 2004/12/31 21:59:41 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/opclasscmds.c,v 1.38 2005/10/15 02:49:15 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -17,13 +17,13 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
-#include "catalog/catname.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_amop.h"
 #include "catalog/pg_amproc.h"
+#include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
@@ -117,16 +117,16 @@ DefineOpClass(CreateOpClassStmt *stmt)
 	ReleaseSysCache(tup);
 
 	/*
-	 * Currently, we require superuser privileges to create an opclass.
-	 * This seems necessary because we have no way to validate that the
-	 * offered set of operators and functions are consistent with the AM's
-	 * expectations.  It would be nice to provide such a check someday, if
-	 * it can be done without solving the halting problem :-(
+	 * Currently, we require superuser privileges to create an opclass. This
+	 * seems necessary because we have no way to validate that the offered set
+	 * of operators and functions are consistent with the AM's expectations.
+	 * It would be nice to provide such a check someday, if it can be done
+	 * without solving the halting problem :-(
 	 */
 	if (!superuser())
 		ereport(ERROR,
 				(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-			   errmsg("must be superuser to create an operator class")));
+				 errmsg("must be superuser to create an operator class")));
 
 	/* Look up the datatype */
 	typeoid = typenameTypeId(stmt->datatype);
@@ -223,7 +223,7 @@ DefineOpClass(CreateOpClassStmt *stmt)
 				if (OidIsValid(storageoid))
 					ereport(ERROR,
 							(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-					   errmsg("storage type specified more than once")));
+						   errmsg("storage type specified more than once")));
 				storageoid = typenameTypeId(item->storedtype);
 				break;
 			default:
@@ -244,8 +244,8 @@ DefineOpClass(CreateOpClassStmt *stmt)
 		{
 			/*
 			 * Currently, only GiST allows storagetype different from
-			 * datatype.  This hardcoded test should be eliminated in
-			 * favor of adding another boolean column to pg_am ...
+			 * datatype.  This hardcoded test should be eliminated in favor of
+			 * adding another boolean column to pg_am ...
 			 */
 			if (amoid != GIST_AM_OID)
 				ereport(ERROR,
@@ -255,11 +255,11 @@ DefineOpClass(CreateOpClassStmt *stmt)
 		}
 	}
 
-	rel = heap_openr(OperatorClassRelationName, RowExclusiveLock);
+	rel = heap_open(OperatorClassRelationId, RowExclusiveLock);
 
 	/*
-	 * Make sure there is no existing opclass of this name (this is just
-	 * to give a more friendly error message than "duplicate key").
+	 * Make sure there is no existing opclass of this name (this is just to
+	 * give a more friendly error message than "duplicate key").
 	 */
 	if (SearchSysCacheExists(CLAAMNAMENSP,
 							 ObjectIdGetDatum(amoid),
@@ -272,10 +272,9 @@ DefineOpClass(CreateOpClassStmt *stmt)
 						opcname, stmt->amname)));
 
 	/*
-	 * If we are creating a default opclass, check there isn't one
-	 * already.  (Note we do not restrict this test to visible opclasses;
-	 * this ensures that typcache.c can find unique solutions to its
-	 * questions.)
+	 * If we are creating a default opclass, check there isn't one already.
+	 * (Note we do not restrict this test to visible opclasses; this ensures
+	 * that typcache.c can find unique solutions to its questions.)
 	 */
 	if (stmt->isDefault)
 	{
@@ -287,7 +286,7 @@ DefineOpClass(CreateOpClassStmt *stmt)
 					BTEqualStrategyNumber, F_OIDEQ,
 					ObjectIdGetDatum(amoid));
 
-		scan = systable_beginscan(rel, OpclassAmNameNspIndex, true,
+		scan = systable_beginscan(rel, OpclassAmNameNspIndexId, true,
 								  SnapshotNow, 1, skey);
 
 		while (HeapTupleIsValid(tup = systable_getnext(scan)))
@@ -300,8 +299,8 @@ DefineOpClass(CreateOpClassStmt *stmt)
 						 errmsg("could not make operator class \"%s\" be default for type %s",
 								opcname,
 								TypeNameToString(stmt->datatype)),
-				errdetail("Operator class \"%s\" already is the default.",
-						  NameStr(opclass->opcname))));
+				   errdetail("Operator class \"%s\" already is the default.",
+							 NameStr(opclass->opcname))));
 		}
 
 		systable_endscan(scan);
@@ -321,7 +320,7 @@ DefineOpClass(CreateOpClassStmt *stmt)
 	namestrcpy(&opcName, opcname);
 	values[i++] = NameGetDatum(&opcName);		/* opcname */
 	values[i++] = ObjectIdGetDatum(namespaceoid);		/* opcnamespace */
-	values[i++] = Int32GetDatum(GetUserId());	/* opcowner */
+	values[i++] = ObjectIdGetDatum(GetUserId());		/* opcowner */
 	values[i++] = ObjectIdGetDatum(typeoid);	/* opcintype */
 	values[i++] = BoolGetDatum(stmt->isDefault);		/* opcdefault */
 	values[i++] = ObjectIdGetDatum(storageoid); /* opckeytype */
@@ -342,21 +341,21 @@ DefineOpClass(CreateOpClassStmt *stmt)
 	storeProcedures(opclassoid, procedures);
 
 	/*
-	 * Create dependencies.  Note: we do not create a dependency link to
-	 * the AM, because we don't currently support DROP ACCESS METHOD.
+	 * Create dependencies.  Note: we do not create a dependency link to the
+	 * AM, because we don't currently support DROP ACCESS METHOD.
 	 */
-	myself.classId = RelationGetRelid(rel);
+	myself.classId = OperatorClassRelationId;
 	myself.objectId = opclassoid;
 	myself.objectSubId = 0;
 
 	/* dependency on namespace */
-	referenced.classId = get_system_catalog_relid(NamespaceRelationName);
+	referenced.classId = NamespaceRelationId;
 	referenced.objectId = namespaceoid;
 	referenced.objectSubId = 0;
 	recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
 
 	/* dependency on indexed datatype */
-	referenced.classId = RelOid_pg_type;
+	referenced.classId = TypeRelationId;
 	referenced.objectId = typeoid;
 	referenced.objectSubId = 0;
 	recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
@@ -364,18 +363,18 @@ DefineOpClass(CreateOpClassStmt *stmt)
 	/* dependency on storage datatype */
 	if (OidIsValid(storageoid))
 	{
-		referenced.classId = RelOid_pg_type;
+		referenced.classId = TypeRelationId;
 		referenced.objectId = storageoid;
 		referenced.objectSubId = 0;
 		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
 	}
 
 	/* dependencies on operators */
-	referenced.classId = get_system_catalog_relid(OperatorRelationName);
 	foreach(l, operators)
 	{
 		OpClassMember *op = (OpClassMember *) lfirst(l);
 
+		referenced.classId = OperatorRelationId;
 		referenced.objectId = op->object;
 		referenced.objectSubId = 0;
 		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
@@ -386,11 +385,14 @@ DefineOpClass(CreateOpClassStmt *stmt)
 	{
 		OpClassMember *proc = (OpClassMember *) lfirst(l);
 
-		referenced.classId = RelOid_pg_proc;
+		referenced.classId = ProcedureRelationId;
 		referenced.objectId = proc->object;
 		referenced.objectSubId = 0;
 		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
 	}
+
+	/* dependency on owner */
+	recordDependencyOnOwner(OperatorClassRelationId, opclassoid, GetUserId());
 
 	heap_close(rel, RowExclusiveLock);
 }
@@ -421,8 +423,8 @@ assignOperSubtype(Oid amoid, Oid typeoid, Oid operOid)
 	opform = (Form_pg_operator) GETSTRUCT(optup);
 
 	/*
-	 * btree operators must be binary ops returning boolean, and the
-	 * left-side input type must match the operator class' input type.
+	 * btree operators must be binary ops returning boolean, and the left-side
+	 * input type must match the operator class' input type.
 	 */
 	if (opform->oprkind != 'b')
 		ereport(ERROR,
@@ -435,11 +437,11 @@ assignOperSubtype(Oid amoid, Oid typeoid, Oid operOid)
 	if (opform->oprleft != typeoid)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-		  errmsg("btree operators must have index type as left input")));
+			  errmsg("btree operators must have index type as left input")));
 
 	/*
-	 * The subtype is "default" (0) if oprright matches the operator
-	 * class, otherwise it is oprright.
+	 * The subtype is "default" (0) if oprright matches the operator class,
+	 * otherwise it is oprright.
 	 */
 	if (opform->oprright == typeoid)
 		subtype = InvalidOid;
@@ -475,8 +477,8 @@ assignProcSubtype(Oid amoid, Oid typeoid, Oid procOid)
 	procform = (Form_pg_proc) GETSTRUCT(proctup);
 
 	/*
-	 * btree support procs must be 2-arg procs returning int4, and the
-	 * first input type must match the operator class' input type.
+	 * btree support procs must be 2-arg procs returning int4, and the first
+	 * input type must match the operator class' input type.
 	 */
 	if (procform->pronargs != 2)
 		ereport(ERROR,
@@ -486,19 +488,19 @@ assignProcSubtype(Oid amoid, Oid typeoid, Oid procOid)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 				 errmsg("btree procedures must return integer")));
-	if (procform->proargtypes[0] != typeoid)
+	if (procform->proargtypes.values[0] != typeoid)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-		errmsg("btree procedures must have index type as first input")));
+			errmsg("btree procedures must have index type as first input")));
 
 	/*
-	 * The subtype is "default" (0) if second input type matches the
-	 * operator class, otherwise it is the second input type.
+	 * The subtype is "default" (0) if second input type matches the operator
+	 * class, otherwise it is the second input type.
 	 */
-	if (procform->proargtypes[1] == typeoid)
+	if (procform->proargtypes.values[1] == typeoid)
 		subtype = InvalidOid;
 	else
-		subtype = procform->proargtypes[1];
+		subtype = procform->proargtypes.values[1];
 	ReleaseSysCache(proctup);
 	return subtype;
 }
@@ -522,13 +524,13 @@ addClassMember(List **list, OpClassMember *member, bool isProc)
 			if (isProc)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-					 errmsg("procedure number %d appears more than once",
-							member->number)));
+						 errmsg("procedure number %d appears more than once",
+								member->number)));
 			else
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-					  errmsg("operator number %d appears more than once",
-							 member->number)));
+						 errmsg("operator number %d appears more than once",
+								member->number)));
 		}
 	}
 	*list = lappend(*list, member);
@@ -547,7 +549,7 @@ storeOperators(Oid opclassoid, List *operators)
 	ListCell   *l;
 	int			i;
 
-	rel = heap_openr(AccessMethodOperatorRelationName, RowExclusiveLock);
+	rel = heap_open(AccessMethodOperatorRelationId, RowExclusiveLock);
 
 	foreach(l, operators)
 	{
@@ -591,7 +593,7 @@ storeProcedures(Oid opclassoid, List *procedures)
 	ListCell   *l;
 	int			i;
 
-	rel = heap_openr(AccessMethodProcedureRelationName, RowExclusiveLock);
+	rel = heap_open(AccessMethodProcedureRelationId, RowExclusiveLock);
 
 	foreach(l, procedures)
 	{
@@ -685,7 +687,7 @@ RemoveOpClass(RemoveOpClassStmt *stmt)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("operator class \"%s\" does not exist for access method \"%s\"",
-					NameListToString(stmt->opclassname), stmt->amname)));
+						NameListToString(stmt->opclassname), stmt->amname)));
 
 	opcID = HeapTupleGetOid(tuple);
 
@@ -701,7 +703,7 @@ RemoveOpClass(RemoveOpClassStmt *stmt)
 	/*
 	 * Do the deletion
 	 */
-	object.classId = get_system_catalog_relid(OperatorClassRelationName);
+	object.classId = OperatorClassRelationId;
 	object.objectId = opcID;
 	object.objectSubId = 0;
 
@@ -722,7 +724,7 @@ RemoveOpClassById(Oid opclassOid)
 	/*
 	 * First remove the pg_opclass entry itself.
 	 */
-	rel = heap_openr(OperatorClassRelationName, RowExclusiveLock);
+	rel = heap_open(OperatorClassRelationId, RowExclusiveLock);
 
 	tup = SearchSysCache(CLAOID,
 						 ObjectIdGetDatum(opclassOid),
@@ -744,9 +746,9 @@ RemoveOpClassById(Oid opclassOid)
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(opclassOid));
 
-	rel = heap_openr(AccessMethodOperatorRelationName, RowExclusiveLock);
+	rel = heap_open(AccessMethodOperatorRelationId, RowExclusiveLock);
 
-	scan = systable_beginscan(rel, AccessMethodStrategyIndex, true,
+	scan = systable_beginscan(rel, AccessMethodStrategyIndexId, true,
 							  SnapshotNow, 1, skey);
 
 	while (HeapTupleIsValid(tup = systable_getnext(scan)))
@@ -763,9 +765,9 @@ RemoveOpClassById(Oid opclassOid)
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(opclassOid));
 
-	rel = heap_openr(AccessMethodProcedureRelationName, RowExclusiveLock);
+	rel = heap_open(AccessMethodProcedureRelationId, RowExclusiveLock);
 
-	scan = systable_beginscan(rel, AccessMethodProcedureIndex, true,
+	scan = systable_beginscan(rel, AccessMethodProcedureIndexId, true,
 							  SnapshotNow, 1, skey);
 
 	while (HeapTupleIsValid(tup = systable_getnext(scan)))
@@ -800,7 +802,7 @@ RenameOpClass(List *name, const char *access_method, const char *newname)
 				 errmsg("access method \"%s\" does not exist",
 						access_method)));
 
-	rel = heap_openr(OperatorClassRelationName, RowExclusiveLock);
+	rel = heap_open(OperatorClassRelationId, RowExclusiveLock);
 
 	/*
 	 * Look up the opclass
@@ -880,7 +882,7 @@ RenameOpClass(List *name, const char *access_method, const char *newname)
  * Change opclass owner
  */
 void
-AlterOpClassOwner(List *name, const char *access_method, AclId newOwnerSysId)
+AlterOpClassOwner(List *name, const char *access_method, Oid newOwnerId)
 {
 	Oid			opcOid;
 	Oid			amOid;
@@ -889,6 +891,7 @@ AlterOpClassOwner(List *name, const char *access_method, AclId newOwnerSysId)
 	char	   *opcname;
 	HeapTuple	tup;
 	Relation	rel;
+	AclResult	aclresult;
 	Form_pg_opclass opcForm;
 
 	amOid = GetSysCacheOid(AMNAME,
@@ -900,7 +903,7 @@ AlterOpClassOwner(List *name, const char *access_method, AclId newOwnerSysId)
 				 errmsg("access method \"%s\" does not exist",
 						access_method)));
 
-	rel = heap_openr(OperatorClassRelationName, RowExclusiveLock);
+	rel = heap_open(OperatorClassRelationId, RowExclusiveLock);
 
 	/*
 	 * Look up the opclass
@@ -922,6 +925,7 @@ AlterOpClassOwner(List *name, const char *access_method, AclId newOwnerSysId)
 					 errmsg("operator class \"%s\" does not exist for access method \"%s\"",
 							opcname, access_method)));
 
+		opcOid = HeapTupleGetOid(tup);
 	}
 	else
 	{
@@ -945,23 +949,38 @@ AlterOpClassOwner(List *name, const char *access_method, AclId newOwnerSysId)
 	 * If the new owner is the same as the existing owner, consider the
 	 * command to have succeeded.  This is for dump restoration purposes.
 	 */
-	if (opcForm->opcowner != newOwnerSysId)
+	if (opcForm->opcowner != newOwnerId)
 	{
-		/* Otherwise, must be superuser to change object ownership */
+		/* Superusers can always do it */
 		if (!superuser())
-			ereport(ERROR,
-					(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-					 errmsg("must be superuser to change owner")));
+		{
+			/* Otherwise, must be owner of the existing object */
+			if (!pg_opclass_ownercheck(HeapTupleGetOid(tup), GetUserId()))
+				aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_OPCLASS,
+							   NameListToString(name));
+
+			/* Must be able to become new owner */
+			check_is_member_of_role(GetUserId(), newOwnerId);
+
+			/* New owner must have CREATE privilege on namespace */
+			aclresult = pg_namespace_aclcheck(namespaceOid, newOwnerId,
+											  ACL_CREATE);
+			if (aclresult != ACLCHECK_OK)
+				aclcheck_error(aclresult, ACL_KIND_NAMESPACE,
+							   get_namespace_name(namespaceOid));
+		}
 
 		/*
-		 * Modify the owner --- okay to scribble on tup because it's a
-		 * copy
+		 * Modify the owner --- okay to scribble on tup because it's a copy
 		 */
-		opcForm->opcowner = newOwnerSysId;
+		opcForm->opcowner = newOwnerId;
 
 		simple_heap_update(rel, &tup->t_self, tup);
 
 		CatalogUpdateIndexes(rel, tup);
+
+		/* Update owner dependency reference */
+		changeDependencyOnOwner(OperatorClassRelationId, opcOid, newOwnerId);
 	}
 
 	heap_close(rel, NoLock);

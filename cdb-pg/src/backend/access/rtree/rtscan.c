@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/rtree/rtscan.c,v 1.56 2004/12/31 21:59:26 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/rtree/rtscan.c,v 1.60 2005/10/15 02:49:09 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -89,12 +89,24 @@ rtrescan(PG_FUNCTION_ARGS)
 		freestack(p->s_markstk);
 		p->s_stack = p->s_markstk = NULL;
 		p->s_flags = 0x0;
+		/* drop pins on buffers -- no locks held */
+		if (BufferIsValid(p->curbuf))
+		{
+			ReleaseBuffer(p->curbuf);
+			p->curbuf = InvalidBuffer;
+		}
+		if (BufferIsValid(p->markbuf))
+		{
+			ReleaseBuffer(p->markbuf);
+			p->markbuf = InvalidBuffer;
+		}
 	}
 	else
 	{
 		/* initialize opaque data */
 		p = (RTreeScanOpaque) palloc(sizeof(RTreeScanOpaqueData));
 		p->s_stack = p->s_markstk = NULL;
+		p->curbuf = p->markbuf = InvalidBuffer;
 		p->s_internalNKey = s->numberOfKeys;
 		p->s_flags = 0x0;
 		s->opaque = p;
@@ -111,29 +123,38 @@ rtrescan(PG_FUNCTION_ARGS)
 
 		/*
 		 * Scans on internal pages use different operators than they do on
-		 * leaf pages.	For example, if the user wants all boxes that
-		 * exactly match (x1,y1,x2,y2), then on internal pages we need to
-		 * find all boxes that contain (x1,y1,x2,y2).
+		 * leaf pages.	For example, if the user wants all boxes that exactly
+		 * match (x1,y1,x2,y2), then on internal pages we need to find all
+		 * boxes that contain (x1,y1,x2,y2).  rtstrat.c knows how to pick the
+		 * opclass member to use for internal pages. In some cases we need to
+		 * negate the result of the opclass member.
 		 */
 		for (i = 0; i < s->numberOfKeys; i++)
 		{
 			AttrNumber	attno = s->keyData[i].sk_attno;
 			Oid			opclass;
+			Oid			subtype;
+			StrategyNumber orig_strategy;
 			StrategyNumber int_strategy;
 			Oid			int_oper;
 			RegProcedure int_proc;
+			int			int_flags;
 
-			opclass = s->indexRelation->rd_index->indclass[attno - 1];
-			int_strategy = RTMapToInternalOperator(s->keyData[i].sk_strategy);
-			int_oper = get_opclass_member(opclass,
-										  s->keyData[i].sk_subtype,
-										  int_strategy);
+			opclass = s->indexRelation->rd_indclass->values[attno - 1];
+			subtype = s->keyData[i].sk_subtype;
+			orig_strategy = s->keyData[i].sk_strategy;
+			int_strategy = RTMapToInternalOperator(orig_strategy);
+			int_oper = get_opclass_member(opclass, subtype, int_strategy);
+			Assert(OidIsValid(int_oper));
 			int_proc = get_opcode(int_oper);
+			int_flags = s->keyData[i].sk_flags;
+			if (RTMapToInternalNegate(orig_strategy))
+				int_flags |= SK_NEGATE;
 			ScanKeyEntryInitialize(&(p->s_internalKey[i]),
-								   s->keyData[i].sk_flags,
+								   int_flags,
 								   attno,
 								   int_strategy,
-								   s->keyData[i].sk_subtype,
+								   subtype,
 								   int_proc,
 								   s->keyData[i].sk_argument);
 		}
@@ -175,6 +196,18 @@ rtmarkpos(PG_FUNCTION_ARGS)
 	freestack(p->s_markstk);
 	p->s_markstk = o;
 
+	/* Update markbuf: make sure to bump ref count on curbuf */
+	if (BufferIsValid(p->markbuf))
+	{
+		ReleaseBuffer(p->markbuf);
+		p->markbuf = InvalidBuffer;
+	}
+	if (BufferIsValid(p->curbuf))
+	{
+		IncrBufferRefCount(p->curbuf);
+		p->markbuf = p->curbuf;
+	}
+
 	PG_RETURN_VOID();
 }
 
@@ -211,6 +244,18 @@ rtrestrpos(PG_FUNCTION_ARGS)
 	freestack(p->s_stack);
 	p->s_stack = o;
 
+	/* Update curbuf; be sure to bump ref count on markbuf */
+	if (BufferIsValid(p->curbuf))
+	{
+		ReleaseBuffer(p->curbuf);
+		p->curbuf = InvalidBuffer;
+	}
+	if (BufferIsValid(p->markbuf))
+	{
+		IncrBufferRefCount(p->markbuf);
+		p->curbuf = p->markbuf;
+	}
+
 	PG_RETURN_VOID();
 }
 
@@ -226,11 +271,14 @@ rtendscan(PG_FUNCTION_ARGS)
 	{
 		freestack(p->s_stack);
 		freestack(p->s_markstk);
+		if (BufferIsValid(p->curbuf))
+			ReleaseBuffer(p->curbuf);
+		if (BufferIsValid(p->markbuf))
+			ReleaseBuffer(p->markbuf);
 		pfree(s->opaque);
 	}
 
 	rtdropscan(s);
-	/* XXX don't unset read lock -- two-phase locking */
 
 	PG_RETURN_VOID();
 }
@@ -285,9 +333,9 @@ ReleaseResources_rtree(void)
 	RTScanList	next;
 
 	/*
-	 * Note: this should be a no-op during normal query shutdown. However,
-	 * in an abort situation ExecutorEnd is not called and so there may be
-	 * open index scans to clean up.
+	 * Note: this should be a no-op during normal query shutdown. However, in
+	 * an abort situation ExecutorEnd is not called and so there may be open
+	 * index scans to clean up.
 	 */
 	prev = NULL;
 
@@ -392,8 +440,7 @@ adjustiptr(IndexScanDesc s,
 						else
 						{
 							/*
-							 * remember that we're before the current
-							 * tuple
+							 * remember that we're before the current tuple
 							 */
 							ItemPointerSet(iptr, blkno, FirstOffsetNumber);
 							if (iptr == &(s->currentItemData))

@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/parser/parse_type.c,v 1.73 2004/12/31 22:00:27 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/parser/parse_type.c,v 1.77 2005/10/15 02:49:22 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -59,8 +59,8 @@ LookupTypeName(const TypeName *typename)
 			case 1:
 				ereport(ERROR,
 						(errcode(ERRCODE_SYNTAX_ERROR),
-						 errmsg("improper %%TYPE reference (too few dotted names): %s",
-								NameListToString(typename->names))));
+				errmsg("improper %%TYPE reference (too few dotted names): %s",
+					   NameListToString(typename->names))));
 				break;
 			case 2:
 				rel->relname = strVal(linitial(typename->names));
@@ -91,8 +91,8 @@ LookupTypeName(const TypeName *typename)
 		if (attnum == InvalidAttrNumber)
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_COLUMN),
-				errmsg("column \"%s\" of relation \"%s\" does not exist",
-					   field, rel->relname)));
+					 errmsg("column \"%s\" of relation \"%s\" does not exist",
+							field, rel->relname)));
 		restype = get_atttype(relid, attnum);
 
 		/* this construct should never have an array indicator */
@@ -239,15 +239,6 @@ typenameType(const TypeName *typename)
 	return (Type) tup;
 }
 
-/* check to see if a type id is valid, returns true if it is */
-bool
-typeidIsValid(Oid id)
-{
-	return SearchSysCacheExists(TYPEOID,
-								ObjectIdGetDatum(id),
-								0, 0, 0);
-}
-
 /* return a Type structure, given a type id */
 /* NB: caller must ReleaseSysCache the type tuple when done with it */
 Type
@@ -373,8 +364,8 @@ pts_error_callback(void *arg)
 
 	/*
 	 * Currently we just suppress any syntax error position report, rather
-	 * than transforming to an "internal query" error.	It's unlikely that
-	 * a type name is complex enough to need positioning.
+	 * than transforming to an "internal query" error.	It's unlikely that a
+	 * type name is complex enough to need positioning.
 	 */
 	errposition(0);
 }
@@ -415,8 +406,8 @@ parseTypeString(const char *str, Oid *type_id, int32 *typmod)
 	error_context_stack = ptserrcontext.previous;
 
 	/*
-	 * Make sure we got back exactly what we expected and no more;
-	 * paranoia is justified since the string might contain anything.
+	 * Make sure we got back exactly what we expected and no more; paranoia is
+	 * justified since the string might contain anything.
 	 */
 	if (list_length(raw_parsetree_list) != 1)
 		goto fail;
@@ -432,7 +423,7 @@ parseTypeString(const char *str, Oid *type_id, int32 *typmod)
 		stmt->sortClause != NIL ||
 		stmt->limitOffset != NULL ||
 		stmt->limitCount != NULL ||
-		stmt->forUpdate != NIL ||
+		stmt->lockingClause != NULL ||
 		stmt->op != SETOP_NONE)
 		goto fail;
 	if (list_length(stmt->targetList) != 1)

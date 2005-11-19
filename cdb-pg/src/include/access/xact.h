@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/access/xact.h,v 1.74 2004/12/31 22:03:21 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/access/xact.h,v 1.79 2005/10/15 02:49:42 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -15,10 +15,9 @@
 #define XACT_H
 
 #include "access/xlog.h"
-#include "access/twophase.h"
 #include "storage/relfilenode.h"
 #include "nodes/pg_list.h"
-#include "utils/nabstime.h"
+#include "utils/timestamp.h"
 
 
 /*
@@ -48,8 +47,8 @@ extern bool XactReadOnly;
 typedef enum
 {
 	XACT_EVENT_COMMIT,
-	XACT_EVENT_PREPARE,
-	XACT_EVENT_ABORT
+	XACT_EVENT_ABORT,
+	XACT_EVENT_PREPARE
 } XactEvent;
 
 typedef void (*XactCallback) (XactEvent event, void *arg);
@@ -62,7 +61,7 @@ typedef enum
 } SubXactEvent;
 
 typedef void (*SubXactCallback) (SubXactEvent event, SubTransactionId mySubid,
-								 SubTransactionId parentSubid, void *arg);
+									SubTransactionId parentSubid, void *arg);
 
 
 /* ----------------
@@ -74,11 +73,11 @@ typedef void (*SubXactCallback) (SubXactEvent event, SubTransactionId mySubid,
  * XLOG allows to store some information in high 4 bits of log
  * record xl_info field
  */
-#define XLOG_XACT_COMMIT                      0x00
-#define XLOG_XACT_PREPARE                     0x10
-#define XLOG_XACT_ABORT                       0x20
-#define XLOG_XACT_COMMIT_PREPARED     			0x30
-#define XLOG_XACT_ABORT_PREPARED				0x40
+#define XLOG_XACT_COMMIT			0x00
+#define XLOG_XACT_PREPARE			0x10
+#define XLOG_XACT_ABORT				0x20
+#define XLOG_XACT_COMMIT_PREPARED	0x30
+#define XLOG_XACT_ABORT_PREPARED	0x40
 
 typedef struct xl_xact_commit
 {
@@ -92,11 +91,6 @@ typedef struct xl_xact_commit
 
 #define MinSizeOfXactCommit offsetof(xl_xact_commit, xnodes)
 
-
-/* high bits of xl_info field tells us if it's a prepare,
- * abort or commit record
- */
-
 typedef struct xl_xact_abort
 {
 	time_t		xtime;
@@ -108,6 +102,31 @@ typedef struct xl_xact_abort
 } xl_xact_abort;
 
 #define MinSizeOfXactAbort offsetof(xl_xact_abort, xnodes)
+
+/*
+ * COMMIT_PREPARED and ABORT_PREPARED are identical to COMMIT/ABORT records
+ * except that we have to store the XID of the prepared transaction explicitly
+ * --- the XID in the record header will be for the transaction doing the
+ * COMMIT PREPARED or ABORT PREPARED command.
+ */
+
+typedef struct xl_xact_commit_prepared
+{
+	TransactionId xid;			/* XID of prepared xact */
+	xl_xact_commit crec;		/* COMMIT record */
+	/* MORE DATA FOLLOWS AT END OF STRUCT */
+} xl_xact_commit_prepared;
+
+#define MinSizeOfXactCommitPrepared offsetof(xl_xact_commit_prepared, crec.xnodes)
+
+typedef struct xl_xact_abort_prepared
+{
+	TransactionId xid;			/* XID of prepared xact */
+	xl_xact_abort arec;			/* ABORT record */
+	/* MORE DATA FOLLOWS AT END OF STRUCT */
+} xl_xact_abort_prepared;
+
+#define MinSizeOfXactAbortPrepared offsetof(xl_xact_abort_prepared, arec.xnodes)
 
 
 /* ----------------
@@ -121,17 +140,17 @@ extern TransactionId GetCurrentTransactionId(void);
 extern TransactionId GetCurrentTransactionIdIfAny(void);
 extern SubTransactionId GetCurrentSubTransactionId(void);
 extern CommandId GetCurrentCommandId(void);
-extern AbsoluteTime GetCurrentTransactionStartTime(void);
-extern AbsoluteTime GetCurrentTransactionStartTimeUsec(int *usec);
+extern TimestampTz GetCurrentTransactionStartTimestamp(void);
 extern int	GetCurrentTransactionNestLevel(void);
 extern bool TransactionIdIsCurrentTransactionId(TransactionId xid);
 extern void CommandCounterIncrement(void);
 extern void StartTransactionCommand(void);
 extern void CommitTransactionCommand(void);
 extern void AbortCurrentTransaction(void);
-extern void BeginTransactionBlock(char *gid);
-extern bool EndTransactionBlock(char *gid);
-extern void UserAbortTransactionBlock(char *gid);
+extern void BeginTransactionBlock(void);
+extern bool EndTransactionBlock(void);
+extern bool PrepareTransactionBlock(char *gid);
+extern void UserAbortTransactionBlock(void);
 extern void ReleaseSavepoint(List *options);
 extern void DefineSavepoint(char *name);
 extern void RollbackToSavepoint(List *options);
@@ -141,7 +160,6 @@ extern void RollbackAndReleaseCurrentSubTransaction(void);
 extern bool IsSubTransaction(void);
 extern bool IsTransactionBlock(void);
 extern bool IsTransactionOrTransactionBlock(void);
-extern bool IsGlobalTransaction(void);
 extern char TransactionBlockStatusCode(void);
 extern void AbortOutOfAnyTransaction(void);
 extern void PreventTransactionChain(void *stmtNode, const char *stmtType);
@@ -154,17 +172,9 @@ extern void UnregisterSubXactCallback(SubXactCallback callback, void *arg);
 
 extern void RecordTransactionCommit(void);
 
-extern void CommitPreparedTransaction(char *gid);
-extern void AbortPreparedTransaction(char *gid);
-extern void PrepareTransactionBlock(char *gid);
-
 extern int	xactGetCommittedChildren(TransactionId **ptr);
 
-extern void XactPushRollback(void (*func) (void *), void *data);
-extern void XactPopRollback(void);
-
 extern void xact_redo(XLogRecPtr lsn, XLogRecord *record);
-extern void xact_undo(XLogRecPtr lsn, XLogRecord *record);
 extern void xact_desc(char *buf, uint8 xl_info, char *rec);
 
 #endif   /* XACT_H */

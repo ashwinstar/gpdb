@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/rowtypes.c,v 1.8.4.2 2005/04/30 20:04:46 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/rowtypes.c,v 1.13 2005/10/15 02:49:29 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -54,6 +54,10 @@ record_in(PG_FUNCTION_ARGS)
 {
 	char	   *string = PG_GETARG_CSTRING(0);
 	Oid			tupType = PG_GETARG_OID(1);
+
+#ifdef NOT_USED
+	int32		typmod = PG_GETARG_INT32(2);
+#endif
 	HeapTupleHeader result;
 	int32		tupTypmod;
 	TupleDesc	tupdesc;
@@ -69,14 +73,14 @@ record_in(PG_FUNCTION_ARGS)
 
 	/*
 	 * Use the passed type unless it's RECORD; we can't support input of
-	 * anonymous types, mainly because there's no good way to figure out
-	 * which anonymous type is wanted.	Note that for RECORD, what we'll
-	 * probably actually get is RECORD's typelem, ie, zero.
+	 * anonymous types, mainly because there's no good way to figure out which
+	 * anonymous type is wanted.  Note that for RECORD, what we'll probably
+	 * actually get is RECORD's typelem, ie, zero.
 	 */
 	if (tupType == InvalidOid || tupType == RECORDOID)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-		errmsg("input of anonymous composite types is not implemented")));
+		   errmsg("input of anonymous composite types is not implemented")));
 	tupTypmod = -1;				/* for all non-anonymous types */
 	tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
 	ncolumns = tupdesc->natts;
@@ -150,7 +154,7 @@ record_in(PG_FUNCTION_ARGS)
 				/* *ptr must be ')' */
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-					  errmsg("malformed record literal: \"%s\"", string),
+						 errmsg("malformed record literal: \"%s\"", string),
 						 errdetail("Too few columns.")));
 		}
 
@@ -181,10 +185,10 @@ record_in(PG_FUNCTION_ARGS)
 				{
 					if (*ptr == '\0')
 						ereport(ERROR,
-						   (errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-							errmsg("malformed record literal: \"%s\"",
-								   string),
-							errdetail("Unexpected end of input.")));
+								(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
+								 errmsg("malformed record literal: \"%s\"",
+										string),
+								 errdetail("Unexpected end of input.")));
 					appendStringInfoChar(&buf, *ptr++);
 				}
 				else if (ch == '\"')
@@ -218,8 +222,8 @@ record_in(PG_FUNCTION_ARGS)
 
 			values[i] = FunctionCall3(&column_info->proc,
 									  CStringGetDatum(buf.data),
-							   ObjectIdGetDatum(column_info->typioparam),
-							Int32GetDatum(tupdesc->attrs[i]->atttypmod));
+								   ObjectIdGetDatum(column_info->typioparam),
+								Int32GetDatum(tupdesc->attrs[i]->atttypmod));
 			nulls[i] = ' ';
 		}
 
@@ -246,9 +250,9 @@ record_in(PG_FUNCTION_ARGS)
 	tuple = heap_formtuple(tupdesc, values, nulls);
 
 	/*
-	 * We cannot return tuple->t_data because heap_formtuple allocates it
-	 * as part of a larger chunk, and our caller may expect to be able to
-	 * pfree our result.  So must copy the info into a new palloc chunk.
+	 * We cannot return tuple->t_data because heap_formtuple allocates it as
+	 * part of a larger chunk, and our caller may expect to be able to pfree
+	 * our result.	So must copy the info into a new palloc chunk.
 	 */
 	result = (HeapTupleHeader) palloc(tuple->t_len);
 	memcpy(result, tuple->t_data, tuple->t_len);
@@ -362,17 +366,14 @@ record_out(PG_FUNCTION_ARGS)
 
 			getTypeOutputInfo(column_type,
 							  &column_info->typiofunc,
-							  &column_info->typioparam,
 							  &typIsVarlena);
 			fmgr_info_cxt(column_info->typiofunc, &column_info->proc,
 						  fcinfo->flinfo->fn_mcxt);
 			column_info->column_type = column_type;
 		}
 
-		value = DatumGetCString(FunctionCall3(&column_info->proc,
-											  values[i],
-							   ObjectIdGetDatum(column_info->typioparam),
-						   Int32GetDatum(tupdesc->attrs[i]->atttypmod)));
+		value = DatumGetCString(FunctionCall1(&column_info->proc,
+											  values[i]));
 
 		/* Detect whether we need double quotes for this value */
 		nq = (value[0] == '\0');	/* force quotes for empty string */
@@ -420,6 +421,10 @@ record_recv(PG_FUNCTION_ARGS)
 {
 	StringInfo	buf = (StringInfo) PG_GETARG_POINTER(0);
 	Oid			tupType = PG_GETARG_OID(1);
+
+#ifdef NOT_USED
+	int32		typmod = PG_GETARG_INT32(2);
+#endif
 	HeapTupleHeader result;
 	int32		tupTypmod;
 	TupleDesc	tupdesc;
@@ -434,14 +439,14 @@ record_recv(PG_FUNCTION_ARGS)
 
 	/*
 	 * Use the passed type unless it's RECORD; we can't support input of
-	 * anonymous types, mainly because there's no good way to figure out
-	 * which anonymous type is wanted.	Note that for RECORD, what we'll
-	 * probably actually get is RECORD's typelem, ie, zero.
+	 * anonymous types, mainly because there's no good way to figure out which
+	 * anonymous type is wanted.  Note that for RECORD, what we'll probably
+	 * actually get is RECORD's typelem, ie, zero.
 	 */
 	if (tupType == InvalidOid || tupType == RECORDOID)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-		errmsg("input of anonymous composite types is not implemented")));
+		   errmsg("input of anonymous composite types is not implemented")));
 	tupTypmod = -1;				/* for all non-anonymous types */
 	tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
 	ncolumns = tupdesc->natts;
@@ -534,10 +539,9 @@ record_recv(PG_FUNCTION_ARGS)
 		{
 			/*
 			 * Rather than copying data around, we just set up a phony
-			 * StringInfo pointing to the correct portion of the input
-			 * buffer. We assume we can scribble on the input buffer so as
-			 * to maintain the convention that StringInfos have a trailing
-			 * null.
+			 * StringInfo pointing to the correct portion of the input buffer.
+			 * We assume we can scribble on the input buffer so as to maintain
+			 * the convention that StringInfos have a trailing null.
 			 */
 			StringInfoData item_buf;
 			char		csave;
@@ -563,18 +567,18 @@ record_recv(PG_FUNCTION_ARGS)
 				column_info->column_type = column_type;
 			}
 
-			values[i] = FunctionCall2(&column_info->proc,
+			values[i] = FunctionCall3(&column_info->proc,
 									  PointerGetDatum(&item_buf),
-							  ObjectIdGetDatum(column_info->typioparam));
-
+								   ObjectIdGetDatum(column_info->typioparam),
+								Int32GetDatum(tupdesc->attrs[i]->atttypmod));
 			nulls[i] = ' ';
 
 			/* Trouble if it didn't eat the whole buffer */
 			if (item_buf.cursor != itemlen)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
-					 errmsg("improper binary format in record column %d",
-							i + 1)));
+						 errmsg("improper binary format in record column %d",
+								i + 1)));
 
 			buf->data[buf->cursor] = csave;
 		}
@@ -583,9 +587,9 @@ record_recv(PG_FUNCTION_ARGS)
 	tuple = heap_formtuple(tupdesc, values, nulls);
 
 	/*
-	 * We cannot return tuple->t_data because heap_formtuple allocates it
-	 * as part of a larger chunk, and our caller may expect to be able to
-	 * pfree our result.  So must copy the info into a new palloc chunk.
+	 * We cannot return tuple->t_data because heap_formtuple allocates it as
+	 * part of a larger chunk, and our caller may expect to be able to pfree
+	 * our result.	So must copy the info into a new palloc chunk.
 	 */
 	result = (HeapTupleHeader) palloc(tuple->t_len);
 	memcpy(result, tuple->t_data, tuple->t_len);
@@ -702,16 +706,14 @@ record_send(PG_FUNCTION_ARGS)
 
 			getTypeBinaryOutputInfo(column_type,
 									&column_info->typiofunc,
-									&column_info->typioparam,
 									&typIsVarlena);
 			fmgr_info_cxt(column_info->typiofunc, &column_info->proc,
 						  fcinfo->flinfo->fn_mcxt);
 			column_info->column_type = column_type;
 		}
 
-		outputbytes = DatumGetByteaP(FunctionCall2(&column_info->proc,
-												   values[i],
-							 ObjectIdGetDatum(column_info->typioparam)));
+		outputbytes = DatumGetByteaP(FunctionCall1(&column_info->proc,
+												   values[i]));
 
 		/* We assume the result will not have been toasted */
 		pq_sendint(&buf, VARSIZE(outputbytes) - VARHDRSZ, 4);

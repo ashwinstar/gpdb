@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/catalog/pg_type.h,v 1.158 2004/12/31 22:03:26 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/catalog/pg_type.h,v 1.166 2005/10/15 02:49:44 momjian Exp $
  *
  * NOTES
  *	  the genbki.sh script reads this file and generates .bki
@@ -23,7 +23,7 @@
 
 /* ----------------
  *		postgres.h contains the system type definitions and the
- *		CATALOG(), BOOTSTRAP and DATA() sugar words so this file
+ *		CATALOG(), BKI_BOOTSTRAP and DATA() sugar words so this file
  *		can be read by both genbki.sh and the C compiler.
  * ----------------
  */
@@ -38,11 +38,13 @@
  *		See struct FormData_pg_attribute for details.
  * ----------------
  */
-CATALOG(pg_type) BOOTSTRAP
+#define TypeRelationId	1247
+
+CATALOG(pg_type,1247) BKI_BOOTSTRAP
 {
 	NameData	typname;		/* type name */
 	Oid			typnamespace;	/* OID of namespace containing this type */
-	int4		typowner;		/* type owner */
+	Oid			typowner;		/* type owner */
 
 	/*
 	 * For a fixed-size type, typlen is the number of bytes we use to
@@ -54,28 +56,26 @@ CATALOG(pg_type) BOOTSTRAP
 	int2		typlen;
 
 	/*
-	 * typbyval determines whether internal Postgres routines pass a value
-	 * of this type by value or by reference.  typbyval had better be
-	 * FALSE if the length is not 1, 2, or 4 (or 8 on 8-byte-Datum
-	 * machines). Variable-length types are always passed by reference.
-	 * Note that typbyval can be false even if the length would allow
-	 * pass-by-value; this is currently true for type float4, for example.
+	 * typbyval determines whether internal Postgres routines pass a value of
+	 * this type by value or by reference.	typbyval had better be FALSE if
+	 * the length is not 1, 2, or 4 (or 8 on 8-byte-Datum machines).
+	 * Variable-length types are always passed by reference. Note that
+	 * typbyval can be false even if the length would allow pass-by-value;
+	 * this is currently true for type float4, for example.
 	 */
 	bool		typbyval;
 
 	/*
-	 * typtype is 'b' for a basic type, 'c' for a complex type (ie a
-	 * table's rowtype), 'd' for a domain type, or 'p' for a pseudo type.
+	 * typtype is 'b' for a basic type, 'c' for a complex type (ie a table's
+	 * rowtype), 'd' for a domain type, or 'p' for a pseudo type.
 	 *
-	 * If typtype is 'c', typrelid is the OID of the class' entry in
-	 * pg_class.
+	 * If typtype is 'c', typrelid is the OID of the class' entry in pg_class.
 	 */
 	char		typtype;
 
 	/*
 	 * If typisdefined is false, the entry is only a placeholder (forward
-	 * reference).	We know the type name, but not yet anything else about
-	 * it.
+	 * reference).	We know the type name, but not yet anything else about it.
 	 */
 	bool		typisdefined;
 
@@ -85,11 +85,11 @@ CATALOG(pg_type) BOOTSTRAP
 
 	/*
 	 * If typelem is not 0 then it identifies another row in pg_type. The
-	 * current type can then be subscripted like an array yielding values
-	 * of type typelem. A non-zero typelem does not guarantee this type to
-	 * be a "real" array type; some ordinary fixed-length types can also
-	 * be subscripted (e.g., oidvector). Variable-length types can *not*
-	 * be turned into pseudo-arrays like that. Hence, the way to determine
+	 * current type can then be subscripted like an array yielding values of
+	 * type typelem. A non-zero typelem does not guarantee this type to be a
+	 * "real" array type; some ordinary fixed-length types can also be
+	 * subscripted (e.g., name, point). Variable-length types can *not* be
+	 * turned into pseudo-arrays like that. Hence, the way to determine
 	 * whether a type is a "true" array type is if:
 	 *
 	 * typelem != 0 and typlen == -1.
@@ -148,8 +148,8 @@ CATALOG(pg_type) BOOTSTRAP
 	/*
 	 * This flag represents a "NOT NULL" constraint against this datatype.
 	 *
-	 * If true, the attnotnull column for a corresponding table column using
-	 * this datatype will always enforce the NOT NULL constraint.
+	 * If true, the attnotnull column for a corresponding table column using this
+	 * datatype will always enforce the NOT NULL constraint.
 	 *
 	 * Used primarily for domain types.
 	 */
@@ -162,23 +162,23 @@ CATALOG(pg_type) BOOTSTRAP
 	Oid			typbasetype;
 
 	/*
-	 * Domains use typtypmod to record the typmod to be applied to their
-	 * base type (-1 if base type does not use a typmod).  -1 if this type
-	 * is not a domain.
+	 * Domains use typtypmod to record the typmod to be applied to their base
+	 * type (-1 if base type does not use a typmod).  -1 if this type is not a
+	 * domain.
 	 */
 	int4		typtypmod;
 
 	/*
-	 * typndims is the declared number of dimensions for an array domain
-	 * type (i.e., typbasetype is an array type; the domain's typelem will
-	 * match the base type's typelem).  Otherwise zero.
+	 * typndims is the declared number of dimensions for an array domain type
+	 * (i.e., typbasetype is an array type; the domain's typelem will match
+	 * the base type's typelem).  Otherwise zero.
 	 */
 	int4		typndims;
 
 	/*
-	 * If typdefaultbin is not NULL, it is the nodeToString representation
-	 * of a default expression for the type.  Currently this is only used
-	 * for domains.
+	 * If typdefaultbin is not NULL, it is the nodeToString representation of
+	 * a default expression for the type.  Currently this is only used for
+	 * domains.
 	 */
 	text		typdefaultbin;	/* VARIABLE LENGTH FIELD */
 
@@ -187,8 +187,8 @@ CATALOG(pg_type) BOOTSTRAP
 	 * typdefaultbin is not NULL, typdefault must contain a human-readable
 	 * version of the default expression represented by typdefaultbin. If
 	 * typdefaultbin is NULL and typdefault is not, then typdefault is the
-	 * external representation of the type's default value, which may be
-	 * fed to the type's input converter to produce a constant.
+	 * external representation of the type's default value, which may be fed
+	 * to the type's input converter to produce a constant.
 	 */
 	text		typdefault;		/* VARIABLE LENGTH FIELD */
 
@@ -268,8 +268,8 @@ DATA(insert OID = 21 (	int2	   PGNSP PGUID	2 t b t \054 0	 0 int2in int2out int2
 DESCR("-32 thousand to 32 thousand, 2-byte storage");
 #define INT2OID			21
 
-DATA(insert OID = 22 (	int2vector PGNSP PGUID INDEX_MAX_KEYS*2 f b t \054 0  21 int2vectorin int2vectorout int2vectorrecv int2vectorsend - s p f 0 -1 0 _null_ _null_ ));
-DESCR("array of INDEX_MAX_KEYS int2 integers, used in system tables");
+DATA(insert OID = 22 (	int2vector PGNSP PGUID -1 f b t \054 0	21 int2vectorin int2vectorout int2vectorrecv int2vectorsend - i p f 0 -1 0 _null_ _null_ ));
+DESCR("array of int2, used in system tables");
 #define INT2VECTOROID	22
 
 DATA(insert OID = 23 (	int4	   PGNSP PGUID	4 t b t \054 0	 0 int4in int4out int4recv int4send - i p f 0 -1 0 _null_ _null_ ));
@@ -300,9 +300,11 @@ DATA(insert OID = 29 (	cid		   PGNSP PGUID	4 t b t \054 0	 0 cidin cidout cidrec
 DESCR("command identifier type, sequence in transaction id");
 #define CIDOID 29
 
-DATA(insert OID = 30 (	oidvector  PGNSP PGUID INDEX_MAX_KEYS*4 f b t \054 0  26 oidvectorin oidvectorout oidvectorrecv oidvectorsend - i p f 0 -1 0 _null_ _null_ ));
-DESCR("array of INDEX_MAX_KEYS oids, used in system tables");
+DATA(insert OID = 30 (	oidvector  PGNSP PGUID -1 f b t \054 0	26 oidvectorin oidvectorout oidvectorrecv oidvectorsend - i p f 0 -1 0 _null_ _null_ ));
+DESCR("array of oids, used in system tables");
 #define OIDVECTOROID	30
+
+/* hand-built rowtype entries for bootstrapped catalogs: */
 
 DATA(insert OID = 71 (	pg_type			PGNSP PGUID -1 f c t \054 1247 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
 #define PG_TYPE_RELTYPE_OID 71
@@ -312,10 +314,6 @@ DATA(insert OID = 81 (	pg_proc			PGNSP PGUID -1 f c t \054 1255 0 record_in reco
 #define PG_PROC_RELTYPE_OID 81
 DATA(insert OID = 83 (	pg_class		PGNSP PGUID -1 f c t \054 1259 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
 #define PG_CLASS_RELTYPE_OID 83
-DATA(insert OID = 86 (	pg_shadow		PGNSP PGUID -1 f c t \054 1260 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
-DATA(insert OID = 87 (	pg_group		PGNSP PGUID -1 f c t \054 1261 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
-DATA(insert OID = 88 (	pg_database		PGNSP PGUID -1 f c t \054 1262 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
-DATA(insert OID = 90 (	pg_tablespace	PGNSP PGUID -1 f c t \054 1213 0 record_in record_out record_recv record_send - d x f 0 -1 0 _null_ _null_ ));
 
 /* OIDS 100 - 199 */
 
@@ -370,7 +368,7 @@ DESCR("relative, limited-range time interval (Unix delta time)");
 DATA(insert OID = 704 (  tinterval PGNSP PGUID 12 f b t \054 0	 0 tintervalin tintervalout tintervalrecv tintervalsend - i p f 0 -1 0 _null_ _null_ ));
 DESCR("(abstime,abstime), time interval");
 #define TINTERVALOID	704
-DATA(insert OID = 705 (  unknown   PGNSP PGUID -1 f b t \054 0	 0 unknownin unknownout unknownrecv unknownsend - i p f 0 -1 0 _null_ _null_ ));
+DATA(insert OID = 705 (  unknown   PGNSP PGUID -2 f b t \054 0	 0 unknownin unknownout unknownrecv unknownsend - c p f 0 -1 0 _null_ _null_ ));
 DESCR("");
 #define UNKNOWNOID		705
 
@@ -457,7 +455,7 @@ DATA(insert OID = 1184 ( timestamptz PGNSP PGUID	8 f b t \054 0	0 timestamptz_in
 DESCR("date and time with time zone");
 #define TIMESTAMPTZOID	1184
 DATA(insert OID = 1185 ( _timestamptz PGNSP PGUID -1 f b t \054 0	1184 array_in array_out array_recv array_send - d x f 0 -1 0 _null_ _null_ ));
-DATA(insert OID = 1186 ( interval	 PGNSP PGUID 12 f b t \054 0	0 interval_in interval_out interval_recv interval_send - d p f 0 -1 0 _null_ _null_ ));
+DATA(insert OID = 1186 ( interval	 PGNSP PGUID 16 f b t \054 0	0 interval_in interval_out interval_recv interval_send - d p f 0 -1 0 _null_ _null_ ));
 DESCR("@ <number> <units>, time interval");
 #define INTERVALOID		1186
 DATA(insert OID = 1187 ( _interval	 PGNSP PGUID	-1 f b t \054 0 1186 array_in array_out array_recv array_send - d x f 0 -1 0 _null_ _null_ ));
@@ -556,7 +554,6 @@ extern Oid	TypeShellMake(const char *typeName, Oid typeNamespace);
 
 extern Oid TypeCreate(const char *typeName,
 		   Oid typeNamespace,
-		   Oid assignedTypeOid,
 		   Oid relationOid,
 		   char relationKind,
 		   int16 internalSize,
@@ -582,6 +579,7 @@ extern void GenerateTypeDependencies(Oid typeNamespace,
 						 Oid typeObjectId,
 						 Oid relationOid,
 						 char relationKind,
+						 Oid owner,
 						 Oid inputProcedure,
 						 Oid outputProcedure,
 						 Oid receiveProcedure,

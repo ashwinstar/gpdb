@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <dirent.h>
 
-
+#define PROVIDE_64BIT_CRC
 #include "postgres.h"
 #include "cdb/cdbtmlog.h"
 #include "cdb/cdbtm.h"

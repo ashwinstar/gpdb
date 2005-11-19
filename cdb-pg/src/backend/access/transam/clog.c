@@ -24,7 +24,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/backend/access/transam/clog.c,v 1.28 2004/12/31 21:59:29 pgsql Exp $
+ * $PostgreSQL: pgsql/src/backend/access/transam/clog.c,v 1.33 2005/10/15 02:49:09 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -144,8 +144,7 @@ TransactionIdGetStatus(TransactionId xid)
 /*
  * Initialization of shared memory for CLOG
  */
-
-int
+Size
 CLOGShmemSize(void)
 {
 	return SimpleLruShmemSize();
@@ -223,14 +222,14 @@ StartupCLOG(void)
 	/*
 	 * Zero out the remainder of the current clog page.  Under normal
 	 * circumstances it should be zeroes already, but it seems at least
-	 * theoretically possible that XLOG replay will have settled on a
-	 * nextXID value that is less than the last XID actually used and
-	 * marked by the previous database lifecycle (since subtransaction
-	 * commit writes clog but makes no WAL entry).  Let's just be safe.
-	 * (We need not worry about pages beyond the current one, since those
-	 * will be zeroed when first used.  For the same reason, there is no
-	 * need to do anything when nextXid is exactly at a page boundary; and
-	 * it's likely that the "current" page doesn't exist yet in that case.)
+	 * theoretically possible that XLOG replay will have settled on a nextXID
+	 * value that is less than the last XID actually used and marked by the
+	 * previous database lifecycle (since subtransaction commit writes clog
+	 * but makes no WAL entry).  Let's just be safe. (We need not worry about
+	 * pages beyond the current one, since those will be zeroed when first
+	 * used.  For the same reason, there is no need to do anything when
+	 * nextXid is exactly at a page boundary; and it's likely that the
+	 * "current" page doesn't exist yet in that case.)
 	 */
 	if (TransactionIdToPgIndex(xid) != 0)
 	{
@@ -326,8 +325,8 @@ TruncateCLOG(TransactionId oldestXact)
 	int			cutoffPage;
 
 	/*
-	 * The cutoff point is the start of the segment containing oldestXact.
-	 * We pass the *page* containing oldestXact to SimpleLruTruncate.
+	 * The cutoff point is the start of the segment containing oldestXact. We
+	 * pass the *page* containing oldestXact to SimpleLruTruncate.
 	 */
 	cutoffPage = TransactionIdToPage(oldestXact);
 
@@ -336,7 +335,7 @@ TruncateCLOG(TransactionId oldestXact)
 		return;					/* nothing to remove */
 
 	/* Perform a CHECKPOINT */
-	RequestCheckpoint(true);
+	RequestCheckpoint(true, false);
 
 	/* Now we can remove the old CLOG segment(s) */
 	SimpleLruTruncate(ClogCtl, cutoffPage);
@@ -379,9 +378,9 @@ WriteZeroPageXlogRec(int pageno)
 {
 	XLogRecData rdata;
 
-	rdata.buffer = InvalidBuffer;
 	rdata.data = (char *) (&pageno);
 	rdata.len = sizeof(int);
+	rdata.buffer = InvalidBuffer;
 	rdata.next = NULL;
 	(void) XLogInsert(RM_CLOG_ID, CLOG_ZEROPAGE | XLOG_NO_TRAN, &rdata);
 }
@@ -409,11 +408,6 @@ clog_redo(XLogRecPtr lsn, XLogRecord *record)
 
 		LWLockRelease(CLogControlLock);
 	}
-}
-
-void
-clog_undo(XLogRecPtr lsn, XLogRecord *record)
-{
 }
 
 void

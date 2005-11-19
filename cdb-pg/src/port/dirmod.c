@@ -10,7 +10,7 @@
  *	Win32 (NT, Win2k, XP).	replace() doesn't work on Win95/98/Me.
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/port/dirmod.c,v 1.34.4.3 2005/08/02 15:14:56 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/port/dirmod.c,v 1.41 2005/10/15 02:49:51 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -40,6 +40,7 @@
 #endif
 #endif
 
+
 #ifndef FRONTEND
 
 /*
@@ -52,8 +53,7 @@
 #define palloc(sz)		pgport_palloc(sz)
 #define pstrdup(str)	pgport_pstrdup(str)
 #endif
-
-#else /* FRONTEND */
+#else							/* FRONTEND */
 
 /*
  *	In frontend, fake palloc behavior with these
@@ -72,7 +72,7 @@ fe_palloc(Size size)
 
 	if ((res = malloc(size)) == NULL)
 	{
-		fprintf(stderr, "out of memory\n");
+		fprintf(stderr, _("out of memory\n"));
 		exit(1);
 	}
 	return res;
@@ -85,7 +85,7 @@ fe_pstrdup(const char *string)
 
 	if ((res = strdup(string)) == NULL)
 	{
-		fprintf(stderr, "out of memory\n");
+		fprintf(stderr, _("out of memory\n"));
 		exit(1);
 	}
 	return res;
@@ -98,13 +98,12 @@ fe_repalloc(void *pointer, Size size)
 
 	if ((res = realloc(pointer, size)) == NULL)
 	{
-		fprintf(stderr, "out of memory\n");
+		fprintf(stderr, _("out of memory\n"));
 		exit(1);
 	}
 	return res;
 }
-
-#endif /* FRONTEND */
+#endif   /* FRONTEND */
 
 
 #if defined(WIN32) || defined(__CYGWIN__)
@@ -117,7 +116,11 @@ pgrename(const char *from, const char *to)
 {
 	int			loops = 0;
 
-	/* Is this loop even necessary now that we have win32_open()?  */
+	/*
+	 * We need these loops because even though PostgreSQL uses flags that
+	 * allow rename while the file is open, other applications might have
+	 * these files open without those flags.
+	 */
 #if defined(WIN32) && !defined(__CYGWIN__)
 	while (!MoveFileEx(from, to, MOVEFILE_REPLACE_EXISTING))
 #endif
@@ -136,10 +139,10 @@ pgrename(const char *from, const char *to)
 			pg_usleep(100000);	/* us */
 			if (loops == 30)
 #ifndef FRONTEND
-				elog(LOG, "could not rename \"%s\" to \"%s\", continuing to try",
+				elog(LOG, "could not rename file \"%s\" to \"%s\", continuing to try",
 					 from, to);
 #else
-				fprintf(stderr, "could not rename \"%s\" to \"%s\", continuing to try\n",
+				fprintf(stderr, _("could not rename file \"%s\" to \"%s\", continuing to try\n"),
 						from, to);
 #endif
 			loops++;
@@ -147,9 +150,9 @@ pgrename(const char *from, const char *to)
 
 	if (loops > 30)
 #ifndef FRONTEND
-		elog(LOG, "completed rename of \"%s\" to \"%s\"", from, to);
+		elog(LOG, "completed rename of file \"%s\" to \"%s\"", from, to);
 #else
-		fprintf(stderr, "completed rename of \"%s\" to \"%s\"\n", from, to);
+		fprintf(stderr, _("completed rename of file \"%s\" to \"%s\"\n"), from, to);
 #endif
 	return 0;
 }
@@ -163,7 +166,11 @@ pgunlink(const char *path)
 {
 	int			loops = 0;
 
-	/* Is this loop even necessary now that we have win32_open()?  */
+	/*
+	 * We need these loops because even though PostgreSQL uses flags that
+	 * allow unlink while the file is open, other applications might have
+	 * these files open without those flags.
+	 */
 	while (unlink(path))
 	{
 		if (errno != EACCES)
@@ -172,10 +179,10 @@ pgunlink(const char *path)
 		pg_usleep(100000);		/* us */
 		if (loops == 30)
 #ifndef FRONTEND
-			elog(LOG, "could not unlink \"%s\", continuing to try",
+			elog(LOG, "could not remove file \"%s\", continuing to try",
 				 path);
 #else
-			fprintf(stderr, "could not unlink \"%s\", continuing to try\n",
+			fprintf(stderr, _("could not remove file \"%s\", continuing to try\n"),
 					path);
 #endif
 		loops++;
@@ -183,15 +190,15 @@ pgunlink(const char *path)
 
 	if (loops > 30)
 #ifndef FRONTEND
-		elog(LOG, "completed unlink of \"%s\"", path);
+		elog(LOG, "completed removal of file \"%s\"", path);
 #else
-		fprintf(stderr, "completed unlink of \"%s\"\n", path);
+		fprintf(stderr, _("completed removal of file \"%s\"\n"), path);
 #endif
 	return 0;
 }
 
 
-#ifdef WIN32	/* Cygwin has its own symlinks */
+#ifdef WIN32					/* Cygwin has its own symlinks */
 
 /*
  *	pgsymlink support:
@@ -235,7 +242,7 @@ pgsymlink(const char *oldpath, const char *newpath)
 	CreateDirectory(newpath, 0);
 	dirhandle = CreateFile(newpath, GENERIC_READ | GENERIC_WRITE,
 						   0, 0, OPEN_EXISTING,
-		   FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, 0);
+			   FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, 0);
 
 	if (dirhandle == INVALID_HANDLE_VALUE)
 		return -1;
@@ -261,13 +268,13 @@ pgsymlink(const char *oldpath, const char *newpath)
 						reparseBuf->PathBuffer, MAX_PATH);
 
 	/*
-	 * FSCTL_SET_REPARSE_POINT is coded differently depending on SDK
-	 * version; we use our own definition
+	 * FSCTL_SET_REPARSE_POINT is coded differently depending on SDK version;
+	 * we use our own definition
 	 */
 	if (!DeviceIoControl(dirhandle,
-						 CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 41, METHOD_BUFFERED, FILE_ANY_ACCESS),
+	 CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 41, METHOD_BUFFERED, FILE_ANY_ACCESS),
 						 reparseBuf,
-						 reparseBuf->ReparseDataLength + REPARSE_JUNCTION_DATA_BUFFER_HEADER_SIZE,
+	reparseBuf->ReparseDataLength + REPARSE_JUNCTION_DATA_BUFFER_HEADER_SIZE,
 						 0, 0, &len, 0))
 	{
 		LPSTR		msg;
@@ -283,7 +290,7 @@ pgsymlink(const char *oldpath, const char *newpath)
 				 errmsg("could not set junction for \"%s\": %s",
 						nativeTarget, msg)));
 #else
-		fprintf(stderr, "could not set junction for \"%s\": %s\n",
+		fprintf(stderr, _("could not set junction for \"%s\": %s\n"),
 				nativeTarget, msg);
 #endif
 		LocalFree(msg);
@@ -297,10 +304,8 @@ pgsymlink(const char *oldpath, const char *newpath)
 
 	return 0;
 }
-
-#endif /* WIN32 */
-
-#endif /* defined(WIN32) || defined(__CYGWIN__) */
+#endif   /* WIN32 */
+#endif   /* defined(WIN32) || defined(__CYGWIN__) */
 
 
 /* We undefined this above, so we redefine it */
@@ -312,7 +317,7 @@ pgsymlink(const char *oldpath, const char *newpath)
 /*
  * fnames
  *
- * return a list of the names of objects in the argument directory 
+ * return a list of the names of objects in the argument directory
  */
 static char **
 fnames(char *path)
@@ -329,7 +334,7 @@ fnames(char *path)
 #ifndef FRONTEND
 		elog(WARNING, "could not open directory \"%s\": %m", path);
 #else
-		fprintf(stderr, "could not open directory \"%s\": %s\n",
+		fprintf(stderr, _("could not open directory \"%s\": %s\n"),
 				path, strerror(errno));
 #endif
 		return NULL;
@@ -342,7 +347,7 @@ fnames(char *path)
 	{
 		if (strcmp(file->d_name, ".") != 0 && strcmp(file->d_name, "..") != 0)
 		{
-			if (numnames+1 >= fnsize)
+			if (numnames + 1 >= fnsize)
 			{
 				fnsize *= 2;
 				filenames = (char **) repalloc(filenames,
@@ -355,8 +360,8 @@ fnames(char *path)
 #ifdef WIN32
 
 	/*
-	 * This fix is in mingw cvs (runtime/mingwex/dirent.c rev 1.4), but
-	 * not in released version
+	 * This fix is in mingw cvs (runtime/mingwex/dirent.c rev 1.4), but not in
+	 * released version
 	 */
 	if (GetLastError() == ERROR_NO_MORE_FILES)
 		errno = 0;
@@ -366,7 +371,7 @@ fnames(char *path)
 #ifndef FRONTEND
 		elog(WARNING, "could not read directory \"%s\": %m", path);
 #else
-		fprintf(stderr, "could not read directory \"%s\": %s\n",
+		fprintf(stderr, _("could not read directory \"%s\": %s\n"),
 				path, strerror(errno));
 #endif
 	}
@@ -414,8 +419,8 @@ rmtree(char *path, bool rmtopdir)
 	struct stat statbuf;
 
 	/*
-	 * we copy all the names out of the directory before we start
-	 * modifying it.
+	 * we copy all the names out of the directory before we start modifying
+	 * it.
 	 */
 	filenames = fnames(path);
 
@@ -464,7 +469,7 @@ report_and_fail:
 #ifndef FRONTEND
 	elog(WARNING, "could not remove file or directory \"%s\": %m", filepath);
 #else
-	fprintf(stderr, "could not remove file or directory \"%s\": %s\n",
+	fprintf(stderr, _("could not remove file or directory \"%s\": %s\n"),
 			filepath, strerror(errno));
 #endif
 	fnames_cleanup(filenames);

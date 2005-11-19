@@ -8,14 +8,14 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/catalog/pg_namespace.c,v 1.12 2004/12/31 21:59:38 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/catalog/pg_namespace.c,v 1.15 2005/07/07 20:39:57 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
 #include "access/heapam.h"
-#include "catalog/catname.h"
+#include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_namespace.h"
 #include "utils/builtins.h"
@@ -27,7 +27,7 @@
  * ---------------
  */
 Oid
-NamespaceCreate(const char *nspName, int32 ownerSysId, Oid forceOid)
+NamespaceCreate(const char *nspName, Oid ownerId, Oid forceOid)
 {
 	Relation	nspdesc;
 	HeapTuple	tup;
@@ -58,10 +58,10 @@ NamespaceCreate(const char *nspName, int32 ownerSysId, Oid forceOid)
 	}
 	namestrcpy(&nname, nspName);
 	values[Anum_pg_namespace_nspname - 1] = NameGetDatum(&nname);
-	values[Anum_pg_namespace_nspowner - 1] = Int32GetDatum(ownerSysId);
+	values[Anum_pg_namespace_nspowner - 1] = ObjectIdGetDatum(ownerId);
 	nulls[Anum_pg_namespace_nspacl - 1] = 'n';
 
-	nspdesc = heap_openr(NamespaceRelationName, RowExclusiveLock);
+	nspdesc = heap_open(NamespaceRelationId, RowExclusiveLock);
 	tupDesc = nspdesc->rd_att;
 
 	tup = heap_formtuple(tupDesc, values, nulls);
@@ -77,6 +77,9 @@ NamespaceCreate(const char *nspName, int32 ownerSysId, Oid forceOid)
 	CatalogUpdateIndexes(nspdesc, tup);
 
 	heap_close(nspdesc, RowExclusiveLock);
+
+	/* Record dependency on owner */
+	recordDependencyOnOwner(NamespaceRelationId, nspoid, ownerId);
 
 	return nspoid;
 }

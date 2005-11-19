@@ -78,7 +78,7 @@ INSERT INTO atest1 SELECT 1, b FROM atest1; -- fail
 UPDATE atest1 SET a = 1 WHERE a = 2; -- fail
 UPDATE atest2 SET col2 = NULL; -- ok
 UPDATE atest2 SET col2 = NOT col2; -- fails; requires SELECT on atest2
-UPDATE atest2 SET col2 = true WHERE atest1.a = 5; -- ok
+UPDATE atest2 SET col2 = true FROM atest1 WHERE atest1.a = 5; -- ok
 SELECT * FROM atest1 FOR UPDATE; -- fail
 SELECT * FROM atest2 FOR UPDATE; -- fail
 DELETE FROM atest2; -- fail
@@ -192,43 +192,43 @@ GRANT ALL PRIVILEGES ON LANGUAGE sql TO PUBLIC;
 -- has_table_privilege function
 
 -- bad-input checks
-select has_table_privilege(NULL,'pg_shadow','select');
+select has_table_privilege(NULL,'pg_authid','select');
 select has_table_privilege('pg_shad','select');
-select has_table_privilege('nosuchuser','pg_shadow','select');
-select has_table_privilege('pg_shadow','sel');
-select has_table_privilege(-999999,'pg_shadow','update');
+select has_table_privilege('nosuchuser','pg_authid','select');
+select has_table_privilege('pg_authid','sel');
+select has_table_privilege(-999999,'pg_authid','update');
 select has_table_privilege(1,'rule');
 
 -- superuser
 \c -
 
-select has_table_privilege(current_user,'pg_shadow','select');
-select has_table_privilege(current_user,'pg_shadow','insert');
+select has_table_privilege(current_user,'pg_authid','select');
+select has_table_privilege(current_user,'pg_authid','insert');
 
-select has_table_privilege(t2.usesysid,'pg_shadow','update')
-from (select usesysid from pg_user where usename = current_user) as t2;
-select has_table_privilege(t2.usesysid,'pg_shadow','delete')
-from (select usesysid from pg_user where usename = current_user) as t2;
+select has_table_privilege(t2.oid,'pg_authid','update')
+from (select oid from pg_roles where rolname = current_user) as t2;
+select has_table_privilege(t2.oid,'pg_authid','delete')
+from (select oid from pg_roles where rolname = current_user) as t2;
 
 select has_table_privilege(current_user,t1.oid,'rule')
-from (select oid from pg_class where relname = 'pg_shadow') as t1;
+from (select oid from pg_class where relname = 'pg_authid') as t1;
 select has_table_privilege(current_user,t1.oid,'references')
-from (select oid from pg_class where relname = 'pg_shadow') as t1;
+from (select oid from pg_class where relname = 'pg_authid') as t1;
 
-select has_table_privilege(t2.usesysid,t1.oid,'select')
-from (select oid from pg_class where relname = 'pg_shadow') as t1,
-  (select usesysid from pg_user where usename = current_user) as t2;
-select has_table_privilege(t2.usesysid,t1.oid,'insert')
-from (select oid from pg_class where relname = 'pg_shadow') as t1,
-  (select usesysid from pg_user where usename = current_user) as t2;
+select has_table_privilege(t2.oid,t1.oid,'select')
+from (select oid from pg_class where relname = 'pg_authid') as t1,
+  (select oid from pg_roles where rolname = current_user) as t2;
+select has_table_privilege(t2.oid,t1.oid,'insert')
+from (select oid from pg_class where relname = 'pg_authid') as t1,
+  (select oid from pg_roles where rolname = current_user) as t2;
 
-select has_table_privilege('pg_shadow','update');
-select has_table_privilege('pg_shadow','delete');
+select has_table_privilege('pg_authid','update');
+select has_table_privilege('pg_authid','delete');
 
 select has_table_privilege(t1.oid,'select')
-from (select oid from pg_class where relname = 'pg_shadow') as t1;
+from (select oid from pg_class where relname = 'pg_authid') as t1;
 select has_table_privilege(t1.oid,'trigger')
-from (select oid from pg_class where relname = 'pg_shadow') as t1;
+from (select oid from pg_class where relname = 'pg_authid') as t1;
 
 -- non-superuser
 SET SESSION AUTHORIZATION regressuser3;
@@ -236,22 +236,22 @@ SET SESSION AUTHORIZATION regressuser3;
 select has_table_privilege(current_user,'pg_class','select');
 select has_table_privilege(current_user,'pg_class','insert');
 
-select has_table_privilege(t2.usesysid,'pg_class','update')
-from (select usesysid from pg_user where usename = current_user) as t2;
-select has_table_privilege(t2.usesysid,'pg_class','delete')
-from (select usesysid from pg_user where usename = current_user) as t2;
+select has_table_privilege(t2.oid,'pg_class','update')
+from (select oid from pg_roles where rolname = current_user) as t2;
+select has_table_privilege(t2.oid,'pg_class','delete')
+from (select oid from pg_roles where rolname = current_user) as t2;
 
 select has_table_privilege(current_user,t1.oid,'rule')
 from (select oid from pg_class where relname = 'pg_class') as t1;
 select has_table_privilege(current_user,t1.oid,'references')
 from (select oid from pg_class where relname = 'pg_class') as t1;
 
-select has_table_privilege(t2.usesysid,t1.oid,'select')
+select has_table_privilege(t2.oid,t1.oid,'select')
 from (select oid from pg_class where relname = 'pg_class') as t1,
-  (select usesysid from pg_user where usename = current_user) as t2;
-select has_table_privilege(t2.usesysid,t1.oid,'insert')
+  (select oid from pg_roles where rolname = current_user) as t2;
+select has_table_privilege(t2.oid,t1.oid,'insert')
 from (select oid from pg_class where relname = 'pg_class') as t1,
-  (select usesysid from pg_user where usename = current_user) as t2;
+  (select oid from pg_roles where rolname = current_user) as t2;
 
 select has_table_privilege('pg_class','update');
 select has_table_privilege('pg_class','delete');
@@ -264,22 +264,22 @@ from (select oid from pg_class where relname = 'pg_class') as t1;
 select has_table_privilege(current_user,'atest1','select');
 select has_table_privilege(current_user,'atest1','insert');
 
-select has_table_privilege(t2.usesysid,'atest1','update')
-from (select usesysid from pg_user where usename = current_user) as t2;
-select has_table_privilege(t2.usesysid,'atest1','delete')
-from (select usesysid from pg_user where usename = current_user) as t2;
+select has_table_privilege(t2.oid,'atest1','update')
+from (select oid from pg_roles where rolname = current_user) as t2;
+select has_table_privilege(t2.oid,'atest1','delete')
+from (select oid from pg_roles where rolname = current_user) as t2;
 
 select has_table_privilege(current_user,t1.oid,'rule')
 from (select oid from pg_class where relname = 'atest1') as t1;
 select has_table_privilege(current_user,t1.oid,'references')
 from (select oid from pg_class where relname = 'atest1') as t1;
 
-select has_table_privilege(t2.usesysid,t1.oid,'select')
+select has_table_privilege(t2.oid,t1.oid,'select')
 from (select oid from pg_class where relname = 'atest1') as t1,
-  (select usesysid from pg_user where usename = current_user) as t2;
-select has_table_privilege(t2.usesysid,t1.oid,'insert')
+  (select oid from pg_roles where rolname = current_user) as t2;
+select has_table_privilege(t2.oid,t1.oid,'insert')
 from (select oid from pg_class where relname = 'atest1') as t1,
-  (select usesysid from pg_user where usename = current_user) as t2;
+  (select oid from pg_roles where rolname = current_user) as t2;
 
 select has_table_privilege('atest1','update');
 select has_table_privilege('atest1','delete');
@@ -298,7 +298,7 @@ CREATE TABLE atest4 (a int);
 
 GRANT SELECT ON atest4 TO regressuser2 WITH GRANT OPTION;
 GRANT UPDATE ON atest4 TO regressuser2;
-GRANT SELECT ON atest4 TO GROUP regressgroup1 WITH GRANT OPTION; -- fail
+GRANT SELECT ON atest4 TO GROUP regressgroup1 WITH GRANT OPTION;
 
 SET SESSION AUTHORIZATION regressuser2;
 
@@ -339,6 +339,7 @@ DROP TABLE atest4;
 DROP GROUP regressgroup1;
 DROP GROUP regressgroup2;
 
+REVOKE USAGE ON LANGUAGE sql FROM regressuser1;
 DROP USER regressuser1;
 DROP USER regressuser2;
 DROP USER regressuser3;

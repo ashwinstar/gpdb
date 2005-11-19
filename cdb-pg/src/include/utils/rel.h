@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/rel.h,v 1.82 2005/01/10 20:02:24 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/utils/rel.h,v 1.87 2005/10/15 02:49:46 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -19,6 +19,7 @@
 #include "catalog/pg_am.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_index.h"
+#include "fmgr.h"
 #include "rewrite/prs2lock.h"
 #include "storage/block.h"
 #include "storage/relfilenode.h"
@@ -59,16 +60,17 @@ typedef struct Trigger
 	bool		tgdeferrable;
 	bool		tginitdeferred;
 	int16		tgnargs;
-	int16		tgattr[FUNC_MAX_ARGS];
+	int16		tgnattr;
+	int16	   *tgattr;
 	char	  **tgargs;
 } Trigger;
 
 typedef struct TriggerDesc
 {
 	/*
-	 * Index data to identify which triggers are which.  Since each
-	 * trigger can appear in more than one class, for each class we
-	 * provide a list of integer indexes into the triggers array.
+	 * Index data to identify which triggers are which.  Since each trigger
+	 * can appear in more than one class, for each class we provide a list of
+	 * integer indexes into the triggers array.
 	 */
 #define TRIGGER_NUM_EVENT_CLASSES  3
 
@@ -93,10 +95,28 @@ typedef struct TriggerDesc
 typedef struct PgStat_Info
 {
 	void	   *tabentry;
-	bool		no_stats;
-	bool		heap_scan_counted;
-	bool		index_scan_counted;
 } PgStat_Info;
+
+
+/*
+ * Cached lookup information for the index access method functions defined
+ * by the pg_am row associated with an index relation.
+ */
+typedef struct RelationAmInfo
+{
+	FmgrInfo	aminsert;
+	FmgrInfo	ambeginscan;
+	FmgrInfo	amgettuple;
+	FmgrInfo	amgetmulti;
+	FmgrInfo	amrescan;
+	FmgrInfo	amendscan;
+	FmgrInfo	ammarkpos;
+	FmgrInfo	amrestrpos;
+	FmgrInfo	ambuild;
+	FmgrInfo	ambulkdelete;
+	FmgrInfo	amvacuumcleanup;
+	FmgrInfo	amcostestimate;
+} RelationAmInfo;
 
 
 /*
@@ -114,21 +134,21 @@ typedef struct RelationData
 	bool		rd_istemp;		/* rel uses the local buffer mgr */
 	bool		rd_isnailed;	/* rel is nailed in cache */
 	bool		rd_isvalid;		/* relcache entry is valid */
-	char		rd_indexvalid;	/* state of rd_indexlist: 0 = not valid, 1
-								 * = valid, 2 = temporarily forced */
+	char		rd_indexvalid;	/* state of rd_indexlist: 0 = not valid, 1 =
+								 * valid, 2 = temporarily forced */
 	SubTransactionId rd_createSubid;	/* rel was created in current xact */
 
 	/*
 	 * rd_createSubid is the ID of the highest subtransaction the rel has
-	 * survived into; or zero if the rel was not created in the current
-	 * top transaction.  This should be relied on only for optimization
-	 * purposes; it is possible for new-ness to be "forgotten" (eg, after
-	 * CLUSTER).
+	 * survived into; or zero if the rel was not created in the current top
+	 * transaction.  This should be relied on only for optimization purposes;
+	 * it is possible for new-ness to be "forgotten" (eg, after CLUSTER).
 	 */
 	Form_pg_class rd_rel;		/* RELATION tuple */
 	TupleDesc	rd_att;			/* tuple descriptor */
 	Oid			rd_id;			/* relation's object id */
 	List	   *rd_indexlist;	/* list of OIDs of indexes on relation */
+	Oid			rd_oidindex;	/* OID of unique index on OID, if any */
 	LockInfoData rd_lockInfo;	/* lock mgr's info for locking relation */
 	RuleLock   *rd_rules;		/* rewrite rules */
 	MemoryContext rd_rulescxt;	/* private memory cxt for rd_rules, if any */
@@ -139,6 +159,7 @@ typedef struct RelationData
 	Form_pg_index rd_index;		/* pg_index tuple describing this index */
 	struct HeapTupleData *rd_indextuple;		/* all of pg_index tuple */
 	/* "struct HeapTupleData *" avoids need to include htup.h here	*/
+	oidvector  *rd_indclass;	/* extracted pointer to rd_index field */
 	Form_pg_am	rd_am;			/* pg_am tuple for index's AM */
 
 	/*
@@ -146,15 +167,14 @@ typedef struct RelationData
 	 *
 	 * Note: only default operators and support procs for each opclass are
 	 * cached, namely those with subtype zero.	The arrays are indexed by
-	 * strategy or support number, which is a sufficient identifier given
-	 * that restriction.
+	 * strategy or support number, which is a sufficient identifier given that
+	 * restriction.
 	 */
 	MemoryContext rd_indexcxt;	/* private memory cxt for this stuff */
+	RelationAmInfo *rd_aminfo;	/* lookup info for funcs found in pg_am */
 	Oid		   *rd_operator;	/* OIDs of index operators */
 	RegProcedure *rd_support;	/* OIDs of support procedures */
-	struct FmgrInfo *rd_supportinfo;	/* lookup info for support
-										 * procedures */
-	/* "struct FmgrInfo" avoids need to include fmgr.h here */
+	FmgrInfo   *rd_supportinfo; /* lookup info for support procedures */
 	List	   *rd_indexprs;	/* index expression trees, if any */
 	List	   *rd_indpred;		/* index predicate tree, if any */
 

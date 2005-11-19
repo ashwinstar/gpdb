@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/access/rtree.h,v 1.36 2004/12/31 22:03:21 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/access/rtree.h,v 1.41 2005/06/24 20:53:31 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -21,7 +21,7 @@
 #include "utils/rel.h"
 
 /* see rtstrat.c for what all this is about */
-#define RTNStrategies					8
+#define RTNStrategies					12
 #define RTLeftStrategyNumber			1
 #define RTOverLeftStrategyNumber		2
 #define RTOverlapStrategyNumber			3
@@ -30,6 +30,10 @@
 #define RTSameStrategyNumber			6
 #define RTContainsStrategyNumber		7
 #define RTContainedByStrategyNumber		8
+#define RTOverBelowStrategyNumber		9
+#define RTBelowStrategyNumber			10
+#define RTAboveStrategyNumber			11
+#define RTOverAboveStrategyNumber		12
 
 #define RTNProcs						3
 #define RT_UNION_PROC					1
@@ -59,11 +63,14 @@ typedef struct RTSTACK
 /*
  *	When we're doing a scan, we need to keep track of the parent stack
  *	for the marked and current items.  Also, rtrees have the following
- *	property:  if you're looking for the box (1,1,2,2), on the internal
- *	nodes you have to search for all boxes that *contain* (1,1,2,2), and
- *	not the ones that match it.  We have a private scan key for internal
- *	nodes in the opaque structure for rtrees for this reason.  See
- *	access/index-rtree/rtscan.c and rtstrat.c for how it gets initialized.
+ *	property: if you're looking for the box (1,1,2,2), on the internal
+ *	nodes you have to search for all boxes that *contain* (1,1,2,2),
+ *	and not the ones that match it.  We have a private scan key for
+ *	internal nodes in the opaque structure for rtrees for this reason.
+ *	See access/index-rtree/rtscan.c and rtstrat.c for how it gets
+ *	initialized. We also keep pins on the scan's current buffer and
+ *	marked buffer, if any: this avoids the need to invoke ReadBuffer()
+ *	for each tuple produced by the index scan.
  */
 
 typedef struct RTreeScanOpaqueData
@@ -73,6 +80,8 @@ typedef struct RTreeScanOpaqueData
 	uint16		s_flags;
 	int			s_internalNKey;
 	ScanKey		s_internalKey;
+	Buffer		curbuf;
+	Buffer		markbuf;
 } RTreeScanOpaqueData;
 
 typedef RTreeScanOpaqueData *RTreeScanOpaque;
@@ -111,10 +120,9 @@ extern void freestack(RTSTACK *s);
  */
 extern Datum rtinsert(PG_FUNCTION_ARGS);
 extern Datum rtbulkdelete(PG_FUNCTION_ARGS);
-
-extern Datum rtgettuple(PG_FUNCTION_ARGS);
 extern Datum rtbeginscan(PG_FUNCTION_ARGS);
-
+extern Datum rtgettuple(PG_FUNCTION_ARGS);
+extern Datum rtgetmulti(PG_FUNCTION_ARGS);
 extern Datum rtendscan(PG_FUNCTION_ARGS);
 extern Datum rtmarkpos(PG_FUNCTION_ARGS);
 extern Datum rtrestrpos(PG_FUNCTION_ARGS);
@@ -123,7 +131,6 @@ extern Datum rtbuild(PG_FUNCTION_ARGS);
 extern void _rtdump(Relation r);
 
 extern void rtree_redo(XLogRecPtr lsn, XLogRecord *record);
-extern void rtree_undo(XLogRecPtr lsn, XLogRecord *record);
 extern void rtree_desc(char *buf, uint8 xl_info, char *rec);
 
 /* rtscan.c */
@@ -133,5 +140,6 @@ extern void ReleaseResources_rtree(void);
 
 /* rtstrat.c */
 extern StrategyNumber RTMapToInternalOperator(StrategyNumber strat);
+extern bool RTMapToInternalNegate(StrategyNumber strat);
 
 #endif   /* RTREE_H */

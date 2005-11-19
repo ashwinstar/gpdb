@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/commands/defrem.h,v 1.62 2004/12/31 22:03:28 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/commands/defrem.h,v 1.68 2005/10/15 02:49:44 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -20,6 +20,7 @@
 /* commands/indexcmds.c */
 extern void DefineIndex(RangeVar *heapRelation,
 			char *indexRelationName,
+			Oid indexRelationId,
 			char *accessMethodName,
 			char *tableSpaceName,
 			List *attributeList,
@@ -34,9 +35,10 @@ extern void DefineIndex(RangeVar *heapRelation,
 			bool quiet,
 			IndexStmt *stmt);
 extern void RemoveIndex(RangeVar *relation, DropBehavior behavior);
-extern void ReindexIndex(RangeVar *indexRelation, bool force);
-extern void ReindexTable(RangeVar *relation, bool force);
-extern void ReindexDatabase(const char *databaseName, bool force, bool all);
+extern void ReindexIndex(RangeVar *indexRelation);
+extern void ReindexTable(RangeVar *relation);
+extern void ReindexDatabase(const char *databaseName,
+				bool do_system, bool do_user);
 extern char *makeObjectName(const char *name1, const char *name2,
 			   const char *label);
 extern char *ChooseRelationName(const char *name1, const char *name2,
@@ -49,30 +51,33 @@ extern void RemoveFunctionById(Oid funcOid);
 extern void SetFunctionReturnType(Oid funcOid, Oid newRetType);
 extern void SetFunctionArgType(Oid funcOid, int argIndex, Oid newArgType);
 extern void RenameFunction(List *name, List *argtypes, const char *newname);
-extern void AlterFunctionOwner(List *name, List *argtypes, AclId newOwnerSysId);
+extern void AlterFunctionOwner(List *name, List *argtypes, Oid newOwnerId);
+extern void AlterFunction(AlterFunctionStmt *stmt);
 extern void CreateCast(CreateCastStmt *stmt);
 extern void DropCast(DropCastStmt *stmt);
 extern void DropCastById(Oid castOid);
+extern void AlterFunctionNamespace(List *name, List *argtypes,
+					   const char *newschema);
 
 /* commands/operatorcmds.c */
 extern void DefineOperator(List *names, List *parameters);
 extern void RemoveOperator(RemoveOperStmt *stmt);
 extern void RemoveOperatorById(Oid operOid);
 extern void AlterOperatorOwner(List *name, TypeName *typeName1,
-				   TypeName *typename2, AclId newOwnerSysId);
+				   TypeName *typename2, Oid newOwnerId);
 
 /* commands/aggregatecmds.c */
 extern void DefineAggregate(List *names, List *parameters);
 extern void RemoveAggregate(RemoveAggrStmt *stmt);
 extern void RenameAggregate(List *name, TypeName *basetype, const char *newname);
-extern void AlterAggregateOwner(List *name, TypeName *basetype, AclId newOwnerSysId);
+extern void AlterAggregateOwner(List *name, TypeName *basetype, Oid newOwnerId);
 
 /* commands/opclasscmds.c */
 extern void DefineOpClass(CreateOpClassStmt *stmt);
 extern void RemoveOpClass(RemoveOpClassStmt *stmt);
 extern void RemoveOpClassById(Oid opclassOid);
 extern void RenameOpClass(List *name, const char *access_method, const char *newname);
-extern void AlterOpClassOwner(List *name, const char *access_method, AclId newOwnerSysId);
+extern void AlterOpClassOwner(List *name, const char *access_method, Oid newOwnerId);
 
 /* support routines in commands/define.c */
 

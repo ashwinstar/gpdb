@@ -1,5 +1,5 @@
 /*
- * $PostgreSQL: pgsql/src/test/regress/regress.c,v 1.62 2004/10/21 19:28:36 tgl Exp $
+ * $PostgreSQL: pgsql/src/test/regress/regress.c,v 1.64 2005/10/15 02:49:51 momjian Exp $
  */
 
 #include "postgres.h"
@@ -26,6 +26,8 @@ extern char *reverse_name(char *string);
 extern int	oldstyle_length(int n, text *t);
 extern Datum int44in(PG_FUNCTION_ARGS);
 extern Datum int44out(PG_FUNCTION_ARGS);
+extern Datum do_sleep(PG_FUNCTION_ARGS);
+
 
 /*
  * Distance from a point to a path
@@ -52,16 +54,16 @@ regress_dist_ptpath(PG_FUNCTION_ARGS)
 		default:
 
 			/*
-			 * the distance from a point to a path is the smallest
-			 * distance from the point to any of its constituent segments.
+			 * the distance from a point to a path is the smallest distance
+			 * from the point to any of its constituent segments.
 			 */
 			Assert(path->npts > 1);
 			for (i = 0; i < path->npts - 1; ++i)
 			{
 				regress_lseg_construct(&lseg, &path->p[i], &path->p[i + 1]);
 				tmp = DatumGetFloat8(DirectFunctionCall2(dist_ps,
-													  PointPGetDatum(pt),
-												  LsegPGetDatum(&lseg)));
+														 PointPGetDatum(pt),
+													  LsegPGetDatum(&lseg)));
 				if (i == 0 || tmp < result)
 					result = tmp;
 			}
@@ -98,7 +100,7 @@ regress_path_dist(PG_FUNCTION_ARGS)
 
 			tmp = DatumGetFloat8(DirectFunctionCall2(lseg_distance,
 													 LsegPGetDatum(&seg1),
-												  LsegPGetDatum(&seg2)));
+													 LsegPGetDatum(&seg2)));
 			if (!have_min || tmp < min)
 			{
 				min = tmp;
@@ -420,11 +422,11 @@ funny_dup17(PG_FUNCTION_ARGS)
 	if (SPI_processed > 0)
 	{
 		selected = DatumGetInt32(DirectFunctionCall1(int4in,
-											CStringGetDatum(SPI_getvalue(
-												   SPI_tuptable->vals[0],
-												   SPI_tuptable->tupdesc,
-																		 1
-																	))));
+												CStringGetDatum(SPI_getvalue(
+													   SPI_tuptable->vals[0],
+													   SPI_tuptable->tupdesc,
+																			 1
+																		))));
 	}
 
 	elog(DEBUG4, "funny_dup17 (fired %s) on level %3d: %d/%d tuples inserted/selected",
@@ -552,7 +554,7 @@ ttdummy(PG_FUNCTION_ARGS)
 
 	{
 		text	   *seqname = DatumGetTextP(DirectFunctionCall1(textin,
-										CStringGetDatum("ttdummy_seq")));
+											CStringGetDatum("ttdummy_seq")));
 
 		newoff = DirectFunctionCall1(nextval,
 									 PointerGetDatum(seqname));
@@ -732,4 +734,19 @@ int44out(PG_FUNCTION_ARGS)
 	}
 	*--walk = '\0';
 	PG_RETURN_CSTRING(result);
+}
+
+/*
+ * do_sleep - delay for N seconds
+ */
+PG_FUNCTION_INFO_V1(do_sleep);
+
+Datum
+do_sleep(PG_FUNCTION_ARGS)
+{
+	int32		secs = PG_GETARG_INT32(0);
+
+	pg_usleep(secs * 1000000L);
+
+	PG_RETURN_VOID();
 }

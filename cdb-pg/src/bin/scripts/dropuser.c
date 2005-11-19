@@ -5,7 +5,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/bin/scripts/dropuser.c,v 1.13 2004/12/31 22:03:17 pgsql Exp $
+ * $PostgreSQL: pgsql/src/bin/scripts/dropuser.c,v 1.16 2005/09/30 07:58:01 petere Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -101,22 +101,22 @@ main(int argc, char *argv[])
 	}
 
 	if (dropuser == NULL)
-		dropuser = simple_prompt("Enter name of user to drop: ", 128, true);
+		dropuser = simple_prompt("Enter name of role to drop: ", 128, true);
 
 	if (interactive)
 	{
 		char	   *reply;
 
-		printf(_("User \"%s\" will be permanently removed.\n"), dropuser);
+		printf(_("Role \"%s\" will be permanently removed.\n"), dropuser);
 		reply = simple_prompt("Are you sure? (y/n) ", 1, true);
 		if (check_yesno_response(reply) != 1)
 			exit(0);
 	}
 
 	initPQExpBuffer(&sql);
-	appendPQExpBuffer(&sql, "DROP USER %s;\n", fmtId(dropuser));
+	appendPQExpBuffer(&sql, "DROP ROLE %s;\n", fmtId(dropuser));
 
-	conn = connectDatabase("template1", host, port, username, password, progname);
+	conn = connectDatabase("postgres", host, port, username, password, progname);
 
 	if (echo)
 		printf("%s", sql.data);
@@ -124,7 +124,7 @@ main(int argc, char *argv[])
 
 	if (PQresultStatus(result) != PGRES_COMMAND_OK)
 	{
-		fprintf(stderr, _("%s: removal of user \"%s\" failed: %s"),
+		fprintf(stderr, _("%s: removal of role \"%s\" failed: %s"),
 				progname, dropuser, PQerrorMessage(conn));
 		PQfinish(conn);
 		exit(1);
@@ -133,7 +133,7 @@ main(int argc, char *argv[])
 	PQfinish(conn);
 	if (!quiet)
 	{
-		puts("DROP USER");
+		puts("DROP ROLE");
 		fflush(stdout);
 	}
 	exit(0);
@@ -143,9 +143,9 @@ main(int argc, char *argv[])
 static void
 help(const char *progname)
 {
-	printf(_("%s removes a PostgreSQL user.\n\n"), progname);
+	printf(_("%s removes a PostgreSQL role.\n\n"), progname);
 	printf(_("Usage:\n"));
-	printf(_("  %s [OPTION]... [USERNAME]\n"), progname);
+	printf(_("  %s [OPTION]... [ROLENAME]\n"), progname);
 	printf(_("\nOptions:\n"));
 	printf(_("  -e, --echo                show the commands being sent to the server\n"));
 	printf(_("  -i, --interactive         prompt before deleting anything\n"));

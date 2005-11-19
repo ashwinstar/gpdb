@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/executor/executor.h,v 1.115.4.1 2005/08/25 19:45:06 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/executor/executor.h,v 1.120 2005/10/15 02:49:44 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -16,17 +16,6 @@
 #define EXECUTOR_H
 
 #include "executor/execdesc.h"
-
-
-/*
- * TupIsNull
- *
- *		This is used mainly to detect when there are no more
- *		tuples to process.
- */
-/* return: true if tuple in slot is NULL, slot is slot to test */
-#define TupIsNull(slot) \
-	((slot) == NULL || (slot)->val == NULL)
 
 
 /*
@@ -51,16 +40,14 @@ extern bool ExecMayReturnRawTuples(PlanState *node);
 /*
  * prototypes from functions in execGrouping.c
  */
-extern bool execTuplesMatch(HeapTuple tuple1,
-				HeapTuple tuple2,
-				TupleDesc tupdesc,
+extern bool execTuplesMatch(TupleTableSlot *slot1,
+				TupleTableSlot *slot2,
 				int numCols,
 				AttrNumber *matchColIdx,
 				FmgrInfo *eqfunctions,
 				MemoryContext evalContext);
-extern bool execTuplesUnequal(HeapTuple tuple1,
-				  HeapTuple tuple2,
-				  TupleDesc tupdesc,
+extern bool execTuplesUnequal(TupleTableSlot *slot1,
+				  TupleTableSlot *slot2,
 				  int numCols,
 				  AttrNumber *matchColIdx,
 				  FmgrInfo *eqfunctions,
@@ -89,10 +76,12 @@ extern TupleHashEntry LookupTupleHashEntry(TupleHashTable hashtable,
 extern JunkFilter *ExecInitJunkFilter(List *targetList, bool hasoid,
 				   TupleTableSlot *slot);
 extern JunkFilter *ExecInitJunkFilterConversion(List *targetList,
-												TupleDesc cleanTupType,
-												TupleTableSlot *slot);
+							 TupleDesc cleanTupType,
+							 TupleTableSlot *slot);
 extern bool ExecGetJunkAttribute(JunkFilter *junkfilter, TupleTableSlot *slot,
 					 char *attrName, Datum *value, bool *isNull);
+extern TupleTableSlot *ExecFilterJunk(JunkFilter *junkfilter,
+			   TupleTableSlot *slot);
 extern HeapTuple ExecRemoveJunk(JunkFilter *junkfilter, TupleTableSlot *slot);
 
 
@@ -110,13 +99,14 @@ extern bool ExecContextForcesOids(PlanState *planstate, bool *hasoids);
 extern void ExecConstraints(ResultRelInfo *resultRelInfo,
 				TupleTableSlot *slot, EState *estate);
 extern TupleTableSlot *EvalPlanQual(EState *estate, Index rti,
-									ItemPointer tid, TransactionId priorXmax);
+			 ItemPointer tid, TransactionId priorXmax);
 
 /*
  * prototypes from functions in execProcnode.c
  */
 extern PlanState *ExecInitNode(Plan *node, EState *estate);
 extern TupleTableSlot *ExecProcNode(PlanState *node);
+extern Node *MultiExecProcNode(PlanState *node);
 extern int	ExecCountSlotsNode(Plan *node);
 extern void ExecEndNode(PlanState *node);
 
@@ -176,18 +166,6 @@ extern void ExecAssignScanProjectionInfo(ScanState *node);
 /*
  * prototypes from functions in execTuples.c
  */
-extern TupleTable ExecCreateTupleTable(int initialSize);
-extern void ExecDropTupleTable(TupleTable table, bool shouldFree);
-extern TupleTableSlot *ExecAllocTableSlot(TupleTable table);
-extern TupleTableSlot *MakeTupleTableSlot(void);
-extern TupleTableSlot *ExecStoreTuple(HeapTuple tuple,
-			   TupleTableSlot *slot,
-			   Buffer buffer,
-			   bool shouldFree);
-extern TupleTableSlot *ExecClearTuple(TupleTableSlot *slot);
-extern void ExecSetSlotDescriptor(TupleTableSlot *slot,
-					  TupleDesc tupdesc, bool shouldFree);
-extern void ExecSetSlotDescriptorIsNew(TupleTableSlot *slot, bool isNew);
 extern void ExecInitResultTupleSlot(EState *estate, PlanState *planstate);
 extern void ExecInitScanTupleSlot(EState *estate, ScanState *scanstate);
 extern TupleTableSlot *ExecInitExtraTupleSlot(EState *estate);
@@ -202,6 +180,7 @@ typedef struct TupOutputState
 {
 	/* use "struct" here to allow forward reference */
 	struct AttInMetadata *metadata;
+	TupleTableSlot *slot;
 	DestReceiver *dest;
 } TupOutputState;
 

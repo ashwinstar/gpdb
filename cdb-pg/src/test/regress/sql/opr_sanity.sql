@@ -39,24 +39,14 @@ language sql;
 -- **************** pg_proc ****************
 
 -- Look for illegal values in pg_proc fields.
--- NOTE: in reality pronargs could be more than 10, but I'm too lazy to put
--- a larger number of proargtypes check clauses in here.  If we ever have
--- more-than-10-arg functions in the standard catalogs, extend this query.
 
 SELECT p1.oid, p1.proname
 FROM pg_proc as p1
 WHERE p1.prolang = 0 OR p1.prorettype = 0 OR
-       p1.pronargs < 0 OR p1.pronargs > 10 OR
-       (p1.proargtypes[0] = 0 AND p1.pronargs > 0) OR
-       (p1.proargtypes[1] = 0 AND p1.pronargs > 1) OR
-       (p1.proargtypes[2] = 0 AND p1.pronargs > 2) OR
-       (p1.proargtypes[3] = 0 AND p1.pronargs > 3) OR
-       (p1.proargtypes[4] = 0 AND p1.pronargs > 4) OR
-       (p1.proargtypes[5] = 0 AND p1.pronargs > 5) OR
-       (p1.proargtypes[6] = 0 AND p1.pronargs > 6) OR
-       (p1.proargtypes[7] = 0 AND p1.pronargs > 7) OR
-       (p1.proargtypes[8] = 0 AND p1.pronargs > 8) OR
-       (p1.proargtypes[9] = 0 AND p1.pronargs > 9);
+       p1.pronargs < 0 OR
+       array_lower(p1.proargtypes, 1) != 0 OR
+       array_upper(p1.proargtypes, 1) != p1.pronargs-1 OR
+       0::oid = ANY (p1.proargtypes);
 
 -- Look for conflicting proc definitions (same names and input datatypes).
 -- (This test should be dead code now that we have the unique index
@@ -179,7 +169,7 @@ WHERE p1.oid != p2.oid AND
 SELECT p1.oid, p1.proname
 FROM pg_proc as p1
 WHERE p1.prorettype = 'internal'::regtype AND NOT
-    ('(' || oidvectortypes(p1.proargtypes) || ')') ~ '[^a-z0-9_]internal[^a-z0-9_]';
+    'internal'::regtype = ANY (p1.proargtypes);
 
 
 -- **************** pg_cast ****************
@@ -571,6 +561,41 @@ WHERE a.aggfnoid = p.oid AND
     a.agginitval IS NULL AND
     NOT binary_coercible(p.proargtypes[0], a.aggtranstype);
 
+-- Cross-check aggsortop (if present) against pg_operator.
+-- We expect to find only "<" for "min" and ">" for "max".
+
+SELECT DISTINCT proname, oprname
+FROM pg_operator AS o, pg_aggregate AS a, pg_proc AS p
+WHERE a.aggfnoid = p.oid AND a.aggsortop = o.oid
+ORDER BY 1;
+
+-- Check datatypes match
+
+SELECT a.aggfnoid::oid, o.oid
+FROM pg_operator AS o, pg_aggregate AS a, pg_proc AS p
+WHERE a.aggfnoid = p.oid AND a.aggsortop = o.oid AND
+    (oprkind != 'b' OR oprresult != 'boolean'::regtype
+     OR oprleft != p.proargtypes[0] OR oprright != p.proargtypes[0]);
+
+-- Check operator is a suitable btree opclass member
+
+SELECT a.aggfnoid::oid, o.oid
+FROM pg_operator AS o, pg_aggregate AS a, pg_proc AS p
+WHERE a.aggfnoid = p.oid AND a.aggsortop = o.oid AND
+    NOT EXISTS(SELECT 1 FROM pg_amop ao, pg_opclass oc
+               WHERE amopclaid = oc.oid AND amopsubtype = 0
+                     AND amopopr = o.oid AND opcamid = 403
+                     AND opcintype = o.oprleft AND opcdefault);
+
+-- Check correspondence of btree strategies and names
+
+SELECT DISTINCT proname, oprname, amopstrategy
+FROM pg_operator AS o, pg_aggregate AS a, pg_proc AS p,
+     pg_amop as ao, pg_opclass oc
+WHERE a.aggfnoid = p.oid AND a.aggsortop = o.oid AND
+    amopclaid = oc.oid AND amopopr = o.oid AND opcamid = 403
+ORDER BY 1;
+
 -- **************** pg_opclass ****************
 
 -- Look for illegal values in pg_opclass fields
@@ -606,10 +631,13 @@ WHERE p1.amopclaid = p3.oid AND p3.opcamid = p2.oid AND
 -- Detect missing pg_amop entries: should have as many strategy operators
 -- as AM expects for each opclass for the AM.  When nondefault subtypes are
 -- present, enforce condition separately for each subtype.
+-- We have to exclude GiST, unfortunately, since it hasn't got any fixed
+-- requirements about strategy operators.
 
 SELECT p1.oid, p1.amname, p2.oid, p2.opcname, p3.amopsubtype
 FROM pg_am AS p1, pg_opclass AS p2, pg_amop AS p3
 WHERE p2.opcamid = p1.oid AND p3.amopclaid = p2.oid AND
+    p1.amname != 'gist' AND
     p1.amstrategies != (SELECT count(*) FROM pg_amop AS p4
                         WHERE p4.amopclaid = p2.oid AND
                               p4.amopsubtype = p3.amopsubtype);

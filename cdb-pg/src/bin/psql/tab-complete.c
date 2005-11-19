@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2000-2005, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/tab-complete.c,v 1.120.4.1 2005/05/04 14:25:30 tgl Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/tab-complete.c,v 1.138 2005/10/15 02:49:40 momjian Exp $
  */
 
 /*----------------------------------------------------------------------
@@ -83,30 +83,28 @@ typedef struct SchemaQuery
 	const char *catname;
 
 	/*
-	 * Selection condition --- only rows meeting this condition are
-	 * candidates to display.  If catname mentions multiple tables,
-	 * include the necessary join condition here.  For example, "c.relkind
-	 * = 'r'". Write NULL (not an empty string) if not needed.
+	 * Selection condition --- only rows meeting this condition are candidates
+	 * to display.	If catname mentions multiple tables, include the necessary
+	 * join condition here.  For example, "c.relkind = 'r'". Write NULL (not
+	 * an empty string) if not needed.
 	 */
 	const char *selcondition;
 
 	/*
 	 * Visibility condition --- which rows are visible without schema
-	 * qualification?  For example,
-	 * "pg_catalog.pg_table_is_visible(c.oid)".
+	 * qualification?  For example, "pg_catalog.pg_table_is_visible(c.oid)".
 	 */
 	const char *viscondition;
 
 	/*
-	 * Namespace --- name of field to join to pg_namespace.oid. For
-	 * example, "c.relnamespace".
+	 * Namespace --- name of field to join to pg_namespace.oid. For example,
+	 * "c.relnamespace".
 	 */
 	const char *namespace;
 
 	/*
-	 * Result --- the appropriately-quoted name to return, in the case of
-	 * an unqualified name.  For example,
-	 * "pg_catalog.quote_ident(c.relname)".
+	 * Result --- the appropriately-quoted name to return, in the case of an
+	 * unqualified name.  For example, "pg_catalog.quote_ident(c.relname)".
 	 */
 	const char *result;
 
@@ -128,8 +126,7 @@ static int	completion_max_records;
  * the completion callback functions.  Ugly but there is no better way.
  */
 static const char *completion_charp;	/* to pass a string */
-static const char *const * completion_charpp;	/* to pass a list of
-												 * strings */
+static const char *const * completion_charpp;	/* to pass a list of strings */
 static const char *completion_info_charp;		/* to pass a second string */
 static const SchemaQuery *completion_squery;	/* to pass a SchemaQuery */
 
@@ -355,6 +352,24 @@ static const SchemaQuery Query_for_list_of_views = {
 "SELECT pg_catalog.quote_ident(nspname) FROM pg_catalog.pg_namespace "\
 " WHERE substring(pg_catalog.quote_ident(nspname),1,%d)='%s'"
 
+#define Query_for_list_of_set_vars \
+"SELECT name FROM "\
+" (SELECT pg_catalog.lower(name) AS name FROM pg_catalog.pg_settings "\
+"  WHERE context IN ('user', 'superuser') "\
+"  UNION ALL SELECT 'constraints' "\
+"  UNION ALL SELECT 'transaction' "\
+"  UNION ALL SELECT 'session' "\
+"  UNION ALL SELECT 'role' "\
+"  UNION ALL SELECT 'all') ss "\
+" WHERE substring(name,1,%d)='%s'"
+
+#define Query_for_list_of_show_vars \
+"SELECT name FROM "\
+" (SELECT pg_catalog.lower(name) AS name FROM pg_catalog.pg_settings "\
+"  UNION ALL SELECT 'session authorization' "\
+"  UNION ALL SELECT 'all') ss "\
+" WHERE substring(name,1,%d)='%s'"
+
 #define Query_for_list_of_system_relations \
 "SELECT pg_catalog.quote_ident(relname) "\
 "  FROM pg_catalog.pg_class c, pg_catalog.pg_namespace n "\
@@ -363,10 +378,16 @@ static const SchemaQuery Query_for_list_of_views = {
 "   AND c.relnamespace = n.oid "\
 "   AND n.nspname = 'pg_catalog'"
 
-#define Query_for_list_of_users \
-" SELECT pg_catalog.quote_ident(usename) "\
-"   FROM pg_catalog.pg_user "\
-"  WHERE substring(pg_catalog.quote_ident(usename),1,%d)='%s'"
+#define Query_for_list_of_roles \
+" SELECT pg_catalog.quote_ident(rolname) "\
+"   FROM pg_catalog.pg_roles "\
+"  WHERE substring(pg_catalog.quote_ident(rolname),1,%d)='%s'"
+
+#define Query_for_list_of_grant_roles \
+" SELECT pg_catalog.quote_ident(rolname) "\
+"   FROM pg_catalog.pg_roles "\
+"  WHERE substring(pg_catalog.quote_ident(rolname),1,%d)='%s'"\
+" UNION ALL SELECT 'PUBLIC'"
 
 /* the silly-looking length condition is just to eat up the current word */
 #define Query_for_table_owning_index \
@@ -409,17 +430,23 @@ typedef struct
 
 static const pgsql_thing_t words_after_create[] = {
 	{"AGGREGATE", NULL, &Query_for_list_of_aggregates},
-	{"CAST", NULL, NULL},		/* Casts have complex structures for
-								 * names, so skip it */
+	{"CAST", NULL, NULL},		/* Casts have complex structures for names, so
+								 * skip it */
+
+	/*
+	 * CREATE CONSTRAINT TRIGGER is not supported here because it is designed
+	 * to be used only by pg_dump.
+	 */
 	{"CONVERSION", "SELECT pg_catalog.quote_ident(conname) FROM pg_catalog.pg_conversion WHERE substring(pg_catalog.quote_ident(conname),1,%d)='%s'"},
 	{"DATABASE", Query_for_list_of_databases},
 	{"DOMAIN", NULL, &Query_for_list_of_domains},
 	{"FUNCTION", NULL, &Query_for_list_of_functions},
-	{"GROUP", "SELECT pg_catalog.quote_ident(groname) FROM pg_catalog.pg_group WHERE substring(pg_catalog.quote_ident(groname),1,%d)='%s'"},
+	{"GROUP", Query_for_list_of_roles},
 	{"LANGUAGE", Query_for_list_of_languages},
 	{"INDEX", NULL, &Query_for_list_of_indexes},
-	{"OPERATOR", NULL, NULL},	/* Querying for this is probably not such
-								 * a good idea. */
+	{"OPERATOR", NULL, NULL},	/* Querying for this is probably not such a
+								 * good idea. */
+	{"ROLE", Query_for_list_of_roles},
 	{"RULE", "SELECT pg_catalog.quote_ident(rulename) FROM pg_catalog.pg_rules WHERE substring(pg_catalog.quote_ident(rulename),1,%d)='%s'"},
 	{"SCHEMA", Query_for_list_of_schemas},
 	{"SEQUENCE", NULL, &Query_for_list_of_sequences},
@@ -429,7 +456,7 @@ static const pgsql_thing_t words_after_create[] = {
 	{"TRIGGER", "SELECT pg_catalog.quote_ident(tgname) FROM pg_catalog.pg_trigger WHERE substring(pg_catalog.quote_ident(tgname),1,%d)='%s'"},
 	{"TYPE", NULL, &Query_for_list_of_datatypes},
 	{"UNIQUE", NULL, NULL},		/* for CREATE UNIQUE INDEX ... */
-	{"USER", Query_for_list_of_users},
+	{"USER", Query_for_list_of_roles},
 	{"VIEW", NULL, &Query_for_list_of_views},
 	{NULL, NULL, NULL}			/* end of list */
 };
@@ -467,8 +494,8 @@ initialize_readline(void)
 	completion_max_records = 1000;
 
 	/*
-	 * There is a variable rl_completion_query_items for this but
-	 * apparently it's not defined everywhere.
+	 * There is a variable rl_completion_query_items for this but apparently
+	 * it's not defined everywhere.
 	 */
 }
 
@@ -493,120 +520,10 @@ psql_completion(char *text, int start, int end)
 
 	static const char *const sql_commands[] = {
 		"ABORT", "ALTER", "ANALYZE", "BEGIN", "CHECKPOINT", "CLOSE", "CLUSTER", "COMMENT",
-		"COMMIT", "COPY", "CREATE", "DEALLOCATE", "DECLARE", "DELETE", "DROP", "END", "EXECUTE",
+		"COMMIT", "COPY", "CREATE", "DEALLOCATE", "DECLARE", "DELETE FROM", "DROP", "END", "EXECUTE",
 		"EXPLAIN", "FETCH", "GRANT", "INSERT", "LISTEN", "LOAD", "LOCK", "MOVE", "NOTIFY",
 		"PREPARE", "REINDEX", "RELEASE", "RESET", "REVOKE", "ROLLBACK", "SAVEPOINT",
 		"SELECT", "SET", "SHOW", "START", "TRUNCATE", "UNLISTEN", "UPDATE", "VACUUM", NULL
-	};
-
-	static const char *const pgsql_variables[] = {
-		/* these SET arguments are known in gram.y */
-		"CONSTRAINTS",
-		"NAMES",
-		"SESSION",
-		"TRANSACTION",
-
-		/*
-		 * the rest should match USERSET and possibly SUSET entries in
-		 * backend/utils/misc/guc.c.
-		 */
-		"add_missing_from",
-		"australian_timezones",
-		"client_encoding",
-		"client_min_messages",
-		"commit_delay",
-		"commit_siblings",
-		"cpu_index_tuple_cost",
-		"cpu_operator_cost",
-		"cpu_tuple_cost",
-		"DateStyle",
-		"deadlock_timeout",
-		"debug_pretty_print",
-		"debug_print_parse",
-		"debug_print_plan",
-		"debug_print_prelim_plan",
-		"debug_print_rewritten",
-		"debug_print_slice_table",
-		"default_statistics_target",
-		"default_tablespace",
-		"default_transaction_isolation",
-		"default_transaction_read_only",
-		"default_with_oids",
-		"dynamic_library_path",
-		"effective_cache_size",
-		"enable_agg_restructure",
-		"enable_hashagg",
-		"enable_hashjoin",
-		"enable_indexscan",
-		"enable_mergejoin",
-		"enable_nestloop",
-		"enable_seqscan",
-		"enable_sort",
-		"enable_tidscan",
-		"explain_pretty_print",
-		"extra_float_digits",
-		"from_collapse_limit",
-		"fsync",
-		"geqo",
-		"geqo_effort",
-		"geqo_generations",
-		"geqo_pool_size",
-		"geqo_selection_bias",
-		"geqo_threshold",
-		"join_collapse_limit",
-		"krb_server_keyfile",
-		"lc_messages",
-		"lc_monetary",
-		"lc_numeric",
-		"lc_time",
-		"log_destination",
-		"log_duration",
-		"log_error_verbosity",
-		"log_executor_stats",
-		"log_min_duration_statement",
-		"log_min_error_statement",
-		"log_min_messages",
-		"log_parser_stats",
-		"log_planner_stats",
-		"log_statement",
-		"log_statement_stats",
-		"maintenance_work_mem",
-		"max_connections",
-		"max_files_per_process",
-		"max_fsm_pages",
-		"max_fsm_relations",
-		"max_locks_per_transaction",
-		"max_stack_depth",
-		"password_encryption",
-		"port",
-		"random_page_cost",
-		"regex_flavor",
-		"search_path",
-		"shared_buffers",
-		"seed",
-		"server_encoding",
-		"sql_inheritance",
-		"ssl",
-		"statement_timeout",
-		"stats_block_level",
-		"stats_command_string",
-		"stats_reset_on_server_start",
-		"stats_row_level",
-		"stats_start_collector",
-		"superuser_reserved_connections",
-		"syslog_facility",
-		"syslog_ident",
-		"TimeZone",
-		"trace_notify",
-		"transform_null_equals",
-		"unix_socket_directory",
-		"unix_socket_group",
-		"unix_socket_permissions",
-		"wal_buffers",
-		"wal_debug",
-		"wal_sync_method",
-		"work_mem",
-		NULL
 	};
 
 	static const char *const backslash_commands[] = {
@@ -634,9 +551,8 @@ psql_completion(char *text, int start, int end)
 
 	/*
 	 * Scan the input line before our current position for the last four
-	 * words. According to those we'll make some smart decisions on what
-	 * the user is probably intending to type. TODO: Use strtokx() to do
-	 * this.
+	 * words. According to those we'll make some smart decisions on what the
+	 * user is probably intending to type. TODO: Use strtokx() to do this.
 	 */
 	prev_wd = previous_word(start, 0);
 	prev2_wd = previous_word(start, 1);
@@ -664,25 +580,33 @@ psql_completion(char *text, int start, int end)
 /* ALTER */
 
 	/*
-	 * complete with what you can alter (TABLE, GROUP, USER, ...) unless
-	 * we're in ALTER TABLE sth ALTER
+	 * complete with what you can alter (TABLE, GROUP, USER, ...) unless we're
+	 * in ALTER TABLE sth ALTER
 	 */
 	else if (pg_strcasecmp(prev_wd, "ALTER") == 0 &&
 			 pg_strcasecmp(prev3_wd, "TABLE") != 0)
 	{
 		static const char *const list_ALTER[] =
 		{"AGGREGATE", "CONVERSION", "DATABASE", "DOMAIN", "FUNCTION",
-			"GROUP", "INDEX", "LANGUAGE", "OPERATOR", "SCHEMA", "SEQUENCE", "TABLE",
+			"GROUP", "INDEX", "LANGUAGE", "OPERATOR", "ROLE", "SCHEMA", "SEQUENCE", "TABLE",
 		"TABLESPACE", "TRIGGER", "TYPE", "USER", NULL};
 
 		COMPLETE_WITH_LIST(list_ALTER);
 	}
-
-	/* ALTER AGGREGATE,CONVERSION,FUNCTION,SCHEMA <name> */
+	/* ALTER AGGREGATE,FUNCTION <name> */
 	else if (pg_strcasecmp(prev3_wd, "ALTER") == 0 &&
 			 (pg_strcasecmp(prev2_wd, "AGGREGATE") == 0 ||
-			  pg_strcasecmp(prev2_wd, "CONVERSION") == 0 ||
-			  pg_strcasecmp(prev2_wd, "FUNCTION") == 0 ||
+			  pg_strcasecmp(prev2_wd, "FUNCTION") == 0))
+	{
+		static const char *const list_ALTERAGG[] =
+		{"OWNER TO", "RENAME TO", "SET SCHEMA", NULL};
+
+		COMPLETE_WITH_LIST(list_ALTERAGG);
+	}
+
+	/* ALTER CONVERSION,SCHEMA <name> */
+	else if (pg_strcasecmp(prev3_wd, "ALTER") == 0 &&
+			 (pg_strcasecmp(prev2_wd, "CONVERSION") == 0 ||
 			  pg_strcasecmp(prev2_wd, "SCHEMA") == 0))
 	{
 		static const char *const list_ALTERGEN[] =
@@ -696,7 +620,7 @@ psql_completion(char *text, int start, int end)
 			 pg_strcasecmp(prev2_wd, "DATABASE") == 0)
 	{
 		static const char *const list_ALTERDATABASE[] =
-		{"RESET", "SET", "OWNER TO", "RENAME TO", NULL};
+		{"RESET", "SET", "OWNER TO", "RENAME TO", "CONNECTION LIMIT", NULL};
 
 		COMPLETE_WITH_LIST(list_ALTERDATABASE);
 	}
@@ -716,17 +640,27 @@ psql_completion(char *text, int start, int end)
 			 pg_strcasecmp(prev2_wd, "LANGUAGE") == 0)
 		COMPLETE_WITH_CONST("RENAME TO");
 
-	/* ALTER USER <name> */
+	/* ALTER USER,ROLE <name> */
 	else if (pg_strcasecmp(prev3_wd, "ALTER") == 0 &&
-			 pg_strcasecmp(prev2_wd, "USER") == 0)
+			 (pg_strcasecmp(prev2_wd, "USER") == 0 ||
+			  pg_strcasecmp(prev2_wd, "ROLE") == 0))
 	{
 		static const char *const list_ALTERUSER[] =
 		{"ENCRYPTED", "UNENCRYPTED", "CREATEDB", "NOCREATEDB", "CREATEUSER",
-		 "NOCREATEUSER", "VALID UNTIL", "RENAME TO", "SET", "RESET", NULL};
+			"NOCREATEUSER", "CREATEROLE", "NOCREATEROLE", "INHERIT", "NOINHERIT",
+			"LOGIN", "NOLOGIN", "CONNECTION LIMIT", "VALID UNTIL", "RENAME TO",
+		"SUPERUSER", "NOSUPERUSER", "SET", "RESET", NULL};
 
 		COMPLETE_WITH_LIST(list_ALTERUSER);
 	}
 
+	/* complete ALTER USER,ROLE <name> ENCRYPTED,UNENCRYPTED with PASSWORD */
+	else if (pg_strcasecmp(prev4_wd, "ALTER") == 0 &&
+			 (pg_strcasecmp(prev3_wd, "ROLE") == 0 || pg_strcasecmp(prev3_wd, "USER") == 0) &&
+			 (pg_strcasecmp(prev_wd, "ENCRYPTED") == 0 || pg_strcasecmp(prev_wd, "UNENCRYPTED") == 0))
+	{
+		COMPLETE_WITH_CONST("PASSWORD");
+	}
 	/* ALTER DOMAIN <name> */
 	else if (pg_strcasecmp(prev3_wd, "ALTER") == 0 &&
 			 pg_strcasecmp(prev2_wd, "DOMAIN") == 0)
@@ -752,7 +686,7 @@ psql_completion(char *text, int start, int end)
 			 pg_strcasecmp(prev_wd, "SET") == 0)
 	{
 		static const char *const list_ALTERDOMAIN3[] =
-		{"DEFAULT", "NOT NULL", NULL};
+		{"DEFAULT", "NOT NULL", "SCHEMA", NULL};
 
 		COMPLETE_WITH_LIST(list_ALTERDOMAIN3);
 	}
@@ -760,20 +694,21 @@ psql_completion(char *text, int start, int end)
 	else if (pg_strcasecmp(prev3_wd, "ALTER") == 0 &&
 			 pg_strcasecmp(prev2_wd, "SEQUENCE") == 0)
 	{
-			static const char *const list_ALTERSCHEMA[] =
-			{"INCREMENT", "MINVALUE", "MAXVALUE", "RESTART", "NO", "CACHE", "CYCLE", NULL};
+		static const char *const list_ALTERSEQUENCE[] =
+		{"INCREMENT", "MINVALUE", "MAXVALUE", "RESTART", "NO", "CACHE", "CYCLE",
+		"SET SCHEMA", NULL};
 
-			COMPLETE_WITH_LIST(list_ALTERSCHEMA);
+		COMPLETE_WITH_LIST(list_ALTERSEQUENCE);
 	}
 	/* ALTER SEQUENCE <name> NO */
 	else if (pg_strcasecmp(prev4_wd, "ALTER") == 0 &&
 			 pg_strcasecmp(prev3_wd, "SEQUENCE") == 0 &&
 			 pg_strcasecmp(prev_wd, "NO") == 0)
 	{
-			static const char *const list_ALTERSCHEMA2[] =
-			{"MINVALUE", "MAXVALUE", "CYCLE", NULL};
+		static const char *const list_ALTERSEQUENCE2[] =
+		{"MINVALUE", "MAXVALUE", "CYCLE", NULL};
 
-			COMPLETE_WITH_LIST(list_ALTERSCHEMA2);
+		COMPLETE_WITH_LIST(list_ALTERSEQUENCE2);
 	}
 	/* ALTER TRIGGER <name>, add ON */
 	else if (pg_strcasecmp(prev3_wd, "ALTER") == 0 &&
@@ -821,7 +756,8 @@ psql_completion(char *text, int start, int end)
 
 	/* ALTER TABLE xxx RENAME yyy */
 	else if (pg_strcasecmp(prev4_wd, "TABLE") == 0 &&
-			 pg_strcasecmp(prev2_wd, "RENAME") == 0)
+			 pg_strcasecmp(prev2_wd, "RENAME") == 0 &&
+			 pg_strcasecmp(prev_wd, "TO") != 0)
 		COMPLETE_WITH_CONST("TO");
 
 	/* If we have TABLE <sth> DROP, provide COLUMN or CONSTRAINT */
@@ -845,9 +781,9 @@ psql_completion(char *text, int start, int end)
 			  pg_strcasecmp(prev2_wd, "ALTER") == 0))
 	{
 		/* DROP ... does not work well yet */
-		static const char *const list_COLUMNALTER[] = 
+		static const char *const list_COLUMNALTER[] =
 		{"TYPE", "SET DEFAULT", "DROP DEFAULT", "SET NOT NULL",
-		 "DROP NOT NULL", "SET STATISTICS", "SET STORAGE", NULL};
+		"DROP NOT NULL", "SET STATISTICS", "SET STORAGE", NULL};
 
 		COMPLETE_WITH_LIST(list_COLUMNALTER);
 	}
@@ -861,12 +797,12 @@ psql_completion(char *text, int start, int end)
 		completion_info_charp = prev3_wd;
 		COMPLETE_WITH_QUERY(Query_for_index_of_table);
 	}
-	/* If we have TABLE <sth> SET, provide WITHOUT or TABLESPACE */
+	/* If we have TABLE <sth> SET, provide WITHOUT,TABLESPACE and SCHEMA */
 	else if (pg_strcasecmp(prev3_wd, "TABLE") == 0 &&
 			 pg_strcasecmp(prev_wd, "SET") == 0)
 	{
 		static const char *const list_TABLESET[] =
-		{"WITHOUT", "TABLESPACE", NULL};
+		{"WITHOUT", "TABLESPACE", "SCHEMA", NULL};
 
 		COMPLETE_WITH_LIST(list_TABLESET);
 	}
@@ -894,10 +830,15 @@ psql_completion(char *text, int start, int end)
 
 		COMPLETE_WITH_LIST(list_ALTERTSPC);
 	}
-	/* complete ALTER TYPE <foo> with OWNER TO */
+	/* complete ALTER TYPE <foo> with OWNER TO, SET SCHEMA */
 	else if (pg_strcasecmp(prev3_wd, "ALTER") == 0 &&
 			 pg_strcasecmp(prev2_wd, "TYPE") == 0)
-		COMPLETE_WITH_CONST("OWNER TO");
+	{
+		static const char *const list_ALTERTYPE[] =
+		{"OWNER TO", "SET SCHEMA", NULL};
+
+		COMPLETE_WITH_LIST(list_ALTERTYPE);
+	}
 	/* complete ALTER GROUP <foo> */
 	else if (pg_strcasecmp(prev3_wd, "ALTER") == 0 &&
 			 pg_strcasecmp(prev2_wd, "GROUP") == 0)
@@ -918,26 +859,25 @@ psql_completion(char *text, int start, int end)
 			 (pg_strcasecmp(prev2_wd, "ADD") == 0 ||
 			  pg_strcasecmp(prev2_wd, "DROP") == 0) &&
 			 pg_strcasecmp(prev_wd, "USER") == 0)
-		COMPLETE_WITH_QUERY(Query_for_list_of_users);
+		COMPLETE_WITH_QUERY(Query_for_list_of_roles);
 
-/* ANALYZE */
-	/* If the previous word is ANALYZE, produce list of tables. */
-	else if (pg_strcasecmp(prev_wd, "ANALYZE") == 0)
-		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_tables, NULL);
-	/* If we have ANALYZE <table>, complete with semicolon. */
-	else if (pg_strcasecmp(prev2_wd, "ANALYZE") == 0)
-		COMPLETE_WITH_CONST(";");
-
-/* BEGIN, END, COMMIT, ABORT */
+/* BEGIN, END, ABORT */
 	else if (pg_strcasecmp(prev_wd, "BEGIN") == 0 ||
 			 pg_strcasecmp(prev_wd, "END") == 0 ||
-			 pg_strcasecmp(prev_wd, "COMMIT") == 0 ||
 			 pg_strcasecmp(prev_wd, "ABORT") == 0)
 	{
 		static const char *const list_TRANS[] =
 		{"WORK", "TRANSACTION", NULL};
 
 		COMPLETE_WITH_LIST(list_TRANS);
+	}
+/* COMMIT */
+	else if (pg_strcasecmp(prev_wd, "COMMIT") == 0)
+	{
+		static const char *const list_COMMIT[] =
+		{"WORK", "TRANSACTION", "PREPARED", NULL};
+
+		COMPLETE_WITH_LIST(list_COMMIT);
 	}
 /* RELEASE SAVEPOINT */
 	else if (pg_strcasecmp(prev_wd, "RELEASE") == 0)
@@ -946,7 +886,7 @@ psql_completion(char *text, int start, int end)
 	else if (pg_strcasecmp(prev_wd, "ROLLBACK") == 0)
 	{
 		static const char *const list_TRANS[] =
-		{"WORK", "TRANSACTION", "TO SAVEPOINT", NULL};
+		{"WORK", "TRANSACTION", "TO SAVEPOINT", "PREPARED", NULL};
 
 		COMPLETE_WITH_LIST(list_TRANS);
 	}
@@ -965,8 +905,7 @@ psql_completion(char *text, int start, int end)
 		COMPLETE_WITH_CONST("ON");
 
 	/*
-	 * If we have CLUSTER <sth> ON, then add the correct tablename as
-	 * well.
+	 * If we have CLUSTER <sth> ON, then add the correct tablename as well.
 	 */
 	else if (pg_strcasecmp(prev3_wd, "CLUSTER") == 0 &&
 			 pg_strcasecmp(prev_wd, "ON") == 0)
@@ -984,7 +923,7 @@ psql_completion(char *text, int start, int end)
 		static const char *const list_COMMENT[] =
 		{"CAST", "CONVERSION", "DATABASE", "INDEX", "LANGUAGE", "RULE", "SCHEMA",
 			"SEQUENCE", "TABLE", "TYPE", "VIEW", "COLUMN", "AGGREGATE", "FUNCTION",
-		"OPERATOR", "TRIGGER", "CONSTRAINT", "DOMAIN", NULL};
+		"OPERATOR", "TRIGGER", "CONSTRAINT", "DOMAIN", "LARGE OBJECT", NULL};
 
 		COMPLETE_WITH_LIST(list_COMMENT);
 	}
@@ -1007,12 +946,12 @@ psql_completion(char *text, int start, int end)
 	else if (pg_strcasecmp(prev2_wd, "COPY") == 0 ||
 			 pg_strcasecmp(prev2_wd, "\\copy") == 0 ||
 			 pg_strcasecmp(prev2_wd, "BINARY") == 0)
-		{
-			static const char *const list_FROMTO[] =
-			{"FROM", "TO", NULL};
+	{
+		static const char *const list_FROMTO[] =
+		{"FROM", "TO", NULL};
 
-			COMPLETE_WITH_LIST(list_FROMTO);
-		}
+		COMPLETE_WITH_LIST(list_FROMTO);
+	}
 	/* If we have COPY|BINARY <sth> FROM|TO, complete with filename */
 	else if ((pg_strcasecmp(prev3_wd, "COPY") == 0 ||
 			  pg_strcasecmp(prev3_wd, "\\copy") == 0 ||
@@ -1027,25 +966,36 @@ psql_completion(char *text, int start, int end)
 			  pg_strcasecmp(prev4_wd, "BINARY") == 0) &&
 			 (pg_strcasecmp(prev2_wd, "FROM") == 0 ||
 			  pg_strcasecmp(prev2_wd, "TO") == 0))
-		{
-			static const char *const list_COPY[] =
-			{"BINARY", "OIDS", "DELIMITER", "NULL", "CSV", NULL};
+	{
+		static const char *const list_COPY[] =
+		{"BINARY", "OIDS", "DELIMITER", "NULL", "CSV", NULL};
 
-			COMPLETE_WITH_LIST(list_COPY);
-		}
+		COMPLETE_WITH_LIST(list_COPY);
+	}
 
 	/* Handle COPY|BINARY <sth> FROM|TO filename CSV */
-	else if (pg_strcasecmp(prev_wd, "CSV") == 0 && 
+	else if (pg_strcasecmp(prev_wd, "CSV") == 0 &&
 			 (pg_strcasecmp(prev3_wd, "FROM") == 0 ||
 			  pg_strcasecmp(prev3_wd, "TO") == 0))
-		{
-			static const char *const list_CSV[] =
-			{"QUOTE", "ESCAPE", "FORCE QUOTE", NULL};
+	{
+		static const char *const list_CSV[] =
+		{"HEADER", "QUOTE", "ESCAPE", "FORCE QUOTE", NULL};
 
-			COMPLETE_WITH_LIST(list_CSV);
-		}
+		COMPLETE_WITH_LIST(list_CSV);
+	}
 
-/* CREATE INDEX */
+	/* CREATE DATABASE */
+	else if (pg_strcasecmp(prev3_wd, "CREATE") == 0 &&
+			 pg_strcasecmp(prev2_wd, "DATABASE") == 0)
+	{
+		static const char *const list_DATABASE[] =
+		{"OWNER", "TEMPLATE", "ENCODING", "TABLESPACE", "CONNECTION LIMIT",
+		NULL};
+
+		COMPLETE_WITH_LIST(list_DATABASE);
+	}
+
+	/* CREATE INDEX */
 	/* First off we complete CREATE UNIQUE with "INDEX" */
 	else if (pg_strcasecmp(prev2_wd, "CREATE") == 0 &&
 			 pg_strcasecmp(prev_wd, "UNIQUE") == 0)
@@ -1061,8 +1011,8 @@ psql_completion(char *text, int start, int end)
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_tables, NULL);
 
 	/*
-	 * Complete INDEX <name> ON <table> with a list of table columns
-	 * (which should really be in parens)
+	 * Complete INDEX <name> ON <table> with a list of table columns (which
+	 * should really be in parens)
 	 */
 	else if (pg_strcasecmp(prev4_wd, "INDEX") == 0 &&
 			 pg_strcasecmp(prev2_wd, "ON") == 0)
@@ -1136,10 +1086,66 @@ psql_completion(char *text, int start, int end)
 	}
 
 /* CREATE TRIGGER */
-	/* is on the agenda . . . */
+	/* complete CREATE TRIGGER <name> with BEFORE,AFTER */
+	else if (pg_strcasecmp(prev3_wd, "CREATE") == 0 &&
+			 pg_strcasecmp(prev2_wd, "TRIGGER") == 0)
+	{
+		static const char *const list_CREATETRIGGER[] =
+		{"BEFORE", "AFTER", NULL};
+
+		COMPLETE_WITH_LIST(list_CREATETRIGGER);
+	}
+	/* complete CREATE TRIGGER <name> BEFORE,AFTER sth with OR,ON */
+	else if (pg_strcasecmp(prev5_wd, "CREATE") == 0 &&
+			 pg_strcasecmp(prev4_wd, "TRIGGER") == 0 &&
+			 (pg_strcasecmp(prev2_wd, "BEFORE") == 0 ||
+			  pg_strcasecmp(prev2_wd, "AFTER") == 0))
+	{
+		static const char *const list_CREATETRIGGER2[] =
+		{"ON", "OR", NULL};
+
+		COMPLETE_WITH_LIST(list_CREATETRIGGER2);
+	}
+
+/* CREATE ROLE,USER,GROUP */
+	else if (pg_strcasecmp(prev3_wd, "CREATE") == 0 &&
+			 (pg_strcasecmp(prev2_wd, "ROLE") == 0 ||
+			  pg_strcasecmp(prev2_wd, "GROUP") == 0 || pg_strcasecmp(prev2_wd, "USER") == 0))
+	{
+		static const char *const list_CREATEROLE[] =
+		{"ADMIN", "CONNECTION LIMIT", "CREATEDB", "CREATEROLE", "CREATEUSER",
+			"ENCRYPTED", "IN", "INHERIT", "LOGIN", "NOINHERIT", "NOLOGIN", "NOCREATEDB",
+			"NOCREATEROLE", "NOCREATEUSER", "NOSUPERUSER", "ROLE", "SUPERUSER", "SYSID",
+		"UNENCRYPTED", NULL};
+
+		COMPLETE_WITH_LIST(list_CREATEROLE);
+	}
+
+	/*
+	 * complete CREATE ROLE,USER,GROUP <name> ENCRYPTED,UNENCRYPTED with
+	 * PASSWORD
+	 */
+	else if (pg_strcasecmp(prev4_wd, "CREATE") == 0 &&
+			 (pg_strcasecmp(prev3_wd, "ROLE") == 0 ||
+			  pg_strcasecmp(prev3_wd, "GROUP") == 0 || pg_strcasecmp(prev3_wd, "USER") == 0) &&
+			 (pg_strcasecmp(prev_wd, "ENCRYPTED") == 0 || pg_strcasecmp(prev_wd, "UNENCRYPTED") == 0))
+	{
+		COMPLETE_WITH_CONST("PASSWORD");
+	}
+	/* complete CREATE ROLE,USER,GROUP <name> IN with ROLE,GROUP */
+	else if (pg_strcasecmp(prev4_wd, "CREATE") == 0 &&
+			 (pg_strcasecmp(prev3_wd, "ROLE") == 0 ||
+			  pg_strcasecmp(prev3_wd, "GROUP") == 0 || pg_strcasecmp(prev3_wd, "USER") == 0) &&
+			 pg_strcasecmp(prev_wd, "IN") == 0)
+	{
+		static const char *const list_CREATEROLE3[] =
+		{"GROUP", "ROLE", NULL};
+
+		COMPLETE_WITH_LIST(list_CREATEROLE3);
+	}
 
 /* CREATE VIEW */
-	/* Complete "CREATE VIEW <name>" with "AS" */
+	/* Complete CREATE VIEW <name> with AS */
 	else if (pg_strcasecmp(prev3_wd, "CREATE") == 0 &&
 			 pg_strcasecmp(prev2_wd, "VIEW") == 0)
 		COMPLETE_WITH_CONST("AS");
@@ -1148,6 +1154,24 @@ psql_completion(char *text, int start, int end)
 			 pg_strcasecmp(prev3_wd, "VIEW") == 0 &&
 			 pg_strcasecmp(prev_wd, "AS") == 0)
 		COMPLETE_WITH_CONST("SELECT");
+
+/* DECLARE */
+	else if (pg_strcasecmp(prev2_wd, "DECLARE") == 0)
+	{
+		static const char *const list_DECLARE[] =
+		{"BINARY", "INSENSITIVE", "SCROLL", "NO SCROLL", "CURSOR", NULL};
+
+		COMPLETE_WITH_LIST(list_DECLARE);
+	}
+
+	else if (pg_strcasecmp(prev_wd, "CURSOR") == 0)
+	{
+		static const char *const list_DECLARECURSOR[] =
+		{"WITH HOLD", "WITHOUT HOLD", "FOR", NULL};
+
+		COMPLETE_WITH_LIST(list_DECLARECURSOR);
+	}
+
 
 /* DELETE */
 
@@ -1165,21 +1189,76 @@ psql_completion(char *text, int start, int end)
 	else if (pg_strcasecmp(prev2_wd, "DELETE") == 0 &&
 			 pg_strcasecmp(prev_wd, "FROM") == 0)
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_tables, NULL);
-	/* Complete DELETE FROM <table> with "WHERE" (perhaps a safe idea?) */
+	/* Complete DELETE FROM <table> */
 	else if (pg_strcasecmp(prev3_wd, "DELETE") == 0 &&
 			 pg_strcasecmp(prev2_wd, "FROM") == 0)
-		COMPLETE_WITH_CONST("WHERE");
+	{
+		static const char *const list_DELETE[] =
+		{"USING", "WHERE", "SET", NULL};
+
+		COMPLETE_WITH_LIST(list_DELETE);
+	}
+	/* XXX: implement tab completion for DELETE ... USING */
+
+/* DROP (when not the previous word) */
+	/* DROP AGGREGATE */
+	else if (pg_strcasecmp(prev3_wd, "DROP") == 0 &&
+			 pg_strcasecmp(prev2_wd, "AGGREGATE") == 0)
+		COMPLETE_WITH_CONST("(");
+
+	/* DROP object with CASCADE / RESTRICT */
+	else if ((pg_strcasecmp(prev3_wd, "DROP") == 0 &&
+			  (pg_strcasecmp(prev2_wd, "CONVERSION") == 0 ||
+			   pg_strcasecmp(prev2_wd, "DOMAIN") == 0 ||
+			   pg_strcasecmp(prev2_wd, "FUNCTION") == 0 ||
+			   pg_strcasecmp(prev2_wd, "INDEX") == 0 ||
+			   pg_strcasecmp(prev2_wd, "LANGUAGE") == 0 ||
+			   pg_strcasecmp(prev2_wd, "SCHEMA") == 0 ||
+			   pg_strcasecmp(prev2_wd, "SEQUENCE") == 0 ||
+			   pg_strcasecmp(prev2_wd, "TABLE") == 0 ||
+			   pg_strcasecmp(prev2_wd, "TYPE") == 0 ||
+			   pg_strcasecmp(prev2_wd, "VIEW") == 0)) ||
+			 (pg_strcasecmp(prev4_wd, "DROP") == 0 &&
+			  pg_strcasecmp(prev3_wd, "AGGREGATE") == 0 &&
+			  prev_wd[strlen(prev_wd) - 1] == ')'))
+	{
+		static const char *const list_DROPCR[] =
+		{"CASCADE", "RESTRICT", NULL};
+
+		COMPLETE_WITH_LIST(list_DROPCR);
+	}
 
 /* EXPLAIN */
 
 	/*
-	 * Complete EXPLAIN [VERBOSE] (which you'd have to type yourself) with
-	 * the list of SQL commands
+	 * Complete EXPLAIN [ANALYZE] [VERBOSE] with list of EXPLAIN-able commands
 	 */
-	else if (pg_strcasecmp(prev_wd, "EXPLAIN") == 0 ||
-			 (pg_strcasecmp(prev2_wd, "EXPLAIN") == 0 &&
-			  pg_strcasecmp(prev_wd, "VERBOSE") == 0))
-		COMPLETE_WITH_LIST(sql_commands);
+	else if (pg_strcasecmp(prev_wd, "EXPLAIN") == 0)
+	{
+		static const char *const list_EXPLAIN[] =
+		{"SELECT", "INSERT", "DELETE", "UPDATE", "DECLARE", "ANALYZE", "VERBOSE", NULL};
+
+		COMPLETE_WITH_LIST(list_EXPLAIN);
+	}
+	else if (pg_strcasecmp(prev2_wd, "EXPLAIN") == 0 &&
+			 pg_strcasecmp(prev_wd, "ANALYZE") == 0)
+	{
+		static const char *const list_EXPLAIN[] =
+		{"SELECT", "INSERT", "DELETE", "UPDATE", "DECLARE", "VERBOSE", NULL};
+
+		COMPLETE_WITH_LIST(list_EXPLAIN);
+	}
+	else if (pg_strcasecmp(prev_wd, "VERBOSE") == 0 &&
+			 pg_strcasecmp(prev3_wd, "VACUUM") != 0 &&
+			 pg_strcasecmp(prev4_wd, "VACUUM") != 0 &&
+			 (pg_strcasecmp(prev2_wd, "ANALYZE") == 0 ||
+			  pg_strcasecmp(prev2_wd, "EXPLAIN") == 0))
+	{
+		static const char *const list_EXPLAIN[] =
+		{"SELECT", "INSERT", "DELETE", "UPDATE", "DECLARE", NULL};
+
+		COMPLETE_WITH_LIST(list_EXPLAIN);
+	}
 
 /* FETCH && MOVE */
 	/* Complete FETCH with one of FORWARD, BACKWARD, RELATIVE */
@@ -1187,7 +1266,7 @@ psql_completion(char *text, int start, int end)
 			 pg_strcasecmp(prev_wd, "MOVE") == 0)
 	{
 		static const char *const list_FETCH1[] =
-		{"ABSOLUT", "BACKWARD", "FORWARD", "RELATIVE", NULL};
+		{"ABSOLUTE", "BACKWARD", "FORWARD", "RELATIVE", NULL};
 
 		COMPLETE_WITH_LIST(list_FETCH1);
 	}
@@ -1202,16 +1281,17 @@ psql_completion(char *text, int start, int end)
 	}
 
 	/*
-	 * Complete FETCH <sth1> <sth2> with "FROM" or "TO". (Is there a
-	 * difference? If not, remove one.)
+	 * Complete FETCH <sth1> <sth2> with "FROM" or "IN". These are equivalent,
+	 * but we may as well tab-complete both: perhaps some users prefer one
+	 * variant or the other.
 	 */
 	else if (pg_strcasecmp(prev3_wd, "FETCH") == 0 ||
 			 pg_strcasecmp(prev3_wd, "MOVE") == 0)
 	{
-		static const char *const list_FROMTO[] =
-		{"FROM", "TO", NULL};
+		static const char *const list_FROMIN[] =
+		{"FROM", "IN", NULL};
 
-		COMPLETE_WITH_LIST(list_FROMTO);
+		COMPLETE_WITH_LIST(list_FROMIN);
 	}
 
 /* GRANT && REVOKE*/
@@ -1231,15 +1311,15 @@ psql_completion(char *text, int start, int end)
 		COMPLETE_WITH_CONST("ON");
 
 	/*
-	 * Complete GRANT/REVOKE <sth> ON with a list of tables, views,
-	 * sequences, and indexes
+	 * Complete GRANT/REVOKE <sth> ON with a list of tables, views, sequences,
+	 * and indexes
 	 *
-	 * keywords DATABASE, FUNCTION, LANGUAGE, SCHEMA added to query result
-	 * via UNION; seems to work intuitively
+	 * keywords DATABASE, FUNCTION, LANGUAGE, SCHEMA added to query result via
+	 * UNION; seems to work intuitively
 	 *
-	 * Note: GRANT/REVOKE can get quite complex; tab-completion as
-	 * implemented here will only work if the privilege list contains
-	 * exactly one privilege
+	 * Note: GRANT/REVOKE can get quite complex; tab-completion as implemented
+	 * here will only work if the privilege list contains exactly one
+	 * privilege
 	 */
 	else if ((pg_strcasecmp(prev3_wd, "GRANT") == 0 ||
 			  pg_strcasecmp(prev3_wd, "REVOKE") == 0) &&
@@ -1266,15 +1346,24 @@ psql_completion(char *text, int start, int end)
 			COMPLETE_WITH_QUERY(Query_for_list_of_schemas);
 		else if (pg_strcasecmp(prev_wd, "TABLESPACE") == 0)
 			COMPLETE_WITH_QUERY(Query_for_list_of_tablespaces);
-		else
+		else if (pg_strcasecmp(prev4_wd, "GRANT") == 0)
 			COMPLETE_WITH_CONST("TO");
+		else
+			COMPLETE_WITH_CONST("FROM");
 	}
 
-	/*
-	 * TODO: to complete with user name we need prev5_wd -- wait for a
-	 * more general solution there same for GRANT <sth> ON { DATABASE |
-	 * FUNCTION | LANGUAGE | SCHEMA | TABLESPACE } xxx TO
-	 */
+	/* Complete "GRANT/REVOKE * ON * TO/FROM" with username, GROUP, or PUBLIC */
+	else if (pg_strcasecmp(prev3_wd, "ON") == 0 &&
+			 ((pg_strcasecmp(prev5_wd, "GRANT") == 0 &&
+			   pg_strcasecmp(prev_wd, "TO") == 0) ||
+			  (pg_strcasecmp(prev5_wd, "REVOKE") == 0 &&
+			   pg_strcasecmp(prev_wd, "FROM") == 0)))
+		COMPLETE_WITH_QUERY(Query_for_list_of_grant_roles);
+
+/* GROUP BY */
+	else if (pg_strcasecmp(prev3_wd, "FROM") == 0 &&
+			 pg_strcasecmp(prev_wd, "GROUP") == 0)
+		COMPLETE_WITH_CONST("BY");
 
 /* INSERT */
 	/* Complete INSERT with "INTO" */
@@ -1353,15 +1442,37 @@ psql_completion(char *text, int start, int end)
 /* NOTIFY */
 	else if (pg_strcasecmp(prev_wd, "NOTIFY") == 0)
 		COMPLETE_WITH_QUERY("SELECT pg_catalog.quote_ident(relname) FROM pg_catalog.pg_listener WHERE substring(pg_catalog.quote_ident(relname),1,%d)='%s'");
-/* OWNER TO  - complete with available users*/
+
+/* OWNER TO  - complete with available roles*/
 	else if (pg_strcasecmp(prev2_wd, "OWNER") == 0 &&
 			 pg_strcasecmp(prev_wd, "TO") == 0)
-		COMPLETE_WITH_QUERY(Query_for_list_of_users);
+		COMPLETE_WITH_QUERY(Query_for_list_of_roles);
+
+/* ORDER BY */
+	else if (pg_strcasecmp(prev3_wd, "FROM") == 0 &&
+			 pg_strcasecmp(prev_wd, "ORDER") == 0)
+		COMPLETE_WITH_CONST("BY");
+	else if (pg_strcasecmp(prev4_wd, "FROM") == 0 &&
+			 pg_strcasecmp(prev2_wd, "ORDER") == 0 &&
+			 pg_strcasecmp(prev_wd, "BY") == 0)
+		COMPLETE_WITH_ATTR(prev3_wd);
+
+/* PREPARE xx AS */
+	else if (pg_strcasecmp(prev_wd, "AS") == 0 &&
+			 pg_strcasecmp(prev3_wd, "PREPARE") == 0)
+	{
+		static const char *const list_PREPARE[] =
+		{"SELECT", "UPDATE", "INSERT", "DELETE", NULL};
+
+		COMPLETE_WITH_LIST(list_PREPARE);
+	}
+
+
 /* REINDEX */
 	else if (pg_strcasecmp(prev_wd, "REINDEX") == 0)
 	{
 		static const char *const list_REINDEX[] =
-		{"TABLE", "DATABASE", "INDEX", NULL};
+		{"TABLE", "INDEX", "SYSTEM", "DATABASE", NULL};
 
 		COMPLETE_WITH_LIST(list_REINDEX);
 	}
@@ -1369,10 +1480,11 @@ psql_completion(char *text, int start, int end)
 	{
 		if (pg_strcasecmp(prev_wd, "TABLE") == 0)
 			COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_tables, NULL);
-		else if (pg_strcasecmp(prev_wd, "DATABASE") == 0)
-			COMPLETE_WITH_QUERY(Query_for_list_of_databases);
 		else if (pg_strcasecmp(prev_wd, "INDEX") == 0)
 			COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_indexes, NULL);
+		else if (pg_strcasecmp(prev_wd, "SYSTEM") == 0 ||
+				 pg_strcasecmp(prev_wd, "DATABASE") == 0)
+			COMPLETE_WITH_QUERY(Query_for_list_of_databases);
 	}
 
 /* SELECT */
@@ -1382,9 +1494,10 @@ psql_completion(char *text, int start, int end)
 	/* Complete with a variable name */
 	else if ((pg_strcasecmp(prev_wd, "SET") == 0 &&
 			  pg_strcasecmp(prev3_wd, "UPDATE") != 0) ||
-			 pg_strcasecmp(prev_wd, "RESET") == 0 ||
-			 pg_strcasecmp(prev_wd, "SHOW") == 0)
-		COMPLETE_WITH_LIST(pgsql_variables);
+			 pg_strcasecmp(prev_wd, "RESET") == 0)
+		COMPLETE_WITH_QUERY(Query_for_list_of_set_vars);
+	else if (pg_strcasecmp(prev_wd, "SHOW") == 0)
+		COMPLETE_WITH_QUERY(Query_for_list_of_show_vars);
 	/* Complete "SET TRANSACTION" */
 	else if ((pg_strcasecmp(prev2_wd, "SET") == 0 &&
 			  pg_strcasecmp(prev_wd, "TRANSACTION") == 0)
@@ -1400,7 +1513,7 @@ psql_completion(char *text, int start, int end)
 				 && pg_strcasecmp(prev_wd, "TRANSACTION") == 0))
 	{
 		static const char *const my_list[] =
-		{"ISOLATION", "READ", NULL};
+		{"ISOLATION LEVEL", "READ", NULL};
 
 		COMPLETE_WITH_LIST(my_list);
 	}
@@ -1466,6 +1579,10 @@ psql_completion(char *text, int start, int end)
 
 		COMPLETE_WITH_LIST(constraint_list);
 	}
+	/* Complete SET ROLE */
+	else if (pg_strcasecmp(prev2_wd, "SET") == 0 &&
+			 pg_strcasecmp(prev_wd, "ROLE") == 0)
+		COMPLETE_WITH_QUERY(Query_for_list_of_roles);
 	/* Complete SET SESSION with AUTHORIZATION or CHARACTERISTICS... */
 	else if (pg_strcasecmp(prev2_wd, "SET") == 0 &&
 			 pg_strcasecmp(prev_wd, "SESSION") == 0)
@@ -1479,7 +1596,7 @@ psql_completion(char *text, int start, int end)
 	else if (pg_strcasecmp(prev3_wd, "SET") == 0
 			 && pg_strcasecmp(prev2_wd, "SESSION") == 0
 			 && pg_strcasecmp(prev_wd, "AUTHORIZATION") == 0)
-		COMPLETE_WITH_QUERY(Query_for_list_of_users);
+		COMPLETE_WITH_QUERY(Query_for_list_of_roles);
 	/* Complete SET <var> with "TO" */
 	else if (pg_strcasecmp(prev2_wd, "SET") == 0 &&
 			 pg_strcasecmp(prev4_wd, "UPDATE") != 0 &&
@@ -1488,7 +1605,7 @@ psql_completion(char *text, int start, int end)
 		COMPLETE_WITH_CONST("TO");
 	/* Suggest possible variable values */
 	else if (pg_strcasecmp(prev3_wd, "SET") == 0 &&
-		(pg_strcasecmp(prev_wd, "TO") == 0 || strcmp(prev_wd, "=") == 0))
+			 (pg_strcasecmp(prev_wd, "TO") == 0 || strcmp(prev_wd, "=") == 0))
 	{
 		if (pg_strcasecmp(prev2_wd, "DateStyle") == 0)
 		{
@@ -1537,23 +1654,63 @@ psql_completion(char *text, int start, int end)
 		COMPLETE_WITH_CONST("SET");
 
 	/*
-	 * If the previous word is SET (and it wasn't caught above as the
-	 * _first_ word) the word before it was (hopefully) a table name and
-	 * we'll now make a list of attributes.
+	 * If the previous word is SET (and it wasn't caught above as the _first_
+	 * word) the word before it was (hopefully) a table name and we'll now
+	 * make a list of attributes.
 	 */
 	else if (pg_strcasecmp(prev_wd, "SET") == 0)
 		COMPLETE_WITH_ATTR(prev2_wd);
 
-/* VACUUM */
+/* UPDATE xx SET yy = */
+	else if (pg_strcasecmp(prev2_wd, "SET") == 0 &&
+			 pg_strcasecmp(prev4_wd, "UPDATE") == 0)
+		COMPLETE_WITH_CONST("=");
+
+/*
+ * VACUUM [ FULL | FREEZE ] [ VERBOSE ] [ table ]
+ * VACUUM [ FULL | FREEZE ] [ VERBOSE ] ANALYZE [ table [ (column [, ...] ) ] ]
+ */
 	else if (pg_strcasecmp(prev_wd, "VACUUM") == 0)
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_tables,
 								   " UNION SELECT 'FULL'"
+								   " UNION SELECT 'FREEZE'"
 								   " UNION SELECT 'ANALYZE'"
 								   " UNION SELECT 'VERBOSE'");
 	else if (pg_strcasecmp(prev2_wd, "VACUUM") == 0 &&
 			 (pg_strcasecmp(prev_wd, "FULL") == 0 ||
-			  pg_strcasecmp(prev_wd, "ANALYZE") == 0 ||
-			  pg_strcasecmp(prev_wd, "VERBOSE") == 0))
+			  pg_strcasecmp(prev_wd, "FREEZE") == 0))
+		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_tables,
+								   " UNION SELECT 'ANALYZE'"
+								   " UNION SELECT 'VERBOSE'");
+	else if (pg_strcasecmp(prev3_wd, "VACUUM") == 0 &&
+			 pg_strcasecmp(prev_wd, "ANALYZE") == 0 &&
+			 (pg_strcasecmp(prev2_wd, "FULL") == 0 ||
+			  pg_strcasecmp(prev2_wd, "FREEZE") == 0))
+		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_tables,
+								   " UNION SELECT 'VERBOSE'");
+	else if (pg_strcasecmp(prev3_wd, "VACUUM") == 0 &&
+			 pg_strcasecmp(prev_wd, "VERBOSE") == 0 &&
+			 (pg_strcasecmp(prev2_wd, "FULL") == 0 ||
+			  pg_strcasecmp(prev2_wd, "FREEZE") == 0))
+		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_tables,
+								   " UNION SELECT 'ANALYZE'");
+	else if (pg_strcasecmp(prev2_wd, "VACUUM") == 0 &&
+			 pg_strcasecmp(prev_wd, "VERBOSE") == 0)
+		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_tables,
+								   " UNION SELECT 'ANALYZE'");
+	else if (pg_strcasecmp(prev2_wd, "VACUUM") == 0 &&
+			 pg_strcasecmp(prev_wd, "ANALYZE") == 0)
+		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_tables,
+								   " UNION SELECT 'VERBOSE'");
+	else if ((pg_strcasecmp(prev_wd, "ANALYZE") == 0 &&
+			  pg_strcasecmp(prev2_wd, "VERBOSE") == 0) ||
+			 (pg_strcasecmp(prev_wd, "VERBOSE") == 0 &&
+			  pg_strcasecmp(prev2_wd, "ANALYZE") == 0))
+		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_tables, NULL);
+
+/* ANALYZE */
+	/* If the previous word is ANALYZE, produce list of tables */
+	else if (pg_strcasecmp(prev_wd, "ANALYZE") == 0)
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_tables, NULL);
 
 /* WHERE */
@@ -1598,7 +1755,7 @@ psql_completion(char *text, int start, int end)
 	else if (strcmp(prev_wd, "\\dT") == 0 || strcmp(prev_wd, "\\dT+") == 0)
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_datatypes, NULL);
 	else if (strcmp(prev_wd, "\\du") == 0)
-		COMPLETE_WITH_QUERY(Query_for_list_of_users);
+		COMPLETE_WITH_QUERY(Query_for_list_of_roles);
 	else if (strcmp(prev_wd, "\\dv") == 0 || strcmp(prev_wd, "\\dv+") == 0)
 		COMPLETE_WITH_SCHEMA_QUERY(Query_for_list_of_views, NULL);
 	else if (strcmp(prev_wd, "\\encoding") == 0)
@@ -1615,21 +1772,144 @@ psql_completion(char *text, int start, int end)
 		COMPLETE_WITH_LIST(my_list);
 	}
 	else if (strcmp(prev_wd, "\\cd") == 0 ||
-		 strcmp(prev_wd, "\\e") == 0 || strcmp(prev_wd, "\\edit") == 0 ||
+			 strcmp(prev_wd, "\\e") == 0 || strcmp(prev_wd, "\\edit") == 0 ||
 			 strcmp(prev_wd, "\\g") == 0 ||
-			 strcmp(prev_wd, "\\i") == 0 || strcmp(prev_wd, "\\include") == 0 ||
-		  strcmp(prev_wd, "\\o") == 0 || strcmp(prev_wd, "\\out") == 0 ||
+		  strcmp(prev_wd, "\\i") == 0 || strcmp(prev_wd, "\\include") == 0 ||
+			 strcmp(prev_wd, "\\o") == 0 || strcmp(prev_wd, "\\out") == 0 ||
 			 strcmp(prev_wd, "\\s") == 0 ||
-		   strcmp(prev_wd, "\\w") == 0 || strcmp(prev_wd, "\\write") == 0
+			 strcmp(prev_wd, "\\w") == 0 || strcmp(prev_wd, "\\write") == 0
 		)
 		matches = completion_matches(text, filename_completion_function);
 
 
-	/*
-	 * Finally, we look through the list of "things", such as TABLE, INDEX
-	 * and check if that was the previous word. If so, execute the query
-	 * to get a list of them.
-	 */
+																															/*
+																															 *
+																															 * Fi
+																															 * n
+																															 * a
+																															 * l
+																															 * l
+																															 * y
+																															 * ,
+																															 *
+																															 * we
+																															 *
+																															 * lo
+																															 * o
+																															 * k
+																															 *
+																															 * th
+																															 * r
+																															 * o
+																															 * u
+																															 * g
+																															 * h
+																															 *
+																															 * th
+																															 * e
+																															 *
+																															 * li
+																															 * s
+																															 * t
+																															 *
+																															 * of
+																															 *
+																															 * "t
+																															 * h
+																															 * i
+																															 * n
+																															 * g
+																															 * s
+																															 * "
+																															 * ,
+																															 *
+																															 * su
+																															 * c
+																															 * h
+																															 *
+																															 * as
+																															 *
+																															 * TA
+																															 * B
+																															 * L
+																															 * E
+																															 * ,
+																															 *
+																															 * IN
+																															 * D
+																															 * E
+																															 * X
+																															 *
+																															 * an
+																															 * d
+																															 *
+																															 * ch
+																															 * e
+																															 * c
+																															 * k
+																															 *
+																															 * if
+																															 *
+																															 * th
+																															 * a
+																															 * t
+																															 *
+																															 * wa
+																															 * s
+																															 *
+																															 * th
+																															 * e
+																															 *
+																															 * pr
+																															 * e
+																															 * v
+																															 * i
+																															 * o
+																															 * u
+																															 * s
+																															 *
+																															 * wo
+																															 * r
+																															 * d
+																															 * .
+																															 *
+																															 * If
+																															 *
+																															 * so
+																															 * ,
+																															 *
+																															 * ex
+																															 * e
+																															 * c
+																															 * u
+																															 * t
+																															 * e
+																															 *
+																															 * th
+																															 * e
+																															 *
+																															 * qu
+																															 * e
+																															 * r
+																															 * y
+																															 *
+																															 * to
+																															 *
+																															 * ge
+																															 * t
+																															 *
+																															 * a
+																															 * li
+																															 * s
+																															 * t
+																															 *
+																															 * of
+																															 *
+																															 * th
+																															 * e
+																															 * m
+																															 * .
+																															 * */
 	else
 	{
 		int			i;
@@ -1648,29 +1928,236 @@ psql_completion(char *text, int start, int end)
 		}
 	}
 
-	/*
-	 * If we still don't have anything to match we have to fabricate some
-	 * sort of default list. If we were to just return NULL, readline
-	 * automatically attempts filename completion, and that's usually no
-	 * good.
-	 */
-	if (matches == NULL)
-	{
-		COMPLETE_WITH_CONST("");
+																									/*
+																									 *
+																									 * If
+																									 *
+																									 * we
+																									 *
+																									 * st
+																									 * i
+																									 * l
+																									 * l
+																									 *
+																									 * do
+																									 * n
+																									 * '
+																									 * t
+																									 *
+																									 * ha
+																									 * v
+																									 * e
+																									 *
+																									 * an
+																									 * y
+																									 * t
+																									 * h
+																									 * i
+																									 * n
+																									 * g
+																									 *
+																									 * to
+																									 *
+																									 * ma
+																									 * t
+																									 * c
+																									 * h
+																									 *
+																									 * we
+																									 *
+																									 * ha
+																									 * v
+																									 * e
+																									 *
+																									 * to
+																									 *
+																									 * fa
+																									 * b
+																									 * r
+																									 * i
+																									 * c
+																									 * a
+																									 * t
+																									 * e
+																									 *
+																									 * so
+																									 * m
+																									 * e
+																									 *
+																									 * so
+																									 * r
+																									 * t
+																									 *
+																									 * of
+																									 *
+																									 * de
+																									 * f
+																									 * a
+																									 * u
+																									 * l
+																									 * t
+																									 *
+																									 * li
+																									 * s
+																									 * t
+																									 * .
+																									 *
+																									 * If
+																									 *
+																									 * we
+																									 *
+																									 * we
+																									 * r
+																									 * e
+																									 *
+																									 * to
+																									 *
+																									 * ju
+																									 * s
+																									 * t
+																									 *
+																									 * re
+																									 * t
+																									 * u
+																									 * r
+																									 * n
+																									 *
+																									 * NU
+																									 * L
+																									 * L
+																									 * ,
+																									 *
+																									 * re
+																									 * a
+																									 * d
+																									 * l
+																									 * i
+																									 * n
+																									 * e
+																									 *
+																									 * au
+																									 * t
+																									 * o
+																									 * m
+																									 * a
+																									 * t
+																									 * i
+																									 * c
+																									 * a
+																									 * l
+																									 * l
+																									 * y
+																									 *
+																									 * at
+																									 * t
+																									 * e
+																									 * m
+																									 * p
+																									 * t
+																									 * s
+																									 *
+																									 * fi
+																									 * l
+																									 * e
+																									 * n
+																									 * a
+																									 * m
+																									 * e
+																									 *
+																									 * co
+																									 * m
+																									 * p
+																									 * l
+																									 * e
+																									 * t
+																									 * i
+																									 * o
+																									 * n
+																									 * ,
+																									 *
+																									 * an
+																									 * d
+																									 *
+																									 * th
+																									 * a
+																									 * t
+																									 * '
+																									 * s
+																									 *
+																									 * us
+																									 * u
+																									 * a
+																									 * l
+																									 * l
+																									 * y
+																									 *
+																									 * no
+																									 *
+																									 * go
+																									 * o
+																									 * d
+																									 * .
+																									 * */
+																									if (matches == NULL)
+																									{
+																										COMPLETE_WITH_CONST("");
 #ifdef HAVE_RL_COMPLETION_APPEND_CHARACTER
-		rl_completion_append_character = '\0';
+																										rl_completion_append_character = '\0';
 #endif
-	}
+																									}
 
-	/* free storage */
-	free(prev_wd);
-	free(prev2_wd);
-	free(prev3_wd);
-	free(prev4_wd);
+																									/*
+																									 * f
+																									 * r
+																									 * e
+																									 * e
+																									 *
+																									 * st
+																									 * o
+																									 * r
+																									 * a
+																									 * g
+																									 * e
+																									 *
+																									 */
+																									free(prev_wd);
+																									free(prev2_wd);
+																									free(prev3_wd);
+																									free(prev4_wd);
+																									free(prev5_wd);
 
-	/* Return our Grand List O' Matches */
-	return matches;
-}
+																									/*
+																									 * R
+																									 * e
+																									 * t
+																									 * u
+																									 * r
+																									 * n
+																									 *
+																									 * ou
+																									 * r
+																									 *
+																									 * Gr
+																									 * a
+																									 * n
+																									 * d
+																									 *
+																									 * Li
+																									 * s
+																									 * t
+																									 *
+																									 * O'
+																									 *
+																									 * Ma
+																									 * t
+																									 * c
+																									 * h
+																									 * e
+																									 * s
+																									 *
+																									 */
+																									return matches;
+																									}
 
 
 
@@ -1690,43 +2177,152 @@ psql_completion(char *text, int start, int end)
 /* This one gives you one from a list of things you can put after CREATE or DROP
    as defined above.
 */
-static char *
-create_command_generator(const char *text, int state)
-{
-	static int	list_index,
-				string_length;
-	const char *name;
+																									static char *
+																												create_command_generator(const char *text, int state)
+																									{
+																										static int	list_index,
+																													string_length;
+																										const char *name;
 
-	/* If this is the first time for this completion, init some values */
-	if (state == 0)
-	{
-		list_index = 0;
-		string_length = strlen(text);
-	}
+																										/*
+																										 * I
+																										 * f
+																										 *
+																										 * th
+																										 * i
+																										 * s
+																										 *
+																										 * is
+																										 *
+																										 * th
+																										 * e
+																										 *
+																										 * fi
+																										 * r
+																										 * s
+																										 * t
+																										 *
+																										 * ti
+																										 * m
+																										 * e
+																										 *
+																										 * fo
+																										 * r
+																										 *
+																										 * th
+																										 * i
+																										 * s
+																										 *
+																										 * co
+																										 * m
+																										 * p
+																										 * l
+																										 * e
+																										 * t
+																										 * i
+																										 * o
+																										 * n
+																										 * ,
+																										 *
+																										 * in
+																										 * i
+																										 * t
+																										 *
+																										 * so
+																										 * m
+																										 * e
+																										 *
+																										 * va
+																										 * l
+																										 * u
+																										 * e
+																										 * s
+																										 *
+																										 */
+																										if (state == 0)
+																										{
+																											list_index = 0;
+																											string_length = strlen(text);
+																										}
 
-	/* find something that matches */
-	while ((name = words_after_create[list_index++].name))
-		if (pg_strncasecmp(name, text, string_length) == 0)
-			return pg_strdup(name);
+																										/*
+																										 * f
+																										 * i
+																										 * n
+																										 * d
+																										 *
+																										 * so
+																										 * m
+																										 * e
+																										 * t
+																										 * h
+																										 * i
+																										 * n
+																										 * g
+																										 *
+																										 * th
+																										 * a
+																										 * t
+																										 *
+																										 * ma
+																										 * t
+																										 * c
+																										 * h
+																										 * e
+																										 * s
+																										 *
+																										 */
+																										while ((name = words_after_create[list_index++].name))
+																											if (pg_strncasecmp(name, text, string_length) == 0)
+																												return pg_strdup(name);
 
-	/* if nothing matches, return NULL */
-	return NULL;
-}
+																										/*
+																										 * i
+																										 * f
+																										 *
+																										 * no
+																										 * t
+																										 * h
+																										 * i
+																										 * n
+																										 * g
+																										 *
+																										 * ma
+																										 * t
+																										 * c
+																										 * h
+																										 * e
+																										 * s
+																										 * ,
+																										 *
+																										 * re
+																										 * t
+																										 * u
+																										 * r
+																										 * n
+																										 *
+																										 * NU
+																										 * L
+																										 * L
+																										 *
+																										 */
+																										return NULL;
+																									}
 
 
 /* The following two functions are wrappers for _complete_from_query */
 
-static char *
-complete_from_query(const char *text, int state)
-{
-	return _complete_from_query(0, text, state);
-}
+																									static char *
+																												complete_from_query(const char *text, int state)
+																									{
+																										return _complete_from_query(0, text, state);
+																									}
 
-static char *
-complete_from_schema_query(const char *text, int state)
-{
-	return _complete_from_query(1, text, state);
-}
+																									static char *
+																												complete_from_schema_query(const char *text, int state)
+																									{
+																										return _complete_from_query(1, text, state);
+																									}
 
 
 /* This creates a list of matching things, according to a query pointed to
@@ -1748,236 +2344,1308 @@ complete_from_schema_query(const char *text, int state)
    See top of file for examples of both kinds of query.
 */
 
-static char *
-_complete_from_query(int is_schema_query, const char *text, int state)
-{
-	static int	list_index,
-				string_length;
-	static PGresult *result = NULL;
+																									static char *
+																												_complete_from_query(int is_schema_query, const char *text, int state)
+																									{
+																										static int	list_index,
+																													string_length;
+																										static PGresult *result = NULL;
 
-	/*
-	 * If this is the first time for this completion, we fetch a list of
-	 * our "things" from the backend.
-	 */
-	if (state == 0)
-	{
-		PQExpBufferData query_buffer;
-		char	   *e_text;
-		char	   *e_info_charp;
+																										/*
+																										 *
+																										 * If
+																										 *
+																										 * th
+																										 * i
+																										 * s
+																										 *
+																										 * is
+																										 *
+																										 * th
+																										 * e
+																										 *
+																										 * fi
+																										 * r
+																										 * s
+																										 * t
+																										 *
+																										 * ti
+																										 * m
+																										 * e
+																										 *
+																										 * fo
+																										 * r
+																										 *
+																										 * th
+																										 * i
+																										 * s
+																										 *
+																										 * co
+																										 * m
+																										 * p
+																										 * l
+																										 * e
+																										 * t
+																										 * i
+																										 * o
+																										 * n
+																										 * ,
+																										 *
+																										 * we
+																										 *
+																										 * fe
+																										 * t
+																										 * c
+																										 * h
+																										 *
+																										 * a
+																										 * li
+																										 * s
+																										 * t
+																										 *
+																										 * of
+																										 *
+																										 * ou
+																										 * r
+																										 *
+																										 * "t
+																										 * h
+																										 * i
+																										 * n
+																										 * g
+																										 * s
+																										 * "
+																										 *
+																										 * fr
+																										 * o
+																										 * m
+																										 *
+																										 * th
+																										 * e
+																										 *
+																										 * ba
+																										 * c
+																										 * k
+																										 * e
+																										 * n
+																										 * d
+																										 * .
+																										 * */
+																										if (state == 0)
+																										{
+																											PQExpBufferData query_buffer;
+																											char	   *e_text;
+																											char	   *e_info_charp;
 
-		list_index = 0;
-		string_length = strlen(text);
+																											list_index = 0;
+																											string_length = strlen(text);
 
-		/* Free any prior result */
-		PQclear(result);
-		result = NULL;
+																											/*
+																											 * F
+																											 * r
+																											 * e
+																											 * e
+																											 *
+																											 * an
+																											 * y
+																											 *
+																											 * pr
+																											 * i
+																											 * o
+																											 * r
+																											 *
+																											 * re
+																											 * s
+																											 * u
+																											 * l
+																											 * t
+																											 *
+																											 */
+																											PQclear(result);
+																											result = NULL;
 
-		/* Set up suitably-escaped copies of textual inputs */
-		if (text)
-		{
-			e_text = pg_malloc(strlen(text) *2 + 1);
-			PQescapeString(e_text, text, strlen(text));
-		}
-		else
-			e_text = NULL;
+																											/*
+																											 * S
+																											 * e
+																											 * t
+																											 *
+																											 * up
+																											 *
+																											 * su
+																											 * i
+																											 * t
+																											 * a
+																											 * b
+																											 * l
+																											 * y
+																											 * -
+																											 * e
+																											 * s
+																											 * c
+																											 * a
+																											 * p
+																											 * e
+																											 * d
+																											 *
+																											 * co
+																											 * p
+																											 * i
+																											 * e
+																											 * s
+																											 *
+																											 * of
+																											 *
+																											 * te
+																											 * x
+																											 * t
+																											 * u
+																											 * a
+																											 * l
+																											 *
+																											 * in
+																											 * p
+																											 * u
+																											 * t
+																											 * s
+																											 *
+																											 */
+																											e_text = pg_malloc(string_length * 2 + 1);
+																											PQescapeString(e_text, text, string_length);
 
-		if (completion_info_charp)
-		{
-			size_t		charp_len;
+																											if (completion_info_charp)
+																											{
+																												size_t		charp_len;
 
-			charp_len = strlen(completion_info_charp);
-			e_info_charp = pg_malloc(charp_len * 2 + 1);
-			PQescapeString(e_info_charp, completion_info_charp,
-						   charp_len);
-		}
-		else
-			e_info_charp = NULL;
+																												charp_len = strlen(completion_info_charp);
+																												e_info_charp = pg_malloc(charp_len * 2 + 1);
+																												PQescapeString(e_info_charp, completion_info_charp,
+																															   charp_len);
+																											}
+																											else
+																												e_info_charp = NULL;
 
-		initPQExpBuffer(&query_buffer);
+																											initPQExpBuffer(&query_buffer);
 
-		if (is_schema_query)
-		{
-			/* completion_squery gives us the pieces to assemble */
-			const char *qualresult = completion_squery->qualresult;
+																											if (is_schema_query)
+																											{
+																												/*
+																												 * c
+																												 * o
+																												 * m
+																												 * p
+																												 * l
+																												 * e
+																												 * t
+																												 * i
+																												 * o
+																												 * n
+																												 * _
+																												 * s
+																												 * q
+																												 * u
+																												 * e
+																												 * r
+																												 * y
+																												 *
+																												 * gi
+																												 * v
+																												 * e
+																												 * s
+																												 *
+																												 * us
+																												 *
+																												 * th
+																												 * e
+																												 *
+																												 * pi
+																												 * e
+																												 * c
+																												 * e
+																												 * s
+																												 *
+																												 * to
+																												 *
+																												 * as
+																												 * s
+																												 * e
+																												 * m
+																												 * b
+																												 * l
+																												 * e
+																												 *
+																												 */
+																												const char *qualresult = completion_squery->qualresult;
 
-			if (qualresult == NULL)
-				qualresult = completion_squery->result;
+																												if (qualresult == NULL)
+																													qualresult = completion_squery->result;
 
-			/* Get unqualified names matching the input-so-far */
-			appendPQExpBuffer(&query_buffer, "SELECT %s FROM %s WHERE ",
-							  completion_squery->result,
-							  completion_squery->catname);
-			if (completion_squery->selcondition)
-				appendPQExpBuffer(&query_buffer, "%s AND ",
-								  completion_squery->selcondition);
-			appendPQExpBuffer(&query_buffer, "substring(%s,1,%d)='%s'",
-							  completion_squery->result,
-							  string_length, e_text);
-			appendPQExpBuffer(&query_buffer, " AND %s",
-							  completion_squery->viscondition);
+																												/*
+																												 * G
+																												 * e
+																												 * t
+																												 *
+																												 * un
+																												 * q
+																												 * u
+																												 * a
+																												 * l
+																												 * i
+																												 * f
+																												 * i
+																												 * e
+																												 * d
+																												 *
+																												 * na
+																												 * m
+																												 * e
+																												 * s
+																												 *
+																												 * ma
+																												 * t
+																												 * c
+																												 * h
+																												 * i
+																												 * n
+																												 * g
+																												 *
+																												 * th
+																												 * e
+																												 *
+																												 * in
+																												 * p
+																												 * u
+																												 * t
+																												 * -
+																												 * s
+																												 * o
+																												 * -
+																												 * f
+																												 * a
+																												 * r
+																												 *
+																												 */
+																												appendPQExpBuffer(&query_buffer, "SELECT %s FROM %s WHERE ",
+																																  completion_squery->result,
+																																  completion_squery->catname);
+																												if (completion_squery->selcondition)
+																													appendPQExpBuffer(&query_buffer, "%s AND ",
+																																	  completion_squery->selcondition);
+																												appendPQExpBuffer(&query_buffer, "substring(%s,1,%d)='%s'",
+																																  completion_squery->result,
+																																  string_length, e_text);
+																												appendPQExpBuffer(&query_buffer, " AND %s",
+																																  completion_squery->viscondition);
 
-			/*
-			 * When fetching relation names, suppress system catalogs
-			 * unless the input-so-far begins with "pg_".  This is a
-			 * compromise between not offering system catalogs for
-			 * completion at all, and having them swamp the result when
-			 * the input is just "p".
-			 */
-			if (strcmp(completion_squery->catname,
-					   "pg_catalog.pg_class c") == 0 &&
-				strncmp(text, "pg_", 3) !=0)
-			{
-				appendPQExpBuffer(&query_buffer,
-								" AND c.relnamespace <> (SELECT oid FROM"
-				" pg_catalog.pg_namespace WHERE nspname = 'pg_catalog')");
-			}
+																												/*
+																												 *
+																												 * Wh
+																												 * e
+																												 * n
+																												 *
+																												 * fe
+																												 * t
+																												 * c
+																												 * h
+																												 * i
+																												 * n
+																												 * g
+																												 *
+																												 * re
+																												 * l
+																												 * a
+																												 * t
+																												 * i
+																												 * o
+																												 * n
+																												 *
+																												 * na
+																												 * m
+																												 * e
+																												 * s
+																												 * ,
+																												 *
+																												 * su
+																												 * p
+																												 * p
+																												 * r
+																												 * e
+																												 * s
+																												 * s
+																												 *
+																												 * sy
+																												 * s
+																												 * t
+																												 * e
+																												 * m
+																												 *
+																												 * ca
+																												 * t
+																												 * a
+																												 * l
+																												 * o
+																												 * g
+																												 * s
+																												 *
+																												 * un
+																												 * l
+																												 * e
+																												 * s
+																												 * s
+																												 *
+																												 * th
+																												 * e
+																												 *
+																												 * in
+																												 * p
+																												 * u
+																												 * t
+																												 * -
+																												 * s
+																												 * o
+																												 * -
+																												 * f
+																												 * a
+																												 * r
+																												 *
+																												 * be
+																												 * g
+																												 * i
+																												 * n
+																												 * s
+																												 *
+																												 * wi
+																												 * t
+																												 * h
+																												 *
+																												 * "p
+																												 * g
+																												 * _
+																												 * "
+																												 * .
+																												 *
+																												 * Th
+																												 * i
+																												 * s
+																												 *
+																												 * is
+																												 *
+																												 * a
+																												 * co
+																												 * m
+																												 * p
+																												 * r
+																												 * o
+																												 * m
+																												 * i
+																												 * s
+																												 * e
+																												 *
+																												 * be
+																												 * t
+																												 * w
+																												 * e
+																												 * e
+																												 * n
+																												 *
+																												 * no
+																												 * t
+																												 *
+																												 * of
+																												 * f
+																												 * e
+																												 * r
+																												 * i
+																												 * n
+																												 * g
+																												 *
+																												 * sy
+																												 * s
+																												 * t
+																												 * e
+																												 * m
+																												 *
+																												 * ca
+																												 * t
+																												 * a
+																												 * l
+																												 * o
+																												 * g
+																												 * s
+																												 *
+																												 * fo
+																												 * r
+																												 *
+																												 * co
+																												 * m
+																												 * p
+																												 * l
+																												 * e
+																												 * t
+																												 * i
+																												 * o
+																												 * n
+																												 *
+																												 * at
+																												 *
+																												 * al
+																												 * l
+																												 * ,
+																												 *
+																												 * an
+																												 * d
+																												 *
+																												 * ha
+																												 * v
+																												 * i
+																												 * n
+																												 * g
+																												 *
+																												 * th
+																												 * e
+																												 * m
+																												 *
+																												 * sw
+																												 * a
+																												 * m
+																												 * p
+																												 *
+																												 * th
+																												 * e
+																												 *
+																												 * re
+																												 * s
+																												 * u
+																												 * l
+																												 * t
+																												 *
+																												 * wh
+																												 * e
+																												 * n
+																												 *
+																												 * th
+																												 * e
+																												 *
+																												 * in
+																												 * p
+																												 * u
+																												 * t
+																												 *
+																												 * is
+																												 *
+																												 * ju
+																												 * s
+																												 * t
+																												 *
+																												 * "p
+																												 * "
+																												 * .
+																												 * */
+																												if (strcmp(completion_squery->catname,
+																														   "pg_catalog.pg_class c") == 0 &&
+																													strncmp(text, "pg_", 3) !=0)
+																												{
+																													appendPQExpBuffer(&query_buffer,
+																																	  " AND c.relnamespace <> (SELECT oid FROM"
+																																	  " pg_catalog.pg_namespace WHERE nspname = 'pg_catalog')");
+																												}
 
-			/*
-			 * Add in matching schema names, but only if there is more
-			 * than one potential match among schema names.
-			 */
-			appendPQExpBuffer(&query_buffer, "\nUNION\n"
-					   "SELECT pg_catalog.quote_ident(n.nspname) || '.' "
-							  "FROM pg_catalog.pg_namespace n "
-							  "WHERE substring(pg_catalog.quote_ident(n.nspname) || '.',1,%d)='%s'",
-							  string_length, e_text);
-			appendPQExpBuffer(&query_buffer,
-							  " AND (SELECT pg_catalog.count(*)"
-							  " FROM pg_catalog.pg_namespace"
-							  " WHERE substring(pg_catalog.quote_ident(nspname) || '.',1,%d) ="
-							  " substring('%s',1,pg_catalog.length(pg_catalog.quote_ident(nspname))+1)) > 1",
-							  string_length, e_text);
+																												/*
+																												 *
+																												 * Ad
+																												 * d
+																												 *
+																												 * in
+																												 *
+																												 * ma
+																												 * t
+																												 * c
+																												 * h
+																												 * i
+																												 * n
+																												 * g
+																												 *
+																												 * sc
+																												 * h
+																												 * e
+																												 * m
+																												 * a
+																												 *
+																												 * na
+																												 * m
+																												 * e
+																												 * s
+																												 * ,
+																												 *
+																												 * bu
+																												 * t
+																												 *
+																												 * on
+																												 * l
+																												 * y
+																												 *
+																												 * if
+																												 *
+																												 * th
+																												 * e
+																												 * r
+																												 * e
+																												 *
+																												 * is
+																												 *
+																												 * mo
+																												 * r
+																												 * e
+																												 *
+																												 * th
+																												 * a
+																												 * n
+																												 *
+																												 * on
+																												 * e
+																												 *
+																												 * po
+																												 * t
+																												 * e
+																												 * n
+																												 * t
+																												 * i
+																												 * a
+																												 * l
+																												 *
+																												 * ma
+																												 * t
+																												 * c
+																												 * h
+																												 *
+																												 * am
+																												 * o
+																												 * n
+																												 * g
+																												 *
+																												 * sc
+																												 * h
+																												 * e
+																												 * m
+																												 * a
+																												 *
+																												 * na
+																												 * m
+																												 * e
+																												 * s
+																												 * .
+																												 * */
+																												appendPQExpBuffer(&query_buffer, "\nUNION\n"
+																																  "SELECT pg_catalog.quote_ident(n.nspname) || '.' "
+																																  "FROM pg_catalog.pg_namespace n "
+																																  "WHERE substring(pg_catalog.quote_ident(n.nspname) || '.',1,%d)='%s'",
+																																  string_length, e_text);
+																												appendPQExpBuffer(&query_buffer,
+																																  " AND (SELECT pg_catalog.count(*)"
+																																  " FROM pg_catalog.pg_namespace"
+																																  " WHERE substring(pg_catalog.quote_ident(nspname) || '.',1,%d) ="
+																																  " substring('%s',1,pg_catalog.length(pg_catalog.quote_ident(nspname))+1)) > 1",
+																																  string_length, e_text);
 
-			/*
-			 * Add in matching qualified names, but only if there is
-			 * exactly one schema matching the input-so-far.
-			 */
-			appendPQExpBuffer(&query_buffer, "\nUNION\n"
-				 "SELECT pg_catalog.quote_ident(n.nspname) || '.' || %s "
-							  "FROM %s, pg_catalog.pg_namespace n "
-							  "WHERE %s = n.oid AND ",
-							  qualresult,
-							  completion_squery->catname,
-							  completion_squery->namespace);
-			if (completion_squery->selcondition)
-				appendPQExpBuffer(&query_buffer, "%s AND ",
-								  completion_squery->selcondition);
-			appendPQExpBuffer(&query_buffer, "substring(pg_catalog.quote_ident(n.nspname) || '.' || %s,1,%d)='%s'",
-							  qualresult,
-							  string_length, e_text);
+																												/*
+																												 *
+																												 * Ad
+																												 * d
+																												 *
+																												 * in
+																												 *
+																												 * ma
+																												 * t
+																												 * c
+																												 * h
+																												 * i
+																												 * n
+																												 * g
+																												 *
+																												 * qu
+																												 * a
+																												 * l
+																												 * i
+																												 * f
+																												 * i
+																												 * e
+																												 * d
+																												 *
+																												 * na
+																												 * m
+																												 * e
+																												 * s
+																												 * ,
+																												 *
+																												 * bu
+																												 * t
+																												 *
+																												 * on
+																												 * l
+																												 * y
+																												 *
+																												 * if
+																												 *
+																												 * th
+																												 * e
+																												 * r
+																												 * e
+																												 *
+																												 * is
+																												 *
+																												 * ex
+																												 * a
+																												 * c
+																												 * t
+																												 * l
+																												 * y
+																												 *
+																												 * on
+																												 * e
+																												 *
+																												 * sc
+																												 * h
+																												 * e
+																												 * m
+																												 * a
+																												 *
+																												 * ma
+																												 * t
+																												 * c
+																												 * h
+																												 * i
+																												 * n
+																												 * g
+																												 *
+																												 * th
+																												 * e
+																												 *
+																												 * in
+																												 * p
+																												 * u
+																												 * t
+																												 * -
+																												 * s
+																												 * o
+																												 * -
+																												 * f
+																												 * a
+																												 * r
+																												 * .
+																												 * */
+																												appendPQExpBuffer(&query_buffer, "\nUNION\n"
+																																  "SELECT pg_catalog.quote_ident(n.nspname) || '.' || %s "
+																																  "FROM %s, pg_catalog.pg_namespace n "
+																																  "WHERE %s = n.oid AND ",
+																																  qualresult,
+																																  completion_squery->catname,
+																																  completion_squery->namespace);
+																												if (completion_squery->selcondition)
+																													appendPQExpBuffer(&query_buffer, "%s AND ",
+																																	  completion_squery->selcondition);
+																												appendPQExpBuffer(&query_buffer, "substring(pg_catalog.quote_ident(n.nspname) || '.' || %s,1,%d)='%s'",
+																																  qualresult,
+																																  string_length, e_text);
 
-			/*
-			 * This condition exploits the single-matching-schema rule to
-			 * speed up the query
-			 */
-			appendPQExpBuffer(&query_buffer,
-							  " AND substring(pg_catalog.quote_ident(n.nspname) || '.',1,%d) ="
-							  " substring('%s',1,pg_catalog.length(pg_catalog.quote_ident(n.nspname))+1)",
-							  string_length, e_text);
-			appendPQExpBuffer(&query_buffer,
-							  " AND (SELECT pg_catalog.count(*)"
-							  " FROM pg_catalog.pg_namespace"
-							  " WHERE substring(pg_catalog.quote_ident(nspname) || '.',1,%d) ="
-							  " substring('%s',1,pg_catalog.length(pg_catalog.quote_ident(nspname))+1)) = 1",
-							  string_length, e_text);
+																												/*
+																												 *
+																												 * Th
+																												 * i
+																												 * s
+																												 *
+																												 * co
+																												 * n
+																												 * d
+																												 * i
+																												 * t
+																												 * i
+																												 * o
+																												 * n
+																												 *
+																												 * ex
+																												 * p
+																												 * l
+																												 * o
+																												 * i
+																												 * t
+																												 * s
+																												 *
+																												 * th
+																												 * e
+																												 *
+																												 * si
+																												 * n
+																												 * g
+																												 * l
+																												 * e
+																												 * -
+																												 * m
+																												 * a
+																												 * t
+																												 * c
+																												 * h
+																												 * i
+																												 * n
+																												 * g
+																												 * -
+																												 * s
+																												 * c
+																												 * h
+																												 * e
+																												 * m
+																												 * a
+																												 *
+																												 * ru
+																												 * l
+																												 * e
+																												 *
+																												 * to
+																												 *
+																												 * sp
+																												 * e
+																												 * e
+																												 * d
+																												 *
+																												 * up
+																												 *
+																												 * th
+																												 * e
+																												 *
+																												 * qu
+																												 * e
+																												 * r
+																												 * y
+																												 * */
+																												appendPQExpBuffer(&query_buffer,
+																																  " AND substring(pg_catalog.quote_ident(n.nspname) || '.',1,%d) ="
+																																  " substring('%s',1,pg_catalog.length(pg_catalog.quote_ident(n.nspname))+1)",
+																																  string_length, e_text);
+																												appendPQExpBuffer(&query_buffer,
+																																  " AND (SELECT pg_catalog.count(*)"
+																																  " FROM pg_catalog.pg_namespace"
+																																  " WHERE substring(pg_catalog.quote_ident(nspname) || '.',1,%d) ="
+																																  " substring('%s',1,pg_catalog.length(pg_catalog.quote_ident(nspname))+1)) = 1",
+																																  string_length, e_text);
 
-			/* If an addon query was provided, use it */
-			if (completion_charp)
-				appendPQExpBuffer(&query_buffer, "\n%s", completion_charp);
-		}
-		else
-		{
-			/* completion_charp is an sprintf-style format string */
-			appendPQExpBuffer(&query_buffer, completion_charp,
-							  string_length, e_text, e_info_charp);
-		}
+																												/*
+																												 * I
+																												 * f
+																												 *
+																												 * an
+																												 *
+																												 * ad
+																												 * d
+																												 * o
+																												 * n
+																												 *
+																												 * qu
+																												 * e
+																												 * r
+																												 * y
+																												 *
+																												 * wa
+																												 * s
+																												 *
+																												 * pr
+																												 * o
+																												 * v
+																												 * i
+																												 * d
+																												 * e
+																												 * d
+																												 * ,
+																												 *
+																												 * us
+																												 * e
+																												 *
+																												 * it
+																												 *
+																												 */
+																												if (completion_charp)
+																													appendPQExpBuffer(&query_buffer, "\n%s", completion_charp);
+																											}
+																											else
+																											{
+																												/*
+																												 * c
+																												 * o
+																												 * m
+																												 * p
+																												 * l
+																												 * e
+																												 * t
+																												 * i
+																												 * o
+																												 * n
+																												 * _
+																												 * c
+																												 * h
+																												 * a
+																												 * r
+																												 * p
+																												 *
+																												 * is
+																												 *
+																												 * an
+																												 *
+																												 * sp
+																												 * r
+																												 * i
+																												 * n
+																												 * t
+																												 * f
+																												 * -
+																												 * s
+																												 * t
+																												 * y
+																												 * l
+																												 * e
+																												 *
+																												 * fo
+																												 * r
+																												 * m
+																												 * a
+																												 * t
+																												 *
+																												 * st
+																												 * r
+																												 * i
+																												 * n
+																												 * g
+																												 *
+																												 */
+																												appendPQExpBuffer(&query_buffer, completion_charp,
+																																  string_length, e_text, e_info_charp);
+																											}
 
-		/* Limit the number of records in the result */
-		appendPQExpBuffer(&query_buffer, "\nLIMIT %d",
-						  completion_max_records);
+																											/*
+																											 * L
+																											 * i
+																											 * m
+																											 * i
+																											 * t
+																											 *
+																											 * th
+																											 * e
+																											 *
+																											 * nu
+																											 * m
+																											 * b
+																											 * e
+																											 * r
+																											 *
+																											 * of
+																											 *
+																											 * re
+																											 * c
+																											 * o
+																											 * r
+																											 * d
+																											 * s
+																											 *
+																											 * in
+																											 *
+																											 * th
+																											 * e
+																											 *
+																											 * re
+																											 * s
+																											 * u
+																											 * l
+																											 * t
+																											 *
+																											 */
+																											appendPQExpBuffer(&query_buffer, "\nLIMIT %d",
+																															  completion_max_records);
 
-		result = exec_query(query_buffer.data);
+																											result = exec_query(query_buffer.data);
 
-		termPQExpBuffer(&query_buffer);
+																											termPQExpBuffer(&query_buffer);
+																											free(e_text);
+																											if (e_info_charp)
+																												free(e_info_charp);
+																										}
 
-		if (e_text)
-			free(e_text);
-		if (e_info_charp)
-			free(e_info_charp);
-	}
+																										/*
+																										 * F
+																										 * i
+																										 * n
+																										 * d
+																										 *
+																										 * so
+																										 * m
+																										 * e
+																										 * t
+																										 * h
+																										 * i
+																										 * n
+																										 * g
+																										 *
+																										 * th
+																										 * a
+																										 * t
+																										 *
+																										 * ma
+																										 * t
+																										 * c
+																										 * h
+																										 * e
+																										 * s
+																										 *
+																										 */
+																										if (result && PQresultStatus(result) == PGRES_TUPLES_OK)
+																										{
+																											const char *item;
 
-	/* Find something that matches */
-	if (result && PQresultStatus(result) == PGRES_TUPLES_OK)
-	{
-		const char *item;
+																											while (list_index < PQntuples(result) &&
+																												   (item = PQgetvalue(result, list_index++, 0)))
+																												if (pg_strncasecmp(text, item, string_length) == 0)
+																													return pg_strdup(item);
+																										}
 
-		while (list_index < PQntuples(result) &&
-			   (item = PQgetvalue(result, list_index++, 0)))
-			if (pg_strncasecmp(text, item, string_length) == 0)
-				return pg_strdup(item);
-	}
-
-	/* If nothing matches, free the db structure and return null */
-	PQclear(result);
-	result = NULL;
-	return NULL;
-}
+																										/*
+																										 * I
+																										 * f
+																										 *
+																										 * no
+																										 * t
+																										 * h
+																										 * i
+																										 * n
+																										 * g
+																										 *
+																										 * ma
+																										 * t
+																										 * c
+																										 * h
+																										 * e
+																										 * s
+																										 * ,
+																										 *
+																										 * fr
+																										 * e
+																										 * e
+																										 *
+																										 * th
+																										 * e
+																										 *
+																										 * db
+																										 *
+																										 * st
+																										 * r
+																										 * u
+																										 * c
+																										 * t
+																										 * u
+																										 * r
+																										 * e
+																										 *
+																										 * an
+																										 * d
+																										 *
+																										 * re
+																										 * t
+																										 * u
+																										 * r
+																										 * n
+																										 *
+																										 * nu
+																										 * l
+																										 * l
+																										 *
+																										 */
+																										PQclear(result);
+																										result = NULL;
+																										return NULL;
+																									}
 
 
 /* This function returns in order one of a fixed, NULL pointer terminated list
    of strings (if matching). This can be used if there are only a fixed number
    SQL words that can appear at certain spot.
 */
-static char *
-complete_from_list(const char *text, int state)
-{
-	static int	string_length,
-				list_index,
-				matches;
-	static bool casesensitive;
-	const char *item;
+																									static char *
+																												complete_from_list(const char *text, int state)
+																									{
+																										static int	string_length,
+																													list_index,
+																													matches;
+																										static bool casesensitive;
+																										const char *item;
 
-	/* need to have a list */
-	psql_assert(completion_charpp);
+																										/*
+																										 * n
+																										 * e
+																										 * e
+																										 * d
+																										 *
+																										 * to
+																										 *
+																										 * ha
+																										 * v
+																										 * e
+																										 *
+																										 * a
+																										 * li
+																										 * s
+																										 * t
+																										 *
+																										 */
+																										psql_assert(completion_charpp);
 
-	/* Initialization */
-	if (state == 0)
-	{
-		list_index = 0;
-		string_length = strlen(text);
-		casesensitive = true;
-		matches = 0;
-	}
+																										/*
+																										 * I
+																										 * n
+																										 * i
+																										 * t
+																										 * i
+																										 * a
+																										 * l
+																										 * i
+																										 * z
+																										 * a
+																										 * t
+																										 * i
+																										 * o
+																										 * n
+																										 *
+																										 */
+																										if (state == 0)
+																										{
+																											list_index = 0;
+																											string_length = strlen(text);
+																											casesensitive = true;
+																											matches = 0;
+																										}
 
-	while ((item = completion_charpp[list_index++]))
-	{
-		/* First pass is case sensitive */
-		if (casesensitive && strncmp(text, item, string_length) == 0)
-		{
-			matches++;
-			return pg_strdup(item);
-		}
+																										while ((item = completion_charpp[list_index++]))
+																										{
+																											/*
+																											 * F
+																											 * i
+																											 * r
+																											 * s
+																											 * t
+																											 *
+																											 * pa
+																											 * s
+																											 * s
+																											 *
+																											 * is
+																											 *
+																											 * ca
+																											 * s
+																											 * e
+																											 *
+																											 * se
+																											 * n
+																											 * s
+																											 * i
+																											 * t
+																											 * i
+																											 * v
+																											 * e
+																											 *
+																											 */
+																											if (casesensitive && strncmp(text, item, string_length) == 0)
+																											{
+																												matches++;
+																												return pg_strdup(item);
+																											}
 
-		/* Second pass is case insensitive, don't bother counting matches */
-		if (!casesensitive && pg_strncasecmp(text, item, string_length) == 0)
-			return pg_strdup(item);
-	}
+																											/*
+																											 * S
+																											 * e
+																											 * c
+																											 * o
+																											 * n
+																											 * d
+																											 *
+																											 * pa
+																											 * s
+																											 * s
+																											 *
+																											 * is
+																											 *
+																											 * ca
+																											 * s
+																											 * e
+																											 *
+																											 * in
+																											 * s
+																											 * e
+																											 * n
+																											 * s
+																											 * i
+																											 * t
+																											 * i
+																											 * v
+																											 * e
+																											 * ,
+																											 *
+																											 * do
+																											 * n
+																											 * '
+																											 * t
+																											 *
+																											 * bo
+																											 * t
+																											 * h
+																											 * e
+																											 * r
+																											 *
+																											 * co
+																											 * u
+																											 * n
+																											 * t
+																											 * i
+																											 * n
+																											 * g
+																											 *
+																											 * ma
+																											 * t
+																											 * c
+																											 * h
+																											 * e
+																											 * s
+																											 *
+																											 */
+																											if (!casesensitive && pg_strncasecmp(text, item, string_length) == 0)
+																												return pg_strdup(item);
+																										}
 
-	/*
-	 * No matches found. If we're not case insensitive already, lets
-	 * switch to being case insensitive and try again
-	 */
-	if (casesensitive && matches == 0)
-	{
-		casesensitive = false;
-		list_index = 0;
-		state++;
-		return (complete_from_list(text, state));
-	}
+																										/*
+																										 *
+																										 * No
+																										 *
+																										 * ma
+																										 * t
+																										 * c
+																										 * h
+																										 * e
+																										 * s
+																										 *
+																										 * fo
+																										 * u
+																										 * n
+																										 * d
+																										 * .
+																										 *
+																										 * If
+																										 *
+																										 * we
+																										 * '
+																										 * r
+																										 * e
+																										 *
+																										 * no
+																										 * t
+																										 *
+																										 * ca
+																										 * s
+																										 * e
+																										 *
+																										 * in
+																										 * s
+																										 * e
+																										 * n
+																										 * s
+																										 * i
+																										 * t
+																										 * i
+																										 * v
+																										 * e
+																										 *
+																										 * al
+																										 * r
+																										 * e
+																										 * a
+																										 * d
+																										 * y
+																										 * ,
+																										 *
+																										 * le
+																										 * t
+																										 * s
+																										 *
+																										 * sw
+																										 * i
+																										 * t
+																										 * c
+																										 * h
+																										 *
+																										 * to
+																										 *
+																										 * be
+																										 * i
+																										 * n
+																										 * g
+																										 *
+																										 * ca
+																										 * s
+																										 * e
+																										 *
+																										 * in
+																										 * s
+																										 * e
+																										 * n
+																										 * s
+																										 * i
+																										 * t
+																										 * i
+																										 * v
+																										 * e
+																										 *
+																										 * an
+																										 * d
+																										 *
+																										 * tr
+																										 * y
+																										 *
+																										 * ag
+																										 * a
+																										 * i
+																										 * n
+																										 * */
+																										if (casesensitive && matches == 0)
+																										{
+																											casesensitive = false;
+																											list_index = 0;
+																											state++;
+																											return (complete_from_list(text, state));
+																										}
 
-	/* If no more matches, return null. */
-	return NULL;
-}
+																										/*
+																										 * I
+																										 * f
+																										 *
+																										 * no
+																										 *
+																										 * mo
+																										 * r
+																										 * e
+																										 *
+																										 * ma
+																										 * t
+																										 * c
+																										 * h
+																										 * e
+																										 * s
+																										 * ,
+																										 *
+																										 * re
+																										 * t
+																										 * u
+																										 * r
+																										 * n
+																										 *
+																										 * nu
+																										 * l
+																										 * l
+																										 * .
+																										 *
+																										 */
+																										return NULL;
+																									}
 
 
 /* This function returns one fixed string the first time even if it doesn't
@@ -1986,18 +3654,19 @@ complete_from_list(const char *text, int state)
    will be overwritten.
    The string to be passed must be in completion_charp.
 */
-static char *
-complete_from_const(const char *text, int state)
-{
-	(void) text;				/* We don't care about what was entered
-								 * already. */
+																									static char *
+																												complete_from_const(const char *text, int state)
+																									{
+																										(void) text;	/* We don't care about
+																														 * what was entered
+																														 * already. */
 
-	psql_assert(completion_charp);
-	if (state == 0)
-		return pg_strdup(completion_charp);
-	else
-		return NULL;
-}
+																										psql_assert(completion_charp);
+																										if (state == 0)
+																											return pg_strdup(completion_charp);
+																										else
+																											return NULL;
+																									}
 
 
 
@@ -2008,89 +3677,374 @@ complete_from_const(const char *text, int state)
  * Execute a query and report any errors. This should be the preferred way of
  * talking to the database in this file.
  */
-static PGresult *
-exec_query(const char *query)
-{
-	PGresult   *result;
+																									static PGresult *
+																												exec_query(const char *query)
+																									{
+																										PGresult   *result;
 
-	if (query == NULL || !pset.db || PQstatus(pset.db) != CONNECTION_OK)
-		return NULL;
+																										if (query == NULL || !pset.db || PQstatus(pset.db) != CONNECTION_OK)
+																											return NULL;
 
-	result = PQexec(pset.db, query);
+																										result = PQexec(pset.db, query);
 
-	if (result != NULL && PQresultStatus(result) != PGRES_TUPLES_OK)
-	{
+																										if (result != NULL && PQresultStatus(result) != PGRES_TUPLES_OK)
+																										{
 #if 0
-		psql_error("tab completion: %s failed - %s\n",
-				   query, PQresStatus(PQresultStatus(result)));
+																											psql_error("tab completion: %s failed - %s\n",
+																													   query, PQresStatus(PQresultStatus(result)));
 #endif
-		PQclear(result);
-		result = NULL;
-	}
+																											PQclear(result);
+																											result = NULL;
+																										}
 
-	return result;
-}
+																										return result;
+																									}
 
 
 
-/* Return the word (space delimited) before point. Set skip > 0 to skip that
-   many words; e.g. skip=1 finds the word before the previous one.
-*/
-static char *
-previous_word(int point, int skip)
-{
-	int			i,
-				start = 0,
-				end = -1,
-				inquotes = 0;
-	char	   *s;
+/*
+ * Return the word (space delimited) before point. Set skip > 0 to
+ * skip that many words; e.g. skip=1 finds the word before the
+ * previous one. Return value is NULL or a malloc'ed string.
+ */
+																									static char *
+																												previous_word(int point, int skip)
+																									{
+																										int			i,
+																													start = 0,
+																													end = -1,
+																													inquotes = 0;
+																										char	   *s;
 
-	while (skip-- >= 0)
-	{
-		/* first we look for a space before the current word */
-		for (i = point; i >= 0; i--)
-			if (rl_line_buffer[i] == ' ')
-				break;
+																										while (skip-- >= 0)
+																										{
+																											/*
+																											 * f
+																											 * i
+																											 * r
+																											 * s
+																											 * t
+																											 *
+																											 * we
+																											 *
+																											 * lo
+																											 * o
+																											 * k
+																											 *
+																											 * fo
+																											 * r
+																											 *
+																											 * a
+																											 * sp
+																											 * a
+																											 * c
+																											 * e
+																											 *
+																											 * be
+																											 * f
+																											 * o
+																											 * r
+																											 * e
+																											 *
+																											 * th
+																											 * e
+																											 *
+																											 * cu
+																											 * r
+																											 * r
+																											 * e
+																											 * n
+																											 * t
+																											 *
+																											 * wo
+																											 * r
+																											 * d
+																											 *
+																											 */
+																											for (i = point; i >= 0; i--)
+																												if (rl_line_buffer[i] == ' ')
+																													break;
 
-		/* now find the first non-space which then constitutes the end */
-		for (; i >= 0; i--)
-			if (rl_line_buffer[i] != ' ')
-			{
-				end = i;
-				break;
-			}
+																											/*
+																											 * n
+																											 * o
+																											 * w
+																											 *
+																											 * fi
+																											 * n
+																											 * d
+																											 *
+																											 * th
+																											 * e
+																											 *
+																											 * fi
+																											 * r
+																											 * s
+																											 * t
+																											 *
+																											 * no
+																											 * n
+																											 * -
+																											 * s
+																											 * p
+																											 * a
+																											 * c
+																											 * e
+																											 *
+																											 * wh
+																											 * i
+																											 * c
+																											 * h
+																											 *
+																											 * th
+																											 * e
+																											 * n
+																											 *
+																											 * co
+																											 * n
+																											 * s
+																											 * t
+																											 * i
+																											 * t
+																											 * u
+																											 * t
+																											 * e
+																											 * s
+																											 *
+																											 * th
+																											 * e
+																											 *
+																											 * en
+																											 * d
+																											 *
+																											 */
+																											for (; i >= 0; i--)
+																												if (rl_line_buffer[i] != ' ')
+																												{
+																													end = i;
+																													break;
+																												}
 
-		/*
-		 * If no end found we return null, because there is no word before
-		 * the point
-		 */
-		if (end == -1)
-			return NULL;
+																											/*
+																											 *
+																											 * If
+																											 *
+																											 * no
+																											 *
+																											 * en
+																											 * d
+																											 *
+																											 * fo
+																											 * u
+																											 * n
+																											 * d
+																											 *
+																											 * we
+																											 *
+																											 * re
+																											 * t
+																											 * u
+																											 * r
+																											 * n
+																											 *
+																											 * nu
+																											 * l
+																											 * l
+																											 * ,
+																											 *
+																											 * be
+																											 * c
+																											 * a
+																											 * u
+																											 * s
+																											 * e
+																											 *
+																											 * th
+																											 * e
+																											 * r
+																											 * e
+																											 *
+																											 * is
+																											 *
+																											 * no
+																											 *
+																											 * wo
+																											 * r
+																											 * d
+																											 *
+																											 * be
+																											 * f
+																											 * o
+																											 * r
+																											 * e
+																											 *
+																											 * th
+																											 * e
+																											 *
+																											 * po
+																											 * i
+																											 * n
+																											 * t
+																											 * */
+																											if (end == -1)
+																												return NULL;
 
-		/*
-		 * Otherwise we now look for the start. The start is either the
-		 * last character before any space going backwards from the end,
-		 * or it's simply character 0
-		 */
-		for (start = end; start > 0; start--)
-		{
-			if (rl_line_buffer[start] == '"')
-				inquotes = !inquotes;
-			if ((rl_line_buffer[start - 1] == ' ') && inquotes == 0)
-				break;
-		}
+																											/*
+																											 *
+																											 * Ot
+																											 * h
+																											 * e
+																											 * r
+																											 * w
+																											 * i
+																											 * s
+																											 * e
+																											 *
+																											 * we
+																											 *
+																											 * no
+																											 * w
+																											 *
+																											 * lo
+																											 * o
+																											 * k
+																											 *
+																											 * fo
+																											 * r
+																											 *
+																											 * th
+																											 * e
+																											 *
+																											 * st
+																											 * a
+																											 * r
+																											 * t
+																											 * .
+																											 *
+																											 * Th
+																											 * e
+																											 *
+																											 * st
+																											 * a
+																											 * r
+																											 * t
+																											 *
+																											 * is
+																											 *
+																											 * ei
+																											 * t
+																											 * h
+																											 * e
+																											 * r
+																											 *
+																											 * th
+																											 * e
+																											 *
+																											 * la
+																											 * s
+																											 * t
+																											 *
+																											 * ch
+																											 * a
+																											 * r
+																											 * a
+																											 * c
+																											 * t
+																											 * e
+																											 * r
+																											 *
+																											 * be
+																											 * f
+																											 * o
+																											 * r
+																											 * e
+																											 *
+																											 * an
+																											 * y
+																											 *
+																											 * sp
+																											 * a
+																											 * c
+																											 * e
+																											 *
+																											 * go
+																											 * i
+																											 * n
+																											 * g
+																											 *
+																											 * ba
+																											 * c
+																											 * k
+																											 * w
+																											 * a
+																											 * r
+																											 * d
+																											 * s
+																											 *
+																											 * fr
+																											 * o
+																											 * m
+																											 *
+																											 * th
+																											 * e
+																											 *
+																											 * en
+																											 * d
+																											 * ,
+																											 *
+																											 * or
+																											 *
+																											 * it
+																											 * '
+																											 * s
+																											 *
+																											 * si
+																											 * m
+																											 * p
+																											 * l
+																											 * y
+																											 *
+																											 * ch
+																											 * a
+																											 * r
+																											 * a
+																											 * c
+																											 * t
+																											 * e
+																											 * r
+																											 *
+																											 * 0
+																											 */
+																											for (start = end; start > 0; start--)
+																											{
+																												if (rl_line_buffer[start] == '"')
+																													inquotes = !inquotes;
+																												if ((rl_line_buffer[start - 1] == ' ') && inquotes == 0)
+																													break;
+																											}
 
-		point = start;
-	}
+																											point = start;
+																										}
 
-	/* make a copy */
-	s = pg_malloc(end - start + 2);
+																										/*
+																										 * m
+																										 * a
+																										 * k
+																										 * e
+																										 *
+																										 * a
+																										 * co
+																										 * p
+																										 * y
+																										 *
+																										 */
+																										s = pg_malloc(end - start + 2);
 
-	strncpy(s, &rl_line_buffer[start], end - start + 1);
-	s[end - start + 1] = '\0';
+																										strncpy(s, &rl_line_buffer[start], end - start + 1);
+																										s[end - start + 1] = '\0';
 
-	return s;
-}
+																										return s;
+																									}
 
 
 
@@ -2101,42 +4055,42 @@ previous_word(int point, int skip)
  * psql internal. Currently disabled because it is reported not to
  * cooperate with certain versions of readline.
  */
-static char *
-quote_file_name(char *text, int match_type, char *quote_pointer)
-{
-	char	   *s;
-	size_t		length;
+																									static char *
+																												quote_file_name(char *text, int match_type, char *quote_pointer)
+																									{
+																										char	   *s;
+																										size_t		length;
 
-	(void) quote_pointer;		/* not used */
+																										(void) quote_pointer;	/* not used */
 
-	length = strlen(text) +(match_type == SINGLE_MATCH ? 3 : 2);
-	s = pg_malloc(length);
-	s[0] = '\'';
-	strcpy(s + 1, text);
-	if (match_type == SINGLE_MATCH)
-		s[length - 2] = '\'';
-	s[length - 1] = '\0';
-	return s;
-}
+																										length = strlen(text) +(match_type == SINGLE_MATCH ? 3 : 2);
+																										s = pg_malloc(length);
+																										s[0] = '\'';
+																										strcpy(s + 1, text);
+																										if (match_type == SINGLE_MATCH)
+																											s[length - 2] = '\'';
+																										s[length - 1] = '\0';
+																										return s;
+																									}
 
 
 
-static char *
-dequote_file_name(char *text, char quote_char)
-{
-	char	   *s;
-	size_t		length;
+																									static char *
+																												dequote_file_name(char *text, char quote_char)
+																									{
+																										char	   *s;
+																										size_t		length;
 
-	if (!quote_char)
-		return pg_strdup(text);
+																										if (!quote_char)
+																											return pg_strdup(text);
 
-	length = strlen(text);
-	s = pg_malloc(length - 2 + 1);
-	strncpy(s, text +1, length - 2);
-	s[length] = '\0';
+																										length = strlen(text);
+																										s = pg_malloc(length - 2 + 1);
+																										strncpy(s, text +1, length - 2);
+																										s[length] = '\0';
 
-	return s;
-}
+																										return s;
+																									}
 #endif   /* 0 */
 
 #endif   /* USE_READLINE */

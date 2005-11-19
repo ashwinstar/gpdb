@@ -204,63 +204,63 @@ SELECT timestamp with time zone '27.12.2001 04:05:06.789-08';
 SET DateStyle = 'ISO';
 -- As of 7.4, allow time without time zone having a time zone specified
 SELECT time without time zone '040506.789+08';
-     time      
----------------
- 04:05:06.7890
+     time     
+--------------
+ 04:05:06.789
 (1 row)
 
 SELECT time without time zone '040506.789-08';
-     time      
----------------
- 04:05:06.7890
+     time     
+--------------
+ 04:05:06.789
 (1 row)
 
 SELECT time without time zone 'T040506.789+08';
-     time      
----------------
- 04:05:06.7890
+     time     
+--------------
+ 04:05:06.789
 (1 row)
 
 SELECT time without time zone 'T040506.789-08';
-     time      
----------------
- 04:05:06.7890
+     time     
+--------------
+ 04:05:06.789
 (1 row)
 
 SELECT time with time zone '040506.789+08';
-      timetz      
-------------------
- 04:05:06.7890+08
+     timetz      
+-----------------
+ 04:05:06.789+08
 (1 row)
 
 SELECT time with time zone '040506.789-08';
-      timetz      
-------------------
- 04:05:06.7890-08
+     timetz      
+-----------------
+ 04:05:06.789-08
 (1 row)
 
 SELECT time with time zone 'T040506.789+08';
-      timetz      
-------------------
- 04:05:06.7890+08
+     timetz      
+-----------------
+ 04:05:06.789+08
 (1 row)
 
 SELECT time with time zone 'T040506.789-08';
-      timetz      
-------------------
- 04:05:06.7890-08
+     timetz      
+-----------------
+ 04:05:06.789-08
 (1 row)
 
 SELECT time with time zone 'T040506.789 +08';
-      timetz      
-------------------
- 04:05:06.7890+08
+     timetz      
+-----------------
+ 04:05:06.789+08
 (1 row)
 
 SELECT time with time zone 'T040506.789 -08';
-      timetz      
-------------------
- 04:05:06.7890-08
+     timetz      
+-----------------
+ 04:05:06.789-08
 (1 row)
 
 SET DateStyle = 'Postgres, MDY';
@@ -598,6 +598,33 @@ SELECT (timestamp with time zone 'tomorrow' > 'now') as "True";
  t
 (1 row)
 
+-- timestamp with time zone, interval arithmetic around DST change
+SET TIME ZONE 'CST7CDT';
+SELECT timestamp with time zone '2005-04-02 12:00-07' + interval '1 day' as "Apr 3, 12:00";
+         Apr 3, 12:00         
+------------------------------
+ Sun Apr 03 12:00:00 2005 CDT
+(1 row)
+
+SELECT timestamp with time zone '2005-04-02 12:00-07' + interval '24 hours' as "Apr 3, 13:00";
+         Apr 3, 13:00         
+------------------------------
+ Sun Apr 03 13:00:00 2005 CDT
+(1 row)
+
+SELECT timestamp with time zone '2005-04-03 12:00-06' - interval '1 day' as "Apr 2, 12:00";
+         Apr 2, 12:00         
+------------------------------
+ Sat Apr 02 12:00:00 2005 CST
+(1 row)
+
+SELECT timestamp with time zone '2005-04-03 12:00-06' - interval '24 hours' as "Apr 2, 11:00";
+         Apr 2, 11:00         
+------------------------------
+ Sat Apr 02 11:00:00 2005 CST
+(1 row)
+
+RESET TIME ZONE;
 SELECT timestamptz(date '1994-01-01', time '11:00') AS "Jan_01_1994_10am";
        Jan_01_1994_10am       
 ------------------------------
@@ -2213,6 +2240,7 @@ SELECT '' AS "226", d1.f1 AS timestamp1, d2.f1 AS timestamp2, d1.f1 - d2.f1 AS d
 -- abstime, reltime arithmetic
 --
 SELECT '' AS ten, ABSTIME_TBL.f1 AS abstime, RELTIME_TBL.f1 AS reltime
+    FROM ABSTIME_TBL, RELTIME_TBL
    WHERE (ABSTIME_TBL.f1 + RELTIME_TBL.f1) < abstime 'Jan 14 14:00:00 1971'
    ORDER BY abstime, reltime;
  ten |           abstime            |    reltime    
@@ -2232,7 +2260,7 @@ SELECT '' AS ten, ABSTIME_TBL.f1 AS abstime, RELTIME_TBL.f1 AS reltime
 -- these four queries should return the same answer
 -- the "infinity" and "-infinity" tuples in ABSTIME_TBL cannot be added and
 -- therefore, should not show up in the results.
-SELECT '' AS three, ABSTIME_TBL.*
+SELECT '' AS three, * FROM ABSTIME_TBL
   WHERE  (ABSTIME_TBL.f1 + reltime '@ 3 year')         -- +3 years
     < abstime 'Jan 14 14:00:00 1977';
  three |              f1              
@@ -2242,7 +2270,7 @@ SELECT '' AS three, ABSTIME_TBL.*
        | Sat May 10 23:59:12 1947 PST
 (3 rows)
 
-SELECT '' AS three, ABSTIME_TBL.*
+SELECT '' AS three, * FROM ABSTIME_TBL
    WHERE  (ABSTIME_TBL.f1 + reltime '@ 3 year ago')    -- -3 years
      < abstime 'Jan 14 14:00:00 1971';
  three |              f1              
@@ -2252,7 +2280,7 @@ SELECT '' AS three, ABSTIME_TBL.*
        | Sat May 10 23:59:12 1947 PST
 (3 rows)
 
-SELECT '' AS three, ABSTIME_TBL.*
+SELECT '' AS three, * FROM ABSTIME_TBL
    WHERE  (ABSTIME_TBL.f1 - reltime '@ 3 year')        -- -(+3) years
     < abstime 'Jan 14 14:00:00 1971';
  three |              f1              
@@ -2262,7 +2290,7 @@ SELECT '' AS three, ABSTIME_TBL.*
        | Sat May 10 23:59:12 1947 PST
 (3 rows)
 
-SELECT '' AS three, ABSTIME_TBL.*
+SELECT '' AS three, * FROM ABSTIME_TBL
    WHERE  (ABSTIME_TBL.f1 - reltime '@ 3 year ago')    -- -(-3) years
      < abstime 'Jan 14 14:00:00 1977';
  three |              f1              

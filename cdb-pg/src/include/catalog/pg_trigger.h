@@ -17,7 +17,7 @@
 
 /* ----------------
  *		postgres.h contains the system type definitions and the
- *		CATALOG(), BOOTSTRAP and DATA() sugar words so this file
+ *		CATALOG(), BKI_BOOTSTRAP and DATA() sugar words so this file
  *		can be read by both genbki.sh and the C compiler.
  * ----------------
  */
@@ -27,7 +27,9 @@
  *		typedef struct FormData_pg_trigger
  * ----------------
  */
-CATALOG(pg_trigger)
+#define TriggerRelationId  2620
+
+CATALOG(pg_trigger,2620)
 {
 	Oid			tgrelid;		/* triggered relation */
 	NameData	tgname;			/* trigger' name */
@@ -38,12 +40,12 @@ CATALOG(pg_trigger)
 	bool		tgisconstraint; /* trigger is a RI constraint */
 	NameData	tgconstrname;	/* RI constraint name */
 	Oid			tgconstrrelid;	/* RI table of foreign key definition */
-
-	/* in the case of ON DELETE or ON UPDATE */
 	bool		tgdeferrable;	/* RI trigger is deferrable */
 	bool		tginitdeferred; /* RI trigger is deferred initially */
 	int2		tgnargs;		/* # of extra arguments in tgargs */
-	int2vector	tgattr;			/* UPDATE of attr1, attr2 ... (NI) */
+
+	/* VARIABLE LENGTH FIELDS: */
+	int2vector	tgattr;			/* reserved for column-specific triggers */
 	bytea		tgargs;			/* first\000second\000tgnargs\000 */
 } FormData_pg_trigger;
 
@@ -79,18 +81,18 @@ typedef FormData_pg_trigger *Form_pg_trigger;
 #define TRIGGER_TYPE_DELETE				(1 << 3)
 #define TRIGGER_TYPE_UPDATE				(1 << 4)
 
-#define TRIGGER_CLEAR_TYPE(type)		(type = 0)
+#define TRIGGER_CLEAR_TYPE(type)		((type) = 0)
 
-#define TRIGGER_SETT_ROW(type)			(type |= TRIGGER_TYPE_ROW)
-#define TRIGGER_SETT_BEFORE(type)		(type |= TRIGGER_TYPE_BEFORE)
-#define TRIGGER_SETT_INSERT(type)		(type |= TRIGGER_TYPE_INSERT)
-#define TRIGGER_SETT_DELETE(type)		(type |= TRIGGER_TYPE_DELETE)
-#define TRIGGER_SETT_UPDATE(type)		(type |= TRIGGER_TYPE_UPDATE)
+#define TRIGGER_SETT_ROW(type)			((type) |= TRIGGER_TYPE_ROW)
+#define TRIGGER_SETT_BEFORE(type)		((type) |= TRIGGER_TYPE_BEFORE)
+#define TRIGGER_SETT_INSERT(type)		((type) |= TRIGGER_TYPE_INSERT)
+#define TRIGGER_SETT_DELETE(type)		((type) |= TRIGGER_TYPE_DELETE)
+#define TRIGGER_SETT_UPDATE(type)		((type) |= TRIGGER_TYPE_UPDATE)
 
-#define TRIGGER_FOR_ROW(type)			(type & TRIGGER_TYPE_ROW)
-#define TRIGGER_FOR_BEFORE(type)		(type & TRIGGER_TYPE_BEFORE)
-#define TRIGGER_FOR_INSERT(type)		(type & TRIGGER_TYPE_INSERT)
-#define TRIGGER_FOR_DELETE(type)		(type & TRIGGER_TYPE_DELETE)
-#define TRIGGER_FOR_UPDATE(type)		(type & TRIGGER_TYPE_UPDATE)
+#define TRIGGER_FOR_ROW(type)			((type) & TRIGGER_TYPE_ROW)
+#define TRIGGER_FOR_BEFORE(type)		((type) & TRIGGER_TYPE_BEFORE)
+#define TRIGGER_FOR_INSERT(type)		((type) & TRIGGER_TYPE_INSERT)
+#define TRIGGER_FOR_DELETE(type)		((type) & TRIGGER_TYPE_DELETE)
+#define TRIGGER_FOR_UPDATE(type)		((type) & TRIGGER_TYPE_UPDATE)
 
 #endif   /* PG_TRIGGER_H */

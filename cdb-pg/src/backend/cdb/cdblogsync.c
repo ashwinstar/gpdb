@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#define PROVIDE_64BIT_CRC
 
 #include "postgres.h"
 #include "utils/elog.h"
@@ -347,7 +348,7 @@ xlogOpenFile(void)
 	}
 
 	/* the first time or file is changed */
-	snprintf(path, MAXPGPATH, "%s/%s", XLogDir, wfilename);
+	snprintf(path, MAXPGPATH, "%s/%s", XLOGDIR, wfilename);
 	elog(LOG, "QDSYNC: opening xlog file %s", wfilename);
 	xlogfilefd = open(path, O_RDWR, 0);
 	if (xlogfilefd < 0)

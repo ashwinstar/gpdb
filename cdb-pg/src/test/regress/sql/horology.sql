@@ -114,6 +114,15 @@ SELECT (timestamp with time zone 'today' = (timestamp with time zone 'tomorrow' 
 SELECT (timestamp with time zone 'tomorrow' = (timestamp with time zone 'yesterday' + interval '2 days')) as "True";
 SELECT (timestamp with time zone 'tomorrow' > 'now') as "True";
 
+-- timestamp with time zone, interval arithmetic around DST change
+SET TIME ZONE 'CST7CDT';
+SELECT timestamp with time zone '2005-04-02 12:00-07' + interval '1 day' as "Apr 3, 12:00";
+SELECT timestamp with time zone '2005-04-02 12:00-07' + interval '24 hours' as "Apr 3, 13:00";
+SELECT timestamp with time zone '2005-04-03 12:00-06' - interval '1 day' as "Apr 2, 12:00";
+SELECT timestamp with time zone '2005-04-03 12:00-06' - interval '24 hours' as "Apr 2, 11:00";
+RESET TIME ZONE;
+
+
 SELECT timestamptz(date '1994-01-01', time '11:00') AS "Jan_01_1994_10am";
 SELECT timestamptz(date '1994-01-01', time '10:00') AS "Jan_01_1994_9am";
 SELECT timestamptz(date '1994-01-01', time with time zone '11:00-8') AS "Jan_01_1994_11am";
@@ -256,6 +265,7 @@ SELECT '' AS "226", d1.f1 AS timestamp1, d2.f1 AS timestamp2, d1.f1 - d2.f1 AS d
 --
 
 SELECT '' AS ten, ABSTIME_TBL.f1 AS abstime, RELTIME_TBL.f1 AS reltime
+    FROM ABSTIME_TBL, RELTIME_TBL
    WHERE (ABSTIME_TBL.f1 + RELTIME_TBL.f1) < abstime 'Jan 14 14:00:00 1971'
    ORDER BY abstime, reltime;
 
@@ -263,19 +273,19 @@ SELECT '' AS ten, ABSTIME_TBL.f1 AS abstime, RELTIME_TBL.f1 AS reltime
 -- the "infinity" and "-infinity" tuples in ABSTIME_TBL cannot be added and
 -- therefore, should not show up in the results.
 
-SELECT '' AS three, ABSTIME_TBL.*
+SELECT '' AS three, * FROM ABSTIME_TBL
   WHERE  (ABSTIME_TBL.f1 + reltime '@ 3 year')         -- +3 years
     < abstime 'Jan 14 14:00:00 1977';
 
-SELECT '' AS three, ABSTIME_TBL.*
+SELECT '' AS three, * FROM ABSTIME_TBL
    WHERE  (ABSTIME_TBL.f1 + reltime '@ 3 year ago')    -- -3 years
      < abstime 'Jan 14 14:00:00 1971';
 
-SELECT '' AS three, ABSTIME_TBL.*
+SELECT '' AS three, * FROM ABSTIME_TBL
    WHERE  (ABSTIME_TBL.f1 - reltime '@ 3 year')        -- -(+3) years
     < abstime 'Jan 14 14:00:00 1971';
 
-SELECT '' AS three, ABSTIME_TBL.*
+SELECT '' AS three, * FROM ABSTIME_TBL
    WHERE  (ABSTIME_TBL.f1 - reltime '@ 3 year ago')    -- -(-3) years
      < abstime 'Jan 14 14:00:00 1977';
 

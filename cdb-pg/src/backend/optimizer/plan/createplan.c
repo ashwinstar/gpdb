@@ -11,7 +11,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/createplan.c,v 1.175 2004/12/31 22:00:08 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/createplan.c,v 1.202 2005/10/19 17:31:20 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -23,9 +23,9 @@
 #include "nodes/nodeFuncs.h"
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
-#include "optimizer/paths.h"
 #include "optimizer/plancat.h"
 #include "optimizer/planmain.h"
+#include "optimizer/predtest.h"
 #include "optimizer/restrictinfo.h"
 #include "optimizer/tlist.h"
 #include "optimizer/var.h"
@@ -38,61 +38,69 @@
 #include "cdb/cdbpath.h"        /* cdbpath_rows() */
 #include "cdb/cdbpathtoplan.h"  /* cdbpathtoplan_create_flow() etc. */
 
-
-static Scan *create_scan_plan(Query *root, Path *best_path);
+static Scan *create_scan_plan(PlannerInfo *root, Path *best_path);
 static List *build_relation_tlist(RelOptInfo *rel);
 static bool use_physical_tlist(RelOptInfo *rel);
 static void disuse_physical_tlist(Plan *plan, Path *path);
-static Join *create_join_plan(Query *root, JoinPath *best_path);
-static Append *create_append_plan(Query *root, AppendPath *best_path);
-static Result *create_result_plan(Query *root, ResultPath *best_path);
-static Material *create_material_plan(Query *root, MaterialPath *best_path);
-static Plan *create_unique_plan(Query *root, UniquePath *best_path);
-static Plan *create_motion_plan(Query *root, CdbMotionPath *path);
-static SeqScan *create_seqscan_plan(Query *root, Path *best_path,
+static Join *create_join_plan(PlannerInfo *root, JoinPath *best_path);
+static Plan *create_append_plan(PlannerInfo *root, AppendPath *best_path);
+static Result *create_result_plan(PlannerInfo *root, ResultPath *best_path);
+static Material *create_material_plan(PlannerInfo *root, MaterialPath *best_path);
+static Plan *create_unique_plan(PlannerInfo *root, UniquePath *best_path);
+static Plan *create_motion_plan(PlannerInfo *root, CdbMotionPath *path);
+static SeqScan *create_seqscan_plan(PlannerInfo *root, Path *best_path,
 					List *tlist, List *scan_clauses);
-static IndexScan *create_indexscan_plan(Query *root, IndexPath *best_path,
-					  List *tlist, List *scan_clauses);
-static TidScan *create_tidscan_plan(Query *root, TidPath *best_path,
+static IndexScan *create_indexscan_plan(PlannerInfo *root, IndexPath *best_path,
+					  List *tlist, List *scan_clauses,
+					  List **nonlossy_clauses);
+static BitmapHeapScan *create_bitmap_scan_plan(PlannerInfo *root,
+						BitmapHeapPath *best_path,
+						List *tlist, List *scan_clauses);
+static Plan *create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
+					  List **qual, List **indexqual);
+static TidScan *create_tidscan_plan(PlannerInfo *root, TidPath *best_path,
 					List *tlist, List *scan_clauses);
-static SubqueryScan *create_subqueryscan_plan(Query *root, Path *best_path,
+static SubqueryScan *create_subqueryscan_plan(PlannerInfo *root, Path *best_path,
 						 List *tlist, List *scan_clauses);
-static FunctionScan *create_functionscan_plan(Query *root, Path *best_path,
+static FunctionScan *create_functionscan_plan(PlannerInfo *root, Path *best_path,
 						 List *tlist, List *scan_clauses);
-static NestLoop *create_nestloop_plan(Query *root, NestPath *best_path,
+static NestLoop *create_nestloop_plan(PlannerInfo *root, NestPath *best_path,
 					 Plan *outer_plan, Plan *inner_plan);
-static MergeJoin *create_mergejoin_plan(Query *root, MergePath *best_path,
+static MergeJoin *create_mergejoin_plan(PlannerInfo *root, MergePath *best_path,
 					  Plan *outer_plan, Plan *inner_plan);
-static HashJoin *create_hashjoin_plan(Query *root, HashPath *best_path,
+static HashJoin *create_hashjoin_plan(PlannerInfo *root, HashPath *best_path,
 					 Plan *outer_plan, Plan *inner_plan);
-static void fix_indxqual_references(List *indexquals, IndexPath *index_path,
-						List **fixed_indexquals,
-						List **indxstrategy,
-						List **indxsubtype,
-						List **indxlossy);
-static void fix_indxqual_sublist(List *indexqual,
-					 Relids baserelids, int baserelid,
-					 IndexOptInfo *index,
-					 List **fixed_quals,
-					 List **strategy,
-					 List **subtype,
-					 List **lossy);
-static Node *fix_indxqual_operand(Node *node, int baserelid,
-					 IndexOptInfo *index,
-					 Oid *opclass);
+static void fix_indexqual_references(List *indexquals, IndexPath *index_path,
+						 List **fixed_indexquals,
+						 List **nonlossy_indexquals,
+						 List **indexstrategy,
+						 List **indexsubtype);
+static Node *fix_indexqual_operand(Node *node, IndexOptInfo *index,
+					  Oid *opclass);
 static List *get_switched_clauses(List *clauses, Relids outerrelids);
-static List *order_qual_clauses(Query *root, List *clauses);
 static void copy_path_costsize(Plan *dest, Path *src);
 static void copy_plan_costsize(Plan *dest, Plan *src);
 static SeqScan *make_seqscan(List *qptlist, List *qpqual, Index scanrelid);
 static IndexScan *make_indexscan(List *qptlist, List *qpqual, Index scanrelid,
-			   List *indxid, List *indxqual, List *indxqualorig,
-			   List *indxstrategy, List *indxsubtype, List *indxlossy,
+			   Oid indexid, List *indexqual, List *indexqualorig,
+			   List *indexstrategy, List *indexsubtype,
 			   ScanDirection indexscandir);
+static BitmapIndexScan *make_bitmap_indexscan(Index scanrelid, Oid indexid,
+					  List *indexqual,
+					  List *indexqualorig,
+					  List *indexstrategy,
+					  List *indexsubtype);
+static BitmapHeapScan *make_bitmap_heapscan(List *qptlist,
+					 List *qpqual,
+					 Plan *lefttree,
+					 List *bitmapqualorig,
+					 Index scanrelid);
 static TidScan *make_tidscan(List *qptlist, List *qpqual, Index scanrelid,
 			 List *tideval);
 static FunctionScan *make_functionscan(List *qptlist, List *qpqual,
 				  Index scanrelid);
+static BitmapAnd *make_bitmap_and(List *bitmapplans);
+static BitmapOr *make_bitmap_or(List *bitmapplans);
 static NestLoop *make_nestloop(List *tlist,
 			  List *joinclauses, List *otherclauses,
 			  Plan *lefttree, Plan *righttree,
@@ -108,7 +116,7 @@ static MergeJoin *make_mergejoin(List *tlist,
 			   List *mergeclauses,
 			   Plan *lefttree, Plan *righttree,
 			   JoinType jointype);
-static Sort *make_sort(Query *root, Plan *lefttree, int numCols,
+static Sort *make_sort(PlannerInfo *root, Plan *lefttree, int numCols,
 		  AttrNumber *sortColIdx, Oid *sortOperators);
 
 
@@ -128,14 +136,15 @@ static Sort *make_sort(Query *root, Plan *lefttree, int numCols,
  *	  Returns a Plan tree.
  */
 Plan *
-create_plan(Query *root, Path *best_path)
+create_plan(PlannerInfo *root, Path *best_path)
 {
 	Plan	   *plan;
 
-    switch (best_path->pathtype)
+	switch (best_path->pathtype)
 	{
-		case T_IndexScan:
 		case T_SeqScan:
+		case T_IndexScan:
+		case T_BitmapHeapScan:
 		case T_TidScan:
 		case T_SubqueryScan:
 		case T_FunctionScan:
@@ -157,7 +166,7 @@ create_plan(Query *root, Path *best_path)
 			break;
 		case T_Material:
 			plan = (Plan *) create_material_plan(root,
-											 (MaterialPath *) best_path);
+												 (MaterialPath *) best_path);
 			break;
 		case T_Unique:
 			plan = (Plan *) create_unique_plan(root,
@@ -189,7 +198,7 @@ create_plan(Query *root, Path *best_path)
  *	 Returns a Plan node.
  */
 static Scan *
-create_scan_plan(Query *root, Path *best_path)
+create_scan_plan(PlannerInfo *root, Path *best_path)
 {
 	RelOptInfo *rel = best_path->parent;
 	List	   *tlist;
@@ -197,12 +206,12 @@ create_scan_plan(Query *root, Path *best_path)
 	Scan	   *plan;
 
 	/*
-	 * For table scans, rather than using the relation targetlist (which
-	 * is only those Vars actually needed by the query), we prefer to
-	 * generate a tlist containing all Vars in order.  This will allow the
-	 * executor to optimize away projection of the table tuples, if
-	 * possible.  (Note that planner.c may replace the tlist we generate
-	 * here, forcing projection to occur.)
+	 * For table scans, rather than using the relation targetlist (which is
+	 * only those Vars actually needed by the query), we prefer to generate a
+	 * tlist containing all Vars in order.	This will allow the executor to
+	 * optimize away projection of the table tuples, if possible.  (Note that
+	 * planner.c may replace the tlist we generate here, forcing projection to
+	 * occur.)
 	 */
 	if (use_physical_tlist(rel))
 	{
@@ -215,8 +224,8 @@ create_scan_plan(Query *root, Path *best_path)
 		tlist = build_relation_tlist(rel);
 
 	/*
-	 * Extract the relevant restriction clauses from the parent relation;
-	 * the executor must apply all these restrictions during the scan.
+	 * Extract the relevant restriction clauses from the parent relation; the
+	 * executor must apply all these restrictions during the scan.
 	 */
 	scan_clauses = rel->baserestrictinfo;
 
@@ -233,7 +242,15 @@ create_scan_plan(Query *root, Path *best_path)
 			plan = (Scan *) create_indexscan_plan(root,
 												  (IndexPath *) best_path,
 												  tlist,
-												  scan_clauses);
+												  scan_clauses,
+												  NULL);
+			break;
+
+		case T_BitmapHeapScan:
+			plan = (Scan *) create_bitmap_scan_plan(root,
+												(BitmapHeapPath *) best_path,
+													tlist,
+													scan_clauses);
 			break;
 
 		case T_TidScan:
@@ -275,7 +292,7 @@ static List *
 build_relation_tlist(RelOptInfo *rel)
 {
 	List	   *tlist = NIL;
-	int			resdomno = 1;
+	int			resno = 1;
 	ListCell   *v;
 
 	foreach(v, rel->reltargetlist)
@@ -283,8 +300,11 @@ build_relation_tlist(RelOptInfo *rel)
 		/* Do we really need to copy here?	Not sure */
 		Var		   *var = (Var *) copyObject(lfirst(v));
 
-		tlist = lappend(tlist, create_tl_element(var, resdomno));
-		resdomno++;
+		tlist = lappend(tlist, makeTargetEntry((Expr *) var,
+											   resno,
+											   NULL,
+											   false));
+		resno++;
 	}
 	return tlist;
 }
@@ -300,11 +320,12 @@ use_physical_tlist(RelOptInfo *rel)
 	int			i;
 
 	/*
-	 * Currently, can't do this for subquery or function scans.  (This is
-	 * mainly because we don't have an equivalent of build_physical_tlist
-	 * for them; worth adding?)
+	 * We can do this for real relation scans, subquery scans, and function
+	 * scans (but not for, eg, joins).
 	 */
-	if (rel->rtekind != RTE_RELATION)
+	if (rel->rtekind != RTE_RELATION &&
+		rel->rtekind != RTE_SUBQUERY &&
+		rel->rtekind != RTE_FUNCTION)
 		return false;
 
 	/*
@@ -315,15 +336,16 @@ use_physical_tlist(RelOptInfo *rel)
 		return false;
 
 	/*
-	 * Can't do it if any system columns are requested, either.  (This
-	 * could possibly be fixed but would take some fragile assumptions in
-	 * setrefs.c, I think.)
+	 * Can't do it if any system columns or whole-row Vars are requested,
+	 * either.  (This could possibly be fixed but would take some fragile
+	 * assumptions in setrefs.c, I think.)
 	 */
 	for (i = rel->min_attr; i <= 0; i++)
 	{
 		if (!bms_is_empty(rel->attr_needed[i - rel->min_attr]))
 			return false;
 	}
+
 	return true;
 }
 
@@ -342,8 +364,9 @@ disuse_physical_tlist(Plan *plan, Path *path)
 	/* Only need to undo it for path types handled by create_scan_plan() */
 	switch (path->pathtype)
 	{
-		case T_IndexScan:
 		case T_SeqScan:
+		case T_IndexScan:
+		case T_BitmapHeapScan:
 		case T_TidScan:
 		case T_SubqueryScan:
 		case T_FunctionScan:
@@ -362,7 +385,7 @@ disuse_physical_tlist(Plan *plan, Path *path)
  *	  Returns a Plan node.
  */
 static Join *
-create_join_plan(Query *root, JoinPath *best_path)
+create_join_plan(PlannerInfo *root, JoinPath *best_path)
 {
 	Plan	   *outer_plan;
 	Plan	   *inner_plan;
@@ -402,14 +425,14 @@ create_join_plan(Query *root, JoinPath *best_path)
 #ifdef NOT_USED
 
 	/*
-	 * * Expensive function pullups may have pulled local predicates *
-	 * into this path node.  Put them in the qpqual of the plan node. *
-	 * JMH, 6/15/92
+	 * * Expensive function pullups may have pulled local predicates * into
+	 * this path node.	Put them in the qpqual of the plan node. * JMH,
+	 * 6/15/92
 	 */
 	if (get_loc_restrictinfo(best_path) != NIL)
 		set_qpqual((Plan) plan,
 				   list_concat(get_qpqual((Plan) plan),
-				   get_actual_clauses(get_loc_restrictinfo(best_path))));
+					   get_actual_clauses(get_loc_restrictinfo(best_path))));
 #endif
 
 	return plan;
@@ -422,14 +445,33 @@ create_join_plan(Query *root, JoinPath *best_path)
  *
  *	  Returns a Plan node.
  */
-static Append *
-create_append_plan(Query *root, AppendPath *best_path)
+static Plan *
+create_append_plan(PlannerInfo *root, AppendPath *best_path)
 {
 	Append	   *plan;
 	List	   *tlist = build_relation_tlist(best_path->path.parent);
 	List	   *subplans = NIL;
 	ListCell   *subpaths;
 
+	/*
+	 * It is possible for the subplans list to contain only one entry, or even
+	 * no entries.	Handle these cases specially.
+	 *
+	 * XXX ideally, if there's just one entry, we'd not bother to generate an
+	 * Append node but just return the single child.  At the moment this does
+	 * not work because the varno of the child scan plan won't match the
+	 * parent-rel Vars it'll be asked to emit.
+	 */
+	if (best_path->subpaths == NIL)
+	{
+		/* Generate a Result plan with constant-FALSE gating qual */
+		return (Plan *) make_result(tlist,
+									(Node *) list_make1(makeBoolConst(false,
+																	  false)),
+									NULL);
+	}
+
+	/* Normal case with multiple subpaths */
 	foreach(subpaths, best_path->subpaths)
 	{
 		Path	   *subpath = (Path *) lfirst(subpaths);
@@ -439,7 +481,7 @@ create_append_plan(Query *root, AppendPath *best_path)
 
 	plan = make_append(subplans, false, tlist);
 
-	return plan;
+	return (Plan *) plan;
 }
 
 /*
@@ -450,7 +492,7 @@ create_append_plan(Query *root, AppendPath *best_path)
  *	  Returns a Plan node.
  */
 static Result *
-create_result_plan(Query *root, ResultPath *best_path)
+create_result_plan(PlannerInfo *root, ResultPath *best_path)
 {
 	Result	   *plan;
 	List	   *tlist;
@@ -482,7 +524,7 @@ create_result_plan(Query *root, ResultPath *best_path)
  *	  Returns a Plan node.
  */
 static Material *
-create_material_plan(Query *root, MaterialPath *best_path)
+create_material_plan(PlannerInfo *root, MaterialPath *best_path)
 {
 	Material   *plan;
 	Plan	   *subplan;
@@ -509,44 +551,44 @@ create_material_plan(Query *root, MaterialPath *best_path)
  *	  Returns a Plan node.
  */
 static Plan *
-create_unique_plan(Query *root, UniquePath *best_path)
+create_unique_plan(PlannerInfo *root, UniquePath *best_path)
 {
 	Plan	   *plan;
 	Plan	   *subplan;
 	List	   *uniq_exprs;
-	int			numGroupCols;
-	AttrNumber *groupColIdx;
-	int			groupColPos;
 	List	   *newtlist;
 	int			nextresno;
 	bool		newitems;
+	int			numGroupCols;
+	AttrNumber *groupColIdx;
+	int			groupColPos;
 	ListCell   *l;
 
 	subplan = create_plan(root, best_path->subpath);
 
-	/*
+	/* Done if we don't need to do any actual unique-ifying */
+	if (best_path->umethod == UNIQUE_PATH_NOOP)
+		return subplan;
+
+	/*----------
 	 * As constructed, the subplan has a "flat" tlist containing just the
 	 * Vars needed here and at upper levels.  The values we are supposed
 	 * to unique-ify may be expressions in these variables.  We have to
-	 * add any such expressions to the subplan's tlist.  We then build
-	 * control information showing which subplan output columns are to be
-	 * examined by the grouping step.  (Since we do not remove any
-	 * existing subplan outputs, not all the output columns may be used
-	 * for grouping.)
+	 * add any such expressions to the subplan's tlist.
 	 *
-	 * Note: the reason we don't remove any subplan outputs is that there are
-	 * scenarios where a Var is needed at higher levels even though it is
-	 * not one of the nominal outputs of an IN clause.	Consider WHERE x
-	 * IN (SELECT y FROM t1,t2 WHERE y = z) Implied equality deduction
-	 * will generate an "x = z" clause, which may get used instead of "x =
-	 * y" in the upper join step.  Therefore the sub-select had better
-	 * deliver both y and z in its targetlist.	It is sufficient to
-	 * unique-ify on y, however.
+	 * The subplan may have a "physical" tlist if it is a simple scan plan.
+	 * This should be left as-is if we don't need to add any expressions;
+	 * but if we do have to add expressions, then a projection step will be
+	 * needed at runtime anyway, and so we may as well remove unneeded items.
+	 * Therefore newtlist starts from build_relation_tlist() not just a
+	 * copy of the subplan's tlist; and we don't install it into the subplan
+	 * unless stuff has to be added.
 	 *
 	 * To find the correct list of values to unique-ify, we look in the
 	 * information saved for IN expressions.  If this code is ever used in
 	 * other scenarios, some other way of finding what to unique-ify will
 	 * be needed.
+	 *----------
 	 */
 	uniq_exprs = NIL;			/* just to keep compiler quiet */
 	foreach(l, root->in_info_list)
@@ -562,12 +604,8 @@ create_unique_plan(Query *root, UniquePath *best_path)
 	if (l == NULL)				/* fell out of loop? */
 		elog(ERROR, "could not find UniquePath in in_info_list");
 
-	/* set up to record positions of unique columns */
-	numGroupCols = list_length(uniq_exprs);
-	groupColIdx = (AttrNumber *) palloc(numGroupCols * sizeof(AttrNumber));
-	groupColPos = 0;
-	/* not sure if tlist might be shared with other nodes, so copy */
-	newtlist = copyObject(subplan->targetlist);
+	/* initialize modified subplan tlist as just the "required" vars */
+	newtlist = build_relation_tlist(best_path->path.parent);
 	nextresno = list_length(newtlist) + 1;
 	newitems = false;
 
@@ -576,27 +614,24 @@ create_unique_plan(Query *root, UniquePath *best_path)
 		Node	   *uniqexpr = lfirst(l);
 		TargetEntry *tle;
 
-		tle = tlistentry_member(uniqexpr, newtlist);
+		tle = tlist_member(uniqexpr, newtlist);
 		if (!tle)
 		{
-			tle = makeTargetEntry(makeResdom(nextresno,
-											 exprType(uniqexpr),
-											 exprTypmod(uniqexpr),
-											 NULL,
-											 false),
-								  (Expr *) uniqexpr);
+			tle = makeTargetEntry((Expr *) uniqexpr,
+								  nextresno,
+								  NULL,
+								  false);
 			newtlist = lappend(newtlist, tle);
 			nextresno++;
 			newitems = true;
 		}
-		groupColIdx[groupColPos++] = tle->resdom->resno;
 	}
 
 	if (newitems)
 	{
 		/*
-		 * If the top plan node can't do projections, we need to add a
-		 * Result node to help it along.
+		 * If the top plan node can't do projections, we need to add a Result
+		 * node to help it along.
 		 */
 		if (!is_projection_capable_plan(subplan))
 			subplan = (Plan *) make_result(newtlist, NULL, subplan);
@@ -604,9 +639,27 @@ create_unique_plan(Query *root, UniquePath *best_path)
 			subplan->targetlist = newtlist;
 	}
 
-	/* Done if we don't need to do any actual unique-ifying */
-	if (best_path->umethod == UNIQUE_PATH_NOOP)
-		return subplan;
+	/*
+	 * Build control information showing which subplan output columns are to
+	 * be examined by the grouping step.  Unfortunately we can't merge this
+	 * with the previous loop, since we didn't then know which version of the
+	 * subplan tlist we'd end up using.
+	 */
+	newtlist = subplan->targetlist;
+	numGroupCols = list_length(uniq_exprs);
+	groupColIdx = (AttrNumber *) palloc(numGroupCols * sizeof(AttrNumber));
+	groupColPos = 0;
+
+	foreach(l, uniq_exprs)
+	{
+		Node	   *uniqexpr = lfirst(l);
+		TargetEntry *tle;
+
+		tle = tlist_member(uniqexpr, newtlist);
+		if (!tle)				/* shouldn't happen */
+			elog(ERROR, "failed to find unique expression in subplan tlist");
+		groupColIdx[groupColPos++] = tle->resno;
+	}
 
 	if (best_path->umethod == UNIQUE_PATH_HASH)
 	{
@@ -614,8 +667,13 @@ create_unique_plan(Query *root, UniquePath *best_path)
 
 		numGroups = (long) Min(best_path->rows, (double) LONG_MAX);
 
+		/*
+		 * Since the Agg node is going to project anyway, we can give it the
+		 * minimum output tlist, without any stuff we might have added to the
+		 * subplan tlist.
+		 */
 		plan = (Plan *) make_agg(root,
-								 copyObject(subplan->targetlist),
+								 build_relation_tlist(best_path->path.parent),
 								 NIL,
 								 AGG_HASHED,
 								 numGroupCols,
@@ -654,7 +712,7 @@ create_unique_plan(Query *root, UniquePath *best_path)
  * create_motion_plan
  */
 Plan *
-create_motion_plan(Query           *root,
+create_motion_plan(PlannerInfo     *root,
                    CdbMotionPath   *path)
 {
     Motion *motion;
@@ -684,7 +742,7 @@ create_motion_plan(Query           *root,
  *	 with restriction clauses 'scan_clauses' and targetlist 'tlist'.
  */
 static SeqScan *
-create_seqscan_plan(Query *root, Path *best_path,
+create_seqscan_plan(PlannerInfo *root, Path *best_path,
 					List *tlist, List *scan_clauses)
 {
 	SeqScan    *scan_plan;
@@ -711,33 +769,32 @@ create_seqscan_plan(Query *root, Path *best_path,
 
 /*
  * create_indexscan_plan
- *	  Returns a indexscan plan for the base relation scanned by 'best_path'
+ *	  Returns an indexscan plan for the base relation scanned by 'best_path'
  *	  with restriction clauses 'scan_clauses' and targetlist 'tlist'.
  *
- * The indexquals list of the path contains a sublist of implicitly-ANDed
- * qual conditions for each scan of the index(es); if there is more than one
- * scan then the retrieved tuple sets are ORed together.  The indexquals
- * and indexinfo lists must have the same length, ie, the number of scans
- * that will occur.  Note it is possible for a qual condition sublist
- * to be empty --- then no index restrictions will be applied during that
- * scan.
+ * The indexquals list of the path contains implicitly-ANDed qual conditions.
+ * The list can be empty --- then no index restrictions will be applied during
+ * the scan.
+ *
+ * If nonlossy_clauses isn't NULL, *nonlossy_clauses receives a list of the
+ * nonlossy indexquals.
  */
 static IndexScan *
-create_indexscan_plan(Query *root,
+create_indexscan_plan(PlannerInfo *root,
 					  IndexPath *best_path,
 					  List *tlist,
-					  List *scan_clauses)
+					  List *scan_clauses,
+					  List **nonlossy_clauses)
 {
-	List	   *indxquals = best_path->indexquals;
+	List	   *indexquals = best_path->indexquals;
 	Index		baserelid = best_path->path.parent->relid;
+	Oid			indexoid = best_path->indexinfo->indexoid;
 	List	   *qpqual;
-	Expr	   *indxqual_or_expr = NULL;
-	List	   *stripped_indxquals;
-	List	   *fixed_indxquals;
-	List	   *indxstrategy;
-	List	   *indxsubtype;
-	List	   *indxlossy;
-	List	   *indexids;
+	List	   *stripped_indexquals;
+	List	   *fixed_indexquals;
+	List	   *nonlossy_indexquals;
+	List	   *indexstrategy;
+	List	   *indexsubtype;
 	ListCell   *l;
 	IndexScan  *scan_plan;
 
@@ -746,103 +803,93 @@ create_indexscan_plan(Query *root,
 	Assert(best_path->path.parent->rtekind == RTE_RELATION);
 
 	/*
-	 * If this is a innerjoin scan, the indexclauses will contain join
-	 * clauses that are not present in scan_clauses (since the passed-in
-	 * value is just the rel's baserestrictinfo list).  We must add these
-	 * clauses to scan_clauses to ensure they get checked.	In most cases
-	 * we will remove the join clauses again below, but if a join clause
-	 * contains a special operator, we need to make sure it gets into the
-	 * scan_clauses.
+	 * Build "stripped" indexquals structure (no RestrictInfos) to pass to
+	 * executor as indexqualorig
+	 */
+	stripped_indexquals = get_actual_clauses(indexquals);
+
+	/*
+	 * The executor needs a copy with the indexkey on the left of each clause
+	 * and with index attr numbers substituted for table ones. This pass also
+	 * gets strategy info and looks for "lossy" operators.
+	 */
+	fix_indexqual_references(indexquals, best_path,
+							 &fixed_indexquals,
+							 &nonlossy_indexquals,
+							 &indexstrategy,
+							 &indexsubtype);
+
+	/* pass back nonlossy quals if caller wants 'em */
+	if (nonlossy_clauses)
+		*nonlossy_clauses = nonlossy_indexquals;
+
+	/*
+	 * If this is an innerjoin scan, the indexclauses will contain join
+	 * clauses that are not present in scan_clauses (since the passed-in value
+	 * is just the rel's baserestrictinfo list).  We must add these clauses to
+	 * scan_clauses to ensure they get checked.  In most cases we will remove
+	 * the join clauses again below, but if a join clause contains a special
+	 * operator, we need to make sure it gets into the scan_clauses.
+	 *
+	 * Note: pointer comparison should be enough to determine RestrictInfo
+	 * matches.
 	 */
 	if (best_path->isjoininner)
-	{
-		/*
-		 * We don't currently support OR indexscans in joins, so we only
-		 * need to worry about the plain AND case.	Also, pointer
-		 * comparison should be enough to determine RestrictInfo matches.
-		 */
-		Assert(list_length(best_path->indexclauses) == 1);
-		scan_clauses = list_union_ptr(scan_clauses,
-							 (List *) linitial(best_path->indexclauses));
-	}
+		scan_clauses = list_union_ptr(scan_clauses, best_path->indexclauses);
 
-	/* Reduce RestrictInfo list to bare expressions */
-	scan_clauses = get_actual_clauses(scan_clauses);
+	/*
+	 * The qpqual list must contain all restrictions not automatically handled
+	 * by the index.  All the predicates in the indexquals will be checked
+	 * (either by the index itself, or by nodeIndexscan.c), but if there are
+	 * any "special" operators involved then they must be included in qpqual.
+	 * Also, any lossy index operators must be rechecked in the qpqual.  The
+	 * upshot is that qpqual must contain scan_clauses minus whatever appears
+	 * in nonlossy_indexquals.
+	 *
+	 * In normal cases simple pointer equality checks will be enough to spot
+	 * duplicate RestrictInfos, so we try that first.  In some situations
+	 * (particularly with OR'd index conditions) we may have scan_clauses that
+	 * are not equal to, but are logically implied by, the index quals; so we
+	 * also try a predicate_implied_by() check to see if we can discard quals
+	 * that way.  (predicate_implied_by assumes its first input contains only
+	 * immutable functions, so we have to check that.)	We can also discard
+	 * quals that are implied by a partial index's predicate.
+	 *
+	 * While at it, we strip off the RestrictInfos to produce a list of plain
+	 * expressions.
+	 */
+	qpqual = NIL;
+	foreach(l, scan_clauses)
+	{
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
+
+		Assert(IsA(rinfo, RestrictInfo));
+		if (list_member_ptr(nonlossy_indexquals, rinfo))
+			continue;
+		if (!contain_mutable_functions((Node *) rinfo->clause))
+		{
+			List	   *clausel = list_make1(rinfo->clause);
+
+			if (predicate_implied_by(clausel, nonlossy_indexquals))
+				continue;
+			if (predicate_implied_by(clausel, best_path->indexinfo->indpred))
+				continue;
+		}
+		qpqual = lappend(qpqual, rinfo->clause);
+	}
 
 	/* Sort clauses into best execution order */
-	scan_clauses = order_qual_clauses(root, scan_clauses);
-
-	/* Build list of index OIDs */
-	indexids = NIL;
-	foreach(l, best_path->indexinfo)
-	{
-		IndexOptInfo *index = (IndexOptInfo *) lfirst(l);
-
-		indexids = lappend_oid(indexids, index->indexoid);
-	}
-
-	/*
-	 * Build "stripped" indexquals structure (no RestrictInfos) to pass to
-	 * executor as indxqualorig
-	 */
-	stripped_indxquals = NIL;
-	foreach(l, indxquals)
-	{
-		List	   *andlist = (List *) lfirst(l);
-
-		stripped_indxquals = lappend(stripped_indxquals,
-									 get_actual_clauses(andlist));
-	}
-
-	/*
-	 * The qpqual list must contain all restrictions not automatically
-	 * handled by the index.  All the predicates in the indexquals will be
-	 * checked (either by the index itself, or by nodeIndexscan.c), but if
-	 * there are any "special" operators involved then they must be added
-	 * to qpqual.  The upshot is that qpquals must contain scan_clauses
-	 * minus whatever appears in indxquals.
-	 */
-	if (list_length(indxquals) > 1)
-	{
-		/*
-		 * Build an expression representation of the indexqual, expanding
-		 * the implicit OR and AND semantics of the first- and
-		 * second-level lists.	(The odds that this will exactly match any
-		 * scan_clause are not great; perhaps we need more smarts here.)
-		 */
-		indxqual_or_expr = make_expr_from_indexclauses(indxquals);
-		qpqual = list_difference(scan_clauses, list_make1(indxqual_or_expr));
-	}
-	else
-	{
-		/*
-		 * Here, we can simply treat the first sublist as an independent
-		 * set of qual expressions, since there is no top-level OR
-		 * behavior.
-		 */
-		Assert(stripped_indxquals != NIL);
-		qpqual = list_difference(scan_clauses, linitial(stripped_indxquals));
-	}
-
-	/*
-	 * The executor needs a copy with the indexkey on the left of each
-	 * clause and with index attr numbers substituted for table ones. This
-	 * pass also gets strategy info and looks for "lossy" operators.
-	 */
-	fix_indxqual_references(indxquals, best_path,
-							&fixed_indxquals,
-							&indxstrategy, &indxsubtype, &indxlossy);
+	qpqual = order_qual_clauses(root, qpqual);
 
 	/* Finally ready to build the plan node */
 	scan_plan = make_indexscan(tlist,
 							   qpqual,
 							   baserelid,
-							   indexids,
-							   fixed_indxquals,
-							   stripped_indxquals,
-							   indxstrategy,
-							   indxsubtype,
-							   indxlossy,
+							   indexoid,
+							   fixed_indexquals,
+							   stripped_indexquals,
+							   indexstrategy,
+							   indexsubtype,
 							   best_path->indexscandir);
 
 	copy_path_costsize(&scan_plan->scan.plan, &best_path->path);
@@ -853,12 +900,276 @@ create_indexscan_plan(Query *root,
 }
 
 /*
+ * create_bitmap_scan_plan
+ *	  Returns a bitmap scan plan for the base relation scanned by 'best_path'
+ *	  with restriction clauses 'scan_clauses' and targetlist 'tlist'.
+ */
+static BitmapHeapScan *
+create_bitmap_scan_plan(PlannerInfo *root,
+						BitmapHeapPath *best_path,
+						List *tlist,
+						List *scan_clauses)
+{
+	Index		baserelid = best_path->path.parent->relid;
+	Plan	   *bitmapqualplan;
+	List	   *bitmapqualorig;
+	List	   *indexquals;
+	List	   *qpqual;
+	ListCell   *l;
+	BitmapHeapScan *scan_plan;
+
+	/* it should be a base rel... */
+	Assert(baserelid > 0);
+	Assert(best_path->path.parent->rtekind == RTE_RELATION);
+
+	/* Process the bitmapqual tree into a Plan tree and qual lists */
+	bitmapqualplan = create_bitmap_subplan(root, best_path->bitmapqual,
+										   &bitmapqualorig, &indexquals);
+
+	/* Reduce RestrictInfo list to bare expressions */
+	scan_clauses = get_actual_clauses(scan_clauses);
+
+	/*
+	 * If this is a innerjoin scan, the indexclauses will contain join clauses
+	 * that are not present in scan_clauses (since the passed-in value is just
+	 * the rel's baserestrictinfo list).  We must add these clauses to
+	 * scan_clauses to ensure they get checked.  In most cases we will remove
+	 * the join clauses again below, but if a join clause contains a special
+	 * operator, we need to make sure it gets into the scan_clauses.
+	 */
+	if (best_path->isjoininner)
+	{
+		scan_clauses = list_concat_unique(scan_clauses, bitmapqualorig);
+	}
+
+	/*
+	 * The qpqual list must contain all restrictions not automatically handled
+	 * by the index.  All the predicates in the indexquals will be checked
+	 * (either by the index itself, or by nodeBitmapHeapscan.c), but if there
+	 * are any "special" or lossy operators involved then they must be added
+	 * to qpqual.  The upshot is that qpquals must contain scan_clauses minus
+	 * whatever appears in indexquals.
+	 *
+	 * In normal cases simple equal() checks will be enough to spot duplicate
+	 * clauses, so we try that first.  In some situations (particularly with
+	 * OR'd index conditions) we may have scan_clauses that are not equal to,
+	 * but are logically implied by, the index quals; so we also try a
+	 * predicate_implied_by() check to see if we can discard quals that way.
+	 * (predicate_implied_by assumes its first input contains only immutable
+	 * functions, so we have to check that.)  We can also discard quals that
+	 * are implied by a partial index's predicate.
+	 *
+	 * XXX For the moment, we only consider partial index predicates in the
+	 * simple single-index-scan case.  Is it worth trying to be smart about
+	 * more complex cases?	Perhaps create_bitmap_subplan should be made to
+	 * include predicate info in what it constructs.
+	 */
+	qpqual = NIL;
+	foreach(l, scan_clauses)
+	{
+		Node	   *clause = (Node *) lfirst(l);
+
+		if (list_member(indexquals, clause))
+			continue;
+		if (!contain_mutable_functions(clause))
+		{
+			List	   *clausel = list_make1(clause);
+
+			if (predicate_implied_by(clausel, indexquals))
+				continue;
+			if (IsA(best_path->bitmapqual, IndexPath))
+			{
+				IndexPath  *ipath = (IndexPath *) best_path->bitmapqual;
+
+				if (predicate_implied_by(clausel, ipath->indexinfo->indpred))
+					continue;
+			}
+		}
+		qpqual = lappend(qpqual, clause);
+	}
+
+	/* Sort clauses into best execution order */
+	qpqual = order_qual_clauses(root, qpqual);
+
+	/*
+	 * When dealing with special or lossy operators, we will at this point
+	 * have duplicate clauses in qpqual and bitmapqualorig.  We may as well
+	 * drop 'em from bitmapqualorig, since there's no point in making the
+	 * tests twice.
+	 */
+	bitmapqualorig = list_difference_ptr(bitmapqualorig, qpqual);
+
+	/* Finally ready to build the plan node */
+	scan_plan = make_bitmap_heapscan(tlist,
+									 qpqual,
+									 bitmapqualplan,
+									 bitmapqualorig,
+									 baserelid);
+
+	copy_path_costsize(&scan_plan->scan.plan, &best_path->path);
+	/* use the indexscan-specific rows estimate, not the parent rel's */
+	scan_plan->scan.plan.plan_rows = best_path->rows;
+
+	return scan_plan;
+}
+
+/*
+ * Given a bitmapqual tree, generate the Plan tree that implements it
+ *
+ * As byproducts, we also return in *qual and *indexqual the qual lists
+ * (in implicit-AND form, without RestrictInfos) describing the original index
+ * conditions and the generated indexqual conditions.  The latter is made to
+ * exclude lossy index operators.
+ *
+ * Note: if you find yourself changing this, you probably need to change
+ * make_restrictinfo_from_bitmapqual too.
+ */
+static Plan *
+create_bitmap_subplan(PlannerInfo *root, Path *bitmapqual,
+					  List **qual, List **indexqual)
+{
+	Plan	   *plan;
+
+	if (IsA(bitmapqual, BitmapAndPath))
+	{
+		BitmapAndPath *apath = (BitmapAndPath *) bitmapqual;
+		List	   *subplans = NIL;
+		List	   *subquals = NIL;
+		List	   *subindexquals = NIL;
+		ListCell   *l;
+
+		/*
+		 * There may well be redundant quals among the subplans, since a
+		 * top-level WHERE qual might have gotten used to form several
+		 * different index quals.  We don't try exceedingly hard to eliminate
+		 * redundancies, but we do eliminate obvious duplicates by using
+		 * list_concat_unique.
+		 */
+		foreach(l, apath->bitmapquals)
+		{
+			Plan	   *subplan;
+			List	   *subqual;
+			List	   *subindexqual;
+
+			subplan = create_bitmap_subplan(root, (Path *) lfirst(l),
+											&subqual, &subindexqual);
+			subplans = lappend(subplans, subplan);
+			subquals = list_concat_unique(subquals, subqual);
+			subindexquals = list_concat_unique(subindexquals, subindexqual);
+		}
+		plan = (Plan *) make_bitmap_and(subplans);
+		plan->startup_cost = apath->path.startup_cost;
+		plan->total_cost = apath->path.total_cost;
+		plan->plan_rows =
+			clamp_row_est(apath->bitmapselectivity * apath->path.parent->tuples);
+		plan->plan_width = 0;	/* meaningless */
+		*qual = subquals;
+		*indexqual = subindexquals;
+	}
+	else if (IsA(bitmapqual, BitmapOrPath))
+	{
+		BitmapOrPath *opath = (BitmapOrPath *) bitmapqual;
+		List	   *subplans = NIL;
+		List	   *subquals = NIL;
+		List	   *subindexquals = NIL;
+		bool		const_true_subqual = false;
+		bool		const_true_subindexqual = false;
+		ListCell   *l;
+
+		/*
+		 * Here, we only detect qual-free subplans.  A qual-free subplan would
+		 * cause us to generate "... OR true ..."  which we may as well reduce
+		 * to just "true".	We do not try to eliminate redundant subclauses
+		 * because (a) it's not as likely as in the AND case, and (b) we might
+		 * well be working with hundreds or even thousands of OR conditions,
+		 * perhaps from a long IN list.  The performance of list_append_unique
+		 * would be unacceptable.
+		 */
+		foreach(l, opath->bitmapquals)
+		{
+			Plan	   *subplan;
+			List	   *subqual;
+			List	   *subindexqual;
+
+			subplan = create_bitmap_subplan(root, (Path *) lfirst(l),
+											&subqual, &subindexqual);
+			subplans = lappend(subplans, subplan);
+			if (subqual == NIL)
+				const_true_subqual = true;
+			else if (!const_true_subqual)
+				subquals = lappend(subquals,
+								   make_ands_explicit(subqual));
+			if (subindexqual == NIL)
+				const_true_subindexqual = true;
+			else if (!const_true_subindexqual)
+				subindexquals = lappend(subindexquals,
+										make_ands_explicit(subindexqual));
+		}
+		plan = (Plan *) make_bitmap_or(subplans);
+		plan->startup_cost = opath->path.startup_cost;
+		plan->total_cost = opath->path.total_cost;
+		plan->plan_rows =
+			clamp_row_est(opath->bitmapselectivity * opath->path.parent->tuples);
+		plan->plan_width = 0;	/* meaningless */
+
+		/*
+		 * If there were constant-TRUE subquals, the OR reduces to constant
+		 * TRUE.  Also, avoid generating one-element ORs, which could happen
+		 * due to redundancy elimination.
+		 */
+		if (const_true_subqual)
+			*qual = NIL;
+		else if (list_length(subquals) <= 1)
+			*qual = subquals;
+		else
+			*qual = list_make1(make_orclause(subquals));
+		if (const_true_subindexqual)
+			*indexqual = NIL;
+		else if (list_length(subindexquals) <= 1)
+			*indexqual = subindexquals;
+		else
+			*indexqual = list_make1(make_orclause(subindexquals));
+	}
+	else if (IsA(bitmapqual, IndexPath))
+	{
+		IndexPath  *ipath = (IndexPath *) bitmapqual;
+		IndexScan  *iscan;
+		List	   *nonlossy_clauses;
+
+		/* Use the regular indexscan plan build machinery... */
+		iscan = create_indexscan_plan(root, ipath, NIL, NIL,
+									  &nonlossy_clauses);
+		/* then convert to a bitmap indexscan */
+		plan = (Plan *) make_bitmap_indexscan(iscan->scan.scanrelid,
+											  iscan->indexid,
+											  iscan->indexqual,
+											  iscan->indexqualorig,
+											  iscan->indexstrategy,
+											  iscan->indexsubtype);
+		plan->startup_cost = 0.0;
+		plan->total_cost = ipath->indextotalcost;
+		plan->plan_rows =
+			clamp_row_est(ipath->indexselectivity * ipath->path.parent->tuples);
+		plan->plan_width = 0;	/* meaningless */
+		*qual = get_actual_clauses(ipath->indexclauses);
+		*indexqual = get_actual_clauses(nonlossy_clauses);
+	}
+	else
+	{
+		elog(ERROR, "unrecognized node type: %d", nodeTag(bitmapqual));
+		plan = NULL;			/* keep compiler quiet */
+	}
+
+	return plan;
+}
+
+/*
  * create_tidscan_plan
  *	 Returns a tidscan plan for the base relation scanned by 'best_path'
  *	 with restriction clauses 'scan_clauses' and targetlist 'tlist'.
  */
 static TidScan *
-create_tidscan_plan(Query *root, TidPath *best_path,
+create_tidscan_plan(PlannerInfo *root, TidPath *best_path,
 					List *tlist, List *scan_clauses)
 {
 	TidScan    *scan_plan;
@@ -890,7 +1201,7 @@ create_tidscan_plan(Query *root, TidPath *best_path,
  *	 with restriction clauses 'scan_clauses' and targetlist 'tlist'.
  */
 static SubqueryScan *
-create_subqueryscan_plan(Query *root, Path *best_path,
+create_subqueryscan_plan(PlannerInfo *root, Path *best_path,
 						 List *tlist, List *scan_clauses)
 {
 	SubqueryScan *scan_plan;
@@ -922,7 +1233,7 @@ create_subqueryscan_plan(Query *root, Path *best_path,
  *	 with restriction clauses 'scan_clauses' and targetlist 'tlist'.
  */
 static FunctionScan *
-create_functionscan_plan(Query *root, Path *best_path,
+create_functionscan_plan(PlannerInfo *root, Path *best_path,
 						 List *tlist, List *scan_clauses)
 {
 	FunctionScan *scan_plan;
@@ -952,7 +1263,7 @@ create_functionscan_plan(Query *root, Path *best_path,
  *****************************************************************************/
 
 static NestLoop *
-create_nestloop_plan(Query *root,
+create_nestloop_plan(PlannerInfo *root,
 					 NestPath *best_path,
 					 Plan *outer_plan,
 					 Plan *inner_plan)
@@ -966,33 +1277,58 @@ create_nestloop_plan(Query *root,
 	if (IsA(best_path->innerjoinpath, IndexPath))
 	{
 		/*
-		 * An index is being used to reduce the number of tuples scanned
-		 * in the inner relation.  If there are join clauses being used
-		 * with the index, we may remove those join clauses from the list
-		 * of clauses that have to be checked as qpquals at the join node
-		 * --- but only if there's just one indexscan in the inner path
-		 * (otherwise, several different sets of clauses are being ORed
-		 * together).
+		 * An index is being used to reduce the number of tuples scanned in
+		 * the inner relation.	If there are join clauses being used with the
+		 * index, we may remove those join clauses from the list of clauses
+		 * that have to be checked as qpquals at the join node.
 		 *
 		 * We can also remove any join clauses that are redundant with those
-		 * being used in the index scan; prior redundancy checks will not
-		 * have caught this case because the join clauses would never have
-		 * been put in the same joininfo list.
+		 * being used in the index scan; prior redundancy checks will not have
+		 * caught this case because the join clauses would never have been put
+		 * in the same joininfo list.
 		 *
-		 * We can skip this if the index path is an ordinary indexpath and
-		 * not a special innerjoin path.
+		 * We can skip this if the index path is an ordinary indexpath and not a
+		 * special innerjoin path.
 		 */
 		IndexPath  *innerpath = (IndexPath *) best_path->innerjoinpath;
-		List	   *indexclauses = innerpath->indexclauses;
 
-		if (innerpath->isjoininner &&
-			list_length(indexclauses) == 1)		/* single indexscan? */
+		if (innerpath->isjoininner)
 		{
 			joinrestrictclauses =
 				select_nonredundant_join_clauses(root,
 												 joinrestrictclauses,
-												 linitial(indexclauses),
-												 best_path->jointype);
+												 innerpath->indexclauses,
+										 IS_OUTER_JOIN(best_path->jointype));
+		}
+	}
+	else if (IsA(best_path->innerjoinpath, BitmapHeapPath))
+	{
+		/*
+		 * Same deal for bitmapped index scans.
+		 *
+		 * Note: both here and above, we ignore any implicit index restrictions
+		 * associated with the use of partial indexes.	This is OK because
+		 * we're only trying to prove we can dispense with some join quals;
+		 * failing to prove that doesn't result in an incorrect plan.  It is
+		 * the right way to proceed because adding more quals to the stuff we
+		 * got from the original query would just make it harder to detect
+		 * duplication.
+		 */
+		BitmapHeapPath *innerpath = (BitmapHeapPath *) best_path->innerjoinpath;
+
+		if (innerpath->isjoininner)
+		{
+			List	   *bitmapclauses;
+
+			bitmapclauses =
+				make_restrictinfo_from_bitmapqual(innerpath->bitmapqual,
+												  true,
+												  false);
+			joinrestrictclauses =
+				select_nonredundant_join_clauses(root,
+												 joinrestrictclauses,
+												 bitmapclauses,
+										 IS_OUTER_JOIN(best_path->jointype));
 		}
 	}
 
@@ -1026,7 +1362,7 @@ create_nestloop_plan(Query *root,
 }
 
 static MergeJoin *
-create_mergejoin_plan(Query *root,
+create_mergejoin_plan(PlannerInfo *root,
 					  MergePath *best_path,
 					  Plan *outer_plan,
 					  Plan *inner_plan)
@@ -1051,18 +1387,18 @@ create_mergejoin_plan(Query *root,
 	}
 
 	/*
-	 * Remove the mergeclauses from the list of join qual clauses, leaving
-	 * the list of quals that must be checked as qpquals.
+	 * Remove the mergeclauses from the list of join qual clauses, leaving the
+	 * list of quals that must be checked as qpquals.
 	 */
 	mergeclauses = get_actual_clauses(best_path->path_mergeclauses);
 	joinclauses = list_difference(joinclauses, mergeclauses);
 
 	/*
-	 * Rearrange mergeclauses, if needed, so that the outer variable is
-	 * always on the left.
+	 * Rearrange mergeclauses, if needed, so that the outer variable is always
+	 * on the left.
 	 */
 	mergeclauses = get_switched_clauses(best_path->path_mergeclauses,
-						 best_path->jpath.outerjoinpath->parent->relids);
+							 best_path->jpath.outerjoinpath->parent->relids);
 
 	/* Sort clauses into best execution order */
 	/* NB: do NOT reorder the mergeclauses */
@@ -1071,8 +1407,8 @@ create_mergejoin_plan(Query *root,
 
 	/*
 	 * Create explicit sort nodes for the outer and inner join paths if
-	 * necessary.  The sort cost was already accounted for in the path.
-	 * Make sure there are no excess columns in the inputs if sorting.
+	 * necessary.  The sort cost was already accounted for in the path. Make
+	 * sure there are no excess columns in the inputs if sorting.
 	 */
 	if (best_path->outersortkeys)
 	{
@@ -1109,7 +1445,7 @@ create_mergejoin_plan(Query *root,
 }
 
 static HashJoin *
-create_hashjoin_plan(Query *root,
+create_hashjoin_plan(PlannerInfo *root,
 					 HashPath *best_path,
 					 Plan *outer_plan,
 					 Plan *inner_plan)
@@ -1135,18 +1471,18 @@ create_hashjoin_plan(Query *root,
 	}
 
 	/*
-	 * Remove the hashclauses from the list of join qual clauses, leaving
-	 * the list of quals that must be checked as qpquals.
+	 * Remove the hashclauses from the list of join qual clauses, leaving the
+	 * list of quals that must be checked as qpquals.
 	 */
 	hashclauses = get_actual_clauses(best_path->path_hashclauses);
 	joinclauses = list_difference(joinclauses, hashclauses);
 
 	/*
-	 * Rearrange hashclauses, if needed, so that the outer variable is
-	 * always on the left.
+	 * Rearrange hashclauses, if needed, so that the outer variable is always
+	 * on the left.
 	 */
 	hashclauses = get_switched_clauses(best_path->path_hashclauses,
-						 best_path->jpath.outerjoinpath->parent->relids);
+							 best_path->jpath.outerjoinpath->parent->relids);
 
 	/* Sort clauses into best execution order */
 	joinclauses = order_qual_clauses(root, joinclauses);
@@ -1181,99 +1517,54 @@ create_hashjoin_plan(Query *root,
  *****************************************************************************/
 
 /*
- * fix_indxqual_references
+ * fix_indexqual_references
  *	  Adjust indexqual clauses to the form the executor's indexqual
  *	  machinery needs, and check for recheckable (lossy) index conditions.
  *
- * We have four tasks here:
+ * We have five tasks here:
  *	* Remove RestrictInfo nodes from the input clauses.
  *	* Index keys must be represented by Var nodes with varattno set to the
  *	  index's attribute number, not the attribute number in the original rel.
  *	* If the index key is on the right, commute the clause to put it on the
- *	  left.  (Someday the executor might not need this, but for now it does.)
- *	* We must construct lists of operator strategy numbers, subtypes, and
- *	  recheck (lossy-operator) flags for the top-level operators of each
- *	  index clause.
+ *	  left.
+ *	* We must construct lists of operator strategy numbers and subtypes
+ *	  for the top-level operators of each index clause.
+ *	* We must detect any lossy index operators.  The API is that we return
+ *	  a list of the input clauses whose operators are NOT lossy.
  *
- * Both the input list and the "fixed" output list have the form of lists of
- * sublists of qual clauses --- the top-level list has one entry for each
- * indexscan to be performed.  The semantics are OR-of-ANDs.  Note however
- * that the input list contains RestrictInfos, while the output list doesn't.
- *
- * fixed_indexquals receives a modified copy of the indexqual list --- the
+ * fixed_indexquals receives a modified copy of the indexquals list --- the
  * original is not changed.  Note also that the copy shares no substructure
  * with the original; this is needed in case there is a subplan in it (we need
  * two separate copies of the subplan tree, or things will go awry).
  *
- * indxstrategy receives a list of integer sublists of strategy numbers.
- * indxsubtype receives a list of OID sublists of strategy subtypes.
- * indxlossy receives a list of integer sublists of lossy-operator booleans.
+ * nonlossy_indexquals receives a list of the original input clauses (with
+ * RestrictInfos) that contain non-lossy operators.
+ *
+ * indexstrategy receives an integer list of strategy numbers.
+ * indexsubtype receives an OID list of strategy subtypes.
  */
 static void
-fix_indxqual_references(List *indexquals, IndexPath *index_path,
-						List **fixed_indexquals,
-						List **indxstrategy,
-						List **indxsubtype,
-						List **indxlossy)
+fix_indexqual_references(List *indexquals, IndexPath *index_path,
+						 List **fixed_indexquals,
+						 List **nonlossy_indexquals,
+						 List **indexstrategy,
+						 List **indexsubtype)
 {
-	Relids		baserelids = index_path->path.parent->relids;
-	int			baserelid = index_path->path.parent->relid;
-	List	   *index_info = index_path->indexinfo;
-	ListCell   *iq,
-			   *ii;
-
-	*fixed_indexquals = NIL;
-	*indxstrategy = NIL;
-	*indxsubtype = NIL;
-	*indxlossy = NIL;
-	forboth(iq, indexquals, ii, index_info)
-	{
-		List	   *indexqual = (List *) lfirst(iq);
-		IndexOptInfo *index = (IndexOptInfo *) lfirst(ii);
-		List	   *fixed_qual;
-		List	   *strategy;
-		List	   *subtype;
-		List	   *lossy;
-
-		fix_indxqual_sublist(indexqual, baserelids, baserelid, index,
-							 &fixed_qual, &strategy, &subtype, &lossy);
-		*fixed_indexquals = lappend(*fixed_indexquals, fixed_qual);
-		*indxstrategy = lappend(*indxstrategy, strategy);
-		*indxsubtype = lappend(*indxsubtype, subtype);
-		*indxlossy = lappend(*indxlossy, lossy);
-	}
-}
-
-/*
- * Fix the sublist of indexquals to be used in a particular scan.
- *
- * For each qual clause, commute if needed to put the indexkey operand on the
- * left, and then fix its varattno.  (We do not need to change the other side
- * of the clause.)	Then determine the operator's strategy number and subtype
- * number, and check for lossy index behavior.
- *
- * Returns four lists:
- *		the list of fixed indexquals
- *		the integer list of strategy numbers
- *		the OID list of strategy subtypes
- *		the integer list of lossiness flags (1/0)
- */
-static void
-fix_indxqual_sublist(List *indexqual,
-					 Relids baserelids, int baserelid,
-					 IndexOptInfo *index,
-					 List **fixed_quals,
-					 List **strategy,
-					 List **subtype,
-					 List **lossy)
-{
+	IndexOptInfo *index = index_path->indexinfo;
 	ListCell   *l;
 
-	*fixed_quals = NIL;
-	*strategy = NIL;
-	*subtype = NIL;
-	*lossy = NIL;
-	foreach(l, indexqual)
+	*fixed_indexquals = NIL;
+	*nonlossy_indexquals = NIL;
+	*indexstrategy = NIL;
+	*indexsubtype = NIL;
+
+	/*
+	 * For each qual clause, commute if needed to put the indexkey operand on
+	 * the left, and then fix its varattno.  (We do not need to change the
+	 * other side of the clause.)  Then determine the operator's strategy
+	 * number and subtype number, and check for lossy index behavior.
+	 */
+	foreach(l, indexquals)
 	{
 		RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
 		OpExpr	   *clause;
@@ -1285,62 +1576,63 @@ fix_indxqual_sublist(List *indexqual,
 
 		Assert(IsA(rinfo, RestrictInfo));
 		clause = (OpExpr *) rinfo->clause;
-		if (!IsA(clause, OpExpr) ||list_length(clause->args) != 2)
+		if (!IsA(clause, OpExpr) ||
+			list_length(clause->args) != 2)
 			elog(ERROR, "indexqual clause is not binary opclause");
 
 		/*
 		 * Make a copy that will become the fixed clause.
 		 *
-		 * We used to try to do a shallow copy here, but that fails if there
-		 * is a subplan in the arguments of the opclause.  So just do a
-		 * full copy.
+		 * We used to try to do a shallow copy here, but that fails if there is a
+		 * subplan in the arguments of the opclause.  So just do a full copy.
 		 */
 		newclause = (OpExpr *) copyObject((Node *) clause);
 
 		/*
-		 * Check to see if the indexkey is on the right; if so, commute
-		 * the clause.	The indexkey should be the side that refers to
-		 * (only) the base relation.
+		 * Check to see if the indexkey is on the right; if so, commute the
+		 * clause.	The indexkey should be the side that refers to (only) the
+		 * base relation.
 		 */
-		if (!bms_equal(rinfo->left_relids, baserelids))
+		if (!bms_equal(rinfo->left_relids, index->rel->relids))
 			CommuteClause(newclause);
 
 		/*
-		 * Now, determine which index attribute this is, change the
-		 * indexkey operand as needed, and get the index opclass.
+		 * Now, determine which index attribute this is, change the indexkey
+		 * operand as needed, and get the index opclass.
 		 */
-		linitial(newclause->args) = fix_indxqual_operand(linitial(newclause->args),
-														 baserelid,
-														 index,
-														 &opclass);
+		linitial(newclause->args) =
+			fix_indexqual_operand(linitial(newclause->args),
+								  index,
+								  &opclass);
 
-		*fixed_quals = lappend(*fixed_quals, newclause);
+		*fixed_indexquals = lappend(*fixed_indexquals, newclause);
 
 		/*
-		 * Look up the (possibly commuted) operator in the operator class
-		 * to get its strategy numbers and the recheck indicator.  This
-		 * also double-checks that we found an operator matching the
-		 * index.
+		 * Look up the (possibly commuted) operator in the operator class to
+		 * get its strategy numbers and the recheck indicator.	This also
+		 * double-checks that we found an operator matching the index.
 		 */
 		get_op_opclass_properties(newclause->opno, opclass,
 								  &stratno, &stratsubtype, &recheck);
 
-		*strategy = lappend_int(*strategy, stratno);
-		*subtype = lappend_oid(*subtype, stratsubtype);
-		*lossy = lappend_int(*lossy, (int) recheck);
+		*indexstrategy = lappend_int(*indexstrategy, stratno);
+		*indexsubtype = lappend_oid(*indexsubtype, stratsubtype);
+
+		/* If it's not lossy, add to nonlossy_indexquals */
+		if (!recheck)
+			*nonlossy_indexquals = lappend(*nonlossy_indexquals, rinfo);
 	}
 }
 
 static Node *
-fix_indxqual_operand(Node *node, int baserelid, IndexOptInfo *index,
-					 Oid *opclass)
+fix_indexqual_operand(Node *node, IndexOptInfo *index, Oid *opclass)
 {
 	/*
-	 * We represent index keys by Var nodes having the varno of the base
-	 * table but varattno equal to the index's attribute number (index
-	 * column position).  This is a bit hokey ... would be cleaner to use
-	 * a special-purpose node type that could not be mistaken for a
-	 * regular Var.  But it will do for now.
+	 * We represent index keys by Var nodes having the varno of the base table
+	 * but varattno equal to the index's attribute number (index column
+	 * position).  This is a bit hokey ... would be cleaner to use a
+	 * special-purpose node type that could not be mistaken for a regular Var.
+	 * But it will do for now.
 	 */
 	Var		   *result;
 	int			pos;
@@ -1353,7 +1645,7 @@ fix_indxqual_operand(Node *node, int baserelid, IndexOptInfo *index,
 		node = (Node *) ((RelabelType *) node)->arg;
 
 	if (IsA(node, Var) &&
-		((Var *) node)->varno == baserelid)
+		((Var *) node)->varno == index->rel->relid)
 	{
 		/* Try to match against simple index columns */
 		int			varatt = ((Var *) node)->varattno;
@@ -1390,7 +1682,7 @@ fix_indxqual_operand(Node *node, int baserelid, IndexOptInfo *index,
 			if (equal(node, indexkey))
 			{
 				/* Found a match */
-				result = makeVar(baserelid, pos + 1,
+				result = makeVar(index->rel->relid, pos + 1,
 								 exprType(lfirst(indexpr_item)), -1,
 								 0);
 				/* return the correct opclass, too */
@@ -1403,7 +1695,8 @@ fix_indxqual_operand(Node *node, int baserelid, IndexOptInfo *index,
 
 	/* Ooops... */
 	elog(ERROR, "node is not an index attribute");
-	return NULL;				/* keep compiler quiet */
+	*opclass = InvalidOid;		/* keep compiler quiet */
+	return NULL;
 }
 
 /*
@@ -1429,8 +1722,8 @@ get_switched_clauses(List *clauses, Relids outerrelids)
 		if (bms_is_subset(restrictinfo->right_relids, outerrelids))
 		{
 			/*
-			 * Duplicate just enough of the structure to allow commuting
-			 * the clause without changing the original list.  Could use
+			 * Duplicate just enough of the structure to allow commuting the
+			 * clause without changing the original list.  Could use
 			 * copyObject, but a complete deep copy is overkill.
 			 */
 			OpExpr	   *temp = makeNode(OpExpr);
@@ -1462,15 +1755,15 @@ get_switched_clauses(List *clauses, Relids outerrelids)
  * For now, we just move any quals that contain SubPlan references (but not
  * InitPlan references) to the end of the list.
  */
-static List *
-order_qual_clauses(Query *root, List *clauses)
+List *
+order_qual_clauses(PlannerInfo *root, List *clauses)
 {
 	List	   *nosubplans;
 	List	   *withsubplans;
 	ListCell   *l;
 
 	/* No need to work hard if the query is subselect-free */
-	if (!root->hasSubLinks)
+	if (!root->parse->hasSubLinks)
 		return clauses;
 
 	nosubplans = NIL;
@@ -1568,12 +1861,11 @@ static IndexScan *
 make_indexscan(List *qptlist,
 			   List *qpqual,
 			   Index scanrelid,
-			   List *indxid,
-			   List *indxqual,
-			   List *indxqualorig,
-			   List *indxstrategy,
-			   List *indxsubtype,
-			   List *indxlossy,
+			   Oid indexid,
+			   List *indexqual,
+			   List *indexqualorig,
+			   List *indexstrategy,
+			   List *indexsubtype,
 			   ScanDirection indexscandir)
 {
 	IndexScan  *node = makeNode(IndexScan);
@@ -1585,13 +1877,59 @@ make_indexscan(List *qptlist,
 	plan->lefttree = NULL;
 	plan->righttree = NULL;
 	node->scan.scanrelid = scanrelid;
-	node->indxid = indxid;
-	node->indxqual = indxqual;
-	node->indxqualorig = indxqualorig;
-	node->indxstrategy = indxstrategy;
-	node->indxsubtype = indxsubtype;
-	node->indxlossy = indxlossy;
-	node->indxorderdir = indexscandir;
+	node->indexid = indexid;
+	node->indexqual = indexqual;
+	node->indexqualorig = indexqualorig;
+	node->indexstrategy = indexstrategy;
+	node->indexsubtype = indexsubtype;
+	node->indexorderdir = indexscandir;
+
+	return node;
+}
+
+static BitmapIndexScan *
+make_bitmap_indexscan(Index scanrelid,
+					  Oid indexid,
+					  List *indexqual,
+					  List *indexqualorig,
+					  List *indexstrategy,
+					  List *indexsubtype)
+{
+	BitmapIndexScan *node = makeNode(BitmapIndexScan);
+	Plan	   *plan = &node->scan.plan;
+
+	/* cost should be inserted by caller */
+	plan->targetlist = NIL;		/* not used */
+	plan->qual = NIL;			/* not used */
+	plan->lefttree = NULL;
+	plan->righttree = NULL;
+	node->scan.scanrelid = scanrelid;
+	node->indexid = indexid;
+	node->indexqual = indexqual;
+	node->indexqualorig = indexqualorig;
+	node->indexstrategy = indexstrategy;
+	node->indexsubtype = indexsubtype;
+
+	return node;
+}
+
+static BitmapHeapScan *
+make_bitmap_heapscan(List *qptlist,
+					 List *qpqual,
+					 Plan *lefttree,
+					 List *bitmapqualorig,
+					 Index scanrelid)
+{
+	BitmapHeapScan *node = makeNode(BitmapHeapScan);
+	Plan	   *plan = &node->scan.plan;
+
+	/* cost should be inserted by caller */
+	plan->targetlist = qptlist;
+	plan->qual = qpqual;
+	plan->lefttree = lefttree;
+	plan->righttree = NULL;
+	node->scan.scanrelid = scanrelid;
+	node->bitmapqualorig = bitmapqualorig;
 
 	return node;
 }
@@ -1626,9 +1964,9 @@ make_subqueryscan(List *qptlist,
 	Plan	   *plan = &node->scan.plan;
 
 	/*
-	 * Cost is figured here for the convenience of prepunion.c.  Note this
-	 * is only correct for the case where qpqual is empty; otherwise
-	 * caller should overwrite cost with a better estimate.
+	 * Cost is figured here for the convenience of prepunion.c.  Note this is
+	 * only correct for the case where qpqual is empty; otherwise caller
+	 * should overwrite cost with a better estimate.
 	 */
 	copy_plan_costsize(plan, subplan);
 	plan->total_cost += cpu_tuple_cost * subplan->plan_rows;
@@ -1669,9 +2007,9 @@ make_append(List *appendplans, bool isTarget, List *tlist)
 	ListCell   *subnode;
 
 	/*
-	 * Compute cost as sum of subplan costs.  We charge nothing extra for
-	 * the Append itself, which perhaps is too optimistic, but since it
-	 * doesn't do any selection or projection, it is a pretty cheap node.
+	 * Compute cost as sum of subplan costs.  We charge nothing extra for the
+	 * Append itself, which perhaps is too optimistic, but since it doesn't do
+	 * any selection or projection, it is a pretty cheap node.
 	 */
 	plan->startup_cost = 0;
 	plan->total_cost = 0;
@@ -1695,6 +2033,38 @@ make_append(List *appendplans, bool isTarget, List *tlist)
 	plan->righttree = NULL;
 	node->appendplans = appendplans;
 	node->isTarget = isTarget;
+
+	return node;
+}
+
+static BitmapAnd *
+make_bitmap_and(List *bitmapplans)
+{
+	BitmapAnd  *node = makeNode(BitmapAnd);
+	Plan	   *plan = &node->plan;
+
+	/* cost should be inserted by caller */
+	plan->targetlist = NIL;
+	plan->qual = NIL;
+	plan->lefttree = NULL;
+	plan->righttree = NULL;
+	node->bitmapplans = bitmapplans;
+
+	return node;
+}
+
+static BitmapOr *
+make_bitmap_or(List *bitmapplans)
+{
+	BitmapOr   *node = makeNode(BitmapOr);
+	Plan	   *plan = &node->plan;
+
+	/* cost should be inserted by caller */
+	plan->targetlist = NIL;
+	plan->qual = NIL;
+	plan->lefttree = NULL;
+	plan->righttree = NULL;
+	node->bitmapplans = bitmapplans;
 
 	return node;
 }
@@ -1754,8 +2124,8 @@ make_hash(Plan *lefttree)
 	copy_plan_costsize(plan, lefttree);
 
 	/*
-	 * For plausibility, make startup & total costs equal total cost of
-	 * input plan; this only affects EXPLAIN display not decisions.
+	 * For plausibility, make startup & total costs equal total cost of input
+	 * plan; this only affects EXPLAIN display not decisions.
 	 */
 	plan->startup_cost = plan->total_cost;
 	plan->targetlist = copyObject(lefttree->targetlist);
@@ -1796,7 +2166,7 @@ make_mergejoin(List *tlist,
  * Caller must have built the sortColIdx and sortOperators arrays already.
  */
 static Sort *
-make_sort(Query *root, Plan *lefttree, int numCols,
+make_sort(PlannerInfo *root, Plan *lefttree, int numCols,
 		  AttrNumber *sortColIdx, Oid *sortOperators)
 {
 	Sort	   *node = makeNode(Sort);
@@ -1868,7 +2238,7 @@ add_sort_column(AttrNumber colIdx, Oid sortOp,
  * adding a Result node just to do the projection.
  */
 Sort *
-make_sort_from_pathkeys(Query *root, Plan *lefttree, List *pathkeys)
+make_sort_from_pathkeys(PlannerInfo *root, Plan *lefttree, List *pathkeys)
 {
 	List	   *tlist = lefttree->targetlist;
 	ListCell   *i;
@@ -1877,8 +2247,7 @@ make_sort_from_pathkeys(Query *root, Plan *lefttree, List *pathkeys)
 	Oid		   *sortOperators;
 
 	/*
-	 * We will need at most list_length(pathkeys) sort columns; possibly
-	 * less
+	 * We will need at most list_length(pathkeys) sort columns; possibly less
 	 */
 	numsortkeys = list_length(pathkeys);
 	sortColIdx = (AttrNumber *) palloc(numsortkeys * sizeof(AttrNumber));
@@ -1890,30 +2259,30 @@ make_sort_from_pathkeys(Query *root, Plan *lefttree, List *pathkeys)
 	{
 		List	   *keysublist = (List *) lfirst(i);
 		PathKeyItem *pathkey = NULL;
-		Resdom	   *resdom = NULL;
+		TargetEntry *tle = NULL;
 		ListCell   *j;
 
 		/*
 		 * We can sort by any one of the sort key items listed in this
 		 * sublist.  For now, we take the first one that corresponds to an
-		 * available Var in the tlist.	If there isn't any, use the first
-		 * one that is an expression in the input's vars.
+		 * available Var in the tlist.	If there isn't any, use the first one
+		 * that is an expression in the input's vars.
 		 *
-		 * XXX if we have a choice, is there any way of figuring out which
-		 * might be cheapest to execute?  (For example, int4lt is likely
-		 * much cheaper to execute than numericlt, but both might appear
-		 * in the same pathkey sublist...)	Not clear that we ever will
-		 * have a choice in practice, so it may not matter.
+		 * XXX if we have a choice, is there any way of figuring out which might
+		 * be cheapest to execute?	(For example, int4lt is likely much
+		 * cheaper to execute than numericlt, but both might appear in the
+		 * same pathkey sublist...)  Not clear that we ever will have a choice
+		 * in practice, so it may not matter.
 		 */
 		foreach(j, keysublist)
 		{
 			pathkey = (PathKeyItem *) lfirst(j);
 			Assert(IsA(pathkey, PathKeyItem));
-			resdom = tlist_member(pathkey->key, tlist);
-			if (resdom)
+			tle = tlist_member(pathkey->key, tlist);
+			if (tle)
 				break;
 		}
-		if (!resdom)
+		if (!tle)
 		{
 			/* No matching Var; look for a computable expression */
 			foreach(j, keysublist)
@@ -1947,25 +2316,22 @@ make_sort_from_pathkeys(Query *root, Plan *lefttree, List *pathkeys)
 			/*
 			 * Add resjunk entry to input's tlist
 			 */
-			resdom = makeResdom(list_length(tlist) + 1,
-								exprType(pathkey->key),
-								exprTypmod(pathkey->key),
-								NULL,
-								true);
-			tlist = lappend(tlist,
-							makeTargetEntry(resdom,
-											(Expr *) pathkey->key));
+			tle = makeTargetEntry((Expr *) pathkey->key,
+								  list_length(tlist) + 1,
+								  NULL,
+								  true);
+			tlist = lappend(tlist, tle);
 			lefttree->targetlist = tlist;		/* just in case NIL before */
 		}
 
 		/*
-		 * The column might already be selected as a sort key, if the
-		 * pathkeys contain duplicate entries.	(This can happen in
-		 * scenarios where multiple mergejoinable clauses mention the same
-		 * var, for example.)  So enter it only once in the sort arrays.
+		 * The column might already be selected as a sort key, if the pathkeys
+		 * contain duplicate entries.  (This can happen in scenarios where
+		 * multiple mergejoinable clauses mention the same var, for example.)
+		 * So enter it only once in the sort arrays.
 		 */
-		numsortkeys = add_sort_column(resdom->resno, pathkey->sortop,
-								 numsortkeys, sortColIdx, sortOperators);
+		numsortkeys = add_sort_column(tle->resno, pathkey->sortop,
+									  numsortkeys, sortColIdx, sortOperators);
 	}
 
 	Assert(numsortkeys > 0);
@@ -1982,7 +2348,7 @@ make_sort_from_pathkeys(Query *root, Plan *lefttree, List *pathkeys)
  *	  'lefttree' is the node which yields input tuples
  */
 Sort *
-make_sort_from_sortclauses(Query *root, List *sortcls, Plan *lefttree)
+make_sort_from_sortclauses(PlannerInfo *root, List *sortcls, Plan *lefttree)
 {
 	List	   *sub_tlist = lefttree->targetlist;
 	ListCell   *l;
@@ -1991,8 +2357,7 @@ make_sort_from_sortclauses(Query *root, List *sortcls, Plan *lefttree)
 	Oid		   *sortOperators;
 
 	/*
-	 * We will need at most list_length(sortcls) sort columns; possibly
-	 * less
+	 * We will need at most list_length(sortcls) sort columns; possibly less
 	 */
 	numsortkeys = list_length(sortcls);
 	sortColIdx = (AttrNumber *) palloc(numsortkeys * sizeof(AttrNumber));
@@ -2010,8 +2375,8 @@ make_sort_from_sortclauses(Query *root, List *sortcls, Plan *lefttree)
 		 * parser should have removed 'em, but no point in sorting
 		 * redundantly.
 		 */
-		numsortkeys = add_sort_column(tle->resdom->resno, sortcl->sortop,
-								 numsortkeys, sortColIdx, sortOperators);
+		numsortkeys = add_sort_column(tle->resno, sortcl->sortop,
+									  numsortkeys, sortColIdx, sortOperators);
 	}
 
 	Assert(numsortkeys > 0);
@@ -2034,7 +2399,7 @@ make_sort_from_sortclauses(Query *root, List *sortcls, Plan *lefttree)
  * GroupClause entries.
  */
 Sort *
-make_sort_from_groupcols(Query *root,
+make_sort_from_groupcols(PlannerInfo *root,
 						 List *groupcls,
 						 AttrNumber *grpColIdx,
 						 Plan *lefttree)
@@ -2047,8 +2412,7 @@ make_sort_from_groupcols(Query *root,
 	Oid		   *sortOperators;
 
 	/*
-	 * We will need at most list_length(groupcls) sort columns; possibly
-	 * less
+	 * We will need at most list_length(groupcls) sort columns; possibly less
 	 */
 	numsortkeys = list_length(groupcls);
 	sortColIdx = (AttrNumber *) palloc(numsortkeys * sizeof(AttrNumber));
@@ -2066,8 +2430,8 @@ make_sort_from_groupcols(Query *root,
 		 * parser should have removed 'em, but no point in sorting
 		 * redundantly.
 		 */
-		numsortkeys = add_sort_column(tle->resdom->resno, grpcl->sortop,
-								 numsortkeys, sortColIdx, sortOperators);
+		numsortkeys = add_sort_column(tle->resno, grpcl->sortop,
+									  numsortkeys, sortColIdx, sortOperators);
 		grpno++;
 	}
 
@@ -2128,7 +2492,7 @@ materialize_finished_plan(Plan *subplan)
 }
 
 Agg *
-make_agg(Query *root, List *tlist, List *qual,
+make_agg(PlannerInfo *root, List *tlist, List *qual,
 		 AggStrategy aggstrategy,
 		 int numGroupCols, AttrNumber *grpColIdx,
 		 long numGroups, int numAggs,
@@ -2155,8 +2519,8 @@ make_agg(Query *root, List *tlist, List *qual,
 	plan->total_cost = agg_path.total_cost;
 
 	/*
-	 * We will produce a single output tuple if not grouping, and a tuple
-	 * per group otherwise.
+	 * We will produce a single output tuple if not grouping, and a tuple per
+	 * group otherwise.
 	 */
 	if (aggstrategy == AGG_PLAIN)
 		plan->plan_rows = 1;
@@ -2164,13 +2528,13 @@ make_agg(Query *root, List *tlist, List *qual,
 		plan->plan_rows = numGroups;
 
 	/*
-	 * We also need to account for the cost of evaluation of the qual (ie,
-	 * the HAVING clause) and the tlist.  Note that cost_qual_eval doesn't
-	 * charge anything for Aggref nodes; this is okay since they are
-	 * really comparable to Vars.
+	 * We also need to account for the cost of evaluation of the qual (ie, the
+	 * HAVING clause) and the tlist.  Note that cost_qual_eval doesn't charge
+	 * anything for Aggref nodes; this is okay since they are really
+	 * comparable to Vars.
 	 *
-	 * See notes in grouping_planner about why this routine and make_group
-	 * are the only ones in this file that worry about tlist eval cost.
+	 * See notes in grouping_planner about why this routine and make_group are
+	 * the only ones in this file that worry about tlist eval cost.
 	 */
 	if (qual)
 	{
@@ -2193,8 +2557,9 @@ make_agg(Query *root, List *tlist, List *qual,
 }
 
 Group *
-make_group(Query *root,
+make_group(PlannerInfo *root,
 		   List *tlist,
+		   List *qual,
 		   int numGroupCols,
 		   AttrNumber *grpColIdx,
 		   double numGroups,
@@ -2221,22 +2586,29 @@ make_group(Query *root,
 	plan->plan_rows = numGroups;
 
 	/*
-	 * We also need to account for the cost of evaluation of the tlist.
+	 * We also need to account for the cost of evaluation of the qual (ie, the
+	 * HAVING clause) and the tlist.
 	 *
-	 * XXX this double-counts the cost of evaluation of any expressions used
-	 * for grouping, since in reality those will have been evaluated at a
-	 * lower plan level and will only be copied by the Group node. Worth
-	 * fixing?
+	 * XXX this double-counts the cost of evaluation of any expressions used for
+	 * grouping, since in reality those will have been evaluated at a lower
+	 * plan level and will only be copied by the Group node. Worth fixing?
 	 *
-	 * See notes in grouping_planner about why this routine and make_agg are
-	 * the only ones in this file that worry about tlist eval cost.
+	 * See notes in grouping_planner about why this routine and make_agg are the
+	 * only ones in this file that worry about tlist eval cost.
 	 */
+	if (qual)
+	{
+		cost_qual_eval(&qual_cost, qual);
+		plan->startup_cost += qual_cost.startup;
+		plan->total_cost += qual_cost.startup;
+		plan->total_cost += qual_cost.per_tuple * plan->plan_rows;
+	}
 	cost_qual_eval(&qual_cost, tlist);
 	plan->startup_cost += qual_cost.startup;
 	plan->total_cost += qual_cost.startup;
 	plan->total_cost += qual_cost.per_tuple * plan->plan_rows;
 
-	plan->qual = NIL;
+	plan->qual = qual;
 	plan->targetlist = tlist;
 	plan->lefttree = lefttree;
 	plan->righttree = NULL;
@@ -2261,16 +2633,16 @@ make_unique(Plan *lefttree, List *distinctList)
 	copy_plan_costsize(plan, lefttree);
 
 	/*
-	 * Charge one cpu_operator_cost per comparison per input tuple. We
-	 * assume all columns get compared at most of the tuples.  (XXX
-	 * probably this is an overestimate.)
+	 * Charge one cpu_operator_cost per comparison per input tuple. We assume
+	 * all columns get compared at most of the tuples.	(XXX probably this is
+	 * an overestimate.)
 	 */
 	plan->total_cost += cpu_operator_cost * plan->plan_rows * numCols;
 
 	/*
-	 * plan->plan_rows is left as a copy of the input subplan's plan_rows;
-	 * ie, we assume the filter removes nothing.  The caller must alter
-	 * this if he has a better idea.
+	 * plan->plan_rows is left as a copy of the input subplan's plan_rows; ie,
+	 * we assume the filter removes nothing.  The caller must alter this if he
+	 * has a better idea.
 	 */
 
 	plan->targetlist = copyObject(lefttree->targetlist);
@@ -2279,8 +2651,7 @@ make_unique(Plan *lefttree, List *distinctList)
 	plan->righttree = NULL;
 
 	/*
-	 * convert SortClause list into array of attr indexes, as wanted by
-	 * exec
+	 * convert SortClause list into array of attr indexes, as wanted by exec
 	 */
 	Assert(numCols > 0);
 	uniqColIdx = (AttrNumber *) palloc(sizeof(AttrNumber) * numCols);
@@ -2290,7 +2661,7 @@ make_unique(Plan *lefttree, List *distinctList)
 		SortClause *sortcl = (SortClause *) lfirst(slitem);
 		TargetEntry *tle = get_sortgroupclause_tle(sortcl, plan->targetlist);
 
-		uniqColIdx[keyno++] = tle->resdom->resno;
+		uniqColIdx[keyno++] = tle->resno;
 	}
 
 	node->numCols = numCols;
@@ -2318,8 +2689,8 @@ make_setop(SetOpCmd cmd, Plan *lefttree,
 	copy_plan_costsize(plan, lefttree);
 
 	/*
-	 * Charge one cpu_operator_cost per comparison per input tuple. We
-	 * assume all columns get compared at most of the tuples.
+	 * Charge one cpu_operator_cost per comparison per input tuple. We assume
+	 * all columns get compared at most of the tuples.
 	 */
 	plan->total_cost += cpu_operator_cost * plan->plan_rows * numCols;
 
@@ -2337,8 +2708,7 @@ make_setop(SetOpCmd cmd, Plan *lefttree,
 	plan->righttree = NULL;
 
 	/*
-	 * convert SortClause list into array of attr indexes, as wanted by
-	 * exec
+	 * convert SortClause list into array of attr indexes, as wanted by exec
 	 */
 	Assert(numCols > 0);
 	dupColIdx = (AttrNumber *) palloc(sizeof(AttrNumber) * numCols);
@@ -2348,7 +2718,7 @@ make_setop(SetOpCmd cmd, Plan *lefttree,
 		SortClause *sortcl = (SortClause *) lfirst(slitem);
 		TargetEntry *tle = get_sortgroupclause_tle(sortcl, plan->targetlist);
 
-		dupColIdx[keyno++] = tle->resdom->resno;
+		dupColIdx[keyno++] = tle->resno;
 	}
 
 	node->cmd = cmd;
@@ -2359,8 +2729,16 @@ make_setop(SetOpCmd cmd, Plan *lefttree,
 	return node;
 }
 
+/*
+ * Note: offset_est and count_est are passed in to save having to repeat
+ * work already done to estimate the values of the limitOffset and limitCount
+ * expressions.  Their values are as returned by preprocess_limit (0 means
+ * "not relevant", -1 means "couldn't estimate").  Keep the code below in sync
+ * with that function!
+ */
 Limit *
-make_limit(Plan *lefttree, Node *limitOffset, Node *limitCount)
+make_limit(Plan *lefttree, Node *limitOffset, Node *limitCount,
+		   int offset_est, int count_est)
 {
 	Limit	   *node = makeNode(Limit);
 	Plan	   *plan = &node->plan;
@@ -2368,46 +2746,50 @@ make_limit(Plan *lefttree, Node *limitOffset, Node *limitCount)
 	copy_plan_costsize(plan, lefttree);
 
 	/*
-	 * If offset/count are constants, adjust the output rows count and
-	 * costs accordingly.  This is only a cosmetic issue if we are at top
-	 * level, but if we are building a subquery then it's important to
-	 * report correct info to the outer planner.
+	 * Adjust the output rows count and costs according to the offset/limit.
+	 * This is only a cosmetic issue if we are at top level, but if we are
+	 * building a subquery then it's important to report correct info to the
+	 * outer planner.
+	 *
+	 * When the offset or count couldn't be estimated, use 10% of the estimated
+	 * number of rows emitted from the subplan.
 	 */
-	if (limitOffset && IsA(limitOffset, Const))
+	if (offset_est != 0)
 	{
-		Const	   *limito = (Const *) limitOffset;
-		int32		offset = DatumGetInt32(limito->constvalue);
+		double		offset_rows;
 
-		if (!limito->constisnull && offset > 0)
-		{
-			if (offset > plan->plan_rows)
-				offset = (int32) plan->plan_rows;
-			if (plan->plan_rows > 0)
-				plan->startup_cost +=
-					(plan->total_cost - plan->startup_cost)
-					* ((double) offset) / plan->plan_rows;
-			plan->plan_rows -= offset;
-			if (plan->plan_rows < 1)
-				plan->plan_rows = 1;
-		}
+		if (offset_est > 0)
+			offset_rows = (double) offset_est;
+		else
+			offset_rows = clamp_row_est(lefttree->plan_rows * 0.10);
+		if (offset_rows > plan->plan_rows)
+			offset_rows = plan->plan_rows;
+		if (plan->plan_rows > 0)
+			plan->startup_cost +=
+				(plan->total_cost - plan->startup_cost)
+				* offset_rows / plan->plan_rows;
+		plan->plan_rows -= offset_rows;
+		if (plan->plan_rows < 1)
+			plan->plan_rows = 1;
 	}
-	if (limitCount && IsA(limitCount, Const))
-	{
-		Const	   *limitc = (Const *) limitCount;
-		int32		count = DatumGetInt32(limitc->constvalue);
 
-		if (!limitc->constisnull && count >= 0)
-		{
-			if (count > plan->plan_rows)
-				count = (int32) plan->plan_rows;
-			if (plan->plan_rows > 0)
-				plan->total_cost = plan->startup_cost +
-					(plan->total_cost - plan->startup_cost)
-					* ((double) count) / plan->plan_rows;
-			plan->plan_rows = count;
-			if (plan->plan_rows < 1)
-				plan->plan_rows = 1;
-		}
+	if (count_est != 0)
+	{
+		double		count_rows;
+
+		if (count_est > 0)
+			count_rows = (double) count_est;
+		else
+			count_rows = clamp_row_est(lefttree->plan_rows * 0.10);
+		if (count_rows > plan->plan_rows)
+			count_rows = plan->plan_rows;
+		if (plan->plan_rows > 0)
+			plan->total_cost = plan->startup_cost +
+				(plan->total_cost - plan->startup_cost)
+				* count_rows / plan->plan_rows;
+		plan->plan_rows = count_rows;
+		if (plan->plan_rows < 1)
+			plan->plan_rows = 1;
 	}
 
 	plan->targetlist = copyObject(lefttree->targetlist);

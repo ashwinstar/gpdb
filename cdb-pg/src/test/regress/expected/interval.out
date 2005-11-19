@@ -28,21 +28,21 @@ SELECT INTERVAL '-05' AS "Five hours";
 (1 row)
 
 SELECT INTERVAL '-1 +02:03' AS "22 hours ago...";
- 22 hours ago... 
------------------
- -21:57:00
+  22 hours ago...  
+-------------------
+ -1 days +02:03:00
 (1 row)
 
 SELECT INTERVAL '-1 days +02:03' AS "22 hours ago...";
- 22 hours ago... 
------------------
- -21:57:00
+  22 hours ago...  
+-------------------
+ -1 days +02:03:00
 (1 row)
 
 SELECT INTERVAL '10 years -11 month -12 days +13:14' AS "9 years...";
             9 years...            
 ----------------------------------
- 9 years 1 mon -11 days -10:46:00
+ 9 years 1 mon -12 days +13:14:00
 (1 row)
 
 CREATE TABLE INTERVAL_TBL (f1 interval);
@@ -62,7 +62,7 @@ ERROR:  invalid input syntax for type interval: "badly formatted interval"
 INSERT INTO INTERVAL_TBL (f1) VALUES ('@ 30 eons ago');
 ERROR:  invalid input syntax for type interval: "@ 30 eons ago"
 -- test interval operators
-SELECT '' AS ten, INTERVAL_TBL.*;
+SELECT '' AS ten, * FROM INTERVAL_TBL;
  ten |       f1        
 -----+-----------------
      | 00:01:00
@@ -77,7 +77,7 @@ SELECT '' AS ten, INTERVAL_TBL.*;
      | 5 mons 12:00:00
 (10 rows)
 
-SELECT '' AS nine, INTERVAL_TBL.*
+SELECT '' AS nine, * FROM INTERVAL_TBL
    WHERE INTERVAL_TBL.f1 <> interval '@ 10 days';
  nine |       f1        
 ------+-----------------
@@ -92,7 +92,7 @@ SELECT '' AS nine, INTERVAL_TBL.*
       | 5 mons 12:00:00
 (9 rows)
 
-SELECT '' AS three, INTERVAL_TBL.*
+SELECT '' AS three, * FROM INTERVAL_TBL
    WHERE INTERVAL_TBL.f1 <= interval '@ 5 hours';
  three |    f1     
 -------+-----------
@@ -101,7 +101,7 @@ SELECT '' AS three, INTERVAL_TBL.*
        | -00:00:14
 (3 rows)
 
-SELECT '' AS three, INTERVAL_TBL.*
+SELECT '' AS three, * FROM INTERVAL_TBL
    WHERE INTERVAL_TBL.f1 < interval '@ 1 day';
  three |    f1     
 -------+-----------
@@ -110,14 +110,14 @@ SELECT '' AS three, INTERVAL_TBL.*
        | -00:00:14
 (3 rows)
 
-SELECT '' AS one, INTERVAL_TBL.*
+SELECT '' AS one, * FROM INTERVAL_TBL
    WHERE INTERVAL_TBL.f1 = interval '@ 34 years';
  one |    f1    
 -----+----------
      | 34 years
 (1 row)
 
-SELECT '' AS five, INTERVAL_TBL.* 
+SELECT '' AS five, * FROM INTERVAL_TBL 
    WHERE INTERVAL_TBL.f1 >= interval '@ 1 month';
  five |       f1        
 ------+-----------------
@@ -128,7 +128,7 @@ SELECT '' AS five, INTERVAL_TBL.*
       | 5 mons 12:00:00
 (5 rows)
 
-SELECT '' AS nine, INTERVAL_TBL.*
+SELECT '' AS nine, * FROM INTERVAL_TBL
    WHERE INTERVAL_TBL.f1 > interval '@ 3 seconds ago';
  nine |       f1        
 ------+-----------------
@@ -197,7 +197,7 @@ SELECT '' AS fortyfive, r1.*, r2.*
 (45 rows)
 
 SET DATESTYLE = 'postgres';
-SELECT '' AS ten, INTERVAL_TBL.*;
+SELECT '' AS ten, * FROM INTERVAL_TBL;
  ten |              f1               
 -----+-------------------------------
      | @ 1 min
@@ -218,7 +218,27 @@ SELECT '' AS ten, INTERVAL_TBL.*;
 select avg(f1) from interval_tbl;
                        avg                       
 -------------------------------------------------
- @ 4 years 1 mon 10 days 4 hours 18 mins 23 secs
+ @ 4 years 1 mon 9 days 28 hours 18 mins 23 secs
+(1 row)
+
+-- test long interval input
+select '4 millenniums 5 centuries 4 decades 1 year 4 months 4 days 17 minutes 31 seconds'::interval;
+                  interval                  
+--------------------------------------------
+ @ 4541 years 4 mons 4 days 17 mins 31 secs
+(1 row)
+
+-- test justify_hours() and justify_days()
+SELECT justify_hours(interval '6 months 3 days 52 hours 3 minutes 2 seconds') as "6 mons 5 days 4 hours 3 mins 2 seconds";
+ 6 mons 5 days 4 hours 3 mins 2 seconds 
+----------------------------------------
+ @ 6 mons 5 days 4 hours 3 mins 2 secs
+(1 row)
+
+SELECT justify_days(interval '6 months 36 days 5 hours 4 minutes 3 seconds') as "7 mons 6 days 5 hours 4 mins 3 seconds";
+ 7 mons 6 days 5 hours 4 mins 3 seconds 
+----------------------------------------
+ @ 7 mons 6 days 5 hours 4 mins 3 secs
 (1 row)
 
 -- test long interval input

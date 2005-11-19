@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/hash/hashinsert.c,v 1.35 2004/12/31 21:59:13 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/hash/hashinsert.c,v 1.39 2005/10/18 01:06:23 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -30,16 +30,13 @@ static OffsetNumber _hash_pgaddtup(Relation rel, Buffer buf,
  *		and hashinsert.  By here, hashitem is completely filled in.
  *		The datum to be used as a "key" is in the hashitem.
  */
-InsertIndexResult
+void
 _hash_doinsert(Relation rel, HashItem hitem)
 {
 	Buffer		buf;
 	Buffer		metabuf;
 	HashMetaPage metap;
 	IndexTuple	itup;
-	BlockNumber itup_blkno;
-	OffsetNumber itup_off;
-	InsertIndexResult res;
 	BlockNumber blkno;
 	Page		page;
 	HashPageOpaque pageopaque;
@@ -51,8 +48,8 @@ _hash_doinsert(Relation rel, HashItem hitem)
 	bool		isnull;
 
 	/*
-	 * Compute the hash key for the item.  We do this first so as not to
-	 * need to hold any locks while running the hash function.
+	 * Compute the hash key for the item.  We do this first so as not to need
+	 * to hold any locks while running the hash function.
 	 */
 	itup = &(hitem->hash_itup);
 	if (rel->rd_rel->relnatts != 1)
@@ -65,12 +62,12 @@ _hash_doinsert(Relation rel, HashItem hitem)
 	itemsz = IndexTupleDSize(hitem->hash_itup)
 		+ (sizeof(HashItemData) - sizeof(IndexTupleData));
 
-	itemsz = MAXALIGN(itemsz);	/* be safe, PageAddItem will do this but
-								 * we need to be consistent */
+	itemsz = MAXALIGN(itemsz);	/* be safe, PageAddItem will do this but we
+								 * need to be consistent */
 
 	/*
-	 * Acquire shared split lock so we can compute the target bucket
-	 * safely (see README).
+	 * Acquire shared split lock so we can compute the target bucket safely
+	 * (see README).
 	 */
 	_hash_getlock(rel, 0, HASH_SHARE);
 
@@ -80,16 +77,17 @@ _hash_doinsert(Relation rel, HashItem hitem)
 	_hash_checkpage(rel, (Page) metap, LH_META_PAGE);
 
 	/*
-	 * Check whether the item can fit on a hash page at all. (Eventually,
-	 * we ought to try to apply TOAST methods if not.)	Note that at this
-	 * point, itemsz doesn't include the ItemId.
+	 * Check whether the item can fit on a hash page at all. (Eventually, we
+	 * ought to try to apply TOAST methods if not.)  Note that at this point,
+	 * itemsz doesn't include the ItemId.
 	 */
 	if (itemsz > HashMaxItemSize((Page) metap))
 		ereport(ERROR,
 				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 				 errmsg("index row size %lu exceeds hash maximum %lu",
 						(unsigned long) itemsz,
-						(unsigned long) HashMaxItemSize((Page) metap))));
+						(unsigned long) HashMaxItemSize((Page) metap)),
+			errhint("Values larger than a buffer page cannot be indexed.")));
 
 	/*
 	 * Compute the target bucket number, and convert to block number.
@@ -105,8 +103,7 @@ _hash_doinsert(Relation rel, HashItem hitem)
 	_hash_chgbufaccess(rel, metabuf, HASH_READ, HASH_NOLOCK);
 
 	/*
-	 * Acquire share lock on target bucket; then we can release split
-	 * lock.
+	 * Acquire share lock on target bucket; then we can release split lock.
 	 */
 	_hash_getlock(rel, blkno, HASH_SHARE);
 
@@ -130,8 +127,8 @@ _hash_doinsert(Relation rel, HashItem hitem)
 		if (BlockNumberIsValid(nextblkno))
 		{
 			/*
-			 * ovfl page exists; go get it.  if it doesn't have room,
-			 * we'll find out next pass through the loop test above.
+			 * ovfl page exists; go get it.  if it doesn't have room, we'll
+			 * find out next pass through the loop test above.
 			 */
 			_hash_relbuf(rel, buf);
 			buf = _hash_getbuf(rel, nextblkno, HASH_WRITE);
@@ -160,8 +157,7 @@ _hash_doinsert(Relation rel, HashItem hitem)
 	}
 
 	/* found page with enough space, so add the item here */
-	itup_off = _hash_pgaddtup(rel, buf, itemsz, hitem);
-	itup_blkno = BufferGetBlockNumber(buf);
+	(void) _hash_pgaddtup(rel, buf, itemsz, hitem);
 
 	/* write and release the modified page */
 	_hash_wrtbuf(rel, buf);
@@ -190,13 +186,6 @@ _hash_doinsert(Relation rel, HashItem hitem)
 
 	/* Finally drop our pin on the metapage */
 	_hash_dropbuf(rel, metabuf);
-
-	/* Create the return data structure */
-	res = (InsertIndexResult) palloc(sizeof(InsertIndexResultData));
-
-	ItemPointerSet(&(res->pointerData), itup_blkno, itup_off);
-
-	return res;
 }
 
 /*

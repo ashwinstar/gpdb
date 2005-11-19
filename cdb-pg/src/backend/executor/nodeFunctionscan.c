@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeFunctionscan.c,v 1.29 2004/12/31 21:59:45 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeFunctionscan.c,v 1.35 2005/10/15 02:49:17 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -22,21 +22,14 @@
  */
 #include "postgres.h"
 
-#include "access/heapam.h"
-#include "catalog/pg_type.h"
-#include "executor/execdebug.h"
-#include "executor/execdefs.h"
-#include "executor/execdesc.h"
 #include "executor/nodeFunctionscan.h"
+#include "funcapi.h"
 #include "parser/parsetree.h"
-#include "parser/parse_expr.h"
-#include "parser/parse_type.h"
-#include "utils/lsyscache.h"
-#include "utils/typcache.h"
+#include "utils/builtins.h"
 
 
 static TupleTableSlot *FunctionNext(FunctionScanState *node);
-static bool tupledesc_match(TupleDesc dst_tupdesc, TupleDesc src_tupdesc);
+static void tupledesc_match(TupleDesc dst_tupdesc, TupleDesc src_tupdesc);
 
 /* ----------------------------------------------------------------
  *						Scan Support
@@ -67,9 +60,8 @@ FunctionNext(FunctionScanState *node)
 	tuplestorestate = node->tuplestorestate;
 
 	/*
-	 * If first time through, read all tuples from function and put them
-	 * in a tuplestore. Subsequent calls just fetch tuples from
-	 * tuplestore.
+	 * If first time through, read all tuples from function and put them in a
+	 * tuplestore. Subsequent calls just fetch tuples from tuplestore.
 	 */
 	if (tuplestorestate == NULL)
 	{
@@ -84,13 +76,11 @@ FunctionNext(FunctionScanState *node)
 
 		/*
 		 * If function provided a tupdesc, cross-check it.	We only really
-		 * need to do this for functions returning RECORD, but might as
-		 * well do it always.
+		 * need to do this for functions returning RECORD, but might as well
+		 * do it always.
 		 */
-		if (funcTupdesc && !tupledesc_match(node->tupdesc, funcTupdesc))
-			ereport(ERROR,
-					(errcode(ERRCODE_DATATYPE_MISMATCH),
-					 errmsg("query-specified return row and actual function return row do not match")));
+		if (funcTupdesc)
+			tupledesc_match(node->tupdesc, funcTupdesc);
 	}
 
 	/*
@@ -100,7 +90,10 @@ FunctionNext(FunctionScanState *node)
 										ScanDirectionIsForward(direction),
 										&should_free);
 	slot = node->ss.ss_ScanTupleSlot;
-	return ExecStoreTuple(heapTuple, slot, InvalidBuffer, should_free);
+	if (heapTuple)
+		return ExecStoreTuple(heapTuple, slot, InvalidBuffer, should_free);
+	else
+		return ExecClearTuple(slot);
 }
 
 /* ----------------------------------------------------------------
@@ -178,18 +171,21 @@ ExecInitFunctionScan(FunctionScan *node, EState *estate)
 	 */
 	rte = rt_fetch(node->scan.scanrelid, estate->es_range_table);
 	Assert(rte->rtekind == RTE_FUNCTION);
-	funcrettype = exprType(rte->funcexpr);
 
 	/*
-	 * Now determine if the function returns a simple or composite type,
-	 * and build an appropriate tupdesc.
+	 * Now determine if the function returns a simple or composite type, and
+	 * build an appropriate tupdesc.
 	 */
-	functypclass = get_type_func_class(funcrettype);
+	functypclass = get_expr_result_type(rte->funcexpr,
+										&funcrettype,
+										&tupdesc);
 
 	if (functypclass == TYPEFUNC_COMPOSITE)
 	{
 		/* Composite data type, e.g. a table's row type */
-		tupdesc = CreateTupleDescCopy(lookup_rowtype_tupdesc(funcrettype, -1));
+		Assert(tupdesc);
+		/* Must copy it out of typcache for safety */
+		tupdesc = CreateTupleDescCopy(tupdesc);
 	}
 	else if (functypclass == TYPEFUNC_SCALAR)
 	{
@@ -216,15 +212,13 @@ ExecInitFunctionScan(FunctionScan *node, EState *estate)
 
 	/*
 	 * For RECORD results, make sure a typmod has been assigned.  (The
-	 * function should do this for itself, but let's cover things in case
-	 * it doesn't.)
+	 * function should do this for itself, but let's cover things in case it
+	 * doesn't.)
 	 */
-	if (tupdesc->tdtypeid == RECORDOID && tupdesc->tdtypmod < 0)
-		assign_record_type_typmod(tupdesc);
+	BlessTupleDesc(tupdesc);
 
 	scanstate->tupdesc = tupdesc;
-	ExecSetSlotDescriptor(scanstate->ss.ss_ScanTupleSlot,
-						  tupdesc, false);
+	ExecAssignScanType(&scanstate->ss, tupdesc, false);
 
 	/*
 	 * Other node-specific setup
@@ -239,7 +233,7 @@ ExecInitFunctionScan(FunctionScan *node, EState *estate)
 	 * Initialize result tuple type and projection info.
 	 */
 	ExecAssignResultTypeFromTL(&scanstate->ss.ps);
-	ExecAssignProjectionInfo(&scanstate->ss.ps);
+	ExecAssignScanProjectionInfo(&scanstate->ss);
 
 	return scanstate;
 }
@@ -334,10 +328,10 @@ ExecFunctionReScan(FunctionScanState *node, ExprContext *exprCtxt)
 		return;
 
 	/*
-	 * Here we have a choice whether to drop the tuplestore (and recompute
-	 * the function outputs) or just rescan it.  This should depend on
-	 * whether the function expression contains parameters and/or is
-	 * marked volatile.  FIXME soon.
+	 * Here we have a choice whether to drop the tuplestore (and recompute the
+	 * function outputs) or just rescan it.  This should depend on whether the
+	 * function expression contains parameters and/or is marked volatile.
+	 * FIXME soon.
 	 */
 	if (node->ss.ps.chgParam != NULL)
 	{
@@ -349,21 +343,26 @@ ExecFunctionReScan(FunctionScanState *node, ExprContext *exprCtxt)
 }
 
 /*
- * Check that function result tuple type (src_tupdesc) matches or can be
- * considered to match what the query expects (dst_tupdesc).
+ * Check that function result tuple type (src_tupdesc) matches or can
+ * be considered to match what the query expects (dst_tupdesc). If
+ * they don't match, ereport.
  *
  * We really only care about number of attributes and data type.
  * Also, we can ignore type mismatch on columns that are dropped in the
  * destination type, so long as the physical storage matches.  This is
  * helpful in some cases involving out-of-date cached plans.
  */
-static bool
+static void
 tupledesc_match(TupleDesc dst_tupdesc, TupleDesc src_tupdesc)
 {
 	int			i;
 
 	if (dst_tupdesc->natts != src_tupdesc->natts)
-		return false;
+		ereport(ERROR,
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+				 errmsg("function return row and query-specified return row do not match"),
+				 errdetail("Returned row contains %d attributes, but query expects %d.",
+						   src_tupdesc->natts, dst_tupdesc->natts)));
 
 	for (i = 0; i < dst_tupdesc->natts; i++)
 	{
@@ -373,11 +372,20 @@ tupledesc_match(TupleDesc dst_tupdesc, TupleDesc src_tupdesc)
 		if (dattr->atttypid == sattr->atttypid)
 			continue;			/* no worries */
 		if (!dattr->attisdropped)
-			return false;
+			ereport(ERROR,
+					(errcode(ERRCODE_DATATYPE_MISMATCH),
+					 errmsg("function return row and query-specified return row do not match"),
+					 errdetail("Returned type %s at ordinal position %d, but query expects %s.",
+							   format_type_be(sattr->atttypid),
+							   i + 1,
+							   format_type_be(dattr->atttypid))));
+
 		if (dattr->attlen != sattr->attlen ||
 			dattr->attalign != sattr->attalign)
-			return false;
+			ereport(ERROR,
+					(errcode(ERRCODE_DATATYPE_MISMATCH),
+					 errmsg("function return row and query-specified return row do not match"),
+					 errdetail("Physical storage mismatch on dropped attribute at ordinal position %d.",
+							   i + 1)));
 	}
-
-	return true;
 }

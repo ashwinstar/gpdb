@@ -8,20 +8,22 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/pgstatfuncs.c,v 1.20 2004/12/31 22:01:22 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/pgstatfuncs.c,v 1.26 2005/10/17 16:24:19 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
 #include "access/xact.h"
-#include "catalog/pg_shadow.h"
 #include "fmgr.h"
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "nodes/execnodes.h"
 #include "pgstat.h"
 #include "utils/hsearch.h"
+#include "utils/inet.h"
+#include "utils/builtins.h"
+#include "libpq/ip.h"
 
 /* bogus ... these externs should be in a header file */
 extern Datum pg_stat_get_numscans(PG_FUNCTION_ARGS);
@@ -41,6 +43,9 @@ extern Datum pg_stat_get_backend_dbid(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_backend_userid(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_backend_activity(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_backend_activity_start(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_backend_start(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_backend_client_addr(PG_FUNCTION_ARGS);
+extern Datum pg_stat_get_backend_client_port(PG_FUNCTION_ARGS);
 
 extern Datum pg_stat_get_db_numbackends(PG_FUNCTION_ARGS);
 extern Datum pg_stat_get_db_xact_commit(PG_FUNCTION_ARGS);
@@ -277,6 +282,10 @@ pg_stat_get_backend_dbid(PG_FUNCTION_ARGS)
 	if ((beentry = pgstat_fetch_stat_beentry(beid)) == NULL)
 		PG_RETURN_NULL();
 
+	/* Not initialized yet? */
+	if (!OidIsValid(beentry->databaseid))
+		PG_RETURN_NULL();
+
 	PG_RETURN_OID(beentry->databaseid);
 }
 
@@ -292,7 +301,11 @@ pg_stat_get_backend_userid(PG_FUNCTION_ARGS)
 	if ((beentry = pgstat_fetch_stat_beentry(beid)) == NULL)
 		PG_RETURN_NULL();
 
-	PG_RETURN_INT32(beentry->userid);
+	/* Not initialized yet? */
+	if (!OidIsValid(beentry->userid))
+		PG_RETURN_NULL();
+
+	PG_RETURN_OID(beentry->userid);
 }
 
 
@@ -328,13 +341,9 @@ pg_stat_get_backend_activity(PG_FUNCTION_ARGS)
 Datum
 pg_stat_get_backend_activity_start(PG_FUNCTION_ARGS)
 {
-	PgStat_StatBeEntry *beentry;
-	int32		beid;
-	AbsoluteTime sec;
-	int			usec;
+	int32		beid = PG_GETARG_INT32(0);
 	TimestampTz result;
-
-	beid = PG_GETARG_INT32(0);
+	PgStat_StatBeEntry *beentry;
 
 	if ((beentry = pgstat_fetch_stat_beentry(beid)) == NULL)
 		PG_RETURN_NULL();
@@ -342,19 +351,126 @@ pg_stat_get_backend_activity_start(PG_FUNCTION_ARGS)
 	if (!superuser() && beentry->userid != GetUserId())
 		PG_RETURN_NULL();
 
-	sec = beentry->activity_start_sec;
-	usec = beentry->activity_start_usec;
+	result = beentry->activity_start_timestamp;
 
 	/*
-	 * No time recorded for start of current query -- this is the case if
-	 * the user hasn't enabled query-level stats collection.
+	 * No time recorded for start of current query -- this is the case if the
+	 * user hasn't enabled query-level stats collection.
 	 */
-	if (sec == 0 && usec == 0)
+	if (result == 0)
 		PG_RETURN_NULL();
 
-	result = AbsoluteTimeUsecToTimestampTz(sec, usec);
+	PG_RETURN_TIMESTAMPTZ(result);
+}
+
+Datum
+pg_stat_get_backend_start(PG_FUNCTION_ARGS)
+{
+	int32		beid = PG_GETARG_INT32(0);
+	TimestampTz result;
+	PgStat_StatBeEntry *beentry;
+
+	if ((beentry = pgstat_fetch_stat_beentry(beid)) == NULL)
+		PG_RETURN_NULL();
+
+	if (!superuser() && beentry->userid != GetUserId())
+		PG_RETURN_NULL();
+
+	result = beentry->start_timestamp;
+
+	if (result == 0)			/* probably can't happen? */
+		PG_RETURN_NULL();
 
 	PG_RETURN_TIMESTAMPTZ(result);
+}
+
+
+Datum
+pg_stat_get_backend_client_addr(PG_FUNCTION_ARGS)
+{
+	PgStat_StatBeEntry *beentry;
+	int32		beid;
+	char		remote_host[NI_MAXHOST];
+	int			ret;
+
+	beid = PG_GETARG_INT32(0);
+
+	if ((beentry = pgstat_fetch_stat_beentry(beid)) == NULL)
+		PG_RETURN_NULL();
+
+	/* Not initialized yet? */
+	if (!OidIsValid(beentry->userid))
+		PG_RETURN_NULL();
+
+	if (!superuser() && beentry->userid != GetUserId())
+		PG_RETURN_NULL();
+
+	switch (beentry->clientaddr.addr.ss_family)
+	{
+		case AF_INET:
+#ifdef HAVE_IPV6
+		case AF_INET6:
+#endif
+			break;
+		default:
+			PG_RETURN_NULL();
+	}
+
+	remote_host[0] = '\0';
+	ret = pg_getnameinfo_all(&beentry->clientaddr.addr, beentry->clientaddr.salen,
+							 remote_host, sizeof(remote_host),
+							 NULL, 0,
+							 NI_NUMERICHOST | NI_NUMERICSERV);
+	if (ret)
+		PG_RETURN_NULL();
+
+	PG_RETURN_INET_P(DirectFunctionCall1(inet_in,
+										 CStringGetDatum(remote_host)));
+}
+
+Datum
+pg_stat_get_backend_client_port(PG_FUNCTION_ARGS)
+{
+	PgStat_StatBeEntry *beentry;
+	int32		beid;
+	char		remote_port[NI_MAXSERV];
+	int			ret;
+
+	beid = PG_GETARG_INT32(0);
+
+	if ((beentry = pgstat_fetch_stat_beentry(beid)) == NULL)
+		PG_RETURN_NULL();
+
+	/* Not initialized yet? */
+	if (!OidIsValid(beentry->userid))
+		PG_RETURN_NULL();
+
+	if (!superuser() && beentry->userid != GetUserId())
+		PG_RETURN_NULL();
+
+	switch (beentry->clientaddr.addr.ss_family)
+	{
+		case AF_INET:
+#ifdef HAVE_IPV6
+		case AF_INET6:
+#endif
+			break;
+		case AF_UNIX:
+			PG_RETURN_INT32(-1);
+		default:
+			PG_RETURN_NULL();
+	}
+
+	remote_port[0] = '\0';
+	ret = pg_getnameinfo_all(&beentry->clientaddr.addr,
+							 beentry->clientaddr.salen,
+							 NULL, 0,
+							 remote_port, sizeof(remote_port),
+							 NI_NUMERICHOST | NI_NUMERICSERV);
+	if (ret)
+		PG_RETURN_NULL();
+
+	PG_RETURN_DATUM(DirectFunctionCall1(int4in, CStringGetDatum(remote_port)));
 }
 
 

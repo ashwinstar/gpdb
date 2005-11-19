@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/nodes/readfuncs.c,v 1.175 2004/12/31 21:59:55 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/nodes/readfuncs.c,v 1.182 2005/10/15 02:49:19 momjian Exp $
  *
  * NOTES
  *	  Path and Plan nodes do not have any readfuncs support, because we
@@ -193,6 +193,8 @@ _readQuery(void)
 	READ_NODE_FIELD(rtable);
 	READ_NODE_FIELD(jointree);
 	READ_NODE_FIELD(rowMarks);
+	READ_BOOL_FIELD(forUpdate);
+	READ_BOOL_FIELD(rowNoWait);
 	READ_NODE_FIELD(targetList);
 	READ_NODE_FIELD(groupClause);
 	READ_NODE_FIELD(havingQual);
@@ -202,8 +204,6 @@ _readQuery(void)
 	READ_NODE_FIELD(limitCount);
 	READ_NODE_FIELD(setOperations);
 	READ_NODE_FIELD(resultRelations);
-
-	/* planner-internal fields are left zero */
 
 	READ_DONE();
 }
@@ -285,26 +285,6 @@ _readSetOperationStmt(void)
 /*
  *	Stuff from primnodes.h.
  */
-
-/*
- * _readResdom
- */
-static Resdom *
-_readResdom(void)
-{
-	READ_LOCALS(Resdom);
-
-	READ_INT_FIELD(resno);
-	READ_OID_FIELD(restype);
-	READ_INT_FIELD(restypmod);
-	READ_STRING_FIELD(resname);
-	READ_UINT_FIELD(ressortgroupref);
-	READ_OID_FIELD(resorigtbl);
-	READ_INT_FIELD(resorigcol);
-	READ_BOOL_FIELD(resjunk);
-
-	READ_DONE();
-}
 
 static Alias *
 _readAlias(void)
@@ -467,8 +447,8 @@ _readReindexStmt(void)
 	READ_ENUM_FIELD(kind,ObjectType);
 	READ_NODE_FIELD(relation);
 	READ_STRING_FIELD(name);
-	READ_BOOL_FIELD(force);
-	READ_BOOL_FIELD(all);
+	READ_BOOL_FIELD(do_system);
+	READ_BOOL_FIELD(do_user);
 	
 	READ_DONE();
 	
@@ -521,7 +501,7 @@ _readTruncateStmt(void)
 {
 	READ_LOCALS(TruncateStmt);
 
-	READ_NODE_FIELD(relation);
+	READ_NODE_FIELD(relations);
 
 	READ_DONE();
 }
@@ -553,46 +533,47 @@ _readAlterTableCmd(void)
 }
 
 
-static CreateUserStmt *
-_readCreateUserStmt(void)
+static CreateRoleStmt *
+_readCreateRoleStmt(void)
 {
-	READ_LOCALS(CreateUserStmt);
-
-	READ_STRING_FIELD(user);
+	READ_LOCALS(CreateRoleStmt);
+	
+	READ_ENUM_FIELD(stmt_type, RoleStmtType);
+	READ_STRING_FIELD(role);
 	READ_NODE_FIELD(options);
 
 	READ_DONE();
 }
 
-static DropUserStmt *
-_readDropUserStmt(void)
+static DropRoleStmt *
+_readDropRoleStmt(void)
 {
-	READ_LOCALS(DropUserStmt);
+	READ_LOCALS(DropRoleStmt);
 
-	READ_NODE_FIELD(users);
+	READ_NODE_FIELD(roles);
 
 	READ_DONE();
 	
 }
 
-static  AlterUserStmt *
-_readAlterUserStmt(void)
+static  AlterRoleStmt *
+_readAlterRoleStmt(void)
 {
-	READ_LOCALS(AlterUserStmt);
+	READ_LOCALS(AlterRoleStmt);
 
-	READ_STRING_FIELD(user);
+	READ_STRING_FIELD(role);
 	READ_NODE_FIELD(options);
-	
+	READ_INT_FIELD(action);
 	READ_DONE();
 	
 }
 
-static  AlterUserSetStmt *
-_readAlterUserSetStmt(void)
+static  AlterRoleSetStmt *
+_readAlterRoleSetStmt(void)
 {
-	READ_LOCALS(AlterUserSetStmt);
+	READ_LOCALS(AlterRoleSetStmt);
 
-	READ_STRING_FIELD(user);
+	READ_STRING_FIELD(role);
 	READ_STRING_FIELD(variable);
 	READ_NODE_FIELD(value);
 	
@@ -601,40 +582,6 @@ _readAlterUserSetStmt(void)
 }
 
 
-static CreateGroupStmt *
-_readCreateGroupStmt(void)
-{
-	READ_LOCALS(CreateGroupStmt);
-
-	READ_STRING_FIELD(name);
-	READ_NODE_FIELD(options);
-
-	READ_DONE();
-}
-
-static DropGroupStmt *
-_readDropGroupStmt(void)
-{
-	READ_LOCALS(DropGroupStmt);
-
-	READ_STRING_FIELD(name);
-
-	READ_DONE();
-	
-}
-
-static  AlterGroupStmt *
-_readAlterGroupStmt(void)
-{
-	READ_LOCALS(AlterGroupStmt);
-
-	READ_STRING_FIELD(name);
-	READ_INT_FIELD(action);
-	READ_NODE_FIELD(listUsers);
-	
-	READ_DONE();
-	
-}
 
 static RenameStmt *
 _readRenameStmt(void)
@@ -856,12 +803,12 @@ _readOpExpr(void)
 	READ_OID_FIELD(opfuncid);
 
 	/*
-	 * The opfuncid is stored in the textual format primarily for
-	 * debugging and documentation reasons.  We want to always read it as
-	 * zero to force it to be re-looked-up in the pg_operator entry.  This
-	 * ensures that stored rules don't have hidden dependencies on
-	 * operators' functions. (We don't currently support an ALTER OPERATOR
-	 * command, but might someday.)
+	 * The opfuncid is stored in the textual format primarily for debugging
+	 * and documentation reasons.  We want to always read it as zero to force
+	 * it to be re-looked-up in the pg_operator entry.	This ensures that
+	 * stored rules don't have hidden dependencies on operators' functions.
+	 * (We don't currently support an ALTER OPERATOR command, but might
+	 * someday.)
 	 */
 /*	local_node->opfuncid = InvalidOid; */
 
@@ -884,12 +831,12 @@ _readDistinctExpr(void)
 	READ_OID_FIELD(opfuncid);
 
 	/*
-	 * The opfuncid is stored in the textual format primarily for
-	 * debugging and documentation reasons.  We want to always read it as
-	 * zero to force it to be re-looked-up in the pg_operator entry.  This
-	 * ensures that stored rules don't have hidden dependencies on
-	 * operators' functions. (We don't currently support an ALTER OPERATOR
-	 * command, but might someday.)
+	 * The opfuncid is stored in the textual format primarily for debugging
+	 * and documentation reasons.  We want to always read it as zero to force
+	 * it to be re-looked-up in the pg_operator entry.	This ensures that
+	 * stored rules don't have hidden dependencies on operators' functions.
+	 * (We don't currently support an ALTER OPERATOR command, but might
+	 * someday.)
 	 */
 	/*local_node->opfuncid = InvalidOid;*/
 
@@ -912,12 +859,12 @@ _readScalarArrayOpExpr(void)
 	READ_OID_FIELD(opfuncid);
 
 	/*
-	 * The opfuncid is stored in the textual format primarily for
-	 * debugging and documentation reasons.  We want to always read it as
-	 * zero to force it to be re-looked-up in the pg_operator entry.  This
-	 * ensures that stored rules don't have hidden dependencies on
-	 * operators' functions. (We don't currently support an ALTER OPERATOR
-	 * command, but might someday.)
+	 * The opfuncid is stored in the textual format primarily for debugging
+	 * and documentation reasons.  We want to always read it as zero to force
+	 * it to be re-looked-up in the pg_operator entry.	This ensures that
+	 * stored rules don't have hidden dependencies on operators' functions.
+	 * (We don't currently support an ALTER OPERATOR command, but might
+	 * someday.)
 	 */
 	/*local_node->opfuncid = InvalidOid;*/
 
@@ -1147,6 +1094,21 @@ _readCoalesceExpr(void)
 }
 
 /*
+ * _readMinMaxExpr
+ */
+static MinMaxExpr *
+_readMinMaxExpr(void)
+{
+	READ_LOCALS(MinMaxExpr);
+
+	READ_OID_FIELD(minmaxtype);
+	READ_ENUM_FIELD(op, MinMaxOp);
+	READ_NODE_FIELD(args);
+
+	READ_DONE();
+}
+
+/*
  * _readNullIfExpr
  */
 static NullIfExpr *
@@ -1158,12 +1120,12 @@ _readNullIfExpr(void)
 	READ_OID_FIELD(opfuncid);
 
 	/*
-	 * The opfuncid is stored in the textual format primarily for
-	 * debugging and documentation reasons.  We want to always read it as
-	 * zero to force it to be re-looked-up in the pg_operator entry.  This
-	 * ensures that stored rules don't have hidden dependencies on
-	 * operators' functions. (We don't currently support an ALTER OPERATOR
-	 * command, but might someday.)
+	 * The opfuncid is stored in the textual format primarily for debugging
+	 * and documentation reasons.  We want to always read it as zero to force
+	 * it to be re-looked-up in the pg_operator entry.	This ensures that
+	 * stored rules don't have hidden dependencies on operators' functions.
+	 * (We don't currently support an ALTER OPERATOR command, but might
+	 * someday.)
 	 */
 	/*local_node->opfuncid = InvalidOid;*/
 
@@ -1254,8 +1216,13 @@ _readTargetEntry(void)
 {
 	READ_LOCALS(TargetEntry);
 
-	READ_NODE_FIELD(resdom);
 	READ_NODE_FIELD(expr);
+	READ_INT_FIELD(resno);
+	READ_STRING_FIELD(resname);
+	READ_UINT_FIELD(ressortgroupref);
+	READ_OID_FIELD(resorigtbl);
+	READ_INT_FIELD(resorigcol);
+	READ_BOOL_FIELD(resjunk);
 
 	READ_DONE();
 }
@@ -1395,7 +1362,7 @@ _readRangeTblEntry(void)
 	READ_BOOL_FIELD(inh);
 	READ_BOOL_FIELD(inFromCl);
 	READ_UINT_FIELD(requiredPerms);
-	READ_UINT_FIELD(checkAsUser);
+	READ_OID_FIELD(checkAsUser);
 
 	READ_DONE();
 }
@@ -1553,8 +1520,7 @@ static PrivGrantee *
 _readPrivGrantee(void)
 {
 	READ_LOCALS(PrivGrantee); 
-	READ_STRING_FIELD(username);
-	READ_STRING_FIELD(groupname);
+	READ_STRING_FIELD(rolname);
 		
 	READ_DONE();		 
 }
@@ -1661,13 +1627,13 @@ _readIndexScan(void)
 
 	readScanInfo((Scan *)local_node);
 
-	READ_NODE_FIELD(indxid);
-	READ_NODE_FIELD(indxqual);
-	READ_NODE_FIELD(indxqualorig);
-	READ_NODE_FIELD(indxstrategy);
-	READ_NODE_FIELD(indxsubtype);
-	READ_NODE_FIELD(indxlossy);
-	READ_ENUM_FIELD(indxorderdir, ScanDirection);
+	READ_OID_FIELD(indexid);
+	READ_NODE_FIELD(indexqual);
+	READ_NODE_FIELD(indexqualorig);
+	READ_NODE_FIELD(indexstrategy);
+	READ_NODE_FIELD(indexsubtype);
+
+	READ_ENUM_FIELD(indexorderdir, ScanDirection);
 
 	READ_DONE();
 }
@@ -2184,11 +2150,10 @@ static ParseNodeInfo infoAr[] =
 	{"AGGREF", (ReadFn)_readAggref},
 	{"ALIAS", (ReadFn)_readAlias},
 	{"ALTERDOMAINSTMT", (ReadFn)_readAlterDomainStmt},
-	{"ALTERGROUPSTMT", (ReadFn)_readAlterGroupStmt},
+	{"ALTERROLESTMT", (ReadFn)_readAlterRoleStmt},
+	{"ALTERROLESETSTMT", (ReadFn)_readAlterRoleSetStmt},
 	{"ALTERTABLECMD", (ReadFn)_readAlterTableCmd},
 	{"ALTERTABLESTMT", (ReadFn)_readAlterTableStmt},
-	{"ALTERUSERSTMT", (ReadFn)_readAlterUserStmt},
-	{"ALTERUSERSETSTMT", (ReadFn)_readAlterUserSetStmt},
 	{"APPEND", (ReadFn)_readAppend},
 	{"ARRAY", (ReadFn)_readArrayExpr},
 	{"ARRAYREF", (ReadFn)_readArrayRef},
@@ -2209,17 +2174,15 @@ static ParseNodeInfo infoAr[] =
 	{"CREATEDBSTMT", (ReadFn)_readCreatedbStmt},
 	{"CREATEDOMAINSTMT", (ReadFn)_readCreateDomainStmt},
 	{"CREATEFUNCSTMT", (ReadFn)_readCreateFunctionStmt},
-	{"CREATEGROUPSTMT", (ReadFn)_readCreateGroupStmt},
+	{"CREATEROLESTMT", (ReadFn)_readCreateRoleStmt},
 	{"CREATESCHEMASTMT", (ReadFn)_readCreateSchemaStmt},
 	{"CREATESEQSTMT", (ReadFn)_readCreateSeqStmt},
 	{"CREATESTMT", (ReadFn)_readCreateStmt},
-	{"CREATEUSERSTMT", (ReadFn)_readCreateUserStmt},
 	{"DECLARECURSOR", (ReadFn)_readDeclareCursorStmt},
 	{"DEFELEM", (ReadFn)_readDefElem},
 	{"DISTINCTEXPR", (ReadFn)_readDistinctExpr},
-	{"DROPGROUPSTMT", (ReadFn)_readDropGroupStmt},
+	{"DROPROLESTMT", (ReadFn)_readDropRoleStmt},
 	{"DROPSTMT", (ReadFn)_readDropStmt},
-	{"DROPUSERSTMT", (ReadFn)_readDropUserStmt},
 	{"FIELDSELECT", (ReadFn)_readFieldSelect},
 	{"FIELDSTORE", (ReadFn)_readFieldStore},
 	{"FLOW", (ReadFn)_readFlow},
@@ -2243,6 +2206,7 @@ static ParseNodeInfo infoAr[] =
 	{"LOCKSTMT", (ReadFn)_readLockStmt},
 	{"MATERIAL", (ReadFn)_readMaterial},
 	{"MERGEJOIN", (ReadFn)_readMergeJoin},
+	{"MINMAX", (ReadFn)_readMinMaxExpr},
 	{"MOTION", (ReadFn)_readMotion},
 	{"NESTLOOP", (ReadFn)_readNestLoop},
 	{"NOTIFY", (ReadFn)_readNotifyStmt},
@@ -2260,7 +2224,6 @@ static ParseNodeInfo infoAr[] =
 	{"REMOTEPARAMDATA", (ReadFn)_readRemoteParamData},
 	{"REMOVEFUNCSTMT", (ReadFn)_readRemoveFuncStmt},
 	{"RENAMESTMT", (ReadFn)_readRenameStmt},
-	{"RESDOM", (ReadFn)_readResdom},
 	{"RESULT", (ReadFn)_readResult},
 	{"ROW", (ReadFn)_readRowExpr},
 	{"RTE", (ReadFn)_readRangeTblEntry},
@@ -2310,7 +2273,6 @@ static int cmpParseNodeInfo( const void *x, const void *y)
  *
  * The string to be read must already have been loaded into pg_strtok().
  */
-
 Node *
 parseNodeString(void)
 {
@@ -2425,4 +2387,3 @@ readDatum(bool typbyval)
 
 	return res;
 }
-

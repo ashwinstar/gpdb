@@ -10,12 +10,21 @@
 # head:
 # cvs log -d'>2000-05-29 00:00:00 GMT' -b .
 # branch:
-# cvs log -d'>2000-05-29 00:00:00 GMT' -rREL7_3_STABLE` .
+# cvs log -d'>2000-05-29 00:00:00 GMT' -rREL8_0_STABLE .
 #
 # date range
-# cvs log -d'2000-05-08 00:00:00 GMT<2000-05-29 00:00:00 GMT' -b .
+# cvs log -d'2005-05-08<2005-05-29' -b .
 #
-# Remove TODO and FAQ logs if desired
+# To find branch time, look for "branches:" tag in CVS commit logs
+# e.g. "branches:  1.398.4;" matches "REL8_0_STABLE: 1.398.0.4".
+#
+# Remove these from the log file before processing to reduce the number
+# of unneeded log entries:
+#
+#	/cvsroot/pgsql/doc/TODO
+#	/cvsroot/pgsql/doc/FAQ
+#	/cvsroot/pgsql/doc/src/FAQ/TODO.html
+#	/cvsroot/pgsql/doc/src/FAQ/FAQ.html
 #
 
 if [ "X$1" == "X-h" ]
@@ -41,6 +50,12 @@ fi |
 awk '	BEGIN	{html="'"$HTML"'"; lineno = 0;}
 	# store working directory
 	$0 ~ /^Working file:/	{workingfile = "/" $3}
+
+	# no need to show TODO or FAQ changes in the output
+	$0 !~ /^====*$/ &&
+	(workingfile == "/doc/TODO" || workingfile == "/doc/src/FAQ/TODO.html" ||
+	 workingfile == "/doc/FAQ" || workingfile == "/doc/src/FAQ/FAQ.html") \
+		{next}
 
 	($0 ~ /^====*$/ || $0 ~ /^----*$/) \
 	{
@@ -86,7 +101,7 @@ awk '	BEGIN	{html="'"$HTML"'"; lineno = 0;}
 	/* clear working file */
 	$0 ~ /^====*$/	{workingfile=""}' |
 
-sort | cut -d'|' -f3 | cat |
+sort | cut -d'|' -f3 |
 
 # collect duplicate narratives
 

@@ -7,15 +7,15 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/port/noblock.c,v 1.5.4.1 2005/03/25 00:35:20 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/port/noblock.c,v 1.8 2005/10/15 02:49:51 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 
 #include "c.h"
 
-#include <sys/types.h>
 #include <fcntl.h>
+
 
 bool
 pg_set_noblock(int sock)
@@ -40,7 +40,8 @@ bool
 pg_set_block(int sock)
 {
 #if !defined(WIN32) && !defined(__BEOS__)
-	int flags;
+	int			flags;
+
 	flags = fcntl(sock, F_GETFL);
 	if (flags < 0 || fcntl(sock, F_SETFL, (long) (flags & ~O_NONBLOCK)))
 		return false;

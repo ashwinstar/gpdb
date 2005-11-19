@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/relcache.h,v 1.48 2005/01/10 20:02:24 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/utils/relcache.h,v 1.52 2005/10/15 02:49:46 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -21,7 +21,6 @@
  * relation lookup routines
  */
 extern Relation RelationIdGetRelation(Oid relationId);
-extern Relation RelationSysNameGetRelation(const char *relationName);
 
 /* finds an existing cache entry, but won't make a new one */
 extern Relation RelationIdCacheGetRelation(Oid relationId);
@@ -33,10 +32,12 @@ extern void RelationClose(Relation relation);
  */
 struct MppPolicy *RelationGetPartitioningKey(Relation relation);
 extern List *RelationGetIndexList(Relation relation);
+extern Oid	RelationGetOidIndex(Relation relation);
 extern List *RelationGetIndexExpressions(Relation relation);
 extern List *RelationGetIndexPredicate(Relation relation);
 
-extern void RelationSetIndexList(Relation relation, List *indexIds);
+extern void RelationSetIndexList(Relation relation,
+					 List *indexIds, Oid oidIndex);
 
 extern void RelationInitIndexAccessInfo(Relation relation);
 
@@ -55,8 +56,7 @@ extern Relation RelationBuildLocalRelation(const char *relname,
 						   TupleDesc tupDesc,
 						   Oid relid,
 						   Oid reltablespace,
-						   bool shared_relation,
-						   bool nailit);
+						   bool shared_relation);
 
 /*
  * Routines for flushing/rebuilding relcache entries in various scenarios
@@ -69,7 +69,7 @@ extern void RelationCacheInvalidate(void);
 
 extern void AtEOXact_RelationCache(bool isCommit);
 extern void AtEOSubXact_RelationCache(bool isCommit, SubTransactionId mySubid,
-									  SubTransactionId parentSubid);
+						  SubTransactionId parentSubid);
 
 /*
  * Routines to help manage rebuilding of relcache init file

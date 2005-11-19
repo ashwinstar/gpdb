@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/indexcmds.c,v 1.128 2004/12/31 21:59:41 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/indexcmds.c,v 1.134 2005/10/15 02:49:15 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -18,7 +18,6 @@
 
 #include "access/heapam.h"
 #include "catalog/catalog.h"
-#include "catalog/catname.h"
 #include "catalog/dependency.h"
 #include "catalog/heap.h"
 #include "catalog/index.h"
@@ -42,6 +41,7 @@
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
+#include "utils/memutils.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
 
@@ -49,8 +49,6 @@
 #include "cdb/cdbsrlz.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbcat.h"
-
-
 
 /* non-export function prototypes */
 static void CheckPredicate(Expr *predicate);
@@ -72,6 +70,8 @@ static bool relationHasPrimaryKey(Relation rel);
  * 'heapRelation': the relation the index will apply to.
  * 'indexRelationName': the name for the new index, or NULL to indicate
  *		that a nonconflicting default name should be picked.
+ * 'indexRelationId': normally InvalidOid, but during bootstrap can be
+ *		nonzero to specify a preselected OID for the index.
  * 'accessMethodName': name of the AM to use.
  * 'tableSpaceName': name of the tablespace to create the index in.
  *		NULL specifies using the appropriate default.
@@ -93,6 +93,7 @@ static bool relationHasPrimaryKey(Relation rel);
 void
 DefineIndex(RangeVar *heapRelation,
 			char *indexRelationName,
+			Oid indexRelationId,
 			char *accessMethodName,
 			char *tableSpaceName,
 			List *attributeList,
@@ -117,7 +118,6 @@ DefineIndex(RangeVar *heapRelation,
 	Form_pg_am	accessMethodForm;
 	IndexInfo  *indexInfo;
 	int			numberOfAttributes;
-	Oid			indexoid;
 
 	bool		shouldDispatch = Mpp_role == MPP_ROLE_DISPATCH && !IsBootstrapProcessingMode();
 
@@ -154,10 +154,9 @@ DefineIndex(RangeVar *heapRelation,
 
 	/*
 	 * Verify we (still) have CREATE rights in the rel's namespace.
-	 * (Presumably we did when the rel was created, but maybe not
-	 * anymore.)  Skip check if caller doesn't want it.  Also skip check
-	 * if bootstrapping, since permissions machinery may not be working
-	 * yet.
+	 * (Presumably we did when the rel was created, but maybe not anymore.)
+	 * Skip check if caller doesn't want it.  Also skip check if
+	 * bootstrapping, since permissions machinery may not be working yet.
 	 */
 	if (check_rights && !IsBootstrapProcessingMode())
 	{
@@ -202,8 +201,8 @@ DefineIndex(RangeVar *heapRelation,
 	}
 
 	/*
-	 * Force shared indexes into the pg_global tablespace.	This is a bit of
-	 * a hack but seems simpler than marking them in the BKI commands.
+	 * Force shared indexes into the pg_global tablespace.	This is a bit of a
+	 * hack but seems simpler than marking them in the BKI commands.
 	 */
 	if (rel->rd_rel->relisshared)
 		tablespaceId = GLOBALTABLESPACE_OID;
@@ -230,8 +229,7 @@ DefineIndex(RangeVar *heapRelation,
 	}
 
 	/*
-	 * look up the access method, verify it can handle the requested
-	 * features
+	 * look up the access method, verify it can handle the requested features
 	 */
 	tuple = SearchSysCache(AMNAME,
 						   PointerGetDatum(accessMethodName),
@@ -284,10 +282,10 @@ DefineIndex(RangeVar *heapRelation,
 		ListCell   *keys;
 
 		/*
-		 * If ALTER TABLE, check that there isn't already a PRIMARY KEY.
-		 * In CREATE TABLE, we have faith that the parser rejected
-		 * multiple pkey clauses; and CREATE INDEX doesn't have a way to
-		 * say PRIMARY KEY, so it's no problem either.
+		 * If ALTER TABLE, check that there isn't already a PRIMARY KEY. In
+		 * CREATE TABLE, we have faith that the parser rejected multiple pkey
+		 * clauses; and CREATE INDEX doesn't have a way to say PRIMARY KEY, so
+		 * it's no problem either.
 		 */
 		if (is_alter_table &&
 			relationHasPrimaryKey(rel))
@@ -299,8 +297,8 @@ DefineIndex(RangeVar *heapRelation,
 		}
 
 		/*
-		 * Check that all of the attributes in a primary key are marked as
-		 * not null, otherwise attempt to ALTER TABLE .. SET NOT NULL
+		 * Check that all of the attributes in a primary key are marked as not
+		 * null, otherwise attempt to ALTER TABLE .. SET NOT NULL
 		 */
 		cmds = NIL;
 		foreach(keys, attributeList)
@@ -335,8 +333,8 @@ DefineIndex(RangeVar *heapRelation,
 			else
 			{
 				/*
-				 * This shouldn't happen during CREATE TABLE, but can
-				 * happen during ALTER TABLE.  Keep message in sync with
+				 * This shouldn't happen during CREATE TABLE, but can happen
+				 * during ALTER TABLE.	Keep message in sync with
 				 * transformIndexConstraints() in parser/analyze.c.
 				 */
 				ereport(ERROR,
@@ -348,22 +346,22 @@ DefineIndex(RangeVar *heapRelation,
 
 		/*
 		 * XXX: Shouldn't the ALTER TABLE .. SET NOT NULL cascade to child
-		 * tables?	Currently, since the PRIMARY KEY itself doesn't
-		 * cascade, we don't cascade the notnull constraint(s) either; but
-		 * this is pretty debatable.
+		 * tables?	Currently, since the PRIMARY KEY itself doesn't cascade,
+		 * we don't cascade the notnull constraint(s) either; but this is
+		 * pretty debatable.
 		 *
-		 * XXX: possible future improvement: when being called from ALTER
-		 * TABLE, it would be more efficient to merge this with the outer
-		 * ALTER TABLE, so as to avoid two scans.  But that seems to
-		 * complicate DefineIndex's API unduly.
+		 * XXX: possible future improvement: when being called from ALTER TABLE,
+		 * it would be more efficient to merge this with the outer ALTER
+		 * TABLE, so as to avoid two scans.  But that seems to complicate
+		 * DefineIndex's API unduly.
 		 */
 		if (cmds)
 			AlterTableInternal(relationId, cmds, false);
 	}
 
 	/*
-	 * Prepare arguments for index_create, primarily an IndexInfo
-	 * structure.  Note that ii_Predicate must be in implicit-AND format.
+	 * Prepare arguments for index_create, primarily an IndexInfo structure.
+	 * Note that ii_Predicate must be in implicit-AND format.
 	 */
 	indexInfo = makeNode(IndexInfo);
 	indexInfo->ii_NumIndexAttrs = numberOfAttributes;
@@ -380,15 +378,15 @@ DefineIndex(RangeVar *heapRelation,
 
 	heap_close(rel, NoLock);
 
-	indexoid = InvalidOid;
+	 
 	if (shouldDispatch)
 	{
 
-		indexoid = newoid();
+
 		if (stmt)
 		{
 			Assert(stmt->idxOid == 0);
-			stmt->idxOid = indexoid;
+			stmt->idxOid = indexRelationId;
 		}
 
 		/*
@@ -431,15 +429,15 @@ DefineIndex(RangeVar *heapRelation,
 	{
 		if (stmt)
 		{
-			indexoid = stmt->idxOid;
+			indexRelationId = stmt->idxOid;
 			Assert(stmt->idxOid != 0);
 			quiet = true;
 		}
 	}
 
 	/*
-	 * Report index creation if appropriate (delay this till after most of
-	 * the error checks)
+	 * Report index creation if appropriate (delay this till after most of the
+	 * error checks)
 	 */
 	if (isconstraint && !quiet)
 		ereport(NOTICE,
@@ -449,24 +447,29 @@ DefineIndex(RangeVar *heapRelation,
 				  indexRelationName, RelationGetRelationName(rel))));
 
 
-
-	index_create(relationId, indexRelationName,
+	indexRelationId = index_create(relationId, indexRelationName, indexRelationId,
 				 indexInfo, accessMethodId, tablespaceId, classObjectId,
 				 primary, isconstraint,
-				 allowSystemTableMods, skip_build, indexoid);
+				 allowSystemTableMods, skip_build);
 
 	/*
 	 * We update the relation's pg_class tuple even if it already has
 	 * relhasindex = true.	This is needed to cause a shared-cache-inval
 	 * message to be sent for the pg_class tuple, which will cause other
-	 * backends to flush their relcache entries and in particular their
-	 * cached lists of the indexes for this relation.
+	 * backends to flush their relcache entries and in particular their cached
+	 * lists of the indexes for this relation.
 	 */
 	setRelhasindex(relationId, true, primary, InvalidOid);
 
 
 	if (shouldDispatch)
 	{
+	
+		if (stmt)
+		{
+			Assert(stmt->idxOid == 0);
+			stmt->idxOid = indexRelationId;
+		}
         /*
          * Dispatch the command to all primary and mirror segment dbs.
          * Start a global transaction and reconfigure cluster if needed.
@@ -494,8 +497,7 @@ CheckPredicate(Expr *predicate)
 {
 	/*
 	 * We don't currently support generation of an actual query plan for a
-	 * predicate, only simple scalar expressions; hence these
-	 * restrictions.
+	 * predicate, only simple scalar expressions; hence these restrictions.
 	 */
 	if (contain_subplans((Node *) predicate))
 		ereport(ERROR,
@@ -581,9 +583,9 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 			atttype = exprType(attribute->expr);
 
 			/*
-			 * We don't currently support generation of an actual query
-			 * plan for an index expression, only simple scalar
-			 * expressions; hence these restrictions.
+			 * We don't currently support generation of an actual query plan
+			 * for an index expression, only simple scalar expressions; hence
+			 * these restrictions.
 			 */
 			if (contain_subplans(attribute->expr))
 				ereport(ERROR,
@@ -595,10 +597,9 @@ ComputeIndexAttrs(IndexInfo *indexInfo,
 				errmsg("cannot use aggregate function in index expression")));
 
 			/*
-			 * A expression using mutable functions is probably wrong,
-			 * since if you aren't going to get the same result for the
-			 * same data every time, it's not clear what the index entries
-			 * mean at all.
+			 * A expression using mutable functions is probably wrong, since
+			 * if you aren't going to get the same result for the same data
+			 * every time, it's not clear what the index entries mean at all.
 			 */
 			if (contain_mutable_functions(attribute->expr))
 				ereport(ERROR,
@@ -628,16 +629,16 @@ GetIndexOpClass(List *opclass, Oid attrType,
 				opInputType;
 
 	/*
-	 * Release 7.0 removed network_ops, timespan_ops, and datetime_ops, so
-	 * we ignore those opclass names so the default *_ops is used.	This
-	 * can be removed in some later release.  bjm 2000/02/07
+	 * Release 7.0 removed network_ops, timespan_ops, and datetime_ops, so we
+	 * ignore those opclass names so the default *_ops is used.  This can be
+	 * removed in some later release.  bjm 2000/02/07
 	 *
 	 * Release 7.1 removes lztext_ops, so suppress that too for a while.  tgl
 	 * 2000/07/30
 	 *
-	 * Release 7.2 renames timestamp_ops to timestamptz_ops, so suppress that
-	 * too for awhile.	I'm starting to think we need a better approach.
-	 * tgl 2000/10/01
+	 * Release 7.2 renames timestamp_ops to timestamptz_ops, so suppress that too
+	 * for awhile.	I'm starting to think we need a better approach. tgl
+	 * 2000/10/01
 	 *
 	 * Release 8.0 removes bigbox_ops (which was dead code for a long while
 	 * anyway).  tgl 2003/11/11
@@ -708,8 +709,8 @@ GetIndexOpClass(List *opclass, Oid attrType,
 						NameListToString(opclass), accessMethodName)));
 
 	/*
-	 * Verify that the index operator class accepts this datatype.	Note
-	 * we will accept binary compatibility.
+	 * Verify that the index operator class accepts this datatype.	Note we
+	 * will accept binary compatibility.
 	 */
 	opClassId = HeapTupleGetOid(tuple);
 	opInputType = ((Form_pg_opclass) GETSTRUCT(tuple))->opcintype;
@@ -743,8 +744,8 @@ GetDefaultOpClass(Oid attrType, Oid accessMethodId)
 	 * (either exactly or binary-compatibly, but prefer an exact match).
 	 *
 	 * We could find more than one binary-compatible match, in which case we
-	 * require the user to specify which one he wants.	If we find more
-	 * than one exact match, then someone put bogus entries in pg_opclass.
+	 * require the user to specify which one he wants.	If we find more than
+	 * one exact match, then someone put bogus entries in pg_opclass.
 	 *
 	 * The initial search is done by namespace.c so that we only consider
 	 * opclasses visible in the current namespace search path.	(See also
@@ -829,8 +830,8 @@ makeObjectName(const char *name1, const char *name2, const char *label)
 
 	/*
 	 * If we must truncate,  preferentially truncate the longer name. This
-	 * logic could be expressed without a loop, but it's simple and
-	 * obvious as a loop.
+	 * logic could be expressed without a loop, but it's simple and obvious as
+	 * a loop.
 	 */
 	while (name1chars + name2chars > availchars)
 	{
@@ -840,10 +841,9 @@ makeObjectName(const char *name1, const char *name2, const char *label)
 			name2chars--;
 	}
 
-	if (name1)
-		name1chars = pg_mbcliplen((const unsigned char *) name1, name1chars, name1chars);
+	name1chars = pg_mbcliplen(name1, name1chars, name1chars);
 	if (name2)
-		name2chars = pg_mbcliplen((const unsigned char *) name2, name2chars, name2chars);
+		name2chars = pg_mbcliplen(name2, name2chars, name2chars);
 
 	/* Now construct the string using the chosen lengths */
 	name = palloc(name1chars + name2chars + overhead + 1);
@@ -923,9 +923,9 @@ relationHasPrimaryKey(Relation rel)
 	ListCell   *indexoidscan;
 
 	/*
-	 * Get the list of index OIDs for the table from the relcache, and
-	 * look up each one in the pg_index syscache until we find one marked
-	 * primary key (hopefully there isn't more than one such).
+	 * Get the list of index OIDs for the table from the relcache, and look up
+	 * each one in the pg_index syscache until we find one marked primary key
+	 * (hopefully there isn't more than one such).
 	 */
 	indexoidlist = RelationGetIndexList(rel);
 
@@ -970,20 +970,19 @@ RemoveIndex(RangeVar *relation, DropBehavior behavior)
 				 errmsg("\"%s\" is not an index",
 						relation->relname)));
 
-	object.classId = RelOid_pg_class;
+	object.classId = RelationRelationId;
 	object.objectId = indOid;
 	object.objectSubId = 0;
 
 	performDeletion(&object, behavior);
-
 }
 
 /*
  * ReindexIndex
- *		Recreate an index.
+ *		Recreate a specific index.
  */
 void
-ReindexIndex(RangeVar *indexRelation, bool force /* currently unused */ )
+ReindexIndex(RangeVar *indexRelation)
 {
 	Oid			indOid;
 	HeapTuple	tuple;
@@ -1013,10 +1012,10 @@ ReindexIndex(RangeVar *indexRelation, bool force /* currently unused */ )
 
 /*
  * ReindexTable
- *		Recreate indexes of a table.
+ *		Recreate all indexes of a table (and of its toast table, if any)
  */
 void
-ReindexTable(RangeVar *relation, bool force /* currently unused */ )
+ReindexTable(RangeVar *relation)
 {
 	Oid			heapOid;
 	HeapTuple	tuple;
@@ -1063,8 +1062,7 @@ ReindexTable(RangeVar *relation, bool force /* currently unused */ )
  * separate transaction, so we can release the lock on it right away.
  */
 void
-ReindexDatabase(const char *dbname, bool force /* currently unused */ ,
-				bool all)
+ReindexDatabase(const char *databaseName, bool do_system, bool do_user)
 {
 	Relation	relationRelation;
 	HeapScanDesc scan;
@@ -1074,29 +1072,29 @@ ReindexDatabase(const char *dbname, bool force /* currently unused */ ,
 	List	   *relids = NIL;
 	ListCell   *l;
 
-	AssertArg(dbname);
+	AssertArg(databaseName);
 
-	if (strcmp(dbname, get_database_name(MyDatabaseId)) != 0)
+	if (strcmp(databaseName, get_database_name(MyDatabaseId)) != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("can only reindex the currently open database")));
 
 	if (!pg_database_ownercheck(MyDatabaseId, GetUserId()))
 		aclcheck_error(ACLCHECK_NOT_OWNER, ACL_KIND_DATABASE,
-					   dbname);
+					   databaseName);
 
 	/*
 	 * We cannot run inside a user transaction block; if we were inside a
-	 * transaction, then our commit- and start-transaction-command calls
-	 * would not have the intended effect!
+	 * transaction, then our commit- and start-transaction-command calls would
+	 * not have the intended effect!
 	 */
-	PreventTransactionChain((void *) dbname, "REINDEX DATABASE");
+	PreventTransactionChain((void *) databaseName, "REINDEX DATABASE");
 
 	/*
-	 * Create a memory context that will survive forced transaction
-	 * commits we do below.  Since it is a child of PortalContext, it will
-	 * go away eventually even if we suffer an error; there's no need for
-	 * special abort cleanup logic.
+	 * Create a memory context that will survive forced transaction commits we
+	 * do below.  Since it is a child of PortalContext, it will go away
+	 * eventually even if we suffer an error; there's no need for special
+	 * abort cleanup logic.
 	 */
 	private_context = AllocSetContextCreate(PortalContext,
 											"ReindexDatabase",
@@ -1105,14 +1103,17 @@ ReindexDatabase(const char *dbname, bool force /* currently unused */ ,
 											ALLOCSET_DEFAULT_MAXSIZE);
 
 	/*
-	 * We always want to reindex pg_class first.  This ensures that if
-	 * there is any corruption in pg_class' indexes, they will be fixed
-	 * before we process any other tables.	This is critical because
-	 * reindexing itself will try to update pg_class.
+	 * We always want to reindex pg_class first.  This ensures that if there
+	 * is any corruption in pg_class' indexes, they will be fixed before we
+	 * process any other tables.  This is critical because reindexing itself
+	 * will try to update pg_class.
 	 */
-	old = MemoryContextSwitchTo(private_context);
-	relids = lappend_oid(relids, RelOid_pg_class);
-	MemoryContextSwitchTo(old);
+	if (do_system)
+	{
+		old = MemoryContextSwitchTo(private_context);
+		relids = lappend_oid(relids, RelationRelationId);
+		MemoryContextSwitchTo(old);
+	}
 
 	/*
 	 * Scan pg_class to build a list of the relations we need to reindex.
@@ -1120,7 +1121,7 @@ ReindexDatabase(const char *dbname, bool force /* currently unused */ ,
 	 * We only consider plain relations here (toast rels will be processed
 	 * indirectly by reindex_relation).
 	 */
-	relationRelation = heap_openr(RelationRelationName, AccessShareLock);
+	relationRelation = heap_open(RelationRelationId, AccessShareLock);
 	scan = heap_beginscan(relationRelation, SnapshotNow, 0, NULL);
 	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
@@ -1129,9 +1130,15 @@ ReindexDatabase(const char *dbname, bool force /* currently unused */ ,
 		if (classtuple->relkind != RELKIND_RELATION)
 			continue;
 
-		if (!all)				/* only system tables? */
+		/* Check user/system classification, and optionally skip */
+		if (IsSystemClass(classtuple))
 		{
-			if (!IsSystemClass(classtuple))
+			if (!do_system)
+				continue;
+		}
+		else
+		{
+			if (!do_user)
 				continue;
 		}
 
@@ -1141,7 +1148,7 @@ ReindexDatabase(const char *dbname, bool force /* currently unused */ ,
 				continue;
 		}
 
-		if (HeapTupleGetOid(tuple) == RelOid_pg_class)
+		if (HeapTupleGetOid(tuple) == RelationRelationId)
 			continue;			/* got it already */
 
 		old = MemoryContextSwitchTo(private_context);

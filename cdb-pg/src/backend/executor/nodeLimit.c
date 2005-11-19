@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeLimit.c,v 1.20 2004/12/31 21:59:45 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeLimit.c,v 1.22 2005/10/15 02:49:17 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -39,7 +39,6 @@ TupleTableSlot *				/* return: a tuple or NULL */
 ExecLimit(LimitState *node)
 {
 	ScanDirection direction;
-	TupleTableSlot *resultTupleSlot;
 	TupleTableSlot *slot;
 	PlanState  *outerPlan;
 
@@ -48,7 +47,6 @@ ExecLimit(LimitState *node)
 	 */
 	direction = node->ps.state->es_direction;
 	outerPlan = outerPlanState(node);
-	resultTupleSlot = node->ps.ps_ResultTupleSlot;
 
 	/*
 	 * The main logic is a simple state machine.
@@ -64,10 +62,9 @@ ExecLimit(LimitState *node)
 				return NULL;
 
 			/*
-			 * First call for this scan, so compute limit/offset. (We
-			 * can't do this any earlier, because parameters from upper
-			 * nodes may not be set until now.)  This also sets position =
-			 * 0.
+			 * First call for this scan, so compute limit/offset. (We can't do
+			 * this any earlier, because parameters from upper nodes may not
+			 * be set until now.)  This also sets position = 0.
 			 */
 			recompute_limits(node);
 
@@ -97,8 +94,8 @@ ExecLimit(LimitState *node)
 				if (TupIsNull(slot))
 				{
 					/*
-					 * The subplan returns too few tuples for us to
-					 * produce any output at all.
+					 * The subplan returns too few tuples for us to produce
+					 * any output at all.
 					 */
 					node->lstate = LIMIT_EMPTY;
 					return NULL;
@@ -127,11 +124,10 @@ ExecLimit(LimitState *node)
 			if (ScanDirectionIsForward(direction))
 			{
 				/*
-				 * Forwards scan, so check for stepping off end of window.
-				 * If we are at the end of the window, return NULL without
-				 * advancing the subplan or the position variable; but
-				 * change the state machine state to record having done
-				 * so.
+				 * Forwards scan, so check for stepping off end of window. If
+				 * we are at the end of the window, return NULL without
+				 * advancing the subplan or the position variable; but change
+				 * the state machine state to record having done so.
 				 */
 				if (!node->noCount &&
 					node->position >= node->offset + node->count)
@@ -156,9 +152,8 @@ ExecLimit(LimitState *node)
 			else
 			{
 				/*
-				 * Backwards scan, so check for stepping off start of
-				 * window. As above, change only state-machine status if
-				 * so.
+				 * Backwards scan, so check for stepping off start of window.
+				 * As above, change only state-machine status if so.
 				 */
 				if (node->position <= node->offset + 1)
 				{
@@ -183,9 +178,8 @@ ExecLimit(LimitState *node)
 				return NULL;
 
 			/*
-			 * Backing up from subplan EOF, so re-fetch previous tuple;
-			 * there should be one!  Note previous tuple must be in
-			 * window.
+			 * Backing up from subplan EOF, so re-fetch previous tuple; there
+			 * should be one!  Note previous tuple must be in window.
 			 */
 			slot = ExecProcNode(outerPlan);
 			if (TupIsNull(slot))
@@ -231,12 +225,7 @@ ExecLimit(LimitState *node)
 	/* Return the current tuple */
 	Assert(!TupIsNull(slot));
 
-	ExecStoreTuple(slot->val,
-				   resultTupleSlot,
-				   InvalidBuffer,
-				   false);		/* tuple does not belong to slot */
-
-	return resultTupleSlot;
+	return slot;
 }
 
 /*
@@ -336,7 +325,7 @@ ExecInitLimit(Limit *node, EState *estate)
 #define LIMIT_NSLOTS 1
 
 	/*
-	 * Tuple table initialization
+	 * Tuple table initialization (XXX not actually used...)
 	 */
 	ExecInitResultTupleSlot(estate, &limitstate->ps);
 
@@ -347,8 +336,8 @@ ExecInitLimit(Limit *node, EState *estate)
 	outerPlanState(limitstate) = ExecInitNode(outerPlan, estate);
 
 	/*
-	 * limit nodes do no projections, so initialize projection info for
-	 * this node appropriately
+	 * limit nodes do no projections, so initialize projection info for this
+	 * node appropriately
 	 */
 	ExecAssignResultTypeFromOuterPlan(&limitstate->ps);
 	limitstate->ps.ps_ProjInfo = NULL;
@@ -375,10 +364,6 @@ void
 ExecEndLimit(LimitState *node)
 {
 	ExecFreeExprContext(&node->ps);
-
-	/* clean up tuple table */
-	ExecClearTuple(node->ps.ps_ResultTupleSlot);
-
 	ExecEndNode(outerPlanState(node));
 }
 
@@ -388,8 +373,6 @@ ExecReScanLimit(LimitState *node, ExprContext *exprCtxt)
 {
 	/* resetting lstate will force offset/limit recalculation */
 	node->lstate = LIMIT_INITIAL;
-
-	ExecClearTuple(node->ps.ps_ResultTupleSlot);
 
 	/*
 	 * if chgParam of subnode is not null then plan will be re-scanned by

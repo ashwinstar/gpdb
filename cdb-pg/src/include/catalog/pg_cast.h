@@ -10,7 +10,7 @@
  *
  * Copyright (c) 2002-2005, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/include/catalog/pg_cast.h,v 1.17 2005/01/01 05:43:09 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/catalog/pg_cast.h,v 1.24 2005/10/21 15:45:06 tgl Exp $
  *
  * NOTES
  *	  the genbki.sh script reads this file and generates .bki
@@ -21,7 +21,9 @@
 #ifndef PG_CAST_H
 #define PG_CAST_H
 
-CATALOG(pg_cast)
+#define CastRelationId	2605
+
+CATALOG(pg_cast,2605)
 {
 	Oid			castsource;		/* source datatype for cast */
 	Oid			casttarget;		/* destination datatype for cast */
@@ -42,10 +44,8 @@ typedef FormData_pg_cast *Form_pg_cast;
 
 typedef enum CoercionCodes
 {
-	COERCION_CODE_IMPLICIT = 'i',		/* coercion in context of
-										 * expression */
-	COERCION_CODE_ASSIGNMENT = 'a',		/* coercion in context of
-										 * assignment */
+	COERCION_CODE_IMPLICIT = 'i',		/* coercion in context of expression */
+	COERCION_CODE_ASSIGNMENT = 'a',		/* coercion in context of assignment */
 	COERCION_CODE_EXPLICIT = 'e'	/* explicit cast operation */
 } CoercionCodes;
 
@@ -62,6 +62,9 @@ typedef enum CoercionCodes
 
 /* ----------------
  *		initial contents of pg_cast
+ *
+ * Note: this table has OIDs, but we don't bother to assign them manually,
+ * since nothing needs to know the specific OID of any built-in cast.
  * ----------------
  */
 
@@ -101,13 +104,19 @@ DATA(insert ( 1700	 23 1744 a ));
 DATA(insert ( 1700	700 1745 i ));
 DATA(insert ( 1700	701 1746 i ));
 
+/* Allow explicit coercions between int4 and bool */
+DATA(insert (	23	16	2557 e ));
+DATA(insert (	16	23	2558 e ));
+
 /*
  * OID category: allow implicit conversion from any integral type (including
  * int8, to support OID literals > 2G) to OID, as well as assignment coercion
  * from OID to int4 or int8.  Similarly for each OID-alias type.  Also allow
  * implicit coercions between OID and each OID-alias type, as well as
  * regproc<->regprocedure and regoper<->regoperator.  (Other coercions
- * between alias types must pass through OID.)
+ * between alias types must pass through OID.)	Lastly, there are implicit
+ * casts from text and varchar to regclass, which exist mainly to support
+ * legacy forms of nextval() and related functions.
  */
 DATA(insert (	20	 26 1287 i ));
 DATA(insert (	21	 26  313 i ));
@@ -160,6 +169,8 @@ DATA(insert (	21 2206  313 i ));
 DATA(insert (	23 2206    0 i ));
 DATA(insert ( 2206	 20 1288 a ));
 DATA(insert ( 2206	 23    0 a ));
+DATA(insert (	25 2205 1079 i ));
+DATA(insert ( 1043 2205 1079 i ));
 
 /*
  * String category: this needs to be tightened up

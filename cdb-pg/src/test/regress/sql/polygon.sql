@@ -38,7 +38,7 @@ INSERT INTO POLYGON_TBL(f1) VALUES ('(0,1,2,3');
 INSERT INTO POLYGON_TBL(f1) VALUES ('asdf');
 
 
-SELECT '' AS four, POLYGON_TBL.*;
+SELECT '' AS four, * FROM POLYGON_TBL;
 
 -- overlap 
 SELECT '' AS three, p.*
@@ -100,7 +100,7 @@ SELECT polygon '(2.0,0.0),(2.0,4.0),(0.0,0.0)' << polygon '(3.0,1.0),(3.0,3.0),(
 SELECT polygon '(2.0,0.0),(2.0,4.0),(0.0,0.0)' << polygon '(3.0,1.0),(3.0,3.0),(1.0,0.0)' AS true;
 
 -- right overlap 
-SELECT polygon '(2.0,0.0),(2.0,4.0),(0.0,0.0)' &> polygon '(3.0,1.0),(3.0,3.0),(1.0,0.0)' AS true;
+SELECT polygon '(2.0,0.0),(2.0,4.0),(0.0,0.0)' &> polygon '(3.0,1.0),(3.0,3.0),(1.0,0.0)' AS false;
 
 -- right of 
 SELECT polygon '(2.0,0.0),(2.0,4.0),(0.0,0.0)' >> polygon '(3.0,1.0),(3.0,3.0),(1.0,0.0)' AS false;

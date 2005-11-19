@@ -10,7 +10,7 @@
  * exceed INITIAL_EXPBUFFER_SIZE (currently 256 bytes).
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-auth.c,v 1.99.4.1 2005/03/25 00:35:19 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-auth.c,v 1.107 2005/10/24 15:38:37 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -18,14 +18,9 @@
 /*
  * INTERFACE ROUTINES
  *	   frontend (client) routines:
- *		fe_sendauth				send authentication information
- *		fe_getauthname			get user's name according to the client side
+ *		pg_fe_sendauth			send authentication information
+ *		pg_fe_getauthname		get user's name according to the client side
  *								of the authentication system
- *		fe_setauthsvc			set frontend authentication service
- *		fe_getauthsvc			get current frontend authentication service
- *
- *
- *
  */
 
 #include "postgres_fe.h"
@@ -35,7 +30,6 @@
 #else
 #include <unistd.h>
 #include <fcntl.h>
-#include <errno.h>
 #include <sys/types.h>
 #include <sys/param.h>			/* for MAXHOSTNAMELEN on most */
 #include <sys/socket.h>
@@ -58,184 +52,6 @@
 #include "fe-auth.h"
 #include "libpq/crypt.h"
 
-
-/*
- * common definitions for generic fe/be routines
- */
-
-#define STARTUP_MSG		7		/* Initialise a connection */
-#define STARTUP_KRB4_MSG	10	/* krb4 session follows */
-#define STARTUP_KRB5_MSG	11	/* krb5 session follows */
-#define STARTUP_PASSWORD_MSG	14		/* Password follows */
-
-struct authsvc
-{
-	const char *name;			/* service nickname (for command line) */
-	MsgType		msgtype;		/* startup packet header type */
-	int			allowed;		/* initially allowed (before command line
-								 * option parsing)? */
-};
-
-/*
- * Command-line parsing routines use this structure to map nicknames
- * onto service types (and the startup packets to use with them).
- *
- * Programs receiving an authentication request use this structure to
- * decide which authentication service types are currently permitted.
- * By default, all authentication systems compiled into the system are
- * allowed.  Unauthenticated connections are disallowed unless there
- * isn't any authentication system.
- */
-static const struct authsvc authsvcs[] = {
-#ifdef KRB4
-	{"krb4", STARTUP_KRB4_MSG, 1},
-	{"kerberos", STARTUP_KRB4_MSG, 1},
-#endif   /* KRB4 */
-#ifdef KRB5
-	{"krb5", STARTUP_KRB5_MSG, 1},
-	{"kerberos", STARTUP_KRB5_MSG, 1},
-#endif   /* KRB5 */
-	{UNAUTHNAME, STARTUP_MSG,
-#if defined(KRB4) || defined(KRB5)
-		0
-#else							/* !(KRB4 || KRB5) */
-		1
-#endif   /* !(KRB4 || KRB5) */
-	},
-	{"password", STARTUP_PASSWORD_MSG, 0}
-};
-
-static const int n_authsvcs = sizeof(authsvcs) / sizeof(struct authsvc);
-
-#ifdef KRB4
-/*
- * MIT Kerberos authentication system - protocol version 4
- */
-
-#include "krb.h"
-
-/* for some reason, this is not defined in krb.h ... */
-extern char *tkt_string(void);
-
-/*
- * pg_krb4_init -- initialization performed before any Kerberos calls are made
- *
- * For v4, all we need to do is make sure the library routines get the right
- * ticket file if we want them to see a special one.  (They will open the file
- * themselves.)
- */
-static void
-pg_krb4_init()
-{
-	char	   *realm;
-	static int	init_done = 0;
-
-	if (init_done)
-		return;
-	init_done = 1;
-
-	/*
-	 * If the user set PGREALM, then we use a ticket file with a special
-	 * name: <usual-ticket-file-name>@<PGREALM-value>
-	 */
-	if ((realm = getenv("PGREALM")))
-	{
-		char		tktbuf[MAXPGPATH];
-
-		(void) snprintf(tktbuf, sizeof(tktbuf), "%s@%s", tkt_string(), realm);
-		krb_set_tkt_string(tktbuf);
-	}
-}
-
-/*
- * pg_krb4_authname -- returns a pointer to static space containing whatever
- *					   name the user has authenticated to the system
- *
- * We obtain this information by digging around in the ticket file.
- */
-static char *
-pg_krb4_authname(char *PQerrormsg)
-{
-	char		instance[INST_SZ + 1];
-	char		realm[REALM_SZ + 1];
-	int			status;
-	static char name[SNAME_SZ + 1] = "";
-
-	if (name[0])
-		return name;
-
-	pg_krb4_init();
-
-	name[SNAME_SZ] = '\0';
-	status = krb_get_tf_fullname(tkt_string(), name, instance, realm);
-	if (status != KSUCCESS)
-	{
-		snprintf(PQerrormsg, PQERRORMSG_LENGTH,
-				 "pg_krb4_authname: krb_get_tf_fullname: %s\n",
-				 krb_err_txt[status]);
-		return NULL;
-	}
-	return name;
-}
-
-/*
- * pg_krb4_sendauth -- client routine to send authentication information to
- *					   the server
- *
- * This routine does not do mutual authentication, nor does it return enough
- * information to do encrypted connections.  But then, if we want to do
- * encrypted connections, we'll have to redesign the whole RPC mechanism
- * anyway.
- *
- * If the user is too lazy to feed us a hostname, we try to come up with
- * something other than "localhost" since the hostname is used as an
- * instance and instance names in v4 databases are usually actual hostnames
- * (canonicalized to omit all domain suffixes).
- */
-static int
-pg_krb4_sendauth(char *PQerrormsg, int sock,
-				 struct sockaddr_in * laddr,
-				 struct sockaddr_in * raddr,
-				 const char *hostname)
-{
-	long		krbopts = 0;	/* one-way authentication */
-	KTEXT_ST	clttkt;
-	int			status;
-	char		hostbuf[MAXHOSTNAMELEN];
-	const char *realm = getenv("PGREALM");		/* NULL == current realm */
-
-	if (!hostname || !(*hostname))
-	{
-		if (gethostname(hostbuf, MAXHOSTNAMELEN) < 0)
-			strcpy(hostbuf, "localhost");
-		hostname = hostbuf;
-	}
-
-	pg_krb4_init();
-
-	status = krb_sendauth(krbopts,
-						  sock,
-						  &clttkt,
-						  PG_KRB_SRVNAM,
-						  hostname,
-						  realm,
-						  (u_long) 0,
-						  NULL,
-						  NULL,
-						  NULL,
-						  laddr,
-						  raddr,
-						  PG_KRB4_VERSION);
-	if (status != KSUCCESS)
-	{
-		snprintf(PQerrormsg, PQERRORMSG_LENGTH,
-				 libpq_gettext("Kerberos 4 error: %s\n"),
-				 krb_err_txt[status]);
-		return STATUS_ERROR;
-	}
-	return STATUS_OK;
-}
-#endif   /* KRB4 */
 
 #ifdef KRB5
 /*
@@ -260,6 +76,10 @@ pg_krb4_sendauth(char *PQerrormsg, int sock,
  *	   provide an aname mapping database...it may be a better idea to use
  *	   krb5_an_to_ln, except that it punts if multiple components are found,
  *	   and we can't afford to punt.
+ *
+ * For WIN32, convert username to lowercase because the Win32 kerberos library
+ * generates tickets with the username as the user entered it instead of as
+ * it is entered in the directory.
  */
 static char *
 pg_an_to_ln(char *aname)
@@ -268,6 +88,11 @@ pg_an_to_ln(char *aname)
 
 	if ((p = strchr(aname, '/')) || (p = strchr(aname, '@')))
 		*p = '\0';
+#ifdef WIN32
+	for (p = aname; *p; p++)
+		*p = pg_tolower(*p);
+#endif
+
 	return aname;
 }
 
@@ -360,7 +185,7 @@ pg_krb5_authname(char *PQerrormsg)
  *					   the server
  */
 static int
-pg_krb5_sendauth(char *PQerrormsg, int sock, const char *hostname)
+pg_krb5_sendauth(char *PQerrormsg, int sock, const char *hostname, const char *servicename)
 {
 	krb5_error_code retval;
 	int			ret;
@@ -379,7 +204,7 @@ pg_krb5_sendauth(char *PQerrormsg, int sock, const char *hostname)
 	if (ret != STATUS_OK)
 		return ret;
 
-	retval = krb5_sname_to_principal(pg_krb5_context, hostname, PG_KRB_SRVNAM,
+	retval = krb5_sname_to_principal(pg_krb5_context, hostname, servicename,
 									 KRB5_NT_SRV_HST, &server);
 	if (retval)
 	{
@@ -390,9 +215,9 @@ pg_krb5_sendauth(char *PQerrormsg, int sock, const char *hostname)
 	}
 
 	/*
-	 * libpq uses a non-blocking socket. But kerberos needs a blocking
-	 * socket, and we have to block somehow to do mutual authentication
-	 * anyway. So we temporarily make it blocking.
+	 * libpq uses a non-blocking socket. But kerberos needs a blocking socket,
+	 * and we have to block somehow to do mutual authentication anyway. So we
+	 * temporarily make it blocking.
 	 */
 	if (!pg_set_block(sock))
 	{
@@ -405,7 +230,7 @@ pg_krb5_sendauth(char *PQerrormsg, int sock, const char *hostname)
 	}
 
 	retval = krb5_sendauth(pg_krb5_context, &auth_context,
-						   (krb5_pointer) & sock, PG_KRB_SRVNAM,
+						   (krb5_pointer) & sock, (char *) servicename,
 						   pg_krb5_client, server,
 						   AP_OPTS_MUTUAL_REQUIRED,
 						   NULL, 0,		/* no creds, use ccache instead */
@@ -416,11 +241,11 @@ pg_krb5_sendauth(char *PQerrormsg, int sock, const char *hostname)
 		{
 #if defined(HAVE_KRB5_ERROR_TEXT_DATA)
 			snprintf(PQerrormsg, PQERRORMSG_LENGTH,
-			  libpq_gettext("Kerberos 5 authentication rejected: %*s\n"),
+				  libpq_gettext("Kerberos 5 authentication rejected: %*s\n"),
 					 (int) err_ret->text.length, err_ret->text.data);
 #elif defined(HAVE_KRB5_ERROR_E_DATA)
 			snprintf(PQerrormsg, PQERRORMSG_LENGTH,
-			  libpq_gettext("Kerberos 5 authentication rejected: %*s\n"),
+				  libpq_gettext("Kerberos 5 authentication rejected: %*s\n"),
 					 (int) err_ret->e_data->length,
 					 (const char *) err_ret->e_data->data);
 #else
@@ -446,14 +271,16 @@ pg_krb5_sendauth(char *PQerrormsg, int sock, const char *hostname)
 		char		sebuf[256];
 
 		snprintf(PQerrormsg, PQERRORMSG_LENGTH,
-				 libpq_gettext("could not restore non-blocking mode on socket: %s\n"),
+		libpq_gettext("could not restore non-blocking mode on socket: %s\n"),
 				 pqStrerror(errno, sebuf, sizeof(sebuf)));
 		ret = STATUS_ERROR;
 	}
 
 	return ret;
 }
+
 #endif   /* KRB5 */
+
 
 /*
  * Respond to AUTH_REQ_SCM_CREDS challenge.
@@ -480,8 +307,8 @@ pg_local_sendauth(char *PQerrormsg, PGconn *conn)
 #endif
 
 	/*
-	 * The backend doesn't care what we send here, but it wants exactly
-	 * one character to force recvmsg() to block and wait for us.
+	 * The backend doesn't care what we send here, but it wants exactly one
+	 * character to force recvmsg() to block and wait for us.
 	 */
 	buf = '\0';
 	iov.iov_base = &buf;
@@ -513,7 +340,7 @@ pg_local_sendauth(char *PQerrormsg, PGconn *conn)
 	return STATUS_OK;
 #else
 	snprintf(PQerrormsg, PQERRORMSG_LENGTH,
-		libpq_gettext("SCM_CRED authentication method not supported\n"));
+			 libpq_gettext("SCM_CRED authentication method not supported\n"));
 	return STATUS_ERROR;
 #endif
 }
@@ -532,27 +359,27 @@ pg_password_sendauth(PGconn *conn, const char *password, AuthRequest areq)
 			{
 				char	   *crypt_pwd2;
 
-				if (!(crypt_pwd = malloc(MD5_PASSWD_LEN + 1)) ||
-					!(crypt_pwd2 = malloc(MD5_PASSWD_LEN + 1)))
+				/* Allocate enough space for two MD5 hashes */
+				crypt_pwd = malloc(2 * (MD5_PASSWD_LEN + 1));
+				if (!crypt_pwd)
 				{
 					fprintf(stderr, libpq_gettext("out of memory\n"));
 					return STATUS_ERROR;
 				}
-				if (!EncryptMD5(password, conn->pguser,
-								strlen(conn->pguser), crypt_pwd2))
+
+				crypt_pwd2 = crypt_pwd + MD5_PASSWD_LEN + 1;
+				if (!pg_md5_encrypt(password, conn->pguser,
+									strlen(conn->pguser), crypt_pwd2))
 				{
 					free(crypt_pwd);
-					free(crypt_pwd2);
 					return STATUS_ERROR;
 				}
-				if (!EncryptMD5(crypt_pwd2 + strlen("md5"), conn->md5Salt,
-								sizeof(conn->md5Salt), crypt_pwd))
+				if (!pg_md5_encrypt(crypt_pwd2 + strlen("md5"), conn->md5Salt,
+									sizeof(conn->md5Salt), crypt_pwd))
 				{
 					free(crypt_pwd);
-					free(crypt_pwd2);
 					return STATUS_ERROR;
 				}
-				free(crypt_pwd2);
 				break;
 			}
 		case AUTH_REQ_CRYPT:
@@ -581,13 +408,14 @@ pg_password_sendauth(PGconn *conn, const char *password, AuthRequest areq)
 }
 
 /*
- * fe_sendauth -- client demux routine for outgoing authentication information
+ * pg_fe_sendauth
+ *		client demux routine for outgoing authentication information
  */
 int
-fe_sendauth(AuthRequest areq, PGconn *conn, const char *hostname,
-			const char *password, char *PQerrormsg)
+pg_fe_sendauth(AuthRequest areq, PGconn *conn, const char *hostname,
+			   const char *password, char *PQerrormsg)
 {
-#if !defined(KRB4) && !defined(KRB5)
+#ifndef KRB5
 	(void) hostname;			/* not used */
 #endif
 
@@ -597,30 +425,15 @@ fe_sendauth(AuthRequest areq, PGconn *conn, const char *hostname,
 			break;
 
 		case AUTH_REQ_KRB4:
-#ifdef KRB4
-			pglock_thread();
-			if (pg_krb4_sendauth(PQerrormsg, conn->sock,
-							   (struct sockaddr_in *) & conn->laddr.addr,
-							   (struct sockaddr_in *) & conn->raddr.addr,
-								 hostname) != STATUS_OK)
-			{
-				/* PQerrormsg already filled in */
-				pgunlock_thread();
-				return STATUS_ERROR;
-			}
-			pgunlock_thread();
-			break;
-#else
 			snprintf(PQerrormsg, PQERRORMSG_LENGTH,
-			 libpq_gettext("Kerberos 4 authentication not supported\n"));
+				 libpq_gettext("Kerberos 4 authentication not supported\n"));
 			return STATUS_ERROR;
-#endif
 
 		case AUTH_REQ_KRB5:
 #ifdef KRB5
 			pglock_thread();
 			if (pg_krb5_sendauth(PQerrormsg, conn->sock,
-								 hostname) != STATUS_OK)
+								 hostname, conn->krbsrvname) != STATUS_OK)
 			{
 				/* PQerrormsg already filled in */
 				pgunlock_thread();
@@ -630,7 +443,7 @@ fe_sendauth(AuthRequest areq, PGconn *conn, const char *hostname,
 			break;
 #else
 			snprintf(PQerrormsg, PQERRORMSG_LENGTH,
-			 libpq_gettext("Kerberos 5 authentication not supported\n"));
+				 libpq_gettext("Kerberos 5 authentication not supported\n"));
 			return STATUS_ERROR;
 #endif
 
@@ -646,7 +459,7 @@ fe_sendauth(AuthRequest areq, PGconn *conn, const char *hostname,
 			if (pg_password_sendauth(conn, password, areq) != STATUS_OK)
 			{
 				(void) snprintf(PQerrormsg, PQERRORMSG_LENGTH,
-				 "fe_sendauth: error sending password authentication\n");
+					 "fe_sendauth: error sending password authentication\n");
 				return STATUS_ERROR;
 			}
 			break;
@@ -658,75 +471,26 @@ fe_sendauth(AuthRequest areq, PGconn *conn, const char *hostname,
 
 		default:
 			snprintf(PQerrormsg, PQERRORMSG_LENGTH,
-					 libpq_gettext("authentication method %u not supported\n"), areq);
+			libpq_gettext("authentication method %u not supported\n"), areq);
 			return STATUS_ERROR;
 	}
 
 	return STATUS_OK;
 }
 
-/*
- * fe_setauthsvc
- * fe_getauthsvc
- *
- * Set/return the authentication service currently selected for use by the
- * frontend. (You can only use one in the frontend, obviously.)
- *
- * NB: This is not thread-safe if different threads try to select different
- * authentication services!  It's OK for fe_getauthsvc to select the default,
- * since that will be the same for all threads, but direct application use
- * of fe_setauthsvc is not thread-safe.  However, use of fe_setauthsvc is
- * deprecated anyway...
- */
-
-static int	pg_authsvc = -1;
-
-void
-fe_setauthsvc(const char *name, char *PQerrormsg)
-{
-	int			i;
-
-	for (i = 0; i < n_authsvcs; ++i)
-		if (strcmp(name, authsvcs[i].name) == 0)
-		{
-			pg_authsvc = i;
-			break;
-		}
-	if (i == n_authsvcs)
-	{
-		snprintf(PQerrormsg, PQERRORMSG_LENGTH,
-				 libpq_gettext("invalid authentication service name \"%s\", ignored\n"),
-				 name);
-	}
-	return;
-}
-
-MsgType
-fe_getauthsvc(char *PQerrormsg)
-{
-	if (pg_authsvc < 0 || pg_authsvc >= n_authsvcs)
-	{
-		fe_setauthsvc(DEFAULT_CLIENT_AUTHSVC, PQerrormsg);
-		if (pg_authsvc < 0 || pg_authsvc >= n_authsvcs)
-		{
-			/* Can only get here if DEFAULT_CLIENT_AUTHSVC is misdefined */
-			return 0;
-		}
-	}
-	return authsvcs[pg_authsvc].msgtype;
-}
 
 /*
- * fe_getauthname -- returns a pointer to dynamic space containing whatever
+ * pg_fe_getauthname -- returns a pointer to dynamic space containing whatever
  *					 name the user has authenticated to the system
- * if there is an error, return the error message in PQerrormsg
+ *
+ * if there is an error, return NULL with an error message in PQerrormsg
  */
 char *
-fe_getauthname(char *PQerrormsg)
+pg_fe_getauthname(char *PQerrormsg)
 {
 	const char *name = NULL;
 	char	   *authn;
-	MsgType		authsvc;
+
 #ifdef WIN32
 	char		username[128];
 	DWORD		namesize = sizeof(username) - 1;
@@ -736,26 +500,23 @@ fe_getauthname(char *PQerrormsg)
 	struct passwd *pw = NULL;
 #endif
 
-	authsvc = fe_getauthsvc(PQerrormsg);
-
-	/* this just guards against broken DEFAULT_CLIENT_AUTHSVC, see above */
-	if (authsvc == 0)
-		return NULL;			/* leave original error message in place */
-
+	/*
+	 *	pglock_thread() really only needs to be called around
+	 *	pg_krb5_authname(), but some users are using configure
+	 *	--enable-thread-safety-force, so we might as well do
+	 *	the locking within our library to protect pqGetpwuid().
+	 *	In fact, application developers can use getpwuid()
+	 *	in their application if they use the locking call we
+	 *	provide, or install their own locking function using
+	 *	PQregisterThreadLock().
+	 */
 	pglock_thread();
 
-#ifdef KRB4
-	if (authsvc == STARTUP_KRB4_MSG)
-		name = pg_krb4_authname(PQerrormsg);
-#endif
 #ifdef KRB5
-	if (authsvc == STARTUP_KRB5_MSG)
-		name = pg_krb5_authname(PQerrormsg);
+	name = pg_krb5_authname(PQerrormsg);
 #endif
 
-	if (authsvc == STARTUP_MSG
-		|| (authsvc == STARTUP_KRB4_MSG && !name)
-		|| (authsvc == STARTUP_KRB5_MSG && !name))
+	if (!name)
 	{
 #ifdef WIN32
 		if (GetUserName(username, &namesize))
@@ -765,11 +526,6 @@ fe_getauthname(char *PQerrormsg)
 			name = pw->pw_name;
 #endif
 	}
-
-	if (authsvc != STARTUP_MSG && authsvc != STARTUP_KRB4_MSG && authsvc != STARTUP_KRB5_MSG)
-		snprintf(PQerrormsg, PQERRORMSG_LENGTH,
-				 libpq_gettext("fe_getauthname: invalid authentication system: %d\n"),
-				 authsvc);
 
 	authn = name ? strdup(name) : NULL;
 

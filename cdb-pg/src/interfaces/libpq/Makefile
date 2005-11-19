@@ -5,7 +5,7 @@
 # Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
 # Portions Copyright (c) 1994, Regents of the University of California
 #
-# $PostgreSQL: pgsql/src/interfaces/libpq/Makefile,v 1.126.4.4 2005/04/29 14:07:34 momjian Exp $
+# $PostgreSQL: pgsql/src/interfaces/libpq/Makefile,v 1.138 2005/08/29 00:47:35 momjian Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -17,12 +17,13 @@ include $(top_builddir)/src/Makefile.global
 # shared library parameters
 NAME= pq
 SO_MAJOR_VERSION= 4
-SO_MINOR_VERSION= 0
-
+SO_MINOR_VERSION= 1
 DLTYPE= library
 
 override CPPFLAGS :=  -DFRONTEND -I$(srcdir) $(CPPFLAGS) -I$(top_builddir)/src/port
+ifneq ($(PORTNAME), win32)
 override CFLAGS += $(PTHREAD_CFLAGS)
+endif
 
 # Need to recomple any libpgport object files
 LIBS := $(patsubst -lpgport,, $(LIBS))
@@ -44,9 +45,7 @@ libpqrc.o: libpq.rc
 	windres -i libpq.rc -o libpqrc.o
 
 ifeq ($(enable_thread_safety), yes)
-# This doesn't work yet because configure test fails.  2004-06-19
 OBJS += pthread-win32.o
-PTHREAD_H_WIN32 = pthread.h
 endif
 endif
 
@@ -54,13 +53,17 @@ endif
 # Add libraries that libpq depends (or might depend) on into the
 # shared library link.  (The order in which you list them here doesn't
 # matter.)
-SHLIB_LINK += $(filter -lcrypt -ldes -lkrb -lcom_err -lcrypto -lk5crypto -lkrb5 -lssl -lsocket -lnsl -lresolv -lintl, $(LIBS)) $(PTHREAD_LIBS)
+ifneq ($(PORTNAME), win32)
+SHLIB_LINK += $(filter -lcrypt -ldes -lcom_err -lcrypto -lk5crypto -lkrb5 -lssl -lsocket -lnsl -lresolv -lintl, $(LIBS)) $(PTHREAD_LIBS)
+else
+SHLIB_LINK += $(filter -lcrypt -ldes -lcom_err -lcrypto -lk5crypto -lkrb5 -lssl -lsocket -lnsl -lresolv -lintl $(PTHREAD_LIBS), $(LIBS))
+endif
 ifeq ($(PORTNAME), win32)
 SHLIB_LINK += -lshfolder -lwsock32 -lws2_32 $(filter -leay32 -lssleay32 -lcomerr32 -lkrb5_32, $(LIBS))
 endif
 
 
-all: $(PTHREAD_H_WIN32) def-files $(srcdir)/libpq.rc all-lib
+all: def-files $(srcdir)/libpq.rc all-lib
 
 # Shared library stuff
 include $(top_srcdir)/src/Makefile.shlib
@@ -123,11 +126,6 @@ $(srcdir)/blibpqdll.def: exports.txt
 $(srcdir)/libpq.rc: libpq.rc.in $(top_builddir)/src/Makefile.global
 	sed -e 's/\(VERSION.*\),0 *$$/\1,'`date '+%y%j' | sed 's/^0*//'`'/' < $< > $@
 
-ifneq ($(PTHREAD_H_WIN32), "")
-pthread.h: $(top_srcdir)/src/interfaces/libpq/pthread.h.win
-	rm -f $@ && $(LN_S) $< .
-endif
-
 fe-connect.o: fe-connect.c $(top_builddir)/src/port/pg_config_paths.h
 
 $(top_builddir)/src/port/pg_config_paths.h:
@@ -146,7 +144,7 @@ uninstall: uninstall-lib
 	rm -f $(DESTDIR)$(includedir)/libpq-fe.h $(DESTDIR)$(includedir_internal)/libpq-int.h $(DESTDIR)$(includedir_internal)/pqexpbuffer.h
 
 clean distclean: clean-lib
-	rm -f $(OBJS) crypt.c getaddrinfo.c inet_aton.c noblock.c pgstrcasecmp.c snprintf.c strerror.c open.c thread.c md5.c ip.c encnames.c wchar.c pthread.h
+	rm -f $(OBJS) pg_config_paths.h crypt.c getaddrinfo.c inet_aton.c noblock.c pgstrcasecmp.c snprintf.c strerror.c open.c thread.c md5.c ip.c encnames.c wchar.c pthread.h
 	rm -f pg_config_paths.h	# Might be left over from a Win32 client-only build
 
 maintainer-clean: distclean

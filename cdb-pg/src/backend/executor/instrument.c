@@ -7,7 +7,7 @@
  * Copyright (c) 2001-2005, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/instrument.c,v 1.9 2005/01/01 05:43:06 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/instrument.c,v 1.13 2005/10/15 02:49:17 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -18,13 +18,13 @@
 #include "executor/instrument.h"
 
 
-/* Allocate new instrumentation structure */
+/* Allocate new instrumentation structure(s) */
 Instrumentation *
-InstrAlloc(void)
+InstrAlloc(int n)
 {
-	Instrumentation *instr = palloc(sizeof(Instrumentation));
+	Instrumentation *instr = palloc0(n * sizeof(Instrumentation));
 
-	memset(instr, 0, sizeof(Instrumentation));
+	/* we don't need to do any initialization except zero 'em */
 
 	return instr;
 }
@@ -33,32 +33,31 @@ InstrAlloc(void)
 void
 InstrStartNode(Instrumentation *instr)
 {
-	if (!instr)
-		return;
-
-	if (instr->starttime.tv_sec != 0 || instr->starttime.tv_usec != 0)
-		elog(DEBUG2, "InstrStartNode called twice in a row");
+	if (INSTR_TIME_IS_ZERO(instr->starttime))
+		INSTR_TIME_SET_CURRENT(instr->starttime);
 	else
-		gettimeofday(&instr->starttime, NULL);
+		elog(DEBUG2, "InstrStartNode called twice in a row");
 }
 
 /* Exit from a plan node */
 void
 InstrStopNode(Instrumentation *instr, bool returnedTuple)
 {
-	struct timeval endtime;
+	instr_time	endtime;
 
-	if (!instr)
-		return;
+	/* count the returned tuples */
+	if (returnedTuple)
+		instr->tuplecount += 1;
 
-	if (instr->starttime.tv_sec == 0 && instr->starttime.tv_usec == 0)
+	if (INSTR_TIME_IS_ZERO(instr->starttime))
 	{
-		elog(DEBUG2, "InstrStopNode without start");
+		elog(DEBUG2, "InstrStopNode called without start");
 		return;
 	}
 
-	gettimeofday(&endtime, NULL);
+	INSTR_TIME_SET_CURRENT(endtime);
 
+#ifndef WIN32
 	instr->counter.tv_sec += endtime.tv_sec - instr->starttime.tv_sec;
 	instr->counter.tv_usec += endtime.tv_usec - instr->starttime.tv_usec;
 
@@ -73,20 +72,29 @@ InstrStopNode(Instrumentation *instr, bool returnedTuple)
 		instr->counter.tv_usec -= 1000000;
 		instr->counter.tv_sec++;
 	}
+#else							/* WIN32 */
+	instr->counter.QuadPart += (endtime.QuadPart - instr->starttime.QuadPart);
+#endif
 
-	instr->starttime.tv_sec = 0;
-	instr->starttime.tv_usec = 0;
+	INSTR_TIME_SET_ZERO(instr->starttime);
 
 	/* Is this the first tuple of this cycle? */
 	if (!instr->running)
 	{
 		instr->running = true;
-		instr->firsttuple = (double) instr->counter.tv_sec +
-			(double) instr->counter.tv_usec / 1000000.0;
+		instr->firsttuple = INSTR_TIME_GET_DOUBLE(instr->counter);
 	}
+}
 
-	if (returnedTuple)
-		instr->tuplecount += 1;
+/* As above, but count multiple tuples returned at once */
+void
+InstrStopNodeMulti(Instrumentation *instr, double nTuples)
+{
+	/* count the returned tuples */
+	instr->tuplecount += nTuples;
+
+	/* delegate the rest */
+	InstrStopNode(instr, false);
 }
 
 /* Finish a run cycle for a plan node */
@@ -95,16 +103,15 @@ InstrEndLoop(Instrumentation *instr)
 {
 	double		totaltime;
 
-	if (!instr)
-		return;
-
 	/* Skip if nothing has happened, or already shut down */
 	if (!instr->running)
 		return;
 
-	/* Accumulate statistics */
-	totaltime = (double) instr->counter.tv_sec +
-		(double) instr->counter.tv_usec / 1000000.0;
+	if (!INSTR_TIME_IS_ZERO(instr->starttime))
+		elog(DEBUG2, "InstrEndLoop called on running node");
+
+	/* Accumulate per-cycle statistics into totals */
+	totaltime = INSTR_TIME_GET_DOUBLE(instr->counter);
 
 	instr->startup += instr->firsttuple;
 	instr->total += totaltime;
@@ -113,10 +120,8 @@ InstrEndLoop(Instrumentation *instr)
 
 	/* Reset for next cycle (if any) */
 	instr->running = false;
-	instr->starttime.tv_sec = 0;
-	instr->starttime.tv_usec = 0;
-	instr->counter.tv_sec = 0;
-	instr->counter.tv_usec = 0;
+	INSTR_TIME_SET_ZERO(instr->starttime);
+	INSTR_TIME_SET_ZERO(instr->counter);
 	instr->firsttuple = 0;
 	instr->tuplecount = 0;
 }

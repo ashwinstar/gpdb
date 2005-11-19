@@ -15,7 +15,7 @@
  *		PQexec() or PQfn().  In this case, the results are sent
  *		to the frontend via the functions in backend/libpq.
  *
- *	  - None is the destination when the system executes
+ *	  - DestNone is the destination when the system executes
  *		a query internally.  The results are discarded.
  *
  * dest.c defines three functions that implement destination management:
@@ -31,7 +31,7 @@
  * destination.  The executor, as well as utility statements that can return
  * tuples, are passed the resulting DestReceiver* pointer.	Each executor run
  * or utility execution calls the receiver's rStartup method, then the
- * receiveTuple method (zero or more times), then the rShutdown method.
+ * receiveSlot method (zero or more times), then the rShutdown method.
  * The same receiver object may be re-used multiple times; eventually it is
  * destroyed by calling its rDestroy method.
  *
@@ -47,21 +47,21 @@
  * object not to disappear while still needed.
  *
  * Special provision: None_Receiver is a permanently available receiver
- * object for the None destination.  This avoids useless creation/destroy
+ * object for the DestNone destination.  This avoids useless creation/destroy
  * calls in portal and cursor manipulations.
  *
  *
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/tcop/dest.h,v 1.45 2004/12/31 22:03:44 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/tcop/dest.h,v 1.48 2005/11/03 17:11:40 alvherre Exp $
  *
  *-------------------------------------------------------------------------
  */
 #ifndef DEST_H
 #define DEST_H
 
-#include "access/htup.h"
+#include "executor/tuptable.h"
 
 
 /* buffer size to use for command completion tags */
@@ -72,19 +72,19 @@
  *		CommandDest is a simplistic means of identifying the desired
  *		destination.  Someday this will probably need to be improved.
  *
- * Note: only the values None, Debug, Remote are legal for the global
- * variable whereToSendOutput.	The other values may be used
+ * Note: only the values DestNone, DestDebug, DestRemote are legal for the
+ * global variable whereToSendOutput.	The other values may be used
  * as the destination for individual commands.
  * ----------------
  */
 typedef enum
 {
-	None,						/* results are discarded */
-	Debug,						/* results go to debugging output */
-	Remote,						/* results sent to frontend process */
-	RemoteExecute,				/* sent to frontend, in Execute command */
-	SPI,						/* results sent to SPI manager */
-	Tuplestore					/* results sent to Tuplestore */
+	DestNone,				/* results are discarded */
+	DestDebug,				/* results go to debugging output */
+	DestRemote,				/* results sent to frontend process */
+	DestRemoteExecute,		/* sent to frontend, in Execute command */
+	DestSPI,				/* results sent to SPI manager */
+	DestTuplestore			/* results sent to Tuplestore */
 } CommandDest;
 
 /* ----------------
@@ -92,10 +92,8 @@ typedef enum
  *		In the simplest cases, there is no state info, just the function
  *		pointers that the executor must call.
  *
- * Note: the receiveTuple routine must be passed a TupleDesc identical to the
- * one given to the rStartup routine.  The reason for passing it again is just
- * that some destinations would otherwise need dynamic state merely to
- * remember the tupledesc pointer.
+ * Note: the receiveSlot routine must be passed a slot containing a TupleDesc
+ * identical to the one given to the rStartup routine.
  * ----------------
  */
 typedef struct _DestReceiver DestReceiver;
@@ -103,9 +101,8 @@ typedef struct _DestReceiver DestReceiver;
 struct _DestReceiver
 {
 	/* Called for each tuple to be output: */
-	void		(*receiveTuple) (HeapTuple tuple,
-											 TupleDesc typeinfo,
-											 DestReceiver *self);
+	void		(*receiveSlot) (TupleTableSlot *slot,
+											DestReceiver *self);
 	/* Per-executor-run initialization and shutdown: */
 	void		(*rStartup) (DestReceiver *self,
 										 int operation,
@@ -118,7 +115,7 @@ struct _DestReceiver
 	/* Private fields might appear beyond this point... */
 };
 
-extern DestReceiver *None_Receiver;		/* permanent receiver for None */
+extern DestReceiver *None_Receiver;		/* permanent receiver for DestNone */
 
 /* This is a forward reference to utils/portal.h */
 

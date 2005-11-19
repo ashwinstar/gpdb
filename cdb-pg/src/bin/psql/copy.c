@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2000-2005, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/copy.c,v 1.55 2005/01/01 05:43:08 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/copy.c,v 1.58 2005/10/15 02:49:40 momjian Exp $
  */
 #include "postgres_fe.h"
 #include "copy.h"
@@ -66,6 +66,7 @@ struct copy_options
 	bool		binary;
 	bool		oids;
 	bool		csv_mode;
+	bool		header;
 	char	   *delim;
 	char	   *null;
 	char	   *quote;
@@ -150,9 +151,8 @@ parse_slash_copy(const char *args)
 		goto error;
 
 	/*
-	 * strtokx() will not have returned a multi-character token starting
-	 * with '.', so we don't need strcmp() here.  Likewise for '(', etc,
-	 * below.
+	 * strtokx() will not have returned a multi-character token starting with
+	 * '.', so we don't need strcmp() here.  Likewise for '(', etc, below.
 	 */
 	if (token[0] == '.')
 	{
@@ -271,8 +271,8 @@ parse_slash_copy(const char *args)
 	if (token)
 	{
 		/*
-		 * WITH is optional.  Also, the backend will allow WITH followed
-		 * by nothing, so we do too.
+		 * WITH is optional.  Also, the backend will allow WITH followed by
+		 * nothing, so we do too.
 		 */
 		if (pg_strcasecmp(token, "with") == 0)
 			token = strtokx(NULL, whitespace, NULL, NULL,
@@ -289,6 +289,8 @@ parse_slash_copy(const char *args)
 				result->oids = true;
 			else if (pg_strcasecmp(token, "csv") == 0)
 				result->csv_mode = true;
+			else if (pg_strcasecmp(token, "header") == 0)
+				result->header = true;
 			else if (pg_strcasecmp(token, "delimiter") == 0)
 			{
 				token = strtokx(NULL, whitespace, NULL, "'",
@@ -481,6 +483,9 @@ do_copy(const char *args)
 	if (options->csv_mode)
 		appendPQExpBuffer(&query, " CSV");
 
+	if (options->header)
+		appendPQExpBuffer(&query, " HEADER");
+
 	if (options->quote)
 	{
 		if (options->quote[0] == '\'')
@@ -665,8 +670,8 @@ handleCopyIn(PGconn *conn, FILE *copystream)
 	if (isatty(fileno(copystream)))
 	{
 		if (!QUIET())
-			puts(gettext("Enter data to be copied followed by a newline.\n"
-			  "End with a backslash and a period on a line by itself."));
+			puts(_("Enter data to be copied followed by a newline.\n"
+				   "End with a backslash and a period on a line by itself."));
 		prompt = get_prompt(PROMPT_COPY);
 	}
 	else
@@ -708,8 +713,8 @@ handleCopyIn(PGconn *conn, FILE *copystream)
 			if (c == EOF && s == copybuf && firstload)
 			{
 				/*
-				 * We are guessing a little bit as to the right
-				 * line-ending here...
+				 * We are guessing a little bit as to the right line-ending
+				 * here...
 				 */
 				if (saw_cr)
 					PQputline(conn, "\\.\r\n");

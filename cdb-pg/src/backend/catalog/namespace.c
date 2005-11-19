@@ -13,22 +13,21 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/catalog/namespace.c,v 1.73 2004/12/31 21:59:38 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/catalog/namespace.c,v 1.79 2005/10/15 02:49:14 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
 #include "access/xact.h"
-#include "catalog/catname.h"
 #include "catalog/dependency.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_authid.h"
 #include "catalog/pg_conversion.h"
 #include "catalog/pg_namespace.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
-#include "catalog/pg_shadow.h"
 #include "catalog/pg_type.h"
 #include "commands/dbcommands.h"
 #include "lib/stringinfo.h"
@@ -45,6 +44,7 @@
 #include "utils/memutils.h"
 #include "utils/syscache.h"
 #include "cdb/cdbvars.h"
+
 
 /*
  * The namespace search path is a possibly-empty list of namespace OIDs.
@@ -109,7 +109,7 @@ static bool namespaceSearchPathValid = true;
  * command is first executed).	Thereafter it's the OID of the temp namespace.
  *
  * myTempNamespaceSubID shows whether we've created the TEMP namespace in the
- * current subtransaction.  The flag propagates up the subtransaction tree,
+ * current subtransaction.	The flag propagates up the subtransaction tree,
  * so the main transaction will correctly recognize the flag if all
  * intermediate subtransactions commit.  When it is InvalidSubTransactionId,
  * we either haven't made the TEMP namespace yet, or have successfully
@@ -226,7 +226,7 @@ RangeVarGetCreationNamespace(const RangeVar *newRelation)
 			ereport(ERROR,
 					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 					 errmsg("cross-database references are not implemented: \"%s.%s.%s\"",
-					   newRelation->catalogname, newRelation->schemaname,
+							newRelation->catalogname, newRelation->schemaname,
 							newRelation->relname)));
 	}
 
@@ -237,7 +237,7 @@ RangeVarGetCreationNamespace(const RangeVar *newRelation)
 		if (newRelation->schemaname)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-			  errmsg("temporary tables may not specify a schema name")));
+				  errmsg("temporary tables may not specify a schema name")));
 		/* Initialize temp namespace if first time through */
 		if (!OidIsValid(myTempNamespace))
 			InitTempTableNamespace();
@@ -248,7 +248,7 @@ RangeVarGetCreationNamespace(const RangeVar *newRelation)
 	{
 		/* use exact schema given */
 		namespaceId = GetSysCacheOid(NAMESPACENAME,
-								CStringGetDatum(newRelation->schemaname),
+									 CStringGetDatum(newRelation->schemaname),
 									 0, 0, 0);
 		if (!OidIsValid(namespaceId))
 			ereport(ERROR,
@@ -324,9 +324,9 @@ RelationIsVisible(Oid relid)
 	recomputeNamespacePath();
 
 	/*
-	 * Quick check: if it ain't in the path at all, it ain't visible.
-	 * Items in the system namespace are surely in the path and so we
-	 * needn't even do list_member_oid() for them.
+	 * Quick check: if it ain't in the path at all, it ain't visible. Items in
+	 * the system namespace are surely in the path and so we needn't even do
+	 * list_member_oid() for them.
 	 */
 	relnamespace = relform->relnamespace;
 	if (relnamespace != PG_CATALOG_NAMESPACE &&
@@ -335,14 +335,30 @@ RelationIsVisible(Oid relid)
 	else
 	{
 		/*
-		 * If it is in the path, it might still not be visible; it could
-		 * be hidden by another relation of the same name earlier in the
-		 * path. So we must do a slow check to see if this rel would be
-		 * found by RelnameGetRelid.
+		 * If it is in the path, it might still not be visible; it could be
+		 * hidden by another relation of the same name earlier in the path. So
+		 * we must do a slow check for conflicting relations.
 		 */
 		char	   *relname = NameStr(relform->relname);
+		ListCell   *l;
 
-		visible = (RelnameGetRelid(relname) == relid);
+		visible = false;
+		foreach(l, namespaceSearchPath)
+		{
+			Oid			namespaceId = lfirst_oid(l);
+
+			if (namespaceId == relnamespace)
+			{
+				/* Found it first in path */
+				visible = true;
+				break;
+			}
+			if (OidIsValid(get_relname_relid(relname, namespaceId)))
+			{
+				/* Found something else first in path */
+				break;
+			}
+		}
 	}
 
 	ReleaseSysCache(reltup);
@@ -406,9 +422,9 @@ TypeIsVisible(Oid typid)
 	recomputeNamespacePath();
 
 	/*
-	 * Quick check: if it ain't in the path at all, it ain't visible.
-	 * Items in the system namespace are surely in the path and so we
-	 * needn't even do list_member_oid() for them.
+	 * Quick check: if it ain't in the path at all, it ain't visible. Items in
+	 * the system namespace are surely in the path and so we needn't even do
+	 * list_member_oid() for them.
 	 */
 	typnamespace = typform->typnamespace;
 	if (typnamespace != PG_CATALOG_NAMESPACE &&
@@ -417,14 +433,33 @@ TypeIsVisible(Oid typid)
 	else
 	{
 		/*
-		 * If it is in the path, it might still not be visible; it could
-		 * be hidden by another type of the same name earlier in the path.
-		 * So we must do a slow check to see if this type would be found
-		 * by TypenameGetTypid.
+		 * If it is in the path, it might still not be visible; it could be
+		 * hidden by another type of the same name earlier in the path. So we
+		 * must do a slow check for conflicting types.
 		 */
 		char	   *typname = NameStr(typform->typname);
+		ListCell   *l;
 
-		visible = (TypenameGetTypid(typname) == typid);
+		visible = false;
+		foreach(l, namespaceSearchPath)
+		{
+			Oid			namespaceId = lfirst_oid(l);
+
+			if (namespaceId == typnamespace)
+			{
+				/* Found it first in path */
+				visible = true;
+				break;
+			}
+			if (SearchSysCacheExists(TYPENAMENSP,
+									 PointerGetDatum(typname),
+									 ObjectIdGetDatum(namespaceId),
+									 0, 0))
+			{
+				/* Found something else first in path */
+				break;
+			}
+		}
 	}
 
 	ReleaseSysCache(typtup);
@@ -472,25 +507,22 @@ FuncnameGetCandidates(List *names, int nargs)
 		recomputeNamespacePath();
 	}
 
-	/* Search syscache by name and (optionally) nargs only */
-	if (nargs >= 0)
-		catlist = SearchSysCacheList(PROCNAMENSP, 2,
-									 CStringGetDatum(funcname),
-									 Int16GetDatum(nargs),
-									 0, 0);
-	else
-		catlist = SearchSysCacheList(PROCNAMENSP, 1,
-									 CStringGetDatum(funcname),
-									 0, 0, 0);
+	/* Search syscache by name only */
+	catlist = SearchSysCacheList(PROCNAMEARGSNSP, 1,
+								 CStringGetDatum(funcname),
+								 0, 0, 0);
 
 	for (i = 0; i < catlist->n_members; i++)
 	{
 		HeapTuple	proctup = &catlist->members[i]->tuple;
 		Form_pg_proc procform = (Form_pg_proc) GETSTRUCT(proctup);
+		int			pronargs = procform->pronargs;
 		int			pathpos = 0;
 		FuncCandidateList newResult;
 
-		nargs = procform->pronargs;
+		/* Ignore if it doesn't match requested argument count */
+		if (nargs >= 0 && pronargs != nargs)
+			continue;
 
 		if (OidIsValid(namespaceId))
 		{
@@ -515,14 +547,14 @@ FuncnameGetCandidates(List *names, int nargs)
 
 			/*
 			 * Okay, it's in the search path, but does it have the same
-			 * arguments as something we already accepted?	If so, keep
-			 * only the one that appears earlier in the search path.
+			 * arguments as something we already accepted?	If so, keep only
+			 * the one that appears earlier in the search path.
 			 *
 			 * If we have an ordered list from SearchSysCacheList (the normal
-			 * case), then any conflicting proc must immediately adjoin
-			 * this one in the list, so we only need to look at the newest
-			 * result item.  If we have an unordered list, we have to scan
-			 * the whole result list.
+			 * case), then any conflicting proc must immediately adjoin this
+			 * one in the list, so we only need to look at the newest result
+			 * item.  If we have an unordered list, we have to scan the whole
+			 * result list.
 			 */
 			if (resultList)
 			{
@@ -530,9 +562,10 @@ FuncnameGetCandidates(List *names, int nargs)
 
 				if (catlist->ordered)
 				{
-					if (nargs == resultList->nargs &&
-						memcmp(procform->proargtypes, resultList->args,
-							   nargs * sizeof(Oid)) == 0)
+					if (pronargs == resultList->nargs &&
+						memcmp(procform->proargtypes.values,
+							   resultList->args,
+							   pronargs * sizeof(Oid)) == 0)
 						prevResult = resultList;
 					else
 						prevResult = NULL;
@@ -543,9 +576,10 @@ FuncnameGetCandidates(List *names, int nargs)
 						 prevResult;
 						 prevResult = prevResult->next)
 					{
-						if (nargs == prevResult->nargs &&
-						  memcmp(procform->proargtypes, prevResult->args,
-								 nargs * sizeof(Oid)) == 0)
+						if (pronargs == prevResult->nargs &&
+							memcmp(procform->proargtypes.values,
+								   prevResult->args,
+								   pronargs * sizeof(Oid)) == 0)
 							break;
 					}
 				}
@@ -568,11 +602,12 @@ FuncnameGetCandidates(List *names, int nargs)
 		 */
 		newResult = (FuncCandidateList)
 			palloc(sizeof(struct _FuncCandidateList) - sizeof(Oid)
-				   + nargs * sizeof(Oid));
+				   + pronargs * sizeof(Oid));
 		newResult->pathpos = pathpos;
 		newResult->oid = HeapTupleGetOid(proctup);
-		newResult->nargs = nargs;
-		memcpy(newResult->args, procform->proargtypes, nargs * sizeof(Oid));
+		newResult->nargs = pronargs;
+		memcpy(newResult->args, procform->proargtypes.values,
+			   pronargs * sizeof(Oid));
 
 		newResult->next = resultList;
 		resultList = newResult;
@@ -607,9 +642,9 @@ FunctionIsVisible(Oid funcid)
 	recomputeNamespacePath();
 
 	/*
-	 * Quick check: if it ain't in the path at all, it ain't visible.
-	 * Items in the system namespace are surely in the path and so we
-	 * needn't even do list_member_oid() for them.
+	 * Quick check: if it ain't in the path at all, it ain't visible. Items in
+	 * the system namespace are surely in the path and so we needn't even do
+	 * list_member_oid() for them.
 	 */
 	pronamespace = procform->pronamespace;
 	if (pronamespace != PG_CATALOG_NAMESPACE &&
@@ -618,10 +653,10 @@ FunctionIsVisible(Oid funcid)
 	else
 	{
 		/*
-		 * If it is in the path, it might still not be visible; it could
-		 * be hidden by another proc of the same name and arguments
-		 * earlier in the path.  So we must do a slow check to see if this
-		 * is the same proc that would be found by FuncnameGetCandidates.
+		 * If it is in the path, it might still not be visible; it could be
+		 * hidden by another proc of the same name and arguments earlier in
+		 * the path.  So we must do a slow check to see if this is the same
+		 * proc that would be found by FuncnameGetCandidates.
 		 */
 		char	   *proname = NameStr(procform->proname);
 		int			nargs = procform->pronargs;
@@ -633,7 +668,7 @@ FunctionIsVisible(Oid funcid)
 
 		for (; clist; clist = clist->next)
 		{
-			if (memcmp(clist->args, procform->proargtypes,
+			if (memcmp(clist->args, procform->proargtypes.values,
 					   nargs * sizeof(Oid)) == 0)
 			{
 				/* Found the expected entry; is it the right proc? */
@@ -700,13 +735,12 @@ OpernameGetCandidates(List *names, char oprkind)
 
 	/*
 	 * In typical scenarios, most if not all of the operators found by the
-	 * catcache search will end up getting returned; and there can be
-	 * quite a few, for common operator names such as '=' or '+'.  To
-	 * reduce the time spent in palloc, we allocate the result space as an
-	 * array large enough to hold all the operators.  The original coding
-	 * of this routine did a separate palloc for each operator, but
-	 * profiling revealed that the pallocs used an unreasonably large
-	 * fraction of parsing time.
+	 * catcache search will end up getting returned; and there can be quite a
+	 * few, for common operator names such as '=' or '+'.  To reduce the time
+	 * spent in palloc, we allocate the result space as an array large enough
+	 * to hold all the operators.  The original coding of this routine did a
+	 * separate palloc for each operator, but profiling revealed that the
+	 * pallocs used an unreasonably large fraction of parsing time.
 	 */
 #define SPACE_PER_OP MAXALIGN(sizeof(struct _FuncCandidateList) + sizeof(Oid))
 
@@ -747,14 +781,14 @@ OpernameGetCandidates(List *names, char oprkind)
 
 			/*
 			 * Okay, it's in the search path, but does it have the same
-			 * arguments as something we already accepted?	If so, keep
-			 * only the one that appears earlier in the search path.
+			 * arguments as something we already accepted?	If so, keep only
+			 * the one that appears earlier in the search path.
 			 *
 			 * If we have an ordered list from SearchSysCacheList (the normal
-			 * case), then any conflicting oper must immediately adjoin
-			 * this one in the list, so we only need to look at the newest
-			 * result item.  If we have an unordered list, we have to scan
-			 * the whole result list.
+			 * case), then any conflicting oper must immediately adjoin this
+			 * one in the list, so we only need to look at the newest result
+			 * item.  If we have an unordered list, we have to scan the whole
+			 * result list.
 			 */
 			if (resultList)
 			{
@@ -837,9 +871,9 @@ OperatorIsVisible(Oid oprid)
 	recomputeNamespacePath();
 
 	/*
-	 * Quick check: if it ain't in the path at all, it ain't visible.
-	 * Items in the system namespace are surely in the path and so we
-	 * needn't even do list_member_oid() for them.
+	 * Quick check: if it ain't in the path at all, it ain't visible. Items in
+	 * the system namespace are surely in the path and so we needn't even do
+	 * list_member_oid() for them.
 	 */
 	oprnamespace = oprform->oprnamespace;
 	if (oprnamespace != PG_CATALOG_NAMESPACE &&
@@ -848,11 +882,10 @@ OperatorIsVisible(Oid oprid)
 	else
 	{
 		/*
-		 * If it is in the path, it might still not be visible; it could
-		 * be hidden by another operator of the same name and arguments
-		 * earlier in the path.  So we must do a slow check to see if this
-		 * is the same operator that would be found by
-		 * OpernameGetCandidates.
+		 * If it is in the path, it might still not be visible; it could be
+		 * hidden by another operator of the same name and arguments earlier
+		 * in the path.  So we must do a slow check to see if this is the same
+		 * operator that would be found by OpernameGetCandidates.
 		 */
 		char	   *oprname = NameStr(oprform->oprname);
 		FuncCandidateList clist;
@@ -923,15 +956,14 @@ OpclassGetCandidates(Oid amid)
 			continue;			/* opclass is not in search path */
 
 		/*
-		 * Okay, it's in the search path, but does it have the same name
-		 * as something we already accepted?  If so, keep only the one
-		 * that appears earlier in the search path.
+		 * Okay, it's in the search path, but does it have the same name as
+		 * something we already accepted?  If so, keep only the one that
+		 * appears earlier in the search path.
 		 *
-		 * If we have an ordered list from SearchSysCacheList (the normal
-		 * case), then any conflicting opclass must immediately adjoin
-		 * this one in the list, so we only need to look at the newest
-		 * result item.  If we have an unordered list, we have to scan the
-		 * whole result list.
+		 * If we have an ordered list from SearchSysCacheList (the normal case),
+		 * then any conflicting opclass must immediately adjoin this one in
+		 * the list, so we only need to look at the newest result item.  If we
+		 * have an unordered list, we have to scan the whole result list.
 		 */
 		if (resultList)
 		{
@@ -1050,9 +1082,9 @@ OpclassIsVisible(Oid opcid)
 	recomputeNamespacePath();
 
 	/*
-	 * Quick check: if it ain't in the path at all, it ain't visible.
-	 * Items in the system namespace are surely in the path and so we
-	 * needn't even do list_member_oid() for them.
+	 * Quick check: if it ain't in the path at all, it ain't visible. Items in
+	 * the system namespace are surely in the path and so we needn't even do
+	 * list_member_oid() for them.
 	 */
 	opcnamespace = opcform->opcnamespace;
 	if (opcnamespace != PG_CATALOG_NAMESPACE &&
@@ -1061,10 +1093,10 @@ OpclassIsVisible(Oid opcid)
 	else
 	{
 		/*
-		 * If it is in the path, it might still not be visible; it could
-		 * be hidden by another opclass of the same name earlier in the
-		 * path. So we must do a slow check to see if this opclass would
-		 * be found by OpclassnameGetOpcid.
+		 * If it is in the path, it might still not be visible; it could be
+		 * hidden by another opclass of the same name earlier in the path. So
+		 * we must do a slow check to see if this opclass would be found by
+		 * OpclassnameGetOpcid.
 		 */
 		char	   *opcname = NameStr(opcform->opcname);
 
@@ -1131,9 +1163,9 @@ ConversionIsVisible(Oid conid)
 	recomputeNamespacePath();
 
 	/*
-	 * Quick check: if it ain't in the path at all, it ain't visible.
-	 * Items in the system namespace are surely in the path and so we
-	 * needn't even do list_member_oid() for them.
+	 * Quick check: if it ain't in the path at all, it ain't visible. Items in
+	 * the system namespace are surely in the path and so we needn't even do
+	 * list_member_oid() for them.
 	 */
 	connamespace = conform->connamespace;
 	if (connamespace != PG_CATALOG_NAMESPACE &&
@@ -1142,10 +1174,10 @@ ConversionIsVisible(Oid conid)
 	else
 	{
 		/*
-		 * If it is in the path, it might still not be visible; it could
-		 * be hidden by another conversion of the same name earlier in the
-		 * path. So we must do a slow check to see if this conversion
-		 * would be found by ConversionGetConid.
+		 * If it is in the path, it might still not be visible; it could be
+		 * hidden by another conversion of the same name earlier in the path.
+		 * So we must do a slow check to see if this conversion would be found
+		 * by ConversionGetConid.
 		 */
 		char	   *conname = NameStr(conform->conname);
 
@@ -1193,14 +1225,14 @@ DeconstructQualifiedName(List *names,
 			if (strcmp(catalogname, get_database_name(MyDatabaseId)) != 0)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						 errmsg("cross-database references are not implemented: %s",
-								NameListToString(names))));
+				  errmsg("cross-database references are not implemented: %s",
+						 NameListToString(names))));
 			break;
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-			errmsg("improper qualified name (too many dotted names): %s",
-				   NameListToString(names))));
+				errmsg("improper qualified name (too many dotted names): %s",
+					   NameListToString(names))));
 			break;
 	}
 
@@ -1238,10 +1270,41 @@ LookupExplicitNamespace(const char *nspname)
 }
 
 /*
+ * LookupCreationNamespace
+ *		Look up the schema and verify we have CREATE rights on it.
+ *
+ * This is just like LookupExplicitNamespace except for the permission check.
+ */
+Oid
+LookupCreationNamespace(const char *nspname)
+{
+	Oid			namespaceId;
+	AclResult	aclresult;
+
+	namespaceId = GetSysCacheOid(NAMESPACENAME,
+								 CStringGetDatum(nspname),
+								 0, 0, 0);
+	if (!OidIsValid(namespaceId))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_SCHEMA),
+				 errmsg("schema \"%s\" does not exist", nspname)));
+
+	aclresult = pg_namespace_aclcheck(namespaceId, GetUserId(), ACL_CREATE);
+	if (aclresult != ACLCHECK_OK)
+		aclcheck_error(aclresult, ACL_KIND_NAMESPACE,
+					   nspname);
+
+	return namespaceId;
+}
+
+/*
  * QualifiedNameGetCreationNamespace
  *		Given a possibly-qualified name for an object (in List-of-Values
  *		format), determine what namespace the object should be created in.
  *		Also extract and return the object name (last component of list).
+ *
+ * Note: this does not apply any permissions check.  Callers must check
+ * for CREATE rights on the selected namespace when appropriate.
  *
  * This is *not* used for tables.  Hence, the TEMP table namespace is
  * never selected as the creation target.
@@ -1279,8 +1342,6 @@ QualifiedNameGetCreationNamespace(List *names, char **objname_p)
 					 errmsg("no schema has been selected to create in")));
 	}
 
-	/* Note: callers will check for CREATE rights when appropriate */
-
 	*objname_p = objname;
 	return namespaceId;
 }
@@ -1311,8 +1372,8 @@ makeRangeVarFromNameList(List *names)
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-			 errmsg("improper relation name (too many dotted names): %s",
-					NameListToString(names))));
+				 errmsg("improper relation name (too many dotted names): %s",
+						NameListToString(names))));
 			break;
 	}
 
@@ -1381,25 +1442,36 @@ isTempNamespace(Oid namespaceId)
 }
 
 /*
- * isOtherTempNamespace - is the given namespace some other backend's
- * temporary-table namespace?
+ * isAnyTempNamespace - is the given namespace a temporary-table namespace
+ * (either my own, or another backend's)?
  */
 bool
-isOtherTempNamespace(Oid namespaceId)
+isAnyTempNamespace(Oid namespaceId)
 {
 	bool		result;
 	char	   *nspname;
 
-	/* If it's my own temp namespace, say "false" */
-	if (isTempNamespace(namespaceId))
-		return false;
-	/* Else, if the namespace name starts with "pg_temp_", say "true" */
+	/* If the namespace name starts with "pg_temp_", say "true" */
 	nspname = get_namespace_name(namespaceId);
 	if (!nspname)
 		return false;			/* no such namespace? */
 	result = (strncmp(nspname, "pg_temp_", 8) == 0);
 	pfree(nspname);
 	return result;
+}
+
+/*
+ * isOtherTempNamespace - is the given namespace some other backend's
+ * temporary-table namespace?
+ */
+bool
+isOtherTempNamespace(Oid namespaceId)
+{
+	/* If it's my own temp namespace, say "false" */
+	if (isTempNamespace(namespaceId))
+		return false;
+	/* Else, if the namespace name starts with "pg_temp_", say "true" */
+	return isAnyTempNamespace(namespaceId);
 }
 
 /*
@@ -1501,7 +1573,7 @@ FindDefaultConversionProc(int4 for_encoding, int4 to_encoding)
 static void
 recomputeNamespacePath(void)
 {
-	AclId		userId = GetUserId();
+	Oid			roleid = GetUserId();
 	char	   *rawname;
 	List	   *namelist;
 	List	   *oidlist;
@@ -1513,7 +1585,7 @@ recomputeNamespacePath(void)
 	/*
 	 * Do nothing if path is already valid.
 	 */
-	if (namespaceSearchPathValid && namespaceUser == userId)
+	if (namespaceSearchPathValid && namespaceUser == roleid)
 		return;
 
 	/* Need a modifiable copy of namespace_search_path string */
@@ -1529,9 +1601,9 @@ recomputeNamespacePath(void)
 
 	/*
 	 * Convert the list of names to a list of OIDs.  If any names are not
-	 * recognizable or we don't have read access, just leave them out of
-	 * the list.  (We can't raise an error, since the search_path setting
-	 * has already been accepted.)	Don't make duplicate entries, either.
+	 * recognizable or we don't have read access, just leave them out of the
+	 * list.  (We can't raise an error, since the search_path setting has
+	 * already been accepted.)	Don't make duplicate entries, either.
 	 */
 	oidlist = NIL;
 	foreach(l, namelist)
@@ -1544,21 +1616,21 @@ recomputeNamespacePath(void)
 			/* $user --- substitute namespace matching user name, if any */
 			HeapTuple	tuple;
 
-			tuple = SearchSysCache(SHADOWSYSID,
-								   ObjectIdGetDatum(userId),
+			tuple = SearchSysCache(AUTHOID,
+								   ObjectIdGetDatum(roleid),
 								   0, 0, 0);
 			if (HeapTupleIsValid(tuple))
 			{
-				char	   *uname;
+				char	   *rname;
 
-				uname = NameStr(((Form_pg_shadow) GETSTRUCT(tuple))->usename);
+				rname = NameStr(((Form_pg_authid) GETSTRUCT(tuple))->rolname);
 				namespaceId = GetSysCacheOid(NAMESPACENAME,
-											 CStringGetDatum(uname),
+											 CStringGetDatum(rname),
 											 0, 0, 0);
 				ReleaseSysCache(tuple);
 				if (OidIsValid(namespaceId) &&
 					!list_member_oid(oidlist, namespaceId) &&
-					pg_namespace_aclcheck(namespaceId, userId,
+					pg_namespace_aclcheck(namespaceId, roleid,
 										  ACL_USAGE) == ACLCHECK_OK)
 					oidlist = lappend_oid(oidlist, namespaceId);
 			}
@@ -1571,7 +1643,7 @@ recomputeNamespacePath(void)
 										 0, 0, 0);
 			if (OidIsValid(namespaceId) &&
 				!list_member_oid(oidlist, namespaceId) &&
-				pg_namespace_aclcheck(namespaceId, userId,
+				pg_namespace_aclcheck(namespaceId, roleid,
 									  ACL_USAGE) == ACLCHECK_OK)
 				oidlist = lappend_oid(oidlist, namespaceId);
 		}
@@ -1586,8 +1658,8 @@ recomputeNamespacePath(void)
 		firstNS = linitial_oid(oidlist);
 
 	/*
-	 * Add any implicitly-searched namespaces to the list.	Note these go
-	 * on the front, not the back; also notice that we do not check USAGE
+	 * Add any implicitly-searched namespaces to the list.	Note these go on
+	 * the front, not the back; also notice that we do not check USAGE
 	 * permissions for these.
 	 */
 	if (!list_member_oid(oidlist, PG_CATALOG_NAMESPACE))
@@ -1602,8 +1674,8 @@ recomputeNamespacePath(void)
 		oidlist = lcons_oid(mySpecialNamespace, oidlist);
 
 	/*
-	 * Now that we've successfully built the new list of namespace OIDs,
-	 * save it in permanent storage.
+	 * Now that we've successfully built the new list of namespace OIDs, save
+	 * it in permanent storage.
 	 */
 	oldcxt = MemoryContextSwitchTo(TopMemoryContext);
 	newpath = list_copy(oidlist);
@@ -1624,7 +1696,7 @@ recomputeNamespacePath(void)
 
 	/* Mark the path valid. */
 	namespaceSearchPathValid = true;
-	namespaceUser = userId;
+	namespaceUser = roleid;
 
 	/* Clean up. */
 	pfree(rawname);
@@ -1644,14 +1716,13 @@ InitTempTableNamespace(void)
 
 	/*
 	 * First, do permission check to see if we are authorized to make temp
-	 * tables.	We use a nonstandard error message here since
-	 * "databasename: permission denied" might be a tad cryptic.
+	 * tables.	We use a nonstandard error message here since "databasename:
+	 * permission denied" might be a tad cryptic.
 	 *
-	 * Note that ACL_CREATE_TEMP rights are rechecked in
-	 * pg_namespace_aclmask; that's necessary since current user ID could
-	 * change during the session. But there's no need to make the
-	 * namespace in the first place until a temp table creation request is
-	 * made by someone with appropriate rights.
+	 * Note that ACL_CREATE_TEMP rights are rechecked in pg_namespace_aclmask;
+	 * that's necessary since current user ID could change during the session.
+	 * But there's no need to make the namespace in the first place until a
+	 * temp table creation request is made by someone with appropriate rights.
 	 */
 	if (pg_database_aclcheck(MyDatabaseId, GetUserId(),
 							 ACL_CREATE_TEMP) != ACLCHECK_OK)
@@ -1668,31 +1739,30 @@ InitTempTableNamespace(void)
 	if (!OidIsValid(namespaceId))
 	{
 		/*
-		 * First use of this temp namespace in this database; create it.
-		 * The temp namespaces are always owned by the superuser.  We
-		 * leave their permissions at default --- i.e., no access except
-		 * to superuser --- to ensure that unprivileged users can't peek
-		 * at other backends' temp tables.  This works because the places
-		 * that access the temp namespace for my own backend skip
-		 * permissions checks on it.
+		 * First use of this temp namespace in this database; create it. The
+		 * temp namespaces are always owned by the superuser.  We leave their
+		 * permissions at default --- i.e., no access except to superuser ---
+		 * to ensure that unprivileged users can't peek at other backends'
+		 * temp tables.  This works because the places that access the temp
+		 * namespace for my own backend skip permissions checks on it.
 		 */
-		namespaceId = NamespaceCreate(namespaceName, BOOTSTRAP_USESYSID, 0);
+		namespaceId = NamespaceCreate(namespaceName, BOOTSTRAP_SUPERUSERID, 0);
 		/* Advance command counter to make namespace visible */
 		CommandCounterIncrement();
 	}
 	else
 	{
 		/*
-		 * If the namespace already exists, clean it out (in case the
-		 * former owner crashed without doing so).
+		 * If the namespace already exists, clean it out (in case the former
+		 * owner crashed without doing so).
 		 */
 		RemoveTempRelations(namespaceId);
 	}
 
 	/*
-	 * Okay, we've prepared the temp namespace ... but it's not committed
-	 * yet, so all our work could be undone by transaction rollback.  Set
-	 * flag for AtEOXact_Namespace to know what to do.
+	 * Okay, we've prepared the temp namespace ... but it's not committed yet,
+	 * so all our work could be undone by transaction rollback.  Set flag for
+	 * AtEOXact_Namespace to know what to do.
 	 */
 	myTempNamespace = namespaceId;
 
@@ -1711,11 +1781,11 @@ AtEOXact_Namespace(bool isCommit)
 {
 	/*
 	 * If we abort the transaction in which a temp namespace was selected,
-	 * we'll have to do any creation or cleanout work over again.  So,
-	 * just forget the namespace entirely until next time.	On the other
-	 * hand, if we commit then register an exit callback to clean out the
-	 * temp tables at backend shutdown.  (We only want to register the
-	 * callback once per session, so this is a good place to do it.)
+	 * we'll have to do any creation or cleanout work over again.  So, just
+	 * forget the namespace entirely until next time.  On the other hand, if
+	 * we commit then register an exit callback to clean out the temp tables
+	 * at backend shutdown.  (We only want to register the callback once per
+	 * session, so this is a good place to do it.)
 	 */
 	if (myTempNamespaceSubID != InvalidSubTransactionId)
 	{
@@ -1779,12 +1849,12 @@ RemoveTempRelations(Oid tempNamespaceId)
 	ObjectAddress object;
 
 	/*
-	 * We want to get rid of everything in the target namespace, but not
-	 * the namespace itself (deleting it only to recreate it later would
-	 * be a waste of cycles).  We do this by finding everything that has a
+	 * We want to get rid of everything in the target namespace, but not the
+	 * namespace itself (deleting it only to recreate it later would be a
+	 * waste of cycles).  We do this by finding everything that has a
 	 * dependency on the namespace.
 	 */
-	object.classId = get_system_catalog_relid(NamespaceRelationName);
+	object.classId = NamespaceRelationId;
 	object.objectId = tempNamespaceId;
 	object.objectSubId = 0;
 
@@ -1843,15 +1913,13 @@ assign_search_path(const char *newval, bool doit, GucSource source)
 		/*
 		 * Verify that all the names are either valid namespace names or
 		 * "$user".  We do not require $user to correspond to a valid
-		 * namespace.  We do not check for USAGE rights, either; should
-		 * we?
+		 * namespace.  We do not check for USAGE rights, either; should we?
 		 *
-		 * When source == PGC_S_TEST, we are checking the argument of an
-		 * ALTER DATABASE SET or ALTER USER SET command.  It could be that
-		 * the intended use of the search path is for some other database,
-		 * so we should not error out if it mentions schemas not present
-		 * in the current database.  We reduce the message to NOTICE
-		 * instead.
+		 * When source == PGC_S_TEST, we are checking the argument of an ALTER
+		 * DATABASE SET or ALTER USER SET command.	It could be that the
+		 * intended use of the search path is for some other database, so we
+		 * should not error out if it mentions schemas not present in the
+		 * current database.  We reduce the message to NOTICE instead.
 		 */
 		foreach(l, namelist)
 		{
@@ -1864,7 +1932,7 @@ assign_search_path(const char *newval, bool doit, GucSource source)
 									  0, 0, 0))
 				ereport((source == PGC_S_TEST) ? NOTICE : ERROR,
 						(errcode(ERRCODE_UNDEFINED_SCHEMA),
-					   errmsg("schema \"%s\" does not exist", curname)));
+						 errmsg("schema \"%s\" does not exist", curname)));
 		}
 	}
 
@@ -1872,9 +1940,9 @@ assign_search_path(const char *newval, bool doit, GucSource source)
 	list_free(namelist);
 
 	/*
-	 * We mark the path as needing recomputation, but don't do anything
-	 * until it's needed.  This avoids trying to do database access during
-	 * GUC initialization.
+	 * We mark the path as needing recomputation, but don't do anything until
+	 * it's needed.  This avoids trying to do database access during GUC
+	 * initialization.
 	 */
 	if (doit)
 		namespaceSearchPathValid = false;
@@ -1894,8 +1962,7 @@ InitializeSearchPath(void)
 	{
 		/*
 		 * In bootstrap mode, the search path must be 'pg_catalog' so that
-		 * tables are created in the proper namespace; ignore the GUC
-		 * setting.
+		 * tables are created in the proper namespace; ignore the GUC setting.
 		 */
 		MemoryContext oldcxt;
 
@@ -1910,8 +1977,8 @@ InitializeSearchPath(void)
 	else
 	{
 		/*
-		 * In normal mode, arrange for a callback on any syscache
-		 * invalidation of pg_namespace rows.
+		 * In normal mode, arrange for a callback on any syscache invalidation
+		 * of pg_namespace rows.
 		 */
 		CacheRegisterSyscacheCallback(NAMESPACEOID,
 									  NamespaceCallback,

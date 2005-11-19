@@ -6,7 +6,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/port/win32/socket.c,v 1.8 2004/12/31 22:00:37 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/port/win32/socket.c,v 1.10 2005/10/25 15:15:16 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -93,7 +93,7 @@ TranslateSocketError(void)
 static int
 pgwin32_poll_signals(void)
 {
-	if (WaitForSingleObjectEx(pgwin32_signal_event, 0, TRUE) == WAIT_OBJECT_0)
+	if (UNBLOCKED_SIGNAL_QUEUE())
 	{
 		pgwin32_dispatch_queued_signals();
 		errno = EINTR;
@@ -178,8 +178,8 @@ pgwin32_accept(SOCKET s, struct sockaddr * addr, int *addrlen)
 	SOCKET		rs;
 
 	/*
-	 * Poll for signals, but don't return with EINTR, since we don't
-	 * handle that in pqcomm.c
+	 * Poll for signals, but don't return with EINTR, since we don't handle
+	 * that in pqcomm.c
 	 */
 	pgwin32_poll_signals();
 
@@ -351,8 +351,8 @@ pgwin32_select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, c
 				if (WSAGetLastError() != WSAEWOULDBLOCK)
 
 					/*
-					 * Not completed, and not just "would block", so an
-					 * error occured
+					 * Not completed, and not just "would block", so an error
+					 * occured
 					 */
 					FD_SET(writefds->fd_array[i], &outwritefds);
 			}
@@ -423,8 +423,8 @@ pgwin32_select(int nfds, fd_set *readfds, fd_set *writefds, fd_set *exceptfds, c
 	if (r != WAIT_TIMEOUT && r != WAIT_IO_COMPLETION && r != (WAIT_OBJECT_0 + numevents))
 	{
 		/*
-		 * We scan all events, even those not signalled, in case more than
-		 * one event has been tagged but Wait.. can only return one.
+		 * We scan all events, even those not signalled, in case more than one
+		 * event has been tagged but Wait.. can only return one.
 		 */
 		WSANETWORKEVENTS resEvents;
 

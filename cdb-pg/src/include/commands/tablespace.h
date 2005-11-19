@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/commands/tablespace.h,v 1.8 2004/12/31 22:03:28 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/commands/tablespace.h,v 1.11 2005/10/15 02:49:44 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -25,18 +25,18 @@ typedef struct xl_tblspc_create_rec
 {
 	Oid			ts_id;
 	char		ts_path[1];		/* VARIABLE LENGTH STRING */
-}	xl_tblspc_create_rec;
+} xl_tblspc_create_rec;
 
 typedef struct xl_tblspc_drop_rec
 {
 	Oid			ts_id;
-}	xl_tblspc_drop_rec;
+} xl_tblspc_drop_rec;
 
 
 extern void CreateTableSpace(CreateTableSpaceStmt *stmt);
 extern void DropTableSpace(DropTableSpaceStmt *stmt);
 extern void RenameTableSpace(const char *oldname, const char *newname);
-extern void AlterTableSpaceOwner(const char *name, AclId newOwnerSysId);
+extern void AlterTableSpaceOwner(const char *name, Oid newOwnerId);
 
 extern void TablespaceCreateDbspace(Oid spcNode, Oid dbNode, bool isRedo);
 
@@ -48,7 +48,6 @@ extern char *get_tablespace_name(Oid spc_oid);
 extern bool directory_is_empty(const char *path);
 
 extern void tblspc_redo(XLogRecPtr lsn, XLogRecord *rptr);
-extern void tblspc_undo(XLogRecPtr lsn, XLogRecord *rptr);
 extern void tblspc_desc(char *buf, uint8 xl_info, char *rec);
 
 #endif   /* TABLESPACE_H */

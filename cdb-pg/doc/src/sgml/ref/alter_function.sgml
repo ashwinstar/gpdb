@@ -1,5 +1,5 @@
 <!--
-$PostgreSQL: pgsql/doc/src/sgml/ref/alter_function.sgml,v 1.5 2004/06/25 21:55:50 tgl Exp $
+$PostgreSQL: pgsql/doc/src/sgml/ref/alter_function.sgml,v 1.10 2005/11/01 21:09:50 tgl Exp $
 PostgreSQL documentation
 -->
 
@@ -20,8 +20,20 @@ PostgreSQL documentation
 
  <refsynopsisdiv>
 <synopsis>
-ALTER FUNCTION <replaceable>name</replaceable> ( [ <replaceable class="parameter">type</replaceable> [, ...] ] ) RENAME TO <replaceable>newname</replaceable>
-ALTER FUNCTION <replaceable>name</replaceable> ( [ <replaceable class="parameter">type</replaceable> [, ...] ] ) OWNER TO <replaceable>newowner</replaceable>
+ALTER FUNCTION <replaceable>name</replaceable> ( [ [ <replaceable class="parameter">argmode</replaceable> ] [ <replaceable class="parameter">argname</replaceable> ] <replaceable class="parameter">argtype</replaceable> [, ...] ] )
+    <replaceable class="PARAMETER">action</replaceable> [, ... ] [ RESTRICT ]
+ALTER FUNCTION <replaceable>name</replaceable> ( [ [ <replaceable class="parameter">argmode</replaceable> ] [ <replaceable class="parameter">argname</replaceable> ] <replaceable class="parameter">argtype</replaceable> [, ...] ] )
+    RENAME TO <replaceable>new_name</replaceable>
+ALTER FUNCTION <replaceable>name</replaceable> ( [ [ <replaceable class="parameter">argmode</replaceable> ] [ <replaceable class="parameter">argname</replaceable> ] <replaceable class="parameter">argtype</replaceable> [, ...] ] )
+    OWNER TO <replaceable>new_owner</replaceable>
+ALTER FUNCTION <replaceable>name</replaceable> ( [ [ <replaceable class="parameter">argmode</replaceable> ] [ <replaceable class="parameter">argname</replaceable> ] <replaceable class="parameter">argtype</replaceable> [, ...] ] )
+    SET SCHEMA <replaceable>new_schema</replaceable>
+
+where <replaceable class="PARAMETER">action</replaceable> is one of:
+
+    CALLED ON NULL INPUT | RETURNS NULL ON NULL INPUT | STRICT
+    IMMUTABLE | STABLE | VOLATILE
+    [ EXTERNAL ] SECURITY INVOKER | [ EXTERNAL ] SECURITY DEFINER
 </synopsis>
  </refsynopsisdiv>
   
@@ -31,6 +43,17 @@ ALTER FUNCTION <replaceable>name</replaceable> ( [ <replaceable class="parameter
   <para>
    <command>ALTER FUNCTION</command> changes the definition of a
    function.
+  </para>
+
+  <para>
+   You must own the function to use <command>ALTER FUNCTION</>.
+   To change a function's schema, you must also have <literal>CREATE</>
+   privilege on the new schema.
+   To alter the owner, you must also be a direct or indirect member of the new
+   owning role, and that role must have <literal>CREATE</literal> privilege on
+   the function's schema.  (These restrictions enforce that altering the owner
+   doesn't do anything you couldn't do by dropping and recreating the function.
+   However, a superuser can alter ownership of any function anyway.)
   </para>
  </refsect1>
   
@@ -48,16 +71,47 @@ ALTER FUNCTION <replaceable>name</replaceable> ( [ <replaceable class="parameter
    </varlistentry>
 
    <varlistentry>
-    <term><replaceable class="parameter">type</replaceable></term>
+    <term><replaceable class="parameter">argmode</replaceable></term>
+
     <listitem>
      <para>
-      The data type of an argument of the function.
+      The mode of an argument: either <literal>IN</>, <literal>OUT</>,
+      or <literal>INOUT</>.  If omitted, the default is <literal>IN</>.
+      Note that <command>ALTER FUNCTION</command> does not actually pay
+      any attention to <literal>OUT</> arguments, since only the input
+      arguments are needed to determine the function's identity.
+      So it is sufficient to list the <literal>IN</> and <literal>INOUT</>
+      arguments.
      </para>
     </listitem>
    </varlistentry>
 
    <varlistentry>
-    <term><replaceable class="parameter">newname</replaceable></term>
+    <term><replaceable class="parameter">argname</replaceable></term>
+
+    <listitem>
+     <para>
+      The name of an argument.
+      Note that <command>ALTER FUNCTION</command> does not actually pay
+      any attention to argument names, since only the argument data
+      types are needed to determine the function's identity.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">argtype</replaceable></term>
+
+    <listitem>
+     <para>
+      The data type(s) of the function's arguments (optionally 
+      schema-qualified), if any.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_name</replaceable></term>
     <listitem>
      <para>
       The new name of the function.
@@ -66,14 +120,76 @@ ALTER FUNCTION <replaceable>name</replaceable> ( [ <replaceable class="parameter
    </varlistentry>
 
    <varlistentry>
-    <term><replaceable class="parameter">newowner</replaceable></term>
+    <term><replaceable class="parameter">new_owner</replaceable></term>
     <listitem>
      <para>
-      The new owner of the function.
-      To change the owner of a function, you must be a superuser.
-      Note that if the function is marked
-      <literal>SECURITY DEFINER</literal>,
-      it will subsequently execute as the new owner.
+      The new owner of the function.  Note that if the function is
+      marked <literal>SECURITY DEFINER</literal>, it will subsequently
+      execute as the new owner.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><replaceable class="parameter">new_schema</replaceable></term>
+    <listitem>
+     <para>
+      The new schema for the function.
+     </para>
+    </listitem>
+   </varlistentry>
+
+    <varlistentry>
+     <term><literal>CALLED ON NULL INPUT</literal></term>
+     <term><literal>RETURNS NULL ON NULL INPUT</literal></term>
+     <term><literal>STRICT</literal></term>
+
+     <listitem>
+      <para>
+       <literal>CALLED ON NULL INPUT</literal> changes the function so
+       that it will be invoked when some or all of its arguments are
+       null. <literal>RETURNS NULL ON NULL INPUT</literal> or
+       <literal>STRICT</literal> changes the function so that it is not
+       invoked if any of its arguments are null; instead, a null result
+       is assumed automatically.  See <xref
+       linkend="sql-createfunction"> for more information.
+      </para>
+     </listitem>
+   </varlistentry>
+
+    <varlistentry>
+     <term><literal>IMMUTABLE</literal></term>
+     <term><literal>STABLE</literal></term>
+     <term><literal>VOLATILE</literal></term>
+
+     <listitem>
+      <para>
+       Change the volatility of the function to the specified
+       setting.  See <xref linkend="sql-createfunction"> for details.
+      </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal><optional> EXTERNAL </optional> SECURITY INVOKER</literal></term>
+    <term><literal><optional> EXTERNAL </optional> SECURITY DEFINER</literal></term>
+
+    <listitem>
+     <para>
+      Change whether the function is a security definer or not. The
+      key word <literal>EXTERNAL</literal> is ignored for SQL
+      conformance. See <xref linkend="sql-createfunction"> for more
+      information about this capability.
+     </para>
+    </listitem>
+   </varlistentry>
+
+   <varlistentry>
+    <term><literal>RESTRICT</literal></term>
+
+    <listitem>
+     <para>
+      Ignored for conformance with the SQL standard.
      </para>
     </listitem>
    </varlistentry>
@@ -98,15 +214,27 @@ ALTER FUNCTION sqrt(integer) RENAME TO square_root;
 ALTER FUNCTION sqrt(integer) OWNER TO joe;
 </programlisting>
   </para>
+
+  <para>
+   To change the schema of the function <literal>sqrt</literal> for type
+   <type>integer</type> to <literal>maths</literal>:
+<programlisting>
+ALTER FUNCTION sqrt(integer) SET SCHEMA maths;
+</programlisting>
+  </para>
  </refsect1>
 
  <refsect1>
   <title>Compatibility</title>
 
   <para>
-   There is an <command>ALTER FUNCTION</command> statement in the SQL
-   standard, but it does not provide the option to rename the
-   function or change the owner.
+   This statement is partially compatible with the <command>ALTER
+   FUNCTION</> statement in the SQL standard. The standard allows more
+   properties of a function to be modified, but does not provide the
+   ability to rename a function, make a function a security definer,
+   or change the owner, schema, or volatility of a function. The standard also
+   requires the <literal>RESTRICT</> key word, which is optional in
+   <productname>PostgreSQL</>.
   </para>
  </refsect1>
 

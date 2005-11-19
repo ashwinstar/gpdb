@@ -1,4 +1,4 @@
- /*-------------------------------------------------------------------------
+/*-------------------------------------------------------------------------
  *
  * htup.h
  *	  POSTGRES heap tuple definitions.
@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/access/htup.h,v 1.72 2004/12/31 22:03:21 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/access/htup.h,v 1.78 2005/10/15 02:49:42 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -80,6 +80,21 @@
  * However, with the advent of subtransactions, a tuple may need both Xmax
  * and Cmin simultaneously, so this is no longer possible.
  *
+ * A word about t_ctid: whenever a new tuple is stored on disk, its t_ctid
+ * is initialized with its own TID (location).	If the tuple is ever updated,
+ * its t_ctid is changed to point to the replacement version of the tuple.
+ * Thus, a tuple is the latest version of its row iff XMAX is invalid or
+ * t_ctid points to itself (in which case, if XMAX is valid, the tuple is
+ * either locked or deleted).  One can follow the chain of t_ctid links
+ * to find the newest version of the row.  Beware however that VACUUM might
+ * erase the pointed-to (newer) tuple before erasing the pointing (older)
+ * tuple.  Hence, when following a t_ctid link, it is necessary to check
+ * to see if the referenced slot is empty or contains an unrelated tuple.
+ * Check that the referenced tuple has XMIN equal to the referencing tuple's
+ * XMAX to verify that it is actually the descendant version and not an
+ * unrelated tuple stored into a slot recently freed by VACUUM.  If either
+ * check fails, one may assume that there is no live descendant version.
+ *
  * Following the fixed header fields, the nulls bitmap is stored (beginning
  * at t_bits).	The bitmap is *not* stored if t_infomask shows that there
  * are no nulls in the tuple.  If an OID field is present (as indicated by
@@ -93,11 +108,11 @@ typedef struct HeapTupleFields
 {
 	TransactionId t_xmin;		/* inserting xact ID */
 	CommandId	t_cmin;			/* inserting command ID */
-	TransactionId t_xmax;		/* deleting xact ID */
+	TransactionId t_xmax;		/* deleting or locking xact ID */
 
 	union
 	{
-		CommandId	t_cmax;		/* deleting command ID */
+		CommandId	t_cmax;		/* deleting or locking command ID */
 		TransactionId t_xvac;	/* VACUUM FULL xact ID */
 	}			t_field4;
 } HeapTupleFields;
@@ -146,25 +161,25 @@ typedef HeapTupleHeaderData *HeapTupleHeader;
  */
 #define HEAP_HASNULL			0x0001	/* has null attribute(s) */
 #define HEAP_HASVARWIDTH		0x0002	/* has variable-width attribute(s) */
-#define HEAP_HASEXTERNAL		0x0004	/* has external stored
-										 * attribute(s) */
-#define HEAP_HASCOMPRESSED		0x0008	/* has compressed stored
-										 * attribute(s) */
+#define HEAP_HASEXTERNAL		0x0004	/* has external stored attribute(s) */
+#define HEAP_HASCOMPRESSED		0x0008	/* has compressed stored attribute(s) */
 #define HEAP_HASEXTENDED		0x000C	/* the two above combined */
 #define HEAP_HASOID				0x0010	/* has an object-id field */
-/* 0x0020 and 0x0040 are unused */
-#define HEAP_XMAX_UNLOGGED		0x0080	/* to lock tuple for update
-										 * without logging */
+/* 0x0020 is presently unused */
+#define HEAP_XMAX_EXCL_LOCK		0x0040	/* xmax is exclusive locker */
+#define HEAP_XMAX_SHARED_LOCK	0x0080	/* xmax is shared locker */
+/* if either LOCK bit is set, xmax hasn't deleted the tuple, only locked it */
+#define HEAP_IS_LOCKED	(HEAP_XMAX_EXCL_LOCK | HEAP_XMAX_SHARED_LOCK)
 #define HEAP_XMIN_COMMITTED		0x0100	/* t_xmin committed */
 #define HEAP_XMIN_INVALID		0x0200	/* t_xmin invalid/aborted */
 #define HEAP_XMAX_COMMITTED		0x0400	/* t_xmax committed */
 #define HEAP_XMAX_INVALID		0x0800	/* t_xmax invalid/aborted */
-#define HEAP_MARKED_FOR_UPDATE	0x1000	/* marked for UPDATE */
+#define HEAP_XMAX_IS_MULTI		0x1000	/* t_xmax is a MultiXactId */
 #define HEAP_UPDATED			0x2000	/* this is UPDATEd version of row */
-#define HEAP_MOVED_OFF			0x4000	/* moved to another place by
-										 * VACUUM FULL */
-#define HEAP_MOVED_IN			0x8000	/* moved from another place by
-										 * VACUUM FULL */
+#define HEAP_MOVED_OFF			0x4000	/* moved to another place by VACUUM
+										 * FULL */
+#define HEAP_MOVED_IN			0x8000	/* moved from another place by VACUUM
+										 * FULL */
 #define HEAP_MOVED (HEAP_MOVED_OFF | HEAP_MOVED_IN)
 
 #define HEAP_XACT_MASK			0xFFC0	/* visibility-related bits */
@@ -307,6 +322,16 @@ do { \
 	(BLCKSZ - MAXALIGN(sizeof(PageHeaderData) + MaxSpecialSpace))
 
 /*
+ * MaxHeapTuplesPerPage is an upper bound on the number of tuples that can
+ * fit on one heap page.  (Note that indexes could have more, because they
+ * use a smaller tuple header.)  We arrive at the divisor because each tuple
+ * must be maxaligned, and it must have an associated item pointer.
+ */
+#define MaxHeapTuplesPerPage	\
+	((int) ((BLCKSZ - offsetof(PageHeaderData, pd_linp)) / \
+			(MAXALIGN(offsetof(HeapTupleHeaderData, t_bits)) + sizeof(ItemIdData))))
+
+/*
  * MaxAttrSize is a somewhat arbitrary upper limit on the declared size of
  * data fields of char(n) and similar types.  It need not have anything
  * directly to do with the *actual* upper limit of varlena values, which
@@ -332,18 +357,29 @@ do { \
 /*
  * HeapTupleData is an in-memory data structure that points to a tuple.
  *
- * This new HeapTuple for version >= 6.5 and this is why it was changed:
+ * There are several ways in which this data structure is used:
  *
- * 1. t_len moved off on-disk tuple data - ItemIdData is used to get len;
- * 2. t_ctid above is not self tuple TID now - it may point to
- *	  updated version of tuple (required by MVCC);
- * 3. someday someone let tuple to cross block boundaries -
- *	  he have to add something below...
+ * * Pointer to a tuple in a disk buffer: t_data points directly into the
+ *	 buffer (which the code had better be holding a pin on, but this is not
+ *	 reflected in HeapTupleData itself).  t_datamcxt must be NULL.
  *
- * Change for 7.0:
- *	  Up to now t_data could be NULL, the memory location directly following
- *	  HeapTupleData, or pointing into a buffer. Now, it could also point to
- *	  a separate allocation that was done in the t_datamcxt memory context.
+ * * Pointer to nothing: t_data and t_datamcxt are NULL.  This is used as
+ *	 a failure indication in some functions.
+ *
+ * * Part of a palloc'd tuple: the HeapTupleData itself and the tuple
+ *	 form a single palloc'd chunk.  t_data points to the memory location
+ *	 immediately following the HeapTupleData struct (at offset HEAPTUPLESIZE),
+ *	 and t_datamcxt is the containing context.	This is used as the output
+ *	 format of heap_form_tuple and related routines.
+ *
+ * * Separately allocated tuple: t_data points to a palloc'd chunk that
+ *	 is not adjacent to the HeapTupleData, and t_datamcxt is the context
+ *	 containing that chunk.
+ *
+ * t_len should always be valid, except in the pointer-to-nothing case.
+ * t_self and t_tableOid should be valid if the HeapTupleData points to
+ * a disk buffer, or if it represents a copy of a tuple on disk.  They
+ * should be explicitly set invalid in manufactured tuples.
  */
 typedef struct HeapTupleData
 {
@@ -408,7 +444,8 @@ typedef HeapTupleData *HeapTuple;
 #define XLOG_HEAP_MOVE		0x30
 #define XLOG_HEAP_CLEAN		0x40
 #define XLOG_HEAP_NEWPAGE	0x50
-/* opcodes 0x60, 0x70 still free */
+#define XLOG_HEAP_LOCK		0x60
+/* opcode 0x70 still free */
 #define XLOG_HEAP_OPMASK	0x70
 /*
  * When we insert 1st item on new page in INSERT/UPDATE
@@ -497,5 +534,16 @@ typedef struct xl_heap_newpage
 } xl_heap_newpage;
 
 #define SizeOfHeapNewpage	(offsetof(xl_heap_newpage, blkno) + sizeof(BlockNumber))
+
+/* This is what we need to know about lock */
+typedef struct xl_heap_lock
+{
+	xl_heaptid	target;			/* locked tuple id */
+	TransactionId locking_xid;	/* might be a MultiXactId not xid */
+	bool		xid_is_mxact;	/* is it? */
+	bool		shared_lock;	/* shared or exclusive row lock? */
+} xl_heap_lock;
+
+#define SizeOfHeapLock	(offsetof(xl_heap_lock, shared_lock) + sizeof(bool))
 
 #endif   /* HTUP_H */

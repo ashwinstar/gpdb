@@ -54,17 +54,16 @@ WHERE (p1.typtype = 'c' AND p1.typrelid = 0) OR
 
 SELECT p1.oid, p1.typname
 FROM pg_type as p1
-WHERE p1.typtype in ('b') AND p1.typname NOT LIKE '\\_%' AND NOT EXISTS
+WHERE p1.typtype in ('b') AND p1.typname NOT LIKE E'\\_%' AND NOT EXISTS
     (SELECT 1 FROM pg_type as p2
      WHERE p2.typname = ('_' || p1.typname)::name AND
            p2.typelem = p1.oid);
 
--- Conversion routines must be provided except in 'c' entries.
+-- Text conversion routines must be provided.
 
 SELECT p1.oid, p1.typname
 FROM pg_type as p1
-WHERE p1.typtype != 'c' AND
-    (p1.typinput = 0 OR p1.typoutput = 0);
+WHERE (p1.typinput = 0 OR p1.typoutput = 0);
 
 -- Check for bogus typinput routines
 
@@ -72,8 +71,6 @@ SELECT p1.oid, p1.typname, p2.oid, p2.proname
 FROM pg_type AS p1, pg_proc AS p2
 WHERE p1.typinput = p2.oid AND p1.typtype in ('b', 'p') AND NOT
     ((p2.pronargs = 1 AND p2.proargtypes[0] = 'cstring'::regtype) OR
-     (p2.pronargs = 2 AND p2.proargtypes[0] = 'cstring'::regtype AND
-      p2.proargtypes[1] = 'oid'::regtype) OR
      (p2.pronargs = 3 AND p2.proargtypes[0] = 'cstring'::regtype AND
       p2.proargtypes[1] = 'oid'::regtype AND
       p2.proargtypes[2] = 'int4'::regtype));
@@ -88,11 +85,13 @@ WHERE p1.typinput = p2.oid AND p1.typtype in ('b', 'p') AND NOT
 ORDER BY 1;
 
 -- Varlena array types will point to array_in
+-- Exception as of 8.1: int2vector and oidvector have their own I/O routines
 SELECT p1.oid, p1.typname, p2.oid, p2.proname
 FROM pg_type AS p1, pg_proc AS p2
 WHERE p1.typinput = p2.oid AND p1.typtype in ('b', 'p') AND
     (p1.typelem != 0 AND p1.typlen < 0) AND NOT
-    (p2.oid = 'array_in'::regproc);
+    (p2.oid = 'array_in'::regproc)
+ORDER BY 1;
 
 -- Check for bogus typoutput routines
 
@@ -101,11 +100,10 @@ WHERE p1.typinput = p2.oid AND p1.typtype in ('b', 'p') AND
 SELECT p1.oid, p1.typname, p2.oid, p2.proname
 FROM pg_type AS p1, pg_proc AS p2
 WHERE p1.typoutput = p2.oid AND p1.typtype in ('b', 'p') AND NOT
-    ((p2.pronargs = 1 AND p2.proargtypes[0] = p1.oid) OR
-     (p2.pronargs = 2 AND p2.proargtypes[0] = p1.oid AND
-      p2.proargtypes[1] = 'oid'::regtype) OR
-     (p2.oid = 'array_out'::regproc AND
-      p1.typelem != 0 AND p1.typlen = -1))
+    (p2.pronargs = 1 AND
+     (p2.proargtypes[0] = p1.oid OR
+      (p2.oid = 'array_out'::regproc AND
+       p1.typelem != 0 AND p1.typlen = -1)))
 ORDER BY 1;
 
 SELECT p1.oid, p1.typname, p2.oid, p2.proname
@@ -119,8 +117,9 @@ SELECT p1.oid, p1.typname, p2.oid, p2.proname
 FROM pg_type AS p1, pg_proc AS p2
 WHERE p1.typreceive = p2.oid AND p1.typtype in ('b', 'p') AND NOT
     ((p2.pronargs = 1 AND p2.proargtypes[0] = 'internal'::regtype) OR
-     (p2.pronargs = 2 AND p2.proargtypes[0] = 'internal'::regtype AND
-      p2.proargtypes[1] = 'oid'::regtype));
+     (p2.pronargs = 3 AND p2.proargtypes[0] = 'internal'::regtype AND
+      p2.proargtypes[1] = 'oid'::regtype AND
+      p2.proargtypes[2] = 'int4'::regtype));
 
 -- As of 7.4, this check finds refcursor, which is borrowing
 -- other types' I/O routines
@@ -132,11 +131,19 @@ WHERE p1.typreceive = p2.oid AND p1.typtype in ('b', 'p') AND NOT
 ORDER BY 1;
 
 -- Varlena array types will point to array_recv
+-- Exception as of 8.1: int2vector and oidvector have their own I/O routines
 SELECT p1.oid, p1.typname, p2.oid, p2.proname
 FROM pg_type AS p1, pg_proc AS p2
 WHERE p1.typreceive = p2.oid AND p1.typtype in ('b', 'p') AND
     (p1.typelem != 0 AND p1.typlen < 0) AND NOT
-    (p2.oid = 'array_recv'::regproc);
+    (p2.oid = 'array_recv'::regproc)
+ORDER BY 1;
+
+-- Suspicious if typreceive doesn't take same number of args as typinput
+SELECT p1.oid, p1.typname, p2.oid, p2.proname, p3.oid, p3.proname
+FROM pg_type AS p1, pg_proc AS p2, pg_proc AS p3
+WHERE p1.typinput = p2.oid AND p1.typreceive = p3.oid AND
+    p2.pronargs != p3.pronargs;
 
 -- Check for bogus typsend routines
 
@@ -145,11 +152,10 @@ WHERE p1.typreceive = p2.oid AND p1.typtype in ('b', 'p') AND
 SELECT p1.oid, p1.typname, p2.oid, p2.proname
 FROM pg_type AS p1, pg_proc AS p2
 WHERE p1.typsend = p2.oid AND p1.typtype in ('b', 'p') AND NOT
-    ((p2.pronargs = 1 AND p2.proargtypes[0] = p1.oid) OR
-     (p2.pronargs = 2 AND p2.proargtypes[0] = p1.oid AND
-      p2.proargtypes[1] = 'oid'::regtype) OR
-     (p2.oid = 'array_send'::regproc AND
-      p1.typelem != 0 AND p1.typlen = -1))
+    (p2.pronargs = 1 AND
+     (p2.proargtypes[0] = p1.oid OR
+      (p2.oid = 'array_send'::regproc AND
+       p1.typelem != 0 AND p1.typlen = -1)))
 ORDER BY 1;
 
 SELECT p1.oid, p1.typname, p2.oid, p2.proname
@@ -160,12 +166,10 @@ WHERE p1.typsend = p2.oid AND p1.typtype in ('b', 'p') AND NOT
 -- **************** pg_class ****************
 
 -- Look for illegal values in pg_class fields
--- Modified for cdb2 schema entries
 
 SELECT p1.oid, p1.relname
 FROM pg_class as p1
-WHERE p1.relkind NOT IN ('r', 'i', 's', 'S', 't', 'v')
-AND p1.relname NOT IN ('table_descriptor');
+WHERE p1.relkind NOT IN ('r', 'i', 's', 'S', 'c', 't', 'v');
 
 -- Indexes should have an access method, others not.
 

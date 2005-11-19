@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/libpq/pqsignal.c,v 1.38 2004/12/31 21:59:50 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/libpq/pqsignal.c,v 1.41 2005/10/15 02:49:18 momjian Exp $
  *
  * NOTES
  *		This shouldn't be in libpq, but the monitor and some other
@@ -50,7 +50,6 @@
 sigset_t	UnBlockSig,
 			BlockSig,
 			AuthBlockSig;
-
 #else
 int			UnBlockSig,
 			BlockSig,
@@ -75,14 +74,17 @@ void
 pqinitmask(void)
 {
 #ifdef HAVE_SIGPROCMASK
+
 	sigemptyset(&UnBlockSig);
+
+	/* First set all signals, then clear some. */
 	sigfillset(&BlockSig);
 	sigfillset(&AuthBlockSig);
 
 	/*
-	 * Unmark those signals that should never be blocked. Some of these
-	 * signal names don't exist on all platforms.  Most do, but might as
-	 * well ifdef them all for consistency...
+	 * Unmark those signals that should never be blocked. Some of these signal
+	 * names don't exist on all platforms.  Most do, but might as well ifdef
+	 * them all for consistency...
 	 */
 #ifdef SIGTRAP
 	sigdelset(&BlockSig, SIGTRAP);
@@ -116,19 +118,24 @@ pqinitmask(void)
 	sigdelset(&BlockSig, SIGCONT);
 	sigdelset(&AuthBlockSig, SIGCONT);
 #endif
-#ifdef SIGTERM
-	sigdelset(&AuthBlockSig, SIGTERM);
-#endif
+
+/* Signals unique to Auth */
 #ifdef SIGQUIT
 	sigdelset(&AuthBlockSig, SIGQUIT);
+#endif
+#ifdef SIGTERM
+	sigdelset(&AuthBlockSig, SIGTERM);
 #endif
 #ifdef SIGALRM
 	sigdelset(&AuthBlockSig, SIGALRM);
 #endif
 #else
+	/* Set the signals we want. */
 	UnBlockSig = 0;
-	BlockSig = sigmask(SIGHUP) | sigmask(SIGQUIT) |
+	BlockSig = sigmask(SIGQUIT) |
 		sigmask(SIGTERM) | sigmask(SIGALRM) |
+	/* common signals between two */
+		sigmask(SIGHUP) |
 		sigmask(SIGINT) | sigmask(SIGUSR1) |
 		sigmask(SIGUSR2) | sigmask(SIGCHLD) |
 		sigmask(SIGWINCH) | sigmask(SIGFPE);

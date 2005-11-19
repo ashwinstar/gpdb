@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/storage/ipc/pmsignal.c,v 1.18 2004/12/31 22:00:56 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/storage/ipc/pmsignal.c,v 1.20 2005/10/15 02:49:25 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -48,7 +48,9 @@ PMSignalInit(void)
 	bool		found;
 
 	PMSignalFlags = (sig_atomic_t *)
-		ShmemInitStruct("PMSignalFlags", NUM_PMSIGNALS * sizeof(sig_atomic_t), &found);
+		ShmemInitStruct("PMSignalFlags",
+						NUM_PMSIGNALS * sizeof(sig_atomic_t),
+						&found);
 
 	if (!found)
 		MemSet(PMSignalFlags, 0, NUM_PMSIGNALS * sizeof(sig_atomic_t));
@@ -110,9 +112,9 @@ PostmasterIsAlive(bool amDirectChild)
 	{
 		/*
 		 * Use kill() to see if the postmaster is still alive.	This can
-		 * sometimes give a false positive result, since the postmaster's
-		 * PID may get recycled, but it is good enough for existing uses
-		 * by indirect children.
+		 * sometimes give a false positive result, since the postmaster's PID
+		 * may get recycled, but it is good enough for existing uses by
+		 * indirect children.
 		 */
 		return (kill(PostmasterPid, 0) == 0);
 	}

@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/storage/bufmgr.h,v 1.89.4.1 2005/03/18 16:16:20 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/storage/bufmgr.h,v 1.97 2005/10/15 02:49:46 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -27,21 +27,25 @@ extern DLLIMPORT int NBuffers;
 
 /* in bufmgr.c */
 extern bool zero_damaged_pages;
+extern double bgwriter_lru_percent;
+extern double bgwriter_all_percent;
+extern int	bgwriter_lru_maxpages;
+extern int	bgwriter_all_maxpages;
 
 /* in buf_init.c */
-extern DLLIMPORT Block *BufferBlockPointers;
-extern int32 *PrivateRefCount;
+extern DLLIMPORT char *BufferBlocks;
+extern DLLIMPORT int32 *PrivateRefCount;
 
 /* in localbuf.c */
 extern DLLIMPORT int NLocBuffer;
 extern DLLIMPORT Block *LocalBufferBlockPointers;
-extern int32 *LocalRefCount;
+extern DLLIMPORT int32 *LocalRefCount;
 
 /* special block number for ReadBuffer() */
 #define P_NEW	InvalidBlockNumber		/* grow the file to get a new page */
 
 /*
- * Buffer context lock modes
+ * Buffer content lock modes (mode argument for LockBuffer())
  */
 #define BUFFER_LOCK_UNLOCK		0
 #define BUFFER_LOCK_SHARE		1
@@ -103,7 +107,7 @@ extern int32 *LocalRefCount;
 	BufferIsLocal(buffer) ? \
 		LocalBufferBlockPointers[-(buffer) - 1] \
 	: \
-		BufferBlockPointers[(buffer) - 1] \
+		(Block) (BufferBlocks + ((Size) ((buffer) - 1)) * BLCKSZ) \
 )
 
 /*
@@ -119,17 +123,16 @@ extern Buffer ReleaseAndReadBuffer(Buffer buffer, Relation relation,
 
 extern void InitBufferPool(void);
 extern void InitBufferPoolAccess(void);
+extern void InitBufferPoolBackend(void);
 extern char *ShowBufferUsage(void);
 extern void ResetBufferUsage(void);
 extern void AtEOXact_Buffers(bool isCommit);
-extern void AtProcExit_Buffers(void);
 extern void PrintBufferLeakWarning(Buffer buffer);
 extern void FlushBufferPool(void);
 extern BlockNumber BufferGetBlockNumber(Buffer buffer);
 extern BlockNumber RelationGetNumberOfBlocks(Relation relation);
 extern void RelationTruncate(Relation rel, BlockNumber nblocks);
-extern void FlushRelationBuffers(Relation rel, BlockNumber firstDelBlock);
-extern void DropRelationBuffers(Relation rel);
+extern void FlushRelationBuffers(Relation rel);
 extern void DropRelFileNodeBuffers(RelFileNode rnode, bool istemp,
 					   BlockNumber firstDelBlock);
 extern void DropBuffers(Oid dbid);
@@ -137,7 +140,7 @@ extern void DropBuffers(Oid dbid);
 #ifdef NOT_USED
 extern void PrintPinnedBufs(void);
 #endif
-extern int	BufferShmemSize(void);
+extern Size BufferShmemSize(void);
 extern RelFileNode BufferGetFileNode(Buffer buffer);
 
 extern void SetBufferCommitInfoNeedsSave(Buffer buffer);
@@ -150,9 +153,12 @@ extern void LockBufferForCleanup(Buffer buffer);
 extern void AbortBufferIO(void);
 
 extern void BufmgrCommit(void);
-extern int	BufferSync(int percent, int maxpages);
+extern void BufferSync(void);
+extern void BgBufferSync(void);
 
-extern void InitLocalBuffer(void);
 extern void AtProcExit_LocalBuffers(void);
+
+/* in freelist.c */
+extern void StrategyHintVacuum(bool vacuum_active);
 
 #endif

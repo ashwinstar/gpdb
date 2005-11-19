@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	$PostgreSQL: pgsql/src/backend/utils/adt/oracle_compat.c,v 1.57.4.2 2005/03/16 01:49:20 momjian Exp $
+ *	$PostgreSQL: pgsql/src/backend/utils/adt/oracle_compat.c,v 1.64 2005/11/04 22:19:04 petere Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -87,12 +87,12 @@ texttowcs(const text *txt)
 	if (ncodes == (size_t) -1)
 	{
 		/*
-		 * Invalid multibyte character encountered.  We try to give a
-		 * useful error message by letting pg_verifymbstr check the
-		 * string.	But it's possible that the string is OK to us, and not
-		 * OK to mbstowcs --- this suggests that the LC_CTYPE locale is
-		 * different from the database encoding.  Give a generic error
-		 * message if verifymbstr can't find anything wrong.
+		 * Invalid multibyte character encountered.  We try to give a useful
+		 * error message by letting pg_verifymbstr check the string.  But it's
+		 * possible that the string is OK to us, and not OK to mbstowcs ---
+		 * this suggests that the LC_CTYPE locale is different from the
+		 * database encoding.  Give a generic error message if verifymbstr
+		 * can't find anything wrong.
 		 */
 		pg_verifymbstr(workstr, nbytes, false);
 		ereport(ERROR,
@@ -149,6 +149,116 @@ wcstotext(const wchar_t *str, int ncodes)
 #endif   /* USE_WIDE_UPPER_LOWER */
 
 
+/*
+ * On Windows, the "Unicode" locales assume UTF16 not UTF8 encoding.
+ * To make use of the upper/lower functionality, we need to map UTF8 to
+ * UTF16, which for some reason mbstowcs and wcstombs won't do for us.
+ * This conversion layer takes care of it.
+ */
+
+#ifdef WIN32
+
+/* texttowcs for the case of UTF8 to UTF16 */
+static wchar_t *
+win32_utf8_texttowcs(const text *txt)
+{
+	int			nbytes = VARSIZE(txt) - VARHDRSZ;
+	wchar_t    *result;
+	int			r;
+
+	/* Overflow paranoia */
+	if (nbytes < 0 ||
+		nbytes > (int) (INT_MAX / sizeof(wchar_t)) - 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 errmsg("out of memory")));
+
+	/* Output workspace cannot have more codes than input bytes */
+	result = (wchar_t *) palloc((nbytes + 1) * sizeof(wchar_t));
+
+	/* stupid Microsloth API does not work for zero-length input */
+	if (nbytes == 0)
+		r = 0;
+	else
+	{
+		/* Do the conversion */
+		r = MultiByteToWideChar(CP_UTF8, 0, VARDATA(txt), nbytes,
+								result, nbytes);
+
+		if (!r)					/* assume it's NO_UNICODE_TRANSLATION */
+		{
+			/* see notes above about error reporting */
+			pg_verifymbstr(VARDATA(txt), nbytes, false);
+			ereport(ERROR,
+					(errcode(ERRCODE_CHARACTER_NOT_IN_REPERTOIRE),
+					 errmsg("invalid multibyte character for locale"),
+					 errhint("The server's LC_CTYPE locale is probably incompatible with the database encoding.")));
+		}
+	}
+
+	Assert(r <= nbytes);
+	result[r] = 0;
+
+	return result;
+}
+
+/* wcstotext for the case of UTF16 to UTF8 */
+static text *
+win32_utf8_wcstotext(const wchar_t *str)
+{
+	text	   *result;
+	int			nbytes;
+	int			r;
+
+	nbytes = WideCharToMultiByte(CP_UTF8, 0, str, -1, NULL, 0, NULL, NULL);
+	if (nbytes == 0)			/* shouldn't happen */
+		ereport(ERROR,
+				(errcode(ERRCODE_CHARACTER_NOT_IN_REPERTOIRE),
+				 errmsg("UTF-16 to UTF-8 translation failed: %lu",
+						GetLastError())));
+
+	result = palloc(nbytes + VARHDRSZ);
+
+	r = WideCharToMultiByte(CP_UTF8, 0, str, -1, VARDATA(result), nbytes,
+							NULL, NULL);
+	if (r == 0)					/* shouldn't happen */
+		ereport(ERROR,
+				(errcode(ERRCODE_CHARACTER_NOT_IN_REPERTOIRE),
+				 errmsg("UTF-16 to UTF-8 translation failed: %lu",
+						GetLastError())));
+
+	VARATT_SIZEP(result) = nbytes + VARHDRSZ - 1;		/* -1 to ignore null */
+
+	return result;
+}
+
+/* interface layer to check which encoding is in use */
+
+static wchar_t *
+win32_texttowcs(const text *txt)
+{
+	if (GetDatabaseEncoding() == PG_UTF8)
+		return win32_utf8_texttowcs(txt);
+	else
+		return texttowcs(txt);
+}
+
+static text *
+win32_wcstotext(const wchar_t *str, int ncodes)
+{
+	if (GetDatabaseEncoding() == PG_UTF8)
+		return win32_utf8_wcstotext(str);
+	else
+		return wcstotext(str, ncodes);
+}
+
+/* use macros to cause routines below to call interface layer */
+
+#define texttowcs	win32_texttowcs
+#define wcstotext	win32_wcstotext
+#endif   /* WIN32 */
+
+
 /********************************************************************
  *
  * lower
@@ -167,7 +277,12 @@ Datum
 lower(PG_FUNCTION_ARGS)
 {
 #ifdef USE_WIDE_UPPER_LOWER
-	/* use wide char code only when max encoding length > 1 and ctype != C */
+
+	/*
+	 * Use wide char code only when max encoding length > 1 and ctype != C.
+	 * Some operating systems fail with multi-byte encodings and a C locale.
+	 * Also, for a C locale there is no need to process as multibyte.
+	 */
 	if (pg_database_encoding_max_length() > 1 && !lc_ctype_is_c())
 	{
 		text	   *string = PG_GETARG_TEXT_P(0);
@@ -194,8 +309,7 @@ lower(PG_FUNCTION_ARGS)
 		int			m;
 
 		/*
-		 * Since we copied the string, we can scribble directly on the
-		 * value
+		 * Since we copied the string, we can scribble directly on the value
 		 */
 		ptr = VARDATA(string);
 		m = VARSIZE(string) - VARHDRSZ;
@@ -229,7 +343,12 @@ Datum
 upper(PG_FUNCTION_ARGS)
 {
 #ifdef USE_WIDE_UPPER_LOWER
-	/* use wide char code only when max encoding length > 1 and ctype != C */
+
+	/*
+	 * Use wide char code only when max encoding length > 1 and ctype != C.
+	 * Some operating systems fail with multi-byte encodings and a C locale.
+	 * Also, for a C locale there is no need to process as multibyte.
+	 */
 	if (pg_database_encoding_max_length() > 1 && !lc_ctype_is_c())
 	{
 		text	   *string = PG_GETARG_TEXT_P(0);
@@ -256,8 +375,7 @@ upper(PG_FUNCTION_ARGS)
 		int			m;
 
 		/*
-		 * Since we copied the string, we can scribble directly on the
-		 * value
+		 * Since we copied the string, we can scribble directly on the value
 		 */
 		ptr = VARDATA(string);
 		m = VARSIZE(string) - VARHDRSZ;
@@ -294,7 +412,12 @@ Datum
 initcap(PG_FUNCTION_ARGS)
 {
 #ifdef USE_WIDE_UPPER_LOWER
-	/* use wide char code only when max encoding length > 1 and ctype != C */
+
+	/*
+	 * Use wide char code only when max encoding length > 1 and ctype != C.
+	 * Some operating systems fail with multi-byte encodings and a C locale.
+	 * Also, for a C locale there is no need to process as multibyte.
+	 */
 	if (pg_database_encoding_max_length() > 1 && !lc_ctype_is_c())
 	{
 		text	   *string = PG_GETARG_TEXT_P(0);
@@ -329,8 +452,7 @@ initcap(PG_FUNCTION_ARGS)
 		int			m;
 
 		/*
-		 * Since we copied the string, we can scribble directly on the
-		 * value
+		 * Since we copied the string, we can scribble directly on the value
 		 */
 		ptr = VARDATA(string);
 		m = VARSIZE(string) - VARHDRSZ;
@@ -609,8 +731,8 @@ dotrim(const char *string, int stringlen,
 		{
 			/*
 			 * In the multibyte-encoding case, build arrays of pointers to
-			 * character starts, so that we can avoid inefficient checks
-			 * in the inner loops.
+			 * character starts, so that we can avoid inefficient checks in
+			 * the inner loops.
 			 */
 			const char **stringchars;
 			const char **setchars;
@@ -705,8 +827,7 @@ dotrim(const char *string, int stringlen,
 		else
 		{
 			/*
-			 * In the single-byte-encoding case, we don't need such
-			 * overhead.
+			 * In the single-byte-encoding case, we don't need such overhead.
 			 */
 			if (doltrim)
 			{
@@ -1029,9 +1150,9 @@ translate(PG_FUNCTION_ARGS)
 	VARATT_SIZEP(result) = retlen + VARHDRSZ;
 
 	/*
-	 * There may be some wasted space in the result if deletions occurred,
-	 * but it's not worth reallocating it; the function result probably
-	 * won't live long anyway.
+	 * There may be some wasted space in the result if deletions occurred, but
+	 * it's not worth reallocating it; the function result probably won't live
+	 * long anyway.
 	 */
 
 	PG_RETURN_TEXT_P(result);

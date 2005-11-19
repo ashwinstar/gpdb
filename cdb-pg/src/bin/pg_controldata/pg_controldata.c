@@ -6,7 +6,7 @@
  * copyright (c) Oliver Elphick <olly@lfix.co.uk>, 2001;
  * licence: BSD
  *
- * $PostgreSQL: pgsql/src/bin/pg_controldata/pg_controldata.c,v 1.20 2004/09/23 00:47:44 neilc Exp $
+ * $PostgreSQL: pgsql/src/bin/pg_controldata/pg_controldata.c,v 1.27 2005/10/15 02:49:37 momjian Exp $
  */
 #include "postgres.h"
 
@@ -16,8 +16,6 @@
 #include <fcntl.h>
 
 #include "catalog/pg_control.h"
-
-#define _(x) gettext((x))
 
 
 static void
@@ -68,7 +66,7 @@ main(int argc, char *argv[])
 	int			fd;
 	char		ControlFilePath[MAXPGPATH];
 	char	   *DataDir;
-	crc64		crc;
+	pg_crc32	crc;
 	char		pgctime_str[128];
 	char		ckpttime_str[128];
 	char		sysident_str[32];
@@ -122,20 +120,20 @@ main(int argc, char *argv[])
 	close(fd);
 
 	/* Check the CRC. */
-	INIT_CRC64(crc);
-	COMP_CRC64(crc,
-			   (char *) &ControlFile + sizeof(crc64),
-			   sizeof(ControlFileData) - sizeof(crc64));
-	FIN_CRC64(crc);
+	INIT_CRC32(crc);
+	COMP_CRC32(crc,
+			   (char *) &ControlFile,
+			   offsetof(ControlFileData, crc));
+	FIN_CRC32(crc);
 
-	if (!EQ_CRC64(crc, ControlFile.crc))
+	if (!EQ_CRC32(crc, ControlFile.crc))
 		printf(_("WARNING: Calculated CRC checksum does not match value stored in file.\n"
 				 "Either the file is corrupt, or it has a different layout than this program\n"
-			 "is expecting.  The results below are untrustworthy.\n\n"));
+				 "is expecting.  The results below are untrustworthy.\n\n"));
 
 	/*
-	 * Use variable for format to suppress overly-anal-retentive gcc
-	 * warning about %c
+	 * Use variable for format to suppress overly-anal-retentive gcc warning
+	 * about %c
 	 */
 	strftime(pgctime_str, sizeof(pgctime_str), strftime_fmt,
 			 localtime(&(ControlFile.time)));
@@ -143,8 +141,8 @@ main(int argc, char *argv[])
 			 localtime(&(ControlFile.checkPointCopy.time)));
 
 	/*
-	 * Format system_identifier separately to keep platform-dependent
-	 * format code out of the translatable message string.
+	 * Format system_identifier separately to keep platform-dependent format
+	 * code out of the translatable message string.
 	 */
 	snprintf(sysident_str, sizeof(sysident_str), UINT64_FORMAT,
 			 ControlFile.system_identifier);
@@ -159,7 +157,7 @@ main(int argc, char *argv[])
 	printf(_("Latest checkpoint location:           %X/%X\n"),
 		   ControlFile.checkPoint.xlogid, ControlFile.checkPoint.xrecoff);
 	printf(_("Prior checkpoint location:            %X/%X\n"),
-		   ControlFile.prevCheckPoint.xlogid, ControlFile.prevCheckPoint.xrecoff);
+	  ControlFile.prevCheckPoint.xlogid, ControlFile.prevCheckPoint.xrecoff);
 	printf(_("Latest checkpoint's REDO location:    %X/%X\n"),
 		   ControlFile.checkPointCopy.redo.xlogid, ControlFile.checkPointCopy.redo.xrecoff);
 	printf(_("Latest checkpoint's UNDO location:    %X/%X\n"),
@@ -167,12 +165,16 @@ main(int argc, char *argv[])
 	printf(_("Latest checkpoint's TimeLineID:       %u\n"), ControlFile.checkPointCopy.ThisTimeLineID);
 	printf(_("Latest checkpoint's NextXID:          %u\n"), ControlFile.checkPointCopy.nextXid);
 	printf(_("Latest checkpoint's NextOID:          %u\n"), ControlFile.checkPointCopy.nextOid);
+	printf(_("Latest checkpoint's NextMultiXactId:  %u\n"), ControlFile.checkPointCopy.nextMulti);
+	printf(_("Latest checkpoint's NextMultiOffset:  %u\n"), ControlFile.checkPointCopy.nextMultiOffset);
 	printf(_("Time of latest checkpoint:            %s\n"), ckpttime_str);
+	printf(_("Maximum data alignment:               %u\n"), ControlFile.maxAlign);
+	/* we don't print floatFormat since can't say much useful about it */
 	printf(_("Database block size:                  %u\n"), ControlFile.blcksz);
 	printf(_("Blocks per segment of large relation: %u\n"), ControlFile.relseg_size);
 	printf(_("Bytes per WAL segment:                %u\n"), ControlFile.xlog_seg_size);
 	printf(_("Maximum length of identifiers:        %u\n"), ControlFile.nameDataLen);
-	printf(_("Maximum number of function arguments: %u\n"), ControlFile.funcMaxArgs);
+	printf(_("Maximum columns in an index:          %u\n"), ControlFile.indexMaxKeys);
 	printf(_("Date/time type storage:               %s\n"),
 		   (ControlFile.enableIntTimes ? _("64-bit integers") : _("floating-point numbers")));
 	printf(_("Maximum length of locale name:        %u\n"), ControlFile.localeBuflen);

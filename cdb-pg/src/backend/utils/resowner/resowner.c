@@ -14,7 +14,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/resowner/resowner.c,v 1.9 2004/12/31 22:02:50 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/resowner/resowner.c,v 1.14 2005/10/15 02:49:36 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -87,6 +87,7 @@ static void ResourceOwnerReleaseInternal(ResourceOwner owner,
 							 ResourceReleasePhase phase,
 							 bool isCommit,
 							 bool isTopLevel);
+static void PrintRelCacheLeakWarning(Relation rel);
 
 
 /*****************************************************************************
@@ -107,7 +108,7 @@ ResourceOwnerCreate(ResourceOwner parent, const char *name)
 	ResourceOwner owner;
 
 	owner = (ResourceOwner) MemoryContextAllocZero(TopMemoryContext,
-											  sizeof(ResourceOwnerData));
+												   sizeof(ResourceOwnerData));
 	owner->name = name;
 
 	if (parent)
@@ -157,7 +158,9 @@ ResourceOwnerRelease(ResourceOwner owner,
 
 	save = CurrentResourceOwner;
 	PG_TRY();
-	ResourceOwnerReleaseInternal(owner, phase, isCommit, isTopLevel);
+	{
+		ResourceOwnerReleaseInternal(owner, phase, isCommit, isTopLevel);
+	}
 	PG_CATCH();
 	{
 		CurrentResourceOwner = save;
@@ -182,9 +185,9 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 		ResourceOwnerReleaseInternal(child, phase, isCommit, isTopLevel);
 
 	/*
-	 * Make CurrentResourceOwner point to me, so that ReleaseBuffer etc
-	 * don't get confused.  We needn't PG_TRY here because the outermost
-	 * level will fix it on error abort.
+	 * Make CurrentResourceOwner point to me, so that ReleaseBuffer etc don't
+	 * get confused.  We needn't PG_TRY here because the outermost level will
+	 * fix it on error abort.
 	 */
 	save = CurrentResourceOwner;
 	CurrentResourceOwner = owner;
@@ -192,21 +195,16 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 	if (phase == RESOURCE_RELEASE_BEFORE_LOCKS)
 	{
 		/*
-		 * Release buffer pins.  Note that ReleaseBuffer will
-		 * remove the buffer entry from my list, so I just have to
-		 * iterate till there are none.
+		 * Release buffer pins.  Note that ReleaseBuffer will remove the
+		 * buffer entry from my list, so I just have to iterate till there are
+		 * none.
 		 *
-		 * During a commit, there shouldn't be any remaining pins ---
-		 * that would indicate failure to clean up the executor correctly ---
-		 * so issue warnings.  In the abort case, just clean up quietly.
+		 * During a commit, there shouldn't be any remaining pins --- that would
+		 * indicate failure to clean up the executor correctly --- so issue
+		 * warnings.  In the abort case, just clean up quietly.
 		 *
-		 * XXX this is fairly inefficient due to multiple BufMgrLock
-		 * grabs if there are lots of buffers to be released, but we
-		 * don't expect many (indeed none in the success case) so it's
-		 * probably not worth optimizing.
-		 *
-		 * We are however careful to release back-to-front, so as to
-		 * avoid O(N^2) behavior in ResourceOwnerForgetBuffer().
+		 * We are careful to do the releasing back-to-front, so as to avoid
+		 * O(N^2) behavior in ResourceOwnerForgetBuffer().
 		 */
 		while (owner->nbuffers > 0)
 		{
@@ -215,28 +213,19 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 			ReleaseBuffer(owner->buffers[owner->nbuffers - 1]);
 		}
 
-		/* Release relcache references */
-		if (isTopLevel)
+		/*
+		 * Release relcache references.  Note that RelationClose will remove
+		 * the relref entry from my list, so I just have to iterate till there
+		 * are none.
+		 *
+		 * As with buffer pins, warn if any are left at commit time, and release
+		 * back-to-front for speed.
+		 */
+		while (owner->nrelrefs > 0)
 		{
-			/*
-			 * For a top-level xact we are going to release all
-			 * references, so just do a single relcache call at the top of
-			 * the recursion.
-			 */
-			if (owner == TopTransactionResourceOwner)
-				AtEOXact_RelationCache(isCommit);
-			/* Mark object as owning no relrefs, just for sanity */
-			owner->nrelrefs = 0;
-		}
-		else
-		{
-			/*
-			 * Release relcache refs retail.  Note that RelationClose will
-			 * remove the relref entry from my list, so I just have to
-			 * iterate till there are none.
-			 */
-			while (owner->nrelrefs > 0)
-				RelationClose(owner->relrefs[owner->nrelrefs - 1]);
+			if (isCommit)
+				PrintRelCacheLeakWarning(owner->relrefs[owner->nrelrefs - 1]);
+			RelationClose(owner->relrefs[owner->nrelrefs - 1]);
 		}
 	}
 	else if (phase == RESOURCE_RELEASE_LOCKS)
@@ -244,9 +233,9 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 		if (isTopLevel)
 		{
 			/*
-			 * For a top-level xact we are going to release all locks (or
-			 * at least all non-session locks), so just do a single lmgr
-			 * call at the top of the recursion.
+			 * For a top-level xact we are going to release all locks (or at
+			 * least all non-session locks), so just do a single lmgr call at
+			 * the top of the recursion.
 			 */
 			if (owner == TopTransactionResourceOwner)
 				ProcReleaseLocks(isCommit);
@@ -255,8 +244,8 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 		{
 			/*
 			 * Release locks retail.  Note that if we are committing a
-			 * subtransaction, we do NOT release its locks yet, but
-			 * transfer them to the parent.
+			 * subtransaction, we do NOT release its locks yet, but transfer
+			 * them to the parent.
 			 */
 			Assert(owner->parent != NULL);
 			if (isCommit)
@@ -267,32 +256,27 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 	}
 	else if (phase == RESOURCE_RELEASE_AFTER_LOCKS)
 	{
-		/* Release catcache references */
-		if (isTopLevel)
+		/*
+		 * Release catcache references.  Note that ReleaseCatCache will remove
+		 * the catref entry from my list, so I just have to iterate till there
+		 * are none.  Ditto for catcache lists.
+		 *
+		 * As with buffer pins, warn if any are left at commit time, and release
+		 * back-to-front for speed.
+		 */
+		while (owner->ncatrefs > 0)
 		{
-			/*
-			 * For a top-level xact we are going to release all
-			 * references, so just do a single catcache call at the top of
-			 * the recursion.
-			 */
-			if (owner == TopTransactionResourceOwner)
-				AtEOXact_CatCache(isCommit);
-			/* Mark object as owning no catrefs, just for sanity */
-			owner->ncatrefs = 0;
-			owner->ncatlistrefs = 0;
+			if (isCommit)
+				PrintCatCacheLeakWarning(owner->catrefs[owner->ncatrefs - 1]);
+			ReleaseCatCache(owner->catrefs[owner->ncatrefs - 1]);
 		}
-		else
+		while (owner->ncatlistrefs > 0)
 		{
-			/*
-			 * Release catcache refs retail.  Note that ReleaseCatCache
-			 * will remove the catref entry from my list, so I just have
-			 * to iterate till there are none.	Ditto for catcache lists.
-			 */
-			while (owner->ncatrefs > 0)
-				ReleaseCatCache(owner->catrefs[owner->ncatrefs - 1]);
-			while (owner->ncatlistrefs > 0)
-				ReleaseCatCacheList(owner->catlistrefs[owner->ncatlistrefs - 1]);
+			if (isCommit)
+				PrintCatCacheListLeakWarning(owner->catlistrefs[owner->ncatlistrefs - 1]);
+			ReleaseCatCacheList(owner->catlistrefs[owner->ncatlistrefs - 1]);
 		}
+
 		/* Clean up index scans too */
 		ReleaseResources_gist();
 		ReleaseResources_hash();
@@ -325,16 +309,16 @@ ResourceOwnerDelete(ResourceOwner owner)
 	Assert(owner->nrelrefs == 0);
 
 	/*
-	 * Delete children.  The recursive call will delink the child from me,
-	 * so just iterate as long as there is a child.
+	 * Delete children.  The recursive call will delink the child from me, so
+	 * just iterate as long as there is a child.
 	 */
 	while (owner->firstchild != NULL)
 		ResourceOwnerDelete(owner->firstchild);
 
 	/*
 	 * We delink the owner from its parent before deleting it, so that if
-	 * there's an error we won't have deleted/busted owners still attached
-	 * to the owner tree.  Better a leak than a crash.
+	 * there's an error we won't have deleted/busted owners still attached to
+	 * the owner tree.	Better a leak than a crash.
 	 */
 	ResourceOwnerNewParent(owner, NULL);
 
@@ -518,8 +502,8 @@ ResourceOwnerForgetBuffer(ResourceOwner owner, Buffer buffer)
 
 		/*
 		 * Scan back-to-front because it's more likely we are releasing a
-		 * recently pinned buffer.	This isn't always the case of course,
-		 * but it's the way to bet.
+		 * recently pinned buffer.	This isn't always the case of course, but
+		 * it's the way to bet.
 		 */
 		for (i = nb1; i >= 0; i--)
 		{
@@ -750,4 +734,14 @@ ResourceOwnerForgetRelationRef(ResourceOwner owner, Relation rel)
 	}
 	elog(ERROR, "relcache reference %s is not owned by resource owner %s",
 		 RelationGetRelationName(rel), owner->name);
+}
+
+/*
+ * Debugging subroutine
+ */
+static void
+PrintRelCacheLeakWarning(Relation rel)
+{
+	elog(WARNING, "relcache reference leak: relation \"%s\" not closed",
+		 RelationGetRelationName(rel));
 }

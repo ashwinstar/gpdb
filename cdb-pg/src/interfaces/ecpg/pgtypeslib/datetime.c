@@ -22,10 +22,10 @@ PGTYPESdate_from_timestamp(timestamp dt)
 
 #ifdef HAVE_INT64_TIMESTAMP
 		/* Microseconds to days */
-			dDate = (dt / INT64CONST(86400000000));
+			dDate = (dt / USECS_PER_DAY);
 #else
 		/* Seconds to days */
-			dDate = (dt / 86400.0);
+			dDate = (dt / (double) SECS_PER_DAY);
 #endif
 
 	return dDate;
@@ -57,8 +57,8 @@ PGTYPESdate_from_asc(char *str, char **endptr)
 		return INT_MIN;
 	}
 
-	if ((ParseDateTime(str, lowstr, field, ftype, MAXDATEFIELDS, &nf, ptr) != 0)
-		|| (DecodeDateTime(field, ftype, nf, &dtype, tm, &fsec, &tzp, EuroDates) != 0))
+	if (ParseDateTime(str, lowstr, field, ftype, MAXDATEFIELDS, &nf, ptr) != 0 ||
+	DecodeDateTime(field, ftype, nf, &dtype, tm, &fsec, &tzp, EuroDates) != 0)
 	{
 		errno = PGTYPES_DATE_BAD_DATE;
 		return INT_MIN;
@@ -92,7 +92,7 @@ PGTYPESdate_to_asc(date dDate)
 	int			DateStyle = 1;
 	bool		EuroDates = FALSE;
 
-	j2date((dDate + date2j(2000, 1, 1)), &(tm->tm_year), &(tm->tm_mon), &(tm->tm_mday));
+	j2date(dDate + date2j(2000, 1, 1), &(tm->tm_year), &(tm->tm_mon), &(tm->tm_mday));
 	EncodeDateOnly(tm, DateStyle, buf, EuroDates);
 	return pgtypes_strdup(buf);
 }
@@ -111,7 +111,7 @@ PGTYPESdate_julmdy(date jd, int *mdy)
 }
 
 void
-PGTYPESdate_mdyjul(int *mdy, date *jdate)
+PGTYPESdate_mdyjul(int *mdy, date * jdate)
 {
 	/* month is mdy[0] */
 	/* day	 is mdy[1] */
@@ -131,7 +131,7 @@ PGTYPESdate_dayofweek(date dDate)
 }
 
 void
-PGTYPESdate_today(date *d)
+PGTYPESdate_today(date * d)
 {
 	struct tm	ts;
 
@@ -143,8 +143,7 @@ PGTYPESdate_today(date *d)
 #define PGTYPES_DATE_NUM_MAX_DIGITS		20		/* should suffice for most
 												 * years... */
 
-#define PGTYPES_FMTDATE_DAY_DIGITS_LZ		1	/* LZ means "leading
-												 * zeroes" */
+#define PGTYPES_FMTDATE_DAY_DIGITS_LZ		1	/* LZ means "leading zeroes" */
 #define PGTYPES_FMTDATE_DOW_LITERAL_SHORT	2
 #define PGTYPES_FMTDATE_MONTH_DIGITS_LZ		3
 #define PGTYPES_FMTDATE_MONTH_LITERAL_SHORT 4
@@ -161,8 +160,8 @@ PGTYPESdate_fmt_asc(date dDate, char *fmtstring, char *outbuf)
 	}			mapping[] =
 	{
 		/*
-		 * format items have to be sorted according to their length, since
-		 * the first pattern that matches gets replaced by its value
+		 * format items have to be sorted according to their length, since the
+		 * first pattern that matches gets replaced by its value
 		 */
 		{
 			"ddd", PGTYPES_FMTDATE_DOW_LITERAL_SHORT
@@ -200,7 +199,7 @@ PGTYPESdate_fmt_asc(date dDate, char *fmtstring, char *outbuf)
 	strcpy(outbuf, fmtstring);
 
 	/* get the date */
-	j2date((dDate + date2j(2000, 1, 1)), &(tm.tm_year), &(tm.tm_mon), &(tm.tm_mday));
+	j2date(dDate + date2j(2000, 1, 1), &(tm.tm_year), &(tm.tm_mon), &(tm.tm_mday));
 	dow = PGTYPESdate_dayofweek(dDate);
 
 	for (i = 0; mapping[i].format != NULL; i++)
@@ -290,8 +289,7 @@ PGTYPESdate_fmt_asc(date dDate, char *fmtstring, char *outbuf)
 
 					/*
 					 * doesn't happen (we set replace_type to
-					 * PGTYPES_TYPE_STRING_CONSTANT in case of an error
-					 * above)
+					 * PGTYPES_TYPE_STRING_CONSTANT in case of an error above)
 					 */
 					break;
 			}
@@ -316,11 +314,11 @@ PGTYPESdate_fmt_asc(date dDate, char *fmtstring, char *outbuf)
 
 #define PGTYPES_DATE_MONTH_MAXLENGTH		20	/* probably even less  :-) */
 int
-PGTYPESdate_defmt_asc(date *d, char *fmt, char *str)
+PGTYPESdate_defmt_asc(date * d, char *fmt, char *str)
 {
 	/*
-	 * token[2] = { 4,6 } means that token 2 starts at position 4 and ends
-	 * at (including) position 6
+	 * token[2] = { 4,6 } means that token 2 starts at position 4 and ends at
+	 * (including) position 6
 	 */
 	int			token[3][2];
 	int			token_values[3] = {-1, -1, -1};
@@ -333,6 +331,8 @@ PGTYPESdate_defmt_asc(date *d, char *fmt, char *str)
 	int			token_count;
 	char	   *str_copy;
 	struct tm	tm;
+
+	tm.tm_year = tm.tm_mon = tm.tm_mday = 0;	/* keep compiler quiet */
 
 	if (!d || !str || !fmt)
 	{
@@ -425,8 +425,8 @@ PGTYPESdate_defmt_asc(date *d, char *fmt, char *str)
 		/* okay, this really is the special case */
 
 		/*
-		 * as long as the string, one additional byte for the terminator
-		 * and 2 for the delimiters between the 3 fiedls
+		 * as long as the string, one additional byte for the terminator and 2
+		 * for the delimiters between the 3 fiedls
 		 */
 		str_copy = pgtypes_alloc(strlen(str) + 1 + 2);
 		if (!str_copy)
@@ -463,9 +463,9 @@ PGTYPESdate_defmt_asc(date *d, char *fmt, char *str)
 		target_pos = 0;
 
 		/*
-		 * XXX: Here we could calculate the positions of the tokens and
-		 * save the for loop down there where we again check with
-		 * isdigit() for digits.
+		 * XXX: Here we could calculate the positions of the tokens and save
+		 * the for loop down there where we again check with isdigit() for
+		 * digits.
 		 */
 		for (i = 0; i < 3; i++)
 		{
@@ -519,8 +519,8 @@ PGTYPESdate_defmt_asc(date *d, char *fmt, char *str)
 	}
 
 	/*
-	 * we're at the end of the input string, but maybe we are still
-	 * reading a number...
+	 * we're at the end of the input string, but maybe we are still reading a
+	 * number...
 	 */
 	if (reading_digit)
 	{
@@ -532,8 +532,8 @@ PGTYPESdate_defmt_asc(date *d, char *fmt, char *str)
 	if (token_count < 2)
 	{
 		/*
-		 * not all tokens found, no way to find 2 missing tokens with
-		 * string matches
+		 * not all tokens found, no way to find 2 missing tokens with string
+		 * matches
 		 */
 		free(str_copy);
 		errno = PGTYPES_DATE_ERR_ENOTDMY;
@@ -544,8 +544,7 @@ PGTYPESdate_defmt_asc(date *d, char *fmt, char *str)
 	{
 		/*
 		 * not all tokens found but we may find another one with string
-		 * matches by testing for the months names and months
-		 * abbreviations
+		 * matches by testing for the months names and months abbreviations
 		 */
 		char	   *month_lower_tmp = pgtypes_alloc(PGTYPES_DATE_MONTH_MAXLENGTH);
 		char	   *start_pos;
@@ -577,8 +576,8 @@ PGTYPESdate_defmt_asc(date *d, char *fmt, char *str)
 				offset = start_pos - str_copy;
 
 				/*
-				 * sort the new token into the numeric tokens, shift them
-				 * if necessary
+				 * sort the new token into the numeric tokens, shift them if
+				 * necessary
 				 */
 				if (offset < token[0][0])
 				{
@@ -600,8 +599,8 @@ PGTYPESdate_defmt_asc(date *d, char *fmt, char *str)
 				token[token_count][1] = offset + strlen(month_lower_tmp) - 1;
 
 				/*
-				 * the value is the index of the month in the array of
-				 * months + 1 (January is month 0)
+				 * the value is the index of the month in the array of months
+				 * + 1 (January is month 0)
 				 */
 				token_values[token_count] = i + 1;
 				found = 1;
@@ -609,9 +608,9 @@ PGTYPESdate_defmt_asc(date *d, char *fmt, char *str)
 			}
 
 			/*
-			 * evil[tm] hack: if we read the pgtypes_date_months and
-			 * haven't found a match, reset list to point to
-			 * pgtypes_date_months_short and reset the counter variable i
+			 * evil[tm] hack: if we read the pgtypes_date_months and haven't
+			 * found a match, reset list to point to pgtypes_date_months_short
+			 * and reset the counter variable i
 			 */
 			if (list == pgtypes_date_months)
 			{
@@ -634,13 +633,12 @@ PGTYPESdate_defmt_asc(date *d, char *fmt, char *str)
 		 * here we found a month. token[token_count] and
 		 * token_values[token_count] reflect the month's details.
 		 *
-		 * only the month can be specified with a literal. Here we can do a
-		 * quick check if the month is at the right position according to
-		 * the format string because we can check if the token that we
-		 * expect to be the month is at the position of the only token
-		 * that already has a value. If we wouldn't check here we could
-		 * say "December 4 1990" with a fmt string of "dd mm yy" for 12
-		 * April 1990.
+		 * only the month can be specified with a literal. Here we can do a quick
+		 * check if the month is at the right position according to the format
+		 * string because we can check if the token that we expect to be the
+		 * month is at the position of the only token that already has a
+		 * value. If we wouldn't check here we could say "December 4 1990"
+		 * with a fmt string of "dd mm yy" for 12 April 1990.
 		 */
 		if (fmt_token_order[token_count] != 'm')
 		{
@@ -678,7 +676,7 @@ PGTYPESdate_defmt_asc(date *d, char *fmt, char *str)
 		return -1;
 	}
 
-	if (tm.tm_mon < 1 || tm.tm_mon > 12)
+	if (tm.tm_mon < 1 || tm.tm_mon > MONTHS_PER_YEAR)
 	{
 		errno = PGTYPES_DATE_BAD_MONTH;
 		return -1;

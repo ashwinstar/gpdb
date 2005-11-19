@@ -11,7 +11,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/bin/pg_dump/common.c,v 1.85.4.1 2005/06/27 02:18:14 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/bin/pg_dump/common.c,v 1.87 2005/10/15 02:49:38 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -310,8 +310,8 @@ flagInhAttrs(TableInfo *tblinfo, int numTables,
 			}
 
 			/*
-			 * Based on the scan of the parents, decide if we can rely on
-			 * the inherited attr
+			 * Based on the scan of the parents, decide if we can rely on the
+			 * inherited attr
 			 */
 			if (foundAttr)		/* Attr was inherited */
 			{
@@ -331,8 +331,7 @@ flagInhAttrs(TableInfo *tblinfo, int numTables,
 				}
 
 				/*
-				 * Clear it if NOT NULL and none of the parents were NOT
-				 * NULL
+				 * Clear it if NOT NULL and none of the parents were NOT NULL
 				 */
 				if (tbinfo->notnull[j] && !foundNotNull)
 				{
@@ -529,8 +528,8 @@ DOCatalogIdCompare(const void *p1, const void *p2)
 	int			cmpval;
 
 	/*
-	 * Compare OID first since it's usually unique, whereas there will
-	 * only be a few distinct values of tableoid.
+	 * Compare OID first since it's usually unique, whereas there will only be
+	 * a few distinct values of tableoid.
 	 */
 	cmpval = oidcmp(obj1->catId.oid, obj2->catId.oid);
 	if (cmpval == 0)

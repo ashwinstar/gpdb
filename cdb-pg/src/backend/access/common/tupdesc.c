@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/common/tupdesc.c,v 1.108.4.1 2005/04/14 22:35:12 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/common/tupdesc.c,v 1.112 2005/10/15 02:49:08 momjian Exp $
  *
  * NOTES
  *	  some of the executor utility code such as "ExecTypeFromTL" should be
@@ -19,31 +19,26 @@
 
 #include "postgres.h"
 
-#include "funcapi.h"
 #include "access/heapam.h"
-#include "catalog/namespace.h"
 #include "catalog/pg_type.h"
-#include "nodes/parsenodes.h"
 #include "parser/parse_type.h"
 #include "utils/builtins.h"
-#include "utils/lsyscache.h"
 #include "utils/syscache.h"
-#include "utils/typcache.h"
 
 
-/* ----------------------------------------------------------------
- *		CreateTemplateTupleDesc
- *
- *		This function allocates and zeros a tuple descriptor structure.
+/*
+ * CreateTemplateTupleDesc
+ *		This function allocates an empty tuple descriptor structure.
  *
  * Tuple type ID information is initially set for an anonymous record type;
  * caller can overwrite this if needed.
- * ----------------------------------------------------------------
  */
 TupleDesc
 CreateTemplateTupleDesc(int natts, bool hasoid)
 {
 	TupleDesc	desc;
+	char	   *stg;
+	int			attroffset;
 
 	/*
 	 * sanity checks
@@ -51,15 +46,33 @@ CreateTemplateTupleDesc(int natts, bool hasoid)
 	AssertArg(natts >= 0);
 
 	/*
-	 * Allocate enough memory for the tuple descriptor, and zero the
-	 * attrs[] array since TupleDescInitEntry assumes that the array is
-	 * filled with NULL pointers.
+	 * Allocate enough memory for the tuple descriptor, including the
+	 * attribute rows, and set up the attribute row pointers.
+	 *
+	 * Note: we assume that sizeof(struct tupleDesc) is a multiple of the struct
+	 * pointer alignment requirement, and hence we don't need to insert
+	 * alignment padding between the struct and the array of attribute row
+	 * pointers.
 	 */
-	desc = (TupleDesc) palloc(sizeof(struct tupleDesc));
+	attroffset = sizeof(struct tupleDesc) + natts * sizeof(Form_pg_attribute);
+	attroffset = MAXALIGN(attroffset);
+	stg = palloc(attroffset + natts * MAXALIGN(ATTRIBUTE_TUPLE_SIZE));
+	desc = (TupleDesc) stg;
 
 	if (natts > 0)
-		desc->attrs = (Form_pg_attribute *)
-			palloc0(natts * sizeof(Form_pg_attribute));
+	{
+		Form_pg_attribute *attrs;
+		int			i;
+
+		attrs = (Form_pg_attribute *) (stg + sizeof(struct tupleDesc));
+		desc->attrs = attrs;
+		stg += attroffset;
+		for (i = 0; i < natts; i++)
+		{
+			attrs[i] = (Form_pg_attribute) stg;
+			stg += MAXALIGN(ATTRIBUTE_TUPLE_SIZE);
+		}
+	}
 	else
 		desc->attrs = NULL;
 
@@ -75,15 +88,16 @@ CreateTemplateTupleDesc(int natts, bool hasoid)
 	return desc;
 }
 
-/* ----------------------------------------------------------------
- *		CreateTupleDesc
- *
+/*
+ * CreateTupleDesc
  *		This function allocates a new TupleDesc pointing to a given
- *		Form_pg_attribute array
+ *		Form_pg_attribute array.
+ *
+ * Note: if the TupleDesc is ever freed, the Form_pg_attribute array
+ * will not be freed thereby.
  *
  * Tuple type ID information is initially set for an anonymous record type;
  * caller can overwrite this if needed.
- * ----------------------------------------------------------------
  */
 TupleDesc
 CreateTupleDesc(int natts, bool hasoid, Form_pg_attribute *attrs)
@@ -106,14 +120,12 @@ CreateTupleDesc(int natts, bool hasoid, Form_pg_attribute *attrs)
 	return desc;
 }
 
-/* ----------------------------------------------------------------
- *		CreateTupleDescCopy
- *
+/*
+ * CreateTupleDescCopy
  *		This function creates a new TupleDesc by copying from an existing
- *		TupleDesc
+ *		TupleDesc.
  *
- *		!!! Constraints and defaults are not copied !!!
- * ----------------------------------------------------------------
+ * !!! Constraints and defaults are not copied !!!
  */
 TupleDesc
 CreateTupleDescCopy(TupleDesc tupdesc)
@@ -121,38 +133,25 @@ CreateTupleDescCopy(TupleDesc tupdesc)
 	TupleDesc	desc;
 	int			i;
 
-	desc = (TupleDesc) palloc(sizeof(struct tupleDesc));
-	desc->natts = tupdesc->natts;
-	if (desc->natts > 0)
-	{
-		desc->attrs = (Form_pg_attribute *)
-			palloc(desc->natts * sizeof(Form_pg_attribute));
-		for (i = 0; i < desc->natts; i++)
-		{
-			desc->attrs[i] = (Form_pg_attribute) palloc(ATTRIBUTE_TUPLE_SIZE);
-			memcpy(desc->attrs[i], tupdesc->attrs[i], ATTRIBUTE_TUPLE_SIZE);
-			desc->attrs[i]->attnotnull = false;
-			desc->attrs[i]->atthasdef = false;
-		}
-	}
-	else
-		desc->attrs = NULL;
+	desc = CreateTemplateTupleDesc(tupdesc->natts, tupdesc->tdhasoid);
 
-	desc->constr = NULL;
+	for (i = 0; i < desc->natts; i++)
+	{
+		memcpy(desc->attrs[i], tupdesc->attrs[i], ATTRIBUTE_TUPLE_SIZE);
+		desc->attrs[i]->attnotnull = false;
+		desc->attrs[i]->atthasdef = false;
+	}
 
 	desc->tdtypeid = tupdesc->tdtypeid;
 	desc->tdtypmod = tupdesc->tdtypmod;
-	desc->tdhasoid = tupdesc->tdhasoid;
 
 	return desc;
 }
 
-/* ----------------------------------------------------------------
- *		CreateTupleDescCopyConstr
- *
+/*
+ * CreateTupleDescCopyConstr
  *		This function creates a new TupleDesc by copying from an existing
- *		TupleDesc (including its constraints and defaults)
- * ----------------------------------------------------------------
+ *		TupleDesc (including its constraints and defaults).
  */
 TupleDesc
 CreateTupleDescCopyConstr(TupleDesc tupdesc)
@@ -161,20 +160,12 @@ CreateTupleDescCopyConstr(TupleDesc tupdesc)
 	TupleConstr *constr = tupdesc->constr;
 	int			i;
 
-	desc = (TupleDesc) palloc(sizeof(struct tupleDesc));
-	desc->natts = tupdesc->natts;
-	if (desc->natts > 0)
+	desc = CreateTemplateTupleDesc(tupdesc->natts, tupdesc->tdhasoid);
+
+	for (i = 0; i < desc->natts; i++)
 	{
-		desc->attrs = (Form_pg_attribute *)
-			palloc(desc->natts * sizeof(Form_pg_attribute));
-		for (i = 0; i < desc->natts; i++)
-		{
-			desc->attrs[i] = (Form_pg_attribute) palloc(ATTRIBUTE_TUPLE_SIZE);
-			memcpy(desc->attrs[i], tupdesc->attrs[i], ATTRIBUTE_TUPLE_SIZE);
-		}
+		memcpy(desc->attrs[i], tupdesc->attrs[i], ATTRIBUTE_TUPLE_SIZE);
 	}
-	else
-		desc->attrs = NULL;
 
 	if (constr)
 	{
@@ -208,12 +199,9 @@ CreateTupleDescCopyConstr(TupleDesc tupdesc)
 
 		desc->constr = cpy;
 	}
-	else
-		desc->constr = NULL;
 
 	desc->tdtypeid = tupdesc->tdtypeid;
 	desc->tdtypmod = tupdesc->tdtypmod;
-	desc->tdhasoid = tupdesc->tdhasoid;
 
 	return desc;
 }
@@ -226,10 +214,6 @@ FreeTupleDesc(TupleDesc tupdesc)
 {
 	int			i;
 
-	for (i = 0; i < tupdesc->natts; i++)
-		pfree(tupdesc->attrs[i]);
-	if (tupdesc->attrs)
-		pfree(tupdesc->attrs);
 	if (tupdesc->constr)
 	{
 		if (tupdesc->constr->num_defval > 0)
@@ -289,16 +273,16 @@ equalTupleDescs(TupleDesc tupdesc1, TupleDesc tupdesc2)
 		Form_pg_attribute attr2 = tupdesc2->attrs[i];
 
 		/*
-		 * We do not need to check every single field here: we can
-		 * disregard attrelid and attnum (which were used to place the row
-		 * in the attrs array in the first place).  It might look like we
-		 * could dispense with checking attlen/attbyval/attalign, since these
-		 * are derived from atttypid; but in the case of dropped columns
-		 * we must check them (since atttypid will be zero for all dropped
-		 * columns) and in general it seems safer to check them always.
+		 * We do not need to check every single field here: we can disregard
+		 * attrelid and attnum (which were used to place the row in the attrs
+		 * array in the first place).  It might look like we could dispense
+		 * with checking attlen/attbyval/attalign, since these are derived
+		 * from atttypid; but in the case of dropped columns we must check
+		 * them (since atttypid will be zero for all dropped columns) and in
+		 * general it seems safer to check them always.
 		 *
-		 * attcacheoff must NOT be checked since it's possibly not set
-		 * in both copies.
+		 * attcacheoff must NOT be checked since it's possibly not set in both
+		 * copies.
 		 */
 		if (strcmp(NameStr(attr1->attname), NameStr(attr2->attname)) != 0)
 			return false;
@@ -348,9 +332,9 @@ equalTupleDescs(TupleDesc tupdesc1, TupleDesc tupdesc2)
 			AttrDefault *defval2 = constr2->defval;
 
 			/*
-			 * We can't assume that the items are always read from the
-			 * system catalogs in the same order; so use the adnum field
-			 * to identify the matching item to compare.
+			 * We can't assume that the items are always read from the system
+			 * catalogs in the same order; so use the adnum field to identify
+			 * the matching item to compare.
 			 */
 			for (j = 0; j < n; defval2++, j++)
 			{
@@ -371,9 +355,9 @@ equalTupleDescs(TupleDesc tupdesc1, TupleDesc tupdesc2)
 			ConstrCheck *check2 = constr2->check;
 
 			/*
-			 * Similarly, don't assume that the checks are always read in
-			 * the same order; match them up by name and contents. (The
-			 * name *should* be unique, but...)
+			 * Similarly, don't assume that the checks are always read in the
+			 * same order; match them up by name and contents. (The name
+			 * *should* be unique, but...)
 			 */
 			for (j = 0; j < n; check2++, j++)
 			{
@@ -390,12 +374,10 @@ equalTupleDescs(TupleDesc tupdesc1, TupleDesc tupdesc2)
 	return true;
 }
 
-/* ----------------------------------------------------------------
- *		TupleDescInitEntry
- *
+/*
+ * TupleDescInitEntry
  *		This function initializes a single attribute structure in
- *		a preallocated tuple descriptor.
- * ----------------------------------------------------------------
+ *		a previously allocated tuple descriptor.
  */
 void
 TupleDescInitEntry(TupleDesc desc,
@@ -415,24 +397,18 @@ TupleDescInitEntry(TupleDesc desc,
 	AssertArg(PointerIsValid(desc));
 	AssertArg(attributeNumber >= 1);
 	AssertArg(attributeNumber <= desc->natts);
-	AssertArg(!PointerIsValid(desc->attrs[attributeNumber - 1]));
-
-	/*
-	 * allocate storage for this attribute
-	 */
-
-	att = (Form_pg_attribute) palloc(ATTRIBUTE_TUPLE_SIZE);
-	desc->attrs[attributeNumber - 1] = att;
 
 	/*
 	 * initialize the attribute fields
 	 */
+	att = desc->attrs[attributeNumber - 1];
+
 	att->attrelid = 0;			/* dummy value */
 
 	/*
 	 * Note: attributeName can be NULL, because the planner doesn't always
-	 * fill in valid resname values in targetlists, particularly for
-	 * resjunk attributes.
+	 * fill in valid resname values in targetlists, particularly for resjunk
+	 * attributes.
 	 */
 	if (attributeName != NULL)
 		namestrcpy(&(att->attname), attributeName);
@@ -506,8 +482,8 @@ BuildDescForRelation(List *schema)
 		ColumnDef  *entry = lfirst(l);
 
 		/*
-		 * for each entry in the list, get the name and type information
-		 * from the list and have TupleDescInitEntry fill in the attribute
+		 * for each entry in the list, get the name and type information from
+		 * the list and have TupleDescInitEntry fill in the attribute
 		 * information we need.
 		 */
 		attnum++;
@@ -532,8 +508,8 @@ BuildDescForRelation(List *schema)
 		desc->attrs[attnum - 1]->attnotnull = entry->is_not_null;
 
 		/*
-		 * Note we copy only pre-cooked default expressions. Digestion of
-		 * raw ones is someone else's problem.
+		 * Note we copy only pre-cooked default expressions. Digestion of raw
+		 * ones is someone else's problem.
 		 */
 		if (entry->cooked_default != NULL)
 		{
@@ -577,123 +553,4 @@ BuildDescForRelation(List *schema)
 	}
 
 	return desc;
-}
-
-
-/*
- * RelationNameGetTupleDesc
- *
- * Given a (possibly qualified) relation name, build a TupleDesc.
- */
-TupleDesc
-RelationNameGetTupleDesc(const char *relname)
-{
-	RangeVar   *relvar;
-	Relation	rel;
-	TupleDesc	tupdesc;
-	List	   *relname_list;
-
-	/* Open relation and copy the tuple description */
-	relname_list = stringToQualifiedNameList(relname, "RelationNameGetTupleDesc");
-	relvar = makeRangeVarFromNameList(relname_list);
-	rel = relation_openrv(relvar, AccessShareLock);
-	tupdesc = CreateTupleDescCopy(RelationGetDescr(rel));
-	relation_close(rel, AccessShareLock);
-
-	return tupdesc;
-}
-
-/*
- * TypeGetTupleDesc
- *
- * Given a type Oid, build a TupleDesc.
- *
- * If the type is composite, *and* a colaliases List is provided, *and*
- * the List is of natts length, use the aliases instead of the relation
- * attnames.  (NB: this usage is deprecated since it may result in
- * creation of unnecessary transient record types.)
- *
- * If the type is a base type, a single item alias List is required.
- */
-TupleDesc
-TypeGetTupleDesc(Oid typeoid, List *colaliases)
-{
-	TypeFuncClass functypclass = get_type_func_class(typeoid);
-	TupleDesc	tupdesc = NULL;
-
-	/*
-	 * Build a suitable tupledesc representing the output rows
-	 */
-	if (functypclass == TYPEFUNC_COMPOSITE)
-	{
-		/* Composite data type, e.g. a table's row type */
-		tupdesc = CreateTupleDescCopy(lookup_rowtype_tupdesc(typeoid, -1));
-
-		if (colaliases != NIL)
-		{
-			int			natts = tupdesc->natts;
-			int			varattno;
-
-			/* does the list length match the number of attributes? */
-			if (list_length(colaliases) != natts)
-				ereport(ERROR,
-						(errcode(ERRCODE_DATATYPE_MISMATCH),
-						 errmsg("number of aliases does not match number of columns")));
-
-			/* OK, use the aliases instead */
-			for (varattno = 0; varattno < natts; varattno++)
-			{
-				char	   *label = strVal(list_nth(colaliases, varattno));
-
-				if (label != NULL)
-					namestrcpy(&(tupdesc->attrs[varattno]->attname), label);
-			}
-
-			/* The tuple type is now an anonymous record type */
-			tupdesc->tdtypeid = RECORDOID;
-			tupdesc->tdtypmod = -1;
-		}
-	}
-	else if (functypclass == TYPEFUNC_SCALAR)
-	{
-		/* Base data type, i.e. scalar */
-		char	   *attname;
-
-		/* the alias list is required for base types */
-		if (colaliases == NIL)
-			ereport(ERROR,
-					(errcode(ERRCODE_DATATYPE_MISMATCH),
-					 errmsg("no column alias was provided")));
-
-		/* the alias list length must be 1 */
-		if (list_length(colaliases) != 1)
-			ereport(ERROR,
-					(errcode(ERRCODE_DATATYPE_MISMATCH),
-					 errmsg("number of aliases does not match number of columns")));
-
-		/* OK, get the column alias */
-		attname = strVal(linitial(colaliases));
-
-		tupdesc = CreateTemplateTupleDesc(1, false);
-		TupleDescInitEntry(tupdesc,
-						   (AttrNumber) 1,
-						   attname,
-						   typeoid,
-						   -1,
-						   0);
-	}
-	else if (functypclass == TYPEFUNC_RECORD)
-	{
-		/* XXX can't support this because typmod wasn't passed in ... */
-		ereport(ERROR,
-				(errcode(ERRCODE_DATATYPE_MISMATCH),
-				 errmsg("could not determine row description for function returning record")));
-	}
-	else
-	{
-		/* crummy error message, but parser should have caught this */
-		elog(ERROR, "function in FROM has unsupported return type");
-	}
-
-	return tupdesc;
 }

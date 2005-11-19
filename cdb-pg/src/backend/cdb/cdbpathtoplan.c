@@ -24,7 +24,7 @@
  * cdbpathtoplan_create_flow
  */
 Flow *
-cdbpathtoplan_create_flow(Query    *root,
+cdbpathtoplan_create_flow(PlannerInfo    *root,
                           Path     *path,
                           List     *pathkeys,
                           Plan     *plan)
@@ -72,7 +72,7 @@ cdbpathtoplan_create_flow(Query    *root,
  * cdbpathtoplan_create_motion_plan
  */
 Motion *
-cdbpathtoplan_create_motion_plan(Query         *root,
+cdbpathtoplan_create_motion_plan(PlannerInfo         *root,
                                  CdbMotionPath *path,
                                  Plan          *subplan)
 {

@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/view.c,v 1.86 2004/12/31 21:59:42 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/view.c,v 1.91 2005/10/15 02:49:16 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -21,6 +21,8 @@
 #include "commands/view.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
+#include "optimizer/clauses.h"
+#include "parser/parse_expr.h"
 #include "parser/parse_relation.h"
 #include "rewrite/rewriteDefine.h"
 #include "rewrite/rewriteManip.h"
@@ -36,7 +38,57 @@
 
 
 static void checkViewTupleDesc(TupleDesc newdesc, TupleDesc olddesc);
+static bool isViewOnTempTable_walker(Node *node, void *context);
 
+/*---------------------------------------------------------------------
+ * isViewOnTempTable
+ *
+ * Returns true iff any of the relations underlying this view are
+ * temporary tables.
+ *---------------------------------------------------------------------
+ */
+static bool
+isViewOnTempTable(Query *viewParse)
+{
+	return isViewOnTempTable_walker((Node *) viewParse, NULL);
+}
+
+static bool
+isViewOnTempTable_walker(Node *node, void *context)
+{
+	if (node == NULL)
+		return false;
+
+	if (IsA(node, Query))
+	{
+		Query	   *query = (Query *) node;
+		ListCell   *rtable;
+
+		foreach(rtable, query->rtable)
+		{
+			RangeTblEntry *rte = lfirst(rtable);
+
+			if (rte->rtekind == RTE_RELATION)
+			{
+				Relation	rel = heap_open(rte->relid, AccessShareLock);
+				bool		istemp = rel->rd_istemp;
+
+				heap_close(rel, AccessShareLock);
+				if (istemp)
+					return true;
+			}
+		}
+
+		return query_tree_walker(query,
+								 isViewOnTempTable_walker,
+								 context,
+								 QTW_IGNORE_JOINALIASES);
+	}
+
+	return expression_tree_walker(node,
+								  isViewOnTempTable_walker,
+								  context);
+}
 
 /*---------------------------------------------------------------------
  * DefineVirtualRelation
@@ -57,24 +109,23 @@ DefineVirtualRelation(const RangeVar *relation, List *tlist, bool replace, Oid v
 
 	createStmt->relOid = viewOid;
 	/*
-	 * create a list of ColumnDef nodes based on the names and types of
-	 * the (non-junk) targetlist items from the view's SELECT list.
+	 * create a list of ColumnDef nodes based on the names and types of the
+	 * (non-junk) targetlist items from the view's SELECT list.
 	 */
 	attrList = NIL;
 	foreach(t, tlist)
 	{
-		TargetEntry *entry = lfirst(t);
-		Resdom	   *res = entry->resdom;
+		TargetEntry *tle = lfirst(t);
 
-		if (!res->resjunk)
+		if (!tle->resjunk)
 		{
 			ColumnDef  *def = makeNode(ColumnDef);
 			TypeName   *typename = makeNode(TypeName);
 
-			def->colname = pstrdup(res->resname);
+			def->colname = pstrdup(tle->resname);
 
-			typename->typeid = res->restype;
-			typename->typmod = res->restypmod;
+			typename->typeid = exprType((Node *) tle->expr);
+			typename->typmod = exprTypmod((Node *) tle->expr);
 			def->typename = typename;
 
 			def->inhcount = 0;
@@ -124,8 +175,15 @@ DefineVirtualRelation(const RangeVar *relation, List *tlist, bool replace, Oid v
 						   RelationGetRelationName(rel));
 
 		/*
-		 * Create a tuple descriptor to compare against the existing view,
-		 * and verify it matches.
+		 * Due to the namespace visibility rules for temporary objects, we
+		 * should only end up replacing a temporary view with another
+		 * temporary view, and vice versa.
+		 */
+		Assert(relation->istemp == rel->rd_istemp);
+
+		/*
+		 * Create a tuple descriptor to compare against the existing view, and
+		 * verify it matches.
 		 */
 		descriptor = BuildDescForRelation(attrList);
 		checkViewTupleDesc(descriptor, rel->rd_att);
@@ -140,8 +198,8 @@ DefineVirtualRelation(const RangeVar *relation, List *tlist, bool replace, Oid v
 	else
 	{
 		/*
-		 * now set the parameters for keys/inheritance etc. All of these
-		 * are uninteresting for views...
+		 * now set the parameters for keys/inheritance etc. All of these are
+		 * uninteresting for views...
 		 */
 		createStmt->relation = (RangeVar *) relation;
 		createStmt->tableElts = attrList;
@@ -154,8 +212,8 @@ DefineVirtualRelation(const RangeVar *relation, List *tlist, bool replace, Oid v
 
 		/*
 		 * finally create the relation (this will error out if there's an
-		 * existing view, so we don't need more code to complain if
-		 * "replace" is false).
+		 * existing view, so we don't need more code to complain if "replace"
+		 * is false).
 		 */
 		return DefineRelation(createStmt, RELKIND_VIEW);
 	}
@@ -216,8 +274,8 @@ FormViewRetrieveRule(const RangeVar *view, Query *viewParse, bool replace)
 	RuleStmt   *rule;
 
 	/*
-	 * Create a RuleStmt that corresponds to the suitable rewrite rule
-	 * args for DefineQueryRewrite();
+	 * Create a RuleStmt that corresponds to the suitable rewrite rule args
+	 * for DefineQueryRewrite();
 	 */
 	rule = makeNode(RuleStmt);
 	rule->relation = copyObject((RangeVar *) view);
@@ -281,28 +339,32 @@ DefineViewRules(const RangeVar *view, Query *viewParse, bool replace)
 static Query *
 UpdateRangeTableOfViewParse(Oid viewOid, Query *viewParse)
 {
+	Relation	viewRel;
 	List	   *new_rt;
 	RangeTblEntry *rt_entry1,
 			   *rt_entry2;
 
 	/*
 	 * Make a copy of the given parsetree.	It's not so much that we don't
-	 * want to scribble on our input, it's that the parser has a bad habit
-	 * of outputting multiple links to the same subtree for constructs
-	 * like BETWEEN, and we mustn't have OffsetVarNodes increment the
-	 * varno of a Var node twice.  copyObject will expand any
-	 * multiply-referenced subtree into multiple copies.
+	 * want to scribble on our input, it's that the parser has a bad habit of
+	 * outputting multiple links to the same subtree for constructs like
+	 * BETWEEN, and we mustn't have OffsetVarNodes increment the varno of a
+	 * Var node twice.	copyObject will expand any multiply-referenced subtree
+	 * into multiple copies.
 	 */
 	viewParse = (Query *) copyObject(viewParse);
 
+	/* need to open the rel for addRangeTableEntryForRelation */
+	viewRel = relation_open(viewOid, AccessShareLock);
+
 	/*
-	 * Create the 2 new range table entries and form the new range
-	 * table... OLD first, then NEW....
+	 * Create the 2 new range table entries and form the new range table...
+	 * OLD first, then NEW....
 	 */
-	rt_entry1 = addRangeTableEntryForRelation(NULL, viewOid,
+	rt_entry1 = addRangeTableEntryForRelation(NULL, viewRel,
 											  makeAlias("*OLD*", NIL),
 											  false, false);
-	rt_entry2 = addRangeTableEntryForRelation(NULL, viewOid,
+	rt_entry2 = addRangeTableEntryForRelation(NULL, viewRel,
 											  makeAlias("*NEW*", NIL),
 											  false, false);
 	/* Must override addRangeTableEntry's default access-check flags */
@@ -317,6 +379,8 @@ UpdateRangeTableOfViewParse(Oid viewOid, Query *viewParse)
 	 * Now offset all var nodes by 2, and jointree RT indexes too.
 	 */
 	OffsetVarNodes((Node *) viewParse, 2, 0);
+
+	relation_close(viewRel, AccessShareLock);
 
 	return viewParse;
 }
@@ -337,33 +401,44 @@ void
 DefineView(ViewStmt *stmt)
 {
 	Oid			viewOid = stmt->relOid;
-	const RangeVar *view = stmt->view;
+	RangeVar   *view = stmt->view;
 	Query	   *viewParse = stmt->query;
 	bool		replace = stmt->replace;
 
 	if (Mpp_role != MPP_ROLE_EXECUTE)
 		viewOid = 0;
 	/*
+	 * If the user didn't explicitly ask for a temporary view, check whether
+	 * we need one implicitly.
+	 */
+	if (!view->istemp)
+	{
+		view->istemp = isViewOnTempTable(viewParse);
+		if (view->istemp)
+			ereport(NOTICE,
+					(errmsg("view \"%s\" will be a temporary view",
+							view->relname)));
+	}
+
+	/*
 	 * Create the view relation
 	 *
-	 * NOTE: if it already exists and replace is false, the xact will be
-	 * aborted.
+	 * NOTE: if it already exists and replace is false, the xact will be aborted.
 	 */
-
 	viewOid = DefineVirtualRelation(view, viewParse->targetList, replace, viewOid);
 
 	stmt->relOid = viewOid;
 
 	/*
-	 * The relation we have just created is not visible to any other
-	 * commands running with the same transaction & command id. So,
-	 * increment the command id counter (but do NOT pfree any memory!!!!)
+	 * The relation we have just created is not visible to any other commands
+	 * running with the same transaction & command id. So, increment the
+	 * command id counter (but do NOT pfree any memory!!!!)
 	 */
 	CommandCounterIncrement();
 
 	/*
-	 * The range table of 'viewParse' does not contain entries for the
-	 * "OLD" and "NEW" relations. So... add them!
+	 * The range table of 'viewParse' does not contain entries for the "OLD"
+	 * and "NEW" relations. So... add them!
 	 */
 	viewParse = UpdateRangeTableOfViewParse(viewOid, viewParse);
 
@@ -395,7 +470,7 @@ RemoveView(const RangeVar *view, DropBehavior behavior)
 
 	viewOid = RangeVarGetRelid(view, false);
 
-	object.classId = RelOid_pg_class;
+	object.classId = RelationRelationId;
 	object.objectId = viewOid;
 	object.objectSubId = 0;
 

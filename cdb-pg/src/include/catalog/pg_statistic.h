@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/catalog/pg_statistic.h,v 1.28 2004/12/31 22:03:26 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/catalog/pg_statistic.h,v 1.30 2005/10/15 02:49:44 momjian Exp $
  *
  * NOTES
  *	  the genbki.sh script reads this file and generates .bki
@@ -21,7 +21,7 @@
 
 /* ----------------
  *		postgres.h contains the system type definitions and the
- *		CATALOG(), BOOTSTRAP and DATA() sugar words so this file
+ *		CATALOG(), BKI_BOOTSTRAP and DATA() sugar words so this file
  *		can be read by both genbki.sh and the C compiler.
  * ----------------
  */
@@ -37,7 +37,9 @@ typedef struct varlena anyarray;
  *		typedef struct FormData_pg_statistic
  * ----------------
  */
-CATALOG(pg_statistic) BKI_WITHOUT_OIDS
+#define StatisticRelationId  2619
+
+CATALOG(pg_statistic,2619) BKI_WITHOUT_OIDS
 {
 	/* These fields form the unique key for the entry: */
 	Oid			starelid;		/* relation containing attribute */
@@ -48,13 +50,13 @@ CATALOG(pg_statistic) BKI_WITHOUT_OIDS
 
 	/*
 	 * stawidth is the average width in bytes of non-null entries.	For
-	 * fixed-width datatypes this is of course the same as the typlen, but
-	 * for var-width types it is more useful.  Note that this is the
-	 * average width of the data as actually stored, post-TOASTing (eg,
-	 * for a moved-out-of-line value, only the size of the pointer object
-	 * is counted).  This is the appropriate definition for the primary
-	 * use of the statistic, which is to estimate sizes of in-memory hash
-	 * tables of tuples.
+	 * fixed-width datatypes this is of course the same as the typlen, but for
+	 * var-width types it is more useful.  Note that this is the average width
+	 * of the data as actually stored, post-TOASTing (eg, for a
+	 * moved-out-of-line value, only the size of the pointer object is
+	 * counted).  This is the appropriate definition for the primary use of
+	 * the statistic, which is to estimate sizes of in-memory hash tables of
+	 * tuples.
 	 */
 	int4		stawidth;
 
@@ -103,10 +105,10 @@ CATALOG(pg_statistic) BKI_WITHOUT_OIDS
 	Oid			staop4;
 
 	/*
-	 * THE REST OF THESE ARE VARIABLE LENGTH FIELDS, and may even be
-	 * absent (NULL). They cannot be accessed as C struct entries; you
-	 * have to use the full field access machinery (heap_getattr) for
-	 * them.  We declare them here for the catalog machinery.
+	 * THE REST OF THESE ARE VARIABLE LENGTH FIELDS, and may even be absent
+	 * (NULL). They cannot be accessed as C struct entries; you have to use
+	 * the full field access machinery (heap_getattr) for them.  We declare
+	 * them here for the catalog machinery.
 	 */
 
 	float4		stanumbers1[1];
@@ -116,8 +118,8 @@ CATALOG(pg_statistic) BKI_WITHOUT_OIDS
 
 	/*
 	 * Values in these arrays are values of the column's data type.  We
-	 * presently have to cheat quite a bit to allow polymorphic arrays of
-	 * this kind, but perhaps someday it'll be a less bogus facility.
+	 * presently have to cheat quite a bit to allow polymorphic arrays of this
+	 * kind, but perhaps someday it'll be a less bogus facility.
 	 */
 	anyarray	stavalues1;
 	anyarray	stavalues2;

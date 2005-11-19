@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/nodes/print.c,v 1.72 2004/12/31 21:59:55 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/nodes/print.c,v 1.77 2005/10/15 02:49:19 momjian Exp $
  *
  * HISTORY
  *	  AUTHOR			DATE			MAJOR EVENT
@@ -345,7 +345,6 @@ print_expr(Node *expr, List *rtable)
 	{
 		Const	   *c = (Const *) expr;
 		Oid			typoutput;
-		Oid			typioparam;
 		bool		typIsVarlena;
 		char	   *outputstr;
 
@@ -356,12 +355,10 @@ print_expr(Node *expr, List *rtable)
 		}
 
 		getTypeOutputInfo(c->consttype,
-						  &typoutput, &typioparam, &typIsVarlena);
+						  &typoutput, &typIsVarlena);
 
-		outputstr = DatumGetCString(OidFunctionCall3(typoutput,
-													 c->constvalue,
-											ObjectIdGetDatum(typioparam),
-													 Int32GetDatum(-1)));
+		outputstr = DatumGetCString(OidFunctionCall1(typoutput,
+													 c->constvalue));
 		printf("%s", outputstr);
 		pfree(outputstr);
 	}
@@ -449,10 +446,10 @@ print_tl(List *tlist, List *rtable)
 	{
 		TargetEntry *tle = (TargetEntry *) lfirst(tl);
 
-		printf("\t%d %s\t", tle->resdom->resno,
-			   tle->resdom->resname ? tle->resdom->resname : "<null>");
-		if (tle->resdom->ressortgroupref != 0)
-			printf("(%u):\t", tle->resdom->ressortgroupref);
+		printf("\t%d %s\t", tle->resno,
+			   tle->resname ? tle->resname : "<null>");
+		if (tle->ressortgroupref != 0)
+			printf("(%u):\t", tle->ressortgroupref);
 		else
 			printf("    :\t");
 		print_expr((Node *) tle->expr, rtable);
@@ -468,18 +465,18 @@ print_tl(List *tlist, List *rtable)
 void
 print_slot(TupleTableSlot *slot)
 {
-	if (!slot->val)
+	if (TupIsNull(slot))
 	{
 		printf("tuple is null.\n");
 		return;
 	}
-	if (!slot->ttc_tupleDescriptor)
+	if (!slot->tts_tupleDescriptor)
 	{
 		printf("no tuple descriptor.\n");
 		return;
 	}
 
-	debugtup(slot->val, slot->ttc_tupleDescriptor, NULL);
+	debugtup(slot, NULL);
 }
 
 static char *
@@ -493,12 +490,20 @@ plannode_type(Plan *p)
 			return "RESULT";
 		case T_Append:
 			return "APPEND";
+		case T_BitmapAnd:
+			return "BITMAPAND";
+		case T_BitmapOr:
+			return "BITMAPOR";
 		case T_Scan:
 			return "SCAN";
 		case T_SeqScan:
 			return "SEQSCAN";
 		case T_IndexScan:
 			return "INDEXSCAN";
+		case T_BitmapIndexScan:
+			return "BITMAPINDEXSCAN";
+		case T_BitmapHeapScan:
+			return "BITMAPHEAPSCAN";
 		case T_TidScan:
 			return "TIDSCAN";
 		case T_SubqueryScan:
@@ -553,7 +558,8 @@ print_plan_recursive(Plan *p, Query *parsetree, int indentLevel, char *label)
 		   p->startup_cost, p->total_cost,
 		   p->plan_rows, p->plan_width);
 	if (IsA(p, Scan) ||
-		IsA(p, SeqScan))
+		IsA(p, SeqScan) ||
+		IsA(p, BitmapHeapScan))
 	{
 		RangeTblEntry *rte;
 
@@ -586,27 +592,48 @@ print_plan_recursive(Plan *p, Query *parsetree, int indentLevel, char *label)
 	if (IsA(p, Append))
 	{
 		ListCell   *l;
-		int			whichplan = 0;
 		Append	   *appendplan = (Append *) p;
 
 		foreach(l, appendplan->appendplans)
 		{
 			Plan	   *subnode = (Plan *) lfirst(l);
 
-			/*
-			 * I don't think we need to fiddle with the range table here,
-			 * bjm
-			 */
 			print_plan_recursive(subnode, parsetree, indentLevel + 3, "a: ");
+		}
+	}
 
-			whichplan++;
+	if (IsA(p, BitmapAnd))
+	{
+		ListCell   *l;
+		BitmapAnd  *bitmapandplan = (BitmapAnd *) p;
+
+		foreach(l, bitmapandplan->bitmapplans)
+		{
+			Plan	   *subnode = (Plan *) lfirst(l);
+
+			print_plan_recursive(subnode, parsetree, indentLevel + 3, "a: ");
+		}
+	}
+
+	if (IsA(p, BitmapOr))
+	{
+		ListCell   *l;
+		BitmapOr   *bitmaporplan = (BitmapOr *) p;
+
+		foreach(l, bitmaporplan->bitmapplans)
+		{
+			Plan	   *subnode = (Plan *) lfirst(l);
+
+			print_plan_recursive(subnode, parsetree, indentLevel + 3, "a: ");
 		}
 	}
 }
 
-/* print_plan
-  prints just the plan node types */
-
+/*
+ * print_plan
+ *
+ * prints just the plan node types
+ */
 void
 print_plan(Plan *p, Query *parsetree)
 {

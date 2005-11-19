@@ -36,7 +36,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/cache/typcache.c,v 1.11 2004/12/31 22:01:25 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/cache/typcache.c,v 1.15 2005/10/15 02:49:32 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -46,7 +46,6 @@
 #include "access/heapam.h"
 #include "access/hash.h"
 #include "access/nbtree.h"
-#include "catalog/catname.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_opclass.h"
@@ -124,7 +123,7 @@ lookup_type_cache(Oid type_id, int flags)
 		MemSet(&ctl, 0, sizeof(ctl));
 		ctl.keysize = sizeof(Oid);
 		ctl.entrysize = sizeof(TypeCacheEntry);
-		ctl.hash = tag_hash;
+		ctl.hash = oid_hash;
 		TypeCacheHash = hash_create("Type information cache", 64,
 									&ctl, HASH_ELEM | HASH_FUNCTION);
 	}
@@ -136,9 +135,9 @@ lookup_type_cache(Oid type_id, int flags)
 	if (typentry == NULL)
 	{
 		/*
-		 * If we didn't find one, we want to make one.  But first look up
-		 * the pg_type row, just to make sure we don't make a cache entry
-		 * for an invalid type OID.
+		 * If we didn't find one, we want to make one.  But first look up the
+		 * pg_type row, just to make sure we don't make a cache entry for an
+		 * invalid type OID.
 		 */
 		HeapTuple	tp;
 		Form_pg_type typtup;
@@ -159,10 +158,6 @@ lookup_type_cache(Oid type_id, int flags)
 		typentry = (TypeCacheEntry *) hash_search(TypeCacheHash,
 												  (void *) &type_id,
 												  HASH_ENTER, &found);
-		if (typentry == NULL)
-			ereport(ERROR,
-					(errcode(ERRCODE_OUT_OF_MEMORY),
-					 errmsg("out of memory")));
 		Assert(!found);			/* it wasn't there a moment ago */
 
 		MemSet(typentry, 0, sizeof(TypeCacheEntry));
@@ -195,8 +190,8 @@ lookup_type_cache(Oid type_id, int flags)
 		{
 			/*
 			 * If we find a btree opclass where previously we only found a
-			 * hash opclass, forget the hash equality operator so we can
-			 * use the btree operator instead.
+			 * hash opclass, forget the hash equality operator so we can use
+			 * the btree operator instead.
 			 */
 			typentry->eq_opr = InvalidOid;
 			typentry->eq_opr_finfo.fn_oid = InvalidOid;
@@ -229,7 +224,7 @@ lookup_type_cache(Oid type_id, int flags)
 		if (typentry->btree_opc != InvalidOid)
 			typentry->gt_opr = get_opclass_member(typentry->btree_opc,
 												  InvalidOid,
-												BTGreaterStrategyNumber);
+												  BTGreaterStrategyNumber);
 	}
 	if ((flags & (TYPECACHE_CMP_PROC | TYPECACHE_CMP_PROC_FINFO)) &&
 		typentry->cmp_proc == InvalidOid)
@@ -243,9 +238,9 @@ lookup_type_cache(Oid type_id, int flags)
 	/*
 	 * Set up fmgr lookup info as requested
 	 *
-	 * Note: we tell fmgr the finfo structures live in CacheMemoryContext,
-	 * which is not quite right (they're really in DynaHashContext) but
-	 * this will do for our purposes.
+	 * Note: we tell fmgr the finfo structures live in CacheMemoryContext, which
+	 * is not quite right (they're really in DynaHashContext) but this will do
+	 * for our purposes.
 	 */
 	if ((flags & TYPECACHE_EQ_OPR_FINFO) &&
 		typentry->eq_opr_finfo.fn_oid == InvalidOid &&
@@ -282,9 +277,9 @@ lookup_type_cache(Oid type_id, int flags)
 		Assert(rel->rd_rel->reltype == typentry->type_id);
 
 		/*
-		 * Notice that we simply store a link to the relcache's tupdesc.
-		 * Since we are relying on relcache to detect cache flush events,
-		 * there's not a lot of point to maintaining an independent copy.
+		 * Notice that we simply store a link to the relcache's tupdesc. Since
+		 * we are relying on relcache to detect cache flush events, there's
+		 * not a lot of point to maintaining an independent copy.
 		 */
 		typentry->tupDesc = RelationGetDescr(rel);
 
@@ -321,21 +316,20 @@ lookup_default_opclass(Oid type_id, Oid am_id)
 	 * (either exactly or binary-compatibly, but prefer an exact match).
 	 *
 	 * We could find more than one binary-compatible match, in which case we
-	 * require the user to specify which one he wants.	If we find more
-	 * than one exact match, then someone put bogus entries in pg_opclass.
+	 * require the user to specify which one he wants.	If we find more than
+	 * one exact match, then someone put bogus entries in pg_opclass.
 	 *
-	 * This is the same logic as GetDefaultOpClass() in indexcmds.c, except
-	 * that we consider all opclasses, regardless of the current search
-	 * path.
+	 * This is the same logic as GetDefaultOpClass() in indexcmds.c, except that
+	 * we consider all opclasses, regardless of the current search path.
 	 */
-	rel = heap_openr(OperatorClassRelationName, AccessShareLock);
+	rel = heap_open(OperatorClassRelationId, AccessShareLock);
 
 	ScanKeyInit(&skey[0],
 				Anum_pg_opclass_opcamid,
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(am_id));
 
-	scan = systable_beginscan(rel, OpclassAmNameNspIndex, true,
+	scan = systable_beginscan(rel, OpclassAmNameNspIndexId, true,
 							  SnapshotNow, 1, skey);
 
 	while (HeapTupleIsValid(tup = systable_getnext(scan)))
@@ -366,8 +360,8 @@ lookup_default_opclass(Oid type_id, Oid am_id)
 	if (nexact != 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_DUPLICATE_OBJECT),
-				 errmsg("there are multiple default operator classes for data type %s",
-						format_type_be(type_id))));
+		errmsg("there are multiple default operator classes for data type %s",
+			   format_type_be(type_id))));
 	if (ncompatible == 1)
 		return compatibleOid;
 
@@ -481,10 +475,6 @@ assign_record_type_typmod(TupleDesc tupDesc)
 	recentry = (RecordCacheEntry *) hash_search(RecordCacheHash,
 												(void *) hashkey,
 												HASH_ENTER, &found);
-	if (recentry == NULL)
-		ereport(ERROR,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("out of memory")));
 	if (!found)
 	{
 		/* New entry ... hash_search initialized only the hash key */
@@ -515,7 +505,7 @@ assign_record_type_typmod(TupleDesc tupDesc)
 		int32		newlen = RecordCacheArrayLen * 2;
 
 		RecordCacheArray = (TupleDesc *) repalloc(RecordCacheArray,
-											 newlen * sizeof(TupleDesc));
+												  newlen * sizeof(TupleDesc));
 		RecordCacheArrayLen = newlen;
 	}
 

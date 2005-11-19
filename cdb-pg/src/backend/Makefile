@@ -4,7 +4,7 @@
 #
 # Copyright (c) 1994, Regents of the University of California
 #
-# $PostgreSQL: pgsql/src/backend/Makefile,v 1.107.4.2 2005/08/02 01:35:22 tgl Exp $
+# $PostgreSQL: pgsql/src/backend/Makefile,v 1.110 2005/10/27 20:45:29 tgl Exp $
 #
 #-------------------------------------------------------------------------
 
@@ -32,23 +32,23 @@ ifeq ($(PORTNAME), qnx4)
 OBJS += bootstrap/bootstrap.o
 endif
 
-# Use server version of port library
-LIBS := $(patsubst -lpgport,-lpgport_srv, $(LIBS))
-
 ##########################################################################
 
 all: submake-libpgport postgres $(POSTGRES_IMP)
 
 ifneq ($(PORTNAME), cygwin)
 ifneq ($(PORTNAME), win32)
+ifneq ($(PORTNAME), aix)
 
 postgres: $(OBJS)
 	$(CC) $(CFLAGS) $(LDFLAGS) $(export_dynamic) $^ $(LIBS) $(PTHREAD_LIBS) -o $@
 
 endif
 endif
+endif
 
 ifeq ($(PORTNAME), cygwin)
+
 postgres: $(OBJS) $(DLLINIT) postgres.def libpostgres.a
 	$(DLLTOOL) --dllname $@$(X) --output-exp $@.exp --def postgres.def
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@$(X) -Wl,--base-file,$@.base $@.exp $(OBJS) $(LIBS)
@@ -80,7 +80,6 @@ libpostgres.a: postgres.def
 	$(DLLTOOL) --dllname postgres.exe --def postgres.def --output-lib $@
 
 endif # win32
-
 
 ifeq ($(PORTNAME), aix)
 

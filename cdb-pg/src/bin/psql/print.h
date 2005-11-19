@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2000-2005, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/print.h,v 1.22 2005/01/01 05:43:08 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/print.h,v 1.30 2005/10/27 13:34:47 momjian Exp $
  */
 #ifndef PRINT_H
 #define PRINT_H
@@ -21,7 +21,8 @@ enum printFormat
 	PRINT_UNALIGNED,
 	PRINT_ALIGNED,
 	PRINT_HTML,
-	PRINT_LATEX
+	PRINT_LATEX,
+	PRINT_TROFF_MS
 	/* add your favourite output format here ... */
 };
 
@@ -29,16 +30,17 @@ enum printFormat
 typedef struct _printTableOpt
 {
 	enum printFormat format;	/* one of the above */
-	bool		expanded;		/* expanded/vertical output (if supported
-								 * by output format) */
+	bool		expanded;		/* expanded/vertical output (if supported by
+								 * output format) */
 	unsigned short int pager;	/* use pager for output (if to stdout and
 								 * stdout is a tty) 0=off 1=on 2=always */
 	bool		tuples_only;	/* don't output headers, row counts, etc. */
-	unsigned short int border;	/* Print a border around the table.
-								 * 0=none, 1=dividing lines, 2=full */
+	unsigned short int border;	/* Print a border around the table. 0=none,
+								 * 1=dividing lines, 2=full */
 	char	   *fieldSep;		/* field separator for unaligned text mode */
-	char	   *recordSep;		/* record separator for unaligned text
-								 * mode */
+	char	   *recordSep;		/* record separator for unaligned text mode */
+	bool		numericLocale;	/* locale-aware numeric units separator and
+								 * decimal marker */
 	char	   *tableAttr;		/* attributes for HTML <table ...> */
 	int			encoding;		/* character encoding */
 } printTableOpt;
@@ -58,7 +60,7 @@ typedef struct _printTableOpt
 void printTable(const char *title, const char *const * headers,
 		   const char *const * cells, const char *const * footers,
 		   const char *align,
-		   const printTableOpt *opt, FILE *fout);
+		   const printTableOpt *opt, FILE *fout, FILE *flog);
 
 
 
@@ -68,8 +70,7 @@ typedef struct _printQueryOpt
 	char	   *nullPrint;		/* how to print null entities */
 	bool		quote;			/* quote all values as much as possible */
 	char	   *title;			/* override title */
-	char	  **footers;		/* override footer (default is "(xx
-								 * rows)") */
+	char	  **footers;		/* override footer (default is "(xx rows)") */
 	bool		default_footer; /* print default footer if footers==NULL */
 } printQueryOpt;
 
@@ -78,7 +79,10 @@ typedef struct _printQueryOpt
  *
  * It calls the printTable above with all the things set straight.
  */
-void		printQuery(const PGresult *result, const printQueryOpt *opt, FILE *fout);
+void printQuery(const PGresult *result, const printQueryOpt *opt,
+		   FILE *fout, FILE *flog);
+
+void		setDecimalLocale(void);
 
 #ifndef __CYGWIN__
 #define DEFAULT_PAGER "more"

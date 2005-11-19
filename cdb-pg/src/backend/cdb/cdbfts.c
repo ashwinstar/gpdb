@@ -14,6 +14,7 @@
 #include "miscadmin.h"
 #include "libpq-fe.h"
 #include "libpq-int.h"
+#include "utils/memutils.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbconn.h"
 #include "cdb/cdbutil.h"

@@ -7,20 +7,12 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/commands/vacuum.h,v 1.59 2004/12/31 22:03:28 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/commands/vacuum.h,v 1.62 2005/10/15 02:49:44 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #ifndef VACUUM_H
 #define VACUUM_H
-
-#include <sys/time.h>
-
-#ifdef HAVE_GETRUSAGE
-#include <sys/resource.h>
-#else
-#include "rusagestub.h"
-#endif
 
 #include "access/htup.h"
 #include "catalog/pg_attribute.h"
@@ -67,8 +59,8 @@ typedef Datum (*AnalyzeAttrFetchFunc) (VacAttrStatsP stats, int rownum,
 typedef struct VacAttrStats
 {
 	/*
-	 * These fields are set up by the main ANALYZE code before invoking
-	 * the type-specific typanalyze function.
+	 * These fields are set up by the main ANALYZE code before invoking the
+	 * type-specific typanalyze function.
 	 */
 	Form_pg_attribute attr;		/* copy of pg_attribute row for column */
 	Form_pg_type attrtype;		/* copy of pg_type row for column */
@@ -86,8 +78,8 @@ typedef struct VacAttrStats
 	void	   *extra_data;		/* for extra type-specific data */
 
 	/*
-	 * These fields are to be filled in by the compute_stats routine.
-	 * (They are initialized to zero when the struct is created.)
+	 * These fields are to be filled in by the compute_stats routine. (They
+	 * are initialized to zero when the struct is created.)
 	 */
 	bool		stats_valid;
 	float4		stanullfrac;	/* fraction of entries that are NULL */
@@ -113,19 +105,12 @@ typedef struct VacAttrStats
 } VacAttrStats;
 
 
-/* State structure for vac_init_rusage/vac_show_rusage */
-typedef struct VacRUsage
-{
-	struct timeval tv;
-	struct rusage ru;
-} VacRUsage;
-
 /* Default statistics target (GUC parameter) */
 extern DLLIMPORT int default_statistics_target; /* DLLIMPORT for PostGIS */
 
 
 /* in commands/vacuum.c */
-extern void vacuum(VacuumStmt *vacstmt);
+extern void vacuum(VacuumStmt *vacstmt, List *relids);
 extern void vac_open_indexes(Relation relation, LOCKMODE lockmode,
 				 int *nindexes, Relation **Irel);
 extern void vac_close_indexes(int nindexes, Relation *Irel, LOCKMODE lockmode);
@@ -137,8 +122,6 @@ extern void vacuum_set_xid_limits(VacuumStmt *vacstmt, bool sharedRel,
 					  TransactionId *oldestXmin,
 					  TransactionId *freezeLimit);
 extern bool vac_is_partial_index(Relation indrel);
-extern void vac_init_rusage(VacRUsage *ru0);
-extern const char *vac_show_rusage(VacRUsage *ru0);
 extern void vacuum_delay_point(void);
 
 /* in commands/vacuumlazy.c */

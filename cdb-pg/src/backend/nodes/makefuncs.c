@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/nodes/makefuncs.c,v 1.46 2004/12/31 21:59:55 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/nodes/makefuncs.c,v 1.48 2005/10/15 02:49:18 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -73,11 +73,10 @@ makeVar(Index varno,
 	var->varlevelsup = varlevelsup;
 
 	/*
-	 * Since few if any routines ever create Var nodes with
-	 * varnoold/varoattno different from varno/varattno, we don't provide
-	 * separate arguments for them, but just initialize them to the given
-	 * varno/varattno. This reduces code clutter and chance of error for
-	 * most callers.
+	 * Since few if any routines ever create Var nodes with varnoold/varoattno
+	 * different from varno/varattno, we don't provide separate arguments for
+	 * them, but just initialize them to the given varno/varattno. This
+	 * reduces code clutter and chance of error for most callers.
 	 */
 	var->varnoold = varno;
 	var->varoattno = varattno;
@@ -87,48 +86,49 @@ makeVar(Index varno,
 
 /*
  * makeTargetEntry -
- *	  creates a TargetEntry node (contains a Resdom)
+ *	  creates a TargetEntry node
  */
 TargetEntry *
-makeTargetEntry(Resdom *resdom, Expr *expr)
+makeTargetEntry(Expr *expr,
+				AttrNumber resno,
+				char *resname,
+				bool resjunk)
 {
-	TargetEntry *rt = makeNode(TargetEntry);
+	TargetEntry *tle = makeNode(TargetEntry);
 
-	rt->resdom = resdom;
-	rt->expr = expr;
-	return rt;
+	tle->expr = expr;
+	tle->resno = resno;
+	tle->resname = resname;
+
+	/*
+	 * We always set these fields to 0. If the caller wants to change them he
+	 * must do so explicitly.  Few callers do that, so omitting these
+	 * arguments reduces the chance of error.
+	 */
+	tle->ressortgroupref = 0;
+	tle->resorigtbl = InvalidOid;
+	tle->resorigcol = 0;
+
+	tle->resjunk = resjunk;
+
+	return tle;
 }
 
 /*
- * makeResdom -
- *	  creates a Resdom (Result Domain) node
+ * flatCopyTargetEntry -
+ *	  duplicate a TargetEntry, but don't copy substructure
+ *
+ * This is commonly used when we just want to modify the resno or substitute
+ * a new expression.
  */
-Resdom *
-makeResdom(AttrNumber resno,
-		   Oid restype,
-		   int32 restypmod,
-		   char *resname,
-		   bool resjunk)
+TargetEntry *
+flatCopyTargetEntry(TargetEntry *src_tle)
 {
-	Resdom	   *resdom = makeNode(Resdom);
+	TargetEntry *tle = makeNode(TargetEntry);
 
-	resdom->resno = resno;
-	resdom->restype = restype;
-	resdom->restypmod = restypmod;
-	resdom->resname = resname;
-
-	/*
-	 * We always set these fields to 0. If the caller wants to change them
-	 * he must do so explicitly.  Few callers do that, so omitting these
-	 * arguments reduces the chance of error.
-	 */
-	resdom->ressortgroupref = 0;
-	resdom->resorigtbl = InvalidOid;
-	resdom->resorigcol = 0;
-
-	resdom->resjunk = resjunk;
-
-	return resdom;
+	Assert(IsA(src_tle, TargetEntry));
+	memcpy(tle, src_tle, sizeof(TargetEntry));
+	return tle;
 }
 
 /*

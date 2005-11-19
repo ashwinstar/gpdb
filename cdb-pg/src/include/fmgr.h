@@ -11,12 +11,15 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/fmgr.h,v 1.36 2004/12/31 22:03:19 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/fmgr.h,v 1.40 2005/10/15 02:49:41 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #ifndef FMGR_H
 #define FMGR_H
+
+/* We don't want to include primnodes.h here, so make a stub reference */
+typedef struct Node *fmNodePtr;
 
 
 /*
@@ -37,18 +40,15 @@ typedef Datum (*PGFunction) (FunctionCallInfo fcinfo);
  */
 typedef struct FmgrInfo
 {
-	PGFunction	fn_addr;		/* pointer to function or handler to be
-								 * called */
-	Oid			fn_oid;			/* OID of function (NOT of handler, if
-								 * any) */
+	PGFunction	fn_addr;		/* pointer to function or handler to be called */
+	Oid			fn_oid;			/* OID of function (NOT of handler, if any) */
 	short		fn_nargs;		/* 0..FUNC_MAX_ARGS, or -1 if variable arg
 								 * count */
-	bool		fn_strict;		/* function is "strict" (NULL in => NULL
-								 * out) */
+	bool		fn_strict;		/* function is "strict" (NULL in => NULL out) */
 	bool		fn_retset;		/* function returns a set */
 	void	   *fn_extra;		/* extra space for use by handler */
 	MemoryContext fn_mcxt;		/* memory context to store fn_extra in */
-	struct Node *fn_expr;		/* expression parse tree for call, or NULL */
+	fmNodePtr	fn_expr;		/* expression parse tree for call, or NULL */
 } FmgrInfo;
 
 /*
@@ -57,10 +57,9 @@ typedef struct FmgrInfo
 typedef struct FunctionCallInfoData
 {
 	FmgrInfo   *flinfo;			/* ptr to lookup info used for this call */
-	struct Node *context;		/* pass info about context of call */
-	struct Node *resultinfo;	/* pass or return extra info about result */
-	bool		isnull;			/* function must set true if result is
-								 * NULL */
+	fmNodePtr	context;		/* pass info about context of call */
+	fmNodePtr	resultinfo;		/* pass or return extra info about result */
+	bool		isnull;			/* function must set true if result is NULL */
 	short		nargs;			/* # arguments actually passed */
 	Datum		arg[FUNC_MAX_ARGS];		/* Arguments passed to function */
 	bool		argnull[FUNC_MAX_ARGS]; /* T if arg[i] is actually NULL */
@@ -85,6 +84,22 @@ extern void fmgr_info_cxt(Oid functionId, FmgrInfo *finfo,
  */
 extern void fmgr_info_copy(FmgrInfo *dstinfo, FmgrInfo *srcinfo,
 			   MemoryContext destcxt);
+
+/*
+ * This macro initializes all the fields of a FunctionCallInfoData except
+ * for the arg[] and argnull[] arrays.	Performance testing has shown that
+ * the fastest way to set up argnull[] for small numbers of arguments is to
+ * explicitly set each required element to false, so we don't try to zero
+ * out the argnull[] array in the macro.
+ */
+#define InitFunctionCallInfoData(Fcinfo, Flinfo, Nargs, Context, Resultinfo) \
+	do { \
+		(Fcinfo).flinfo = (Flinfo); \
+		(Fcinfo).context = (Context); \
+		(Fcinfo).resultinfo = (Resultinfo); \
+		(Fcinfo).isnull = false; \
+		(Fcinfo).nargs = (Nargs); \
+	} while (0)
 
 /*
  * This macro invokes a function given a filled-in FunctionCallInfoData
@@ -271,8 +286,7 @@ extern struct varlena *pg_detoast_datum_slice(struct varlena * datum,
 
 typedef struct
 {
-	int			api_version;	/* specifies call convention version
-								 * number */
+	int			api_version;	/* specifies call convention version number */
 	/* More fields may be added later, for version numbers > 1. */
 } Pg_finfo_record;
 
@@ -386,6 +400,7 @@ extern void clear_external_function_hash(void *filehandle);
 extern Oid	fmgr_internal_function(const char *proname);
 extern Oid	get_fn_expr_rettype(FmgrInfo *flinfo);
 extern Oid	get_fn_expr_argtype(FmgrInfo *flinfo, int argnum);
+extern Oid	get_call_expr_argtype(fmNodePtr expr, int argnum);
 
 /*
  * Routines in dfmgr.c

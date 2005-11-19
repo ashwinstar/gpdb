@@ -5,7 +5,7 @@
  * to contain some useful information. Mechanism differs wildly across
  * platforms.
  *
- * $PostgreSQL: pgsql/src/backend/utils/misc/ps_status.c,v 1.23 2005/01/01 05:43:08 momjian Exp $
+ * $PostgreSQL: pgsql/src/backend/utils/misc/ps_status.c,v 1.26 2005/11/05 03:04:52 tgl Exp $
  *
  * Portions Copyright (c) 2005, greenplum inc
  * Copyright (c) 2000-2005, PostgreSQL Global Development Group
@@ -88,7 +88,6 @@ extern char **environ;
 #define PS_BUFFER_SIZE 256
 static char ps_buffer[PS_BUFFER_SIZE];
 static const size_t ps_buffer_size = PS_BUFFER_SIZE;
-
 #else							/* PS_USE_CLOBBER_ARGV */
 static char *ps_buffer;			/* will point to argv area */
 static size_t ps_buffer_size;	/* space determined at run time */
@@ -103,20 +102,22 @@ static int	save_argc;
 static char **save_argv;
 
 #ifdef WIN32
-	/*
-	 * Win32 does not support showing any changed arguments. To make it
-	 * at all possible to track which backend is doing what, we create
-	 * a named object that can be viewed with for example Process Explorer
-	 */
+
+ /*
+  * Win32 does not support showing any changed arguments. To make it at all
+  * possible to track which backend is doing what, we create a named object
+  * that can be viewed with for example Process Explorer
+  */
 static HANDLE ident_handle = INVALID_HANDLE_VALUE;
-static void pgwin32_update_ident(char *ident)
+static void
+pgwin32_update_ident(char *ident)
 {
-	char name[PS_BUFFER_SIZE+32];
+	char		name[PS_BUFFER_SIZE + 32];
 
 	if (ident_handle != INVALID_HANDLE_VALUE)
 		CloseHandle(ident_handle);
 
-	sprintf(name,"pgident: %s",ident);
+	sprintf(name, "pgident: %s", ident);
 
 	ident_handle = CreateEvent(NULL,
 							   TRUE,
@@ -144,8 +145,8 @@ save_ps_display_args(int argc, char **argv)
 #if defined(PS_USE_CLOBBER_ARGV)
 
 	/*
-	 * If we're going to overwrite the argv area, count the available
-	 * space.  Also move the environment to make additional room.
+	 * If we're going to overwrite the argv area, count the available space.
+	 * Also move the environment to make additional room.
 	 */
 	{
 		char	   *end_of_area = NULL;
@@ -198,12 +199,12 @@ save_ps_display_args(int argc, char **argv)
 	 * argument parsing purposes.
 	 *
 	 * (NB: do NOT think to remove the copying of argv[], even though
-	 * postmaster.c finishes looking at argv[] long before we ever
-	 * consider changing the ps display.  On some platforms, getopt()
-	 * keeps pointers into the argv array, and will get horribly confused
-	 * when it is re-called to analyze a subprocess' argument string if
-	 * the argv storage has been clobbered meanwhile.  Other platforms
-	 * have other dependencies on argv[].
+	 * postmaster.c finishes looking at argv[] long before we ever consider
+	 * changing the ps display.  On some platforms, getopt() keeps pointers
+	 * into the argv array, and will get horribly confused when it is
+	 * re-called to analyze a subprocess' argument string if the argv storage
+	 * has been clobbered meanwhile.  Other platforms have other dependencies
+	 * on argv[].
 	 */
 	{
 		char	  **new_argv;
@@ -225,8 +226,7 @@ save_ps_display_args(int argc, char **argv)
 
 		argv = new_argv;
 	}
-#endif   /* PS_USE_CHANGE_ARGV or
-								 * PS_USE_CLOBBER_ARGV */
+#endif   /* PS_USE_CHANGE_ARGV or PS_USE_CLOBBER_ARGV */
 
 	return argv;
 }
@@ -285,8 +285,8 @@ init_ps_display(const char *username, const char *dbname,
 #ifdef PS_USE_SETPROCTITLE
 
 	/*
-	 * apparently setproctitle() already adds a `progname:' prefix to the
-	 * ps line
+	 * apparently setproctitle() already adds a `progname:' prefix to the ps
+	 * line
 	 */
 	snprintf(ps_buffer, ps_buffer_size,
 			 "%s %s %s ",
@@ -302,7 +302,6 @@ init_ps_display(const char *username, const char *dbname,
 #ifdef WIN32
 	pgwin32_update_ident(ps_buffer);
 #endif
-
 #endif   /* not PS_USE_NONE */
 }
 
@@ -315,10 +314,6 @@ init_ps_display(const char *username, const char *dbname,
 void
 set_ps_display(const char *activity)
 {
-	/* save tag for possible use by elog.c */
-	if (MyProcPort)
-		MyProcPort->commandTag = activity;
-
 #ifndef PS_USE_NONE
 	/* no ps display for stand-alone backend */
 	if (!IsUnderPostmaster)
@@ -379,22 +374,37 @@ set_ps_display(const char *activity)
 #ifdef WIN32
 	pgwin32_update_ident(ps_buffer);
 #endif
-
 #endif   /* not PS_USE_NONE */
 }
 
 
 /*
  * Returns what's currently in the ps display, in case someone needs
- * it.	Note that only the activity part is returned.
+ * it.	Note that only the activity part is returned.  On some platforms
+ * the string will not be null-terminated, so return the effective
+ * length into *displen.
  */
 const char *
-get_ps_display(void)
+get_ps_display(int *displen)
 {
 #ifdef PS_USE_CLOBBER_ARGV
+	size_t		offset;
+
 	/* If ps_buffer is a pointer, it might still be null */
 	if (!ps_buffer)
+	{
+		*displen = 0;
 		return "";
+	}
+
+	/* Remove any trailing spaces to offset the effect of PS_PADDING */
+	offset = ps_buffer_size;
+	while (offset > ps_buffer_fixed_size && ps_buffer[offset-1] == PS_PADDING)
+		offset--;
+
+	*displen = offset - ps_buffer_fixed_size;
+#else
+	*displen = strlen(ps_buffer + ps_buffer_fixed_size);
 #endif
 
 	return ps_buffer + ps_buffer_fixed_size;

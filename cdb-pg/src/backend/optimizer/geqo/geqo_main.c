@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/backend/optimizer/geqo/geqo_main.c,v 1.48 2004/12/31 21:59:58 pgsql Exp $
+ * $PostgreSQL: pgsql/src/backend/optimizer/geqo/geqo_main.c,v 1.51 2005/10/15 02:49:19 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -63,7 +63,7 @@ static int	gimme_number_generations(int pool_size);
  */
 
 RelOptInfo *
-geqo(Query *root, int number_of_rels, List *initial_rels)
+geqo(PlannerInfo *root, int number_of_rels, List *initial_rels)
 {
 	GeqoEvalData evaldata;
 	int			generation;
@@ -106,10 +106,9 @@ geqo(Query *root, int number_of_rels, List *initial_rels)
 	random_init_pool(pool, &evaldata);
 
 /* sort the pool according to cheapest path as fitness */
-	sort_pool(pool);			/* we have to do it only one time, since
-								 * all kids replace the worst individuals
-								 * in future (-> geqo_pool.c:spread_chromo
-								 * ) */
+	sort_pool(pool);			/* we have to do it only one time, since all
+								 * kids replace the worst individuals in
+								 * future (-> geqo_pool.c:spread_chromo ) */
 
 #ifdef GEQO_DEBUG
 	elog(DEBUG1, "GEQO selected %d pool entries, best %.2f, worst %.2f",
@@ -252,7 +251,6 @@ geqo(Query *root, int number_of_rels, List *initial_rels)
 	 */
 	best_tour = (Gene *) pool->data[0].string;
 
-	/* root->join_rel_list will be modified during this ! */
 	best_rel = gimme_tree(best_tour, pool->string_length, &evaldata);
 
 	if (best_rel == NULL)

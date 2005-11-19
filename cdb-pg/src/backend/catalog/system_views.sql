@@ -3,8 +3,47 @@
  *
  * Copyright (c) 1996-2005, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/backend/catalog/system_views.sql,v 1.11 2005/01/01 20:44:14 tgl Exp $
+ * $PostgreSQL: pgsql/src/backend/catalog/system_views.sql,v 1.22 2005/10/06 02:29:15 tgl Exp $
  */
+
+CREATE VIEW pg_roles AS 
+    SELECT 
+        rolname,
+        rolsuper,
+        rolinherit,
+        rolcreaterole,
+        rolcreatedb,
+        rolcatupdate,
+        rolcanlogin,
+        rolconnlimit,
+        '********'::text as rolpassword,
+        rolvaliduntil,
+        rolconfig,
+        oid
+    FROM pg_authid;
+
+CREATE VIEW pg_shadow AS
+    SELECT
+        rolname AS usename,
+        oid AS usesysid,
+        rolcreatedb AS usecreatedb,
+        rolsuper AS usesuper,
+        rolcatupdate AS usecatupd,
+        rolpassword AS passwd,
+        rolvaliduntil::abstime AS valuntil,
+        rolconfig AS useconfig
+    FROM pg_authid
+    WHERE rolcanlogin;
+
+REVOKE ALL on pg_shadow FROM public;
+
+CREATE VIEW pg_group AS
+    SELECT
+        rolname AS groname,
+        oid AS grosysid,
+        ARRAY(SELECT member FROM pg_auth_members WHERE roleid = oid) AS grolist
+    FROM pg_authid
+    WHERE NOT rolcanlogin;
 
 CREATE VIEW pg_user AS 
     SELECT 
@@ -102,6 +141,40 @@ CREATE VIEW pg_stats AS
 
 REVOKE ALL on pg_statistic FROM public;
 
+CREATE VIEW pg_locks AS 
+    SELECT * 
+    FROM pg_lock_status() AS L
+    (locktype text, database oid, relation oid, page int4, tuple int2,
+     transactionid xid, classid oid, objid oid, objsubid int2,
+     transaction xid, pid int4, mode text, granted boolean);
+
+CREATE VIEW pg_prepared_xacts AS
+    SELECT P.transaction, P.gid, P.prepared,
+           U.rolname AS owner, D.datname AS database
+    FROM pg_prepared_xact() AS P
+    (transaction xid, gid text, prepared timestamptz, ownerid oid, dbid oid)
+         LEFT JOIN pg_authid U ON P.ownerid = U.oid
+         LEFT JOIN pg_database D ON P.dbid = D.oid;
+
+CREATE VIEW pg_settings AS 
+    SELECT * 
+    FROM pg_show_all_settings() AS A 
+    (name text, setting text, category text, short_desc text, extra_desc text,
+     context text, vartype text, source text, min_val text, max_val text);
+
+CREATE RULE pg_settings_u AS 
+    ON UPDATE TO pg_settings 
+    WHERE new.name = old.name DO 
+    SELECT set_config(old.name, new.setting, 'f');
+
+CREATE RULE pg_settings_n AS 
+    ON UPDATE TO pg_settings 
+    DO INSTEAD NOTHING;
+
+GRANT SELECT, UPDATE ON pg_settings TO PUBLIC;
+
+-- Statistics views
+
 CREATE VIEW pg_stat_all_tables AS 
     SELECT 
             C.oid AS relid, 
@@ -109,15 +182,16 @@ CREATE VIEW pg_stat_all_tables AS
             C.relname AS relname, 
             pg_stat_get_numscans(C.oid) AS seq_scan, 
             pg_stat_get_tuples_returned(C.oid) AS seq_tup_read, 
-            sum(pg_stat_get_numscans(I.indexrelid)) AS idx_scan, 
-            sum(pg_stat_get_tuples_fetched(I.indexrelid)) AS idx_tup_fetch, 
+            sum(pg_stat_get_numscans(I.indexrelid))::bigint AS idx_scan, 
+            sum(pg_stat_get_tuples_fetched(I.indexrelid))::bigint +
+                    pg_stat_get_tuples_fetched(C.oid) AS idx_tup_fetch, 
             pg_stat_get_tuples_inserted(C.oid) AS n_tup_ins, 
             pg_stat_get_tuples_updated(C.oid) AS n_tup_upd, 
             pg_stat_get_tuples_deleted(C.oid) AS n_tup_del 
     FROM pg_class C LEFT JOIN 
          pg_index I ON C.oid = I.indrelid 
          LEFT JOIN pg_namespace N ON (N.oid = C.relnamespace) 
-    WHERE C.relkind = 'r' 
+    WHERE C.relkind IN ('r', 't')
     GROUP BY C.oid, N.nspname, C.relname;
 
 CREATE VIEW pg_stat_sys_tables AS 
@@ -137,8 +211,8 @@ CREATE VIEW pg_statio_all_tables AS
                     pg_stat_get_blocks_hit(C.oid) AS heap_blks_read, 
             pg_stat_get_blocks_hit(C.oid) AS heap_blks_hit, 
             sum(pg_stat_get_blocks_fetched(I.indexrelid) - 
-                    pg_stat_get_blocks_hit(I.indexrelid)) AS idx_blks_read, 
-            sum(pg_stat_get_blocks_hit(I.indexrelid)) AS idx_blks_hit, 
+                    pg_stat_get_blocks_hit(I.indexrelid))::bigint AS idx_blks_read, 
+            sum(pg_stat_get_blocks_hit(I.indexrelid))::bigint AS idx_blks_hit, 
             pg_stat_get_blocks_fetched(T.oid) - 
                     pg_stat_get_blocks_hit(T.oid) AS toast_blks_read, 
             pg_stat_get_blocks_hit(T.oid) AS toast_blks_hit, 
@@ -150,7 +224,7 @@ CREATE VIEW pg_statio_all_tables AS
             pg_class T ON C.reltoastrelid = T.oid LEFT JOIN 
             pg_class X ON T.reltoastidxid = X.oid 
             LEFT JOIN pg_namespace N ON (N.oid = C.relnamespace) 
-    WHERE C.relkind = 'r' 
+    WHERE C.relkind IN ('r', 't')
     GROUP BY C.oid, N.nspname, C.relname, T.oid, X.oid;
 
 CREATE VIEW pg_statio_sys_tables AS 
@@ -175,7 +249,7 @@ CREATE VIEW pg_stat_all_indexes AS
             pg_index X ON C.oid = X.indrelid JOIN 
             pg_class I ON I.oid = X.indexrelid 
             LEFT JOIN pg_namespace N ON (N.oid = C.relnamespace) 
-    WHERE C.relkind = 'r';
+    WHERE C.relkind IN ('r', 't');
 
 CREATE VIEW pg_stat_sys_indexes AS 
     SELECT * FROM pg_stat_all_indexes 
@@ -199,7 +273,7 @@ CREATE VIEW pg_statio_all_indexes AS
             pg_index X ON C.oid = X.indrelid JOIN 
             pg_class I ON I.oid = X.indexrelid 
             LEFT JOIN pg_namespace N ON (N.oid = C.relnamespace) 
-    WHERE C.relkind = 'r';
+    WHERE C.relkind IN ('r', 't');
 
 CREATE VIEW pg_statio_sys_indexes AS 
     SELECT * FROM pg_statio_all_indexes 
@@ -235,14 +309,17 @@ CREATE VIEW pg_stat_activity AS
             D.datname AS datname, 
             pg_stat_get_backend_pid(S.backendid) AS procpid, 
             pg_stat_get_backend_userid(S.backendid) AS usesysid, 
-            U.usename AS usename, 
+            U.rolname AS usename, 
             pg_stat_get_backend_activity(S.backendid) AS current_query, 
-            pg_stat_get_backend_activity_start(S.backendid) AS query_start 
+            pg_stat_get_backend_activity_start(S.backendid) AS query_start,
+            pg_stat_get_backend_start(S.backendid) AS backend_start,
+            pg_stat_get_backend_client_addr(S.backendid) AS client_addr,
+            pg_stat_get_backend_client_port(S.backendid) AS client_port
     FROM pg_database D, 
             (SELECT pg_stat_get_backend_idset() AS backendid) AS S, 
-            pg_shadow U 
+            pg_authid U 
     WHERE pg_stat_get_backend_dbid(S.backendid) = D.oid AND 
-            pg_stat_get_backend_userid(S.backendid) = U.usesysid;
+            pg_stat_get_backend_userid(S.backendid) = U.oid;
 
 CREATE VIEW pg_stat_database AS 
     SELECT 
@@ -256,28 +333,23 @@ CREATE VIEW pg_stat_database AS
             pg_stat_get_db_blocks_hit(D.oid) AS blks_hit 
     FROM pg_database D;
 
-CREATE VIEW pg_locks AS 
-    SELECT * 
-    FROM pg_lock_status() AS L(relation oid, database oid, 
-        transaction xid, pid int4, mode text, granted boolean);
+--
+-- Fix up built-in functions that make use of OUT parameters.
+-- We can't currently fill these values in during bootstrap, because
+-- array_in doesn't work in bootstrap mode.  Eventually that should be
+-- fixed, but for now the path of least resistance is to patch their
+-- pg_proc entries later during initdb.
+--
 
-CREATE VIEW pg_prepared_xacts AS
-    SELECT *
-      FROM pg_prepared_xact() AS L(transaction xid, gid text, usesysid integer);
-
-CREATE VIEW pg_settings AS 
-    SELECT * 
-    FROM pg_show_all_settings() AS A 
-    (name text, setting text, category text, short_desc text, extra_desc text,
-     context text, vartype text, source text, min_val text, max_val text);
-
-CREATE RULE pg_settings_u AS 
-    ON UPDATE TO pg_settings 
-    WHERE new.name = old.name DO 
-    SELECT set_config(old.name, new.setting, 'f');
-
-CREATE RULE pg_settings_n AS 
-    ON UPDATE TO pg_settings 
-    DO INSTEAD NOTHING;
-
-GRANT SELECT, UPDATE ON pg_settings TO PUBLIC;
+UPDATE pg_proc SET
+  proallargtypes = ARRAY['text'::regtype,
+                         'int8',
+                         'timestamptz',
+                         'timestamptz',
+                         'timestamptz',
+                         'timestamptz',
+                         'bool'],
+  proargmodes = ARRAY['i'::"char", 'o', 'o', 'o', 'o', 'o', 'o'],
+  proargnames = ARRAY['filename'::text, 'size', 'access', 'modification',
+                      'change', 'creation', 'isdir']
+WHERE oid = 'pg_stat_file(text)'::regprocedure;

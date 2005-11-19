@@ -1,4 +1,4 @@
-# $PostgreSQL: pgsql/src/pl/plpython/Makefile,v 1.18 2004/11/19 19:23:01 tgl Exp $
+# $PostgreSQL: pgsql/src/pl/plpython/Makefile,v 1.23 2005/08/12 21:44:51 momjian Exp $
 
 subdir = src/pl/plpython
 top_builddir = ../../..
@@ -58,10 +58,34 @@ endif
 
 SHLIB_LINK = $(BE_DLLLIBS) $(python_libspec) $(python_additional_libs)
 
+REGRESS_OPTS = --dbname=$(PL_TESTDB) --load-language=plpythonu
+REGRESS = plpython_schema plpython_populate plpython_function plpython_test plpython_error plpython_drop
+
 include $(top_srcdir)/src/Makefile.shlib
 
 
 all: all-lib
+
+# When doing a VPATH build, copy over the .sql and .out files so that the
+# test script can find them.  See comments in src/test/regress/GNUmakefile.
+ifdef VPATH
+
+ifneq ($(PORTNAME),win32)
+abs_srcdir := $(shell cd $(srcdir) && pwd)
+abs_builddir := $(shell pwd)
+else
+abs_srcdir := $(shell cd $(srcdir) && pwd -W)
+abs_builddir := $(shell pwd -W)
+endif
+
+test_files_src := $(wildcard $(srcdir)/sql/*.sql) $(wildcard $(srcdir)/expected/*.out)
+test_files_build := $(patsubst $(srcdir)/%, $(abs_builddir)/%, $(test_files_src))
+
+all: $(test_files_build)
+$(test_files_build): $(abs_builddir)/%: $(srcdir)/%
+	ln -s $< $@
+
+endif
 
 install: all installdirs
 ifeq ($(enable_shared), yes)
@@ -78,15 +102,20 @@ installdirs:
 uninstall:
 	rm -f $(DESTDIR)$(pkglibdir)/plpython$(DLSUFFIX)
 
+installcheck: submake
+	$(SHELL) $(top_builddir)/src/test/regress/pg_regress $(REGRESS_OPTS) $(REGRESS)
+
+.PHONY: submake
+submake:
+	$(MAKE) -C $(top_builddir)/src/test/regress pg_regress
+
 clean distclean maintainer-clean: clean-lib
 	rm -f $(OBJS)
-	@rm -f error.diff feature.diff error.output feature.output test.log
+	rm -rf results
+	rm -f regression.diffs regression.out
 ifeq ($(PORTNAME), win32)
 	rm -f python${pytverstr}.def
 endif
-
-installcheck:
-	PATH=$(bindir):$$PATH $(SHELL) $(srcdir)/test.sh
 
 else # can't build
 

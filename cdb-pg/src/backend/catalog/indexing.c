@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/catalog/indexing.c,v 1.107 2004/12/31 21:59:38 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/catalog/indexing.c,v 1.110 2005/10/15 02:49:14 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -73,19 +73,24 @@ CatalogIndexInsert(CatalogIndexState indstate, HeapTuple heapTuple)
 	int			numIndexes;
 	RelationPtr relationDescs;
 	Relation	heapRelation;
-	TupleDesc	heapDescriptor;
+	TupleTableSlot *slot;
 	IndexInfo **indexInfoArray;
-	Datum		datum[INDEX_MAX_KEYS];
-	char		nullv[INDEX_MAX_KEYS];
+	Datum		values[INDEX_MAX_KEYS];
+	bool		isnull[INDEX_MAX_KEYS];
 
 	/*
-	 * Get information from the state structure.
+	 * Get information from the state structure.  Fall out if nothing to do.
 	 */
 	numIndexes = indstate->ri_NumIndices;
+	if (numIndexes == 0)
+		return;
 	relationDescs = indstate->ri_IndexRelationDescs;
 	indexInfoArray = indstate->ri_IndexRelationInfo;
 	heapRelation = indstate->ri_RelationDesc;
-	heapDescriptor = RelationGetDescr(heapRelation);
+
+	/* Need a slot to hold the tuple being examined */
+	slot = MakeSingleTupleTableSlot(RelationGetDescr(heapRelation));
+	ExecStoreTuple(heapTuple, slot, InvalidBuffer, false);
 
 	/*
 	 * for each index, form and insert the index tuple
@@ -93,7 +98,6 @@ CatalogIndexInsert(CatalogIndexState indstate, HeapTuple heapTuple)
 	for (i = 0; i < numIndexes; i++)
 	{
 		IndexInfo  *indexInfo;
-		InsertIndexResult result;
 
 		indexInfo = indexInfoArray[i];
 
@@ -105,29 +109,27 @@ CatalogIndexInsert(CatalogIndexState indstate, HeapTuple heapTuple)
 		Assert(indexInfo->ii_Predicate == NIL);
 
 		/*
-		 * FormIndexDatum fills in its datum and null parameters with
-		 * attribute information taken from the given heap tuple.
+		 * FormIndexDatum fills in its values and isnull parameters with the
+		 * appropriate values for the column(s) of the index.
 		 */
 		FormIndexDatum(indexInfo,
-					   heapTuple,
-					   heapDescriptor,
+					   slot,
 					   NULL,	/* no expression eval to do */
-					   datum,
-					   nullv);
+					   values,
+					   isnull);
 
 		/*
 		 * The index AM does the rest.
 		 */
-		result = index_insert(relationDescs[i], /* index relation */
-							  datum,	/* array of heaptuple Datums */
-							  nullv,	/* info on nulls */
-							  &(heapTuple->t_self),		/* tid of heap tuple */
-							  heapRelation,
-							  relationDescs[i]->rd_index->indisunique);
-
-		if (result)
-			pfree(result);
+		index_insert(relationDescs[i],	/* index relation */
+					 values,	/* array of index Datums */
+					 isnull,	/* is-null flags */
+					 &(heapTuple->t_self),		/* tid of heap tuple */
+					 heapRelation,
+					 relationDescs[i]->rd_index->indisunique);
 	}
+
+	ExecDropSingleTupleTableSlot(slot);
 }
 
 /*

@@ -10,6 +10,7 @@
  *
  *-------------------------------------------------------------------------
  */
+#define PROVIDE_64BIT_CRC
 #include "postgres.h"
 
 #include "libpq-fe.h"
@@ -326,7 +327,7 @@ write_qd_sync(char *cmd, void *buf, int len)
 				failed = true;
 				if (!resync && strstr(PQresultErrorMessage(pRes), "resync") != NULL)
 				{
-					char		dummy[100];
+					/*char		dummy[100];*/
 					int			pfileoff=0,
 								mfileoff=0;
 

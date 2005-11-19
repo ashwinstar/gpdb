@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/storage/page/bufpage.c,v 1.62 2004/12/31 22:01:10 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/storage/page/bufpage.c,v 1.67 2005/10/15 02:49:26 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -133,7 +133,7 @@ PageAddItem(Page page,
 		ereport(PANIC,
 				(errcode(ERRCODE_DATA_CORRUPTED),
 				 errmsg("corrupted page pointers: lower = %u, upper = %u, special = %u",
-					 phdr->pd_lower, phdr->pd_upper, phdr->pd_special)));
+						phdr->pd_lower, phdr->pd_upper, phdr->pd_special)));
 
 	/*
 	 * Select offsetNumber to place the new item at
@@ -149,8 +149,7 @@ PageAddItem(Page page,
 			if (offsetNumber < limit)
 			{
 				itemId = PageGetItemId(phdr, offsetNumber);
-				if ((itemId->lp_flags & LP_USED) ||
-					(itemId->lp_len != 0))
+				if (ItemIdIsUsed(itemId) || ItemIdGetLength(itemId) != 0)
 				{
 					elog(WARNING, "will not overwrite a used ItemId");
 					return InvalidOffsetNumber;
@@ -170,8 +169,7 @@ PageAddItem(Page page,
 		for (offsetNumber = 1; offsetNumber < limit; offsetNumber++)
 		{
 			itemId = PageGetItemId(phdr, offsetNumber);
-			if (((itemId->lp_flags & LP_USED) == 0) &&
-				(itemId->lp_len == 0))
+			if (!ItemIdIsUsed(itemId) && ItemIdGetLength(itemId) == 0)
 				break;
 		}
 		/* if no free slot, we'll put it at limit (1st open slot) */
@@ -186,8 +184,8 @@ PageAddItem(Page page,
 	/*
 	 * Compute new lower and upper pointers for page, see if it'll fit.
 	 *
-	 * Note: do arithmetic as signed ints, to avoid mistakes if, say,
-	 * alignedSize > pd_upper.
+	 * Note: do arithmetic as signed ints, to avoid mistakes if, say, alignedSize
+	 * > pd_upper.
 	 */
 	if (offsetNumber == limit || needshuffle)
 		lower = phdr->pd_lower + sizeof(ItemIdData);
@@ -202,8 +200,7 @@ PageAddItem(Page page,
 		return InvalidOffsetNumber;
 
 	/*
-	 * OK to insert the item.  First, shuffle the existing pointers if
-	 * needed.
+	 * OK to insert the item.  First, shuffle the existing pointers if needed.
 	 */
 	itemId = PageGetItemId(phdr, offsetNumber);
 
@@ -274,13 +271,14 @@ PageRestoreTempPage(Page tempPage, Page oldPage)
 }
 
 /*
- * sorting support for PageRepairFragmentation
+ * sorting support for PageRepairFragmentation and PageIndexMultiDelete
  */
 typedef struct itemIdSortData
 {
 	int			offsetindex;	/* linp array index */
 	int			itemoff;		/* page offset of item data */
 	Size		alignedlen;		/* MAXALIGN(item data len) */
+	ItemIdData	olditemid;		/* used only in PageIndexMultiDelete */
 } itemIdSortData;
 typedef itemIdSortData *itemIdSort;
 
@@ -297,7 +295,8 @@ itemoffcompare(const void *itemidp1, const void *itemidp2)
  *
  * Frees fragmented space on a page.
  * It doesn't remove unused line pointers! Please don't change this.
- * This routine is usable for heap pages only.
+ *
+ * This routine is usable for heap pages only, but see PageIndexMultiDelete.
  *
  * Returns number of unused line pointers on page.	If "unused" is not NULL
  * then the unused[] array is filled with indexes of unused line pointers.
@@ -318,11 +317,11 @@ PageRepairFragmentation(Page page, OffsetNumber *unused)
 	Offset		upper;
 
 	/*
-	 * It's worth the trouble to be more paranoid here than in most
-	 * places, because we are about to reshuffle data in (what is usually)
-	 * a shared disk buffer.  If we aren't careful then corrupted
-	 * pointers, lengths, etc could cause us to clobber adjacent disk
-	 * buffers, spreading the data loss further.  So, check everything.
+	 * It's worth the trouble to be more paranoid here than in most places,
+	 * because we are about to reshuffle data in (what is usually) a shared
+	 * disk buffer.  If we aren't careful then corrupted pointers, lengths,
+	 * etc could cause us to clobber adjacent disk buffers, spreading the data
+	 * loss further.  So, check everything.
 	 */
 	if (pd_lower < SizeOfPageHeaderData ||
 		pd_lower > pd_upper ||
@@ -339,9 +338,9 @@ PageRepairFragmentation(Page page, OffsetNumber *unused)
 	for (i = 0; i < nline; i++)
 	{
 		lp = PageGetItemId(page, i + 1);
-		if (lp->lp_flags & LP_DELETE)	/* marked for deletion */
+		if (ItemIdDeleted(lp))	/* marked for deletion */
 			lp->lp_flags &= ~(LP_USED | LP_DELETE);
-		if (lp->lp_flags & LP_USED)
+		if (ItemIdIsUsed(lp))
 			nused++;
 		else if (unused)
 			unused[i - nused] = (OffsetNumber) i;
@@ -366,17 +365,17 @@ PageRepairFragmentation(Page page, OffsetNumber *unused)
 		for (i = 0; i < nline; i++)
 		{
 			lp = PageGetItemId(page, i + 1);
-			if (lp->lp_flags & LP_USED)
+			if (ItemIdIsUsed(lp))
 			{
 				itemidptr->offsetindex = i;
-				itemidptr->itemoff = lp->lp_off;
+				itemidptr->itemoff = ItemIdGetOffset(lp);
 				if (itemidptr->itemoff < (int) pd_upper ||
 					itemidptr->itemoff >= (int) pd_special)
 					ereport(ERROR,
 							(errcode(ERRCODE_DATA_CORRUPTED),
 							 errmsg("corrupted item pointer: %u",
 									itemidptr->itemoff)));
-				itemidptr->alignedlen = MAXALIGN(lp->lp_len);
+				itemidptr->alignedlen = MAXALIGN(ItemIdGetLength(lp));
 				totallen += itemidptr->alignedlen;
 				itemidptr++;
 			}
@@ -389,8 +388,8 @@ PageRepairFragmentation(Page page, OffsetNumber *unused)
 		if (totallen > (Size) (pd_special - pd_lower))
 			ereport(ERROR,
 					(errcode(ERRCODE_DATA_CORRUPTED),
-			errmsg("corrupted item lengths: total %u, available space %u",
-				   (unsigned int) totallen, pd_special - pd_lower)));
+			   errmsg("corrupted item lengths: total %u, available space %u",
+					  (unsigned int) totallen, pd_special - pd_lower)));
 
 		/* sort itemIdSortData array into decreasing itemoff order */
 		qsort((char *) itemidbase, nused, sizeof(itemIdSortData),
@@ -470,7 +469,7 @@ PageIndexTupleDelete(Page page, OffsetNumber offnum)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_CORRUPTED),
 				 errmsg("corrupted page pointers: lower = %u, upper = %u, special = %u",
-					 phdr->pd_lower, phdr->pd_upper, phdr->pd_special)));
+						phdr->pd_lower, phdr->pd_upper, phdr->pd_special)));
 
 	nline = PageGetMaxOffsetNumber(page);
 	if ((int) offnum <= 0 || (int) offnum > nline)
@@ -491,10 +490,10 @@ PageIndexTupleDelete(Page page, OffsetNumber offnum)
 						offset, (unsigned int) size)));
 
 	/*
-	 * First, we want to get rid of the pd_linp entry for the index tuple.
-	 * We copy all subsequent linp's back one slot in the array. We don't
-	 * use PageGetItemId, because we are manipulating the _array_, not
-	 * individual linp's.
+	 * First, we want to get rid of the pd_linp entry for the index tuple. We
+	 * copy all subsequent linp's back one slot in the array. We don't use
+	 * PageGetItemId, because we are manipulating the _array_, not individual
+	 * linp's.
 	 */
 	nbytes = phdr->pd_lower -
 		((char *) &phdr->pd_linp[offidx + 1] - (char *) phdr);
@@ -506,11 +505,10 @@ PageIndexTupleDelete(Page page, OffsetNumber offnum)
 
 	/*
 	 * Now move everything between the old upper bound (beginning of tuple
-	 * space) and the beginning of the deleted tuple forward, so that
-	 * space in the middle of the page is left free.  If we've just
-	 * deleted the tuple at the beginning of tuple space, then there's no
-	 * need to do the copy (and bcopy on some architectures SEGV's if
-	 * asked to move zero bytes).
+	 * space) and the beginning of the deleted tuple forward, so that space in
+	 * the middle of the page is left free.  If we've just deleted the tuple
+	 * at the beginning of tuple space, then there's no need to do the copy
+	 * (and bcopy on some architectures SEGV's if asked to move zero bytes).
 	 */
 
 	/* beginning of tuple space */
@@ -526,8 +524,8 @@ PageIndexTupleDelete(Page page, OffsetNumber offnum)
 	/*
 	 * Finally, we need to adjust the linp entries that remain.
 	 *
-	 * Anything that used to be before the deleted tuple's data was moved
-	 * forward by the size of the deleted tuple.
+	 * Anything that used to be before the deleted tuple's data was moved forward
+	 * by the size of the deleted tuple.
 	 */
 	if (!PageIsEmpty(page))
 	{
@@ -538,8 +536,140 @@ PageIndexTupleDelete(Page page, OffsetNumber offnum)
 		{
 			ItemId		ii = PageGetItemId(phdr, i);
 
-			if (ii->lp_off <= offset)
+			if (ItemIdGetOffset(ii) <= offset)
 				ii->lp_off += size;
 		}
 	}
+}
+
+
+/*
+ * PageIndexMultiDelete
+ *
+ * This routine handles the case of deleting multiple tuples from an
+ * index page at once.	It is considerably faster than a loop around
+ * PageIndexTupleDelete ... however, the caller *must* supply the array
+ * of item numbers to be deleted in item number order!
+ */
+void
+PageIndexMultiDelete(Page page, OffsetNumber *itemnos, int nitems)
+{
+	PageHeader	phdr = (PageHeader) page;
+	Offset		pd_lower = phdr->pd_lower;
+	Offset		pd_upper = phdr->pd_upper;
+	Offset		pd_special = phdr->pd_special;
+	itemIdSort	itemidbase,
+				itemidptr;
+	ItemId		lp;
+	int			nline,
+				nused;
+	int			i;
+	Size		totallen;
+	Offset		upper;
+	Size		size;
+	unsigned	offset;
+	int			nextitm;
+	OffsetNumber offnum;
+
+	/*
+	 * If there aren't very many items to delete, then retail
+	 * PageIndexTupleDelete is the best way.  Delete the items in reverse
+	 * order so we don't have to think about adjusting item numbers for
+	 * previous deletions.
+	 *
+	 * TODO: tune the magic number here
+	 */
+	if (nitems <= 2)
+	{
+		while (--nitems >= 0)
+			PageIndexTupleDelete(page, itemnos[nitems]);
+		return;
+	}
+
+	/*
+	 * As with PageRepairFragmentation, paranoia seems justified.
+	 */
+	if (pd_lower < SizeOfPageHeaderData ||
+		pd_lower > pd_upper ||
+		pd_upper > pd_special ||
+		pd_special > BLCKSZ ||
+		pd_special != MAXALIGN(pd_special))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATA_CORRUPTED),
+				 errmsg("corrupted page pointers: lower = %u, upper = %u, special = %u",
+						pd_lower, pd_upper, pd_special)));
+
+	/*
+	 * Scan the item pointer array and build a list of just the ones we are
+	 * going to keep.  Notice we do not modify the page yet, since we are
+	 * still validity-checking.
+	 */
+	nline = PageGetMaxOffsetNumber(page);
+	itemidbase = (itemIdSort) palloc(sizeof(itemIdSortData) * nline);
+	itemidptr = itemidbase;
+	totallen = 0;
+	nused = 0;
+	nextitm = 0;
+	for (offnum = 1; offnum <= nline; offnum++)
+	{
+		lp = PageGetItemId(page, offnum);
+		size = ItemIdGetLength(lp);
+		offset = ItemIdGetOffset(lp);
+		if (offset < pd_upper ||
+			(offset + size) > pd_special ||
+			offset != MAXALIGN(offset))
+			ereport(ERROR,
+					(errcode(ERRCODE_DATA_CORRUPTED),
+					 errmsg("corrupted item pointer: offset = %u, size = %u",
+							offset, (unsigned int) size)));
+
+		if (nextitm < nitems && offnum == itemnos[nextitm])
+		{
+			/* skip item to be deleted */
+			nextitm++;
+		}
+		else
+		{
+			itemidptr->offsetindex = nused;		/* where it will go */
+			itemidptr->itemoff = offset;
+			itemidptr->olditemid = *lp;
+			itemidptr->alignedlen = MAXALIGN(size);
+			totallen += itemidptr->alignedlen;
+			itemidptr++;
+			nused++;
+		}
+	}
+
+	/* this will catch invalid or out-of-order itemnos[] */
+	if (nextitm != nitems)
+		elog(ERROR, "incorrect index offsets supplied");
+
+	if (totallen > (Size) (pd_special - pd_lower))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATA_CORRUPTED),
+			   errmsg("corrupted item lengths: total %u, available space %u",
+					  (unsigned int) totallen, pd_special - pd_lower)));
+
+	/* sort itemIdSortData array into decreasing itemoff order */
+	qsort((char *) itemidbase, nused, sizeof(itemIdSortData),
+		  itemoffcompare);
+
+	/* compactify page and install new itemids */
+	upper = pd_special;
+
+	for (i = 0, itemidptr = itemidbase; i < nused; i++, itemidptr++)
+	{
+		lp = PageGetItemId(page, itemidptr->offsetindex + 1);
+		upper -= itemidptr->alignedlen;
+		memmove((char *) page + upper,
+				(char *) page + itemidptr->itemoff,
+				itemidptr->alignedlen);
+		*lp = itemidptr->olditemid;
+		lp->lp_off = upper;
+	}
+
+	phdr->pd_lower = SizeOfPageHeaderData + nused * sizeof(ItemIdData);
+	phdr->pd_upper = upper;
+
+	pfree(itemidbase);
 }

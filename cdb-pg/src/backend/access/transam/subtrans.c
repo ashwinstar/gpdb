@@ -22,7 +22,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/backend/access/transam/subtrans.c,v 1.7 2004/12/31 21:59:29 pgsql Exp $
+ * $PostgreSQL: pgsql/src/backend/access/transam/subtrans.c,v 1.11 2005/10/15 02:49:09 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -30,7 +30,6 @@
 
 #include "access/slru.h"
 #include "access/subtrans.h"
-#include "storage/sinval.h"
 #include "utils/tqual.h"
 
 
@@ -143,7 +142,8 @@ SubTransGetTopmostTransaction(TransactionId xid)
 				previousXid = xid;
 
 	/* Can't ask about stuff that might not be around anymore */
-	/* Assert(TransactionIdFollowsOrEquals(xid, TransactionXmin)); */
+	/* Joe had this Assert commented out... Why? */
+	Assert(TransactionIdFollowsOrEquals(xid, TransactionXmin));
 
 	while (TransactionIdIsValid(parentXid))
 	{
@@ -162,8 +162,7 @@ SubTransGetTopmostTransaction(TransactionId xid)
 /*
  * Initialization of shared memory for SUBTRANS
  */
-
-int
+Size
 SUBTRANSShmemSize(void)
 {
 	return SimpleLruShmemSize();
@@ -223,22 +222,32 @@ ZeroSUBTRANSPage(int pageno)
 /*
  * This must be called ONCE during postmaster or standalone-backend startup,
  * after StartupXLOG has initialized ShmemVariableCache->nextXid.
+ *
+ * oldestActiveXID is the oldest XID of any prepared transaction, or nextXid
+ * if there are none.
  */
 void
-StartupSUBTRANS(void)
+StartupSUBTRANS(TransactionId oldestActiveXID)
 {
 	int			startPage;
+	int			endPage;
 
 	/*
 	 * Since we don't expect pg_subtrans to be valid across crashes, we
-	 * initialize the currently-active page to zeroes during startup.
-	 * Whenever we advance into a new page, ExtendSUBTRANS will likewise
-	 * zero the new page without regard to whatever was previously on
-	 * disk.
+	 * initialize the currently-active page(s) to zeroes during startup.
+	 * Whenever we advance into a new page, ExtendSUBTRANS will likewise zero
+	 * the new page without regard to whatever was previously on disk.
 	 */
 	LWLockAcquire(SubtransControlLock, LW_EXCLUSIVE);
 
-	startPage = TransactionIdToPage(ShmemVariableCache->nextXid);
+	startPage = TransactionIdToPage(oldestActiveXID);
+	endPage = TransactionIdToPage(ShmemVariableCache->nextXid);
+
+	while (startPage != endPage)
+	{
+		(void) ZeroSUBTRANSPage(startPage);
+		startPage++;
+	}
 	(void) ZeroSUBTRANSPage(startPage);
 
 	LWLockRelease(SubtransControlLock);
@@ -253,8 +262,8 @@ ShutdownSUBTRANS(void)
 	/*
 	 * Flush dirty SUBTRANS pages to disk
 	 *
-	 * This is not actually necessary from a correctness point of view. We do
-	 * it merely as a debugging aid.
+	 * This is not actually necessary from a correctness point of view. We do it
+	 * merely as a debugging aid.
 	 */
 	SimpleLruFlush(SubTransCtl, false);
 }
@@ -268,9 +277,9 @@ CheckPointSUBTRANS(void)
 	/*
 	 * Flush dirty SUBTRANS pages to disk
 	 *
-	 * This is not actually necessary from a correctness point of view. We do
-	 * it merely to improve the odds that writing of dirty pages is done
-	 * by the checkpoint process and not by backends.
+	 * This is not actually necessary from a correctness point of view. We do it
+	 * merely to improve the odds that writing of dirty pages is done by the
+	 * checkpoint process and not by backends.
 	 */
 	SimpleLruFlush(SubTransCtl, true);
 }
@@ -320,8 +329,8 @@ TruncateSUBTRANS(TransactionId oldestXact)
 	int			cutoffPage;
 
 	/*
-	 * The cutoff point is the start of the segment containing oldestXact.
-	 * We pass the *page* containing oldestXact to SimpleLruTruncate.
+	 * The cutoff point is the start of the segment containing oldestXact. We
+	 * pass the *page* containing oldestXact to SimpleLruTruncate.
 	 */
 	cutoffPage = TransactionIdToPage(oldestXact);
 

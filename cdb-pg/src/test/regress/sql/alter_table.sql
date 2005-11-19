@@ -171,10 +171,16 @@ ALTER INDEX tmp_onek_unique1 RENAME TO onek_unique1;
 -- renaming views
 CREATE VIEW tmp_view (unique1) AS SELECT unique1 FROM tenk1;
 ALTER TABLE tmp_view RENAME TO tmp_view_new;
--- analyze to ensure we get an indexscan here
+
+-- hack to ensure we get an indexscan here
 ANALYZE tenk1;
+set enable_seqscan to off;
+set enable_bitmapscan to off;
 -- 5 values, sorted 
 SELECT unique1 FROM tenk1 WHERE unique1 < 5;
+reset enable_seqscan;
+reset enable_bitmapscan;
+
 DROP VIEW tmp_view_new;
 -- toast-like relation name
 alter table stud_emp rename to pg_toast_stud_emp;
@@ -975,3 +981,61 @@ alter table another
 select * from another;
 
 drop table another;
+
+--
+-- alter function
+--
+create function test_strict(text) returns text as
+    'select coalesce($1, ''got passed a null'');'
+    language sql returns null on null input;
+select test_strict(NULL);
+alter function test_strict(text) called on null input;
+select test_strict(NULL);
+
+create function non_strict(text) returns text as
+    'select coalesce($1, ''got passed a null'');'
+    language sql called on null input;
+select non_strict(NULL);
+alter function non_strict(text) returns null on null input;
+select non_strict(NULL);
+
+--
+-- alter object set schema
+--
+
+create schema alter1;
+create schema alter2;
+
+create table alter1.t1(f1 serial primary key, f2 int check (f2 > 0));
+
+create view alter1.v1 as select * from alter1.t1;
+
+create function alter1.plus1(int) returns int as 'select $1+1' language sql;
+
+create domain alter1.posint integer check (value > 0);
+
+create type alter1.ctype as (f1 int, f2 text);
+
+insert into alter1.t1(f2) values(11);
+insert into alter1.t1(f2) values(12);
+
+alter table alter1.t1 set schema alter2;
+alter table alter1.v1 set schema alter2;
+alter function alter1.plus1(int) set schema alter2;
+alter domain alter1.posint set schema alter2;
+alter type alter1.ctype set schema alter2;
+
+-- this should succeed because nothing is left in alter1
+drop schema alter1;
+
+insert into alter2.t1(f2) values(13);
+insert into alter2.t1(f2) values(14);
+
+select * from alter2.t1;
+
+select * from alter2.v1;
+
+select alter2.plus1(41);
+
+-- clean up
+drop schema alter2 cascade;

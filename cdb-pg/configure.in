@@ -1,5 +1,5 @@
 dnl Process this file with autoconf to produce a configure script.
-dnl $PostgreSQL: pgsql/configure.in,v 1.398.4.5 2005/05/05 20:07:34 tgl Exp $
+dnl $PostgreSQL: pgsql/configure.in,v 1.431 2005/11/05 04:01:41 pgsql Exp $
 dnl
 dnl Developers, please strive to achieve this order:
 dnl
@@ -17,9 +17,9 @@ dnl Read the Autoconf manual for details.
 dnl
 m4_pattern_forbid(^PGAC_)dnl to catch undefined macros
 
-AC_INIT([Bizgres MPP], [8.0.4], [support@greenplum.com])
+AC_INIT([Bizgres MPP], [8.1.0], [support@greenplum.com])
 
-AC_PREREQ(2.53)
+AC_PREREQ(2.59)
 AC_COPYRIGHT([Copyright (c) 1996-2005, PostgreSQL Global Development Group])
 AC_CONFIG_SRCDIR([src/backend/access/common/heaptuple.c])
 AC_CONFIG_AUX_DIR(config)
@@ -251,12 +251,11 @@ else
 fi
 
 if test "$GCC" = yes; then
-  CFLAGS="$CFLAGS -Wall -Wmissing-prototypes -Wpointer-arith"
+  CFLAGS="$CFLAGS -Wall -Wmissing-prototypes -Wpointer-arith -Winline"
 
   # Some versions of GCC support some additional useful warning flags.
   # Check whether they are supported, and add them to CFLAGS if so.
   PGAC_PROG_CC_CFLAGS_OPT([-Wdeclaration-after-statement])
-  PGAC_PROG_CC_CFLAGS_OPT([-Wold-style-definition])
   PGAC_PROG_CC_CFLAGS_OPT([-Wendif-labels])
 
   # Disable strict-aliasing rules; needed for gcc 3.3+
@@ -413,19 +412,6 @@ AC_MSG_RESULT([$with_python])
 AC_SUBST(with_python)
 
 #
-# Kerberos 4
-#
-AC_MSG_CHECKING([whether to build with Kerberos 4 support])
-PGAC_ARG_BOOL(with, krb4, no, [  --with-krb4             build with Kerberos 4 support],
-[
-  AC_DEFINE(KRB4, 1, [Define to build with Kerberos 4 support. (--with-krb4)])
-  krb_srvtab="/etc/srvtab"
-])
-AC_MSG_RESULT([$with_krb4])
-AC_SUBST(with_krb4)
-
-
-#
 # Kerberos 5
 #
 AC_MSG_CHECKING([whether to build with Kerberos 5 support])
@@ -438,11 +424,6 @@ AC_MSG_RESULT([$with_krb5])
 AC_SUBST(with_krb5)
 
 
-# Using both Kerberos 4 and Kerberos 5 at the same time isn't going to work.
-if test "$with_krb4" = yes && test "$with_krb5" = yes ; then
-  AC_MSG_ERROR([Kerberos 4 and Kerberos 5 support cannot be combined])
-fi
-
 AC_SUBST(krb_srvtab)
 
 
@@ -450,11 +431,11 @@ AC_SUBST(krb_srvtab)
 # Kerberos configuration parameters
 #
 PGAC_ARG_REQ(with, krb-srvnam,
-             [  --with-krb-srvnam=NAME  name of the service principal in Kerberos [[postgres]]],
+             [  --with-krb-srvnam=NAME  name of the default service principal in Kerberos [[postgres]]],
              [],
              [with_krb_srvnam="postgres"])
 AC_DEFINE_UNQUOTED([PG_KRB_SRVNAM], ["$with_krb_srvnam"],
-                   [Define to the name of the PostgreSQL service principal in Kerberos. (--with-krb-srvnam=NAME)])
+                   [Define to the name of the default PostgreSQL service principal in Kerberos. (--with-krb-srvnam=NAME)])
 
 
 #
@@ -469,14 +450,14 @@ AC_SUBST(with_pam)
 
 
 #
-# Rendezvous
+# Bonjour
 #
-AC_MSG_CHECKING([whether to build with Rendezvous support])
-PGAC_ARG_BOOL(with, rendezvous, no,
-              [  --with-rendezvous       build with Rendezvous support],
-              [AC_DEFINE([USE_RENDEZVOUS], 1, [Define to 1 to build with Rendezvous support. (--with-rendezvous)])])
-AC_MSG_RESULT([$with_rendezvous])
-AC_SUBST(with_rendezvous)
+AC_MSG_CHECKING([whether to build with Bonjour support])
+PGAC_ARG_BOOL(with, bonjour, no,
+              [  --with-bonjour          build with Bonjour support],
+              [AC_DEFINE([USE_BONJOUR], 1, [Define to 1 to build with Bonjour support. (--with-bonjour)])])
+AC_MSG_RESULT([$with_bonjour])
+AC_SUBST(with_bonjour)
 
 
 #
@@ -510,6 +491,7 @@ fi
 #
 PGAC_ARG_BOOL(with, zlib, yes,
               [  --without-zlib          do not use Zlib])
+AC_SUBST(with_zlib)
 
 #
 # Elf
@@ -669,12 +651,6 @@ else
 *** Not using spinlocks will cause poor performance.])
 fi
 
-if test "$with_krb4" = yes ; then
-  AC_CHECK_LIB(des, des_encrypt, [], [AC_MSG_ERROR([library 'des' is required for Kerberos 4])])
-  AC_CHECK_LIB(krb, krb_sendauth, [], [AC_MSG_ERROR([library 'krb' is required for Kerberos 4])])
-  AC_REPLACE_FUNCS([gethostname])
-fi
-
 if test "$with_krb5" = yes ; then
   if test "$PORTNAME" != "win32"; then
      AC_SEARCH_LIBS(com_err, [krb5 'krb5 -ldes -lasn1 -lroken' com_err], [],
@@ -765,10 +741,6 @@ failure.  It is possible the compiler isn't looking in the proper directory.
 Use --without-zlib to disable zlib support.])])
 fi
 
-if test "$with_krb4" = yes ; then
-  AC_CHECK_HEADER(krb.h, [], [AC_MSG_ERROR([header file <krb.h> is required for Kerberos 4])])
-fi
-
 if test "$with_krb5" = yes ; then
   AC_CHECK_HEADER(krb5.h, [], [AC_MSG_ERROR([header file <krb5.h> is required for Kerberos 5])])
 fi
@@ -784,8 +756,8 @@ if test "$with_pam" = yes ; then
                                      [AC_MSG_ERROR([header file <security/pam_appl.h> or <pam/pam_appl.h> is required for PAM.])])])
 fi
 
-if test "$with_rendezvous" = yes ; then
-  AC_CHECK_HEADER(DNSServiceDiscovery/DNSServiceDiscovery.h, [], [AC_MSG_ERROR([header file <DNSServiceDiscovery/DNSServiceDiscovery.h> is required for Rendezvous])])
+if test "$with_bonjour" = yes ; then
+  AC_CHECK_HEADER(DNSServiceDiscovery/DNSServiceDiscovery.h, [], [AC_MSG_ERROR([header file <DNSServiceDiscovery/DNSServiceDiscovery.h> is required for Bonjour])])
 fi
 
 
@@ -849,9 +821,6 @@ PGAC_VAR_INT_TIMEZONE
 AC_FUNC_ACCEPT_ARGTYPES
 PGAC_FUNC_GETTIMEOFDAY_1ARG
 
-# SunOS doesn't handle negative byte comparisons properly with +/- return
-AC_FUNC_MEMCMP
-
 AC_CHECK_FUNCS([cbrt dlopen fcvt fdatasync getpeereid memmove poll pstat readlink setproctitle setsid sigprocmask symlink sysconf towlower utime utimes waitpid wcstombs])
 
 AC_CHECK_DECLS(fdatasync, [], [], [#include <unistd.h>])
@@ -859,8 +828,8 @@ AC_CHECK_DECLS(fdatasync, [], [], [#include <unistd.h>])
 HAVE_IPV6=no
 AC_CHECK_TYPE([struct sockaddr_in6],
         [AC_DEFINE(HAVE_IPV6, 1, [Define to 1 if you have support for IPv6.])
-	     HAVE_IPV6=yes],
-              [],
+         HAVE_IPV6=yes],
+        [],
 [$ac_includes_default
 #include <netinet/in.h>])
 AC_SUBST(HAVE_IPV6)
@@ -882,7 +851,7 @@ fi
 # We use our snprintf.c emulation if either snprintf() or vsnprintf()
 # is missing.  Yes, there are machines that have only one.  We may
 # also decide to use snprintf.c if snprintf() is present but does not
-# have working "long long int" support -- see below.
+# have all the features we need --- see below.
 
 pgac_need_repl_snprintf=no
 AC_CHECK_FUNCS(snprintf, [], pgac_need_repl_snprintf=yes)
@@ -916,8 +885,11 @@ fi
 
 AC_REPLACE_FUNCS([crypt fseeko getopt getrusage inet_aton random rint srandom strdup strerror strtol strtoul unsetenv])
 
-# system's version of getaddrinfo(), if any, may be used only if we found
-# a definition for struct addrinfo; see notes in src/include/getaddrinfo.h
+# System's version of getaddrinfo(), if any, may be used only if we found
+# a definition for struct addrinfo; see notes in src/include/getaddrinfo.h.
+# (Note: the AC_REPLACE_FUNCS probe fails on Windows, where the available
+# versions of getaddrinfo don't follow normal C call protocol.  This is OK
+# because we want to use our own getaddrinfo.c on Windows anyway.)
 if test x"$ac_cv_type_struct_addrinfo" = xyes ; then
   AC_REPLACE_FUNCS([getaddrinfo])
 else
@@ -945,7 +917,6 @@ fi
 
 # Win32 support
 if test "$PORTNAME" = "win32"; then
-AC_LIBOBJ(copydir)
 AC_LIBOBJ(gettimeofday)
 AC_LIBOBJ(kill)
 AC_LIBOBJ(open)
@@ -1076,6 +1047,22 @@ AC_MSG_ERROR([[
 [AC_MSG_RESULT([cross-compiling])])
 
 
+# Force use of our snprintf if system's doesn't do arg control
+# This feature is used by NLS
+if test "$enable_nls" = yes &&
+   test $pgac_need_repl_snprintf = no &&
+# On Win32, libintl replaces snprintf() with its own version that 
+# understands arg control, so we don't need our own.  In fact, it 
+# also uses macros that conflict with ours, so we _can't_ use
+# our own.
+   test "$PORTNAME" != "win32"; then
+  PGAC_FUNC_PRINTF_ARG_CONTROL
+  if test $pgac_cv_printf_arg_control != yes ; then
+    pgac_need_repl_snprintf=yes
+  fi
+fi
+
+
 dnl Check to see if we have a working 64-bit integer type.
 dnl This breaks down into two steps:
 dnl (1) figure out if the compiler has a 64-bit int type with working
@@ -1141,12 +1128,17 @@ AC_DEFINE_UNQUOTED(INT64_FORMAT, $INT64_FORMAT,
 AC_DEFINE_UNQUOTED(UINT64_FORMAT, $UINT64_FORMAT,
                    [Define to the appropriate snprintf format for unsigned 64-bit ints, if any.])
 
+# Now we have checked all the reasons to replace snprintf
 if test $pgac_need_repl_snprintf = yes; then
+  AC_DEFINE(USE_SNPRINTF, 1, [Use replacement snprintf() functions.])
   AC_LIBOBJ(snprintf)
 fi
 
 # Need a #define for the size of Datum (unsigned long)
 AC_CHECK_SIZEOF([unsigned long])
+
+# And one for the size of size_t (enables tweaks for > 32bit address space)
+AC_CHECK_SIZEOF([size_t])
 
 # Determine memory alignment requirements for the basic C data types.
 
@@ -1185,6 +1177,8 @@ AC_CHECK_TYPES([int8, uint8, int64, uint64], [], [],
 AC_CHECK_TYPES(sig_atomic_t, [], [], [#include <signal.h>])
 
 
+if test x"$template" != x"win32"
+then
 PGAC_FUNC_POSIX_SIGNALS
 if test "$pgac_cv_func_posix_signals" != yes -a "$enable_thread_safety" = yes; then
   AC_MSG_ERROR([
@@ -1192,10 +1186,14 @@ if test "$pgac_cv_func_posix_signals" != yes -a "$enable_thread_safety" = yes; t
 *** operating system.
 ])
 fi
+fi
 
 if test $ac_cv_func_fseeko = yes; then
 AC_SYS_LARGEFILE
 fi
+
+# SunOS doesn't handle negative byte comparisons properly with +/- return
+AC_FUNC_MEMCMP
 
 
 # Select semaphore implementation type.
@@ -1251,13 +1249,20 @@ AC_CHECK_PROGS(SGMLSPL, sgmlspl)
 # defined.  Cross compiling throws a warning.
 #
 if test "$enable_thread_safety_force" = yes; then
+if test x"$template" != x"win32"
+then
   AC_MSG_WARN([
 *** Skipping thread test program.  --enable-thread-safety-force was used.
 *** Run the program in src/tools/thread on the your machine and add
 proper locking function calls to your applications to guarantee thread
 safety.
 ])
+else
+AC_MSG_WARN([*** Skipping thread test on Win32])
+fi
 elif test "$enable_thread_safety" = yes; then
+if test x"$template" != x"win32"
+then
 AC_MSG_CHECKING([thread safety of required library functions])
 
 _CFLAGS="$CFLAGS"
@@ -1283,6 +1288,9 @@ AC_TRY_RUN([#include "$srcdir/src/tools/thread/thread_test.c"],
 ])])
 CFLAGS="$_CFLAGS"
 LIBS="$_LIBS"
+else
+AC_MSG_WARN([*** Skipping thread test on Win32])
+fi
 fi
 
 # prepare build tree if outside source tree

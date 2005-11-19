@@ -7,7 +7,12 @@ SockAddr_cidr_mask
 freeaddrinfo_all
 getaddrinfo_all
 getnameinfo_all
+pg_freeaddrinfo_all
+pg_getaddrinfo_all
+pg_getnameinfo_all
 md5_hash
+pg_md5_hash
+pg_md5_encrypt
 pg_char_to_encname_struct
 pg_char_to_encoding
 pg_enc2name_tbl
@@ -25,5 +30,9 @@ pg_valid_server_encoding
 pg_wchar_table
 promote_v4_to_v6_addr
 promote_v4_to_v6_mask
+pg_promote_v4_to_v6_addr
+pg_promote_v4_to_v6_mask
 rangeSockAddr
+pg_range_sockaddr
+pg_sockaddr_cidr_mask
 pqsignal

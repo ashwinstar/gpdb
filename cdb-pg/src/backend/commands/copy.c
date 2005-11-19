@@ -8,12 +8,13 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/copy.c,v 1.236.4.2 2005/10/03 23:43:29 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/copy.c,v 1.254 2005/11/03 17:11:34 alvherre Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
+#include <ctype.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <netinet/in.h>
@@ -22,11 +23,9 @@
 #include "access/genam.h"
 #include "access/heapam.h"
 #include "access/printtup.h"
-#include "catalog/catname.h"
 #include "catalog/index.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_index.h"
-#include "catalog/pg_shadow.h"
 #include "catalog/pg_type.h"
 #include "commands/copy.h"
 #include "commands/trigger.h"
@@ -44,8 +43,9 @@
 #include "tcop/tcopprot.h"
 #include "utils/acl.h"
 #include "utils/builtins.h"
-#include "utils/relcache.h"
 #include "utils/lsyscache.h"
+#include "utils/memutils.h"
+#include "utils/relcache.h"
 #include "utils/syscache.h"
 
 #include "cdb/cdbvars.h"
@@ -979,7 +979,7 @@ DoCopy(const CopyStmt *stmt)
 		}
 		if (pipe)
 		{
-			if (whereToSendOutput == Remote)
+			if (whereToSendOutput == DestRemote)
 				ReceiveCopyBegin(binary, list_length(attnumlist));
 			else
 				copy_file = stdin;
@@ -1050,7 +1050,7 @@ DoCopy(const CopyStmt *stmt)
 		}
 		if (pipe)
 		{
-			if (whereToSendOutput == Remote)
+			if (whereToSendOutput == DestRemote)
 				fe_copy = true;
 			else
 				copy_file = stdout;
@@ -1191,11 +1191,11 @@ CopyTo(Relation rel, List *attnumlist, bool binary, bool oids,
 
 		if (binary)
 			getTypeBinaryOutputInfo(attr[attnum - 1]->atttypid,
-									&out_func_oid, &typioparams[attnum - 1],
+									&out_func_oid,  
 									&isvarlena[attnum - 1]);
 		else
 			getTypeOutputInfo(attr[attnum - 1]->atttypid,
-							  &out_func_oid, &typioparams[attnum - 1],
+							  &out_func_oid, 
 							  &isvarlena[attnum - 1]);
 		fmgr_info(out_func_oid, &out_functions[attnum - 1]);
 
@@ -1241,7 +1241,7 @@ CopyTo(Relation rel, List *attnumlist, bool binary, bool oids,
 		 */
 		if (server_encoding != client_encoding)
 			null_print = (char *)
-				pg_server_to_client((unsigned char *) null_print,
+				pg_server_to_client(null_print,
 									strlen(null_print));
 	}
 
@@ -1630,11 +1630,11 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 		 */
 		if (binary)
 			getTypeBinaryOutputInfo(attr[attnum - 1]->atttypid,
-									&out_func_oid, &typioparams[attnum - 1],
+									&out_func_oid,  
 									&isvarlena[attnum - 1]);
 		else
 			getTypeOutputInfo(attr[attnum - 1]->atttypid,
-							  &out_func_oid, &typioparams[attnum - 1],
+							  &out_func_oid, 
 							  &isvarlena[attnum - 1]);
 		fmgr_info(out_func_oid, &out_functions[attnum - 1]);
 		
@@ -2624,7 +2624,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	/*
 	 * Handle queued AFTER triggers
 	 */
-	AfterTriggerEndQuery();
+	AfterTriggerEndQuery(estate);
 
 	/*
 	 * free all resources besides ones that are needed for error reporting
@@ -3215,7 +3215,7 @@ CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 	/*
 	 * Handle queued AFTER triggers
 	 */
-	AfterTriggerEndQuery();
+	AfterTriggerEndQuery(estate);
 
 	pfree(attr_offsets);
 
@@ -3449,7 +3449,7 @@ CopyReadLineText(size_t bytesread, char *escape, bool escape_off)
 	 */
 	if (transcode)
 	{
-		cvt = (char *) pg_client_to_server((unsigned char *) line_buf.data,
+		cvt = (char *) pg_client_to_server(line_buf.data,
 										   line_buf.len);
 		if (cvt != line_buf.data)
 		{
@@ -3699,7 +3699,7 @@ CopyReadLineCSV(size_t bytesread, char *quote, char *escape)
 	 */
 	if (transcode)
 	{
-		cvt = (char *) pg_client_to_server((unsigned char *) line_buf.data,
+		cvt = (char *) pg_client_to_server(line_buf.data,
 										   line_buf.len);
 		if (cvt != line_buf.data)
 		{
@@ -4456,7 +4456,7 @@ CopyAttributeOut(char *server_string, char *delim)
 
 	same_encoding = (server_encoding == client_encoding);
 	if (!same_encoding)
-		string = (char *) pg_server_to_client((unsigned char *) server_string,
+		string = (char *) pg_server_to_client(server_string,
 											  strlen(server_string));
 	else
 		string = server_string;
@@ -4530,7 +4530,7 @@ CopyAttributeOutCSV(char *server_string, char *delim, char *quote,
 
 	same_encoding = (server_encoding == client_encoding);
 	if (!same_encoding)
-		string = (char *) pg_server_to_client((unsigned char *) server_string,
+		string = (char *) pg_server_to_client(server_string,
 											  strlen(server_string));
 	else
 		string = server_string;
@@ -4675,10 +4675,10 @@ scanTextLine(const char *s, char eol, size_t len)
 
 	if (client_encoding_only && !line_buf_converted)
 	{
-		int			mblen = pg_encoding_mblen(client_encoding, (unsigned char *) s);
+		int			mblen = pg_encoding_mblen(client_encoding, s);
 
 		for (start = s; *s != eol && s < start + len; s += mblen)
-			mblen = pg_encoding_mblen(client_encoding, (unsigned char *) s);
+			mblen = pg_encoding_mblen(client_encoding, s);
 
 		return ((*s == eol) ? (char *) s : NULL);
 	}
@@ -4694,7 +4694,7 @@ scanCSVLine(const char *s, char eol, char escapec, char quotec, size_t len)
 
 	if (client_encoding_only && !line_buf_converted)
 	{
-		int			mblen = pg_encoding_mblen(client_encoding, (unsigned char *) s);
+		int			mblen = pg_encoding_mblen(client_encoding, s);
 
 		for (start = s; *s != eol && s < start + len; s += mblen)
 		{
@@ -4705,7 +4705,7 @@ scanCSVLine(const char *s, char eol, char escapec, char quotec, size_t len)
 			if (*s != escapec)
 				last_was_esc = false;
 
-			mblen = pg_encoding_mblen(client_encoding, (unsigned char *) s);
+			mblen = pg_encoding_mblen(client_encoding, s);
 		}
 	}
 	else

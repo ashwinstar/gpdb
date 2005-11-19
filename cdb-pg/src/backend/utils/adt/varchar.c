@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/adt/varchar.c,v 1.108 2004/12/31 22:01:22 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/adt/varchar.c,v 1.113 2005/10/15 02:49:30 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -16,6 +16,8 @@
 
 #include "access/hash.h"
 #include "catalog/pg_type.h"
+#include "lib/stringinfo.h"
+#include "libpq/pqformat.h"
 #include "miscadmin.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
@@ -36,8 +38,8 @@
  * length also. (eg. in INSERTs, we have the tupleDescriptor which contains
  * the length of the attributes and hence the exact length of the char() or
  * varchar(). We pass this to bpcharin() or varcharin().) In the case where
- * we cannot determine the length, we pass in -1 instead and the input string
- * must be null-terminated.
+ * we cannot determine the length, we pass in -1 instead and the input
+ * converter does not enforce any length check.
  *
  * We actually implement this as a varlena so that we don't have to pass in
  * the length for the comparison functions. (The difference between these
@@ -53,11 +55,87 @@
  *****************************************************************************/
 
 /*
+ * bpchar_input -- common guts of bpcharin and bpcharrecv
+ *
+ * s is the input text of length len (may not be null-terminated)
+ * atttypmod is the typmod value to apply
+ *
+ * Note that atttypmod is measured in characters, which
+ * is not necessarily the same as the number of bytes.
+ *
+ * If the input string is too long, raise an error, unless the extra
+ * characters are spaces, in which case they're truncated.  (per SQL)
+ */
+static BpChar *
+bpchar_input(const char *s, size_t len, int32 atttypmod)
+{
+	BpChar	   *result;
+	char	   *r;
+	size_t		maxlen;
+
+	/* verify encoding */
+	pg_verifymbstr(s, len, false);
+
+	/* If typmod is -1 (or invalid), use the actual string length */
+	if (atttypmod < (int32) VARHDRSZ)
+		maxlen = len;
+	else
+	{
+		size_t		charlen;	/* number of CHARACTERS in the input */
+
+		maxlen = atttypmod - VARHDRSZ;
+		charlen = pg_mbstrlen_with_len(s, len);
+		if (charlen > maxlen)
+		{
+			/* Verify that extra characters are spaces, and clip them off */
+			size_t		mbmaxlen = pg_mbcharcliplen(s, len, maxlen);
+			size_t		j;
+
+			/*
+			 * at this point, len is the actual BYTE length of the input
+			 * string, maxlen is the max number of CHARACTERS allowed for this
+			 * bpchar type, mbmaxlen is the length in BYTES of those chars.
+			 */
+			for (j = mbmaxlen; j < len; j++)
+			{
+				if (s[j] != ' ')
+					ereport(ERROR,
+							(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+							 errmsg("value too long for type character(%d)",
+									(int) maxlen)));
+			}
+
+			/*
+			 * Now we set maxlen to the necessary byte length, not the number
+			 * of CHARACTERS!
+			 */
+			maxlen = len = mbmaxlen;
+		}
+		else
+		{
+			/*
+			 * Now we set maxlen to the necessary byte length, not the number
+			 * of CHARACTERS!
+			 */
+			maxlen = len + (maxlen - charlen);
+		}
+	}
+
+	result = (BpChar *) palloc(maxlen + VARHDRSZ);
+	VARATT_SIZEP(result) = maxlen + VARHDRSZ;
+	r = VARDATA(result);
+	memcpy(r, s, len);
+
+	/* blank pad the string if necessary */
+	if (maxlen > len)
+		memset(r + len, ' ', maxlen - len);
+
+	return result;
+}
+
+/*
  * Convert a C string to CHARACTER internal representation.  atttypmod
  * is the declared length of the type plus VARHDRSZ.
- *
- * If the C string is too long, raise an error, unless the extra
- * characters are spaces, in which case they're truncated.  (per SQL)
  */
 Datum
 bpcharin(PG_FUNCTION_ARGS)
@@ -69,67 +147,8 @@ bpcharin(PG_FUNCTION_ARGS)
 #endif
 	int32		atttypmod = PG_GETARG_INT32(2);
 	BpChar	   *result;
-	char	   *r;
-	size_t		len,
-				maxlen;
-	int			i;
-	int			charlen;		/* number of charcters in the input string */
 
-	/* verify encoding */
-	len = strlen(s);
-	pg_verifymbstr(s, len, false);
-
-	charlen = pg_mbstrlen(s);
-
-	/* If typmod is -1 (or invalid), use the actual string length */
-	if (atttypmod < (int32) VARHDRSZ)
-		maxlen = charlen;
-	else
-		maxlen = atttypmod - VARHDRSZ;
-
-	if (charlen > maxlen)
-	{
-		/* Verify that extra characters are spaces, and clip them off */
-		size_t		mbmaxlen = pg_mbcharcliplen(s, len, maxlen);
-
-		/*
-		 * at this point, len is the actual BYTE length of the input
-		 * string, maxlen is the max number of CHARACTERS allowed for this
-		 * bpchar type.
-		 */
-		if (strspn(s + mbmaxlen, " ") == len - mbmaxlen)
-			len = mbmaxlen;
-		else
-			ereport(ERROR,
-					(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-					 errmsg("value too long for type character(%d)",
-							(int) maxlen)));
-
-		/*
-		 * XXX: at this point, maxlen is the necessary byte length, not
-		 * the number of CHARACTERS!
-		 */
-		maxlen = len;
-	}
-	else
-	{
-		/*
-		 * XXX: at this point, maxlen is the necessary byte length, not
-		 * the number of CHARACTERS!
-		 */
-		maxlen = len + (maxlen - charlen);
-	}
-
-	result = palloc(maxlen + VARHDRSZ);
-	VARATT_SIZEP(result) = maxlen + VARHDRSZ;
-	r = VARDATA(result);
-	for (i = 0; i < len; i++)
-		*r++ = *s++;
-
-	/* blank pad the string if necessary */
-	for (; i < maxlen; i++)
-		*r++ = ' ';
-
+	result = bpchar_input(s, strlen(s), atttypmod);
 	PG_RETURN_BPCHAR_P(result);
 }
 
@@ -159,8 +178,20 @@ bpcharout(PG_FUNCTION_ARGS)
 Datum
 bpcharrecv(PG_FUNCTION_ARGS)
 {
-	/* Exactly the same as textrecv, so share code */
-	return textrecv(fcinfo);
+	StringInfo	buf = (StringInfo) PG_GETARG_POINTER(0);
+
+#ifdef NOT_USED
+	Oid			typelem = PG_GETARG_OID(1);
+#endif
+	int32		atttypmod = PG_GETARG_INT32(2);
+	BpChar	   *result;
+	char	   *str;
+	int			nbytes;
+
+	str = pq_getmsgtext(buf, buf->len - buf->cursor, &nbytes);
+	result = bpchar_input(str, nbytes, atttypmod);
+	pfree(str);
+	PG_RETURN_BPCHAR_P(result);
 }
 
 /*
@@ -197,15 +228,19 @@ bpchar(PG_FUNCTION_ARGS)
 	char	   *r;
 	char	   *s;
 	int			i;
-	int			charlen;		/* number of charcters in the input string
-								 * + VARHDRSZ */
+	int			charlen;		/* number of characters in the input string +
+								 * VARHDRSZ */
+
+	/* No work if typmod is invalid */
+	if (maxlen < (int32) VARHDRSZ)
+		PG_RETURN_BPCHAR_P(source);
 
 	len = VARSIZE(source);
 
 	charlen = pg_mbstrlen_with_len(VARDATA(source), len - VARHDRSZ) + VARHDRSZ;
 
-	/* No work if typmod is invalid or supplied data matches it already */
-	if (maxlen < (int32) VARHDRSZ || charlen == maxlen)
+	/* No work if supplied data matches typmod already */
+	if (charlen == maxlen)
 		PG_RETURN_BPCHAR_P(source);
 
 	if (charlen > maxlen)
@@ -221,24 +256,24 @@ bpchar(PG_FUNCTION_ARGS)
 			for (i = maxmblen - VARHDRSZ; i < len - VARHDRSZ; i++)
 				if (*(VARDATA(source) + i) != ' ')
 					ereport(ERROR,
-						  (errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-						   errmsg("value too long for type character(%d)",
-								  maxlen - VARHDRSZ)));
+							(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+							 errmsg("value too long for type character(%d)",
+									maxlen - VARHDRSZ)));
 		}
 
 		len = maxmblen;
 
 		/*
-		 * XXX: at this point, maxlen is the necessary byte
-		 * length+VARHDRSZ, not the number of CHARACTERS!
+		 * XXX: at this point, maxlen is the necessary byte length+VARHDRSZ,
+		 * not the number of CHARACTERS!
 		 */
 		maxlen = len;
 	}
 	else
 	{
 		/*
-		 * XXX: at this point, maxlen is the necessary byte
-		 * length+VARHDRSZ, not the number of CHARACTERS!
+		 * XXX: at this point, maxlen is the necessary byte length+VARHDRSZ,
+		 * not the number of CHARACTERS!
 		 */
 		maxlen = len + (maxlen - charlen);
 	}
@@ -249,12 +284,11 @@ bpchar(PG_FUNCTION_ARGS)
 	VARATT_SIZEP(result) = maxlen;
 	r = VARDATA(result);
 
-	for (i = 0; i < len - VARHDRSZ; i++)
-		*r++ = *s++;
+	memcpy(r, s, len - VARHDRSZ);
 
 	/* blank pad the string if necessary */
-	for (; i < maxlen - VARHDRSZ; i++)
-		*r++ = ' ';
+	if (maxlen > len)
+		memset(r + len - VARHDRSZ, ' ', maxlen - len);
 
 	PG_RETURN_BPCHAR_P(result);
 }
@@ -342,14 +376,56 @@ name_bpchar(PG_FUNCTION_ARGS)
  *****************************************************************************/
 
 /*
- * Convert a C string to VARCHAR internal representation.  atttypmod
- * is the declared length of the type plus VARHDRSZ.
+ * varchar_input -- common guts of varcharin and varcharrecv
  *
- * Note that atttypmod is regarded as the number of characters, which
+ * s is the input text of length len (may not be null-terminated)
+ * atttypmod is the typmod value to apply
+ *
+ * Note that atttypmod is measured in characters, which
  * is not necessarily the same as the number of bytes.
  *
- * If the C string is too long, raise an error, unless the extra characters
- * are spaces, in which case they're truncated.  (per SQL)
+ * If the input string is too long, raise an error, unless the extra
+ * characters are spaces, in which case they're truncated.  (per SQL)
+ */
+static VarChar *
+varchar_input(const char *s, size_t len, int32 atttypmod)
+{
+	VarChar    *result;
+	size_t		maxlen;
+
+	/* verify encoding */
+	pg_verifymbstr(s, len, false);
+
+	maxlen = atttypmod - VARHDRSZ;
+
+	if (atttypmod >= (int32) VARHDRSZ && len > maxlen)
+	{
+		/* Verify that extra characters are spaces, and clip them off */
+		size_t		mbmaxlen = pg_mbcharcliplen(s, len, maxlen);
+		size_t		j;
+
+		for (j = mbmaxlen; j < len; j++)
+		{
+			if (s[j] != ' ')
+				ereport(ERROR,
+						(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+					  errmsg("value too long for type character varying(%d)",
+							 (int) maxlen)));
+		}
+
+		len = mbmaxlen;
+	}
+
+	result = (VarChar *) palloc(len + VARHDRSZ);
+	VARATT_SIZEP(result) = len + VARHDRSZ;
+	memcpy(VARDATA(result), s, len);
+
+	return result;
+}
+
+/*
+ * Convert a C string to VARCHAR internal representation.  atttypmod
+ * is the declared length of the type plus VARHDRSZ.
  */
 Datum
 varcharin(PG_FUNCTION_ARGS)
@@ -361,33 +437,8 @@ varcharin(PG_FUNCTION_ARGS)
 #endif
 	int32		atttypmod = PG_GETARG_INT32(2);
 	VarChar    *result;
-	size_t		len,
-				maxlen;
 
-	/* verify encoding */
-	len = strlen(s);
-	pg_verifymbstr(s, len, false);
-
-	maxlen = atttypmod - VARHDRSZ;
-
-	if (atttypmod >= (int32) VARHDRSZ && len > maxlen)
-	{
-		/* Verify that extra characters are spaces, and clip them off */
-		size_t		mbmaxlen = pg_mbcharcliplen(s, len, maxlen);
-
-		if (strspn(s + mbmaxlen, " ") == len - mbmaxlen)
-			len = mbmaxlen;
-		else
-			ereport(ERROR,
-					(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-				  errmsg("value too long for type character varying(%d)",
-						 (int) maxlen)));
-	}
-
-	result = palloc(len + VARHDRSZ);
-	VARATT_SIZEP(result) = len + VARHDRSZ;
-	memcpy(VARDATA(result), s, len);
-
+	result = varchar_input(s, strlen(s), atttypmod);
 	PG_RETURN_VARCHAR_P(result);
 }
 
@@ -417,8 +468,20 @@ varcharout(PG_FUNCTION_ARGS)
 Datum
 varcharrecv(PG_FUNCTION_ARGS)
 {
-	/* Exactly the same as textrecv, so share code */
-	return textrecv(fcinfo);
+	StringInfo	buf = (StringInfo) PG_GETARG_POINTER(0);
+
+#ifdef NOT_USED
+	Oid			typelem = PG_GETARG_OID(1);
+#endif
+	int32		atttypmod = PG_GETARG_INT32(2);
+	VarChar    *result;
+	char	   *str;
+	int			nbytes;
+
+	str = pq_getmsgtext(buf, buf->len - buf->cursor, &nbytes);
+	result = varchar_input(str, nbytes, atttypmod);
+	pfree(str);
+	PG_RETURN_VARCHAR_P(result);
 }
 
 /*
@@ -472,8 +535,8 @@ varchar(PG_FUNCTION_ARGS)
 			if (*(VARDATA(source) + i) != ' ')
 				ereport(ERROR,
 						(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
-				  errmsg("value too long for type character varying(%d)",
-						 maxlen - VARHDRSZ)));
+					  errmsg("value too long for type character varying(%d)",
+							 maxlen - VARHDRSZ)));
 	}
 
 	len = maxmblen + VARHDRSZ;
@@ -685,6 +748,40 @@ bpcharcmp(PG_FUNCTION_ARGS)
 	PG_FREE_IF_COPY(arg2, 1);
 
 	PG_RETURN_INT32(cmp);
+}
+
+Datum
+bpchar_larger(PG_FUNCTION_ARGS)
+{
+	BpChar	   *arg1 = PG_GETARG_BPCHAR_P(0);
+	BpChar	   *arg2 = PG_GETARG_BPCHAR_P(1);
+	int			len1,
+				len2;
+	int			cmp;
+
+	len1 = bcTruelen(arg1);
+	len2 = bcTruelen(arg2);
+
+	cmp = varstr_cmp(VARDATA(arg1), len1, VARDATA(arg2), len2);
+
+	PG_RETURN_BPCHAR_P((cmp >= 0) ? arg1 : arg2);
+}
+
+Datum
+bpchar_smaller(PG_FUNCTION_ARGS)
+{
+	BpChar	   *arg1 = PG_GETARG_BPCHAR_P(0);
+	BpChar	   *arg2 = PG_GETARG_BPCHAR_P(1);
+	int			len1,
+				len2;
+	int			cmp;
+
+	len1 = bcTruelen(arg1);
+	len2 = bcTruelen(arg2);
+
+	cmp = varstr_cmp(VARDATA(arg1), len1, VARDATA(arg2), len2);
+
+	PG_RETURN_BPCHAR_P((cmp <= 0) ? arg1 : arg2);
 }
 
 

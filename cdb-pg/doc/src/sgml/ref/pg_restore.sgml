@@ -1,4 +1,4 @@
-<!-- $PostgreSQL: pgsql/doc/src/sgml/ref/pg_restore.sgml,v 1.49.4.1 2005/01/23 00:37:56 momjian Exp $ -->
+<!-- $PostgreSQL: pgsql/doc/src/sgml/ref/pg_restore.sgml,v 1.56 2005/11/01 21:09:50 tgl Exp $ -->
 
 <refentry id="APP-PGRESTORE">
  <refmeta>
@@ -44,14 +44,13 @@
   </para>
 
   <para>
-   <application>pg_restore</application> can operate in two modes: If
-   a database name is specified, the archive is restored directly into
-   the database.  (Large objects can only be restored by using such a direct
-   database connection.)  Otherwise, a script containing the SQL
-   commands necessary to rebuild the database is created (and written
-   to a file or standard output), similar to the ones created by the
-   <application>pg_dump</application> plain text format.  Some of the
-   options controlling the script output are therefore analogous to
+   <application>pg_restore</application> can operate in two modes.
+   If a database name is specified, the archive is restored directly into
+   the database.  Otherwise, a script containing the SQL
+   commands necessary to rebuild the database is created and written
+   to a file or standard output.  The script output is equivalent to
+   the plain text output format of <application>pg_dump</application>.
+   Some of the options controlling the output are therefore analogous to
    <application>pg_dump</application> options.
   </para>
 
@@ -240,6 +239,18 @@
      </varlistentry>
 
      <varlistentry>
+      <term><option>-n <replaceable class="parameter">namespace</replaceable></option></term>
+      <term><option>--schema=<replaceable class="parameter">schema</replaceable></option></term>
+      <listitem>
+       <para>
+        Restore only objects that are in the named schema.  This can be
+        combined with the <option>-t</option> option to restore just a
+        specific table.
+       </para>
+      </listitem>
+     </varlistentry>
+
+     <varlistentry>
       <term><option>-O</option></term>
       <term><option>--no-owner</option></term>
       <listitem>
@@ -287,8 +298,10 @@
       <term><option>--schema-only</option></term>
       <listitem>
        <para>
-        Restore only the schema (data definitions), not the data.
-        Sequence values will be reset.
+        Restore only the schema (data definitions), not the data (table
+        contents).  Sequence current values will not be restored, either.
+        (Do not confuse this with the <option>--schema</> option, which
+        uses the word <quote>schema</> in a different meaning.)
        </para>
       </listitem>
      </varlistentry>
@@ -350,10 +363,11 @@
       <term><option>--use-set-session-authorization</option></term>
       <listitem>
        <para>
-        Output SQL standard SET SESSION AUTHORIZATION commands instead
-        of OWNER TO commands.  This makes the dump more standards compatible,
-        but depending on the history of the objects in the dump, may not
-        restore properly.
+        Output SQL-standard <command>SET SESSION AUTHORIZATION</> commands
+        instead of <command>ALTER OWNER</> commands to determine object
+        ownership.  This makes the dump more standards compatible, but
+        depending on the history of the objects in the dump, may not restore
+        properly.
        </para>
       </listitem>
      </varlistentry>
@@ -529,16 +543,16 @@ CREATE DATABASE foo WITH TEMPLATE template0;
   <title>Examples</title>
 
   <para>
-   To dump a database called <literal>mydb</> that contains
-   large objects to a <filename>tar</filename> file:
+   To dump a database called <literal>mydb</> to a <filename>tar</filename>
+   file:
 
 <screen>
-<prompt>$</prompt> <userinput>pg_dump -Ft -b mydb &gt; db.tar</userinput>
+<prompt>$</prompt> <userinput>pg_dump -Ft mydb &gt; db.tar</userinput>
 </screen>
   </para>
 
   <para>
-   To reload this database (with large objects) to an
+   To reload this dump into an
    existing database called <literal>newdb</>:
 
 <screen>
@@ -616,6 +630,7 @@ CREATE DATABASE foo WITH TEMPLATE template0;
    <member><xref linkend="app-pgdump"></member>
    <member><xref linkend="app-pg-dumpall"></member>
    <member><xref linkend="app-psql"></member>
+   <member>Environment Variables (<xref linkend="libpq-envars">)</member>
   </simplelist>
  </refsect1>
 </refentry>

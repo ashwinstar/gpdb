@@ -1,48 +1,49 @@
-/*
+/*-------------------------------------------------------------------------
+ *
  * twophase_rmgr.c
+ *	  Two-phase-commit resource managers tables
  *
- * Twophase resource managers definition
+ * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL$
+ *
+ * IDENTIFICATION
+ *	  $PostgreSQL: pgsql/src/backend/access/transam/twophase_rmgr.c,v 1.2 2005/10/15 02:49:09 momjian Exp $
+ *
+ *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
-#include "access/twophase.h"
 #include "access/twophase_rmgr.h"
-
-#include "storage/lockrmgr.h"
-#include "storage/smgr.h"
-#include "utils/inval.h"
-//  TODO FLATFILE  #include "utils/flatfiles.h"
 #include "commands/async.h"
+#include "storage/lock.h"
+#include "utils/flatfiles.h"
+#include "utils/inval.h"
 
-const TwoPhaseCallback recover_callbacks[TWOPHASE_RM_MAX_ID + 1] = 
+
+const TwoPhaseCallback twophase_recover_callbacks[TWOPHASE_RM_MAX_ID + 1] =
 {
-	NULL, /* Reserved for twophase.c internal logic */
-	lock_recover_record, /* Lock */
-	NULL, /* Inval */
-	NULL, /* smgr */
-	NULL,  /* user/group file update */
-	NULL /* notify/listen */
+	NULL,						/* END ID */
+	lock_twophase_recover,		/* Lock */
+	NULL,						/* Inval */
+	NULL,						/* flat file update */
+	NULL						/* notify/listen */
 };
 
-const TwoPhaseCallback postcommit_callbacks[TWOPHASE_RM_MAX_ID + 1] = 
+const TwoPhaseCallback twophase_postcommit_callbacks[TWOPHASE_RM_MAX_ID + 1] =
 {
-	NULL, /* Reserved for twophase.c internal logic */
-	NULL,				/* Lock */
-	inval_postcommit_record,		/* Inval */
-	smgr_postcommit_record,		/* smgr */
-	//  TODO TWOPHASE --  flatfile_postcommit_record,	/* user/group file update */
-        NULL,
-	notify_postcommit_record /* notify/listen */
+	NULL,						/* END ID */
+	lock_twophase_postcommit,	/* Lock */
+	inval_twophase_postcommit,	/* Inval */
+	flatfile_twophase_postcommit,		/* flat file update */
+	notify_twophase_postcommit	/* notify/listen */
 };
 
-const TwoPhaseCallback postabort_callbacks[TWOPHASE_RM_MAX_ID + 1] = 
+const TwoPhaseCallback twophase_postabort_callbacks[TWOPHASE_RM_MAX_ID + 1] =
 {
-	NULL, /* Reserved for twophase.c internal logic */
-	lock_postabort, /* Lock */
-	NULL, /* Inval */
-	smgr_postabort_record, /* smgr */
-	NULL,  /* user/group file update */
-	NULL
+	NULL,						/* END ID */
+	lock_twophase_postabort,	/* Lock */
+	NULL,						/* Inval */
+	NULL,						/* flat file update */
+	NULL						/* notify/listen */
 };

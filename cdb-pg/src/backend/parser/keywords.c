@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/parser/keywords.c,v 1.154 2004/12/31 22:00:27 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/parser/keywords.c,v 1.166 2005/10/15 02:49:22 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -35,6 +35,7 @@ static const ScanKeyword ScanKeywords[] = {
 	{"access", ACCESS},
 	{"action", ACTION},
 	{"add", ADD},
+	{"admin", ADMIN},
 	{"after", AFTER},
 	{"aggregate", AGGREGATE},
 	{"all", ALL},
@@ -49,6 +50,7 @@ static const ScanKeyword ScanKeywords[] = {
 	{"asc", ASC},
 	{"assertion", ASSERTION},
 	{"assignment", ASSIGNMENT},
+	{"asymmetric", ASYMMETRIC},
 	{"at", AT},
 	{"authorization", AUTHORIZATION},
 	{"backward", BACKWARD},
@@ -81,6 +83,7 @@ static const ScanKeyword ScanKeywords[] = {
 	{"comment", COMMENT},
 	{"commit", COMMIT},
 	{"committed", COMMITTED},
+	{"connection", CONNECTION},
 	{"constraint", CONSTRAINT},
 	{"constraints", CONSTRAINTS},
 	{"conversion", CONVERSION_P},
@@ -88,10 +91,12 @@ static const ScanKeyword ScanKeywords[] = {
 	{"copy", COPY},
 	{"create", CREATE},
 	{"createdb", CREATEDB},
+	{"createrole", CREATEROLE},
 	{"createuser", CREATEUSER},
 	{"cross", CROSS},
 	{"csv", CSV},
 	{"current_date", CURRENT_DATE},
+	{"current_role", CURRENT_ROLE},
 	{"current_time", CURRENT_TIME},
 	{"current_timestamp", CURRENT_TIMESTAMP},
 	{"current_user", CURRENT_USER},
@@ -112,6 +117,7 @@ static const ScanKeyword ScanKeywords[] = {
 	{"delimiter", DELIMITER},
 	{"delimiters", DELIMITERS},
 	{"desc", DESC},
+	{"disable", DISABLE_P},
 	{"distinct", DISTINCT},
 	{"distributed", DISTRIBUTED},
 	{"do", DO},
@@ -120,6 +126,7 @@ static const ScanKeyword ScanKeywords[] = {
 	{"drop", DROP},
 	{"each", EACH},
 	{"else", ELSE},
+	{"enable", ENABLE_P},
 	{"encoding", ENCODING},
 	{"encrypted", ENCRYPTED},
 	{"end", END_P},
@@ -146,9 +153,12 @@ static const ScanKeyword ScanKeywords[] = {
 	{"function", FUNCTION},
 	{"global", GLOBAL},
 	{"grant", GRANT},
+	{"granted", GRANTED},
+	{"greatest", GREATEST},
 	{"group", GROUP_P},
 	{"handler", HANDLER},
 	{"having", HAVING},
+	{"header", HEADER},
 	{"hold", HOLD},
 	{"hour", HOUR_P},
 	{"ilike", ILIKE},
@@ -159,6 +169,7 @@ static const ScanKeyword ScanKeywords[] = {
 	{"including", INCLUDING},
 	{"increment", INCREMENT},
 	{"index", INDEX},
+	{"inherit", INHERIT},
 	{"inherits", INHERITS},
 	{"initially", INITIALLY},
 	{"inner", INNER_P},
@@ -183,6 +194,7 @@ static const ScanKeyword ScanKeywords[] = {
 	{"large", LARGE_P},
 	{"last", LAST_P},
 	{"leading", LEADING},
+	{"least", LEAST},
 	{"left", LEFT},
 	{"level", LEVEL},
 	{"like", LIKE},
@@ -194,6 +206,7 @@ static const ScanKeyword ScanKeywords[] = {
 	{"localtimestamp", LOCALTIMESTAMP},
 	{"location", LOCATION},
 	{"lock", LOCK_P},
+	{"login", LOGIN_P},
 	{"match", MATCH},
 	{"maxvalue", MAXVALUE},
 	{"minute", MINUTE_P},
@@ -210,8 +223,12 @@ static const ScanKeyword ScanKeywords[] = {
 	{"next", NEXT},
 	{"no", NO},
 	{"nocreatedb", NOCREATEDB},
+	{"nocreaterole", NOCREATEROLE},
 	{"nocreateuser", NOCREATEUSER},
+	{"noinherit", NOINHERIT},
+	{"nologin", NOLOGIN_P},
 	{"none", NONE},
+	{"nosuperuser", NOSUPERUSER},
 	{"not", NOT},
 	{"nothing", NOTHING},
 	{"notify", NOTIFY},
@@ -267,6 +284,7 @@ static const ScanKeyword ScanKeywords[] = {
 	{"returns", RETURNS},
 	{"revoke", REVOKE},
 	{"right", RIGHT},
+	{"role", ROLE},
 	{"rollback", ROLLBACK},
 	{"row", ROW},
 	{"rows", ROWS},
@@ -298,7 +316,10 @@ static const ScanKeyword ScanKeywords[] = {
 	{"storage", STORAGE},
 	{"strict", STRICT_P},
 	{"substring", SUBSTRING},
+	{"superuser", SUPERUSER_P},
+	{"symmetric", SYMMETRIC},
 	{"sysid", SYSID},
+	{"system", SYSTEM_P},
 	{"table", TABLE},
 	{"tablespace", TABLESPACE},
 	{"temp", TEMP},
@@ -326,7 +347,6 @@ static const ScanKeyword ScanKeywords[] = {
 	{"unlisten", UNLISTEN},
 	{"until", UNTIL},
 	{"update", UPDATE},
-	{"usage", USAGE},
 	{"user", USER},
 	{"using", USING},
 	{"vacuum", VACUUM},
@@ -375,8 +395,8 @@ ScanKeywordLookup(const char *text)
 		return NULL;
 
 	/*
-	 * Apply an ASCII-only downcasing.	We must not use tolower() since it
-	 * may produce the wrong translation in some locales (eg, Turkish).
+	 * Apply an ASCII-only downcasing.	We must not use tolower() since it may
+	 * produce the wrong translation in some locales (eg, Turkish).
 	 */
 	for (i = 0; i < len; i++)
 	{

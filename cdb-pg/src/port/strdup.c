@@ -8,20 +8,23 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/port/strdup.c,v 1.6 2004/12/31 22:03:53 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/port/strdup.c,v 1.8 2005/09/27 04:53:23 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
 
-#include <string.h>
-#include <stdlib.h>
+#include "c.h"
+
 #include "strdup.h"
 
+
 char *
-strdup(char const * string)
+strdup(const char *string)
 {
 	char	   *nstr;
 
-	nstr = strcpy((char *) malloc(strlen(string) + 1), string);
+	nstr = (char *) malloc(strlen(string) + 1);
+	if (nstr)
+		strcpy(nstr, string);
 	return nstr;
 }

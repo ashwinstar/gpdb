@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2000-2005, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/startup.c,v 1.112.4.1 2005/09/20 18:59:15 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/startup.c,v 1.127 2005/11/17 13:34:47 momjian Exp $
  */
 #include "postgres_fe.h"
 
@@ -38,6 +38,7 @@ int			optreset;
 
 #include "mb/pg_wchar.h"
 
+
 /*
  * Global psql options
  */
@@ -70,12 +71,14 @@ struct adhoc_opts
 	char	   *host;
 	char	   *port;
 	char	   *username;
+	char	   *logfilename;
 	enum _actions action;
 	char	   *action_string;
 	bool		no_readline;
 	bool		no_psqlrc;
 };
 
+static int	parse_version(const char *versionString);
 static void parse_psql_options(int argc, char *argv[],
 				   struct adhoc_opts * options);
 static void process_psqlrc(char *argv0);
@@ -104,11 +107,10 @@ main(int argc, char *argv[])
 
 	char	   *username = NULL;
 	char	   *password = NULL;
+	char	   *password_prompt = NULL;
 	bool		need_pass;
 
 	set_pglocale_pgservice(argv[0], "psql");
-
-	pset.progname = get_progname(argv[0]);
 
 	if (argc > 1)
 	{
@@ -124,10 +126,13 @@ main(int argc, char *argv[])
 		}
 	}
 
+	pset.progname = get_progname(argv[0]);
+
 #ifdef WIN32
 	setvbuf(stderr, NULL, _IONBF, 0);
 	setup_win32_locks();
 #endif
+	setDecimalLocale();
 	pset.cur_cmd_source = stdin;
 	pset.cur_cmd_interactive = false;
 	pset.encoding = PQenv2encoding();
@@ -135,7 +140,7 @@ main(int argc, char *argv[])
 	pset.vars = CreateVariableSpace();
 	if (!pset.vars)
 	{
-		fprintf(stderr, gettext("%s: out of memory\n"), pset.progname);
+		fprintf(stderr, _("%s: out of memory\n"), pset.progname);
 		exit(EXIT_FAILURE);
 	}
 	pset.popt.topt.format = PRINT_ALIGNED;
@@ -174,9 +179,9 @@ main(int argc, char *argv[])
 	if (options.username)
 	{
 		/*
-		 * The \001 is a hack to support the deprecated -u option which
-		 * issues a username prompt. The recommended option is -U followed
-		 * by the name on the command line.
+		 * The \001 is a hack to support the deprecated -u option which issues
+		 * a username prompt. The recommended option is -U followed by the
+		 * name on the command line.
 		 */
 		if (strcmp(options.username, "\001") == 0)
 			username = simple_prompt("User name: ", 100, true);
@@ -184,15 +189,25 @@ main(int argc, char *argv[])
 			username = pg_strdup(options.username);
 	}
 
+	if (options.username == NULL)
+		password_prompt = pg_strdup(_("Password: "));
+	else
+	{
+		password_prompt = malloc(strlen(_("Password for user %s: ")) - 2 +
+								 strlen(options.username) + 1);
+		sprintf(password_prompt, _("Password for user %s: "), options.username);
+	}
+
 	if (pset.getPassword)
-		password = simple_prompt("Password: ", 100, false);
+		password = simple_prompt(password_prompt, 100, false);
 
 	/* loop until we have a password if requested by backend */
 	do
 	{
 		need_pass = false;
 		pset.db = PQsetdbLogin(options.host, options.port, NULL, NULL,
-			options.action == ACT_LIST_DB ? "template1" : options.dbname,
+				 options.action == ACT_LIST_DB && options.dbname == NULL ? 
+				 			   "postgres" : options.dbname,
 							   username, password);
 
 		if (PQstatus(pset.db) == CONNECTION_BAD &&
@@ -203,12 +218,13 @@ main(int argc, char *argv[])
 			need_pass = true;
 			free(password);
 			password = NULL;
-			password = simple_prompt("Password: ", 100, false);
+			password = simple_prompt(password_prompt, 100, false);
 		}
 	} while (need_pass);
 
 	free(username);
 	free(password);
+	free(password_prompt);
 
 	if (PQstatus(pset.db) == CONNECTION_BAD)
 	{
@@ -230,6 +246,14 @@ main(int argc, char *argv[])
 
 		PQfinish(pset.db);
 		exit(success ? EXIT_SUCCESS : EXIT_FAILURE);
+	}
+
+	if (options.logfilename)
+	{
+		pset.logfile = fopen(options.logfilename, "a");
+		if (!pset.logfile)
+			fprintf(stderr, _("%s: could not open log file \"%s\": %s\n"),
+					pset.progname, options.logfilename, strerror(errno));
 	}
 
 	/*
@@ -290,13 +314,46 @@ main(int argc, char *argv[])
 
 		if (!QUIET() && !pset.notty)
 		{
-			printf(gettext("Welcome to %s %s, the PostgreSQL interactive terminal.\n\n"
-						   "Type:  \\copyright for distribution terms\n"
-						   "       \\h for help with SQL commands\n"
-						   "       \\? for help with psql commands\n"
-			  "       \\g or terminate with semicolon to execute query\n"
-						   "       \\q to quit\n\n"),
-				   pset.progname, PG_VERSION);
+			int			client_ver = parse_version(PG_VERSION);
+
+			if (pset.sversion != client_ver)
+			{
+				const char *server_version;
+				char		server_ver_str[16];
+
+				/* Try to get full text form, might include "devel" etc */
+				server_version = PQparameterStatus(pset.db, "server_version");
+				if (!server_version)
+				{
+					snprintf(server_ver_str, sizeof(server_ver_str),
+							 "%d.%d.%d",
+							 pset.sversion / 10000,
+							 (pset.sversion / 100) % 100,
+							 pset.sversion % 100);
+					server_version = server_ver_str;
+				}
+
+				printf(_("Welcome to %s %s (server %s), the PostgreSQL interactive terminal.\n\n"),
+					   pset.progname, PG_VERSION, server_version);
+			}
+			else
+				printf(_("Welcome to %s %s, the PostgreSQL interactive terminal.\n\n"),
+					   pset.progname, PG_VERSION);
+
+			printf(_("Type:  \\copyright for distribution terms\n"
+					 "       \\h for help with SQL commands\n"
+					 "       \\? for help with psql commands\n"
+				  "       \\g or terminate with semicolon to execute query\n"
+					 "       \\q to quit\n\n"));
+
+			if (pset.sversion / 100 != client_ver / 100)
+				printf(_("WARNING:  You are connected to a server with major version %d.%d,\n"
+						 "but your %s client is major version %d.%d.  Some backslash commands,\n"
+						 "such as \\d, might not work properly.\n\n"),
+					   pset.sversion / 10000, (pset.sversion / 100) % 100,
+					   pset.progname,
+					   client_ver / 10000, (client_ver / 100) % 100);
+
 #ifdef USE_SSL
 			printSSLInfo();
 #endif
@@ -314,12 +371,36 @@ main(int argc, char *argv[])
 	}
 
 	/* clean up */
+	if (pset.logfile)
+		fclose(pset.logfile);
 	PQfinish(pset.db);
 	setQFout(NULL);
 
 	return successResult;
 }
 
+
+/*
+ * Convert a version string into a number.
+ */
+static int
+parse_version(const char *versionString)
+{
+	int			cnt;
+	int			vmaj,
+				vmin,
+				vrev;
+
+	cnt = sscanf(versionString, "%d.%d.%d", &vmaj, &vmin, &vrev);
+
+	if (cnt < 2)
+		return -1;
+
+	if (cnt == 2)
+		vrev = 0;
+
+	return (100 * vmaj + vmin) * 100 + vrev;
+}
 
 
 /*
@@ -342,6 +423,7 @@ parse_psql_options(int argc, char *argv[], struct adhoc_opts * options)
 		{"host", required_argument, NULL, 'h'},
 		{"html", no_argument, NULL, 'H'},
 		{"list", no_argument, NULL, 'l'},
+		{"log-file", required_argument, NULL, 'L'},
 		{"no-readline", no_argument, NULL, 'n'},
 		{"output", required_argument, NULL, 'o'},
 		{"port", required_argument, NULL, 'p'},
@@ -371,7 +453,7 @@ parse_psql_options(int argc, char *argv[], struct adhoc_opts * options)
 
 	memset(options, 0, sizeof *options);
 
-	while ((c = getopt_long(argc, argv, "aAc:d:eEf:F:h:Hlno:p:P:qR:sStT:uU:v:VWxX?",
+	while ((c = getopt_long(argc, argv, "aAc:d:eEf:F:h:HlL:no:p:P:qR:sStT:uU:v:VWxX?",
 							long_options, &optindex)) != -1)
 	{
 		switch (c)
@@ -417,6 +499,9 @@ parse_psql_options(int argc, char *argv[], struct adhoc_opts * options)
 			case 'l':
 				options->action = ACT_LIST_DB;
 				break;
+			case 'L':
+				options->logfilename = optarg;
+				break;
 			case 'n':
 				options->no_readline = true;
 				break;
@@ -444,7 +529,7 @@ parse_psql_options(int argc, char *argv[], struct adhoc_opts * options)
 
 					if (!result)
 					{
-						fprintf(stderr, gettext("%s: couldn't set printing parameter \"%s\"\n"), pset.progname, value);
+						fprintf(stderr, _("%s: could not set printing parameter \"%s\"\n"), pset.progname, value);
 						exit(EXIT_FAILURE);
 					}
 
@@ -471,8 +556,8 @@ parse_psql_options(int argc, char *argv[], struct adhoc_opts * options)
 				break;
 			case 'u':
 				pset.getPassword = true;
-				options->username = "\001";		/* hopefully nobody has
-												 * that username */
+				options->username = "\001";		/* hopefully nobody has that
+												 * username */
 				/* this option is out */
 				used_old_u_option = true;
 				break;
@@ -490,7 +575,7 @@ parse_psql_options(int argc, char *argv[], struct adhoc_opts * options)
 					{
 						if (!DeleteVariable(pset.vars, value))
 						{
-							fprintf(stderr, gettext("%s: could not delete variable \"%s\"\n"),
+							fprintf(stderr, _("%s: could not delete variable \"%s\"\n"),
 									pset.progname, value);
 							exit(EXIT_FAILURE);
 						}
@@ -500,7 +585,7 @@ parse_psql_options(int argc, char *argv[], struct adhoc_opts * options)
 						*equal_loc = '\0';
 						if (!SetVariable(pset.vars, value, equal_loc + 1))
 						{
-							fprintf(stderr, gettext("%s: could not set variable \"%s\"\n"),
+							fprintf(stderr, _("%s: could not set variable \"%s\"\n"),
 									pset.progname, value);
 							exit(EXIT_FAILURE);
 						}
@@ -531,13 +616,13 @@ parse_psql_options(int argc, char *argv[], struct adhoc_opts * options)
 				/* unknown option reported by getopt */
 				else
 				{
-					fprintf(stderr, gettext("Try \"%s --help\" for more information.\n"),
+					fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
 							pset.progname);
 					exit(EXIT_FAILURE);
 				}
 				break;
 			default:
-				fprintf(stderr, gettext("Try \"%s --help\" for more information.\n"),
+				fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
 						pset.progname);
 				exit(EXIT_FAILURE);
 				break;
@@ -545,8 +630,7 @@ parse_psql_options(int argc, char *argv[], struct adhoc_opts * options)
 	}
 
 	/*
-	 * if we still have arguments, use it as the database name and
-	 * username
+	 * if we still have arguments, use it as the database name and username
 	 */
 	while (argc - optind >= 1)
 	{
@@ -555,14 +639,14 @@ parse_psql_options(int argc, char *argv[], struct adhoc_opts * options)
 		else if (!options->username)
 			options->username = argv[optind];
 		else if (!QUIET())
-			fprintf(stderr, gettext("%s: warning: extra command-line argument \"%s\" ignored\n"),
+			fprintf(stderr, _("%s: warning: extra command-line argument \"%s\" ignored\n"),
 					pset.progname, argv[optind]);
 
 		optind++;
 	}
 
 	if (used_old_u_option && !QUIET())
-		fprintf(stderr, gettext("%s: Warning: The -u option is deprecated. Use -U.\n"), pset.progname);
+		fprintf(stderr, _("%s: Warning: The -u option is deprecated. Use -U.\n"), pset.progname);
 
 }
 
@@ -606,9 +690,9 @@ process_psqlrc_file(char *filename)
 	sprintf(psqlrc, "%s-%s", filename, PG_VERSION);
 
 	if (access(psqlrc, R_OK) == 0)
-		(void)process_file(psqlrc);
+		(void) process_file(psqlrc);
 	else if (access(filename, R_OK) == 0)
-		(void)process_file(filename);
+		(void) process_file(filename);
 	free(psqlrc);
 }
 
@@ -621,10 +705,10 @@ process_psqlrc_file(char *filename)
 static void
 showVersion(void)
 {
-	puts("psql (Bizgres MPP) " PG_VERSION);
+	puts("psql (PostgreSQL) " PG_VERSION);
 
 #if defined(USE_READLINE)
-	puts(gettext("contains support for command-line editing"));
+	puts(_("contains support for command-line editing"));
 #endif
 }
 
@@ -647,7 +731,7 @@ printSSLInfo(void)
 		return;					/* no SSL */
 
 	SSL_get_cipher_bits(ssl, &sslbits);
-	printf(gettext("SSL connection (cipher: %s, bits: %i)\n\n"),
+	printf(_("SSL connection (cipher: %s, bits: %i)\n\n"),
 		   SSL_get_cipher(ssl), sslbits);
 }
 #endif
@@ -670,9 +754,9 @@ checkWin32Codepage(void)
 	concp = GetConsoleCP();
 	if (wincp != concp)
 	{
-			printf(gettext("Warning: Console code page (%u) differs from Windows code page (%u)\n"
-					   "         8-bit characters may not work correctly. See psql reference\n"
-					   "         page \"Notes for Windows users\" for details.\n\n"),
+		printf(_("Warning: Console code page (%u) differs from Windows code page (%u)\n"
+				 "         8-bit characters may not work correctly. See psql reference\n"
+			   "         page \"Notes for Windows users\" for details.\n\n"),
 			   concp, wincp);
 	}
 }

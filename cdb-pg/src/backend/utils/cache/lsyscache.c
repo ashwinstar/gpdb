@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/cache/lsyscache.c,v 1.119 2004/12/31 22:01:25 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/cache/lsyscache.c,v 1.129 2005/10/15 02:49:31 momjian Exp $
  *
  * NOTES
  *	  Eventually, the index information should go through here, too.
@@ -24,7 +24,6 @@
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_operator.h"
 #include "catalog/pg_proc.h"
-#include "catalog/pg_shadow.h"
 #include "catalog/pg_statistic.h"
 #include "catalog/pg_type.h"
 #include "nodes/makefuncs.h"
@@ -50,6 +49,31 @@ op_in_opclass(Oid opno, Oid opclass)
 								ObjectIdGetDatum(opno),
 								ObjectIdGetDatum(opclass),
 								0, 0);
+}
+
+/*
+ * get_op_opclass_strategy
+ *
+ *		Get the operator's strategy number within the specified opclass,
+ *		or 0 if it's not a member of the opclass.
+ */
+int
+get_op_opclass_strategy(Oid opno, Oid opclass)
+{
+	HeapTuple	tp;
+	Form_pg_amop amop_tup;
+	int			result;
+
+	tp = SearchSysCache(AMOPOPID,
+						ObjectIdGetDatum(opno),
+						ObjectIdGetDatum(opclass),
+						0, 0);
+	if (!HeapTupleIsValid(tp))
+		return 0;
+	amop_tup = (Form_pg_amop) GETSTRUCT(tp);
+	result = amop_tup->amopstrategy;
+	ReleaseSysCache(tp);
+	return result;
 }
 
 /*
@@ -125,10 +149,10 @@ get_op_hash_function(Oid opno)
 	Oid			opclass = InvalidOid;
 
 	/*
-	 * Search pg_amop to see if the target operator is registered as the
-	 * "=" operator of any hash opclass.  If the operator is registered in
-	 * multiple opclasses, assume we can use the associated hash function
-	 * from any one.
+	 * Search pg_amop to see if the target operator is registered as the "="
+	 * operator of any hash opclass.  If the operator is registered in
+	 * multiple opclasses, assume we can use the associated hash function from
+	 * any one.
 	 */
 	catlist = SearchSysCacheList(AMOPOPID, 1,
 								 ObjectIdGetDatum(opno),
@@ -773,14 +797,35 @@ get_func_rettype(Oid funcid)
 }
 
 /*
+ * get_func_nargs
+ *		Given procedure id, return the number of arguments.
+ */
+int
+get_func_nargs(Oid funcid)
+{
+	HeapTuple	tp;
+	int			result;
+
+	tp = SearchSysCache(PROCOID,
+						ObjectIdGetDatum(funcid),
+						0, 0, 0);
+	if (!HeapTupleIsValid(tp))
+		elog(ERROR, "cache lookup failed for function %u", funcid);
+
+	result = ((Form_pg_proc) GETSTRUCT(tp))->pronargs;
+	ReleaseSysCache(tp);
+	return result;
+}
+
+/*
  * get_func_signature
  *		Given procedure id, return the function's argument and result types.
  *		(The return value is the result type.)
  *
- * argtypes must point to a vector of size FUNC_MAX_ARGS.
+ * The arguments are returned as a palloc'd array.
  */
 Oid
-get_func_signature(Oid funcid, Oid *argtypes, int *nargs)
+get_func_signature(Oid funcid, Oid **argtypes, int *nargs)
 {
 	HeapTuple	tp;
 	Form_pg_proc procstruct;
@@ -795,8 +840,10 @@ get_func_signature(Oid funcid, Oid *argtypes, int *nargs)
 	procstruct = (Form_pg_proc) GETSTRUCT(tp);
 
 	result = procstruct->prorettype;
-	memcpy(argtypes, procstruct->proargtypes, FUNC_MAX_ARGS * sizeof(Oid));
 	*nargs = (int) procstruct->pronargs;
+	Assert(*nargs == procstruct->proargtypes.dim1);
+	*argtypes = (Oid *) palloc(*nargs * sizeof(Oid));
+	memcpy(*argtypes, procstruct->proargtypes.values, *nargs * sizeof(Oid));
 
 	ReleaseSysCache(tp);
 	return result;
@@ -880,25 +927,6 @@ get_relname_relid(const char *relname, Oid relnamespace)
 						  PointerGetDatum(relname),
 						  ObjectIdGetDatum(relnamespace),
 						  0, 0);
-}
-
-/*
- * get_system_catalog_relid
- *		Get the OID of a system catalog identified by name.
- */
-Oid
-get_system_catalog_relid(const char *catname)
-{
-	Oid			relid;
-
-	relid = GetSysCacheOid(RELNAMENSP,
-						   PointerGetDatum(catname),
-						   ObjectIdGetDatum(PG_CATALOG_NAMESPACE),
-						   0, 0);
-	if (!OidIsValid(relid))
-		elog(ERROR, "cache lookup failed for system relation %s", catname);
-
-	return relid;
 }
 
 #ifdef NOT_USED
@@ -1184,6 +1212,10 @@ get_typlenbyvalalign(Oid typid, int16 *typlen, bool *typbyval,
  * to typelem elsewhere in the code are wrong, if they are associated with
  * I/O calls and not with actual subscripting operations!  (But see
  * bootstrap.c, which can't conveniently use this routine.)
+ *
+ * As of PostgreSQL 8.1, output functions receive only the value itself
+ * and not any auxiliary parameters, so the name of this routine is now
+ * a bit of a misnomer ... it should be getTypeInputParam.
  */
 Oid
 getTypeIOParam(HeapTuple typeTuple)
@@ -1191,13 +1223,14 @@ getTypeIOParam(HeapTuple typeTuple)
 	Form_pg_type typeStruct = (Form_pg_type) GETSTRUCT(typeTuple);
 
 	/*
-	 * Composite types get their own OID as parameter; array types get
-	 * their typelem as parameter; everybody else gets zero.
+	 * Array types get their typelem as parameter; everybody else gets their
+	 * own type OID as parameter.  (This is a change from 8.0, in which only
+	 * composite types got their own OID as parameter.)
 	 */
-	if (typeStruct->typtype == 'c')
-		return HeapTupleGetOid(typeTuple);
-	else
+	if (OidIsValid(typeStruct->typelem))
 		return typeStruct->typelem;
+	else
+		return HeapTupleGetOid(typeTuple);
 }
 
 /*
@@ -1381,7 +1414,7 @@ get_typdefault(Oid typid)
 			/* Convert C string to a value of the given type */
 			datum = OidFunctionCall3(type->typinput,
 									 CStringGetDatum(strDefaultVal),
-							 ObjectIdGetDatum(getTypeIOParam(typeTuple)),
+								 ObjectIdGetDatum(getTypeIOParam(typeTuple)),
 									 Int32GetDatum(-1));
 			/* Build a Const node containing the value */
 			expr = (Node *) makeConst(typid,
@@ -1468,8 +1501,8 @@ get_typavgwidth(Oid typid, int32 typmod)
 	{
 		/*
 		 * For BPCHAR, the max width is also the only width.  Otherwise we
-		 * need to guess about the typical data width given the max. A
-		 * sliding scale for percentage of max width seems reasonable.
+		 * need to guess about the typical data width given the max. A sliding
+		 * scale for percentage of max width seems reasonable.
 		 */
 		if (typid == BPCHAROID)
 			return maxwidth;
@@ -1480,8 +1513,8 @@ get_typavgwidth(Oid typid, int32 typmod)
 
 		/*
 		 * Beyond 1000, assume we're looking at something like
-		 * "varchar(10000)" where the limit isn't actually reached often,
-		 * and use a fixed estimate.
+		 * "varchar(10000)" where the limit isn't actually reached often, and
+		 * use a fixed estimate.
 		 */
 		return 32 + (1000 - 32) / 2;
 	}
@@ -1517,42 +1550,6 @@ get_typtype(Oid typid)
 	}
 	else
 		return '\0';
-}
-
-/*
- * get_type_func_class
- *
- *		Given the type OID, obtain its TYPEFUNC classification.
- *
- * This is intended to centralize a bunch of formerly ad-hoc code for
- * classifying types.  The categories used here are useful for deciding
- * how to handle functions returning the datatype.
- */
-TypeFuncClass
-get_type_func_class(Oid typid)
-{
-	switch (get_typtype(typid))
-	{
-		case 'c':
-			return TYPEFUNC_COMPOSITE;
-		case 'b':
-		case 'd':
-			return TYPEFUNC_SCALAR;
-		case 'p':
-			if (typid == RECORDOID)
-				return TYPEFUNC_RECORD;
-			/*
-			 * We treat VOID and CSTRING as legitimate scalar datatypes,
-			 * mostly for the convenience of the JDBC driver (which wants
-			 * to be able to do "SELECT * FROM foo()" for all legitimately
-			 * user-callable functions).
-			 */
-			if (typid == VOIDOID || typid == CSTRINGOID)
-				return TYPEFUNC_SCALAR;
-			return TYPEFUNC_OTHER;
-	}
-	/* shouldn't get here, probably */
-	return TYPEFUNC_OTHER;
 }
 
 /*
@@ -1704,8 +1701,7 @@ getTypeInputInfo(Oid type, Oid *typInput, Oid *typIOParam)
  *		Get info needed for printing values of a type
  */
 void
-getTypeOutputInfo(Oid type, Oid *typOutput, Oid *typIOParam,
-				  bool *typIsVarlena)
+getTypeOutputInfo(Oid type, Oid *typOutput, bool *typIsVarlena)
 {
 	HeapTuple	typeTuple;
 	Form_pg_type pt;
@@ -1729,7 +1725,6 @@ getTypeOutputInfo(Oid type, Oid *typOutput, Oid *typIOParam,
 						format_type_be(type))));
 
 	*typOutput = pt->typoutput;
-	*typIOParam = getTypeIOParam(typeTuple);
 	*typIsVarlena = (!pt->typbyval) && (pt->typlen == -1);
 
 	ReleaseSysCache(typeTuple);
@@ -1776,8 +1771,7 @@ getTypeBinaryInputInfo(Oid type, Oid *typReceive, Oid *typIOParam)
  *		Get info needed for binary output of values of a type
  */
 void
-getTypeBinaryOutputInfo(Oid type, Oid *typSend, Oid *typIOParam,
-						bool *typIsVarlena)
+getTypeBinaryOutputInfo(Oid type, Oid *typSend, bool *typIsVarlena)
 {
 	HeapTuple	typeTuple;
 	Form_pg_type pt;
@@ -1801,7 +1795,6 @@ getTypeBinaryOutputInfo(Oid type, Oid *typSend, Oid *typIOParam,
 						format_type_be(type))));
 
 	*typSend = pt->typsend;
-	*typIOParam = getTypeIOParam(typeTuple);
 	*typIsVarlena = (!pt->typbyval) && (pt->typlen == -1);
 
 	ReleaseSysCache(typeTuple);
@@ -1848,8 +1841,8 @@ get_attavgwidth(Oid relid, AttrNumber attnum)
  * entry, and we don't want to repeat the cache lookup unnecessarily.
  *
  * statstuple: pg_statistics tuple to be examined.
- * atttype: type OID of attribute.
- * atttypmod: typmod of attribute.
+ * atttype: type OID of attribute (can be InvalidOid if values == NULL).
+ * atttypmod: typmod of attribute (can be 0 if values == NULL).
  * reqkind: STAKIND code for desired statistics slot kind.
  * reqop: STAOP value wanted, or InvalidOid if don't care.
  * values, nvalues: if not NULL, the slot's stavalues are extracted.
@@ -1912,9 +1905,9 @@ get_attstatsslot(HeapTuple statstuple,
 						  values, nvalues);
 
 		/*
-		 * If the element type is pass-by-reference, we now have a bunch
-		 * of Datums that are pointers into the syscache value.  Copy them
-		 * to avoid problems if syscache decides to drop the entry.
+		 * If the element type is pass-by-reference, we now have a bunch of
+		 * Datums that are pointers into the syscache value.  Copy them to
+		 * avoid problems if syscache decides to drop the entry.
 		 */
 		if (!typeForm->typbyval)
 		{
@@ -1945,9 +1938,9 @@ get_attstatsslot(HeapTuple statstuple,
 		statarray = DatumGetArrayTypeP(val);
 
 		/*
-		 * We expect the array to be a 1-D float4 array; verify that. We
-		 * don't need to use deconstruct_array() since the array data is
-		 * just going to look like a C array of float4 values.
+		 * We expect the array to be a 1-D float4 array; verify that. We don't
+		 * need to use deconstruct_array() since the array data is just going
+		 * to look like a C array of float4 values.
 		 */
 		narrayelem = ARR_DIMS(statarray)[0];
 		if (ARR_NDIM(statarray) != 1 || narrayelem <= 0 ||
@@ -1967,6 +1960,12 @@ get_attstatsslot(HeapTuple statstuple,
 	return true;
 }
 
+/*
+ * free_attstatsslot
+ *		Free data allocated by get_attstatsslot
+ *
+ * atttype need be valid only if values != NULL.
+ */
 void
 free_attstatsslot(Oid atttype,
 				  Datum *values, int nvalues,
@@ -2016,36 +2015,35 @@ get_namespace_name(Oid nspid)
 		return NULL;
 }
 
-/*				---------- PG_SHADOW CACHE ----------					 */
+/*				---------- PG_AUTHID CACHE ----------					 */
 
 /*
- * get_usesysid
- *
- *	  Given a user name, look up the user's sysid.
- *	  Raises an error if no such user (rather than returning zero,
- *	  which might possibly be a valid usesysid).
- *
- * Note: the type of usesysid is currently int4, but may change to Oid
- * someday.  It'd be reasonable to return zero on failure if we were
- * using Oid ...
+ * get_roleid
+ *	  Given a role name, look up the role's OID.
+ *	  Returns InvalidOid if no such role.
  */
-AclId
-get_usesysid(const char *username)
+Oid
+get_roleid(const char *rolname)
 {
-	int32		result;
-	HeapTuple	userTup;
+	return GetSysCacheOid(AUTHNAME,
+						  PointerGetDatum(rolname),
+						  0, 0, 0);
+}
 
-	userTup = SearchSysCache(SHADOWNAME,
-							 PointerGetDatum(username),
-							 0, 0, 0);
-	if (!HeapTupleIsValid(userTup))
+/*
+ * get_roleid_checked
+ *	  Given a role name, look up the role's OID.
+ *	  ereports if no such role.
+ */
+Oid
+get_roleid_checked(const char *rolname)
+{
+	Oid			roleid;
+
+	roleid = get_roleid(rolname);
+	if (!OidIsValid(roleid))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("user \"%s\" does not exist", username)));
-
-	result = ((Form_pg_shadow) GETSTRUCT(userTup))->usesysid;
-
-	ReleaseSysCache(userTup);
-
-	return result;
+				 errmsg("role \"%s\" does not exist", rolname)));
+	return roleid;
 }

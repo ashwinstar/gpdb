@@ -8,25 +8,29 @@
  *		Result nodes are used in queries where no relations are scanned.
  *		Examples of such queries are:
  *
- *				retrieve (x = 1)
- *		and
- *				append emp (name = "mike", salary = 15000)
+ *				select 1 * 2
+ *
+ *				insert into emp values ('mike', 15000)
+ *
+ *		(Remember that in an INSERT or UPDATE, we need a plan tree that
+ *		generates the new rows.)
  *
  *		Result nodes are also used to optimise queries with constant
  *		qualifications (ie, quals that do not depend on the scanned data),
  *		such as:
  *
- *				retrieve (emp.all) where 2 > 1
+ *				select * from emp where 2 > 1
  *
  *		In this case, the plan generated is
  *
  *						Result	(with 2 > 1 qual)
  *						/
- *				   SeqScan (emp.all)
+ *				   SeqScan (emp.*)
  *
- *		At runtime, the Result node evaluates the constant qual once.
- *		If it's false, we can return an empty result set without running
- *		the controlled plan at all.  If it's true, we run the controlled
+ *		At runtime, the Result node evaluates the constant qual once,
+ *		which is shown by EXPLAIN as a One-Time Filter.  If it's
+ *		false, we can return an empty result set without running the
+ *		controlled plan at all.  If it's true, we run the controlled
  *		plan normally and pass back the results.
  *
  *
@@ -34,7 +38,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeResult.c,v 1.29 2004/12/31 21:59:45 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeResult.c,v 1.32 2005/10/15 02:49:17 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -88,9 +92,9 @@ ExecResult(ResultState *node)
 	}
 
 	/*
-	 * Check to see if we're still projecting out tuples from a previous
-	 * scan tuple (because there is a function-returning-set in the
-	 * projection expressions).  If so, try to project another one.
+	 * Check to see if we're still projecting out tuples from a previous scan
+	 * tuple (because there is a function-returning-set in the projection
+	 * expressions).  If so, try to project another one.
 	 */
 	if (node->ps.ps_TupFromTlist)
 	{
@@ -103,16 +107,16 @@ ExecResult(ResultState *node)
 
 	/*
 	 * Reset per-tuple memory context to free any expression evaluation
-	 * storage allocated in the previous tuple cycle.  Note this can't
-	 * happen until we're done projecting out tuples from a scan tuple.
+	 * storage allocated in the previous tuple cycle.  Note this can't happen
+	 * until we're done projecting out tuples from a scan tuple.
 	 */
 	ResetExprContext(econtext);
 
 	/*
 	 * if rs_done is true then it means that we were asked to return a
 	 * constant tuple and we already did the last time ExecResult() was
-	 * called, OR that we failed the constant qual check. Either way, now
-	 * we are through.
+	 * called, OR that we failed the constant qual check. Either way, now we
+	 * are through.
 	 */
 	while (!node->rs_done)
 	{
@@ -121,8 +125,7 @@ ExecResult(ResultState *node)
 		if (outerPlan != NULL)
 		{
 			/*
-			 * retrieve tuples from the outer plan until there are no
-			 * more.
+			 * retrieve tuples from the outer plan until there are no more.
 			 */
 			outerTupleSlot = ExecProcNode(outerPlan);
 
@@ -132,8 +135,7 @@ ExecResult(ResultState *node)
 			node->ps.ps_OuterTupleSlot = outerTupleSlot;
 
 			/*
-			 * XXX gross hack. use outer tuple as scan tuple for
-			 * projection
+			 * XXX gross hack. use outer tuple as scan tuple for projection
 			 */
 			econtext->ecxt_outertuple = outerTupleSlot;
 			econtext->ecxt_scantuple = outerTupleSlot;
@@ -141,16 +143,16 @@ ExecResult(ResultState *node)
 		else
 		{
 			/*
-			 * if we don't have an outer plan, then we are just generating
-			 * the results from a constant target list.  Do it only once.
+			 * if we don't have an outer plan, then we are just generating the
+			 * results from a constant target list.  Do it only once.
 			 */
 			node->rs_done = true;
 		}
 
 		/*
-		 * form the result tuple using ExecProject(), and return it ---
-		 * unless the projection produces an empty set, in which case we
-		 * must loop back to see if there are more outerPlan tuples.
+		 * form the result tuple using ExecProject(), and return it --- unless
+		 * the projection produces an empty set, in which case we must loop
+		 * back to see if there are more outerPlan tuples.
 		 */
 		resultSlot = ExecProject(node->ps.ps_ProjInfo, &isDone);
 

@@ -3,7 +3,7 @@
  * 1996-06-05 by Arthur David Olson (arthur_david_olson@nih.gov).
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/timezone/zic.c,v 1.13 2004/09/27 19:16:03 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/timezone/zic.c,v 1.16 2005/10/15 02:49:51 momjian Exp $
  */
 
 #include "postgres.h"
@@ -14,8 +14,8 @@
 #include <limits.h>
 #include <locale.h>
 
-#include "pgtz.h"
 #include "private.h"
+#include "pgtz.h"
 #include "tzfile.h"
 
 #ifdef HAVE_SYS_STAT_H
@@ -390,7 +390,7 @@ memcheck(char *ptr)
  */
 
 static void
-eats(const char *name, const int num, const char *rname, const int rnum)
+eats(const char *name, int num, const char *rname, int rnum)
 {
 	filename = name;
 	linenum = num;
@@ -399,7 +399,7 @@ eats(const char *name, const int num, const char *rname, const int rnum)
 }
 
 static void
-eat(const char *name, const int num)
+eat(const char *name, int num)
 {
 	eats(name, num, (char *) NULL, -1);
 }
@@ -408,8 +408,8 @@ static void
 error(const char *string)
 {
 	/*
-	 * Match the format of "cc" to allow sh users to  zic ... 2>&1 | error
-	 * -t "*" -v on BSD systems.
+	 * Match the format of "cc" to allow sh users to  zic ... 2>&1 | error -t
+	 * "*" -v on BSD systems.
 	 */
 	(void) fprintf(stderr, _("\"%s\", line %d: %s"),
 				   filename, linenum, string);
@@ -450,9 +450,9 @@ static int	sflag = FALSE;
 int
 main(int argc, char *argv[])
 {
-	register int i;
-	register int j;
-	register int c;
+	int			i;
+	int			j;
+	int			c;
 
 #ifndef WIN32
 	(void) umask(umask(S_IWGRP | S_IWOTH) | (S_IWGRP | S_IWOTH));
@@ -475,7 +475,7 @@ main(int argc, char *argv[])
 				else
 				{
 					(void) fprintf(stderr,
-							_("%s: More than one -d option specified\n"),
+								_("%s: More than one -d option specified\n"),
 								   progname);
 					(void) exit(EXIT_FAILURE);
 				}
@@ -486,7 +486,7 @@ main(int argc, char *argv[])
 				else
 				{
 					(void) fprintf(stderr,
-							_("%s: More than one -l option specified\n"),
+								_("%s: More than one -l option specified\n"),
 								   progname);
 					(void) exit(EXIT_FAILURE);
 				}
@@ -497,7 +497,7 @@ main(int argc, char *argv[])
 				else
 				{
 					(void) fprintf(stderr,
-							_("%s: More than one -p option specified\n"),
+								_("%s: More than one -p option specified\n"),
 								   progname);
 					(void) exit(EXIT_FAILURE);
 				}
@@ -508,7 +508,7 @@ main(int argc, char *argv[])
 				else
 				{
 					(void) fprintf(stderr,
-							_("%s: More than one -y option specified\n"),
+								_("%s: More than one -y option specified\n"),
 								   progname);
 					(void) exit(EXIT_FAILURE);
 				}
@@ -519,7 +519,7 @@ main(int argc, char *argv[])
 				else
 				{
 					(void) fprintf(stderr,
-							_("%s: More than one -L option specified\n"),
+								_("%s: More than one -L option specified\n"),
 								   progname);
 					(void) exit(EXIT_FAILURE);
 				}
@@ -585,8 +585,8 @@ main(int argc, char *argv[])
 static void
 dolink(const char *fromfile, const char *tofile)
 {
-	register char *fromname;
-	register char *toname;
+	char	   *fromname;
+	char	   *toname;
 
 	if (fromfile[0] == '/')
 		fromname = ecpyalloc(fromfile);
@@ -606,8 +606,8 @@ dolink(const char *fromfile, const char *tofile)
 	}
 
 	/*
-	 * We get to be careful here since there's a fair chance of root
-	 * running us.
+	 * We get to be careful here since there's a fair chance of root running
+	 * us.
 	 */
 	if (!itsdir(toname))
 		(void) remove(toname);
@@ -625,7 +625,7 @@ dolink(const char *fromfile, const char *tofile)
 			!itsdir(fromname))
 		{
 			const char *s = tofile;
-			register char *symlinkcontents = NULL;
+			char	   *symlinkcontents = NULL;
 
 			while ((s = strchr(s + 1, '/')) != NULL)
 				symlinkcontents = ecatalloc(symlinkcontents, "../");
@@ -695,8 +695,8 @@ setboundaries(void)
 static int
 itsdir(const char *name)
 {
-	register char *myname;
-	register int accres;
+	char	   *myname;
+	int			accres;
 
 	myname = ecpyalloc(name);
 	myname = ecatalloc(myname, "/.");
@@ -723,11 +723,11 @@ rcomp(const void *cp1, const void *cp2)
 static void
 associate(void)
 {
-	register struct zone *zp;
-	register struct rule *rp;
-	register int base,
+	struct zone *zp;
+	struct rule *rp;
+	int			base,
 				out;
-	register int i,
+	int			i,
 				j;
 
 	if (nrules != 0)
@@ -796,8 +796,8 @@ associate(void)
 								  TRUE);
 
 			/*
-			 * Note, though, that if there's no rule, a '%s' in the format
-			 * is a bad thing.
+			 * Note, though, that if there's no rule, a '%s' in the format is
+			 * a bad thing.
 			 */
 			if (strchr(zp->z_format, '%') != 0)
 				error(_("%s in ruleless zone"));
@@ -810,13 +810,13 @@ associate(void)
 static void
 infile(const char *name)
 {
-	register FILE *fp;
-	register char **fields;
-	register char *cp;
-	register const struct lookup *lp;
-	register int nfields;
-	register int wantcont;
-	register int num;
+	FILE	   *fp;
+	char	  **fields;
+	char	   *cp;
+	const struct lookup *lp;
+	int			nfields;
+	int			wantcont;
+	int			num;
 	char		buf[BUFSIZ];
 
 	if (strcmp(name, "-") == 0)
@@ -883,7 +883,7 @@ infile(const char *name)
 					case LC_LEAP:
 						if (name != leapsec)
 							(void) fprintf(stderr,
-										   _("%s: Leap line in non leap seconds file %s\n"),
+							_("%s: Leap line in non leap seconds file %s\n"),
 										   progname, name);
 						else
 							inleap(fields, nfields);
@@ -891,7 +891,7 @@ infile(const char *name)
 						break;
 					default:	/* "cannot happen" */
 						(void) fprintf(stderr,
-									_("%s: panic: Invalid l_value %d\n"),
+									   _("%s: panic: Invalid l_value %d\n"),
 									   progname, lp->l_value);
 						(void) exit(EXIT_FAILURE);
 				}
@@ -925,7 +925,7 @@ infile(const char *name)
  *----------
  */
 static long
-gethms(const char *string, const char *errstring, const int signable)
+gethms(const char *string, const char *errstring, int signable)
 {
 	int			hh,
 				mm,
@@ -969,7 +969,7 @@ gethms(const char *string, const char *errstring, const int signable)
 }
 
 static void
-inrule(register char **fields, const int nfields)
+inrule(char **fields, int nfields)
 {
 	static struct rule r;
 
@@ -991,14 +991,14 @@ inrule(register char **fields, const int nfields)
 	r.r_name = ecpyalloc(fields[RF_NAME]);
 	r.r_abbrvar = ecpyalloc(fields[RF_ABBRVAR]);
 	rules = (struct rule *) (void *) erealloc((char *) rules,
-								   (int) ((nrules + 1) * sizeof *rules));
+									   (int) ((nrules + 1) * sizeof *rules));
 	rules[nrules++] = r;
 }
 
 static int
-inzone(register char **fields, const int nfields)
+inzone(char **fields, int nfields)
 {
-	register int i;
+	int			i;
 	static char *buf;
 
 	if (nfields < ZONE_MINFIELDS || nfields > ZONE_MAXFIELDS)
@@ -1010,7 +1010,7 @@ inzone(register char **fields, const int nfields)
 	{
 		buf = erealloc(buf, (int) (132 + strlen(TZDEFAULT)));
 		(void) sprintf(buf,
-			  _("\"Zone %s\" line and -l option are mutually exclusive"),
+				  _("\"Zone %s\" line and -l option are mutually exclusive"),
 					   TZDEFAULT);
 		error(buf);
 		return FALSE;
@@ -1019,7 +1019,7 @@ inzone(register char **fields, const int nfields)
 	{
 		buf = erealloc(buf, (int) (132 + strlen(TZDEFRULES)));
 		(void) sprintf(buf,
-			  _("\"Zone %s\" line and -p option are mutually exclusive"),
+				  _("\"Zone %s\" line and -p option are mutually exclusive"),
 					   TZDEFRULES);
 		error(buf);
 		return FALSE;
@@ -1032,7 +1032,7 @@ inzone(register char **fields, const int nfields)
 									   strlen(fields[ZF_NAME]) +
 									   strlen(zones[i].z_filename)));
 			(void) sprintf(buf,
-					  _("duplicate zone name %s (file \"%s\", line %d)"),
+						   _("duplicate zone name %s (file \"%s\", line %d)"),
 						   fields[ZF_NAME],
 						   zones[i].z_filename,
 						   zones[i].z_linenum);
@@ -1043,7 +1043,7 @@ inzone(register char **fields, const int nfields)
 }
 
 static int
-inzcont(register char **fields, const int nfields)
+inzcont(char **fields, int nfields)
 {
 	if (nfields < ZONEC_MINFIELDS || nfields > ZONEC_MAXFIELDS)
 	{
@@ -1054,18 +1054,18 @@ inzcont(register char **fields, const int nfields)
 }
 
 static int
-inzsub(register char **fields, const int nfields, const int iscont)
+inzsub(char **fields, int nfields, int iscont)
 {
-	register char *cp;
+	char	   *cp;
 	static struct zone z;
-	register int i_gmtoff,
+	int			i_gmtoff,
 				i_rule,
 				i_format;
-	register int i_untilyear,
+	int			i_untilyear,
 				i_untilmonth;
-	register int i_untilday,
+	int			i_untilday,
 				i_untiltime;
-	register int hasuntil;
+	int			hasuntil;
 
 	if (iscont)
 	{
@@ -1129,7 +1129,7 @@ inzsub(register char **fields, const int nfields, const int iscont)
 		}
 	}
 	zones = (struct zone *) (void *) erealloc((char *) zones,
-								   (int) ((nzones + 1) * sizeof *zones));
+									   (int) ((nzones + 1) * sizeof *zones));
 	zones[nzones++] = z;
 
 	/*
@@ -1140,11 +1140,11 @@ inzsub(register char **fields, const int nfields, const int iscont)
 }
 
 static void
-inleap(register char **fields, const int nfields)
+inleap(char **fields, int nfields)
 {
-	register const char *cp;
-	register const struct lookup *lp;
-	register int i,
+	const char *cp;
+	const struct lookup *lp;
+	int			i,
 				j;
 	int			year,
 				month,
@@ -1219,7 +1219,7 @@ inleap(register char **fields, const int nfields)
 	tod = gethms(fields[LP_TIME], _("invalid time of day"), FALSE);
 	cp = fields[LP_CORR];
 	{
-		register int positive;
+		int			positive;
 		int			count;
 
 		if (strcmp(cp, "") == 0)
@@ -1257,7 +1257,7 @@ inleap(register char **fields, const int nfields)
 }
 
 static void
-inlink(register char **fields, const int nfields)
+inlink(char **fields, int nfields)
 {
 	struct link l;
 
@@ -1281,19 +1281,19 @@ inlink(register char **fields, const int nfields)
 	l.l_from = ecpyalloc(fields[LF_FROM]);
 	l.l_to = ecpyalloc(fields[LF_TO]);
 	links = (struct link *) (void *) erealloc((char *) links,
-								   (int) ((nlinks + 1) * sizeof *links));
+									   (int) ((nlinks + 1) * sizeof *links));
 	links[nlinks++] = l;
 }
 
 static void
-rulesub(register struct rule * rp, const char *loyearp, const char *hiyearp,
+rulesub(struct rule * rp, const char *loyearp, const char *hiyearp,
 		const char *typep, const char *monthp, const char *dayp,
 		const char *timep)
 {
-	register const struct lookup *lp;
-	register const char *cp;
-	register char *dp;
-	register char *ep;
+	const struct lookup *lp;
+	const char *cp;
+	char	   *dp;
+	char	   *ep;
 
 	if ((lp = byword(monthp, mon_names)) == NULL)
 	{
@@ -1464,17 +1464,17 @@ rulesub(register struct rule * rp, const char *loyearp, const char *hiyearp,
 }
 
 static void
-convert(const long val, char *buf)
+convert(long val, char *buf)
 {
-	register int i;
-	register long shift;
+	int			i;
+	long		shift;
 
 	for (i = 0, shift = 24; i < 4; ++i, shift -= 8)
 		buf[i] = val >> shift;
 }
 
 static void
-puttzcode(const long val, FILE *fp)
+puttzcode(long val, FILE *fp)
 {
 	char		buf[4];
 
@@ -1496,8 +1496,8 @@ atcomp(const void *avp, const void *bvp)
 static void
 writezone(const char *name)
 {
-	register FILE *fp;
-	register int i,
+	FILE	   *fp;
+	int			i,
 				j;
 	static char *fullname;
 	static struct tzhead tzh;
@@ -1660,7 +1660,7 @@ writezone(const char *name)
 }
 
 static void
-doabbr(char *abbr, const char *format, const char *letters, const int isdst)
+doabbr(char *abbr, const char *format, const char *letters, int isdst)
 {
 	if (strchr(format, '/') == NULL)
 	{
@@ -1679,23 +1679,23 @@ doabbr(char *abbr, const char *format, const char *letters, const int isdst)
 }
 
 static void
-outzone(const struct zone * zpfirst, const int zonecount)
+outzone(const struct zone * zpfirst, int zonecount)
 {
-	register const struct zone *zp;
-	register struct rule *rp;
-	register int i,
+	const struct zone *zp;
+	struct rule *rp;
+	int			i,
 				j;
-	register int usestart,
+	int			usestart,
 				useuntil;
-	register pg_time_t starttime = 0;
-	register pg_time_t untiltime = 0;
-	register long gmtoff;
-	register long stdoff;
-	register int year;
-	register long startoff;
-	register int startttisstd;
-	register int startttisgmt;
-	register int type;
+	pg_time_t	starttime = 0;
+	pg_time_t	untiltime = 0;
+	long		gmtoff;
+	long		stdoff;
+	int			year;
+	long		startoff;
+	int			startttisstd;
+	int			startttisgmt;
+	int			type;
 	char		startbuf[BUFSIZ];
 
 	/*
@@ -1706,8 +1706,8 @@ outzone(const struct zone * zpfirst, const int zonecount)
 	charcnt = 0;
 
 	/*
-	 * Thanks to Earl Chew (earl@dnd.icp.nec.com.au) for noting the need
-	 * to unconditionally initialize startttisstd.
+	 * Thanks to Earl Chew (earl@dnd.icp.nec.com.au) for noting the need to
+	 * unconditionally initialize startttisstd.
 	 */
 	startttisstd = FALSE;
 	startttisgmt = FALSE;
@@ -1749,8 +1749,8 @@ outzone(const struct zone * zpfirst, const int zonecount)
 					break;
 
 				/*
-				 * Mark which rules to do in the current year. For those
-				 * to do, calculate rpytime(rp, year);
+				 * Mark which rules to do in the current year. For those to
+				 * do, calculate rpytime(rp, year);
 				 */
 				for (j = 0; j < zp->z_nrules; ++j)
 				{
@@ -1765,17 +1765,17 @@ outzone(const struct zone * zpfirst, const int zonecount)
 				}
 				for (;;)
 				{
-					register int k;
-					register pg_time_t jtime,
+					int			k;
+					pg_time_t	jtime,
 								ktime = 0;
-					register long offset;
+					long		offset;
 					char		buf[BUFSIZ];
 
 					if (useuntil)
 					{
 						/*
-						 * Turn untiltime into UTC assuming the current
-						 * gmtoff and stdoff values.
+						 * Turn untiltime into UTC assuming the current gmtoff
+						 * and stdoff values.
 						 */
 						untiltime = zp->z_untiltime;
 						if (!zp->z_untilrule.r_todisgmt)
@@ -1915,11 +1915,11 @@ addtt(const pg_time_t starttime, int type)
 }
 
 static int
-addtype(const long gmtoff, const char *abbr, const int isdst,
-		const int ttisstd, const int ttisgmt)
+addtype(long gmtoff, const char *abbr, int isdst,
+		int ttisstd, int ttisgmt)
 {
-	register int i,
-				j;
+	int			i;
+	int			j;
 
 	if (isdst != TRUE && isdst != FALSE)
 	{
@@ -1938,8 +1938,8 @@ addtype(const long gmtoff, const char *abbr, const int isdst,
 	}
 
 	/*
-	 * See if there's already an entry for this zone type. If so, just
-	 * return its index.
+	 * See if there's already an entry for this zone type. If so, just return
+	 * its index.
 	 */
 	for (i = 0; i < typecnt; ++i)
 	{
@@ -1974,10 +1974,10 @@ addtype(const long gmtoff, const char *abbr, const int isdst,
 }
 
 static void
-leapadd(const pg_time_t t, const int positive, const int rolling, int count)
+leapadd(const pg_time_t t, int positive, int rolling, int count)
 {
-	register int i,
-				j;
+	int			i;
+	int			j;
 
 	if (leapcnt + (positive ? count : 1) > TZ_MAX_LEAPS)
 	{
@@ -2012,8 +2012,8 @@ leapadd(const pg_time_t t, const int positive, const int rolling, int count)
 static void
 adjleap(void)
 {
-	register int i;
-	register long last = 0;
+	int			i;
+	long		last = 0;
 
 	/*
 	 * propagate leap seconds forward
@@ -2026,7 +2026,7 @@ adjleap(void)
 }
 
 static int
-yearistype(const int year, const char *type)
+yearistype(int year, const char *type)
 {
 	static char *buf;
 	int			result;
@@ -2059,7 +2059,7 @@ lowerit(int a)
 }
 
 static int
-ciequal(register const char *ap, register const char *bp)
+ciequal(const char *ap, const char *bp)
 {
 	while (lowerit(*ap) == lowerit(*bp++))
 		if (*ap++ == '\0')
@@ -2068,7 +2068,7 @@ ciequal(register const char *ap, register const char *bp)
 }
 
 static int
-itsabbr(register const char *abbr, register const char *word)
+itsabbr(const char *abbr, const char *word)
 {
 	if (lowerit(*abbr) != lowerit(*word))
 		return FALSE;
@@ -2083,10 +2083,10 @@ itsabbr(register const char *abbr, register const char *word)
 }
 
 static const struct lookup *
-byword(register const char *word, register const struct lookup * table)
+byword(const char *word, const struct lookup * table)
 {
-	register const struct lookup *foundlp;
-	register const struct lookup *lp;
+	const struct lookup *foundlp;
+	const struct lookup *lp;
 
 	if (word == NULL || table == NULL)
 		return NULL;
@@ -2114,11 +2114,11 @@ byword(register const char *word, register const struct lookup * table)
 }
 
 static char **
-getfields(register char *cp)
+getfields(char *cp)
 {
-	register char *dp;
-	register char **array;
-	register int nsubs;
+	char	   *dp;
+	char	  **array;
+	int			nsubs;
 
 	if (cp == NULL)
 		return NULL;
@@ -2153,9 +2153,9 @@ getfields(register char *cp)
 }
 
 static long
-oadd(const long t1, const long t2)
+oadd(long t1, long t2)
 {
-	register long t;
+	long		t;
 
 	t = t1 + t2;
 	if ((t2 > 0 && t <= t1) || (t2 < 0 && t >= t1))
@@ -2167,9 +2167,9 @@ oadd(const long t1, const long t2)
 }
 
 static pg_time_t
-tadd(const pg_time_t t1, const long t2)
+tadd(const pg_time_t t1, long t2)
 {
-	register pg_time_t t;
+	pg_time_t	t;
 
 	if (t1 == max_time && t2 > 0)
 		return max_time;
@@ -2190,13 +2190,13 @@ tadd(const pg_time_t t1, const long t2)
  */
 
 static pg_time_t
-rpytime(register const struct rule * rp, register const int wantedy)
+rpytime(const struct rule * rp, int wantedy)
 {
-	register int y,
+	int			y,
 				m,
 				i;
-	register long dayoff;		/* with a nod to Margaret O. */
-	register pg_time_t t;
+	long		dayoff;			/* with a nod to Margaret O. */
+	pg_time_t	t;
 
 	if (wantedy == INT_MIN)
 		return min_time;
@@ -2240,7 +2240,7 @@ rpytime(register const struct rule * rp, register const int wantedy)
 	dayoff = oadd(dayoff, eitol(i));
 	if (rp->r_dycode == DC_DOWGEQ || rp->r_dycode == DC_DOWLEQ)
 	{
-		register long wday;
+		long		wday;
 
 #define LDAYSPERWEEK	((long) DAYSPERWEEK)
 		wday = eitol(EPOCH_WDAY);
@@ -2289,7 +2289,7 @@ rpytime(register const struct rule * rp, register const int wantedy)
 static void
 newabbr(const char *string)
 {
-	register int i;
+	int			i;
 
 	i = strlen(string) + 1;
 	if (charcnt + i > TZ_MAX_CHARS)
@@ -2304,8 +2304,8 @@ newabbr(const char *string)
 static int
 mkdirs(char *argname)
 {
-	register char *name;
-	register char *cp;
+	char	   *name;
+	char	   *cp;
 
 	if (argname == NULL || *argname == '\0')
 		return 0;
@@ -2328,9 +2328,9 @@ mkdirs(char *argname)
 		if (!itsdir(name))
 		{
 			/*
-			 * It doesn't seem to exist, so we try to create it. Creation
-			 * may fail because of the directory being created by some
-			 * other multiprocessor, so we get to do extra checking.
+			 * It doesn't seem to exist, so we try to create it. Creation may
+			 * fail because of the directory being created by some other
+			 * multiprocessor, so we get to do extra checking.
 			 */
 			if (mkdir(name, MKDIR_UMASK) != 0)
 			{
@@ -2339,7 +2339,7 @@ mkdirs(char *argname)
 				if (errno != EEXIST || !itsdir(name))
 				{
 					(void) fprintf(stderr,
-								_("%s: Can't create directory %s: %s\n"),
+								   _("%s: Can't create directory %s: %s\n"),
 								   progname, name, e);
 					ifree(name);
 					return -1;
@@ -2353,7 +2353,7 @@ mkdirs(char *argname)
 }
 
 static long
-eitol(const int i)
+eitol(int i)
 {
 	long		l;
 

@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/fmgr/fmgr.c,v 1.88.4.1 2005/02/02 22:40:17 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/fmgr/fmgr.c,v 1.97 2005/10/15 02:49:32 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -41,9 +41,9 @@
  * some warnings about int->pointer conversions...
  */
 #if (defined(__mc68000__) || (defined(__m68k__))) && defined(__ELF__)
-typedef int32  (*func_ptr) ();
+typedef int32 (*func_ptr) ();
 #else
-typedef char * (*func_ptr) ();
+typedef char *(*func_ptr) ();
 #endif
 
 /*
@@ -52,8 +52,8 @@ typedef char * (*func_ptr) ();
 typedef struct
 {
 	func_ptr	func;			/* Address of the oldstyle function */
-	bool		arg_toastable[FUNC_MAX_ARGS];	/* is n'th arg of a
-												 * toastable datatype? */
+	bool		arg_toastable[FUNC_MAX_ARGS];	/* is n'th arg of a toastable
+												 * datatype? */
 } Oldstyle_fnextra;
 
 /*
@@ -95,8 +95,8 @@ fmgr_isbuiltin(Oid id)
 	int			high = fmgr_nbuiltins - 1;
 
 	/*
-	 * Loop invariant: low is the first index that could contain target
-	 * entry, and high is the last index that could contain it.
+	 * Loop invariant: low is the first index that could contain target entry,
+	 * and high is the last index that could contain it.
 	 */
 	while (low <= high)
 	{
@@ -177,9 +177,9 @@ fmgr_info_cxt_security(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt,
 	char	   *prosrc;
 
 	/*
-	 * fn_oid *must* be filled in last.  Some code assumes that if fn_oid
-	 * is valid, the whole struct is valid.  Some FmgrInfo struct's do
-	 * survive elogs.
+	 * fn_oid *must* be filled in last.  Some code assumes that if fn_oid is
+	 * valid, the whole struct is valid.  Some FmgrInfo struct's do survive
+	 * elogs.
 	 */
 	finfo->fn_oid = InvalidOid;
 	finfo->fn_extra = NULL;
@@ -189,8 +189,7 @@ fmgr_info_cxt_security(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt,
 	if ((fbp = fmgr_isbuiltin(functionId)) != NULL)
 	{
 		/*
-		 * Fast path for builtin functions: don't bother consulting
-		 * pg_proc
+		 * Fast path for builtin functions: don't bother consulting pg_proc
 		 */
 		finfo->fn_nargs = fbp->nargs;
 		finfo->fn_strict = fbp->strict;
@@ -227,11 +226,11 @@ fmgr_info_cxt_security(Oid functionId, FmgrInfo *finfo, MemoryContext mcxt,
 			/*
 			 * For an ordinary builtin function, we should never get here
 			 * because the isbuiltin() search above will have succeeded.
-			 * However, if the user has done a CREATE FUNCTION to create
-			 * an alias for a builtin function, we can end up here.  In
-			 * that case we have to look up the function by name.  The
-			 * name of the internal function is stored in prosrc (it
-			 * doesn't have to be the same as the name of the alias!)
+			 * However, if the user has done a CREATE FUNCTION to create an
+			 * alias for a builtin function, we can end up here.  In that case
+			 * we have to look up the function by name.  The name of the
+			 * internal function is stored in prosrc (it doesn't have to be
+			 * the same as the name of the alias!)
 			 */
 			prosrcdatum = SysCacheGetAttr(PROCOID, procedureTuple,
 										  Anum_pg_proc_prosrc, &isnull);
@@ -300,8 +299,7 @@ fmgr_info_C_lang(Oid functionId, FmgrInfo *finfo, HeapTuple procedureTuple)
 		void	   *libraryhandle;
 
 		/*
-		 * Get prosrc and probin strings (link symbol and library
-		 * filename)
+		 * Get prosrc and probin strings (link symbol and library filename)
 		 */
 		prosrcattr = SysCacheGetAttr(PROCOID, procedureTuple,
 									 Anum_pg_proc_prosrc, &isnull);
@@ -337,14 +335,14 @@ fmgr_info_C_lang(Oid functionId, FmgrInfo *finfo, HeapTuple procedureTuple)
 			/* Old style: need to use a handler */
 			finfo->fn_addr = fmgr_oldstyle;
 			fnextra = (Oldstyle_fnextra *)
-				MemoryContextAlloc(finfo->fn_mcxt, sizeof(Oldstyle_fnextra));
+				MemoryContextAllocZero(finfo->fn_mcxt,
+									   sizeof(Oldstyle_fnextra));
 			finfo->fn_extra = (void *) fnextra;
-			MemSet(fnextra, 0, sizeof(Oldstyle_fnextra));
 			fnextra->func = (func_ptr) user_fn;
 			for (i = 0; i < procedureStruct->pronargs; i++)
 			{
 				fnextra->arg_toastable[i] =
-					TypeIsToastable(procedureStruct->proargtypes[i]);
+					TypeIsToastable(procedureStruct->proargtypes.values[i]);
 			}
 			break;
 		case 1:
@@ -403,7 +401,7 @@ fmgr_info_other_lang(Oid functionId, FmgrInfo *finfo, HeapTuple procedureTuple)
  * We want to raise an error here only if the info function returns
  * something bogus.
  *
- * This function is broken out of fmgr_info_C_lang() so that ProcedureCreate()
+ * This function is broken out of fmgr_info_C_lang so that fmgr_c_validator
  * can validate the information record for a function not yet entered into
  * pg_proc.
  */
@@ -509,7 +507,7 @@ record_C_func(HeapTuple procedureTuple,
 		MemSet(&hash_ctl, 0, sizeof(hash_ctl));
 		hash_ctl.keysize = sizeof(Oid);
 		hash_ctl.entrysize = sizeof(CFuncHashTabEntry);
-		hash_ctl.hash = tag_hash;
+		hash_ctl.hash = oid_hash;
 		CFuncHash = hash_create("CFuncHash",
 								100,
 								&hash_ctl,
@@ -521,10 +519,6 @@ record_C_func(HeapTuple procedureTuple,
 					&fn_oid,
 					HASH_ENTER,
 					&found);
-	if (entry == NULL)
-		ereport(ERROR,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("out of memory")));
 	/* OID is already filled in */
 	entry->fn_xmin = HeapTupleHeaderGetXmin(procedureTuple->t_data);
 	entry->fn_cmin = HeapTupleHeaderGetCmin(procedureTuple->t_data);
@@ -576,8 +570,8 @@ fmgr_info_copy(FmgrInfo *dstinfo, FmgrInfo *srcinfo,
 
 
 /*
- * Specialized lookup routine for ProcedureCreate(): given the alleged name
- * of an internal function, return the OID of the function.
+ * Specialized lookup routine for fmgr_internal_validator: given the alleged
+ * name of an internal function, return the OID of the function.
  * If the name is not recognized, return InvalidOid.
  */
 Oid
@@ -609,14 +603,13 @@ fmgr_oldstyle(PG_FUNCTION_ARGS)
 	fnextra = (Oldstyle_fnextra *) fcinfo->flinfo->fn_extra;
 
 	/*
-	 * Result is NULL if any argument is NULL, but we still call the
-	 * function (peculiar, but that's the way it worked before, and after
-	 * all this is a backwards-compatibility wrapper).	Note, however,
-	 * that we'll never get here with NULL arguments if the function is
-	 * marked strict.
+	 * Result is NULL if any argument is NULL, but we still call the function
+	 * (peculiar, but that's the way it worked before, and after all this is a
+	 * backwards-compatibility wrapper).  Note, however, that we'll never get
+	 * here with NULL arguments if the function is marked strict.
 	 *
-	 * We also need to detoast any TOAST-ed inputs, since it's unlikely that
-	 * an old-style function knows about TOASTing.
+	 * We also need to detoast any TOAST-ed inputs, since it's unlikely that an
+	 * old-style function knows about TOASTing.
 	 */
 	isnull = false;
 	for (i = 0; i < n_arguments; i++)
@@ -638,9 +631,9 @@ fmgr_oldstyle(PG_FUNCTION_ARGS)
 		case 1:
 
 			/*
-			 * nullvalue() used to use isNull to check if arg is NULL;
-			 * perhaps there are other functions still out there that also
-			 * rely on this undocumented hack?
+			 * nullvalue() used to use isNull to check if arg is NULL; perhaps
+			 * there are other functions still out there that also rely on
+			 * this undocumented hack?
 			 */
 			returnValue = (*user_fn) (fcinfo->arg[0], &fcinfo->isnull);
 			break;
@@ -748,16 +741,16 @@ fmgr_oldstyle(PG_FUNCTION_ARGS)
 		default:
 
 			/*
-			 * Increasing FUNC_MAX_ARGS doesn't automatically add cases to
-			 * the above code, so mention the actual value in this error
-			 * not FUNC_MAX_ARGS.  You could add cases to the above if you
-			 * needed to support old-style functions with many arguments,
-			 * but making 'em be new-style is probably a better idea.
+			 * Increasing FUNC_MAX_ARGS doesn't automatically add cases to the
+			 * above code, so mention the actual value in this error not
+			 * FUNC_MAX_ARGS.  You could add cases to the above if you needed
+			 * to support old-style functions with many arguments, but making
+			 * 'em be new-style is probably a better idea.
 			 */
 			ereport(ERROR,
 					(errcode(ERRCODE_TOO_MANY_ARGUMENTS),
-					 errmsg("function %u has too many arguments (%d, maximum is %d)",
-							fcinfo->flinfo->fn_oid, n_arguments, 16)));
+			 errmsg("function %u has too many arguments (%d, maximum is %d)",
+					fcinfo->flinfo->fn_oid, n_arguments, 16)));
 			returnValue = NULL; /* keep compiler quiet */
 			break;
 	}
@@ -773,7 +766,7 @@ fmgr_oldstyle(PG_FUNCTION_ARGS)
 struct fmgr_security_definer_cache
 {
 	FmgrInfo	flinfo;
-	AclId		userid;
+	Oid			userid;
 };
 
 /*
@@ -789,14 +782,14 @@ fmgr_security_definer(PG_FUNCTION_ARGS)
 {
 	Datum		result;
 	FmgrInfo   *save_flinfo;
-	struct fmgr_security_definer_cache * volatile fcache;
-	AclId		save_userid;
+	struct fmgr_security_definer_cache *volatile fcache;
+	Oid			save_userid;
 	HeapTuple	tuple;
 
 	if (!fcinfo->flinfo->fn_extra)
 	{
-		fcache = MemoryContextAlloc(fcinfo->flinfo->fn_mcxt, sizeof(*fcache));
-		memset(fcache, 0, sizeof(*fcache));
+		fcache = MemoryContextAllocZero(fcinfo->flinfo->fn_mcxt,
+										sizeof(*fcache));
 
 		fmgr_info_cxt_security(fcinfo->flinfo->fn_oid, &fcache->flinfo,
 							   fcinfo->flinfo->fn_mcxt, true);
@@ -846,23 +839,6 @@ fmgr_security_definer(PG_FUNCTION_ARGS)
  */
 
 /*
- * This macro initializes all the fields of a FunctionCallInfoData except
- * for the arg[] and argnull[] arrays.  Performance testing has shown that
- * the fastest way to set up argnull[] for small numbers of arguments is to
- * explicitly set each required element to false, so we don't try to zero
- * out the argnull[] array in the macro.
- */
-#define InitFunctionCallInfoData(Fcinfo, Flinfo, Nargs) \
-	do { \
-		(Fcinfo).flinfo = (Flinfo); \
-		(Fcinfo).context = NULL; \
-		(Fcinfo).resultinfo = NULL; \
-		(Fcinfo).isnull = false; \
-		(Fcinfo).nargs = (Nargs); \
-	} while (0)
-
-
-/*
  * These are for invocation of a specifically named function with a
  * directly-computed parameter list.  Note that neither arguments nor result
  * are allowed to be NULL.	Also, the function cannot be one that needs to
@@ -874,7 +850,7 @@ DirectFunctionCall1(PGFunction func, Datum arg1)
 	FunctionCallInfoData fcinfo;
 	Datum		result;
 
-	InitFunctionCallInfoData(fcinfo, NULL, 1);
+	InitFunctionCallInfoData(fcinfo, NULL, 1, NULL, NULL);
 
 	fcinfo.arg[0] = arg1;
 	fcinfo.argnull[0] = false;
@@ -894,7 +870,7 @@ DirectFunctionCall2(PGFunction func, Datum arg1, Datum arg2)
 	FunctionCallInfoData fcinfo;
 	Datum		result;
 
-	InitFunctionCallInfoData(fcinfo, NULL, 2);
+	InitFunctionCallInfoData(fcinfo, NULL, 2, NULL, NULL);
 
 	fcinfo.arg[0] = arg1;
 	fcinfo.arg[1] = arg2;
@@ -917,7 +893,7 @@ DirectFunctionCall3(PGFunction func, Datum arg1, Datum arg2,
 	FunctionCallInfoData fcinfo;
 	Datum		result;
 
-	InitFunctionCallInfoData(fcinfo, NULL, 3);
+	InitFunctionCallInfoData(fcinfo, NULL, 3, NULL, NULL);
 
 	fcinfo.arg[0] = arg1;
 	fcinfo.arg[1] = arg2;
@@ -942,7 +918,7 @@ DirectFunctionCall4(PGFunction func, Datum arg1, Datum arg2,
 	FunctionCallInfoData fcinfo;
 	Datum		result;
 
-	InitFunctionCallInfoData(fcinfo, NULL, 4);
+	InitFunctionCallInfoData(fcinfo, NULL, 4, NULL, NULL);
 
 	fcinfo.arg[0] = arg1;
 	fcinfo.arg[1] = arg2;
@@ -969,7 +945,7 @@ DirectFunctionCall5(PGFunction func, Datum arg1, Datum arg2,
 	FunctionCallInfoData fcinfo;
 	Datum		result;
 
-	InitFunctionCallInfoData(fcinfo, NULL, 5);
+	InitFunctionCallInfoData(fcinfo, NULL, 5, NULL, NULL);
 
 	fcinfo.arg[0] = arg1;
 	fcinfo.arg[1] = arg2;
@@ -999,7 +975,7 @@ DirectFunctionCall6(PGFunction func, Datum arg1, Datum arg2,
 	FunctionCallInfoData fcinfo;
 	Datum		result;
 
-	InitFunctionCallInfoData(fcinfo, NULL, 6);
+	InitFunctionCallInfoData(fcinfo, NULL, 6, NULL, NULL);
 
 	fcinfo.arg[0] = arg1;
 	fcinfo.arg[1] = arg2;
@@ -1031,7 +1007,7 @@ DirectFunctionCall7(PGFunction func, Datum arg1, Datum arg2,
 	FunctionCallInfoData fcinfo;
 	Datum		result;
 
-	InitFunctionCallInfoData(fcinfo, NULL, 7);
+	InitFunctionCallInfoData(fcinfo, NULL, 7, NULL, NULL);
 
 	fcinfo.arg[0] = arg1;
 	fcinfo.arg[1] = arg2;
@@ -1065,7 +1041,7 @@ DirectFunctionCall8(PGFunction func, Datum arg1, Datum arg2,
 	FunctionCallInfoData fcinfo;
 	Datum		result;
 
-	InitFunctionCallInfoData(fcinfo, NULL, 8);
+	InitFunctionCallInfoData(fcinfo, NULL, 8, NULL, NULL);
 
 	fcinfo.arg[0] = arg1;
 	fcinfo.arg[1] = arg2;
@@ -1102,7 +1078,7 @@ DirectFunctionCall9(PGFunction func, Datum arg1, Datum arg2,
 	FunctionCallInfoData fcinfo;
 	Datum		result;
 
-	InitFunctionCallInfoData(fcinfo, NULL, 9);
+	InitFunctionCallInfoData(fcinfo, NULL, 9, NULL, NULL);
 
 	fcinfo.arg[0] = arg1;
 	fcinfo.arg[1] = arg2;
@@ -1144,7 +1120,7 @@ FunctionCall1(FmgrInfo *flinfo, Datum arg1)
 	FunctionCallInfoData fcinfo;
 	Datum		result;
 
-	InitFunctionCallInfoData(fcinfo, flinfo, 1);
+	InitFunctionCallInfoData(fcinfo, flinfo, 1, NULL, NULL);
 
 	fcinfo.arg[0] = arg1;
 	fcinfo.argnull[0] = false;
@@ -1168,7 +1144,7 @@ FunctionCall2(FmgrInfo *flinfo, Datum arg1, Datum arg2)
 	FunctionCallInfoData fcinfo;
 	Datum		result;
 
-	InitFunctionCallInfoData(fcinfo, flinfo, 2);
+	InitFunctionCallInfoData(fcinfo, flinfo, 2, NULL, NULL);
 
 	fcinfo.arg[0] = arg1;
 	fcinfo.arg[1] = arg2;
@@ -1191,7 +1167,7 @@ FunctionCall3(FmgrInfo *flinfo, Datum arg1, Datum arg2,
 	FunctionCallInfoData fcinfo;
 	Datum		result;
 
-	InitFunctionCallInfoData(fcinfo, flinfo, 3);
+	InitFunctionCallInfoData(fcinfo, flinfo, 3, NULL, NULL);
 
 	fcinfo.arg[0] = arg1;
 	fcinfo.arg[1] = arg2;
@@ -1216,7 +1192,7 @@ FunctionCall4(FmgrInfo *flinfo, Datum arg1, Datum arg2,
 	FunctionCallInfoData fcinfo;
 	Datum		result;
 
-	InitFunctionCallInfoData(fcinfo, flinfo, 4);
+	InitFunctionCallInfoData(fcinfo, flinfo, 4, NULL, NULL);
 
 	fcinfo.arg[0] = arg1;
 	fcinfo.arg[1] = arg2;
@@ -1243,7 +1219,7 @@ FunctionCall5(FmgrInfo *flinfo, Datum arg1, Datum arg2,
 	FunctionCallInfoData fcinfo;
 	Datum		result;
 
-	InitFunctionCallInfoData(fcinfo, flinfo, 5);
+	InitFunctionCallInfoData(fcinfo, flinfo, 5, NULL, NULL);
 
 	fcinfo.arg[0] = arg1;
 	fcinfo.arg[1] = arg2;
@@ -1273,7 +1249,7 @@ FunctionCall6(FmgrInfo *flinfo, Datum arg1, Datum arg2,
 	FunctionCallInfoData fcinfo;
 	Datum		result;
 
-	InitFunctionCallInfoData(fcinfo, flinfo, 6);
+	InitFunctionCallInfoData(fcinfo, flinfo, 6, NULL, NULL);
 
 	fcinfo.arg[0] = arg1;
 	fcinfo.arg[1] = arg2;
@@ -1305,7 +1281,7 @@ FunctionCall7(FmgrInfo *flinfo, Datum arg1, Datum arg2,
 	FunctionCallInfoData fcinfo;
 	Datum		result;
 
-	InitFunctionCallInfoData(fcinfo, flinfo, 7);
+	InitFunctionCallInfoData(fcinfo, flinfo, 7, NULL, NULL);
 
 	fcinfo.arg[0] = arg1;
 	fcinfo.arg[1] = arg2;
@@ -1339,7 +1315,7 @@ FunctionCall8(FmgrInfo *flinfo, Datum arg1, Datum arg2,
 	FunctionCallInfoData fcinfo;
 	Datum		result;
 
-	InitFunctionCallInfoData(fcinfo, flinfo, 8);
+	InitFunctionCallInfoData(fcinfo, flinfo, 8, NULL, NULL);
 
 	fcinfo.arg[0] = arg1;
 	fcinfo.arg[1] = arg2;
@@ -1376,7 +1352,7 @@ FunctionCall9(FmgrInfo *flinfo, Datum arg1, Datum arg2,
 	FunctionCallInfoData fcinfo;
 	Datum		result;
 
-	InitFunctionCallInfoData(fcinfo, flinfo, 9);
+	InitFunctionCallInfoData(fcinfo, flinfo, 9, NULL, NULL);
 
 	fcinfo.arg[0] = arg1;
 	fcinfo.arg[1] = arg2;
@@ -1423,7 +1399,7 @@ OidFunctionCall1(Oid functionId, Datum arg1)
 
 	fmgr_info(functionId, &flinfo);
 
-	InitFunctionCallInfoData(fcinfo, &flinfo, 1);
+	InitFunctionCallInfoData(fcinfo, &flinfo, 1, NULL, NULL);
 
 	fcinfo.arg[0] = arg1;
 	fcinfo.argnull[0] = false;
@@ -1446,7 +1422,7 @@ OidFunctionCall2(Oid functionId, Datum arg1, Datum arg2)
 
 	fmgr_info(functionId, &flinfo);
 
-	InitFunctionCallInfoData(fcinfo, &flinfo, 2);
+	InitFunctionCallInfoData(fcinfo, &flinfo, 2, NULL, NULL);
 
 	fcinfo.arg[0] = arg1;
 	fcinfo.arg[1] = arg2;
@@ -1472,7 +1448,7 @@ OidFunctionCall3(Oid functionId, Datum arg1, Datum arg2,
 
 	fmgr_info(functionId, &flinfo);
 
-	InitFunctionCallInfoData(fcinfo, &flinfo, 3);
+	InitFunctionCallInfoData(fcinfo, &flinfo, 3, NULL, NULL);
 
 	fcinfo.arg[0] = arg1;
 	fcinfo.arg[1] = arg2;
@@ -1500,7 +1476,7 @@ OidFunctionCall4(Oid functionId, Datum arg1, Datum arg2,
 
 	fmgr_info(functionId, &flinfo);
 
-	InitFunctionCallInfoData(fcinfo, &flinfo, 4);
+	InitFunctionCallInfoData(fcinfo, &flinfo, 4, NULL, NULL);
 
 	fcinfo.arg[0] = arg1;
 	fcinfo.arg[1] = arg2;
@@ -1530,7 +1506,7 @@ OidFunctionCall5(Oid functionId, Datum arg1, Datum arg2,
 
 	fmgr_info(functionId, &flinfo);
 
-	InitFunctionCallInfoData(fcinfo, &flinfo, 5);
+	InitFunctionCallInfoData(fcinfo, &flinfo, 5, NULL, NULL);
 
 	fcinfo.arg[0] = arg1;
 	fcinfo.arg[1] = arg2;
@@ -1563,7 +1539,7 @@ OidFunctionCall6(Oid functionId, Datum arg1, Datum arg2,
 
 	fmgr_info(functionId, &flinfo);
 
-	InitFunctionCallInfoData(fcinfo, &flinfo, 6);
+	InitFunctionCallInfoData(fcinfo, &flinfo, 6, NULL, NULL);
 
 	fcinfo.arg[0] = arg1;
 	fcinfo.arg[1] = arg2;
@@ -1598,7 +1574,7 @@ OidFunctionCall7(Oid functionId, Datum arg1, Datum arg2,
 
 	fmgr_info(functionId, &flinfo);
 
-	InitFunctionCallInfoData(fcinfo, &flinfo, 7);
+	InitFunctionCallInfoData(fcinfo, &flinfo, 7, NULL, NULL);
 
 	fcinfo.arg[0] = arg1;
 	fcinfo.arg[1] = arg2;
@@ -1635,7 +1611,7 @@ OidFunctionCall8(Oid functionId, Datum arg1, Datum arg2,
 
 	fmgr_info(functionId, &flinfo);
 
-	InitFunctionCallInfoData(fcinfo, &flinfo, 8);
+	InitFunctionCallInfoData(fcinfo, &flinfo, 8, NULL, NULL);
 
 	fcinfo.arg[0] = arg1;
 	fcinfo.arg[1] = arg2;
@@ -1675,7 +1651,7 @@ OidFunctionCall9(Oid functionId, Datum arg1, Datum arg2,
 
 	fmgr_info(functionId, &flinfo);
 
-	InitFunctionCallInfoData(fcinfo, &flinfo, 9);
+	InitFunctionCallInfoData(fcinfo, &flinfo, 9, NULL, NULL);
 
 	fcinfo.arg[0] = arg1;
 	fcinfo.arg[1] = arg2;
@@ -1740,8 +1716,8 @@ fmgr(Oid procedureId,...)
 		if (n_arguments > FUNC_MAX_ARGS)
 			ereport(ERROR,
 					(errcode(ERRCODE_TOO_MANY_ARGUMENTS),
-					 errmsg("function %u has too many arguments (%d, maximum is %d)",
-							flinfo.fn_oid, n_arguments, FUNC_MAX_ARGS)));
+			 errmsg("function %u has too many arguments (%d, maximum is %d)",
+					flinfo.fn_oid, n_arguments, FUNC_MAX_ARGS)));
 		va_start(pvar, procedureId);
 		for (i = 0; i < n_arguments; i++)
 			fcinfo.arg[i] = (Datum) va_arg(pvar, char *);
@@ -1781,10 +1757,10 @@ Int64GetDatum(int64 X)
 #else							/* INT64_IS_BUSTED */
 
 	/*
-	 * On a machine with no 64-bit-int C datatype, sizeof(int64) will not
-	 * be 8, but we want Int64GetDatum to return an 8-byte object anyway,
-	 * with zeroes in the unused bits.	This is needed so that, for
-	 * example, hash join of int8 will behave properly.
+	 * On a machine with no 64-bit-int C datatype, sizeof(int64) will not be
+	 * 8, but we want Int64GetDatum to return an 8-byte object anyway, with
+	 * zeroes in the unused bits.  This is needed so that, for example, hash
+	 * join of int8 will behave properly.
 	 */
 	int64	   *retval = (int64 *) palloc0(Max(sizeof(int64), 8));
 
@@ -1867,8 +1843,8 @@ get_fn_expr_rettype(FmgrInfo *flinfo)
 	Node	   *expr;
 
 	/*
-	 * can't return anything useful if we have no FmgrInfo or if its
-	 * fn_expr node has not been initialized
+	 * can't return anything useful if we have no FmgrInfo or if its fn_expr
+	 * node has not been initialized
 	 */
 	if (!flinfo || !flinfo->fn_expr)
 		return InvalidOid;
@@ -1886,18 +1862,30 @@ get_fn_expr_rettype(FmgrInfo *flinfo)
 Oid
 get_fn_expr_argtype(FmgrInfo *flinfo, int argnum)
 {
-	Node	   *expr;
-	List	   *args;
-	Oid			argtype;
-
 	/*
-	 * can't return anything useful if we have no FmgrInfo or if its
-	 * fn_expr node has not been initialized
+	 * can't return anything useful if we have no FmgrInfo or if its fn_expr
+	 * node has not been initialized
 	 */
 	if (!flinfo || !flinfo->fn_expr)
 		return InvalidOid;
 
-	expr = flinfo->fn_expr;
+	return get_call_expr_argtype(flinfo->fn_expr, argnum);
+}
+
+/*
+ * Get the actual type OID of a specific function argument (counting from 0),
+ * but working from the calling expression tree instead of FmgrInfo
+ *
+ * Returns InvalidOid if information is not available
+ */
+Oid
+get_call_expr_argtype(Node *expr, int argnum)
+{
+	List	   *args;
+	Oid			argtype;
+
+	if (expr == NULL)
+		return InvalidOid;
 
 	if (IsA(expr, FuncExpr))
 		args = ((FuncExpr *) expr)->args;
@@ -1918,8 +1906,8 @@ get_fn_expr_argtype(FmgrInfo *flinfo, int argnum)
 	argtype = exprType((Node *) list_nth(args, argnum));
 
 	/*
-	 * special hack for ScalarArrayOpExpr: what the underlying function
-	 * will actually get passed is the element type of the array.
+	 * special hack for ScalarArrayOpExpr: what the underlying function will
+	 * actually get passed is the element type of the array.
 	 */
 	if (IsA(expr, ScalarArrayOpExpr) &&
 		argnum == 1)

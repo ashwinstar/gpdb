@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/tqual.h,v 1.55 2004/12/31 22:03:46 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/utils/tqual.h,v 1.59 2005/10/15 02:49:46 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -42,13 +42,12 @@ typedef struct SnapshotData
 	TransactionId *xip;			/* array of xact IDs in progress */
 	/* note: all ids in xip[] satisfy xmin <= xip[i] < xmax */
 	CommandId	curcid;			/* in my xact, CID < curcid are visible */
-	ItemPointerData tid;		/* required for Dirty snapshot -:( */
 } SnapshotData;
 
 typedef SnapshotData *Snapshot;
 
 /* Special snapshot values: */
-#define InvalidSnapshot				((Snapshot) 0x0) /* same as NULL */
+#define InvalidSnapshot				((Snapshot) 0x0)	/* same as NULL */
 #define SnapshotNow					((Snapshot) 0x1)
 #define SnapshotSelf				((Snapshot) 0x2)
 #define SnapshotAny					((Snapshot) 0x3)
@@ -97,11 +96,14 @@ extern TransactionId RecentGlobalXmin;
 )
 
 /* Result codes for HeapTupleSatisfiesUpdate */
-#define HeapTupleMayBeUpdated		0
-#define HeapTupleInvisible			1
-#define HeapTupleSelfUpdated		2
-#define HeapTupleUpdated			3
-#define HeapTupleBeingUpdated		4
+typedef enum
+{
+	HeapTupleMayBeUpdated,
+	HeapTupleInvisible,
+	HeapTupleSelfUpdated,
+	HeapTupleUpdated,
+	HeapTupleBeingUpdated
+} HTSU_Result;
 
 /* Result codes for HeapTupleSatisfiesVacuum */
 typedef enum
@@ -109,7 +111,7 @@ typedef enum
 	HEAPTUPLE_DEAD,				/* tuple is dead and deletable */
 	HEAPTUPLE_LIVE,				/* tuple is live (committed, no deleter) */
 	HEAPTUPLE_RECENTLY_DEAD,	/* tuple is dead, but not deletable yet */
-	HEAPTUPLE_INSERT_IN_PROGRESS,	/* inserting xact is still in progress */
+	HEAPTUPLE_INSERT_IN_PROGRESS,		/* inserting xact is still in progress */
 	HEAPTUPLE_DELETE_IN_PROGRESS	/* deleting xact is still in progress */
 } HTSV_Result;
 
@@ -119,7 +121,7 @@ extern bool HeapTupleSatisfiesDirty(HeapTupleHeader tuple, Buffer buffer);
 extern bool HeapTupleSatisfiesToast(HeapTupleHeader tuple, Buffer buffer);
 extern bool HeapTupleSatisfiesSnapshot(HeapTupleHeader tuple,
 						   Snapshot snapshot, Buffer buffer);
-extern int HeapTupleSatisfiesUpdate(HeapTupleHeader tuple,
+extern HTSU_Result HeapTupleSatisfiesUpdate(HeapTupleHeader tuple,
 						 CommandId curcid, Buffer buffer);
 extern HTSV_Result HeapTupleSatisfiesVacuum(HeapTupleHeader tuple,
 						 TransactionId OldestXmin, Buffer buffer);
@@ -130,7 +132,7 @@ extern Snapshot CopySnapshot(Snapshot snapshot);
 extern void FreeSnapshot(Snapshot snapshot);
 extern void FreeXactSnapshot(void);
 
-/* in sinval.c; declared here to avoid including tqual.h in sinval.h: */
+/* in procarray.c; declared here to avoid including tqual.h in procarray.h: */
 extern Snapshot GetSnapshotData(Snapshot snapshot, bool serializable);
 
 #endif   /* TQUAL_H */

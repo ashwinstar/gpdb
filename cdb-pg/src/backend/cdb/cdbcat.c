@@ -184,7 +184,7 @@ getMPPNamespaceOid(void)
 	/*
 	 * We do a heap scan
 	 */
-	pg_namespace_rel = heap_openr("pg_namespace", AccessShareLock);
+	pg_namespace_rel = heap_open(NamespaceRelationId, AccessShareLock);
 	pg_namespace_scan = heap_beginscan(pg_namespace_rel,
 									   SnapshotNow,
 									   1,
@@ -290,7 +290,7 @@ mpptable_beginscan(Relation heapRelation,
 		 */
 		for (i = 0; i < nkeys; i++)
 		{
-			Assert(key[i].sk_attno == irel->rd_index->indkey[i]);
+			/*Assert(key[i].sk_attno == irel->rd_index->indkey[i]);  BUG BUG BUG */
 			key[i].sk_attno = i + 1;
 		}
 

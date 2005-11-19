@@ -2,18 +2,14 @@
 
 #include "extern.h"
 
+/* Return value is zero-filled. */
 char *
 pgtypes_alloc(long size)
 {
 	char	   *new = (char *) calloc(1L, size);
 
 	if (!new)
-	{
 		errno = ENOMEM;
-		return NULL;
-	}
-
-	memset(new, '\0', size);
 	return (new);
 }
 
@@ -45,8 +41,7 @@ pgtypes_fmt_replace(union un_fmt_comb replace_val, int replace_type, char **outp
 			if (i + 1 <= *pstr_len)
 			{
 				/*
-				 * copy over i + 1 bytes, that includes the tailing
-				 * terminator
+				 * copy over i + 1 bytes, that includes the tailing terminator
 				 */
 				strncpy(*output, replace_val.str_val, i + 1);
 				*pstr_len -= i;

@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1994-5, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/explain.c,v 1.129 2004/12/31 21:59:41 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/explain.c,v 1.139 2005/10/21 16:43:33 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -16,6 +16,7 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
+#include "catalog/pg_constraint.h"
 #include "catalog/pg_type.h"
 #include "commands/explain.h"
 #include "commands/prepare.h"
@@ -38,7 +39,6 @@
 typedef struct ExplainState
 {
 	/* options */
-	bool		printCost;		/* print cost */
 	bool		printNodes;		/* do nodeToString() too */
 	bool		printAnalyze;	/* print actual times */
 	/* other states */
@@ -47,12 +47,12 @@ typedef struct ExplainState
 
 static void ExplainOneQuery(Query *query, ExplainStmt *stmt,
 				TupOutputState *tstate);
-static double elapsed_time(struct timeval * starttime);
+static double elapsed_time(instr_time *starttime);
 static void explain_outNode(StringInfo str,
 				Plan *plan, PlanState *planstate,
 				Plan *outer_plan,
 				int indent, ExplainState *es);
-static void show_scan_qual(List *qual, bool is_or_qual, const char *qlabel,
+static void show_scan_qual(List *qual, const char *qlabel,
 			   int scanrelid, Plan *outer_plan,
 			   StringInfo str, int indent, ExplainState *es);
 static void show_upper_qual(List *qual, const char *qlabel,
@@ -64,7 +64,6 @@ static void show_merge_keys(List *tlist, int nkeys, AttrNumber *keycols,
 static void show_sort_keys(List *tlist, int nkeys, AttrNumber *keycols,
 			   const char *qlabel,
 			   StringInfo str, int indent, ExplainState *es);
-static Node *make_ors_ands_explicit(List *orclauses);
 
 /*
  * ExplainQuery -
@@ -79,12 +78,12 @@ ExplainQuery(ExplainStmt *stmt, DestReceiver *dest)
 	ListCell   *l;
 
 	/*
-	 * Because the planner is not cool about not scribbling on its input,
-	 * we make a preliminary copy of the source querytree.	This prevents
+	 * Because the planner is not cool about not scribbling on its input, we
+	 * make a preliminary copy of the source querytree.  This prevents
 	 * problems in the case that the EXPLAIN is in a portal or plpgsql
 	 * function and is executed repeatedly.  (See also the same hack in
-	 * DECLARE CURSOR and PREPARE.)  XXX the planner really shouldn't
-	 * modify its input ... FIXME someday.
+	 * DECLARE CURSOR and PREPARE.)  XXX the planner really shouldn't modify
+	 * its input ... FIXME someday.
 	 */
 	query = copyObject(query);
 
@@ -103,6 +102,12 @@ ExplainQuery(ExplainStmt *stmt, DestReceiver *dest)
 	}
 	else
 	{
+		/*
+		 * Must acquire locks in case we didn't come fresh from the parser.
+		 * XXX this also scribbles on query, another reason for copyObject
+		 */
+		AcquireRewriteLocks(query);
+
 		/* Rewrite through rule system */
 		rewritten = QueryRewrite(query);
 
@@ -169,6 +174,8 @@ ExplainOneQuery(Query *query, ExplainStmt *stmt, TupOutputState *tstate)
 			cursorOptions = dcstmt->options;
 			/* Still need to rewrite cursor command */
 			Assert(query->commandType == CMD_SELECT);
+			/* get locks (we assume ExplainQuery already copied tree) */
+			AcquireRewriteLocks(query);
 			rewritten = QueryRewrite(query);
 			if (list_length(rewritten) != 1)
 				elog(ERROR, "unexpected rewrite result");
@@ -191,6 +198,15 @@ ExplainOneQuery(Query *query, ExplainStmt *stmt, TupOutputState *tstate)
 
 	/* plan the query */
 	plan = planner(query, isCursor, cursorOptions, NULL);
+
+	/*
+	 * Update snapshot command ID to ensure this query sees results of any
+	 * previously executed queries.  (It's a bit cheesy to modify
+	 * ActiveSnapshot without making a copy, but for the limited ways in
+	 * which EXPLAIN can be invoked, I think it's OK, because the active
+	 * snapshot shouldn't be shared with anything else anyway.)
+	 */
+	ActiveSnapshot->curcid = GetCurrentCommandId();
 
 	/* Create a QueryDesc requesting no output */
 	queryDesc = CreateQueryDesc(query, plan,
@@ -215,13 +231,13 @@ void
 ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 			   TupOutputState *tstate)
 {
-	struct timeval starttime;
+	instr_time	starttime;
 	double		totaltime = 0;
 	ExplainState *es;
 	StringInfo	str;
 	Node	   *saved_es_sliceTable;
 
-	gettimeofday(&starttime, NULL);
+	INSTR_TIME_SET_CURRENT(starttime);
 
 	/* If analyzing, we need to cope with queued triggers */
 	if (stmt->analyze)
@@ -242,7 +258,6 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 
 	es = (ExplainState *) palloc0(sizeof(ExplainState));
 
-	es->printCost = true;		/* default */
 	es->printNodes = stmt->verbose;
 	es->printAnalyze = stmt->analyze;
 	es->rtable = queryDesc->parsetree->rtable;
@@ -274,29 +289,85 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 			pfree(s);
 			do_text_output_multiline(tstate, f);
 			pfree(f);
-			if (es->printCost)
-				do_text_output_oneline(tstate, "");		/* separator line */
+			do_text_output_oneline(tstate, ""); /* separator line */
 		}
 	}
 
 	str = makeStringInfo();
 
-	if (es->printCost)
+	explain_outNode(str, queryDesc->plantree, queryDesc->planstate,
+					NULL, 0, es);
+
+	/*
+	 * If we ran the command, run any AFTER triggers it queued.  (Note this
+	 * will not include DEFERRED triggers; since those don't run until end of
+	 * transaction, we can't measure them.)  Include into total runtime.
+	 */
+	if (stmt->analyze)
 	{
-		explain_outNode(str, queryDesc->plantree, queryDesc->planstate,
-						NULL, 0, es);
+		INSTR_TIME_SET_CURRENT(starttime);
+		AfterTriggerEndQuery(queryDesc->estate);
+		totaltime += elapsed_time(&starttime);
+	}
+
+	/* Print info about runtime of triggers */
+	if (es->printAnalyze)
+	{
+		ResultRelInfo *rInfo;
+		int			numrels = queryDesc->estate->es_num_result_relations;
+		int			nr;
+
+		rInfo = queryDesc->estate->es_result_relations;
+		for (nr = 0; nr < numrels; rInfo++, nr++)
+		{
+			int			nt;
+
+			if (!rInfo->ri_TrigDesc || !rInfo->ri_TrigInstrument)
+				continue;
+			for (nt = 0; nt < rInfo->ri_TrigDesc->numtriggers; nt++)
+			{
+				Trigger    *trig = rInfo->ri_TrigDesc->triggers + nt;
+				Instrumentation *instr = rInfo->ri_TrigInstrument + nt;
+				char	   *conname;
+
+				/* Must clean up instrumentation state */
+				InstrEndLoop(instr);
+
+				/*
+				 * We ignore triggers that were never invoked; they likely
+				 * aren't relevant to the current query type.
+				 */
+				if (instr->ntuples == 0)
+					continue;
+
+				if (trig->tgisconstraint &&
+				(conname = GetConstraintNameForTrigger(trig->tgoid)) != NULL)
+				{
+					appendStringInfo(str, "Trigger for constraint %s",
+									 conname);
+					pfree(conname);
+				}
+				else
+					appendStringInfo(str, "Trigger %s", trig->tgname);
+
+				if (numrels > 1)
+					appendStringInfo(str, " on %s",
+							RelationGetRelationName(rInfo->ri_RelationDesc));
+
+				appendStringInfo(str, ": time=%.3f calls=%.0f\n",
+								 1000.0 * instr->total,
+								 instr->ntuples);
+			}
+		}
 	}
 
 	/*
-	 * Close down the query and free resources; also run any queued
-	 * AFTER triggers.	Include time for this in the total runtime.
+	 * Close down the query and free resources.  Include time for this in the
+	 * total runtime (although it should be pretty minimal).
 	 */
-	gettimeofday(&starttime, NULL);
+	INSTR_TIME_SET_CURRENT(starttime);
 
 	ExecutorEnd(queryDesc);
-
-	if (stmt->analyze)
-		AfterTriggerEndQuery();
 
 	FreeQueryDesc(queryDesc);
 
@@ -306,27 +377,25 @@ ExplainOnePlan(QueryDesc *queryDesc, ExplainStmt *stmt,
 
 	totaltime += elapsed_time(&starttime);
 
-	if (es->printCost)
-	{
-		if (stmt->analyze)
-			appendStringInfo(str, "Total runtime: %.3f ms\n",
-							 1000.0 * totaltime);
-		do_text_output_multiline(tstate, str->data);
-	}
+	if (stmt->analyze)
+		appendStringInfo(str, "Total runtime: %.3f ms\n",
+						 1000.0 * totaltime);
+	do_text_output_multiline(tstate, str->data);
 
 	pfree(str->data);
 	pfree(str);
 	pfree(es);
 }
 
-/* Compute elapsed time in seconds since given gettimeofday() timestamp */
+/* Compute elapsed time in seconds since given timestamp */
 static double
-elapsed_time(struct timeval * starttime)
+elapsed_time(instr_time *starttime)
 {
-	struct timeval endtime;
+	instr_time	endtime;
 
-	gettimeofday(&endtime, NULL);
+	INSTR_TIME_SET_CURRENT(endtime);
 
+#ifndef WIN32
 	endtime.tv_sec -= starttime->tv_sec;
 	endtime.tv_usec -= starttime->tv_usec;
 	while (endtime.tv_usec < 0)
@@ -334,8 +403,11 @@ elapsed_time(struct timeval * starttime)
 		endtime.tv_usec += 1000000;
 		endtime.tv_sec--;
 	}
-	return (double) endtime.tv_sec +
-		(double) endtime.tv_usec / 1000000.0;
+#else							/* WIN32 */
+	endtime.QuadPart -= starttime->QuadPart;
+#endif
+
+	return INSTR_TIME_GET_DOUBLE(endtime);
 }
 
 /*
@@ -356,7 +428,6 @@ explain_outNode(StringInfo str,
 				Plan *outer_plan,
 				int indent, ExplainState *es)
 {
-	ListCell   *l;
 	char	   *pname = NULL;
 	int			i;
 
@@ -373,6 +444,12 @@ explain_outNode(StringInfo str,
 			break;
 		case T_Append:
 			pname = "Append";
+			break;
+		case T_BitmapAnd:
+			pname = "BitmapAnd";
+			break;
+		case T_BitmapOr:
+			pname = "BitmapOr";
 			break;
 		case T_NestLoop:
 			switch (((NestLoop *) plan)->join.jointype)
@@ -448,6 +525,12 @@ explain_outNode(StringInfo str,
 			break;
 		case T_IndexScan:
 			pname = "Index Scan";
+			break;
+		case T_BitmapIndexScan:
+			pname = "Bitmap Index Scan";
+			break;
+		case T_BitmapHeapScan:
+			pname = "Bitmap Heap Scan";
 			break;
 		case T_TidScan:
 			pname = "Tid Scan";
@@ -547,21 +630,13 @@ explain_outNode(StringInfo str,
 	switch (nodeTag(plan))
 	{
 		case T_IndexScan:
-			if (ScanDirectionIsBackward(((IndexScan *) plan)->indxorderdir))
+			if (ScanDirectionIsBackward(((IndexScan *) plan)->indexorderdir))
 				appendStringInfoString(str, " Backward");
-			appendStringInfoString(str, " using ");
-			i = 0;
-			foreach(l, ((IndexScan *) plan)->indxid)
-			{
-				char	   *indname;
-
-				indname = get_rel_name(lfirst_oid(l));
-				appendStringInfo(str, "%s%s",
-								 (++i > 1) ? ", " : "",
-								 quote_identifier(indname));
-			}
+			appendStringInfo(str, " using %s",
+			  quote_identifier(get_rel_name(((IndexScan *) plan)->indexid)));
 			/* FALL THRU */
 		case T_SeqScan:
+		case T_BitmapHeapScan:
 		case T_TidScan:
 			if (((Scan *) plan)->scanrelid > 0)
 			{
@@ -581,6 +656,10 @@ explain_outNode(StringInfo str,
 					appendStringInfo(str, " %s",
 									 quote_identifier(rte->eref->aliasname));
 			}
+			break;
+		case T_BitmapIndexScan:
+			appendStringInfo(str, " on %s",
+							 quote_identifier(get_rel_name(((BitmapIndexScan *) plan)->indexid)));
 			break;
 		case T_SubqueryScan:
 			if (((Scan *) plan)->scanrelid > 0)
@@ -603,10 +682,10 @@ explain_outNode(StringInfo str,
 				Assert(rte->rtekind == RTE_FUNCTION);
 
 				/*
-				 * If the expression is still a function call, we can get
-				 * the real name of the function.  Otherwise, punt (this
-				 * can happen if the optimizer simplified away the
-				 * function call, for example).
+				 * If the expression is still a function call, we can get the
+				 * real name of the function.  Otherwise, punt (this can
+				 * happen if the optimizer simplified away the function call,
+				 * for example).
 				 */
 				if (rte->funcexpr && IsA(rte->funcexpr, FuncExpr))
 				{
@@ -633,53 +712,67 @@ explain_outNode(StringInfo str,
 		default:
 			break;
 	}
-	if (es->printCost)
-	{
-		appendStringInfo(str, "  (cost=%.2f..%.2f rows=%.0f width=%d)",
-						 plan->startup_cost, plan->total_cost,
-						 plan->plan_rows, plan->plan_width);
 
-		/*
-		 * We have to forcibly clean up the instrumentation state because
-		 * we haven't done ExecutorEnd yet.  This is pretty grotty ...
-		 */
+	appendStringInfo(str, "  (cost=%.2f..%.2f rows=%.0f width=%d)",
+					 plan->startup_cost, plan->total_cost,
+					 plan->plan_rows, plan->plan_width);
+
+	/*
+	 * We have to forcibly clean up the instrumentation state because we
+	 * haven't done ExecutorEnd yet.  This is pretty grotty ...
+	 */
+	if (planstate->instrument)
 		InstrEndLoop(planstate->instrument);
 
-		if (planstate->instrument && planstate->instrument->nloops > 0)
-		{
-			double		nloops = planstate->instrument->nloops;
+	if (planstate->instrument && planstate->instrument->nloops > 0)
+	{
+		double		nloops = planstate->instrument->nloops;
 
-			appendStringInfo(str, " (actual time=%.3f..%.3f rows=%.0f loops=%.0f)",
-							 1000.0 * planstate->instrument->startup / nloops,
-							 1000.0 * planstate->instrument->total / nloops,
-							 planstate->instrument->ntuples / nloops,
-							 planstate->instrument->nloops);
-		}
-		else if (es->printAnalyze)
-			appendStringInfo(str, " (never executed)");
+		appendStringInfo(str, " (actual time=%.3f..%.3f rows=%.0f loops=%.0f)",
+						 1000.0 * planstate->instrument->startup / nloops,
+						 1000.0 * planstate->instrument->total / nloops,
+						 planstate->instrument->ntuples / nloops,
+						 planstate->instrument->nloops);
 	}
+	else if (es->printAnalyze)
+		appendStringInfo(str, " (never executed)");
 	appendStringInfoChar(str, '\n');
 
 	/* quals, sort keys, etc */
 	switch (nodeTag(plan))
 	{
 		case T_IndexScan:
-			show_scan_qual(((IndexScan *) plan)->indxqualorig, true,
+			show_scan_qual(((IndexScan *) plan)->indexqualorig,
 						   "Index Cond",
 						   ((Scan *) plan)->scanrelid,
 						   outer_plan,
 						   str, indent, es);
-			show_scan_qual(plan->qual, false,
+			show_scan_qual(plan->qual,
 						   "Filter",
 						   ((Scan *) plan)->scanrelid,
 						   outer_plan,
 						   str, indent, es);
 			break;
+		case T_BitmapIndexScan:
+			show_scan_qual(((BitmapIndexScan *) plan)->indexqualorig,
+						   "Index Cond",
+						   ((Scan *) plan)->scanrelid,
+						   outer_plan,
+						   str, indent, es);
+			break;
+		case T_BitmapHeapScan:
+			/* XXX do we want to show this in production? */
+			show_scan_qual(((BitmapHeapScan *) plan)->bitmapqualorig,
+						   "Recheck Cond",
+						   ((Scan *) plan)->scanrelid,
+						   outer_plan,
+						   str, indent, es);
+			/* FALL THRU */
 		case T_SeqScan:
 		case T_TidScan:
 		case T_SubqueryScan:
 		case T_FunctionScan:
-			show_scan_qual(plan->qual, false,
+			show_scan_qual(plan->qual,
 						   "Filter",
 						   ((Scan *) plan)->scanrelid,
 						   outer_plan,
@@ -811,9 +904,15 @@ explain_outNode(StringInfo str,
 		for (i = 0; i < indent; i++)
 			appendStringInfo(str, "  ");
 		appendStringInfo(str, "  ->  ");
+
+		/*
+		 * Ordinarily we don't pass down our own outer_plan value to our child
+		 * nodes, but in bitmap scan trees we must, since the bottom
+		 * BitmapIndexScan nodes may have outer references.
+		 */
 		explain_outNode(str, outerPlan(plan),
 						outerPlanState(planstate),
-						NULL,
+						IsA(plan, BitmapHeapScan) ? outer_plan : NULL,
 						indent + 3, es);
 	}
 
@@ -848,6 +947,54 @@ explain_outNode(StringInfo str,
 			explain_outNode(str, subnode,
 							appendstate->appendplans[j],
 							NULL,
+							indent + 3, es);
+			j++;
+		}
+	}
+
+	if (IsA(plan, BitmapAnd))
+	{
+		BitmapAnd  *bitmapandplan = (BitmapAnd *) plan;
+		BitmapAndState *bitmapandstate = (BitmapAndState *) planstate;
+		ListCell   *lst;
+		int			j;
+
+		j = 0;
+		foreach(lst, bitmapandplan->bitmapplans)
+		{
+			Plan	   *subnode = (Plan *) lfirst(lst);
+
+			for (i = 0; i < indent; i++)
+				appendStringInfo(str, "  ");
+			appendStringInfo(str, "  ->  ");
+
+			explain_outNode(str, subnode,
+							bitmapandstate->bitmapplans[j],
+							outer_plan, /* pass down same outer plan */
+							indent + 3, es);
+			j++;
+		}
+	}
+
+	if (IsA(plan, BitmapOr))
+	{
+		BitmapOr   *bitmaporplan = (BitmapOr *) plan;
+		BitmapOrState *bitmaporstate = (BitmapOrState *) planstate;
+		ListCell   *lst;
+		int			j;
+
+		j = 0;
+		foreach(lst, bitmaporplan->bitmapplans)
+		{
+			Plan	   *subnode = (Plan *) lfirst(lst);
+
+			for (i = 0; i < indent; i++)
+				appendStringInfo(str, "  ");
+			appendStringInfo(str, "  ->  ");
+
+			explain_outNode(str, subnode,
+							bitmaporstate->bitmapplans[j],
+							outer_plan, /* pass down same outer plan */
 							indent + 3, es);
 			j++;
 		}
@@ -908,7 +1055,7 @@ explain_outNode(StringInfo str,
  * Show a qualifier expression for a scan plan node
  */
 static void
-show_scan_qual(List *qual, bool is_or_qual, const char *qlabel,
+show_scan_qual(List *qual, const char *qlabel,
 			   int scanrelid, Plan *outer_plan,
 			   StringInfo str, int indent, ExplainState *es)
 {
@@ -923,14 +1070,9 @@ show_scan_qual(List *qual, bool is_or_qual, const char *qlabel,
 	/* No work if empty qual */
 	if (qual == NIL)
 		return;
-	if (is_or_qual && list_length(qual) == 1 && linitial(qual) == NIL)
-		return;
 
-	/* Fix qual --- indexqual requires different processing */
-	if (is_or_qual)
-		node = make_ors_ands_explicit(qual);
-	else
-		node = (Node *) make_ands_explicit(qual);
+	/* Convert AND list to explicit AND */
+	node = (Node *) make_ands_explicit(qual);
 
 	/* Generate deparse context */
 	Assert(scanrelid > 0 && scanrelid <= list_length(es->rtable));
@@ -938,9 +1080,9 @@ show_scan_qual(List *qual, bool is_or_qual, const char *qlabel,
 	scancontext = deparse_context_for_rte(rte);
 
 	/*
-	 * If we have an outer plan that is referenced by the qual, add it to
-	 * the deparse context.  If not, don't (so that we don't force
-	 * prefixes unnecessarily).
+	 * If we have an outer plan that is referenced by the qual, add it to the
+	 * deparse context.  If not, don't (so that we don't force prefixes
+	 * unnecessarily).
 	 */
 	if (outer_plan)
 	{
@@ -1092,11 +1234,10 @@ show_sort_keys(List *tlist, int nkeys, AttrNumber *keycols,
 
 	/*
 	 * In this routine we expect that the plan node's tlist has not been
-	 * processed by set_plan_references().	Normally, any Vars will
-	 * contain valid varnos referencing the actual rtable.	But we might
-	 * instead be looking at a dummy tlist generated by prepunion.c; if
-	 * there are Vars with zero varno, use the tlist itself to determine
-	 * their names.
+	 * processed by set_plan_references().	Normally, any Vars will contain
+	 * valid varnos referencing the actual rtable.	But we might instead be
+	 * looking at a dummy tlist generated by prepunion.c; if there are Vars
+	 * with zero varno, use the tlist itself to determine their names.
 	 */
 	varnos = pull_varnos((Node *) tlist);
 	if (bms_is_member(0, varnos))
@@ -1138,27 +1279,4 @@ show_sort_keys(List *tlist, int nkeys, AttrNumber *keycols,
 	}
 
 	appendStringInfo(str, "\n");
-}
-
-/*
- * Indexscan qual lists have an implicit OR-of-ANDs structure.	Make it
- * explicit so deparsing works properly.
- */
-static Node *
-make_ors_ands_explicit(List *orclauses)
-{
-	if (orclauses == NIL)
-		return NULL;			/* probably can't happen */
-	else if (list_length(orclauses) == 1)
-		return (Node *) make_ands_explicit(linitial(orclauses));
-	else
-	{
-		List	   *args = NIL;
-		ListCell   *orptr;
-
-		foreach(orptr, orclauses)
-			args = lappend(args, make_ands_explicit(lfirst(orptr)));
-
-		return (Node *) make_orclause(args);
-	}
 }

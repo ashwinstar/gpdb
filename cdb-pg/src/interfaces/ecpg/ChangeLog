@@ -1898,5 +1898,57 @@ Mon Jan 10 13:55:32 CET 2005
 Tue Jan 25 13:47:45 CET 2005
 
 	- Fixed segfault in preprocessor due to free a struct twice.
+
+Wed Feb  2 16:35:27 CET 2005
+
+	- Fixed bug in parsing of #line statement in declare section.
+	
+Wed Feb  9 12:24:03 CET 2005
+
+	- Fixed bug in parsing of CREATE AS statement.
+
+Thu Feb 10 09:03:56 CET 2005
+
+	- Fixed more parsing bugs in other CREATE statements. Thanks to TANIDA
+	  Yutaka <tanida@sra.co.jp> and Atsushi Mitani <mitani@sraw.co.jp> for
+	  pointing out all these problems.
 	- Set ecpg version to 3.2.1.
+
+Fri Mar 18 10:54:47 CET 2005
+	  
+	- Added patch by Christof Petig <christof@petig-baender.de> to work
+	  around gcc bug on powerpc and amd64.
+
+Thu Apr 14 11:59:47 CEST 2005
+
+	- Added patch by Philip Yarra <philip.yarra@internode.on.net> for a
+	  bug in thread support.
+
+Thu Jun  2 14:22:32 CEST 2005
+
+	- Fixed memory leak in ecpglib by adding some missing free() commands.
+	- Added patch by Gavin Scott <gavin@planetacetech.com> for Intel 64bit
+	  hardware.
+
+Wed Aug 24 12:17:48 CEST 2005
+
+	- Check for NULL before checking whether argument is an array.
+	- Remove stray character from string quoting.
+	- Fixed check to report missing varchar pointer implementation.
+
+Mon Sep 12 13:53:35 CEST 2005
+
+	- Fixed transaction command handling to not ignore savepoints
+	  and to correctly check for errors.
+
+Tue Oct  4 15:23:00 CEST 2005
+
+	- Synced parser.
+	- Fixed another bug in check to report missing varchar pointer implementation.
+
+Wed Oct  5 16:57:42 CEST 2005
+
+	- Synced lexer.
+	- Set ecpg library version to 5.1.
+	- Set ecpg version to 4.1.1.
 

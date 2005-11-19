@@ -12,6 +12,10 @@ INSERT INTO OID_TBL(f1) VALUES ('   10  ');
 -- leading/trailing hard tab is also allowed
 INSERT INTO OID_TBL(f1) VALUES ('	  15 	  ');
 -- bad inputs 
+INSERT INTO OID_TBL(f1) VALUES ('');
+ERROR:  invalid input syntax for type oid: ""
+INSERT INTO OID_TBL(f1) VALUES ('    ');
+ERROR:  invalid input syntax for type oid: "    "
 INSERT INTO OID_TBL(f1) VALUES ('asdfasd');
 ERROR:  invalid input syntax for type oid: "asdfasd"
 INSERT INTO OID_TBL(f1) VALUES ('99asdfasd');
@@ -22,15 +26,13 @@ INSERT INTO OID_TBL(f1) VALUES ('    5d');
 ERROR:  invalid input syntax for type oid: "    5d"
 INSERT INTO OID_TBL(f1) VALUES ('5    5');
 ERROR:  invalid input syntax for type oid: "5    5"
-INSERT INTO OID_TBL(f1) VALUES ('    ');
-ERROR:  invalid input syntax for type oid: "    "
 INSERT INTO OID_TBL(f1) VALUES (' - 500');
 ERROR:  invalid input syntax for type oid: " - 500"
 INSERT INTO OID_TBL(f1) VALUES ('32958209582039852935');
 ERROR:  value "32958209582039852935" is out of range for type oid
 INSERT INTO OID_TBL(f1) VALUES ('-23582358720398502385');
 ERROR:  value "-23582358720398502385" is out of range for type oid
-SELECT '' AS six, OID_TBL.*;
+SELECT '' AS six, * FROM OID_TBL;
  six |     f1     
 -----+------------
      |       1234

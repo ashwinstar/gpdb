@@ -19,8 +19,6 @@
 
 /* Make stuff compile faster by excluding not used stuff */
 
-#define WIN32_LEAN_AND_MEAN
-#define WIN32_EXTRA_LEAN
 #define VC_EXTRALEAN
 #ifndef __MINGW32__
 #define NOGDI
@@ -31,6 +29,9 @@
 #include <winsock.h>
 #include <stdio.h>
 #include "win32.h"
+#include "postgres_fe.h"
+#include "libpq-fe.h"
+#include "libpq-int.h"
 
 static struct WSErrorEntry
 {
@@ -289,7 +290,7 @@ winsock_strerror(int err, char *strerrbuf, size_t buflen)
 			dlls[i].handle = (void *) LoadLibraryEx(
 													dlls[i].dll_name,
 													0,
-											   LOAD_LIBRARY_AS_DATAFILE);
+													LOAD_LIBRARY_AS_DATAFILE);
 		}
 
 		if (dlls[i].dll_name && !dlls[i].handle)
@@ -302,14 +303,14 @@ winsock_strerror(int err, char *strerrbuf, size_t buflen)
 		success = 0 != FormatMessage(
 									 flags,
 									 dlls[i].handle, err,
-							   MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+								   MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
 									 strerrbuf, buflen - 64,
 									 0
 			);
 	}
 
 	if (!success)
-		sprintf(strerrbuf, "Unknown socket error (0x%08X/%i)", err, err);
+		sprintf(strerrbuf, libpq_gettext("Unknown socket error (0x%08X/%i)"), err, err);
 	else
 	{
 		strerrbuf[buflen - 1] = '\0';

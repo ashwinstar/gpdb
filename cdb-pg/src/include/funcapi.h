@@ -9,7 +9,7 @@
  *
  * Copyright (c) 2002-2005, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/include/funcapi.h,v 1.15 2005/01/01 05:43:08 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/funcapi.h,v 1.20 2005/10/15 02:49:41 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -67,9 +67,9 @@ typedef struct FuncCallContext
 	/*
 	 * OPTIONAL maximum number of calls
 	 *
-	 * max_calls is here for convenience only and setting it is optional. If
-	 * not set, you must provide alternative means to know when the
-	 * function is done.
+	 * max_calls is here for convenience only and setting it is optional. If not
+	 * set, you must provide alternative means to know when the function is
+	 * done.
 	 */
 	uint32		max_calls;
 
@@ -84,54 +84,103 @@ typedef struct FuncCallContext
 	/*
 	 * OPTIONAL pointer to miscellaneous user-provided context information
 	 *
-	 * user_fctx is for use as a pointer to your own struct to retain
-	 * arbitrary context information between calls of your function.
+	 * user_fctx is for use as a pointer to your own struct to retain arbitrary
+	 * context information between calls of your function.
 	 */
 	void	   *user_fctx;
 
 	/*
 	 * OPTIONAL pointer to struct containing attribute type input metadata
 	 *
-	 * attinmeta is for use when returning tuples (i.e. composite data types)
-	 * and is not used when returning base data types. It is only needed
-	 * if you intend to use BuildTupleFromCStrings() to create the return
-	 * tuple.
+	 * attinmeta is for use when returning tuples (i.e. composite data types) and
+	 * is not used when returning base data types. It is only needed if you
+	 * intend to use BuildTupleFromCStrings() to create the return tuple.
 	 */
 	AttInMetadata *attinmeta;
 
 	/*
-	 * memory context used for structures that must live for multiple
-	 * calls
+	 * memory context used for structures that must live for multiple calls
 	 *
-	 * multi_call_memory_ctx is set by SRF_FIRSTCALL_INIT() for you, and used
-	 * by SRF_RETURN_DONE() for cleanup. It is the most appropriate memory
-	 * context for any memory that is to be reused across multiple calls
-	 * of the SRF.
+	 * multi_call_memory_ctx is set by SRF_FIRSTCALL_INIT() for you, and used by
+	 * SRF_RETURN_DONE() for cleanup. It is the most appropriate memory
+	 * context for any memory that is to be reused across multiple calls of
+	 * the SRF.
 	 */
 	MemoryContext multi_call_memory_ctx;
 
 	/*
 	 * OPTIONAL pointer to struct containing tuple description
 	 *
-	 * tuple_desc is for use when returning tuples (i.e. composite data
-	 * types) and is only needed if you are going to build the tuples with
-	 * heap_formtuple() rather than with BuildTupleFromCStrings().	Note
-	 * that the TupleDesc pointer stored here should usually have been run
-	 * through BlessTupleDesc() first.
+	 * tuple_desc is for use when returning tuples (i.e. composite data types)
+	 * and is only needed if you are going to build the tuples with
+	 * heap_formtuple() rather than with BuildTupleFromCStrings().	Note that
+	 * the TupleDesc pointer stored here should usually have been run through
+	 * BlessTupleDesc() first.
 	 */
 	TupleDesc	tuple_desc;
 
 } FuncCallContext;
 
 /*----------
- *	Support to ease writing Functions returning composite types
+ *	Support to ease writing functions returning composite types
  *
  * External declarations:
- * TupleDesc RelationNameGetTupleDesc(const char *relname) - Use to get a
- *		TupleDesc based on a specified relation.
- * TupleDesc TypeGetTupleDesc(Oid typeoid, List *colaliases) - Use to get a
- *		TupleDesc based on a type OID. This can be used to get
- *		a TupleDesc for a base (scalar) or composite (relation) type.
+ * get_call_result_type:
+ *		Given a function's call info record, determine the kind of datatype
+ *		it is supposed to return.  If resultTypeId isn't NULL, *resultTypeId
+ *		receives the actual datatype OID (this is mainly useful for scalar
+ *		result types).	If resultTupleDesc isn't NULL, *resultTupleDesc
+ *		receives a pointer to a TupleDesc when the result is of a composite
+ *		type, or NULL when it's a scalar result or the rowtype could not be
+ *		determined.  NB: the tupledesc should be copied if it is to be
+ *		accessed over a long period.
+ * get_expr_result_type:
+ *		Given an expression node, return the same info as for
+ *		get_call_result_type.  Note: the cases in which rowtypes cannot be
+ *		determined are different from the cases for get_call_result_type.
+ * get_func_result_type:
+ *		Given only a function's OID, return the same info as for
+ *		get_call_result_type.  Note: the cases in which rowtypes cannot be
+ *		determined are different from the cases for get_call_result_type.
+ *		Do *not* use this if you can use one of the others.
+ *----------
+ */
+
+/* Type categories for get_call_result_type and siblings */
+typedef enum TypeFuncClass
+{
+	TYPEFUNC_SCALAR,			/* scalar result type */
+	TYPEFUNC_COMPOSITE,			/* determinable rowtype result */
+	TYPEFUNC_RECORD,			/* indeterminate rowtype result */
+	TYPEFUNC_OTHER				/* bogus type, eg pseudotype */
+} TypeFuncClass;
+
+extern TypeFuncClass get_call_result_type(FunctionCallInfo fcinfo,
+					 Oid *resultTypeId,
+					 TupleDesc *resultTupleDesc);
+extern TypeFuncClass get_expr_result_type(Node *expr,
+					 Oid *resultTypeId,
+					 TupleDesc *resultTupleDesc);
+extern TypeFuncClass get_func_result_type(Oid functionId,
+					 Oid *resultTypeId,
+					 TupleDesc *resultTupleDesc);
+
+extern char *get_func_result_name(Oid functionId);
+
+extern bool resolve_polymorphic_argtypes(int numargs, Oid *argtypes,
+							 char *argmodes,
+							 Node *call_expr);
+
+extern TupleDesc build_function_result_tupdesc_d(Datum proallargtypes,
+								Datum proargmodes,
+								Datum proargnames);
+extern TupleDesc build_function_result_tupdesc_t(HeapTuple procTuple);
+
+
+/*----------
+ *	Support to ease writing functions returning composite types
+ *
+ * External declarations:
  * TupleDesc BlessTupleDesc(TupleDesc tupdesc) - "Bless" a completed tuple
  *		descriptor so that it can be used to return properly labeled tuples.
  *		You need to call this if you are going to use heap_formtuple directly.
@@ -149,6 +198,10 @@ typedef struct FuncCallContext
  * HeapTupleGetDatum(HeapTuple tuple) - convert a HeapTuple to a Datum.
  *
  * Obsolete routines and macros:
+ * TupleDesc RelationNameGetTupleDesc(const char *relname) - Use to get a
+ *		TupleDesc based on a named relation.
+ * TupleDesc TypeGetTupleDesc(Oid typeoid, List *colaliases) - Use to get a
+ *		TupleDesc based on a type OID.
  * TupleTableSlot *TupleDescGetSlot(TupleDesc tupdesc) - Builds a
  *		TupleTableSlot, which is not needed anymore.
  * TupleGetDatum(TupleTableSlot *slot, HeapTuple tuple) - get a Datum
@@ -160,7 +213,6 @@ typedef struct FuncCallContext
 /* obsolete version of above */
 #define TupleGetDatum(_slot, _tuple)	PointerGetDatum((_tuple)->t_data)
 
-/* from tupdesc.c */
 extern TupleDesc RelationNameGetTupleDesc(const char *relname);
 extern TupleDesc TypeGetTupleDesc(Oid typeoid, List *colaliases);
 

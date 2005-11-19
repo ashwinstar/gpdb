@@ -7,6 +7,9 @@
 #ifndef CDBTMLOG_H
 #define CDBTMLOG_H
 
+#ifndef PROVIDE_64BIT_CRC
+#define PROVIDE_64BIT_CRC
+#endif
 #include "utils/pg_crc.h"
 #include "cdb/cdbtm.h"
 
@@ -15,7 +18,7 @@ typedef enum
 {
 	TM_LOG_XACT,				/* tm log */
 	TM_LOG_CHECKPOINT,			/* checkpoint */
-}	TmLogRecType;;
+}	TmLogRecType;
 
 /*
  * Header for each record in tm log
@@ -43,7 +46,7 @@ typedef struct TmLogFileControlBlock
 	uint32		magic;
 	uint32		checkpointFileNo;
 	uint32		checkpointOffset;
-	crc64		crc;
+	pg_crc64		crc;
 }	TmLogFileControlBlock;
 
 extern void writeTmLogRecord(TmLogRecord *);

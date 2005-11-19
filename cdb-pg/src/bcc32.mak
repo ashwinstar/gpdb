@@ -1,4 +1,4 @@
-# $PostgreSQL: pgsql/src/bcc32.mak,v 1.2.4.1 2005/05/13 18:13:16 momjian Exp $
+# $PostgreSQL: pgsql/src/bcc32.mak,v 1.3 2005/05/13 18:12:35 momjian Exp $
 
 # Makefile for Borland C++ 5.5 (or compat)
 # Top-file makefile for Win32 parts of postgresql.

@@ -48,7 +48,7 @@ Cost        cdb_motion_tuple_cost   = 0.0;
  *      pathkeys otherwise (the usual case).
  */
 Path *
-cdbpath_create_motion_path(Query           *root,
+cdbpath_create_motion_path(PlannerInfo     *root,
                            Path            *subpath,
                            List            *pathkeys,
                            bool             require_existing_order,
@@ -231,7 +231,7 @@ cdbpath_partkeyitem_eq_constant(CdbLocusType   locustype,
 
 typedef struct
 {
-    Query          *root;
+    PlannerInfo    *root;
     List           *mergeclause_list;
     CdbPathLocus    locus;
     CdbPathLocus   *colocus;
@@ -337,7 +337,7 @@ cdbpath_match_preds_to_partkey_tail(CdbpathMatchPredsContext   *ctx,
  *          find_mergeclauses_for_pathkeys() in pathkeys.c
  */
 static bool
-cdbpath_match_preds_to_partkey(Query           *root,
+cdbpath_match_preds_to_partkey(PlannerInfo     *root,
                                List            *mergeclause_list,
                                CdbPathLocus     locus,
                                CdbPathLocus    *colocus)            /* OUT */
@@ -370,7 +370,7 @@ cdbpath_match_preds_to_partkey(Query           *root,
  *          find_mergeclauses_for_pathkeys() in pathkeys.c
  */
 static bool
-cdbpath_match_preds_to_both_partkeys(Query         *root,
+cdbpath_match_preds_to_both_partkeys(PlannerInfo   *root,
                                      List          *mergeclause_list,
                                      CdbPathLocus   outer_locus,
                                      CdbPathLocus   inner_locus)
@@ -452,7 +452,7 @@ cdbpath_match_preds_to_both_partkeys(Query         *root,
  *      make_pathkeys_for_mergeclauses() in pathkeys.c
  */
 static bool
-cdbpath_partkeys_from_preds(Query          *root,
+cdbpath_partkeys_from_preds(PlannerInfo    *root,
                             List           *mergeclause_list,
                             Path           *a_path,
                             CdbPathLocus   *a_locus,            /* OUT */
@@ -549,7 +549,7 @@ typedef struct
 } CdbpathMfjRel;
 
 CdbPathLocus
-cdbpath_motion_for_join(Query      *root,
+cdbpath_motion_for_join(PlannerInfo      *root,
                         JoinType    jointype,           /* JOIN_INNER, JOIN_FULL, JOIN_LEFT, JOIN_RIGHT */
                         Path      **outer_path,         /* INOUT */
                         Path      **inner_path,         /* INOUT */

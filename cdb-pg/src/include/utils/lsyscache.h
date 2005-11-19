@@ -6,7 +6,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/lsyscache.h,v 1.93 2004/12/31 22:03:46 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/utils/lsyscache.h,v 1.101 2005/10/15 02:49:46 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -24,16 +24,8 @@ typedef enum IOFuncSelector
 	IOFunc_send
 } IOFuncSelector;
 
-/* Type categories for get_type_func_class */
-typedef enum TypeFuncClass
-{
-	TYPEFUNC_SCALAR,
-	TYPEFUNC_COMPOSITE,
-	TYPEFUNC_RECORD,
-	TYPEFUNC_OTHER
-} TypeFuncClass;
-
 extern bool op_in_opclass(Oid opno, Oid opclass);
+extern int	get_op_opclass_strategy(Oid opno, Oid opclass);
 extern void get_op_opclass_properties(Oid opno, Oid opclass,
 						  int *strategy, Oid *subtype,
 						  bool *recheck);
@@ -64,12 +56,12 @@ extern RegProcedure get_oprrest(Oid opno);
 extern RegProcedure get_oprjoin(Oid opno);
 extern char *get_func_name(Oid funcid);
 extern Oid	get_func_rettype(Oid funcid);
-extern Oid	get_func_signature(Oid funcid, Oid *argtypes, int *nargs);
+extern int	get_func_nargs(Oid funcid);
+extern Oid	get_func_signature(Oid funcid, Oid **argtypes, int *nargs);
 extern bool get_func_retset(Oid funcid);
 extern bool func_strict(Oid funcid);
 extern char func_volatile(Oid funcid);
 extern Oid	get_relname_relid(const char *relname, Oid relnamespace);
-extern Oid	get_system_catalog_relid(const char *catname);
 extern char *get_rel_name(Oid relid);
 extern Oid	get_rel_namespace(Oid relid);
 extern Oid	get_rel_type_id(Oid relid);
@@ -93,16 +85,13 @@ extern char get_typstorage(Oid typid);
 extern int32 get_typtypmod(Oid typid);
 extern Node *get_typdefault(Oid typid);
 extern char get_typtype(Oid typid);
-extern TypeFuncClass get_type_func_class(Oid typid);
 extern Oid	get_typ_typrelid(Oid typid);
 extern Oid	get_element_type(Oid typid);
 extern Oid	get_array_type(Oid typid);
 extern void getTypeInputInfo(Oid type, Oid *typInput, Oid *typIOParam);
-extern void getTypeOutputInfo(Oid type, Oid *typOutput, Oid *typIOParam,
-				  bool *typIsVarlena);
+extern void getTypeOutputInfo(Oid type, Oid *typOutput, bool *typIsVarlena);
 extern void getTypeBinaryInputInfo(Oid type, Oid *typReceive, Oid *typIOParam);
-extern void getTypeBinaryOutputInfo(Oid type, Oid *typSend, Oid *typIOParam,
-						bool *typIsVarlena);
+extern void getTypeBinaryOutputInfo(Oid type, Oid *typSend, bool *typIsVarlena);
 extern Oid	getBaseType(Oid typid);
 extern int32 get_typavgwidth(Oid typid, int32 typmod);
 extern int32 get_attavgwidth(Oid relid, AttrNumber attnum);
@@ -115,7 +104,8 @@ extern void free_attstatsslot(Oid atttype,
 				  Datum *values, int nvalues,
 				  float4 *numbers, int nnumbers);
 extern char *get_namespace_name(Oid nspid);
-extern int32 get_usesysid(const char *username);
+extern Oid	get_roleid(const char *rolname);
+extern Oid	get_roleid_checked(const char *rolname);
 
 #define is_array_type(typid)  (get_element_type(typid) != InvalidOid)
 

@@ -18,7 +18,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/nodes/equalfuncs.c,v 1.234 2004/12/31 21:59:55 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/nodes/equalfuncs.c,v 1.253 2005/10/15 02:49:18 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -83,21 +83,6 @@
  */
 
 static bool
-_equalResdom(Resdom *a, Resdom *b)
-{
-	COMPARE_SCALAR_FIELD(resno);
-	COMPARE_SCALAR_FIELD(restype);
-	COMPARE_SCALAR_FIELD(restypmod);
-	COMPARE_STRING_FIELD(resname);
-	COMPARE_SCALAR_FIELD(ressortgroupref);
-	COMPARE_SCALAR_FIELD(resorigtbl);
-	COMPARE_SCALAR_FIELD(resorigcol);
-	COMPARE_SCALAR_FIELD(resjunk);
-
-	return true;
-}
-
-static bool
 _equalAlias(Alias *a, Alias *b)
 {
 	COMPARE_STRING_FIELD(aliasname);
@@ -150,8 +135,7 @@ _equalConst(Const *a, Const *b)
 
 	/*
 	 * We treat all NULL constants of the same type as equal. Someday this
-	 * might need to change?  But datumIsEqual doesn't work on nulls,
-	 * so...
+	 * might need to change?  But datumIsEqual doesn't work on nulls, so...
 	 */
 	if (a->constisnull)
 		return true;
@@ -217,8 +201,8 @@ _equalFuncExpr(FuncExpr *a, FuncExpr *b)
 	COMPARE_SCALAR_FIELD(funcretset);
 
 	/*
-	 * Special-case COERCE_DONTCARE, so that planner can build coercion
-	 * nodes that are equal() to both explicit and implicit coercions.
+	 * Special-case COERCE_DONTCARE, so that planner can build coercion nodes
+	 * that are equal() to both explicit and implicit coercions.
 	 */
 	if (a->funcformat != b->funcformat &&
 		a->funcformat != COERCE_DONTCARE &&
@@ -237,9 +221,9 @@ _equalOpExpr(OpExpr *a, OpExpr *b)
 
 	/*
 	 * Special-case opfuncid: it is allowable for it to differ if one node
-	 * contains zero and the other doesn't.  This just means that the one
-	 * node isn't as far along in the parse/plan pipeline and hasn't had
-	 * the opfuncid cache filled yet.
+	 * contains zero and the other doesn't.  This just means that the one node
+	 * isn't as far along in the parse/plan pipeline and hasn't had the
+	 * opfuncid cache filled yet.
 	 */
 	if (a->opfuncid != b->opfuncid &&
 		a->opfuncid != 0 &&
@@ -260,9 +244,9 @@ _equalDistinctExpr(DistinctExpr *a, DistinctExpr *b)
 
 	/*
 	 * Special-case opfuncid: it is allowable for it to differ if one node
-	 * contains zero and the other doesn't.  This just means that the one
-	 * node isn't as far along in the parse/plan pipeline and hasn't had
-	 * the opfuncid cache filled yet.
+	 * contains zero and the other doesn't.  This just means that the one node
+	 * isn't as far along in the parse/plan pipeline and hasn't had the
+	 * opfuncid cache filled yet.
 	 */
 	if (a->opfuncid != b->opfuncid &&
 		a->opfuncid != 0 &&
@@ -283,9 +267,9 @@ _equalScalarArrayOpExpr(ScalarArrayOpExpr *a, ScalarArrayOpExpr *b)
 
 	/*
 	 * Special-case opfuncid: it is allowable for it to differ if one node
-	 * contains zero and the other doesn't.  This just means that the one
-	 * node isn't as far along in the parse/plan pipeline and hasn't had
-	 * the opfuncid cache filled yet.
+	 * contains zero and the other doesn't.  This just means that the one node
+	 * isn't as far along in the parse/plan pipeline and hasn't had the
+	 * opfuncid cache filled yet.
 	 */
 	if (a->opfuncid != b->opfuncid &&
 		a->opfuncid != 0 &&
@@ -369,8 +353,8 @@ _equalRelabelType(RelabelType *a, RelabelType *b)
 	COMPARE_SCALAR_FIELD(resulttypmod);
 
 	/*
-	 * Special-case COERCE_DONTCARE, so that planner can build coercion
-	 * nodes that are equal() to both explicit and implicit coercions.
+	 * Special-case COERCE_DONTCARE, so that planner can build coercion nodes
+	 * that are equal() to both explicit and implicit coercions.
 	 */
 	if (a->relabelformat != b->relabelformat &&
 		a->relabelformat != COERCE_DONTCARE &&
@@ -387,8 +371,8 @@ _equalConvertRowtypeExpr(ConvertRowtypeExpr *a, ConvertRowtypeExpr *b)
 	COMPARE_SCALAR_FIELD(resulttype);
 
 	/*
-	 * Special-case COERCE_DONTCARE, so that planner can build coercion
-	 * nodes that are equal() to both explicit and implicit coercions.
+	 * Special-case COERCE_DONTCARE, so that planner can build coercion nodes
+	 * that are equal() to both explicit and implicit coercions.
 	 */
 	if (a->convertformat != b->convertformat &&
 		a->convertformat != COERCE_DONTCARE &&
@@ -445,8 +429,8 @@ _equalRowExpr(RowExpr *a, RowExpr *b)
 	COMPARE_SCALAR_FIELD(row_typeid);
 
 	/*
-	 * Special-case COERCE_DONTCARE, so that planner can build coercion
-	 * nodes that are equal() to both explicit and implicit coercions.
+	 * Special-case COERCE_DONTCARE, so that planner can build coercion nodes
+	 * that are equal() to both explicit and implicit coercions.
 	 */
 	if (a->row_format != b->row_format &&
 		a->row_format != COERCE_DONTCARE &&
@@ -466,15 +450,25 @@ _equalCoalesceExpr(CoalesceExpr *a, CoalesceExpr *b)
 }
 
 static bool
+_equalMinMaxExpr(MinMaxExpr *a, MinMaxExpr *b)
+{
+	COMPARE_SCALAR_FIELD(minmaxtype);
+	COMPARE_SCALAR_FIELD(op);
+	COMPARE_NODE_FIELD(args);
+
+	return true;
+}
+
+static bool
 _equalNullIfExpr(NullIfExpr *a, NullIfExpr *b)
 {
 	COMPARE_SCALAR_FIELD(opno);
 
 	/*
 	 * Special-case opfuncid: it is allowable for it to differ if one node
-	 * contains zero and the other doesn't.  This just means that the one
-	 * node isn't as far along in the parse/plan pipeline and hasn't had
-	 * the opfuncid cache filled yet.
+	 * contains zero and the other doesn't.  This just means that the one node
+	 * isn't as far along in the parse/plan pipeline and hasn't had the
+	 * opfuncid cache filled yet.
 	 */
 	if (a->opfuncid != b->opfuncid &&
 		a->opfuncid != 0 &&
@@ -514,8 +508,8 @@ _equalCoerceToDomain(CoerceToDomain *a, CoerceToDomain *b)
 	COMPARE_SCALAR_FIELD(resulttypmod);
 
 	/*
-	 * Special-case COERCE_DONTCARE, so that planner can build coercion
-	 * nodes that are equal() to both explicit and implicit coercions.
+	 * Special-case COERCE_DONTCARE, so that planner can build coercion nodes
+	 * that are equal() to both explicit and implicit coercions.
 	 */
 	if (a->coercionformat != b->coercionformat &&
 		a->coercionformat != COERCE_DONTCARE &&
@@ -546,8 +540,13 @@ _equalSetToDefault(SetToDefault *a, SetToDefault *b)
 static bool
 _equalTargetEntry(TargetEntry *a, TargetEntry *b)
 {
-	COMPARE_NODE_FIELD(resdom);
 	COMPARE_NODE_FIELD(expr);
+	COMPARE_SCALAR_FIELD(resno);
+	COMPARE_STRING_FIELD(resname);
+	COMPARE_SCALAR_FIELD(ressortgroupref);
+	COMPARE_SCALAR_FIELD(resorigtbl);
+	COMPARE_SCALAR_FIELD(resorigcol);
+	COMPARE_SCALAR_FIELD(resjunk);
 
 	return true;
 }
@@ -619,21 +618,12 @@ _equalRestrictInfo(RestrictInfo *a, RestrictInfo *b)
 {
 	COMPARE_NODE_FIELD(clause);
 	COMPARE_SCALAR_FIELD(is_pushed_down);
-	COMPARE_SCALAR_FIELD(valid_everywhere);
+	COMPARE_BITMAPSET_FIELD(required_relids);
 
 	/*
-	 * We ignore all the remaining fields, since they may not be set yet,
-	 * and should be derivable from the clause anyway.
+	 * We ignore all the remaining fields, since they may not be set yet, and
+	 * should be derivable from the clause anyway.
 	 */
-
-	return true;
-}
-
-static bool
-_equalJoinInfo(JoinInfo *a, JoinInfo *b)
-{
-	COMPARE_BITMAPSET_FIELD(unjoined_relids);
-	COMPARE_NODE_FIELD(jinfo_restrictinfo);
 
 	return true;
 }
@@ -668,6 +658,8 @@ _equalQuery(Query *a, Query *b)
 	COMPARE_NODE_FIELD(rtable);
 	COMPARE_NODE_FIELD(jointree);
 	COMPARE_NODE_FIELD(rowMarks);
+	COMPARE_SCALAR_FIELD(forUpdate);
+	COMPARE_SCALAR_FIELD(rowNoWait);
 	COMPARE_NODE_FIELD(targetList);
 	COMPARE_NODE_FIELD(groupClause);
 	COMPARE_NODE_FIELD(havingQual);
@@ -677,15 +669,7 @@ _equalQuery(Query *a, Query *b)
 	COMPARE_NODE_FIELD(limitCount);
 	COMPARE_NODE_FIELD(setOperations);
 	COMPARE_NODE_FIELD(resultRelations);
-	COMPARE_NODE_FIELD(in_info_list);
-	COMPARE_SCALAR_FIELD(hasJoinRTEs);
 
-	/*
-	 * We do not check the other planner internal fields: base_rel_list,
-	 * other_rel_list, join_rel_list, equi_key_list, query_pathkeys. They
-	 * might not be set yet, and in any case they should be derivable from
-	 * the other fields.
-	 */
 	return true;
 }
 
@@ -705,6 +689,7 @@ _equalDeleteStmt(DeleteStmt *a, DeleteStmt *b)
 {
 	COMPARE_NODE_FIELD(relation);
 	COMPARE_NODE_FIELD(whereClause);
+	COMPARE_NODE_FIELD(usingClause);
 
 	return true;
 }
@@ -735,7 +720,7 @@ _equalSelectStmt(SelectStmt *a, SelectStmt *b)
 	COMPARE_NODE_FIELD(sortClause);
 	COMPARE_NODE_FIELD(limitOffset);
 	COMPARE_NODE_FIELD(limitCount);
-	COMPARE_NODE_FIELD(forUpdate);
+	COMPARE_NODE_FIELD(lockingClause);
 	COMPARE_SCALAR_FIELD(op);
 	COMPARE_SCALAR_FIELD(all);
 	COMPARE_NODE_FIELD(larg);
@@ -807,8 +792,7 @@ _equalGrantStmt(GrantStmt *a, GrantStmt *b)
 static bool
 _equalPrivGrantee(PrivGrantee *a, PrivGrantee *b)
 {
-	COMPARE_STRING_FIELD(username);
-	COMPARE_STRING_FIELD(groupname);
+	COMPARE_STRING_FIELD(rolname);
 
 	return true;
 }
@@ -818,6 +802,19 @@ _equalFuncWithArgs(FuncWithArgs *a, FuncWithArgs *b)
 {
 	COMPARE_NODE_FIELD(funcname);
 	COMPARE_NODE_FIELD(funcargs);
+
+	return true;
+}
+
+static bool
+_equalGrantRoleStmt(GrantRoleStmt *a, GrantRoleStmt *b)
+{
+	COMPARE_NODE_FIELD(granted_roles);
+	COMPARE_NODE_FIELD(grantee_roles);
+	COMPARE_SCALAR_FIELD(is_grant);
+	COMPARE_SCALAR_FIELD(admin_opt);
+	COMPARE_STRING_FIELD(grantor);
+	COMPARE_SCALAR_FIELD(behavior);
 
 	return true;
 }
@@ -910,7 +907,7 @@ _equalDropStmt(DropStmt *a, DropStmt *b)
 static bool
 _equalTruncateStmt(TruncateStmt *a, TruncateStmt *b)
 {
-	COMPARE_NODE_FIELD(relation);
+	COMPARE_NODE_FIELD(relations);
 
 	return true;
 }
@@ -974,6 +971,16 @@ _equalFunctionParameter(FunctionParameter *a, FunctionParameter *b)
 {
 	COMPARE_STRING_FIELD(name);
 	COMPARE_NODE_FIELD(argType);
+	COMPARE_SCALAR_FIELD(mode);
+
+	return true;
+}
+
+static bool
+_equalAlterFunctionStmt(AlterFunctionStmt *a, AlterFunctionStmt *b)
+{
+	COMPARE_NODE_FIELD(func);
+	COMPARE_NODE_FIELD(actions);
 
 	return true;
 }
@@ -1021,12 +1028,25 @@ _equalRemoveOpClassStmt(RemoveOpClassStmt *a, RemoveOpClassStmt *b)
 static bool
 _equalRenameStmt(RenameStmt *a, RenameStmt *b)
 {
+	COMPARE_SCALAR_FIELD(renameType);
 	COMPARE_NODE_FIELD(relation);
 	COMPARE_NODE_FIELD(object);
 	COMPARE_NODE_FIELD(objarg);
 	COMPARE_STRING_FIELD(subname);
 	COMPARE_STRING_FIELD(newname);
-	COMPARE_SCALAR_FIELD(renameType);
+
+	return true;
+}
+
+static bool
+_equalAlterObjectSchemaStmt(AlterObjectSchemaStmt *a, AlterObjectSchemaStmt *b)
+{
+	COMPARE_SCALAR_FIELD(objectType);
+	COMPARE_NODE_FIELD(relation);
+	COMPARE_NODE_FIELD(object);
+	COMPARE_NODE_FIELD(objarg);
+	COMPARE_STRING_FIELD(addname);
+	COMPARE_STRING_FIELD(newschema);
 
 	return true;
 }
@@ -1034,12 +1054,12 @@ _equalRenameStmt(RenameStmt *a, RenameStmt *b)
 static bool
 _equalAlterOwnerStmt(AlterOwnerStmt *a, AlterOwnerStmt *b)
 {
+	COMPARE_SCALAR_FIELD(objectType);
 	COMPARE_NODE_FIELD(relation);
 	COMPARE_NODE_FIELD(object);
 	COMPARE_NODE_FIELD(objarg);
 	COMPARE_STRING_FIELD(addname);
 	COMPARE_STRING_FIELD(newowner);
-	COMPARE_SCALAR_FIELD(objectType);
 
 	return true;
 }
@@ -1087,6 +1107,7 @@ _equalTransactionStmt(TransactionStmt *a, TransactionStmt *b)
 {
 	COMPARE_SCALAR_FIELD(kind);
 	COMPARE_NODE_FIELD(options);
+	COMPARE_STRING_FIELD(gid);
 
 	return true;
 }
@@ -1162,6 +1183,16 @@ _equalCreatedbStmt(CreatedbStmt *a, CreatedbStmt *b)
 	COMPARE_SCALAR_FIELD(dbOid);
 	return true;
 }
+
+static bool
+_equalAlterDatabaseStmt(AlterDatabaseStmt *a, AlterDatabaseStmt *b)
+{
+	COMPARE_STRING_FIELD(dbname);
+	COMPARE_NODE_FIELD(options);
+
+	return true;
+}
+
 
 static bool
 _equalAlterDatabaseSetStmt(AlterDatabaseSetStmt *a, AlterDatabaseSetStmt *b)
@@ -1319,27 +1350,29 @@ _equalDropPLangStmt(DropPLangStmt *a, DropPLangStmt *b)
 }
 
 static bool
-_equalCreateUserStmt(CreateUserStmt *a, CreateUserStmt *b)
+_equalCreateRoleStmt(CreateRoleStmt *a, CreateRoleStmt *b)
 {
-	COMPARE_STRING_FIELD(user);
+	COMPARE_SCALAR_FIELD(stmt_type);
+	COMPARE_STRING_FIELD(role);
 	COMPARE_NODE_FIELD(options);
 
 	return true;
 }
 
 static bool
-_equalAlterUserStmt(AlterUserStmt *a, AlterUserStmt *b)
+_equalAlterRoleStmt(AlterRoleStmt *a, AlterRoleStmt *b)
 {
-	COMPARE_STRING_FIELD(user);
+	COMPARE_STRING_FIELD(role);
 	COMPARE_NODE_FIELD(options);
+	COMPARE_SCALAR_FIELD(action);
 
 	return true;
 }
 
 static bool
-_equalAlterUserSetStmt(AlterUserSetStmt *a, AlterUserSetStmt *b)
+_equalAlterRoleSetStmt(AlterRoleSetStmt *a, AlterRoleSetStmt *b)
 {
-	COMPARE_STRING_FIELD(user);
+	COMPARE_STRING_FIELD(role);
 	COMPARE_STRING_FIELD(variable);
 	COMPARE_NODE_FIELD(value);
 
@@ -1347,9 +1380,9 @@ _equalAlterUserSetStmt(AlterUserSetStmt *a, AlterUserSetStmt *b)
 }
 
 static bool
-_equalDropUserStmt(DropUserStmt *a, DropUserStmt *b)
+_equalDropRoleStmt(DropRoleStmt *a, DropRoleStmt *b)
 {
-	COMPARE_NODE_FIELD(users);
+	COMPARE_NODE_FIELD(roles);
 
 	return true;
 }
@@ -1374,40 +1407,13 @@ _equalConstraintsSetStmt(ConstraintsSetStmt *a, ConstraintsSetStmt *b)
 }
 
 static bool
-_equalCreateGroupStmt(CreateGroupStmt *a, CreateGroupStmt *b)
-{
-	COMPARE_STRING_FIELD(name);
-	COMPARE_NODE_FIELD(options);
-
-	return true;
-}
-
-static bool
-_equalAlterGroupStmt(AlterGroupStmt *a, AlterGroupStmt *b)
-{
-	COMPARE_STRING_FIELD(name);
-	COMPARE_SCALAR_FIELD(action);
-	COMPARE_NODE_FIELD(listUsers);
-
-	return true;
-}
-
-static bool
-_equalDropGroupStmt(DropGroupStmt *a, DropGroupStmt *b)
-{
-	COMPARE_STRING_FIELD(name);
-
-	return true;
-}
-
-static bool
 _equalReindexStmt(ReindexStmt *a, ReindexStmt *b)
 {
 	COMPARE_SCALAR_FIELD(kind);
 	COMPARE_NODE_FIELD(relation);
 	COMPARE_STRING_FIELD(name);
-	COMPARE_SCALAR_FIELD(force);
-	COMPARE_SCALAR_FIELD(all);
+	COMPARE_SCALAR_FIELD(do_system);
+	COMPARE_SCALAR_FIELD(do_user);
 
 	return true;
 }
@@ -1677,6 +1683,16 @@ _equalDefElem(DefElem *a, DefElem *b)
 }
 
 static bool
+_equalLockingClause(LockingClause *a, LockingClause *b)
+{
+	COMPARE_NODE_FIELD(lockedRels);
+	COMPARE_SCALAR_FIELD(forUpdate);
+	COMPARE_SCALAR_FIELD(nowait);
+
+	return true;
+}
+
+static bool
 _equalRangeTblEntry(RangeTblEntry *a, RangeTblEntry *b)
 {
 	COMPARE_SCALAR_FIELD(rtekind);
@@ -1734,15 +1750,15 @@ _equalList(List *a, List *b)
 	ListCell   *item_b;
 
 	/*
-	 * Try to reject by simple scalar checks before grovelling through all
-	 * the list elements...
+	 * Try to reject by simple scalar checks before grovelling through all the
+	 * list elements...
 	 */
 	COMPARE_SCALAR_FIELD(type);
 	COMPARE_SCALAR_FIELD(length);
 
 	/*
-	 * We place the switch outside the loop for the sake of efficiency;
-	 * this may not be worth doing...
+	 * We place the switch outside the loop for the sake of efficiency; this
+	 * may not be worth doing...
 	 */
 	switch (a->type)
 	{
@@ -1841,9 +1857,6 @@ equal(void *a, void *b)
 			/*
 			 * PRIMITIVE NODES
 			 */
-		case T_Resdom:
-			retval = _equalResdom(a, b);
-			break;
 		case T_Alias:
 			retval = _equalAlias(a, b);
 			break;
@@ -1916,6 +1929,9 @@ equal(void *a, void *b)
 		case T_CoalesceExpr:
 			retval = _equalCoalesceExpr(a, b);
 			break;
+		case T_MinMaxExpr:
+			retval = _equalMinMaxExpr(a, b);
+			break;
 		case T_NullIfExpr:
 			retval = _equalNullIfExpr(a, b);
 			break;
@@ -1958,9 +1974,6 @@ equal(void *a, void *b)
 			break;
 		case T_RestrictInfo:
 			retval = _equalRestrictInfo(a, b);
-			break;
-		case T_JoinInfo:
-			retval = _equalJoinInfo(a, b);
 			break;
 		case T_InClauseInfo:
 			retval = _equalInClauseInfo(a, b);
@@ -2012,6 +2025,9 @@ equal(void *a, void *b)
 		case T_GrantStmt:
 			retval = _equalGrantStmt(a, b);
 			break;
+		case T_GrantRoleStmt:
+			retval = _equalGrantRoleStmt(a, b);
+			break;
 		case T_DeclareCursorStmt:
 			retval = _equalDeclareCursorStmt(a, b);
 			break;
@@ -2054,6 +2070,9 @@ equal(void *a, void *b)
 		case T_FunctionParameter:
 			retval = _equalFunctionParameter(a, b);
 			break;
+		case T_AlterFunctionStmt:
+			retval = _equalAlterFunctionStmt(a, b);
+			break;
 		case T_RemoveAggrStmt:
 			retval = _equalRemoveAggrStmt(a, b);
 			break;
@@ -2068,6 +2087,9 @@ equal(void *a, void *b)
 			break;
 		case T_RenameStmt:
 			retval = _equalRenameStmt(a, b);
+			break;
+		case T_AlterObjectSchemaStmt:
+			retval = _equalAlterObjectSchemaStmt(a, b);
 			break;
 		case T_AlterOwnerStmt:
 			retval = _equalAlterOwnerStmt(a, b);
@@ -2107,6 +2129,9 @@ equal(void *a, void *b)
 			break;
 		case T_CreatedbStmt:
 			retval = _equalCreatedbStmt(a, b);
+			break;
+		case T_AlterDatabaseStmt:
+			retval = _equalAlterDatabaseStmt(a, b);
 			break;
 		case T_AlterDatabaseSetStmt:
 			retval = _equalAlterDatabaseSetStmt(a, b);
@@ -2153,32 +2178,23 @@ equal(void *a, void *b)
 		case T_DropPLangStmt:
 			retval = _equalDropPLangStmt(a, b);
 			break;
-		case T_CreateUserStmt:
-			retval = _equalCreateUserStmt(a, b);
+		case T_CreateRoleStmt:
+			retval = _equalCreateRoleStmt(a, b);
 			break;
-		case T_AlterUserStmt:
-			retval = _equalAlterUserStmt(a, b);
+		case T_AlterRoleStmt:
+			retval = _equalAlterRoleStmt(a, b);
 			break;
-		case T_AlterUserSetStmt:
-			retval = _equalAlterUserSetStmt(a, b);
+		case T_AlterRoleSetStmt:
+			retval = _equalAlterRoleSetStmt(a, b);
 			break;
-		case T_DropUserStmt:
-			retval = _equalDropUserStmt(a, b);
+		case T_DropRoleStmt:
+			retval = _equalDropRoleStmt(a, b);
 			break;
 		case T_LockStmt:
 			retval = _equalLockStmt(a, b);
 			break;
 		case T_ConstraintsSetStmt:
 			retval = _equalConstraintsSetStmt(a, b);
-			break;
-		case T_CreateGroupStmt:
-			retval = _equalCreateGroupStmt(a, b);
-			break;
-		case T_AlterGroupStmt:
-			retval = _equalAlterGroupStmt(a, b);
-			break;
-		case T_DropGroupStmt:
-			retval = _equalDropGroupStmt(a, b);
 			break;
 		case T_ReindexStmt:
 			retval = _equalReindexStmt(a, b);
@@ -2262,6 +2278,9 @@ equal(void *a, void *b)
 			break;
 		case T_DefElem:
 			retval = _equalDefElem(a, b);
+			break;
+		case T_LockingClause:
+			retval = _equalLockingClause(a, b);
 			break;
 		case T_RangeTblEntry:
 			retval = _equalRangeTblEntry(a, b);

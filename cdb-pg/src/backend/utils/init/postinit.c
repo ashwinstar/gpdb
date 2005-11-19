@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/init/postinit.c,v 1.139.4.3 2005/05/05 19:53:37 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/init/postinit.c,v 1.158 2005/10/15 02:49:33 momjian Exp $
  *
  *
  *-------------------------------------------------------------------------
@@ -20,51 +20,105 @@
 #include <math.h>
 #include <unistd.h>
 
-#include "catalog/catalog.h"
+#include "access/genam.h"
 #include "access/heapam.h"
-#include "catalog/catname.h"
+#include "catalog/catalog.h"
+#include "catalog/indexing.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_authid.h"
 #include "catalog/pg_database.h"
-#include "catalog/pg_shadow.h"
 #include "catalog/pg_tablespace.h"
+#include "libpq/hba.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdbutil.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
+#include "postmaster/autovacuum.h"
 #include "postmaster/postmaster.h"
 #include "storage/backendid.h"
+#include "storage/fd.h"
 #include "storage/ipc.h"
 #include "storage/proc.h"
+#include "storage/procarray.h"
 #include "storage/sinval.h"
 #include "storage/smgr.h"
+#include "utils/acl.h"
+#include "utils/flatfiles.h"
 #include "utils/fmgroids.h"
 #include "utils/guc.h"
 #include "utils/portal.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
+#include "pgstat.h"
 
 
+static bool FindMyDatabase(const char *name, Oid *db_id, Oid *db_tablespace);
 static void ReverifyMyDatabase(const char *name);
 static void InitCommunication(void);
 static void ShutdownPostgres(int code, Datum arg);
-static bool ThereIsAtLeastOneUser(void);
+static bool ThereIsAtLeastOneRole(void);
 
 
 /*** InitPostgres support ***/
 
 
-/* --------------------------------
- *		ReverifyMyDatabase
+/*
+ * FindMyDatabase -- get the critical info needed to locate my database
  *
- * Since we are forced to fetch the database OID out of pg_database without
- * benefit of locking or transaction ID checking (see utils/misc/database.c),
- * we might have gotten a wrong answer.  Or, we might have attached to a
- * database that's in process of being destroyed by destroydb().  This
- * routine is called after we have all the locking and other infrastructure
- * running --- now we can check that we are really attached to a valid
- * database.
+ * Find the named database in pg_database, return its database OID and the
+ * OID of its default tablespace.  Return TRUE if found, FALSE if not.
  *
- * In reality, if destroydb() is running in parallel with our startup,
+ * Since we are not yet up and running as a backend, we cannot look directly
+ * at pg_database (we can't obtain locks nor participate in transactions).
+ * So to get the info we need before starting up, we must look at the "flat
+ * file" copy of pg_database that is helpfully maintained by flatfiles.c.
+ * This is subject to various race conditions, so after we have the
+ * transaction infrastructure started, we have to recheck the information;
+ * see ReverifyMyDatabase.
+ */
+static bool
+FindMyDatabase(const char *name, Oid *db_id, Oid *db_tablespace)
+{
+	bool		result = false;
+	char	   *filename;
+	FILE	   *db_file;
+	char		thisname[NAMEDATALEN];
+	TransactionId dummyxid;
+
+	filename = database_getflatfilename();
+	db_file = AllocateFile(filename, "r");
+	if (db_file == NULL)
+		ereport(FATAL,
+				(errcode_for_file_access(),
+				 errmsg("could not open file \"%s\": %m", filename)));
+
+	while (read_pg_database_line(db_file, thisname, db_id,
+								 db_tablespace, &dummyxid,
+								 &dummyxid))
+	{
+		if (strcmp(thisname, name) == 0)
+		{
+			result = true;
+			break;
+		}
+	}
+
+	FreeFile(db_file);
+	pfree(filename);
+
+	return result;
+}
+
+/*
+ * ReverifyMyDatabase -- recheck info obtained by FindMyDatabase
+ *
+ * Since FindMyDatabase cannot lock pg_database, the information it read
+ * could be stale; for example we might have attached to a database that's in
+ * process of being destroyed by dropdb().	This routine is called after
+ * we have all the locking and other infrastructure running --- now we can
+ * check that we are really attached to a valid database.
+ *
+ * In reality, if dropdb() is running in parallel with our startup,
  * it's pretty likely that we will have failed before now, due to being
  * unable to read some of the system tables within the doomed database.
  * This routine just exists to make *sure* we have not started up in an
@@ -77,66 +131,93 @@ static bool ThereIsAtLeastOneUser(void);
  * To avoid having to read pg_database more times than necessary
  * during session startup, this place is also fitting to set up any
  * database-specific configuration variables.
- * --------------------------------
  */
 static void
 ReverifyMyDatabase(const char *name)
 {
 	Relation	pgdbrel;
-	HeapScanDesc pgdbscan;
+	SysScanDesc pgdbscan;
 	ScanKeyData key;
 	HeapTuple	tup;
 	Form_pg_database dbform;
 
 	/*
-	 * Because we grab AccessShareLock here, we can be sure that destroydb
-	 * is not running in parallel with us (any more).
+	 * Because we grab RowShareLock here, we can be sure that dropdb() is not
+	 * running in parallel with us (any more).
 	 */
-	pgdbrel = heap_openr(DatabaseRelationName, AccessShareLock);
+	pgdbrel = heap_open(DatabaseRelationId, RowShareLock);
 
 	ScanKeyInit(&key,
 				Anum_pg_database_datname,
 				BTEqualStrategyNumber, F_NAMEEQ,
 				NameGetDatum(name));
 
-	pgdbscan = heap_beginscan(pgdbrel, SnapshotNow, 1, &key);
+	pgdbscan = systable_beginscan(pgdbrel, DatabaseNameIndexId, true,
+								  SnapshotNow, 1, &key);
 
-	tup = heap_getnext(pgdbscan, ForwardScanDirection);
+	tup = systable_getnext(pgdbscan);
 	if (!HeapTupleIsValid(tup) ||
 		HeapTupleGetOid(tup) != MyDatabaseId)
 	{
 		/* OOPS */
-		heap_close(pgdbrel, AccessShareLock);
+		heap_close(pgdbrel, RowShareLock);
 
 		/*
-		 * The only real problem I could have created is to load dirty
-		 * buffers for the dead database into shared buffer cache; if I
-		 * did, some other backend will eventually try to write them and
-		 * die in mdblindwrt.  Flush any such pages to forestall trouble.
+		 * The only real problem I could have created is to load dirty buffers
+		 * for the dead database into shared buffer cache; if I did, some
+		 * other backend will eventually try to write them and die in
+		 * mdblindwrt.	Flush any such pages to forestall trouble.
 		 */
 		DropBuffers(MyDatabaseId);
 		/* Now I can commit hara-kiri with a clear conscience... */
 		ereport(FATAL,
 				(errcode(ERRCODE_UNDEFINED_DATABASE),
-				 errmsg("database \"%s\", OID %u, has disappeared from pg_database",
-						name, MyDatabaseId)));
+		  errmsg("database \"%s\", OID %u, has disappeared from pg_database",
+				 name, MyDatabaseId)));
+	}
+
+	dbform = (Form_pg_database) GETSTRUCT(tup);
+
+	/*
+	 * These next checks are not enforced when in standalone mode, so that
+	 * there is a way to recover from disabling all access to all databases,
+	 * for example "UPDATE pg_database SET datallowconn = false;".
+	 *
+	 * We do not enforce them for the autovacuum process either.
+	 */
+	if (IsUnderPostmaster && !IsAutoVacuumProcess())
+	{
+		/*
+		 * Check that the database is currently allowing connections.
+		 */
+		if (!dbform->datallowconn)
+			ereport(FATAL,
+					(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+			 errmsg("database \"%s\" is not currently accepting connections",
+					name)));
+
+		/*
+		 * Check connection limit for this database.
+		 *
+		 * There is a race condition here --- we create our PGPROC before
+		 * checking for other PGPROCs.	If two backends did this at about the
+		 * same time, they might both think they were over the limit, while
+		 * ideally one should succeed and one fail.  Getting that to work
+		 * exactly seems more trouble than it is worth, however; instead we
+		 * just document that the connection limit is approximate.
+		 */
+		if (dbform->datconnlimit >= 0 &&
+			!superuser() &&
+			CountDBBackends(MyDatabaseId) > dbform->datconnlimit)
+			ereport(FATAL,
+					(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
+					 errmsg("too many connections for database \"%s\"",
+							name)));
 	}
 
 	/*
-	 * Also check that the database is currently allowing connections.
-	 * (We do not enforce this in standalone mode, however, so that there is
-	 * a way to recover from "UPDATE pg_database SET datallowconn = false;")
-	 */
-	dbform = (Form_pg_database) GETSTRUCT(tup);
-	if (IsUnderPostmaster && !dbform->datallowconn)
-		ereport(FATAL,
-				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-		 errmsg("database \"%s\" is not currently accepting connections",
-				name)));
-
-	/*
-	 * OK, we're golden.  Only other to-do item is to save the encoding
-	 * info out of the pg_database tuple.
+	 * OK, we're golden.  Next to-do item is to save the encoding info out of
+	 * the pg_database tuple.
 	 */
 	SetDatabaseEncoding(dbform->encoding);
 	/* Record it as a GUC internal option, too */
@@ -147,7 +228,7 @@ ReverifyMyDatabase(const char *name)
 					PGC_BACKEND, PGC_S_DEFAULT);
 
 	/*
-	 * Set up database-specific configuration variables.
+	 * Lastly, set up any database-specific configuration variables.
 	 */
 	if (IsUnderPostmaster)
 	{
@@ -164,8 +245,8 @@ ReverifyMyDatabase(const char *name)
 		}
 	}
 
-	heap_endscan(pgdbscan);
-	heap_close(pgdbrel, AccessShareLock);
+	systable_endscan(pgdbscan);
+	heap_close(pgdbrel, RowShareLock);
 }
 
 
@@ -186,10 +267,10 @@ InitCommunication(void)
 	if (!IsUnderPostmaster)		/* postmaster already did this */
 	{
 		/*
-		 * We're running a postgres bootstrap process or a standalone
-		 * backend. Create private "shmem" and semaphores.
+		 * We're running a postgres bootstrap process or a standalone backend.
+		 * Create private "shmem" and semaphores.
 		 */
-		CreateSharedMemoryAndSemaphores(true, MaxBackends, 0);
+		CreateSharedMemoryAndSemaphores(true, 0);
 	}
 }
 
@@ -214,10 +295,10 @@ BaseInit(void)
 	InitCommunication();
 	DebugFileOpen();
 
-	/* Do local initialization of storage and buffer managers */
+	/* Do local initialization of file, storage and buffer managers */
+	InitFileAccess();
 	smgrinit();
 	InitBufferPoolAccess();
-	InitLocalBuffer();
 }
 
 
@@ -225,12 +306,13 @@ BaseInit(void)
  * InitPostgres
  *		Initialize POSTGRES.
  *
- * In bootstrap mode neither of the parameters are used.
+ * In bootstrap mode neither of the parameters are used.  In autovacuum
+ * mode, the username parameter is not used.
  *
  * The return value indicates whether the userID is a superuser.  (That
  * can only be tested inside a transaction, so we want to do it during
  * the startup transaction rather than doing a separate one in postgres.c.)
- * 
+ *
  * Note:
  *		Be very careful with the order of calls in the InitPostgres function.
  * --------------------------------
@@ -239,13 +321,14 @@ bool
 InitPostgres(const char *dbname, const char *username)
 {
 	bool		bootstrap = IsBootstrapProcessingMode();
+	bool		autovacuum = IsAutoVacuumProcess();
 	bool		am_superuser;
 
 	/*
 	 * Set up the global variables holding database id and path.
 	 *
-	 * We take a shortcut in the bootstrap case, otherwise we have to look up
-	 * the db name in pg_database.
+	 * We take a shortcut in the bootstrap case, otherwise we have to look up the
+	 * db name in pg_database.
 	 */
 	if (bootstrap)
 	{
@@ -258,18 +341,15 @@ InitPostgres(const char *dbname, const char *username)
 		char	   *fullpath;
 
 		/*
-		 * Formerly we validated DataDir here, but now that's done
-		 * earlier.
+		 * Formerly we validated DataDir here, but now that's done earlier.
 		 */
 
 		/*
-		 * Find oid and tablespace of the database we're about to open.
-		 * Since we're not yet up and running we have to use the hackish
-		 * GetRawDatabaseInfo.
+		 * Find oid and tablespace of the database we're about to open. Since
+		 * we're not yet up and running we have to use the hackish
+		 * FindMyDatabase.
 		 */
-		GetRawDatabaseInfo(dbname, &MyDatabaseId, &MyDatabaseTableSpace);
-
-		if (!OidIsValid(MyDatabaseId))
+		if (!FindMyDatabase(dbname, &MyDatabaseId, &MyDatabaseTableSpace))
 			ereport(FATAL,
 					(errcode(ERRCODE_UNDEFINED_DATABASE),
 					 errmsg("database \"%s\" does not exist",
@@ -286,8 +366,8 @@ InitPostgres(const char *dbname, const char *username)
 						(errcode(ERRCODE_UNDEFINED_DATABASE),
 						 errmsg("database \"%s\" does not exist",
 								dbname),
-				errdetail("The database subdirectory \"%s\" is missing.",
-						  fullpath)));
+					errdetail("The database subdirectory \"%s\" is missing.",
+							  fullpath)));
 			else
 				ereport(FATAL,
 						(errcode_for_file_access(),
@@ -297,12 +377,6 @@ InitPostgres(const char *dbname, const char *username)
 
 		ValidatePgVersion(fullpath);
 
-		if (chdir(fullpath) == -1)
-			ereport(FATAL,
-					(errcode_for_file_access(),
-					 errmsg("could not change directory to \"%s\": %m",
-							fullpath)));
-
 		SetDatabasePath(fullpath);
 	}
 
@@ -311,17 +385,17 @@ InitPostgres(const char *dbname, const char *username)
 	 */
 
 	/*
-	 * Set up my per-backend PGPROC struct in shared memory.	(We need
-	 * to know MyDatabaseId before we can do this, since it's entered into
-	 * the PGPROC struct.)
+	 * Set up my per-backend PGPROC struct in shared memory.	(We need to
+	 * know MyDatabaseId before we can do this, since it's entered into the
+	 * PGPROC struct.)
 	 */
 	InitProcess();
 
 	/*
 	 * Initialize my entry in the shared-invalidation manager's array of
-	 * per-backend data.  (Formerly this came before InitProcess, but now
-	 * it must happen after, because it uses MyProc.)  Once I have done
-	 * this, I am visible to other backends!
+	 * per-backend data.  (Formerly this came before InitProcess, but now it
+	 * must happen after, because it uses MyProc.)	Once I have done this, I
+	 * am visible to other backends!
 	 *
 	 * Sets up MyBackendId, a unique backend identifier.
 	 */
@@ -333,32 +407,43 @@ InitPostgres(const char *dbname, const char *username)
 		elog(FATAL, "bad backend id: %d", MyBackendId);
 
 	/*
-	 * Initialize the transaction system override state.
+	 * bufmgr needs another initialization call too
 	 */
-	AmiTransactionOverride(bootstrap);
+	InitBufferPoolBackend();
 
 	/*
-	 * Initialize local process's access to XLOG.  In bootstrap case we
-	 * may skip this since StartupXLOG() was run instead.
+	 * Initialize local process's access to XLOG.  In bootstrap case we may
+	 * skip this since StartupXLOG() was run instead.
 	 */
 	if (!bootstrap)
 		InitXLOGAccess();
 
 	/*
-	 * Initialize the relation descriptor cache.  This must create at
-	 * least the minimum set of "nailed-in" cache entries.	No catalog
-	 * access happens here.
+	 * Initialize the relation descriptor cache.  This must create at least
+	 * the minimum set of "nailed-in" cache entries.  No catalog access
+	 * happens here.
 	 */
 	RelationCacheInitialize();
 
 	/*
-	 * Initialize all the system catalog caches.  Note that no catalog
-	 * access happens here; we only set up the cache structure.
+	 * Initialize all the system catalog caches.  Note that no catalog access
+	 * happens here; we only set up the cache structure.
 	 */
 	InitCatalogCache();
 
 	/* Initialize portal manager */
 	EnablePortalManager();
+
+	/*
+	 * Set up process-exit callback to do pre-shutdown cleanup.  This has to
+	 * be after we've initialized all the low-level modules like the buffer
+	 * manager, because during shutdown this has to run before the low-level
+	 * modules start to close down.  On the other hand, we want it in place
+	 * before we begin our first transaction --- if we fail during the
+	 * initialization transaction, as is entirely possible, we need the
+	 * AbortTransaction call to clean up.
+	 */
+	on_shmem_exit(ShutdownPostgres, 0);
 
 	/* start a new transaction here before access to db */
 	if (!bootstrap)
@@ -372,20 +457,21 @@ InitPostgres(const char *dbname, const char *username)
 	RelationCacheInitializePhase2();
 
 	/*
-	 * Figure out our postgres user id.  In standalone mode we use a fixed
-	 * id, otherwise we figure it out from the authenticated user name.
+	 * Figure out our postgres user id.  In standalone mode and in the
+	 * autovacuum process, we use a fixed id, otherwise we figure it out from
+	 * the authenticated user name.
 	 */
-	if (bootstrap)
+	if (bootstrap || autovacuum)
 		InitializeSessionUserIdStandalone();
 	else if (!IsUnderPostmaster)
 	{
 		InitializeSessionUserIdStandalone();
-		if (!ThereIsAtLeastOneUser())
+		if (!ThereIsAtLeastOneRole())
 			ereport(WARNING,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
-				  errmsg("no users are defined in this database system"),
-					 errhint("You should immediately run CREATE USER \"%s\" WITH SYSID %d CREATEUSER;.",
-							 username, BOOTSTRAP_USESYSID)));
+					 errmsg("no roles are defined in this database system"),
+					 errhint("You should immediately run CREATE USER \"%s\" CREATEUSER;.",
+							 username)));
 	}
 	else
 	{
@@ -394,24 +480,25 @@ InitPostgres(const char *dbname, const char *username)
 	}
 
 	/*
-	 * Unless we are bootstrapping, double-check that InitMyDatabaseInfo()
-	 * got a correct result.  We can't do this until all the
-	 * database-access infrastructure is up.
+	 * Unless we are bootstrapping, double-check that InitMyDatabaseInfo() got
+	 * a correct result.  We can't do this until all the database-access
+	 * infrastructure is up.  (Also, it wants to know if the user is a
+	 * superuser, so the above stuff has to happen first.)
 	 */
 	if (!bootstrap)
 		ReverifyMyDatabase(dbname);
 
 	/*
 	 * Final phase of relation cache startup: write a new cache file if
-	 * necessary.  This is done after ReverifyMyDatabase to avoid writing
-	 * a cache file into a dead database.
+	 * necessary.  This is done after ReverifyMyDatabase to avoid writing a
+	 * cache file into a dead database.
 	 */
 	RelationCacheInitializePhase3();
 
 	/*
 	 * Check if user is a superuser.
 	 */
-	if (bootstrap)
+	if (bootstrap || autovacuum)
 		am_superuser = true;
 	else
 		am_superuser = superuser();
@@ -421,7 +508,7 @@ InitPostgres(const char *dbname, const char *username)
 	 */
 	if (!am_superuser &&
 		ReservedBackends > 0 &&
-		CountEmptyBackendSlots() < ReservedBackends)
+		!HaveNFreeProcs(ReservedBackends))
 		ereport(FATAL,
 				(errcode(ERRCODE_TOO_MANY_CONNECTIONS),
 				 errmsg("connection limit exceeded for non-superusers")));
@@ -434,9 +521,16 @@ InitPostgres(const char *dbname, const char *username)
 	/* set default namespace search path */
 	InitializeSearchPath();
 
+	/* set up ACL framework (currently just sets RolMemCache callback) */
+	initialize_acl();
+
 	/* initialize client encoding */
 	InitializeClientEncoding();
 
+	/* initialize statistics collection for this backend */
+	if (IsUnderPostmaster)
+		pgstat_bestart();
+		
 	/* 
      * MPP package setup 
      *
@@ -466,12 +560,11 @@ InitPostgres(const char *dbname, const char *username)
 	return am_superuser;
 }
 
+
 /*
  * Backend-shutdown callback.  Do cleanup that we want to be sure happens
  * before all the supporting modules begin to nail their doors shut via
- * their own callbacks.  Note that because this has to be registered very
- * late in startup, it will not get called if we suffer a failure *during*
- * startup.
+ * their own callbacks.
  *
  * User-level cleanup, such as temp-relation removal and UNLISTEN, happens
  * via separate callbacks that execute before this one.  We don't combine the
@@ -483,29 +576,16 @@ void shutdownTM(void);
 static void
 ShutdownPostgres(int code, Datum arg)
 {
-	/*
-	 * These operations are really just a minimal subset of
-	 * AbortTransaction(). We don't want to do any inessential cleanup,
-	 * since that just raises the odds of failure --- but there's some
-	 * stuff we need to do.
-	 *
-	 * Release any LW locks, buffer content locks, and buffer pins we might be
-	 * holding.  This is a kluge to improve the odds that we won't get into a
-	 * self-made stuck-lock scenario while trying to shut down.  We *must*
-	 * release buffer pins to make it safe to do file deletion, since we
-	 * might have some pins on pages of the target files.
-	 */
-	LWLockReleaseAll();
-	AtProcExit_Buffers();
-	AtProcExit_LocalBuffers();
+	/* Make sure we've killed any active transaction */
+	AbortOutOfAnyTransaction();
 
 	/*
-	 * In case a transaction is open, delete any files it created.	This
-	 * has to happen before bufmgr shutdown, so having smgr register a
-	 * callback for it wouldn't work.
+	 * User locks are not released by transaction end, so be sure to release
+	 * them explicitly.
 	 */
-	smgrDoPendingDeletes(false);	/* delete as though aborting xact */
-    
+#ifdef USER_LOCKS
+	LockReleaseAll(USER_LOCKMETHOD, true);
+#endif    
     /*
      * shutdown TM
      */
@@ -514,26 +594,23 @@ ShutdownPostgres(int code, Datum arg)
 }
 
 
-
 /*
- * Returns true if at least one user is defined in this database cluster.
+ * Returns true if at least one role is defined in this database cluster.
  */
 static bool
-ThereIsAtLeastOneUser(void)
+ThereIsAtLeastOneRole(void)
 {
-	Relation	pg_shadow_rel;
-	TupleDesc	pg_shadow_dsc;
+	Relation	pg_authid_rel;
 	HeapScanDesc scan;
 	bool		result;
 
-	pg_shadow_rel = heap_openr(ShadowRelationName, AccessExclusiveLock);
-	pg_shadow_dsc = RelationGetDescr(pg_shadow_rel);
+	pg_authid_rel = heap_open(AuthIdRelationId, AccessExclusiveLock);
 
-	scan = heap_beginscan(pg_shadow_rel, SnapshotNow, 0, NULL);
+	scan = heap_beginscan(pg_authid_rel, SnapshotNow, 0, NULL);
 	result = (heap_getnext(scan, ForwardScanDirection) != NULL);
 
 	heap_endscan(scan);
-	heap_close(pg_shadow_rel, AccessExclusiveLock);
+	heap_close(pg_authid_rel, AccessExclusiveLock);
 
 	return result;
 }

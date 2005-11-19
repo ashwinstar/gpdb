@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/catalog/pg_control.h,v 1.19 2004/12/31 22:03:24 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/catalog/pg_control.h,v 1.25 2005/10/15 02:49:42 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -22,7 +22,7 @@
 
 
 /* Version identifier for this pg_control format */
-#define PG_CONTROL_VERSION	74
+#define PG_CONTROL_VERSION	812
 
 /*
  * Body of CheckPoint XLOG records.  This is declared here because we keep
@@ -31,14 +31,15 @@
 typedef struct CheckPoint
 {
 	XLogRecPtr	redo;			/* next RecPtr available when we began to
-								 * create CheckPoint (i.e. REDO start
-								 * point) */
+								 * create CheckPoint (i.e. REDO start point) */
 	XLogRecPtr	undo;			/* first record of oldest in-progress
-								 * transaction when we started (i.e. UNDO
-								 * end point) */
+								 * transaction when we started (i.e. UNDO end
+								 * point) */
 	TimeLineID	ThisTimeLineID; /* current TLI */
 	TransactionId nextXid;		/* next free XID */
 	Oid			nextOid;		/* next free OID */
+	MultiXactId nextMulti;		/* next free MultiXactId */
+	MultiXactOffset nextMultiOffset;	/* next free MultiXact offset */
 	time_t		time;			/* time stamp of checkpoint */
 } CheckPoint;
 
@@ -71,28 +72,27 @@ typedef enum DBState
 
 typedef struct ControlFileData
 {
-	crc64		crc;			/* CRC for remainder of struct */
+	/*
+	 * Unique system identifier --- to ensure we match up xlog files with the
+	 * installation that produced them.
+	 */
+	uint64		system_identifier;
 
 	/*
-	 * Version identifier information.	Keep these fields at the front,
-	 * especially pg_control_version; they won't be real useful if they
-	 * move around.
+	 * Version identifier information.	Keep these fields at the same offset,
+	 * especially pg_control_version; they won't be real useful if they move
+	 * around.	(For historical reasons they must be 8 bytes into the file
+	 * rather than immediately at the front.)
 	 *
 	 * pg_control_version identifies the format of pg_control itself.
 	 * catalog_version_no identifies the format of the system catalogs.
 	 *
-	 * There are additional version identifiers in individual files; for
-	 * example, WAL logs contain per-page magic numbers that can serve as
-	 * version cues for the WAL log.
+	 * There are additional version identifiers in individual files; for example,
+	 * WAL logs contain per-page magic numbers that can serve as version cues
+	 * for the WAL log.
 	 */
 	uint32		pg_control_version;		/* PG_CONTROL_VERSION */
 	uint32		catalog_version_no;		/* see catversion.h */
-
-	/*
-	 * Unique system identifier --- to ensure we match up xlog files with
-	 * the installation that produced them.
-	 */
-	uint64		system_identifier;
 
 	/*
 	 * System status data
@@ -107,8 +107,24 @@ typedef struct ControlFileData
 	CheckPoint	checkPointCopy; /* copy of last check point record */
 
 	/*
-	 * This data is used to make sure that configuration of this database
-	 * is compatible with the backend executable.
+	 * This data is used to check for hardware-architecture compatibility of
+	 * the database and the backend executable.  We need not check endianness
+	 * explicitly, since the pg_control version will surely look wrong to a
+	 * machine of different endianness, but we do need to worry about MAXALIGN
+	 * and floating-point format.  (Note: storage layout nominally also
+	 * depends on SHORTALIGN and INTALIGN, but in practice these are the same
+	 * on all architectures of interest.)
+	 *
+	 * Testing just one double value is not a very bulletproof test for
+	 * floating-point compatibility, but it will catch most cases.
+	 */
+	uint32		maxAlign;		/* alignment requirement for tuples */
+	double		floatFormat;	/* constant 1234567.0 */
+#define FLOATFORMAT_VALUE	1234567.0
+
+	/*
+	 * This data is used to make sure that configuration of this database is
+	 * compatible with the backend executable.
 	 */
 	uint32		blcksz;			/* block size for this DB */
 	uint32		relseg_size;	/* blocks per segment of large relation */
@@ -116,7 +132,7 @@ typedef struct ControlFileData
 	uint32		xlog_seg_size;	/* size of each WAL segment */
 
 	uint32		nameDataLen;	/* catalog name field width */
-	uint32		funcMaxArgs;	/* maximum number of function arguments */
+	uint32		indexMaxKeys;	/* max number of columns in an index */
 
 	/* flag indicating internal format of timestamp, interval, time */
 	uint32		enableIntTimes; /* int64 storage enabled? */
@@ -125,6 +141,9 @@ typedef struct ControlFileData
 	uint32		localeBuflen;
 	char		lc_collate[LOCALE_NAME_BUFLEN];
 	char		lc_ctype[LOCALE_NAME_BUFLEN];
+
+	/* CRC of all above ... MUST BE LAST! */
+	pg_crc32	crc;
 } ControlFileData;
 
 #endif   /* PG_CONTROL_H */

@@ -2,7 +2,7 @@
  *
  * PostgreSQL locale utilities
  *
- * $PostgreSQL: pgsql/src/include/utils/pg_locale.h,v 1.19.4.1 2005/03/16 00:03:02 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/utils/pg_locale.h,v 1.20 2005/03/16 00:02:49 momjian Exp $
  *
  * Copyright (c) 2002-2005, PostgreSQL Global Development Group
  *

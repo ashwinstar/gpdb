@@ -10,13 +10,13 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/libpq/hba.c,v 1.136.4.1 2005/06/21 01:23:25 neilc Exp $
+ *	  $PostgreSQL: pgsql/src/backend/libpq/hba.c,v 1.149 2005/10/17 16:24:19 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
-#include <errno.h>
+#include <ctype.h>
 #include <pwd.h>
 #include <fcntl.h>
 #include <sys/param.h>
@@ -29,14 +29,17 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 
-#include "commands/user.h"
 #include "libpq/crypt.h"
 #include "libpq/libpq.h"
 #include "miscadmin.h"
 #include "nodes/pg_list.h"
 #include "storage/fd.h"
+#include "utils/flatfiles.h"
 #include "utils/guc.h"
 
+
+#define atooid(x)  ((Oid) strtoul((x), NULL, 10))
+#define atoxid(x)  ((TransactionId) strtoul((x), NULL, 10))
 
 /* Max size of username ident server can return */
 #define IDENT_USERNAME_MAX 512
@@ -51,7 +54,8 @@
 
 /*
  * These variables hold the pre-parsed contents of the hba and ident
- * configuration files.  Each is a list of sublists, one sublist for
+ * configuration files, as well as the flat auth file.
+ * Each is a list of sublists, one sublist for
  * each (non-empty, non-comment) line of the file.	Each sublist's
  * first item is an integer line number (so we can give somewhat-useful
  * location info in error messages).  Remaining items are palloc'd strings,
@@ -67,25 +71,18 @@ static List *hba_line_nums = NIL;
 static List *ident_lines = NIL;
 static List *ident_line_nums = NIL;
 
-/* pre-parsed content of group file and corresponding line #s */
-static List *group_lines = NIL;
-static List *group_line_nums = NIL;
-
-/* pre-parsed content of user passwd file and corresponding line #s */
-static List *user_lines = NIL;
-static List *user_line_nums = NIL;
+/* pre-parsed content of flat auth file and corresponding line #s */
+static List *role_lines = NIL;
+static List *role_line_nums = NIL;
 
 /* sorted entries so we can do binary search lookups */
-static List **user_sorted = NULL;		/* sorted user list, for bsearch() */
-static List **group_sorted = NULL;		/* sorted group list, for
-										 * bsearch() */
-static int	user_length;
-static int	group_length;
+static List **role_sorted = NULL;		/* sorted role list, for bsearch() */
+static int	role_length;
 
 static void tokenize_file(const char *filename, FILE *file,
-						  List **lines, List **line_nums);
+			  List **lines, List **line_nums);
 static char *tokenize_inc_file(const char *outer_filename,
-							   const char *inc_filename);
+				  const char *inc_filename);
 
 /*
  * isblank() exists in the ISO C99 spec, but it's not very portable yet,
@@ -100,17 +97,23 @@ pg_isblank(const char c)
 
 /*
  * Grab one token out of fp. Tokens are strings of non-blank
- * characters bounded by blank characters, beginning of line, and
- * end of line. Blank means space or tab. Return the token as
- * *buf. Leave file positioned at the character immediately after the
- * token or EOF, whichever comes first. If no more tokens on line,
- * return empty string as *buf and position the file to the beginning
- * of the next line or EOF, whichever comes first. Allow spaces in
- * quoted strings. Terminate on unquoted commas. Handle
- * comments. Treat unquoted keywords that might be user names or
+ * characters bounded by blank characters, commas, beginning of line, and
+ * end of line. Blank means space or tab. Tokens can be delimited by
+ * double quotes (and usually are, in current usage).
+ *
+ * The token, if any, is returned at *buf (a buffer of size bufsz).
+ *
+ * If successful: store null-terminated token at *buf and return TRUE.
+ * If no more tokens on line: set *buf = '\0' and return FALSE.
+ *
+ * Leave file positioned at the character immediately after the token or EOF,
+ * whichever comes first. If no more tokens on line, position the file to the
+ * beginning of the next line or EOF, whichever comes first.
+ *
+ * Handle comments. Treat unquoted keywords that might be role names or
  * database names specially, by appending a newline to them.
  */
-static void
+static bool
 next_token(FILE *fp, char *buf, int bufsz)
 {
 	int			c;
@@ -129,12 +132,12 @@ next_token(FILE *fp, char *buf, int bufsz)
 	if (c == EOF || c == '\n')
 	{
 		*buf = '\0';
-		return;
+		return false;
 	}
 
 	/*
-	 * Build a token in buf of next characters up to EOF, EOL, unquoted
-	 * comma, or unquoted whitespace.
+	 * Build a token in buf of next characters up to EOF, EOL, unquoted comma,
+	 * or unquoted whitespace.
 	 */
 	while (c != EOF && c != '\n' &&
 		   (!pg_isblank(c) || in_quote == true))
@@ -155,8 +158,8 @@ next_token(FILE *fp, char *buf, int bufsz)
 			*buf = '\0';
 			ereport(LOG,
 					(errcode(ERRCODE_CONFIG_FILE_ERROR),
-			errmsg("authentication file token too long, skipping: \"%s\"",
-				   start_buf)));
+			   errmsg("authentication file token too long, skipping: \"%s\"",
+					  start_buf)));
 			/* Discard remainder of line */
 			while ((c = getc(fp)) != EOF && c != '\n')
 				;
@@ -186,8 +189,8 @@ next_token(FILE *fp, char *buf, int bufsz)
 	}
 
 	/*
-	 * Put back the char right after the token (critical in case it is
-	 * EOL, since we need to detect end-of-line at next call).
+	 * Put back the char right after the token (critical in case it is EOL,
+	 * since we need to detect end-of-line at next call).
 	 */
 	if (c != EOF)
 		ungetc(c, fp);
@@ -197,12 +200,15 @@ next_token(FILE *fp, char *buf, int bufsz)
 	if (!saw_quote &&
 		(strcmp(start_buf, "all") == 0 ||
 		 strcmp(start_buf, "sameuser") == 0 ||
-		 strcmp(start_buf, "samegroup") == 0))
+		 strcmp(start_buf, "samegroup") == 0 ||
+		 strcmp(start_buf, "samerole") == 0))
 	{
 		/* append newline to a magical keyword */
 		*buf++ = '\n';
 		*buf = '\0';
 	}
+
+	return (saw_quote || buf > start_buf);
 }
 
 /*
@@ -210,25 +216,26 @@ next_token(FILE *fp, char *buf, int bufsz)
  *	 to  break	apart  the	commas	to	expand	any  file names then
  *	 reconstruct with commas.
  *
- * The result is always a palloc'd string.  If it's zero-length then
- * we have reached EOL.
+ * The result is a palloc'd string, or NULL if we have reached EOL.
  */
 static char *
 next_token_expand(const char *filename, FILE *file)
 {
 	char		buf[MAX_TOKEN];
 	char	   *comma_str = pstrdup("");
+	bool		got_something = false;
 	bool		trailing_comma;
 	char	   *incbuf;
 	int			needed;
 
 	do
 	{
-		next_token(file, buf, sizeof(buf));
-		if (!buf[0])
+		if (!next_token(file, buf, sizeof(buf)))
 			break;
 
-		if (buf[strlen(buf) - 1] == ',')
+		got_something = true;
+
+		if (strlen(buf) > 0 && buf[strlen(buf) - 1] == ',')
 		{
 			trailing_comma = true;
 			buf[strlen(buf) - 1] = '\0';
@@ -251,6 +258,12 @@ next_token_expand(const char *filename, FILE *file)
 			strcat(comma_str, MULTI_VALUE_SEP);
 		pfree(incbuf);
 	} while (trailing_comma);
+
+	if (!got_something)
+	{
+		pfree(comma_str);
+		return NULL;
+	}
 
 	return comma_str;
 }
@@ -357,8 +370,8 @@ tokenize_inc_file(const char *outer_filename,
 
 		foreach(token, token_list)
 		{
-			int		oldlen = strlen(comma_str);
-			int		needed;
+			int			oldlen = strlen(comma_str);
+			int			needed;
 
 			needed = oldlen + strlen(lfirst(token)) + 1;
 			if (oldlen > 0)
@@ -405,7 +418,7 @@ tokenize_file(const char *filename, FILE *file,
 		buf = next_token_expand(filename, file);
 
 		/* add token to list, unless we are at EOL or comment start */
-		if (buf[0])
+		if (buf)
 		{
 			if (current_line == NIL)
 			{
@@ -426,117 +439,98 @@ tokenize_file(const char *filename, FILE *file,
 			current_line = NIL;
 			/* Advance line number whenever we reach EOL */
 			line_number++;
-			/* Don't forget to pfree the next_token_expand result */
-			pfree(buf);
 		}
 	}
 }
 
-
 /*
- * Compare two lines based on their user/group names.
- *
- * Used for qsort() sorting.
- */
-static int
-user_group_qsort_cmp(const void *list1, const void *list2)
-{
-	char	   *user1 = linitial(*(List **) list1);
-	char	   *user2 = linitial(*(List **) list2);
-
-	return strcmp(user1, user2);
-}
-
-
-/*
- * Compare two lines based on their user/group names.
+ * Compare two lines based on their role/member names.
  *
  * Used for bsearch() lookup.
  */
 static int
-user_group_bsearch_cmp(const void *user, const void *list)
+role_bsearch_cmp(const void *role, const void *list)
 {
-	char	   *user2 = linitial(*(List **) list);
+	char	   *role2 = linitial(*(List **) list);
 
-	return strcmp(user, user2);
+	return strcmp(role, role2);
 }
 
 
 /*
- * Lookup a group name in the pg_group file
- */
-static List **
-get_group_line(const char *group)
-{
-	/* On some versions of Solaris, bsearch of zero items dumps core */
-	if (group_length == 0)
-		return NULL;
-
-	return (List **) bsearch((void *) group,
-							 (void *) group_sorted,
-							 group_length,
-							 sizeof(List *),
-							 user_group_bsearch_cmp);
-}
-
-
-/*
- * Lookup a user name in the pg_shadow file
+ * Lookup a role name in the pg_auth file
  */
 List	  **
-get_user_line(const char *user)
+get_role_line(const char *role)
 {
 	/* On some versions of Solaris, bsearch of zero items dumps core */
-	if (user_length == 0)
+	if (role_length == 0)
 		return NULL;
 
-	return (List **) bsearch((void *) user,
-							 (void *) user_sorted,
-							 user_length,
+	return (List **) bsearch((void *) role,
+							 (void *) role_sorted,
+							 role_length,
 							 sizeof(List *),
-							 user_group_bsearch_cmp);
+							 role_bsearch_cmp);
 }
 
 
 /*
- * Check group for a specific user.
+ * Does user belong to role?
+ *
+ * user is always the name given as the attempted login identifier.
+ * We check to see if it is a member of the specified role name.
  */
 static bool
-check_group(char *group, char *user)
+is_member(const char *user, const char *role)
 {
 	List	  **line;
+	ListCell   *line_item;
 
-	if ((line = get_group_line(group)) != NULL)
+	if ((line = get_role_line(user)) == NULL)
+		return false;			/* if user not exist, say "no" */
+
+	/* A user always belongs to its own role */
+	if (strcmp(user, role) == 0)
+		return true;
+
+	/*
+	 * skip over the role name, password, valuntil, examine all the membership
+	 * entries
+	 */
+	if (list_length(*line) < 4)
+		return false;
+	for_each_cell(line_item, lnext(lnext(lnext(list_head(*line)))))
 	{
-		ListCell   *line_item;
-
-		/* skip over the group name */
-		for_each_cell(line_item, lnext(list_head(*line)))
-		{
-			if (strcmp(lfirst(line_item), user) == 0)
-				return true;
-		}
+		if (strcmp((char *) lfirst(line_item), role) == 0)
+			return true;
 	}
 
 	return false;
 }
 
 /*
- * Check comma user list for a specific user, handle group names.
+ * Check comma-separated list for a match to role, allowing group names.
+ *
+ * NB: param_str is destructively modified!  In current usage, this is
+ * okay only because this code is run after forking off from the postmaster,
+ * and so it doesn't matter that we clobber the stored hba info.
  */
 static bool
-check_user(char *user, char *param_str)
+check_role(const char *role, char *param_str)
 {
 	char	   *tok;
 
-	for (tok = strtok(param_str, MULTI_VALUE_SEP); tok != NULL; tok = strtok(NULL, MULTI_VALUE_SEP))
+	for (tok = strtok(param_str, MULTI_VALUE_SEP);
+		 tok != NULL;
+		 tok = strtok(NULL, MULTI_VALUE_SEP))
 	{
 		if (tok[0] == '+')
 		{
-			if (check_group(tok + 1, user))
+			if (is_member(role, tok + 1))
 				return true;
 		}
-		else if (strcmp(tok, user) == 0 ||
+		else if (strcmp(tok, role) == 0 ||
 				 strcmp(tok, "all\n") == 0)
 			return true;
 	}
@@ -545,25 +539,32 @@ check_user(char *user, char *param_str)
 }
 
 /*
- * Check to see if db/user combination matches param string.
+ * Check to see if db/role combination matches param string.
+ *
+ * NB: param_str is destructively modified!  In current usage, this is
+ * okay only because this code is run after forking off from the postmaster,
+ * and so it doesn't matter that we clobber the stored hba info.
  */
 static bool
-check_db(char *dbname, char *user, char *param_str)
+check_db(const char *dbname, const char *role, char *param_str)
 {
 	char	   *tok;
 
-	for (tok = strtok(param_str, MULTI_VALUE_SEP); tok != NULL; tok = strtok(NULL, MULTI_VALUE_SEP))
+	for (tok = strtok(param_str, MULTI_VALUE_SEP);
+		 tok != NULL;
+		 tok = strtok(NULL, MULTI_VALUE_SEP))
 	{
 		if (strcmp(tok, "all\n") == 0)
 			return true;
 		else if (strcmp(tok, "sameuser\n") == 0)
 		{
-			if (strcmp(dbname, user) == 0)
+			if (strcmp(dbname, role) == 0)
 				return true;
 		}
-		else if (strcmp(tok, "samegroup\n") == 0)
+		else if (strcmp(tok, "samegroup\n") == 0 ||
+				 strcmp(tok, "samerole\n") == 0)
 		{
-			if (check_group(dbname, user))
+			if (is_member(role, dbname))
 				return true;
 		}
 		else if (strcmp(tok, dbname) == 0)
@@ -600,8 +601,6 @@ parse_hba_auth(ListCell **line_item, UserAuth *userauth_p,
 		*userauth_p = uaIdent;
 	else if (strcmp(token, "password") == 0)
 		*userauth_p = uaPassword;
-	else if (strcmp(token, "krb4") == 0)
-		*userauth_p = uaKrb4;
 	else if (strcmp(token, "krb5") == 0)
 		*userauth_p = uaKrb5;
 	else if (strcmp(token, "reject") == 0)
@@ -650,7 +649,7 @@ parse_hba(List *line, int line_num, hbaPort *port,
 {
 	char	   *token;
 	char	   *db;
-	char	   *user;
+	char	   *role;
 	struct addrinfo *gai_result;
 	struct addrinfo hints;
 	int			ret;
@@ -670,11 +669,11 @@ parse_hba(List *line, int line_num, hbaPort *port,
 			goto hba_syntax;
 		db = lfirst(line_item);
 
-		/* Get the user. */
+		/* Get the role. */
 		line_item = lnext(line_item);
 		if (!line_item)
 			goto hba_syntax;
-		user = lfirst(line_item);
+		role = lfirst(line_item);
 
 		line_item = lnext(line_item);
 		if (!line_item)
@@ -687,8 +686,7 @@ parse_hba(List *line, int line_num, hbaPort *port,
 			goto hba_syntax;
 
 		/* Disallow auth methods that always need TCP/IP sockets to work */
-		if (port->auth_method == uaKrb4 ||
-			port->auth_method == uaKrb5)
+		if (port->auth_method == uaKrb5)
 			goto hba_syntax;
 
 		/* Does not match if connection isn't AF_UNIX */
@@ -731,11 +729,11 @@ parse_hba(List *line, int line_num, hbaPort *port,
 			goto hba_syntax;
 		db = lfirst(line_item);
 
-		/* Get the user. */
+		/* Get the role. */
 		line_item = lnext(line_item);
 		if (!line_item)
 			goto hba_syntax;
-		user = lfirst(line_item);
+		role = lfirst(line_item);
 
 		/* Read the IP address field. (with or without CIDR netmask) */
 		line_item = lnext(line_item);
@@ -758,18 +756,18 @@ parse_hba(List *line, int line_num, hbaPort *port,
 		hints.ai_addr = NULL;
 		hints.ai_next = NULL;
 
-		ret = getaddrinfo_all(token, NULL, &hints, &gai_result);
+		ret = pg_getaddrinfo_all(token, NULL, &hints, &gai_result);
 		if (ret || !gai_result)
 		{
 			ereport(LOG,
 					(errcode(ERRCODE_CONFIG_FILE_ERROR),
-					 errmsg("invalid IP address \"%s\" in file \"%s\" line %d: %s",
-							token, HbaFileName, line_num,
-							gai_strerror(ret))));
+			   errmsg("invalid IP address \"%s\" in file \"%s\" line %d: %s",
+					  token, HbaFileName, line_num,
+					  gai_strerror(ret))));
 			if (cidr_slash)
 				*cidr_slash = '/';
 			if (gai_result)
-				freeaddrinfo_all(hints.ai_family, gai_result);
+				pg_freeaddrinfo_all(hints.ai_family, gai_result);
 			goto hba_other_error;
 		}
 
@@ -777,12 +775,13 @@ parse_hba(List *line, int line_num, hbaPort *port,
 			*cidr_slash = '/';
 
 		memcpy(&addr, gai_result->ai_addr, gai_result->ai_addrlen);
-		freeaddrinfo_all(hints.ai_family, gai_result);
+		pg_freeaddrinfo_all(hints.ai_family, gai_result);
 
 		/* Get the netmask */
 		if (cidr_slash)
 		{
-			if (SockAddr_cidr_mask(&mask, cidr_slash + 1, addr.ss_family) < 0)
+			if (pg_sockaddr_cidr_mask(&mask, cidr_slash + 1,
+									  addr.ss_family) < 0)
 				goto hba_syntax;
 		}
 		else
@@ -793,21 +792,21 @@ parse_hba(List *line, int line_num, hbaPort *port,
 				goto hba_syntax;
 			token = lfirst(line_item);
 
-			ret = getaddrinfo_all(token, NULL, &hints, &gai_result);
+			ret = pg_getaddrinfo_all(token, NULL, &hints, &gai_result);
 			if (ret || !gai_result)
 			{
 				ereport(LOG,
 						(errcode(ERRCODE_CONFIG_FILE_ERROR),
-						 errmsg("invalid IP mask \"%s\" in file \"%s\" line %d: %s",
-								token, HbaFileName, line_num,
-								gai_strerror(ret))));
+				  errmsg("invalid IP mask \"%s\" in file \"%s\" line %d: %s",
+						 token, HbaFileName, line_num,
+						 gai_strerror(ret))));
 				if (gai_result)
-					freeaddrinfo_all(hints.ai_family, gai_result);
+					pg_freeaddrinfo_all(hints.ai_family, gai_result);
 				goto hba_other_error;
 			}
 
 			memcpy(&mask, gai_result->ai_addr, gai_result->ai_addrlen);
-			freeaddrinfo_all(hints.ai_family, gai_result);
+			pg_freeaddrinfo_all(hints.ai_family, gai_result);
 
 			if (addr.ss_family != mask.ss_family)
 			{
@@ -822,16 +821,16 @@ parse_hba(List *line, int line_num, hbaPort *port,
 		if (addr.ss_family != port->raddr.addr.ss_family)
 		{
 			/*
-			 * Wrong address family.  We allow only one case: if the file
-			 * has IPv4 and the port is IPv6, promote the file address to
-			 * IPv6 and try to match that way.
+			 * Wrong address family.  We allow only one case: if the file has
+			 * IPv4 and the port is IPv6, promote the file address to IPv6 and
+			 * try to match that way.
 			 */
 #ifdef HAVE_IPV6
 			if (addr.ss_family == AF_INET &&
 				port->raddr.addr.ss_family == AF_INET6)
 			{
-				promote_v4_to_v6_addr(&addr);
-				promote_v4_to_v6_mask(&mask);
+				pg_promote_v4_to_v6_addr(&addr);
+				pg_promote_v4_to_v6_mask(&mask);
 			}
 			else
 #endif   /* HAVE_IPV6 */
@@ -842,7 +841,7 @@ parse_hba(List *line, int line_num, hbaPort *port,
 		}
 
 		/* Ignore line if client port is not in the matching addr range. */
-		if (!rangeSockAddr(&port->raddr.addr, &addr, &mask))
+		if (!pg_range_sockaddr(&port->raddr.addr, &addr, &mask))
 			return;
 
 		/* Read the rest of the line. */
@@ -857,10 +856,10 @@ parse_hba(List *line, int line_num, hbaPort *port,
 	else
 		goto hba_syntax;
 
-	/* Does the entry match database and user? */
+	/* Does the entry match database and role? */
 	if (!check_db(port->database_name, port->user_name, db))
 		return;
-	if (!check_user(port->user_name, user))
+	if (!check_role(port->user_name, role))
 		return;
 
 	/* Success */
@@ -871,14 +870,14 @@ hba_syntax:
 	if (line_item)
 		ereport(LOG,
 				(errcode(ERRCODE_CONFIG_FILE_ERROR),
-				 errmsg("invalid entry in file \"%s\" at line %d, token \"%s\"",
-						HbaFileName, line_num,
-						(char *) lfirst(line_item))));
+			  errmsg("invalid entry in file \"%s\" at line %d, token \"%s\"",
+					 HbaFileName, line_num,
+					 (char *) lfirst(line_item))));
 	else
 		ereport(LOG,
 				(errcode(ERRCODE_CONFIG_FILE_ERROR),
-			errmsg("missing field in file \"%s\" at end of line %d",
-				   HbaFileName, line_num)));
+				 errmsg("missing field in file \"%s\" at end of line %d",
+						HbaFileName, line_num)));
 
 	/* Come here if suitable message already logged */
 hba_other_error:
@@ -919,27 +918,27 @@ check_hba(hbaPort *port)
 
 
 /*
- *	 Load group/user name mapping file
+ *	 Load role/password mapping file
  */
 void
-load_group(void)
+load_role(void)
 {
 	char	   *filename;
-	FILE	   *group_file;
+	FILE	   *role_file;
 
 	/* Discard any old data */
-	if (group_lines || group_line_nums)
-		free_lines(&group_lines, &group_line_nums);
-	if (group_sorted)
-		pfree(group_sorted);
-	group_sorted = NULL;
-	group_length = 0;
+	if (role_lines || role_line_nums)
+		free_lines(&role_lines, &role_line_nums);
+	if (role_sorted)
+		pfree(role_sorted);
+	role_sorted = NULL;
+	role_length = 0;
 
 	/* Read in the file contents */
-	filename = group_getfilename();
-	group_file = AllocateFile(filename, "r");
+	filename = auth_getflatfilename();
+	role_file = AllocateFile(filename, "r");
 
-	if (group_file == NULL)
+	if (role_file == NULL)
 	{
 		/* no complaint if not there */
 		if (errno != ENOENT)
@@ -950,84 +949,22 @@ load_group(void)
 		return;
 	}
 
-	tokenize_file(filename, group_file, &group_lines, &group_line_nums);
+	tokenize_file(filename, role_file, &role_lines, &role_line_nums);
 
-	FreeFile(group_file);
+	FreeFile(role_file);
 	pfree(filename);
 
-	/* create sorted lines for binary searching */
-	group_length = list_length(group_lines);
-	if (group_length)
+	/* create array for binary searching */
+	role_length = list_length(role_lines);
+	if (role_length)
 	{
 		int			i = 0;
 		ListCell   *line;
 
-		group_sorted = palloc(group_length * sizeof(List *));
-
-		foreach(line, group_lines)
-			group_sorted[i++] = lfirst(line);
-
-		qsort((void *) group_sorted,
-			  group_length,
-			  sizeof(List *),
-			  user_group_qsort_cmp);
-	}
-}
-
-
-/*
- *	 Load user/password mapping file
- */
-void
-load_user(void)
-{
-	char	   *filename;
-	FILE	   *user_file;
-
-	/* Discard any old data */
-	if (user_lines || user_line_nums)
-		free_lines(&user_lines, &user_line_nums);
-	if (user_sorted)
-		pfree(user_sorted);
-	user_sorted = NULL;
-	user_length = 0;
-
-	/* Read in the file contents */
-	filename = user_getfilename();
-	user_file = AllocateFile(filename, "r");
-
-	if (user_file == NULL)
-	{
-		/* no complaint if not there */
-		if (errno != ENOENT)
-			ereport(LOG,
-					(errcode_for_file_access(),
-					 errmsg("could not open file \"%s\": %m", filename)));
-		pfree(filename);
-		return;
-	}
-
-	tokenize_file(filename, user_file, &user_lines, &user_line_nums);
-
-	FreeFile(user_file);
-	pfree(filename);
-
-	/* create sorted lines for binary searching */
-	user_length = list_length(user_lines);
-	if (user_length)
-	{
-		int			i = 0;
-		ListCell   *line;
-
-		user_sorted = palloc(user_length * sizeof(List *));
-
-		foreach(line, user_lines)
-			user_sorted[i++] = lfirst(line);
-
-		qsort((void *) user_sorted,
-			  user_length,
-			  sizeof(List *),
-			  user_group_qsort_cmp);
+		/* We assume the flat file was written already-sorted */
+		role_sorted = palloc(role_length * sizeof(List *));
+		foreach(line, role_lines)
+			role_sorted[i++] = lfirst(line);
 	}
 }
 
@@ -1055,22 +992,72 @@ load_hba(void)
 	FreeFile(file);
 }
 
+/*
+ * Read and parse one line from the flat pg_database file.
+ *
+ * Returns TRUE on success, FALSE if EOF; bad data causes elog(FATAL).
+ *
+ * Output parameters:
+ *	dbname: gets database name (must be of size NAMEDATALEN bytes)
+ *	dboid: gets database OID
+ *	dbtablespace: gets database's default tablespace's OID
+ *	dbfrozenxid: gets database's frozen XID
+ *	dbvacuumxid: gets database's vacuum XID
+ *
+ * This is not much related to the other functions in hba.c, but we put it
+ * here because it uses the next_token() infrastructure.
+ */
+bool
+read_pg_database_line(FILE *fp, char *dbname, Oid *dboid,
+					  Oid *dbtablespace, TransactionId *dbfrozenxid,
+					  TransactionId *dbvacuumxid)
+{
+	char		buf[MAX_TOKEN];
+
+	if (feof(fp))
+		return false;
+	if (!next_token(fp, buf, sizeof(buf)))
+		return false;
+	if (strlen(buf) >= NAMEDATALEN)
+		elog(FATAL, "bad data in flat pg_database file");
+	strcpy(dbname, buf);
+	next_token(fp, buf, sizeof(buf));
+	if (!isdigit((unsigned char) buf[0]))
+		elog(FATAL, "bad data in flat pg_database file");
+	*dboid = atooid(buf);
+	next_token(fp, buf, sizeof(buf));
+	if (!isdigit((unsigned char) buf[0]))
+		elog(FATAL, "bad data in flat pg_database file");
+	*dbtablespace = atooid(buf);
+	next_token(fp, buf, sizeof(buf));
+	if (!isdigit((unsigned char) buf[0]))
+		elog(FATAL, "bad data in flat pg_database file");
+	*dbfrozenxid = atoxid(buf);
+	next_token(fp, buf, sizeof(buf));
+	if (!isdigit((unsigned char) buf[0]))
+		elog(FATAL, "bad data in flat pg_database file");
+	*dbvacuumxid = atoxid(buf);
+	/* expect EOL next */
+	if (next_token(fp, buf, sizeof(buf)))
+		elog(FATAL, "bad data in flat pg_database file");
+	return true;
+}
 
 /*
  *	Process one line from the ident config file.
  *
- *	Take the line and compare it to the needed map, pg_user and ident_user.
+ *	Take the line and compare it to the needed map, pg_role and ident_user.
  *	*found_p and *error_p are set according to our results.
  */
 static void
 parse_ident_usermap(List *line, int line_number, const char *usermap_name,
-					const char *pg_user, const char *ident_user,
+					const char *pg_role, const char *ident_user,
 					bool *found_p, bool *error_p)
 {
 	ListCell   *line_item;
 	char	   *token;
 	char	   *file_map;
-	char	   *file_pguser;
+	char	   *file_pgrole;
 	char	   *file_ident_user;
 
 	*found_p = false;
@@ -1090,16 +1077,16 @@ parse_ident_usermap(List *line, int line_number, const char *usermap_name,
 	token = lfirst(line_item);
 	file_ident_user = token;
 
-	/* Get the PG username token */
+	/* Get the PG rolename token */
 	line_item = lnext(line_item);
 	if (!line_item)
 		goto ident_syntax;
 	token = lfirst(line_item);
-	file_pguser = token;
+	file_pgrole = token;
 
 	/* Match? */
 	if (strcmp(file_map, usermap_name) == 0 &&
-		strcmp(file_pguser, pg_user) == 0 &&
+		strcmp(file_pgrole, pg_role) == 0 &&
 		strcmp(file_ident_user, ident_user) == 0)
 		*found_p = true;
 
@@ -1118,17 +1105,17 @@ ident_syntax:
  *	Scan the (pre-parsed) ident usermap file line by line, looking for a match
  *
  *	See if the user with ident username "ident_user" is allowed to act
- *	as Postgres user "pguser" according to usermap "usermap_name".
+ *	as Postgres user "pgrole" according to usermap "usermap_name".
  *
- *	Special case: For usermap "sameuser", don't look in the usermap
- *	file.  That's an implied map where "pguser" must be identical to
+ *	Special case: For usermap "samerole", don't look in the usermap
+ *	file.  That's an implied map where "pgrole" must be identical to
  *	"ident_user" in order to be authorized.
  *
  *	Iff authorized, return true.
  */
 static bool
 check_ident_usermap(const char *usermap_name,
-					const char *pg_user,
+					const char *pg_role,
 					const char *ident_user)
 {
 	bool		found_entry = false,
@@ -1138,12 +1125,13 @@ check_ident_usermap(const char *usermap_name,
 	{
 		ereport(LOG,
 				(errcode(ERRCODE_CONFIG_FILE_ERROR),
-		errmsg("cannot use Ident authentication without usermap field")));
+		   errmsg("cannot use Ident authentication without usermap field")));
 		found_entry = false;
 	}
-	else if (strcmp(usermap_name, "sameuser\n") == 0)
+	else if (strcmp(usermap_name, "sameuser\n") == 0 ||
+			 strcmp(usermap_name, "samerole\n") == 0)
 	{
-		if (strcmp(pg_user, ident_user) == 0)
+		if (strcmp(pg_role, ident_user) == 0)
 			found_entry = true;
 		else
 			found_entry = false;
@@ -1156,7 +1144,7 @@ check_ident_usermap(const char *usermap_name,
 		forboth(line_cell, ident_lines, num_cell, ident_line_nums)
 		{
 			parse_ident_usermap(lfirst(line_cell), lfirst_int(num_cell),
-								usermap_name, pg_user, ident_user,
+								usermap_name, pg_role, ident_user,
 								&found_entry, &error);
 			if (found_entry || error)
 				break;
@@ -1204,12 +1192,10 @@ static bool
 interpret_ident_response(const char *ident_response,
 						 char *ident_user)
 {
-	const char *cursor = ident_response;		/* Cursor into
-												 * *ident_response */
+	const char *cursor = ident_response;		/* Cursor into *ident_response */
 
 	/*
-	 * Ident's response, in the telnet tradition, should end in crlf
-	 * (\r\n).
+	 * Ident's response, in the telnet tradition, should end in crlf (\r\n).
 	 */
 	if (strlen(ident_response) < 2)
 		return false;
@@ -1243,9 +1229,8 @@ interpret_ident_response(const char *ident_response,
 			else
 			{
 				/*
-				 * It's a USERID response.  Good.  "cursor" should be
-				 * pointing to the colon that precedes the operating
-				 * system type.
+				 * It's a USERID response.  Good.  "cursor" should be pointing
+				 * to the colon that precedes the operating system type.
 				 */
 				if (*cursor != ':')
 					return false;
@@ -1293,10 +1278,9 @@ ident_inet(const SockAddr remote_addr,
 		   const SockAddr local_addr,
 		   char *ident_user)
 {
-	int			sock_fd,		/* File descriptor for socket on which we
-								 * talk to Ident */
-				rc;				/* Return code from a locally called
-								 * function */
+	int			sock_fd,		/* File descriptor for socket on which we talk
+								 * to Ident */
+				rc;				/* Return code from a locally called function */
 	bool		ident_return;
 	char		remote_addr_s[NI_MAXHOST];
 	char		remote_port[NI_MAXSERV];
@@ -1310,17 +1294,17 @@ ident_inet(const SockAddr remote_addr,
 				hints;
 
 	/*
-	 * Might look a little weird to first convert it to text and then back
-	 * to sockaddr, but it's protocol independent.
+	 * Might look a little weird to first convert it to text and then back to
+	 * sockaddr, but it's protocol independent.
 	 */
-	getnameinfo_all(&remote_addr.addr, remote_addr.salen,
-					remote_addr_s, sizeof(remote_addr_s),
-					remote_port, sizeof(remote_port),
-					NI_NUMERICHOST | NI_NUMERICSERV);
-	getnameinfo_all(&local_addr.addr, local_addr.salen,
-					local_addr_s, sizeof(local_addr_s),
-					local_port, sizeof(local_port),
-					NI_NUMERICHOST | NI_NUMERICSERV);
+	pg_getnameinfo_all(&remote_addr.addr, remote_addr.salen,
+					   remote_addr_s, sizeof(remote_addr_s),
+					   remote_port, sizeof(remote_port),
+					   NI_NUMERICHOST | NI_NUMERICSERV);
+	pg_getnameinfo_all(&local_addr.addr, local_addr.salen,
+					   local_addr_s, sizeof(local_addr_s),
+					   local_port, sizeof(local_port),
+					   NI_NUMERICHOST | NI_NUMERICSERV);
 
 	snprintf(ident_port, sizeof(ident_port), "%d", IDENT_PORT);
 	hints.ai_flags = AI_NUMERICHOST;
@@ -1331,11 +1315,11 @@ ident_inet(const SockAddr remote_addr,
 	hints.ai_canonname = NULL;
 	hints.ai_addr = NULL;
 	hints.ai_next = NULL;
-	rc = getaddrinfo_all(remote_addr_s, ident_port, &hints, &ident_serv);
+	rc = pg_getaddrinfo_all(remote_addr_s, ident_port, &hints, &ident_serv);
 	if (rc || !ident_serv)
 	{
 		if (ident_serv)
-			freeaddrinfo_all(hints.ai_family, ident_serv);
+			pg_freeaddrinfo_all(hints.ai_family, ident_serv);
 		return false;			/* we don't expect this to happen */
 	}
 
@@ -1347,11 +1331,11 @@ ident_inet(const SockAddr remote_addr,
 	hints.ai_canonname = NULL;
 	hints.ai_addr = NULL;
 	hints.ai_next = NULL;
-	rc = getaddrinfo_all(local_addr_s, NULL, &hints, &la);
+	rc = pg_getaddrinfo_all(local_addr_s, NULL, &hints, &la);
 	if (rc || !la)
 	{
 		if (la)
-			freeaddrinfo_all(hints.ai_family, la);
+			pg_freeaddrinfo_all(hints.ai_family, la);
 		return false;			/* we don't expect this to happen */
 	}
 
@@ -1361,16 +1345,15 @@ ident_inet(const SockAddr remote_addr,
 	{
 		ereport(LOG,
 				(errcode_for_socket_access(),
-			errmsg("could not create socket for Ident connection: %m")));
+				 errmsg("could not create socket for Ident connection: %m")));
 		ident_return = false;
 		goto ident_inet_done;
 	}
 
 	/*
-	 * Bind to the address which the client originally contacted,
-	 * otherwise the ident server won't be able to match up the right
-	 * connection. This is necessary if the PostgreSQL server is running
-	 * on an IP alias.
+	 * Bind to the address which the client originally contacted, otherwise
+	 * the ident server won't be able to match up the right connection. This
+	 * is necessary if the PostgreSQL server is running on an IP alias.
 	 */
 	rc = bind(sock_fd, la->ai_addr, la->ai_addrlen);
 	if (rc != 0)
@@ -1434,14 +1417,14 @@ ident_inet(const SockAddr remote_addr,
 	ident_return = interpret_ident_response(ident_response, ident_user);
 	if (!ident_return)
 		ereport(LOG,
-		(errmsg("invalidly formatted response from Ident server: \"%s\"",
-				ident_response)));
+			(errmsg("invalidly formatted response from Ident server: \"%s\"",
+					ident_response)));
 
 ident_inet_done:
 	if (sock_fd >= 0)
 		closesocket(sock_fd);
-	freeaddrinfo_all(remote_addr.addr.ss_family, ident_serv);
-	freeaddrinfo_all(local_addr.addr.ss_family, la);
+	pg_freeaddrinfo_all(remote_addr.addr.ss_family, ident_serv);
+	pg_freeaddrinfo_all(local_addr.addr.ss_family, la);
 	return ident_return;
 }
 
@@ -1486,7 +1469,6 @@ ident_unix(int sock, char *ident_user)
 	StrNCpy(ident_user, pass->pw_name, IDENT_USERNAME_MAX + 1);
 
 	return true;
-
 #elif defined(SO_PEERCRED)
 	/* Linux style: use getsockopt(SO_PEERCRED) */
 	struct ucred peercred;
@@ -1517,7 +1499,6 @@ ident_unix(int sock, char *ident_user)
 	StrNCpy(ident_user, pass->pw_name, IDENT_USERNAME_MAX + 1);
 
 	return true;
-
 #elif defined(HAVE_STRUCT_CMSGCRED) || defined(HAVE_STRUCT_FCRED) || (defined(HAVE_STRUCT_SOCKCRED) && defined(LOCAL_CREDS))
 	struct msghdr msg;
 
@@ -1556,8 +1537,8 @@ ident_unix(int sock, char *ident_user)
 
 	/*
 	 * The one character which is received here is not meaningful; its
-	 * purposes is only to make sure that recvmsg() blocks long enough for
-	 * the other side to send its credentials.
+	 * purposes is only to make sure that recvmsg() blocks long enough for the
+	 * other side to send its credentials.
 	 */
 	iov.iov_base = &buf;
 	iov.iov_len = 1;
@@ -1587,7 +1568,6 @@ ident_unix(int sock, char *ident_user)
 	StrNCpy(ident_user, pw->pw_name, IDENT_USERNAME_MAX + 1);
 
 	return true;
-
 #else
 	ereport(LOG,
 			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
@@ -1633,7 +1613,7 @@ authident(hbaPort *port)
 			return STATUS_ERROR;
 	}
 
-	ereport(DEBUG1,
+	ereport(DEBUG2,
 			(errmsg("Ident protocol identifies remote user as \"%s\"",
 					ident_user)));
 

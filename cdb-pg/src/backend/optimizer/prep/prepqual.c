@@ -3,12 +3,29 @@
  * prepqual.c
  *	  Routines for preprocessing qualification expressions
  *
+ *
+ * The parser regards AND and OR as purely binary operators, so a qual like
+ *		(A = 1) OR (A = 2) OR (A = 3) ...
+ * will produce a nested parsetree
+ *		(OR (A = 1) (OR (A = 2) (OR (A = 3) ...)))
+ * In reality, the optimizer and executor regard AND and OR as N-argument
+ * operators, so this tree can be flattened to
+ *		(OR (A = 1) (A = 2) (A = 3) ...)
+ *
+ * Formerly, this module was responsible for doing the initial flattening,
+ * but now we leave it to eval_const_expressions to do that since it has to
+ * make a complete pass over the expression tree anyway.  Instead, we just
+ * have to ensure that our manipulations preserve AND/OR flatness.
+ * pull_ands() and pull_ors() are used to maintain flatness of the AND/OR
+ * tree after local transformations that might introduce nested AND/ORs.
+ *
+ *
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/prep/prepqual.c,v 1.48.4.1 2005/07/29 21:40:26 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/prep/prepqual.c,v 1.51 2005/10/15 02:49:21 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -21,7 +38,6 @@
 #include "utils/lsyscache.h"
 
 
-static Node *flatten_andors_mutator(Node *node, void *context);
 static List *pull_ands(List *andlist);
 static List *pull_ors(List *orlist);
 static Expr *find_nots(Expr *qual);
@@ -40,6 +56,11 @@ static Expr *process_duplicate_ors(List *orlist);
  * actual usefulness, and so now the transformation doesn't involve any
  * notion of reaching a canonical form.
  *
+ * NOTE: we assume the input has already been through eval_const_expressions
+ * and therefore possesses AND/OR flatness.  Formerly this function included
+ * its own flattening logic, but that requires a useless extra pass over the
+ * tree.
+ *
  * Returns the modified qualification.
  */
 Expr *
@@ -52,17 +73,12 @@ canonicalize_qual(Expr *qual)
 		return NULL;
 
 	/*
-	 * Flatten AND and OR groups throughout the expression tree.
+	 * Push down NOTs.	We do this only in the top-level boolean expression,
+	 * without examining arguments of operators/functions. The main reason for
+	 * doing this is to expose as much top-level AND/OR structure as we can,
+	 * so there's no point in descending further.
 	 */
-	newqual = (Expr *) flatten_andors((Node *) qual);
-
-	/*
-	 * Push down NOTs.	We do this only in the top-level boolean
-	 * expression, without examining arguments of operators/functions. The
-	 * main reason for doing this is to expose as much top-level AND/OR
-	 * structure as we can, so there's no point in descending further.
-	 */
-	newqual = find_nots(newqual);
+	newqual = find_nots(qual);
 
 	/*
 	 * Pull up redundant subclauses in OR-of-AND trees.  Again, we do this
@@ -73,101 +89,6 @@ canonicalize_qual(Expr *qual)
 	return newqual;
 }
 
-
-/*--------------------
- * The parser regards AND and OR as purely binary operators, so a qual like
- *		(A = 1) OR (A = 2) OR (A = 3) ...
- * will produce a nested parsetree
- *		(OR (A = 1) (OR (A = 2) (OR (A = 3) ...)))
- * In reality, the optimizer and executor regard AND and OR as n-argument
- * operators, so this tree can be flattened to
- *		(OR (A = 1) (A = 2) (A = 3) ...)
- * which is the responsibility of the routines below.
- *
- * flatten_andors() does the basic transformation with no initial assumptions.
- * pull_ands() and pull_ors() are used to maintain flatness of the AND/OR
- * tree after local transformations that might introduce nested AND/ORs.
- *--------------------
- */
-
-/*
- * flatten_andors
- *	  Given an expression tree, simplify nested AND/OR clauses into flat
- *	  AND/OR clauses with more arguments.  The entire tree is processed.
- *
- * Returns the rebuilt expr (note original structure is not touched).
- *
- * This is exported so that other modules can perform the part of
- * canonicalize_qual processing that applies to entire trees, rather
- * than just the top-level boolean expressions.
- */
-Node *
-flatten_andors(Node *node)
-{
-	return flatten_andors_mutator(node, NULL);
-}
-
-static Node *
-flatten_andors_mutator(Node *node, void *context)
-{
-	if (node == NULL)
-		return NULL;
-	if (IsA(node, BoolExpr))
-	{
-		BoolExpr   *bexpr = (BoolExpr *) node;
-
-		if (bexpr->boolop == AND_EXPR)
-		{
-			List	   *out_list = NIL;
-			ListCell   *arg;
-
-			foreach(arg, bexpr->args)
-			{
-				Node	   *subexpr = flatten_andors((Node *) lfirst(arg));
-
-				/*
-				 * Note: we can destructively concat the subexpression's
-				 * arglist because we know the recursive invocation of
-				 * flatten_andors will have built a new arglist not shared
-				 * with any other expr. Otherwise we'd need a list_copy
-				 * here.
-				 */
-				if (and_clause(subexpr))
-					out_list = list_concat(out_list,
-										   ((BoolExpr *) subexpr)->args);
-				else
-					out_list = lappend(out_list, subexpr);
-			}
-			return (Node *) make_andclause(out_list);
-		}
-		if (bexpr->boolop == OR_EXPR)
-		{
-			List	   *out_list = NIL;
-			ListCell   *arg;
-
-			foreach(arg, bexpr->args)
-			{
-				Node	   *subexpr = flatten_andors((Node *) lfirst(arg));
-
-				/*
-				 * Note: we can destructively concat the subexpression's
-				 * arglist because we know the recursive invocation of
-				 * flatten_andors will have built a new arglist not shared
-				 * with any other expr. Otherwise we'd need a list_copy
-				 * here.
-				 */
-				if (or_clause(subexpr))
-					out_list = list_concat(out_list,
-										   ((BoolExpr *) subexpr)->args);
-				else
-					out_list = lappend(out_list, subexpr);
-			}
-			return (Node *) make_orclause(out_list);
-		}
-		/* else it's a NOT clause, fall through */
-	}
-	return expression_tree_mutator(node, flatten_andors_mutator, context);
-}
 
 /*
  * pull_ands
@@ -189,12 +110,12 @@ pull_ands(List *andlist)
 		/*
 		 * Note: we can destructively concat the subexpression's arglist
 		 * because we know the recursive invocation of pull_ands will have
-		 * built a new arglist not shared with any other expr. Otherwise
-		 * we'd need a list_copy here.
+		 * built a new arglist not shared with any other expr. Otherwise we'd
+		 * need a list_copy here.
 		 */
 		if (and_clause(subexpr))
 			out_list = list_concat(out_list,
-								pull_ands(((BoolExpr *) subexpr)->args));
+								   pull_ands(((BoolExpr *) subexpr)->args));
 		else
 			out_list = lappend(out_list, subexpr);
 	}
@@ -221,12 +142,12 @@ pull_ors(List *orlist)
 		/*
 		 * Note: we can destructively concat the subexpression's arglist
 		 * because we know the recursive invocation of pull_ors will have
-		 * built a new arglist not shared with any other expr. Otherwise
-		 * we'd need a list_copy here.
+		 * built a new arglist not shared with any other expr. Otherwise we'd
+		 * need a list_copy here.
 		 */
 		if (or_clause(subexpr))
 			out_list = list_concat(out_list,
-								 pull_ors(((BoolExpr *) subexpr)->args));
+								   pull_ors(((BoolExpr *) subexpr)->args));
 		else
 			out_list = lappend(out_list, subexpr);
 	}
@@ -246,9 +167,6 @@ pull_ors(List *orlist)
 static Expr *
 find_nots(Expr *qual)
 {
-	if (qual == NULL)
-		return NULL;
-
 	if (and_clause((Node *) qual))
 	{
 		List	   *t_list = NIL;
@@ -283,17 +201,13 @@ find_nots(Expr *qual)
 static Expr *
 push_nots(Expr *qual)
 {
-	if (qual == NULL)
-		return make_notclause(qual);	/* XXX is this right?  Or
-										 * possible? */
-
-	/*
-	 * Negate an operator clause if possible: (NOT (< A B)) => (>= A B)
-	 * Otherwise, retain the clause as it is (the NOT can't be pushed down
-	 * any farther).
-	 */
 	if (is_opclause(qual))
 	{
+		/*
+		 * Negate an operator clause if possible: (NOT (< A B)) => (>= A B)
+		 * Otherwise, retain the clause as it is (the NOT can't be pushed down
+		 * any farther).
+		 */
 		OpExpr	   *opexpr = (OpExpr *) qual;
 		Oid			negator = get_negator(opexpr->opno);
 
@@ -335,8 +249,8 @@ push_nots(Expr *qual)
 	{
 		/*
 		 * Another NOT cancels this NOT, so eliminate the NOT and stop
-		 * negating this branch.  But search the subexpression for more
-		 * NOTs to simplify.
+		 * negating this branch.  But search the subexpression for more NOTs
+		 * to simplify.
 		 */
 		return find_nots(get_notclausearg(qual));
 	}
@@ -344,7 +258,7 @@ push_nots(Expr *qual)
 	{
 		/*
 		 * We don't know how to negate anything else, place a NOT at this
-		 * level.
+		 * level.  No point in recursing deeper, either.
 		 */
 		return make_notclause(qual);
 	}
@@ -383,9 +297,6 @@ push_nots(Expr *qual)
 static Expr *
 find_duplicate_ors(Expr *qual)
 {
-	if (qual == NULL)
-		return NULL;
-
 	if (or_clause((Node *) qual))
 	{
 		List	   *orlist = NIL;
@@ -396,8 +307,8 @@ find_duplicate_ors(Expr *qual)
 			orlist = lappend(orlist, find_duplicate_ors(lfirst(temp)));
 
 		/*
-		 * Don't need pull_ors() since this routine will never introduce
-		 * an OR where there wasn't one before.
+		 * Don't need pull_ors() since this routine will never introduce an OR
+		 * where there wasn't one before.
 		 */
 		return process_duplicate_ors(orlist);
 	}
@@ -442,10 +353,10 @@ process_duplicate_ors(List *orlist)
 		return linitial(orlist);
 
 	/*
-	 * Choose the shortest AND clause as the reference list --- obviously,
-	 * any subclause not in this clause isn't in all the clauses. If we
-	 * find a clause that's not an AND, we can treat it as a one-element
-	 * AND clause, which necessarily wins as shortest.
+	 * Choose the shortest AND clause as the reference list --- obviously, any
+	 * subclause not in this clause isn't in all the clauses. If we find a
+	 * clause that's not an AND, we can treat it as a one-element AND clause,
+	 * which necessarily wins as shortest.
 	 */
 	foreach(temp, orlist)
 	{
@@ -475,8 +386,8 @@ process_duplicate_ors(List *orlist)
 	reference = list_union(NIL, reference);
 
 	/*
-	 * Check each element of the reference list to see if it's in all the
-	 * OR clauses.	Build a new list of winning clauses.
+	 * Check each element of the reference list to see if it's in all the OR
+	 * clauses.  Build a new list of winning clauses.
 	 */
 	winners = NIL;
 	foreach(temp, reference)
@@ -520,13 +431,12 @@ process_duplicate_ors(List *orlist)
 	/*
 	 * Generate new OR list consisting of the remaining sub-clauses.
 	 *
-	 * If any clause degenerates to empty, then we have a situation like (A
-	 * AND B) OR (A), which can be reduced to just A --- that is, the
-	 * additional conditions in other arms of the OR are irrelevant.
+	 * If any clause degenerates to empty, then we have a situation like (A AND
+	 * B) OR (A), which can be reduced to just A --- that is, the additional
+	 * conditions in other arms of the OR are irrelevant.
 	 *
-	 * Note that because we use list_difference, any multiple occurrences of
-	 * a winning clause in an AND sub-clause will be removed
-	 * automatically.
+	 * Note that because we use list_difference, any multiple occurrences of a
+	 * winning clause in an AND sub-clause will be removed automatically.
 	 */
 	neworlist = NIL;
 	foreach(temp, orlist)
@@ -564,10 +474,10 @@ process_duplicate_ors(List *orlist)
 	}
 
 	/*
-	 * Append reduced OR to the winners list, if it's not degenerate,
-	 * handling the special case of one element correctly (can that really
-	 * happen?). Also be careful to maintain AND/OR flatness in case we
-	 * pulled up a sub-sub-OR-clause.
+	 * Append reduced OR to the winners list, if it's not degenerate, handling
+	 * the special case of one element correctly (can that really happen?).
+	 * Also be careful to maintain AND/OR flatness in case we pulled up a
+	 * sub-sub-OR-clause.
 	 */
 	if (neworlist != NIL)
 	{

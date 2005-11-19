@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/access/hash.h,v 1.59 2004/12/31 22:03:21 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/access/hash.h,v 1.63 2005/10/15 02:49:42 momjian Exp $
  *
  * NOTES
  *		modeled after Margo Seltzer's hash implementation for unix.
@@ -58,11 +58,11 @@ typedef struct HashPageOpaqueData
 	uint16		hasho_filler;	/* available for future use */
 
 	/*
-	 * We presently set hasho_filler to HASHO_FILL (0x1234); this is for
-	 * the convenience of pg_filedump, which otherwise would have a hard
-	 * time telling HashPageOpaqueData from BTPageOpaqueData.  If we ever
-	 * need that space for some other purpose, pg_filedump will have to
-	 * find another way.
+	 * We presently set hasho_filler to HASHO_FILL (0x1234); this is for the
+	 * convenience of pg_filedump, which otherwise would have a hard time
+	 * telling HashPageOpaqueData from BTPageOpaqueData.  If we ever need that
+	 * space for some other purpose, pg_filedump will have to find another
+	 * way.
 	 */
 } HashPageOpaqueData;
 
@@ -89,10 +89,10 @@ typedef struct HashScanOpaqueData
 	BlockNumber hashso_bucket_blkno;
 
 	/*
-	 * We also want to remember which buffers we're currently examining in
-	 * the scan. We keep these buffers pinned (but not locked) across
-	 * hashgettuple calls, in order to avoid doing a ReadBuffer() for
-	 * every tuple in the index.
+	 * We also want to remember which buffers we're currently examining in the
+	 * scan. We keep these buffers pinned (but not locked) across hashgettuple
+	 * calls, in order to avoid doing a ReadBuffer() for every tuple in the
+	 * index.
 	 */
 	Buffer		hashso_curbuf;
 	Buffer		hashso_mrkbuf;
@@ -140,8 +140,8 @@ typedef struct HashMetaPageData
 	double		hashm_ntuples;	/* number of tuples stored in the table */
 	uint16		hashm_ffactor;	/* target fill factor (tuples/bucket) */
 	uint16		hashm_bsize;	/* index page size (bytes) */
-	uint16		hashm_bmsize;	/* bitmap array size (bytes) - must be a
-								 * power of 2 */
+	uint16		hashm_bmsize;	/* bitmap array size (bytes) - must be a power
+								 * of 2 */
 	uint16		hashm_bmshift;	/* log2(bitmap array size in BITS) */
 	uint32		hashm_maxbucket;	/* ID of maximum bucket in use */
 	uint32		hashm_highmask; /* mask to modulo into entire table */
@@ -232,8 +232,9 @@ typedef HashItemData *HashItem;
 
 extern Datum hashbuild(PG_FUNCTION_ARGS);
 extern Datum hashinsert(PG_FUNCTION_ARGS);
-extern Datum hashgettuple(PG_FUNCTION_ARGS);
 extern Datum hashbeginscan(PG_FUNCTION_ARGS);
+extern Datum hashgettuple(PG_FUNCTION_ARGS);
+extern Datum hashgetmulti(PG_FUNCTION_ARGS);
 extern Datum hashrescan(PG_FUNCTION_ARGS);
 extern Datum hashendscan(PG_FUNCTION_ARGS);
 extern Datum hashmarkpos(PG_FUNCTION_ARGS);
@@ -266,7 +267,7 @@ extern Datum hash_any(register const unsigned char *k, register int keylen);
 /* private routines */
 
 /* hashinsert.c */
-extern InsertIndexResult _hash_doinsert(Relation rel, HashItem hitem);
+extern void _hash_doinsert(Relation rel, HashItem hitem);
 
 /* hashovfl.c */
 extern Buffer _hash_addovflpage(Relation rel, Buffer metabuf, Buffer buf);
@@ -313,7 +314,6 @@ extern void _hash_checkpage(Relation rel, Page page, int flags);
 
 /* hash.c */
 extern void hash_redo(XLogRecPtr lsn, XLogRecord *record);
-extern void hash_undo(XLogRecPtr lsn, XLogRecord *record);
 extern void hash_desc(char *buf, uint8 xl_info, char *rec);
 
 #endif   /* HASH_H */

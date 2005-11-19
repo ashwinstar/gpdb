@@ -8,13 +8,14 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/hash/hashsearch.c,v 1.38 2004/12/31 21:59:13 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/hash/hashsearch.c,v 1.41 2005/10/18 01:06:23 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
 #include "access/hash.h"
+#include "pgstat.h"
 #include "storage/lmgr.h"
 
 
@@ -130,37 +131,38 @@ _hash_first(IndexScanDesc scan, ScanDirection dir)
 	ItemPointer current;
 	OffsetNumber offnum;
 
+	pgstat_count_index_scan(&scan->xs_pgstat_info);
+
 	current = &(scan->currentItemData);
 	ItemPointerSetInvalid(current);
 
 	/*
-	 * We do not support hash scans with no index qualification, because
-	 * we would have to read the whole index rather than just one bucket.
-	 * That creates a whole raft of problems, since we haven't got a
-	 * practical way to lock all the buckets against splits or
-	 * compactions.
+	 * We do not support hash scans with no index qualification, because we
+	 * would have to read the whole index rather than just one bucket. That
+	 * creates a whole raft of problems, since we haven't got a practical way
+	 * to lock all the buckets against splits or compactions.
 	 */
 	if (scan->numberOfKeys < 1)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			   errmsg("hash indexes do not support whole-index scans")));
+				 errmsg("hash indexes do not support whole-index scans")));
 
 	/*
-	 * If the constant in the index qual is NULL, assume it cannot match
-	 * any items in the index.
+	 * If the constant in the index qual is NULL, assume it cannot match any
+	 * items in the index.
 	 */
 	if (scan->keyData[0].sk_flags & SK_ISNULL)
 		return false;
 
 	/*
-	 * Okay to compute the hash key.  We want to do this before acquiring
-	 * any locks, in case a user-defined hash function happens to be slow.
+	 * Okay to compute the hash key.  We want to do this before acquiring any
+	 * locks, in case a user-defined hash function happens to be slow.
 	 */
 	hashkey = _hash_datum2hashkey(rel, scan->keyData[0].sk_argument);
 
 	/*
-	 * Acquire shared split lock so we can compute the target bucket
-	 * safely (see README).
+	 * Acquire shared split lock so we can compute the target bucket safely
+	 * (see README).
 	 */
 	_hash_getlock(rel, 0, HASH_SHARE);
 
@@ -183,8 +185,7 @@ _hash_first(IndexScanDesc scan, ScanDirection dir)
 	_hash_relbuf(rel, metabuf);
 
 	/*
-	 * Acquire share lock on target bucket; then we can release split
-	 * lock.
+	 * Acquire share lock on target bucket; then we can release split lock.
 	 */
 	_hash_getlock(rel, blkno, HASH_SHARE);
 
@@ -246,7 +247,6 @@ _hash_step(IndexScanDesc scan, Buffer *bufP, ScanDirection dir)
 	HashPageOpaque opaque;
 	OffsetNumber maxoff;
 	OffsetNumber offnum;
-	Bucket		bucket;
 	BlockNumber blkno;
 	HashItem	hitem;
 	IndexTuple	itup;
@@ -257,12 +257,11 @@ _hash_step(IndexScanDesc scan, Buffer *bufP, ScanDirection dir)
 	page = BufferGetPage(buf);
 	_hash_checkpage(rel, page, LH_BUCKET_PAGE | LH_OVERFLOW_PAGE);
 	opaque = (HashPageOpaque) PageGetSpecialPointer(page);
-	bucket = opaque->hasho_bucket;
 
 	/*
-	 * If _hash_step is called from _hash_first, current will not be
-	 * valid, so we can't dereference it.  However, in that case, we
-	 * presumably want to start at the beginning/end of the page...
+	 * If _hash_step is called from _hash_first, current will not be valid, so
+	 * we can't dereference it.  However, in that case, we presumably want to
+	 * start at the beginning/end of the page...
 	 */
 	maxoff = PageGetMaxOffsetNumber(page);
 	if (ItemPointerIsValid(current))

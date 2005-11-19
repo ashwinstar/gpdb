@@ -1,5 +1,7 @@
 /* this must be first: */
 #include "postgres.h"
+/* Defined by Perl */
+#undef _
 
 /* perl stuff */
 #include "EXTERN.h"
@@ -28,6 +30,33 @@ do_spi_elog(int level, char *message)
 	PG_TRY();
 	{
 		elog(level, "%s", message);
+	}
+	PG_CATCH();
+	{
+		ErrorData  *edata;
+
+		/* Must reset elog.c's state */
+		MemoryContextSwitchTo(oldcontext);
+		edata = CopyErrorData();
+		FlushErrorState();
+
+		/* Punt the error to Perl */
+		croak("%s", edata->message);
+	}
+	PG_END_TRY();
+}
+
+/*
+ * Interface routine to catch ereports and punt them to Perl
+ */
+static void
+do_plperl_return_next(SV *sv)
+{
+	MemoryContext oldcontext = CurrentMemoryContext;
+
+	PG_TRY();
+	{
+		plperl_return_next(sv);
 	}
 	PG_CATCH();
 	{
@@ -95,6 +124,27 @@ spi_spi_exec_query(query, ...)
 	OUTPUT:
 		RETVAL
 
+void
+spi_return_next(rv)
+	SV *rv;
+	CODE:
+		do_plperl_return_next(rv);
+
+SV *
+spi_spi_query(query)
+	char *query;
+	CODE:
+		RETVAL = plperl_spi_query(query);
+	OUTPUT:
+		RETVAL
+
+SV *
+spi_spi_fetchrow(cursor)
+	char *cursor;
+	CODE:
+		RETVAL = plperl_spi_fetchrow(cursor);
+	OUTPUT:
+		RETVAL
 
 BOOT:
     items = 0;  /* avoid 'unused variable' warning */

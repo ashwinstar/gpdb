@@ -8,56 +8,22 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/gist/gist.c,v 1.112.4.1 2005/08/30 07:57:48 teodor Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/gist/gist.c,v 1.127 2005/10/18 01:06:22 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
 #include "access/genam.h"
-#include "access/gist.h"
+#include "access/gist_private.h"
 #include "access/gistscan.h"
 #include "access/heapam.h"
 #include "catalog/index.h"
 #include "commands/vacuum.h"
 #include "miscadmin.h"
+#include "utils/memutils.h"
 
-
-#undef GIST_PAGEADDITEM
-
-#define ATTSIZE( datum, TupDesc, i, isnull ) \
-	( \
-		( isnull ) ? 0 : \
-			att_addlength(0, (TupDesc)->attrs[(i)-1]->attlen, (datum)) \
-	)
-
-/* result's status */
-#define INSERTED	0x01
-#define SPLITED		0x02
-
-/* group flags ( in gistSplit ) */
-#define LEFT_ADDED	0x01
-#define RIGHT_ADDED 0x02
-#define BOTH_ADDED	( LEFT_ADDED | RIGHT_ADDED )
-
-/*
- * This defines only for shorter code, used in gistgetadjusted
- * and gistadjsubkey only
- */
-#define FILLITEM(evp, isnullkey, okey, okeyb, rkey, rkeyb)	 do { \
-		if ( isnullkey ) {										  \
-				gistentryinit((evp), rkey, r, NULL,				  \
-						(OffsetNumber) 0, rkeyb, FALSE);		  \
-		} else {												  \
-				gistentryinit((evp), okey, r, NULL,				  \
-						(OffsetNumber) 0, okeyb, FALSE);		  \
-		}														  \
-} while(0)
-
-#define FILLEV(isnull1, key1, key1b, isnull2, key2, key2b) do { \
-	FILLITEM(*ev0p, isnull1, key1, key1b, key2, key2b);		\
-	FILLITEM(*ev1p, isnull2, key2, key2b, key1, key1b);		\
-} while(0);
+const XLogRecPtr XLogRecPtrForTemp = {1, 1};
 
 /* Working state for gistbuild and its callback */
 typedef struct
@@ -65,90 +31,55 @@ typedef struct
 	GISTSTATE	giststate;
 	int			numindexattrs;
 	double		indtuples;
+	MemoryContext tmpCtx;
 } GISTBuildState;
 
 
 /* non-export function prototypes */
 static void gistbuildCallback(Relation index,
 				  HeapTuple htup,
-				  Datum *attdata,
-				  char *nulls,
+				  Datum *values,
+				  bool *isnull,
 				  bool tupleIsAlive,
 				  void *state);
 static void gistdoinsert(Relation r,
 			 IndexTuple itup,
-			 InsertIndexResult *res,
 			 GISTSTATE *GISTstate);
-static int gistlayerinsert(Relation r, BlockNumber blkno,
-				IndexTuple **itup,
-				int *len,
-				InsertIndexResult *res,
-				GISTSTATE *giststate);
-static OffsetNumber gistwritebuffer(Relation r,
-				Page page,
-				IndexTuple *itup,
-				int len,
-				OffsetNumber off);
-static int gistnospace(Page page,
-			IndexTuple *itvec, int len);
-static IndexTuple *gistreadbuffer(Buffer buffer, int *len);
-static IndexTuple *gistjoinvector(
-			   IndexTuple *itvec, int *len,
-			   IndexTuple *additvec, int addlen);
-static IndexTuple gistunion(Relation r, IndexTuple *itvec,
-		  int len, GISTSTATE *giststate);
+static void gistfindleaf(GISTInsertState *state,
+			 GISTSTATE *giststate);
 
-static IndexTuple gistgetadjusted(Relation r,
-				IndexTuple oldtup,
-				IndexTuple addtup,
-				GISTSTATE *giststate);
-static int gistfindgroup(GISTSTATE *giststate,
-			  GISTENTRY *valvec, GIST_SPLITVEC *spl);
-static void gistadjsubkey(Relation r,
-			  IndexTuple *itup, int *len,
-			  GIST_SPLITVEC *v,
-			  GISTSTATE *giststate);
-static IndexTuple gistFormTuple(GISTSTATE *giststate,
-			Relation r, Datum attdata[], int datumsize[], bool isnull[]);
-static IndexTuple *gistSplit(Relation r,
-		  Buffer buffer,
-		  IndexTuple *itup,
-		  int *len,
-		  GISTSTATE *giststate,
-		  InsertIndexResult *res);
-static void gistnewroot(Relation r,
-			IndexTuple *itup, int len);
-static void GISTInitBuffer(Buffer b, uint32 f);
-static OffsetNumber gistchoose(Relation r, Page p,
-		   IndexTuple it,
-		   GISTSTATE *giststate);
-static void gistdelete(Relation r, ItemPointer tid);
 
-#ifdef GIST_PAGEADDITEM
-static IndexTuple gist_tuple_replacekey(Relation r,
-					  GISTENTRY entry, IndexTuple t);
-#endif
-static void gistcentryinit(GISTSTATE *giststate, int nkey,
-			   GISTENTRY *e, Datum k,
-			   Relation r, Page pg,
-			   OffsetNumber o, int b, bool l, bool isNull);
-static void gistDeCompressAtt(GISTSTATE *giststate, Relation r,
-				  IndexTuple tuple, Page p, OffsetNumber o,
-				  GISTENTRY attdata[], bool decompvec[], bool isnull[]);
-static void gistFreeAtt(Relation r, GISTENTRY attdata[], bool decompvec[]);
-static void gistpenalty(GISTSTATE *giststate, int attno,
-			GISTENTRY *key1, bool isNull1,
-			GISTENTRY *key2, bool isNull2,
-			float *penalty);
+#define ROTATEDIST(d) do { \
+	SplitedPageLayout *tmp=(SplitedPageLayout*)palloc(sizeof(SplitedPageLayout)); \
+	memset(tmp,0,sizeof(SplitedPageLayout)); \
+	tmp->next = (d); \
+	(d)=tmp; \
+} while(0)
 
-#undef GISTDEBUG
-
-#ifdef GISTDEBUG
-static void gist_dumptree(Relation r, int level, BlockNumber blk, OffsetNumber coff);
-#endif
 
 /*
- * routine to build an index.  Basically calls insert over and over
+ * Create and return a temporary memory context for use by GiST. We
+ * _always_ invoke user-provided methods in a temporary memory
+ * context, so that memory leaks in those functions cannot cause
+ * problems. Also, we use some additional temporary contexts in the
+ * GiST code itself, to avoid the need to do some awkward manual
+ * memory management.
+ */
+MemoryContext
+createTempGistContext(void)
+{
+	return AllocSetContextCreate(CurrentMemoryContext,
+								 "GiST temporary context",
+								 ALLOCSET_DEFAULT_MINSIZE,
+								 ALLOCSET_DEFAULT_INITSIZE,
+								 ALLOCSET_DEFAULT_MAXSIZE);
+}
+
+/*
+ * Routine to build an index.  Basically calls insert over and over.
+ *
+ * XXX: it would be nice to implement some sort of bulk-loading
+ * algorithm, but it is not clear how to do that.
  */
 Datum
 gistbuild(PG_FUNCTION_ARGS)
@@ -160,59 +91,67 @@ gistbuild(PG_FUNCTION_ARGS)
 	GISTBuildState buildstate;
 	Buffer		buffer;
 
-	/* no locking is needed */
-
-	initGISTstate(&buildstate.giststate, index);
-
 	/*
-	 * We expect to be called exactly once for any index relation. If
-	 * that's not the case, big trouble's what we have.
+	 * We expect to be called exactly once for any index relation. If that's
+	 * not the case, big trouble's what we have.
 	 */
 	if (RelationGetNumberOfBlocks(index) != 0)
 		elog(ERROR, "index \"%s\" already contains data",
 			 RelationGetRelationName(index));
 
+	/* no locking is needed */
+	initGISTstate(&buildstate.giststate, index);
+
 	/* initialize the root page */
-	buffer = ReadBuffer(index, P_NEW);
+	buffer = gistNewBuffer(index);
 	GISTInitBuffer(buffer, F_LEAF);
+	if (!index->rd_istemp)
+	{
+		XLogRecPtr	recptr;
+		XLogRecData rdata;
+		Page		page;
+
+		rdata.buffer = InvalidBuffer;
+		rdata.data = (char *) &(index->rd_node);
+		rdata.len = sizeof(RelFileNode);
+		rdata.next = NULL;
+
+		page = BufferGetPage(buffer);
+
+		START_CRIT_SECTION();
+
+		recptr = XLogInsert(RM_GIST_ID, XLOG_GIST_CREATE_INDEX, &rdata);
+		PageSetLSN(page, recptr);
+		PageSetTLI(page, ThisTimeLineID);
+
+		END_CRIT_SECTION();
+	}
+	else
+		PageSetLSN(BufferGetPage(buffer), XLogRecPtrForTemp);
+	LockBuffer(buffer, GIST_UNLOCK);
 	WriteBuffer(buffer);
 
 	/* build the index */
 	buildstate.numindexattrs = indexInfo->ii_NumIndexAttrs;
 	buildstate.indtuples = 0;
 
+	/*
+	 * create a temporary memory context that is reset once for each tuple
+	 * inserted into the index
+	 */
+	buildstate.tmpCtx = createTempGistContext();
+
 	/* do the heap scan */
 	reltuples = IndexBuildHeapScan(heap, index, indexInfo,
-								gistbuildCallback, (void *) &buildstate);
+								   gistbuildCallback, (void *) &buildstate);
 
 	/* okay, all heap tuples are indexed */
+	MemoryContextDelete(buildstate.tmpCtx);
 
-	/*
-	 * Since we just counted the tuples in the heap, we update its stats
-	 * in pg_class to guarantee that the planner takes advantage of the
-	 * index we just created.  But, only update statistics during normal
-	 * index definitions, not for indices on system catalogs created
-	 * during bootstrap processing.  We must close the relations before
-	 * updating statistics to guarantee that the relcache entries are
-	 * flushed when we increment the command counter in UpdateStats(). But
-	 * we do not release any locks on the relations; those will be held
-	 * until end of transaction.
-	 */
-	if (IsNormalProcessingMode())
-	{
-		Oid			hrelid = RelationGetRelid(heap);
-		Oid			irelid = RelationGetRelid(index);
-
-		heap_close(heap, NoLock);
-		index_close(index);
-		UpdateStats(hrelid, reltuples);
-		UpdateStats(irelid, buildstate.indtuples);
-	}
+	/* since we just counted the # of tuples, may as well update stats */
+	IndexCloseAndUpdateStats(heap, reltuples, index, buildstate.indtuples);
 
 	freeGISTstate(&buildstate.giststate);
-#ifdef GISTDEBUG
-	gist_dumptree(index, 0, GISTP_ROOT, 0);
-#endif
 
 	PG_RETURN_VOID();
 }
@@ -223,63 +162,53 @@ gistbuild(PG_FUNCTION_ARGS)
 static void
 gistbuildCallback(Relation index,
 				  HeapTuple htup,
-				  Datum *attdata,
-				  char *nulls,
+				  Datum *values,
+				  bool *isnull,
 				  bool tupleIsAlive,
 				  void *state)
 {
 	GISTBuildState *buildstate = (GISTBuildState *) state;
 	IndexTuple	itup;
-	bool		compvec[INDEX_MAX_KEYS];
 	GISTENTRY	tmpcentry;
 	int			i;
+	MemoryContext oldCtx;
 
 	/* GiST cannot index tuples with leading NULLs */
-	if (nulls[0] == 'n')
+	if (isnull[0])
 		return;
+
+	oldCtx = MemoryContextSwitchTo(buildstate->tmpCtx);
 
 	/* immediately compress keys to normalize */
 	for (i = 0; i < buildstate->numindexattrs; i++)
 	{
-		if (nulls[i] == 'n')
-		{
-			attdata[i] = (Datum) 0;
-			compvec[i] = FALSE;
-		}
+		if (isnull[i])
+			values[i] = (Datum) 0;
 		else
 		{
-			gistcentryinit(&buildstate->giststate, i, &tmpcentry, attdata[i],
+			gistcentryinit(&buildstate->giststate, i, &tmpcentry, values[i],
 						   NULL, NULL, (OffsetNumber) 0,
-						 -1 /* size is currently bogus */ , TRUE, FALSE);
-			if (attdata[i] != tmpcentry.key &&
-				!(isAttByVal(&buildstate->giststate, i)))
-				compvec[i] = TRUE;
-			else
-				compvec[i] = FALSE;
-			attdata[i] = tmpcentry.key;
+						   -1 /* size is currently bogus */ , TRUE, FALSE);
+			values[i] = tmpcentry.key;
 		}
 	}
 
 	/* form an index tuple and point it at the heap tuple */
-	itup = index_formtuple(buildstate->giststate.tupdesc, attdata, nulls);
+	itup = index_form_tuple(buildstate->giststate.tupdesc, values, isnull);
 	itup->t_tid = htup->t_self;
 
 	/*
-	 * Since we already have the index relation locked, we call
-	 * gistdoinsert directly.  Normal access method calls dispatch through
-	 * gistinsert, which locks the relation for write.	This is the right
-	 * thing to do if you're inserting single tups, but not when you're
-	 * initializing the whole index at once.
+	 * Since we already have the index relation locked, we call gistdoinsert
+	 * directly.  Normal access method calls dispatch through gistinsert,
+	 * which locks the relation for write.	This is the right thing to do if
+	 * you're inserting single tups, but not when you're initializing the
+	 * whole index at once.
 	 */
-	gistdoinsert(index, itup, NULL, &buildstate->giststate);
+	gistdoinsert(index, itup, &buildstate->giststate);
 
 	buildstate->indtuples += 1;
-
-	for (i = 0; i < buildstate->numindexattrs; i++)
-		if (compvec[i])
-			pfree(DatumGetPointer(attdata[i]));
-
-	pfree(itup);
+	MemoryContextSwitchTo(oldCtx);
+	MemoryContextReset(buildstate->tmpCtx);
 }
 
 /*
@@ -292,923 +221,725 @@ Datum
 gistinsert(PG_FUNCTION_ARGS)
 {
 	Relation	r = (Relation) PG_GETARG_POINTER(0);
-	Datum	   *datum = (Datum *) PG_GETARG_POINTER(1);
-	char	   *nulls = (char *) PG_GETARG_POINTER(2);
+	Datum	   *values = (Datum *) PG_GETARG_POINTER(1);
+	bool	   *isnull = (bool *) PG_GETARG_POINTER(2);
 	ItemPointer ht_ctid = (ItemPointer) PG_GETARG_POINTER(3);
 
 #ifdef NOT_USED
 	Relation	heapRel = (Relation) PG_GETARG_POINTER(4);
 	bool		checkUnique = PG_GETARG_BOOL(5);
 #endif
-	InsertIndexResult res;
 	IndexTuple	itup;
 	GISTSTATE	giststate;
 	GISTENTRY	tmpentry;
 	int			i;
-	bool		compvec[INDEX_MAX_KEYS];
-
-	/*
-	 * Since GIST is not marked "amconcurrent" in pg_am, caller should
-	 * have acquired exclusive lock on index relation.	We need no locking
-	 * here.
-	 */
+	MemoryContext oldCtx;
+	MemoryContext insertCtx;
 
 	/* GiST cannot index tuples with leading NULLs */
-	if (nulls[0] == 'n')
-	{
-		res = NULL;
-		PG_RETURN_POINTER(res);
-	}
+	if (isnull[0])
+		PG_RETURN_BOOL(false);
+
+	insertCtx = createTempGistContext();
+	oldCtx = MemoryContextSwitchTo(insertCtx);
 
 	initGISTstate(&giststate, r);
 
 	/* immediately compress keys to normalize */
 	for (i = 0; i < r->rd_att->natts; i++)
 	{
-		if (nulls[i] == 'n')
-		{
-			datum[i] = (Datum) 0;
-			compvec[i] = FALSE;
-		}
+		if (isnull[i])
+			values[i] = (Datum) 0;
 		else
 		{
-			gistcentryinit(&giststate, i, &tmpentry, datum[i],
+			gistcentryinit(&giststate, i, &tmpentry, values[i],
 						   NULL, NULL, (OffsetNumber) 0,
-						 -1 /* size is currently bogus */ , TRUE, FALSE);
-			if (datum[i] != tmpentry.key && !(isAttByVal(&giststate, i)))
-				compvec[i] = TRUE;
-			else
-				compvec[i] = FALSE;
-			datum[i] = tmpentry.key;
+						   -1 /* size is currently bogus */ , TRUE, FALSE);
+			values[i] = tmpentry.key;
 		}
 	}
-	itup = index_formtuple(giststate.tupdesc, datum, nulls);
+	itup = index_form_tuple(giststate.tupdesc, values, isnull);
 	itup->t_tid = *ht_ctid;
 
-	res = (InsertIndexResult) palloc(sizeof(InsertIndexResultData));
-	gistdoinsert(r, itup, &res, &giststate);
+	gistdoinsert(r, itup, &giststate);
 
-	for (i = 0; i < r->rd_att->natts; i++)
-		if (compvec[i] == TRUE)
-			pfree(DatumGetPointer(datum[i]));
-	pfree(itup);
+	/* cleanup */
 	freeGISTstate(&giststate);
+	MemoryContextSwitchTo(oldCtx);
+	MemoryContextDelete(insertCtx);
 
-	PG_RETURN_POINTER(res);
+	PG_RETURN_BOOL(true);
 }
 
-#ifdef GIST_PAGEADDITEM
+
 /*
- * Take a compressed entry, and install it on a page.  Since we now know
- * where the entry will live, we decompress it and recompress it using
- * that knowledge (some compression routines may want to fish around
- * on the page, for example, or do something special for leaf nodes.)
+ * Workhouse routine for doing insertion into a GiST index. Note that
+ * this routine assumes it is invoked in a short-lived memory context,
+ * so it does not bother releasing palloc'd allocations.
  */
-static OffsetNumber
-gistPageAddItem(GISTSTATE *giststate,
-				Relation r,
-				Page page,
-				Item item,
-				Size size,
-				OffsetNumber offsetNumber,
-				ItemIdFlags flags,
-				GISTENTRY *dentry,
-				IndexTuple *newtup)
-{
-	GISTENTRY	tmpcentry;
-	IndexTuple	itup = (IndexTuple) item;
-	OffsetNumber retval;
-	Datum		datum;
-	bool		IsNull;
-
-	/*
-	 * recompress the item given that we now know the exact page and
-	 * offset for insertion
-	 */
-	datum = index_getattr(itup, 1, r->rd_att, &IsNull);
-	gistdentryinit(giststate, 0, dentry, datum,
-				   (Relation) 0, (Page) 0,
-				   (OffsetNumber) InvalidOffsetNumber,
-				   ATTSIZE(datum, r, 1, IsNull),
-				   FALSE, IsNull);
-	gistcentryinit(giststate, 0, &tmpcentry, dentry->key, r, page,
-				   offsetNumber, dentry->bytes, FALSE);
-	*newtup = gist_tuple_replacekey(r, tmpcentry, itup);
-	retval = PageAddItem(page, (Item) *newtup, IndexTupleSize(*newtup),
-						 offsetNumber, flags);
-	if (retval == InvalidOffsetNumber)
-		elog(ERROR, "failed to add index item to \"%s\"",
-			 RelationGetRelationName(r));
-	/* be tidy */
-	if (DatumGetPointer(tmpcentry.key) != NULL &&
-		tmpcentry.key != dentry->key &&
-		tmpcentry.key != datum)
-		pfree(DatumGetPointer(tmpcentry.key));
-	return (retval);
-}
-#endif
-
 static void
-gistdoinsert(Relation r,
-			 IndexTuple itup,
-			 InsertIndexResult *res,
-			 GISTSTATE *giststate)
+gistdoinsert(Relation r, IndexTuple itup, GISTSTATE *giststate)
 {
-	IndexTuple *instup;
-	int			i,
-				ret,
-				len = 1;
+	GISTInsertState state;
 
-	instup = (IndexTuple *) palloc(sizeof(IndexTuple));
-	instup[0] = (IndexTuple) palloc(IndexTupleSize(itup));
-	memcpy(instup[0], itup, IndexTupleSize(itup));
+	memset(&state, 0, sizeof(GISTInsertState));
 
-	ret = gistlayerinsert(r, GISTP_ROOT, &instup, &len, res, giststate);
-	if (ret & SPLITED)
-		gistnewroot(r, instup, len);
+	state.itup = (IndexTuple *) palloc(sizeof(IndexTuple));
+	state.itup[0] = (IndexTuple) palloc(IndexTupleSize(itup));
+	memcpy(state.itup[0], itup, IndexTupleSize(itup));
+	state.ituplen = 1;
+	state.r = r;
+	state.key = itup->t_tid;
+	state.needInsertComplete = true;
 
-	for (i = 0; i < len; i++)
-		pfree(instup[i]);
-	pfree(instup);
+	state.stack = (GISTInsertStack *) palloc0(sizeof(GISTInsertStack));
+	state.stack->blkno = GIST_ROOT_BLKNO;
+
+	gistfindleaf(&state, giststate);
+	gistmakedeal(&state, giststate);
 }
 
-static int
-gistlayerinsert(Relation r, BlockNumber blkno,
-				IndexTuple **itup,		/* in - out, has compressed entry */
-				int *len,		/* in - out */
-				InsertIndexResult *res, /* out */
-				GISTSTATE *giststate)
+static bool
+gistplacetopage(GISTInsertState *state, GISTSTATE *giststate)
 {
-	Buffer		buffer;
-	Page		page;
-	OffsetNumber child;
-	int			ret;
-	GISTPageOpaque opaque;
+	bool		is_splitted = false;
+	bool		is_leaf = (GistPageIsLeaf(state->stack->page)) ? true : false;
 
-	buffer = ReadBuffer(r, blkno);
-	page = (Page) BufferGetPage(buffer);
-	opaque = (GISTPageOpaque) PageGetSpecialPointer(page);
 
-	if (!(opaque->flags & F_LEAF))
-	{
-		/* internal page, so we must walk on tree */
-		/* len IS equal 1 */
-		ItemId		iid;
-		BlockNumber nblkno;
-		ItemPointerData oldtid;
-		IndexTuple	oldtup;
-
-		child = gistchoose(r, page, *(*itup), giststate);
-		iid = PageGetItemId(page, child);
-		oldtup = (IndexTuple) PageGetItem(page, iid);
-		nblkno = ItemPointerGetBlockNumber(&(oldtup->t_tid));
+	if (!is_leaf)
 
 		/*
-		 * After this call: 1. if child page was splited, then itup
-		 * contains keys for each page 2. if  child page wasn't splited,
-		 * then itup contains additional for adjustment of current key
+		 * This node's key has been modified, either because a child split
+		 * occurred or because we needed to adjust our key for an insert in a
+		 * child node. Therefore, remove the old version of this node's key.
 		 */
-		ret = gistlayerinsert(r, nblkno, itup, len, res, giststate);
 
-		/* nothing inserted in child */
-		if (!(ret & INSERTED))
-		{
-			ReleaseBuffer(buffer);
-			return 0x00;
-		}
+		PageIndexTupleDelete(state->stack->page, state->stack->childoffnum);
 
-		/* child does not splited */
-		if (!(ret & SPLITED))
-		{
-			IndexTuple	newtup = gistgetadjusted(r, oldtup, (*itup)[0], giststate);
-
-			if (!newtup)
-			{
-				/* not need to update key */
-				ReleaseBuffer(buffer);
-				return 0x00;
-			}
-
-			pfree((*itup)[0]);	/* !!! */
-			(*itup)[0] = newtup;
-		}
-
-		/* key is modified, so old version must be deleted */
-		ItemPointerSet(&oldtid, blkno, child);
-		gistdelete(r, &oldtid);
-
-		/*
-		 * if child was splitted, new key for child will be inserted in
-		 * the end list of child, so we must say to any scans that page is
-		 * changed beginning from 'child' offset
-		 */
-		if (ret & SPLITED)
-			gistadjscans(r, GISTOP_SPLIT, nblkno, FirstOffsetNumber);
-	}
-
-	ret = INSERTED;
-
-	if (gistnospace(page, (*itup), *len))
+	if (gistnospace(state->stack->page, state->itup, state->ituplen))
 	{
 		/* no space for insertion */
 		IndexTuple *itvec,
 				   *newitup;
-		int			tlen,
-					oldlen;
+		int			tlen;
+		SplitedPageLayout *dist = NULL,
+				   *ptr;
 
-		ret |= SPLITED;
-		itvec = gistreadbuffer(buffer, &tlen);
-		itvec = gistjoinvector(itvec, &tlen, (*itup), *len);
-		oldlen = *len;
-		newitup = gistSplit(r, buffer, itvec, &tlen, giststate,
-							(opaque->flags & F_LEAF) ? res : NULL);		/* res only for
-																		 * inserting in leaf */
-		ReleaseBuffer(buffer);
-		do
-			pfree((*itup)[oldlen - 1]);
-		while ((--oldlen) > 0);
-		pfree((*itup));
-		pfree(itvec);
-		*itup = newitup;
-		*len = tlen;			/* now tlen >= 2 */
+		is_splitted = true;
+		itvec = gistextractbuffer(state->stack->buffer, &tlen);
+		itvec = gistjoinvector(itvec, &tlen, state->itup, state->ituplen);
+		newitup = gistSplit(state->r, state->stack->buffer, itvec, &tlen, &dist, giststate);
+
+		if (!state->r->rd_istemp)
+		{
+			XLogRecPtr	recptr;
+			XLogRecData *rdata;
+
+			rdata = formSplitRdata(state->r->rd_node, state->stack->blkno,
+								   &(state->key), dist);
+
+			START_CRIT_SECTION();
+
+			recptr = XLogInsert(RM_GIST_ID, XLOG_GIST_PAGE_SPLIT, rdata);
+			ptr = dist;
+			while (ptr)
+			{
+				PageSetLSN(BufferGetPage(ptr->buffer), recptr);
+				PageSetTLI(BufferGetPage(ptr->buffer), ThisTimeLineID);
+				ptr = ptr->next;
+			}
+
+			END_CRIT_SECTION();
+		}
+		else
+		{
+			ptr = dist;
+			while (ptr)
+			{
+				PageSetLSN(BufferGetPage(ptr->buffer), XLogRecPtrForTemp);
+				ptr = ptr->next;
+			}
+		}
+
+		state->itup = newitup;
+		state->ituplen = tlen;	/* now tlen >= 2 */
+
+		if (state->stack->blkno == GIST_ROOT_BLKNO)
+		{
+			gistnewroot(state->r, state->stack->buffer, state->itup, state->ituplen, &(state->key));
+			state->needInsertComplete = false;
+			ptr = dist;
+			while (ptr)
+			{
+				Page		page = (Page) BufferGetPage(ptr->buffer);
+
+				GistPageGetOpaque(page)->rightlink = (ptr->next) ?
+					ptr->next->block.blkno : InvalidBlockNumber;
+				GistPageGetOpaque(page)->nsn = PageGetLSN(page);
+				LockBuffer(ptr->buffer, GIST_UNLOCK);
+				WriteBuffer(ptr->buffer);
+				ptr = ptr->next;
+			}
+		}
+		else
+		{
+			Page		page;
+			BlockNumber rightrightlink = InvalidBlockNumber;
+			SplitedPageLayout *ourpage = NULL;
+			GistNSN		oldnsn;
+			GISTPageOpaque opaque;
+
+			/* move origpage to first in chain */
+			if (dist->block.blkno != state->stack->blkno)
+			{
+				ptr = dist;
+				while (ptr->next)
+				{
+					if (ptr->next->block.blkno == state->stack->blkno)
+					{
+						ourpage = ptr->next;
+						ptr->next = ptr->next->next;
+						ourpage->next = dist;
+						dist = ourpage;
+						break;
+					}
+					ptr = ptr->next;
+				}
+				Assert(ourpage != NULL);
+			}
+			else
+				ourpage = dist;
+
+
+			/* now gets all needed data, and sets nsn's */
+			page = (Page) BufferGetPage(ourpage->buffer);
+			opaque = GistPageGetOpaque(page);
+			rightrightlink = opaque->rightlink;
+			oldnsn = opaque->nsn;
+			opaque->nsn = PageGetLSN(page);
+			opaque->rightlink = ourpage->next->block.blkno;
+
+			/*
+			 * fills and write all new pages. They isn't linked into tree yet
+			 */
+
+			ptr = ourpage->next;
+			while (ptr)
+			{
+				page = (Page) BufferGetPage(ptr->buffer);
+				GistPageGetOpaque(page)->rightlink = (ptr->next) ?
+					ptr->next->block.blkno : rightrightlink;
+				/* only for last set oldnsn */
+				GistPageGetOpaque(page)->nsn = (ptr->next) ?
+					opaque->nsn : oldnsn;
+
+				LockBuffer(ptr->buffer, GIST_UNLOCK);
+				WriteBuffer(ptr->buffer);
+				ptr = ptr->next;
+			}
+		}
+		WriteNoReleaseBuffer(state->stack->buffer);
 	}
 	else
 	{
-		/* enogth space */
-		OffsetNumber off,
-					l;
+		/* enough space */
+		XLogRecPtr	oldlsn;
 
-		off = (PageIsEmpty(page)) ?
-			FirstOffsetNumber
-			:
-			OffsetNumberNext(PageGetMaxOffsetNumber(page));
-		l = gistwritebuffer(r, page, (*itup), *len, off);
-		WriteBuffer(buffer);
+		gistfillbuffer(state->r, state->stack->page, state->itup, state->ituplen, InvalidOffsetNumber);
 
-		/*
-		 * set res if insert into leaf page, in this case, len = 1 always
-		 */
-		if (res && (opaque->flags & F_LEAF))
-			ItemPointerSet(&((*res)->pointerData), blkno, l);
+		oldlsn = PageGetLSN(state->stack->page);
+		if (!state->r->rd_istemp)
+		{
+			OffsetNumber noffs = 0,
+						offs[MAXALIGN(sizeof(OffsetNumber)) / sizeof(OffsetNumber)];
+			XLogRecPtr	recptr;
+			XLogRecData *rdata;
 
-		if (*len > 1)
-		{						/* previous insert ret & SPLITED != 0 */
-			int			i;
+			if (!is_leaf)
+			{
+				/* only on inner page we should delete previous version */
+				offs[0] = state->stack->childoffnum;
+				noffs = 1;
+			}
+
+			rdata = formUpdateRdata(state->r->rd_node, state->stack->blkno,
+							 offs, noffs, false, state->itup, state->ituplen,
+									&(state->key));
+
+			START_CRIT_SECTION();
+
+			recptr = XLogInsert(RM_GIST_ID, XLOG_GIST_ENTRY_UPDATE, rdata);
+			PageSetLSN(state->stack->page, recptr);
+			PageSetTLI(state->stack->page, ThisTimeLineID);
+
+			END_CRIT_SECTION();
+		}
+		else
+			PageSetLSN(state->stack->page, XLogRecPtrForTemp);
+
+		if (state->stack->blkno == GIST_ROOT_BLKNO)
+			state->needInsertComplete = false;
+		WriteNoReleaseBuffer(state->stack->buffer);
+
+		if (!is_leaf)			/* small optimization: inform scan ablout
+								 * deleting... */
+			gistadjscans(state->r, GISTOP_DEL, state->stack->blkno,
+						 state->stack->childoffnum, PageGetLSN(state->stack->page), oldlsn);
+
+		if (state->ituplen > 1)
+		{						/* previous is_splitted==true */
 
 			/*
 			 * child was splited, so we must form union for insertion in
 			 * parent
 			 */
-			IndexTuple	newtup = gistunion(r, (*itup), *len, giststate);
+			IndexTuple	newtup = gistunion(state->r, state->itup, state->ituplen, giststate);
 
-			ItemPointerSet(&(newtup->t_tid), blkno, 1);
-
-			for (i = 0; i < *len; i++)
-				pfree((*itup)[i]);
-			(*itup)[0] = newtup;
-			*len = 1;
+			ItemPointerSetBlockNumber(&(newtup->t_tid), state->stack->blkno);
+			state->itup[0] = newtup;
+			state->ituplen = 1;
+		}
+		else if (is_leaf)
+		{
+			/*
+			 * itup[0] store key to adjust parent, we set it to valid to
+			 * correct check by GistTupleIsInvalid macro in gistgetadjusted()
+			 */
+			ItemPointerSetBlockNumber(&(state->itup[0]->t_tid), state->stack->blkno);
+			GistTupleSetValid(state->itup[0]);
 		}
 	}
-
-	return ret;
+	return is_splitted;
 }
 
 /*
- * Write itup vector to page, has no control of free space
+ * returns stack of pages, all pages in stack are pinned, and
+ * leaf is X-locked
  */
-static OffsetNumber
-gistwritebuffer(Relation r, Page page, IndexTuple *itup,
-				int len, OffsetNumber off)
-{
-	OffsetNumber l = InvalidOffsetNumber;
-	int			i;
-
-#ifdef GIST_PAGEADDITEM
-	GISTENTRY	tmpdentry;
-	IndexTuple	newtup;
-	bool		IsNull;
-#endif
-	for (i = 0; i < len; i++)
-	{
-#ifdef GIST_PAGEADDITEM
-		l = gistPageAddItem(giststate, r, page,
-							(Item) itup[i], IndexTupleSize(itup[i]),
-							off, LP_USED, &tmpdentry, &newtup);
-		off = OffsetNumberNext(off);
-		if (DatumGetPointer(tmpdentry.key) != NULL &&
-		  tmpdentry.key != index_getattr(itup[i], 1, r->rd_att, &IsNull))
-			pfree(DatumGetPointer(tmpdentry.key));
-		if (itup[i] != newtup)
-			pfree(newtup);
-#else
-		l = PageAddItem(page, (Item) itup[i], IndexTupleSize(itup[i]),
-						off, LP_USED);
-		if (l == InvalidOffsetNumber)
-			elog(ERROR, "failed to add index item to \"%s\"",
-				 RelationGetRelationName(r));
-#endif
-	}
-	return l;
-}
-
-/*
- * Check space for itup vector on page
- */
-static int
-gistnospace(Page page, IndexTuple *itvec, int len)
-{
-	unsigned int size = 0;
-	int			i;
-
-	for (i = 0; i < len; i++)
-		size += IndexTupleSize(itvec[i]) + sizeof(ItemIdData);
-
-	return (PageGetFreeSpace(page) < size);
-}
-
-/*
- * Read buffer into itup vector
- */
-static IndexTuple *
-gistreadbuffer(Buffer buffer, int *len /* out */ )
-{
-	OffsetNumber i,
-				maxoff;
-	IndexTuple *itvec;
-	Page		p = (Page) BufferGetPage(buffer);
-
-	maxoff = PageGetMaxOffsetNumber(p);
-	*len = maxoff;
-	itvec = palloc(sizeof(IndexTuple) * maxoff);
-	for (i = FirstOffsetNumber; i <= maxoff; i = OffsetNumberNext(i))
-		itvec[i - 1] = (IndexTuple) PageGetItem(p, PageGetItemId(p, i));
-
-	return itvec;
-}
-
-/*
- * join two vectors into one
- */
-static IndexTuple *
-gistjoinvector(IndexTuple *itvec, int *len, IndexTuple *additvec, int addlen)
-{
-	itvec = (IndexTuple *) repalloc((void *) itvec, sizeof(IndexTuple) * ((*len) + addlen));
-	memmove(&itvec[*len], additvec, sizeof(IndexTuple) * addlen);
-	*len += addlen;
-	return itvec;
-}
-
-/*
- * return union of itup vector
- */
-static IndexTuple
-gistunion(Relation r, IndexTuple *itvec, int len, GISTSTATE *giststate)
-{
-	Datum		attr[INDEX_MAX_KEYS];
-	bool		whatfree[INDEX_MAX_KEYS];
-	char		isnull[INDEX_MAX_KEYS];
-	GistEntryVector *evec;
-	Datum		datum;
-	int			datumsize,
-				i,
-				j;
-	GISTENTRY	centry[INDEX_MAX_KEYS];
-	bool	   *needfree;
-	IndexTuple	newtup;
-	bool		IsNull;
-	int			reallen;
-
-	needfree = (bool *) palloc(((len == 1) ? 2 : len) * sizeof(bool));
-	evec = (GistEntryVector *) palloc(((len == 1) ? 2 : len) * sizeof(GISTENTRY) + GEVHDRSZ);
-
-	for (j = 0; j < r->rd_att->natts; j++)
-	{
-		reallen = 0;
-		for (i = 0; i < len; i++)
-		{
-			datum = index_getattr(itvec[i], j + 1, giststate->tupdesc, &IsNull);
-			if (IsNull)
-				continue;
-
-			gistdentryinit(giststate, j,
-						   &(evec->vector[reallen]),
-						   datum,
-						   NULL, NULL, (OffsetNumber) 0,
-						   ATTSIZE(datum, giststate->tupdesc, j + 1, IsNull), FALSE, IsNull);
-			if ((!isAttByVal(giststate, j)) &&
-				evec->vector[reallen].key != datum)
-				needfree[reallen] = TRUE;
-			else
-				needfree[reallen] = FALSE;
-			reallen++;
-		}
-
-		if (reallen == 0)
-		{
-			attr[j] = (Datum) 0;
-			isnull[j] = 'n';
-			whatfree[j] = FALSE;
-		}
-		else
-		{
-			if (reallen == 1)
-			{
-				evec->n = 2;
-				gistentryinit(evec->vector[1],
-							  evec->vector[0].key, r, NULL,
-						 (OffsetNumber) 0, evec->vector[0].bytes, FALSE);
-
-			}
-			else
-				evec->n = reallen;
-			datum = FunctionCall2(&giststate->unionFn[j],
-								  PointerGetDatum(evec),
-								  PointerGetDatum(&datumsize));
-
-			for (i = 0; i < reallen; i++)
-				if (needfree[i])
-					pfree(DatumGetPointer(evec->vector[i].key));
-
-			gistcentryinit(giststate, j, &centry[j], datum,
-						   NULL, NULL, (OffsetNumber) 0,
-						   datumsize, FALSE, FALSE);
-			isnull[j] = ' ';
-			attr[j] = centry[j].key;
-			if (!isAttByVal(giststate, j))
-			{
-				whatfree[j] = TRUE;
-				if (centry[j].key != datum)
-					pfree(DatumGetPointer(datum));
-			}
-			else
-				whatfree[j] = FALSE;
-		}
-	}
-
-	pfree(evec);
-	pfree(needfree);
-
-	newtup = (IndexTuple) index_formtuple(giststate->tupdesc, attr, isnull);
-	for (j = 0; j < r->rd_att->natts; j++)
-		if (whatfree[j])
-			pfree(DatumGetPointer(attr[j]));
-
-	return newtup;
-}
-
-
-/*
- * Forms union of oldtup and addtup, if union == oldtup then return NULL
- */
-static IndexTuple
-gistgetadjusted(Relation r, IndexTuple oldtup, IndexTuple addtup, GISTSTATE *giststate)
-{
-	GistEntryVector *evec;
-	Datum		datum;
-	int			datumsize;
-	bool		result,
-				neednew = false;
-	char		isnull[INDEX_MAX_KEYS],
-				whatfree[INDEX_MAX_KEYS];
-	Datum		attr[INDEX_MAX_KEYS];
-	GISTENTRY	centry[INDEX_MAX_KEYS],
-				oldatt[INDEX_MAX_KEYS],
-				addatt[INDEX_MAX_KEYS],
-			   *ev0p,
-			   *ev1p;
-	bool		olddec[INDEX_MAX_KEYS],
-				adddec[INDEX_MAX_KEYS];
-	bool		oldisnull[INDEX_MAX_KEYS],
-				addisnull[INDEX_MAX_KEYS];
-	IndexTuple	newtup = NULL;
-	int			j;
-
-	evec = palloc(2 * sizeof(GISTENTRY) + GEVHDRSZ);
-	evec->n = 2;
-	ev0p = &(evec->vector[0]);
-	ev1p = &(evec->vector[1]);
-
-	gistDeCompressAtt(giststate, r, oldtup, NULL,
-					  (OffsetNumber) 0, oldatt, olddec, oldisnull);
-
-	gistDeCompressAtt(giststate, r, addtup, NULL,
-					  (OffsetNumber) 0, addatt, adddec, addisnull);
-
-
-	for (j = 0; j < r->rd_att->natts; j++)
-	{
-		if (oldisnull[j] && addisnull[j])
-		{
-			isnull[j] = 'n';
-			attr[j] = (Datum) 0;
-			whatfree[j] = FALSE;
-		}
-		else
-		{
-			FILLEV(
-				   oldisnull[j], oldatt[j].key, oldatt[j].bytes,
-				   addisnull[j], addatt[j].key, addatt[j].bytes
-				);
-
-			datum = FunctionCall2(&giststate->unionFn[j],
-								  PointerGetDatum(evec),
-								  PointerGetDatum(&datumsize));
-
-			if (oldisnull[j] || addisnull[j])
-			{
-				if (oldisnull[j])
-					neednew = true;
-			}
-			else
-			{
-				FunctionCall3(&giststate->equalFn[j],
-							  ev0p->key,
-							  datum,
-							  PointerGetDatum(&result));
-
-				if (!result)
-					neednew = true;
-			}
-
-			if (olddec[j])
-				pfree(DatumGetPointer(oldatt[j].key));
-			if (adddec[j])
-				pfree(DatumGetPointer(addatt[j].key));
-
-			gistcentryinit(giststate, j, &centry[j], datum,
-						   NULL, NULL, (OffsetNumber) 0,
-						   datumsize, FALSE, FALSE);
-
-			isnull[j] = ' ';
-			attr[j] = centry[j].key;
-			if ((!isAttByVal(giststate, j)))
-			{
-				whatfree[j] = TRUE;
-				if (centry[j].key != datum)
-					pfree(DatumGetPointer(datum));
-			}
-			else
-				whatfree[j] = FALSE;
-		}
-	}
-	pfree(evec);
-
-	if (neednew)
-	{
-		/* need to update key */
-		newtup = (IndexTuple) index_formtuple(giststate->tupdesc, attr, isnull);
-		newtup->t_tid = oldtup->t_tid;
-	}
-
-	for (j = 0; j < r->rd_att->natts; j++)
-		if (whatfree[j])
-			pfree(DatumGetPointer(attr[j]));
-
-	return newtup;
-}
 
 static void
-gistunionsubkey(Relation r, GISTSTATE *giststate, IndexTuple *itvec, GIST_SPLITVEC *spl)
+gistfindleaf(GISTInsertState *state, GISTSTATE *giststate)
 {
-	int			i,
-				j,
-				lr;
-	Datum	   *attr;
-	bool	   *needfree,
-				IsNull;
-	int			len,
-			   *attrsize;
-	OffsetNumber *entries;
-	GistEntryVector *evec;
-	Datum		datum;
-	int			datumsize;
-	int			reallen;
-	bool	   *isnull;
-
-	for (lr = 0; lr <= 1; lr++)
-	{
-		if (lr)
-		{
-			attrsize = spl->spl_lattrsize;
-			attr = spl->spl_lattr;
-			len = spl->spl_nleft;
-			entries = spl->spl_left;
-			isnull = spl->spl_lisnull;
-		}
-		else
-		{
-			attrsize = spl->spl_rattrsize;
-			attr = spl->spl_rattr;
-			len = spl->spl_nright;
-			entries = spl->spl_right;
-			isnull = spl->spl_risnull;
-		}
-
-		needfree = (bool *) palloc(((len == 1) ? 2 : len) * sizeof(bool));
-		evec = palloc(((len == 1) ? 2 : len) * sizeof(GISTENTRY) + GEVHDRSZ);
-
-		for (j = 1; j < r->rd_att->natts; j++)
-		{
-			reallen = 0;
-			for (i = 0; i < len; i++)
-			{
-				if (spl->spl_idgrp[entries[i]])
-					continue;
-				datum = index_getattr(itvec[entries[i] - 1], j + 1,
-									  giststate->tupdesc, &IsNull);
-				if (IsNull)
-					continue;
-				gistdentryinit(giststate, j,
-							   &(evec->vector[reallen]),
-							   datum,
-							   NULL, NULL, (OffsetNumber) 0,
-							   ATTSIZE(datum, giststate->tupdesc, j + 1, IsNull), FALSE, IsNull);
-				if ((!isAttByVal(giststate, j)) &&
-					evec->vector[reallen].key != datum)
-					needfree[reallen] = TRUE;
-				else
-					needfree[reallen] = FALSE;
-				reallen++;
-
-			}
-			if (reallen == 0)
-			{
-				datum = (Datum) 0;
-				datumsize = 0;
-				isnull[j] = true;
-			}
-			else
-			{
-				/*
-				 * evec->vector[0].bytes may be not defined, so form union
-				 * with itself
-				 */
-				if (reallen == 1)
-				{
-					evec->n = 2;
-					memcpy((void *) &(evec->vector[1]),
-						   (void *) &(evec->vector[0]),
-						   sizeof(GISTENTRY));
-				}
-				else
-					evec->n = reallen;
-				datum = FunctionCall2(&giststate->unionFn[j],
-									  PointerGetDatum(evec),
-									  PointerGetDatum(&datumsize));
-				isnull[j] = false;
-			}
-
-			for (i = 0; i < reallen; i++)
-				if (needfree[i])
-					pfree(DatumGetPointer(evec->vector[i].key));
-
-			attr[j] = datum;
-			attrsize[j] = datumsize;
-		}
-		pfree(evec);
-		pfree(needfree);
-	}
-}
-
-/*
- * find group in vector with equial value
- */
-static int
-gistfindgroup(GISTSTATE *giststate, GISTENTRY *valvec, GIST_SPLITVEC *spl)
-{
-	int			i,
-				j,
-				len;
-	int			curid = 1;
-	bool		result;
+	ItemId		iid;
+	IndexTuple	idxtuple;
+	GISTPageOpaque opaque;
 
 	/*
-	 * first key is always not null (see gistinsert), so we may not check
-	 * for nulls
+	 * walk down, We don't lock page for a long time, but so we should be
+	 * ready to recheck path in a bad case... We remember, that page->lsn
+	 * should never be invalid.
 	 */
-
-	for (i = 0; i < spl->spl_nleft; i++)
+	while (true)
 	{
-		if (spl->spl_idgrp[spl->spl_left[i]])
+
+		if (XLogRecPtrIsInvalid(state->stack->lsn))
+			state->stack->buffer = ReadBuffer(state->r, state->stack->blkno);
+		LockBuffer(state->stack->buffer, GIST_SHARE);
+
+		state->stack->page = (Page) BufferGetPage(state->stack->buffer);
+		opaque = GistPageGetOpaque(state->stack->page);
+
+		state->stack->lsn = PageGetLSN(state->stack->page);
+		Assert(state->r->rd_istemp || !XLogRecPtrIsInvalid(state->stack->lsn));
+
+		if (state->stack->blkno != GIST_ROOT_BLKNO &&
+			XLByteLT(state->stack->parent->lsn, opaque->nsn))
+		{
+			/*
+			 * caused split non-root page is detected, go up to parent to
+			 * choose best child
+			 */
+			LockBuffer(state->stack->buffer, GIST_UNLOCK);
+			ReleaseBuffer(state->stack->buffer);
+			state->stack = state->stack->parent;
 			continue;
-		len = 0;
-		/* find all equal value in right part */
-		for (j = 0; j < spl->spl_nright; j++)
-		{
-			if (spl->spl_idgrp[spl->spl_right[j]])
-				continue;
-			FunctionCall3(&giststate->equalFn[0],
-						  valvec[spl->spl_left[i]].key,
-						  valvec[spl->spl_right[j]].key,
-						  PointerGetDatum(&result));
-			if (result)
-			{
-				spl->spl_idgrp[spl->spl_right[j]] = curid;
-				len++;
-			}
 		}
-		/* find all other equal value in left part */
-		if (len)
+
+
+		if (!GistPageIsLeaf(state->stack->page))
 		{
-			/* add current val to list of equial values */
-			spl->spl_idgrp[spl->spl_left[i]] = curid;
-			/* searching .. */
-			for (j = i + 1; j < spl->spl_nleft; j++)
+			/*
+			 * This is an internal page, so continue to walk down the tree. We
+			 * find the child node that has the minimum insertion penalty and
+			 * recursively invoke ourselves to modify that node. Once the
+			 * recursive call returns, we may need to adjust the parent node
+			 * for two reasons: the child node split, or the key in this node
+			 * needs to be adjusted for the newly inserted key below us.
+			 */
+			GISTInsertStack *item = (GISTInsertStack *) palloc0(sizeof(GISTInsertStack));
+
+			state->stack->childoffnum = gistchoose(state->r, state->stack->page, state->itup[0], giststate);
+
+			iid = PageGetItemId(state->stack->page, state->stack->childoffnum);
+			idxtuple = (IndexTuple) PageGetItem(state->stack->page, iid);
+			item->blkno = ItemPointerGetBlockNumber(&(idxtuple->t_tid));
+			LockBuffer(state->stack->buffer, GIST_UNLOCK);
+
+			item->parent = state->stack;
+			item->child = NULL;
+			if (state->stack)
+				state->stack->child = item;
+			state->stack = item;
+		}
+		else
+		{
+			/* be carefull, during unlock/lock page may be changed... */
+			LockBuffer(state->stack->buffer, GIST_UNLOCK);
+			LockBuffer(state->stack->buffer, GIST_EXCLUSIVE);
+			state->stack->page = (Page) BufferGetPage(state->stack->buffer);
+			opaque = GistPageGetOpaque(state->stack->page);
+
+			if (state->stack->blkno == GIST_ROOT_BLKNO)
 			{
-				if (spl->spl_idgrp[spl->spl_left[j]])
-					continue;
-				FunctionCall3(&giststate->equalFn[0],
-							  valvec[spl->spl_left[i]].key,
-							  valvec[spl->spl_left[j]].key,
-							  PointerGetDatum(&result));
-				if (result)
+				/*
+				 * the only page can become inner instead of leaf is a root
+				 * page, so for root we should recheck it
+				 */
+				if (!GistPageIsLeaf(state->stack->page))
 				{
-					spl->spl_idgrp[spl->spl_left[j]] = curid;
-					len++;
+					/*
+					 * very rarely situation: during unlock/lock index with
+					 * number of pages = 1 was increased
+					 */
+					LockBuffer(state->stack->buffer, GIST_UNLOCK);
+					continue;
 				}
+
+				/*
+				 * we don't need to check root split, because checking
+				 * leaf/inner is enough to recognize split for root
+				 */
+
 			}
-			spl->spl_ngrp[curid] = len + 1;
-			curid++;
+			else if (XLByteLT(state->stack->parent->lsn, opaque->nsn))
+			{
+				/*
+				 * detecting split during unlock/lock, so we should find
+				 * better child on parent
+				 */
+
+				/* forget buffer */
+				LockBuffer(state->stack->buffer, GIST_UNLOCK);
+				ReleaseBuffer(state->stack->buffer);
+
+				state->stack = state->stack->parent;
+				continue;
+			}
+
+			state->stack->lsn = PageGetLSN(state->stack->page);
+
+			/* ok we found a leaf page and it X-locked */
+			break;
 		}
 	}
 
-	return curid;
+	/* now state->stack->(page, buffer and blkno) points to leaf page */
 }
 
 /*
- * Insert equivalent tuples to left or right page
- * with minimize penalty
+ * Should have the same interface as XLogReadBuffer
  */
-static void
-gistadjsubkey(Relation r,
-			  IndexTuple *itup, /* contains compressed entry */
-			  int *len,
-			  GIST_SPLITVEC *v,
-			  GISTSTATE *giststate
-)
+static Buffer
+gistReadAndLockBuffer(Relation r, BlockNumber blkno)
 {
-	int			curlen;
-	OffsetNumber *curwpos;
-	bool		decfree[INDEX_MAX_KEYS];
-	GISTENTRY	entry,
-				identry[INDEX_MAX_KEYS],
-			   *ev0p,
-			   *ev1p;
-	float		lpenalty,
-				rpenalty;
-	GistEntryVector *evec;
-	int			datumsize;
-	bool		isnull[INDEX_MAX_KEYS];
-	int			i,
-				j;
-	Datum		datum;
+	Buffer		buffer = ReadBuffer(r, blkno);
 
-	/* clear vectors */
-	curlen = v->spl_nleft;
-	curwpos = v->spl_left;
-	for (i = 0; i < v->spl_nleft; i++)
-		if (v->spl_idgrp[v->spl_left[i]] == 0)
-		{
-			*curwpos = v->spl_left[i];
-			curwpos++;
-		}
-		else
-			curlen--;
-	v->spl_nleft = curlen;
+	LockBuffer(buffer, GIST_SHARE);
+	return buffer;
+}
 
-	curlen = v->spl_nright;
-	curwpos = v->spl_right;
-	for (i = 0; i < v->spl_nright; i++)
-		if (v->spl_idgrp[v->spl_right[i]] == 0)
-		{
-			*curwpos = v->spl_right[i];
-			curwpos++;
-		}
-		else
-			curlen--;
-	v->spl_nright = curlen;
+/*
+ * Traverse the tree to find path from root page,
+ * to prevent deadlocks, it should lock only one page simultaneously.
+ * Function uses in recovery and usial mode, so should work with different
+ * read functions (gistReadAndLockBuffer and XLogReadBuffer)
+ * returns from the begining of closest parent;
+ */
+GISTInsertStack *
+gistFindPath(Relation r, BlockNumber child, Buffer (*myReadBuffer) (Relation, BlockNumber))
+{
+	Page		page;
+	Buffer		buffer;
+	OffsetNumber i,
+				maxoff;
+	ItemId		iid;
+	IndexTuple	idxtuple;
+	GISTInsertStack *top,
+			   *tail,
+			   *ptr;
+	BlockNumber blkno;
 
-	evec = palloc(2 * sizeof(GISTENTRY) + GEVHDRSZ);
-	evec->n = 2;
-	ev0p = &(evec->vector[0]);
-	ev1p = &(evec->vector[1]);
+	top = tail = (GISTInsertStack *) palloc0(sizeof(GISTInsertStack));
+	top->blkno = GIST_ROOT_BLKNO;
 
-	/* add equivalent tuple */
-	for (i = 0; i < *len; i++)
+	while (top && top->blkno != child)
 	{
-		if (v->spl_idgrp[i + 1] == 0)	/* already inserted */
-			continue;
-		gistDeCompressAtt(giststate, r, itup[i], NULL, (OffsetNumber) 0,
-						  identry, decfree, isnull);
+		buffer = myReadBuffer(r, top->blkno);	/* buffer locked */
+		page = (Page) BufferGetPage(buffer);
 
-		v->spl_ngrp[v->spl_idgrp[i + 1]]--;
-		if (v->spl_ngrp[v->spl_idgrp[i + 1]] == 0 &&
-		(v->spl_grpflag[v->spl_idgrp[i + 1]] & BOTH_ADDED) != BOTH_ADDED)
+		if (GistPageIsLeaf(page))
 		{
-
-			/* force last in group */
-			rpenalty = 1.0;
-			lpenalty = (v->spl_grpflag[v->spl_idgrp[i + 1]] & LEFT_ADDED) ? 2.0 : 0.0;
+			/* we can safety go away, follows only leaf pages */
+			LockBuffer(buffer, GIST_UNLOCK);
+			ReleaseBuffer(buffer);
+			return NULL;
 		}
-		else
+
+		top->lsn = PageGetLSN(page);
+
+		if (top->parent && XLByteLT(top->parent->lsn, GistPageGetOpaque(page)->nsn) &&
+			GistPageGetOpaque(page)->rightlink != InvalidBlockNumber /* sanity check */ )
 		{
-			/* where? */
-			for (j = 1; j < r->rd_att->natts; j++)
+			/* page splited while we thinking of... */
+			ptr = (GISTInsertStack *) palloc0(sizeof(GISTInsertStack));
+			ptr->blkno = GistPageGetOpaque(page)->rightlink;
+			ptr->childoffnum = InvalidOffsetNumber;
+			ptr->parent = top;
+			ptr->next = NULL;
+			tail->next = ptr;
+			tail = ptr;
+		}
+
+		maxoff = PageGetMaxOffsetNumber(page);
+
+		for (i = FirstOffsetNumber; i <= maxoff; i = OffsetNumberNext(i))
+		{
+			iid = PageGetItemId(page, i);
+			idxtuple = (IndexTuple) PageGetItem(page, iid);
+			blkno = ItemPointerGetBlockNumber(&(idxtuple->t_tid));
+			if (blkno == child)
 			{
-				gistentryinit(entry, v->spl_lattr[j], r, NULL,
-						   (OffsetNumber) 0, v->spl_lattrsize[j], FALSE);
-				gistpenalty(giststate, j, &entry, v->spl_lisnull[j],
-							&identry[j], isnull[j], &lpenalty);
+				OffsetNumber poff = InvalidOffsetNumber;
 
-				gistentryinit(entry, v->spl_rattr[j], r, NULL,
-						   (OffsetNumber) 0, v->spl_rattrsize[j], FALSE);
-				gistpenalty(giststate, j, &entry, v->spl_risnull[j],
-							&identry[j], isnull[j], &rpenalty);
+				/* make childs links */
+				ptr = top;
+				while (ptr->parent)
+				{
+					/* set child link */
+					ptr->parent->child = ptr;
+					/* move childoffnum.. */
+					if (ptr == top)
+					{
+						/* first iteration */
+						poff = ptr->parent->childoffnum;
+						ptr->parent->childoffnum = ptr->childoffnum;
+					}
+					else
+					{
+						OffsetNumber tmp = ptr->parent->childoffnum;
 
-				if (lpenalty != rpenalty)
-					break;
+						ptr->parent->childoffnum = poff;
+						poff = tmp;
+					}
+					ptr = ptr->parent;
+				}
+				top->childoffnum = i;
+				LockBuffer(buffer, GIST_UNLOCK);
+				ReleaseBuffer(buffer);
+				return top;
+			}
+			else
+			{
+				/* Install next inner page to the end of stack */
+				ptr = (GISTInsertStack *) palloc0(sizeof(GISTInsertStack));
+				ptr->blkno = blkno;
+				ptr->childoffnum = i;	/* set offsetnumber of child to child
+										 * !!! */
+				ptr->parent = top;
+				ptr->next = NULL;
+				tail->next = ptr;
+				tail = ptr;
 			}
 		}
-		/* add */
-		if (lpenalty < rpenalty)
-		{
-			v->spl_grpflag[v->spl_idgrp[i + 1]] |= LEFT_ADDED;
-			v->spl_left[v->spl_nleft] = i + 1;
-			v->spl_nleft++;
-			for (j = 1; j < r->rd_att->natts; j++)
-			{
-				if (isnull[j] && v->spl_lisnull[j])
-				{
-					v->spl_lattr[j] = (Datum) 0;
-					v->spl_lattrsize[j] = 0;
-				}
-				else
-				{
-					FILLEV(
-						   v->spl_lisnull[j], v->spl_lattr[j], v->spl_lattrsize[j],
-						   isnull[j], identry[j].key, identry[j].bytes
-						);
 
-					datum = FunctionCall2(&giststate->unionFn[j],
-										  PointerGetDatum(evec),
-										  PointerGetDatum(&datumsize));
-
-					if ((!isAttByVal(giststate, j)) && !v->spl_lisnull[j])
-						pfree(DatumGetPointer(v->spl_lattr[j]));
-					v->spl_lattr[j] = datum;
-					v->spl_lattrsize[j] = datumsize;
-					v->spl_lisnull[j] = false;
-				}
-			}
-		}
-		else
-		{
-			v->spl_grpflag[v->spl_idgrp[i + 1]] |= RIGHT_ADDED;
-			v->spl_right[v->spl_nright] = i + 1;
-			v->spl_nright++;
-			for (j = 1; j < r->rd_att->natts; j++)
-			{
-				if (isnull[j] && v->spl_risnull[j])
-				{
-					v->spl_rattr[j] = (Datum) 0;
-					v->spl_rattrsize[j] = 0;
-				}
-				else
-				{
-					FILLEV(
-						   v->spl_risnull[j], v->spl_rattr[j], v->spl_rattrsize[j],
-						   isnull[j], identry[j].key, identry[j].bytes
-						);
-
-					datum = FunctionCall2(&giststate->unionFn[j],
-										  PointerGetDatum(evec),
-										  PointerGetDatum(&datumsize));
-
-					if ((!isAttByVal(giststate, j)) && !v->spl_risnull[j])
-						pfree(DatumGetPointer(v->spl_rattr[j]));
-
-					v->spl_rattr[j] = datum;
-					v->spl_rattrsize[j] = datumsize;
-					v->spl_risnull[j] = false;
-				}
-			}
-
-		}
-		gistFreeAtt(r, identry, decfree);
+		LockBuffer(buffer, GIST_UNLOCK);
+		ReleaseBuffer(buffer);
+		top = top->next;
 	}
-	pfree(evec);
+
+	return NULL;
+}
+
+
+/*
+ * Returns X-locked parent of stack page
+ */
+
+static void
+gistFindCorrectParent(Relation r, GISTInsertStack *child)
+{
+	GISTInsertStack *parent = child->parent;
+
+	LockBuffer(parent->buffer, GIST_EXCLUSIVE);
+	parent->page = (Page) BufferGetPage(parent->buffer);
+
+
+	/* here we don't need to distinguish between split and page update */
+	if (parent->childoffnum == InvalidOffsetNumber || !XLByteEQ(parent->lsn, PageGetLSN(parent->page)))
+	{
+		/* parent is changed, look child in right links until found */
+		OffsetNumber i,
+					maxoff;
+		ItemId		iid;
+		IndexTuple	idxtuple;
+		GISTInsertStack *ptr;
+
+		while (true)
+		{
+			maxoff = PageGetMaxOffsetNumber(parent->page);
+			for (i = FirstOffsetNumber; i <= maxoff; i = OffsetNumberNext(i))
+			{
+				iid = PageGetItemId(parent->page, i);
+				idxtuple = (IndexTuple) PageGetItem(parent->page, iid);
+				if (ItemPointerGetBlockNumber(&(idxtuple->t_tid)) == child->blkno)
+				{
+					/* yes!!, found */
+					parent->childoffnum = i;
+					return;
+				}
+			}
+
+			parent->blkno = GistPageGetOpaque(parent->page)->rightlink;
+			LockBuffer(parent->buffer, GIST_UNLOCK);
+			ReleaseBuffer(parent->buffer);
+			if (parent->blkno == InvalidBlockNumber)
+
+				/*
+				 * end of chain and still didn't found parent, It's very-very
+				 * rare situation when root splited
+				 */
+				break;
+			parent->buffer = ReadBuffer(r, parent->blkno);
+			LockBuffer(parent->buffer, GIST_EXCLUSIVE);
+			parent->page = (Page) BufferGetPage(parent->buffer);
+		}
+
+		/*
+		 * awful!!, we need search tree to find parent ... , but before we
+		 * should release all old parent
+		 */
+
+		ptr = child->parent->parent;	/* child->parent already released
+										 * above */
+		while (ptr)
+		{
+			ReleaseBuffer(ptr->buffer);
+			ptr = ptr->parent;
+		}
+
+		/* ok, find new path */
+		ptr = parent = gistFindPath(r, child->blkno, gistReadAndLockBuffer);
+		Assert(ptr != NULL);
+
+		/* read all buffers as supposed in caller */
+		while (ptr)
+		{
+			ptr->buffer = ReadBuffer(r, ptr->blkno);
+			ptr->page = (Page) BufferGetPage(ptr->buffer);
+			ptr = ptr->parent;
+		}
+
+		/* install new chain of parents to stack */
+		child->parent = parent;
+		parent->child = child;
+
+		/* make recursive call to normal processing */
+		gistFindCorrectParent(r, child);
+	}
+
+	return;
+}
+
+void
+gistmakedeal(GISTInsertState *state, GISTSTATE *giststate)
+{
+	int			is_splitted;
+	ItemId		iid;
+	IndexTuple	oldtup,
+				newtup;
+
+	/* walk up */
+	while (true)
+	{
+		/*
+		 * After this call: 1. if child page was splited, then itup contains
+		 * keys for each page 2. if  child page wasn't splited, then itup
+		 * contains additional for adjustment of current key
+		 */
+
+		if (state->stack->parent)
+		{
+			/*
+			 * X-lock parent page before proceed child, gistFindCorrectParent
+			 * should find and lock it
+			 */
+			gistFindCorrectParent(state->r, state->stack);
+		}
+		is_splitted = gistplacetopage(state, giststate);
+
+		/* parent locked above, so release child buffer */
+		LockBuffer(state->stack->buffer, GIST_UNLOCK);
+		ReleaseBuffer(state->stack->buffer);
+
+		/* pop parent page from stack */
+		state->stack = state->stack->parent;
+
+		/* stack is void */
+		if (!state->stack)
+			break;
+
+		/*
+		 * child did not split, so we can check is it needed to update parent
+		 * tuple
+		 */
+		if (!is_splitted)
+		{
+			/* parent's tuple */
+			iid = PageGetItemId(state->stack->page, state->stack->childoffnum);
+			oldtup = (IndexTuple) PageGetItem(state->stack->page, iid);
+			newtup = gistgetadjusted(state->r, oldtup, state->itup[0], giststate);
+
+			if (!newtup)
+			{					/* not need to update key */
+				LockBuffer(state->stack->buffer, GIST_UNLOCK);
+				break;
+			}
+
+			state->itup[0] = newtup;
+		}
+	}							/* while */
+
+	/* release all parent buffers */
+	while (state->stack)
+	{
+		ReleaseBuffer(state->stack->buffer);
+		state->stack = state->stack->parent;
+	}
+
+	/* say to xlog that insert is completed */
+	if (state->needInsertComplete && !state->r->rd_istemp)
+		gistxlogInsertCompletion(state->r->rd_node, &(state->key), 1);
+}
+
+static void
+gistToRealOffset(OffsetNumber *arr, int len, OffsetNumber *reasloffset)
+{
+	int			i;
+
+	for (i = 0; i < len; i++)
+		arr[i] = reasloffset[arr[i]];
 }
 
 /*
  *	gistSplit -- split a page in the tree.
  */
-static IndexTuple *
+IndexTuple *
 gistSplit(Relation r,
 		  Buffer buffer,
 		  IndexTuple *itup,		/* contains compressed entry */
 		  int *len,
-		  GISTSTATE *giststate,
-		  InsertIndexResult *res)
+		  SplitedPageLayout **dist,
+		  GISTSTATE *giststate)
 {
 	Page		p;
 	Buffer		leftbuf,
@@ -1223,115 +954,140 @@ gistSplit(Relation r,
 	GISTPageOpaque opaque;
 	GIST_SPLITVEC v;
 	GistEntryVector *entryvec;
-	bool	   *decompvec;
 	int			i,
-				j,
+				fakeoffset,
 				nlen;
-	int			MaxGrpId = 1;
-	Datum		datum;
-	bool		IsNull;
+	OffsetNumber *realoffset;
+	IndexTuple *cleaneditup = itup;
+	int			lencleaneditup = *len;
 
 	p = (Page) BufferGetPage(buffer);
-	opaque = (GISTPageOpaque) PageGetSpecialPointer(p);
+	opaque = GistPageGetOpaque(p);
 
 	/*
 	 * The root of the tree is the first block in the relation.  If we're
-	 * about to split the root, we need to do some hocus-pocus to enforce
-	 * this guarantee.
+	 * about to split the root, we need to do some hocus-pocus to enforce this
+	 * guarantee.
 	 */
-
-	if (BufferGetBlockNumber(buffer) == GISTP_ROOT)
+	if (BufferGetBlockNumber(buffer) == GIST_ROOT_BLKNO)
 	{
-		leftbuf = ReadBuffer(r, P_NEW);
-		GISTInitBuffer(leftbuf, opaque->flags);
+		leftbuf = gistNewBuffer(r);
+		GISTInitBuffer(leftbuf, opaque->flags & F_LEAF);
 		lbknum = BufferGetBlockNumber(leftbuf);
 		left = (Page) BufferGetPage(leftbuf);
 	}
 	else
 	{
 		leftbuf = buffer;
-		IncrBufferRefCount(buffer);
+		/* IncrBufferRefCount(buffer); */
 		lbknum = BufferGetBlockNumber(buffer);
 		left = (Page) PageGetTempPage(p, sizeof(GISTPageOpaqueData));
 	}
 
-	rightbuf = ReadBuffer(r, P_NEW);
-	GISTInitBuffer(rightbuf, opaque->flags);
+	rightbuf = gistNewBuffer(r);
+	GISTInitBuffer(rightbuf, opaque->flags & F_LEAF);
 	rbknum = BufferGetBlockNumber(rightbuf);
 	right = (Page) BufferGetPage(rightbuf);
 
 	/* generate the item array */
+	realoffset = palloc((*len + 1) * sizeof(OffsetNumber));
 	entryvec = palloc(GEVHDRSZ + (*len + 1) * sizeof(GISTENTRY));
 	entryvec->n = *len + 1;
-	decompvec = (bool *) palloc((*len + 1) * sizeof(bool));
+
+	fakeoffset = FirstOffsetNumber;
 	for (i = 1; i <= *len; i++)
 	{
+		Datum		datum;
+		bool		IsNull;
+
+		if (!GistPageIsLeaf(p) && GistTupleIsInvalid(itup[i - 1]))
+		{
+			entryvec->n--;
+			/* remember position of invalid tuple */
+			realoffset[entryvec->n] = i;
+			continue;
+		}
+
 		datum = index_getattr(itup[i - 1], 1, giststate->tupdesc, &IsNull);
-		gistdentryinit(giststate, 0, &(entryvec->vector[i]),
+		gistdentryinit(giststate, 0, &(entryvec->vector[fakeoffset]),
 					   datum, r, p, i,
-		   ATTSIZE(datum, giststate->tupdesc, 1, IsNull), FALSE, IsNull);
-		if ((!isAttByVal(giststate, 0)) && entryvec->vector[i].key != datum)
-			decompvec[i] = TRUE;
-		else
-			decompvec[i] = FALSE;
+					   ATTSIZE(datum, giststate->tupdesc, 1, IsNull),
+					   FALSE, IsNull);
+		realoffset[fakeoffset] = i;
+		fakeoffset++;
 	}
 
 	/*
-	 * now let the user-defined picksplit function set up the split
-	 * vector; in entryvec have no null value!!
+	 * if it was invalid tuple then we need special processing. If it's
+	 * possible, we move all invalid tuples on right page. We should remember,
+	 * that union with invalid tuples is a invalid tuple.
 	 */
-	FunctionCall2(&giststate->picksplitFn[0],
-				  PointerGetDatum(entryvec),
-				  PointerGetDatum(&v));
-
-	/* compatibility with old code */
-	if (v.spl_left[v.spl_nleft - 1] == InvalidOffsetNumber)
-		v.spl_left[v.spl_nleft - 1] = (OffsetNumber) *len;
-	if (v.spl_right[v.spl_nright - 1] == InvalidOffsetNumber)
-		v.spl_right[v.spl_nright - 1] = (OffsetNumber) *len;
-
-	v.spl_lattr[0] = v.spl_ldatum;
-	v.spl_rattr[0] = v.spl_rdatum;
-	v.spl_lisnull[0] = false;
-	v.spl_risnull[0] = false;
-
-	/*
-	 * if index is multikey, then we must to try get smaller bounding box
-	 * for subkey(s)
-	 */
-	if (r->rd_att->natts > 1)
+	if (entryvec->n != *len + 1)
 	{
-		v.spl_idgrp = (int *) palloc0(sizeof(int) * (*len + 1));
-		v.spl_grpflag = (char *) palloc0(sizeof(char) * (*len + 1));
-		v.spl_ngrp = (int *) palloc(sizeof(int) * (*len + 1));
+		lencleaneditup = entryvec->n - 1;
+		cleaneditup = (IndexTuple *) palloc(lencleaneditup * sizeof(IndexTuple));
+		for (i = 1; i < entryvec->n; i++)
+			cleaneditup[i - 1] = itup[realoffset[i] - 1];
 
-		MaxGrpId = gistfindgroup(giststate, entryvec->vector, &v);
+		if (gistnospace(left, cleaneditup, lencleaneditup))
+		{
+			/* no space on left to put all good tuples, so picksplit */
+			gistUserPicksplit(r, entryvec, &v, cleaneditup, lencleaneditup, giststate);
+			v.spl_leftvalid = true;
+			v.spl_rightvalid = false;
+			gistToRealOffset(v.spl_left, v.spl_nleft, realoffset);
+			gistToRealOffset(v.spl_right, v.spl_nright, realoffset);
+		}
+		else
+		{
+			/* we can try to store all valid tuples on one page */
+			v.spl_right = (OffsetNumber *) palloc(entryvec->n * sizeof(OffsetNumber));
+			v.spl_left = (OffsetNumber *) palloc(entryvec->n * sizeof(OffsetNumber));
 
-		/* form union of sub keys for each page (l,p) */
-		gistunionsubkey(r, giststate, itup, &v);
-
-		/*
-		 * if possible, we insert equivalent tuples with control by
-		 * penalty for a subkey(s)
-		 */
-		if (MaxGrpId > 1)
-			gistadjsubkey(r, itup, len, &v, giststate);
-
-		pfree(v.spl_idgrp);
-		pfree(v.spl_grpflag);
-		pfree(v.spl_ngrp);
+			if (lencleaneditup == 0)
+			{
+				/* all tuples are invalid, so moves half of its to right */
+				v.spl_leftvalid = v.spl_rightvalid = false;
+				v.spl_nright = 0;
+				v.spl_nleft = 0;
+				for (i = 1; i <= *len; i++)
+					if (i - 1 < *len / 2)
+						v.spl_left[v.spl_nleft++] = i;
+					else
+						v.spl_right[v.spl_nright++] = i;
+			}
+			else
+			{
+				/*
+				 * we will not call gistUserPicksplit, just put good tuples on
+				 * left and invalid on right
+				 */
+				v.spl_nleft = lencleaneditup;
+				v.spl_nright = 0;
+				for (i = 1; i < entryvec->n; i++)
+					v.spl_left[i - 1] = i;
+				gistToRealOffset(v.spl_left, v.spl_nleft, realoffset);
+				v.spl_lattr[0] = v.spl_ldatum = (Datum) 0;
+				v.spl_rattr[0] = v.spl_rdatum = (Datum) 0;
+				v.spl_lisnull[0] = true;
+				v.spl_risnull[0] = true;
+				gistunionsubkey(r, giststate, itup, &v, true);
+				v.spl_leftvalid = true;
+				v.spl_rightvalid = false;
+			}
+		}
+	}
+	else
+	{
+		/* there is no invalid tuples, so usial processing */
+		gistUserPicksplit(r, entryvec, &v, itup, *len, giststate);
+		v.spl_leftvalid = v.spl_rightvalid = true;
 	}
 
-	/* clean up the entry vector: its keys need to be deleted, too */
-	for (i = 1; i <= *len; i++)
-		if (decompvec[i])
-			pfree(DatumGetPointer(entryvec->vector[i].key));
-	pfree(entryvec);
-	pfree(decompvec);
 
 	/* form left and right vector */
-	lvectup = (IndexTuple *) palloc(sizeof(IndexTuple) * v.spl_nleft);
-	rvectup = (IndexTuple *) palloc(sizeof(IndexTuple) * v.spl_nright);
+	lvectup = (IndexTuple *) palloc(sizeof(IndexTuple) * (*len + 1));
+	rvectup = (IndexTuple *) palloc(sizeof(IndexTuple) * (*len + 1));
 
 	for (i = 0; i < v.spl_nleft; i++)
 		lvectup[i] = itup[v.spl_left[i] - 1];
@@ -1339,313 +1095,119 @@ gistSplit(Relation r,
 	for (i = 0; i < v.spl_nright; i++)
 		rvectup[i] = itup[v.spl_right[i] - 1];
 
+	/* place invalid tuples on right page if itsn't done yet */
+	for (fakeoffset = entryvec->n; fakeoffset < *len + 1 && lencleaneditup; fakeoffset++)
+	{
+		rvectup[v.spl_nright++] = itup[realoffset[fakeoffset] - 1];
+	}
 
-	/* write on disk (may be need another split) */
+	/* write on disk (may need another split) */
 	if (gistnospace(right, rvectup, v.spl_nright))
 	{
 		nlen = v.spl_nright;
-		newtup = gistSplit(r, rightbuf, rvectup, &nlen, giststate,
-			  (res && rvectup[nlen - 1] == itup[*len - 1]) ? res : NULL);
-		ReleaseBuffer(rightbuf);
-		for (j = 1; j < r->rd_att->natts; j++)
-			if ((!isAttByVal(giststate, j)) && !v.spl_risnull[j])
-				pfree(DatumGetPointer(v.spl_rattr[j]));
+		newtup = gistSplit(r, rightbuf, rvectup, &nlen, dist, giststate);
+		/* ReleaseBuffer(rightbuf); */
 	}
 	else
 	{
-		OffsetNumber l;
+		char	   *ptr;
 
-		l = gistwritebuffer(r, right, rvectup, v.spl_nright, FirstOffsetNumber);
-		WriteBuffer(rightbuf);
-
-		if (res)
-			ItemPointerSet(&((*res)->pointerData), rbknum, l);
+		gistfillbuffer(r, right, rvectup, v.spl_nright, FirstOffsetNumber);
+		/* XLOG stuff */
+		ROTATEDIST(*dist);
+		(*dist)->block.blkno = BufferGetBlockNumber(rightbuf);
+		(*dist)->block.num = v.spl_nright;
+		(*dist)->list = (IndexTupleData *) palloc(BLCKSZ);
+		ptr = (char *) ((*dist)->list);
+		for (i = 0; i < v.spl_nright; i++)
+		{
+			memcpy(ptr, rvectup[i], IndexTupleSize(rvectup[i]));
+			ptr += IndexTupleSize(rvectup[i]);
+		}
+		(*dist)->lenlist = ptr - ((char *) ((*dist)->list));
+		(*dist)->buffer = rightbuf;
 
 		nlen = 1;
 		newtup = (IndexTuple *) palloc(sizeof(IndexTuple) * 1);
-		newtup[0] = gistFormTuple(giststate, r, v.spl_rattr, v.spl_rattrsize, v.spl_risnull);
-		ItemPointerSet(&(newtup[0]->t_tid), rbknum, 1);
+		newtup[0] = (v.spl_rightvalid) ? gistFormTuple(giststate, r, v.spl_rattr, v.spl_rattrsize, v.spl_risnull)
+			: gist_form_invalid_tuple(rbknum);
+		ItemPointerSetBlockNumber(&(newtup[0]->t_tid), rbknum);
 	}
-
 
 	if (gistnospace(left, lvectup, v.spl_nleft))
 	{
 		int			llen = v.spl_nleft;
 		IndexTuple *lntup;
 
-		lntup = gistSplit(r, leftbuf, lvectup, &llen, giststate,
-			  (res && lvectup[llen - 1] == itup[*len - 1]) ? res : NULL);
-		ReleaseBuffer(leftbuf);
-
-		for (j = 1; j < r->rd_att->natts; j++)
-			if ((!isAttByVal(giststate, j)) && !v.spl_lisnull[j])
-				pfree(DatumGetPointer(v.spl_lattr[j]));
+		lntup = gistSplit(r, leftbuf, lvectup, &llen, dist, giststate);
+		/* ReleaseBuffer(leftbuf); */
 
 		newtup = gistjoinvector(newtup, &nlen, lntup, llen);
-		pfree(lntup);
 	}
 	else
 	{
-		OffsetNumber l;
+		char	   *ptr;
 
-		l = gistwritebuffer(r, left, lvectup, v.spl_nleft, FirstOffsetNumber);
-		if (BufferGetBlockNumber(buffer) != GISTP_ROOT)
+		gistfillbuffer(r, left, lvectup, v.spl_nleft, FirstOffsetNumber);
+		/* XLOG stuff */
+		ROTATEDIST(*dist);
+		(*dist)->block.blkno = BufferGetBlockNumber(leftbuf);
+		(*dist)->block.num = v.spl_nleft;
+		(*dist)->list = (IndexTupleData *) palloc(BLCKSZ);
+		ptr = (char *) ((*dist)->list);
+		for (i = 0; i < v.spl_nleft; i++)
+		{
+			memcpy(ptr, lvectup[i], IndexTupleSize(lvectup[i]));
+			ptr += IndexTupleSize(lvectup[i]);
+		}
+		(*dist)->lenlist = ptr - ((char *) ((*dist)->list));
+		(*dist)->buffer = leftbuf;
+
+		if (BufferGetBlockNumber(buffer) != GIST_ROOT_BLKNO)
 			PageRestoreTempPage(left, p);
 
-		WriteBuffer(leftbuf);
-
-		if (res)
-			ItemPointerSet(&((*res)->pointerData), lbknum, l);
-
 		nlen += 1;
-		newtup = (IndexTuple *) repalloc((void *) newtup, sizeof(IndexTuple) * nlen);
-		newtup[nlen - 1] = gistFormTuple(giststate, r, v.spl_lattr, v.spl_lattrsize, v.spl_lisnull);
-		ItemPointerSet(&(newtup[nlen - 1]->t_tid), lbknum, 1);
+		newtup = (IndexTuple *) repalloc(newtup, sizeof(IndexTuple) * nlen);
+		newtup[nlen - 1] = (v.spl_leftvalid) ? gistFormTuple(giststate, r, v.spl_lattr, v.spl_lattrsize, v.spl_lisnull)
+			: gist_form_invalid_tuple(lbknum);
+		ItemPointerSetBlockNumber(&(newtup[nlen - 1]->t_tid), lbknum);
 	}
 
-	/* !!! pfree */
-	pfree(rvectup);
-	pfree(lvectup);
-	pfree(v.spl_left);
-	pfree(v.spl_right);
+	GistClearTuplesDeleted(p);
 
 	*len = nlen;
 	return newtup;
 }
 
-static void
-gistnewroot(Relation r, IndexTuple *itup, int len)
-{
-	Buffer		b;
-	Page		p;
-
-	b = ReadBuffer(r, GISTP_ROOT);
-
-	gistadjscans(r, GISTOP_SPLIT, GISTP_ROOT, FirstOffsetNumber);
-
-	GISTInitBuffer(b, 0);
-	p = BufferGetPage(b);
-
-	gistwritebuffer(r, p, itup, len, FirstOffsetNumber);
-	WriteBuffer(b);
-}
-
-static void
-GISTInitBuffer(Buffer b, uint32 f)
-{
-	GISTPageOpaque opaque;
-	Page		page;
-	Size		pageSize;
-
-	pageSize = BufferGetPageSize(b);
-
-	page = BufferGetPage(b);
-
-	PageInit(page, pageSize, sizeof(GISTPageOpaqueData));
-
-	opaque = (GISTPageOpaque) PageGetSpecialPointer(page);
-	opaque->flags = f;
-}
-
-
-/*
-** find entry with lowest penalty
-*/
-static OffsetNumber
-gistchoose(Relation r, Page p, IndexTuple it,	/* it has compressed entry */
-		   GISTSTATE *giststate)
-{
-	OffsetNumber maxoff;
-	OffsetNumber i;
-	Datum		datum;
-	float		usize;
-	OffsetNumber which;
-	float		sum_grow,
-				which_grow[INDEX_MAX_KEYS];
-	GISTENTRY	entry,
-				identry[INDEX_MAX_KEYS];
-	bool		IsNull,
-				decompvec[INDEX_MAX_KEYS],
-				isnull[INDEX_MAX_KEYS];
-	int			j;
-
-	maxoff = PageGetMaxOffsetNumber(p);
-	*which_grow = -1.0;
-	which = -1;
-	sum_grow = 1;
-	gistDeCompressAtt(giststate, r,
-					  it, NULL, (OffsetNumber) 0,
-					  identry, decompvec, isnull);
-
-	for (i = FirstOffsetNumber; i <= maxoff && sum_grow; i = OffsetNumberNext(i))
-	{
-		IndexTuple	itup = (IndexTuple) PageGetItem(p, PageGetItemId(p, i));
-
-		sum_grow = 0;
-		for (j = 0; j < r->rd_att->natts; j++)
-		{
-			datum = index_getattr(itup, j + 1, giststate->tupdesc, &IsNull);
-			gistdentryinit(giststate, j, &entry, datum, r, p, i, ATTSIZE(datum, giststate->tupdesc, j + 1, IsNull), FALSE, IsNull);
-			gistpenalty(giststate, j, &entry, IsNull, &identry[j], isnull[j], &usize);
-
-			if ((!isAttByVal(giststate, j)) && entry.key != datum)
-				pfree(DatumGetPointer(entry.key));
-
-			if (which_grow[j] < 0 || usize < which_grow[j])
-			{
-				which = i;
-				which_grow[j] = usize;
-				if (j < r->rd_att->natts - 1 && i == FirstOffsetNumber)
-					which_grow[j + 1] = -1;
-				sum_grow += which_grow[j];
-			}
-			else if (which_grow[j] == usize)
-				sum_grow += usize;
-			else
-			{
-				sum_grow = 1;
-				break;
-			}
-		}
-	}
-
-	gistFreeAtt(r, identry, decompvec);
-	return which;
-}
-
 void
-gistfreestack(GISTSTACK *s)
+gistnewroot(Relation r, Buffer buffer, IndexTuple *itup, int len, ItemPointer key)
 {
-	GISTSTACK  *p;
-
-	while (s != NULL)
-	{
-		p = s->gs_parent;
-		pfree(s);
-		s = p;
-	}
-}
-
-
-/*
- * Retail deletion of a single tuple.
- *
- * NB: this is no longer called externally, but is still needed by
- * gistlayerinsert().  That dependency will have to be fixed if GIST
- * is ever going to allow concurrent insertions.
- */
-static void
-gistdelete(Relation r, ItemPointer tid)
-{
-	BlockNumber blkno;
-	OffsetNumber offnum;
-	Buffer		buf;
 	Page		page;
 
-	/*
-	 * Since GIST is not marked "amconcurrent" in pg_am, caller should
-	 * have acquired exclusive lock on index relation.	We need no locking
-	 * here.
-	 */
+	Assert(BufferGetBlockNumber(buffer) == GIST_ROOT_BLKNO);
+	page = BufferGetPage(buffer);
+	GISTInitBuffer(buffer, 0);
 
-	blkno = ItemPointerGetBlockNumber(tid);
-	offnum = ItemPointerGetOffsetNumber(tid);
-
-	/* adjust any scans that will be affected by this deletion */
-	/* NB: this works only for scans in *this* backend! */
-	gistadjscans(r, GISTOP_DEL, blkno, offnum);
-
-	/* delete the index tuple */
-	buf = ReadBuffer(r, blkno);
-	page = BufferGetPage(buf);
-
-	PageIndexTupleDelete(page, offnum);
-
-	WriteBuffer(buf);
-}
-
-/*
- * Bulk deletion of all index entries pointing to a set of heap tuples.
- * The set of target tuples is specified via a callback routine that tells
- * whether any given heap tuple (identified by ItemPointer) is being deleted.
- *
- * Result: a palloc'd struct containing statistical info for VACUUM displays.
- */
-Datum
-gistbulkdelete(PG_FUNCTION_ARGS)
-{
-	Relation	rel = (Relation) PG_GETARG_POINTER(0);
-	IndexBulkDeleteCallback callback = (IndexBulkDeleteCallback) PG_GETARG_POINTER(1);
-	void	   *callback_state = (void *) PG_GETARG_POINTER(2);
-	IndexBulkDeleteResult *result;
-	BlockNumber num_pages;
-	double		tuples_removed;
-	double		num_index_tuples;
-	IndexScanDesc iscan;
-
-	tuples_removed = 0;
-	num_index_tuples = 0;
-
-	/*
-	 * Since GIST is not marked "amconcurrent" in pg_am, caller should
-	 * have acquired exclusive lock on index relation.	We need no locking
-	 * here.
-	 */
-
-	/*
-	 * XXX generic implementation --- should be improved!
-	 */
-
-	/* walk through the entire index */
-	iscan = index_beginscan(NULL, rel, SnapshotAny, 0, NULL);
-	/* including killed tuples */
-	iscan->ignore_killed_tuples = false;
-
-	while (index_getnext_indexitem(iscan, ForwardScanDirection))
+	gistfillbuffer(r, page, itup, len, FirstOffsetNumber);
+	if (!r->rd_istemp)
 	{
-		vacuum_delay_point();
+		XLogRecPtr	recptr;
+		XLogRecData *rdata;
 
-		if (callback(&iscan->xs_ctup.t_self, callback_state))
-		{
-			ItemPointerData indextup = iscan->currentItemData;
-			BlockNumber blkno;
-			OffsetNumber offnum;
-			Buffer		buf;
-			Page		page;
+		rdata = formUpdateRdata(r->rd_node, GIST_ROOT_BLKNO,
+								NULL, 0, false, itup, len, key);
 
-			blkno = ItemPointerGetBlockNumber(&indextup);
-			offnum = ItemPointerGetOffsetNumber(&indextup);
+		START_CRIT_SECTION();
 
-			/* adjust any scans that will be affected by this deletion */
-			gistadjscans(rel, GISTOP_DEL, blkno, offnum);
+		recptr = XLogInsert(RM_GIST_ID, XLOG_GIST_NEW_ROOT, rdata);
+		PageSetLSN(page, recptr);
+		PageSetTLI(page, ThisTimeLineID);
 
-			/* delete the index tuple */
-			buf = ReadBuffer(rel, blkno);
-			page = BufferGetPage(buf);
-
-			PageIndexTupleDelete(page, offnum);
-
-			WriteBuffer(buf);
-
-			tuples_removed += 1;
-		}
-		else
-			num_index_tuples += 1;
+		END_CRIT_SECTION();
 	}
-
-	index_endscan(iscan);
-
-	/* return statistics */
-	num_pages = RelationGetNumberOfBlocks(rel);
-
-	result = (IndexBulkDeleteResult *) palloc0(sizeof(IndexBulkDeleteResult));
-	result->num_pages = num_pages;
-	result->num_index_tuples = num_index_tuples;
-	result->tuples_removed = tuples_removed;
-
-	PG_RETURN_POINTER(result);
+	else
+		PageSetLSN(page, XLogRecPtrForTemp);
 }
-
 
 void
 initGISTstate(GISTSTATE *giststate, Relation index)
@@ -1661,22 +1223,22 @@ initGISTstate(GISTSTATE *giststate, Relation index)
 	for (i = 0; i < index->rd_att->natts; i++)
 	{
 		fmgr_info_copy(&(giststate->consistentFn[i]),
-				   index_getprocinfo(index, i + 1, GIST_CONSISTENT_PROC),
+					   index_getprocinfo(index, i + 1, GIST_CONSISTENT_PROC),
 					   CurrentMemoryContext);
 		fmgr_info_copy(&(giststate->unionFn[i]),
 					   index_getprocinfo(index, i + 1, GIST_UNION_PROC),
 					   CurrentMemoryContext);
 		fmgr_info_copy(&(giststate->compressFn[i]),
-					 index_getprocinfo(index, i + 1, GIST_COMPRESS_PROC),
+					   index_getprocinfo(index, i + 1, GIST_COMPRESS_PROC),
 					   CurrentMemoryContext);
 		fmgr_info_copy(&(giststate->decompressFn[i]),
-				   index_getprocinfo(index, i + 1, GIST_DECOMPRESS_PROC),
+					   index_getprocinfo(index, i + 1, GIST_DECOMPRESS_PROC),
 					   CurrentMemoryContext);
 		fmgr_info_copy(&(giststate->penaltyFn[i]),
 					   index_getprocinfo(index, i + 1, GIST_PENALTY_PROC),
 					   CurrentMemoryContext);
 		fmgr_info_copy(&(giststate->picksplitFn[i]),
-					index_getprocinfo(index, i + 1, GIST_PICKSPLIT_PROC),
+					   index_getprocinfo(index, i + 1, GIST_PICKSPLIT_PROC),
 					   CurrentMemoryContext);
 		fmgr_info_copy(&(giststate->equalFn[i]),
 					   index_getprocinfo(index, i + 1, GIST_EQUAL_PROC),
@@ -1688,268 +1250,4 @@ void
 freeGISTstate(GISTSTATE *giststate)
 {
 	/* no work */
-}
-
-#ifdef GIST_PAGEADDITEM
-/*
-** Given an IndexTuple to be inserted on a page, this routine replaces
-** the key with another key, which may involve generating a new IndexTuple
-** if the sizes don't match or if the null status changes.
-**
-** XXX this only works for a single-column index tuple!
-*/
-static IndexTuple
-gist_tuple_replacekey(Relation r, GISTENTRY entry, IndexTuple t)
-{
-	bool		IsNull;
-	Datum		datum = index_getattr(t, 1, r->rd_att, &IsNull);
-
-	/*
-	 * If new entry fits in index tuple, copy it in.  To avoid worrying
-	 * about null-value bitmask, pass it off to the general
-	 * index_formtuple routine if either the previous or new value is
-	 * NULL.
-	 */
-	if (!IsNull && DatumGetPointer(entry.key) != NULL &&
-		(Size) entry.bytes <= ATTSIZE(datum, r, 1, IsNull))
-	{
-		memcpy(DatumGetPointer(datum),
-			   DatumGetPointer(entry.key),
-			   entry.bytes);
-		/* clear out old size */
-		t->t_info &= ~INDEX_SIZE_MASK;
-		/* or in new size */
-		t->t_info |= MAXALIGN(entry.bytes + sizeof(IndexTupleData));
-
-		return t;
-	}
-	else
-	{
-		/* generate a new index tuple for the compressed entry */
-		TupleDesc	tupDesc = r->rd_att;
-		IndexTuple	newtup;
-		char		isnull;
-
-		isnull = DatumGetPointer(entry.key) != NULL ? ' ' : 'n';
-		newtup = (IndexTuple) index_formtuple(tupDesc,
-											  &(entry.key),
-											  &isnull);
-		newtup->t_tid = t->t_tid;
-		return newtup;
-	}
-}
-#endif
-
-/*
-** initialize a GiST entry with a decompressed version of key
-*/
-void
-gistdentryinit(GISTSTATE *giststate, int nkey, GISTENTRY *e,
-			   Datum k, Relation r, Page pg, OffsetNumber o,
-			   int b, bool l, bool isNull)
-{
-	if (b && !isNull)
-	{
-		GISTENTRY  *dep;
-
-		gistentryinit(*e, k, r, pg, o, b, l);
-		dep = (GISTENTRY *)
-			DatumGetPointer(FunctionCall1(&giststate->decompressFn[nkey],
-										  PointerGetDatum(e)));
-		/* decompressFn may just return the given pointer */
-		if (dep != e)
-		{
-			gistentryinit(*e, dep->key, dep->rel, dep->page, dep->offset,
-						  dep->bytes, dep->leafkey);
-			pfree(dep);
-		}
-	}
-	else
-		gistentryinit(*e, (Datum) 0, r, pg, o, 0, l);
-}
-
-
-/*
-** initialize a GiST entry with a compressed version of key
-*/
-static void
-gistcentryinit(GISTSTATE *giststate, int nkey,
-			   GISTENTRY *e, Datum k, Relation r,
-			   Page pg, OffsetNumber o, int b, bool l, bool isNull)
-{
-	if (!isNull)
-	{
-		GISTENTRY  *cep;
-
-		gistentryinit(*e, k, r, pg, o, b, l);
-		cep = (GISTENTRY *)
-			DatumGetPointer(FunctionCall1(&giststate->compressFn[nkey],
-										  PointerGetDatum(e)));
-		/* compressFn may just return the given pointer */
-		if (cep != e)
-		{
-			gistentryinit(*e, cep->key, cep->rel, cep->page, cep->offset,
-						  cep->bytes, cep->leafkey);
-			pfree(cep);
-		}
-	}
-	else
-		gistentryinit(*e, (Datum) 0, r, pg, o, 0, l);
-}
-
-static IndexTuple
-gistFormTuple(GISTSTATE *giststate, Relation r,
-			  Datum attdata[], int datumsize[], bool isnull[])
-{
-	IndexTuple	tup;
-	char		isnullchar[INDEX_MAX_KEYS];
-	bool		whatfree[INDEX_MAX_KEYS];
-	GISTENTRY	centry[INDEX_MAX_KEYS];
-	Datum		compatt[INDEX_MAX_KEYS];
-	int			j;
-
-	for (j = 0; j < r->rd_att->natts; j++)
-	{
-		if (isnull[j])
-		{
-			isnullchar[j] = 'n';
-			compatt[j] = (Datum) 0;
-			whatfree[j] = FALSE;
-		}
-		else
-		{
-			gistcentryinit(giststate, j, &centry[j], attdata[j],
-						   NULL, NULL, (OffsetNumber) 0,
-						   datumsize[j], FALSE, FALSE);
-			isnullchar[j] = ' ';
-			compatt[j] = centry[j].key;
-			if (!isAttByVal(giststate, j))
-			{
-				whatfree[j] = TRUE;
-				if (centry[j].key != attdata[j])
-					pfree(DatumGetPointer(attdata[j]));
-			}
-			else
-				whatfree[j] = FALSE;
-		}
-	}
-
-	tup = (IndexTuple) index_formtuple(giststate->tupdesc, compatt, isnullchar);
-	for (j = 0; j < r->rd_att->natts; j++)
-		if (whatfree[j])
-			pfree(DatumGetPointer(compatt[j]));
-
-	return tup;
-}
-
-static void
-gistDeCompressAtt(GISTSTATE *giststate, Relation r, IndexTuple tuple, Page p,
-	OffsetNumber o, GISTENTRY attdata[], bool decompvec[], bool isnull[])
-{
-	int			i;
-	Datum		datum;
-
-	for (i = 0; i < r->rd_att->natts; i++)
-	{
-		datum = index_getattr(tuple, i + 1, giststate->tupdesc, &isnull[i]);
-		gistdentryinit(giststate, i, &attdata[i],
-					   datum, r, p, o,
-					   ATTSIZE(datum, giststate->tupdesc, i + 1, isnull[i]), FALSE, isnull[i]);
-		if (isAttByVal(giststate, i))
-			decompvec[i] = FALSE;
-		else
-		{
-			if (attdata[i].key == datum || isnull[i])
-				decompvec[i] = FALSE;
-			else
-				decompvec[i] = TRUE;
-		}
-	}
-}
-
-static void
-gistFreeAtt(Relation r, GISTENTRY attdata[], bool decompvec[])
-{
-	int			i;
-
-	for (i = 0; i < r->rd_att->natts; i++)
-		if (decompvec[i])
-			pfree(DatumGetPointer(attdata[i].key));
-}
-
-static void
-gistpenalty(GISTSTATE *giststate, int attno,
-			GISTENTRY *key1, bool isNull1,
-			GISTENTRY *key2, bool isNull2, float *penalty)
-{
-	if (giststate->penaltyFn[attno].fn_strict && (isNull1 || isNull2))
-		*penalty = 0.0;
-	else
-		FunctionCall3(&giststate->penaltyFn[attno],
-					  PointerGetDatum(key1),
-					  PointerGetDatum(key2),
-					  PointerGetDatum(penalty));
-}
-
-#ifdef GISTDEBUG
-static void
-gist_dumptree(Relation r, int level, BlockNumber blk, OffsetNumber coff)
-{
-	Buffer		buffer;
-	Page		page;
-	GISTPageOpaque opaque;
-	IndexTuple	which;
-	ItemId		iid;
-	OffsetNumber i,
-				maxoff;
-	BlockNumber cblk;
-	char	   *pred;
-
-	pred = (char *) palloc(sizeof(char) * level + 1);
-	MemSet(pred, '\t', level);
-	pred[level] = '\0';
-
-	buffer = ReadBuffer(r, blk);
-	page = (Page) BufferGetPage(buffer);
-	opaque = (GISTPageOpaque) PageGetSpecialPointer(page);
-
-	maxoff = PageGetMaxOffsetNumber(page);
-
-	elog(DEBUG4, "%sPage: %d %s blk: %d maxoff: %d free: %d", pred,
-		 coff, (opaque->flags & F_LEAF) ? "LEAF" : "INTE", (int) blk,
-		 (int) maxoff, PageGetFreeSpace(page));
-
-	for (i = FirstOffsetNumber; i <= maxoff; i = OffsetNumberNext(i))
-	{
-		iid = PageGetItemId(page, i);
-		which = (IndexTuple) PageGetItem(page, iid);
-		cblk = ItemPointerGetBlockNumber(&(which->t_tid));
-#ifdef PRINTTUPLE
-		elog(DEBUG4, "%s  Tuple. blk: %d size: %d", pred, (int) cblk,
-			 IndexTupleSize(which));
-#endif
-
-		if (!(opaque->flags & F_LEAF))
-			gist_dumptree(r, level + 1, cblk, i);
-	}
-	ReleaseBuffer(buffer);
-	pfree(pred);
-}
-#endif   /* defined GISTDEBUG */
-
-void
-gist_redo(XLogRecPtr lsn, XLogRecord *record)
-{
-	elog(PANIC, "gist_redo: unimplemented");
-}
-
-void
-gist_undo(XLogRecPtr lsn, XLogRecord *record)
-{
-	elog(PANIC, "gist_undo: unimplemented");
-}
-
-void
-gist_desc(char *buf, uint8 xl_info, char *rec)
-{
 }

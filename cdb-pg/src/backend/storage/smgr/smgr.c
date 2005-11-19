@@ -11,14 +11,13 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/storage/smgr/smgr.c,v 1.85 2005/01/10 20:02:22 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/storage/smgr/smgr.c,v 1.93 2005/10/15 02:49:26 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
 #include "access/xact.h"
-#include "access/twophase_rmgr.h"
 #include "commands/tablespace.h"
 #include "storage/bufmgr.h"
 #include "storage/freespace.h"
@@ -137,11 +136,12 @@ static void smgr_internal_unlink(RelFileNode rnode, int which,
 
 
 /*
- *	smgrinit(), smgrshutdown() -- Initialize or shut down all storage
+ *	smgrinit(), smgrshutdown() -- Initialize or shut down storage
  *								  managers.
  *
- * Note: in the normal multiprocess scenario with a postmaster, these are
- * called at postmaster start and stop, not per-backend.
+ * Note: smgrinit is called during backend startup (normal or standalone
+ * case), *not* during postmaster start.  Therefore, any resources created
+ * here or destroyed in smgrshutdown are backend-local.
  */
 void
 smgrinit(void)
@@ -155,7 +155,7 @@ smgrinit(void)
 			if (!(*(smgrsw[i].smgr_init)) ())
 				elog(FATAL, "smgr initialization failed on %s: %m",
 					 DatumGetCString(DirectFunctionCall1(smgrout,
-													 Int16GetDatum(i))));
+														 Int16GetDatum(i))));
 		}
 	}
 
@@ -163,6 +163,9 @@ smgrinit(void)
 	on_proc_exit(smgrshutdown, 0);
 }
 
+/*
+ * on_proc_exit hook for smgr cleanup during backend shutdown
+ */
 static void
 smgrshutdown(int code, Datum arg)
 {
@@ -175,7 +178,7 @@ smgrshutdown(int code, Datum arg)
 			if (!(*(smgrsw[i].smgr_shutdown)) ())
 				elog(FATAL, "smgr shutdown failed on %s: %m",
 					 DatumGetCString(DirectFunctionCall1(smgrout,
-													 Int16GetDatum(i))));
+														 Int16GetDatum(i))));
 		}
 	}
 }
@@ -208,10 +211,6 @@ smgropen(RelFileNode rnode)
 	reln = (SMgrRelation) hash_search(SMgrRelationHash,
 									  (void *) &rnode,
 									  HASH_ENTER, &found);
-	if (reln == NULL)
-		ereport(ERROR,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("out of memory")));
 
 	/* Initialize it if not present before */
 	if (!found)
@@ -235,8 +234,8 @@ void
 smgrsetowner(SMgrRelation *owner, SMgrRelation reln)
 {
 	/*
-	 * First, unhook any old owner.  (Normally there shouldn't be any, but
-	 * it seems possible that this can happen during swap_relation_files()
+	 * First, unhook any old owner.  (Normally there shouldn't be any, but it
+	 * seems possible that this can happen during swap_relation_files()
 	 * depending on the order of processing.  It's ok to close the old
 	 * relcache entry early in that case.)
 	 */
@@ -272,9 +271,8 @@ smgrclose(SMgrRelation reln)
 		elog(ERROR, "SMgrRelation hashtable corrupted");
 
 	/*
-	 * Unhook the owner pointer, if any.  We do this last since in the
-	 * remote possibility of failure above, the SMgrRelation object will still
-	 * exist.
+	 * Unhook the owner pointer, if any.  We do this last since in the remote
+	 * possibility of failure above, the SMgrRelation object will still exist.
 	 */
 	if (owner)
 		*owner = NULL;
@@ -346,11 +344,10 @@ smgrcreate(SMgrRelation reln, bool isTemp, bool isRedo)
 	 * We may be using the target table space for the first time in this
 	 * database, so create a per-database subdirectory if needed.
 	 *
-	 * XXX this is a fairly ugly violation of module layering, but this seems
-	 * to be the best place to put the check.  Maybe
-	 * TablespaceCreateDbspace should be here and not in
-	 * commands/tablespace.c?  But that would imply importing a lot of
-	 * stuff that smgr.c oughtn't know, either.
+	 * XXX this is a fairly ugly violation of module layering, but this seems to
+	 * be the best place to put the check.	Maybe TablespaceCreateDbspace
+	 * should be here and not in commands/tablespace.c?  But that would imply
+	 * importing a lot of stuff that smgr.c oughtn't know, either.
 	 */
 	TablespaceCreateDbspace(reln->smgr_rnode.spcNode,
 							reln->smgr_rnode.dbNode,
@@ -369,15 +366,14 @@ smgrcreate(SMgrRelation reln, bool isTemp, bool isRedo)
 
 	/*
 	 * Make a non-transactional XLOG entry showing the file creation. It's
-	 * non-transactional because we should replay it whether the
-	 * transaction commits or not; if not, the file will be dropped at
-	 * abort time.
+	 * non-transactional because we should replay it whether the transaction
+	 * commits or not; if not, the file will be dropped at abort time.
 	 */
 	xlrec.rnode = reln->smgr_rnode;
 
-	rdata.buffer = InvalidBuffer;
 	rdata.data = (char *) &xlrec;
 	rdata.len = sizeof(xlrec);
+	rdata.buffer = InvalidBuffer;
 	rdata.next = NULL;
 
 	lsn = XLogInsert(RM_SMGR_ID, XLOG_SMGR_CREATE | XLOG_NO_TRAN, &rdata);
@@ -419,13 +415,13 @@ smgrscheduleunlink(SMgrRelation reln, bool isTemp)
 	pendingDeletes = pending;
 
 	/*
-	 * NOTE: if the relation was created in this transaction, it will now
-	 * be present in the pending-delete list twice, once with atCommit
-	 * true and once with atCommit false.  Hence, it will be physically
-	 * deleted at end of xact in either case (and the other entry will be
-	 * ignored by smgrDoPendingDeletes, so no error will occur).  We could
-	 * instead remove the existing list entry and delete the physical file
-	 * immediately, but for now I'll keep the logic simple.
+	 * NOTE: if the relation was created in this transaction, it will now be
+	 * present in the pending-delete list twice, once with atCommit true and
+	 * once with atCommit false.  Hence, it will be physically deleted at end
+	 * of xact in either case (and the other entry will be ignored by
+	 * smgrDoPendingDeletes, so no error will occur).  We could instead remove
+	 * the existing list entry and delete the physical file immediately, but
+	 * for now I'll keep the logic simple.
 	 */
 
 	/* Now close the file and throw away the hashtable entry */
@@ -439,7 +435,7 @@ smgrscheduleunlink(SMgrRelation reln, bool isTemp)
  *		during transactional operations, since it can't be undone.
  *
  *		If isRedo is true, it is okay for the underlying file to be gone
- *		already.  (In practice isRedo will always be true.)
+ *		already.
  *
  * This also implies smgrclose() on the SMgrRelation object.
  */
@@ -462,23 +458,22 @@ static void
 smgr_internal_unlink(RelFileNode rnode, int which, bool isTemp, bool isRedo)
 {
 	/*
-	 * Get rid of any leftover buffers for the rel (shouldn't be any in
-	 * the commit case, but there can be in the abort case).
+	 * Get rid of any remaining buffers for the relation.  bufmgr will just
+	 * drop them without bothering to write the contents.
 	 */
 	DropRelFileNodeBuffers(rnode, isTemp, 0);
 
 	/*
-	 * Tell the free space map to forget this relation.  It won't be
-	 * accessed any more anyway, but we may as well recycle the map space
-	 * quickly.
+	 * Tell the free space map to forget this relation.  It won't be accessed
+	 * any more anyway, but we may as well recycle the map space quickly.
 	 */
 	FreeSpaceMapForgetRel(&rnode);
 
 	/*
 	 * And delete the physical files.
 	 *
-	 * Note: we treat deletion failure as a WARNING, not an error, because
-	 * we've already decided to commit or abort the current xact.
+	 * Note: we treat deletion failure as a WARNING, not an error, because we've
+	 * already decided to commit or abort the current xact.
 	 */
 	if (!(*(smgrsw[which].smgr_unlink)) (rnode, isRedo))
 		ereport(WARNING,
@@ -525,11 +520,11 @@ smgrread(SMgrRelation reln, BlockNumber blocknum, char *buffer)
 	if (!(*(smgrsw[reln->smgr_which].smgr_read)) (reln, blocknum, buffer))
 		ereport(ERROR,
 				(errcode_for_file_access(),
-			   errmsg("could not read block %u of relation %u/%u/%u: %m",
-					  blocknum,
-					  reln->smgr_rnode.spcNode,
-					  reln->smgr_rnode.dbNode,
-					  reln->smgr_rnode.relNode)));
+				 errmsg("could not read block %u of relation %u/%u/%u: %m",
+						blocknum,
+						reln->smgr_rnode.spcNode,
+						reln->smgr_rnode.dbNode,
+						reln->smgr_rnode.relNode)));
 }
 
 /*
@@ -550,11 +545,11 @@ smgrwrite(SMgrRelation reln, BlockNumber blocknum, char *buffer, bool isTemp)
 												   isTemp))
 		ereport(ERROR,
 				(errcode_for_file_access(),
-			  errmsg("could not write block %u of relation %u/%u/%u: %m",
-					 blocknum,
-					 reln->smgr_rnode.spcNode,
-					 reln->smgr_rnode.dbNode,
-					 reln->smgr_rnode.relNode)));
+				 errmsg("could not write block %u of relation %u/%u/%u: %m",
+						blocknum,
+						reln->smgr_rnode.spcNode,
+						reln->smgr_rnode.dbNode,
+						reln->smgr_rnode.relNode)));
 }
 
 /*
@@ -601,9 +596,15 @@ smgrtruncate(SMgrRelation reln, BlockNumber nblocks, bool isTemp)
 	BlockNumber newblks;
 
 	/*
-	 * Tell the free space map to forget anything it may have stored for
-	 * the about-to-be-deleted blocks.	We want to be sure it won't return
-	 * bogus block numbers later on.
+	 * Get rid of any buffers for the about-to-be-deleted blocks. bufmgr will
+	 * just drop them without bothering to write the contents.
+	 */
+	DropRelFileNodeBuffers(reln->smgr_rnode, isTemp, nblocks);
+
+	/*
+	 * Tell the free space map to forget anything it may have stored for the
+	 * about-to-be-deleted blocks.	We want to be sure it won't return bogus
+	 * block numbers later on.
 	 */
 	FreeSpaceMapTruncateRel(&reln->smgr_rnode, nblocks);
 
@@ -613,19 +614,19 @@ smgrtruncate(SMgrRelation reln, BlockNumber nblocks, bool isTemp)
 	if (newblks == InvalidBlockNumber)
 		ereport(ERROR,
 				(errcode_for_file_access(),
-		  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m",
-				 reln->smgr_rnode.spcNode,
-				 reln->smgr_rnode.dbNode,
-				 reln->smgr_rnode.relNode,
-				 nblocks)));
+			  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m",
+					 reln->smgr_rnode.spcNode,
+					 reln->smgr_rnode.dbNode,
+					 reln->smgr_rnode.relNode,
+					 nblocks)));
 
 	if (!isTemp)
 	{
 		/*
-		 * Make a non-transactional XLOG entry showing the file
-		 * truncation. It's non-transactional because we should replay it
-		 * whether the transaction commits or not; the underlying file
-		 * change is certainly not reversible.
+		 * Make a non-transactional XLOG entry showing the file truncation.
+		 * It's non-transactional because we should replay it whether the
+		 * transaction commits or not; the underlying file change is certainly
+		 * not reversible.
 		 */
 		XLogRecPtr	lsn;
 		XLogRecData rdata;
@@ -634,9 +635,9 @@ smgrtruncate(SMgrRelation reln, BlockNumber nblocks, bool isTemp)
 		xlrec.blkno = newblks;
 		xlrec.rnode = reln->smgr_rnode;
 
-		rdata.buffer = InvalidBuffer;
 		rdata.data = (char *) &xlrec;
 		rdata.len = sizeof(xlrec);
+		rdata.buffer = InvalidBuffer;
 		rdata.next = NULL;
 
 		lsn = XLogInsert(RM_SMGR_ID, XLOG_SMGR_TRUNCATE | XLOG_NO_TRAN,
@@ -649,7 +650,8 @@ smgrtruncate(SMgrRelation reln, BlockNumber nblocks, bool isTemp)
 /*
  *	smgrimmedsync() -- Force the specified relation to stable storage.
  *
- *		Synchronously force all of the specified relation down to disk.
+ *		Synchronously force all previous writes to the specified relation
+ *		down to disk.
  *
  *		This is useful for building completely new relations (eg, new
  *		indexes).  Instead of incrementally WAL-logging the index build
@@ -663,6 +665,10 @@ smgrtruncate(SMgrRelation reln, BlockNumber nblocks, bool isTemp)
  *
  *		The preceding writes should specify isTemp = true to avoid
  *		duplicative fsyncs.
+ *
+ *		Note that you need to do FlushRelationBuffers() first if there is
+ *		any possibility that there are dirty buffers for the relation;
+ *		otherwise the sync is not very meaningful.
  */
 void
 smgrimmedsync(SMgrRelation reln)
@@ -676,51 +682,27 @@ smgrimmedsync(SMgrRelation reln)
 						reln->smgr_rnode.relNode)));
 }
 
-void
-smgr_postcommit_record(TransactionId xid, void *recdata, uint32 len)
-{
-      PendingRelDelete *pending = (PendingRelDelete *) recdata;
-
-      if (pending->atCommit)
-              smgr_internal_unlink(pending->relnode,
-                                                       pending->which,
-                                                       pending->isTemp,
-                                                       false);
-}
-
-void
-smgr_postabort_record(TransactionId xid, void *recdata, uint32 len)
-{
-      PendingRelDelete *pending = (PendingRelDelete *) recdata;
-
-      if (!pending->atCommit)
-              smgr_internal_unlink(pending->relnode,
-                                                       pending->which,
-                                                       pending->isTemp,
-                                                       false);
-}
 
 /*
- *    AtPrepare_smgr -- Does things related to two-phase commit prepare phase
+ *	PostPrepare_smgr -- Clean up after a successful PREPARE
+ *
+ * What we have to do here is throw away the in-memory state about pending
+ * relation deletes.  It's all been recorded in the 2PC state file and
+ * it's no longer smgr's job to worry about it.
  */
 void
-AtPrepare_smgr(void)
+PostPrepare_smgr(void)
 {
-      if(pendingDeletes != NULL) {
-              PendingRelDelete *pending;
-              PendingRelDelete *next;
+	PendingRelDelete *pending;
+	PendingRelDelete *next;
 
-              for (pending = pendingDeletes; pending != NULL; pending = next)
-              {
-                      next = pending->next;
-
-                      pendingDeletes = next;
-
-                      RegisterTwoPhaseRecord(TWOPHASE_RM_SMGR_ID, pending, sizeof(PendingRelDelete));
-                      /* must explicitly free the list entry */
-                      pfree(pending);
-              }
-      }
+	for (pending = pendingDeletes; pending != NULL; pending = next)
+	{
+		next = pending->next;
+		pendingDeletes = next;
+		/* must explicitly free the list entry */
+		pfree(pending);
+	}
 }
 
 
@@ -855,7 +837,7 @@ smgrcommit(void)
 			if (!(*(smgrsw[i].smgr_commit)) ())
 				elog(ERROR, "transaction commit failed on %s: %m",
 					 DatumGetCString(DirectFunctionCall1(smgrout,
-													 Int16GetDatum(i))));
+														 Int16GetDatum(i))));
 		}
 	}
 }
@@ -875,7 +857,7 @@ smgrabort(void)
 			if (!(*(smgrsw[i].smgr_abort)) ())
 				elog(ERROR, "transaction abort failed on %s: %m",
 					 DatumGetCString(DirectFunctionCall1(smgrout,
-													 Int16GetDatum(i))));
+														 Int16GetDatum(i))));
 		}
 	}
 }
@@ -895,7 +877,7 @@ smgrsync(void)
 			if (!(*(smgrsw[i].smgr_sync)) ())
 				elog(ERROR, "storage sync failed on %s: %m",
 					 DatumGetCString(DirectFunctionCall1(smgrout,
-													 Int16GetDatum(i))));
+														 Int16GetDatum(i))));
 		}
 	}
 }
@@ -922,44 +904,37 @@ smgr_redo(XLogRecPtr lsn, XLogRecord *record)
 
 		reln = smgropen(xlrec->rnode);
 
-		/*
-		 * First, force bufmgr to drop any buffers it has for the to-be-
-		 * truncated blocks.  We must do this, else subsequent
-		 * XLogReadBuffer operations will not re-extend the file properly.
-		 */
-		DropRelFileNodeBuffers(xlrec->rnode, false, xlrec->blkno);
-
 		/* Can't use smgrtruncate because it would try to xlog */
 
 		/*
-		 * Tell the free space map to forget anything it may have stored
-		 * for the about-to-be-deleted blocks.	We want to be sure it
-		 * won't return bogus block numbers later on.
+		 * First, force bufmgr to drop any buffers it has for the to-be-
+		 * truncated blocks.  We must do this, else subsequent XLogReadBuffer
+		 * operations will not re-extend the file properly.
+		 */
+		DropRelFileNodeBuffers(xlrec->rnode, false, xlrec->blkno);
+
+		/*
+		 * Tell the free space map to forget anything it may have stored for
+		 * the about-to-be-deleted blocks.	We want to be sure it won't return
+		 * bogus block numbers later on.
 		 */
 		FreeSpaceMapTruncateRel(&reln->smgr_rnode, xlrec->blkno);
 
 		/* Do the truncation */
 		newblks = (*(smgrsw[reln->smgr_which].smgr_truncate)) (reln,
-															xlrec->blkno,
+															   xlrec->blkno,
 															   false);
 		if (newblks == InvalidBlockNumber)
 			ereport(WARNING,
 					(errcode_for_file_access(),
-					 errmsg("could not truncate relation %u/%u/%u to %u blocks: %m",
-							reln->smgr_rnode.spcNode,
-							reln->smgr_rnode.dbNode,
-							reln->smgr_rnode.relNode,
-							xlrec->blkno)));
+			  errmsg("could not truncate relation %u/%u/%u to %u blocks: %m",
+					 reln->smgr_rnode.spcNode,
+					 reln->smgr_rnode.dbNode,
+					 reln->smgr_rnode.relNode,
+					 xlrec->blkno)));
 	}
 	else
 		elog(PANIC, "smgr_redo: unknown op code %u", info);
-}
-
-void
-smgr_undo(XLogRecPtr lsn, XLogRecord *record)
-{
-	/* Since we have no transactional WAL entries, should never undo */
-	elog(PANIC, "smgr_undo: cannot undo");
 }
 
 void

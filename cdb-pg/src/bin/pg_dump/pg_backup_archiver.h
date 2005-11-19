@@ -17,7 +17,7 @@
  *
  *
  * IDENTIFICATION
- *		$PostgreSQL: pgsql/src/bin/pg_dump/pg_backup_archiver.h,v 1.62.4.1 2005/01/25 22:44:47 tgl Exp $
+ *		$PostgreSQL: pgsql/src/bin/pg_dump/pg_backup_archiver.h,v 1.68 2005/10/15 02:49:38 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -34,7 +34,7 @@
 #include "libpq-fe.h"
 #include "pqexpbuffer.h"
 
-#define LOBBUFSIZE 32768
+#define LOBBUFSIZE 16384
 
 /*
  * Note: zlib.h must be included *after* libpq-fe.h, because the latter may
@@ -43,13 +43,13 @@
 #ifdef HAVE_LIBZ
 #include <zlib.h>
 #define GZCLOSE(fh) gzclose(fh)
-#define GZWRITE(p, s, n, fh) gzwrite(fh, p, n * s)
-#define GZREAD(p, s, n, fh) gzread(fh, p, n * s)
+#define GZWRITE(p, s, n, fh) gzwrite(fh, p, (n) * (s))
+#define GZREAD(p, s, n, fh) gzread(fh, p, (n) * (s))
 #else
 #define GZCLOSE(fh) fclose(fh)
-#define GZWRITE(p, s, n, fh) (fwrite(p, s, n, fh) * s)
+#define GZWRITE(p, s, n, fh) (fwrite(p, s, n, fh) * (s))
 #define GZREAD(p, s, n, fh) fread(p, s, n, fh)
-#define Z_DEFAULT_COMPRESSION -1
+#define Z_DEFAULT_COMPRESSION (-1)
 
 typedef struct _z_stream
 {
@@ -88,8 +88,6 @@ typedef z_stream *z_streamp;
 
 #define K_VERS_MAX (( (1 * 256 + 10) * 256 + 255) * 256 + 0)
 
-/* No of BLOBs to restore in 1 TX */
-#define BLOB_BATCH_SIZE 100
 
 /* Flags to indicate disposition of offsets stored in files */
 #define K_OFFSET_POS_NOT_SET 1
@@ -138,22 +136,24 @@ typedef struct _outputContext
 
 typedef enum
 {
-	SQL_SCAN = 0,
-	SQL_IN_SQL_COMMENT,
-	SQL_IN_EXT_COMMENT,
-	SQL_IN_QUOTE,
-	SQL_IN_DOLLARTAG,
-	SQL_IN_DOLLARQUOTE
+	SQL_SCAN = 0,				/* normal */
+	SQL_IN_SQL_COMMENT,			/* -- comment */
+	SQL_IN_EXT_COMMENT,			/* slash-star comment */
+	SQL_IN_SINGLE_QUOTE,		/* '...' literal */
+	SQL_IN_E_QUOTE,				/* E'...' literal */
+	SQL_IN_DOUBLE_QUOTE,		/* "..." identifier */
+	SQL_IN_DOLLAR_TAG,			/* possible dollar-quote starting tag */
+	SQL_IN_DOLLAR_QUOTE			/* body of dollar quote */
 } sqlparseState;
 
 typedef struct
 {
-	int			backSlash;
-	sqlparseState state;
-	char		lastChar;
-	char		quoteChar;
-	int			braceDepth;
-	PQExpBuffer tagBuf;
+	sqlparseState state;		/* see above */
+	char		lastChar;		/* preceding char, or '\0' initially */
+	bool		backSlash;		/* next char is backslash quoted? */
+	int			braceDepth;		/* parenthesis nesting depth */
+	PQExpBuffer tagBuf;			/* dollar quote tag (NULL if not created) */
+	int			minTagEndPos;	/* first possible end position of $-quote */
 } sqlparseInfo;
 
 typedef enum
@@ -237,9 +237,6 @@ typedef struct _archiveHandle
 	char	   *archdbname;		/* DB name *read* from archive */
 	bool		requirePassword;
 	PGconn	   *connection;
-	PGconn	   *blobConnection; /* Connection for BLOB xref */
-	int			txActive;		/* Flag set if TX active on connection */
-	int			blobTxActive;	/* Flag set if TX active on blobConnection */
 	int			connectToDB;	/* Flag to indicate if direct DB connection is
 								 * required */
 	int			pgCopyIn;		/* Currently in libpq 'COPY IN' mode. */
@@ -248,7 +245,6 @@ typedef struct _archiveHandle
 
 	int			loFd;			/* BLOB fd */
 	int			writingBlob;	/* Flag */
-	int			createdBlobXref;	/* Flag */
 	int			blobCount;		/* # of blobs restored */
 
 	char	   *fSpec;			/* Archive File Spec */

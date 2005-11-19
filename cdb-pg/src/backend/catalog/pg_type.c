@@ -8,16 +8,17 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/catalog/pg_type.c,v 1.97 2004/12/31 21:59:38 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/catalog/pg_type.c,v 1.104 2005/10/15 02:49:14 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
 
 #include "access/heapam.h"
-#include "catalog/catname.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
+#include "catalog/pg_namespace.h"
+#include "catalog/pg_proc.h"
 #include "catalog/pg_type.h"
 #include "miscadmin.h"
 #include "utils/builtins.h"
@@ -55,7 +56,7 @@ TypeShellMake(const char *typeName, Oid typeNamespace)
 	/*
 	 * open pg_type
 	 */
-	pg_type_desc = heap_openr(TypeRelationName, RowExclusiveLock);
+	pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);
 	tupDesc = pg_type_desc->rd_att;
 
 	/*
@@ -74,7 +75,7 @@ TypeShellMake(const char *typeName, Oid typeNamespace)
 	namestrcpy(&name, typeName);
 	values[i++] = NameGetDatum(&name);	/* typname */
 	values[i++] = ObjectIdGetDatum(typeNamespace);		/* typnamespace */
-	values[i++] = ObjectIdGetDatum(InvalidOid); /* typowner */
+	values[i++] = ObjectIdGetDatum(GetUserId());		/* typowner */
 	values[i++] = Int16GetDatum(0);		/* typlen */
 	values[i++] = BoolGetDatum(false);	/* typbyval */
 	values[i++] = CharGetDatum(0);		/* typtype */
@@ -116,6 +117,7 @@ TypeShellMake(const char *typeName, Oid typeNamespace)
 								 typoid,
 								 InvalidOid,
 								 0,
+								 GetUserId(),
 								 InvalidOid,
 								 InvalidOid,
 								 InvalidOid,
@@ -140,16 +142,12 @@ TypeShellMake(const char *typeName, Oid typeNamespace)
  *
  *		This does all the necessary work needed to define a new type.
  *
- * NOTE: if assignedTypeOid is not InvalidOid, then that OID is assigned to
- * the new type (which, therefore, cannot already exist as a shell type).
- * This hack is only intended for use in creating a relation's associated
- * type, where we need to have created the relation tuple already.
+ *		Returns the OID assigned to the new type.
  * ----------------------------------------------------------------
  */
 Oid
 TypeCreate(const char *typeName,
 		   Oid typeNamespace,
-		   Oid assignedTypeOid,
 		   Oid relationOid,		/* only for 'c'atalog types */
 		   char relationKind,	/* ditto */
 		   int16 internalSize,
@@ -179,12 +177,11 @@ TypeCreate(const char *typeName,
 	char		replaces[Natts_pg_type];
 	Datum		values[Natts_pg_type];
 	NameData	name;
-	TupleDesc	tupDesc;
 	int			i;
 
 	/*
-	 * We assume that the caller validated the arguments individually, but
-	 * did not check for bad combinations.
+	 * We assume that the caller validated the arguments individually, but did
+	 * not check for bad combinations.
 	 *
 	 * Validate size specifications: either positive (fixed-length) or -1
 	 * (varlena) or -2 (cstring).  Pass-by-value types must have a fixed
@@ -201,8 +198,8 @@ TypeCreate(const char *typeName,
 		(internalSize <= 0 || internalSize > (int16) sizeof(Datum)))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-		   errmsg("internal size %d is invalid for passed-by-value type",
-				  internalSize)));
+			   errmsg("internal size %d is invalid for passed-by-value type",
+					  internalSize)));
 
 	/* Only varlena types can be toasted */
 	if (storage != 'p' && internalSize != -1)
@@ -227,7 +224,7 @@ TypeCreate(const char *typeName,
 	namestrcpy(&name, typeName);
 	values[i++] = NameGetDatum(&name);	/* typname */
 	values[i++] = ObjectIdGetDatum(typeNamespace);		/* typnamespace */
-	values[i++] = Int32GetDatum(GetUserId());	/* typowner */
+	values[i++] = ObjectIdGetDatum(GetUserId());		/* typowner */
 	values[i++] = Int16GetDatum(internalSize);	/* typlen */
 	values[i++] = BoolGetDatum(passedByValue);	/* typbyval */
 	values[i++] = CharGetDatum(typeType);		/* typtype */
@@ -248,8 +245,8 @@ TypeCreate(const char *typeName,
 	values[i++] = Int32GetDatum(typNDims);		/* typndims */
 
 	/*
-	 * initialize the default binary value for this type.  Check for nulls
-	 * of course.
+	 * initialize the default binary value for this type.  Check for nulls of
+	 * course.
 	 */
 	if (defaultTypeBin)
 		values[i] = DirectFunctionCall1(textin,
@@ -263,7 +260,7 @@ TypeCreate(const char *typeName,
 	 */
 	if (defaultTypeValue)
 		values[i] = DirectFunctionCall1(textin,
-									  CStringGetDatum(defaultTypeValue));
+										CStringGetDatum(defaultTypeValue));
 	else
 		nulls[i] = 'n';
 	i++;						/* typdefault */
@@ -274,7 +271,7 @@ TypeCreate(const char *typeName,
 	 * NOTE: updating will not work correctly in bootstrap mode; but we don't
 	 * expect to be overwriting any shell types in bootstrap mode.
 	 */
-	pg_type_desc = heap_openr(TypeRelationName, RowExclusiveLock);
+	pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);
 
 	tup = SearchSysCacheCopy(TYPENAMENSP,
 							 CStringGetDatum(typeName),
@@ -284,10 +281,9 @@ TypeCreate(const char *typeName,
 	{
 		/*
 		 * check that the type is not already defined.	It may exist as a
-		 * shell type, however (but only if assignedTypeOid is not given).
+		 * shell type, however.
 		 */
-		if (((Form_pg_type) GETSTRUCT(tup))->typisdefined ||
-			assignedTypeOid != InvalidOid)
+		if (((Form_pg_type) GETSTRUCT(tup))->typisdefined)
 			ereport(ERROR,
 					(errcode(ERRCODE_DUPLICATE_OBJECT),
 					 errmsg("type \"%s\" already exists", typeName)));
@@ -296,7 +292,7 @@ TypeCreate(const char *typeName,
 		 * Okay to update existing "shell" type tuple
 		 */
 		tup = heap_modifytuple(tup,
-							   pg_type_desc,
+							   RelationGetDescr(pg_type_desc),
 							   values,
 							   nulls,
 							   replaces);
@@ -309,14 +305,9 @@ TypeCreate(const char *typeName,
 	}
 	else
 	{
-		tupDesc = pg_type_desc->rd_att;
-
-		tup = heap_formtuple(tupDesc,
+		tup = heap_formtuple(RelationGetDescr(pg_type_desc),
 							 values,
 							 nulls);
-
-		/* preassign tuple Oid, if one was given */
-		HeapTupleSetOid(tup, assignedTypeOid);
 
 		typeObjectId = simple_heap_insert(pg_type_desc, tup);
 	}
@@ -332,6 +323,7 @@ TypeCreate(const char *typeName,
 								 typeObjectId,
 								 relationOid,
 								 relationKind,
+								 GetUserId(),
 								 inputProcedure,
 								 outputProcedure,
 								 receiveProcedure,
@@ -364,9 +356,9 @@ TypeCreate(const char *typeName,
 void
 GenerateTypeDependencies(Oid typeNamespace,
 						 Oid typeObjectId,
-						 Oid relationOid,		/* only for 'c'atalog
-												 * types */
+						 Oid relationOid,		/* only for 'c'atalog types */
 						 char relationKind,		/* ditto */
+						 Oid owner,
 						 Oid inputProcedure,
 						 Oid outputProcedure,
 						 Oid receiveProcedure,
@@ -381,10 +373,12 @@ GenerateTypeDependencies(Oid typeNamespace,
 				referenced;
 
 	if (rebuild)
-		deleteDependencyRecordsFor(RelOid_pg_type,
-								   typeObjectId);
+	{
+		deleteDependencyRecordsFor(TypeRelationId, typeObjectId);
+		deleteSharedDependencyRecordsFor(TypeRelationId, typeObjectId);
+	}
 
-	myself.classId = RelOid_pg_type;
+	myself.classId = TypeRelationId;
 	myself.objectId = typeObjectId;
 	myself.objectSubId = 0;
 
@@ -392,7 +386,7 @@ GenerateTypeDependencies(Oid typeNamespace,
 	/* skip for relation rowtype, since we have indirect dependency */
 	if (!OidIsValid(relationOid))
 	{
-		referenced.classId = get_system_catalog_relid(NamespaceRelationName);
+		referenced.classId = NamespaceRelationId;
 		referenced.objectId = typeNamespace;
 		referenced.objectSubId = 0;
 		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
@@ -401,7 +395,7 @@ GenerateTypeDependencies(Oid typeNamespace,
 	/* Normal dependencies on the I/O functions */
 	if (OidIsValid(inputProcedure))
 	{
-		referenced.classId = RelOid_pg_proc;
+		referenced.classId = ProcedureRelationId;
 		referenced.objectId = inputProcedure;
 		referenced.objectSubId = 0;
 		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
@@ -409,7 +403,7 @@ GenerateTypeDependencies(Oid typeNamespace,
 
 	if (OidIsValid(outputProcedure))
 	{
-		referenced.classId = RelOid_pg_proc;
+		referenced.classId = ProcedureRelationId;
 		referenced.objectId = outputProcedure;
 		referenced.objectSubId = 0;
 		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
@@ -417,7 +411,7 @@ GenerateTypeDependencies(Oid typeNamespace,
 
 	if (OidIsValid(receiveProcedure))
 	{
-		referenced.classId = RelOid_pg_proc;
+		referenced.classId = ProcedureRelationId;
 		referenced.objectId = receiveProcedure;
 		referenced.objectSubId = 0;
 		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
@@ -425,7 +419,7 @@ GenerateTypeDependencies(Oid typeNamespace,
 
 	if (OidIsValid(sendProcedure))
 	{
-		referenced.classId = RelOid_pg_proc;
+		referenced.classId = ProcedureRelationId;
 		referenced.objectId = sendProcedure;
 		referenced.objectSubId = 0;
 		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
@@ -433,7 +427,7 @@ GenerateTypeDependencies(Oid typeNamespace,
 
 	if (OidIsValid(analyzeProcedure))
 	{
-		referenced.classId = RelOid_pg_proc;
+		referenced.classId = ProcedureRelationId;
 		referenced.objectId = analyzeProcedure;
 		referenced.objectSubId = 0;
 		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
@@ -441,17 +435,16 @@ GenerateTypeDependencies(Oid typeNamespace,
 
 	/*
 	 * If the type is a rowtype for a relation, mark it as internally
-	 * dependent on the relation, *unless* it is a stand-alone composite
-	 * type relation. For the latter case, we have to reverse the
-	 * dependency.
+	 * dependent on the relation, *unless* it is a stand-alone composite type
+	 * relation. For the latter case, we have to reverse the dependency.
 	 *
 	 * In the former case, this allows the type to be auto-dropped when the
-	 * relation is, and not otherwise. And in the latter, of course we get
-	 * the opposite effect.
+	 * relation is, and not otherwise. And in the latter, of course we get the
+	 * opposite effect.
 	 */
 	if (OidIsValid(relationOid))
 	{
-		referenced.classId = RelOid_pg_class;
+		referenced.classId = RelationRelationId;
 		referenced.objectId = relationOid;
 		referenced.objectSubId = 0;
 
@@ -462,15 +455,14 @@ GenerateTypeDependencies(Oid typeNamespace,
 	}
 
 	/*
-	 * If the type is an array type, mark it auto-dependent on the base
-	 * type.  (This is a compromise between the typical case where the
-	 * array type is automatically generated and the case where it is
-	 * manually created: we'd prefer INTERNAL for the former case and
-	 * NORMAL for the latter.)
+	 * If the type is an array type, mark it auto-dependent on the base type.
+	 * (This is a compromise between the typical case where the array type is
+	 * automatically generated and the case where it is manually created: we'd
+	 * prefer INTERNAL for the former case and NORMAL for the latter.)
 	 */
 	if (OidIsValid(elementType))
 	{
-		referenced.classId = RelOid_pg_type;
+		referenced.classId = TypeRelationId;
 		referenced.objectId = elementType;
 		referenced.objectSubId = 0;
 		recordDependencyOn(&myself, &referenced, DEPENDENCY_AUTO);
@@ -479,7 +471,7 @@ GenerateTypeDependencies(Oid typeNamespace,
 	/* Normal dependency from a domain to its base type. */
 	if (OidIsValid(baseType))
 	{
-		referenced.classId = RelOid_pg_type;
+		referenced.classId = TypeRelationId;
 		referenced.objectId = baseType;
 		referenced.objectSubId = 0;
 		recordDependencyOn(&myself, &referenced, DEPENDENCY_NORMAL);
@@ -488,6 +480,9 @@ GenerateTypeDependencies(Oid typeNamespace,
 	/* Normal dependency on the default expression. */
 	if (defaultExpr)
 		recordDependencyOnExpr(&myself, defaultExpr, NIL, DEPENDENCY_NORMAL);
+
+	/* Shared dependency on owner. */
+	recordDependencyOnOwner(TypeRelationId, typeObjectId, owner);
 }
 
 /*
@@ -505,7 +500,7 @@ TypeRename(const char *oldTypeName, Oid typeNamespace,
 	Relation	pg_type_desc;
 	HeapTuple	tuple;
 
-	pg_type_desc = heap_openr(TypeRelationName, RowExclusiveLock);
+	pg_type_desc = heap_open(TypeRelationId, RowExclusiveLock);
 
 	tuple = SearchSysCacheCopy(TYPENAMENSP,
 							   CStringGetDatum(oldTypeName),

@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/catalog/namespace.h,v 1.35 2004/12/31 22:03:24 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/catalog/namespace.h,v 1.37 2005/10/15 02:49:42 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -74,12 +74,14 @@ extern void DeconstructQualifiedName(List *names,
 						 char **objname_p);
 extern Oid	LookupExplicitNamespace(const char *nspname);
 
+extern Oid	LookupCreationNamespace(const char *nspname);
 extern Oid	QualifiedNameGetCreationNamespace(List *names, char **objname_p);
 extern RangeVar *makeRangeVarFromNameList(List *names);
 extern char *NameListToString(List *names);
 extern char *NameListToQuotedString(List *names);
 
 extern bool isTempNamespace(Oid namespaceId);
+extern bool isAnyTempNamespace(Oid namespaceId);
 extern bool isOtherTempNamespace(Oid namespaceId);
 
 extern void PushSpecialNamespace(Oid namespaceId);
@@ -92,7 +94,7 @@ extern Oid	FindDefaultConversionProc(int4 for_encoding, int4 to_encoding);
 extern void InitializeSearchPath(void);
 extern void AtEOXact_Namespace(bool isCommit);
 extern void AtEOSubXact_Namespace(bool isCommit, SubTransactionId mySubid,
-								  SubTransactionId parentSubid);
+					  SubTransactionId parentSubid);
 
 /* stuff for search_path GUC variable */
 extern char *namespace_search_path;

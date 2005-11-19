@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/storage/file/fd.c,v 1.115.4.1 2005/08/07 18:47:38 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/storage/file/fd.c,v 1.121 2005/10/15 02:49:25 momjian Exp $
  *
  * NOTES:
  *
@@ -123,7 +123,7 @@ typedef struct vfd
 {
 	signed short fd;			/* current FD, or VFD_CLOSED if none */
 	unsigned short fdstate;		/* bitflags for VFD's state */
-	SubTransactionId create_subid;	/* for TEMPORARY fds, creating subxact */
+	SubTransactionId create_subid;		/* for TEMPORARY fds, creating subxact */
 	File		nextFree;		/* link to next free VFD, if in freelist */
 	File		lruMoreRecently;	/* doubly linked recency-of-use list */
 	File		lruLessRecently;
@@ -224,21 +224,54 @@ static File AllocateVfd(void);
 static void FreeVfd(File file);
 
 static int	FileAccess(File file);
-static File fileNameOpenFile(FileName fileName, int fileFlags, int fileMode);
-static char *filepath(const char *filename);
+static char *make_database_relative(const char *filename);
 static void AtProcExit_Files(int code, Datum arg);
 static void CleanupTempFiles(bool isProcExit);
 static void RemovePgTempFilesInDir(const char *tmpdirname);
 
 
 /*
- * pg_fsync --- same as fsync except does nothing if enableFsync is off
+ * pg_fsync --- do fsync with or without writethrough
  */
 int
 pg_fsync(int fd)
 {
+#ifndef HAVE_FSYNC_WRITETHROUGH_ONLY
+	if (sync_method != SYNC_METHOD_FSYNC_WRITETHROUGH)
+		return pg_fsync_no_writethrough(fd);
+	else
+#endif
+		return pg_fsync_writethrough(fd);
+}
+
+
+/*
+ * pg_fsync_no_writethrough --- same as fsync except does nothing if
+ *	enableFsync is off
+ */
+int
+pg_fsync_no_writethrough(int fd)
+{
 	if (enableFsync)
 		return fsync(fd);
+	else
+		return 0;
+}
+
+/*
+ * pg_fsync_writethrough
+ */
+int
+pg_fsync_writethrough(int fd)
+{
+	if (enableFsync)
+#ifdef WIN32
+		return _commit(fd);
+#elif defined(__darwin__)
+	return (fcntl(fd, F_FULLFSYNC, 0) == -1) ? -1 : 0;
+#else
+		return -1;
+#endif
 	else
 		return 0;
 }
@@ -264,13 +297,40 @@ pg_fdatasync(int fd)
 }
 
 /*
+ * InitFileAccess --- initialize this module during backend startup
+ *
+ * This is called during either normal or standalone backend start.
+ * It is *not* called in the postmaster.
+ */
+void
+InitFileAccess(void)
+{
+	Assert(SizeVfdCache == 0);	/* call me only once */
+
+	/* initialize cache header entry */
+	VfdCache = (Vfd *) malloc(sizeof(Vfd));
+	if (VfdCache == NULL)
+		ereport(FATAL,
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 errmsg("out of memory")));
+
+	MemSet((char *) &(VfdCache[0]), 0, sizeof(Vfd));
+	VfdCache->fd = VFD_CLOSED;
+
+	SizeVfdCache = 1;
+
+	/* register proc-exit hook to ensure temp files are dropped at exit */
+	on_proc_exit(AtProcExit_Files, 0);
+}
+
+/*
  * count_usable_fds --- count how many FDs the system will let us open,
  *		and estimate how many are already open.
  *
  * We stop counting if usable_fds reaches max_to_probe.  Note: a small
  * value of max_to_probe might result in an underestimate of already_open;
  * we must fill in any "gaps" in the set of used FDs before the calculation
- * of already_open will give the right answer.  In practice, max_to_probe
+ * of already_open will give the right answer.	In practice, max_to_probe
  * of a couple of dozen should be enough to ensure good results.
  *
  * We assume stdin (FD 0) is available for dup'ing
@@ -322,9 +382,9 @@ count_usable_fds(int max_to_probe, int *usable_fds, int *already_open)
 	pfree(fd);
 
 	/*
-	 * Return results.	usable_fds is just the number of successful dups.
-	 * We assume that the system limit is highestfd+1 (remember 0 is a
-	 * legal FD number) and so already_open is highestfd+1 - usable_fds.
+	 * Return results.	usable_fds is just the number of successful dups. We
+	 * assume that the system limit is highestfd+1 (remember 0 is a legal FD
+	 * number) and so already_open is highestfd+1 - usable_fds.
 	 */
 	*usable_fds = used;
 	*already_open = highestfd + 1 - used;
@@ -340,12 +400,13 @@ set_max_safe_fds(void)
 	int			usable_fds;
 	int			already_open;
 
-	/*
-	 * We want to set max_safe_fds to MIN(usable_fds,
-	 * max_files_per_process - already_open) less the slop factor for
-	 * files that are opened without consulting fd.c.  This ensures that
-	 * we won't exceed either max_files_per_process or the
-	 * experimentally-determined EMFILE limit.
+	/*----------
+	 * We want to set max_safe_fds to
+	 *			MIN(usable_fds, max_files_per_process - already_open)
+	 * less the slop factor for files that are opened without consulting
+	 * fd.c.  This ensures that we won't exceed either max_files_per_process
+	 * or the experimentally-determined EMFILE limit.
+	 *----------
 	 */
 	count_usable_fds(max_files_per_process,
 					 &usable_fds, &already_open);
@@ -405,7 +466,7 @@ tryAgain:
 
 		ereport(LOG,
 				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
-			  errmsg("out of file descriptors: %m; release and retry")));
+				 errmsg("out of file descriptors: %m; release and retry")));
 		errno = 0;
 		if (ReleaseLruFile())
 			goto tryAgain;
@@ -526,9 +587,9 @@ LruInsert(File file)
 		}
 
 		/*
-		 * The open could still fail for lack of file descriptors, eg due
-		 * to overall system file table being full.  So, be prepared to
-		 * release another FD if necessary...
+		 * The open could still fail for lack of file descriptors, eg due to
+		 * overall system file table being full.  So, be prepared to release
+		 * another FD if necessary...
 		 */
 		vfdP->fd = BasicOpenFile(vfdP->fileName, vfdP->fileFlags,
 								 vfdP->fileMode);
@@ -570,8 +631,8 @@ ReleaseLruFile(void)
 	if (nfile > 0)
 	{
 		/*
-		 * There are opened files and so there should be at least one used
-		 * vfd in the ring.
+		 * There are opened files and so there should be at least one used vfd
+		 * in the ring.
 		 */
 		Assert(VfdCache[0].lruMoreRecently != 0);
 		LruDelete(VfdCache[0].lruMoreRecently);
@@ -588,32 +649,14 @@ AllocateVfd(void)
 
 	DO_DB(elog(LOG, "AllocateVfd. Size %d", SizeVfdCache));
 
-	if (SizeVfdCache == 0)
-	{
-		/* initialize header entry first time through */
-		VfdCache = (Vfd *) malloc(sizeof(Vfd));
-		if (VfdCache == NULL)
-			ereport(FATAL,
-					(errcode(ERRCODE_OUT_OF_MEMORY),
-					 errmsg("out of memory")));
-		MemSet((char *) &(VfdCache[0]), 0, sizeof(Vfd));
-		VfdCache->fd = VFD_CLOSED;
-
-		SizeVfdCache = 1;
-
-		/*
-		 * register proc-exit call to ensure temp files are dropped at
-		 * exit
-		 */
-		on_proc_exit(AtProcExit_Files, 0);
-	}
+	Assert(SizeVfdCache > 0);	/* InitFileAccess not called? */
 
 	if (VfdCache[0].nextFree == 0)
 	{
 		/*
-		 * The free list is empty so it is time to increase the size of
-		 * the array.  We choose to double it each time this happens.
-		 * However, there's not much point in starting *real* small.
+		 * The free list is empty so it is time to increase the size of the
+		 * array.  We choose to double it each time this happens. However,
+		 * there's not much point in starting *real* small.
 		 */
 		Size		newCacheSize = SizeVfdCache * 2;
 		Vfd		   *newVfdCache;
@@ -675,34 +718,20 @@ FreeVfd(File file)
 	VfdCache[0].nextFree = file;
 }
 
-/* filepath()
- * Convert given pathname to absolute.
+/*
+ * make_database_relative()
+ *		Prepend DatabasePath to the given file name.
  *
  * Result is a palloc'd string.
- *
- * (Generally, this isn't actually necessary, considering that we
- * should be cd'd into the database directory.  Presently it is only
- * necessary to do it in "bootstrap" mode.	Maybe we should change
- * bootstrap mode to do the cd, and save a few cycles/bytes here.)
  */
 static char *
-filepath(const char *filename)
+make_database_relative(const char *filename)
 {
 	char	   *buf;
 
-	/* Not an absolute path name? Then fill in with database path... */
-	if (!is_absolute_path(filename))
-	{
-		buf = (char *) palloc(strlen(DatabasePath) + strlen(filename) + 2);
-		sprintf(buf, "%s/%s", DatabasePath, filename);
-	}
-	else
-		buf = pstrdup(filename);
-
-#ifdef FILEDEBUG
-	printf("filepath: path is %s\n", buf);
-#endif
-
+	Assert(!is_absolute_path(filename));
+	buf = (char *) palloc(strlen(DatabasePath) + strlen(filename) + 2);
+	sprintf(buf, "%s/%s", DatabasePath, filename);
 	return buf;
 }
 
@@ -716,9 +745,8 @@ FileAccess(File file)
 			   file, VfdCache[file].fileName));
 
 	/*
-	 * Is the file open?  If not, open it and put it at the head of the
-	 * LRU ring (possibly closing the least recently used file to get an
-	 * FD).
+	 * Is the file open?  If not, open it and put it at the head of the LRU
+	 * ring (possibly closing the least recently used file to get an FD).
 	 */
 
 	if (FileIsNotOpen(file))
@@ -730,9 +758,8 @@ FileAccess(File file)
 	else if (VfdCache[0].lruLessRecently != file)
 	{
 		/*
-		 * We now know that the file is open and that it is not the last
-		 * one accessed, so we need to move it to the head of the Lru
-		 * ring.
+		 * We now know that the file is open and that it is not the last one
+		 * accessed, so we need to move it to the head of the Lru ring.
 		 */
 
 		Delete(file);
@@ -755,16 +782,21 @@ FileInvalidate(File file)
 }
 #endif
 
-static File
-fileNameOpenFile(FileName fileName,
-				 int fileFlags,
-				 int fileMode)
+/*
+ * open a file in an arbitrary directory
+ *
+ * NB: if the passed pathname is relative (which it usually is),
+ * it will be interpreted relative to the process' working directory
+ * (which should always be $PGDATA when this code is running).
+ */
+File
+PathNameOpenFile(FileName fileName, int fileFlags, int fileMode)
 {
 	char	   *fnamecopy;
 	File		file;
 	Vfd		   *vfdP;
 
-	DO_DB(elog(LOG, "fileNameOpenFile: %s %x %o",
+	DO_DB(elog(LOG, "PathNameOpenFile: %s %x %o",
 			   fileName, fileFlags, fileMode));
 
 	/*
@@ -794,7 +826,7 @@ fileNameOpenFile(FileName fileName,
 		return -1;
 	}
 	++nfile;
-	DO_DB(elog(LOG, "fileNameOpenFile: success %d",
+	DO_DB(elog(LOG, "PathNameOpenFile: success %d",
 			   vfdP->fd));
 
 	Insert(file);
@@ -810,7 +842,10 @@ fileNameOpenFile(FileName fileName,
 }
 
 /*
- * open a file in the database directory ($PGDATA/base/...)
+ * open a file in the database directory ($PGDATA/base/DIROID/)
+ *
+ * The passed name MUST be a relative path.  Effectively, this
+ * prepends DatabasePath to it and then acts like PathNameOpenFile.
  */
 File
 FileNameOpenFile(FileName fileName, int fileFlags, int fileMode)
@@ -818,19 +853,10 @@ FileNameOpenFile(FileName fileName, int fileFlags, int fileMode)
 	File		fd;
 	char	   *fname;
 
-	fname = filepath(fileName);
-	fd = fileNameOpenFile(fname, fileFlags, fileMode);
+	fname = make_database_relative(fileName);
+	fd = PathNameOpenFile(fname, fileFlags, fileMode);
 	pfree(fname);
 	return fd;
-}
-
-/*
- * open a file in an arbitrary directory
- */
-File
-PathNameOpenFile(FileName fileName, int fileFlags, int fileMode)
-{
-	return fileNameOpenFile(fileName, fileFlags, fileMode);
 }
 
 /*
@@ -861,8 +887,8 @@ OpenTemporaryFile(bool interXact)
 			 MyProcPid, tempFileCounter++);
 
 	/*
-	 * Open the file.  Note: we don't use O_EXCL, in case there is an
-	 * orphaned temp file that can be reused.
+	 * Open the file.  Note: we don't use O_EXCL, in case there is an orphaned
+	 * temp file that can be reused.
 	 */
 	file = FileNameOpenFile(tempfilepath,
 							O_RDWR | O_CREAT | O_TRUNC | PG_BINARY,
@@ -872,14 +898,14 @@ OpenTemporaryFile(bool interXact)
 		char	   *dirpath;
 
 		/*
-		 * We might need to create the pg_tempfiles subdirectory, if no
-		 * one has yet done so.
+		 * We might need to create the pg_tempfiles subdirectory, if no one
+		 * has yet done so.
 		 *
-		 * Don't check for error from mkdir; it could fail if someone else
-		 * just did the same thing.  If it doesn't work then we'll bomb
-		 * out on the second create attempt, instead.
+		 * Don't check for error from mkdir; it could fail if someone else just
+		 * did the same thing.	If it doesn't work then we'll bomb out on the
+		 * second create attempt, instead.
 		 */
-		dirpath = filepath(PG_TEMP_FILES_DIR);
+		dirpath = make_database_relative(PG_TEMP_FILES_DIR);
 		mkdir(dirpath, S_IRWXU);
 		pfree(dirpath);
 
@@ -1162,9 +1188,9 @@ AllocateFile(char *name, char *mode)
 
 	/*
 	 * The test against MAX_ALLOCATED_DESCS prevents us from overflowing
-	 * allocatedFiles[]; the test against max_safe_fds prevents
-	 * AllocateFile from hogging every one of the available FDs, which'd
-	 * lead to infinite looping.
+	 * allocatedFiles[]; the test against max_safe_fds prevents AllocateFile
+	 * from hogging every one of the available FDs, which'd lead to infinite
+	 * looping.
 	 */
 	if (numAllocatedDescs >= MAX_ALLOCATED_DESCS ||
 		numAllocatedDescs >= max_safe_fds - 1)
@@ -1188,7 +1214,7 @@ TryAgain:
 
 		ereport(LOG,
 				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
-			  errmsg("out of file descriptors: %m; release and retry")));
+				 errmsg("out of file descriptors: %m; release and retry")));
 		errno = 0;
 		if (ReleaseLruFile())
 			goto TryAgain;
@@ -1277,9 +1303,9 @@ AllocateDir(const char *dirname)
 
 	/*
 	 * The test against MAX_ALLOCATED_DESCS prevents us from overflowing
-	 * allocatedDescs[]; the test against max_safe_fds prevents
-	 * AllocateDir from hogging every one of the available FDs, which'd
-	 * lead to infinite looping.
+	 * allocatedDescs[]; the test against max_safe_fds prevents AllocateDir
+	 * from hogging every one of the available FDs, which'd lead to infinite
+	 * looping.
 	 */
 	if (numAllocatedDescs >= MAX_ALLOCATED_DESCS ||
 		numAllocatedDescs >= max_safe_fds - 1)
@@ -1303,13 +1329,67 @@ TryAgain:
 
 		ereport(LOG,
 				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
-			  errmsg("out of file descriptors: %m; release and retry")));
+				 errmsg("out of file descriptors: %m; release and retry")));
 		errno = 0;
 		if (ReleaseLruFile())
 			goto TryAgain;
 		errno = save_errno;
 	}
 
+	return NULL;
+}
+
+/*
+ * Read a directory opened with AllocateDir, ereport'ing any error.
+ *
+ * This is easier to use than raw readdir() since it takes care of some
+ * otherwise rather tedious and error-prone manipulation of errno.	Also,
+ * if you are happy with a generic error message for AllocateDir failure,
+ * you can just do
+ *
+ *		dir = AllocateDir(path);
+ *		while ((dirent = ReadDir(dir, path)) != NULL)
+ *			process dirent;
+ *		FreeDir(path);
+ *
+ * since a NULL dir parameter is taken as indicating AllocateDir failed.
+ * (Make sure errno hasn't been changed since AllocateDir if you use this
+ * shortcut.)
+ *
+ * The pathname passed to AllocateDir must be passed to this routine too,
+ * but it is only used for error reporting.
+ */
+struct dirent *
+ReadDir(DIR *dir, const char *dirname)
+{
+	struct dirent *dent;
+
+	/* Give a generic message for AllocateDir failure, if caller didn't */
+	if (dir == NULL)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not open directory \"%s\": %m",
+						dirname)));
+
+	errno = 0;
+	if ((dent = readdir(dir)) != NULL)
+		return dent;
+
+#ifdef WIN32
+
+	/*
+	 * This fix is in mingw cvs (runtime/mingwex/dirent.c rev 1.4), but not in
+	 * released version
+	 */
+	if (GetLastError() == ERROR_NO_MORE_FILES)
+		errno = 0;
+#endif
+
+	if (errno)
+		ereport(ERROR,
+				(errcode_for_file_access(),
+				 errmsg("could not read directory \"%s\": %m",
+						dirname)));
 	return NULL;
 }
 
@@ -1461,9 +1541,9 @@ CleanupTempFiles(bool isProcExit)
 			if ((fdstate & FD_TEMPORARY) && VfdCache[i].fileName != NULL)
 			{
 				/*
-				 * If we're in the process of exiting a backend process,
-				 * close all temporary files. Otherwise, only close
-				 * temporary files local to the current transaction.
+				 * If we're in the process of exiting a backend process, close
+				 * all temporary files. Otherwise, only close temporary files
+				 * local to the current transaction.
 				 */
 				if (isProcExit || (fdstate & FD_XACT_TEMPORARY))
 					FileClose(i);
@@ -1491,7 +1571,6 @@ CleanupTempFiles(bool isProcExit)
 void
 RemovePgTempFiles(void)
 {
-	char		db_path[MAXPGPATH];
 	char		temp_path[MAXPGPATH];
 	DIR		   *db_dir;
 	struct dirent *db_de;
@@ -1500,36 +1579,27 @@ RemovePgTempFiles(void)
 	 * Cycle through pgsql_tmp directories for all databases and remove old
 	 * temp files.
 	 */
-	snprintf(db_path, sizeof(db_path), "%s/base", DataDir);
-	db_dir = AllocateDir(db_path);
-	if (db_dir == NULL)
-	{
-		/* this really should not happen */
-		elog(LOG, "could not open directory \"%s\": %m", db_path);
-		return;
-	}
+	db_dir = AllocateDir("base");
 
-	while ((db_de = readdir(db_dir)) != NULL)
+	while ((db_de = ReadDir(db_dir, "base")) != NULL)
 	{
 		if (strcmp(db_de->d_name, ".") == 0 ||
 			strcmp(db_de->d_name, "..") == 0)
 			continue;
 
-		snprintf(temp_path, sizeof(temp_path), "%s/%s/%s",
-				 db_path, db_de->d_name, PG_TEMP_FILES_DIR);
+		snprintf(temp_path, sizeof(temp_path), "base/%s/%s",
+				 db_de->d_name, PG_TEMP_FILES_DIR);
 		RemovePgTempFilesInDir(temp_path);
 	}
 
 	FreeDir(db_dir);
 
 	/*
-	 * In EXEC_BACKEND case there is a pgsql_tmp directory at the top
-	 * level of DataDir as well.
+	 * In EXEC_BACKEND case there is a pgsql_tmp directory at the top level of
+	 * DataDir as well.
 	 */
 #ifdef EXEC_BACKEND
-	snprintf(temp_path, sizeof(temp_path), "%s/%s",
-			 DataDir, PG_TEMP_FILES_DIR);
-	RemovePgTempFilesInDir(temp_path);
+	RemovePgTempFilesInDir(PG_TEMP_FILES_DIR);
 #endif
 }
 
@@ -1552,7 +1622,7 @@ RemovePgTempFilesInDir(const char *tmpdirname)
 		return;
 	}
 
-	while ((temp_de = readdir(temp_dir)) != NULL)
+	while ((temp_de = ReadDir(temp_dir, tmpdirname)) != NULL)
 	{
 		if (strcmp(temp_de->d_name, ".") == 0 ||
 			strcmp(temp_de->d_name, "..") == 0)

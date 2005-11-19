@@ -27,7 +27,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/catalog/pg_opclass.h,v 1.62 2004/12/31 22:03:24 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/catalog/pg_opclass.h,v 1.66 2005/07/01 19:19:03 tgl Exp $
  *
  * NOTES
  *	  the genbki.sh script reads this file and generates .bki
@@ -40,7 +40,7 @@
 
 /* ----------------
  *		postgres.h contains the system type definitions and the
- *		CATALOG(), BOOTSTRAP and DATA() sugar words so this file
+ *		CATALOG(), BKI_BOOTSTRAP and DATA() sugar words so this file
  *		can be read by both genbki.sh and the C compiler.
  * ----------------
  */
@@ -50,13 +50,14 @@
  *		typedef struct FormData_pg_opclass
  * ----------------
  */
+#define OperatorClassRelationId  2616
 
-CATALOG(pg_opclass)
+CATALOG(pg_opclass,2616)
 {
 	Oid			opcamid;		/* index access method opclass is for */
 	NameData	opcname;		/* name of this opclass */
 	Oid			opcnamespace;	/* namespace of this opclass */
-	int4		opcowner;		/* opclass owner */
+	Oid			opcowner;		/* opclass owner */
 	Oid			opcintype;		/* type of data indexed by opclass */
 	bool		opcdefault;		/* T if opclass is default for opcintype */
 	Oid			opckeytype;		/* type of data in index, or InvalidOid */
@@ -92,6 +93,7 @@ DATA(insert OID =  397 (	403		array_ops		PGNSP PGUID 2277 t 0 ));
 #define ARRAY_BTREE_OPS_OID 397
 DATA(insert OID =  423 (	403		bit_ops			PGNSP PGUID 1560 t 0 ));
 DATA(insert OID =  424 (	403		bool_ops		PGNSP PGUID   16 t 0 ));
+#define BOOL_BTREE_OPS_OID 424
 DATA(insert OID =  425 (	402		box_ops			PGNSP PGUID  603 t 0 ));
 DATA(insert OID =  426 (	403		bpchar_ops		PGNSP PGUID 1042 t 0 ));
 #define BPCHAR_BTREE_OPS_OID 426
@@ -159,6 +161,7 @@ DATA(insert OID = 2098 (	403		name_pattern_ops	PGNSP PGUID   19 f 0 ));
 #define NAME_PATTERN_BTREE_OPS_OID 2098
 DATA(insert OID = 2099 (	403		money_ops		PGNSP PGUID  790 t 0 ));
 DATA(insert OID = 2222 (	405		bool_ops		PGNSP PGUID   16 t 0 ));
+#define BOOL_HASH_OPS_OID 2222
 DATA(insert OID = 2223 (	405		bytea_ops		PGNSP PGUID   17 t 0 ));
 DATA(insert OID = 2224 (	405		int2vector_ops	PGNSP PGUID   22 t 0 ));
 DATA(insert OID = 2225 (	405		xid_ops			PGNSP PGUID   28 t 0 ));
@@ -172,5 +175,8 @@ DATA(insert OID = 2232 (	405		name_pattern_ops	PGNSP PGUID   19 f 0 ));
 DATA(insert OID = 2233 (	403		reltime_ops		PGNSP PGUID  703 t 0 ));
 DATA(insert OID = 2234 (	403		tinterval_ops	PGNSP PGUID  704 t 0 ));
 DATA(insert OID = 2235 (	405		aclitem_ops		PGNSP PGUID 1033 t 0 ));
+DATA(insert OID = 2593 (	783		box_ops			PGNSP PGUID  603 t 0 ));
+DATA(insert OID = 2594 (	783		poly_ops		PGNSP PGUID  604 t 603 ));
+DATA(insert OID = 2595 (	783		circle_ops		PGNSP PGUID  718 t 603 ));
 
 #endif   /* PG_OPCLASS_H */

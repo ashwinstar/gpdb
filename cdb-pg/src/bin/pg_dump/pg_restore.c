@@ -34,7 +34,7 @@
  *
  *
  * IDENTIFICATION
- *		$PostgreSQL: pgsql/src/bin/pg_dump/pg_restore.c,v 1.68.4.1 2005/04/30 08:00:14 neilc Exp $
+ *		$PostgreSQL: pgsql/src/bin/pg_dump/pg_restore.c,v 1.73 2005/10/15 02:49:39 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -65,7 +65,6 @@ int			optreset;
 #include <locale.h>
 #endif
 
-#define _(x) gettext((x))
 
 /* Forward decls */
 static void usage(const char *progname);
@@ -104,6 +103,7 @@ main(int argc, char **argv)
 		{"no-reconnect", 0, NULL, 'R'},
 		{"port", 1, NULL, 'p'},
 		{"password", 0, NULL, 'W'},
+		{"schema", 1, NULL, 'n'},
 		{"schema-only", 0, NULL, 's'},
 		{"superuser", 1, NULL, 'S'},
 		{"table", 1, NULL, 't'},
@@ -113,8 +113,8 @@ main(int argc, char **argv)
 		{"verbose", 0, NULL, 'v'},
 
 		/*
-		 * the following options don't have an equivalent short option
-		 * letter, but are available as '-X long-name'
+		 * the following options don't have an equivalent short option letter,
+		 * but are available as '-X long-name'
 		 */
 		{"use-set-session-authorization", no_argument, &use_setsessauth, 1},
 		{"disable-triggers", no_argument, &disable_triggers, 1},
@@ -142,7 +142,7 @@ main(int argc, char **argv)
 		}
 	}
 
-	while ((c = getopt_long(argc, argv, "acCd:ef:F:h:iI:lL:Op:P:RsS:t:T:uU:vWxX:",
+	while ((c = getopt_long(argc, argv, "acCd:ef:F:h:iI:lL:n:Op:P:RsS:t:T:uU:vWxX:",
 							cmdopts, NULL)) != -1)
 	{
 		switch (c)
@@ -221,6 +221,11 @@ main(int argc, char **argv)
 				opts->selTypes = 1;
 				opts->selTable = 1;
 				opts->tableNames = strdup(optarg);
+				break;
+
+			case 'n':			/* Dump data for this schema only */
+				opts->selTypes = 1;
+				opts->schemaNames = strdup(optarg);
 				break;
 
 			case 'u':
@@ -313,7 +318,7 @@ main(int argc, char **argv)
 				break;
 
 			default:
-				write_msg(NULL, "unrecognized archive format '%s'; please specify 't' or 'c'\n",
+				write_msg(NULL, "unrecognized archive format \"%s\"; please specify \"c\" or \"t\"\n",
 						  opts->formatName);
 				exit(1);
 		}
@@ -325,8 +330,7 @@ main(int argc, char **argv)
 	AH->verbose = opts->verbose;
 
 	/*
-	 * Whether to keep submitting sql commands as "pg_restore ... | psql
-	 * ... "
+	 * Whether to keep submitting sql commands as "pg_restore ... | psql ... "
 	 */
 	AH->exit_on_error = opts->exit_on_error;
 
@@ -375,6 +379,7 @@ usage(const char *progname)
 	printf(_("  -I, --index=NAME         restore named index\n"));
 	printf(_("  -L, --use-list=FILENAME  use specified table of contents for ordering\n"
 			 "                           output from this file\n"));
+	printf(_("  -n, --schema=NAME        restore only objects in this schema\n"));
 	printf(_("  -O, --no-owner           skip restoration of object ownership\n"));
 	printf(_("  -P, --function=NAME(args)\n"
 			 "                           restore named function\n"));

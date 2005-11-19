@@ -27,6 +27,7 @@
 #include "utils/tuplesort.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
+#include "utils/memutils.h"
 
 /* #define MEASURE_MOTION_TIME */
 
@@ -1036,7 +1037,7 @@ doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot)
 	}
 
 	/* send the tuple out. */
-	sendRC = SendTuple(motion->motionID, outerTupleSlot->val, targetRoute);
+	sendRC = SendTuple(motion->motionID, ExecFetchSlotTuple(outerTupleSlot), targetRoute);
 
 	Assert(sendRC == SEND_COMPLETE || sendRC == STOP_SENDING);
 

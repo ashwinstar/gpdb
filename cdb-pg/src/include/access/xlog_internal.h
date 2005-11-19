@@ -5,13 +5,13 @@
  *
  * NOTE: this file is intended to contain declarations useful for
  * manipulating the XLOG files directly, but it is not supposed to be
- * needed by rmgr routines (redo/undo support for individual record types).
+ * needed by rmgr routines (redo support for individual record types).
  * So the XLogRecord typedef and associated stuff appear in xlog.h.
  *
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/access/xlog_internal.h,v 1.6 2004/12/31 22:03:21 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/access/xlog_internal.h,v 1.9 2005/07/04 04:51:52 tgl Exp $
  */
 #ifndef XLOG_INTERNAL_H
 #define XLOG_INTERNAL_H
@@ -25,15 +25,25 @@
 /*
  * Header info for a backup block appended to an XLOG record.
  *
- * Note that the backup block has its own CRC, and is not covered by
- * the CRC of the XLOG record proper.  Also note that we don't attempt
- * to align either the BkpBlock struct or the block's data.
+ * As a trivial form of data compression, the XLOG code is aware that
+ * PG data pages usually contain an unused "hole" in the middle, which
+ * contains only zero bytes.  If hole_length > 0 then we have removed
+ * such a "hole" from the stored data (and it's not counted in the
+ * XLOG record's CRC, either).  Hence, the amount of block data actually
+ * present following the BkpBlock struct is BLCKSZ - hole_length bytes.
+ *
+ * Note that we don't attempt to align either the BkpBlock struct or the
+ * block's data.  So, the struct must be copied to aligned local storage
+ * before use.
  */
 typedef struct BkpBlock
 {
-	crc64		crc;
-	RelFileNode node;
-	BlockNumber block;
+	RelFileNode node;			/* relation containing block */
+	BlockNumber block;			/* block number */
+	uint16		hole_offset;	/* number of bytes before "hole" */
+	uint16		hole_length;	/* number of bytes in "hole" */
+
+	/* ACTUAL BLOCK DATA FOLLOWS AT END OF STRUCT */
 } BkpBlock;
 
 /*
@@ -42,8 +52,9 @@ typedef struct BkpBlock
  * XLogRecord header will never be split across pages; if there's less than
  * SizeOfXLogRecord space left at the end of a page, we just waste it.)
  *
- * Note that xl_rem_len includes backup-block data, unlike xl_len in the
- * initial header.
+ * Note that xl_rem_len includes backup-block data; that is, it tracks
+ * xl_tot_len not xl_len in the initial header.  Also note that the
+ * continuation data isn't necessarily aligned.
  */
 typedef struct XLogContRecord
 {
@@ -53,12 +64,12 @@ typedef struct XLogContRecord
 
 } XLogContRecord;
 
-#define SizeOfXLogContRecord	MAXALIGN(sizeof(XLogContRecord))
+#define SizeOfXLogContRecord	sizeof(XLogContRecord)
 
 /*
  * Each page of XLOG file has a header like this:
  */
-#define XLOG_PAGE_MAGIC 0xD05C	/* can be used as WAL version indicator */
+#define XLOG_PAGE_MAGIC 0xD05D	/* can be used as WAL version indicator */
 
 typedef struct XLogPageHeaderData
 {
@@ -175,6 +186,12 @@ typedef XLogLongPageHeaderData *XLogLongPageHeader;
 		(BLCKSZ - (xrecoff) % BLCKSZ) >= SizeOfXLogRecord)
 
 /*
+ * The XLog directory and control file (relative to $PGDATA)
+ */
+#define XLOGDIR				"pg_xlog"
+#define XLOG_CONTROL_FILE	"global/pg_control"
+
+/*
  * These macros encapsulate knowledge about the exact layout of XLog file
  * names, timeline history file names, and archive-status file names.
  */
@@ -184,24 +201,22 @@ typedef XLogLongPageHeaderData *XLogLongPageHeader;
 	snprintf(fname, MAXFNAMELEN, "%08X%08X%08X", tli, log, seg)
 
 #define XLogFilePath(path, tli, log, seg)	\
-	snprintf(path, MAXPGPATH, "%s/%08X%08X%08X", XLogDir, tli, log, seg)
+	snprintf(path, MAXPGPATH, XLOGDIR "/%08X%08X%08X", tli, log, seg)
 
 #define TLHistoryFileName(fname, tli)	\
 	snprintf(fname, MAXFNAMELEN, "%08X.history", tli)
 
 #define TLHistoryFilePath(path, tli)	\
-	snprintf(path, MAXPGPATH, "%s/%08X.history", XLogDir, tli)
+	snprintf(path, MAXPGPATH, XLOGDIR "/%08X.history", tli)
 
 #define StatusFilePath(path, xlog, suffix)	\
-	snprintf(path, MAXPGPATH, "%s/archive_status/%s%s", XLogDir, xlog, suffix)
+	snprintf(path, MAXPGPATH, XLOGDIR "/archive_status/%s%s", xlog, suffix)
 
 #define BackupHistoryFileName(fname, tli, log, seg, offset) \
 	snprintf(fname, MAXFNAMELEN, "%08X%08X%08X.%08X.backup", tli, log, seg, offset)
 
 #define BackupHistoryFilePath(path, tli, log, seg, offset)	\
-	snprintf(path, MAXPGPATH, "%s/%08X%08X%08X.%08X.backup", XLogDir, tli, log, seg, offset)
-
-extern char XLogDir[MAXPGPATH];
+	snprintf(path, MAXPGPATH, XLOGDIR "/%08X%08X%08X.%08X.backup", tli, log, seg, offset)
 
 
 /*
@@ -213,7 +228,6 @@ typedef struct RmgrData
 {
 	const char *rm_name;
 	void		(*rm_redo) (XLogRecPtr lsn, XLogRecord *rptr);
-	void		(*rm_undo) (XLogRecPtr lsn, XLogRecord *rptr);
 	void		(*rm_desc) (char *buf, uint8 xl_info, char *rec);
 	void		(*rm_startup) (void);
 	void		(*rm_cleanup) (void);

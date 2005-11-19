@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/util/restrictinfo.c,v 1.31 2004/12/31 22:00:23 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/util/restrictinfo.c,v 1.41 2005/10/15 02:49:21 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -17,6 +17,7 @@
 #include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/paths.h"
+#include "optimizer/predtest.h"
 #include "optimizer/restrictinfo.h"
 #include "optimizer/var.h"
 
@@ -24,14 +25,13 @@
 static RestrictInfo *make_restrictinfo_internal(Expr *clause,
 						   Expr *orclause,
 						   bool is_pushed_down,
-						   bool valid_everywhere);
+						   Relids required_relids);
 static Expr *make_sub_restrictinfos(Expr *clause,
-					   bool is_pushed_down,
-					   bool valid_everywhere);
-static RestrictInfo *join_clause_is_redundant(Query *root,
+					   bool is_pushed_down);
+static RestrictInfo *join_clause_is_redundant(PlannerInfo *root,
 						 RestrictInfo *rinfo,
 						 List *reference_list,
-						 JoinType jointype);
+						 bool isouterjoin);
 
 
 /*
@@ -39,105 +39,192 @@ static RestrictInfo *join_clause_is_redundant(Query *root,
  *
  * Build a RestrictInfo node containing the given subexpression.
  *
- * The is_pushed_down and valid_everywhere flags must be supplied by the
- * caller.
+ * The is_pushed_down flag must be supplied by the caller.
+ * required_relids can be NULL, in which case it defaults to the
+ * actual clause contents (i.e., clause_relids).
  *
  * We initialize fields that depend only on the given subexpression, leaving
  * others that depend on context (or may never be needed at all) to be filled
  * later.
  */
 RestrictInfo *
-make_restrictinfo(Expr *clause, bool is_pushed_down, bool valid_everywhere)
+make_restrictinfo(Expr *clause, bool is_pushed_down, Relids required_relids)
 {
-	Expr	   *orclause;
-
 	/*
-	 * If it's an OR clause, build a modified copy with RestrictInfos
-	 * inserted above each subclause of the top-level AND/OR structure.
+	 * If it's an OR clause, build a modified copy with RestrictInfos inserted
+	 * above each subclause of the top-level AND/OR structure.
 	 */
 	if (or_clause((Node *) clause))
-	{
-		orclause = make_sub_restrictinfos(clause,
-										  is_pushed_down,
-										  valid_everywhere);
-	}
-	else
-	{
-		/* Shouldn't be an AND clause, else flatten_andors messed up */
-		Assert(!and_clause((Node *) clause));
+		return (RestrictInfo *) make_sub_restrictinfos(clause, is_pushed_down);
 
-		orclause = NULL;
-	}
+	/* Shouldn't be an AND clause, else AND/OR flattening messed up */
+	Assert(!and_clause((Node *) clause));
 
-	return make_restrictinfo_internal(clause, orclause,
-									  is_pushed_down, valid_everywhere);
+	return make_restrictinfo_internal(clause, NULL, is_pushed_down,
+									  required_relids);
 }
 
 /*
- * make_restrictinfo_from_indexclauses
+ * make_restrictinfo_from_bitmapqual
  *
- * Given an indexclauses structure, convert to ordinary expression format
- * and build RestrictInfo node(s).
+ * Given the bitmapqual Path structure for a bitmap indexscan, generate
+ * RestrictInfo node(s) equivalent to the condition represented by the
+ * indexclauses of the Path structure.
  *
- * The result is a List since we might need to return multiple RestrictInfos.
+ * The result is a List (effectively, implicit-AND representation) of
+ * RestrictInfos.
  *
- * This could be done as make_restrictinfo(make_expr_from_indexclauses()),
- * but if we did it that way then we would strip the original RestrictInfo
- * nodes from the index clauses and be forced to build new ones.  It's better
- * to have a specialized routine that allows sharing of RestrictInfos.
+ * If include_predicates is true, we add any partial index predicates to
+ * the explicit index quals.  When this is not true, we return a condition
+ * that might be weaker than the actual scan represents.
+ *
+ * To do this through the normal make_restrictinfo() API, callers would have
+ * to strip off the RestrictInfo nodes present in the indexclauses lists, and
+ * then make_restrictinfo() would have to build new ones.  It's better to have
+ * a specialized routine to allow sharing of RestrictInfos.
+ *
+ * The qual manipulations here are much the same as in create_bitmap_subplan;
+ * keep the two routines in sync!
  */
 List *
-make_restrictinfo_from_indexclauses(List *indexclauses,
-									bool is_pushed_down,
-									bool valid_everywhere)
+make_restrictinfo_from_bitmapqual(Path *bitmapqual,
+								  bool is_pushed_down,
+								  bool include_predicates)
 {
-	List	   *withris = NIL;
-	List	   *withoutris = NIL;
-	ListCell   *orlist;
+	List	   *result;
+	ListCell   *l;
 
-	/* Empty list probably can't happen, but here's what to do */
-	if (indexclauses == NIL)
-		return NIL;
-	/* If single indexscan, just return the ANDed clauses */
-	if (list_length(indexclauses) == 1)
-		return (List *) linitial(indexclauses);
-	/* Else we need an OR RestrictInfo structure */
-	foreach(orlist, indexclauses)
+	if (IsA(bitmapqual, BitmapAndPath))
 	{
-		List	   *andlist = (List *) lfirst(orlist);
+		BitmapAndPath *apath = (BitmapAndPath *) bitmapqual;
 
-		/* Create AND subclause with RestrictInfos */
-		withris = lappend(withris, make_ands_explicit(andlist));
-		/* And one without */
-		andlist = get_actual_clauses(andlist);
-		withoutris = lappend(withoutris, make_ands_explicit(andlist));
+		/*
+		 * There may well be redundant quals among the subplans, since a
+		 * top-level WHERE qual might have gotten used to form several
+		 * different index quals.  We don't try exceedingly hard to eliminate
+		 * redundancies, but we do eliminate obvious duplicates by using
+		 * list_concat_unique.
+		 */
+		result = NIL;
+		foreach(l, apath->bitmapquals)
+		{
+			List	   *sublist;
+
+			sublist = make_restrictinfo_from_bitmapqual((Path *) lfirst(l),
+														is_pushed_down,
+														include_predicates);
+			result = list_concat_unique(result, sublist);
+		}
 	}
-	return list_make1(make_restrictinfo_internal(make_orclause(withoutris),
-												 make_orclause(withris),
-												 is_pushed_down,
-												 valid_everywhere));
+	else if (IsA(bitmapqual, BitmapOrPath))
+	{
+		BitmapOrPath *opath = (BitmapOrPath *) bitmapqual;
+		List	   *withris = NIL;
+		List	   *withoutris = NIL;
+
+		/*
+		 * Here, we only detect qual-free subplans.  A qual-free subplan would
+		 * cause us to generate "... OR true ..."  which we may as well reduce
+		 * to just "true".	We do not try to eliminate redundant subclauses
+		 * because (a) it's not as likely as in the AND case, and (b) we might
+		 * well be working with hundreds or even thousands of OR conditions,
+		 * perhaps from a long IN list.  The performance of list_append_unique
+		 * would be unacceptable.
+		 */
+		foreach(l, opath->bitmapquals)
+		{
+			List	   *sublist;
+
+			sublist = make_restrictinfo_from_bitmapqual((Path *) lfirst(l),
+														is_pushed_down,
+														include_predicates);
+			if (sublist == NIL)
+			{
+				/*
+				 * If we find a qual-less subscan, it represents a constant
+				 * TRUE, and hence the OR result is also constant TRUE, so we
+				 * can stop here.
+				 */
+				return NIL;
+			}
+			/* Create AND subclause with RestrictInfos */
+			withris = lappend(withris,
+							  make_ands_explicit(sublist));
+			/* And one without */
+			sublist = get_actual_clauses(sublist);
+			withoutris = lappend(withoutris,
+								 make_ands_explicit(sublist));
+		}
+
+		/*
+		 * Avoid generating one-element ORs, which could happen due to
+		 * redundancy elimination.
+		 */
+		if (list_length(withris) <= 1)
+			result = withris;
+		else
+		{
+			/* Here's the magic part not available to outside callers */
+			result =
+				list_make1(make_restrictinfo_internal(make_orclause(withoutris),
+													  make_orclause(withris),
+													  is_pushed_down,
+													  NULL));
+		}
+	}
+	else if (IsA(bitmapqual, IndexPath))
+	{
+		IndexPath  *ipath = (IndexPath *) bitmapqual;
+
+		result = list_copy(ipath->indexclauses);
+		if (include_predicates && ipath->indexinfo->indpred != NIL)
+		{
+			foreach(l, ipath->indexinfo->indpred)
+			{
+				Expr	   *pred = (Expr *) lfirst(l);
+
+				/*
+				 * We know that the index predicate must have been implied by
+				 * the query condition as a whole, but it may or may not be
+				 * implied by the conditions that got pushed into the
+				 * bitmapqual.	Avoid generating redundant conditions.
+				 */
+				if (!predicate_implied_by(list_make1(pred), result))
+					result = lappend(result,
+									 make_restrictinfo(pred,
+													   is_pushed_down,
+													   NULL));
+			}
+		}
+	}
+	else
+	{
+		elog(ERROR, "unrecognized node type: %d", nodeTag(bitmapqual));
+		result = NIL;			/* keep compiler quiet */
+	}
+
+	return result;
 }
 
 /*
  * make_restrictinfo_internal
  *
- * Common code for the above two entry points.
+ * Common code for the main entry points and the recursive cases.
  */
 static RestrictInfo *
 make_restrictinfo_internal(Expr *clause, Expr *orclause,
-						   bool is_pushed_down, bool valid_everywhere)
+						   bool is_pushed_down, Relids required_relids)
 {
 	RestrictInfo *restrictinfo = makeNode(RestrictInfo);
 
 	restrictinfo->clause = clause;
 	restrictinfo->orclause = orclause;
 	restrictinfo->is_pushed_down = is_pushed_down;
-	restrictinfo->valid_everywhere = valid_everywhere;
 	restrictinfo->can_join = false;		/* may get set below */
 
 	/*
-	 * If it's a binary opclause, set up left/right relids info. In any
-	 * case set up the total clause relids info.
+	 * If it's a binary opclause, set up left/right relids info. In any case
+	 * set up the total clause relids info.
 	 */
 	if (is_opclause(clause) && list_length(((OpExpr *) clause)->args) == 2)
 	{
@@ -145,13 +232,13 @@ make_restrictinfo_internal(Expr *clause, Expr *orclause,
 		restrictinfo->right_relids = pull_varnos(get_rightop(clause));
 
 		restrictinfo->clause_relids = bms_union(restrictinfo->left_relids,
-											 restrictinfo->right_relids);
+												restrictinfo->right_relids);
 
 		/*
 		 * Does it look like a normal join clause, i.e., a binary operator
-		 * relating expressions that come from distinct relations? If so
-		 * we might be able to use it in a join algorithm.	Note that this
-		 * is a purely syntactic test that is made regardless of context.
+		 * relating expressions that come from distinct relations? If so we
+		 * might be able to use it in a join algorithm.  Note that this is a
+		 * purely syntactic test that is made regardless of context.
 		 */
 		if (!bms_is_empty(restrictinfo->left_relids) &&
 			!bms_is_empty(restrictinfo->right_relids) &&
@@ -168,12 +255,18 @@ make_restrictinfo_internal(Expr *clause, Expr *orclause,
 		restrictinfo->clause_relids = pull_varnos((Node *) clause);
 	}
 
+	/* required_relids defaults to clause_relids */
+	if (required_relids != NULL)
+		restrictinfo->required_relids = required_relids;
+	else
+		restrictinfo->required_relids = restrictinfo->clause_relids;
+
 	/*
-	 * Fill in all the cacheable fields with "not yet set" markers. None
-	 * of these will be computed until/unless needed.  Note in particular
-	 * that we don't mark a binary opclause as mergejoinable or
-	 * hashjoinable here; that happens only if it appears in the right
-	 * context (top level of a joinclause list).
+	 * Fill in all the cacheable fields with "not yet set" markers. None of
+	 * these will be computed until/unless needed.	Note in particular that we
+	 * don't mark a binary opclause as mergejoinable or hashjoinable here;
+	 * that happens only if it appears in the right context (top level of a
+	 * joinclause list).
 	 */
 	restrictinfo->eval_cost.startup = -1;
 	restrictinfo->this_selec = -1;
@@ -198,10 +291,15 @@ make_restrictinfo_internal(Expr *clause, Expr *orclause,
 
 /*
  * Recursively insert sub-RestrictInfo nodes into a boolean expression.
+ *
+ * We put RestrictInfos above simple (non-AND/OR) clauses and above
+ * sub-OR clauses, but not above sub-AND clauses, because there's no need.
+ * This may seem odd but it is closely related to the fact that we use
+ * implicit-AND lists at top level of RestrictInfo lists.  Only ORs and
+ * simple clauses are valid RestrictInfos.
  */
 static Expr *
-make_sub_restrictinfos(Expr *clause, bool is_pushed_down,
-					   bool valid_everywhere)
+make_sub_restrictinfos(Expr *clause, bool is_pushed_down)
 {
 	if (or_clause((Node *) clause))
 	{
@@ -211,9 +309,11 @@ make_sub_restrictinfos(Expr *clause, bool is_pushed_down,
 		foreach(temp, ((BoolExpr *) clause)->args)
 			orlist = lappend(orlist,
 							 make_sub_restrictinfos(lfirst(temp),
-													is_pushed_down,
-													valid_everywhere));
-		return make_orclause(orlist);
+													is_pushed_down));
+		return (Expr *) make_restrictinfo_internal(clause,
+												   make_orclause(orlist),
+												   is_pushed_down,
+												   NULL);
 	}
 	else if (and_clause((Node *) clause))
 	{
@@ -223,15 +323,14 @@ make_sub_restrictinfos(Expr *clause, bool is_pushed_down,
 		foreach(temp, ((BoolExpr *) clause)->args)
 			andlist = lappend(andlist,
 							  make_sub_restrictinfos(lfirst(temp),
-													 is_pushed_down,
-													 valid_everywhere));
+													 is_pushed_down));
 		return make_andclause(andlist);
 	}
 	else
 		return (Expr *) make_restrictinfo_internal(clause,
 												   NULL,
 												   is_pushed_down,
-												   valid_everywhere);
+												   NULL);
 }
 
 /*
@@ -313,25 +412,24 @@ get_actual_join_clauses(List *restrictinfo_list,
  * as were in the input.
  */
 List *
-remove_redundant_join_clauses(Query *root, List *restrictinfo_list,
-							  JoinType jointype)
+remove_redundant_join_clauses(PlannerInfo *root, List *restrictinfo_list,
+							  bool isouterjoin)
 {
 	List	   *result = NIL;
 	ListCell   *item;
 	QualCost	cost;
 
 	/*
-	 * If there are any redundant clauses, we want to eliminate the ones
-	 * that are more expensive in favor of the ones that are less so. Run
+	 * If there are any redundant clauses, we want to eliminate the ones that
+	 * are more expensive in favor of the ones that are less so. Run
 	 * cost_qual_eval() to ensure the eval_cost fields are set up.
 	 */
 	cost_qual_eval(&cost, restrictinfo_list);
 
 	/*
-	 * We don't have enough knowledge yet to be able to estimate the
-	 * number of times a clause might be evaluated, so it's hard to weight
-	 * the startup and per-tuple costs appropriately.  For now just weight
-	 * 'em the same.
+	 * We don't have enough knowledge yet to be able to estimate the number of
+	 * times a clause might be evaluated, so it's hard to weight the startup
+	 * and per-tuple costs appropriately.  For now just weight 'em the same.
 	 */
 #define CLAUSECOST(r)  ((r)->eval_cost.startup + (r)->eval_cost.per_tuple)
 
@@ -341,7 +439,7 @@ remove_redundant_join_clauses(Query *root, List *restrictinfo_list,
 		RestrictInfo *prevrinfo;
 
 		/* is it redundant with any prior clause? */
-		prevrinfo = join_clause_is_redundant(root, rinfo, result, jointype);
+		prevrinfo = join_clause_is_redundant(root, rinfo, result, isouterjoin);
 		if (prevrinfo == NULL)
 		{
 			/* no, so add it to result list */
@@ -374,10 +472,10 @@ remove_redundant_join_clauses(Query *root, List *restrictinfo_list,
  * for local redundancies, so we don't check again.
  */
 List *
-select_nonredundant_join_clauses(Query *root,
+select_nonredundant_join_clauses(PlannerInfo *root,
 								 List *restrictinfo_list,
 								 List *reference_list,
-								 JoinType jointype)
+								 bool isouterjoin)
 {
 	List	   *result = NIL;
 	ListCell   *item;
@@ -387,7 +485,7 @@ select_nonredundant_join_clauses(Query *root,
 		RestrictInfo *rinfo = (RestrictInfo *) lfirst(item);
 
 		/* drop it if redundant with any reference clause */
-		if (join_clause_is_redundant(root, rinfo, reference_list, jointype) != NULL)
+		if (join_clause_is_redundant(root, rinfo, reference_list, isouterjoin) != NULL)
 			continue;
 
 		/* otherwise, add it to result list */
@@ -426,10 +524,10 @@ select_nonredundant_join_clauses(Query *root,
  * joined rows after addition of null fill rows, and the other doesn't.
  */
 static RestrictInfo *
-join_clause_is_redundant(Query *root,
+join_clause_is_redundant(PlannerInfo *root,
 						 RestrictInfo *rinfo,
 						 List *reference_list,
-						 JoinType jointype)
+						 bool isouterjoin)
 {
 	ListCell   *refitem;
 
@@ -463,7 +561,7 @@ join_clause_is_redundant(Query *root,
 				if (rinfo->left_pathkey == refrinfo->left_pathkey &&
 					rinfo->right_pathkey == refrinfo->right_pathkey &&
 					(rinfo->is_pushed_down == refrinfo->is_pushed_down ||
-					 !IS_OUTER_JOIN(jointype)))
+					 !isouterjoin))
 				{
 					/* Yup, it's redundant */
 					return refrinfo;

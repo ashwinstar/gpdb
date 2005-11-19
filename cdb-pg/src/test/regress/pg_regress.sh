@@ -1,5 +1,5 @@
 #! /bin/sh
-# $PostgreSQL: pgsql/src/test/regress/pg_regress.sh,v 1.53.4.1 2005/07/17 18:29:13 tgl Exp $
+# $PostgreSQL: pgsql/src/test/regress/pg_regress.sh,v 1.61 2005/11/01 15:09:11 adunstan Exp $
 
 me=`basename $0`
 : ${TMPDIR=/tmp}
@@ -11,8 +11,11 @@ PostgreSQL regression test driver
 Usage: $me [options...] [extra tests...]
 
 Options:
+  --dbname=DB               use database DB (default \`regression')
   --debug                   turn on debug mode in programs that are run
   --inputdir=DIR            take input files from DIR (default \`.')
+  --load-language=lang      load the named language before running the
+                            tests; can appear multiple times
   --max-connections=N       maximum number of concurrent connections
                             (default is 0 meaning unlimited)
   --multibyte=ENCODING      use ENCODING as the multibyte encoding, and
@@ -21,6 +24,7 @@ Options:
   --schedule=FILE           use test ordering schedule from FILE
                             (may be used multiple times to concatenate)
   --temp-install[=DIR]      create a temporary installation (in DIR)
+  --no-locale               use C locale
 
 Options for \`temp-install' mode:
   --top-builddir=DIR        (relative) path to top level build directory
@@ -81,7 +85,6 @@ fi
 : ${outputdir=.}
 
 libdir='@libdir@'
-pkglibdir='@pkglibdir@'
 bindir='@bindir@'
 datadir='@datadir@'
 host_platform='@host_tuple@'
@@ -98,6 +101,7 @@ fi
 unset mode
 unset schedule
 unset debug
+unset nolocale
 unset top_builddir
 unset temp_install
 unset multibyte
@@ -106,6 +110,7 @@ dbname=regression
 hostname=localhost
 maxconnections=0
 temp_port=65432
+load_langs=""
 
 : ${GMAKE='@GMAKE@'}
 
@@ -123,14 +128,25 @@ do
         --version)
                 echo "pg_regress (PostgreSQL @VERSION@)"
                 exit 0;;
+        --dbname=*)
+                dbname=`expr "x$1" : "x--dbname=\(.*\)"`
+                shift;;
         --debug)
                 debug=yes
                 shift;;
         --inputdir=*)
                 inputdir=`expr "x$1" : "x--inputdir=\(.*\)"`
                 shift;;
+        --load-language=*)
+                lang=`expr "x$1" : "x--load-language=\(.*\)"`
+                load_langs="$load_langs $lang"
+                unset lang
+                shift;;
         --multibyte=*)
                 multibyte=`expr "x$1" : "x--multibyte=\(.*\)"`
+                shift;;
+        --no-locale)
+                nolocale=yes
                 shift;;
         --temp-install)
                 temp_install=./tmp_check
@@ -311,16 +327,7 @@ LOGDIR=$outputdir/log
 if [ x"$temp_install" != x"" ]
 then
     if echo x"$temp_install" | grep -v '^x/' >/dev/null 2>&1; then
-        case $host_platform in
-          *-*-mingw32*)
-                pkglibdir="`pwd -W`/$temp_install/install/$pkglibdir"
-                temp_install="`pwd`/$temp_install"
-                ;;
-          *)
-                temp_install="`pwd`/$temp_install"
-                pkglibdir=$temp_install/install/$pkglibdir
-                ;;
-        esac
+        temp_install="`pwd`/$temp_install"
     fi
 
     bindir=$temp_install/install/$bindir
@@ -401,15 +408,9 @@ then
         (exit 2); exit
     fi
 
-    # fix conversion shared objs path
-    conv=$datadir/conversion_create.sql
-    backup=$conv.bak
-    mv $conv $backup
-    sed -e "s@\$libdir@$pkglibdir@g" $backup > $conv
-    rm $backup
-
     message "initializing database system"
-    [ "$debug" = yes ] && initdb_options='--debug'
+    [ "$debug" = yes ] && initdb_options="--debug"
+    [ "$nolocale" = yes ] && initdb_options="$initdb_options --no-locale"
     "$bindir/initdb" -D "$PGDATA" -L "$datadir" --noclean $initdb_options >"$LOGDIR/initdb.log" 2>&1
 
     if [ $? -ne 0 ]
@@ -431,7 +432,7 @@ then
     if [ "$unix_sockets" = no ]; then
         postmaster_options="$postmaster_options -c listen_addresses=$hostname"
     else
-        postmaster_options="$postmaster_options -c listen_addresses=''"
+        postmaster_options="$postmaster_options -c listen_addresses="
     fi
     "$bindir/postmaster" -D "$PGDATA" -F $postmaster_options >"$LOGDIR/postmaster.log" 2>&1 &
     postmaster_pid=$!
@@ -441,7 +442,7 @@ then
     # wait forever, however.
     i=0
     max=60
-    until "$bindir/psql" -X $psql_options template1 </dev/null 2>/dev/null
+    until "$bindir/psql" -X $psql_options postgres </dev/null 2>/dev/null
     do
         i=`expr $i + 1`
         if [ $i -ge $max ]
@@ -535,9 +536,6 @@ fi
 # Create the regression database
 # We use template0 so that any installation-local cruft in template1
 # will not mess up the tests.
-# Note: the reason for checkpointing just after creating the new DB is so
-# that if we get a backend core dump during the tests, WAL replay won't
-# remove the core file.
 # ----------
 
 message "creating database \"$dbname\""
@@ -548,7 +546,6 @@ if [ $? -ne 0 ]; then
 fi
 
 "$bindir/psql" -q -X $psql_options -c "\
-checkpoint;
 alter database \"$dbname\" set lc_messages to 'C';
 alter database \"$dbname\" set lc_monetary to 'C';
 alter database \"$dbname\" set lc_numeric to 'C';
@@ -572,18 +569,22 @@ fi
 
 
 # ----------
-# Install the PL/pgSQL language in it
+# Install any requested PL languages
 # ----------
 
 if [ "$cdb_is_here" = yes ]; then
 		message "skipping PL/pgSQL installation (CDB)"
 elif [ "$enable_shared" = yes ]; then
-        message "installing PL/pgSQL"
-        "$bindir/createlang" -L "$pkglibdir" $psql_options plpgsql $dbname
-        if [ $? -ne 0 ] && [ $? -ne 2 ]; then
-            echo "$me: createlang failed"
-            (exit 2); exit
+    for lang in xyzzy $load_langs ; do    
+        if [ "$lang" != "xyzzy" ]; then
+            message "installing $lang"
+            "$bindir/createlang" $psql_options $lang $dbname
+            if [ $? -ne 0 ] && [ $? -ne 2 ]; then
+                echo "$me: createlang $lang failed"
+                (exit 2); exit
+            fi
         fi
+    done
 fi
 
 

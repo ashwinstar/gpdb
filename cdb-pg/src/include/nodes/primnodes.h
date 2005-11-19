@@ -10,7 +10,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/nodes/primnodes.h,v 1.106 2004/12/31 22:03:34 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/nodes/primnodes.h,v 1.109 2005/10/15 02:49:45 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -27,72 +27,6 @@
  *						node definitions
  * ----------------------------------------------------------------
  */
-
-/*--------------------
- * Resdom (Result Domain)
- *
- * Notes:
- *
- * In a SELECT's targetlist, resno should always be equal to the item's
- * ordinal position (counting from 1).	However, in an INSERT or UPDATE
- * targetlist, resno represents the attribute number of the destination
- * column for the item; so there may be missing or out-of-order resnos.
- * It is even legal to have duplicated resnos; consider
- *		UPDATE table SET arraycol[1] = ..., arraycol[2] = ..., ...
- * The two meanings come together in the executor, because the planner
- * transforms INSERT/UPDATE tlists into a normalized form with exactly
- * one entry for each column of the destination table.	Before that's
- * happened, however, it is risky to assume that resno == position.
- * Generally get_tle_by_resno() should be used rather than list_nth()
- * to fetch tlist entries by resno, and only in SELECT should you assume
- * that resno is a unique identifier.
- *
- * resname is required to represent the correct column name in non-resjunk
- * entries of top-level SELECT targetlists, since it will be used as the
- * column title sent to the frontend.  In most other contexts it is only
- * a debugging aid, and may be wrong or even NULL.	(In particular, it may
- * be wrong in a tlist from a stored rule, if the referenced column has been
- * renamed by ALTER TABLE since the rule was made.	Also, the planner tends
- * to store NULL rather than look up a valid name for tlist entries in
- * non-toplevel plan nodes.)  In resjunk entries, resname should be either
- * a specific system-generated name (such as "ctid") or NULL; anything else
- * risks confusing ExecGetJunkAttribute!
- *
- * ressortgroupref is used in the representation of ORDER BY and
- * GROUP BY items.	Targetlist entries with ressortgroupref=0 are not
- * sort/group items.  If ressortgroupref>0, then this item is an ORDER BY or
- * GROUP BY value.	No two entries in a targetlist may have the same nonzero
- * ressortgroupref --- but there is no particular meaning to the nonzero
- * values, except as tags.	(For example, one must not assume that lower
- * ressortgroupref means a more significant sort key.)	The order of the
- * associated SortClause or GroupClause lists determine the semantics.
- *
- * resorigtbl/resorigcol identify the source of the column, if it is a
- * simple reference to a column of a base table (or view).	If it is not
- * a simple reference, these fields are zeroes.
- *
- * If resjunk is true then the column is a working column (such as a sort key)
- * that should be removed from the final output of the query.  Resjunk columns
- * must have resnos that cannot duplicate any regular column's resno.  Also
- * note that there are places that assume resjunk columns come after non-junk
- * columns.
- *--------------------
- */
-typedef struct Resdom
-{
-	NodeTag		type;
-	AttrNumber	resno;			/* attribute number (see notes above) */
-	Oid			restype;		/* type of the value */
-	int32		restypmod;		/* type-specific modifier of the value */
-	char	   *resname;		/* name of the column (could be NULL) */
-	Index		ressortgroupref;/* nonzero if referenced by a sort/group
-								 * clause */
-	Oid			resorigtbl;		/* OID of column's source table */
-	AttrNumber	resorigcol;		/* column's number in source table */
-	bool		resjunk;		/* set to true to eliminate the attribute
-								 * from final target list */
-} Resdom;
-
 
 /*
  * Alias -
@@ -131,8 +65,8 @@ typedef struct RangeVar
 	char	   *catalogname;	/* the catalog (database) name, or NULL */
 	char	   *schemaname;		/* the schema name, or NULL */
 	char	   *relname;		/* the relation/sequence name */
-	InhOption	inhOpt;			/* expand rel by inheritance? recursively
-								 * act on children? */
+	InhOption	inhOpt;			/* expand rel by inheritance? recursively act
+								 * on children? */
 	bool		istemp;			/* is this a temp relation/sequence? */
 	Alias	   *alias;			/* table alias & optional column aliases */
 } RangeVar;
@@ -177,19 +111,17 @@ typedef struct Expr
 typedef struct Var
 {
 	Expr		xpr;
-	Index		varno;			/* index of this var's relation in the
-								 * range table (could also be INNER or
-								 * OUTER) */
-	AttrNumber	varattno;		/* attribute number of this var, or zero
-								 * for all */
-	Oid			vartype;		/* pg_type tuple OID for the type of this
-								 * var */
+	Index		varno;			/* index of this var's relation in the range
+								 * table (could also be INNER or OUTER) */
+	AttrNumber	varattno;		/* attribute number of this var, or zero for
+								 * all */
+	Oid			vartype;		/* pg_type tuple OID for the type of this var */
 	int32		vartypmod;		/* pg_attribute typmod value */
 	Index		varlevelsup;
 
 	/*
-	 * for subquery variables referencing outer relations; 0 in a normal
-	 * var, >0 means N levels up
+	 * for subquery variables referencing outer relations; 0 in a normal var,
+	 * >0 means N levels up
 	 */
 	Index		varnoold;		/* original value of varno, for debugging */
 	AttrNumber	varoattno;		/* original value of varattno */
@@ -206,11 +138,10 @@ typedef struct Const
 	Datum		constvalue;		/* the constant's value */
 	bool		constisnull;	/* whether the constant is null (if true,
 								 * constvalue is undefined) */
-	bool		constbyval;		/* whether this datatype is passed by
-								 * value. If true, then all the
-								 * information is stored in the Datum. If
-								 * false, then the Datum contains a
-								 * pointer to the information. */
+	bool		constbyval;		/* whether this datatype is passed by value.
+								 * If true, then all the information is stored
+								 * in the Datum. If false, then the Datum
+								 * contains a pointer to the information. */
 } Const;
 
 /* ----------------
@@ -281,14 +212,14 @@ typedef struct ArrayRef
 								 * operation */
 	Oid			refarraytype;	/* type of the array proper */
 	Oid			refelemtype;	/* type of the array elements */
-	List	   *refupperindexpr;/* expressions that evaluate to upper
-								 * array indexes */
-	List	   *reflowerindexpr;/* expressions that evaluate to lower
-								 * array indexes */
-	Expr	   *refexpr;		/* the expression that evaluates to an
-								 * array value */
-	Expr	   *refassgnexpr;	/* expression for the source value, or
-								 * NULL if fetch */
+	List	   *refupperindexpr;/* expressions that evaluate to upper array
+								 * indexes */
+	List	   *reflowerindexpr;/* expressions that evaluate to lower array
+								 * indexes */
+	Expr	   *refexpr;		/* the expression that evaluates to an array
+								 * value */
+	Expr	   *refassgnexpr;	/* expression for the source value, or NULL if
+								 * fetch */
 } ArrayRef;
 
 /*
@@ -457,10 +388,9 @@ typedef struct SubLink
 {
 	Expr		xpr;
 	SubLinkType subLinkType;	/* EXISTS, ALL, ANY, MULTIEXPR, EXPR */
-	bool		useOr;			/* TRUE to combine column results with
-								 * "OR" not "AND" */
-	List	   *lefthand;		/* list of outer-query expressions on the
-								 * left */
+	bool		useOr;			/* TRUE to combine column results with "OR"
+								 * not "AND" */
+	List	   *lefthand;		/* list of outer-query expressions on the left */
 	List	   *operName;		/* originally specified operator name */
 	List	   *operOids;		/* OIDs of actual combining operators */
 	Node	   *subselect;		/* subselect as Query* or parsetree */
@@ -498,8 +428,8 @@ typedef struct SubPlan
 	Expr		xpr;
 	/* Fields copied from original SubLink: */
 	SubLinkType subLinkType;	/* EXISTS, ALL, ANY, MULTIEXPR, EXPR */
-	bool		useOr;			/* TRUE to combine column results with
-								 * "OR" not "AND" */
+	bool		useOr;			/* TRUE to combine column results with "OR"
+								 * not "AND" */
 	/* The combining operators, transformed to executable expressions: */
 	List	   *exprs;			/* list of OpExpr expression trees */
 	List	   *paramIds;		/* IDs of Params embedded in the above */
@@ -507,22 +437,21 @@ typedef struct SubPlan
 	/* The subselect, transformed to a Plan: */
 	struct Plan *plan;			/* subselect plan itself */
 	int			plan_id;		/* dummy thing because of we haven't equal
-								 * funcs for plan nodes... actually, we
-								 * could put *plan itself somewhere else
-								 * (TopPlan node ?)... */
+								 * funcs for plan nodes... actually, we could
+								 * put *plan itself somewhere else (TopPlan
+								 * node ?)... */
 	List	   *rtable;			/* range table for subselect */
 	/* Information about execution strategy: */
-	bool		useHashTable;	/* TRUE to store subselect output in a
-								 * hash table (implies we are doing "IN") */
-	bool		unknownEqFalse; /* TRUE if it's okay to return FALSE when
-								 * the spec result is UNKNOWN; this allows
-								 * much simpler handling of null values */
+	bool		useHashTable;	/* TRUE to store subselect output in a hash
+								 * table (implies we are doing "IN") */
+	bool		unknownEqFalse; /* TRUE if it's okay to return FALSE when the
+								 * spec result is UNKNOWN; this allows much
+								 * simpler handling of null values */
 	/* Information for passing params into and out of the subselect: */
 	/* setParam and parParam are lists of integers (param IDs) */
 	List	   *setParam;		/* initplan subqueries have to set these
 								 * Params for parent plan */
-	List	   *parParam;		/* indices of input Params from parent
-								 * plan */
+	List	   *parParam;		/* indices of input Params from parent plan */
 	List	   *args;			/* exprs to pass as parParam values */
 } SubPlan;
 
@@ -706,10 +635,10 @@ typedef struct RowExpr
 	Oid			row_typeid;		/* RECORDOID or a composite type's ID */
 
 	/*
-	 * Note: we deliberately do NOT store a typmod.  Although a typmod
-	 * will be associated with specific RECORD types at runtime, it will
-	 * differ for different backends, and so cannot safely be stored in
-	 * stored parsetrees.  We must assume typmod -1 for a RowExpr node.
+	 * Note: we deliberately do NOT store a typmod.  Although a typmod will be
+	 * associated with specific RECORD types at runtime, it will differ for
+	 * different backends, and so cannot safely be stored in stored
+	 * parsetrees.	We must assume typmod -1 for a RowExpr node.
 	 */
 	CoercionForm row_format;	/* how to display this node */
 } RowExpr;
@@ -723,6 +652,23 @@ typedef struct CoalesceExpr
 	Oid			coalescetype;	/* type of expression result */
 	List	   *args;			/* the arguments */
 } CoalesceExpr;
+
+/*
+ * MinMaxExpr - a GREATEST or LEAST function
+ */
+typedef enum MinMaxOp
+{
+	IS_GREATEST,
+	IS_LEAST
+} MinMaxOp;
+
+typedef struct MinMaxExpr
+{
+	Expr		xpr;
+	Oid			minmaxtype;		/* common type of arguments and result */
+	MinMaxOp	op;				/* function to execute */
+	List	   *args;			/* the arguments */
+} MinMaxExpr;
 
 /*
  * NullIfExpr - a NULLIF expression
@@ -823,7 +769,7 @@ typedef struct SetToDefault
 	int32		typeMod;		/* typemod for substituted value */
 } SetToDefault;
 
-/*
+/*--------------------
  * TargetEntry -
  *	   a target entry (used in query target lists)
  *
@@ -832,14 +778,63 @@ typedef struct SetToDefault
  * very many places it's convenient to process a whole query targetlist as a
  * single expression tree.
  *
- * The separation between TargetEntry and Resdom is historical.  One of these
- * days, Resdom should probably get folded into TargetEntry.
+ * In a SELECT's targetlist, resno should always be equal to the item's
+ * ordinal position (counting from 1).	However, in an INSERT or UPDATE
+ * targetlist, resno represents the attribute number of the destination
+ * column for the item; so there may be missing or out-of-order resnos.
+ * It is even legal to have duplicated resnos; consider
+ *		UPDATE table SET arraycol[1] = ..., arraycol[2] = ..., ...
+ * The two meanings come together in the executor, because the planner
+ * transforms INSERT/UPDATE tlists into a normalized form with exactly
+ * one entry for each column of the destination table.	Before that's
+ * happened, however, it is risky to assume that resno == position.
+ * Generally get_tle_by_resno() should be used rather than list_nth()
+ * to fetch tlist entries by resno, and only in SELECT should you assume
+ * that resno is a unique identifier.
+ *
+ * resname is required to represent the correct column name in non-resjunk
+ * entries of top-level SELECT targetlists, since it will be used as the
+ * column title sent to the frontend.  In most other contexts it is only
+ * a debugging aid, and may be wrong or even NULL.	(In particular, it may
+ * be wrong in a tlist from a stored rule, if the referenced column has been
+ * renamed by ALTER TABLE since the rule was made.	Also, the planner tends
+ * to store NULL rather than look up a valid name for tlist entries in
+ * non-toplevel plan nodes.)  In resjunk entries, resname should be either
+ * a specific system-generated name (such as "ctid") or NULL; anything else
+ * risks confusing ExecGetJunkAttribute!
+ *
+ * ressortgroupref is used in the representation of ORDER BY and
+ * GROUP BY items.	Targetlist entries with ressortgroupref=0 are not
+ * sort/group items.  If ressortgroupref>0, then this item is an ORDER BY or
+ * GROUP BY value.	No two entries in a targetlist may have the same nonzero
+ * ressortgroupref --- but there is no particular meaning to the nonzero
+ * values, except as tags.	(For example, one must not assume that lower
+ * ressortgroupref means a more significant sort key.)	The order of the
+ * associated SortClause or GroupClause lists determine the semantics.
+ *
+ * resorigtbl/resorigcol identify the source of the column, if it is a
+ * simple reference to a column of a base table (or view).	If it is not
+ * a simple reference, these fields are zeroes.
+ *
+ * If resjunk is true then the column is a working column (such as a sort key)
+ * that should be removed from the final output of the query.  Resjunk columns
+ * must have resnos that cannot duplicate any regular column's resno.  Also
+ * note that there are places that assume resjunk columns come after non-junk
+ * columns.
+ *--------------------
  */
 typedef struct TargetEntry
 {
 	Expr		xpr;
-	Resdom	   *resdom;			/* descriptor for targetlist item */
 	Expr	   *expr;			/* expression to evaluate */
+	AttrNumber	resno;			/* attribute number (see notes above) */
+	char	   *resname;		/* name of the column (could be NULL) */
+	Index		ressortgroupref;/* nonzero if referenced by a sort/group
+								 * clause */
+	Oid			resorigtbl;		/* OID of column's source table */
+	AttrNumber	resorigcol;		/* column's number in source table */
+	bool		resjunk;		/* set to true to eliminate the attribute from
+								 * final target list */
 } TargetEntry;
 
 

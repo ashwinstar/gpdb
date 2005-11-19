@@ -1,4 +1,4 @@
-/* $PostgreSQL: pgsql/src/include/mb/pg_wchar.h,v 1.56 2004/12/04 18:19:33 momjian Exp $ */
+/* $PostgreSQL: pgsql/src/include/mb/pg_wchar.h,v 1.63 2005/10/15 02:49:45 momjian Exp $ */
 
 #ifndef PG_WCHAR_H
 #define PG_WCHAR_H
@@ -92,36 +92,34 @@ typedef unsigned int pg_wchar;
 #define LC_CNS11643_1	0x95	/* CNS 11643-1992 Plane 1 */
 #define LC_CNS11643_2	0x96	/* CNS 11643-1992 Plane 2 */
 /* #define FREE		0x97	free (unused) */
-#define LC_BIG5_1	0x98		/* Plane 1 Chinese traditional (not
-								 * supported) */
-#define LC_BIG5_2	0x99		/* Plane 1 Chinese traditional (not
-								 * supported) */
+#define LC_BIG5_1	0x98		/* Plane 1 Chinese traditional (not supported) */
+#define LC_BIG5_2	0x99		/* Plane 1 Chinese traditional (not supported) */
 
 /*
  * Private single byte encodings (0xa0-0xef)
  */
 #define LC_SISHENG	0xa0		/* Chinese SiSheng characters for
 								 * PinYin/ZhuYin (not supported) */
-#define LC_IPA		0xa1		/* IPA (International Phonetic
-								 * Association) (not supported) */
+#define LC_IPA		0xa1		/* IPA (International Phonetic Association)
+								 * (not supported) */
 #define LC_VISCII_LOWER 0xa2	/* Vietnamese VISCII1.1 lower-case (not
 								 * supported) */
 #define LC_VISCII_UPPER 0xa3	/* Vietnamese VISCII1.1 upper-case (not
 								 * supported) */
 #define LC_ARABIC_DIGIT 0xa4	/* Arabic digit (not supported) */
 #define LC_ARABIC_1_COLUMN	0xa5	/* Arabic 1-column (not supported) */
-#define LC_ASCII_RIGHT_TO_LEFT	0xa6	/* ASCII (left half of ISO8859-1)
-										 * with right-to-left direction
-										 * (not supported) */
-#define LC_LAO		0xa7		/* Lao characters (ISO10646 0E80..0EDF)
-								 * (not supported) */
+#define LC_ASCII_RIGHT_TO_LEFT	0xa6	/* ASCII (left half of ISO8859-1) with
+										 * right-to-left direction (not
+										 * supported) */
+#define LC_LAO		0xa7		/* Lao characters (ISO10646 0E80..0EDF) (not
+								 * supported) */
 #define LC_ARABIC_2_COLUMN	0xa8	/* Arabic 1-column (not supported) */
 
 /*
  * Private multibyte encodings (0xf0-0xff)
  */
-#define LC_INDIAN_1_COLUMN	0xf0/* Indian charset for 1-column width
-								 * glypps (not supported) */
+#define LC_INDIAN_1_COLUMN	0xf0/* Indian charset for 1-column width glypps
+								 * (not supported) */
 #define LC_TIBETAN_1_COLUMN 0xf1	/* Tibetan 1 column glyph (not supported) */
 #define LC_ETHIOPIC 0xf5		/* Ethiopic characters (not supported) */
 #define LC_CNS11643_3	0xf6	/* CNS 11643-1992 Plane 3 */
@@ -129,8 +127,8 @@ typedef unsigned int pg_wchar;
 #define LC_CNS11643_5	0xf8	/* CNS 11643-1992 Plane 5 */
 #define LC_CNS11643_6	0xf9	/* CNS 11643-1992 Plane 6 */
 #define LC_CNS11643_7	0xfa	/* CNS 11643-1992 Plane 7 */
-#define LC_INDIAN_2_COLUMN	0xfb/* Indian charset for 2-column width
-								 * glypps (not supported) */
+#define LC_INDIAN_2_COLUMN	0xfb/* Indian charset for 2-column width glypps
+								 * (not supported) */
 #define LC_TIBETAN	0xfc		/* Tibetan (not supported) */
 /* #define FREE		0xfd	free (unused) */
 /* #define FREE		0xfe	free (unused) */
@@ -155,7 +153,7 @@ typedef enum pg_enc
 	PG_EUC_KR,					/* EUC for Korean */
 	PG_EUC_TW,					/* EUC for Taiwan */
 	PG_JOHAB,					/* EUC for Korean JOHAB */
-	PG_UTF8,					/* Unicode UTF-8 */
+	PG_UTF8,					/* Unicode UTF8 */
 	PG_MULE_INTERNAL,			/* Mule internal code */
 	PG_LATIN1,					/* ISO-8859-1 Latin 1 */
 	PG_LATIN2,					/* ISO-8859-2 Latin 2 */
@@ -168,11 +166,12 @@ typedef enum pg_enc
 	PG_LATIN9,					/* ISO-8859-15 Latin9 */
 	PG_LATIN10,					/* ISO-8859-16 Latin10 */
 	PG_WIN1256,					/* windows-1256 */
-	PG_TCVN,					/* TCVN (Windows-1258) */
+	PG_WIN1258,					/* Windows-1258 */
+	PG_WIN866,					/* (MS-DOS CP866) */
 	PG_WIN874,					/* windows-874 */
 	PG_KOI8R,					/* KOI8-R */
-	PG_WIN1251,					/* windows-1251 (was: WIN) */
-	PG_ALT,						/* (MS-DOS CP866) */
+	PG_WIN1251,					/* windows-1251 */
+	PG_WIN1252,					/* windows-1252 */
 	PG_ISO_8859_5,				/* ISO-8859-5 */
 	PG_ISO_8859_6,				/* ISO-8859-6 */
 	PG_ISO_8859_7,				/* ISO-8859-7 */
@@ -190,7 +189,6 @@ typedef enum pg_enc
 } pg_enc;
 
 #define PG_ENCODING_BE_LAST PG_WIN1250
-#define PG_ENCODING_FE_LAST PG_GB18030
 
 /*
  * Please use these tests before access to pg_encconv_tbl[]
@@ -199,8 +197,8 @@ typedef enum pg_enc
 #define PG_VALID_BE_ENCODING(_enc) \
 		((_enc) >= 0 && (_enc) <= PG_ENCODING_BE_LAST)
 
-#define PG_ENCODING_IS_CLIEN_ONLY(_enc) \
-		(((_enc) > PG_ENCODING_BE_LAST && (_enc) <= PG_ENCODING_FE_LAST)
+#define PG_ENCODING_IS_CLIENT_ONLY(_enc) \
+		((_enc) > PG_ENCODING_BE_LAST && (_enc) < _PG_LAST_ENCODING_)
 
 #define PG_VALID_ENCODING(_enc) \
 		((_enc) >= 0 && (_enc) < _PG_LAST_ENCODING_)
@@ -255,47 +253,47 @@ typedef struct
 	mb2wchar_with_len_converter mb2wchar_with_len;		/* convert a multibyte
 														 * string to a wchar */
 	mblen_converter mblen;		/* returns the length of a multibyte char */
-	mbdisplaylen_converter dsplen;		/* returns the lenghth of a
-										 * display length */
+	mbdisplaylen_converter dsplen;		/* returns the lenghth of a display
+										 * length */
 	int			maxmblen;		/* max bytes for a char in this charset */
 } pg_wchar_tbl;
 
 extern pg_wchar_tbl pg_wchar_table[];
 
 /*
- * UTF-8 to local code conversion map
+ * UTF8 to local code conversion map
  */
 typedef struct
 {
-	unsigned int utf;			/* UTF-8 */
+	unsigned int utf;			/* UTF8 */
 	unsigned int code;			/* local code */
 } pg_utf_to_local;
 
 /*
- * local code to UTF-8 conversion map
+ * local code to UTF8 conversion map
  */
 typedef struct
 {
 	unsigned int code;			/* local code */
-	unsigned int utf;			/* UTF-8 */
+	unsigned int utf;			/* UTF8 */
 } pg_local_to_utf;
 
-extern int	pg_mb2wchar(const unsigned char *from, pg_wchar *to);
-extern int	pg_mb2wchar_with_len(const unsigned char *from, pg_wchar *to, int len);
+extern int	pg_mb2wchar(const char *from, pg_wchar *to);
+extern int	pg_mb2wchar_with_len(const char *from, pg_wchar *to, int len);
 extern int	pg_char_and_wchar_strcmp(const char *s1, const pg_wchar *s2);
 extern int	pg_wchar_strncmp(const pg_wchar *s1, const pg_wchar *s2, size_t n);
 extern int	pg_char_and_wchar_strncmp(const char *s1, const pg_wchar *s2, size_t n);
 extern size_t pg_wchar_strlen(const pg_wchar *wstr);
-extern int	pg_mblen(const unsigned char *mbstr);
-extern int	pg_dsplen(const unsigned char *mbstr);
-extern int	pg_encoding_mblen(int encoding, const unsigned char *mbstr);
-extern int	pg_encoding_dsplen(int encoding, const unsigned char *mbstr);
+extern int	pg_mblen(const char *mbstr);
+extern int	pg_dsplen(const char *mbstr);
+extern int	pg_encoding_mblen(int encoding, const char *mbstr);
+extern int	pg_encoding_dsplen(int encoding, const char *mbstr);
 extern int	pg_mule_mblen(const unsigned char *mbstr);
 extern int	pg_mic_mblen(const unsigned char *mbstr);
-extern int	pg_mbstrlen(const unsigned char *mbstr);
-extern int	pg_mbstrlen_with_len(const unsigned char *mbstr, int len);
-extern int	pg_mbcliplen(const unsigned char *mbstr, int len, int limit);
-extern int	pg_mbcharcliplen(const unsigned char *mbstr, int len, int imit);
+extern int	pg_mbstrlen(const char *mbstr);
+extern int	pg_mbstrlen_with_len(const char *mbstr, int len);
+extern int	pg_mbcliplen(const char *mbstr, int len, int limit);
+extern int	pg_mbcharcliplen(const char *mbstr, int len, int imit);
 extern int	pg_encoding_max_length(int encoding);
 extern int	pg_database_encoding_max_length(void);
 
@@ -317,8 +315,8 @@ extern unsigned char *pg_do_encoding_conversion(unsigned char *src, int len,
 						  int src_encoding,
 						  int dest_encoding);
 
-extern unsigned char *pg_client_to_server(unsigned char *s, int len);
-extern unsigned char *pg_server_to_client(unsigned char *s, int len);
+extern char *pg_client_to_server(const char *s, int len);
+extern char *pg_server_to_client(const char *s, int len);
 
 extern unsigned short BIG5toCNS(unsigned short big5, unsigned char *lc);
 extern unsigned short CNStoBIG5(unsigned short cns, unsigned char lc);
@@ -329,7 +327,7 @@ extern void LocalToUtf(unsigned char *iso, unsigned char *utf,
 extern void UtfToLocal(unsigned char *utf, unsigned char *iso,
 		   pg_utf_to_local *map, int size, int len);
 
-extern bool pg_verifymbstr(const unsigned char *mbstr, int len, bool noError);
+extern bool pg_verifymbstr(const char *mbstr, int len, bool noError);
 
 extern void pg_ascii2mic(unsigned char *src, unsigned char *dest, int len);
 extern void pg_mic2ascii(unsigned char *src, unsigned char *dest, int len);
@@ -338,5 +336,7 @@ extern void latin2mic(unsigned char *l, unsigned char *p, int len, int lc);
 extern void mic2latin(unsigned char *mic, unsigned char *p, int len, int lc);
 extern void latin2mic_with_table(unsigned char *l, unsigned char *p, int len, int lc, unsigned char *tab);
 extern void mic2latin_with_table(unsigned char *mic, unsigned char *p, int len, int lc, unsigned char *tab);
+
+extern bool pg_utf8_islegal(const unsigned char *source, int length);
 
 #endif   /* PG_WCHAR_H */

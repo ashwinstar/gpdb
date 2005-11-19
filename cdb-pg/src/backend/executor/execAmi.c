@@ -6,7 +6,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- *	$PostgreSQL: pgsql/src/backend/executor/execAmi.c,v 1.82 2004/12/31 21:59:45 pgsql Exp $
+ *	$PostgreSQL: pgsql/src/backend/executor/execAmi.c,v 1.85 2005/10/15 02:49:16 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -19,6 +19,10 @@
 #include "executor/instrument.h"
 #include "executor/nodeAgg.h"
 #include "executor/nodeAppend.h"
+#include "executor/nodeBitmapAnd.h"
+#include "executor/nodeBitmapHeapscan.h"
+#include "executor/nodeBitmapIndexscan.h"
+#include "executor/nodeBitmapOr.h"
 #include "executor/nodeFunctionscan.h"
 #include "executor/nodeGroup.h"
 #include "executor/nodeGroup.h"
@@ -107,12 +111,28 @@ ExecReScan(PlanState *node, ExprContext *exprCtxt)
 			ExecReScanAppend((AppendState *) node, exprCtxt);
 			break;
 
+		case T_BitmapAndState:
+			ExecReScanBitmapAnd((BitmapAndState *) node, exprCtxt);
+			break;
+
+		case T_BitmapOrState:
+			ExecReScanBitmapOr((BitmapOrState *) node, exprCtxt);
+			break;
+
 		case T_SeqScanState:
 			ExecSeqReScan((SeqScanState *) node, exprCtxt);
 			break;
 
 		case T_IndexScanState:
 			ExecIndexReScan((IndexScanState *) node, exprCtxt);
+			break;
+
+		case T_BitmapIndexScanState:
+			ExecBitmapIndexReScan((BitmapIndexScanState *) node, exprCtxt);
+			break;
+
+		case T_BitmapHeapScanState:
+			ExecBitmapHeapReScan((BitmapHeapScanState *) node, exprCtxt);
 			break;
 
 		case T_TidScanState:
@@ -243,6 +263,14 @@ ExecMarkPos(PlanState *node)
  * ExecRestrPos
  *
  * restores the scan position previously saved with ExecMarkPos()
+ *
+ * NOTE: the semantics of this are that the first ExecProcNode following
+ * the restore operation will yield the same tuple as the first one following
+ * the mark operation.	It is unspecified what happens to the plan node's
+ * result TupleTableSlot.  (In most cases the result slot is unchanged by
+ * a restore, but the node may choose to clear it or to load it with the
+ * restored-to tuple.)	Hence the caller should discard any previously
+ * returned TupleTableSlot after doing a restore.
  */
 void
 ExecRestrPos(PlanState *node)
@@ -292,6 +320,11 @@ ExecRestrPos(PlanState *node)
  * XXX Ideally, all plan node types would support mark/restore, and this
  * wouldn't be needed.  For now, this had better match the routines above.
  * But note the test is on Plan nodetype, not PlanState nodetype.
+ *
+ * (However, since the only present use of mark/restore is in mergejoin,
+ * there is no need to support mark/restore in any plan type that is not
+ * capable of generating ordered output.  So the seqscan, tidscan, and
+ * functionscan support is actually useless code at present.)
  */
 bool
 ExecSupportsMarkRestore(NodeTag plantype)
@@ -387,21 +420,21 @@ ExecMayReturnRawTuples(PlanState *node)
 {
 	/*
 	 * At a table scan node, we check whether ExecAssignScanProjectionInfo
-	 * decided to do projection or not.  Most non-scan nodes always
-	 * project and so we can return "false" immediately.  For nodes that
-	 * don't project but just pass up input tuples, we have to recursively
-	 * examine the input plan node.
+	 * decided to do projection or not.  Most non-scan nodes always project
+	 * and so we can return "false" immediately.  For nodes that don't project
+	 * but just pass up input tuples, we have to recursively examine the input
+	 * plan node.
 	 *
-	 * Note: Hash and Material are listed here because they sometimes return
-	 * an original input tuple, not a copy.  But Sort and SetOp never
-	 * return an original tuple, so they can be treated like projecting
-	 * nodes.
+	 * Note: Hash and Material are listed here because they sometimes return an
+	 * original input tuple, not a copy.  But Sort and SetOp never return an
+	 * original tuple, so they can be treated like projecting nodes.
 	 */
 	switch (nodeTag(node))
 	{
 			/* Table scan nodes */
 		case T_SeqScanState:
 		case T_IndexScanState:
+		case T_BitmapHeapScanState:
 		case T_TidScanState:
 		case T_SubqueryScanState:
 		case T_FunctionScanState:

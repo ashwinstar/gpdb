@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/access/transam/transam.c,v 1.63 2004/12/31 21:59:29 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/access/transam/transam.c,v 1.66 2005/10/15 02:49:09 momjian Exp $
  *
  * NOTES
  *	  This file contains the high level access-method interface to the
@@ -23,18 +23,6 @@
 #include "access/subtrans.h"
 #include "access/transam.h"
 #include "utils/tqual.h"
-
-
-/* ----------------
- *		Flag indicating that we are bootstrapping.
- *
- * Transaction ID generation is disabled during bootstrap; we just use
- * BootstrapTransactionId.	Also, the transaction ID status-check routines
- * are short-circuited; they claim that BootstrapTransactionId has already
- * committed, allowing tuples already inserted to be seen immediately.
- * ----------------
- */
-bool		AMI_OVERRIDE = false;
 
 
 static XidStatus TransactionLogFetch(TransactionId transactionId);
@@ -66,8 +54,8 @@ TransactionLogFetch(TransactionId transactionId)
 	XidStatus	xidstatus;
 
 	/*
-	 * Before going to the commit log manager, check our single item cache
-	 * to see if we didn't just check the transaction status a moment ago.
+	 * Before going to the commit log manager, check our single item cache to
+	 * see if we didn't just check the transaction status a moment ago.
 	 */
 	if (TransactionIdEquals(transactionId, cachedFetchXid))
 		return cachedFetchXidStatus;
@@ -90,8 +78,8 @@ TransactionLogFetch(TransactionId transactionId)
 	xidstatus = TransactionIdGetStatus(transactionId);
 
 	/*
-	 * DO NOT cache status for unfinished or sub-committed transactions!
-	 * We only cache status that is guaranteed not to change.
+	 * DO NOT cache status for unfinished or sub-committed transactions! We
+	 * only cache status that is guaranteed not to change.
 	 */
 	if (xidstatus != TRANSACTION_STATUS_IN_PROGRESS &&
 		xidstatus != TRANSACTION_STATUS_SUB_COMMITTED)
@@ -134,18 +122,6 @@ TransactionLogMultiUpdate(int nxids, TransactionId *xids, XidStatus status)
 		TransactionIdSetStatus(xids[i], status);
 }
 
-/* --------------------------------
- *		AmiTransactionOverride
- *
- *		This function is used to manipulate the bootstrap flag.
- * --------------------------------
- */
-void
-AmiTransactionOverride(bool flag)
-{
-	AMI_OVERRIDE = flag;
-}
-
 /* ----------------------------------------------------------------
  *						Interface functions
  *
@@ -184,12 +160,6 @@ TransactionIdDidCommit(TransactionId transactionId)
 {
 	XidStatus	xidstatus;
 
-	if (AMI_OVERRIDE)
-	{
-		Assert(transactionId == BootstrapTransactionId);
-		return true;
-	}
-
 	xidstatus = TransactionLogFetch(transactionId);
 
 	/*
@@ -199,10 +169,18 @@ TransactionIdDidCommit(TransactionId transactionId)
 		return true;
 
 	/*
-	 * If it's marked subcommitted, we have to check the parent
-	 * recursively. However, if it's older than TransactionXmin, we can't
-	 * look at pg_subtrans; instead assume that the parent crashed without
-	 * cleaning up its children.
+	 * If it's marked subcommitted, we have to check the parent recursively.
+	 * However, if it's older than TransactionXmin, we can't look at
+	 * pg_subtrans; instead assume that the parent crashed without cleaning up
+	 * its children.
+	 *
+	 * Originally we Assert'ed that the result of SubTransGetParent was not zero.
+	 * However with the introduction of prepared transactions, there can be a
+	 * window just after database startup where we do not have complete
+	 * knowledge in pg_subtrans of the transactions after TransactionXmin.
+	 * StartupSUBTRANS() has ensured that any missing information will be
+	 * zeroed.	Since this case should not happen under normal conditions, it
+	 * seems reasonable to emit a WARNING for it.
 	 */
 	if (xidstatus == TRANSACTION_STATUS_SUB_COMMITTED)
 	{
@@ -211,7 +189,12 @@ TransactionIdDidCommit(TransactionId transactionId)
 		if (TransactionIdPrecedes(transactionId, TransactionXmin))
 			return false;
 		parentXid = SubTransGetParent(transactionId);
-		Assert(TransactionIdIsValid(parentXid));
+		if (!TransactionIdIsValid(parentXid))
+		{
+			elog(WARNING, "no pg_subtrans entry for subcommitted XID %u",
+				 transactionId);
+			return false;
+		}
 		return TransactionIdDidCommit(parentXid);
 	}
 
@@ -233,12 +216,6 @@ TransactionIdDidAbort(TransactionId transactionId)
 {
 	XidStatus	xidstatus;
 
-	if (AMI_OVERRIDE)
-	{
-		Assert(transactionId == BootstrapTransactionId);
-		return false;
-	}
-
 	xidstatus = TransactionLogFetch(transactionId);
 
 	/*
@@ -248,10 +225,10 @@ TransactionIdDidAbort(TransactionId transactionId)
 		return true;
 
 	/*
-	 * If it's marked subcommitted, we have to check the parent
-	 * recursively. However, if it's older than TransactionXmin, we can't
-	 * look at pg_subtrans; instead assume that the parent crashed without
-	 * cleaning up its children.
+	 * If it's marked subcommitted, we have to check the parent recursively.
+	 * However, if it's older than TransactionXmin, we can't look at
+	 * pg_subtrans; instead assume that the parent crashed without cleaning up
+	 * its children.
 	 */
 	if (xidstatus == TRANSACTION_STATUS_SUB_COMMITTED)
 	{
@@ -260,7 +237,13 @@ TransactionIdDidAbort(TransactionId transactionId)
 		if (TransactionIdPrecedes(transactionId, TransactionXmin))
 			return true;
 		parentXid = SubTransGetParent(transactionId);
-		Assert(TransactionIdIsValid(parentXid));
+		if (!TransactionIdIsValid(parentXid))
+		{
+			/* see notes in TransactionIdDidCommit */
+			elog(WARNING, "no pg_subtrans entry for subcommitted XID %u",
+				 transactionId);
+			return true;
+		}
 		return TransactionIdDidAbort(parentXid);
 	}
 

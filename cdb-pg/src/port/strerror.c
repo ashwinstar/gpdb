@@ -1,4 +1,4 @@
-/* $PostgreSQL: pgsql/src/port/strerror.c,v 1.3 2003/11/29 22:41:31 pgsql Exp $ */
+/* $PostgreSQL: pgsql/src/port/strerror.c,v 1.5 2005/07/28 04:03:14 tgl Exp $ */
 
 /*
  * strerror - map error number to descriptive string
@@ -9,9 +9,8 @@
  * modified for ANSI by D'Arcy J.M. Cain
  */
 
-#include <string.h>
-#include <stdio.h>
-#include <errno.h>
+#include "c.h"
+
 
 extern const char *const sys_errlist[];
 extern int	sys_nerr;
@@ -23,7 +22,7 @@ strerror(int errnum)
 
 	if (errnum < 0 || errnum > sys_nerr)
 	{
-		sprintf(buf, "unrecognized error %d", errnum);
+		sprintf(buf, _("unrecognized error %d"), errnum);
 		return buf;
 	}
 

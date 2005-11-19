@@ -656,7 +656,7 @@ invertColIdx(List *targetlist, int numCols, AttrNumber *colIdx, AttrNumber **pin
 			tleidx++;
 			if (IsA(tle->expr, Var) &&((Var *) tle->expr)->varattno == child_tleidx)
 			{
-				if (tleidx != tle->resdom->resno)
+				if (tleidx != tle->resno)
 				{
 					aok = FALSE;
 				}
@@ -1185,7 +1185,7 @@ getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
 
 	for (i = 0; i < numCols; i++)
 	{
-		Var		   *new_var;
+		Var		   *new_var = NULL;
 
 		/* Find expr in TargetList */
 		AttrNumber	n = colIdx[i];
@@ -1199,7 +1199,13 @@ getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
 		 * Make a Var that references the target list entry at this offset,
 		 * using OUTER as the varno
 		 */
-		new_var = makeVar(varno, n, target->resdom->restype, target->resdom->restypmod, 0);
+		
+		// ????
+		//relid = rel->relid;
+		//reloid = getrelid(relid, root->parse->rtable);
+		//get_atttypetypmod(reloid, varattno, &vartypeid, &type_mod);
+		// ????
+		new_var = makeVar(varno, n, exprType((Node *) target->expr), exprTypmod((Node *) target->expr), 0);
 
 		elist = lappend(elist, new_var);
 	}
@@ -1440,7 +1446,7 @@ findHashAttrsInTargetList(List *targetlist, List *hashExprs, AttrNumber *attrs)
 	{
 		TargetEntry *tle = (TargetEntry *) lfirst(cell);
 
-		j = tle->resdom->resno - 1;
+		j = tle->resno - 1;
 		Assert(0 <= j && j < ntles && map[j] == NULL);
 		map[j] = (Node *) tle->expr;
 	}
@@ -1519,7 +1525,7 @@ getExprListForSubqueryScan(List *targetlist, List *hashExprs)
 	foreach(cell, targetlist)
 	{
 		tle = (TargetEntry *) lfirst(cell);
-		i = tle->resdom->resno - 1;
+		i = tle->resno - 1;
 		Assert(0 <= i && i < ntles && map[i] == NULL);
 		map[i] = tle;
 	}
@@ -1539,9 +1545,11 @@ getExprListForSubqueryScan(List *targetlist, List *hashExprs)
 		}
 		if (i < ntles)
 		{
-			Var		   *var;
+			Var		   *var = NULL;
 			tle = map[i];
-			var = makeVar(varno, 1 + i, tle->resdom->restype, tle->resdom->restypmod, 0);
+
+			// ???????
+			var = makeVar(varno, 1 + i, exprType((Node *) tle->expr), exprTypmod((Node *) tle->expr), 0);
 
 			resultExprs = lappend(resultExprs, var);
 		}

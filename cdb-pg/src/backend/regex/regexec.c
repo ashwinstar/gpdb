@@ -27,7 +27,7 @@
  * OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
  * ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- * $PostgreSQL: pgsql/src/backend/regex/regexec.c,v 1.24 2003/11/29 19:51:55 pgsql Exp $
+ * $PostgreSQL: pgsql/src/backend/regex/regexec.c,v 1.27 2005/10/15 02:49:24 momjian Exp $
  *
  */
 
@@ -75,8 +75,7 @@ struct dfa
 	struct cnfa *cnfa;
 	struct colormap *cm;
 	chr		   *lastpost;		/* location of last cache-flushed success */
-	chr		   *lastnopr;		/* location of last cache-flushed
-								 * NOPROGRESS */
+	chr		   *lastnopr;		/* location of last cache-flushed NOPROGRESS */
 	struct sset *search;		/* replacement-search-pointer memory */
 	int			cptsmalloced;	/* were the areas individually malloced? */
 	char	   *mallocarea;		/* self, or master malloced area, or NULL */
@@ -110,6 +109,7 @@ struct vars
 	regmatch_t *pmatch;
 	rm_detail_t *details;
 	chr		   *start;			/* start of string */
+	chr		   *search_start;	/* search start of string */
 	chr		   *stop;			/* just past end of string */
 	int			err;			/* error code if any (0 none) */
 	regoff_t   *mem;			/* memory vector for backtracking */
@@ -121,8 +121,7 @@ struct vars
 #define ISERR() VISERR(v)
 #define VERR(vv,e)	(((vv)->err) ? (vv)->err : ((vv)->err = (e)))
 #define ERR(e)	VERR(v, e)		/* record an error */
-#define NOERR() {if (ISERR()) return v->err;}	/* if error seen, return
-												 * it */
+#define NOERR() {if (ISERR()) return v->err;}	/* if error seen, return it */
 #define OFF(p)	((p) - v->start)
 #define LOFF(p) ((long)OFF(p))
 
@@ -168,6 +167,7 @@ int
 pg_regexec(regex_t *re,
 		   const chr *string,
 		   size_t len,
+		   size_t search_start,
 		   rm_detail_t *details,
 		   size_t nmatch,
 		   regmatch_t pmatch[],
@@ -219,6 +219,7 @@ pg_regexec(regex_t *re,
 		v->pmatch = pmatch;
 	v->details = details;
 	v->start = (chr *) string;
+	v->search_start = (chr *) string + search_start;
 	v->stop = (chr *) string + len;
 	v->err = 0;
 	if (backref)
@@ -276,8 +277,7 @@ find(struct vars * v,
 	chr		   *begin;
 	chr		   *end = NULL;
 	chr		   *cold;
-	chr		   *open;			/* open and close of range of possible
-								 * starts */
+	chr		   *open;			/* open and close of range of possible starts */
 	chr		   *close;
 	int			hitend;
 	int			shorter = (v->g->tree->flags & SHORTER) ? 1 : 0;
@@ -288,7 +288,8 @@ find(struct vars * v,
 	NOERR();
 	MDEBUG(("\nsearch at %ld\n", LOFF(v->start)));
 	cold = NULL;
-	close = shortest(v, s, v->start, v->start, v->stop, &cold, (int *) NULL);
+	close = shortest(v, s, v->search_start, v->search_start, v->stop,
+					 &cold, (int *) NULL);
 	freedfa(s);
 	NOERR();
 	if (v->g->cflags & REG_EXPECT)
@@ -404,8 +405,7 @@ cfindloop(struct vars * v,
 	chr		   *begin;
 	chr		   *end;
 	chr		   *cold;
-	chr		   *open;			/* open and close of range of possible
-								 * starts */
+	chr		   *open;			/* open and close of range of possible starts */
 	chr		   *close;
 	chr		   *estart;
 	chr		   *estop;
@@ -415,7 +415,7 @@ cfindloop(struct vars * v,
 
 	assert(d != NULL && s != NULL);
 	cold = NULL;
-	close = v->start;
+	close = v->search_start;
 	do
 	{
 		MDEBUG(("\ncsearch at %ld\n", LOFF(close)));
@@ -460,6 +460,7 @@ cfindloop(struct vars * v,
 				if (er != REG_NOMATCH)
 				{
 					ERR(er);
+					*coldp = cold;
 					return er;
 				}
 				if ((shorter) ? end == estop : end == begin)
@@ -1028,8 +1029,7 @@ caltdissect(struct vars * v,
 
 #define  UNTRIED 0				/* not yet tried at all */
 #define  TRYING  1				/* top matched, trying submatches */
-#define  TRIED	 2				/* top didn't match or submatches
-								 * exhausted */
+#define  TRIED	 2				/* top didn't match or submatches exhausted */
 
 	if (t == NULL)
 		return REG_NOMATCH;

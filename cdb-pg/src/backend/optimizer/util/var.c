@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/util/var.c,v 1.63 2004/12/31 22:00:23 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/util/var.c,v 1.66 2005/10/15 02:49:21 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -49,7 +49,7 @@ typedef struct
 
 typedef struct
 {
-	Query	   *root;
+	PlannerInfo *root;
 	int			sublevels_up;
 } flatten_join_alias_vars_context;
 
@@ -66,7 +66,7 @@ static bool pull_var_clause_walker(Node *node,
 					   pull_var_clause_context *context);
 static Node *flatten_join_alias_vars_mutator(Node *node,
 								flatten_join_alias_vars_context *context);
-static Relids alias_relid_set(Query *root, Relids relids);
+static Relids alias_relid_set(PlannerInfo *root, Relids relids);
 
 
 /*
@@ -88,8 +88,8 @@ pull_varnos(Node *node)
 	context.sublevels_up = 0;
 
 	/*
-	 * Must be prepared to start with a Query or a bare expression tree;
-	 * if it's a Query, we don't want to increment sublevels_up.
+	 * Must be prepared to start with a Query or a bare expression tree; if
+	 * it's a Query, we don't want to increment sublevels_up.
 	 */
 	query_or_expression_tree_walker(node,
 									pull_varnos_walker,
@@ -149,8 +149,8 @@ contain_var_reference(Node *node, int varno, int varattno, int levelsup)
 	context.sublevels_up = levelsup;
 
 	/*
-	 * Must be prepared to start with a Query or a bare expression tree;
-	 * if it's a Query, we don't want to increment sublevels_up.
+	 * Must be prepared to start with a Query or a bare expression tree; if
+	 * it's a Query, we don't want to increment sublevels_up.
 	 */
 	return query_or_expression_tree_walker(node,
 										   contain_var_reference_walker,
@@ -215,8 +215,7 @@ contain_var_clause_walker(Node *node, void *context)
 	if (IsA(node, Var))
 	{
 		if (((Var *) node)->varlevelsup == 0)
-			return true;		/* abort the tree traversal and return
-								 * true */
+			return true;		/* abort the tree traversal and return true */
 		return false;
 	}
 	return expression_tree_walker(node, contain_var_clause_walker, context);
@@ -286,7 +285,7 @@ contain_vars_above_level(Node *node, int levelsup)
 	int			sublevels_up = levelsup;
 
 	return query_or_expression_tree_walker(node,
-										 contain_vars_above_level_walker,
+										   contain_vars_above_level_walker,
 										   (void *) &sublevels_up,
 										   0);
 }
@@ -370,8 +369,8 @@ find_minimum_var_level_walker(Node *node,
 				context->min_varlevel = varlevelsup;
 
 				/*
-				 * As soon as we find a local variable, we can abort the
-				 * tree traversal, since min_varlevel is then certainly 0.
+				 * As soon as we find a local variable, we can abort the tree
+				 * traversal, since min_varlevel is then certainly 0.
 				 */
 				if (varlevelsup == 0)
 					return true;
@@ -380,10 +379,9 @@ find_minimum_var_level_walker(Node *node,
 	}
 
 	/*
-	 * An Aggref must be treated like a Var of its level.  Normally we'd
-	 * get the same result from looking at the Vars in the aggregate's
-	 * argument, but this fails in the case of a Var-less aggregate call
-	 * (COUNT(*)).
+	 * An Aggref must be treated like a Var of its level.  Normally we'd get
+	 * the same result from looking at the Vars in the aggregate's argument,
+	 * but this fails in the case of a Var-less aggregate call (COUNT(*)).
 	 */
 	if (IsA(node, Aggref))
 	{
@@ -400,8 +398,8 @@ find_minimum_var_level_walker(Node *node,
 				context->min_varlevel = agglevelsup;
 
 				/*
-				 * As soon as we find a local aggregate, we can abort the
-				 * tree traversal, since min_varlevel is then certainly 0.
+				 * As soon as we find a local aggregate, we can abort the tree
+				 * traversal, since min_varlevel is then certainly 0.
 				 */
 				if (agglevelsup == 0)
 					return true;
@@ -482,7 +480,7 @@ pull_var_clause_walker(Node *node, pull_var_clause_context *context)
  * to be applied directly to a Query node.
  */
 Node *
-flatten_join_alias_vars(Query *root, Node *node)
+flatten_join_alias_vars(PlannerInfo *root, Node *node)
 {
 	flatten_join_alias_vars_context context;
 
@@ -507,7 +505,7 @@ flatten_join_alias_vars_mutator(Node *node,
 		/* No change unless Var belongs to a JOIN of the target level */
 		if (var->varlevelsup != context->sublevels_up)
 			return node;		/* no need to copy, really */
-		rte = rt_fetch(var->varno, context->root->rtable);
+		rte = rt_fetch(var->varno, context->root->parse->rtable);
 		if (rte->rtekind != RTE_JOIN)
 			return node;
 		if (var->varattno == InvalidAttrNumber)
@@ -524,9 +522,7 @@ flatten_join_alias_vars_mutator(Node *node,
 				newvar = (Node *) lfirst(l);
 				attnum++;
 				/* Ignore dropped columns */
-				if (get_rte_attribute_is_dropped(context->root->rtable,
-												 var->varno,
-												 attnum))
+				if (IsA(newvar, Const))
 					continue;
 
 				/*
@@ -555,8 +551,8 @@ flatten_join_alias_vars_mutator(Node *node,
 		newvar = (Node *) list_nth(rte->joinaliasvars, var->varattno - 1);
 
 		/*
-		 * If we are expanding an alias carried down from an upper query,
-		 * must adjust its varlevelsup fields.
+		 * If we are expanding an alias carried down from an upper query, must
+		 * adjust its varlevelsup fields.
 		 */
 		if (context->sublevels_up != 0)
 		{
@@ -572,8 +568,8 @@ flatten_join_alias_vars_mutator(Node *node,
 		InClauseInfo *ininfo;
 
 		ininfo = (InClauseInfo *) expression_tree_mutator(node,
-										 flatten_join_alias_vars_mutator,
-													   (void *) context);
+											 flatten_join_alias_vars_mutator,
+														  (void *) context);
 		/* now fix InClauseInfo's relid sets */
 		if (context->sublevels_up == 0)
 		{
@@ -610,7 +606,7 @@ flatten_join_alias_vars_mutator(Node *node,
  * underlying base relids
  */
 static Relids
-alias_relid_set(Query *root, Relids relids)
+alias_relid_set(PlannerInfo *root, Relids relids)
 {
 	Relids		result = NULL;
 	Relids		tmprelids;
@@ -619,7 +615,7 @@ alias_relid_set(Query *root, Relids relids)
 	tmprelids = bms_copy(relids);
 	while ((rtindex = bms_first_member(tmprelids)) >= 0)
 	{
-		RangeTblEntry *rte = rt_fetch(rtindex, root->rtable);
+		RangeTblEntry *rte = rt_fetch(rtindex, root->parse->rtable);
 
 		if (rte->rtekind == RTE_JOIN)
 			result = bms_join(result, get_relids_for_join(root, rtindex));

@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/rewrite/rewriteRemove.c,v 1.61 2004/12/31 22:00:46 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/rewrite/rewriteRemove.c,v 1.63 2005/10/15 02:49:24 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -16,7 +16,6 @@
 
 #include "access/genam.h"
 #include "access/heapam.h"
-#include "catalog/catname.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_rewrite.h"
@@ -72,7 +71,7 @@ RemoveRewriteRule(Oid owningRel, const char *ruleName, DropBehavior behavior)
 	/*
 	 * Do the deletion
 	 */
-	object.classId = get_system_catalog_relid(RewriteRelationName);
+	object.classId = RewriteRelationId;
 	object.objectId = HeapTupleGetOid(tuple);
 	object.objectSubId = 0;
 
@@ -99,7 +98,7 @@ RemoveRewriteRuleById(Oid ruleOid)
 	/*
 	 * Open the pg_rewrite relation.
 	 */
-	RewriteRelation = heap_openr(RewriteRelationName, RowExclusiveLock);
+	RewriteRelation = heap_open(RewriteRelationId, RowExclusiveLock);
 
 	/*
 	 * Find the tuple for the target rule.
@@ -109,7 +108,7 @@ RemoveRewriteRuleById(Oid ruleOid)
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(ruleOid));
 
-	rcscan = systable_beginscan(RewriteRelation, RewriteOidIndex, true,
+	rcscan = systable_beginscan(RewriteRelation, RewriteOidIndexId, true,
 								SnapshotNow, 1, skey);
 
 	tuple = systable_getnext(rcscan);
@@ -118,10 +117,10 @@ RemoveRewriteRuleById(Oid ruleOid)
 		elog(ERROR, "could not find tuple for rule %u", ruleOid);
 
 	/*
-	 * We had better grab AccessExclusiveLock so that we know no other
-	 * rule additions/deletions are going on for this relation.  Else we
-	 * cannot set relhasrules correctly.  Besides, we don't want to be
-	 * changing the ruleset while queries are executing on the rel.
+	 * We had better grab AccessExclusiveLock so that we know no other rule
+	 * additions/deletions are going on for this relation.	Else we cannot set
+	 * relhasrules correctly.  Besides, we don't want to be changing the
+	 * ruleset while queries are executing on the rel.
 	 */
 	eventRelationOid = ((Form_pg_rewrite) GETSTRUCT(tuple))->ev_class;
 	event_relation = heap_open(eventRelationOid, AccessExclusiveLock);

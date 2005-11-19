@@ -7,15 +7,13 @@
  *
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/port/thread.c,v 1.29 2004/12/31 22:03:53 pgsql Exp $
+ * $PostgreSQL: pgsql/src/port/thread.c,v 1.31 2005/10/15 02:49:51 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
 
 #include "c.h"
 
-#include <sys/types.h>
-#include <errno.h>
 #ifdef WIN32_CLIENT_ONLY
 #undef ERROR
 #else
@@ -24,6 +22,7 @@
 #if defined(ENABLE_THREAD_SAFETY)
 #include <pthread.h>
 #endif
+
 
 /*
  *	Threading sometimes requires specially-named versions of functions
@@ -136,12 +135,11 @@ pqGethostbyname(const char *name,
 #if defined(FRONTEND) && defined(ENABLE_THREAD_SAFETY) && defined(HAVE_GETHOSTBYNAME_R)
 
 	/*
-	 * broken (well early POSIX draft) gethostbyname_r() which returns
-	 * 'struct hostent *'
+	 * broken (well early POSIX draft) gethostbyname_r() which returns 'struct
+	 * hostent *'
 	 */
 	*result = gethostbyname_r(name, resultbuf, buffer, buflen, herrno);
 	return (*result == NULL) ? -1 : 0;
-
 #else
 
 	/* no gethostbyname_r(), just use gethostbyname() */

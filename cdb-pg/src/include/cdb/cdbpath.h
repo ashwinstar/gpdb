@@ -22,14 +22,14 @@ extern int getMPPSegmentCount(void);
 
 
 Path *
-cdbpath_create_motion_path(Query           *root,
+cdbpath_create_motion_path(PlannerInfo     *root,
                            Path            *subpath,
                            List            *pathkeys,
                            bool             require_existing_order,
                            CdbPathLocus     locus);
 
 CdbPathLocus
-cdbpath_motion_for_join(Query      *root,
+cdbpath_motion_for_join(PlannerInfo  *root,
                         JoinType    jointype,           /* JOIN_INNER, JOIN_FULL, JOIN_LEFT, JOIN_RIGHT */
                         Path      **outer_path,         /* INOUT */
                         Path      **inner_path,         /* INOUT */

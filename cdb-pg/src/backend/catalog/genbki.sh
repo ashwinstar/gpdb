@@ -6,11 +6,12 @@
 #    files.  These .bki files are used to initialize the postgres template
 #    database.
 #
-# Copyright (c) 1994, Regents of the University of California
+# Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
+# Portions Copyright (c) 1994, Regents of the University of California
 #
 #
 # IDENTIFICATION
-#    $PostgreSQL: pgsql/src/backend/catalog/genbki.sh,v 1.32 2004/01/04 05:57:21 tgl Exp $
+#    $PostgreSQL: pgsql/src/backend/catalog/genbki.sh,v 1.37 2005/06/28 05:08:52 tgl Exp $
 #
 # NOTES
 #    non-essential whitespace is removed from the generated file.
@@ -113,11 +114,10 @@ for dir in $INCLUDE_DIRS; do
     fi
 done
 
-# Get INDEX_MAX_KEYS from pg_config_manual.h
-# (who needs consistency?)
+# Get BOOTSTRAP_SUPERUSERID from catalog/pg_authid.h
 for dir in $INCLUDE_DIRS; do
-    if [ -f "$dir/pg_config_manual.h" ]; then
-        INDEXMAXKEYS=`grep '^#define[ 	]*INDEX_MAX_KEYS' $dir/pg_config_manual.h | $AWK '{ print $3 }'`
+    if [ -f "$dir/catalog/pg_authid.h" ]; then
+        BOOTSTRAP_SUPERUSERID=`grep '^#define[ 	]*BOOTSTRAP_SUPERUSERID' $dir/catalog/pg_authid.h | $AWK '{ print $3 }'`
         break
     fi
 done
@@ -129,23 +129,6 @@ for dir in $INCLUDE_DIRS; do
         break
     fi
 done
-
-# Get FirstGenBKIObjectId from access/transam.h
-for dir in $INCLUDE_DIRS; do
-    if [ -f "$dir/access/transam.h" ]; then
-        BKIOBJECTID=`grep '^#define[ 	]*FirstGenBKIObjectId' $dir/access/transam.h | $AWK '{ print $3 }'`
-        break
-    fi
-done
-export BKIOBJECTID
-
-# NOTE: we assume here that FUNC_MAX_ARGS has the same value as
-# INDEX_MAX_KEYS, and don't read it separately from
-# pg_config_manual.h.  This is OK because both of them must be equal
-# to the length of oidvector.
-
-INDEXMAXKEYS2=`expr $INDEXMAXKEYS '*' 2` || exit
-INDEXMAXKEYS4=`expr $INDEXMAXKEYS '*' 4` || exit
 
 touch ${OUTPUT_PREFIX}.description.$$
 
@@ -178,15 +161,9 @@ sed -e "s/;[ 	]*$//g" \
     -e "s/[ 	]TransactionId/ xid/g" \
     -e "s/^TransactionId/xid/g" \
     -e "s/(TransactionId/(xid/g" \
-    -e "s/PGUID/1/g" \
+    -e "s/PGUID/$BOOTSTRAP_SUPERUSERID/g" \
     -e "s/NAMEDATALEN/$NAMEDATALEN/g" \
     -e "s/PGNSP/$PG_CATALOG_NAMESPACE/g" \
-    -e "s/INDEX_MAX_KEYS\*2/$INDEXMAXKEYS2/g" \
-    -e "s/INDEX_MAX_KEYS\*4/$INDEXMAXKEYS4/g" \
-    -e "s/INDEX_MAX_KEYS/$INDEXMAXKEYS/g" \
-    -e "s/FUNC_MAX_ARGS\*2/$INDEXMAXKEYS2/g" \
-    -e "s/FUNC_MAX_ARGS\*4/$INDEXMAXKEYS4/g" \
-    -e "s/FUNC_MAX_ARGS/$INDEXMAXKEYS/g" \
 | $AWK '
 # ----------------
 #	now use awk to process remaining .h file..
@@ -196,8 +173,7 @@ sed -e "s/;[ 	]*$//g" \
 #	   contents of a catalog definition.
 #	reln_open is a flag indicating when we are processing DATA lines.
 #	   (i.e. have a relation open and need to close it)
-#	nextbkioid is the next OID available for automatic assignment.
-#	oid is the most recently seen or assigned oid.
+#	oid is the most recently seen oid, or 0 if none in the last DATA line.
 # ----------------
 BEGIN {
 	inside = 0;
@@ -207,7 +183,6 @@ BEGIN {
 	nc = 0;
 	reln_open = 0;
 	comment_level = 0;
-	nextbkioid = ENVIRON["BKIOBJECTID"];
 	oid = 0;
 }
 
@@ -225,9 +200,8 @@ comment_level > 0 { next; }
 
 # ----------------
 #	DATA() statements are basically passed right through after
-#	stripping off the DATA( and the ) on the end.  However,
-#	if we see "OID = 0" then we should assign an oid from nextbkioid.
-#	Remember any explicit or assigned OID for use by DESCR().
+#	stripping off the DATA( and the ) on the end.
+#	Remember the OID for use by DESCR().
 # ----------------
 /^DATA\(/ {
 	data = substr($0, 6, length($0) - 6);
@@ -236,12 +210,6 @@ comment_level > 0 { next; }
 	if (nf >= 4 && datafields[1] == "insert" && datafields[2] == "OID" && datafields[3] == "=")
 	{
 		oid = datafields[4];
-		if (oid == 0)
-		{
-			oid = nextbkioid;
-			nextbkioid++;
-			sub("OID *= *0", "OID = " oid, data);
-		}
 	}
 	print data;
 	next;
@@ -262,13 +230,19 @@ comment_level > 0 { next; }
 #  end any prior catalog data insertions before starting a define index
 # ----
 	if (reln_open == 1) {
-#		print "show";
 		print "close " catalog;
 		reln_open = 0;
 	}
 
 	data = substr($0, 15, length($0) - 15);
-	print "declare index " data
+	pos = index(data, ",");
+	iname = substr(data, 1, pos-1);
+	data = substr(data, pos+1, length(data)-pos);
+	pos = index(data, ",");
+	oid = substr(data, 1, pos-1);
+	data = substr(data, pos+1, length(data)-pos);
+
+	print "declare index " iname " " oid " " data
 }
 
 /^DECLARE_UNIQUE_INDEX\(/ {
@@ -276,13 +250,19 @@ comment_level > 0 { next; }
 #  end any prior catalog data insertions before starting a define unique index
 # ----
 	if (reln_open == 1) {
-#		print "show";
 		print "close " catalog;
 		reln_open = 0;
 	}
 
 	data = substr($0, 22, length($0) - 22);
-	print "declare unique index " data
+	pos = index(data, ",");
+	iname = substr(data, 1, pos-1);
+	data = substr(data, pos+1, length(data)-pos);
+	pos = index(data, ",");
+	oid = substr(data, 1, pos-1);
+	data = substr(data, pos+1, length(data)-pos);
+
+	print "declare unique index " iname " " oid " " data
 }
 
 /^BUILD_INDICES/	{ print "build indices"; }
@@ -295,7 +275,6 @@ comment_level > 0 { next; }
 #  end any prior catalog data insertions before starting a new one..
 # ----
 	if (reln_open == 1) {
-#		print "show";
 		print "close " catalog;
 		reln_open = 0;
 	}
@@ -304,9 +283,12 @@ comment_level > 0 { next; }
 #  get the name and properties of the new catalog
 # ----
 	pos = index($1,")");
-	catalog = substr($1,9,pos-9); 
+	catalogandoid = substr($1,9,pos-9);
+	pos = index(catalogandoid, ",");
+	catalog = substr(catalogandoid, 1, pos-1);
+	oid = substr(catalogandoid, pos+1, length(catalogandoid)-pos);
 
-	if ($0 ~ /BOOTSTRAP/) {
+	if ($0 ~ /BKI_BOOTSTRAP/) {
 		bootstrap = "bootstrap ";
 	}
 	if ($0 ~ /BKI_SHARED_RELATION/) {
@@ -323,7 +305,7 @@ comment_level > 0 { next; }
 }
 
 # ----------------
-#	process the contents of the catalog definition
+#	process the columns of the catalog definition
 #
 #	attname[ x ] contains the attribute name for attribute x
 #	atttype[ x ] contains the attribute type fot attribute x
@@ -339,7 +321,7 @@ inside == 1 {
 #  if this is the last line, then output the bki catalog stuff.
 # ----
 	if ($1 ~ /}/) {
-		print "create " bootstrap shared_relation without_oids catalog;
+		print "create " bootstrap shared_relation without_oids catalog " " oid;
 		print "\t(";
 
 		for (j=1; j<i-1; j++) {
@@ -362,7 +344,7 @@ inside == 1 {
 	}
 
 # ----
-#  if we are inside the catalog definition, then keep sucking up
+#  we are inside the catalog definition, so keep sucking up
 #  attribute names and types
 # ----
 	if ($2 ~ /\[.*\]/) {			# array attribute
@@ -379,7 +361,6 @@ inside == 1 {
 
 END {
 	if (reln_open == 1) {
-#		print "show";
 		print "close " catalog;
 		reln_open = 0;
 	}

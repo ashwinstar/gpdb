@@ -10,7 +10,7 @@
  * didn't really belong there.
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-print.c,v 1.58 2004/12/31 22:03:50 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-print.c,v 1.64 2005/10/15 02:49:48 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -45,7 +45,7 @@ static void do_field(const PQprintOpt *po, const PGresult *res,
 		 unsigned char *fieldNotNum, int *fieldMax,
 		 const int fieldMaxLen, FILE *fout);
 static char *do_header(FILE *fout, const PQprintOpt *po, const int nFields,
-	  int *fieldMax, const char **fieldNames, unsigned char *fieldNotNum,
+		  int *fieldMax, const char **fieldNames, unsigned char *fieldNotNum,
 		  const int fs_len, const PGresult *res);
 static void output_row(FILE *fout, const PQprintOpt *po, const int nFields, char **fields,
 		   unsigned char *fieldNotNum, int *fieldMax, char *border,
@@ -62,14 +62,11 @@ static void fill(int length, int max, char filler, FILE *fp);
  * details
  *
  * This function should probably be removed sometime since psql
- * doesn't use it anymore. It is unclear to what extend this is used
+ * doesn't use it anymore. It is unclear to what extent this is used
  * by external clients, however.
  */
-
 void
-PQprint(FILE *fout,
-		const PGresult *res,
-		const PQprintOpt *po)
+PQprint(FILE *fout, const PGresult *res, const PQprintOpt *po)
 {
 	int			nFields;
 
@@ -91,7 +88,8 @@ PQprint(FILE *fout,
 		int			total_line_length = 0;
 		int			usePipe = 0;
 		char	   *pagerenv;
-#ifdef ENABLE_THREAD_SAFETY
+
+#if defined(ENABLE_THREAD_SAFETY) && !defined(WIN32)
 		sigset_t	osigset;
 		bool		sigpipe_masked = false;
 		bool		sigpipe_pending;
@@ -102,7 +100,6 @@ PQprint(FILE *fout,
 
 #ifdef TIOCGWINSZ
 		struct winsize screen_size;
-
 #else
 		struct winsize
 		{
@@ -159,8 +156,8 @@ PQprint(FILE *fout,
 			)
 		{
 			/*
-			 * If we think there'll be more than one screen of output, try
-			 * to pipe to the pager program.
+			 * If we think there'll be more than one screen of output, try to
+			 * pipe to the pager program.
 			 */
 #ifdef TIOCGWINSZ
 			if (ioctl(fileno(stdout), TIOCGWINSZ, &screen_size) == -1 ||
@@ -192,14 +189,14 @@ PQprint(FILE *fout,
 				if (fout)
 				{
 					usePipe = 1;
+#ifndef WIN32
 #ifdef ENABLE_THREAD_SAFETY
 					if (pq_block_sigpipe(&osigset, &sigpipe_pending) == 0)
 						sigpipe_masked = true;
 #else
-#ifndef WIN32
 					oldsigpipehandler = pqsignal(SIGPIPE, SIG_IGN);
-#endif
-#endif
+#endif   /* ENABLE_THREAD_SAFETY */
+#endif   /* WIN32 */
 				}
 				else
 					fout = stdout;
@@ -219,10 +216,10 @@ PQprint(FILE *fout,
 			if (po->expanded)
 			{
 				if (po->align)
-					fprintf(fout, "%-*s%s Value\n",
-							fieldMaxLen - fs_len, "Field", po->fieldSep);
+					fprintf(fout, libpq_gettext("%-*s%s Value\n"),
+							fieldMaxLen - fs_len, libpq_gettext("Field"), po->fieldSep);
 				else
-					fprintf(fout, "%s%sValue\n", "Field", po->fieldSep);
+					fprintf(fout, libpq_gettext("%s%sValue\n"), libpq_gettext("Field"), po->fieldSep);
 			}
 			else
 			{
@@ -259,10 +256,10 @@ PQprint(FILE *fout,
 			{
 				if (po->html3)
 					fprintf(fout,
-						  "<table %s><caption align=high>%d</caption>\n",
+							"<table %s><caption align=high>%d</caption>\n",
 							po->tableOpt ? po->tableOpt : "", i);
 				else
-					fprintf(fout, "-- RECORD %d --\n", i);
+					fprintf(fout, libpq_gettext("-- RECORD %d --\n"), i);
 			}
 			for (j = 0; j < nFields; j++)
 				do_field(po, res, i, j, fs_len, fields, nFields,
@@ -279,7 +276,7 @@ PQprint(FILE *fout,
 				{
 					if (po->caption)
 						fprintf(fout,
-						  "<table %s><caption align=high>%s</caption>\n",
+							  "<table %s><caption align=high>%s</caption>\n",
 								po->tableOpt ? po->tableOpt : "",
 								po->caption);
 					else
@@ -287,7 +284,7 @@ PQprint(FILE *fout,
 								"<table %s><caption align=high>"
 								"Retrieved %d rows * %d fields"
 								"</caption>\n",
-						po->tableOpt ? po->tableOpt : "", nTups, nFields);
+						   po->tableOpt ? po->tableOpt : "", nTups, nFields);
 				}
 				else
 					fprintf(fout, "<table %s>", po->tableOpt ? po->tableOpt : "");
@@ -314,16 +311,15 @@ PQprint(FILE *fout,
 			_pclose(fout);
 #else
 			pclose(fout);
-#endif
+
 #ifdef ENABLE_THREAD_SAFETY
 			/* we can't easily verify if EPIPE occurred, so say it did */
 			if (sigpipe_masked)
 				pq_reset_sigpipe(&osigset, sigpipe_pending, true);
 #else
-#ifndef WIN32
 			pqsignal(SIGPIPE, oldsigpipehandler);
-#endif
-#endif
+#endif   /* ENABLE_THREAD_SAFETY */
+#endif   /* WIN32 */
 		}
 		if (po->html3 && !po->expanded)
 			fputs("</table>\n", fout);
@@ -384,9 +380,9 @@ do_field(const PQprintOpt *po, const PGresult *res,
 			}
 
 			/*
-			 * Above loop will believe E in first column is numeric; also,
-			 * we insist on a digit in the last column for a numeric. This
-			 * test is still not bulletproof but it handles most cases.
+			 * Above loop will believe E in first column is numeric; also, we
+			 * insist on a digit in the last column for a numeric. This test
+			 * is still not bulletproof but it handles most cases.
 			 */
 			if (*pval == 'E' || *pval == 'e' ||
 				!(ch >= '0' && ch <= '9'))
@@ -551,7 +547,7 @@ output_row(FILE *fout, const PQprintOpt *po, const int nFields, char **fields,
 
 		if (po->html3)
 			fprintf(fout, "<td align=%s>%s</td>",
-				fieldNotNum[field_index] ? "left" : "right", p ? p : "");
+					fieldNotNum[field_index] ? "left" : "right", p ? p : "");
 		else
 		{
 			fprintf(fout,
@@ -611,6 +607,12 @@ PQdisplayTuples(const PGresult *res,
 	if (fillAlign)
 	{
 		fLength = (int *) malloc(nFields * sizeof(int));
+		if (!fLength)
+		{
+			fprintf(stderr, libpq_gettext("out of memory\n"));
+			exit(1);
+		}
+
 		for (j = 0; j < nFields; j++)
 		{
 			fLength[j] = strlen(PQfname(res, j));
@@ -676,8 +678,7 @@ PQprintTuples(const PGresult *res,
 			  FILE *fout,		/* output stream */
 			  int PrintAttNames,	/* print attribute names or not */
 			  int TerseOutput,	/* delimiter bars or not? */
-			  int colWidth		/* width of column, if 0, use variable
-								 * width */
+			  int colWidth		/* width of column, if 0, use variable width */
 )
 {
 	int			nFields;
@@ -705,6 +706,11 @@ PQprintTuples(const PGresult *res,
 
 			width = nFields * 14;
 			tborder = malloc(width + 1);
+			if (!tborder)
+			{
+				fprintf(stderr, libpq_gettext("out of memory\n"));
+				exit(1);
+			}
 			for (i = 0; i <= width; i++)
 				tborder[i] = '-';
 			tborder[i] = '\0';

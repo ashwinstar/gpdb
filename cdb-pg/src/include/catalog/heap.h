@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/catalog/heap.h,v 1.72 2004/12/31 22:03:24 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/catalog/heap.h,v 1.76 2005/10/15 02:49:42 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -23,8 +23,7 @@
 typedef struct RawColumnDefault
 {
 	AttrNumber	attnum;			/* attribute to attach default to */
-	Node	   *raw_default;	/* default value (untransformed parse
-								 * tree) */
+	Node	   *raw_default;	/* default value (untransformed parse tree) */
 } RawColumnDefault;
 
 typedef struct CookedConstraint
@@ -35,19 +34,10 @@ typedef struct CookedConstraint
 	Node	   *expr;			/* transformed default or check expr */
 } CookedConstraint;
 
-extern Relation heap_create_with_relid(const char *relname,
-			Oid relnamespace,
-			Oid reltablespace,
-			TupleDesc tupDesc,
-			char relkind,
-			bool shared_relation,
-			bool allow_system_table_mods,
-			Oid relid,
-			bool nailme);
-
 extern Relation heap_create(const char *relname,
 			Oid relnamespace,
 			Oid reltablespace,
+			Oid relid,
 			TupleDesc tupDesc,
 			char relkind,
 			bool shared_relation,
@@ -56,6 +46,8 @@ extern Relation heap_create(const char *relname,
 extern Oid heap_create_with_catalog(const char *relname,
 						 Oid relnamespace,
 						 Oid reltablespace,
+						 Oid relid,
+						 Oid ownerid,
 						 TupleDesc tupdesc,
 						 char relkind,
 						 bool shared_relation,
@@ -64,23 +56,11 @@ extern Oid heap_create_with_catalog(const char *relname,
 						 OnCommitAction oncommit,
 						 bool allow_system_table_mods);
 
-extern void heap_create_with_catalog_with_relid(const char *relname,
-						 Oid relnamespace,
-						 Oid reltablespace,
-						 TupleDesc tupdesc,
-						 char relkind,
-						 bool shared_relation,
-						 bool oidislocal,
-						 int oidinhcount,
-						 OnCommitAction oncommit,
-						 bool allow_system_table_mods,
-						 Oid new_rel_oid);
-
 extern void heap_drop_with_catalog(Oid relid);
 
-extern void heap_truncate(Oid rid);
+extern void heap_truncate(List *relids);
 
-extern void heap_truncate_check_FKs(Relation rel);
+extern void heap_truncate_check_FKs(List *relations, bool tempTables);
 
 extern List *AddRelationRawConstraints(Relation rel,
 						  List *rawColDefaults,

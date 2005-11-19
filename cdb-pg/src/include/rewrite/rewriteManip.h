@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/rewrite/rewriteManip.h,v 1.39 2004/12/31 22:03:41 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/rewrite/rewriteManip.h,v 1.41 2005/06/04 19:19:42 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -31,14 +31,13 @@ extern bool attribute_used(Node *node, int rt_index, int attno,
 extern Query *getInsertSelectQuery(Query *parsetree, Query ***subquery_ptr);
 
 extern void AddQual(Query *parsetree, Node *qual);
-extern void AddHavingQual(Query *parsetree, Node *havingQual);
 extern void AddInvertedQual(Query *parsetree, Node *qual);
 
 extern bool checkExprHasAggs(Node *node);
 extern bool checkExprHasSubLink(Node *node);
 
 extern Node *ResolveNew(Node *node, int target_varno, int sublevels_up,
-		   List *target_rtable,
+		   RangeTblEntry *target_rte,
 		   List *targetlist, int event, int update_varno);
 
 #endif   /* REWRITEMANIP_H */

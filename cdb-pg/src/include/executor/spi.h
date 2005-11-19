@@ -2,7 +2,7 @@
  *
  * spi.h
  *
- * $PostgreSQL: pgsql/src/include/executor/spi.h,v 1.50 2004/11/16 18:10:13 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/executor/spi.h,v 1.53 2005/10/15 02:49:44 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -82,17 +82,17 @@ extern int	SPI_finish(void);
 extern void SPI_push(void);
 extern void SPI_pop(void);
 extern void SPI_restore_connection(void);
-extern int	SPI_execute(const char *src, bool read_only, int tcount);
-extern int	SPI_execute_plan(void *plan, Datum *Values, const char *Nulls,
-							 bool read_only, int tcount);
-extern int	SPI_exec(const char *src, int tcount);
-extern int	SPI_execp(void *plan, Datum *Values, const char *Nulls,
-					  int tcount);
-extern int	SPI_execute_snapshot(void *plan,
-								 Datum *Values, const char *Nulls,
-								 Snapshot snapshot,
-								 Snapshot crosscheck_snapshot,
-								 bool read_only, int tcount);
+extern int	SPI_execute(const char *src, bool read_only, long tcount);
+extern int SPI_execute_plan(void *plan, Datum *Values, const char *Nulls,
+				 bool read_only, long tcount);
+extern int	SPI_exec(const char *src, long tcount);
+extern int SPI_execp(void *plan, Datum *Values, const char *Nulls,
+		  long tcount);
+extern int SPI_execute_snapshot(void *plan,
+					 Datum *Values, const char *Nulls,
+					 Snapshot snapshot,
+					 Snapshot crosscheck_snapshot,
+					 bool read_only, long tcount);
 extern void *SPI_prepare(const char *src, int nargs, Oid *argtypes);
 extern void *SPI_saveplan(void *plan);
 extern int	SPI_freeplan(void *plan);
@@ -113,6 +113,7 @@ extern Datum SPI_getbinval(HeapTuple tuple, TupleDesc tupdesc, int fnumber, bool
 extern char *SPI_gettype(TupleDesc tupdesc, int fnumber);
 extern Oid	SPI_gettypeid(TupleDesc tupdesc, int fnumber);
 extern char *SPI_getrelname(Relation rel);
+extern char *SPI_getnspname(Relation rel);
 extern void *SPI_palloc(Size size);
 extern void *SPI_repalloc(void *pointer, Size size);
 extern void SPI_pfree(void *pointer);
@@ -122,8 +123,8 @@ extern void SPI_freetuptable(SPITupleTable *tuptable);
 extern Portal SPI_cursor_open(const char *name, void *plan,
 				Datum *Values, const char *Nulls, bool read_only);
 extern Portal SPI_cursor_find(const char *name);
-extern void SPI_cursor_fetch(Portal portal, bool forward, int count);
-extern void SPI_cursor_move(Portal portal, bool forward, int count);
+extern void SPI_cursor_fetch(Portal portal, bool forward, long count);
+extern void SPI_cursor_move(Portal portal, bool forward, long count);
 extern void SPI_cursor_close(Portal portal);
 
 extern void AtEOXact_SPI(bool isCommit);

@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/catalog/pg_constraint.c,v 1.22 2004/12/31 21:59:38 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/catalog/pg_constraint.c,v 1.27 2005/10/15 02:49:14 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -17,16 +17,18 @@
 #include "access/heapam.h"
 #include "access/genam.h"
 #include "catalog/catalog.h"
-#include "catalog/catname.h"
 #include "catalog/dependency.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_constraint.h"
+#include "catalog/pg_depend.h"
+#include "catalog/pg_trigger.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
 #include "miscadmin.h"
 #include "utils/array.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
+#include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
 
@@ -70,7 +72,7 @@ CreateConstraintEntry(const char *constraintName,
 	int			i;
 	ObjectAddress conobject;
 
-	conDesc = heap_openr(ConstraintRelationName, RowExclusiveLock);
+	conDesc = heap_open(ConstraintRelationId, RowExclusiveLock);
 
 	Assert(constraintName);
 	namestrcpy(&cname, constraintName);
@@ -138,7 +140,7 @@ CreateConstraintEntry(const char *constraintName,
 	 */
 	if (conBin)
 		values[Anum_pg_constraint_conbin - 1] = DirectFunctionCall1(textin,
-												CStringGetDatum(conBin));
+													CStringGetDatum(conBin));
 	else
 		nulls[Anum_pg_constraint_conbin - 1] = 'n';
 
@@ -147,7 +149,7 @@ CreateConstraintEntry(const char *constraintName,
 	 */
 	if (conSrc)
 		values[Anum_pg_constraint_consrc - 1] = DirectFunctionCall1(textin,
-												CStringGetDatum(conSrc));
+													CStringGetDatum(conSrc));
 	else
 		nulls[Anum_pg_constraint_consrc - 1] = 'n';
 
@@ -158,7 +160,7 @@ CreateConstraintEntry(const char *constraintName,
 	/* update catalog indexes */
 	CatalogUpdateIndexes(conDesc, tup);
 
-	conobject.classId = RelationGetRelid(conDesc);
+	conobject.classId = ConstraintRelationId;
 	conobject.objectId = conOid;
 	conobject.objectSubId = 0;
 
@@ -167,12 +169,12 @@ CreateConstraintEntry(const char *constraintName,
 	if (OidIsValid(relId))
 	{
 		/*
-		 * Register auto dependency from constraint to owning relation, or
-		 * to specific column(s) if any are mentioned.
+		 * Register auto dependency from constraint to owning relation, or to
+		 * specific column(s) if any are mentioned.
 		 */
 		ObjectAddress relobject;
 
-		relobject.classId = RelOid_pg_class;
+		relobject.classId = RelationRelationId;
 		relobject.objectId = relId;
 		if (constraintNKeys > 0)
 		{
@@ -198,7 +200,7 @@ CreateConstraintEntry(const char *constraintName,
 		 */
 		ObjectAddress domobject;
 
-		domobject.classId = RelOid_pg_type;
+		domobject.classId = TypeRelationId;
 		domobject.objectId = domainId;
 		domobject.objectSubId = 0;
 
@@ -208,12 +210,12 @@ CreateConstraintEntry(const char *constraintName,
 	if (OidIsValid(foreignRelId))
 	{
 		/*
-		 * Register normal dependency from constraint to foreign relation,
-		 * or to specific column(s) if any are mentioned.
+		 * Register normal dependency from constraint to foreign relation, or
+		 * to specific column(s) if any are mentioned.
 		 */
 		ObjectAddress relobject;
 
-		relobject.classId = RelOid_pg_class;
+		relobject.classId = RelationRelationId;
 		relobject.objectId = foreignRelId;
 		if (foreignNKeys > 0)
 		{
@@ -240,7 +242,7 @@ CreateConstraintEntry(const char *constraintName,
 		 */
 		ObjectAddress relobject;
 
-		relobject.classId = RelOid_pg_class;
+		relobject.classId = RelationRelationId;
 		relobject.objectId = indexRelId;
 		relobject.objectSubId = 0;
 
@@ -250,8 +252,8 @@ CreateConstraintEntry(const char *constraintName,
 	if (conExpr != NULL)
 	{
 		/*
-		 * Register dependencies from constraint to objects mentioned in
-		 * CHECK expression.
+		 * Register dependencies from constraint to objects mentioned in CHECK
+		 * expression.
 		 */
 		recordDependencyOnSingleRelExpr(&conobject, conExpr, relId,
 										DEPENDENCY_NORMAL,
@@ -284,7 +286,7 @@ ConstraintNameIsUsed(ConstraintCategory conCat, Oid objId,
 	ScanKeyData skey[2];
 	HeapTuple	tup;
 
-	conDesc = heap_openr(ConstraintRelationName, AccessShareLock);
+	conDesc = heap_open(ConstraintRelationId, AccessShareLock);
 
 	found = false;
 
@@ -298,7 +300,7 @@ ConstraintNameIsUsed(ConstraintCategory conCat, Oid objId,
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(objNamespace));
 
-	conscan = systable_beginscan(conDesc, ConstraintNameNspIndex, true,
+	conscan = systable_beginscan(conDesc, ConstraintNameNspIndexId, true,
 								 SnapshotNow, 2, skey);
 
 	while (HeapTupleIsValid(tup = systable_getnext(conscan)))
@@ -360,7 +362,7 @@ ChooseConstraintName(const char *name1, const char *name2,
 	bool		found;
 	ListCell   *l;
 
-	conDesc = heap_openr(ConstraintRelationName, AccessShareLock);
+	conDesc = heap_open(ConstraintRelationId, AccessShareLock);
 
 	/* try the unmodified label first */
 	StrNCpy(modlabel, label, sizeof(modlabel));
@@ -392,7 +394,7 @@ ChooseConstraintName(const char *name1, const char *name2,
 						BTEqualStrategyNumber, F_OIDEQ,
 						ObjectIdGetDatum(namespace));
 
-			conscan = systable_beginscan(conDesc, ConstraintNameNspIndex, true,
+			conscan = systable_beginscan(conDesc, ConstraintNameNspIndexId, true,
 										 SnapshotNow, 2, skey);
 
 			found = (HeapTupleIsValid(systable_getnext(conscan)));
@@ -425,14 +427,14 @@ RemoveConstraintById(Oid conId)
 	HeapTuple	tup;
 	Form_pg_constraint con;
 
-	conDesc = heap_openr(ConstraintRelationName, RowExclusiveLock);
+	conDesc = heap_open(ConstraintRelationId, RowExclusiveLock);
 
 	ScanKeyInit(&skey[0],
 				ObjectIdAttributeNumber,
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(conId));
 
-	conscan = systable_beginscan(conDesc, ConstraintOidIndex, true,
+	conscan = systable_beginscan(conDesc, ConstraintOidIndexId, true,
 								 SnapshotNow, 1, skey);
 
 	tup = systable_getnext(conscan);
@@ -448,15 +450,15 @@ RemoveConstraintById(Oid conId)
 		Relation	rel;
 
 		/*
-		 * If the constraint is for a relation, open and exclusive-lock
-		 * the relation it's for.
+		 * If the constraint is for a relation, open and exclusive-lock the
+		 * relation it's for.
 		 */
 		rel = heap_open(con->conrelid, AccessExclusiveLock);
 
 		/*
-		 * We need to update the relcheck count if it is a check
-		 * constraint being dropped.  This update will force backends to
-		 * rebuild relcache entries when we commit.
+		 * We need to update the relcheck count if it is a check constraint
+		 * being dropped.  This update will force backends to rebuild relcache
+		 * entries when we commit.
 		 */
 		if (con->contype == CONSTRAINT_CHECK)
 		{
@@ -464,7 +466,7 @@ RemoveConstraintById(Oid conId)
 			HeapTuple	relTup;
 			Form_pg_class classForm;
 
-			pgrel = heap_openr(RelationRelationName, RowExclusiveLock);
+			pgrel = heap_open(RelationRelationId, RowExclusiveLock);
 			relTup = SearchSysCacheCopy(RELOID,
 										ObjectIdGetDatum(con->conrelid),
 										0, 0, 0);
@@ -493,11 +495,10 @@ RemoveConstraintById(Oid conId)
 	else if (OidIsValid(con->contypid))
 	{
 		/*
-		 * XXX for now, do nothing special when dropping a domain
-		 * constraint
+		 * XXX for now, do nothing special when dropping a domain constraint
 		 *
-		 * Probably there should be some form of locking on the domain type,
-		 * but we have no such concept at the moment.
+		 * Probably there should be some form of locking on the domain type, but
+		 * we have no such concept at the moment.
 		 */
 	}
 	else
@@ -509,4 +510,157 @@ RemoveConstraintById(Oid conId)
 	/* Clean up */
 	systable_endscan(conscan);
 	heap_close(conDesc, RowExclusiveLock);
+}
+
+/*
+ * GetConstraintNameForTrigger
+ *		Get the name of the constraint owning a trigger, if any
+ *
+ * Returns a palloc'd string, or NULL if no constraint can be found
+ */
+char *
+GetConstraintNameForTrigger(Oid triggerId)
+{
+	char	   *result;
+	Oid			constraintId = InvalidOid;
+	Relation	depRel;
+	Relation	conRel;
+	ScanKeyData key[2];
+	SysScanDesc scan;
+	HeapTuple	tup;
+
+	/*
+	 * We must grovel through pg_depend to find the owning constraint. Perhaps
+	 * pg_trigger should have a column for the owning constraint ... but right
+	 * now this is not performance-critical code.
+	 */
+	depRel = heap_open(DependRelationId, AccessShareLock);
+
+	ScanKeyInit(&key[0],
+				Anum_pg_depend_classid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(TriggerRelationId));
+	ScanKeyInit(&key[1],
+				Anum_pg_depend_objid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(triggerId));
+	/* assume we can ignore objsubid for a trigger */
+
+	scan = systable_beginscan(depRel, DependDependerIndexId, true,
+							  SnapshotNow, 2, key);
+
+	while (HeapTupleIsValid(tup = systable_getnext(scan)))
+	{
+		Form_pg_depend foundDep = (Form_pg_depend) GETSTRUCT(tup);
+
+		if (foundDep->refclassid == ConstraintRelationId &&
+			foundDep->deptype == DEPENDENCY_INTERNAL)
+		{
+			constraintId = foundDep->refobjid;
+			break;
+		}
+	}
+
+	systable_endscan(scan);
+
+	heap_close(depRel, AccessShareLock);
+
+	if (!OidIsValid(constraintId))
+		return NULL;			/* no owning constraint found */
+
+	conRel = heap_open(ConstraintRelationId, AccessShareLock);
+
+	ScanKeyInit(&key[0],
+				ObjectIdAttributeNumber,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(constraintId));
+
+	scan = systable_beginscan(conRel, ConstraintOidIndexId, true,
+							  SnapshotNow, 1, key);
+
+	tup = systable_getnext(scan);
+
+	if (HeapTupleIsValid(tup))
+	{
+		Form_pg_constraint con = (Form_pg_constraint) GETSTRUCT(tup);
+
+		result = pstrdup(NameStr(con->conname));
+	}
+	else
+	{
+		/* This arguably should be an error, but we'll just return NULL */
+		result = NULL;
+	}
+
+	systable_endscan(scan);
+
+	heap_close(conRel, AccessShareLock);
+
+	return result;
+}
+
+/*
+ * AlterConstraintNamespaces
+ *		Find any constraints belonging to the specified object,
+ *		and move them to the specified new namespace.
+ *
+ * isType indicates whether the owning object is a type or a relation.
+ */
+void
+AlterConstraintNamespaces(Oid ownerId, Oid oldNspId,
+						  Oid newNspId, bool isType)
+{
+	Relation	conRel;
+	ScanKeyData key[1];
+	SysScanDesc scan;
+	HeapTuple	tup;
+
+	conRel = heap_open(ConstraintRelationId, RowExclusiveLock);
+
+	if (isType)
+	{
+		ScanKeyInit(&key[0],
+					Anum_pg_constraint_contypid,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(ownerId));
+
+		scan = systable_beginscan(conRel, ConstraintTypidIndexId, true,
+								  SnapshotNow, 1, key);
+	}
+	else
+	{
+		ScanKeyInit(&key[0],
+					Anum_pg_constraint_conrelid,
+					BTEqualStrategyNumber, F_OIDEQ,
+					ObjectIdGetDatum(ownerId));
+
+		scan = systable_beginscan(conRel, ConstraintRelidIndexId, true,
+								  SnapshotNow, 1, key);
+	}
+
+	while (HeapTupleIsValid((tup = systable_getnext(scan))))
+	{
+		Form_pg_constraint conform = (Form_pg_constraint) GETSTRUCT(tup);
+
+		if (conform->connamespace == oldNspId)
+		{
+			tup = heap_copytuple(tup);
+			conform = (Form_pg_constraint) GETSTRUCT(tup);
+
+			conform->connamespace = newNspId;
+
+			simple_heap_update(conRel, &tup->t_self, tup);
+			CatalogUpdateIndexes(conRel, tup);
+
+			/*
+			 * Note: currently, the constraint will not have its own
+			 * dependency on the namespace, so we don't need to do
+			 * changeDependencyFor().
+			 */
+		}
+	}
+
+	systable_endscan(scan);
+
+	heap_close(conRel, RowExclusiveLock);
 }

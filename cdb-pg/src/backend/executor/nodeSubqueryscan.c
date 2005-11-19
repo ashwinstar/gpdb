@@ -12,7 +12,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeSubqueryscan.c,v 1.25 2004/12/31 21:59:45 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeSubqueryscan.c,v 1.27 2005/10/15 02:49:17 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -62,13 +62,13 @@ SubqueryNext(SubqueryScanState *node)
 	direction = estate->es_direction;
 
 	/*
-	 * We need not support EvalPlanQual here, since we are not scanning a
-	 * real relation.
+	 * We need not support EvalPlanQual here, since we are not scanning a real
+	 * relation.
 	 */
 
 	/*
-	 * Get the next tuple from the sub-query.  We have to be careful to
-	 * run it in its appropriate memory context.
+	 * Get the next tuple from the sub-query.  We have to be careful to run it
+	 * in its appropriate memory context.
 	 */
 	node->sss_SubEState->es_direction = direction;
 
@@ -78,6 +78,10 @@ SubqueryNext(SubqueryScanState *node)
 
 	MemoryContextSwitchTo(oldcontext);
 
+	/*
+	 * We just overwrite our ScanTupleSlot with the subplan's result slot,
+	 * rather than expending the cycles for ExecCopySlot().
+	 */
 	node->ss.ss_ScanTupleSlot = slot;
 
 	return slot;
@@ -144,12 +148,13 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate)
 		ExecInitExpr((Expr *) node->scan.plan.qual,
 					 (PlanState *) subquerystate);
 
-#define SUBQUERYSCAN_NSLOTS 1
+#define SUBQUERYSCAN_NSLOTS 2
 
 	/*
 	 * tuple table initialization
 	 */
 	ExecInitResultTupleSlot(estate, &subquerystate->ss.ps);
+	ExecInitScanTupleSlot(estate, &subquerystate->ss);
 
 	/*
 	 * initialize subquery
@@ -160,11 +165,15 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate)
 	Assert(rte->rtekind == RTE_SUBQUERY);
 
 	/*
-	 * The subquery needs its own EState because it has its own
-	 * rangetable. It shares our Param ID space, however.  XXX if
-	 * rangetable access were done differently, the subquery could share
-	 * our EState, which would eliminate some thrashing about in this
-	 * module...
+	 * Do access checking on the rangetable entries in the subquery.
+	 */
+	ExecCheckRTPerms(rte->subquery->rtable);
+
+	/*
+	 * The subquery needs its own EState because it has its own rangetable. It
+	 * shares our Param ID space, however.	XXX if rangetable access were done
+	 * differently, the subquery could share our EState, which would eliminate
+	 * some thrashing about in this module...
 	 */
 	sp_estate = CreateExecutorState();
 	subquerystate->sss_SubEState = sp_estate;
@@ -197,14 +206,20 @@ ExecInitSubqueryScan(SubqueryScan *node, EState *estate)
 
 	MemoryContextSwitchTo(oldcontext);
 
-	subquerystate->ss.ss_ScanTupleSlot = NULL;
 	subquerystate->ss.ps.ps_TupFromTlist = false;
+
+	/*
+	 * Initialize scan tuple type (needed by ExecAssignScanProjectionInfo)
+	 */
+	ExecAssignScanType(&subquerystate->ss,
+					   ExecGetResultType(subquerystate->subplan),
+					   false);
 
 	/*
 	 * Initialize result tuple type and projection info.
 	 */
 	ExecAssignResultTypeFromTL(&subquerystate->ss.ps);
-	ExecAssignProjectionInfo(&subquerystate->ss.ps);
+	ExecAssignScanProjectionInfo(&subquerystate->ss);
 
 	return subquerystate;
 }
@@ -240,6 +255,7 @@ ExecEndSubqueryScan(SubqueryScanState *node)
 	 * clean out the upper tuple table
 	 */
 	ExecClearTuple(node->ss.ps.ps_ResultTupleSlot);
+	node->ss.ss_ScanTupleSlot = NULL;	/* not ours to clear */
 
 	/*
 	 * close down subquery
@@ -271,9 +287,8 @@ ExecSubqueryReScan(SubqueryScanState *node, ExprContext *exprCtxt)
 
 	/*
 	 * ExecReScan doesn't know about my subplan, so I have to do
-	 * changed-parameter signaling myself.	This is just as well, because
-	 * the subplan has its own memory context in which its chgParam state
-	 * lives.
+	 * changed-parameter signaling myself.	This is just as well, because the
+	 * subplan has its own memory context in which its chgParam state lives.
 	 */
 	if (node->ss.ps.chgParam != NULL)
 		UpdateChangedParamSet(node->subplan, node->ss.ps.chgParam);

@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/bootstrap/bootscanner.l,v 1.38 2004/12/31 21:59:34 pgsql Exp $
+ *	  $PostgreSQL: pgsql/src/backend/bootstrap/bootscanner.l,v 1.40 2005/06/29 22:51:54 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -34,7 +34,6 @@
 #include "storage/fd.h"
 #include "storage/itemptr.h"
 #include "storage/off.h"
-#include "utils/nabstime.h"
 #include "utils/rel.h"
 
 /* Not needed now that this file is compiled as part of bootparse. */
@@ -42,6 +41,7 @@
 
 
 /* Avoid exit() on fatal scanner errors (a bit ugly -- see yy_fatal_error) */
+#undef fprintf
 #define fprintf(file, fmt, msg)  ereport(ERROR, (errmsg_internal("%s", msg)))
 
 

@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/async.c,v 1.118.4.1 2005/08/25 19:44:56 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/async.c,v 1.127 2005/11/03 17:11:34 alvherre Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -75,11 +75,10 @@
 
 #include <unistd.h>
 #include <signal.h>
-#include <errno.h>
 #include <netinet/in.h>
 
 #include "access/heapam.h"
-#include "catalog/catname.h"
+#include "access/twophase_rmgr.h"
 #include "catalog/pg_listener.h"
 #include "commands/async.h"
 #include "libpq/libpq.h"
@@ -89,9 +88,9 @@
 #include "storage/sinval.h"
 #include "tcop/tcopprot.h"
 #include "utils/fmgroids.h"
+#include "utils/memutils.h"
 #include "utils/ps_status.h"
 #include "utils/syscache.h"
-#include "access/twophase_rmgr.h"
 
 
 /*
@@ -107,8 +106,7 @@
  */
 static List *pendingNotifies = NIL;
 
-static List *upperPendingNotifies = NIL;		/* list of upper-xact
-												 * lists */
+static List *upperPendingNotifies = NIL;		/* list of upper-xact lists */
 
 /*
  * State for inbound notifies consists of two flags: one saying whether
@@ -147,13 +145,10 @@ static void ClearPendingNotifies(void);
  *		Actual notification happens during transaction commit.
  *		^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  *
- * Results:
- *		XXX
- *
  *--------------------------------------------------------------
  */
 void
-Async_Notify(char *relname)
+Async_Notify(const char *relname)
 {
 	if (Trace_notify)
 		elog(DEBUG1, "Async_Notify(%s)", relname);
@@ -162,8 +157,8 @@ Async_Notify(char *relname)
 	if (!AsyncExistsPendingNotify(relname))
 	{
 		/*
-		 * The name list needs to live until end of transaction, so store
-		 * it in the transaction context.
+		 * The name list needs to live until end of transaction, so store it
+		 * in the transaction context.
 		 */
 		MemoryContext oldcontext;
 
@@ -181,11 +176,8 @@ Async_Notify(char *relname)
  *
  *		This is executed by the SQL listen command.
  *
- *		Register a backend (identified by its Unix PID) as listening
- *		on the specified relation.
- *
- * Results:
- *		XXX
+ *		Register the current backend as listening on the specified
+ *		relation.
  *
  * Side effects:
  *		pg_listener is updated.
@@ -193,7 +185,7 @@ Async_Notify(char *relname)
  *--------------------------------------------------------------
  */
 void
-Async_Listen(char *relname, int pid)
+Async_Listen(const char *relname)
 {
 	Relation	lRel;
 	HeapScanDesc scan;
@@ -204,9 +196,9 @@ Async_Listen(char *relname, int pid)
 	bool		alreadyListener = false;
 
 	if (Trace_notify)
-		elog(DEBUG1, "Async_Listen(%s,%d)", relname, pid);
+		elog(DEBUG1, "Async_Listen(%s,%d)", relname, MyProcPid);
 
-	lRel = heap_openr(ListenerRelationName, ExclusiveLock);
+	lRel = heap_open(ListenerRelationId, ExclusiveLock);
 
 	/* Detect whether we are already listening on this relname */
 	scan = heap_beginscan(lRel, SnapshotNow, 0, NULL);
@@ -214,8 +206,8 @@ Async_Listen(char *relname, int pid)
 	{
 		Form_pg_listener listener = (Form_pg_listener) GETSTRUCT(tuple);
 
-		if (listener->listenerpid == pid &&
-		  strncmp(NameStr(listener->relname), relname, NAMEDATALEN) == 0)
+		if (listener->listenerpid == MyProcPid &&
+			strncmp(NameStr(listener->relname), relname, NAMEDATALEN) == 0)
 		{
 			alreadyListener = true;
 			/* No need to scan the rest of the table */
@@ -242,7 +234,7 @@ Async_Listen(char *relname, int pid)
 
 	i = 0;
 	values[i++] = (Datum) relname;
-	values[i++] = (Datum) pid;
+	values[i++] = (Datum) MyProcPid;
 	values[i++] = (Datum) 0;	/* no notifies pending */
 
 	tuple = heap_formtuple(RelationGetDescr(lRel), values, nulls);
@@ -272,11 +264,8 @@ Async_Listen(char *relname, int pid)
  *
  *		This is executed by the SQL unlisten command.
  *
- *		Remove the backend from the list of listening backends
+ *		Remove the current backend from the list of listening backends
  *		for the specified relation.
- *
- * Results:
- *		XXX
  *
  * Side effects:
  *		pg_listener is updated.
@@ -284,7 +273,7 @@ Async_Listen(char *relname, int pid)
  *--------------------------------------------------------------
  */
 void
-Async_Unlisten(char *relname, int pid)
+Async_Unlisten(const char *relname)
 {
 	Relation	lRel;
 	HeapScanDesc scan;
@@ -298,24 +287,24 @@ Async_Unlisten(char *relname, int pid)
 	}
 
 	if (Trace_notify)
-		elog(DEBUG1, "Async_Unlisten(%s,%d)", relname, pid);
+		elog(DEBUG1, "Async_Unlisten(%s,%d)", relname, MyProcPid);
 
-	lRel = heap_openr(ListenerRelationName, ExclusiveLock);
+	lRel = heap_open(ListenerRelationId, ExclusiveLock);
 
 	scan = heap_beginscan(lRel, SnapshotNow, 0, NULL);
 	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
 		Form_pg_listener listener = (Form_pg_listener) GETSTRUCT(tuple);
 
-		if (listener->listenerpid == pid &&
-		  strncmp(NameStr(listener->relname), relname, NAMEDATALEN) == 0)
+		if (listener->listenerpid == MyProcPid &&
+			strncmp(NameStr(listener->relname), relname, NAMEDATALEN) == 0)
 		{
 			/* Found the matching tuple, delete it */
 			simple_heap_delete(lRel, &tuple->t_self);
 
 			/*
-			 * We assume there can be only one match, so no need to scan
-			 * the rest of the table
+			 * We assume there can be only one match, so no need to scan the
+			 * rest of the table
 			 */
 			break;
 		}
@@ -358,7 +347,7 @@ Async_UnlistenAll(void)
 	if (Trace_notify)
 		elog(DEBUG1, "Async_UnlistenAll");
 
-	lRel = heap_openr(ListenerRelationName, ExclusiveLock);
+	lRel = heap_open(ListenerRelationId, ExclusiveLock);
 	tdesc = RelationGetDescr(lRel);
 
 	/* Find and delete all entries with my listenerPID */
@@ -397,10 +386,10 @@ static void
 Async_UnlistenOnExit(int code, Datum arg)
 {
 	/*
-	 * We need to start/commit a transaction for the unlisten, but if
-	 * there is already an active transaction we had better abort that one
-	 * first.  Otherwise we'd end up committing changes that probably
-	 * ought to be discarded.
+	 * We need to start/commit a transaction for the unlisten, but if there is
+	 * already an active transaction we had better abort that one first.
+	 * Otherwise we'd end up committing changes that probably ought to be
+	 * discarded.
 	 */
 	AbortOutOfAnyTransaction();
 	/* Now we can do the unlisten */
@@ -409,30 +398,34 @@ Async_UnlistenOnExit(int code, Datum arg)
 	CommitTransactionCommand();
 }
 
+
 /*
  *--------------------------------------------------------------
  * AtPrepare_Notify
  *
- *            This is called at the prepare phase of a two-phase
- *            transaction.
- *
- *            Not implemented. Throw an error if there was any notify
- *            requests in this transaction.
- *
+ *		This is called at the prepare phase of a two-phase
+ *		transaction.  Save the state for possible commit later.
  *--------------------------------------------------------------
  */
 void
 AtPrepare_Notify(void)
 {
-      ListCell *p;
+	ListCell   *p;
 
-      /* elog(ERROR, "notifications with two-phase commit not implemented"); */
+	foreach(p, pendingNotifies)
+	{
+		const char *relname = (const char *) lfirst(p);
 
-      foreach(p, pendingNotifies) {
-              char *relname = lfirst(p);
-              RegisterTwoPhaseRecord(TWOPHASE_RM_NOTIFY_ID, relname, strlen(relname) + 1);
-      }
-      ClearPendingNotifies();
+		RegisterTwoPhaseRecord(TWOPHASE_RM_NOTIFY_ID, 0,
+							   relname, strlen(relname) + 1);
+	}
+
+	/*
+	 * We can clear the state immediately, rather than needing a separate
+	 * PostPrepare call, because if the transaction fails we'd just discard
+	 * the state anyway.
+	 */
+	ClearPendingNotifies();
 }
 
 /*
@@ -470,12 +463,11 @@ AtCommit_Notify(void)
 				nulls[Natts_pg_listener];
 
 	if (pendingNotifies == NIL)
-		return;					/* no NOTIFY statements in this
-								 * transaction */
+		return;					/* no NOTIFY statements in this transaction */
 
 	/*
-	 * NOTIFY is disabled if not normal processing mode. This test used to
-	 * be in xact.c, but it seems cleaner to do it here.
+	 * NOTIFY is disabled if not normal processing mode. This test used to be
+	 * in xact.c, but it seems cleaner to do it here.
 	 */
 	if (!IsNormalProcessingMode())
 	{
@@ -493,7 +485,7 @@ AtCommit_Notify(void)
 	value[0] = value[1] = value[2] = (Datum) 0;
 	value[Anum_pg_listener_notify - 1] = Int32GetDatum(MyProcPid);
 
-	lRel = heap_openr(ListenerRelationName, ExclusiveLock);
+	lRel = heap_open(ListenerRelationId, ExclusiveLock);
 	tdesc = RelationGetDescr(lRel);
 	scan = heap_beginscan(lRel, SnapshotNow, 0, NULL);
 
@@ -509,10 +501,10 @@ AtCommit_Notify(void)
 		if (listenerPID == MyProcPid)
 		{
 			/*
-			 * Self-notify: no need to bother with table update. Indeed,
-			 * we *must not* clear the notification field in this path, or
-			 * we could lose an outside notify, which'd be bad for
-			 * applications that ignore self-notify messages.
+			 * Self-notify: no need to bother with table update. Indeed, we
+			 * *must not* clear the notification field in this path, or we
+			 * could lose an outside notify, which'd be bad for applications
+			 * that ignore self-notify messages.
 			 */
 
 			if (Trace_notify)
@@ -527,47 +519,46 @@ AtCommit_Notify(void)
 					 listenerPID);
 
 			/*
-			 * If someone has already notified this listener, we don't
-			 * bother modifying the table, but we do still send a SIGUSR2
-			 * signal, just in case that backend missed the earlier signal
-			 * for some reason.  It's OK to send the signal first, because
-			 * the other guy can't read pg_listener until we unlock it.
+			 * If someone has already notified this listener, we don't bother
+			 * modifying the table, but we do still send a SIGUSR2 signal,
+			 * just in case that backend missed the earlier signal for some
+			 * reason.	It's OK to send the signal first, because the other
+			 * guy can't read pg_listener until we unlock it.
 			 */
 			if (kill(listenerPID, SIGUSR2) < 0)
 			{
 				/*
-				 * Get rid of pg_listener entry if it refers to a PID that
-				 * no longer exists.  Presumably, that backend crashed
-				 * without deleting its pg_listener entries. This code
-				 * used to only delete the entry if errno==ESRCH, but as
-				 * far as I can see we should just do it for any failure
-				 * (certainly at least for EPERM too...)
+				 * Get rid of pg_listener entry if it refers to a PID that no
+				 * longer exists.  Presumably, that backend crashed without
+				 * deleting its pg_listener entries. This code used to only
+				 * delete the entry if errno==ESRCH, but as far as I can see
+				 * we should just do it for any failure (certainly at least
+				 * for EPERM too...)
 				 */
 				simple_heap_delete(lRel, &lTuple->t_self);
 			}
 			else if (listener->notification == 0)
 			{
-				int			result;
+				HTSU_Result result;
 				ItemPointerData update_ctid;
 				TransactionId update_xmax;
 
-				rTuple = heap_modifytuple(lTuple, lRel,
+				rTuple = heap_modifytuple(lTuple, tdesc,
 										  value, nulls, repl);
 
 				/*
 				 * We cannot use simple_heap_update here because the tuple
 				 * could have been modified by an uncommitted transaction;
-				 * specifically, since UNLISTEN releases exclusive lock on
-				 * the table before commit, the other guy could already
-				 * have tried to unlisten.	There are no other cases where
-				 * we should be able to see an uncommitted update or
-				 * delete. Therefore, our response to a
-				 * HeapTupleBeingUpdated result is just to ignore it.  We
-				 * do *not* wait for the other guy to commit --- that
-				 * would risk deadlock, and we don't want to block while
-				 * holding the table lock anyway for performance reasons.
-				 * We also ignore HeapTupleUpdated, which could occur if
-				 * the other guy commits between our heap_getnext and
+				 * specifically, since UNLISTEN releases exclusive lock on the
+				 * table before commit, the other guy could already have tried
+				 * to unlisten.  There are no other cases where we should be
+				 * able to see an uncommitted update or delete. Therefore, our
+				 * response to a HeapTupleBeingUpdated result is just to
+				 * ignore it.  We do *not* wait for the other guy to commit
+				 * --- that would risk deadlock, and we don't want to block
+				 * while holding the table lock anyway for performance
+				 * reasons. We also ignore HeapTupleUpdated, which could occur
+				 * if the other guy commits between our heap_getnext and
 				 * heap_update calls.
 				 */
 				result = heap_update(lRel, &lTuple->t_self, rTuple,
@@ -583,7 +574,6 @@ AtCommit_Notify(void)
 
 					case HeapTupleMayBeUpdated:
 						/* done successfully */
-
 #ifdef NOT_USED					/* currently there are no indexes */
 						CatalogUpdateIndexes(lRel, rTuple);
 #endif
@@ -610,10 +600,10 @@ AtCommit_Notify(void)
 
 	/*
 	 * We do NOT release the lock on pg_listener here; we need to hold it
-	 * until end of transaction (which is about to happen, anyway) to
-	 * ensure that notified backends see our tuple updates when they look.
-	 * Else they might disregard the signal, which would make the
-	 * application programmer very unhappy.
+	 * until end of transaction (which is about to happen, anyway) to ensure
+	 * that notified backends see our tuple updates when they look. Else they
+	 * might disregard the signal, which would make the application programmer
+	 * very unhappy.
 	 */
 	heap_close(lRel, NoLock);
 
@@ -683,8 +673,7 @@ AtSubCommit_Notify(void)
 		   GetCurrentTransactionNestLevel() - 2);
 
 	/*
-	 * We could try to eliminate duplicates here, but it seems not
-	 * worthwhile.
+	 * We could try to eliminate duplicates here, but it seems not worthwhile.
 	 */
 	pendingNotifies = list_concat(parentPendingNotifies, pendingNotifies);
 }
@@ -702,10 +691,10 @@ AtSubAbort_Notify(void)
 	 * subxact are no longer interesting, and the space will be freed when
 	 * CurTransactionContext is recycled.
 	 *
-	 * This routine could be called more than once at a given nesting level
-	 * if there is trouble during subxact abort.  Avoid dumping core by
-	 * using GetCurrentTransactionNestLevel as the indicator of how far
-	 * we need to prune the list.
+	 * This routine could be called more than once at a given nesting level if
+	 * there is trouble during subxact abort.  Avoid dumping core by using
+	 * GetCurrentTransactionNestLevel as the indicator of how far we need to
+	 * prune the list.
 	 */
 	while (list_length(upperPendingNotifies) > my_level - 2)
 	{
@@ -738,9 +727,9 @@ NotifyInterruptHandler(SIGNAL_ARGS)
 
 	/*
 	 * Note: this is a SIGNAL HANDLER.	You must be very wary what you do
-	 * here. Some helpful soul had this routine sprinkled with TPRINTFs,
-	 * which would likely lead to corruption of stdio buffers if they were
-	 * ever turned on.
+	 * here. Some helpful soul had this routine sprinkled with TPRINTFs, which
+	 * would likely lead to corruption of stdio buffers if they were ever
+	 * turned on.
 	 */
 
 	/* Don't joggle the elbow of proc_exit */
@@ -752,19 +741,18 @@ NotifyInterruptHandler(SIGNAL_ARGS)
 		bool		save_ImmediateInterruptOK = ImmediateInterruptOK;
 
 		/*
-		 * We may be called while ImmediateInterruptOK is true; turn it
-		 * off while messing with the NOTIFY state.  (We would have to
-		 * save and restore it anyway, because PGSemaphore operations
-		 * inside ProcessIncomingNotify() might reset it.)
+		 * We may be called while ImmediateInterruptOK is true; turn it off
+		 * while messing with the NOTIFY state.  (We would have to save and
+		 * restore it anyway, because PGSemaphore operations inside
+		 * ProcessIncomingNotify() might reset it.)
 		 */
 		ImmediateInterruptOK = false;
 
 		/*
 		 * I'm not sure whether some flavors of Unix might allow another
-		 * SIGUSR2 occurrence to recursively interrupt this routine. To
-		 * cope with the possibility, we do the same sort of dance that
-		 * EnableNotifyInterrupt must do --- see that routine for
-		 * comments.
+		 * SIGUSR2 occurrence to recursively interrupt this routine. To cope
+		 * with the possibility, we do the same sort of dance that
+		 * EnableNotifyInterrupt must do --- see that routine for comments.
 		 */
 		notifyInterruptEnabled = 0;		/* disable any recursive signal */
 		notifyInterruptOccurred = 1;	/* do at least one iteration */
@@ -788,8 +776,7 @@ NotifyInterruptHandler(SIGNAL_ARGS)
 		}
 
 		/*
-		 * Restore ImmediateInterruptOK, and check for interrupts if
-		 * needed.
+		 * Restore ImmediateInterruptOK, and check for interrupts if needed.
 		 */
 		ImmediateInterruptOK = save_ImmediateInterruptOK;
 		if (save_ImmediateInterruptOK)
@@ -798,8 +785,7 @@ NotifyInterruptHandler(SIGNAL_ARGS)
 	else
 	{
 		/*
-		 * In this path it is NOT SAFE to do much of anything, except
-		 * this:
+		 * In this path it is NOT SAFE to do much of anything, except this:
 		 */
 		notifyInterruptOccurred = 1;
 	}
@@ -827,27 +813,25 @@ EnableNotifyInterrupt(void)
 		return;					/* not really idle */
 
 	/*
-	 * This code is tricky because we are communicating with a signal
-	 * handler that could interrupt us at any point.  If we just checked
-	 * notifyInterruptOccurred and then set notifyInterruptEnabled, we
-	 * could fail to respond promptly to a signal that happens in between
-	 * those two steps.  (A very small time window, perhaps, but Murphy's
-	 * Law says you can hit it...)	Instead, we first set the enable flag,
-	 * then test the occurred flag.  If we see an unserviced interrupt has
-	 * occurred, we re-clear the enable flag before going off to do the
-	 * service work.  (That prevents re-entrant invocation of
-	 * ProcessIncomingNotify() if another interrupt occurs.) If an
-	 * interrupt comes in between the setting and clearing of
-	 * notifyInterruptEnabled, then it will have done the service work and
-	 * left notifyInterruptOccurred zero, so we have to check again after
-	 * clearing enable.  The whole thing has to be in a loop in case
-	 * another interrupt occurs while we're servicing the first. Once we
-	 * get out of the loop, enable is set and we know there is no
-	 * unserviced interrupt.
+	 * This code is tricky because we are communicating with a signal handler
+	 * that could interrupt us at any point.  If we just checked
+	 * notifyInterruptOccurred and then set notifyInterruptEnabled, we could
+	 * fail to respond promptly to a signal that happens in between those two
+	 * steps.  (A very small time window, perhaps, but Murphy's Law says you
+	 * can hit it...)  Instead, we first set the enable flag, then test the
+	 * occurred flag.  If we see an unserviced interrupt has occurred, we
+	 * re-clear the enable flag before going off to do the service work.
+	 * (That prevents re-entrant invocation of ProcessIncomingNotify() if
+	 * another interrupt occurs.) If an interrupt comes in between the setting
+	 * and clearing of notifyInterruptEnabled, then it will have done the
+	 * service work and left notifyInterruptOccurred zero, so we have to check
+	 * again after clearing enable.  The whole thing has to be in a loop in
+	 * case another interrupt occurs while we're servicing the first. Once we
+	 * get out of the loop, enable is set and we know there is no unserviced
+	 * interrupt.
 	 *
-	 * NB: an overenthusiastic optimizing compiler could easily break this
-	 * code.  Hopefully, they all understand what "volatile" means these
-	 * days.
+	 * NB: an overenthusiastic optimizing compiler could easily break this code.
+	 * Hopefully, they all understand what "volatile" means these days.
 	 */
 	for (;;)
 	{
@@ -930,7 +914,7 @@ ProcessIncomingNotify(void)
 
 	StartTransactionCommand();
 
-	lRel = heap_openr(ListenerRelationName, ExclusiveLock);
+	lRel = heap_open(ListenerRelationId, ExclusiveLock);
 	tdesc = RelationGetDescr(lRel);
 
 	/* Scan only entries with my listenerPID */
@@ -967,10 +951,9 @@ ProcessIncomingNotify(void)
 			 * Rewrite the tuple with 0 in notification column.
 			 *
 			 * simple_heap_update is safe here because no one else would have
-			 * tried to UNLISTEN us, so there can be no uncommitted
-			 * changes.
+			 * tried to UNLISTEN us, so there can be no uncommitted changes.
 			 */
-			rTuple = heap_modifytuple(lTuple, lRel, value, nulls, repl);
+			rTuple = heap_modifytuple(lTuple, tdesc, value, nulls, repl);
 			simple_heap_update(lRel, &lTuple->t_self, rTuple);
 
 #ifdef NOT_USED					/* currently there are no indexes */
@@ -982,18 +965,17 @@ ProcessIncomingNotify(void)
 
 	/*
 	 * We do NOT release the lock on pg_listener here; we need to hold it
-	 * until end of transaction (which is about to happen, anyway) to
-	 * ensure that other backends see our tuple updates when they look.
-	 * Otherwise, a transaction started after this one might mistakenly
-	 * think it doesn't need to send this backend a new NOTIFY.
+	 * until end of transaction (which is about to happen, anyway) to ensure
+	 * that other backends see our tuple updates when they look. Otherwise, a
+	 * transaction started after this one might mistakenly think it doesn't
+	 * need to send this backend a new NOTIFY.
 	 */
 	heap_close(lRel, NoLock);
 
 	CommitTransactionCommand();
 
 	/*
-	 * Must flush the notify messages to ensure frontend gets them
-	 * promptly.
+	 * Must flush the notify messages to ensure frontend gets them promptly.
 	 */
 	pq_flush();
 
@@ -1012,7 +994,7 @@ ProcessIncomingNotify(void)
 static void
 NotifyMyFrontEnd(char *relname, int32 listenerPID)
 {
-	if (whereToSendOutput == Remote)
+	if (whereToSendOutput == DestRemote)
 	{
 		StringInfoData buf;
 
@@ -1029,8 +1011,7 @@ NotifyMyFrontEnd(char *relname, int32 listenerPID)
 		/*
 		 * NOTE: we do not do pq_flush() here.	For a self-notify, it will
 		 * happen at the end of the transaction, and for incoming notifies
-		 * ProcessIncomingNotify will do it after finding all the
-		 * notifies.
+		 * ProcessIncomingNotify will do it after finding all the notifies.
 		 */
 	}
 	else
@@ -1045,8 +1026,9 @@ AsyncExistsPendingNotify(const char *relname)
 
 	foreach(p, pendingNotifies)
 	{
-		/* Use NAMEDATALEN for relname comparison.	  DZ - 26-08-1996 */
-		if (strncmp((const char *) lfirst(p), relname, NAMEDATALEN) == 0)
+		const char *prelname = (const char *) lfirst(p);
+
+		if (strcmp(prelname, relname) == 0)
 			return true;
 	}
 
@@ -1058,18 +1040,29 @@ static void
 ClearPendingNotifies(void)
 {
 	/*
-	 * We used to have to explicitly deallocate the list members and
-	 * nodes, because they were malloc'd.  Now, since we know they are
-	 * palloc'd in CurTransactionContext, we need not do that --- they'll
-	 * go away automatically at transaction exit.  We need only reset the
-	 * list head pointer.
+	 * We used to have to explicitly deallocate the list members and nodes,
+	 * because they were malloc'd.  Now, since we know they are palloc'd in
+	 * CurTransactionContext, we need not do that --- they'll go away
+	 * automatically at transaction exit.  We need only reset the list head
+	 * pointer.
 	 */
 	pendingNotifies = NIL;
 }
 
+/*
+ * 2PC processing routine for COMMIT PREPARED case.
+ *
+ * (We don't have to do anything for ROLLBACK PREPARED.)
+ */
 void
-notify_postcommit_record(TransactionId xid, void *recdata, uint32 len)
+notify_twophase_postcommit(TransactionId xid, uint16 info,
+						   void *recdata, uint32 len)
 {
-      /* Piggyback the current transaction running COMMIT PREPARED */
-      Async_Notify((char *) recdata);
+	/*
+	 * Set up to issue the NOTIFY at the end of my own current transaction.
+	 * (XXX this has some issues if my own transaction later rolls back, or if
+	 * there is any significant delay before I commit.	OK for now because we
+	 * disallow COMMIT PREPARED inside a transaction block.)
+	 */
+	Async_Notify((char *) recdata);
 }

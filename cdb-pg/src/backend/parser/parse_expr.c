@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/parser/parse_expr.c,v 1.179.4.2 2005/05/25 02:17:55 ishii Exp $
+ *	  $PostgreSQL: pgsql/src/backend/parser/parse_expr.c,v 1.185 2005/10/15 02:49:22 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -37,9 +37,28 @@
 
 bool		Transform_null_equals = false;
 
+static Node *transformParamRef(ParseState *pstate, ParamRef *pref);
+static Node *transformAExprOp(ParseState *pstate, A_Expr *a);
+static Node *transformAExprAnd(ParseState *pstate, A_Expr *a);
+static Node *transformAExprOr(ParseState *pstate, A_Expr *a);
+static Node *transformAExprNot(ParseState *pstate, A_Expr *a);
+static Node *transformAExprOpAny(ParseState *pstate, A_Expr *a);
+static Node *transformAExprOpAll(ParseState *pstate, A_Expr *a);
+static Node *transformAExprDistinct(ParseState *pstate, A_Expr *a);
+static Node *transformAExprNullIf(ParseState *pstate, A_Expr *a);
+static Node *transformAExprOf(ParseState *pstate, A_Expr *a);
+static Node *transformFuncCall(ParseState *pstate, FuncCall *fn);
+static Node *transformCaseExpr(ParseState *pstate, CaseExpr *c);
+static Node *transformSubLink(ParseState *pstate, SubLink *sublink);
+static Node *transformArrayExpr(ParseState *pstate, ArrayExpr *a);
+static Node *transformRowExpr(ParseState *pstate, RowExpr *r);
+static Node *transformCoalesceExpr(ParseState *pstate, CoalesceExpr *c);
+static Node *transformMinMaxExpr(ParseState *pstate, MinMaxExpr *m);
+static Node *transformBooleanTest(ParseState *pstate, BooleanTest *b);
 static Node *transformColumnRef(ParseState *pstate, ColumnRef *cref);
 static Node *transformWholeRowRef(ParseState *pstate, char *schemaname,
 					 char *relname);
+static Node *transformBooleanTest(ParseState *pstate, BooleanTest *b);
 static Node *transformIndirection(ParseState *pstate, Node *basenode,
 					 List *indirection);
 static Node *typecast_expression(ParseState *pstate, Node *expr,
@@ -90,65 +109,13 @@ transformExpr(ParseState *pstate, Node *expr)
 	switch (nodeTag(expr))
 	{
 		case T_ColumnRef:
-			{
-				result = transformColumnRef(pstate, (ColumnRef *) expr);
-				break;
-			}
+			result = transformColumnRef(pstate, (ColumnRef *) expr);
+			break;
+
 		case T_ParamRef:
-			{
-				ParamRef   *pref = (ParamRef *) expr;
-				int			paramno = pref->number;
-				ParseState *toppstate;
-				Param	   *param;
+			result = transformParamRef(pstate, (ParamRef *) expr);
+			break;
 
-				/*
-				 * Find topmost ParseState, which is where paramtype info
-				 * lives.
-				 */
-				toppstate = pstate;
-				while (toppstate->parentParseState != NULL)
-					toppstate = toppstate->parentParseState;
-
-				/* Check parameter number is in range */
-				if (paramno <= 0)		/* probably can't happen? */
-					ereport(ERROR,
-							(errcode(ERRCODE_UNDEFINED_PARAMETER),
-						  errmsg("there is no parameter $%d", paramno)));
-				if (paramno > toppstate->p_numparams)
-				{
-					if (!toppstate->p_variableparams)
-						ereport(ERROR,
-								(errcode(ERRCODE_UNDEFINED_PARAMETER),
-								 errmsg("there is no parameter $%d",
-										paramno)));
-					/* Okay to enlarge param array */
-					if (toppstate->p_paramtypes)
-						toppstate->p_paramtypes =
-							(Oid *) repalloc(toppstate->p_paramtypes,
-											 paramno * sizeof(Oid));
-					else
-						toppstate->p_paramtypes =
-							(Oid *) palloc(paramno * sizeof(Oid));
-					/* Zero out the previously-unreferenced slots */
-					MemSet(toppstate->p_paramtypes + toppstate->p_numparams,
-						   0,
-					   (paramno - toppstate->p_numparams) * sizeof(Oid));
-					toppstate->p_numparams = paramno;
-				}
-				if (toppstate->p_variableparams)
-				{
-					/* If not seen before, initialize to UNKNOWN type */
-					if (toppstate->p_paramtypes[paramno - 1] == InvalidOid)
-						toppstate->p_paramtypes[paramno - 1] = UNKNOWNOID;
-				}
-
-				param = makeNode(Param);
-				param->paramkind = PARAM_NUM;
-				param->paramid = (AttrNumber) paramno;
-				param->paramtype = toppstate->p_paramtypes[paramno - 1];
-				result = (Node *) param;
-				break;
-			}
 		case T_A_Const:
 			{
 				A_Const    *con = (A_Const *) expr;
@@ -160,6 +127,7 @@ transformExpr(ParseState *pstate, Node *expr)
 												 con->typename);
 				break;
 			}
+
 		case T_A_Indirection:
 			{
 				A_Indirection *ind = (A_Indirection *) expr;
@@ -169,6 +137,7 @@ transformExpr(ParseState *pstate, Node *expr)
 											  ind->indirection);
 				break;
 			}
+
 		case T_TypeCast:
 			{
 				TypeCast   *tc = (TypeCast *) expr;
@@ -177,6 +146,7 @@ transformExpr(ParseState *pstate, Node *expr)
 				result = typecast_expression(pstate, arg, tc->typename);
 				break;
 			}
+
 		case T_A_Expr:
 			{
 				A_Expr	   *a = (A_Expr *) expr;
@@ -184,701 +154,65 @@ transformExpr(ParseState *pstate, Node *expr)
 				switch (a->kind)
 				{
 					case AEXPR_OP:
-						{
-							Node	   *lexpr = a->lexpr;
-							Node	   *rexpr = a->rexpr;
-
-							/*
-							 * Special-case "foo = NULL" and "NULL = foo"
-							 * for compatibility with standards-broken
-							 * products (like Microsoft's).  Turn these
-							 * into IS NULL exprs.
-							 */
-							if (Transform_null_equals &&
-								list_length(a->name) == 1 &&
-							strcmp(strVal(linitial(a->name)), "=") == 0 &&
-								(exprIsNullConstant(lexpr) ||
-								 exprIsNullConstant(rexpr)))
-							{
-								NullTest   *n = makeNode(NullTest);
-
-								n->nulltesttype = IS_NULL;
-
-								if (exprIsNullConstant(lexpr))
-									n->arg = (Expr *) rexpr;
-								else
-									n->arg = (Expr *) lexpr;
-
-								result = transformExpr(pstate,
-													   (Node *) n);
-							}
-							else if (lexpr && IsA(lexpr, RowExpr) &&
-									 rexpr && IsA(rexpr, SubLink) &&
-									 ((SubLink *) rexpr)->subLinkType == EXPR_SUBLINK)
-							{
-								/*
-								 * Convert "row op subselect" into a
-								 * MULTIEXPR sublink.  Formerly the
-								 * grammar did this, but now that a row
-								 * construct is allowed anywhere in
-								 * expressions, it's easier to do it here.
-								 */
-								SubLink    *s = (SubLink *) rexpr;
-
-								s->subLinkType = MULTIEXPR_SUBLINK;
-								s->lefthand = ((RowExpr *) lexpr)->args;
-								s->operName = a->name;
-								result = transformExpr(pstate, (Node *) s);
-							}
-							else if (lexpr && IsA(lexpr, RowExpr) &&
-									 rexpr && IsA(rexpr, RowExpr))
-							{
-								/* "row op row" */
-								result = make_row_op(pstate, a->name,
-													 lexpr, rexpr);
-							}
-							else
-							{
-								/* Ordinary scalar operator */
-								lexpr = transformExpr(pstate, lexpr);
-								rexpr = transformExpr(pstate, rexpr);
-
-								result = (Node *) make_op(pstate,
-														  a->name,
-														  lexpr,
-														  rexpr);
-							}
-						}
+						result = transformAExprOp(pstate, a);
 						break;
 					case AEXPR_AND:
-						{
-							Node	   *lexpr = transformExpr(pstate,
-															  a->lexpr);
-							Node	   *rexpr = transformExpr(pstate,
-															  a->rexpr);
-
-							lexpr = coerce_to_boolean(pstate, lexpr, "AND");
-							rexpr = coerce_to_boolean(pstate, rexpr, "AND");
-
-							result = (Node *) makeBoolExpr(AND_EXPR,
-														list_make2(lexpr,
-																 rexpr));
-						}
+						result = transformAExprAnd(pstate, a);
 						break;
 					case AEXPR_OR:
-						{
-							Node	   *lexpr = transformExpr(pstate,
-															  a->lexpr);
-							Node	   *rexpr = transformExpr(pstate,
-															  a->rexpr);
-
-							lexpr = coerce_to_boolean(pstate, lexpr, "OR");
-							rexpr = coerce_to_boolean(pstate, rexpr, "OR");
-
-							result = (Node *) makeBoolExpr(OR_EXPR,
-														list_make2(lexpr,
-																 rexpr));
-						}
+						result = transformAExprOr(pstate, a);
 						break;
 					case AEXPR_NOT:
-						{
-							Node	   *rexpr = transformExpr(pstate,
-															  a->rexpr);
-
-							rexpr = coerce_to_boolean(pstate, rexpr, "NOT");
-
-							result = (Node *) makeBoolExpr(NOT_EXPR,
-													  list_make1(rexpr));
-						}
+						result = transformAExprNot(pstate, a);
 						break;
 					case AEXPR_OP_ANY:
-						{
-							Node	   *lexpr = transformExpr(pstate,
-															  a->lexpr);
-							Node	   *rexpr = transformExpr(pstate,
-															  a->rexpr);
-
-							result = (Node *) make_scalar_array_op(pstate,
-																 a->name,
-																   true,
-																   lexpr,
-																   rexpr);
-						}
+						result = transformAExprOpAny(pstate, a);
 						break;
 					case AEXPR_OP_ALL:
-						{
-							Node	   *lexpr = transformExpr(pstate,
-															  a->lexpr);
-							Node	   *rexpr = transformExpr(pstate,
-															  a->rexpr);
-
-							result = (Node *) make_scalar_array_op(pstate,
-																 a->name,
-																   false,
-																   lexpr,
-																   rexpr);
-						}
+						result = transformAExprOpAll(pstate, a);
 						break;
 					case AEXPR_DISTINCT:
-						{
-							Node	   *lexpr = a->lexpr;
-							Node	   *rexpr = a->rexpr;
-
-							if (lexpr && IsA(lexpr, RowExpr) &&
-								rexpr && IsA(rexpr, RowExpr))
-							{
-								/* "row op row" */
-								result = make_row_distinct_op(pstate, a->name,
-														   lexpr, rexpr);
-							}
-							else
-							{
-								/* Ordinary scalar operator */
-								lexpr = transformExpr(pstate, lexpr);
-								rexpr = transformExpr(pstate, rexpr);
-
-								result = (Node *) make_distinct_op(pstate,
-																 a->name,
-																   lexpr,
-																   rexpr);
-							}
-						}
+						result = transformAExprDistinct(pstate, a);
 						break;
 					case AEXPR_NULLIF:
-						{
-							Node	   *lexpr = transformExpr(pstate,
-															  a->lexpr);
-							Node	   *rexpr = transformExpr(pstate,
-															  a->rexpr);
-
-							result = (Node *) make_op(pstate,
-													  a->name,
-													  lexpr,
-													  rexpr);
-							if (((OpExpr *) result)->opresulttype != BOOLOID)
-								ereport(ERROR,
-									 (errcode(ERRCODE_DATATYPE_MISMATCH),
-									  errmsg("NULLIF requires = operator to yield boolean")));
-
-							/*
-							 * We rely on NullIfExpr and OpExpr being same
-							 * struct
-							 */
-							NodeSetTag(result, T_NullIfExpr);
-						}
+						result = transformAExprNullIf(pstate, a);
 						break;
 					case AEXPR_OF:
-						{
-							/*
-							 * Checking an expression for match to type.
-							 * Will result in a boolean constant node.
-							 */
-							ListCell   *telem;
-							A_Const    *n;
-							Oid			ltype,
-										rtype;
-							bool		matched = FALSE;
-							Node	   *lexpr = transformExpr(pstate,
-															  a->lexpr);
-
-							ltype = exprType(lexpr);
-							foreach(telem, (List *) a->rexpr)
-							{
-								rtype = LookupTypeName(lfirst(telem));
-								matched = (rtype == ltype);
-								if (matched)
-									break;
-							}
-
-							/*
-							 * Expect two forms: equals or not equals.
-							 * Flip the sense of the result for not
-							 * equals.
-							 */
-							if (strcmp(strVal(linitial(a->name)), "!=") == 0)
-								matched = (!matched);
-
-							n = makeNode(A_Const);
-							n->val.type = T_String;
-							n->val.val.str = (matched ? "t" : "f");
-							n->typename = SystemTypeName("bool");
-
-							result = transformExpr(pstate, (Node *) n);
-						}
+						result = transformAExprOf(pstate, a);
 						break;
+					default:
+						elog(ERROR, "unrecognized A_Expr kind: %d", a->kind);
 				}
 				break;
 			}
+
 		case T_FuncCall:
-			{
-				FuncCall   *fn = (FuncCall *) expr;
-				List	   *targs;
-				ListCell   *args;
+			result = transformFuncCall(pstate, (FuncCall *) expr);
+			break;
 
-				/*
-				 * Transform the list of arguments.  We use a shallow list
-				 * copy and then transform-in-place to avoid O(N^2)
-				 * behavior from repeated lappend's.
-				 *
-				 * XXX: repeated lappend() would no longer result in O(n^2)
-				 * behavior; worth reconsidering this design?
-				 */
-				targs = list_copy(fn->args);
-				foreach(args, targs)
-				{
-					lfirst(args) = transformExpr(pstate,
-												 (Node *) lfirst(args));
-				}
-				result = ParseFuncOrColumn(pstate,
-										   fn->funcname,
-										   targs,
-										   fn->agg_star,
-										   fn->agg_distinct,
-										   false);
-				break;
-			}
 		case T_SubLink:
-			{
-				SubLink    *sublink = (SubLink *) expr;
-				List	   *qtrees;
-				Query	   *qtree;
-
-				/* If we already transformed this node, do nothing */
-				if (IsA(sublink->subselect, Query))
-				{
-					result = expr;
-					break;
-				}
-				pstate->p_hasSubLinks = true;
-				qtrees = parse_sub_analyze(sublink->subselect, pstate);
-				if (list_length(qtrees) != 1)
-					elog(ERROR, "bad query in sub-select");
-				qtree = (Query *) linitial(qtrees);
-				if (qtree->commandType != CMD_SELECT ||
-					qtree->resultRelation != 0)
-					elog(ERROR, "bad query in sub-select");
-				sublink->subselect = (Node *) qtree;
-
-				if (sublink->subLinkType == EXISTS_SUBLINK)
-				{
-					/*
-					 * EXISTS needs no lefthand or combining operator.
-					 * These fields should be NIL already, but make sure.
-					 */
-					sublink->lefthand = NIL;
-					sublink->operName = NIL;
-					sublink->operOids = NIL;
-					sublink->useOr = FALSE;
-				}
-				else if (sublink->subLinkType == EXPR_SUBLINK ||
-						 sublink->subLinkType == ARRAY_SUBLINK)
-				{
-					ListCell   *tlist_item = list_head(qtree->targetList);
-
-					/*
-					 * Make sure the subselect delivers a single column
-					 * (ignoring resjunk targets).
-					 */
-					if (tlist_item == NULL ||
-					((TargetEntry *) lfirst(tlist_item))->resdom->resjunk)
-						ereport(ERROR,
-								(errcode(ERRCODE_SYNTAX_ERROR),
-							   errmsg("subquery must return a column")));
-					while ((tlist_item = lnext(tlist_item)) != NULL)
-					{
-						if (!((TargetEntry *) lfirst(tlist_item))->resdom->resjunk)
-							ereport(ERROR,
-									(errcode(ERRCODE_SYNTAX_ERROR),
-									 errmsg("subquery must return only one column")));
-					}
-
-					/*
-					 * EXPR and ARRAY need no lefthand or combining
-					 * operator. These fields should be NIL already, but
-					 * make sure.
-					 */
-					sublink->lefthand = NIL;
-					sublink->operName = NIL;
-					sublink->operOids = NIL;
-					sublink->useOr = FALSE;
-				}
-				else
-				{
-					/* ALL, ANY, or MULTIEXPR: generate operator list */
-					List	   *left_list = sublink->lefthand;
-					List	   *right_list = qtree->targetList;
-					int			row_length = list_length(left_list);
-					bool		needNot = false;
-					List	   *op = sublink->operName;
-					char	   *opname = strVal(llast(op));
-					ListCell   *l;
-					ListCell   *ll_item;
-
-					/* transform lefthand expressions */
-					foreach(l, left_list)
-						lfirst(l) = transformExpr(pstate, lfirst(l));
-
-					/*
-					 * If the expression is "<> ALL" (with unqualified
-					 * opname) then convert it to "NOT IN".  This is a
-					 * hack to improve efficiency of expressions output by
-					 * pre-7.4 Postgres.
-					 */
-					if (sublink->subLinkType == ALL_SUBLINK &&
-						list_length(op) == 1 && strcmp(opname, "<>") == 0)
-					{
-						sublink->subLinkType = ANY_SUBLINK;
-						opname = pstrdup("=");
-						op = list_make1(makeString(opname));
-						sublink->operName = op;
-						needNot = true;
-					}
-
-					/* Set useOr if op is "<>" (possibly qualified) */
-					if (strcmp(opname, "<>") == 0)
-						sublink->useOr = TRUE;
-					else
-						sublink->useOr = FALSE;
-
-					/* Combining operators other than =/<> is dubious... */
-					if (row_length != 1 &&
-						strcmp(opname, "=") != 0 &&
-						strcmp(opname, "<>") != 0)
-						ereport(ERROR,
-								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-						  errmsg("row comparison cannot use operator %s",
-								 opname)));
-
-					/*
-					 * To build the list of combining operator OIDs, we
-					 * must scan subquery's targetlist to find values that
-					 * will be matched against lefthand values.  We need
-					 * to ignore resjunk targets, so doing the outer
-					 * iteration over right_list is easier than doing it
-					 * over left_list.
-					 */
-					sublink->operOids = NIL;
-
-					ll_item = list_head(left_list);
-					foreach(l, right_list)
-					{
-						TargetEntry *tent = (TargetEntry *) lfirst(l);
-						Node	   *lexpr;
-						Operator	optup;
-						Form_pg_operator opform;
-
-						if (tent->resdom->resjunk)
-							continue;
-
-						if (ll_item == NULL)
-							ereport(ERROR,
-									(errcode(ERRCODE_SYNTAX_ERROR),
-							   errmsg("subquery has too many columns")));
-						lexpr = lfirst(ll_item);
-						ll_item = lnext(ll_item);
-
-						/*
-						 * It's OK to use oper() not compatible_oper()
-						 * here, because make_subplan() will insert type
-						 * coercion calls if needed.
-						 */
-						optup = oper(op,
-									 exprType(lexpr),
-									 exprType((Node *) tent->expr),
-									 false);
-						opform = (Form_pg_operator) GETSTRUCT(optup);
-
-						if (opform->oprresult != BOOLOID)
-							ereport(ERROR,
-									(errcode(ERRCODE_DATATYPE_MISMATCH),
-									 errmsg("operator %s must return type boolean, not type %s",
-											opname,
-									  format_type_be(opform->oprresult)),
-									 errhint("The operator of a quantified predicate subquery must return type boolean.")));
-
-						if (get_func_retset(opform->oprcode))
-							ereport(ERROR,
-									(errcode(ERRCODE_DATATYPE_MISMATCH),
-							  errmsg("operator %s must not return a set",
-									 opname),
-									 errhint("The operator of a quantified predicate subquery must return type boolean.")));
-
-						sublink->operOids = lappend_oid(sublink->operOids,
-														oprid(optup));
-
-						ReleaseSysCache(optup);
-					}
-					if (ll_item != NULL)
-						ereport(ERROR,
-								(errcode(ERRCODE_SYNTAX_ERROR),
-								 errmsg("subquery has too few columns")));
-
-					if (needNot)
-					{
-						expr = coerce_to_boolean(pstate, expr, "NOT");
-						expr = (Node *) makeBoolExpr(NOT_EXPR,
-													 list_make1(expr));
-					}
-				}
-				result = (Node *) expr;
-				break;
-			}
+			result = transformSubLink(pstate, (SubLink *) expr);
+			break;
 
 		case T_CaseExpr:
-			{
-				CaseExpr   *c = (CaseExpr *) expr;
-				CaseExpr   *newc;
-				Node	   *arg;
-				CaseTestExpr *placeholder;
-				List	   *newargs;
-				List	   *typeids;
-				ListCell   *l;
-				Node	   *defresult;
-				Oid			ptype;
-
-				/* If we already transformed this node, do nothing */
-				if (OidIsValid(c->casetype))
-				{
-					result = expr;
-					break;
-				}
-				newc = makeNode(CaseExpr);
-
-				/* transform the test expression, if any */
-				arg = transformExpr(pstate, (Node *) c->arg);
-
-				/* generate placeholder for test expression */
-				if (arg)
-				{
-					/*
-					 * If test expression is an untyped literal, force it to
-					 * text.  We have to do something now because we won't be
-					 * able to do this coercion on the placeholder.  This is
-					 * not as flexible as what was done in 7.4 and before,
-					 * but it's good enough to handle the sort of silly
-					 * coding commonly seen.
-					 */
-					if (exprType(arg) == UNKNOWNOID)
-						arg = coerce_to_common_type(pstate, arg,
-													TEXTOID, "CASE");
-					placeholder = makeNode(CaseTestExpr);
-					placeholder->typeId = exprType(arg);
-					placeholder->typeMod = exprTypmod(arg);
-				}
-				else
-					placeholder = NULL;
-
-				newc->arg = (Expr *) arg;
-
-				/* transform the list of arguments */
-				newargs = NIL;
-				typeids = NIL;
-				foreach(l, c->args)
-				{
-					CaseWhen   *w = (CaseWhen *) lfirst(l);
-					CaseWhen   *neww = makeNode(CaseWhen);
-					Node	   *warg;
-
-					Assert(IsA(w, CaseWhen));
-
-					warg = (Node *) w->expr;
-					if (placeholder)
-					{
-						/* shorthand form was specified, so expand... */
-						warg = (Node *) makeSimpleA_Expr(AEXPR_OP, "=",
-													(Node *) placeholder,
-														 warg);
-					}
-					neww->expr = (Expr *) transformExpr(pstate, warg);
-
-					neww->expr = (Expr *) coerce_to_boolean(pstate,
-													 (Node *) neww->expr,
-															"CASE/WHEN");
-
-					warg = (Node *) w->result;
-					neww->result = (Expr *) transformExpr(pstate, warg);
-
-					newargs = lappend(newargs, neww);
-					typeids = lappend_oid(typeids, exprType((Node *) neww->result));
-				}
-
-				newc->args = newargs;
-
-				/* transform the default clause */
-				defresult = (Node *) c->defresult;
-				if (defresult == NULL)
-				{
-					A_Const    *n = makeNode(A_Const);
-
-					n->val.type = T_Null;
-					defresult = (Node *) n;
-				}
-				newc->defresult = (Expr *) transformExpr(pstate, defresult);
-
-				/*
-				 * Note: default result is considered the most significant
-				 * type in determining preferred type.	This is how the
-				 * code worked before, but it seems a little bogus to me
-				 * --- tgl
-				 */
-				typeids = lcons_oid(exprType((Node *) newc->defresult), typeids);
-
-				ptype = select_common_type(typeids, "CASE");
-				Assert(OidIsValid(ptype));
-				newc->casetype = ptype;
-
-				/* Convert default result clause, if necessary */
-				newc->defresult = (Expr *)
-					coerce_to_common_type(pstate,
-										  (Node *) newc->defresult,
-										  ptype,
-										  "CASE/ELSE");
-
-				/* Convert when-clause results, if necessary */
-				foreach(l, newc->args)
-				{
-					CaseWhen   *w = (CaseWhen *) lfirst(l);
-
-					w->result = (Expr *)
-						coerce_to_common_type(pstate,
-											  (Node *) w->result,
-											  ptype,
-											  "CASE/WHEN");
-				}
-
-				result = (Node *) newc;
-				break;
-			}
+			result = transformCaseExpr(pstate, (CaseExpr *) expr);
+			break;
 
 		case T_ArrayExpr:
-			{
-				ArrayExpr  *a = (ArrayExpr *) expr;
-				ArrayExpr  *newa = makeNode(ArrayExpr);
-				List	   *newelems = NIL;
-				List	   *newcoercedelems = NIL;
-				List	   *typeids = NIL;
-				ListCell   *element;
-				Oid			array_type;
-				Oid			element_type;
-
-				/* Transform the element expressions */
-				foreach(element, a->elements)
-				{
-					Node	   *e = (Node *) lfirst(element);
-					Node	   *newe;
-
-					newe = transformExpr(pstate, e);
-					newelems = lappend(newelems, newe);
-					typeids = lappend_oid(typeids, exprType(newe));
-				}
-
-				/* Select a common type for the elements */
-				element_type = select_common_type(typeids, "ARRAY");
-
-				/* Coerce arguments to common type if necessary */
-				foreach(element, newelems)
-				{
-					Node	   *e = (Node *) lfirst(element);
-					Node	   *newe;
-
-					newe = coerce_to_common_type(pstate, e,
-												 element_type,
-												 "ARRAY");
-					newcoercedelems = lappend(newcoercedelems, newe);
-				}
-
-				/* Do we have an array type to use? */
-				array_type = get_array_type(element_type);
-				if (array_type != InvalidOid)
-				{
-					/* Elements are presumably of scalar type */
-					newa->multidims = false;
-				}
-				else
-				{
-					/* Must be nested array expressions */
-					newa->multidims = true;
-
-					array_type = element_type;
-					element_type = get_element_type(array_type);
-					if (!OidIsValid(element_type))
-						ereport(ERROR,
-								(errcode(ERRCODE_UNDEFINED_OBJECT),
-								 errmsg("could not find array type for data type %s",
-										format_type_be(array_type))));
-				}
-
-				newa->array_typeid = array_type;
-				newa->element_typeid = element_type;
-				newa->elements = newcoercedelems;
-
-				result = (Node *) newa;
-				break;
-			}
+			result = transformArrayExpr(pstate, (ArrayExpr *) expr);
+			break;
 
 		case T_RowExpr:
-			{
-				RowExpr    *r = (RowExpr *) expr;
-				RowExpr    *newr = makeNode(RowExpr);
-				List	   *newargs = NIL;
-				ListCell   *arg;
-
-				/* Transform the field expressions */
-				foreach(arg, r->args)
-				{
-					Node	   *e = (Node *) lfirst(arg);
-					Node	   *newe;
-
-					newe = transformExpr(pstate, e);
-					newargs = lappend(newargs, newe);
-				}
-				newr->args = newargs;
-
-				/* Barring later casting, we consider the type RECORD */
-				newr->row_typeid = RECORDOID;
-				newr->row_format = COERCE_IMPLICIT_CAST;
-
-				result = (Node *) newr;
-				break;
-			}
+			result = transformRowExpr(pstate, (RowExpr *) expr);
+			break;
 
 		case T_CoalesceExpr:
-			{
-				CoalesceExpr *c = (CoalesceExpr *) expr;
-				CoalesceExpr *newc = makeNode(CoalesceExpr);
-				List	   *newargs = NIL;
-				List	   *newcoercedargs = NIL;
-				List	   *typeids = NIL;
-				ListCell   *args;
+			result = transformCoalesceExpr(pstate, (CoalesceExpr *) expr);
+			break;
 
-				foreach(args, c->args)
-				{
-					Node	   *e = (Node *) lfirst(args);
-					Node	   *newe;
-
-					newe = transformExpr(pstate, e);
-					newargs = lappend(newargs, newe);
-					typeids = lappend_oid(typeids, exprType(newe));
-				}
-
-				newc->coalescetype = select_common_type(typeids, "COALESCE");
-
-				/* Convert arguments if necessary */
-				foreach(args, newargs)
-				{
-					Node	   *e = (Node *) lfirst(args);
-					Node	   *newe;
-
-					newe = coerce_to_common_type(pstate, e,
-												 newc->coalescetype,
-												 "COALESCE");
-					newcoercedargs = lappend(newcoercedargs, newe);
-				}
-
-				newc->args = newcoercedargs;
-				result = (Node *) newc;
-				break;
-			}
+		case T_MinMaxExpr:
+			result = transformMinMaxExpr(pstate, (MinMaxExpr *) expr);
+			break;
 
 		case T_NullTest:
 			{
@@ -891,45 +225,8 @@ transformExpr(ParseState *pstate, Node *expr)
 			}
 
 		case T_BooleanTest:
-			{
-				BooleanTest *b = (BooleanTest *) expr;
-				const char *clausename;
-
-				switch (b->booltesttype)
-				{
-					case IS_TRUE:
-						clausename = "IS TRUE";
-						break;
-					case IS_NOT_TRUE:
-						clausename = "IS NOT TRUE";
-						break;
-					case IS_FALSE:
-						clausename = "IS FALSE";
-						break;
-					case IS_NOT_FALSE:
-						clausename = "IS NOT FALSE";
-						break;
-					case IS_UNKNOWN:
-						clausename = "IS UNKNOWN";
-						break;
-					case IS_NOT_UNKNOWN:
-						clausename = "IS NOT UNKNOWN";
-						break;
-					default:
-						elog(ERROR, "unrecognized booltesttype: %d",
-							 (int) b->booltesttype);
-						clausename = NULL;		/* keep compiler quiet */
-				}
-
-				b->arg = (Expr *) transformExpr(pstate, (Node *) b->arg);
-
-				b->arg = (Expr *) coerce_to_boolean(pstate,
-													(Node *) b->arg,
-													clausename);
-
-				result = expr;
-				break;
-			}
+			result = transformBooleanTest(pstate, (BooleanTest *) expr);
+			break;
 
 			/*********************************************
 			 * Quietly accept node types that may be presented when we are
@@ -981,8 +278,8 @@ transformIndirection(ParseState *pstate, Node *basenode, List *indirection)
 
 	/*
 	 * We have to split any field-selection operations apart from
-	 * subscripting.  Adjacent A_Indices nodes have to be treated as a
-	 * single multidimensional subscript operation.
+	 * subscripting.  Adjacent A_Indices nodes have to be treated as a single
+	 * multidimensional subscript operation.
 	 */
 	foreach(i, indirection)
 	{
@@ -998,7 +295,7 @@ transformIndirection(ParseState *pstate, Node *basenode, List *indirection)
 			if (subscripts)
 				result = (Node *) transformArraySubscripts(pstate,
 														   result,
-														exprType(result),
+														   exprType(result),
 														   InvalidOid,
 														   -1,
 														   subscripts,
@@ -1068,10 +365,10 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 					/*
 					 * Not known as a column of any range-table entry.
 					 *
-					 * Consider the possibility that it's VALUE in a domain
-					 * check expression.  (We handle VALUE as a name, not
-					 * a keyword, to avoid breaking a lot of applications
-					 * that have used VALUE as a column name in the past.)
+					 * Consider the possibility that it's VALUE in a domain check
+					 * expression.	(We handle VALUE as a name, not a keyword,
+					 * to avoid breaking a lot of applications that have used
+					 * VALUE as a column name in the past.)
 					 */
 					if (pstate->p_value_substitute != NULL &&
 						strcmp(name, "value") == 0)
@@ -1082,12 +379,12 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 
 					/*
 					 * Try to find the name as a relation.	Note that only
-					 * relations already entered into the rangetable will
-					 * be recognized.
+					 * relations already entered into the rangetable will be
+					 * recognized.
 					 *
 					 * This is a hack for backwards compatibility with
-					 * PostQUEL-inspired syntax.  The preferred form now
-					 * is "rel.*".
+					 * PostQUEL-inspired syntax.  The preferred form now is
+					 * "rel.*".
 					 */
 					if (refnameRangeTblEntry(pstate, NULL, name,
 											 &levels_up) != NULL)
@@ -1117,13 +414,13 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 				if (node == NULL)
 				{
 					/*
-					 * Not known as a column of any range-table entry, so
-					 * try it as a function call.  Here, we will create an
+					 * Not known as a column of any range-table entry, so try
+					 * it as a function call.  Here, we will create an
 					 * implicit RTE for tables not already entered.
 					 */
 					node = transformWholeRowRef(pstate, NULL, name1);
 					node = ParseFuncOrColumn(pstate,
-										   list_make1(makeString(name2)),
+											 list_make1(makeString(name2)),
 											 list_make1(node),
 											 false, false, true);
 				}
@@ -1149,7 +446,7 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 					/* Try it as a function call */
 					node = transformWholeRowRef(pstate, name1, name2);
 					node = ParseFuncOrColumn(pstate,
-										   list_make1(makeString(name3)),
+											 list_make1(makeString(name3)),
 											 list_make1(node),
 											 false, false, true);
 				}
@@ -1185,7 +482,7 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 					/* Try it as a function call */
 					node = transformWholeRowRef(pstate, name2, name3);
 					node = ParseFuncOrColumn(pstate,
-										   list_make1(makeString(name4)),
+											 list_make1(makeString(name4)),
 											 list_make1(node),
 											 false, false, true);
 				}
@@ -1194,13 +491,820 @@ transformColumnRef(ParseState *pstate, ColumnRef *cref)
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_SYNTAX_ERROR),
-			errmsg("improper qualified name (too many dotted names): %s",
-				   NameListToString(cref->fields))));
+				errmsg("improper qualified name (too many dotted names): %s",
+					   NameListToString(cref->fields))));
 			node = NULL;		/* keep compiler quiet */
 			break;
 	}
 
 	return node;
+}
+
+static Node *
+transformParamRef(ParseState *pstate, ParamRef *pref)
+{
+	int			paramno = pref->number;
+	ParseState *toppstate;
+	Param	   *param;
+
+	/*
+	 * Find topmost ParseState, which is where paramtype info lives.
+	 */
+	toppstate = pstate;
+	while (toppstate->parentParseState != NULL)
+		toppstate = toppstate->parentParseState;
+
+	/* Check parameter number is in range */
+	if (paramno <= 0)			/* probably can't happen? */
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_PARAMETER),
+				 errmsg("there is no parameter $%d", paramno)));
+	if (paramno > toppstate->p_numparams)
+	{
+		if (!toppstate->p_variableparams)
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_PARAMETER),
+					 errmsg("there is no parameter $%d",
+							paramno)));
+		/* Okay to enlarge param array */
+		if (toppstate->p_paramtypes)
+			toppstate->p_paramtypes =
+				(Oid *) repalloc(toppstate->p_paramtypes,
+								 paramno * sizeof(Oid));
+		else
+			toppstate->p_paramtypes =
+				(Oid *) palloc(paramno * sizeof(Oid));
+		/* Zero out the previously-unreferenced slots */
+		MemSet(toppstate->p_paramtypes + toppstate->p_numparams,
+			   0,
+			   (paramno - toppstate->p_numparams) * sizeof(Oid));
+		toppstate->p_numparams = paramno;
+	}
+	if (toppstate->p_variableparams)
+	{
+		/* If not seen before, initialize to UNKNOWN type */
+		if (toppstate->p_paramtypes[paramno - 1] == InvalidOid)
+			toppstate->p_paramtypes[paramno - 1] = UNKNOWNOID;
+	}
+
+	param = makeNode(Param);
+	param->paramkind = PARAM_NUM;
+	param->paramid = (AttrNumber) paramno;
+	param->paramtype = toppstate->p_paramtypes[paramno - 1];
+
+	return (Node *) param;
+}
+
+static Node *
+transformAExprOp(ParseState *pstate, A_Expr *a)
+{
+	Node	   *lexpr = a->lexpr;
+	Node	   *rexpr = a->rexpr;
+	Node	   *result;
+
+	/*
+	 * Special-case "foo = NULL" and "NULL = foo" for compatibility with
+	 * standards-broken products (like Microsoft's).  Turn these into IS NULL
+	 * exprs.
+	 */
+	if (Transform_null_equals &&
+		list_length(a->name) == 1 &&
+		strcmp(strVal(linitial(a->name)), "=") == 0 &&
+		(exprIsNullConstant(lexpr) || exprIsNullConstant(rexpr)))
+	{
+		NullTest   *n = makeNode(NullTest);
+
+		n->nulltesttype = IS_NULL;
+
+		if (exprIsNullConstant(lexpr))
+			n->arg = (Expr *) rexpr;
+		else
+			n->arg = (Expr *) lexpr;
+
+		result = transformExpr(pstate, (Node *) n);
+	}
+	else if (lexpr && IsA(lexpr, RowExpr) &&
+			 rexpr && IsA(rexpr, SubLink) &&
+			 ((SubLink *) rexpr)->subLinkType == EXPR_SUBLINK)
+	{
+		/*
+		 * Convert "row op subselect" into a MULTIEXPR sublink. Formerly the
+		 * grammar did this, but now that a row construct is allowed anywhere
+		 * in expressions, it's easier to do it here.
+		 */
+		SubLink    *s = (SubLink *) rexpr;
+
+		s->subLinkType = MULTIEXPR_SUBLINK;
+		s->lefthand = ((RowExpr *) lexpr)->args;
+		s->operName = a->name;
+		result = transformExpr(pstate, (Node *) s);
+	}
+	else if (lexpr && IsA(lexpr, RowExpr) &&
+			 rexpr && IsA(rexpr, RowExpr))
+	{
+		/* "row op row" */
+		result = make_row_op(pstate, a->name, lexpr, rexpr);
+	}
+	else
+	{
+		/* Ordinary scalar operator */
+		lexpr = transformExpr(pstate, lexpr);
+		rexpr = transformExpr(pstate, rexpr);
+
+		result = (Node *) make_op(pstate,
+								  a->name,
+								  lexpr,
+								  rexpr);
+	}
+
+	return result;
+}
+
+static Node *
+transformAExprAnd(ParseState *pstate, A_Expr *a)
+{
+	Node	   *lexpr = transformExpr(pstate, a->lexpr);
+	Node	   *rexpr = transformExpr(pstate, a->rexpr);
+
+	lexpr = coerce_to_boolean(pstate, lexpr, "AND");
+	rexpr = coerce_to_boolean(pstate, rexpr, "AND");
+
+	return (Node *) makeBoolExpr(AND_EXPR,
+								 list_make2(lexpr, rexpr));
+}
+
+static Node *
+transformAExprOr(ParseState *pstate, A_Expr *a)
+{
+	Node	   *lexpr = transformExpr(pstate, a->lexpr);
+	Node	   *rexpr = transformExpr(pstate, a->rexpr);
+
+	lexpr = coerce_to_boolean(pstate, lexpr, "OR");
+	rexpr = coerce_to_boolean(pstate, rexpr, "OR");
+
+	return (Node *) makeBoolExpr(OR_EXPR,
+								 list_make2(lexpr, rexpr));
+}
+
+static Node *
+transformAExprNot(ParseState *pstate, A_Expr *a)
+{
+	Node	   *rexpr = transformExpr(pstate, a->rexpr);
+
+	rexpr = coerce_to_boolean(pstate, rexpr, "NOT");
+
+	return (Node *) makeBoolExpr(NOT_EXPR,
+								 list_make1(rexpr));
+}
+
+static Node *
+transformAExprOpAny(ParseState *pstate, A_Expr *a)
+{
+	Node	   *lexpr = transformExpr(pstate, a->lexpr);
+	Node	   *rexpr = transformExpr(pstate, a->rexpr);
+
+	return (Node *) make_scalar_array_op(pstate,
+										 a->name,
+										 true,
+										 lexpr,
+										 rexpr);
+}
+
+static Node *
+transformAExprOpAll(ParseState *pstate, A_Expr *a)
+{
+	Node	   *lexpr = transformExpr(pstate, a->lexpr);
+	Node	   *rexpr = transformExpr(pstate, a->rexpr);
+
+	return (Node *) make_scalar_array_op(pstate,
+										 a->name,
+										 false,
+										 lexpr,
+										 rexpr);
+}
+
+static Node *
+transformAExprDistinct(ParseState *pstate, A_Expr *a)
+{
+	Node	   *lexpr = a->lexpr;
+	Node	   *rexpr = a->rexpr;
+
+	if (lexpr && IsA(lexpr, RowExpr) &&
+		rexpr && IsA(rexpr, RowExpr))
+	{
+		/* "row op row" */
+		return make_row_distinct_op(pstate, a->name,
+									lexpr, rexpr);
+	}
+	else
+	{
+		/* Ordinary scalar operator */
+		lexpr = transformExpr(pstate, lexpr);
+		rexpr = transformExpr(pstate, rexpr);
+
+		return (Node *) make_distinct_op(pstate,
+										 a->name,
+										 lexpr,
+										 rexpr);
+	}
+}
+
+static Node *
+transformAExprNullIf(ParseState *pstate, A_Expr *a)
+{
+	Node	   *lexpr = transformExpr(pstate, a->lexpr);
+	Node	   *rexpr = transformExpr(pstate, a->rexpr);
+	Node	   *result;
+
+	result = (Node *) make_op(pstate,
+							  a->name,
+							  lexpr,
+							  rexpr);
+	if (((OpExpr *) result)->opresulttype != BOOLOID)
+		ereport(ERROR,
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+				 errmsg("NULLIF requires = operator to yield boolean")));
+
+	/*
+	 * We rely on NullIfExpr and OpExpr being the same struct
+	 */
+	NodeSetTag(result, T_NullIfExpr);
+
+	return result;
+}
+
+static Node *
+transformAExprOf(ParseState *pstate, A_Expr *a)
+{
+	/*
+	 * Checking an expression for match to type.  Will result in a boolean
+	 * constant node.
+	 */
+	ListCell   *telem;
+	A_Const    *n;
+	Oid			ltype,
+				rtype;
+	bool		matched = false;
+	Node	   *lexpr = transformExpr(pstate, a->lexpr);
+
+	ltype = exprType(lexpr);
+	foreach(telem, (List *) a->rexpr)
+	{
+		rtype = LookupTypeName(lfirst(telem));
+		matched = (rtype == ltype);
+		if (matched)
+			break;
+	}
+
+	/*
+	 * Expect two forms: equals or not equals.	Flip the sense of the result
+	 * for not equals.
+	 */
+	if (strcmp(strVal(linitial(a->name)), "!=") == 0)
+		matched = (!matched);
+
+	n = makeNode(A_Const);
+	n->val.type = T_String;
+	n->val.val.str = (matched ? "t" : "f");
+	n->typename = SystemTypeName("bool");
+
+	return transformExpr(pstate, (Node *) n);
+}
+
+static Node *
+transformFuncCall(ParseState *pstate, FuncCall *fn)
+{
+	List	   *targs;
+	ListCell   *args;
+
+	/*
+	 * Transform the list of arguments.  We use a shallow list copy and then
+	 * transform-in-place to avoid O(N^2) behavior from repeated lappend's.
+	 *
+	 * XXX: repeated lappend() would no longer result in O(n^2) behavior; worth
+	 * reconsidering this design?
+	 */
+	targs = list_copy(fn->args);
+	foreach(args, targs)
+	{
+		lfirst(args) = transformExpr(pstate,
+									 (Node *) lfirst(args));
+	}
+
+	return ParseFuncOrColumn(pstate,
+							 fn->funcname,
+							 targs,
+							 fn->agg_star,
+							 fn->agg_distinct,
+							 false);
+}
+
+static Node *
+transformCaseExpr(ParseState *pstate, CaseExpr *c)
+{
+	CaseExpr   *newc;
+	Node	   *arg;
+	CaseTestExpr *placeholder;
+	List	   *newargs;
+	List	   *typeids;
+	ListCell   *l;
+	Node	   *defresult;
+	Oid			ptype;
+
+	/* If we already transformed this node, do nothing */
+	if (OidIsValid(c->casetype))
+		return (Node *) c;
+
+	newc = makeNode(CaseExpr);
+
+	/* transform the test expression, if any */
+	arg = transformExpr(pstate, (Node *) c->arg);
+
+	/* generate placeholder for test expression */
+	if (arg)
+	{
+		/*
+		 * If test expression is an untyped literal, force it to text. We have
+		 * to do something now because we won't be able to do this coercion on
+		 * the placeholder.  This is not as flexible as what was done in 7.4
+		 * and before, but it's good enough to handle the sort of silly coding
+		 * commonly seen.
+		 */
+		if (exprType(arg) == UNKNOWNOID)
+			arg = coerce_to_common_type(pstate, arg, TEXTOID, "CASE");
+
+		placeholder = makeNode(CaseTestExpr);
+		placeholder->typeId = exprType(arg);
+		placeholder->typeMod = exprTypmod(arg);
+	}
+	else
+		placeholder = NULL;
+
+	newc->arg = (Expr *) arg;
+
+	/* transform the list of arguments */
+	newargs = NIL;
+	typeids = NIL;
+	foreach(l, c->args)
+	{
+		CaseWhen   *w = (CaseWhen *) lfirst(l);
+		CaseWhen   *neww = makeNode(CaseWhen);
+		Node	   *warg;
+
+		Assert(IsA(w, CaseWhen));
+
+		warg = (Node *) w->expr;
+		if (placeholder)
+		{
+			/* shorthand form was specified, so expand... */
+			warg = (Node *) makeSimpleA_Expr(AEXPR_OP, "=",
+											 (Node *) placeholder,
+											 warg);
+		}
+		neww->expr = (Expr *) transformExpr(pstate, warg);
+
+		neww->expr = (Expr *) coerce_to_boolean(pstate,
+												(Node *) neww->expr,
+												"CASE/WHEN");
+
+		warg = (Node *) w->result;
+		neww->result = (Expr *) transformExpr(pstate, warg);
+
+		newargs = lappend(newargs, neww);
+		typeids = lappend_oid(typeids, exprType((Node *) neww->result));
+	}
+
+	newc->args = newargs;
+
+	/* transform the default clause */
+	defresult = (Node *) c->defresult;
+	if (defresult == NULL)
+	{
+		A_Const    *n = makeNode(A_Const);
+
+		n->val.type = T_Null;
+		defresult = (Node *) n;
+	}
+	newc->defresult = (Expr *) transformExpr(pstate, defresult);
+
+	/*
+	 * Note: default result is considered the most significant type in
+	 * determining preferred type. This is how the code worked before, but it
+	 * seems a little bogus to me --- tgl
+	 */
+	typeids = lcons_oid(exprType((Node *) newc->defresult), typeids);
+
+	ptype = select_common_type(typeids, "CASE");
+	Assert(OidIsValid(ptype));
+	newc->casetype = ptype;
+
+	/* Convert default result clause, if necessary */
+	newc->defresult = (Expr *)
+		coerce_to_common_type(pstate,
+							  (Node *) newc->defresult,
+							  ptype,
+							  "CASE/ELSE");
+
+	/* Convert when-clause results, if necessary */
+	foreach(l, newc->args)
+	{
+		CaseWhen   *w = (CaseWhen *) lfirst(l);
+
+		w->result = (Expr *)
+			coerce_to_common_type(pstate,
+								  (Node *) w->result,
+								  ptype,
+								  "CASE/WHEN");
+	}
+
+	return (Node *) newc;
+}
+
+static Node *
+transformSubLink(ParseState *pstate, SubLink *sublink)
+{
+	List	   *qtrees;
+	Query	   *qtree;
+	Node	   *result = (Node *) sublink;
+
+	/* If we already transformed this node, do nothing */
+	if (IsA(sublink->subselect, Query))
+		return result;
+
+	pstate->p_hasSubLinks = true;
+	qtrees = parse_sub_analyze(sublink->subselect, pstate);
+	if (list_length(qtrees) != 1)
+		elog(ERROR, "bad query in sub-select");
+	qtree = (Query *) linitial(qtrees);
+	if (qtree->commandType != CMD_SELECT ||
+		qtree->resultRelation != 0)
+		elog(ERROR, "bad query in sub-select");
+	sublink->subselect = (Node *) qtree;
+
+	if (sublink->subLinkType == EXISTS_SUBLINK)
+	{
+		/*
+		 * EXISTS needs no lefthand or combining operator.	These fields
+		 * should be NIL already, but make sure.
+		 */
+		sublink->lefthand = NIL;
+		sublink->operName = NIL;
+		sublink->operOids = NIL;
+		sublink->useOr = FALSE;
+	}
+	else if (sublink->subLinkType == EXPR_SUBLINK ||
+			 sublink->subLinkType == ARRAY_SUBLINK)
+	{
+		ListCell   *tlist_item = list_head(qtree->targetList);
+
+		/*
+		 * Make sure the subselect delivers a single column (ignoring resjunk
+		 * targets).
+		 */
+		if (tlist_item == NULL ||
+			((TargetEntry *) lfirst(tlist_item))->resjunk)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("subquery must return a column")));
+		while ((tlist_item = lnext(tlist_item)) != NULL)
+		{
+			if (!((TargetEntry *) lfirst(tlist_item))->resjunk)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("subquery must return only one column")));
+		}
+
+		/*
+		 * EXPR and ARRAY need no lefthand or combining operator. These fields
+		 * should be NIL already, but make sure.
+		 */
+		sublink->lefthand = NIL;
+		sublink->operName = NIL;
+		sublink->operOids = NIL;
+		sublink->useOr = FALSE;
+	}
+	else
+	{
+		/* ALL, ANY, or MULTIEXPR: generate operator list */
+		List	   *left_list = sublink->lefthand;
+		List	   *right_list = qtree->targetList;
+		int			row_length = list_length(left_list);
+		bool		needNot = false;
+		List	   *op = sublink->operName;
+		char	   *opname = strVal(llast(op));
+		ListCell   *l;
+		ListCell   *ll_item;
+
+		/* transform lefthand expressions */
+		foreach(l, left_list)
+			lfirst(l) = transformExpr(pstate, lfirst(l));
+
+		/*
+		 * If the expression is "<> ALL" (with unqualified opname) then
+		 * convert it to "NOT IN".	This is a hack to improve efficiency of
+		 * expressions output by pre-7.4 Postgres.
+		 */
+		if (sublink->subLinkType == ALL_SUBLINK &&
+			list_length(op) == 1 && strcmp(opname, "<>") == 0)
+		{
+			sublink->subLinkType = ANY_SUBLINK;
+			opname = pstrdup("=");
+			op = list_make1(makeString(opname));
+			sublink->operName = op;
+			needNot = true;
+		}
+
+		/* Set useOr if op is "<>" (possibly qualified) */
+		if (strcmp(opname, "<>") == 0)
+			sublink->useOr = TRUE;
+		else
+			sublink->useOr = FALSE;
+
+		/* Combining operators other than =/<> is dubious... */
+		if (row_length != 1 &&
+			strcmp(opname, "=") != 0 &&
+			strcmp(opname, "<>") != 0)
+			ereport(ERROR,
+					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					 errmsg("row comparison cannot use operator %s",
+							opname)));
+
+		/*
+		 * To build the list of combining operator OIDs, we must scan
+		 * subquery's targetlist to find values that will be matched against
+		 * lefthand values.  We need to ignore resjunk targets, so doing the
+		 * outer iteration over right_list is easier than doing it over
+		 * left_list.
+		 */
+		sublink->operOids = NIL;
+
+		ll_item = list_head(left_list);
+		foreach(l, right_list)
+		{
+			TargetEntry *tent = (TargetEntry *) lfirst(l);
+			Node	   *lexpr;
+			Operator	optup;
+			Form_pg_operator opform;
+
+			if (tent->resjunk)
+				continue;
+
+			if (ll_item == NULL)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("subquery has too many columns")));
+			lexpr = lfirst(ll_item);
+			ll_item = lnext(ll_item);
+
+			/*
+			 * It's OK to use oper() not compatible_oper() here, because
+			 * make_subplan() will insert type coercion calls if needed.
+			 */
+			optup = oper(op,
+						 exprType(lexpr),
+						 exprType((Node *) tent->expr),
+						 false);
+			opform = (Form_pg_operator) GETSTRUCT(optup);
+
+			if (opform->oprresult != BOOLOID)
+				ereport(ERROR,
+						(errcode(ERRCODE_DATATYPE_MISMATCH),
+				  errmsg("operator %s must return type boolean, not type %s",
+						 opname,
+						 format_type_be(opform->oprresult)),
+						 errhint("The operator of a quantified predicate subquery must return type boolean.")));
+
+			if (get_func_retset(opform->oprcode))
+				ereport(ERROR,
+						(errcode(ERRCODE_DATATYPE_MISMATCH),
+						 errmsg("operator %s must not return a set",
+								opname),
+						 errhint("The operator of a quantified predicate subquery must return type boolean.")));
+
+			sublink->operOids = lappend_oid(sublink->operOids,
+											oprid(optup));
+
+			ReleaseSysCache(optup);
+		}
+		if (ll_item != NULL)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("subquery has too few columns")));
+
+		if (needNot)
+		{
+			result = coerce_to_boolean(pstate, result, "NOT");
+			result = (Node *) makeBoolExpr(NOT_EXPR,
+										   list_make1(result));
+		}
+	}
+
+	return result;
+}
+
+static Node *
+transformArrayExpr(ParseState *pstate, ArrayExpr *a)
+{
+	ArrayExpr  *newa = makeNode(ArrayExpr);
+	List	   *newelems = NIL;
+	List	   *newcoercedelems = NIL;
+	List	   *typeids = NIL;
+	ListCell   *element;
+	Oid			array_type;
+	Oid			element_type;
+
+	/* Transform the element expressions */
+	foreach(element, a->elements)
+	{
+		Node	   *e = (Node *) lfirst(element);
+		Node	   *newe;
+
+		newe = transformExpr(pstate, e);
+		newelems = lappend(newelems, newe);
+		typeids = lappend_oid(typeids, exprType(newe));
+	}
+
+	/* Select a common type for the elements */
+	element_type = select_common_type(typeids, "ARRAY");
+
+	/* Coerce arguments to common type if necessary */
+	foreach(element, newelems)
+	{
+		Node	   *e = (Node *) lfirst(element);
+		Node	   *newe;
+
+		newe = coerce_to_common_type(pstate, e,
+									 element_type,
+									 "ARRAY");
+		newcoercedelems = lappend(newcoercedelems, newe);
+	}
+
+	/* Do we have an array type to use? */
+	array_type = get_array_type(element_type);
+	if (array_type != InvalidOid)
+	{
+		/* Elements are presumably of scalar type */
+		newa->multidims = false;
+	}
+	else
+	{
+		/* Must be nested array expressions */
+		newa->multidims = true;
+
+		array_type = element_type;
+		element_type = get_element_type(array_type);
+		if (!OidIsValid(element_type))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("could not find array type for data type %s",
+							format_type_be(array_type))));
+	}
+
+	newa->array_typeid = array_type;
+	newa->element_typeid = element_type;
+	newa->elements = newcoercedelems;
+
+	return (Node *) newa;
+}
+
+static Node *
+transformRowExpr(ParseState *pstate, RowExpr *r)
+{
+	RowExpr    *newr = makeNode(RowExpr);
+	List	   *newargs = NIL;
+	ListCell   *arg;
+
+	/* Transform the field expressions */
+	foreach(arg, r->args)
+	{
+		Node	   *e = (Node *) lfirst(arg);
+		Node	   *newe;
+
+		newe = transformExpr(pstate, e);
+		newargs = lappend(newargs, newe);
+	}
+	newr->args = newargs;
+
+	/* Barring later casting, we consider the type RECORD */
+	newr->row_typeid = RECORDOID;
+	newr->row_format = COERCE_IMPLICIT_CAST;
+
+	return (Node *) newr;
+}
+
+static Node *
+transformCoalesceExpr(ParseState *pstate, CoalesceExpr *c)
+{
+	CoalesceExpr *newc = makeNode(CoalesceExpr);
+	List	   *newargs = NIL;
+	List	   *newcoercedargs = NIL;
+	List	   *typeids = NIL;
+	ListCell   *args;
+
+	foreach(args, c->args)
+	{
+		Node	   *e = (Node *) lfirst(args);
+		Node	   *newe;
+
+		newe = transformExpr(pstate, e);
+		newargs = lappend(newargs, newe);
+		typeids = lappend_oid(typeids, exprType(newe));
+	}
+
+	newc->coalescetype = select_common_type(typeids, "COALESCE");
+
+	/* Convert arguments if necessary */
+	foreach(args, newargs)
+	{
+		Node	   *e = (Node *) lfirst(args);
+		Node	   *newe;
+
+		newe = coerce_to_common_type(pstate, e,
+									 newc->coalescetype,
+									 "COALESCE");
+		newcoercedargs = lappend(newcoercedargs, newe);
+	}
+
+	newc->args = newcoercedargs;
+	return (Node *) newc;
+}
+
+static Node *
+transformMinMaxExpr(ParseState *pstate, MinMaxExpr *m)
+{
+	MinMaxExpr *newm = makeNode(MinMaxExpr);
+	List	   *newargs = NIL;
+	List	   *newcoercedargs = NIL;
+	List	   *typeids = NIL;
+	ListCell   *args;
+
+	newm->op = m->op;
+	foreach(args, m->args)
+	{
+		Node	   *e = (Node *) lfirst(args);
+		Node	   *newe;
+
+		newe = transformExpr(pstate, e);
+		newargs = lappend(newargs, newe);
+		typeids = lappend_oid(typeids, exprType(newe));
+	}
+
+	newm->minmaxtype = select_common_type(typeids, "GREATEST/LEAST");
+
+	/* Convert arguments if necessary */
+	foreach(args, newargs)
+	{
+		Node	   *e = (Node *) lfirst(args);
+		Node	   *newe;
+
+		newe = coerce_to_common_type(pstate, e,
+									 newm->minmaxtype,
+									 "GREATEST/LEAST");
+		newcoercedargs = lappend(newcoercedargs, newe);
+	}
+
+	newm->args = newcoercedargs;
+	return (Node *) newm;
+}
+
+static Node *
+transformBooleanTest(ParseState *pstate, BooleanTest *b)
+{
+	const char *clausename;
+
+	switch (b->booltesttype)
+	{
+		case IS_TRUE:
+			clausename = "IS TRUE";
+			break;
+		case IS_NOT_TRUE:
+			clausename = "IS NOT TRUE";
+			break;
+		case IS_FALSE:
+			clausename = "IS FALSE";
+			break;
+		case IS_NOT_FALSE:
+			clausename = "IS NOT FALSE";
+			break;
+		case IS_UNKNOWN:
+			clausename = "IS UNKNOWN";
+			break;
+		case IS_NOT_UNKNOWN:
+			clausename = "IS NOT UNKNOWN";
+			break;
+		default:
+			elog(ERROR, "unrecognized booltesttype: %d",
+				 (int) b->booltesttype);
+			clausename = NULL;	/* keep compiler quiet */
+	}
+
+	b->arg = (Expr *) transformExpr(pstate, (Node *) b->arg);
+
+	b->arg = (Expr *) coerce_to_boolean(pstate,
+										(Node *) b->arg,
+										clausename);
+
+	return (Node *) b;
 }
 
 /*
@@ -1276,10 +1380,10 @@ transformWholeRowRef(ParseState *pstate, char *schemaname, char *relname)
 		default:
 
 			/*
-			 * RTE is a join or subselect.	We represent this as a
-			 * whole-row Var of RECORD type.  (Note that in most cases the
-			 * Var will be expanded to a RowExpr during planning, but that
-			 * is not our concern here.)
+			 * RTE is a join or subselect.	We represent this as a whole-row
+			 * Var of RECORD type.	(Note that in most cases the Var will be
+			 * expanded to a RowExpr during planning, but that is not our
+			 * concern here.)
 			 */
 			result = (Node *) makeVar(vnum,
 									  InvalidAttrNumber,
@@ -1351,18 +1455,16 @@ exprType(Node *expr)
 						elog(ERROR, "cannot get type for untransformed sublink");
 					tent = (TargetEntry *) linitial(qtree->targetList);
 					Assert(IsA(tent, TargetEntry));
-					Assert(!tent->resdom->resjunk);
-					if (sublink->subLinkType == EXPR_SUBLINK)
-						type = tent->resdom->restype;
-					else
+					Assert(!tent->resjunk);
+					type = exprType((Node *) tent->expr);
+					if (sublink->subLinkType == ARRAY_SUBLINK)
 					{
-						/* ARRAY_SUBLINK */
-						type = get_array_type(tent->resdom->restype);
+						type = get_array_type(type);
 						if (!OidIsValid(type))
 							ereport(ERROR,
 									(errcode(ERRCODE_UNDEFINED_OBJECT),
 									 errmsg("could not find array type for data type %s",
-								format_type_be(tent->resdom->restype))));
+							format_type_be(exprType((Node *) tent->expr)))));
 					}
 				}
 				else
@@ -1375,10 +1477,9 @@ exprType(Node *expr)
 		case T_SubPlan:
 			{
 				/*
-				 * Although the parser does not ever deal with
-				 * already-planned expression trees, we support SubPlan
-				 * nodes in this routine for the convenience of
-				 * ruleutils.c.
+				 * Although the parser does not ever deal with already-planned
+				 * expression trees, we support SubPlan nodes in this routine
+				 * for the convenience of ruleutils.c.
 				 */
 				SubPlan    *subplan = (SubPlan *) expr;
 
@@ -1390,18 +1491,16 @@ exprType(Node *expr)
 
 					tent = (TargetEntry *) linitial(subplan->plan->targetlist);
 					Assert(IsA(tent, TargetEntry));
-					Assert(!tent->resdom->resjunk);
-					if (subplan->subLinkType == EXPR_SUBLINK)
-						type = tent->resdom->restype;
-					else
+					Assert(!tent->resjunk);
+					type = exprType((Node *) tent->expr);
+					if (subplan->subLinkType == ARRAY_SUBLINK)
 					{
-						/* ARRAY_SUBLINK */
-						type = get_array_type(tent->resdom->restype);
+						type = get_array_type(type);
 						if (!OidIsValid(type))
 							ereport(ERROR,
 									(errcode(ERRCODE_UNDEFINED_OBJECT),
 									 errmsg("could not find array type for data type %s",
-								format_type_be(tent->resdom->restype))));
+							format_type_be(exprType((Node *) tent->expr)))));
 					}
 				}
 				else
@@ -1440,6 +1539,9 @@ exprType(Node *expr)
 			break;
 		case T_CoalesceExpr:
 			type = ((CoalesceExpr *) expr)->coalescetype;
+			break;
+		case T_MinMaxExpr:
+			type = ((MinMaxExpr *) expr)->minmaxtype;
 			break;
 		case T_NullIfExpr:
 			type = exprType((Node *) linitial(((NullIfExpr *) expr)->args));
@@ -1492,11 +1594,11 @@ exprTypmod(Node *expr)
 					case BPCHAROID:
 						if (!con->constisnull)
 						{
-							int32 len = VARSIZE(DatumGetPointer(con->constvalue)) - VARHDRSZ;
+							int32		len = VARSIZE(DatumGetPointer(con->constvalue)) - VARHDRSZ;
 
+							/* if multi-byte, take len and find # characters */
 							if (pg_database_encoding_max_length() > 1)
 								len = pg_mbstrlen_with_len(VARDATA(DatumGetPointer(con->constvalue)), len);
-
 							return len + VARHDRSZ;
 						}
 						break;
@@ -1521,8 +1623,8 @@ exprTypmod(Node *expr)
 		case T_CaseExpr:
 			{
 				/*
-				 * If all the alternatives agree on type/typmod, return
-				 * that typmod, else use -1
+				 * If all the alternatives agree on type/typmod, return that
+				 * typmod, else use -1
 				 */
 				CaseExpr   *cexpr = (CaseExpr *) expr;
 				Oid			casetype = cexpr->casetype;
@@ -1554,8 +1656,8 @@ exprTypmod(Node *expr)
 		case T_CoalesceExpr:
 			{
 				/*
-				 * If all the alternatives agree on type/typmod, return
-				 * that typmod, else use -1
+				 * If all the alternatives agree on type/typmod, return that
+				 * typmod, else use -1
 				 */
 				CoalesceExpr *cexpr = (CoalesceExpr *) expr;
 				Oid			coalescetype = cexpr->coalescetype;
@@ -1568,6 +1670,30 @@ exprTypmod(Node *expr)
 					Node	   *e = (Node *) lfirst(arg);
 
 					if (exprType(e) != coalescetype)
+						return -1;
+					if (exprTypmod(e) != typmod)
+						return -1;
+				}
+				return typmod;
+			}
+			break;
+		case T_MinMaxExpr:
+			{
+				/*
+				 * If all the alternatives agree on type/typmod, return that
+				 * typmod, else use -1
+				 */
+				MinMaxExpr *mexpr = (MinMaxExpr *) expr;
+				Oid			minmaxtype = mexpr->minmaxtype;
+				int32		typmod;
+				ListCell   *arg;
+
+				typmod = exprTypmod((Node *) linitial(mexpr->args));
+				foreach(arg, mexpr->args)
+				{
+					Node	   *e = (Node *) lfirst(arg);
+
+					if (exprType(e) != minmaxtype)
 						return -1;
 					if (exprTypmod(e) != typmod)
 						return -1;
@@ -1628,9 +1754,9 @@ exprIsLengthCoercion(Node *expr, int32 *coercedTypmod)
 		return false;
 
 	/*
-	 * If it's not a two-argument or three-argument function with the
-	 * second argument being an int4 constant, it can't have been created
-	 * from a length coercion (it must be a type coercion, instead).
+	 * If it's not a two-argument or three-argument function with the second
+	 * argument being an int4 constant, it can't have been created from a
+	 * length coercion (it must be a type coercion, instead).
 	 */
 	nargs = list_length(func->args);
 	if (nargs < 2 || nargs > 3)
@@ -1712,9 +1838,9 @@ make_row_op(ParseState *pstate, List *opname, Node *ltree, Node *rtree)
 				 errmsg("unequal number of entries in row expression")));
 
 	/*
-	 * XXX it's really wrong to generate a simple AND combination for < <=
-	 * > >=.  We probably need to invent a new runtime node type to handle
-	 * those correctly.  For the moment, though, keep on doing this ...
+	 * XXX it's really wrong to generate a simple AND combination for < <= >
+	 * >=.	We probably need to invent a new runtime node type to handle those
+	 * correctly.  For the moment, though, keep on doing this ...
 	 */
 	oprname = strVal(llast(opname));
 
@@ -1730,8 +1856,8 @@ make_row_op(ParseState *pstate, List *opname, Node *ltree, Node *rtree)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-			   errmsg("operator %s is not supported for row expressions",
-					  oprname)));
+				 errmsg("operator %s is not supported for row expressions",
+						oprname)));
 		boolop = 0;				/* keep compiler quiet */
 	}
 
@@ -1825,7 +1951,7 @@ make_distinct_op(ParseState *pstate, List *opname, Node *ltree, Node *rtree)
 	if (((OpExpr *) result)->opresulttype != BOOLOID)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
-		errmsg("IS DISTINCT FROM requires = operator to yield boolean")));
+		   errmsg("IS DISTINCT FROM requires = operator to yield boolean")));
 
 	/*
 	 * We rely on DistinctExpr and OpExpr being same struct

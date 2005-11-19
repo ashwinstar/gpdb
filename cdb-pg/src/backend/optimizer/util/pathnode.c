@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/util/pathnode.c,v 1.111.4.2 2005/07/22 19:12:33 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/util/pathnode.c,v 1.125 2005/10/15 02:49:21 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -61,8 +61,8 @@ compare_path_costs(Path *path1, Path *path2, CostSelector criterion)
 			return +1;
 
 		/*
-		 * If paths have the same startup cost (not at all unlikely),
-		 * order them by total cost.
+		 * If paths have the same startup cost (not at all unlikely), order
+		 * them by total cost.
 		 */
 		if (path1->total_cost < path2->total_cost)
 			return -1;
@@ -113,8 +113,8 @@ compare_fuzzy_path_costs(Path *path1, Path *path2, CostSelector criterion)
 			return -1;
 
 		/*
-		 * If paths have the same startup cost (not at all unlikely),
-		 * order them by total cost.
+		 * If paths have the same startup cost (not at all unlikely), order
+		 * them by total cost.
 		 */
 		if (path1->total_cost > path2->total_cost * 1.01)
 			return +1;
@@ -244,6 +244,9 @@ set_cheapest(RelOptInfo *parent_rel)
  *	  but just recycling discarded Path nodes is a very useful savings in
  *	  a large join tree.  We can recycle the List nodes of pathlist, too.
  *
+ *	  BUT: we do not pfree IndexPath objects, since they may be referenced as
+ *	  children of BitmapHeapPaths as well as being paths in their own right.
+ *
  * 'parent_rel' is the relation entry to which the path corresponds.
  * 'new_path' is a potential path for parent_rel.
  *
@@ -252,8 +255,7 @@ set_cheapest(RelOptInfo *parent_rel)
 void
 add_path(RelOptInfo *parent_rel, Path *new_path)
 {
-	bool		accept_new = true;		/* unless we find a superior old
-										 * path */
+	bool		accept_new = true;		/* unless we find a superior old path */
 	ListCell   *insert_after = NULL;	/* where to insert new item */
 	ListCell   *p1_prev = NULL;
 	ListCell   *p1;
@@ -261,10 +263,16 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
     if (!new_path)
         return;
 
-    /*
-	 * Loop to check proposed new path against old paths.  Note it is
-	 * possible for more than one old path to be tossed out because
-	 * new_path dominates it.
+	/*
+	 * This is a convenient place to check for query cancel --- no part of the
+	 * planner goes very long without calling add_path().
+	 */
+	CHECK_FOR_INTERRUPTS();
+
+	/*
+	 * Loop to check proposed new path against old paths.  Note it is possible
+	 * for more than one old path to be tossed out because new_path dominates
+	 * it.
 	 */
 	p1 = list_head(parent_rel->pathlist);		/* cannot use foreach here */
 	while (p1 != NULL)
@@ -274,20 +282,20 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 		int			costcmp;
 
 		/*
-		 * As of Postgres 8.0, we use fuzzy cost comparison to avoid
-		 * wasting cycles keeping paths that are really not significantly
-		 * different in cost.
+		 * As of Postgres 8.0, we use fuzzy cost comparison to avoid wasting
+		 * cycles keeping paths that are really not significantly different in
+		 * cost.
 		 */
 		costcmp = compare_fuzzy_path_costs(new_path, old_path, TOTAL_COST);
 
 		/*
-		 * If the two paths compare differently for startup and total
-		 * cost, then we want to keep both, and we can skip the (much
-		 * slower) comparison of pathkeys.	If they compare the same,
-		 * proceed with the pathkeys comparison.  Note: this test relies
-		 * on the fact that compare_fuzzy_path_costs will only return 0 if
-		 * both costs are effectively equal (and, therefore, there's no
-		 * need to call it twice in that case).
+		 * If the two paths compare differently for startup and total cost,
+		 * then we want to keep both, and we can skip the (much slower)
+		 * comparison of pathkeys.	If they compare the same, proceed with the
+		 * pathkeys comparison.  Note: this test relies on the fact that
+		 * compare_fuzzy_path_costs will only return 0 if both costs are
+		 * effectively equal (and, therefore, there's no need to call it twice
+		 * in that case).
 		 */
 		if (costcmp == 0 ||
 			costcmp == compare_fuzzy_path_costs(new_path, old_path,
@@ -303,16 +311,15 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 					else
 					{
 						/*
-						 * Same pathkeys, and fuzzily the same cost, so
-						 * keep just one --- but we'll do an exact cost
-						 * comparison to decide which.
+						 * Same pathkeys, and fuzzily the same cost, so keep
+						 * just one --- but we'll do an exact cost comparison
+						 * to decide which.
 						 */
 						if (compare_path_costs(new_path, old_path,
 											   TOTAL_COST) < 0)
 							remove_old = true;	/* new dominates old */
 						else
-							accept_new = false; /* old equals or dominates
-												 * new */
+							accept_new = false; /* old equals or dominates new */
 					}
 					break;
 				case PATHKEYS_BETTER1:
@@ -336,8 +343,13 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 		{
 			parent_rel->pathlist = list_delete_cell(parent_rel->pathlist,
 													p1, p1_prev);
-			/* Delete the data pointed-to by the deleted cell */
-			pfree(old_path);
+
+			/*
+			 * Delete the data pointed-to by the deleted cell, if possible
+			 */
+			if (!IsA(old_path, IndexPath))
+				pfree(old_path);
+			/* Advance list pointer */
 			if (p1_prev)
 				p1 = lnext(p1_prev);
 			else
@@ -348,6 +360,7 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 			/* new belongs after this old path if it has cost >= old's */
 			if (costcmp >= 0)
 				insert_after = p1;
+			/* Advance list pointers */
 			p1_prev = p1;
 			p1 = lnext(p1);
 		}
@@ -372,7 +385,8 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
 	else
 	{
 		/* Reject and recycle the new path */
-		pfree(new_path);
+		if (!IsA(new_path, IndexPath))
+			pfree(new_path);
 	}
 }
 
@@ -381,14 +395,13 @@ add_path(RelOptInfo *parent_rel, Path *new_path)
  *		PATH NODE CREATION ROUTINES
  *****************************************************************************/
 
-
 /*
  * create_seqscan_path
  *	  Creates a path corresponding to a sequential scan, returning the
  *	  pathnode.
  */
 Path *
-create_seqscan_path(Query *root, RelOptInfo *rel)
+create_seqscan_path(PlannerInfo *root, RelOptInfo *rel)
 {
 	Path	   *pathnode = makeNode(Path);
 
@@ -400,7 +413,7 @@ create_seqscan_path(Query *root, RelOptInfo *rel)
     pathnode->motionHazard = false;
 	pathnode->rescannable = true;
 
-    cost_seqscan(pathnode, root, rel);
+	cost_seqscan(pathnode, root, rel);
 
 	return pathnode;
 }
@@ -409,63 +422,210 @@ create_seqscan_path(Query *root, RelOptInfo *rel)
  * create_index_path
  *	  Creates a path node for an index scan.
  *
- * 'rel' is the parent rel
- * 'index' is an index on 'rel'
- * 'restriction_clauses' is a list of lists of RestrictInfo nodes
+ * 'index' is a usable index.
+ * 'clause_groups' is a list of lists of RestrictInfo nodes
  *			to be used as index qual conditions in the scan.
  * 'pathkeys' describes the ordering of the path.
  * 'indexscandir' is ForwardScanDirection or BackwardScanDirection
  *			for an ordered index, or NoMovementScanDirection for
  *			an unordered index.
+ * 'isjoininner' is TRUE if this is a join inner indexscan path.
+ *			(pathkeys and indexscandir are ignored if so.)
  *
  * Returns the new path node.
  */
 IndexPath *
-create_index_path(Query *root,
-				  RelOptInfo *rel,
+create_index_path(PlannerInfo *root,
 				  IndexOptInfo *index,
-				  List *restriction_clauses,
+				  List *clause_groups,
 				  List *pathkeys,
-				  ScanDirection indexscandir)
+				  ScanDirection indexscandir,
+				  bool isjoininner)
 {
 	IndexPath  *pathnode = makeNode(IndexPath);
-	List	   *indexquals;
+	RelOptInfo *rel = index->rel;
+	List	   *indexquals,
+			   *allclauses;
+
+	/*
+	 * For a join inner scan, there's no point in marking the path with any
+	 * pathkeys, since it will only ever be used as the inner path of a
+	 * nestloop, and so its ordering does not matter.  For the same reason we
+	 * don't really care what order it's scanned in.  (We could expect the
+	 * caller to supply the correct values, but it's easier to force it here.)
+	 */
+	if (isjoininner)
+	{
+		pathkeys = NIL;
+		indexscandir = NoMovementScanDirection;
+	}
 
 	pathnode->path.pathtype = T_IndexScan;
 	pathnode->path.parent = rel;
 	pathnode->path.pathkeys = pathkeys;
 
-    /* Convert clauses to indexquals the executor can handle */
-	indexquals = expand_indexqual_conditions(index, restriction_clauses);
+	/* Convert clauses to indexquals the executor can handle */
+	indexquals = expand_indexqual_conditions(index, clause_groups);
 
 	/* Flatten the clause-groups list to produce indexclauses list */
-	restriction_clauses = flatten_clausegroups_list(restriction_clauses);
+	allclauses = flatten_clausegroups_list(clause_groups);
 
-	/*
-	 * We are making a pathnode for a single-scan indexscan; therefore,
-	 * indexinfo etc should be single-element lists.
-	 */
-	pathnode->indexinfo = list_make1(index);
-	pathnode->indexclauses = list_make1(restriction_clauses);
-	pathnode->indexquals = list_make1(indexquals);
+	/* Fill in the pathnode */
+	pathnode->indexinfo = index;
+	pathnode->indexclauses = allclauses;
+	pathnode->indexquals = indexquals;
 
-	/* It's not an innerjoin path. */
-	pathnode->isjoininner = false;
-
+	pathnode->isjoininner = isjoininner;
 	pathnode->indexscandir = indexscandir;
 
-	/*
-	 * The number of rows is the same as the parent rel's estimate, since
-	 * this isn't a join inner indexscan.
-	 */
-	pathnode->rows = rel->rows;
+	if (isjoininner)
+	{
+		/*
+		 * We must compute the estimated number of output rows for the
+		 * indexscan.  This is less than rel->rows because of the additional
+		 * selectivity of the join clauses.  Since clause_groups may contain
+		 * both restriction and join clauses, we have to do a set union to get
+		 * the full set of clauses that must be considered to compute the
+		 * correct selectivity.  (Without the union operation, we might have
+		 * some restriction clauses appearing twice, which'd mislead
+		 * clauselist_selectivity into double-counting their selectivity.
+		 * However, since RestrictInfo nodes aren't copied when linking them
+		 * into different lists, it should be sufficient to use pointer
+		 * comparison to remove duplicates.)
+		 *
+		 * Always assume the join type is JOIN_INNER; even if some of the join
+		 * clauses come from other contexts, that's not our problem.
+		 */
+		allclauses = list_union_ptr(rel->baserestrictinfo, allclauses);
+		pathnode->rows = rel->tuples *
+			clauselist_selectivity(root,
+								   allclauses,
+								   rel->relid,	/* do not use 0! */
+								   JOIN_INNER);
+		/* Like costsize.c, force estimate to be at least one row */
+		pathnode->rows = clamp_row_est(pathnode->rows);
+	}
+	else
+	{
+		/*
+		 * The number of rows is the same as the parent rel's estimate, since
+		 * this isn't a join inner indexscan.
+		 */
+		pathnode->rows = rel->rows;
+	}
+
+	/* Distribution is same as the base table. */
+	pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
+	pathnode->path.motionHazard = false;
+	pathnode->path.rescannable = true;
+
+	cost_index(pathnode, root, index, indexquals, isjoininner);
+
+	return pathnode;
+}
+
+/*
+ * create_bitmap_heap_path
+ *	  Creates a path node for a bitmap scan.
+ *
+ * 'bitmapqual' is a tree of IndexPath, BitmapAndPath, and BitmapOrPath nodes.
+ */
+BitmapHeapPath *
+create_bitmap_heap_path(PlannerInfo *root,
+						RelOptInfo *rel,
+						Path *bitmapqual,
+						bool isjoininner)
+{
+	BitmapHeapPath *pathnode = makeNode(BitmapHeapPath);
+
+	pathnode->path.pathtype = T_BitmapHeapScan;
+	pathnode->path.parent = rel;
+	pathnode->path.pathkeys = NIL;		/* always unordered */
 
     /* Distribution is same as the base table. */
     pathnode->path.locus = cdbpathlocus_from_baserel(root, rel);
     pathnode->path.motionHazard = false;
     pathnode->path.rescannable = true;
 
-	cost_index(&pathnode->path, root, rel, index, indexquals, false);
+	pathnode->bitmapqual = bitmapqual;
+	pathnode->isjoininner = isjoininner;
+
+	if (isjoininner)
+	{
+		/*
+		 * We must compute the estimated number of output rows for the
+		 * indexscan.  This is less than rel->rows because of the additional
+		 * selectivity of the join clauses.  We make use of the selectivity
+		 * estimated for the bitmap to do this; this isn't really quite right
+		 * since there may be restriction conditions not included in the
+		 * bitmap ...
+		 */
+		Cost		indexTotalCost;
+		Selectivity indexSelectivity;
+
+		cost_bitmap_tree_node(bitmapqual, &indexTotalCost, &indexSelectivity);
+		pathnode->rows = rel->tuples * indexSelectivity;
+		if (pathnode->rows > rel->rows)
+			pathnode->rows = rel->rows;
+		/* Like costsize.c, force estimate to be at least one row */
+		pathnode->rows = clamp_row_est(pathnode->rows);
+	}
+	else
+	{
+		/*
+		 * The number of rows is the same as the parent rel's estimate, since
+		 * this isn't a join inner indexscan.
+		 */
+		pathnode->rows = rel->rows;
+	}
+
+	cost_bitmap_heap_scan(&pathnode->path, root, rel, bitmapqual, false);
+
+	return pathnode;
+}
+
+/*
+ * create_bitmap_and_path
+ *	  Creates a path node representing a BitmapAnd.
+ */
+BitmapAndPath *
+create_bitmap_and_path(PlannerInfo *root,
+					   RelOptInfo *rel,
+					   List *bitmapquals)
+{
+	BitmapAndPath *pathnode = makeNode(BitmapAndPath);
+
+	pathnode->path.pathtype = T_BitmapAnd;
+	pathnode->path.parent = rel;
+	pathnode->path.pathkeys = NIL;		/* always unordered */
+
+	pathnode->bitmapquals = bitmapquals;
+
+	/* this sets bitmapselectivity as well as the regular cost fields: */
+	cost_bitmap_and_node(pathnode, root);
+
+	return pathnode;
+}
+
+/*
+ * create_bitmap_or_path
+ *	  Creates a path node representing a BitmapOr.
+ */
+BitmapOrPath *
+create_bitmap_or_path(PlannerInfo *root,
+					  RelOptInfo *rel,
+					  List *bitmapquals)
+{
+	BitmapOrPath *pathnode = makeNode(BitmapOrPath);
+
+	pathnode->path.pathtype = T_BitmapOr;
+	pathnode->path.parent = rel;
+	pathnode->path.pathkeys = NIL;		/* always unordered */
+
+	pathnode->bitmapquals = bitmapquals;
+
+	/* this sets bitmapselectivity as well as the regular cost fields: */
+	cost_bitmap_or_node(pathnode, root);
 
 	return pathnode;
 }
@@ -476,7 +636,7 @@ create_index_path(Query *root,
  *	  pathnode.
  */
 TidPath *
-create_tidscan_path(Query *root, RelOptInfo *rel, List *tideval)
+create_tidscan_path(PlannerInfo *root, RelOptInfo *rel, List *tideval)
 {
 	TidPath    *pathnode = makeNode(TidPath);
 
@@ -592,7 +752,7 @@ create_result_path(RelOptInfo *rel, Path *subpath, List *constantqual)
         pathnode->path.rescannable = true;
 	}
 
-    return pathnode;
+	return pathnode;
 }
 
 /*
@@ -635,7 +795,7 @@ create_material_path(RelOptInfo *rel, Path *subpath)
  * for the rel).  So we cache the result.
  */
 UniquePath *
-create_unique_path(Query *root, RelOptInfo *rel, Path *subpath)
+create_unique_path(PlannerInfo *root, RelOptInfo *rel, Path *subpath)
 {
 	UniquePath *pathnode;
 	Path		sort_path;		/* dummy for result of cost_sort */
@@ -649,13 +809,13 @@ create_unique_path(Query *root, RelOptInfo *rel, Path *subpath)
 	/* If result already cached, return it */
     if (subpath == rel->cheapest_total_path &&
         rel->cheapest_unique_path)
-        return (UniquePath *) rel->cheapest_unique_path;
+		return (UniquePath *) rel->cheapest_unique_path;
 
     subpath_rows = cdbpath_rows(subpath);
 
 	/*
-	 * We must ensure path struct is allocated in same context as parent
-	 * rel; otherwise GEQO memory management causes trouble.  (Compare
+	 * We must ensure path struct is allocated in same context as parent rel;
+	 * otherwise GEQO memory management causes trouble.  (Compare
 	 * best_inner_indexscan().)
 	 */
 	oldcontext = MemoryContextSwitchTo(GetMemoryChunkContext(rel));
@@ -673,44 +833,44 @@ create_unique_path(Query *root, RelOptInfo *rel, Path *subpath)
     pathnode->path.rescannable = subpath->rescannable;
 
 	/*
-	 * Treat the output as always unsorted, since we don't necessarily
-	 * have pathkeys to represent it.
+	 * Treat the output as always unsorted, since we don't necessarily have
+	 * pathkeys to represent it.
 	 */
 	pathnode->path.pathkeys = NIL;
 
 	pathnode->subpath = subpath;
-	
+
 	/*
-	 * Try to identify the targetlist that will actually be unique-ified.
-	 * In current usage, this routine is only used for sub-selects of IN
-	 * clauses, so we should be able to find the tlist in in_info_list.
+	 * Try to identify the targetlist that will actually be unique-ified. In
+	 * current usage, this routine is only used for sub-selects of IN clauses,
+	 * so we should be able to find the tlist in in_info_list.
 	 */
 	sub_targetlist = NIL;
 	foreach(l, root->in_info_list)
 	{
 		InClauseInfo *ininfo = (InClauseInfo *) lfirst(l);
-		
+
 		if (bms_equal(ininfo->righthand, rel->relids))
 		{
 			sub_targetlist = ininfo->sub_targetlist;
 			break;
 		}
 	}
-	
+
 	/*
-	* If the input is a subquery whose output must be unique already,
-	* then we don't need to do anything.  The test for uniqueness has
-	* to consider exactly which columns we are extracting; for example
-	* "SELECT DISTINCT x,y" doesn't guarantee that x alone is distinct.
-	* So we cannot check for this optimization unless we found our own
-	* targetlist above, and it consists only of simple Vars referencing
-	* subquery outputs.  (Possibly we could do something with expressions
-	* in the subquery outputs, too, but for now keep it simple.)
-	*/
+	 * If the input is a subquery whose output must be unique already, then we
+	 * don't need to do anything.  The test for uniqueness has to consider
+	 * exactly which columns we are extracting; for example "SELECT DISTINCT
+	 * x,y" doesn't guarantee that x alone is distinct. So we cannot check for
+	 * this optimization unless we found our own targetlist above, and it
+	 * consists only of simple Vars referencing subquery outputs.  (Possibly
+	 * we could do something with expressions in the subquery outputs, too,
+	 * but for now keep it simple.)
+	 */
 	if (sub_targetlist && rel->rtekind == RTE_SUBQUERY)
 	{
-		RangeTblEntry *rte = rt_fetch(rel->relid, root->rtable);
-		List   *sub_tlist_colnos;
+		RangeTblEntry *rte = rt_fetch(rel->relid, root->parse->rtable);
+		List	   *sub_tlist_colnos;
 
 		sub_tlist_colnos = translate_sub_tlist(sub_targetlist, rel->relid);
 
@@ -754,24 +914,23 @@ create_unique_path(Query *root, RelOptInfo *rel, Path *subpath)
 			  rel->width);
 
 	/*
-	 * Charge one cpu_operator_cost per comparison per input tuple. We
-	 * assume all columns get compared at most of the tuples.  (XXX
-	 * probably this is an overestimate.)  This should agree with
-	 * make_unique.
+	 * Charge one cpu_operator_cost per comparison per input tuple. We assume
+	 * all columns get compared at most of the tuples.	(XXX probably this is
+	 * an overestimate.)  This should agree with make_unique.
 	 */
 	sort_path.total_cost += cpu_operator_cost * subpath_rows * numCols;
 
 	/*
-	 * Is it safe to use a hashed implementation?  If so, estimate and
-	 * compare costs.  We only try this if we know the targetlist for sure
-	 * (else we can't be sure about the datatypes involved).
+	 * Is it safe to use a hashed implementation?  If so, estimate and compare
+	 * costs.  We only try this if we know the targetlist for sure (else we
+	 * can't be sure about the datatypes involved).
 	 */
 	pathnode->umethod = UNIQUE_PATH_SORT;
 	if (enable_hashagg && sub_targetlist && hash_safe_tlist(sub_targetlist))
 	{
 		/*
-		 * Estimate the overhead per hashtable entry at 64 bytes (same as
-		 * in planner.c).
+		 * Estimate the overhead per hashtable entry at 64 bytes (same as in
+		 * planner.c).
 		 */
 		int			hashentrysize = rel->width + 64;
 
@@ -837,7 +996,7 @@ translate_sub_tlist(List *tlist, int relid)
 
 	foreach(l, tlist)
 	{
-		Var	   *var = (Var *) lfirst(l);
+		Var		   *var = (Var *) lfirst(l);
 
 		if (!var || !IsA(var, Var) ||
 			var->varno != relid)
@@ -873,7 +1032,7 @@ query_is_distinct_for(Query *query, List *colnos)
 			TargetEntry *tle = get_sortgroupclause_tle(scl,
 													   query->targetList);
 
-			if (!list_member_int(colnos, tle->resdom->resno))
+			if (!list_member_int(colnos, tle->resno))
 				break;			/* exit early if no match */
 		}
 		if (l == NULL)			/* had matches for all? */
@@ -892,7 +1051,7 @@ query_is_distinct_for(Query *query, List *colnos)
 			TargetEntry *tle = get_sortgroupclause_tle(grpcl,
 													   query->targetList);
 
-			if (!list_member_int(colnos, tle->resdom->resno))
+			if (!list_member_int(colnos, tle->resno))
 				break;			/* exit early if no match */
 		}
 		if (l == NULL)			/* had matches for all? */
@@ -901,8 +1060,8 @@ query_is_distinct_for(Query *query, List *colnos)
 	else
 	{
 		/*
-		 * If we have no GROUP BY, but do have aggregates or HAVING, then
-		 * the result is at most one row so it's surely unique.
+		 * If we have no GROUP BY, but do have aggregates or HAVING, then the
+		 * result is at most one row so it's surely unique.
 		 */
 		if (query->hasAggs || query->havingQual)
 			return true;
@@ -926,8 +1085,8 @@ query_is_distinct_for(Query *query, List *colnos)
 			{
 				TargetEntry *tle = (TargetEntry *) lfirst(l);
 
-				if (!tle->resdom->resjunk &&
-					!list_member_int(colnos, tle->resdom->resno))
+				if (!tle->resjunk &&
+					!list_member_int(colnos, tle->resno))
 					break;		/* exit early if no match */
 			}
 			if (l == NULL)		/* had matches for all? */
@@ -980,7 +1139,7 @@ hash_safe_tlist(List *tlist)
  *	  returning the pathnode.
  */
 Path *
-create_subqueryscan_path(Query *root, RelOptInfo *rel, List *pathkeys)
+create_subqueryscan_path(PlannerInfo *root, RelOptInfo *rel, List *pathkeys)
 {
 	Path	   *pathnode = makeNode(Path);
 
@@ -1003,7 +1162,7 @@ create_subqueryscan_path(Query *root, RelOptInfo *rel, List *pathkeys)
  *	  returning the pathnode.
  */
 Path *
-create_functionscan_path(Query *root, RelOptInfo *rel)
+create_functionscan_path(PlannerInfo *root, RelOptInfo *rel)
 {
 	Path	   *pathnode = makeNode(Path);
 
@@ -1024,7 +1183,6 @@ create_functionscan_path(Query *root, RelOptInfo *rel)
 	return pathnode;
 }
 
-
 /*
  * create_nestloop_path
  *	  Creates a pathnode corresponding to a nestloop join between two
@@ -1040,7 +1198,7 @@ create_functionscan_path(Query *root, RelOptInfo *rel)
  * Returns the resulting path node.
  */
 NestPath *
-create_nestloop_path(Query *root,
+create_nestloop_path(PlannerInfo *root,
 					 RelOptInfo *joinrel,
 					 JoinType jointype,
 					 Path *outer_path,
@@ -1123,7 +1281,7 @@ create_nestloop_path(Query *root,
  *      or NIL to use existing ordering
  */
 MergePath *
-create_mergejoin_path(Query *root,
+create_mergejoin_path(PlannerInfo *root,
 					  RelOptInfo *joinrel,
 					  JoinType jointype,
 					  Path *outer_path,
@@ -1185,15 +1343,15 @@ create_mergejoin_path(Query *root,
     pathnode = makeNode(MergePath);
 
 	/*
-	 * If we are not sorting the inner path, we may need a materialize
-	 * node to ensure it can be marked/restored.  (Sort does support
-	 * mark/restore, so no materialize is needed in that case.)
+	 * If we are not sorting the inner path, we may need a materialize node to
+	 * ensure it can be marked/restored.  (Sort does support mark/restore, so
+	 * no materialize is needed in that case.)
 	 *
-	 * Since the inner side must be ordered, and only Sorts and IndexScans
-	 * can create order to begin with, you might think there's no problem
-	 * --- but you'd be wrong.  Nestloop and merge joins can *preserve*
-	 * the order of their inputs, so they can be selected as the input of
-	 * a mergejoin, and they don't support mark/restore at present.
+	 * Since the inner side must be ordered, and only Sorts and IndexScans can
+	 * create order to begin with, you might think there's no problem --- but
+	 * you'd be wrong.  Nestloop and merge joins can *preserve* the order of
+	 * their inputs, so they can be selected as the input of a mergejoin, and
+	 * they don't support mark/restore at present.
 	 */
 	if (innersortkeys == NIL &&
 		!ExecSupportsMarkRestore(inner_path->pathtype))
@@ -1232,7 +1390,7 @@ create_mergejoin_path(Query *root,
  *		(this should be a subset of the restrict_clauses list)
  */
 HashPath *
-create_hashjoin_path(Query *root,
+create_hashjoin_path(PlannerInfo *root,
 					 RelOptInfo *joinrel,
 					 JoinType jointype,
 					 Path *outer_path,
@@ -1276,4 +1434,3 @@ create_hashjoin_path(Query *root,
 
 	return pathnode;
 }
-

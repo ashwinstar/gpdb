@@ -2,7 +2,8 @@
  *	cdbtmlog.c
  *-------------------------------------------------------------------------
  */
-
+ 
+#define PROVIDE_64BIT_CRC
 #include "postgres.h"
 
 #include <fcntl.h>
@@ -14,6 +15,7 @@
 #if defined(HAVE_STRUCT_CMSGCRED) || defined(HAVE_STRUCT_FCRED) || defined(HAVE_STRUCT_SOCKCRED)
 #include <sys/uio.h>
 #endif
+#include "utils/pg_crc.h"
 
 #include "cdb/cdbtmlog.h"
 #include "cdb/cdblink.h"
@@ -52,7 +54,7 @@ static void initTmLogFile(int seqno);
 static void closeTmLogFile(void);
 static void removeTmLogFile(int seqno);
 static bool validateLogFileControlBlock(TmLogFileControlBlock * header);
-static crc64 calculateCRC(void *buf, int len);
+static pg_crc64 calculateCRC(void *buf, int len);
 static bool read_with_ereport(int fd, void *data, int len);
 static void switchTmLogFile(void);
 static void removeTmLogFileUntil(int seqno);
@@ -508,10 +510,10 @@ validateLogFileControlBlock(TmLogFileControlBlock * header)
 	return EQ_CRC64(calculateCRC(header, 3 * sizeof(uint32)), header->crc);
 }
 
-static crc64
+static pg_crc64
 calculateCRC(void *buf, int len)
 {
-	crc64		calc_crc;
+	pg_crc64		calc_crc;
 
 	INIT_CRC64(calc_crc);
 	COMP_CRC64(calc_crc, buf, len);

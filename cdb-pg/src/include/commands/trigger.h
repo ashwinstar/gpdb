@@ -6,7 +6,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/commands/trigger.h,v 1.51.4.1 2005/04/11 19:51:32 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/commands/trigger.h,v 1.56 2005/10/15 02:49:44 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -113,6 +113,9 @@ extern void RemoveTriggerById(Oid trigOid);
 
 extern void renametrig(Oid relid, const char *oldname, const char *newname);
 
+extern void EnableDisableTrigger(Relation rel, const char *tgname,
+					 bool enable, bool skip_system);
+
 extern void RelationBuildTriggers(Relation relation);
 
 extern TriggerDesc *CopyTriggerDesc(TriggerDesc *trigdesc);
@@ -156,7 +159,7 @@ extern void ExecARUpdateTriggers(EState *estate,
 
 extern void AfterTriggerBeginXact(void);
 extern void AfterTriggerBeginQuery(void);
-extern void AfterTriggerEndQuery(void);
+extern void AfterTriggerEndQuery(EState *estate);
 extern void AfterTriggerFireDeferred(void);
 extern void AfterTriggerEndXact(bool isCommit);
 extern void AfterTriggerBeginSubXact(void);
@@ -168,9 +171,18 @@ extern void AfterTriggerSetState(ConstraintsSetStmt *stmt);
 /*
  * in utils/adt/ri_triggers.c
  */
-extern bool RI_FKey_keyequal_upd(TriggerData *trigdata);
+extern bool RI_FKey_keyequal_upd_pk(Trigger *trigger, Relation pk_rel,
+						HeapTuple old_row, HeapTuple new_row);
+extern bool RI_FKey_keyequal_upd_fk(Trigger *trigger, Relation fk_rel,
+						HeapTuple old_row, HeapTuple new_row);
 extern bool RI_Initial_Check(FkConstraint *fkconstraint,
 				 Relation rel,
 				 Relation pkrel);
+
+#define RI_TRIGGER_PK	1		/* is a trigger on the PK relation */
+#define RI_TRIGGER_FK	2		/* is a trigger on the FK relation */
+#define RI_TRIGGER_NONE 0		/* is not an RI trigger function */
+
+extern int	RI_FKey_trigger_type(Oid tgfoid);
 
 #endif   /* TRIGGER_H */

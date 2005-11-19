@@ -11,7 +11,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/libpq/be-secure.c,v 1.56.4.1 2005/06/02 21:03:46 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/libpq/be-secure.c,v 1.59 2005/10/15 02:49:17 momjian Exp $
  *
  *	  Since the server static private key ($DataDir/server.key)
  *	  will normally be stored unencrypted so that the database
@@ -100,6 +100,11 @@
 
 
 #ifdef USE_SSL
+
+#define ROOT_CERT_FILE			"root.crt"
+#define SERVER_CERT_FILE		"server.crt"
+#define SERVER_PRIVATE_KEY_FILE "server.key"
+
 static DH  *load_dh_file(int keylength);
 static DH  *load_dh_buffer(const char *, size_t);
 static DH  *tmp_dh_cb(SSL *s, int is_export, int keylength);
@@ -271,8 +276,8 @@ rloop:
 			case SSL_ERROR_WANT_WRITE:
 #ifdef WIN32
 				pgwin32_waitforsinglesocket(SSL_get_fd(port->ssl),
-					(err==SSL_ERROR_WANT_READ) ?
-						FD_READ|FD_CLOSE : FD_WRITE|FD_CLOSE);
+											(err == SSL_ERROR_WANT_READ) ?
+								   FD_READ | FD_CLOSE : FD_WRITE | FD_CLOSE);
 #endif
 				goto rloop;
 			case SSL_ERROR_SYSCALL:
@@ -348,7 +353,7 @@ secure_write(Port *port, void *ptr, size_t len)
 			if (port->ssl->state != SSL_ST_OK)
 				ereport(COMMERROR,
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
-					errmsg("SSL failed to send renegotiation request")));
+						 errmsg("SSL failed to send renegotiation request")));
 			port->ssl->state |= SSL_ST_ACCEPT;
 			SSL_do_handshake(port->ssl);
 			if (port->ssl->state != SSL_ST_OK)
@@ -370,8 +375,8 @@ wloop:
 			case SSL_ERROR_WANT_WRITE:
 #ifdef WIN32
 				pgwin32_waitforsinglesocket(SSL_get_fd(port->ssl),
-					(err==SSL_ERROR_WANT_READ) ?
-						FD_READ|FD_CLOSE : FD_WRITE|FD_CLOSE);
+											(err == SSL_ERROR_WANT_READ) ?
+								   FD_READ | FD_CLOSE : FD_WRITE | FD_CLOSE);
 #endif
 				goto wloop;
 			case SSL_ERROR_SYSCALL:
@@ -434,12 +439,12 @@ wloop:
 
 static bool my_bio_initialized = false;
 static BIO_METHOD my_bio_methods;
-static int (*std_sock_read) (BIO *h, char *buf, int size);
+static int	(*std_sock_read) (BIO *h, char *buf, int size);
 
 static int
 my_sock_read(BIO *h, char *buf, int size)
 {
-	int		res;
+	int			res;
 
 	prepare_for_client_read();
 
@@ -467,21 +472,21 @@ my_BIO_s_socket(void)
 static int
 my_SSL_set_fd(SSL *s, int fd)
 {
-	int ret=0;
-	BIO *bio=NULL;
+	int			ret = 0;
+	BIO		   *bio = NULL;
 
-	bio=BIO_new(my_BIO_s_socket());
+	bio = BIO_new(my_BIO_s_socket());
 
 	if (bio == NULL)
 	{
-		SSLerr(SSL_F_SSL_SET_FD,ERR_R_BUF_LIB);
+		SSLerr(SSL_F_SSL_SET_FD, ERR_R_BUF_LIB);
 		goto err;
 	}
-	BIO_set_fd(bio,fd,BIO_NOCLOSE);
-	SSL_set_bio(s,bio,bio);
-	ret=1;
+	BIO_set_fd(bio, fd, BIO_NOCLOSE);
+	SSL_set_bio(s, bio, bio);
+	ret = 1;
 err:
-	return(ret);
+	return (ret);
 }
 
 /*
@@ -500,7 +505,7 @@ load_dh_file(int keylength)
 	int			codes;
 
 	/* attempt to open file.  It's not an error if it doesn't exist. */
-	snprintf(fnbuf, sizeof(fnbuf), "%s/dh%d.pem", DataDir, keylength);
+	snprintf(fnbuf, sizeof(fnbuf), "dh%d.pem", keylength);
 	if ((fp = fopen(fnbuf, "r")) == NULL)
 		return NULL;
 
@@ -534,7 +539,7 @@ load_dh_file(int keylength)
 			(codes & DH_CHECK_P_NOT_SAFE_PRIME))
 		{
 			elog(LOG,
-			   "DH error (%s): neither suitable generator or safe prime",
+				 "DH error (%s): neither suitable generator or safe prime",
 				 fnbuf);
 			return NULL;
 		}
@@ -635,8 +640,8 @@ tmp_dh_cb(SSL *s, int is_export, int keylength)
 	if (r == NULL || 8 * DH_size(r) < keylength)
 	{
 		ereport(DEBUG2,
-			  (errmsg_internal("DH: generating parameters (%d bits)....",
-							   keylength)));
+				(errmsg_internal("DH: generating parameters (%d bits)....",
+								 keylength)));
 		r = DH_generate_parameters(keylength, DH_GENERATOR_2, NULL, NULL);
 	}
 
@@ -710,7 +715,6 @@ info_cb(const SSL *ssl, int type, int args)
 static int
 initialize_SSL(void)
 {
-	char		fnbuf[MAXPGPATH];
 	struct stat buf;
 
 	if (!SSL_context)
@@ -726,42 +730,44 @@ initialize_SSL(void)
 		/*
 		 * Load and verify certificate and private key
 		 */
-		snprintf(fnbuf, sizeof(fnbuf), "%s/server.crt", DataDir);
-		if (!SSL_CTX_use_certificate_file(SSL_context, fnbuf, SSL_FILETYPE_PEM))
+		if (!SSL_CTX_use_certificate_file(SSL_context,
+										  SERVER_CERT_FILE,
+										  SSL_FILETYPE_PEM))
 			ereport(FATAL,
 					(errcode(ERRCODE_CONFIG_FILE_ERROR),
-			  errmsg("could not load server certificate file \"%s\": %s",
-					 fnbuf, SSLerrmessage())));
+				  errmsg("could not load server certificate file \"%s\": %s",
+						 SERVER_CERT_FILE, SSLerrmessage())));
 
-		snprintf(fnbuf, sizeof(fnbuf), "%s/server.key", DataDir);
-		if (stat(fnbuf, &buf) == -1)
+		if (stat(SERVER_PRIVATE_KEY_FILE, &buf) == -1)
 			ereport(FATAL,
 					(errcode_for_file_access(),
-				   errmsg("could not access private key file \"%s\": %m",
-						  fnbuf)));
+					 errmsg("could not access private key file \"%s\": %m",
+							SERVER_PRIVATE_KEY_FILE)));
 
 		/*
 		 * Require no public access to key file.
 		 *
-		 * XXX temporarily suppress check when on Windows, because there may
-		 * not be proper support for Unix-y file permissions.  Need to
-		 * think of a reasonable check to apply on Windows.  (See also the
-		 * data directory permission check in postmaster.c)
+		 * XXX temporarily suppress check when on Windows, because there may not
+		 * be proper support for Unix-y file permissions.  Need to think of a
+		 * reasonable check to apply on Windows.  (See also the data directory
+		 * permission check in postmaster.c)
 		 */
 #if !defined(WIN32) && !defined(__CYGWIN__)
 		if (!S_ISREG(buf.st_mode) || (buf.st_mode & (S_IRWXG | S_IRWXO)) ||
 			buf.st_uid != geteuid())
 			ereport(FATAL,
 					(errcode(ERRCODE_CONFIG_FILE_ERROR),
-				  errmsg("unsafe permissions on private key file \"%s\"",
-						 fnbuf),
+					 errmsg("unsafe permissions on private key file \"%s\"",
+							SERVER_PRIVATE_KEY_FILE),
 					 errdetail("File must be owned by the database user and must have no permissions for \"group\" or \"other\".")));
 #endif
 
-		if (!SSL_CTX_use_PrivateKey_file(SSL_context, fnbuf, SSL_FILETYPE_PEM))
+		if (!SSL_CTX_use_PrivateKey_file(SSL_context,
+										 SERVER_PRIVATE_KEY_FILE,
+										 SSL_FILETYPE_PEM))
 			ereport(FATAL,
 					(errmsg("could not load private key file \"%s\": %s",
-							fnbuf, SSLerrmessage())));
+							SERVER_PRIVATE_KEY_FILE, SSLerrmessage())));
 
 		if (!SSL_CTX_check_private_key(SSL_context))
 			ereport(FATAL,
@@ -780,13 +786,12 @@ initialize_SSL(void)
 	/*
 	 * Require and check client certificates only if we have a root.crt file.
 	 */
-	snprintf(fnbuf, sizeof(fnbuf), "%s/root.crt", DataDir);
-	if (!SSL_CTX_load_verify_locations(SSL_context, fnbuf, NULL))
+	if (!SSL_CTX_load_verify_locations(SSL_context, ROOT_CERT_FILE, NULL))
 	{
 		/* Not fatal - we do not require client certificates */
 		ereport(LOG,
 				(errmsg("could not load root certificate file \"%s\": %s",
-						fnbuf, SSLerrmessage()),
+						ROOT_CERT_FILE, SSLerrmessage()),
 				 errdetail("Will not verify client certificates.")));
 	}
 	else
@@ -856,8 +861,8 @@ aloop:
 			case SSL_ERROR_WANT_WRITE:
 #ifdef WIN32
 				pgwin32_waitforsinglesocket(SSL_get_fd(port->ssl),
-					(err==SSL_ERROR_WANT_READ) ?
-						FD_READ|FD_CLOSE|FD_ACCEPT : FD_WRITE|FD_CLOSE);
+											(err == SSL_ERROR_WANT_READ) ?
+					   FD_READ | FD_CLOSE | FD_ACCEPT : FD_WRITE | FD_CLOSE);
 #endif
 				goto aloop;
 			case SSL_ERROR_SYSCALL:
@@ -868,7 +873,7 @@ aloop:
 				else
 					ereport(COMMERROR,
 							(errcode(ERRCODE_PROTOCOL_VIOLATION),
-							 errmsg("could not accept SSL connection: EOF detected")));
+					errmsg("could not accept SSL connection: EOF detected")));
 				break;
 			case SSL_ERROR_SSL:
 				ereport(COMMERROR,
@@ -879,7 +884,7 @@ aloop:
 			case SSL_ERROR_ZERO_RETURN:
 				ereport(COMMERROR,
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
-						 errmsg("could not accept SSL connection: EOF detected")));
+				   errmsg("could not accept SSL connection: EOF detected")));
 				break;
 			default:
 				ereport(COMMERROR,
@@ -907,7 +912,7 @@ aloop:
 						  port->peer_dn, sizeof(port->peer_dn));
 		port->peer_dn[sizeof(port->peer_dn) - 1] = '\0';
 		X509_NAME_get_text_by_NID(X509_get_subject_name(port->peer),
-				   NID_commonName, port->peer_cn, sizeof(port->peer_cn));
+					   NID_commonName, port->peer_cn, sizeof(port->peer_cn));
 		port->peer_cn[sizeof(port->peer_cn) - 1] = '\0';
 	}
 	ereport(DEBUG2,

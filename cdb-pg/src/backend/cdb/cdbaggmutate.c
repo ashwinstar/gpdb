@@ -115,7 +115,7 @@ static Var *
 addInnerTle(Expr *expr, SplitAggsContext * context)
 {
 	TargetEntry *inner_tle;
-	Resdom	   *resdom;
+	//Resdom	   *resdom;
 	AttrNumber	attno;
 	char	   *attname;
 	StringInfoData str;
@@ -129,26 +129,27 @@ addInnerTle(Expr *expr, SplitAggsContext * context)
 	appendStringInfo(&str, "agg_%d", attno);
 	attname = str.data;
 
-	/* Create a new Resdom node for the TLE. */
-	resdom = makeResdom(attno,
-						exprType((Node *) expr),
-						exprTypmod((Node *) expr),
-						attname,
-						FALSE);
+	///* Create a new Resdom node for the TLE. */
+	//resdom = makeResdom(attno,
+	//					exprType((Node *) expr),
+	//					exprTypmod((Node *) expr),
+	//					attname,
+	//					FALSE);
 
-	resdom->ressortgroupref = 0;
-
+	//resdom->ressortgroupref = 0;
+	
 	/* Make the new target list entry. */
 	inner_tle = makeNode(TargetEntry);
 	inner_tle->expr = expr;
-	inner_tle->resdom = resdom;
+	//inner_tle->resdom = resdom;
+	inner_tle->ressortgroupref = 0;
 	context->inner_tlist = lappend(context->inner_tlist, inner_tle);
 
 	/* Return a Var node by which the outer query can refer to this */
 	var = makeVar(0,
 				  attno,
-				  resdom->restype,
-				  resdom->restypmod,
+				  exprType((Node *) expr),
+				  exprTypmod((Node *) expr),
 				  0);
 
 	return var;
@@ -283,7 +284,7 @@ apply_agg_motion(Plan *plan, ApplyMotionState * state)
 
 		new_tle = copyObject(tle);
 		attno = 1 + list_length(context.inner_tlist);
-		new_tle->resdom->resno = attno;
+		new_tle->resno = attno;
 
 		context.inner_tlist = lappend(context.inner_tlist, new_tle);
 		context.attr_map[g] = attno;

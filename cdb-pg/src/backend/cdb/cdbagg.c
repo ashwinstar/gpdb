@@ -227,7 +227,7 @@ getAggStrategyList(Agg *agg)
 			tle = (TargetEntry *) lfirst(cell);
 
 			/* We assume that resno and position are equivalent here. */
-			if (tleidx != tle->resdom->resno)
+			if (tleidx != tle->resno)
 			{
 				ereport(ERROR, (
 								errcode(ERRCODE_CDB_INTERNAL_ERROR),

@@ -3,7 +3,7 @@
  *
  * Copyright (c) 2000-2005, PostgreSQL Global Development Group
  *
- * $PostgreSQL: pgsql/src/bin/psql/large_obj.c,v 1.35 2005/01/01 05:43:08 momjian Exp $
+ * $PostgreSQL: pgsql/src/bin/psql/large_obj.c,v 1.40 2005/10/15 02:49:40 momjian Exp $
  */
 #include "postgres_fe.h"
 #include "large_obj.h"
@@ -122,8 +122,8 @@ do_lo_export(const char *loid_arg, const char *filename_arg)
 
 	status = lo_export(pset.db, atooid(loid_arg), filename_arg);
 	if (status != 1)
-	{							/* of course this status is documented
-								 * nowhere :( */
+	{							/* of course this status is documented nowhere
+								 * :( */
 		fputs(PQerrorMessage(pset.db), stderr);
 		return fail_lo_xact("\\lo_export", own_transaction);
 	}
@@ -172,13 +172,17 @@ do_lo_import(const char *filename_arg, const char *comment_arg)
 		if (!cmdbuf)
 			return fail_lo_xact("\\lo_import", own_transaction);
 		sprintf(cmdbuf,
-				"COMMENT ON LARGE OBJECT %u IS '",
+				"COMMENT ON LARGE OBJECT %u IS ",
 				loid);
 		bufptr = cmdbuf + strlen(cmdbuf);
+
+		if (strchr(comment_arg, '\\') != NULL)
+			*bufptr++ = ESCAPE_STRING_SYNTAX;
+		*bufptr++ = '\'';
 		for (i = 0; i < slen; i++)
 		{
-			if (comment_arg[i] == '\'' || comment_arg[i] == '\\')
-				*bufptr++ = '\\';
+			if (SQL_STR_DOUBLE(comment_arg[i]))
+				*bufptr++ = comment_arg[i];
 			*bufptr++ = comment_arg[i];
 		}
 		strcpy(bufptr, "'");
@@ -250,10 +254,10 @@ do_lo_list(void)
 
 	snprintf(buf, sizeof(buf),
 			 "SELECT loid as \"ID\",\n"
-			 "  pg_catalog.obj_description(loid, 'pg_largeobject') as \"%s\"\n"
+		   "  pg_catalog.obj_description(loid, 'pg_largeobject') as \"%s\"\n"
 			 "FROM (SELECT DISTINCT loid FROM pg_catalog.pg_largeobject) x\n"
 			 "ORDER BY 1",
-			 gettext("Description"));
+			 _("Description"));
 
 	res = PSQLexec(buf, false);
 	if (!res)
@@ -261,9 +265,9 @@ do_lo_list(void)
 
 	myopt.topt.tuples_only = false;
 	myopt.nullPrint = NULL;
-	myopt.title = gettext("Large objects");
+	myopt.title = _("Large objects");
 
-	printQuery(res, &myopt, pset.queryFout);
+	printQuery(res, &myopt, pset.queryFout, pset.logfile);
 
 	PQclear(res);
 	return true;

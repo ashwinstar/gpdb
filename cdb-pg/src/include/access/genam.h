@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/access/genam.h,v 1.47 2004/12/31 22:03:21 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/access/genam.h,v 1.53 2005/10/15 02:49:42 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -70,10 +70,9 @@ typedef SysScanDescData *SysScanDesc;
  */
 extern Relation index_open(Oid relationId);
 extern Relation index_openrv(const RangeVar *relation);
-extern Relation index_openr(const char *sysRelationName);
 extern void index_close(Relation relation);
-extern InsertIndexResult index_insert(Relation indexRelation,
-			 Datum *datums, char *nulls,
+extern bool index_insert(Relation indexRelation,
+			 Datum *values, bool *isnull,
 			 ItemPointer heap_t_ctid,
 			 Relation heapRelation,
 			 bool check_uniqueness);
@@ -82,6 +81,9 @@ extern IndexScanDesc index_beginscan(Relation heapRelation,
 				Relation indexRelation,
 				Snapshot snapshot,
 				int nkeys, ScanKey key);
+extern IndexScanDesc index_beginscan_multi(Relation indexRelation,
+					  Snapshot snapshot,
+					  int nkeys, ScanKey key);
 extern void index_rescan(IndexScanDesc scan, ScanKey key);
 extern void index_endscan(IndexScanDesc scan);
 extern void index_markpos(IndexScanDesc scan);
@@ -89,6 +91,9 @@ extern void index_restrpos(IndexScanDesc scan);
 extern HeapTuple index_getnext(IndexScanDesc scan, ScanDirection direction);
 extern bool index_getnext_indexitem(IndexScanDesc scan,
 						ScanDirection direction);
+extern bool index_getmulti(IndexScanDesc scan,
+			   ItemPointer tids, int32 max_tids,
+			   int32 *returned_tids);
 
 extern IndexBulkDeleteResult *index_bulk_delete(Relation indexRelation,
 				  IndexBulkDeleteCallback callback,
@@ -96,10 +101,9 @@ extern IndexBulkDeleteResult *index_bulk_delete(Relation indexRelation,
 extern IndexBulkDeleteResult *index_vacuum_cleanup(Relation indexRelation,
 					 IndexVacuumCleanupInfo *info,
 					 IndexBulkDeleteResult *stats);
-extern RegProcedure index_cost_estimator(Relation indexRelation);
 extern RegProcedure index_getprocid(Relation irel, AttrNumber attnum,
 				uint16 procnum);
-extern struct FmgrInfo *index_getprocinfo(Relation irel, AttrNumber attnum,
+extern FmgrInfo *index_getprocinfo(Relation irel, AttrNumber attnum,
 				  uint16 procnum);
 
 /*
@@ -113,7 +117,7 @@ extern void IndexScanEnd(IndexScanDesc scan);
  * heap-or-index access to system catalogs (in genam.c)
  */
 extern SysScanDesc systable_beginscan(Relation heapRelation,
-				   const char *indexRelname,
+				   Oid indexId,
 				   bool indexOK,
 				   Snapshot snapshot,
 				   int nkeys, ScanKey key);

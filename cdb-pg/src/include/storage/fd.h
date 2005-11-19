@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/storage/fd.h,v 1.50 2004/12/31 22:03:42 pgsql Exp $
+ * $PostgreSQL: pgsql/src/include/storage/fd.h,v 1.54 2005/10/15 02:49:46 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -76,19 +76,23 @@ extern int	FreeFile(FILE *file);
 
 /* Operations to allow use of the <dirent.h> library routines */
 extern DIR *AllocateDir(const char *dirname);
+extern struct dirent *ReadDir(DIR *dir, const char *dirname);
 extern int	FreeDir(DIR *dir);
 
 /* If you've really really gotta have a plain kernel FD, use this */
 extern int	BasicOpenFile(FileName fileName, int fileFlags, int fileMode);
 
 /* Miscellaneous support routines */
+extern void InitFileAccess(void);
 extern void set_max_safe_fds(void);
 extern void closeAllVfds(void);
 extern void AtEOXact_Files(void);
 extern void AtEOSubXact_Files(bool isCommit, SubTransactionId mySubid,
-							  SubTransactionId parentSubid);
+				  SubTransactionId parentSubid);
 extern void RemovePgTempFiles(void);
 extern int	pg_fsync(int fd);
+extern int	pg_fsync_no_writethrough(int fd);
+extern int	pg_fsync_writethrough(int fd);
 extern int	pg_fdatasync(int fd);
 
 /* Filename components for OpenTemporaryFile */

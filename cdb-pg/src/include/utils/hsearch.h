@@ -7,7 +7,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/utils/hsearch.h,v 1.34.4.1 2005/06/18 20:51:44 tgl Exp $
+ * $PostgreSQL: pgsql/src/include/utils/hsearch.h,v 1.41 2005/10/15 02:49:46 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -27,10 +27,10 @@ typedef uint32 (*HashValueFunc) (const void *key, Size keysize);
  * as key comparison functions.)
  */
 typedef int (*HashCompareFunc) (const void *key1, const void *key2,
-								Size keysize);
+											Size keysize);
 
 /*
- * Key copying functions must have this signature.  The return value is not
+ * Key copying functions must have this signature.	The return value is not
  * used.  (The definition is set up to allow memcpy() and strncpy() to be
  * used directly.)
  */
@@ -95,8 +95,8 @@ typedef struct HASHHDR
 	long		nsegs;			/* Number of allocated segments */
 	Size		keysize;		/* hash key length in bytes */
 	Size		entrysize;		/* total user element size in bytes */
-	long		max_dsize;		/* 'dsize' limit if directory is fixed
-								 * size */
+	long		max_dsize;		/* 'dsize' limit if directory is fixed size */
+	int			nelem_alloc;	/* number of entries to allocate at once */
 	HASHELEMENT *freeList;		/* linked list of free elements */
 #ifdef HASH_STATISTICS
 	long		accesses;
@@ -114,12 +114,11 @@ typedef struct HTAB
 	HASHSEGMENT *dir;			/* directory of segment starts */
 	HashValueFunc hash;			/* hash function */
 	HashCompareFunc match;		/* key comparison function */
+	HashCopyFunc keycopy;		/* key copying function */
 	HashAllocFunc alloc;		/* memory allocator */
-	MemoryContext hcxt;			/* memory context if default allocator
-								 * used */
+	MemoryContext hcxt;			/* memory context if default allocator used */
 	char	   *tabname;		/* table name (for error messages) */
 	bool		isshared;		/* true if table is in shared memory */
-	HashCopyFunc keycopy;		/* key copying function */
 } HTAB;
 
 /* Parameter data structure for hash_create */
@@ -128,13 +127,13 @@ typedef struct HASHCTL
 {
 	long		ssize;			/* Segment Size */
 	long		dsize;			/* (initial) Directory Size */
-	long		max_dsize;		/* limit to dsize if directory size is
-								 * limited */
+	long		max_dsize;		/* limit to dsize if directory size is limited */
 	long		ffactor;		/* Fill factor */
 	Size		keysize;		/* hash key length in bytes */
 	Size		entrysize;		/* total user element size in bytes */
 	HashValueFunc hash;			/* hash function */
 	HashCompareFunc match;		/* key comparison function */
+	HashCopyFunc keycopy;		/* key copying function */
 	HashAllocFunc alloc;		/* memory allocator */
 	HASHSEGMENT *dir;			/* directory of segment starts */
 	HASHHDR    *hctl;			/* location of header in shared mem */
@@ -152,12 +151,13 @@ typedef struct HASHCTL
 #define HASH_ALLOC		0x100	/* Set memory allocator */
 #define HASH_CONTEXT	0x200	/* Set explicit memory context */
 #define HASH_COMPARE	0x400	/* Set user defined comparison function */
+#define HASH_KEYCOPY	0x800	/* Set user defined key-copying function */
 
 
 /* max_dsize value to indicate expansible directory */
 #define NO_MAX_DSIZE			(-1)
-/* number of hash elements allocated at once */
-#define HASHELEMENT_ALLOC_INCR	(32)
+/* max number of hash elements allocated at once */
+#define HASHELEMENT_ALLOC_MAX	(32)
 
 /* hash_search operations */
 typedef enum
@@ -165,8 +165,7 @@ typedef enum
 	HASH_FIND,
 	HASH_ENTER,
 	HASH_REMOVE,
-	HASH_FIND_SAVE,
-	HASH_REMOVE_SAVED
+	HASH_ENTER_NULL
 } HASHACTION;
 
 /* hash_seq status (should be considered an opaque type by callers) */
@@ -188,7 +187,7 @@ extern void *hash_search(HTAB *hashp, const void *keyPtr, HASHACTION action,
 			bool *foundPtr);
 extern void hash_seq_init(HASH_SEQ_STATUS *status, HTAB *hashp);
 extern void *hash_seq_search(HASH_SEQ_STATUS *status);
-extern long hash_estimate_size(long num_entries, Size entrysize);
+extern Size hash_estimate_size(long num_entries, Size entrysize);
 extern long hash_select_dirsize(long num_entries);
 
 /*
@@ -196,6 +195,9 @@ extern long hash_select_dirsize(long num_entries);
  */
 extern uint32 string_hash(const void *key, Size keysize);
 extern uint32 tag_hash(const void *key, Size keysize);
+extern uint32 oid_hash(const void *key, Size keysize);
+extern uint32 bitmap_hash(const void *key, Size keysize);
+extern int	bitmap_match(const void *key1, const void *key2, Size keysize);
 extern uint32 int32_hash(const void *key, Size keysize);
 
 #endif   /* HSEARCH_H */
