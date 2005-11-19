@@ -392,7 +392,7 @@ RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 	}
 
 #ifdef AMS_VERBOSE_LOGGING
-	elog(DEBUG3, "RecvTupleChunkFromAny(motNodeId=%d)", motNodeID);
+	elog(DEBUG5, "RecvTupleChunkFromAny(motNodeId=%d)", motNodeID);
 #endif
 
 	pEntry = getMotionState(motNodeID);
@@ -878,6 +878,11 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 static void
 forceEosToPeer(int16 motNodeID, int16 targetRoute)
 {
+
+#ifdef AMS_VERBOSE_LOGGING
+	elog(DEBUG3, "forceEosToPeer(%d, %d)", motNodeID, targetRoute);
+#endif
+
 	teardownActive = true;
 
 	SendEndOfStream(motNodeID, targetRoute);
@@ -937,7 +942,9 @@ TeardownInterconnect(bool forceEOS)
 	{
 		MotionConn *conn = (MotionConn *) lfirst(cell);
 
+#ifdef AMS_VERBOSE_LOGGING
 		elog(LOG, "Found incomplete conn. length %d", list_length(incompleteConns));
+#endif
 
 		/* they're incomplete, so just slam them shut. */
 		if (conn->sockfd != -1)
@@ -1897,6 +1904,17 @@ flushBuffer(MotionConn * conn)
 					{
 						if (errno == EINTR)
 							continue;
+
+						/* if we got an error in teardown, ignore it:
+						 * treat it as a stop message */
+						if (teardownActive)
+						{
+#ifdef AMS_VERBOSE_LOGGING
+							print_connection(conn->sockfd, "stop from");
+#endif
+							conn->stillActive = false;
+							return false;
+						}
 						ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 										errmsg("Interconnect error writing an outgoing packet"),
 						 errdetail("error during select() call (error:%d).\n"
@@ -1919,6 +1937,25 @@ flushBuffer(MotionConn * conn)
 						return false;
 					}
 				} while (n < 1);
+			}
+			else
+			{
+				/* if we got an error in teardown, ignore it: treat it
+				 * as a stop message */
+				if (teardownActive)
+				{
+#ifdef AMS_VERBOSE_LOGGING
+					print_connection(conn->sockfd, "stop from");
+#endif
+					conn->stillActive = false;
+					return false;
+				}
+				ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+								errmsg("Interconnect error writing an outgoing packet"),
+								errdetail("error during write() call (error:%d).\n"
+										  "For Remote Connection: contentId=%d at '%s':%d",
+										  errno, conn->remoteContentId, conn->remoteHost,
+										  conn->remotePort)));
 			}
 		}
 		else
@@ -2053,6 +2090,7 @@ readPacket(MotionConn * conn)
 			print_connection(conn->sockfd, "interconnect error on");
 #endif
 			ML_CHECK_FOR_INTERRUPTS();
+
 			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 				errmsg("Interconnect error: connection closed prematurely."),
 				 errdetail("from Remote Connection: contentId=%d at '%s':%d",
@@ -2273,6 +2311,10 @@ doSendStopMessage(int16 motNodeID)
 	pEntry = getMotionState(motNodeID);
 	Assert(pEntry != NULL);
 
+#ifdef AMS_VERBOSE_LOGGING
+	elog(DEBUG3, "sending stop message from slice %d to node %d", sliceId, motNodeID);
+#endif
+
 	/*
 	 * Note: we're only concerned with receivers here, so mirrors
 	 * don't matter
@@ -2308,19 +2350,20 @@ print_connection(int fd, const char *msg)
 	struct sockaddr_in local,
 				remote;
 	socklen_t	len;
+	int			errlevel = teardownActive ? LOG : ERROR;
 
 	len = sizeof(remote);
 	if (getpeername(fd, (struct sockaddr *) & remote, &len) < 0)
 	{
-		elog(ERROR, "print_connection(): can't get peername for sock %d err: %s",
-			 fd, strerror(errno));
+		elog(errlevel, "print_connection(%d, %s): can't get peername err: %s",
+			 fd, msg, strerror(errno));
 	}
 
 	len = sizeof(local);
 	if (getsockname(fd, (struct sockaddr *) & local, &len) < 0)
 	{
-		elog(ERROR, "print_connection(): can't get localname for sock %d err: %s",
-			 fd, strerror(errno));
+		elog(errlevel, "print_connection(%d, %s): can't get localname err: %s",
+			 fd, msg, strerror(errno));
 	}
 
 	elog(DEBUG2, "%s: w/ports (%d/%d)",
@@ -2418,6 +2461,9 @@ waitOnSocketDone(int fd)
 	{
 		if (InterruptPending)
 		{
+#ifdef AMS_VERBOSE_LOGGING
+			elog(DEBUG3, "waitOnSocketDone(): interrupt pending fast-track");
+#endif
 			return;
 		}
 
