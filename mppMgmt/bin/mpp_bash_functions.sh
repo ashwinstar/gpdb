@@ -40,7 +40,7 @@ if [ ${#MPPPATH[@]} -eq 0 ];then
 fi
 
 #MPP_UNIQUE_COMMAND is used to identify the binary directory
-MPP_UNIQUE_COMMAND=mpp_dumpall
+MPP_UNIQUE_COMMAND=mppsyncmaster
 
 
 findCmdInPath() {
