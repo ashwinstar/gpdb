@@ -1555,11 +1555,18 @@ sendRegisterMessage(MotionLayerState * pEntry, MotionConn * conn)
 	/*
 	 * Since our message is very small and we should have at least
 	 * some dedicated TCP buffer space.  so we should be able to use a
-	 * blocking send() call to write it out.
+	 * single blocking send() call to write it out.
 	 */
 	while ((n = write(conn->sockfd, msg, msglen)) < 0)
-		if (errno != EINTR)
+	{
+		if (errno == EINTR)
+		{
+			ML_CHECK_FOR_INTERRUPTS();
+			continue;
+		}
+		else
 			break;
+	}
 
 	if (n < 0)
 	{
@@ -1619,14 +1626,11 @@ readRegisterMessage(MotionConn * conn, int *incoming_count)
 		/* see if user canceled and stuff like that */
 		ML_CHECK_FOR_INTERRUPTS();
 
-		while ((n = read(conn->sockfd, buff + bytesRead, msgSize - bytesRead)) < 0)
-			if (errno != EINTR)
-				break;
-
+		n = read(conn->sockfd, buff + bytesRead, msgSize - bytesRead);
 		if (n < 0)
 		{
-			if (errno == EWOULDBLOCK)	/* register msg is small, just spin,
-										 * don't poll */
+			/* register msg is small, just spin don't poll */
+			if (errno == EWOULDBLOCK || errno == EINTR)
 				continue;
 
 			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
@@ -1928,7 +1932,7 @@ flushBuffer(MotionConn * conn)
 					 * it must mean its a StopSendingMessage.  we
 					 * don't even bother to read it.
 					 */
-					if (FD_ISSET(conn->sockfd, &rset))
+					if (FD_ISSET(conn->sockfd, &rset) || teardownActive)
 					{
 #ifdef AMS_VERBOSE_LOGGING
 						print_connection(conn->sockfd, "stop from");
@@ -2327,8 +2331,15 @@ doSendStopMessage(int16 motNodeID)
 		{
 			/* someone is trying to send stuff to us, let's stop 'em */
 			while ((written = write(conn->sockfd, &m, sizeof(m))) < 0)
-				if (errno != EINTR)
+			{
+				if (errno == EINTR)
+				{
+					ML_CHECK_FOR_INTERRUPTS();
+					continue;
+				}
+				else
 					break;
+			}
 
 			if (written != sizeof(m))
 			{
