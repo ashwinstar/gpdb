@@ -82,7 +82,7 @@
 /* Write a character-string (possibly NULL) field */
 #define WRITE_STRING_FIELD(fldname) \
 	(appendStringInfo(str, " :" CppAsString(fldname) " "), \
-	 _outToken(str, (char *)node->fldname))
+	 _outToken(str, node->fldname))
 
 /* Write a Node field */
 #define WRITE_NODE_FIELD(fldname) \
@@ -112,7 +112,7 @@ static void _outNode(StringInfo str, void *obj);
  *	  If a null or empty string is given, it is encoded as "<>".
  */
 static void
-_outToken(StringInfo str, char *s)
+_outToken(StringInfo str, const char *s)
 {
 	if (s == NULL || *s == '\0')
 	{

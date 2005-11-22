@@ -1153,6 +1153,12 @@ InitPlan(QueryDesc *queryDesc, bool explainOnly)
 		 * have to copy tupType to get rid of constraints
 		 */
 		tupdesc = CreateTupleDescCopy(tupType);
+		
+		/*
+		 * This would build a table with different OIDS on every QE... Bad 
+		 */
+		if (Mpp_role == MPP_ROLE_EXECUTE)
+			elog(ERROR,"SELECT INTO not working in EXECUTE mode yet");
 
 		intoRelationId = heap_create_with_catalog(intoName,
 												  namespaceId,
