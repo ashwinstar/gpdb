@@ -153,13 +153,13 @@ static bool line_buf_converted;
 /* non-export function prototypes */
 static void DoCopyTo(Relation rel, List *attnumlist, bool binary, bool oids,
 		 char *delim, char *null_print, bool csv_mode, char *quote,
-		 char *escape, List *force_quote_atts, bool fe_copy);
+		 char *escape, List *force_quote_atts, bool header_line, bool fe_copy);
 static void CopyTo(Relation rel, List *attnumlist, bool binary, bool oids,
 	 char *delim, char *null_print, bool csv_mode, char *quote, char *escape,
-	   List *force_quote_atts);
+	   List *force_quote_atts, bool header_line);
 static void CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 				 char *delim, char *null_print, bool csv_mode, char *quote,
-				 char *escape, List *force_notnull_atts, bool escape_off);
+				 char *escape, List *force_notnull_atts, bool escape_off, bool header_line);
 static void CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 			 char *delim, char *null_print, bool csv_mode, char *quote,
 			 char *escape, List *force_notnull_atts, bool escape_off);
@@ -173,7 +173,7 @@ static void CopyReadAttributesCSV(const char *delim, const char *null_print, cha
 			 char *escape, int null_print_len, char *nulls, List *attnumlist,
 			 int *attr_offsets, int num_phys_attrs, Form_pg_attribute *attr);
 static Datum CopyReadBinaryAttribute(int column_no, FmgrInfo *flinfo,
-						Oid typioparam, bool *isnull);
+						Oid typioparam, int32 typmod, bool *isnull);
 static char *CopyReadOidAttr(const char *delim, const char *null_print, int null_print_len,
 				bool *isnull);
 static void CopyAttributeOut(char *string, char *delim);
@@ -628,6 +628,7 @@ DoCopy(const CopyStmt *stmt)
 	bool		oids = false;
 	bool		escape_off = false;
 	bool		csv_mode = false;
+	bool        header_line = false;
 	char	   *delim = NULL;
 	char	   *quote = NULL;
 	char	   *escape = NULL;
@@ -684,6 +685,14 @@ DoCopy(const CopyStmt *stmt)
 						(errcode(ERRCODE_SYNTAX_ERROR),
 						 errmsg("conflicting or redundant options")));
 			csv_mode = intVal(defel->arg);
+		}
+		else if (strcmp(defel->defname, "header") == 0)
+		{
+			if (header_line)
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("conflicting or redundant options")));
+			header_line = intVal(defel->arg);
 		}
 		else if (strcmp(defel->defname, "quote") == 0)
 		{
@@ -763,6 +772,12 @@ DoCopy(const CopyStmt *stmt)
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("COPY delimiter must be a single character")));
 
+	/* Check header */
+	if (!csv_mode && header_line)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("COPY HEADER available only in CSV mode")));
+	
 	/*
 	 * Check quote
 	 */
@@ -1009,7 +1024,7 @@ DoCopy(const CopyStmt *stmt)
 		if (Mpp_role == MPP_ROLE_DISPATCH)
 		{
 			CopyFromDispatch(rel, attnumlist, binary, oids, delim, null_print, csv_mode,
-							 quote, escape, force_notnull_atts, escape_off);
+							 quote, escape, force_notnull_atts, escape_off, header_line);
 		}
 		else
 			/* execute or utility mode */
@@ -1090,7 +1105,7 @@ DoCopy(const CopyStmt *stmt)
 		}
 
 		DoCopyTo(rel, attnumlist, binary, oids, delim, null_print, csv_mode,
-				 quote, escape, force_quote_atts, fe_copy);
+				 quote, escape, force_quote_atts, header_line, fe_copy);
 	}
 
 	if (!pipe)
@@ -1122,7 +1137,8 @@ DoCopy(const CopyStmt *stmt)
 static void
 DoCopyTo(Relation rel, List *attnumlist, bool binary, bool oids,
 		 char *delim, char *null_print, bool csv_mode, char *quote,
-		 char *escape, List *force_quote_atts, bool fe_copy)
+		 char *escape, List *force_quote_atts, bool header_line,
+		 bool fe_copy)
 {
 	PG_TRY();
 	{
@@ -1130,7 +1146,7 @@ DoCopyTo(Relation rel, List *attnumlist, bool binary, bool oids,
 			SendCopyBegin(binary, list_length(attnumlist));
 
 		CopyTo(rel, attnumlist, binary, oids, delim, null_print, csv_mode,
-			   quote, escape, force_quote_atts);
+			   quote, escape, force_quote_atts, header_line);
 
 		if (fe_copy)
 			SendCopyEnd(binary);
@@ -1154,7 +1170,7 @@ DoCopyTo(Relation rel, List *attnumlist, bool binary, bool oids,
 static void
 CopyTo(Relation rel, List *attnumlist, bool binary, bool oids,
 	   char *delim, char *null_print, bool csv_mode, char *quote,
-	   char *escape, List *force_quote_atts)
+	   char *escape, List *force_quote_atts, bool header_line)
 {
 	HeapTuple	tuple;
 	TupleDesc	tupDesc;
@@ -1243,6 +1259,30 @@ CopyTo(Relation rel, List *attnumlist, bool binary, bool oids,
 			null_print = (char *)
 				pg_server_to_client(null_print,
 									strlen(null_print));
+		
+		/* if a header has been requested send the line */
+		if (header_line)
+		{
+			bool hdr_delim = false;
+			char *colname;
+			
+			foreach(cur, attnumlist)
+			{
+				int         attnum = lfirst_int(cur);
+				
+				if (hdr_delim)
+					CopySendChar(delim[0]);
+				hdr_delim = true;
+				
+				colname = NameStr(attr[attnum - 1]->attname);
+				
+				CopyAttributeOutCSV(colname, delim, quote, escape,
+									strcmp(colname, null_print) == 0);
+			}
+			
+			CopySendEndOfRow(binary);
+			
+		}
 	}
 
 	scandesc = heap_beginscan(rel, ActiveSnapshot, 0, NULL);
@@ -1475,7 +1515,8 @@ limit_printout_length(StringInfo buf)
 static void
 CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 				 char *delim, char *null_print, bool csv_mode, char *quote,
-				 char *escape, List *force_notnull_atts, bool escape_off)
+				 char *escape, List *force_notnull_atts, bool escape_off, 
+				 bool header_line)
 {
 	TupleDesc	tupDesc;
 	Form_pg_attribute *attr;
@@ -2093,7 +2134,22 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 		 */
 		if (bytesread > 0 || !fe_eof || binary)
 		{
-
+			/* on first time around just throw the header line away */
+			if (header_line)
+			{
+				copy_lineno++;
+				
+				line_done = csv_mode ?
+					CopyReadLineCSV(bytesread, quote, escape) :
+					CopyReadLineText(bytesread, escape, escape_off);
+				
+				line_buf.len = 0;
+				line_buf.data[0] = '\0';
+				line_buf.cursor = 0;
+								
+				header_line = false;
+			}
+			
 			while (!buf_done)
 			{
 				Oid			loaded_oid = InvalidOid;
@@ -2341,6 +2397,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 							DatumGetObjectId(CopyReadBinaryAttribute(0,
 															&oid_in_function,
 															  oid_typioparam,
+																		  -1,
 																   &isnull));
 						if (isnull || loaded_oid == InvalidOid)
 						{
@@ -2364,6 +2421,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 						values[m] = CopyReadBinaryAttribute(i,
 															&in_functions[m],
 															typioparams[m],
+															attr[m]->atttypmod,
 															&isnull);
 						nulls[m] = isnull ? 'n' : ' ';
 						copy_attname = NULL;
@@ -3066,6 +3124,7 @@ CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 							DatumGetObjectId(CopyReadBinaryAttribute(0,
 															&oid_in_function,
 															  oid_typioparam,
+															  -1,
 																   &isnull));
 						if (isnull || loaded_oid == InvalidOid)
 							ereport(ERROR,
@@ -3085,6 +3144,7 @@ CopyFromExec(Relation rel, List *attnumlist, bool binary, bool oids,
 						values[m] = CopyReadBinaryAttribute(i,
 															&in_functions[m],
 															typioparams[m],
+															attr[m]->atttypmod,
 															&isnull);
 						nulls[m] = isnull ? 'n' : ' ';
 						copy_attname = NULL;
@@ -3845,6 +3905,18 @@ DetectLineEnd(size_t bytesread, char *quote, char *escape)
 }
 
 /*
+ *  Return decimal value for a hexadecimal digit
+ */
+static
+int GetDecimalFromHex(char hex)
+{
+	if (isdigit((unsigned char)hex))
+		return hex - '0';
+	else
+		return tolower((unsigned char)hex) - 'a' + 10;
+}
+
+/*
  * Read all TEXT attributes. Attributes are parsed from line_buf and
  * inserted (all at once) to attr_buf, while saving pointers to
  * each attribute's starting position.
@@ -3902,6 +3974,7 @@ CopyReadAttributesText(const char *delim, const char *escape, const char *null_p
 	int			chunk_start;	/* offset to beginning of line chunk to load */
 	int			chunk_len;		/* length of chunk of data to load to attr buf */
 	int			oct_val;		/* byte value for octal escapes */
+	int			hex_val;
 	int			attnum;			/* attribute number being parsed */
 	ListCell   *cur;			/* cursor to attribute list used for this COPY */
 	int			attribute;
@@ -4071,12 +4144,13 @@ CopyReadAttributesText(const char *delim, const char *escape, const char *null_p
 					case '5':
 					case '6':
 					case '7':
+						/* handle \013 */
 						oct_val = OCTVALUE(nextc);
 						nextc = *(scan_end + 2);
 
 						/*
 						 * (no need for out bad access check since line if
-							* buffered)
+						 * buffered)
 						 */
 						if (ISOCTAL(nextc))
 						{
@@ -4091,6 +4165,30 @@ CopyReadAttributesText(const char *delim, const char *escape, const char *null_p
 						}
 						newc = oct_val & 0377;	/* the escaped byte value */
 						break;
+					case 'x':
+						/* Handle \x3F */
+						hex_val = 0; /* init */
+						nextc = *(scan_end + 2); /* get char after 'x' */
+						
+						if (isxdigit((unsigned char)nextc))
+						{
+							skip++;
+							hex_val = GetDecimalFromHex(nextc);
+							nextc = *(scan_end + 3); /* get second char */
+							
+							if (isxdigit((unsigned char)nextc))
+							{
+								skip++;
+								hex_val = (hex_val << 4) + GetDecimalFromHex(nextc);
+							}
+							newc = hex_val & 0xff;
+						}
+						else
+						{
+							newc = 'x';
+						}
+						break;
+							
 					case 'b':
 						newc = '\b';
 						break;
@@ -4128,7 +4226,7 @@ CopyReadAttributesText(const char *delim, const char *escape, const char *null_p
 				/*
 				 * Need to get rid of the escape character. This is done by
 				 * loading the chunk up to including the escape character
-				 * into the attribute buffer. Then overwritting the backslash
+				 * into the attribute buffer. Then overwritting the escape char
 				 * with the escaped sequence or char, and continuing to scan
 				 * from *after* the char than is after the escape in line buf.
 				 */
@@ -4163,7 +4261,7 @@ CopyReadAttributesText(const char *delim, const char *escape, const char *null_p
  */
 static Datum
 CopyReadBinaryAttribute(int column_no, FmgrInfo *flinfo, Oid typioparam,
-						bool *isnull)
+						int32 typmod, bool *isnull)
 {
 	int32		fld_size;
 	Datum		result;
@@ -4209,9 +4307,10 @@ CopyReadBinaryAttribute(int column_no, FmgrInfo *flinfo, Oid typioparam,
 	attr_buf.data[fld_size] = '\0';
 
 	/* Call the column type's binary input converter */
-	result = FunctionCall2(flinfo,
+	result = FunctionCall3(flinfo,
 						   PointerGetDatum(&attr_buf),
-						   ObjectIdGetDatum(typioparam));
+						   ObjectIdGetDatum(typioparam),
+						   Int32GetDatum(typmod));
 
 	/* Trouble if it didn't eat the whole buffer */
 	if (attr_buf.cursor != attr_buf.len)
@@ -4648,6 +4747,7 @@ CopyGetAttnums(Relation rel, List *attnamelist)
 
 	return attnums;
 }
+
 
 /*
  * The following are custom versions of the string function strchr().
