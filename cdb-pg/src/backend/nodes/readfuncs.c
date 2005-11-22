@@ -656,6 +656,7 @@ _readAConst(void)
 	}
 	
 	local_node->typename = NULL;
+	READ_NODE_FIELD(typename);
 	READ_DONE();
 }
 
