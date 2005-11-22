@@ -1306,6 +1306,7 @@ _outRelOptInfo(StringInfo str, RelOptInfo *node)
 	WRITE_NODE_TYPE("RELOPTINFO");
 
 	/* NB: this isn't a complete set of fields */
+	WRITE_ENUM_FIELD(type, NodeTag);
 	WRITE_ENUM_FIELD(reloptkind, RelOptKind);
 	WRITE_BITMAPSET_FIELD(relids);
 	WRITE_FLOAT_FIELD(rows, "%.0f");

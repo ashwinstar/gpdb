@@ -375,7 +375,6 @@ _readConstraint(void)
 	if (strncmp(token, "PRIMARY_KEY", length)==0)
 	{
 		local_node->contype = CONSTR_PRIMARY;
-		/*elog(NOTICE, "primary key");*/
 		READ_NODE_FIELD(keys);
 		READ_STRING_FIELD(indexspace);
 	}
@@ -635,6 +634,11 @@ _readAConst(void)
 		strncpy(local_node->val.val.str , token+1, length-2);
 		local_node->val.val.str[length-2] = '\0';
 	}
+	else if (strlen(token) > 2 && (token[0] == 'b'|| token[0] == 'B') && (token[1] == '\'' || token[1] == '"')
+	{
+		local_node->val.type = T_BitString;
+		local_node->val.val.str = pstrdup(token);
+	}
 	else
 	{
 		bool isInt = true;
@@ -649,7 +653,7 @@ _readAConst(void)
 		}
 		else
 		{
-			elog(NOTICE,"Serialization problem:  A_Const not string or int");
+			elog(ERROR,"Deserialization problem:  A_Const not string, bitstring, or int");
 			local_node->val.val.str = palloc(length + 1);
 			strcpy(local_node->val.val.str , token);
 		}
@@ -1304,7 +1308,7 @@ _readColumnRef(void)
 	READ_LOCALS(ColumnRef);
 
 	READ_NODE_FIELD(fields);
-	
+
 	READ_DONE();
 }
 
