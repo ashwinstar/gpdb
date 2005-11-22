@@ -634,7 +634,7 @@ _readAConst(void)
 		strncpy(local_node->val.val.str , token+1, length-2);
 		local_node->val.val.str[length-2] = '\0';
 	}
-	else if (strlen(token) > 2 && (token[0] == 'b'|| token[0] == 'B') && (token[1] == '\'' || token[1] == '"')
+	else if (strlen(token) > 2 && (token[0] == 'b'|| token[0] == 'B') && (token[1] == '\'' || token[1] == '"'))
 	{
 		local_node->val.type = T_BitString;
 		local_node->val.val.str = pstrdup(token);
