@@ -74,6 +74,7 @@ USAGE () {
 	$ECHO "      Size options:"
 	$ECHO "      -t, <table name> name of table to obtain size data [mandatory if -x not supplied]"
 	$ECHO "      -s, <scale> valid values b (bytes) k (kbytes) m (mbytes) [default:- ${SCALE}]"
+	$ECHO "          where OS allows this option, otherwise defaults to KBytes"
 	$ECHO "      -f, display full size information [default:-display total only]"
 	$ECHO "      -a, <database name> alternative database name [default ${QD_DBNAME}]"
 	$ECHO "      -i, obtain index size for <table name> [default:- table size]"
@@ -142,7 +143,7 @@ SEND_TABLE_SIZE_REQUEST () {
 		QE_DIR=`$ECHO $I|$CUT -d'|' -f2`
 		QE_TABLE=${QE_DIR}/base/${DB_OID}/${TABLE_OID}
 		QE_BASE_DIR=`$BASENAME $QE_DIR`
-		$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"`$TRUSTED_SHELL $QE_HOST "$DU -${SCALE} -c ${QE_TABLE}*"|$TAIL -1|$AWK '{print \$1}'` >> $TMPFILE &
+		$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"`$TRUSTED_SHELL $QE_HOST "$DU -${SCALE} $DU_TXT ${QE_TABLE}*"|$TAIL -1|$AWK '{print \$1}'` >> $TMPFILE &
 		((LINECOUNT=$LINECOUNT+1))
 	done	
 	WAIT_COMPLETE
@@ -162,7 +163,7 @@ SEND_INDEX_SIZE_REQUEST () {
 		for IDX in "${INDEX_OID[@]}"
 		do
 			QE_INDEX=${QE_DIR}/base/${DB_OID}/$IDX
-			$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"`$TRUSTED_SHELL $QE_HOST "$DU -${SCALE} -c ${QE_INDEX}*"|$TAIL -1|$AWK '{print \$1}'` >> $TMPFILE &
+			$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"`$TRUSTED_SHELL $QE_HOST "$DU -${SCALE} $DU_TXT ${QE_INDEX}*"|$TAIL -1|$AWK '{print \$1}'` >> $TMPFILE &
 			((LINECOUNT=$LINECOUNT+1))
 		done
 	done
@@ -181,7 +182,7 @@ SEND_DB_SIZE_REQUEST () {
 		QE_DIR=`$ECHO $I|$CUT -d'|' -f2`
 		QE_DB=${QE_DIR}/base/${DB_OID}
 		QE_BASE_DIR=`$BASENAME $QE_DIR`
-		$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"`$TRUSTED_SHELL $QE_HOST "$DU -${SCALE} -c ${QE_DB}"|$TAIL -1 |$AWK '{print \$1}'`>> $TMPFILE &
+		$ECHO ${QE_HOST}"|"${QE_BASE_DIR}"|"`$TRUSTED_SHELL $QE_HOST "$DU -${SCALE} $DU_TXT ${QE_DB}"|$TAIL -1 |$AWK '{print \$1}'`>> $TMPFILE &
 		((LINECOUNT=$LINECOUNT+1)) 
 	done	
 	WAIT_COMPLETE
@@ -246,12 +247,14 @@ if [ $# -ne 0 ]; then
 else
 	USAGE
 fi
-if [ $SCALE != "k" ];then
+if [ $SCALE != "k" ] && [ $OS_TYPE != "sunos" ];then
 	case $SCALE in
 		m ) ;;
 		b ) ;;
 		* ) ERROR_EXIT "[FATAL]:-Parameter -s must be either b, k or m" 2 ;;
 	esac
+else
+	SCALE="k"
 fi
 CHK_ON_PASSIVE_STANDBY
 if [ x"" == x"$TABLE_NAME" ] && [ x"" == x"$SIZE_DB" ];then

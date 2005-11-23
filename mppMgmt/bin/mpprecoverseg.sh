@@ -83,8 +83,9 @@ USAGE () {
 		$ECHO 
 		$ECHO "      Recovery options:"
 		$ECHO "      -f, force MPP cluster shutdown and restart"
-        	$ECHO "      -z, <segment_instance_directory_name:hostname> force a recovery, even though no instance"
-		$ECHO "          segments are marked as invalid on the Master CAUTION:-USE THIS OPTION WITH CARE!"
+        	$ECHO "      -z, <failed_segment_instance_directory_name:failed_hostname> force a recovery,"
+		$ECHO "          even though no instance segments are marked as invalid on the Master"
+		$ECHO "          CAUTION:-USE THIS OPTION WITH CARE!"
         	$ECHO "          example $0 -z /dbfast1/segment1:localhost"
         	$ECHO
 		$ECHO "      Connection options:"
@@ -252,7 +253,11 @@ STOP_DATABASE () {
 		fi
         LOG_MSG "[INFO]:-Shutting down the Cluster ... Please wait ..."
         ${WORKDIR}/$STOP_PROG -zfa
+	if [ x"" == x"$FORCE_RECOVER_STRING" ];then
         ERROR_CHK $? "shutdown master array" 2
+	else
+		LOG_MSG "[INFO]:-Ignoring shutdown errors as force option selected"
+	fi
         LOG_MSG "[INFO]:-Successfully shutdown the MPP array"
 	else
 		while [ $COUNT -lt $ARRAY_INDEX ]
@@ -294,7 +299,7 @@ RECOVER_DATA () {
 		fi
 		LOG_MSG "[INFO]:-Recovering data directory from ${MIR_QE_HOST} to ${FAIL_QE_HOST}"
 		LOG_MSG "[INFO]:-This could take some time depending on data volume ... Please Wait ..."
-		KB_COPY=`$TRUSTED_SHELL ${MIR_QE_HOST} "$DU -k -s -c ${MIR_QE_DIR}|$TAIL -1"|$AWK '{print $1}'`
+		KB_COPY=`$TRUSTED_SHELL ${MIR_QE_HOST} "$DU -k -s $DU_TXT ${MIR_QE_DIR}|$TAIL -1"|$AWK '{print $1}'`
 		LOG_MSG "[INFO]:-Copy will transfer $KB_COPY KBytes of data" 
 		RUN_COMMAND_REMOTE ${MIR_QE_HOST} "$TRUSTED_COPY -pr ${MIR_QE_DIR} ${FAIL_QE_HOST}:${FAIL_QE_DIR}" 
 		LOG_MSG "[INFO]:-Setting recovered port to ${FAIL_QE_PORT} on ${FAIL_QE_HOST}" 

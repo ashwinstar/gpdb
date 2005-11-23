@@ -696,9 +696,11 @@ fi
 OS_TYPE=`uname -s|tr '[A-Z]' '[a-z]'`
 case $OS_TYPE in
 	sunos ) IFCONFIG_TXT="-a inet"
-		PS_TXT="-ef" ;;
+		PS_TXT="-ef" 
+		DU_TXT="-s" ;;
 	linux ) IFCONFIG_TXT="" 
-		PS_TXT="ax" ;;
+		PS_TXT="ax" 
+		DU_TXT="-c" ;;
 	* ) echo unknown ;;
 esac
 #Set up MPP_LIBRARY_PATH

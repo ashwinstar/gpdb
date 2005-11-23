@@ -234,7 +234,7 @@ PROCESS_STARTUP () {
 				QE_PRIMARY=`$ECHO $QNODE|$CUT -d"|" -f5`
 				if [ "$QE_VALID" == "t" ] || [ $START_INVALID -eq 1 ];then
 					LOG_MSG "[INFO]:-Starting Segment instance $QE_NAME directory $QE_DIR"
-					$TRUSTED_SHELL $QE_NAME "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;export PGPATH=${MPPHOME}/bin;export PGPORT=${QE_PORT};$PG_CTL $WAIT -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start" 
+					$TRUSTED_SHELL $QE_NAME "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;export PGPATH=${APP_PATH};export PGPORT=${QE_PORT};$PG_CTL $WAIT -D $QE_DIR -l ${QE_DIR}.log -o \"-i -p ${QE_PORT}\" start" 
 				RETVAL=$?
 				if [ $RETVAL -ne 0 ]; then
 						((FAILED_COUNT=$FAILED_COUNT+1))
@@ -279,7 +279,7 @@ PROCESS_STARTUP () {
 				$SLEEP 2
 		fi
 		export PGPORT=${MASTER_PORT}
-		export PGPATH=${MPPHOME}/bin
+		export PGPATH=${APP_PATH}
 		$PG_CTL $WAIT  -D $MASTER_DATA_DIRECTORY -l ${MASTER_DATA_DIRECTORY}.log -o "-i -p $MASTER_PORT " start -m $MODE  
 		ERROR_CHK $? "startup Master instance" 2
 		RET_TEXT=`$PG_CTL status -D $MASTER_DATA_DIRECTORY`
@@ -331,6 +331,12 @@ fi
 LOG_MSG "[INFO]:-Start Main"
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 CHK_ON_PASSIVE_STANDBY
+#MPP-308
+if [ x"" != x"$MPPHOME" ];then
+	APP_PATH=${MPPHOME}/bin
+else
+	APP_PATH=${BIZHOME}/bin
+fi
 CHK_QD_DB_RUNNING
 GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 if [ $ADMIN ]; then
