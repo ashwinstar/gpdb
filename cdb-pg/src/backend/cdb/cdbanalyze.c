@@ -138,14 +138,25 @@ cdbanalyze_callback(StringInfo sqlstmt,
 		goto fail;
 
 	tmp = SPI_getvalue(tup, tupdesc, Anum_pg_class_max_tuples);
-	if (!tmp)
+	if (SPI_result != 0 && !tmp)
 		goto fail;
-	ctx->tuples = atof(tmp);
+	if (!tmp)
+		ereport(NOTICE, (errcode(ERRCODE_MPP_COMMAND_ERROR),
+			   errmsg("NULL returned instead of statistics from segment databases."),
+					  errdetail("Segment db catalog query : %s",
+								sqlstmt->data )));
+	if (tmp)
+		ctx->tuples = atof(tmp);
+	else
+		ctx->tuples = 2000;			// Work around aggregate bug
 
 	tmp = SPI_getvalue(tup, tupdesc, Anum_pg_class_max_pages);
-	if (!tmp)
+	if (SPI_result != 0 && !tmp)
 		goto fail;
-	ctx->pages = atoi(tmp);
+	if (tmp)
+		ctx->pages = atoi(tmp);
+	else
+		ctx->pages = 50;			// Work around aggregate bug
 
 	elog(DEBUG3, "cdbanalyze oid=%d pages=%d tuples=%f",
 		 ctx->relid, ctx->pages, ctx->tuples);
@@ -155,8 +166,8 @@ cdbanalyze_callback(StringInfo sqlstmt,
 fail:
 	ereport(WARNING, (errcode(ERRCODE_MPP_COMMAND_ERROR),
 			   errmsg("Unable to obtain statistics from segment databases."),
-					  errdetail("Segment db catalog query failed: %s",
-								sqlstmt->data)));
+					  errdetail("Segment db catalog query failed: %s  %d",
+								sqlstmt->data, SPI_result )));
 }	/* cdbanalyze_callback */
 
 
