@@ -632,7 +632,7 @@ ExecEvalParam(ExprState *exprstate, ExprContext *econtext,
 	Param	   *expression = (Param *) exprstate->expr;
 	int			thisParamKind = expression->paramkind;
 	AttrNumber	thisParamId = expression->paramid;
-	ParamListInfo paramInfo;
+
 
 	if (isDone)
 		*isDone = ExprSingleResult;
@@ -650,6 +650,8 @@ ExecEvalParam(ExprState *exprstate, ExprContext *econtext,
 		{
 			if (Mpp_role == MPP_ROLE_EXECUTE)
 			{
+				ParamListInfo paramInfo;
+				
 				paramInfo = lookupParam(econtext->ecxt_param_list_info,
 										PARAM_EXEC_REMOTE,
 										NULL,
@@ -677,6 +679,8 @@ ExecEvalParam(ExprState *exprstate, ExprContext *econtext,
 		/*
 		 * All other parameter types must be sought in ecxt_param_list_info.
 		 */
+		ParamListInfo paramInfo;
+
 		paramInfo = lookupParam(econtext->ecxt_param_list_info,
 								thisParamKind,
 								expression->paramname,
