@@ -1,0 +1,10 @@
+^pqsignal
+^EncryptMD5
+^SockAddr_cidr_mask
+^freeaddrinfo_all
+^getaddrinfo_all
+^getnameinfo_all
+^md5_hash
+^promote_v4_to_v6_addr
+^promote_v4_to_v6_mask
+^rangeSockAddr
