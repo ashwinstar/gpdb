@@ -653,6 +653,7 @@ invertColIdx(List *targetlist, int numCols, AttrNumber *colIdx, AttrNumber **pin
 		foreach(cell, targetlist)
 		{
 			tle = (TargetEntry *) lfirst(cell);
+			Assert(tle->resno >= 1);
 			tleidx++;
 			if (IsA(tle->expr, Var) &&((Var *) tle->expr)->varattno == child_tleidx)
 			{

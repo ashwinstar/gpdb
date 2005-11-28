@@ -63,7 +63,6 @@ TupleTableSlot *
 ExecMotion(MotionState * node)
 {
 	Motion	   *motion = (Motion *) node->ps.plan;
-	TupleTableSlot *tuple;
 
 	/*
 	 * at the top here we basically decide: -- SENDER vs. RECEIVER and --
@@ -71,6 +70,7 @@ ExecMotion(MotionState * node)
 	 */
 	if (node->isReceiver)
 	{
+		TupleTableSlot *tuple;
 #ifdef MEASURE_MOTION_TIME
 		struct timeval startTime;
 		struct timeval stopTime;

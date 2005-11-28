@@ -226,6 +226,7 @@ getAggStrategyList(Agg *agg)
 			tleidx++;
 			tle = (TargetEntry *) lfirst(cell);
 
+			Assert(tle->resno >= 1);
 			/* We assume that resno and position are equivalent here. */
 			if (tleidx != tle->resno)
 			{
@@ -269,6 +270,7 @@ getAggStrategyList(Agg *agg)
 	{
 		tleidx++;
 		tle = (TargetEntry *) lfirst(cell);
+		Assert(tle->resno >= 1);
 		aOk = aOk && analyzeAggExpr(tle->expr, bms_is_member(tleidx, grpset), state);
 	}
 	aOk = aOk && analyzeAggExpr((Expr *) (plan->qual), FALSE, state);

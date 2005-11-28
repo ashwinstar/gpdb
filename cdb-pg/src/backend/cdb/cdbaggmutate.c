@@ -129,19 +129,12 @@ addInnerTle(Expr *expr, SplitAggsContext * context)
 	appendStringInfo(&str, "agg_%d", attno);
 	attname = str.data;
 
-	///* Create a new Resdom node for the TLE. */
-	//resdom = makeResdom(attno,
-	//					exprType((Node *) expr),
-	//					exprTypmod((Node *) expr),
-	//					attname,
-	//					FALSE);
-
-	//resdom->ressortgroupref = 0;
-	
 	/* Make the new target list entry. */
-	inner_tle = makeNode(TargetEntry);
-	inner_tle->expr = expr;
-	//inner_tle->resdom = resdom;
+	inner_tle = makeTargetEntry(expr,
+				attno,
+				attname,
+				FALSE);
+				
 	inner_tle->ressortgroupref = 0;
 	context->inner_tlist = lappend(context->inner_tlist, inner_tle);
 
@@ -285,6 +278,7 @@ apply_agg_motion(Plan *plan, ApplyMotionState * state)
 		new_tle = copyObject(tle);
 		attno = 1 + list_length(context.inner_tlist);
 		new_tle->resno = attno;
+		Assert(new_tle->resno >= 1);
 
 		context.inner_tlist = lappend(context.inner_tlist, new_tle);
 		context.attr_map[g] = attno;

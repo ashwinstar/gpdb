@@ -245,12 +245,8 @@ cdbpathlocus_from_subquery(struct PlannerInfo   *root,
                 List           *pathkey;
                 if (!tle)
                     break;
-                // ????
-                //   should this be:
-				//relid = rel->relid;
-				//reloid = getrelid(relid, root->parse->rtable);
-				//get_atttypetypmod(reloid, varattno, &vartypeid, &type_mod);
-				// ????
+
+				Assert(tle->resno >= 1);
                 var = makeVar(rel->relid,
                               tle->resno,
                               exprType((Node *) tle->expr),

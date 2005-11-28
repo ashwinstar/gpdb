@@ -576,6 +576,7 @@ ExecBuildProjectionInfo(List *targetList,
 			Var		   *variable = (Var *) gstate->arg->expr;
 			AttrNumber	attnum = variable->varattno;
 			TargetEntry *tle = (TargetEntry *) gstate->xprstate.expr;
+			Assert(tle->resno >= 1);
 			AttrNumber	resind = tle->resno - 1;
 
 			Assert(resind >= 0 && resind < len);

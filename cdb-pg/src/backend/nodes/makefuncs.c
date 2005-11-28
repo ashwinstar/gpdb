@@ -95,10 +95,12 @@ makeTargetEntry(Expr *expr,
 				bool resjunk)
 {
 	TargetEntry *tle = makeNode(TargetEntry);
-
+	
 	tle->expr = expr;
 	tle->resno = resno;
 	tle->resname = resname;
+	
+	Assert(tle->resno >= 1);
 
 	/*
 	 * We always set these fields to 0. If the caller wants to change them he

@@ -205,6 +205,7 @@ expand_targetlist(List *tlist, int command_type,
 
 			if (!old_tle->resjunk && old_tle->resno == attrno)
 			{
+				Assert(old_tle >= 1);
 				new_tle = old_tle;
 				tlist_item = lnext(tlist_item);
 			}
