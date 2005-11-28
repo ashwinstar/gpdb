@@ -563,7 +563,7 @@ adjust_plan_varnos(Plan *plan, int rtoffset)
 		case T_Sort:
 		case T_Unique:
 		case T_SetOp:
-
+		case T_Motion:
 			/*
 			 * Even though the targetlist won't be used by the executor, we
 			 * fix it up for possible use by EXPLAIN (not to mention ease of
