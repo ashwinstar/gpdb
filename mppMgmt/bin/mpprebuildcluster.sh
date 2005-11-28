@@ -128,35 +128,35 @@ CREATE_TEMP_DB () {
 	export PGPORT=$TEMP_PORT;$PG_CTL -w -D ${TEMP_DATA_DIRECTORY}/parsetemp -l ${TEMP_DATA_DIRECTORY}/parsetemp.log -o "-i -p $TEMP_PORT" start 
 	ERROR_CHK $? "start of temporary database ${TEMP_DATA_DIRECTORY} port = $TEMP_PORT" 2
 	LOG_MSG "[INFO]:-Loading MPP metadata"
-	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $TEMP_PORT template1 -f $SQL_FILE
-	ERROR_CHK $? "load schema file $SQL_FILE into template1 database" 2
+	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $TEMP_PORT $DEFAULTDB -f $SQL_FILE
+	ERROR_CHK $? "load schema file $SQL_FILE into $DEFAULTDB database" 2
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 PARSE_SQL_FILE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]:-Processing $SQL_FILE to obtain re-build parameters"
-	MASTER_HOST=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT template1 -c "select hostname from mpp.host where hostid=1;"`
+	MASTER_HOST=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select hostname from mpp.host where hostid=1;"`
 	ERROR_CHK $? "get master instance hostname" 2
-	MASTER_DATA_DIRECTORY=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT template1 -c "select a.datadir from mpp.listener a, mpp.pgdatabase b where a.listenerid=b.listenerid and b.content=-1 and b.listenerid=1;"`
+	MASTER_DATA_DIRECTORY=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select a.datadir from mpp.listener a, mpp.pgdatabase b where a.listenerid=b.listenerid and b.content=-1 and b.listenerid=1;"`
 	ERROR_CHK $? "get master instance data directory" 2
-	MASTER_PORT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT template1 -c "select a.port from mpp.listener a, mpp.pgdatabase b where a.listenerid=b.listenerid and b.content=-1 and b.listenerid=1;"`
+	MASTER_PORT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select a.port from mpp.listener a, mpp.pgdatabase b where a.listenerid=b.listenerid and b.content=-1 and b.listenerid=1;"`
 	ERROR_CHK $? "get master instance port" 2
-	MASTER_MPP_NAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT template1 -c "select mppname from mpp.mpp;"`
+	MASTER_MPP_NAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select mppname from mpp.mpp;"`
 	ERROR_CHK $? "get master instance array name" 2
-	REBUILD_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT template1 -c "select a.hostname, b.port, b.datadir, c.dbid, c.content, c.definedprimary from mpp.host a, mpp.listener b, mpp.pgdatabase c where a.hostid=b.hostid and b.listenerid=c.listenerid and c.content<>-1;"`)
+	REBUILD_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select a.hostname, b.port, b.datadir, c.dbid, c.content, c.definedprimary from mpp.host a, mpp.listener b, mpp.pgdatabase c where a.hostid=b.hostid and b.listenerid=c.listenerid and c.content<>-1;"`)
 	ERROR_CHK $? "get array segment instance details " 2
 	MASTER_IP_ADDRESS_ALL=(`$IFCONFIG |$GREP "inet addr"|$GREP -v addr:127|$AWK '{print $2}'|$CUT -d: -f2`)	
 	ERROR_CHK $? "get master host IP details" 2
 	MASTER_IP_ADDRESS=(`$ECHO ${MASTER_IP_ADDRESS_ALL[@]}|$TR ' ' '\n'|$SORT -u|$TR '\n' ' '`)
-	MASTER_USER=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT template1 -c "select mppsuperuser from mpp.listener where listenerid=1;"`
+	MASTER_USER=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select mppsuperuser from mpp.listener where listenerid=1;"`
 	ERROR_CHK $? "get master instance super user" 2
-	MASTER_TOTAL_SEG=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT template1 -c "select numsegments from mpp.mpp;"`
+	MASTER_TOTAL_SEG=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select numsegments from mpp.mpp;"`
 	ERROR_CHK $? "get total instance segments" 2
-	STANDBY_ACTIVE=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT template1 -c "select count(*)-1 from mpp.pgdatabase where content=-1;"`
+	STANDBY_ACTIVE=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select count(*)-1 from mpp.pgdatabase where content=-1;"`
 	ERROR_CHK $? "get standby master status" 1
 	if [ $STANDBY_ACTIVE -eq 1 ];then
-	STANDBY_HOST_DETAILS=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT template1 -c"select a.hostname, b.datadir, b.port from mpp.host a, mpp.listener b, mpp.pgdatabase c where c.content=-1 and c.dbid<>1 and c.listenerid=b.listenerid and b.hostid=a.hostid;"`
+	STANDBY_HOST_DETAILS=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c"select a.hostname, b.datadir, b.port from mpp.host a, mpp.listener b, mpp.pgdatabase c where c.content=-1 and c.dbid<>1 and c.listenerid=b.listenerid and b.hostid=a.hostid;"`
 	ERROR_CHK $? "get standby master details" 2
 	fi
 	REBUILD_KEY=`$BASENAME $SQL_FILE|$AWK -F"_" '{print $NF}'`
@@ -196,7 +196,7 @@ CHK_PARAM () {
 		MASTER_HOST=`$HOSTNAME`
 		if [ $STANDBY_ACTIVE -ne 0 ];then
 		#Need to ensure that the new hostname is not the same as that of the standby host
-			STANDBY_HOST=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT template1 -c"select a.hostname from mpp.host a, mpp.listener b, mpp.pgdatabase c where a.hostid=b.hostid and b.listenerid=c.listenerid and c.content=-1 and c.listenerid<>1;"`
+			STANDBY_HOST=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c"select a.hostname from mpp.host a, mpp.listener b, mpp.pgdatabase c where a.hostid=b.hostid and b.listenerid=c.listenerid and c.content=-1 and c.listenerid<>1;"`
 			ERROR_CHK $? "obtain hostname of standby host" 2
 			if [ "$MASTER_HOST" == "$STANDBY_HOST" ];then
 				DELETE_TEMP_DB
@@ -329,29 +329,29 @@ BUILD_MPP_MASTER () {
 	BACKOUT_COMMAND "export PGPORT=$MASTER_PORT;$PG_CTL -D $MASTER_DATA_DIRECTORY stop"
 	BACKOUT_COMMAND "$ECHO Commencing shutdown of Master instance"
 	LOG_MSG "[INFO]:-Loading Master MPP metadata"
-	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -f $SQL_FILE
-	ERROR_CHK $? "loading mpp catalog data into template1 on master instance" 2
+	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -f $SQL_FILE
+	ERROR_CHK $? "loading mpp catalog data into $DEFAULTDB on master instance" 2
 	LOG_MSG "[INFO]:-Deleting temporary database"
 	DELETE_TEMP_DB
 	if [ x"" != x"$OVERRIDE_MASTER_HOSTNAME" ];then
 		LOG_MSG "[INFO]:-Changing master hostname to $MASTER_HOST in mpp.host table"
 		#Get previous hostid
-		PREV_HOST_ID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c"select hostid from mpp.host where hostname='${PREV_MASTER_HOST}';"`
+		PREV_HOST_ID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostid from mpp.host where hostname='${PREV_MASTER_HOST}';"`
 		ERROR_CHK $? "obtain hostid from mpp.host for ${PREV_MASTER_HOST}" 2
 		#Check to see if we have a hostname in mpp.host with the new hostname
-		HOSTNAME_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c"select count(*) from mpp.host where hostname='${MASTER_HOST}';"`
+		HOSTNAME_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from mpp.host where hostname='${MASTER_HOST}';"`
 		ERROR_CHK $? "obtain hostname count for ${MASTER_HOST}" 2
 		if [ $HOSTNAME_COUNT -eq 0 ];then
 		#This is a new hostname, will enter a new record for MASTER_HOST
-			NEW_HOST_ID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c"select max(hostid)+1 from mpp.host;"`
+			NEW_HOST_ID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select max(hostid)+1 from mpp.host;"`
 			ERROR_CHK $? "obtain new hostid value for ${MASTER_HOST}" 2
-			env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c"insert into mpp.host values (${NEW_HOST_ID},'${MASTER_HOST}');"
+			env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"insert into mpp.host values (${NEW_HOST_ID},'${MASTER_HOST}');"
 			ERROR_CHK $? "insert new mpp.host record for ${MASTER_HOST}" 2
-			env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c"update mpp.listener set hostid=${NEW_HOST_ID} where listenerid=1;"
+			env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"update mpp.listener set hostid=${NEW_HOST_ID} where listenerid=1;"
 			ERROR_CHK $? "update mpp.listener for ${MASTER_HOST}" 2
 		else
 		#A record aleardy exists for this host, update mpp.listener table
-		env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c"update mpp.listener set hostid=$PREV_HOST_ID where listenerid=1';"
+		env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"update mpp.listener set hostid=$PREV_HOST_ID where listenerid=1';"
 		ERROR_CHK $? "update mpp.listener for ${MASTER_HOSTNAME}" 1
 		fi	
 	fi
@@ -415,7 +415,7 @@ BUILD_SEGMENT_INSTANCES () {
 		BACKOUT_COMMAND "$ECHO \"Stopping segment instance\""
 		LOG_MSG "[INFO]:-Successfully started segment instance on $SEG_HOSTNAME"
 		LOG_MSG "[INFO]:-Updating segment mpp.mpp system table"
-		RUN_COMMAND_REMOTE $SEG_HOSTNAME "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT template1 -c \"insert into $MPP_TBL values ('${MASTER_MPP_NAME}',${MASTER_TOTAL_SEG},${SEG_DBID},${SEG_CONTENT});\"" >> $LOG_FILE 2>&1
+		RUN_COMMAND_REMOTE $SEG_HOSTNAME "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT $DEFAULTDB -c \"insert into $MPP_TBL values ('${MASTER_MPP_NAME}',${MASTER_TOTAL_SEG},${SEG_DBID},${SEG_CONTENT});\"" >> $LOG_FILE 2>&1
 		LOG_MSG "[INFO]:-Successfully updated $SEG_HOSTNAME mpp.mpp system table"
 		LOG_MSG "[INFO]:-Commencing shutdown of segment instance on $SEG_HOSTNAME"
 		$TRUSTED_SHELL ${SEG_HOSTNAME} "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;export PGPORT=${SEG_PORT}; $PG_CTL -w -D $SEG_DATADIR -l ${SEG_DATADIR}.log -o \"-i -p ${SEG_PORT}\" stop" >> $LOG_FILE 2>&1
@@ -444,7 +444,7 @@ CREATE_DATABASE () {
 		LOG_MSG "[WARN]:-Issue with obtain create database filename"
 	else
 		LOG_MSG "[INFO]:-Obtained create database file name as $CREATE_DB_FILE, processing"
-		$PSQL -p $MASTER_PORT template1 -f $CREATE_DB_FILE
+		$PSQL -p $MASTER_PORT $DEFAULTDB -f $CREATE_DB_FILE
 		ERROR_CHK $? "load of create database file $CREATE_DB_FILE" 1
 	fi	
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"

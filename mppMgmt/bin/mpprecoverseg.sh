@@ -121,7 +121,7 @@ GET_MIRROR () {
 		ERROR_EXIT "[FATAL]:-Unable to continue" 2
 	fi
 	#Get a list of databases contained within the array
-	DB_LIST=(`$PSQL -p $MASTER_PORT template1 -R" " -A -t -c"select datname from pg_database where datallowconn<>'f';"`)
+	DB_LIST=(`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select datname from pg_database where datallowconn<>'f';"`)
 	ERROR_CHK $? "obtain list of database names from master instance" 1
 	#Get a list of dbid's that are marked as invalid
 	for DBNAME in ${DB_LIST[@]}
@@ -142,7 +142,7 @@ GET_MIRROR () {
 	fi
 
 	#Now check to make sure that we can initiate recovery
-	TOTAL_INST_COUNT=`$PSQL -p $MASTER_PORT template1 -A -t -c"select count(dbid) from mpp.pgdatabase where content<>-1;"`
+	TOTAL_INST_COUNT=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(dbid) from mpp.pgdatabase where content<>-1;"`
 	ERROR_CHK $? "obtain total segement count from master instance" 2
 	if [ $FAILED_INST_COUNT -gt $TOTAL_INST_COUNT ]; then
 		LOG_MSG "[FATAL]:-Insufficient remaining active instances to be able to recover cluster"
@@ -254,7 +254,7 @@ STOP_DATABASE () {
         LOG_MSG "[INFO]:-Shutting down the Cluster ... Please wait ..."
         ${WORKDIR}/$STOP_PROG -zfa
 	if [ x"" == x"$FORCE_RECOVER_STRING" ];then
-        ERROR_CHK $? "shutdown master array" 2
+        	ERROR_CHK $? "shutdown master array" 2
 	else
 		LOG_MSG "[INFO]:-Ignoring shutdown errors as force option selected"
 	fi
@@ -294,7 +294,7 @@ RECOVER_DATA () {
 		#Run a checkpoint if STOPDB=0
 		if [ $STOPDB -eq 0 ]; then
 			LOG_MSG "[INFO]:-Issuing checkpoint on $MIR_QE_HOST port=$MIR_QE_PORT"
-			$TRUSTED_SHELL $MIR_QE_HOST "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $MIR_QE_PORT template1 -c \"checkpoint;\""
+			$TRUSTED_SHELL $MIR_QE_HOST "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $MIR_QE_PORT $DEFAULTDB -c \"checkpoint;\""
 			ERROR_CHK $? "instance checkpoint on $MIR_QE_HOST port=$MIR_QE_PORT" 1
 		fi
 		LOG_MSG "[INFO]:-Recovering data directory from ${MIR_QE_HOST} to ${FAIL_QE_HOST}"

@@ -89,7 +89,7 @@ ECHO=`findCmdInPath echo`
 #ETHTOOL=`findCmdInPath ethtool`
 EXPR=`findCmdInPath expr`
 TABECHO=$ECHO
-PROMPT="$ECHO -n"
+PROMPT="$ECHO"
 #TABECHO="$ECHO -e \t"
 #PROMPT="$ECHO -n -e \t"
 GREP=`findCmdInPath grep`
@@ -173,6 +173,7 @@ if [ x"$TRUSTED_COPY" = x"" ]; then TRUSTED_COPY="$SCP"; fi
 PG_CONF_ADD_FILE=$WORKDIR/postgresql_conf_mpp_additions
 RECOVER_FLAG=/tmp/active_recovery_in_progress
 SCHEMA_FILE=cdb_schema.sql
+DEFAULTDB=template1
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -424,7 +425,7 @@ CHK_DB_RUNNING () {
 		if [ ! -f $MASTER_DATA_DIRECTORY/$PG_PID ]; then
 				ERROR_EXIT "[FATAL]:-No $MASTER_DATA_DIRECTORY/$PG_PID file" 2
 		fi		
-		export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c"\l" > /dev/null 2>&1
+		export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"\l" > /dev/null 2>&1
 		if [ $? -ne 0 ];then
 			LOG_MSG "[FATAL]:-Have a postmaster.pid file for QD instance on post $MASTER_PORT"
 			ERROR_EXIT "[FATAL]:-However, error reported on test access to QD instance."
@@ -436,14 +437,14 @@ GET_QD_DB_NAME () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 		CHK_DB_RUNNING	
-		QD_DBNAME=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c"\l" 2>/dev/null|$GREP -v template|$HEAD -1|$CUT -d"|" -f1`
+		QD_DBNAME=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"\l" 2>/dev/null|$GREP -v postgres|$GREP -v template|$HEAD -1|$CUT -d"|" -f1`
 		ERROR_CHK $? "obtain database name" 2
-		MASTER_DIR_CHK=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c"select count(*) from mpp.host;"`
+		MASTER_DIR_CHK=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from mpp.host;"`
 		if [ $MASTER_DIR_CHK -eq 0 ];then
 			ERROR_EXIT "[FATAL]:-MASTER_DATA_DIRECTORY value of $MASTER_DATA_DIRECTORY is incorrect" 2;fi
 		if [ x"" == x"$QD_DBNAME" ]; then
-				LOG_MSG "[INFO]:-Unable to obtain Master database name, setting value to template1"
-				QD_DBNAME=template1
+				LOG_MSG "[INFO]:-Unable to obtain Master database name, setting value to $DEFAULTDB"
+				QD_DBNAME=$DEFAULTDB
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -480,9 +481,16 @@ GET_QE_DETAILS () {
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
+GET_DB_LIST () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	GET_MASTER_PORT $MASTER_DATA_DIRECTORY
+	DB_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"\l"|$GREP -v template0|$GREP -v postgres|$CUT -d"|" -f1`)
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
 CHK_MIRRORS_CONFIGURED () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	MIRROR_COUNT=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;$PSQL -p $MASTER_PORT template1 -A -t -c"select count(dbid)/count(distinct(content)) from mpp.pgdatabase where content<>-1;"`
+	MIRROR_COUNT=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(dbid)/count(distinct(content)) from mpp.pgdatabase where content<>-1;"`
 	ERROR_CHK $? "obtain mirror count from master instance" 2
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }

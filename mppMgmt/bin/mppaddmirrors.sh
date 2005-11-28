@@ -128,7 +128,7 @@ OBTAIN_PARAM () {
 	PRI_SEGMENT_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select datadir, port, c.hostid, b.content from mpp.listener a, mpp.pgdatabase b, mpp.host c where a.listenerid in (select listenerid from mpp.pgdatabase where content<>-1) and a.listenerid=b.listenerid and c.hostid=a.hostid order by hostid;"`)
 	ERROR_CHK $? "obtain segment instance directory suffix" 2
 	LOG_MSG "[INFO]:-Obtaining list of databases in MPP cluster"
-	DB_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"\l"|$GREP -v template0|$CUT -d"|" -f1`)
+	GET_DB_LIST
 	ERROR_CHK $? "obtain database list" 2
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -251,7 +251,7 @@ CONFIG_CATALOG () {
 	else
 		ERROR_EXIT "[FATAL]:-Could not locate $START_PROG" 2
 	fi
-	DB_LIST=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -R" " -A -t -c"select datname from pg_database where datallowconn<>'f';"`)
+	DB_LIST=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select datname from pg_database where datallowconn<>'f' and datname<>'postgres';"`)
 	ERROR_CHK $? "obtain list of database names from master instance" 2
 	for MPP_DATABASE in "${DB_LIST[@]}"
 	do

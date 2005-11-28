@@ -157,9 +157,9 @@ DATABASE_STATUS () {
 				GET_MPP_VERSION
 				GET_FAIL_SETTING
 				GET_STANDBY_SETTING
-				QD_PG_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c"show server_version;"`
+				QD_PG_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"show server_version;"`
 				ERROR_CHK $? "obtain postgres version" 1
-				MIRROR_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT template1 -A -t -c"select count(dbid)/count(distinct(content)) from mpp.pgdatabase where content<>-1;" 2> /dev/null `
+				MIRROR_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(dbid)/count(distinct(content)) from mpp.pgdatabase where content<>-1;" 2> /dev/null `
 				ERROR_CHK $? "obtain mirror count" 1
 				if [ x"" == x"$MIRROR_COUNT" ];then
 					MIRROR_CONFIG=ERROR
@@ -255,13 +255,13 @@ fi
 
 VERSION_INFO () {
 	GET_QE_DETAILS
-	MASTER_POSTGRES_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT template1 -c"show server_version;"`
+	MASTER_POSTGRES_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $DEFAULTDB -c"show server_version;"`
 	ERROR_CHK $? "obtain postgres server version" 1
 	LOG_MSG "[INFO]:-Master database postgres version = $MASTER_POSTGRES_VERSION"
 	for TNODE in "${QE_ARRAY[@]}"
 	do
 		SET_VAR
-		POSTGRES_VERSION=`$TRUSTED_SHELL $QE_NAME "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -A -t -p $QE_PORT template1 -c\"show server_version;\""`
+		POSTGRES_VERSION=`$TRUSTED_SHELL $QE_NAME "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -A -t -p $QE_PORT $DEFAULTDB -c\"show server_version;\""`
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 			LOG_MSG "[WARN]:-Unable to connect to $QE_NAME on port $QE_PORT"

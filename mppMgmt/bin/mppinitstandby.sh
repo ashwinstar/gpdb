@@ -172,7 +172,7 @@ UPDATE_PG_HBA () {
 UPDATE_CATALOG () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	#obtain a list of database names that need to be updated
-	DB_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"\l"|$GREP -v template0|$CUT -d"|" -f1`)
+	GET_DB_LIST
 	for DB in "${DB_ARRAY[@]}"
 	do
 		STANDBY_CATALOG_UPDATE $MASTER_STANDBY_HOSTNAME $DB $MASTER_STANDBY_DATA_DIRECTORY $MASTER_STANDBY_PORT
