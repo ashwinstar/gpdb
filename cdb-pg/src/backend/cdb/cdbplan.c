@@ -668,6 +668,39 @@ plan_tree_mutator(Node *node,
 				return (Node *) newidxscan;
 			}
 			break;
+			
+		case T_BitmapIndexScan:
+			{
+				BitmapIndexScan  *idxscan = (BitmapIndexScan *) node;
+				BitmapIndexScan  *newidxscan;
+
+				FLATCOPY(newidxscan, idxscan, BitmapIndexScan);
+				SCANMUTATE(newidxscan, idxscan);
+				newidxscan->indexid = idxscan->indexid;
+
+				MUTATE(newidxscan->indexqual, idxscan->indexqual, List *);
+				MUTATE(newidxscan->indexqualorig, idxscan->indexqualorig, List *);
+				MUTATE(newidxscan->indexstrategy, idxscan->indexstrategy, List *);
+				MUTATE(newidxscan->indexsubtype, idxscan->indexsubtype, List *);
+
+				return (Node *) newidxscan;
+			}
+			break;
+			
+		case T_BitmapHeapScan:
+			{
+				BitmapHeapScan  *bmheapscan = (BitmapHeapScan *) node;
+				BitmapHeapScan  *newbmheapscan;
+
+				FLATCOPY(newbmheapscan, bmheapscan, BitmapHeapScan);
+				SCANMUTATE(newbmheapscan, bmheapscan);
+				
+				MUTATE(newbmheapscan->bitmapqualorig, bmheapscan->bitmapqualorig, List *);
+	
+				return (Node *) newbmheapscan;
+			}
+			break;
+		
 
 		case T_TidScan:
 			{
