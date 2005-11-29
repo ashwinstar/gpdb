@@ -590,9 +590,24 @@ DeserializeTuple(SerTupInfo * pSerInfo, StringInfo serialTup)
 							pq_getmsgbytes(serialTup, attr_size), attr_size);
 
 		/* Call the attribute type's binary input converter. */
-		pSerInfo->values[i] = FunctionCall2(&attrInfo->recv_finfo,
+		if (attrInfo->recv_finfo.fn_nargs == 1)
+			pSerInfo->values[i] = FunctionCall1(&attrInfo->recv_finfo,
+											PointerGetDatum(&attr_data));
+		else if (attrInfo->recv_finfo.fn_nargs == 2)
+			pSerInfo->values[i] = FunctionCall2(&attrInfo->recv_finfo,
 											PointerGetDatum(&attr_data),
 							   ObjectIdGetDatum(attrInfo->recv_typio_param));
+	    else if (attrInfo->recv_finfo.fn_nargs == 3)
+	    	pSerInfo->values[i] = FunctionCall3(&attrInfo->recv_finfo,
+											PointerGetDatum(&attr_data),
+							   ObjectIdGetDatum(attrInfo->recv_typio_param),
+							   Int32GetDatum(-1) );              // Is this right?  
+		else
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
+					 errmsg("Conversion function takes %d args",attrInfo->recv_finfo.fn_nargs)));
+		}
 
 		/* Trouble if it didn't eat the whole buffer */
 		if (attr_data.cursor != attr_data.len)
