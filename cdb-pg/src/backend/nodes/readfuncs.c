@@ -1643,6 +1643,36 @@ _readIndexScan(void)
 	READ_DONE();
 }
 
+
+static BitmapIndexScan *
+_readBitmapIndexScan(void)
+{
+	READ_LOCALS(BitmapIndexScan);
+
+	readScanInfo((Scan *)local_node);
+
+	READ_OID_FIELD(indexid);
+	READ_NODE_FIELD(indexqual);
+	READ_NODE_FIELD(indexqualorig);
+	READ_NODE_FIELD(indexstrategy);
+	READ_NODE_FIELD(indexsubtype);
+	
+	READ_DONE();
+}
+
+static BitmapHeapScan *
+_readBitmapHeapScan(void)
+{
+	READ_LOCALS(BitmapHeapScan);
+
+	readScanInfo((Scan *)local_node);
+
+	READ_NODE_FIELD(bitmapqualorig);
+	
+	READ_DONE();
+}
+
+
 /*
  * _readTidScan
  */
@@ -2163,6 +2193,8 @@ static ParseNodeInfo infoAr[] =
 	{"ARRAY", (ReadFn)_readArrayExpr},
 	{"ARRAYREF", (ReadFn)_readArrayRef},
 	{"A_CONST", (ReadFn)_readAConst},	
+	{"BITMAPHEAPSCAN", (ReadFn)_readBitmapHeapScan},
+	{"BITMAPINDEXSCAN", (ReadFn)_readBitmapIndexScan},
 	{"BOOLEANTEST", (ReadFn)_readBooleanTest},
 	{"BOOLEXPR", (ReadFn)_readBoolExpr},
 	{"CASE", (ReadFn)_readCaseExpr},
