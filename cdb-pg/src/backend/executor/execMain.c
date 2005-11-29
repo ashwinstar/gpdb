@@ -62,6 +62,7 @@
 #include "cdb/cdbmotion.h"
 
 extern bool isFtsReadOnlySet(void);
+extern void FtsEvaluateTransientState(void);
 
 typedef struct execRowMark
 {
@@ -831,9 +832,15 @@ ExecCheckXactReadOnly(Query *parsetree)
 
 fail:
 	if (isFtsReadOnlySet())
-		ereport(ERROR,
-				(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
-				 errmsg("Fault tolerance sets transaction read-only")));
+	{
+		FtsEvaluateTransientState();
+		if (isFtsReadOnlySet())
+			ereport(ERROR,
+					(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
+					 errmsg("Fault tolerance system has marked array read-only")));
+		else
+			return;
+	}
 	else
 		ereport(ERROR,
 				(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
