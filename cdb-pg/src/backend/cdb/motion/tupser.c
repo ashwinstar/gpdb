@@ -394,11 +394,31 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, int MaxChunkDat
 		 * allocations which we'd like to have contained by our reset-able
 		 * context
 		 */
-		oldCtxt = MemoryContextSwitchTo(s_tupSerMemCtxt);
-		outputbytes =
-			DatumGetByteaP(FunctionCall2(&attrInfo->send_finfo,
+		oldCtxt = MemoryContextSwitchTo(s_tupSerMemCtxt);						  
+							  
+		/* Call the attribute type's binary input converter. */
+		if (attrInfo->send_finfo.fn_nargs == 1)
+			outputbytes =
+				DatumGetByteaP(FunctionCall1(&attrInfo->send_finfo,
+										 attr));
+		else if (attrInfo->send_finfo.fn_nargs == 2)
+			outputbytes =
+				DatumGetByteaP(FunctionCall2(&attrInfo->send_finfo,
 										 attr,
 							  ObjectIdGetDatum(attrInfo->send_typio_param)));
+	    else if (attrInfo->send_finfo.fn_nargs == 3)
+	    	outputbytes =
+				DatumGetByteaP(FunctionCall3(&attrInfo->send_finfo,
+										 attr,
+							  ObjectIdGetDatum(attrInfo->send_typio_param),
+							  Int32GetDatum(-1) ));              // Is this right?  
+		else
+		{
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_BINARY_REPRESENTATION),
+					 errmsg("Conversion function takes %d args",attrInfo->recv_finfo.fn_nargs)));
+		}
+		
 		MemoryContextSwitchTo(oldCtxt);
 
 		/* We assume the result will not have been toasted */
