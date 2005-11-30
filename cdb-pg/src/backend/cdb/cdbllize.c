@@ -516,6 +516,8 @@ prescan_walker(Node *node, PlanProfile * context)
 
 		case T_SeqScan:
 		case T_IndexScan:
+		case T_BitmapIndexScan:
+		case T_BitmapHeapScan:
 		case T_TidScan:
 		case T_FunctionScan:
 		case T_NestLoop:
@@ -1717,6 +1719,8 @@ is_plan_node(Node *node)
 		case T_Append:
 		case T_SeqScan:
 		case T_IndexScan:
+		case T_BitmapIndexScan:
+		case T_BitmapHeapScan:
 		case T_TidScan:
 		case T_SubqueryScan:
 		case T_FunctionScan:
@@ -1819,6 +1823,8 @@ scanForManagedTables_walker(Node *node, PlanProfile * context)
 		case T_SeqScan:
 		case T_TidScan:
 		case T_IndexScan:
+		case T_BitmapIndexScan:
+		case T_BitmapHeapScan:
 			{
 				Plan	   *plan = (Plan *) node;
 

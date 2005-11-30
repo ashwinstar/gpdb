@@ -23,6 +23,7 @@
  * For now, we'll just get rid of it with an #if 0
  */
 #if 0
+/*
 #define SERIALIZE_INT_FIELD(fldname)   (_serializeIntField(context, (Node *)node, (int *)&node->fldname, CppAsString(fldname) ))
 
 #define SERIALIZE_BOOL_FIELD(fldname)	(_serializeBoolField(context, (Node *)node, (bool *)&node->fldname, CppAsString(fldname) ))
@@ -61,7 +62,6 @@ static void serializeVarFields(Var *node, SerializeContext * context);
 static void serializeTargetEntryFields(TargetEntry *node, SerializeContext * context);
 static void serializeOpExprFields(OpExpr *node, SerializeContext * context);
 static void serializeConstFields(Const *node, SerializeContext * context);
-static void serializeResdomFields(Resdom *node, SerializeContext * context);
 static void serializeDatum(Datum value, char *pszTag, int typlen, bool typbyval, SerializeContext * context);
 static void _serializeConstantField(SerializeContext * context, char *value, char *pszFldName);
 static void _serializeIntField(SerializeContext * context, Node *node, int *intfld, char *pszFldName);
@@ -88,11 +88,11 @@ static uint getUIntValue(SerializeContext * context);
 static double getDoubleValue(SerializeContext * context);
 static bool getBoolValue(SerializeContext * context);
 static char *getStringValue(SerializeContext * context);
-
+*/
 /*
  * nodes/outfuncs.c
  */
-extern void outDatum(StringInfo str, Datum value, int typlen, bool typbyval);
+//extern void outDatum(StringInfo str, Datum value, int typlen, bool typbyval);
 
 /* ----------------------------------------------------------------------- *
  * Functions serializePlan and	serialize_plan_walker() use the plan_tree_walker()
@@ -105,10 +105,11 @@ extern void outDatum(StringInfo str, Datum value, int typlen, bool typbyval);
  * In case the result is false, the caller should issue an error.
  * ----------------------------------------------------------------------- *
  */
+ /*
 void
 serializePlan(Plan *plan, SerializeContext * context)
 {
-	/* Initialize the SerializeContext. */
+
 	initStringInfo(&context->result);
 	context->tagStack = createTagStack();
 	context->fromNode = true;
@@ -124,7 +125,7 @@ serializePlan(Plan *plan, SerializeContext * context)
 bool
 deSerializePlan(Plan **pplan, SerializeContext * context, char *szInput)
 {
-	/* Initialize the SerializeContext. */
+
 	initStringInfo(&context->result);
 	context->tagStack = createTagStack();
 	context->fromNode = false;
@@ -344,11 +345,13 @@ destroySerializeContext(SerializeContext * context)
 		context->tagStack = NULL;
 	}
 }
+*/
 
 /*
  * Function serialize_plan_walker is the workhorse of serializePlan.
  *
  */
+ /*
 void
 serialize_node(Node **pNode, char *pszTagName, SerializeContext * context)
 {
@@ -429,6 +432,15 @@ serialize_node(Node **pNode, char *pszTagName, SerializeContext * context)
 			}
 			serializeScanFields((Scan *) node, context);
 			break;
+			
+		case T_BitmapHeapScan:
+			if (!fromNode)
+			{
+				node = (Node *) makeNode(BitmapHeapScan);
+				*pNode = node;
+			}
+			serializeScanFields((Scan *) node, context);
+			break;
 
 		case T_TargetEntry:
 			if (!fromNode)
@@ -464,15 +476,6 @@ serialize_node(Node **pNode, char *pszTagName, SerializeContext * context)
 				*pNode = node;
 			}
 			serializeConstFields((Const *) node, context);
-			break;
-
-		case T_Resdom:
-			if (!fromNode)
-			{
-				node = (Node *) makeNode(Resdom);
-				*pNode = node;
-			}
-			serializeResdomFields((Resdom *) node, context);
 			break;
 
 		default:
@@ -557,7 +560,7 @@ setValue(SerializeContext * context, const char *fmt,...)
 		va_list		args;
 		bool		success;
 
-		/* Try to format the data. */
+		
 		va_start(args, fmt);
 		success = appendStringInfoVA(&context->result, fmt, args);
 		va_end(args);
@@ -565,7 +568,7 @@ setValue(SerializeContext * context, const char *fmt,...)
 		if (success)
 			break;
 
-		/* Double the buffer size and try again. */
+	
 		enlargeStringInfo(&context->result, context->result.maxlen);
 	}
 }
@@ -585,7 +588,6 @@ serializeVarFields(Var *node, SerializeContext * context)
 void
 serializeTargetEntryFields(TargetEntry *node, SerializeContext * context)
 {
-	SERIALIZE_NODE_FIELD(resdom);
 	SERIALIZE_NODE_FIELD(expr);
 }
 
@@ -617,18 +619,6 @@ serializeConstFields(Const *node, SerializeContext * context)
 	}
 }
 
-void
-serializeResdomFields(Resdom *node, SerializeContext * context)
-{
-	SERIALIZE_INT_FIELD(resno);
-	SERIALIZE_OID_FIELD(restype);
-	SERIALIZE_INT_FIELD(restypmod);
-	SERIALIZE_STRING_FIELD(resname);
-	SERIALIZE_UINT_FIELD(ressortgroupref);
-	SERIALIZE_OID_FIELD(resorigtbl);
-	SERIALIZE_INT_FIELD(resorigcol);
-	SERIALIZE_BOOL_FIELD(resjunk);
-}
 
 void
 serializeDatum(Datum value, char *pszTag, int typlen, bool typbyval, SerializeContext * context)
@@ -649,18 +639,18 @@ serializeDatum(Datum value, char *pszTag, int typlen, bool typbyval, SerializeCo
 
 		matchNextTag(context, pszTag);
 
-		/*
+		 *
 		 * We save and restore the pre-existing state of pg_strtok. This
 		 * makes the world safe for re-entrant invocation of stringToNode,
 		 * without incurring a lot of notational overhead by having to pass
 		 * the next-character pointer around through all the readfuncs.c
 		 * code.
-		 */
+		 *
 			if (typbyval)
 
 		{
 
-			/* Read the length */
+			 * Read the length
 				skipWhitespace(context);
 
 				int			index = findChar(context, '[');
@@ -726,7 +716,7 @@ matchNextNodeTag(SerializeContext * context, char *pszTagName, bool *bIsNull)
 {
 	Assert(context->input != NULL && context->offset < strlen(context->input));
 
-	/* Should be positioned on <TagName Type="n"> or <TagName>NULL</TagName> */
+	 * Should be positioned on <TagName Type="n"> or <TagName>NULL</TagName> *
 
 	skipWhitespace(context);
 	matchChar(context, '<');
@@ -735,7 +725,7 @@ matchNextNodeTag(SerializeContext * context, char *pszTagName, bool *bIsNull)
 
 	if (context->input[context->offset] == '>')
 	{
-		/* Node tag without type property must be NULL. */
+		 * Node tag without type property must be NULL. *
 		matchString(context, ">NULL");
 		*bIsNull = true;
 		return 0;
@@ -759,7 +749,7 @@ matchNextNodeTag(SerializeContext * context, char *pszTagName, bool *bIsNull)
 void
 matchNextTag(SerializeContext * context, char *pszTagName)
 {
-	/* Should be positioned on <TagName>  */
+	 * Should be positioned on <TagName>  *
 
 	skipWhitespace(context);
 	matchChar(context, '<');
@@ -772,7 +762,7 @@ matchNextTag(SerializeContext * context, char *pszTagName)
 void
 matchNextEndTag(SerializeContext * context, char *pszTagName)
 {
-	/* Should be positioned on </TagName>  */
+	 * Should be positioned on </TagName>  *
 
 	skipWhitespace(context);
 	matchString(context, "</");
@@ -991,6 +981,7 @@ getStringValue(SerializeContext * context)
 
 	return val;
 }
+*/
 #endif
 
 static char *unescape_quotes(const char *src);

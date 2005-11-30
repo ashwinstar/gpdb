@@ -854,6 +854,14 @@ ExecCdbTraceNode(PlanState *node, bool entry, TupleTableSlot *result)
 		case T_IndexScanState:
 			nameTag = "IndexScan";
 			break;
+			
+		case T_BitmapIndexScanState:
+			nameTag = "BitmapIndexScan";
+			break;
+			
+		case T_BitmapHeapScanState:
+			nameTag = "BitmapHeapScan";
+			break;
 
 		case T_TidScanState:
 			nameTag = "TidScan";

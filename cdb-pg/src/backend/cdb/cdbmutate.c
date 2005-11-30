@@ -447,6 +447,8 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
 		case T_SeqScan:
 		case T_FunctionScan:
 		case T_IndexScan:
+		case T_BitmapIndexScan:
+		case T_BitmapHeapScan:
 		case T_TidScan:
 		case T_SubqueryScan:
 		case T_Group:

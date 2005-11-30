@@ -71,6 +71,8 @@ plan_inventory_walker(Node *node, PlanInventory * pinventory)
 		case T_SeqScan:
 		case T_FunctionScan:
 		case T_IndexScan:
+		case T_BitmapIndexScan:
+		case T_BitmapHeapScan:
 		case T_TidScan:
 		case T_SubqueryScan:
 
@@ -270,6 +272,7 @@ plan_tree_walker(Node *node,
 			return walk_scan_node_fields((Scan *) node, walker, context);
 
 		case T_SeqScan:
+		case T_BitmapHeapScan:
 		case T_FunctionScan:
 			if (walk_scan_node_fields((Scan *) node, walker, context))
 				return true;
@@ -279,6 +282,14 @@ plan_tree_walker(Node *node,
 			if (walk_scan_node_fields((Scan *) node, walker, context))
 				return true;
 			if (walker((Node *) ((IndexScan *) node)->indexqual, context))
+				return true;
+			/* Other fields are lists of basic items, nothing to walk. */
+			break;
+			
+		case T_BitmapIndexScan:
+			if (walk_scan_node_fields((Scan *) node, walker, context))
+				return true;
+			if (walker((Node *) ((BitmapIndexScan *) node)->indexqual, context))
 				return true;
 			/* Other fields are lists of basic items, nothing to walk. */
 			break;
