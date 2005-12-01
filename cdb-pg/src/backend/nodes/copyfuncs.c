@@ -1978,6 +1978,7 @@ _copyTruncateStmt(TruncateStmt *from)
 	TruncateStmt *newnode = makeNode(TruncateStmt);
 
 	COPY_NODE_FIELD(relations);
+	COPY_NODE_FIELD(newOidsList);
 
 	return newnode;
 }

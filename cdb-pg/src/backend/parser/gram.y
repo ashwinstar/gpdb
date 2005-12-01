@@ -2890,6 +2890,7 @@ TruncateStmt:
 				{
 					TruncateStmt *n = makeNode(TruncateStmt);
 					n->relations = $3;
+					n->newOidsList = NIL;
 					$$ = (Node *)n;
 				}
 		;

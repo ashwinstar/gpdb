@@ -1102,7 +1102,7 @@ setRelhasindex(Oid relid, bool hasindex, bool isprimary, Oid reltoastidxid)
  *
  * Caller must already hold exclusive lock on the relation.
  */
-void
+Oid
 setNewRelfilenode(Relation relation)
 {
 	Oid			newrelfilenode;
@@ -1163,8 +1163,77 @@ setNewRelfilenode(Relation relation)
 
 	/* Make sure the relfilenode change is visible */
 	CommandCounterIncrement();
+	
+	return newrelfilenode;
 }
 
+/*
+ * MPP specific routine.
+ * 
+ * setNewRelfilenodeToOid		- assign a new relfilenode value to the relation
+ *
+ * Caller must already hold exclusive lock on the relation.
+ */
+Oid
+setNewRelfilenodeToOid(Relation relation, Oid newrelfilenode)
+{
+
+	RelFileNode newrnode;
+	SMgrRelation srel;
+	Relation	pg_class;
+	HeapTuple	tuple;
+	Form_pg_class rd_rel;
+
+	/* Can't change relfilenode for nailed tables (indexes ok though) */
+	Assert(!relation->rd_isnailed ||
+		   relation->rd_rel->relkind == RELKIND_INDEX);
+	/* Can't change for shared tables or indexes */
+	Assert(!relation->rd_rel->relisshared);
+
+
+	/*
+	 * Find the pg_class tuple for the given relation.	This is not used
+	 * during bootstrap, so okay to use heap_update always.
+	 */
+	pg_class = heap_open(RelationRelationId, RowExclusiveLock);
+
+	tuple = SearchSysCacheCopy(RELOID,
+							   ObjectIdGetDatum(RelationGetRelid(relation)),
+							   0, 0, 0);
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "could not find tuple for relation %u",
+			 RelationGetRelid(relation));
+	rd_rel = (Form_pg_class) GETSTRUCT(tuple);
+
+	/* create another storage file. Is it a little ugly ? */
+	/* NOTE: any conflict in relfilenode value will be caught here */
+	newrnode = relation->rd_node;
+	newrnode.relNode = newrelfilenode;
+
+	srel = smgropen(newrnode);
+	smgrcreate(srel, relation->rd_istemp, false);
+	smgrclose(srel);
+
+	/* schedule unlinking old relfilenode */
+	RelationOpenSmgr(relation);
+	smgrscheduleunlink(relation->rd_smgr, relation->rd_istemp);
+
+	/* update the pg_class row */
+	rd_rel->relfilenode = newrelfilenode;
+	rd_rel->relpages = 0;		/* it's empty until further notice */
+	rd_rel->reltuples = 0;
+	simple_heap_update(pg_class, &tuple->t_self, tuple);
+	CatalogUpdateIndexes(pg_class, tuple);
+
+	heap_freetuple(tuple);
+
+	heap_close(pg_class, RowExclusiveLock);
+
+	/* Make sure the relfilenode change is visible */
+	CommandCounterIncrement();
+	
+	return newrelfilenode;
+}
 
 /*
  * This is invoked by the various index AMs once they have finished

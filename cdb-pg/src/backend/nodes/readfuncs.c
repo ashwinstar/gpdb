@@ -501,6 +501,7 @@ _readTruncateStmt(void)
 	READ_LOCALS(TruncateStmt);
 
 	READ_NODE_FIELD(relations);
+	READ_NODE_FIELD(newOidsList);
 
 	READ_DONE();
 }

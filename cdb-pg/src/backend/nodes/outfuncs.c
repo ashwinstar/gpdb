@@ -1497,6 +1497,7 @@ _outTruncateStmt(StringInfo str, TruncateStmt *node)
 	WRITE_NODE_TYPE("TRUNCATESTMT");
 
 	WRITE_NODE_FIELD(relations);
+	WRITE_NODE_FIELD(newOidsList);
 	
 }
 

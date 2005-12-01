@@ -1313,6 +1313,7 @@ typedef struct TruncateStmt
 {
 	NodeTag		type;
 	List	   *relations;		/* relations (RangeVars) to be truncated */
+	List 	   *newOidsList;
 } TruncateStmt;
 
 /* ----------------------

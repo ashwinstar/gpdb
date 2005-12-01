@@ -58,7 +58,9 @@ extern void IndexCloseAndUpdateStats(Relation heap, double heapTuples,
 extern void setRelhasindex(Oid relid, bool hasindex,
 			   bool isprimary, Oid reltoastidxid);
 
-extern void setNewRelfilenode(Relation relation);
+extern Oid setNewRelfilenode(Relation relation);
+
+extern Oid setNewRelfilenodeToOid(Relation relation, Oid newrelfilenode);
 
 extern void index_build(Relation heapRelation, Relation indexRelation,
 			IndexInfo *indexInfo);
