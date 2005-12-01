@@ -29,6 +29,8 @@
 #include "utils/fmgroids.h"
 #include "utils/relcache.h"
 
+#include "cdb/cdbvars.h"
+
 
 #define OIDCHARS	10			/* max chars printed by %u */
 
@@ -346,6 +348,11 @@ GetNewRelFileNode(Oid reltablespace, bool relisshared, Relation pg_class)
 	/* This should match RelationInitPhysicalAddr */
 	rnode.spcNode = reltablespace ? reltablespace : MyDatabaseTableSpace;
 	rnode.dbNode = relisshared ? InvalidOid : MyDatabaseId;
+	
+	if (Mpp_role == MPP_ROLE_EXECUTE)
+	{
+		elog(DEBUG1,"Calling GetNewRelFileNode in EXECUTE mode");
+	}
 
 	do
 	{
