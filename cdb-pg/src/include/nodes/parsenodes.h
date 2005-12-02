@@ -997,8 +997,9 @@ typedef struct CreateStmt
 	OnCommitAction oncommit;	/* what do we do at COMMIT? */
 	char	   *tablespacename; /* table space to use, or NULL */
 	List       *distributedBy;   /* what columns we distribute the data by */
-	Oid        relOid;			/* create table with this relOid */
-	char	   relKind;         /* CDB: force relkind to this */
+	Oid         relOid;			/* create table with this relOid */
+	Oid		    toastOid;		/* if toast table needed, use this for the relOid of the toast */
+	char	    relKind;         /* CDB: force relkind to this */
 	MppPolicy  *policy;
 } CreateStmt;
 
