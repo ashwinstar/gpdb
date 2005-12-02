@@ -48,6 +48,8 @@
 #include "utils/relcache.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbvars.h"
+
 
 /* non-export function prototypes */
 static TupleDesc ConstructTupleDescriptor(Relation heapRelation,
@@ -1117,6 +1119,11 @@ setNewRelfilenode(Relation relation)
 		   relation->rd_rel->relkind == RELKIND_INDEX);
 	/* Can't change for shared tables or indexes */
 	Assert(!relation->rd_rel->relisshared);
+	
+	if (Mpp_role == MPP_ROLE_EXECUTE)
+	{
+		elog(WARNING,"setNewRelfilenode called in EXECUTE mode");
+	}
 
 	/* Allocate a new relfilenode */
 	newrelfilenode = GetNewRelFileNode(relation->rd_rel->reltablespace,

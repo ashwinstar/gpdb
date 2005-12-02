@@ -349,11 +349,6 @@ GetNewRelFileNode(Oid reltablespace, bool relisshared, Relation pg_class)
 	rnode.spcNode = reltablespace ? reltablespace : MyDatabaseTableSpace;
 	rnode.dbNode = relisshared ? InvalidOid : MyDatabaseId;
 	
-	if (Mpp_role == MPP_ROLE_EXECUTE)
-	{
-		elog(DEBUG1,"Calling GetNewRelFileNode in EXECUTE mode");
-	}
-
 	do
 	{
 		/* Generate the OID */
@@ -390,6 +385,11 @@ GetNewRelFileNode(Oid reltablespace, bool relisshared, Relation pg_class)
 
 		pfree(rpath);
 	} while (collides);
+	
+	if (Mpp_role == MPP_ROLE_EXECUTE)
+	{
+		elog(WARNING,"Calling GetNewRelFileNode in EXECUTE mode.  New relOid = %d", rnode.relNode );
+	}
 
 	return rnode.relNode;
 }
