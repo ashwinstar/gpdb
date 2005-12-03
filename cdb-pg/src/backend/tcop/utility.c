@@ -622,7 +622,10 @@ ProcessUtility(Node *parsetree,
 				 * secondary relation too.
 				 */
 				CommandCounterIncrement();
-				AlterTableCreateToastTable(relOid, true);
+				
+				elog(DEBUG1,"CreateStmt: rel Oid %d toast Oid %d",relOid, ((CreateStmt *) parsetree)->toastOid);
+		
+				AlterTableCreateToastTableWithOid(relOid, true, ((CreateStmt *) parsetree)->toastOid);
 			}
 			break;
 

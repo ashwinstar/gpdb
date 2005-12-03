@@ -1399,6 +1399,7 @@ _readCreateStmt(void)
 	READ_STRING_FIELD(tablespacename);
 	READ_NODE_FIELD(distributedBy);
 	READ_OID_FIELD(relOid);
+	READ_OID_FIELD(toastOid);
 	READ_CHAR_FIELD(relKind);
 	local_node->policy = NULL;
 

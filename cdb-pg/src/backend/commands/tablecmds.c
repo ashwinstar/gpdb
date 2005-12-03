@@ -483,30 +483,45 @@ DefineRelation_int(CreateStmt *stmt,
 	}
 
 
-
-
-	/*
-	 * If we are the dispatcher, we need to create the table to get the new
-	 * relid
-	 */
-	if (Mpp_role == MPP_ROLE_DISPATCH || Mpp_role == MPP_ROLE_UTILITY)
+	if (Mpp_role == MPP_ROLE_DISPATCH)
 	{
-	relationId = heap_create_with_catalog(relname,
-										  namespaceId,
-										  tablespaceId,
-										  InvalidOid,
-										  GetUserId(),
-										  descriptor,
-										  relkind,
-										  false,
-										  localHasOids,
-										  parentOidCount,
-										  stmt->oncommit,
-										  allowSystemTableMods);
-
-	StoreCatalogInheritance(relationId, inheritOids);
-
+		Oid			toastRelationId = InvalidOid;
+		Relation	pg_class_desc;
+	
+		pg_class_desc = heap_open(RelationRelationId, RowExclusiveLock);
+	
+		/*
+		 * Pre-Allocate an OID for the relation, and one for the toast table (just in case).
+		 *
+		 * The OID will be the relfilenode as well, so make sure it doesn't collide
+		 * with either pg_class OIDs or existing physical files.
+		 */
+	
+		relationId = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
+									  
+		toastRelationId = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
+									  
+		heap_close(pg_class_desc, RowExclusiveLock);
+		
+		stmt->relOid = relationId;
+		stmt->toastOid = toastRelationId;
+		stmt->relKind = relkind;
+		stmt->relation->schemaname = get_namespace_name(namespaceId);
+		
+		
+	} 
+	else if (Mpp_role == MPP_ROLE_EXECUTE)
+	{
+		elog(DEBUG1, "CdbRole Execute of CREATE TABLE, relationid %d", stmt->relOid);
+		Assert(stmt->relOid != 0);
+		relationId = stmt->relOid;
 	}
+	else
+	{
+		stmt->relOid = InvalidOid;
+		stmt->toastOid = InvalidOid;
+	}
+
 
 	if (shouldDispatch)
 	{
@@ -577,10 +592,7 @@ DefineRelation_int(CreateStmt *stmt,
 			}
 
 		}
-		Assert(stmt->relOid == 0);
-		stmt->relOid = relationId;
-		stmt->relKind = relkind;
-		stmt->relation->schemaname = get_namespace_name(namespaceId);
+
 
 		elog(DEBUG4, "shouldDispatch = true, relOid = %d, schemaname %s ", relationId, stmt->relation->schemaname);
 
@@ -599,14 +611,10 @@ DefineRelation_int(CreateStmt *stmt,
 		}
 	}
 
-	if (Mpp_role == MPP_ROLE_EXECUTE)
-	{
-		elog(DEBUG1, "CdbRole Execute of CREATE TABLE, relationid %d", stmt->relOid);
-		Assert(stmt->relOid != 0);
-		relationId = stmt->relOid;
 
 
-			relationId = heap_create_with_catalog(relname,
+
+	relationId = heap_create_with_catalog(relname,
 										  namespaceId,
 										  tablespaceId,
 										  stmt->relOid,
@@ -619,9 +627,8 @@ DefineRelation_int(CreateStmt *stmt,
 										  stmt->oncommit,
 										  allowSystemTableMods);
 
-		StoreCatalogInheritance(relationId, inheritOids);
+	StoreCatalogInheritance(relationId, inheritOids);
 
-	}
 
 
 	/*
@@ -6178,8 +6185,15 @@ ATExecEnableDisableTrigger(Relation rel, char *trigname,
  * have all the right permissions.	Callers expect this function
  * to end with CommandCounterIncrement if it makes any changes.
  */
+ 
 void
 AlterTableCreateToastTable(Oid relOid, bool silent)
+{
+	AlterTableCreateToastTableWithOid(relOid,silent,InvalidOid);
+}
+
+void
+AlterTableCreateToastTableWithOid(Oid relOid, bool silent, Oid newOid)
 {
 	Relation	rel;
 	HeapTuple	reltup;
@@ -6293,7 +6307,7 @@ AlterTableCreateToastTable(Oid relOid, bool silent)
 	toast_relid = heap_create_with_catalog(toast_relname,
 										   PG_TOAST_NAMESPACE,
 										   rel->rd_rel->reltablespace,
-										   InvalidOid,
+										   newOid,
 										   rel->rd_rel->relowner,
 										   tupdesc,
 										   RELKIND_TOASTVALUE,
