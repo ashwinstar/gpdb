@@ -260,9 +260,8 @@ cdbdisp_dispatchToGang(const char                  *szCommand,
             segdbDesc->error_message.len)
             cdbdisp_mergeConnectionErrors(qeResult, segdbDesc);
 
-        segdbs_in_thread_pool = x;
         addSegDBToDispatchThreadPool(dispatchCommandParmsAr + threadCount,
-									 segdbs_in_thread_pool,
+									 x,
                                      szCommand,
                                      qeResult);
 
@@ -274,6 +273,7 @@ cdbdisp_dispatchToGang(const char                  *szCommand,
          */
         qeResult->stillRunning = true;
 	}
+	segdbs_in_thread_pool = x;
 
 	/*
 	 * Compute the thread count based on how many segdbs were added into the
