@@ -183,17 +183,17 @@ condStartDtxTransaction(void)
 {
     StringInfoData errMessage;
 
-	if (currentGxact == NULL)
-	{
-        if (resolveDtx)
-            resolveInDoubtDtx();
-		currentGxact = allocGxact();
-	}
-	else
+	if (currentGxact != NULL)
 	{
 		Assert(currentGxact->state == DTX_STATE_IN_PROGRESS);
 		return DTX_OK;
 	}
+
+	/* otherwise ... */
+
+	if (resolveDtx)
+		resolveInDoubtDtx();
+	currentGxact = allocGxact();
 
 	ereport(DEBUG2,
 			(errmsg("condStartDtxTransaction:  %s", currentGxact->gid)));
