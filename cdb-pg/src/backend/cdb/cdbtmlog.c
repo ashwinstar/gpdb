@@ -338,7 +338,13 @@ switchTmLogFile(void)
 void
 flushTmLogFile(void)
 {
-	int			ret = fsync(logFileFD);
+	int ret;
+
+#ifdef HAVE_FDATASYNC
+	ret = fdatasync(logFileFD);
+#else
+	ret = fsync(logFileFD);
+#endif
 
 	if (ret != 0)
 	{
