@@ -10,7 +10,7 @@
 #include "storage/lwlock.h"
 #include "utils/hsearch.h"
 
-#define TMGIDSIZE 22
+#define TMGIDSIZE 50
 
 
 /* TM  states */
