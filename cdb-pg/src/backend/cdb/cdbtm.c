@@ -343,7 +343,7 @@ condRollbackDtxTransaction(void)
 int
 execCommand(StringInfo errbuf)
 {
-	char		cmdbuf[100];
+	char		*cmd=NULL, cmdbuf[100];
 	struct CdbDispatchResults  *primaryResults = NULL;
 	struct CdbDispatchResults  *mirrorResults = NULL;
 	SegmentDatabaseDescriptor **failedSegDB = NULL;
@@ -356,47 +356,50 @@ execCommand(StringInfo errbuf)
 
 			if (XactIsoLevel != DefaultXactIsoLevel)
 			{
-				char	   *isoLevel = NULL;
-
 				switch (XactIsoLevel)
 				{
 					case XACT_READ_UNCOMMITTED:
-						isoLevel = "ISOLATION LEVEL READ UNCOMMITTED";
+						cmd = "BEGIN ISOLATION LEVEL READ UNCOMMITTED";
 						break;
 					case XACT_READ_COMMITTED:
-						isoLevel = "ISOLATION LEVEL READ COMMITTED";
+						cmd = "BEGIN ISOLATION LEVEL READ COMMITTED";
 						break;
 					case XACT_REPEATABLE_READ:
-						isoLevel = "ISOLATION LEVEL REPEATABLE READ";
+						cmd = "BEGIN ISOLATION LEVEL REPEATABLE READ";
 						break;
 					case XACT_SERIALIZABLE:
-						isoLevel = "ISOLATION LEVEL SERIALIZABLE";
+						cmd = "BEGIN ISOLATION LEVEL SERIALIZABLE";
 						break;
 				}
-				sprintf(cmdbuf, "%s %s", "BEGIN ", isoLevel);
 			}
 			else
-				sprintf(cmdbuf, "%s", "BEGIN ");
+				cmd = "BEGIN";
 			break;
 		case DTX_STATE_PREPARED:
-			sprintf(cmdbuf, "%s'%s'", "PREPARE TRANSACTION ", currentGxact->gid);
+			sprintf(cmdbuf, "PREPARE TRANSACTION '%s'", currentGxact->gid);
+			cmd = cmdbuf;
 			break;
 		case DTX_STATE_1P_COMMIT:
-			sprintf(cmdbuf, "%s", "COMMIT ");
+			cmd = "COMMIT";
 			break;
 		case DTX_STATE_2P_COMMIT:
-			sprintf(cmdbuf, "%s'%s'", "COMMIT PREPARED ", currentGxact->gid);
+			sprintf(cmdbuf, "COMMIT PREPARED '%s'", currentGxact->gid);
+			cmd = cmdbuf;
 			break;
 		case DTX_STATE_ROLLBACK:
 		/*
 		 * BUG? shouldn't there be a 1P rollback and a 2P rollback?
-		 * Anyway, the new 8.1 postgres code needs a "ROLLBACK PREPARED" if and only if we've done the prepare,
-		 * else it needs a normal ROLLBACK.
+		 * Anyway, the new 8.1 postgres code needs a "ROLLBACK
+		 * PREPARED" if and only if we've done the prepare, else it
+		 * needs a normal ROLLBACK.
 		 */
 		 if ((currentGxact->infomask & GXACT_STATUS_PERSISTENT) == 0) //?????? Bad way to check if we've prepared?
-		 	sprintf(cmdbuf,"%s","ROLLBACK ");
+			 cmd ="ROLLBACK";
 		 else
-			sprintf(cmdbuf, "%s'%s'", "ROLLBACK PREPARED ", currentGxact->gid);
+		 {
+			sprintf(cmdbuf, "ROLLBACK PREPARED '%s'", currentGxact->gid);
+			cmd = cmdbuf;
+		 }
 			break;
         default:
 			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
@@ -406,7 +409,7 @@ execCommand(StringInfo errbuf)
 	}
 
 	/* Dispatch command to all primary and mirror segdbs. */
-    cdbdisp_dispatchCommand(cmdbuf, false, &primaryResults, &mirrorResults);
+    cdbdisp_dispatchCommand(cmd, false, &primaryResults, &mirrorResults);
 
 	/*
      * Wait for completion.  Don't cancel.
