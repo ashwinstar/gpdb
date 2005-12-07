@@ -378,7 +378,7 @@ getCdbComponentInfo(void)
 		*/
 		attr = heap_getattr(mpp_configuration_tuple, Anum_mpp_configuration_hostname, mpp_configuration_rel->rd_att, &isNull);
 		Assert(!isNull);
-		pRow->hostname = DatumGetCString(DirectFunctionCall1(textout, attr));
+		pRow->hostname = DatumGetCString(attr);
 		
 		/*
 		* port

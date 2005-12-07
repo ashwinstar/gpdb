@@ -16,7 +16,7 @@ CATALOG(mpp_configuration,5000) BKI_SHARED_RELATION BKI_WITHOUT_OIDS
 	int2		dbid;
 	bool		isprimary;
 	bool		valid;
-	text		hostname;
+	NameData	hostname;
 	int4		port;
 	text		datadir;
 } FormData_mpp_configuration;
