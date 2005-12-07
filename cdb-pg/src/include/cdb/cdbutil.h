@@ -35,6 +35,7 @@ typedef struct CdbComponentDatabaseInfo
 	bool		definedprimary; /* true if this seg db is originally defined
 								 * as primary */
 	char	   *hostname;		/* name or ip address of host machine */
+	char	   *hostip;			/* cached lookup of name */
 	int4		port;			/* port that instance is listening on */
 	char	   *datadir;		/* directory where instance was initialized
 								 * into */

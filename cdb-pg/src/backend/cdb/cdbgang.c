@@ -105,9 +105,9 @@ createGang(GangType type, int size, int content)
 	int			segdbs_in_thread_pool;
 	int			segdb_count;
 
+	struct hostent *lookup;
+
 	Assert(size == 1 || size == getMPPSegmentCount());
-
-
 
 	/*
 	 * We can't allocate more segments than we know about
@@ -293,6 +293,16 @@ createGang(GangType type, int size, int content)
 				 PQoptions(segdbDesc->conn));
 
 			/*
+			 * cache the name
+			 */
+			lookup = gethostbyname(q->hostname);
+			if (lookup == NULL)
+			{
+				elog(FATAL, "getCdbProcessList: gethostbyname() failed for host '%s'", q->hostname);
+			}
+			q->hostip = pstrdup(inet_ntoa(*(struct in_addr *) (lookup->h_addr_list[0])));
+
+			/*
 			 * We have a live connection!
 			 */
 			successful_connections++;
@@ -462,7 +472,6 @@ buildGangDefinition(GangType type, int size, int content)
 											  total_segments *
 											  sizeof
 											  (SegmentDatabaseDescriptor));
-
 
 
 	MemoryContextSwitchTo(oldContext);
@@ -951,7 +960,6 @@ getCdbProcessList(Gang *gang)
 	if (gang != NULL && gang->type != GANGTYPE_UNALLOCATED)
 	{
 		CdbComponentDatabaseInfo *qeinfo;
-		struct hostent *theHost;
 		bool		primary;
 		int			k = 0;
 		int			listsize = 0;
@@ -976,12 +984,6 @@ getCdbProcessList(Gang *gang)
 				elog(ERROR, "getCdbProcessList: a required QE is unexpectedly unavailable");
 			}
 
-			theHost = gethostbyname(qeinfo->hostname);
-			if (theHost == NULL)
-			{
-				elog(FATAL, "getCdbProcessList: gethostbyname() failed for host '%s'", qeinfo->hostname);
-			}
-
 			/*
 			 * We want the n-th element of the list to be the segDB that handled content n.
 			 * And if no segDb is available (down mirror), we want it to be null.
@@ -1001,8 +1003,7 @@ getCdbProcessList(Gang *gang)
 					listsize++;
 				}
 
-
-			process->listenerAddr = pstrdup(inet_ntoa(*(struct in_addr *) (theHost->h_addr_list[0])));
+			process->listenerAddr = pstrdup(qeinfo->hostip);
 			process->listenerPort = segdbDesc->motionListener;
 			process->pid = PQbackendPID(segdbDesc->conn);
 			process->contentid = segdbDesc->segindex;
@@ -1033,6 +1034,8 @@ getCdbProcessList(Gang *gang)
 	return list;
 }
 
+static char *qd_hostip = NULL;
+
 /*
  * getCdbProcessForQD:	Manufacture a CdbProcess representing the QD,
  * as if it were a worker from the executor factory.
@@ -1044,11 +1047,9 @@ getCdbProcessesForQD(int isPrimary)
 {
 	List	   *list = NIL;
 
-	CdbComponentDatabases *cdb_component_dbs;
 	CdbComponentDatabaseInfo *qdinfo;
-	struct hostent *theHost;
+	struct hostent *lookup;
 	CdbProcess *proc;
-
 
 	Assert(Mpp_role == MPP_ROLE_DISPATCH && Mpp_is_primary);
 	if (!isPrimary)
@@ -1056,21 +1057,24 @@ getCdbProcessesForQD(int isPrimary)
 		elog(FATAL, "getCdbProcessesForQD: unsupported request for QD mirror process");
 	}
 
-	cdb_component_dbs = getCdbComponentDatabases();		/* from cdbutil.h */
 	qdinfo = &(cdb_component_dbs->entry_db_info[0]);
 
 	Assert(qdinfo->segindex == -1 && qdinfo->isprimary);
 
-	theHost = gethostbyname(qdinfo->hostname);
-
-	if (theHost == NULL)
+	if (qd_hostip == NULL)
 	{
-		elog(FATAL, "gethostbyname() failed for host '%s'", qdinfo->hostname);
+		lookup = gethostbyname(qdinfo->hostname);
+
+		if (lookup == NULL)
+		{
+			elog(FATAL, "gethostbyname() failed for host '%s'", qdinfo->hostname);
+		}
+		qd_hostip = strdup(inet_ntoa(*(struct in_addr *)(lookup->h_addr_list[0])));
+		/* XXX: we're going to leak this ? */
 	}
 
 	proc = makeNode(CdbProcess);
-	proc->listenerAddr =
-		pstrdup(inet_ntoa(*(struct in_addr *) (theHost->h_addr_list[0])));
+	proc->listenerAddr = pstrdup(qd_hostip);
 	proc->listenerPort = Mpp_listener_port;
 	proc->pid = MyProcPid;
 	proc->contentid = -1;
@@ -1079,8 +1083,6 @@ getCdbProcessesForQD(int isPrimary)
 	/*
 	 * freeCdbComponentDatabases(cdb_component_dbs);
 	 */
-
-
 	list = lappend(list, proc);
 	return list;
 }
