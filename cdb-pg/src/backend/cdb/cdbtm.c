@@ -775,9 +775,6 @@ updateDtxState(DtxState state)
 
 	Assert(gxact != NULL);
 
-	elog(DEBUG2, "updateDtxState %s new=%s old=%s", gxact->gid,
-         formatDtxState(state), formatDtxState(gxact->state));
-
 	switch (state)
 	{
 		case DTX_STATE_PREPARED:
@@ -830,7 +827,7 @@ updateDtxState(DtxState state)
 		checkPointTm();
 		(*shmGIDSeq)++;
 	}
-	else
+	else if (state == DTX_STATE_PREPARED == DTX_STATE_COMMIT_DONE || state == DTX_STATE_ROLLBACK_DONE)
 		flushTmLogFile();
 	releaseTmLock();
 
