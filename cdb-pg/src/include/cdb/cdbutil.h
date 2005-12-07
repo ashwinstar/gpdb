@@ -38,7 +38,7 @@ typedef struct CdbComponentDatabaseInfo
 	int4		port;			/* port that instance is listening on */
 	char	   *datadir;		/* directory where instance was initialized
 								 * into */
-	int4		listenerid;		/* id of listener for this database. */
+	
 } CdbComponentDatabaseInfo;
 
 /* --------------------------------------------------------------------------------------------------

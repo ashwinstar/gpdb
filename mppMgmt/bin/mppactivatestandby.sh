@@ -56,7 +56,7 @@ ENCODING=UNICODE
 CHECK_POINT_SEGMENTS=8
 FORCE_ACTIVATE=0
 unset START_MPPSYNC
-MPP_TBL=mpp.mpp
+MPP_TBL=mpp_mpp
 START_PROG=${WORKDIR}/mppstart.sh
 STOP_PROG=${WORKDIR}/mppstop.sh
 #******************************************************************************
@@ -156,12 +156,12 @@ CHK_CATALOG_DATA () {
 	LOG_MSG "[INFO]:-Starting standby QD instance in admin mode"
 	$START_PROG -m -d $MASTER_STANDBY_DATA_DIRECTORY
 	ERROR_CHK $? "start standby QD in admin mode" 2
-	MASTER_HOSTNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select a.hostname from mpp.host a, mpp.listener b where b.listenerid=1 and a.hostid=b.hostid;"`
+	MASTER_HOSTNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select hostname from mpp_configuration where dbid in (select min(dbid) from mpp_configuration where content=-1);"`
 	ERROR_CHK $? "obtain master hostname" 1
 	if [ $RETVAL -ne 0 ];then 
 		ADMIN_SHUTDOWN 1
 		ERROR_EXIT "[FATAL]:-Unable to obtain master QD hostname" 2;fi
-	MASTER_PORT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select port from mpp.listener where listenerid=1;"`
+	MASTER_PORT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select port from mpp_configuration where dbid in (select min(dbid) from mpp_configuration where content=-1);"`
 	ERROR_CHK $? "obtain master QD port number" 1
 	if [ $RETVAL -ne 0 ];then 
 		ADMIN_SHUTDOWN 1
@@ -190,12 +190,12 @@ UPDATE_CATALOG () {
 	GET_DB_LIST
 	for DB in "${DB_ARRAY[@]}"
 	do
-	##	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DB -A -t -c"update mpp.mpp set dbid=$MASTER_STANDBY_DBID where content=-1;"
-		env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DB -A -t -c"update mpp.listener set hostid=$MASTER_STANDBY_HOSTID where listenerid=1;"
-		ERROR_CHK $? "update mpp.listener hostid value in database $DB" 1
+	##	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DB -A -t -c"update mpp_mpp set dbid=$MASTER_STANDBY_DBID where content=-1;"
+		env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DB -A -t -c"update mpp_configuration set hostname=$MASTER_STANDBY_HOSTNAME where dbid in (select min(dbid) from mpp_configuration where content=-1);"
+		ERROR_CHK $? "update mpp_configuration hostname value in database $DB" 1
 		if [ $RETVAL -ne 0 ];then
 			ADMIN_SHUTDOWN
-			ERROR_EXIT "[FATAL]:-Unable to contine, unable to update mpp.listener catalog" 2
+			ERROR_EXIT "[FATAL]:-Unable to contine, unable to update mpp_configuration catalog" 2
 		fi
 	done
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"

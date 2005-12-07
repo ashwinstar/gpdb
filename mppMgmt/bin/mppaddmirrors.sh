@@ -101,11 +101,11 @@ CHECK_PARAM () {
 OBTAIN_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	#Obtain number of segment instances per host
-	PRI_SEG_PER_HOST=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(distinct a.port) from mpp.listener a, mpp.pgdatabase b where a.listenerid in (select listenerid from mpp.pgdatabase where content<>-1 and definedprimary='t');"`
+	PRI_SEG_PER_HOST=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(distinct port) from mpp_configuration b where content<>-1 and definedprimary='t';"`
 	ERROR_CHK $? "obtain primary segments per host" 2
-	MAX_DBID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select max(dbid)+1 from mpp.pgdatabase;"`
-	ARRAY_SUPERUSER=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select mppsuperuser from mpp.listener where listenerid=1;"`
-	ERROR_CHK $? "obtain array superuser name" 2
+	MAX_DBID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select max(dbid)+1 from mpp_configuration;"`
+	#ARRAY_SUPERUSER=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select mppsuperuser from mpp.listener where listenerid=1;"`
+	#ERROR_CHK $? "obtain array superuser name" 2
 	if [ x"" == x"$MIRROR_PORT_BASE" ];then	
 		CALC_MIRROR_PORT_BASE
 	else
@@ -122,10 +122,10 @@ OBTAIN_PARAM () {
 		fi
 		((DIR_COUNT=$DIR_COUNT+1))
 	done
-	PRI_HOSTNAME_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select distinct c.hostname from mpp.listener a, mpp.pgdatabase b, mpp.host c where a.listenerid in (select listenerid from mpp.pgdatabase where content<>-1 and definedprimary='t') and c.hostid=a.hostid and a.listenerid=b.listenerid;"`)
+	PRI_HOSTNAME_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select distinct hostname from mpp_configuration where content<>-1 and definedprimary='t';"`)
 	ERROR_CHK $? "obtain primary hostname list" 2
 	PRI_HOST_COUNT=${#PRI_HOSTNAME_ARRAY[@]}
-	PRI_SEGMENT_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select datadir, port, c.hostid, b.content from mpp.listener a, mpp.pgdatabase b, mpp.host c where a.listenerid in (select listenerid from mpp.pgdatabase where content<>-1) and a.listenerid=b.listenerid and c.hostid=a.hostid order by hostid;"`)
+	PRI_SEGMENT_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select datadir, port, hostname, content from mpp_configuration where content<>-1 order by dbid;"`)
 	ERROR_CHK $? "obtain segment instance directory suffix" 2
 	LOG_MSG "[INFO]:-Obtaining list of databases in MPP cluster"
 	GET_DB_LIST
@@ -135,10 +135,10 @@ OBTAIN_PARAM () {
 
 OBTAIN_CURRENT_PORT () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	MAX_PORT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select max(port) from mpp.listener;"`
-	ERROR_CHK $? "obtain max port number from mpp.listener" 2
-	MIN_PORT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select min(port) from mpp.listener;"`
-	ERROR_CHK $? "obtain min port number from mpp.listener" 2
+	MAX_PORT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select max(port) from mpp_configuration;"`
+	ERROR_CHK $? "obtain max port number from mpp_configuration" 2
+	MIN_PORT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select min(port) from mpp_configuration;"`
+	ERROR_CHK $? "obtain min port number from mpp_configuration" 2
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -207,7 +207,7 @@ CREATE_MIRROR_ARRAY () {
 		((MIRROR_PORT=$MIRROR_PORT_BASE+$HOSTID_INDEX))
 		MIRROR_CONTENT=`$ECHO $PRIDETAILS|$CUT -d"|" -f4`
 		MIRROR_ARRAY=(${MIRROR_ARRAY[@]} $MIRROR_DIR"|"$MIRROR_PORT"|"$MIRROR_DBID"|"$MIRROR_CONTENT"|"$MIRROR_HOSTID"|"$PRI_HOSTID)
-		MIRROR_HOSTNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname from mpp.host where hostid=${MIRROR_HOSTID};"`
+		MIRROR_HOSTNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname from mpp_configuration where hostid=${MIRROR_HOSTID};"`
 		POSTGRES_PORT_CHK $MIRROR_PORT $MIRROR_HOSTNAME
 	done
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"	
@@ -259,9 +259,9 @@ CONFIG_CATALOG () {
 		for MIRROR_SEG in "${MIRROR_ARRAY[@]}"
 		do
 			SET_VAR $MIRROR_SEG
-			env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $MPP_DATABASE -A -t -c"insert into mpp.listener values (${MIRROR_DBID},${MIRROR_HOSTID},${MIRROR_PORT},'${MIRROR_DATADIR}','${ARRAY_SUPERUSER}');"
-			ERROR_CHK $? "insert listener record for $MIRROR_DATADIR port $MIRROR_PORT" 2
-			env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $MPP_DATABASE -A -t -c"insert into mpp.pgdatabase values (${MIRROR_DBID},'f',${MIRROR_CONTENT},${MIRROR_DBID},'t','f');"
+			#env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $MPP_DATABASE -A -t -c"insert into mpp.listener values (${MIRROR_DBID},${MIRROR_HOSTID},${MIRROR_PORT},'${MIRROR_DATADIR}','${ARRAY_SUPERUSER}');"
+			#ERROR_CHK $? "insert listener record for $MIRROR_DATADIR port $MIRROR_PORT" 2
+			env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $MPP_DATABASE -A -t -c"insert into mpp_configuration (dbid, isprimary, content, valid, definedprimary, hostname, port, datadir)  values (${MIRROR_DBID},'f',${MIRROR_CONTENT},'t','f', '${MIRROR_HOSTNAME}',${MIRROR_PORT},'${MIRROR_DATADIR}' );"
 			ERROR_CHK $? "insert pgdatabase record for $MIRROR_DATADIR port $MIRROR_PORT" 2
 		done	
 	done
@@ -315,19 +315,19 @@ CREATE_MIRRORS () {
 		PRIMARY_HOSTNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname from mpp.host where hostid=${MIRROR_PRI_HOSTID};"`
 		ERROR_CHK $? "obtain primary hostname" 2
 		LOG_MSG "[INFO]:-Commencing primary data directory copy $PRIMARY_HOSTNAME to $MIRROR_HOSTNAME"
-		PRIMARY_DATADIR=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select datadir from mpp.listener a, mpp.pgdatabase b where b.content=$MIRROR_CONTENT and a.listenerid=b.listenerid and a.listenerid<>${MIRROR_DBID};"`
+		PRIMARY_DATADIR=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select datadir from mpp_configuration where content=$MIRROR_CONTENT and dbid<>${MIRROR_DBID};"`
 		ERROR_CHK $? "obtain primary data directory for $PRIMARY_HOSTNAME" 2
 		$TRUSTED_SHELL $PRIMARY_HOSTNAME "$TRUSTED_COPY -pr $PRIMARY_DATADIR ${MIRROR_HOSTNAME}:$MIRROR_DATADIR"
 		ERROR_CHK $? "copy data directory on $PRIMARY_HOSTNAME to $MIRROR_HOSTNAME" 2
 		ED_FILE ${MIRROR_DATADIR}/$PG_CONF "port=" "port=${MIRROR_PORT}" 0 $MIRROR_HOSTNAME
 		LOG_MSG "[INFO]:-Starting mirror segment in admin mode"
 		$TRUSTED_SHELL $MIRROR_HOSTNAME "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -w -D $MIRROR_DATADIR -l ${MIRROR_DATADIR}.log -o \"-i -p $MIRROR_PORT \" start"
-		ERROR_CHK $? "update segment mpp.mpp on $MIRROR_HOSTNAME DBID=$MIRROR_DBID port=$MIRROR_PORT" 2
+		ERROR_CHK $? "update segment mpp_mpp on $MIRROR_HOSTNAME DBID=$MIRROR_DBID port=$MIRROR_PORT" 2
 		for DB in "${DB_ARRAY[@]}"
 		do
-			LOG_MSG "[INFO]:-Updating mpp.mpp table for database $DB"
-			$TRUSTED_SHELL $MIRROR_HOSTNAME "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $MIRROR_PORT $DB -c \"update mpp.mpp set dbid=${MIRROR_DBID} where dbid<>${MIRROR_DBID};\""
-			ERROR_CHK $? "update mpp.mpp table on $MIRROR_HOSTNAME $MIRROR_DATADIR database $DB" 2
+			LOG_MSG "[INFO]:-Updating mpp_mpp table for database $DB"
+			$TRUSTED_SHELL $MIRROR_HOSTNAME "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $MIRROR_PORT $DB -c \"update mpp_mpp set dbid=${MIRROR_DBID} where dbid<>${MIRROR_DBID};\""
+			ERROR_CHK $? "update mpp_mpp table on $MIRROR_HOSTNAME $MIRROR_DATADIR database $DB" 2
 		done
 		LOG_MSG "[INFO]:-Closing down mirror segment from admin mode"
 		$TRUSTED_SHELL $MIRROR_HOSTNAME "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -w stop -D $MIRROR_DATADIR -m smart -l ${MIRROR_DATADIR}.log"

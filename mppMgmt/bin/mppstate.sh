@@ -129,7 +129,7 @@ GET_FAIL_SETTING () {
 }
 
 GET_STANDBY_SETTING () {
-	MASTER_STANDBY_HOSTNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -R" " -A -t -c"select a.hostname from mpp.host a, mpp.listener b, mpp.pgdatabase c where a.hostid=b.hostid and b.listenerid=c.listenerid and c.content=-1 and c.dbid<>1;"`
+	MASTER_STANDBY_HOSTNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -R" " -A -t -c"select hostname from mpp_configuration where content=-1 and dbid<>1;"`
 	ERROR_CHK $? "Obtain standby hostname" 1
 	if [ x"" == x"$MASTER_STANDBY_HOSTNAME" ];then
 		STANDBY_CONFIGURED="No master standby configured"
@@ -159,7 +159,7 @@ DATABASE_STATUS () {
 				GET_STANDBY_SETTING
 				QD_PG_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"show server_version;"`
 				ERROR_CHK $? "obtain postgres version" 1
-				MIRROR_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(dbid)/count(distinct(content)) from mpp.pgdatabase where content<>-1;" 2> /dev/null `
+				MIRROR_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(dbid)/count(distinct(content)) from mpp_configuration where content<>-1;" 2> /dev/null `
 				ERROR_CHK $? "obtain mirror count" 1
 				if [ x"" == x"$MIRROR_COUNT" ];then
 					MIRROR_CONFIG=ERROR
@@ -440,7 +440,7 @@ CLUSTER_CONFIG () {
 }
 
 LIST_MPP_PORTS () {
-		PORT_ARRAY=(`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.port, a.datadir from mpp.listener a, mpp.host b where listenerid<> (select listenerid from mpp.pgdatabase where content=-1 and dbid=1) and a.hostid=b.hostid;" `)
+		PORT_ARRAY=(`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname, port, datadir from mpp_configuration where content=-1 and dbid=1;" `)
 		ERROR_CHK $? "obtain port assignments" 2
 		LOG_MSG "[INFO]:-Port assignments"
 		for PMODE in "${PORT_ARRAY[@]}"
@@ -453,7 +453,7 @@ LIST_MPP_PORTS () {
 }
 
 LIST_MPP_LOGS () {
-		LOG_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select b.hostname,  a.datadir from mpp.listener a, mpp.host b where listenerid not in (select listenerid from mpp.pgdatabase where content=-1) and a.hostid=b.hostid;" 2>|/dev/null`)
+		LOG_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select hostname, datadir from mpp_configuration where content=-1 ;" 2>|/dev/null`)
 		ERROR_CHK $? "obtain log assignments" 2
 		LOG_MSG "[INFO]:-Segment instance MPP database instance log file names"
 		for LOGCHK in "${LOG_ARRAY[@]}"
@@ -496,7 +496,7 @@ STANDBY_HOST_DETAILS () {
 }
 
 GET_MPP_VERSION () {
-		MPP_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select * from mpp.version limit 1;" 2>/dev/null`
+		MPP_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select * from mpp_version_at_initdb limit 1;" 2>/dev/null`
 		ERROR_CHK $? "obtain MPP version information" 2
 }
 

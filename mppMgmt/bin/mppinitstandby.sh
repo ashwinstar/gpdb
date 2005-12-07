@@ -55,7 +55,7 @@ TEMP_PORT=55555
 ENCODING=UNICODE
 CHECK_POINT_SEGMENTS=8
 unset START_MPPSYNC
-MPP_TBL=mpp.mpp
+MPP_TBL=mpp_mpp
 START_PROG=${WORKDIR}/mppstart.sh
 STOP_PROG=${WORKDIR}/mppstop.sh
 UPDATE_CATALOG=1
@@ -116,7 +116,7 @@ CHECK_PARAM () {
 	PING_HOST $MASTER_STANDBY_HOSTNAME
 	#Check to see if we already have a standby master configured
 	if [ $UPDATE_CATALOG -eq 1 ];then
-		STANDBY_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from mpp.listener a, mpp.host b, mpp.mpp_pgdatabase c where a.listenerid in (select listenerid from mpp.mpp_pgdatabase where content=-1 and dbid<>1) and a.hostid=b.hostid and a.listenerid=c.listenerid;"`
+		STANDBY_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from mpp_configuration where a.listenerid in (select listenerid from mpp.mpp_pgdatabase where content=-1 and dbid<>1) and a.hostid=b.hostid and a.listenerid=c.listenerid;"`
 		ERROR_CHK $? "obtained standby master host count" 2
 		if [ $STANDBY_COUNT -ne 0 ];then
 			ERROR_EXIT "[FATAL]:-Standby master host already configured" 2
@@ -135,16 +135,16 @@ CHECK_PARAM () {
 	STANDBY_IP_ADDRESS_ALL=(`$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME "$IFCONFIG $IFCONFIG_TXT |$GREP \"inet \"|$GREP -v \"127.0.0\"|$AWK '{print \\$2}'|$CUT -d: -f2" 2>>$LOG_FILE`)
 	STANDBY_IP_ADDRESS=(`$ECHO ${STANDBY_IP_ADDRESS_ALL[@]}|$TR ' ' '\n'|$SORT -u|$TR '\n' ' '`)
 	ERROR_CHK $? "obtain IP address of standby Master host" 2
-	MASTER_MPP_NAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select mppname from mpp.mpp;"`
+	MASTER_MPP_NAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select mppname from mpp_mpp;"`
 	ERROR_CHK $? "obtain master array name" 2
 	#Check to see if there are any other MPP host on the proposed standby host
-	IN_USE_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from mpp.host a, mpp.listener b where a.hostname='${MASTER_STANDBY_HOSTNAME}' and a.hostid=b.hostid;"`
+	IN_USE_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from mpp_configuration where hostname='${MASTER_STANDBY_HOSTNAME}' ;"`
 	ERROR_CHK $? "obtain standby host in use count" 2
 	if [ $IN_USE_COUNT -ne 0 ];then
 		LOG_MSG "[WARN]:-There are other segment instances active on $MASTER_STANDBY_HOSTNAME, this may have an impact on overall MPP cluster performance"
 		if [ $UPDATE_CATALOG -eq 1 ];then
 		#Check to ensure that port requested not already in use on that host
-			PORT_IN_USE_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from mpp.host a, mpp.listener b where a.hostid=b.hostid and a.hostname='${MASTER_STANDBY_HOSTNAME}' and b.port=${MASTER_STANDBY_PORT};"`
+			PORT_IN_USE_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from mpp_configuration where hostname='${MASTER_STANDBY_HOSTNAME}' and port=${MASTER_STANDBY_PORT};"`
 			ERROR_CHK $? "obtain standby port check" 2
 			if [ $PORT_IN_USE_COUNT -ne 0 ];then
 				ERROR_EXIT "[FATAL]:-Port $MASTER_STANDBY_PORT already assigned on ${MASTER_STANDBY_HOSTNAME}" 2

@@ -55,7 +55,7 @@ TEMP_PORT=55555
 ENCODING=UNICODE
 CHECK_POINT_SEGMENTS=8
 unset START_MPPSYNC
-MPP_TBL=mpp.mpp
+MPP_TBL=mpp_mpp
 START_PROG=${WORKDIR}/mppstart.sh
 STOP_PROG=${WORKDIR}/mppstop.sh
 #******************************************************************************
@@ -136,19 +136,19 @@ STOP_MASTER_DB () {
 
 GET_SEGMENT_INFO () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	MASTER_USER=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select mppsuperuser from mpp.listener where listenerid=1;"`
-	ERROR_CHK $? "get master instance user name" 2
-	MASTER_MPP_NAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select mppname from mpp.mpp;"`
+	#MASTER_USER=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select mppsuperuser from mpp.listener where listenerid=1;"`
+	#ERROR_CHK $? "get master instance user name" 2
+	MASTER_MPP_NAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select mppname from mpp_mpp;"`
 	ERROR_CHK $? "get master instance array name" 2
-	REBUILD_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select a.hostname, b.port, b.datadir, c.dbid, c.content, c.definedprimary from mpp.host a, mpp.listener b, mpp.pgdatabase c where a.hostid=b.hostid and b.listenerid=c.listenerid and c.content<>-1;"`)
+	REBUILD_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select hostname, port, datadir, dbid, content, definedprimary from mpp_configuration where content<>-1;"`)
 	ERROR_CHK $? "get array segment instance details " 2
 	MASTER_IP_ADDRESS_ALL=(`$IFCONFIG |$GREP "inet addr"|$GREP -v addr:127|$AWK '{print $2}'|$CUT -d: -f2`)	
 	ERROR_CHK $? "get master host IP details" 2
 	MASTER_IP_ADDRESS=(`$ECHO ${MASTER_IP_ADDRESS_ALL[@]}|$TR ' ' '\n'|$SORT -u|$TR '\n' ' '`)
-	MASTER_USER=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select mppsuperuser from mpp.listener where listenerid=1;"`
-	ERROR_CHK $? "get master instance super user $MASTER_USER" 2
+	#MASTER_USER=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select mppsuperuser from mpp.listener where listenerid=1;"`
+	#ERROR_CHK $? "get master instance super user $MASTER_USER" 2
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
-	MASTER_TOTAL_SEG=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select numsegments from mpp.mpp;"`
+	MASTER_TOTAL_SEG=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $QD_DBNAME -c "select numsegments from mpp_mpp;"`
 	ERROR_CHK $? "get total instance segments" 2
 	MASTER_HOST=`$HOSTNAME`
 }
@@ -278,10 +278,10 @@ BUILD_SEGMENT_INSTANCES () {
 		BACKOUT_COMMAND "$TRUSTED_SHELL $SEG_HOSTNAME \"export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;export PGPORT=${SEG_PORT}; $PG_CTL -w -D $SEG_DATADIR -l ${SEG_DATADIR}.log -o \"-i -p ${SEG_PORT}\" -m immediate  stop\""
 		BACKOUT_COMMAND "$ECHO \"Stopping segment instance\""
 		LOG_MSG "[INFO]:-Successfully started segment instance on $SEG_HOSTNAME"
-		LOG_MSG "[INFO]:-Updating segment mpp.mpp system table"
+		LOG_MSG "[INFO]:-Updating segment mpp_mpp system table"
 		RUN_COMMAND_REMOTE $SEG_HOSTNAME "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT $DEFAULTDB -c \"insert into $MPP_TBL values ('${MASTER_MPP_NAME}',${MASTER_TOTAL_SEG},${SEG_DBID},${SEG_CONTENT});\"" >> $LOG_FILE 2>&1
-		ERROR_CHK $? "update $SEG_HOSTNAME mpp.mpp record entry with DBID value ${SEG_DBID}" 2
-		LOG_MSG "[INFO]:-Successfully updated $SEG_HOSTNAME mpp.mpp system table"
+		ERROR_CHK $? "update $SEG_HOSTNAME mpp_mpp record entry with DBID value ${SEG_DBID}" 2
+		LOG_MSG "[INFO]:-Successfully updated $SEG_HOSTNAME mpp_mpp system table"
 		LOG_MSG "[INFO]:-Commencing shutdown of segment instance on $SEG_HOSTNAME"
 		$TRUSTED_SHELL ${SEG_HOSTNAME} "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;export PGPORT=${SEG_PORT}; $PG_CTL -w -D $SEG_DATADIR -l ${SEG_DATADIR}.log -o \"-i -p ${SEG_PORT}\" stop" >> $LOG_FILE 2>&1
 		ERROR_CHK $? "shutdown of instance on port $SEG_PORT data directory $SEG_DATADIR host $SEG_HOSTNAME" 2

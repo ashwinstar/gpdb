@@ -142,7 +142,7 @@ GET_MIRROR () {
 	fi
 
 	#Now check to make sure that we can initiate recovery
-	TOTAL_INST_COUNT=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(dbid) from mpp.pgdatabase where content<>-1;"`
+	TOTAL_INST_COUNT=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(dbid) from mpp_configuration where content<>-1;"`
 	ERROR_CHK $? "obtain total segement count from master instance" 2
 	if [ $FAILED_INST_COUNT -gt $TOTAL_INST_COUNT ]; then
 		LOG_MSG "[FATAL]:-Insufficient remaining active instances to be able to recover cluster"
@@ -155,13 +155,13 @@ GET_MIRROR () {
 	LOG_MSG "[INFO]:-Obtaining recovery information"
 	ARRAY_INDEX=0
 	DBNAME=${DB_MARKED_INVALID[0]}
-	FAILED_INST_LIST=(`$PSQL -p $MASTER_PORT $DBNAME -R" " -A -t -c"select dbid from mpp.mpp_pgdatabase where valid='f';"`)
+	FAILED_INST_LIST=(`$PSQL -p $MASTER_PORT $DBNAME -R" " -A -t -c"select dbid from mpp_configuration where valid='f';"`)
 	ERROR_CHK $? "obtain failed DBID details from master instance" 2
 	for DBID in ${FAILED_INST_LIST[@]}
 	do
-		FAILED_INSTANCE_ARRAY[$ARRAY_INDEX]=`$PSQL -p $MASTER_PORT $DBNAME -A -t -c"select a.hostname, b.port, b.datadir, c.dbid from mpp.host a, mpp.listener b, mpp.mpp_pgdatabase c where a.hostid=b.hostid and b.listenerid=c.listenerid and c.valid='f' and c.dbid=${DBID};"`
+		FAILED_INSTANCE_ARRAY[$ARRAY_INDEX]=`$PSQL -p $MASTER_PORT $DBNAME -A -t -c"select hostname, port, datadir, dbid from mpp_configuration where valid='f' and dbid=${DBID};"`
 		ERROR_CHK $? "obtain failed segment details from master instance" 2
-		ACTIVE_INSTANCE_ARRAY[$ARRAY_INDEX]=`$PSQL -p $MASTER_PORT $DBNAME -A -t -c"select a.hostname, b.port, b.datadir, c.dbid from mpp.host a, mpp.listener b, mpp.mpp_pgdatabase c where a.hostid=b.hostid and b.listenerid=c.listenerid and c.valid='t' and c.content in (select content from mpp.pgdatabase where dbid=${DBID});"`
+		ACTIVE_INSTANCE_ARRAY[$ARRAY_INDEX]=`$PSQL -p $MASTER_PORT $DBNAME -A -t -c"select hostname, port, datadir, dbid from mpp_configuration where valid='t' and content in (select content from mpp_configuration where dbid=${DBID});"`
 		ERROR_CHK $? "obtain recovery segment details from master instance" 2
 		((ARRAY_INDEX=$ARRAY_INDEX+1))
 	done	
@@ -328,9 +328,9 @@ UPDATE_MPP_MPP () {
 		ERROR_CHK $? "segment start $FAIL_QE_HOST instance $FAIL_QE_DIR port=$FAIL_QE_PORT" 2
 		for MPP_DB in ${DB_LIST[@]}
 		do
-			LOG_MSG "[INFO]:-Updating mpp.mpp on $FAIL_QE_HOST database $MPP_DB"
-			$TRUSTED_SHELL $FAIL_QE_HOST "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $FAIL_QE_PORT $QD_DBNAME -c \"update mpp.mpp set dbid=${FAIL_QE_DBID} where dbid<>${FAIL_QE_DBID};\""
-			ERROR_CHK $? "update segment mpp.mpp on $FAIL_QE_HOST DBID=$FAIL_QE_DBID port=$FAIL_QE_PORT" 2
+			LOG_MSG "[INFO]:-Updating mpp_mpp on $FAIL_QE_HOST database $MPP_DB"
+			$TRUSTED_SHELL $FAIL_QE_HOST "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $FAIL_QE_PORT $QD_DBNAME -c \"update mpp_mpp set dbid=${FAIL_QE_DBID} where dbid<>${FAIL_QE_DBID};\""
+			ERROR_CHK $? "update segment mpp_mpp on $FAIL_QE_HOST DBID=$FAIL_QE_DBID port=$FAIL_QE_PORT" 2
 		done
 		if [ $STOPDB -eq 1 ]; then
 				LOG_MSG "[INFO]:-Commencing shutdown of $FAIL_QE_HOST port=$FAIL_QE_PORT"
@@ -397,17 +397,17 @@ FORCE_RECOVER () {
 		ERROR_EXIT "[FATAL]:Option -z string $FORCE_RECOVER_STRING incorrect" 2;fi
 	GET_QD_DB_NAME
 	#Obtain hostname for segment instance directory that is to be recovered
-	FAILED_INSTANCE_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from mpp.host a, mpp.listener b, mpp.mpp_pgdatabase c where a.hostid=b.hostid and b.listenerid=c.listenerid and b.datadir='${FAIL_QE_DIR}' and a.hostname='${FAIL_QE_HOST}';"`
+	FAILED_INSTANCE_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from mpp_configuration where datadir='${FAIL_QE_DIR}' and hostname='${FAIL_QE_HOST}';"`
 	ERROR_CHK $? "obtain failed instance count" 2
 	if [ $FAILED_INSTANCE_COUNT -eq 0 ];then
 		ERROR_EXIT "[FATAL]:-Could not locate $FAIL_QE_DIR for host $FAIL_QE_HOST" 2;fi
 	if [ $FAILED_INSTANCE_COUNT -gt 1 ];then
 		ERROR_EXIT "[FATAL]:-Found multiple records for $FAIL_QE_DIR for host $FAIL_QE_HOST" 2;fi
-	FAILED_INSTANCE_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select a.hostname, b.port, b.datadir, c.dbid from mpp.host a, mpp.listener b, mpp.mpp_pgdatabase c where a.hostid=b.hostid and b.listenerid=c.listenerid and b.datadir='${FAIL_QE_DIR}' and a.hostname='${FAIL_QE_HOST}';"`)
+	FAILED_INSTANCE_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname, port, datadir, dbid from mpp_configuration where datadir='${FAIL_QE_DIR}' and hostname='${FAIL_QE_HOST}';"`)
 	ERROR_CHK $? "obtain failed segment instance details" 2
 	FAIL_SET_VAR "${FAILED_INSTANCE_ARRAY[@]}" 
 	#Get active mirror details
-	ACTIVE_INSTANCE_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select a.hostname, b.port, b.datadir, c.dbid from mpp.host a, mpp.listener b, mpp.mpp_pgdatabase c where a.hostid=b.hostid and b.listenerid=c.listenerid and c.valid='t' and c.content in (select content from mpp.pgdatabase where dbid=${FAIL_QE_DBID});"`)
+	ACTIVE_INSTANCE_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname, port, datadir, dbid from mpp_configuration where valid='t' and content in (select content from mpp_configuration where dbid=${FAIL_QE_DBID});"`)
 	ERROR_CHK $? "obtain recovery segment instance details" 2
 	MIR_SET_VAR "${ACTIVE_INSTANCE_ARRAY[@]}"	
 	ARRAY_INDEX=1

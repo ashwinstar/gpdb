@@ -438,18 +438,15 @@ bool GetSegmentInstanceArray(PGconn* pConn, char* pszDBName, CDBSet* pSet, Segme
 	/* Now select from mpp_segment_instance_map() */
 	pQry = createPQExpBuffer();
 	appendPQExpBuffer(pQry,  "SELECT" 
-							 " d.dbid," 
-							 " d.content,"  
-							 " d.valid,"
-                               " d.isPrimary,"
-							 " h.hostname,"
-							 " l.port"
+							 " dbid," 
+							 " content,"  
+							 " valid,"
+                             " isPrimary,"
+							 " hostname,"
+							 " port"
 							 " FROM"
-							 " mpp.pgdatabase d,"
-                               " mpp.listener l,"
-                               " mpp.host h"
-							 " WHERE d.listenerid = l.listenerid"
-                               " and l.hostid = h.hostid and d.valid = 't'"
+							 " mpp_configuration "
+							 " WHERE valid = 't'"
 							 );
 
 	pRes = PQexec(pConn, pQry->data);

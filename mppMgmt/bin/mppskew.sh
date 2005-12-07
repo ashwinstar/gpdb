@@ -97,11 +97,11 @@ GET_NODE_COUNT () {
 	SCHEMA=`$ECHO $TARGETTBL|$CUT -d. -f1`
 	T_NAME=`$ECHO $TARGETTBL|$CUT -d. -f2`
 	SEGCOUNT=0
-	NUM_SEGMENTS=`$PSQL -p $MASTER_PORT  $QD_DBNAME -A -t -c "select count(*) from mpp.pgdatabase where content<>-1 and isprimary='t';"`
+	NUM_SEGMENTS=`$PSQL -p $MASTER_PORT  $QD_DBNAME -A -t -c "select count(*) from mpp_configuration where content<>-1 and isprimary='t';"`
 	ERROR_CHK $? "obtain number of segment instances" 2
 	if [ $NUM_SEGMENTS = 1 ];then
 		ERROR_EXIT "[FATAL]:-Only one node in cluster, skew not applicable" 2;fi 
-		$PSQL -p $MASTER_PORT $QD_DBNAME -t -A -F"," -c"select a.hostname, b.port, b.datadir from mpp.host a, mpp.listener b, mpp.pgdatabase c where a.hostid=b.hostid and c.content <> -1 and c.isprimary='t' and b.listenerid=c.listenerid;" > $NODELIST
+		$PSQL -p $MASTER_PORT $QD_DBNAME -t -A -F"," -c"select a.hostname, b.port, b.datadir from mpp_configuration where content <> -1 and isprimary='t' ;" > $NODELIST
 		ERROR_CHK $? "obtaib list of active segments" 2
 	LOG_MSG  "[INFO]:-Sending request to nodes.."
 

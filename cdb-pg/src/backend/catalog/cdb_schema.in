@@ -32,146 +32,6 @@ GRANT USAGE ON SCHEMA mpp TO PUBLIC;
 
 
 
-
--- A row of table HOST represents a host machine in the mpp.
---
--- Attribute hostid is a system-assigned identifier.
---
--- Attribute hostname is a component of the URL for PostgreSQL databases
--- (segment databases) served by listeners that run on the host machine.
---
--- This table is populated only on an entry database.
-
-create table mpp.HOST
-(
-	hostid integer,
-	hostname text not null,
-	
-	primary key (hostid),
-	unique (hostname)
-);
-
-COMMENT ON TABLE mpp.host IS 'a host machine within the mpp';
-
--- A row of table LISTENER represents a listener (postmaster process) used
--- by the running mpp. 
---
--- Attribute port is a component of the URL for PostgreSQL databases 
--- (segment databases) served by the listener.
---
--- This table is populated only on an entry database.
-
-create table mpp.LISTENER
-(
-	listenerid integer,
-	hostid integer not null,
-	port integer not null,
-	datadir text not null,
-	mppsuperuser text not null,
-	mppsuperpswd text,
-	
-	primary key (listenerid),
-	foreign key (hostid) references mpp.host
-);
-
-COMMENT ON TABLE mpp.listener IS 'a listener (database group) within the mpp';
-
-
--- A row of table PGDATABASE represents a component database of the mpp.
---
--- For a segment database, the attribute content is a value from the
--- interval  0..(N-1) where N is the number of segments in the mpp.
---
--- For an entry database, the attribute content is -1.
---
--- This table is populated only on an entry database.
-
-create table mpp.PGDATABASE
-(
-	dbid integer,
-	isprimary boolean not null,
-	content integer not null,
-	listenerid integer not null,
-    valid boolean not null,
-    definedprimary boolean not null,
-	
-	primary key (dbid),
-	unique (content, definedprimary),
-	unique (listenerid),
-	foreign key (listenerid) references mpp.listener(listenerid)
-);
-
-COMMENT ON TABLE mpp.pgdatabase IS 'a component database of the mpp';
-
-GRANT SELECT ON mpp.pgdatabase TO PUBLIC;
-
-
--- A row of POLICY corresponds to a partitioned table in the mpp and
--- describes the policy under which table data is distributed to segment
--- databases.
---
--- (Note that POLICY might better be noted by altering pg_class.)
---
--- This table is populated only on an entry database.
-
-create table mpp.POLICY
-(
-	localoid oid,
-	attrnums smallint[],
-	
-	primary key (localoid) -- logically, a foreign key to pg_class
-);
-
-COMMENT ON TABLE mpp.policy IS 'a partitioned table in the mpp';
-
-GRANT SELECT ON mpp.policy TO PUBLIC;
-
-
--- The sole row of table mpp represents (1) the mpp as a whole and (2) the
--- segment database in which it appears.
---
--- This table is populated on all component databases and all component 
--- databases in a given mpp have the same values for attributes mppName 
--- and numSegments.  The remaining attributes describe the component database 
--- in which the table resides.
---
--- No two segment databases in a given mpp can match on the attribute
--- dbid.  The content attribute must agree with content attribute specified
--- for the database in the mpp.pgdatabase table on the entry database for 
--- the mpp.
-
-create table mpp.mpp
-(
-	mppname name not null,
-	numsegments integer not null,
-	dbid integer not null,
-	content integer not null
-);
-
-COMMENT ON TABLE mpp.mpp IS 'the affiliation of this database with its mpp';
-
-
-
--- The sole row of table VERSION identifies the version of the mpp schema.
---
--- This table is populated on every database.
-
-create table mpp.VERSION
-(
-    schemaversion integer,
-    productversion text
-);
-
--- 1 is the initial version defined in 2004 and never released.
--- 2 is the version defined in Feb 2005.
-
-INSERT INTO mpp.VERSION(schemaversion,productversion) VALUES ( 2 , '$$Name:  $$');
-
-COMMENT ON TABLE mpp.version IS 'vintage of schema "mpp" in this database';
-
-GRANT SELECT ON mpp.version TO PUBLIC;
-
-
 -- Add PL/PGSQL to the database
 CREATE FUNCTION plpgsql_call_handler () 
 		RETURNS language_handler 
@@ -190,16 +50,16 @@ INSERT INTO pg_depend SELECT 0,0,0, tableoid, oid, 0, 'p' FROM pg_language WHERE
 
 
 
-CREATE OR REPLACE FUNCTION mpp.mpp_set_segdb_state( mpp.pgdatabase.dbid%TYPE,
-			 					     			 mpp.pgdatabase.valid%TYPE	 
+CREATE OR REPLACE FUNCTION mpp.mpp_set_segdb_state( mpp_configuration.dbid%TYPE,
+			 					     			 mpp_configuration.valid%TYPE	 
 												)
 	RETURNS void
 	AS '
 		DECLARE
 			arg_dbid				ALIAS FOR $1;
 			arg_valid			    ALIAS FOR $2;
-            dprimary                mpp.pgdatabase.definedprimary%TYPE;
-            segindex                mpp.pgdatabase.content%TYPE;
+            dprimary                mpp_configuration.definedprimary%TYPE;
+            segindex                mpp_configuration.content%TYPE;
 			
 		BEGIN		
 			--
@@ -215,7 +75,7 @@ CREATE OR REPLACE FUNCTION mpp.mpp_set_segdb_state( mpp.pgdatabase.dbid%TYPE,
             --  
             SELECT INTO dprimary, segindex
                     definedprimary, content
-                FROM mpp.pgdatabase
+                FROM mpp_configuration
                 WHERE dbid = arg_dbid;
                 
             IF NOT FOUND
@@ -224,9 +84,9 @@ CREATE OR REPLACE FUNCTION mpp.mpp_set_segdb_state( mpp.pgdatabase.dbid%TYPE,
             END IF;
 
 			--
-			-- update the row in mpp.pgdatabase
+			-- update the row in mpp_configuration
 			--
-			UPDATE mpp.pgdatabase SET valid = arg_valid, isprimary = (arg_valid and definedprimary)
+			UPDATE mpp_configuration SET valid = arg_valid, isprimary = (arg_valid and definedprimary)
 			WHERE dbid = arg_dbid;
 			IF NOT FOUND
 			THEN
@@ -238,24 +98,24 @@ CREATE OR REPLACE FUNCTION mpp.mpp_set_segdb_state( mpp.pgdatabase.dbid%TYPE,
 			--
             IF NOT dprimary and arg_valid
             THEN
-                UPDATE mpp.pgdatabase SET isprimary = arg_valid 
+                UPDATE mpp_configuration SET isprimary = arg_valid 
 				where dbid = arg_dbid and
-                      valid != (select valid from mpp.pgdatabase where dbid != arg_dbid and content = segindex);
+                      valid != (select valid from mpp_configuration where dbid != arg_dbid and content = segindex);
             END IF;
 
 			--
-			-- update the its mirror entry in mpp.pgdatabase
+			-- update the its mirror entry in mpp_configuration
 			--
 			IF dprimary
             THEN
-                UPDATE mpp.pgdatabase SET isprimary = NOT arg_valid 
+                UPDATE mpp_configuration SET isprimary = NOT arg_valid 
                 where dbid != arg_dbid and content = segindex and valid = true;
 
             END IF;
 
             SELECT INTO dprimary
                     definedprimary
-                   FROM mpp.pgdatabase where content = segindex and valid = true;
+                   FROM mpp_configuration where content = segindex and valid = true;
     		IF NOT FOUND
 			THEN
 				RAISE WARNING ''No valid db of this segment is active'';
@@ -265,17 +125,16 @@ CREATE OR REPLACE FUNCTION mpp.mpp_set_segdb_state( mpp.pgdatabase.dbid%TYPE,
 		END;
 	' LANGUAGE 'plpgsql';
 	
-COMMENT ON FUNCTION mpp.mpp_set_segdb_state( mpp.pgdatabase.dbid%TYPE,
-	 					     			   mpp.pgdatabase.valid%TYPE )
+COMMENT ON FUNCTION mpp.mpp_set_segdb_state( mpp_configuration.dbid%TYPE,
+	 					     			   mpp_configuration.valid%TYPE )
 	IS 'used to set the state of a component database of the mpp';
 	
 CREATE VIEW mpp.mpp_pgdatabase AS 
     SELECT *
-      FROM mpp_pgdatabase() AS L(dbid integer, isprimary boolean, content integer, listenerid integer, valid boolean, definedprimary boolean);
+      FROM mpp_pgdatabase() AS L(dbid integer, isprimary boolean, content integer, valid boolean, definedprimary boolean);
 
 GRANT SELECT ON mpp.mpp_pgdatabase TO PUBLIC;
 
-REVOKE ALL PRIVILEGES ON mpp.listener FROM PUBLIC;
 
 RESET log_min_messages;
 

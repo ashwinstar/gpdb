@@ -439,7 +439,7 @@ GET_QD_DB_NAME () {
 		CHK_DB_RUNNING	
 		QD_DBNAME=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"\l" 2>/dev/null|$GREP -v postgres|$GREP -v template|$HEAD -1|$CUT -d"|" -f1`
 		ERROR_CHK $? "obtain database name" 2
-		MASTER_DIR_CHK=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from mpp.host;"`
+		MASTER_DIR_CHK=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from mpp_configuration;"`
 		if [ $MASTER_DIR_CHK -eq 0 ];then
 			ERROR_EXIT "[FATAL]:-MASTER_DATA_DIRECTORY value of $MASTER_DATA_DIRECTORY is incorrect" 2;fi
 		if [ x"" == x"$QD_DBNAME" ]; then
@@ -452,7 +452,7 @@ GET_QD_DB_NAME () {
 GET_STANDBY_COUNT () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	GET_QD_DB_NAME
-	STANDBY_COUNT=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from mpp.listener a, mpp.host b, mpp.mpp_pgdatabase c where a.listenerid in (select listenerid from mpp.mpp_pgdatabase where content=-1 and dbid<>1) and a.hostid=b.hostid and a.listenerid=c.listenerid;"`
+	STANDBY_COUNT=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from mpp_configuration where content=-1 and dbid<>1 ;"`
 	ERROR_CHK $? "obtain standby master host count" 1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -460,7 +460,7 @@ GET_STANDBY_COUNT () {
 GET_STANDBY_DETAILS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	GET_QD_DB_NAME
-	STANDBY_ARRAY=(`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port, c.valid, c.definedprimary from mpp.listener a, mpp.host b, mpp.mpp_pgdatabase c where a.listenerid in (select listenerid from mpp.mpp_pgdatabase where content=-1 and dbid<>1) and a.hostid=b.hostid and a.listenerid=c.listenerid;"`) > /dev/null 2>&1
+	STANDBY_ARRAY=(`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname, datadir, port, valid, definedprimary from mpp_configuration where content=-1 and dbid<>1"`) > /dev/null 2>&1
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ]; then
 		LOG_MSG "[INFO]:-Unable to obtain standby master details, error code $RETVAL returned"
@@ -472,7 +472,7 @@ GET_STANDBY_DETAILS () {
 GET_QE_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_QD_DB_NAME
-		QE_ARRAY=(`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port, c.valid, c.definedprimary from mpp.listener a, mpp.host b, mpp.mpp_pgdatabase c where a.listenerid not in (select listenerid from mpp.mpp_pgdatabase where content=-1) and a.hostid=b.hostid and a.listenerid=c.listenerid;"`) > /dev/null 2>&1
+		QE_ARRAY=(`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname, datadir, port, valid, definedprimary from mpp_configuration where content <> -1;"`) > /dev/null 2>&1
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
 				LOG_MSG "[WARN]:-Unable to obtain segment instance host details from Master db, error code $RETVAL returned"
@@ -490,7 +490,7 @@ GET_DB_LIST () {
 
 CHK_MIRRORS_CONFIGURED () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	MIRROR_COUNT=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(dbid)/count(distinct(content)) from mpp.pgdatabase where content<>-1;"`
+	MIRROR_COUNT=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(dbid)/count(distinct(content)) from mpp_configuration where content<>-1;"`
 	ERROR_CHK $? "obtain mirror count from master instance" 2
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -498,7 +498,7 @@ CHK_MIRRORS_CONFIGURED () {
 GET_QE_PRIMARY_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_QD_DB_NAME
-		QE_PRIMARY_ARRAY=(`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port, c.valid, c.definedprimary from mpp.listener a, mpp.host b, mpp.mpp_pgdatabase c where a.listenerid not in (select listenerid from mpp.mpp_pgdatabase where content=-1) and a.hostid=b.hostid and a.listenerid in (select listenerid from mpp.mpp_pgdatabase where definedprimary='t') and a.listenerid=c.listenerid order by a.datadir;" 2>/dev/null`) > /dev/null 2>&1
+		QE_PRIMARY_ARRAY=(`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname, datadir, port, valid, definedprimary from mpp_configuration where content=-1 and  definedprimary='t' order by datadir;" 2>/dev/null`) > /dev/null 2>&1
 
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
@@ -512,7 +512,7 @@ GET_QE_MIRROR_DETAILS () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		GET_QD_DB_NAME
 
-		QE_MIRROR_ARRAY=(`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select b.hostname, a.datadir, a.port, c.valid, c.isprimary from mpp.listener a, mpp.host b, mpp.mpp_pgdatabase c where a.listenerid not in (select listenerid from mpp.mpp_pgdatabase where content=-1) and a.hostid=b.hostid  and a.listenerid=c.listenerid and c.definedprimary='f' order by a.datadir;" 2>/dev/null`) > /dev/null 2>&1
+		QE_MIRROR_ARRAY=(`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select hostname, datadir, port, valid, isprimary from mpp_configuration where content=-1 and definedprimary='f' order by datadir;" 2>/dev/null`) > /dev/null 2>&1
 
 		RETVAL=$?
 		if [ $RETVAL -ne 0 ]; then
@@ -623,28 +623,30 @@ STANDBY_CATALOG_UPDATE () {
 	MASTER_STANDBY_DATABASE=$1;shift
 	MASTER_STANDBY_DATA_DIRECTORY=$1;shift
 	MASTER_STANDBY_PORT=$1
-	STANDBY_HOST_COUNT=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"select count(*) from mpp.host where hostname='${MASTER_STANDBY_HOSTNAME}';"`
+	STANDBY_HOST_COUNT=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"select count(distinct hostname) from mpp_configuration where hostname='${MASTER_STANDBY_HOSTNAME}';"`
 	ERROR_CHK $? "obtain standby host count" 2
-        if [ $STANDBY_HOST_COUNT -eq 0 ];then
-                LOG_MSG "[INFO]:-Creating new mpp.host record for ${MASTER_STANDBY_HOSTNAME}"
-                MAX_ID=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"select max(hostid)+1 from mpp.host;"`
-		ERROR_CHK $? "obtain mas hostid from mpp.host" 2
-                export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"insert into mpp.host values (${MAX_ID},'${MASTER_STANDBY_HOSTNAME}');"
-                ERROR_CHK $? "insert into mpp.host for standby host" 2
-        else
-                MAX_ID=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"select hostid from mpp.host where hostname='${MASTER_STANDBY_HOSTNAME}';"`
-		ERROR_CHK $? "obtain hostid where hostname=${MASTER_STANDBY_HOSTNAME}" 2
-        fi
-        LOG_MSG "[INFO]:-Creating new mpp.listener record for ${MASTER_STANDBY_HOSTNAME}"
-        MAX_LISTEN_ID=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"select max(listenerid)+1 from mpp.listener;"`
-	ERROR_CHK $? "obtain max listenerid" 2
-        export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"insert into mpp.listener values (${MAX_LISTEN_ID},${MAX_ID},${MASTER_STANDBY_PORT},'${MASTER_STANDBY_DATA_DIRECTORY}','${USER_NAME}');"
-        ERROR_CHK $? "insert into mpp.lister for standby host" 2
-        LOG_MSG "[INFO]:-Creating new mpp.pgdatabase record for ${MASTER_STANDBY_HOSTNAME}"
-        MAX_DB_ID=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"select max(dbid)+1 from mpp.pgdatabase;"`
-	ERROR_CHK $? "obtain max dbid from mpp.pgdatabase" 2
-        export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"insert into mpp.pgdatabase values (${MAX_DB_ID},'f',-1,${MAX_LISTEN_ID},'t','f');"
-        ERROR_CHK $? "add standby host mpp.pgdatabase record" 2
+        #if [ $STANDBY_HOST_COUNT -eq 0 ];then
+                #LOG_MSG "[INFO]:-Creating new mpp.host record for ${MASTER_STANDBY_HOSTNAME}"
+                #MAX_ID=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"select max(hostid)+1 from mpp.host;"`
+		#ERROR_CHK $? "obtain mas hostid from mpp.host" 2
+                #export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"insert into mpp.host values (${MAX_ID},'${MASTER_STANDBY_HOSTNAME}');"
+                #ERROR_CHK $? "insert into mpp.host for standby host" 2
+        #else
+                #MAX_ID=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"select hostid from mpp.host where hostname='${MASTER_STANDBY_HOSTNAME}';"`
+		#ERROR_CHK $? "obtain hostid where hostname=${MASTER_STANDBY_HOSTNAME}" 2
+        #fi
+        
+#LOG_MSG "[INFO]:-Creating new mpp.listener record for ${MASTER_STANDBY_HOSTNAME}"
+#MAX_LISTEN_ID=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"select max(listenerid)+1 from mpp.listener;"`
+#ERROR_CHK $? "obtain max listenerid" 2
+#export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"insert into mpp.listener values (${MAX_LISTEN_ID},${MAX_ID},${MASTER_STANDBY_PORT},'${MASTER_STANDBY_DATA_DIRECTORY}','${USER_NAME}');"
+#ERROR_CHK $? "insert into mpp.lister for standby host" 2
+
+        LOG_MSG "[INFO]:-Creating new mpp_configuration record for ${MASTER_STANDBY_HOSTNAME}"
+        MAX_DB_ID=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"select max(dbid)+1 from mpp_configuration;"`
+	ERROR_CHK $? "obtain max dbid from mpp_configuration" 2
+        export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"insert into mpp_configuration (dbid, isprimary, content, valid, definedprimary, hostname, port, datadir) values (${MAX_DB_ID},'f',-1,'t','f','${MASTER_STANDBY_HOSTNAME}',${MASTER_STANDBY_PORT},'${MASTER_STANDBY_DATA_DIRECTORY}');"
+        ERROR_CHK $? "add standby host mpp_configuration record" 2
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 

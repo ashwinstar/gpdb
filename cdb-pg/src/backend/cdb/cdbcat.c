@@ -23,6 +23,7 @@
 #include "utils/array.h"
 static void extract_INT2OID_array(Datum array_datum, int *lenp, int16 **vecp);
 
+
 /*
  * MppPolicyCopy -- Return a copy of a MppPolicy object.
  *
@@ -55,8 +56,6 @@ get_table_policy(Oid tbloid)
 {
 	MppPolicy  *policy = NULL;	/* The result */
 	Relation	mpp_policy_rel;
-	Oid			mpp_policy_index_oid;
-	Oid			mpp_namespace_oid;
 	ScanKeyData policy_key[1];
 	SysScanDesc mpp_policy_scan;
 	HeapTuple	mpp_policy_tuple = NULL;
@@ -71,23 +70,12 @@ get_table_policy(Oid tbloid)
 	 * We need to read the mpp.policy table
 	 */
 
-	/*
-	 * first, get the oid of the mpp namespace
-	 */
-	mpp_namespace_oid = getMPPNamespaceOid();
-	if (mpp_namespace_oid == InvalidOid)
-		return NULL;
-
+	
 	/*
 	 * Then, open the table and and find the oid of the index
 	 */
-	mpp_policy_rel = HeapOpenMPPObject(MppPolicyRelationName, mpp_namespace_oid, true);
-
-	/*
-	 * We scan based on the unique index on localoid
-	 */
-	mpp_policy_index_oid = get_relname_relid(MppPolicyLocalOidIndexName,
-											 mpp_namespace_oid);
+	 
+	mpp_policy_rel = heap_open(MppPolicyRelationId, AccessShareLock);
 
 	/*
 	 * Set up a ScanKey for the value of the localoid field
@@ -97,12 +85,12 @@ get_table_policy(Oid tbloid)
 
 	/*
 	 * Begin the scan
-	 */
-	mpp_policy_scan = mpptable_beginscan(mpp_policy_rel,
-										 mpp_policy_index_oid,
-										 (mpp_policy_index_oid != InvalidOid),
-										 SnapshotNow,
-										 1,
+	 */						 
+	mpp_policy_scan = systable_beginscan(mpp_policy_rel, 
+										 MppPolicyLocalOidIndexId, 
+										 true,
+										 SnapshotNow, 
+										 1, 
 										 policy_key);
 
 	/*
@@ -153,159 +141,7 @@ get_table_policy(Oid tbloid)
 	return policy;
 }
 
-/*
- * getMPPNamespaceOid: gets the oid of the mpp namespace.
- */
-Oid
-getMPPNamespaceOid(void)
-{
-	Oid			mppOid = InvalidOid;
-	Relation	pg_namespace_rel;
-	ScanKeyData namespace_key[1];
-	NameData	nname;
-	HeapScanDesc pg_namespace_scan;
-	HeapTuple	pg_namespace_tuple;
 
-	/*
-	 * We need to read the pg_namespace table
-	 */
-	namestrcpy(&nname, MppNamespaceName);
-
-	/*
-	 * Set up a ScanKey based on the namespace name field
-	 */
-	ScanKeyEntryInitialize(&namespace_key[0],
-						   0x0,
-						   Anum_pg_namespace_nspname,
-						   InvalidStrategy, InvalidOid,
-						   F_NAMEEQ,
-						   NameGetDatum(&nname));
-
-	/*
-	 * We do a heap scan
-	 */
-	pg_namespace_rel = heap_open(NamespaceRelationId, AccessShareLock);
-	pg_namespace_scan = heap_beginscan(pg_namespace_rel,
-									   SnapshotNow,
-									   1,
-									   namespace_key);
-
-	/*
-	 * Get the one (and only) tuple
-	 */
-	pg_namespace_tuple = heap_getnext(pg_namespace_scan, ForwardScanDirection);
-	if (HeapTupleIsValid(pg_namespace_tuple))
-	{
-		/*
-		 * Get the oid of the tuple
-		 */
-		mppOid = HeapTupleGetOid(pg_namespace_tuple);
-	}
-
-	/*
-	 * Clean up the scan and relation objects
-	 */
-	heap_endscan(pg_namespace_scan);
-	heap_close(pg_namespace_rel, AccessShareLock);
-
-	return mppOid;
-}
-
-/*
- * HeapOpenMPPObject: opens a relation (either a table or an index) by name
- * that is part of the mpp namespace.
- */
-Relation
-HeapOpenMPPObject(const char *pszName, Oid mpp_namespace_oid, bool bTable)
-{
-	Relation	rel;
-
-	/*
-	 * Get the oid of the table or index, using the mpp namespace oid and the table name
-	 */
-	Oid			mpp_oid = get_relname_relid(pszName, mpp_namespace_oid);
-
-	/*
-	 * If the table or index wasn't there, we consider this a fatal error.
-	 */
-	if (mpp_oid == InvalidOid)
-		ereport(ERROR,
-				(errcode(ERRCODE_EXTERNAL_ROUTINE_INVOCATION_EXCEPTION),
-		 errmsg("Cannot retrieve oid of %s.%s", MppNamespaceName, pszName)));
-
-	/*
-	 * If its a table, use heap_open. If an index, use index_open
-	 */
-	if (bTable)
-		rel = heap_open(mpp_oid, AccessShareLock);
-	else
-		rel = index_open(mpp_oid);
-
-	return rel;
-}
-
-/*
- * mpptable_beginscan --- set up for heap-or-index scan
- *
- * similar to systable_beginscan, but using an Oid for index, instead of name
- */
-SysScanDesc
-mpptable_beginscan(Relation heapRelation,
-				   Oid indexOid,
-				   bool indexOK,
-				   Snapshot snapshot,
-				   int nkeys, ScanKey key)
-{
-	SysScanDesc sysscan;
-	Relation	irel;
-
-	if (indexOK && !IsIgnoringSystemIndexes())
-	{
-		irel = index_open(indexOid);
-
-		if (ReindexIsProcessingIndex(RelationGetRelid(irel)))
-		{
-			/* oops, can't use index that's being rebuilt */
-			index_close(irel);
-			irel = NULL;
-		}
-	}
-	else
-		irel = NULL;
-
-	sysscan = (SysScanDesc) palloc(sizeof(SysScanDescData));
-
-	sysscan->heap_rel = heapRelation;
-	sysscan->irel = irel;
-
-	if (irel)
-	{
-		int			i;
-
-		/*
-		 * Change attribute numbers to be index column numbers.
-		 *
-		 * This code could be generalized to search for the index key numbers
-		 * to substitute, but for now there's no need.
-		 */
-		for (i = 0; i < nkeys; i++)
-		{
-			/*Assert(key[i].sk_attno == irel->rd_index->indkey[i]);  BUG BUG BUG */
-			key[i].sk_attno = i + 1;
-		}
-
-		sysscan->iscan = index_beginscan(heapRelation, irel, snapshot,
-										 nkeys, key);
-		sysscan->scan = NULL;
-	}
-	else
-	{
-		sysscan->scan = heap_beginscan(heapRelation, snapshot, nkeys, key);
-		sysscan->iscan = NULL;
-	}
-
-	return sysscan;
-}
 
 
 /*
@@ -354,42 +190,12 @@ set_table_policy(Oid tbloid, MppPolicy *policy)
 
 
 
-	/*
-	 * first, get the oid of the mpp namespace
-	 */
-	Oid			mpp_namespace_oid = getMPPNamespaceOid();
-
-	if (mpp_namespace_oid == InvalidOid)
-	{
-		ereport(ERROR, (
-						errcode(ERRCODE_CDB_INTERNAL_ERROR),
-						errmsg("MPP schema not found.")
-						));
-
-		return;					/* Won't happen */
-	}
-
-
 	Assert(policy->nattrs >= 0);
 	Assert(policy->ptype == POLICYTYPE_PARTITIONED);
 
-	/* open the policy table for writing */
-	{
-		/*
-		 * Get the oid of the policy table, using the mpp namespace oid and the table name
-		 */
-		Oid			mpp_oid = get_relname_relid(MppPolicyRelationName, mpp_namespace_oid);
 
-		/*
-		 * If the policy table wasn't there, we consider this a fatal error.
-		 */
-		if (mpp_oid == InvalidOid)
-			ereport(ERROR,
-					(errcode(ERRCODE_EXTERNAL_ROUTINE_INVOCATION_EXCEPTION),
-					 errmsg("Cannot retrieve oid of %s.%s", MppNamespaceName, MppPolicyRelationName)));
+	mpp_policy_rel = heap_open(MppPolicyRelationId, RowExclusiveLock);
 
-		mpp_policy_rel = heap_open(mpp_oid, RowExclusiveLock);
-	}
 
 
 	/*

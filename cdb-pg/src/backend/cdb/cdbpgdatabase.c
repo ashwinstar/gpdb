@@ -52,18 +52,16 @@ mpp_pgdatabase__(PG_FUNCTION_ARGS)
 
 		/* build tupdesc for result tuples */
 		/* this had better match pg_prepared_xacts view in	system_views.sql */
-		tupdesc = CreateTemplateTupleDesc(6, false);
+		tupdesc = CreateTemplateTupleDesc(5, false);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "dbid",
 						   INT4OID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "isprimary",
 						   BOOLOID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "content",
 						   INT4OID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 4, "listenerid",
-						   INT4OID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 5, "valid",
+		TupleDescInitEntry(tupdesc, (AttrNumber) 4, "valid",
 						   BOOLOID, -1, 0);
-		TupleDescInitEntry(tupdesc, (AttrNumber) 6, "definedprimary",
+		TupleDescInitEntry(tupdesc, (AttrNumber) 5, "definedprimary",
 						   BOOLOID, -1, 0);
 
 		funcctx->tuple_desc = BlessTupleDesc(tupdesc);
@@ -110,9 +108,9 @@ mpp_pgdatabase__(PG_FUNCTION_ARGS)
 		values[0] = UInt32GetDatum(db->dbid);
 		values[1] = BoolGetDatum(db->isprimary);
 		values[2] = UInt32GetDatum(db->segindex);
-		values[3] = UInt32GetDatum(db->listenerid);
-		values[4] = BoolGetDatum(db->valid);
-		values[5] = BoolGetDatum(db->definedprimary);
+
+		values[3] = BoolGetDatum(db->valid);
+		values[4] = BoolGetDatum(db->definedprimary);
 
 		tuple = heap_formtuple(funcctx->tuple_desc, values, nulls);
 		result = HeapTupleGetDatum(tuple);

@@ -28,6 +28,7 @@
 #include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "catalog/mpp_configuration.h"
 #include "cdb/cdbcat.h"
 #include "cdb/cdbutil.h"
 #include "cdb/cdblink.h"
@@ -62,8 +63,6 @@ getMppMpp(void)
 	Relation	mpp_mpp_rel;
 	HeapTuple	mpp_mpp_tuple = NULL;
 	HeapScanDesc mpp_mpp_scan;
-	Oid			mpp_namespace_oid;
-	Oid			mpp_oid;
 	bool		isNull;
 	Datum		attr;
 	Name		mppname;
@@ -85,38 +84,13 @@ getMppMpp(void)
 		MppIdentity.mppname = NULL;
 	}
 
-	/*
-	 * Get oid of mpp namespace
-	 */
-	mpp_namespace_oid = getMPPNamespaceOid();
-	if (mpp_namespace_oid == InvalidOid)
-	{
-		ereport(WARNING,
-				(errcode(ERRCODE_CARDINALITY_VIOLATION),
-				 errmsg("Cannot retrieve oid of %s namespace",
-						MppNamespaceName)));
-		return;
-	}
 
-	mpp_oid = get_relname_relid(MppMppRelationName, mpp_namespace_oid);
-
-	/*
-	 * If the mpp.mpp table isn't there we continue if not dispatch.
-	 */
-	if (mpp_oid == InvalidOid)
-	{
-		ereport(WARNING,
-				(errcode(ERRCODE_CARDINALITY_VIOLATION),
-				 errmsg("Table does not exist %s.%s.",
-						MppNamespaceName, MppMppRelationName)));
-		return;
-	}
 
 
 	/*
-	 * Open the mpp.mpp table relation
+	 * Open the mpp table relation
 	 */
-	mpp_mpp_rel = HeapOpenMPPObject(MppMppRelationName, mpp_namespace_oid, true);
+	mpp_mpp_rel = heap_open(MppMppRelationId, AccessShareLock);
 
 	/*
 	 * Read the one row table mpp.mpp.
@@ -128,15 +102,15 @@ getMppMpp(void)
 	{
 		ereport(WARNING,
 				(errcode(ERRCODE_CARDINALITY_VIOLATION),
-				 errmsg("No rows found in %s.%s.",
-						MppNamespaceName, MppMppRelationName)));
+				 errmsg("No rows found in pg_catalog.%s.",
+						MppMppRelationName)));
 		heap_endscan(mpp_mpp_scan);
 		heap_close(mpp_mpp_rel, AccessShareLock);
 		return;
 	}
 
 	/*
-	* Grab the fields that we need from mpp.mpp
+	* Grab the fields that we need from mpp
 	*/
 
 	/*
@@ -163,21 +137,21 @@ getMppMpp(void)
 	*/
 	attr = heap_getattr(mpp_mpp_tuple, Anum_mpp_mpp_numsegments, mpp_mpp_rel->rd_att, &isNull);
 	Assert(!isNull);
-	MppIdentity.numsegments = DatumGetInt32(attr);
+	MppIdentity.numsegments = DatumGetInt16(attr);
 
 	/*
 	* dbid
 	*/
 	attr = heap_getattr(mpp_mpp_tuple, Anum_mpp_mpp_dbid, mpp_mpp_rel->rd_att, &isNull);
 	Assert(!isNull);
-	MppIdentity.dbid = DatumGetInt32(attr);
+	MppIdentity.dbid = DatumGetInt16(attr);
 
 	/*
 	* content
 	*/
 	attr = heap_getattr(mpp_mpp_tuple, Anum_mpp_mpp_content, mpp_mpp_rel->rd_att, &isNull);
 	Assert(!isNull);
-	MppIdentity.segindex = DatumGetInt32(attr);
+	MppIdentity.segindex = DatumGetInt16(attr);
 
 	/*
 	 * End the heapscan and close the relation that we opened.
@@ -250,25 +224,6 @@ freeMppMpp(void)
 /*
  * getCdbComponentDatabases
  *
- * Obtains a structure representing the following JOIN:
- *
- *	 SELECT
- *			 d.dbid,
- *			 d.content,
- *			 d.isprimary,
- *			 h.hostname,
- *			 l.port,
- *			 l.datadir,
- *			 l.listenerid
- *		 FROM
- *			 mpp.host h,
- *			 mpp.listener l,
- *			 mpp.pgdatabase d,
- *		 WHERE
- *			 h.hostid = l.hostid
- *			 AND l.listenerid = d.listenerid
- *		 ORDER BY
- *			 d.dbid, d.isprimary DESC
  *
  * Storage for the SegmentInstances block and all subsidiary
  * strucures are allocated from the caller's context.
@@ -278,49 +233,15 @@ getCdbComponentInfo(void)
 {
 	CdbComponentDatabases *component_databases = NULL;
 
-	/*
-	 * Relations for each of the 3 tables we need to read
-	 */
-	Relation	mpp_pgdatabase_rel;
-	Relation	mpp_listener_rel;
-	Relation	mpp_host_rel;
-
-	/*
-	 * HeapTuples for each of the 3 tables we need to read
-	 */
-	HeapTuple	mpp_pgdatabase_tuple = NULL;
-	HeapTuple	mpp_listener_tuple = NULL;
-	HeapTuple	mpp_host_tuple = NULL;
-
-	/*
-	 * ScanDescs for each of the 3 tables we need to read
-	 */
-	HeapScanDesc mpp_pgdatabase_scan;
-	SysScanDesc mpp_listener_scan;
-	SysScanDesc mpp_host_scan;
-
-	/*
-	 * Index Oids for each of the 2 indexes we use
-	 */
-	Oid			mpp_listener_index_oid;
-	Oid			mpp_host_index_oid;
-
-	/*
-	 * Oid for MPP namespace
-	 */
-	Oid			mpp_namespace_oid;
+	Relation	mpp_configuration_rel;
+	HeapTuple	mpp_configuration_tuple = NULL;
+	HeapScanDesc mpp_configuration_scan;
 
 	/*
 	 * Initial size for info arrays.
 	 */
 	int			segment_array_size = 128;
 	int			entry_array_size = 4;
-
-	/*
-	 * ScanKeyDatas for the 2 scans we do.
-	 */
-	ScanKeyData listener_key[1];
-	ScanKeyData host_key[1];
 
 	/*
 	 * isNull and attr are used when getting the data for a specific column from a HeapTuple
@@ -333,8 +254,6 @@ getCdbComponentInfo(void)
 	 */
 	int			dbid;
 	int			content;
-	int			listenerid;
-	int			hostid;
 	bool		isprimary;
 	bool		valid;
 	bool		definedprimary;
@@ -357,97 +276,56 @@ getCdbComponentInfo(void)
 	component_databases->entry_db_info =
 		(CdbComponentDatabaseInfo *) palloc0(sizeof(CdbComponentDatabaseInfo) * entry_array_size);
 
-	/*
-	 * Get oid of mpp namespace
-	 */
-	mpp_namespace_oid = getMPPNamespaceOid();
-	if (mpp_namespace_oid == InvalidOid)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_CARDINALITY_VIOLATION),
-				 errmsg("Cannot retrieve oid of %s namespace",
-						MppNamespaceName)));
-	}
 
-	/*
-	 * The strategy is to scan through mpp.pgdatabases, and, for each row,
-	 * do lookups into other tables.
-	 * We do this by index or heap scans with scan keys on the other tables.
-	 */
-
-	/*
-	 * First, open all the table relations.
-	 * This will ereport an ERROR is unsuccessful in opening the relation.
-	 */
-	mpp_pgdatabase_rel = HeapOpenMPPObject(MppSegmentRelationName, mpp_namespace_oid, true);
-	mpp_listener_rel = HeapOpenMPPObject(MppListenerRelationName, mpp_namespace_oid, true);
-	mpp_host_rel = HeapOpenMPPObject(MppHostRelationName, mpp_namespace_oid, true);
-
-	/*
-	 * Convert index names to Oids
-	 */
-	mpp_listener_index_oid = get_relname_relid(MppListenerPrimaryKeyIndexName,
-											   mpp_namespace_oid);
-	mpp_host_index_oid = get_relname_relid(MppHostPrimaryKeyIndexName,
-										   mpp_namespace_oid);
-
-	/*
-	 * Main loop: loop through mpp.pgdatabase by doing a heap scan
-	 */
-	mpp_pgdatabase_scan = heap_beginscan(mpp_pgdatabase_rel, SnapshotNow, 0, NULL);
-
-	while (HeapTupleIsValid(mpp_pgdatabase_tuple = heap_getnext(mpp_pgdatabase_scan, ForwardScanDirection)))
+	mpp_configuration_rel = heap_open(MppConfigurationRelationId, AccessShareLock);
+	
+	mpp_configuration_scan = heap_beginscan(mpp_configuration_rel, SnapshotNow, 0, NULL);
+	
+	while (HeapTupleIsValid(mpp_configuration_tuple = heap_getnext(mpp_configuration_scan, ForwardScanDirection)))
 	{
 		/*
-		* Grab the fields that we need from mpp.pgdatabase.
+		* Grab the fields that we need from mpp_configuration.
 		* We do this first, because until we read them, we don't know whether
 		* this is an entry database row or a segment database row.
 		*/
 		CdbComponentDatabaseInfo *pRow;
-
-		/*
-		* dbid
-		*/
-		attr = heap_getattr(mpp_pgdatabase_tuple, Anum_mpp_pgdatabase_dbid, mpp_pgdatabase_rel->rd_att, &isNull);
-		Assert(!isNull);
-		dbid = DatumGetInt32(attr);
-
-		/*
-		* listenerid
-		*/
-		attr = heap_getattr(mpp_pgdatabase_tuple, Anum_mpp_pgdatabase_listenerid, mpp_pgdatabase_rel->rd_att, &isNull);
-		Assert(!isNull);
-		listenerid = DatumGetInt32(attr);
-
+		
 		/*
 		* content
 		*/
-		attr = heap_getattr(mpp_pgdatabase_tuple, Anum_mpp_pgdatabase_content, mpp_pgdatabase_rel->rd_att, &isNull);
+		attr = heap_getattr(mpp_configuration_tuple, Anum_mpp_configuration_content, mpp_configuration_rel->rd_att, &isNull);
 		Assert(!isNull);
-		content = DatumGetInt32(attr);
-
+		content = DatumGetInt16(attr);
+		
+		/*
+		* dbid
+		*/
+		attr = heap_getattr(mpp_configuration_tuple, Anum_mpp_configuration_dbid, mpp_configuration_rel->rd_att, &isNull);
+		Assert(!isNull);
+		dbid = DatumGetInt16(attr);
+		
+		
+		/*
+		* definedprimary
+		*/
+		attr = heap_getattr(mpp_configuration_tuple, Anum_mpp_configuration_definedprimary, mpp_configuration_rel->rd_att, &isNull);
+		Assert(!isNull);
+		definedprimary = DatumGetBool(attr);
+		
 		/*
 		* isprimary
 		*/
-		attr = heap_getattr(mpp_pgdatabase_tuple, Anum_mpp_pgdatabase_isprimary, mpp_pgdatabase_rel->rd_att, &isNull);
+		attr = heap_getattr(mpp_configuration_tuple, Anum_mpp_configuration_isprimary, mpp_configuration_rel->rd_att, &isNull);
 		Assert(!isNull);
 		isprimary = DatumGetBool(attr);
-
+		
 		/*
 		* valid
 		*/
-		attr = heap_getattr(mpp_pgdatabase_tuple, Anum_mpp_pgdatabase_valid, mpp_pgdatabase_rel->rd_att, &isNull);
+		attr = heap_getattr(mpp_configuration_tuple, Anum_mpp_configuration_valid, mpp_configuration_rel->rd_att, &isNull);
 		Assert(!isNull);
 		valid = DatumGetBool(attr);
-
-		/*
-		* isprimary
-		*/
-		attr = heap_getattr(mpp_pgdatabase_tuple, Anum_mpp_pgdatabase_definedprimary, mpp_pgdatabase_rel->rd_att, &isNull);
-		Assert(!isNull);
-		definedprimary = DatumGetBool(attr);
-
-
+		
 		/*
 		* Determine which array to place this rows data in: content or segment, based on the content field.
 		*/
@@ -490,103 +368,35 @@ getCdbComponentInfo(void)
 		}
 
 		pRow->dbid = dbid;
-		pRow->listenerid = listenerid;
 		pRow->segindex = content;
 		pRow->isprimary = isprimary;
 		pRow->valid = valid;
 		pRow->definedprimary = definedprimary;
-
+		
 		/*
-		* Now, scan the mpp.listener table for this listenerid
-		* This will use the index if it's there and available.
+		* hostname
 		*/
-		ScanKeyInit(&listener_key[0], Anum_mpp_listener_listenerid, BTEqualStrategyNumber,
-					F_INT4EQ, Int32GetDatum(listenerid));
-
-		mpp_listener_scan = mpptable_beginscan(mpp_listener_rel,
-											   mpp_listener_index_oid,
-									  (mpp_listener_index_oid != InvalidOid),
-											   SnapshotNow,
-											   1,
-											   listener_key);
-
-		mpp_listener_tuple = systable_getnext(mpp_listener_scan);
-		if (!HeapTupleIsValid(mpp_listener_tuple))
-		{
-			/*
-			 * This should never happen because of the foreign key constraint we have on
-			 * mpp.listener.listenerid
-			 */
-			ereport(ERROR,
-					(errcode(ERRCODE_CARDINALITY_VIOLATION),
-					 errmsg("Could not find listenerid %d in %s.%s table",
-					listenerid, MppNamespaceName, MppListenerRelationName)));
-		}
-
-		/*
-		* Grab the fields that we need from mpp.listener
-		*/
-
+		attr = heap_getattr(mpp_configuration_tuple, Anum_mpp_configuration_hostname, mpp_configuration_rel->rd_att, &isNull);
+		Assert(!isNull);
+		pRow->hostname = DatumGetCString(DirectFunctionCall1(textout, attr));
+		
 		/*
 		* port
 		*/
-		attr = heap_getattr(mpp_listener_tuple, Anum_mpp_listener_port, mpp_listener_rel->rd_att, &isNull);
+		attr = heap_getattr(mpp_configuration_tuple, Anum_mpp_configuration_port, mpp_configuration_rel->rd_att, &isNull);
 		Assert(!isNull);
 		pRow->port = DatumGetInt32(attr);
-
+		
 		/*
 		* datadir
 		*/
-		attr = heap_getattr(mpp_listener_tuple, Anum_mpp_listener_datadir, mpp_listener_rel->rd_att, &isNull);
+		attr = heap_getattr(mpp_configuration_tuple, Anum_mpp_configuration_datadir, mpp_configuration_rel->rd_att, &isNull);
 		Assert(!isNull);
 		pRow->datadir = DatumGetCString(DirectFunctionCall1(textout, attr));
-
-		/*
-		* hostid
-		*/
-		attr = heap_getattr(mpp_listener_tuple, Anum_mpp_listener_hostid, mpp_listener_rel->rd_att, &isNull);
-		Assert(!isNull);
-		hostid = DatumGetInt32(attr);
-
-
-		systable_endscan(mpp_listener_scan);
-
-		/*
-		* Now, scan the mpp.host table for this hostid
-		* This will use the index if it's there and available.
-		*/
-		ScanKeyInit(&host_key[0], Anum_mpp_host_hostid, BTEqualStrategyNumber,
-					F_INT4EQ, Int32GetDatum(hostid));
-
-		mpp_host_scan = mpptable_beginscan(mpp_host_rel,
-										   mpp_host_index_oid,
-										   (mpp_host_index_oid != InvalidOid),
-										   SnapshotNow,
-										   1,
-										   host_key);
-
-		mpp_host_tuple = systable_getnext(mpp_host_scan);
-		if (!HeapTupleIsValid(mpp_host_tuple))
-		{
-			/*
-			 * This should never happen because of the foreign key constraint we have on
-			 * mpp.host.hostid
-			 */
-			ereport(ERROR,
-					(errcode(ERRCODE_CARDINALITY_VIOLATION),
-					 errmsg("Could not find hostid %d in %s.%s table",
-						listenerid, MppNamespaceName, MppHostRelationName)));
-		}
-
-		/*
-		* Grab the fields that we need from mpp.host
-		*/
-		attr = heap_getattr(mpp_host_tuple, Anum_mpp_host_hostname, mpp_host_rel->rd_att, &isNull);
-		Assert(!isNull);
-		pRow->hostname = DatumGetCString(DirectFunctionCall1(textout, attr));
-
-		systable_endscan(mpp_host_scan);
+		
 	}
+
+
 
 	/*
 	 * Validate that there exists at least one entry and one segment database in the configuration
@@ -630,8 +440,7 @@ getCdbComponentInfo(void)
 	}
 
 
-	if (MppIdentity.numsegments <= 0)	/* mpp.mpp not available or not read
-										 * in yet */
+	if (MppIdentity.numsegments <= 0)	/* mpp.mpp not available or not read in yet */
 	{
 		MppIdentity.numsegments = component_databases->total_segments;
 		MppIdentity.segindex = -1;
@@ -645,8 +454,8 @@ getCdbComponentInfo(void)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_EXCEPTION),
-				 errmsg("MPP number of segments inconsistency: count is %d from %s.%s table, but %d from getCdbComponentDatabases()",
-						getMPPSegmentCount(), MppNamespaceName, MppMppRelationName, component_databases->total_segments)));
+				 errmsg("MPP number of segments inconsistency: count is %d from pg_catalog.%s table, but %d from getCdbComponentDatabases()",
+						getMPPSegmentCount(),  MppMppRelationName, component_databases->total_segments)));
 	}
 
 	/*
@@ -665,7 +474,7 @@ getCdbComponentInfo(void)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_DATA_EXCEPTION),
-				 errmsg("Cannot locate entry database represented by mpp.mpp row in mpp.pgdatabase: dbid %d content %d",
+				 errmsg("Cannot locate entry database represented by mpp_mpp row in mpp_configuration: dbid %d content %d",
 						MppIdentity.dbid, Mpp_segment)));
 	}
 
@@ -689,7 +498,7 @@ getCdbComponentInfo(void)
 			{
 				ereport(ERROR,
 						(errcode(ERRCODE_DATA_EXCEPTION),
-						 errmsg("Content values not valid in mpp.pgdatabase table.  They must be in the range 0 to %d inclusive",
+						 errmsg("Content values not valid in mpp_configuration table.  They must be in the range 0 to %d inclusive",
 								getMPPSegmentCount() - 1)));
 			}
 		}
@@ -697,19 +506,18 @@ getCdbComponentInfo(void)
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_DATA_EXCEPTION),
-					 errmsg("Content values not valid in mpp.pgdatabase table.  They must be in the range 0 to %d inclusive",
+					 errmsg("Content values not valid in mpp_configuration table.  They must be in the range 0 to %d inclusive",
 							getMPPSegmentCount() - 1)));
 		}
 	}
 
 	/*
-	 * Cleanup invoves ending the heap scan of mpp.pgdatabase, and closing all the relations we opened.
+	 * Cleanup invoves ending the heap scan of mpp_configuration, and closing all the relations we opened.
 	 */
-	heap_endscan(mpp_pgdatabase_scan);
+	heap_endscan(mpp_configuration_scan);
 
-	heap_close(mpp_pgdatabase_rel, AccessShareLock);
-	heap_close(mpp_listener_rel, AccessShareLock);
-	heap_close(mpp_host_rel, AccessShareLock);
+	heap_close(mpp_configuration_rel, AccessShareLock);
+
 
 	return component_databases;
 }
@@ -717,25 +525,6 @@ getCdbComponentInfo(void)
 /*
  * getCdbComponentDatabases
  *
- * Obtains a structure representing the following JOIN:
- *
- *	 SELECT
- *			 d.dbid,
- *			 d.content,
- *			 d.isprimary,
- *			 h.hostname,
- *			 l.port,
- *			 l.datadir,
- *			 l.listenerid
- *		 FROM
- *			 mpp.host h,
- *			 mpp.listener l,
- *			 mpp.pgdatabase d,
- *		 WHERE
- *			 h.hostid = l.hostid
- *			 AND l.listenerid = d.listenerid
- *		 ORDER BY
- *			 d.dbid, d.isprimary DESC
  *
  * Storage for the SegmentInstances block and all subsidiary
  * strucures are allocated from the caller's context.

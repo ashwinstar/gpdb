@@ -440,17 +440,14 @@ bool GetCDBSegmentInstanceArray(PGconn* pConn, const char* pszDBName, CDBSegment
 	
 	pQry = createPQExpBuffer();
 	appendPQExpBuffer(pQry, 	" SELECT" 
-							"	d.dbid,"
-                              "   d.valid,"
-                              "   h.hostname,"
-                              "   l.port," 
-                              "   l.datadir"
+							"	dbid,"
+                              "   valid,"
+                              "   hostname,"
+                              "   port," 
+                              "   datadir"
 							"	FROM"
-							" mpp.pgdatabase d,"
-                              "   mpp.listener l,"
-                              "   mpp.host h"
-                              "   where d.listenerid = l.listenerid"
-                              "   and l.hostId = h.hostid" );
+							" mpp_configuration "
+							 );
 
 	pRes = PQexec(pConn, pQry->data);
 	if ( pRes == NULL || PQresultStatus(pRes) != PGRES_TUPLES_OK )
