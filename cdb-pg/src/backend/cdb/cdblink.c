@@ -181,9 +181,10 @@ buildMirrorQDDefinition(void)
 		CdbComponentDatabaseInfo *mirrorDb;
 
 		/*
-		 * We *require* that the dbids be set up in a particular way:
+		 * If the first entry is the primary, then the second is the mirror
+		 * if the first entry is the mirror, then the second is the primary.
 		 *
-		 * XXX: The entry-mirror must have a dbid of the mirror+1. (??)
+		 * So we are assuming that we got back exactly two entry databases.
 		 */
 		if (entryDb->dbid == MppIdentity.dbid)
 			mirrorDb = entryDb + 1;
@@ -327,7 +328,6 @@ write_qd_sync(char *cmd, void *buf, int len)
 				failed = true;
 				if (!resync && strstr(PQresultErrorMessage(pRes), "resync") != NULL)
 				{
-					/*char		dummy[100];*/
 					int			pfileoff=0,
 								mfileoff=0;
 
@@ -349,12 +349,25 @@ write_qd_sync(char *cmd, void *buf, int len)
 
 					elog(DEBUG3, "write_qd_sync: mfileoff %d pfileoff %d", mfileoff, pfileoff);
 
-					if (resync_xlog_to_mirror() &&
-						resync_tmlog_to_mirror(mfileoff, pfileoff))
+					/* failed = true; */
+					do
 					{
+						if (!resync_xlog_to_mirror())
+						{
+							elog(LOG, "write_qd_sync: xlog resync failed");
+							break;
+						}
+						if (!resync_tmlog_to_mirror(mfileoff, pfileoff))
+						{
+							elog(LOG, "write_qd_sync: tmlog resync failed moff %d poff %d",
+								 mfileoff, pfileoff);
+							break;
+						}
+
 						/* resync is successful */
 						failed = false;
-					}
+					} while (0);
+
 
 					/* reset resync flag */
 					resync = false;
