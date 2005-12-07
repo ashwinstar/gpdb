@@ -827,7 +827,9 @@ updateDtxState(DtxState state)
 		checkPointTm();
 		(*shmGIDSeq)++;
 	}
-	else if (state == DTX_STATE_PREPARED == DTX_STATE_COMMIT_DONE || state == DTX_STATE_ROLLBACK_DONE)
+	else if (state == DTX_STATE_PREPARED ||
+			 state == DTX_STATE_COMMIT_DONE || 
+			 state == DTX_STATE_ROLLBACK_DONE)
 		flushTmLogFile();
 	releaseTmLock();
 
