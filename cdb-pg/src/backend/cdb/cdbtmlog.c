@@ -331,7 +331,6 @@ switchTmLogFile(void)
 	/* create new log file */
 	initTmLogFile(seqno);
 	checkPointTm();
-	flushTmLogFile();
 }
 
 /* flush tm log file */
