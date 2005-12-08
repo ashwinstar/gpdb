@@ -33,7 +33,7 @@ typedef struct SegmentDatabaseDescriptor
 	/* segindex
 	 *
 	 * Identifies the segment this group of databases is serving.  This is the
-	 * segindex assigned to the segment in mpp.segment.
+	 * segindex assigned to the segment in mpp_configuration
 	 */
 	int4         			segindex;
 	

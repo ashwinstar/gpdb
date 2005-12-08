@@ -17,17 +17,6 @@
 SET log_min_messages = WARNING;
 
 
--- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
---
--- Create the schema and ensure PUBLIC access
---
--- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-CREATE SCHEMA mpp;
-
-COMMENT ON SCHEMA mpp 
-	IS 'repository for mpp service functions and related schema objects';
-    
-GRANT USAGE ON SCHEMA mpp TO PUBLIC;
 
 
 
@@ -50,7 +39,7 @@ INSERT INTO pg_depend SELECT 0,0,0, tableoid, oid, 0, 'p' FROM pg_language WHERE
 
 
 
-CREATE OR REPLACE FUNCTION mpp.mpp_set_segdb_state( mpp_configuration.dbid%TYPE,
+CREATE OR REPLACE FUNCTION mpp_set_segdb_state( mpp_configuration.dbid%TYPE,
 			 					     			 mpp_configuration.valid%TYPE	 
 												)
 	RETURNS void
@@ -125,15 +114,15 @@ CREATE OR REPLACE FUNCTION mpp.mpp_set_segdb_state( mpp_configuration.dbid%TYPE,
 		END;
 	' LANGUAGE 'plpgsql';
 	
-COMMENT ON FUNCTION mpp.mpp_set_segdb_state( mpp_configuration.dbid%TYPE,
+COMMENT ON FUNCTION mpp_set_segdb_state( mpp_configuration.dbid%TYPE,
 	 					     			   mpp_configuration.valid%TYPE )
 	IS 'used to set the state of a component database of the mpp';
 	
-CREATE VIEW mpp.mpp_pgdatabase AS 
+CREATE VIEW mpp_pgdatabase AS 
     SELECT *
-      FROM mpp_pgdatabase() AS L(dbid integer, isprimary boolean, content integer, valid boolean, definedprimary boolean);
+      FROM mpp_pgdatabase() AS L(dbid smallint, isprimary boolean, content smallint, valid boolean, definedprimary boolean);
 
-GRANT SELECT ON mpp.mpp_pgdatabase TO PUBLIC;
+GRANT SELECT ON mpp_pgdatabase TO PUBLIC;
 
 
 RESET log_min_messages;

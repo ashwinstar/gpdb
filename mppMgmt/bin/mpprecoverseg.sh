@@ -126,7 +126,7 @@ GET_MIRROR () {
 	#Get a list of dbid's that are marked as invalid
 	for DBNAME in ${DB_LIST[@]}
 	do
-		FAILED_INST_LIST=(`$PSQL -p $MASTER_PORT $DBNAME -R" " -A -t -c"select dbid from mpp.mpp_pgdatabase where valid='f';"`)
+		FAILED_INST_LIST=(`$PSQL -p $MASTER_PORT $DBNAME -R" " -A -t -c"select dbid from mpp_pgdatabase where valid='f';"`)
 		ERROR_CHK $? "obtain master instance failed segments" 2
 		FAILED_INST_COUNT=${#FAILED_INST_LIST[@]}
 		if [ $FAILED_INST_COUNT -eq 0 ]; then
@@ -363,7 +363,7 @@ UPDATE_STATUS () {
 			LOG_MSG "[INFO]:-Setting $FAIL_QE_HOST DBID=$FAIL_QE_DBID port=$FAIL_QE_PORT as active"
 			for MPP_DB in ${DB_LIST[@]}
 			do
-				env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MPP_DB -A -t -c "select mpp.mpp_set_segdb_state (${FAIL_QE_DBID},true);" > /dev/null 2>&1
+				env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MPP_DB -A -t -c "select mpp_set_segdb_state (${FAIL_QE_DBID},true);" > /dev/null 2>&1
 				ERROR_CHK $? "update status for database $MPP_DB on Master database" 2
 			done
 			((COUNT=$COUNT+1))

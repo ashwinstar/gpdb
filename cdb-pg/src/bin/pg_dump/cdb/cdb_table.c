@@ -348,7 +348,7 @@ bool GetCDBBaseTableArray(PGconn* pConn, const char* pszDBName, CDBBaseTableArra
 							"	n.nspname"
 							//"	b.partitioned"
 							"	FROM"
-							"	mpp.policy p,"
+							"	mpp_distribution_policy p,"
 							"	pg_class c,"
 							"	pg_namespace n"
 							"	WHERE"

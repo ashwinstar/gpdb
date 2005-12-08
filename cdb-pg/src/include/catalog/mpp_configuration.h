@@ -2,10 +2,9 @@
 #define _MPP_CONFIGURATION_H_
 
 /*
- * Defines for mpp.configuration table
+ * Defines for mpp_configuration table
  */
 #define MppConfigurationRelationName		"mpp_configuration"
-//#define MppConfigurationPrimaryKeyIndexName	"mpp_configuration_pkey"
 
 #define MppConfigurationRelationId 5000
 

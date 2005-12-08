@@ -3,7 +3,7 @@
 
 
 /*
- * Defines for mpp.mpp table
+ * Defines for mpp_mpp table
  */
 #define MppMppRelationName			"mpp_mpp"
 

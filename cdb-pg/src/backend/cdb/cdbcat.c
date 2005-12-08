@@ -44,7 +44,7 @@ MppPolicyCopy(const MppPolicy *src)
 }	/* MppPolicyCopy */
 
 /*
- * Returns the policy of a table as determined from the mpp.policy table
+ * Returns the policy of a table as determined from the mpp_distribution_policy table
  * in a MppPolicy structure allocated in the current memory context.
  *
  * The caller is responsible for passing in a valid relation oid.  This
@@ -67,7 +67,7 @@ get_table_policy(Oid tbloid)
 		return NULL;
 
 	/*
-	 * We need to read the mpp.policy table
+	 * We need to read the mpp_distribution_policy table
 	 */
 
 	
@@ -167,7 +167,7 @@ extract_INT2OID_array(Datum array_datum, int *lenp, int16 **vecp)
 }
 
 /*
- * Sets the policy of a table into the mpp.policy table
+ * Sets the policy of a table into the mpp_distribution_policy table
  * from a MppPolicy structure.
  *
  */

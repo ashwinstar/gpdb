@@ -489,7 +489,7 @@ markSegDBPersistentState(int dbid, bool state)
 		elog(PANIC, "FTS: setting segDB state failed, error connecting to entry db, error: %s", error_message);
 	}
 
-	sprintf(cmd, "select mpp.mpp_set_segdb_state(%d,%s)", dbid, state ? "TRUE" : "FALSE");
+	sprintf(cmd, "select mpp_set_segdb_state(%d,%s)", dbid, state ? "TRUE" : "FALSE");
 
 	rs = PQexec(entryConn, cmd);
 

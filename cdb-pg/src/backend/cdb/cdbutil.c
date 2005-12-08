@@ -50,7 +50,7 @@ static void freeCdbComponentDatabaseInfo(CdbComponentDatabaseInfo *cdi);
 static CdbComponentDatabases *getCdbComponentInfo(void);
 
 /*
- * getMppMpp() causes the mpp.mpp table's singleton row to be read into a global structure
+ * getMppMpp() causes the mpp_mpp table's singleton row to be read into a global structure
  * This is called from cdblink_setup().
  * The global variable is named MppIdentity, and is declared in cdbvars.h and defined in cdbvars.c.
  * There is one member variable that is a string.  It is allocated from the TopMemoryContext
@@ -93,7 +93,7 @@ getMppMpp(void)
 	mpp_mpp_rel = heap_open(MppMppRelationId, AccessShareLock);
 
 	/*
-	 * Read the one row table mpp.mpp.
+	 * Read the one row table mpp_mpp.
 	 * We currently require that this be there or else we ereport an ERROR.
 	 */
 	mpp_mpp_scan = heap_beginscan(mpp_mpp_rel, SnapshotNow, 0, NULL);
@@ -186,14 +186,14 @@ getMppMpp(void)
 			Mpp_segment = MppIdentity.segindex;
 			ereport(WARNING,
 					(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-					 errmsg("Mpp.Mpp segindex not same as Mpp_segment."
+					 errmsg("Mpp_Mpp segindex not same as Mpp_segment."
 							)));
 		}
 		else
 		{
 			ereport(ERROR,
 					(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-					 errmsg("mpp.mpp segindex not same as Mpp_segment."
+					 errmsg("mpp_mpp segindex not same as Mpp_segment."
 							)));
 		}
 
@@ -201,7 +201,7 @@ getMppMpp(void)
 }
 
 /*
- * freeMppMpp() causes the global variable holding the mpp.mpp table's singleton row to be
+ * freeMppMpp() causes the global variable holding the mpp_mpp table's singleton row to be
  * reinitialized to empty, releasing memory that was allocated when it was loaded.
  * It is called from cdblink_disconnect().
  */
@@ -373,6 +373,7 @@ getCdbComponentInfo(void)
 		pRow->valid = valid;
 		pRow->definedprimary = definedprimary;
 		
+	
 		/*
 		* hostname
 		*/
@@ -380,12 +381,14 @@ getCdbComponentInfo(void)
 		Assert(!isNull);
 		pRow->hostname = DatumGetCString(attr);
 		
+
 		/*
 		* port
 		*/
 		attr = heap_getattr(mpp_configuration_tuple, Anum_mpp_configuration_port, mpp_configuration_rel->rd_att, &isNull);
 		Assert(!isNull);
 		pRow->port = DatumGetInt32(attr);
+		
 		
 		/*
 		* datadir
@@ -440,7 +443,7 @@ getCdbComponentInfo(void)
 	}
 
 
-	if (MppIdentity.numsegments <= 0)	/* mpp.mpp not available or not read in yet */
+	if (MppIdentity.numsegments <= 0)	/* mpp_mpp not available or not read in yet */
 	{
 		MppIdentity.numsegments = component_databases->total_segments;
 		MppIdentity.segindex = -1;

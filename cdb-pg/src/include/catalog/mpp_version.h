@@ -2,7 +2,7 @@
 #define _MPP_VERSION_H_
 
 /*
- * Defines for mpp.version table
+ * Defines for mpp_version table
  */
 #define MppVersionRelationName		"mpp_version_at_initdb"
 

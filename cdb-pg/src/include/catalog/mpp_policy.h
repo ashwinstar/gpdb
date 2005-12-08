@@ -3,10 +3,9 @@
 
 
 /*
- * Defines for mpp.policy
+ * Defines for mpp_policy
  */
 #define MppPolicyRelationName		"mpp_distribution_policy"
-//#define MppPolicyLocalOidIndexName	"mpp_policy_localoid_key"
 
 #define MppPolicyRelationId  5002
 

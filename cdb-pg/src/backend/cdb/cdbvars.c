@@ -71,7 +71,7 @@ int			currentSliceId = UNSET_SLICE_ID;	/* used by elog to show the
 												 * is executing. */
 
 /*
- * The single row from mpp.mpp for this database is held in this variable,
+ * The single row from mpp_mpp for this database is held in this variable,
  * which is initialized in cdbutil.c in the function
  * getMppMpp(), which is called from cdblink_setup()
  * for both dispatch and execute modes.

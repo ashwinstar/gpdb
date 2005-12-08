@@ -7064,7 +7064,7 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
         
         /* dump distributed by clause */
         appendPQExpBuffer(query,
-                              "select attrnums from pg_class as c, mpp.policy as p where relname = '%s' and c.relfilenode = p.localoid",
+                              "select attrnums from pg_class as c, mpp_distribution_policy as p where relname = '%s' and c.relfilenode = p.localoid",
                               tbinfo->dobj.name);
         res = PQexec(g_conn, query->data);
         check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);

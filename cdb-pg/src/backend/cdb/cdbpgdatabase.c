@@ -54,11 +54,11 @@ mpp_pgdatabase__(PG_FUNCTION_ARGS)
 		/* this had better match pg_prepared_xacts view in	system_views.sql */
 		tupdesc = CreateTemplateTupleDesc(5, false);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 1, "dbid",
-						   INT4OID, -1, 0);
+						   INT2OID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 2, "isprimary",
 						   BOOLOID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 3, "content",
-						   INT4OID, -1, 0);
+						   INT2OID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 4, "valid",
 						   BOOLOID, -1, 0);
 		TupleDescInitEntry(tupdesc, (AttrNumber) 5, "definedprimary",
@@ -105,9 +105,9 @@ mpp_pgdatabase__(PG_FUNCTION_ARGS)
 		MemSet(values, 0, sizeof(values));
 		MemSet(nulls, ' ', sizeof(nulls));
 
-		values[0] = UInt32GetDatum(db->dbid);
+		values[0] = UInt16GetDatum(db->dbid);
 		values[1] = BoolGetDatum(db->isprimary);
-		values[2] = UInt32GetDatum(db->segindex);
+		values[2] = UInt16GetDatum(db->segindex);
 
 		values[3] = BoolGetDatum(db->valid);
 		values[4] = BoolGetDatum(db->definedprimary);
