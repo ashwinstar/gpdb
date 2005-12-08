@@ -44,6 +44,8 @@ typedef enum CdbLocusType
     CdbLocusType_Replicated,    /* replicated over all qExecs of gang */
     CdbLocusType_Hashed,        /* hash partitioned over all qExecs of gang */
     CdbLocusType_HashedOJ,      /* result of hash partitioned outer join */
+    CdbLocusType_Partitioned,	/* partitioned on no known function */
+    CdbLocusType_Singleton,		/* single segment (fixed within query) */
     CdbLocusType_End            /* = last valid CdbLocusType + 1 */
 } CdbLocusType;
 
@@ -131,6 +133,10 @@ typedef struct CdbPathLocus
             ((locus).locustype == CdbLocusType_Hashed)
 #define CdbPathLocus_IsHashedOJ(locus)      \
             ((locus).locustype == CdbLocusType_HashedOJ)
+#define CdbPathLocus_IsPartitioned(locus)      \
+            ((locus).locustype == CdbLocusType_Partitioned)
+#define CdbPathLocus_IsSingleton(locus)      \
+            ((locus).locustype == CdbLocusType_Singleton)
 
 #define CdbPathLocus_Make(plocus, _locustype, _partkey) \
     do {                                                \
@@ -151,6 +157,10 @@ typedef struct CdbPathLocus
             CdbPathLocus_Make((plocus), CdbLocusType_Hashed, (partkey))
 #define CdbPathLocus_MakeHashedOJ(plocus, partkey)      \
             CdbPathLocus_Make((plocus), CdbLocusType_HashedOJ, (partkey))
+#define CdbPathLocus_MakePartitioned(plocus)      \
+            CdbPathLocus_Make((plocus), CdbLocusType_Partitioned, NIL)
+#define CdbPathLocus_MakeSingleton(plocus, partkey)      \
+            CdbPathLocus_Make((plocus), CdbLocusType_Singleton, NIL)
 
 /************************************************************************/
 

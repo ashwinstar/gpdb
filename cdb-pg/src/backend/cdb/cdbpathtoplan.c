@@ -37,6 +37,11 @@ cdbpathtoplan_create_flow(PlannerInfo    *root,
         flow = makeFlow(FLOW_SINGLETON);
         flow->segindex = -1;
     }
+    else if (CdbPathLocus_IsSingleton(path->locus))
+    {
+        flow = makeFlow(FLOW_SINGLETON);
+        flow->segindex = 0;
+    }
     else if (CdbPathLocus_IsReplicated(path->locus) ||
              CdbPathLocus_IsGeneral(path->locus))
     {
@@ -105,6 +110,27 @@ cdbpathtoplan_create_motion_plan(PlannerInfo         *root,
             motion = make_union_motion(subplan,
                                        false,           /* sendToSecondary */
                                        -1);             /* destSegIndex => QD */
+    }
+
+    /* Send all tuples to the query's singleton segment... */
+    else if (CdbPathLocus_IsSingleton(path->path.locus))
+    {
+        if (path->path.pathkeys)
+        {
+            Sort   *sort = make_sort_from_pathkeys(root,
+                                                   subplan,
+                                                   path->path.pathkeys);
+            motion = make_sorted_union_motion(subplan,
+                                              false,    /* sendToSecondary */
+                                              0,       /* destSegIndex => nominally 0 */
+                                              sort->numCols,
+                                              sort->sortColIdx,
+                                              sort->sortOperators);
+        }
+        else
+            motion = make_union_motion(subplan,
+                                       false,           /* sendToSecondary */
+                                       0);             /* destSegIndex => nominally 0 */
     }
 
     /* Send all of the tuples to all of the QEs in gang above... */
