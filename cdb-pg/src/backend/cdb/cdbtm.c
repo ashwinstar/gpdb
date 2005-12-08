@@ -276,7 +276,7 @@ condCommitDtxTransaction(bool onephase)
 int
 condRollbackDtxTransaction(void)
 {
-	int			ret;
+	int			ret = DTX_OK;
 	bool		ignoreError;
 	int			previous_state;
     StringInfoData errMessage;
