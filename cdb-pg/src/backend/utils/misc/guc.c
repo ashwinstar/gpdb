@@ -1278,14 +1278,6 @@ static struct config_int ConfigureNamesInt[] =
 		1000, 25, INT_MAX, NULL, NULL
 	},
 
-	{
-		{"max_prepared_transactions", PGC_POSTMASTER, RESOURCES,
-			gettext_noop("Sets the maximum number of simultaneously prepared transactions."),
-			NULL
-		},
-		&max_prepared_xacts,
-		5, 0, INT_MAX, NULL, NULL
-	},
 
 #ifdef LOCK_DEBUG
 	{
