@@ -116,7 +116,8 @@ CHECK_PARAM () {
 	PING_HOST $MASTER_STANDBY_HOSTNAME
 	#Check to see if we already have a standby master configured
 	if [ $UPDATE_CATALOG -eq 1 ];then
-		STANDBY_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from mpp_configuration where a.listenerid in (select listenerid from mpp_pgdatabase where content=-1 and dbid<>1) and a.hostid=b.hostid and a.listenerid=c.listenerid;"`
+	    # there is a function to do this in mpp_bash_functions.sh
+		STANDBY_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from mpp_configuration where content=-1 and dbid<>1 ;"`
 		ERROR_CHK $? "obtained standby master host count" 2
 		if [ $STANDBY_COUNT -ne 0 ];then
 			ERROR_EXIT "[FATAL]:-Standby master host already configured" 2
@@ -172,11 +173,7 @@ UPDATE_PG_HBA () {
 UPDATE_CATALOG () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	#obtain a list of database names that need to be updated
-	GET_DB_LIST
-	for DB in "${DB_ARRAY[@]}"
-	do
-		STANDBY_CATALOG_UPDATE $MASTER_STANDBY_HOSTNAME $DB $MASTER_STANDBY_DATA_DIRECTORY $MASTER_STANDBY_PORT
-	done
+	STANDBY_CATALOG_UPDATE $MASTER_STANDBY_HOSTNAME $MASTER_STANDBY_DATA_DIRECTORY $MASTER_STANDBY_PORT
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 

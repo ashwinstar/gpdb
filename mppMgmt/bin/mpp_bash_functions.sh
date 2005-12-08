@@ -620,32 +620,14 @@ PING_HOST () {
 STANDBY_CATALOG_UPDATE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	MASTER_STANDBY_HOSTNAME=$1;shift
-	MASTER_STANDBY_DATABASE=$1;shift
 	MASTER_STANDBY_DATA_DIRECTORY=$1;shift
 	MASTER_STANDBY_PORT=$1
-	STANDBY_HOST_COUNT=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"select count(distinct hostname) from mpp_configuration where hostname='${MASTER_STANDBY_HOSTNAME}';"`
+	STANDBY_HOST_COUNT=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t -c"select count(distinct hostname) from mpp_configuration where hostname='${MASTER_STANDBY_HOSTNAME}';"`
 	ERROR_CHK $? "obtain standby host count" 2
-        #if [ $STANDBY_HOST_COUNT -eq 0 ];then
-                #LOG_MSG "[INFO]:-Creating new mpp.host record for ${MASTER_STANDBY_HOSTNAME}"
-                #MAX_ID=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"select max(hostid)+1 from mpp.host;"`
-		#ERROR_CHK $? "obtain mas hostid from mpp.host" 2
-                #export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"insert into mpp.host values (${MAX_ID},'${MASTER_STANDBY_HOSTNAME}');"
-                #ERROR_CHK $? "insert into mpp.host for standby host" 2
-        #else
-                #MAX_ID=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"select hostid from mpp.host where hostname='${MASTER_STANDBY_HOSTNAME}';"`
-		#ERROR_CHK $? "obtain hostid where hostname=${MASTER_STANDBY_HOSTNAME}" 2
-        #fi
-        
-#LOG_MSG "[INFO]:-Creating new mpp.listener record for ${MASTER_STANDBY_HOSTNAME}"
-#MAX_LISTEN_ID=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"select max(listenerid)+1 from mpp.listener;"`
-#ERROR_CHK $? "obtain max listenerid" 2
-#export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"insert into mpp.listener values (${MAX_LISTEN_ID},${MAX_ID},${MASTER_STANDBY_PORT},'${MASTER_STANDBY_DATA_DIRECTORY}','${USER_NAME}');"
-#ERROR_CHK $? "insert into mpp.lister for standby host" 2
-
         LOG_MSG "[INFO]:-Creating new mpp_configuration record for ${MASTER_STANDBY_HOSTNAME}"
-        MAX_DB_ID=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"select max(dbid)+1 from mpp_configuration;"`
+        MAX_DB_ID=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t -c"select max(dbid)+1 from mpp_configuration;"`
 	ERROR_CHK $? "obtain max dbid from mpp_configuration" 2
-        export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MASTER_STANDBY_DATABASE -A -t -c"insert into mpp_configuration (dbid, isprimary, content, valid, definedprimary, hostname, port, datadir) values (${MAX_DB_ID},'f',-1,'t','f','${MASTER_STANDBY_HOSTNAME}',${MASTER_STANDBY_PORT},'${MASTER_STANDBY_DATA_DIRECTORY}');"
+        export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT -A -t -c"insert into mpp_configuration (dbid, isprimary, content, valid, definedprimary, hostname, port, datadir) values (${MAX_DB_ID},'f',-1,'t','f','${MASTER_STANDBY_HOSTNAME}',${MASTER_STANDBY_PORT},'${MASTER_STANDBY_DATA_DIRECTORY}');"
         ERROR_CHK $? "add standby host mpp_configuration record" 2
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
