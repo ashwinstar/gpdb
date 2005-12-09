@@ -4075,16 +4075,13 @@ SyncAgentMain(int argc, char *argv[], const char *username)
 		on_shmem_exit(DumpFreeSpaceMap, 0);
 	}
 
+	/* Syncmaster doesn't need to InitPostgres() */
+
 	/*
-	 * General initialization.
-	 *
-	 * NOTE: if you are tempted to add code in this vicinity, consider
-	 * putting it inside InitPostgres() instead.  In particular, anything
-	 * that involves database access should be there, not here.
+	 * The syncmaster process needs access to synchronization primitives
+	 * which require that Process structures be configured and assigned.
 	 */
-	ereport(DEBUG3,
-			(errmsg_internal("InitPostgres")));
-	//am_superuser = InitPostgres(dbname, username);
+	InitProcess();
 
 	SetProcessingMode(NormalProcessing);
 

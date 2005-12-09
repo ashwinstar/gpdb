@@ -91,8 +91,6 @@ bool		checkRM(PGresult **pgresultSets);
 bool		recoverRMs(PGresult ***pgresultSets);
 void		recoverCommittedDtx(void);
 void		recoverRollbackedDtx(void);
-void		getTmLock(void);
-void		releaseTmLock(void);
 void    dumpAllDtx(void);
 void    resolveInDoubtDtx(void);
 

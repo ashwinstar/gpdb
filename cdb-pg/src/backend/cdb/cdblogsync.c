@@ -99,8 +99,11 @@ cdb_init_log_sync(void)
 void
 cdb_sync_command(const char *cmd)
 {
-	elog(DEBUG3, "QDSYNC: %s", cmd);
+	elog(LOG, "QDSYNC: %s", cmd);
 	parseCmd(cmd);
+
+	getTmLock();
+	
 	switch (cmdtype)
 	{
 		case SYNC_XLOG:
@@ -110,7 +113,6 @@ cdb_sync_command(const char *cmd)
 			cdb_sync_tmlog();
 			break;
 		case SYNC_CHECK:
-
 			/*
 			 * check do nothing, this is used to determine postmaster or
 			 * mppsyncmaster
@@ -120,6 +122,8 @@ cdb_sync_command(const char *cmd)
 			elog(LOG, "QDSYNC: server is terminated by client");
 			break;
 	}
+	releaseTmLock();
+
 	return;
 }
 
@@ -193,6 +197,45 @@ cdb_sync_xlog(void)
 }
 
 /*
+ * We parse incoming commands into a file-local static set of parameters.
+ */
+static void
+getCmdArgs(const char *cmdArgs)
+{
+	char *pos;
+	int len;
+
+	do
+	{
+		pos = strchr(cmdArgs, ' ');
+		if (pos == NULL)
+			break;
+
+		len = pos - cmdArgs;
+		if (len > sizeof(wfilename) - 1)
+			break;
+
+		strncpy(wfilename, cmdArgs, len);
+		wfilename[len] = 0;
+
+		pos++;
+		woffset = atoi(pos);
+
+		pos = strchr(pos, ' ');
+		if (pos == NULL)
+			break;
+
+		pos++;
+		wlen = atoi(pos);
+
+		return;
+	} while (0);
+
+	elog(ERROR, "mppsyncmaster: Cannot parse cmd args '%s'", cmdArgs);
+	return;
+}
+
+/*
  * parse sync command
  */
 static void
@@ -203,13 +246,13 @@ parseCmd(const char *cmd)
 	{
 		/* xlog command */
 		cmdtype = SYNC_XLOG;
-		sscanf(cmd + 5, "%s %d %d", wfilename, &woffset, &wlen);
+		getCmdArgs(cmd + strlen("xlog") + 1);
 	}
 	else if (strncmp(cmd, "tmlog", 5) == 0)
 	{
 		/* tmlog command */
 		cmdtype = SYNC_TMLOG;
-		sscanf(cmd + 6, "%s %d %d", wfilename, &woffset, &wlen);
+		getCmdArgs(cmd + strlen("tmlog") + 1);
 	}
 	else if (strncmp(cmd, "issyncmaster", 12) == 0)
 	{
@@ -308,8 +351,10 @@ tmlogOpenFile(void)
 	}
 
 	/* the first time or file is changed */
-	snprintf(path, MAXPGPATH, "%s/%s", dtm_dir, wfilename);
+	snprintf(path, MAXPATH, "%s/%s", dtm_dir, wfilename);
+
 	elog(LOG, "QDSYNC: opening tm log file %s", wfilename);
+
 	tmlogfilefd = open(path, O_RDWR, 0);
 	if (tmlogfilefd < 0)
 	{
@@ -348,7 +393,8 @@ xlogOpenFile(void)
 	}
 
 	/* the first time or file is changed */
-	snprintf(path, MAXPGPATH, "%s/%s", XLOGDIR, wfilename);
+	snprintf(path, MAXPATH, "%s/%s", XLOGDIR, wfilename);
+
 	elog(LOG, "QDSYNC: opening xlog file %s", wfilename);
 	xlogfilefd = open(path, O_RDWR, 0);
 	if (xlogfilefd < 0)

@@ -86,4 +86,7 @@ extern bool isTMInRecovery(void);
 extern void setDtxDirty(void);
 extern void setRecoverTMOn(void);
 
+void		getTmLock(void);
+void		releaseTmLock(void);
+
 #endif   /* CDBTM_H */
