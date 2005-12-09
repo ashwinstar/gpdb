@@ -125,7 +125,7 @@ readTmLogRecordNext(int offset)
 void
 writeTmLogRecord(TmLogRecord * record)
 {
-	int			len;
+	int			offset, len;
 
 	if (logFileNo != *shmLatestLogFileNo)
 	{
@@ -134,14 +134,16 @@ writeTmLogRecord(TmLogRecord * record)
 		openTmLogFile(*shmLatestLogFileNo);
 	}
 
-	if (lseek(logFileFD, 0, SEEK_END) > MAXLOGFILESIZE)
+	offset = lseek(logFileFD, 0, SEEK_END);
+	if (offset > MAXLOGFILESIZE)
 	{
 		/* switch log file */
 		switchTmLogFile();
+		offset = lseek(logFileFD, 0, SEEK_END);
 	}
 
 	record->header.thisFileNo = logFileNo;
-	record->header.thisOffset = lseek(logFileFD, 0, SEEK_END);
+	record->header.thisOffset = offset;
 	Assert(record->header.thisOffset != -1);
 
 	len = sizeof(TmLogRecordHeader);
