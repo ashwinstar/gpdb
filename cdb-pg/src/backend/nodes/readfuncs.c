@@ -635,17 +635,23 @@ _readAConst(void)
 		strncpy(local_node->val.val.str , token+1, length-2);
 		local_node->val.val.str[length-2] = '\0';
 	}
-	else if (strlen(token) > 2 && (token[0] == 'b'|| token[0] == 'B') && (token[1] == '\'' || token[1] == '"'))
+	else if (length > 2 && (token[0] == 'b'|| token[0] == 'B') && (token[1] == '\'' || token[1] == '"'))
 	{
 		local_node->val.type = T_BitString;
-		local_node->val.val.str = pstrdup(token);
+		local_node->val.val.str = palloc(length+1);
+		strncpy(local_node->val.val.str , token, length);
+		local_node->val.val.str[length] = '\0';
 	}
 	else
 	{
 		bool isInt = true;
-		int i;
-		for (i = 0; i < strlen(token); i++)
-	 	   if (token[0] < '0' || token[0] > '9')
+		int i = 0;
+		if (token[i] == ' ') 
+			i++;
+		if (token[i] == '-' || token[i] == '+') 
+			i++;
+		for (; i < length; i++)
+	 	   if (token[i] < '0' || token[i] > '9')
 	 	   	 isInt = false;
 	 	if (isInt)
 		{
