@@ -632,8 +632,11 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 	Slice	   *aSlice;
 	MotionLayerState *pEntry;
 
-	struct timeval startTime;
+#ifdef AMS_VERBOSE_LOGGING
 	struct timeval snapTime;
+#endif
+
+	struct timeval startTime;
 	struct timeval stopTime;
 
 	int			incoming_count = 0;
@@ -644,9 +647,11 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 	/* we can have at most one of these. */
 	MotionLayerState *sendingMotionState = NULL;
 
+#ifdef AMS_VERBOSE_LOGGING
 	gettimeofday(&snapTime, NULL);
-	elog(DEBUG3, "SetupInterconnect: time is %ld.%ld",
+	elog(DEBUG1, "SetupInterconnect: time is %ld.%ld",
 		 (long int) snapTime.tv_sec, (long int) snapTime.tv_usec);
+#endif
 
 	/*
 	 * The assert only happens when we are compiled with --enable-cassert.
@@ -727,6 +732,7 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 
 	elog(DEBUG1, "SetupInterconnect: expecting %d incoming", expectedTotalIncoming);
 	gettimeofday(&startTime, NULL);
+	stopTime = startTime;
 
 	/*
 	 * now we have kicked off all of the sends.  so we will just sit back
@@ -743,9 +749,6 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 		 */
 		ML_CHECK_FOR_INTERRUPTS();
 
-		/* Have we been here too long ? */
-		gettimeofday(&stopTime, NULL);
-
 		if (interconnect_setup_timeout != 0 &&
 			(stopTime.tv_sec - startTime.tv_sec) > interconnect_setup_timeout)
 			elog(ERROR, "Aborting activating_routes.... TIMEOUT (%lu)",
@@ -755,8 +758,13 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 		memcpy(&wwset, &wset, sizeof(fd_set));
 
 		n = select(highsock + 1, &rrset, &wwset, NULL, &timeout);
-		if (n == 0)				/* timeout */
+		if (n == 0)
+		{
+			/* timeout: Have we been here too long ? */
+			gettimeofday(&stopTime, NULL);
+
 			continue;
+		}
 		if (n < 0)
 		{
 			if (errno == EINTR)
@@ -866,9 +874,11 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 	activated = true;
 	elog(DEBUG3, "FINISHED ACTIVATING ROUTES. (out: %d , in: %d)", outgoing_count, incoming_count);
 
+#ifdef AMS_VERBOSE_LOGGING
 	gettimeofday(&snapTime, NULL);
-	elog(DEBUG3, "exiting SetupInterconnect @%d time is %ld.%ld",
+	elog(DEBUG1, "exiting SetupInterconnect @%d time is %ld.%ld",
 		 __LINE__, (long int) snapTime.tv_sec, (long int) snapTime.tv_usec);
+#endif
 }
 
 /*
