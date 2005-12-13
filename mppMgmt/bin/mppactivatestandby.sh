@@ -166,11 +166,6 @@ CHK_CATALOG_DATA () {
 	if [ $RETVAL -ne 0 ];then 
 		ADMIN_SHUTDOWN 1
 		ERROR_EXIT "[FATAL]:-Unable to obtain master QD port" 2;fi
-	MASTER_STANDBY_HOSTID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select hostid from mpp.host where hostname='${MASTER_STANDBY_HOSTNAME}';"`
-	ERROR_CHK $? "obtain standby QD hostid" 1
-	if [ $RETVAL -ne 0 ];then
-		ADMIN_SHUTDOWN 1
-		ERROR_EXIT "[FATAL]:-Unable to obtain standby QD hostid" 2;fi
 	PING_HOST $MASTER_HOSTNAME
 	if [ $RETVAL -eq 0 ];then
 		LOG_MSG "[INFO]:-Master QD host $MASTER_HOSTNAME can be contacted, making further checks"
@@ -186,18 +181,13 @@ CHK_CATALOG_DATA () {
 
 UPDATE_CATALOG () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	#obtain a list of database names that need to be updated
-	GET_DB_LIST
-	for DB in "${DB_ARRAY[@]}"
-	do
-	##	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DB -A -t -c"update mpp_mpp set dbid=$MASTER_STANDBY_DBID where content=-1;"
-		env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DB -A -t -c"update mpp_configuration set hostname=$MASTER_STANDBY_HOSTNAME where dbid in (select min(dbid) from mpp_configuration where content=-1);"
-		ERROR_CHK $? "update mpp_configuration hostname value in database $DB" 1
-		if [ $RETVAL -ne 0 ];then
-			ADMIN_SHUTDOWN
-			ERROR_EXIT "[FATAL]:-Unable to contine, unable to update mpp_configuration catalog" 2
-		fi
-	done
+	LOG_MSG "[INFO]: master standby: '$MASTER_STANDBY_HOSTNAME'"
+	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT -A -t -c"update mpp_configuration set hostname='$MASTER_STANDBY_HOSTNAME' where dbid in (select min(dbid) from mpp_configuration where content=-1);"
+	ERROR_CHK $? "update mpp_configuration hostname value in database $DB" 1
+	if [ $RETVAL -ne 0 ];then
+	    ADMIN_SHUTDOWN
+	    ERROR_EXIT "[FATAL]:-Unable to contine, unable to update mpp_configuration catalog" 2
+	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
