@@ -1478,18 +1478,18 @@ XLogWrite(XLogwrtRqst WriteRqst, bool flexible)
 	         * if qd mirroring is on, sync the xlog write to mirrorred qd.
 	         * ***********************************************************
 	         */
-	        if ( isQDMirroringEnabled() ) 
+	        if (isQDMirroringEnabled())
 	        {
 	            char cmd[50], tmpfname[24];
 	
-	            /**
-	            elog(LOG, "**XLogWrite-   offset: %d   len: %d",
-	                openLogOff, BLCKSZ);
-	            **/
+				/**
+				   elog(LOG, "**XLogWrite-   offset: %d   block size: %d nbytes: %d",
+				   openLogOff, BLCKSZ, nbytes);
+				**/
 	    
 	            XLogFileName(tmpfname, ThisTimeLineID, openLogId, openLogSeg);
-	            sprintf(cmd, "xlog %s %d %d", tmpfname, openLogOff, BLCKSZ);
-	            write_qd_sync(cmd, from, BLCKSZ);
+	            sprintf(cmd, "xlog %s %d %d", tmpfname, openLogOff, nbytes);
+	            write_qd_sync(cmd, from, nbytes);
 	        }
 
 
@@ -6006,7 +6006,7 @@ resync_xlog_to_mirror(void)
     char        path[MAXPATH], buf[blocksz], tmpfname[24];
         
     XLogFileName(tmpfname, ThisTimeLineID, openLogId, openLogSeg);
-    snprintf(path, MAXPGPATH, "%s/%s", XLOGDIR, tmpfname);
+    snprintf(path, MAXPATH, "%s/%s", XLOGDIR, tmpfname);
     xlogfilefd = open(path, O_RDONLY, 0);
     if (xlogfilefd < 0)
     {

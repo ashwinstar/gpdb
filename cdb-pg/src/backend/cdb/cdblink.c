@@ -296,7 +296,6 @@ write_qd_sync(char *cmd, void *buf, int len)
 		return;
 	}
 
-	elog(DEBUG3, "%s", cmd);
 	conn = cdb_mirrored_entry_db->conn;
 
 	if (PQsendQuery(conn, cmd) == 0)
@@ -335,8 +334,7 @@ write_qd_sync(char *cmd, void *buf, int len)
 					resync = true;
 
 					/* resync tmlog and xlog */
-
-					elog(DEBUG4, "write_qd_sync: result msg %s", PQresultErrorMessage(pRes));
+					elog(DEBUG3, "write_qd_sync: result msg %s", PQresultErrorMessage(pRes));
 
 					parseOffsetsFromMessage(PQresultErrorMessage(pRes), &pfileoff, &mfileoff);
 
@@ -347,7 +345,7 @@ write_qd_sync(char *cmd, void *buf, int len)
 					}
 					while ((pRes = PQgetResult(conn)) != NULL);
 
-					elog(DEBUG3, "write_qd_sync: mfileoff %d pfileoff %d", mfileoff, pfileoff);
+					elog(DEBUG3, "write_qd_sync: pfileoff %d mfileoff %d", pfileoff, mfileoff);
 
 					/* failed = true; */
 					do
@@ -357,10 +355,10 @@ write_qd_sync(char *cmd, void *buf, int len)
 							elog(LOG, "write_qd_sync: xlog resync failed");
 							break;
 						}
-						if (!resync_tmlog_to_mirror(mfileoff, pfileoff))
+						if (!resync_tmlog_to_mirror(pfileoff, mfileoff))
 						{
-							elog(LOG, "write_qd_sync: tmlog resync failed moff %d poff %d",
-								 mfileoff, pfileoff);
+							elog(LOG, "write_qd_sync: tmlog resync failed poff %d moff %d",
+								 pfileoff, mfileoff);
 							break;
 						}
 
