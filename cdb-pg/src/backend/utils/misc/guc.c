@@ -10,7 +10,7 @@
  * Written by Peter Eisentraut <peter_e@gmx.net>.
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/misc/guc.c,v 1.299 2005/11/04 23:50:30 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/misc/guc.c,v 1.299.2.1 2005/11/22 18:23:24 momjian Exp $
  *
  *--------------------------------------------------------------------
  */
@@ -2900,8 +2900,8 @@ SelectConfigFiles(const char *userDoption, const char *progname)
 	 * If the data_directory GUC variable has been set, use that as DataDir;
 	 * otherwise use configdir if set; else punt.
 	 *
-	 * Note: SetDataDir will copy and absolute-ize its argument, so we don't have
-	 * to.
+	 * Note: SetDataDir will copy and absolute-ize its argument, so we don't
+	 * have to.
 	 */
 	if (data_directory)
 		SetDataDir(data_directory);
@@ -3236,8 +3236,8 @@ AtEOXact_GUC(bool isCommit, bool isSubXact)
 		/*
 		 * We have two cases:
 		 *
-		 * If commit and HAVE_TENTATIVE, set actual value to tentative (this is
-		 * to override a SET LOCAL if one occurred later than SET). We keep
+		 * If commit and HAVE_TENTATIVE, set actual value to tentative (this
+		 * is to override a SET LOCAL if one occurred later than SET). We keep
 		 * the tentative value and propagate HAVE_TENTATIVE to the parent
 		 * status, allowing the SET's effect to percolate up. (But if we're
 		 * exiting the outermost transaction, we'll drop the HAVE_TENTATIVE
@@ -3391,7 +3391,8 @@ AtEOXact_GUC(bool isCommit, bool isSubXact)
 								 * If newval should now be freed, it'll be
 								 * taken care of below.
 								 *
-								 * See notes in set_config_option about casting
+								 * See notes in set_config_option about
+								 * casting
 								 */
 								newval = (char *) newstr;
 							}

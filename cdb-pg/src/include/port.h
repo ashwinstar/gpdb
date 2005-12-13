@@ -6,7 +6,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/port.h,v 1.84 2005/10/15 02:49:41 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/port.h,v 1.84.2.3 2005/12/06 18:35:36 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -112,7 +112,29 @@ extern int	pg_strncasecmp(const char *s1, const char *s2, size_t n);
 extern unsigned char pg_toupper(unsigned char ch);
 extern unsigned char pg_tolower(unsigned char ch);
 
-#ifdef USE_SNPRINTF
+#ifdef USE_REPL_SNPRINTF
+
+/*
+ * Versions of libintl >= 0.13 try to replace printf() and friends with
+ * macros to their own versions that understand the %$ format.  We do the
+ * same, so disable their macros, if they exist.
+ */
+#ifdef vsnprintf
+#undef vsnprintf
+#endif
+#ifdef snprintf
+#undef snprintf
+#endif
+#ifdef sprintf
+#undef sprintf
+#endif
+#ifdef fprintf
+#undef fprintf
+#endif
+#ifdef printf
+#undef printf
+#endif
+
 extern int	pg_vsnprintf(char *str, size_t count, const char *fmt, va_list args);
 extern int
 pg_snprintf(char *str, size_t count, const char *fmt,...)
@@ -149,7 +171,8 @@ __attribute__((format(printf, 1, 2)));
 #define fprintf			pg_fprintf
 #define printf			pg_printf
 #endif
-#endif
+
+#endif /* USE_REPL_SNPRINTF */
 
 /* Portable prompt handling */
 extern char *simple_prompt(const char *prompt, int maxlen, bool echo);

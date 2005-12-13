@@ -3,8 +3,8 @@
 /*
  * Parts of pg_config.h that you get with autoconf on other systems
  */
-#define PG_VERSION "8.1.0"
-#define PG_VERSION_STR "8.1.0 (win32)"
+#define PG_VERSION "8.1.1"
+#define PG_VERSION_STR "8.1.1 (win32)"
 
 #define DEF_PGPORT 5432
 #define DEF_PGPORT_STR "5432"
@@ -23,9 +23,11 @@
 #define HAVE_RANDOM
 #endif
 
-/* use _snprintf instead of snprintf */
-#define	HAVE_DECL_SNPRINTF 1
-#define snprintf	_snprintf
+/* use _snprintf and _vsnprintf */
+#define HAVE_DECL_SNPRINTF 1
+#define snprintf        _snprintf
+#define HAVE_DECL_VSNPRINTF 1
+#define vsnprintf       _vsnprintf
 
 /* defines for dynamic linking on Win32 platform */
 #ifdef __CYGWIN__

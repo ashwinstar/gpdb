@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/tcop/postgres.c,v 1.468 2005/11/03 17:11:38 alvherre Exp $
+ *	  $PostgreSQL: pgsql/src/backend/tcop/postgres.c,v 1.468.2.2 2005/11/22 18:23:20 momjian Exp $
  *
  * NOTES
  *	  this is the "main" module of the postgres backend and
@@ -162,6 +162,9 @@ static bool log_after_parse(List *raw_parsetree_list,
 static List *pg_rewrite_queries(List *querytree_list);
 static void start_xact_command(void);
 static void finish_xact_command(void);
+static bool IsTransactionExitStmt(Node *parsetree);
+static bool IsTransactionExitStmtList(List *parseTrees);
+static bool IsTransactionStmtList(List *parseTrees);
 static void SigHupHandler(SIGNAL_ARGS);
 static void log_disconnections(int code, Datum arg);
 
@@ -301,8 +304,8 @@ SocketBackend(StringInfo inBuf)
 	 * sync, better to say "command unknown" than to run out of memory because
 	 * we used garbage as a length word.
 	 *
-	 * This also gives us a place to set the doing_extended_query_message flag as
-	 * soon as possible.
+	 * This also gives us a place to set the doing_extended_query_message flag
+	 * as soon as possible.
 	 */
 	switch (qtype)
 	{
@@ -922,27 +925,12 @@ exec_simple_query(const char *query_string)
 		 * might be safe to allow some additional utility commands in this
 		 * state, but not many...)
 		 */
-		if (IsAbortedTransactionBlockState())
-		{
-			bool		allowit = false;
-
-			if (IsA(parsetree, TransactionStmt))
-			{
-				TransactionStmt *stmt = (TransactionStmt *) parsetree;
-
-				if (stmt->kind == TRANS_STMT_COMMIT ||
-					stmt->kind == TRANS_STMT_PREPARE ||
-					stmt->kind == TRANS_STMT_ROLLBACK ||
-					stmt->kind == TRANS_STMT_ROLLBACK_TO)
-					allowit = true;
-			}
-
-			if (!allowit)
+		if (IsAbortedTransactionBlockState() &&
+			!IsTransactionExitStmt(parsetree))
 				ereport(ERROR,
 						(errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION),
 						 errmsg("current transaction is aborted, "
 						"commands ignored until end of transaction block")));
-		}
 
 		/* Make sure we are in a transaction command */
 		start_xact_command();
@@ -1251,27 +1239,12 @@ exec_parse_message(const char *query_string,	/* string to execute */
 		 * (It might be safe to allow some additional utility commands in this
 		 * state, but not many...)
 		 */
-		if (IsAbortedTransactionBlockState())
-		{
-			bool		allowit = false;
-
-			if (IsA(parsetree, TransactionStmt))
-			{
-				TransactionStmt *stmt = (TransactionStmt *) parsetree;
-
-				if (stmt->kind == TRANS_STMT_COMMIT ||
-					stmt->kind == TRANS_STMT_PREPARE ||
-					stmt->kind == TRANS_STMT_ROLLBACK ||
-					stmt->kind == TRANS_STMT_ROLLBACK_TO)
-					allowit = true;
-			}
-
-			if (!allowit)
+		if (IsAbortedTransactionBlockState() &&
+			!IsTransactionExitStmt(parsetree))
 				ereport(ERROR,
 						(errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION),
 						 errmsg("current transaction is aborted, "
 						"commands ignored until end of transaction block")));
-		}
 
 		/*
 		 * OK to analyze, rewrite, and plan this query.  Note that the
@@ -1399,7 +1372,6 @@ exec_bind_message(StringInfo input_message)
 	PreparedStatement *pstmt;
 	Portal		portal;
 	ParamListInfo params;
-	bool		isaborted = IsAbortedTransactionBlockState();
 
 	pgstat_report_activity("<BIND>");
 
@@ -1457,6 +1429,22 @@ exec_bind_message(StringInfo input_message)
 				   numParams, stmt_name, list_length(pstmt->argtype_list))));
 
 	/*
+	 * If we are in aborted transaction state, the only portals we can
+	 * actually run are those containing COMMIT or ROLLBACK commands. We
+	 * disallow binding anything else to avoid problems with infrastructure
+	 * that expects to run inside a valid transaction.	We also disallow
+	 * binding any parameters, since we can't risk calling user-defined I/O
+	 * functions.
+	 */
+	if (IsAbortedTransactionBlockState() &&
+		(!IsTransactionExitStmtList(pstmt->query_list) ||
+		 numParams != 0))
+		ereport(ERROR,
+				(errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION),
+				 errmsg("current transaction is aborted, "
+						"commands ignored until end of transaction block")));
+
+	/*
 	 * Create the portal.  Allow silent replacement of an existing portal only
 	 * if the unnamed portal is specified.
 	 */
@@ -1472,10 +1460,6 @@ exec_bind_message(StringInfo input_message)
 
 	/*
 	 * Fetch parameters, if any, and store in the portal's memory context.
-	 *
-	 * In an aborted transaction, we can't risk calling user-defined functions,
-	 * but we can't fail to Bind either, so bind all parameters to null
-	 * values.
 	 */
 	if (numParams > 0)
 	{
@@ -1500,14 +1484,6 @@ exec_bind_message(StringInfo input_message)
 			if (!isNull)
 			{
 				const char *pvalue = pq_getmsgbytes(input_message, plength);
-
-				if (isaborted)
-				{
-					/* We don't bother to check the format in this case */
-					isNull = true;
-				}
-				else
-				{
 					int16		pformat;
 					StringInfoData pbuf;
 					char		csave;
@@ -1521,12 +1497,11 @@ exec_bind_message(StringInfo input_message)
 
 					/*
 					 * Rather than copying data around, we just set up a phony
-					 * StringInfo pointing to the correct portion of the
-					 * message buffer.	We assume we can scribble on the
-					 * message buffer so as to maintain the convention that
-					 * StringInfos have a trailing null.  This is grotty but
-					 * is a big win when dealing with very large parameter
-					 * strings.
+				 * StringInfo pointing to the correct portion of the message
+				 * buffer.	We assume we can scribble on the message buffer so
+				 * as to maintain the convention that StringInfos have a
+				 * trailing null.  This is grotty but is a big win when
+				 * dealing with very large parameter strings.
 					 */
 					pbuf.data = (char *) pvalue;
 					pbuf.maxlen = plength + 1;
@@ -1545,8 +1520,8 @@ exec_bind_message(StringInfo input_message)
 						getTypeInputInfo(ptype, &typinput, &typioparam);
 
 						/*
-						 * We have to do encoding conversion before calling
-						 * the typinput routine.
+					 * We have to do encoding conversion before calling the
+					 * typinput routine.
 						 */
 						pstring = pg_client_to_server(pbuf.data, plength);
 						params[i].value =
@@ -1592,7 +1567,6 @@ exec_bind_message(StringInfo input_message)
 					/* Restore message buffer contents */
 					pbuf.data[plength] = csave;
 				}
-			}
 
 			params[i].kind = PARAM_NUM;
 			params[i].id = i + 1;
@@ -1628,8 +1602,7 @@ exec_bind_message(StringInfo input_message)
 	 * statement context for planning is correct (see notes in
 	 * exec_parse_message).
 	 */
-	if (pstmt->plan_list == NIL && pstmt->query_list != NIL &&
-		!isaborted)
+	if (pstmt->plan_list == NIL && pstmt->query_list != NIL)
 	{
 		MemoryContext oldContext = MemoryContextSwitchTo(pstmt->context);
 
@@ -1672,8 +1645,6 @@ exec_execute_message(const char *portal_name, long max_rows)
 	CommandDest dest;
 	DestReceiver *receiver;
 	Portal		portal;
-	bool		is_trans_stmt = false;
-	bool		is_trans_exit = false;
 	bool		completed;
 	char		completionTag[COMPLETION_TAG_BUFSIZE];
 	struct timeval start_t,
@@ -1755,26 +1726,6 @@ exec_execute_message(const char *portal_name, long max_rows)
 
 	BeginCommand(portal->commandTag, dest);
 
-	/* Check for transaction-control commands */
-	if (list_length(portal->parseTrees) == 1)
-	{
-		Query	   *query = (Query *) linitial(portal->parseTrees);
-
-		if (query->commandType == CMD_UTILITY &&
-			query->utilityStmt != NULL &&
-			IsA(query->utilityStmt, TransactionStmt))
-		{
-			TransactionStmt *stmt = (TransactionStmt *) query->utilityStmt;
-
-			is_trans_stmt = true;
-			if (stmt->kind == TRANS_STMT_COMMIT ||
-				stmt->kind == TRANS_STMT_PREPARE ||
-				stmt->kind == TRANS_STMT_ROLLBACK ||
-				stmt->kind == TRANS_STMT_ROLLBACK_TO)
-				is_trans_exit = true;
-		}
-	}
-
 	/*
 	 * Create dest receiver in MessageContext (we don't want it in transaction
 	 * context, because that may get deleted if portal contains VACUUM).
@@ -1791,14 +1742,12 @@ exec_execute_message(const char *portal_name, long max_rows)
 	 * If we are in aborted transaction state, the only portals we can
 	 * actually run are those containing COMMIT or ROLLBACK commands.
 	 */
-	if (IsAbortedTransactionBlockState())
-	{
-		if (!is_trans_exit)
+	if (IsAbortedTransactionBlockState() &&
+		!IsTransactionExitStmtList(portal->parseTrees))
 			ereport(ERROR,
 					(errcode(ERRCODE_IN_FAILED_SQL_TRANSACTION),
 					 errmsg("current transaction is aborted, "
 						"commands ignored until end of transaction block")));
-	}
 
 	/* Check for cancel signal before we start execution */
 	CHECK_FOR_INTERRUPTS();
@@ -1819,7 +1768,7 @@ exec_execute_message(const char *portal_name, long max_rows)
 
 	if (completed)
 	{
-		if (is_trans_stmt)
+		if (IsTransactionStmtList(portal->parseTrees))
 		{
 			/*
 			 * If this was a transaction control statement, commit it.	We
@@ -2028,6 +1977,56 @@ finish_xact_command(void)
 
 		xact_started = false;
 	}
+}
+
+
+/*
+ * Convenience routines for checking whether a statement is one of the
+ * ones that we allow in transaction-aborted state.
+ */
+
+static bool
+IsTransactionExitStmt(Node *parsetree)
+{
+	if (parsetree && IsA(parsetree, TransactionStmt))
+	{
+		TransactionStmt *stmt = (TransactionStmt *) parsetree;
+
+		if (stmt->kind == TRANS_STMT_COMMIT ||
+			stmt->kind == TRANS_STMT_PREPARE ||
+			stmt->kind == TRANS_STMT_ROLLBACK ||
+			stmt->kind == TRANS_STMT_ROLLBACK_TO)
+			return true;
+	}
+	return false;
+}
+
+static bool
+IsTransactionExitStmtList(List *parseTrees)
+{
+	if (list_length(parseTrees) == 1)
+	{
+		Query	   *query = (Query *) linitial(parseTrees);
+
+		if (query->commandType == CMD_UTILITY &&
+			IsTransactionExitStmt(query->utilityStmt))
+			return true;
+	}
+	return false;
+}
+
+static bool
+IsTransactionStmtList(List *parseTrees)
+{
+	if (list_length(parseTrees) == 1)
+	{
+		Query	   *query = (Query *) linitial(parseTrees);
+
+		if (query->commandType == CMD_UTILITY &&
+			query->utilityStmt && IsA(query->utilityStmt, TransactionStmt))
+			return true;
+	}
+	return false;
 }
 
 
@@ -2277,9 +2276,10 @@ check_stack_depth(void)
 	/*
 	 * Trouble?
 	 *
-	 * The test on stack_base_ptr prevents us from erroring out if called during
-	 * process setup or in a non-backend process.  Logically it should be done
-	 * first, but putting it here avoids wasting cycles during normal cases.
+	 * The test on stack_base_ptr prevents us from erroring out if called
+	 * during process setup or in a non-backend process.  Logically it should
+	 * be done first, but putting it here avoids wasting cycles during normal
+	 * cases.
 	 */
 	if (stack_depth > max_stack_depth_bytes &&
 		stack_base_ptr != NULL)
@@ -2600,9 +2600,9 @@ PostgresMain(int argc, char *argv[], const char *username)
 				/*
 				 * ignore system indexes
 				 *
-				 * As of PG 7.4 this is safe to allow from the client, since it
-				 * only disables reading the system indexes, not writing them.
-				 * Worst case consequence is slowness.
+				 * As of PG 7.4 this is safe to allow from the client, since
+				 * it only disables reading the system indexes, not writing
+				 * them. Worst case consequence is slowness.
 				 */
 				IgnoreSystemIndexes(true);
 				break;
@@ -2645,8 +2645,8 @@ PostgresMain(int argc, char *argv[], const char *username)
 				/*
 				 * s - report usage statistics (timings) after each query
 				 *
-				 * Since log options are SUSET, we need to postpone unless still
-				 * in secure context
+				 * Since log options are SUSET, we need to postpone unless
+				 * still in secure context
 				 */
 				if (ctx == PGC_BACKEND)
 					PendingConfigOption("log_statement_stats", "true");
@@ -2785,9 +2785,9 @@ PostgresMain(int argc, char *argv[], const char *username)
 	/*
 	 * Set up signal handlers and masks.
 	 *
-	 * Note that postmaster blocked all signals before forking child process, so
-	 * there is no race condition whereby we might receive a signal before we
-	 * have set up the handler.
+	 * Note that postmaster blocked all signals before forking child process,
+	 * so there is no race condition whereby we might receive a signal before
+	 * we have set up the handler.
 	 *
 	 * Also note: it's best not to use any signals that are SIG_IGNored in the
 	 * postmaster.	If such a signal arrives before we are able to change the
@@ -2905,9 +2905,9 @@ PostgresMain(int argc, char *argv[], const char *username)
 	/*
 	 * General initialization.
 	 *
-	 * NOTE: if you are tempted to add code in this vicinity, consider putting it
-	 * inside InitPostgres() instead.  In particular, anything that involves
-	 * database access should be there, not here.
+	 * NOTE: if you are tempted to add code in this vicinity, consider putting
+	 * it inside InitPostgres() instead.  In particular, anything that
+	 * involves database access should be there, not here.
 	 */
 	ereport(DEBUG3,
 			(errmsg_internal("InitPostgres")));
@@ -2996,13 +2996,13 @@ PostgresMain(int argc, char *argv[], const char *username)
 	 * If an exception is encountered, processing resumes here so we abort the
 	 * current transaction and start a new one.
 	 *
-	 * You might wonder why this isn't coded as an infinite loop around a PG_TRY
-	 * construct.  The reason is that this is the bottom of the exception
-	 * stack, and so with PG_TRY there would be no exception handler in force
-	 * at all during the CATCH part.  By leaving the outermost setjmp always
-	 * active, we have at least some chance of recovering from an error during
-	 * error recovery.	(If we get into an infinite loop thereby, it will soon
-	 * be stopped by overflow of elog.c's internal state stack.)
+	 * You might wonder why this isn't coded as an infinite loop around a
+	 * PG_TRY construct.  The reason is that this is the bottom of the
+	 * exception stack, and so with PG_TRY there would be no exception handler
+	 * in force at all during the CATCH part.  By leaving the outermost setjmp
+	 * always active, we have at least some chance of recovering from an error
+	 * during error recovery.  (If we get into an infinite loop thereby, it
+	 * will soon be stopped by overflow of elog.c's internal state stack.)
 	 */
 
 	if (sigsetjmp(local_sigjmp_buf, 1) != 0)

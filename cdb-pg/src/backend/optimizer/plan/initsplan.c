@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/initsplan.c,v 1.110 2005/10/15 02:49:20 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/initsplan.c,v 1.110.2.2 2005/11/22 18:23:11 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -409,6 +409,7 @@ distribute_qual_to_rels(PlannerInfo *root, Node *clause,
 						Relids qualscope)
 {
 	Relids		relids;
+	bool		outerjoin_delayed;
 	bool		maybe_equijoin;
 	bool		maybe_outer_join;
 	RestrictInfo *restrictinfo;
@@ -451,6 +452,7 @@ distribute_qual_to_rels(PlannerInfo *root, Node *clause,
 		 */
 		Assert(bms_equal(relids, qualscope));
 		/* Needn't feed it back for more deductions */
+		outerjoin_delayed = false;
 		maybe_equijoin = false;
 		maybe_outer_join = false;
 	}
@@ -464,12 +466,13 @@ distribute_qual_to_rels(PlannerInfo *root, Node *clause,
 		 * we'd produce no output rows, rather than the intended single
 		 * null-extended row, for any nonnullable-side rows failing the qual.
 		 *
-		 * Note: an outer-join qual that mentions only nullable-side rels can be
-		 * pushed down into the nullable side without changing the join
+		 * Note: an outer-join qual that mentions only nullable-side rels can
+		 * be pushed down into the nullable side without changing the join
 		 * result, so we treat it the same as an ordinary inner-join qual,
 		 * except for not setting maybe_equijoin (see below).
 		 */
 		relids = qualscope;
+		outerjoin_delayed = true;
 
 		/*
 		 * We can't use such a clause to deduce equijoin (the left and right
@@ -499,13 +502,17 @@ distribute_qual_to_rels(PlannerInfo *root, Node *clause,
 		Relids		tmprelids;
 		int			relno;
 
+		outerjoin_delayed = false;
 		tmprelids = bms_copy(relids);
 		while ((relno = bms_first_member(tmprelids)) >= 0)
 		{
 			RelOptInfo *rel = find_base_rel(root, relno);
 
 			if (rel->outerjoinset != NULL)
+			{
 				addrelids = bms_add_members(addrelids, rel->outerjoinset);
+				outerjoin_delayed = true;
+			}
 		}
 		bms_free(tmprelids);
 
@@ -555,6 +562,7 @@ distribute_qual_to_rels(PlannerInfo *root, Node *clause,
 	 */
 	restrictinfo = make_restrictinfo((Expr *) clause,
 									 is_pushed_down,
+									 outerjoin_delayed,
 									 relids);
 
 	/*
@@ -852,8 +860,8 @@ process_implied_equality(PlannerInfo *root,
 	/*
 	 * Push the new clause into all the appropriate restrictinfo lists.
 	 *
-	 * Note: we mark the qual "pushed down" to ensure that it can never be taken
-	 * for an original JOIN/ON clause.
+	 * Note: we mark the qual "pushed down" to ensure that it can never be
+	 * taken for an original JOIN/ON clause.
 	 */
 	distribute_qual_to_rels(root, (Node *) clause,
 							true, true, false, NULL, relids);

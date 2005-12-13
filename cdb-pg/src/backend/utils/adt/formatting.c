@@ -1,7 +1,7 @@
 /* -----------------------------------------------------------------------
  * formatting.c
  *
- * $PostgreSQL: pgsql/src/backend/utils/adt/formatting.c,v 1.101 2005/10/20 15:59:46 tgl Exp $
+ * $PostgreSQL: pgsql/src/backend/utils/adt/formatting.c,v 1.101.2.2 2005/12/03 16:45:23 momjian Exp $
  *
  *
  *	 Portions Copyright (c) 1999-2005, PostgreSQL Global Development Group
@@ -434,6 +434,10 @@ do { \
 	tmtcTzn(_X) = NULL; \
 } while(0)
 
+/*
+ *	to_char(time) appears to to_char() as an interval, so this check
+ *	is really for interval and time data types.
+ */
 #define INVALID_FOR_INTERVAL  \
 do { \
 	if (is_interval) \
@@ -1326,8 +1330,8 @@ DCH_processor(FormatNode *node, char *inout, bool is_to_char,
 			 * The input string is shorter than format picture, so it's good
 			 * time to break this loop...
 			 *
-			 * Note: this isn't relevant for TO_CHAR mode, beacuse it use 'inout'
-			 * allocated by format picture length.
+			 * Note: this isn't relevant for TO_CHAR mode, beacuse it use
+			 * 'inout' allocated by format picture length.
 			 */
 			break;
 
@@ -1722,11 +1726,10 @@ dch_time(int arg, char *inout, int suf, bool is_to_char, bool is_interval,
 	{
 		case DCH_A_M:
 		case DCH_P_M:
-			INVALID_FOR_INTERVAL;
 			if (is_to_char)
 			{
-				strcpy(inout, ((tm->tm_hour > 11
-					   && tm->tm_hour < HOURS_PER_DAY) ? P_M_STR : A_M_STR));
+				strcpy(inout, (tm->tm_hour % HOURS_PER_DAY >= HOURS_PER_DAY / 2)
+					   ? P_M_STR : A_M_STR);
 				return strlen(p_inout);
 			}
 			else
@@ -1742,11 +1745,10 @@ dch_time(int arg, char *inout, int suf, bool is_to_char, bool is_interval,
 			break;
 		case DCH_AM:
 		case DCH_PM:
-			INVALID_FOR_INTERVAL;
 			if (is_to_char)
 			{
-				strcpy(inout, ((tm->tm_hour > 11
-						 && tm->tm_hour < HOURS_PER_DAY) ? PM_STR : AM_STR));
+				strcpy(inout, (tm->tm_hour % HOURS_PER_DAY >= HOURS_PER_DAY / 2)
+					   ? PM_STR : AM_STR);
 				return strlen(p_inout);
 			}
 			else
@@ -1762,11 +1764,10 @@ dch_time(int arg, char *inout, int suf, bool is_to_char, bool is_interval,
 			break;
 		case DCH_a_m:
 		case DCH_p_m:
-			INVALID_FOR_INTERVAL;
 			if (is_to_char)
 			{
-				strcpy(inout, ((tm->tm_hour > 11
-					   && tm->tm_hour < HOURS_PER_DAY) ? p_m_STR : a_m_STR));
+				strcpy(inout, (tm->tm_hour % HOURS_PER_DAY >= HOURS_PER_DAY / 2)
+					   ? p_m_STR : a_m_STR);
 				return strlen(p_inout);
 			}
 			else
@@ -1782,11 +1783,10 @@ dch_time(int arg, char *inout, int suf, bool is_to_char, bool is_interval,
 			break;
 		case DCH_am:
 		case DCH_pm:
-			INVALID_FOR_INTERVAL;
 			if (is_to_char)
 			{
-				strcpy(inout, ((tm->tm_hour > 11
-						 && tm->tm_hour < HOURS_PER_DAY) ? pm_STR : am_STR));
+				strcpy(inout, (tm->tm_hour % HOURS_PER_DAY >= HOURS_PER_DAY / 2)
+					   ? pm_STR : am_STR);
 				return strlen(p_inout);
 			}
 			else
@@ -1804,12 +1804,9 @@ dch_time(int arg, char *inout, int suf, bool is_to_char, bool is_interval,
 		case DCH_HH12:
 			if (is_to_char)
 			{
-				if (is_interval)
-					sprintf(inout, "%0*d", S_FM(suf) ? 0 : 2, tm->tm_hour);
-				else
-					sprintf(inout, "%0*d", S_FM(suf) ? 0 : 2,
-							tm->tm_hour == 0 ? 12 :
-						  tm->tm_hour < 13 ? tm->tm_hour : tm->tm_hour - 12);
+				sprintf(inout, "%0*d", S_FM(suf) ? 0 : 2,
+						tm->tm_hour % (HOURS_PER_DAY / 2) == 0 ? 12 :
+					    tm->tm_hour % (HOURS_PER_DAY / 2));
 				if (S_THth(suf))
 					str_numth(p_inout, inout, 0);
 				return strlen(p_inout);
@@ -2312,7 +2309,6 @@ dch_date(int arg, char *inout, int suf, bool is_to_char, bool is_interval,
 			}
 			break;
 		case DCH_D:
-			INVALID_FOR_INTERVAL;
 			if (is_to_char)
 			{
 				sprintf(inout, "%d", tm->tm_wday + 1);
@@ -3752,8 +3748,8 @@ NUM_numpart_from_char(NUMProc *Np, int id, int plen)
 	 * We need sign detection because determine exact position of post-sign is
 	 * difficult:
 	 *
-	 * FM9999.9999999S	   -> 123.001- 9.9S			   -> .5- FM9.999999MI
-	 * -> 5.01-
+	 * FM9999.9999999S	   -> 123.001- 9.9S			   -> .5- FM9.999999MI ->
+	 * 5.01-
 	 */
 	if (*Np->number == ' ' && Np->read_pre + Np->read_post > 0)
 	{
@@ -3797,8 +3793,9 @@ NUM_numpart_from_char(NUMProc *Np, int id, int plen)
 		 *
 		 * FM9.999999MI			   -> 5.01-
 		 *
-		 * if (.... && IS_LSIGN(Np->Num)==FALSE) prevents read wrong formats like
-		 * to_number('1 -', '9S') where sign is not anchored to last number.
+		 * if (.... && IS_LSIGN(Np->Num)==FALSE) prevents read wrong formats
+		 * like to_number('1 -', '9S') where sign is not anchored to last
+		 * number.
 		 */
 		else if (isread == FALSE && IS_LSIGN(Np->Num) == FALSE &&
 				 (IS_PLUS(Np->Num) || IS_MINUS(Np->Num)))

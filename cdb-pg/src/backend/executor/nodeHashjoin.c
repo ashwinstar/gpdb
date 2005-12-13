@@ -9,7 +9,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/nodeHashjoin.c,v 1.75 2005/10/18 01:06:24 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/nodeHashjoin.c,v 1.75.2.3 2005/11/28 23:46:24 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -121,16 +121,28 @@ ExecHashJoin(HashJoinState *node)
 		 * since we aren't going to be able to skip the join on the strength
 		 * of an empty inner relation anyway.)
 		 *
+		 * If we are rescanning the join, we make use of information gained
+		 * on the previous scan: don't bother to try the prefetch if the
+		 * previous scan found the outer relation nonempty.  This is not
+		 * 100% reliable since with new parameters the outer relation might
+		 * yield different results, but it's a good heuristic.
+		 *
 		 * The only way to make the check is to try to fetch a tuple from the
 		 * outer plan node.  If we succeed, we have to stash it away for later
 		 * consumption by ExecHashJoinOuterGetTuple.
 		 */
-		if (outerNode->plan->startup_cost < hashNode->ps.plan->total_cost ||
-			node->js.jointype == JOIN_LEFT)
+		if (node->js.jointype == JOIN_LEFT ||
+			(outerNode->plan->startup_cost < hashNode->ps.plan->total_cost &&
+			 !node->hj_OuterNotEmpty))
 		{
 			node->hj_FirstOuterTupleSlot = ExecProcNode(outerNode);
 			if (TupIsNull(node->hj_FirstOuterTupleSlot))
+			{
+				node->hj_OuterNotEmpty = false;
 				return NULL;
+		}
+		else
+				node->hj_OuterNotEmpty = true;
 		}
 		else
 			node->hj_FirstOuterTupleSlot = NULL;
@@ -154,10 +166,6 @@ ExecHashJoin(HashJoinState *node)
 		 */
 		if (hashtable->totalTuples == 0 && node->js.jointype != JOIN_LEFT)
 		{
-			ExecHashTableDestroy(hashtable);
-			node->hj_HashTable = NULL;
-			node->hj_FirstOuterTupleSlot = NULL;
-
 			/*
 			 * CDB: We'll read no more from outer subtree. To keep our sibling
 			 * QEs from being starved, tell source QEs not to clog up the
@@ -173,6 +181,13 @@ ExecHashJoin(HashJoinState *node)
 		 * scanning the outer relation
 		 */
 		hashtable->nbatch_outstart = hashtable->nbatch;
+
+		/*
+		 * Reset OuterNotEmpty for scan.  (It's OK if we fetched a tuple
+		 * above, because ExecHashJoinOuterGetTuple will immediately
+		 * set it again.)
+		 */
+		node->hj_OuterNotEmpty = false;
 	}
 
 	/*
@@ -468,6 +483,7 @@ ExecInitHashJoin(HashJoin *node, EState *estate)
 	hjstate->js.ps.ps_TupFromTlist = false;
 	hjstate->hj_NeedNewOuter = true;
 	hjstate->hj_MatchedOuter = false;
+	hjstate->hj_OuterNotEmpty = false;
 
 	return hjstate;
 }
@@ -496,7 +512,6 @@ ExecEndHashJoin(HashJoinState *node)
 	{
 		ExecHashTableDestroy(node->hj_HashTable);
 		node->hj_HashTable = NULL;
-		node->hj_FirstOuterTupleSlot = NULL;
 	}
 
 	/*
@@ -560,6 +575,9 @@ ExecHashJoinOuterGetTuple(PlanState *outerNode,
 			econtext->ecxt_outertuple = slot;
 			*hashvalue = ExecHashGetHashValue(hashtable, econtext,
 											  hjstate->hj_OuterHashKeys);
+
+			/* remember outer relation is not empty for possible rescan */
+			hjstate->hj_OuterNotEmpty = true;
 
 			return slot;
 		}
@@ -631,13 +649,13 @@ start_over:
 	 * 1. In a LEFT JOIN, we have to process outer batches even if the inner
 	 * batch is empty.
 	 *
-	 * 2. If we have increased nbatch since the initial estimate, we have to scan
-	 * inner batches since they might contain tuples that need to be
+	 * 2. If we have increased nbatch since the initial estimate, we have to
+	 * scan inner batches since they might contain tuples that need to be
 	 * reassigned to later inner batches.
 	 *
-	 * 3. Similarly, if we have increased nbatch since starting the outer scan,
-	 * we have to rescan outer batches in case they contain tuples that need
-	 * to be reassigned.
+	 * 3. Similarly, if we have increased nbatch since starting the outer
+	 * scan, we have to rescan outer batches in case they contain tuples that
+	 * need to be reassigned.
 	 */
 	curbatch++;
 	while (curbatch < nbatch &&
@@ -814,37 +832,44 @@ void
 ExecReScanHashJoin(HashJoinState *node, ExprContext *exprCtxt)
 {
 	/*
-	 * If we haven't yet built the hash table then we can just return; nothing
-	 * done yet, so nothing to undo.
-	 */
-	if (node->hj_HashTable == NULL)
-		return;
-
-	/*
 	 * In a multi-batch join, we currently have to do rescans the hard way,
 	 * primarily because batch temp files may have already been released. But
 	 * if it's a single-batch join, and there is no parameter change for the
 	 * inner subnode, then we can just re-use the existing hash table without
 	 * rebuilding it.
 	 */
+	if (node->hj_HashTable != NULL)
+	{
 	if (node->hj_HashTable->nbatch == 1 &&
 		((PlanState *) node)->righttree->chgParam == NULL)
 	{
-		/* okay to reuse the hash table; needn't rescan inner, either */
+			/*
+			 * okay to reuse the hash table; needn't rescan inner, either.
+			 *
+			 * What we do need to do is reset our state about the emptiness
+			 * of the outer relation, so that the new scan of the outer will
+			 * update it correctly if it turns out to be empty this time.
+			 * (There's no harm in clearing it now because ExecHashJoin won't
+			 * need the info.  In the other cases, where the hash table
+			 * doesn't exist or we are destroying it, we leave this state
+			 * alone because ExecHashJoin will need it the first time
+			 * through.)
+			 */
+			node->hj_OuterNotEmpty = false;
 	}
 	else
 	{
 		/* must destroy and rebuild hash table */
 		ExecHashTableDestroy(node->hj_HashTable);
 		node->hj_HashTable = NULL;
-		node->hj_FirstOuterTupleSlot = NULL;
 
 		/*
-		 * if chgParam of subnode is not null then plan will be re-scanned by
-		 * first ExecProcNode.
+			 * if chgParam of subnode is not null then plan will be re-scanned
+			 * by first ExecProcNode.
 		 */
 		if (((PlanState *) node)->righttree->chgParam == NULL)
 			ExecReScan(((PlanState *) node)->righttree, exprCtxt);
+	}
 	}
 
 	/* Always reset intra-tuple state */
@@ -856,6 +881,7 @@ ExecReScanHashJoin(HashJoinState *node, ExprContext *exprCtxt)
 	node->js.ps.ps_TupFromTlist = false;
 	node->hj_NeedNewOuter = true;
 	node->hj_MatchedOuter = false;
+	node->hj_FirstOuterTupleSlot = NULL;
 
 	/*
 	 * if chgParam of subnode is not null then plan will be re-scanned by

@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-protocol3.c,v 1.22 2005/10/15 02:49:48 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-protocol3.c,v 1.22.2.1 2005/11/22 18:23:30 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -130,9 +130,9 @@ pqParseInput3(PGconn *conn)
 		 * NOTIFY and NOTICE messages can happen in any state; always process
 		 * them right away.
 		 *
-		 * Most other messages should only be processed while in BUSY state. (In
-		 * particular, in READY state we hold off further parsing until the
-		 * application collects the current PGresult.)
+		 * Most other messages should only be processed while in BUSY state.
+		 * (In particular, in READY state we hold off further parsing until
+		 * the application collects the current PGresult.)
 		 *
 		 * However, if the state is IDLE then we got trouble; we need to deal
 		 * with the unexpected message somehow.

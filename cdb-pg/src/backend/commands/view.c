@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/commands/view.c,v 1.91 2005/10/15 02:49:16 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/commands/view.c,v 1.91.2.1 2005/11/22 18:23:08 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -423,7 +423,8 @@ DefineView(ViewStmt *stmt)
 	/*
 	 * Create the view relation
 	 *
-	 * NOTE: if it already exists and replace is false, the xact will be aborted.
+	 * NOTE: if it already exists and replace is false, the xact will be
+	 * aborted.
 	 */
 	viewOid = DefineVirtualRelation(view, viewParse->targetList, replace, viewOid);
 

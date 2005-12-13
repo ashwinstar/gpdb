@@ -218,3 +218,106 @@ cdbanalyze_get_relstats(Relation rel, BlockNumber *pages, double *tuples)
 	*tuples = ctx.tuples;
 	*pages = ctx.pages;
 }	/* cdbanalyze_get_relstats */
+
+
+#if 0
+/*
+ * cdbanalyze_callback
+ *
+ * Called by cdbanalyze_query_local_catalogs to process the result of the
+ * segdb local catalog query.
+ */
+typedef struct Cdbanalyze_columns_Ctx
+{
+	Oid			relid;
+	BlockNumber pages;
+	double		tuples;
+} Cdbanalyze_columns_Ctx;
+
+static void
+cdbanalyze_columns_callback(StringInfo sqlstmt,
+					int spiresult,
+					void *context)
+{
+	HeapTuple	tup;
+	TupleDesc	tupdesc;
+	char	   *tmp;
+	Cdbanalyze_columns_Ctx *ctx = (Cdbanalyze_columns_Ctx *) context;
+
+	/* Did the query succeed? */
+	if (spiresult != SPI_OK_SELECT ||
+		SPI_processed != 1)
+		goto fail;
+
+	/* Grab the results of the query and stuff them into the context. */
+	tup = SPI_tuptable->vals[0];
+	tupdesc = SPI_tuptable->tupdesc;
+	if (!tup ||
+		!tupdesc)
+		goto fail;
+
+	tmp = SPI_getvalue(tup, tupdesc, Anum_pg_class_max_tuples);
+	if (SPI_result != 0 && !tmp)
+		goto fail;
+	if (!tmp)
+		ereport(NOTICE, (errcode(ERRCODE_MPP_COMMAND_ERROR),
+			   errmsg("NULL returned instead of statistics from segment databases."),
+					  errdetail("Segment db catalog query : %s",
+								sqlstmt->data )));
+
+
+	tmp = SPI_getvalue(tup, tupdesc, Anum_pg_class_max_pages);
+	if (SPI_result != 0 && !tmp)
+		goto fail;
+
+
+	elog(DEBUG3, "cdbanalyze oid=%d pages=%d tuples=%f",
+		 ctx->relid, ctx->pages, ctx->tuples);
+
+	return;
+
+fail:
+	ereport(WARNING, (errcode(ERRCODE_MPP_COMMAND_ERROR),
+			   errmsg("Unable to obtain statistics from segment databases."),
+					  errdetail("Segment db catalog query failed: %s  %d",
+								sqlstmt->data, SPI_result )));
+}	/* cdbanalyze_callback */
+
+
+void
+cdbanalyze_get_columnstats(Relation rel, BlockNumber *pages, double *tuples)
+{
+	StringInfoData buffer;
+	Cdbanalyze_columns_Ctx ctx;
+	char	   *relname;
+	Oid			namespace;
+
+	*pages = 0;
+	*tuples = 0;
+
+	relname = RelationGetRelationName(rel);
+	namespace = RelationGetNamespace(rel);
+
+	/*
+	 * First, create a select statement
+	 */
+	initStringInfo(&buffer);
+	appendStringInfo(&buffer, "select staattnum,avg(stanullfrac),avg(stawidth),avg(stadistinct)");
+	appendStringInfo(&buffer, " from pg_statistic, pg_class");
+	appendStringInfo(&buffer, " where relname='%s' and relnamespace=%u", relname, namespace);
+	appendStringInfo(&buffer, " group by staattnum order by staattnum");
+
+	/*
+	 * Next, use SPI to execute it.
+	 * (If unsuccessful, throws an error and does not return here.)
+	 */
+	ctx.relid = RelationGetRelid(rel);
+	cdbanalyze_query_local_catalogs(&buffer, cdbanalyze_columns_callback, &ctx);
+
+	/*
+	 * Grab the results of the query and stuff them into the out parameters.
+	 */
+	//*tuples = ctx.tuples;
+	//*pages = ctx.pages;
+}	/* cdbanalyze_get_columnstats */
+#endif 

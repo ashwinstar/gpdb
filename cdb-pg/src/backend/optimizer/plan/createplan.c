@@ -11,7 +11,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/createplan.c,v 1.202 2005/10/19 17:31:20 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/plan/createplan.c,v 1.202.2.1 2005/11/22 18:23:10 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -1289,8 +1289,8 @@ create_nestloop_plan(PlannerInfo *root,
 		 * caught this case because the join clauses would never have been put
 		 * in the same joininfo list.
 		 *
-		 * We can skip this if the index path is an ordinary indexpath and not a
-		 * special innerjoin path.
+		 * We can skip this if the index path is an ordinary indexpath and not
+		 * a special innerjoin path.
 		 */
 		IndexPath  *innerpath = (IndexPath *) best_path->innerjoinpath;
 
@@ -1308,13 +1308,13 @@ create_nestloop_plan(PlannerInfo *root,
 		/*
 		 * Same deal for bitmapped index scans.
 		 *
-		 * Note: both here and above, we ignore any implicit index restrictions
-		 * associated with the use of partial indexes.	This is OK because
-		 * we're only trying to prove we can dispense with some join quals;
-		 * failing to prove that doesn't result in an incorrect plan.  It is
-		 * the right way to proceed because adding more quals to the stuff we
-		 * got from the original query would just make it harder to detect
-		 * duplication.
+		 * Note: both here and above, we ignore any implicit index
+		 * restrictions associated with the use of partial indexes.  This is
+		 * OK because we're only trying to prove we can dispense with some
+		 * join quals; failing to prove that doesn't result in an incorrect
+		 * plan.  It is the right way to proceed because adding more quals to
+		 * the stuff we got from the original query would just make it harder
+		 * to detect duplication.
 		 */
 		BitmapHeapPath *innerpath = (BitmapHeapPath *) best_path->innerjoinpath;
 
@@ -1585,8 +1585,9 @@ fix_indexqual_references(List *indexquals, IndexPath *index_path,
 		/*
 		 * Make a copy that will become the fixed clause.
 		 *
-		 * We used to try to do a shallow copy here, but that fails if there is a
-		 * subplan in the arguments of the opclause.  So just do a full copy.
+		 * We used to try to do a shallow copy here, but that fails if there
+		 * is a subplan in the arguments of the opclause.  So just do a full
+		 * copy.
 		 */
 		newclause = (OpExpr *) copyObject((Node *) clause);
 
@@ -2270,8 +2271,8 @@ make_sort_from_pathkeys(PlannerInfo *root, Plan *lefttree, List *pathkeys)
 		 * available Var in the tlist.	If there isn't any, use the first one
 		 * that is an expression in the input's vars.
 		 *
-		 * XXX if we have a choice, is there any way of figuring out which might
-		 * be cheapest to execute?	(For example, int4lt is likely much
+		 * XXX if we have a choice, is there any way of figuring out which
+		 * might be cheapest to execute?  (For example, int4lt is likely much
 		 * cheaper to execute than numericlt, but both might appear in the
 		 * same pathkey sublist...)  Not clear that we ever will have a choice
 		 * in practice, so it may not matter.
@@ -2591,12 +2592,13 @@ make_group(PlannerInfo *root,
 	 * We also need to account for the cost of evaluation of the qual (ie, the
 	 * HAVING clause) and the tlist.
 	 *
-	 * XXX this double-counts the cost of evaluation of any expressions used for
-	 * grouping, since in reality those will have been evaluated at a lower
-	 * plan level and will only be copied by the Group node. Worth fixing?
+	 * XXX this double-counts the cost of evaluation of any expressions used
+	 * for grouping, since in reality those will have been evaluated at a
+	 * lower plan level and will only be copied by the Group node. Worth
+	 * fixing?
 	 *
-	 * See notes in grouping_planner about why this routine and make_agg are the
-	 * only ones in this file that worry about tlist eval cost.
+	 * See notes in grouping_planner about why this routine and make_agg are
+	 * the only ones in this file that worry about tlist eval cost.
 	 */
 	if (qual)
 	{
@@ -2753,8 +2755,8 @@ make_limit(Plan *lefttree, Node *limitOffset, Node *limitCount,
 	 * building a subquery then it's important to report correct info to the
 	 * outer planner.
 	 *
-	 * When the offset or count couldn't be estimated, use 10% of the estimated
-	 * number of rows emitted from the subplan.
+	 * When the offset or count couldn't be estimated, use 10% of the
+	 * estimated number of rows emitted from the subplan.
 	 */
 	if (offset_est != 0)
 	{

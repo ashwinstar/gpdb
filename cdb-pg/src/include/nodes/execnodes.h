@@ -8,7 +8,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- * $PostgreSQL: pgsql/src/include/nodes/execnodes.h,v 1.139 2005/10/15 02:49:45 momjian Exp $
+ * $PostgreSQL: pgsql/src/include/nodes/execnodes.h,v 1.139.2.3 2005/11/28 23:46:25 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -491,6 +491,12 @@ typedef struct EState
 	bool	   *es_evTupleNull; /* local array of EPQ status */
 	HeapTuple  *es_evTuple;		/* shared array of EPQ substitute tuples */
 	bool		es_useEvalPlan; /* evaluating EPQ tuples? */
+
+	/*
+	 * this field added at end of struct to avoid post-release ABI breakage in
+	 * 8.1 series.	It'll be in a more logical place in 8.2.
+	 */
+	TupleTableSlot *es_trig_tuple_slot; /* for trigger output tuples */
 	
 	/* Additions for MPP plan slicing. */
 	int es_cur_root_idx;
@@ -646,9 +652,9 @@ typedef struct FuncExprState
 	 * We also need to store argument values across calls when evaluating a
 	 * function-returning-set.
 	 *
-	 * setArgsValid is true when we are evaluating a set-valued function and we
-	 * are in the middle of a call series; we want to pass the same argument
-	 * values to the function again (and again, until it returns
+	 * setArgsValid is true when we are evaluating a set-valued function and
+	 * we are in the middle of a call series; we want to pass the same
+	 * argument values to the function again (and again, until it returns
 	 * ExprEndResult).
 	 */
 	bool		setArgsValid;
@@ -1253,6 +1259,7 @@ typedef struct MergeJoinState
  *		hj_FirstOuterTupleSlot	first tuple retrieved from outer plan
  *		hj_NeedNewOuter			true if need new outer tuple on next call
  *		hj_MatchedOuter			true if found a join match for current outer
+ *		hj_OuterNotEmpty		true if outer relation known not empty
  * ----------------
  */
 
@@ -1277,6 +1284,7 @@ typedef struct HashJoinState
 	TupleTableSlot *hj_FirstOuterTupleSlot;
 	bool		hj_NeedNewOuter;
 	bool		hj_MatchedOuter;
+	bool		hj_OuterNotEmpty;
 } HashJoinState;
 
 

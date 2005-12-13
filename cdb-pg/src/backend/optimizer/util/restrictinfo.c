@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/optimizer/util/restrictinfo.c,v 1.41 2005/10/15 02:49:21 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/optimizer/util/restrictinfo.c,v 1.41.2.3 2005/11/22 18:23:12 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -25,9 +25,12 @@
 static RestrictInfo *make_restrictinfo_internal(Expr *clause,
 						   Expr *orclause,
 						   bool is_pushed_down,
+						   bool outerjoin_delayed,
 						   Relids required_relids);
 static Expr *make_sub_restrictinfos(Expr *clause,
-					   bool is_pushed_down);
+					   bool is_pushed_down,
+					   bool outerjoin_delayed,
+					   Relids required_relids);
 static RestrictInfo *join_clause_is_redundant(PlannerInfo *root,
 						 RestrictInfo *rinfo,
 						 List *reference_list,
@@ -39,8 +42,8 @@ static RestrictInfo *join_clause_is_redundant(PlannerInfo *root,
  *
  * Build a RestrictInfo node containing the given subexpression.
  *
- * The is_pushed_down flag must be supplied by the caller.
- * required_relids can be NULL, in which case it defaults to the
+ * The is_pushed_down and outerjoin_delayed flags must be supplied by the
+ * caller.	required_relids can be NULL, in which case it defaults to the
  * actual clause contents (i.e., clause_relids).
  *
  * We initialize fields that depend only on the given subexpression, leaving
@@ -48,19 +51,26 @@ static RestrictInfo *join_clause_is_redundant(PlannerInfo *root,
  * later.
  */
 RestrictInfo *
-make_restrictinfo(Expr *clause, bool is_pushed_down, Relids required_relids)
+make_restrictinfo(Expr *clause,
+				  bool is_pushed_down,
+				  bool outerjoin_delayed,
+				  Relids required_relids)
 {
 	/*
 	 * If it's an OR clause, build a modified copy with RestrictInfos inserted
 	 * above each subclause of the top-level AND/OR structure.
 	 */
 	if (or_clause((Node *) clause))
-		return (RestrictInfo *) make_sub_restrictinfos(clause, is_pushed_down);
+		return (RestrictInfo *) make_sub_restrictinfos(clause,
+													   is_pushed_down,
+													   outerjoin_delayed,
+													   required_relids);
 
 	/* Shouldn't be an AND clause, else AND/OR flattening messed up */
 	Assert(!and_clause((Node *) clause));
 
-	return make_restrictinfo_internal(clause, NULL, is_pushed_down,
+	return make_restrictinfo_internal(clause, NULL,
+									  is_pushed_down, outerjoin_delayed,
 									  required_relids);
 }
 
@@ -73,6 +83,9 @@ make_restrictinfo(Expr *clause, bool is_pushed_down, Relids required_relids)
  *
  * The result is a List (effectively, implicit-AND representation) of
  * RestrictInfos.
+ *
+ * The caller must pass is_pushed_down, but we assume outerjoin_delayed
+ * is false (no such qual should ever get into a bitmapqual).
  *
  * If include_predicates is true, we add any partial index predicates to
  * the explicit index quals.  When this is not true, we return a condition
@@ -169,6 +182,7 @@ make_restrictinfo_from_bitmapqual(Path *bitmapqual,
 				list_make1(make_restrictinfo_internal(make_orclause(withoutris),
 													  make_orclause(withris),
 													  is_pushed_down,
+													  false,
 													  NULL));
 		}
 	}
@@ -193,6 +207,7 @@ make_restrictinfo_from_bitmapqual(Path *bitmapqual,
 					result = lappend(result,
 									 make_restrictinfo(pred,
 													   is_pushed_down,
+													   false,
 													   NULL));
 			}
 		}
@@ -213,13 +228,15 @@ make_restrictinfo_from_bitmapqual(Path *bitmapqual,
  */
 static RestrictInfo *
 make_restrictinfo_internal(Expr *clause, Expr *orclause,
-						   bool is_pushed_down, Relids required_relids)
+						   bool is_pushed_down, bool outerjoin_delayed,
+						   Relids required_relids)
 {
 	RestrictInfo *restrictinfo = makeNode(RestrictInfo);
 
 	restrictinfo->clause = clause;
 	restrictinfo->orclause = orclause;
 	restrictinfo->is_pushed_down = is_pushed_down;
+	restrictinfo->outerjoin_delayed = outerjoin_delayed;
 	restrictinfo->can_join = false;		/* may get set below */
 
 	/*
@@ -297,9 +314,15 @@ make_restrictinfo_internal(Expr *clause, Expr *orclause,
  * This may seem odd but it is closely related to the fact that we use
  * implicit-AND lists at top level of RestrictInfo lists.  Only ORs and
  * simple clauses are valid RestrictInfos.
+ *
+ * The given required_relids are attached to our top-level output,
+ * but any OR-clause constituents are allowed to default to just the
+ * contained rels.
  */
 static Expr *
-make_sub_restrictinfos(Expr *clause, bool is_pushed_down)
+make_sub_restrictinfos(Expr *clause,
+					   bool is_pushed_down, bool outerjoin_delayed,
+					   Relids required_relids)
 {
 	if (or_clause((Node *) clause))
 	{
@@ -309,11 +332,14 @@ make_sub_restrictinfos(Expr *clause, bool is_pushed_down)
 		foreach(temp, ((BoolExpr *) clause)->args)
 			orlist = lappend(orlist,
 							 make_sub_restrictinfos(lfirst(temp),
-													is_pushed_down));
+													is_pushed_down,
+													outerjoin_delayed,
+													NULL));
 		return (Expr *) make_restrictinfo_internal(clause,
 												   make_orclause(orlist),
 												   is_pushed_down,
-												   NULL);
+												   outerjoin_delayed,
+												   required_relids);
 	}
 	else if (and_clause((Node *) clause))
 	{
@@ -323,14 +349,17 @@ make_sub_restrictinfos(Expr *clause, bool is_pushed_down)
 		foreach(temp, ((BoolExpr *) clause)->args)
 			andlist = lappend(andlist,
 							  make_sub_restrictinfos(lfirst(temp),
-													 is_pushed_down));
+													 is_pushed_down,
+													 outerjoin_delayed,
+													 required_relids));
 		return make_andclause(andlist);
 	}
 	else
 		return (Expr *) make_restrictinfo_internal(clause,
 												   NULL,
 												   is_pushed_down,
-												   NULL);
+												   outerjoin_delayed,
+												   required_relids);
 }
 
 /*

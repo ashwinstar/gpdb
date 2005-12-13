@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/executor/execQual.c,v 1.183 2005/10/19 22:30:30 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/executor/execQual.c,v 1.183.2.1 2005/11/22 18:23:08 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -328,8 +328,8 @@ ExecEvalArrayRef(ArrayRefExprState *astate,
 		/*
 		 * Evaluate the value to be assigned into the array.
 		 *
-		 * XXX At some point we'll need to look into making the old value of the
-		 * array element available via CaseTestExpr, as is done by
+		 * XXX At some point we'll need to look into making the old value of
+		 * the array element available via CaseTestExpr, as is done by
 		 * ExecEvalFieldStore.	This is not needed now but will be needed to
 		 * support arrays of composite types; in an assignment to a field of
 		 * an array member, the parser would generate a FieldStore that
@@ -535,8 +535,8 @@ ExecEvalWholeRowVar(ExprState *exprstate, ExprContext *econtext,
 	Assert(variable->varattno == InvalidAttrNumber);
 
 	/*
-	 * Whole-row Vars can only appear at the level of a relation scan,
-	 * never in a join.
+	 * Whole-row Vars can only appear at the level of a relation scan, never
+	 * in a join.
 	 */
 	Assert(variable->varno != INNER);
 	Assert(variable->varno != OUTER);
@@ -546,8 +546,8 @@ ExecEvalWholeRowVar(ExprState *exprstate, ExprContext *econtext,
 	tupleDesc = slot->tts_tupleDescriptor;
 
 	/*
-	 * We have to make a copy of the tuple so we can safely insert the
-	 * Datum overhead fields, which are not set in on-disk tuples.
+	 * We have to make a copy of the tuple so we can safely insert the Datum
+	 * overhead fields, which are not set in on-disk tuples.
 	 */
 	dtuple = (HeapTupleHeader) palloc(tuple->t_len);
 	memcpy((char *) dtuple, (char *) tuple->t_data, tuple->t_len);
@@ -555,12 +555,11 @@ ExecEvalWholeRowVar(ExprState *exprstate, ExprContext *econtext,
 	HeapTupleHeaderSetDatumLength(dtuple, tuple->t_len);
 
 	/*
-	 * If the Var identifies a named composite type, label the tuple
-	 * with that type; otherwise use what is in the tupleDesc.
+	 * If the Var identifies a named composite type, label the tuple with that
+	 * type; otherwise use what is in the tupleDesc.
 	 *
-	 * It's likely that the slot's tupleDesc is a record type; if so,
-	 * make sure it's been "blessed", so that the Datum can be interpreted
-	 * later.
+	 * It's likely that the slot's tupleDesc is a record type; if so, make
+	 * sure it's been "blessed", so that the Datum can be interpreted later.
 	 */
 	if (variable->vartype != RECORDOID)
 	{

@@ -37,7 +37,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/postmaster/postmaster.c,v 1.475 2005/11/05 03:04:52 tgl Exp $
+ *	  $PostgreSQL: pgsql/src/backend/postmaster/postmaster.c,v 1.475.2.1 2005/11/22 18:23:15 momjian Exp $
  *
  * NOTES
  *
@@ -678,8 +678,8 @@ PostmasterMain(int argc, char *argv[])
 	/*
 	 * Fork away from controlling terminal, if -S specified.
 	 *
-	 * Must do this before we grab any interlock files, else the interlocks will
-	 * show the wrong PID.
+	 * Must do this before we grab any interlock files, else the interlocks
+	 * will show the wrong PID.
 	 */
 	if (SilentMode)
 		pmdaemonize();
@@ -921,8 +921,8 @@ PostmasterMain(int argc, char *argv[])
 	   SysLoggerPID = SysLogger_Start();
 
 	/*
-	 * Reset whereToSendOutput from DestDebug (its starting state) to DestNone.
-	 * This stops ereport from sending log messages to stderr unless
+	 * Reset whereToSendOutput from DestDebug (its starting state) to
+	 * DestNone. This stops ereport from sending log messages to stderr unless
 	 * Log_destination permits.  We don't do this until the postmaster is
 	 * fully launched, since startup failures may as well be reported to
 	 * stderr.
@@ -1014,13 +1014,14 @@ checkDataDir(void)
 	/*
 	 * Check if the directory has group or world access.  If so, reject.
 	 *
-	 * It would be possible to allow weaker constraints (for example, allow group
-	 * access) but we cannot make a general assumption that that is okay; for
-	 * example there are platforms where nearly all users customarily belong
-	 * to the same group.  Perhaps this test should be configurable.
+	 * It would be possible to allow weaker constraints (for example, allow
+	 * group access) but we cannot make a general assumption that that is
+	 * okay; for example there are platforms where nearly all users
+	 * customarily belong to the same group.  Perhaps this test should be
+	 * configurable.
 	 *
-	 * XXX temporarily suppress check when on Windows, because there may not be
-	 * proper support for Unix-y file permissions.	Need to think of a
+	 * XXX temporarily suppress check when on Windows, because there may not
+	 * be proper support for Unix-y file permissions.  Need to think of a
 	 * reasonable check to apply on Windows.
 	 */
 #if !defined(WIN32) && !defined(__CYGWIN__)
@@ -1185,9 +1186,9 @@ ServerLoop(void)
 		/*
 		 * Wait for something to happen.
 		 *
-		 * We wait at most one minute, or the minimum autovacuum delay, to ensure
-		 * that the other background tasks handled below get done even when no
-		 * requests are arriving.
+		 * We wait at most one minute, or the minimum autovacuum delay, to
+		 * ensure that the other background tasks handled below get done even
+		 * when no requests are arriving.
 		 */
 		memcpy((char *) &rmask, (char *) &readmask, sizeof(fd_set));
 
@@ -1942,8 +1943,8 @@ pmdie(SIGNAL_ARGS)
 			/*
 			 * Fast Shutdown:
 			 *
-			 * Abort all children with SIGTERM (rollback active transactions and
-			 * exit) and shut down when they are gone.
+			 * Abort all children with SIGTERM (rollback active transactions
+			 * and exit) and shut down when they are gone.
 			 */
 			if (Shutdown >= FastShutdown)
 				break;
@@ -1968,8 +1969,8 @@ pmdie(SIGNAL_ARGS)
 			/*
 			 * No children left. Begin shutdown of data base system.
 			 *
-			 * Note: if we previously got SIGTERM then we may send SIGUSR2 to the
-			 * bgwriter a second time here.  This should be harmless.
+			 * Note: if we previously got SIGTERM then we may send SIGUSR2 to
+			 * the bgwriter a second time here.  This should be harmless.
 			 */
 			if (StartupPID != 0 || FatalError)
 				break;			/* let reaper() handle this */
@@ -2138,10 +2139,10 @@ reaper(SIGNAL_ARGS)
 				 * that it wrote a shutdown checkpoint.  (If for some reason
 				 * it didn't, recovery will occur on next postmaster start.)
 				 *
-				 * Note: we do not wait around for exit of the archiver or stats
-				 * processes.  They've been sent SIGQUIT by this point, and in
-				 * any case contain logic to commit hara-kiri if they notice
-				 * the postmaster is gone.
+				 * Note: we do not wait around for exit of the archiver or
+				 * stats processes.  They've been sent SIGQUIT by this point,
+				 * and in any case contain logic to commit hara-kiri if they
+				 * notice the postmaster is gone.
 				 */
 				ExitPostmaster(0);
 			}
@@ -2363,10 +2364,10 @@ HandleChildCrash(int pid, int exitstatus, const char *procname)
 			 * This backend is still alive.  Unless we did so already, tell it
 			 * to commit hara-kiri.
 			 *
-			 * SIGQUIT is the special signal that says exit without proc_exit and
-			 * let the user know what's going on. But if SendStop is set (-s
-			 * on command line), then we send SIGSTOP instead, so that we can
-			 * get core dumps from all backends by hand.
+			 * SIGQUIT is the special signal that says exit without proc_exit
+			 * and let the user know what's going on. But if SendStop is set
+			 * (-s on command line), then we send SIGSTOP instead, so that we
+			 * can get core dumps from all backends by hand.
 			 */
 			if (!FatalError)
 			{

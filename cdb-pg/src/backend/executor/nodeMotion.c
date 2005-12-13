@@ -18,6 +18,7 @@
 #include "cdb/cdblink.h"
 #include "cdb/cdbmotion.h"
 #include "cdb/cdbvars.h"
+#include "executor/executor.h"
 #include "executor/execdebug.h"
 #include "executor/nodeMotion.h"
 #include "optimizer/clauses.h"
@@ -579,7 +580,7 @@ ExecInitMotion(Motion * node, EState *estate)
 	 * initialize tuple type.  no need to initialize projection info
 	 * because this node doesn't do projections.
 	 */
-	ExecAssignResultTypeFromOuterPlan(&motionstate->ps);
+	ExecAssignResultTypeFromTL(&motionstate->ps);
 	motionstate->ps.ps_ProjInfo = NULL;
 	motionstate->hashExprState = NULL;
 	motionstate->cdbhash = NULL;

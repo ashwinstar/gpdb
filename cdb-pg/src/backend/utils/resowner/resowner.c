@@ -14,7 +14,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/utils/resowner/resowner.c,v 1.14 2005/10/15 02:49:36 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/utils/resowner/resowner.c,v 1.14.2.2 2005/12/08 19:19:31 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -199,9 +199,9 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 		 * buffer entry from my list, so I just have to iterate till there are
 		 * none.
 		 *
-		 * During a commit, there shouldn't be any remaining pins --- that would
-		 * indicate failure to clean up the executor correctly --- so issue
-		 * warnings.  In the abort case, just clean up quietly.
+		 * During a commit, there shouldn't be any remaining pins --- that
+		 * would indicate failure to clean up the executor correctly --- so
+		 * issue warnings.	In the abort case, just clean up quietly.
 		 *
 		 * We are careful to do the releasing back-to-front, so as to avoid
 		 * O(N^2) behavior in ResourceOwnerForgetBuffer().
@@ -218,8 +218,8 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 		 * the relref entry from my list, so I just have to iterate till there
 		 * are none.
 		 *
-		 * As with buffer pins, warn if any are left at commit time, and release
-		 * back-to-front for speed.
+		 * As with buffer pins, warn if any are left at commit time, and
+		 * release back-to-front for speed.
 		 */
 		while (owner->nrelrefs > 0)
 		{
@@ -261,8 +261,8 @@ ResourceOwnerReleaseInternal(ResourceOwner owner,
 		 * the catref entry from my list, so I just have to iterate till there
 		 * are none.  Ditto for catcache lists.
 		 *
-		 * As with buffer pins, warn if any are left at commit time, and release
-		 * back-to-front for speed.
+		 * As with buffer pins, warn if any are left at commit time, and
+		 * release back-to-front for speed.
 		 */
 		while (owner->ncatrefs > 0)
 		{
@@ -439,7 +439,7 @@ UnregisterResourceReleaseCallback(ResourceReleaseCallback callback, void *arg)
  * of memory, it's critical to do so *before* acquiring the resource.
  *
  * We allow the case owner == NULL because the bufmgr is sometimes invoked
- * outside any transaction (for example, in the bgwriter).
+ * outside any transaction (for example, during WAL recovery).
  */
 void
 ResourceOwnerEnlargeBuffers(ResourceOwner owner)
@@ -472,7 +472,7 @@ ResourceOwnerEnlargeBuffers(ResourceOwner owner)
  * Caller must have previously done ResourceOwnerEnlargeBuffers()
  *
  * We allow the case owner == NULL because the bufmgr is sometimes invoked
- * outside any transaction (for example, in the bgwriter).
+ * outside any transaction (for example, during WAL recovery).
  */
 void
 ResourceOwnerRememberBuffer(ResourceOwner owner, Buffer buffer)
@@ -489,7 +489,7 @@ ResourceOwnerRememberBuffer(ResourceOwner owner, Buffer buffer)
  * Forget that a buffer pin is owned by a ResourceOwner
  *
  * We allow the case owner == NULL because the bufmgr is sometimes invoked
- * outside any transaction (for example, in the bgwriter).
+ * outside any transaction (for example, during WAL recovery).
  */
 void
 ResourceOwnerForgetBuffer(ResourceOwner owner, Buffer buffer)
