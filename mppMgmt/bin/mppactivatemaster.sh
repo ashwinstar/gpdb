@@ -240,17 +240,12 @@ PROCESS_REACTIVATION () {
 
 UPDATE_CATALOG () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	#obtain a list of database names that need to be updated
-	GET_DB_LIST
-	for DB in "${DB_ARRAY[@]}"
-	do
-		env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DB -A -t -c"update mpp_configuration set hostname=$FAILBACK_MASTER_HOSTNAME where dbid in (select min(dbid) from mpp_configuration where content=-1);"
-		ERROR_CHK $? "update mpp_configuration hostname value in database $DB" 1
-		if [ $RETVAL -ne 0 ];then
-			ADMIN_SHUTDOWN
-			ERROR_EXIT "[FATAL]:-Unable to contine, unable to update mpp_configuration catalog" 2
-		fi
-	done
+	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT -A -t -c"update mpp_configuration set hostname='$FAILBACK_MASTER_HOSTNAME' where dbid in (select min(dbid) from mpp_configuration where content=-1);"
+	ERROR_CHK $? "update mpp_configuration hostname value in database" 1
+	if [ $RETVAL -ne 0 ];then
+	    ADMIN_SHUTDOWN
+	    ERROR_EXIT "[FATAL]:-Unable to contine, unable to update mpp_configuration catalog" 2
+	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 ADMIN_SHUTDOWN () {
