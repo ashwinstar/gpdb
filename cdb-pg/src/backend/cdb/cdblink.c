@@ -157,7 +157,8 @@ getMPPSegmentCount(void)
 void
 buildMirrorQDDefinition(void)
 {
-	CdbComponentDatabases *cdb_component_dbs;
+	char						*dbname;
+	CdbComponentDatabases		*cdb_component_dbs;
 
 	if (!isQDMirroringEnabled())
 		return;
@@ -168,6 +169,7 @@ buildMirrorQDDefinition(void)
 	{
 		elog(DEBUG1, "QD Mirroring: no mirror components found");
 		disableQDMirroring();
+		return;
 	}
 
 	/*
@@ -194,51 +196,67 @@ buildMirrorQDDefinition(void)
 			entryDb = entryDb + 1;
 		}
 
-		if (!mirrorDb->isprimary)
+		/* The management scripts "activate" the warm-QD by doing an
+		 * update which points the QD-dbid at the warm-QD host. The
+		 * currently active QD always has the same dbid, so the only
+		 * way we can really *tell* that we're running in the
+		 * fail-over mode, is if the two hostnames are the same
+		 *
+		 * Someday the "isprimary" fields will be updated as well.
+		 */
+		if (mirrorDb->isprimary || strcmp(mirrorDb->hostname, entryDb->hostname) == 0)
 		{
-			char	   *dbname;
+			/* We are running as the mirror! When running as the
+			 * mirror, we don't want to connect to ourselves! So we
+			 * turn off mirroring after issuing a 'NOTICE' message.
+			 */			
+			elog(NOTICE, "QD Mirroring: we are the mirror, don't connect to self.");
+			disableQDMirroring();
+			return;
+		}
 
-			/* if it is set to invalid, do not connect */
-			if (!mirrorDb->valid)
-			{
-				ereport(LOG, (errcode(ERRCODE_WARNING_MPP_INTERCONNECTION),
-							  errmsg("QD Mirroring disabled for entry db "
-									 "because it is not marked 'valid'.")));
-				return;
-			}
+		/* we are the primary connecting to the mirror */
 
-			/* create connection descriptor */
-			dbname = get_database_name(MyDatabaseId);
+		/* if it is set to invalid, do not connect */
+		if (!mirrorDb->valid)
+		{
+			ereport(LOG, (errcode(ERRCODE_WARNING_MPP_INTERCONNECTION),
+						  errmsg("QD Mirroring disabled for entry db "
+								 "because it is not marked 'valid'.")));
+			return;
+		}
 
-			cdb_mirrored_entry_db = malloc(sizeof(SegmentDatabaseDescriptor));
-			memset(cdb_mirrored_entry_db, 0, sizeof(SegmentDatabaseDescriptor));
-			cdbconn_initSegmentDescriptor(cdb_mirrored_entry_db, mirrorDb, dbname);
+		/* create connection descriptor */
+		dbname = get_database_name(MyDatabaseId);
 
-			pfree(dbname);
-			dbname = NULL;
+		cdb_mirrored_entry_db = malloc(sizeof(SegmentDatabaseDescriptor));
+		memset(cdb_mirrored_entry_db, 0, sizeof(SegmentDatabaseDescriptor));
+		cdbconn_initSegmentDescriptor(cdb_mirrored_entry_db, mirrorDb, dbname);
 
-			/* connect to mirrored QD */
-			if (!cdblink_connectQD(cdb_mirrored_entry_db))
-			{
-				disableQDMirroring();
+		pfree(dbname);
+		dbname = NULL;
 
-				ereport(WARNING, (errcode(ERRCODE_WARNING_MPP_INTERCONNECTION),
-							errmsg("QD Mirroring disabled for entry db.  %s",
-								   cdb_mirrored_entry_db->error_message.data)
-								  ));
-				cdb_mirrored_entry_db->errcode = 0;
-				resetPQExpBuffer(&cdb_mirrored_entry_db->error_message);
+		/* connect to mirrored QD */
+		if (!cdblink_connectQD(cdb_mirrored_entry_db))
+		{
+			disableQDMirroring();
 
-				/* mark the db as down */
-				/*
-				markSegDBStatus(cdb_mirrored_entry_db->segment_database_info->dbid, false);
-				*/
-			}
-			else
-			{
-				/* verify connection */
-				write_qd_sync("issyncmaster", NULL, 0);
-			}
+			ereport(WARNING, (errcode(ERRCODE_WARNING_MPP_INTERCONNECTION),
+							  errmsg("QD Mirroring disabled for entry db.  %s",
+									 cdb_mirrored_entry_db->error_message.data)
+						));
+			cdb_mirrored_entry_db->errcode = 0;
+			resetPQExpBuffer(&cdb_mirrored_entry_db->error_message);
+
+			/* mark the db as down */
+			/*
+			  markSegDBStatus(cdb_mirrored_entry_db->segment_database_info->dbid, false);
+			*/
+		}
+		else
+		{
+			/* verify connection */
+			write_qd_sync("issyncmaster", NULL, 0);
 		}
 	}
 }
