@@ -101,8 +101,8 @@ GET_NODE_COUNT () {
 	ERROR_CHK $? "obtain number of segment instances" 2
 	if [ $NUM_SEGMENTS = 1 ];then
 		ERROR_EXIT "[FATAL]:-Only one node in cluster, skew not applicable" 2;fi 
-		$PSQL -p $MASTER_PORT $QD_DBNAME -t -A -F"," -c"select a.hostname, b.port, b.datadir from mpp_configuration where content <> -1 and isprimary='t' ;" > $NODELIST
-		ERROR_CHK $? "obtaib list of active segments" 2
+		$PSQL -p $MASTER_PORT $QD_DBNAME -t -A -F"," -c"select a.hostname, b.port, b.datadir from mpp.host a, mpp.listener b, mpp.pgdatabase c where a.hostid=b.hostid and c.content <> -1 and c.isprimary='t' and b.listenerid=c.listenerid;" > $NODELIST
+		ERROR_CHK $? "obtain list of active segments" 2
 	LOG_MSG  "[INFO]:-Sending request to nodes.."
 
 	SEGCOUNT=0
@@ -112,6 +112,8 @@ GET_NODE_COUNT () {
 	SEG_PORT=`$ECHO $NodeInfo|$CUT -d, -f2`
 	SEG_DIR=`$ECHO $NodeInfo|$CUT -d, -f3`
 	SEG_NAME=`$BASENAME $SEG_DIR`
+	ACCESS_TEST=`$TRUSTED_SHELL $SEG_HOST "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT $QD_DBNAME -A -t -c\"select version();\""`
+	ERROR_CHK $? "test access to $SEG_PORT $QD_DBNAME on $SEG_HOST" 2
 	$TRUSTED_SHELL $SEG_HOST "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH; time env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT $QD_DBNAME -A -t -c'select count(*),'\''$SEG_NAME'\'','\''$SEG_HOST'\'' from $TARGETTBL;'" 2>&1|$HEAD -3|$TR -s '\n'|$TR ' ' '\n'|$TR -d '.'|$TR -cs '[:alnum:]' '[\n*]'|$GREP -v real|$TR  '\n' '|'|$AWK '{print $1}' >> $TMPFILE &
 	ERROR_CHK $? "send request to $SEG_HOST port $SEG_PORT" 2
 	let SEGCOUNT=$SEGCOUNT+1
@@ -128,10 +130,10 @@ GET_NODE_COUNT () {
 	do
 		((REC_COUNT=$REC_COUNT+$RECS))
 	done
-	MaxSkew=`$SORT $TMPFILE|$TAIL -1|$CUT -d'|' -f1`
+	MaxSkew=`$SORT $TMPFILE|$HEAD -1|$CUT -d'|' -f1`
 	MaxSeg=`$SORT $TMPFILE|$TAIL -1|$CUT -d'|' -f2`
 	MaxHost=`$SORT $TMPFILE|$TAIL -1|$CUT -d'|' -f3`
-	MinSkew=`$SORT $TMPFILE|$HEAD -1|$CUT -d'|' -f1`
+	MinSkew=`$SORT $TMPFILE|$TAIL -1|$CUT -d'|' -f1`
 	MinSeg=`$SORT $TMPFILE|$HEAD -1|$CUT -d'|' -f2`
 	MinHost=`$SORT $TMPFILE|$HEAD -1|$CUT -d'|' -f3`
 	MinTime=`$CAT $TMPFILE|$AWK -F"|" '{print $4"|"$3"|"$2}'|$SORT|$HEAD -1|$CUT -d"|" -f1`

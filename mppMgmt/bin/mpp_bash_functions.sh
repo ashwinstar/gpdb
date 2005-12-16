@@ -402,6 +402,7 @@ GET_MASTER_PORT () {
 }
 
 CHK_ON_PASSIVE_STANDBY () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	MPPSYNC_COUNT=0
 	CHK_DB_QD_SET
 	GET_MASTER_PORT $MASTER_DATA_DIRECTORY
@@ -415,6 +416,7 @@ CHK_ON_PASSIVE_STANDBY () {
 		LOG_MSG "[FATAL]:-environment variable setting."
 		ERROR_EXIT "[FATAL]:-Unable to process requested command" 2
 	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 CHK_DB_RUNNING () {
@@ -439,7 +441,7 @@ GET_QD_DB_NAME () {
 		CHK_DB_RUNNING	
 		QD_DBNAME=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"\l" 2>/dev/null|$GREP -v postgres|$GREP -v template|$HEAD -1|$CUT -d"|" -f1`
 		ERROR_CHK $? "obtain database name" 2
-		MASTER_DIR_CHK=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from mpp_configuration;"`
+		MASTER_DIR_CHK=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from mpp.host;"`
 		if [ $MASTER_DIR_CHK -eq 0 ];then
 			ERROR_EXIT "[FATAL]:-MASTER_DATA_DIRECTORY value of $MASTER_DATA_DIRECTORY is incorrect" 2;fi
 		if [ x"" == x"$QD_DBNAME" ]; then
@@ -490,7 +492,7 @@ GET_DB_LIST () {
 
 CHK_MIRRORS_CONFIGURED () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	MIRROR_COUNT=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(dbid)/count(distinct(content)) from mpp_configuration where content<>-1;"`
+	MIRROR_COUNT=`export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(dbid)/count(distinct(content)) from mpp.pgdatabase where content<>-1;"`
 	ERROR_CHK $? "obtain mirror count from master instance" 2
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }

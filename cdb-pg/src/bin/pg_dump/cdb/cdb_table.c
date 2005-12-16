@@ -285,7 +285,7 @@ bool GetCDBAssignmentArray(PGconn* pConn, const char* pszDBName, CDBAssignmentAr
 	int i_relname	= PQfnumber(pRes, "relname");
 	int i_nspname	= PQfnumber(pRes, "nspname");
 	int i_partno	= PQfnumber(pRes, "partno");
-	int i_segid		= PQfnumber(pRes, "segid");
+	int i_dbid		= PQfnumber(pRes, "segid");
 
 	int i;
 	for ( i=0; i<ntups; i++ )
@@ -295,7 +295,7 @@ bool GetCDBAssignmentArray(PGconn* pConn, const char* pszDBName, CDBAssignmentAr
 		pAssignment->pszTableName	= strdup(PQgetvalue(pRes, i, i_relname));
 		pAssignment->pszNspName		= strdup(PQgetvalue(pRes, i, i_nspname));
 		pAssignment->partno			= atoi(PQgetvalue(pRes, i, i_partno));
-		pAssignment->segid			= atoi(PQgetvalue(pRes, i, i_segid));
+		pAssignment->segid			= atoi(PQgetvalue(pRes, i, i_dbid));
 	}
 	
 	bRtn = true;
@@ -321,12 +321,11 @@ cleanup:
  *-------------------------------------------------------------------------
  */
 
-bool GetCDBBaseTableArray(PGconn* pConn, const char* pszDBName, CDBBaseTableArray* pTableAr, bool* pbPartitioned )
+bool GetCDBBaseTableArray(PGconn* pConn, CDBBaseTableArray* pTableAr)
 {
 	bool		bRtn = false;
 	PQExpBuffer pQry = NULL;
 	PGresult*	pRes = NULL;
-	char*		pszPartitionedWhere = NULL;
 	int ntups;
 	int i_tbloid;
 	int i_relname;
@@ -335,18 +334,12 @@ bool GetCDBBaseTableArray(PGconn* pConn, const char* pszDBName, CDBBaseTableArra
 	
 	pTableAr->count = 0;
 	pTableAr->pData = NULL;
-	
-	if ( pbPartitioned != NULL )
-	{
-		pszPartitionedWhere = MakeString(" AND b.partitioned = %s", ((*pbPartitioned) ? "true" : "false") );  
-	}
-	
+		
 	pQry = createPQExpBuffer();
 	appendPQExpBuffer(pQry, 	" SELECT" 
 							"	p.localoid," 
 							"	c.relname,"  
 							"	n.nspname"
-							//"	b.partitioned"
 							"	FROM"
 							"	mpp_distribution_policy p,"
 							"	pg_class c,"
@@ -354,17 +347,14 @@ bool GetCDBBaseTableArray(PGconn* pConn, const char* pszDBName, CDBBaseTableArra
 							"	WHERE"
 							"	p.localoid = c.oid"
 							" 	AND c.relnamespace = n.oid"
-							"%s"
 							"	ORDER BY"
-							"	2",
-							StringNotNull( pszPartitionedWhere, "")
-							);
+							"	2");
 
 	pRes = PQexec(pConn, pQry->data);
 
 	if ( pRes == NULL || PQresultStatus(pRes) != PGRES_TUPLES_OK )
 	{
-		write_err_msg("query to obtain list of MPP managed tables failed : %s",
+		mpp_err_msg("ERROR", "mpp_table","query to obtain list of MPP managed tables failed : %s",
 				  PQerrorMessage(pConn));
 		goto cleanup;
 	}
@@ -382,14 +372,14 @@ bool GetCDBBaseTableArray(PGconn* pConn, const char* pszDBName, CDBBaseTableArra
 	pTableAr->pData = (CDBBaseTable *)calloc( ntups, sizeof(CDBBaseTable) );
 	if ( pTableAr->pData == NULL )
 	{
-		write_err_msg("cannot allocate memory for query results in GetCDBBaseTableArray\n");
+		mpp_err_msg("ERROR", "mpp_table","cannot allocate memory for query results in GetCDBBaseTableArray\n");
 		goto cleanup;
 	}
 
+	/* get column numbers */
 	i_tbloid = PQfnumber(pRes, "localoid");
 	i_relname = PQfnumber(pRes, "relname");
 	i_nspname = PQfnumber(pRes, "nspname");
-	//int i_partitioned = PQfnumber(pRes, "partitioned");
 
 	for ( i=0; i<ntups; i++ )
 	{
@@ -397,7 +387,6 @@ bool GetCDBBaseTableArray(PGconn* pConn, const char* pszDBName, CDBBaseTableArra
 		pBaseTable->tbloid			= atoi(PQgetvalue(pRes, i, i_tbloid));
 		pBaseTable->pszTableName	= strdup(PQgetvalue(pRes, i, i_relname));
 		pBaseTable->pszNspName		= strdup(PQgetvalue(pRes, i, i_nspname));
-		//pBaseTable->partitioned		= (strcmp( PQgetvalue(pRes, i, i_partitioned), "t") == 0);
 	}
 	
 	bRtn = true;
@@ -424,7 +413,7 @@ cleanup:
 bool GetCDBSegmentInstanceArray(PGconn* pConn, const char* pszDBName, CDBSegmentInstanceArray* pSegmentInstanceAr )
 {
 	int ntups;
-	int i_segid;
+	int i_dbid;
     int i_isValid;
     int i_hostname;
     int i_port;
@@ -452,7 +441,7 @@ bool GetCDBSegmentInstanceArray(PGconn* pConn, const char* pszDBName, CDBSegment
 	pRes = PQexec(pConn, pQry->data);
 	if ( pRes == NULL || PQresultStatus(pRes) != PGRES_TUPLES_OK )
 	{
-		write_err_msg("query to obtain list of MPP segment instances failed : %s",
+		mpp_err_msg("ERROR", "mpp_table""query to obtain list of MPP segment databases failed : %s",
 				  PQerrorMessage(pConn));
 		goto cleanup;
 	}
@@ -460,7 +449,7 @@ bool GetCDBSegmentInstanceArray(PGconn* pConn, const char* pszDBName, CDBSegment
 	ntups = PQntuples(pRes);
 	if (ntups <= 0)
 	{
-		write_err_msg("no MPP segment instances for database \"%s\"\n", pszDBName);
+		mpp_err_msg("ERROR", "mpp_table""no MPP segment databases for database \"%s\"\n", pszDBName);
 		goto cleanup;
 	}
 	
@@ -468,11 +457,11 @@ bool GetCDBSegmentInstanceArray(PGconn* pConn, const char* pszDBName, CDBSegment
 	pSegmentInstanceAr->pData = (CDBSegmentInstance *)malloc( ntups * sizeof(CDBSegmentInstance) );
 	if ( pSegmentInstanceAr->pData == NULL )
 	{
-		write_err_msg("cannot allocate memory for query results in GetCDBSegmentInstanceArray\n");
+		mpp_err_msg("ERROR", "mpp_table","cannot allocate memory for query results in GetCDBSegmentInstanceArray\n");
 		goto cleanup;
 	}
 
-	i_segid		= PQfnumber(pRes, "dbid");
+	i_dbid		= PQfnumber(pRes, "dbid");
     i_isValid    = PQfnumber(pRes, "valid");
     i_hostname  = PQfnumber(pRes, "hostname");
     i_port      = PQfnumber(pRes, "port");
@@ -481,7 +470,7 @@ bool GetCDBSegmentInstanceArray(PGconn* pConn, const char* pszDBName, CDBSegment
 	for ( i=0; i<ntups; i++ )
 	{
 		CDBSegmentInstance* pSegmentInstance = &pSegmentInstanceAr->pData[i]; 
-        pSegmentInstance->segid		= atoi(PQgetvalue(pRes, i, i_segid));
+        pSegmentInstance->segid		= atoi(PQgetvalue(pRes, i, i_dbid));
         pSegmentInstance->isValid     = ( strcmp(PQgetvalue(pRes, i, i_isValid), "t") == 0 );
         pSegmentInstance->dbname      = strdup(pszDBName);
         pSegmentInstance->dbhostname  = PQgetvalue(pRes, i, i_hostname);

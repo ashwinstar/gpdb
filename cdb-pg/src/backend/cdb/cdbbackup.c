@@ -28,7 +28,7 @@
 /* static helper functions */
 static bool createBackupDirectory(char *pszPathName);
 static char *findAcceptableBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, int segid);
-static char *formBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey);
+static char *formBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool is_compress);
 static char *formStatusFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool bIsBackup);
 static char *relativeToAbsolute(char *pszRelativeDirectory);
 static void testCmdsExist(char *pszCompressionProgram, char *pszBackupProgram);
@@ -76,7 +76,7 @@ mpp_backup_launch__(PG_FUNCTION_ARGS)
 	text	   *result;
 	char	   *ptr;
 	int			instid;			/* dispatch node */
-
+	bool		is_compress;		
 
 	if (!PG_ARGISNULL(0))
 	{
@@ -109,9 +109,18 @@ mpp_backup_launch__(PG_FUNCTION_ARGS)
 	 * If so, make sure it's a directory
 	 */
 	validateBackupDirectory(pszBackupDirectory);
+	
+	/*
+	 * Validate existence of mpp_dump_agent and compression program, if
+	 * possible
+	 */
+	testCmdsExist(pszCompressionProgram, "mpp_dump_agent");	
+	
+	/* are we going to use a compression program? */
+	is_compress = (pszCompressionProgram != NULL && *pszCompressionProgram != '\0' ? true : false);
 
 	/* Form backup file path name */
-	pszBackupFileName = formBackupFilePathName(pszBackupDirectory, pszBackupKey);
+	pszBackupFileName = formBackupFilePathName(pszBackupDirectory, pszBackupKey, is_compress);
 	pszStatusFileName = formStatusFilePathName(pszBackupDirectory, pszBackupKey, true);
 
 	/*
@@ -128,11 +137,6 @@ mpp_backup_launch__(PG_FUNCTION_ARGS)
 	}
 	fclose(ftest);
 
-	/*
-	 * Validate existence of mpp_dump_agent and compression program, if
-	 * possible
-	 */
-	testCmdsExist(pszCompressionProgram, "mpp_dump_agent");
 
 	pszDBName = NULL;
 	pszUserName = (char *) NULL;
@@ -174,8 +178,10 @@ mpp_backup_launch__(PG_FUNCTION_ARGS)
 		getMppMpp();
 		instid = (MppIdentity.segindex == -1) ? 1 : 0;	/* dispatch node */
 		segid = MppIdentity.dbid;
+		
 		/* dump schema only for entry db, and data only for segment db */
 		pszDataOption = (instid == 1) ? "-s" : "-a";
+		
 		sprintf(pszKeyParm, "%s_%d_%d_%s", pszBackupKey, instid, segid, pszPassThroughCredentials);
 
 		/*
@@ -203,10 +209,11 @@ mpp_backup_launch__(PG_FUNCTION_ARGS)
 			+ strlen(pszStatusFileName)
 			+ 1;
 
+		/* if user selected a compression program */
 		if (pszCompressionProgram[0] != '\0')
 		{
 			len += 1 + 1		/* | */
-				+ strlen(compPg) + 1;
+			+ strlen(compPg) + 1;
 
 			pszCmdLine = (char *) palloc(len);
 			if (pszCmdLine == NULL)
@@ -216,9 +223,12 @@ mpp_backup_launch__(PG_FUNCTION_ARGS)
 						 errmsg("out of memory")));
 			}
 
-			sprintf(pszCmdLine, "%s --mpp-k %s --mpp-d %s -p %d -U %s %s %s %s | %s > %s 2> %s",
-					bkPg, pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters, pszDataOption, pszDBName,
-					compPg, pszBackupFileName, pszStatusFileName);
+			/* mpp_dump_agent + options, pipe into compression program, direct
+			 * stdout to backup file and stderr to status file */
+			//sprintf(pszCmdLine, "%s --mpp-k %s --mpp-d %s -p %d -U %s %s %s %s | %s > %s 2> %s",
+			sprintf(pszCmdLine, "%s --mpp-k %s --mpp-d %s -p %d -U %s %s %s %s 2> %s | %s > %s",
+					bkPg, pszKeyParm, pszBackupDirectory, port, pszUserName, pszPassThroughParameters, 
+					pszDataOption, pszDBName, pszStatusFileName, compPg, pszBackupFileName);
 		}
 		else
 		{
@@ -235,7 +245,7 @@ mpp_backup_launch__(PG_FUNCTION_ARGS)
 					pszBackupFileName, pszStatusFileName);
 		}
 
-		elog(DEBUG1, "mpp_dump_agent command line: %s", pszCmdLine),
+		elog(LOG, "mpp_dump_agent command line: %s", pszCmdLine),
 
 		/* This execs a shell that runs the mpp_dump_agent program	*/
 			execl("/bin/sh", "sh", "-c", pszCmdLine, NULL);
@@ -269,7 +279,7 @@ mpp_backup_launch__(PG_FUNCTION_ARGS)
 }
 
 /*
- * mpp_restore_launch__( TEXT, TEXT, TEXT, TEXT, TEXT, bool ) returns TEXT
+ * mpp_restore_launch__( TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, INT, bool ) returns TEXT
  *
  * Called by mpp_restore.c to launch mpp_restore_agent on this host.
  */
@@ -283,9 +293,11 @@ mpp_restore_launch__(PG_FUNCTION_ARGS)
 	char	   *pszCompressionProgram = "";
 	char	   *pszPassThroughParameters = "";
 	char	   *pszPassThroughCredentials = "";
+	char	   *pszPassThroughTargetInfo = "";
 	bool		bOnErrorStop = false;
 	int			instid;			/* dispatch node */
 	int			segid;
+	int			target_dbid;
 	char	   *pszOnErrorStop;
 	char	   *pszBackupFileName;
 	char	   *pszStatusFileName;
@@ -300,6 +312,7 @@ mpp_restore_launch__(PG_FUNCTION_ARGS)
 				len_name;
 	text	   *result;
 	char	   *ptr;
+	bool		is_compress;
 
 	getMppMpp();
 	instid = (MppIdentity.segindex == -1) ? 1 : 0;		/* dispatch node */
@@ -325,7 +338,13 @@ mpp_restore_launch__(PG_FUNCTION_ARGS)
 		pszPassThroughCredentials = GET_STR(PG_GETARG_TEXT_P(4));
 
 	if (!PG_ARGISNULL(5))
-		bOnErrorStop = PG_GETARG_BOOL(5);
+		pszPassThroughTargetInfo = GET_STR(PG_GETARG_TEXT_P(5));
+	
+	if (!PG_ARGISNULL(6))
+		target_dbid = PG_GETARG_INT32(6);
+	
+	if (!PG_ARGISNULL(7))
+		bOnErrorStop = PG_GETARG_BOOL(7);
 
 	pszOnErrorStop = bOnErrorStop ? "--mpp-e" : "";
 
@@ -335,8 +354,14 @@ mpp_restore_launch__(PG_FUNCTION_ARGS)
 	 */
 	pszBackupDirectory = relativeToAbsolute(pszBackupDirectory);
 
+	/* Validate existence of compression program and mpp_restore_agent program */
+	testCmdsExist(pszCompressionProgram, "mpp_restore_agent");
+
+	/* are we going to use a compression program? */
+	is_compress = (pszCompressionProgram != NULL && *pszCompressionProgram != '\0' ? true : false);
+
 	/* Form backup file path name */
-	pszBackupFileName = formBackupFilePathName(pszBackupDirectory, pszBackupKey);
+	pszBackupFileName = formBackupFilePathName(pszBackupDirectory, pszBackupKey, is_compress);
 	pszStatusFileName = formStatusFilePathName(pszBackupDirectory, pszBackupKey, false);
 
 	/* Make sure pszBackupFileName exists */
@@ -346,11 +371,8 @@ mpp_restore_launch__(PG_FUNCTION_ARGS)
 		if (pszBackupFileName == NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-					 errmsg("No Backup FileName could be found to restore segment %d from directory %s with backup key %s", segid, pszBackupDirectory, pszBackupKey)));
+					 errmsg("No Backup FileName could be found to restore dbid %d from directory %s with backup key %s", segid, pszBackupDirectory, pszBackupKey)));
 	}
-
-	/* Validate existence of compression program and mpp_restore_agent program */
-	testCmdsExist(pszCompressionProgram, "mpp_restore_agent");
 
 	pszDBName = NULL;
 	pszUserName = NULL;
@@ -409,6 +431,7 @@ mpp_restore_launch__(PG_FUNCTION_ARGS)
 			+ 2 + 1				/* -U */
 			+ strlen(pszUserName) + 1	/* pszUserName */
 			+ strlen(pszPassThroughParameters) + 1
+			+ strlen(pszPassThroughTargetInfo) + 1
 			+ 2 + 1				/* -d */
 			+ strlen(pszDBName) + 1
 			+ 1 + 1				/* > */
@@ -416,11 +439,16 @@ mpp_restore_launch__(PG_FUNCTION_ARGS)
 			+ 4 + 1				/* 2>&1 */
 			+ 1;
 
+		/* 
+		 * if compression was requested with --mpp-c
+		 */
 		if (pszCompressionProgram[0] != '\0')
 		{
 			len += 4 + strlen(compPg) +
 				+strlen(pszBackupFileName);
-
+			
+			len += 8; /* pass along "--mpp-c" to tell restore file is compressed */
+			
 			pszCmdLine = (char *) palloc(len);
 			if (pszCmdLine == NULL)
 			{
@@ -429,9 +457,17 @@ mpp_restore_launch__(PG_FUNCTION_ARGS)
 						 errmsg("out of memory")));
 			}
 
-			sprintf(pszCmdLine, "%s %s | %s --mpp-k %s --mpp-d %s %s -p %d -U %s %s -d %s > %s 2>&1",
-					compPg, pszBackupFileName, bkPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName,
-					pszPassThroughParameters, pszDBName, pszStatusFileName);
+			/* 
+			 * de-compress backupfile and pipe into stdin of mpp_restore_agent along with its
+			 * options. Redirect both stdout and stderr into the status file.
+			 */
+			//sprintf(pszCmdLine, "%s %s | %s --mpp-c --mpp-k %s --mpp-d %s %s -p %d -U %s %s %s -d %s > %s 2>&1",
+			//		compPg, pszBackupFileName, bkPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName,
+			//		pszPassThroughParameters, pszPassThroughTargetInfo, pszDBName, pszStatusFileName);
+			sprintf(pszCmdLine, "%s --mpp-c %s --mpp-k %s --mpp-d %s %s -p %d -U %s %s %s -d %s %s > %s 2>&1",
+					bkPg, compPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName,
+					pszPassThroughParameters, pszPassThroughTargetInfo, pszDBName, pszBackupFileName, pszStatusFileName);
+			
 		}
 		else
 		{
@@ -445,13 +481,14 @@ mpp_restore_launch__(PG_FUNCTION_ARGS)
 						 errmsg("out of memory")));
 			}
 
-			sprintf(pszCmdLine, "%s --mpp-k %s --mpp-d %s %s -p %d -U %s %s -d %s %s > %s 2>&1",
-					bkPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName, pszPassThroughParameters, pszDBName,
-					pszBackupFileName, pszStatusFileName);
+			/* Format mpp_restore_agent with options, and Redirect both stdout and stderr into the status file */
+			sprintf(pszCmdLine, "%s --mpp-k %s --mpp-d %s %s -p %d -U %s %s %s -d %s %s > %s 2>&1",
+					bkPg, pszKeyParm, pszBackupDirectory, pszOnErrorStop, port, pszUserName, pszPassThroughParameters, 
+					pszPassThroughTargetInfo, pszDBName, pszBackupFileName, pszStatusFileName);
 		}
 
 
-		elog(DEBUG1, "mpp_restore_agent command line: %s", pszCmdLine),
+		elog(LOG, "mpp_restore_agent command line: %s", pszCmdLine),
 
 		/* This execs a shell that runs the mpp_restore_agent program  */
 			execl("/bin/sh", "sh", "-c", pszCmdLine, NULL);
@@ -530,7 +567,15 @@ mpp_read_backup_file__(PG_FUNCTION_ARGS)
 	switch (fileType)
 	{
 		case BFT_BACKUP:
-			pszFileName = formBackupFilePathName(pszBackupDirectory, pszBackupKey);
+			/*pszFileName = formBackupFilePathName(pszBackupDirectory, pszBackupKey);*/
+			/*we can't support this without making a change to this function arguments, which
+			  will require an initdb, which we want to avoid. This is due to the fact that in
+			  this call to formBackupFilePathName we don't know if the file is compressed or
+			  not and formBackupFilePathName will not know if to create a file with a compression
+			  suffix or not */
+			ereport(ERROR,
+					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+					 errmsg("Only status files are currently supported in mpp_read_backup_file")));			
 			break;
 		case BFT_BACKUP_STATUS:
 		case BFT_RESTORE_STATUS:
@@ -612,90 +657,14 @@ mpp_read_backup_file__(PG_FUNCTION_ARGS)
  * mpp_write_backup_file__( TEXT, TEXT, TEXT ) returns TEXT
  *
  */
+
+/* NOT IN USE ANYMORE! */
+ 
 PG_FUNCTION_INFO_V1(mpp_write_backup_file__);
 Datum
 mpp_write_backup_file__(PG_FUNCTION_ARGS)
 {
-	/* Fetch the parameters from the argument list. */
-	char	   *pszBackupDirectory = "./";
-	char	   *pszBackupKey = "";
-	char	   *pszBackup = "";
-	char	   *pszFileName;
-	FILE	   *f;
-	int			nBytes;
-	int			len,
-				len_name;
-	text	   *result;
-	char	   *ptr;
-
-	if (!PG_ARGISNULL(0))
-	{
-		pszBackupDirectory = GET_STR(PG_GETARG_TEXT_P(0));
-		if (*pszBackupDirectory == '\0')
-			pszBackupDirectory = "./";
-	}
-
-	if (!PG_ARGISNULL(1))
-		pszBackupKey = GET_STR(PG_GETARG_TEXT_P(1));
-
-	if (!PG_ARGISNULL(2))
-		pszBackup = GET_STR(PG_GETARG_TEXT_P(2));
-
-	/*
-	 * if BackupDirectory is relative, make it absolute based on the directory
-	 * where the database resides
-	 */
-	pszBackupDirectory = relativeToAbsolute(pszBackupDirectory);
-
-	/*
-	 * See whether the directory exists.
-	 * If not, try to create it.
-	 * If so, make sure it's a directory
-	 */
-	validateBackupDirectory(pszBackupDirectory);
-
-	/* Form backup file path name */
-	pszFileName = formBackupFilePathName(pszBackupDirectory, pszBackupKey);
-
-	/* Write file */
-	f = fopen(pszFileName, "w");
-	if (f == NULL)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				 errmsg("Backup File %s cannot be opened", pszFileName)));
-	}
-
-	nBytes = strlen(pszBackup);
-	if (nBytes != fwrite(pszBackup, 1, nBytes, f))
-	{
-		fclose(f);
-		ereport(ERROR,
-				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				 errmsg("Error writing Backup File %s", pszFileName)));
-	}
-
-	fclose(f);
-	f = NULL;
-
-	assert(pszFileName != NULL && pszFileName[0] != '\0');
-	len_name = strlen(pszFileName);
-	len = len_name + VARHDRSZ;
-	result = (text *) palloc(len);
-	if (result == NULL)
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("out of memory")));
-	}
-
-	/* Set size of result string... */
-	VARATT_SIZEP(result) = len;
-
-	/* Fill data field of result string... */
-	ptr = VARDATA(result);
-	memcpy(ptr, pszFileName, len_name);
-
+	text *result;
 	PG_RETURN_TEXT_P(result);
 }
 
@@ -797,7 +766,7 @@ findAcceptableBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, i
 					 errmsg("out of memory")));
 		}
 
-		sprintf(pszRegex, "^mpp_dump_[0-9]+_%d_%s$", segid, pszBackupKey);
+		sprintf(pszRegex, "^mpp_dump_[0-9]+_%d_%s(.gz)?$", segid, pszBackupKey);
 		if (0 != regcomp(&rFindFileName, pszRegex, REG_EXTENDED))
 		{
 			ereport(ERROR,
@@ -862,7 +831,7 @@ findAcceptableBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, i
  * based on the naming convention for this.
  */
 char *
-formBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey)
+formBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey, bool is_compress)
 {
 	/* First form the prefix */
 	char		szFileNamePrefix[1 + PATH_MAX];
@@ -885,7 +854,11 @@ formBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey)
 
 	len += strlen(szFileNamePrefix);
 	len += strlen(pszBackupKey);
-
+	
+	/* if gzip/gunzip is used, the suffix is gz */
+	if(is_compress)
+		len += strlen(".gz");
+	
 	if (len > PATH_MAX)
 	{
 		ereport(ERROR,
@@ -908,6 +881,10 @@ formBackupFilePathName(char *pszBackupDirectory, char *pszBackupKey)
 	strcat(pszBackupFileName, szFileNamePrefix);
 	strcat(pszBackupFileName, pszBackupKey);
 
+	/* if gzip/gunzip is used, the suffix is gz */
+	if(is_compress)
+		strcat(pszBackupFileName, ".gz");
+	
 	return pszBackupFileName;
 }
 
@@ -1012,7 +989,7 @@ testCmdsExist(char *pszCompressionProgram, char *pszBackupProgram)
 	{
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				 errmsg("%s not found in path", pszBackupProgram)));
+				 errmsg("%s not found in path:  %s", pszBackupProgram, getenv("PATH"))));
 	}
 
 	/* Does compression utility exist? */

@@ -159,7 +159,7 @@ DATABASE_STATUS () {
 				GET_STANDBY_SETTING
 				QD_PG_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"show server_version;"`
 				ERROR_CHK $? "obtain postgres version" 1
-				MIRROR_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(dbid)/count(distinct(content)) from mpp_configuration where content<>-1;" 2> /dev/null `
+				MIRROR_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(dbid)/count(distinct(content)) from mpp.pgdatabase where content<>-1;" 2> /dev/null `
 				ERROR_CHK $? "obtain mirror count" 1
 				if [ x"" == x"$MIRROR_COUNT" ];then
 					MIRROR_CONFIG=ERROR
@@ -257,7 +257,10 @@ VERSION_INFO () {
 	GET_QE_DETAILS
 	MASTER_POSTGRES_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $DEFAULTDB -c"show server_version;"`
 	ERROR_CHK $? "obtain postgres server version" 1
+	MASTER_MPP_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $MASTER_PORT $DEFAULTDB -c"select version();"`
+	ERROR_CHK $? "obtain MPP application version" 1
 	LOG_MSG "[INFO]:-Master database postgres version = $MASTER_POSTGRES_VERSION"
+	LOG_MSG "[INFO]:-Master MPP application version = $MASTER_MPP_VERSION"
 	for TNODE in "${QE_ARRAY[@]}"
 	do
 		SET_VAR
@@ -267,7 +270,9 @@ VERSION_INFO () {
 			LOG_MSG "[WARN]:-Unable to connect to $QE_NAME on port $QE_PORT"
 			ERROR_EXIT=1
 		else
+			MPP_VERSION=`$TRUSTED_SHELL $QE_NAME "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -A -t -p $QE_PORT $DEFAULTDB -c\"select version();\""`
 			LOG_MSG "[INFO]:-$QE_NAME segment directory $QE_DIR postgres version = $POSTGRES_VERSION"
+			LOG_MSG "[INFO]:-$QE_NAME segment directory $QE_DIR MPP application version = $MPP_VERSION"
 		fi
 	done
 
@@ -496,7 +501,7 @@ STANDBY_HOST_DETAILS () {
 }
 
 GET_MPP_VERSION () {
-		MPP_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select * from mpp_version_at_initdb limit 1;" 2>/dev/null`
+		MPP_VERSION=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c "select version();" 2>/dev/null`
 		ERROR_CHK $? "obtain MPP version information" 2
 }
 

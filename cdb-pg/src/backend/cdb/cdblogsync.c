@@ -352,7 +352,6 @@ tmlogOpenFile(void)
 
 	/* the first time or file is changed */
 	snprintf(path, MAXPATH, "%s/%s", dtm_dir, wfilename);
-
 	elog(LOG, "QDSYNC: opening tm log file %s", wfilename);
 
 	tmlogfilefd = open(path, O_RDWR, 0);

@@ -3769,7 +3769,7 @@ DESCR("GiST support");
 /* Greenplum MPP exposed internally-defined functions. */ 
 DATA(insert OID = 6003 (  mpp_backup_launch    PGNSP PGUID 12 f f f f v 5 25 "25 25 25 25 25" _null_ _null_ _null_ mpp_backup_launch__  - _null_  ));
 DESCR("launch mpp backup on outboard Postgres instances");
-DATA(insert OID = 6004 (  mpp_restore_launch   PGNSP PGUID 12 f f f f v 6 25 "25 25 25 25 25 16" _null_ _null_ _null_ mpp_restore_launch__  - _null_  ));
+DATA(insert OID = 6004 (  mpp_restore_launch   PGNSP PGUID 12 f f f f v 8 25 "25 25 25 25 25 25 23 16" _null_ mpp_restore_launch__  - _null_  ));
 DESCR("launch mpp restore on outboard Postgres instances");
 DATA(insert OID = 6005 (  mpp_read_backup_file PGNSP PGUID 12 f f f f v 3 25 "25 25 24" _null_ _null_ _null_ mpp_read_backup_file__  - _null_  ));
 DESCR("read mpp backup file on outboard Postgres instances");

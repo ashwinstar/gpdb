@@ -17,7 +17,8 @@
 typedef struct thread_parm
 {
 	pthread_t				thread;
-	SegmentInstance*		pSegInstData;
+	SegmentDatabase*		pTargetSegDBData;
+	SegmentDatabase*		pSourceSegDBData; /* used only for restore */
 	InputOptions*			pOptionsData;
 	char*					pszRemoteBackupPath;
 	bool					bSuccess;

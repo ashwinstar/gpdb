@@ -125,19 +125,19 @@ CHECK_PARAM () {
 	#Get the standby master port number
 	GET_MASTER_PORT $MASTER_DATA_DIRECTORY
 	#Check that we are in a active standby situation
-	ACTIVE_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from mpp_configuration where definedprimary='f' and content=-1 and hostname='${MASTER_HOSTNAME}';"`
+	ACTIVE_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from mpp.host a, mpp.pgdatabase b, mpp.listener c where b.definedprimary='f' and b.content=-1 and b.listenerid=c.listenerid and c.hostid=a.hostid and a.hostname='${MASTER_HOSTNAME}';"`
 	ERROR_CHK $? "obtain active standby count" 2
 	if [ $ACTIVE_COUNT -ne 1 ];then
 		ERROR_EXIT "[FATAL]:-Not in master fail-back situation" 2
 	fi
 	#Obtain the fail-back master port number
-	FAILBACK_MASTER_PORT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select port from mpp_configuration where dbid in (select min(dbid) from mpp_configuration where content=-1);"`
+	FAILBACK_MASTER_PORT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select port from mpp.listener where listenerid=1;"`
 	ERROR_CHK $? "obtain fail-back master port number" 2
 	#Obtain the fail-back master data directory
-	FAILBACK_MASTER_DATA_DIRECTORY=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select datadir from mpp_configuration where dbid in (select min(dbid) from mpp_configuration where content=-1);"`
+	FAILBACK_MASTER_DATA_DIRECTORY=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select datadir from mpp.listener where listenerid=1;"`
 	ERROR_CHK $? "obtain fail-back master data directory" 2
 	#Check to ensure that we have an entry for FAILBACK_MASTER_HOSTNAME in mpp.host table
-	FAILBACK_MASTER_HOSTID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select 1 from mpp_configuration where hostname='${FAILBACK_MASTER_HOSTNAME}';"`
+	FAILBACK_MASTER_HOSTID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostid from mpp.host where hostname='${FAILBACK_MASTER_HOSTNAME}';"`
 	ERROR_CHK $? "obtain fail-back master hostid" 2
 	#Check that we are not trying to re-activate on the standby host
 	if [ "$FAILBACK_MASTER_HOSTNAME" == "`$HOSTNAME`" ];then
@@ -240,12 +240,17 @@ PROCESS_REACTIVATION () {
 
 UPDATE_CATALOG () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT -A -t -c"update mpp_configuration set hostname='$FAILBACK_MASTER_HOSTNAME' where dbid in (select min(dbid) from mpp_configuration where content=-1);"
-	ERROR_CHK $? "update mpp_configuration hostname value in database" 1
-	if [ $RETVAL -ne 0 ];then
-	    ADMIN_SHUTDOWN
-	    ERROR_EXIT "[FATAL]:-Unable to contine, unable to update mpp_configuration catalog" 2
-	fi
+	#obtain a list of database names that need to be updated
+	GET_DB_LIST
+	for DB in "${DB_ARRAY[@]}"
+	do
+		env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DB -A -t -c"update mpp.listener set hostid=$FAILBACK_MASTER_HOSTID where listenerid=1;"
+		ERROR_CHK $? "update mpp.listener hostid value in database $DB" 1
+		if [ $RETVAL -ne 0 ];then
+			ADMIN_SHUTDOWN
+			ERROR_EXIT "[FATAL]:-Unable to contine, unable to update mpp.listener catalog" 2
+		fi
+	done
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 ADMIN_SHUTDOWN () {
