@@ -37,7 +37,7 @@ cdbpathtoplan_create_flow(PlannerInfo    *root,
         flow = makeFlow(FLOW_SINGLETON);
         flow->segindex = -1;
     }
-    else if (CdbPathLocus_IsSingleton(path->locus))
+    else if (CdbPathLocus_IsSingleQE(path->locus))
     {
         flow = makeFlow(FLOW_SINGLETON);
         flow->segindex = 0;
@@ -55,6 +55,8 @@ cdbpathtoplan_create_flow(PlannerInfo    *root,
                                                         path->parent->relids,
                                                         plan->targetlist);
     }
+    else if (CdbPathLocus_IsStrewn(path->locus))
+        flow = makeFlow(FLOW_PARTITIONED);
     else
         Assert(false);
 
@@ -91,30 +93,14 @@ cdbpathtoplan_create_motion_plan(PlannerInfo         *root,
                                               path->subpath->pathkeys,
                                               subplan);
 
-    /* Send all tuples to dispatcher... */
-    if (CdbPathLocus_IsRoot(path->path.locus))
+    /* Send all tuples to a single process? */
+    if (CdbPathLocus_IsBottleneck(path->path.locus))
     {
-        if (path->path.pathkeys)
-        {
-            Sort   *sort = make_sort_from_pathkeys(root,
-                                                   subplan,
-                                                   path->path.pathkeys);
-            motion = make_sorted_union_motion(subplan,
-                                              false,    /* sendToSecondary */
-                                              -1,       /* destSegIndex => QD */
-                                              sort->numCols,
-                                              sort->sortColIdx,
-                                              sort->sortOperators);
-        }
-        else
-            motion = make_union_motion(subplan,
-                                       false,           /* sendToSecondary */
-                                       -1);             /* destSegIndex => QD */
-    }
+        int destSegIndex = -1;                          /* to dispatcher */
 
-    /* Send all tuples to the query's singleton segment... */
-    else if (CdbPathLocus_IsSingleton(path->path.locus))
-    {
+        if (CdbPathLocus_IsSingleQE(path->path.locus))
+            destSegIndex = 0;                           /* to singleton qExec */
+
         if (path->path.pathkeys)
         {
             Sort   *sort = make_sort_from_pathkeys(root,
@@ -122,7 +108,7 @@ cdbpathtoplan_create_motion_plan(PlannerInfo         *root,
                                                    path->path.pathkeys);
             motion = make_sorted_union_motion(subplan,
                                               false,    /* sendToSecondary */
-                                              0,       /* destSegIndex => nominally 0 */
+                                              destSegIndex,
                                               sort->numCols,
                                               sort->sortColIdx,
                                               sort->sortOperators);
@@ -130,7 +116,7 @@ cdbpathtoplan_create_motion_plan(PlannerInfo         *root,
         else
             motion = make_union_motion(subplan,
                                        false,           /* sendToSecondary */
-                                       0);             /* destSegIndex => nominally 0 */
+                                       destSegIndex);
     }
 
     /* Send all of the tuples to all of the QEs in gang above... */

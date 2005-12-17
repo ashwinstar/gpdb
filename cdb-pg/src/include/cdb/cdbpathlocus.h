@@ -38,14 +38,14 @@ typedef enum CdbLocusType
 {
     CdbLocusType_Null,
     CdbLocusType_Root,          /* root executor (qDisp) */
+    CdbLocusType_SingleQE,      /* single qExec */
     CdbLocusType_General,       /* compatible with any locus (data is
                                  * self-contained in the query plan or
                                  * generally available in any qExec or qDisp) */
     CdbLocusType_Replicated,    /* replicated over all qExecs of gang */
     CdbLocusType_Hashed,        /* hash partitioned over all qExecs of gang */
     CdbLocusType_HashedOJ,      /* result of hash partitioned outer join */
-    CdbLocusType_Partitioned,	/* partitioned on no known function */
-    CdbLocusType_Singleton,		/* single segment (fixed within query) */
+    CdbLocusType_Strewn,        /* partitioned on no known function */
     CdbLocusType_End            /* = last valid CdbLocusType + 1 */
 } CdbLocusType;
 
@@ -60,9 +60,9 @@ typedef enum CdbLocusType
 /*
  * CdbPathLocus
  *
- * Specifies a distribution of tuples across qExecs.
+ * Specifies a distribution of tuples across processes.
  *
- * If the distribution is a partitioned one (locustype == CdbLocusType_Hashed
+ * If the distribution is a hashed one (locustype == CdbLocusType_Hashed
  *      or CdbLocusType_HashedOJ), then the tuples are distributed based on
  *      values of a partitioning key.
  *
@@ -102,6 +102,12 @@ typedef enum CdbLocusType
  *      a pathkey is a List of PathKeyItems.  This case arises in the
  *      result of outer join.
  *
+ * If locustype == CdbLocusType_Strewn:
+ *      Rows are distributed according to a criterion that is unknown or
+ *      may depend on inputs that are unknown or unavailable in the present
+ *      context.  The 'partkey' field is NIL and the CdbPathLocus_Degree()
+ *      macro returns 0.
+ *
  * If the distribution is not partitioned, then the 'partkey' field is NIL
  *      and the CdbPathLocus_Degree() macro returns 0.
  */
@@ -111,9 +117,6 @@ typedef struct CdbPathLocus
     List           *partkey;
 } CdbPathLocus;
 
-#define CdbPathLocus_IsValidType(locus)     \
-            CdbLocusType_IsValid((locus).locustype)
-
 #define CdbPathLocus_Degree(locus)          \
             (list_length((locus).partkey))
 
@@ -121,10 +124,20 @@ typedef struct CdbPathLocus
             ((a).locustype == (b).locustype &&  \
              (a).partkey == (b).partkey)        \
 
+#define CdbPathLocus_IsBottleneck(locus)        \
+            (CdbPathLocus_IsRoot(locus) ||      \
+             CdbPathLocus_IsSingleQE(locus))
+#define CdbPathLocus_IsPartitioned(locus)       \
+            (CdbPathLocus_IsHashed(locus) ||    \
+             CdbPathLocus_IsHashedOJ(locus) ||  \
+             CdbPathLocus_IsStrewn(locus))
+
 #define CdbPathLocus_IsNull(locus)          \
             ((locus).locustype == CdbLocusType_Null)
 #define CdbPathLocus_IsRoot(locus)          \
             ((locus).locustype == CdbLocusType_Root)
+#define CdbPathLocus_IsSingleQE(locus)    \
+            ((locus).locustype == CdbLocusType_SingleQE)
 #define CdbPathLocus_IsGeneral(locus)       \
             ((locus).locustype == CdbLocusType_General)
 #define CdbPathLocus_IsReplicated(locus)    \
@@ -133,10 +146,8 @@ typedef struct CdbPathLocus
             ((locus).locustype == CdbLocusType_Hashed)
 #define CdbPathLocus_IsHashedOJ(locus)      \
             ((locus).locustype == CdbLocusType_HashedOJ)
-#define CdbPathLocus_IsPartitioned(locus)      \
-            ((locus).locustype == CdbLocusType_Partitioned)
-#define CdbPathLocus_IsSingleton(locus)      \
-            ((locus).locustype == CdbLocusType_Singleton)
+#define CdbPathLocus_IsStrewn(locus)        \
+            ((locus).locustype == CdbLocusType_Strewn)
 
 #define CdbPathLocus_Make(plocus, _locustype, _partkey) \
     do {                                                \
@@ -149,6 +160,8 @@ typedef struct CdbPathLocus
             CdbPathLocus_Make((plocus), CdbLocusType_Null, NIL)
 #define CdbPathLocus_MakeRoot(plocus)                   \
             CdbPathLocus_Make((plocus), CdbLocusType_Root, NIL)
+#define CdbPathLocus_MakeSingleQE(plocus)               \
+            CdbPathLocus_Make((plocus), CdbLocusType_SingleQE, NIL)
 #define CdbPathLocus_MakeGeneral(plocus)                \
             CdbPathLocus_Make((plocus), CdbLocusType_General, NIL)
 #define CdbPathLocus_MakeReplicated(plocus)             \
@@ -157,10 +170,8 @@ typedef struct CdbPathLocus
             CdbPathLocus_Make((plocus), CdbLocusType_Hashed, (partkey))
 #define CdbPathLocus_MakeHashedOJ(plocus, partkey)      \
             CdbPathLocus_Make((plocus), CdbLocusType_HashedOJ, (partkey))
-#define CdbPathLocus_MakePartitioned(plocus)      \
-            CdbPathLocus_Make((plocus), CdbLocusType_Partitioned, NIL)
-#define CdbPathLocus_MakeSingleton(plocus, partkey)      \
-            CdbPathLocus_Make((plocus), CdbLocusType_Singleton, NIL)
+#define CdbPathLocus_MakeStrewn(plocus)                 \
+            CdbPathLocus_Make((plocus), CdbLocusType_Strewn, NIL)
 
 /************************************************************************/
 

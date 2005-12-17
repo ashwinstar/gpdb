@@ -42,7 +42,7 @@ Cost        cdb_motion_tuple_cost   = 0.0;
  *      motion would not preserve an ordering at least as strong as the
  *      specified ordering; also NULL is returned if pathkeys is NIL
  *      meaning the caller is just checking and doesn't want to add motion.
- *    Else a CdbMotionPath is returned having the either specified pathkeys
+ *    Else a CdbMotionPath is returned having either the specified pathkeys
  *      (if given and the motion uses Merge Receive), or the pathkeys
  *      of the original subpath (if the motion is one-to-one), or no
  *      pathkeys otherwise (the usual case).
@@ -63,25 +63,31 @@ cdbpath_create_motion_path(PlannerInfo     *root,
     if (CdbPathLocus_IsEqual(subpath->locus, locus))
         return subpath;
 
-    /* Moving subpath output to qDisp? */
-    if (CdbPathLocus_IsRoot(locus))
+    /* qDisp can't send tuples to qExecs; qDisp can only receive.  (for now) */
+    if (CdbPathLocus_IsRoot(subpath->locus))
+        return NULL;
+
+    /* Moving subpath output to a single executor process (qDisp or qExec)? */
+    if (CdbPathLocus_IsBottleneck(locus))
     {
         /* No motion needed if subpath can run anywhere giving same output. */
         if (CdbPathLocus_IsGeneral(subpath->locus))
             return subpath;
 
-        /* replicated-->root would send redundant copies to the qDisp. */
+        /* replicated-->bottleneck would give redundant copies of the rows. */
         if (CdbPathLocus_IsReplicated(subpath->locus))
             return NULL;
-
-        /* hashed-->root */
-        Assert(CdbPathLocus_IsHashed(subpath->locus) ||
-               CdbPathLocus_IsHashedOJ(subpath->locus));
 
         /* Fail if caller wants no motion. */
         if (require_existing_order &&
             !pathkeys)
             return NULL;
+
+        /* If the motion is 1-to-1, the rows will remain in the same order. */
+        if (CdbPathLocus_IsBottleneck(subpath->locus))
+            pathkeys = subpath->pathkeys;
+        else
+            Assert(CdbPathLocus_IsPartitioned(subpath->locus));
     }
 
     /* Does subpath produce same multiset of rows on every qExec of its gang? */
@@ -92,7 +98,7 @@ cdbpath_create_motion_path(PlannerInfo     *root,
         if (CdbPathLocus_IsReplicated(locus))
             return subpath;
 
-        /* general-->hashed or replicated-->hashed */
+        /* general-->hashed, replicated-->hashed */
         Assert(CdbPathLocus_IsHashed(locus) ||
                CdbPathLocus_IsHashedOJ(locus));
 
@@ -112,16 +118,9 @@ cdbpath_create_motion_path(PlannerInfo     *root,
     }
 
     /* Moving subpath output to a gang of qExecs. */
-    else
+    else if (CdbPathLocus_IsPartitioned(subpath->locus))
     {
-        /* qDisp can't send tuples to qExecs. */
-        if (CdbPathLocus_IsRoot(subpath->locus))
-            return NULL;
-
-        Assert(CdbPathLocus_IsHashed(subpath->locus) ||
-               CdbPathLocus_IsHashedOJ(subpath->locus));
-
-        /* hashed-->hashed */
+        /* partitioned-->hashed */
         if (CdbPathLocus_IsHashed(locus) ||
             CdbPathLocus_IsHashedOJ(locus))
         {
@@ -130,7 +129,7 @@ cdbpath_create_motion_path(PlannerInfo     *root,
                 return subpath;
         }
 
-        /* hashed-->replicated */
+        /* partitioned-->replicated */
         else
             Assert(CdbPathLocus_IsReplicated(locus));
 
@@ -143,6 +142,8 @@ cdbpath_create_motion_path(PlannerInfo     *root,
          */
         pathkeys = NIL;
     }
+    else
+        Assert(0);
 
     /* Don't materialize before motion. */
     if (IsA(subpath, MaterialPath))
@@ -343,6 +344,9 @@ cdbpath_match_preds_to_partkey(PlannerInfo     *root,
                                CdbPathLocus    *colocus)            /* OUT */
 {
     CdbpathMatchPredsContext ctx;
+
+    if (CdbPathLocus_IsStrewn(locus))
+        return false;
 
     Assert(CdbPathLocus_IsHashed(locus) ||
            CdbPathLocus_IsHashedOJ(locus));
@@ -608,27 +612,34 @@ cdbpath_motion_for_join(PlannerInfo      *root,
         outer.move_to = inner.locus;
 
     /*
+     * If both sources are on a single qExec, join them there.
+     */
+    else if (CdbPathLocus_IsSingleQE(outer.locus) &&
+             CdbPathLocus_IsSingleQE(inner.locus))
+        return outer.locus;
+
+    /*
      * Motion not needed if either source is everywhere (e.g. a constant).
+     *
+     * But if a row is everywhere and is preserved in an outer join, we
+     * don't want to preserve it in every qExec process where it is
+     * unmatched, because that would produce duplicate null-augmented rows.
+     * So in that case, bring all the partitions to a single qExec to be joined.
+     * CDB TODO: Can this case be handled without introducing a bottleneck?
      */
     else if (CdbPathLocus_IsGeneral(outer.locus))
     {
         if (outer.oj_preserved &&
-            !CdbPathLocus_IsGeneral(inner.locus))
-        {
-            CdbPathLocus_MakeRoot(&outer.move_to);
-            CdbPathLocus_MakeRoot(&inner.move_to);
-        }
+            CdbPathLocus_IsPartitioned(inner.locus))
+            CdbPathLocus_MakeSingleQE(&inner.move_to);
         else
             return inner.locus;
     }
     else if (CdbPathLocus_IsGeneral(inner.locus))
     {
         if (inner.oj_preserved &&
-            !CdbPathLocus_IsGeneral(outer.locus))
-        {
-            CdbPathLocus_MakeRoot(&outer.move_to);
-            CdbPathLocus_MakeRoot(&inner.move_to);
-        }
+            CdbPathLocus_IsPartitioned(outer.locus))
+            CdbPathLocus_MakeSingleQE(&outer.move_to);
         else
             return outer.locus;
     }
@@ -717,11 +728,11 @@ cdbpath_motion_for_join(PlannerInfo      *root,
                  !large->oj_preserved)
             CdbPathLocus_MakeReplicated(&large->move_to);
 
-        /* Last resort: Move both rels to qDisp. */
+        /* Last resort: Move both rels to a single qExec. */
         else
         {
-            CdbPathLocus_MakeRoot(&outer.move_to);
-            CdbPathLocus_MakeRoot(&inner.move_to);
+            CdbPathLocus_MakeSingleQE(&outer.move_to);
+            CdbPathLocus_MakeSingleQE(&inner.move_to);
         }
     }
 

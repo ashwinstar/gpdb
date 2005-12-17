@@ -692,14 +692,19 @@ create_append_path(RelOptInfo *rel, List *subpaths)
 		pathnode->path.total_cost += subpath->total_cost;
 
         /*
-         * CDB: At present this function is called only when combining rel
-         * scans in an inheritance tree.  Allow inheritance on root only.
+         * CDB: This function is called only when combining rel scans in an
+         * inheritance tree.  We assume - and CREATE TABLE enforces - that
+         * all tables in an inheritance tree are distributed alike; but
+         * check a little just for luck.
          */
         if (l == list_head(subpaths))
             pathnode->path.locus = subpath->locus;
-        if (!CdbPathLocus_IsRoot(subpath->locus))
-            ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-                            errmsg("Distributed tables cannot use inheritance")));
+        else if (pathnode->path.locus.locustype != subpath->locus.locustype ||
+                 CdbPathLocus_Degree(pathnode->path.locus) !=
+                    CdbPathLocus_Degree(subpath->locus))
+            ereport(ERROR, (errcode(ERRCODE_MPP_FEATURE_NOT_SUPPORTED),
+                            errmsg_internal("Table inherits from parent with "
+                                            "incompatible distribution") ));
 
         if (subpath->motionHazard)
             pathnode->path.motionHazard = true;
@@ -1149,7 +1154,7 @@ create_subqueryscan_path(PlannerInfo *root, RelOptInfo *rel, List *pathkeys)
 
     pathnode->locus = cdbpathlocus_from_subquery(root, rel);
     pathnode->motionHazard = true;          /* better safe than sorry */
-    pathnode->rescannable = false; 
+    pathnode->rescannable = false;
 
 	cost_subqueryscan(pathnode, rel);
 

@@ -55,7 +55,7 @@ cdbpath_rows(Path *path)
         rows = path->parent->rows;
 
     /* Just one partition, or whole rel? */
-    if (CdbPathLocus_IsRoot(path->locus) ||
+    if (CdbPathLocus_IsBottleneck(path->locus) ||
         CdbPathLocus_IsReplicated(path->locus))
     {
     	if (Mpp_role == MPP_ROLE_DISPATCH)
@@ -67,6 +67,6 @@ cdbpath_rows(Path *path)
     }
 
     return rows;
-}                               // cdbpath_rows
+}                               /* cdbpath_rows */
 
 #endif   /* CDBPATH_H */

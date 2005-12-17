@@ -183,11 +183,9 @@ create_plan(PlannerInfo *root, Path *best_path)
 			break;
 	}
 
-    if (CdbPathLocus_IsReplicated(best_path->locus) ||
-        CdbPathLocus_IsHashed(best_path->locus) ||
-        CdbPathLocus_IsHashedOJ(best_path->locus) ||
-        CdbPathLocus_IsPartitioned(best_path->locus) ||
-        CdbPathLocus_IsSingleton(best_path->locus))
+    if (CdbPathLocus_IsPartitioned(best_path->locus) ||
+        CdbPathLocus_IsReplicated(best_path->locus) ||
+        CdbPathLocus_IsSingleQE(best_path->locus))
         plan->dispatch = DISPATCH_PARALLEL;
 
     return plan;

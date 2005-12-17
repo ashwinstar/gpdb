@@ -38,8 +38,11 @@ bool cdbpathlocus_querysegmentcatalogs = false;
 /*
  * cdbpathlocus_compare
  *
- *    - Returns true if locus a and locus b have the same 'locustype' and
- *      'partkey'.
+ *    - Returns false if locus a or locus b is "strewn", meaning that it
+ *      cannot be determined whether it is equal to another partitioned
+ *      distribution.
+ *
+ *    - Returns true if a and b have the same 'locustype' and 'partkey'.
  *
  *    - Returns true if both a and b are hashed and the set of possible
  *      m-tuples of expressions (e1, e2, ..., em) produced by a's partkey
@@ -60,6 +63,10 @@ cdbpathlocus_compare(CdbPathLocus_Comparison    op,
 
     Assert(op == CdbPathLocus_Comparison_Equal ||
            op == CdbPathLocus_Comparison_Contains);
+
+    if (CdbPathLocus_IsStrewn(a) ||
+        CdbPathLocus_IsStrewn(b))
+        return false;
 
     if (CdbPathLocus_IsEqual(a, b))
         return true;
@@ -173,7 +180,7 @@ cdbpathlocus_from_baserel(struct PlannerInfo   *root,
 
     /* Kludge used internally for querying catalogs on segment dbs */
     else if (cdbpathlocus_querysegmentcatalogs)
-        CdbPathLocus_MakeHashed(&result, NULL);
+        CdbPathLocus_MakeStrewn(&result);
 
     /* Normal catalog access */
     else
@@ -213,6 +220,8 @@ cdbpathlocus_from_subquery(struct PlannerInfo   *root,
         case FLOW_SINGLETON:
             if (flow->segindex == -1)
                 CdbPathLocus_MakeRoot(&locus);
+            else
+                CdbPathLocus_MakeSingleQE(&locus);
             break;
         case FLOW_REPLICATED:
             /* Locus could have been either 'replicated' or 'general'.
@@ -227,7 +236,6 @@ cdbpathlocus_from_subquery(struct PlannerInfo   *root,
                 case DISPATCH_UNDETERMINED:
                     CdbPathLocus_MakeGeneral(&locus);
                     break;
-                case DISPATCH_SEQUENTIAL:
                 default:
                     Assert(false);
             }
@@ -258,6 +266,8 @@ cdbpathlocus_from_subquery(struct PlannerInfo   *root,
             if (partkey &&
                 !hashexprcell)
                 CdbPathLocus_MakeHashed(&locus, partkey);
+            else
+                CdbPathLocus_MakeStrewn(&locus);
             list_free_deep(eq);
             break;
         }
@@ -267,7 +277,7 @@ cdbpathlocus_from_subquery(struct PlannerInfo   *root,
 
 done:
     if (CdbPathLocus_IsNull(locus))
-        ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+        ereport(ERROR, (errcode(ERRCODE_MPP_FEATURE_NOT_YET),
                         errmsg("Unsupported subquery")
                        ));
     return locus;
@@ -361,12 +371,13 @@ cdbpathlocus_join(CdbPathLocus a, CdbPathLocus b)
     List           *equivpathkeylist;
     CdbPathLocus    ojlocus;
 
-    /* Usual case: both input rels have same locus. */
-    if (CdbPathLocus_IsEqual(a, b) ||
-        cdbpathlocus_compare(CdbPathLocus_Comparison_Equal, a, b))
+    /* Do both input rels have same locus? */
+    if (cdbpathlocus_compare(CdbPathLocus_Comparison_Equal, a, b))
         return a;
 
-    /* Join will be done on qDisp if either rel is on qDisp. */
+    /* Join will be done on qDisp if either rel is on qDisp,
+     * because qDisp can only receive rows, not send them (for now).
+     */
     if (CdbPathLocus_IsRoot(a))
         return a;
     if (CdbPathLocus_IsRoot(b))
