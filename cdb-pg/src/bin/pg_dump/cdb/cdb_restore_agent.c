@@ -87,37 +87,27 @@ static void myChildHandler(int signo);
 static void myHandler(int signo);
 static void* monitorThreadProc(void *arg);
 static void _check_database_version(ArchiveHandle *AH, bool ignoreVersion);
-//static bool execMPPCatalogFunction(PGconn* pConn);
+//static bool execCDBCatalogFunction(PGconn* pConn);
 static char* testProgramExists(char* pszProgramName);
 
-static bool bUsePSQL = false;
-static bool bPSQLDone = false;
-static bool bCompUsed = false; /* de-compression is used */
-static char* g_compPg = NULL;   /* de-compression program with full path */
-static char*            g_MPPDumpInfo = NULL;
-static char*            g_MPPDumpKey = NULL;
-static int              g_sourceDBID = 0;
-static int              g_targetDBID = 0;
-static char*			g_targetHost = NULL;
-static char*			g_targetPort = NULL;
-static char*            g_MPPPassThroughCredentials = NULL;
-static char*            g_pszMPPOutputDirectory = NULL;
+bool bUsePSQL = false;
+bool bPSQLDone = false;
+static char*            g_CDBDumpInfo = NULL;
+static char*            g_CDBDumpKey = NULL;
+static int              g_CDBSegID = 0;
+static char*            g_CDBPassThroughCredentials = NULL;
+static char*            g_pszCDBOutputDirectory = NULL;
 static PGconn*          g_conn_status = NULL;
 static pthread_t        g_main_tid = (pthread_t)0;
 static pthread_t        g_monitor_tid = (pthread_t)0;
 static bool             g_bOnErrorStop = false;
 PGconn*                 g_conn = NULL;
 
-static const char* logInfo = "INFO";
-static const char* logWarn = "WARN";
-static const char* logError = "ERROR";
-static const char* logFatal = "FATAL";
-static char* pszProgName;
 
 static StatusOpList* g_pStatusOpList = NULL;
 char*                   g_LastMsg = NULL;
 
-int    g_role = ROLE_MASTER; /* would change to ROLE_MASTER when necessary */
+int              g_CDBInstID = 0;
 
 /* end cdb additions */
 // end cdb specific stuff
@@ -134,13 +124,13 @@ main(int argc, char **argv)
 	extern char *optarg;
 	static int	use_setsessauth = 0;
 	static int	disable_triggers = 0;
-    SegmentDatabase SegDB;
+    SegmentInstance SegInst;
     StatusOp* pOp;
     struct sigaction act, oact;
     pid_t newpid;
     char* pszOnErrorStop    = "-v ON_ERROR_STOP=";
     int len;  /* psql */
-    //int i;
+    int i;
     char* pszCmdLine;
     int status;
     int rc;
@@ -187,10 +177,7 @@ main(int argc, char **argv)
         {"mpp-d", required_argument, NULL, 1},
         {"mpp-e", no_argument, NULL, 2},
         {"mpp-k", required_argument, NULL, 3},
-	    {"mpp-c", required_argument, NULL, 4},
-		{"target-dbid", required_argument, NULL, 5},
-		{"target-host", required_argument, NULL, 6},
-		{"target-port", required_argument, NULL, 7},
+
 		{NULL, 0, NULL, 0}
 	};
 
@@ -201,13 +188,13 @@ main(int argc, char **argv)
     /* set format default */
     opts->formatName = "p";
 
-	pszProgName = (char *)get_progname(argv[0]);
+	progname = get_progname(argv[0]);
 
 	if (argc > 1)
 	{
 		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
 		{
-			usage(pszProgName);
+			usage(progname);
 			exit(0);
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
@@ -329,8 +316,8 @@ main(int argc, char **argv)
 				{
 					fprintf(stderr,
 							_("%s: invalid -X option -- %s\n"),
-							pszProgName, optarg);
-					fprintf(stderr, _("Try \"%s --help\" for more information.\n"), pszProgName);
+							progname, optarg);
+					fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
 					exit(1);
 				}
 				break;
@@ -339,46 +326,28 @@ main(int argc, char **argv)
 			case 0:
 				break;
 
-            case 1:         /* --mpp-d MPP Output Directory */
-                g_pszMPPOutputDirectory = strdup(optarg);
+            case 1:         /* --mpp-d CDB Output Directory */
+                g_pszCDBOutputDirectory = strdup(optarg);
                 break;
 
             case 2:         /* --mpp-e On Error Stop for psql */
                 g_bOnErrorStop = opts->exit_on_error = true;
                 break;
 
-            case 3:         /* --mpp-k MPP Dump Info Format is Key_s-dbid_s-role_t-dbid */
-                g_MPPDumpInfo = strdup(optarg);
-                if ( !ParseCDBDumpInfo( pszProgName, g_MPPDumpInfo, &g_MPPDumpKey, &g_role, &g_sourceDBID, &g_MPPPassThroughCredentials ) )
+            case 3:         /* --mpp-k CDB Dump Info Format is Key_seg_inst*/
+                g_CDBDumpInfo = strdup(optarg);
+                if ( !ParseCDBDumpInfo( g_CDBDumpInfo, &g_CDBDumpKey, &g_CDBInstID, &g_CDBSegID, &g_CDBPassThroughCredentials ) )
                 {
                     exit(1);
                 }
                 break;
-			case 4:         /* mpp-c */ 
-				g_compPg = strdup(optarg);
-				bCompUsed = true; /* backup data is coming from stdin (piped from gunzip) */
-				break;
-			case 5:			/* target-dbid */
-				g_targetDBID = atoi(strdup(optarg));
-				break;
-			case 6:			/* target-host */
-				g_targetHost = strdup(optarg);
-				break;
-			case 7:			/* target-port */
-				g_targetPort = strdup(optarg);
-				break;
 
 			default:
-				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), pszProgName);
+				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
 				exit(1);
 		}
 	}
 
-	/* backup file name */
-	/* TODO: use findAcceptableBackupFilePathName(...) to look for the file name
-	 *       if user invoked mpp_restore_agent directly without supplying a file name.
-	 *       If the agent is invoked from mpp_restore_launch, then we are ok.
-	 */
 	if (optind < argc)
 		inputFileSpec = argv[optind];
 	else
@@ -390,9 +359,9 @@ main(int argc, char **argv)
 		if (opts->filename)
 		{
 			fprintf(stderr, _("%s: cannot specify both -d and -f output\n"),
-					pszProgName);
+					progname);
 			fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
-					pszProgName);
+					progname);
 			exit(1);
 		}
 		opts->useDB = 1;
@@ -428,73 +397,85 @@ main(int argc, char **argv)
                 break;
 
 			default:
-				mpp_err_msg(logInfo, pszProgName, "unrecognized archive format '%s'; please specify 't' or 'c'\n",
+				write_msg("unrecognized archive format '%s'; please specify 't' or 'c'\n",
 						  opts->formatName);
 				exit(1);
 		}
 	}
 
-    if ( g_MPPDumpInfo == NULL )
+    if ( g_CDBDumpInfo == NULL )
     {
-        mpp_err_msg(logInfo, pszProgName, "missing required parameter mpp-k (backup key)\n");
+        write_msg(NULL, "missing required parameter mpp-k (backup key)\n");
         exit(1);
     }
    
-    SegDB.dbid        = g_sourceDBID;
-    SegDB.role		  = g_role;
-    SegDB.port        = opts->pgport ? atoi( opts->pgport ) : 5432;
-    SegDB.isValid     = true;
-    SegDB.pszHost     = opts->pghost ? strdup(opts->pghost) : NULL;
-    SegDB.pszDBName   = opts->dbname ? strdup(opts->dbname) : NULL;
-    SegDB.pszDBUser   = opts->username ? strdup(opts->username) : NULL;
-    SegDB.pszDBPswd   = NULL;
+     /* cdb additions */
+    SegInst.segid       = g_CDBSegID;
+    SegInst.instid      = g_CDBInstID;
+    SegInst.port        = opts->pgport ? atoi( opts->pgport ) : 5432;
+    SegInst.isValid     = true;
+    SegInst.pszHost     = opts->pghost ? strdup(opts->pghost) : NULL;
+    SegInst.pszDBName   = opts->dbname ? strdup(opts->dbname) : NULL;
+    SegInst.pszDBUser   = opts->username ? strdup(opts->username) : NULL;
+    SegInst.pszDBPswd   = NULL;
 
-    if ( g_MPPPassThroughCredentials != NULL && *g_MPPPassThroughCredentials != '\0' )
+    if ( g_CDBPassThroughCredentials != NULL && *g_CDBPassThroughCredentials != '\0' )
     {
         unsigned int nBytes;
-        char* pszDBPswd = Base64ToData( g_MPPPassThroughCredentials, &nBytes );
+        char* pszDBPswd = Base64ToData( g_CDBPassThroughCredentials, &nBytes );
         if ( pszDBPswd == NULL )
         {
-            mpp_err_msg(logError, pszProgName, "Invalid MPP Credentials:  %s\n", g_MPPPassThroughCredentials );
+            write_msg(NULL, "Invalid CDB Credentials:  %s\n", g_CDBPassThroughCredentials );
             exit(1);
         }
         if ( nBytes > 0 )
         {
-            SegDB.pszDBPswd = malloc( nBytes + 1 );
-            if ( SegDB.pszDBPswd == NULL )
+            SegInst.pszDBPswd = malloc( nBytes + 1 );
+            if ( SegInst.pszDBPswd == NULL )
             {
-                mpp_err_msg(logInfo, pszProgName, "Cannot allocate memory for MPP Credentials\n" );
+                write_msg(NULL, "Cannot allocate memory for CDB Credentials\n" );
                 exit(1);
             }
 
-            memcpy( SegDB.pszDBPswd, pszDBPswd, nBytes );
-            SegDB.pszDBPswd[nBytes] = '\0';
+            memcpy( SegInst.pszDBPswd, pszDBPswd, nBytes );
+            SegInst.pszDBPswd[nBytes] = '\0';
         }
     }
 
-    if (g_role == ROLE_MASTER)
-        g_conn = MakeDBConnection( &SegDB, true );
+    if (g_CDBInstID == 1)
+        g_conn = MakeDBConnection( &SegInst, true );
     else
-        g_conn = MakeDBConnection( &SegDB, false );
+        g_conn = MakeDBConnection( &SegInst, false );
     if (PQstatus(g_conn) == CONNECTION_BAD)
     {
         exit_horribly(NULL, NULL, "connection to database \"%s\" failed: %s",
                    PQdb(g_conn), PQerrorMessage(g_conn));
     }
 
-    if ( g_MPPDumpKey != NULL )
+    if ( g_CDBDumpKey != NULL )
     {       
         /*  
          * Open the database again, for writing status info
          */     
-        g_conn_status = MakeDBConnection( &SegDB, false );
+        g_conn_status = MakeDBConnection( &SegInst, false );
                     
         if ( PQstatus(g_conn_status) == CONNECTION_BAD )
         {           
             exit_horribly(NULL, NULL, "Connection on host %s failed: %s",
-                            StringNotNull(SegDB.pszHost, "localhost"),
+                            StringNotNull(SegInst.pszHost, "localhost"),
                             PQerrorMessage(g_conn_status) );
         }   
+
+/*
+        res = PQexec(g_conn_status, "SET mpp_role=UTILITY");
+        if (!res || PQresultStatus(res) != PGRES_COMMAND_OK)
+        {       
+            exit_horribly(NULL, NULL, "SET command failed: %s",
+                          PQerrorMessage(g_conn_status));
+        }
+
+        PQclear(res);
+*/
 
         g_main_tid = pthread_self();
 
@@ -504,13 +485,14 @@ main(int argc, char **argv)
             exit_horribly(NULL, NULL, "cannot allocate memory for mpp_backup_status operation\n");
         }
 
-        /* Start monitoring for cancel requests */
+        // Start monitoring for cancel requests
         pthread_create(&g_monitor_tid,
                         NULL,
                         monitorThreadProc,
                         NULL );
 
-        /* Install Ctrl-C interrupt handler, now that we have a connection */
+        // Install Ctrl-C interrupt handler, now that we have a connection
+
         if ( !bUsePSQL )
         {
             struct sigaction act, oact;
@@ -521,7 +503,7 @@ main(int argc, char **argv)
             act.sa_flags |= SA_RESTART;
             if ( sigaction(SIGINT, &act, &oact) < 0 )
             {
-                mpp_err_msg(logInfo, pszProgName, "Error trying to set SIGINT interrupt handler\n");
+                write_msg(NULL, "Error trying to set SIGINT interrupt handler\n");
             }
 
             act.sa_handler = myHandler;
@@ -530,7 +512,7 @@ main(int argc, char **argv)
             act.sa_flags |= SA_RESTART;
             if ( sigaction(SIGTERM, &act, &oact) < 0 )
             {
-                mpp_err_msg(logInfo, pszProgName, "Error trying to set SIGTERM interrupt handler\n");
+                write_msg(NULL, "Error trying to set SIGTERM interrupt handler\n");
             }
         }
 
@@ -545,26 +527,27 @@ main(int argc, char **argv)
 
     if ( bUsePSQL )
     {
-        /* Install Ctrl-C interrupt handler, now that we have a connection */
+        // Install Ctrl-C interrupt handler, now that we have a connection
         act.sa_handler = myChildHandler;
         sigemptyset(&act.sa_mask);
         act.sa_flags = 0;
         act.sa_flags |= SA_RESTART;
         if ( sigaction(SIGCHLD, &act, &oact) < 0 )
         {
-            mpp_err_msg(logInfo, pszProgName, "Error trying to set SIGCHLD interrupt handler\n");
+            write_msg(NULL, "Error trying to set SIGCHLD interrupt handler\n");
             exit(1);
         }
 
         newpid = fork();
         if ( newpid < 0 )
         {
-            mpp_err_msg(logInfo, pszProgName, "failed to fork in mppbackup\n");
+            write_msg(NULL, "failed to fork in mppbackup\n");
         }
         else if ( newpid == 0 )
         {
             char *psqlPg = NULL;
             pszOnErrorStop    = "-v ON_ERROR_STOP=";
+//          char* pszOutFile        = "~/mpp_restore.out";
 
             /* Child Process */
             // launch psql, wait for it to finish
@@ -572,67 +555,47 @@ main(int argc, char **argv)
             /* find psql in PATH or PGPATH */
             if ((psqlPg = testProgramExists( "psql" )) == NULL )
             {
-                mpp_err_msg(logError, pszProgName, "psql not found in path");
+                write_err_msg(NULL, "%s not found in path", "psql");
             }
 
-			len = strlen(psqlPg);  /* psql */
-			
-			if(bCompUsed)
-			{
-				strcat(g_compPg, " -c "); /* decompress to stdout */
-				len += strlen(g_compPg);
-				len += strlen(" | "); /* de-comp pipe into psql*/
-			}
-				
-            len += strlen( inputFileSpec ) + 4;
+            len = strlen(psqlPg);  /* psql */
+            for ( i=1; i<argc - 1; i++ )
+            {
+                if ( strncmp( argv[i], "--mpp-", 6 ) == 0 )
+                {
+                    if ( strcmp( argv[i], "--mpp-e" ) != 0 )
+                        i++;
+                    continue;
+                }
 
-			if ( g_bOnErrorStop )
+                len += strlen( argv[i] ) + 1;
+            }
+
+            len += strlen( inputFileSpec ) + 4;
+            if ( g_bOnErrorStop )
                 len += strlen( pszOnErrorStop ) + 1;
 
-            len += 4;  /* " -a" */
-			len += 4; /* -h */
-			len += strlen(g_targetHost); /* host */
-			len += 4; /* " -p " */
-			len += 5; /* port */
-			len += 4; /* " -U "*/
-			len += strlen(SegDB.pszDBUser);
-			len += 4; /* " -d "*/
-			len += strlen(SegDB.pszDBName);
+            len += 4;  // " -a"
+            
+    //      len += 2 + strlen( pszOutFile );  // " >"
 
-			/* add all the psql args to the command string */
-            pszCmdLine = (char *) calloc( len + 1, 1 );
-			
-			/* If decompression is used start our command as such:
-             * "/pathto/gunzip -c filename | /pathto/psql"
-			 * else just "/pathto/psql"
-             */
-			if(bCompUsed)
-			{
-				strcpy( pszCmdLine, g_compPg);
-				strcat( pszCmdLine, inputFileSpec );
-				strcat( pszCmdLine, " | " );
-				strcat( pszCmdLine, psqlPg );
-			}
-			else
-				strcpy( pszCmdLine, psqlPg );
-			
-		   /* we use an input file only if no compression is used.
-		    * if compression is used, input is coming from stdin 
-		    */
-		    if(!bCompUsed)
-		    {	
-			  strcat( pszCmdLine, " -f " );
-			  strcat( pszCmdLine, inputFileSpec );				
-		    }
-							  
-			strcat( pszCmdLine, " -h " );
-			strcat( pszCmdLine, g_targetHost);
-			strcat( pszCmdLine, " -p " );
-			strcat( pszCmdLine, g_targetPort);
-			strcat( pszCmdLine, " -U " );
-			strcat( pszCmdLine, SegDB.pszDBUser);
-			strcat( pszCmdLine, " -d " );
-			strcat( pszCmdLine, SegDB.pszDBName);
+            pszCmdLine = (char *) calloc( len+1, 1 );
+            strcpy( pszCmdLine, psqlPg );
+            for ( i=1; i<argc-1; i++ )
+            {
+                if ( strncmp( argv[i], "--mpp-", 6 ) == 0 )
+                {
+                    if ( strcmp( argv[i], "--mpp-e" ) != 0 )
+                        i++;
+                    continue;
+                }
+
+                strcat( pszCmdLine, " ");
+                strcat( pszCmdLine, argv[i] );
+            }
+            strcat( pszCmdLine, " -f " );
+            strcat( pszCmdLine, inputFileSpec );
+            
             strcat( pszCmdLine, " -a " );
             
             if ( g_bOnErrorStop )
@@ -641,19 +604,19 @@ main(int argc, char **argv)
                 strcat( pszCmdLine, pszOnErrorStop );
             }
 
-            if ( g_role == ROLE_SEGDB )
+//          strcat( pszCmdLine, " >" );
+//          strcat( pszCmdLine, pszOutFile );
+
+            if ( g_CDBInstID == 0 )
                 putenv( "PGOPTIONS=-c mpp_session_role=UTILITY" );
-			if ( g_role == ROLE_MASTER )
-				putenv( "PGOPTIONS=-c mpp_session_role=DISPATCH" );
-			
-			mpp_err_msg(logInfo, pszProgName, "Command Line: %s\n", pszCmdLine);
+
+            write_msg(NULL, "Command Line: %s\n", pszCmdLine );
 
             execl("/bin/sh", "sh", "-c", pszCmdLine, NULL );
 
-			mpp_err_msg(logInfo, pszProgName, "Error in mpp_restore_agent - execl of %s with Command Line %s failed",
-			  "/bin/sh", pszCmdLine);
-            
-			_exit(127);
+            write_msg(NULL, "Error in mpp_restore_agent - execl of %s with Command Line %s failed",
+                    "/bin/sh", pszCmdLine );
+            _exit(127);
         }
         else
         {
@@ -667,8 +630,7 @@ main(int argc, char **argv)
             if ( WIFEXITED(status) )
             {
                 rc = WEXITSTATUS(status);
-                
-				mpp_err_msg(logInfo, pszProgName,"psql finished with rc %d.\n", rc );
+                write_msg(NULL, "psql finished with rc %d.\n", rc );
                 if ( rc != 0 )
                 {
                     pszErrorMsg = MakeString( "psql finished abnormally with return code %d.\n", rc  );
@@ -681,7 +643,7 @@ main(int argc, char **argv)
             else if( WIFSIGNALED(status) )
             {
                 pszErrorMsg = MakeString( "psql finished abnormally with signal number %d.\n", WTERMSIG(status)  );
-				mpp_err_msg(logError, pszProgName,pszErrorMsg);
+                write_msg(NULL, pszErrorMsg);
                 makeSureMonitorThreadEnds( TASK_RC_FAILURE, pszErrorMsg );
                 free( pszErrorMsg );
                 exit_code=2;
@@ -689,7 +651,7 @@ main(int argc, char **argv)
             else
             {
                 pszErrorMsg = MakeString( "psql crashed or finished badly.\n" );
-				mpp_err_msg(logError, pszProgName, pszErrorMsg);
+                write_msg(NULL, pszErrorMsg);
                 makeSureMonitorThreadEnds( TASK_RC_FAILURE, pszErrorMsg );
                 free( pszErrorMsg );
                 exit_code=2;
@@ -751,24 +713,33 @@ main(int argc, char **argv)
 		CloseArchive(AH);
     }
 
+    /*
+    if ( g_CDBDumpKey != NULL &&
+        !opts->dataOnly &&
+        g_CDBInstID == 0 && g_CDBSegID == 0)
+    {
+        execCDBCatalogFunction(g_conn);
+    }
+    */
+
     makeSureMonitorThreadEnds( TASK_RC_SUCCESS, TASK_MSG_SUCCESS );
 
     DestroyStatusOpList(g_pStatusOpList);
 
-    if ( SegDB.pszHost )
-        free( SegDB.pszHost );
-    if ( SegDB.pszDBName )
-        free( SegDB.pszDBName );
-    if ( SegDB.pszDBUser )
-        free( SegDB.pszDBUser );
-    if ( SegDB.pszDBPswd )
-        free( SegDB.pszDBPswd );
+    if ( SegInst.pszHost )
+        free( SegInst.pszHost );
+    if ( SegInst.pszDBName )
+        free( SegInst.pszDBName );
+    if ( SegInst.pszDBUser )
+        free( SegInst.pszDBUser );
+    if ( SegInst.pszDBPswd )
+        free( SegInst.pszDBPswd );
 
     PQfinish(g_conn);
     if (exit_code==0)
-        mpp_err_msg(logInfo, pszProgName, "Finished successfully\n");
+        write_msg(NULL, "Finished successfully\n");
     else
-        mpp_err_msg(logError, pszProgName, "Finished with errors\n");
+        write_msg(NULL, "Finished with errors\n");
 
 	exit(0);
 }
@@ -819,8 +790,8 @@ usage(const char *progname)
 	printf(_("  -W, --password           force password prompt (should happen automatically)\n"));
 	printf(_("  -e, --exit-on-error      exit on error, default is to continue\n"));
 
-    printf(("\nMPP specific options:\n"));
-    printf(("   --mpp-k=BACKUPKEY        key for MPP Backup\n"));
+    printf(("\nCDB specific options:\n"));
+    printf(("   --mpp-k=BACKUPKEY        key for CDB Backup\n"));
 
 	printf(_("\nIf no input file name is supplied, then standard input is used.\n\n"));
 	printf(_("Report bugs to <pgsql-bugs@postgresql.org>.\n"));
@@ -855,7 +826,7 @@ void makeSureMonitorThreadEnds( int TaskRC, char* pszErrorMsg )
 			 * if we can insert a row into the ststus table.  Oh well,
 			 * at least log a message and exit.
 			 */
-			 mpp_err_msg(logError, pszProgName, "*** aborted because of fatal memory allocation error\n");
+			 write_msg(NULL, "*** aborted because of fatal memory allocation error\n");
 			 exit(1);
 		}
 		else
@@ -893,11 +864,10 @@ void* monitorThreadProc(void *arg)
 	sigaddset( &newset, SIGKILL );
 	pthread_sigmask( SIG_SETMASK, &newset, NULL );
 	
-	//mpp_msg(NULL, "Starting monitor thread at %s\n", GetTimeNow() );
-	mpp_err_msg(logInfo, pszProgName, "Starting monitor thread\n");
+	write_msg(NULL, "Starting monitor thread at %s\n", GetTimeNow() );
 	
 	/* Issue Listen command  */
-	DoCancelNotifyListen( g_conn_status, true, g_MPPDumpKey, g_role, g_sourceDBID, g_targetDBID, NULL );
+	DoCancelNotifyListen( g_conn_status, true, g_CDBDumpKey, g_CDBInstID, g_CDBSegID, NULL );
 	
 	// Now wait for a cancel notification
 	sock = PQsocket( g_conn_status );
@@ -915,15 +885,15 @@ void* monitorThreadProc(void *arg)
 	
 		if ( select( sock+1, &input_mask, NULL, NULL, &tv ) < 0 )
 		{
-			mpp_err_msg(logError, pszProgName, "select failed for backup key %s, instid %d, segid %d failed\n",
-					  g_MPPDumpKey, g_role, g_sourceDBID);
+			write_msg(NULL, "select failed for backup key %s, instid %d, segid %d failed\n",
+					  g_CDBDumpKey, g_CDBInstID, g_CDBSegID);
 			bGotCancelRequest = true;
 		}
 	
 		if ( PQstatus( g_conn_status ) == CONNECTION_BAD )
 		{
-			mpp_err_msg(logError, pszProgName, "Status Connection went down for backup key %s, instid %d, segid %d\n",
-					  g_MPPDumpKey, g_role, g_sourceDBID);
+			write_msg(NULL, "Status Connection went down for backup key %s, instid %d, segid %d\n",
+					  g_CDBDumpKey, g_CDBInstID, g_CDBSegID);
 			bGotCancelRequest = true;
 		}
 		
@@ -948,8 +918,8 @@ void* monitorThreadProc(void *arg)
 		
 		if ( bGotCancelRequest )
 		{
-			mpp_err_msg(logInfo, pszProgName, "Notification received that we need to cancel for backup key %s, instid %d, segid %d failed\n",
-					  g_MPPDumpKey, g_role, g_sourceDBID);
+			write_msg(NULL, "Notification received that we need to cancel for backup key %s, instid %d, segid %d failed\n",
+					  g_CDBDumpKey, g_CDBInstID, g_CDBSegID);
 			
 			pthread_kill( g_main_tid, SIGINT );
 		}
@@ -958,27 +928,25 @@ void* monitorThreadProc(void *arg)
 		Lock( g_pStatusOpList );
 		while ( NULL != (pOp = TakeFromStatusOpList(g_pStatusOpList)) )
 		{
-			DoCancelNotifyListen( g_conn_status, false, g_MPPDumpKey, g_role, g_sourceDBID, g_targetDBID, pOp->pszSuffix );
+			DoCancelNotifyListen( g_conn_status, false, g_CDBDumpKey, g_CDBInstID, g_CDBSegID, pOp->pszSuffix );
 			
 			if ( pOp->TaskID == TASK_FINISH )
 			{
 				bGotFinished = true;
 
 				if ( pOp->TaskRC == TASK_RC_SUCCESS )
-				{
-					pszMsg = "Succeeded\n";
-					mpp_err_msg(logInfo, pszProgName, pszMsg);
-				}
+					pszMsg = "Succeeded\n";	
 				else
-				{
 					pszMsg = pOp->pszMsg;
-					mpp_err_msg(logError, pszProgName, pszMsg);
-				}
+				
+				/* WriteStatusToFile( pszMsg, StringNotNull( g_pszCDBOutputDirectory, "." ), 
+									g_CDBDumpKey, g_CDBInstID, g_CDBSegID, false ); */
+                 write_msg(NULL, pszMsg);
 			}
 			
 			if ( pOp->TaskID == TASK_SET_SERIALIZABLE )
 			{
-				mpp_err_msg(logInfo, pszProgName, "TASK_SET_SERIALIZABLE");
+				write_msg(NULL, "TASK_SET_SERIALIZABLE at %s\n", GetTimeNow() );
 			}
 			
 			FreeStatusOp( pOp );
@@ -1004,12 +972,12 @@ void myHandler(int signo)
 {
 	if ( g_conn != NULL &&  PQtransactionStatus( g_conn ) == PQTRANS_ACTIVE )
 	{
-		mpp_err_msg(logInfo, pszProgName, "in my_handler before PQrequestCancel\n" );
+		write_msg(NULL, "in my_handler before PQrequestCancel\n" );
 		PQrequestCancel( g_conn );
 	}
 	else
 	{
-		mpp_err_msg(logInfo, pszProgName, "in my_handler not in active transaction\n" );
+		write_msg(NULL, "in my_handler not in active transaction\n" );
 	}
 }
 
@@ -1042,20 +1010,20 @@ void _check_database_version(ArchiveHandle *AH, bool ignoreVersion)
 		&& (remoteversion < AH->public.minRemoteVersion ||
 			remoteversion > AH->public.maxRemoteVersion))
 	{
-		mpp_err_msg(logWarn, pszProgName, "server version: %s; %s version: %s\n",
-				  remoteversion_str, pszProgName , PG_VERSION);
+		write_msg(NULL, "server version: %s; %s version: %s\n",
+				  remoteversion_str, progname, PG_VERSION);
 		if (ignoreVersion)
-			mpp_err_msg(logInfo, pszProgName, "proceeding despite version mismatch\n");
+			write_msg(NULL, "proceeding despite version mismatch\n");
 		else
 			die_horribly(AH, NULL, "aborting because of version mismatch  (Use the -i option to proceed anyway.)\n");
 	}
 }
 
 /*
- * execMPPCatalogFunction:
+ * execCDBCatalogFunction:
  */
 /*
-bool execMPPCatalogFunction(PGconn* pConn)
+bool execCDBCatalogFunction(PGconn* pConn)
 {
 	const char* pszFunctionName		= "restore_mpp_catalog"; 
 	const char* pszNamespaceName	= "mpp"; 
@@ -1076,7 +1044,7 @@ bool execMPPCatalogFunction(PGconn* pConn)
 	pRes = PQexec(pConn, bufQry->data);
 	if (!pRes || PQresultStatus(pRes) != PGRES_TUPLES_OK)
 	{
-		mpp_err_msg("Query %s Command failed: %s",
+		write_err_msg("Query %s Command failed: %s",
 					bufQry->data, PQerrorMessage(pConn));
 		goto cleanup;
 	}			
@@ -1084,14 +1052,14 @@ bool execMPPCatalogFunction(PGconn* pConn)
 	ntups = PQntuples(pRes);
 	if ( ntups == 0 )
 	{
-		mpp_err_msg("Query %s Command failed: %s",
+		write_err_msg("Query %s Command failed: %s",
 					bufQry->data, PQerrorMessage(pConn));
 		goto cleanup;
 	}
 	
 	if ( 0 == atoi( PQgetvalue(pRes, 0, 0)))
 	{
-		mpp_err_msg("Cannot execute function %s.%s() because it does not exist",
+		write_err_msg("Cannot execute function %s.%s() because it does not exist",
 					pszNamespaceName, pszFunctionName );
 		goto cleanup;
 	}
@@ -1105,7 +1073,7 @@ bool execMPPCatalogFunction(PGconn* pConn)
 	pRes = PQexec(pConn, bufQry->data);
 	if (!pRes || PQresultStatus(pRes) != PGRES_TUPLES_OK)
 	{
-		mpp_err_msg("Cannot execute function %s.%s() because it does not exist",
+		write_err_msg("Cannot execute function %s.%s() because it does not exist",
 					bufQry->data, PQerrorMessage(pConn) );
 		goto cleanup;
 	}
@@ -1149,7 +1117,7 @@ static char* testProgramExists(char* pszProgramName)
     pszProgramNameLocal = malloc( strlen(pszProgramName) + 1 );
     if ( pszProgramNameLocal == NULL )
     {
-        mpp_err_msg(logError, pszProgName, "out of memory");
+        write_err_msg("out of memory");
     }
     
     strcpy( pszProgramNameLocal, pszProgramName );
@@ -1171,7 +1139,7 @@ static char* testProgramExists(char* pszProgramName)
         pszTestPath = (char *)malloc( strlen(pszEnvPath) + 1 + strlen(pszProgramNameLocal) + 1 );
         if ( pszTestPath == NULL )
         {
-            mpp_err_msg(logError, pszProgName, "out of memory in testProgramExists");
+            write_err_msg("out of memory");
         }
         
         sprintf( pszTestPath, "%s/%s", pszEnvPath, pszProgramNameLocal );
@@ -1185,7 +1153,7 @@ static char* testProgramExists(char* pszProgramName)
     pszPath = (char *) malloc( strlen(pszEnvPath) + 1 );
     if ( pszPath == NULL )
     {
-        mpp_err_msg(logError, pszProgName, "out of memory in testProgramExists");
+        write_err_msg("out of memory");
     }
     
     strcpy( pszPath, pszEnvPath );
@@ -1210,7 +1178,7 @@ static char* testProgramExists(char* pszProgramName)
             pszTestPath = (char *)malloc( strlen(pColon) + 1 + strlen(pszProgramNameLocal) + 1 );
             if ( pszTestPath == NULL )
             {
-                mpp_err_msg(logError, pszProgName, "out of memory in testProgramExists");
+                write_err_msg("out of memory");
             }
             
             sprintf( pszTestPath, "%s/%s", pColon, pszProgramNameLocal );
@@ -1227,7 +1195,7 @@ static char* testProgramExists(char* pszProgramName)
         pszTestPath = (char *)malloc( strlen(pColon) + 1 + strlen(pszProgramNameLocal) + 1 );
         if ( pszTestPath == NULL )
         {
-            mpp_err_msg(logError, pszProgName, "out of memory in testProgramExists");
+            write_err_msg("out of memory");
         }
         
         sprintf( pszTestPath, "%s/%s", pColon, pszProgramNameLocal );

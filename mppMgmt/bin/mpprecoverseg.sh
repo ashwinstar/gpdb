@@ -142,7 +142,7 @@ GET_MIRROR () {
 	fi
 
 	#Now check to make sure that we can initiate recovery
-	TOTAL_INST_COUNT=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(dbid) from mpp.pgdatabase where content<>-1;"`
+	TOTAL_INST_COUNT=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(dbid) from mpp_configuration where content<>-1;"`
 	ERROR_CHK $? "obtain total segement count from master instance" 2
 	if [ $FAILED_INST_COUNT -gt $TOTAL_INST_COUNT ]; then
 		LOG_MSG "[FATAL]:-Insufficient remaining active instances to be able to recover cluster"

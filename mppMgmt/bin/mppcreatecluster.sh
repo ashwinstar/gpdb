@@ -667,9 +667,7 @@ CREATE_QD_DB () {
 		LOG_MSG "[INFO]:-Compleleted starting the Master in admin mode"
 		$SLEEP 2
 		UPDATE_MPP $MPP_DBNAME $MPP_PORT "$ARRAY_NAME" $TOTAL_SEG $MPP_DBID $MPP_CONTENT 0 X
-		UPDATE_HOST $MPP_DBNAME $MPP_PORT $MPP_HOSTID $MPP_HOSTNAME
-		UPDATE_LISTENER $MPP_DBNAME $MPP_PORT $MPP_LISTENID $MPP_HOSTID $MPP_PORT $MPP_DIR $MPP_USER $MPP_PASSWD
-		UPDATE_PGDATABASE $MPP_DBNAME $MPP_PORT $MPP_DBID $DEFAULTDB $MPP_CONTENT $MPP_LISTENID t
+		UPDATE_MPPCONFIGURATION  $MPP_DBNAME $MPP_PORT $MPP_DBID $DEFAULTDB $MPP_CONTENT t  $MPP_HOSTNAME $MPP_PORT $MPP_DIR
 		LOAD_QE_SYSTEM_DATA $DEFAULTDB
 		SET_VAR $QD_PRIMARY_ARRAY
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
@@ -683,11 +681,14 @@ UPDATE_MPPCONFIGURATION () {
 		U_DBID=$3
 		U_DBNAME=$4
 		U_CONTENT=$5
-		U_LISTENERID=$6
-		U_PRIMARY=$7
+		U_PRIMARY=$6	
+		U_HOSTNAME=$7
+		U_PORT=$8
+		U_DIR=$9
+		
 		U_DB=$DEFAULTDB
-		CHK_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from $MPP_PGDATABASE_TBL where listenerid=${U_LISTENERID} and content=${U_CONTENT};" 2>/dev/null` >> $LOG_FILE 2>&1
-		ERROR_CHK $? "obtain psql count Master mpp.pgdatabase" 2
+		CHK_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from $MPP_CONFIGURATION_TBL where content=${U_CONTENT} and definedprimary='${U_PRIMARY}';" 2>/dev/null` >> $LOG_FILE 2>&1
+		ERROR_CHK $? "obtain psql count Master mpp_configuration" 2
 		if [ $CHK_COUNT -eq 0 ]; then
 				LOG_MSG "[INFO]:-Adding $U_CONTENT to system configuration table"				
 				env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $MPP_CONFIGURATION_TBL (dbid, isprimary, content, valid, definedprimary, hostname, port, datadir) values (${U_DBID},'${U_PRIMARY}',${U_CONTENT},'t', '${U_PRIMARY}','${U_HOSTNAME}',${U_PORT},'${U_DIR}');" >> $LOG_FILE 2>&1
@@ -698,29 +699,6 @@ UPDATE_MPPCONFIGURATION () {
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
-UPDATE_LISTENER () {
-		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		U_DB=$1
-		U_DB=$DEFAULTDB
-		U_PT=$2
-		U_LISTENERID=$3
-		U_HOSTID=$4
-		U_PORT=$5
-		U_DIR=$6
-		U_USER=$7
-		U_PASSWD=$8
-		CHK_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from $MPP_LISTENER_TBL where listenerid=${U_LISTENERID};" 2>/dev/null` >> $LOG_FILE 2>&1
-		ERROR_CHK $? "obtain psql count Master mpp.listener" 2 
-		if [ $CHK_COUNT -eq 0 ]; then
-				LOG_MSG "[INFO]:-Adding $U_LISTENERID to system listener table"
-				env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $MPP_LISTENER_TBL (listenerid, hostid, port, datadir, mppsuperuser, mppsuperpswd) values (${U_LISTENERID},${U_HOSTID},${U_PORT},'${U_DIR}','${U_USER}','${U_PASSWD}');" >> $LOG_FILE 2>&1
-				ERROR_CHK $? "add $U_LISTENERID to Master mpp.listener" 2
-		else
-				LOG_MSG "[INFO]:-Listenerid $U_LISTENERID already exists in listener system table"
-		fi
-
-		LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
 
 LOAD_QE_SYSTEM_DATA () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
@@ -731,9 +709,7 @@ LOAD_QE_SYSTEM_DATA () {
 				do
 				SET_VAR $I
 				LOG_MSG "[INFO]:-Adding segment $MPP_HOSTNAME to Master system tables"
-				UPDATE_HOST $QD_DBNAME $MASTER_PORT $MPP_HOSTID $MPP_HOSTNAME
-				UPDATE_LISTENER $QD_DBNAME $MASTER_PORT $MPP_LISTENID $MPP_HOSTID $MPP_PORT $MPP_DIR $MPP_USER $MPP_PASSWD
-				UPDATE_PGDATABASE $QD_DBNAME $MASTER_PORT $MPP_DBID $DEFAULTDB $MPP_CONTENT $MPP_LISTENID t
+				UPDATE_MPPCONFIGURATION $QD_DBNAME $MASTER_PORT $MPP_DBID $DEFAULTDB $MPP_CONTENT t $MPP_HOSTNAME $MPP_PORT $MPP_DIR
 				LOG_MSG "[INFO]:-Successfully added segment $MPP_HOSTNAME to Master system tables"
 		done
 		if [ $MIRRORING -eq 1 ]; then
@@ -741,34 +717,14 @@ LOAD_QE_SYSTEM_DATA () {
 				do
 					SET_VAR $I
 					LOG_MSG "[INFO]:-Adding segment $MPP_HOSTNAME to Master system tables as mirror"
-					UPDATE_HOST $QD_DBNAME $MASTER_PORT $MPP_HOSTID $MPP_HOSTNAME
-					UPDATE_LISTENER $QD_DBNAME $MASTER_PORT $MPP_LISTENID $MPP_HOSTID $MPP_PORT $MPP_DIR $MPP_USER $MPP_PASSWD
-					UPDATE_PGDATABASE $QD_DBNAME $MASTER_PORT $MPP_DBID $DEFAULTDB $MPP_CONTENT $MPP_LISTENID f
+					UPDATE_MPPCONFIGURATION $QD_DBNAME $MASTER_PORT $MPP_DBID $DEFAULTDB $MPP_CONTENT f  $MPP_HOSTNAME $MPP_PORT $MPP_DIR
 					LOG_MSG "[INFO]:-Successfully added segment $MPP_HOSTNAME to Master system tables as mirror"
 				done
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
-UPDATE_HOST () {
-		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		U_DB=$1
-		U_DB=$DEFAULTDB
-		U_PT=$2
-		U_HOSTID=$3
-		U_HOSTNAME=$4
-		#First check to ensure that U_HOSTID not already in the host table
-		CHK_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -A -t -c "select count(*) from $MPP_HOST_TBL where hostid='${U_HOSTID}';" 2>/dev/null` >> $LOG_FILE 2>&1
-		ERROR_CHK $? "obtain psql count of Master mpp.host" 2
-		if [ $CHK_COUNT -eq 0 ]; then
-				LOG_MSG "[INFO]:-Adding $U_HOSTNAME to system host table"
-				env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $U_PT $U_DB -c "insert into $MPP_HOST_TBL (hostid, hostname) values (${U_HOSTID},'${U_HOSTNAME}');" >> $LOG_FILE 2>&1
-				ERROR_CHK $? "add $U_HOSTNAME to Master mpp.host" 2
-		else
-				LOG_MSG "[INFO]:-Host $U_HOSTNAME already exists in host system table"
-		fi
-		LOG_MSG "[INFO]:-End Function $FUNCNAME"
-}
+
 
 UPDATE_MPP () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
@@ -903,7 +859,7 @@ CREATE_STANDBY_QD () {
 	else
 		LOG_MSG "[INFO]:-Starting initialization of standby QD $STANDBY_HOSTNAME"
 		$INIT_STANDBY_PROG -s $STANDBY_HOSTNAME -a $START_SYNC
-		ERROR_CHK $? "initialize standby QD $STANDBY_HOSTNAME" 2
+		ERROR_CHK $? "initialize syandby QD $STANDBY_HOSTNAME" 2
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${STANDBY_HOSTNAME} \"$RM -Rf ${QD_DIR}\""
 		BACKOUT_COMMAND "$ECHO \"Removing standby directory ${QD_DIR} on $STANDBY_HOSTNAME\""
 		BACKOUT_COMMAND "$TRUSTED_SHELL $STANDBY_HOSTNAME \"export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;export PGPORT=${MASTER_PORT}; $PG_CTL -w -D ${MASTER_DIRECTORY}/${SEG_PREFIX}0 -l ${MASTER_DIRECTORY}/${SEG_PREFIX}0.log -o \"-i -p ${MASTER_PORT}\" -m immediate  stop\""

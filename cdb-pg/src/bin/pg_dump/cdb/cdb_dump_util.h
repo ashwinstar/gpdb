@@ -28,28 +28,25 @@ typedef enum backup_file_type
  */
 typedef struct input_options
 {
-	char*		pszDBName;
-	char*		pszPGHost;
-	char*		pszPGPort;
-	char*		pszUserName;
-	char*		pszBackupDirectory;
-	char*		pszReportDirectory;
-	char*		pszCompressionProgram;
-	char*		pszPassThroughParms;
-	char*		pszCmdLineParms;
-	char*		pszKey;
-	char*		pszMasterDBName;
-	ActorSet	actors;
-	BackupLoc	backupLocation;
-	bool		bOnErrorStop;
+	char*	pszDBName;
+	char*	pszPGHost;
+	char*	pszPGPort;
+	char*	pszUserName;
+	char*	pszBackupDirectory;
+	char*	pszReportDirectory;
+	char*	pszCompressionProgram;
+	char*	pszPassThroughParms;
+	char*	pszCmdLineParms;
+	char*	pszKey;
+	char*	pszHeadDBName;
+	CDBSet	set;
+	bool	bOnErrorStop;
 } InputOptions;
 
 /* issues either a listen or notify command on connection pConn */
 extern void DoCancelNotifyListen( PGconn* pConn, bool bListen, 
 								const char* pszCDBDumpKey, 
-								int CDBInstID, 
-								int CDBSegID,
-								int target_db_id,
+								int CDBInstID, int CDBSegID,
 								const char* pszSuffix);
 /* frees data allocated inside an InputOptions struct */
 extern void FreeInputOptions( InputOptions* pInputOpts );
@@ -62,27 +59,26 @@ extern char* GetMatchString(regmatch_t* pMatch, char* pszInput );
 /* creates a formatted time string with the current time */
 extern char* GetTimeNow(void);
 /* creates a connection where the password may be prompted for */
-extern PGconn* GetMasterConnection(const char* progName, const char* pszDBName, const char* pszPGHost,
-								   const char* pszPGPort, const char* pszUserName,
-								   int reqPwd,	int ignoreVersion, bool bDispatch );
+extern PGconn* MakeConnectionToDatabase(const char* pszDBName, const char* pszPGHost,
+										const char* pszPGPort, const char* pszUserName,
+										int reqPwd,	int ignoreVersion,
+										bool bDispatch );
 /* creates a connection based on SegmentInstance* parameter */
-extern PGconn* MakeDBConnection( const SegmentDatabase* pSegDB, bool bDispatch );
+extern PGconn* MakeDBConnection( const SegmentInstance* pSegInst, bool bDispatch );
 /* returns a formatted char * */
 extern char* MakeString( const char* fmt, ... );
 /* breaks the input parameter associated with --cdb-k into its components for cdb_dump and cdb_restore*/
-extern bool ParseCDBDumpInfo( char *progName, char* pszCDBDumpInfo, char** ppCDBDumpKey, int* pCDBInstID, int* pCDBSegID, char** ppCDBPassThroughCredentials );
+extern bool ParseCDBDumpInfo( char* pszCDBDumpInfo, char** ppCDBDumpKey, int* pCDBInstID, int* pCDBSegID, char** ppCDBPassThroughCredentials );
 /* reads the contents out of the appropriate file on the database server */
-extern char* ReadBackendBackupFile( PGconn* pConn, const char* pszBackupDirectory, const char* pszKey, BackupFileType fileType, const char *progName );
+extern char* ReadBackendBackupFile( PGconn* pConn, const char* pszBackupDirectory, const char* pszKey, BackupFileType fileType );
 /* returns strdup if not NULL, NULL otherwise */
 extern char* Safe_strdup( const char* s);
 /* returns the string if not null, otherwise the default */
 extern const char* StringNotNull( const char* pszInput, const char* pszDefault );							
 /* writes a formatted message to stderr */
-extern void mpp_err_msg(const char *loglevel, const char *prog, const char *fmt,...);
-/* writes a formatted message to stdout */
-extern void mpp_msg(const char *loglevel, const char *prog, const char *fmt,...);
+extern void write_err_msg(const char *fmt,...);
 /* writes the contents to the appropriate file on the database server */
-/*extern char* WriteBackendBackupFile( PGconn* pConn, const char* pszBackupDirectory, const char* pszKey, const char* pszBackupScript );*/
+extern char* WriteBackendBackupFile( PGconn* pConn, const char* pszBackupDirectory, const char* pszKey, const char* pszBackupScript );
 /* writes a status message to a status file with naming convention based on instid, segid, and Key */
 /* extern bool WriteStatusToFile( const char* pszMessage, const char* pszDirectory, const char* pszKey, int instid, int segid, bool bIsBackup ); */
 

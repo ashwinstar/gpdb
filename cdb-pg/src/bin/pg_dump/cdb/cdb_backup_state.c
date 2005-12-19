@@ -148,10 +148,10 @@ bool IsFinalState( BackupStateMachine* pStateMachine )
 			pStateMachine->currentState == STATE_UNEXPECTED_INPUT );	
 }
 
-/* ProcessInput: loops through the array of PGnotify * elements, and processes them.  
- * Based on the current state and the notification message, it changes the current state.
- * It's important to sort the PGnotify* elements so that we don't get the notifications 
- * out of the proper order.
+/* ProcessInput: loops throught he array of PGnotify * elements, and processes them.  Based on the current
+ * state and the notification message, it changes the current state.
+ * It's important to sort the PGnotify* elements so that we don't get the notifications out of the
+ * proper order.
  */
 void ProcessInput( BackupStateMachine* pStateMachine )
 {

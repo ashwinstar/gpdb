@@ -11,7 +11,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <regex.h>
-#include <ctype.h> 
+#include <ctype.h>
 #include <pthread.h>
 #include "getopt_long.h"
 #include "pqexpbuffer.h"
@@ -38,139 +38,126 @@ static bool createThreadParmArray( int nCount, ThreadParmArray* pParmAr);
 static char* addPassThroughParm( char Parm, const char* pszValue, char* pszPassThroughParmString );
 static void	fillInputOptions(int argc, char** argv, InputOptions* pInputOpts);
 static bool parmValNeedsQuotes( const char* Value );
-static void usage(void);
+static void usage();
 static void* threadProc(void *arg);
-static bool restoreMaster( InputOptions* pInputOpts, PGconn *pConn, SegmentDatabase *sSegDB, SegmentDatabase *tSegDB, ThreadParm* pParm );
-static void spinOffThreads(PGconn* pConn, InputOptions* pInputOpts, const const RestorePairArray *restorePair, ThreadParmArray* pParmAr );
-static int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pMasterParm, const ThreadParmArray* pParmAr );
+static bool restoreHead( InputOptions* pInputOpts, PGconn *pConn, SegmentInstance *pSegInst, ThreadParm* pParm );
+static void spinOffThreads(PGconn* pConn, InputOptions* pInputOpts, const SegmentInstanceArray* pSegInstAr, ThreadParmArray* pParmAr );
+static int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pHeadParm, const ThreadParmArray* pParmAr );
+
+static char* progname;
 static bool g_b_SendCancelMessage = false;
 typedef struct option optType;
 
 static RestoreOptions *opts = NULL;
-static bool dataOnly = false;
-static bool schemaOnly = false;
+
 static bool bForcePassword = false;
 static bool bIgnoreVersion = false;
 static const char* pszAgent = "mpp_restore_agent";
-
-static const char* logInfo = "INFO";
-static const char* logWarn = "WARN";
-static const char* logError = "ERROR";
-static const char* logFatal = "FATAL";
-static char* pszProgName;
-
 
 int
 main(int argc, char **argv)
 {
 	PGconn* pConn = NULL;
-    int failCount = -1;
+    int failCount=-1;
 	char szErrortmp[PQERRORMSG_LENGTH];
     int i;
-    SegmentDatabase *sourceSegDB;
-	SegmentDatabase *targetSegDB;
+    SegmentInstance *segAr;
 	
 	/* This struct holds the values of the command line parameters */
 	InputOptions			inputOpts;
-	/* This struct holds an array of the segment databases from the master mpp tables */
-	RestorePairArray		restorePairAr;
+	/* This struct holds an array of the segment instance pairs from the head mpp tables */
+	SegmentInstanceArray	segInstAr;
 	/* This struct holds an array of the thread parameters */
 	ThreadParmArray			parmAr;
-	ThreadParm				masterParm;
+	ThreadParm				headParm;
 	
 	memset( &inputOpts, 0, sizeof(inputOpts) );
-	memset( &restorePairAr, 0, sizeof(restorePairAr) );
+	memset( &segInstAr, 0, sizeof(segInstAr) );
 	memset( &parmAr, 0, sizeof(parmAr) );
-	memset( &masterParm, 0, sizeof(masterParm) );
+	memset( &headParm, 0, sizeof(headParm) );
 	
 	/* Parse command line for options */
+	write_err_msg("Analyzing command line options.\n" );
 	fillInputOptions( argc, argv, &inputOpts );
 
-	mpp_err_msg(logInfo, pszProgName, "Analyzed command line options.\n" );
-
-	/* Connect to database on the master*/
-	mpp_err_msg(logInfo, pszProgName,  "Connecting to master segment on host %s port %s database %s.\n",
+	/* Connect to database on the head*/
+	write_err_msg( "Connecting to head instance on host %s port %s database %s.\n",
 				StringNotNull( inputOpts.pszPGHost, "localhost"), 
 				StringNotNull( inputOpts.pszPGPort, "5432"),
-				StringNotNull( inputOpts.pszMasterDBName, fe_getauthname(szErrortmp) ) );
+				StringNotNull( inputOpts.pszHeadDBName, fe_getauthname(szErrortmp) ) );
 						
-	pConn = GetMasterConnection(pszProgName, inputOpts.pszMasterDBName, inputOpts.pszPGHost, 
-								inputOpts.pszPGPort, inputOpts.pszUserName, 
-								bForcePassword, bIgnoreVersion, true);
+	pConn = MakeConnectionToDatabase(inputOpts.pszHeadDBName, inputOpts.pszPGHost, 
+											inputOpts.pszPGPort, inputOpts.pszUserName, 
+											bForcePassword, bIgnoreVersion, true);
 	if ( pConn == NULL )
 		goto cleanup;
 
-	/* Read mpp segment databases configuration from the master */
-	mpp_err_msg(logInfo, pszProgName,  "Reading mpp configuration info from master segment database.\n");
-	if ( !GetRestoreSegmentDatabaseArray(pConn, &restorePairAr, inputOpts.backupLocation, dataOnly) )
+	/* Read mpp segment/instance configuration from the head */
+	write_err_msg( "Reading mpp configuration info from head instance database.\n");
+	if ( !GetSegmentInstanceArray(pConn, inputOpts.pszHeadDBName, &inputOpts.set, &segInstAr, true) )
 		goto cleanup;
     
-    /* find master node */
-    targetSegDB = NULL;
-    for (i = 0; i < restorePairAr.count; i++)
+    // find head node
+    segAr = NULL;
+    for (i=0; i<segInstAr.count; i++)
     {
-        targetSegDB = &restorePairAr.pData[i].segdb_target;
-		sourceSegDB = &restorePairAr.pData[i].segdb_source;
-		
-        if (targetSegDB->role == ROLE_MASTER)
+        segAr = segInstAr.pData+i;
+        if (segAr->instid == 1)
             break;
     }
     
-	/* restore master first. However, if we restore only data, skip master */
-	if(!dataOnly)
-	{
-		if ( !restoreMaster( &inputOpts, pConn, sourceSegDB, targetSegDB, &masterParm ) )
-			goto cleanup;
-	} 
+    // Is the head part of the restore set?
+    if ( FindInCDBSet( &inputOpts.set, 1, segAr->segid ) )
+    {
+        if ( !restoreHead( &inputOpts, pConn, segAr, &headParm ) )
+            goto cleanup;
+    }
     
-	/* restore segdbs. However, if we restore schema only, skip segdbs */
-	if(!schemaOnly)
+	if ( segInstAr.count > 0 )
 	{
-		if ( restorePairAr.count > 0 )
-		{
-			/* Create the threads to talk to each of the databases being restored.
-			 * Wait for them to finish.   
-			 */ 
-			spinOffThreads(pConn, &inputOpts, &restorePairAr, &parmAr);
-			
-			mpp_err_msg(logInfo, pszProgName,  "All remote %s programs are finished.\n", pszAgent );
-		}
+		/* Create the threads to talk to each of the databases being restored.
+		 * Wait for them to finish.   
+		 */ 
+		spinOffThreads(pConn, &inputOpts, &segInstAr, &parmAr);
+		
+		write_err_msg( "%s: All remote %s programs are finished.\n", GetTimeNow(), pszAgent );
 	}
 	
 	/* Produce results report */
-	failCount = reportRestoreResults( inputOpts.pszReportDirectory, &masterParm, &parmAr );
+	failCount = reportRestoreResults( inputOpts.pszReportDirectory, &headParm, &parmAr );
 	
 cleanup:	
 	FreeInputOptions( &inputOpts );
 	if ( opts != NULL )
 		free( opts );
-	FreeRestorePairArray( &restorePairAr );
+	FreeSegmentInstanceArray( &segInstAr );
 	freeThreadParmArray( &parmAr );
 
-	if ( masterParm.pszErrorMsg )
-		free( masterParm.pszErrorMsg );
+	if ( headParm.pszErrorMsg )
+		free( headParm.pszErrorMsg );
 	
-	if ( masterParm.pszRemoteBackupPath )
-		free( masterParm.pszRemoteBackupPath );
+	if ( headParm.pszRemoteBackupPath )
+		free( headParm.pszRemoteBackupPath );
 	
 	if ( pConn != NULL )
 		PQfinish( pConn );
 	
-	return (failCount == 0 ? 0 : 1);
+	return failCount;
 }
 
-static void usage(void)
+static void
+usage()
 {
-	printf(("%s restores a Bizgres MPP database from an archive created by mpp_dump.\n\n"), pszProgName );
+	printf(("%s restores a PostgreSQL database from an archive created by pg_dump.\n\n"), progname);
 	printf(("Usage:\n"));
-	printf(("  %s [OPTION]... [FILE]\n"), pszProgName );
+	printf(("  %s [OPTION]... [FILE]\n"), progname);
 
 	printf(("\nGeneral options:\n"));
 	printf(("  -d, --dbname=NAME        output database name\n"));
-	//printf(("  -f, --file=FILENAME      output file name\n"));
-	//printf(("  -F, --format=c|t         specify backup file format\n"));
+	printf(("  -f, --file=FILENAME      output file name\n"));
+	printf(("  -F, --format=c|t         specify backup file format\n"));
 	printf(("  -i, --ignore-version     proceed even when server version mismatches\n"));
-	//printf(("  -l, --list               print summarized TOC of the archive\n"));
+	printf(("  -l, --list               print summarized TOC of the archive\n"));
 	printf(("  -v, --verbose            verbose mode\n"));
 	printf(("  --help                   show this help, then exit\n"));
 	printf(("  --version                output version information, then exit\n"));
@@ -178,24 +165,24 @@ static void usage(void)
 	printf(("\nOptions controlling the output content:\n"));
 	printf(("  -a, --data-only          restore only the data, no schema\n"));
 	printf(("  -c, --clean              clean (drop) schema prior to create\n"));
-	//printf(("  -C, --create             issue commands to create the database\n"));
-	//printf(("  -I, --index=NAME         restore named index\n"));
-	//printf(("  -L, --use-list=FILENAME  use specified table of contents for ordering\n"
-	//		 "                           output from this file\n"));
-	//printf(("  -N, --orig-order         restore in original dump order\n"));
-	//printf(("  -o, --oid-order          restore in OID order\n"));
-	//printf(("  -O, --no-owner           do not output commands to set object ownership\n"));
-	//printf(("  -P, --function=NAME(args)\n"
-	//		 "                           restore named function\n"));
-	//printf(("  -r, --rearrange          rearrange output to put indexes etc. at end\n"));
+	printf(("  -C, --create             issue commands to create the database\n"));
+	printf(("  -I, --index=NAME         restore named index\n"));
+	printf(("  -L, --use-list=FILENAME  use specified table of contents for ordering\n"
+			 "                           output from this file\n"));
+	printf(("  -N, --orig-order         restore in original dump order\n"));
+	printf(("  -o, --oid-order          restore in OID order\n"));
+	printf(("  -O, --no-owner           do not output commands to set object ownership\n"));
+	printf(("  -P, --function=NAME(args)\n"
+			 "                           restore named function\n"));
+	printf(("  -r, --rearrange          rearrange output to put indexes etc. at end\n"));
 	printf(("  -s, --schema-only        restore only the schema, no data\n"));
-	//printf(("  -S, --superuser=NAME     specify the superuser user name to use for\n"
-	//		 "                           disabling triggers\n"));
-	//printf(("  -t, --table=NAME         restore named table\n"));
-	//printf(("  -T, --trigger=NAME       restore named trigger\n"));
-	//printf(("  -x, --no-privileges      skip restoration of access privileges (grant/revoke)\n"));
-	//printf(("  -X disable-triggers, --disable-triggers\n"
-	//		 "                           disable triggers during data-only restore\n"));
+	printf(("  -S, --superuser=NAME     specify the superuser user name to use for\n"
+			 "                           disabling triggers\n"));
+	printf(("  -t, --table=NAME         restore named table\n"));
+	printf(("  -T, --trigger=NAME       restore named trigger\n"));
+	printf(("  -x, --no-privileges      skip restoration of access privileges (grant/revoke)\n"));
+	printf(("  -X disable-triggers, --disable-triggers\n"
+			 "                           disable triggers during data-only restore\n"));
 
 	printf(("\nConnection options:\n"));
 	printf(("  -h, --host=HOSTNAME      database server host or socket directory\n"));
@@ -203,16 +190,18 @@ static void usage(void)
 	printf(("  -U, --username=NAME      connect as specified database user\n"));
 	printf(("  -W, --password           force password prompt (should happen automatically)\n"));
 
-	printf(("\nMPP specific options:\n"));
-	printf(("  --mpp-c                  use gunzip for in-line de-compression\n"));
+	printf(("\nCDB specific options:\n"));
+	printf(("  --mpp-c=UTILITY          compression utility name for in-line compression\n"));
+	//printf(("  --mpp-cf=CONTROLFILEPATH path to control file with restore set info\n"));
 	printf(("  --mpp-d=BACKUPFILEDIR    directory where backup files are located\n"));
 	printf(("  --mpp-i                  ignore error\n"));
-	printf(("  --mpp-k=KEY              date time backup key from mpp_backup run\n"));
+	//printf(("  --mpp-hdb=HEADDBNAME     name of head database\n"));
+	printf(("  --mpp-k=KEY              date time backup key from mpp_backup_driver run\n"));
 	printf(("  --mpp-r=REPORTFILEDIR    directory where report file is placed\n"));
-	printf(("  --mpp-l=FILELOCATIONS    backup files are on (a)ll databases or (p)rimaries only (default)\n"));
+	//printf(("  --mpp-s=a|t|h            restore set indicator (all, tails only, or head only)\n"));
 	
-	//printf(("\nIf no input file name is supplied, then standard input is used.\n\n"));
-	//printf(("Report bugs to <pgsql-bugs@postgresql.org>.\n"));
+	printf(("\nIf no input file name is supplied, then standard input is used.\n\n"));
+	printf(("Report bugs to <pgsql-bugs@postgresql.org>.\n"));
 }
 
 void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
@@ -222,7 +211,7 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 	//char	   *inputFileSpec;
 	extern int	optind;
 	extern char *optarg;
-	//static int	use_setsessauth = 0;
+	static int	use_setsessauth = 0;
 	static int	disable_triggers = 0;
 	bool bSawCDB_S_Option;
 	int lenCmdLineParms;
@@ -230,30 +219,30 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 
 	struct option cmdopts[] = {
 		{"clean", 0, NULL, 'c'},
-		//{"create", 0, NULL, 'C'},
+		{"create", 0, NULL, 'C'},
 		{"data-only", 0, NULL, 'a'},
 		{"dbname", 1, NULL, 'd'},
-		/*{"file", 1, NULL, 'f'},
-		{"format", 1, NULL, 'F'},*/
-		//{"function", 1, NULL, 'P'},
+		{"file", 1, NULL, 'f'},
+		{"format", 1, NULL, 'F'},
+		{"function", 1, NULL, 'P'},
 		{"host", 1, NULL, 'h'},
 		{"ignore-version", 0, NULL, 'i'},
-		//{"index", 1, NULL, 'I'},
-		//{"list", 0, NULL, 'l'},
-		//{"no-privileges", 0, NULL, 'x'},
+		{"index", 1, NULL, 'I'},
+		{"list", 0, NULL, 'l'},
+		{"no-privileges", 0, NULL, 'x'},
 		{"no-acl", 0, NULL, 'x'},
-		//{"no-owner", 0, NULL, 'O'},
+		{"no-owner", 0, NULL, 'O'},
 		{"no-reconnect", 0, NULL, 'R'},
 		{"port", 1, NULL, 'p'},
-		//{"oid-order", 0, NULL, 'o'},
-		//{"orig-order", 0, NULL, 'N'},
+		{"oid-order", 0, NULL, 'o'},
+		{"orig-order", 0, NULL, 'N'},
 		{"password", 0, NULL, 'W'},
-		//{"rearrange", 0, NULL, 'r'},
+		{"rearrange", 0, NULL, 'r'},
 		{"schema-only", 0, NULL, 's'},
-		//{"superuser", 1, NULL, 'S'},
-		//{"table", 1, NULL, 't'},
-		//{"trigger", 1, NULL, 'T'},
-		//{"use-list", 1, NULL, 'L'},
+		{"superuser", 1, NULL, 'S'},
+		{"table", 1, NULL, 't'},
+		{"trigger", 1, NULL, 'T'},
+		{"use-list", 1, NULL, 'L'},
 		{"username", 1, NULL, 'U'},
 		{"verbose", 0, NULL, 'v'},
 
@@ -261,13 +250,13 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 		 * the following options don't have an equivalent short option
 		 * letter, but are available as '-X long-name'
 		 */
-		//{"use-set-session-authorization", no_argument, &use_setsessauth, 1},
-		//{"disable-triggers", no_argument, &disable_triggers, 1},
+		{"use-set-session-authorization", no_argument, &use_setsessauth, 1},
+		{"disable-triggers", no_argument, &disable_triggers, 1},
 
 		/*
 		 * the following are mpp specific, and don't have an equivalent short option
 		 */
-		{"mpp-c", no_argument, NULL, 1},
+		{"mpp-c", required_argument, NULL, 1},
 		//{"mpp-cf", required_argument, NULL, 2},
 		{"mpp-d", required_argument, NULL, 3},
 		{"mpp-i", no_argument, NULL, 4},
@@ -275,15 +264,14 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 		{"mpp-k", required_argument, NULL, 6},
 		{"mpp-r", required_argument, NULL, 7},
 		{"mpp-s", required_argument, NULL, 8},
-		{"mpp-l", required_argument, NULL, 9},
 		{NULL, 0, NULL, 0}
 	};
 
 	/* Initialize option fields  */
 	memset( pInputOpts, 0, sizeof(InputOptions) );
-	
-	pInputOpts->actors	= SET_ALL; /* always restore all */
-	pInputOpts->backupLocation = FILE_ON_PRIMARIES;
+	pInputOpts->set.type		= SET_ALL;
+	pInputOpts->set.count		= 0;
+	pInputOpts->set.pData		= NULL;
 	pInputOpts->bOnErrorStop	= true;
 	
 #ifdef ENABLE_NLS
@@ -295,14 +283,14 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 	opts = (RestoreOptions *) calloc(1, sizeof(RestoreOptions));
 	if ( opts == NULL )
 	{
-		mpp_err_msg(logError, pszProgName, "error allocating memory for RestoreOptions");
+		write_err_msg("error allocating memory for RestoreOptions");
 		exit(0);
 	}
 	
 	opts->format = archUnknown;
 	opts->suppressDumpWarnings = false;
 
-	pszProgName  = (char *)get_progname(argv[0]);
+	progname = (char *)get_progname(argv[0]);
 	
 	bSawCDB_S_Option = false;
 
@@ -341,7 +329,7 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 	pInputOpts->pszCmdLineParms = (char *)malloc( lenCmdLineParms + 1 );
 	if ( pInputOpts->pszCmdLineParms == NULL )
 	{
-		mpp_err_msg(logError, pszProgName,  "error allocating memory for pInputOpts->pszCmdLineParms\n");
+		write_err_msg( "error allocating memory for pInputOpts->pszCmdLineParms\n");
 		exit(1);
 	}
 	
@@ -360,14 +348,13 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 			strcat( pInputOpts->pszCmdLineParms, argv[i] );
 	}
 	
-	while ((c = getopt_long(argc, argv, "acd:h:ip:RsuU:vW",
+	while ((c = getopt_long(argc, argv, "acCd:f:F:h:iI:lL:NoOp:P:rRsS:t:T:uU:vWxX:",
 							cmdopts, NULL)) != -1)
 	{
 		switch (c)
 		{
 			case 'a':			/* Dump data only */
 				opts->dataOnly = 1;
-				dataOnly = true;
 				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms ); 
 				break;
 			case 'c':			/* clean (i.e., drop) schema prior to
@@ -375,19 +362,19 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 				opts->dropSchema = 1;
 				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms ); 
 				break;
-/*			case 'C':
+			case 'C':
 				opts->create = 1;
 				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms ); 
 				break;
-*/			case 'd':
+			case 'd':
 				opts->dbname = strdup(optarg);
 				pInputOpts->pszDBName = Safe_strdup(opts->dbname);
-                 pInputOpts->pszMasterDBName = Safe_strdup(opts->dbname);
+                 pInputOpts->pszHeadDBName = Safe_strdup(opts->dbname);
 				break;
-/*			case 'f':			// output file name 
-				opts->filename = strdup(optarg);
-				break;
-				
+//			case 'f':			/* output file name */
+//				opts->filename = strdup(optarg);
+//				break;
+//				
 			case 'F':
 				if (strlen(optarg) != 0)
 				{
@@ -396,7 +383,6 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 				}
 
 				break;
-*/
 			case 'h':
 				if (strlen(optarg) != 0)
 				{
@@ -419,7 +405,7 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 //				opts->tocFile = strdup(optarg);
 //				break;
 
-/*			case 'N':
+			case 'N':
 				opts->origOrder = 1;
 				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms ); 
 				break;
@@ -431,54 +417,53 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 				opts->noOwner = 1;
 				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms ); 
 				break;
-*/			case 'p':
+			case 'p':
 				if (strlen(optarg) != 0)
 				{
 					opts->pgport = strdup(optarg);
 					pInputOpts->pszPGPort = Safe_strdup(optarg);
 				}
 				break;
-/*			case 'r':
+			case 'r':
 				opts->rearrange = 1;
 				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms ); 
 				break;
-*/			case 'R':
+			case 'R':
 				/* no-op, still accepted for backwards compatibility */
-			break;
-/*			case 'P':			// Function
+				break;
+			case 'P':			/* Function */
 				opts->selTypes = 1;
 				opts->selFunction = 1;
 				opts->functionNames = strdup(optarg);
 				pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms ); 
 				break;
-			case 'I':			// Index 
+			case 'I':			/* Index */
 				opts->selTypes = 1;
 				opts->selIndex = 1;
 				opts->indexNames = strdup(optarg);
 				pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms ); 
 				break;
-			case 'T':			// Trigger 
+			case 'T':			/* Trigger */
 				opts->selTypes = 1;
 				opts->selTrigger = 1;
 				opts->triggerNames = strdup(optarg);
 				pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms ); 
 				break;
-*/			case 's':			/* dump schema only */
+			case 's':			/* dump schema only */
 				opts->schemaOnly = 1;
-				schemaOnly = true;
 				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms ); 
 				break;
 //			case 'S':			/* Superuser username */
 //				if (strlen(optarg) != 0)
 //					opts->superuser = strdup(optarg);
 //				break;
-/*			case 't':			// Dump data for this table only
+			case 't':			/* Dump data for this table only */
 				opts->selTypes = 1;
 				opts->selTable = 1;
 				opts->tableNames = strdup(optarg);
 				pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms ); 
 				break;
-*/
+
 			case 'u':
 				opts->requirePassword = true;
 				opts->username = simple_prompt("User name: ", 100, true);
@@ -499,28 +484,27 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 				opts->requirePassword = true;
 				break;
 
-/*			case 'x':			// skip ACL dump 
+			case 'x':			/* skip ACL dump */
 				opts->aclsSkip = 1;
 				pInputOpts->pszPassThroughParms = addPassThroughParm( c, NULL, pInputOpts->pszPassThroughParms ); 
 				break;
 
 			case 'X':
 				if (strcmp(optarg, "use-set-session-authorization") == 0)
-*/					/* no-op, still allowed for compatibility */ ;
+					/* no-op, still allowed for compatibility */ ;
+				else if (strcmp(optarg, "disable-triggers") == 0)
+					disable_triggers = 1;
+				else
+				{
+					fprintf(stderr,
+							("%s: invalid -X option -- %s\n"),
+							progname, optarg);
+					fprintf(stderr, ("Try \"%s --help\" for more information.\n"), progname);
+					exit(1);
+				}
 				
-				//else if (strcmp(optarg, "disable-triggers") == 0)
-				//	disable_triggers = 1;
-				//else
-				//{
-				//	fprintf(stderr,
-				//			("%s: invalid -X option -- %s\n"),
-				//			pszProgName , optarg);
-				//	fprintf(stderr, ("Try \"%s --help\" for more information.\n"), pszProgName );
-				//	exit(1);
-				//}
-				
-				//pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms ); 
-				//break;
+				pInputOpts->pszPassThroughParms = addPassThroughParm( c, optarg, pInputOpts->pszPassThroughParms ); 
+				break;
 
 				/* This covers the long options equivalent to -X xxx. */
 			case 0:
@@ -528,7 +512,7 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 
 			case 1:
 				/* mpp-c remote compression program */
-				pInputOpts->pszCompressionProgram = "gunzip"; /*Safe_strdup(optarg);*/
+				pInputOpts->pszCompressionProgram = Safe_strdup(optarg);
 				break;
 
 			case 2:
@@ -537,7 +521,7 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 				if ( bSawCDB_S_Option )
 				{
 					// Ignore mpp_s option
-					mpp_err_msg(logInfo, pszProgName,  "ignoring the mpp-s option, since the mpp-cf option is set.\n");
+					write_err_msg( "ignoring the mpp-s option, since the mpp-cf option is set.\n");
 				}
 				
 				if ( !FillCDBSet( &pInputOpts->set, optarg ) )
@@ -557,8 +541,8 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 				break;
 				
 			case 5:
-				/* mpp-hdb master database name */
-				//pInputOpts->pszMasterDBName = Safe_strdup(optarg);
+				/* mpp-hdb head database name */
+				//pInputOpts->pszHeadDBName = Safe_strdup(optarg);
 				break;
 				
 			case 6:
@@ -577,93 +561,62 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 				if ( pInputOpts->set.type == SET_INDIVIDUAL )
 				{
 					// Ignore this, as we've already encountered an individual spec
-					mpp_err_msg(logInfo, pszProgName,  "ignoring the mpp-s option, since the mpp-cf option is set.\n");
+					write_err_msg( "ignoring the mpp-s option, since the mpp-cf option is set.\n");
 				}
 				else
                  */
-	/*			{
+				{
 					if ( strcasecmp( optarg, "a") == 0 ) 
 						pInputOpts->set.type = SET_ALL;
 					else if ( strcasecmp( optarg, "t") == 0 )
-						pInputOpts->set.type = SET_SEGDBS_ONLY;
+						pInputOpts->set.type = SET_TAILS_ONLY;
 					else if ( strcasecmp( optarg, "h") == 0 )
-						pInputOpts->set.type = SET_MASTER_ONLY;
+						pInputOpts->set.type = SET_HEAD_ONLY;
 					else
 					{
-						mpp_err_msg(logInfo, pszProgName,  "invalid mpp-s option %s.  Must be a, t, or h.\n", optarg);
+						write_err_msg( "invalid mpp-s option %s.  Must be a, t, or h.\n", optarg);
 						exit(1);
 					}
 				}
 				break;
-	*/		
-			case 9:
-				/* mpp-l backup file location */
-				if ( strcasecmp( optarg, "a") == 0 ) 
-					pInputOpts->backupLocation = FILE_ON_ALL;
-				else if ( strcasecmp( optarg, "p") == 0 )
-					pInputOpts->backupLocation = FILE_ON_PRIMARIES;
-				else
-				{
-					mpp_err_msg(logError, pszProgName,  "invalid mpp-l option %s.  Must be a (all), or p (primaries only).\n", optarg);
-					exit(1);
-				}
-				break;
 				
 			default:
-				fprintf(stderr, ("Try \"%s --help\" for more information.\n"), pszProgName );
+				fprintf(stderr, ("Try \"%s --help\" for more information.\n"), progname);
 				exit(1);
 		}
 	}
 
-	/* 
-	 * get PG env variables, override only of no cmd-line value specified 
-	 */
-	if (pInputOpts->pszDBName == NULL)
+/*	if (optind < argc)
+		inputFileSpec = argv[optind];
+	else
+		inputFileSpec = NULL;
+*/
+	/* Should get at most one of -d and -f, else user is confused */
+	if (opts->dbname == NULL)
 	{
-		if (getenv("PGDATABASE") != NULL)
-		{
-			pInputOpts->pszDBName = Safe_strdup(getenv("PGDATABASE"));
-			pInputOpts->pszMasterDBName = Safe_strdup(getenv("PGDATABASE")); /* TODO: is this variable redundant? */
-		}
-	}
-	
-	if (pInputOpts->pszPGPort == NULL)
-    {
-        if (getenv("PGPORT") != NULL)
-            pInputOpts->pszPGPort = Safe_strdup(getenv("PGPORT"));
-    }
-	
-	if (pInputOpts->pszPGHost == NULL)
-    {
-        if (getenv("PGHOST") != NULL)
-            pInputOpts->pszPGHost = Safe_strdup(getenv("PGHOST"));
-    }
-	
-	
-	/* 
-	 * Check for cmd line parameter errors.
-	 */
-	if (pInputOpts->pszDBName == NULL)
-	{
-		mpp_err_msg(logError, pszProgName,  "%s command line missing the database parameter (-d)\n", pszProgName  );
+		write_err_msg( "Error: %s command line missing the database parameter (-d)\n", progname );
 		exit(1);
 	}
 	opts->useDB = 1;
 
 	if (pInputOpts->pszKey == NULL)
 	{
-		mpp_err_msg(logError, pszProgName,  "%s command line missing the date time backup key parameter (--mpp-k)\n", pszProgName  );
+		write_err_msg( "Error: %s command line missing the date time backup key parameter (--mpp-k)\n", progname );
 		exit(1);
 	}
 
-	if (pInputOpts->pszMasterDBName == NULL)
+	if (pInputOpts->pszHeadDBName == NULL)
 	{
-		mpp_err_msg(logError, pszProgName,  "%s command line missing the master database parameter (--)\n", pszProgName  );
+		write_err_msg( "Error: %s command line missing the head database parameter (--mpp-hdb)\n", progname );
 		exit(1);
 	}
 
 	if (opts->formatName == NULL)
 	{
+        /*
+		write_err_msg( "Error: %s command line missing the format parameter (-F)\n", progname );
+		exit(1);
+        */
         opts->formatName = "p";
 	}
 
@@ -697,11 +650,17 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 				break;
 				
 			default:
-				mpp_err_msg(logError, pszProgName, "unrecognized archive format '%s'; please specify 'p', 't', or 'c'\n",
+				write_err_msg("unrecognized archive format '%s'; please specify 'p', 't', or 'c'\n",
 						  	opts->formatName);
 				exit(1);
 		}
 	}
+    
+    if (pInputOpts->pszPGPort == NULL)
+    {
+        if (getenv("PGPORT") != NULL)
+            pInputOpts->pszPGPort = Safe_strdup(getenv("PGPORT"));
+    }
 }
 
 /*
@@ -785,26 +744,24 @@ void* threadProc(void *arg)
 	 */
 	ThreadParm* pParm = (ThreadParm *)arg;
 	
-	SegmentDatabase* sSegDB	= pParm->pSourceSegDBData;
-	SegmentDatabase* tSegDB	= pParm->pTargetSegDBData;
+	SegmentInstance* pSegInst	= pParm->pSegInstData;
 	const InputOptions* pInputOpts	= pParm->pOptionsData;
 	const char* pszKey				= pInputOpts->pszKey;
 	PGconn* pConn;
-	char*	pszPassThroughCredentials;
-	char*	pszPassThroughTargetInfo;
+	char* pszPassThroughCredentials;
 	PQExpBuffer Qry;
 	PGresult* pRes; 
-	int		sock;
-	fd_set	input_mask;
+	int sock;
+	fd_set input_mask;
 	bool	bSentCancelMessage;
 	bool	bIsFinished;
 	bool	bIsStarted;
 	int		nTries;
-	char*	pszNotifyRelName;
-	char*	pszNotifyRelNameStart;
-	char*	pszNotifyRelNameSucceed;
-	char*	pszNotifyRelNameFail;
-	struct	timeval tv;
+	char* pszNotifyRelName;
+	char* pszNotifyRelNameStart;
+	char* pszNotifyRelNameSucceed;
+	char* pszNotifyRelNameFail;
+	struct timeval tv;
 	PGnotify* pNotify;
 	int nNotifies;
 		
@@ -816,32 +773,29 @@ void* threadProc(void *arg)
 	pthread_sigmask( SIG_SETMASK, &newset, NULL );
 			
 	/* Create a connection for this thread */
-	if ( strcasecmp( pInputOpts->pszDBName, pInputOpts->pszMasterDBName ) != 0 )
+	if ( strcasecmp( pInputOpts->pszDBName, pInputOpts->pszHeadDBName ) != 0 )
 	{
-		if ( sSegDB->pszDBName != NULL )
-			free( sSegDB->pszDBName );
+		if ( pSegInst->pszDBName != NULL )
+			free( pSegInst->pszDBName );
 		
-		sSegDB->pszDBName 	= Safe_strdup( pInputOpts->pszDBName );
+		pSegInst->pszDBName 	= Safe_strdup( pInputOpts->pszDBName );
 	}
 	
-	/* connect to the source segDB to start mpp_dump_agent there */
-	pConn = MakeDBConnection( sSegDB, false );
+	pConn = MakeDBConnection( pSegInst, false );
 	if ( PQstatus(pConn) == CONNECTION_BAD )
 	{
 		g_b_SendCancelMessage = true;
-		pParm->pszErrorMsg = MakeString( "Connection to dbid %d on host %s failed: %s",
-										sSegDB->dbid, StringNotNull(sSegDB->pszHost, "localhost"), PQerrorMessage(pConn) );
-		mpp_err_msg(logError, pszProgName,  pParm->pszErrorMsg );
+		pParm->pszErrorMsg = MakeString( "Connection to segment %d instance %d on host %s failed: %s",
+										pSegInst->segid, pSegInst->instid, StringNotNull(pSegInst->pszHost, "localhost"), PQerrorMessage(pConn) );
+		write_err_msg( pParm->pszErrorMsg );
 		PQfinish(pConn);
 		return NULL;
 	}
 	
 	/* issue a LISTEN command for 3 different names*/ 
-	DoCancelNotifyListen( pConn, true, pszKey, sSegDB->role, sSegDB->dbid, tSegDB->dbid, SUFFIX_START );
-	DoCancelNotifyListen( pConn, true, pszKey, sSegDB->role, sSegDB->dbid, tSegDB->dbid, SUFFIX_SUCCEED );
-	DoCancelNotifyListen( pConn, true, pszKey, sSegDB->role, sSegDB->dbid, tSegDB->dbid, SUFFIX_FAIL );
-	
-	mpp_err_msg(logInfo, pszProgName, "Listening for messages from dbid %d server (source) for dbid %d restore\n", sSegDB->dbid, tSegDB->dbid);
+	DoCancelNotifyListen( pConn, true, pszKey, pSegInst->instid, pSegInst->segid, SUFFIX_START );
+	DoCancelNotifyListen( pConn, true, pszKey, pSegInst->instid, pSegInst->segid, SUFFIX_SUCCEED );
+	DoCancelNotifyListen( pConn, true, pszKey, pSegInst->instid, pSegInst->segid, SUFFIX_FAIL );
 	
 	/* Execute mpp_restore_launch  */
 	
@@ -850,40 +804,30 @@ void* threadProc(void *arg)
 	 * in the parameter pszPassThroughCredentials
 	 */
 	pszPassThroughCredentials = NULL;
-	if ( sSegDB->pszDBPswd != NULL && *sSegDB->pszDBPswd != '\0' )
-		pszPassThroughCredentials = DataToBase64( sSegDB->pszDBPswd, strlen(sSegDB->pszDBPswd) );
-	
-	pszPassThroughTargetInfo = MakeString("--target-dbid %d --target-host %s --target-port %d ",
-										  tSegDB->dbid, tSegDB->pszHost, tSegDB->port);
+	if ( pSegInst->pszDBPswd != NULL && *pSegInst->pszDBPswd != '\0' )
+		pszPassThroughCredentials = DataToBase64( pSegInst->pszDBPswd, strlen(pSegInst->pszDBPswd) );
 	
 	Qry = createPQExpBuffer();
-	appendPQExpBuffer( Qry, "SELECT * FROM mpp_restore_launch('%s', '%s', '%s', '%s', '%s', '%s', %d, %s)", 
+	appendPQExpBuffer( Qry, "SELECT * FROM mpp_restore_launch('%s', '%s', '%s', '%s', '%s', %s)", 
 					StringNotNull( pInputOpts->pszBackupDirectory, ""), 
 					pszKey, 
 					StringNotNull( pInputOpts->pszCompressionProgram, ""), 
 					StringNotNull( pInputOpts->pszPassThroughParms, ""),
 					StringNotNull( pszPassThroughCredentials, ""),
-					StringNotNull( pszPassThroughTargetInfo, ""),
-					tSegDB->dbid,
 					pInputOpts->bOnErrorStop ? "true" : "false");
 					
 	if ( pszPassThroughCredentials != NULL )
 		free( pszPassThroughCredentials );
-	
-	if ( pszPassThroughTargetInfo != NULL)
-		free( pszPassThroughTargetInfo );
-	
+ 					
 	pRes = PQexec(pConn, Qry->data ); 
 	if (!pRes || PQresultStatus(pRes) != PGRES_TUPLES_OK || PQntuples(pRes) == 0 )
 	{
 		g_b_SendCancelMessage = true;
 		pParm->pszErrorMsg = MakeString( "could not start mpp restore: %s", PQerrorMessage(pConn) );
-		mpp_err_msg(logError, pszProgName, pParm->pszErrorMsg);
+		write_err_msg(pParm->pszErrorMsg);
 		PQfinish( pConn );
 		return NULL;
 	}
-	
-	mpp_err_msg(logInfo, pszProgName, "Successfully launched mpp restore on dbid %d to restore dbid %d\n", sSegDB->dbid, tSegDB->dbid);
 	
 	pParm->pszRemoteBackupPath = strdup( PQgetvalue(pRes, 0, 0) );
 	
@@ -900,8 +844,8 @@ void* threadProc(void *arg)
 	bIsStarted = false;
 	nTries = 0;
 
-	pszNotifyRelName = MakeString("N%s_%d_%d_T%d",
-							pszKey, sSegDB->role, sSegDB->dbid, tSegDB->dbid );
+	pszNotifyRelName = MakeString("N%s_%d_%d",
+							pszKey, pSegInst->instid, pSegInst->segid );
 	pszNotifyRelNameStart = MakeString("%s_%s", pszNotifyRelName, SUFFIX_START);
 	pszNotifyRelNameSucceed = MakeString("%s_%s", pszNotifyRelName, SUFFIX_SUCCEED);
 	pszNotifyRelNameFail = MakeString("%s_%s", pszNotifyRelName, SUFFIX_FAIL);
@@ -911,10 +855,10 @@ void* threadProc(void *arg)
 		// Check to see whether another thread has failed and therefore we should cancel
 		if ( g_b_SendCancelMessage && !bSentCancelMessage && bIsStarted )
 		{
-			mpp_err_msg(logInfo, pszProgName,  "noticed that a cancel order is in effect. Informing dbid %d on host %s\n", 
-							sSegDB->dbid, StringNotNull(sSegDB->pszHost, "localhost") );
+			write_err_msg( "noticed that a cancel order is in effect. Informing segment %d instance %d on host %s\n", 
+							pSegInst->segid, pSegInst->instid, StringNotNull(pSegInst->pszHost, "localhost") );
 			// Either one of the other threads have failed, or a Ctrl C was received.  So post a cancel message
-			DoCancelNotifyListen( pConn, false, pszKey, sSegDB->role, sSegDB->dbid, tSegDB->dbid, NULL );
+			DoCancelNotifyListen( pConn, false, pszKey, pSegInst->instid, pSegInst->segid, NULL );
 			bSentCancelMessage = true;
 		}
 		
@@ -924,9 +868,9 @@ void* threadProc(void *arg)
 		if ( select( sock+1, &input_mask, NULL, NULL, &tv ) < 0 )
 		{
 			g_b_SendCancelMessage = true;
-			pParm->pszErrorMsg = MakeString("select failed for backup key %s, source dbid %d, target dbid %d failed\n",
-											pszKey, sSegDB->dbid, tSegDB->dbid);
-			mpp_err_msg(logError, pszProgName,  pParm->pszErrorMsg );
+			pParm->pszErrorMsg = MakeString("select failed for backup key %s, instid %d, segid %d failed\n",
+											pszKey, pSegInst->instid, pSegInst->segid);
+			write_err_msg( pParm->pszErrorMsg );
 			PQfinish(pConn);
 			return NULL;
 		}
@@ -935,9 +879,9 @@ void* threadProc(void *arg)
 		if ( PQstatus( pConn ) == CONNECTION_BAD )
 		{
 			g_b_SendCancelMessage = true;
-			pParm->pszErrorMsg = MakeString("connection went down for backup key %s, source dbid %d, target dbid %d\n",
-											pszKey, sSegDB->dbid, tSegDB->dbid);
-			mpp_err_msg(logFatal, pszProgName,  pParm->pszErrorMsg );
+			pParm->pszErrorMsg = MakeString("connection went down for backup key %s, instid %d, segid %d\n",
+											pszKey, pSegInst->instid, pSegInst->segid);
+			write_err_msg( pParm->pszErrorMsg );
 			PQfinish(pConn);
 			return NULL;
 		}
@@ -953,15 +897,15 @@ void* threadProc(void *arg)
 				if ( strcasecmp( pszNotifyRelNameStart, pNotify->relname ) == 0 )
 				{
 					bIsStarted = true;
-					mpp_err_msg(logInfo, pszProgName, "restore started for source dbid %d, target dbid %d on host %s\n", 
-								sSegDB->dbid, tSegDB->dbid, StringNotNull(sSegDB->pszHost, "localhost") );
+					write_err_msg("restore started for segment %d instance %d on host %s\n", 
+								pSegInst->segid, pSegInst->instid, StringNotNull(pSegInst->pszHost, "localhost") );
 				}
 				else if ( strcasecmp( pszNotifyRelNameSucceed, pNotify->relname ) == 0 )
 				{
 					bIsFinished = true;
 					pParm->bSuccess = true;
-					mpp_err_msg(logInfo, pszProgName, "restore succeeded for source dbid %d, target dbid %d on host %s\n", 
-								sSegDB->dbid, tSegDB->dbid, StringNotNull(sSegDB->pszHost, "localhost") );
+					write_err_msg("restore succeeded for segment %d instance %d on host %s\n", 
+								pSegInst->segid, pSegInst->instid, StringNotNull(pSegInst->pszHost, "localhost") );
 				}
 				else if ( strcasecmp( pszNotifyRelNameFail, pNotify->relname ) == 0 )
 				{
@@ -969,10 +913,10 @@ void* threadProc(void *arg)
 					bIsFinished = true;
 					pParm->bSuccess = false;
 					// Make call to get error message from file on server
-					pParm->pszErrorMsg = ReadBackendBackupFile( pConn, pInputOpts->pszBackupDirectory, pszKey, BFT_RESTORE_STATUS, pszProgName );
+					pParm->pszErrorMsg = ReadBackendBackupFile( pConn, pInputOpts->pszBackupDirectory, pszKey, BFT_RESTORE_STATUS );
 					
-					mpp_err_msg(logError, pszProgName, "restore failed for source dbid %d, target dbid %d on host %s\n", 
-								sSegDB->dbid, tSegDB->dbid, StringNotNull(sSegDB->pszHost, "localhost"));
+					write_err_msg("restore failed for segment %d instance %d on host %s\n", 
+								pSegInst->segid, pSegInst->instid, StringNotNull(pSegInst->pszHost, "localhost"));
 				}
 			}
 			
@@ -988,34 +932,26 @@ void* threadProc(void *arg)
 				{
 					bIsFinished = true;
 					pParm->bSuccess = false;
-					pParm->pszErrorMsg = MakeString( "restore failed to start for source dbid %d, target dbid %d on host %s in the required time interval\n", 
-												sSegDB->dbid, tSegDB->dbid, StringNotNull(sSegDB->pszHost, "localhost") );
-					DoCancelNotifyListen( pConn, false, pszKey, sSegDB->role, sSegDB->dbid, tSegDB->dbid, NULL );
+					pParm->pszErrorMsg = MakeString( "restore failed to start for segment %d instance %d on host %s in the required time interval\n", 
+												pSegInst->segid, pSegInst->instid, StringNotNull(pSegInst->pszHost, "localhost") );
+					DoCancelNotifyListen( pConn, false, pszKey, pSegInst->instid, pSegInst->segid, NULL );
 					bSentCancelMessage = true;
 				}
 			}
 		}
 	}
 	
-	if(pszNotifyRelName != NULL)
-		free(pszNotifyRelName);
-	if(pszNotifyRelNameStart != NULL)
-		free(pszNotifyRelNameStart);
-	if(pszNotifyRelNameSucceed != NULL)
-		free(pszNotifyRelNameSucceed);
-	if(pszNotifyRelNameFail != NULL)
-		free(pszNotifyRelNameFail);
+	free(pszNotifyRelName);
+	free(pszNotifyRelNameStart);
+	free(pszNotifyRelNameSucceed);
+	free(pszNotifyRelNameFail);
 	
 	PQfinish(pConn);
 	
 	return(NULL);
 }
 
-bool restoreMaster( InputOptions* pInputOpts, 
-					PGconn *pConn, 
-					SegmentDatabase *sSegDB, 
-					SegmentDatabase *tSegDB, 
-					ThreadParm* pParm )
+bool restoreHead( InputOptions* pInputOpts, PGconn *pConn, SegmentInstance *pSegInst, ThreadParm* pParm )
 {
 	bool				rtn			= false;
 	bool bForcePassword = false;
@@ -1023,8 +959,8 @@ bool restoreMaster( InputOptions* pInputOpts,
 	
 	memset( pParm, 0, sizeof(ThreadParm) );
 	
-	/* We need to restore the master */
-	mpp_err_msg(logInfo, pszProgName, "Starting to restore the master database.\n" );
+	// We need to restore the head
+	write_err_msg("Starting to restore the head.\n" );
 		
 	if (opts != NULL && opts->requirePassword)
 		bForcePassword = true;
@@ -1032,19 +968,18 @@ bool restoreMaster( InputOptions* pInputOpts,
 	if (opts != NULL && opts->ignoreVersion )
 		bIgnoreVersion = true;
 	
-	/* Now, spin off a thread to do the restore, and wait for it to finish */
+	// Now, spin off a thread to do the restore, and wait for it to finish
 	pParm->thread				= 0;
-	pParm->pTargetSegDBData		= tSegDB; 
-	pParm->pSourceSegDBData		= sSegDB;
+	pParm->pSegInstData			= pSegInst; 
 	pParm->pOptionsData			= pInputOpts;
 	pParm->bSuccess				= false;
 	pParm->pszErrorMsg			= NULL;
 	pParm->pszRemoteBackupPath	= NULL;
 	
-	mpp_err_msg(logInfo, pszProgName,  "Creating thread to restore master database: host %s port %d database %s\n",
-			StringNotNull(pParm->pTargetSegDBData->pszHost, "localhost"),
-							pParm->pTargetSegDBData->port,
-							pParm->pTargetSegDBData->pszDBName
+	write_err_msg( "Creating thread to restore head: host %s port %d database %s\n",
+			StringNotNull(pParm->pSegInstData->pszHost, "localhost"),
+							pParm->pSegInstData->port,
+							pParm->pSegInstData->pszDBName
 			);
 			
 	pthread_create(&pParm->thread, 
@@ -1057,23 +992,23 @@ bool restoreMaster( InputOptions* pInputOpts,
 	
 	if ( pParm->bSuccess )
 	{
-		mpp_err_msg(logInfo, pszProgName,  "Successfully restored master database: host %s port %d database %s\n",
-						StringNotNull(pParm->pTargetSegDBData->pszHost, "localhost"),
-						pParm->pTargetSegDBData->port,
-						pParm->pTargetSegDBData->pszDBName
+		write_err_msg( "Successfully restored head: host %s port %d database %s\n",
+						StringNotNull(pParm->pSegInstData->pszHost, "localhost"),
+						pParm->pSegInstData->port,
+						pParm->pSegInstData->pszDBName
 					 );
 		rtn = true;					 
 	}
 	else
 	{
 		if ( pParm->pszErrorMsg != NULL )
-			mpp_err_msg(logError, pszProgName, "with error: \n{%s}\n", pParm->pszErrorMsg );
+			write_err_msg( "with error: \n{%s}\n", pParm->pszErrorMsg );
 		else
 		{
-			mpp_err_msg(logError, pszProgName,  "Failed to restore master database: host %s port %d database %s\n",
-							StringNotNull(pParm->pTargetSegDBData->pszHost, "localhost"),
-							pParm->pTargetSegDBData->port,
-							pParm->pTargetSegDBData->pszDBName
+			write_err_msg( "Failed to restore head: host %s port %d database %s\n",
+							StringNotNull(pParm->pSegInstData->pszHost, "localhost"),
+							pParm->pSegInstData->port,
+							pParm->pSegInstData->pszDBName
 							);
 		}
 	}
@@ -1086,16 +1021,16 @@ bool restoreMaster( InputOptions* pInputOpts,
  * First, it initializes the ThreadParmArray.  Then it loops and creates each of the threads.  
  * It then waits for all threads to finish. 
  */
-void spinOffThreads(PGconn* pConn, InputOptions* pInputOpts, const RestorePairArray *restorePairAr, ThreadParmArray* pParmAr )
+void spinOffThreads(PGconn* pConn, InputOptions* pInputOpts, const SegmentInstanceArray* pSegInstAr, ThreadParmArray* pParmAr )
 {
 	int i;
 
 	/* Create a thread and have it work on executing the dump on the
-	* appropriate segdb.
+	* appropriate tail.
 	*/
-	if ( !createThreadParmArray( restorePairAr->count, pParmAr ) )
+	if ( !createThreadParmArray( pSegInstAr->count, pParmAr ) )
 	{
-		mpp_err_msg(logError, pszProgName,  "Cannot allocate memory for thread parameters\n" );
+		write_err_msg( "Cannot allocate memory for thread parameters\n" );
 		exit(-1);
 	}
 	
@@ -1103,22 +1038,21 @@ void spinOffThreads(PGconn* pConn, InputOptions* pInputOpts, const RestorePairAr
 	{
 		ThreadParm* pParm = &pParmAr->pData[i];
 		
-		pParm->pSourceSegDBData = &restorePairAr->pData[i].segdb_source;
-		pParm->pTargetSegDBData = &restorePairAr->pData[i].segdb_target;
+		pParm->pSegInstData = &pSegInstAr->pData[i];
 		pParm->pOptionsData = pInputOpts;
 		pParm->bSuccess		= false;
         
-        /* exclude master node */
-        if (pParm->pTargetSegDBData->role == ROLE_MASTER || !pParm->pTargetSegDBData->isValid)
+        // exclude head node
+        if (pParm->pSegInstData->instid == 1 || !pParm->pSegInstData->isValid)
             continue;
 		
-		mpp_err_msg(logInfo, pszProgName, "Creating thread to restore dbid %d (%s:%d) from backup file on dbid %d (%s:%d)\n",
-					pParm->pTargetSegDBData->dbid,
-					StringNotNull(pParm->pTargetSegDBData->pszHost, "localhost"),
-					pParm->pTargetSegDBData->port,
-					pParm->pSourceSegDBData->dbid,
-					StringNotNull(pParm->pSourceSegDBData->pszHost, "localhost"),
-					pParm->pSourceSegDBData->port);
+		write_err_msg( "Creating thread to restore segment %d instance %d: host %s port %d database %s\n",
+				pParm->pSegInstData->segid,
+				pParm->pSegInstData->instid,
+				StringNotNull(pParm->pSegInstData->pszHost, "localhost"),
+				pParm->pSegInstData->port,
+				pParm->pSegInstData->pszDBName
+				);
 				
 		pthread_create(&pParm->thread, 
 						NULL, 
@@ -1126,13 +1060,14 @@ void spinOffThreads(PGconn* pConn, InputOptions* pInputOpts, const RestorePairAr
 						pParm);
 	}
 
-	mpp_err_msg(logInfo, pszProgName, "Waiting for all remote %s programs to finish.\n", pszAgent );
+	write_err_msg( "%s: Waiting for all remote %s programs to finish.\n",
+				GetTimeNow(), pszAgent );
 				
 	/* Wait for all threads to complete */
 	for (i=0; i<pParmAr->count; i++)
 	{
 		ThreadParm* pParm = &pParmAr->pData[i]; 
-        // exclude master node and not valid node
+        // exclude head node and not valid node
         if (pParm->thread == (pthread_t)NULL)
             continue;
 		pthread_join( pParm->thread, NULL);
@@ -1182,8 +1117,7 @@ bool createThreadParmArray( int nCount, ThreadParmArray* pParmAr)
 		ThreadParm* p = &pParmAr->pData[i];
 		
 		p->thread				= 0;
-		p->pSourceSegDBData		= NULL;
-		p->pTargetSegDBData		= NULL;
+		p->pSegInstData			= NULL;
 		p->pOptionsData 		= NULL;
 		p->bSuccess				= true;
 		p->pszErrorMsg			= NULL;
@@ -1196,7 +1130,7 @@ bool createThreadParmArray( int nCount, ThreadParmArray* pParmAr)
 /*
  * reportRestoreResults: This function outputs a summary of the restore results to a file or to stdout
  */
-int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pMasterParm, const ThreadParmArray* pParmAr )
+int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pHeadParm, const ThreadParmArray* pParmAr )
 {
 	InputOptions* pOptions;
 	FILE* fRptFile = NULL;
@@ -1209,15 +1143,15 @@ int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pMas
 	char* pszStatus;
 	char* pszMsg;
 	
-	assert( pParmAr != NULL &&  pMasterParm != NULL );
+	assert( pParmAr != NULL &&  pHeadParm != NULL );
 	
-	if ( pParmAr->count == 0 && pMasterParm->pOptionsData == NULL )
+	if ( pParmAr->count == 0 && pHeadParm->pOptionsData == NULL )
 	{
-		mpp_err_msg(logInfo, pszProgName,  "No results to report." );
+		write_err_msg( "No results to report." );
 		return 0;
 	}
 	
-	pOptions = ( pParmAr->count > 0) ?  pParmAr->pData[0].pOptionsData : pMasterParm->pOptionsData;
+	pOptions = ( pParmAr->count > 0) ?  pParmAr->pData[0].pOptionsData : pHeadParm->pOptionsData;
 	assert( pOptions != NULL );
 	
 	if ( pszReportDirectory == NULL || *pszReportDirectory == '\0' )
@@ -1235,7 +1169,7 @@ int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pMas
 		fRptFile = fopen( pszReportPathName, "w" );
 		if ( fRptFile == NULL )
 		{
-			mpp_err_msg(logWarn, pszProgName,  "Cannot open report file %s for writing.  Will use stdout instead.\n",
+			write_err_msg( "Cannot open report file %s for writing.  Will use stdout instead.\n",
 						pszReportPathName );
 			fRpt = stdout;
 		}
@@ -1246,9 +1180,9 @@ int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pMas
 	}
 	
 	/* Write to FILE a report showing the timestamp key, what the command line options were,
-	 * .which segment databases were backed up, to where, and any errors that occurred.
+	 * .which segments/instance pairs were backed up, to where, and any errors that occurred.
 	 */
-	fprintf( fRpt, "MPP Restore Report\n" );
+	fprintf( fRpt, "CDB Restore Report\n" );
 	fprintf( fRpt, "Timestamp Key: %s\n", pOptions->pszKey );
 
 	fprintf( fRpt, "mpp_restore Command Line: %s\n",  
@@ -1268,15 +1202,15 @@ int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pMas
 	{
 		if ( i == 0 )
 		{
-			if ( pMasterParm->pOptionsData != NULL )
-				pParm = pMasterParm;
+			if ( pHeadParm->pOptionsData != NULL )
+				pParm = pHeadParm;
 			else
 				continue;
 		}
 		else
 		{
 			pParm = &pParmAr->pData[i-1];
-            if (pParm->pTargetSegDBData->role == ROLE_MASTER)
+            if (pParm->pSegInstData->instid == 1)
                 continue;
 		}
 		
@@ -1287,14 +1221,12 @@ int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pMas
 		if ( pszMsg == NULL )
 			pszMsg = "";
 		
-		fprintf( fRpt, "\tRestore of %s on dbid %d (%s:%d) from file on dbid %d (%s:%d) %s: %s %s%s\n",   
-				pParm->pTargetSegDBData->pszDBName, 
-				pParm->pTargetSegDBData->dbid,
-				StringNotNull( pParm->pTargetSegDBData->pszHost, "localhost"),
-				pParm->pTargetSegDBData->port,
-				pParm->pSourceSegDBData->dbid, 
-				StringNotNull( pParm->pSourceSegDBData->pszHost, "localhost"),
-				pParm->pSourceSegDBData->port,
+		fprintf( fRpt, "\tInstance %d Segment %d Host %s Port %d Database %s BackupFile %s: %s %s%s\n",  
+				pParm->pSegInstData->instid, 
+				pParm->pSegInstData->segid, 
+				StringNotNull( pParm->pSegInstData->pszHost, "localhost"),
+				pParm->pSegInstData->port,
+				pParm->pSegInstData->pszDBName,
 				StringNotNull( pParm->pszRemoteBackupPath, ""),
 				pszStatus,
 				pszMsg,
@@ -1303,18 +1235,18 @@ int reportRestoreResults( const char* pszReportDirectory, const ThreadParm* pMas
 	}
     
     if ( failCount == 0 )
-        fprintf( fRpt, "\n%s  utility finished successfully.\n", pszProgName  );
+        fprintf( fRpt, "\n%s  utility finished successfully.\n", progname );
     else
-        fprintf( fRpt, "\n%s  utility finished unsuccessfully with  %d  failures.\n", pszProgName , failCount );
+        fprintf( fRpt, "\n%s  utility finished unsuccessfully with  %d  failures.\n", progname, failCount );
 	
 	if ( fRptFile != NULL )
 	{
 		fclose( fRptFile );
-		mpp_err_msg(logInfo, pszProgName,  "Report results written to %s.\n", pszReportPathName );
+		write_err_msg( "Report results written to %s.\n", pszReportPathName );
         if ( failCount == 0 )
-            mpp_err_msg(logInfo, pszProgName, "\n%s  utility finished successfully.\n", pszProgName  );
+            write_err_msg("\n%s  utility finished successfully.\n", progname );
         else
-            mpp_err_msg(logWarn, pszProgName, "\n%s  utility finished unsuccessfully with  %d  failures.\n", pszProgName , failCount );
+            write_err_msg("\n%s  utility finished unsuccessfully with  %d  failures.\n", progname, failCount );
 	}
 	
 	if ( pszReportPathName != NULL )

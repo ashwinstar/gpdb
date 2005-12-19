@@ -68,7 +68,7 @@ static void _die_horribly(ArchiveHandle *AH, const char *modulename, const char 
 static int	_canRestoreBlobs(ArchiveHandle *AH);
 static int	_restoringToDB(ArchiveHandle *AH);
 
-extern int g_role;
+extern int g_CDBInstID;
 
 
 /*
@@ -217,7 +217,7 @@ RestoreArchive(Archive *AHX, RestoreOptions *ropt)
 
 	ahprintf(AH, "--\n-- PostgreSQL database dump\n--\n\n");
     /* for segment databases only */
-    if ( g_role != 1)
+    if ( g_CDBInstID != 1)
         ahprintf(AH, "\n\n-- mpp specific\nSET mpp_role=UTILITY;\n--end mpp specific\n\n");
 
 
@@ -435,7 +435,7 @@ RestoreArchive(Archive *AHX, RestoreOptions *ropt)
 		}
 	}
 
-	ahprintf(AH, "--\n-- Bizgres MPP database dump complete\n--\n\n");
+	ahprintf(AH, "--\n-- PostgreSQL database dump complete\n--\n\n");
 }
 
 /*
@@ -1221,12 +1221,11 @@ write_msg(const char *modulename, const char *fmt,...)
 	va_list		ap;
     char* pszRe;
 
-    /* The following code is MPP Specific.  It's purpose is to
-     * create a char* with the error message that is the evaluation 
-	 * of the fmt and variable args passed to this function, so we
-	 * can save it to a file in the backup or restore and ultimately 
-	 * get it back to the driver program. The code was based on code 
-	 * in PGexpbuffer.c, appendPQExpBuffer
+    /* The following code is CDB Specific.  It's purpose is to
+     * create a char* with the error message that is the evaluation of the fmt and
+     * variable args passed to this function, so we can save it to a file in the backup or restore
+     * and ultimately get it back to the driver program.
+     * The code was based on code in PGexpbuffer.c, appendPQExpBuffer
      */     
     size_t nBytes = 128;
     char* psz = (char *)malloc(nBytes);
