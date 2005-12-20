@@ -124,6 +124,11 @@ static const char *useful_strerror(int errnum);
 static const char *error_severity(int elevel);
 static void append_with_tabs(StringInfo buf, const char *str);
 
+#if (!defined(__darwin__)) && (!defined(__solaris__))
+#if defined(__GLIBC__)
+#include <execinfo.h>
+#endif
+#endif
 
 /*
  * errstart --- begin an error-reporting cycle
@@ -1737,6 +1742,29 @@ send_message_to_server_log(ErrorData *edata)
 		append_with_tabs(&buf, debug_query_string);
 		appendStringInfoChar(&buf, '\n');
 	}
+
+#if (!defined(__darwin__)) && (!defined(__solaris__))
+#if defined(__GLIBC__)
+		
+	if (edata->elevel >= ERROR)
+	{
+		void	   *array[10];
+		size_t		size;
+		char	  **strings;
+		size_t		i;
+	
+		size = backtrace(array, 10);
+		strings = backtrace_symbols(array, size);
+		for (i = 0; i < size; i++)
+		{
+			appendBinaryStringInfo(&buf, prefix.data, prefix.len);
+			appendStringInfo(&buf, "Traceback %d:  %s", i, strings[i]);
+			appendStringInfoChar(&buf, '\n');
+		}
+		free(strings);
+	}
+#endif
+#endif
 
 #ifdef HAVE_SYSLOG
 	/* Write to syslog, if enabled */
