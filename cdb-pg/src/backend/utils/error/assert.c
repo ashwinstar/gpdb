@@ -19,6 +19,12 @@
 
 #include <unistd.h>
 
+#if (!defined(__darwin__)) && (!defined(__solaris__))
+#if defined(__GLIBC__)
+#include <execinfo.h>
+#endif
+#endif
+
 /*
  * ExceptionalCondition - Handles the failure of an Assert()
  */
@@ -38,6 +44,26 @@ ExceptionalCondition(char *conditionName,
 					 errorType, conditionName,
 					 fileName, lineNumber);
 	}
+	
+#if (!defined(__darwin__)) && (!defined(__solaris__))
+#if defined(__GLIBC__)
+		
+	{
+		void	   *array[10];
+		size_t		size;
+		char	  **strings;
+		size_t		i;
+	
+		size = backtrace(array, 10);
+		strings = backtrace_symbols(array, size);
+		for (i = 0; i < size; i++)
+		{
+			write_stderr("%s\n",strings[i]);
+		}
+		free(strings);
+	}
+#endif
+#endif
 
 #ifdef SLEEP_ON_ASSERT
 
