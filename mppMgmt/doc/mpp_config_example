@@ -160,30 +160,4 @@ ENCODING=UNICODE
 #declare -a MIRROR_DATA_DIRECTORY=(/mppdata/dbfast3 /mppdata/dbfast4)
 #declare -a MIRROR_DATA_DIRECTORY=(/mpp_mirror /mpp_mirror)
 
-################################################
-# OPTIONAL PARAMETERS FOR A BACKUP MASTER HOST
-################################################
-
-# A backup master host is optional. A backup master must be configured
-# at system initialization time. You can not set up a backup master
-# after Bizgres MPP has been set up. Uncomment these parameters to 
-# set up a backup master host. MPP keeps the primary and backup
-# master hosts in synch. The master host has the global system catalog
-# for Bizgres MPP, but not any user data.
-
-
-# The host name of the backup MPP master host.
-
-# STANDBY_HOSTNAME=backup_hostname
-
-
-# The additional IP address(es) of hosts allowed to connect to the 
-# backup MPP master instance. This adds an entry in the PostgreSQL 
-# pg_hba.conf file on the backup master instance created. You must 
-# at least supply the IP of the primary master host. The following 
-# setting will allow connections from all hosts.
-
-
-# STANDBY_IP_ALLOW=0.0.0.0/0
-
 
