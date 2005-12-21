@@ -829,14 +829,12 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		if (use_hashed_grouping || !sorted_path)
 		{
             best_path = cheapest_path;
-            if (Debug_print_prelim_plan)    /*CDB*/
-                elog_node_display(DEBUG1, "Path chosen: unordered", best_path, true);
+             /* elog(DEBUG1, "Path chosen: unordered"); CDB*/
 		}
 		else
 		{
             best_path = sorted_path;
-            if (Debug_print_prelim_plan)    /*CDB*/
-                elog_node_display(DEBUG1, "Path chosen: ordered", best_path, true);
+            /* elog(DEBUG1, "Path chosen: ordered"); CDB*/
 		}
 
 		/*

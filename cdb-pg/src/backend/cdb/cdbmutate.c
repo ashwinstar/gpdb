@@ -62,6 +62,15 @@ static bool doesUpdateAffectPartitionCols(MppPolicy * policy, List *rte);
 static bool hasCtid(Plan *plan);
 static bool hasCtid_outside_tlist(Plan *plan);
 
+#define remove_flow_ordering(flow) \
+	if (flow) { \
+		(flow)->numSortCols = 0; \
+		if ( (flow)->sortColIdx ) pfree((flow)->sortColIdx); \
+		(flow)->sortColIdx = NULL; \
+		if ( (flow)->sortOperators ) pfree((flow)->sortOperators); \
+		(flow)->sortOperators = NULL; \
+	}
+
 /* ------------------------------------------------------------------------- *
  * Function apply_motion() and apply_motion_mutator() add motion nodes to
  * a top-level Plan tree as directed by the Flow nodes in the plan.
@@ -202,6 +211,7 @@ apply_motion(Plan *plan, Query *query)
 											));
 						}
 
+						remove_flow_ordering(plan->flow); /* No need to preserve order on INSERT. */
 						plan->flow->hashExpr = getExprListFromTargetList(plan->targetlist, policy->nattrs, policy->attrs);
 						break;
 
