@@ -1775,6 +1775,7 @@ send_message_to_server_log(ErrorData *edata)
 		strings = backtrace_symbols(edata->stacktracearray, edata->stacktracesize);
 		for (i = 0; i < edata->stacktracesize; i++)
 		{
+			appendBinaryStringInfo(&buf, prefix.data, prefix.len);
 			appendStringInfo(&buf, "Traceback %d:  %s", i, strings[i]);
 			appendStringInfoChar(&buf, '\n');
 		}
