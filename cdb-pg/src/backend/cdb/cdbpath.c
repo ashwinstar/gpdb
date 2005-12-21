@@ -16,6 +16,7 @@
 #include "optimizer/pathnode.h" /* Path */
 #include "optimizer/paths.h"    /* compare_pathkeys() */
 
+#include "cdb/cdbdef.h"         /* CdbSwap() */
 #include "cdb/cdbllize.h"       /* makeFlow() */
 
 #include "cdb/cdbpath.h"        /* me */
@@ -44,7 +45,7 @@ Cost        cdb_motion_tuple_cost   = 0.0;
  *      meaning the caller is just checking and doesn't want to add motion.
  *    Else a CdbMotionPath is returned having either the specified pathkeys
  *      (if given and the motion uses Merge Receive), or the pathkeys
- *      of the original subpath (if the motion is one-to-one), or no
+ *      of the original subpath (if the motion is order-preserving), or no
  *      pathkeys otherwise (the usual case).
  */
 Path *
@@ -63,13 +64,13 @@ cdbpath_create_motion_path(PlannerInfo     *root,
     if (CdbPathLocus_IsEqual(subpath->locus, locus))
         return subpath;
 
-    /* qDisp can't send tuples to qExecs; qDisp can only receive.  (for now) */
-    if (CdbPathLocus_IsRoot(subpath->locus))
-        return NULL;
-
     /* Moving subpath output to a single executor process (qDisp or qExec)? */
     if (CdbPathLocus_IsBottleneck(locus))
     {
+        /* qDisp can't send tuples to qExecs; it can only receive (for now). */
+        if (CdbPathLocus_IsRoot(subpath->locus))
+            return NULL;
+
         /* No motion needed if subpath can run anywhere giving same output. */
         if (CdbPathLocus_IsGeneral(subpath->locus))
             return subpath;
@@ -86,8 +87,35 @@ cdbpath_create_motion_path(PlannerInfo     *root,
         /* If the motion is 1-to-1, the rows will remain in the same order. */
         if (CdbPathLocus_IsBottleneck(subpath->locus))
             pathkeys = subpath->pathkeys;
-        else
-            Assert(CdbPathLocus_IsPartitioned(subpath->locus));
+
+        /* Must be partitioned-->bottleneck.
+         *  If caller gave pathkeys, they'll be used for Merge Receive.
+         *  If no pathkeys, Union Receive will arbitrarily interleave
+         *  the rows from the subpath partitions in no special order.
+         */
+        else if (!CdbPathLocus_IsPartitioned(subpath->locus))
+            goto invalid_motion_request;
+    }
+
+    /* Output from a single process to be distributed over a gang? */
+    else if (CdbPathLocus_IsBottleneck(subpath->locus))
+    {
+        /* qDisp can't send tuples to qExecs; it can only receive (for now). */
+        if (CdbPathLocus_IsRoot(subpath->locus))
+            return NULL;
+
+        /* Must be bottleneck-->partitioned or bottleneck-->replicated */
+        if (!CdbPathLocus_IsPartitioned(locus) &&
+            !CdbPathLocus_IsReplicated(locus))
+            goto invalid_motion_request;
+
+        /* Fail if caller disallows motion. */
+        if (require_existing_order &&
+            !pathkeys)
+            return NULL;
+
+        /* Each qExec receives a subset of the rows, with ordering preserved. */
+        pathkeys = subpath->pathkeys;
     }
 
     /* Does subpath produce same multiset of rows on every qExec of its gang? */
@@ -98,9 +126,9 @@ cdbpath_create_motion_path(PlannerInfo     *root,
         if (CdbPathLocus_IsReplicated(locus))
             return subpath;
 
-        /* general-->hashed, replicated-->hashed */
-        Assert(CdbPathLocus_IsHashed(locus) ||
-               CdbPathLocus_IsHashedOJ(locus));
+        /* Must be general-->partitioned or replicated-->partitioned */
+        if (!CdbPathLocus_IsPartitioned(locus))
+            goto invalid_motion_request;
 
         /* Fail if caller wants no motion. */
         if (require_existing_order &&
@@ -117,33 +145,32 @@ cdbpath_create_motion_path(PlannerInfo     *root,
         hashToSelfOnly = true;
     }
 
-    /* Moving subpath output to a gang of qExecs. */
+    /* Redistributing partitioned subpath output from one gang to another? */
     else if (CdbPathLocus_IsPartitioned(subpath->locus))
     {
-        /* partitioned-->hashed */
-        if (CdbPathLocus_IsHashed(locus) ||
-            CdbPathLocus_IsHashedOJ(locus))
+        /* partitioned-->partitioned? */
+        if (CdbPathLocus_IsPartitioned(locus))
         {
-            /* No motion if subpath hash key matches caller's request. */
+            /* No motion if subpath partitioning matches caller's request. */
             if (cdbpathlocus_compare(CdbPathLocus_Comparison_Equal, subpath->locus, locus))
                 return subpath;
         }
 
-        /* partitioned-->replicated */
-        else
-            Assert(CdbPathLocus_IsReplicated(locus));
+        /* Must be partitioned-->replicated */
+        else if (!CdbPathLocus_IsReplicated(locus))
+            goto invalid_motion_request;
 
         /* Fail if caller insists on ordered result or no motion. */
         if (require_existing_order)
             return NULL;
 
         /* Output streams lose any ordering they had.
-         * qExecs aren't allowed to merge sorted streams (for now).
+         * Only a qDisp or singleton qExec can merge sorted streams (for now).
          */
         pathkeys = NIL;
     }
     else
-        Assert(0);
+        goto invalid_motion_request;
 
     /* Don't materialize before motion. */
     if (IsA(subpath, MaterialPath))
@@ -191,6 +218,11 @@ cdbpath_create_motion_path(PlannerInfo     *root,
     pathnode->path.rescannable = false;
 
     return (Path *)pathnode;
+
+    /* Unexpected source or destination locus. */
+invalid_motion_request:
+    Assert(0);
+    return NULL;
 }                               /* cdbpath_create_motion_path */
 
 
@@ -345,18 +377,11 @@ cdbpath_match_preds_to_partkey(PlannerInfo     *root,
 {
     CdbpathMatchPredsContext ctx;
 
-    if (CdbPathLocus_IsStrewn(locus))
-        return false;
-
-    Assert(CdbPathLocus_IsHashed(locus) ||
-           CdbPathLocus_IsHashedOJ(locus));
-    Assert(locus.partkey);
-    
     if (!CdbPathLocus_IsHashed(locus) &&
         !CdbPathLocus_IsHashedOJ(locus))
-    	ereport(ERROR, (errcode(ERRCODE_MPP_FEATURE_NOT_YET),
-                        errmsg("Optimizer bug: Expected Hashed or HashedOJ in cdbpath_match_preds_to_partkey")
-                       ));
+        return false;
+
+    Assert(CdbPathLocus_Degree(locus) > 0);
 
     ctx.root                = root;
     ctx.mergeclause_list    = mergeclause_list;
@@ -551,7 +576,6 @@ typedef struct
 {
         CdbPathLocus    locus;
         CdbPathLocus    move_to;
-        double          rows;
         double          bytes;
         Path           *path;
         bool            oj_preserved;
@@ -607,6 +631,10 @@ cdbpath_motion_for_join(PlannerInfo      *root,
     if (IsA(inner.path, UniquePath))
         inner.path = ((UniquePath *)inner.path)->subpath;
 
+    /* Get rel sizes. */
+    outer.bytes = cdbpath_rows(outer.path) * outer.path->parent->width;
+    inner.bytes = cdbpath_rows(inner.path) * inner.path->parent->width;
+
     /*
      * Join must be done sequentially on qDisp if either source is on qDisp.
      *   NB: Motion to a single node - qDisp for instance - is the only motion
@@ -616,13 +644,6 @@ cdbpath_motion_for_join(PlannerInfo      *root,
         inner.move_to = outer.locus;
     else if (CdbPathLocus_IsRoot(inner.locus))
         outer.move_to = inner.locus;
-
-    /*
-     * If both sources are on a single qExec, join them there.
-     */
-    else if (CdbPathLocus_IsSingleQE(outer.locus) &&
-             CdbPathLocus_IsSingleQE(inner.locus))
-        return outer.locus;
 
     /*
      * Motion not needed if either source is everywhere (e.g. a constant).
@@ -668,22 +689,76 @@ cdbpath_motion_for_join(PlannerInfo      *root,
         return cdbpathlocus_join(outer.locus, inner.locus);
 
     /*
-     * Redistribute or replicate one source or both.
+     * Is either source confined to a single qExec?
+     */
+    else if (CdbPathLocus_IsSingleQE(outer.locus) ||
+             CdbPathLocus_IsSingleQE(inner.locus))
+    {                                       /* singleQE */
+        CdbpathMfjRel  *single = &outer;
+        CdbpathMfjRel  *other = &inner;
+        bool            single_immovable = outer.require_existing_order &&
+                                           !outer_pathkeys;
+        bool            other_immovable = inner.require_existing_order &&
+                                          !inner_pathkeys;
+
+        if (CdbPathLocus_IsSingleQE(other->locus))
+        {
+            CdbSwap(CdbpathMfjRel*, single, other);
+            CdbSwap(bool, single_immovable, other_immovable);
+        }
+
+        /* If both are on the same qExec, join there (no motion needed). */
+        if (CdbPathLocus_IsSingleQE(other->locus))
+            return other->locus;
+
+        /* If the singleQE rel can't be moved, bring the other rel to it. */
+        if (single_immovable)
+            other->move_to = single->locus;
+
+        /* Redistribute single rel if joining on other rel's partitioning key */
+        else if (cdbpath_match_preds_to_partkey(root,
+                                                mergeclause_list,
+                                                other->locus,
+                                                &single->move_to))  /* OUT */
+        {}
+
+        /* Replicate single rel if cheaper than redistributing both rels. */
+        else if (!single->oj_preserved &&
+                 single->bytes * getMPPSegmentCount() < single->bytes + other->bytes)
+            CdbPathLocus_MakeReplicated(&single->move_to);
+
+        /* Redistribute both rels on equijoin cols. */
+        else if (!other->require_existing_order &&
+                 cdbpath_partkeys_from_preds(root,
+                                             mergeclause_list,
+                                             single->path,
+                                             &single->move_to,  /* OUT */
+                                             &other->move_to))  /* OUT */
+        {}
+
+        /* No usable equijoin preds, or caller imposed restrictions on motion.
+         * Replicate single rel if cheaper than bottlenecking other rel.
+         */
+        else if (!single->oj_preserved &&
+                 single->bytes < other->bytes)
+            CdbPathLocus_MakeReplicated(&single->move_to);
+
+        /* Last resort: Move all partitions of other rel to single QE. */
+        else
+            other->move_to = single->locus;
+    }                                       /* singleQE */
+
+    /*
+     * Both sources are partitioned.  Redistribute or replicate one or both.
      */
     else
-    {
-        CdbpathMfjRel  *large;
-        CdbpathMfjRel  *small;
-
-        /* Get rel sizes. */
-        outer.rows  = cdbpath_rows(outer.path);
-        outer.bytes = outer.rows * outer.path->parent->width;
-        inner.rows  = cdbpath_rows(inner.path);
-        inner.bytes = inner.rows * inner.path->parent->width;
+    {                                       /* partitioned */
+        CdbpathMfjRel  *large = &outer;
+        CdbpathMfjRel  *small = &inner;
 
         /* Which rel is bigger? */
-        small = (outer.bytes < inner.bytes) ? &outer : &inner;
-        large = (outer.bytes < inner.bytes) ? &inner : &outer;
+        if (large->bytes < small->bytes)
+            CdbSwap(CdbpathMfjRel*, large, small);
 
         /* If joining on larger rel's partitioning key, redistribute smaller. */
         if (!small->require_existing_order &&
@@ -725,8 +800,10 @@ cdbpath_motion_for_join(PlannerInfo      *root,
                                              &small->move_to))
         {}
 
-        /* No usable equijoin preds.  Replicate one rel if possible. */
-        /* MPP TODO: Consider number of seg dbs per host. */
+        /* No usable equijoin preds, or couldn't consider the preferred motion.
+         * Replicate one rel if possible.
+         * MPP TODO: Consider number of seg dbs per host.
+         */
         else if (!small->require_existing_order &&
                  !small->oj_preserved)
             CdbPathLocus_MakeReplicated(&small->move_to);
@@ -740,7 +817,7 @@ cdbpath_motion_for_join(PlannerInfo      *root,
             CdbPathLocus_MakeSingleQE(&outer.move_to);
             CdbPathLocus_MakeSingleQE(&inner.move_to);
         }
-    }
+    }                                       /* partitioned */
 
     /*
      * Move outer.
