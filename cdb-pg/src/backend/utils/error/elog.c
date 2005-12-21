@@ -1745,6 +1745,7 @@ send_message_to_server_log(ErrorData *edata)
 
 #if (!defined(__darwin__)) && (!defined(__solaris__))
 #if defined(__GLIBC__)
+#if !defined(__OPTIMIZE__)
 		
 	if (edata->elevel >= ERROR)
 	{
@@ -1763,6 +1764,7 @@ send_message_to_server_log(ErrorData *edata)
 		}
 		free(strings);
 	}
+#endif
 #endif
 #endif
 

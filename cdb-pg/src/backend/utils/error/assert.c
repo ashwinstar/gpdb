@@ -47,6 +47,7 @@ ExceptionalCondition(char *conditionName,
 	
 #if (!defined(__darwin__)) && (!defined(__solaris__))
 #if defined(__GLIBC__)
+#if !defined(__OPTIMIZE__)
 		
 	{
 		void	   *array[10];
@@ -62,6 +63,7 @@ ExceptionalCondition(char *conditionName,
 		}
 		free(strings);
 	}
+#endif
 #endif
 #endif
 
