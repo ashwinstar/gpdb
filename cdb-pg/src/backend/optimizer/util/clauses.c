@@ -3000,9 +3000,9 @@ expression_tree_walker(Node *node,
 			}
 			break;
 		default:
-            Assert(false);
-            elog(ERROR, "unrecognized node type: %d",
-				 (int) nodeTag(node));
+            ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+                            errmsg_internal("unrecognized node type: %d",
+				                            nodeTag(node)) ));
 			break;
 	}
 	return false;
@@ -3524,9 +3524,9 @@ expression_tree_mutator(Node *node,
 			}
 			break;
 		default:
-            Assert(false);
-            elog(ERROR, "unrecognized node type: %d",
-				 (int) nodeTag(node));
+            ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+                            errmsg_internal("unrecognized node type: %d",
+				                            nodeTag(node)) ));
 			break;
 	}
 	/* can't get here, but keep compiler happy */
