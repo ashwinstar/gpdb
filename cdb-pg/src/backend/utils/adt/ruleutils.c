@@ -2470,8 +2470,6 @@ get_rte_for_var(Var *var, int levelsup, deparse_context *context)
 		rte = dpns->inner_rte;
 	else
 		rte = NULL;
-	if (rte == NULL)
-		elog(ERROR, "bogus varno: %d", var->varno);
 	return rte;
 }
 
@@ -2503,8 +2501,19 @@ get_names_for_var(Var *var, int levelsup, deparse_context *context,
 	/* Find appropriate RTE */
 	rte = get_rte_for_var(var, levelsup, context);
 
-	/* Emit results */
+    /* Emit results */
 	*schemaname = NULL;			/* default assumptions */
+
+    if (rte == NULL)
+    {
+        *attname = NULL;
+        *refname = "*BOGUS*";
+        ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR),
+                          errmsg_internal("bogus var: varno=%d varattno=%d",
+                                          var->varno, var->varattno) ));
+        return;
+    }
+
 	*refname = rte->eref->aliasname;
 
 	/* Exceptions occur only if the RTE is alias-less */
@@ -2589,6 +2598,14 @@ get_name_for_var_field(Var *var, int fieldno,
 
 	/* Find appropriate RTE */
 	rte = get_rte_for_var(var, levelsup, context);
+
+    if (rte == NULL)
+    {
+        ereport(WARNING, (errcode(ERRCODE_INTERNAL_ERROR),
+                          errmsg_internal("bogus var: varno=%d varattno=%d",
+                                          var->varno, var->varattno) ));
+        return "*BOGUS*";
+    }
 
 	attnum = var->varattno;
 
