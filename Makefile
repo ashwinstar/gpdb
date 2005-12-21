@@ -4,6 +4,7 @@ ISCONFIG=$(MPPPGDIR)/GNUmakefile
 
 RELEASE=`$(CURDIR)/releasetag`
 MPPDIR=mpp-pgsql$(RELEASE)
+MPPDOCDIR=$(CURDIR)/docs/release
 
 TARBALL=/tmp/$(MPPDIR).tar.gz
 
@@ -32,6 +33,7 @@ devel : HOMEDEP $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(MPPPGDIR); make install
 	@make mgmtcopy INSTLOC=$(INSTLOC)
+	@make copydocs INSTLOC=$(INSTLOC)
 	@make copylibs INSTLOC=$(INSTLOC)
 
 dist : INSTCFLAGS=$(OPTFLAGS)
@@ -40,8 +42,22 @@ dist : BIZDEP RECONFIG $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(MPPPGDIR); make install
 	@make mgmtcopy INSTLOC=$(INSTLOC)
+	@make copydocs INSTLOC=$(INSTLOC)
 	@make copylibs INSTLOC=$(INSTLOC)
 	@rm -f $(TARBALL); make tarball TARBALL=$(TARBALL) INSTLOC=$(INSTLOC)
+
+
+copydocs:
+	@if [ ! -d $(BIZHOME)/doc ] ; then mkdir $(BIZHOME)/doc; fi
+	@if [ ! -d $(MPPDOCDIR) ] ; then \
+	echo " Error Copying Documentation: $(MPPDOCDIR) is not present"; \
+	else \
+	echo "Copying Documentation" ;  \
+	echo "Copying  $(MPPDOCDIR)/README "; \
+	cp $(MPPDOCDIR)/README $(BIZHOME)/doc/MPP_README ; \
+	echo "Copying $(MPPDOCDIR)/pdf/MPP*.pdf " ; \
+	cp $(MPPDOCDIR)/pdf/MPP*.pdf $(BIZHOME)/doc/; \
+	fi 
 
 tarball :
 	@gtar czf $(TARBALL) $(INSTLOC)
