@@ -1223,6 +1223,9 @@ create_nestloop_path(PlannerInfo *root,
     if (IsA(inner_path, IndexPath) &&
         ((IndexPath *)inner_path)->isjoininner)
         inner_must_be_local = true;
+    else if (IsA(inner_path, BitmapHeapPath) &&
+             ((BitmapHeapPath *)inner_path)->isjoininner)
+        inner_must_be_local = true;
 
     /* Add motion nodes above subpaths and decide where to join. */
     join_locus = cdbpath_motion_for_join(root,

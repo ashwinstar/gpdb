@@ -267,6 +267,19 @@ plan_tree_walker(Node *node,
 				return true;
 			break;
 
+        case T_BitmapAnd:
+            if (walk_plan_node_fields((Plan *) node, walker, context))
+                return true;
+            if (walker((Node *) ((BitmapAnd *) node)->bitmapplans, context))
+                return true;
+            break;
+        case T_BitmapOr:
+            if (walk_plan_node_fields((Plan *) node, walker, context))
+                return true;
+            if (walker((Node *) ((BitmapOr *) node)->bitmapplans, context))
+                return true;
+            break;
+
 		case T_Scan:
 			/* Abstract: really should see only subclasses. */
 			return walk_scan_node_fields((Scan *) node, walker, context);
@@ -645,6 +658,29 @@ plan_tree_mutator(Node *node,
 				return (Node *) newappend;
 			}
 			break;
+
+        case T_BitmapAnd:
+			{
+				BitmapAnd  *old = (BitmapAnd *) node;
+                BitmapAnd  *mut;
+
+				FLATCOPY(mut, old, BitmapAnd);
+				PLANMUTATE(mut, old);
+				MUTATE(mut->bitmapplans, old->bitmapplans, List *);
+				return (Node *)mut;
+			}
+			break;
+        case T_BitmapOr:
+            {
+                BitmapOr   *old = (BitmapOr *) node;
+                BitmapOr   *mut;
+
+                FLATCOPY(mut, old, BitmapOr);
+                PLANMUTATE(mut, old);
+                MUTATE(mut->bitmapplans, old->bitmapplans, List *);
+                return (Node *)mut;
+            }
+            break;
 
 		case T_Scan:
 			/* Abstract: Should see only subclasses. */

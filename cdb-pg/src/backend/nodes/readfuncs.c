@@ -442,7 +442,7 @@ static ReindexStmt *
 _readReindexStmt(void)
 {
 	READ_LOCALS(ReindexStmt);
-	 
+	
 	READ_ENUM_FIELD(kind,ObjectType);
 	READ_NODE_FIELD(relation);
 	READ_STRING_FIELD(name);
@@ -646,9 +646,9 @@ _readAConst(void)
 	{
 		bool isInt = true;
 		int i = 0;
-		if (token[i] == ' ') 
+		if (token[i] == ' ')
 			i++;
-		if (token[i] == '-' || token[i] == '+') 
+		if (token[i] == '-' || token[i] == '+')
 			i++;
 		for (; i < length; i++)
 	 	   if (token[i] < '0' || token[i] > '9')
@@ -678,7 +678,7 @@ _readAExpr(void)
 	READ_LOCALS(A_Expr);
 	
 	token = pg_strtok(&length);	
-	 
+	
 	if (strncmp(token,"OPER",length)==0)
 	{
 		local_node->kind = AEXPR_OP;
@@ -721,7 +721,7 @@ _readAExpr(void)
 		local_node->kind = AEXPR_OF;
 		READ_NODE_FIELD(name);
 	}
-	else 
+	else
 	{
 		elog(ERROR,"Unable to understand A_Expr node %.30s",token);
 	}
@@ -1513,42 +1513,42 @@ _readRemoveFuncStmt(void)
 	READ_DONE();
 }
 
-static GrantStmt * 
+static GrantStmt *
 _readGrantStmt(void)
 {
-	READ_LOCALS(GrantStmt); 
+	READ_LOCALS(GrantStmt);
 	
-	READ_BOOL_FIELD(is_grant);		 
-	READ_ENUM_FIELD(objtype,GrantObjectType);	 
-	READ_NODE_FIELD(objects);		 
-	READ_NODE_FIELD(privileges);		 
-	READ_NODE_FIELD(grantees);		 
-	READ_BOOL_FIELD(grant_option);	 
+	READ_BOOL_FIELD(is_grant);		
+	READ_ENUM_FIELD(objtype,GrantObjectType);	
+	READ_NODE_FIELD(objects);		
+	READ_NODE_FIELD(privileges);		
+	READ_NODE_FIELD(grantees);		
+	READ_BOOL_FIELD(grant_option);	
 	READ_ENUM_FIELD(behavior, DropBehavior);	
 	
-	READ_DONE();	 
+	READ_DONE();	
 }
 
 static PrivGrantee *
 _readPrivGrantee(void)
 {
-	READ_LOCALS(PrivGrantee); 
+	READ_LOCALS(PrivGrantee);
 	READ_STRING_FIELD(rolname);
 		
-	READ_DONE();		 
+	READ_DONE();		
 }
 
-static FuncWithArgs * 
+static FuncWithArgs *
 _readFuncWithArgs(void)
 {
-	READ_LOCALS(FuncWithArgs); 
-	READ_NODE_FIELD(funcname);		 
+	READ_LOCALS(FuncWithArgs);
+	READ_NODE_FIELD(funcname);		
 	READ_NODE_FIELD(funcargs);	
 		
-	READ_DONE();		 	 
+	READ_DONE();		 	
 }
 
-static LockStmt * 
+static LockStmt *
 _readLockStmt(void)
 {
 	READ_LOCALS(LockStmt);
@@ -1557,7 +1557,7 @@ _readLockStmt(void)
 	READ_BOOL_FIELD(nowait);
 		
 	READ_DONE();
-} 
+}
 
 
 /*
@@ -1603,6 +1603,34 @@ _readAppend(void)
 
 	READ_DONE();
 }
+
+/*
+ * _readBitmapAnd, _readBitmapOr
+ */
+static BitmapAnd *
+_readBitmapAnd(void)
+{
+	READ_LOCALS(BitmapAnd);
+
+	readPlanInfo((Plan *)local_node);
+
+	READ_NODE_FIELD(bitmapplans);
+
+	READ_DONE();
+}
+
+static BitmapOr *
+_readBitmapOr(void)
+{
+    READ_LOCALS(BitmapOr);
+
+    readPlanInfo((Plan *)local_node);
+
+    READ_NODE_FIELD(bitmapplans);
+
+    READ_DONE();
+}
+
 
 /*
  * _readScan
@@ -2079,7 +2107,7 @@ _readVariableResetStmt(void)
 	READ_STRING_FIELD(name);
 	
 	READ_DONE();
-} 
+}
 
 
 void readScanInfo(Scan *local_node)
@@ -2201,8 +2229,10 @@ static ParseNodeInfo infoAr[] =
 	{"ARRAY", (ReadFn)_readArrayExpr},
 	{"ARRAYREF", (ReadFn)_readArrayRef},
 	{"A_CONST", (ReadFn)_readAConst},	
+    {"BITMAPAND", (ReadFn)_readBitmapAnd},
 	{"BITMAPHEAPSCAN", (ReadFn)_readBitmapHeapScan},
 	{"BITMAPINDEXSCAN", (ReadFn)_readBitmapIndexScan},
+    {"BITMAPOR", (ReadFn)_readBitmapOr},
 	{"BOOLEANTEST", (ReadFn)_readBooleanTest},
 	{"BOOLEXPR", (ReadFn)_readBoolExpr},
 	{"CASE", (ReadFn)_readCaseExpr},
@@ -2353,7 +2383,7 @@ parseNodeString(void)
 
 	if ( found == NULL )
 	{
-		elog(ERROR, "badly formatted node string \"%.32s\"...", token);
+		elog(ERROR, "badly formatted node string \"%.40s\"...", token);
 		return_value = NULL;	/* keep compiler quiet */
 	}
 	else
