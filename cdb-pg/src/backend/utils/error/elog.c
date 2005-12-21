@@ -301,6 +301,16 @@ errstart(int elevel, const char *filename, int lineno,
 	/* errno is saved here so that error parameter eval can't change it */
 	edata->saved_errno = errno;
 
+#if (!defined(__darwin__)) && (!defined(__solaris__))
+#if defined(__GLIBC__)
+#if !defined(__OPTIMIZE__)
+		
+	edata->stacktracesize = backtrace(edata->stacktracearray, 30);
+		
+#endif
+#endif
+#endif
+
 	recursion_depth--;
 	return true;
 }
@@ -901,6 +911,16 @@ elog_start(const char *filename, int lineno, const char *funcname)
 	edata->funcname = funcname;
 	/* errno is saved now so that error parameter eval can't change it */
 	edata->saved_errno = errno;
+	
+#if (!defined(__darwin__)) && (!defined(__solaris__))
+#if defined(__GLIBC__)
+#if !defined(__OPTIMIZE__)
+		
+	edata->stacktracesize = backtrace(edata->stacktracearray, 30);
+		
+#endif
+#endif
+#endif
 }
 
 /*
@@ -1747,18 +1767,14 @@ send_message_to_server_log(ErrorData *edata)
 #if defined(__GLIBC__)
 #if !defined(__OPTIMIZE__)
 		
-	if (edata->elevel >= ERROR)
+	if (edata->elevel >= ERROR && edata->stacktracesize > 0 && edata->stacktracearray != NULL)
 	{
-		void	   *array[20];
-		size_t		size;
 		char	  **strings;
 		size_t		i;
 	
-		size = backtrace(array, 20);
-		strings = backtrace_symbols(array, size);
-		for (i = 0; i < size; i++)
+		strings = backtrace_symbols(edata->stacktracearray, edata->stacktracesize);
+		for (i = 0; i < edata->stacktracesize; i++)
 		{
-			appendBinaryStringInfo(&buf, prefix.data, prefix.len);
 			appendStringInfo(&buf, "Traceback %d:  %s", i, strings[i]);
 			appendStringInfoChar(&buf, '\n');
 		}

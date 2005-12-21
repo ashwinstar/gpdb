@@ -252,6 +252,8 @@ typedef struct ErrorData
 	int			internalpos;	/* cursor index into internalquery */
 	char	   *internalquery;	/* text of internally-generated query */
 	int			saved_errno;	/* errno at entry */
+	void	   *stacktracearray[30];
+	size_t		stacktracesize;
 } ErrorData;
 
 extern void EmitErrorReport(void);
