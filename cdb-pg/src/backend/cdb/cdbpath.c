@@ -351,6 +351,12 @@ cdbpath_match_preds_to_partkey(PlannerInfo     *root,
     Assert(CdbPathLocus_IsHashed(locus) ||
            CdbPathLocus_IsHashedOJ(locus));
     Assert(locus.partkey);
+    
+    if (!CdbPathLocus_IsHashed(locus) &&
+        !CdbPathLocus_IsHashedOJ(locus))
+    	ereport(ERROR, (errcode(ERRCODE_MPP_FEATURE_NOT_YET),
+                        errmsg("Optimizer bug: Expected Hashed or HashedOJ in cdbpath_match_preds_to_partkey")
+                       ));
 
     ctx.root                = root;
     ctx.mergeclause_list    = mergeclause_list;
