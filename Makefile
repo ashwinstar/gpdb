@@ -33,7 +33,6 @@ devel : HOMEDEP $(ISCONFIG)
 	@rm -rf $(INSTLOC)
 	@cd $(MPPPGDIR); make install
 	@make mgmtcopy INSTLOC=$(INSTLOC)
-	@make copydocs INSTLOC=$(INSTLOC)
 	@make copylibs INSTLOC=$(INSTLOC)
 
 dist : INSTCFLAGS=$(OPTFLAGS)
@@ -47,16 +46,15 @@ dist : BIZDEP RECONFIG $(ISCONFIG)
 	@rm -f $(TARBALL); make tarball TARBALL=$(TARBALL) INSTLOC=$(INSTLOC)
 
 
-copydocs:
-	@if [ ! -d $(BIZHOME)/doc ] ; then mkdir $(BIZHOME)/doc; fi
+copydocs :
+	@if [ ! -d $($INSTLOC)/docs ] ; then mkdir -p $(INSTLOC)/docs; fi
 	@if [ ! -d $(MPPDOCDIR) ] ; then \
 	echo " Error Copying Documentation: $(MPPDOCDIR) is not present"; \
-	else \
-	echo "Copying Documentation" ;  \
+	else  echo "Copying Documentation" ;  \
 	echo "Copying  $(MPPDOCDIR)/README "; \
-	cp $(MPPDOCDIR)/README $(BIZHOME)/doc/MPP_README ; \
+	cp $(MPPDOCDIR)/README $(INSTLOC)/docs/MPP_README ; \
 	echo "Copying $(MPPDOCDIR)/pdf/MPP*.pdf " ; \
-	cp $(MPPDOCDIR)/pdf/MPP*.pdf $(BIZHOME)/doc/; \
+	cp $(MPPDOCDIR)/pdf/MPP*.pdf $(INSTLOC)/docs/; \
 	fi 
 
 tarball :
