@@ -30,18 +30,18 @@
  */
 
 /* for tmlog */
-static char tmlogfilename[10];
+static char tmlogfilename[100];
 static int	tmlogfilefd = -1;
 static int	tmlogfileoffset = -1;
 
 /* for xlog */
-static char xlogfilename[24];
+static char xlogfilename[100];
 static int	xlogfilefd = -1;
 static int	xlogfileoffset = -1;
 
 /* param sent by primary segdb */
 static int	cmdtype;
-static char wfilename[30];
+static char wfilename[85];
 static int	woffset;
 static int	wlen;
 
@@ -387,15 +387,24 @@ xlogOpenFile(void)
 	char		path[MAXPATH];
 	bool		ret = false;
 
+	elog(DEBUG3, "QDSYNC: opening xlog file %s", wfilename);
+
 	if (strcmp(xlogfilename, wfilename) == 0)
 	{
 		return ret;
 	}
 
-	/* the first time or file is changed */
-	snprintf(path, MAXPATH, "%s/%s", XLOGDIR, wfilename);
+	elog(DEBUG1, "opening xlog file %s", wfilename);
 
-	elog(LOG, "QDSYNC: opening xlog file %s", wfilename);
+	/* the first time or file is changed */
+	if (snprintf(path, MAXPATH, "%s/%s", XLOGDIR, wfilename) >= MAXPATH)
+	{
+		ereport(PANIC,
+				(errcode_for_file_access(),
+				 errmsg("QDSYNC: could not create xlog file \"%s/%s\"",
+						XLOGDIR, wfilename)));
+	}
+
 	xlogfilefd = open(path, O_RDWR, 0);
 	if (xlogfilefd < 0)
 	{
