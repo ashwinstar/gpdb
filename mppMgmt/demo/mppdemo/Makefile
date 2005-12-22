@@ -16,7 +16,8 @@ prereqsOK:
 
 
 clean:
-	@-killall postmaster
+	@-if [ `uname -s` = 'SunOS' ]; then pkill postmaster; else killall postmaster ; fi
+	@sleep 2
 	@rm -f hostfile
 	@rm -f clusterConfigFile
 	@rm -rf datadirs
