@@ -1480,16 +1480,20 @@ XLogWrite(XLogwrtRqst WriteRqst, bool flexible)
 	         */
 	        if (isQDMirroringEnabled())
 	        {
-	            char cmd[50], tmpfname[24];
-	
-				/**
-				   elog(LOG, "**XLogWrite-   offset: %d   block size: %d nbytes: %d",
-				   openLogOff, BLCKSZ, nbytes);
-				**/
-	    
-	            XLogFileName(tmpfname, ThisTimeLineID, openLogId, openLogSeg);
-	            sprintf(cmd, "xlog %s %d %d", tmpfname, openLogOff, nbytes);
-	            write_qd_sync(cmd, from, nbytes);
+				char cmd[MAXFNAMELEN + 30], tmpfname[MAXFNAMELEN];
+    
+				XLogFileName(tmpfname, ThisTimeLineID, openLogId, openLogSeg);
+
+				/* 
+				   elog(LOG, "**XLogWrite- %s offset: %d   len: %d",
+				   tmpfname, openLogOff, nbytes);
+				*/
+				if (snprintf(cmd, sizeof(cmd),"xlog %s %d %d", tmpfname, openLogOff, nbytes) >= sizeof(cmd))
+					ereport(ERROR,
+							(errcode_for_file_access(),
+							 errmsg("could not create cmd for qd mirror \"%s\"", tmpfname)));
+				
+				write_qd_sync(cmd, from, nbytes);
 	        }
 
 
