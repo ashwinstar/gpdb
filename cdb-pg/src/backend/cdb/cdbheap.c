@@ -90,7 +90,7 @@ MergeNewValueIntoCdbTupleHeap(CdbHeap *cdbheap, HeapTuple h, int sourceRouteId)
  * Used to compare tuples for a sorted motion node.
 */
 
-int
+static int
 CmpTuplesForSortedMotion(void *lhs, void *rhs)
 {
 	CdbHeapTupleCompareInfo *cmpinfo;
@@ -156,7 +156,7 @@ CmpTuplesForSortedMotion(void *lhs, void *rhs)
 
 }
 
-void *
+static void *
 CreateCdbTupleHeapInfo(void *createData, void *initData)
 {
 	CdbTupleHeapInfo *info;
@@ -178,7 +178,7 @@ CreateCdbTupleHeapInfo(void *createData, void *initData)
 	return info;
 }
 
-void
+static void
 CopyCdbTupleHeapInfo(void *destination, void *source)
 {
 	CdbTupleHeapInfo *infoDest;
@@ -194,7 +194,7 @@ CopyCdbTupleHeapInfo(void *destination, void *source)
 	infoDest->sourceRouteId = infoSrc->sourceRouteId;
 }
 
-void
+static void
 SwitchCdbTupleHeapInfo(void *left, void *right)
 {
 	CdbTupleHeapInfo *infoLeft,
@@ -378,6 +378,8 @@ GetLowestValueFromCdbHeap(CdbHeap *cdbheap)
 		{
 			SiftDown(cdbheap, i, n);
 		}
+
+		cdbheap->initialSortDone = true;
 	}
 
 	/* Return a pointer to top of heap */
@@ -404,7 +406,7 @@ MergeNewValueIntoCdbHeap(CdbHeap *cdbheap, void *value)
 	SiftDown(cdbheap, 1, cdbheap->size);
 }
 
-void
+static void
 SiftDown(CdbHeap *cdbheap, int From, int End)
 {
 	int			i;
