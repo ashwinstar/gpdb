@@ -66,13 +66,6 @@ SetCdbTupleHeapInitialValue(CdbHeap *cdbheap, HeapTuple tuple, int sourceRouteId
 	SetCdbHeapInitialValue(cdbheap, &info);
 }
 
-
-CdbTupleHeapInfo *
-GetLowestValueFromCdbTupleHeap(CdbHeap *cdbheap)
-{
-	return (CdbTupleHeapInfo *) GetLowestValueFromCdbHeap(cdbheap);
-}
-
 void
 MergeNewValueIntoCdbTupleHeap(CdbHeap *cdbheap, HeapTuple h, int sourceRouteId)
 {

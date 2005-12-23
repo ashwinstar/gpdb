@@ -144,7 +144,9 @@ extern void DestroyCdbHeap(CdbHeap *cdbheap);
  * heaps of CdbTupleHeapInfo data.
  */
 extern void SetCdbTupleHeapInitialValue(CdbHeap *cdbheap, HeapTuple tuple, int sourceRouteId);
-extern CdbTupleHeapInfo *GetLowestValueFromCdbTupleHeap(CdbHeap *cdbheap);
+
+#define GetLowestValueFromCdbTupleHeap(cdbheap) (CdbTupleHeapInfo *)(GetLowestValueFromCdbHeap(cdbheap))
+
 extern void MergeNewValueIntoCdbTupleHeap(CdbHeap *cdbheap, HeapTuple h, int sourceRouteId);
 extern int	GetCountCdbHeap(CdbHeap *cdbheap);
 
