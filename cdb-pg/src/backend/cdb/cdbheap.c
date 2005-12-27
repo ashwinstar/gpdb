@@ -23,7 +23,6 @@ static void *CreateCdbTupleHeapInfo(void *createData, void *initData);
 static void CopyCdbTupleHeapInfo(void *destination, void *source);
 static void SwitchCdbTupleHeapInfo(void *left, void *right);
 
-
 /*
  * Specific CdbTupleHeapInfo heap implementation
  */
@@ -45,7 +44,6 @@ CreateCdbTupleHeap(int numRoutes,
 	cmpinfo->numSortCols = motion->numSortCols;
 	cmpinfo->sortColIdx = motion->sortColIdx;
 	cmpinfo->tupDesc = ExecGetResultType(&node->ps);
-
 
 	return CreateCdbHeap(numRoutes,
 						 CmpTuplesForSortedMotion,
@@ -81,8 +79,7 @@ MergeNewValueIntoCdbTupleHeap(CdbHeap *cdbheap, HeapTuple h, int sourceRouteId)
 /*
  * cmpTuplesForSortedMotion:
  * Used to compare tuples for a sorted motion node.
-*/
-
+ */
 static int
 CmpTuplesForSortedMotion(void *lhs, void *rhs)
 {
@@ -97,7 +94,6 @@ CmpTuplesForSortedMotion(void *lhs, void *rhs)
 	AttrNumber *sortColIdx;
 	TupleDesc	tupDesc;
 	int			nkey;
-
 
 	Assert(linfo->cmpinfo != NULL &&
 		   linfo->cmpinfo == rinfo->cmpinfo);
@@ -146,7 +142,6 @@ CmpTuplesForSortedMotion(void *lhs, void *rhs)
 	}
 
 	return 0;
-
 }
 
 static void *
@@ -163,6 +158,12 @@ CreateCdbTupleHeapInfo(void *createData, void *initData)
 	cmpinfo = (CdbHeapTupleCompareInfo *) createData;
 
 	info = palloc0(sizeof(CdbTupleHeapInfo));
+	if (info == NULL)
+	{
+		ereport(FATAL, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						errmsg("cdbheap could not create tuple heap info: allocation failed"),
+						errdetail("allocation of %d bytes failed", sizeof(CdbTupleHeapInfo))));
+	}
 
 	info->tuple = initTupleHeapInfo->tuple;
 	info->sourceRouteId = initTupleHeapInfo->sourceRouteId;
@@ -260,9 +261,22 @@ CreateCdbHeap(int nSlots,
 		   && nSlots >= 1);
 
 	result = palloc0(sizeof(CdbHeap));
+	if (result == NULL)
+	{
+		ereport(FATAL, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						errmsg("cdbheap could not create heap: allocation failed"),
+						errdetail("allocation of %d bytes failed", sizeof(CdbHeap))));
+	}
+
 	result->size = nSlots;
 
 	heap = (void **) palloc0((nSlots + 1) * sizeof(void *));
+	if (heap == NULL)
+	{
+		ereport(FATAL, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						errmsg("cdbheap could not create heap: allocation failed"),
+						errdetail("allocation of %d bytes failed", (nSlots+1)*sizeof(void *))));
+	}
 
 	result->heap = (void **) heap;
 	result->initialSortDone = false;
@@ -325,7 +339,7 @@ SetCdbHeapInitialValue(CdbHeap *cdbheap, void *value)
 	{
 		if (heap[i] == NULL)
 		{
-			heap[i] = (*createfn) (cdbheap->createdata, value);
+			heap[i] = (*createfn)(cdbheap->createdata, value);
 			return;
 		}
 	}
@@ -336,9 +350,7 @@ SetCdbHeapInitialValue(CdbHeap *cdbheap, void *value)
 		   errdetail("Programming Error probably a result of the caller not "
 					 "passing the correct value of nSlots in createCdbHeap "
 					 "or is calling this function too many times. ")));
-
 }
-
 
 void *
 GetLowestValueFromCdbHeap(CdbHeap *cdbheap)
@@ -364,8 +376,8 @@ GetLowestValueFromCdbHeap(CdbHeap *cdbheap)
 		}
 
 		/*
-		*  Now, do the Sift Down
-		*/
+		 *  Now, do the Sift Down
+		 */
 		n = cdbheap->size;
 		for (i = n / 2; i >= 1; i--)
 		{
@@ -402,7 +414,7 @@ MergeNewValueIntoCdbHeap(CdbHeap *cdbheap, void *value)
 static void
 SiftDown(CdbHeap *cdbheap, int From, int End)
 {
-	int			i;
+	int			i, j;
 	void	  **heap;
 	CdbHeapCmpFn cmpfn;
 	CdbHeapSwitchFn switchfn;
@@ -418,21 +430,21 @@ SiftDown(CdbHeap *cdbheap, int From, int End)
 	cmpfn = cdbheap->cmpfn;
 	switchfn = cdbheap->switchfn;
 
-	while (i <= End / 2)
+	while (i*2 <= End)
 	{
-		int			j = 2 * i;
+		j = i * 2;
 
-		if (j + 1 <= End)
+		if (j + 1 <= End && (*cmpfn)(heap[j], heap[j + 1]) > 0)
+			j++;
+
+		if ((*cmpfn) (heap[i], heap[j]) > 0)
 		{
-			if ((*cmpfn) (heap[j + 1], heap[j]) < 0)
-				j++;
+			(*switchfn)(heap[i], heap[j]);
+			i = j;
+			continue;
 		}
 
-		if ((*cmpfn) (heap[i], heap[j]) <= 0)
-			break;
-
-		/* Switch i and j */
-		(*switchfn) (heap[i], heap[j]);
-		i = j;
+		/* done */
+		return;
 	}
 }
