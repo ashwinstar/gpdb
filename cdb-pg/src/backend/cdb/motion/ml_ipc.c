@@ -900,6 +900,20 @@ forceEosToPeer(int16 motNodeID, int16 targetRoute)
 	teardownActive = false;
 }
 
+static void
+flushIncomingData(int fd)
+{
+	static char trash[8192];
+	int bytes;
+
+	/* If we're in TeardownInterconnect, we should only have to call
+	 * recv() a couple of times to empty out our socket buffers */
+	do
+	{
+		bytes = recv(fd, trash, sizeof(trash), 0);
+	} while (bytes > 0);
+}
+
 /* TeardownInterconnect() function is used to cleanup interconnect resources that
  * were allocated during SetupInterconnect().  This function should ALWAYS be
  * called after SetupInterconnect to avoid leaking resources (like sockets)
@@ -959,7 +973,8 @@ TeardownInterconnect(bool forceEOS)
 		/* they're incomplete, so just slam them shut. */
 		if (conn->sockfd != -1)
 		{
-			shutdown(conn->sockfd, SHUT_RDWR);
+			flushIncomingData(conn->sockfd);
+			shutdown(conn->sockfd, SHUT_WR);
 			close(conn->sockfd);
 			conn->sockfd = -1;
 		}
@@ -1043,7 +1058,8 @@ TeardownInterconnect(bool forceEOS)
 
 			if (conn->sockfd != -1)
 			{
-				shutdown(conn->sockfd, SHUT_RDWR);
+				flushIncomingData(conn->sockfd);
+				shutdown(conn->sockfd, SHUT_WR);
 				close(conn->sockfd);
 				conn->sockfd = -1;
 			}
@@ -2425,7 +2441,8 @@ flushListenerBacklog(void)
 					continue;
 				}
 				/* shutdown this socket */
-				shutdown(newfd, SHUT_RDWR);
+				flushIncomingData(newfd);
+				shutdown(newfd, SHUT_WR);
 				close(newfd);
 			}
 		}
