@@ -134,7 +134,7 @@ CHECK_PARAM () {
 STOP_MPPSYNC_PROCESS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	STOP_SYNC_PROCESS $MASTER_STANDBY_HOSTNAME $MASTER_STANDBY_DATA_DIRECTORY
-	if [ $RETVAL -ne 0 ] && [ $FORCE_ACTIVE -eq 0 ] $;then
+	if [ $RETVAL -ne 0 ] && [ $FORCE_ACTIVE -eq 0 ] ;then
 		ERROR_EXIT "[FATAL]:-Failed to shutdown mppsyncmaster process" 2;fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -183,7 +183,7 @@ UPDATE_CATALOG () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]: master standby: '$MASTER_STANDBY_HOSTNAME'"
 	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT -A -t -c"update mpp_configuration set hostname='$MASTER_STANDBY_HOSTNAME' where dbid in (select min(dbid) from mpp_configuration where content=-1);"
-	ERROR_CHK $? "update mpp_configuration hostname value in database $DB" 1
+	ERROR_CHK $? "update mpp_configuration hostname value" 1
 	if [ $RETVAL -ne 0 ];then
 	    ADMIN_SHUTDOWN
 	    ERROR_EXIT "[FATAL]:-Unable to contine, unable to update mpp_configuration catalog" 2
