@@ -210,6 +210,11 @@ cdbparallelize(Plan *plan,
 {
 	PlanProfile profile;		/* Will be initialized by prescan(). */
 	int			nParamExec;
+	
+	if ( Mpp_role != MPP_ROLE_DISPATCH )
+	{
+		return plan;
+	}
 
 	Assert(is_plan_node((Node *) plan));
 	/*
@@ -312,6 +317,11 @@ Plan *
 cdbparallelize_subquery(Plan *plan, Query *query)
 {
 	PlanProfile profile;		/* Will be initialized by prescan(). */
+	
+	if ( Mpp_role != MPP_ROLE_DISPATCH )
+	{
+		return plan;
+	}
 
 	Assert(is_plan_node((Node *) plan));
 	Assert(query != NULL && IsA(query, Query));
