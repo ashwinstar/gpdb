@@ -361,7 +361,7 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 	 * responsible to make sure that whatever they store into the VacAttrStats
 	 * structure is allocated in anl_context.
 	 */
-	if (numrows > 0 || Mpp_role == MPP_ROLE_DISPATCH)
+	if (numrows > 0 || (Mpp_role == MPP_ROLE_DISPATCH && RelationGetRelid(onerel) >= FirstNormalObjectId))
 	{
 		if (numrows > 0)
 		{
@@ -1126,7 +1126,7 @@ update_attstats(Relation rel, int natts, VacAttrStats **vacattrstats)
 		char		nulls[Natts_pg_statistic];
 		char		replaces[Natts_pg_statistic];
 		
-		if (Mpp_role == MPP_ROLE_DISPATCH)
+		if (Mpp_role == MPP_ROLE_DISPATCH && relid >= FirstNormalObjectId)
 		{
 			Assert(stats != NULL);
 			cdbanalyze_get_columnstats(rel, stats);
