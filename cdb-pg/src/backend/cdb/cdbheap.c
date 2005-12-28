@@ -162,7 +162,7 @@ CreateCdbTupleHeapInfo(void *createData, void *initData)
 	{
 		ereport(FATAL, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 						errmsg("cdbheap could not create tuple heap info: allocation failed"),
-						errdetail("allocation of %d bytes failed", sizeof(CdbTupleHeapInfo))));
+						errdetail("allocation of %d bytes failed", (int)sizeof(CdbTupleHeapInfo))));
 	}
 
 	info->tuple = initTupleHeapInfo->tuple;
@@ -265,7 +265,7 @@ CreateCdbHeap(int nSlots,
 	{
 		ereport(FATAL, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 						errmsg("cdbheap could not create heap: allocation failed"),
-						errdetail("allocation of %d bytes failed", sizeof(CdbHeap))));
+						errdetail("allocation of %d bytes failed", (int)sizeof(CdbHeap))));
 	}
 
 	result->size = nSlots;
@@ -275,7 +275,7 @@ CreateCdbHeap(int nSlots,
 	{
 		ereport(FATAL, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
 						errmsg("cdbheap could not create heap: allocation failed"),
-						errdetail("allocation of %d bytes failed", (nSlots+1)*sizeof(void *))));
+						errdetail("allocation of %d bytes failed", (nSlots+1)*(int)sizeof(void *))));
 	}
 
 	result->heap = (void **) heap;
