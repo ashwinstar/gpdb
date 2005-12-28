@@ -39,6 +39,9 @@
 #include "utils/syscache.h"
 #include "utils/tuplesort.h"
 
+#include "cdb/cdbvars.h"
+#include "cdb/cdbanalyze.h"
+
 
 /* Data structure for Algorithm S from Knuth 3.4.2 */
 typedef struct
@@ -83,7 +86,7 @@ static double random_fract(void);
 static double init_selection_state(int n);
 static double get_next_S(double t, int n, double *stateptr);
 static int	compare_rows(const void *a, const void *b);
-static void update_attstats(Oid relid, int natts, VacAttrStats **vacattrstats);
+static void update_attstats(Relation rel, int natts, VacAttrStats **vacattrstats);
 static Datum std_fetch_func(VacAttrStatsP stats, int rownum, bool *isNull);
 static Datum ind_fetch_func(VacAttrStatsP stats, int rownum, bool *isNull);
 
@@ -358,52 +361,55 @@ analyze_rel(Oid relid, VacuumStmt *vacstmt)
 	 * responsible to make sure that whatever they store into the VacAttrStats
 	 * structure is allocated in anl_context.
 	 */
-	if (numrows > 0)
+	if (numrows > 0 || Mpp_role == MPP_ROLE_DISPATCH)
 	{
-		MemoryContext col_context,
-					old_context;
-
-		col_context = AllocSetContextCreate(anl_context,
-											"Analyze Column",
-											ALLOCSET_DEFAULT_MINSIZE,
-											ALLOCSET_DEFAULT_INITSIZE,
-											ALLOCSET_DEFAULT_MAXSIZE);
-		old_context = MemoryContextSwitchTo(col_context);
-
-		for (i = 0; i < attr_cnt; i++)
+		if (numrows > 0)
 		{
-			VacAttrStats *stats = vacattrstats[i];
-
-			stats->rows = rows;
-			stats->tupDesc = onerel->rd_att;
-			(*stats->compute_stats) (stats,
-									 std_fetch_func,
-									 numrows,
-									 totalrows);
-			MemoryContextResetAndDeleteChildren(col_context);
+			MemoryContext col_context,
+						old_context;
+	
+			col_context = AllocSetContextCreate(anl_context,
+												"Analyze Column",
+												ALLOCSET_DEFAULT_MINSIZE,
+												ALLOCSET_DEFAULT_INITSIZE,
+												ALLOCSET_DEFAULT_MAXSIZE);
+			old_context = MemoryContextSwitchTo(col_context);
+	
+			for (i = 0; i < attr_cnt; i++)
+			{
+				VacAttrStats *stats = vacattrstats[i];
+	
+				stats->rows = rows;
+				stats->tupDesc = onerel->rd_att;
+				(*stats->compute_stats) (stats,
+										 std_fetch_func,
+										 numrows,
+										 totalrows);
+				MemoryContextResetAndDeleteChildren(col_context);
+			}
+	
+			if (hasindex)
+				compute_index_stats(onerel, totalrows,
+									indexdata, nindexes,
+									rows, numrows,
+									col_context);
+	
+			MemoryContextSwitchTo(old_context);
+			MemoryContextDelete(col_context);
 		}
-
-		if (hasindex)
-			compute_index_stats(onerel, totalrows,
-								indexdata, nindexes,
-								rows, numrows,
-								col_context);
-
-		MemoryContextSwitchTo(old_context);
-		MemoryContextDelete(col_context);
 
 		/*
 		 * Emit the completed stats rows into pg_statistic, replacing any
 		 * previous statistics for the target columns.	(If there are stats in
 		 * pg_statistic for columns we didn't process, we leave them alone.)
 		 */
-		update_attstats(relid, attr_cnt, vacattrstats);
+		update_attstats(onerel, attr_cnt, vacattrstats);
 
 		for (ind = 0; ind < nindexes; ind++)
 		{
 			AnlIndexData *thisdata = &indexdata[ind];
 
-			update_attstats(RelationGetRelid(Irel[ind]),
+			update_attstats(Irel[ind],
 							thisdata->attr_cnt, thisdata->vacattrstats);
 		}
 	}
@@ -1097,10 +1103,11 @@ compare_rows(const void *a, const void *b)
  *		for each relation.	The lock could be held for a long time...
  */
 static void
-update_attstats(Oid relid, int natts, VacAttrStats **vacattrstats)
+update_attstats(Relation rel, int natts, VacAttrStats **vacattrstats)
 {
 	Relation	sd;
 	int			attno;
+	Oid relid = RelationGetRelid(rel);
 
 	if (natts <= 0)
 		return;					/* nothing to do */
@@ -1118,10 +1125,16 @@ update_attstats(Oid relid, int natts, VacAttrStats **vacattrstats)
 		Datum		values[Natts_pg_statistic];
 		char		nulls[Natts_pg_statistic];
 		char		replaces[Natts_pg_statistic];
+		
+		if (Mpp_role == MPP_ROLE_DISPATCH)
+		{
+			Assert(stats != NULL);
+			cdbanalyze_get_columnstats(rel, stats);
+		}
 
 		/* Ignore attr if we weren't able to collect stats */
 		if (!stats->stats_valid)
-			continue;
+			continue;	
 
 		/*
 		 * Construct a new pg_statistic tuple

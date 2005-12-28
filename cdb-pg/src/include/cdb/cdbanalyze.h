@@ -21,5 +21,7 @@
  */
 extern void cdbanalyze_get_relstats(Relation rel, BlockNumber *pages, double *tuples);
 
+extern void cdbanalyze_get_columnstats(Relation rel, VacAttrStats * stats);
+
 
 #endif   /* CDBANALYZE_H */

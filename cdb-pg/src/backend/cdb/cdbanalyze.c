@@ -13,6 +13,7 @@
 #include "postgres.h"
 #include "executor/spi.h"
 #include "lib/stringinfo.h"
+#include "commands/vacuum.h"
 #include "cdb/cdbpathlocus.h"	/* cdbpathlocus_querysegmentcatalogs */
 #include "cdb/cdbvars.h"		/* Mpp_role */
 #include "cdb/cdbanalyze.h"		/* me */
@@ -220,7 +221,32 @@ cdbanalyze_get_relstats(Relation rel, BlockNumber *pages, double *tuples)
 }	/* cdbanalyze_get_relstats */
 
 
-#if 0
+
+
+#define Anum_staattnum		1
+#define Anum_stanullfrac	2
+#define Anum_stawidth		3
+#define Anum_stadistinct	4
+
+/*
+#define Anum_pg_statistic_stakind1		6
+#define Anum_pg_statistic_stakind2		7
+#define Anum_pg_statistic_stakind3		8
+#define Anum_pg_statistic_stakind4		9
+#define Anum_pg_statistic_staop1		10
+#define Anum_pg_statistic_staop2		11
+#define Anum_pg_statistic_staop3		12
+#define Anum_pg_statistic_staop4		13
+#define Anum_pg_statistic_stanumbers1	14
+#define Anum_pg_statistic_stanumbers2	15
+#define Anum_pg_statistic_stanumbers3	16
+#define Anum_pg_statistic_stanumbers4	17
+#define Anum_pg_statistic_stavalues1	18
+#define Anum_pg_statistic_stavalues2	19
+#define Anum_pg_statistic_stavalues3	20
+#define Anum_pg_statistic_stavalues4	21
+*/
+
 /*
  * cdbanalyze_callback
  *
@@ -230,8 +256,7 @@ cdbanalyze_get_relstats(Relation rel, BlockNumber *pages, double *tuples)
 typedef struct Cdbanalyze_columns_Ctx
 {
 	Oid			relid;
-	BlockNumber pages;
-	double		tuples;
+	VacAttrStats  * stats;
 } Cdbanalyze_columns_Ctx;
 
 static void
@@ -243,10 +268,16 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 	TupleDesc	tupdesc;
 	char	   *tmp;
 	Cdbanalyze_columns_Ctx *ctx = (Cdbanalyze_columns_Ctx *) context;
+	
+	
+	Assert(ctx != NULL);
+	Assert(ctx->stats != NULL);
 
 	/* Did the query succeed? */
-	if (spiresult != SPI_OK_SELECT ||
-		SPI_processed != 1)
+	if (spiresult != SPI_OK_SELECT)
+		goto fail;
+		
+	if (SPI_processed < 1)
 		goto fail;
 
 	/* Grab the results of the query and stuff them into the context. */
@@ -256,44 +287,68 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 		!tupdesc)
 		goto fail;
 
-	tmp = SPI_getvalue(tup, tupdesc, Anum_pg_class_max_tuples);
-	if (SPI_result != 0 && !tmp)
+	tmp = SPI_getvalue(tup, tupdesc, Anum_stanullfrac);
+	if (SPI_result != 0)
 		goto fail;
 	if (!tmp)
 		ereport(NOTICE, (errcode(ERRCODE_MPP_COMMAND_ERROR),
 			   errmsg("NULL returned instead of statistics from segment databases."),
 					  errdetail("Segment db catalog query : %s",
 								sqlstmt->data )));
+								
+	// Fraction that are null
+	if (tmp)
+		ctx->stats->stanullfrac = atof(tmp);
+	 
 
 
-	tmp = SPI_getvalue(tup, tupdesc, Anum_pg_class_max_pages);
-	if (SPI_result != 0 && !tmp)
+	tmp = SPI_getvalue(tup, tupdesc, Anum_stawidth);
+	if (SPI_result != 0)
 		goto fail;
+		
+	// Average width of the column (width of pointer if toasted).
+	if (tmp)
+		ctx->stats->stawidth = atoi(tmp);
+		
+	tmp = SPI_getvalue(tup, tupdesc, Anum_stadistinct);
+	if (SPI_result != 0)
+		goto fail;
+		
+	// stadistinct can be negative, zero, or positive.
+	// So, we really shouldn't average it, given that it might be negative on some nodes, positive on others
+	if (tmp)
+		ctx->stats->stadistinct = atof(tmp);
+		
+	ctx->stats->stats_valid = true;
 
 
-	elog(DEBUG3, "cdbanalyze oid=%d pages=%d tuples=%f",
-		 ctx->relid, ctx->pages, ctx->tuples);
+	elog(DEBUG3, "cdbanalyze oid=%d attnum=%d nullfrac=%f width=%d distinct %f",
+		 ctx->relid, ctx->stats->attr->attnum, ctx->stats->stanullfrac, ctx->stats->stawidth, ctx->stats->stadistinct);
 
 	return;
 
 fail:
 	ereport(WARNING, (errcode(ERRCODE_MPP_COMMAND_ERROR),
-			   errmsg("Unable to obtain statistics from segment databases."),
+			   errmsg("Unable to obtain column statistics from segment databases."),
 					  errdetail("Segment db catalog query failed: %s  %d",
 								sqlstmt->data, SPI_result )));
 }	/* cdbanalyze_callback */
 
 
 void
-cdbanalyze_get_columnstats(Relation rel, BlockNumber *pages, double *tuples)
+cdbanalyze_get_columnstats(Relation rel, VacAttrStats * stats)
 {
 	StringInfoData buffer;
 	Cdbanalyze_columns_Ctx ctx;
 	char	   *relname;
 	Oid			namespace;
-
-	*pages = 0;
-	*tuples = 0;
+	
+	Assert(stats != NULL);
+	
+	if (stats == NULL)
+		return;
+	
+	ctx.stats = stats;
 
 	relname = RelationGetRelationName(rel);
 	namespace = RelationGetNamespace(rel);
@@ -303,8 +358,8 @@ cdbanalyze_get_columnstats(Relation rel, BlockNumber *pages, double *tuples)
 	 */
 	initStringInfo(&buffer);
 	appendStringInfo(&buffer, "select staattnum,avg(stanullfrac),avg(stawidth),avg(stadistinct)");
-	appendStringInfo(&buffer, " from pg_statistic, pg_class");
-	appendStringInfo(&buffer, " where relname='%s' and relnamespace=%u", relname, namespace);
+	appendStringInfo(&buffer, " from pg_statistic JOIN pg_class ON relfilenode=starelid ");
+	appendStringInfo(&buffer, " where relname='%s' and relnamespace=%u and staattnum=%hd", relname, namespace, (stats->attr->attnum));
 	appendStringInfo(&buffer, " group by staattnum order by staattnum");
 
 	/*
@@ -312,12 +367,9 @@ cdbanalyze_get_columnstats(Relation rel, BlockNumber *pages, double *tuples)
 	 * (If unsuccessful, throws an error and does not return here.)
 	 */
 	ctx.relid = RelationGetRelid(rel);
-	cdbanalyze_query_local_catalogs(&buffer, cdbanalyze_columns_callback, &ctx);
 
-	/*
-	 * Grab the results of the query and stuff them into the out parameters.
-	 */
-	//*tuples = ctx.tuples;
-	//*pages = ctx.pages;
+	cdbanalyze_query_local_catalogs(&buffer, cdbanalyze_columns_callback, &ctx);
+	
+
 }	/* cdbanalyze_get_columnstats */
-#endif 
+
