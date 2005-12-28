@@ -13,6 +13,7 @@
 #ifndef CDBANALYZE_H
 #define CDBANALYZE_H
 
+#include "commands/vacuum.h"
 /*
  * cdbanalyze_get_relstats:
  * This takes the oid of a relation as a parameter, and returns
