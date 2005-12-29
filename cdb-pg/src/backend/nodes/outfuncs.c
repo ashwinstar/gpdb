@@ -43,7 +43,7 @@
 
 /* Write the label for the node type */
 #define WRITE_NODE_TYPE(nodelabel) \
-	appendStringInfoString(str, nodelabel)
+	appendStringInfoLiteral(str, nodelabel)
 
 /* Write an integer field (anything written as ":fldname %d") */
 #define WRITE_INT_FIELD(fldname) \
@@ -116,7 +116,7 @@ _outToken(StringInfo str, const char *s)
 {
 	if (s == NULL || *s == '\0')
 	{
-		appendStringInfo(str, "<>");
+		appendStringInfoLiteral(str, "<>");
 		return;
 	}
 
@@ -221,19 +221,19 @@ _outDatum(StringInfo str, Datum value, int typlen, bool typbyval)
 		appendStringInfo(str, "%u [ ", (unsigned int) length);
 		for (i = 0; i < (Size) sizeof(Datum); i++)
 			appendStringInfo(str, "%d ", (int) (s[i]));
-		appendStringInfo(str, "]");
+		appendStringInfoChar(str, ']');
 	}
 	else
 	{
 		s = (char *) DatumGetPointer(value);
 		if (!PointerIsValid(s))
-			appendStringInfo(str, "0 [ ]");
+			appendStringInfoLiteral(str, "0 [ ]");
 		else
 		{
 			appendStringInfo(str, "%u [ ", (unsigned int) length);
 			for (i = 0; i < length; i++)
 				appendStringInfo(str, "%d ", (int) (s[i]));
-			appendStringInfo(str, "]");
+			appendStringInfoChar(str, ']');
 		}
 	}
 }
@@ -471,7 +471,7 @@ _outAgg(StringInfo str, Agg *node)
 	WRITE_ENUM_FIELD(aggstrategy, AggStrategy);
 	WRITE_INT_FIELD(numCols);
 
-	appendStringInfo(str, " :grpColIdx");
+	appendStringInfoLiteral(str, " :grpColIdx");
 	for (i = 0; i < node->numCols; i++)
 		appendStringInfo(str, " %d", node->grpColIdx[i]);
 
@@ -489,7 +489,7 @@ _outGroup(StringInfo str, Group *node)
 
 	WRITE_INT_FIELD(numCols);
 
-	appendStringInfo(str, " :grpColIdx");
+	appendStringInfoLiteral(str, " :grpColIdx");
 	for (i = 0; i < node->numCols; i++)
 		appendStringInfo(str, " %d", node->grpColIdx[i]);
 }
@@ -515,11 +515,11 @@ _outSort(StringInfo str, Sort *node)
 
 	WRITE_INT_FIELD(numCols);
 
-	appendStringInfo(str, " :sortColIdx");
+	appendStringInfoLiteral(str, " :sortColIdx");
 	for (i = 0; i < node->numCols; i++)
 		appendStringInfo(str, " %d", node->sortColIdx[i]);
 
-	appendStringInfo(str, " :sortOperators");
+	appendStringInfoLiteral(str, " :sortOperators");
 	for (i = 0; i < node->numCols; i++)
 		appendStringInfo(str, " %u", node->sortOperators[i]);
 }
@@ -535,7 +535,7 @@ _outUnique(StringInfo str, Unique *node)
 
 	WRITE_INT_FIELD(numCols);
 
-	appendStringInfo(str, " :uniqColIdx");
+	appendStringInfoLiteral(str, " :uniqColIdx");
 	for (i = 0; i < node->numCols; i++)
 		appendStringInfo(str, " %d", node->uniqColIdx[i]);
 }
@@ -552,7 +552,7 @@ _outSetOp(StringInfo str, SetOp *node)
 	WRITE_ENUM_FIELD(cmd, SetOpCmd);
 	WRITE_INT_FIELD(numCols);
 
-	appendStringInfo(str, " :dupColIdx");
+	appendStringInfoLiteral(str, " :dupColIdx");
 	for (i = 0; i < node->numCols; i++)
 		appendStringInfo(str, " %d", node->dupColIdx[i]);
 
@@ -593,7 +593,7 @@ _outMotion(StringInfo str, Motion *node)
 	WRITE_INT_FIELD(motionID);
 	
 	WRITE_INT_FIELD(numHashSegs);
-	appendStringInfo(str, " :hashSegIdx");
+	appendStringInfoLiteral(str, " :hashSegIdx");
 	for (i = 0; i < node->numHashSegs; i++)
 		appendStringInfo(str, " %d", node->hashSegIdx[i]);
 
@@ -602,22 +602,22 @@ _outMotion(StringInfo str, Motion *node)
 	WRITE_BOOL_FIELD(hashToSelfOnly);
 
 	WRITE_INT_FIELD(numOutputSegs);
-	appendStringInfo(str, " :outputSegIdx");
+	appendStringInfoLiteral(str, " :outputSegIdx");
 	for (i = 0; i < node->numOutputSegs; i++)
 		appendStringInfo(str, " %d", node->outputSegIdx[i]);
 	WRITE_BOOL_FIELD(fixedToSelfOnly);
 
 	WRITE_INT_FIELD(numSortCols);
-	appendStringInfo(str, " :sortColIdx");
+	appendStringInfoLiteral(str, " :sortColIdx");
 	for (i = 0; i < node->numSortCols; i++)
 		appendStringInfo(str, " %d", node->sortColIdx[i]);
 
-	appendStringInfo(str, " :sortOperators");
+	appendStringInfoLiteral(str, " :sortOperators");
 	for (i = 0; i < node->numSortCols; i++)
 		appendStringInfo(str, " %u", node->sortOperators[i]);
 
 	WRITE_INT_FIELD(numInputSegs);
-	appendStringInfo(str, " :inputSegIdx");
+	appendStringInfoLiteral(str, " :inputSegIdx");
 	for (i = 0; i < node->numInputSegs; i++)
 		appendStringInfo(str, " %d", node->inputSegIdx[i]);
 }
@@ -677,9 +677,9 @@ _outConst(StringInfo str, Const *node)
 	WRITE_BOOL_FIELD(constbyval);
 	WRITE_BOOL_FIELD(constisnull);
 
-	appendStringInfo(str, " :constvalue ");
+	appendStringInfoLiteral(str, " :constvalue ");
 	if (node->constisnull)
-		appendStringInfo(str, "<>");
+		appendStringInfoLiteral(str, "<>");
 	else
 		_outDatum(str, node->constvalue, node->constlen, node->constbyval);
 }
@@ -789,7 +789,7 @@ _outBoolExpr(StringInfo str, BoolExpr *node)
 			opstr = "not";
 			break;
 	}
-	appendStringInfo(str, " :boolop ");
+	appendStringInfoLiteral(str, " :boolop ");
 	_outToken(str, opstr);
 
 	WRITE_NODE_FIELD(args);
@@ -1060,11 +1060,11 @@ _outFlow(StringInfo str, Flow *node)
 	/* This array format as in Group and Sort nodes. */
 	WRITE_INT_FIELD(numSortCols);
 	
-	appendStringInfo(str, " :sortColIdx");
+	appendStringInfoLiteral(str, " :sortColIdx");
 	for ( i = 0; i < node->numSortCols; i++ )
 		appendStringInfo(str, " %d", node->sortColIdx[i]);
 	
-	appendStringInfo(str, " :sortOperators");
+	appendStringInfoLiteral(str, " :sortOperators");
 	for ( i = 0; i < node->numSortCols; i++ )
 		appendStringInfo(str, " %u", node->sortOperators[i]);
 	
@@ -1916,7 +1916,7 @@ _outQuery(StringInfo str, Query *node)
 				WRITE_NODE_FIELD(utilityStmt);
 				break;
 			default:
-				appendStringInfo(str, " :utilityStmt ?");
+				appendStringInfoLiteral(str, " :utilityStmt ?");
 				appendStringInfo(str, "%u", nodeTag(node->utilityStmt));
 				if (Mpp_role == MPP_ROLE_DISPATCH)
 				{
@@ -1932,7 +1932,7 @@ _outQuery(StringInfo str, Query *node)
 		}
 	}
 	else
-		appendStringInfo(str, " :utilityStmt <>");
+		appendStringInfoLiteral(str, " :utilityStmt <>");
 
 	WRITE_INT_FIELD(resultRelation);
 	WRITE_NODE_FIELD(into);
@@ -2030,42 +2030,42 @@ _outAExpr(StringInfo str, A_Expr *node)
 	switch (node->kind)
 	{
 		case AEXPR_OP:
-			appendStringInfo(str, " OPER ");
+			appendStringInfoLiteral(str, " OPER ");
 			WRITE_NODE_FIELD(name);
 			break;
 		case AEXPR_AND:
-			appendStringInfo(str, " AND ");
+			appendStringInfoLiteral(str, " AND ");
 			break;
 		case AEXPR_OR:
-			appendStringInfo(str, " OR ");
+			appendStringInfoLiteral(str, " OR ");
 			break;
 		case AEXPR_NOT:
-			appendStringInfo(str, " NOT ");
+			appendStringInfoLiteral(str, " NOT ");
 			break;
 		case AEXPR_OP_ANY:
-			appendStringInfo(str, " ANY ");
+			appendStringInfoLiteral(str, " ANY ");
 			WRITE_NODE_FIELD(name);
 		
 			break;
 		case AEXPR_OP_ALL:
-			appendStringInfo(str, " ALL ");
+			appendStringInfoLiteral(str, " ALL ");
 			WRITE_NODE_FIELD(name);
 		
 			break;
 		case AEXPR_DISTINCT:
-			appendStringInfo(str, " DISTINCT ");
+			appendStringInfoLiteral(str, " DISTINCT ");
 			WRITE_NODE_FIELD(name);
 			break;
 		case AEXPR_NULLIF:
-			appendStringInfo(str, " NULLIF ");
+			appendStringInfoLiteral(str, " NULLIF ");
 			WRITE_NODE_FIELD(name);
 			break;
 		case AEXPR_OF:
-			appendStringInfo(str, " OF ");
+			appendStringInfoLiteral(str, " OF ");
 			WRITE_NODE_FIELD(name);
 			break;
 		default:
-			appendStringInfo(str, " ??");
+			appendStringInfoLiteral(str, " ??");
 			break;
 	}
 
@@ -2167,39 +2167,39 @@ _outConstraint(StringInfo str, Constraint *node)
 
 	WRITE_STRING_FIELD(name);
 
-	appendStringInfo(str, " :contype ");
+	appendStringInfoLiteral(str, " :contype ");
 	switch (node->contype)
 	{
 		case CONSTR_PRIMARY:
-			appendStringInfo(str, "PRIMARY_KEY");
+			appendStringInfoLiteral(str, "PRIMARY_KEY");
 			WRITE_NODE_FIELD(keys);
 			WRITE_STRING_FIELD(indexspace);
 			break;
 
 		case CONSTR_UNIQUE:
-			appendStringInfo(str, "UNIQUE");
+			appendStringInfoLiteral(str, "UNIQUE");
 			WRITE_NODE_FIELD(keys);
 			WRITE_STRING_FIELD(indexspace);
 			break;
 
 		case CONSTR_CHECK:
-			appendStringInfo(str, "CHECK");
+			appendStringInfoLiteral(str, "CHECK");
 			WRITE_NODE_FIELD(raw_expr);
 			WRITE_STRING_FIELD(cooked_expr);
 			break;
 
 		case CONSTR_DEFAULT:
-			appendStringInfo(str, "DEFAULT");
+			appendStringInfoLiteral(str, "DEFAULT");
 			WRITE_NODE_FIELD(raw_expr);
 			WRITE_STRING_FIELD(cooked_expr);
 			break;
 
 		case CONSTR_NOTNULL:
-			appendStringInfo(str, "NOT_NULL");
+			appendStringInfoLiteral(str, "NOT_NULL");
 			break;
 
 		default:
-			appendStringInfo(str, "<unrecognized_constraint>");
+			appendStringInfoLiteral(str, "<unrecognized_constraint>");
 			break;
 	}
 }
@@ -2265,7 +2265,7 @@ _outRemoteParamData(StringInfo str, RemoteParamData *node)
 
 	WRITE_BOOL_FIELD(paramData.isnull);
 
-	appendStringInfo(str, " :value ");
+	appendStringInfoLiteral(str, " :value ");
 
 	/*
 	 * When the value is NULL for a datum that is not a typbyval,
@@ -2275,7 +2275,7 @@ _outRemoteParamData(StringInfo str, RemoteParamData *node)
 	 * avoid calling _outDatum for a NULL value.
 	 */
 	if ( node->paramData.isnull )
-		appendStringInfo(str, "<>");
+		appendStringInfoLiteral(str, "<>");
 	else
 		_outDatum(str, node->paramData.value, typlen, typbyval);
 }
@@ -2329,7 +2329,7 @@ _outSnapshotInfo(StringInfo str, SnapshotInfo *node)
 	WRITE_UINT_FIELD(xmax);
 	WRITE_INT_FIELD(xcnt);
 	
-	appendStringInfo(str, " :xip");
+	appendStringInfoLiteral(str, " :xip");
 	for( i = 0; i < node->xcnt; i++ )
 		appendStringInfo(str, " %u", node->xip[i]);
 	
@@ -2345,7 +2345,7 @@ static void
 _outNode(StringInfo str, void *obj)
 {
 	if (obj == NULL)
-		appendStringInfo(str, "<>");
+		appendStringInfoLiteral(str, "<>");
 	else if (IsA(obj, List) ||IsA(obj, IntList) || IsA(obj, OidList))
 		_outList(str, obj);
 	else if (IsA(obj, Integer) ||

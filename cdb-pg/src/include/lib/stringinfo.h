@@ -133,6 +133,16 @@ extern void appendBinaryStringInfo(StringInfo str,
 					   const char *data, int datalen);
 
 /*------------------------
+ * appendStringInfoLiteral
+ * Wrap a string literal and send to appendBinaryStringInfo, sort of
+ * the way appendStringInfoString() would do, except without having
+ * to call strlen() on something for which we already know the length 
+ *
+ * NOTE: sizeof() returns full size, including NULL.
+ */
+#define appendStringInfoLiteral(str, lit) (appendBinaryStringInfo(str, (lit), sizeof((lit)) - 1))
+
+/*------------------------
  * enlargeStringInfo
  * Make sure a StringInfo's buffer can hold at least 'needed' more bytes.
  */
