@@ -141,6 +141,22 @@
 		} \
 	}
 
+/* Read an Trasnaction ID array (written as ":fldname %u %u ... ") */
+#define READ_XID_ARRAY(fldname, count) \
+	token = pg_strtok(&length);		/* skip :fldname */ \
+	if ( local_node->count > 0 ) \
+	{ \
+		int i; \
+		local_node->fldname = (TransactionId *)palloc(local_node->count * sizeof(TransactionId)); \
+		for(i=0; i<local_node->count; i++) \
+		{ \
+			token = pg_strtok(&length);		/* get field value */ \
+			local_node->fldname[i] = ((TransactionId) strtoul((token), NULL, 10)); \
+		} \
+	}
+
+
+
 /* Read an Oid array (written as ":fldname %u %u ...") */
 #define READ_OID_ARRAY(fldname, count) \
 	token = pg_strtok(&length);		/* skip :fldname */ \
@@ -2100,6 +2116,20 @@ _readSliceTable(void)
 	READ_DONE();
 }
 
+static SnapshotInfo *
+_readSnapshotInfo(void)
+{
+	READ_LOCALS(SnapshotInfo);
+	
+	READ_UINT_FIELD(xmin);
+	READ_UINT_FIELD(xmax);
+	READ_INT_FIELD(xcnt);
+	READ_XID_ARRAY(xip,xcnt);
+	READ_UINT_FIELD(curcid);
+	
+	READ_DONE();
+}
+
 static VariableResetStmt *
 _readVariableResetStmt(void)
 {
@@ -2311,6 +2341,7 @@ static ParseNodeInfo infoAr[] =
 	{"SETTODEFAULT", (ReadFn)_readSetToDefault},
 	{"SLICE", (ReadFn)_readSlice},
 	{"SLICETABLE", (ReadFn)_readSliceTable},
+	{"SNAPSHOTINFO", (ReadFn)_readSnapshotInfo},
 	{"SORT", (ReadFn)_readSort},
 	{"SORTCLAUSE", (ReadFn)_readSortClause},
 	{"SUBLINK", (ReadFn)_readSubLink},

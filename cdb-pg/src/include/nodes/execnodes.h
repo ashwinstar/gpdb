@@ -432,6 +432,24 @@ typedef struct SliceTable
 
 
 
+/* Snapshot is a node version of the Snapshot definition in tqual.h.  We make
+ * a node for it so that we can serialize the information between the QD and the
+ * qExecs.
+ *
+ * NOTE: it is important that this matches the definition in tqual.h of Snapshot.
+ */
+typedef struct SnapshotInfo
+{
+	NodeTag type;
+	
+	TransactionId xmin;			
+	TransactionId xmax;			
+	uint32		  xcnt;			
+	TransactionId *xip;			
+	CommandId	  curcid;	
+} SnapshotInfo;
+
+
 /* ----------------
  *	  EState information
  *

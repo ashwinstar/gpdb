@@ -2318,6 +2318,24 @@ _outSliceTable(StringInfo str, SliceTable *node)
 	WRITE_NODE_FIELD(slices); /* List of int */
 }
 
+static void
+_outSnapshotInfo(StringInfo str, SnapshotInfo *node)
+{
+	int i;
+	
+	WRITE_NODE_TYPE("SNAPSHOTINFO");
+	
+	WRITE_UINT_FIELD(xmin);
+	WRITE_UINT_FIELD(xmax);
+	WRITE_INT_FIELD(xcnt);
+	
+	appendStringInfo(str, " :xip");
+	for( i = 0; i < node->xcnt; i++ )
+		appendStringInfo(str, " %u", node->xip[i]);
+	
+	WRITE_UINT_FIELD(curcid);
+}
+
 
 /*
  * _outNode -
@@ -2774,6 +2792,9 @@ _outNode(StringInfo str, void *obj)
 				break;
 			case T_SliceTable:
 				_outSliceTable(str, obj);
+				break;
+			case T_SnapshotInfo:
+				_outSnapshotInfo(str, obj);
 				break;
 			case T_VariableResetStmt:
 				_outVariableResetStmt(str, obj);
