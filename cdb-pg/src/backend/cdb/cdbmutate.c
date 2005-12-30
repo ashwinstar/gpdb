@@ -94,7 +94,7 @@ apply_motion(Plan *plan, Query *query)
 	bool		is_Update_Delete = FALSE;
 
 	state.nextMotionID = 1;		/* Start at 1 so zero will mean "unassigned". */
-	
+    state.sliceDepth = 0;
 
 	Assert(is_plan_node((Node *) plan) && IsA(query, Query));
 
@@ -120,40 +120,11 @@ apply_motion(Plan *plan, Query *query)
 			 *		it for our focusing.  Doing so would conserve
 			 *		ExecSupportsBackwardScan-ness.
 			 */
-			if (plan->flow->flotype == FLOW_PARTITIONED
-				|| (plan->flow->flotype == FLOW_SINGLETON && plan->flow->segindex != -1)
-				)
+			if (plan->flow->flotype == FLOW_PARTITIONED)
 			{
-				/* Flow is partitioned or singleton on a segment.  Refocus. */
 				plan->flow->req_move = MOVEMENT_FOCUS;
-				plan->flow->segindex = -1;
-			}
-			else if (plan->flow->flotype == FLOW_SINGLETON && plan->flow->segindex == -1)
-			{
-				/* Flow is singleton on dispatcher.  Already focused. */
-			}
-			else if (plan->flow->flotype == FLOW_REPLICATED)
-			{
-				/* Flow is replicated (e.g., a Result node). Focus. */
-
-				/*
-				 * TODO Something like ... plan->flow->req_move =
-				 * MOVEMENT_REP2FOCUS; plan->flow->segindex = -1; ...perhaps.
-				 * Until then, this seems to work for cases discovered so far,
-				 * e.g., select sqrt((select count(*) from sale)); however
-				 * those extra tuples are going somewhere!	Where?
-				 */
-			}
-			else
-			{
-				/*
-				 * TODO  Are the other flows we might legitimately see at the
-				 * top level?
-				 */
-				ereport(ERROR, (
-								errcode(ERRCODE_CDB_INTERNAL_ERROR),
-								errmsg("unexpected flow type at top of plan")
-								));
+                plan->flow->base_flotype = plan->flow->flotype;
+                plan->flow->segindex = -1;
 			}
 			break;
 
@@ -192,6 +163,7 @@ apply_motion(Plan *plan, Query *query)
 							* Refocus.
 							*/
 							plan->flow->req_move = MOVEMENT_REPARTITION;
+                            plan->flow->base_flotype = plan->flow->flotype;
 						}
 						else if (plan->flow->flotype == FLOW_REPLICATED)
 						{
@@ -199,6 +171,7 @@ apply_motion(Plan *plan, Query *query)
 							* Source is replicated over segments. Apply "deep-six".
 							*/
 							plan->flow->req_move = MOVEMENT_REP2PARTITIONED;
+                            plan->flow->base_flotype = plan->flow->flotype;
 						}
 						else
 						{
@@ -229,6 +202,7 @@ apply_motion(Plan *plan, Query *query)
 							* Refocus.
 							*/
 							plan->flow->req_move = MOVEMENT_FOCUS;
+                            plan->flow->base_flotype = plan->flow->flotype;
 							plan->flow->segindex = -1;
 						}
 						else if (plan->flow->flotype == FLOW_REPLICATED)
@@ -386,220 +360,205 @@ apply_motion(Plan *plan, Query *query)
 Node *
 apply_motion_mutator(Node *node, ApplyMotionState * context)
 {
-	Node	   *newnode;
+	Node   *newnode;
+    Plan   *plan;
+    Flow   *flow;
+    int     numInputSegs;
+    int     saveSliceDepth;
+    bool    sendToSecondary = false;    /* always for now */
 
 	if (node == NULL)
 		return NULL;
+
+    /* An expression node might have subtrees containing plans to be mutated. */
+    if (!is_plan_node(node))
+        return plan_tree_mutator(node, apply_motion_mutator, context);
+
+    plan = (Plan *)node;
+    flow = plan->flow;
+
+    /* Descending into a subquery or a new slice? */
+    saveSliceDepth = context->sliceDepth;
+    if (IsA(node, Query))
+        context->sliceDepth = 0;
+    else if (IsA(node, Motion))
+        context->sliceDepth++;
+    else if (flow &&
+                (flow->req_move != MOVEMENT_NONE ||
+                 flow->req_xform != MOVEMENT_NONE))
+        context->sliceDepth++;
 
 	/*
 	 * Copy this node and mutate its children. Afterward, this node should be
 	 * an exact image of the input node, except that contained nodes requiring
 	 * parallelization will have had it applied.
 	 */
-	newnode = plan_tree_mutator(node, apply_motion_mutator, context);
+    newnode = plan_tree_mutator(node, apply_motion_mutator, context);
+
+    context->sliceDepth = saveSliceDepth;
 
 	/* Perform special transformation, if specified. */
-	if (is_plan_node(node) &&
-		((Plan *) node)->flow != NULL &&
-		((Plan *) node)->flow->req_xform != MOVEMENT_NONE)
+	if (flow != NULL &&
+		flow->req_xform != MOVEMENT_NONE)
 	{
-		Plan	   *plan = (Plan *) node;
-
 		/* Special aggregrate transformation? */
-		if (IsA(node, Agg) &&plan->flow->req_xform == MOVEMENT_AGG_RESTRUCT)
+		if (IsA(node, Agg) && flow->req_xform == MOVEMENT_AGG_RESTRUCT)
 		{
 			newnode = (Node *) apply_agg_motion((Plan *) newnode, context);
 		}
 		/* Special limit transformation? */
-		else if (IsA(node, Limit) &&plan->flow->req_xform == MOVEMENT_LIM_RESTRUCT)
+		else if (IsA(node, Limit) && flow->req_xform == MOVEMENT_LIM_RESTRUCT)
 		{
 			newnode = (Node *) apply_limit_motion((Plan *) newnode, context);
 		}
 		else
-		{
-			ereport(ERROR, (
-							errcode(ERRCODE_CDB_INTERNAL_ERROR),
-			errmsg("Unknown restructuring transformation %d for node type %d",
-				   plan->flow->req_xform,
-				   node->type)
-							));
-		}
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+			                errmsg_internal("Unexpected internal error") ));
 	}
 
-	/* Add motion atop the copied node, if necessary. */
-	switch (nodeTag(newnode))
-	{
-			/* Abstract: really should see only subclasses. */
-		case T_Plan:
-		case T_Scan:
-		case T_Join:
-			Assert(false);
-			break;
+    plan = (Plan *)newnode;
+    flow = plan->flow;
 
-			/* Pre-existing Motion nodes must be renumbered. */
-		case T_Motion:
-			/* Motion nodes can't specify motion. */
-			Assert(((Plan *) newnode)->flow == NULL ||
-				   ((Plan *) newnode)->flow->req_move == MOVEMENT_NONE);
-			/* Assign unique node number to the new node. */
-			assignMotionID(newnode, context, node);
-			break;
+    /* Pre-existing Motion nodes must be renumbered. */
+    if (IsA(newnode, Motion))
+    {
+        Motion *motion = (Motion *)newnode;
 
-			/* Add any specified motion to the top of the plan subtree. */
-		case T_Hash:
-		case T_Material:
-		case T_Sort:
-		case T_Unique:
-		case T_SetOp:
-		case T_Limit:
-		case T_Append:
-		case T_Result:
-		case T_SeqScan:
-		case T_FunctionScan:
-		case T_IndexScan:
-		case T_BitmapIndexScan:
-		case T_BitmapHeapScan:
-		case T_TidScan:
-		case T_SubqueryScan:
-		case T_Group:
-		case T_Agg:
+        /* Motion nodes can't specify motion. */
+        Assert(flow == NULL ||
+               flow->req_move == MOVEMENT_NONE);
 
-			/*
-			 * case T_SubPlan: Important, but handled in
-			 * expression_tree_mutator.
-			 */
-		case T_NestLoop:
-		case T_MergeJoin:
-		case T_HashJoin:
-			{
-				Plan	   *plan = (Plan *) newnode;
-				Flow	   *flow = plan->flow;
+        /* Assign unique node number to the new node. */
+        assignMotionID(newnode, context, node);
 
-				bool		sendToSecondary = false;	/* always for now */
+        /* If top slice marked as singleton, make it a dispatcher singleton. */
+        if (motion->motionType == MOTIONTYPE_FIXED &&
+            motion->numOutputSegs == 1 &&
+            motion->outputSegIdx[0] >= 0 &&
+            context->sliceDepth == 0)
+        {
+            if (flow)
+            {
+                Assert(flow->flotype == FLOW_SINGLETON &&
+                       flow->segindex == motion->outputSegIdx[0]);
+                flow->segindex = -1;
+            }
+            motion->outputSegIdx[0] = -1;
+        }
+        return newnode;
+    }
 
-				/*
-				 * If no Flow node, we're in a portion of the tree that was
-				 * finished by the planner.
-				 */
-				if (!flow)
-					break;
+    /*
+     * If no Flow node, we're in a portion of the tree that was
+     * finished by the planner.
+     */
+    if (!flow)
+        return newnode;
 
-				switch (flow->req_move)
-				{
-					case MOVEMENT_FOCUS:
+    Assert(IsA(flow, Flow));
 
-						/*
-						 * TODO Fix this branch (which requires, in turn,
-						 * extending our Flow support) to specify sort order,
-						 * whether to send to secondary, and which segment is
-						 * this one.  (Or should we specify "dispatcher" and
-						 * let plan state specify the actual segment number?).
-						 *
-						 * So make_union_motion( newnode, flow->sendToSecondary,
-						 * ThisSegmentNumber ); or something.
-						 */
-						if (flow->req_move != MOVEMENT_NONE && flow->numSortCols > 0)
-						{
-							newnode = (Node *) make_sorted_union_motion(
-																		plan,
-															 sendToSecondary,
-															  flow->segindex,	/* TODO if 0, adjust to
-																				 * "chosen" segment. */
-														   flow->numSortCols,
-															flow->sortColIdx,
-														  flow->sortOperators
-								);
-							/* Assign unique node number to the new node. */
-							assignMotionID(newnode, context, NULL);
-						}
-						else
-						{
-							newnode = (Node *) make_union_motion(
-																 plan,
-															 sendToSecondary,
-															   flow->segindex	/* TODO if 0, adjust to
-																				 * "chosen" segment. */
-								);
-							/* Assign unique node number to the new node. */
-							assignMotionID(newnode, context, NULL);
-						}
-						break;
+    /* How many sending processes? */
+    numInputSegs = 1;
+    if (flow->req_move != MOVEMENT_NONE &&
+        flow->base_flotype != FLOW_SINGLETON)
+    {
+        Assert(flow->base_flotype != FLOW_UNDEFINED);
+        numInputSegs = getMPPSegmentCount();
+    }
 
-					case MOVEMENT_BROADCAST:
-						if (flow->req_move != MOVEMENT_NONE && flow->numSortCols > 0)
-						{
-							Assert(false);		/* This case disallowed. */
-							newnode = (Node *) make_sorted_broadcast_motion(
-																		plan,
-															 sendToSecondary,
-														   flow->numSortCols,
-															flow->sortColIdx,
-														  flow->sortOperators
-								);
-							/* Assign unique node number to the new node. */
-							assignMotionID(newnode, context, NULL);
-						}
-						else
-						{
-							newnode = (Node *) make_broadcast_motion(
-																	 plan,
-															  sendToSecondary
-								);
-							/* Assign unique node number to the new node. */
-							assignMotionID(newnode, context, NULL);
-						}
-						break;
+    /* Add motion atop the copied node, if necessary. */
+    switch (flow->req_move)
+    {
+        case MOVEMENT_FOCUS:
+            /*
+             * TODO Fix this branch (which requires, in turn,
+             * extending our Flow support) to specify sort order,
+             * whether to send to secondary, and which segment is
+             * this one.  (Or should we specify "dispatcher" and
+             * let plan state specify the actual segment number?).
+             *
+             * So make_union_motion( newnode, flow->sendToSecondary,
+             * ThisSegmentNumber ); or something.
+             */
 
-					case MOVEMENT_REPARTITION:
-					case MOVEMENT_REP2PARTITIONED:
-						Assert(flow->hashExpr != NULL);
-						if (flow->req_move != MOVEMENT_NONE && flow->numSortCols > 0)
-						{
-							Assert(false);		/* This case disallowed. */
-							newnode = (Node *) make_sorted_hashed_motion(
-																		 plan,
-															 sendToSecondary,
-															  flow->hashExpr,
-														   flow->numSortCols,
-															flow->sortColIdx,
-														  flow->sortOperators
-								);
-							/* Assign unique node number to the new node. */
-							assignMotionID(newnode, context, NULL);
-						}
-						else
-						{
-							newnode = (Node *) make_hashed_motion(
-																  plan,
-															 sendToSecondary,
-															   flow->hashExpr
-								);
-							/* Assign unique node number to the new node. */
-							assignMotionID(newnode, context, NULL);
-						}
+            /* If top slice is a singleton, let it execute on qDisp. */
+            if (flow->segindex >= 0 &&
+                context->sliceDepth == 0)
+                flow->segindex = -1;
 
-						if (flow->req_move == MOVEMENT_REP2PARTITIONED)
-							setHashToSelfOnly((Motion *) newnode);
+            if (flow->numSortCols > 0)
+            {
+                newnode = (Node *)make_sorted_union_motion(plan,
+                                                           sendToSecondary,
+                                                           numInputSegs,
+                                                           flow->segindex,  /* TODO if 0, adjust to
+                                                                             * "chosen" segment. */
+                                                           flow->numSortCols,
+                                                           flow->sortColIdx,
+                                                           flow->sortOperators
+                                                           );
+            }
+            else
+            {
+                newnode = (Node *)make_union_motion(plan,
+                                                    sendToSecondary,
+                                                    numInputSegs,
+                                                    flow->segindex  /* TODO if 0, adjust to
+                                                                     * "chosen" segment. */
+                                                    );
+            }
+            /* Assign unique node number to the new node. */
+            assignMotionID(newnode, context, NULL);
+            break;
 
-						break;
+        case MOVEMENT_BROADCAST:
+            Assert(flow->numSortCols == 0);
+
+            newnode = (Node *) make_broadcast_motion(plan, sendToSecondary,
+                                                     numInputSegs);
+
+            /* Assign unique node number to the new node. */
+            assignMotionID(newnode, context, NULL);
+            break;
+
+        case MOVEMENT_REPARTITION:
+        case MOVEMENT_REP2PARTITIONED:
+            Assert(flow->hashExpr != NULL);
+            Assert(flow->numSortCols == 0);
+
+            newnode = (Node *)make_hashed_motion(plan,
+                                                 sendToSecondary,
+                                                 numInputSegs,
+                                                 flow->hashExpr
+                                                 );
+
+            /* Assign unique node number to the new node. */
+            assignMotionID(newnode, context, NULL);
+
+            if (flow->req_move == MOVEMENT_REP2PARTITIONED)
+                setHashToSelfOnly((Motion *) newnode);
+            break;
 
 
-					case MOVEMENT_NONE:
-						break;
-						
-					case MOVEMENT_DISTINCT_RESTRUCT:
-					default:
-						Assert(false);
-						break;
-				}
-			}
+        case MOVEMENT_NONE:
+            /* Update flow if reassigning singleton top slice to qDisp. */
+            if (flow->flotype == FLOW_SINGLETON &&
+                flow->segindex >= 0 &&
+                context->sliceDepth == 0)
+            {
+                flow->segindex = -1;
+            }
+            break;
 
-		default:
-			break;
-	}
+        case MOVEMENT_DISTINCT_RESTRUCT:
+        default:
+            Assert(false);
+            break;
+    }
 
 	return newnode;
-}
+}                               /* apply_motion_mutator */
+
 
 /*
  * Helper code for ApplyMotionState -- Assign motion id to new Motion node.
@@ -779,11 +738,17 @@ getHashMotionInfoList(Plan *node, HashMotionInfoType type)
  * --------------------------------------------------------------------
  */
 Motion *
-make_motion(Plan *lefttree, MotionType motionType,
-			bool sendToSecondary, bool sendSorted,
-			List *hashExpr,
-			int numOutputSegs, int *outputSegIdx,
-			int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators)
+make_motion(Plan       *lefttree,
+            MotionType  motionType,
+			bool        sendToSecondary,
+            bool        sendSorted,
+            int         numInputSegs,
+			List       *hashExpr,
+			int         numOutputSegs,
+            int        *outputSegIdx,
+			int         numSortCols,
+            AttrNumber *sortColIdx,
+            Oid        *sortOperators)
 {
 	Flow *flow;
     Motion *node = makeNode(Motion);
@@ -836,6 +801,9 @@ make_motion(Plan *lefttree, MotionType motionType,
 	node->sendToSecondary = sendToSecondary;
 	node->sendSorted = sendSorted;
 
+    node->numInputSegs = numInputSegs;
+    node->inputSegIdx = NULL;
+
 	node->hashToSelfOnly = false;
 	node->fixedToSelfOnly = false;
 
@@ -859,15 +827,6 @@ make_motion(Plan *lefttree, MotionType motionType,
 		node->numHashSegs = getMPPSegmentCount();
 		node->hashSegIdx = makeDefaultSegIdxArray(getMPPSegmentCount());
 	}
-
-    /* If merging, fill in the sending segment info. */
-    node->numInputSegs = 0;
-    node->inputSegIdx = NULL;
-	if ( sendSorted )
-    {
-        node->numInputSegs = getMPPSegmentCount();
-        node->inputSegIdx = makeDefaultSegIdxArray(getMPPSegmentCount());
-    }
 
     /* Attach a descriptive Flow. */
 	switch ( node->motionType )
@@ -903,8 +862,8 @@ make_motion(Plan *lefttree, MotionType motionType,
 		flow->sortOperators = palloc (n * sizeof(Oid));
 		for ( i = 0; i < n; i++ )
 		{
-			flow->sortColIdx[i] = node->sortColIdx[i]; 
-			flow->sortOperators[i] = node->sortOperators[i]; 
+			flow->sortColIdx[i] = node->sortColIdx[i];
+			flow->sortOperators[i] = node->sortOperators[i];
 		}
 	}
 	
@@ -914,79 +873,83 @@ make_motion(Plan *lefttree, MotionType motionType,
 }
 
 Motion *
-make_union_motion(Plan *lefttree, bool sendToSecondary, int destSegIndex)
+make_union_motion(Plan *lefttree, bool sendToSecondary,
+                  int numInputSegs, int destSegIndex)
 {
 	int		   *outputSegIdx = palloc(sizeof(int));
 
 	outputSegIdx[0] = destSegIndex;
 
 	return make_motion(lefttree, MOTIONTYPE_FIXED,
-					   sendToSecondary, false,
+					   sendToSecondary, false, numInputSegs,
 					   NIL,
 					   1, outputSegIdx,
 					   0, NULL, NULL);
 }
 
 Motion *
-make_sorted_union_motion(Plan *lefttree, bool sendToSecondary, int destSegIndex,
+make_sorted_union_motion(Plan *lefttree, bool sendToSecondary,
+                         int numInputSegs, int destSegIndex,
 				 int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators)
 {
 	int		   *outputSegIdx = palloc(sizeof(int));
-	int			mySegIdx;
 
-	/* TODO:  Pete needs to work with Brian on this part.  Donnie is clueless. */
-	mySegIdx = Mpp_segment;
-	outputSegIdx[0] = mySegIdx;
+	outputSegIdx[0] = destSegIndex;
 
 	return make_motion(lefttree, MOTIONTYPE_FIXED,
-					   sendToSecondary, true,
+					   sendToSecondary, true, numInputSegs,
 					   NIL,
 					   1, outputSegIdx,
 					   numSortCols, sortColIdx, sortOperators);
 }
 
 Motion *
-make_hashed_motion(Plan *lefttree, bool sendToSecondary,
+make_hashed_motion(Plan *lefttree, bool sendToSecondary, int numInputSegs,
 				   List *hashExpr)
 {
 	return make_motion(lefttree, MOTIONTYPE_HASH,
-					   sendToSecondary, false,
+					   sendToSecondary, false, numInputSegs,
 					   hashExpr,
 					   0, NULL, 0, NULL, NULL);
 }
 
+#if UNUSED
 Motion *
 make_sorted_hashed_motion(Plan *lefttree, bool sendToSecondary,
-						  List *hashExpr,
+						  int numInputSegs, List *hashExpr,
 				 int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators)
 {
 	return make_motion(lefttree, MOTIONTYPE_HASH,
-					   sendToSecondary, true,
+					   sendToSecondary, true, numInputSegs,
 					   hashExpr,
 					   0, NULL,
 					   numSortCols, sortColIdx, sortOperators);
 }
+#endif /*UNUSED*/
 
 Motion *
-make_broadcast_motion(Plan *lefttree, bool sendToSecondary)
+make_broadcast_motion(Plan *lefttree, bool sendToSecondary, int numInputSegs)
 {
 	return make_motion(lefttree, MOTIONTYPE_FIXED,
-					   sendToSecondary, false,
+					   sendToSecondary, false, numInputSegs,
 					   NIL,
 					   0, NULL,
 					   0, NULL, NULL);
 }
 
+#if UNUSED
 Motion *
 make_sorted_broadcast_motion(Plan *lefttree, bool sendToSecondary,
+                 int numInputSegs,
 				 int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators)
 {
 	return make_motion(lefttree, MOTIONTYPE_FIXED,
-					   sendToSecondary, true,
+					   sendToSecondary, true, numInputSegs,
 					   NIL,
 					   0, NULL,
 					   numSortCols, sortColIdx, sortOperators);
 }
+#endif /*UNUSED*/
 
 /*
  * setHashToSelfOnly
@@ -1010,6 +973,7 @@ setHashToSelfOnly(Motion * motion)
 	motion->hashToSelfOnly = true;
 }
 
+#if UNUSED
 /*
  * setFixedToSelfOnly
  * This enables "deep-sixing" of fixed motion, whereby
@@ -1032,6 +996,7 @@ setFixedToSelfOnly(Motion * motion)
 
 	motion->fixedToSelfOnly = true;
 }
+#endif /*UNUSED*/
 
 /* --------------------------------------------------------------------
  * makeDefaultSegIdxArray -- creates an int array with numSegs elements,

@@ -1,450 +1,269 @@
 /*-------------------------------------------------------------------------
  *
  * cdbheap.c
- * Functions for managing a set of streams of heap tuple results
- * for use by sorted motion nodes. *
+ *
+ * Generic heap functions, that can be used with any
+ * data structure and comparator function
+ *
+ * Copyright (c) 2005, greenplum inc
+ *
+ * $Id$
  *
  *-------------------------------------------------------------------------
  */
 
 #include "postgres.h"
-#include "access/heapam.h"
-#include "executor/executor.h"
-#include "cdb/cdbheap.h"
 
-static void SiftDown(CdbHeap *cdbheap, int From, int End);
+#include "cdb/cdbheap.h"                /* me */
 
-/*
- * Function specific to
- * heaps of CdbTupleHeapInfo data.
- */
-static int	CmpTuplesForSortedMotion(void *lhs, void *rhs);
-static void *CreateCdbTupleHeapInfo(void *createData, void *initData);
-static void CopyCdbTupleHeapInfo(void *destination, void *source);
-static void SwitchCdbTupleHeapInfo(void *left, void *right);
-
-/*
- * Specific CdbTupleHeapInfo heap implementation
- */
-
-CdbHeap *
-CreateCdbTupleHeap(int numRoutes,
-				   MotionState *node,
-				   Motion *motion)
-{
-	CdbHeapTupleCompareInfo *cmpinfo;
-
-	Assert(numRoutes >= 1
-		   && node != NULL
-		   && motion != NULL);
-
-	cmpinfo = (CdbHeapTupleCompareInfo *) palloc0(sizeof(CdbHeapTupleCompareInfo));
-	cmpinfo->sortFunctions = node->sortFunctions;
-	cmpinfo->sortFnKinds = node->sortFnKinds;
-	cmpinfo->numSortCols = motion->numSortCols;
-	cmpinfo->sortColIdx = motion->sortColIdx;
-	cmpinfo->tupDesc = ExecGetResultType(&node->ps);
-
-	return CreateCdbHeap(numRoutes,
-						 CmpTuplesForSortedMotion,
-						 CreateCdbTupleHeapInfo,
-						 CopyCdbTupleHeapInfo,
-						 SwitchCdbTupleHeapInfo,
-						 cmpinfo);
-}
-
-void
-SetCdbTupleHeapInitialValue(CdbHeap *cdbheap, HeapTuple tuple, int sourceRouteId)
-{
-	CdbTupleHeapInfo info;
-
-	info.tuple = tuple;
-	info.sourceRouteId = sourceRouteId;
-
-	SetCdbHeapInitialValue(cdbheap, &info);
-}
-
-void
-MergeNewValueIntoCdbTupleHeap(CdbHeap *cdbheap, HeapTuple h, int sourceRouteId)
-{
-	CdbTupleHeapInfo info;
-
-	info.tuple = h;
-	info.sourceRouteId = sourceRouteId;
-
-	MergeNewValueIntoCdbHeap(cdbheap, &info);
-}
-
-
-/*
- * cmpTuplesForSortedMotion:
- * Used to compare tuples for a sorted motion node.
- */
-static int
-CmpTuplesForSortedMotion(void *lhs, void *rhs)
-{
-	CdbHeapTupleCompareInfo *cmpinfo;
-	CdbTupleHeapInfo *linfo = (CdbTupleHeapInfo *) lhs;
-	CdbTupleHeapInfo *rinfo = (CdbTupleHeapInfo *) rhs;
-	HeapTuple	ltup,
-				rtup;
-	FmgrInfo   *sortFunctions;
-	SortFunctionKind *sortFnKinds;
-	int			numSortCols;
-	AttrNumber *sortColIdx;
-	TupleDesc	tupDesc;
-	int			nkey;
-
-	Assert(linfo->cmpinfo != NULL &&
-		   linfo->cmpinfo == rinfo->cmpinfo);
-
-	cmpinfo = linfo->cmpinfo;
-	ltup = linfo->tuple;
-	rtup = rinfo->tuple;
-
-	sortFunctions = cmpinfo->sortFunctions;
-	sortFnKinds = cmpinfo->sortFnKinds;
-	numSortCols = cmpinfo->numSortCols;
-	sortColIdx = cmpinfo->sortColIdx;
-	tupDesc = cmpinfo->tupDesc;
-
-	/* NULL is greater than any non-NULL tuple. */
-	if (ltup == NULL)
-	{
-		if (rtup == NULL)
-			return 0;
-
-		return 1;
-	}
-	else if (rtup == NULL)
-	{
-		return -1;
-	}
-
-	for (nkey = 0; nkey < numSortCols; nkey++)
-	{
-		AttrNumber	attno = sortColIdx[nkey];
-		Datum		datum1,
-					datum2;
-		bool		isnull1,
-					isnull2;
-		int32		compare;
-
-		datum1 = heap_getattr(ltup, attno, tupDesc, &isnull1);
-		datum2 = heap_getattr(rtup, attno, tupDesc, &isnull2);
-
-		compare = ApplySortFunction(&sortFunctions[nkey],
-									sortFnKinds[nkey],
-									datum1, isnull1,
-									datum2, isnull2);
-		if (compare != 0)
-			return compare;
-	}
-
-	return 0;
-}
-
-static void *
-CreateCdbTupleHeapInfo(void *createData, void *initData)
-{
-	CdbTupleHeapInfo *info;
-	CdbTupleHeapInfo *initTupleHeapInfo;
-	CdbHeapTupleCompareInfo *cmpinfo;
-
-	Assert(createData != NULL);
-	Assert(initData != NULL);
-
-	initTupleHeapInfo = (CdbTupleHeapInfo *) initData;
-	cmpinfo = (CdbHeapTupleCompareInfo *) createData;
-
-	info = palloc0(sizeof(CdbTupleHeapInfo));
-	if (info == NULL)
-	{
-		ereport(FATAL, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-						errmsg("cdbheap could not create tuple heap info: allocation failed"),
-						errdetail("allocation of %d bytes failed", (int)sizeof(CdbTupleHeapInfo))));
-	}
-
-	info->tuple = initTupleHeapInfo->tuple;
-	info->sourceRouteId = initTupleHeapInfo->sourceRouteId;
-	info->cmpinfo = cmpinfo;
-
-	return info;
-}
 
 static void
-CopyCdbTupleHeapInfo(void *destination, void *source)
+SiftDown(CdbHeap *hp, int iHole, void *newElement);
+
+
+static inline void
+CdbHeap_CopySlot(CdbHeap *hp, void *tgtSlot, const void *srcSlot)
 {
-	CdbTupleHeapInfo *infoDest;
-	CdbTupleHeapInfo *infoSrc;
+    int        *tgt = (int *)tgtSlot;
+    const int  *src = (const int *)srcSlot;
+    int         j = hp->wordsPerSlot;
 
-	Assert(destination != NULL);
-	Assert(source != NULL);
+    tgt[0] = src[0];
+    if (--j > 0)
+    {
+        tgt[1] = src[1];
+        if (--j > 0)
+        {
+            tgt[2] = src[2];
+            while (--j > 0)
+                tgt[j+2] = src[j+2];
+        }
+    }
+}                               /* CdbHeap_CopySlot */
 
-	infoDest = (CdbTupleHeapInfo *) destination;
-	infoSrc = (CdbTupleHeapInfo *) source;
 
-	infoDest->tuple = infoSrc->tuple;
-	infoDest->sourceRouteId = infoSrc->sourceRouteId;
-}
-
-static void
-SwitchCdbTupleHeapInfo(void *left, void *right)
+/* Allocate and initialize a CdbHeap structure. */
+CdbHeap *
+CdbHeap_Create(CdbHeapCmpFn     comparator,
+               void            *comparatorContext,
+               int              nSlotsMax,
+               int              bytesPerSlot,
+               void            *slotArray)
 {
-	CdbTupleHeapInfo *infoLeft,
-			   *infoRight;
-	HeapTuple	tempTuple;
-	int			tempRouteId;
+	CdbHeap    *hp = (CdbHeap *)palloc0(sizeof(*hp) + bytesPerSlot);
 
-	Assert(left != NULL);
-	Assert(right != NULL);
+    Assert(comparator && nSlotsMax > 0);
 
-	infoLeft = (CdbTupleHeapInfo *) left;
-	infoRight = (CdbTupleHeapInfo *) right;
+    /* Initialize the CdbHeap structure. */
+    hp->nSlotsUsed = 0;
+    hp->nSlotsMax = nSlotsMax;
+    hp->bytesPerSlot = bytesPerSlot;
+    hp->wordsPerSlot = bytesPerSlot / sizeof(int);
+    hp->comparator = comparator;
+    hp->comparatorContext = comparatorContext;
 
-	tempTuple = infoLeft->tuple;
-	tempRouteId = infoLeft->sourceRouteId;
+    /* A 1-element temporary buffer immediately follows the CdbHeap struct. */
+    hp->tempSlot = (char *)(hp + 1);
 
-	infoLeft->tuple = infoRight->tuple;
-	infoLeft->sourceRouteId = infoRight->sourceRouteId;
-	infoRight->tuple = tempTuple;
-	infoRight->sourceRouteId = tempRouteId;
-}
+    /* Allocate space for array of priority queue entries. */
+    hp->slotArray = slotArray;
+    hp->ownSlotArray = false;
+    if (!slotArray)
+    {
+        hp->slotArray = palloc0(nSlotsMax * bytesPerSlot);
+        hp->ownSlotArray = true;
+    }
 
-int
-GetCountCdbHeap(CdbHeap *cdbheap)
+    Assert(hp->wordsPerSlot > 0 &&
+           (int)(hp->wordsPerSlot * sizeof(int)) == bytesPerSlot);
+
+    return hp;
+}                               /* CdbHeap_Create */
+
+
+/* Free a CdbHeap structure. */
+void
+CdbHeap_Destroy(CdbHeap *hp)
 {
-	int			count = 0;
-	int			i;
-	void	  **heap;
-	CdbTupleHeapInfo *info;
+    if (hp)
+    {
+        /* Free slotArray if we allocated it.  Don't free if caller owns it. */
+        if (hp->ownSlotArray &&
+            hp->slotArray)
+            pfree(hp->slotArray);
 
-	if (cdbheap == NULL ||
-		cdbheap->heap == NULL ||
-		cdbheap->size <= 0)
-		return count;
+        pfree(hp);
+    }
+}                               /* CdbHeap_Destroy */
 
-	heap = cdbheap->heap;
 
-	for (i = 1; i <= cdbheap->size; i++)
-	{
-		if (heap[i] == NULL)
-			continue;
+/* Arrange elements of slotArray such that the heap property is satisfied. */
+void
+CdbHeap_Heapify(CdbHeap *hp, int nSlotsUsed)
+{
+    Assert(hp &&
+           nSlotsUsed >= 0 &&
+           nSlotsUsed <= hp->nSlotsMax);
 
-		info = (CdbTupleHeapInfo *) heap[i];
-		if (info != NULL && info->tuple != NULL)
-			count++;
-	}
+    hp->nSlotsUsed = nSlotsUsed;
+    if (nSlotsUsed > 1)
+    {
+        int i;
 
-	return count;
-}
+        for (i = nSlotsUsed/2-1; i >= 0; i--)
+        {
+            /* Make a hole at slot i by moving its contents to temp area. */
+            CdbHeap_CopySlot(hp, hp->tempSlot, CdbHeap_Slot(void, hp, i));
+
+            /* Refill the hole, moving smallest descendant into slot i. */
+            SiftDown(hp, i, hp->tempSlot);
+        }
+    }
+}                               /* CdbHeap_Heapify */
+
 
 /*
- * Generic Heap Implementation
+ * Sort elements in descending order.
+ * The heap property must be satisfied on entry, but no longer holds on return.
+ * Returns ptr to the first sorted element (the max).
  */
-
-CdbHeap *
-CreateCdbHeap(int nSlots,
-			  CdbHeapCmpFn cmpfn,
-			  CdbHeapCreateFn createfn,
-			  CdbHeapCopyFn copyfn,
-			  CdbHeapSwitchFn switchfn,
-			  void *createData)
-{
-	CdbHeap    *result;
-	void	  **heap;
-
-	Assert(cmpfn != NULL
-		   && createfn != NULL
-		   && copyfn != NULL
-		   && switchfn != NULL
-		   && nSlots >= 1);
-
-	result = palloc0(sizeof(CdbHeap));
-	if (result == NULL)
-	{
-		ereport(FATAL, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-						errmsg("cdbheap could not create heap: allocation failed"),
-						errdetail("allocation of %d bytes failed", (int)sizeof(CdbHeap))));
-	}
-
-	result->size = nSlots;
-
-	heap = (void **) palloc0((nSlots + 1) * sizeof(void *));
-	if (heap == NULL)
-	{
-		ereport(FATAL, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-						errmsg("cdbheap could not create heap: allocation failed"),
-						errdetail("allocation of %d bytes failed", (nSlots+1)*(int)sizeof(void *))));
-	}
-
-	result->heap = (void **) heap;
-	result->initialSortDone = false;
-	result->cmpfn = cmpfn;
-	result->createfn = createfn;
-	result->copyfn = copyfn;
-	result->switchfn = switchfn;
-	result->createdata = createData;
-
-	return result;
-}
-
-void
-DestroyCdbHeap(CdbHeap *cdbheap)
-{
-	int			i;
-
-	if (cdbheap == NULL)
-		return;
-
-	if (cdbheap->heap != NULL)
-	{
-		void	  **heap;
-
-		heap = cdbheap->heap;
-
-		for (i = 0; i <= cdbheap->size; i++)
-		{
-			if (heap[i] != NULL)
-			{
-				pfree(heap[i]);
-			}
-		}
-
-		pfree(heap);
-	}
-
-	if (cdbheap->createdata != NULL)
-		pfree(cdbheap->createdata);
-
-	pfree(cdbheap);
-}
-
-void
-SetCdbHeapInitialValue(CdbHeap *cdbheap, void *value)
-{
-	int			i;
-	void	  **heap;
-	CdbHeapCreateFn createfn;
-
-	Assert(cdbheap != NULL
-		   && cdbheap->heap != NULL
-		   && cdbheap->size >= 1
-		   && cdbheap->createfn != NULL);
-
-	heap = cdbheap->heap;
-	createfn = cdbheap->createfn;
-
-	for (i = 1; i <= cdbheap->size; i++)
-	{
-		if (heap[i] == NULL)
-		{
-			heap[i] = (*createfn)(cdbheap->createdata, value);
-			return;
-		}
-	}
-
-	/* Oops, found no open slot. we should NEVER get here. */
-	ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
-					errmsg("cdbheap could not find an open slot."),
-		   errdetail("Programming Error probably a result of the caller not "
-					 "passing the correct value of nSlots in createCdbHeap "
-					 "or is calling this function too many times. ")));
-}
-
 void *
-GetLowestValueFromCdbHeap(CdbHeap *cdbheap)
+CdbHeap_SortDescending(CdbHeap *hp)
 {
-	void	  **heap;
-	int			i;
-	int			n;
+    int     n = hp->nSlotsUsed;
+    int     bytesPerSlot = hp->bytesPerSlot;
+    char   *slot0 = CdbHeap_Slot(char, hp, 0);
+    char   *lastSlot;
 
-	Assert(cdbheap != NULL
-		   && cdbheap->heap != NULL
-		   && cdbheap->size >= 1);
+    if (n == 0)
+        return NULL;
 
-	heap = cdbheap->heap;
+    for (lastSlot = CdbHeap_Slot(char, hp, n-1);
+         slot0 < lastSlot;
+         lastSlot -= bytesPerSlot)
+    {
+        /* Move current min value to temp area, leaving a hole at the root. */
+        CdbHeap_CopySlot(hp, hp->tempSlot, slot0);
 
-	if (!cdbheap->initialSortDone)
-	{
-		/*
-		 * Validate that the heap array is full, from 1 to cdbheap->size
-		 */
-		for (i = 1; i < cdbheap->size; i++)
-		{
-			Assert(heap[i] != NULL);
-		}
+        /* Sink the hole to the end, shrinking the heap by one element. */
+        CdbHeap_DeleteMin(hp);
 
-		/*
-		 *  Now, do the Sift Down
-		 */
-		n = cdbheap->size;
-		for (i = n / 2; i >= 1; i--)
-		{
-			SiftDown(cdbheap, i, n);
-		}
+        /* Put saved min value in the hole vacated by the rightmost element. */
+        CdbHeap_CopySlot(hp, lastSlot, hp->tempSlot);
+    }
 
-		cdbheap->initialSortDone = true;
-	}
+    hp->nSlotsUsed = n;
+    return slot0;
+}                               /* CdbHeap_SortDescending */
 
-	/* Return a pointer to top of heap */
-	return cdbheap->heap[1];
-}
+
+/* Insert a copy of the given element into the heap. */
+void
+CdbHeap_Insert(CdbHeap *hp, void *newElement)
+{
+    CdbHeapCmpFn    comparator = hp->comparator;
+    void           *comparatorContext = hp->comparatorContext;
+    int             bytesPerSlot = hp->bytesPerSlot;
+    char	       *slot0 = CdbHeap_Slot(char, hp, 0);
+    char           *slotN = CdbHeap_Slot(char, hp, hp->nSlotsUsed);
+    char           *holeSlot;
+
+    Assert(newElement &&
+           hp->nSlotsUsed < hp->nSlotsMax);
+
+    /* Grow the heap by adding a rightmost leaf (initially a hole). */
+    holeSlot = slotN;
+    hp->nSlotsUsed++;
+
+    /* Bubble the hole up to the proper level.  Ancestors scoot down. */
+    while (slot0 < holeSlot)
+    {
+        /* Compute parent ptr. */
+        char   *dadSlot = slot0 + (((holeSlot - slot0) >> 1) & -bytesPerSlot);
+
+        /* Hole comes to rest where parent value <= new value. */
+        if ((*comparator)(dadSlot, newElement, comparatorContext) <= 0)
+            break;
+
+        /* Parent value sinks down; the hole bubbles up to the parent slot. */
+        CdbHeap_CopySlot(hp, holeSlot, dadSlot);
+
+        /* Ascend to parent. */
+        holeSlot = dadSlot;
+    }
+
+    /* Fill the hole with the new value. */
+    CdbHeap_CopySlot(hp, holeSlot, newElement);
+}                               /* CdbHeap_Insert */
+
+
+/* Delete the smallest element. */
+void
+CdbHeap_DeleteMin(CdbHeap *hp)
+{
+    Assert(hp && hp->nSlotsUsed > 0);
+
+    /* Heap shrinks by one element. */
+    hp->nSlotsUsed--;
+
+    /* Sift down the rightmost element, refilling hole at root with new min. */
+    if (hp->nSlotsUsed > 0)
+        SiftDown(hp, 0, CdbHeap_Slot(void, hp, hp->nSlotsUsed));
+}                               /* CdbHeap_DeleteMin */
+
+
+/* Delete the smallest element and insert a copy of the given element. */
+void
+CdbHeap_DeleteMinAndInsert(CdbHeap *hp, void* newElement)
+{
+    Assert(hp &&
+           hp->nSlotsUsed > 0 &&
+           newElement);
+
+    /* Sift down the new element, refilling hole at root with new min. */
+    SiftDown(hp, 0, newElement);
+}                               /* CdbHeap_DeleteMinAndInsert */
+
 
 void
-MergeNewValueIntoCdbHeap(CdbHeap *cdbheap, void *value)
+SiftDown(CdbHeap *hp, int iHole, void *newElement)
 {
-	void	  **heap;
-	CdbHeapCopyFn copyfn;
+    CdbHeapCmpFn    comparator = hp->comparator;
+    void           *comparatorContext = hp->comparatorContext;
+    int             bytesPerSlot = hp->bytesPerSlot;
+    char	       *slot0 = CdbHeap_Slot(char, hp, 0);
+    char           *slotN = CdbHeap_Slot(char, hp, hp->nSlotsUsed);
+    char           *firstLeafSlot = CdbHeap_Slot(char, hp, hp->nSlotsUsed >> 1);
+    char           *curSlot;
+    char           *kidSlot;
 
-	Assert(cdbheap != NULL
-		   && cdbheap->heap != NULL
-		   && cdbheap->size >= 1
-		   && cdbheap->copyfn != NULL);
+    Assert(iHole >= 0 &&
+           iHole <= hp->nSlotsUsed &&
+           iHole < hp->nSlotsMax &&
+           newElement);
 
-	heap = cdbheap->heap;
-	copyfn = cdbheap->copyfn;
+    /* Bubble up the new min value into the hole; the hole sinks down. */
+    for (curSlot = iHole * bytesPerSlot + slot0;
+         curSlot < firstLeafSlot;
+         curSlot = kidSlot)
+    {
+        /* Point to left child (could be a leaf). */
+        kidSlot = curSlot - slot0 + bytesPerSlot + curSlot;
 
-	/* Replace top value and sift down */
-	(*copyfn) (heap[1], value);
+        /* If right child exists and has lesser value, choose it instead. */
+        if (kidSlot+bytesPerSlot < slotN &&
+            (*comparator)(kidSlot+bytesPerSlot, kidSlot, comparatorContext) < 0)
+            kidSlot += bytesPerSlot;
 
-	SiftDown(cdbheap, 1, cdbheap->size);
-}
+        /* Hole comes to rest where new value <= all descendants. */
+        if ((*comparator)(newElement, kidSlot, comparatorContext) <= 0)
+            break;
 
-static void
-SiftDown(CdbHeap *cdbheap, int From, int End)
-{
-	int			i, j;
-	void	  **heap;
-	CdbHeapCmpFn cmpfn;
-	CdbHeapSwitchFn switchfn;
+        /* Hole trades places with lesser child. */
+        CdbHeap_CopySlot(hp, curSlot, kidSlot);
+    }
 
-	Assert(cdbheap != NULL
-		   && cdbheap->heap != NULL
-		   && cdbheap->size >= 1
-		   && cdbheap->cmpfn != NULL
-		   && cdbheap->switchfn != NULL);
+    /* Fill the hole with the given element. */
+    CdbHeap_CopySlot(hp, curSlot, newElement);
+}                               /* SiftDown */
 
-	i = From;
-	heap = cdbheap->heap;
-	cmpfn = cdbheap->cmpfn;
-	switchfn = cdbheap->switchfn;
-
-	while (i*2 <= End)
-	{
-		j = i * 2;
-
-		if (j + 1 <= End && (*cmpfn)(heap[j], heap[j + 1]) > 0)
-			j++;
-
-		if ((*cmpfn) (heap[i], heap[j]) > 0)
-		{
-			(*switchfn)(heap[i], heap[j]);
-			i = j;
-			continue;
-		}
-
-		/* done */
-		return;
-	}
-}

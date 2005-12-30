@@ -71,12 +71,14 @@ apply_limit_motion(Plan *plan, ApplyMotionState * state)
 	Plan	   *input_plan;
 	List	   *input_initPlan;
 	Flow	   *output_flow;
+    int         numInputSegs = getMPPSegmentCount();
 
 	/* Sanity checks */
 	Assert(
 		   plan != NULL
 		   && IsA(plan, Limit)
-		   &&plan->flow->req_xform == MOVEMENT_LIM_RESTRUCT
+		   && plan->flow->req_xform == MOVEMENT_LIM_RESTRUCT
+           && plan->flow->flotype == FLOW_SINGLETON
 		   && plan->lefttree != NULL
 		   && plan->lefttree->flow != NULL
 		   && plan->lefttree->flow->flotype == FLOW_PARTITIONED
@@ -142,7 +144,8 @@ apply_limit_motion(Plan *plan, ApplyMotionState * state)
 		plan->lefttree = (Plan *) make_sorted_union_motion(
 														   (Plan *) prelimit,
 														   false,
-														   -1,
+                                                           numInputSegs,
+														   plan->flow->segindex,
 											   input_plan->flow->numSortCols,
 												input_plan->flow->sortColIdx,
 											  input_plan->flow->sortOperators
@@ -153,7 +156,8 @@ apply_limit_motion(Plan *plan, ApplyMotionState * state)
 		plan->lefttree = (Plan *) make_union_motion(
 													(Plan *) prelimit,
 													false,
-													-1
+                                                    numInputSegs,
+													plan->flow->segindex
 			);
 
 		ereport(WARNING, (

@@ -14,6 +14,7 @@
 #include "optimizer/pathnode.h" /* Path */
 #include "optimizer/planmain.h" /* make_sort_from_pathkeys() */
 
+#include "cdb/cdblink.h"        /* getMPPSegmentCount() */
 #include "cdb/cdbllize.h"       /* makeFlow() */
 #include "cdb/cdbmutate.h"      /* make_*_motion() */
 
@@ -79,11 +80,18 @@ cdbpathtoplan_create_flow(PlannerInfo    *root,
  * cdbpathtoplan_create_motion_plan
  */
 Motion *
-cdbpathtoplan_create_motion_plan(PlannerInfo         *root,
+cdbpathtoplan_create_motion_plan(PlannerInfo   *root,
                                  CdbMotionPath *path,
                                  Plan          *subplan)
 {
     Motion *motion = NULL;
+    int     numInputSegs;
+
+    /* How many processes in source gang? */
+    if (CdbPathLocus_IsBottleneck(path->subpath->locus))
+        numInputSegs = 1;
+    else
+        numInputSegs = getMPPSegmentCount();
 
     /* Decorate the subplan with a Flow node telling the plan slicer
      * what kind of gang will be needed to execute the subplan.
@@ -108,6 +116,7 @@ cdbpathtoplan_create_motion_plan(PlannerInfo         *root,
                                                    path->path.pathkeys);
             motion = make_sorted_union_motion(subplan,
                                               false,    /* sendToSecondary */
+                                              numInputSegs,
                                               destSegIndex,
                                               sort->numCols,
                                               sort->sortColIdx,
@@ -116,13 +125,15 @@ cdbpathtoplan_create_motion_plan(PlannerInfo         *root,
         else
             motion = make_union_motion(subplan,
                                        false,           /* sendToSecondary */
+                                       numInputSegs,
                                        destSegIndex);
     }
 
     /* Send all of the tuples to all of the QEs in gang above... */
     else if (CdbPathLocus_IsReplicated(path->path.locus))
             motion = make_broadcast_motion(subplan,
-                                           false);      /* sendToSecondary */
+                                           false,       /* sendToSecondary */
+                                           numInputSegs);
 
     /* Hashed redistribution to all QEs in gang above... */
     else if (CdbPathLocus_IsHashed(path->path.locus) ||
@@ -134,6 +145,7 @@ cdbpathtoplan_create_motion_plan(PlannerInfo         *root,
         Assert(hashExpr);
         motion = make_hashed_motion(subplan,
                                     false,              /* sendToSecondary */
+                                    numInputSegs,
                                     hashExpr);
     }
     else

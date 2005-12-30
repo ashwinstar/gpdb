@@ -531,6 +531,10 @@ typedef struct Motion
 	bool		sendToSecondary;	/* if true, secondary instances will get sent tuples as well as primary */
 	bool		sendSorted;			/* if true, output should be sorted */
 	int			motionID;			/* required by AMS  */
+
+    /* The sending gang */
+    int			numInputSegs;		/* number of sending processes */
+	int        *inputSegIdx;		/* array of input segids (NULL=>default) */
 	
 	/* The following fields are only used when motionType == MOTIONTYPE_HASH */
 	int			numHashSegs;		/* number of segindexes in hashSegIdx array */	
@@ -548,8 +552,6 @@ typedef struct Motion
 	int			numSortCols;		/* number of sort key columns */
 	AttrNumber	*sortColIdx;		/* their indexes in target list */
 	Oid			*sortOperators;		/* OID of operators to sort them by */
-	int			numInputSegs;		/* number of segindexes in inputSegIdx array */
-	int			*inputSegIdx;		/* array of input segindexes */
 } Motion;
 
 #endif   /* PLANNODES_H */

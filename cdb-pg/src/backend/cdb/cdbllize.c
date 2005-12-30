@@ -146,7 +146,7 @@ static bool scanForManagedTables_walker(Node *node, PlanProfile * context);
 static bool scanForManagedTables(Plan *plan, Query *query);
 
 static void initTargetFlow(Plan *plan, Flow * target, bool stable);
-static bool focusPlan(Plan *plan, bool live, bool stable, bool rescannable, int segidx);
+static bool focusPlan(Plan *plan, bool live, bool stable, bool rescannable);
 static bool broadcastPlan(Plan *plan, bool live, bool stable, bool rescannable);
 static bool repartitionPlan(Plan *plan, bool live, bool stable, bool rescannable, List *hashExpr);
 static bool adjustPlanFlow(Plan *plan, Flow * target, bool stable, bool rescannable, bool live);
@@ -486,6 +486,7 @@ prescan_walker(Node *node, PlanProfile * context)
 					 * Refocus.
 					 */
 					subplan->plan->flow->req_move = MOVEMENT_FOCUS;
+                    subplan->plan->flow->base_flotype = subplan->plan->flow->flotype;
 					subplan->plan->flow->segindex = -1;
 				}
 				else if (subplan->plan->flow->flotype == FLOW_SINGLETON
@@ -916,7 +917,7 @@ prescan_walker(Node *node, PlanProfile * context)
 				}
 				limit->plan.flow->flotype = FLOW_SINGLETON;
 				limit->plan.flow->req_move = MOVEMENT_NONE;
-				limit->plan.flow->segindex = -1;
+				limit->plan.flow->segindex = 0;
 				limit->plan.flow->hashExpr = NIL;
 				limit->plan.flow->req_xform = MOVEMENT_LIM_RESTRUCT;
 			}
@@ -1053,7 +1054,7 @@ prescan_agg(Plan *plan, PlanProfile * context)
 				break;
 
 			case MOVEMENT_FOCUS:
-				canUse = focusPlan(child, false, sortattrs != NULL, false, -1);
+				canUse = focusPlan(child, false, sortattrs != NULL, false);
 				break;
 
 			case MOVEMENT_BROADCAST:
@@ -1114,7 +1115,7 @@ prescan_agg(Plan *plan, PlanProfile * context)
 
 		case MOVEMENT_FOCUS:
 			/* Focus motion required */
-			focusPlan(child, true, sortattrs != NULL, false, -1);
+			focusPlan(child, true, sortattrs != NULL, false);
 			newflow = makeFlow(FLOW_SINGLETON);
 			break;
 
@@ -1135,8 +1136,9 @@ prescan_agg(Plan *plan, PlanProfile * context)
 			repartitionPlan(child, true, sortattrs!=NULL, false, strategy->hashexprs);
 			newflow = pull_up_Flow(plan, plan->lefttree, true);
 			newflow->req_xform = MOVEMENT_AGG_RESTRUCT;
+            newflow->base_flotype = newflow->flotype;
 			newflow->flotype = FLOW_SINGLETON;
-			newflow->segindex = -1;
+			newflow->segindex = 0;
 			break;
 		
 		case MOVEMENT_AGG_RESTRUCT:
@@ -1160,7 +1162,7 @@ prescan_agg(Plan *plan, PlanProfile * context)
 	 */
 	plan->flow = newflow;
 	
-	return false;	 
+	return false;	
 }
 
 /* Helper for prescan_walker() does processing for a Unique node.
@@ -1262,9 +1264,6 @@ prescan_unique(Plan *plan, PlanProfile * context)
 	plan->flow = pull_up_Flow(plan, child, true);
 
 	return false;
-
-	psErrorNonce(context, "Query plan employs partitioned duplicate removal");
-	return true;
 }
 
 
@@ -1318,9 +1317,9 @@ prescan_append(Plan *plan, PlanProfile * context)
 
 	foreach(cell, append->appendplans)
 	{
-		AppendStrategy nxtstate;
-		int			nxtnattrs;
-		AttrNumber *nxtattrs;
+		AppendStrategy nxtstate = AFS_0;
+		int			nxtnattrs = 0;
+		AttrNumber *nxtattrs = NULL;
 
 		Plan	   *nxt = (Plan *) lfirst(cell);
 
@@ -1372,6 +1371,9 @@ prescan_append(Plan *plan, PlanProfile * context)
 					}
 				}
 				break;
+
+            default:
+                Assert(0);
 		}
 
 		/*
@@ -1620,18 +1622,9 @@ makeFlow(FlowType flotype)
 	Flow	   *flow = makeNode(Flow);
 
 	flow->flotype = flotype;
-	flow->base_flotype = flotype;
+    flow->base_flotype = FLOW_UNDEFINED;
 	flow->req_move = MOVEMENT_NONE;
 	flow->req_xform = MOVEMENT_NONE;
-
-	/*
-	 * TODO Change this to default to 0.  But first figure out why doing so
-	 * causes explain select count(*) from util; PANIC:  building Gang:  No
-	 * primary segdb found!!!! server closed the connection unexpectedly
-	 *
-	 * For that matter, why are we getting gangs set up for a mere EXPLAIN?
-	 */
-	flow->segindex = -1;
 
 	return flow;
 }
@@ -2068,17 +2061,13 @@ isPlanFinished(Node *node, PlanProfile * profile)
  * Function: focusPlan
  */
 bool
-focusPlan(Plan *plan, bool live, bool stable, bool rescannable, int segidx)
+focusPlan(Plan *plan, bool live, bool stable, bool rescannable)
 {
 	Flow		target;
 
-	if (segidx < -1 || 0 < segidx)
-		return false;			/* Argument segindex must be -1 (QD) or 0
-								 * (some QE). */
-
 	initTargetFlow(plan, &target, stable);
 	target.flotype = FLOW_SINGLETON;
-	target.segindex = segidx;
+	target.segindex = 0;
 
 	return adjustPlanFlow(plan, &target, stable, rescannable, live);
 }
@@ -2128,6 +2117,7 @@ initTargetFlow(Plan *plan, Flow * target, bool stable)
 {
 	target->type = T_Flow;
 	target->flotype = FLOW_SINGLETON;
+    target->base_flotype = FLOW_UNDEFINED;
 	target->req_move = target->req_xform = MOVEMENT_NONE;
 	target->segindex = 0;
 	if (stable)
@@ -2316,25 +2306,26 @@ focusBasePlan(Plan *plan, Flow * target, bool stable, bool rescannable, bool liv
 	switch (plan->flow->flotype)
 	{
 		case FLOW_SINGLETON:
+			/* QE -> QD */
 			if (plan->flow->segindex == 0 && target->segindex == -1)
-				/* QE -> QD */
 			{
 				if (live)
 				{
 					plan->flow->req_move = MOVEMENT_FOCUS;
+                    plan->flow->base_flotype = plan->flow->flotype;
 					plan->flow->flotype = FLOW_SINGLETON;
 					plan->flow->segindex = target->segindex;
 					/* Fixed motions preserve the specfied order. */
 				}
 				return true;
 			}
+			/* QE -> QE or QD -> QD */
 			else if (plan->flow->segindex == target->segindex)
-				/* QE -> QE or QD -> QD */
 			{
 				return true;	/* Bizarre, but ok. */
 			}
+			/* QD -> QE */
 			else
-				/* QD -> QE */
 			{
 				return false;	/* No motion *from* the QD is defined. */
 			}
@@ -2352,6 +2343,7 @@ focusBasePlan(Plan *plan, Flow * target, bool stable, bool rescannable, bool liv
 			if (live)
 			{
 				plan->flow->req_move = MOVEMENT_FOCUS;
+                plan->flow->base_flotype = plan->flow->flotype;
 				plan->flow->flotype = FLOW_SINGLETON;
 				plan->flow->segindex = target->segindex;
 				/* Fixed motions preserve the order specified in the Flow. */
@@ -2384,6 +2376,7 @@ broadcastBasePlan(Plan *plan, Flow * target, bool stable, bool rescannable, bool
 			if (live)
 			{
 				plan->flow->req_move = MOVEMENT_BROADCAST;
+                plan->flow->base_flotype = plan->flow->flotype;
 				plan->flow->flotype = FLOW_REPLICATED;
 				/* Send of singleton preserves order. */
 			}
@@ -2399,6 +2392,7 @@ broadcastBasePlan(Plan *plan, Flow * target, bool stable, bool rescannable, bool
 			if (live)
 			{
 				plan->flow->req_move = MOVEMENT_BROADCAST;
+                plan->flow->base_flotype = plan->flow->flotype;
 				plan->flow->flotype = FLOW_REPLICATED;
 			}
 			return true;
@@ -2429,6 +2423,7 @@ repartitionBasePlan(Plan *plan, Flow * target, bool stable, bool rescannable, bo
 			if (live)
 			{
 				plan->flow->req_move = MOVEMENT_REPARTITION;
+                plan->flow->base_flotype = plan->flow->flotype;
 				plan->flow->flotype = FLOW_PARTITIONED;
 				plan->flow->hashExpr = target->hashExpr;
 			}
@@ -2443,6 +2438,7 @@ repartitionBasePlan(Plan *plan, Flow * target, bool stable, bool rescannable, bo
 			if (live)
 			{
 				plan->flow->req_move = MOVEMENT_REP2PARTITIONED;
+                plan->flow->base_flotype = plan->flow->flotype;
 				plan->flow->flotype = FLOW_PARTITIONED;
 				plan->flow->hashExpr = target->hashExpr;
 			}
@@ -2454,6 +2450,7 @@ repartitionBasePlan(Plan *plan, Flow * target, bool stable, bool rescannable, bo
 			if (live)
 			{
 				plan->flow->req_move = MOVEMENT_REPARTITION;
+                plan->flow->base_flotype = plan->flow->flotype;
 				plan->flow->flotype = FLOW_PARTITIONED;
 				plan->flow->hashExpr = target->hashExpr;
 			}

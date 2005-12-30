@@ -141,6 +141,23 @@
 		} \
 	}
 
+/* Read optional integer array (":fldname %d %d ..." or ":fldname <>") */
+#define READ_INT_ARRAY_OR_NULL(fldname, count, Type) \
+	if ( local_node->count > 0 && \
+         NULL != (token = pg_strtok(&length)) &&    /* skip :fldname */ \
+         NULL != (token = pg_strtok(&length)) &&    /* first value or <> */ \
+         length > 0 )                               /* proceed if isn't <> */ \
+	{ \
+		int i; \
+		local_node->fldname = (Type *)palloc(local_node->count * sizeof(Type)); \
+        local_node->fldname[0] = atoi(token); \
+		for(i=1; i<local_node->count; i++) \
+		{ \
+            token = pg_strtok(&length);		/* get field value */ \
+            local_node->fldname[i] = atoi(token); \
+		} \
+	}
+
 /* Read an Trasnaction ID array (written as ":fldname %u %u ... ") */
 #define READ_XID_ARRAY(fldname, count) \
 	token = pg_strtok(&length);		/* skip :fldname */ \
@@ -1975,6 +1992,9 @@ _readMotion(void)
 	READ_BOOL_FIELD(sendSorted);
 	READ_INT_FIELD(motionID);
 	
+    READ_INT_FIELD(numInputSegs);
+    READ_INT_ARRAY_OR_NULL(inputSegIdx, numInputSegs, int);
+
 	READ_INT_FIELD(numHashSegs);
 	READ_INT_ARRAY(hashSegIdx, numHashSegs, int);
 
@@ -1989,9 +2009,6 @@ _readMotion(void)
 	READ_INT_FIELD(numSortCols);
 	READ_INT_ARRAY(sortColIdx, numSortCols, AttrNumber);
 	READ_OID_ARRAY(sortOperators, numSortCols);
-
-	READ_INT_FIELD(numInputSegs);
-	READ_INT_ARRAY(inputSegIdx, numInputSegs, int);
 
 	READ_DONE();
 }
@@ -2159,9 +2176,6 @@ void readPlanInfo(Plan *local_node)
 	READ_INT_FIELD(plan_width);
 	READ_NODE_FIELD(targetlist);
 	READ_NODE_FIELD(qual);
-	READ_NODE_FIELD(lefttree);
-	READ_NODE_FIELD(righttree);
-	READ_NODE_FIELD(initPlan);
 	READ_BITMAPSET_FIELD(extParam);
 	READ_BITMAPSET_FIELD(allParam);
 	READ_INT_FIELD(nParamExec);
@@ -2169,6 +2183,10 @@ void readPlanInfo(Plan *local_node)
 	READ_ENUM_FIELD(dispatch, DispatchMethod);
 	READ_INT_FIELD(nMotionNodes);
 	READ_NODE_FIELD(sliceTable);
+
+    READ_NODE_FIELD(lefttree);
+    READ_NODE_FIELD(righttree);
+    READ_NODE_FIELD(initPlan);
 }
 
 void readJoinInfo(Join *local_node)

@@ -1484,8 +1484,6 @@ typedef struct MotionState
 	CdbHash				*cdbhash;			/* hash api object */
 	bool				*hashSegIdxMask;	/* for hash motion, a bit vector indicating whether motion to that segIdx has been turned off */
 	bool				*fixedSegIdxMask;	/* for fixed motion, a bit vector indicating whether motion to that segIdx has been turned off */
-	FmgrInfo			*sortFunctions;		/* functions to sort the tuples for a sorted motion node */
-	SortFunctionKind	*sortFnKinds;		/* kind of sort function for sorted motion node */
 	struct CdbHeap		*tupleheap;			/* data structure for match merge in sorted motion node */
 	int					routeIdNext;		/* for a sorted motion node, the routeId to get next (same as the routeId last returned ) */
 	bool				tupleheapReady;		/* for a sorted motion node, false until we have a tuple from each source segindex */
@@ -1498,7 +1496,6 @@ typedef struct MotionState
 	int			numTuplesToParent;	/* Number of tuples either from child or AMS that were sent to parent */
 	int			numTuplesToDeepSix;	/* Number of tuples that were not passed on due to hashSegIdxMask or fixedSegIdxMask being true*/
 	int			*numTuplesByHashSegIdx; /* Distribution of number of tuples from child by hash seg index */
-	int			numTuplesInHeap;	/* Number of tuples that are currently sitting in tupleheap*/
 	
 	struct timeval otherTime;  /* time accumulator used in sending motion node to keep track of time
 								 * spent getting the next tuple (not sending). this could mean time spent

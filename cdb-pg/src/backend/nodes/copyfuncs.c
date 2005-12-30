@@ -644,6 +644,10 @@ _copyMotion(Motion *from)
 	COPY_SCALAR_FIELD(sendToSecondary);
 	COPY_SCALAR_FIELD(sendSorted);
 	COPY_SCALAR_FIELD(motionID);
+
+    COPY_SCALAR_FIELD(numInputSegs);
+    if (from->inputSegIdx)
+        COPY_POINTER_FIELD(inputSegIdx, from->numInputSegs * sizeof(int));
 	
 	COPY_SCALAR_FIELD(numHashSegs);
 	COPY_POINTER_FIELD(hashSegIdx, from->numHashSegs * sizeof(int));
@@ -658,8 +662,6 @@ _copyMotion(Motion *from)
 	COPY_SCALAR_FIELD(numSortCols);
 	COPY_POINTER_FIELD(sortColIdx, from->numSortCols * sizeof(AttrNumber));
 	COPY_POINTER_FIELD(sortOperators, from->numSortCols * sizeof(Oid));
-	COPY_SCALAR_FIELD(numInputSegs);
-	COPY_POINTER_FIELD(inputSegIdx, from->numInputSegs * sizeof(int));
 
 	return newnode;
 }

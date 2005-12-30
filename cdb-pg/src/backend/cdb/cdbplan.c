@@ -604,7 +604,8 @@ plan_tree_mutator(Node *node,
 #define COPYARRAY(dest,src,lenfld,datfld) \
 	do { \
 		(dest)->lenfld = (src)->lenfld; \
-		if ( (src)->lenfld > 0 ) \
+		if ( (src)->lenfld > 0  && \
+             (src)->datfld != NULL) \
 		{ \
 			Size _size = ((src)->lenfld*sizeof(*((src)->datfld))); \
 			(dest)->datfld = palloc(_size); \
@@ -929,13 +930,13 @@ plan_tree_mutator(Node *node,
 
 				FLATCOPY(newmotion, motion, Motion);
 				PLANMUTATE(newmotion, motion);
+                COPYARRAY(newmotion, motion, numInputSegs, inputSegIdx);
 				COPYARRAY(newmotion, motion, numHashSegs, hashSegIdx);
 				MUTATE(newmotion->hashExpr, motion->hashExpr, List *);
 				MUTATE(newmotion->hashDataTypes, motion->hashDataTypes, List *);
 				COPYARRAY(newmotion, motion, numOutputSegs, outputSegIdx);
 				COPYARRAY(newmotion, motion, numSortCols, sortColIdx);
 				COPYARRAY(newmotion, motion, numSortCols, sortOperators);
-				COPYARRAY(newmotion, motion, numInputSegs, inputSegIdx);
 				return (Node *) newmotion;
 			}
 			break;

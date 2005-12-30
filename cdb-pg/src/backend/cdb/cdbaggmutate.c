@@ -174,6 +174,7 @@ apply_agg_motion(Plan *plan, ApplyMotionState * state)
 	Plan	   *inner_plan;
 	int			i,
 				n;
+    int         numInputSegs;
 	ListCell   *cell;
 	TargetEntry *tle = NULL,
 			   *new_tle;
@@ -219,11 +220,11 @@ apply_agg_motion(Plan *plan, ApplyMotionState * state)
 								 * initPlan? */
 	plan->extParam = bms_copy(inner_plan->extParam);
 	plan->allParam = bms_copy(inner_plan->allParam);
-	inner_plan->flow = pull_up_Flow(inner_plan, inner_plan->lefttree, FALSE); 
+	inner_plan->flow = pull_up_Flow(inner_plan, inner_plan->lefttree, FALSE);
 	Assert (inner_plan->flow != NULL ); /* inner Agg inherits child flow. */
 	inner_plan->dispatch = DISPATCH_UNDETERMINED; /* Default */
 	agg->grpColIdx = NULL; /* Eventually, put a new one in. */
-	
+
 	/* Create our local context. */
 	initSplitAggsContext(&context);
 
@@ -336,27 +337,35 @@ apply_agg_motion(Plan *plan, ApplyMotionState * state)
 	inner_plan->targetlist = context.inner_tlist;
 	context.inner_tlist = NIL;
 
+    /* How many processes in source gang? */
+    if (inner_plan->flow->flotype == FLOW_SINGLETON)
+        numInputSegs = 1;
+    else
+        numInputSegs = getMPPSegmentCount();
+
 	/* Splice in Motion and adjust the flow of the outer plan, if needed. */
 	switch (agg->aggstrategy)
 	{
 		case AGG_PLAIN:
-			plan->lefttree = (Plan *) make_union_motion(inner_plan, false, -1);
-			Assert(plan->flow->flotype == FLOW_SINGLETON);
+            plan->lefttree = (Plan *) make_union_motion(inner_plan, false,
+                                                        numInputSegs, -1);
+            assignMotionID((Node *) plan->lefttree, state, NULL);
+            Assert(plan->flow->flotype == FLOW_SINGLETON);
 			break;
 
 		case AGG_HASHED:
-			plan->lefttree = (Plan *) make_hashed_motion(
-														 inner_plan, false,
+			plan->lefttree = (Plan *) make_hashed_motion(inner_plan, false,
+                                                         numInputSegs,
 						 getHashMotionInfoList(inner_plan, INFOTYPE_LEFTEXPR)
 				);
-			Assert(plan->flow->flotype == FLOW_PARTITIONED);
+            assignMotionID((Node *) plan->lefttree, state, NULL);
 			plan->flow->hashExpr = ((Motion *) plan->lefttree)->hashExpr;
+            Assert(plan->flow->flotype == FLOW_PARTITIONED);
 			break;
 
 		default:
 			Assert(FALSE);		/* Internal error */
 	}
-	assignMotionID((Node *) plan->lefttree, state, NULL);
 
 	/* TODO - Adjust costs for explain */
 

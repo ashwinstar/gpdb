@@ -255,9 +255,6 @@ _outPlanInfo(StringInfo str, Plan *node)
 	WRITE_INT_FIELD(plan_width);
 	WRITE_NODE_FIELD(targetlist);
 	WRITE_NODE_FIELD(qual);
-	WRITE_NODE_FIELD(lefttree);
-	WRITE_NODE_FIELD(righttree);
-	WRITE_NODE_FIELD(initPlan);
 	WRITE_BITMAPSET_FIELD(extParam);
 	WRITE_BITMAPSET_FIELD(allParam);
 	WRITE_INT_FIELD(nParamExec);
@@ -265,6 +262,10 @@ _outPlanInfo(StringInfo str, Plan *node)
 	WRITE_ENUM_FIELD(dispatch,DispatchMethod);
 	WRITE_INT_FIELD(nMotionNodes);
 	WRITE_NODE_FIELD(sliceTable);
+
+    WRITE_NODE_FIELD(lefttree);
+    WRITE_NODE_FIELD(righttree);
+    WRITE_NODE_FIELD(initPlan);
 }
 
 /*
@@ -590,8 +591,21 @@ _outMotion(StringInfo str, Motion *node)
 	WRITE_ENUM_FIELD(motionType, MotionType);
 	WRITE_BOOL_FIELD(sendToSecondary);
 	WRITE_BOOL_FIELD(sendSorted);
-	WRITE_INT_FIELD(motionID);
-	
+	WRITE_INT_FIELD(motionID);	
+
+    WRITE_INT_FIELD(numInputSegs);
+    if (node->numInputSegs > 0)
+    {
+        appendStringInfoLiteral(str, " :inputSegIdx");
+        if (node->inputSegIdx == NULL)
+            appendStringInfoString(str, " <>");
+        else
+        {
+            for (i = 0; i < node->numInputSegs; i++)
+                appendStringInfo(str, " %d", node->inputSegIdx[i]);
+        }
+    }
+
 	WRITE_INT_FIELD(numHashSegs);
 	appendStringInfoLiteral(str, " :hashSegIdx");
 	for (i = 0; i < node->numHashSegs; i++)
@@ -615,11 +629,6 @@ _outMotion(StringInfo str, Motion *node)
 	appendStringInfoLiteral(str, " :sortOperators");
 	for (i = 0; i < node->numSortCols; i++)
 		appendStringInfo(str, " %u", node->sortOperators[i]);
-
-	WRITE_INT_FIELD(numInputSegs);
-	appendStringInfoLiteral(str, " :inputSegIdx");
-	for (i = 0; i < node->numInputSegs; i++)
-		appendStringInfo(str, " %d", node->inputSegIdx[i]);
 }
 
 /*****************************************************************************
@@ -1445,7 +1454,7 @@ static void
 _outReindexStmt(StringInfo str, ReindexStmt *node)
 {
 	WRITE_NODE_TYPE("REINDEXSTMT");
-	 
+	
 	WRITE_ENUM_FIELD(kind,ObjectType);
 	WRITE_NODE_FIELD(relation);
 	WRITE_STRING_FIELD(name);
@@ -1704,42 +1713,42 @@ _outCdbExecStmt(StringInfo str, CdbExecStmt *node)
 	WRITE_NODE_FIELD(ser_sliceinfo);
 }
 
-static void 
+static void
 _outGrantStmt(StringInfo str, GrantStmt *node)
 {
 	WRITE_NODE_TYPE("GRANTSTMT");
-	WRITE_BOOL_FIELD(is_grant);		 
-	WRITE_ENUM_FIELD(objtype,GrantObjectType);	 
-	WRITE_NODE_FIELD(objects);		 
-	WRITE_NODE_FIELD(privileges);		 
-	WRITE_NODE_FIELD(grantees);		 
-	WRITE_BOOL_FIELD(grant_option);	 
-	WRITE_ENUM_FIELD(behavior, DropBehavior);		 
+	WRITE_BOOL_FIELD(is_grant);		
+	WRITE_ENUM_FIELD(objtype,GrantObjectType);	
+	WRITE_NODE_FIELD(objects);		
+	WRITE_NODE_FIELD(privileges);		
+	WRITE_NODE_FIELD(grantees);		
+	WRITE_BOOL_FIELD(grant_option);	
+	WRITE_ENUM_FIELD(behavior, DropBehavior);		
 }
 
-static void 
+static void
 _outPrivGrantee(StringInfo str, PrivGrantee *node)
 {
 	WRITE_NODE_TYPE("PRIVGRANTEE");
-	WRITE_STRING_FIELD(rolname);	 
+	WRITE_STRING_FIELD(rolname);	
 }
 
-static void 
+static void
 _outFuncWithArgs(StringInfo str, FuncWithArgs *node)
 {
-	WRITE_NODE_TYPE("FUNCWITHARGS"); 
-	WRITE_NODE_FIELD(funcname);		 
-	WRITE_NODE_FIELD(funcargs);		 	 
+	WRITE_NODE_TYPE("FUNCWITHARGS");
+	WRITE_NODE_FIELD(funcname);		
+	WRITE_NODE_FIELD(funcargs);		 	
 }
 
-static void 
+static void
 _outLockStmt(StringInfo str, LockStmt *node)
 {
-	WRITE_NODE_TYPE("LOCKSTMT"); 
+	WRITE_NODE_TYPE("LOCKSTMT");
 	WRITE_NODE_FIELD(relations);
 	WRITE_INT_FIELD(mode);
 	WRITE_BOOL_FIELD(nowait);
-} 
+}
 
 
 static void
@@ -1850,7 +1859,7 @@ _outVariableResetStmt(StringInfo str, VariableResetStmt *node)
 {
 	WRITE_NODE_TYPE("VARIABLERESETSTMT");
 	WRITE_STRING_FIELD(name);
-} 
+}
 
 static void
 _outQuery(StringInfo str, Query *node)
@@ -2129,7 +2138,7 @@ _outAConst(StringInfo str, A_Const *node)
 
 	_outValue(str, &(node->val));
 	WRITE_NODE_FIELD(typename);
-	 
+	
 }
 
 static void
