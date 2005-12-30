@@ -117,6 +117,7 @@ typedef struct MotionLayerState
 
 	/* highest file descriptor in the readSet. */
 	int			highReadSock;
+    int         scanStart;
 
 	bool		valid;
 }	MotionLayerState;
@@ -262,7 +263,7 @@ SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcIte
 
 	if (!activated)
 	{
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 				 errmsg("SendTupleChunkToAMS: Called when not activated.")));
 	}
 
@@ -340,7 +341,7 @@ SendEosToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcItem)
 
 	if (!activated && !teardownActive)
 	{
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 						errmsg("SendEosToAMS: Called when not activated.")));
 	}
 
@@ -375,7 +376,6 @@ SendEosToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcItem)
 TupleChunkListItem
 RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 {
-	static int	scanStart = 0;
 	MotionLayerState *pEntry;
 	MotionConn *conn;
 	TupleChunkListItem tcItem;
@@ -387,7 +387,7 @@ RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 
 	if (!activated)
 	{
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 			   errmsg("RecvTupleChunkFromAny: Called when not activated.")));
 	}
 
@@ -431,7 +431,7 @@ RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 		{
 			if (errno == EINTR)
 				continue;
-			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 							errmsg("Interconnect error receiving an incoming packet: %s", strerror(errno)),
 			  errdetail("error during select() call (error:%d).\n", errno)));
 		}
@@ -444,14 +444,14 @@ RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 	 * We scan the file descriptors starting from where we left off in the
 	 * last call (don't continually poll the first when others may be ready!).
 	 */
-	for (i = 0; i < pEntry->numConns; i++)
+    index = pEntry->scanStart;
+	for (i = 0; i < pEntry->numConns; i++, index++)
 	{
 		/*
 		 * avoid division ? index = ((scanStart + i) % pEntry->numConns);
 		 */
-		index = scanStart + i;
 		if (index >= pEntry->numConns)
-			index -= pEntry->numConns;
+			index = 0;
 
 		conn = pEntry->conns + index;
 
@@ -475,7 +475,7 @@ RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 			 * advance start point (avoid doing division/modulus operation
 			 * here)
 			 */
-			scanStart = index + 1;
+			pEntry->scanStart = index + 1;
 
 			return tcItem;
 		}
@@ -495,7 +495,7 @@ RecvTupleChunkFrom(int16 motNodeID, int16 srcRoute)
 
 	if (!activated)
 	{
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 				  errmsg("RecvTupleChunkFrom: Called when not activated.")));
 	}
 
@@ -546,12 +546,8 @@ RecvTupleChunk(MotionConn * conn)
 		 * on
 		 */
 		tcItem = (TupleChunkListItem) palloc0(sizeof(TupleChunkListItemData));
-		if (tcItem == NULL)
-		{
-			ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
-					errmsg("Could not allocate space on interconnect rx.")));
-		}
-		tcItem->chunk_length = tcSize;
+
+        tcItem->chunk_length = tcSize;
 		tcItem->inplace = (char *) (conn->msgPos + bytesProcessed);
 
 		bytesProcessed += tcSize;
@@ -592,7 +588,7 @@ DeregisterReadInterest(int16 motNodeID, int16 srcRoute)
 
 	if (!activated)
 	{
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 			  errmsg("DeregisterReadInterest: Called when not activated.")));
 	}
 
@@ -659,22 +655,17 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 	 */
 	if (activated)
 	{
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 			   errmsg("SetupInterconnect: Called when already activated.")));
 	}
 
 	if (mlsStates != NULL)
 	{
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 						errmsg("SetupInterconnect: MLS table not cleaned.")));
 	}
 	mlsSize = MLS_INITIAL_SIZE;
 	mlsStates = palloc0(MLS_INITIAL_SIZE * sizeof(MotionLayerState));
-	if (mlsStates == NULL)
-	{
-		ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
-				errmsg("Could not allocate space for motion layer state.")));
-	}
 
 	sliceTable = mySliceTable;
 	sliceId = mySliceId;
@@ -769,7 +760,7 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 		{
 			if (errno == EINTR)
 				continue;
-			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 				errmsg("Interconnect error setting up: %s", strerror(errno)),
 				errdetail("error during select() call (error:%d).", errno)));
 		}
@@ -867,7 +858,7 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 	 */
 	if (list_length(incompleteConns) != 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 						errmsg("Interconnect Setup Error: incomplete connections after known connections done")));
 	}
 
@@ -1152,7 +1143,7 @@ listenerSetup(void)
 		 * TODO: would be nice to read the errno and try and provide
 		 * more useful info as to why this happened.
 		 */
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 						errmsg("Interconnect Error: Could not setup listener socket: %s", strerror(errno)),
 				errdetail("error during socket() call (error:%d).", errno)));
 	}
@@ -1172,7 +1163,7 @@ listenerSetup(void)
 		 * TODO: would be nice to read the errno and try and provide
 		 * more useful info as to why this happened.
 		 */
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 			   errmsg("Interconnect Error: Could not setup listener socket"),
 				  errdetail("error during bind() call (error:%d).", errno)));
 
@@ -1184,7 +1175,7 @@ listenerSetup(void)
 		 * TODO: would be nice to read the errno and try and provide
 		 * more useful info as to why this happened.
 		 */
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 						errmsg("Interconnect Error: Could not setup listener socket: %s", strerror(errno)),
 				errdetail("error during listen() call (error:%d).", errno)));
 	}
@@ -1198,7 +1189,7 @@ listenerSetup(void)
 		 * TODO: would be nice to read the errno and try and provide
 		 * more useful info as to why this happened.
 		 */
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 						errmsg("Interconnect Error: Could not setup listener socket: %s", strerror(errno)),
 		   errdetail("error during getsockname() call (error:%d).", errno)));
 	}
@@ -1255,7 +1246,7 @@ createMotionState(int16 motNodeID, int numConns)
 
 	if (pEntry->valid)
 	{
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 						errmsg("Interconect Error: A HTAB entry for motion node %d already exists.", motNodeID),
 						errdetail("conns %p numConns %d first sock %d highreadsock %d", pEntry->conns, pEntry->numConns, pEntry->conns[0].sockfd, pEntry->highReadSock)));
 	}
@@ -1265,12 +1256,8 @@ createMotionState(int16 motNodeID, int numConns)
 	pEntry->motNodeId = motNodeID;
 	pEntry->numConns = numConns;
 	pEntry->highReadSock = 0;
+    pEntry->scanStart = 0;
 	pEntry->conns = palloc0(pEntry->numConns * sizeof(MotionConn));
-	if (pEntry->conns == NULL)
-	{
-		ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
-		errmsg("Could not allocate space for interconnect connection list")));
-	}
 
 	for (i = 0; i < numConns; i++)
 	{
@@ -1302,7 +1289,7 @@ getMotionState(int16 motNodeID)
 
 	if (motNodeID > mlsSize || !mlsStates[motNodeID - 1].valid)
 	{
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 		errmsg("Interconect Error: Unexpected Motion Node Id: %d.  This means"
 			   " a motion node that wasn't setup is requesting interconnect"
 			   " resources.", motNodeID)));
@@ -1333,7 +1320,7 @@ removeMotionState(int16 motNodeID)
 
 	if (motNodeID > mlsSize || !mlsStates[motNodeID - 1].valid)
 	{
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 						errmsg("Interconect Error: Unexpected Motion Node Id: %d. During remove.",
 							   motNodeID)));
 	}
@@ -1412,12 +1399,8 @@ startConnections(Slice * mySlice, int *highsock, fd_set *wset, int *connsStarted
 			if (cdbProc != NULL)
 			{
 				conn->mirrorConn = palloc(sizeof(MotionConn));
-				if (conn->mirrorConn == NULL)
-				{
-					ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
-									errmsg("Could not allocate space for mirror connection detail.")));
-				}
-				conn->mirrorConn->sockfd = -1;
+
+                conn->mirrorConn->sockfd = -1;
 				conn->hasMirrorConn = true;
 
 				setupOutgoingConnection(conn->mirrorConn, cdbProc, highsock, wset);
@@ -1437,11 +1420,6 @@ setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, 
 
 	conn->sockfd = socket(AF_INET, SOCK_STREAM, 0);
 	conn->pBuff = palloc(Mpp_max_packet_size);
-	if (conn->pBuff == NULL)
-	{
-		ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
-			 errmsg("Could not allocate space for interconnect tx-buffer")));
-	}
 	conn->msgSize = PACKET_HEADER_SIZE;
 	conn->tupleCount = 0;
 	conn->stillActive = true;
@@ -1456,7 +1434,7 @@ setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, 
 		 * TODO: would be nice to read the errno and try and provide
 		 * more useful info as to why this happened.
 		 */
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 						errmsg("Interconnect Error: Could not create outbound socket: %s", strerror(errno)),
 				errdetail("error during socket() call (error:%d) to outgoing"
 						  "CdbProcess with contentId=%d at: '%s':%d", errno,
@@ -1471,7 +1449,7 @@ setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, 
 		 * TODO: would be nice to read the errno and try and provide
 		 * more useful info as to why this happened.
 		 */
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 						errmsg("Interconnect Error: Could not set outbound socket to non-blocking mode"),
 			 errdetail("error during fcntl() call (error:%d) for sockfd: %d",
 					   errno, conn->sockfd)));
@@ -1483,7 +1461,7 @@ setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, 
 	{
 		if (n == 0)
 		{
-			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 				 errmsg("Interconnect Error: Could not parse remote listener"
 						"address: '%s'", cdbProc->listenerAddr),
 					   errdetail("inet_pton() unable to parse address: '%s'",
@@ -1491,7 +1469,7 @@ setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, 
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 			 errmsg("Interconnect Error: System error occured during parsing"
 				 " of remote listener address: '%s'", cdbProc->listenerAddr),
 							errdetail("inet_pton()  (errno: %d) unable to parse address: '%s'",
@@ -1515,7 +1493,7 @@ setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, 
 			 * TODO: would be nice to read the errno and try and
 			 * provide more useful info as to why this happened.
 			 */
-			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 							errmsg("Interconnect Error: Could not connect() to remote destination: %s", strerror(errno)),
 			   errdetail("error during connect() call (error:%d) to outgoing"
 						 "CdbProcess with contentId=%d at: '%s':%d", errno,
@@ -1596,7 +1574,7 @@ sendRegisterMessage(MotionLayerState * pEntry, MotionConn * conn)
 
 	if (n < 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 						errmsg("Interconnect Error: Could not write() Register message to remote destination: %s", strerror(errno)),
 		errdetail("error during write() call (error:%d) to remote destination"
 				  "'%s':%d with contentid = %d", errno, conn->remoteHost,
@@ -1606,7 +1584,7 @@ sendRegisterMessage(MotionLayerState * pEntry, MotionConn * conn)
 	if (n != msglen)
 	{
 		elog(DEBUG3, "n = %d", n);
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 			 errmsg("Interconnect Error: Could not write() complete Register"
 					"message to remote destination"),
 						errdetail("sent: %d of %d bytes during write() call to remote destination"
@@ -1659,7 +1637,7 @@ readRegisterMessage(MotionConn * conn, int *incoming_count)
 			if (errno == EWOULDBLOCK || errno == EINTR)
 				continue;
 
-			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 			  errmsg("Interconnect Error: Could not read() Register message "
 					 "from remote destination"),
 				  errdetail("error during read() call (error:%d) from remote"
@@ -1691,7 +1669,7 @@ readRegisterMessage(MotionConn * conn, int *incoming_count)
 	 */
 	if ((pEntry->conns + msg.srcRouteId)->sockfd != -1)
 	{
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 						errmsg("Interconnect Error: Already a conn for (mnId=%d,routeId=%d,%d)",
 							   msg.motNodeId, msg.srcRouteId, (pEntry->conns + msg.srcRouteId)->sockfd),
 		  errdetail("Should not have a non-NULL connection in that slot.")));
@@ -1705,11 +1683,6 @@ readRegisterMessage(MotionConn * conn, int *incoming_count)
 
 	newConn->sockfd = conn->sockfd;
 	newConn->pBuff = palloc(Mpp_max_packet_size);
-	if (conn->pBuff == NULL)
-	{
-		ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
-			 errmsg("Could not allocate space for interconnect rx-buffer")));
-	}
 	newConn->msgSize = 0;
 	newConn->recvBytes = 0;
 	newConn->msgPos = 0;
@@ -1765,7 +1738,7 @@ acceptIncomingConnection(fd_set *rset, int *highsock)
 		 * TODO: would be nice to read the errno and try and provide
 		 * more useful info as to why this happened.
 		 */
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 					 errmsg("Interconnect error accepting a new connection"),
 				 errdetail("error during accept() call (error:%d)", errno)));
 	}
@@ -1778,7 +1751,7 @@ acceptIncomingConnection(fd_set *rset, int *highsock)
 		 * TODO: would be nice to read the errno and try and provide
 		 * more useful info as to why this happened.
 		 */
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 						errmsg("Interconnect Error: Could not set outbound socket to non-blocking mode"),
 			 errdetail("error during fcntl() call (error:%d) for sockfd: %d",
 					   errno, newsockfd)));
@@ -1791,18 +1764,8 @@ acceptIncomingConnection(fd_set *rset, int *highsock)
 		*highsock = newsockfd;
 
 	conn = palloc(sizeof(MotionConn));
-	if (conn == NULL)
-	{
-		ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
-		errmsg("Could not allocate space for incoming connection detail.")));
-	}
 	conn->sockfd = newsockfd;
 	conn->pBuff = palloc(Mpp_max_packet_size);
-	if (conn->pBuff == NULL)
-	{
-		ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("Could not allocate space for incoming rx-buffer")));
-	}
 	conn->msgSize = 0;
 	conn->recvBytes = 0;
 	conn->msgPos = 0;
@@ -1945,7 +1908,7 @@ flushBuffer(MotionConn * conn)
 							conn->stillActive = false;
 							return false;
 						}
-						ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 										errmsg("Interconnect error writing an outgoing packet"),
 						 errdetail("error during select() call (error:%d).\n"
 							"For Remote Connection: contentId=%d at '%s':%d",
@@ -1980,7 +1943,7 @@ flushBuffer(MotionConn * conn)
 					conn->stillActive = false;
 					return false;
 				}
-				ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+				ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 								errmsg("Interconnect error writing an outgoing packet"),
 								errdetail("error during write() call (error:%d).\n"
 										  "For Remote Connection: contentId=%d at '%s':%d",
@@ -2093,7 +2056,7 @@ readPacket(MotionConn * conn)
 						saved_err = errno;
 						ML_CHECK_FOR_INTERRUPTS();
 
-						ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+						ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 										errmsg("Interconnect error reading an incoming packet"),
 						 errdetail("error during select() call (error:%d).\n"
 						   "From Remote Connection: contentId=%d at '%s':%d",
@@ -2105,7 +2068,7 @@ readPacket(MotionConn * conn)
 			}
 			else
 			{
-				ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+				ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 					 errmsg("Interconnect error reading an incoming packet"),
 						   errdetail("error during read() call (error:%d).\n"
 						   "From Remote Connection: contentId=%d at '%s':%d",
@@ -2121,7 +2084,7 @@ readPacket(MotionConn * conn)
 #endif
 			ML_CHECK_FOR_INTERRUPTS();
 
-			ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 				errmsg("Interconnect error: connection closed prematurely."),
 				 errdetail("from Remote Connection: contentId=%d at '%s':%d",
 						   conn->remoteContentId, conn->remoteHost,
@@ -2252,7 +2215,7 @@ findCdbProcess(RegisterMessage * msg)
 
 	if (list_length(sliceTable->slices) < msg->motNodeId)
 	{
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 			   errmsg("Interconnect Error: Received a Register Message with "
 					  "unknown motion Node ID: %d", msg->motNodeId),
 				  errdetail("Could not find a Slice in our slice table with "
@@ -2279,7 +2242,7 @@ findCdbProcess(RegisterMessage * msg)
 
 	if (!found)
 	{
-		ereport(ERROR, (errcode(ERRCODE_CDB_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
 			   errmsg("Interconnect Error: Received a Register Message from "
 					  "unknown CdbProcess"),
 			errdetail("Received register message from: (mnId=%d, routeId=%d,"
