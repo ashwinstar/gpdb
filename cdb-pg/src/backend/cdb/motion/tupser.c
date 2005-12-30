@@ -80,8 +80,6 @@ InitSerTupInfo(TupleDesc tupdesc, SerTupInfo * pSerInfo)
 								  ALLOCSET_DEFAULT_MAXSIZE);
 	}
 
-	elog(DEBUG2, "Initializing cached tuple serialization information.");
-
 	/* Set contents to all 0, just to make things clean and easy. */
 	memset(pSerInfo, 0, sizeof(SerTupInfo));
 
