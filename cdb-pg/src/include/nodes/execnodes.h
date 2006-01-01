@@ -9,6 +9,7 @@
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  * $PostgreSQL: pgsql/src/include/nodes/execnodes.h,v 1.139.2.3 2005/11/28 23:46:25 tgl Exp $
+ * $Id$
  *
  *-------------------------------------------------------------------------
  */
@@ -1507,6 +1508,7 @@ typedef struct MotionState
 								 * and processing of the next incoming tuple.
 								 */
 		
+    Oid                *outputFunArray;     /* output functions for each column (debug only) */
 } MotionState;
 
 #endif   /* EXECNODES_H */

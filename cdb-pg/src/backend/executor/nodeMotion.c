@@ -35,6 +35,12 @@
 #include <unistd.h>				/* gettimeofday */
 #endif
 
+/* #define CDB_MOTION_DEBUG */
+
+#ifdef CDB_MOTION_DEBUG
+#include "lib/stringinfo.h"     /* StringInfo */
+#endif
+
 /*
  * CdbTupleHeapInfo
  *
@@ -104,6 +110,38 @@ static uint32 evalHashKey(ExprContext *econtext, List *hashkeys, List *hashtypes
 
 static void doSendEndOfStream(Motion * motion, MotionState * node);
 static void doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot);
+
+
+/*=========================================================================
+ */
+
+#ifdef CDB_MOTION_DEBUG
+static void
+formatTuple(StringInfo buf, HeapTuple tup, TupleDesc tupdesc, Oid *outputFunArray)
+{
+    int         i;
+
+    for (i = 0; i < tupdesc->natts; i++)
+    {
+        bool    isnull;
+        Datum   d = heap_getattr(tup, i+1, tupdesc, &isnull);
+
+        if (d && !isnull)
+        {
+            Datum   ds = OidFunctionCall1(outputFunArray[i], d);
+            char   *s = DatumGetCString(ds);
+            char   *name = NameStr(tupdesc->attrs[i]->attname);
+
+            if (name && *name)
+                appendStringInfo(buf, "  %s=\"%.30s\"", name, s);
+            else
+                appendStringInfo(buf, "  \"%.30s\"", s);
+            pfree(s);
+        }
+    }
+    appendStringInfoChar(buf, '\n');
+}
+#endif
 
 
 /*=========================================================================
@@ -264,8 +302,6 @@ execMotionUnsortedReceiver(MotionState * node)
 	Motion	   *motion = (Motion *) node->ps.plan;
 	ReceiveReturnCode recvRC;
 
-	SO1_printf("ExecMotion: %s\n", "entering routine");
-
 	AssertState(motion->motionType == MOTIONTYPE_HASH ||
 	 (motion->motionType == MOTIONTYPE_FIXED && motion->numOutputSegs <= 1));
 
@@ -292,8 +328,25 @@ execMotionUnsortedReceiver(MotionState * node)
 
 	/* store it in our result slot and return this. */
 	slot = node->ps.ps_ResultTupleSlot;
+    slot = ExecStoreTuple(tuple, slot, InvalidBuffer, true /* shouldFree */ );
 
-	return ExecStoreTuple(tuple, slot, InvalidBuffer, true /* shouldFree */ );
+#ifdef CDB_MOTION_DEBUG
+    if (node->numTuplesToParent <= 20)
+    {
+        StringInfoData  buf;
+
+        initStringInfo(&buf);
+        appendStringInfo(&buf, "   motion%-3d rcv      %5d.",
+                         motion->motionID,
+                         node->numTuplesToParent);
+        formatTuple(&buf, tuple, ExecGetResultType(&node->ps),
+                    node->outputFunArray);
+        elog(DEBUG3, buf.data);
+        pfree(buf.data);
+    }
+#endif
+
+	return slot;
 }
 
 
@@ -384,6 +437,23 @@ execMotionSortedReceiver(MotionState * node)
             CdbHeap_DeleteMinAndInsert(hp, &info);
 
             node->numTuplesFromAMS++;
+
+#ifdef CDB_MOTION_DEBUG
+            if (node->numTuplesFromAMS <= 20)
+            {
+                StringInfoData  buf;
+
+                initStringInfo(&buf);
+                appendStringInfo(&buf, "   motion%-3d rcv<-%-3d %5d.",
+                                 motion->motionID,
+                                 node->routeIdNext,
+                                 node->numTuplesFromAMS);
+                formatTuple(&buf, inputTuple, ExecGetResultType(&node->ps),
+                            node->outputFunArray);
+                elog(DEBUG3, buf.data);
+                pfree(buf.data);
+            }
+#endif
 		}
 
         /* At EOS, drop this sender from the priority queue. */
@@ -423,6 +493,23 @@ execMotionSortedReceiver(MotionState * node)
     /* Store tuple in our result slot. */
 	slot = node->ps.ps_ResultTupleSlot;
 	slot = ExecStoreTuple(tuple, slot, InvalidBuffer, true /* shouldFree */ );
+
+#ifdef CDB_MOTION_DEBUG
+    if (node->numTuplesToParent <= 20)
+    {
+        StringInfoData  buf;
+
+        initStringInfo(&buf);
+        appendStringInfo(&buf, "   motion%-3d mrg<-%-3d %5d.",
+                         motion->motionID,
+                         node->routeIdNext,
+                         node->numTuplesToParent);
+        formatTuple(&buf, tuple, ExecGetResultType(&node->ps),
+                    node->outputFunArray);
+        elog(DEBUG3, buf.data);
+        pfree(buf.data);
+    }
+#endif
 
     /* Return result slot. */
     return slot;
@@ -468,6 +555,23 @@ execMotionSortedReceiverFirstTime(MotionState * node)
             info->sourceRouteId = iSegIdx;
 
             node->numTuplesFromAMS++;
+
+#ifdef CDB_MOTION_DEBUG
+            if (node->numTuplesFromAMS <= 20)
+            {
+                StringInfoData  buf;
+
+                initStringInfo(&buf);
+                appendStringInfo(&buf, "   motion%-3d rcv<-%-3d %5d.",
+                                 motion->motionID,
+                                 iSegIdx,
+                                 node->numTuplesFromAMS);
+                formatTuple(&buf, inputTuple, ExecGetResultType(&node->ps),
+                            node->outputFunArray);
+                elog(DEBUG3, buf.data);
+                pfree(buf.data);
+            }
+#endif
 		}
 	}
 
@@ -716,8 +820,19 @@ ExecInitMotion(Motion * node, EState *estate)
 	/*
 	 * Perform per-node initialization in the motion layer.
 	 */
-	InitMotionLayerNode(node->motionID, node->sendSorted,
-						ExecGetResultType(&motionstate->ps));
+	InitMotionLayerNode(node->motionID, node->sendSorted, tupDesc);
+
+#ifdef CDB_MOTION_DEBUG
+    motionstate->outputFunArray = (Oid *)palloc(tupDesc->natts * sizeof(Oid));
+    for (i = 0; i < tupDesc->natts; i++)
+    {
+        bool    typisvarlena;
+
+        getTypeOutputInfo(tupDesc->attrs[i]->atttypid,
+                          &motionstate->outputFunArray[i],
+                          &typisvarlena);
+    }
+#endif
 
 	return motionstate;
 }
@@ -847,6 +962,11 @@ ExecEndMotion(MotionState * node)
 	 * TODO: For now, we don't flush the comm-layer.  NO ERRORS DURING AMS!!!
 	 */
 	EndMotionLayerNode(motNodeID, /* flush-comm-layer */ false);
+
+#ifdef CDB_MOTION_DEBUG
+    if (node->outputFunArray)
+        pfree(node->outputFunArray);
+#endif
 }
 
 
@@ -1062,10 +1182,10 @@ doSendEndOfStream(Motion * motion, MotionState * node)
 void
 doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot)
 {
-	int16		targetRoute;
-
-	SendReturnCode sendRC;
-	ExprContext *econtext = node->ps.ps_ExprContext;
+	int16		    targetRoute;
+    HeapTuple       tuple;
+    SendReturnCode  sendRC;
+	ExprContext    *econtext = node->ps.ps_ExprContext;
 
 	/* We got a tuple from the child-plan. */
 	node->numTuplesFromChild++;
@@ -1131,7 +1251,8 @@ doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot)
 	}
 
 	/* send the tuple out. */
-	sendRC = SendTuple(motion->motionID, ExecFetchSlotTuple(outerTupleSlot), targetRoute);
+    tuple = ExecFetchSlotTuple(outerTupleSlot);
+	sendRC = SendTuple(motion->motionID, tuple, targetRoute);
 
 	Assert(sendRC == SEND_COMPLETE || sendRC == STOP_SENDING);
 
@@ -1139,6 +1260,24 @@ doSendTuple(Motion * motion, MotionState * node, TupleTableSlot *outerTupleSlot)
 		node->numTuplesToAMS++;
 	else if (sendRC == STOP_SENDING)
 		node->stopRequested = true;
+
+#ifdef CDB_MOTION_DEBUG
+    if (sendRC == SEND_COMPLETE &&
+        node->numTuplesToAMS <= 20)
+    {
+        StringInfoData  buf;
+
+        initStringInfo(&buf);
+        appendStringInfo(&buf, "   motion%-3d snd->%-3d %5d.",
+                         motion->motionID,
+                         targetRoute,
+                         node->numTuplesToAMS);
+        formatTuple(&buf, tuple, ExecGetResultType(&node->ps),
+                    node->outputFunArray);
+        elog(DEBUG3, buf.data);
+        pfree(buf.data);
+    }
+#endif
 
 	return;
 }
