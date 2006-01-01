@@ -537,9 +537,6 @@ execMotionSortedReceiverFirstTime(MotionState * node)
 	{
         int iSegIdx = motion->inputSegIdx ? motion->inputSegIdx[i] : i;
 
-        if (iSegIdx == mySegIdx)
-            continue;
-
 		/*
 		 * another place where we are mapping segid space to routeid space. so
 		 * route[x] = inputSegIdx[x] now.
