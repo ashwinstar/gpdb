@@ -2740,7 +2740,7 @@ _copySnapshotInfo(SnapshotInfo *from)
 {
 	SnapshotInfo *newnode = makeNode(SnapshotInfo);
 	
-	
+	COPY_SCALAR_FIELD(currentTransactionId);
 	COPY_SCALAR_FIELD(xmin);
 	COPY_SCALAR_FIELD(xmax);
 	COPY_SCALAR_FIELD(xcnt);

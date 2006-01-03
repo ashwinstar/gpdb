@@ -443,6 +443,7 @@ typedef struct SnapshotInfo
 {
 	NodeTag type;
 	
+	TransactionId currentTransactionId;
 	TransactionId xmin;			
 	TransactionId xmax;			
 	uint32		  xcnt;			

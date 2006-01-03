@@ -2334,6 +2334,7 @@ _outSnapshotInfo(StringInfo str, SnapshotInfo *node)
 	
 	WRITE_NODE_TYPE("SNAPSHOTINFO");
 	
+	WRITE_UINT_FIELD(currentTransactionId);
 	WRITE_UINT_FIELD(xmin);
 	WRITE_UINT_FIELD(xmax);
 	WRITE_INT_FIELD(xcnt);

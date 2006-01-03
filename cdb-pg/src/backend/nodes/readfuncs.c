@@ -2138,6 +2138,7 @@ _readSnapshotInfo(void)
 {
 	READ_LOCALS(SnapshotInfo);
 	
+	READ_UINT_FIELD(currentTransactionId);
 	READ_UINT_FIELD(xmin);
 	READ_UINT_FIELD(xmax);
 	READ_INT_FIELD(xcnt);
