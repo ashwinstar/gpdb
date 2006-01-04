@@ -146,8 +146,24 @@ if [ x"$PSQLBIN" = x"" ];then
 fi
 
 PSQLBIN=`$DIRNAME $PSQLBIN`
-
-
+SCRIPTDIR="`$DIRNAME $PSQLBIN`/mppMgmt/bin"
+#******************************************************************************
+# MPP Scripts
+#******************************************************************************
+MPPACTIVATEMASTER=$SCRIPTDIR/mppactivatemaster.sh
+MPPACTIVATESTANDBY=$SCRIPTDIR/mppactivatestandby.sh
+MPPADDMIRRORS=$SCRIPTDIR/mppaddmirrors.sh
+MPPCREATECLUSTER=$SCRIPTDIR/mppcreatecluster.sh
+MPPDELETECLUSTER=$SCRIPTDIR/mppdeletecluster.sh
+MPPINITSTANDBY=$SCRIPTDIR/mppinitstandby.sh
+MPPREBUILDCLUSTER=$SCRIPTDIR/mpprebuildcluster.sh
+MPPREBUILDSEG=$SCRIPTDIR/mpprebuildseg.sh
+MPPRECOVERSEG=$SCRIPTDIR/mpprecoverseg.sh
+MPPSIZECALC=$SCRIPTDIR/mppsizecalc.sh
+MPPSKEW=$SCRIPTDIR/mppskew.sh
+MPPSTART=$SCRIPTDIR/mppstart.sh
+MPPSTATE=$SCRIPTDIR/mppstate.sh
+MPPSTOP=$SCRIPTDIR/mppstop.sh
 #******************************************************************************
 # MPP Command Variables
 #******************************************************************************
@@ -402,6 +418,7 @@ GET_MASTER_PORT () {
 }
 
 CHK_ON_PASSIVE_STANDBY () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	MPPSYNC_COUNT=0
 	CHK_DB_QD_SET
 	GET_MASTER_PORT $MASTER_DATA_DIRECTORY
@@ -415,6 +432,7 @@ CHK_ON_PASSIVE_STANDBY () {
 		LOG_MSG "[FATAL]:-environment variable setting."
 		ERROR_EXIT "[FATAL]:-Unable to process requested command" 2
 	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 CHK_DB_RUNNING () {

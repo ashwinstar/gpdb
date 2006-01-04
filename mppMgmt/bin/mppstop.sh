@@ -202,6 +202,17 @@ PROMPT_CONTINUE () {
 }	
 
 PROCESS_SHUTDOWN () {
+		if [ $MODE == "smart" ]; then
+		CONNECTED=`$PSQL -p $MASTER_PORT template1 -A -t -c "select count(*) from pg_stat_activity;"`
+			if [ $CONNECTED -gt 0 ];then
+				LOG_MSG "[WARN]:-There are other connections to this cluster, shutdown mode smart aborted"
+				LOG_MSG "[WARN]:-Either remove connections, or use mppstop.sh -f or -i."
+				LOG_MSG "[WARN]:-See mppstop.sh -? for all options"
+				ERROR_EXIT "[FATAL]:-Shutdown options will not close cluster database" 2
+			else
+			LOG_MSG "[INFO]:-No current database connections identified, will continue with shutdown"
+			fi	
+		fi
 		#Shutdown QD hosts first
 		if [ x"" != x"$STOP_SYNC" ];then
 			STOP_STANDBY_SERVER
@@ -317,22 +328,22 @@ if [ $INTERACTIVE ]; then
 fi
 PROCESS_SHUTDOWN
 if [ $RESTART ]; then
-	if [ -f ${WORKDIR}/mppstart.sh ]; then
+	if [ -f $MPPSTART ]; then
 		if [ x"" == x"$VERBOSE" ];then
 			if [ x"" == x"$STOP_SYNC" ];then
-			${WORKDIR}/mppstart.sh -aq
+			$MPPSTART -aq
 			else
-			${WORKDIR}/mppstart.sh -aqy
+			$MPPSTART -aqy
 			fi
 		else
 			if [ x"" == x"$STOP_SYNC" ];then
-			${WORKDIR}/mppstart.sh -a
+			$MPPSTART -a
 			else
-			${WORKDIR}/mppstart.sh -ay
+			$MPPSTART -ay
 			fi
 		fi
 	else
-		LOG_MSG "[FATAL]:-No ${WORKDIR}/mppstart.sh" 2
+		LOG_MSG "[FATAL]:-No $MPPSTART" 2
 	fi
 fi
 LOG_MSG "[INFO]:-End Main"

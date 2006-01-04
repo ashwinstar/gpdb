@@ -41,8 +41,8 @@ declare -a FAILED_DATADIR_ARRAY_SUB
 declare -a FAILED_PORT_ARRAY
 declare -a MIRROR_HOST_ARRAY
 declare -a MIRROR_DATADIR_ARRAY
-STOP_PROG=mppstop.sh
-START_PROG=mppstart.sh
+STOP_PROG=$MPPSTOP
+START_PROG=$MPPSTART
 #******************************************************************************
 # Command Variables
 #******************************************************************************

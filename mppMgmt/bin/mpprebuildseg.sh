@@ -55,9 +55,9 @@ TEMP_PORT=55555
 ENCODING=UNICODE
 CHECK_POINT_SEGMENTS=8
 unset START_MPPSYNC
-MPP_TBL=mpp_mpp
-START_PROG=${WORKDIR}/mppstart.sh
-STOP_PROG=${WORKDIR}/mppstop.sh
+MPP_TBL=mpp.mpp
+START_PROG=$MPPSTART
+STOP_PROG=$MPPSTOP
 #******************************************************************************
 # Functions
 #******************************************************************************

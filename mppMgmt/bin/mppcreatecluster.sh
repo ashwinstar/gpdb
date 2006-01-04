@@ -72,8 +72,9 @@ LOG_STATEMENT_TXT="#log_statement ="
 MAX_CONNECT_TXT="max_connections ="
 LISTEN_ADR_TXT="listen_addresses"
 CHKPOINT_SEG_TXT="checkpoint_segments"
-INIT_STANDBY_PROG=$WORKDIR/mppinitstandby.sh
+INIT_STANDBY_PROG=$MPPINITSTANDBY
 START_SYNC=""
+QE_MIRROR_ARRAY=""
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -197,7 +198,7 @@ CHK_PARAMS () {
 		#Make sure that this script is running on the QD host
 		if [ $MASTER_HOSTNAME != `$HOSTNAME` ]; then
 				LOG_MSG "[FATAL]:-Cluster master hostname in configuration file is ${MASTER_HOSTNAME}"
-				LOG_MSG "[FATAL]:-Operating system command returns $HOSTNAME"
+				LOG_MSG "[FATAL]:-Operating system command returns `$HOSTNAME`"
 				ERROR_EXIT "[FATAL]:-This script must be executed on the Master host $MASTER_HOSTNAME" 2
 		fi
 
@@ -293,6 +294,7 @@ CHK_QES () {
 		for QE_ID in `$CAT $MACHINE_LIST_FILE|$GREP -v "${HOSTNAME}\$"|$SORT`
 				do
 				PING_HOST $QE_ID 
+				GET_IP_ADDRESS 
 				#Check to ensure have required QE directories
 				for DIR in "${DATA_DIRECTORY[@]}"
 						do
@@ -346,6 +348,13 @@ CHK_QES () {
 			fi
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+GET_IP_ADDRESS () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	IP_ADDRESSES=(`$TRUSTED_SHELL $QE_ID "$IFCONFIG $IFCONFIG_TXT |$GREP \"inet \"|$GREP -v \"127.0.0\"|$CUT -d: -f2|$AWK '{print \\$1}'|$TR '\n' ' '"`)
+	QE_IP_ARRAY=(${QE_IP_ARRAY[@]} "${IP_ADDRESSES[@]}")
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 POSTGRES_PORT_CHK () {
@@ -724,8 +733,6 @@ LOAD_QE_SYSTEM_DATA () {
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
-
-
 UPDATE_MPP () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		U_DB=$1
@@ -817,6 +824,13 @@ PROCESS_QE () {
 				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host	all	all	${STANDBY_IP}/32	trust >> ${MPP_DIR}/$PG_HBA"
 			done
 		fi
+		for QE_IP in "${QE_IP_ARRAY[@]}"
+		do
+			THERE=`$TRUSTED_SHELL ${MPP_HOSTNAME} "$GREP -c \"$QE_IP\" ${MPP_DIR}/$PG_HBA"`
+			if [ $THERE -eq 0 ];then
+				RUN_COMMAND_REMOTE ${MPP_HOSTNAME} "$ECHO host  all     all     ${QE_IP}/32 trust >> ${MPP_DIR}/$PG_HBA"
+			fi
+		done
 		LOG_MSG "[INFO]:-Starting Functioning instance on segment ${MPP_HOSTNAME}"
 		$TRUSTED_SHELL ${MPP_HOSTNAME} "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;export PGPORT=${MPP_PORT}; $PG_CTL -w -D $MPP_DIR -l ${MPP_DIR}.log -o \"-i -p ${MPP_PORT}\" start"
 		if [ $? -ne 0 ]; then
@@ -834,8 +848,8 @@ PROCESS_QE () {
 STOP_QD_PRODUCTION () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		LOG_MSG "[INFO]:-Restarting the MPP cluster in production mode"
-		if [ -f $WORKDIR/mppstop.sh ]; then
-				$WORKDIR/mppstop.sh -a -d $QD_DIR
+		if [ -f $MPPSTOP ]; then
+				$MPPSTOP -a -i -d $QD_DIR
 				RETVAL=$?
 				case $RETVAL in
 				0 ) LOG_MSG "[INFO]:-Successfully shutdown the new MPP array" ;;
@@ -844,7 +858,7 @@ STOP_QD_PRODUCTION () {
 				2 ) ERROR_EXIT "[FATAL]:-Failed to stop new MPP cluster, check log file" 2
 				esac
 		else
-				ERROR_EXIT "[FATAL]:-WORKDIR/mppstop.sh not located" 2
+				ERROR_EXIT "[FATAL]:-$MPPSTOP not located" 2
 		fi
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
@@ -859,7 +873,12 @@ CREATE_STANDBY_QD () {
 	else
 		LOG_MSG "[INFO]:-Starting initialization of standby QD $STANDBY_HOSTNAME"
 		$INIT_STANDBY_PROG -s $STANDBY_HOSTNAME -a $START_SYNC
-		ERROR_CHK $? "initialize syandby QD $STANDBY_HOSTNAME" 2
+		RET_CODE=$?
+		case $RETCODE in
+			0) LOG_MSG "[INFO]:-Successfully completed standby QD initialization" ;;
+			1) LOG_MSG "[WARN]:-Non-fatal issue with standby QD initialization, check mppstate.sh -f output" ;;
+			2) ERROR_EXIT "[FATAL]:-Initialization of standby QD failed"
+		esac
 		BACKOUT_COMMAND "$TRUSTED_SHELL ${STANDBY_HOSTNAME} \"$RM -Rf ${QD_DIR}\""
 		BACKOUT_COMMAND "$ECHO \"Removing standby directory ${QD_DIR} on $STANDBY_HOSTNAME\""
 		BACKOUT_COMMAND "$TRUSTED_SHELL $STANDBY_HOSTNAME \"export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;export PGPORT=${MASTER_PORT}; $PG_CTL -w -D ${MASTER_DIRECTORY}/${SEG_PREFIX}0 -l ${MASTER_DIRECTORY}/${SEG_PREFIX}0.log -o \"-i -p ${MASTER_PORT}\" -m immediate  stop\""
@@ -870,11 +889,11 @@ CREATE_STANDBY_QD () {
 
 START_QD_PRODUCTION () {
 		LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-		if [ -f $WORKDIR/mppstart.sh ]; then
-				$WORKDIR/mppstart.sh -a -d $QD_DIR
+		if [ -f $MPPSTART ]; then
+				$MPPSTART -a -d $QD_DIR
 				ERROR_CHK $? "start new MPP cluster" 2
 		else
-				ERROR_EXIT "[FATAL]:-$WORKDIR/mppstart.sh not located" 2
+				ERROR_EXIT "[FATAL]:-$MPPSTART not located" 2
 		fi
 		LOG_MSG "[INFO]:-Completed restart of MPP cluster in production mode"
 		LOG_MSG "[INFO]:-End Function $FUNCNAME"

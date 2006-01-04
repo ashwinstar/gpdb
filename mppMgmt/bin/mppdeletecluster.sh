@@ -44,7 +44,7 @@ CUR_DATE=`$DATE +%Y%m%d`
 MASTER_HOSTNAME=`hostname`
 EXIT_STATUS=0
 FULL_DISPLAY=0
-STOP_PROG=${WORKDIR}/mppstop.sh
+STOP_PROG=$MPPSTOP
 
 #******************************************************************************
 # Functions

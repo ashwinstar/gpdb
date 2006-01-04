@@ -44,8 +44,8 @@ CUR_DATE=`$DATE +%Y%m%d`
 MASTER_HOSTNAME=`hostname`
 EXIT_STATUS=0
 FULL_DISPLAY=0
-STOP_PROG=${WORKDIR}/mppstop.sh
-START_PROG=${WORKDIR}/mppstart.sh
+STOP_PROG=$MPPSTOP
+START_PROG=$MPPSTART
 MIRROR_OFFSET=1000
 #******************************************************************************
 # Functions
@@ -378,12 +378,12 @@ if [ $STANDBY_COUNT -ne 0 ];then
 	GET_STANDBY_DETAILS
 	STANDBY_HOSTNAME=`$ECHO $STANDBY_ARRAY|$CUT -d'|' -f1`
 	LOG_MSG "[INFO]:-Obtained standby hostname as $STANDBY_HOSTNAME"
-	if [ -f $WORKDIR/mppinitstandby.sh ];then
+	if [ -f $MPPINITSTANDBY ];then
 		$STOP_PROG -qam -d $MASTER_DATA_DIRECTORY
 		$START_PROG -qa -d $MASTER_DATA_DIRECTORY
-		$WORKDIR/mppinitstandby.sh -s $STANDBY_HOSTNAME -n -i -a
+		$MPPINITSTANDBY -s $STANDBY_HOSTNAME -n -i -a
 	else
-		ERROR_EXIT "[FATAL]:-Could not locate $WORKDIR/mppinitstandby.sh" 2
+		ERROR_EXIT "[FATAL]:-Could not locate $MPPINITSTANDBY" 2
 	fi
 else
 	LOG_MSG "[INFO]:-Commencing shutdown of Master instance from admin mode"

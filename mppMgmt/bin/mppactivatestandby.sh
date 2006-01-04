@@ -56,9 +56,9 @@ ENCODING=UNICODE
 CHECK_POINT_SEGMENTS=8
 FORCE_ACTIVATE=0
 unset START_MPPSYNC
-MPP_TBL=mpp_mpp
-START_PROG=${WORKDIR}/mppstart.sh
-STOP_PROG=${WORKDIR}/mppstop.sh
+MPP_TBL=mpp.mpp
+START_PROG=$MPPSTART
+STOP_PROG=$MPPSTOP
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -254,6 +254,9 @@ DISPLAY_INFO () {
 	LOG_MSG "[INFO]:-When the failed master QD becomes available, run mppactivatemaster.sh"
 	LOG_MSG "[INFO]:-to re-activate the master QD and return the standby QD to its previous"
 	LOG_MSG "[INFO]:-state."
+	LOG_MSG "[INFO]:-Statistics will need to be run against the database"
+	LOG_MSG "[INFO]:-Following standby QD activation"
+	LOG_MSG "[INFO]:-When convenient, run analyze against the user databases"
 }
 #******************************************************************************
 # Main Section
@@ -292,6 +295,10 @@ LOG_MSG "[INFO]:-Start Main"
 CHECK_PARAM
 if [ x"" != x"$INTERACTIVE" ];then 
 	DISPLAY_PARAM
+fi
+CHK_DIR $MASTER_STANDBY_DATA_DIRECTORY
+if [ $EXISTS -eq 1 ];then
+        ERROR_EXIT "[FATAL]:-Standby data directory $MASTER_STANDBY_DATA_DIRECTORY does not exist on this host" 2
 fi
 STOP_MPPSYNC_PROCESS
 CHK_CATALOG_DATA

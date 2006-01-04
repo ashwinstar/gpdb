@@ -58,6 +58,8 @@ FAILED_COUNT=0
 TAIL_COUNT=0
 START_INVALID=0
 STANDBY_COUNT=0
+FORCE=0
+STOP_PROG=$MPPSTOP
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -135,8 +137,30 @@ DISPLAY_PARAM () {
 
 CHK_QD_DB_RUNNING () {
 		if [  -s $MASTER_DATA_DIRECTORY/$PG_PID ]; then
-				ERROR_EXIT "[FATAL]:- $PG_PID file exists, is MPP database already running?" 2
+			LOG_MSG "[WARN]:-$PG_PID file exists on QD, checking if recovery startup required" 
+			RECOVERY_STARTUP
 		fi
+}
+
+RECOVERY_STARTUP () {
+	LOG_MSG "[INFO]:-Commencing recovery startup checks"
+	GET_MASTER_PORT $MASTER_DATA_DIRECTORY
+	GET_PG_PID_ACTIVE $MASTER_PORT
+	if [ $PID -ne 0 ];then	
+		ERROR_EXIT "[FATAL]:-Master QD process running" 2
+	fi
+	LOG_MSG "[INFO]:-No QD process, entering recovery startup mode"
+	LOG_MSG "[INFO]:-Clearing QD lock files"
+	$RM -f /tmp/.s.PGSQL.${MASTER_PORT}.lock /tmp/.s.PGSQL.${MASTER_PORT}
+	LOG_MSG "[INFO]:-Clearing QD $PG_PID file"
+	$RM -f ${MASTER_DATA_DIRECTORY}/$PG_PID
+	START_ADMIN
+	LOG_MSG "[INFO]:-Commencing forced cluster shutdown"
+	$STOP_PROG -faz
+	GET_DETAILS
+	PROCESS_STARTUP
+	EXIT_STATUS=1
+	exit $EXIT_STATUS	
 }
 
 GET_DETAILS () {

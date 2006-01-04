@@ -55,8 +55,8 @@ TEMP_PORT=55555
 ENCODING=UNICODE
 CHECK_POINT_SEGMENTS=8
 unset START_MPPSYNC
-MPP_TBL=mpp_mpp
-START_PROG=${WORKDIR}/mppstart.sh
+MPP_TBL=mpp.mpp
+START_PROG=$MPPSTART
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -336,8 +336,8 @@ BUILD_MPP_MASTER () {
 	if [ x"" != x"$OVERRIDE_MASTER_HOSTNAME" ];then
 		LOG_MSG "[INFO]:-Changing master hostname to $MASTER_HOST in mpp.host table"
 		#Get previous hostid
-		#PREV_HOST_ID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostid from mpp.host where hostname='${PREV_MASTER_HOST}';"`
-		#ERROR_CHK $? "obtain hostid from mpp.host for ${PREV_MASTER_HOST}" 2
+		PREV_HOST_ID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostid from mpp.host where hostname='${PREV_MASTER_HOST}';"`
+		ERROR_CHK $? "obtain hostid from mpp.host for ${PREV_MASTER_HOST}" 2
 		#Check to see if we have a hostname in mpp.host with the new hostname
 		HOSTNAME_COUNT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(*) from mpp_configuration where hostname='${MASTER_HOST}';"`
 		ERROR_CHK $? "obtain hostname count for ${MASTER_HOST}" 2
@@ -350,8 +350,8 @@ BUILD_MPP_MASTER () {
 			env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"update mpp.listener set hostid=${NEW_HOST_ID} where listenerid=1;"
 			ERROR_CHK $? "update mpp.listener for ${MASTER_HOST}" 2
 		else
-		#A record aleardy exists for this host, update mpp_configuration table
-		env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"update mpp_configuration set hostname='${MASTER_HOST}' where dbid in (select min(dbid) from mpp_configuration where content=-1);"
+		#A record aleardy exists for this host, update mpp.listener table
+		env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"update mpp.listener set hostid=$PREV_HOST_ID where listenerid=1';"
 		ERROR_CHK $? "update mpp.listener for ${MASTER_HOSTNAME}" 1
 		fi	
 	fi
@@ -414,9 +414,9 @@ BUILD_SEGMENT_INSTANCES () {
 		BACKOUT_COMMAND "$TRUSTED_SHELL $SEG_HOSTNAME \"export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;export PGPORT=${SEG_PORT}; $PG_CTL -w -D $SEG_DATADIR -l ${SEG_DATADIR}.log -o \"-i -p ${SEG_PORT}\" -m immediate  stop\""
 		BACKOUT_COMMAND "$ECHO \"Stopping segment instance\""
 		LOG_MSG "[INFO]:-Successfully started segment instance on $SEG_HOSTNAME"
-		LOG_MSG "[INFO]:-Updating segment mpp_mpp system table"
+		LOG_MSG "[INFO]:-Updating segment mpp.mpp system table"
 		RUN_COMMAND_REMOTE $SEG_HOSTNAME "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT $DEFAULTDB -c \"insert into $MPP_TBL values ('${MASTER_MPP_NAME}',${MASTER_TOTAL_SEG},${SEG_DBID},${SEG_CONTENT});\"" >> $LOG_FILE 2>&1
-		LOG_MSG "[INFO]:-Successfully updated $SEG_HOSTNAME mpp_mpp system table"
+		LOG_MSG "[INFO]:-Successfully updated $SEG_HOSTNAME mpp.mpp system table"
 		LOG_MSG "[INFO]:-Commencing shutdown of segment instance on $SEG_HOSTNAME"
 		$TRUSTED_SHELL ${SEG_HOSTNAME} "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;export PGPORT=${SEG_PORT}; $PG_CTL -w -D $SEG_DATADIR -l ${SEG_DATADIR}.log -o \"-i -p ${SEG_PORT}\" stop" >> $LOG_FILE 2>&1
 		ERROR_CHK $? "shutdown of instance on port $SEG_PORT data directory $SEG_DATADIR host $SEG_HOSTNAME" 2

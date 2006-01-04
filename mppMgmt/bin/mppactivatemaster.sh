@@ -57,12 +57,12 @@ ENCODING=UNICODE
 CHECK_POINT_SEGMENTS=8
 FORCE_ACTIVATE=0
 unset START_MPPSYNC
-MPP_TBL=mpp_mpp
-START_PROG=${WORKDIR}/mppstart.sh
-STOP_PROG=${WORKDIR}/mppstop.sh
-REMOTE_START_PROG=${CWORKDIR}/mppstart.sh
-REMOTE_STOP_PROG=${CWORKDIR}/mppstop.sh
-REMOTE_INIT_STANDBY=${CWORKDIR}/mppinitstandby.sh
+MPP_TBL=mpp.mpp
+START_PROG=$MPPSTART
+STOP_PROG=$MPPSTOP
+REMOTE_START_PROG=$MPPSTART
+REMOTE_STOP_PROG=$MPPSTOP
+REMOTE_INIT_STANDBY=$MPPINITSTANDBY
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -233,9 +233,9 @@ PROCESS_REACTIVATION () {
 	LOG_MSG "[INFO]:-Removing standby postmaster.opts file"
 	$RM -f $MASTER_DATA_DIRECTORY/$PG_OPT
 	LOG_MSG "[INFO]:-Restarting sync process on $MASTER_HOSTNAME"
-	RUN_COMMAND_REMOTE $FAILBACK_MASTER_HOSTNAME ". $CWORKDIR/mpp_bash_functions.sh; START_SYNC_PROCESS $MASTER_HOSTNAME $MASTER_DATA_DIRECTORY $MASTER_PORT"
+	RUN_COMMAND_REMOTE $FAILBACK_MASTER_HOSTNAME "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;. $SCRIPTDIR/mpp_bash_functions.sh; START_SYNC_PROCESS $MASTER_HOSTNAME $MASTER_DATA_DIRECTORY $MASTER_PORT"
 	LOG_MSG "[INFO]:-Starting MPP cluster on $FAILBACK_MASTER_HOSTNAME"
-	RUN_COMMAND_REMOTE $FAILBACK_MASTER_HOSTNAME "$REMOTE_START_PROG -d $FAILBACK_MASTER_DATA_DIRECTORY -a"
+	RUN_COMMAND_REMOTE $FAILBACK_MASTER_HOSTNAME "export BIZHOME=$BIZHOME;export MPPHOME=$MPPHOME;$REMOTE_START_PROG -d $FAILBACK_MASTER_DATA_DIRECTORY -a"
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -285,6 +285,10 @@ if [ x"" != x"$LOG_DIR" ];then
 		LOG_FILE=$LOG_DIR/${PROG_NAME}_${CUR_DATE}.log
 	fi
 fi
+CHK_DIR $MASTER_STANDBY_DATA_DIRECTORY
+if [ $EXISTS -eq 1 ];then
+        ERROR_EXIT "[FATAL]:-Standby data directory $MASTER_STANDBY_DATA_DIRECTORY does not exist on this host" 2
+fi
 CHK_ON_PASSIVE_STANDBY
 LOG_MSG "[INFO]:-Command line options passed to utility = $*"
 if [ x"" == x"$FAILBACK_MASTER_HOSTNAME" ];then
@@ -297,5 +301,8 @@ if [ x"" != x"$INTERACTIVE" ];then
 fi
 PROCESS_REACTIVATION
 LOG_MSG "[INFO]:-Successfully completed master QD re-activation"
+LOG_MSG "[INFO]:-Statistics will need to be run against the database"
+LOG_MSG "[INFO]:-Following master QD re-activation"
+LOG_MSG "[INFO]:-When convenient, run analyze against the user databases"
 LOG_MSG "[INFO]:-End Main"
 exit $EXIT_STATUS

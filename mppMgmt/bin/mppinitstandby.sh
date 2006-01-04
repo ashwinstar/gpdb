@@ -55,9 +55,9 @@ TEMP_PORT=55555
 ENCODING=UNICODE
 CHECK_POINT_SEGMENTS=8
 unset START_MPPSYNC
-MPP_TBL=mpp_mpp
-START_PROG=${WORKDIR}/mppstart.sh
-STOP_PROG=${WORKDIR}/mppstop.sh
+MPP_TBL=mpp.mpp
+START_PROG=$MPPSTART
+STOP_PROG=$MPPSTOP
 UPDATE_CATALOG=1
 #******************************************************************************
 # Functions
@@ -122,6 +122,13 @@ CHECK_PARAM () {
 		if [ $STANDBY_COUNT -ne 0 ];then
 			ERROR_EXIT "[FATAL]:-Standby master host already configured" 2
 		fi
+	fi
+	# Now check to ensure that hostname supplied matches unix hostname output
+	SSH_HOSTNAME=`$TRUSTED_SHELL $MASTER_STANDBY_HOSTNAME $HOSTNAME`
+	if [ $SSH_HOSTNAME <> $MASTER_STANDBY_HOSTNAME ];then
+		LOG_MSG "[WARN]:-Hostname supplied does not match hostname output on $MASTER_STANDBY_HOSTNAME"
+		LOG_MSG "[INFO]:-Setting standby hostname to $SSH_HOSTNAME"
+		MASTER_STANDBY_HOSTNAME=$SSH_HOSTNAME
 	fi
 	LOG_MSG "[INFO]:-Obtaining a list of segment instances"
 	GET_QE_DETAILS
@@ -257,16 +264,16 @@ STANDBY_ACTIVATE () {
 	else
 		LOG_MSG "[INFO]:-Process mppsyncmaster not started on $MASTER_STANDBY_HOSTNAME as -i not supplied"
 	fi
-	LOG_MSG "[INFO]:-Copying maintenance scripts to standby QD $MASTER_STANDBY_HOSTNAME"
-	TAR_NAME=Scripts_tar_initstandby_copy_${CUR_DATE}.tar.z
-	LOG_MSG "[INFO]:-Scripts can be found in $TAR_NAME file on $MASTER_STANDBY_HOSTNAME"
-	C_DIR=`pwd`
-	cd $SCRIPTS_DIR
-	$TAR cvzf $TAR_NAME ./* >> $LOG_FILE 2>&1
-	$TRUSTED_COPY -pr $SCRIPTS_DIR/$TAR_NAME ${MASTER_STANDBY_HOSTNAME}:$SCRIPTS_DIR 2>> $LOG_FILE
-	ERROR_CHK $? "copy scripts to $MASTER_STANDBY_HOSTNAME" 1
-	$RM -f $TAR_NAME
-	cd $C_DIR
+##	LOG_MSG "[INFO]:-Copying maintenance scripts to standby QD $MASTER_STANDBY_HOSTNAME"
+##	TAR_NAME=Scripts_tar_initstandby_copy_${CUR_DATE}.tar.z
+##	LOG_MSG "[INFO]:-Scripts can be found in $TAR_NAME file on $MASTER_STANDBY_HOSTNAME"
+##	C_DIR=`pwd`
+##	cd $SCRIPTS_DIR
+##	$TAR cvzf $TAR_NAME ./* >> $LOG_FILE 2>&1
+##	$TRUSTED_COPY -pr $SCRIPTS_DIR/$TAR_NAME ${MASTER_STANDBY_HOSTNAME}:$SCRIPTS_DIR 2>> $LOG_FILE
+##	ERROR_CHK $? "copy scripts to $MASTER_STANDBY_HOSTNAME" 1
+##	$RM -f $TAR_NAME
+##	cd $C_DIR
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
