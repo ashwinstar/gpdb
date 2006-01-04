@@ -156,12 +156,13 @@ CHK_CATALOG_DATA () {
 	LOG_MSG "[INFO]:-Starting standby QD instance in admin mode"
 	$START_PROG -m -d $MASTER_STANDBY_DATA_DIRECTORY
 	ERROR_CHK $? "start standby QD in admin mode" 2
-	MASTER_HOSTNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select hostname from mpp_configuration where dbid in (select min(dbid) from mpp_configuration where content=-1);"`
+	MASTER_DBID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select min(dbid) from mpp_configuration where content=-1;"`
+	MASTER_HOSTNAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select hostname from mpp_configuration where dbid in ($MASTER_DBID)"`
 	ERROR_CHK $? "obtain master hostname" 1
 	if [ $RETVAL -ne 0 ];then 
 		ADMIN_SHUTDOWN 1
 		ERROR_EXIT "[FATAL]:-Unable to obtain master QD hostname" 2;fi
-	MASTER_PORT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select port from mpp_configuration where dbid in (select min(dbid) from mpp_configuration where content=-1);"`
+	MASTER_PORT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select port from mpp_configuration where dbid in ($MASTER_DBID);"`
 	ERROR_CHK $? "obtain master QD port number" 1
 	if [ $RETVAL -ne 0 ];then 
 		ADMIN_SHUTDOWN 1
@@ -182,7 +183,8 @@ CHK_CATALOG_DATA () {
 UPDATE_CATALOG () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	LOG_MSG "[INFO]: master standby: '$MASTER_STANDBY_HOSTNAME'"
-	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT -A -t -c"update mpp_configuration set hostname='$MASTER_STANDBY_HOSTNAME' where dbid in (select min(dbid) from mpp_configuration where content=-1);"
+	MASTER_DBID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select min(dbid) from mpp_configuration where content=-1;"`
+	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT -A -t -c"update mpp_configuration set hostname='$MASTER_STANDBY_HOSTNAME' where dbid in ($MASTER_DBID);"
 	ERROR_CHK $? "update mpp_configuration hostname value" 1
 	if [ $RETVAL -ne 0 ];then
 	    ADMIN_SHUTDOWN

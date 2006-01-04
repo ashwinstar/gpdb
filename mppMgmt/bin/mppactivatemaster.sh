@@ -131,10 +131,11 @@ CHECK_PARAM () {
 		ERROR_EXIT "[FATAL]:-Not in master fail-back situation" 2
 	fi
 	#Obtain the fail-back master port number
-	FAILBACK_MASTER_PORT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select port from mpp_configuration where dbid in (select min(dbid) from mpp_configuration where content=-1);"`
+	FAILBACK_MASTER_DBID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select min(dbid) from mpp_configuration where content=-1;"`
+	FAILBACK_MASTER_PORT=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select port from mpp_configuration where dbid in ($FAILBACK_MASTER_DBID);"`
 	ERROR_CHK $? "obtain fail-back master port number" 2
 	#Obtain the fail-back master data directory
-	FAILBACK_MASTER_DATA_DIRECTORY=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select datadir from mpp_configuration where dbid in (select min(dbid) from mpp_configuration where content=-1);"`
+	FAILBACK_MASTER_DATA_DIRECTORY=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select datadir from mpp_configuration where dbid in ($FAILBACK_MASTER_DBID);"`
 	ERROR_CHK $? "obtain fail-back master data directory" 2
 	#Check to ensure that we have an entry for FAILBACK_MASTER_HOSTNAME in mpp.host table
 	FAILBACK_MASTER_HOSTID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select 1 from mpp_configuration where hostname='${FAILBACK_MASTER_HOSTNAME}';"`
@@ -240,7 +241,8 @@ PROCESS_REACTIVATION () {
 
 UPDATE_CATALOG () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT -A -t -c"update mpp_configuration set hostname='$FAILBACK_MASTER_HOSTNAME' where dbid in (select min(dbid) from mpp_configuration where content=-1);"
+	FAILBACK_MASTER_DBID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select min(dbid) from mpp_configuration where content=-1;"`
+	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT -A -t -c"update mpp_configuration set hostname='$FAILBACK_MASTER_HOSTNAME' where dbid in ($FAILBACK_MASTER_DBID);"
 	ERROR_CHK $? "update mpp_configuration hostname value in database" 1
 	if [ $RETVAL -ne 0 ];then
 	    ADMIN_SHUTDOWN
