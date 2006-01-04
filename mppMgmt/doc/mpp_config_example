@@ -160,4 +160,3 @@ ENCODING=UNICODE
 #declare -a MIRROR_DATA_DIRECTORY=(/mppdata/dbfast3 /mppdata/dbfast4)
 #declare -a MIRROR_DATA_DIRECTORY=(/mpp_mirror /mpp_mirror)
 
-

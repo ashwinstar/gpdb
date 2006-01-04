@@ -27,10 +27,10 @@ The following Bizgres MPP management scripts are available:
 * mppcreatecluster.sh - Initializes a Bizgres MPP system using 
 		        values in a configuration file.
 
-* mpp_dumpall - Located in $MPPHOME/bin. Writes out all databases and 
-                the Bizgres MPP system catalog to SQL script files, which 
-                can then be used to restore a Bizgres MPP system 
-                configuration, databases, and user data.
+* mpp_dump - Located in $MPPHOME/bin. Writes out a database and 
+             the Bizgres MPP system catalog to SQL script files, which 
+             can then be used to restore a Bizgres MPP system 
+             configuration, database, and user data.
 
 * mppinitstandby.sh - Adds and/or initializes a standby MPP master host for 
                       a Bizgres MPP system
@@ -48,7 +48,7 @@ The following Bizgres MPP management scripts are available:
                      instance.
 
 * mpp_restore - Located in $MPPHOME/bin. Restores Bizgres MPP databases 
-                that were backed up using mpp_dumpall.
+                that were backed up using mpp_dump.
 
 * mppsizecalc.sh - Shows the disk space usage for a given database, table, 
                    or index.

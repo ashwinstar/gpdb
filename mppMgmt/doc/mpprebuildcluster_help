@@ -26,7 +26,7 @@ the Bizgres MPP schema and loading system catalog data from another
 Bizgres MPP installation. There are two ways to get the SQL script file 
 that mpprebuildcluster.sh needs:
 
-* mpp_dumpall  The mpp_dumpall operation creates a file on the master 
+* mpp_dump  The mpp_dump operation creates a file on the master 
   host called mpp_catalog_<master_id>_<timestamp>.
 
 * pg_dump  PostgreSQL provides a utility called pg_dump, which backs 
@@ -62,7 +62,7 @@ OPTIONS
 -s <sql_file>
 Required. A SQL file containing the Bizgres MPP schema and system catalog 
 information. This is the mpp_catalog_<master_id>_<timestamp> file created 
-on the MPP master host by the mpp_dumpall operation. You can also do a 
+on the MPP master host by the mpp_dump operation. You can also do a 
 pg_dump operation on a MPP master host to get a SQL file that can be used 
 by mpprebuildcluster.sh. For example:
 pg_dump -f mpp_catalog -Fp -n mpp -a -p 5432 template1
@@ -155,4 +155,4 @@ mpprebuildcluster.sh -s mpp_catalog_0_1_2005103112453 -d /home/bgadmin/tmp -o -m
 SEE ALSO
 *****************************************************
 
-mpprebuildseg.sh, mppcreatecluster.sh, mpp_dumpall, mpp_restore
+mpprebuildseg.sh, mppcreatecluster.sh, mpp_dump, mpp_restore

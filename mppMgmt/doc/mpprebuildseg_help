@@ -70,4 +70,4 @@ mpprebuildseg.sh -d /mpp_master_data
 *****************************************************
 SEE ALSO
 *****************************************************
-mpprebuildcluster.sh, mppcreatecluster.sh, mpp_dumpall, mpp_restore
+mpprebuildcluster.sh, mppcreatecluster.sh, mpp_dump, mpp_restore
