@@ -45,7 +45,8 @@ void AddToStatusOpList( StatusOpList* pList, StatusOp* pOp )
 }
 
 /*
- * CreateStatusOp: mallocs memory for a new StatusOp, and initializes its fields based on the passed parameters. 
+ * CreateStatusOp: mallocs memory for a new StatusOp, and 
+ * initializes its fields based on the passed parameters. 
  */
 StatusOp* CreateStatusOp( int TaskID, int TaskRC, const char* pszSuffix, const char* pszMsg )
 {

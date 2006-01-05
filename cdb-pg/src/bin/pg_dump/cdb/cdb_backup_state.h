@@ -37,11 +37,11 @@ typedef struct backup_state_machine
 	int					nWaits;
 	bool				bStatus;
 	bool				bReceivedSetSerializable;
-	char*				pszNotifyRelName;
-	char*				pszNotifyRelNameStart;
-	char*				pszNotifyRelNameSetSerializable;
-	char*				pszNotifyRelNameSucceed;
-	char*				pszNotifyRelNameFail;
+	char*				pszNotifyRelName;  /* "N<backupkey>_<contentid>_<dbid>" */
+	char*				pszNotifyRelNameStart; /* "<pszNotifyRelName>_Start" */
+	char*				pszNotifyRelNameSetSerializable; /* "<pszNotifyRelName>_SetSerializable" */
+	char*				pszNotifyRelNameSucceed; /* "<pszNotifyRelName>_Success" */
+	char*				pszNotifyRelNameFail; /* "<pszNotifyRelName>_Fail" */
 	PGnotify**			ppNotifyAr;
 	int					nArSize;
 	int					nArCount;
