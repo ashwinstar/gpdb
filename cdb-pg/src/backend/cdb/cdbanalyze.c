@@ -330,8 +330,8 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 fail:
 	ereport(WARNING, (errcode(ERRCODE_MPP_COMMAND_ERROR),
 			   errmsg("Unable to obtain column statistics from segment databases."),
-					  errdetail("Segment db catalog query failed: %s  %d",
-								sqlstmt->data, SPI_result )));
+					  errdetail("Segment db catalog query failed: %s  %d   %d",
+								sqlstmt->data, spiresult, SPI_result )));
 }	/* cdbanalyze_callback */
 
 
