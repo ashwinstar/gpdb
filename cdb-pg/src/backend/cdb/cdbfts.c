@@ -165,9 +165,13 @@ FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo, char *dbName)
 			elog(LOG, "FTS: test connection can't parse error message");
 		}
 
-		if (strstr(errorMsg, "FATAL:") == NULL)
+		/* If we get a network error (do we really need a
+		 * comprehensive list here ?) or a "FATAL" database error */
+		if (strstr(errorMsg, "FATAL:") == NULL &&
+			strstr(errorMsg, "Connection refused") == NULL)
 		{
 			/* non-fatal connection errors are ignored */
+			elog(DEBUG3, "FtsTestConnection: nonfatal error, ignoring (%d, %s)", PQsocket(conn), errorMsg);
 			ret = true;
 			break;
 		}
@@ -297,8 +301,10 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
     {
         if ((segdbDesc + i)->conn == NULL)
         {
+			elog(LOG, "looking for real fault on segment %d", i);
             if (!FtsTestConnection((segdbDesc + i)->segment_database_info, (segdbDesc + i)->dbname))
 			{
+				elog(LOG, "found fault with segment %d", i);
                realFaultFound = true; 
 			   /* that at least one fault exists is enough, for now */
 			   break;
