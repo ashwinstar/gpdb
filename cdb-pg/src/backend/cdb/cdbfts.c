@@ -45,7 +45,6 @@ static void CdbShutdown(void);
 static void initPQConnectionBuffer(CdbComponentDatabaseInfo *, char *, PQExpBuffer, bool);
 static void markSegDBTransientState(int, bool);
 static void markSegDBPersistentState(int, bool);
-static bool isNetError(char *errorMsg);
 
 #define GET_TRANSIENT_VALID_STATE(id)  (id >> 15)		/* first bit indicates
 														 * valid column */
@@ -134,21 +133,58 @@ FtsReConnectDB(void *failedDB)
 bool
 FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo, char *dbName)
 {
-	PGconn	   *conn;
+   	PGconn		*conn;
 	bool		ret = true;
-	PQExpBuffer buffer = createPQExpBuffer();
+	PQExpBuffer	buffer = createPQExpBuffer();
+	char		*errorMsg;
 
+	/* XXX: this connects in UTILITY mode, are UTILITY mode errors
+	 * different from EXECUTE mode ? */
 	initPQConnectionBuffer(failedDBInfo, dbName, buffer, true);
 
 	conn = PQconnectdb(buffer->data);
 
-	if (PQstatus(conn) == CONNECTION_BAD &&
-		isNetError(PQerrorMessage(conn)))
+	do
 	{
+		if (PQstatus(conn) == CONNECTION_OK)
+		{
+			ret = true;
+			break;
+		} 
+		else if (PQstatus(conn) != CONNECTION_BAD)
+		{
+			elog(LOG, "FTS: test connection status unknown, dbid %d dbname %s error message %s (%d)",
+				 failedDBInfo->dbid, dbName, PQerrorMessage(conn), PQstatus(conn));
+			ret = true;
+			break;
+		}
+
+		errorMsg = PQerrorMessage(conn);
+		if (errorMsg == NULL)
+		{
+			elog(LOG, "FTS: test connection can't parse error message");
+		}
+
+		if (strstr(errorMsg, "FATAL:") == NULL)
+		{
+			/* non-fatal connection errors are ignored */
+			ret = true;
+			break;
+		}
+
+		if (strstr(errorMsg, "the database system is starting up") != NULL)
+		{
+			/* don't consider this a failure, essentially we want to force a retry here */
+			ret = true;
+			break;
+		}
+
+		/* This is a real failure for which a reconfigure may be warranted */
+
 		elog(LOG, "FTS: test connection failed, dbid %d dbname %s error message %s",
 			 failedDBInfo->dbid, dbName, PQerrorMessage(conn));
 		ret = false;
-	}
+	} while (0);
 
 	PQfinish(conn);
 	return ret;
@@ -257,19 +293,32 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 	bool		reportError = false;
     bool     realFaultFound = false;
 
-	if (!isFTSEnabled())
-		return false;
     for (i = 0; i < size; i++)
     {
         if ((segdbDesc + i)->conn == NULL)
         {
             if (!FtsTestConnection((segdbDesc + i)->segment_database_info, (segdbDesc + i)->dbname))
+			{
                realFaultFound = true; 
+			   /* that at least one fault exists is enough, for now */
+			   break;
+			}
         }
     }
     
     if (!realFaultFound)
+	{
+		/* If we successfully tested the gang and didn't notice a
+		 * failure, our caller must've seen some kind of transient
+		 * failure when the gang was originally constructed ...  */
+		elog(DEBUG2, "FtsHandleGangConnectionFailure: no real fault found!");
         return false;
+	}
+
+	if (!isFTSEnabled())
+	{
+		return false;
+	}
 
 	/* shutdown if action is set to shutdown */
 	if (*ftsAction == FTS_SHUTDOWN)
@@ -291,7 +340,7 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
              !FtsTestConnection((segdbDesc + i)->segment_database_info, (segdbDesc + i)->dbname))
 			markSegDBStatus((segdbDesc + i)->segment_database_info->dbid, false);
 	}
-	if (isGangExisted())
+	if (gangsExist())
 	{
 		reportError = true;
 		disconnectAndDestroyAllGangs();
@@ -309,6 +358,7 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 	 */
 	if ((*ftsReadOnlyFlag && !isTMInRecovery()) || reportError)
 		return true;
+
 	return false;
 }
 
@@ -700,19 +750,6 @@ FtsEvaluateTransientState(void)
 	assign_mpp_set_read_only(false, true, PGC_S_DEFAULT);
 	setRecoverTMOn();
 	LWLockRelease(ftsControlLock);
-}
-
-static bool
-isNetError(char *errorMsg)
-{
-	/*
-	 * "FATAL:" is a keywork when postmaster throws fatal error, this includes
-	 * system shuting down, starting up or tool many clients... in this case,
-	 * we assume it is not a net error.
-	 */
-	return (strstr(errorMsg, "FATAL:") == NULL ||
-            strstr(errorMsg, "No such file or directory") != NULL
-            );
 }
 
 bool

@@ -47,7 +47,7 @@ extern void detectFailedConnections(void);
 
 extern CdbComponentDatabases *getComponentDatabases(void);
 
-extern bool isGangExisted(void);
+extern bool gangsExist(void);
 
 struct SegmentDatabaseDescriptor *
 getSegmentDescriptorFromGang(const Gang *gp, int seg);

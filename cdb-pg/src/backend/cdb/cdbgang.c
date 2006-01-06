@@ -1473,7 +1473,7 @@ getComponentDatabases(void)
 }
 
 bool
-isGangExisted(void)
+gangsExist(void)
 {
 	return (primaryWriterGang != NULL ||
 			mirrorWriterGang != NULL ||
