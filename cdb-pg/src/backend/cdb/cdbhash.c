@@ -179,6 +179,13 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 			buf = &intbuf;
 			len = sizeof(intbuf);
 			break;
+			
+		case OIDOID:			/* object identifier(oid), maximum 4 billion */
+			intbuf = (int64) DatumGetUInt32(datum);		/* cast to 8 byte before
+														 * hashing */
+			buf = &intbuf;
+			len = sizeof(intbuf);
+			break;
 
 		case INT8OID:			/* ~18 digit integer, 8-byte storage */
 			intbuf = DatumGetInt64(datum);		/* cast to 8 byte before
@@ -355,7 +362,7 @@ cdbhash(CdbHash *h, Datum datum, Oid type)
 			len = sizeof(bool_buf);
 			break;
 
-		case OIDOID:			/* object identifier(oid), maximum 4 billion */
+		
 		default:
 			ereport(ERROR,
 					(errcode(ERRCODE_CDB_FEATURE_NOT_YET),
