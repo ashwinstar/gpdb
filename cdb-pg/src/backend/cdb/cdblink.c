@@ -239,10 +239,10 @@ buildMirrorQDDefinition(void)
 		/* connect to mirrored QD */
 		if (!cdblink_connectQD(cdb_mirrored_entry_db))
 		{
-			disableQDMirroring();
+			//disableQDMirroring();
 
 			ereport(WARNING, (errcode(ERRCODE_WARNING_MPP_INTERCONNECTION),
-							  errmsg("QD Mirroring disabled for entry db.  %s",
+							  errmsg("QD Mirroring failed for entry db.  %s",
 									 cdb_mirrored_entry_db->error_message.data)
 						));
 			cdb_mirrored_entry_db->errcode = 0;
