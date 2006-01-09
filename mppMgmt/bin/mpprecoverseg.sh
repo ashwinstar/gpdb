@@ -363,7 +363,7 @@ UPDATE_STATUS () {
 			LOG_MSG "[INFO]:-Setting $FAIL_QE_HOST DBID=$FAIL_QE_DBID port=$FAIL_QE_PORT as active"
 			for MPP_DB in ${DB_LIST[@]}
 			do
-				env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MPP_DB -A -t -c "select mpp_set_segdb_state (${FAIL_QE_DBID},true);" > /dev/null 2>&1
+				env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MPP_DB -A -t -c "select mpp_set_segdb_state(CAST(${FAIL_QE_DBID} AS smallint),true);" > /dev/null 2>&1
 				ERROR_CHK $? "update status for database $MPP_DB on Master database" 2
 			done
 			((COUNT=$COUNT+1))
