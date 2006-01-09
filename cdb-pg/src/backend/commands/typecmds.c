@@ -570,8 +570,7 @@ DefineDomain(CreateDomainStmt *stmt)
 
 
 			if (n)
-				if (strcmp(n, "oid") == 0 ||
-					strcmp(n, "path") == 0 ||
+				if (strcmp(n, "path") == 0 ||
 					strcmp(n, "bit") == 0 ||
 					strcmp(n, "box") == 0 ||
 					strcmp(n, "circle") == 0 ||
