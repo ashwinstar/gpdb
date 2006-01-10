@@ -1341,6 +1341,17 @@ eval_const_expressions_mutator(Node *node,
 		 * to this extent.
 		 */
 		set_opfuncid(expr);
+		
+		/*
+		 * don't optimize divide, because we might hit a divide by zero
+		 * in an expression that won't necessarily get executed later.
+		 */
+		if ((expr->opfuncid >=153 && expr->opfuncid <=157) ||
+			(expr->opfuncid >=172 && expr->opfuncid <=176))
+		{
+			simple = NULL;
+		}
+		else
 
 		/*
 		 * Code for op/func reduction is pretty bulky, so split it out as a
