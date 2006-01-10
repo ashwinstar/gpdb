@@ -2,7 +2,7 @@
 #	Filename:-		mppactivatemaster.sh
 #	Version:-		$Revision$
 #	Updated:-		$Date$
-#	Status:-		Not yet complete, 1st phase only.
+#	Status:-		Merge complete.
 #	Author:-		G Coombe
 #	Contact:-		gcoombe@greenplum.com
 #	Release date:-		TBC
@@ -215,7 +215,7 @@ PROCESS_REACTIVATION () {
 	ERROR_CHK $? "[FATAL]:-Issues with cluster shutdown, please correct and re-run this script" 2
 	LOG_MSG "[INFO]:-Starting master instance in admin mode"
 	$START_PROG -m
-	ERROR_CHK $? "[FATAL]:-Issues with starting master instance in admin mode,please correct and re-run this script" 2
+	ERROR_CHK $? "starting master instance in admin mode" 2
 	LOG_MSG "[INFO]:-Updating system catalog tables"
 	UPDATE_CATALOG
 	ADMIN_SHUTDOWN	
@@ -242,7 +242,8 @@ PROCESS_REACTIVATION () {
 UPDATE_CATALOG () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	FAILBACK_MASTER_DBID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select min(dbid) from mpp_configuration where content=-1;"`
-	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT -A -t -c"update mpp_configuration set hostname='$FAILBACK_MASTER_HOSTNAME' where dbid in ($FAILBACK_MASTER_DBID);"
+###	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT -A -t -c"update mpp_configuration set hostname='$FAILBACK_MASTER_HOSTNAME' where dbid in ($FAILBACK_MASTER_DBID);"
+	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_PORT $DEFAULTDB -A -t -c"update mpp_configuration set hostname='$FAILBACK_MASTER_HOSTNAME' where dbid in ($FAILBACK_MASTER_DBID);"
 	ERROR_CHK $? "update mpp_configuration hostname value in database" 1
 	if [ $RETVAL -ne 0 ];then
 	    ADMIN_SHUTDOWN

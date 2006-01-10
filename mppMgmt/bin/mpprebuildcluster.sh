@@ -144,7 +144,7 @@ PARSE_SQL_FILE () {
 	ERROR_CHK $? "get master instance port" 2
 	MASTER_MPP_NAME=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select mppname from mpp_mpp;"`
 	ERROR_CHK $? "get master instance array name" 2
-	REBUILD_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select hostname, port, datadir, dbid, content,definedprimary from mpp_configuration where content<>-1;"`)
+	REBUILD_ARRAY=(`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -A -t -p $TEMP_PORT $DEFAULTDB -c "select hostname, port, datadir, dbid, content, definedprimary from mpp_configuration where content<>-1;"`)
 	ERROR_CHK $? "get array segment instance details " 2
 	MASTER_IP_ADDRESS_ALL=(`$IFCONFIG |$GREP "inet addr"|$GREP -v addr:127|$AWK '{print $2}'|$CUT -d: -f2`)	
 	ERROR_CHK $? "get master host IP details" 2

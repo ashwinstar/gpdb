@@ -105,6 +105,13 @@ UNKNOWN_OPTION () {
 
 CHECK_PARAM () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	#Check to ensure that we do not have a clash with a current setting of MASTER_DATA_DIRECTORY
+	if [ x"" != x"$MASTER_DATA_DIRECTORY" ];then
+		LOG_MSG "[INFO]:-MASTER_DATA_DIRECTORY value set, checking for conflict"
+		if [ $MASTER_STANDBY_DATA_DIRECTORY != $MASTER_DATA_DIRECTORY ];then
+			ERROR_EXIT "[FATAL]:-Current setting of MASTER_DATA_DIRECTORY not same as -d parameter" 2
+		fi
+	fi
 	#Check that we are not trying to create a standby instance on this host
 	if [ "$MASTER_STANDBY_HOSTNAME" != "`$HOSTNAME`" ];then
 		ERROR_EXIT "[FATAL]:-Must run this script on the standby master host" 2
@@ -182,10 +189,12 @@ CHK_CATALOG_DATA () {
 
 UPDATE_CATALOG () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	LOG_MSG "[INFO]: master standby: '$MASTER_STANDBY_HOSTNAME'"
+	LOG_MSG "[INFO]:-Master standby: $MASTER_STANDBY_HOSTNAME"
 	MASTER_DBID=`env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"select min(dbid) from mpp_configuration where content=-1;"`
-	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT -A -t -c"update mpp_configuration set hostname='$MASTER_STANDBY_HOSTNAME' where dbid in ($MASTER_DBID);"
-	ERROR_CHK $? "update mpp_configuration hostname value" 1
+	LOG_MSG "[INFO}:-Obtained MASTER_DBID as $MASTER_DBID"
+###	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT -A -t -c"update mpp_configuration set hostname='$MASTER_STANDBY_HOSTNAME' where dbid in ($MASTER_DBID);"
+	env PGOPTIONS="-c mpp_session_role=utility" $PSQL -q -p $MASTER_STANDBY_PORT $DEFAULTDB -A -t -c"update mpp_configuration set hostname='$MASTER_STANDBY_HOSTNAME' where dbid in ($MASTER_DBID);"
+	ERROR_CHK $? "update mpp_configuration hostname value" 2
 	if [ $RETVAL -ne 0 ];then
 	    ADMIN_SHUTDOWN
 	    ERROR_EXIT "[FATAL]:-Unable to contine, unable to update mpp_configuration catalog" 2
@@ -200,7 +209,7 @@ STOP_MASTER_DB () {
 	else
 		LOG_MSG "[INFO]:-Commencing shutdown of standby instance, including a call to shutdown segment instances"
 		LOG_MSG "[INFO]:-Ignore any warning messages if mppstop.sh reports problems with shutdown of segment instances"
-		$STOP_PROG -qa -d $MASTER_STANDBY_DATA_DIRECTORY
+		$STOP_PROG -qfa -d $MASTER_STANDBY_DATA_DIRECTORY
 	fi
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }

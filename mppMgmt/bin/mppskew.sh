@@ -75,6 +75,7 @@ USAGE () {
 	$ECHO
 	$ECHO "      Logging options:"
 	$ECHO "      -l, <logfile directory> alternative logfile directory [optional]"
+	$ECHO "      -q, quiet mode, only useful where -f option also used"
 	$ECHO
 	$ECHO "      Skew options:"
 	$ECHO "      -t, <table name> [mandatory]"
@@ -101,8 +102,10 @@ GET_NODE_COUNT () {
 	ERROR_CHK $? "obtain number of segment instances" 2
 	if [ $NUM_SEGMENTS = 1 ];then
 		ERROR_EXIT "[FATAL]:-Only one node in cluster, skew not applicable" 2;fi 
-		$PSQL -p $MASTER_PORT $QD_DBNAME -t -A -F"," -c"select a.hostname, b.port, b.datadir from mpp_configuration where content <> -1 and isprimary='t' ;" > $NODELIST
-		ERROR_CHK $? "obtaib list of active segments" 2
+##		$PSQL -p $MASTER_PORT $QD_DBNAME -t -A -F"," -c"select a.hostname, b.port, b.datadir from mpp_configuration where content <> -1 and isprimary='t' ;" > $NODELIST
+##		ERROR_CHK $? "obtaib list of active segments" 2
+		$PSQL -p $MASTER_PORT $QD_DBNAME -t -A -F"," -c"select hostname, port, datadir from mpp_configuration where content <> -1 and isprimary='t' ;" > $NODELIST
+		ERROR_CHK $? "obtain list of active segments" 2
 	LOG_MSG  "[INFO]:-Sending request to nodes.."
 
 	SEGCOUNT=0
@@ -112,7 +115,9 @@ GET_NODE_COUNT () {
 	SEG_PORT=`$ECHO $NodeInfo|$CUT -d, -f2`
 	SEG_DIR=`$ECHO $NodeInfo|$CUT -d, -f3`
 	SEG_NAME=`$BASENAME $SEG_DIR`
-	$TRUSTED_SHELL $SEG_HOST "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH; time env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT $QD_DBNAME -A -t -c'select count(*),'\''$SEG_NAME'\'','\''$SEG_HOST'\'' from $TARGETTBL;'" 2>&1|$HEAD -3|$TR -s '\n'|$TR ' ' '\n'|$TR -d '.'|$TR -cs '[:alnum:]' '[\n*]'|$GREP -v real|$TR  '\n' '|'|$AWK '{print $1}' >> $TMPFILE &
+	ACCESS_TEST=`$TRUSTED_SHELL $SEG_HOST "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT $QD_DBNAME -A -t -c\"select version();\""`
+	ERROR_CHK $? "test access to $SEG_PORT $QD_DBNAME on $SEG_HOST" 2
+	$TRUSTED_SHELL -n $SEG_HOST "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH; time env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $SEG_PORT $QD_DBNAME -A -t -c'select count(*),'\''$SEG_NAME'\'','\''$SEG_HOST'\'' from $TARGETTBL;'" 2>&1|$HEAD -3|$TR -s '\n'|$TR ' ' '\n'|$TR -d '.'|$TR -cs '[:alnum:]' '[\n*]'|$GREP -v real|$TR  '\n' '|'|$AWK '{print $1}' >> $TMPFILE &
 	ERROR_CHK $? "send request to $SEG_HOST port $SEG_PORT" 2
 	let SEGCOUNT=$SEGCOUNT+1
 	done
@@ -128,18 +133,36 @@ GET_NODE_COUNT () {
 	do
 		((REC_COUNT=$REC_COUNT+$RECS))
 	done
-	MaxSkew=`$SORT $TMPFILE|$TAIL -1|$CUT -d'|' -f1`
-	MaxSeg=`$SORT $TMPFILE|$TAIL -1|$CUT -d'|' -f2`
-	MaxHost=`$SORT $TMPFILE|$TAIL -1|$CUT -d'|' -f3`
-	MinSkew=`$SORT $TMPFILE|$HEAD -1|$CUT -d'|' -f1`
-	MinSeg=`$SORT $TMPFILE|$HEAD -1|$CUT -d'|' -f2`
-	MinHost=`$SORT $TMPFILE|$HEAD -1|$CUT -d'|' -f3`
-	MinTime=`$CAT $TMPFILE|$AWK -F"|" '{print $4"|"$3"|"$2}'|$SORT|$HEAD -1|$CUT -d"|" -f1`
-	MinTimeHost=`$CAT $TMPFILE|$AWK -F"|" '{print $4"|"$3"|"$2}'|$SORT|$HEAD -1|$CUT -d"|" -f2`
-	MinTimeSeg=`$CAT $TMPFILE|$AWK -F"|" '{print $4"|"$3"|"$2}'|$SORT|$HEAD -1|$CUT -d"|" -f3`
-	MaxTime=`$CAT $TMPFILE|$AWK -F"|" '{print $4"|"$3"|"$2}'|$SORT|$TAIL -1|$CUT -d"|" -f1`
-	MaxTimeHost=`$CAT $TMPFILE|$AWK -F"|" '{print $4"|"$3"|"$2}'|$SORT|$TAIL -1|$CUT -d"|" -f2`
-	MaxTimeSeg=`$CAT $TMPFILE|$AWK -F"|" '{print $4"|"$3"|"$2}'|$SORT|$TAIL -1|$CUT -d"|" -f3`
+	MinSkew=10000000000000
+	MaxSkew=0
+	while read DATA
+	do
+		Skew=`$ECHO $DATA|$TAIL -1|$CUT -d'|' -f1`
+		Seg=`$ECHO $DATA|$TAIL -1|$CUT -d'|' -f2`
+		Host=`$ECHO $DATA|$TAIL -1|$CUT -d'|' -f3`
+		if [ $Skew -gt $MaxSkew ];then
+			MaxSkew=$Skew
+			MaxSeg=$Seg
+			MaxHost=$Host
+		fi
+		if [ $Skew -lt $MinSkew ];then
+			MinSkew=$Skew
+			MinSeg=$Seg
+			MinHost=$Host
+		fi
+	done < $TMPFILE
+	##MaxSkew=`$SORT $TMPFILE|$TAIL -1|$CUT -d'|' -f1`
+	##MaxSeg=`$SORT $TMPFILE|$TAIL -1|$CUT -d'|' -f2`
+	##MaxHost=`$SORT $TMPFILE|$TAIL -1|$CUT -d'|' -f3`
+	##MinSkew=`$SORT $TMPFILE|$HEAD -1|$CUT -d'|' -f1`
+	##MinSeg=`$SORT $TMPFILE|$HEAD -1|$CUT -d'|' -f2`
+	##MinHost=`$SORT $TMPFILE|$HEAD -1|$CUT -d'|' -f3`
+	##MinTime=`$CAT $TMPFILE|$AWK -F"|" '{print $4"|"$3"|"$2}'|$SORT|$HEAD -1|$CUT -d"|" -f1`
+	##MinTimeHost=`$CAT $TMPFILE|$AWK -F"|" '{print $4"|"$3"|"$2}'|$SORT|$HEAD -1|$CUT -d"|" -f2`
+	##MinTimeSeg=`$CAT $TMPFILE|$AWK -F"|" '{print $4"|"$3"|"$2}'|$SORT|$HEAD -1|$CUT -d"|" -f3`
+	##MaxTime=`$CAT $TMPFILE|$AWK -F"|" '{print $4"|"$3"|"$2}'|$SORT|$TAIL -1|$CUT -d"|" -f1`
+	##MaxTimeHost=`$CAT $TMPFILE|$AWK -F"|" '{print $4"|"$3"|"$2}'|$SORT|$TAIL -1|$CUT -d"|" -f2`
+	##MaxTimeSeg=`$CAT $TMPFILE|$AWK -F"|" '{print $4"|"$3"|"$2}'|$SORT|$TAIL -1|$CUT -d"|" -f3`
 	let RecDiff=$MaxSkew-$MinSkew
 	LOG_MSG "-------------------------------------------------------------------"
 	LOG_MSG "[INFO]:-Table of results for Table $TARGETTBL in database $QD_DBNAME"
@@ -157,8 +180,15 @@ GET_NODE_COUNT () {
 	LOG_MSG "[INFO]:-Record count variance is $RecDiff records"
 	LOG_MSG "-------------------------------------------------------------------"
 	LOG_MSG "[INFO]:-Response result"
-	LOG_MSG "[INFO]:-Fastest host $MinTimeHost segment $MinTimeSeg responded in $MinTime"
-	LOG_MSG "[INFO]:-Slowest host $MaxTimeHost segment $MaxTimeSeg responded in $MaxTime" 
+##	LOG_MSG "[INFO]:-Fastest host $MinTimeHost segment $MinTimeSeg responded in $MinTime"
+##	LOG_MSG "[INFO]:-Slowest host $MaxTimeHost segment $MaxTimeSeg responded in $MaxTime" 
+	while read LINE
+	do
+		Host=`$ECHO $LINE|$CUT -d '|' -f3`
+		Time=`$ECHO $LINE|$CUT -d '|' -f4`
+		Seg=`$ECHO $LINE|$CUT -d '|' -f2`
+		LOG_MSG "[INFO]:-Host $Host segment $Seg responded in time $Time"
+	done < $TMPFILE
 	LOG_MSG "-------------------------------------------------------------------"
 	rm -f $TMPFILE
 	rm -f $NODELIST
@@ -170,7 +200,7 @@ GET_NODE_COUNT () {
 trap '$RM -f $TMPFILE $NODELIST;ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 CHK_DB_QD_SET
 if [ $# -ne 0 ];then
-        while getopts ":a:vft:'?'d:l:" opt;do
+        while getopts ":a:vqft:'?'d:l:" opt;do
         case $opt in
                 v ) VERSION_INFO ;;
                 t ) TARGETTBL=$OPTARG ;;
@@ -179,6 +209,7 @@ if [ $# -ne 0 ];then
 		l ) LOG_DIR=$OPTARG ;;
 		a ) ALT_DBNAME=$OPTARG ;;
 		f ) FULL_DISPLAY=1 ;;
+		q ) unset VERBOSE ;;
                 * ) UNKNOWN_OPTION ;;
         esac
         done

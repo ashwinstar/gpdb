@@ -41,8 +41,8 @@ declare -a FAILED_DATADIR_ARRAY_SUB
 declare -a FAILED_PORT_ARRAY
 declare -a MIRROR_HOST_ARRAY
 declare -a MIRROR_DATADIR_ARRAY
-STOP_PROG=${WORKDIR}/mppstop.sh
-START_PROG=${WORKDIR}/mppstart.sh
+STOP_PROG=$MPPSTOP
+START_PROG=$MPPSTART
 #******************************************************************************
 # Command Variables
 #******************************************************************************
@@ -124,23 +124,15 @@ GET_MIRROR () {
 	DB_LIST=(`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select datname from pg_database where datallowconn<>'f';"`)
 	ERROR_CHK $? "obtain list of database names from master instance" 1
 	#Get a list of dbid's that are marked as invalid
-	for DBNAME in ${DB_LIST[@]}
-	do
-		FAILED_INST_LIST=(`$PSQL -p $MASTER_PORT $DBNAME -R" " -A -t -c"select dbid from mpp_pgdatabase where valid='f';"`)
-		ERROR_CHK $? "obtain master instance failed segments" 2
-		FAILED_INST_COUNT=${#FAILED_INST_LIST[@]}
-		if [ $FAILED_INST_COUNT -eq 0 ]; then
-			LOG_MSG "[INFO]:-No invalid segment instances located for database $DBNAME"
-		else
-			LOG_MSG "[INFO]:-Located $FAILED_INST_COUNT invalid segment instances for database $DBNAME"
-			DB_MARKED_INVALID=($DB_MARKED_INVALID $DBNAME)
-		fi
-	done
-	if [ ${#DB_MARKED_INVALID[@]} -eq 0 ];then
-		LOG_MSG "[INFO]:-No invalid segment instances located on array, script exits"
+	FAILED_INST_LIST=(`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from mpp_pgdatabase where valid='f';"`)
+	ERROR_CHK $? "obtain master instance failed segments" 2
+	FAILED_INST_COUNT=${#FAILED_INST_LIST[@]}
+	if [ $FAILED_INST_COUNT -eq 0 ]; then
+		LOG_MSG "[INFO]:-No invalid segment instances located"
 		exit 0
+	else
+		LOG_MSG "[INFO]:-Located $FAILED_INST_COUNT invalid segment instances"
 	fi
-
 	#Now check to make sure that we can initiate recovery
 	TOTAL_INST_COUNT=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select count(dbid) from mpp_configuration where content<>-1;"`
 	ERROR_CHK $? "obtain total segement count from master instance" 2
@@ -150,18 +142,15 @@ GET_MIRROR () {
 	else
 		LOG_MSG "[INFO]:-Sufficient active instances to be able to start recovery"
 	fi
-
 	#Now obtain details of failed instances and also their associated mirrors
 	LOG_MSG "[INFO]:-Obtaining recovery information"
 	ARRAY_INDEX=0
-	DBNAME=${DB_MARKED_INVALID[0]}
-	FAILED_INST_LIST=(`$PSQL -p $MASTER_PORT $DBNAME -R" " -A -t -c"select dbid from mpp_configuration where valid='f';"`)
-	ERROR_CHK $? "obtain failed DBID details from master instance" 2
 	for DBID in ${FAILED_INST_LIST[@]}
 	do
-		FAILED_INSTANCE_ARRAY[$ARRAY_INDEX]=`$PSQL -p $MASTER_PORT $DBNAME -A -t -c"select hostname, port, datadir, dbid from mpp_configuration where valid='f' and dbid=${DBID};"`
+		FAILED_INSTANCE_ARRAY[$ARRAY_INDEX]=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid from mpp_configuration where dbid=${DBID};"`
 		ERROR_CHK $? "obtain failed segment details from master instance" 2
-		ACTIVE_INSTANCE_ARRAY[$ARRAY_INDEX]=`$PSQL -p $MASTER_PORT $DBNAME -A -t -c"select hostname, port, datadir, dbid from mpp_configuration where valid='t' and content in (select content from mpp_configuration where dbid=${DBID});"`
+		ACTIVE_DBID=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select dbid from mpp_pgdatabase where content in (select content from mpp_pgdatabase where dbid=${DBID}) and dbid<>${DBID};"`
+		ACTIVE_INSTANCE_ARRAY[$ARRAY_INDEX]=`$PSQL -p $MASTER_PORT $DEFAULTDB -A -t -c"select hostname, port, datadir, dbid from mpp_configuration where valid='t' and content in (select content from mpp_configuration where dbid=${ACTIVE_DBID}) and dbid<>${DBID};"`
 		ERROR_CHK $? "obtain recovery segment details from master instance" 2
 		((ARRAY_INDEX=$ARRAY_INDEX+1))
 	done	

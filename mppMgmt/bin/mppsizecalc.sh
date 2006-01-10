@@ -100,8 +100,15 @@ GET_DB_OID_DATA () {
 
 GET_TABLE_OID_DATA () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	TABLE_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select relfilenode from pg_class where relname='${TABLE_NAME}'"`
-	ERROR_CHK $? "obtain table OID for $TABLE_NAME table in database $QD_DBNAME" 2	
+	if [ `$ECHO $TABLE_NAME|$GREP -c .` -ne 0 ];then
+		TABLE_NAME_NO_SCHEMA=`$ECHO $TABLE_NAME|$CUT -d. -f2`
+		LOG_MSG "[INFO]:-Stripped off schema name"
+	else
+		TABLE_NAME_NO_SCHEMA=$TABLE_NAME
+	fi
+	TABLE_OID=`$PSQL -q -p $MASTER_PORT $QD_DBNAME -A -t -c"select relfilenode from pg_class where relname='${TABLE_NAME_NO_SCHEMA}'"`
+	ERROR_CHK $? "obtain table OID for $TABLE_NAME_NO_SCHEMA table in database $QD_DBNAME" 2	
+	LOG_MSG "[INFO]:-Obtained OID value $TABLE_OID"
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
