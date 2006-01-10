@@ -76,8 +76,9 @@
 
 /* Write a boolean field */
 #define WRITE_BOOL_FIELD(fldname) \
-	appendStringInfo(str, " :" CppAsString(fldname) " %s", \
-					 booltostr(node->fldname))
+	(node->fldname ? \
+	 appendStringInfoLiteral(str, " :" CppAsString(fldname) " true") : \
+	 appendStringInfoLiteral(str, " :" CppAsString(fldname) " false"))
 
 /* Write a character-string (possibly NULL) field */
 #define WRITE_STRING_FIELD(fldname) \
@@ -86,8 +87,18 @@
 
 /* Write a Node field */
 #define WRITE_NODE_FIELD(fldname) \
-	(appendStringInfo(str, " :" CppAsString(fldname) " "), \
+	(appendStringInfoLiteral(str, " :" CppAsString(fldname) " "), \
 	 _outNode(str, node->fldname))
+
+/* Write a List field: this is a shortcut (you can call
+ * WRITE_NODE_FIELD for list fields) to avoid an extra call to
+ * _outNode() */
+#define WRITE_LIST_FIELD(fldname) \
+	((node->fldname == NULL) ? \
+	 (appendStringInfo(str, " :" CppAsString(fldname) " "), \
+	  appendStringInfoLiteral(str, "<>")) :				\
+	 (appendStringInfo(str, " :" CppAsString(fldname) " "), \
+	  _outList(str, node->fldname)))
 
 /* Write a bitmapset field */
 #define WRITE_BITMAPSET_FIELD(fldname) \
@@ -99,10 +110,7 @@
 	(appendStringInfo(str, " :" CppAsString(fldname) " "), \
 	 _outToken(str, NULL))
 
-#define booltostr(x)  ((x) ? "true" : "false")
-
 static void _outNode(StringInfo str, void *obj);
-
 
 /*
  * _outToken
@@ -253,8 +261,8 @@ _outPlanInfo(StringInfo str, Plan *node)
 	WRITE_FLOAT_FIELD(total_cost, "%.2f");
 	WRITE_FLOAT_FIELD(plan_rows, "%.0f");
 	WRITE_INT_FIELD(plan_width);
-	WRITE_NODE_FIELD(targetlist);
-	WRITE_NODE_FIELD(qual);
+	WRITE_LIST_FIELD(targetlist);
+	WRITE_LIST_FIELD(qual);
 	WRITE_BITMAPSET_FIELD(extParam);
 	WRITE_BITMAPSET_FIELD(allParam);
 	WRITE_INT_FIELD(nParamExec);
@@ -288,7 +296,7 @@ _outJoinPlanInfo(StringInfo str, Join *node)
 	_outPlanInfo(str, (Plan *) node);
 
 	WRITE_ENUM_FIELD(jointype, JoinType);
-	WRITE_NODE_FIELD(joinqual);
+	WRITE_LIST_FIELD(joinqual);
 }
 
 
@@ -317,7 +325,7 @@ _outAppend(StringInfo str, Append *node)
 
 	_outPlanInfo(str, (Plan *) node);
 
-	WRITE_NODE_FIELD(appendplans);
+	WRITE_LIST_FIELD(appendplans);
 	WRITE_BOOL_FIELD(isTarget);
 }
 
@@ -328,7 +336,7 @@ _outBitmapAnd(StringInfo str, BitmapAnd *node)
 
 	_outPlanInfo(str, (Plan *) node);
 
-	WRITE_NODE_FIELD(bitmapplans);
+	WRITE_LIST_FIELD(bitmapplans);
 }
 
 static void
@@ -338,7 +346,7 @@ _outBitmapOr(StringInfo str, BitmapOr *node)
 
 	_outPlanInfo(str, (Plan *) node);
 
-	WRITE_NODE_FIELD(bitmapplans);
+	WRITE_LIST_FIELD(bitmapplans);
 }
 
 static void
@@ -365,10 +373,10 @@ _outIndexScan(StringInfo str, IndexScan *node)
 	_outScanInfo(str, (Scan *) node);
 
 	WRITE_OID_FIELD(indexid);
-	WRITE_NODE_FIELD(indexqual);
-	WRITE_NODE_FIELD(indexqualorig);
-	WRITE_NODE_FIELD(indexstrategy);
-	WRITE_NODE_FIELD(indexsubtype);
+	WRITE_LIST_FIELD(indexqual);
+	WRITE_LIST_FIELD(indexqualorig);
+	WRITE_LIST_FIELD(indexstrategy);
+	WRITE_LIST_FIELD(indexsubtype);
 	WRITE_ENUM_FIELD(indexorderdir, ScanDirection);
 }
 
@@ -380,10 +388,10 @@ _outBitmapIndexScan(StringInfo str, BitmapIndexScan *node)
 	_outScanInfo(str, (Scan *) node);
 
 	WRITE_OID_FIELD(indexid);
-	WRITE_NODE_FIELD(indexqual);
-	WRITE_NODE_FIELD(indexqualorig);
-	WRITE_NODE_FIELD(indexstrategy);
-	WRITE_NODE_FIELD(indexsubtype);
+	WRITE_LIST_FIELD(indexqual);
+	WRITE_LIST_FIELD(indexqualorig);
+	WRITE_LIST_FIELD(indexstrategy);
+	WRITE_LIST_FIELD(indexsubtype);
 }
 
 static void
@@ -393,7 +401,7 @@ _outBitmapHeapScan(StringInfo str, BitmapHeapScan *node)
 
 	_outScanInfo(str, (Scan *) node);
 
-	WRITE_NODE_FIELD(bitmapqualorig);
+	WRITE_LIST_FIELD(bitmapqualorig);
 }
 
 static void
@@ -403,7 +411,7 @@ _outTidScan(StringInfo str, TidScan *node)
 
 	_outScanInfo(str, (Scan *) node);
 
-	WRITE_NODE_FIELD(tideval);
+	WRITE_LIST_FIELD(tideval);
 }
 
 static void
@@ -447,7 +455,7 @@ _outMergeJoin(StringInfo str, MergeJoin *node)
 
 	_outJoinPlanInfo(str, (Join *) node);
 
-	WRITE_NODE_FIELD(mergeclauses);
+	WRITE_LIST_FIELD(mergeclauses);
 }
 
 static void
@@ -457,7 +465,7 @@ _outHashJoin(StringInfo str, HashJoin *node)
 
 	_outJoinPlanInfo(str, (Join *) node);
 
-	WRITE_NODE_FIELD(hashclauses);
+	WRITE_LIST_FIELD(hashclauses);
 }
 
 static void
@@ -611,8 +619,8 @@ _outMotion(StringInfo str, Motion *node)
 	for (i = 0; i < node->numHashSegs; i++)
 		appendStringInfo(str, " %d", node->hashSegIdx[i]);
 
-	WRITE_NODE_FIELD(hashExpr);
-	WRITE_NODE_FIELD(hashDataTypes);
+	WRITE_LIST_FIELD(hashExpr);
+	WRITE_LIST_FIELD(hashDataTypes);
 	WRITE_BOOL_FIELD(hashToSelfOnly);
 
 	WRITE_INT_FIELD(numOutputSegs);
