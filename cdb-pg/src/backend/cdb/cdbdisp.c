@@ -19,6 +19,16 @@
 #include "miscadmin.h"
 #include "utils/memutils.h"
 
+#include "utils/syscache.h"
+#include "utils/lsyscache.h"
+#include "catalog/pg_proc.h"
+#include "catalog/pg_type.h"
+#include "nodes/makefuncs.h"
+#include "utils/datum.h"
+#include "executor/executor.h"
+#include "optimizer/clauses.h"
+#include "cdb/cdbplan.h"
+
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbdispatchresult.h"
 #include "cdb/cdbfts.h"
@@ -99,6 +109,15 @@ static int
 fillSliceVector(SliceTable * sliceTable, int sliceIndex, Slice **sliceVector,
                 int len, int next);
 
+
+typedef struct
+{
+	bool		single_row_insert;
+	Node 	* nextval_replacement;
+} pre_dispatch_function_evaluation_context;
+
+static Node *pre_dispatch_function_evaluation_mutator(Node *node,
+							   pre_dispatch_function_evaluation_context *context);
 
 /*
  * Static Variables.  These contain the thread count and array of
@@ -1364,6 +1383,214 @@ CdbDoCommand(const char *szCommand, bool cancelOnError)
 /*--------------------------------------------------------------------*/
 
 
+
+/*
+ * Let's evaluate all STABLE functions that have constant args before dispatch, so we get a consistent
+ * view across QEs
+ * 
+ * Also, if this is a single_row insert, let's evaluate nextval() and currval() before dispatching
+ * 
+ */
+							   
+static Node *
+pre_dispatch_function_evaluation_mutator(Node *node,
+							   pre_dispatch_function_evaluation_context *context)
+{
+	if (node == NULL)
+		return NULL;
+	if (IsA(node, Param))
+	{
+		Param	   *param = (Param *) node;
+		/* Not replaceable, so just copy the Param (no need to recurse) */
+		return (Node *) copyObject(param);
+	}
+	if (IsA(node, FuncExpr))
+	{
+		FuncExpr   *expr = (FuncExpr *) node;
+		List	   *args;
+		ListCell   *arg;
+		Expr	   *simple;
+		FuncExpr   *newexpr;
+		bool has_nonconst_input;
+		
+		Form_pg_proc funcform;
+		EState	   *estate;
+		ExprState  *exprstate;
+		MemoryContext oldcontext;
+		Datum		const_val;
+		bool		const_is_null;
+		int16		resultTypLen;
+		bool		resultTypByVal;
+		
+		Oid funcid;
+		HeapTuple	func_tuple;
+
+		/*
+		 * Reduce constants in the FuncExpr's arguments.  We know args is
+		 * either NIL or a List node, so we can call plan_tree_mutator
+		 * directly rather than recursing to self.
+		 */
+		args = (List *) plan_tree_mutator((Node *) expr->args,
+											  pre_dispatch_function_evaluation_mutator,
+												(void *) context);
+
+		funcid = expr->funcid;
+		
+		/*
+		 * Check for constant inputs 
+		 */
+		foreach(arg, args)
+		{
+			if (!IsA(lfirst(arg), Const))
+				has_nonconst_input = true;
+		}
+	
+
+		if (!has_nonconst_input)
+		{
+		
+		func_tuple = SearchSysCache(PROCOID,
+							ObjectIdGetDatum(funcid),
+							0, 0, 0);
+		if (!HeapTupleIsValid(func_tuple))
+			elog(ERROR, "cache lookup failed for function %u", funcid);
+			
+		funcform = (Form_pg_proc) GETSTRUCT(func_tuple);
+		
+		// if it returns a set, it's not a function we can handle
+		// if it returns a record, it's not a function we can handle
+		if (funcform->proretset || funcform->prorettype == RECORDOID)
+		{
+			ReleaseSysCache(func_tuple);
+			return node;
+		}
+		
+
+		
+		if (funcform->provolatile == PROVOLATILE_IMMUTABLE)
+			 /* okay */ ;
+		else if (funcform->provolatile == PROVOLATILE_STABLE)
+			 /* okay */ ;
+		else if (context->single_row_insert && (funcid >= 1574 && funcid <= 1576 )) /* nextval, currval, setval */
+			;  /* Volatile, but special sequence function */
+		else
+		{
+			ReleaseSysCache(func_tuple);
+			return node;
+		}
+			
+		ReleaseSysCache(func_tuple);
+		
+		/*
+		 * Ok, we have a function that is STABLE (or IMMUTABLE), with constant args.
+		 * Let's try to evaluate it.
+		 */
+		
+		
+		/*
+		 * The targetlist happens in multiple places in the plan tree, but we don't 
+		 * want to execute nextval() every time we see it.  Rather than figure out
+		 * which one matters, and somehow passing that in to here, I cache the first time
+		 * we run nextval(), and just re-use that value.
+		 * 
+		 * This does have a bug, if we really wanted nextval() to be evaluated more than
+		 * once in this single row insert.
+		 */
+		 
+		if (funcid == 1574 && context->nextval_replacement != NULL)
+			return context->nextval_replacement;
+	
+		newexpr = makeNode(FuncExpr);
+		newexpr->funcid = funcid;
+		newexpr->funcresulttype = expr->funcresulttype;
+		newexpr->funcretset = false;
+		newexpr->funcformat = COERCE_DONTCARE;		/* doesn't matter */
+		newexpr->args = args;
+	
+	    /*
+		 * To use the executor, we need an EState.
+		 */
+		estate = CreateExecutorState();
+	
+		/* We can use the estate's working context to avoid memory leaks. */
+		oldcontext = MemoryContextSwitchTo(estate->es_query_cxt);
+	
+		/*
+		 * Prepare expr for execution.
+		 */
+		exprstate = ExecPrepareExpr((Expr *)newexpr, estate);
+	
+		/*
+		 * And evaluate it.
+		 *
+		 * It is OK to use a default econtext because none of the ExecEvalExpr()
+		 * code used in this situation will use econtext.  That might seem
+		 * fortuitous, but it's not so unreasonable --- a constant expression does
+		 * not depend on context, by definition, n'est ce pas?
+		 */
+		const_val = ExecEvalExprSwitchContext(exprstate,
+											  GetPerTupleExprContext(estate),
+											  &const_is_null, NULL);
+	
+		/* Get info needed about result datatype */
+		get_typlenbyval(expr->funcresulttype, &resultTypLen, &resultTypByVal);
+	
+		/* Get back to outer memory context */
+		MemoryContextSwitchTo(oldcontext);
+	
+	
+		/* Must copy result out of sub-context used by expression eval */
+		if (!const_is_null)
+			const_val = datumCopy(const_val, resultTypByVal, resultTypLen);
+	
+		/* Release all the junk we just created */
+		FreeExecutorState(estate);
+	
+		/*
+		 * Make the constant result node.
+		 */
+		simple = (Expr *) makeConst(expr->funcresulttype, resultTypLen,
+								  const_val, const_is_null,
+								  resultTypByVal);
+
+	
+
+		/*
+		 * If we just executed nextval(), save the result
+		 */
+		if (funcid == 1574 && context->nextval_replacement == NULL  && simple)
+			context->nextval_replacement = (Node *)simple;
+		
+		if (simple)				/* successfully simplified it */
+			return (Node *) simple;
+		}
+
+		/*
+		 * The expression cannot be simplified any further, so build and
+		 * return a replacement FuncExpr node using the possibly-simplified
+		 * arguments.
+		 */
+		newexpr = makeNode(FuncExpr);
+		newexpr->funcid = expr->funcid;
+		newexpr->funcresulttype = expr->funcresulttype;
+		newexpr->funcretset = expr->funcretset;
+		newexpr->funcformat = expr->funcformat;
+		newexpr->args = args;
+		return (Node *) newexpr;
+	}
+	
+
+	/*
+	 * For any node type not handled above, we recurse using
+	 * plan_tree_mutator, which will copy the node unchanged but try to
+	 * simplify its arguments (if any) using this routine. 
+	 */
+	return plan_tree_mutator(node, pre_dispatch_function_evaluation_mutator,
+								   (void *) context);
+}
+
+
+
 /*
  * Compose and dispatch the MPPEXEC commands corresponding to a plan tree
  * within a complete parallel plan.  (A plan tree will correspond either
@@ -1418,6 +1645,7 @@ cdbdisp_dispatchPlan(struct QueryDesc              *queryDesc,
 	int			nSlices,
 				sliceLim;
 	int			iSlice;
+	pre_dispatch_function_evaluation_context pcontext;
 
     *pPrimaryResults = NULL;
     if (pMirrorResults)
@@ -1443,6 +1671,51 @@ cdbdisp_dispatchPlan(struct QueryDesc              *queryDesc,
 	 * Keep old value so we can restore it.  We use this field as a parameter.
 	 */
 	oldLocalSlice = sliceTbl->localSlice;
+	
+	
+	/*
+	 * Let's evaluate STABLE functions now, so we get consistent values on the QEs
+	 * 
+	 * Also, if this is a single-row INSERT statement, let's evaluate
+	 * nextval() and currval() now, so that we get the QD's values, and a 
+	 * consistent value for everyone
+	 * 
+	 */
+	
+	pcontext.single_row_insert = false;
+	pcontext.nextval_replacement = NULL;
+	
+	if (queryDesc->operation == CMD_INSERT)
+	{
+		Assert(queryDesc->parsetree->commandType == CMD_INSERT);
+		
+		if (queryDesc->parsetree->jointree != NULL)
+		if (queryDesc->parsetree->jointree->fromlist == NIL)
+			pcontext.single_row_insert = true;
+	}	
+		
+	if (queryDesc->operation == CMD_INSERT || 
+		queryDesc->operation == CMD_SELECT ||
+		queryDesc->operation == CMD_UPDATE ||
+		queryDesc->operation == CMD_DELETE)	
+	{
+		/*
+		 * The Query tree doesn't have to be mutated here, since it isn't used during 
+		 * the execution.
+		 */
+		/*
+		queryDesc->parsetree = (Query *)query_tree_mutator((Node *)queryDesc->parsetree,
+									pre_dispatch_function_evaluation_mutator,
+								    &pcontext);
+		*/
+								    
+		queryDesc->plantree = (Plan *)plan_tree_mutator((Node *)queryDesc->plantree,
+									pre_dispatch_function_evaluation_mutator,
+								   	&pcontext);
+		
+		
+	}
+	 
 
 	/*
 	 * Serialize plan and query trees. Build the common prefix of the
