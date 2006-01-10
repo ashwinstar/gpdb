@@ -985,7 +985,7 @@ getStringValue(SerializeContext * context)
 #endif
 
 static char *unescape_quotes(const char *src);
-static char *escape_quotes(const char *src);
+static char *escape_quotes(const char *src, int *size);
 
 /*
  * serializeNode -
@@ -994,7 +994,7 @@ static char *escape_quotes(const char *src);
  * The returned string is palloc'ed in the current memory context.
  */
 char *
-serializeNode(Node *node)
+serializeNode(Node *node, int *size)
 {
 	char	   *pszNode;
 	char	   *sNode;
@@ -1004,7 +1004,7 @@ serializeNode(Node *node)
 	pszNode = nodeToString(node);
 	Assert(pszNode != NULL);
 
-	sNode = escape_quotes(pszNode);
+	sNode = escape_quotes(pszNode, size);
 	pfree(pszNode);
 
 	return sNode;
@@ -1019,8 +1019,8 @@ serializeNode(Node *node)
 Node *
 deserializeNode(char *strNode)
 {
-	char	   *sNode;
-	Node	   *node;
+	char		*sNode;
+	Node		*node;
 
 	Assert(strNode != NULL);
 
@@ -1038,9 +1038,11 @@ deserializeNode(char *strNode)
 
 /*
  * Escape any single quotes in given string
+ * 
+ * If size argument is non-NULL, store the size (not counting terminating NULL).
  */
 static char *
-escape_quotes(const char *src)
+escape_quotes(const char *src, int *size)
 {
 	int			len = strlen(src),
 				i,
@@ -1053,6 +1055,10 @@ escape_quotes(const char *src)
 			result[j++] = '\\';
 		result[j++] = src[i];
 	}
+
+	if (size != NULL)
+		*size = j;
+
 	result[j] = '\0';
 	return result;
 }
