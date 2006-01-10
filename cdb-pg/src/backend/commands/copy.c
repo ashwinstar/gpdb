@@ -154,9 +154,12 @@ static bool line_buf_converted;
 static void DoCopyTo(Relation rel, List *attnumlist, bool binary, bool oids,
 		 char *delim, char *null_print, bool csv_mode, char *quote,
 		 char *escape, List *force_quote_atts, bool header_line, bool fe_copy);
-static void CopyTo(Relation rel, List *attnumlist, bool binary, bool oids,
+static void CopyToDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	 char *delim, char *null_print, bool csv_mode, char *quote, char *escape,
 	   List *force_quote_atts, bool header_line);
+static void CopyToExec(Relation rel, List *attnumlist, bool binary, bool oids,
+				   char *delim, char *null_print, bool csv_mode, char *quote, char *escape,
+				   List *force_quote_atts, bool header_line);
 static void CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 				 char *delim, char *null_print, bool csv_mode, char *quote,
 				 char *escape, List *force_notnull_atts, bool escape_off, bool header_line);
@@ -360,6 +363,22 @@ CopySendData(void *databuf, int datasize)
 				break;
 			case COPY_NEW_FE:
 				appendBinaryStringInfo(copy_msgbuf, (char *) databuf, datasize);
+				
+				/* 
+				 * in the dispatcher we receive chunks of whole rows with row endings. 
+				 * We don't want to use CopySendEndOfRow() b/c it adds row endings and 
+				 * also b/c it's intended for a single row at a time. Therefore we need 
+				 * to flush the data buf here instead.
+				 */
+				if (Mpp_role == MPP_ROLE_DISPATCH)
+				{
+					/* Dump the accumulated rows/data as one CopyData message */
+					(void) pq_putmessage('d', copy_msgbuf->data, copy_msgbuf->len);
+					/* Reset copy_msgbuf to empty */
+					copy_msgbuf->len = 0;
+					copy_msgbuf->data[0] = '\0';					
+				}
+				
 				break;
 		}
 	}
@@ -1039,12 +1058,6 @@ DoCopy(const CopyStmt *stmt)
 	{							/* copy from database to file */
 		is_copy_in = false;
 
-		if (Mpp_role == MPP_ROLE_DISPATCH)
-			ereport(ERROR,
-					(errcode(ERRCODE_CDB_FEATURE_NOT_SUPPORTED),
-					 errmsg("COPY TO file from database is not yet supported in bizgres MPP dispatch mode")
-					 ));
-
 		if (rel->rd_rel->relkind != RELKIND_RELATION)
 		{
 			if (rel->rd_rel->relkind == RELKIND_VIEW)
@@ -1145,9 +1158,13 @@ DoCopyTo(Relation rel, List *attnumlist, bool binary, bool oids,
 		if (fe_copy)
 			SendCopyBegin(binary, list_length(attnumlist));
 
-		CopyTo(rel, attnumlist, binary, oids, delim, null_print, csv_mode,
-			   quote, escape, force_quote_atts, header_line);
-
+		if (Mpp_role == MPP_ROLE_DISPATCH)
+			CopyToDispatch(rel, attnumlist, binary, oids, delim, null_print, csv_mode,
+						   quote, escape, force_quote_atts, header_line);
+		else
+			CopyToExec(rel, attnumlist, binary, oids, delim, null_print, csv_mode,
+					   quote, escape, force_quote_atts, header_line);
+			
 		if (fe_copy)
 			SendCopyEnd(binary);
 	}
@@ -1165,10 +1182,11 @@ DoCopyTo(Relation rel, List *attnumlist, bool binary, bool oids,
 }
 
 /*
- * Copy from relation TO file.
+ * Copy from relation TO file. This method will be executed on each
+ * executor or in utility mode.
  */
 static void
-CopyTo(Relation rel, List *attnumlist, bool binary, bool oids,
+CopyToExec(Relation rel, List *attnumlist, bool binary, bool oids,
 	   char *delim, char *null_print, bool csv_mode, char *quote,
 	   char *escape, List *force_quote_atts, bool header_line)
 {
@@ -1233,21 +1251,34 @@ CopyTo(Relation rel, List *attnumlist, bool binary, bool oids,
 									  ALLOCSET_DEFAULT_INITSIZE,
 									  ALLOCSET_DEFAULT_MAXSIZE);
 
+	/* 
+	 * MPP: the code that prints a binary header or table header
+	 * was removed from here. This is done on the dispatcher, once.
+	 */
+	
+	
 	if (binary)
 	{
-		/* Generate header for a binary copy */
-		int32		tmp;
-
-		/* Signature */
-		CopySendData((char *) BinarySignature, 11);
-		/* Flags field */
-		tmp = 0;
-		if (oids)
-			tmp |= (1 << 16);
-		CopySendInt32(tmp);
-		/* No header extension */
-		tmp = 0;
-		CopySendInt32(tmp);
+		/*
+		 * We don't want binary header in exec mode. it's 
+		 * taken care of in the dispatcher code.
+		 */
+		if (Mpp_role == MPP_ROLE_UTILITY)
+		{
+			/* Generate header for a binary copy */
+			int32		tmp;
+			
+			/* Signature */
+			CopySendData((char *) BinarySignature, 11);
+			/* Flags field */
+			tmp = 0;
+			if (oids)
+				tmp |= (1 << 16);
+			CopySendInt32(tmp);
+			/* No header extension */
+			tmp = 0;
+			CopySendInt32(tmp);
+		}
 	}
 	else
 	{
@@ -1263,28 +1294,34 @@ CopyTo(Relation rel, List *attnumlist, bool binary, bool oids,
 		/* if a header has been requested send the line */
 		if (header_line)
 		{
-			bool hdr_delim = false;
-			char *colname;
-			
-			foreach(cur, attnumlist)
+			/*
+			 * header is printed by dispatcher copy. we only
+			 * want it printed here if we are in utility mode.
+			 */
+			if (Mpp_role == MPP_ROLE_UTILITY)
 			{
-				int         attnum = lfirst_int(cur);
+				bool hdr_delim = false;
+				char *colname;
 				
-				if (hdr_delim)
-					CopySendChar(delim[0]);
-				hdr_delim = true;
+				foreach(cur, attnumlist)
+				{
+					int         attnum = lfirst_int(cur);
+					
+					if (hdr_delim)
+						CopySendChar(delim[0]);
+					hdr_delim = true;
+					
+					colname = NameStr(attr[attnum - 1]->attname);
+					
+					CopyAttributeOutCSV(colname, delim, quote, escape,
+										strcmp(colname, null_print) == 0);
+				}
 				
-				colname = NameStr(attr[attnum - 1]->attname);
-				
-				CopyAttributeOutCSV(colname, delim, quote, escape,
-									strcmp(colname, null_print) == 0);
+				CopySendEndOfRow(binary);
 			}
-			
-			CopySendEndOfRow(binary);
-			
 		}
 	}
-
+	
 	scandesc = heap_beginscan(rel, ActiveSnapshot, 0, NULL);
 
 	while ((tuple = heap_getnext(scandesc, ForwardScanDirection)) != NULL)
@@ -1384,11 +1421,14 @@ CopyTo(Relation rel, List *attnumlist, bool binary, bool oids,
 
 	heap_endscan(scandesc);
 
+	
 	if (binary)
 	{
-		/* Generate trailer for a binary copy */
-		CopySendInt16(-1);
+		if (Mpp_role == MPP_ROLE_UTILITY)
+			/* Generate trailer for a binary copy */
+			CopySendInt16(-1);
 	}
+	
 
 	MemoryContextDelete(mycontext);
 
@@ -1396,6 +1436,246 @@ CopyTo(Relation rel, List *attnumlist, bool binary, bool oids,
 	pfree(typioparams);
 	pfree(isvarlena);
 	pfree(force_quote);
+}
+
+/*
+ * Copy from relation TO file. Starts a COPY TO command on each of
+ * the executors and gathers all the results and writes it out.
+ */
+static void
+CopyToDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
+		   char *delim, char *null_print, bool csv_mode, char *quote,
+		   char *escape, List *force_quote_atts, bool header_line)
+{
+	TupleDesc	tupDesc;
+	int			num_phys_attrs;
+	int			attr_count;
+	Form_pg_attribute *attr;
+	ListCell   *cur;
+	CdbCopy    *cdbCopy;
+	StringInfoData cdbcopy_err;
+	StringInfoData cdbcopy_cmd;
+	bool		is_first_col;
+	
+	
+	tupDesc = rel->rd_att;
+	attr = tupDesc->attrs;
+	num_phys_attrs = tupDesc->natts;
+	attr_count = list_length(attnumlist);
+	
+	/*
+	 * prepare to get COPY data from segDBs:
+	 * 1 - re-construct the orignial COPY command sent from the client.
+	 * 2 - execute a BEGIN DTM transaction.
+	 * 3 - send the COPY command to all segment databases.
+	 */
+	
+	cdbCopy = makeCdbCopy(false);
+	
+	/* allocate memory for error and copy strings */
+	initStringInfo(&cdbcopy_err);
+	initStringInfo(&cdbcopy_cmd);
+	
+	/* append schema and tablename */
+	appendStringInfo(&cdbcopy_cmd, "COPY %s.%s",
+					 get_namespace_name(RelationGetNamespace(rel)),
+					 RelationGetRelationName(rel));
+	/*
+	 * append column list. NOTE: if not specified originally, attnumlist will
+	 * include all non-dropped columns of the table by default
+	 */
+	appendStringInfo(&cdbcopy_cmd, "(");
+	is_first_col = true;
+	foreach(cur, attnumlist)
+	{
+		int			attnum = lfirst_int(cur);
+		int			m = attnum - 1;
+		
+		/* We don't add dropped attributes */
+		if (attr[m]->attisdropped)
+			continue;
+		
+		if (is_first_col)
+			appendStringInfo(&cdbcopy_cmd, "%s", NameStr(attr[m]->attname));
+		else
+			appendStringInfo(&cdbcopy_cmd, ",%s", NameStr(attr[m]->attname));
+		
+		is_first_col = false;
+	}
+
+	appendStringInfo(&cdbcopy_cmd, ")");
+	appendStringInfo(&cdbcopy_cmd, " TO STDOUT WITH");
+	
+	if (binary)
+	{
+		appendStringInfo(&cdbcopy_cmd, " BINARY");
+	}
+	else
+	{
+		appendStringInfo(&cdbcopy_cmd, " DELIMITER AS '%s'", delim);
+		
+		if (null_print[0] == '\\')		/* null value is de-escaped.
+			* re-escape for segdbs */
+			appendStringInfo(&cdbcopy_cmd, " NULL AS '\\%s'", null_print);
+		else
+			appendStringInfo(&cdbcopy_cmd, " NULL AS '%s'", null_print);
+		
+		if (!csv_mode)
+		{
+			if (strcmp(escape, "\\") != 0 && !csv_mode) /* if default ("\")
+					   * leave expression out */
+				appendStringInfo(&cdbcopy_cmd, " ESCAPE AS '%s'", escape);
+		}
+		
+	}
+	
+	if (csv_mode)
+	{
+		appendStringInfo(&cdbcopy_cmd, " CSV");
+		appendStringInfo(&cdbcopy_cmd, " QUOTE AS '%s'", quote);
+		
+		if (escape[0] == '\\')	/* escape value is de-escaped. re-escape for
+			* segdbs */
+			appendStringInfo(&cdbcopy_cmd, " ESCAPE AS '\\%s'", escape);
+		else
+			appendStringInfo(&cdbcopy_cmd, " ESCAPE AS '%s'", escape);
+		
+		/* do NOT include HEADER. Header row is swallowed by dispatcher COPY */
+	}
+	
+	/*
+	 * start a transaction
+	 */
+	cdbCopyStartTransaction();
+	
+	/*
+	 * Start a COPY command in every db of every segment in MPP.
+	 *
+	 * From this point in the code we need to be extra careful
+	 * about error handling. ereport() must not be called until
+	 * the COPY command sessions are closed on the executors.
+	 * Calling ereport() will leave the executors hanging in
+	 * COPY state.
+	 */
+	if (cdbCopyStart(cdbCopy, cdbcopy_cmd.data) == -1)
+	{
+		/* get error message from CopyStart */
+		appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
+		
+		/* end COPY in all the segdbs in progress */
+		//cdbCopyEnd(cdbCopy);
+		
+		/* get error message from CopyEnd */
+		appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
+		
+		ereport(ERROR,
+				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
+				 errmsg("%s. Closing all other existing COPY sessions.",
+						cdbcopy_err.data)));
+	}
+	
+	if (binary)
+	{
+		/* Generate header for a binary copy */
+		int32		tmp;
+		
+		/* Signature */
+		CopySendData((char *) BinarySignature, 11);
+		/* Flags field */
+		tmp = 0;
+		if (oids)
+			tmp |= (1 << 16);
+		CopySendInt32(tmp);
+		/* No header extension */
+		tmp = 0;
+		CopySendInt32(tmp);
+	}
+	else
+	{
+		/*
+		 * For non-binary copy, we need to convert null_print to client
+		 * encoding, because it will be sent directly with CopySendString.
+		 */
+		/* 
+		 * MPP: in here we only care about this if we need to print the 
+		 * header. We rely on the segdb server copy out to do the conversion
+		 * before sending the data rows out. We don't need to repeat it here
+		 */
+		if (server_encoding != client_encoding)
+			null_print = (char *)
+				pg_server_to_client(null_print,
+									strlen(null_print));
+		
+		/* if a header has been requested send the line */
+		if (header_line)
+		{
+			bool hdr_delim = false;
+			char *colname;
+			
+			foreach(cur, attnumlist)
+			{
+				int         attnum = lfirst_int(cur);
+				
+				if (hdr_delim)
+					CopySendChar(delim[0]);
+				hdr_delim = true;
+				
+				colname = NameStr(attr[attnum - 1]->attname);
+				
+				CopyAttributeOutCSV(colname, delim, quote, escape,
+									strcmp(colname, null_print) == 0);
+			}
+			
+			CopySendEndOfRow(binary);
+		}
+	}
+	
+	/*
+	 * This is the main loop. In here we keep collecting data from the
+	 * COPY commands on the segdbs, until no more data is available. We
+	 * keep writing data out a chunk at a time.
+	 *
+	 */
+	while(true)
+	{
+		if(cdbCopyGetData(cdbCopy) == 0)
+		{
+			/* send the chunk of data to destination (file or stdout) */
+			CopySendData((void *) cdbCopy->copy_out_buf.data, cdbCopy->copy_out_buf.len);
+			
+			if(cdbCopy->copyout_done)
+				break;
+		}
+		else
+		{
+			/* error occured */
+			appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
+			break;
+		}
+	}
+	
+	
+	/*
+	 * report all accumulated errors back to the client.
+	 */
+	if (cdbCopy->data_errors)
+		ereport(ERROR,
+				(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+				 errmsg("%s", cdbcopy_err.data)));
+	if (cdbCopy->io_errors)
+		ereport(ERROR,
+				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
+				 errmsg("%s", cdbcopy_err.data)));
+						  
+	if (binary)
+	{
+		/* Generate trailer for a binary copy */
+		CopySendInt16(-1);
+	}
+	
+	pfree(cdbcopy_cmd.data);
+	pfree(cdbcopy_err.data);
+	pfree(cdbCopy);
 }
 
 
@@ -1736,7 +2016,7 @@ CopyFromDispatch(Relation rel, List *attnumlist, bool binary, bool oids,
 	 * 5 - prepare cdbhash for hashing on row values.
 	 */
 	
-	cdbCopy = makeCdbCopy();
+	cdbCopy = makeCdbCopy(true);
 	
 	/*
 	 * get the CDB policy for this table and prepare for hashing.

@@ -32,7 +32,7 @@
  * information and state needed by the backend COPY.
  */
 CdbCopy *
-makeCdbCopy(void)
+makeCdbCopy(bool is_copy_in)
 {
 	CdbCopy    *c;
 	int			seg;
@@ -46,8 +46,12 @@ makeCdbCopy(void)
 	c->mirror_writer = NULL;
 	c->data_errors = false;
 	c->io_errors = false;
+	c->copy_in = is_copy_in;
+	c->copyout_done = false;
+	c->outseglist = NIL;
 	initStringInfo(&(c->err_msg));
-
+	initStringInfo(&(c->copy_out_buf));
+	
 
 	/* init total_segs */
 	c->total_segs = getMPPSegmentCount();
@@ -55,7 +59,7 @@ makeCdbCopy(void)
 	if (c->total_segs < 1)
 		ereport(ERROR,
 				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
-		   errmsg("MPPCOPY - Got an invalid segment database count of 0.")));
+				 errmsg("MPPCOPY - Got an invalid segment database count of 0.")));
 
 	/*
 	 * Initialize mirror (secondary) database count for each segment.
@@ -77,12 +81,25 @@ makeCdbCopy(void)
 	{
 		c->segdb_state[seg] = (SegDbState *) palloc(2 * sizeof(SegDbState));
 		c->segdb_state[seg][0] = SEGDB_IDLE;	/* Primary can't be OUT */
-		c->segdb_state[seg][1] = (c->mirror_map[seg] == 1 ? SEGDB_OUT : SEGDB_IDLE);
+		
+		/* we are interested in mirrors only for copy_in */
+		if(c->copy_in)
+			c->segdb_state[seg][1] = (c->mirror_map[seg] == 1 ? SEGDB_OUT : SEGDB_IDLE);
+		else
+			c->segdb_state[seg][1] = SEGDB_OUT;
 	}
 
 	/* init gangs */
 	c->primary_writer = allocateGang(GANGTYPE_PRIMARY_WRITER, c->total_segs, -1);
 	c->mirror_writer = allocateGang(GANGTYPE_MIRROR_WRITER, c->total_segs, -1);
+	
+	/* init seg list for copy out */
+	if(!c->copy_in)
+	{
+		int i;
+		for (i = 0; i < c->total_segs; i++)
+			c->outseglist = lappend_int(c->outseglist, i);
+	}
 
 	return c;
 }
@@ -135,14 +152,21 @@ cdbCopyStart(CdbCopy *c, char *copyCmd)
 			if (db == 0)
 				gp = c->primary_writer;
 			else
+			{
 				gp = c->mirror_writer;
-
+				
+				/* skip mirror if COPY OUT */
+				if(!c->copy_in)
+					continue;
+			}
+			
 			q = getSegmentDescriptorFromGang(gp, seg);
 
 			/* send COPY command to the segment DB */
 			res = PQexec(q->conn, copyCmd);
 
-			if (PQresultStatus(res) != PGRES_COPY_IN)
+			if ( (c->copy_in && (PQresultStatus(res) != PGRES_COPY_IN)) ||
+				 (!c->copy_in && (PQresultStatus(res) != PGRES_COPY_OUT)) )
 			{
 
 				appendStringInfo(&(c->err_msg),
@@ -208,6 +232,133 @@ cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer,
 			c->io_errors = true;
 		}
 	}
+}
+
+/*
+ * gets a chunk of rows of data from a copy command.
+ *
+ * Returns 0 for success, and -1 if errors occurred.
+ * Caller needs to check copyout_done flag on successful
+ * return to see if all the table data was collected.
+ *
+ */
+int cdbCopyGetData(CdbCopy *c)
+{
+	SegmentDatabaseDescriptor *q;
+	Gang	    *gp;
+	PGresult   *res;
+	
+	int			nbytes;
+
+	/* clean err message */
+	c->err_msg.len = 0;
+	c->err_msg.data[0] = '\0';
+	c->err_msg.cursor = 0;
+
+	/* clean out buf data */
+	c->copy_out_buf.len = 0;
+	c->copy_out_buf.data[0] = '\0';
+	c->copy_out_buf.cursor = 0;
+	
+	gp = c->primary_writer;
+	
+	/*
+	 * Collect data rows from the segments that still have rows to 
+	 * give until chunk minimum size is reached
+	 */
+	while (c->copy_out_buf.len < COPYOUT_CHUNK_SIZE)
+	{
+		ListCell   *cur;
+		
+		/* iterate through all the segments that still have data to give */
+		foreach(cur, c->outseglist)
+		{
+			int			source_seg = lfirst_int(cur);
+			char		*buffer;
+					
+			q = getSegmentDescriptorFromGang(gp, source_seg);
+			
+			/* get 1 row of COPY data */
+			nbytes = PQgetCopyData(q->conn, &buffer, false);
+			
+			/* 
+			 * SUCCESS -- got a row of data 
+			 */
+			if (nbytes > 0 && buffer) 
+			{
+				/* append the data row to the data chunk */
+				appendBinaryStringInfo(&(c->copy_out_buf), buffer, nbytes);
+				
+				PQfreemem(buffer);
+			}
+			
+			/* 
+			 * DONE -- Got all the data rows from this segment. 
+			 */
+			else if (nbytes == -1)
+			{
+				/*
+				 * Fetch any error status existing on completion of the COPY command.
+				 */
+				while (NULL != (res = PQgetResult(q->conn)))
+				{
+					/* if the COPY command had an error */
+					if (PQresultStatus(res) == PGRES_FATAL_ERROR)
+					{
+						appendStringInfo(&(c->err_msg), "MPPCOPY - Error from segment %d: %s\n",
+										 source_seg, PQresultErrorMessage(res));
+						c->data_errors = true;
+						
+						return -1;
+					}
+					
+					/* free the PGresult object */
+					PQclear(res);
+				}
+				
+				
+				/* remove the segment that completed sending data from the list*/
+				c->outseglist = list_delete_int(c->outseglist, source_seg);
+				
+				/* no more segments with data on the list. we are done */
+				if(list_length(c->outseglist) == 0)
+				{
+					c->copyout_done = true;
+					return 0;
+				}
+				
+				/* start over from first seg */
+				break;
+			}
+				
+			/* 
+			 * ERROR!
+			 */
+			else
+			{
+				/* should never happen since we are blocking. Don't bother to try again, exit with error. */
+				if (nbytes == 0)
+					appendStringInfo(&(c->err_msg),
+									 "MPPCOPY - Failed to get data from segment %d, attempt blocked\n",
+									 source_seg);
+				
+				if (nbytes == -2)
+					appendStringInfo(&(c->err_msg),
+									 "MPPCOPY - Failed to get data from segment %d: %s\n",
+									 source_seg, PQerrorMessage(q->conn));
+				
+				c->io_errors = true;
+				
+				return -1;
+			}
+			
+			
+		}
+		
+		if(c->copy_out_buf.len > COPYOUT_CHUNK_SIZE)
+			break;
+	}
+	return 0;
 }
 
 /*

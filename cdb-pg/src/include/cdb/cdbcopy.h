@@ -18,6 +18,8 @@
 #include "lib/stringinfo.h"
 #include "cdb/cdbgang.h"
 
+#define COPYOUT_CHUNK_SIZE 16 * 1024
+
 typedef enum SegDbState
 {
 	/*
@@ -36,24 +38,32 @@ typedef struct CdbCopy
 	Gang	   *mirror_writer;
 	int			total_segs;		/* total number of segments in cdb */
 	int		   *mirror_map;		/* indicates how many db's each segment has */
+	bool		copy_in;		/* direction: true for COPY FROM false for COPY TO */
 	bool		data_errors;	/* true if any data
 								 * parsing/partitioning/inserting error
 								 * occured */
 	bool		io_errors;		/* true if any I/O error occured trying to
 								 * communicate with segDB's */
-	SegDbState **segdb_state;
-	StringInfoData err_msg;		/* error message for cdbcopy operations */
-
+	bool			copyout_done;
+	
+	SegDbState		**segdb_state;
+	
+	StringInfoData	err_msg;		/* error message for cdbcopy operations */
+	StringInfoData	copy_out_buf;/* holds a chunk of data from the database */
+		
+	List			*outseglist;    /* segs that currently take part in copy out. 
+									 * Once a segment gave away all it's data rows
+									 * it is taken out of the list */
 } CdbCopy;
 
 
 
 /* global function declarations */
-CdbCopy    *makeCdbCopy(void);
+CdbCopy    *makeCdbCopy(bool copy_in);
 int			cdbCopyGetDbCount(int total_segs, int seg);
 int			cdbCopyStart(CdbCopy *cdbCopy, char *copyCmd);
-void cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer,
-				int nbytes);
+void		cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer, int nbytes);
+int			cdbCopyGetData(CdbCopy *c);
 void		cdbCopyEnd(CdbCopy *c);
 void		cdbCopyStartTransaction(void);
 
