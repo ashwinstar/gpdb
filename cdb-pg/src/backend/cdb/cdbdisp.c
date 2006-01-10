@@ -1729,7 +1729,12 @@ cdbdisp_dispatchPlan(struct QueryDesc              *queryDesc,
 	Assert(squery != NULL && splan != NULL);
 
 	initStringInfo(&strinfo);
-	appendStringInfo(&strinfo, "mppexec '%s' '%s'", squery, splan);
+
+	appendBinaryStringInfo(&strinfo, "mppexec '", strlen("mppexec '"));
+        appendBinaryStringInfo(&strinfo, squery, strlen(squery));
+        appendBinaryStringInfo(&strinfo, "' '", strlen("' '"));
+        appendBinaryStringInfo(&strinfo, splan, strlen(splan));
+        appendBinaryStringInfo(&strinfo, "'", strlen("'"));
 
 	pfree(squery);
 	pfree(splan);
@@ -1748,7 +1753,7 @@ cdbdisp_dispatchPlan(struct QueryDesc              *queryDesc,
 		bool		bFirstTime = true;
 		ParamListInfo q = queryDesc->params;
 
-		appendStringInfo(&strinfo, " (");
+		appendBinaryStringInfo(&strinfo, " (",strlen(" (") );
 		while (q->kind != PARAM_INVALID)
 		{
 			char	   *sparms;
@@ -1758,17 +1763,19 @@ cdbdisp_dispatchPlan(struct QueryDesc              *queryDesc,
 			memcpy(&rpd->paramData, q, sizeof(ParamListInfoData));
 			sparms = serializeNode((Node *) rpd);
 			if (!bFirstTime)
-				appendStringInfo(&strinfo, ", ");
+				appendBinaryStringInfo(&strinfo, ", ",strlen(", ") );
 			else
 				bFirstTime = false;
 
-			appendStringInfo(&strinfo, " '%s'", sparms);
+			appendBinaryStringInfo(&strinfo, " '", strlen(" '"));
+                        appendBinaryStringInfo(&strinfo, sparms, strlen(sparms));
+                        appendBinaryStringInfo(&strinfo, "'", strlen("'"));
 
 			pfree(sparms);
 			pfree(rpd);
 			q++;
 		}
-		appendStringInfo(&strinfo, ")");
+		appendBinaryStringInfo(&strinfo, ")", strlen(")") );
 	}
 
 	/*
@@ -1853,7 +1860,12 @@ cdbdisp_dispatchPlan(struct QueryDesc              *queryDesc,
 		 */
 		sliceTbl->localSlice = slice->sliceIndex;
 		ssliceinfo = serializeNode((Node *) sliceTbl);
-		appendStringInfo(&strinfo, "%s '%s'", mppexecPrefix, ssliceinfo);
+
+		appendBinaryStringInfo(&strinfo, mppexecPrefix, strlen(mppexecPrefix));
+                appendBinaryStringInfo(&strinfo, " '", strlen(" '"));
+                appendBinaryStringInfo(&strinfo,  ssliceinfo, strlen(ssliceinfo));
+                appendBinaryStringInfo(&strinfo, "'", strlen("'"));
+
 		pfree(ssliceinfo);
 
 		/*
@@ -2010,7 +2022,9 @@ cdbdisp_dispatchUtilityStatement(struct Node   *stmt,
 
 	Assert(szCommand != NULL);
 
-	appendStringInfo(&buffer, "mppexec '%s' ''", szCommand);
+	appendBinaryStringInfo(&buffer, "mppexec '", strlen("mppexec '"));
+	appendBinaryStringInfo(&buffer, szCommand, strlen(szCommand));
+	appendBinaryStringInfo(&buffer, "' ''", strlen("' ''"));
 
 	pfree(szCommand);
 
