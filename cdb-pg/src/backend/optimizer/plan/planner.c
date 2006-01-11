@@ -3,7 +3,7 @@
  * planner.c
  *	  The query optimizer external interface.
  *
- * Portions Copyright (c) 2005, greenplum inc
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -853,18 +853,6 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 			 * right tlist, and it has no sort order.
 			 */
 			current_pathkeys = NIL;
-
-			/*
-             * CDB: Decorate the top node of the plan with a Flow node.
-             *
-             * The Flow node lets the post-parallelizer know that the plan
-             * from here downward is 'finished' (already parallelized), and
-             * describes some characteristics of the plan and its output.
-             */
-            result_plan->flow = cdbpathtoplan_create_flow(root,
-                                                          best_path,
-                                                          current_pathkeys,
-                                                          result_plan);
 		}
 		else
 		{
@@ -1061,7 +1049,7 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		}						/* end of non-minmax-aggregate case */
 	}							/* end of if (setOperations) */
 
-	/*
+    /*
 	 * If we were not able to make the plan come out in the right order, add
 	 * an explicit sort step.
 	 */
@@ -1104,22 +1092,6 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 										  offset_est,
 										  count_est);
 	}
-
-    /*
-     * CDB: If the final join or scan is done on the qDisp, all
-     * subsequent operators must execute on the qDisp (for now).
-     * Add a Flow node telling the post-parallelizer that this
-     * portion of the plan is finished.  This allows GB/OB/etc in
-     * a subquery scan if we already know its output will be on
-     * the qDisp.
-     */
-    if (!result_plan->flow &&
-        best_path &&
-        CdbPathLocus_IsRoot(best_path->locus))
-        result_plan->flow = cdbpathtoplan_create_flow(root,
-                                                      best_path,
-                                                      current_pathkeys,
-                                                      result_plan);
 
 	/*
 	 * Return the actual output ordering in query_pathkeys for possible use by

@@ -3,7 +3,7 @@
  * cdbagg.h
  *	  definitions for cdbagg.c and users of same
  *
- * Copyright (c) 2004, Greenplum
+ * Copyright (c) 2004-2006, Greenplum
  *
  *
  * IDENTIFICATION
@@ -21,22 +21,12 @@
 #include "nodes/plannodes.h"
 #include "cdb/cdbmutate.h"		/* Need ApplyMotionState */
 
+
 /*
- * A CdbAggStrategy is the composite result of function getAggStrategyList.
- * It characterizes a way of transforming an Agg node (or related node) and
- * its argument in order to produce a correct result in the MPP parallel
- * execution environment.
- *
- * TODO Extend to support specification of a restructuring approach.
+ * Declarations of functions defined in cdbagg.c
  */
-typedef struct CdbAggStrategy
-{
-	Movement	leftmove;
-	FlowType	resultflowtype;
+bool cdbagg_prescan(Agg *agg);
 
-	List	   *hashexprs;
-
-} CdbAggStrategy;
 
 /*
  * Structures: CdbAggTactic, CdbAggPartial, CdbAggFinal
@@ -154,13 +144,6 @@ CdbAggTactic
 								 * instructions. */
 } CdbAggTactic;
 
-
-/*
- * Declarations of functions defined in cdbagg.c
- */
-extern List *getAggStrategyList(Agg *agg);
-extern CdbAggStrategy *copyAggStrategy(CdbAggStrategy *old);
-extern void freeAggStrategyList(List *aslist);
 
 /*
  * Declarations of functions defined in cdbaggtactic.c

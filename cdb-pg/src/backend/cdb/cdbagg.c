@@ -3,7 +3,7 @@
  * cdbagg.c
  *	  Generate aggregation strategies.
  *
- * Copyright (c) 2004, Greenplum
+ * Copyright (c) 2005-2006, Greenplum
  *
  * IDENTIFICATION
  *	  $Id$
@@ -14,61 +14,171 @@
  */
 
 #include "postgres.h"
-#include "nodes/nodes.h"
-#include "nodes/pg_list.h"
 #include "optimizer/clauses.h"
-#include "parser/parse_oper.h"
-#include "parser/parse_expr.h"
-#include "parser/parsetree.h"
-#include "utils/lsyscache.h"
-#include "utils/syscache.h"		/* for ReleaseSysCache */
-#include "nodes/primnodes.h"
-#include "nodes/parsenodes.h"
-#include "nodes/plannodes.h"
-#include "cdb/cdbvars.h"
-#include "cdb/cdbplan.h"
-#include "cdb/cdbmutate.h"
 #include "cdb/cdbagg.h"
+#include "cdb/cdbllize.h"
+#include "cdb/cdbvars.h"
+
 
 /*
  * Context structure for helper function analyzeAggExpr_walker
  */
 typedef struct
-AggExprAnalysis
+CdbAggExprAnalysis
 {
-	/* Arguments of analysis (in addition to the expression itself). */
-	bool		is_grp_attr;
-
 	/* The cumulative results of the analysis. */
-	int ndistinct; /* Number of Aggref specifying DISTINCT. */
-	Expr *aggref_distinct; /* If ndistinct == 1, the target expression.  */
+	int         ndistinct;          /* Number of Aggref specifying DISTINCT. */
+	Expr       *aggref_distinct;    /* The target expr if ndistinct == 1 */
 	
 	/* These are working storage for analyzeAggExpr_walker. */
-	int			aggdepth;		/* Number of Aggref nodes in stack. */
+	int			aggdepth;		    /* Number of Aggref nodes in stack. */
 
-}	AggExprAnalysis;
+} CdbAggExprAnalysis;
 
-
-/* Local Declarations */
-static CdbAggStrategy *makeAggStrategy(Movement left, FlowType result);
-static void initAggExprAnalysis(AggExprAnalysis * aa);
-static bool analyzeAggExpr(Expr *expr, bool is_grp_attr, AggExprAnalysis * state);
+static bool analyzeExprs(Agg *agg, CdbAggExprAnalysis *state);
 static bool analyzeAggExpr_walker(Node *node, void *context);
 
 
 /*
- * Function: initAggExprAnalysis
+ * cdbagg_prescan
  *
- * Initialize an AggExprAnalysis structure.
+ * Helper for prescan_walker() does processing for an Agg node.
+ *
+ * Note that prescan_walker has already finished scanning the child nodes
+ * of the node.
+ *
+ * Returns true if successful, false if the given Agg is not supported.
  */
-void
-initAggExprAnalysis(AggExprAnalysis * aa)
+bool
+cdbagg_prescan(Agg *agg)
 {
-	aa->is_grp_attr = FALSE;
-	aa->ndistinct = 0;
-	aa->aggref_distinct = NULL;
-	aa->aggdepth = 0;
-}
+	Plan	   *child = agg->plan.lefttree;
+	List	   *hashExpr = NIL;
+    bool        aOk = false;
+    bool        sorted = false;
+    CdbAggExprAnalysis analysis;
+
+	/* Argument is a prescanned plan. */
+	Assert(child->flow && child->flow->flotype != FLOW_UNDEFINED);
+
+	/* Sorted aggregation assumes ordered input & produces ordered result. */
+	if (agg->aggstrategy == AGG_SORTED)
+        sorted = true;
+
+    /*
+     * If source is replicated or already on dispatcher, leave it
+     * where it is and do 1-stage serial aggregation there.
+     */
+    if ( child->flow->flotype == FLOW_REPLICATED ||
+         (child->flow->flotype == FLOW_SINGLETON && child->flow->segindex < 0) )
+    {
+        agg->plan.flow = pull_up_Flow((Plan *)agg, child, true);
+        return true;            /* success */
+    }
+
+    /* Survey the Agg node's target list and search condition. */
+    aOk = analyzeExprs(agg, &analysis);
+
+    /*
+     * Consider 2-stage aggregation of a partitioned source.
+     *
+     *   - Execution begins by computing partial aggregates within each
+     *     source partition.
+     *
+     *   - Then, for ungrouped ("plain") aggregation, we'll gather the
+     *     partially summarized results (one row per partition) to a
+     *     single process for final aggregation.  Final result is just
+     *     one row (or empty).
+     *
+     *   - Or, for hashed aggregation, we could repartition the partially
+     *     summarized results on the grouping exprs for final hashed
+     *     aggregation in parallel.  (CDB TODO: Could do this for
+     *     sorted aggregation also, if downstream nodes don't care
+     *     about the ordering.)
+     *
+     *   - Or, for sorted aggregation, we could merge the partially
+     *     summarized results to a single process for final sorted
+     *     aggregation.
+     */
+    if (aOk &&
+        enable_agg_restruct &&
+        analysis.ndistinct == 0 &&
+        child->flow->flotype == FLOW_PARTITIONED)
+    {
+        agg->plan.flow = (agg->aggstrategy == AGG_HASHED)
+                            ? makeFlow(FLOW_PARTITIONED)
+                            : makeFlow(FLOW_SINGLETON);
+
+        /* Tell mutator to split the Agg into Agg<-Motion<-Agg. */
+        agg->plan.flow->req_xform = MOVEMENT_AGG_RESTRUCT;
+
+        /* No need to set hash fields, transform code can deduce. */
+        /* No child adjustments. */
+        return true;            /* success */
+    }
+
+    /*
+     * If nothing but one ungrouped DISTINCT aggregate, consider
+     * repartitioning on its argument expr, followed by 2-stage
+     * "plain" aggregation.
+     *
+     * The 2nd stage will gather partially summarized results (one
+     * row per partition) to a single process for final non-DISTINCT
+     * summarization.  Final result is just one row (or empty).
+     */
+    if (aOk &&
+        agg->numCols == 0 &&
+        analysis.ndistinct == 1)
+    {
+        Assert(agg->aggstrategy == AGG_PLAIN);
+
+        hashExpr = list_make1(getHashExprForExpression(child, analysis.aggref_distinct));
+
+        /* Repartition the input (does nothing if can't repartition). */
+        if (repartitionPlan(child, true, sorted, false, hashExpr))
+        {
+            /* ok, next step is 2-stage parallel aggregation. */
+            agg->plan.flow = pull_up_Flow((Plan *)agg, child, true);
+
+            /* Tell mutator to build the 2-stage plan. */
+            agg->plan.flow->req_xform = MOVEMENT_AGG_RESTRUCT;
+
+            /* Final result ends up on a single QE. */
+            agg->plan.flow->flotype = FLOW_SINGLETON;
+            agg->plan.flow->segindex = 0;
+            return true;            /* success */
+        }
+    }
+
+    /*
+     * Consider repartitioning on the grouping exprs.
+     */
+    if (agg->numCols > 0)
+    {
+        hashExpr = getExprListFromTargetList(child->targetlist, agg->numCols, agg->grpColIdx);
+
+        /* Repartition the input (does nothing if can't repartition). */
+        if (repartitionPlan(child, true, sorted, false, hashExpr))
+        {
+            /* ok, 1-stage parallel aggregation will be used. */
+            agg->plan.flow = pull_up_Flow((Plan *)agg, child, true);
+            return true;            /* success */
+        }
+    }
+
+    /*
+     * Consider gathering the source rows to a single process.  (Last resort!)
+     */
+    if (focusPlan(child, true, sorted, false))
+    {
+        /* ok, conventional 1-stage serial aggregation will be used. */
+        agg->plan.flow = pull_up_Flow((Plan *)agg, child, true);
+        return true;            /* success */
+    }
+
+    /* Stumped! */
+    return false;               /* failure */
+}                               /* cdbagg_prescan */
 
 
 /*
@@ -81,18 +191,14 @@ initAggExprAnalysis(AggExprAnalysis * aa)
  * Return TRUE to indicate that analysis completed successfully, FALSE
  * to indicate that problems prevented completion.
  */
-bool
-analyzeAggExpr(Expr *expr, bool is_grp_attr, AggExprAnalysis * state)
+static bool
+analyzeAggExpr(Expr *expr, CdbAggExprAnalysis * state)
 {
 	bool		result = TRUE;
 	Node	   *node;
 
 	Assert(state != NULL);
 	node = (Node *) expr;
-
-	/* Add arguments to state for walk.  */
-	state->is_grp_attr = is_grp_attr;
-
 
 	/* Recur into the expression. */
 	result = !analyzeAggExpr_walker(node, state);
@@ -109,7 +215,7 @@ analyzeAggExpr(Expr *expr, bool is_grp_attr, AggExprAnalysis * state)
 static bool
 analyzeAggExpr_walker(Node *node, void *context)
 {
-	AggExprAnalysis *state = (AggExprAnalysis *) context;
+	CdbAggExprAnalysis *state = (CdbAggExprAnalysis *) context;
 
 	if (node == NULL)
 		return false;
@@ -121,8 +227,6 @@ analyzeAggExpr_walker(Node *node, void *context)
 				Aggref	   *aggref = (Aggref *) node;
 
 				Assert(state->aggdepth == 0);	/* No nesting Aggrefs! */
-				Assert(!state->is_grp_attr);	/* No Aggrefs in grouping
-												 * exprs. */
 
 				if (aggref->aggdistinct)
 				{
@@ -164,95 +268,25 @@ analyzeAggExpr_walker(Node *node, void *context)
 
 
 /*
- * Function: getAggStrategyList
+ * Function: analyzeExprs
  *
- * Generates a List of palloc'd CdbAggStrategy structures indicating how
- * the given Agg node should be processed.	If no strategy can be found,
- * returns NULL.
+ * Examines an Agg node and fills in a CdbAggExprAnalysis structure
+ * (*state) provided by the caller.
  *
- * The returned strategy list specifies motions and other transformations to
- * apply to the outer child of the Agg node and output flow characteristics
- * of the Agg that will result.
+ * Returns true if the examination finds no obstacles to two-stage aggregation.
  *
- * Note that this function expects an Agg node whose child has been prescaned
- * (see cdbllize.c) and, hence, have their output Flow node fully specified.
- *
- * TODO: CdbAggStrategy and Flow both need to be expanded to represent the
- *		 restructuring approach to aggregation.
- *
- * TODO: Sort the strategy list in order of increasing "cost".
- *
- * Later, we might consider making CdbAggStrategy a Node and returning
- * a list of strategies for the caller to choose from. We would probably
- * do this in conjuction with changing the flow field of Plan to contain
- * a list of possible flow specifications.
+ * Note that this function expects an Agg node whose child has been prescanned
+ * (see cdbllize.c) and, hence, has its output Flow node fully specified.
  */
-List *
-getAggStrategyList(Agg *agg)
+bool
+analyzeExprs(Agg *agg, CdbAggExprAnalysis *state)
 {
-	int			tleidx;
 	ListCell   *cell;
-	TargetEntry *tle;
-	CdbAggStrategy *as;
 
-	List	   *result = NIL;
-
-	bool		isgrouped = FALSE;
-	Bitmapset  *grpset = NULL;
-
-	Plan	   *plan = (Plan *) agg;
-	Plan	   *child;
-
-	bool		aOk = TRUE;
-	AggExprAnalysis analysis;
-	AggExprAnalysis *state = &analysis;
-
-	Assert(plan && plan->lefttree->flow != NULL);
-
-	child = plan->lefttree;
-
-	/*
-	 * Find grouping expressions in our target list that correspond to the
-	 * grouping expression in our argument (child) plan's target list.
-	 * They should appear there even if they aren't included in the
-	 * non-junk attributes -- they should appear as simple Var expressions
-	 * whose varattno is in the list of grouping columns.
-	 */
-	if (agg->aggstrategy == AGG_SORTED || agg->aggstrategy == AGG_HASHED)
-	{
-		tleidx = 0;
-		foreach(cell, plan->targetlist)
-		{
-			tleidx++;
-			tle = (TargetEntry *) lfirst(cell);
-
-			Assert(tle->resno >= 1);
-			/* We assume that resno and position are equivalent here. */
-			if (tleidx != tle->resno)
-			{
-				ereport(ERROR, (
-								errcode(ERRCODE_CDB_INTERNAL_ERROR),
-								errmsg("problem in Agg targetlist")
-								));
-			}
-
-			if (IsA(tle->expr, Var))
-			{
-				Var		   *var = (Var *) tle->expr;
-				int			i;
-
-				for (i = 0; i < agg->numCols; i++)
-				{
-					if (var->varattno == agg->grpColIdx[i])
-					{
-						grpset = bms_add_member(grpset, tleidx);
-						break;
-					}
-				}
-			}
-		}
-	}
-	isgrouped = !bms_is_empty(grpset);
+    /* Initialize context for expr walker */
+    state->ndistinct = 0;
+    state->aggref_distinct = NULL;
+    state->aggdepth = 0;
 
 	/*
 	 * Analyze our own targetlist and qual for information about contained
@@ -264,140 +298,26 @@ getAggStrategyList(Agg *agg)
 	 * TODO Note whether there are Aggrefs whose functions disqualify the
 	 *		2-stage (MOVEMENT_AGG_RESTRUCT) tactic. Need an API for that.
 	 */
-	initAggExprAnalysis(state);
-	tleidx = 0;
-	foreach(cell, plan->targetlist)
+	foreach(cell, agg->plan.targetlist)
 	{
-		tleidx++;
-		tle = (TargetEntry *) lfirst(cell);
-		Assert(tle->resno >= 1);
-		aOk = aOk && analyzeAggExpr(tle->expr, bms_is_member(tleidx, grpset), state);
-	}
-	aOk = aOk && analyzeAggExpr((Expr *) (plan->qual), FALSE, state);
+        TargetEntry    *tle = (TargetEntry *)lfirst(cell);
+        int             i;
 
-	/*
-	 * Generate possible strategies for parallelizing the Agg node.
-	 */
+        /* Skip tle if it is a grouping column. */
+        for (i = 0; i < agg->numCols; i++)
+        {
+            if (tle->resno == agg->grpColIdx[i])
+                break;
+        }
+		if (i < agg->numCols)
+            continue;
 
-	if (child->flow->flotype == FLOW_REPLICATED || child->flow->flotype == FLOW_SINGLETON)
-	{
-		/* Can do nothing. */
-		result = lappend(result, makeAggStrategy(MOVEMENT_NONE, child->flow->flotype));
+        /* Look for Aggref nodes in the expr. */
+        if (!analyzeAggExpr(tle->expr, state))
+            return false;
 	}
 
-	if (child->flow->flotype == FLOW_PARTITIONED)
-	{
-		if (aOk)
-		{
+    /* Look for Aggref nodes in the search condition. */
+	return analyzeAggExpr((Expr *)agg->plan.qual, state);
+}                               /* analyzeExprs */
 
-			if (enable_agg_restruct)
-			{
-				if (agg->aggstrategy == AGG_HASHED && state->ndistinct == 0)
-				{
-					/* Can restructure to 2-stage aggregation. */
-					as = makeAggStrategy(MOVEMENT_AGG_RESTRUCT, FLOW_PARTITIONED);
-					/* No need to set hash fields, transform code can deduce. */
-					result = lappend(result, as);
-					as = NULL;
-				}
-				else if (agg->aggstrategy == AGG_PLAIN && state->ndistinct == 0)
-				{
-					/* Can restructure to 2-stage aggregation. */
-					as = makeAggStrategy(MOVEMENT_AGG_RESTRUCT, FLOW_SINGLETON);
-					result = lappend(result, as);
-					as = NULL;
-				}
-			}
-
-			if (!isgrouped && state->ndistinct == 1)
-			{
-				/* Can partition on the solitary distinct expr. */
-				Assert( state->aggref_distinct != NULL );
-				
-				as = makeAggStrategy(MOVEMENT_DISTINCT_RESTRUCT, FLOW_SINGLETON);
-				as->hashexprs = list_make1(getHashExprForExpression(child, state->aggref_distinct));
-				result = lappend(result,as);
-				as = NULL;
-			}
-			else if (isgrouped)
-			{
-				/* Can partition on grouping exprs. */
-				as = makeAggStrategy(MOVEMENT_REPARTITION, FLOW_PARTITIONED);
-				
-				as->hashexprs = NIL; /* Let prescan code default to grouping attributes! */
-				
-				result = lappend(result,as);
-				as = NULL;
-			}
-		}
-
-		/* In any case, can replicate or focus. */
-		result = lappend(result, makeAggStrategy(MOVEMENT_FOCUS, FLOW_SINGLETON));
-		result = lappend(result, makeAggStrategy(MOVEMENT_BROADCAST, FLOW_REPLICATED));
-	}
-
-	return result;
-}
-
-
-/*
- * Function: makeAggStrategy
- *
- * Helper for getAggStrategyList -- palloc and initialize a strategy.
- */
-CdbAggStrategy *
-makeAggStrategy(Movement left, FlowType result)
-{
-	CdbAggStrategy *as = palloc(sizeof(CdbAggStrategy));
-
-	as->leftmove = left;
-	as->resultflowtype = result;
-	as->hashexprs = NIL;
-	return as;
-}
-
-
-/*
- * Function: copyAggStrategy
- *
- * Make a palloc'd copy of the argument strategy.
- */
-CdbAggStrategy *
-copyAggStrategy(CdbAggStrategy * old)
-{
-	CdbAggStrategy *as = NULL;
-
-	if (old != NULL)
-	{
-		as = makeAggStrategy(old->leftmove, old->resultflowtype);
-		as->hashexprs = (List *) copyObject(old->hashexprs);
-	}
-	return as;
-}
-
-/*
- * Function: freeAggStrategyList
- *
- * Free a result of getAggStrategyList().  Caller should NIL out any
- * copies of pointers to the list.
- */
-void
-freeAggStrategyList(List *aslist)
-{
-	ListCell   *cell;
-	CdbAggStrategy *stgy;
-
-	/* Free dependent items of each strategy. */
-	foreach(cell, aslist)
-	{
-		stgy = (CdbAggStrategy *) lfirst(cell);
-		if (stgy->hashexprs != NULL)
-		{
-			pfree(stgy->hashexprs);
-			stgy->hashexprs = NULL;
-		}
-	}
-
-	/* Free list and strategies. */
-	list_free_deep(aslist);
-}

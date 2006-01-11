@@ -10,9 +10,7 @@
 *	  functions in this file deal strictly with the 2-stage approach to
 *	  aggregation.
 *
-* Portions Copyright (c) 1996-2003, PostgreSQL Global Development Group
-* Portions Copyright (c) 1994, Regents of the University of California
-* Portions Copyright (c) 2005, Greenplum Inc
+* Copyright (c) 2005-2006, Greenplum Inc
 *
 *
 * IDENTIFICATION
@@ -172,6 +170,13 @@ apply_agg_motion(Plan *plan, ApplyMotionState * state)
 	Agg		   *agg;
 	Agg		   *inner_agg;
 	Plan	   *inner_plan;
+    Plan       *child_plan = plan->lefttree;
+    Flow       *outer_flow = plan->flow;
+    Flow       *inner_flow;
+    Motion     *motion;
+    List       *hashExpr = NIL;
+    AttrNumber *sortColIdx = NULL;
+    Oid        *sortOps = NULL;
 	int			i,
 				n;
     int         numInputSegs;
@@ -181,10 +186,9 @@ apply_agg_motion(Plan *plan, ApplyMotionState * state)
 	AttrNumber	attno;
 	SplitAggsContext context;
 
+
 	/* Sanity checks */
-	Assert(
-		   plan != NULL
-		   && IsA(plan, Agg)
+	Assert(IsA(plan, Agg)
 		   &&plan->flow->req_xform == MOVEMENT_AGG_RESTRUCT
 		   && plan->lefttree != NULL
 		   && plan->righttree == NULL
@@ -211,7 +215,7 @@ apply_agg_motion(Plan *plan, ApplyMotionState * state)
 	 * after this transformation; but clear the flag that caused the call to
 	 * this function.
 	 */
-	plan->flow->req_xform = MOVEMENT_NONE;
+	outer_flow->req_xform = MOVEMENT_NONE;
 
 	inner_plan->targetlist = NIL;		/* Build on the fly. */
 	inner_plan->qual = NIL;		/* Build on the fly. */
@@ -220,12 +224,23 @@ apply_agg_motion(Plan *plan, ApplyMotionState * state)
 								 * initPlan? */
 	plan->extParam = bms_copy(inner_plan->extParam);
 	plan->allParam = bms_copy(inner_plan->allParam);
-	inner_plan->flow = pull_up_Flow(inner_plan, inner_plan->lefttree, FALSE);
-	Assert (inner_plan->flow != NULL ); /* inner Agg inherits child flow. */
-	inner_plan->dispatch = DISPATCH_UNDETERMINED; /* Default */
+
+    /* inner Agg inherits child flow */
+    inner_flow = pull_up_Flow((Plan*)inner_agg, child_plan, false);
+    inner_agg->plan.flow = inner_flow;
+
+    inner_plan->dispatch = DISPATCH_UNDETERMINED; /* Default */
 	agg->grpColIdx = NULL; /* Eventually, put a new one in. */
 
-	/* Create our local context. */
+    if (agg->aggstrategy == AGG_SORTED)
+    {
+        Assert(agg->numCols <= child_plan->flow->numSortCols);
+
+        sortColIdx = palloc(agg->numCols * sizeof(*sortColIdx));
+        sortOps = palloc(agg->numCols * sizeof(*sortOps));
+    }
+
+    /* Create our local context. */
 	initSplitAggsContext(&context);
 
 	/*
@@ -248,7 +263,7 @@ apply_agg_motion(Plan *plan, ApplyMotionState * state)
 	 * number of the grouping attribute in the target list of the partial
 	 * aggregation Agg node.  Others have -1.
 	 */
-	context.attr_count = list_length(inner_plan->lefttree->targetlist);
+	context.attr_count = list_length(child_plan->targetlist);
 	n = 1 + context.attr_count;
 	context.attr_map = (AttrNumber *) palloc(n * sizeof(AttrNumber));
 
@@ -263,6 +278,7 @@ apply_agg_motion(Plan *plan, ApplyMotionState * state)
 	{
 		AttrNumber	g = inner_agg->grpColIdx[i];
 		bool		found = false;
+        Var        *var;
 
 		foreach(cell, plan->targetlist)
 		{
@@ -281,7 +297,24 @@ apply_agg_motion(Plan *plan, ApplyMotionState * state)
 		new_tle->resno = attno;
 		Assert(new_tle->resno >= 1);
 
-		context.inner_tlist = lappend(context.inner_tlist, new_tle);
+        /* Grouping cols will be hash/sort keys for Motion node. */
+        if (agg->aggstrategy == AGG_HASHED)
+        {
+            var = makeVar(OUTER,
+                          attno,
+                          exprType((Node *) tle->expr),
+                          exprTypmod((Node *) tle->expr),
+                          0);
+            hashExpr = lappend(hashExpr, var);
+        }
+        else if (agg->aggstrategy == AGG_SORTED)
+        {
+            Assert(g == child_plan->flow->sortColIdx[i]);
+            sortOps[i] = child_plan->flow->sortOperators[i];
+            sortColIdx[i] = attno;
+        }
+
+        context.inner_tlist = lappend(context.inner_tlist, new_tle);
 		context.attr_map[g] = attno;
 	}
 
@@ -338,7 +371,7 @@ apply_agg_motion(Plan *plan, ApplyMotionState * state)
 	context.inner_tlist = NIL;
 
     /* How many processes in source gang? */
-    if (inner_plan->flow->flotype == FLOW_SINGLETON)
+    if (inner_flow->flotype == FLOW_SINGLETON)
         numInputSegs = 1;
     else
         numInputSegs = getMPPSegmentCount();
@@ -347,25 +380,41 @@ apply_agg_motion(Plan *plan, ApplyMotionState * state)
 	switch (agg->aggstrategy)
 	{
 		case AGG_PLAIN:
-            plan->lefttree = (Plan *) make_union_motion(inner_plan, false,
-                                                        numInputSegs, -1);
-            assignMotionID((Node *) plan->lefttree, state, NULL);
-            Assert(plan->flow->flotype == FLOW_SINGLETON);
+            Assert(outer_flow->flotype == FLOW_SINGLETON &&
+                   inner_flow->flotype == FLOW_PARTITIONED);
+            motion = make_union_motion((Plan *)inner_agg,
+                                       false,
+                                       numInputSegs,
+                                       outer_flow->segindex);
 			break;
+
+        case AGG_SORTED:
+            Assert(outer_flow->flotype == FLOW_SINGLETON &&
+                   inner_flow->flotype == FLOW_PARTITIONED);
+            motion = make_sorted_union_motion((Plan *)inner_agg,
+                                              false,
+                                              numInputSegs,
+                                              outer_flow->segindex,
+                                              agg->numCols,
+                                              sortColIdx,
+                                              sortOps);
+            break;
 
 		case AGG_HASHED:
-			plan->lefttree = (Plan *) make_hashed_motion(inner_plan, false,
-                                                         numInputSegs,
-						 getHashMotionInfoList(inner_plan, INFOTYPE_LEFTEXPR)
-				);
-            assignMotionID((Node *) plan->lefttree, state, NULL);
-			plan->flow->hashExpr = ((Motion *) plan->lefttree)->hashExpr;
-            Assert(plan->flow->flotype == FLOW_PARTITIONED);
-			break;
+            Assert(outer_flow->flotype == FLOW_PARTITIONED &&
+                   inner_flow->flotype == FLOW_PARTITIONED);
+            motion = make_hashed_motion((Plan *)inner_agg,
+                                        false,
+                                        numInputSegs,
+                                        hashExpr);
+            break;
 
 		default:
-			Assert(FALSE);		/* Internal error */
+			Insist(0);
 	}
+
+    plan->lefttree = (Plan *)motion;
+    assignMotionID((Node *) motion, state, NULL);
 
 	/* TODO - Adjust costs for explain */
 

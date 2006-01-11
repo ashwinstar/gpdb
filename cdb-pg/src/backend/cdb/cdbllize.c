@@ -3,7 +3,7 @@
  * cdbllize.c
  *	  Parallelize a PostgreSQL sequential plan tree.
  *
- * Copyright (c) 2005, greenplum inc
+ * Copyright (c) 2005-2006, greenplum inc
  *
  * IDENTIFICATION
  *	  $Id$
@@ -126,7 +126,6 @@ static const AppendStrategy append_FSM[][AFS_COUNT] =
 static bool prescan(Plan *plan, Query *query, PlanProfile * context);
 static bool prescan_walker(Node *node, PlanProfile * context);
 
-static bool prescan_agg(Plan *plan, PlanProfile * context);
 static bool prescan_unique(Plan *plan, PlanProfile * context);
 static bool prescan_append(Plan *plan, PlanProfile * context);
 static bool prescan_group(Plan *plan, PlanProfile * context);
@@ -145,14 +144,8 @@ static bool isPlanFinished(Node *node, PlanProfile * profile);
 static bool scanForManagedTables_walker(Node *node, PlanProfile * context);
 static bool scanForManagedTables(Plan *plan, Query *query);
 
-static void initTargetFlow(Plan *plan, Flow * target, bool stable);
-static bool focusPlan(Plan *plan, bool live, bool stable, bool rescannable);
-static bool broadcastPlan(Plan *plan, bool live, bool stable, bool rescannable);
-static bool repartitionPlan(Plan *plan, bool live, bool stable, bool rescannable, List *hashExpr);
-static bool adjustPlanFlow(Plan *plan, Flow * target, bool stable, bool rescannable, bool live);
-static bool focusBasePlan(Plan *plan, Flow * target, bool stable, bool rescannable, bool live);
-static bool broadcastBasePlan(Plan *plan, Flow * target, bool stable, bool rescannable, bool live);
-static bool repartitionBasePlan(Plan *plan, Flow * target, bool stable, bool rescannable, bool live);
+static bool adjustPlanFlow(Plan *plan, bool live, FlowType newflotype,
+                           bool stable, bool rescannable, List *hashExpr);
 
 /* ------------------------------------------------------------------------- *
  * Function cdbparallelize() is the main entry point.
@@ -218,8 +211,8 @@ cdbparallelize(Plan *plan,
 
 	Assert(is_plan_node((Node *) plan));
 	/*
- * Print plan if debugging.
- */
+     * Print plan if debugging.
+     */
 	if (Debug_print_prelim_plan)
 		elog_node_display(DEBUG1, "preliminary plan", plan, Debug_pretty_print);
 
@@ -325,14 +318,6 @@ cdbparallelize_subquery(Plan *plan, Query *query)
 
 	Assert(is_plan_node((Node *) plan));
 	Assert(query != NULL && IsA(query, Query));
-
-	/*
-	 * TODO Remove this when the implementation is ready to test. Until then
-	 * issue an error to avoid masking caller bugs with bugs presumed to be in
-	 * this untested support. ereport(ERROR, (
-	 * errcode(ERRCODE_CDB_FEATURE_NOT_YET), errmsg("Cannot parallelize that
-	 * query yet"), errdetail("Unsupported subquery") ));
-	 */
 
 	/*
 	 * Prescan the plan and attach Flow nodes to its Plan nodes. These nodes
@@ -473,39 +458,16 @@ prescan_walker(Node *node, PlanProfile * context)
 				if (prescan_walker((Node *) subplan->plan, context))
 					goto return_true;
 
-				Assert(subplan->plan->flow != NULL && subplan->plan->flow->req_move == MOVEMENT_NONE);
+                Assert(subplan->plan->flow &&
+                       subplan->plan->flow->flotype != FLOW_UNDEFINED);
 
-				/* Adjust the subplan flow, if necessary. */
-				if (subplan->plan->flow->flotype == FLOW_PARTITIONED
-					|| (subplan->plan->flow->flotype == FLOW_SINGLETON
-						&& subplan->plan->flow->segindex != -1)
-					)
-				{
-					/*
-					 * Flow is partitioned or singleton on a segment.
-					 * Refocus.
-					 */
-					subplan->plan->flow->req_move = MOVEMENT_FOCUS;
-                    subplan->plan->flow->base_flotype = subplan->plan->flow->flotype;
-					subplan->plan->flow->segindex = -1;
-				}
-				else if (subplan->plan->flow->flotype == FLOW_SINGLETON
-						 && subplan->plan->flow->segindex == -1)
-				{
-					/* Flow is singleton on dispatcher.  Already focused. */
-				}
-				else
-				{
-					/*
-					 * TODO  Are the other flows we might legitimately see at the
-					 * top level.  E.g., a replicated flow that we would convert
-					 * with some hypothetical REPLICATED-to-SINGLETON(-1) motion!
-					 */
-					ereport(ERROR, (
-									errcode(ERRCODE_CDB_INTERNAL_ERROR),
-							 errmsg("unexpected flow type at top of subplan")
-									));
-				}
+				/*
+                 * Subquery result needs to be brought back to the QD.
+                 * Ask for motion to a single QE.  Later, apply_motion
+                 * will override that to bring it to the QD instead.
+                 */
+                if (subplan->plan->flow->flotype != FLOW_SINGLETON)
+                    Insist(focusPlan(subplan->plan, true, false, false));
 
 				/* Restore state for the parent plan. */
 				popLocals(context);
@@ -563,10 +525,7 @@ prescan_walker(Node *node, PlanProfile * context)
 				SubqueryScan *subqueryscan = (SubqueryScan *) node;
 				Plan	   *subplan;
 
-				/* Make sure this is first time. */
-				Assert(finished || plan->flow == NULL || plan->flow->flotype == FLOW_UNDEFINED);
-
-				/* Make sure we have a valid index. */
+                /* Make sure we have a valid index. */
 				Assert(0 < rtindex && rtindex <= list_length(localRangeTable(context)));
 
 				/* All scan types have a range table entry. */
@@ -596,7 +555,6 @@ prescan_walker(Node *node, PlanProfile * context)
 				if (!finished)
 				{
 					plan->flow = pull_up_Flow(plan, subqueryscan->subplan, true);
-					Assert(plan->flow);
 					/* Don't use expressions from the wrong range table */
 					plan->flow->hashExpr = NIL;
 					if (plan->flow->flotype == FLOW_PARTITIONED)
@@ -604,12 +562,6 @@ prescan_walker(Node *node, PlanProfile * context)
 						plan->flow->hashExpr = getExprListForSubqueryScan(
 										   subqueryscan->subplan->targetlist,
 									  subqueryscan->subplan->flow->hashExpr);
-					}
-
-					if (((Plan *) node)->flow == NULL || ((Plan *) node)->flow->flotype == FLOW_UNDEFINED)
-					{
-						detail = "Can't characterize flow from SubqueryScan.";
-						break;	/* Fail */
 					}
 				}
 				goto return_false;
@@ -630,12 +582,6 @@ prescan_walker(Node *node, PlanProfile * context)
 				{
 					/* Might scan child, so inherit flow characteristics. */
 					plan->flow = pull_up_Flow(plan, plan->lefttree, false);
-
-					if (plan->flow == NULL || plan->flow->flotype == FLOW_UNDEFINED)
-					{
-						detail = "Can't characterize flow from Result node.";
-						break;
-					}
 
 					/*
 					 * We aren't sure the partitioning attributes are in our
@@ -661,18 +607,12 @@ prescan_walker(Node *node, PlanProfile * context)
 				Plan	   *plan = (Plan *) node;
 
 				plan->flow = pull_up_Flow(plan, plan->lefttree, false);
-
-				if (plan->flow == NULL || plan->flow->flotype == FLOW_UNDEFINED)
-				{
-					detail = "Can't characterize flow from Material node.";
-					break;
-				}
 			}
 			goto return_false;
 
 		case T_Sort:
-			/* First prescan children */
-			if (plan_tree_walker(node, prescan_walker, context))
+            /* First prescan children */
+            if (plan_tree_walker(node, prescan_walker, context))
 				goto return_true;
 			if (!finished)
 			{
@@ -682,12 +622,6 @@ prescan_walker(Node *node, PlanProfile * context)
 				Plan	   *plan = (Plan *) node;
 
 				plan->flow = pull_up_Flow(plan, plan->lefttree, false);
-
-				if (plan->flow == NULL || plan->flow->flotype == FLOW_UNDEFINED)
-				{
-					detail = "Can't characterize flow from Sort node.";
-					break;
-				}
 
 				/* ... but reordered. */
 				sort = (Sort *) node;
@@ -700,7 +634,7 @@ prescan_walker(Node *node, PlanProfile * context)
 			goto return_false;
 
 		case T_Unique:
-			/* First prescan children */
+            /* First prescan children */
 			if (plan_tree_walker(node, prescan_walker, context))
 				goto return_true;
 			if (finished)
@@ -743,12 +677,6 @@ prescan_walker(Node *node, PlanProfile * context)
 					case FLOW_REPLICATED:
 						/* No motion required so inherit flow characteristics. */
 						plan->flow = pull_up_Flow(plan, child, true);
-
-						if (plan->flow == NULL || plan->flow->flotype == FLOW_UNDEFINED)
-						{
-							detail = "Cannot characterize output of set operation.";
-							break;
-						}
 						goto return_false;
 
 					case FLOW_PARTITIONED:
@@ -793,12 +721,6 @@ prescan_walker(Node *node, PlanProfile * context)
 							if (isSubset)
 							{
 								plan->flow = pull_up_Flow(plan, child, true);
-
-								if (plan->flow == NULL || plan->flow->flotype == FLOW_UNDEFINED)
-								{
-									detail = "Can't characterize flow from SetOp node.";
-									break;
-								}
 								goto return_false;
 							}
 
@@ -811,8 +733,7 @@ prescan_walker(Node *node, PlanProfile * context)
 							if (repartitionPlan(child, true, true, false, hx))
 							{
 								plan->flow = pull_up_Flow(plan, child, true);
-								if (plan->flow != NULL)
-									goto return_false;
+								goto return_false;
 							}
 						}
 						detail = "Can't characterize flow into SetOp node.";
@@ -850,14 +771,14 @@ prescan_walker(Node *node, PlanProfile * context)
 				if (finished)
 					goto return_false;
 
-				if (!prescan_agg((Plan *) node, context))
+				if (cdbagg_prescan((Agg *) node))
 					goto return_false;
 				detail = "Query involves complex aggregation.";
 			}
 			break;				/* Fall through to report error. */
 
 		case T_Group:
-			/* First prescan children */
+            /* First prescan children */
 			if (plan_tree_walker(node, prescan_walker, context))
 				goto return_true;
 			if (finished)
@@ -888,12 +809,6 @@ prescan_walker(Node *node, PlanProfile * context)
 				{
 					/* No motion required so inherit flow characteristics. */
 					plan->flow = pull_up_Flow(plan, child, true);
-
-					if (plan->flow == NULL || plan->flow->flotype == FLOW_UNDEFINED)
-					{
-						detail = "Can't characterize flow from Limit node.";
-						break;
-					}
 					goto return_false;
 				}
 			}
@@ -910,11 +825,6 @@ prescan_walker(Node *node, PlanProfile * context)
 				 */
 				limit->plan.flow = pull_up_Flow((Plan *) limit, limit->plan.lefttree, true);
 
-				if (limit->plan.flow == NULL || limit->plan.flow->flotype == FLOW_UNDEFINED)
-				{
-					detail = "Flow criteria missing from Limit node.";
-					break;
-				}
 				limit->plan.flow->flotype = FLOW_SINGLETON;
 				limit->plan.flow->req_move = MOVEMENT_NONE;
 				limit->plan.flow->segindex = 0;
@@ -946,225 +856,6 @@ return_false:
 }
 
 
-/* Helper for prescan_walker() does processing for an Agg node.
- *
- * Note that prescan_walker has already finished scaning the child nodes
- * of the node.
- *
- * Return false to indicate successful prescan.  Else set error info
- * in the context and return true.
- */
-bool
-prescan_agg(Plan *plan, PlanProfile * context)
-{
-	List	   *strategies;
-	ListCell   *cell;
-	CdbAggStrategy *strategy = NULL;
-
-	Agg		   *agg;
-	Plan	   *child;
-	int			i;
-
-	AttrNumber *sortattrs = NULL;
-	Oid		   *sortoprs = NULL;
-	Flow	   *newflow = NULL;
-
-	List	   *hashExpr = NIL;
-
-	/* Argument is a prescaned plan. */
-	child = outerPlan((Node *) plan);
-	Assert(is_plan_node((Node *) child) && child->flow != NULL);
-	agg = (Agg *) plan;
-
-
-	/*
-	 * If the node is of type AGG_SORTED, we need to preserve the sort order
-	 * of its input and output since an ancestor node may assume it.  If we
-	 * can't gather the necessary information, we have to reject the plan as
-	 * not currently parallelizable.
-	 */
-	if (agg->aggstrategy == AGG_SORTED)
-	{
-		/*
-		 * Get the attribute numbers of the grouping attributes in the target
-		 * list of the given Agg node.	These correspond to the grouping
-		 * attributes of the Agg node's child, which are recorded the sort
-		 * fields of the Agg node, but they may differ in position.
-		 *
-		 * Note that, hereafter, (sortattrs != NULL) flags an AGG_SORTED.
-		 */
-		bool		gotSortInfo;
-
-		/*
-		 * Translate child node attribute numbers of the sort attributes into
-		 * attribute numbers in the targetlist of this Agg node. Get sort
-		 * operators from the child flow (and check assumption that the
-		 * attribute lists match).
-		 */
-		gotSortInfo = invertGrpColIdx(agg, &sortattrs);
-
-		if (gotSortInfo && child->flow != NULL && child->flow->numSortCols >= agg->numCols)
-		{
-			sortoprs = (Oid *) palloc0(agg->numCols * sizeof(Oid));
-			for (i = 0; i < agg->numCols; i++)
-			{
-				if (agg->grpColIdx[i] != child->flow->sortColIdx[i])
-				{
-					gotSortInfo = FALSE;
-					break;		/* for loop */
-				}
-				sortoprs[i] = child->flow->sortOperators[i];
-			}
-		}
-		if (!gotSortInfo)
-		{
-			if (sortattrs != NULL)
-			{
-				pfree(sortattrs);
-				sortattrs = NULL;
-			}
-			if (sortoprs != NULL)
-			{
-				pfree(sortoprs);
-				sortoprs = NULL;
-			}
-			psErrorNonce(context, "Ordering for sorted aggregation unknown");
-			return true;
-		}
-	}
-
-
-	/*
-	 * Get a list of possible strategies and use the first strategy that we
-	 * can actually implement for this Agg in this context.
-	 */
-	strategies = getAggStrategyList(agg);
-
-	foreach(cell, strategies)
-	{
-		bool		canUse;
-		CdbAggStrategy *s = (CdbAggStrategy *) lfirst(cell);
-
-		/* Pre-flight check required changes to the child. */
-		switch (s->leftmove)
-		{
-			case MOVEMENT_NONE:
-			case MOVEMENT_AGG_RESTRUCT:
-				canUse = true;
-				break;
-
-			case MOVEMENT_FOCUS:
-				canUse = focusPlan(child, false, sortattrs != NULL, false);
-				break;
-
-			case MOVEMENT_BROADCAST:
-				canUse = broadcastPlan(child, false, sortattrs != NULL, false);
-				break;
-
-			case MOVEMENT_REPARTITION:
-				Assert( s->hashexprs == NIL );
-				s->hashexprs = getExprListFromTargetList(child->targetlist, agg->numCols, agg->grpColIdx);
-				hashExpr = s->hashexprs;
-				canUse = repartitionPlan(child, false, sortattrs!=NULL, false, hashExpr);
-				break;
-				
-			case MOVEMENT_DISTINCT_RESTRUCT:
-				hashExpr = s->hashexprs;
-				Assert(hashExpr != NIL);
-				canUse = repartitionPlan(child, false, sortattrs!=NULL, false, hashExpr);
-				break;
-
-			default:
-				canUse = false;
-				break;
-		}
-
-		if (canUse)
-		{
-			strategy = copyAggStrategy(s);
-			break;				/* foreach */
-		}
-	}
-
-	/* Clean up */
-	if (strategies != NIL)
-	{
-		freeAggStrategyList(strategies);
-		strategies = NIL;
-	}
-
-	/* If we didn't find a useable strategy, bail out. */
-	if (strategy == NULL)
-	{
-		psErrorNonce(context, "Cannot find aggregation stategy");
-		return true;
-	}
-
-	/*
-	 * A strategy has been chosen. We need to adjust the flow on the
-	 * input (child) node to suit the needs of the strategy and create
-	 * a new flow for the given (Agg) node based on the result of the
-	 * strategy.
-	 */
-	switch (strategy->leftmove)
-	{
-		case MOVEMENT_NONE:
-			/* No motion required so inherit flow characteristics. */
-			newflow = pull_up_Flow(plan, plan->lefttree, true);
-			break;
-
-		case MOVEMENT_FOCUS:
-			/* Focus motion required */
-			focusPlan(child, true, sortattrs != NULL, false);
-			newflow = makeFlow(FLOW_SINGLETON);
-			break;
-
-		case MOVEMENT_BROADCAST:
-			/* Broadcast motion required. */
-			broadcastPlan(child, true, sortattrs != NULL, false);
-			newflow = makeFlow(FLOW_REPLICATED);
-			break;
-
-		case MOVEMENT_REPARTITION:
-			/* Repartition motion required */
-			repartitionPlan(child, true, sortattrs!=NULL, false, strategy->hashexprs);
-			newflow = pull_up_Flow(plan, plan->lefttree, true);
-			break;
-			
-		case MOVEMENT_DISTINCT_RESTRUCT:
-			/* Repartition motion required in child, restructure required in this node. */
-			repartitionPlan(child, true, sortattrs!=NULL, false, strategy->hashexprs);
-			newflow = pull_up_Flow(plan, plan->lefttree, true);
-			newflow->req_xform = MOVEMENT_AGG_RESTRUCT;
-            newflow->base_flotype = newflow->flotype;
-			newflow->flotype = FLOW_SINGLETON;
-			newflow->segindex = 0;
-			break;
-		
-		case MOVEMENT_AGG_RESTRUCT:
-			newflow = makeFlow(strategy->resultflowtype);
-
-			/* Flag the required transformation.  */
-			newflow->req_xform = MOVEMENT_AGG_RESTRUCT;
-
-			/* No child adjustments. */
-			break;
-
-		default:
-			psErrorNonce(context, "Cannot implement aggregation strategy");
-			return true;
-	}
-
-
-	/*
-	 * Set the flow characteristics of the result based on the strategy we
-	 * ultimately adopted and the flow characteristics of the child.
-	 */
-	plan->flow = newflow;
-	
-	return false;	
-}
-
 /* Helper for prescan_walker() does processing for a Unique node.
  *
  * Note that prescan_walker has already finished scaning the child nodes
@@ -1182,22 +873,14 @@ prescan_unique(Plan *plan, PlanProfile * context)
 	bool		match_condition = true;
 	int			i;
 
-	/* Argument is a prescaned plan. */
+	/* Argument is a prescanned plan. */
 	Assert(is_plan_node((Node *) child) && child->flow != NULL);
-
-	Assert(child->flow);
 
 	if (child->flow->flotype == FLOW_REPLICATED
 		|| child->flow->flotype == FLOW_SINGLETON)
 	{
 		/* No motion required so inherit flow characteristics. */
 		plan->flow = pull_up_Flow(plan, child, true);
-
-		if (plan->flow == NULL || plan->flow->flotype == FLOW_UNDEFINED)
-		{
-			psErrorNonce(context, "Can't characterize flow from Unique node.");
-			return true;
-		}
 		return false;
 	}
 
@@ -1609,7 +1292,7 @@ issuePsError(PlanProfile * context)
 						errmsg(context->message)
 						));
 	}
-	Assert(false);				/* Never return */
+	Insist(0);				/* Never return */
 }
 
 
@@ -1642,14 +1325,13 @@ pull_up_Flow(Plan *plan, Plan *subplan, bool withSort)
 	Flow	   *model_flow;
 	Flow	   *new_flow;
 
-	Assert(subplan);
+	Assert(subplan && subplan->flow);
 
 	model_flow = subplan->flow;
 
-	if (model_flow == NULL)
-		return NULL;
-
 	new_flow = makeFlow(model_flow->flotype);
+
+    new_flow->segindex = model_flow->segindex;
 
 	if (model_flow->flotype == FLOW_PARTITIONED)
 	{
@@ -1661,18 +1343,6 @@ pull_up_Flow(Plan *plan, Plan *subplan, bool withSort)
 		{
 			new_flow->hashExpr = copyObject(model_flow->hashExpr);
 		}
-	}
-	else if (model_flow->flotype == FLOW_SINGLETON)
-	{
-		/* Propagate segment definitions. */
-		new_flow->segindex = model_flow->segindex;
-	}
-	else if (model_flow->flotype != FLOW_REPLICATED)
-	{
-		if (new_flow->hashExpr)
-			pfree(new_flow->hashExpr);
-		pfree(new_flow);
-		return NULL;
 	}
 
 	if (withSort && model_flow->numSortCols > 0)
@@ -1686,12 +1356,7 @@ pull_up_Flow(Plan *plan, Plan *subplan, bool withSort)
 							  model_flow->sortColIdx,
 							  &(new_flow->sortColIdx))
 				)
-			{
-				if (new_flow->hashExpr)
-					pfree(new_flow->hashExpr);
-				pfree(new_flow);
-				return NULL;
-			}
+                Insist(0);
 		}
 		else
 		{
@@ -1845,7 +1510,7 @@ scanForManagedTables_walker(Node *node, PlanProfile * context)
 				 * the context before we descend into the fields of the
 				 * SubqueryScan and then put the original one back.
 				 */
-				RangeTblEntry *rte;
+                RangeTblEntry  *rte;
 				Plan	   *plan = (Plan *) node;
 				Scan	   *scan = (Scan *) plan;
 				Index		rtindex = scan->scanrelid;
@@ -1983,13 +1648,13 @@ initPlanProfile(PlanProfile * context, Query *query)
 void
 pushLocals(PlanProfile * profile, List *rtable)
 {
-	LocalProfile *newlocal = palloc(sizeof(LocalProfile));
+    LocalProfile *newlocal = palloc(sizeof(LocalProfile));
 
 	newlocal->rtable = rtable;
 	newlocal->finished = false;
 	newlocal->outerFrame = profile->local;
 
-	profile->local = newlocal;
+    profile->local = newlocal;
 }
 
 void
@@ -2017,7 +1682,6 @@ localRangeTable(PlanProfile * profile)
  * the context so far indicated "unfinished" in which case we check
  * for evidence of "finished" and update the context:
  *
- * - If the node is a Motion node, the branch must be finished.
  * - If the node has a defined Flow,  the branch must be finished.
  */
 bool
@@ -2027,8 +1691,8 @@ isPlanFinished(Node *node, PlanProfile * profile)
 	{
 		Plan	   *plan = (Plan *) node;
 
-		profile->local->finished = node->type == T_Motion
-			|| (plan->flow != NULL && plan->flow->flotype != FLOW_UNDEFINED);
+		profile->local->finished = plan->flow != NULL &&
+                                   plan->flow->flotype != FLOW_UNDEFINED;
 	}
 	return profile->local->finished;
 }
@@ -2063,13 +1727,13 @@ isPlanFinished(Node *node, PlanProfile * profile)
 bool
 focusPlan(Plan *plan, bool live, bool stable, bool rescannable)
 {
-	Flow		target;
+    Assert(plan->flow && plan->flow->flotype != FLOW_UNDEFINED);
 
-	initTargetFlow(plan, &target, stable);
-	target.flotype = FLOW_SINGLETON;
-	target.segindex = 0;
+    /* Already focused?  Do nothing. */
+    if (plan->flow->flotype == FLOW_SINGLETON)
+        return true;
 
-	return adjustPlanFlow(plan, &target, stable, rescannable, live);
+	return adjustPlanFlow(plan, live, FLOW_SINGLETON, stable, rescannable, NIL);
 }
 
 
@@ -2079,12 +1743,13 @@ focusPlan(Plan *plan, bool live, bool stable, bool rescannable)
 bool
 broadcastPlan(Plan *plan, bool live, bool stable, bool rescannable)
 {
-	Flow		target;
+    Assert(plan->flow && plan->flow->flotype != FLOW_UNDEFINED);
 
-	initTargetFlow(plan, &target, stable);
-	target.flotype = FLOW_REPLICATED;
+    /* Replicated -> Replicated is a no-op. */
+    if (plan->flow->flotype == FLOW_REPLICATED)
+        return true;
 
-	return adjustPlanFlow(plan, &target, stable, rescannable, live);
+    return adjustPlanFlow(plan, live, FLOW_REPLICATED, stable, rescannable, NIL);
 }
 
 
@@ -2094,49 +1759,12 @@ broadcastPlan(Plan *plan, bool live, bool stable, bool rescannable)
 bool
 repartitionPlan(Plan *plan, bool live, bool stable, bool rescannable, List *hashExpr)
 {
-	Flow		target;
+    Assert(plan->flow && plan->flow->flotype != FLOW_UNDEFINED);
 
 	if (list_length(hashExpr) < 1)
 		return false;			/* Not much of a check, but it's something. */
 
-	initTargetFlow(plan, &target, stable);
-	target.flotype = FLOW_PARTITIONED;
-	target.hashExpr = hashExpr;
-
-	return adjustPlanFlow(plan, &target, stable, rescannable, live);
-}
-
-
-/*
- * Helper Function: initTargetFlow
- *
- * Initialize a preallocated default Flow.
- */
-void
-initTargetFlow(Plan *plan, Flow * target, bool stable)
-{
-	target->type = T_Flow;
-	target->flotype = FLOW_SINGLETON;
-    target->base_flotype = FLOW_UNDEFINED;
-	target->req_move = target->req_xform = MOVEMENT_NONE;
-	target->segindex = 0;
-	if (stable)
-	{
-		target->numSortCols = plan->flow->numSortCols;
-		ARRAYCOPY(target->sortColIdx,
-				  plan->flow->sortColIdx,
-				  plan->flow->numSortCols * sizeof(AttrNumber));
-		ARRAYCOPY(target->sortOperators,
-				  plan->flow->sortOperators,
-				  plan->flow->numSortCols * sizeof(Oid));
-	}
-	else
-	{
-		target->numSortCols = 0;
-		target->sortColIdx = NULL;
-		target->sortOperators = NULL;
-	}
-	target->hashExpr = NIL;
+    return adjustPlanFlow(plan, live, FLOW_PARTITIONED, stable, rescannable, hashExpr);
 }
 
 
@@ -2148,39 +1776,44 @@ initTargetFlow(Plan *plan, Flow * target, bool stable)
  * a Sort removes the stability constraint.
  */
 bool
-adjustPlanFlow(Plan *plan, Flow * target, bool stable, bool rescannable, bool live)
+adjustPlanFlow(Plan        *plan,
+               bool         live,
+               FlowType     newflotype,
+               bool         stable,
+               bool         rescannable,
+               List        *hashExpr)
 {
-	bool		recur,
-				r_stable,
-				r_rescan;
+    Flow       *flow = plan->flow;
+    bool		recur = false;
+    bool        reorder = false;
+    Movement    req_move = MOVEMENT_NONE;
 
 	/* If we can't honor this request, return false. */
-	if (plan->flow == NULL)
-		return false;			/* Must have a flow. */
-	if (plan->flow->req_move != MOVEMENT_NONE || plan->flow->req_xform != MOVEMENT_NONE)
+	if (flow->req_move != MOVEMENT_NONE || flow->req_xform != MOVEMENT_NONE)
 		return false;			/* Must not already have motion or transform
 								 * assigned. */
 
-	/*
-	 * If we can, recur to push the request further down the plan tree and
+    /* Tuples cannot flow from QD to QEs via Motion nodes (for now). */
+    if (flow->flotype == FLOW_SINGLETON &&
+        flow->segindex < 0)
+        return false;
+
+    /*---------------
+	 * Decide whether to push the request further down the plan tree and
 	 * possibly remove restrictions.
 	 */
-	recur = false;
-	r_stable = stable;
-	r_rescan = rescannable;
-
 	switch (plan->type)
 	{
 		case T_Hash:
 			/* Always push motion below Hash. */
 			/* No need to preserve order or restartability below hash. */
 			recur = true;
-			r_stable = false;
-			r_rescan = false;
+            reorder = true;
+			rescannable = false;
 			break;
 
 		case T_Sort:
-			if (target->flotype == FLOW_SINGLETON && !rescannable)
+			if (newflotype == FLOW_SINGLETON && !rescannable)
 			{
 				/*
 				 * We'd rather do a merge of a parallel sort, than do a
@@ -2193,8 +1826,8 @@ adjustPlanFlow(Plan *plan, Flow * target, bool stable, bool rescannable, bool li
 			{
 				/* No need to preserve order or restartability below a sort. */
 				recur = true;
-				r_stable = false;
-				r_rescan = false;
+                reorder = true;
+                rescannable = false;
 			}
 			break;
 
@@ -2202,262 +1835,129 @@ adjustPlanFlow(Plan *plan, Flow * target, bool stable, bool rescannable, bool li
 			/* Always push motion below Material. */
 			/* No need to preserve restartability below a materialization. */
 			recur = true;
-			r_rescan = false;
+			rescannable = false;
 			break;
 
 		case T_Append:			/* Maybe handle specially some day. */
 		default:
-			recur = false;
 			break;
 	}
 
-	/* If recurring, adjust flow of this plan node on return. */
-
-	if (recur && adjustPlanFlow(plan->lefttree, target, r_stable, r_rescan, live))
+    /*---------------
+     * Push motion down to a descendant of this node (= upstream).
+     */
+    if (recur)
 	{
-		if (live)
-		{
-			switch (target->flotype)
-			{
-				case FLOW_SINGLETON:
-					plan->flow->flotype = FLOW_SINGLETON;
-					plan->flow->segindex = target->segindex;
-					break;
-				case FLOW_REPLICATED:
-					plan->flow->flotype = FLOW_REPLICATED;
-					break;
-				case FLOW_PARTITIONED:
-					plan->flow->flotype = FLOW_PARTITIONED;
-					plan->flow->hashExpr = copyObject(plan->lefttree->flow->hashExpr);
-					break;
-				default:
-					return false;		/* TODO */
-			}
+        Flow   *kidFlow;
+        int     oldKidSortCols;
 
-			if (r_stable)
-			{
-				Flow	   *model_flow = plan->lefttree->flow;
+        Assert(plan->lefttree && plan->lefttree->flow);
 
-				plan->flow->numSortCols = model_flow->numSortCols;
+        oldKidSortCols = plan->lefttree->flow->numSortCols;
 
-				if (model_flow->numSortCols > 0)
-				{
-					ARRAYCOPY(plan->flow->sortColIdx,
-							  model_flow->sortColIdx,
-							  model_flow->numSortCols * sizeof(AttrNumber));
-					ARRAYCOPY(plan->flow->sortOperators,
-							  model_flow->sortOperators,
-							  model_flow->numSortCols * sizeof(Oid));
-				}
-				else
-				{
-					plan->flow->sortColIdx = NULL;
-					plan->flow->sortOperators = NULL;
-				}
-			}
-		}
-		return true;
+        /* Descend to apply the requested Motion somewhere below this node. */
+        if (!adjustPlanFlow(plan->lefttree, live, newflotype,
+                            stable && !reorder, rescannable, hashExpr))
+            return false;
+
+        /* Return if just window shopping.  Nothing has been changed yet. */
+        if (!live)
+            return true;        /* success; call me again to do it for real */
+
+        /* After updating subplan, bubble new distribution back up the tree. */
+        kidFlow = plan->lefttree->flow;
+        flow->flotype = kidFlow->flotype;
+        flow->segindex = kidFlow->segindex;
+        flow->hashExpr = copyObject(kidFlow->hashExpr);
+
+        Assert(kidFlow->flotype == newflotype);
+
+        /* Truncate sort cols if motion has weakened the former ordering. */
+        if (!reorder &&
+            kidFlow->numSortCols != oldKidSortCols)
+        {
+            Assert(!stable);
+            Assert(flow->numSortCols <= oldKidSortCols);
+            if (flow->numSortCols > kidFlow->numSortCols)
+                flow->numSortCols = kidFlow->numSortCols;
+        }
+
+		return true;  /* success */
 	}
 
-	/* Else this is the base case, so honor the request or fail. */
+	/*---------------
+     * The buck stops here.  We have arrived at the node whose output is
+     * to be moved.  Return false if can't do the motion as requested.
+     */
 
-	if (stable && plan->flow->numSortCols < 1)
-	{
-		return false;			/* No order so can't preserve one. */
-	}
+    /* Adding a Motion node would make the result non-rescannable. */
+    if (rescannable)
+        return false;
 
-	if (rescannable)
-	{
-		return false;			/* Motion nodes aren't rescannable. */
-	}
+    /*
+     * Motion would mess up the ordering if source is partitioned; except
+     * Partitioned -> Singleton can use Merge Receive to preserve order.
+     */
+    if (stable &&
+        flow->flotype == FLOW_PARTITIONED &&
+        newflotype != FLOW_SINGLETON)
+        return false;	
 
-	switch (target->flotype)
-	{
-		case FLOW_SINGLETON:
-			return focusBasePlan(plan, target, stable, rescannable, live);
-
-		case FLOW_REPLICATED:
-			if (stable)
-				return false;
-			return broadcastBasePlan(plan, target, stable, rescannable, live);
-
-		case FLOW_PARTITIONED:
-			if (stable)
-				return false;
-			return repartitionBasePlan(plan, target, stable, rescannable, live);
-
-		case FLOW_UNDEFINED:
-			break;
-	}
-	return false;
-}
-
-
-
-
-/*
- * Helper Function: focusBasePlan
- *
- * Apply a motion request to focus the argument plan.
- */
-bool
-focusBasePlan(Plan *plan, Flow * target, bool stable, bool rescannable, bool live)
-{
-	switch (plan->flow->flotype)
+    switch (newflotype)
 	{
 		case FLOW_SINGLETON:
-			/* QE -> QD */
-			if (plan->flow->segindex == 0 && target->segindex == -1)
-			{
-				if (live)
-				{
-					plan->flow->req_move = MOVEMENT_FOCUS;
-                    plan->flow->base_flotype = plan->flow->flotype;
-					plan->flow->flotype = FLOW_SINGLETON;
-					plan->flow->segindex = target->segindex;
-					/* Fixed motions preserve the specfied order. */
-				}
-				return true;
-			}
-			/* QE -> QE or QD -> QD */
-			else if (plan->flow->segindex == target->segindex)
-			{
-				return true;	/* Bizarre, but ok. */
-			}
-			/* QD -> QE */
-			else
-			{
-				return false;	/* No motion *from* the QD is defined. */
-			}
-			break;
+            req_move = MOVEMENT_FOCUS;
+            if (flow->flotype == FLOW_REPLICATED)
+		        return false;		/* TODO How specify deep-six? */
+            break;
 
 		case FLOW_REPLICATED:
-			if (stable || rescannable)
-				return false;
-			return false;		/* TODO How specify deep-six? */
-			break;
+            req_move = MOVEMENT_BROADCAST;
+            break;
 
 		case FLOW_PARTITIONED:
-			if (rescannable)
-				return false;
-			if (live)
-			{
-				plan->flow->req_move = MOVEMENT_FOCUS;
-                plan->flow->base_flotype = plan->flow->flotype;
-				plan->flow->flotype = FLOW_SINGLETON;
-				plan->flow->segindex = target->segindex;
-				/* Fixed motions preserve the order specified in the Flow. */
-			}
-			return true;
-			break;
+            req_move = MOVEMENT_REPARTITION;
+            if (flow->flotype == FLOW_REPLICATED)
+                req_move = MOVEMENT_REP2PARTITIONED;    /* deep-six */
+            break;
 
-		case FLOW_UNDEFINED:
-			break;
+		default:
+            Assert(0);
+            return false;
 	}
-	return false;
-}
+
+    /*
+     * Now we begin the transformation, if 'live'.
+     *
+     * Set flag to tell apply_motion() to insert a Motion node
+     * immediately above this node (= downstream).  Overwrite the
+     * present Plan node's Flow node to describe the distribution
+     * and ordering that the future Motion node will produce.
+     * (On return there is no longer any Flow node that specifically
+     * describes the present Plan node's own result distribution and
+     * ordering, i.e. the input to the future Motion.)
+     */
+    if (live)
+    {
+        flow->req_move = req_move;
+        if (flow->base_flotype == FLOW_UNDEFINED)
+            flow->base_flotype = flow->flotype;
+
+        flow->flotype = newflotype;
+        flow->segindex = 0;
+        flow->hashExpr = copyObject(hashExpr);
+
+        /* Don't request Merge Receive unless ordering is significant. */
+        if (newflotype == FLOW_SINGLETON &&
+            !stable)
+        {
+            flow->numSortCols = 0;
+            flow->sortColIdx = NULL;
+            flow->sortOperators = NULL;
+        }
+    }
+
+    return true;                /* success */
+}                               /* adjustPlanFlow */
 
 
-/*
- * Helper Function: broadcastBasePlan
- *
- * Apply a motion request to broadcast the argument plan.
- */
-bool
-broadcastBasePlan(Plan *plan, Flow * target, bool stable, bool rescannable, bool live)
-{
-	switch (plan->flow->flotype)
-	{
-		case FLOW_SINGLETON:
-			if (rescannable)
-				return false;
-			if (plan->flow->segindex < 0)
-				return false;	/* No motions from QD. */
-			if (live)
-			{
-				plan->flow->req_move = MOVEMENT_BROADCAST;
-                plan->flow->base_flotype = plan->flow->flotype;
-				plan->flow->flotype = FLOW_REPLICATED;
-				/* Send of singleton preserves order. */
-			}
-			return true;
-
-		case FLOW_REPLICATED:
-			return true;		/* Bizarre, but ok. */
-			break;
-
-		case FLOW_PARTITIONED:
-			if (stable || rescannable)
-				return false;	/* Can't preserve order in N-to-N motion.  */
-			if (live)
-			{
-				plan->flow->req_move = MOVEMENT_BROADCAST;
-                plan->flow->base_flotype = plan->flow->flotype;
-				plan->flow->flotype = FLOW_REPLICATED;
-			}
-			return true;
-
-		case FLOW_UNDEFINED:
-			break;
-	}
-	return false;
-}
-
-
-/*
- * Helper Function: repartitionBasePlan
- *
- * Apply a motion request to repartition the argument plan.
- */
-bool
-repartitionBasePlan(Plan *plan, Flow * target, bool stable, bool rescannable, bool live)
-{
-	switch (plan->flow->flotype)
-	{
-		case FLOW_SINGLETON:
-			if (rescannable)
-				return false;
-			/* Send of singleton preserves order so stable is ok. */
-			if (plan->flow->segindex < 0)
-				return false;	/* No motions from QD. */
-			if (live)
-			{
-				plan->flow->req_move = MOVEMENT_REPARTITION;
-                plan->flow->base_flotype = plan->flow->flotype;
-				plan->flow->flotype = FLOW_PARTITIONED;
-				plan->flow->hashExpr = target->hashExpr;
-			}
-			return true;
-
-		case FLOW_REPLICATED:
-			if (rescannable)
-				return false;
-			/* Restriction on replicated preserves order so stable is ok. */
-			return false;		/* TODO How specify deep-six?
-								 * MOVEMENT_REP2PARTITIONED */
-			if (live)
-			{
-				plan->flow->req_move = MOVEMENT_REP2PARTITIONED;
-                plan->flow->base_flotype = plan->flow->flotype;
-				plan->flow->flotype = FLOW_PARTITIONED;
-				plan->flow->hashExpr = target->hashExpr;
-			}
-			return true;
-
-		case FLOW_PARTITIONED:
-			if (stable || rescannable)
-				return false;	/* Can't preserve order in N-to-N motion.  */
-			if (live)
-			{
-				plan->flow->req_move = MOVEMENT_REPARTITION;
-                plan->flow->base_flotype = plan->flow->flotype;
-				plan->flow->flotype = FLOW_PARTITIONED;
-				plan->flow->hashExpr = target->hashExpr;
-			}
-			return true;
-
-		case FLOW_UNDEFINED:
-			break;
-	}
-	return false;
-}

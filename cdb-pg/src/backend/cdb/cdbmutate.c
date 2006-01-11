@@ -3,8 +3,7 @@
  * cdbmutate.c
  *	  Parallelize a PostgreSQL sequential plan tree.
  *
- * Copyright (c) 2005, greenplum inc
- * Copyright (c) 2004, Greenplum
+ * Copyright (c) 2004-2006, Greenplum
  *
  * IDENTIFICATION
  *	  $Id$
@@ -123,7 +122,8 @@ apply_motion(Plan *plan, Query *query)
 			if (plan->flow->flotype == FLOW_PARTITIONED)
 			{
 				plan->flow->req_move = MOVEMENT_FOCUS;
-                plan->flow->base_flotype = plan->flow->flotype;
+                if (plan->flow->base_flotype == FLOW_UNDEFINED)
+                    plan->flow->base_flotype = plan->flow->flotype;
                 plan->flow->segindex = -1;
 			}
 			break;
@@ -163,7 +163,8 @@ apply_motion(Plan *plan, Query *query)
 							* Refocus.
 							*/
 							plan->flow->req_move = MOVEMENT_REPARTITION;
-                            plan->flow->base_flotype = plan->flow->flotype;
+                            if (plan->flow->base_flotype == FLOW_UNDEFINED)
+                                plan->flow->base_flotype = plan->flow->flotype;
 						}
 						else if (plan->flow->flotype == FLOW_REPLICATED)
 						{
@@ -171,7 +172,8 @@ apply_motion(Plan *plan, Query *query)
 							* Source is replicated over segments. Apply "deep-six".
 							*/
 							plan->flow->req_move = MOVEMENT_REP2PARTITIONED;
-                            plan->flow->base_flotype = plan->flow->flotype;
+                            if (plan->flow->base_flotype == FLOW_UNDEFINED)
+                                plan->flow->base_flotype = plan->flow->flotype;
 						}
 						else
 						{
@@ -202,7 +204,8 @@ apply_motion(Plan *plan, Query *query)
 							* Refocus.
 							*/
 							plan->flow->req_move = MOVEMENT_FOCUS;
-                            plan->flow->base_flotype = plan->flow->flotype;
+                            if (plan->flow->base_flotype == FLOW_UNDEFINED)
+                                plan->flow->base_flotype = plan->flow->flotype;
 							plan->flow->segindex = -1;
 						}
 						else if (plan->flow->flotype == FLOW_REPLICATED)
