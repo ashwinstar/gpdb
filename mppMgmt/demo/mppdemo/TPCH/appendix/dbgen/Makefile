@@ -9,7 +9,8 @@ CC      = gcc
 #                                  SGI, SUN, U2200, VMS, Linux_x86
 # Current values for WORKLOAD are:  TPCH, TPCR
 DATABASE= POSTGRES
-MACHINE = Linux_x86
+#MACHINE = Linux_x86
+MACHINE = MacOSX
 CPPFLAGS="-DEOL_HANDLING"
 WORKLOAD = TPCH
 #

@@ -111,6 +111,14 @@
 #define HUGE_FORMAT "%Ld"
 #endif /* Linux_x86 */
 
+#ifdef MacOSX
+#define STDLIB_HAS_GETOPT
+#define SUPPORT_64BITS
+#define DSS_HUGE long long
+#define HUGE_COUNT	1
+#define HUGE_FORMAT "%lld"
+#endif /* MacOSX */
+
 #ifdef TANDEM
 #define EOL_HANDLING
 #endif /* TANDEM */

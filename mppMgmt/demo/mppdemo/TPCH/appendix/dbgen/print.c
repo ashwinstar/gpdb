@@ -125,9 +125,9 @@ dbg_print(int format, FILE *target, void *data, int len, int sep)
 		break;
 	case DT_CHR:
 		if (columnar)
-			fprintf(target, "%c ", (char)data);
+			fprintf(target, "%c ", (char *)data);
 		else
-			fprintf(target, "%c", (char)data);
+			fprintf(target, "%c", (char *)data);
 		break;
 	}
 
