@@ -5,7 +5,7 @@
  * Generic heap functions, that can be used with any
  * data structure and comparator function
  *
- * Copyright (c) 2005, greenplum inc
+ * Copyright (c) 2005-2006, greenplum inc
  *
  * $Id$
  *
@@ -83,7 +83,7 @@ CdbHeap_Create(CdbHeapCmpFn     comparator,
                int              bytesPerSlot,
                void            *slotArray);
 
-/* Free a CdbHeap structure.  Does not free the slotArray. */
+/* Free a CdbHeap structure. */
 void
 CdbHeap_Destroy(CdbHeap *hp);
 
