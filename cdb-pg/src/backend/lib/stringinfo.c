@@ -54,6 +54,25 @@ initStringInfo(StringInfo str)
 	str->cursor = 0;
 }
 
+
+/*
+ * initStringInfoOfSize
+ *
+ * Initialize a StringInfoData struct with data buffer of 'size' bytes 
+ */
+void
+initStringInfoOfSize(StringInfo str, int size)
+{
+
+	str->data = (char *) palloc(size);
+	str->maxlen = size;
+	str->len = 0;
+	str->data[0] = '\0';
+	str->cursor = 0;
+}
+
+
+
 /*
  * appendStringInfo
  *
