@@ -139,6 +139,17 @@ COPY testnl FROM stdin CSV;
 inside",2
 \.
 
+-- test end of copy marker
+CREATE TEMP TABLE testeoc (a text);
+
+COPY testeoc FROM stdin CSV;
+a\.
+\.b
+c\.d
+"\."
+\.
+
+COPY testeoc TO stdout CSV;
 
 --test that we read consecutive LFs properly
 
