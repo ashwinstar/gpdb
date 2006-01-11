@@ -1706,6 +1706,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	int			nSlices,
 				sliceLim;
 	int			iSlice;
+	int 			datasize = 32*1024;
 	pre_dispatch_function_evaluation_context pcontext;
 
 	*pPrimaryResults = NULL;
@@ -1784,12 +1785,12 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	 * slice tree (corresponding to an initPlan or the main plan), so the
 	 * parameters are fixed and we can include them in the prefix.
 	 */
-	squery = serializeNode((Node *) queryDesc->parsetree, &squery_len);
-	splan = serializeNode((Node *) queryDesc->plantree, &splan_len);
+	squery = serializeThis((Node *) queryDesc->parsetree, &squery_len);
+	splan = serializeThis((Node *) queryDesc->plantree, &splan_len);
 
 	Assert(squery != NULL && splan != NULL);
 
-	initStringInfo(&strinfo);
+	initStringInfoOfSize(&strinfo, datasize);
 
 	appendStringInfoLiteral(&strinfo, "mppexec '");
 	appendBinaryStringInfo(&strinfo, squery, squery_len);
@@ -1823,7 +1824,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 
 			rpd = makeNode(RemoteParamData);
 			memcpy(&rpd->paramData, q, sizeof(ParamListInfoData));
-			sparms = serializeNode((Node *) rpd, &sparms_len);
+			sparms = serializeThis((Node *) rpd, &sparms_len);
 			if (!bFirstTime)
 				appendStringInfoLiteral(&strinfo, ", ");
 			else
@@ -1847,7 +1848,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	 */
 	mppexecPrefix = strinfo.data;
 	mppexecPrefix_len = strinfo.len;
-	initStringInfo(&strinfo);
+	initStringInfoOfSize(&strinfo, datasize);
 
 	/*
 	 * Traverse the slice tree in sliceTbl rooted at rootIdx and build a
@@ -1927,7 +1928,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		 * construct a finished MPPEXEC command.
 		 */
 		sliceTbl->localSlice = slice->sliceIndex;
-		ssliceinfo = serializeNode((Node *) sliceTbl, &ssliceinfo_len);
+		ssliceinfo = serializeThis((Node *) sliceTbl, &ssliceinfo_len);
 
 		appendBinaryStringInfo(&strinfo, mppexecPrefix, mppexecPrefix_len);
 		appendStringInfoLiteral(&strinfo, " '");
@@ -2094,7 +2095,7 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 	/*
 	 * Serialize the stmt tree, and create the sql statement: mppexec ....
 	 */
-	szCommand = serializeNode((Node *) q, &szCommand_len);
+	szCommand = serializeThis((Node *) q, &szCommand_len);
 
 	Assert(szCommand != NULL);
 
@@ -2190,7 +2191,7 @@ serializeSnapshot(void)
 	snapInfo->curcid = snapshot->curcid;
 
 	
-	szSnapshotInfo = serializeNode((Node *) snapInfo, NULL);
+	szSnapshotInfo = serializeThis((Node *) snapInfo, NULL);
 	pfree(snapInfo);
 	
 	return szSnapshotInfo;
