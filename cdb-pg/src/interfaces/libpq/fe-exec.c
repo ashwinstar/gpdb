@@ -636,6 +636,65 @@ pqSaveParameterStatus(PGconn *conn, const char *name, const char *value)
 }
 
 
+/* Special MPP-only method for executing SQL statements.  Specifies a global 
+ * transaction context that the statement should be executed within.
+ *
+ * This should *ONLY* ever be used by the MPP Query Dispatcher and NEVER (EVER)
+ * by anyone else.
+ *
+ * snapshot - serialized form of SnapshotInfo node.
+ * xid      - Global Transaction Id to use.
+ */
+int
+PQsendMppQuery(PGconn *conn, const char *query, const char *snapshotInfo)
+{
+        if (!PQsendQueryStart(conn))
+            return 0;
+
+        if (!query)
+        {
+            printfPQExpBuffer(&conn->errorMessage,
+                              libpq_gettext("command string is a null pointer\n"));
+            return 0;
+        }
+        
+        if (!snapshotInfo)
+        {
+        	printfPQExpBuffer(&conn->errorMessage,
+        					  "snapshotInfo string is a null pointer\n");
+        	return 0;				  
+        }
+        
+
+        /* construct the outgoing MppQuery message */
+        if (pqPutMsgStart('M', false, conn) < 0 ||     
+                pqPuts(snapshotInfo, conn ) < 0 ||
+                pqPuts(query, conn) < 0 ||
+                pqPutMsgEnd(conn) < 0)
+        {
+                pqHandleSendFailure(conn);
+                return 0;
+        }
+
+        /* remember we are using simple query protocol */
+        conn->queryclass = PGQUERY_SIMPLE;
+
+        /*
+         * Give the data a push.  In nonblock mode, don't complain if we're unable
+         * to send it all; PQgetResult() will do any additional flushing needed.
+         */
+        if (pqFlush(conn) < 0)
+        {
+                pqHandleSendFailure(conn);
+                return 0;
+        }
+
+        /* OK, it's launched! */
+        conn->asyncStatus = PGASYNC_BUSY;
+        return 1;
+}
+
+
 /*
  * PQsendQuery
  *	 Submit a query, but don't wait for it to finish
