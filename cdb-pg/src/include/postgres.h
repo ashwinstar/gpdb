@@ -525,8 +525,10 @@ extern DLLIMPORT bool assert_enabled;
 		Trap(!(condition), "BadState")
 #endif   /* USE_ASSERT_CHECKING */
 
-extern int ExceptionalCondition(char *conditionName, char *errorType,
-					 char *fileName, int lineNumber);
+extern int ExceptionalCondition(const char *conditionName,
+                                const char *errorType,
+                                const char *fileName,
+                                int lineNumber);
 extern int SyncAgentMain(int, char **, const char *);
 
 /* ----------------------------------------------------------------

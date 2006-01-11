@@ -9,7 +9,7 @@
  * string is determined by the MAKE_SQLSTATE() macro, which is not defined
  * in this file; it can be defined by the caller for special purposes.
  *
- * Portions Copyright (c) 2005, Greenplum Inc.
+ * Portions Copyright (c) 2005-2006, Greenplum Inc.
  * Copyright (c) 2003-2005, PostgreSQL Global Development Group
  *
  * $PostgreSQL: pgsql/src/include/utils/errcodes.h,v 1.18 2005/06/26 19:16:06 tgl Exp $
@@ -352,11 +352,11 @@
 #define ERRCODE_INTERNAL_ERROR				MAKE_SQLSTATE('X','X', '0','0','0')
 #define ERRCODE_DATA_CORRUPTED				MAKE_SQLSTATE('X','X', '0','0','1')
 #define ERRCODE_INDEX_CORRUPTED				MAKE_SQLSTATE('X','X', '0','0','2')
-#define ERRCODE_MPP_INTERNAL_ERROR			MAKE_SQLSTATE('X','X', 'M','0','0')
 
 /* deprecated... */
 #define ERRCODE_CDB_FEATURE_NOT_SUPPORTED	ERRCODE_MPP_FEATURE_NOT_SUPPORTED
 #define ERRCODE_CDB_FEATURE_NOT_YET			ERRCODE_MPP_FEATURE_NOT_YET
 #define ERRCODE_CDB_COMMAND_ERROR			ERRCODE_MPP_COMMAND_ERROR
-#define ERRCODE_CDB_INTERNAL_ERROR			ERRCODE_MPP_INTERNAL_ERROR
+#define ERRCODE_CDB_INTERNAL_ERROR			ERRCODE_INTERNAL_ERROR
+#define ERRCODE_MPP_INTERNAL_ERROR			ERRCODE_INTERNAL_ERROR
 

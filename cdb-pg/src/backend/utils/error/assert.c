@@ -29,10 +29,10 @@
  * ExceptionalCondition - Handles the failure of an Assert()
  */
 int
-ExceptionalCondition(char *conditionName,
-					 char *errorType,
-					 char *fileName,
-					 int lineNumber)
+ExceptionalCondition(const char *conditionName,
+					 const char *errorType,
+					 const char *fileName,
+					 int         lineNumber)
 {
 	if (!PointerIsValid(conditionName)
 		|| !PointerIsValid(fileName)

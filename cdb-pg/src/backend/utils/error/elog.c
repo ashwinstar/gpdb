@@ -116,6 +116,7 @@ static int	recursion_depth = 0;	/* to detect actual recursion */
 	} while (0)
 
 
+static void cdb_tidy_message(ErrorData *edata);
 static void log_line_prefix(StringInfo buf);
 static void send_message_to_server_log(ErrorData *edata);
 static void send_message_to_frontend(ErrorData *edata);
@@ -129,6 +130,24 @@ static void append_with_tabs(StringInfo buf, const char *str);
 #include <execinfo.h>
 #endif
 #endif
+
+
+/*
+ * elog_internalerror -- report an internal error
+ *
+ * Does not return; exits via longjmp to PG_CATCH error handler.
+ */
+void
+elog_internalerror(const char *filename, int lineno, const char *funcname)
+{
+    if (errstart(ERROR, filename, lineno, funcname))
+        errfinish(errcode(ERRCODE_INTERNAL_ERROR),
+                  errmsg("Unexpected internal error"));
+    /* not reached */
+    ExceptionalCondition("elog_internalerror", "NotReached", filename, lineno);
+    abort();
+}                               /* elog_internalerror */
+
 
 /*
  * errstart --- begin an error-reporting cycle
@@ -976,7 +995,12 @@ EmitErrorReport(void)
 	CHECK_STACK_DEPTH();
 	oldcontext = MemoryContextSwitchTo(ErrorContext);
 
-	/* Send to server log, if enabled */
+    /* CDB: Tidy up the message */
+    if (edata->output_to_server ||
+        edata->output_to_client)
+        cdb_tidy_message(edata);
+
+    /* Send to server log, if enabled */
 	if (edata->output_to_server)
 		send_message_to_server_log(edata);
 
@@ -1363,6 +1387,110 @@ write_eventlog(int level, const char *line)
 				NULL);
 }
 #endif   /* WIN32 */
+
+
+/*
+ * CDB: Tidy up the error message
+ */
+
+static void
+cdb_strip_trailing_whitespace(char **buf)
+{
+    if (*buf)
+    {
+        char   *bp = *buf;
+        char   *ep = bp + strlen(bp);
+
+        while (bp < ep &&
+               ep[-1] <= ' ' &&
+               ep[-1] > '\0')
+            *--ep = '\0';
+
+        if (bp == ep)
+        {
+            pfree(*buf);
+            *buf = NULL;
+        }
+    }
+}                               /* cdb_strip_trailing_whitespace */
+
+void
+cdb_tidy_message(ErrorData *edata)
+{
+    char   *bp;
+    char   *cp;
+    char   *ep;
+    char   *tp;
+    int     m, n;
+
+    cdb_strip_trailing_whitespace(&edata->hint);
+    cdb_strip_trailing_whitespace(&edata->detail);
+    cdb_strip_trailing_whitespace(&edata->message);
+
+    /* Look at main error message */
+    bp = edata->message ? edata->message : "";
+    ep = bp + strlen(bp);
+
+    /*
+     * If more than one line, move lines after the first to errdetail.
+     * Make an exception for LOG messages because statement logging would
+     * be uglified.  Skip DEBUG messages too, 'cause users don't see 'em.
+     */
+    if (edata->elevel > LOG &&
+        0 != (cp = strchr(bp, '\n')))
+    {
+        /* Insert in front of detail message. */
+        if (!edata->detail)
+            edata->detail = pstrdup(cp);
+        else
+        {
+            m = ep - cp;
+            n = strlen(edata->detail) + 1;
+            tp = palloc(m + 1 + n);
+            memcpy(tp, cp, m);
+            tp[m] = '\n';
+            memcpy(tp + m + 1, edata->detail, n);
+
+            pfree(edata->detail);
+            edata->detail = tp;
+        }
+
+        /* Drop from main message. */
+        ep = cp;
+        *ep = '\0';
+        cdb_strip_trailing_whitespace(&edata->message);
+    }
+
+    /* If internal error, append the filename and line number. */
+    if (edata->sqlerrcode == ERRCODE_INTERNAL_ERROR &&
+        edata->filename)
+    {
+        char        buf[60];
+        const char *bfn;
+
+        /* With some compilers __FILE__ is absolute path.  Strip directory. */
+        bfn = edata->filename + strlen(edata->filename);
+        while (edata->filename < bfn &&
+               bfn[-1] != '/' &&
+               bfn[-1] != '\\')
+            bfn--;
+
+        /* Format the error location. */
+        n = snprintf(buf, sizeof(buf)-1, " (%s:%d)", bfn, edata->lineno);
+
+        /* Append to main error message. */
+        m = ep - bp;
+        tp = palloc(m + n + 1);
+        memcpy(tp, bp, m);
+        memcpy(tp+m, buf, n);
+        tp[m+n] = '\0';
+
+        if (edata->message)
+            pfree(edata->message);
+        edata->message = tp;
+    }
+}                               /* cdb_tidy_message */
+
 
 /*
  * Format tag info for log lines; append to the provided buffer.

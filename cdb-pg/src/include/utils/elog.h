@@ -4,6 +4,7 @@
  *	  POSTGRES error reporting/logging definitions.
  *
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -78,6 +79,36 @@
 #define PG_FUNCNAME_MACRO	NULL
 #endif
 #endif
+
+
+/*
+ * Insist(assertion)
+ *
+ * Returns true if assertion is true; else issues a generic internal
+ * error message and exits to the closest enclosing PG_TRY block via
+ * plain old ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR), ...)).
+ *
+ ** Use instead of Assert() for internal errors that should always be checked
+ *  even in release builds; and to suppress warnings (such as uninitialized
+ *  variables) along paths that should never be executed (eg. switch defaults).
+ ** Use instead of ExceptionalCondition() for internal errors that are not
+ *  so severe as to necessitate aborting the process, where ordinary error
+ *  handling should suffice.
+ ** Use when elog()/ereport() is just not worth it because no user would
+ *  ever see the nice customized message that you would otherwise code up
+ *  for that weird case that should never happen.
+ ** Can be used in macros and conditional expressions.
+ */
+#define Insist(assertion)   \
+    ( (assertion)           \
+        ? true              \
+	    : (elog_internalerror(__FILE__, __LINE__, PG_FUNCNAME_MACRO), false) )
+
+#ifdef _MSC_VER
+__declspec(noreturn)
+#endif
+void elog_internalerror(const char *filename, int lineno, const char *funcname)
+                       __attribute__((__noreturn__));
 
 
 /*----------
