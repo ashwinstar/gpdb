@@ -733,7 +733,6 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		QualCost	tlist_cost;
 		Path	   *cheapest_path;
 		Path	   *sorted_path;
-		Path	   *best_path;
 		long		numGroups = 0;
 		AggClauseCounts agg_counts;
 		int			numGroupCols = list_length(parse->groupClause);
