@@ -446,7 +446,7 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 		q->querySource = QSRC_ORIGINAL;
 		q->canSetTag = true;	/* ? */
 
-		pszVacuum = serializeNode((Node *) q, NULL);
+		pszVacuum = serializeThis((Node *) q, NULL);
 
 		pfree(q);
 
