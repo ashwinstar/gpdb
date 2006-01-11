@@ -38,10 +38,10 @@ typedef struct SnapshotData
 {
 	TransactionId xmin;			/* XID < xmin are visible to me */
 	TransactionId xmax;			/* XID >= xmax are invisible to me */
+	CommandId	curcid;			/* in my xact, CID < curcid are visible */
 	uint32		xcnt;			/* # of xact ids in xip[] */
 	TransactionId *xip;			/* array of xact IDs in progress */
 	/* note: all ids in xip[] satisfy xmin <= xip[i] < xmax */
-	CommandId	curcid;			/* in my xact, CID < curcid are visible */
 } SnapshotData;
 
 typedef SnapshotData *Snapshot;
@@ -62,6 +62,25 @@ extern DLLIMPORT Snapshot ActiveSnapshot;
 extern TransactionId TransactionXmin;
 extern TransactionId RecentXmin;
 extern TransactionId RecentGlobalXmin;
+
+extern DLLIMPORT Snapshot QDSentSnapshot;
+extern TransactionId QDSentXID;
+
+/* MPP Shared Snapshot */
+typedef struct SharedSnapshotSlot
+{
+	int4			slotindex;  /* where in the array this one is. */
+	int4	 		slotid;
+	TransactionId	xid;
+	CommandId       cid;
+	TransactionId   QDxid;
+	CommandId   QDcid;
+	SnapshotData	snapshot;
+
+} SharedSnapshotSlot;
+
+extern SharedSnapshotSlot *SharedLocalSnapshotSlot;
+
 
 
 /*
@@ -114,6 +133,15 @@ typedef enum
 	HEAPTUPLE_INSERT_IN_PROGRESS,		/* inserting xact is still in progress */
 	HEAPTUPLE_DELETE_IN_PROGRESS	/* deleting xact is still in progress */
 } HTSV_Result;
+
+
+/* MPP Shared Snapshot */
+extern Size SharedSnapshotShmemSize(void);
+extern void CreateSharedSnapshotArray(void);
+extern SharedSnapshotSlot *SharedSnapshotAdd(int4 slotId);
+extern SharedSnapshotSlot *SharedSnapshotLookup(int4 slotId);
+extern void SharedSnapshotRemove(SharedSnapshotSlot *slot);
+
 
 extern bool HeapTupleSatisfiesItself(HeapTupleHeader tuple, Buffer buffer);
 extern bool HeapTupleSatisfiesNow(HeapTupleHeader tuple, Buffer buffer);

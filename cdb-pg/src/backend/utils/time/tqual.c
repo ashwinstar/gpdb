@@ -41,6 +41,8 @@
 
 #include "access/multixact.h"
 #include "access/subtrans.h"
+#include "access/twophase.h"  /*max_prepared_xacts*/
+#include "miscadmin.h"
 #include "storage/procarray.h"
 #include "utils/tqual.h"
 
@@ -51,6 +53,7 @@
 static SnapshotData SnapshotDirtyData;
 static SnapshotData SerializableSnapshotData;
 static SnapshotData LatestSnapshotData;
+static SnapshotData QDSentSnapshotData;
 
 /* Externally visible pointers to valid snapshots: */
 Snapshot	SnapshotDirty = &SnapshotDirtyData;
@@ -68,6 +71,235 @@ Snapshot	ActiveSnapshot = NULL;
 TransactionId TransactionXmin = InvalidTransactionId;
 TransactionId RecentXmin = InvalidTransactionId;
 TransactionId RecentGlobalXmin = InvalidTransactionId;
+
+/* MPP Addition. Global Snapshot that gets sent in from the QD to processes
+ * running in EXECUTE mode.
+ */
+Snapshot  QDSentSnapshot = &QDSentSnapshotData;
+TransactionId QDSentXID;
+
+/* MPP Shared Snapshot. */
+typedef struct SharedSnapshotStruct
+{
+	int 		numSlots;		/* number of valid Snapshot entries */
+	int			maxSlots;		/* allocated size of sharedSnapshotArray */
+	int 		nextSlot;		/* points to the next avail slot. */
+	
+	/*
+	 * We declare slots[] as 1 entry because C wants a fixed-size array, but
+	 * actually it is maxSlots entries long.
+	 */
+	SharedSnapshotSlot	   *slots[1];		/* VARIABLE LENGTH ARRAY */
+} SharedSnapshotStruct;
+
+
+static SharedSnapshotStruct *sharedSnapshotArray;
+
+SharedSnapshotSlot *SharedLocalSnapshotSlot;
+static Size slotSize;
+
+
+/*
+ * Report shared-memory space needed by CreateSharedSnapshot.
+ */
+Size
+SharedSnapshotShmemSize(void)
+{
+	Size		size;
+
+	int numSlots = MaxBackends;	
+	
+	/* size of an individual slot is... A Snapshot + XID + CommandId + int4 */
+	
+	/* 2*int4 + XID + commandId + XID + CommandId */
+	slotSize = 2*sizeof(int4) + 2*sizeof(TransactionId) + 2*sizeof(CommandId);
+	
+	/* Snapshot size: XID + XID + CommandId + uint32 + XID Array */
+	slotSize += 2*sizeof(TransactionId) + sizeof(CommandId) + sizeof(uint32);	
+	slotSize += sizeof(TransactionId) * (MaxBackends + max_prepared_xacts);
+	
+	
+	/* total size is int + int + int + slotSize*numSlots */
+	size = offsetof(SharedSnapshotStruct, slots);
+	size = add_size( size, mul_size(slotSize, numSlots) );
+	
+	return size;
+}
+
+/*
+ * Initialize the sharedSnapshot array.  This array is used to communicate 
+ * shanpshots between qExecs that are segmates. 
+ */
+void
+CreateSharedSnapshotArray(void)
+{
+	bool		found;
+
+	/* Create or attach to the SharedSnapshot shared structure */
+	sharedSnapshotArray = (SharedSnapshotStruct *)
+		ShmemInitStruct("Shared Snapshot", SharedSnapshotShmemSize(), &found);
+
+
+	if (!found)
+	{
+		/*
+		 * We're the first - initialize.
+		 */
+		sharedSnapshotArray->numSlots = 0;
+		
+		/* TODO:  MaxBackends is only somewhat right.  What we really want here
+		 *        is the MaxBackends value from the QD.  But this is at least
+		 *		  safe since we know we dont need *MORE* than MaxBackends.  But
+		 *        in general MaxBackends on a QE is going to be bigger than on a
+		 *		  QE by a good bit.  or at least it should be.
+		 */
+		sharedSnapshotArray->maxSlots = MaxBackends;
+		
+		sharedSnapshotArray->nextSlot = 0;
+		
+		{
+			int i;
+			
+			for (i=0; i < sharedSnapshotArray->maxSlots; i++)
+			{
+				SharedSnapshotSlot *tmpSlot = (SharedSnapshotSlot*)sharedSnapshotArray->slots + i /*(i*slotSize)*/;
+				tmpSlot->slotid = -1;
+			}		
+		}
+	}
+	
+}
+
+
+/* Acquires an available slot in the sharedSnapshotArray.  The slot is then
+ * marked with the supplied slotId.  This slotId is what others will use to
+ * find this slot.  This should only ever be called by the "writer" qExec.
+ * 
+ * The slotId should be something that is unique amongst all the possible 
+ * "writer" qExecs active on a segment database at a given moment.  It also 
+ * will need to be communicated to the "reader" qExecs so that they can find
+ * this slot.
+ */
+SharedSnapshotSlot *SharedSnapshotAdd(int4 slotId)
+{
+	SharedSnapshotSlot *slot = NULL;
+	SharedSnapshotStruct *arrayP = sharedSnapshotArray;
+	int nextSlot, i;
+	
+	LWLockAcquire(SharedSnapshotLock, LW_EXCLUSIVE);
+	
+		
+	if (arrayP->numSlots >= arrayP->maxSlots || arrayP->nextSlot == -1)
+	{
+		/* 
+		 * Ooops, no room.  this shouldn't happen as something else should have
+		 * complained if we go over MaxBackends.
+		 */
+		 LWLockRelease(SharedSnapshotLock);
+		 ereport(FATAL,
+		 		 (errcode(ERRCODE_TOO_MANY_CONNECTIONS),
+		 		  errmsg("sorry, too many clients already."),
+		 		  errdetail("There are no more available slots in the sharedSnapshotArray."),
+		 		  errhint("Another piece of code should have detected that we have too many clients."
+		 		          " this probably means that someone isn't releasing their slot properly.")));
+	}
+	
+	/* start at the right place. */
+	slot = (SharedSnapshotSlot*)arrayP->slots + arrayP->nextSlot /** slotSize)*/;
+	slot->slotindex = arrayP->nextSlot;
+	
+		
+	/* find the next available slot */
+	for (i=arrayP->nextSlot+1; i < arrayP->maxSlots; i++)
+	{
+		SharedSnapshotSlot *tmpSlot = (SharedSnapshotSlot*)arrayP->slots + i /*(i*slotSize)*/;
+		if (tmpSlot->slotid == -1)
+		{
+			nextSlot = i;
+			break;
+		}
+	}
+	
+	/* mark that there isn't a nextSlot if the above loop didn't find one */
+	if( nextSlot == arrayP->nextSlot )
+		arrayP->nextSlot = -1;
+	else
+		arrayP->nextSlot = nextSlot;
+	
+	arrayP->numSlots++;
+	
+	/* initialize some things. */
+
+	slot->slotid = slotId;
+	slot->xid = 0;
+	slot->cid = 0;
+	slot->QDxid = 0;
+	slot->QDcid = 0;
+	
+	
+	LWLockRelease(SharedSnapshotLock);
+	
+	return slot;
+}
+
+
+/* Used by "reader" qExecs to find the slot in the sharedsnapshotArray with the
+ * specified slotId.  In general, we shoudl always be able to find the specified
+ * slot unless something unexpected.  If the slot is not found, then NULL is 
+ * returned.
+ */
+SharedSnapshotSlot *SharedSnapshotLookup(int4 slotId)
+{
+	SharedSnapshotSlot *slot = NULL;
+	SharedSnapshotStruct *arrayP = sharedSnapshotArray;
+	int index;
+
+	
+	LWLockAcquire(SharedSnapshotLock, LW_EXCLUSIVE);
+	
+	
+	for (index=0; index < arrayP->numSlots; index++)
+	{
+		SharedSnapshotSlot *testSlot;
+		
+		testSlot = (SharedSnapshotSlot*)arrayP->slots + index; /*(index * slotSize);*/
+					
+		if (testSlot->slotid == slotId)
+		{
+			slot = testSlot;
+			break;
+		}
+	}
+	
+	
+	LWLockRelease(SharedSnapshotLock);
+	
+	return slot;
+}
+
+
+/* Used by the "writer" qExec to "release" the slot it had been using.
+ *
+ */
+void SharedSnapshotRemove(SharedSnapshotSlot *slot)
+{
+	
+	LWLockAcquire(SharedSnapshotLock, LW_EXCLUSIVE);
+	
+		
+	/* determine if we need to modify the next available slot to use.  we
+	 * only do this is our slotindex is lower then the existing one.
+	 */
+	if( sharedSnapshotArray->nextSlot == -1 || slot->slotindex < sharedSnapshotArray->nextSlot )
+		sharedSnapshotArray->nextSlot = slot->slotindex;  
+	
+	/* reset the slotid which marks it as being unused. */
+	slot->slotid = -1;
+	
+	sharedSnapshotArray->numSlots--;
+	
+	LWLockRelease(SharedSnapshotLock);
+}
 
 
 /*

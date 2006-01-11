@@ -18,6 +18,7 @@
 #include "libpq-fe.h"
 #include "miscadmin.h"			/* MyDatabaseId */
 #include "commands/dbcommands.h"	/* get_database_name() */
+#include "storage/proc.h"  			/*MyProc*/
 #include "utils/memutils.h"
 
 #include "cdb/cdbconn.h"		/* SegmentDatabaseDescriptor */
@@ -66,6 +67,9 @@ typedef struct DoConnectParms
 	 */
 	SegmentDatabaseDescriptor **segdbDescPtrArray;
 
+	/*type of gang.*/
+	GangType type;
+	
 	/*
 	 * The pthread_t thread handle.
 	 */
@@ -205,7 +209,10 @@ createGang(GangType type, int size, int content)
 	for (i = 0; i < threadCount; i++)
 	{
 		DoConnectParms *pParms = &doConnectParmsAr[i];
-
+		
+		/* set the gangType. */
+		pParms->type = type;
+		
 		elog(DEBUG2, "createGang Creating thread %d of %d for libpq connections",
 			 i + 1, threadCount);
 
@@ -713,7 +720,10 @@ thread_DoConnect(void *arg)
 		 * Build the connection string
 		 */
 		appendPQExpBuffer(&buffer,
-						  "options='-c mpp_session_role=EXECUTE -c mpp_segment=%d -c mpp_max_packet_size=%d" ,
+						  "options='-c mpp_session_role=EXECUTE %s -c mpp_session_id=%d "
+						  "-c mpp_segment=%d -c mpp_max_packet_size=%d" ,
+						  (pParms->type!=GANGTYPE_READER)?"-c mpp_is_writer=true":"",
+						  MyProc->pid,
 						  q->segindex, Mpp_max_packet_size);
 						
 		if (!q->isprimary)

@@ -224,7 +224,7 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 			Assert(IsA(slice, Slice));
 			estate->es_cur_root_idx = ((Slice *) slice)->rootIndex;
 
-			/* JGE set our global sliceid variable for elog. */
+			/* set our global sliceid variable for elog. */
 			currentSliceId = estate->es_cur_slice_idx;
 		}
 	}
@@ -1250,10 +1250,20 @@ initResultRelInfo(ResultRelInfo *resultRelInfo,
 {
 	Oid			resultRelationOid;
 	Relation	resultRelationDesc;
-
+	LOCKMODE    lockMode;
+	
 	resultRelationOid = getrelid(resultRelationIndex, rangeTable);
-	resultRelationDesc = heap_open(resultRelationOid, shouldDispatch ? ExclusiveLock : RowExclusiveLock);
-
+	
+	if( Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_writer )
+		lockMode = NoLock;  /*no need to lock at all if we are a reader qExec.*/
+		else if( shouldDispatch )
+		lockMode = ExclusiveLock;
+	else
+		lockMode = RowExclusiveLock;
+	
+	
+	resultRelationDesc = heap_open(resultRelationOid, lockMode);
+	
 	switch (resultRelationDesc->rd_rel->relkind)
 	{
 		case RELKIND_SEQUENCE:

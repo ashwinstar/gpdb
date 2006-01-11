@@ -23,7 +23,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/storage/ipc/procarray.c,v 1.7 2005/10/15 02:49:25 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/storage/ipc/procarray.c,v 1.7.2.1 2005/11/22 18:23:18 momjian Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -36,6 +36,9 @@
 #include "storage/procarray.h"
 #include "utils/tqual.h"
 
+#include "access/xact.h" /*setting the shared xid*/
+
+#include "cdb/cdbvars.h"
 
 /* Our shared memory area */
 typedef struct ProcArrayStruct
@@ -293,10 +296,10 @@ TransactionIdIsInProgress(TransactionId xid)
 	/*
 	 * Step 3: have to check pg_subtrans.
 	 *
-	 * At this point, we know it's either a subtransaction of one of the Xids in
-	 * xids[], or it's not running.  If it's an already-failed subtransaction,
-	 * we want to say "not running" even though its parent may still be
-	 * running.  So first, check pg_clog to see if it's been aborted.
+	 * At this point, we know it's either a subtransaction of one of the Xids
+	 * in xids[], or it's not running.  If it's an already-failed
+	 * subtransaction, we want to say "not running" even though its parent may
+	 * still be running.  So first, check pg_clog to see if it's been aborted.
 	 */
 	xc_slow_answer_inc();
 
@@ -486,6 +489,76 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 
 	Assert(snapshot != NULL);
 
+	/* MPP Addition.  if we are in EXECUTE mode and not the writer... then
+	 * we want to just get the shared snapshot and make it our own.
+	 *
+	 * code for the writer is at the bottom of this function.
+	 *
+	 * NOTE: we could be dispatched and get here before the WRITER can set the
+	 *       shared snapshot.  if this happens we'll have to wait around, 
+	 *		 hopefully its never for a very long time.
+	 *
+	 */
+	
+	if (Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_writer)
+	{
+		bool done = false;
+		int count = 0;		
+		
+		while(!done)
+		{
+			
+			if( SharedLocalSnapshotSlot == NULL )
+				elog( ERROR, "SharedLocalSnapshotSlot is NULL");
+			
+				
+			if ( QDSentXID == SharedLocalSnapshotSlot->QDxid && 
+				 QDSentSnapshot->curcid == SharedLocalSnapshotSlot->QDcid)
+			{
+				/* YAY we found it.  set the contents of the SharedLocalSnapshot
+				 * to this and move on.
+				 */
+				snapshot->xmin = SharedLocalSnapshotSlot->snapshot.xmin;
+				snapshot->xmax = SharedLocalSnapshotSlot->snapshot.xmax;
+				snapshot->xcnt = SharedLocalSnapshotSlot->snapshot.xcnt;
+				
+			
+				/* IMPORTANT:  We don't need to worry about making our copy of the xip array
+				 *			   Since we don't dispatch the next stmt to the WRITER 
+				 *			   until everybody finishes then this won't change out from under
+				 *			   us
+				 */
+				snapshot->xip = &SharedLocalSnapshotSlot->snapshot.xip;
+ 			    snapshot->curcid = SharedLocalSnapshotSlot->snapshot.curcid;
+				 				 
+				SetSharedTransactionId();
+				 
+				elog( DEBUG5, "Reader qExec setting shared local snapshot to: xmin: %d xmax: %d curcid: %d",
+				 	snapshot->xmin, snapshot->xmax, snapshot->curcid );				
+	
+				 return snapshot;
+			}
+			else
+			{
+				/* didn't find it.  we'll sleep for a small amount of time and then
+				 * try again. 
+				 *
+				 * TODO: is there a semaphore or something better we can do ehre.
+				 */
+				 pg_usleep( /*microseconds*/ 2000);
+				 count++;
+				 
+				 if( count == 1000 )
+				 	elog( ERROR, "READER qEXEC timed out waiting for WRITER to set the shared snapshot");
+				 
+			}	
+		
+		}
+
+
+	}		
+		
+	 
 	/* Serializable snapshot must be computed before any other... */
 	Assert(serializable ?
 		   !TransactionIdIsValid(MyProc->xmin) :
@@ -606,6 +679,30 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 
 	snapshot->curcid = GetCurrentCommandId();
 
+	/* MPP Addition.  If we are the chief then we'll save our local snapshot
+	 * into the shared snapshot.
+	 */
+	if (Mpp_role == MPP_ROLE_EXECUTE && Mpp_is_writer)
+	{
+		
+		SharedLocalSnapshotSlot->snapshot.xmin = snapshot->xmin;
+		SharedLocalSnapshotSlot->snapshot.xmax = snapshot->xmax;
+		SharedLocalSnapshotSlot->snapshot.xcnt = snapshot->xcnt;
+				
+		memcpy( &SharedLocalSnapshotSlot->snapshot.xip, snapshot->xip, snapshot->xcnt * sizeof(TransactionId));
+				 
+		SharedLocalSnapshotSlot->snapshot.curcid = snapshot->curcid;
+		
+		SetSharedTransactionId();
+		
+		SharedLocalSnapshotSlot->QDcid = QDSentSnapshot->curcid;
+		elog( DEBUG5, "WRITER QE setting shared local Snapshot Data xmin: %d"
+					  " xmax: %d curcid: %d\n", SharedLocalSnapshotSlot->snapshot.xmin, 
+					  SharedLocalSnapshotSlot->snapshot.xmax, 
+					  SharedLocalSnapshotSlot->snapshot.curcid);
+	
+	}
+	
 	return snapshot;
 }
 

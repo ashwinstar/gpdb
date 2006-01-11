@@ -1015,6 +1015,16 @@ static struct config_bool ConfigureNamesBool[] =
         &mpp_set_read_only,
         false, assign_mpp_set_read_only, NULL
     },
+    
+    {
+    	{"mpp_is_writer", PGC_BACKEND, UNGROUPED,
+    		gettext_noop("If qExec is the single writer process."),
+    		NULL,
+    		GUC_NOT_IN_SAMPLE
+    	},
+    	&Mpp_is_writer,
+    	false, NULL, NULL
+    },
 
 	/* End-of-list marker */
 	{
@@ -1618,6 +1628,16 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&interconnect_setup_timeout,
 		10, INT_MIN, INT_MAX, assign_interconnect_setup_timeout, show_interconnect_setup_timeout
+	},
+	
+	{
+		{"mpp_session_id", PGC_BACKEND, UNGROUPED,
+			gettext_noop("Global ID used to uniquely identify a particular session in an MPP array"),
+			NULL,
+			GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+		},
+		&mpp_session_id,
+		-1, INT_MIN, INT_MAX, NULL, NULL
 	},
 
 

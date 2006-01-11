@@ -44,6 +44,9 @@
 #include "storage/procarray.h"
 #include "storage/spin.h"
 
+#include "utils/tqual.h"  /*SharedLocalSnapshotSlot*/
+#include "cdb/cdbvars.h"  /*Mpp_is_writer*/
+
 
 /* GUC variables */
 int			DeadlockTimeout = 1000;
@@ -517,6 +520,12 @@ ProcKill(int code, Datum arg)
 	/* Remove our PGPROC from the PGPROC array in shared memory */
 	ProcArrayRemove(MyProc);
 
+	/* Remove the shared snapshot slot.  don't need to check for MPP_ROLE_EXECUTE
+	 * since Mpp_is_writer is only set in that role.
+	 */
+	if( Mpp_is_writer )
+		SharedSnapshotRemove(SharedLocalSnapshotSlot);
+		
 	SpinLockAcquire(ProcStructLock);
 
 	/* Return PGPROC structure (and semaphore) to freelist */

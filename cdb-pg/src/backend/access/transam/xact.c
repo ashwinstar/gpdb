@@ -48,6 +48,7 @@
 
 #include "cdb/cdbgang.h"
 #include "cdb/cdbtm.h"
+#include "cdb/cdbvars.h"  /*Mpp_is_writer*/
 
 /*
  *	User-tweakable parameters
@@ -678,6 +679,18 @@ RecordTransactionCommit(void)
 		bool		madeTCentries;
 		XLogRecPtr	recptr;
 
+
+		/* Safety check in case our assumption is ever broken. */
+		if (Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_writer)
+		{
+			ereport(ERROR,
+					(errmsg("Reader qExec had local changes to commit!"),
+					 errdetail("A Reader qExec tried to commit local changes.  "
+					 		   "Only the single Writer qExec can do so. "),
+					 errhint("This is most likely the result of a feature being turned "
+					 		 "on that violates the single WRITER principle")));						 		
+		}
+		
 		/* Tell bufmgr and smgr to prepare for commit */
 		BufmgrCommit();
 
@@ -1313,6 +1326,35 @@ AtSubCleanup_Memory(void)
  *						interface routines
  * ----------------------------------------------------------------
  */
+/* MPP routine for setting the transacion id.  this is needed for the shared
+ * shapshot for segmates.
+ *
+ * TODO: this sucks to have to allow this since its potentially very dangerous.
+ * maybe we can re-factor the shared snapshot stuff differently to fix this.
+ * but unfortunately the XID and snapshot info is kept in two entirely different
+ * places so it doesn't look good.
+ *
+ * DOH: this totally ignores subtransactions for now!
+ */
+void 
+SetSharedTransactionId(void)
+{	
+	Assert( SharedLocalSnapshotSlot != NULL );
+	
+	if( Mpp_is_writer )
+	{
+		elog( DEBUG5, "qExec WRITER setting shared xid to: %d", TopTransactionStateData.transactionId );
+		SharedLocalSnapshotSlot->xid = TopTransactionStateData.transactionId;
+	}		
+	else
+	{
+		TopTransactionStateData.transactionId = SharedLocalSnapshotSlot->xid;			
+		currentCommandId = SharedLocalSnapshotSlot->snapshot.curcid;
+		
+		elog( DEBUG5, "qExec READER setting local xid to: %d", TopTransactionStateData.transactionId );
+	}
+}
+
 
 /*
  *	StartTransaction
@@ -1365,12 +1407,103 @@ StartTransaction(void)
 	AtStart_Memory();
 	AtStart_ResourceOwner();
 
-	/*
-	 * generate a new transaction id
-	 */
-	s->transactionId = GetNewTransactionId(false);
+	
 
-	XactLockTableInsert(s->transactionId);
+
+	/* MPP Modification 
+	 * 
+	 * only the writer should get an xid the normal way. 
+	 *
+	 * Don't take out this lock if we are in MPP EXECUTE 
+	 * mode AND we aren't the "writer".  Actually this is only safe if we only
+	 * have one writer since writers need to hold a lock on their
+	 * own XID so that others can wait for them to be finished.
+	 *
+	 */
+	if (Mpp_role == MPP_ROLE_EXECUTE)
+	{
+		if (Mpp_is_writer)
+		{
+			/*
+			 * generate a new transaction id
+			 */
+			s->transactionId = GetNewTransactionId(false);
+			
+			/* NOTE: this is a bit hackish.
+			 * 		 It appears as though StartTransaction() gets called during
+			 * 		 connection setup before we even have time to setup our
+			 *		 shared snapshot slot. 
+			 */
+			if( SharedLocalSnapshotSlot != NULL )
+			{
+				SharedLocalSnapshotSlot->xid = s->transactionId;
+				SharedLocalSnapshotSlot->QDxid = QDSentXID;
+			}
+			
+			/*
+			 * TODO:  the "writer" will eventually need to take out a lock on the global
+	 		 *		  XID here too when we get around to having a global snapshot used.
+	 		 */
+	 		XactLockTableInsert(s->transactionId); 
+	 		
+	 		
+		}
+		else
+		{
+			/* we want to get our XID from the shared snapshot and not generate
+			 * one ourselves 
+			 */
+			
+			if( SharedLocalSnapshotSlot == NULL )
+			{	
+				s->transactionId = GetNewTransactionId(false);
+			}
+			else
+			{
+				bool done = false;
+				int count = 0;
+						
+				while(!done)
+				{
+					Assert( QDSentSnapshot != NULL );
+					Assert( SharedLocalSnapshotSlot != NULL );
+					
+					
+					/* If the QDxid in the SharedLocalSnapshotSlot is the same one
+					 * that the QD sent us... then we know we are both on the same
+					 * page.
+					 */
+					if ( QDSentXID == SharedLocalSnapshotSlot->QDxid)
+					{
+						s->transactionId = SharedLocalSnapshotSlot->xid;										 
+						done = true;
+					}
+					else
+					{
+						/* didn't find it.  we'll sleep for a small amount of time and then
+						 * try again. 
+						 *
+						 * TODO: is there a semaphore or something better we can do ehre.
+						 */
+						pg_usleep( /*microseconds*/ 1000);
+						count++;
+						if (count % 10 == 0)
+							 elog( DEBUG5, "Reader qExec got to StartTransaction() before WRITER waiting..." );
+						 
+					}	
+				}
+			}			
+		}
+	}
+	else
+	{
+		/*
+		 * generate a new transaction id
+		 */
+		s->transactionId = GetNewTransactionId(false);
+		
+		XactLockTableInsert(s->transactionId);
+	}
 
 	/*
 	 * set now()

@@ -49,6 +49,7 @@
 #include "utils/portal.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
+#include "utils/tqual.h"  		/* SharedSnapshot */
 #include "pgstat.h"
 
 
@@ -543,6 +544,51 @@ InitPostgres(const char *dbname, const char *username)
 		cdb_setup();
 		on_proc_exit( cdb_cleanup, 0 );
     }
+    
+    /* MPP SharedSnapshot Setup
+	 *
+	 * If we are in EXECUTE mode AND we are the WRITER then we'll create and register a 
+	 * SharedSnapshotSlot
+	 */
+	if (Mpp_role == MPP_ROLE_EXECUTE)
+	{
+		SharedSnapshotSlot *slot;
+		
+		if (Mpp_is_writer)
+		{
+			slot = SharedSnapshotAdd(mpp_session_id);
+
+			if (slot==NULL)
+			{
+				ereport(ERROR,
+					(errmsg("Writer qExec could not set the Shared Local Snapshot!"),
+					 errdetail("Tried to set the shared local snapshot slot with id: %d "
+					 		   "and failed.", mpp_session_id)));	
+			}
+		}
+		else
+		{
+			/* NOTE: This assumes that the Slot has already been allocated by
+			 *       the writer.  Need to make sure we always allocate the 
+			 *		 writer qExec first.
+			 */			 			
+			
+			slot = SharedSnapshotLookup(mpp_session_id);
+			
+			if (slot == NULL)
+			{
+				ereport(ERROR,
+					(errmsg("Reader qExec could not find Shared Local Snapshot!"),
+					 errdetail("Tried to find a shared snapshot slot with id: %d "
+					 		   "and found none.", mpp_session_id),
+					 errhint("Either this Reader qExec was created before the Writer"
+					 		 "qExec or the Writer qExec died.")));			 
+			}					
+		}
+		
+		SharedLocalSnapshotSlot = slot;
+	}
+	
 
 	/*
 	 * Set up process-exit callback to do pre-shutdown cleanup.  This

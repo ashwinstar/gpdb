@@ -64,6 +64,7 @@
 #include "mb/pg_wchar.h"
 #include "cdb/cdbvars.h"
 #include "cdb/cdblogsync.h"
+#include "cdb/cdbsrlz.h"
 
 #include "pgstat.h"
 
@@ -323,6 +324,27 @@ SocketBackend(StringInfo inBuf)
 				}
 			}
 			break;
+		
+		case 'M':				/* MPP dispatched statement from QD */
+		
+			doing_extended_query_message = false;
+			
+			/* don't support old protocols with this. */
+			if( PG_PROTOCOL_MAJOR(FrontendProtocol) < 3 )				
+					ereport(COMMERROR,
+							(errcode(ERRCODE_PROTOCOL_VIOLATION),
+							 errmsg("MPP dispatch unsupported for old FrontendProtocols.")));
+			
+			if (Mpp_role != MPP_ROLE_EXECUTE)
+			{
+				ereport(FATAL,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						 errmsg("invalid frontend message type: %d "
+						 	    "while not in \"execute\" mode", qtype)));
+			}
+		
+			break;
+		
 
 		case 'F':				/* fastpath function call */
 			/* we let fastpath.c cope with old-style input of this */
@@ -3237,6 +3259,42 @@ PostgresMain(int argc, char *argv[], const char *username)
 					send_rfq = true;
 				}
 				break;
+            case 'M':           /* MPP dispatched stmt from QD */
+				{
+					/* This is exactly like 'Q' above except we peel off and
+					 * set the snapshot information right away.
+					 */
+					const char *snapshot_string;
+					const char *query_string;
+					SnapshotInfo *snapInfo;
+
+
+					/* read in the snapshot info */
+					snapshot_string = pq_getmsgstring(&input_message);
+
+					/* parse the snapshot_string and store it. */
+					snapInfo = (SnapshotInfo *) deserializeNode((char*)snapshot_string);
+					
+					QDSentXID 			   = snapInfo->currentTransactionId;
+					
+					QDSentSnapshot->xmin   = snapInfo->xmin;
+					QDSentSnapshot->xmax   = snapInfo->xmax;
+					QDSentSnapshot->xcnt   = snapInfo->xcnt;	
+					QDSentSnapshot->xip    = snapInfo->xip;					
+					QDSentSnapshot->curcid = snapInfo->curcid;
+					
+					
+					/* get the query string and kick off processing. */
+					query_string = pq_getmsgstring(&input_message);
+					pq_getmsgend(&input_message);
+					
+					elog(DEBUG5, "Received QD snapshot: %s", snapshot_string);
+					
+					exec_simple_query(query_string);
+					send_rfq = true;
+				}
+				break;
+
 
 			case 'P':			/* parse */
 				{

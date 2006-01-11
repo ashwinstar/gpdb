@@ -133,6 +133,25 @@ extern const char *show_mpp_role(void);
  */
 extern bool Mpp_is_primary;
 
+/* Parameter Mpp_is_writer
+ *
+ * This run_time parameter indicates whether session is a qExec that is a
+ * "writer" process.  Only writers are allowed to write changes to the database
+ * and currently there is only one writer per group of segmates.
+ *
+ * It defaults to false, but may be specified as true using a connect option.
+ * This should only ever be set by a QD connecting to a QE, rather than 
+ * directly.
+ */
+extern bool Mpp_is_writer;
+
+/* Parameter mpp_session_id
+ *
+ * This run time parameter indicates a unique id to identify a particular user
+ * session throughout the entire MPP array.
+ */
+extern int mpp_session_id; ;
+
 /* Parameter debug_print_prelim_plan
  *
  * This run-time parameter is closely related to the PostgreSQL parameter

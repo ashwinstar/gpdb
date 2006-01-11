@@ -18,6 +18,11 @@
 #include "storage/ipc.h"		/* For proc_exit_inprogress  */
 #include "miscadmin.h"
 #include "utils/memutils.h"
+#include "nodes/execnodes.h" 		/*SnapshotInfo*/
+#include "utils/tqual.h" 			/*for the snapshot */
+#include "storage/proc.h"  			/* MyProc */
+#include "access/xact.h"  			/*for GetCurrentTransactionId */
+
 
 #include "utils/syscache.h"
 #include "utils/lsyscache.h"
@@ -51,6 +56,11 @@ typedef struct DispatchCommandParms
 	char	   *szCommand;
 
 	/*
+	 * serialized snapshot string
+	 */
+	char	   *szSnapshot;
+	
+	/*
 	 * db_count: The number of segdbs that this thread is responsible
 	 * for dispatching the command to.
 	 * Equals the count of segdbDescPtrArray below.
@@ -82,29 +92,39 @@ static bool
 			shouldStillDispatchCommand(CdbDispatchResult * dispatchResult);
 
 static
-void
-dispatchCommand(CdbDispatchResult * dispatchResult,
-				const char *szCommand);
+void dispatchCommand(CdbDispatchResult *dispatchResult,
+                     const char        *szCommand,
+                     const char		   *szSnapshot);
+							
+static void
+handleSelectError(DispatchCommandParms *pParms,
+                  int                   db_count,
+                  int                   sock_errno);							
 
-static void handleSelectError(DispatchCommandParms * pParms,
-				  int db_count,
-				  int sock_errno);
+static void
+handleSelectTimeout(DispatchCommandParms   *pParms,
+                    int                     db_count,
+                    int                    *timeoutCounter);
 
-static void handleSelectTimeout(DispatchCommandParms * pParms,
-					int db_count,
-					int *timeoutCounter);
-
-static bool						/* returns true if command complete */
-			processResults(CdbDispatchResult * dispatchResult);
+static bool                     /* returns true if command complete */
+processResults(CdbDispatchResult   *dispatchResult);
 
 
-static void addSegDBToDispatchThreadPool(DispatchCommandParms * ParmsAr,
-							 int segdbs_in_thread_pool,
-							 const char *szCommand,
-							 CdbDispatchResult * dispatchResult);
+static void
+addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
+                             int                    segdbs_in_thread_pool,
+							 const char            *szCommand,
+							 const char			   *szSnapshot,
+							 CdbDispatchResult     *dispatchResult);
 
-static int fillSliceVector(SliceTable * sliceTable, int sliceIndex, Slice ** sliceVector,
-				int len, int next);
+static int
+fillSliceVector(SliceTable * sliceTable, int sliceIndex, Slice **sliceVector,
+                int len, int next);
+
+
+/* used to take the current Transaction Snapshot and serialize a version of it
+ * into the static variable szSnapshotInfo */
+static char *serializeSnapshot(void);
 
 
 typedef struct
@@ -193,10 +213,11 @@ cdbdisp_startDtxTransaction(void)
  * PG_THROW, CHECK_FOR_INTERRUPTS, etc.
  */
 void
-cdbdisp_dispatchToGang(const char *szCommand,
-					   struct Gang * gp,
-					   struct CdbDispatchResults * dispatchResults,
-					   int sliceIndex)
+cdbdisp_dispatchToGang(const char                  *szCommand,
+					   const char				   *szSnapshotInfo,
+                       struct Gang                 *gp,
+                       struct CdbDispatchResults   *dispatchResults,
+                       int                          sliceIndex)
 {
 	SegmentDatabaseDescriptor *segdbDesc;
 	int			i;
@@ -278,8 +299,9 @@ cdbdisp_dispatchToGang(const char *szCommand,
 
 		addSegDBToDispatchThreadPool(dispatchCommandParmsAr + threadCount,
 									 x,
-									 szCommand,
-									 qeResult);
+                                     szCommand,
+                                     szSnapshotInfo,
+                                     qeResult);
 
 		/*
 		 * This CdbDispatchResult/SegmentDatabaseDescriptor pair will be
@@ -330,10 +352,11 @@ cdbdisp_dispatchToGang(const char *szCommand,
  * mpp_connections_per_thread.
  */
 void
-addSegDBToDispatchThreadPool(DispatchCommandParms * ParmsAr,
-							 int segdbs_in_thread_pool,
-							 const char *szCommand,
-							 CdbDispatchResult * dispatchResult)
+addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
+                             int                    segdbs_in_thread_pool,
+                             const char            *szCommand,
+                             const char			   *szSnapshot,
+                             CdbDispatchResult     *dispatchResult)
 {
 	DispatchCommandParms *pParms;
 	int			ParmsIndex;
@@ -351,6 +374,7 @@ addSegDBToDispatchThreadPool(DispatchCommandParms * ParmsAr,
 	if (segdbs_in_thread_pool % mpp_connections_per_thread == 0)
 	{
 		pParms->szCommand = pstrdup(szCommand);
+		pParms->szSnapshot = pstrdup(szSnapshot);
 		pParms->dispatchResultPtrArray =
 			(CdbDispatchResult **) palloc0(mpp_connections_per_thread *
 										   sizeof(CdbDispatchResult *));
@@ -490,6 +514,12 @@ CdbCheckDispatchResultInt(struct SegmentDatabaseDescriptor *** failedSegDB,
 				pfree(pParms->szCommand);
 				pParms->szCommand = NULL;
 			}
+			
+			if( pParms->szSnapshot)
+			{
+				pfree(pParms->szSnapshot);
+				pParms->szSnapshot = NULL;
+			}
 		}
 		pfree(dispatchCommandParmsAr);
 		dispatchCommandParmsAr = NULL;
@@ -618,20 +648,21 @@ cdbdisp_dispatchRMCommand(const char *szCommand,
  * suggested that the caller use cdbdisp_finishCommand().
  */
 void
-cdbdisp_dispatchCommand(const char *szCommand,
-						bool cancelOnError,
-						struct CdbDispatchResults ** pPrimaryResults,	/* OUT */
-						struct CdbDispatchResults ** pMirrorResults)	/* OUT */
+cdbdisp_dispatchCommand(const char                 *szCommand,
+                        bool                        cancelOnError,
+                        struct CdbDispatchResults **pPrimaryResults,    /* OUT */
+                        struct CdbDispatchResults **pMirrorResults)     /* OUT */
 {
-	Gang	   *primaryGang;
-	Gang	   *mirrorGang;
-	int			nsegdb = getMPPSegmentCount();
+	Gang   *primaryGang;
+    Gang   *mirrorGang;
+    int     nsegdb = getMPPSegmentCount();
+	char *szSnapshotInfo;
+	
+    elog(DEBUG3, "cdbdisp_dispatchCommand: %.50s", szCommand);
 
-	elog(DEBUG3, "cdbdisp_dispatchCommand: %.50s", szCommand);
-
-	*pPrimaryResults = NULL;
-	if (pMirrorResults)
-		*pMirrorResults = NULL;
+    *pPrimaryResults = NULL;
+    if (pMirrorResults)
+        *pMirrorResults = NULL;
 
 	/*
 	 * Allocate a primary and mirror QE for every available segDB in the system.
@@ -661,17 +692,24 @@ cdbdisp_dispatchCommand(const char *szCommand,
 		}
 	}
 
+	/* Serialize a version of our snapshot */
+	szSnapshotInfo = serializeSnapshot();
+	
+	
 	/*
-	 * Dispatch the command.
-	 */
-	*pPrimaryResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
-	cdbdisp_dispatchToGang(szCommand, primaryGang, *pPrimaryResults, -1);
+     * Dispatch the command.
+     */
+    *pPrimaryResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
+    cdbdisp_dispatchToGang(szCommand, szSnapshotInfo, primaryGang, *pPrimaryResults, -1);
 
 	if (mirrorGang)
-	{
-		*pMirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
-		cdbdisp_dispatchToGang(szCommand, mirrorGang, *pMirrorResults, -1);
-	}
+    {
+        *pMirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
+        cdbdisp_dispatchToGang(szCommand, szSnapshotInfo, mirrorGang, *pMirrorResults, -1);
+    }
+    
+    pfree(szSnapshotInfo);
+
 
 }	/* cdbdisp_dispatchCommand */
 
@@ -774,25 +812,25 @@ thread_DispatchCommand(void *arg)
 
 		dispatchResult = pParms->dispatchResultPtrArray[i];
 
-		dispatchResult->hasDispatched = false;
-		dispatchResult->requestedCancel = false;
-		dispatchResult->wasCanceled = false;
 
-		if (!shouldStillDispatchCommand(dispatchResult))
-		{
-			/* Don't dispatch if cancellation pending or no connection. */
-			dispatchResult->stillRunning = false;
-		}
-		else
-		{
-			/*
-			 * Kick off the command over the libpq connection. If
-			 * unsuccessful, proceed anyway, and check for lost connection
-			 * below.
-			 */
-			dispatchCommand(dispatchResult, pParms->szCommand);
-			dispatchResult->hasDispatched = true;
-		}
+        dispatchResult->hasDispatched = false;
+        dispatchResult->requestedCancel = false;
+        dispatchResult->wasCanceled = false;
+
+        if (!shouldStillDispatchCommand(dispatchResult))
+        {
+            /* Don't dispatch if cancellation pending or no connection. */
+            dispatchResult->stillRunning = false;
+        }
+        else
+        {
+            /* Kick off the command over the libpq connection.
+             * If unsuccessful, proceed anyway, and check for lost connection below.
+             */
+            dispatchCommand(dispatchResult, pParms->szCommand, pParms->szSnapshot);
+            dispatchResult->hasDispatched = true;
+        }
+
 	}
 
 	/*
@@ -1018,8 +1056,9 @@ shouldStillDispatchCommand(CdbDispatchResult * dispatchResult)
  *		 thread_DispatchCommand absolutely no elog'ing.
  */
 void
-dispatchCommand(CdbDispatchResult * dispatchResult,
-				const char *szCommand)
+dispatchCommand(CdbDispatchResult  *dispatchResult,
+                const char         *szCommand,
+                const char		   *szSnapshot)
 {
 	SegmentDatabaseDescriptor *segdbDesc = dispatchResult->segdbDesc;
 	PGconn	   *conn = segdbDesc->conn;
@@ -1033,7 +1072,7 @@ dispatchCommand(CdbDispatchResult * dispatchResult,
 	/*
 	 * Submit the command asynchronously.
 	 */
-	if (0 == PQsendQuery(conn, szCommand))
+	if (0 == PQsendMppQuery(conn, szCommand,szSnapshot))
 	{
 		/* Note the error. */
 		cdbdisp_appendMessage(dispatchResult, LOG,
@@ -1654,6 +1693,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	char	   *squery,
 			   *splan,
 			   *ssliceinfo;
+	char	   *szSnapshotInfo;		   
 	char	   *mppexecPrefix;
 	int			squery_len,
 				splan_len,
@@ -1835,6 +1875,11 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		}
 	}
 
+
+	/* Serialize a version of our snapshot */
+	szSnapshotInfo = serializeSnapshot();
+	
+	
 	/*
 	 * Now we need to call CDBDispatchCommand once per slice.  Each such
 	 * call dispatches a MPPEXEC command to each of the QEs assigned to
@@ -1896,28 +1941,34 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		 * Doesn't wait for it to finish.
 		 */
 		cdbdisp_dispatchToGang(strinfo.data,
-							   primaryGang,
-							   *pPrimaryResults,
-							   slice->sliceIndex);
+						       szSnapshotInfo,
+                               primaryGang,
+                               *pPrimaryResults,
+                               slice->sliceIndex);
+
 
 		/*
 		 * dispatch the plan to our mirrorGang if we have one.
 		 */
 		if (mirrorGang != NULL && queryDesc->operation != CMD_SELECT)
 		{
-			cdbdisp_dispatchToGang(strinfo.data,
-								   mirrorGang,
-								   *pMirrorResults,
-								   slice->sliceIndex);
+            cdbdisp_dispatchToGang(strinfo.data,
+            					   szSnapshotInfo,
+                                   mirrorGang,
+                                   *pMirrorResults,
+                                   slice->sliceIndex);
 		}
 
 		/* Empty the buffer for reuse. */
 		truncateStringInfo(&strinfo, 0);
 	}
 
-	pfree(strinfo.data);
-	pfree(mppexecPrefix);
-	pfree(sliceVector);
+
+    pfree(strinfo.data);
+    pfree(szSnapshotInfo);
+    pfree(mppexecPrefix);
+    pfree(sliceVector);
+
 
 	sliceTbl->localSlice = oldLocalSlice;
 
@@ -2077,7 +2128,70 @@ CdbDispatchUtilityStatement(struct Node *stmt)
 
 	cdbdisp_dispatchUtilityStatement(stmt, true, &primaryResults, &mirrorResults);
 
+
 	/* Wait for all QEs to finish.	Throw up if error. */
 	cdbdisp_finishCommand(primaryResults, mirrorResults);
 
+
 }	/* CdbDispatchUtilityStatement */
+
+
+
+static char*
+serializeSnapshot(void)
+{
+	char *szSnapshotInfo;
+	SnapshotInfo *snapInfo;
+	Snapshot snapshot;
+	
+	
+	/* If we already have a LatestSnapshot set then no reason to try
+	 * and get a new one.  just use that one.  But... there is one important
+	 * reason why this HAS to be here.  ROLLBACK stmts get dispatched to QEs
+	 * in the abort transaction code.  This code tears down enough stuff such
+	 * that you can't call GetTransactionSnapshot() within that code. So we
+	 * need to use the LatestSnapshot since we can't re-gen a new one.
+	 *
+	 * It is also very possible that for a single user statement which may
+	 * only generate a single snapshot that we will dispatch multiple statements
+	 * to our qExecs.  Something like:
+	 *
+	 *							QD				QEs
+	 *							|  				|
+	 * User SQL Statement ----->|	  BEGIN		|
+	 *  						|-------------->|
+	 *						    | 	  STMT		|
+	 *							|-------------->|
+	 *						 	|    PREPARE	|
+	 *							|-------------->|
+	 *							|    COMMIT		|
+	 *							|-------------->|
+	 *							|				|
+	 *
+	 * This may seem like a problem because all four of those will dispatch
+	 * the same snapshot with the same curcid.  But... this is OK because 
+	 * BEGIN, PREPARE, and COMMIT don't need Snapshots on the QEs.
+	 *
+	 * NOTE: This will be a problem if we ever need to dispatch more than one
+	 *  	 statement to the qExecs and more than one needs a snapshot!
+	 */
+	if (LatestSnapshot != NULL)
+		snapshot = LatestSnapshot;
+	else
+		snapshot = GetTransactionSnapshot();
+	
+	
+	snapInfo = makeNode(SnapshotInfo);	
+	snapInfo->currentTransactionId = GetCurrentTransactionId();
+	snapInfo->xmin = snapshot->xmin;
+	snapInfo->xmax = snapshot->xmax;
+	snapInfo->xcnt = snapshot->xcnt;
+	snapInfo->xip = snapshot->xip;
+	snapInfo->curcid = snapshot->curcid;
+
+	
+	szSnapshotInfo = serializeNode((Node *) snapInfo, NULL);
+	pfree(snapInfo);
+	
+	return szSnapshotInfo;
+}

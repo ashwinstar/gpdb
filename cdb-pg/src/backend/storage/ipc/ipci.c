@@ -88,6 +88,7 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 		size = add_size(size, MultiXactShmemSize());
 		size = add_size(size, LWLockShmemSize());
 		size = add_size(size, ProcArrayShmemSize());
+		size = add_size(size, SharedSnapshotShmemSize());
 		size = add_size(size, SInvalShmemSize());
 		size = add_size(size, FreeSpaceShmemSize());
 		size = add_size(size, BgWriterShmemSize());
@@ -170,6 +171,16 @@ CreateSharedMemoryAndSemaphores(bool makePrivate, int port)
 	 */
 	InitProcGlobal();
 	CreateSharedProcArray();
+	
+	/*
+	 * Set up Shared snapshot slots
+	 *
+	 * TODO: only need to do this if we aren't the QD. for now we are just 
+	 *		 doing it all the time and wasting shemem on the QD.  This is 
+	 *		 because this happens at postmaster startup time when we don't
+	 *		 know who we are.  
+	 */
+	CreateSharedSnapshotArray(); 
 
 	/*
 	 * Set up shared-inval messaging

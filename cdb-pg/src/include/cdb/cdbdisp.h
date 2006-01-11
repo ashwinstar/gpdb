@@ -41,6 +41,9 @@ cdbdisp_startDtxTransaction(void);
  * The number of segdbs handled by any one thread is determined by the
  * guc variable mpp_connections_per_thread.
  *
+ * The caller must also provide a serialized SnapshotInfo string to be used to
+ * set the global snapshot for the dispatched statement.  
+ *
  * The caller must provide a CdbDispatchResults object having available
  * resultArray slots sufficient for the number of QEs to be dispatched:
  * i.e., resultCapacity - resultCount >= gp->size.  This function will
@@ -62,6 +65,7 @@ cdbdisp_startDtxTransaction(void);
  */
 void
 cdbdisp_dispatchToGang(const char                  *szCommand,
+					   const char				   *szSnapshotInfo,
                        struct Gang                 *gp,
                        struct CdbDispatchResults   *dispatchResults,
                        int                          sliceIndex);

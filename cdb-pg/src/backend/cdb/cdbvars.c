@@ -46,6 +46,10 @@ char	   *mpp_session_role_string;	/* Staging area for guc.c */
 
 bool		Mpp_is_primary;		/* Is this session primary (or mirror) */
 
+bool		Mpp_is_writer; 		/* is this qExec a "writer" process. */
+
+int 		mpp_session_id;    /* global unique id for session. */
+
 bool		Debug_print_prelim_plan;	/* Shall we log argument of
 										 * cdbparallelize? */
 
