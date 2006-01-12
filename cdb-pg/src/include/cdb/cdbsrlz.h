@@ -59,7 +59,6 @@ extern void destroySerializeContext(SerializeContext * context);
 #endif
 
 extern char *serializeNode(Node *node, int *size);
-extern char *serializeThis(Node *node, int *size);
 extern Node *deserializeNode(char *strNode);
 
 #endif   /* CDBSRLZ_H */
