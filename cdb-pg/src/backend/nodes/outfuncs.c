@@ -47,68 +47,64 @@
 
 /* Write an integer field (anything written as ":fldname %d") */
 #define WRITE_INT_FIELD(fldname) \
-	appendStringInfo(str, " :" CppAsString(fldname) " %d", node->fldname)
+	appendStringInfo(str, " : %d", node->fldname)
 
 /* Write an unsigned integer field (anything written as ":fldname %u") */
 #define WRITE_UINT_FIELD(fldname) \
-	appendStringInfo(str, " :" CppAsString(fldname) " %u", node->fldname)
+	appendStringInfo(str, " : %u", node->fldname)
 
 /* Write an OID field (don't hard-wire assumption that OID is same as uint) */
 #define WRITE_OID_FIELD(fldname) \
-	appendStringInfo(str, " :" CppAsString(fldname) " %u", node->fldname)
+	appendStringInfo(str, " : %u", node->fldname)
 
 /* Write a long-integer field */
 #define WRITE_LONG_FIELD(fldname) \
-	appendStringInfo(str, " :" CppAsString(fldname) " %ld", node->fldname)
+	appendStringInfo(str, " : %ld", node->fldname)
 
 /* Write a char field (ie, one ascii character) */
 #define WRITE_CHAR_FIELD(fldname) \
-	appendStringInfo(str, " :" CppAsString(fldname) " %c", node->fldname)
+	appendStringInfo(str, " : %c", node->fldname)
 
 /* Write an enumerated-type field as an integer code */
 #define WRITE_ENUM_FIELD(fldname, enumtype) \
-	appendStringInfo(str, " :" CppAsString(fldname) " %d", \
-					 (int) node->fldname)
+	appendStringInfo(str, " : %d", (int) node->fldname)
 
 /* Write a float field --- caller must give format to define precision */
 #define WRITE_FLOAT_FIELD(fldname,format) \
-	appendStringInfo(str, " :" CppAsString(fldname) " " format, node->fldname)
+	appendStringInfo(str, " : " format, node->fldname)
 
 /* Write a boolean field */
 #define WRITE_BOOL_FIELD(fldname) \
 	(node->fldname ? \
-	 appendStringInfoLiteral(str, " :" CppAsString(fldname) " true") : \
-	 appendStringInfoLiteral(str, " :" CppAsString(fldname) " false"))
+	 appendStringInfoLiteral(str, " : true") : \
+	 appendStringInfoLiteral(str, " : false"))
 
 /* Write a character-string (possibly NULL) field */
 #define WRITE_STRING_FIELD(fldname) \
-	(appendStringInfo(str, " :" CppAsString(fldname) " "), \
-	 _outToken(str, node->fldname))
+	(appendStringInfo(str, " : "), _outToken(str, node->fldname))
 
 /* Write a Node field */
 #define WRITE_NODE_FIELD(fldname) \
-	(appendStringInfoLiteral(str, " :" CppAsString(fldname) " "), \
-	 _outNode(str, node->fldname))
+	(appendStringInfoLiteral(str, " : "), _outNode(str, node->fldname))
 
 /* Write a List field: this is a shortcut (you can call
  * WRITE_NODE_FIELD for list fields) to avoid an extra call to
  * _outNode() */
 #define WRITE_LIST_FIELD(fldname) \
 	((node->fldname == NULL) ? \
-	 (appendStringInfo(str, " :" CppAsString(fldname) " "), \
+	 (appendStringInfo(str, " : "), \
 	  appendStringInfoLiteral(str, "<>")) :				\
-	 (appendStringInfo(str, " :" CppAsString(fldname) " "), \
+	 (appendStringInfo(str, " : "), \
 	  _outList(str, node->fldname)))
 
 /* Write a bitmapset field */
 #define WRITE_BITMAPSET_FIELD(fldname) \
-	(appendStringInfo(str, " :" CppAsString(fldname) " "), \
+	(appendStringInfo(str, " : "), \
 	 _outBitmapset(str, node->fldname))
 
 /* Write a dummy field -- value not displayable or copyable */
 #define WRITE_DUMMY_FIELD(fldname) \
-	(appendStringInfo(str, " :" CppAsString(fldname) " "), \
-	 _outToken(str, NULL))
+	(appendStringInfo(str, " : "), _outToken(str, NULL))
 
 static void _outNode(StringInfo str, void *obj);
 
@@ -2850,8 +2846,27 @@ nodeToString(void *obj)
 {
 	StringInfoData str;
 
-	/* see stringinfo.h for an explanation of this maneuver */
-	initStringInfo(&str);
+        /* see stringinfo.h for an explanation of this maneuver */
+        initStringInfo(&str);
+	_outNode(&str, obj);
+	return str.data;
+}
+
+
+
+/*
+ * ModifiednodeToString -
+ *	   returns the ascii representation of the Node as a palloc'd string
+ *	   This version of nodeToString is only used by serializeNode (quick hack).
+ */
+char *
+ModifiednodeToString(void *obj)
+{
+	StringInfoData str;
+	int bufsize = 8*1024;
+
+        /* see stringinfo.h for an explanation of this maneuver */
+        initStringInfoOfSize(&str, bufsize);
 	_outNode(&str, obj);
 	return str.data;
 }
