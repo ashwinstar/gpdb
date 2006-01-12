@@ -341,11 +341,7 @@ flushTmLogFile(void)
 {
 	int ret;
 
-#ifdef HAVE_FDATASYNC
-	ret = fdatasync(logFileFD);
-#else
-	ret = fsync(logFileFD);
-#endif
+	ret = pg_fdatasync(logFileFD);
 
 	if (ret != 0)
 	{
