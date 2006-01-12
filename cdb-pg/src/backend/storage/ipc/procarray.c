@@ -548,8 +548,10 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 				 pg_usleep( /*microseconds*/ 2000);
 				 count++;
 				 
+				 CHECK_FOR_INTERRUPTS();
+				 
 				 if( count == 1000 )
-				 	elog( ERROR, "READER qEXEC timed out waiting for WRITER to set the shared snapshot");
+				 	elog( ERROR, "Reader qExec timed out waiting for Writer to set the shared snapshot");
 				 
 			}	
 		

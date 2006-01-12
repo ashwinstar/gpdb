@@ -1485,11 +1485,14 @@ StartTransaction(void)
 						 *
 						 * TODO: is there a semaphore or something better we can do ehre.
 						 */
-						pg_usleep( /*microseconds*/ 1000);
+						pg_usleep( /*microseconds*/ 2000);
+						
+						CHECK_FOR_INTERRUPTS();
+						
 						count++;
-						if (count % 10 == 0)
-							 elog( DEBUG5, "Reader qExec got to StartTransaction() before WRITER waiting..." );
-						 
+						
+						if (count % 1000 == 0)
+							elog( ERROR, "Reader qExec timed out waiting for Writer to set the shared snapshot xid");
 					}	
 				}
 			}			
