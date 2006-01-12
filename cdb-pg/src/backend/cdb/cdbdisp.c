@@ -32,6 +32,7 @@
 #include "utils/datum.h"
 #include "executor/executor.h"
 #include "optimizer/clauses.h"
+#include "optimizer/planmain.h"
 #include "cdb/cdbplan.h"
 
 #include "cdb/cdbdisp.h"
@@ -1482,25 +1483,26 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 
 		/*
 		 * Reduce constants in the FuncExpr's arguments.  We know args is
-		 * either NIL or a List node, so we can call plan_tree_mutator
+		 * either NIL or a List node, so we can call expression_tree_mutator
 		 * directly rather than recursing to self.
 		 */
-		args = (List *) plan_tree_mutator((Node *) expr->args,
+		args = (List *) expression_tree_mutator((Node *) expr->args,
 									pre_dispatch_function_evaluation_mutator,
 										  (void *) context);
-
+										  
 		funcid = expr->funcid;
 
 		/*
 		 * Check for constant inputs
 		 */
+		has_nonconst_input = false;
+		
 		foreach(arg, args)
 		{
 			if (!IsA(lfirst(arg), Const))
 				has_nonconst_input = true;
 		}
-
-
+		
 		if (!has_nonconst_input)
 		{
 
@@ -1616,6 +1618,8 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 			 */
 			if (funcid == 1574 && context->nextval_replacement == NULL && simple)
 				context->nextval_replacement = (Node *) simple;
+			
+			elog(DEBUG1," simplified");
 
 			if (simple)			/* successfully simplified it */
 				return (Node *) simple;
@@ -1631,6 +1635,36 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 		newexpr->funcresulttype = expr->funcresulttype;
 		newexpr->funcretset = expr->funcretset;
 		newexpr->funcformat = expr->funcformat;
+		newexpr->args = args;
+		return (Node *) newexpr;
+	}
+	if (IsA(node, OpExpr))
+	{
+		OpExpr	   *expr = (OpExpr *) node;
+		List	   *args;
+
+		OpExpr	   *newexpr;
+
+		/*
+		 * Reduce constants in the OpExpr's arguments.  We know args is either
+		 * NIL or a List node, so we can call expression_tree_mutator directly
+		 * rather than recursing to self.
+		 */
+		args = (List *) expression_tree_mutator((Node *) expr->args,
+											  pre_dispatch_function_evaluation_mutator,
+												(void *) context);
+
+		/*
+		 * Need to get OID of underlying function.	Okay to scribble on input
+		 * to this extent.
+		 */
+		set_opfuncid(expr);
+		
+		newexpr = makeNode(OpExpr);
+		newexpr->opno = expr->opno;
+		newexpr->opfuncid = expr->opfuncid;
+		newexpr->opresulttype = expr->opresulttype;
+		newexpr->opretset = expr->opretset;
 		newexpr->args = args;
 		return (Node *) newexpr;
 	}
