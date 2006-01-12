@@ -45,11 +45,10 @@ static char wfilename[85];
 static int	woffset;
 static int	wlen;
 
+/* XXX: file global buffer, called "buf" ??? At least it is allocated and free()ed as needed. */
 static void *buf = NULL;
 static int	buflen;
 static bool resync = false;
-
-#define MAXPATH  1024
 
 static void cdb_sync_tmlog(void);
 static void cdb_sync_xlog(void);
@@ -69,7 +68,7 @@ cdb_init_log_sync(void)
 {
 	/* create recovery.conf file for recovery */
 	int			rconffd = -1;
-	char		path[MAXPATH];
+	char		path[MAXPGPATH];
 
 	/* the first time or file is changed */
 	snprintf(path, MAXPGPATH, "%s/recovery.conf", DataDir);
@@ -342,7 +341,7 @@ ensureBufferSize(void)
 static bool
 tmlogOpenFile(void)
 {
-	char		path[MAXPATH];
+	char		path[MAXPGPATH];
 	bool		ret = false;
 
 	if (strcmp(tmlogfilename, wfilename) == 0)
@@ -351,9 +350,16 @@ tmlogOpenFile(void)
 	}
 
 	/* the first time or file is changed */
-	snprintf(path, MAXPATH, "%s/%s", dtm_dir, wfilename);
+	snprintf(path, MAXPGPATH, "%s/%s", dtm_dir, wfilename);
 
 	elog(LOG, "QDSYNC: opening tm log file %s", wfilename);
+
+	if (tmlogfilefd >= 0)
+	{
+		close(tmlogfilefd);
+		tmlogfilefd = -1;
+		tmlogfileoffset = -1;
+	}
 
 	tmlogfilefd = open(path, O_RDWR, 0);
 	if (tmlogfilefd < 0)
@@ -384,7 +390,7 @@ tmlogOpenFile(void)
 static bool
 xlogOpenFile(void)
 {
-	char		path[MAXPATH];
+	char		path[MAXPGPATH];
 	bool		ret = false;
 
 	elog(DEBUG3, "QDSYNC: opening xlog file %s", wfilename);
@@ -397,12 +403,19 @@ xlogOpenFile(void)
 	elog(DEBUG1, "opening xlog file %s", wfilename);
 
 	/* the first time or file is changed */
-	if (snprintf(path, MAXPATH, "%s/%s", XLOGDIR, wfilename) >= MAXPATH)
+	if (snprintf(path, MAXPGPATH, "%s/%s", XLOGDIR, wfilename) >= MAXPGPATH)
 	{
 		ereport(PANIC,
 				(errcode_for_file_access(),
 				 errmsg("QDSYNC: could not create xlog file \"%s/%s\"",
 						XLOGDIR, wfilename)));
+	}
+
+	if (xlogfilefd >= 0)
+	{
+		close(xlogfilefd);
+		xlogfilefd = -1;
+		xlogfileoffset = -1;
 	}
 
 	xlogfilefd = open(path, O_RDWR, 0);
