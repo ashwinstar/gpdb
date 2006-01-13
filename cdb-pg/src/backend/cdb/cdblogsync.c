@@ -145,10 +145,26 @@ cdb_sync_tmlog(void)
 						 errmsg("QDSYNC: tmlog is not in sync, primary segdb offset: %d, mirrored segdb offset: %d",
 								woffset, tmlogfileoffset)));
 			else
-				ereport(ERROR,
-						(errcode_for_file_access(),
-				   errmsg("QDSYNC: pdboff: %d, mdboff: %d, resync required.",
-						  woffset, tmlogfileoffset)));
+			{
+				if (woffset < tmlogfileoffset)
+				{
+					/* XXX: mirror advanced beyond primary ??? */
+					ereport(ERROR,
+							(errcode_for_file_access(),
+							 errmsg("QDSYNC: pdboff: %d, mdboff: %d, resync required.",
+									woffset, tmlogfileoffset)));
+				}
+				else
+				{
+					/* primary advanced beyond mirror, this indicates
+					 * that the mirror has failed at some point ? So
+					 * we'll resync the entire log */
+					ereport(ERROR,
+							(errcode_for_file_access(),
+							 errmsg("QDSYNC: pdboff: %d, mdboff: %d, resync required.",
+									0, woffset)));
+				}
+			}
 		}
 	}
 	else
