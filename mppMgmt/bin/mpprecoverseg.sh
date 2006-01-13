@@ -236,12 +236,12 @@ TEST_ACCESS () {
 STOP_DATABASE () { 
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 	if [ $STOPDB -eq 1 ] && [ $FORCESTOP -ne 0 ]; then
-		CHK_FILE ${WORKDIR}/$STOP_PROG
+		CHK_FILE $STOP_PROG
         if [ $EXISTS -ne 0 ];then
-                ERROR_EXIT "[FATAL]:-Could not locate $WORKDIR/$STOP_PROG script"
+                ERROR_EXIT "[FATAL]:-Could not locate $STOP_PROG script"
 		fi
         LOG_MSG "[INFO]:-Shutting down the Cluster ... Please wait ..."
-        ${WORKDIR}/$STOP_PROG -zfa
+        $STOP_PROG -zfa
 	if [ x"" == x"$FORCE_RECOVER_STRING" ];then
         	ERROR_CHK $? "shutdown master array" 2
 	else
@@ -345,7 +345,7 @@ UPDATE_STATUS () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
 		COUNT=0
 		LOG_MSG "[INFO]:-Starting master database in utility mode"
-		$WORKDIR/$START_PROG -m
+		$START_PROG -m
 		while [ $COUNT -lt $ARRAY_INDEX ]
 		do
 			FAIL_SET_VAR ${FAILED_INSTANCE_ARRAY[$COUNT]}
@@ -358,14 +358,14 @@ UPDATE_STATUS () {
 			((COUNT=$COUNT+1))
 		done
 		LOG_MSG "[INFO]:-Shutting down master database in utility mode"
-		$WORKDIR/$STOP_PROG -m
+		$STOP_PROG -m
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
 START_DATABASE () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
         LOG_MSG "[INFO]:-Starting up the MPP array ... Please wait ..."
-        ${WORKDIR}/$START_PROG -a
+        $START_PROG -a
         RETVAL=$?
         if [ $RETVAL -ne 0 ];then
 		LOG_MSG "[WARN]:-The $START_PROG script returned a non zero return code"
