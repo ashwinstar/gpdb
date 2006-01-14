@@ -4,7 +4,7 @@
  *    Functions to dispatch commands to QExecutors
  *
  *
- * Copyright (c) 2005, greenplum inc
+ * Copyright (c) 2005-2006, greenplum inc
  *
  * $Id$
  *
@@ -208,18 +208,26 @@ cdbdisp_seterrcode(int                  errcode,        /* ERRCODE_xxx or 0 */
             dispatchResult->errindex = resultIndex;
     }
 
-    /* Remember which QE reported an error first among the gangs,
+    if (!meleeResults)
+        return;
+
+    /*
+     * Remember which QE reported an error first among the gangs,
      * but keep quiet about cancellation done at our request.
+     *
+     * Interconnection errors are given lower precedence because often
+     * they are secondary to an earlier and more interesting error.
      */
     if (errcode == ERRCODE_MPP_OPERATION_CANCELED &&
         dispatchResult->requestedCancel)
     {}                          /* nop */
 
-    else if (meleeResults &&
-             !meleeResults->errcode)
+    else if (meleeResults->errcode == 0 ||
+             meleeResults->errcode == ERRCODE_MPP_INTERCONNECTION_ERROR)
     {
         pthread_mutex_lock(&setErrcodeMutex);
-        if (!meleeResults->errcode)
+        if (meleeResults->errcode == 0 ||
+            meleeResults->errcode == ERRCODE_MPP_INTERCONNECTION_ERROR)
         {
             meleeResults->errcode = errcode;
             meleeResults->iFirstError = dispatchResult->meleeIndex;

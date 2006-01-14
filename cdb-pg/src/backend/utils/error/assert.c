@@ -3,6 +3,7 @@
  * assert.c
  *	  Assert code.
  *
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -44,6 +45,8 @@ ExceptionalCondition(const char *conditionName,
 					 errorType, conditionName,
 					 fileName, lineNumber);
 	}
+    fflush(stderr);
+    fflush(stdout);
 	
 #if (!defined(__darwin__)) && (!defined(__solaris__))
 #if defined(__GLIBC__)
@@ -61,7 +64,7 @@ ExceptionalCondition(const char *conditionName,
 		{
 			write_stderr("%s\n",strings[i]);
 		}
-		free(strings);
+        fflush(stderr);
 	}
 #endif
 #endif
@@ -76,7 +79,18 @@ ExceptionalCondition(const char *conditionName,
 	sleep(1000000);
 #endif
 
-	abort();
+    /* CDB: Try to tell the QD or client what happened. */
+    if (errstart(FATAL, fileName, lineNumber, NULL))
+    {
+        errfinish(errcode(ERRCODE_INTERNAL_ERROR),
+                  errmsg("Unexpected internal error"),
+                  errdetail("%s(\"%s\", File: \"%s\", Line: %d)\n",
+				            errorType, conditionName, fileName, lineNumber)
+                  );
+        /* not reached */
+    }
+
+    abort();
 
 	return 0;
 }

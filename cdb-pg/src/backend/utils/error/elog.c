@@ -37,6 +37,7 @@
  * overflow.)
  *
  *
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -141,10 +142,11 @@ void
 elog_internalerror(const char *filename, int lineno, const char *funcname)
 {
     if (errstart(ERROR, filename, lineno, funcname))
+    {
         errfinish(errcode(ERRCODE_INTERNAL_ERROR),
                   errmsg("Unexpected internal error"));
+    }
     /* not reached */
-    ExceptionalCondition("elog_internalerror", "NotReached", filename, lineno);
     abort();
 }                               /* elog_internalerror */
 
@@ -898,6 +900,24 @@ getinternalerrposition(void)
 
 
 /*
+ * CDB: errOmitLocation -- set flag indicating the error was reported by a qExec
+ */
+int
+errOmitLocation(bool omitLocation)
+{
+    ErrorData  *edata = &errordata[errordata_stack_depth];
+
+    /* we don't bother incrementing recursion_depth */
+    CHECK_STACK_DEPTH();
+
+    edata->omit_location = omitLocation;
+
+    return 0;					/* return value does not matter */
+}
+
+
+
+/*
  * elog_start --- startup for old-style API
  *
  * All that we do here is stash the hidden filename/lineno/funcname
@@ -1144,6 +1164,19 @@ ReThrowError(ErrorData *edata)
 
 	recursion_depth--;
 	PG_RE_THROW();
+}
+
+/*
+ * CDB: elog_geterrcode --- return the currently set SQLSTATE code (0 if none)
+ *
+ * This is only intended for use in error handlers.
+ */
+int
+elog_geterrcode(void)
+{
+    return (errordata_stack_depth < 0)
+                ? 0
+                : errordata[errordata_stack_depth].sqlerrcode;
 }
 
 /*
@@ -1439,15 +1472,25 @@ cdb_tidy_message(ErrorData *edata)
     if (edata->elevel > LOG &&
         0 != (cp = strchr(bp, '\n')))
     {
+        char   *dp = cp;
+
+        /* If just one extra line, strip leading '\n' and whitespace. */
+        if (!strchr(dp+1, '\n'))
+        {
+            while (*dp <= ' ' &&
+                   *dp > '\0')
+                dp++;
+        }
+
         /* Insert in front of detail message. */
         if (!edata->detail)
-            edata->detail = pstrdup(cp);
+            edata->detail = pstrdup(dp);
         else
         {
-            m = ep - cp;
+            m = ep - dp;
             n = strlen(edata->detail) + 1;
             tp = palloc(m + 1 + n);
-            memcpy(tp, cp, m);
+            memcpy(tp, dp, m);
             tp[m] = '\n';
             memcpy(tp + m + 1, edata->detail, n);
 
@@ -1461,8 +1504,12 @@ cdb_tidy_message(ErrorData *edata)
         cdb_strip_trailing_whitespace(&edata->message);
     }
 
-    /* If internal error, append the filename and line number. */
-    if (edata->sqlerrcode == ERRCODE_INTERNAL_ERROR &&
+    /*
+     * If internal error, append the filename and line number.
+     * (Skip if error came from QE, because QE already added the info.)
+     */
+    if (!edata->omit_location &&
+        edata->sqlerrcode == ERRCODE_INTERNAL_ERROR &&
         edata->filename)
     {
         char        buf[60];
@@ -1895,7 +1942,10 @@ send_message_to_server_log(ErrorData *edata)
 #if defined(__GLIBC__)
 #if !defined(__OPTIMIZE__)
 		
-	if (edata->elevel >= ERROR && edata->stacktracesize > 0 && edata->stacktracearray != NULL)
+	if (edata->elevel >= ERROR &&
+        (edata->elevel > ERROR || !edata->omit_location) &&
+        edata->stacktracesize > 0 &&
+        edata->stacktracearray != NULL)
 	{
 		char	  **strings;
 		size_t		i;

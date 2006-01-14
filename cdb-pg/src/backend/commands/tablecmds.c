@@ -3,7 +3,7 @@
  * tablecmds.c
  *	  Commands for creating and altering table structures and settings
  *
- * Portions Copyright (c) 2005, greenplum inc
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -290,19 +290,9 @@ DefineRelation(CreateStmt *stmt, char relkind)
 	{
         /* If dispatched, stop QEs and clean up after them. */
         if (primaryResults)
-        {
-            /* Wait until all QEs are idle.  Cancel them if necessary. */
-            CdbCheckDispatchResult(true);
+            cdbdisp_handleError(primaryResults, mirrorResults);
 
-            /* Make sure the CdbDispatchResults are cleaned up.
-             * Since we are already exiting due to an error, don't
-             * bother reporting any errors from the QEs.
-             */
-            cdbdisp_destroyDispatchResults(primaryResults);
-            cdbdisp_destroyDispatchResults(mirrorResults);
-        }
-
-		/* Carry on with the original error. */
+        /* Carry on with error handling. */
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -498,9 +488,9 @@ DefineRelation_int(CreateStmt *stmt,
 		 */
 	
 		relationId = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
-									  
+									
 		toastRelationId = GetNewRelFileNode(tablespaceId, false,  pg_class_desc);
-									  
+									
 		heap_close(pg_class_desc, RowExclusiveLock);
 		
 		stmt->relOid = relationId;
@@ -509,7 +499,7 @@ DefineRelation_int(CreateStmt *stmt,
 		stmt->relation->schemaname = get_namespace_name(namespaceId);
 		
 		
-	} 
+	}
 	else if (Mpp_role == MPP_ROLE_EXECUTE)
 	{
 		elog(DEBUG1, "CdbRole Execute of CREATE TABLE, relationid %d", stmt->relOid);
@@ -832,7 +822,7 @@ ExecuteTruncate(TruncateStmt *stmt)
 			newOid = setNewRelfilenode(rel);
 	
 			heap_relid = RelationGetRelid(rel);			/* The old relOid of the relation */
-			 
+			
 			toast_relid = rel->rd_rel->reltoastrelid;
 	
 			heap_close(rel, NoLock);
@@ -844,13 +834,13 @@ ExecuteTruncate(TruncateStmt *stmt)
 			{
 				rel = relation_open(toast_relid, AccessExclusiveLock);
 				newToastOid = setNewRelfilenode(rel);
-				toast_relid = RelationGetRelid(rel);  	 
+				toast_relid = RelationGetRelid(rel);  	
 				heap_close(rel, NoLock);
 			}
 			
 			newOidsList = lappend_oid(newOidsList, newOid);
 			newOidsList = lappend_oid(newOidsList, newToastOid);
-			 
+			
 			Assert(newOidsList != NIL);
 	
 			/*
@@ -6183,7 +6173,7 @@ ATExecEnableDisableTrigger(Relation rel, char *trigname,
  * have all the right permissions.	Callers expect this function
  * to end with CommandCounterIncrement if it makes any changes.
  */
- 
+
 void
 AlterTableCreateToastTable(Oid relOid, bool silent)
 {

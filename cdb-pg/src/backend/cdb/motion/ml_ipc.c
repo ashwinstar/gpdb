@@ -2,7 +2,7 @@
  * ml_ipc.c
  *	   Motion Layer IPC Layer.
  *
- * Copyright (c) 2005, Green Plum
+ * Copyright (c) 2005-2006, Green Plum
  *
  * IDENTIFICATION:
  *	   $Id$
@@ -261,11 +261,7 @@ SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcIte
 	MotionConn *conn;
 	TupleChunkListItem currItem;
 
-	if (!activated)
-	{
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("SendTupleChunkToAMS: Called when not activated.")));
-	}
+	Insist(activated);
 
 	/* check em' */
 	ML_CHECK_FOR_INTERRUPTS();
@@ -339,11 +335,7 @@ SendEosToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcItem)
 	MotionConn *conn;
 	int			i;
 
-	if (!activated && !teardownActive)
-	{
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-						errmsg("SendEosToAMS: Called when not activated.")));
-	}
+	Insist(activated || teardownActive);
 
 	/* check em' */
 	ML_CHECK_FOR_INTERRUPTS();
@@ -385,11 +377,7 @@ RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 				index;
 	bool		skipSelect = false;
 
-	if (!activated)
-	{
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-			   errmsg("RecvTupleChunkFromAny: Called when not activated.")));
-	}
+	Insist(activated);
 
 #ifdef AMS_VERBOSE_LOGGING
 	elog(DEBUG5, "RecvTupleChunkFromAny(motNodeId=%d)", motNodeID);
@@ -431,7 +419,7 @@ RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 		{
 			if (errno == EINTR)
 				continue;
-			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 							errmsg("Interconnect error receiving an incoming packet: %s", strerror(errno)),
 			  errdetail("error during select() call (error:%d).\n", errno)));
 		}
@@ -482,8 +470,7 @@ RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 	}
 
 	/* we should never ever get here... */
-	elog(ERROR, "for some reason RecvTupleFromAny didn't return anything.");
-	return NULL;
+	Insist(0);
 }
 
 /* See ml_ipc.h */
@@ -493,11 +480,7 @@ RecvTupleChunkFrom(int16 motNodeID, int16 srcRoute)
 	MotionLayerState *pEntry;
 	MotionConn *conn;
 
-	if (!activated)
-	{
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-				  errmsg("RecvTupleChunkFrom: Called when not activated.")));
-	}
+	Insist(activated);
 
 	/* check em' */
 	ML_CHECK_FOR_INTERRUPTS();
@@ -586,11 +569,7 @@ DeregisterReadInterest(int16 motNodeID, int16 srcRoute)
 	MotionLayerState *pEntry;
 	MotionConn *conn;
 
-	if (!activated)
-	{
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-			  errmsg("DeregisterReadInterest: Called when not activated.")));
-	}
+	Insist(activated);
 
 #ifdef AMS_VERBOSE_LOGGING
 	elog(DEBUG3, "DeregisterReadInterest(%d, %d)", motNodeID, srcRoute);
@@ -653,17 +632,8 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 	 * The assert only happens when we are compiled with --enable-cassert.
 	 * So, let's report the error even if we are a production build.
 	 */
-	if (activated)
-	{
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-			   errmsg("SetupInterconnect: Called when already activated.")));
-	}
+	Insist(!activated && !mlsStates);
 
-	if (mlsStates != NULL)
-	{
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-						errmsg("SetupInterconnect: MLS table not cleaned.")));
-	}
 	mlsSize = MLS_INITIAL_SIZE;
 	mlsStates = palloc0(MLS_INITIAL_SIZE * sizeof(MotionLayerState));
 
@@ -677,10 +647,7 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 
 	elog(DEBUG3, "Interconnect Activating Routes");
 
-	if (mySliceTable == NULL)
-	{
-		elog(ERROR, "SetupInterconnect() called with a NULL sliceTable.");
-	}
+	Insist(mySliceTable);
 
 	mySlice = (Slice *) list_nth(sliceTable->slices, mySliceId);
 
@@ -742,8 +709,9 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 
 		if (interconnect_setup_timeout != 0 &&
 			(stopTime.tv_sec - startTime.tv_sec) > interconnect_setup_timeout)
-			elog(ERROR, "Aborting activating_routes.... TIMEOUT (%lu)",
-				 stopTime.tv_sec - startTime.tv_sec);
+			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                            errmsg("Aborting activating_routes.... TIMEOUT (%lu)",
+				                   stopTime.tv_sec - startTime.tv_sec) ));
 
 		memcpy(&rrset, &rset, sizeof(fd_set));
 		memcpy(&wwset, &wset, sizeof(fd_set));
@@ -760,7 +728,7 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 		{
 			if (errno == EINTR)
 				continue;
-			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 				errmsg("Interconnect error setting up: %s", strerror(errno)),
 				errdetail("error during select() call (error:%d).", errno)));
 		}
@@ -1143,7 +1111,7 @@ listenerSetup(void)
 		 * TODO: would be nice to read the errno and try and provide
 		 * more useful info as to why this happened.
 		 */
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 						errmsg("Interconnect Error: Could not setup listener socket: %s", strerror(errno)),
 				errdetail("error during socket() call (error:%d).", errno)));
 	}
@@ -1163,7 +1131,7 @@ listenerSetup(void)
 		 * TODO: would be nice to read the errno and try and provide
 		 * more useful info as to why this happened.
 		 */
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 			   errmsg("Interconnect Error: Could not setup listener socket"),
 				  errdetail("error during bind() call (error:%d).", errno)));
 
@@ -1175,7 +1143,7 @@ listenerSetup(void)
 		 * TODO: would be nice to read the errno and try and provide
 		 * more useful info as to why this happened.
 		 */
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 						errmsg("Interconnect Error: Could not setup listener socket: %s", strerror(errno)),
 				errdetail("error during listen() call (error:%d).", errno)));
 	}
@@ -1189,7 +1157,7 @@ listenerSetup(void)
 		 * TODO: would be nice to read the errno and try and provide
 		 * more useful info as to why this happened.
 		 */
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 						errmsg("Interconnect Error: Could not setup listener socket: %s", strerror(errno)),
 		   errdetail("error during getsockname() call (error:%d).", errno)));
 	}
@@ -1231,11 +1199,6 @@ createMotionState(int16 motNodeID, int numConns)
 		MotionLayerState *newTable;
 
 		newTable = repalloc(mlsStates, motNodeID * sizeof(MotionLayerState));
-		if (newTable == NULL)
-		{
-			ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
-				 errmsg("Could not re-allocate motion layer state table.")));
-		}
 		mlsStates = newTable;
 		/* zero-out the new piece at the end */
 		memset(&mlsStates[mlsSize], 0, (motNodeID - mlsSize) * sizeof(MotionLayerState));
@@ -1434,7 +1397,7 @@ setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, 
 		 * TODO: would be nice to read the errno and try and provide
 		 * more useful info as to why this happened.
 		 */
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 						errmsg("Interconnect Error: Could not create outbound socket: %s", strerror(errno)),
 				errdetail("error during socket() call (error:%d) to outgoing"
 						  "CdbProcess with contentId=%d at: '%s':%d", errno,
@@ -1449,7 +1412,7 @@ setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, 
 		 * TODO: would be nice to read the errno and try and provide
 		 * more useful info as to why this happened.
 		 */
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 						errmsg("Interconnect Error: Could not set outbound socket to non-blocking mode"),
 			 errdetail("error during fcntl() call (error:%d) for sockfd: %d",
 					   errno, conn->sockfd)));
@@ -1461,7 +1424,7 @@ setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, 
 	{
 		if (n == 0)
 		{
-			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 				 errmsg("Interconnect Error: Could not parse remote listener"
 						"address: '%s'", cdbProc->listenerAddr),
 					   errdetail("inet_pton() unable to parse address: '%s'",
@@ -1469,7 +1432,7 @@ setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, 
 		}
 		else
 		{
-			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 			 errmsg("Interconnect Error: System error occured during parsing"
 				 " of remote listener address: '%s'", cdbProc->listenerAddr),
 							errdetail("inet_pton()  (errno: %d) unable to parse address: '%s'",
@@ -1493,7 +1456,7 @@ setupOutgoingConnection(MotionConn * conn, CdbProcess * cdbProc, int *highsock, 
 			 * TODO: would be nice to read the errno and try and
 			 * provide more useful info as to why this happened.
 			 */
-			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 							errmsg("Interconnect Error: Could not connect() to remote destination: %s", strerror(errno)),
 			   errdetail("error during connect() call (error:%d) to outgoing"
 						 "CdbProcess with contentId=%d at: '%s':%d", errno,
@@ -1574,7 +1537,7 @@ sendRegisterMessage(MotionLayerState * pEntry, MotionConn * conn)
 
 	if (n < 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 						errmsg("Interconnect Error: Could not write() Register message to remote destination: %s", strerror(errno)),
 		errdetail("error during write() call (error:%d) to remote destination"
 				  "'%s':%d with contentid = %d", errno, conn->remoteHost,
@@ -1584,7 +1547,7 @@ sendRegisterMessage(MotionLayerState * pEntry, MotionConn * conn)
 	if (n != msglen)
 	{
 		elog(DEBUG3, "n = %d", n);
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 			 errmsg("Interconnect Error: Could not write() complete Register"
 					"message to remote destination"),
 						errdetail("sent: %d of %d bytes during write() call to remote destination"
@@ -1637,7 +1600,7 @@ readRegisterMessage(MotionConn * conn, int *incoming_count)
 			if (errno == EWOULDBLOCK || errno == EINTR)
 				continue;
 
-			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 			  errmsg("Interconnect Error: Could not read() Register message "
 					 "from remote destination"),
 				  errdetail("error during read() call (error:%d) from remote"
@@ -1738,7 +1701,7 @@ acceptIncomingConnection(fd_set *rset, int *highsock)
 		 * TODO: would be nice to read the errno and try and provide
 		 * more useful info as to why this happened.
 		 */
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 					 errmsg("Interconnect error accepting a new connection"),
 				 errdetail("error during accept() call (error:%d)", errno)));
 	}
@@ -1751,7 +1714,7 @@ acceptIncomingConnection(fd_set *rset, int *highsock)
 		 * TODO: would be nice to read the errno and try and provide
 		 * more useful info as to why this happened.
 		 */
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 						errmsg("Interconnect Error: Could not set outbound socket to non-blocking mode"),
 			 errdetail("error during fcntl() call (error:%d) for sockfd: %d",
 					   errno, newsockfd)));
@@ -1908,7 +1871,7 @@ flushBuffer(MotionConn * conn)
 							conn->stillActive = false;
 							return false;
 						}
-						ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+						ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 										errmsg("Interconnect error writing an outgoing packet"),
 						 errdetail("error during select() call (error:%d).\n"
 							"For Remote Connection: contentId=%d at '%s':%d",
@@ -1943,7 +1906,7 @@ flushBuffer(MotionConn * conn)
 					conn->stillActive = false;
 					return false;
 				}
-				ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+				ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 								errmsg("Interconnect error writing an outgoing packet"),
 								errdetail("error during write() call (error:%d).\n"
 										  "For Remote Connection: contentId=%d at '%s':%d",
@@ -2056,7 +2019,7 @@ readPacket(MotionConn * conn)
 						saved_err = errno;
 						ML_CHECK_FOR_INTERRUPTS();
 
-						ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+						ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 										errmsg("Interconnect error reading an incoming packet"),
 						 errdetail("error during select() call (error:%d).\n"
 						   "From Remote Connection: contentId=%d at '%s':%d",
@@ -2068,7 +2031,7 @@ readPacket(MotionConn * conn)
 			}
 			else
 			{
-				ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+				ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 					 errmsg("Interconnect error reading an incoming packet"),
 						   errdetail("error during read() call (error:%d).\n"
 						   "From Remote Connection: contentId=%d at '%s':%d",
@@ -2084,7 +2047,7 @@ readPacket(MotionConn * conn)
 #endif
 			ML_CHECK_FOR_INTERRUPTS();
 
-			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 				errmsg("Interconnect error: connection closed prematurely."),
 				 errdetail("from Remote Connection: contentId=%d at '%s':%d",
 						   conn->remoteContentId, conn->remoteHost,
@@ -2242,7 +2205,7 @@ findCdbProcess(RegisterMessage * msg)
 
 	if (!found)
 	{
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+		ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
 			   errmsg("Interconnect Error: Received a Register Message from "
 					  "unknown CdbProcess"),
 			errdetail("Received register message from: (mnId=%d, routeId=%d,"
@@ -2411,7 +2374,8 @@ flushListenerBacklog(void)
 		}
 		else if (pendingConn < 0 && errno != EINTR)
 		{
-			elog(ERROR, "%s during listener cleanup", strerror(errno));
+			ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                            errmsg("%m during listener cleanup") ));
 		}
 
 		/*

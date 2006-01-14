@@ -3,7 +3,7 @@
  * nodeSubplan.c
  *	  routines to support subselects
  *
- * Portions Copyright (c) 2005, greenplum inc
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -35,7 +35,7 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 
-#include "cdb/cdbdispatchresult.h"      /* cdbdisp_destroyDispatchResults() */
+#include <math.h>                       /* ceil() */
 
 
 static Datum ExecHashSubPlan(SubPlanState *node,
@@ -945,17 +945,17 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
 	SubPlan    *subplan = (SubPlan *) node->xprstate.expr;
 	PlanState  *planstate = node->planstate;
 	SubLinkType subLinkType = subplan->subLinkType;
-	MemoryContext oldcontext;
+	MemoryContext oldcontext = CurrentMemoryContext;
 	TupleTableSlot *slot;
 	ListCell   *l;
 	bool		found = false;
 	ArrayBuildState *astate = NULL;
 
 	Query	   *query;
-	QueryDesc  *queryDesc;
+	QueryDesc  *queryDesc = NULL;
 	EState	   *local;			/* The EState to use. */
 
-    CdbDispatchResults *primaryResults = NULL;
+    struct CdbDispatchResults  *primaryResults = NULL;
 	bool		        shouldDispatch = false;
     volatile bool       shouldTeardownInterconnect = false;
 
@@ -1163,7 +1163,7 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
          */
         if (primaryResults)
         {
-            CdbDispatchResults *pr = primaryResults;
+            struct CdbDispatchResults  *pr = primaryResults;
 
             /*
              * Wait for all gangs to finish.  Check and free the results.
@@ -1184,22 +1184,13 @@ ExecSetParamPlan(SubPlanState *node, ExprContext *econtext, QueryDesc *gbl_query
     }
 	PG_CATCH();
 	{
+        /*
+		 * Request any commands still executing on qExecs to stop.
+		 * Wait for them to finish and clean up the dispatching structures.
+         * Replace current error info with QE error info if more interesting.
+		 */
 		if (primaryResults)
-		{
-			/*
-			 * Request any remaining commands executing on qExecs to stop.
-			 * We need to wait for the threads to finish.  This allows for proper cleanup
-			 * of the results from the async command executions.
-			 */
-			CdbCheckDispatchResult(true);
-
-			/*
-			 * Discard any remaining results from QEs; don't confuse matters
-			 * by throwing a new error.  Any results of interest presumably
-			 * should have been examined before the exception was thrown.
-			 */
-			cdbdisp_destroyDispatchResults(primaryResults);
-		}
+            cdbdisp_handleError(primaryResults, NULL);
 
         /*
          * Clean up the interconnect.

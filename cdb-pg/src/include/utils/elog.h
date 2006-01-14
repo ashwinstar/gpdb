@@ -177,6 +177,8 @@ extern int	internalerrquery(const char *query);
 extern int	geterrposition(void);
 extern int	getinternalerrposition(void);
 
+int errOmitLocation(bool omitLocation);   /*CDB*/
+
 
 /*----------
  * Old-style error reporting API: to be used in this way:
@@ -271,6 +273,7 @@ typedef struct ErrorData
 	bool		output_to_server;		/* will report to server log? */
 	bool		output_to_client;		/* will report to client? */
 	bool		show_funcname;	/* true to force funcname inclusion */
+    bool        omit_location;  /* CDB: don't add filename:line# */
 	const char *filename;		/* __FILE__ of ereport() call */
 	int			lineno;			/* __LINE__ of ereport() call */
 	const char *funcname;		/* __func__ of ereport() call */
@@ -292,6 +295,8 @@ extern ErrorData *CopyErrorData(void);
 extern void FreeErrorData(ErrorData *edata);
 extern void FlushErrorState(void);
 extern void ReThrowError(ErrorData *edata);
+
+int elog_geterrcode(void);      /* CDB: Returns SQLSTATE for current error */
 
 
 /* GUC-configurable parameters */

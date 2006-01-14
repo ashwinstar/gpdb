@@ -21,7 +21,7 @@
  *	ExecutorRun accepts direction and count arguments that specify whether
  *	the plan is to be executed forwards, backwards, and for how many tuples.
  *
- * Portions Copyright (c) 2005, greenplum inc
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -290,7 +290,7 @@ ExecutorRun(QueryDesc *queryDesc,
 	EState	   *estate;
 	CmdType		operation;
 	DestReceiver *dest;
-	TupleTableSlot *result;
+	TupleTableSlot *result = NULL;
 	MemoryContext oldcontext;
 	RangeTblEntry *rte = NULL;
 
@@ -570,7 +570,7 @@ ExecutorRun(QueryDesc *queryDesc,
             /* If top slice was delegated to QEs, get num of rows processed. */
             if (sliceRunsOnQE(getCurrentSlice(estate)))
                 estate->es_processed +=
-                    cdbdisp_sumCmdTuples(primaryResults, estate->es_cur_slice_idx);
+                    cdbdisp_sumCmdTuples(pr, estate->es_cur_slice_idx);
 
             /*
              * Check and free the results of all gangs. If any QE had an
@@ -592,23 +592,13 @@ ExecutorRun(QueryDesc *queryDesc,
     }
 	PG_CATCH();
 	{
+        /*
+		 * Request any commands still executing on qExecs to stop.
+		 * Wait for them to finish and clean up the dispatching structures.
+         * Replace current error info with QE error info if more interesting.
+		 */
 		if (primaryResults)
-		{
-			/*
-			 * Request any remaining commands executing on qExecs to stop.
-			 * We need to wait for the threads to finish.  This allows for proper cleanup
-			 * of the results from the async command executions.
-			 */
-			CdbCheckDispatchResult(true);   /* cancel any QEs still running */
-
-			/*
-			 * Discard any remaining results from QEs; don't confuse matters
-			 * by throwing a new error.  Any results of interest presumably
-			 * should have been examined before the exception was thrown.
-			 */
-			cdbdisp_destroyDispatchResults(primaryResults);
-            cdbdisp_destroyDispatchResults(mirrorResults);
-		}
+            cdbdisp_handleError(primaryResults, mirrorResults);
 
 		/* Clean up the interconnect. */
 		if (shouldSetupInterconnect)
@@ -1170,7 +1160,7 @@ InitPlan(QueryDesc *queryDesc, bool explainOnly)
 		tupdesc = CreateTupleDescCopy(tupType);
 		
 		/*
-		 * This would build a table with different OIDS on every QE... Bad 
+		 * This would build a table with different OIDS on every QE... Bad
 		 */
 		if (Mpp_role == MPP_ROLE_EXECUTE)
 			elog(ERROR,"SELECT INTO not working in EXECUTE mode yet");

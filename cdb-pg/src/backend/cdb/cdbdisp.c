@@ -4,7 +4,7 @@
  *	  Functions to dispatch commands to QExecutors
  *
  *
- * Copyright (c) 2005, greenplum inc
+ * Copyright (c) 2005-2006, greenplum inc
  *
  * $Id$
  *
@@ -708,7 +708,7 @@ cdbdisp_dispatchCommand(const char                 *szCommand,
         *pMirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
         cdbdisp_dispatchToGang(szCommand, szSnapshotInfo, mirrorGang, *pMirrorResults, -1);
     }
-    
+
     pfree(szSnapshotInfo);
 
 
@@ -764,6 +764,7 @@ cdbdisp_finishCommand(struct CdbDispatchResults * primaryResults,
 	PG_TRY();
 	{
 		ereport(ERROR, (errcode(errorcode),
+                        errOmitLocation(true),
 						errmsg("%s", buf.data)));
 	}
 	PG_CATCH();
@@ -775,6 +776,86 @@ cdbdisp_finishCommand(struct CdbDispatchResults * primaryResults,
 
 	/* not reached */
 }	/* cdbdisp_finishCommand */
+
+
+/*
+ * cdbdisp_handleError
+ *
+ * When caller catches an error, the PG_CATCH handler can use this
+ * function instead of cdbdisp_finishCommand to wait for all QEs
+ * to finish, clean up, and report QE errors if appropriate.
+ * This function should be called only from PG_CATCH handlers.
+ *
+ * This function destroys and frees the given CdbDispatchResults objects.
+ * It is a no-op if both CdbDispatchResults ptrs are NULL.
+ *
+ * On return, the caller is expected to finish its own cleanup and
+ * exit via PG_RE_THROW().
+ */
+void
+cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
+				    struct CdbDispatchResults  *mirrorResults)
+{
+    int     qderrcode = elog_geterrcode();
+    bool    useQeError = false;
+
+    /* If cdbdisp_dispatchToGang() wasn't called, don't wait. */
+    if (!primaryResults &&
+        !mirrorResults)
+        return;
+
+    /*
+     * Request any remaining commands executing on qExecs to stop.
+     * We need to wait for the threads to finish.  This allows for proper
+     * cleanup of the results from the async command executions.
+     */
+    CdbCheckDispatchResult(true);   /* cancel any QEs still running */
+
+    /*
+     * When a QE stops executing a command due to an error, as a
+     * consequence there can be a cascade of interconnect errors
+     * (usually "sender closed connection prematurely") thrown in
+     * downstream processes (QEs and QD).  So if we are handling
+     * an interconnect error, and a QE hit a more interesting error,
+     * we'll let the QE's error report take precedence.
+     */
+    if (qderrcode == ERRCODE_MPP_INTERCONNECTION_ERROR)
+    {
+        if (primaryResults->errcode &&
+            primaryResults->errcode != ERRCODE_MPP_INTERCONNECTION_ERROR)
+            useQeError = true;
+        else if (mirrorResults->errcode &&
+                 mirrorResults->errcode != ERRCODE_MPP_INTERCONNECTION_ERROR)
+            useQeError = true;
+    }
+
+    if (useQeError)
+    {
+        /*
+         * Throw the QE's error, catch it, and fall thru to return
+         * normally so caller can finish cleaning up.  Afterwards
+         * caller must exit via PG_RE_THROW().
+         */
+        PG_TRY();
+        {
+            cdbdisp_finishCommand(primaryResults, mirrorResults);
+        }
+        PG_CATCH();
+        {}                      /* nop; fall thru */
+        PG_END_TRY();
+    }
+    else
+    {
+        /*
+         * Discard any remaining results from QEs; don't confuse matters by
+         * throwing a new error.  Any results of interest presumably should
+         * have been examined before raising the error that the caller is
+         * currently handling.
+         */
+        cdbdisp_destroyDispatchResults(primaryResults);
+        cdbdisp_destroyDispatchResults(mirrorResults);
+    }
+}                               /* cdbdisp_handleError */
 
 
 /*--------------------------------------------------------------------*/
@@ -1489,7 +1570,7 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 		args = (List *) expression_tree_mutator((Node *) expr->args,
 									pre_dispatch_function_evaluation_mutator,
 										  (void *) context);
-										  
+										
 		funcid = expr->funcid;
 
 		/*
@@ -1727,7 +1808,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	char	   *squery,
 			   *splan,
 			   *ssliceinfo;
-	char	   *szSnapshotInfo;		   
+	char	   *szSnapshotInfo;		
 	char	   *mppexecPrefix;
 	int			squery_len,
 				splan_len,
@@ -2204,7 +2285,7 @@ serializeSnapshot(void)
 	 *							|				|
 	 *
 	 * This may seem like a problem because all four of those will dispatch
-	 * the same snapshot with the same curcid.  But... this is OK because 
+	 * the same snapshot with the same curcid.  But... this is OK because
 	 * BEGIN, PREPARE, and COMMIT don't need Snapshots on the QEs.
 	 *
 	 * NOTE: This will be a problem if we ever need to dispatch more than one

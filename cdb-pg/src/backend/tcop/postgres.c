@@ -3,7 +3,7 @@
  * postgres.c
  *	  POSTGRES C Backend Interface
  *
- * Portions Copyright (c) 2005, greenplum inc
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -2162,7 +2162,7 @@ die(SIGNAL_ARGS)
 		/* although we don't strictly need to set this to true since the
 		 * ProcDiePending will occur first.  We set this anyway since the
 		 * MPP dispatch code is triggered only off of QueryCancelPending
-		 * and not any of the others. 
+		 * and not any of the others.
 		 */
 		QueryCancelPending = true;
 		
@@ -2244,6 +2244,68 @@ StatementCancelHandler(SIGNAL_ARGS)
 
 	errno = save_errno;
 }
+
+
+/* CDB: Signal handler for program errors */
+static void
+CdbProgramErrorHandler(SIGNAL_ARGS)
+{
+    int			save_errno = errno;
+    char       *signame;
+    char       *pts = "process";
+
+    PG_SETMASK(&BlockSig);
+#ifdef SIGILL
+    pqsignal(SIGILL, SIG_DFL);
+#endif
+#ifdef SIGSEGV
+    pqsignal(SIGSEGV, SIG_DFL);
+#endif
+#ifdef SIGBUS
+    pqsignal(SIGBUS, SIG_DFL);
+#endif
+
+    switch (postgres_signal_arg)
+    {
+#ifdef SIGILL
+        case SIGILL:
+            signame = "SIGILL";
+            break;
+#endif
+#ifdef SIGSEGV
+        case SIGSEGV:
+            signame = "SIGSEGV";
+            break;
+#endif
+#ifdef SIGBUS
+        case SIGBUS:
+            signame = "SIGBUS";
+            break;
+#endif
+        default:
+            signame = "";
+            break;
+    }
+
+    if (Mpp_role == MPP_ROLE_DISPATCH)
+        pts = "QD process";
+    else if (Mpp_role == MPP_ROLE_EXECUTE)
+        pts = "QE process";
+    else
+        pts = "Process";
+
+    write_stderr("\nUnexpected internal error: %s %d received signal %s\n\n",
+                 pts, MyProcPid, signame);
+    fflush(stderr);
+    fflush(stdout);
+
+    errno = save_errno;
+    ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
+                    errOmitLocation(true),
+                    errmsg("Unexpected internal error: %s received signal %s",
+                           pts, signame) ));
+}                               /* CdbProgramErrorHandler */
+
 
 /* signal handler for floating point exception */
 void
@@ -2888,6 +2950,19 @@ PostgresMain(int argc, char *argv[], const char *username)
 	 * Reset some signals that are accepted by postmaster but not by backend
 	 */
 	pqsignal(SIGCHLD, SIG_DFL); /* system() requires this on some platforms */
+
+    /*
+     * CDB: Catch program error signals.
+     */
+#ifdef SIGILL
+    pqsignal(SIGILL, CdbProgramErrorHandler);
+#endif
+#ifdef SIGSEGV
+    pqsignal(SIGSEGV, CdbProgramErrorHandler);
+#endif
+#ifdef SIGBUS
+    pqsignal(SIGBUS, CdbProgramErrorHandler);
+#endif
 
 	pqinitmask();
 

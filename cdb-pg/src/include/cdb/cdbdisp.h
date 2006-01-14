@@ -4,7 +4,7 @@
  * routines for dispatching commands from the dispatcher process
  * to the qExec processes.
  *
- * Copyright (c) 2005, greenplum inc
+ * Copyright (c) 2005-2006, greenplum inc
  *
  * $Id$
  *
@@ -42,7 +42,7 @@ cdbdisp_startDtxTransaction(void);
  * guc variable mpp_connections_per_thread.
  *
  * The caller must also provide a serialized SnapshotInfo string to be used to
- * set the global snapshot for the dispatched statement.  
+ * set the global snapshot for the dispatched statement.
  *
  * The caller must provide a CdbDispatchResults object having available
  * resultArray slots sufficient for the number of QEs to be dispatched:
@@ -146,6 +146,24 @@ cdbdisp_dispatchCommand(const char                 *szCommand,
 void
 cdbdisp_finishCommand(struct CdbDispatchResults    *primaryResults,
                       struct CdbDispatchResults    *mirrorResults);
+
+/*
+ * cdbdisp_handleError
+ *
+ * When caller catches an error, the PG_CATCH handler can use this
+ * function instead of cdbdisp_finishCommand to wait for all QEs
+ * to finish, clean up, and report QE errors if appropriate.
+ * This function should be called only from PG_CATCH handlers.
+ *
+ * This function destroys and frees the given CdbDispatchResults objects.
+ * It is a no-op if both CdbDispatchResults ptrs are NULL.
+ *
+ * On return, the caller is expected to finish its own cleanup and
+ * exit via PG_RE_THROW().
+ */
+void
+cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
+				    struct CdbDispatchResults  *mirrorResults);
 
 /*
  * CdbDoCommand:
