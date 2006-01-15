@@ -111,7 +111,7 @@ PGconn*                 g_conn = NULL;
 static const char* logInfo = "INFO";
 static const char* logWarn = "WARN";
 static const char* logError = "ERROR";
-static const char* logFatal = "FATAL";
+//static const char* logFatal = "FATAL";
 static char* pszProgName;
 
 static StatusOpList* g_pStatusOpList = NULL;

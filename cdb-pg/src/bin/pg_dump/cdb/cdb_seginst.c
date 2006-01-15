@@ -54,16 +54,9 @@ void FreeSegmentDatabaseArray( SegmentDatabaseArray* pSegDBAr )
 
 void FreeRestorePairArray( RestorePairArray* restorePairAr )
 {
-	int i;
 	if ( restorePairAr == NULL )
 		return;
-	
-//	for ( i = 0; i < restorePairAr->count; i++ )
-//	{
-//		SegmentDatabase* tSegDB = &restorePairAr->pData[i].segdb_target;
-//		SegmentDatabase* sSegDB = &restorePairAr->pData[i].segdb_source;
-//	}
-	
+		
 	if ( restorePairAr->pData != NULL )
 		free( restorePairAr->pData );
 	
