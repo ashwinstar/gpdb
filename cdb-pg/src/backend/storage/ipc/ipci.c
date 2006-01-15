@@ -37,6 +37,7 @@
 
 #include "cdb/cdbfts.h"
 #include "cdb/cdbtm.h"
+#include "utils/tqual.h"
 
 /*
  * CreateSharedMemoryAndSemaphores

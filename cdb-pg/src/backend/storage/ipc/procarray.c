@@ -528,7 +528,7 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 				 *			   until everybody finishes then this won't change out from under
 				 *			   us
 				 */
-				snapshot->xip = &SharedLocalSnapshotSlot->snapshot.xip;
+				snapshot->xip = SharedLocalSnapshotSlot->snapshot.xip;
  			    snapshot->curcid = SharedLocalSnapshotSlot->snapshot.curcid;
 				 				 
 				SetSharedTransactionId();
