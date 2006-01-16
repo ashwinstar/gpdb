@@ -660,11 +660,101 @@ mpp_read_backup_file__(PG_FUNCTION_ARGS)
 
 /* NOT IN USE ANYMORE! */
  
+/*
+ * mpp_write_backup_file__( TEXT, TEXT, TEXT ) returns TEXT
+ *
+ */
+/* 
+ * MPPTODO: This function assumes the file is not compressed.
+ * This is not always the case. Therefore it should be used carefully
+ * by the caller, until we decide to make the change and pass in an
+ * isCompressed boolean, which unfortunately will require an initdb for
+ * the change to take effect.
+ */
 PG_FUNCTION_INFO_V1(mpp_write_backup_file__);
 Datum
 mpp_write_backup_file__(PG_FUNCTION_ARGS)
 {
-	text *result;
+	/* Fetch the parameters from the argument list. */
+	char	   *pszBackupDirectory = "./";
+	char	   *pszBackupKey = "";
+	char	   *pszBackup = "";
+	char	   *pszFileName;
+	FILE	   *f;
+	int			nBytes;
+	int			len,
+		len_name;
+	text	   *result;
+	char	   *ptr;
+	
+	if (!PG_ARGISNULL(0))
+	{
+		pszBackupDirectory = GET_STR(PG_GETARG_TEXT_P(0));
+		if (*pszBackupDirectory == '\0')
+			pszBackupDirectory = "./";
+	}
+	
+	if (!PG_ARGISNULL(1))
+		pszBackupKey = GET_STR(PG_GETARG_TEXT_P(1));
+	
+	if (!PG_ARGISNULL(2))
+		pszBackup = GET_STR(PG_GETARG_TEXT_P(2));
+	
+	/*
+	 * if BackupDirectory is relative, make it absolute based on the directory
+	 * where the database resides
+	 */
+	pszBackupDirectory = relativeToAbsolute(pszBackupDirectory);
+	
+	/*
+	 * See whether the directory exists.
+	 * If not, try to create it.
+	 * If so, make sure it's a directory
+	 */
+	validateBackupDirectory(pszBackupDirectory);
+	
+	/* Form backup file path name */
+	pszFileName = formBackupFilePathName(pszBackupDirectory, pszBackupKey, false);
+	
+	/* Write file */
+	f = fopen(pszFileName, "w");
+	if (f == NULL)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+				 errmsg("Backup File %s cannot be opened", pszFileName)));
+	}
+	
+	nBytes = strlen(pszBackup);
+	if (nBytes != fwrite(pszBackup, 1, nBytes, f))
+	{
+		fclose(f);
+		ereport(ERROR,
+				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+				 errmsg("Error writing Backup File %s", pszFileName)));
+	}
+	
+	fclose(f);
+	f = NULL;
+	
+	assert(pszFileName != NULL && pszFileName[0] != '\0');
+	len_name = strlen(pszFileName);
+	len = len_name + VARHDRSZ;
+	result = (text *) palloc(len);
+	if (result == NULL)
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 errmsg("out of memory")));
+	}
+	
+	/* Set size of result string... */
+	VARATT_SIZEP(result) = len;
+	
+	/* Fill data field of result string... */
+	ptr = VARDATA(result);
+	memcpy(ptr, pszFileName, len_name);
+	
 	PG_RETURN_TEXT_P(result);
 }
 
