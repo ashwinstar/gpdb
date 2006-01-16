@@ -45,7 +45,7 @@ MASTER_HOSTNAME=`hostname`
 EXIT_STATUS=0
 FULL_DISPLAY=0
 STOP_PROG=$MPPSTOP
-
+FORCE=0
 #******************************************************************************
 # Functions
 #******************************************************************************
@@ -67,6 +67,7 @@ USAGE () {
 	$ECHO
 	$ECHO "      Delete options:"
 	$ECHO "      -d, master database data directory to be deleted along with all segment instances [mandatory]"
+	$ECHO "      -f, force deletion, ignore any database backup files"
 	$ECHO
         $ECHO "      Return codes:"
         $ECHO "      0 No problems encountered with requested operation"
@@ -109,6 +110,31 @@ OBTAIN_PARAM () {
 	else
 		STANDBY_HOSTNAME="Not configured"
 	fi
+	if [ $FORCE -ne 1 ];then
+		LOG_MSG "[INFO]:-Checking for database dump files"
+		DB_DUMP_CHK
+	else
+		LOG_MSG "[INFO]:-Skipping database dump file check, as -f parameter supplied"
+	fi
+	LOG_MSG "[INFO]:-End Function $FUNCNAME"
+}
+
+
+DB_DUMP_CHK () {
+	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
+	for DELETE_SEG in "${QE_ARRAY[@]}"
+	do
+		SET_VAR $DELETE_SEG
+		LOG_MSG "[INFO]:-Checking host=$DELETE_HOSTNAME Data directory=$DELETE_DATADIR"
+		DUMP_COUNT=`$TRUSTED_SHELL $DELETE_HOSTNAME "$FIND $DELETE_DATADIR -name 'mpp_dump*' -print|$WC -l"`
+		if [ $DUMP_COUNT -ne 0 ];then
+			LOG_MSG "[FATAL]:-Located possible database dump file on $DELETE_HOSTNAME"
+			LOG_MSG "[FATAL]:-In directory $DELETE_DATADIR"
+			ERROR_EXIT "[FATAL]:-To override database dump file checking use -f option" 2
+		else
+			LOG_MSG "[INFO]:-Complete $DELETE_HOSTNAME dump file check"
+		fi 
+	done
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -195,12 +221,13 @@ DELETE_CLUSTER () {
 #******************************************************************************
 trap 'ERROR_EXIT "[FATAL]:-Recieved INT or TERM signal" 2' INT TERM
 if [ $# -ne 0 ];then
-        while getopts ":v'?'d:l:" opt;do
+        while getopts ":v'?'fd:l:" opt;do
         case $opt in
                 v ) VERSION_INFO ;;
                 '?' ) USAGE ;;
                 d ) DELETE_MASTER_DATA_DIRECTORY=$OPTARG ;;
 		l ) LOG_DIR=$OPTARG ;;
+		f ) FORCE=1 ;;
                 * ) UNKNOWN_OPTION ;;
         esac
         done
