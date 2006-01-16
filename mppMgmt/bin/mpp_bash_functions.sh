@@ -85,6 +85,7 @@ DD=`findCmdInPath dd`
 DIRNAME=`findCmdInPath dirname`
 DF=`findCmdInPath df`
 DU=`findCmdInPath du`
+DOS2UNIX=`findCmdInPath dos2unix`
 ECHO=`findCmdInPath echo`
 #ETHTOOL=`findCmdInPath ethtool`
 EXPR=`findCmdInPath expr`
