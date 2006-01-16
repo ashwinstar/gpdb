@@ -143,7 +143,7 @@ STOP_ADMIN () {
 		if [ ! -s $MASTER_DATA_DIRECTORY/$PG_PID ]; then
 				ERROR_EXIT "[FATAL]:- No $PG_PID file, is database already stopped?" 1
 		fi
-		env PGOPTIONS="-c mpp_session_role=utility" $PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m smart      >/dev/null 2>&1
+		env PGOPTIONS="-c mpp_session_role=utility" $PG_CTL $WAIT stop -D $MASTER_DATA_DIRECTORY -m $MODE      >/dev/null 2>&1
 		ERROR_CHK $? "shutdown Master database from admin mode" 2
 }
 
