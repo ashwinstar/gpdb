@@ -983,8 +983,8 @@ else
 	STOP_QD_PRODUCTION
 	START_QD_PRODUCTION
 fi
-$ECHO "$RM $BACKOUT_FILE" >> $BACKOUT_FILE
-BACKOUT_COMMAND "if [ $MASTER_HOSTNAME != \`$HOSTNAME\` ];then $ECHO \"[FATAL]:-Not on original master host $MASTER_HOSTNAME, backout script exiting!\";exit 2;fi"
+LOG_MSG "[INFO]:-Removing back out file"
+$RM -f $BACKOUT_FILE
 #Check the library info in initdb
 LOG_MSG "[INFO]:-MPP cluster successfully created"
 LOG_MSG "[INFO]:-------------------------------------------------------"
@@ -1002,9 +1002,7 @@ LOG_MSG "[INFO]:-export MASTER_DATA_DIRECTORY=${MASTER_DIRECTORY}/${SEG_PREFIX}0
 LOG_MSG "[INFO]:-or, use -d ${MASTER_DIRECTORY}/${SEG_PREFIX}0 option for the mpp scripts"
 LOG_MSG "[INFO]:-Example ./mppstate.sh -d ${MASTER_DIRECTORY}/${SEG_PREFIX}0"
 LOG_MSG "[INFO]:-Script log file = $LOG_FILE"
-LOG_MSG "[INFO]:-Script backout file = $BACKOUT_FILE"
-LOG_MSG "[INFO]:-To remove cluster, run"
-LOG_MSG "[INFO]:-/bin/bash $BACKOUT_FILE"
+LOG_MSG "[INFO]:-To remove cluster, run mppdeletecluster.sh script"
 if [ x"" != x"$STANDBY_HOSTNAME" ];then
 LOG_MSG "[INFO]:-Standby QD $STANDBY_HOSTNAME has been configured"
 LOG_MSG "[INFO]:-To activate the standby QD in the event of primary QD failure"
