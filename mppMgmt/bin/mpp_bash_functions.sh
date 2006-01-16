@@ -89,6 +89,7 @@ DOS2UNIX=`findCmdInPath dos2unix`
 ECHO=`findCmdInPath echo`
 #ETHTOOL=`findCmdInPath ethtool`
 EXPR=`findCmdInPath expr`
+FIND=`findCmdInPath find`
 TABECHO=$ECHO
 PROMPT="$ECHO"
 #TABECHO="$ECHO -e \t"
