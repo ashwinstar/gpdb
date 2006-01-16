@@ -152,6 +152,9 @@ CHK_PARAMS () {
 		#Make sure old CLUSTER_CONFIG settings are not hanging around.
 		unset PORT_BASE SEG_PREFIX DATA_DIRECTORY
 
+		#Make sure it is not a dos file with CTRL M at end of each line
+		$DOS2UNIX $CLUSTER_CONFIG > /dev/null 2>&1
+
 		#Source the cluster configuration file
 		LOG_MSG "[INFO]:-Reading MPP configuration file $CLUSTER_CONFIG"
 		. $CLUSTER_CONFIG
