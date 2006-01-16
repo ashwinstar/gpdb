@@ -2362,7 +2362,7 @@ CopyFromDispatch(CopyState cstate)
 
 	/* Set up callback to identify error line number */
 	errcontext.callback = copy_in_error_callback;
-	errcontext.arg = NULL;
+	errcontext.arg = (void *) cstate;
 	errcontext.previous = error_context_stack;
 	error_context_stack = &errcontext;
 
@@ -3208,7 +3208,7 @@ CopyFromExec(CopyState cstate)
 
 	/* Set up callback to identify error line number */
 	errcontext.callback = copy_in_error_callback;
-	errcontext.arg = NULL;
+	errcontext.arg = (void *) cstate;
 	errcontext.previous = error_context_stack;
 	error_context_stack = &errcontext;
 
