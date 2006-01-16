@@ -184,7 +184,8 @@ SharedSnapshotSlot *SharedSnapshotAdd(int4 slotId)
 {
 	SharedSnapshotSlot *slot = NULL;
 	SharedSnapshotStruct *arrayP = sharedSnapshotArray;
-	int nextSlot, i;
+	int nextSlot = -1;
+	int i;
 	
 	LWLockAcquire(SharedSnapshotLock, LW_EXCLUSIVE);
 	
