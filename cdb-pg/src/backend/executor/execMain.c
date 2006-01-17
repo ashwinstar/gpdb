@@ -64,6 +64,8 @@
 extern bool isFtsReadOnlySet(void);
 extern void FtsEvaluateTransientState(void);
 
+extern bool cdbpathlocus_querysegmentcatalogs;
+
 typedef struct execRowMark
 {
 	Relation	relation;
@@ -864,6 +866,18 @@ InitPlan(QueryDesc *queryDesc, bool explainOnly)
 	 * rangetable here --- subplan RTEs will be checked during
 	 * ExecInitSubPlan().
 	 */
+	 
+	if (operation == CMD_SELECT && (Mpp_role == MPP_ROLE_EXECUTE || (shouldDispatch && cdbpathlocus_querysegmentcatalogs)))
+	{
+		/*
+		 * We don't check the rights here, so we can query pg_statistic even if we are a non-privileged user.
+		 * This shouldn't cause a problem, because "cdbpathlocus_querysegmentcatalogs" can only be true if we 
+		 * are doing special catalog queries for ANALYZE.  Otherwise, the QD will execute the normal access right
+		 * check.  This does open a security hole, as it's possible for a hacker to connect to a segdb with MPP_ROLE_EXECUTE,
+		 * (at least, in theory, although it isn't easy) and then do a query.  I'll add some more checks soon.
+		 */
+	}
+	else
 	ExecCheckRTPerms(parseTree->rtable);
 
 	/*

@@ -18,13 +18,6 @@
 #include "cdb/cdbvars.h"		/* Mpp_role */
 #include "cdb/cdbanalyze.h"		/* me */
 
-/*
- * Flag used to tell "get_table_policy" to report that local tables are partitioned.
- * Initially, and normally, false.
- * When set to true, queries against catalog tables will be parallelized.
- * This must never be left at true.  Once the query is finished, it must be set back to false.
- */
-extern bool bTreatLocalsAsPartitioned;
 
 /*
  * cdbanalyze_query_local_catalogs
@@ -127,8 +120,10 @@ cdbanalyze_callback(StringInfo sqlstmt,
 	Cdbanalyze_Ctx *ctx = (Cdbanalyze_Ctx *) context;
 
 	/* Did the query succeed? */
-	if (spiresult != SPI_OK_SELECT ||
-		SPI_processed != 1)
+	if (spiresult != SPI_OK_SELECT)
+		goto fail;
+		
+	if (SPI_processed < 1)
 		goto fail;
 
 	/* Grab the results of the query and stuff them into the context. */
@@ -278,7 +273,8 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 		goto fail;
 		
 	if (SPI_processed < 1)
-		goto fail;
+		return;		/* no columns stats exist on QEs (empty table?) */
+
 
 	/* Grab the results of the query and stuff them into the context. */
 	tup = SPI_tuptable->vals[0];
