@@ -296,7 +296,29 @@ extern void FreeErrorData(ErrorData *edata);
 extern void FlushErrorState(void);
 extern void ReThrowError(ErrorData *edata);
 
-int elog_geterrcode(void);      /* CDB: Returns SQLSTATE for current error */
+/*
+ * CDB: elog_dismiss 
+ *
+ * A PG_CATCH() handler can call this to downgrade the error that it is
+ * currently handling to a level lower than ERROR, report it to the log
+ * and/or client as appropriate, and purge it from the error system.
+ *
+ * Returns true if successful, in which case the error has been fully
+ * handled and the caller should not do PG_RE_THROW(), but should instead 
+ * fall or jump out of the PG_CATCH() handler and resume normal execution.
+ *
+ * Returns false if unsuccessful; then the caller should carry on as 
+ * PG_CATCH() handlers ordinarily do, and exit via PG_RE_THROW().  
+ */
+bool        elog_dismiss(int downgrade_to_elevel);   
+
+/*
+ * CDB: elog_geterrcode
+ * Return the SQLSTATE code for the error currently being handled, or 0.
+ *
+ * This is only intended for use in error handlers.
+ */
+int         elog_geterrcode(void);      
 
 
 /* GUC-configurable parameters */

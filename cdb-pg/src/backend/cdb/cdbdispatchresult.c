@@ -222,12 +222,14 @@ cdbdisp_seterrcode(int                  errcode,        /* ERRCODE_xxx or 0 */
         dispatchResult->requestedCancel)
     {}                          /* nop */
 
-    else if (meleeResults->errcode == 0 ||
-             meleeResults->errcode == ERRCODE_MPP_INTERCONNECTION_ERROR)
+    else if (meleeResults->errcode == 0 
+            || (  meleeResults->errcode == ERRCODE_MPP_INTERCONNECTION_ERROR 
+               && errcode != ERRCODE_MPP_INTERCONNECTION_ERROR ) )
     {
         pthread_mutex_lock(&setErrcodeMutex);
-        if (meleeResults->errcode == 0 ||
-            meleeResults->errcode == ERRCODE_MPP_INTERCONNECTION_ERROR)
+        if (meleeResults->errcode == 0 
+           || (  meleeResults->errcode == ERRCODE_MPP_INTERCONNECTION_ERROR 
+              && errcode != ERRCODE_MPP_INTERCONNECTION_ERROR ) )
         {
             meleeResults->errcode = errcode;
             meleeResults->iFirstError = dispatchResult->meleeIndex;

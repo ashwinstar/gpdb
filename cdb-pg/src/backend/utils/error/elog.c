@@ -1166,8 +1166,87 @@ ReThrowError(ErrorData *edata)
 	PG_RE_THROW();
 }
 
+
 /*
- * CDB: elog_geterrcode --- return the currently set SQLSTATE code (0 if none)
+ * CDB: elog_dismiss 
+ *
+ * A PG_CATCH() handler can call this to downgrade the error that it is
+ * currently handling to a level lower than ERROR, report it to the log
+ * and/or client as appropriate, and purge it from the error system.
+ *
+ * Returns true if successful, in which case the error has been fully
+ * handled and the caller should not do PG_RE_THROW(), but should instead 
+ * fall or jump out of the PG_CATCH() handler and resume normal execution.
+ *
+ * Returns false if unsuccessful; then the caller should carry on as 
+ * PG_CATCH() handlers ordinarily do, and exit via PG_RE_THROW().  
+ */
+bool        
+elog_dismiss(int downgrade_to_elevel) 
+{
+    ErrorContextCallback   *saveCallbackStack = error_context_stack;
+    ErrorData              *edata = &errordata[errordata_stack_depth];
+    bool                    shouldEmit = false;
+
+    if (downgrade_to_elevel >= ERROR ||
+        recursion_depth != 0 ||
+        errordata_stack_depth < 0 ||
+        errordata_stack_depth >= ERRORDATA_STACK_SIZE - 1 ||
+        edata->elevel != ERROR)
+        return false;
+
+    /* 
+     * Context callbacks, if any, were already invoked when this error
+     * first passed through errfinish.  Hide them so they won't be
+     * called redundantly.
+     */
+    error_context_stack = NULL;
+
+    /* Use errstart to decide where to send the error report. */
+    shouldEmit = errstart(downgrade_to_elevel, NULL, 0, NULL);
+
+    /* Send error report to log and/or client. */
+    if (shouldEmit)
+    {
+        ErrorData  *newedata = &errordata[errordata_stack_depth];
+
+        /* errstart has stacked a new ErrorData entry. */
+        Insist(newedata == edata + 1);
+        
+        /* It tells us where to send the error report for the new elevel. */
+        edata->elevel = newedata->elevel;
+        edata->output_to_client = newedata->output_to_client;
+        edata->output_to_server = newedata->output_to_server;
+
+        /* Pop temp ErrorData entry. Nothing was palloc'ed; no need to pfree. */
+        errordata_stack_depth--;
+    }
+
+    /* Nobody wants the error report. */
+    else
+    {
+        edata->elevel = downgrade_to_elevel;
+        edata->output_to_client = false;
+        edata->output_to_server = false;
+    }
+
+    /* 
+     * Sneak the caller's error through errfinish again (it has been through
+     * once already) to emit the error report (if requested) and clean up.  
+     */
+    errfinish(0);
+
+    /* Restore the context callback stack. */
+    error_context_stack = saveCallbackStack;
+
+    /* Error not pending anymore, so caller should not do PG_RE_THROW(). */
+    return true;                /* success */
+}                               /* elog_dismiss */
+
+
+/*
+ * CDB: elog_geterrcode
+ * Return the SQLSTATE code for the error currently being handled, or 0.
  *
  * This is only intended for use in error handlers.
  */
@@ -1177,7 +1256,8 @@ elog_geterrcode(void)
     return (errordata_stack_depth < 0)
                 ? 0
                 : errordata[errordata_stack_depth].sqlerrcode;
-}
+}                               /* elog_geterrcode */
+
 
 /*
  * Initialization of error output file
@@ -1460,8 +1540,11 @@ cdb_tidy_message(ErrorData *edata)
     cdb_strip_trailing_whitespace(&edata->detail);
     cdb_strip_trailing_whitespace(&edata->message);
 
-    /* Look at main error message */
+    /* Look at main error message. */
     bp = edata->message ? edata->message : "";
+    while (*bp <= ' ' &&
+           *bp > '\0')
+        bp++;
     ep = bp + strlen(bp);
 
     /*
@@ -1474,7 +1557,7 @@ cdb_tidy_message(ErrorData *edata)
     {
         char   *dp = cp;
 
-        /* If just one extra line, strip leading '\n' and whitespace. */
+        /* If just one extra line, strip its leading '\n' and whitespace. */
         if (!strchr(dp+1, '\n'))
         {
             while (*dp <= ' ' &&
@@ -1500,8 +1583,11 @@ cdb_tidy_message(ErrorData *edata)
 
         /* Drop from main message. */
         ep = cp;
+        while (bp < ep &&
+               ep[-1] <= ' ' &&
+               ep[-1] > '\0')
+            ep--;
         *ep = '\0';
-        cdb_strip_trailing_whitespace(&edata->message);
     }
 
     /*
@@ -1862,7 +1948,14 @@ send_message_to_server_log(ErrorData *edata)
 	}
 
 	if (edata->message)
-		append_with_tabs(&buf, edata->message);
+    {
+        char   *cp = edata->message;
+
+        while (*cp <= ' ' &&
+               *cp > '\0')
+            cp++;
+        append_with_tabs(&buf, cp);
+    }
 	else
 		append_with_tabs(&buf, _("missing error text"));
 
@@ -2075,7 +2168,14 @@ send_message_to_frontend(ErrorData *edata)
 		/* M field is required per protocol, so always send something */
 		pq_sendbyte(&msgbuf, PG_DIAG_MESSAGE_PRIMARY);
 		if (edata->message)
-			pq_sendstring(&msgbuf, edata->message);
+        {
+            char   *cp = edata->message;
+
+            while (*cp <= ' ' &&
+                   *cp > '\0')
+                cp++;
+            pq_sendstring(&msgbuf, cp);
+        }
 		else
 			pq_sendstring(&msgbuf, _("missing error text"));
 
@@ -2369,6 +2469,7 @@ write_stderr(const char *fmt,...)
 #ifndef WIN32
 	/* On Unix, we just fprintf to stderr */
 	vfprintf(stderr, fmt, ap);
+    fflush(stderr);
 #else
 
 	/*
@@ -2384,8 +2485,11 @@ write_stderr(const char *fmt,...)
 		write_eventlog(EVENTLOG_ERROR_TYPE, errbuf);
 	}
 	else
-		/* Not running as service, write to stderr */
-		vfprintf(stderr, fmt, ap);
+    {
+        /* Not running as service, write to stderr */
+        vfprintf(stderr, fmt, ap);
+        fflush(stderr);
+    }
 #endif
 	va_end(ap);
 }
