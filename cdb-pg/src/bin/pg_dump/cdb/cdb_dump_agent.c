@@ -333,7 +333,7 @@ main(int argc, char **argv)
 	{
 		if (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-?") == 0)
 		{
-			help(progname);
+			help(pszProgName);
 			exit(0);
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
@@ -466,8 +466,8 @@ main(int argc, char **argv)
 				{
 					fprintf(stderr,
 							_("%s: invalid -X option -- %s\n"),
-							progname, optarg);
-					fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
+							pszProgName, optarg);
+					fprintf(stderr, _("Try \"%s --help\" for more information.\n"), pszProgName);
 					exit(1);
 				}
 				break;
@@ -504,9 +504,9 @@ main(int argc, char **argv)
 	if (optind < (argc - 1))
 	{
 		fprintf(stderr, _("%s: too many command-line arguments (first is \"%s\")\n"),
-				progname, argv[optind + 1]);
+				pszProgName, argv[optind + 1]);
 		fprintf(stderr, _("Try \"%s --help\" for more information.\n"),
-				progname);
+				pszProgName);
 		exit(1);
 	}
 
@@ -9388,7 +9388,6 @@ _check_database_version(ArchiveHandle *AH, bool ignoreVersion)
 	int			remoteversion;
 	
 	myversion = _parse_version(AH, PG_VERSION);
-	
 	remoteversion_str = PQparameterStatus(AH->connection, "server_version");
 	if (!remoteversion_str)
 		die_horribly(AH, NULL , "could not get server_version from libpq\n");
@@ -9403,7 +9402,7 @@ _check_database_version(ArchiveHandle *AH, bool ignoreVersion)
 			remoteversion > AH->public.maxRemoteVersion))
 	{
 		mpp_err_msg(logInfo, pszProgName, "server version: %s; %s version: %s\n",
-				  remoteversion_str, progname, PG_VERSION);
+				  remoteversion_str, pszProgName, PG_VERSION);
 		if (ignoreVersion)
 			mpp_err_msg(logInfo, pszProgName, "proceeding despite version mismatch\n");
 		else

@@ -1436,8 +1436,10 @@ void* threadProc(void *arg)
 
 				pParm->pszErrorMsg = MakeString( "backup failed to set transaction level serializable "
 												 "for dbid %d on host %s in the required "
-												 "time interval\n", 
-												 pSegDB->dbid, StringNotNull(pSegDB->pszHost, "localhost") );
+												 "time interval\n. Detail from remote status file: %s ", 
+												 pSegDB->dbid, StringNotNull(pSegDB->pszHost, "localhost"),
+												 ReadBackendBackupFile( pConn, pInputOpts->pszBackupDirectory, 
+																		pszKey, BFT_BACKUP_STATUS, pszProgName));
 				break;												
 			case STATE_BACKUP_ERROR:
 				/* Make call to get error message from file on server */
