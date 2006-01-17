@@ -1408,6 +1408,22 @@ StartTransaction(void)
 	AtStart_ResourceOwner();
 
 	
+	
+	/* MPP currently doesn't support SERIALIZABLE transactions.  it would be nice
+	 * to check it at GUC time or during the BEGIN stmt processing, but at GUC
+	 * time we haven't set up whether we are in MPP mode or not.  So instead we'll
+	 * check the isolation level here and if its SERIALIZABLE we'll error out.
+	 *
+	 * @see also variable.c assign_XactIsoLevel()
+	 */
+	if (Mpp_role == MPP_ROLE_DISPATCH || Mpp_role == MPP_ROLE_EXECUTE) 
+	{
+		if (XactIsoLevel == XACT_REPEATABLE_READ)	
+			elog(ERROR, "Bizgres MPP does not support REPEATABLE READ transactions.");
+		else if( XactIsoLevel == XACT_SERIALIZABLE)
+			elog(ERROR, "Bizgres MPP does not support SERIALIZABLE transactions.");	
+	}
+	
 
 
 	/* MPP Modification 

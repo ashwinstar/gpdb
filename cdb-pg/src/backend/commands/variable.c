@@ -31,6 +31,8 @@
 #include "utils/tqual.h"
 #include "mb/pg_wchar.h"
 
+#include "cdb/cdbvars.h"
+
 /*
  * DATESTYLE
  */
@@ -477,12 +479,20 @@ assign_XactIsoLevel(const char *value, bool doit, GucSource source)
 	if (strcmp(value, "serializable") == 0)
 	{
 		if (doit)
+		{
+			if (Mpp_role == MPP_ROLE_DISPATCH || Mpp_role == MPP_ROLE_EXECUTE) 
+				elog(ERROR, "Bizgres MPP does not support SERIALIZABLE transactions.");
 			XactIsoLevel = XACT_SERIALIZABLE;
+		}
 	}
 	else if (strcmp(value, "repeatable read") == 0)
 	{
 		if (doit)
+		{
+			if (Mpp_role == MPP_ROLE_DISPATCH || Mpp_role == MPP_ROLE_EXECUTE) 
+				elog(ERROR, "Bizgres MPP does not support REPEATABLE READ transactions.");
 			XactIsoLevel = XACT_REPEATABLE_READ;
+		}
 	}
 	else if (strcmp(value, "read committed") == 0)
 	{
