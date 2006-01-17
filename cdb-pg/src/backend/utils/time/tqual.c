@@ -109,10 +109,8 @@ SharedSnapshotShmemSize(void)
 
 	int numSlots = MaxBackends;	
 	
-	/* size of an individual slot is... A Snapshot + XID + CommandId + int4 */
-	
 	/* 2*int4 + XID + commandId + XID + CommandId */
-	slotSize = 2*sizeof(int4) + 2*sizeof(TransactionId) + 2*sizeof(CommandId);
+	slotSize = 2*sizeof(int4) + 2*sizeof(TransactionId) + 2*sizeof(CommandId) + sizeof(TimestampTz);
 	
 	/* Snapshot size: XID + XID + CommandId + uint32 + XID Array */
 	slotSize += 2*sizeof(TransactionId) + sizeof(CommandId) + sizeof(uint32);	
@@ -206,14 +204,14 @@ SharedSnapshotSlot *SharedSnapshotAdd(int4 slotId)
 	}
 	
 	/* start at the right place. */
-	slot = (SharedSnapshotSlot*)arrayP->slots + arrayP->nextSlot /** slotSize)*/;
+	slot = (SharedSnapshotSlot*)arrayP->slots + arrayP->nextSlot;
 	slot->slotindex = arrayP->nextSlot;
 	
 		
 	/* find the next available slot */
 	for (i=arrayP->nextSlot+1; i < arrayP->maxSlots; i++)
 	{
-		SharedSnapshotSlot *tmpSlot = (SharedSnapshotSlot*)arrayP->slots + i /*(i*slotSize)*/;
+		SharedSnapshotSlot *tmpSlot = (SharedSnapshotSlot*)arrayP->slots + i;
 		if (tmpSlot->slotid == -1)
 		{
 			nextSlot = i;
@@ -234,8 +232,10 @@ SharedSnapshotSlot *SharedSnapshotAdd(int4 slotId)
 	slot->slotid = slotId;
 	slot->xid = 0;
 	slot->cid = 0;
+	slot->startTimestamp = 0;
 	slot->QDxid = 0;
 	slot->QDcid = 0;
+	
 	
 	
 	LWLockRelease(SharedSnapshotLock);
@@ -296,6 +296,11 @@ void SharedSnapshotRemove(SharedSnapshotSlot *slot)
 	
 	/* reset the slotid which marks it as being unused. */
 	slot->slotid = -1;
+	slot->xid = 0;
+	slot->cid = 0;
+	slot->startTimestamp = 0;
+	slot->QDxid = 0;
+	slot->QDcid = 0;
 	
 	sharedSnapshotArray->numSlots--;
 	

@@ -73,6 +73,7 @@ typedef struct SharedSnapshotSlot
 	int4	 		slotid;
 	TransactionId	xid;
 	CommandId       cid;
+	TimestampTz		startTimestamp;
 	TransactionId   QDxid;
 	CommandId   QDcid;
 	SnapshotData	snapshot;

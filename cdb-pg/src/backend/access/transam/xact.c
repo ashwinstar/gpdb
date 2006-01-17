@@ -1445,6 +1445,19 @@ StartTransaction(void)
 			 */
 			s->transactionId = GetNewTransactionId(false);
 			
+			
+			/*
+			 * TODO:  the "writer" will eventually need to take out a lock on the global
+	 		 *		  XID here too when we get around to having a global snapshot used.
+	 		 */
+	 		XactLockTableInsert(s->transactionId); 
+	 		
+			/*
+			 * set now()
+			 */
+			xactStartTimestamp = GetCurrentTimestamp();
+
+			
 			/* NOTE: this is a bit hackish.
 			 * 		 It appears as though StartTransaction() gets called during
 			 * 		 connection setup before we even have time to setup our
@@ -1454,15 +1467,10 @@ StartTransaction(void)
 			{
 				SharedLocalSnapshotSlot->xid = s->transactionId;
 				SharedLocalSnapshotSlot->QDxid = QDSentXID;
+				SharedLocalSnapshotSlot->startTimestamp = xactStartTimestamp;
 			}
-			
-			/*
-			 * TODO:  the "writer" will eventually need to take out a lock on the global
-	 		 *		  XID here too when we get around to having a global snapshot used.
-	 		 */
-	 		XactLockTableInsert(s->transactionId); 
-	 		
-	 		
+
+
 		}
 		else
 		{
@@ -1491,7 +1499,8 @@ StartTransaction(void)
 					 */
 					if ( QDSentXID == SharedLocalSnapshotSlot->QDxid)
 					{
-						s->transactionId = SharedLocalSnapshotSlot->xid;										 
+						s->transactionId = SharedLocalSnapshotSlot->xid;
+						xactStartTimestamp = SharedLocalSnapshotSlot->startTimestamp;
 						done = true;
 					}
 					else
@@ -1499,7 +1508,7 @@ StartTransaction(void)
 						/* didn't find it.  we'll sleep for a small amount of time and then
 						 * try again. 
 						 *
-						 * TODO: is there a semaphore or something better we can do ehre.
+						 * TODO: is there a semaphore or something better we can do here.
 						 */
 						pg_usleep( /*microseconds*/ 2000);
 						
@@ -1522,12 +1531,14 @@ StartTransaction(void)
 		s->transactionId = GetNewTransactionId(false);
 		
 		XactLockTableInsert(s->transactionId);
+		
+		/*
+		 * set now()
+		 */
+		xactStartTimestamp = GetCurrentTimestamp();
+
 	}
 
-	/*
-	 * set now()
-	 */
-	xactStartTimestamp = GetCurrentTimestamp();
 
 	/*
 	 * initialize current transaction state fields
