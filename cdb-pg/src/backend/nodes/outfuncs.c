@@ -18,6 +18,10 @@
  *	  functions for nodes that appear in raw parsetrees, path, and plan trees.
  *	  These nodes however need not have input functions.
  *
+ *    N.B. Faster variants of these functions (producing illegible output)
+ *         are supplied in outfast.c for use in MPP serialization.  The
+ *         function in this file are intended to produce legible output.  
+ *
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
@@ -47,66 +51,62 @@
 
 /* Write an integer field (anything written as ":fldname %d") */
 #define WRITE_INT_FIELD(fldname) \
-	appendStringInfo(str, " : %d", node->fldname)
+	appendStringInfo(str, " :" CppAsString(fldname) " %d", node->fldname)
 
 /* Write an unsigned integer field (anything written as ":fldname %u") */
 #define WRITE_UINT_FIELD(fldname) \
-	appendStringInfo(str, " : %u", node->fldname)
+	appendStringInfo(str, " :" CppAsString(fldname) " %u", node->fldname)
 
 /* Write an OID field (don't hard-wire assumption that OID is same as uint) */
 #define WRITE_OID_FIELD(fldname) \
-	appendStringInfo(str, " : %u", node->fldname)
+	appendStringInfo(str, " :" CppAsString(fldname) " %u", node->fldname)
 
 /* Write a long-integer field */
 #define WRITE_LONG_FIELD(fldname) \
-	appendStringInfo(str, " : %ld", node->fldname)
+	appendStringInfo(str, " :" CppAsString(fldname) " %ld", node->fldname)
 
 /* Write a char field (ie, one ascii character) */
 #define WRITE_CHAR_FIELD(fldname) \
-	appendStringInfo(str, " : %c", node->fldname)
+	appendStringInfo(str, " :" CppAsString(fldname) " %c", node->fldname)
 
 /* Write an enumerated-type field as an integer code */
 #define WRITE_ENUM_FIELD(fldname, enumtype) \
-	appendStringInfo(str, " : %d", (int) node->fldname)
+	appendStringInfo(str, " :" CppAsString(fldname) " %d", \
+					 (int) node->fldname)
 
 /* Write a float field --- caller must give format to define precision */
 #define WRITE_FLOAT_FIELD(fldname,format) \
-	appendStringInfo(str, " : " format, node->fldname)
+	appendStringInfo(str, " :" CppAsString(fldname) " " format, node->fldname)
 
 /* Write a boolean field */
 #define WRITE_BOOL_FIELD(fldname) \
-	(node->fldname ? \
-	 appendStringInfoLiteral(str, " : true") : \
-	 appendStringInfoLiteral(str, " : false"))
+	appendStringInfo(str, " :" CppAsString(fldname) " %s", \
+					 booltostr(node->fldname))
 
 /* Write a character-string (possibly NULL) field */
 #define WRITE_STRING_FIELD(fldname) \
-	(appendStringInfo(str, " : "), _outToken(str, node->fldname))
+	(appendStringInfo(str, " :" CppAsString(fldname) " "), \
+	 _outToken(str, node->fldname))
 
 /* Write a Node field */
 #define WRITE_NODE_FIELD(fldname) \
-	(appendStringInfoLiteral(str, " : "), _outNode(str, node->fldname))
-
-/* Write a List field: this is a shortcut (you can call
- * WRITE_NODE_FIELD for list fields) to avoid an extra call to
- * _outNode() */
-#define WRITE_LIST_FIELD(fldname) \
-	((node->fldname == NULL) ? \
-	 (appendStringInfo(str, " : "), \
-	  appendStringInfoLiteral(str, "<>")) :				\
-	 (appendStringInfo(str, " : "), \
-	  _outList(str, node->fldname)))
+	(appendStringInfo(str, " :" CppAsString(fldname) " "), \
+	 _outNode(str, node->fldname))
 
 /* Write a bitmapset field */
 #define WRITE_BITMAPSET_FIELD(fldname) \
-	(appendStringInfo(str, " : "), \
+	(appendStringInfo(str, " :" CppAsString(fldname) " "), \
 	 _outBitmapset(str, node->fldname))
 
 /* Write a dummy field -- value not displayable or copyable */
 #define WRITE_DUMMY_FIELD(fldname) \
-	(appendStringInfo(str, " : "), _outToken(str, NULL))
+	(appendStringInfo(str, " :" CppAsString(fldname) " "), \
+	 _outToken(str, NULL))
+
+#define booltostr(x)  ((x) ? "true" : "false")
 
 static void _outNode(StringInfo str, void *obj);
+
 
 /*
  * _outToken
@@ -257,8 +257,8 @@ _outPlanInfo(StringInfo str, Plan *node)
 	WRITE_FLOAT_FIELD(total_cost, "%.2f");
 	WRITE_FLOAT_FIELD(plan_rows, "%.0f");
 	WRITE_INT_FIELD(plan_width);
-	WRITE_LIST_FIELD(targetlist);
-	WRITE_LIST_FIELD(qual);
+	WRITE_NODE_FIELD(targetlist);
+	WRITE_NODE_FIELD(qual);
 	WRITE_BITMAPSET_FIELD(extParam);
 	WRITE_BITMAPSET_FIELD(allParam);
 	WRITE_INT_FIELD(nParamExec);
@@ -292,7 +292,7 @@ _outJoinPlanInfo(StringInfo str, Join *node)
 	_outPlanInfo(str, (Plan *) node);
 
 	WRITE_ENUM_FIELD(jointype, JoinType);
-	WRITE_LIST_FIELD(joinqual);
+	WRITE_NODE_FIELD(joinqual);
 }
 
 
@@ -321,7 +321,7 @@ _outAppend(StringInfo str, Append *node)
 
 	_outPlanInfo(str, (Plan *) node);
 
-	WRITE_LIST_FIELD(appendplans);
+	WRITE_NODE_FIELD(appendplans);
 	WRITE_BOOL_FIELD(isTarget);
 }
 
@@ -332,7 +332,7 @@ _outBitmapAnd(StringInfo str, BitmapAnd *node)
 
 	_outPlanInfo(str, (Plan *) node);
 
-	WRITE_LIST_FIELD(bitmapplans);
+	WRITE_NODE_FIELD(bitmapplans);
 }
 
 static void
@@ -342,7 +342,7 @@ _outBitmapOr(StringInfo str, BitmapOr *node)
 
 	_outPlanInfo(str, (Plan *) node);
 
-	WRITE_LIST_FIELD(bitmapplans);
+	WRITE_NODE_FIELD(bitmapplans);
 }
 
 static void
@@ -369,10 +369,10 @@ _outIndexScan(StringInfo str, IndexScan *node)
 	_outScanInfo(str, (Scan *) node);
 
 	WRITE_OID_FIELD(indexid);
-	WRITE_LIST_FIELD(indexqual);
-	WRITE_LIST_FIELD(indexqualorig);
-	WRITE_LIST_FIELD(indexstrategy);
-	WRITE_LIST_FIELD(indexsubtype);
+	WRITE_NODE_FIELD(indexqual);
+	WRITE_NODE_FIELD(indexqualorig);
+	WRITE_NODE_FIELD(indexstrategy);
+	WRITE_NODE_FIELD(indexsubtype);
 	WRITE_ENUM_FIELD(indexorderdir, ScanDirection);
 }
 
@@ -384,10 +384,10 @@ _outBitmapIndexScan(StringInfo str, BitmapIndexScan *node)
 	_outScanInfo(str, (Scan *) node);
 
 	WRITE_OID_FIELD(indexid);
-	WRITE_LIST_FIELD(indexqual);
-	WRITE_LIST_FIELD(indexqualorig);
-	WRITE_LIST_FIELD(indexstrategy);
-	WRITE_LIST_FIELD(indexsubtype);
+	WRITE_NODE_FIELD(indexqual);
+	WRITE_NODE_FIELD(indexqualorig);
+	WRITE_NODE_FIELD(indexstrategy);
+	WRITE_NODE_FIELD(indexsubtype);
 }
 
 static void
@@ -397,7 +397,7 @@ _outBitmapHeapScan(StringInfo str, BitmapHeapScan *node)
 
 	_outScanInfo(str, (Scan *) node);
 
-	WRITE_LIST_FIELD(bitmapqualorig);
+	WRITE_NODE_FIELD(bitmapqualorig);
 }
 
 static void
@@ -407,7 +407,7 @@ _outTidScan(StringInfo str, TidScan *node)
 
 	_outScanInfo(str, (Scan *) node);
 
-	WRITE_LIST_FIELD(tideval);
+	WRITE_NODE_FIELD(tideval);
 }
 
 static void
@@ -451,7 +451,7 @@ _outMergeJoin(StringInfo str, MergeJoin *node)
 
 	_outJoinPlanInfo(str, (Join *) node);
 
-	WRITE_LIST_FIELD(mergeclauses);
+	WRITE_NODE_FIELD(mergeclauses);
 }
 
 static void
@@ -461,7 +461,7 @@ _outHashJoin(StringInfo str, HashJoin *node)
 
 	_outJoinPlanInfo(str, (Join *) node);
 
-	WRITE_LIST_FIELD(hashclauses);
+	WRITE_NODE_FIELD(hashclauses);
 }
 
 static void
@@ -615,8 +615,8 @@ _outMotion(StringInfo str, Motion *node)
 	for (i = 0; i < node->numHashSegs; i++)
 		appendStringInfo(str, " %d", node->hashSegIdx[i]);
 
-	WRITE_LIST_FIELD(hashExpr);
-	WRITE_LIST_FIELD(hashDataTypes);
+	WRITE_NODE_FIELD(hashExpr);
+	WRITE_NODE_FIELD(hashDataTypes);
 	WRITE_BOOL_FIELD(hashToSelfOnly);
 
 	WRITE_INT_FIELD(numOutputSegs);
@@ -2846,27 +2846,8 @@ nodeToString(void *obj)
 {
 	StringInfoData str;
 
-        /* see stringinfo.h for an explanation of this maneuver */
-        initStringInfo(&str);
-	_outNode(&str, obj);
-	return str.data;
-}
-
-
-
-/*
- * ModifiednodeToString -
- *	   returns the ascii representation of the Node as a palloc'd string
- *	   This version of nodeToString is only used by serializeNode (quick hack).
- */
-char *
-ModifiednodeToString(void *obj)
-{
-	StringInfoData str;
-	int bufsize = 8*1024;
-
-        /* see stringinfo.h for an explanation of this maneuver */
-        initStringInfoOfSize(&str, bufsize);
+	/* see stringinfo.h for an explanation of this maneuver */
+	initStringInfo(&str);
 	_outNode(&str, obj);
 	return str.data;
 }
