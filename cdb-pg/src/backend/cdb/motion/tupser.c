@@ -351,6 +351,7 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, int MaxChunkDat
 				break;
 			case BPCHAROID:
 			case VARCHAROID:
+			case ANYARRAYOID:
 				{
 					text	   *pText = DatumGetTextP(attr);
 					int32		textSize = VARSIZE(pText) - VARHDRSZ;
@@ -527,6 +528,7 @@ DeserializeTuple(SerTupInfo * pSerInfo, StringInfo serialTup)
 
 			case BPCHAROID:
 			case VARCHAROID:
+			case ANYARRAYOID:
 				{
 					text	   *pText;
 					int			textSize;
