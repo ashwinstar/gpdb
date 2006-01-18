@@ -2,7 +2,7 @@
  *
  * cdbpath.c
  *
- * Copyright (c) 2005, greenplum inc
+ * Copyright (c) 2005-2006, greenplum inc
  *
  * $Id$
  *
@@ -747,6 +747,16 @@ cdbpath_motion_for_join(PlannerInfo      *root,
         else
             other->move_to = single->locus;
     }                                       /* singleQE */
+
+    /*
+     * Kludge used internally for querying catalogs on segment dbs.
+     * Each QE will join the catalogs that are local to its own segment.
+     * The catalogs don't have partitioning keys.  No motion needed.
+     */
+    else if (CdbPathLocus_IsStrewn(outer.locus) &&
+             CdbPathLocus_IsStrewn(inner.locus) &&
+             cdbpathlocus_querysegmentcatalogs)
+        return outer.locus;
 
     /*
      * Both sources are partitioned.  Redistribute or replicate one or both.
