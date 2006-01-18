@@ -1168,21 +1168,21 @@ ReThrowError(ErrorData *edata)
 
 
 /*
- * CDB: elog_dismiss 
+ * CDB: elog_dismiss
  *
  * A PG_CATCH() handler can call this to downgrade the error that it is
  * currently handling to a level lower than ERROR, report it to the log
  * and/or client as appropriate, and purge it from the error system.
  *
  * Returns true if successful, in which case the error has been fully
- * handled and the caller should not do PG_RE_THROW(), but should instead 
+ * handled and the caller should not do PG_RE_THROW(), but should instead
  * fall or jump out of the PG_CATCH() handler and resume normal execution.
  *
- * Returns false if unsuccessful; then the caller should carry on as 
- * PG_CATCH() handlers ordinarily do, and exit via PG_RE_THROW().  
+ * Returns false if unsuccessful; then the caller should carry on as
+ * PG_CATCH() handlers ordinarily do, and exit via PG_RE_THROW().
  */
-bool        
-elog_dismiss(int downgrade_to_elevel) 
+bool
+elog_dismiss(int downgrade_to_elevel)
 {
     ErrorContextCallback   *saveCallbackStack = error_context_stack;
     ErrorData              *edata = &errordata[errordata_stack_depth];
@@ -1195,7 +1195,7 @@ elog_dismiss(int downgrade_to_elevel)
         edata->elevel != ERROR)
         return false;
 
-    /* 
+    /*
      * Context callbacks, if any, were already invoked when this error
      * first passed through errfinish.  Hide them so they won't be
      * called redundantly.
@@ -1212,7 +1212,7 @@ elog_dismiss(int downgrade_to_elevel)
 
         /* errstart has stacked a new ErrorData entry. */
         Insist(newedata == edata + 1);
-        
+
         /* It tells us where to send the error report for the new elevel. */
         edata->elevel = newedata->elevel;
         edata->output_to_client = newedata->output_to_client;
@@ -1230,9 +1230,9 @@ elog_dismiss(int downgrade_to_elevel)
         edata->output_to_server = false;
     }
 
-    /* 
+    /*
      * Sneak the caller's error through errfinish again (it has been through
-     * once already) to emit the error report (if requested) and clean up.  
+     * once already) to emit the error report (if requested) and clean up.
      */
     errfinish(0);
 

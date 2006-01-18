@@ -45,7 +45,6 @@ ExceptionalCondition(const char *conditionName,
 					 errorType, conditionName,
 					 fileName, lineNumber);
 	}
-    fflush(stderr);
     fflush(stdout);
 	
 #if (!defined(__darwin__)) && (!defined(__solaris__))
@@ -64,7 +63,6 @@ ExceptionalCondition(const char *conditionName,
 		{
 			write_stderr("%s\n",strings[i]);
 		}
-        fflush(stderr);
 	}
 #endif
 #endif

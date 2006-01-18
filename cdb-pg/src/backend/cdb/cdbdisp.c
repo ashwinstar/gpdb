@@ -868,7 +868,7 @@ cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
  *		 elog is NOT thread-safe.  Developers should instead use something like:
  *
  *	if (DEBUG3 >= log_min_messages)
- *			fprintf(stderr,"my brilliant log statement here.\n");
+ *			write_stderr("my brilliant log statement here.\n");
  *
  * NOTE: In threads, we cannot use palloc, because it's not thread safe.
  */
@@ -890,7 +890,8 @@ thread_DispatchCommand(void *arg)
 	{
 		/* Don't use elog, it's not thread-safe */
 		if (DEBUG5 >= log_min_messages)
-			fprintf(stderr, "thread_DispatchCommand working on %d of %d commands\n", i + 1, db_count);
+			write_stderr("thread_DispatchCommand working on %d of %d commands\n",
+                         i + 1, db_count);
 
 		dispatchResult = pParms->dispatchResultPtrArray[i];
 
@@ -1033,12 +1034,6 @@ thread_DispatchCommand(void *arg)
 
 	}							/* some QEs running */
 
-	if (DEBUG5 >= log_min_messages)
-	{
-		fprintf(stderr, "thread_DispatchCommand exit\n");
-		fflush(stderr);
-	}
-
 	return (NULL);
 }	/* thread_DispatchCommand */
 
@@ -1062,11 +1057,8 @@ shouldStillDispatchCommand(CdbDispatchResult * dispatchResult)
 	if (!segdbDesc->conn)
 	{
 		if (DEBUG3 >= log_min_messages)
-		{
-			fprintf(stderr, "Command not sent to %s; no connection.\n",
-					segdbDesc->whoami);
-			fflush(stderr);
-		}
+			write_stderr("Command not sent to %s; no connection.\n",
+					     segdbDesc->whoami);
 		return false;
 	}
 
@@ -1102,9 +1094,8 @@ shouldStillDispatchCommand(CdbDispatchResult * dispatchResult)
 			if (DEBUG4 >= log_min_messages)
 			{
 				/* Don't use elog, it's not thread-safe */
-				fprintf(stderr, "Error cleanup in progress; command not sent to %s\n",
-						segdbDesc->whoami);
-				fflush(stderr);
+				write_stderr("Error cleanup in progress; command not sent to %s\n",
+						     segdbDesc->whoami);
 			}
 			return false;
 		}
@@ -1119,11 +1110,8 @@ shouldStillDispatchCommand(CdbDispatchResult * dispatchResult)
 	{
 		dispatchResult->wasCanceled = true;
 		if (DEBUG4 >= log_min_messages)
-		{
-			fprintf(stderr, "Cancellation request pending; command not sent to %s\n",
-					segdbDesc->whoami);
-			fflush(stderr);
-		}
+			write_stderr("Cancellation request pending; command not sent to %s\n",
+					     segdbDesc->whoami);
 		return false;
 	}
 
@@ -1147,9 +1135,7 @@ dispatchCommand(CdbDispatchResult  *dispatchResult,
 
 	/* Don't use elog, it's not thread-safe */
 	if (DEBUG3 >= log_min_messages)
-		fprintf(stderr, "%s <- %.120s\n",
-				segdbDesc->whoami,
-				szCommand);
+		write_stderr("%s <- %.120s\n", segdbDesc->whoami, szCommand);
 
 	/*
 	 * Submit the command asynchronously.
@@ -1188,9 +1174,8 @@ handleSelectError(DispatchCommandParms * pParms,
 	if (LOG >= log_min_messages)
 	{
 		/* Don't use elog, it's not thread-safe */
-		fprintf(stderr, "thread_DispatchCommand select() failed; errno=%d\n",
-				sock_errno);
-		fflush(stderr);
+		write_stderr("thread_DispatchCommand select() failed; errno=%d\n",
+				     sock_errno);
 	}
 
 	/*
@@ -1273,11 +1258,8 @@ handleSelectTimeout(DispatchCommandParms * pParms,
 				PQstatus(segdbDesc->conn) != CONNECTION_BAD)
 			{
 				if (DEBUG4 >= log_min_messages)
-				{
-					fprintf(stderr, "Calling PQrequestCancel for %s\n",
-							segdbDesc->whoami);
-					fflush(stderr);
-				}
+					write_stderr("Calling PQrequestCancel for %s\n",
+							     segdbDesc->whoami);
 
 				/*
 				 * Block here until segment postmaster replies that it has
@@ -1398,8 +1380,7 @@ processResults(CdbDispatchResult * dispatchResult)
 			if (DEBUG4 >= log_min_messages)
 			{
 				/* Don't use elog, it's not thread-safe */
-				fprintf(stderr, "%s -> idle\n", segdbDesc->whoami);
-				fflush(stderr);
+				write_stderr("%s -> idle\n", segdbDesc->whoami);
 			}
 			return true;		/* this is normal end of command */
 		}						/* end of results */
@@ -1424,10 +1405,9 @@ processResults(CdbDispatchResult * dispatchResult)
 				/* Don't use elog, it's not thread-safe */
 				char	   *cmdStatus = PQcmdStatus(pRes);
 
-				fprintf(stderr, "%s -> ok %s\n",
-						segdbDesc->whoami,
-						cmdStatus ? cmdStatus : "(no cmdStatus)");
-				fflush(stderr);
+				write_stderr("%s -> ok %s\n",
+						     segdbDesc->whoami,
+						     cmdStatus ? cmdStatus : "(no cmdStatus)");
 			}
 		}						/* QE reported success */
 
@@ -1442,12 +1422,11 @@ processResults(CdbDispatchResult * dispatchResult)
 			if (DEBUG2 >= log_min_messages)
 			{
 				/* Don't use elog, it's not thread-safe */
-				fprintf(stderr, "%s -> %s %s  %s",
-						segdbDesc->whoami,
-						PQresStatus(resultStatus),
-						sqlstate ? sqlstate : "(no SQLSTATE)",
-						errorMessage ? errorMessage : "\n");
-				fflush(stderr);
+				write_stderr("%s -> %s %s  %s",
+                             segdbDesc->whoami,
+						     PQresStatus(resultStatus),
+						     sqlstate ? sqlstate : "(no SQLSTATE)",
+						     errorMessage ? errorMessage : "\n");
 			}
 
 			/*
@@ -1700,7 +1679,7 @@ pre_dispatch_function_evaluation_mutator(Node *node,
 			if (funcid == 1574 && context->nextval_replacement == NULL && simple)
 				context->nextval_replacement = (Node *) simple;
 			
-			elog(DEBUG1," simplified");
+			elog(DEBUG3," simplified");
 
 			if (simple)			/* successfully simplified it */
 				return (Node *) simple;

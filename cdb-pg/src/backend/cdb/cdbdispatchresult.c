@@ -222,13 +222,13 @@ cdbdisp_seterrcode(int                  errcode,        /* ERRCODE_xxx or 0 */
         dispatchResult->requestedCancel)
     {}                          /* nop */
 
-    else if (meleeResults->errcode == 0 
-            || (  meleeResults->errcode == ERRCODE_MPP_INTERCONNECTION_ERROR 
+    else if (meleeResults->errcode == 0
+            || (  meleeResults->errcode == ERRCODE_MPP_INTERCONNECTION_ERROR
                && errcode != ERRCODE_MPP_INTERCONNECTION_ERROR ) )
     {
         pthread_mutex_lock(&setErrcodeMutex);
-        if (meleeResults->errcode == 0 
-           || (  meleeResults->errcode == ERRCODE_MPP_INTERCONNECTION_ERROR 
+        if (meleeResults->errcode == 0
+           || (  meleeResults->errcode == ERRCODE_MPP_INTERCONNECTION_ERROR
               && errcode != ERRCODE_MPP_INTERCONNECTION_ERROR ) )
         {
             meleeResults->errcode = errcode;
@@ -307,8 +307,7 @@ cdbdisp_appendMessage(CdbDispatchResult    *dispatchResult,
     if (elevel >= log_min_messages)
     {
         oneTrailingNewlinePQ(dispatchResult->error_message);
-        fputs(dispatchResult->error_message->data + msgoff, stderr);
-        fflush(stderr);
+        write_stderr("%s", dispatchResult->error_message->data + msgoff);
     }
 
     /* In case the caller wants to hand the buffer to ereport(),

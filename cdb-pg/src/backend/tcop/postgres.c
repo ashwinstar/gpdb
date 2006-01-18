@@ -2296,8 +2296,6 @@ CdbProgramErrorHandler(SIGNAL_ARGS)
 
     write_stderr("\nUnexpected internal error: %s %d received signal %s\n\n",
                  pts, MyProcPid, signame);
-    fflush(stderr);
-    fflush(stdout);
 
     errno = save_errno;
     ereport(FATAL, (errcode(ERRCODE_INTERNAL_ERROR),
