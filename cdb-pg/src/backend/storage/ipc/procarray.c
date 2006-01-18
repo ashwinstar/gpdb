@@ -550,7 +550,7 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 				 
 				 CHECK_FOR_INTERRUPTS();
 				 
-				 if( count == 1000 )
+				 if( count >= 4000 )
 				 	elog( ERROR, "Reader qExec timed out waiting for Writer to set the shared snapshot");
 				 
 			}	
