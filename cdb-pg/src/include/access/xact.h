@@ -135,6 +135,7 @@ typedef struct xl_xact_abort_prepared
  */
 extern void SetSharedTransactionId(void);
 extern bool IsTransactionState(void);
+extern bool IsAbortInProgress(void);
 extern bool IsAbortedTransactionBlockState(void);
 extern TransactionId GetTopTransactionId(void);
 extern TransactionId GetCurrentTransactionId(void);

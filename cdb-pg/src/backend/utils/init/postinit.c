@@ -563,7 +563,8 @@ InitPostgres(const char *dbname, const char *username)
 				ereport(ERROR,
 					(errmsg("Writer qExec could not set the Shared Local Snapshot!"),
 					 errdetail("Tried to set the shared local snapshot slot with id: %d "
-					 		   "and failed.", mpp_session_id)));	
+					 		   "and failed. Shared Local Snapshots dump: %s", mpp_session_id,
+					 		   SharedSnapshotDump())));	
 			}
 		}
 		else
@@ -580,8 +581,9 @@ InitPostgres(const char *dbname, const char *username)
 				ereport(ERROR,
 					(errmsg("Reader qExec could not find Shared Local Snapshot!"),
 					 errdetail("Tried to find a shared snapshot slot with id: %d "
-					 		   "and found none.", mpp_session_id),
-					 errhint("Either this Reader qExec was created before the Writer"
+					 		   "and found none. Shared Local Snapshots dump: %s", mpp_session_id,
+					 		   SharedSnapshotDump()),
+					 errhint("Either this Reader qExec was created before the Writer "
 					 		 "qExec or the Writer qExec died.")));			 
 			}					
 		}

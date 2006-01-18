@@ -2236,8 +2236,8 @@ static char*
 serializeSnapshot(void)
 {
 	char *szSnapshotInfo;
-	SnapshotInfo *snapInfo;
-	Snapshot snapshot;
+	SnapshotInfo *snapInfo = NULL;
+	Snapshot snapshot = NULL;
 	
 	
 	/* If we already have a LatestSnapshot set then no reason to try
@@ -2271,22 +2271,44 @@ serializeSnapshot(void)
 	 *  	 statement to the qExecs and more than one needs a snapshot!
 	 */
 	if (LatestSnapshot != NULL)
+	{
 		snapshot = LatestSnapshot;
-	else
+	}
+	else if (!IsAbortInProgress() )  		
+	{
+		/* unfortunately, the dtm issues a select for prepared xacts at the
+		 * beginning and this is before a snapshot has been set up.  so we need
+		 * one for that but not for when we dont have a valid XID.
+		 *
+		 * but we CANT do this if an ABORT is in progress... instead we'll send
+		 * a NONE since the qExecs dont need the information to do a ROLLBACK.
+		 *
+		 */
 		snapshot = GetTransactionSnapshot();
+	}
 	
+	if (snapshot != NULL)
+	{
+		snapInfo = makeNode(SnapshotInfo);	
+		snapInfo->currentTransactionId = GetCurrentTransactionId();
+		snapInfo->xmin = snapshot->xmin;
+		snapInfo->xmax = snapshot->xmax;
+		snapInfo->xcnt = snapshot->xcnt;
+		snapInfo->xip = snapshot->xip;
+		snapInfo->curcid = snapshot->curcid;
 	
-	snapInfo = makeNode(SnapshotInfo);	
-	snapInfo->currentTransactionId = GetCurrentTransactionId();
-	snapInfo->xmin = snapshot->xmin;
-	snapInfo->xmax = snapshot->xmax;
-	snapInfo->xcnt = snapshot->xcnt;
-	snapInfo->xip = snapshot->xip;
-	snapInfo->curcid = snapshot->curcid;
-
-	
-	szSnapshotInfo = serializeNode((Node *) snapInfo, NULL);
-	pfree(snapInfo);
+		
+		szSnapshotInfo = serializeNode((Node *) snapInfo, NULL);
+		pfree(snapInfo);
+	}
+	else
+	{
+		/* basically this should mean that we have an Abort in progress and 
+		 * so can't and don't need to send a serialized snapshot.  so we'll
+		 * send "NONE".
+		 */
+		szSnapshotInfo = pstrdup("NONE");
+	}
 	
 	return szSnapshotInfo;
 }

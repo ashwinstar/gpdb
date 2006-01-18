@@ -288,6 +288,14 @@ IsTransactionState(void)
 	return false;
 }
 
+bool
+IsAbortInProgress(void)
+{
+	TransactionState s = CurrentTransactionState;
+
+	return (s->state == TRANS_ABORT);
+}
+
 /*
  *	IsAbortedTransactionBlockState
  *

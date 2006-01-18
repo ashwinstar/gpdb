@@ -139,6 +139,7 @@ typedef enum
 /* MPP Shared Snapshot */
 extern Size SharedSnapshotShmemSize(void);
 extern void CreateSharedSnapshotArray(void);
+extern char *SharedSnapshotDump(void);
 extern SharedSnapshotSlot *SharedSnapshotAdd(int4 slotId);
 extern SharedSnapshotSlot *SharedSnapshotLookup(int4 slotId);
 extern void SharedSnapshotRemove(SharedSnapshotSlot *slot);

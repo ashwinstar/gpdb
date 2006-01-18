@@ -3345,17 +3345,22 @@ PostgresMain(int argc, char *argv[], const char *username)
 					/* read in the snapshot info */
 					snapshot_string = pq_getmsgstring(&input_message);
 
-					/* parse the snapshot_string and store it. */
-					snapInfo = (SnapshotInfo *) deserializeNode((char*)snapshot_string);
-					
-					QDSentXID 			   = snapInfo->currentTransactionId;
-					
-					QDSentSnapshot->xmin   = snapInfo->xmin;
-					QDSentSnapshot->xmax   = snapInfo->xmax;
-					QDSentSnapshot->xcnt   = snapInfo->xcnt;	
-					QDSentSnapshot->xip    = snapInfo->xip;					
-					QDSentSnapshot->curcid = snapInfo->curcid;
-					
+					/* a NONE message is sent during an ABORT and so we dont
+					 * need to worry about setting the snapshot info.
+					 */
+					if (strcmp(snapshot_string, "NONE") != 0)
+					{
+						/* parse the snapshot_string and store it. */
+						snapInfo = (SnapshotInfo *) deserializeNode((char*)snapshot_string);
+						
+						QDSentXID 			   = snapInfo->currentTransactionId;
+						
+						QDSentSnapshot->xmin   = snapInfo->xmin;
+						QDSentSnapshot->xmax   = snapInfo->xmax;
+						QDSentSnapshot->xcnt   = snapInfo->xcnt;	
+						QDSentSnapshot->xip    = snapInfo->xip;					
+						QDSentSnapshot->curcid = snapInfo->curcid;
+					}					
 					
 					/* get the query string and kick off processing. */
 					query_string = pq_getmsgstring(&input_message);

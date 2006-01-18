@@ -43,6 +43,7 @@
 #include "access/subtrans.h"
 #include "access/twophase.h"  /*max_prepared_xacts*/
 #include "miscadmin.h"
+#include "lib/stringinfo.h"
 #include "storage/procarray.h"
 #include "utils/tqual.h"
 
@@ -160,7 +161,7 @@ CreateSharedSnapshotArray(void)
 			
 			for (i=0; i < sharedSnapshotArray->maxSlots; i++)
 			{
-				SharedSnapshotSlot *tmpSlot = (SharedSnapshotSlot*)sharedSnapshotArray->slots + i /*(i*slotSize)*/;
+				SharedSnapshotSlot *tmpSlot = (SharedSnapshotSlot*)sharedSnapshotArray->slots + i; 
 				tmpSlot->slotid = -1;
 			}		
 		}
@@ -168,6 +169,42 @@ CreateSharedSnapshotArray(void)
 	
 }
 
+/* used to dump the internal state of the shared slots for debugging.
+ */
+char *SharedSnapshotDump(void)
+{
+	
+	StringInfoData str;
+	SharedSnapshotStruct *arrayP = sharedSnapshotArray;
+	int index;
+	
+    initStringInfo(&str);
+
+
+	appendStringInfo(&str, "Local SharedSnapshot Slot Dump: currSlots: %d maxSlots: %d ", 
+					 arrayP->numSlots, arrayP->maxSlots);
+	
+	LWLockAcquire(SharedSnapshotLock, LW_EXCLUSIVE);
+	
+	
+	for (index=0; index < arrayP->numSlots; index++)
+	{
+		SharedSnapshotSlot *testSlot;
+		
+		testSlot = (SharedSnapshotSlot*)arrayP->slots + index; 
+		
+		if( testSlot->slotid != -1 )
+		{
+			appendStringInfo(&str, "(SLOT index: %d slotid: %d QDxid: %u QDcid: %u )", 
+				testSlot->slotindex, testSlot->slotid, testSlot->QDxid, testSlot->QDcid);
+		}
+		
+	}
+	
+	LWLockRelease(SharedSnapshotLock);
+	
+	return str.data;
+}
 
 /* Acquires an available slot in the sharedSnapshotArray.  The slot is then
  * marked with the supplied slotId.  This slotId is what others will use to
@@ -259,11 +296,11 @@ SharedSnapshotSlot *SharedSnapshotLookup(int4 slotId)
 	LWLockAcquire(SharedSnapshotLock, LW_EXCLUSIVE);
 	
 	
-	for (index=0; index < arrayP->numSlots; index++)
+	for (index=0; index < arrayP->maxSlots; index++)
 	{
 		SharedSnapshotSlot *testSlot;
 		
-		testSlot = (SharedSnapshotSlot*)arrayP->slots + index; /*(index * slotSize);*/
+		testSlot = (SharedSnapshotSlot*)arrayP->slots + index;
 					
 		if (testSlot->slotid == slotId)
 		{
