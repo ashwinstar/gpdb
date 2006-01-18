@@ -549,7 +549,7 @@ GET_PG_PID_ACTIVE () {
 		PORT=$1;shift
 		HOST=$1
 		if [ x"" == x"$HOST" ];then
-			PG_LOCK_FILE=`$NETSTAT -a|$GREP ".s.PGSQL.${PORT}"|$GREP LISTENING|$AWK '{print $NF}'`
+			PG_LOCK_FILE=`$NETSTAT -an|$GREP ".s.PGSQL.${PORT}"|$GREP LISTENING|$AWK '{print $NF}'`
 			if [ x"" == x"$PG_LOCK_FILE" ];then
 				PID=0
 				LOG_MSG "[INFO]:-No socket connection found for port=${PORT}"
@@ -564,7 +564,7 @@ GET_PG_PID_ACTIVE () {
 				fi
 			fi
 		else
-			PG_LOCK_FILE=`$TRUSTED_SHELL $HOST "$NETSTAT -a|$GREP ".s.PGSQL.${PORT}" 2>/dev/null"|$AWK '{print $NF}'`
+			PG_LOCK_FILE=`$TRUSTED_SHELL $HOST "$NETSTAT -an|$GREP ".s.PGSQL.${PORT}" 2>/dev/null"|$AWK '{print $NF}'`
 			if [ x"" == x"$PG_LOCK_FILE" ];then
 				PID=0
 				LOG_MSG "[INFO]:-No socket connection found for port=${PORT} on $HOST"
