@@ -400,7 +400,7 @@ CopySendData(CopyState cstate, void *databuf, int datasize)
 					(void) pq_putmessage('d', cstate->fe_msgbuf->data, cstate->fe_msgbuf->len);
 					/* Reset fe_msgbuf to empty */
 					cstate->fe_msgbuf->len = 0;
-					cstate->fe_msgbuf->data[0] = '\0';					
+					cstate->fe_msgbuf->data[0] = '\0';		
 				}
 				
 				break;
@@ -1640,7 +1640,8 @@ CopyToDispatch(CopyState cstate)
 		if(cdbCopyGetData(cdbCopy) == 0)
 		{
 			/* send the chunk of data to destination (file or stdout) */
-			CopySendData(cstate, (void *) cdbCopy->copy_out_buf.data, cdbCopy->copy_out_buf.len);
+			if(cdbCopy->copy_out_buf.len > 0) /* conditional is important! */
+				CopySendData(cstate, (void *) cdbCopy->copy_out_buf.data, cdbCopy->copy_out_buf.len);
 			
 			if(cdbCopy->copyout_done)
 				break;
