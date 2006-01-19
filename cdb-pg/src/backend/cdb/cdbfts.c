@@ -166,9 +166,20 @@ FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo, char *dbName)
 		}
 
 		/* If we get a network error (do we really need a
-		 * comprehensive list here ?) or a "FATAL" database error */
+		 * comprehensive list here ?) or a "FATAL" database error,
+		 * then it is a real error, otherwise it isn't. See
+		 * fe-connect.c for the details: all fatal network error start
+		 * with " could not":
+		 *
+		 * " could not create" -- socket error
+		 * " could not translate" -- DNS error
+		 * " could not connect" -- network error
+		 * " could not get" -- getsockopt error
+		 * " could not set" -- setsockopt error
+		 * " could not send" -- libpq protocol error
+		 */
 		if (strstr(errorMsg, "FATAL:") == NULL &&
-			strstr(errorMsg, "Connection refused") == NULL)
+			strstr(errorMsg, " could not ") == NULL)
 		{
 			/* non-fatal connection errors are ignored */
 			elog(DEBUG3, "FtsTestConnection: nonfatal error, ignoring (%d, %s)", PQsocket(conn), errorMsg);
