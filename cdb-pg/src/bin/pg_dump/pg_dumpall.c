@@ -35,7 +35,7 @@ int			optreset;
 
 
 /* version string we expect back from postgres */
-#define PG_VERSIONSTR "pg_dump (Bizgres MPP) " PG_VERSION "\n"
+#define PG_VERSIONSTR "pg_dump (PostgreSQL) " PG_VERSION "\n"
 
 
 static const char *progname;
@@ -133,7 +133,7 @@ main(int argc, char *argv[])
 		}
 		if (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-V") == 0)
 		{
-			puts("pg_dumpall (Bizgres MPP) " PG_VERSION);
+			puts("pg_dumpall (PostgreSQL) " PG_VERSION);
 			exit(0);
 		}
 	}
