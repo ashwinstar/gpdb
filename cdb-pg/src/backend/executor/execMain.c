@@ -52,6 +52,9 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 
+#include "catalog/pg_statistic.h"
+#include "catalog/pg_class.h"
+
 #include "cdb/cdbcat.h"
 #include "cdb/cdbdisp.h"
 #include "cdb/cdbdispatchresult.h"      /* cdbdisp_sumCmdTuples() */
@@ -874,10 +877,35 @@ InitPlan(QueryDesc *queryDesc, bool explainOnly)
 		 * This shouldn't cause a problem, because "cdbpathlocus_querysegmentcatalogs" can only be true if we 
 		 * are doing special catalog queries for ANALYZE.  Otherwise, the QD will execute the normal access right
 		 * check.  This does open a security hole, as it's possible for a hacker to connect to a segdb with MPP_ROLE_EXECUTE,
-		 * (at least, in theory, although it isn't easy) and then do a query.  I'll add some more checks soon.
+		 * (at least, in theory, although it isn't easy) and then do a query.  But all they can see is 
+		 * pg_statistic and pg_class, and pg_class is normally readable by everyone.  
 		 */
+		 
+		ListCell   *l;
+
+		foreach(l, parseTree->rtable)
+		{
+			RangeTblEntry *rte = lfirst(l);
+			
+			if (rte->rtekind != RTE_RELATION)
+				continue;
+				
+			if (rte->requiredPerms == 0)
+				continue;
+
+			if (rte->relid == StatisticRelationId || rte->relid == RelationRelationId)
+			{
+				/*
+				 * Ignore access rights check on pg_statistic and pg_class, so 
+				 * the QD can retreive the statistics from the QEs.
+				 */
+			}
+			else
+				ExecCheckRTEPerms(rte);
+		}
 	}
 	else
+	
 	ExecCheckRTPerms(parseTree->rtable);
 
 	/*
