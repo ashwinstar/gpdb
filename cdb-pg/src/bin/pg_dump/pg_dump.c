@@ -436,6 +436,12 @@ main(int argc, char **argv)
 	if (optind < argc)
 		dbname = argv[optind];
 
+	if(dumpInserts)
+	{
+		write_msg(NULL, "dump with INSERTs is not yet supported in MPP\n");
+		exit(1);
+	}
+	
 	if (dataOnly && schemaOnly)
 	{
 		write_msg(NULL, "options \"schema only\" (-s) and \"data only\" (-a) cannot be used together\n");
@@ -515,8 +521,9 @@ main(int argc, char **argv)
 	 * Start serializable transaction to dump consistent data.
 	 */
 	do_sql_command(g_conn, "BEGIN");
-
-	do_sql_command(g_conn, "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE");
+	
+	/* TODO: re-enable when we support SERIALIZABLE in MPP */
+	/* do_sql_command(g_conn, "SET TRANSACTION ISOLATION LEVEL SERIALIZABLE"); */
 
 	/* Set the datestyle to ISO to ensure the dump's portability */
 	do_sql_command(g_conn, "SET DATESTYLE = ISO");
@@ -678,8 +685,8 @@ help(const char *progname)
 	printf(_("  -a, --data-only          dump only the data, not the schema\n"));
 	printf(_("  -c, --clean              clean (drop) schema prior to create\n"));
 	printf(_("  -C, --create             include commands to create database in dump\n"));
-	printf(_("  -d, --inserts            dump data as INSERT, rather than COPY, commands\n"));
-	printf(_("  -D, --column-inserts     dump data as INSERT commands with column names\n"));
+	/*printf(_("  -d, --inserts            dump data as INSERT, rather than COPY, commands\n"));*/
+	/*printf(_("  -D, --column-inserts     dump data as INSERT commands with column names\n"));*/
 	printf(_("  -E, --encoding=ENCODING  dump the data in encoding ENCODING\n"));
 	printf(_("  -n, --schema=SCHEMA      dump the named schema only\n"));
 	printf(_("  -o, --oids               include OIDs in dump\n"));
