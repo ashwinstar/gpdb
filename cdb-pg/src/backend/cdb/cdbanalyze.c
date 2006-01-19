@@ -17,7 +17,9 @@
 #include "cdb/cdbpathlocus.h"	/* cdbpathlocus_querysegmentcatalogs */
 #include "cdb/cdbvars.h"		/* Mpp_role */
 #include "cdb/cdbanalyze.h"		/* me */
-
+#include "catalog/pg_statistic.h"
+#include "utils/lsyscache.h"
+#include "fmgr.h"
 
 /*
  * cdbanalyze_query_local_catalogs
@@ -218,29 +220,10 @@ cdbanalyze_get_relstats(Relation rel, BlockNumber *pages, double *tuples)
 
 
 
-#define Anum_staattnum		1
-#define Anum_stanullfrac	2
-#define Anum_stawidth		3
-#define Anum_stadistinct	4
 
-/*
-#define Anum_pg_statistic_stakind1		6
-#define Anum_pg_statistic_stakind2		7
-#define Anum_pg_statistic_stakind3		8
-#define Anum_pg_statistic_stakind4		9
-#define Anum_pg_statistic_staop1		10
-#define Anum_pg_statistic_staop2		11
-#define Anum_pg_statistic_staop3		12
-#define Anum_pg_statistic_staop4		13
-#define Anum_pg_statistic_stanumbers1	14
-#define Anum_pg_statistic_stanumbers2	15
-#define Anum_pg_statistic_stanumbers3	16
-#define Anum_pg_statistic_stanumbers4	17
-#define Anum_pg_statistic_stavalues1	18
-#define Anum_pg_statistic_stavalues2	19
-#define Anum_pg_statistic_stavalues3	20
-#define Anum_pg_statistic_stavalues4	21
-*/
+
+
+
 
 /*
  * cdbanalyze_callback
@@ -261,7 +244,23 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 {
 	HeapTuple	tup;
 	TupleDesc	tupdesc;
-	char	   *tmp;
+
+	bool		isnull;
+	Datum		dat;
+	int 		i;
+	
+	float		nullfrac = 0.0;
+	float		distinct = 0.0;
+	int			avgwidth = 0;
+	float		correlation = 0.0;
+	int			correlationcount = 0;
+	Datum		*mcv_values = 0;
+	float		*mcv_numbers = 0;
+	int			mcv_nvalues = 0;
+	Datum		*histogram_values = 0;
+	int			histogram_nvalues = 0;
+	
+	
 	Cdbanalyze_columns_Ctx *ctx = (Cdbanalyze_columns_Ctx *) context;
 	
 	
@@ -277,50 +276,205 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 
 
 	/* Grab the results of the query and stuff them into the context. */
-	tup = SPI_tuptable->vals[0];
 	tupdesc = SPI_tuptable->tupdesc;
-	if (!tup ||
-		!tupdesc)
+	if (!tupdesc)
 		goto fail;
+		
+		
+	for (i=0;i<SPI_processed;i++)
+	{
+		tup = SPI_tuptable->vals[i];
+		if (!tup)
+			goto fail;
+	
+	
+		dat = SPI_getbinval(tup, tupdesc, Anum_pg_statistic_stanullfrac, &isnull);
+		if (SPI_result != 0)
+			goto fail;
+			
+		if (isnull)
+			ereport(NOTICE, (errcode(ERRCODE_MPP_COMMAND_ERROR),
+				   errmsg("NULL returned instead of statistics from segment databases."),
+						  errdetail("Segment db catalog query : %s",
+									sqlstmt->data )));
+			
+		if (!isnull)
+			nullfrac +=  DatumGetFloat4(dat);
+			
+			 
+			 
+		dat = SPI_getbinval(tup, tupdesc, Anum_pg_statistic_stawidth, &isnull);
+		if (SPI_result != 0)
+			goto fail;
+			
+		// Average width of the column (width of pointer if toasted).
+			
+		if (!isnull)
+			avgwidth +=  (int)DatumGetInt16(dat);
+			
+			
+		dat = SPI_getbinval(tup, tupdesc, Anum_pg_statistic_stadistinct, &isnull);
+		if (SPI_result != 0)
+			goto fail;
+		
+			
+		/*
+		 *  stadistinct can be negative, zero, or positive.
+		 * So, we really shouldn't just average it, given that it might be negative on some nodes, positive on others
+		 */
+			
+		if (!isnull)
+			distinct +=  DatumGetFloat4(dat);
+		
+		/*
+		 * Now get the statistic "slots" from the record.  One big issue is: What's a good way to combine the
+		 * values from different segDBs?  There doesn't seem to be any ideal solution.
+		 * 
+		 * On the good side, if the table is large, and the column is NOT part of the distibution columns,
+		 * each segDB should return approximately similar results (unless the column has a hidden correlation
+		 * with the distribution columns).  So for many case, picking one result arbitrarily works great.
+		 * 
+		 */
+		
+		{
+			MemoryContext old_context;
+			bool found;
+			Datum	   *values;
+			int			nvalues;
+			float4	   *numbers;
+			int			nnumbers;
+			
+			old_context = MemoryContextSwitchTo(ctx->stats->anl_context);
+			
+			found = get_attstatsslot(tup,
+				 ctx->stats->attr->atttypid, ctx->stats->attr->atttypmod,
+				 STATISTIC_KIND_MCV, InvalidOid,
+				 &values, &nvalues,
+				 &numbers, &nnumbers);
+			if (found)
+			{
+				Assert(nnumbers == nvalues);
+				
+				/*
+				 * Rather than just replace any MCV values we have already, we 
+				 * should try to merge the lists, keeping the most common cases, and
+				 * adding together duplicate values.
+				 * 
+				 * Right now, we just pick one at random (the last one).
+				 */
+				mcv_nvalues = nvalues;
+				mcv_values = values;
+				mcv_numbers = numbers;
 
-	tmp = SPI_getvalue(tup, tupdesc, Anum_stanullfrac);
-	if (SPI_result != 0)
-		goto fail;
-	if (!tmp)
-		ereport(NOTICE, (errcode(ERRCODE_MPP_COMMAND_ERROR),
-			   errmsg("NULL returned instead of statistics from segment databases."),
-					  errdetail("Segment db catalog query : %s",
-								sqlstmt->data )));
-								
-	// Fraction that are null
-	if (tmp)
-		ctx->stats->stanullfrac = atof(tmp);
-	 
+			}
+			
+			found = get_attstatsslot(tup,
+				 ctx->stats->attr->atttypid, ctx->stats->attr->atttypmod,
+				 STATISTIC_KIND_HISTOGRAM, InvalidOid,
+				 &values, &nvalues,
+				 NULL, NULL);
+			if (found)
+			{
+				/*
+				 * How to merge histograms?  I don't know.  Pick one at random.
+				 */
+				histogram_nvalues = nvalues;
+				histogram_values = values;
 
+			}
+			
+			found = get_attstatsslot(tup,
+				 ctx->stats->attr->atttypid, ctx->stats->attr->atttypmod,
+				 STATISTIC_KIND_CORRELATION, InvalidOid,
+				 NULL, NULL,
+				 &numbers, &nnumbers);
+			if (found)
+			{
+				/*
+				 * Let's average the correlation across nodes.  This usually gives a good value,
+				 */
+				correlation += numbers[0];
+				correlationcount++;
+			}
+			
+			MemoryContextSwitchTo(old_context);
+		
+		}
 
-	tmp = SPI_getvalue(tup, tupdesc, Anum_stawidth);
-	if (SPI_result != 0)
-		goto fail;
+	}
+	
+	/*
+	 * Now fill the statistics into the stats structure.
+	 */
+	
+	correlation /= (float)correlationcount;
+	
+	ctx->stats->stanullfrac = nullfrac/(float)SPI_processed;
+	
+	ctx->stats->stawidth = (short)(avgwidth/SPI_processed);
+	
+	ctx->stats->stadistinct = distinct/(float)SPI_processed;
+	
+	/*
+	 * Fill in the slots with info gathered above.  We can't do this at the same
+	 * time as we fetch rows from the QEs, because not all QE have the same slots filled in with the same
+	 * statistic type.  For example, some nodes might have a MCV slot, other nodes might not.
+	 */
+	
+	{
+		MemoryContext old_context;
+
+		int slot = 0;
 		
-	// Average width of the column (width of pointer if toasted).
-	if (tmp)
-		ctx->stats->stawidth = atoi(tmp);
+		old_context = MemoryContextSwitchTo(ctx->stats->anl_context);
 		
-	tmp = SPI_getvalue(tup, tupdesc, Anum_stadistinct);
-	if (SPI_result != 0)
-		goto fail;
+		if (mcv_nvalues > 0)
+		{
+			
+			ctx->stats->stakind[slot] = STATISTIC_KIND_MCV;
+			
+			ctx->stats->numvalues[slot]=mcv_nvalues;
+			ctx->stats->numnumbers[slot]=mcv_nvalues;
+			ctx->stats->stavalues[slot] = mcv_values;
+			ctx->stats->stanumbers[slot] = mcv_numbers;
+				
+			slot++;
+		}
 		
-	// stadistinct can be negative, zero, or positive.
-	// So, we really shouldn't average it, given that it might be negative on some nodes, positive on others
-	if (tmp)
-		ctx->stats->stadistinct = atof(tmp);
 		
+		if (histogram_nvalues > 0)
+		{
+
+			ctx->stats->stakind[slot] = STATISTIC_KIND_HISTOGRAM;
+			ctx->stats->numvalues[slot] = histogram_nvalues;
+			ctx->stats->stavalues[slot] = histogram_values;
+			ctx->stats->numnumbers[slot] = 0;
+			
+			slot++;
+		}
+		
+		if (correlationcount > 0)
+		{
+
+			ctx->stats->stakind[slot] = STATISTIC_KIND_CORRELATION;
+			ctx->stats->numnumbers[slot]=1;
+			ctx->stats->stanumbers[slot]=palloc(sizeof(float));
+			ctx->stats->stanumbers[slot][0] = correlation;
+			ctx->stats->numvalues[slot]=0;
+			
+			slot++;
+		}
+		
+		MemoryContextSwitchTo(old_context);
+		
+	}
+	
+	
+	elog(DEBUG3, "Final cdbanalyze oid=%d attnum=%d nullfrac=%f width=%d distinct %f correlation %f",
+		 ctx->relid, ctx->stats->attr->attnum, ctx->stats->stanullfrac, ctx->stats->stawidth, ctx->stats->stadistinct, correlation);
+	
 	ctx->stats->stats_valid = true;
-
-
-	elog(DEBUG3, "cdbanalyze oid=%d attnum=%d nullfrac=%f width=%d distinct %f",
-		 ctx->relid, ctx->stats->attr->attnum, ctx->stats->stanullfrac, ctx->stats->stawidth, ctx->stats->stadistinct);
-
+	
 	return;
 
 fail:
@@ -353,10 +507,15 @@ cdbanalyze_get_columnstats(Relation rel, VacAttrStats * stats)
 	 * First, create a select statement
 	 */
 	initStringInfo(&buffer);
-	appendStringInfo(&buffer, "select staattnum,avg(stanullfrac),avg(stawidth),avg(stadistinct)");
+	appendStringInfo(&buffer, "select starelid,staattnum,stanullfrac,stawidth,stadistinct,");
+	appendStringInfo(&buffer, "stakind1,stakind2,stakind3,stakind4, staop1,staop2,staop3,staop4,");
+	appendStringInfo(&buffer, "stanumbers1,stanumbers2,stanumbers3,stanumbers4 ");
+	appendStringInfo(&buffer, ",stavalues1, stavalues2, stavalues3,stavalues4 ");
+
 	appendStringInfo(&buffer, " from pg_statistic JOIN pg_class ON relfilenode=starelid ");
 	appendStringInfo(&buffer, " where relname='%s' and relnamespace=%u and staattnum=%hd", relname, namespace, (stats->attr->attnum));
-	appendStringInfo(&buffer, " group by staattnum order by staattnum");
+
+	
 
 	/*
 	 * Next, use SPI to execute it.
