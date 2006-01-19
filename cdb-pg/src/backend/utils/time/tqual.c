@@ -87,10 +87,13 @@ typedef struct SharedSnapshotStruct
 	int 		nextSlot;		/* points to the next avail slot. */
 	
 	/*
-	 * We declare slots[] as 1 entry because C wants a fixed-size array, but
-	 * actually it is maxSlots entries long.
+	 * we can't index directly into the array of slots since the size of 
+	 * a slot is dynamic and determined at runtime.  i.e. things like
+	 * the xip array in the SnapshotData are actually stored inline
+	 * within the slot.  This means we basically will always need
+	 * to byte address to find our slot. 
 	 */
-	SharedSnapshotSlot	   *slots[1];		/* VARIABLE LENGTH ARRAY */
+	SharedSnapshotSlot	   *slots;		/* VARIABLE LENGTH ARRAY */
 } SharedSnapshotStruct;
 
 
@@ -161,7 +164,9 @@ CreateSharedSnapshotArray(void)
 			
 			for (i=0; i < sharedSnapshotArray->maxSlots; i++)
 			{
-				SharedSnapshotSlot *tmpSlot = (SharedSnapshotSlot*)sharedSnapshotArray->slots + i; 
+				/* need to do byte addressing to find the right slot */ 	
+				SharedSnapshotSlot *tmpSlot = (SharedSnapshotSlot*) ((char*)&sharedSnapshotArray->slots + (i*slotSize)); 
+				
 				tmpSlot->slotid = -1;
 			}		
 		}
@@ -187,11 +192,10 @@ char *SharedSnapshotDump(void)
 	LWLockAcquire(SharedSnapshotLock, LW_EXCLUSIVE);
 	
 	
-	for (index=0; index < arrayP->numSlots; index++)
+	for (index=0; index < arrayP->maxSlots; index++)
 	{
-		SharedSnapshotSlot *testSlot;
-		
-		testSlot = (SharedSnapshotSlot*)arrayP->slots + index; 
+		/* need to do byte addressing to find the right slot */ 
+		SharedSnapshotSlot *testSlot = (SharedSnapshotSlot*) ((char*)&arrayP->slots + index*slotSize);
 		
 		if( testSlot->slotid != -1 )
 		{
@@ -240,15 +244,18 @@ SharedSnapshotSlot *SharedSnapshotAdd(int4 slotId)
 		 		          " this probably means that someone isn't releasing their slot properly.")));
 	}
 	
-	/* start at the right place. */
-	slot = (SharedSnapshotSlot*)arrayP->slots + arrayP->nextSlot;
+	/* need to do byte addressing to find the right slot */
+	slot = (SharedSnapshotSlot*)((char*)&arrayP->slots + (arrayP->nextSlot*slotSize));
+	
 	slot->slotindex = arrayP->nextSlot;
 	
 		
 	/* find the next available slot */
 	for (i=arrayP->nextSlot+1; i < arrayP->maxSlots; i++)
 	{
-		SharedSnapshotSlot *tmpSlot = (SharedSnapshotSlot*)arrayP->slots + i;
+		/* need to do byte addressing to find the right slot */
+		SharedSnapshotSlot *tmpSlot = (SharedSnapshotSlot*)((char*)&arrayP->slots + (i*slotSize));
+		
 		if (tmpSlot->slotid == -1)
 		{
 			nextSlot = i;
@@ -300,8 +307,13 @@ SharedSnapshotSlot *SharedSnapshotLookup(int4 slotId)
 	{
 		SharedSnapshotSlot *testSlot;
 		
-		testSlot = (SharedSnapshotSlot*)arrayP->slots + index;
-					
+		/* need to do byte addressing to find the right slot */
+		testSlot = (SharedSnapshotSlot*)((char*)&arrayP->slots + (index*slotSize));
+		
+		if( testSlot->slotindex > arrayP->maxSlots )
+			elog( ERROR, "Shared Local Snapshots Array appears corrupted: %s", SharedSnapshotDump() );
+			
+		
 		if (testSlot->slotid == slotId)
 		{
 			slot = testSlot;
@@ -329,7 +341,13 @@ void SharedSnapshotRemove(SharedSnapshotSlot *slot)
 	 * only do this is our slotindex is lower then the existing one.
 	 */
 	if( sharedSnapshotArray->nextSlot == -1 || slot->slotindex < sharedSnapshotArray->nextSlot )
+	{
+		if( slot->slotindex > sharedSnapshotArray->maxSlots )
+			elog( ERROR, "Shared Local Snapshots slot has a bogus slotindex: %d. slot array dump: %s", 
+					slot->slotindex, SharedSnapshotDump() );
+			
 		sharedSnapshotArray->nextSlot = slot->slotindex;  
+	}
 	
 	/* reset the slotid which marks it as being unused. */
 	slot->slotid = -1;

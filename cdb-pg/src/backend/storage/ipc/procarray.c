@@ -523,12 +523,19 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 				snapshot->xcnt = SharedLocalSnapshotSlot->snapshot.xcnt;
 				
 			
-				/* IMPORTANT:  We don't need to worry about making our copy of the xip array
-				 *			   Since we don't dispatch the next stmt to the WRITER 
-				 *			   until everybody finishes then this won't change out from under
-				 *			   us
+				/* We don't need to worry about making our copy of the xip array
+				 * Since we don't dispatch the next stmt to the WRITER 
+				 * until everybody finishes then this won't change out from under
+				 * us
+				 *
+				 * The handling of snapshot->xip looks very strange.  The reason
+				 * is that while snapshot->xip is a pointer...  the shmem snapshot.xip
+				 * is actually the array itself stored where the pointer should go.
+				 * This is a bit evil but this is the only function that deals with it
+				 * so it seems ok. (See Writer portion at the bottom).
 				 */
 				snapshot->xip = (TransactionId*)&SharedLocalSnapshotSlot->snapshot.xip;
+				
  			    snapshot->curcid = SharedLocalSnapshotSlot->snapshot.curcid;
 				 				 
 				SetSharedTransactionId();
@@ -690,7 +697,13 @@ GetSnapshotData(Snapshot snapshot, bool serializable)
 		SharedLocalSnapshotSlot->snapshot.xmin = snapshot->xmin;
 		SharedLocalSnapshotSlot->snapshot.xmax = snapshot->xmax;
 		SharedLocalSnapshotSlot->snapshot.xcnt = snapshot->xcnt;
-				
+		
+		/* The handling of snapshot->xip looks very strange.  The reason
+		 * is that while snapshot->xip is a pointer...  the shmem snapshot.xip
+		 * is actually the array itself stored where the pointer should go.
+		 * This is a bit evil but this function is the only place that deals with 
+		 * it so it seems ok. (See Reader portion at the top).
+		 */
 		memcpy( &SharedLocalSnapshotSlot->snapshot.xip, snapshot->xip, snapshot->xcnt * sizeof(TransactionId));
 				 
 		SharedLocalSnapshotSlot->snapshot.curcid = snapshot->curcid;
