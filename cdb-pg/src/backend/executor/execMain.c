@@ -63,6 +63,7 @@
 #include "cdb/cdbvars.h"
 #include "cdb/ml_ipc.h"
 #include "cdb/cdbmotion.h"
+#include "cdb/cdbtm.h"
 
 extern bool isFtsReadOnlySet(void);
 extern void FtsEvaluateTransientState(void);
