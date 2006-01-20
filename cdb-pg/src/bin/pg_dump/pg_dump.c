@@ -86,6 +86,9 @@ bool		attrNames;			/* put attr names into insert strings */
 bool		schemaOnly;
 bool		dataOnly;
 bool		aclsSkip;
+/* START MPP ADDITION */
+bool		dumpPolicy;
+/* END MPP ADDITION */
 
 /* subquery used to convert user ID (eg, datdba) to user name */
 static const char *username_subquery;
@@ -175,7 +178,9 @@ static const char *fmtCopyColumnList(const TableInfo *ti);
 static void do_sql_command(PGconn *conn, const char *query);
 static void check_sql_result(PGresult *res, PGconn *conn, const char *query,
 				 ExecStatusType expected);
-
+/* START MPP ADDITION */
+static char *nextToken(register char **stringp, register const char *delim);
+/* END MPP ADDITION */
 
 int
 main(int argc, char **argv)
@@ -245,6 +250,11 @@ main(int argc, char **argv)
 		{"disable-dollar-quoting", no_argument, &disable_dollar_quoting, 1},
 		{"disable-triggers", no_argument, &disable_triggers, 1},
 		{"use-set-session-authorization", no_argument, &use_setsessauth, 1},
+		
+		/* START MPP ADDITION */
+		/* the following are mpp specific, and don't have an equivalent short option */
+		{"mpp-syntax", no_argument, NULL, 1},
+		/* END MPP ADDITION */
 
 		{NULL, 0, NULL, 0}
 	};
@@ -260,6 +270,10 @@ main(int argc, char **argv)
 
 	dataOnly = schemaOnly = dumpInserts = attrNames = false;
 
+	/* START MPP ADDITION */
+	dumpPolicy = false;
+	/* END MPP ADDITION */
+	
 	progname = get_progname(argv[0]);
 
 	/* Set default options based on progname */
@@ -416,7 +430,14 @@ main(int argc, char **argv)
 
 			case 0:
 				break;
-
+				
+			/* START MPP ADDITION */
+			case 1:
+				/* mpp-format */
+				dumpPolicy = true;
+				break;
+			/* END MPP ADDITION */
+				
 			default:
 				fprintf(stderr, _("Try \"%s --help\" for more information.\n"), progname);
 				exit(1);
@@ -704,6 +725,9 @@ help(const char *progname)
 	printf(_("  -X use-set-session-authorization, --use-set-session-authorization\n"
 			 "                           use SESSION AUTHORIZATION commands instead of\n"
 			 "                           OWNER TO commands\n"));
+	/* START MPP ADDITION */
+	printf(_("  --mpp-syntax             dump with bizgres MPP syntax\n"));
+	/* END MPP ADDITION */
 
 	printf(_("\nConnection options:\n"));
 	printf(_("  -h, --host=HOSTNAME      database server host or socket directory\n"));
@@ -6848,6 +6872,11 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 	}
 	else
 	{
+		/* START MPP ADDITION */
+		char *policydef = NULL;
+        char *policycol = NULL;
+		/* END MPP ADDITION */
+
 		reltypename = "TABLE";
 		numParents = tbinfo->numParents;
 		parents = tbinfo->parents;
@@ -6967,6 +6996,49 @@ dumpTableSchema(Archive *fout, TableInfo *tbinfo)
 			appendPQExpBuffer(q, ")");
 		}
 
+		/* START MPP ADDITION */
+		
+		/* dump distributed by clause */
+		if(dumpPolicy)
+		{
+			appendPQExpBuffer(query,
+							  "SELECT attrnums from pg_namespace as n, pg_class as c, mpp_distribution_policy as p "
+							  "WHERE c.relname = '%s' "
+							  "AND n.nspname='%s' "
+							  "AND c.relnamespace=n.oid " 
+							  "AND c.oid = p.localoid",
+							  tbinfo->dobj.name, (tbinfo->dobj.namespace->dobj.name != NULL ? tbinfo->dobj.namespace->dobj.name : "public"));
+			
+			res = PQexec(g_conn, query->data);
+			check_sql_result(res, g_conn, query->data, PGRES_TUPLES_OK);
+			
+			if (PQntuples(res) != 1)
+			{
+				if (PQntuples(res) < 1)
+					write_msg(NULL, "query to obtain definition of table \"%s\" returned no data\n",
+							  tbinfo->dobj.name);
+				else
+					write_msg(NULL, "query to obtain definition of table \"%s\" returned more than one definition\n",
+							  tbinfo->dobj.name);
+				exit_nicely();
+			}
+			
+			policydef = PQgetvalue(res, 0, 0);
+			policydef[strlen(policydef)-1] = '\0';
+			policydef++;
+			policycol = nextToken(&policydef, ",");
+			appendPQExpBuffer(q, " distributed by (%s",
+							  fmtId(tbinfo->attnames[atoi(policycol)-1]));
+			for (; (policycol = nextToken(&policydef, ",")) != NULL;)
+			{
+				appendPQExpBuffer(q, " ,%s",
+								  fmtId(tbinfo->attnames[atoi(policycol)-1]));
+			}
+			appendPQExpBuffer(q, ")");
+			PQclear(res);
+		}
+		/* END MPP ADDITION */
+		
 		appendPQExpBuffer(q, ";\n");
 
 		/* Loop dumping statistics and storage statements */
@@ -8379,3 +8451,47 @@ check_sql_result(PGresult *res, PGconn *conn, const char *query,
 	write_msg(NULL, "The command was: %s\n", query);
 	exit_nicely();
 }
+
+/* START MPP ADDITION */
+/*
+ * Get next token from string *stringp, where tokens are possibly-empty
+ * strings separated by characters from delim.
+ *
+ * Writes NULs into the string at *stringp to end tokens.
+ * delim need not remain constant from call to call.
+ * On return, *stringp points past the last NUL written (if there might
+														 * be further tokens), or is NULL (if there are definitely no more tokens).
+ *
+ * If *stringp is NULL, strsep returns NULL.
+ */
+static char *
+nextToken(register char **stringp, register const char *delim)
+{
+    register char *s;
+    register const char *spanp;
+    register int c, sc;
+    char *tok;
+	
+    if ((s = *stringp) == NULL)
+        return (NULL);
+    for (tok = s;;)
+    {
+        c = *s++;
+        spanp = delim;
+        do
+        {
+            if ((sc = *spanp++) == c)
+            {
+                if (c == 0)
+                    s = NULL;
+                else
+                    s[-1] = 0;
+                *stringp = s;
+                return (tok);
+            }
+        } while (sc != 0);
+    }
+    /* NOTREACHED */
+}
+
+/* END MPP ADDITION */
