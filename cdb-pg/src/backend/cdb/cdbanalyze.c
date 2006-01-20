@@ -334,6 +334,9 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 		 * each segDB should return approximately similar results (unless the column has a hidden correlation
 		 * with the distribution columns).  So for many case, picking one result arbitrarily works great.
 		 * 
+		 * And, for unique columns, there is no MCV, so if you have a single unique column that's your 
+		 * distribution column (very common primary key case), there isn't any MCV to worry about merging.
+		 * 
 		 */
 		
 		{
@@ -359,6 +362,13 @@ cdbanalyze_columns_callback(StringInfo sqlstmt,
 				 * Rather than just replace any MCV values we have already, we 
 				 * should try to merge the lists, keeping the most common cases, and
 				 * adding together duplicate values.
+				 * 
+				 * This is a bit complicated, since the "numbers" are percentages,
+				 * and you can't just add the percentages or average them.  You need
+				 * to convert them back to approximate row counts, by multiplying them
+				 * with the number of tuples on that QE, then you can add them together,
+				 * then convert back to percentages.
+				 * 
 				 * 
 				 * Right now, we just pick one at random (the last one).
 				 */
@@ -511,6 +521,7 @@ cdbanalyze_get_columnstats(Relation rel, VacAttrStats * stats)
 	appendStringInfo(&buffer, "stakind1,stakind2,stakind3,stakind4, staop1,staop2,staop3,staop4,");
 	appendStringInfo(&buffer, "stanumbers1,stanumbers2,stanumbers3,stanumbers4 ");
 	appendStringInfo(&buffer, ",stavalues1, stavalues2, stavalues3,stavalues4 ");
+	appendStringInfo(&buffer, ",reltuples ");
 
 	appendStringInfo(&buffer, " from pg_statistic JOIN pg_class ON relfilenode=starelid ");
 	appendStringInfo(&buffer, " where relname='%s' and relnamespace=%u and staattnum=%hd", relname, namespace, (stats->attr->attnum));
