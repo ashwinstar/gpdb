@@ -157,7 +157,7 @@ ExecutorStart(QueryDesc *queryDesc, bool explainOnly)
 	 * If the transaction is read-only, we need to check if any writes are
 	 * planned to non-temporary tables.
 	 */
-	if (XactReadOnly && !explainOnly)
+	if ( (XactReadOnly || Mpp_role == MPP_ROLE_DISPATCH) && !explainOnly)
 		ExecCheckXactReadOnly(queryDesc->parsetree);
 
 	/*
@@ -785,7 +785,13 @@ ExecCheckRTEPerms(RangeTblEntry *rte)
 }
 
 /*
- * Check that the query does not imply any writes to non-temp tables.
+ * This function is used to check if the current statement will perform any writes.
+ * It is used to enforce:
+ *  (1) read-only mode (both fts and transcation isolation level read only) 
+ *      as well as 
+ *  (2) to keep track of when a distributed transaction becomes
+ *      "dirty" and will require 2pc. 
+ Check that the query does not imply any writes to non-temp tables.
  */
 static void
 ExecCheckXactReadOnly(Query *parsetree)
@@ -836,10 +842,12 @@ fail:
 		else
 			return;
 	}
-	else
+	else if (XactReadOnly)
 		ereport(ERROR,
 				(errcode(ERRCODE_READ_ONLY_SQL_TRANSACTION),
 				 errmsg("transaction is read-only")));
+	else
+		setCurrentDtxDirty();
 }
 
 

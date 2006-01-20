@@ -65,6 +65,7 @@ extern int	startDtxTransaction(void);
 extern int	commitDtxTransaction(void);
 extern int	rollbackDtxTransaction(void);
 extern int	condStartDtxTransaction(void);
+extern void setCurrentDtxDirty(void);
 extern int	condCommitDtxTransaction(bool onephase);
 extern int	condRollbackDtxTransaction(void);
 extern int	startTMXactScan(void);

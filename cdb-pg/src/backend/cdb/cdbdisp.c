@@ -1465,6 +1465,10 @@ CdbDoCommandNoTxn(const char *szCommand,
 	CdbDispatchResults *primaryResults;
 	CdbDispatchResults *mirrorResults;
 
+	/* mark this txn as dirty */
+	setCurrentDtxDirty();
+	
+	
 	cdbdisp_dispatchCommand(szCommand, cancelOnError,
 							&primaryResults, &mirrorResults);
 
@@ -2164,6 +2168,10 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 	Query	   *q = makeNode(Query);
 	StringInfoData buffer;
 
+	/* mark the dtx as dirty */
+	setCurrentDtxDirty();
+	
+	
 	initStringInfo(&buffer);
 
 	q->commandType = CMD_UTILITY;

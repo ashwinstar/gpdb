@@ -126,6 +126,8 @@ startDtxTransaction(void)
 {
 	int			ret = DTX_OK;
 
+	isDirty = false;
+	
 	if (Mpp_role != MPP_ROLE_DISPATCH)
 		return DTX_OK;
 	if (currentGxact == NULL)
@@ -145,9 +147,6 @@ commitDtxTransaction(void)
 {
 	if (Mpp_role != MPP_ROLE_DISPATCH || currentGxact == NULL)
 		return DTX_OK;
-
-	/* temporary set all transaction dirty */
-	isDirty = true;
 
 	return condCommitDtxTransaction(!isDirty);
 }
@@ -206,6 +205,17 @@ condStartDtxTransaction(void)
 	return DTX_OK;
 }
 
+
+/* marks the current Distrubuted Transaction as "dirty", meaning that actual
+ * work has been performed and we'll need to use 2pc on commit and log to our
+ * tmlog.
+ */
+void setCurrentDtxDirty(void)
+{
+	isDirty = true;
+}
+
+
 /*
  * committing a global transaction, called by internal
  * this method does a two-phase commit.
@@ -221,10 +231,22 @@ condCommitDtxTransaction(bool onephase)
 	}
 	ereport(DEBUG2,
 			(errmsg("condCommitDtxTransaction:  %s", currentGxact->gid)));
-	if (!onephase)
+	
+	if (onephase)
 	{
+		/* one phase commit case */
+		updateDtxState(DTX_STATE_1P_COMMIT);
 
-        /* update the tm state first, so we know the latest state of the txn */
+		if (execCommand(&errMessage) != DTX_OK)
+		{
+			ereport(ERROR,
+					(errmsg("Global transaction failed on command \"COMMIT %s\" due to error: %s",
+							currentGxact->gid, errMessage.data)));
+		}
+	}	
+	else
+	{
+		 /* update the tm state first, so we know the latest state of the txn */
 		updateDtxState(DTX_STATE_PREPARED);
 
 		/* send prepare to all RM */
@@ -250,18 +272,7 @@ condCommitDtxTransaction(bool onephase)
 							currentGxact->gid, errMessage.data)));
 		}
 	}
-	else
-	{
-		/* one phase commit case */
-		updateDtxState(DTX_STATE_1P_COMMIT);
-
-		if (execCommand(&errMessage) != DTX_OK)
-		{
-			ereport(ERROR,
-					(errmsg("Global transaction failed on command \"COMMIT %s\" due to error: %s",
-							currentGxact->gid, errMessage.data)));
-		}
-	}
+	
 
 	/* set txn tm state to be done, so it will be removed from cache */
 	updateDtxState(DTX_STATE_COMMIT_DONE);
@@ -796,8 +807,10 @@ updateDtxState(DtxState state)
 			break;
 	}
 
-	/* write tm log */
-	if (state != DTX_STATE_ABORT)
+	/* write tm log.  We only bother to write to the tmlog if the txn
+	 * was dirty, otherwise there's not much point.
+	 */
+	if (state != DTX_STATE_ABORT && isDirty)
 	{
 		TmLogRecord record = {{0, 0, "", TM_LOG_XACT, 0, 0}};
 
@@ -825,10 +838,13 @@ updateDtxState(DtxState state)
 		checkPointTm();
 		(*shmGIDSeq)++;
 	}
-	else if (state == DTX_STATE_PREPARED ||
-			 state == DTX_STATE_COMMIT_DONE || 
-			 state == DTX_STATE_ROLLBACK_DONE)
+	else if ((state == DTX_STATE_PREPARED ||
+			  state == DTX_STATE_COMMIT_DONE || 
+			  state == DTX_STATE_ROLLBACK_DONE) && isDirty)
+	{		  
 		flushTmLogFile();
+	}
+	
 	releaseTmLock();
 
 	lastGxactState = state;

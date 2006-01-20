@@ -492,4 +492,7 @@ void
 cdbCopyStartTransaction(void)
 {
 	startDtxTransaction();
+	
+	/* this txn is gonna be dirty */
+	setCurrentDtxDirty();
 }
