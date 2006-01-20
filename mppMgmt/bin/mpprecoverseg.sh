@@ -120,9 +120,6 @@ GET_MIRROR () {
 		LOG_MSG "[FATAL]:-Mirroring not configured on this MPP cluster"
 		ERROR_EXIT "[FATAL]:-Unable to continue" 2
 	fi
-	#Get a list of databases contained within the array
-	DB_LIST=(`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select datname from pg_database where datallowconn<>'f';"`)
-	ERROR_CHK $? "obtain list of database names from master instance" 1
 	#Get a list of dbid's that are marked as invalid
 	FAILED_INST_LIST=(`$PSQL -p $MASTER_PORT $DEFAULTDB -R" " -A -t -c"select dbid from mpp_pgdatabase where valid='f';"`)
 	ERROR_CHK $? "obtain master instance failed segments" 2
@@ -315,12 +312,9 @@ UPDATE_MPP_MPP () {
 		LOG_MSG "[INFO]:-Starting instance on $FAIL_QE_HOST port=$FAIL_QE_PORT"
 		$TRUSTED_SHELL $FAIL_QE_HOST "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -w -D $FAIL_QE_DIR -l ${FAIL_QE_DIR}.log -o \"-i -p $FAIL_QE_PORT \" start" 
 		ERROR_CHK $? "segment start $FAIL_QE_HOST instance $FAIL_QE_DIR port=$FAIL_QE_PORT" 2
-		for MPP_DB in ${DB_LIST[@]}
-		do
-			LOG_MSG "[INFO]:-Updating mpp_mpp on $FAIL_QE_HOST database $MPP_DB"
-			$TRUSTED_SHELL $FAIL_QE_HOST "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $FAIL_QE_PORT $QD_DBNAME -c \"update mpp_mpp set dbid=${FAIL_QE_DBID} where dbid<>${FAIL_QE_DBID};\""
-			ERROR_CHK $? "update segment mpp_mpp on $FAIL_QE_HOST DBID=$FAIL_QE_DBID port=$FAIL_QE_PORT" 2
-		done
+		# Update table
+		$TRUSTED_SHELL $FAIL_QE_HOST "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PSQL -p $FAIL_QE_PORT $QD_DBNAME -c \"update mpp_mpp set dbid=${FAIL_QE_DBID} where dbid<>${FAIL_QE_DBID};\""
+		ERROR_CHK $? "update segment mpp_mpp on $FAIL_QE_HOST DBID=$FAIL_QE_DBID port=$FAIL_QE_PORT" 2
 		if [ $STOPDB -eq 1 ]; then
 				LOG_MSG "[INFO]:-Commencing shutdown of $FAIL_QE_HOST port=$FAIL_QE_PORT"
 				$TRUSTED_SHELL $FAIL_QE_HOST "export LD_LIBRARY_PATH=${MPP_LIBRARY_PATH}:$LD_LIBRARY_PATH;env PGOPTIONS=\"-c mpp_session_role=utility\" $PG_CTL -W stop -D $FAIL_QE_DIR -m smart -l ${FAIL_QE_DIR}.log"
@@ -332,12 +326,9 @@ UPDATE_MPP_MPP () {
 
 RESET_QE_CONNECT () {
 	LOG_MSG "[INFO]:-Start Function $FUNCNAME"
-	#Obtain a user table that we can issue a select count(*) from QD to force a QE connection re-establishment
-	for MPP_DB in ${DB_LIST[@]}
-	do
-		TABLE_NAME=`$PSQL -p $MASTER_PORT $MPP_DB -A -t -c"select relname from pg_class where relkind='r' order by reltype desc limit(1);"`
-		$PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from ${TABLE_NAME};" >> $LOG_FILE 2>&1
-	done
+	# Obtain a user table that we can issue a select count(*) from QD to force a QE connection re-establishment
+	TABLE_NAME=`$PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select relname from pg_class where relkind='r' order by reltype desc limit(1);"`
+	$PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c"select count(*) from ${TABLE_NAME};" >> $LOG_FILE 2>&1
 	LOG_MSG "[INFO]:-End Function $FUNCNAME"
 }
 
@@ -350,11 +341,8 @@ UPDATE_STATUS () {
 		do
 			FAIL_SET_VAR ${FAILED_INSTANCE_ARRAY[$COUNT]}
 			LOG_MSG "[INFO]:-Setting $FAIL_QE_HOST DBID=$FAIL_QE_DBID port=$FAIL_QE_PORT as active"
-			for MPP_DB in ${DB_LIST[@]}
-			do
-				env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $MPP_DB -A -t -c "select mpp_set_segdb_state(CAST(${FAIL_QE_DBID} AS smallint),true);" > /dev/null 2>&1
-				ERROR_CHK $? "update status for database $MPP_DB on Master database" 2
-			done
+			env PGOPTIONS="-c mpp_session_role=utility" $PSQL -p $MASTER_PORT $QD_DBNAME -A -t -c "select mpp_set_segdb_state(CAST(${FAIL_QE_DBID} AS smallint),true);" > /dev/null 2>&1
+			ERROR_CHK $? "update status on Master database" 2
 			((COUNT=$COUNT+1))
 		done
 		LOG_MSG "[INFO]:-Shutting down master database in utility mode"
