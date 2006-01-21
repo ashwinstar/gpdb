@@ -3,7 +3,7 @@
  * pathnode.c
  *	  Routines to manipulate pathlists and create path nodes
  *
- * Portions Copyright (c) 2005, greenplum inc
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -1435,10 +1435,17 @@ create_hashjoin_path(PlannerInfo *root,
 	pathnode->jpath.path.pathkeys = NIL;
     pathnode->jpath.path.locus = join_locus;
     pathnode->jpath.path.motionHazard = false;  /* outer + inner are materialized */
-    pathnode->jpath.path.rescannable = outer_path->rescannable; /* inner materialized by Hash */
 	pathnode->path_hashclauses = hashclauses;
 
-	cost_hashjoin(pathnode, root);
+    /*
+     * If hash table overflows to disk, and an ancestor node requests rescan
+     * (e.g. because the HJ is in the inner subtree of a NJ), then the HJ has
+     * to be redone, including rescanning the inner rel in order to rebuild
+     * the hash table.
+     */
+    pathnode->jpath.path.rescannable = outer_path->rescannable && inner_path->rescannable;
+
+    cost_hashjoin(pathnode, root);
 
 	return pathnode;
 }
