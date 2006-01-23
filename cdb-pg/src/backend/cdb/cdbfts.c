@@ -165,18 +165,20 @@ FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo, char *dbName)
 			elog(LOG, "FTS: test connection can't parse error message");
 		}
 
+		elog(DEBUG3, "FtsTestConnection: connection failed with message (%s)", errorMsg);
+
 		/* If we get a network error (do we really need a
 		 * comprehensive list here ?) or a "FATAL" database error,
 		 * then it is a real error, otherwise it isn't. See
 		 * fe-connect.c for the details: all fatal network error start
-		 * with " could not":
+		 * with "could not":
 		 *
-		 * " could not create" -- socket error
-		 * " could not translate" -- DNS error
-		 * " could not connect" -- network error
-		 * " could not get" -- getsockopt error
-		 * " could not set" -- setsockopt error
-		 * " could not send" -- libpq protocol error
+		 * "could not create" -- socket error
+		 * "could not translate" -- DNS error
+		 * "could not connect" -- network error
+		 * "could not get" -- getsockopt error
+		 * "could not set" -- setsockopt error
+		 * "could not send" -- libpq protocol error
 		 */
 		if (strstr(errorMsg, "FATAL:") == NULL &&
 			strstr(errorMsg, " could not ") == NULL)
@@ -310,15 +312,16 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 
     for (i = 0; i < size; i++)
     {
-        if ((segdbDesc + i)->conn == NULL)
+        if (PQstatus((segdbDesc + i)->conn) != CONNECTION_OK)
         {
-			elog(LOG, "looking for real fault on segment %d", i);
+			elog(DEBUG2, "FtsHandleGangConnectionFailure: looking for real fault on segment %d", i);
             if (!FtsTestConnection((segdbDesc + i)->segment_database_info, (segdbDesc + i)->dbname))
 			{
-				elog(LOG, "found fault with segment %d", i);
-               realFaultFound = true; 
-			   /* that at least one fault exists is enough, for now */
-			   break;
+				elog(DEBUG2, "found fault with segment %d", i);
+				realFaultFound = true; 
+
+				/* that at least one fault exists is enough, for now */
+				break;
 			}
         }
     }
@@ -353,8 +356,8 @@ FtsHandleGangConnectionFailure(SegmentDatabaseDescriptor * segdbDesc, int size)
 	incFtsSyncCount();
 	for (i = 0; i < size; i++)
 	{
-		if ((segdbDesc + i)->conn == NULL &&
-             !FtsTestConnection((segdbDesc + i)->segment_database_info, (segdbDesc + i)->dbname))
+		if (PQstatus((segdbDesc + i)->conn) != CONNECTION_OK &&
+			!FtsTestConnection((segdbDesc + i)->segment_database_info, (segdbDesc + i)->dbname))
 			markSegDBStatus((segdbDesc + i)->segment_database_info->dbid, false);
 	}
 	if (gangsExist())
