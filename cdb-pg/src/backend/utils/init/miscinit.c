@@ -1105,7 +1105,7 @@ ValidatePgVersion(const char *path)
 						path),
 				 errdetail("File \"%s\" does not contain valid data.",
 						   full_path),
-				 errhint("You may need to initdb.")));
+				 errhint("You may need to run mpprecoversegment.sh")));
 
 	FreeFile(file);
 
