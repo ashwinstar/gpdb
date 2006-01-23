@@ -964,7 +964,6 @@ ProcessUtility(Node *parsetree,
 			break;
 
 		case T_AlterDatabaseSetStmt:
-			CdbSentry(CDB_REJECT, parsetree, NULL);
 			AlterDatabaseSet((AlterDatabaseSetStmt *) parsetree);
 			break;
 

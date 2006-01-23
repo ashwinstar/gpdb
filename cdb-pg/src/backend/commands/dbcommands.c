@@ -968,8 +968,7 @@ AlterDatabase(AlterDatabaseStmt *stmt)
 
 		initStringInfo(&buffer);
 
-		elog(ERROR,"not yet working after 8.1 merge");
-		//appendStringInfo(&buffer, "ALTER DATABASE %s RENAME TO %s", oldname, newname);
+		appendStringInfo(&buffer, "ALTER DATABASE \"%s\" CONNECTION LIMIT %d", stmt->dbname, connlimit);
 
 		CdbDoCommand(buffer.data, false);
 
@@ -1063,6 +1062,35 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 
 	/* Close pg_database, but keep lock till commit */
 	heap_close(rel, NoLock);
+	
+	if (Mpp_role == MPP_ROLE_DISPATCH)
+	{
+
+		StringInfoData buffer;
+
+		initStringInfo(&buffer);
+
+		appendStringInfo(&buffer, "ALTER DATABASE \"%s\" ", stmt->dbname);
+		
+		if (strcmp(stmt->variable, "all") == 0 && valuestr == NULL)
+		{
+			appendStringInfo(&buffer, "RESET ALL");
+		}
+		else if (valuestr == NULL)
+		{
+			appendStringInfo(&buffer, "RESET \"%s\"", stmt->variable);
+		}
+		else
+		{
+			if (valuestr[0] == '-' || valuestr[0] == '"' || valuestr[0] == '\'' || (valuestr[0] >= '0' && valuestr[0] <= '9'))
+				appendStringInfo(&buffer, "SET \"%s\" TO %s", stmt->variable, valuestr);
+			else
+				appendStringInfo(&buffer, "SET \"%s\" TO \"%s\"", stmt->variable, valuestr);
+		}
+
+		CdbDoCommand(buffer.data, false);
+
+	}
 
 	/*
 	 * We don't bother updating the flat file since ALTER DATABASE SET doesn't
