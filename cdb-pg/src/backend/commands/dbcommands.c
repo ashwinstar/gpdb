@@ -1080,14 +1080,44 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 		{
 			appendStringInfo(&buffer, "RESET \"%s\"", stmt->variable);
 		}
-		else
 		{
-			if (valuestr[0] == '-' || valuestr[0] == '"' || valuestr[0] == '\'' || (valuestr[0] >= '0' && valuestr[0] <= '9'))
-				appendStringInfo(&buffer, "SET \"%s\" TO %s", stmt->variable, valuestr);
+			List	   *namelist;
+			ListCell   *l;
+			char * 	rawname;
+			
+			appendStringInfo(&buffer, "SET \"%s\" TO ",stmt->variable);
+		
+			/* Need a modifiable copy of string */
+			rawname = pstrdup(valuestr);
+		
+			/* Parse string into list of identifiers */
+			if (!SplitIdentifierString(rawname, ',', &namelist))
+			{
+				appendStringInfo(&buffer, "%s", valuestr);
+			}
 			else
-				appendStringInfo(&buffer, "SET \"%s\" TO \"%s\"", stmt->variable, valuestr);
+			{
+				bool first = true;
+				foreach(l, namelist)
+				{
+					char	   *curname = (char *) lfirst(l);
+					if (!first)
+						appendStringInfo(&buffer, ",");
+					first = false;
+					
+					if (curname[0] == '-' || curname[0] == '"' || curname[0] == '\'' || (curname[0] >= '0' && curname[0] <= '9'))
+						appendStringInfo(&buffer, "%s", curname);
+					else
+						appendStringInfo(&buffer, "\"%s\"", curname);
+					
+				}
+				
+			}
+			
+			pfree(rawname);
+			list_free(namelist);
 		}
-
+		elog(NOTICE,"%s",buffer.data);
 		CdbDoCommand(buffer.data, false);
 
 	}
