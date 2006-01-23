@@ -3,7 +3,7 @@
  * cdbvars.h
  *	  definitions for MPP global variables
  *
- * Copyright (c) 2003-2004, Greenplum
+ * Copyright (c) 2003-2006, Greenplum
  *
  *
  * IDENTIFICATION
@@ -140,7 +140,7 @@ extern bool Mpp_is_primary;
  * and currently there is only one writer per group of segmates.
  *
  * It defaults to false, but may be specified as true using a connect option.
- * This should only ever be set by a QD connecting to a QE, rather than 
+ * This should only ever be set by a QD connecting to a QE, rather than
  * directly.
  */
 extern bool Mpp_is_writer;
@@ -248,12 +248,6 @@ extern int	getMPPSegmentCount(void);
 
 
 /*
- * Unlike the above, enable_agg_restruct is not cost based. When set to
- * false, the parallelizer will not use multi-level aggregation.
- */
-extern bool enable_agg_restruct;
-
-/*
  * Parameter interconnect_setup_timeout
  *
  * The run-time parameter (GUC variable) interconnect_setup_timeout is used
@@ -261,6 +255,28 @@ extern bool enable_agg_restruct;
  * seconds.  Setting it to zero effectively disables the timeout.
  */
 extern int	interconnect_setup_timeout;
+
+
+/* --------------------------------------------------------------------------------------------------
+ * MPP Optimizer GUCs
+ */
+
+
+/*
+ * "mpp_motion_cost_per_row"
+ *
+ * If >0, the planner uses this value -- instead of 2 * "cpu_tuple_cost" --
+ * for Motion operator cost estimation.
+ */
+extern double   mpp_motion_cost_per_row;
+
+/*
+ * "mpp_segments_for_planner"
+ *
+ * If >0, number of segment dbs for the planner to assume in its cost and size
+ * estimates.  If 0, estimates are based on the actual number of segment dbs.
+ */
+extern int      mpp_segments_for_planner;
 
 
 /* --------------------------------------------------------------------------------------------------

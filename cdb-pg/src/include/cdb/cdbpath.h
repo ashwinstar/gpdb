@@ -3,7 +3,7 @@
  * cdbpath.h
  *
  *
- * Copyright (c) 2005, greenplum inc
+ * Copyright (c) 2005-2006, greenplum inc
  *
  * $Id$
  *
@@ -12,14 +12,11 @@
 #ifndef CDBPATH_H
 #define CDBPATH_H
 
-#include "cdb/cdbvars.h"        /* MppIdentity */
+#include "cdb/cdbvars.h"        /* getMPPSegmentCount, mpp_opt_segments, etc */
 
-
-/* globals */
-extern Cost     cdb_motion_tuple_cost;
-
-extern int getMPPSegmentCount(void);
-
+/* Globals */
+extern Cost     cdbpath_motion_cost_per_row;
+extern int      cdbpath_segments;
 
 Path *
 cdbpath_create_motion_path(PlannerInfo     *root,
@@ -57,14 +54,7 @@ cdbpath_rows(Path *path)
     /* Just one partition, or whole rel? */
     if (CdbPathLocus_IsBottleneck(path->locus) ||
         CdbPathLocus_IsReplicated(path->locus))
-    {
-    	if (Mpp_role == MPP_ROLE_DISPATCH)
-        {
-            int numSegments = getMPPSegmentCount();
-            if (numSegments > 1)
-                rows *= numSegments;
-        }
-    }
+        rows *= cdbpath_segments;
 
     return rows;
 }                               /* cdbpath_rows */

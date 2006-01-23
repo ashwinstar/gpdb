@@ -5,6 +5,7 @@
  *
  * See src/backend/utils/misc/README for design notes.
  *
+ * Portions Copyright (c) 2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  *
  *	  $PostgreSQL: pgsql/src/include/utils/guc_tables.h,v 1.20 2005/07/14 05:13:44 tgl Exp $
@@ -71,6 +72,7 @@ enum config_group
 	COMPAT_OPTIONS,
 	COMPAT_OPTIONS_PREVIOUS,
 	COMPAT_OPTIONS_CLIENT,
+    COMPAT_OPTIONS_IGNORED,             /*CDB*/
 	PRESET_OPTIONS,
 	CUSTOM_OPTIONS,
 	DEVELOPER_OPTIONS

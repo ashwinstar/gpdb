@@ -6,6 +6,7 @@
  * See src/backend/utils/misc/README for more information.
  *
  *
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Copyright (c) 2000-2005, PostgreSQL Global Development Group
  * Written by Peter Eisentraut <peter_e@gmx.net>.
  *
@@ -223,6 +224,9 @@ static int	max_identifier_length;
 static int	block_size;
 static bool integer_datetimes;
 static bool standard_conforming_strings;
+static bool enable_agg_restruct;            /* CDB: no longer used */
+
+
 
 /* should be static, but commands/variable.c needs to get at these */
 char	   *role_string;
@@ -335,6 +339,8 @@ const char *const config_group_names[] =
 	gettext_noop("Version and Platform Compatibility / Previous PostgreSQL Versions"),
 	/* COMPAT_OPTIONS_CLIENT */
 	gettext_noop("Version and Platform Compatibility / Other Platforms and Clients"),
+    /* COMPAT_OPTIONS_IGNORED */
+    gettext_noop("Version and Platform Compatibility / Ignored"),
 	/* PRESET_OPTIONS */
 	gettext_noop("Preset Options"),
 	/* CUSTOM_OPTIONS */
@@ -854,7 +860,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 	{
 		/* only here for backwards compatibility */
-		{"autocommit", PGC_USERSET, CLIENT_CONN_STATEMENT,
+		{"autocommit", PGC_USERSET, COMPAT_OPTIONS_IGNORED,
 			gettext_noop("This parameter doesn't do anything."),
 			gettext_noop("It's just here so that we won't choke on SET AUTOCOMMIT TO ON from 7.3-vintage clients."),
 			GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
@@ -988,9 +994,10 @@ static struct config_bool ConfigureNamesBool[] =
 
 
 	{
-		{"enable_agg_restructure", PGC_USERSET, QUERY_TUNING_METHOD,
-			gettext_noop("Enables the MPP parallelizer to use a restructuring strategy for aggregation."),
-			NULL
+		{"enable_agg_restructure", PGC_USERSET, COMPAT_OPTIONS_IGNORED,
+			gettext_noop("No longer used.  Syntax check only for MPP 2.0 compatibility."),
+			NULL,
+            GUC_NO_SHOW_ALL | GUC_NOT_IN_SAMPLE
 		},
 		&enable_agg_restruct,
 		true, NULL, NULL
@@ -1015,7 +1022,7 @@ static struct config_bool ConfigureNamesBool[] =
         &mpp_set_read_only,
         false, assign_mpp_set_read_only, NULL
     },
-    
+
     {
     	{"mpp_is_writer", PGC_BACKEND, UNGROUPED,
     		gettext_noop("If qExec is the single writer process."),
@@ -1640,6 +1647,15 @@ static struct config_int ConfigureNamesInt[] =
 		-1, INT_MIN, INT_MAX, NULL, NULL
 	},
 
+	{
+		{"mpp_segments_for_planner", PGC_USERSET, QUERY_TUNING_COST,
+            gettext_noop("If >0, number of segment dbs for the planner to assume in its cost and size"),
+            gettext_noop("estimates.  If 0, estimates are based on the actual number of segment dbs.")
+		},
+		&mpp_segments_for_planner,
+		0, 0, INT_MAX, NULL, NULL
+	},
+
 
 	/* End-of-list marker */
 	{
@@ -1756,7 +1772,16 @@ static struct config_real ConfigureNamesReal[] =
 		0.2, 0.0, 100.0, NULL, NULL
 	},
 
-	/* End-of-list marker */
+	{
+		{"mpp_motion_cost_per_row", PGC_USERSET, QUERY_TUNING_COST,
+            gettext_noop("If >0, the planner uses this value -- instead of double the"),
+            gettext_noop("\"cpu_tuple_cost\" -- for Motion operator cost estimation.")
+		},
+		&mpp_motion_cost_per_row,
+		0, 0, DBL_MAX, NULL, NULL
+	},
+
+    /* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0.0, 0.0, 0.0, NULL, NULL
 	}

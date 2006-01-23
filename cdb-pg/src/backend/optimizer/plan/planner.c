@@ -42,6 +42,7 @@
 #include "utils/syscache.h"
 
 #include "cdb/cdbllize.h"
+#include "cdb/cdbpath.h"        /* cdbpath_segments */
 #include "cdb/cdbpathtoplan.h"  /* cdbpathtoplan_create_flow() */
 #include "cdb/cdbvars.h"
 
@@ -212,7 +213,15 @@ subquery_planner(Query *parse, double tuple_fraction,
 	root = makeNode(PlannerInfo);
 	root->parse = parse;
 
-	/*
+    /* CDB: Initialize globals */
+    if (Mpp_role != MPP_ROLE_DISPATCH)
+        cdbpath_segments = 1;
+    else if (mpp_segments_for_planner > 0)
+        cdbpath_segments = mpp_segments_for_planner;
+    else
+        cdbpath_segments = getMPPSegmentCount();
+
+    /*
 	 * Look for IN clauses at the top level of WHERE, and transform them into
 	 * joins.  Note that this step only handles IN clauses originally at top
 	 * level of WHERE; if we pull up any subqueries in the next step, their

@@ -4,7 +4,7 @@
  *	  Provides storage areas and processing routines for MPP variables
  *	  managed by GUC.
  *
- * Copyright (c) 2003-2004, Greenplum
+ * Copyright (c) 2003-2006, Greenplum
  *
  *
  * IDENTIFICATION
@@ -62,8 +62,6 @@ int			mpp_connections_per_thread; /* How many libpq connections are
 int			Mpp_segment = UNDEF_SEGMENT;		/* What content this QE is
 												 * handling. */
 
-bool		enable_agg_restruct;
-
 int			Mpp_listener_port;
 
 int			Mpp_max_packet_size;	/* max Interconnect packet size */
@@ -73,6 +71,14 @@ int			interconnect_setup_timeout;
 int			currentSliceId = UNSET_SLICE_ID;	/* used by elog to show the
 												 * current slice the process
 												 * is executing. */
+
+/*
+ * MPP Optimizer GUCs
+ */
+
+double      mpp_motion_cost_per_row = 0;
+int         mpp_segments_for_planner = 0;
+
 
 /*
  * The single row from mpp_mpp for this database is held in this variable,

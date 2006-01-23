@@ -101,7 +101,6 @@ cdbagg_prescan(Agg *agg)
      *     aggregation.
      */
     if (aOk &&
-        enable_agg_restruct &&
         analysis.ndistinct == 0 &&
         child->flow->flotype == FLOW_PARTITIONED)
     {

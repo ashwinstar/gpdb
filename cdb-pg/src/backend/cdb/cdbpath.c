@@ -27,7 +27,8 @@
 
 
 /* Globals */
-Cost        cdb_motion_tuple_cost   = 0.0;
+Cost        cdbpath_motion_cost_per_row = 0.0;
+int         cdbpath_segments = 1;
 
 
 /*
@@ -204,8 +205,8 @@ cdbpath_create_motion_path(PlannerInfo     *root,
     pathnode->hashToSelfOnly = hashToSelfOnly;
 
     /* Cost of motion */
-    cost_per_row = (cdb_motion_tuple_cost > 0.0)
-                    ? cdb_motion_tuple_cost
+    cost_per_row = (mpp_motion_cost_per_row > 0.0)
+                    ? mpp_motion_cost_per_row
                     : 2.0 * cpu_tuple_cost;
     rows = cdbpath_rows((Path *)pathnode);
 
@@ -783,7 +784,7 @@ cdbpath_motion_for_join(PlannerInfo      *root,
          */
         else if (!small->require_existing_order &&
                  !small->oj_preserved &&
-                 small->bytes * getMPPSegmentCount() < large->bytes)
+                 small->bytes * cdbpath_segments < large->bytes)
             CdbPathLocus_MakeReplicated(&small->move_to);
 
         /* If joining on smaller rel's partitioning key, redistribute larger. */
@@ -797,7 +798,7 @@ cdbpath_motion_for_join(PlannerInfo      *root,
         /* Replicate smaller rel if cheaper than redistributing both rels. */
         else if (!small->require_existing_order &&
                  !small->oj_preserved &&
-                 small->bytes * getMPPSegmentCount() < large->bytes + small->bytes)
+                 small->bytes * cdbpath_segments < large->bytes + small->bytes)
             CdbPathLocus_MakeReplicated(&small->move_to);
 
         /* Redistribute both rels on equijoin cols. */
