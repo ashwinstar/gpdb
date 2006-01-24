@@ -1457,12 +1457,11 @@ CopyToDispatch(CopyState cstate)
 	StringInfoData cdbcopy_cmd;
 	bool		is_first_col;
 	
-	
 	tupDesc = cstate->rel->rd_att;
 	attr = tupDesc->attrs;
 	num_phys_attrs = tupDesc->natts;
 	attr_count = list_length(cstate->attnumlist);
-	
+
 	/*
 	 * prepare to get COPY data from segDBs:
 	 * 1 - re-construct the orignial COPY command sent from the client.
@@ -1546,7 +1545,7 @@ CopyToDispatch(CopyState cstate)
 	/*
 	 * start a transaction
 	 */
-	cdbCopyStartTransaction();
+	//cdbCopyStartTransaction();
 	
 	/*
 	 * Start a COPY command in every db of every segment in MPP.
@@ -1562,7 +1561,7 @@ CopyToDispatch(CopyState cstate)
 		/* get error message from CopyStart */
 		appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
 		
-		/* end COPY in all the segdbs in progress */
+		/* TODO: end COPY in all the segdbs in progress */
 		//cdbCopyEnd(cdbCopy);
 		
 		/* get error message from CopyEnd */
@@ -1637,23 +1636,29 @@ CopyToDispatch(CopyState cstate)
 	 */
 	while(true)
 	{
-		if(cdbCopyGetData(cdbCopy) == 0)
+		
+		bool done;
+		bool copy_cancel = (QueryCancelPending ? true : false);
+		
+		/* get a chunk of data rows from the QE's */
+		done = cdbCopyGetData(cdbCopy, copy_cancel);
+		
+		/* send the chunk of data rows to destination (file or stdout) */
+		if(cdbCopy->copy_out_buf.len > 0) /* conditional is important! */
+			CopySendData(cstate, (void *) cdbCopy->copy_out_buf.data, cdbCopy->copy_out_buf.len);
+		
+		if(done)
 		{
-			/* send the chunk of data to destination (file or stdout) */
-			if(cdbCopy->copy_out_buf.len > 0) /* conditional is important! */
-				CopySendData(cstate, (void *) cdbCopy->copy_out_buf.data, cdbCopy->copy_out_buf.len);
-			
-			if(cdbCopy->copyout_done)
-				break;
-		}
-		else
-		{
-			/* error occured */
-			appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
+			if(cdbCopy->data_errors || cdbCopy->io_errors)
+				appendBinaryStringInfo(&cdbcopy_err, cdbCopy->err_msg.data, cdbCopy->err_msg.len);
+
 			break;
 		}
+		
 	}
 	
+	/* we can throw the error now if QueryCancelPending was set previously */
+	CHECK_FOR_INTERRUPTS();
 	
 	/*
 	 * report all accumulated errors back to the client.
@@ -1664,7 +1669,7 @@ CopyToDispatch(CopyState cstate)
 				 errmsg("%s", cdbcopy_err.data)));
 	if (cdbCopy->io_errors)
 		ereport(ERROR,
-				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
+				(errcode(ERRCODE_IO_ERROR),
 				 errmsg("%s", cdbcopy_err.data)));
 						  
 	if (cstate->binary)
@@ -2611,8 +2616,8 @@ CopyFromDispatch(CopyState cstate)
 										limit_printout_length(&cstate->line_buf);
 										appendStringInfo(&cdbcopy_err,
 														 "\n\nMPPCOPY: Incompatiable value for partitioning "
-										"column '%s' type.\nData Value: '%s'",
-													   cstate->cur_attname, string);
+														 "column '%s' type.\nData Value: '%s'",
+														 cstate->cur_attname, string);
 										cdbCopy->data_errors = true;
 									}
 									PG_END_TRY();
@@ -2936,7 +2941,7 @@ CopyFromDispatch(CopyState cstate)
 				 errmsg("%s", cdbcopy_err.data)));
 	if (cdbCopy->io_errors)
 		ereport(ERROR,
-				(errcode(ERRCODE_CDB_INTERNAL_ERROR),
+				(errcode(ERRCODE_IO_ERROR),
 				 errmsg("%s", cdbcopy_err.data)));
 	/*
 	 * Done, clean up

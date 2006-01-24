@@ -47,11 +47,9 @@ makeCdbCopy(bool is_copy_in)
 	c->data_errors = false;
 	c->io_errors = false;
 	c->copy_in = is_copy_in;
-	c->copyout_done = false;
 	c->outseglist = NIL;
 	initStringInfo(&(c->err_msg));
-	initStringInfo(&(c->copy_out_buf));
-	
+	initStringInfo(&(c->copy_out_buf));	
 
 	/* init total_segs */
 	c->total_segs = getMPPSegmentCount();
@@ -236,18 +234,14 @@ cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer,
 
 /*
  * gets a chunk of rows of data from a copy command.
- *
- * Returns 0 for success, and -1 if errors occurred.
- * Caller needs to check copyout_done flag on successful
- * return to see if all the table data was collected.
- *
+ * returns boolean true if done. Caller should still
+ * empty the leftovers in the outbuf in that case.
  */
-int cdbCopyGetData(CdbCopy *c)
+bool cdbCopyGetData(CdbCopy *c, bool copy_cancel)
 {
 	SegmentDatabaseDescriptor *q;
 	Gang	    *gp;
 	PGresult   *res;
-	
 	int			nbytes;
 
 	/* clean err message */
@@ -278,6 +272,10 @@ int cdbCopyGetData(CdbCopy *c)
 					
 			q = getSegmentDescriptorFromGang(gp, source_seg);
 			
+			/* send a query cancel request to that segdb */
+			if(copy_cancel)
+				PQrequestCancel(q->conn);
+			
 			/* get 1 row of COPY data */
 			nbytes = PQgetCopyData(q->conn, &buffer, false);
 			
@@ -293,7 +291,7 @@ int cdbCopyGetData(CdbCopy *c)
 			}
 			
 			/* 
-			 * DONE -- Got all the data rows from this segment. 
+			 * DONE -- Got all the data rows from this segment, or a cancel request. 
 			 */
 			else if (nbytes == -1)
 			{
@@ -308,26 +306,20 @@ int cdbCopyGetData(CdbCopy *c)
 						appendStringInfo(&(c->err_msg), "MPPCOPY - Error from segment %d: %s\n",
 										 source_seg, PQresultErrorMessage(res));
 						c->data_errors = true;
-						
-						return -1;
 					}
 					
 					/* free the PGresult object */
 					PQclear(res);
 				}
 				
-				
 				/* remove the segment that completed sending data from the list*/
 				c->outseglist = list_delete_int(c->outseglist, source_seg);
 				
 				/* no more segments with data on the list. we are done */
 				if(list_length(c->outseglist) == 0)
-				{
-					c->copyout_done = true;
-					return 0;
-				}
+					return true; /* done */
 				
-				/* start over from first seg */
+				/* start over from first seg as we just changes the seg list */
 				break;
 			}
 				
@@ -348,17 +340,14 @@ int cdbCopyGetData(CdbCopy *c)
 									 source_seg, PQerrorMessage(q->conn));
 				
 				c->io_errors = true;
-				
-				return -1;
 			}
-			
-			
 		}
 		
 		if(c->copy_out_buf.len > COPYOUT_CHUNK_SIZE)
 			break;
 	}
-	return 0;
+	
+	return false;
 }
 
 /*

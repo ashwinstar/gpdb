@@ -44,8 +44,6 @@ typedef struct CdbCopy
 								 * occured */
 	bool		io_errors;		/* true if any I/O error occured trying to
 								 * communicate with segDB's */
-	bool			copyout_done;
-	
 	SegDbState		**segdb_state;
 	
 	StringInfoData	err_msg;		/* error message for cdbcopy operations */
@@ -63,7 +61,7 @@ CdbCopy    *makeCdbCopy(bool copy_in);
 int			cdbCopyGetDbCount(int total_segs, int seg);
 int			cdbCopyStart(CdbCopy *cdbCopy, char *copyCmd);
 void		cdbCopySendData(CdbCopy *c, int target_seg, const char *buffer, int nbytes);
-int			cdbCopyGetData(CdbCopy *c);
+bool		cdbCopyGetData(CdbCopy *c, bool cancel);
 void		cdbCopyEnd(CdbCopy *c);
 void		cdbCopyStartTransaction(void);
 
