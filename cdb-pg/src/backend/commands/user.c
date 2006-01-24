@@ -865,7 +865,7 @@ AlterRoleSet(AlterRoleSetStmt *stmt)
 			pfree(rawname);
 			list_free(namelist);
 		}
-		elog(NOTICE,"%s",buffer.data);
+	
 		CdbDoCommand(buffer.data, false);
 
 	}
