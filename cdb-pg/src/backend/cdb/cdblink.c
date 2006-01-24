@@ -116,7 +116,6 @@ getMPPSegmentCount(void)
 {
 	if (Mpp_role == MPP_ROLE_UTILITY)
 	{
-
 		if (MppIdentity.numsegments <= 0)
 		{
 			elog(DEBUG5, "getMPPSegmentCount called when Mpp_role == utility. returning zero segments.");
@@ -307,7 +306,8 @@ write_qd_sync(char *cmd, void *buf, int len)
 
 	if (cdb_mirrored_entry_db == NULL)
 	{
-		elog(WARNING, "QD mirror: no mirror");
+		//disableQDMirroring();
+		//elog(WARNING, "QD mirror: no mirror");
 		return;
 	}
 

@@ -565,16 +565,20 @@ write_with_ereport(int fd, void *data, int len)
 void
 write_to_mirror(void *buf, int offset, int len)
 {
-	char		cmd[40];
+	char		cmd[50];
 
 	/* initialize mirror qd sync */
 	if (!mirrorQDInited)
 	{
 		mirrorQDInited = true;
 		write_to_mirror(NULL, offset, 0);
-	}
+		}
 
-	sprintf(cmd, "tmlog %08x %d %d", logFileNo, offset, len);
+ 	if (snprintf(cmd, sizeof(cmd), "tmlog %08x %d %d", logFileNo, offset, len) >= sizeof(cmd))
+	{
+		elog(ERROR, "write_to_mirror: can't format command, buffer too short");
+			return;
+	}
 	write_qd_sync(cmd, buf, len);
 }
 
@@ -593,13 +597,14 @@ resync_tmlog_to_mirror(int startoff, int stopoff)
 
 	elog(DEBUG3, "resync_tmlog_to_mirror: resyncing start offset: %d, stop offset: %d len %d", startoff, stopoff, len);
 
-	Assert(len >= 0);
+	Insist(len >= 0);
 	while (len != 0)
 	{
-		int			read_len = sizeof(tmlogbuf);
+		int		read_len = sizeof(tmlogbuf);
 
 		if (len < sizeof(tmlogbuf))
 			read_len = len;
+
 		if (!read_with_ereport(logFileFD, tmlogbuf, read_len))
 		{
 			elog(LOG, "failed to resync tmlog at offset: %d (len %d)", loffset, len);
@@ -607,7 +612,11 @@ resync_tmlog_to_mirror(int startoff, int stopoff)
 		}
 
 		/* write to sync agent */
-		sprintf(cmd, "tmlog %08x %d %d resync", logFileNo, loffset, read_len);
+		if (snprintf(cmd, sizeof(cmd), "tmlog %08x %d %d resync", logFileNo, loffset, read_len) >= sizeof(cmd))
+		{
+		   	elog(ERROR, "Can't format command for qd_sync");
+		   	return false;
+		}
 		elog(DEBUG4, "calling write_qd_sync: %s", cmd);
 		write_qd_sync(cmd, tmlogbuf, read_len);
 
