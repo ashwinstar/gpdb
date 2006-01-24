@@ -6021,20 +6021,25 @@ resync_xlog_to_mirror(void)
         return false;
     }
     
-    lseek( xlogfilefd, offset, SEEK_SET);
-    while ( (readlen = read(xlogfilefd, buf, blocksz)) != 0)
+    lseek(xlogfilefd, offset, SEEK_SET);
+    while ((readlen = read(xlogfilefd, buf, blocksz)) != 0)
     {
         char cmd[50];
+
         if (readlen == -1)
         {
             elog(LOG, "QDSYNC: error reading xlog file %s at offset %d", tmpfname, offset);
             return false;
         }
 
-        elog(LOG, "xlog resync -   offset: %d   len: %d",
+        elog(DEBUG1, "xlog resync -   offset: %d   len: %d",
             offset, readlen);
 
-        sprintf(cmd, "xlog %s %d %d resync", tmpfname, offset, readlen);
+        if (snprintf(cmd, sizeof(cmd), "xlog %s %d %d resync", tmpfname, offset, readlen) >= sizeof(cmd))
+		{
+            elog(LOG, "QDSYNC: error formatting command to mirror 'xlog %s %d %d resync' (insufficient space)", tmpfname, offset, readlen);
+            return false;
+		}
         write_qd_sync(cmd, buf, readlen);
         offset += readlen;
     }
