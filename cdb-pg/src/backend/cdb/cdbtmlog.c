@@ -28,8 +28,6 @@ extern int	errno;
  * The value is automatically inherited by backends via fork, and
  * doesn't need to be in shared memory.
  */
-
-#define MAXPATH  1024
 #define MAXLOGFILESIZE 50000000 /* 50M */
 
 /************************************************************************/
@@ -237,7 +235,7 @@ checkPointTm(void)
 static void
 initTmLogFile(int seqno)
 {
-	char		path[MAXPATH];
+	char		path[MAXPGPATH];
 
 	TmLogFilePath(path, seqno);
 
@@ -263,7 +261,7 @@ initTmLogFile(int seqno)
 bool
 openTmLogFile(int seqno)
 {
-	char		path[MAXPATH];
+	char		path[MAXPGPATH];
 
 	TmLogFilePath(path, seqno);
 

@@ -210,7 +210,7 @@ buildMirrorQDDefinition(void)
 			 * mirror, we don't want to connect to ourselves! So we
 			 * turn off mirroring after issuing a 'NOTICE' message.
 			 */			
-			elog(NOTICE, "QD Mirroring: we are the mirror, don't connect to self.");
+			elog(NOTICE, "QD Mirroring: mirror active, don't connect to self.");
 			disableQDMirroring();
 			return;
 		}
@@ -259,6 +259,8 @@ buildMirrorQDDefinition(void)
 			write_qd_sync("issyncmaster", NULL, 0);
 		}
 	}
+
+	elog(DEBUG2, "QD mirror: connection status %s", PQstatus(cdb_mirrored_entry_db->conn) == CONNECTION_OK ? "good" : "bad");
 }
 
 static void
@@ -272,11 +274,6 @@ parseOffsetsFromMessage(char *buf, int *pfileoff, int *mfileoff)
 	Assert(buf != NULL);
 	Assert(pfileoff != NULL);
 	Assert(mfileoff != NULL);
-
-	/* 
-	sscanf(PQresultErrorMessage(pRes), "%s%s pdboff: %d, mdboff: %d",
-						   dummy, dummy, &pfileoff, &mfileoff);
-	*/
 
 	do {
 		start = strstr(buf, "pdboff: ");
@@ -308,13 +305,19 @@ write_qd_sync(char *cmd, void *buf, int len)
 	PGconn	   *conn;
 	bool		failed = false;
 
-	if (cdb_mirrored_entry_db == NULL || cdb_mirrored_entry_db->conn == NULL)
+	if (cdb_mirrored_entry_db == NULL)
 	{
-		elog(DEBUG1, "QD Mirror Sync: no QD mirror");
+		elog(WARNING, "QD mirror: no mirror");
 		return;
 	}
 
 	conn = cdb_mirrored_entry_db->conn;
+
+	if (PQstatus(conn) != CONNECTION_OK)
+	{
+		elog(WARNING, "QD mirror: mirror connection failed");
+		return;
+	}
 
 	if (PQsendQuery(conn, cmd) == 0)
 	{
@@ -455,12 +458,10 @@ cdblink_connectQD(SegmentDatabaseDescriptor * segdbDesc)
 
 	appendPQExpBuffer(&buffer, "user=%s ", username);
 
-
 	/*
 	 * Call libpq to connect
 	 */
 	segdbDesc->conn = PQconnectdb(buffer.data);
-
 
 	/*
 	 * Check for connection failure.
@@ -508,9 +509,12 @@ getEntrySegDB(int *count)
 void
 disconnectMirrorQD(void)
 {
-	if (cdb_mirrored_entry_db == NULL || cdb_mirrored_entry_db->conn == NULL)
+	if (cdb_mirrored_entry_db == NULL || 
+		PQstatus(cdb_mirrored_entry_db->conn) != CONNECTION_OK)
 		return;
 
 	write_qd_sync("close", NULL, 0);
 	PQfinish(cdb_mirrored_entry_db->conn);
+
+	return;
 }
