@@ -63,6 +63,17 @@ int			CommitDelay = 0;	/* precommit delay in microseconds */
 int			CommitSiblings = 5; /* # concurrent xacts needed to sleep */
 
 
+/* MPP-specific 
+ *
+ * 
+
+routine for marking when a sequence makes a mark in the xlog.  we need
+ * to keep track of this because sequences are the only reason a reader should
+ * ever write to the xlog during commit.  As a result, we keep track of such
+ * and will complain loudly if its violated.
+ */
+bool seqXlogWrite;
+
 /*
  *	transaction states - transaction state from server perspective
  */
@@ -689,14 +700,19 @@ RecordTransactionCommit(void)
 
 
 		/* Safety check in case our assumption is ever broken. */
-		if (Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_writer)
+		if (Mpp_role == MPP_ROLE_EXECUTE && !Mpp_is_writer && !seqXlogWrite)
 		{
+			/* we better only do really minor things on the reader that 
+			 * result in writing to the xlog here at commit.  for now
+			 * sequences should be the only one
+			 */
 			ereport(ERROR,
 					(errmsg("Reader qExec had local changes to commit!"),
 					 errdetail("A Reader qExec tried to commit local changes.  "
 					 		   "Only the single Writer qExec can do so. "),
 					 errhint("This is most likely the result of a feature being turned "
-					 		 "on that violates the single WRITER principle")));						 		
+					 		 "on that violates the single WRITER principle")));		
+						  
 		}
 		
 		/* Tell bufmgr and smgr to prepare for commit */
@@ -1364,6 +1380,19 @@ SetSharedTransactionId(void)
 }
 
 
+/* MPP routine for marking when a sequence makes a mark in the xlog.  we need
+ * to keep track of this because sequences are the only reason a reader should
+ * ever write to the xlog during commit.  As a result, we keep track of such
+ * and will complain loudly if its violated.
+ */
+void
+SetXactSeqXlog(void)
+{
+	seqXlogWrite = true;
+}
+
+
+
 /*
  *	StartTransaction
  */
@@ -1392,13 +1421,15 @@ StartTransaction(void)
 	s->state = TRANS_START;
 	s->transactionId = InvalidTransactionId;	/* until assigned */
 
+	
 	/*
 	 * Make sure we've freed any old snapshot, and reset xact state variables
 	 */
 	FreeXactSnapshot();
 	XactIsoLevel = DefaultXactIsoLevel;
 	XactReadOnly = DefaultXactReadOnly;
-   
+	seqXlogWrite = false;
+		
     /* set read only by fts, if any fts action is read only */ 
     FtsCondSetTxnReadOnly(&XactReadOnly);
 

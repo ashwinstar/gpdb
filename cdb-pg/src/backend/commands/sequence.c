@@ -15,6 +15,7 @@
 #include "postgres.h"
 
 #include "access/heapam.h"
+#include "access/xact.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
@@ -629,6 +630,14 @@ nextval_internal(Oid relid)
 
 		PageSetLSN(page, recptr);
 		PageSetTLI(page, ThisTimeLineID);
+		
+		/* MPP.  since sequences is the only xlog activity Reader QEs are 
+		 *       allowed to do.  when this happens here we'll mark it as
+		 *	     such in xact.c so we can detect if an xlog occurs that is
+		 *       not due to a sequence.  (of course you could get away with
+		 *       it if you updated a sequence and did something bad)
+		 */
+		SetXactSeqXlog();  /*xact.c*/ 
 	}
 
 	/* update on-disk data */

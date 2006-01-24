@@ -133,7 +133,11 @@ typedef struct xl_xact_abort_prepared
  *		extern definitions
  * ----------------
  */
+
+/* MPP specific */ 
 extern void SetSharedTransactionId(void);
+extern void SetXactSeqXlog(void);
+
 extern bool IsTransactionState(void);
 extern bool IsAbortInProgress(void);
 extern bool IsAbortedTransactionBlockState(void);
