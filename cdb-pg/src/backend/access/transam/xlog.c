@@ -1489,7 +1489,7 @@ XLogWrite(XLogwrtRqst WriteRqst, bool flexible)
 				   elog(LOG, "**XLogWrite- %s offset: %d   len: %d",
 				   tmpfname, openLogOff, nbytes);
 				*/
-				if (snprintf(cmd, sizeof(cmd),"xlog %s %d %d", tmpfname, openLogOff, nbytes) >= sizeof(cmd))
+				if (snprintf(cmd, sizeof(cmd),"xlog %s %d %d", tmpfname, openLogOff, (int)nbytes) >= sizeof(cmd))
 					ereport(ERROR,
 							(errcode_for_file_access(),
 							 errmsg("could not create cmd for qd mirror \"%s\"", tmpfname)));
@@ -6001,17 +6001,19 @@ remove_backup_label(void)
 							BACKUP_LABEL_FILE)));
 }
 
-#define MAXPATH 1024
-
 bool
 resync_xlog_to_mirror(void)
 {
-    int blocksz = 64536;  /* 64k */
-    int readlen, xlogfilefd, offset=0;
-    char        path[MAXPATH], buf[blocksz], tmpfname[24];
+    int			blocksz = (64 * 1024);
+    int			readlen, xlogfilefd, offset=0;
+    char		path[MAXPGPATH], buf[blocksz], tmpfname[MAXFNAMELEN];
         
     XLogFileName(tmpfname, ThisTimeLineID, openLogId, openLogSeg);
-    snprintf(path, MAXPATH, "%s/%s", XLOGDIR, tmpfname);
+    if (snprintf(path, MAXPGPATH, "%s/%s", XLOGDIR, tmpfname) >= MAXPGPATH)
+	{
+		elog(LOG, "QDSYNC: could generate xlog filename (%s/%s)", XLOGDIR, tmpfname);
+		return false;
+	}
     xlogfilefd = open(path, O_RDONLY, 0);
     if (xlogfilefd < 0)
     {
