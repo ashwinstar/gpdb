@@ -6011,7 +6011,7 @@ resync_xlog_to_mirror(void)
     XLogFileName(tmpfname, ThisTimeLineID, openLogId, openLogSeg);
     if (snprintf(path, MAXPGPATH, "%s/%s", XLOGDIR, tmpfname) >= MAXPGPATH)
 	{
-		elog(LOG, "QDSYNC: could generate xlog filename (%s/%s)", XLOGDIR, tmpfname);
+		elog(LOG, "QDSYNC: could not generate xlog filename (%s/%s)", XLOGDIR, tmpfname);
 		return false;
 	}
     xlogfilefd = open(path, O_RDONLY, 0);
