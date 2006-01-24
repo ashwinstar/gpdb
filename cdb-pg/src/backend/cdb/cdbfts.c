@@ -181,7 +181,7 @@ FtsTestConnection(CdbComponentDatabaseInfo *failedDBInfo, char *dbName)
 		 * "could not send" -- libpq protocol error
 		 */
 		if (strstr(errorMsg, "FATAL:") == NULL &&
-			strstr(errorMsg, " could not ") == NULL)
+			strstr(errorMsg, "could not ") == NULL)
 		{
 			/* non-fatal connection errors are ignored */
 			elog(DEBUG3, "FtsTestConnection: nonfatal error, ignoring (%d, %s)", PQsocket(conn), errorMsg);
