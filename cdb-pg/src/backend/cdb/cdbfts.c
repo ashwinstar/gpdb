@@ -252,7 +252,7 @@ FtsReConfigureMPP(void)
 static void
 CdbShutdown(void)
 {
-	elog(PANIC, "FTS: MPP system is shut down");
+	elog(ERROR, "FTS: MPP system is shut down (segment failure)");
 }
 
 void
