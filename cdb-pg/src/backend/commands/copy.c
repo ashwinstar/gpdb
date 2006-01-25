@@ -1864,8 +1864,6 @@ CopyFromDispatch(CopyState cstate)
 	 */
 	StringInfoData cdbcopy_cmd;
 
-	MemoryContext beforeError;
-
 	/*
 	 * Variables for cdbpolicy
 	 */
@@ -2480,13 +2478,15 @@ CopyFromDispatch(CopyState cstate)
 
 						if (isnull)
 						{
-							appendStringInfo(&cdbcopy_err, "\nMPPCOPY: null OID in COPY data.");
-							cdbCopy->data_errors = true;
+							/* clean up and throw error */
+							cdbCopyEnd(cdbCopy);
+							
+							ereport(ERROR,
+									(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+									 errmsg("null OID in COPY data.")));									
 						}
 						else
 						{
-							beforeError = CurrentMemoryContext;
-
 							PG_TRY();
 							{
 								cstate->cur_attname = "oid";
@@ -2495,41 +2495,25 @@ CopyFromDispatch(CopyState cstate)
 							}
 							PG_CATCH();
 							{
-								ErrorData  *edata;
-
-								MemoryContextSwitchTo(beforeError);
-								edata = CopyErrorData();		/* get the original
-																 * error message */
-								FlushErrorState();
-								appendStringInfo(&cdbcopy_err, "\nMPPCOPY: Error processing OID column."
-										"\nDescription: %s", edata->message);
-								FreeErrorData(edata);
-								cdbCopy->data_errors = true;
+								/* clean up and re-throw error */
+								cdbCopyEnd(cdbCopy);
+								PG_RE_THROW();
 							}
 							PG_END_TRY();
 
-							MemoryContextSwitchTo(beforeError);
-
-
 							if (loaded_oid == InvalidOid)
 							{
-								appendStringInfo(&cdbcopy_err, "\nMPPCOPY: invalid OID in COPY data.");
-								cdbCopy->data_errors = true;
+								/* clean up and throw error */
+								cdbCopyEnd(cdbCopy);
+								
+								ereport(ERROR,
+										(errcode(ERRCODE_BAD_COPY_FILE_FORMAT),
+										 errmsg("invalid OID in COPY data.")));
 							}
 
 							cstate->cur_attname = NULL;
-
-							if (cdbCopy->data_errors)	/* if data error
-														 * occured, break out of
-														 * all loops */
-							{
-								no_more_data = true;
-								break;
-							}
 						}
 					}
-
-					beforeError = CurrentMemoryContext;
 
 					/*
 					 * try to read a data line, if failed catch the error,
@@ -2545,27 +2529,11 @@ CopyFromDispatch(CopyState cstate)
 					}
 					PG_CATCH();
 					{
-						ErrorData  *edata;
-
-						MemoryContextSwitchTo(beforeError);
-						edata = CopyErrorData();		/* get the original
-														 * error message */
-						FlushErrorState();
-						appendStringInfo(&cdbcopy_err, "\nMPPCOPY: Error while parsing attributes."
-										 "\nDescription: %s", edata->message);
-						FreeErrorData(edata);
-						cdbCopy->data_errors = true;
+						/* clean up and re-throw error */
+						cdbCopyEnd(cdbCopy);
+						PG_RE_THROW();						
 					}
 					PG_END_TRY();
-
-					MemoryContextSwitchTo(beforeError);
-
-					if (cdbCopy->data_errors)	/* if data error occured,
-												 * break out of all loops */
-					{
-						no_more_data = true;
-						break;
-					}
 
 					/*
 					 * Since we only need the internal format of values that
@@ -2613,12 +2581,9 @@ CopyFromDispatch(CopyState cstate)
 									}
 									PG_CATCH();
 									{
-										limit_printout_length(&cstate->line_buf);
-										appendStringInfo(&cdbcopy_err,
-														 "\n\nMPPCOPY: Incompatiable value for partitioning "
-														 "column '%s' type.\nData Value: '%s'",
-														 cstate->cur_attname, string);
-										cdbCopy->data_errors = true;
+										/* clean up and re-throw error */
+										cdbCopyEnd(cdbCopy);
+										PG_RE_THROW();
 									}
 									PG_END_TRY();
 
@@ -2630,13 +2595,6 @@ CopyFromDispatch(CopyState cstate)
 							}
 						}		/* end foreach */
 					}			/* end for partitioning indexes */
-
-					if (cdbCopy->data_errors)	/* if data error occured,
-												 * break out of all loops */
-					{
-						no_more_data = true;
-						break;
-					}
 
 				}
 				else
@@ -2730,7 +2688,6 @@ CopyFromDispatch(CopyState cstate)
 					if(compute_default)
 					{
 						char *string;
-						beforeError = CurrentMemoryContext;
 						
 						PG_TRY();
 						{
@@ -2739,23 +2696,12 @@ CopyFromDispatch(CopyState cstate)
 						}
 						PG_CATCH();
 						{
-							ErrorData  *edata;
-							MemoryContextSwitchTo(beforeError);
-							
-							edata = CopyErrorData(); /* get the original error message */
-							FlushErrorState();
-							appendStringInfo(&cdbcopy_err, "\nMPPCOPY: Error evaluating default value"
-											 "\nDescription: %s", edata->message);
-							FreeErrorData(edata);
-							cdbCopy->data_errors = true;
-							
-						    limit_printout_length(&cstate->line_buf);
-							break;
+							/* clean up and re-throw error */
+							cdbCopyEnd(cdbCopy);
+							PG_RE_THROW();
 						}
 						PG_END_TRY();
-						
-						MemoryContextSwitchTo(beforeError);
-						
+												
 						/* 
 						 * prepare to concatinate next value: 
 						 * remove eol characters from end of line buf
