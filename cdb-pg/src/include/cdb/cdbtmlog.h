@@ -20,6 +20,8 @@ typedef enum
 	TM_LOG_CHECKPOINT,			/* checkpoint */
 }	TmLogRecType;
 
+#define TM_FILE_MAGIC	823487293
+
 /*
  * Header for each record in tm log
  */
@@ -49,6 +51,7 @@ typedef struct TmLogFileControlBlock
 	pg_crc64		crc;
 }	TmLogFileControlBlock;
 
+	
 extern void writeTmLogRecord(TmLogRecord *);
 extern void recoverTmLog(void);
 extern void checkPointTm(void);

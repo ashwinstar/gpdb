@@ -38,7 +38,7 @@ extern int	errno;
 	snprintf(path, MAXPGPATH, "%s/%08X", dtm_dir, seqno)
 
 
-#define TM_FILE_MAGIC	823487293
+
 static TmLogFileControlBlock tmLogFileHeader = {TM_FILE_MAGIC, 0, 0, {0}};
 static int	currentOffset = -1;
 static int	logFileFD = -1,
@@ -56,6 +56,7 @@ static pg_crc64 calculateCRC(void *buf, int len);
 static bool read_with_ereport(int fd, void *data, int len);
 static void switchTmLogFile(void);
 static void removeTmLogFileUntil(int seqno);
+
 
 
 /*
