@@ -1533,11 +1533,19 @@ PQputCopyData(PGconn *conn, const char *buffer, int nbytes)
 						  libpq_gettext("no COPY in progress\n"));
 		return -1;
 	}
-
+	
+	/*
+	 * Process any NOTICE or NOTIFY messages that might be pending in the
+	 * input buffer.  Since the server might generate many notices during
+	 * the COPY, we want to clean those out reasonably promptly to prevent
+	 * indefinite expansion of the input buffer.  (Note: the actual read
+	 * of input data into the input buffer happens down inside pqSendSome,
+	 * but it's not authorized to get rid of the data again.)
+	 */
+	parseInput(conn);
+	
 	if (nbytes > 0)
 	{
-		int oc = conn->outCount + nbytes;
-				
 		/*
 		 * Try to flush any previously sent data in preference to growing the
 		 * output buffer.  If we can't enlarge the buffer enough to hold the
@@ -1546,10 +1554,9 @@ PQputCopyData(PGconn *conn, const char *buffer, int nbytes)
 		 * case.)
 		 */
 		if ((conn->outBufSize - conn->outCount - 5) < nbytes)
-		{			
+		{
 			if (pqFlush(conn) < 0)
 				return -1;
-						
 			if (pqCheckOutBufferSpace(conn->outCount + 5 + nbytes, conn))
 				return pqIsnonblocking(conn) ? 0 : -1;
 		}
@@ -1568,21 +1575,6 @@ PQputCopyData(PGconn *conn, const char *buffer, int nbytes)
 				pqPutMsgEnd(conn) < 0)
 				return -1;
 		}
-		
-		/* if some data was sent to the server */
-		if (oc > conn->outCount)
-		{
-			/*
-			 * Check for NOTICE messages coming back from the server.  Since the
-			 * server might generate multiple notices during the COPY, we have to
-			 * consume those in a reasonably prompt fashion to prevent the comm
-			 * buffers from filling up and possibly blocking the server.
-			 */			
-			if (!PQconsumeInput(conn))
-				return -1;
-			parseInput(conn);
-		}
-		
 	}
 	return 1;
 }
