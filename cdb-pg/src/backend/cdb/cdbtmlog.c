@@ -220,11 +220,11 @@ checkPointTm(void)
 	/* write log control header */
 	writeTmControlBlock(record->header.thisOffset);
 
+	/* flush tm log file */
+	flushTmLogFile(record->header.thisFileNo, record->header.thisOffset);
+	
 	/* deallocate record */
 	pfree(record);
-
-	/* flush tm log file */
-	flushTmLogFile();
 
 	/* remove old log file */
 	removeTmLogFileUntil(earlierFileNo);
@@ -336,10 +336,21 @@ switchTmLogFile(void)
 
 /* flush tm log file */
 void
-flushTmLogFile(void)
+flushTmLogFile(int fileno, int offset)
 {
 	int ret;
 
+	/* if our record is already flushed then we no-op.
+	 * When the system gets busy this allows other users processes to flush
+	 * our records and shoud result in overall better throughput.
+	 */
+	if (*shmLastFlushedFileNo == fileno && *shmLastFlushedFileOffset > offset)
+	{
+		/* no-op... we're already flushed. */
+		return;
+	}
+	
+	
 	ret = pg_fdatasync(logFileFD);
 
 	if (ret != 0)
@@ -349,6 +360,16 @@ flushTmLogFile(void)
 				 errmsg("could not fsync tm log file \"%d\": %m",
 						logFileNo)));
 	}
+	
+		
+	/* we've actually flushed a few more bytes then just offset 
+	 * since that is just the beginning of the last record we've flushed.
+	 * but for our purposes this is ok.  Eventually, this tmlog 
+	 * implementation needs to be re-worked quite a bit. 
+	 */
+    *shmLastFlushedFileNo = fileno;
+	*shmLastFlushedFileOffset = offset; 
+							
 }
 
 /* remove useless tm log file */

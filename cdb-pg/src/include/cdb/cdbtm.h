@@ -46,6 +46,8 @@ typedef struct TmControlBlock
 	int			seqno;
 	int			latestLogFileNo;
 	int			earliestLogFileNo;
+	int			lastFlushedFileNo;
+	int			lastFlushedFileOffset;
 	int			num_active_xacts;
 	TMGXACT    *gxact_array[0];
 }	TmControlBlock;
@@ -79,6 +81,10 @@ extern void discardDtxTransaction(void);
 
 extern int *shmLatestLogFileNo;
 extern int *shmEarliestLogFileNo;
+
+/* state variables for how much of the log file has been flushed */
+extern int *shmLastFlushedFileNo;
+extern int *shmLastFlushedFileOffset;
 
 extern char dtm_dir[MAXPGPATH];
 extern int	tmShmemSize(void);

@@ -35,6 +35,9 @@ static int *shmNumGxacts;
 int		   *shmLatestLogFileNo;
 int		   *shmEarliestLogFileNo;
 
+int		   *shmLastFlushedFileNo;
+int		   *shmLastFlushedFileOffset;
+
 static int	ControlLockCount = 0;
 
 char		dtm_dir[MAXPGPATH];
@@ -619,6 +622,8 @@ tmShmemInit(void)
 		shmGIDSeq = &shared->seqno;
 		shmLatestLogFileNo = &shared->latestLogFileNo;
 		shmEarliestLogFileNo = &shared->earliestLogFileNo;
+		shmLastFlushedFileNo = &shared->lastFlushedFileNo;
+		shmLastFlushedFileOffset = &shared->lastFlushedFileOffset;
 		shmNumGxacts = &shared->num_active_xacts;
 		shmGxactArray = shared->gxact_array;
 
@@ -842,7 +847,7 @@ updateDtxState(DtxState state)
 			  state == DTX_STATE_COMMIT_DONE || 
 			  state == DTX_STATE_ROLLBACK_DONE) && isDirty)
 	{		  
-		flushTmLogFile();
+		flushTmLogFile(currentGxact->fileno, currentGxact->offset);
 	}
 	
 	releaseTmLock();

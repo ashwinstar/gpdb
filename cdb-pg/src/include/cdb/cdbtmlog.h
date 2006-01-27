@@ -55,7 +55,7 @@ typedef struct TmLogFileControlBlock
 extern void writeTmLogRecord(TmLogRecord *);
 extern void recoverTmLog(void);
 extern void checkPointTm(void);
-extern void flushTmLogFile(void);
+extern void flushTmLogFile(int fileno, int offset);
 extern void write_to_mirror(void *, int, int);
 extern void write_with_ereport(int, void *, int);
 extern int	initTmLog(char *);
