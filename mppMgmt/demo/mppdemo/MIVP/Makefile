@@ -1,4 +1,4 @@
-THIS_PGDATABASE=dgtestdb
+THIS_PGDATABASE=mpptestdb
 THIS_PGPORT=5432
 DATADIR=$(PWD)/data-generator
 
