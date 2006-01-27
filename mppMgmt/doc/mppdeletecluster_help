@@ -1,0 +1,78 @@
+COMMAND NAME: mppdeletecluster.sh
+
+Deletes a Bizgres MPP system that was initialized using mppcreatecluster.sh.
+
+
+*****************************************************
+SYNOPSIS
+*****************************************************
+
+mppdeletecluster.sh -d <data_directory> [-f] [-r] [-m] [-l <logfile_directory>]
+
+mppdeletecluster.sh [-? | -v]
+
+
+*****************************************************
+DESCRIPTION
+*****************************************************
+
+The mppdeletecluster.sh script will perform the following actions:
+
+* Stop all postmaster processes (the segment instances and MPP master 
+  instance).
+
+* Delete all data directories.
+
+Before runing this script, you should move any backup files (created by 
+mpp_dump) out of the master and segment data directories.
+
+This script will not uninstall the Bizgres MPP software.
+
+
+*****************************************************
+OPTIONS
+*****************************************************
+
+-d <data_directory>
+
+Required. The MPP master host data directory.
+
+-f
+
+Force a delete even if backup files are found in the data directories. The 
+default is to not delete Bizgres MPP instances if backup files (created 
+by mpp_dump) are present.
+
+-l <logfile_directory>
+
+The directory to write the log file. Defaults to ~/mppAdminLogs.
+
+-?
+
+Displays the online help.
+
+-v
+
+Displays the version, status, last updated date, and check sum of this script.
+
+
+*****************************************************
+EXAMPLES
+*****************************************************
+
+Delete a Bizgres MPP system:
+
+mppdeletecluster.sh -d /mppdata/mpp0
+
+
+Delete a Bizgres MPP system even if backup files are present:
+
+mppdeletecluster.sh -d /mppdata/mpp0 -f
+
+
+*****************************************************
+SEE ALSO
+*****************************************************
+
+mppcreatecluster.sh, mpp_dump
+
