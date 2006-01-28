@@ -58,7 +58,9 @@ cdbpath_create_motion_path(PlannerInfo     *root,
 {
     CdbMotionPath      *pathnode;
     Cost                cost_per_row;
-    double              rows;
+    Cost                motioncost;
+    double              recvrows;
+    double              sendrows;
     bool                hashToSelfOnly = false;
 
     /* No motion needed if subpath locus is exactly as requested. */
@@ -208,9 +210,11 @@ cdbpath_create_motion_path(PlannerInfo     *root,
     cost_per_row = (mpp_motion_cost_per_row > 0.0)
                     ? mpp_motion_cost_per_row
                     : 2.0 * cpu_tuple_cost;
-    rows = cdbpath_rows((Path *)pathnode);
+    sendrows = cdbpath_rows(pathnode->subpath);
+    recvrows = cdbpath_rows((Path *)pathnode);
+    motioncost = cost_per_row * 0.5 * (sendrows + recvrows);
 
-    pathnode->path.total_cost = rows * cost_per_row + subpath->total_cost;
+    pathnode->path.total_cost = motioncost + subpath->total_cost;
     pathnode->path.startup_cost = subpath->startup_cost;
     pathnode->path.memory = subpath->memory;
 
