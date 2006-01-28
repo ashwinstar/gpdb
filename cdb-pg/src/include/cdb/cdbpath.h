@@ -46,10 +46,10 @@ cdbpath_rows(Path *path)
 {
     double rows;
 
-    if (IsA(path, UniquePath))
-        rows = ((UniquePath *)path)->rows;
-    else
-        rows = path->parent->rows;
+    rows = IsA(path, BitmapHeapPath)    ? ((BitmapHeapPath *)path)->rows
+         : IsA(path, IndexPath)         ? ((IndexPath *)path)->rows
+         : IsA(path, UniquePath)        ? ((UniquePath *)path)->rows
+         : path->parent->rows;
 
     /* Just one partition, or whole rel? */
     if (CdbPathLocus_IsBottleneck(path->locus) ||

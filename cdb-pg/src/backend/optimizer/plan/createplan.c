@@ -5,7 +5,7 @@
  *	  Planning is complete, we just need to convert the selected
  *	  Path into a Plan.
  *
- * Portions Copyright (c) 2005, greenplum inc
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -702,7 +702,7 @@ create_unique_plan(PlannerInfo *root, UniquePath *best_path)
 	}
 
 	/* Adjust output size estimate (other fields should be OK already) */
-	plan->plan_rows = best_path->rows;
+	plan->plan_rows = cdbpath_rows((Path *)best_path);
 
 	return plan;
 }
@@ -893,8 +893,6 @@ create_indexscan_plan(PlannerInfo *root,
 							   best_path->indexscandir);
 
 	copy_path_costsize(&scan_plan->scan.plan, &best_path->path);
-	/* use the indexscan-specific rows estimate, not the parent rel's */
-	scan_plan->scan.plan.plan_rows = best_path->rows;
 
 	return scan_plan;
 }
@@ -1007,8 +1005,6 @@ create_bitmap_scan_plan(PlannerInfo *root,
 									 baserelid);
 
 	copy_path_costsize(&scan_plan->scan.plan, &best_path->path);
-	/* use the indexscan-specific rows estimate, not the parent rel's */
-	scan_plan->scan.plan.plan_rows = best_path->rows;
 
 	return scan_plan;
 }
