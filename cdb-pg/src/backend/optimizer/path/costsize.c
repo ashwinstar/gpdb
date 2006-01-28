@@ -45,6 +45,7 @@
  * the non-cost fields of the passed XXXPath to be filled in.
  *
  *
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -108,27 +109,6 @@ static Selectivity join_in_selectivity(JoinPath *path, PlannerInfo *root);
 static void set_rel_width(PlannerInfo *root, RelOptInfo *rel);
 static double relation_byte_size(double tuples, int width);
 static double page_size(double tuples, int width);
-
-
-/*
- * clamp_row_est
- *		Force a row-count estimate to a sane value.
- */
-double
-clamp_row_est(double nrows)
-{
-	/*
-	 * Force estimate to be at least one row, to make explain output look
-	 * better and to avoid possible divide-by-zero when interpolating costs.
-	 * Make it an integer, too.
-	 */
-	if (nrows < 1.0)
-		nrows = 1.0;
-	else
-		nrows = rint(nrows);
-
-	return nrows;
-}
 
 
 /*

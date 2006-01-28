@@ -21,11 +21,26 @@
 /* defaults for costsize.c's Cost parameters */
 /* NB: cost-estimation code should use the variables, not these constants! */
 /* If you change these, update backend/utils/misc/postgresql.sample.conf */
-#define DEFAULT_EFFECTIVE_CACHE_SIZE  1000.0	/* measured in pages */
-#define DEFAULT_RANDOM_PAGE_COST  4.0
+#define DEFAULT_EFFECTIVE_CACHE_SIZE  500.0	/* measured in pages */
+#define DEFAULT_RANDOM_PAGE_COST  5.0
 #define DEFAULT_CPU_TUPLE_COST	0.01
 #define DEFAULT_CPU_INDEX_TUPLE_COST 0.001
 #define DEFAULT_CPU_OPERATOR_COST  0.0025
+
+
+/*
+ * clamp_row_est
+ *		Force a row-count estimate to a sane value.
+ */
+static __inline__ double 
+clamp_row_est(double nrows)
+{
+	/*
+	 * Force estimate to be at least one row, to make explain output look
+	 * better and to avoid possible divide-by-zero when interpolating costs.
+	 */
+    return (nrows < 1.0) ? 1.0 : nrows;
+}
 
 
 /*
@@ -51,7 +66,6 @@ extern bool enable_mergejoin;
 extern bool enable_hashjoin;
 extern bool constraint_exclusion;
 
-extern double clamp_row_est(double nrows);
 extern void cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel);
 extern void cost_index(IndexPath *path, PlannerInfo *root, IndexOptInfo *index,
 		   List *indexQuals, bool is_injoin);
