@@ -339,7 +339,7 @@ void
 flushTmLogFile(int fileno, int offset)
 {
 	int ret;
-
+		
 	/* if our record is already flushed then we no-op.
 	 * When the system gets busy this allows other users processes to flush
 	 * our records and shoud result in overall better throughput.
@@ -479,8 +479,7 @@ initTmLog(char *dir)
 }
 
 /*
- * Scans the pg_twophase directory and recovers every found
- * prepared transaction
+ * Scans the pg_dtm directory and reads 
  */
 void
 recoverTmLog(void)

@@ -63,6 +63,16 @@ typedef enum
 	DTX_ERR_INTERR				/* Internal error */
 }	DTXErrorCode;
 
+
+
+/* state variables for how much of the log file has been flushed */
+extern int *shmLastFlushedFileNo;
+extern int *shmLastFlushedFileOffset;
+extern int *shmLatestLogFileNo;
+extern int *shmEarliestLogFileNo;
+extern char dtm_dir[MAXPGPATH];
+
+
 extern int	startDtxTransaction(void);
 extern int	commitDtxTransaction(void);
 extern int	rollbackDtxTransaction(void);
@@ -70,30 +80,28 @@ extern int	condStartDtxTransaction(void);
 extern void setCurrentDtxDirty(void);
 extern int	condCommitDtxTransaction(bool onephase);
 extern int	condRollbackDtxTransaction(void);
+
 extern int	startTMXactScan(void);
 extern TMGXACT *getNextTMXact(int index);
 extern void endTMXactScan(void);
+
 extern void tmShmemInit(void);
-extern void restoreGxact(TMGXACT * gxact);
+extern int	tmShmemSize(void);
 extern void initTM(void);
+extern void	shutdownTM(void);
+
+extern void restoreGxact(TMGXACT * gxact);
 extern void semanticCheckingOnQE(bool commit);
 extern void discardDtxTransaction(void);
 
-extern int *shmLatestLogFileNo;
-extern int *shmEarliestLogFileNo;
 
-/* state variables for how much of the log file has been flushed */
-extern int *shmLastFlushedFileNo;
-extern int *shmLastFlushedFileOffset;
-
-extern char dtm_dir[MAXPGPATH];
-extern int	tmShmemSize(void);
 extern bool isInGlobalTransaction(void);
 extern bool isTMInRecovery(void);
-extern void setDtxDirty(void);
 extern void setRecoverTMOn(void);
 
 void		getTmLock(void);
 void		releaseTmLock(void);
+
+
 
 #endif   /* CDBTM_H */

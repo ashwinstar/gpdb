@@ -52,20 +52,41 @@ static int	checkpoint_interval = 5000;
 
 /* for semantic checking - debugging purpose */
 static int	lastGxactState;
+
 static bool  isDirty = false;
 static bool  resolveDtx = false;
 
+
+/* i really hate to do this, but until things get completely untangled in
+ * here and we get REAL states for 1 phase ROLLBACK and 2-phase rollback
+ * we need a way to do the right 2-phase ROLLBACK when abort in-doubt 
+ * transactions that the DTM has no knowledge of.
+ */
+static bool twoPhaseRollback = false;
+
+
+typedef struct InDoubtDtx
+{
+	char 	  gid[TMGIDSIZE]; 			 			
+} InDoubtDtx;
+
+
+/* state map showing which transitions are valid and which are invalid.
+ * entries marked with a 1 are valid.
+ */
 static const int transitionState[8][8] =
 {
-/*			 IN-PROG  PREPARE 1P-CMT  2P-CMT ROLLBACK ABORT  CMTDONE RBDONE */
-	 /* IN_PROG */ {1, 1, 1, 1, 1, 1, 0, 0},
-	 /* PREPARE */ {0, 0, 0, 1, 1, 1, 0, 0},
-	 /* 1P_CMT	*/ {0, 0, 1, 0, 0, 1, 1, 0},
-	 /* 2P_CMT	*/ {0, 0, 0, 1, 0, 0, 1, 0},
-	 /* ROLLBACK*/ {0, 0, 0, 0, 1, 1, 0, 1},
-	 /* ABORT	*/ {0, 0, 0, 0, 1, 1, 0, 0},
-	 /* CMTDONE */ {0, 0, 0, 0, 0, 0, 0, 0},
-	 /* RBDONE	*/ {0, 0, 0, 0, 0, 0, 0, 0}
+/*											NEW STATE
+			 		IN-PROG PREPARE 1P-CMT  2P-CMT ROLLBACK ABORT  CMTDONE  RBDONE */					
+/*  O    IN_PROG  */   {1, 	  1, 	  1, 		1, 		1, 		1, 		0, 	  0},
+/*  L    PREPARE  */   {0, 	  0, 	  0, 		1, 		1, 		1, 		0, 	  0},
+/*  D    1P_CMT	  */   {0, 	  0, 	  1, 		0, 		0, 		1, 		1, 	  0},
+/*       2P_CMT	  */   {0, 	  0, 	  0, 		1, 		0, 		0, 		1, 	  0},
+/* 	S	 ROLLBACK */   {0, 	  0, 	  0, 		0, 		1, 		1, 		0, 	  1},
+/* 	T	 ABORT	  */   {0, 	  0, 	  0, 		0, 		1, 		1, 		0, 	  1},
+/*  A    CMTDONE  */   {0, 	  0, 	  0, 		0, 		0, 		0, 		0, 	  0},
+/*  T    RBDONE	  */   {0, 	  0, 	  0, 		0, 		0, 		0, 		0, 	  0}
+/*  E             */
 };
 
 #define CHECK_DTX_STATE(curState, newState)  (transitionState[curState][newState])
@@ -78,48 +99,39 @@ static const int transitionState[8][8] =
 */
 
 
-int			execCommand(StringInfo errbuf);
-void		initGxact(TMGXACT * gxact);
-TMGXACT    *allocGxact(void);
-void		restoreGxact(TMGXACT * gxact);
-void		releaseGxact(void);
-void		updateDtxState(DtxState state);
-void		generateGID(char *gid);
-void		shutdownTM(void);
-void		recoverTM(void);
-bool		phase2Recovery(void);
-void		cleanRMResultSets(PGresult **pgresultSets);
-bool		dumpRMxacts(PGresult **pgresultSets);
-bool		checkRM(PGresult **pgresultSets);
-bool		recoverRMs(PGresult ***pgresultSets);
-void		recoverCommittedDtx(void);
-void		recoverRollbackedDtx(void);
-void    dumpAllDtx(void);
-void    resolveInDoubtDtx(void);
+/*=========================================================================
+ * FUNCTIONS PROTOTYPES
+ */
+static const char *formatDtxState(DtxState state);
+static int	execCommand(StringInfo errbuf);
+static void	initGxact(TMGXACT * gxact);
+static TMGXACT *allocGxact(void);
+
+static void	releaseGxact(void);
+static void writeToTmLog( TMGXACT *gxact, DtxState state );
+static void	updateDtxState(DtxState state);
+static void	generateGID(char *gid);
 
 
-/* Map transaction state to a string. */
-static const char *
-formatDtxState(DtxState state)
-{
-    const char *s;
-    switch (state)
-    {
-        case DTX_STATE_IN_PROGRESS:     s = "IN_PROGRESS";      break;
-        case DTX_STATE_PREPARED:        s = "PREPARED";         break;
-        case DTX_STATE_1P_COMMIT:       s = "1P_COMMIT";        break;
-        case DTX_STATE_2P_COMMIT:       s = "2P_COMMIT";        break;
-        case DTX_STATE_ROLLBACK:        s = "ROLLBACK";         break;
-        case DTX_STATE_ABORT:           s = "ABORT";            break;
-        case DTX_STATE_COMMIT_DONE:     s = "COMMIT_DONE";      break;
-        case DTX_STATE_ROLLBACK_DONE:   s = "ROLLBACK_DONE";    break;
-        default:
-            s = "?DtxState?";
-    }
-    return s;
-}                               /* formatDtxState */
+static void	recoverTM(void);
+static bool recoverInDoubtTransactions(void);
+static HTAB *gatherRMInDoubtTransactions(void);
+static void abortRMInDoubtTransactions(HTAB *htab);
+static bool checkRMs(HTAB *htab, char *gid);
+static void removeInDoubtTransaction( HTAB *htab, char *gid );
+static void	cleanRMResultSets(PGresult **pgresultSets);
+static void	recoverCommittedDtx(void);
+static void	recoverRollbackedDtx(void);
 
+static void dumpAllDtx(void);
+static void resolveInDoubtDtx(void);
+static void dumpRMOnlyDtx(HTAB *htab, StringInfoData *buff);
 
+void redoTmLog(TmLogRecord * glog);
+/*=========================================================================
+ * VISIBLE FUNCTIONS
+ */
+ 
 /*
  *	starting a global transaction, called by user begin
  *	or by CdbDispatchCommand
@@ -248,8 +260,8 @@ condCommitDtxTransaction(bool onephase)
 		}
 	}	
 	else
-	{
-		 /* update the tm state first, so we know the latest state of the txn */
+	{				
+		/* update the tm state first, so we know the latest state of the txn */
 		updateDtxState(DTX_STATE_PREPARED);
 
 		/* send prepare to all RM */
@@ -265,7 +277,8 @@ condCommitDtxTransaction(bool onephase)
 		 * before all qe finish.
 		 */
 		currentGxact->infomask |= GXACT_STATUS_PERSISTENT;
-
+		
+		
 		/* send phase 2 commit to all RM */
 		updateDtxState(DTX_STATE_2P_COMMIT);
 		if (execCommand(&errMessage) != DTX_OK)
@@ -276,7 +289,6 @@ condCommitDtxTransaction(bool onephase)
 		}
 	}
 	
-
 	/* set txn tm state to be done, so it will be removed from cache */
 	updateDtxState(DTX_STATE_COMMIT_DONE);
 	return DTX_OK;
@@ -349,6 +361,337 @@ condRollbackDtxTransaction(void)
 	return ret;
 }
 
+
+
+/*
+ * start scan of current active global transactions.
+ */
+int
+startTMXactScan(void)
+{
+	getTmLock();
+	return *shmNumGxacts;
+}
+
+/*
+ * scaning current active global transaction.
+ */
+TMGXACT *
+getNextTMXact(int index)
+{
+	return shmGxactArray[index];
+}
+
+/*
+ * end scaning current active global transaction.
+ */
+void
+endTMXactScan(void)
+{
+	releaseTmLock();
+}
+
+/*
+ * initialize TM, called by CdbInit for each process.
+ * first call to this method will trigger tm recovery.
+ */
+void
+initTM(void)
+{
+	/*
+	 * do not init errMessage here, this is in a different context.
+	 * initStringInfo(&errMessage);
+	 */
+	if (!*shmTmRecoverred)
+	{
+		getTmLock();
+		if (!*shmTmRecoverred)
+		{
+			recoverTM();
+			*shmTmRecoverred = true;
+		}
+        max_tm_gxacts = max_prepared_xacts;
+		releaseTmLock();
+	}
+	else
+	{
+		getTmLock();
+		openTmLogFile(*shmLatestLogFileNo);
+		releaseTmLock();
+	}
+}
+
+/* get tm share memory size */
+int
+tmShmemSize(void)
+{
+	if (Mpp_role != MPP_ROLE_DISPATCH)
+		return 0;
+	return MAXALIGN(sizeof(TmControlBlock) +
+					max_tm_gxacts * (sizeof(TMGXACT *) + sizeof(TMGXACT)));
+}
+
+
+/*
+ * tmShmemInit - should be called only once from postmaster and inherit by all
+ * postgres processes
+ */
+void
+tmShmemInit(void)
+{
+	bool		found;
+	TmControlBlock *shared;
+
+	if (Mpp_role != MPP_ROLE_DISPATCH)
+		return;
+
+	shared = (TmControlBlock *) ShmemInitStruct("Transaction manager", tmShmemSize(), &found);
+	if (!shared)
+		elog(FATAL, "could not initialize transaction manager share memory");
+
+	if (!IsUnderPostmaster)
+		/* Initialize locks and shared memory area */
+	{
+		int			i = 0;
+		TMGXACT    *gxact = NULL;
+
+		shared->ControlLock = LWLockAssign();
+		
+		shmControlLock = shared->ControlLock;
+		shmTmRecoverred = &shared->recoverred;
+		shmGIDSeq = &shared->seqno;
+		shmLatestLogFileNo = &shared->latestLogFileNo;
+		shmEarliestLogFileNo = &shared->earliestLogFileNo;
+		shmLastFlushedFileNo = &shared->lastFlushedFileNo;
+		shmLastFlushedFileOffset = &shared->lastFlushedFileOffset;
+		shmNumGxacts = &shared->num_active_xacts;
+		shmGxactArray = shared->gxact_array;
+
+		/* initialize gxact array */
+		gxact = (TMGXACT *) (shmGxactArray + max_tm_gxacts);
+		for (i = 0; i < max_tm_gxacts; i++)
+			shmGxactArray[i] = gxact++;
+		*shmEarliestLogFileNo = *shmLatestLogFileNo = -1;
+	}
+
+	/* Init directory path */
+	snprintf(dtm_dir, MAXPGPATH, "%s/pg_dtm", DataDir);
+}
+
+/* shutdown tm, called when process exits */
+void
+shutdownTM(void)
+{
+
+	if (*shmLatestLogFileNo == -1)
+		return;
+		
+	getTmLock();
+	
+	if (*shmLatestLogFileNo != -1)
+	{
+		if (*shmNumGxacts != 0)
+		{
+			releaseTmLock();
+			return;
+		}
+		checkPointTm();
+	}
+	
+	releaseTmLock();
+}
+
+
+/*
+ * restore global transaction during tm log recovery
+ */
+void
+restoreGxact(TMGXACT * gxact)
+{
+	if (*shmNumGxacts >= max_tm_gxacts)
+	{
+		ereport(ERROR,
+				(errmsg("can not allocate global transaction")));
+	}
+
+	currentGxact = shmGxactArray[(*shmNumGxacts)++];
+	if (gxact != NULL)
+		memcpy(currentGxact, gxact, sizeof(TMGXACT));
+}
+
+
+/*
+ * is global transaction started
+ */
+bool
+isInGlobalTransaction(void)
+{
+	if (Mpp_role != MPP_ROLE_DISPATCH)
+		return false;
+
+	/* check fts sync count */
+	if (!verifyFtsSyncCount())
+	{
+		/* recofig mpp connections */
+		if (!FtsReConfigureMPP())
+			elog(PANIC, "FTS: reconfigMPP failed");
+	}
+	return (currentGxact != NULL);
+}
+
+
+/* acquire tm lw lock */
+void
+getTmLock(void)
+{
+	
+	if (ControlLockCount++ == 0)
+		LWLockAcquire(shmControlLock, LW_EXCLUSIVE);	
+}
+
+/* release tm lw lock */
+void
+releaseTmLock(void)
+{
+	if (--ControlLockCount == 0)
+		LWLockRelease(shmControlLock);
+	
+}
+
+/*
+ * Semantic Checking - all this from QD to make sure both QD and QE transaction
+ * are all commit or all rollback
+ * --	For debugging purpose
+ */
+void
+semanticCheckingOnQE(bool commit)
+{
+	if (commit)
+		Assert(lastGxactState == DTX_STATE_2P_COMMIT ||
+			   lastGxactState == DTX_STATE_COMMIT_DONE);
+	else
+		Assert(lastGxactState == DTX_STATE_ROLLBACK ||
+			   lastGxactState == DTX_STATE_ROLLBACK_DONE);
+}
+
+/*
+ * discardDtxTransaction: called by fts to discard it
+ */
+void
+discardDtxTransaction(void)
+{
+	if (currentGxact != NULL)
+	{
+		if (currentGxact->state == DTX_STATE_2P_COMMIT)
+		{
+			/* has to commit the transaction */
+			recoverCommittedDtx();
+		}
+		else if (currentGxact->state == DTX_STATE_PREPARED)
+		{
+			/* update tm state first and send rollback to all qe */
+			updateDtxState(DTX_STATE_ABORT);
+			condRollbackDtxTransaction();
+		}
+		else
+		{
+			/*
+			 * discard the transaction, update tm state only. in this case,
+			 * all connection should be restarted and this global transaction
+			 * should be automatically rollback
+			 */
+			updateDtxState(DTX_STATE_ROLLBACK);
+			updateDtxState(DTX_STATE_ROLLBACK_DONE);
+		}
+	}
+}
+
+
+
+bool
+isTMInRecovery(void)
+{
+	return duringRecovery;
+}
+
+
+void
+setRecoverTMOn(void)
+{
+    resolveDtx = true;
+}
+
+
+/*
+ * redo transaction log
+ */
+void
+redoTmLog(TmLogRecord * glog)
+{
+	int			i;
+
+	for (i = 0; i < *shmNumGxacts; i++)
+	{
+		if (strcmp(glog->header.gid, shmGxactArray[i]->gid) == 0)
+		{
+			/* found an active global transaction */
+			currentGxact = shmGxactArray[i];
+			break;
+		}
+	}
+	if (i == *shmNumGxacts)
+	{
+		/*
+		 * transaction not found, this is the first log of this transaction,
+		 * amd it should be a prepare log, rollback log or 1p commit log.
+		 */
+		Assert(glog->header.state == DTX_STATE_PREPARED ||
+			   glog->header.state == DTX_STATE_1P_COMMIT ||
+			   glog->header.state == DTX_STATE_ROLLBACK);
+		restoreGxact(NULL);
+		memcpy(currentGxact->gid, glog->header.gid, TMGIDSIZE);
+	}
+
+	/* use set state instead of update state, so log will not written again */
+	SET_DTX_STATE(currentGxact, glog->header.state);
+	currentGxact->fileno = glog->header.thisFileNo;
+	currentGxact->offset = glog->header.thisOffset;
+
+	/* release it if it's done */
+	if (currentGxact->state == DTX_STATE_ROLLBACK_DONE ||
+		currentGxact->state == DTX_STATE_COMMIT_DONE)
+		releaseGxact();
+}
+
+
+/*=========================================================================
+ * HELPER FUNCTIONS
+ */
+ 
+ 
+/* Map transaction state to a string. */
+static const char *
+formatDtxState(DtxState state)
+{
+    const char *s;
+    switch (state)
+    {
+        case DTX_STATE_IN_PROGRESS:     s = "IN_PROGRESS";      break;
+        case DTX_STATE_PREPARED:        s = "PREPARED";         break;
+        case DTX_STATE_1P_COMMIT:       s = "1P_COMMIT";        break;
+        case DTX_STATE_2P_COMMIT:       s = "2P_COMMIT";        break;
+        case DTX_STATE_ROLLBACK:        s = "ROLLBACK";         break;
+        case DTX_STATE_ABORT:           s = "ABORT";            break;
+        case DTX_STATE_COMMIT_DONE:     s = "COMMIT_DONE";      break;
+        case DTX_STATE_ROLLBACK_DONE:   s = "ROLLBACK_DONE";    break;
+        default:
+            s = "?DtxState?";
+    }
+    return s;
+}                               /* formatDtxState */
+
+
+
 /*
  * execute a transaction command on all QE
  */
@@ -362,6 +705,7 @@ execCommand(StringInfo errbuf)
 	int			numOfFailed = 0;
 	int			ret = DTX_OK;
 
+	
 	switch (currentGxact->state)
 	{
 		case DTX_STATE_IN_PROGRESS:
@@ -399,14 +743,27 @@ execCommand(StringInfo errbuf)
 			cmd = cmdbuf;
 			break;
 		case DTX_STATE_ROLLBACK:
-		/*
-		 * BUG? shouldn't there be a 1P rollback and a 2P rollback?
+		/* BUG? shouldn't there be a 1P rollback and a 2P rollback?
 		 * Anyway, the new 8.1 postgres code needs a "ROLLBACK
 		 * PREPARED" if and only if we've done the prepare, else it
 		 * needs a normal ROLLBACK.
+		 *
+		 * TODO: need to break out and add states for 1P rollback and 2P rollback.
+		 *       this will require untangling the infomask... but really needs
+		 *		 to be done.  once done, should be able to get rid of the 
+		 *		 twoPhaseRollback flag.
+		 *
 		 */
-		 if ((currentGxact->infomask & GXACT_STATUS_PERSISTENT) == 0) //?????? Bad way to check if we've prepared?
-			 cmd ="ROLLBACK";
+		 if (twoPhaseRollback)
+		 {
+		 	sprintf(cmdbuf, "ROLLBACK PREPARED '%s'", currentGxact->gid);
+			cmd = cmdbuf;
+		 }
+		 else if ((currentGxact->infomask & GXACT_STATUS_PERSISTENT) == 0) //?????? Bad way to check if we've prepared?
+		 {
+		 	elog( DEBUG3, "execCommand about to issue a ROLLBACK command with currState = DTX_STATE_ROLLBACK");
+			cmd ="ROLLBACK";
+		 }
 		 else
 		 {
 			sprintf(cmdbuf, "ROLLBACK PREPARED '%s'", currentGxact->gid);
@@ -419,7 +776,7 @@ execCommand(StringInfo errbuf)
                                             currentGxact->gid,
                                             formatDtxState(currentGxact->state)) ));
 	}
-
+	
 	/* Dispatch command to all primary and mirror segdbs. */
     cdbdisp_dispatchCommand(cmd, false, &primaryResults, &mirrorResults);
 
@@ -517,6 +874,7 @@ execCommand(StringInfo errbuf)
 		}
 	}
 
+	
 	/* Free the broken connection list. */
 	if (failedSegDB)
 		pfree(failedSegDB);
@@ -524,138 +882,6 @@ execCommand(StringInfo errbuf)
 	return ret;
 }
 
-/*
- * start scan of current active global transactions.
- */
-int
-startTMXactScan(void)
-{
-	getTmLock();
-	return *shmNumGxacts;
-}
-
-/*
- * scaning current active global transaction.
- */
-TMGXACT *
-getNextTMXact(int index)
-{
-	return shmGxactArray[index];
-}
-
-/*
- * end scaning current active global transaction.
- */
-void
-endTMXactScan(void)
-{
-	releaseTmLock();
-}
-
-/*
- * initialize TM, called by CdbInit for each process.
- * first call to this method will trigger tm recovery.
- */
-void
-initTM(void)
-{
-	/*
-	 * do not init errMessage here, this is in a different context.
-	 * initStringInfo(&errMessage);
-	 */
-	if (!*shmTmRecoverred)
-	{
-		getTmLock();
-		if (!*shmTmRecoverred)
-		{
-			recoverTM();
-			*shmTmRecoverred = true;
-		}
-        max_tm_gxacts = max_prepared_xacts;
-		releaseTmLock();
-	}
-	else
-	{
-		getTmLock();
-		openTmLogFile(*shmLatestLogFileNo);
-		releaseTmLock();
-	}
-}
-
-/* get tm share memory size */
-int
-tmShmemSize(void)
-{
-	if (Mpp_role != MPP_ROLE_DISPATCH)
-		return 0;
-	return MAXALIGN(sizeof(TmControlBlock) +
-					max_tm_gxacts * (sizeof(TMGXACT *) + sizeof(TMGXACT)));
-}
-
-
-/*
- * tmShmemInit - should be called only once from postmaster and inherit by all
- * postgres processes
- */
-void
-tmShmemInit(void)
-{
-	bool		found;
-	TmControlBlock *shared;
-
-	if (Mpp_role != MPP_ROLE_DISPATCH)
-		return;
-
-	shared = (TmControlBlock *) ShmemInitStruct("Transaction manager", tmShmemSize(), &found);
-	if (!shared)
-		elog(FATAL, "could not initialize transaction manager share memory");
-
-	if (!IsUnderPostmaster)
-		/* Initialize locks and shared memory area */
-	{
-		int			i = 0;
-		TMGXACT    *gxact = NULL;
-
-		shared->ControlLock = LWLockAssign();
-		shmControlLock = shared->ControlLock;
-		shmTmRecoverred = &shared->recoverred;
-		shmGIDSeq = &shared->seqno;
-		shmLatestLogFileNo = &shared->latestLogFileNo;
-		shmEarliestLogFileNo = &shared->earliestLogFileNo;
-		shmLastFlushedFileNo = &shared->lastFlushedFileNo;
-		shmLastFlushedFileOffset = &shared->lastFlushedFileOffset;
-		shmNumGxacts = &shared->num_active_xacts;
-		shmGxactArray = shared->gxact_array;
-
-		/* initialize gxact array */
-		gxact = (TMGXACT *) (shmGxactArray + max_tm_gxacts);
-		for (i = 0; i < max_tm_gxacts; i++)
-			shmGxactArray[i] = gxact++;
-		*shmEarliestLogFileNo = *shmLatestLogFileNo = -1;
-	}
-
-	/* Init directory path */
-	snprintf(dtm_dir, MAXPGPATH, "%s/pg_dtm", DataDir);
-}
-
-/*
- * is global transaction started
- */
-bool
-isInGlobalTransaction(void)
-{
-	if (Mpp_role != MPP_ROLE_DISPATCH)
-		return false;
-
-	/* check fts sync count */
-	if (!verifyFtsSyncCount())
-	{
-		/* recofig mpp connections */
-		if (!FtsReConfigureMPP())
-			elog(PANIC, "FTS: reconfigMPP failed");
-	}
-	return (currentGxact != NULL);
-}
 
 /* initialize a global transaction context */
 void
@@ -667,6 +893,7 @@ initGxact(TMGXACT * gxact)
 	gxact->fileno = 0;
 	gxact->offset = 0;
 }
+
 
 /*
  * allocate a global transaction context from share memory.
@@ -693,63 +920,6 @@ allocGxact(void)
 	return gxact;
 }
 
-/*
- * restore global transaction during tm log recovery
- */
-void
-restoreGxact(TMGXACT * gxact)
-{
-	if (*shmNumGxacts >= max_tm_gxacts)
-	{
-		ereport(ERROR,
-				(errmsg("can not allocate global transaction")));
-	}
-
-	currentGxact = shmGxactArray[(*shmNumGxacts)++];
-	if (gxact != NULL)
-		memcpy(currentGxact, gxact, sizeof(TMGXACT));
-}
-
-/*
- * redo transaction log
- */
-void
-redoTmLog(TmLogRecord * glog)
-{
-	int			i;
-
-	for (i = 0; i < *shmNumGxacts; i++)
-	{
-		if (strcmp(glog->header.gid, shmGxactArray[i]->gid) == 0)
-		{
-			/* found an active global transaction */
-			currentGxact = shmGxactArray[i];
-			break;
-		}
-	}
-	if (i == *shmNumGxacts)
-	{
-		/*
-		 * transaction not found, this is the first log of this transaction,
-		 * amd it should be a prepare log, rollback log or 1p commit log.
-		 */
-		Assert(glog->header.state == DTX_STATE_PREPARED ||
-			   glog->header.state == DTX_STATE_1P_COMMIT ||
-			   glog->header.state == DTX_STATE_ROLLBACK);
-		restoreGxact(NULL);
-		memcpy(currentGxact->gid, glog->header.gid, TMGIDSIZE);
-	}
-
-	/* use set state instead of update state, so log will not written again */
-	SET_DTX_STATE(currentGxact, glog->header.state);
-	currentGxact->fileno = glog->header.thisFileNo;
-	currentGxact->offset = glog->header.thisOffset;
-
-	/* release it if it's done */
-	if (currentGxact->state == DTX_STATE_ROLLBACK_DONE ||
-		currentGxact->state == DTX_STATE_COMMIT_DONE)
-		releaseGxact();
-}
 
 /*
  * release global transaction to share memory
@@ -761,6 +931,8 @@ releaseGxact(void)
 
 	getTmLock();
 	/* find slot of current transaction */
+	
+	Assert(currentGxact != NULL);
 
 	for (i = 0; i < *shmNumGxacts; i++)
 		if (shmGxactArray[i] == currentGxact)
@@ -780,7 +952,31 @@ releaseGxact(void)
 
 
 /*
- * update transaction state, this method writes transaction and checkpoint log
+ * writeToTmLog:
+ * Writes the current state of the transaction to the dtm log file. This
+ * DOES NOT guarantee those records are sync'd to disk.
+ */
+void
+writeToTmLog( TMGXACT *gxact, DtxState state )
+{
+	TmLogRecord record = {{0, 0, "", TM_LOG_XACT, 0, 0}};
+
+	strcpy(record.header.gid, gxact->gid);
+	record.header.state = state;
+
+	/* synchronizing log file write */
+	getTmLock();
+	writeTmLogRecord(&record);
+	currentGxact->fileno = record.header.thisFileNo;
+	currentGxact->offset = record.header.thisOffset;
+	releaseTmLock();
+}
+
+
+/*
+ * updateDtxState:
+ * This function manages all dtx state transistions and writes/flushes to 
+ * the logs as necessary.
  */
 void
 updateDtxState(DtxState state)
@@ -789,71 +985,175 @@ updateDtxState(DtxState state)
 
 	Assert(gxact != NULL);
 
+	
+	/* make sure the state transition is a valid one */
+	if (!CHECK_DTX_STATE(gxact->state, state))
+	{
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+						errmsg_internal("Transaction %s invalid state transition: new=%s old=%s",
+							gxact->gid,
+							formatDtxState(state),
+							formatDtxState(gxact->state)) ));
+	}
+	
+	
+	/* update the actual state of the dtx and error out if its not
+	 * a valid state change
+	 */
 	switch (state)
 	{
-		case DTX_STATE_PREPARED:
-		case DTX_STATE_1P_COMMIT:
-		case DTX_STATE_2P_COMMIT:
-		case DTX_STATE_ROLLBACK:
-			/* if checking ok, set the state */
-			if (!CHECK_DTX_STATE(gxact->state, state))
-			{
-				ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-                                errmsg_internal("Transaction %s invalid state transition: new=%s old=%s",
-						            gxact->gid,
-                                    formatDtxState(state),
-                                    formatDtxState(gxact->state)) ));
-			}
+		case DTX_STATE_PREPARED:		/*we've decided to kick off a PREPARED dispatch*/
+		
+			if (isDirty)
+				writeToTmLog(gxact, state);
+		
+			/* set memory state */
+			SET_DTX_STATE(gxact, state);
+			
+			/* There isn't a reason to flush the log at this point.  If a crash happens
+			 * before we dispatch the PREPARE stmt then all of the transactions
+			 * on the QEs will abort anyway.  And if we crash after the PREPARE
+			 * stmt has been dispatched, then on startup the QEs will have an 
+			 * in-doubt transaction that we have no knowledge of.  So we can 
+			 * abort that and everything is right.
+			 */
+				
 			break;
-		case DTX_STATE_ABORT:
+			
+		case DTX_STATE_1P_COMMIT:		/* only gonna send COMMIT */
+
+			/* set memory state */
+			SET_DTX_STATE(gxact, state);
+			
+			/* no reason to log 1P commit distributed transactions at this
+			 * point.  they are only used for transactions that don't update
+			 * anything.  this may change in the future if we get smart enough
+			 * to use them for certain workloads.
+			 */
+			
+			break;
+			
+		case DTX_STATE_2P_COMMIT:
+			if (isDirty)
+				writeToTmLog(gxact,state);
+	
+			/* set memory state */
+			SET_DTX_STATE(gxact, state);
+	
+			/* We need to flush the log at the point that we've made a decision
+			 * about the current dtx.  Here we've decided that we are going to
+			 * go ahead and commit this dtx.  This means that ALL necessary 
+			 * QEs have come back and said they are ready to commit.  If we crash
+			 * before the this record is synced then that also means we've crashed
+			 * before we've given the word to commit.
+			 *
+			 * So upon restart, the QEs will report an in-doubt transaction that
+			 * is ready to commit.  If we have no record of them here in the DTM
+			 * we can still be safe and just ABORT that work.  If there is an 
+			 * in-doubt DTX ready to commit thats reported by ALL of the QEs in
+			 * the system, then we could chose to COMMIT (as an optimization).
+			 * But since we don't have any records as to who the participants are,
+			 * we would need EVERYBODY to know about the DTX.
+			 *
+			 * Finally, if we actually get around to sync'ing this log record
+			 * that shows this DTX should be committed.  Then upon restart the
+			 * DTM can resolve this in-doubt transaction without a problem.
+			 */
+			 
+			 
+			/* no need to check for isDirty, since all 2P commit transactions
+			 * should be "dirty"
+			 */
+			getTmLock();
+			flushTmLogFile(currentGxact->fileno, currentGxact->offset);
+			releaseTmLock();
+			
+			
+			break;
+		
+		case DTX_STATE_ROLLBACK:
+			/* TODO: break this out into a 2PC ROLLBACK and a 1PC ROLLBACK
+			 *		 for now, we only use 1PC when isDirty is false so we can
+			 *  	 use that as an way to distinguish between the two.
+			 */
+			if (isDirty)
+				writeToTmLog(gxact,state);
+			
+			/* set memory state */
+			SET_DTX_STATE(gxact, state);
+	
+			
+			/* There is no need to flush our log here.  The reason is that
+			 * at this point we've already recorded and flushed our decision 
+			 * about the transaction.  So if anything goes wrong, we pretty 
+			 * much know that QEs that don't know anything about this DTX have
+			 * already committed.  And any ones that are still in-doubt should
+			 * be committed.
+			 */
+			 
+			break;
+			
+		case DTX_STATE_ABORT:  /* something bad happened during PREPARE */
+		
+		
+			 
+			if (isDirty)
+				writeToTmLog(gxact,state);
+			
+			/* set memory state */
+			SET_DTX_STATE(gxact, state);
+	
+			/*releaseGxact();*/
+			
+			/* There is no need to flush our log here.  The reason is that
+			 * at this point we've already recorded and flushed our decision 
+			 * about the transaction.  So if anything goes wrong, we pretty 
+			 * much know that QEs that don't know anything about this DTX have
+			 * already committed.  And any ones that are still in-doubt should
+			 * be committed.
+			 */
+			 
+			break;
+		
 		case DTX_STATE_COMMIT_DONE:
 		case DTX_STATE_ROLLBACK_DONE:
+			if (isDirty)
+				writeToTmLog(gxact,state);
+				
+			/* set memory state */
+			SET_DTX_STATE(gxact, state);
+			
+			releaseGxact();
+	
+	
+			/* Again, no flush is needed.  we have recorded with certainty the
+			 * fate of the transaction. so we can always re-query the system to
+			 * figure out if the transaction ended properly or not.
+			 */
+			
+			break;
+			
 		default:
+			/* TODO: improve this error message quite a bit */
+			elog( ERROR, "Internal Error: Invalid DTM state: %d", state );
 			break;
 	}
 
-	/* write tm log.  We only bother to write to the tmlog if the txn
-	 * was dirty, otherwise there's not much point.
-	 */
-	if (state != DTX_STATE_ABORT && isDirty)
+
+	
+	/* Every so often we checkpoint the DTM log. */
+	if (!duringRecovery && ((*shmGIDSeq) % checkpoint_interval) == 0)
 	{
-		TmLogRecord record = {{0, 0, "", TM_LOG_XACT, 0, 0}};
-
-		strcpy(record.header.gid, gxact->gid);
-		record.header.state = state;
-
-		/* synchronizing log file write */
 		getTmLock();
-		writeTmLogRecord(&record);
-		currentGxact->fileno = record.header.thisFileNo;
-		currentGxact->offset = record.header.thisOffset;
+		checkPointTm();
+		(*shmGIDSeq)++;
 		releaseTmLock();
 	}
 
-	/* set memory state */
-	SET_DTX_STATE(gxact, state);
-
-	getTmLock();
-	if (state == DTX_STATE_COMMIT_DONE || state == DTX_STATE_ROLLBACK_DONE)
-		releaseGxact();
-
-	/* checkpoint */
-	if (!duringRecovery && ((*shmGIDSeq) % checkpoint_interval) == 0)
-	{
-		checkPointTm();
-		(*shmGIDSeq)++;
-	}
-	else if ((state == DTX_STATE_PREPARED ||
-			  state == DTX_STATE_COMMIT_DONE || 
-			  state == DTX_STATE_ROLLBACK_DONE) && isDirty)
-	{		  
-		flushTmLogFile(currentGxact->fileno, currentGxact->offset);
-	}
-	
-	releaseTmLock();
 
 	lastGxactState = state;
 }
+
 
 /* generate global transaction id */
 void
@@ -870,117 +1170,102 @@ generateGID(char *gid)
 	sprintf(gid, "%ld-%.10d", t, (*shmGIDSeq)++);
 }
 
-/* shutdown tm, called when process exits */
-void
-shutdownTM(void)
-{
-	if (*shmLatestLogFileNo == -1)
-		return;
-	getTmLock();
-	if (*shmLatestLogFileNo != -1)
-	{
-		if (*shmNumGxacts != 0)
-		{
-			releaseTmLock();
-			return;
-		}
-		checkPointTm();
-	}
-	releaseTmLock();
-}
+
 
 /*
+ * recoverTM:
  * perform TM recovery, this connects to all QE and resolve all in-doubt txn.
+ *
+ * This gets called when there is not any other DTM activity going on.
+ *
+ * First, we'll replay the dtm log and get our shmem as up to date as possible
+ * in order to help resolve in-doubt transactions.  Then we'll go through and
+ * try and resolve in-doubt transactions based on information in the DTM log.
+ * The remaining in-doubt transactions that remain (ones the DTM doesn't know
+ * about) are all ABORTed.
  */
 void
 recoverTM(void)
 {
-	PGresult  **pgresultSets;
 
-	duringRecovery = true;
+	bool duringRecovery = true;
 
 	/* intialize fts sync count */
 	verifyFtsSyncCount();
 
+	elog(DEBUG3, "Starting to Recover DTM...");
+	
+	
 	/*
 	 * phase 1 recovery read and roll forward tm log
 	 */
 	recoverTmLog();
 
+
 	/*
-	 * phase 2 recovery go through all in-double transactions and resolve them
-	 */
-	if (!phase2Recovery())
-		return;
-
-	/* check any un-resolved transactions in TM */
-	if (*shmNumGxacts != 0)
-	{
-		/* still have in-doubt transactions, save it to log */
-		int			i = 0;
-
-		for (i = 0; i < *shmNumGxacts; i++)
-			ereport(LOG,
-			(errmsg("global xact %s pending on TM", shmGxactArray[i]->gid)));
-		ereport(FATAL,
-				(errmsg("global xact is not clean in TM")));
-	}
-
-	/* check again to see any un-resolved transactions in QE */
-	if (recoverRMs(&pgresultSets))
-	{
-		/* still have in-doubt transactions in QE, save it to log */
-		dumpRMxacts(pgresultSets);
-		ereport(FATAL,
-		   (errmsg("TM recovery failure, in-doubt transaction left on QE")));
-	}
-
-	cleanRMResultSets(pgresultSets);
-
-	/* finish recovery, do checkpoint */
-	checkPointTm();
-	duringRecovery = false;
-}
-
-/*
- * phase two recovery
- */
-bool
-phase2Recovery(void)
-{
-	/* get all in-doubt transactions from QEs */
-	PGresult  **pgresultSets;
-	bool		needRecovery = recoverRMs(&pgresultSets);
-	int			i = 0;
-
-	/* check to see if any in-doubt transaction exists */
-	if (*shmNumGxacts == 0 && !needRecovery)
-	{
-		checkPointTm();
-		duringRecovery = false;
-		cleanRMResultSets(pgresultSets);
-		currentGxact = NULL;
-		return false;
-	}
-
-    /*
-     * do not do recvoery if read only mode is set.
+     * do not do recovery if read only mode is set.
      * in this case, there may be in-doubt transaction in down segdb
      * , which will not be resolved at this time.
      */
     if (isFtsReadOnlySet())
     {
+   		elog(DEBUG3, "FTS is Read Only.  Defer DTM recovery till later.");
         checkPointTm();
         duringRecovery = false;
-        cleanRMResultSets(pgresultSets);
-        currentGxact = NULL;
-        return false;
+        currentGxact = NULL;    	
+        return;
     }
+    
+	
+	/*
+	 * Attempt to recover all in-doubt transactions.
+	 *
+	 * first resolve all in-doubt transactions from the DTM's perspective 
+	 * and then resolve any remaining in-doubt transactions that the
+	 * RMs have.
+	 */		 
+	recoverInDoubtTransactions();	
+	
+	
+	/* finished recovery successfully. Checkpoint the DTM log.*/
+	checkPointTm();
+	duringRecovery = false;
+	
+}
 
+
+
+/* recoverInDoubtTransactions:
+ * Go through all in-doubt transactions that the DTM knows about and 
+ * resolve them. 
+ */
+bool
+recoverInDoubtTransactions(void)
+{
+	int i;
+	HTAB *htab;	
+
+	htab = gatherRMInDoubtTransactions();
+	
+	/* turn on the HACK flag.  
+	 * TODO: it really sucks that we have to use this.  basically we don't have
+	 * 		 a separate state for 1-phase ROLLBACK and 2-phase ROLLBACK and the
+	 * 		 normal means of telling the different is broken for recovery.  since
+	 *		 we never recover 1-phase ROLLBACKs (or 1-phase transactions for that
+	 *		 matter), then we just force all ROLLBACKs to be 2-phase rollbacks
+	 *		 for all of recovery.
+	 */
+	twoPhaseRollback = true;
+	
+	dumpAllDtx();
+	
 	/* recover in-doubt transaction in TM */
 	for (i = 0; i < *shmNumGxacts; i++)
 	{
 		currentGxact = shmGxactArray[i];
+
+		elog( DEBUG3, "Attempting to resolve in-doubt transaction from DTM state with GID: %s", 
+				currentGxact->gid);
 
 		switch (currentGxact->state)
 		{
@@ -990,17 +1275,40 @@ phase2Recovery(void)
 			case DTX_STATE_ROLLBACK:
 				/* reset persistent flag, so currentGxact will be cleaned */
 				currentGxact->infomask = 0;
-				if (checkRM(pgresultSets))
+				
+				/* see if RMs have this GID outstanding or not. */
+				if (checkRMs(htab, currentGxact->gid))
+				{
+					char 	  gid[TMGIDSIZE];
+					
+					elog( DEBUG3, "Remote RMs are in-doubt about this transaction too... will Rollback");
+					/* unfortunately, currentGxact gets whacked during rollback */
+					
+					strcpy( gid, currentGxact->gid );
+					
 					recoverRollbackedDtx();
+					removeInDoubtTransaction(htab, gid);					
+				}
 				else
+				{
+					elog( DEBUG3, "Only DTM knows about this dtx.");
+					updateDtxState(DTX_STATE_ROLLBACK);
 					updateDtxState(DTX_STATE_ROLLBACK_DONE);
+				}
 				break;
 
 			case DTX_STATE_2P_COMMIT:
-				if (checkRM(pgresultSets))
+				if (checkRMs(htab, currentGxact->gid))
+				{
+					/* unfortunately, currentGxact gets whacked during rollback */
+					char 	  gid[TMGIDSIZE];
+					strcpy( gid, currentGxact->gid );
+					
 					recoverCommittedDtx();
+					removeInDoubtTransaction(htab, gid);
+				}
 				else
-					updateDtxState(DTX_STATE_COMMIT_DONE);
+					updateDtxState(DTX_STATE_COMMIT_DONE);				
 				break;
 
 			case DTX_STATE_ABORT:
@@ -1014,16 +1322,264 @@ phase2Recovery(void)
 				break;
 		}
 
+		dumpAllDtx();
 		i--;
 	}
 
-	cleanRMResultSets(pgresultSets);
+		
+	
 	currentGxact = NULL;
+	
+	dumpAllDtx();
+	/* go through and resolve any remaining in-doubt transactions that the RM's
+	 * have AFTER recoverDTMInDoubtTransactions.  ALL of these in doubt transactions
+	 * will be ABORT'd.  The fact that the DTM doesn't know about them means that
+	 * something bad happened before everybody voted to COMMIT.  
+	 */
+	abortRMInDoubtTransactions(htab);
+	
+	/* get rid of the hashtable */
+	hash_destroy(htab);
+	
+	
+	/* yes... we are paranoid and will double check */
+	htab = gatherRMInDoubtTransactions();
+	
 
+	/* Hmm.  we still have some remaining indoubt transactions.  For now we dont
+	 * have an automated way to clean this mess up.  So we'll have to rely on 
+	 * smart Admins to do the job manually.  We'll error out of here and try 
+	 * and provide as much info as possible.
+	 *
+	 * TODO: We really want to be able to say this particular segdb has these
+	 *       remaining in-doubt transactions.  
+	 */
+	if (htab != NULL )
+	{
+		StringInfoData  indoubtBuff;
+		initStringInfo(&indoubtBuff);
+		
+		dumpAllDtx();		
+		dumpRMOnlyDtx(htab, &indoubtBuff);
+		
+		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
+                      errmsg("DTM Log recovery failed.  There are still unresolved "
+                             "in-doubt transactions on some of the segment databaes "
+                             "that were not able to be resolved for an unknown reason. "),                             
+                      errdetail("Here is a list of in-doubt transactions in the system: %s",
+                      			 indoubtBuff.data ),
+                      errhint("Try restarting the MPP array.  If the problem persists "
+                              " an Administrator will need to resolve these transactions "
+                              " manually.")));
+                      
+	}
+	
+	/* turn the hack flag off */
+	twoPhaseRollback = false;	
+	
 	return true;
 }
 
-/* free pgresultset */
+
+
+/*
+ * gatherRMInDoubtTransactions:
+ * Builds a hashtable of all of the in-doubt transactions that exist on the
+ * segment databases.  The hashtable basically just serves as a single list
+ * without duplicates of all the in-doubt transactions.  It does not keep track
+ * of which seg db's have which transactions in-doubt.  It currently doesn't 
+ * need to due to the way we handle this information later.
+ */
+HTAB *
+gatherRMInDoubtTransactions(void)
+{
+	PGresult 	  **pgresultSets = NULL;
+    StringInfoData  errmsgbuf;
+	const char	   *cmdbuf = "select gid from pg_prepared_xacts";
+	PGresult      **rs;
+	
+	InDoubtDtx *lastDtx = NULL;
+
+	HASHCTL		hctl;
+	HTAB	   *htab = NULL;
+	
+	int j,rows;
+	bool found;
+	
+
+    initStringInfo(&errmsgbuf);
+    
+
+	/* call to all QE to get in-doubt transactions */
+    pgresultSets = cdbdisp_dispatchRMCommand(cmdbuf, &errmsgbuf);
+
+    /* display error messages */
+    if (errmsgbuf.len > 0)
+    {
+        ereport(ERROR, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
+                      errmsg("Unable to collect list of prepared transactions "
+                             "from all segment databases."),
+                      errdetail("%s", errmsgbuf.data) ));
+
+        pfree(errmsgbuf.data);
+
+        /* need recovery */
+        return NULL;
+    }
+    
+    
+    pfree(errmsgbuf.data);    
+    
+
+    /* If any result set is nonempty, there are in-doubt transactions. */
+    for (rs = pgresultSets; *rs; ++rs)
+    {
+    	rows = PQntuples(*rs);
+
+		for( j=0; j < rows; j++ )
+		{
+			char *gid;
+			
+			/* we dont setup our hashtable until we know we have at least 
+			 * one in doubt transaction
+			 */
+			if( htab == NULL )
+			{
+				
+				/*setup a hash table*/
+				hctl.keysize = TMGIDSIZE;  /*GID*/
+				hctl.entrysize = sizeof(InDoubtDtx);
+			
+			
+				htab = hash_create("InDoubtDtxHash", 10, &hctl, HASH_ELEM);
+				
+				if (htab == NULL)
+				{
+					ereport(FATAL, (errcode(ERRCODE_OUT_OF_MEMORY),
+					   	errmsg("DTM could not allocate hash table for InDoubtDtxList.")));
+				}
+				
+				
+			}
+    	
+			gid = PQgetvalue(*rs, j, 0);
+
+						
+			/* Now we can add entry to hash table */
+			lastDtx = (InDoubtDtx *) hash_search(htab, gid, HASH_ENTER, &found);
+	
+			/* only need to bother doing work if there isn't already an entry
+			 * for our GID
+			 */
+			if (!found)
+			{
+				elog( DEBUG3, "Found in-doubt transaction with GID: %s on remote RM", gid );
+				
+				strcpy(lastDtx->gid, gid);
+			}
+					
+		}		
+    }
+    
+    cleanRMResultSets(pgresultSets);	
+
+	return htab;
+}
+
+
+/* 
+ * abortRMInDoubtTransactions:  
+ * Goes through all the InDoubtDtx's in the provided htab and ABORTs them 
+ * across all of the QEs by sending a ROLLBACK PREPARED.  
+ *
+ */ 
+void
+abortRMInDoubtTransactions(HTAB *htab)
+{
+	struct CdbDispatchResults  *primaryResults = NULL;
+	struct CdbDispatchResults  *mirrorResults = NULL;
+	SegmentDatabaseDescriptor **failedSegDB = NULL;
+	HASH_SEQ_STATUS status;
+	int			numOfFailed = 0;
+	char *cmd=NULL, cmdbuf[100];
+	InDoubtDtx *entry = NULL;
+	
+	if (htab==NULL)
+		return;
+		
+	/* now we have a nice hashtable full of in-doubt dtx's that we need to
+	 * resolve.  so we'll use a nice big hammer to get this job done.  
+	 * instead of keeping track of which QEs have a prepared txn to be aborted
+	 * and which ones don't.  we just issue a ROLLBACK to all of them and ignore
+	 * any pesky errors.  This is certainly not an elegant solution but is OK 
+	 * for now. 
+	 */
+	hash_seq_init(&status, htab);
+
+
+	while ((entry = (InDoubtDtx *) hash_seq_search(&status)) != NULL)
+	{	
+		sprintf(cmdbuf, "ROLLBACK PREPARED '%s'", entry->gid);
+		cmd = cmdbuf;
+		
+		elog( DEBUG3, "Aborting in-doubt transaction with GID: %s", entry->gid );
+		
+		cdbdisp_dispatchCommand(cmd, false, &primaryResults, &mirrorResults);
+	
+		/*
+		 * Wait for completion.  Don't cancel.
+		 * CDB TODO: Eliminate the CdbCheckDispatchResultInt() interface and
+		 * instead build the failedSegDB list from the CdbDispatchResults.
+		 */
+		CdbCheckDispatchResultInt(&failedSegDB, &numOfFailed, false);
+	
+		cdbdisp_destroyDispatchResults(primaryResults);
+		cdbdisp_destroyDispatchResults(mirrorResults);
+		
+    }       
+}
+
+
+/*
+ * checkRMs:  
+ * Searches the provided htab to see if it contains an InDoubtDtx
+ * with the same dtx global id (gid) as the one provided.
+ */
+bool
+checkRMs(HTAB *htab, char *gid)
+{
+	InDoubtDtx *dtx;
+	bool found;
+	
+	if (htab == NULL)
+		found = false;
+	else
+		dtx = (InDoubtDtx *) hash_search(htab, gid, HASH_FIND, &found);
+
+	return found;
+}
+
+
+/*
+ * removeInDoubtTransactions:
+ * Used during TM recovery to remove the in-doubt transaction in the provided
+ * htab that has the same gid as the one provided.
+ */
+void
+removeInDoubtTransaction(HTAB *htab, char *gid )
+{
+	bool found;
+	InDoubtDtx *dtx;
+	
+	if (htab != NULL && gid != NULL)
+		dtx = hash_search(htab, gid, HASH_REMOVE, &found);
+}
+
+
+/*
+ * cleanRMResultSets: 
+ * Goes the set of PGresults passed in and clears and frees them.  
+ */
 void
 cleanRMResultSets(PGresult **pgresultSets)
 {
@@ -1041,202 +1597,61 @@ cleanRMResultSets(PGresult **pgresultSets)
 	free(pgresultSets);
 }
 
-/* dump all in-doubt transaction in RM */
-bool
-dumpRMxacts(PGresult **pgresultSets)
-{
-	int			i = 0,
-				j;
 
-	PGresult   *rs = pgresultSets[0];
-
-	do
-	{
-		int			rows = PQntuples(rs);
-
-		{
-			for (j = 0; j < rows; j++)
-			{
-				ereport(ERROR,
-				(errmsg("global xact %s pending on QE%d and not found in TM",
-						PQgetvalue(rs, j, 0), i)));
-			}
-		}
-	} while ((rs = pgresultSets[++i]) != NULL);
-
-	return false;
-}
-
-/*
- * checkRM - check recovery is required on RM
+/* 
+ * recoverRollbackedDtx:
+ * Attempts to recover the currentGxact (which is in-doubt) transaction that 
+ * should be ABORT'd. This just sends a ROLLBACK PREPARED to ALL seg dbs.
+ *
+ * The TODO: below in recoverCommittedDtx also applies to this. 
  */
-bool
-checkRM(PGresult **pgresultSets)
-{
-	int			i = 0,
-				j;
-
-	PGresult   *rs = pgresultSets[0];
-
-	do
-	{
-		int			rows = PQntuples(rs);
-
-		{
-			for (j = 0; j < rows; j++)
-			{
-				if (strcmp(currentGxact->gid, PQgetvalue(rs, j, 0)) == 0)
-					return true;
-			}
-		}
-	} while ((rs = pgresultSets[++i]) != NULL);
-
-	return false;
-}
-
-/*
- * recoverRMs - collect all prepared transactions from RM
- */
-bool
-recoverRMs(PGresult ***pgresultSets)
-{
-    StringInfoData  errmsgbuf;
-	const char	   *cmdbuf = "select gid from pg_prepared_xacts";
-	PGresult      **rs;
-
-    *pgresultSets = NULL;
-    initStringInfo(&errmsgbuf);
-
-	/* call to all QE to get in-doubt transactions */
-    *pgresultSets = cdbdisp_dispatchRMCommand(cmdbuf, &errmsgbuf);
-
-    /* display error messages */
-    if (errmsgbuf.len > 0)
-    {
-        ereport(LOG, (errcode(ERRCODE_MPP_INTERCONNECTION_ERROR),
-                      errmsg("Unable to collect list of prepared transactions "
-                             "from all segment databases."),
-                      errdetail("%s", errmsgbuf.data) ));
-
-        pfree(errmsgbuf.data);
-
-        /* need recovery */
-        return true;
-    }
-    pfree(errmsgbuf.data);
-
-    /* If any result set is nonempty, there are in-doubt transactions. */
-    for (rs = *pgresultSets; *rs; ++rs)
-    {
-		if (PQntuples(*rs) != 0)			
-			return true;        /* need recovery */
-    }
-
-	/* do not need recovery */
-	return false;
-}
-
-/* rollback in-doubt transaction */
 void
 recoverRollbackedDtx(void)
 {
-    /* send second phase commit to QE */
 	ereport(DEBUG2,
-	  (errmsg("recovery: rollback DtxTransaction:  %s", currentGxact->gid)));
+		   (errmsg("recovery: rollback DtxTransaction:  %s", currentGxact->gid)));
+		
 	updateDtxState(DTX_STATE_ROLLBACK);
+	
 	/* ignore the error during recovery */
 	execCommand(NULL);
+	
 	updateDtxState(DTX_STATE_ROLLBACK_DONE);
 }
 
-/* commit in-doubt transaction */
+
+/* 
+ * recoverCommittedDtx: 
+ * Attempts to recover the currentGxact (which is in-doubt) transaction that 
+ * should be committed.  This essentially just sends a COMMIT PREPARED to
+ * ALL seg dbs.  Only those that are in-doubt will have any idea what to do
+ * with this message (i.e. not generate an error) and should go ahead and
+ * COMMIT the transaction.  
+ *
+ * TODO: this function doesn't actually check that the transaction gets
+ *       committed everywhere.  the execCommand(NULL) basically ignores any 
+ *		 error handling.  It does this now because the DTM doesn't actually 
+ *		 keep track of which participants are still in-doubt about the
+ *		 transaction.  This really needs to be fixed so that we can get airtight
+ *		 state tracking for distributed transactions.  
+ */
 void
 recoverCommittedDtx(void)
 {
-	/* send second phase commit to QE */
 	ereport(DEBUG2,
 			(errmsg("recovery: commit phase 2 DtxTransaction:  %s", currentGxact->gid)));
+			
 	/* ignore the error during recovery */
 	execCommand(NULL);
 	updateDtxState(DTX_STATE_COMMIT_DONE);
 }
 
-/* acquire tm lw lock */
-void
-getTmLock(void)
-{
-	if (ControlLockCount++ == 0)
-		LWLockAcquire(shmControlLock, LW_EXCLUSIVE);
-}
-
-/* release tm lw lock */
-void
-releaseTmLock(void)
-{
-	if (--ControlLockCount == 0)
-		LWLockRelease(shmControlLock);
-}
 
 /*
- * Semantic Checking - all this from QD to make sure both QD and QE transaction
- * are all commit or all rollback
- * --	For debugging purpose
+ * resolveInDoubtDtx: 
+ * legacy function for resolving in doubt transactions. Only used for checking 
+ * and resolving in-doubt transactions at transaction start time. 
  */
-void
-semanticCheckingOnQE(bool commit)
-{
-	if (commit)
-		Assert(lastGxactState == DTX_STATE_2P_COMMIT ||
-			   lastGxactState == DTX_STATE_COMMIT_DONE);
-	else
-		Assert(lastGxactState == DTX_STATE_ROLLBACK ||
-			   lastGxactState == DTX_STATE_ROLLBACK_DONE);
-}
-
-/*
- * discardDtxTransaction: called by fts to discard it
- */
-void
-discardDtxTransaction(void)
-{
-	if (currentGxact != NULL)
-	{
-		if (currentGxact->state == DTX_STATE_2P_COMMIT)
-		{
-			/* has to commit the transaction */
-			recoverCommittedDtx();
-		}
-		else if (currentGxact->state == DTX_STATE_PREPARED)
-		{
-			/* update tm state first and send rollback to all qe */
-			updateDtxState(DTX_STATE_ABORT);
-			condRollbackDtxTransaction();
-		}
-		else
-		{
-			/*
-			 * discard the transaction, update tm state only. in this case,
-			 * all connection should be restarted and this global transaction
-			 * should be automatically rollback
-			 */
-			updateDtxState(DTX_STATE_ROLLBACK);
-			updateDtxState(DTX_STATE_ROLLBACK_DONE);
-		}
-	}
-}
-
-bool
-isTMInRecovery(void)
-{
-	return duringRecovery;
-}
-
-void
-setDtxDirty(void)
-{
-	isDirty = true;
-}
-
 void
 resolveInDoubtDtx(void)
 {
@@ -1269,12 +1684,12 @@ resolveInDoubtDtx(void)
     releaseTmLock();
 }
 
-void
-setRecoverTMOn(void)
-{
-    resolveDtx = true;
-}
 
+/*
+ * dumpAllDtx: 
+ * used to log the current state (according to the DTM) of all the
+ * global distributed transactions that are still active (in shmem).
+ */
 void
 dumpAllDtx(void)
 {
@@ -1286,4 +1701,27 @@ dumpAllDtx(void)
             i, shmGxactArray[i]->gid, shmGxactArray[i]->state, shmGxactArray[i]->infomask,
             shmGxactArray[i]->fileno, shmGxactArray[i]->offset);
     }
+}
+
+
+void
+dumpRMOnlyDtx(HTAB *htab, StringInfoData *buff)
+{
+	HASH_SEQ_STATUS status;
+	InDoubtDtx *entry = NULL;
+	
+	if (htab==NULL)
+		return;
+		
+	hash_seq_init(&status, htab);
+
+    appendStringInfo(buff, "List of In-doubt transactions remaining across the segdbs: (");
+    
+	while ((entry = (InDoubtDtx *) hash_seq_search(&status)) != NULL)
+	{	
+		 appendStringInfo(buff, "\"%s\" , ", entry->gid);
+	}
+	
+	appendStringInfo(buff, ")");
+	
 }
