@@ -591,6 +591,20 @@ DeregisterReadInterest(int16 motNodeID, int16 srcRoute)
 	FD_CLR(conn->sockfd, &(pEntry->readSet));
 }
 
+static void
+flushIncomingData(int fd)
+{
+	static char trash[8192];
+	int bytes;
+
+	/* If we're in TeardownInterconnect, we should only have to call
+	 * recv() a couple of times to empty out our socket buffers */
+	do
+	{
+		bytes = recv(fd, trash, sizeof(trash), 0);
+	} while (bytes > 0);
+}
+
 /* See ml_ipc.h */
 void
 SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
@@ -821,13 +835,38 @@ SetupInterconnect(SliceTable * mySliceTable, int mySliceId)
 	while ((outgoing_count != expectedTotalOutgoing) || (incoming_count != expectedTotalIncoming));
 
 	/*
-	 * if everything really got setup properly then we shouldn't have any
-	 * incomplete connections.
+	 * if everything really got setup properly then we shouldn't have
+	 * any incomplete connections.
+	 *
+	 * XXX: In some cases (when the previous query got 'fast-track
+	 * cancelled' because of an error during setup) we can wind up
+	 * with connections here which ought to have been cleaned
+	 * up. These connections should be closed out here. It would
+	 * obviously be better if we could avoid these connections in the
+	 * first place!
 	 */
 	if (list_length(incompleteConns) != 0)
 	{
-		ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-						errmsg("Interconnect Setup Error: incomplete connections after known connections done")));
+		elog(DEBUG1, "Incomplete connections after known connections done, cleaning %d",
+			 list_length(incompleteConns));
+
+		while ((cell = list_head(incompleteConns)) != NULL)
+		{
+			MotionConn *conn = (MotionConn *) lfirst(cell);
+
+			if (conn->sockfd != -1)
+			{
+				flushIncomingData(conn->sockfd);
+				shutdown(conn->sockfd, SHUT_WR);
+				close(conn->sockfd);
+				conn->sockfd = -1;
+			}
+
+			incompleteConns = list_delete_ptr(incompleteConns, conn);
+
+			pfree(conn->pBuff);
+			pfree(conn);
+		}
 	}
 
 	activated = true;
@@ -857,20 +896,6 @@ forceEosToPeer(int16 motNodeID, int16 targetRoute)
 	SendEndOfStream(motNodeID, targetRoute);
 
 	teardownActive = false;
-}
-
-static void
-flushIncomingData(int fd)
-{
-	static char trash[8192];
-	int bytes;
-
-	/* If we're in TeardownInterconnect, we should only have to call
-	 * recv() a couple of times to empty out our socket buffers */
-	do
-	{
-		bytes = recv(fd, trash, sizeof(trash), 0);
-	} while (bytes > 0);
 }
 
 /* TeardownInterconnect() function is used to cleanup interconnect resources that
