@@ -232,7 +232,7 @@ PGconn* GetMasterConnection(const char* progName,
 	/* check to see that the backend connection was successfully made */
 	if (PQstatus(pConn) == CONNECTION_BAD)
 	{
-		mpp_err_msg("connection to database \"%s\" failed : %s",
+		mpp_err_msg("ERROR", progName, "connection to database \"%s\" failed : %s",
 				   PQdb(pConn), PQerrorMessage(pConn));
 		return(NULL);
 	}
