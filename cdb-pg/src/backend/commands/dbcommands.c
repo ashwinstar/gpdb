@@ -422,6 +422,7 @@ createdb_int(CreatedbStmt *stmt,
          */
         cdbdisp_dispatchUtilityStatement((Node *)stmt,
                                          true,      /* cancelOnError */
+                                         true,      /* startTransaction */
                                          pPrimaryResults,
                                          pMirrorResults);
 	}
@@ -702,7 +703,7 @@ dropdb(const char *dbname)
 
 
 
-		CdbDoCommandNoTxn(buffer.data, false);
+		CdbDoCommand(buffer.data, false, /*no txn */ false);
 
 	}
 
@@ -970,7 +971,7 @@ AlterDatabase(AlterDatabaseStmt *stmt)
 
 		appendStringInfo(&buffer, "ALTER DATABASE \"%s\" CONNECTION LIMIT %d", stmt->dbname, connlimit);
 
-		CdbDoCommand(buffer.data, false);
+		CdbDoCommand(buffer.data, false, /*start txn*/ true);
 
 	}
 
@@ -1118,7 +1119,7 @@ AlterDatabaseSet(AlterDatabaseSetStmt *stmt)
 			list_free(namelist);
 		}
 	
-		CdbDoCommand(buffer.data, false);
+		CdbDoCommand(buffer.data, false, /*start txn*/ true);
 
 	}
 
@@ -1243,7 +1244,7 @@ AlterDatabaseOwner(const char *dbname, Oid newOwnerId, const char *newownername)
 
 		appendStringInfo(&buffer, "ALTER DATABASE \"%s\" OWNER TO \"%s\"", dbname, newownername);
 
-		CdbDoCommand(buffer.data, false);
+		CdbDoCommand(buffer.data, false, /*start txn*/ true);
 
 	}
 

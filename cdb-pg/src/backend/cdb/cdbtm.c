@@ -56,6 +56,11 @@ static int	lastGxactState;
 static bool  isDirty = false;
 static bool  resolveDtx = false;
 
+/* used for keeping track of whether we have kicked off a BEGIN for this
+ * transaction on remote QEs.  This actually gets set just before it is 
+ * dispatched so you need to be careful exactly how you use this.
+ */
+static bool txnBegan;
 
 /* i really hate to do this, but until things get completely untangled in
  * here and we get REAL states for 1 phase ROLLBACK and 2-phase rollback
@@ -135,12 +140,17 @@ void redoTmLog(TmLogRecord * glog);
 /*
  *	starting a global transaction, called by user begin
  *	or by CdbDispatchCommand
+ *
+ * dispatchBegin - In general, this should be false as cdbdisp has some
+ * 					special logic to try and optimize things a bit by not
+ *					seperately dispatching BEGIN.  This is mostly here because
+ *					cdbcopy doesn't use cdbdisp's services.
  */
 int
-startDtxTransaction(void)
+startDtxTransaction(bool dispatchBegin)
 {
 	int			ret = DTX_OK;
-
+	
 	isDirty = false;
 	
 	if (Mpp_role != MPP_ROLE_DISPATCH)
@@ -148,6 +158,17 @@ startDtxTransaction(void)
 	if (currentGxact == NULL)
 	{
 		ret = condStartDtxTransaction();
+		
+		if (dispatchBegin)
+		{
+			StringInfoData errMessage;
+			
+			if (execCommand(&errMessage != DTX_OK))
+			{
+				ereport(ERROR, (errmsg("Global transaction failed on command \"BEGIN %s\" due to error: %s",
+								currentGxact->gid, errMessage.data)));
+			}
+		}
 	}
 	Assert(currentGxact->infomask == 0);
 	return ret;
@@ -193,8 +214,6 @@ rollbackDtxTransaction(void)
 int
 condStartDtxTransaction(void)
 {
-    StringInfoData errMessage;
-
 	if (currentGxact != NULL)
 	{
 		Assert(currentGxact->state == DTX_STATE_IN_PROGRESS);
@@ -209,13 +228,11 @@ condStartDtxTransaction(void)
 
 	ereport(DEBUG2,
 			(errmsg("condStartDtxTransaction:  %s", currentGxact->gid)));
-	/* send additional begin transaction */
-	if (execCommand(&errMessage) != DTX_OK)
-	{
-		ereport(ERROR,
-				(errmsg("Global transaction failed on command \"BEGIN %s\" due to error: %s",
-						currentGxact->gid, errMessage.data)));
-	}
+	
+	/* we dont dispatch BEGIN statement separately at the beginning of a 
+	 * transaction anymore.  we wait until the first piece of real work
+	 * needs to be sent and then do it.
+	 */
 
 	return DTX_OK;
 }
@@ -540,6 +557,31 @@ isInGlobalTransaction(void)
 }
 
 
+/* Marks the state such that a BEGIN has been executed on
+ * the remote QEs.  This is part of the code that supports the DTM from
+ * not having to explicitly issue a BEGIN at the beginning of a tranaction
+ * but instead have cdbdisp mark an option such that the remote QE will
+ * see that option and do a BEGIN just before it executes the first 
+ * statement of the new transaction.  This cuts down on a whole set of 
+ * dispatching overhead.
+ */
+void
+setTxnBegan(void)
+{
+	txnBegan = true;
+}
+
+
+/* Asks whether a BEGIN statement has already been executed on the remote
+ * QEs.  This is part of the code that supports the DTM not having to dispatch
+ * begins but instead have it be piggy-backed with the first statement.
+ */
+bool
+hasTxnBegan(void)
+{
+	return txnBegan;
+}
+
 /* acquire tm lw lock */
 void
 getTmLock(void)
@@ -709,7 +751,7 @@ execCommand(StringInfo errbuf)
 	switch (currentGxact->state)
 	{
 		case DTX_STATE_IN_PROGRESS:
-
+			
 			if (XactIsoLevel != DefaultXactIsoLevel)
 			{
 				switch (XactIsoLevel)
@@ -730,6 +772,9 @@ execCommand(StringInfo errbuf)
 			}
 			else
 				cmd = "BEGIN";
+			
+			setTxnBegan();
+			
 			break;
 		case DTX_STATE_PREPARED:
 			sprintf(cmdbuf, "PREPARE TRANSACTION '%s'", currentGxact->gid);
@@ -778,7 +823,7 @@ execCommand(StringInfo errbuf)
 	}
 	
 	/* Dispatch command to all primary and mirror segdbs. */
-    cdbdisp_dispatchCommand(cmd, false, &primaryResults, &mirrorResults);
+    cdbdisp_dispatchCommand(cmd, false, false,&primaryResults, &mirrorResults);
 
 	/*
      * Wait for completion.  Don't cancel.
@@ -1103,7 +1148,7 @@ updateDtxState(DtxState state)
 			/* set memory state */
 			SET_DTX_STATE(gxact, state);
 	
-			/*releaseGxact();*/
+			txnBegan = false;
 			
 			/* There is no need to flush our log here.  The reason is that
 			 * at this point we've already recorded and flushed our decision 
@@ -1122,6 +1167,8 @@ updateDtxState(DtxState state)
 				
 			/* set memory state */
 			SET_DTX_STATE(gxact, state);
+			
+			txnBegan = false;
 			
 			releaseGxact();
 	
@@ -1524,7 +1571,7 @@ abortRMInDoubtTransactions(HTAB *htab)
 		
 		elog( DEBUG3, "Aborting in-doubt transaction with GID: %s", entry->gid );
 		
-		cdbdisp_dispatchCommand(cmd, false, &primaryResults, &mirrorResults);
+		cdbdisp_dispatchCommand(cmd, false, false, &primaryResults, &mirrorResults);
 	
 		/*
 		 * Wait for completion.  Don't cancel.

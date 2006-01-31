@@ -65,6 +65,25 @@ typedef enum
 
 
 
+/* here are some flag options relationed to the txnOptions field of 
+ * PQsendMppQuery
+ */
+ 
+/* bit 1 is for auto-explicit begin
+ * bits 2-3 for iso level  00 read-committed
+ *						   01 read-uncommitted
+ *						   10 repeatable-read
+ *						   11 serializable
+ */
+#define MPP_OPT_AUTOBEGIN         0x001   /* auto-explicitly start a transaction. */
+#define MPP_OPT_READ_COMMITTED    0x000   /* iso level to read-committed 
+											(only useful with autobegin) */
+#define MPP_OPT_READ_UNCOMMITTED  0x002
+#define MPP_OPT_REPEATABLE_READ   0x004
+#define MPP_OPT_SERIALIZABLE 	  0x006
+
+
+
 /* state variables for how much of the log file has been flushed */
 extern int *shmLastFlushedFileNo;
 extern int *shmLastFlushedFileOffset;
@@ -73,7 +92,7 @@ extern int *shmEarliestLogFileNo;
 extern char dtm_dir[MAXPGPATH];
 
 
-extern int	startDtxTransaction(void);
+extern int	startDtxTransaction(bool dispatchBegin);
 extern int	commitDtxTransaction(void);
 extern int	rollbackDtxTransaction(void);
 extern int	condStartDtxTransaction(void);
@@ -101,6 +120,16 @@ extern void setRecoverTMOn(void);
 
 void		getTmLock(void);
 void		releaseTmLock(void);
+
+/* Marks the state such that a BEGIN has been executed on
+ * the remote QEs. 
+ */
+extern void setTxnBegan(void);
+
+/* inquires as to whether a BEGIN has been executed on
+ * the remote QEs.
+ */
+extern bool hasTxnBegan(void);
 
 
 

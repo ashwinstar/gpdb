@@ -331,8 +331,11 @@ extern PGresult *PQexecPrepared(PGconn *conn,
 			   const int *paramFormats,
 			   int resultFormat);
 
-/* Interface for dispatching stmts from QD to qExecs. */
-extern int PQsendMppQuery(PGconn *conn, const char *query, const char *snapshotInfo);
+/* Interface for dispatching stmts from QD to qExecs.
+ *
+ * See cdbtm.h for valid flag values.
+ */
+extern int PQsendMppQuery(PGconn *conn, const char *query, const char *snapshotInfo, int flags);
 
 
 /* Interface for multiple-result or asynchronous queries */

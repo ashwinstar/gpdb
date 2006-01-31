@@ -66,6 +66,7 @@ cdbdisp_startDtxTransaction(void);
 void
 cdbdisp_dispatchToGang(const char                  *szCommand,
 					   const char				   *szSnapshotInfo,
+					   int							txnOptions,
                        struct Gang                 *gp,
                        struct CdbDispatchResults   *dispatchResults,
                        int                          sliceIndex);
@@ -116,6 +117,9 @@ cdbdisp_dispatchRMCommand(const char   *szCommand,
  * The number of segdbs handled by any one thread is determined by the
  * guc variable mpp_connections_per_thread.
  *
+ * The startTransaction flag is used to express intent on whether the command to
+ * be dispatched should be done inside of a global transaction or not.
+ *
  * The CdbDispatchResults objects allocated for the command
  * are returned in *pPrimaryResults and *pMirrorResults.
  * The caller, after calling CdbCheckDispatchResult(), can
@@ -133,6 +137,7 @@ cdbdisp_dispatchRMCommand(const char   *szCommand,
 void
 cdbdisp_dispatchCommand(const char                 *szCommand,
                         bool                        cancelOnError,
+                        bool						startTransaction,
                         struct CdbDispatchResults **pPrimaryResults,    /* OUT */
                         struct CdbDispatchResults **pMirrorResults);    /* OUT */
 
@@ -171,19 +176,13 @@ cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
  * Called by general users, this method includes global transaction control.
  * If not all QEs execute the command successfully, throws an error and
  * does not return.
+ *
+ * startTransaction specifies whether to dispatch within a distributed 
+ * transaction or not.
  */
 void
-CdbDoCommand(const char *szCommand, bool cancelOnError);
+CdbDoCommand(const char *szCommand, bool cancelOnError, bool startTransaction);
 
-/*
- * CdbDoCommandNoTxn:
- * Combination of cdbdisp_dispatchCommand and cdbdisp_finishCommand.
- * If not all QEs execute the command successfully, throws an error and
- * does not return.
- */
-void
-CdbDoCommandNoTxn(const char   *szCommand,
-                  bool          cancelOnError);
 
 
 /*--------------------------------------------------------------------*/
@@ -215,6 +214,10 @@ cdbdisp_dispatchPlan(struct QueryDesc              *queryDesc,
  * tree - to all primary and mirror segdbs.  Does not wait for
  * completion.  Does not start a global transaction.
  *
+ *
+ * The startTransaction flag indicates whether you want the dispatched 
+ * statement to participate in a distributed transaction or not.
+ *
  * NB: Callers should use PG_TRY()/PG_CATCH() if needed to make
  * certain that the CdbDispatchResults objects are destroyed by
  * cdbdisp_destroyDispatchResults() in case of error.
@@ -224,6 +227,7 @@ cdbdisp_dispatchPlan(struct QueryDesc              *queryDesc,
 void
 cdbdisp_dispatchUtilityStatement(struct Node   *stmt,
                                  bool           cancelOnError,
+                                 bool			startTransaction,
                                  struct CdbDispatchResults    **pPrimaryResults,
                                  struct CdbDispatchResults    **pMirrorResults);
 

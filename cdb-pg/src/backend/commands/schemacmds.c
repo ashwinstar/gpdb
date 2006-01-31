@@ -304,7 +304,7 @@ RenameSchema(const char *oldname, const char *newname)
 
 		appendStringInfo(&buffer, "ALTER SCHEMA \"%s\" RENAME TO \"%s\" ", oldname, newname);
 
-		CdbDoCommand(buffer.data, false);
+		CdbDoCommand(buffer.data, false, /*start txn*/ true);
 
 	}
 
@@ -411,7 +411,7 @@ AlterSchemaOwner(const char *name, Oid newOwnerId, const char *newownername)
 
 			appendStringInfo(&buffer, "ALTER SCHEMA \"%s\" OWNER TO \"%s\" ", name, newownername);
 
-			CdbDoCommand(buffer.data, false);
+			CdbDoCommand(buffer.data, false, /*start txn*/ true);
 
 		}
 	}

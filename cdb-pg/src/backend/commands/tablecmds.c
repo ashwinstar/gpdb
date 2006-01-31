@@ -595,6 +595,7 @@ DefineRelation_int(CreateStmt *stmt,
              */
             cdbdisp_dispatchUtilityStatement((Node *)stmt,
                                              true,      /* cancelOnError */
+                                             true,      /* startTransaction */
                                              pPrimaryResults,
                                              pMirrorResults);
 		}

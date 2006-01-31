@@ -480,7 +480,10 @@ cdbCopyEnd(CdbCopy *c)
 void
 cdbCopyStartTransaction(void)
 {
-	startDtxTransaction();
+	/* since we don't use cdbdisp's dispatch services, we need to explicitly
+	 * kick off a BEGIN if its the real start of a transaction
+	 */
+	startDtxTransaction(true);
 	
 	/* this txn is gonna be dirty */
 	setCurrentDtxDirty();

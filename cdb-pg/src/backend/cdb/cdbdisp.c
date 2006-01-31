@@ -61,6 +61,14 @@ typedef struct DispatchCommandParms
 	 */
 	char	   *szSnapshot;
 	
+	
+	/*
+	 * options for controlling certain behavior
+	 * on the remote backend before query processing. Like 
+	 * explicitly opening a transaction.
+	 */
+	int			txnOptions;
+	
 	/*
 	 * db_count: The number of segdbs that this thread is responsible
 	 * for dispatching the command to.
@@ -95,7 +103,8 @@ static bool
 static
 void dispatchCommand(CdbDispatchResult *dispatchResult,
                      const char        *szCommand,
-                     const char		   *szSnapshot);
+                     const char		   *szSnapshot,
+                     int 			  	txnOptions);
 							
 static void
 handleSelectError(DispatchCommandParms *pParms,
@@ -116,6 +125,7 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
                              int                    segdbs_in_thread_pool,
 							 const char            *szCommand,
 							 const char			   *szSnapshot,
+							 int					txnOptions,
 							 CdbDispatchResult     *dispatchResult);
 
 static int
@@ -127,6 +137,8 @@ fillSliceVector(SliceTable * sliceTable, int sliceIndex, Slice **sliceVector,
  * into the static variable szSnapshotInfo */
 static char *serializeSnapshot(void);
 
+/* determines which dispatchOptions need to be set. */
+static int generateTxnOptions( bool shouldStart );
 
 typedef struct
 {
@@ -216,6 +228,7 @@ cdbdisp_startDtxTransaction(void)
 void
 cdbdisp_dispatchToGang(const char                  *szCommand,
 					   const char				   *szSnapshotInfo,
+					   int							txnOptions,
                        struct Gang                 *gp,
                        struct CdbDispatchResults   *dispatchResults,
                        int                          sliceIndex)
@@ -226,6 +239,7 @@ cdbdisp_dispatchToGang(const char                  *szCommand,
 	int			segdbs_in_thread_pool = 0;
 	int			x;
 	int			newThreads = 0;
+	
 
 	Assert(Mpp_role == MPP_ROLE_DISPATCH &&
 		   gp &&
@@ -302,6 +316,7 @@ cdbdisp_dispatchToGang(const char                  *szCommand,
 									 x,
                                      szCommand,
                                      szSnapshotInfo,
+                                     txnOptions,
                                      qeResult);
 
 		/*
@@ -357,6 +372,7 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
                              int                    segdbs_in_thread_pool,
                              const char            *szCommand,
                              const char			   *szSnapshot,
+                             int					txnOptions,
                              CdbDispatchResult     *dispatchResult)
 {
 	DispatchCommandParms *pParms;
@@ -376,6 +392,7 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 	{
 		pParms->szCommand = pstrdup(szCommand);
 		pParms->szSnapshot = pstrdup(szSnapshot);
+		pParms->txnOptions = txnOptions;
 		pParms->dispatchResultPtrArray =
 			(CdbDispatchResult **) palloc0(mpp_connections_per_thread *
 										   sizeof(CdbDispatchResult *));
@@ -521,6 +538,8 @@ CdbCheckDispatchResultInt(struct SegmentDatabaseDescriptor *** failedSegDB,
 				pfree(pParms->szSnapshot);
 				pParms->szSnapshot = NULL;
 			}
+			
+			pParms->txnOptions = 0;
 		}
 		pfree(dispatchCommandParmsAr);
 		dispatchCommandParmsAr = NULL;
@@ -559,9 +578,12 @@ cdbdisp_dispatchRMCommand(const char *szCommand,
 	int			nslots;
 	int			nresults = 0;
 	int			i;
+	
+	/* never want to start a global transaction for these */
+	bool		startTransaction = false;
 
 	/* Launch the command.	Don't cancel on error. */
-	cdbdisp_dispatchCommand(szCommand, false, &primaryResults, &mirrorResults);
+	cdbdisp_dispatchCommand(szCommand, false, startTransaction, &primaryResults, &mirrorResults);
 
 	/* Wait for all QEs to finish.	Don't cancel. */
 	CdbCheckDispatchResult(false);
@@ -651,6 +673,7 @@ cdbdisp_dispatchRMCommand(const char *szCommand,
 void
 cdbdisp_dispatchCommand(const char                 *szCommand,
                         bool                        cancelOnError,
+                        bool						startTransaction,
                         struct CdbDispatchResults **pPrimaryResults,    /* OUT */
                         struct CdbDispatchResults **pMirrorResults)     /* OUT */
 {
@@ -658,6 +681,7 @@ cdbdisp_dispatchCommand(const char                 *szCommand,
     Gang   *mirrorGang;
     int     nsegdb = getMPPSegmentCount();
 	char *szSnapshotInfo;
+	int		txnOptions;
 	
     elog(DEBUG3, "cdbdisp_dispatchCommand: %.50s", szCommand);
 
@@ -696,17 +720,19 @@ cdbdisp_dispatchCommand(const char                 *szCommand,
 	/* Serialize a version of our snapshot */
 	szSnapshotInfo = serializeSnapshot();
 	
+	/* generate our transactions options. */
+	txnOptions = generateTxnOptions(startTransaction);
 	
 	/*
      * Dispatch the command.
      */
     *pPrimaryResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
-    cdbdisp_dispatchToGang(szCommand, szSnapshotInfo, primaryGang, *pPrimaryResults, -1);
+    cdbdisp_dispatchToGang(szCommand, szSnapshotInfo, txnOptions, primaryGang, *pPrimaryResults, -1);
 
 	if (mirrorGang)
     {
         *pMirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
-        cdbdisp_dispatchToGang(szCommand, szSnapshotInfo, mirrorGang, *pMirrorResults, -1);
+        cdbdisp_dispatchToGang(szCommand, szSnapshotInfo,  txnOptions, mirrorGang, *pMirrorResults, -1);
     }
 
     pfree(szSnapshotInfo);
@@ -910,7 +936,7 @@ thread_DispatchCommand(void *arg)
             /* Kick off the command over the libpq connection.
              * If unsuccessful, proceed anyway, and check for lost connection below.
              */
-            dispatchCommand(dispatchResult, pParms->szCommand, pParms->szSnapshot);
+            dispatchCommand(dispatchResult, pParms->szCommand, pParms->szSnapshot, pParms->txnOptions);
             dispatchResult->hasDispatched = true;
         }
 
@@ -1128,7 +1154,8 @@ shouldStillDispatchCommand(CdbDispatchResult * dispatchResult)
 void
 dispatchCommand(CdbDispatchResult  *dispatchResult,
                 const char         *szCommand,
-                const char		   *szSnapshot)
+                const char		   *szSnapshot,
+                int txnOptions )
 {
 	SegmentDatabaseDescriptor *segdbDesc = dispatchResult->segdbDesc;
 	PGconn	   *conn = segdbDesc->conn;
@@ -1140,7 +1167,7 @@ dispatchCommand(CdbDispatchResult  *dispatchResult,
 	/*
 	 * Submit the command asynchronously.
 	 */
-	if (0 == PQsendMppQuery(conn, szCommand,szSnapshot))
+	if (0 == PQsendMppQuery(conn, szCommand,szSnapshot,txnOptions))
 	{
 		/* Note the error. */
 		cdbdisp_appendMessage(dispatchResult, LOG,
@@ -1457,19 +1484,29 @@ processResults(CdbDispatchResult * dispatchResult)
  * Combination of cdbdisp_dispatchCommand and cdbdisp_finishCommand.
  * If not all QEs execute the command successfully, throws an error and
  * does not return.
+ *
+ * startTransaction specifies a desire to include global transaction control
+ *  before dispatch.
  */
 void
-CdbDoCommandNoTxn(const char *szCommand,
-				  bool cancelOnError)
+CdbDoCommand(const char *szCommand,
+				  bool cancelOnError,
+				  bool startTransaction)
 {
 	CdbDispatchResults *primaryResults;
 	CdbDispatchResults *mirrorResults;
+
+	if (startTransaction)
+	{
+		/* Start a global transaction and reconfigure the cluster if needed. */
+		cdbdisp_startDtxTransaction();
+	}
 
 	/* mark this txn as dirty */
 	setCurrentDtxDirty();
 	
 	
-	cdbdisp_dispatchCommand(szCommand, cancelOnError,
+	cdbdisp_dispatchCommand(szCommand, cancelOnError, startTransaction,
 							&primaryResults, &mirrorResults);
 
 	/*
@@ -1480,23 +1517,6 @@ CdbDoCommandNoTxn(const char *szCommand,
 
 }	/* CdbDoCommandNoTxn */
 
-
-/*
- * CdbDoCommand:
- * Called by general users, this method includes global transaction control.
- * Combination of cdbdisp_dispatchCommand and cdbdisp_finishCommand.
- * If not all QEs execute the command successfully, throws an error and
- * does not return.
- */
-void
-CdbDoCommand(const char *szCommand, bool cancelOnError)
-{
-	/* Start a global transaction and reconfigure the cluster if needed. */
-	cdbdisp_startDtxTransaction();
-
-	/* Dispatch the command, wait for it to finish, and check the results. */
-	CdbDoCommandNoTxn(szCommand, cancelOnError);
-}	/* CdbDoCommand */
 
 
 /*--------------------------------------------------------------------*/
@@ -1804,6 +1824,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	int			nSlices,
 				sliceLim;
 	int			iSlice;
+	int			txnOptions;
 	int 			datasize = 32*1024;
 	pre_dispatch_function_evaluation_context pcontext;
 
@@ -1978,6 +1999,10 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 	/* Serialize a version of our snapshot */
 	szSnapshotInfo = serializeSnapshot();
 	
+	/* Generate our transction isolations.  We always want Plan based dispatch
+	 * to be in a global transaction, so we hardwire the "true" to the function
+	 */
+	txnOptions = generateTxnOptions(true);
 	
 	/*
 	 * Now we need to call CDBDispatchCommand once per slice.  Each such
@@ -2041,6 +2066,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		 */
 		cdbdisp_dispatchToGang(strinfo.data,
 						       szSnapshotInfo,
+						       txnOptions,
                                primaryGang,
                                *pPrimaryResults,
                                slice->sliceIndex);
@@ -2053,6 +2079,7 @@ cdbdisp_dispatchPlan(struct QueryDesc *queryDesc,
 		{
             cdbdisp_dispatchToGang(strinfo.data,
             					   szSnapshotInfo,
+            					   txnOptions,
                                    mirrorGang,
                                    *pMirrorResults,
                                    slice->sliceIndex);
@@ -2160,6 +2187,7 @@ fillSliceVector(SliceTable * sliceTable, int sliceIndex, Slice ** sliceVector,
 void
 cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 								 bool cancelOnError,
+								 bool startTransaction,
 								 struct CdbDispatchResults ** pPrimaryResults,
 								 struct CdbDispatchResults ** pMirrorResults)
 {
@@ -2170,7 +2198,6 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 
 	/* mark the dtx as dirty */
 	setCurrentDtxDirty();
-	
 	
 	initStringInfo(&buffer);
 
@@ -2207,7 +2234,7 @@ cdbdisp_dispatchUtilityStatement(struct Node *stmt,
 
 	pfree(szCommand);
 
-	cdbdisp_dispatchCommand(buffer.data, cancelOnError,
+	cdbdisp_dispatchCommand(buffer.data, cancelOnError, startTransaction,
 							pPrimaryResults, pMirrorResults);
 
 	pfree(buffer.data);
@@ -2225,11 +2252,12 @@ CdbDispatchUtilityStatement(struct Node *stmt)
 {
 	CdbDispatchResults *primaryResults;
 	CdbDispatchResults *mirrorResults;
+	bool	startTransaction = true;
 
 	/* Start a global transaction and reconfigure the cluster if needed. */
 	cdbdisp_startDtxTransaction();
 
-	cdbdisp_dispatchUtilityStatement(stmt, true, &primaryResults, &mirrorResults);
+	cdbdisp_dispatchUtilityStatement(stmt, true, startTransaction, &primaryResults, &mirrorResults);
 
 
 	/* Wait for all QEs to finish.	Throw up if error. */
@@ -2319,4 +2347,54 @@ serializeSnapshot(void)
 	}
 	
 	return szSnapshotInfo;
+}
+
+/* generateTxnOptions:
+ * Generates an int containing the appropriate flags to direct the remote
+ * segdb QE process to perform any needed transaction commands before or
+ * after the statement.
+ *
+ * shouldStart - specifies whether this statement even wants a transaction to 
+ *				 be started.  Certain utility statements dont want to be in a 
+ *				 distributed transaction.
+ */
+static int
+generateTxnOptions( bool shouldStart )
+{
+	int options = 0;
+	
+	/* if we shouldn't start or are already in a global transaction
+	 * than we're done here 
+	 */
+	if (!shouldStart || hasTxnBegan())
+		return options;
+	
+	/*set auto-begin */
+	options |= MPP_OPT_AUTOBEGIN;
+	
+	switch (XactIsoLevel)
+	{
+		case XACT_READ_UNCOMMITTED:
+			options |= MPP_OPT_READ_UNCOMMITTED;	
+			break;
+		case XACT_READ_COMMITTED:
+			options |= MPP_OPT_READ_COMMITTED;			
+			break;
+		case XACT_REPEATABLE_READ:
+			options |= MPP_OPT_REPEATABLE_READ;
+			break;
+		case XACT_SERIALIZABLE:
+			options |= MPP_OPT_SERIALIZABLE;
+			break;
+	}
+	
+	/* at this point we've decided that are going to begin a transaction. 
+	 * so we need to let the DTM know this so that if anything bad happens
+	 * it can react. 
+	 */
+	setTxnBegan();
+	
+	
+	return options;
+	
 }

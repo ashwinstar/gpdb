@@ -491,8 +491,11 @@ ProcessUtility(Node *parsetree,
 							}
 						}
 
-						/* start transaction on all QE */
-						startDtxTransaction();
+						/* start transaction on all QE. the false means we dont
+						 * need a BEGIN to be dispatched at this time. we'll 
+						 * let cdbdisp figure it out.
+						 */
+						startDtxTransaction(false);
 
 						break;
 
@@ -1108,7 +1111,7 @@ ProcessUtility(Node *parsetree,
 
 					appendStringInfo(&buffer, "RESET %s", n->name);
 
-					CdbDoCommandNoTxn(buffer.data, false);
+					CdbDoCommand(buffer.data, false, /*no txn*/ false);
 				}
 			}
 			break;
@@ -1237,7 +1240,7 @@ ProcessUtility(Node *parsetree,
 						appendStringInfo(&buffer, "REINDEX DATABASE \"%s\"", stmt->name);
 
 
-						CdbDoCommandNoTxn(buffer.data, false);
+						CdbDoCommand(buffer.data, false, /*no txn*/ false);
 					}
 				}
 			}

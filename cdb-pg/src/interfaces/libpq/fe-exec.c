@@ -644,9 +644,12 @@ pqSaveParameterStatus(PGconn *conn, const char *name, const char *value)
  *
  * snapshot - serialized form of SnapshotInfo node.
  * xid      - Global Transaction Id to use.
+ * flags    - specifies additional processing instructions to the remote server.
+ *			  e.g.  Auto explicitly start a transaction before executing this
+ *		      statement.
  */
 int
-PQsendMppQuery(PGconn *conn, const char *query, const char *snapshotInfo)
+PQsendMppQuery(PGconn *conn, const char *query, const char *snapshotInfo, int flags)
 {
         if (!PQsendQueryStart(conn))
             return 0;
@@ -669,6 +672,7 @@ PQsendMppQuery(PGconn *conn, const char *query, const char *snapshotInfo)
         /* construct the outgoing MppQuery message */
         if (pqPutMsgStart('M', false, conn) < 0 ||     
                 pqPuts(snapshotInfo, conn ) < 0 ||
+                pqPutInt(flags, 4, conn ) < 0 ||
                 pqPuts(query, conn) < 0 ||
                 pqPutMsgEnd(conn) < 0)
         {

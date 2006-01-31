@@ -465,7 +465,7 @@ vacuum(VacuumStmt *vacstmt, List *relids)
 		 * If it fails on any of the targets, ereport(ERROR, ...) is called.
 		 * call CdbDoCommandNoTxn since it can not start in a transaction
 		 */
-		CdbDoCommandNoTxn(buffer.data, true);
+		CdbDoCommand(buffer.data, true, /*no txn */false);
 
 		pfree(buffer.data);
 

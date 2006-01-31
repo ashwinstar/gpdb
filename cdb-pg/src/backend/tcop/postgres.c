@@ -65,6 +65,7 @@
 #include "cdb/cdbvars.h"
 #include "cdb/cdblogsync.h"
 #include "cdb/cdbsrlz.h"
+#include "cdb/cdbtm.h"
 
 #include "pgstat.h"
 
@@ -3340,6 +3341,7 @@ PostgresMain(int argc, char *argv[], const char *username)
 					const char *snapshot_string;
 					const char *query_string;
 					SnapshotInfo *snapInfo;
+					int 	txnOptions;
 
 
 					/* read in the snapshot info */
@@ -3361,6 +3363,29 @@ PostgresMain(int argc, char *argv[], const char *username)
 						QDSentSnapshot->xip    = snapInfo->xip;					
 						QDSentSnapshot->curcid = snapInfo->curcid;
 					}					
+					
+					/* get the transaction options */
+					txnOptions = pq_getmsgint(&input_message, 4);
+					
+					if (txnOptions & MPP_OPT_AUTOBEGIN)
+					{
+						const char *beginStmt;
+						
+						/* build the right beginStmt based on the options */
+						if (txnOptions & MPP_OPT_READ_COMMITTED)
+							beginStmt = "BEGIN ISOLATION LEVEL READ COMMITTED";
+						else if (txnOptions & MPP_OPT_SERIALIZABLE)
+							beginStmt = "BEGIN ISOLATION LEVEL SERIALIZABLE";
+						else if( txnOptions & MPP_OPT_REPEATABLE_READ)
+							beginStmt = "BEGIN ISOLATION LEVEL REPEATABLE READ";
+						else
+							beginStmt = "BEGIN ISOLATION LEVEL READ UNCOMMITTED";
+				
+						/* kick off an explict BEGIN */
+						exec_simple_query(beginStmt);						
+						
+					}
+					
 					
 					/* get the query string and kick off processing. */
 					query_string = pq_getmsgstring(&input_message);
