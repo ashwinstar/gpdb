@@ -629,7 +629,12 @@ discardDtxTransaction(void)
 			/* has to commit the transaction */
 			recoverCommittedDtx();
 		}
-		else if (currentGxact->state == DTX_STATE_PREPARED)
+		else if( currentGxact->state == DTX_STATE_1P_COMMIT)
+		{
+			updateDtxState(DTX_STATE_ABORT);
+		}
+		else if (currentGxact->state == DTX_STATE_PREPARED || 
+				 currentGxact->state == DTX_STATE_1P_COMMIT )
 		{
 			/* update tm state first and send rollback to all qe */
 			updateDtxState(DTX_STATE_ABORT);
