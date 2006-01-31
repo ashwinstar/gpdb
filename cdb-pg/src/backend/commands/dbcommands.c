@@ -422,7 +422,7 @@ createdb_int(CreatedbStmt *stmt,
          */
         cdbdisp_dispatchUtilityStatement((Node *)stmt,
                                          true,      /* cancelOnError */
-                                         true,      /* startTransaction */
+                                         false,      /* startTransaction */
                                          pPrimaryResults,
                                          pMirrorResults);
 	}
