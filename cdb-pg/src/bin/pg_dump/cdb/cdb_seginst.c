@@ -75,6 +75,7 @@ void FreeRestorePairArray( RestorePairArray* restorePairAr )
 bool GetDumpSegmentDatabaseArray(PGconn* pConn, 
 								 SegmentDatabaseArray* pSegDBAr, 
 								 ActorSet actors, 
+								 char*	  dump_set_str,
 								 bool dataOnly,
 								 bool schemaOnly)
 {
@@ -84,13 +85,16 @@ bool GetDumpSegmentDatabaseArray(PGconn* pConn,
 	int ntups;
 	int count;
 	int i_dbid;
-	int i_role;
+	int i_content;
     int i_isvalid;
     int i_isprimary;
 	int i_host;
 	int i_port;
 	int i;
+	int j;
 	int x;
+	int	dbidset_count = 0;
+	int	*dbidset;
 	SegmentDatabase* pSegDB;
 	
 	pQry = createPQExpBuffer();
@@ -137,47 +141,124 @@ bool GetDumpSegmentDatabaseArray(PGconn* pConn,
 
 	/* get the column numbers */
 	i_dbid		= PQfnumber(pRes, "dbid");
-	i_role		= PQfnumber(pRes, "content");
+	i_content	= PQfnumber(pRes, "content");
 	i_isvalid	= PQfnumber(pRes, "valid");
 	i_host		= PQfnumber(pRes, "hostname");
 	i_port		= PQfnumber(pRes, "port");
     i_isprimary = PQfnumber(pRes, "isPrimary");
 
+	/* 
+	 * if an individul set of dbid's was requested to be dumped, 
+	 * parse it and check that it realy exists and is valid 
+	 */
+	if (actors == SET_INDIVIDUAL)
+	{
+		/* allocate dbidset. len is more than we need but it's a safe bet */
+		dbidset = (int *) calloc(strlen(dump_set_str), sizeof(int));
+		MemSet(dbidset, 0, strlen(dump_set_str) * sizeof(int));
+		
+		if(dbidset == NULL)
+		{
+			mpp_err_msg("ERROR", "mpp_dump","Unable to allocate memory for MPP dbidset information\n");
+			bRtn = false;
+			goto cleanup;
+		}
+		
+		/* parse the user specified dbid list, return dbid count */
+		dbidset_count = parseDbidSet(dbidset, dump_set_str);
+
+		if(dbidset_count < 1)
+		{
+			bRtn = false;
+			goto cleanup;
+		}
+		
+		for(i = 0 ; i < dbidset_count; i++)
+		{
+			bool	match = false;
+			
+			for ( j = 0; j < ntups; j++ )
+			{
+				int dbid	= atoi(PQgetvalue(pRes, j, i_dbid));
+				
+				if(dbid == dbidset[i])
+				{
+					match = true;
+					break;
+				}
+			}
+			
+			if(!match)
+			{
+				mpp_err_msg("ERROR", "mpp_dump","Dbid %d is not a correct MPP segment databases entry, or is currently invalid. "
+							"consult mpp_configuration and the isvalid flag\n", dbidset[i]);
+				bRtn = false;
+				goto cleanup;
+			}
+		}
+	}
+	
+	mpp_err_msg("INFO", "mpp_dump","Preparing to dump the following segments:\n");
+	
 	/* Read through the results set.  */
 	x = 0;
 	for ( i = 0; i < ntups; i++ )
 	{
 		int dbid	= atoi(PQgetvalue(pRes, i, i_dbid));
-		int roleid	= atoi(PQgetvalue(pRes, i, i_role));
-		int isprimary = (strcmp(PQgetvalue(pRes, i, i_isprimary), "t") == 0);
-         
+		int content	= atoi(PQgetvalue(pRes, i, i_content));
+		bool isprimary = ((strcmp(PQgetvalue(pRes, i, i_isprimary), "t") == 0) ? true : false);
+        bool should_dump = false;
+		
 		/* if we want primaries only - skip all mirrors */
 		if (actors == SET_NO_MIRRORS && !isprimary)
            continue;
 		
 		/* in dataOnly we don't dump master information */
-		if(dataOnly && roleid == -1)
+		if(dataOnly && content == -1 && actors != SET_INDIVIDUAL)
 			continue;
 		
 		/* in schemaOnly we skip all but the master */
-		if(schemaOnly && roleid != -1)
+		if(schemaOnly && content != -1 && actors != SET_INDIVIDUAL)
 			continue;
 			
+		if(actors == SET_INDIVIDUAL)
+		{
+			should_dump = false;
+			
+			for(j = 0 ; j < dbidset_count; j++)
+			{
+				if(dbid == dbidset[j])
+					should_dump = true;
+			}
+			
+			if(!should_dump)
+				continue;
+		}
+		
 		pSegDB = &pSegDBAr->pData[x++];
-		pSegDB->dbid		= dbid; 
-		pSegDB->role   = (roleid == -1 ? ROLE_MASTER : ROLE_SEGDB);
-		pSegDB->port		= atoi(PQgetvalue(pRes, i, i_port));
-		pSegDB->isValid	= ( strcmp(PQgetvalue(pRes, i, i_isvalid), "t") == 0 );
+		pSegDB->dbid = dbid; 
+		pSegDB->content	= content;
+		pSegDB->role = (content == -1 ? ROLE_MASTER : ROLE_SEGDB);
+		pSegDB->port = atoi(PQgetvalue(pRes, i, i_port));
+		pSegDB->isValid	= (strcmp(PQgetvalue(pRes, i, i_isvalid), "t") == 0 );
+		pSegDB->isPrimary = isprimary;
 		pSegDB->pszHost	= strdup(PQgetvalue(pRes, i, i_host));
         pSegDB->pszDBName = PQdb(pConn);
 		pSegDB->pszDBUser = PQuser(pConn);
+		
+		if(pSegDB->role == ROLE_MASTER)
+			mpp_err_msg("INFO", "mpp_dump", "Master (dbid 1)\n");
+		else
+			mpp_err_msg("INFO", "mpp_dump", "%s segment %d (dbid %d)\n", 
+						(pSegDB->isPrimary ? "Primary" : "Mirror"),
+						pSegDB->content,
+						pSegDB->dbid);
 	}
 	
 	/* set the count to be the number that passed the set inclusion test */
 	pSegDBAr->count = x;
 	
 cleanup:
-	//FreeCDBSegArray( &SegAr );
 	if ( pQry != NULL )
 		destroyPQExpBuffer(pQry);
 	if ( pRes != NULL )
@@ -189,6 +270,7 @@ cleanup:
 bool GetRestoreSegmentDatabaseArray(PGconn* pConn, 
 							 RestorePairArray *restorePairAr,
 							 BackupLoc	backupLocation,
+							 char*	  restore_set_str,
 							 bool dataOnly)
 {
 	bool		bRtn = true;
@@ -203,7 +285,10 @@ bool GetRestoreSegmentDatabaseArray(PGconn* pConn,
 	int i_host;
 	int i_port;
 	int i;
+	int j;
 	int x;
+	int	dbidset_count = 0;
+	int	*dbidset;
 	SegmentDatabase* sourceSegDB;
 	SegmentDatabase* targetSegDB;
 	SegmentDatabase* prevSourceSegDB;
@@ -240,10 +325,8 @@ bool GetRestoreSegmentDatabaseArray(PGconn* pConn,
 	}
 	
 	count = ntups + 1;
-	// See how many set elements there are that were specified by HostIP or name.
 	
 	/* Allocate enough memory for all of them, even though some may be filtered out.  */
-	
 	restorePairAr->count = 0;
 	restorePairAr->pData = (RestorePair *) calloc( count,  sizeof(RestorePair) );
 	if ( restorePairAr->pData == NULL )
@@ -261,6 +344,59 @@ bool GetRestoreSegmentDatabaseArray(PGconn* pConn,
 	i_port		= PQfnumber(pRes, "port");
     i_isprimary = PQfnumber(pRes, "isPrimary");
 	
+	/* 
+	 * if the dump file is on individual databases, 
+	 * parse the list of dbid's where those files exist.
+	 */
+	if (backupLocation == FILE_ON_INDIVIDUAL)
+	{
+		/* allocate dbidset. len is more than we need but it's a safe bet */
+		dbidset = (int *) calloc(strlen(restore_set_str), sizeof(int));
+		MemSet(dbidset, 0, strlen(restore_set_str) * sizeof(int));
+		
+		if(dbidset == NULL)
+		{
+			mpp_err_msg("ERROR", "mpp_restore","Unable to allocate memory for MPP dbidset information\n");
+			bRtn = false;
+			goto cleanup;
+		}
+		
+		/* parse the user specified dbid list, return dbid count */
+		dbidset_count = parseDbidSet(dbidset, restore_set_str);
+		
+		if(dbidset_count < 1)
+		{
+			bRtn = false;
+			goto cleanup;
+		}
+		
+		for(i = 0 ; i < dbidset_count; i++)
+		{
+			bool	match = false;
+			
+			for ( j = 0; j < ntups; j++ )
+			{
+				int dbid	= atoi(PQgetvalue(pRes, j, i_dbid));
+				
+				if(dbid == dbidset[i])
+				{
+					match = true;
+					break;
+				}
+			}
+			
+			if(!match)
+			{
+				mpp_err_msg("ERROR", "mpp_restore","Dbid %d is not a correct MPP segment databases entry, or is currently invalid. "
+							"consult mpp_configuration and the isvalid flag\n", dbidset[i]);
+				bRtn = false;
+				goto cleanup;
+			}
+		}
+	}
+
+	mpp_err_msg("INFO", "mpp_restore","Preparing to restore the following segments:\n");
+
 	/* Read through the results set.  */
 	x = 0;
 	for ( i = 0; i < ntups; i++ )
@@ -268,12 +404,27 @@ bool GetRestoreSegmentDatabaseArray(PGconn* pConn,
 		int dbid		= atoi(PQgetvalue(pRes, i, i_dbid));
 		int contentid	= atoi(PQgetvalue(pRes, i, i_content));
 		int isprimary	= (strcmp(PQgetvalue(pRes, i, i_isprimary), "t") == 0);
+		bool should_restore = false;
 		
 		/* if dataOnly don't restore the master (table definitions) */
 		if(dataOnly && contentid == -1)
 			continue;
 		
-		/* we restore all segDBs, so mark this one as a target */
+		if(backupLocation == FILE_ON_INDIVIDUAL)
+		{
+			should_restore = false;
+			
+			for(j = 0 ; j < dbidset_count; j++)
+			{
+				if(dbid == dbidset[j])
+					should_restore = true;
+			}
+			
+			if(!should_restore)
+				continue;
+		}
+		
+		/* we restore all segDBs (unless backupLoc=INDIVIDUAL), so mark this one as a target */
 		targetSegDB = &restorePairAr->pData[x].segdb_target; 
 		targetSegDB->dbid		= dbid; 
 		targetSegDB->role		= (contentid == -1 ? ROLE_MASTER : ROLE_SEGDB);
@@ -282,6 +433,14 @@ bool GetRestoreSegmentDatabaseArray(PGconn* pConn,
 		targetSegDB->pszHost	= strdup(PQgetvalue(pRes, i, i_host));
         targetSegDB->pszDBName = PQdb(pConn);
 		targetSegDB->pszDBUser = PQuser(pConn);
+		
+		if(targetSegDB->role == ROLE_MASTER)
+			mpp_err_msg("INFO", "mpp_restore", "Master (dbid 1)\n");
+		else
+			mpp_err_msg("INFO", "mpp_restore", "%s segment %d (dbid %d)\n", 
+						(isprimary ? "Primary" : "Mirror"),
+						contentid,
+						targetSegDB->dbid);
 		
 		sourceSegDB = &restorePairAr->pData[x].segdb_source;
 		

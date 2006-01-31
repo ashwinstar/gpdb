@@ -225,7 +225,7 @@ static void   dumpTimestamp(Archive *AH, char *msg);
 static void dumpCreateDB(PGconn *conn);
 static PGresult * executeQuery(PGconn *conn, const char *query);
 extern void reset(void);
-static char *nextToken(register char **stringp, register const char *delim);
+
 
 int
 main(int argc, char **argv)
@@ -8928,8 +8928,8 @@ void* monitorThreadProc(void *arg)
 		
 		if ( bGotCancelRequest )
 		{
-			mpp_err_msg( logInfo, pszProgName, "Notification received that we need to cancel for backup key %s, instid %d, segid %d failed\n",
-						 g_CDBDumpKey, g_role, g_dbID);
+			mpp_err_msg( logInfo, pszProgName, "Notification received that we need to cancel for backup key %s, seg with dbid %d failed\n",
+						 g_CDBDumpKey, g_dbID);
 			
 			pthread_kill( g_main_tid, SIGINT );
 		}
@@ -9322,46 +9322,6 @@ dumpTimestamp(Archive *AH, char *msg)
 	}
 }
 
-/*
- * Get next token from string *stringp, where tokens are possibly-empty
- * strings separated by characters from delim.
- *
- * Writes NULs into the string at *stringp to end tokens.
- * delim need not remain constant from call to call.
- * On return, *stringp points past the last NUL written (if there might
-														 * be further tokens), or is NULL (if there are definitely no more tokens).
- *
- * If *stringp is NULL, strsep returns NULL.
- */
-static char *
-nextToken(register char **stringp, register const char *delim)
-{
-    register char *s;
-    register const char *spanp;
-    register int c, sc;
-    char *tok;
-	
-    if ((s = *stringp) == NULL)
-        return (NULL);
-    for (tok = s;;)
-    {
-        c = *s++;
-        spanp = delim;
-        do
-        {
-            if ((sc = *spanp++) == c)
-            {
-                if (c == 0)
-                    s = NULL;
-                else
-                    s[-1] = 0;
-                *stringp = s;
-                return (tok);
-            }
-        } while (sc != 0);
-    }
-    /* NOTREACHED */
-}
 
 static int
 _parse_version(ArchiveHandle *AH, const char *versionString)

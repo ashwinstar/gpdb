@@ -699,3 +699,89 @@ char* GenerateTimestampKey(void)
 						pNow->tm_sec);
 	return strdup( sNow );						
 }
+
+/*
+ * Get next token from string *stringp, where tokens are possibly-empty
+ * strings separated by characters from delim.
+ *
+ * Writes NULs into the string at *stringp to end tokens.
+ * delim need not remain constant from call to call.
+ * On return, *stringp points past the last NUL written (if there might
+ * be further tokens), or is NULL (if there are definitely no more tokens).
+ *
+ * If *stringp is NULL, strsep returns NULL.
+ */
+char *
+nextToken(register char **stringp, register const char *delim)
+{
+    register char *s;
+    register const char *spanp;
+    register int c, sc;
+    char *tok;
+	
+    if ((s = *stringp) == NULL)
+        return (NULL);
+    for (tok = s;;)
+    {
+        c = *s++;
+        spanp = delim;
+        do
+        {
+            if ((sc = *spanp++) == c)
+            {
+                if (c == 0)
+                    s = NULL;
+                else
+                    s[-1] = 0;
+                *stringp = s;
+                return (tok);
+            }
+        } while (sc != 0);
+    }
+    /* NOTREACHED */
+}
+
+/*
+ * Parse the argument of --mpp-s=i[...] . The list of dbid's to dump.
+ * Return the number of parsed DBID's or < 1 for failure.
+ */
+int  
+parseDbidSet(int *dbidset, char *dump_set)
+{
+	int		len;
+	int		count = 0;
+	char	*dbid_str = NULL;
+	
+	len = strlen(dump_set);
+	
+	/* we expect something of the form "i[?,?,?,...]" */
+	if(dump_set[0] != 'i' || 
+	   dump_set[1] != '[' || 
+	   dump_set[len - 1] != ']')
+	{
+		mpp_err_msg("ERROR", "mpp_dump", "invalid dump set format in %s\n", dump_set);
+		return -1;		
+	}
+	
+	dump_set[len - 1] = '\0'; /* remove ending "]" */
+	dump_set += 2; /* skip 'i' and  '[' */
+
+	for (; (dbid_str = nextToken(&dump_set, ",")) != NULL;)
+	{
+		int		dbid;
+		
+		dbid = atoi(dbid_str);
+		
+		/* illigal dbid */
+		if(dbid < 1)
+		{
+			mpp_err_msg("ERROR", "mpp_dump", "Invalid dump set entry. Each entry must be separeted by comma and be greater than 0\n");
+			return -1;
+		}
+		
+		dbidset[count++] = dbid;		
+	}
+	
+	return count;
+}
+

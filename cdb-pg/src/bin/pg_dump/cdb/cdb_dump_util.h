@@ -39,6 +39,7 @@ typedef struct input_options
 	char*		pszCmdLineParms;
 	char*		pszKey;
 	char*		pszMasterDBName;
+	char*		pszRawDumpSet;
 	ActorSet	actors;
 	BackupLoc	backupLocation;
 	bool		bOnErrorStop;
@@ -91,5 +92,7 @@ extern void mpp_msg(const char *loglevel, const char *prog, const char *fmt,...)
 /* Data is just assumed to be an array of chars, with a length */
 extern char* DataToBase64(char* pszIn, unsigned int InLen ); 
 extern char* Base64ToData(char* pszIn, unsigned int* pOutLen ); 
+extern char* nextToken(register char **stringp, register const char *delim);
+extern int  parseDbidSet(int *dbidset, char *dump_set);
 
 #endif /* CDB_DUMP_UTIL_H */

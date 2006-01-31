@@ -22,10 +22,12 @@ typedef enum segment_role
  */
 typedef struct segment_database 
 {
-	int4	dbid;             
+	int4	dbid;            
+	int4	content;
     SegRole	role;             /* is it a master database or just any segdb? */        
     int4	port;             
     bool	isValid;          /* true iff cdb_seg.primary_inst == contentid */
+	bool	isPrimary;
     char*	pszHost; 
 	char*	pszDBName;          
     char*	pszDBUser;        
@@ -64,100 +66,28 @@ typedef struct segment_database_restore_pair_array
 
 
 /* --------------------------------------------------------------------------------------------------
- * Structures for instance segment set specification 
- */
- 
-/* --------------------------------------------------------------------------------------------------
  * Enum representing the actors of a backup or restore operation. 
  */
 typedef enum actor_set
 {
 	SET_ALL,        /* master, primaries and mirrors */
-	SET_NO_MIRRORS  
+	SET_NO_MIRRORS, 
+	SET_INDIVIDUAL
 } ActorSet;
 
 typedef enum backup_file_location
 {
 	FILE_ON_ALL,
-	FILE_ON_PRIMARIES
+	FILE_ON_PRIMARIES,
+	FILE_ON_INDIVIDUAL
 } BackupLoc;
-/* --------------------------------------------------------------------------------------------------
- * Enum representing the definition type of inst and seg
- */
-/*
-typedef enum cdb_defn_type
-{
-	DEFN_TYPE_ID,
-	DEFN_TYPE_ALL,
-	DEFN_TYPE_HOST
-} CDBDefnType;
-*/
-/* --------------------------------------------------------------------------------------------------
- * struct for holding an instance definition.  If the val_type is DEFN_TYPE_ID,
- * then the val_id will be meaningful.  If is's DEFN_TYPE_HOST, then the pszHost and
- * port fields will be meaningful.  If it's DEFN_TYPE_ALL, then no fields will be meaningful.
- */
-/*
-typedef struct cdb_inst_val
-{
-	CDBDefnType val_type;
-	int			val_id;
-	char*		val_pszHost;
-	int			val_port;
-} CDBInstVal;
-*/
-/* --------------------------------------------------------------------------------------------------
- * struct for holding a segment definition.  If the val_type is DEFN_TYPE_ID,
- * then the val_id will be meaningful. If it's DEFN_TYPE_ALL, then no fields will be meaningful.
- */
-/*
-typedef struct cdb_seg_val
-{
-	CDBDefnType val_type;
-	int			val_id;
-} CDBSegVal;
-*/
-/* --------------------------------------------------------------------------------------------------
- * Simple representation for an contentid dbid pair.
- */
-/*
-typedef struct inst_seg
-{
-	CDBInstVal	instVal;
-	CDBSegVal	segVal;
-} InstSeg;
-*/
-/* --------------------------------------------------------------------------------------------------
- * This holds the complete definition of a instance segment pair set
- */
-/*
-typedef struct cdb_set
-{
-	SetType type;
-	
-	// If type == SET_INDIVIDUAL, the following
-	// are used to describe the individual instance segment
-	// pairs
-	
-	
-	int			count;
-	InstSeg*	pData;
-} CDBSet;
-*/
-	
-/* counts how many elements in a set use a string to define the instance, instead of a contentid */
-//extern int CountInstanceHosts( CDBSet* pSet ); 
-/* Read a control file with instance segment pair info */
-//extern bool FillCDBSet( CDBSet* pSet, char* pszControlFile );
-/* Evaluate a specific contentid and dbid to see whether it is in the set */ 
-//extern bool FindInCDBSet( CDBSet* pSet, int contentid, int dbid ); 
-/* Frees the memory allocated for the fields in a CDBSet, but not the CDBSet* itself */ 
-//extern void FreeCDBSet( CDBSet* pSet );
-/* Free the memory allocated inside the SegmentDatabaseArray.  Doesn't free the pSegDBAr itself. */
+
+
+
 extern void FreeSegmentDatabaseArray( SegmentDatabaseArray* pSegDBAr );
 extern void FreeRestorePairArray( RestorePairArray* restorePairAr );
 /* Read all the rows in the join */
-extern bool GetDumpSegmentDatabaseArray(PGconn* pConn, SegmentDatabaseArray* pSegDBAr, ActorSet actors, bool dataOnly, bool schemaOnly );
-extern bool GetRestoreSegmentDatabaseArray(PGconn* pConn, RestorePairArray* pSegDBPairAr, BackupLoc backupLocation, bool dataOnly );
+extern bool GetDumpSegmentDatabaseArray(PGconn* pConn, SegmentDatabaseArray* pSegDBAr, ActorSet actors, char *raw_dump_set, bool dataOnly, bool schemaOnly );
+extern bool GetRestoreSegmentDatabaseArray(PGconn* pConn, RestorePairArray* pSegDBPairAr, BackupLoc backupLocation, char *raw_restore_set, bool dataOnly );
 
 #endif /* CDB_SEGINST_H */

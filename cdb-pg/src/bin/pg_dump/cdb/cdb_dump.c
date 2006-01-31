@@ -75,6 +75,8 @@ static char	g_comment_end[10];
 static bool bForcePassword = false;
 static bool bIgnoreVersion = false;
 
+static char* raw_dump_set; /* argument of --mpp-s=i[...] . set of dbid's to dump */
+
 static const char* logInfo = "INFO";
 static const char* logWarn = "WARN";
 static const char* logError = "ERROR";
@@ -127,7 +129,7 @@ int main( int argc, char** argv)
 
 	/* Read mpp segmentDB configuration from the master */
 	mpp_msg( logInfo, pszProgName, "Reading mpp configuration info from master database.\n");
-	if ( !GetDumpSegmentDatabaseArray(master_db_conn, &segDBAr, inputOpts.actors, dataOnly, schemaOnly) )
+	if ( !GetDumpSegmentDatabaseArray(master_db_conn, &segDBAr, inputOpts.actors, inputOpts.pszRawDumpSet, dataOnly, schemaOnly) )
 		goto cleanup;
 
 	/* Start a transaction and lock all tables for this db */
@@ -717,12 +719,23 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 			case 5:
 				/* mpp-s backup set specification */
 				if ( strcasecmp( optarg, "a") == 0 ) 
+				{
 					pInputOpts->actors = SET_ALL;
+					pInputOpts->pszRawDumpSet = NULL;
+				}
 				else if ( strcasecmp( optarg, "p") == 0 )
+				{
 					pInputOpts->actors = SET_NO_MIRRORS;
+					pInputOpts->pszRawDumpSet = NULL;
+				}
+				else if (strncasecmp(optarg, "i", 1) == 0)
+				{
+					pInputOpts->actors = SET_INDIVIDUAL;
+					pInputOpts->pszRawDumpSet = Safe_strdup(optarg);
+				}
 				else
 				{
-					mpp_err_msg(logError, pszProgName, "invalid mpp-s option %s.  Must be a (all), or p (primaries only).\n", optarg);
+					mpp_err_msg(logError, pszProgName, "invalid mpp-s option %s.  Must be a for \"all\", p for \"primaries only\", or i[dbid list] for \"individual\".\n", optarg);
 					goto cleanup;
 				}
               
@@ -782,6 +795,14 @@ bool fillInputOptions( int argc, char** argv, InputOptions* pInputOpts )
 		mpp_err_msg(logError, pszProgName, "options \"schema only\" (-s) and \"data only\" (-a) cannot be used together\n");
 		goto cleanup;
 	}
+	
+	if ((dataOnly || schemaOnly) && pInputOpts->actors == SET_INDIVIDUAL)
+	{
+		mpp_err_msg(logError, pszProgName, "options \"schema only\" (-s) or \"data only\" (-a) cannot be used together with --mpp-s=i\n"
+										   "If you want to use --mpp-i and dump only data, omit dbid number 1 (master) from the individual dbid list.");
+		goto cleanup;
+	}
+	
 
 	if (dataOnly && outputClean)
 	{
@@ -1065,7 +1086,13 @@ int reportBackupResults( const char* pszReportDirectory, const ThreadParmArray* 
 		if ( pszMsg == NULL )
 			pszMsg = "";
 		
-		fprintf( fRpt, "\tdbid %d Host %s Port %d Database %s BackupFile %s: %s %s%s\n",  
+		if(pParm->pTargetSegDBData->role == ROLE_MASTER)
+			fprintf( fRpt, "\tMaster ");
+		else
+			fprintf( fRpt, "\t%s segment %d ", (pParm->pTargetSegDBData->isPrimary ? "Primary" : "Mirror"),
+					 pParm->pTargetSegDBData->content);  
+					 
+		fprintf( fRpt, "(dbid %d) Host %s Port %d Database %s BackupFile %s: %s %s%s\n",  
 				pParm->pTargetSegDBData->dbid, 
 				StringNotNull( pParm->pTargetSegDBData->pszHost, "localhost"),
 				pParm->pTargetSegDBData->port,

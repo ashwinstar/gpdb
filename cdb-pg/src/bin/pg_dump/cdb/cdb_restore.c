@@ -67,6 +67,7 @@ main(int argc, char **argv)
     int failCount = -1;
 	char szErrortmp[PQERRORMSG_LENGTH];
     int i;
+	bool found_master;
     SegmentDatabase *sourceSegDB;
 	SegmentDatabase *targetSegDB;
 	
@@ -102,22 +103,30 @@ main(int argc, char **argv)
 
 	/* Read mpp segment databases configuration from the master */
 	mpp_err_msg(logInfo, pszProgName,  "Reading mpp configuration info from master segment database.\n");
-	if ( !GetRestoreSegmentDatabaseArray(pConn, &restorePairAr, inputOpts.backupLocation, dataOnly) )
+	if ( !GetRestoreSegmentDatabaseArray(pConn, &restorePairAr, inputOpts.backupLocation, inputOpts.pszRawDumpSet, dataOnly) )
 		goto cleanup;
     
     /* find master node */
     targetSegDB = NULL;
+	found_master = false;
+	
     for (i = 0; i < restorePairAr.count; i++)
     {
         targetSegDB = &restorePairAr.pData[i].segdb_target;
 		sourceSegDB = &restorePairAr.pData[i].segdb_source;
 		
         if (targetSegDB->role == ROLE_MASTER)
-            break;
+		{
+			found_master = true;
+			break;
+		}
     }
     
-	/* restore master first. However, if we restore only data, skip master */
-	if(!dataOnly)
+	/* 
+	 * restore master first. However, if we restore only data, or if
+	 * master segment is not included in our restore set, skip master 
+	 */
+	if(!dataOnly && found_master)
 	{
 		if ( !restoreMaster( &inputOpts, pConn, sourceSegDB, targetSegDB, &masterParm ) )
 			goto cleanup;
@@ -597,14 +606,26 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 				break;
 	*/		
 			case 9:
+				
 				/* mpp-l backup file location */
 				if ( strcasecmp( optarg, "a") == 0 ) 
+				{
 					pInputOpts->backupLocation = FILE_ON_ALL;
+					pInputOpts->pszRawDumpSet = NULL;
+				}
 				else if ( strcasecmp( optarg, "p") == 0 )
+				{
 					pInputOpts->backupLocation = FILE_ON_PRIMARIES;
+					pInputOpts->pszRawDumpSet = NULL;
+				}
+				else if (strncasecmp(optarg, "i", 1) == 0)
+				{
+					pInputOpts->backupLocation = FILE_ON_INDIVIDUAL;
+					pInputOpts->pszRawDumpSet = Safe_strdup(optarg);
+				}
 				else
 				{
-					mpp_err_msg(logError, pszProgName,  "invalid mpp-l option %s.  Must be a (all), or p (primaries only).\n", optarg);
+					mpp_err_msg(logError, pszProgName,  "invalid mpp-l option %s.  Must be a (all), p (primaries only), or i[dbid list] for \"individual\".\n", optarg);
 					exit(1);
 				}
 				break;
@@ -661,6 +682,14 @@ void fillInputOptions(int argc, char** argv, InputOptions* pInputOpts)
 		mpp_err_msg(logError, pszProgName,  "%s command line missing the master database parameter (--)\n", pszProgName  );
 		exit(1);
 	}
+
+	if ((dataOnly || schemaOnly) && pInputOpts->backupLocation == FILE_ON_INDIVIDUAL)
+	{
+		mpp_err_msg(logError, pszProgName, "options \"schema only\" (-s) or \"data only\" (-a) cannot be used together with --mpp-s=i\n"
+					"If you want to use --mpp-i and dump only data, omit dbid number 1 (master) from the individual dbid list.\n");
+		exit(1);
+	}
+
 
 	if (opts->formatName == NULL)
 	{
