@@ -922,6 +922,8 @@ void help(const char *pszProgName)
 	printf(("  --mpp-d=BACKUPFILEDIR    directory where backup files are placed\n"));
 	printf(("  --mpp-r=REPORTFILEDIR    directory where report file is placed\n"));
 	printf(("  --mpp-s=BACKUPSET        backup set indicator - (a)ll, or (p)rimaries only (default)\n"));
+	printf(("                           or (i)ndividual segdb (must be followed with a list of dbid's\n"));
+	printf(("                           to dump. For example: --mpp-s=i[10,12,15]\n"));
 
 	printf(("\nIf no database name is supplied, then the PGDATABASE environment\n"
 			 "variable value is used.\n\n"));

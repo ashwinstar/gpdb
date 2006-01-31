@@ -218,7 +218,9 @@ static void usage(void)
 	printf(("  --mpp-i                  ignore error\n"));
 	printf(("  --mpp-k=KEY              date time backup key from mpp_backup run\n"));
 	printf(("  --mpp-r=REPORTFILEDIR    directory where report file is placed\n"));
-	printf(("  --mpp-l=FILELOCATIONS    backup files are on (a)ll databases or (p)rimaries only (default)\n"));
+	printf(("  --mpp-l=FILELOCATIONS    backup files are on (a)ll databases, (p)rimaries only (default)\n"));
+	printf(("                           or (i)ndividual segdb (must be followed with a list of dbid's\n"));
+	printf(("                           where backups are located. For example: --mpp-l=i[10,12,15]\n"));
 	
 	//printf(("\nIf no input file name is supplied, then standard input is used.\n\n"));
 	//printf(("Report bugs to <pgsql-bugs@postgresql.org>.\n"));
