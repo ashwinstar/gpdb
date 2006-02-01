@@ -85,8 +85,8 @@ static const int transitionState[8][8] =
 			 		IN-PROG PREPARE 1P-CMT  2P-CMT ROLLBACK ABORT  CMTDONE  RBDONE */					
 /*  O    IN_PROG  */   {1, 	  1, 	  1, 		1, 		1, 		1, 		0, 	  0},
 /*  L    PREPARE  */   {0, 	  0, 	  0, 		1, 		1, 		1, 		0, 	  0},
-/*  D    1P_CMT	  */   {0, 	  0, 	  1, 		0, 		0, 		1, 		1, 	  0},
-/*       2P_CMT	  */   {0, 	  0, 	  0, 		1, 		0, 		0, 		1, 	  0},
+/*  D    1P_CMT	  */   {0, 	  0, 	  1, 		0, 		1, 		1, 		1, 	  0},
+/*       2P_CMT	  */   {0, 	  0, 	  0, 		1, 		1, 		1, 		1, 	  0},
 /* 	S	 ROLLBACK */   {0, 	  0, 	  0, 		0, 		1, 		1, 		0, 	  1},
 /* 	T	 ABORT	  */   {0, 	  0, 	  0, 		0, 		1, 		1, 		0, 	  1},
 /*  A    CMTDONE  */   {0, 	  0, 	  0, 		0, 		0, 		0, 		0, 	  0},
@@ -208,32 +208,42 @@ rollbackDtxTransaction(void)
 }
 
 /*
- * starting a global transaction, call by internal command
- * if transaction is started, this method is a no-op
+ * condStartDtxTransaction:
+ * Starts a global transaction if one is not already started. 
+ *
+ * We don't dispatch BEGIN statements separately at the start of a DTM 
+ * trasaction anymore.  They are piggy-backed with the first real statement
+ * that gets dispatched to the qExecs.  This eliminates an extra dispatch
+ * and also defers taking a Snapshot till the first statement, which more
+ * closely matches the normal Postgres method.  If we didn't do this, things like
+ * SET TRANSACTION ISOLATION LEVEL would complain. 
  */
 int
 condStartDtxTransaction(void)
 {
+	
 	if (currentGxact != NULL)
 	{
-		Assert(currentGxact->state == DTX_STATE_IN_PROGRESS);
+		/* If the currentGxact isn't NULl then we sure better be IN PROGRESS.
+		 * This allows us to call this function all the time whenever we are 
+		 * about to dispatch a statement
+		 */
+		if( currentGxact->state != DTX_STATE_IN_PROGRESS)
+			elog( ERROR, "DTM can't start a Dtx if one is already in progress "
+						 " and in the midst of being finished");
+			      
 		return DTX_OK;
 	}
 
-	/* otherwise ... */
-
+	/* Check if we have in-doubt transactions to resolve */
 	if (resolveDtx)
 		resolveInDoubtDtx();
+		
+		
 	currentGxact = allocGxact();
-
-	ereport(DEBUG2,
-			(errmsg("condStartDtxTransaction:  %s", currentGxact->gid)));
 	
-	/* we dont dispatch BEGIN statement separately at the beginning of a 
-	 * transaction anymore.  we wait until the first piece of real work
-	 * needs to be sent and then do it.
-	 */
-
+	elog(DEBUG2, "condStartDtxTransaction:  %s", currentGxact->gid);
+	
 	return DTX_OK;
 }
 
@@ -369,7 +379,10 @@ condRollbackDtxTransaction(void)
 			ereport(ERROR,
 					(errmsg("Global transaction failed on command \"ROLLBACK PREPARED %s\"", gid),
 					 errdetail("%s", errMessage.data)));
-        pfree(errMessage.data);
+		
+		if (errMessage.data)
+        	pfree(errMessage.data);
+     
 	}
 	else
 		/* remove gxact either rollback is successful or xact is not prepared. */
@@ -622,35 +635,46 @@ semanticCheckingOnQE(bool commit)
 void
 discardDtxTransaction(void)
 {
-	if (currentGxact != NULL)
+	if (currentGxact == NULL)
+		return;
+
+		
+	if (currentGxact->state == DTX_STATE_2P_COMMIT)
 	{
-		if (currentGxact->state == DTX_STATE_2P_COMMIT)
-		{
-			/* has to commit the transaction */
-			recoverCommittedDtx();
-		}
-		else if( currentGxact->state == DTX_STATE_1P_COMMIT)
-		{
-			updateDtxState(DTX_STATE_ABORT);
-		}
-		else if (currentGxact->state == DTX_STATE_PREPARED || 
-				 currentGxact->state == DTX_STATE_1P_COMMIT )
-		{
-			/* update tm state first and send rollback to all qe */
-			updateDtxState(DTX_STATE_ABORT);
-			condRollbackDtxTransaction();
-		}
-		else
-		{
-			/*
-			 * discard the transaction, update tm state only. in this case,
-			 * all connection should be restarted and this global transaction
-			 * should be automatically rollback
-			 */
-			updateDtxState(DTX_STATE_ROLLBACK);
-			updateDtxState(DTX_STATE_ROLLBACK_DONE);
-		}
+		/* This means the current transaction has bee sucessfully 
+		 * prepared on all of the needed qExecs.  We need to try
+		 * and go ahead and finish this off by committing it.
+		 *
+		 * TODO: Its possible for this to get called while in the middle of
+		 *		 issuing the final COMMIT PREPARED to the qExecs.  Since this
+		 * 		 only gets called by FTS when something is wrong it seems 
+		 *		 unlikely that the Dtx will be able to be properly recovered.  
+		 *		 I think that this results in a mis-handling of this case.  
+		 *		 It seems like some serious bookkeeping needs to occur in the 
+		 *		 case that we have a transaction partially committing across 
+		 *		 the cluster. I would think this would involve communicating 
+		 *		 this back to the FTS system.
+		 */
+		recoverCommittedDtx();
 	}
+	else if (currentGxact->state == DTX_STATE_PREPARED ||
+			 currentGxact->state == DTX_STATE_1P_COMMIT )
+	{
+		/* update tm state first and send rollback to all qe */
+		updateDtxState(DTX_STATE_ABORT);
+		condRollbackDtxTransaction();
+	}
+	else
+	{
+		/*
+		 * discard the transaction, update tm state only. in this case,
+		 * all connection should be restarted and this global transaction
+		 * should be automatically rollback
+		 */
+		updateDtxState(DTX_STATE_ROLLBACK);
+		updateDtxState(DTX_STATE_ROLLBACK_DONE);
+	}
+
 }
 
 
@@ -716,7 +740,10 @@ redoTmLog(TmLogRecord * glog)
  */
  
  
-/* Map transaction state to a string. */
+/* 
+ * formatDtxState:
+ * Map transaction state to a string. 
+ */
 static const char *
 formatDtxState(DtxState state)
 {
