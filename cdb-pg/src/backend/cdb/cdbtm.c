@@ -163,7 +163,7 @@ startDtxTransaction(bool dispatchBegin)
 		{
 			StringInfoData errMessage;
 			
-			if (execCommand(&errMessage != DTX_OK))
+			if (execCommand(&errMessage) != DTX_OK)
 			{
 				ereport(ERROR, (errmsg("Global transaction failed on command \"BEGIN %s\" due to error: %s",
 								currentGxact->gid, errMessage.data)));
