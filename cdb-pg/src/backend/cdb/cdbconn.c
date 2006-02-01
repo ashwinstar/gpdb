@@ -134,7 +134,10 @@ cdbconn_doConnect(SegmentDatabaseDescriptor    *segdbDesc,
 
         /* Don't use elog, it's not thread-safe */
         if (DEBUG2 >= log_min_messages)
+        {
             fputs(segdbDesc->error_message.data, stderr);
+            fputs("\n", stderr);
+        }
 
         PQfinish(segdbDesc->conn);
         segdbDesc->conn = NULL;
