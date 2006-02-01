@@ -21,6 +21,8 @@
 #include "storage/proc.h"  			/*MyProc*/
 #include "utils/memutils.h"
 
+#include "catalog/namespace.h"
+
 #include "cdb/cdbconn.h"		/* SegmentDatabaseDescriptor */
 #include "cdb/cdbfts.h"
 #include "cdb/cdbgang.h"		/* me */
@@ -216,7 +218,11 @@ createGang(GangType type, int size, int content)
 		elog(DEBUG2, "createGang Creating thread %d of %d for libpq connections",
 			 i + 1, threadCount);
 
-		pthread_create(&pParms->thread, NULL, thread_DoConnect, pParms);
+		if (0 != pthread_create(&pParms->thread, NULL, thread_DoConnect, pParms))
+		{
+			elog(FATAL, "createGang: Failed to create thread %d of %d",
+				 i + 1, threadCount);
+		}
 	}
 
 	/*
@@ -229,7 +235,9 @@ createGang(GangType type, int size, int content)
 		elog(DEBUG2, "createGang Joining to thread %d of %d for libpq connections",
 			 i + 1, threadCount);
 
-		pthread_join(pParms->thread, NULL);
+		if (0 != pthread_join(pParms->thread, NULL))
+			elog(FATAL, "createGang: pthread_join failed on thread %d of %d",
+				 i + 1, threadCount);
 	}
 
 	/*
@@ -281,6 +289,8 @@ createGang(GangType type, int size, int content)
 					  errmsg("Warning: %s", segdbDesc->error_message.data)));
 			ereport(WARNING, (errcode(ERRCODE_WARNING_MPP_INTERCONNECTION),
 							  errmsg("%s", segdbDesc->error_message.data)));
+			if (segdbDesc->errcode == 0 || segdbDesc->error_message.len)
+				elog(ERROR,"Connection is null, but no error code or error message, for segDB %d",i);
 			Assert(segdbDesc->errcode != 0 &&
 				   segdbDesc->error_message.len > 0);
 			segdbDesc->errcode = 0;
@@ -691,6 +701,9 @@ thread_DoConnect(void *arg)
 	int			db_count = pParms->db_count;
 
 	int			i;
+	int start;
+	int j;
+	int end;
 
 	SegmentDatabaseDescriptor *segdbDesc;
 	CdbComponentDatabaseInfo *q;
@@ -701,6 +714,8 @@ thread_DoConnect(void *arg)
 	 */
 	for (i = 0; i < db_count; i++)
 	{
+		
+		char temp[256];
 		PQExpBufferData buffer;
 
 		segdbDesc = segdbDescPtrArray[i];
@@ -728,6 +743,99 @@ thread_DoConnect(void *arg)
 						
 		if (!q->isprimary)
 			appendPQExpBuffer(&buffer," -c mpp_is_primary=false");
+			
+			
+		/* user-settable GUC variables */
+		
+		
+
+		
+		/*
+		 * It doesn't seem to work to quote the entire search path,
+		 * so we need to remove any spaces so it's treated as one parameter. 
+		 * and remove any quotes surrounding the whole thing.
+		 *
+		 */
+		temp[0] = '\0';
+		j = 0;
+		start = 0;									/* start */
+		end = strlen(namespace_search_path);		/* end */
+		if ((namespace_search_path[0] == '\"' && namespace_search_path[strlen(namespace_search_path)-1]=='\"') ||
+			(namespace_search_path[0] == '\'' && namespace_search_path[strlen(namespace_search_path)-1]=='\'') )
+		{
+			start = 1;
+			end = strlen(namespace_search_path)-1;
+		}
+		for (;start<end;start++)
+		{
+			if (namespace_search_path[start] != ' ')
+				temp[j++] = namespace_search_path[start];
+		}
+		temp[j] = '\0';
+		
+		appendPQExpBuffer(&buffer," -c search_path=%s",temp);
+	
+
+		
+		switch(client_min_messages)
+		{
+			case DEBUG5:
+				appendPQExpBuffer(&buffer," -c client_min_messages=DEBUG5"); break;
+			case DEBUG4:
+				appendPQExpBuffer(&buffer," -c client_min_messages=DEBUG4"); break;
+			case DEBUG3:
+				appendPQExpBuffer(&buffer," -c client_min_messages=DEBUG3"); break;
+			case DEBUG2:
+				appendPQExpBuffer(&buffer," -c client_min_messages=DEBUG2"); break;
+			case DEBUG1:
+				appendPQExpBuffer(&buffer," -c client_min_messages=DEBUG1"); break;
+			case LOG:
+				appendPQExpBuffer(&buffer," -c client_min_messages=LOG"); break;
+			case INFO:
+				appendPQExpBuffer(&buffer," -c client_min_messages=INFO"); break;
+			case NOTICE:
+				appendPQExpBuffer(&buffer," -c client_min_messages=NOTICE"); break;
+			case WARNING:
+				appendPQExpBuffer(&buffer," -c client_min_messages=WARNING"); break;
+			case ERROR:
+				appendPQExpBuffer(&buffer," -c client_min_messages=ERROR"); break;
+			case FATAL:
+				appendPQExpBuffer(&buffer," -c client_min_messages=FATAL"); break;
+			case PANIC:
+				appendPQExpBuffer(&buffer," -c client_min_messages=PANIC"); break;
+			default: ;
+		}	
+		
+		/* some super-user settable gucs */
+		switch(log_min_messages)
+		{
+			case DEBUG5:
+				appendPQExpBuffer(&buffer," -c log_min_messages=DEBUG5"); break;
+			case DEBUG4:
+				appendPQExpBuffer(&buffer," -c log_min_messages=DEBUG4"); break;
+			case DEBUG3:
+				appendPQExpBuffer(&buffer," -c log_min_messages=DEBUG3"); break;
+			case DEBUG2:
+				appendPQExpBuffer(&buffer," -c log_min_messages=DEBUG2"); break;
+			case DEBUG1:
+				appendPQExpBuffer(&buffer," -c log_min_messages=DEBUG1"); break;
+			case LOG:
+				appendPQExpBuffer(&buffer," -c log_min_messages=LOG"); break;
+			case INFO:
+				appendPQExpBuffer(&buffer," -c log_min_messages=INFO"); break;
+			case NOTICE:
+				appendPQExpBuffer(&buffer," -c log_min_messages=NOTICE"); break;
+			case WARNING:
+				appendPQExpBuffer(&buffer," -c log_min_messages=WARNING"); break;
+			case ERROR:
+				appendPQExpBuffer(&buffer," -c log_min_messages=ERROR"); break;
+			case FATAL:
+				appendPQExpBuffer(&buffer," -c log_min_messages=FATAL"); break;
+			case PANIC:
+				appendPQExpBuffer(&buffer," -c log_min_messages=PANIC"); break;
+			default: ;
+		}
+
 			
 		appendPQExpBuffer(&buffer, "' ");
 
