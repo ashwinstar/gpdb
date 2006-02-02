@@ -35,75 +35,6 @@ int			Mpp_max_tuple_chunk_size;
 
 /* Keys in the motion-node info HTAB are motion node IDs. */
 
-/* This is the entry data-structure for a motion node. */
-typedef struct MotionNodeEntry
-{
-	/*
-	 * First value in entry has to be the key value.  The key is the motion
-	 * node ID.
-	 */
-	int16		motion_node_id;
-
-	/*
-	 * Flag specifying whether the order of tuples from each source should be
-	 * maintained or preserved.
-	 */
-	bool		preserve_order;
-
-	/* The description of tuples that this motion node will be exchanging. */
-	TupleDesc	tuple_desc;
-
-	/*
-	 * The cached information to perform tuple serialization and
-	 * deserialization as quickly as possible.
-	 */
-	SerTupInfo	ser_tup_info;
-
-	/*
-	 * If preserve_order is false, this is used to hold completed tuples that
-	 * have not yet been consumed.	If preserve_order is true, this is NULL.
-	 */
-	htup_fifo	ready_tuples;
-
-	/*
-	 * Variable that records the total number of senders to this motion node.
-	 * This is expected to always be (number of qExecs).
-	 */
-	uint		num_senders;
-
-	/*
-	 * Variable that tracks number of senders that have reported end-of-stream
-	 * for this motion node.  When the local node sends end-of-stream, that is
-	 * also recorded.
-	 */
-	uint		num_stream_ends_recvd;
-
-	bool		cleanedUp;
-	bool		valid;
-	bool		moreNetWork;
-	bool		stopped;
-
-	/*----------------------------*/
-	/* PER-MOTION-NODE STATISTICS */
-	/*----------------------------*/
-
-	uint32		stat_total_chunks_sent; /* Tuple-chunks sent. */
-	uint32		stat_total_bytes_sent;	/* Bytes sent, including headers. */
-	uint32		stat_tuple_bytes_sent;	/* Bytes of pure tuple-data sent. */
-
-	uint32		stat_total_chunks_recvd;		/* Tuple-chunks received. */
-	uint32		stat_total_bytes_recvd; /* Bytes received, including headers. */
-	uint32		stat_tuple_bytes_recvd; /* Bytes of pure tuple-data received. */
-
-	uint32		stat_total_sends;		/* Total calls to SendTuple. */
-
-	uint32		stat_total_recvs;		/* Total calls to RecvTuple/etc. */
-
-	uint32		stat_tuples_available;	/* Total tuples awaiting receive. */
-	uint32		stat_tuples_available_hwm;		/* High-water-mark of this
-												 * value. */
-
-}	MotionNodeEntry;
 
 
 /*=========================================================================
@@ -224,7 +155,6 @@ static TupleChunkListItemData s_eos_chunk_data =
  */
 static void initMotionLayerStructs(void);
 
-static MotionNodeEntry *getMotionNodeEntry(int16 motNodeID, char *errString);
 static ChunkSorterEntry *getChunkSorterEntry(MotionNodeEntry * motNodeEntry,
 					int16 srcRoute);
 static bool addChunkToSorter(MotionNodeEntry * pMNEntry, TupleChunkListItem tcItem,
@@ -485,7 +415,10 @@ InitMotionLayerNode(int16 motNodeID, bool preserveOrder, TupleDesc tupDesc)
 	pEntry->stat_tuples_available = 0;
 	pEntry->stat_tuples_available_hwm = 0;
 	pEntry->stat_total_chunks_recvd = 0;
+	pEntry->stat_total_bytes_recvd = 0;
 	pEntry->stat_tuple_bytes_recvd = 0;
+	pEntry->sel_rd_wait = 0;
+	pEntry->sel_wr_wait = 0;
 
 	pEntry->cleanedUp = false;
 	pEntry->stopped = false;
@@ -918,7 +851,8 @@ EndMotionLayerNode(int16 motNodeID, bool flushCommLayer)
 	/* Clean up the motion-node entry, then remove it from the hash table. */
 	elog(DEBUG1, "Motion Node %d Statistics:\n"
 		 "    Sending:   %9u attempts %9u chunks sent %9u tuple bytes %9u total bytes\n"
-		 "    Receiving: %9u attempts %9u chunks rcvd %9u tuple bytes %9u total bytes",
+		 "    Receiving: %9u attempts %9u chunks rcvd %9u tuple bytes %9u total bytes\n"
+		 "    Read wait: %9u usec	            Write wait: %9u usec",
 		 motNodeID,
 		 pMNEntry->stat_total_sends,
 		 pMNEntry->stat_total_chunks_sent,
@@ -927,7 +861,9 @@ EndMotionLayerNode(int16 motNodeID, bool flushCommLayer)
 		 pMNEntry->stat_total_recvs,
 		 pMNEntry->stat_total_chunks_recvd,
 		 pMNEntry->stat_tuple_bytes_recvd,
-		 pMNEntry->stat_total_bytes_recvd
+		 pMNEntry->stat_total_bytes_recvd,
+		 pMNEntry->sel_rd_wait,
+		 pMNEntry->sel_wr_wait
 		);
 
 	elog(DEBUG4, "Cleaning up motion-node entry %d.", motNodeID);
