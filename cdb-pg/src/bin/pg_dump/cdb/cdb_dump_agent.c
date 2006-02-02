@@ -260,7 +260,7 @@ main(int argc, char **argv)
     StatusOp*        pOp;
 	/* MPP additions end */
 
-	RestoreOptions *ropt;
+	RestoreOptions *ropt = NULL;
 
 	static struct option long_options[] = {
 		{"data-only", no_argument, NULL, 'a'},

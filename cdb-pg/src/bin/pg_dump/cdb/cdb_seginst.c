@@ -94,7 +94,7 @@ bool GetDumpSegmentDatabaseArray(PGconn* pConn,
 	int j;
 	int x;
 	int	dbidset_count = 0;
-	int	*dbidset;
+	int	*dbidset = NULL;
 	SegmentDatabase* pSegDB;
 	
 	pQry = createPQExpBuffer();
@@ -288,7 +288,7 @@ bool GetRestoreSegmentDatabaseArray(PGconn* pConn,
 	int j;
 	int x;
 	int	dbidset_count = 0;
-	int	*dbidset;
+	int	*dbidset = NULL;
 	SegmentDatabase* sourceSegDB;
 	SegmentDatabase* targetSegDB;
 	SegmentDatabase* prevSourceSegDB;

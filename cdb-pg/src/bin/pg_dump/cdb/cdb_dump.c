@@ -75,8 +75,6 @@ static char	g_comment_end[10];
 static bool bForcePassword = false;
 static bool bIgnoreVersion = false;
 
-static char* raw_dump_set; /* argument of --mpp-s=i[...] . set of dbid's to dump */
-
 static const char* logInfo = "INFO";
 static const char* logWarn = "WARN";
 static const char* logError = "ERROR";

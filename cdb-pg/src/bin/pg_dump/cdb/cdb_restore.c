@@ -68,8 +68,8 @@ main(int argc, char **argv)
 	char szErrortmp[PQERRORMSG_LENGTH];
     int i;
 	bool found_master;
-    SegmentDatabase *sourceSegDB;
-	SegmentDatabase *targetSegDB;
+    SegmentDatabase *sourceSegDB = NULL;
+	SegmentDatabase *targetSegDB = NULL;
 	
 	/* This struct holds the values of the command line parameters */
 	InputOptions			inputOpts;
