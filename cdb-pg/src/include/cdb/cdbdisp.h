@@ -184,6 +184,12 @@ void
 CdbDoCommand(const char *szCommand, bool cancelOnError, bool startTransaction);
 
 
+/*
+ * Special for sending SET commands that change GUC variables, so they go to all
+ * gangs, both reader and writer
+ */
+void
+CdbDoCommandOnAllGangs(const char *szCommand, bool cancelOnError, bool startTransaction);
 
 /*--------------------------------------------------------------------*/
 

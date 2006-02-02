@@ -131,6 +131,13 @@ addSegDBToDispatchThreadPool(DispatchCommandParms  *ParmsAr,
 static int
 fillSliceVector(SliceTable * sliceTable, int sliceIndex, Slice **sliceVector,
                 int len, int next);
+                
+static void
+cdbdisp_dispatchCommandToAllGangs(const char                 *szCommand,
+                        bool                        cancelOnError,
+                        bool						startTransaction,
+                        struct CdbDispatchResults **pPrimaryResults,    
+                        struct CdbDispatchResults **pMirrorResults);
 
 
 /* used to take the current Transaction Snapshot and serialize a version of it
@@ -884,7 +891,93 @@ cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
 }                               /* cdbdisp_handleError */
 
 
+
+
+
+void
+cdbdisp_dispatchCommandToAllGangs(const char                 *szCommand,
+                        bool                        cancelOnError,
+                        bool						startTransaction,
+                        struct CdbDispatchResults **pPrimaryResults,    /* OUT */
+                        struct CdbDispatchResults **pMirrorResults)     /* OUT */
+{
+	Gang   *primaryGang;
+    Gang   *mirrorGang;
+    List * readerGangs ;
+    ListCell * le;
+    
+    int     nsegdb = getMPPSegmentCount();
+	char *szSnapshotInfo;
+	int		txnOptions;
+	
+    elog(DEBUG3, "cdbdisp_dispatchCommandToAllGangs: %.50s", szCommand);
+
+    *pPrimaryResults = NULL;
+    if (pMirrorResults)
+        *pMirrorResults = NULL;
+
+	/*
+	 * Allocate a primary and mirror QE for every available segDB in the system.
+	 */
+	primaryGang = allocateGang(GANGTYPE_PRIMARY_WRITER, nsegdb, -1);
+
+	Assert(primaryGang);
+
+	mirrorGang = allocateGang(GANGTYPE_MIRROR_WRITER, nsegdb, -1);
+
+	if (mirrorGang &&
+		(mirrorGang->segdb_count < nsegdb || mirrorGang->size < nsegdb))
+	{
+		elog(LOG, "Some segments are down: MIRROR nsegdb %d mirrrorGang->segdb_count: %d mirrorGang->size: %d", nsegdb, mirrorGang->segdb_count, mirrorGang->size);
+		elog(LOG, "                        PRIMARYnsegdb %d mirrrorGang->segdb_count: %d mirrorGang->size: %d", nsegdb, primaryGang->segdb_count, primaryGang->size);
+		elog(LOG, "Some segments are down.  Dispatching command %.50s to remaining segments only", szCommand);
+
+		if (strncmp(szCommand, "BEGIN ", 6) != 0 &&
+			strncmp(szCommand, "PREPARE ", 8) != 0 &&
+			strncmp(szCommand, "COMMIT ", 6) != 0 &&
+			strncmp(szCommand, "ROLLBACK ", 9) != 0)
+		{
+			if (strncmp(szCommand, "MPPEXEC ", 8) == 0 || strncmp(szCommand, "mppexec ", 8) == 0)
+				elog(NOTICE, "Some segments are down.  Dispatching command to remaining segments only");
+			else
+				elog(NOTICE, "Some segments are down.  Dispatching command %.50s to remaining segments only", szCommand);
+		}
+	}
+
+	/* Serialize a version of our snapshot */
+	szSnapshotInfo = serializeSnapshot();
+	
+	/* generate our transactions options. */
+	txnOptions = generateTxnOptions(startTransaction);
+	
+	readerGangs = getAllReaderGangs();
+	
+	/*
+     * Dispatch the command.
+     */
+    *pPrimaryResults = cdbdisp_makeDispatchResults(nsegdb * (1 + list_length(readerGangs)), 0, cancelOnError);
+    cdbdisp_dispatchToGang(szCommand, szSnapshotInfo, txnOptions, primaryGang, *pPrimaryResults, -1);
+
+	if (mirrorGang)
+    {
+        *pMirrorResults = cdbdisp_makeDispatchResults(nsegdb, 0, cancelOnError);
+        cdbdisp_dispatchToGang(szCommand, szSnapshotInfo,  txnOptions, mirrorGang, *pMirrorResults, -1);
+    }
+    
+    
+    foreach(le,readerGangs)
+    {
+    	Gang  *rg = lfirst(le);
+    	cdbdisp_dispatchToGang(szCommand, szSnapshotInfo, txnOptions, rg, *pPrimaryResults, -1);
+    }
+
+    pfree(szSnapshotInfo);
+
+
+}	/* cdbdisp_dispatchCommandToAllGangs */
+
 /*--------------------------------------------------------------------*/
+
 
 
 /*
@@ -1518,6 +1611,34 @@ CdbDoCommand(const char *szCommand,
 }	/* CdbDoCommandNoTxn */
 
 
+void
+CdbDoCommandOnAllGangs(const char *szCommand,
+				  bool cancelOnError,
+				  bool startTransaction)
+{
+	CdbDispatchResults *primaryResults;
+	CdbDispatchResults *mirrorResults;
+
+	if (startTransaction)
+	{
+		/* Start a global transaction and reconfigure the cluster if needed. */
+		cdbdisp_startDtxTransaction();
+	}
+
+	/* mark this txn as dirty */
+	setCurrentDtxDirty();
+	
+	
+	cdbdisp_dispatchCommandToAllGangs(szCommand, cancelOnError, startTransaction,
+							&primaryResults, &mirrorResults);
+
+	/*
+	 * Wait for all QEs to finish. If not all of our QEs were successful,
+	 * report the error and throw up.
+	 */
+	cdbdisp_finishCommand(primaryResults, mirrorResults);
+
+}	
 
 /*--------------------------------------------------------------------*/
 

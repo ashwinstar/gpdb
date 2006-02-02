@@ -873,6 +873,11 @@ static List *availableReaderGangs1 = NIL;
 static Gang *primaryWriterGang = NULL;
 static Gang *mirrorWriterGang = NULL;
 
+List * getAllReaderGangs()
+{
+	return availableReaderGangsN;
+}
+
 Gang *
 allocateGang(GangType type, int size, int content)
 {

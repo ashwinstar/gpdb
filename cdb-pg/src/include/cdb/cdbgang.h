@@ -43,6 +43,8 @@ extern void freeGangs(void);
 
 extern void disconnectAndDestroyAllGangs(void);
 
+extern List * getAllReaderGangs(void);
+
 extern void detectFailedConnections(void);
 
 extern CdbComponentDatabases *getComponentDatabases(void);

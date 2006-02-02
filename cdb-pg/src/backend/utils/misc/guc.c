@@ -4526,7 +4526,7 @@ SetPGVariable(const char *name, List *args, bool is_local)
 		}
 		
 		
-        CdbDoCommand( buffer.data, false, /*no txn*/ false );
+        CdbDoCommandOnAllGangs( buffer.data, false, /*no txn*/ false );
 		
 	}
 }
