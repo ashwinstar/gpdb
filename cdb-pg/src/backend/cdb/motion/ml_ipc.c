@@ -192,13 +192,13 @@ static void sendRegisterMessage(MotionLayerState * pEntry, MotionConn * conn);
 static void readRegisterMessage(MotionConn * in_conn, int *incoming_count);
 static void acceptIncomingConnection(fd_set *rset, int *highsock);
 
-static bool sendChunk(MotionConn * conn, TupleChunkListItem tcItem);
+static bool sendChunk(MotionConn * conn, TupleChunkListItem tcItem, int16 motionId);
 static inline void readPacket(MotionConn * conn);
 static inline int doBroadcast(MotionLayerState * pEntry, TupleChunkListItem tcItem);
 static int	findMyRouteId(Slice * slice);
 static CdbProcess *findCdbProcess(RegisterMessage * msg);
 
-static bool flushBuffer(MotionConn * conn);
+static bool flushBuffer(MotionConn * conn, int16 motionId);
 void		dumpEntryConnections(MotionLayerState * pEntry);
 
 void		print_connection(int fd, const char *msg);
@@ -296,13 +296,13 @@ SendTupleChunkToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcIte
 			/* only send to interested connections */
 			if (conn->stillActive)
 			{
-				sendChunk(conn, currItem);
+				sendChunk(conn, currItem, motNodeID);
 				if (!conn->stillActive)
 					recount = 1;
 			}
 			if (conn->hasMirrorConn && conn->mirrorConn->stillActive)
 			{
-				sendChunk(conn->mirrorConn, currItem);
+				sendChunk(conn->mirrorConn, currItem, motNodeID);
 				if (conn->mirrorConn->stillActive)
 					recount = 1;
 			}
@@ -353,10 +353,10 @@ SendEosToAMS(int16 motNodeID, int16 targetRoute, TupleChunkListItem tcItem)
 	for (i = 0; i < pEntry->numConns; i++)
 	{
 		conn = pEntry->conns + i;
-		flushBuffer(conn);
+		flushBuffer(conn, motNodeID);
 
 		if (conn->hasMirrorConn)
-			flushBuffer(conn->mirrorConn);
+			flushBuffer(conn->mirrorConn, motNodeID);
 	}
 
 #ifdef AMS_VERBOSE_LOGGING
@@ -369,6 +369,7 @@ TupleChunkListItem
 RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 {
 	MotionLayerState *pEntry;
+	MotionNodeEntry  *pMNEntry;
 	MotionConn *conn;
 	TupleChunkListItem tcItem;
 	fd_set		rset;
@@ -384,6 +385,8 @@ RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 #endif
 
 	pEntry = getMotionState(motNodeID);
+	pMNEntry = getMotionNodeEntry(motNodeID, "RecvTupleChunkFromAny");
+
 	do
 	{
 		struct timeval timeout = tval;
@@ -415,6 +418,7 @@ RecvTupleChunkFromAny(int16 motNodeID, int16 *srcRoute)
 			break;
 
 		n = select(pEntry->highReadSock + 1, &rset, NULL, NULL, &timeout);
+		pMNEntry->sel_rd_wait += (tval.tv_sec - timeout.tv_sec)*1000000 +(tval.tv_usec - timeout.tv_usec); 
 		if (n < 0)
 		{
 			if (errno == EINTR)
@@ -1776,9 +1780,10 @@ acceptIncomingConnection(fd_set *rset, int *highsock)
  * PARAMETERS
  *	 conn - MotionConn that the tcItem is to be sent to.
  *	 tcItem - message to be sent.
+ *	 motionId - Node Motion Id.
  */
 static bool
-sendChunk(MotionConn * conn, TupleChunkListItem tcItem)
+sendChunk(MotionConn * conn, TupleChunkListItem tcItem, int16 motionId)
 {
 	Assert(conn->msgSize > 0);
 
@@ -1788,7 +1793,7 @@ sendChunk(MotionConn * conn, TupleChunkListItem tcItem)
 
 	if (conn->msgSize + tcItem->chunk_length > Mpp_max_packet_size)
 	{
-		if (!flushBuffer(conn))
+		if (!flushBuffer(conn, motionId))
 			return false;
 	}
 
@@ -1817,10 +1822,10 @@ sendChunk(MotionConn * conn, TupleChunkListItem tcItem)
  *
  */
 static bool
-flushBuffer(MotionConn * conn)
+flushBuffer(MotionConn * conn, int16 motionId)
 {
 	char	   *sendptr;
-
+	MotionNodeEntry *pMNEntry;
 	int			n,
 				sent = 0;
 	fd_set		wset;
@@ -1835,6 +1840,8 @@ flushBuffer(MotionConn * conn)
 			 __FILE__, __LINE__, snapTime.tv_sec, snapTime.tv_usec);
 	}
 #endif
+
+	pMNEntry = getMotionNodeEntry(motionId, "flushBuffer");
 
 	/* first set header length */
 	*(uint32 *) conn->pBuff = htonl(conn->msgSize);
@@ -1851,6 +1858,8 @@ flushBuffer(MotionConn * conn)
 		timeout.tv_usec = 0;
 		FD_ZERO(&rset);
 		FD_SET(conn->sockfd, &rset);
+		/* since timeout = 0, select returns imediately and no time is wasted waiting 
+		trying to send data on the network */ 
 		n = select(conn->sockfd + 1, &rset, NULL, NULL, &timeout);
 		/* handle errors at the write call, below */
 		if (n > 0 && FD_ISSET(conn->sockfd, &rset))
@@ -1881,6 +1890,7 @@ flushBuffer(MotionConn * conn)
 					FD_SET(conn->sockfd, &wset);
 					FD_SET(conn->sockfd, &rset);
 					n = select(conn->sockfd + 1, &rset, &wset, NULL, &timeout);
+					pMNEntry->sel_wr_wait += (tval.tv_sec - timeout.tv_sec)*1000000 +(tval.tv_usec - timeout.tv_usec); 
 					if (n < 0)
 					{
 						if (errno == EINTR)
@@ -2120,14 +2130,14 @@ doBroadcast(MotionLayerState * pEntry, TupleChunkListItem tcItem)
 		/* only send to still interested receivers. */
 		if (conn->stillActive)
 		{
-			sendChunk(conn, tcItem);
+			sendChunk(conn, tcItem, pEntry->motNodeId);
 			if (!conn->stillActive)
 				inactive++;
 		}
 
 		if (conn->hasMirrorConn && conn->mirrorConn->stillActive)
 		{
-			sendChunk(conn->mirrorConn, tcItem);
+			sendChunk(conn->mirrorConn, tcItem, pEntry->motNodeId);
 			if (!conn->mirrorConn->stillActive)
 				inactive++;
 		}
