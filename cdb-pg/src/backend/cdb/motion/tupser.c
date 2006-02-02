@@ -316,7 +316,7 @@ SerializeTupleIntoChunks(HeapTuple tuple, SerTupInfo * pSerInfo, int MaxChunkDat
 		SerAttrInfo *attrInfo = pSerInfo->myinfo + i;
 		Datum		origattr = pSerInfo->values[i],
 					attr;
-		bytea	   *outputbytes;
+		bytea	   *outputbytes=0;
 
 		/* skip null attributes (already taken care of above) */
 		if (pSerInfo->nulls[i] == 'n')
