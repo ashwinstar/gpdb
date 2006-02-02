@@ -3370,19 +3370,37 @@ PostgresMain(int argc, char *argv[], const char *username)
 					if (txnOptions & MPP_OPT_AUTOBEGIN)
 					{
 						const char *beginStmt;
-						
-						/* build the right beginStmt based on the options */
-						if (txnOptions & MPP_OPT_READ_COMMITTED)
-							beginStmt = "BEGIN ISOLATION LEVEL READ COMMITTED";
-						else if (txnOptions & MPP_OPT_SERIALIZABLE)
-							beginStmt = "BEGIN ISOLATION LEVEL SERIALIZABLE";
-						else if( txnOptions & MPP_OPT_REPEATABLE_READ)
-							beginStmt = "BEGIN ISOLATION LEVEL REPEATABLE READ";
-						else
-							beginStmt = "BEGIN ISOLATION LEVEL READ UNCOMMITTED";
 				
-						/* kick off an explict BEGIN */
-						exec_simple_query(beginStmt);						
+						/* TODO: eventually all of the qExecs should really form
+						 *       a verbose BEGIN stmt explicitly calling out
+						 * 		 the desired Isolation level.  But currently the
+						 *		 DTM doesn't handle the reader qexecs very well
+						 * 		 so we need to NOT explicitly begin those since
+						 *		 the DTM never gets around to sending them any
+						 *		 explicit commits or anything
+						 */
+						if (Mpp_role == MPP_ROLE_EXECUTE && Mpp_is_writer)
+						{
+							/* we only need to do this step if we aren't already
+							 * within a transaction
+							 */
+							if (!IsTransactionOrTransactionBlock())
+							{
+								/* build the right beginStmt based on the options */
+							if (txnOptions & MPP_OPT_READ_COMMITTED)
+								beginStmt = "BEGIN ISOLATION LEVEL READ COMMITTED";
+							else if (txnOptions & MPP_OPT_SERIALIZABLE)
+								beginStmt = "BEGIN ISOLATION LEVEL SERIALIZABLE";
+							else if( txnOptions & MPP_OPT_REPEATABLE_READ)
+								beginStmt = "BEGIN ISOLATION LEVEL REPEATABLE READ";
+							else
+								beginStmt = "BEGIN ISOLATION LEVEL READ UNCOMMITTED";
+					
+							
+							/* kick off an explict BEGIN */
+							exec_simple_query(beginStmt);
+							}
+						}
 						
 					}
 					

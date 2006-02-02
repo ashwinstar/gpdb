@@ -1593,10 +1593,12 @@ CdbDoCommand(const char *szCommand,
 	{
 		/* Start a global transaction and reconfigure the cluster if needed. */
 		cdbdisp_startDtxTransaction();
+		
+		/* mark this txn as dirty */
+		setCurrentDtxDirty();
+
 	}
 
-	/* mark this txn as dirty */
-	setCurrentDtxDirty();
 	
 	
 	cdbdisp_dispatchCommand(szCommand, cancelOnError, startTransaction,
@@ -2484,36 +2486,35 @@ generateTxnOptions( bool shouldStart )
 {
 	int options = 0;
 	
-	/* if we shouldn't start or are already in a global transaction
-	 * than we're done here 
-	 */
-	if (!shouldStart || hasTxnBegan())
-		return options;
-	
 	/*set auto-begin */
-	options |= MPP_OPT_AUTOBEGIN;
-	
-	switch (XactIsoLevel)
+	if (shouldStart)
 	{
-		case XACT_READ_UNCOMMITTED:
-			options |= MPP_OPT_READ_UNCOMMITTED;	
-			break;
-		case XACT_READ_COMMITTED:
-			options |= MPP_OPT_READ_COMMITTED;			
-			break;
-		case XACT_REPEATABLE_READ:
-			options |= MPP_OPT_REPEATABLE_READ;
-			break;
-		case XACT_SERIALIZABLE:
-			options |= MPP_OPT_SERIALIZABLE;
-			break;
+		options |= MPP_OPT_AUTOBEGIN;
+	
+		switch (XactIsoLevel)
+		{
+			case XACT_READ_UNCOMMITTED:
+				options |= MPP_OPT_READ_UNCOMMITTED;	
+				break;
+			case XACT_READ_COMMITTED:
+				options |= MPP_OPT_READ_COMMITTED;			
+				break;
+			case XACT_REPEATABLE_READ:
+				options |= MPP_OPT_REPEATABLE_READ;
+				break;
+			case XACT_SERIALIZABLE:
+				options |= MPP_OPT_SERIALIZABLE;
+				break;
+		}
+		
+		/* at this point we've decided that are going to begin a transaction. 
+		 * so we need to let the DTM know this so that if anything bad happens
+		 * it can react. 
+		 */
+		setTxnBegan();
+		
 	}
 	
-	/* at this point we've decided that are going to begin a transaction. 
-	 * so we need to let the DTM know this so that if anything bad happens
-	 * it can react. 
-	 */
-	setTxnBegan();
 	
 	
 	return options;
