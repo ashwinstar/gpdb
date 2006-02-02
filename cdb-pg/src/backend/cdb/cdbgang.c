@@ -875,7 +875,7 @@ static Gang *mirrorWriterGang = NULL;
 
 List * getAllReaderGangs()
 {
-	return availableReaderGangsN;
+	return list_concat(availableReaderGangsN,list_concat(availableReaderGangs1,list_concat(allocatedReaderGangsN,allocatedReaderGangs1)));
 }
 
 Gang *
