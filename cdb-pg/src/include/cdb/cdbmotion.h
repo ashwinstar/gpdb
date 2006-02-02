@@ -12,6 +12,8 @@
 #define CDBMOTION_H
 
 #include "access/htup.h"
+#include "cdb/htupfifo.h"
+#include "cdb/tupser.h"
 #include "cdb/tupchunk.h"
 #include "cdb/tupchunklist.h"
 #include "nodes/primnodes.h"
@@ -38,9 +40,85 @@ typedef enum ReceiveReturnCode
 }	ReceiveReturnCode;
 
 
+/* This is the entry data-structure for a motion node. */
+typedef struct MotionNodeEntry
+{
+        /*
+         * First value in entry has to be the key value.  The key is the motion
+         * node ID.
+         */
+        int16           motion_node_id;
+
+        /*
+         * Flag specifying whether the order of tuples from each source should be
+         * maintained or preserved.
+         */
+        bool            preserve_order;
+
+        /* The description of tuples that this motion node will be exchanging. */
+        TupleDesc       tuple_desc;
+
+        /*
+         * The cached information to perform tuple serialization and
+         * deserialization as quickly as possible.
+         */
+        SerTupInfo      ser_tup_info;
+
+        /*
+         * If preserve_order is false, this is used to hold completed tuples that
+         * have not yet been consumed.  If preserve_order is true, this is NULL.
+         */
+        htup_fifo       ready_tuples;
+
+        /*
+         * Variable that records the total number of senders to this motion node.
+         * This is expected to always be (number of qExecs).
+         */
+        uint            num_senders;
+
+
+        /*
+         * Variable that tracks number of senders that have reported end-of-stream
+         * for this motion node.  When the local node sends end-of-stream, that is
+         * also recorded.
+         */
+        uint            num_stream_ends_recvd;
+
+        bool            cleanedUp;
+        bool            valid;
+        bool            moreNetWork;
+        bool            stopped;
+
+        /*----------------------------*/
+        /* PER-MOTION-NODE STATISTICS */
+        /*----------------------------*/
+
+        uint32          stat_total_chunks_sent; /* Tuple-chunks sent. */
+        uint32          stat_total_bytes_sent;  /* Bytes sent, including headers. */
+        uint32          stat_tuple_bytes_sent;  /* Bytes of pure tuple-data sent. */
+
+        uint32          stat_total_chunks_recvd;                /* Tuple-chunks received. */
+        uint32          stat_total_bytes_recvd; /* Bytes received, including headers. */
+        uint32          stat_tuple_bytes_recvd; /* Bytes of pure tuple-data received. */
+
+        uint32          stat_total_sends;               /* Total calls to SendTuple. */
+
+        uint32          stat_total_recvs;               /* Total calls to RecvTuple/etc. */
+
+        uint32          stat_tuples_available;  /* Total tuples awaiting receive. */
+        uint32          stat_tuples_available_hwm;              /* High-water-mark of this
+                                                                                                 * value. */
+        uint32          sel_rd_wait;            /* Total time (usec) spent in select wait trying to read */
+        uint32          sel_wr_wait;            /* Total time spent (usec) in select wait trying to write */
+
+}       MotionNodeEntry;
+
+
+
 
 /* API FUNCTION CALLS */
 
+extern MotionNodeEntry *getMotionNodeEntry(int16 motNodeID, char *errString);
 
 /* One-time initialization of motion layer. */
 extern void InitMotionLayer(void);
