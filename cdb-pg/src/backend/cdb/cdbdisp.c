@@ -1625,11 +1625,11 @@ CdbDoCommandOnAllGangs(const char *szCommand,
 	{
 		/* Start a global transaction and reconfigure the cluster if needed. */
 		cdbdisp_startDtxTransaction();
+		
+		/* mark this txn as dirty */
+		setCurrentDtxDirty();
 	}
 
-	/* mark this txn as dirty */
-	setCurrentDtxDirty();
-	
 	
 	cdbdisp_dispatchCommandToAllGangs(szCommand, cancelOnError, startTransaction,
 							&primaryResults, &mirrorResults);
