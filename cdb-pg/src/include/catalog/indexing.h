@@ -217,13 +217,13 @@ DECLARE_UNIQUE_INDEX(pg_type_typname_nsp_index, 2704, on pg_type using btree(typ
 #define TypeNameNspIndexId	2704
 
 
-DECLARE_UNIQUE_INDEX(mpp_configuration_content_definedprimary_index, 2710, on mpp_configuration using btree(content int2_ops, definedprimary bool_ops));
-#define MppConfigurationContentDefinedprimaryIndexId  2710
-DECLARE_UNIQUE_INDEX(mpp_configuration_dbid_index, 2711, on mpp_configuration using btree(dbid int2_ops));
-#define MppConfigurationDbidIndexId	2711
+DECLARE_UNIQUE_INDEX(mpp_configuration_content_definedprimary_index, 2720, on mpp_configuration using btree(content int2_ops, definedprimary bool_ops));
+#define MppConfigurationContentDefinedprimaryIndexId  2720
+DECLARE_UNIQUE_INDEX(mpp_configuration_dbid_index, 2721, on mpp_configuration using btree(dbid int2_ops));
+#define MppConfigurationDbidIndexId	2721
 
-DECLARE_UNIQUE_INDEX(mpp_policy_localoid_index, 2712, on mpp_distribution_policy using btree(localoid oid_ops));
-#define MppPolicyLocalOidIndexId  2712
+DECLARE_UNIQUE_INDEX(mpp_policy_localoid_index, 2722, on mpp_distribution_policy using btree(localoid oid_ops));
+#define MppPolicyLocalOidIndexId  2722
 
 
 /* last step of initialization script: build the indexes declared above */
