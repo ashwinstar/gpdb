@@ -289,8 +289,8 @@ createGang(GangType type, int size, int content)
 					  errmsg("Warning: %s", segdbDesc->error_message.data)));
 			ereport(WARNING, (errcode(ERRCODE_WARNING_MPP_INTERCONNECTION),
 							  errmsg("%s", segdbDesc->error_message.data)));
-			if (segdbDesc->errcode == 0 || segdbDesc->error_message.len)
-				elog(ERROR,"Connection is null, but no error code or error message, for segDB %d",i);
+			if (segdbDesc->errcode == 0 && segdbDesc->error_message.len == 0)
+				elog(ERROR,"Connection is null, but no error code or error message, for segDB %d", i);
 			Assert(segdbDesc->errcode != 0 &&
 				   segdbDesc->error_message.len > 0);
 			segdbDesc->errcode = 0;
@@ -409,10 +409,11 @@ buildGangDefinition(GangType type, int size, int content)
 	MemoryContext permanentContext = TopMemoryContext;
 
 	/*
-	 * Get the structure representing the configured segment databases.
-	 * This structure is fetched into a permanent memory context -- probably the TopMemoryContext.	We
-	 * also allocate space for and partially construct the data structure
-	 * pointed to by ClusterDefn and headed by CdbClusterDescriptor.
+	 * Get the structure representing the configured segment
+	 * databases.  This structure is fetched into a permanent memory
+	 * context -- probably the TopMemoryContext. We also allocate
+	 * space for and partially construct the data structure pointed to
+	 * by ClusterDefn and headed by CdbClusterDescriptor.
 	 */
 	oldContext = MemoryContextSwitchTo(permanentContext);
 
@@ -468,6 +469,7 @@ buildGangDefinition(GangType type, int size, int content)
 	/* if mirroring is not configured */
 	if (cdb_component_dbs->total_segment_dbs == cdb_component_dbs->total_segments)
 	{
+		elog(DEBUG2, "building Gang: mirroring not configured");
 		disableFTS();
 		mirroringNotConfigured = true;
 	}
@@ -496,14 +498,11 @@ buildGangDefinition(GangType type, int size, int content)
 
 	Assert(cdb_component_dbs->total_segment_dbs > 0);
 
-
-
 	/*
 	 * Pass through each segment database in segment_dbs
 	 * and Count up databases per segment_index.  Use this to initialize
 	 * the fields in ClusterDefn->segment_descriptors
 	 */
-
 
 	/*
 	 * We loop through the segment_db_info.  Each item has a segindex.
@@ -521,7 +520,6 @@ buildGangDefinition(GangType type, int size, int content)
 			/*
 			 * We have a new segindex.	Advance segDesc, and set count to 1.
 			 */
-
 			if (p->definedprimary && type == GANGTYPE_MIRROR_WRITER)
 			{
 				j++;
@@ -747,9 +745,7 @@ thread_DoConnect(void *arg)
 			
 		/* user-settable GUC variables */
 		
-		
-
-		
+				
 		/*
 		 * It doesn't seem to work to quote the entire search path,
 		 * so we need to remove any spaces so it's treated as one parameter. 
@@ -772,11 +768,9 @@ thread_DoConnect(void *arg)
 				temp[j++] = namespace_search_path[start];
 		}
 		temp[j] = '\0';
-		
-		appendPQExpBuffer(&buffer," -c search_path=%s",temp);
-	
 
-		
+		appendPQExpBuffer(&buffer," -c search_path=%s",temp);
+
 		switch(client_min_messages)
 		{
 			case DEBUG5:
@@ -836,7 +830,7 @@ thread_DoConnect(void *arg)
 			default: ;
 		}
 
-			
+
 		appendPQExpBuffer(&buffer, "' ");
 
 		if (cdbconn_doConnect(segdbDesc, buffer.data))
