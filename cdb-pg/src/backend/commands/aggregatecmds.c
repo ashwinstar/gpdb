@@ -49,6 +49,7 @@ DefineAggregate(List *names, List *parameters)
 	Oid			aggNamespace;
 	AclResult	aclresult;
 	List	   *transfuncName = NIL;
+	List	   *prelimfuncName = NIL; /* MPP */
 	List	   *finalfuncName = NIL;
 	List	   *sortoperatorName = NIL;
 	TypeName   *baseType = NULL;
@@ -93,6 +94,8 @@ DefineAggregate(List *names, List *parameters)
 			initval = defGetString(defel);
 		else if (pg_strcasecmp(defel->defname, "initcond1") == 0)
 			initval = defGetString(defel);
+		else if (pg_strcasecmp(defel->defname, "prefunc") == 0) /* MPP */
+			prelimfuncName = defGetQualifiedName(defel);
 		else
 			ereport(WARNING,
 					(errcode(ERRCODE_SYNTAX_ERROR),
@@ -147,6 +150,7 @@ DefineAggregate(List *names, List *parameters)
 					aggNamespace,		/* namespace */
 					baseTypeId, /* type of data being aggregated */
 					transfuncName,		/* step function name */
+					prelimfuncName,		/* prelim function name */
 					finalfuncName,		/* final function name */
 					sortoperatorName,	/* sort operator name */
 					transTypeId,	/* transition data type */

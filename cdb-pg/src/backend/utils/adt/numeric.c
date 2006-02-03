@@ -279,6 +279,9 @@ static void strip_var(NumericVar *var);
 static void compute_bucket(Numeric operand, Numeric bound1, Numeric bound2,
 			   NumericVar *count_var, NumericVar *result_var);
 
+static ArrayType *do_numeric_amalg(ArrayType *aTransArray, 
+									ArrayType *bTransArray); /* MPP */
+
 
 /* ----------------------------------------------------------------------
  *
@@ -5235,3 +5238,100 @@ strip_var(NumericVar *var)
 	var->digits = digits;
 	var->ndigits = ndigits;
 }
+
+
+/* ----------------------------------------------------------------------
+ *
+ * Aggregate functions -- MPP Extensions
+ *
+ * MPP adds some builtin functions to amalgamate transition type
+ * instances for two-stage aggregation.
+ *
+ * ----------------------------------------------------------------------
+ */
+
+static ArrayType *
+do_numeric_amalg(ArrayType *aTransArray, ArrayType *bTransArray)
+{
+	Datum	   *transdatums;
+	int			ndatums;
+	Datum		aN, bN,
+				aSumX, bSumX,
+				aSumX2, bSumX2;
+	ArrayType  *result;
+
+	/* We assume the input is array of numeric */
+	deconstruct_array(aTransArray,
+					  NUMERICOID, -1, false, 'i',
+					  &transdatums, &ndatums);
+	if (ndatums != 3)
+		elog(ERROR, "expected 3-element numeric array");
+	aN = transdatums[0];
+	aSumX = transdatums[1];
+	aSumX2 = transdatums[2];
+
+	deconstruct_array(bTransArray,
+					  NUMERICOID, -1, false, 'i',
+					  &transdatums, &ndatums);
+	if (ndatums != 3)
+		elog(ERROR, "expected 3-element numeric array");
+	bN = transdatums[0];
+	bSumX = transdatums[1];
+	bSumX2 = transdatums[2];
+
+	aN = DirectFunctionCall2(numeric_add, aN, bN);
+	aSumX = DirectFunctionCall2(numeric_add, aSumX, bSumX);
+	aSumX2 = DirectFunctionCall2(numeric_add, aSumX2, bSumX2);
+
+	transdatums[0] = aN;
+	transdatums[1] = aSumX;
+	transdatums[2] = aSumX2;
+
+	result = construct_array(transdatums, 3,
+							 NUMERICOID, -1, false, 'i');
+
+	return result;
+}
+
+Datum
+numeric_amalg(PG_FUNCTION_ARGS)
+{
+	ArrayType  *aTransArray = PG_GETARG_ARRAYTYPE_P(0);
+	ArrayType  *bTransArray = PG_GETARG_ARRAYTYPE_P(1);
+
+	PG_RETURN_ARRAYTYPE_P(do_numeric_amalg(aTransArray, bTransArray));
+}
+
+
+
+Datum
+int8_avg_amalg(PG_FUNCTION_ARGS)
+{
+	ArrayType  *aTransArray;
+	ArrayType  *bTransArray = PG_GETARG_ARRAYTYPE_P(1);
+	Int8TransTypeData *atransdata, *btransdata;
+
+	/*
+	 * If we're invoked by nodeAgg, we can cheat and modify our first
+	 * parameter in-place to reduce palloc overhead. Otherwise we need to make
+	 * a copy of it before scribbling on it.
+	 */
+	if (fcinfo->context && IsA(fcinfo->context, AggState))
+		aTransArray = PG_GETARG_ARRAYTYPE_P(0);
+	else
+		aTransArray = PG_GETARG_ARRAYTYPE_P_COPY(0);
+
+	if (ARR_SIZE(aTransArray) != ARR_OVERHEAD(1) + sizeof(Int8TransTypeData))
+		elog(ERROR, "expected 2-element int8 array");
+
+	if (ARR_SIZE(bTransArray) != ARR_OVERHEAD(1) + sizeof(Int8TransTypeData))
+		elog(ERROR, "expected 2-element int8 array");
+
+	atransdata = (Int8TransTypeData *) ARR_DATA_PTR(aTransArray);
+	btransdata = (Int8TransTypeData *) ARR_DATA_PTR(bTransArray);
+	atransdata->count += btransdata->count;
+	atransdata->sum += btransdata->sum;
+
+	PG_RETURN_ARRAYTYPE_P(aTransArray);
+}
+

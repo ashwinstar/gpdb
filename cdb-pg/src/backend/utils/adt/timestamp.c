@@ -4276,3 +4276,68 @@ timestamptz_izone(PG_FUNCTION_ARGS)
 
 	PG_RETURN_TIMESTAMP(result);
 }
+
+/* ----------------------------------------------------------------------
+ *
+ * Aggregate functions -- MPP Extensions
+ *
+ * MPP adds some builtin functions to amalgamate transition type
+ * instances for two-stage aggregation.
+ *
+ * ----------------------------------------------------------------------
+ */
+
+Datum
+interval_amalg(PG_FUNCTION_ARGS)
+{
+	ArrayType  *aTransArray = PG_GETARG_ARRAYTYPE_P(0);
+	ArrayType  *bTransArray = PG_GETARG_ARRAYTYPE_P(1);
+	Datum	   *transdatums;
+	int			ndatums;
+	Interval	aSumX, bSumX,
+				aN, bN;
+	Interval   *newsum;
+	ArrayType  *result;
+
+	deconstruct_array(aTransArray,
+					  INTERVALOID, sizeof(Interval), false, 'd',
+					  &transdatums, &ndatums);
+	if (ndatums != 2)
+		elog(ERROR, "expected 2-element interval array");
+
+	/*
+	 * XXX memcpy, instead of just extracting a pointer, to work around buggy
+	 * array code: it won't ensure proper alignment of Interval objects on
+	 * machines where double requires 8-byte alignment. That should be fixed,
+	 * but in the meantime...
+	 *
+	 * Note: must use DatumGetPointer here, not DatumGetIntervalP, else some
+	 * compilers optimize into double-aligned load/store anyway.
+	 */
+	memcpy((void *) &aSumX, DatumGetPointer(transdatums[0]), sizeof(Interval));
+	memcpy((void *) &aN, DatumGetPointer(transdatums[1]), sizeof(Interval));
+
+	deconstruct_array(bTransArray,
+					  INTERVALOID, sizeof(Interval), false, 'd',
+					  &transdatums, &ndatums);
+	if (ndatums != 2)
+		elog(ERROR, "expected 2-element interval array");
+
+	memcpy((void *) &bSumX, DatumGetPointer(transdatums[0]), sizeof(Interval));
+	memcpy((void *) &bN, DatumGetPointer(transdatums[1]), sizeof(Interval));
+
+
+	newsum = DatumGetIntervalP(DirectFunctionCall2(interval_pl,
+												   IntervalPGetDatum(&aSumX),
+												   IntervalPGetDatum(&bSumX)));
+
+	aN.time += bN.time;
+
+	transdatums[0] = IntervalPGetDatum(newsum);
+	transdatums[1] = IntervalPGetDatum(&aN);
+
+	result = construct_array(transdatums, 2,
+							 INTERVALOID, sizeof(Interval), false, 'd');
+
+	PG_RETURN_ARRAYTYPE_P(result);
+}

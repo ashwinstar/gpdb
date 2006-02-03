@@ -2331,3 +2331,69 @@ cbrt(double x)
 }
 
 #endif   /* !HAVE_CBRT */
+
+
+/* ----------------------------------------------------------------------
+ *
+ * Aggregate functions -- MPP Extensions
+ *
+ * MPP adds some builtin functions to amalgamate transition type
+ * instances for two-stage aggregation.
+ *
+ * ----------------------------------------------------------------------
+ */
+
+Datum
+float8_amalg(PG_FUNCTION_ARGS)
+{
+	ArrayType  *aTransArray = PG_GETARG_ARRAYTYPE_P(0);
+	ArrayType  *bTransArray = PG_GETARG_ARRAYTYPE_P(1);
+	float8	   *transvalues;
+	float8		aN, bN,
+				aSumX, bSumX,
+				aSumX2, bSumX2;
+
+	transvalues = check_float8_array(bTransArray, "float8_amalg");
+	bN = transvalues[0];
+	bSumX = transvalues[1];
+	bSumX2 = transvalues[2];
+
+	transvalues = check_float8_array(aTransArray, "float8_amalg");
+	aN = transvalues[0];
+	aSumX = transvalues[1];
+	aSumX2 = transvalues[2];
+
+	aN += bN;
+	aSumX += bSumX;
+	aSumX2 += bSumX2;
+
+	/*
+	 * If we're invoked by nodeAgg, we can cheat and modify our first
+	 * parameter in-place to reduce palloc overhead. Otherwise we construct a
+	 * new array with the updated transition data and return it.
+	 */
+	if (fcinfo->context && IsA(fcinfo->context, AggState))
+	{
+		transvalues[0] = aN;
+		transvalues[1] = aSumX;
+		transvalues[2] = aSumX2;
+
+		PG_RETURN_ARRAYTYPE_P(aTransArray);
+	}
+	else
+	{
+		Datum		transdatums[3];
+		ArrayType  *result;
+
+		transdatums[0] = Float8GetDatumFast(aN);
+		transdatums[1] = Float8GetDatumFast(aSumX);
+		transdatums[2] = Float8GetDatumFast(aSumX2);
+
+		result = construct_array(transdatums, 3,
+								 FLOAT8OID,
+							 sizeof(float8), false /* float8 byval */ , 'd');
+
+		PG_RETURN_ARRAYTYPE_P(result);
+	}
+}
+

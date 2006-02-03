@@ -3777,6 +3777,15 @@ DATA(insert OID = 6006 (  mpp_write_backup_file PGNSP PGUID 12 f f f f v 3 25 "2
 DESCR("write mpp backup file on outboard Postgres instances");
 DATA(insert OID = 6007 (  mpp_pgdatabase   PGNSP PGUID 12 f f f t v 0 2249 "" _null_ _null_ _null_ mpp_pgdatabase__ - _null_ ));
 DESCR("view mpp pgdatabase state");
+DATA(insert OID = 6008 (  numeric_amalg    PGNSP PGUID 12 f f t f i 2 1231 "1231 1231" _null_ _null_ _null_ numeric_amalg - _null_ ));
+DESCR("aggregate preliminary function");
+DATA(insert OID = 6009 (  int8_avg_amalg   PGNSP PGUID 12 f f t f i 2 1016 "1016 1016" _null_ _null_ _null_ int8_avg_amalg - _null_ ));
+DESCR("aggregate preliminary function");
+DATA(insert OID = 6010 (  float8_amalg	   PGNSP PGUID 12 f f t f i 2 1022 "1022 1022" _null_ _null_ _null_	float8_amalg - _null_ ));
+DESCR("aggregate preliminary function");
+DATA(insert OID = 6011 (  interval_amalg   PGNSP PGUID 12 f f t f i 2 1187 "1187 1187" _null_ _null_ _null_ interval_amalg - _null_ ));
+DESCR("aggregate preliminary function");
+
 
 /*
  * Symbolic values for provolatile column: these indicate whether the result

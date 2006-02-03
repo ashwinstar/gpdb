@@ -266,6 +266,7 @@ extern Datum interval_mul(PG_FUNCTION_ARGS);
 extern Datum mul_d_interval(PG_FUNCTION_ARGS);
 extern Datum interval_div(PG_FUNCTION_ARGS);
 extern Datum interval_accum(PG_FUNCTION_ARGS);
+extern Datum interval_amalg(PG_FUNCTION_ARGS);
 extern Datum interval_avg(PG_FUNCTION_ARGS);
 
 extern Datum timestamp_mi(PG_FUNCTION_ARGS);

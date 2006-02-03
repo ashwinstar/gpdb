@@ -362,6 +362,7 @@ extern Datum float84lt(PG_FUNCTION_ARGS);
 extern Datum float84le(PG_FUNCTION_ARGS);
 extern Datum float84gt(PG_FUNCTION_ARGS);
 extern Datum float84ge(PG_FUNCTION_ARGS);
+extern Datum float8_amalg(PG_FUNCTION_ARGS); /* MPP */
 
 /* dbsize.c */
 extern Datum pg_tablespace_size_oid(PG_FUNCTION_ARGS);
@@ -810,6 +811,8 @@ extern Datum int2_avg_accum(PG_FUNCTION_ARGS);
 extern Datum int4_avg_accum(PG_FUNCTION_ARGS);
 extern Datum int8_avg(PG_FUNCTION_ARGS);
 extern Datum width_bucket_numeric(PG_FUNCTION_ARGS);
+extern Datum numeric_amalg(PG_FUNCTION_ARGS); /* MPP */
+extern Datum int8_avg_amalg(PG_FUNCTION_ARGS); /* MPP */
 
 /* ri_triggers.c */
 extern Datum RI_FKey_check_ins(PG_FUNCTION_ARGS);
