@@ -854,11 +854,13 @@ cdbdisp_handleError(struct CdbDispatchResults  *primaryResults,
      */
     if (qderrcode == ERRCODE_MPP_INTERCONNECTION_ERROR)
     {
-        if (primaryResults->errcode &&
+        if (primaryResults &&
+			primaryResults->errcode &&
             primaryResults->errcode != ERRCODE_MPP_INTERCONNECTION_ERROR)
             useQeError = true;
-        else if (mirrorResults->errcode &&
-                 mirrorResults->errcode != ERRCODE_MPP_INTERCONNECTION_ERROR)
+        else if (mirrorResults &&
+				 mirrorResults->errcode &&
+				 mirrorResults->errcode != ERRCODE_MPP_INTERCONNECTION_ERROR)
             useQeError = true;
     }
 
