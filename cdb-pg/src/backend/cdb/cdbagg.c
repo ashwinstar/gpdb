@@ -194,7 +194,7 @@ cdbagg_prescan(Agg *agg, bool useExecutorVarFormat)
         Insist(repartitionPlan(child, true, sorted, false, hashExpr));
 
         /* Make a Flow node to describe the result. */
-        agg->plan.flow = pull_up_Flow((Plan *)agg, child, false);
+        agg->plan.flow = pull_up_Flow((Plan *)agg, child, sorted);
         return true;            /* success */
     }
 

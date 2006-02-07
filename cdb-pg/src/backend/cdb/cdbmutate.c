@@ -100,7 +100,7 @@ apply_motion(Plan *plan, Query *query)
                 if (query->sortClause)
                 {
                     Insist(focusPlan(plan, true, true, false));
-                    Assert(plan->flow->numSortCols > 0);
+                    Insist(plan->flow->numSortCols > 0);
                 }
                 else
                     Insist(focusPlan(plan, true, false, false));
