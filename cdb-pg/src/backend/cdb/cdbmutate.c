@@ -624,7 +624,7 @@ make_motion(Plan       *lefttree,
 	plan->plan_rows = lefttree->plan_rows;
 	plan->plan_width = lefttree->plan_width;
 	plan->targetlist = cdbpullup_targetlist(lefttree,
-                            cdbpullup_exprHasSubplanRef(lefttree->targetlist));
+                        cdbpullup_exprHasSubplanRef((Expr *)lefttree->targetlist));
 	plan->qual = NIL;
 	plan->lefttree = lefttree;
 	plan->righttree = NULL;
