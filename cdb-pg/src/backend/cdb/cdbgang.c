@@ -22,6 +22,13 @@
 #include "utils/memutils.h"
 
 #include "catalog/namespace.h"
+#include "commands/variable.h"
+
+extern int	CommitDelay;
+extern int	CommitSiblings;
+extern char *default_tablespace;
+extern char	   *role_string;
+extern char	   *session_authorization_string;
 
 #include "cdb/cdbconn.h"		/* SegmentDatabaseDescriptor */
 #include "cdb/cdbfts.h"
@@ -800,36 +807,170 @@ thread_DoConnect(void *arg)
 			default: ;
 		}	
 		
-		/* some super-user settable gucs */
-		switch(log_min_messages)
+		appendPQExpBuffer(&buffer," -c work_mem=%d",work_mem);
+		appendPQExpBuffer(&buffer," -c maintenance_work_mem=%d",maintenance_work_mem);
+		appendPQExpBuffer(&buffer," -c temp_buffers=%d",num_temp_buffers);
+		
+		if (StatementTimeout != 0)
+			appendPQExpBuffer(&buffer," -c statement_timeout=%d",StatementTimeout);
+		if (CommitDelay != 0)
+			appendPQExpBuffer(&buffer," -c commit_delay=%d",CommitDelay);
+		if (CommitSiblings != 5)
+			appendPQExpBuffer(&buffer," -c commit_siblings=%d",CommitSiblings);
+		if (interconnect_setup_timeout != 10)
+			appendPQExpBuffer(&buffer," -c mpp_interconnect_setup_timeout=%d",interconnect_setup_timeout);
+		
+		appendPQExpBuffer(&buffer," -c DateStyle=");	
+		switch (DateStyle)
 		{
-			case DEBUG5:
-				appendPQExpBuffer(&buffer," -c log_min_messages=DEBUG5"); break;
-			case DEBUG4:
-				appendPQExpBuffer(&buffer," -c log_min_messages=DEBUG4"); break;
-			case DEBUG3:
-				appendPQExpBuffer(&buffer," -c log_min_messages=DEBUG3"); break;
-			case DEBUG2:
-				appendPQExpBuffer(&buffer," -c log_min_messages=DEBUG2"); break;
-			case DEBUG1:
-				appendPQExpBuffer(&buffer," -c log_min_messages=DEBUG1"); break;
-			case LOG:
-				appendPQExpBuffer(&buffer," -c log_min_messages=LOG"); break;
-			case INFO:
-				appendPQExpBuffer(&buffer," -c log_min_messages=INFO"); break;
-			case NOTICE:
-				appendPQExpBuffer(&buffer," -c log_min_messages=NOTICE"); break;
-			case WARNING:
-				appendPQExpBuffer(&buffer," -c log_min_messages=WARNING"); break;
-			case ERROR:
-				appendPQExpBuffer(&buffer," -c log_min_messages=ERROR"); break;
-			case FATAL:
-				appendPQExpBuffer(&buffer," -c log_min_messages=FATAL"); break;
-			case PANIC:
-				appendPQExpBuffer(&buffer," -c log_min_messages=PANIC"); break;
-			default: ;
+			case USE_ISO_DATES:
+				appendPQExpBuffer(&buffer, "ISO");
+				break;
+			case USE_SQL_DATES:
+				appendPQExpBuffer(&buffer, "SQL");
+				break;
+			case USE_GERMAN_DATES:
+				appendPQExpBuffer(&buffer, "German");
+				break;
+			default:
+				appendPQExpBuffer(&buffer, "Postgres");
+				break;
 		}
+		switch (DateOrder)
+		{
+			case DATEORDER_YMD:
+				appendPQExpBuffer(&buffer, ",YMD");
+				break;
+			case DATEORDER_DMY:
+				appendPQExpBuffer(&buffer, ",DMY");
+				break;
+			default:
+				appendPQExpBuffer(&buffer, ",MDY");
+				break;
+		}
+		
+		if (strcmp(show_timezone(),"unknown")!=0)
+		{
+			appendPQExpBuffer(&buffer," -c TimeZone=%s",show_timezone());
+		}
+			
+		if (DefaultXactIsoLevel != XACT_READ_COMMITTED)
+		{
+			if (DefaultXactIsoLevel == XACT_SERIALIZABLE)
+				appendPQExpBuffer(&buffer," -c default_transaction_isolation=serializable");
 
+		}
+		if (XactIsoLevel != XACT_READ_COMMITTED)
+		{
+			if (XactIsoLevel == XACT_SERIALIZABLE)
+				appendPQExpBuffer(&buffer," -c transaction_isolation=serializable");
+
+		}
+		
+		/*
+		 * I wonder if this really works, or if this gets overridden as part of the login processing?
+		 */
+		if (role_string != NULL && role_string[0]=='x')
+		{
+			char * endptr;
+			Oid savedoid = (Oid) strtoul(role_string + NAMEDATALEN + 1, &endptr, 10);
+
+			if (savedoid != 0 && savedoid == GetCurrentRoleId())
+					appendPQExpBuffer(&buffer," -c role=%s",role_string);
+		}
+		
+		if (superuser())
+		{
+			/* some super-user settable gucs */
+			switch(log_min_messages)
+			{
+				case DEBUG5:
+					appendPQExpBuffer(&buffer," -c log_min_messages=DEBUG5"); break;
+				case DEBUG4:
+					appendPQExpBuffer(&buffer," -c log_min_messages=DEBUG4"); break;
+				case DEBUG3:
+					appendPQExpBuffer(&buffer," -c log_min_messages=DEBUG3"); break;
+				case DEBUG2:
+					appendPQExpBuffer(&buffer," -c log_min_messages=DEBUG2"); break;
+				case DEBUG1:
+					appendPQExpBuffer(&buffer," -c log_min_messages=DEBUG1"); break;
+				case LOG:
+					appendPQExpBuffer(&buffer," -c log_min_messages=LOG"); break;
+				case INFO:
+					appendPQExpBuffer(&buffer," -c log_min_messages=INFO"); break;
+				 
+				case WARNING:
+					appendPQExpBuffer(&buffer," -c log_min_messages=WARNING"); break;
+				case ERROR:
+					appendPQExpBuffer(&buffer," -c log_min_messages=ERROR"); break;
+				case FATAL:
+					appendPQExpBuffer(&buffer," -c log_min_messages=FATAL"); break;
+				case PANIC:
+					appendPQExpBuffer(&buffer," -c log_min_messages=PANIC"); break;
+				default: ;
+			}
+			
+			if (Log_error_verbosity != PGERROR_DEFAULT)
+			{
+				if (Log_error_verbosity == PGERROR_VERBOSE)
+					appendPQExpBuffer(&buffer," -c log_error_verbosity=verbose"); 
+				if (Log_error_verbosity == PGERROR_TERSE)
+					appendPQExpBuffer(&buffer," -c log_error_verbosity=terse"); 
+			}
+			
+			if (log_duration)
+				appendPQExpBuffer(&buffer," -c log_duration=true"); 
+				
+			if (log_min_duration_statement >= 0)
+				appendPQExpBuffer(&buffer," -c log_min_duration_statement=%d",log_min_duration_statement); 
+				
+				
+			switch(log_min_error_statement)
+			{
+				case DEBUG5:
+					appendPQExpBuffer(&buffer," -c log_min_error_statement=DEBUG5"); break;
+				case DEBUG4:
+					appendPQExpBuffer(&buffer," -c log_min_error_statement=DEBUG4"); break;
+				case DEBUG3:
+					appendPQExpBuffer(&buffer," -c log_min_error_statement=DEBUG3"); break;
+				case DEBUG2:
+					appendPQExpBuffer(&buffer," -c log_min_error_statement=DEBUG2"); break;
+				case DEBUG1:
+					appendPQExpBuffer(&buffer," -c log_min_error_statement=DEBUG1"); break;
+				case LOG:
+					appendPQExpBuffer(&buffer," -c log_min_error_statement=LOG"); break;
+				case INFO:
+					appendPQExpBuffer(&buffer," -c log_min_error_statement=INFO"); break;
+				case NOTICE:
+					appendPQExpBuffer(&buffer," -c log_min_error_statement=NOTICE"); break;
+				case WARNING:
+					appendPQExpBuffer(&buffer," -c log_min_error_statement=WARNING"); break;
+				case ERROR:
+					appendPQExpBuffer(&buffer," -c log_min_error_statement=ERROR"); break;
+				case FATAL:
+					appendPQExpBuffer(&buffer," -c log_min_error_statement=FATAL"); break;
+				
+				default: ;
+			}
+			
+			/*
+			 * session_authorization can't be set until AFTER login
+			 * 
+			if (session_authorization_string != NULL && session_authorization_string[0] == 'x')
+			{
+				char * endptr;
+				Oid savedoid = (Oid) strtoul(session_authorization_string + NAMEDATALEN + 1, &endptr, 10);
+	
+				if (savedoid != 0)
+					appendPQExpBuffer(&buffer," -c session_authorization=%s",session_authorization_string);
+			}
+			
+			*
+			*/
+	
+			if (mpp_set_read_only)
+				appendPQExpBuffer(&buffer," -c mpp_set_read_only=true"); 
+		}
 
 		appendPQExpBuffer(&buffer, "' ");
 
