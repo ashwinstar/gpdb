@@ -36,6 +36,9 @@
 #include "utils/lsyscache.h"
 #include "utils/syscache.h"
 
+#include "cdb/cdbvars.h"
+#include "cdb/cdbdisp.h"
+
 
 /*
  * Executes an ALTER OBJECT / RENAME TO statement.	Based on the object
@@ -50,26 +53,50 @@ ExecRenameStmt(RenameStmt *stmt)
 			RenameAggregate(stmt->object,
 							(TypeName *) linitial(stmt->objarg),
 							stmt->newname);
+			if (Mpp_role == MPP_ROLE_DISPATCH)
+			{
+				CdbDispatchUtilityStatement((Node *) stmt);
+			}
 			break;
 
 		case OBJECT_CONVERSION:
 			RenameConversion(stmt->object, stmt->newname);
+			if (Mpp_role == MPP_ROLE_DISPATCH)
+			{
+				CdbDispatchUtilityStatement((Node *) stmt);
+			}
 			break;
 
 		case OBJECT_DATABASE:
 			RenameDatabase(stmt->subname, stmt->newname);
+			if (Mpp_role == MPP_ROLE_DISPATCH)
+			{
+				CdbDispatchUtilityStatement((Node *) stmt);
+			}
 			break;
 
 		case OBJECT_FUNCTION:
 			RenameFunction(stmt->object, stmt->objarg, stmt->newname);
+			if (Mpp_role == MPP_ROLE_DISPATCH)
+			{
+				CdbDispatchUtilityStatement((Node *) stmt);
+			}
 			break;
 
 		case OBJECT_LANGUAGE:
 			RenameLanguage(stmt->subname, stmt->newname);
+			if (Mpp_role == MPP_ROLE_DISPATCH)
+			{
+				CdbDispatchUtilityStatement((Node *) stmt);
+			}
 			break;
 
 		case OBJECT_OPCLASS:
 			RenameOpClass(stmt->object, stmt->subname, stmt->newname);
+			if (Mpp_role == MPP_ROLE_DISPATCH)
+			{
+				CdbDispatchUtilityStatement((Node *) stmt);
+			}
 			break;
 
 		case OBJECT_ROLE:
@@ -82,6 +109,10 @@ ExecRenameStmt(RenameStmt *stmt)
 
 		case OBJECT_TABLESPACE:
 			RenameTableSpace(stmt->subname, stmt->newname);
+			if (Mpp_role == MPP_ROLE_DISPATCH)
+			{
+				CdbDispatchUtilityStatement((Node *) stmt);
+			}
 			break;
 
 		case OBJECT_TABLE:
@@ -124,11 +155,19 @@ ExecRenameStmt(RenameStmt *stmt)
 								  stmt->newname,		/* new att name */
 								  interpretInhOption(stmt->relation->inhOpt),	/* recursive? */
 								  false);		/* recursing already? */
+						if (Mpp_role == MPP_ROLE_DISPATCH)
+						{
+							CdbDispatchUtilityStatement((Node *) stmt);
+						}
 						break;
 					case OBJECT_TRIGGER:
 						renametrig(relid,
 								   stmt->subname,		/* old att name */
 								   stmt->newname);		/* new att name */
+						if (Mpp_role == MPP_ROLE_DISPATCH)
+						{
+							CdbDispatchUtilityStatement((Node *) stmt);
+						}
 						break;
 					default:
 						 /* can't happen */ ;
