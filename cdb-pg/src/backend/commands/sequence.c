@@ -187,7 +187,11 @@ DefineSequence(CreateSeqStmt *seq)
 				typnam->typeid = INT8OID;
 				coldef->colname = "min_value";
 				if (Mpp_role == MPP_ROLE_EXECUTE)
+				{
 					new.min_value += ((Mpp_segment+1)* 100000000);
+					if (!Mpp_is_primary)
+						new.min_value += (50000000);
+				}
 
 				value[i - 1] = Int64GetDatumFast(new.min_value);
 				
