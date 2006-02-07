@@ -1653,12 +1653,23 @@ AtPrepare_Locks(void)
 				elog(ERROR, "cannot PREPARE when session locks exist");
 		}
 
-		/* Can't handle it if the lock is on a temporary object */
+		
+		/* MPP-change 
+		 *
+		 * We allow 2PC commit transactions to include temp objects.  
+		 * After PREPARE we WILL NOT transfer locks on the temp objects
+		 * into our 2PC record.  Instead, we will keep them with the proc which
+		 * will be released at the end of the session.
+		 *
+		 * There doesn't seem to be any reason not to do this.  Once the txn
+		 * is prepared, it will be committed or aborted regardless of the state
+		 * of the temp table.  and quite possibly, the temp table will be
+		 * destroyed at the end of the session, while the transaction will be
+		 * committed from another session.
+		 */
 		if (locallock->isTempObject)
-			ereport(ERROR,
-					(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-					 errmsg("cannot PREPARE a transaction that has operated on temporary tables")));
-
+			continue;	
+		
 		/*
 		 * Create a 2PC record.
 		 */
@@ -1739,6 +1750,12 @@ PostPrepare_Locks(TransactionId xid)
 		if (LOCALLOCK_LOCKMETHOD(*locallock) != lockmethodid)
 			continue;
 
+		/* MPP change for temp objects in 2PC.
+		 * we skip over temp objects. 
+		 */
+		if (locallock->isTempObject)
+			continue;
+		 
 		/* We already checked there are no session locks */
 
 		/* Mark the proclock to show we need to release this lockmode */
@@ -1779,11 +1796,17 @@ PostPrepare_Locks(TransactionId xid)
 		Assert(lock->nGranted <= lock->nRequested);
 		Assert((proclock->holdMask & ~lock->grantMask) == 0);
 
-		/*
-		 * Since there were no session locks, we should be releasing all locks
+
+		/* MPP change for support of temp objects in 2PC.
+		 *
+		 * The case where the releaseMask is different than the holdMask is only
+		 * for session locks.  Temp objects is the only session lock we could 
+		 * have here and we DO NOT want to release this lock.  so we
+		 * skip over it.
 		 */
 		if (proclock->releaseMask != proclock->holdMask)
-			elog(PANIC, "we seem to have dropped a bit somewhere");
+			goto next_item;
+
 
 		holdMask = proclock->holdMask;
 
