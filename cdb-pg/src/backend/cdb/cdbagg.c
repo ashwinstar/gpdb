@@ -14,10 +14,9 @@
  */
 
 #include "postgres.h"
-#include "optimizer/clauses.h"
+#include "optimizer/clauses.h"          /* expression_tree_mutator() etc */
 #include "cdb/cdbagg.h"
 #include "cdb/cdbllize.h"
-#include "cdb/cdbvars.h"
 
 
 /*
@@ -39,6 +38,23 @@ static bool analyzeExprs(Agg *agg, CdbAggExprAnalysis *state);
 static bool analyzeAggExpr_walker(Node *node, void *context);
 
 
+/* Copy an expression, changing varno in Var nodes from 0 to OUTER. */
+static Node*
+copyExprFromAgg_mutator(Node *node, void *context)
+{
+    if (!node)
+        return NULL;
+    if (IsA(node, Var) &&
+        ((Var *)node)->varno == 0)
+    {
+        node = copyObject(node);
+        ((Var *)node)->varno = OUTER;
+        return node;
+    }
+    return expression_tree_mutator(node, copyExprFromAgg_mutator, NULL);
+}                               /* copyExprFromAgg_mutator */
+
+
 /*
  * cdbagg_prescan
  *
@@ -47,10 +63,16 @@ static bool analyzeAggExpr_walker(Node *node, void *context);
  * Note that prescan_walker has already finished scanning the child nodes
  * of the node.
  *
+ * 'useExecutorVarFormat' must be true if called after optimization, when
+ * set_plan_references() has been called and Var nodes have been adjusted to
+ * refer to items in the subplan's targetlist.  It must be false before the
+ * end of optimization, when Var nodes are still in parser format, referring
+ * to RTE items.
+ *
  * Returns true if successful, false if the given Agg is not supported.
  */
 bool
-cdbagg_prescan(Agg *agg)
+cdbagg_prescan(Agg *agg, bool useExecutorVarFormat)
 {
 	Plan	   *child = agg->plan.lefttree;
 	List	   *hashExpr = NIL;
@@ -72,7 +94,7 @@ cdbagg_prescan(Agg *agg)
     if ( child->flow->flotype == FLOW_REPLICATED ||
          (child->flow->flotype == FLOW_SINGLETON && child->flow->segindex < 0) )
     {
-        agg->plan.flow = pull_up_Flow((Plan *)agg, child, true);
+        agg->plan.flow = pull_up_Flow((Plan *)agg, child, sorted);
         return true;            /* success */
     }
 
@@ -104,21 +126,22 @@ cdbagg_prescan(Agg *agg)
         analysis.ndistinct == 0 &&
         child->flow->flotype == FLOW_PARTITIONED)
     {
-        agg->plan.flow = (agg->aggstrategy == AGG_HASHED)
-                            ? makeFlow(FLOW_PARTITIONED)
-                            : makeFlow(FLOW_SINGLETON);
-
-        /* Tell mutator to split the Agg into Agg<-Motion<-Agg. */
-        agg->plan.flow->req_xform = MOVEMENT_AGG_RESTRUCT;
-
-        /* No need to set hash fields, transform code can deduce. */
-        /* No child adjustments. */
+        /*
+         * Split the Agg into Agg<-Motion<-Agg.
+         *
+         * Beneath our Agg node, we insert a new one (called the inner Agg)
+         * to do partial aggregation on each partition of the source gang.
+         * Our existing Agg node (now called the outer Agg) will do the
+         * final aggregation in a new upper gang.  The inner Agg's Flow
+         * tells apply_motion to later add a Motion node between the Aggs.
+         */
+        cdbaggmutate_transformToTwoStage(agg, useExecutorVarFormat);
         return true;            /* success */
     }
 
     /*
-     * If nothing but one ungrouped DISTINCT aggregate, consider
-     * repartitioning on its argument expr, followed by 2-stage
+     * If nothing but one DISTINCT aggregate function with no GROUP BY,
+     * consider repartitioning on its argument expr, followed by 2-stage
      * "plain" aggregation.
      *
      * The 2nd stage will gather partially summarized results (one
@@ -127,42 +150,52 @@ cdbagg_prescan(Agg *agg)
      */
     if (aOk &&
         agg->numCols == 0 &&
-        analysis.ndistinct == 1)
+        analysis.ndistinct == 1 &&
+        repartitionPlan(child, false, sorted, false, NIL))
     {
+        Node   *distinctarg = (Node *)analysis.aggref_distinct;
+
         Assert(agg->aggstrategy == AGG_PLAIN);
 
-        hashExpr = list_make1(getHashExprForExpression(child, analysis.aggref_distinct));
+        /*
+         * Oddly, in Agg targetlist and qual, if the expr has been adjusted
+         * by set_plan_references(), Var nodes have their varno set to 0
+         * instead of the usual OUTER.  Copy the argument of the DISTINCT
+         * aggregate function, changing each Var's varno from 0 to OUTER
+         * so the expr can be used for repartitioning the input to the Agg.
+         */
+        if (useExecutorVarFormat)
+            distinctarg = copyExprFromAgg_mutator(distinctarg, NULL);
 
-        /* Repartition the input (does nothing if can't repartition). */
-        if (repartitionPlan(child, true, sorted, false, hashExpr))
-        {
-            /* ok, next step is 2-stage parallel aggregation. */
-            agg->plan.flow = pull_up_Flow((Plan *)agg, child, true);
+        /* Repartition the input, for real (the call above was a dry run). */
+        hashExpr = list_make1(distinctarg);
+        Insist(repartitionPlan(child, true, sorted, false, hashExpr));
 
-            /* Tell mutator to build the 2-stage plan. */
-            agg->plan.flow->req_xform = MOVEMENT_AGG_RESTRUCT;
-
-            /* Final result ends up on a single QE. */
-            agg->plan.flow->flotype = FLOW_SINGLETON;
-            agg->plan.flow->segindex = 0;
-            return true;            /* success */
-        }
+        /* Transform to 2-stage parallel aggregation. */
+        cdbaggmutate_transformToTwoStage(agg, useExecutorVarFormat);
+        return true;            /* success */
     }
 
     /*
      * Consider repartitioning on the grouping exprs.
+     * Repartitioning shuffles the rows, so can't use before
+     * sorted aggregate unless the Motion can be pushed below the Sort.
      */
-    if (agg->numCols > 0)
+    if (agg->numCols > 0 &&
+        repartitionPlan(child, false, sorted, false, NIL))
     {
-        hashExpr = getExprListFromTargetList(child->targetlist, agg->numCols, agg->grpColIdx);
+        /* ok, 1-stage parallel aggregation will be used. */
+        hashExpr = getExprListFromTargetList(child->targetlist,
+                                             agg->numCols,
+                                             agg->grpColIdx,
+                                             useExecutorVarFormat);
 
-        /* Repartition the input (does nothing if can't repartition). */
-        if (repartitionPlan(child, true, sorted, false, hashExpr))
-        {
-            /* ok, 1-stage parallel aggregation will be used. */
-            agg->plan.flow = pull_up_Flow((Plan *)agg, child, true);
-            return true;            /* success */
-        }
+        /* Repartition the input, really (the call above was only a test). */
+        Insist(repartitionPlan(child, true, sorted, false, hashExpr));
+
+        /* Make a Flow node to describe the result. */
+        agg->plan.flow = pull_up_Flow((Plan *)agg, child, false);
+        return true;            /* success */
     }
 
     /*
@@ -171,7 +204,7 @@ cdbagg_prescan(Agg *agg)
     if (focusPlan(child, true, sorted, false))
     {
         /* ok, conventional 1-stage serial aggregation will be used. */
-        agg->plan.flow = pull_up_Flow((Plan *)agg, child, true);
+        agg->plan.flow = pull_up_Flow((Plan *)agg, child, sorted);
         return true;            /* success */
     }
 
@@ -300,16 +333,6 @@ analyzeExprs(Agg *agg, CdbAggExprAnalysis *state)
 	foreach(cell, agg->plan.targetlist)
 	{
         TargetEntry    *tle = (TargetEntry *)lfirst(cell);
-        int             i;
-
-        /* Skip tle if it is a grouping column. */
-        for (i = 0; i < agg->numCols; i++)
-        {
-            if (tle->resno == agg->grpColIdx[i])
-                break;
-        }
-		if (i < agg->numCols)
-            continue;
 
         /* Look for Aggref nodes in the expr. */
         if (!analyzeAggExpr(tle->expr, state))
@@ -319,4 +342,5 @@ analyzeExprs(Agg *agg, CdbAggExprAnalysis *state)
     /* Look for Aggref nodes in the search condition. */
 	return analyzeAggExpr((Expr *)agg->plan.qual, state);
 }                               /* analyzeExprs */
+
 

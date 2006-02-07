@@ -31,6 +31,7 @@
 
 #include "cdb/cdbvars.h"
 #include "cdb/cdbplan.h"
+#include "cdb/cdbpullup.h"
 #include "cdb/cdbllize.h"
 #include "cdb/cdbcat.h"
 #include "cdb/cdbagg.h"
@@ -38,7 +39,7 @@
 
 #define ARRAYCOPY(to, from, sz) \
 	do { \
-		Size	_size = (sz); \
+		Size	_size = (sz) * sizeof((to)[0]); \
 		(to) = palloc(_size); \
 		memcpy((to), (from), _size); \
 	} while (0)
@@ -68,6 +69,13 @@ typedef struct PlanProfile
 	 * or delete
 	 */
 	bool		resultSegments;
+
+    /*
+     * True if set_plan_references() has been called and Var nodes have been
+     * adjusted to refer to items in the subplan's targetlist.  False before
+     * the end of optimization, when Var nodes refer to RTE items.
+     */
+    bool        useExecutorVarFormat;
 
 	/* Context */
 	LocalProfile *local;
@@ -123,7 +131,7 @@ static const AppendStrategy append_FSM[][AFS_COUNT] =
 /*
  * Forward Declarations
  */
-static bool prescan(Plan *plan, Query *query, PlanProfile * context);
+static bool prescan(Plan *plan, PlanProfile * context);
 static bool prescan_walker(Node *node, PlanProfile * context);
 
 static bool prescan_unique(Plan *plan, PlanProfile * context);
@@ -135,17 +143,22 @@ static void psErrorNonce(PlanProfile * context, const char *detail);
 static void psErrorInternal(PlanProfile * context, const char *detail);
 static void issuePsError(PlanProfile * context);
 
-static bool initPlanProfile(PlanProfile * context, Query *query);
+static void initPlanProfile(PlanProfile * context, Query *query, bool useExecutorVarFormat);
 static void pushLocals(PlanProfile * profile, List *rtable);
 static void popLocals(PlanProfile * profile);
 static List *localRangeTable(PlanProfile * profile);
 static bool isPlanFinished(Node *node, PlanProfile * profile);
 
 static bool scanForManagedTables_walker(Node *node, PlanProfile * context);
-static bool scanForManagedTables(Plan *plan, Query *query);
+static bool scanForManagedTables(Plan *plan, PlanProfile *profile);
 
-static bool adjustPlanFlow(Plan *plan, bool live, FlowType newflotype,
-                           bool stable, bool rescannable, List *hashExpr);
+static bool
+adjustPlanFlow(Plan        *plan,
+               bool         live,
+               bool         stable,
+               bool         rescannable,
+               Movement     req_move,
+               List        *hashExpr);
 
 /* ------------------------------------------------------------------------- *
  * Function cdbparallelize() is the main entry point.
@@ -201,7 +214,7 @@ cdbparallelize(Plan *plan,
 			   ParamListInfo boundParams
 )
 {
-	PlanProfile profile;		/* Will be initialized by prescan(). */
+	PlanProfile profile;		
 	int			nParamExec;
 	
 	if ( Mpp_role != MPP_ROLE_DISPATCH )
@@ -223,11 +236,14 @@ cdbparallelize(Plan *plan,
 	if (plan->dispatch == DISPATCH_SEQUENTIAL)
 		return plan;
 
+    /* Initialize the PlanProfile result. */
+    initPlanProfile(&profile, query, true);
+
 	/*
 	 * Do a quick walk of the plan to see whether it references any managed
 	 * tables.	If not, we don't need to parallelize it.
 	 */
-	if (!scanForManagedTables(plan, query))
+	if (!scanForManagedTables(plan, &profile))
 	{
 		plan->dispatch = DISPATCH_SEQUENTIAL;
 		return plan;
@@ -241,7 +257,7 @@ cdbparallelize(Plan *plan,
 	 * describe how to parallelize the plan.  We also accumulate summary
 	 * information in the profile stucture.
 	 */
-	if (!prescan(plan, query, &profile))
+	if (!prescan(plan, &profile))
 		issuePsError(&profile);
 
 	/*
@@ -309,7 +325,7 @@ cdbparallelize(Plan *plan,
 Plan *
 cdbparallelize_subquery(Plan *plan, Query *query)
 {
-	PlanProfile profile;		/* Will be initialized by prescan(). */
+	PlanProfile profile;		
 	
 	if ( Mpp_role != MPP_ROLE_DISPATCH )
 	{
@@ -319,12 +335,15 @@ cdbparallelize_subquery(Plan *plan, Query *query)
 	Assert(is_plan_node((Node *) plan));
 	Assert(query != NULL && IsA(query, Query));
 
+    /* Initialize the PlanProfile result. */
+    initPlanProfile(&profile, query, false);
+
 	/*
 	 * Prescan the plan and attach Flow nodes to its Plan nodes. These nodes
 	 * describe how to parallelize the plan.  We also accumulate summary
 	 * information in the profile stucture.
 	 */
-	if (!prescan(plan, query, &profile))
+	if (!prescan(plan, &profile))
 		issuePsError(&profile);
 
 	return plan;
@@ -348,15 +367,8 @@ cdbparallelize_subquery(Plan *plan, Query *query)
  * ----------------------------------------------------------------------- *
  */
 bool
-prescan(Plan *plan, Query *query, PlanProfile * context)
+prescan(Plan *plan, PlanProfile * context)
 {
-	/* Initialize the PlanProfile result. */
-	if (!initPlanProfile(context, query))
-		return false;
-
-	/*
-	 * Do the prescan.
-	 */
 	return !prescan_walker((Node *) plan, context);
 }
 
@@ -466,8 +478,7 @@ prescan_walker(Node *node, PlanProfile * context)
                  * Ask for motion to a single QE.  Later, apply_motion
                  * will override that to bring it to the QD instead.
                  */
-                if (subplan->plan->flow->flotype != FLOW_SINGLETON)
-                    Insist(focusPlan(subplan->plan, true, false, false));
+                Insist(focusPlan(subplan->plan, true, false, false));
 
 				/* Restore state for the parent plan. */
 				popLocals(context);
@@ -627,9 +638,9 @@ prescan_walker(Node *node, PlanProfile * context)
 				sort = (Sort *) node;
 				plan->flow->numSortCols = sort->numCols;
 				ARRAYCOPY(plan->flow->sortColIdx, sort->sortColIdx,
-						  sort->numCols * sizeof(AttrNumber));
+						  sort->numCols);
 				ARRAYCOPY(plan->flow->sortOperators, sort->sortOperators,
-						  sort->numCols * sizeof(Oid));
+						  sort->numCols);
 			}
 			goto return_false;
 
@@ -729,7 +740,10 @@ prescan_walker(Node *node, PlanProfile * context)
 							 * SetOp.
 							 */
 							op = (SetOp *) plan;
-							hx = getExprListFromTargetList(child->targetlist, op->numCols, op->dupColIdx);
+							hx = getExprListFromTargetList(child->targetlist,
+                                                           op->numCols,
+                                                           op->dupColIdx,
+                                                           context->useExecutorVarFormat);
 							if (repartitionPlan(child, true, true, false, hx))
 							{
 								plan->flow = pull_up_Flow(plan, child, true);
@@ -771,7 +785,7 @@ prescan_walker(Node *node, PlanProfile * context)
 				if (finished)
 					goto return_false;
 
-				if (cdbagg_prescan((Agg *) node))
+				if (cdbagg_prescan((Agg *)node, context->useExecutorVarFormat))
 					goto return_false;
 				detail = "Query involves complex aggregation.";
 			}
@@ -935,7 +949,10 @@ prescan_unique(Plan *plan, PlanProfile * context)
 	}
 	if (!match_condition)
 	{
-		List	   *hashExpr = getExprListFromTargetList(child->targetlist, unique->numCols, unique->uniqColIdx);
+		List	   *hashExpr = getExprListFromTargetList(child->targetlist,
+                                                         unique->numCols,
+                                                         unique->uniqColIdx,
+                                                         context->useExecutorVarFormat);
 
 		if (!repartitionPlan(child, false, true, false, hashExpr))
 		{
@@ -1200,7 +1217,10 @@ prescan_group(Plan *plan, PlanProfile * context)
 		}
 		if (!match_condition)
 		{
-			List	   *hashExpr = getExprListFromTargetList(child->targetlist, group->numCols, group->grpColIdx);
+			List	   *hashExpr = getExprListFromTargetList(child->targetlist,
+                                                             group->numCols,
+                                                             group->grpColIdx,
+                                                             context->useExecutorVarFormat);
 
 			if (!repartitionPlan(child, false, true, false, hashExpr))
 			{
@@ -1315,9 +1335,8 @@ makeFlow(FlowType flotype)
 
 /*
  * Create a flow for the given Plan node based on the flow in it's
- * lefttree (outer) plan.  Partitioning information is preserved for
- * non-projecting plan nodes. Sort specifications are preserved only
- * if withSort is true.
+ * lefttree (outer) plan.  Partitioning information is preserved.
+ * Sort specifications are preserved only if withSort is true.
  */
 Flow *
 pull_up_Flow(Plan *plan, Plan *subplan, bool withSort)
@@ -1331,41 +1350,50 @@ pull_up_Flow(Plan *plan, Plan *subplan, bool withSort)
 
 	new_flow = makeFlow(model_flow->flotype);
 
-    new_flow->segindex = model_flow->segindex;
+    if (model_flow->flotype == FLOW_SINGLETON)
+        new_flow->segindex = model_flow->segindex;
 
-	if (model_flow->flotype == FLOW_PARTITIONED)
+    /* Pull up hash key exprs, if they're all present in the plan's result. */
+    else if (model_flow->flotype == FLOW_PARTITIONED &&
+             model_flow->hashExpr)
 	{
-		/*
-		 * Propagate hash attribute definitions, if they are available and the
-		 * plan is non-projecting. Else, leave them NIL.
-		 */
-		if (model_flow->hashExpr != NULL && !is_projection_capable_plan(plan))
-		{
-			new_flow->hashExpr = copyObject(model_flow->hashExpr);
-		}
+		if (is_projection_capable_plan(plan))
+            new_flow->hashExpr = (List *)cdbpullup_expr((Expr *)model_flow->hashExpr,
+                                                        plan->targetlist,
+                                                        OUTER);
+        else
+            new_flow->hashExpr = copyObject(model_flow->hashExpr);
 	}
 
-	if (withSort && model_flow->numSortCols > 0)
+	/* Pull up sort key info if requested. */
+    if (withSort && model_flow->numSortCols > 0)
 	{
 		if (is_projection_capable_plan(plan))
 		{
-			/* Try to derive a sortColIdx to align with projected targetlist. */
-			if (!invertColIdx(
-							  plan->targetlist,
-							  model_flow->numSortCols,
-							  model_flow->sortColIdx,
-							  &(new_flow->sortColIdx))
-				)
-                Insist(0);
+			/*
+             * Try to derive a sortColIdx to align with projected targetlist.
+             * It might be shorter than the subplan's sortColIdx, maybe even
+             * empty, if not all of the subplan's sort cols are projected.
+             */
+			new_flow->numSortCols = cdbpullup_colIdx(plan,
+                                                     subplan,
+                                                     model_flow->numSortCols,
+                                                     model_flow->sortColIdx,
+                                                     &new_flow->sortColIdx);
 		}
 		else
 		{
 			/* Non-projecting so sort attributes are the same. */
-			ARRAYCOPY(new_flow->sortColIdx, model_flow->sortColIdx, model_flow->numSortCols * sizeof(AttrNumber));
+            new_flow->numSortCols = model_flow->numSortCols;
+			ARRAYCOPY(new_flow->sortColIdx,
+                      model_flow->sortColIdx,
+                      new_flow->numSortCols);
 		}
 
-		new_flow->numSortCols = model_flow->numSortCols;
-		ARRAYCOPY(new_flow->sortOperators, model_flow->sortOperators, model_flow->numSortCols * sizeof(Oid));
+		if (new_flow->numSortCols > 0)
+            ARRAYCOPY(new_flow->sortOperators,
+                      model_flow->sortOperators,
+                      new_flow->numSortCols);
 	}
 
 	return new_flow;
@@ -1433,22 +1461,13 @@ is_plan_node(Node *node)
  * ----------------------------------------------------------------------- *
  */
 bool
-scanForManagedTables(Plan *plan, Query *query)
+scanForManagedTables(Plan *plan, PlanProfile *profile)
 {
-	PlanProfile profile;
-
-	/* Initialize the PlanProfile result. */
-	if (!initPlanProfile(&profile, query))
-		issuePsError(&profile);
-
 	/* initPlanProfile may have already found a managed table. */
-	if (profile.resultSegments)
+	if (profile->resultSegments)
 		return true;
 
-	/*
-	 * Do the scanForManagedTables_walker.
-	 */
-	return scanForManagedTables_walker((Node *) plan, &profile);
+	return scanForManagedTables_walker((Node *) plan, profile);
 }
 
 
@@ -1511,24 +1530,19 @@ scanForManagedTables_walker(Node *node, PlanProfile * context)
 				 * SubqueryScan and then put the original one back.
 				 */
                 RangeTblEntry  *rte;
-				Plan	   *plan = (Plan *) node;
-				Scan	   *scan = (Scan *) plan;
-				Index		rtindex = scan->scanrelid;
+				Scan	       *scan = (Scan *)node;
+				Index		    rtindex = scan->scanrelid;
+                bool            done;
 
 				rte = rt_fetch(rtindex, localRangeTable(context));
 				Assert(rte->rtekind == RTE_SUBQUERY);
 
 				pushLocals(context, rte->subquery->rtable);
-
-				if (plan_tree_walker(node, scanForManagedTables_walker, context))
-					return true;
-
+				done = plan_tree_walker(node, scanForManagedTables_walker, context);
 				popLocals(context);
 
-				return false;
+                return done;
 			}
-
-			break;
 
 		case T_SubPlan:
 			{
@@ -1537,22 +1551,21 @@ scanForManagedTables_walker(Node *node, PlanProfile * context)
 				 * notably the range table.
 				 */
 				SubPlan    *subplan = (SubPlan *) node;
+                bool        done;
 
 				/* Recur into the exprs list (as usual). */
 				if (expression_tree_walker((Node *) subplan->exprs, scanForManagedTables_walker, context))
 					return true;
 
-				/* Set local state for the subplan. */
-				pushLocals(context, subplan->rtable);
-
-				/* Walk the subplan.  */
-				if (scanForManagedTables_walker((Node *) subplan->plan, context))
-					return true;
-
-				/* Restore state for the parent plan. */
+				/* Walk the subplan. */
+                pushLocals(context, subplan->rtable);
+				done = scanForManagedTables_walker((Node *) subplan->plan, context);
 				popLocals(context);
 
-				/* Recur into the args list. */
+                if (done)
+                    return true;
+
+                /* Recur into the args list. */
 				if (expression_tree_walker((Node *) subplan->args, scanForManagedTables_walker, context))
 					return true;
 			}
@@ -1574,12 +1587,13 @@ scanForManagedTables_walker(Node *node, PlanProfile * context)
  * (for an insert, update, or delete statement)
  * and if so, includes it in the summary of relations touched.
  */
-bool
-initPlanProfile(PlanProfile * context, Query *query)
+void
+initPlanProfile(PlanProfile * context, Query *query, bool useExecutorVarFormat)
 {
 	Assert(context != NULL);
 
 	context->resultSegments = false;
+    context->useExecutorVarFormat = useExecutorVarFormat;
 
 	/* Initialize the current range table. */
 	context->local = NULL;
@@ -1594,13 +1608,9 @@ initPlanProfile(PlanProfile * context, Query *query)
 		case CMD_UPDATE:
 		case CMD_DELETE:
 			if (query->resultRelation <= 0 || query->resultRelations != NIL)
-			{
-				/* Perhaps this should be an Assert(?) rather than an error. */
-				psError(context, ERRCODE_CDB_INTERNAL_ERROR,
-				  "Unexpected relation specified as target of modification.",
-						"Target must be a single result relation without inheritance.");
-				return false;
-			}
+				elog(ERROR, "Unexpected relation specified as target of "
+                     "modification. Target must be a single result relation "
+                     "without inheritance.");
 			else
 			{
 				/*
@@ -1620,29 +1630,21 @@ initPlanProfile(PlanProfile * context, Query *query)
 				if (policy->ptype == POLICYTYPE_PARTITIONED)
 					context->resultSegments = true;
 				else if (policy->ptype != POLICYTYPE_ENTRY)
-				{
-					psError(context, ERRCODE_CDB_INTERNAL_ERROR,
-							"Unexpected data distribution policy.", NULL);
-					return false;
-				}
+				    elog(ERROR, "Unexpected data distribution policy.");
 				pfree(policy);	/* Or should we cache this? */
 			}
 			break;
 
 		default:
-			psError(context, ERRCODE_CDB_INTERNAL_ERROR,
-					"Cannot parallelize unrecognized query type.", NULL);
-			return false;
+            Insist(0);
 	}
 
 	/*
 	 * Initialize the error fields of the context, in case some failure
 	 * in the prescan neglects to set them.
 	 */
-	psError(context, ERRCODE_CDB_INTERNAL_ERROR,
+	psError(context, ERRCODE_INTERNAL_ERROR,
 			"Unexpected failure parallelizing query.", NULL);
-
-	return true;
 }
 
 void
@@ -1733,7 +1735,11 @@ focusPlan(Plan *plan, bool live, bool stable, bool rescannable)
     if (plan->flow->flotype == FLOW_SINGLETON)
         return true;
 
-	return adjustPlanFlow(plan, live, FLOW_SINGLETON, stable, rescannable, NIL);
+    /* TODO How specify deep-six? */
+    if (plan->flow->flotype == FLOW_REPLICATED)
+        return false;		
+
+    return adjustPlanFlow(plan, live, stable, rescannable, MOVEMENT_FOCUS, NIL);
 }
 
 
@@ -1749,7 +1755,7 @@ broadcastPlan(Plan *plan, bool live, bool stable, bool rescannable)
     if (plan->flow->flotype == FLOW_REPLICATED)
         return true;
 
-    return adjustPlanFlow(plan, live, FLOW_REPLICATED, stable, rescannable, NIL);
+    return adjustPlanFlow(plan, live, stable, rescannable, MOVEMENT_BROADCAST, NIL);
 }
 
 
@@ -1759,12 +1765,21 @@ broadcastPlan(Plan *plan, bool live, bool stable, bool rescannable)
 bool
 repartitionPlan(Plan *plan, bool live, bool stable, bool rescannable, List *hashExpr)
 {
+    Movement    req_move = MOVEMENT_REPARTITION;
+
     Assert(plan->flow && plan->flow->flotype != FLOW_UNDEFINED);
+    Assert(!live || list_length(hashExpr) > 0);
 
-	if (list_length(hashExpr) < 1)
-		return false;			/* Not much of a check, but it's something. */
+    /* Already partitioned on the given hashExpr?  Do nothing. */
+    if (hashExpr &&
+        equal(hashExpr, plan->flow->hashExpr))
+        return true;
 
-    return adjustPlanFlow(plan, live, FLOW_PARTITIONED, stable, rescannable, hashExpr);
+    /* Deep six? */
+    if (plan->flow->flotype == FLOW_REPLICATED)
+        req_move = MOVEMENT_REP2PARTITIONED;
+
+    return adjustPlanFlow(plan, live, stable, rescannable, req_move, hashExpr);
 }
 
 
@@ -1774,29 +1789,56 @@ repartitionPlan(Plan *plan, bool live, bool stable, bool rescannable, List *hash
  * Recursively pushes a motion request down the plan tree which allows us
  * to remove contraints in some cases.	For example, pushing a motion below
  * a Sort removes the stability constraint.
+ *
+ * Returns true if successful.  Returns false and doesn't change anything
+ * if the request cannot be honored.
  */
 bool
 adjustPlanFlow(Plan        *plan,
                bool         live,
-               FlowType     newflotype,
                bool         stable,
                bool         rescannable,
+               Movement     req_move,
                List        *hashExpr)
 {
     Flow       *flow = plan->flow;
+    bool        disorder = false;
     bool		recur = false;
     bool        reorder = false;
-    Movement    req_move = MOVEMENT_NONE;
 
-	/* If we can't honor this request, return false. */
-	if (flow->req_move != MOVEMENT_NONE || flow->req_xform != MOVEMENT_NONE)
-		return false;			/* Must not already have motion or transform
-								 * assigned. */
+    Assert(flow && flow->flotype != FLOW_UNDEFINED);
 
-    /* Tuples cannot flow from QD to QEs via Motion nodes (for now). */
+    /*
+     * If the Flow was already adjusted due to an earlier motion request,
+     * the original hash/sort key info might have been altered so that we
+     * no longer have a proper description of the flow from the Plan node
+     * into the proposed Motion operator.  Refuse further adjustments.
+     */
+    if (flow->req_move != MOVEMENT_NONE || flow->req_xform != MOVEMENT_NONE)
+        return false;
+
+    /* Tuples cannot be sent from QD to QEs via Motion nodes (for now). */
     if (flow->flotype == FLOW_SINGLETON &&
         flow->segindex < 0)
         return false;
+
+    switch (req_move)
+	{
+        case MOVEMENT_FOCUS:
+            /* Don't request Merge Receive unless ordering is significant. */
+            if (!stable)
+                disorder = true;
+            break;
+
+		case MOVEMENT_BROADCAST:
+        case MOVEMENT_REPARTITION:
+            if (flow->flotype == FLOW_PARTITIONED)
+                disorder = true;
+            break;
+
+		default:
+            break;
+    }
 
     /*---------------
 	 * Decide whether to push the request further down the plan tree and
@@ -1804,16 +1846,11 @@ adjustPlanFlow(Plan        *plan,
 	 */
 	switch (plan->type)
 	{
-		case T_Hash:
-			/* Always push motion below Hash. */
-			/* No need to preserve order or restartability below hash. */
-			recur = true;
-            reorder = true;
-			rescannable = false;
-			break;
-
 		case T_Sort:
-			if (newflotype == FLOW_SINGLETON && !rescannable)
+            /* If order doesn't matter, why is there a Sort here? */
+            Assert(stable);
+
+			if (req_move == MOVEMENT_FOCUS)
 			{
 				/*
 				 * We'd rather do a merge of a parallel sort, than do a
@@ -1848,16 +1885,19 @@ adjustPlanFlow(Plan        *plan,
      */
     if (recur)
 	{
-        Flow   *kidFlow;
-        int     oldKidSortCols;
+        Flow   *kidflow;
 
-        Assert(plan->lefttree && plan->lefttree->flow);
-
-        oldKidSortCols = plan->lefttree->flow->numSortCols;
+        Assert(plan->lefttree &&
+               plan->lefttree->flow &&
+               plan->lefttree->flow->flotype != FLOW_UNDEFINED);
 
         /* Descend to apply the requested Motion somewhere below this node. */
-        if (!adjustPlanFlow(plan->lefttree, live, newflotype,
-                            stable && !reorder, rescannable, hashExpr))
+        if (!adjustPlanFlow(plan->lefttree,
+                            live,
+                            stable && !reorder,
+                            rescannable,
+                            req_move,
+                            hashExpr))
             return false;
 
         /* Return if just window shopping.  Nothing has been changed yet. */
@@ -1865,21 +1905,17 @@ adjustPlanFlow(Plan        *plan,
             return true;        /* success; call me again to do it for real */
 
         /* After updating subplan, bubble new distribution back up the tree. */
-        kidFlow = plan->lefttree->flow;
-        flow->flotype = kidFlow->flotype;
-        flow->segindex = kidFlow->segindex;
-        flow->hashExpr = copyObject(kidFlow->hashExpr);
+        kidflow = plan->lefttree->flow;
+        flow->flotype = kidflow->flotype;
+        flow->segindex = kidflow->segindex;
+        flow->hashExpr = copyObject(kidflow->hashExpr);
 
-        Assert(kidFlow->flotype == newflotype);
-
-        /* Truncate sort cols if motion has weakened the former ordering. */
-        if (!reorder &&
-            kidFlow->numSortCols != oldKidSortCols)
+        /* Zap sort cols if motion has destroyed the ordering. */
+        if (disorder && !reorder)
         {
-            Assert(!stable);
-            Assert(flow->numSortCols <= oldKidSortCols);
-            if (flow->numSortCols > kidFlow->numSortCols)
-                flow->numSortCols = kidFlow->numSortCols;
+            flow->numSortCols = 0;
+            flow->sortColIdx = NULL;
+            flow->sortOperators = NULL;
         }
 
 		return true;  /* success */
@@ -1890,41 +1926,20 @@ adjustPlanFlow(Plan        *plan,
      * to be moved.  Return false if can't do the motion as requested.
      */
 
+    /* Would motion mess up a required ordering? */
+    if (stable && disorder)
+        return false;	
+
     /* Adding a Motion node would make the result non-rescannable. */
     if (rescannable)
         return false;
 
     /*
-     * Motion would mess up the ordering if source is partitioned; except
-     * Partitioned -> Singleton can use Merge Receive to preserve order.
+     * Ok, we have decided it is alright to add Motion above this node.
+     * If just a dry run, return success.  Nothing has been changed.
      */
-    if (stable &&
-        flow->flotype == FLOW_PARTITIONED &&
-        newflotype != FLOW_SINGLETON)
-        return false;	
-
-    switch (newflotype)
-	{
-		case FLOW_SINGLETON:
-            req_move = MOVEMENT_FOCUS;
-            if (flow->flotype == FLOW_REPLICATED)
-		        return false;		/* TODO How specify deep-six? */
-            break;
-
-		case FLOW_REPLICATED:
-            req_move = MOVEMENT_BROADCAST;
-            break;
-
-		case FLOW_PARTITIONED:
-            req_move = MOVEMENT_REPARTITION;
-            if (flow->flotype == FLOW_REPLICATED)
-                req_move = MOVEMENT_REP2PARTITIONED;    /* deep-six */
-            break;
-
-		default:
-            Assert(0);
-            return false;
-	}
+    if (!live)
+        return true;            /* success; call me again to do it for real */
 
     /*
      * Now we begin the transformation, if 'live'.
@@ -1933,28 +1948,47 @@ adjustPlanFlow(Plan        *plan,
      * immediately above this node (= downstream).  Overwrite the
      * present Plan node's Flow node to describe the distribution
      * and ordering that the future Motion node will produce.
-     * (On return there is no longer any Flow node that specifically
+     *
+     * On return there is no longer any Flow node that specifically
      * describes the present Plan node's own result distribution and
-     * ordering, i.e. the input to the future Motion.)
+     * ordering, i.e. the input to the future Motion.
      */
-    if (live)
+    flow->req_move = req_move;
+    if (flow->base_flotype == FLOW_UNDEFINED)
+        flow->base_flotype = flow->flotype;
+
+    switch (req_move)
     {
-        flow->req_move = req_move;
-        if (flow->base_flotype == FLOW_UNDEFINED)
-            flow->base_flotype = flow->flotype;
+        case MOVEMENT_FOCUS:
+            /* Converge to a single QE (or QD; that choice is made later). */
+            flow->flotype = FLOW_SINGLETON;
+            flow->hashExpr = NIL;
+            flow->segindex = 0;
+            break;
 
-        flow->flotype = newflotype;
-        flow->segindex = 0;
-        flow->hashExpr = copyObject(hashExpr);
+        case MOVEMENT_BROADCAST:
+            flow->flotype = FLOW_REPLICATED;
+            flow->hashExpr = NIL;
+            flow->segindex = 0;
+            break;
 
-        /* Don't request Merge Receive unless ordering is significant. */
-        if (newflotype == FLOW_SINGLETON &&
-            !stable)
-        {
-            flow->numSortCols = 0;
-            flow->sortColIdx = NULL;
-            flow->sortOperators = NULL;
-        }
+        case MOVEMENT_REPARTITION:
+        case MOVEMENT_REP2PARTITIONED:
+            flow->flotype = FLOW_PARTITIONED;
+            flow->hashExpr = copyObject(hashExpr);
+            flow->segindex = 0;
+            break;
+
+        default:
+            Assert(0);
+    }
+
+    /* Discard ordering info if the motion will disturb the order. */
+    if (disorder)
+    {
+        flow->numSortCols = 0;
+        flow->sortColIdx = NULL;
+        flow->sortOperators = NULL;
     }
 
     return true;                /* success */

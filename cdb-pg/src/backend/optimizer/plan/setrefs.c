@@ -4,7 +4,7 @@
  *	  Post-processing of a completed plan tree: fix references to subplan
  *	  vars, and compute regproc values for operators
  *
- * Portions Copyright (c) 2005, greenplum inc
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -136,7 +136,24 @@ set_plan_references(Plan *plan, List *rtable)
 	if (plan == NULL)
 		return NULL;
 
-	/*
+    /*
+     * CDB: If plan has a Flow node, fix up its hashExpr to refer to the
+     * plan's own targetlist.
+     */
+    if (plan->flow &&
+        plan->flow->hashExpr)
+    {
+        indexed_tlist  *plan_itlist = build_tlist_index(plan->targetlist);
+
+        plan->flow->hashExpr =
+            (List *)replace_vars_with_subplan_refs((Node *)plan->flow->hashExpr,
+                                                   plan_itlist,
+                                                   OUTER);
+        fix_expr_references(plan, (Node *) plan->flow->hashExpr);
+        pfree(plan_itlist);
+    }
+
+    /*
 	 * Plan-type-specific fixes
 	 */
 	switch (nodeTag(plan))
@@ -292,18 +309,20 @@ set_plan_references(Plan *plan, List *rtable)
 
         case T_Motion:
             {
-            	Motion *motion = (Motion *)plan;   
-            	/* ???? This is a questionable update for the 8.1 merge ???*/    
-                motion->hashExpr = join_references(motion->hashExpr,
-                                                   rtable,
-                                                   build_tlist_index(motion->plan.lefttree->targetlist),
-                                                   build_tlist_index(NIL),
-                                                   (Index) 0);
-                fix_expr_references(plan, (Node *)motion->hashExpr);
+            	Motion         *motion = (Motion *)plan;
+                indexed_tlist  *subplan_itlist =
+                                    build_tlist_index(plan->lefttree->targetlist);
+
+                motion->hashExpr =
+                    (List *)replace_vars_with_subplan_refs((Node *)motion->hashExpr,
+                                                           subplan_itlist,
+                                                           OUTER);
+                fix_expr_references(plan, (Node *) motion->hashExpr);
+                pfree(subplan_itlist);
             }
             break;
+
 		default:
-            Assert(false);
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) nodeTag(plan));
 			break;
@@ -484,7 +503,11 @@ adjust_plan_varnos(Plan *plan, int rtoffset)
 	if (plan == NULL)
 		return;
 
-	/*
+    /* CDB: Fix up Flow node. */
+    if (plan->flow)
+        adjust_expr_varnos((Node *) plan->flow->hashExpr, rtoffset);
+
+    /*
 	 * Plan-type-specific fixes
 	 */
 	switch (nodeTag(plan))
@@ -563,7 +586,6 @@ adjust_plan_varnos(Plan *plan, int rtoffset)
 		case T_Sort:
 		case T_Unique:
 		case T_SetOp:
-		case T_Motion:
 			/*
 			 * Even though the targetlist won't be used by the executor, we
 			 * fix it up for possible use by EXPLAIN (not to mention ease of
@@ -614,6 +636,11 @@ adjust_plan_varnos(Plan *plan, int rtoffset)
 			foreach(l, ((BitmapOr *) plan)->bitmapplans)
 				adjust_plan_varnos((Plan *) lfirst(l), rtoffset);
 			break;
+        case T_Motion:
+            adjust_expr_varnos((Node *) plan->targetlist, rtoffset);
+            adjust_expr_varnos((Node *) ((Motion *)plan)->hashExpr, rtoffset);
+            Assert(plan->qual == NIL);
+            break;
 		default:
 			elog(ERROR, "unrecognized node type: %d",
 				 (int) nodeTag(plan));

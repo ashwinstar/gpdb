@@ -2,7 +2,7 @@
  *
  * cdbpathlocus.c
  *
- * Copyright (c) 2005, greenplum inc
+ * Copyright (c) 2005-2006, greenplum inc
  *
  * $Id$
  *
@@ -12,13 +12,14 @@
 
 #include "cdb/cdbcat.h"         /* MppPolicy */
 #include "cdb/cdbdef.h"         /* CdbSwap() */
+#include "cdb/cdbpullup.h"      /* cdbpullup_missing_var_walker() */
 #include "nodes/makefuncs.h"    /* makeVar() */
 #include "nodes/plannodes.h"    /* Plan */
 #include "nodes/relation.h"     /* RelOptInfo */
 #include "optimizer/pathnode.h" /* Path */
 #include "optimizer/paths.h"    /* cdb_build_distribution_pathkeys() */
 #include "optimizer/tlist.h"    /* tlist_member() */
-#include "parser/parse_expr.h"
+#include "parser/parse_expr.h"  /* exprType() and exprTypmod() */
 
 #include "cdb/cdbpathlocus.h"   /* me */
 
@@ -288,41 +289,50 @@ done:
  * cdbpathlocus_get_pathkeyitem
  *
  * Searches the equivalence class 'pathkey' for a PathKeyItem that
- * uses no rels outside the 'relids' set.  Prefers an item that is a
- * member of 'targetlist'.  Returns 'initial' if no better choice is
- * found.
+ * uses no rels outside the 'relids' set, and either is a member of
+ * 'targetlist', or uses no Vars that are not in 'targetlist'.
+ * Returns  NULL if not found.
  */
 static PathKeyItem *
 cdbpathlocus_get_pathkeyitem(List          *pathkey,
                              Relids         relids,
-                             List          *targetlist,
-                             PathKeyItem   *initial)
+                             List          *targetlist)
 {
     ListCell   *pathkeycell;
-
-    if (initial &&
-        tlist_member(initial->key, targetlist))
-        return initial;
 
     foreach(pathkeycell, pathkey)
     {
         PathKeyItem    *item = lfirst(pathkeycell);
         Assert(IsA(item, PathKeyItem));
+
+        /* Constant expr?  Return it. */
+        if (item->cdb_num_relids == 0)
+            return item;
+
+        /* Consider this item if all of its rels are in 'relids'. */
         if (bms_is_subset(item->cdb_key_relids, relids))
         {
+            /* Return this item if the whole expr is in targetlist. */
             if (tlist_member(item->key, targetlist))
                 return item;
-            if (!initial ||
-                item->cdb_num_relids < initial->cdb_num_relids)
-                initial = item;
+
+            /* Return this item if all referenced Vars are in targetlist. */
+            if (!IsA(item->key, Var) &&
+                !cdbpullup_missing_var_walker(item->key, targetlist))
+                return item;
         }
     }
-    return initial;
+    return NULL;
 }                               /* cdbpathlocus_get_pathkeyitem */
 
 
 /*
  * cdbpathlocus_get_partkey_exprs
+ *
+ * Returns a List with one Expr for each partkey column.  Each item either is
+ * in the given targetlist, or has no Var nodes that are not in the targetlist;
+ * and uses only rels in the given set of relids.  Returns NIL if the
+ * partkey cannot be expressed in terms of the given relids and targetlist.
  */
 List *
 cdbpathlocus_get_partkey_exprs(CdbPathLocus     locus,
@@ -335,10 +345,11 @@ cdbpathlocus_get_partkey_exprs(CdbPathLocus     locus,
     {
         List           *pathkey;
         PathKeyItem    *item = NULL;
+
         if (CdbPathLocus_IsHashed(locus))
         {
             pathkey = lfirst(partkeycell);
-            item = cdbpathlocus_get_pathkeyitem(pathkey, relids, targetlist, NULL);
+            item = cdbpathlocus_get_pathkeyitem(pathkey, relids, targetlist);
         }
         else if (CdbPathLocus_IsHashedOJ(locus))
         {
@@ -349,12 +360,19 @@ cdbpathlocus_get_partkey_exprs(CdbPathLocus     locus,
                 pathkey = lfirst(pathkeylistcell);
                 item = cdbpathlocus_get_pathkeyitem(pathkey,
                                                     relids,
-                                                    targetlist,
-                                                    item);
+                                                    targetlist);
+                if (item)
+                    break;
             }
         }
-        Assert(item);
-        result = lappend(result, item->key);
+        else
+            Assert(0);
+
+        /* Fail if can't evaluate partkey in the context of this targetlist. */
+        if (!item)
+            return NIL;
+
+        result = lappend(result, copyObject(item->key));
     }
     return result;
 }                               /* cdbpathlocus_get_partkey_exprs */

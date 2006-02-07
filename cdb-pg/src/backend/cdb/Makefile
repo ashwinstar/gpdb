@@ -20,11 +20,11 @@ SUBDIROBJS := $(SUBDIRS:%=%/SUBSYS.o)
 
 OBJS = cdbvars.o cdbplan.o cdbllize.o cdbcat.o cdbutil.o \
 	   cdblink.o cdbconn.o cdbdisp.o cdbdispatchresult.o \
-	   cdbsrlz.o cdbhash.o cdbheap.o cdbagg.o cdbmutate.o \
+	   cdbsrlz.o cdbhash.o cdbheap.o cdbagg.o cdbmutate.o cdbpullup.o \
 	   cdbaggtactic.o cdbaggmutate.o cdbanalyze.o cdbcopy.o cdblimmutate.o \
 	   cdbsubplan.o cdbtm.o cdbtmlog.o \
 	   cdbpath.o cdbpathlocus.o cdbpathtoplan.o \
-	   cdbbackup.o cdbfts.o cdbgang.o cdblogsync.o cdbpgdatabase.o 
+	   cdbbackup.o cdbfts.o cdbgang.o cdblogsync.o cdbpgdatabase.o
 
 ifeq ($(PORTNAME),cygwin)
 .LIBPATTERNS := $(filter-out %.so,$(.LIBPATTERNS))

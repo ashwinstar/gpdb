@@ -2,7 +2,7 @@
  *
  * cdbpathtoplan.c
  *
- * Copyright (c) 2005, greenplum inc
+ * Copyright (c) 2005-2006, greenplum inc
  *
  * $Id$
  *
@@ -55,6 +55,10 @@ cdbpathtoplan_create_flow(PlannerInfo    *root,
         flow->hashExpr = cdbpathlocus_get_partkey_exprs(path->locus,
                                                         path->parent->relids,
                                                         plan->targetlist);
+        /*
+         * hashExpr can be NIL if the rel is partitioned on columns that aren't
+         * projected (i.e. are not present in the result of this Path operator).
+         */
     }
     else if (CdbPathLocus_IsStrewn(path->locus))
         flow = makeFlow(FLOW_PARTITIONED);
@@ -93,7 +97,8 @@ cdbpathtoplan_create_motion_plan(PlannerInfo   *root,
     else
         numInputSegs = getMPPSegmentCount();
 
-    /* Decorate the subplan with a Flow node telling the plan slicer
+    /*
+     * Decorate the subplan with a Flow node telling the plan slicer
      * what kind of gang will be needed to execute the subplan.
      */
     subplan->flow = cdbpathtoplan_create_flow(root,
@@ -142,14 +147,14 @@ cdbpathtoplan_create_motion_plan(PlannerInfo   *root,
         List   *hashExpr = cdbpathlocus_get_partkey_exprs(path->path.locus,
                                                           path->path.parent->relids,
                                                           subplan->targetlist);
-        Assert(hashExpr);
+        Insist(hashExpr);
         motion = make_hashed_motion(subplan,
                                     false,              /* sendToSecondary */
                                     numInputSegs,
                                     hashExpr);
     }
     else
-        Assert(false);
+        Insist(0);
 
     /* Should sender discard rows that hash to other partitions? */
     if (path->hashToSelfOnly)

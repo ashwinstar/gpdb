@@ -3,7 +3,7 @@
  * cdbllize.h
  *	  definitions for cdbmutate.c utilities
  *
- * Copyright (c) 2005, greenplum inc
+ * Copyright (c) 2005-2006, greenplum inc
  *
  *
  * IDENTIFICATION
@@ -41,27 +41,23 @@ typedef struct ApplyMotionState
 
 extern Plan *apply_motion(Plan *plan, Query *query);
 extern void assignMotionID(Node *newnode, ApplyMotionState * context, Node *oldnode);
-extern bool invertColIdx(List *targetlist, int numCols, AttrNumber *colIdx, AttrNumber **pinverse);
-extern bool invertGrpColIdx(Agg *agg, AttrNumber **pinverse);
 
 /* Declarations of functions defined in cdbaggmutate.c */
-extern Plan *apply_agg_motion(Plan *plan, ApplyMotionState * state);
+void cdbaggmutate_transformToTwoStage(Agg *agg, bool useExecutorVarFormat);
 
 /* Declarations of functions defined in cdblimmutate.c */
 extern Plan *apply_limit_motion(Plan *plan, ApplyMotionState * state);
 
 
-typedef enum HashMotionInfoType
-{
-	INFOTYPE_LEFTEXPR,
-	INFOTYPE_RIGHTEXPR
-}	HashMotionInfoType;
+List *
+getExprListFromTargetList(List         *tlist,
+                          int           numCols,
+                          AttrNumber   *colIdx,
+                          bool          useExecutorVarFormat);
 
-extern List *getHashMotionInfoList(Plan *node, HashMotionInfoType type);
-
-extern List *getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx);
-
+#ifdef UNUSED
 extern Node *getHashExprForExpression(Plan *varsource, Expr *expr);
+#endif /*UNUSED*/
 
 Motion *
 make_motion(Plan       *lefttree,

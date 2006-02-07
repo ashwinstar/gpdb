@@ -14,38 +14,25 @@
  */
 
 #include "postgres.h"
-#include "miscadmin.h"
+
 #include "optimizer/clauses.h"
-#include "nodes/primnodes.h"
-#include "nodes/parsenodes.h"
-#include "nodes/plannodes.h"
-#include "nodes/pg_list.h"
-#include "nodes/print.h"
 #include "parser/parsetree.h"	/* for rt_fetch() */
 #include "utils/lsyscache.h"	/* for getatttypetypmod() */
 #include "nodes/makefuncs.h"	/* for makeVar() */
 #include "parser/parse_expr.h"	/* for expr_type() */
 #include "parser/parse_oper.h"	/* for compatible_oper_opid() */
-#include "nodes/makefuncs.h"	/* for makeVar() */
-#include "nodes/value.h"		/* for makeString() */
-#include "utils/syscache.h"		/* for ReleaseSysCache */
 
-#include "cdb/cdbvars.h"
-#include "cdb/cdbplan.h"
 #include "cdb/cdbllize.h"
-#include "cdb/cdbcat.h"
-#include "cdb/cdbagg.h"
 #include "cdb/cdbmutate.h"
+#include "cdb/cdbplan.h"
+#include "cdb/cdbpullup.h"
+#include "cdb/cdbvars.h"
 
 
 /*
  * Forward Declarations
  */
 static Node *apply_motion_mutator(Node *node, ApplyMotionState * context);
-
-/* TODO Check suitability of the approach taken in these functions. */
-/* static void set_hash_in_flow(Plan *plan, int nattrs, int *attrs); */
-/* static bool force_vars_walker(Node *node, void *varno); */
 
 static void validateMotionNodeParms(MotionType motionType,
 						bool sendToSecondary, bool sendSorted,
@@ -100,31 +87,23 @@ apply_motion(Plan *plan, Query *query)
 	switch (query->commandType)
 	{
 		case CMD_SELECT:
-			/*
-			 * [Re]focus the flow on the dispatch stream.  Note that, if
-			 * the top node's Flow is marked sorted, the movement request
-			 * becomes a request for ordered motion.
-			 *
-			 * TODO Fix top-level sort handling.
-			 *		Currently there is a good  chance that we'll encounter
-			 *		a flow that the optimizer knew was ordered but that
-			 *		we have failed to flag as such.  As an ugly stop-gap,
-			 *		we might check the query for an ORDER BY and slap on a
-			 *		Sort node.	This would only be a band-aid, though, since
-			 *		it doesn't address deeper problems involving interior
-			 *		nodes that depend on order, e.g.,  LIMIT and OFFSET in
-			 *		ordered subqueries.
-			 *
-			 * TODO If the top node is a Material, we should reach below
-			 *		it for our focusing.  Doing so would conserve
-			 *		ExecSupportsBackwardScan-ness.
-			 */
 			if (plan->flow->flotype == FLOW_PARTITIONED)
 			{
-				plan->flow->req_move = MOVEMENT_FOCUS;
-                if (plan->flow->base_flotype == FLOW_UNDEFINED)
-                    plan->flow->base_flotype = plan->flow->flotype;
-                plan->flow->segindex = -1;
+			    /*
+                 * Query result needs to be brought back to the QD.
+                 * Ask for motion to a single QE.  Later, apply_motion
+                 * will override that to bring it to the QD instead.
+                 *
+                 * If the query has an ORDER BY clause, use Merge Receive to
+                 * preserve the ordering.
+                 */
+                if (query->sortClause)
+                {
+                    Insist(focusPlan(plan, true, true, false));
+                    Assert(plan->flow->numSortCols > 0);
+                }
+                else
+                    Insist(focusPlan(plan, true, false, false));
 			}
 			break;
 
@@ -187,7 +166,10 @@ apply_motion(Plan *plan, Query *query)
 						}
 
 						remove_flow_ordering(plan->flow); /* No need to preserve order on INSERT. */
-						plan->flow->hashExpr = getExprListFromTargetList(plan->targetlist, policy->nattrs, policy->attrs);
+						plan->flow->hashExpr = getExprListFromTargetList(plan->targetlist,
+                                                                         policy->nattrs,
+                                                                         policy->attrs,
+                                                                         true);
 						break;
 
 					case POLICYTYPE_ENTRY:
@@ -404,19 +386,13 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
 	if (flow != NULL &&
 		flow->req_xform != MOVEMENT_NONE)
 	{
-		/* Special aggregrate transformation? */
-		if (IsA(node, Agg) && flow->req_xform == MOVEMENT_AGG_RESTRUCT)
-		{
-			newnode = (Node *) apply_agg_motion((Plan *) newnode, context);
-		}
 		/* Special limit transformation? */
-		else if (IsA(node, Limit) && flow->req_xform == MOVEMENT_LIM_RESTRUCT)
+		if (IsA(node, Limit) && flow->req_xform == MOVEMENT_LIM_RESTRUCT)
 		{
 			newnode = (Node *) apply_limit_motion((Plan *) newnode, context);
 		}
 		else
-			ereport(ERROR, (errcode(ERRCODE_INTERNAL_ERROR),
-			                errmsg_internal("Unexpected internal error") ));
+			Insist(0);
 	}
 
     plan = (Plan *)newnode;
@@ -553,7 +529,6 @@ apply_motion_mutator(Node *node, ApplyMotionState * context)
             }
             break;
 
-        case MOVEMENT_DISTINCT_RESTRUCT:
         default:
             Assert(false);
             break;
@@ -586,153 +561,6 @@ assignMotionID(Node *newnode, ApplyMotionState * context, Node *oldnode)
 	}
 }
 
-
-/*
- * Given the targetlist of a [potentially] projecting Plan operator and
- * a vector of attribute numbers in the single argument relation of the
- * plan, try to create a palloc'd vector of attribute numbers of the given
- * targetlist.
- *
- * A result of true indicates sucess, in which case a pointer to the new
- * vector is stored at location pinverse.  Note that  a NULL pointer may
- * occur with as a sucess, iff the number of attributes if zero.
- *
- * A result of false indicates failure which may be due to a failure to
- * find a targetlist entry corresponding to a given argument attribute (the
- * attribute may have been projected out) or due to some irregularity such
- * as a mismatch between a targetlist index and the resno declared in the
- * targetlist entry itself.
- */
-bool
-invertColIdx(List *targetlist, int numCols, AttrNumber *colIdx, AttrNumber **pinverse)
-{
-	ListCell   *cell;
-	int			i;
-	AttrNumber	tleidx,
-			   *invGrpColIdx;
-	TargetEntry *tle;
-	bool		aok = TRUE;
-
-	*pinverse = NULL;
-	if (numCols == 0)
-		return aok;
-
-	invGrpColIdx = palloc(numCols * sizeof(AttrNumber));
-
-	for (i = 0; i < numCols; i++)
-	{
-		AttrNumber	child_tleidx = colIdx[i];
-
-		tleidx = 0;
-		foreach(cell, targetlist)
-		{
-			tle = (TargetEntry *) lfirst(cell);
-			Assert(tle->resno >= 1);
-			tleidx++;
-			if (IsA(tle->expr, Var) &&((Var *) tle->expr)->varattno == child_tleidx)
-			{
-				if (tleidx != tle->resno)
-				{
-					aok = FALSE;
-				}
-				else
-				{
-					invGrpColIdx[i] = tleidx;
-				}
-				break;
-			}
-		}
-		if (!aok)
-			break;
-	}
-
-	if (aok)
-	{
-		*pinverse = invGrpColIdx;
-	}
-
-	return aok;
-}
-
-/*
- * Create a palloc'd vector of Atttribute numbers over the targetlist
- * of the given Agg node corresponding to its grpColIdx vector (which
- * contains Attribute numbers over the targetlist of its child).
- *
- * A pointer to the new array or a NULL (if there are no grouping
- * attributes) is stored at location pinverse.
- *
- * Result = TRUE indicates success.  Note that a NULL pointer at location
- * pinverse counts as a success, iff there are no grouping attributes.
- *
- * Failure results from a mismatch between the targetlist index and the
- * resno declared in the targetlist entries themselves.
- */
-bool
-invertGrpColIdx(Agg *agg, AttrNumber **pinverse)
-{
-	return invertColIdx(agg->plan.targetlist, agg->numCols, agg->grpColIdx, pinverse);
-}
-
-
-/* -----------------------------------------------------------------------
- * Helper functions for extracting Lists of join expressions
- * from nodes, where the logic varies by node type
- * -----------------------------------------------------------------------
- */
-List *
-getHashMotionInfoList(Plan *node, HashMotionInfoType type)
-{
-	List	   *hashinfo = NIL;
-
-	switch (nodeTag(node))
-	{
-		case T_Sort:
-			{
-				Sort	   *snode = (Sort *) node;
-				int			numCols = snode->numCols;
-				AttrNumber *sortColIdx = snode->sortColIdx;
-
-				if (numCols == 0 || sortColIdx == NULL)
-					elog(ERROR,
-						 "Empty sortColIdx array encountered in getHashExprList for Sort node");
-
-				hashinfo = getExprListFromTargetList(snode->plan.targetlist, numCols, sortColIdx);
-			}
-
-			break;
-
-		case T_Agg:
-			{
-				Agg		   *aggnode = (Agg *) node;
-				int			numCols = aggnode->numCols;
-				AttrNumber *grpColIdx = NULL;
-
-				if (aggnode->aggstrategy == AGG_PLAIN)
-					elog(ERROR, "there is no hash expression list for Plain Aggregate nodes");
-
-				if (!invertGrpColIdx(aggnode, &grpColIdx))
-				{
-					elog(ERROR,
-						 "Unexpected grpColIdx array contents in getHashExprList for Agg node");
-				}
-
-				if (numCols == 0 || grpColIdx == NULL)
-					elog(ERROR,
-						 "Empty grpColIdx array encountered in getHashExprList for Agg node");
-
-				hashinfo = getExprListFromTargetList(aggnode->plan.targetlist, numCols, grpColIdx);
-			}
-
-			break;
-
-		default:
-			elog(WARNING, "getHashMotionInfoList called with an unsupported node type %d", nodeTag(node));
-			break;
-	}
-
-	return hashinfo;
-}
 
 /* --------------------------------------------------------------------
  * make_motion -- creates a Motion node.
@@ -795,7 +623,8 @@ make_motion(Plan       *lefttree,
 	plan->total_cost = lefttree->total_cost;
 	plan->plan_rows = lefttree->plan_rows;
 	plan->plan_width = lefttree->plan_width;
-	plan->targetlist = copyObject(lefttree->targetlist);
+	plan->targetlist = cdbpullup_targetlist(lefttree,
+                            cdbpullup_exprHasSubplanRef(lefttree->targetlist));
 	plan->qual = NIL;
 	plan->lefttree = lefttree;
 	plan->righttree = NULL;
@@ -1122,19 +951,7 @@ motion_expr_walker(Node *node, char *not_used)
 
 	if (IsA(node, Var))
 	{
-		Var		   *var = (Var *) node;
-
-		switch (var->varno)
-		{
-			case INNER:
-				var->varno = OUTER;
-				break;
-
-			default:
-				var->varno = OUTER;
-				break;
-		}
-
+		((Var *)node)->varno = OUTER;
 		return false;
 	}
 	else
@@ -1158,11 +975,13 @@ motion_expr_walker(Node *node, char *not_used)
  * ----------------------------------------------------------------
  */
 List *
-getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
+getExprListFromTargetList(List         *tlist,
+                          int           numCols,
+                          AttrNumber   *colIdx,
+                          bool          useExecutorVarFormat)
 {
 	int			i;
 	List	   *elist = NIL;
-	Index		varno = OUTER;	/* Generated Var nodes must refer to OUTER */
 
 	for (i = 0; i < numCols; i++)
 	{
@@ -1176,25 +995,40 @@ getExprListFromTargetList(List *tlist, int numCols, AttrNumber *colIdx)
 		if (target == NULL)
 			elog(ERROR, "no tlist entry for key %d", n);
 
-		/*
-		 * Make a Var that references the target list entry at this offset,
-		 * using OUTER as the varno
-		 */
-		
-		// ????
-		//relid = rel->relid;
-		//reloid = getrelid(relid, root->parse->rtable);
-		//get_atttypetypmod(reloid, varattno, &vartypeid, &type_mod);
-		// ????
-		new_var = makeVar(varno, n, exprType((Node *) target->expr), exprTypmod((Node *) target->expr), 0);
+        /* After set_plan_references(), make a Var referencing subplan tlist. */
+        if (useExecutorVarFormat)
+        {
+            /* If subplan expr is a Var, copy to preserve its EXPLAIN info. */
+            if (IsA(target->expr, Var))
+            {
+                new_var = copyObject(target->expr);
+                new_var->varno = OUTER;
+                new_var->varattno = n;
+            }
 
-		elist = lappend(elist, new_var);
+            /*
+	         * Make a Var that references the target list entry at this offset,
+	         * using OUTER as the varno
+	         */
+            else
+		        new_var = makeVar(OUTER,
+                                  n,
+                                  exprType((Node *) target->expr),
+                                  exprTypmod((Node *) target->expr),
+                                  0);
+            elist = lappend(elist, new_var);
+        }
+
+        /* Before set_plan_references(), copy the subplan's result expr. */
+        else
+            elist = lappend(elist, copyObject(target->expr));
 	}
 
 	return elist;
 }
 
 
+#ifdef UNUSED
 /* ----------------------------------------------------------------
  * getHashExprForExpression
  *
@@ -1223,8 +1057,11 @@ static Node* ovmutator(Node *node, void *context)
 		return NULL;
 	if ( IsA(node, Var) )
 	{
-		Var *var = (Var*)node;
-		return (Node*)makeVar(OUTER, var->varattno, var->vartype, var->vartypmod, 0);
+        Var    *newvar = (Var *)copyObject(node);
+
+        newvar->varno = OUTER;
+
+        return (Node *)newvar;
 	}
 	return expression_tree_mutator(node, ovmutator, NULL);
 }
@@ -1252,6 +1089,7 @@ static Node* hvmutator(Node *node, void *context)
 	}
 	return expression_tree_mutator(node, hvmutator, context);
 }
+#endif /*UNUSED*/
 
 #ifdef UNUSED
 /* ----------------------------------------------------------------

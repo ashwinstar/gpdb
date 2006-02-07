@@ -37,6 +37,7 @@
 
 #include "cdb/cdbpath.h"        /* cdbpath_rows() */
 #include "cdb/cdbpathtoplan.h"  /* cdbpathtoplan_create_flow() etc. */
+#include "cdb/cdbpullup.h"      /* cdbpullup_targetlist() */
 
 static Scan *create_scan_plan(PlannerInfo *root, Path *best_path);
 static List *build_relation_tlist(RelOptInfo *rel);
@@ -2177,7 +2178,8 @@ make_sort(PlannerInfo *root, Plan *lefttree, int numCols,
 			  lefttree->plan_width);
 	plan->startup_cost = sort_path.startup_cost;
 	plan->total_cost = sort_path.total_cost;
-	plan->targetlist = copyObject(lefttree->targetlist);
+	plan->targetlist = cdbpullup_targetlist(lefttree,
+                            cdbpullup_exprHasSubplanRef((Expr *)lefttree->targetlist));
 	plan->qual = NIL;
 	plan->lefttree = lefttree;
 	plan->righttree = NULL;
@@ -2643,7 +2645,8 @@ make_unique(Plan *lefttree, List *distinctList)
 	 * has a better idea.
 	 */
 
-	plan->targetlist = copyObject(lefttree->targetlist);
+	plan->targetlist = cdbpullup_targetlist(lefttree,
+                            cdbpullup_exprHasSubplanRef((Expr *)lefttree->targetlist));
 	plan->qual = NIL;
 	plan->lefttree = lefttree;
 	plan->righttree = NULL;
@@ -2700,7 +2703,8 @@ make_setop(SetOpCmd cmd, Plan *lefttree,
 	if (plan->plan_rows < 1)
 		plan->plan_rows = 1;
 
-	plan->targetlist = copyObject(lefttree->targetlist);
+	plan->targetlist = cdbpullup_targetlist(lefttree,
+                            cdbpullup_exprHasSubplanRef((Expr *)lefttree->targetlist));
 	plan->qual = NIL;
 	plan->lefttree = lefttree;
 	plan->righttree = NULL;
@@ -2790,7 +2794,8 @@ make_limit(Plan *lefttree, Node *limitOffset, Node *limitCount,
 			plan->plan_rows = 1;
 	}
 
-	plan->targetlist = copyObject(lefttree->targetlist);
+	plan->targetlist = cdbpullup_targetlist(lefttree,
+                            cdbpullup_exprHasSubplanRef((Expr *)lefttree->targetlist));
 	plan->qual = NIL;
 	plan->lefttree = lefttree;
 	plan->righttree = NULL;

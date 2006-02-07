@@ -7,6 +7,7 @@
  *	  and join trees.
  *
  *
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -944,9 +945,7 @@ typedef enum Movement
 	MOVEMENT_BROADCAST,		/* Broadcast motion. */
 	MOVEMENT_REPARTITION,	/* Hash motion */
 	MOVEMENT_REP2PARTITIONED, /* inflow is replicated outflow is partitioned */
-	MOVEMENT_AGG_RESTRUCT,	/* Restructure an Agg node into three stages */
 	MOVEMENT_LIM_RESTRUCT,	/* Restructure a Limit node into three stages */
-	MOVEMENT_DISTINCT_RESTRUCT	/* Restructure an Agg (distinct) node into four stages */
 } Movement;
 
 /*----------

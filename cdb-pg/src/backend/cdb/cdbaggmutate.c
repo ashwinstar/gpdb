@@ -12,7 +12,6 @@
 *
 * Copyright (c) 2005-2006, Greenplum Inc
 *
-*
 * IDENTIFICATION
 *	  $Header$
 *
@@ -20,34 +19,20 @@
 */
 #include "postgres.h"
 
-#include <ctype.h>
-
 #include "lib/stringinfo.h"
-#include "optimizer/clauses.h"
-#include "nodes/nodes.h"
-#include "nodes/parsenodes.h"
-#include "nodes/plannodes.h"
-#include "nodes/pg_list.h"
-#include "nodes/primnodes.h"
-#include "nodes/relation.h"
+#include "optimizer/clauses.h"  /* expression_tree_mutator() etc */
 #include "nodes/makefuncs.h"
-#include "nodes/print.h"
-#include "access/relscan.h"
-#include "access/tupdesc.h"
-#include "access/heapam.h"
-#include "catalog/namespace.h"
-#include "catalog/pg_type.h"
-#include "utils/guc.h"
-#include "utils/datum.h"
-#include "utils/rel.h"
-#include "utils/builtins.h"
-#include "utils/fmgroids.h"
-
 #include "parser/parse_expr.h"	/* exprType() and exprTypmod(). */
-#include "cdb/cdbvars.h"
+#include "parser/parsetree.h"   /* get_tle_by_resno() */
+
 #include "cdb/cdbagg.h"
 #include "cdb/cdbllize.h"
+#include "cdb/cdbpullup.h"
+#include "cdb/cdbvars.h"
 
+#define FLATCOPY(newnode, node, nodetype)  \
+	( (newnode) = makeNode(nodetype), \
+	  memcpy((newnode), (node), sizeof(nodetype)) )
 
 /* --------------------------------------------------------------------------
  * Utility structures
@@ -57,14 +42,10 @@
 typedef struct
 SplitAggsContext
 {
-	int			attr_count;		/* Number of child attributes. */
-	AttrNumber *attr_map;		/* Child grouped attribute i is Intermediate
-								 * attribute attr_map[i] */
-
 	List	   *inner_tlist;	/* This will be the target list of the
 								 * intermediate. */
 
-	bool		mutatingAggref;
+    bool        useExecutorVarFormat;
 
 	/* Implicit result of any helper. */
 	char	   *errmsg;
@@ -73,29 +54,8 @@ SplitAggsContext
 
 
 /* Declare forward. */
-static void initSplitAggsContext(SplitAggsContext * context);
 static Node *splitAggs(Node *node, SplitAggsContext * context);
 static Node *splitAggs_mutator(Node *node, SplitAggsContext * context);
-static Var *addInnerTle(Expr *expr, SplitAggsContext * context);
-
-
-/*
- * Function: initSplitAggsContext
- *
- * Helper for function apply_agg_motion.
- *
- * Initialize a SplitAggsContext structure.
- */
-static void
-initSplitAggsContext(SplitAggsContext * context)
-{
-	context->attr_map = NULL;
-	context->inner_tlist = NIL;
-
-	context->mutatingAggref = FALSE;
-
-	context->errmsg = NULL;
-}
 
 
 /*
@@ -104,20 +64,18 @@ initSplitAggsContext(SplitAggsContext * context)
  * Helper for function apply_agg_motion.
  *
  * Add the given expression to the the inner query target list currently
- * under construction in the given context.  Return a Var node by which
+ * under construction in the given context.  Return an expr by which
  * the outer query may refer to the new target entry in the inner query.
  *
  * TODO Do we need more info for the Var or the Resdom?
  */
-static Var *
+static Expr *
 addInnerTle(Expr *expr, SplitAggsContext * context)
 {
 	TargetEntry *inner_tle;
-	//Resdom	   *resdom;
 	AttrNumber	attno;
 	char	   *attname;
 	StringInfoData str;
-	Var		   *var;
 
 	/* This will be our attribute number in the intermediate. */
 	attno = 1 + list_length(context->inner_tlist);
@@ -133,28 +91,63 @@ addInnerTle(Expr *expr, SplitAggsContext * context)
 				attname,
 				FALSE);
 				
-	inner_tle->ressortgroupref = 0;
 	context->inner_tlist = lappend(context->inner_tlist, inner_tle);
 
 	/* Return a Var node by which the outer query can refer to this */
-	var = makeVar(0,
-				  attno,
-				  exprType((Node *) expr),
-				  exprTypmod((Node *) expr),
-				  0);
-
-	return var;
+    if (context->useExecutorVarFormat)
+	    return (Expr *)makeVar(0,
+				               attno,
+				               exprType((Node *) expr),
+				               exprTypmod((Node *) expr),
+				               0);
+    else
+        return (Expr *)copyObject(expr);
 }
 
 
- /*
-  * Function: apply_agg_motion
+/*
+ * insertInnerAgg
+ *
+ * Make a new (inner) Agg node and insert it beneath the given (outer) Agg node.
+ * Returns the new inner Agg.
+ */
+static Agg*
+insertInnerAgg(Agg* outer_agg)
+{
+    Agg    *inner_agg;
+    Agg     temp_agg;
+
+    /* Make a local working copy of the original (outer) Agg node. */
+    temp_agg = *outer_agg;
+
+    /* Subplan will be reattached beneath the new inner Agg.  Don't copy it. */
+    temp_agg.plan.lefttree = NULL;
+
+    /* Init plans will stay with the outer Agg.  Don't copy them. */
+    temp_agg.plan.initPlan = NIL;
+
+    /* Caller will build new targetlist and qual for inner Agg.  Don't copy. */
+    temp_agg.plan.targetlist = NIL;		
+    temp_agg.plan.qual = NIL;		
+
+    /* Make inner Agg by copying our temp Agg and any remaining substructures. */
+    inner_agg = (Agg *)copyObject(&temp_agg);
+
+    /* Splice new inner Agg into the tree beneath the outer Agg. */
+    inner_agg->plan.lefttree = outer_agg->plan.lefttree;
+    outer_agg->plan.lefttree = (Plan *)inner_agg;
+
+    return inner_agg;
+}                               /* insertInnerAgg */
+
+
+/*
+  * Function: cdbaggmutate_transformToTwoStage
   *
   * A 2-stage aggregate transformation restructures a given Agg node into
   * an intermediate Agg node that computes a partial result (per segment
   * database) and a final Agg node that computes final result (per segment
-  * or on a specific segment).	The result of the final Agg is just the
-  * the desired result of the given Agg node.
+  * or on a specific segment).	The final Agg node is the given node.
   *
   * In addition, a Motion node is introduced between the Agg nodes.  This
   * either focuses the partial results onto to a single database process
@@ -163,175 +156,123 @@ addInnerTle(Expr *expr, SplitAggsContext * context)
   * The flow characteristics of the final Agg node depend on the motion.
   * In the repartitioning case, the hash specifications must be in terms
   * of the final Agg (which, of course, is congruent to the original.)
-  */
-Plan *
-apply_agg_motion(Plan *plan, ApplyMotionState * state)
+  *
+  * The general idea is to split the argument Agg node in two.  The
+  * original (agg) will be incrementally transformed into the final
+  * aggregation, the copy (inner_agg) into the partial or intermediate
+  * aggregation.
+  *
+  * 'useExecutorVarFormat' must be true if called after optimization, when
+  * set_plan_references() has been called and Var nodes have been adjusted to
+  * refer to items in the subplan's targetlist.  It must be false before the
+  * end of optimization, when Var nodes are still in parser format, referring
+  * to RTE items.
+  *
+ */
+
+void
+cdbaggmutate_transformToTwoStage(Agg *agg, bool useExecutorVarFormat)
 {
-	Agg		   *agg;
-	Agg		   *inner_agg;
-	Plan	   *inner_plan;
-    Plan       *child_plan = plan->lefttree;
-    Flow       *outer_flow = plan->flow;
-    Flow       *inner_flow;
-    Motion     *motion;
+    Plan       *child_plan = agg->plan.lefttree;
     List       *hashExpr = NIL;
+    Agg		   *inner_agg;
     AttrNumber *sortColIdx = NULL;
+    AttrNumber *resGrpColIdx = NULL;
     Oid        *sortOps = NULL;
-	int			i,
-				n;
-    int         numInputSegs;
-	ListCell   *cell;
-	TargetEntry *tle = NULL,
-			   *new_tle;
-	AttrNumber	attno;
+	int			i;
+    ListCell   *cell;
+	TargetEntry *tle;
 	SplitAggsContext context;
 
+    Assert(!agg->plan.flow &&
+           child_plan->flow &&
+           child_plan->flow->flotype == FLOW_PARTITIONED);
 
-	/* Sanity checks */
-	Assert(IsA(plan, Agg)
-		   &&plan->flow->req_xform == MOVEMENT_AGG_RESTRUCT
-		   && plan->lefttree != NULL
-		   && plan->righttree == NULL
-		);
+    /*
+     * Make inner Agg node and splice it beneath the outer Agg.
+     */
+    inner_agg = insertInnerAgg(agg);
 
-#define FLATCOPY(newnode, node, nodetype)  \
-	( (newnode) = makeNode(nodetype), \
-	  memcpy((newnode), (node), sizeof(nodetype)) )
-
-	/*
-	 * The general idea is to split the argument Agg node in two.  The
-	 * original (agg) will be incrementally transformed into the final
-	 * aggregation, the copy (inner_agg) into the partial or intermediate
-	 * aggregation.  At the end, they will be spliced together around an
-	 * intervening Motion node.
-	 */
-
-	agg = (Agg *) plan;
-	FLATCOPY(inner_agg, agg, Agg);
-	inner_plan = (Plan *) inner_agg;
-
-	/*
-	 * Retain the attached flow, which may specify a motion to be applied
-	 * after this transformation; but clear the flag that caused the call to
-	 * this function.
-	 */
-	outer_flow->req_xform = MOVEMENT_NONE;
-
-	inner_plan->targetlist = NIL;		/* Build on the fly. */
-	inner_plan->qual = NIL;		/* Build on the fly. */
-	plan->lefttree = NULL;		/* Eventually, this will be Motion node. */
-	plan->initPlan = NIL;		/* Does it matter which node get's the
-								 * initPlan? */
-	plan->extParam = bms_copy(inner_plan->extParam);
-	plan->allParam = bms_copy(inner_plan->allParam);
-
-    /* inner Agg inherits child flow */
-    inner_flow = pull_up_Flow((Plan*)inner_agg, child_plan, false);
-    inner_agg->plan.flow = inner_flow;
-
-    inner_plan->dispatch = DISPATCH_UNDETERMINED; /* Default */
-	agg->grpColIdx = NULL; /* Eventually, put a new one in. */
-
+    /* Allocate sort info arrays for the inner Agg's Flow. */
     if (agg->aggstrategy == AGG_SORTED)
     {
         Assert(agg->numCols <= child_plan->flow->numSortCols);
-
         sortColIdx = palloc(agg->numCols * sizeof(*sortColIdx));
         sortOps = palloc(agg->numCols * sizeof(*sortOps));
     }
 
-    /* Create our local context. */
-	initSplitAggsContext(&context);
-
 	/*
+     * All the grouping cols are in the original Agg's targetlist.  Find them.
+     *
+     * We'll take the grouping cols from the result targetlist instead of
+     * the child targetlist so that EXPLAIN can display a column alias which
+     * might be present in the result TargetEntry.
+     */
+    i = cdbpullup_colIdx((Plan *)agg,
+                         child_plan,
+                         agg->numCols,
+                         agg->grpColIdx,
+                         &resGrpColIdx);
+    Assert(i == agg->numCols);
+
+    /*
 	 * Begin constructing the target list for the intermediate (partial) Agg
-	 * node by adding entries corresponding to the grouping attributes.  We
-	 * can take advantage of (and verify) the fact that the targetlist of the
-	 * given Agg node must contain simple, Var-type target list entries for
-	 * the grouping columns--we can just find them and copy them to the list
-	 * we're buidling.
-	 *
-	 * Note that we also record the location of the grouping attributes of the
-	 * intermediate Agg in a lookup table (attr_map) so we can convert Var
-	 * references from referring-to-child-plan to referring-to-intermediate.
-	 * This also gives us a way to check whether a Var reference is to a
-	 * grouped or ungrouped attribute.
-	 *
-	 * Entries in context.attr_map correspond to the target list of the
-	 * input relation.	(Dummy element 0 adjusts for origin 1.)  Entries
-	 * that are grouping attributes have as their value, the attribute
-	 * number of the grouping attribute in the target list of the partial
-	 * aggregation Agg node.  Others have -1.
+	 * node by adding entries corresponding to the grouping attributes.
 	 */
-	context.attr_count = list_length(child_plan->targetlist);
-	n = 1 + context.attr_count;
-	context.attr_map = (AttrNumber *) palloc(n * sizeof(AttrNumber));
+    context.inner_tlist = NIL;
+    context.useExecutorVarFormat = useExecutorVarFormat;
+    context.errmsg = NULL;
 
-	/* Initially flag all as non-grouping. */
-	for (i = 0; i < n; i++)
+    /*
+     * Build a new targetlist for the inner Agg, starting with the
+     * grouping columns.  Also build hash/sort keys for the Motion
+     * node that will eventually be inserted between the two Agg nodes.
+     */
+    for (i = 0; i < agg->numCols; i++)
 	{
-		context.attr_map[i] = -1;
-	}
+        TargetEntry    *new_tle;
 
-	/* Reset grouping attr entries to their position in the inner tlist. */
-	for (i = 0; i < inner_agg->numCols; i++)
-	{
-		AttrNumber	g = inner_agg->grpColIdx[i];
-		bool		found = false;
-        Var        *var;
+        /* Find this grouping column in the outer Agg's targetlist. */
+        tle = get_tle_by_resno(agg->plan.targetlist, resGrpColIdx[i]);
+        Assert(tle);
 
-		foreach(cell, plan->targetlist)
-		{
-			tle = (TargetEntry *) lfirst(cell);
-			if (IsA(tle->expr, Var) &&((Var *) tle->expr)->varattno == g)
-			{
-				found = true;
-				break;
-			}
-		}
-		Assert(found);			/* TODO Should we issue an error instead? */
-		Assert(0 < g && g < n);
+        /* Add the grouping column to the inner Agg's targetlist. */
+        new_tle = copyObject(tle);
+        new_tle->resno = i + 1;
+        context.inner_tlist = lappend(context.inner_tlist, new_tle);
 
-		new_tle = copyObject(tle);
-		attno = 1 + list_length(context.inner_tlist);
-		new_tle->resno = attno;
-		Assert(new_tle->resno >= 1);
-
-        /* Grouping cols will be hash/sort keys for Motion node. */
+        /* Grouping cols become hash/sort keys for Motion node. */
         if (agg->aggstrategy == AGG_HASHED)
         {
-            var = makeVar(OUTER,
-                          attno,
-                          exprType((Node *) tle->expr),
-                          exprTypmod((Node *) tle->expr),
-                          0);
-            hashExpr = lappend(hashExpr, var);
+            Expr   *hx = copyObject(new_tle->expr);
+            Var    *var;
+
+            /* Adjust Var node to reference the inner Agg's targetlist entry. */
+            if (useExecutorVarFormat)
+            {
+                var = (Var *)hx;
+                Assert(IsA(var, Var) && var->varno == 0);
+                var->varno = OUTER;
+                var->varattno = new_tle->resno;
+            }
+
+            hashExpr = lappend(hashExpr, hx);
         }
         else if (agg->aggstrategy == AGG_SORTED)
         {
-            Assert(g == child_plan->flow->sortColIdx[i]);
+            Assert(inner_agg->grpColIdx[i] == child_plan->flow->sortColIdx[i]);
             sortOps[i] = child_plan->flow->sortOperators[i];
-            sortColIdx[i] = attno;
+            sortColIdx[i] = new_tle->resno;
         }
 
-        context.inner_tlist = lappend(context.inner_tlist, new_tle);
-		context.attr_map[g] = attno;
-	}
-
-	/*
-	 * Since we just put the grouping attributes on front of the inner
-	 * targetlist, and since Motion nodes are non-projecting, we know that the
-	 * grouping attributes of the outer Agg's input (the Motion) will be
-	 * 1,2,3,....
-	 */
-	if (agg->numCols > 0)
-	{
-		agg->grpColIdx = palloc(agg->numCols * sizeof(AttrNumber));
-		for (i = 0; i < agg->numCols; i++)
-		{
-			agg->grpColIdx[i] = i + 1;
-		}
-	}
+	    /*
+	     * Since we just put the grouping attributes on front of the inner
+	     * targetlist, and since Motion nodes are non-projecting, we know that
+	     * the grouping attributes of the outer Agg's input (the Motion) will be
+	     * 1,2,3,....
+	     */
+        agg->grpColIdx[i] = new_tle->resno;
+    }
 
 	/*
 	 * Now mutate the given Agg's target list and qual (the HAVING clause) to
@@ -343,7 +284,7 @@ apply_agg_motion(Plan *plan, ApplyMotionState * state)
 	 * This can fail since there may be aggregate functions we don't know how to
 	 * split.  Therefore, we need to check for sucess as we go.
 	 */
-	foreach(cell, plan->targetlist)
+	foreach(cell, agg->plan.targetlist)
 	{
 		tle = (TargetEntry *) (lfirst(cell));
 		tle->expr = (Expr *) splitAggs((Node *) tle->expr, &context);
@@ -355,7 +296,7 @@ apply_agg_motion(Plan *plan, ApplyMotionState * state)
 	 *		shipping, consolidating, and discarding them on the outer.
 	 */
 
-	plan->qual = (List *) splitAggs((Node *) plan->qual, &context);
+	agg->plan.qual = (List *) splitAggs((Node *) agg->plan.qual, &context);
 
 	if (context.errmsg != NULL)
 	{
@@ -367,59 +308,40 @@ apply_agg_motion(Plan *plan, ApplyMotionState * state)
 	}
 
 	/* Finish composing the inner plan. */
-	inner_plan->targetlist = context.inner_tlist;
-	context.inner_tlist = NIL;
+	inner_agg->plan.targetlist = context.inner_tlist;
 
-    /* How many processes in source gang? */
-    if (inner_flow->flotype == FLOW_SINGLETON)
-        numInputSegs = 1;
-    else
-        numInputSegs = getMPPSegmentCount();
-
-	/* Splice in Motion and adjust the flow of the outer plan, if needed. */
+	/* Set inner Flow to request insertion of Motion above the inner Agg. */
+    inner_agg->plan.flow = makeFlow(child_plan->flow->flotype);
 	switch (agg->aggstrategy)
 	{
 		case AGG_PLAIN:
-            Assert(outer_flow->flotype == FLOW_SINGLETON &&
-                   inner_flow->flotype == FLOW_PARTITIONED);
-            motion = make_union_motion((Plan *)inner_agg,
-                                       false,
-                                       numInputSegs,
-                                       outer_flow->segindex);
-			break;
+            /* Move all rows to a single process in any order. */
+            Insist(focusPlan((Plan *)inner_agg, true, false, false));
+            break;
 
         case AGG_SORTED:
-            Assert(outer_flow->flotype == FLOW_SINGLETON &&
-                   inner_flow->flotype == FLOW_PARTITIONED);
-            motion = make_sorted_union_motion((Plan *)inner_agg,
-                                              false,
-                                              numInputSegs,
-                                              outer_flow->segindex,
-                                              agg->numCols,
-                                              sortColIdx,
-                                              sortOps);
+            /* Move all rows to a single process, ordered on grouping cols. */
+            Insist(focusPlan((Plan *)inner_agg, true, true, false));
+            inner_agg->plan.flow->numSortCols = agg->numCols;
+            inner_agg->plan.flow->sortColIdx = sortColIdx;
+            inner_agg->plan.flow->sortOperators = sortOps;
             break;
 
 		case AGG_HASHED:
-            Assert(outer_flow->flotype == FLOW_PARTITIONED &&
-                   inner_flow->flotype == FLOW_PARTITIONED);
-            motion = make_hashed_motion((Plan *)inner_agg,
-                                        false,
-                                        numInputSegs,
-                                        hashExpr);
+            /* Repartition on the grouping cols. */
+            Insist(repartitionPlan((Plan *)inner_agg, true, false, false, hashExpr));
             break;
 
 		default:
 			Insist(0);
 	}
 
-    plan->lefttree = (Plan *)motion;
-    assignMotionID((Node *) motion, state, NULL);
+    /* Outer Agg inherits the flow that will result from the Motion. */
+    agg->plan.flow = pull_up_Flow((Plan *)agg, (Plan *)inner_agg,
+                                  agg->aggstrategy == AGG_SORTED);
 
-	/* TODO - Adjust costs for explain */
-
-	return plan;
-}
+    /* TODO - Adjust costs for explain */
+}                               /* cdbaggmutate_transformToTwoStage */
 
 
 /*
@@ -439,7 +361,6 @@ apply_agg_motion(Plan *plan, ApplyMotionState * state)
 static Node *
 splitAggs(Node *node, SplitAggsContext * context)
 {
-	context->mutatingAggref = FALSE;	/* Reset state. */
 	return splitAggs_mutator(node, context);
 }
 
@@ -471,8 +392,6 @@ splitAggs(Node *node, SplitAggsContext * context)
 static Node *
 splitAggs_mutator(Node *node, SplitAggsContext * context)
 {
-	Node	   *new_expr;
-
 	if (node == NULL || context->errmsg != NULL)
 		return NULL;
 
@@ -481,10 +400,8 @@ splitAggs_mutator(Node *node, SplitAggsContext * context)
 		int i;
 		Aggref* aggref = (Aggref*)node;
         CdbAggTactic *tactic;
+        Node	   *new_expr;
 		
-		Assert( !context->mutatingAggref ); /* Aggrefs don't nest */
-		context->mutatingAggref = TRUE;
-
 		/*
 		 * Get the specific tactic by which to parallelize this aggregate
 		 * function call.
@@ -495,14 +412,11 @@ splitAggs_mutator(Node *node, SplitAggsContext * context)
 			freeAggTactic(tactic);
 			if (context->errmsg == NULL)
 				context->errmsg = "No tactic for implementing this aggregation";
-			context->mutatingAggref = FALSE;
-
 			ereport(ERROR, (
 							errcode(ERRCODE_CDB_FEATURE_NOT_YET),
 							errmsg("Cannot parallelize that command yet"),
 							errdetail(context->errmsg)
 							));
-
 			return NULL;
 		}
 
@@ -534,8 +448,7 @@ splitAggs_mutator(Node *node, SplitAggsContext * context)
 				Assert(!partial_agg->aggstar);
 			}
 
-
-			partial->var = addInnerTle((Expr *) partial_agg, context);
+			partial->expr = addInnerTle((Expr *) partial_agg, context);
 		}
 
 		/*
@@ -563,14 +476,14 @@ splitAggs_mutator(Node *node, SplitAggsContext * context)
 				/* Apply the function to the argument. */
 				FuncExpr   *expr = makeFuncExpr(final->argfnoid,
 												final->argtype,
-												list_make1(partial->var),
+												list_make1(partial->expr),
 												COERCE_EXPLICIT_CALL);
 
 				final_agg->target = (Expr *) expr;
 			}
 			else
 			{
-				final_agg->target = (Expr *) (partial->var);
+				final_agg->target = (Expr *) (partial->expr);
 			}
 
 			/* Cache the Expr for use in the consolidator call. */
@@ -604,21 +517,24 @@ splitAggs_mutator(Node *node, SplitAggsContext * context)
 								COERCE_EXPLICIT_CALL);
 			new_expr = (Node *) expr;
 		}
-
-		context->mutatingAggref = FALSE;
 		return new_expr;
 	}
-	else if (IsA(node, Var) &&!context->mutatingAggref)
+
+    /* Var nodes can reference grouping columns only. */
+    if (IsA(node, Var))
 	{
-		Var		   *var = (Var *) copyObject(node);
+        Var            *var = (Var *)copyObject(node);
+        TargetEntry    *tle;
 
-		Assert(0 < var->varattno && var->varattno <= context->attr_count);
-
-		var->varattno = context->attr_map[var->varattno];		/* Remap */
-
-		Assert(var->varattno > 0);		/* Better be a grouping attribute! */
-
-		return (Node *) var;
+        /* If executor format, pull up to reference inner Agg's targetlist. */
+        if (var->varno == 0)
+        {
+            tle = cdbpullup_findSubplanRefInTargetList(var->varattno,
+                                                       context->inner_tlist);
+            Assert(tle);
+            var->varattno = tle->resno;
+        }
+        return (Node *)var;
 	}
 
 	/* By default, just keep mutating. */

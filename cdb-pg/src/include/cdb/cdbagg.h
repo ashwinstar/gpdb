@@ -25,7 +25,26 @@
 /*
  * Declarations of functions defined in cdbagg.c
  */
-bool cdbagg_prescan(Agg *agg);
+
+
+/*
+ * cdbagg_prescan
+ *
+ * Helper for prescan_walker() does processing for an Agg node.
+ *
+ * Note that prescan_walker has already finished scanning the child nodes
+ * of the node.
+ *
+ * 'useExecutorVarFormat' must be true if called after optimization, when
+ * set_plan_references() has been called and Var nodes have been adjusted to
+ * refer to items in the subplan's targetlist.  It must be false before the
+ * end of optimization, when Var nodes are still in parser format, referring
+ * to RTE items.
+ *
+ * Returns true if successful, false if the given Agg is not supported.
+ */
+bool
+cdbagg_prescan(Agg *agg, bool useExecutorVarFormat);
 
 
 /*
@@ -83,7 +102,7 @@ CdbAggPartial
 	 * don't use it and don't count on it surviving calls to other routines.
 	 */
 
-	Var		   *var;			/* Working storage for the code that
+	Expr       *expr;		    /* Working storage for the code that
 								 * implements the stategy.	This will hold the
 								 * Var that by which the outer query may refer
 								 * to this partial aggregation. */

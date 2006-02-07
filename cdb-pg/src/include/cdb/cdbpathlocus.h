@@ -3,7 +3,7 @@
  * cdbpathlocus.h
  *
  *
- * Copyright (c) 2005, greenplum inc
+ * Copyright (c) 2005-2006, greenplum inc
  *
  * $Id$
  *
@@ -200,6 +200,14 @@ cdbpathlocus_join(CdbPathLocus a, CdbPathLocus b);
 
 /************************************************************************/
 
+/*
+ * cdbpathlocus_get_partkey_exprs
+ *
+ * Returns a List with one Expr for each partkey column.  Each item either is
+ * in the given targetlist, or has no Var nodes that are not in the targetlist;
+ * and uses only rels in the given set of relids.  Returns NIL if the
+ * partkey cannot be expressed in terms of the given relids and targetlist.
+ */
 List *
 cdbpathlocus_get_partkey_exprs(CdbPathLocus     locus,
                                Bitmapset       *relids,
