@@ -168,7 +168,11 @@ DefineSequence(CreateSeqStmt *seq)
 				coldef->colname = "last_value";
 				
 				if (Mpp_role == MPP_ROLE_EXECUTE)
+				{
 					new.last_value += ((Mpp_segment+1) * 100000000);
+					if (!Mpp_is_primary)
+						new.last_value += (50000000);
+				}
 
 				value[i - 1] = Int64GetDatumFast(new.last_value);
 
