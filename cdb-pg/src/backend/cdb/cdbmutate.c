@@ -1214,7 +1214,8 @@ doesUpdateAffectPartitionCols(MppPolicy * policy, List *targetlist)
 			return true;
 
 		var = (Var *) entry->expr;
-		if (var->varattno != colno)
+		if (var->varnoold != 1 ||
+            var->varoattno != colno)
 			return true;
 	}
 
