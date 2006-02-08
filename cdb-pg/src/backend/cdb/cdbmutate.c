@@ -306,7 +306,7 @@ apply_motion(Plan *plan, Query *query)
 			ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
 					        errmsg("Cannot parallelize that %s yet", cmd),
                             errdetail("Passage of data from one segment to another "
-                                      "is not yet supported for %s operations.",
+                                      "is not yet supported during %s operations.",
                                       cmd),
                             errhint("The WHERE condition must specify equality "
                                     "between corresponding DISTRIBUTED BY columns "
