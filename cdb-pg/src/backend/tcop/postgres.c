@@ -3387,18 +3387,18 @@ PostgresMain(int argc, char *argv[], const char *username)
 							if (!IsTransactionOrTransactionBlock())
 							{
 								/* build the right beginStmt based on the options */
-							if (txnOptions & MPP_OPT_READ_COMMITTED)
-								beginStmt = "BEGIN ISOLATION LEVEL READ COMMITTED";
-							else if (txnOptions & MPP_OPT_SERIALIZABLE)
-								beginStmt = "BEGIN ISOLATION LEVEL SERIALIZABLE";
-							else if( txnOptions & MPP_OPT_REPEATABLE_READ)
-								beginStmt = "BEGIN ISOLATION LEVEL REPEATABLE READ";
-							else
-								beginStmt = "BEGIN ISOLATION LEVEL READ UNCOMMITTED";
-					
-							
-							/* kick off an explict BEGIN */
-							exec_simple_query(beginStmt);
+								if (txnOptions & MPP_OPT_READ_COMMITTED)
+									beginStmt = "BEGIN ISOLATION LEVEL READ COMMITTED";
+								else if (txnOptions & MPP_OPT_SERIALIZABLE)
+									beginStmt = "BEGIN ISOLATION LEVEL SERIALIZABLE";
+								else if( txnOptions & MPP_OPT_REPEATABLE_READ)
+									beginStmt = "BEGIN ISOLATION LEVEL REPEATABLE READ";
+								else
+									beginStmt = "BEGIN ISOLATION LEVEL READ UNCOMMITTED";
+						
+								
+								/* kick off an explict BEGIN */
+								exec_simple_query(beginStmt);
 							}
 						}
 						
