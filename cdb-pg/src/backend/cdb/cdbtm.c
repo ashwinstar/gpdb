@@ -150,11 +150,15 @@ int
 startDtxTransaction(bool dispatchBegin)
 {
 	int			ret = DTX_OK;
-	
-	isDirty = false;
-	
+		
 	if (Mpp_role != MPP_ROLE_DISPATCH)
 		return DTX_OK;
+	
+	/*reset some transaction state variables */
+	isDirty = false;
+	txnBegan = false;
+
+		
 	if (currentGxact == NULL)
 	{
 		ret = condStartDtxTransaction();
@@ -194,8 +198,12 @@ commitDtxTransaction(void)
 int
 rollbackDtxTransaction(void)
 {
+	elog( DEBUG3, "<JGE> rollackDtxTransaction");
+	
+	isDirty = false;
 	if (Mpp_role != MPP_ROLE_DISPATCH || currentGxact == NULL)
 		return DTX_OK;
+
 
 	/*
 	 * temporary ignore this call if it is in phase 2 commit, which can not be
@@ -203,6 +211,7 @@ rollbackDtxTransaction(void)
 	 */
 	if (currentGxact->state == DTX_STATE_2P_COMMIT)
 		return DTX_OK;
+
 
 	return condRollbackDtxTransaction();
 }
@@ -331,6 +340,8 @@ condRollbackDtxTransaction(void)
 	bool		ignoreError;
 	int			previous_state;
     StringInfoData errMessage;
+
+	elog( DEBUG3, "<JGE> condRollbackDtxTransaction");
 
 	if (currentGxact == NULL)
 	{
