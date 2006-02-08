@@ -198,8 +198,6 @@ commitDtxTransaction(void)
 int
 rollbackDtxTransaction(void)
 {
-	elog( DEBUG3, "<JGE> rollackDtxTransaction");
-	
 	isDirty = false;
 	if (Mpp_role != MPP_ROLE_DISPATCH || currentGxact == NULL)
 		return DTX_OK;
@@ -340,8 +338,6 @@ condRollbackDtxTransaction(void)
 	bool		ignoreError;
 	int			previous_state;
     StringInfoData errMessage;
-
-	elog( DEBUG3, "<JGE> condRollbackDtxTransaction");
 
 	if (currentGxact == NULL)
 	{
