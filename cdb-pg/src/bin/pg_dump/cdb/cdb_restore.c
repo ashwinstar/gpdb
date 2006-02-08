@@ -172,7 +172,7 @@ static void usage(void)
 {
 	printf(("%s restores a Bizgres MPP database from an archive created by mpp_dump.\n\n"), pszProgName );
 	printf(("Usage:\n"));
-	printf(("  %s [OPTION]... [FILE]\n"), pszProgName );
+	printf(("  %s [OPTIONS]\n"), pszProgName );
 
 	printf(("\nGeneral options:\n"));
 	printf(("  -d, --dbname=NAME        output database name\n"));
