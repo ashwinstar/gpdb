@@ -3859,6 +3859,7 @@ ATExecDropColumn(Relation rel, const char *colName,
 	AttrNumber	attnum;
 	List	   *children;
 	ObjectAddress object;
+	MppPolicy  *policy;
 
 	/* At top level, permission check was done in ATPrepCmd, else do it */
 	if (recursing)
@@ -3892,6 +3893,28 @@ ATExecDropColumn(Relation rel, const char *colName,
 						colName)));
 
 	ReleaseSysCache(tuple);
+	
+	policy = get_table_policy(RelationGetRelid(rel));
+
+	if (policy != NULL && policy->ptype == POLICYTYPE_PARTITIONED)
+	{
+		int			ia = 0;
+
+		for (ia = 0; ia < policy->nattrs; ia++)
+		{
+			if (attnum == policy->attrs[ia])
+			{
+				
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("You cannot drop a column that is used for the distribution of the table")));
+
+			}
+
+
+		}
+		
+	}
 
 	/*
 	 * Propagate to children as appropriate.  Unlike most other ALTER
