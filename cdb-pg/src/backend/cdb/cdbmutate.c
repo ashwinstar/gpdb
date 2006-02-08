@@ -40,13 +40,13 @@ static void validateMotionNodeParms(MotionType motionType,
 						int numOutputSegs, int *outputSegIdx,
 				int numSortCols, AttrNumber *sortColIdx, Oid *sortOperators);
 static bool motion_expr_walker(Node *node, char *not_used);
-
 #ifdef UNUSED
 static List *makeMotionTargetList(Plan *arg);
 #endif   /* UNUSED */
 static bool doesUpdateAffectPartitionCols(MppPolicy * policy, List *rte);
 static bool hasCtid(Plan *plan);
-static bool hasCtid_outside_tlist(Plan *plan);
+static bool has_ctid_outside_tlist_walker(Node *node, void* unused);
+
 
 #define remove_flow_ordering(flow) \
 	if (flow) { \
@@ -77,7 +77,6 @@ apply_motion(Plan *plan, Query *query)
 {
 	Plan	   *result;
 	ApplyMotionState state;
-	bool		is_Update_Delete = FALSE;
 
 	state.nextMotionID = 1;		/* Start at 1 so zero will mean "unassigned". */
     state.sliceDepth = 0;
@@ -231,8 +230,6 @@ apply_motion(Plan *plan, Query *query)
 				RangeTblEntry *rte;
 				MppPolicy  *policy;
 
-				is_Update_Delete = TRUE;
-
 				rte = rt_fetch(query->resultRelation, query->rtable);
 				Assert(rte->rtekind == RTE_RELATION);
 				policy = get_table_policy(rte->relid);
@@ -240,18 +237,6 @@ apply_motion(Plan *plan, Query *query)
 				switch (policy->ptype)
 				{
 					case POLICYTYPE_PARTITIONED:
-						/*
-						 * Currently, we only support update or delete involving 1 table
-						 */
-						if (list_length(query->rtable) > 1)
-						{
-							ereport(ERROR, (
-										errcode(ERRCODE_CDB_FEATURE_NOT_YET),
-									 errmsg("Cannot parallelize that %s yet",
-											query->commandType == CMD_UPDATE ? "UPDATE" : "DELETE")
-											));
-						}
-
 						/*
 						 * Make sure we are not updating any of the partitioning columns
 						 */
@@ -263,13 +248,7 @@ apply_motion(Plan *plan, Query *query)
 											errmsg("Cannot parallelize an update that involves the partitioning columns")
 											));
 						}
-
-						if (plan->flow->flotype == FLOW_PARTITIONED)
-						{
-							plan->flow->req_move = MOVEMENT_NONE;
-						}
-						else if (plan->flow->flotype == FLOW_REPLICATED
-								 || plan->flow->flotype == FLOW_SINGLETON)
+						if (plan->flow->flotype != FLOW_PARTITIONED)
 						{
 							ereport(ERROR, (
 										errcode(ERRCODE_CDB_FEATURE_NOT_YET),
@@ -314,9 +293,28 @@ apply_motion(Plan *plan, Query *query)
 	result->nMotionNodes = state.nextMotionID - 1;
 
 	/* Last minute check for MPP badness. */
-	if (is_Update_Delete)
+	if (query->commandType == CMD_DELETE ||
+        query->commandType == CMD_UPDATE)
 	{
-		if (hasCtid_outside_tlist(result))
+        char   *cmd = (query->commandType == CMD_UPDATE) ? "UPDATE" : "DELETE";
+
+		/*
+		 * Currently, we only support update or delete involving 1 gang
+		 */
+		if (result->nMotionNodes > 0)
+		{
+			ereport(ERROR, (errcode(ERRCODE_CDB_FEATURE_NOT_YET),
+					        errmsg("Cannot parallelize that %s yet", cmd),
+                            errdetail("Passage of data from one segment to another "
+                                      "is not yet supported for %s operations.",
+                                      cmd),
+                            errhint("The WHERE condition must specify equality "
+                                    "between corresponding DISTRIBUTED BY columns "
+                                    "of the target table and all joined tables.")
+					));
+		}
+
+		if (has_ctid_outside_tlist_walker((Node *)result, NULL))
 		{
 			ereport(ERROR, (
 							errcode(ERRCODE_CDB_FEATURE_NOT_YET),
@@ -1434,37 +1432,6 @@ hasCtid(Plan *plan)
 }
 
 bool
-hasCtid_outside_tlist(Plan *plan)
-{
-	ListCell   *cell;
-	TargetEntry *tle;
-	ctid_inv_data invdata;
-	int			n_in_tlist = 0;
-
-	invdata.nctid = 0;
-	invdata.exit_early = FALSE; /* Count them all. */
-
-	if (ctid_inventory_walker((Node *) plan, &invdata))
-	{
-		ereport(ERROR, (
-						errcode(ERRCODE_CDB_INTERNAL_ERROR),
-						errmsg("unexpected error in plan")
-						));
-	}
-
-	foreach(cell, plan->targetlist)
-	{
-		tle = (TargetEntry *) lfirst(cell);
-		if (IsA(tle->expr, Var) &&((Var *) (tle->expr))->varattno == CTID_ATTRNO)
-		{
-			n_in_tlist++;
-		}
-	}
-
-	return (invdata.nctid > n_in_tlist);
-}
-
-bool
 ctid_inventory_walker(Node *node, ctid_inv_data * inv)
 {
 	if (node == NULL)
@@ -1495,3 +1462,31 @@ ctid_inventory_walker(Node *node, ctid_inv_data * inv)
 	return plan_tree_walker(node, ctid_inventory_walker, inv);
 
 }
+
+bool
+has_ctid_outside_tlist_walker(Node *node, void* unused)
+{
+	if (node == NULL)
+		return false;
+
+	switch (nodeTag(node))
+	{
+		case T_TargetEntry:
+            /* Ignore Var nodes at top level of target list. */
+            if (IsA(((TargetEntry *)node)->expr, Var))
+                return false;
+            break;
+
+		case T_Var:
+			/* Return true if found CTID outside target list. */
+			if (((Var *) node)->varoattno == CTID_ATTRNO)
+                return true;
+			return false;
+
+		default:
+			/* Let plan_tree_walker() deal with other node types. */
+			break;
+	}
+	return plan_tree_walker(node, has_ctid_outside_tlist_walker, NULL);
+}                               /* has_ctid_outside_tlist_walker */
+
