@@ -450,4 +450,4 @@
 
 
 #mpp_fault_action = readonly         # none for disabling Fault Tolerance feature,
-                                     # other valid parameters are readonly, continue and shutdown.
+                                     # other valid parameters are readonly, continue 
