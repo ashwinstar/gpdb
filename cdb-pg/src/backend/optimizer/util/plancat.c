@@ -948,14 +948,14 @@ cdb_default_stats_warning_for_index(Oid reloid, Oid indexoid)
     relname = get_rel_name(reloid);
     indexname = get_rel_name(indexoid);
 
-    ereport(INFO, (errmsg("Query planner will use default statistics for index "
-                          "\"%s\" on table \"%s\"",
-                          indexname ? indexname : "??",
-                          relname ? relname : "??"),
-                   errhint("To cache a sample of the table's actual statistics "
-                           "for optimization, use the ANALYZE or VACUUM ANALYZE "
-                           "command.")
-                   ));
+    ereport(NOTICE,
+            (errmsg("Query planner will use default statistics for index \"%s\" "
+                    "on table \"%s\"",
+                    indexname ? indexname : "??",
+                    relname ? relname : "??"),
+             errhint("To cache a sample of the table's actual statistics for "
+                     "optimization, use the ANALYZE or VACUUM ANALYZE command.")
+             ));
 
     if (relname)
         pfree(relname);
@@ -978,13 +978,12 @@ cdb_default_stats_warning_for_table(Oid reloid)
     /* Get name from catalog, not from relcache, in case name has changed. */
     relname = get_rel_name(reloid);
 
-    ereport(INFO, (errmsg("Query planner will use default statistics for table "
-                          "\"%s\"",
-                          relname ? relname : "??"),
-                   errhint("To cache a sample of the table's actual statistics "
-                           "for optimization, use the ANALYZE or VACUUM ANALYZE "
-                           "command.")
-                   ));
+    ereport(NOTICE,
+            (errmsg("Query planner will use default statistics for table \"%s\"",
+                    relname ? relname : "??"),
+             errhint("To cache a sample of the table's actual statistics for "
+                     "optimization, use the ANALYZE or VACUUM ANALYZE command.")
+             ));
 
     if (relname)
         pfree(relname);
