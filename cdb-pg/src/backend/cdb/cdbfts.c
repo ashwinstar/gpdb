@@ -31,7 +31,7 @@ static LWLockId ftsControlLock;
 static int *ftsSyncCount;
 int		   *ftsAction;
 static bool *ftsReadOnlyFlag;
-static bool *ftsQDMirroring;
+
 static uint16 *ftsSegDBTransientState;
 static int *ftsSegDBTransientCount;
 
@@ -40,6 +40,8 @@ static PGconn *entryConn = NULL;
 static int	localFtsSyncCount = -1;
 static bool InReConfigure = false;
 static char *currDbName;
+
+static struct FtsQDMirrorInfo *ftsQDMirrorInfo=NULL;
 
 static void CdbShutdown(void);
 static void initPQConnectionBuffer(CdbComponentDatabaseInfo *, char *, PQExpBuffer, bool);
@@ -85,7 +87,14 @@ FtsShmemInit(void)
 		ftsSyncCount = &shared->ftsSyncCount;
 		ftsAction = &shared->ftsAction;
 		ftsReadOnlyFlag = &shared->ftsReadOnlyFlag;
-		ftsQDMirroring = &shared->ftsQDMirroring;
+
+		ftsQDMirrorInfo = &shared->ftsQDMirror;
+
+		ftsQDMirrorInfo->enabled = true; /* set default to true, will be set to
+										  * false if connection failed */
+		memset(ftsQDMirrorInfo->name, 0, sizeof(ftsQDMirrorInfo->name));
+		ftsQDMirrorInfo->port = 0;
+
 		ftsSegDBTransientState = shared->ftsSegDBTransientState;
 		ftsSegDBTransientCount = &shared->ftsSegDBTransientCount;
 
@@ -93,8 +102,7 @@ FtsShmemInit(void)
 		shared->ftsSyncCount = 0;
 		shared->ftsSegDBTransientCount = 0;
 		shared->ftsReadOnlyFlag = mpp_set_read_only;
-		shared->ftsQDMirroring = true;	/* set default to true, will be set to
-										 * false if connection failed */
+
 		if (Mpp_role == MPP_ROLE_DISPATCH)
 		{
 			shared->ftsAction = convertFaultActionValue(mpp_fault_action_string);
@@ -259,13 +267,16 @@ void
 disableQDMirroring(void)
 {
 	elog(LOG, "FTS: QD mirroring disabled");
-	*ftsQDMirroring = false;
+	ftsQDMirrorInfo->enabled = false;
 }
 
 bool
 isQDMirroringEnabled(void)
 {
-	return *ftsQDMirroring;
+	if (ftsQDMirrorInfo == NULL)
+		return false;
+	
+	return ftsQDMirrorInfo->enabled;
 }
 
 void
@@ -776,4 +787,55 @@ bool
 isFtsReadOnlySet(void)
 {
 	return *ftsReadOnlyFlag;
+}
+
+void
+FtsUpdateQDMirrorInfo(struct CdbComponentDatabaseInfo *dbinfo)
+{
+	int len;
+
+	Assert(dbinfo != NULL);
+
+	len = strlen(dbinfo->hostname);
+	if (len >= sizeof(ftsQDMirrorInfo->name))
+		elog(ERROR, "FtsUpdateQDMirrorInfo: hostname too long for fts QD mirror configuration storage");
+	memcpy(ftsQDMirrorInfo->name, dbinfo->hostname, len);
+	ftsQDMirrorInfo->name[len] = 0;
+	ftsQDMirrorInfo->port = dbinfo->port;
+
+	return;
+}
+
+void
+FtsDumpQDMirrorInfo(void)
+{
+	if (!isQDMirroringEnabled() ||
+		ftsQDMirrorInfo->name[0] == 0 || ftsQDMirrorInfo->port == 0)
+	{
+		elog(LOG, "QD mirroring not enabled");
+		return;
+	}
+
+	elog(LOG, "QD mirror active name (%s:%d), port %d",
+		 ftsQDMirrorInfo->name, strlen(ftsQDMirrorInfo->name), ftsQDMirrorInfo->port);
+	return;
+}
+
+void
+FtsGetQDMirrorInfo(char **hostname, uint16 *port)
+{
+	Assert(hostname != NULL);
+	Assert(port != NULL);
+
+	if (!isQDMirroringEnabled() ||
+		ftsQDMirrorInfo->name[0] == 0 || ftsQDMirrorInfo->port == 0)
+	{
+		*hostname = NULL;
+		*port = 0;
+		return;
+	}
+
+	*hostname = ftsQDMirrorInfo->name;
+	*port = ftsQDMirrorInfo->port;
+	return;
 }

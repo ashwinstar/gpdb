@@ -12,6 +12,15 @@
 #include "utils/guc.h"
 #include "cdb/cdbgang.h"
 
+struct FtsQDMirrorInfo
+{
+	bool		enabled;
+	/* stored copies of QD parameters, required so that bg-writer
+	 * process knows how to connect */
+	char		name[256];
+	uint16		port;
+};
+
 #define FTS_MAX_TRANSIENT_STATE 100
 
 typedef struct FtsControlBlock
@@ -21,7 +30,9 @@ typedef struct FtsControlBlock
 	int			ftsSyncCount;
 	int			ftsAction;
 	bool		ftsReadOnlyFlag;
-	bool		ftsQDMirroring;
+
+	struct FtsQDMirrorInfo		ftsQDMirror;
+
 	int			ftsSegDBTransientCount;
 	uint16		ftsSegDBTransientState[FTS_MAX_TRANSIENT_STATE];
 }	FtsControlBlock;
@@ -60,5 +71,9 @@ extern void disableQDMirroring(void);
 extern CdbComponentDatabases *applyTransientState(CdbComponentDatabases *);
 extern void FtsEvaluateTransientState(void);
 extern bool isFtsReadOnlySet(void);
+
+extern void FtsUpdateQDMirrorInfo(struct CdbComponentDatabaseInfo *dbinfo);
+extern void FtsGetQDMirrorInfo(char **hostname, uint16 *port);
+void FtsDumpQDMirrorInfo(void);
 
 #endif   /* CDBFTS_H */

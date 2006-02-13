@@ -205,6 +205,9 @@ cdb_sync_xlog(void)
 	 */
 	ensureBufferSize();
 	readLogMessage(buf, wlen);
+
+	elog(DEBUG4, "cdb_sync_xlog: woffset %d len %d", woffset, wlen);
+
 	syncWriteLog(xlogfilefd, buf, woffset, wlen);
 
 	if (resync)
@@ -302,6 +305,8 @@ readLogMessage(void *buf, int plen)
 	len = ntohl(len);
 	len -= 4;
 	pq_getbytes(buf, len);
+
+	elog(DEBUG4, "readLogMessage: plen %d len: %d", plen, len);
 }
 
 

@@ -254,6 +254,7 @@ buildMirrorQDDefinition(void)
 		}
 		else
 		{
+			FtsUpdateQDMirrorInfo(mirrorDb);
 			/* verify connection */
 			write_qd_sync("issyncmaster", NULL, 0);
 		}
@@ -298,6 +299,56 @@ parseOffsetsFromMessage(char *buf, int *pfileoff, int *mfileoff)
 					errmsg("QD Mirroring: parse error on message returned from standby-QD (%s)", buf)));
 }
 
+/*
+ * The bg-writer process needs to be able to build its communications
+ * channel with the mirror-QD (if such exists), but has only the
+ * cached values in shared memory.
+ */
+static void
+buildQDMirrorFromShmem(void)
+{
+	uint16 port;
+	CdbComponentDatabaseInfo mirrorDb;
+
+	Assert(cdb_mirrored_entry_db == NULL);
+
+	FtsGetQDMirrorInfo(&mirrorDb.hostname, &port);
+	if (mirrorDb.hostname == NULL)
+	{
+		elog(LOG, "buildQDMirrorFromShmem: no hostname for mirror");
+		return;
+	}
+
+	mirrorDb.port = port;
+
+	cdb_mirrored_entry_db = malloc(sizeof(SegmentDatabaseDescriptor));
+	memset(cdb_mirrored_entry_db, 0, sizeof(SegmentDatabaseDescriptor));
+	cdbconn_initSegmentDescriptor(cdb_mirrored_entry_db, &mirrorDb, NULL);
+
+	/* connect to mirrored QD */
+	if (!cdblink_connectQD(cdb_mirrored_entry_db))
+	{
+		ereport(WARNING, (errcode(ERRCODE_WARNING_MPP_INTERCONNECTION),
+						  errmsg("QD Mirroring failed for entry db.  %s",
+								 cdb_mirrored_entry_db->error_message.data)
+					));
+		cdb_mirrored_entry_db->errcode = 0;
+		resetPQExpBuffer(&cdb_mirrored_entry_db->error_message);
+
+		/* mark the db as down */
+		/*
+		  markSegDBStatus(cdb_mirrored_entry_db->segment_database_info->dbid, false);
+		*/
+	}
+	else
+	{
+		/* verify connection */
+		write_qd_sync("issyncmaster", NULL, 0);
+	}
+
+	return;
+}
+
 void
 write_qd_sync(char *cmd, void *buf, int len)
 {
@@ -306,9 +357,15 @@ write_qd_sync(char *cmd, void *buf, int len)
 
 	if (cdb_mirrored_entry_db == NULL)
 	{
-		//disableQDMirroring();
-		//elog(WARNING, "QD mirror: no mirror");
-		return;
+		buildQDMirrorFromShmem();
+		/* did we successfully rebuild from shmem cache ? */
+		if (cdb_mirrored_entry_db == NULL)
+		{
+			//disableQDMirroring();
+			//elog(LOG, "QD mirror: no mirror");
+			return;
+		}
+		/* we were able to rebuild the mirror entry from our shared-memory cache */
 	}
 
 	conn = cdb_mirrored_entry_db->conn;
@@ -430,7 +487,6 @@ cdblink_connectQD(SegmentDatabaseDescriptor * segdbDesc)
 {
 	CdbComponentDatabaseInfo *q = segdbDesc->segment_database_info;
 	PQExpBufferData buffer;
-	char	   *username = GetUserNameFromId(GetUserId());
 
 	/*
 	 * We use PQExpBufferData instead of StringInfoData
@@ -452,11 +508,6 @@ cdblink_connectQD(SegmentDatabaseDescriptor * segdbDesc)
 		appendPQExpBuffer(&buffer, "host=%s ", q->hostname);
 
 	appendPQExpBuffer(&buffer, "port=%u ", q->port);
-
-	if (segdbDesc->dbname)
-		appendPQExpBuffer(&buffer, "dbname=%s ", segdbDesc->dbname);
-
-	appendPQExpBuffer(&buffer, "user=%s ", username);
 
 	/*
 	 * Call libpq to connect
