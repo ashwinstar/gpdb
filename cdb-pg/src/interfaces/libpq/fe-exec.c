@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-exec.c,v 1.176.2.1 2005/11/22 18:23:29 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/interfaces/libpq/fe-exec.c,v 1.176.2.2 2006/01/25 20:44:49 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */

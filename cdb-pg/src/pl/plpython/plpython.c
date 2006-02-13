@@ -29,7 +29,7 @@
  * MAINTENANCE, SUPPORT, UPDATES, ENHANCEMENTS, OR MODIFICATIONS.
  *
  * IDENTIFICATION
- *	$PostgreSQL: pgsql/src/pl/plpython/plpython.c,v 1.66.2.1 2005/12/29 21:47:40 neilc Exp $
+ *	$PostgreSQL: pgsql/src/pl/plpython/plpython.c,v 1.66.2.3 2006/01/17 17:33:23 tgl Exp $
  *
  *********************************************************************
  */
@@ -862,6 +862,7 @@ PLy_function_build_args(FunctionCallInfo fcinfo, PLyProcedure * proc)
 					tupType = HeapTupleHeaderGetTypeId(td);
 					tupTypmod = HeapTupleHeaderGetTypMod(td);
 					tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
+					tupdesc = CreateTupleDescCopy(tupdesc);
 
 					/* Set up I/O funcs if not done yet */
 					if (proc->args[i].is_rowtype != 1)
@@ -872,6 +873,7 @@ PLy_function_build_args(FunctionCallInfo fcinfo, PLyProcedure * proc)
 					tmptup.t_data = td;
 
 					arg = PLyDict_FromTuple(&(proc->args[i]), &tmptup, tupdesc);
+					FreeTupleDesc(tupdesc);
 				}
 			}
 			else
@@ -903,6 +905,7 @@ PLy_function_build_args(FunctionCallInfo fcinfo, PLyProcedure * proc)
 			 * FIXME -- error check this
 			 */
 			PyList_SetItem(args, i, arg);
+			arg = NULL;
 		}
 	}
 	PG_CATCH();

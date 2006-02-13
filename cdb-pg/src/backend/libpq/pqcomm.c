@@ -30,7 +30,7 @@
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
- *	$PostgreSQL: pgsql/src/backend/libpq/pqcomm.c,v 1.182 2005/10/17 16:24:19 tgl Exp $
+ *	$PostgreSQL: pgsql/src/backend/libpq/pqcomm.c,v 1.182.2.1 2006/01/24 16:38:50 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -856,7 +856,7 @@ pq_getstring(StringInfo s)
 			if (PqRecvBuffer[i] == '\0')
 			{
 				/* include the '\0' in the copy */
-				appendBinaryStringInfo(s, (const char *)(PqRecvBuffer + PqRecvPointer),
+				appendBinaryStringInfo(s, PqRecvBuffer + PqRecvPointer,
 									   i - PqRecvPointer + 1);
 				PqRecvPointer = i + 1;	/* advance past \0 */
 				return 0;
@@ -864,7 +864,7 @@ pq_getstring(StringInfo s)
 		}
 
 		/* If we're here we haven't got the \0 in the buffer yet. */
-		appendBinaryStringInfo(s, (const char *)(PqRecvBuffer + PqRecvPointer),
+		appendBinaryStringInfo(s, PqRecvBuffer + PqRecvPointer,
 							   PqRecvLength - PqRecvPointer);
 		PqRecvPointer = PqRecvLength;
 	}
@@ -1183,7 +1183,7 @@ pq_getkeepalivesidle(Port *port)
 
 	if (port->default_keepalives_idle == 0)
 	{
-		socklen_t	size = sizeof(port->default_keepalives_idle);
+		ACCEPT_TYPE_ARG3 size = sizeof(port->default_keepalives_idle);
 
 		if (getsockopt(port->sock, IPPROTO_TCP, TCP_KEEPIDLE,
 					   (char *) &port->default_keepalives_idle,
@@ -1255,7 +1255,7 @@ pq_getkeepalivesinterval(Port *port)
 
 	if (port->default_keepalives_interval == 0)
 	{
-		socklen_t	size = sizeof(port->default_keepalives_interval);
+		ACCEPT_TYPE_ARG3 size = sizeof(port->default_keepalives_interval);
 
 		if (getsockopt(port->sock, IPPROTO_TCP, TCP_KEEPINTVL,
 					   (char *) &port->default_keepalives_interval,
@@ -1327,7 +1327,7 @@ pq_getkeepalivescount(Port *port)
 
 	if (port->default_keepalives_count == 0)
 	{
-		socklen_t	size = sizeof(port->default_keepalives_count);
+		ACCEPT_TYPE_ARG3 size = sizeof(port->default_keepalives_count);
 
 		if (getsockopt(port->sock, IPPROTO_TCP, TCP_KEEPCNT,
 					   (char *) &port->default_keepalives_count,

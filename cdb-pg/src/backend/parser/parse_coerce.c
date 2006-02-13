@@ -8,7 +8,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/parser/parse_coerce.c,v 2.132.2.1 2005/11/22 18:23:13 momjian Exp $
+ *	  $PostgreSQL: pgsql/src/backend/parser/parse_coerce.c,v 2.132.2.3 2006/01/17 17:33:20 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -243,7 +243,10 @@ coerce_type(ParseState *pstate, Node *node,
 		}
 
 		param->paramtype = targetTypeId;
-		return (Node *) param;
+
+		/* Apply domain constraints, if necessary */
+		return coerce_to_domain((Node *) param, InvalidOid, targetTypeId,
+								cformat, false, false);
 	}
 	if (find_coercion_pathway(targetTypeId, inputTypeId, ccontext,
 							  &funcId))
@@ -702,7 +705,7 @@ coerce_record_to_complex(ParseState *pstate, Node *node,
 						format_type_be(RECORDOID),
 						format_type_be(targetTypeId))));
 
-	tupdesc = lookup_rowtype_tupdesc(targetTypeId, -1);
+	tupdesc = CreateTupleDescCopy(lookup_rowtype_tupdesc(targetTypeId, -1));
 	newargs = NIL;
 	ucolno = 1;
 	arg = list_head(args);
@@ -759,6 +762,8 @@ coerce_record_to_complex(ParseState *pstate, Node *node,
 						format_type_be(RECORDOID),
 						format_type_be(targetTypeId)),
 				 errdetail("Input has too many columns.")));
+
+	FreeTupleDesc(tupdesc);
 
 	rowexpr = makeNode(RowExpr);
 	rowexpr->args = newargs;
