@@ -16,7 +16,7 @@ else
   MPPSEARCH=$MPPHOME
 fi
 
-MPPPATH=`find $MPPSEARCH -name mpp_dumpall | tail -1`
+MPPPATH=`find $MPPSEARCH -name mpp_dump | tail -1`
 RETVAL=$?
 
 if [ "$RETVAL" -ne 0 ]; then
@@ -34,7 +34,8 @@ MPPPATH=`dirname $MPPPATH`
 #***********************************************************
 # Create a list of catalog tables to printout
 #***********************************************************
-declare -a TABLES=(mpp host listener pgdatabase policy version)
+declare -a TABLES=(mpp version_at_initdb)
+declare -a TABLESQD=(configuration mpp pgdatabase distribution_policy version_at_initdb)
 
 #***********************************************************
 # Declare the max and min port numbers to probe
@@ -43,30 +44,64 @@ declare -a PORTS=(5432 10001 10002 10003)
 ((PORT_MIN=0))
 ((PORT_MAX=3))
 
+if [ -z $MASTER_DEMO_PORT ] ; then
+    echo "set MASTER_DEMO_PORT"
+    exit 1
+fi
+
+if [ -z $DEMO_PORT_BASE ] ; then
+    echo "set DEMO_PORT_BASE"
+    exit 1
+fi
+
+
+declare -a PORTS=($MASTER_DEMO_PORT `expr $DEMO_PORT_BASE + 1` \
+    `expr $DEMO_PORT_BASE + 2` `expr $DEMO_PORT_BASE + 3 `)
+
+
+#
+# Check tables on Master
+#
+
+#echo ${PORTS[@]}
 #***********************************************************
 # Loop over all ports and all tables, printing out their
 # contents
 #***********************************************************
 for ((i=PORT_MIN; i<PORT_MAX+1; i++))
 do
-  echo "******************************************************************************************************"
-  echo "******************************************************************************************************"
+  echo "**********************************************************************"
+  echo "**********************************************************************"
   echo "Probing segment instance at port number ${PORTS[$i]}"
-  echo "******************************************************************************************************"
-  echo "******************************************************************************************************"
+  echo "**********************************************************************"
+  echo "**********************************************************************"
+  if [ ${i} -eq 0 ]; then 
+    for table in ${TABLESQD[@]}
+    do
+        echo "Table: mpp_$table"
+        echo "**************************"
+        PGOPTIONS="-c mpp_session_role=utility" $MPPPATH/psql -p ${PORTS[$i]} template1 -c  "select * from mpp_"$table
+	    RETVAL=$?
+	    if [ $RETVAL -ne 0 ]; then
+	        echo "$0 failed."
+	        exit 1
+        fi
+    done
+    fi
+
   for table in ${TABLES[@]}
   do
+    echo "Table: mpp_$table"
     echo "**************************"
-    echo "Table: mpp.$table"
     PGOPTIONS="-c mpp_session_role=utility" $MPPPATH/psql -p ${PORTS[$i]} template1 -c \
-    "select * from mpp."$table
+    "select * from mpp_"$table
 	RETVAL=$?
 	if [ $RETVAL -ne 0 ]; then
 	  echo "$0 failed."
 	  exit 1
     fi
   done
-  echo "******************************************************************************************************"
-  echo "******************************************************************************************************"
 done
+echo "**********************************************************************"
+echo "**********************************************************************"
 

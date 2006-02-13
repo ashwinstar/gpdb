@@ -1,25 +1,46 @@
-all: clean prereqsOK 
+# Makef File for Demo
+#
+#
+
+
+#
+# VARIABLES
+#
+MASTER_PORT=11007
+PORT_BASE=10000
+
+all: clean check cluster probe
+
+cluster:	
+	@ echo ""
 	@echo "Building cluster, this may take a few minutes."
-	@./demo_cluster.sh
-	@echo "Probing cluster configuration."
-	@./probe_config.sh
-	@echo "Cluster build successful."
-
-.PHONY : clean prereqsOK
-
-prereqsOK:
-	@if [ `netstat -an | grep 5432 | wc -l` -ne 0 ]; then echo "Port 5432 appears to be in use, this port is needed by the QD and must be free to proceed. Check to see the port is free using 'netstat -an | grep 5432'."; exit 1; fi
-	@if [ `netstat -an | grep 10000 | wc -l` -ne 0 ]; then echo "Port 10000 appears to be in use, this port is needed by the QD and must be free to proceed. Check to see the port is free using 'netstat -an | grep 10000'."; exit 1; fi
-	@if [ `netstat -an | grep 10001 | wc -l` -ne 0 ]; then echo "Port 10001 appears to be in use, this port is needed by the QD and must be free to proceed. Check to see the port is free using 'netstat -an | grep 10001'."; exit 1; fi
-	@if [ `netstat -an | grep 10002 | wc -l` -ne 0 ]; then echo "Port 10002 appears to be in use, this port is needed by the QD and must be free to proceed. Check to see the port is free using 'netstat -an | grep 10002'."; exit 1; fi
-	@echo "Ports 5432,10000,10001,10002 appears to be free, good."
+	@- MASTER_DEMO_PORT=$(MASTER_PORT) DEMO_PORT_BASE=$(PORT_BASE) \
+		./demo_cluster.sh 
+	@echo ""
 
 
+probe:
+	@ echo "Probing the databases "
+	@ echo ""
+	@ MASTER_DEMO_PORT=$(MASTER_PORT) DEMO_PORT_BASE=$(PORT_BASE) \
+		./probe_config.sh
+	@ echo "Probe finished"
+
+.PHONY : clean 
+
+check: 
+	@ echo ""
+	@ echo "Checking port availability... "
+	@ echo ""
+	@MASTER_DEMO_PORT=$(MASTER_PORT) DEMO_PORT_BASE=$(PORT_BASE)  \
+		./demo_cluster.sh -c
+	@echo ""
+	@ echo "Checking completed without any errors...."
+	@echo ""
+		
 clean:
-	@-if [ `uname -s` = 'SunOS' ]; then pkill postmaster; else killall postmaster ; fi
-	@sleep 2
-	@rm -f hostfile
-	@rm -f clusterConfigFile
-	@rm -rf datadirs
-	@rm -rf logs
-	@sleep 2
+	@ echo "Deleting cluster.... "
+	@./demo_cluster.sh -d
+	@echo ""
+
+
