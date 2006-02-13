@@ -10,7 +10,7 @@
  *
  *
  * IDENTIFICATION
- *	  $PostgreSQL: pgsql/src/backend/postmaster/autovacuum.c,v 1.5.2.3 2005/11/28 17:23:12 alvherre Exp $
+ *	  $PostgreSQL: pgsql/src/backend/postmaster/autovacuum.c,v 1.5.2.5 2006/01/20 15:17:13 tgl Exp $
  *
  *-------------------------------------------------------------------------
  */
@@ -498,6 +498,11 @@ process_whole_db(void)
 	 /* functions in indexes may want a snapshot set */
 	ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
 
+	/*
+	 * Clean up any dead statistics collector entries for this DB.
+	 */
+	pgstat_vacuum_tabstat();
+
 	dbRel = heap_open(DatabaseRelationId, AccessShareLock);
 
 	/* Must use a table scan, since there's no syscache for pg_database */
@@ -563,6 +568,13 @@ do_autovacuum(PgStat_StatDBEntry *dbentry)
 	ActiveSnapshot = CopySnapshot(GetTransactionSnapshot());
 
 	/*
+	 * Clean up any dead statistics collector entries for this DB.
+	 * We always want to do this exactly once per DB-processing cycle,
+	 * even if we find nothing worth vacuuming in the database.
+	 */
+	pgstat_vacuum_tabstat();
+
+	/*
 	 * StartTransactionCommand and CommitTransactionCommand will automatically
 	 * switch to other contexts.  We need this one to keep the list of
 	 * relations to vacuum/analyze across transactions.
@@ -613,7 +625,7 @@ do_autovacuum(PgStat_StatDBEntry *dbentry)
 		 * Skip temp tables (i.e. those in temp namespaces).  We cannot safely
 		 * process other backends' temp tables.
 		 */
-		if (isTempNamespace(classForm->relnamespace))
+		if (isAnyTempNamespace(classForm->relnamespace))
 			continue;
 
 		relid = HeapTupleGetOid(tuple);
