@@ -712,7 +712,7 @@ cdbdisp_dispatchCommand(const char                 *szCommand,
 		(mirrorGang->segdb_count < nsegdb || mirrorGang->size < nsegdb))
 	{
 		elog(LOG, "Some segments are down: MIRROR nsegdb %d mirrrorGang->segdb_count: %d mirrorGang->size: %d", nsegdb, mirrorGang->segdb_count, mirrorGang->size);
-		elog(LOG, "                        PRIMARYnsegdb %d mirrrorGang->segdb_count: %d mirrorGang->size: %d", nsegdb, primaryGang->segdb_count, primaryGang->size);
+		elog(LOG, "                       PRIMARY nsegdb %d mirrrorGang->segdb_count: %d mirrorGang->size: %d", nsegdb, primaryGang->segdb_count, primaryGang->size);
 		elog(LOG, "Some segments are down.  Dispatching command %.50s to remaining segments only", szCommand);
 
 		if (strncmp(szCommand, "BEGIN ", 6) != 0 &&

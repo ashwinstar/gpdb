@@ -315,7 +315,7 @@ buildQDMirrorFromShmem(void)
 	FtsGetQDMirrorInfo(&mirrorDb.hostname, &port);
 	if (mirrorDb.hostname == NULL)
 	{
-		elog(LOG, "buildQDMirrorFromShmem: no hostname for mirror");
+		//elog(LOG, "buildQDMirrorFromShmem: no hostname for mirror");
 		return;
 	}
 
