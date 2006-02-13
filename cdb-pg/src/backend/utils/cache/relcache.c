@@ -787,6 +787,7 @@ RelationBuildDesc(Oid targetRelId, Relation oldrelation)
      * initialize MPP partitioning info
      */
     relation->rd_cdbpolicy = NULL;
+    relation->rd_cdbDefaultStatsWarningIssued = false;
 
 	/*
 	 * Insert newly created relation into relcache hash tables.
@@ -3132,6 +3133,7 @@ load_relcache_init_file(void)
 		rel->rd_createSubid = InvalidSubTransactionId;
 		MemSet(&rel->pgstat_info, 0, sizeof(rel->pgstat_info));
         rel->rd_cdbpolicy = NULL;
+        rel->rd_cdbDefaultStatsWarningIssued = false;
 
 		/*
 		 * Recompute lock and physical addressing info.  This is needed in

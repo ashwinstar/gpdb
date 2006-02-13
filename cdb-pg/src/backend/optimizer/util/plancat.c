@@ -4,7 +4,7 @@
  *	   routines for accessing the system catalogs
  *
  *
- * Portions Copyright (c) 2005, Greenplum Inc.
+ * Portions Copyright (c) 2005-2006, Greenplum Inc.
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -44,6 +44,24 @@
 
 static void estimate_rel_size(Relation rel, int32 *attr_widths,
 				  BlockNumber *pages, double *tuples);
+
+static void
+estimate_tuple_width(Relation   rel,
+                     int32     *attr_widths,
+                     int32     *bytes_per_tuple,
+                     double    *tuples_per_page);
+
+static void
+cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
+                      Relation      baserel,
+                      Relation      rel,
+                      int32        *attr_widths,
+				      BlockNumber  *pages,
+                      double       *tuples,
+                      bool         *default_stats_used);
+
+static void
+cdb_default_stats_warning_for_index(Oid reloid, Oid indexoid);
 
 
 /*
@@ -100,11 +118,21 @@ get_relation_info(Oid relationObjectId, RelOptInfo *rel)
 	rel->attr_widths = (int32 *)
 		palloc0((rel->max_attr - rel->min_attr + 1) * sizeof(int32));
 
+    /*
+     * CDB: Get partitioning key info for distributed relation.
+     */
+    rel->cdbpolicy = RelationGetPartitioningKey(relation);
+
 	/*
 	 * Estimate relation size.
 	 */
-	estimate_rel_size(relation, rel->attr_widths - rel->min_attr,
-					  &rel->pages, &rel->tuples);
+	cdb_estimate_rel_size(rel,
+                          relation,
+                          relation,
+                          rel->attr_widths - rel->min_attr,
+					      &rel->pages,
+                          &rel->tuples,
+                          &rel->cdb_default_stats_used);
 
 	/*
 	 * Make list of indexes.  Ignore indexes on system catalogs if told to.
@@ -118,6 +146,10 @@ get_relation_info(Oid relationObjectId, RelOptInfo *rel)
 	{
 		List	   *indexoidlist;
 		ListCell   *l;
+
+        /* Warn if indexed table needs ANALYZE. */
+        if (rel->cdb_default_stats_used)
+            cdb_default_stats_warning_for_table(relation->rd_id);
 
 		indexoidlist = RelationGetIndexList(relation);
 
@@ -196,25 +228,28 @@ get_relation_info(Oid relationObjectId, RelOptInfo *rel)
 			info->predOK = false;		/* set later in indxpath.c */
 			info->unique = index->indisunique;
 
-			/*
+            /*
 			 * Estimate the index size.  If it's not a partial index, we lock
 			 * the number-of-tuples estimate to equal the parent table; if it
 			 * is partial then we have to use the same methods as we would for
 			 * a table, except we can be sure that the index is not larger
 			 * than the table.
 			 */
-			if (info->indpred == NIL)
-			{
-				info->pages = RelationGetNumberOfBlocks(indexRelation);
+			cdb_estimate_rel_size(rel,
+                                  relation,
+                                  indexRelation,
+                                  NULL,
+                                  &info->pages,
+                                  &info->tuples,
+                                  &info->cdb_default_stats_used);
+
+			if (!info->indpred ||
+				info->tuples > rel->tuples)
 				info->tuples = rel->tuples;
-			}
-			else
-			{
-				estimate_rel_size(indexRelation, NULL,
-								  &info->pages, &info->tuples);
-				if (info->tuples > rel->tuples)
-					info->tuples = rel->tuples;
-			}
+
+            if (info->cdb_default_stats_used &&
+                !rel->cdb_default_stats_used)
+                cdb_default_stats_warning_for_index(relation->rd_id, indexoid);
 
 			index_close(indexRelation);
 
@@ -226,14 +261,102 @@ get_relation_info(Oid relationObjectId, RelOptInfo *rel)
 
 	rel->indexlist = indexinfos;
 
-    /*
-     * CDB: Get partitioning key info for distributed relation.
-     */
-    rel->cdbpolicy = RelationGetPartitioningKey(relation);
-
 	/* close rel, but keep lock if any */
 	heap_close(relation, NoLock);
 }
+
+
+
+/*
+ * cdb_estimate_rel_size - estimate # pages and # tuples in a table or index
+ *
+ * If attr_widths isn't NULL, it points to the zero-index entry of the
+ * relation's attr_width[] cache; we fill this in if we have need to compute
+ * the attribute widths for estimation purposes.
+ */
+void
+cdb_estimate_rel_size(RelOptInfo   *relOptInfo,
+                      Relation      baserel,
+                      Relation      rel,
+                      int32        *attr_widths,
+				      BlockNumber  *pages,
+                      double       *tuples,
+                      bool         *default_stats_used)
+{
+	BlockNumber relpages;
+	double		reltuples;
+	double		density;
+    int32       tuple_width;
+
+    *default_stats_used = false;
+
+    /* Rel not distributed?  RelationGetNumberOfBlocks can get actual #pages. */
+    if (!relOptInfo->cdbpolicy ||
+        relOptInfo->cdbpolicy->ptype != POLICYTYPE_PARTITIONED)
+    {
+        estimate_rel_size(rel, attr_widths, pages, tuples);
+        return;
+    }
+
+    /* Rely on statistics observed by ANALYZE, if available. */
+    relpages = (BlockNumber)rel->rd_rel->relpages;
+    reltuples = rel->rd_rel->reltuples;
+
+	/* If it's an index, don't count the metapage. */
+	if (rel->rd_rel->relkind == RELKIND_INDEX &&
+		relpages > 1)
+		relpages--;
+
+    /* Anything missing? */
+    if (relpages < 1 || reltuples < 1)
+    {
+        int         the_default = 100;
+        BlockNumber default_pages = (BlockNumber)the_default;
+        double      default_tuples = the_default;
+
+        *default_stats_used = true;
+
+        /* If table has no statistics, table and indexes use defaults. */
+        if (baserel->rd_rel->relpages <= 1 &&
+            baserel->rd_rel->reltuples < 1)
+        {
+            *pages = default_pages;
+            *tuples = default_tuples;
+            return;
+        }
+
+        /* Maybe index can use row count from base table. */
+        if (rel != baserel &&
+            reltuples < 1)
+            reltuples = Max(baserel->rd_rel->reltuples, relOptInfo->tuples);
+
+        /* Still nothing? */
+        if (relpages <= 1 && reltuples < 1)
+        {
+            *pages = default_pages;
+            *tuples = default_tuples;
+            return;
+        }
+
+        /* Guess #rows from #pages. */
+        else if (reltuples < 1)
+        {
+            estimate_tuple_width(rel, attr_widths, &tuple_width, &density);
+            reltuples = density * relpages;
+        }
+
+        /* Guess #pages from #rows. */
+        else if (relpages < 1)
+        {
+            estimate_tuple_width(rel, attr_widths, &tuple_width, &density);
+            relpages = (BlockNumber)(reltuples / density);
+        }
+    }
+
+    *pages = Max(1, relpages);
+    *tuples = ceil(reltuples);
+}                               /* cdb_estimate_rel_size */
+
 
 /*
  * estimate_rel_size - estimate # pages and # tuples in a table or index
@@ -250,19 +373,13 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 	BlockNumber relpages;
 	double		reltuples;
 	double		density;
+    int32       tuple_width;
 
 	switch (rel->rd_rel->relkind)
 	{
 		case RELKIND_RELATION:
 		case RELKIND_INDEX:
 		case RELKIND_TOASTVALUE:
-			if ( Mpp_role == MPP_ROLE_DISPATCH )
-			{
-				*pages = (BlockNumber) rel->rd_rel->relpages;
-				*tuples = (double) rel->rd_rel->reltuples;
-                break;
-			}
-
 			/* it has storage, ok to call the smgr */
 			curpages = RelationGetNumberOfBlocks(rel);
 
@@ -316,49 +433,15 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 				density = reltuples / (double) relpages;
 			else
 			{
-				/*
-				 * When we have no data because the relation was truncated,
-				 * estimate tuple width from attribute datatypes.  We assume
-				 * here that the pages are completely full, which is OK for
-				 * tables (since they've presumably not been VACUUMed yet) but
-				 * is probably an overestimate for indexes.  Fortunately
-				 * get_relation_info() can clamp the overestimate to the
-				 * parent table's size.
-				 *
-				 * Note: this code intentionally disregards alignment
-				 * considerations, because (a) that would be gilding the lily
-				 * considering how crude the estimate is, and (b) it creates
-				 * platform dependencies in the default plans which are kind
-				 * of a headache for regression testing.
-				 */
-				int32		tuple_width = 0;
-				int			i;
-
-				for (i = 1; i <= RelationGetNumberOfAttributes(rel); i++)
-				{
-					Form_pg_attribute att = rel->rd_att->attrs[i - 1];
-					int32		item_width;
-
-					if (att->attisdropped)
-						continue;
-					/* This should match set_rel_width() in costsize.c */
-					item_width = get_attavgwidth(RelationGetRelid(rel), i);
-					if (item_width <= 0)
-					{
-						item_width = get_typavgwidth(att->atttypid,
-													 att->atttypmod);
-						Assert(item_width > 0);
-					}
-					if (attr_widths != NULL)
-						attr_widths[i] = item_width;
-					tuple_width += item_width;
-				}
-				tuple_width += sizeof(HeapTupleHeaderData);
-				tuple_width += sizeof(ItemPointerData);
-				/* note: integer division is intentional here */
-				density = (BLCKSZ - sizeof(PageHeaderData)) / tuple_width;
+	            /*
+	             * When we have no data because the relation was truncated,
+	             * estimate tuples per page from attribute datatypes.
+                 * (CDB: The code that was here has been moved into the
+                 * estimate_tuple_width function below.)
+                 */
+                estimate_tuple_width(rel, attr_widths, &tuple_width, &density);
 			}
-			*tuples = rint(density * (double) curpages);
+			*tuples = ceil(density * curpages);
 			break;
 		case RELKIND_SEQUENCE:
 			/* Sequences always have a known size */
@@ -372,6 +455,65 @@ estimate_rel_size(Relation rel, int32 *attr_widths,
 			break;
 	}
 }
+
+
+/*
+ * estimate_tuple_width
+ *
+ * CDB: Pulled this code out of estimate_rel_size below to make a
+ * separate function.
+ */
+void
+estimate_tuple_width(Relation   rel,
+                     int32     *attr_widths,
+                     int32     *bytes_per_tuple,
+                     double    *tuples_per_page)
+{
+	/*
+	 * Estimate tuple width from attribute datatypes.  We assume
+	 * here that the pages are completely full, which is OK for
+	 * tables (since they've presumably not been VACUUMed yet) but
+	 * is probably an overestimate for indexes.  Fortunately
+	 * get_relation_info() can clamp the overestimate to the
+	 * parent table's size.
+	 *
+	 * Note: this code intentionally disregards alignment
+	 * considerations, because (a) that would be gilding the lily
+	 * considering how crude the estimate is, and (b) it creates
+	 * platform dependencies in the default plans which are kind
+	 * of a headache for regression testing.
+	 */
+    double      density;
+    int32		tuple_width = 0;
+	int			i;
+
+	for (i = 1; i <= RelationGetNumberOfAttributes(rel); i++)
+	{
+		Form_pg_attribute att = rel->rd_att->attrs[i - 1];
+		int32		item_width;
+
+		if (att->attisdropped)
+			continue;
+		/* This should match set_rel_width() in costsize.c */
+		item_width = get_attavgwidth(RelationGetRelid(rel), i);
+		if (item_width <= 0)
+		{
+			item_width = get_typavgwidth(att->atttypid,
+										 att->atttypmod);
+			Assert(item_width > 0);
+		}
+		if (attr_widths != NULL)
+			attr_widths[i] = item_width;
+		tuple_width += item_width;
+	}
+	tuple_width += sizeof(HeapTupleHeaderData);
+	tuple_width += sizeof(ItemPointerData);
+    /* note: integer division is intentional here */
+	density = (BLCKSZ - sizeof(PageHeaderData)) / tuple_width;
+
+    *bytes_per_tuple = tuple_width;
+    *tuples_per_page = Max(1.0, density);
+}                               /* estimate_tuple_width */
 
 
 /*
@@ -755,3 +897,96 @@ has_unique_index(RelOptInfo *rel, AttrNumber attno)
 	}
 	return false;
 }
+
+
+/*
+ * cdb_default_stats_warning_needed
+ */
+static bool
+cdb_default_stats_warning_needed(Oid reloid)
+{
+    Relation    relation;
+    bool        warn = true;
+
+    /* Find relcache entry. */
+    relation = relation_open(reloid, NoLock);
+
+    /* Keep quiet if temporary or system table. */
+    if (relation->rd_istemp ||
+        IsSystemClass(relation->rd_rel))
+        warn = false;
+
+    /* Warn at most once during lifetime of relcache entry. */
+    else if (relation->rd_cdbDefaultStatsWarningIssued)
+        warn = false;
+
+    /* Caller will issue warning.  Set flag so warning won't be repeated. */
+    else
+        relation->rd_cdbDefaultStatsWarningIssued = true;
+
+    /* Close rel.  Don't disturb the lock. */
+    relation_close(relation, NoLock);
+
+    return warn;
+}                               /* cdb_default_stats_warning_needed */
+
+
+/*
+ * cdb_default_stats_warning_for_index
+ */
+void
+cdb_default_stats_warning_for_index(Oid reloid, Oid indexoid)
+{
+    char           *relname;
+    char           *indexname;
+
+    /* Warn at most once during lifetime of relcache entry.  Skip if temp. */
+    if (!cdb_default_stats_warning_needed(indexoid))
+        return;
+
+    /* Get name from catalog, not from relcache, in case it has been renamed. */
+    relname = get_rel_name(reloid);
+    indexname = get_rel_name(indexoid);
+
+    ereport(INFO, (errmsg("Query planner will use default statistics for index "
+                          "\"%s\" on table \"%s\"",
+                          indexname ? indexname : "??",
+                          relname ? relname : "??"),
+                   errhint("To cache a sample of the table's actual statistics "
+                           "for optimization, use the ANALYZE or VACUUM ANALYZE "
+                           "command.")
+                   ));
+
+    if (relname)
+        pfree(relname);
+    if (indexname)
+        pfree(indexname);
+}                               /* cdb_default_stats_warning_for_index */
+
+/*
+ * cdb_default_stats_warning_for_table
+ */
+void
+cdb_default_stats_warning_for_table(Oid reloid)
+{
+    char   *relname;
+
+    /* Warn at most once during lifetime of relcache entry.  Skip if temp. */
+    if (!cdb_default_stats_warning_needed(reloid))
+        return;
+
+    /* Get name from catalog, not from relcache, in case name has changed. */
+    relname = get_rel_name(reloid);
+
+    ereport(INFO, (errmsg("Query planner will use default statistics for table "
+                          "\"%s\"",
+                          relname ? relname : "??"),
+                   errhint("To cache a sample of the table's actual statistics "
+                           "for optimization, use the ANALYZE or VACUUM ANALYZE "
+                           "command.")
+                   ));
+
+    if (relname)
+        pfree(relname);
+}                               /* cdb_default_stats_warning_for_table */
+

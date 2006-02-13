@@ -279,6 +279,7 @@ typedef struct RelOptInfo
 	BlockNumber pages;
 	double		tuples;
     struct MppPolicy   *cdbpolicy;      /* distribution of stored tuples */
+    bool        cdb_default_stats_used; /* true if ANALYZE needed */
 	struct Plan *subplan;		/* if subquery */
 
 	/* used by various scans and joins: */
@@ -349,6 +350,7 @@ typedef struct IndexOptInfo
 	bool		predOK;			/* true if predicate matches query */
 	bool		unique;			/* true if a unique index */
 	bool		amoptionalkey;	/* can query omit key for the first column? */
+    bool        cdb_default_stats_used; /* true if ANALYZE needed */
 } IndexOptInfo;
 
 

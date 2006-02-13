@@ -3,6 +3,7 @@
  * allpaths.c
  *	  Routines to find possible search paths for processing a query
  *
+ * Portions Copyright (c) 2005-2006, greenplum inc
  * Portions Copyright (c) 1996-2005, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
@@ -48,6 +49,7 @@ static void set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 static void set_inherited_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 						   Index rti, RangeTblEntry *rte,
 						   List *inheritlist);
+static bool has_multiple_baserels(PlannerInfo *root);
 static void set_subquery_pathlist(PlannerInfo *root, RelOptInfo *rel,
 					  Index rti, RangeTblEntry *rte);
 static void set_function_pathlist(PlannerInfo *root, RelOptInfo *rel,
@@ -83,6 +85,27 @@ make_one_rel(PlannerInfo *root)
 	 */
 	set_base_rel_pathlists(root);
 
+    /*
+     * CDB: If join, warn of any tables that need ANALYZE.
+     */
+    if (has_multiple_baserels(root))
+    {
+		Index           rti;
+        RelOptInfo     *brel;
+        RangeTblEntry  *brte;
+
+		for (rti = 1; rti < root->base_rel_array_size; rti++)
+		{
+			brel = root->base_rel_array[rti];
+            if (brel &&
+                brel->cdb_default_stats_used)
+            {
+                brte = rt_fetch(rti, root->parse->rtable);
+                cdb_default_stats_warning_for_table(brte->relid);
+            }
+		}
+    }
+
 	/*
 	 * Generate access paths for the entire join tree.
 	 */
@@ -91,7 +114,7 @@ make_one_rel(PlannerInfo *root)
 
 	rel = make_fromexpr_rel(root, root->parse->jointree);
 
-	/*
+    /*
 	 * The result should join all and only the query's base rels.
 	 */
 #ifdef USE_ASSERT_CHECKING
